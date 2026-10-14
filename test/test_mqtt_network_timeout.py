@@ -21,6 +21,7 @@ PREAMBLE = r'''
 #include <cstddef>
 #include "helpers/MQTTConnectionAdmission.h"
 #include "helpers/MQTTConnectionPolicy.h"
+#include "helpers/MQTTTransportHealth.h"
 struct esp_mqtt_client_config_t {
 #if ESP_IDF_VERSION_MAJOR == 5
   struct { int keepalive = 0, message_retransmit_timeout = 0; } session;
@@ -98,6 +99,7 @@ int main() {
 RECONFIGURE_PREAMBLE = r'''
 #include "helpers/MQTTConnectionAdmission.h"
 #include "helpers/MQTTConnectionPolicy.h"
+#include "helpers/MQTTTransportHealth.h"
 #define MQTT_DEBUG_PRINTLN(...) ((void)0)
 #define pdMS_TO_TICKS(value) (value)
 constexpr int RUNTIME_MQTT_SLOTS = 2, MQTT_AUTH_JWT = 1;
@@ -147,8 +149,11 @@ struct MQTTBridge {
     unsigned long last_reconnect_attempt = 0, last_log_time = 0, last_deferred_log_ms = 0;
     uint8_t reconnect_backoff = 0, max_backoff_failures = 0;
     bool circuit_breaker_tripped = false;
+    MQTTTransportHealth::State transport_health;
   } _slots[RUNTIME_MQTT_SLOTS];
   std::atomic<bool> _stop_requested{false}, _slot_attempt_pending[RUNTIME_MQTT_SLOTS] = {};
+  std::atomic<bool> _slot_transport_fault_pending[RUNTIME_MQTT_SLOTS] = {};
+  std::atomic<bool> _slot_health_reset_pending[RUNTIME_MQTT_SLOTS] = {};
   bool _slot_force_jwt_mint[RUNTIME_MQTT_SLOTS] = {};
   bool _slot_reconfigure_pending[RUNTIME_MQTT_SLOTS] = {};
   bool _initialized = true;
@@ -161,6 +166,7 @@ struct MQTTBridge {
   bool canStartSlotConnection(int) const;
   void optimizeMqttClientConfig(PsychicMqttClient*, bool);
   void teardownSlot(int, bool force = false);
+  void updateSlotTransportDiag(int, uint32_t) {}
   void applySlotPreset(int, const char*);
   bool setupSlot(int index) {
     auto& slot = _slots[index];

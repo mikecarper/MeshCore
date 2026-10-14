@@ -15,6 +15,7 @@ POLICY_PREAMBLE = r'''
 #include <cstddef>
 #include <cstdint>
 #include "helpers/MQTTConnectionAdmission.h"
+#include "helpers/MQTTTransportHealth.h"
 namespace Admission = MQTTConnectionAdmission;
 using MemoryState = Admission::ClientMemoryState;
 '''
@@ -65,8 +66,10 @@ struct MQTTBridge {
     const Preset* preset = nullptr;
     char broker_uri[128] = {}, host[64] = "broker";
     uint16_t port = 8883;
+    MQTTTransportHealth::State transport_health;
   } _slots[RUNTIME_MQTT_SLOTS];
   std::atomic<bool> _slot_attempt_pending[RUNTIME_MQTT_SLOTS] = {};
+  std::atomic<bool> _slot_transport_fault_pending[RUNTIME_MQTT_SLOTS] = {};
   bool hasPendingSlotConnection() const;
   bool canStartSlotConnection(int index) const;
 };

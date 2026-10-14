@@ -199,3 +199,69 @@ Comparison removes console echo/prompt framing and treats the old blank
 `get wifi.ssid` response as the new `(not configured)` response. MQTT and
 power saving were both returned to their original off state. No release assets
 were uploaded as part of this test.
+
+## Long-running MQTT recovery
+
+The [14 October 2026 follow-up report](https://github.com/mikecarper/meshfirmware/issues/16#issuecomment-6169059046)
+says the preview initially connects, but three reporting sites show it offline
+after roughly three hours while WiFi and the console still show connected.
+The earlier 180-second trial does not qualify this longer-running workload.
+
+Code inspection found recovery gaps, not a verified cause of that hardware
+failure. The adapter clears its connection flag on an MQTT error, but the
+bridge previously left its separate flag set until a disconnect callback.
+Its five-second cache refresh only reread that same flag. A lost terminal
+callback could also leave a connection attempt pending indefinitely, blocking
+the other brokers' handshake and renewal requests. Accepted status enqueues
+were treated as successful publication without using the existing PUBACK
+counter to detect stalled delivery.
+
+Recovery now runs on the bridge's owning task. An errored or timed-out SDK
+client must be proven stopped before its pending-handshake reservation is
+released. The client object and credentials are retained, and the existing
+admission checks and reconnect backoff still apply. No WiFi reset, node reboot,
+extra periodic heartbeat, or broker credential change is required. An idle
+connection with no outstanding QoS 1 publication is not timed out merely for
+being quiet.
+
+Both the pending-handshake deadline and the outstanding-PUBACK deadline are
+120 seconds. This leaves a generous margin over the SDK's 10-second network
+timeout and the configured 15-second QoS 1 retransmission interval. A failed
+SDK stop retains its recovery reservation instead of permitting another
+overlapping TLS handshake.
+
+CLI and WebConfig slot status show `recover` during reserved cleanup.
+`get mqttN.diag` retains `pub_ack` and adds a bounded recovery count/reason
+(`rec`) and pending acknowledgment age (`ack_wait`) when they fit. A delayed
+connected callback cannot cancel cleanup after an SDK stop failed.
+
+The delivery watch starts with the first accepted QoS 1 enqueue and observes
+real broker acknowledgments, including the on-connect status publication.
+Further enqueues cannot postpone that oldest outstanding deadline. Timeouts
+are serviced on the next owning-task pass; they are not a guarantee of
+wall-clock recovery if the worker is blocked inside an SDK call. This change
+does not establish or repair an indefinite SDK mutex deadlock.
+
+All 251 native MQTT test cases and 79 MQTT Python host tests passed. The new
+tests execute the production callbacks, publishing, maintenance, recovery and
+admission methods with controllable SDK calls and clocks. They include three
+brokers running beyond three simulated hours, missing PUBACKs and callbacks,
+silent synchronous write failures, failed SDK stops, late connected events,
+WiFi loss, suspension/foreground wake, backoff, memory admission and timer
+rollover. Removing the new error-callback recovery signal makes its regression
+test fail, establishing that it detects the previous behavior. AP ownership
+fixtures also passed with address/undefined-behavior sanitizers. The six pure
+transport-health tests are included in the 79-test total and in CI.
+
+The exact Full `heltec_v4_repeater_observer_mqtt` image compiled and linked
+against Arduino 2.0.17 / ESP-IDF 4.4.7. This local test image used baseline
+`dce323e37` with the MQTT repair applied; it predates the subsequently pulled
+beacon changes. Its application size was 2,237,677
+bytes, within the 6,553,600-byte application slot. The linked runtime RAM gate
+reported 204,752 internal bytes available, 198,432 required and a 171,984-byte
+largest region. These are build-time capacity/admission checks, not free heap
+measured with three live brokers or qualification of maximum simultaneous load.
+
+No new physical three-hour V4 soak or reporter-side retest has been performed
+as part of this repair. These tests establish the repaired recovery behavior,
+not the cause of the reporter's hardware failure or website-side availability.

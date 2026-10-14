@@ -12,6 +12,7 @@
 #include "helpers/JWTHelper.h"
 #include "helpers/MQTTConnectionPolicy.h"
 #include "helpers/MQTTConnectionHealth.h"
+#include "helpers/MQTTTransportHealth.h"
 #include "helpers/MQTTPayloadBuilder.h"
 #include "helpers/MQTTPacketFilter.h"
 #include "helpers/MQTTPresets.h"
@@ -158,6 +159,10 @@ private:
     // DISCONNECTED (including a failed initial attempt). first_disconnect_time is intentionally separate
     // so the existing 'mqttN.diag' "first_disc" semantics don't change.
     unsigned long current_outage_started_ms;
+
+    // Only the bridge worker mutates this state; SDK callbacks raise atomic
+    // latches instead. Retained across reconnects to expose recovery history.
+    MQTTTransportHealth::State transport_health;
   };
 
   MQTTSlot _slots[RUNTIME_MQTT_SLOTS];
@@ -260,6 +265,13 @@ private:
   // Set before starting/reconnecting, cleared by connect/failed-attempt/stop.
   // Must be set before the SDK call because its event task can callback at once.
   std::atomic<bool> _slot_attempt_pending[RUNTIME_MQTT_SLOTS];
+  std::atomic<bool> _slot_transport_fault_pending[RUNTIME_MQTT_SLOTS];
+  std::atomic<bool> _slot_health_reset_pending[RUNTIME_MQTT_SLOTS];
+  // Read-only CLI snapshots: never read the owner-only State across tasks.
+  std::atomic<uint32_t> _slot_health_recoveries[RUNTIME_MQTT_SLOTS];
+  std::atomic<uint8_t> _slot_health_reason[RUNTIME_MQTT_SLOTS];
+  std::atomic<bool> _slot_health_recovering[RUNTIME_MQTT_SLOTS];
+  std::atomic<uint32_t> _slot_health_ack_wait_secs[RUNTIME_MQTT_SLOTS];
 
   // Pending on-connect status publish: set from the onConnect callback (which
   // runs on the esp-mqtt event task, NOT this bridge task), consumed by the MQTT
@@ -509,6 +521,9 @@ private:
   bool canStartSlotConnection(int index) const;
   void teardownSlot(int index, bool force = false);
   esp_err_t reconnectSlotClient(int index);
+  bool recoverSlotTransport(int index, uint32_t now);
+  void serviceSlotTransportHealth(uint32_t now);
+  void updateSlotTransportDiag(int index, uint32_t now);
   void maintainSlotConnections();      // Maintain all slot connections (token renewal, reconnect)
   void maintainSlotConnection(int index, unsigned long now_millis, unsigned long current_time, bool time_synced, bool& reconnect_attempted, bool& teardown_attempted);
   bool createSlotAuthToken(int index); // Create/renew JWT token for a slot

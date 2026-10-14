@@ -246,6 +246,7 @@ jobs:
           python3 -B test/test_mqtt_disconnect.py -v
           python3 -B test/test_mqtt_connection_admission.py -v
           python3 -B test/test_mqtt_handshake_scheduler.py -v
+          python3 -B test/test_mqtt_transport_health.py -v
           python3 -B test/test_mqtt_diagnostics.py -v
           python3 -B test/test_mqtt_publish_ack.py -v
           python3 -B test/test_wifi_network_power_policy.py -v

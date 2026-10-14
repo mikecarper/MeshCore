@@ -518,6 +518,15 @@ clear, set, or toggle selected bits.
 Prints the runtime diagnostic summary for MQTT slot N, including its connection
 state and failure history.
 
+`pub_ack` counts actual broker acknowledgments, not merely accepted writes.
+Recent firmware also shows `rec:<count>/<reason>` for transport recovery and
+`ack_wait:<seconds>s` while an accepted QoS 1 publication awaits acknowledgment.
+Reasons include `error`, `state`, `handshake`, `write`, and `puback`. `recover`
+means cleanup is pending, not that the broker is healthy. Optional fields are
+omitted if they cannot fit completely in the reply. `rec` counts completed
+client cleanup; a higher count alone does not prove the subsequent connection
+or delivery succeeded.
+
 <a id="mqtt-stats"></a>
 ### `get mqtt.stats`
 

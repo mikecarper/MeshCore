@@ -27,6 +27,7 @@ HARNESS = r'''
 #include <functional>
 #include <helpers/WiFiNetworkPowerPolicy.h>
 #include <helpers/MQTTConnectionPolicy.h>
+#include <helpers/MQTTTransportHealth.h>
 #define private public
 #include "PsychicMqttClient.h"
 #undef private
@@ -100,6 +101,7 @@ struct MQTTBridge {
     PsychicMqttClient* client = nullptr;
     bool enabled = true, connected = false, circuit_breaker_tripped = false;
     uint32_t connected_at_ms = 0, last_reconnect_attempt = 0;
+    uint32_t current_outage_started_ms = 0;
     uint8_t reconnect_backoff = 0;
     bool initial_connect_done = true;
     char* auth_token = nullptr;
@@ -107,11 +109,14 @@ struct MQTTBridge {
     uint32_t token_expires_at = 1, last_token_renewal = 1;
     uint32_t last_log_time = 1, last_deferred_log_ms = 1;
     uint8_t max_backoff_failures = 0;
+    MQTTTransportHealth::State transport_health;
   } _slots[RUNTIME_MQTT_SLOTS];
   using MQTTSlot = Slot;
   mesh::wifi::NetworkPowerPolicy _network_power_policy;
   std::atomic<bool> _network_suspended{false}, _fresh_ntp_this_boot{false};
   bool _slot_attempt_pending[RUNTIME_MQTT_SLOTS] = {};
+  std::atomic<bool> _slot_transport_fault_pending[RUNTIME_MQTT_SLOTS] = {};
+  std::atomic<bool> _slot_health_reset_pending[RUNTIME_MQTT_SLOTS] = {};
   bool _status_publish_pending[RUNTIME_MQTT_SLOTS] = {};
   bool _slot_force_jwt_mint[RUNTIME_MQTT_SLOTS] = {};
   uint32_t _network_publish_acks[RUNTIME_MQTT_SLOTS] = {};
@@ -127,6 +132,7 @@ struct MQTTBridge {
   Board* _board = nullptr;
   void cancelNtpRefresh() {}
   void updateCachedConnectionStatus() {}
+  void updateSlotTransportDiag(int, uint32_t) {}
   void initializeWiFiInTask() {}
   void processPacketQueue() { ++queues; }
   void teardownSlot(int index, bool force = false);

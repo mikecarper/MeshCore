@@ -22,6 +22,8 @@ BRIDGE = "src/helpers/bridges/MQTTBridge.cpp"
 PREAMBLE = r'''
 #include <helpers/WiFiNetworkPowerPolicy.h>
 #include <helpers/MQTTConnectionPolicy.h>
+#include <helpers/MQTTConnectionHealth.h>
+#include <helpers/MQTTTransportHealth.h>
 #include <helpers/esp32/SntpOperationCoordinator.h>
 #include <atomic>
 #include <cassert>
@@ -139,17 +141,18 @@ void configTime(int a, int b, const char* primary) {
 }
 
 struct Client {
-  bool started = true, fail_stop = false;
+  bool started = true, fail_stop = false, live = false;
   int stops = 0;
   uint32_t publish_acks = 0;
   uint32_t getPublishAck() const { return publish_acks; }
   bool isStarted() const { return started; }
+  bool connected() const { return live; }
   void disconnect() {
     require(!mesh::wifi::networkPower().backgroundSuspended(),
             "TLS stopped after handing station off");
     ++stops;
     events.push_back("tls-stop");
-    if (!fail_stop) started = false;
+    if (!fail_stop) started = live = false;
     if (on_client_stop) on_client_stop();
   }
 };
@@ -185,9 +188,18 @@ struct MQTTBridge {
     uint32_t connected_at_ms = 0, last_reconnect_attempt = 200U;
     uint8_t reconnect_backoff = 5;
     Client* client = nullptr;
+    uint32_t connect_failures = 0, current_outage_started_ms = 0;
+    MQTTTransportHealth::State transport_health;
   } _slots[RUNTIME_MQTT_SLOTS];
+  using MQTTSlot = Slot;
   Client clients[RUNTIME_MQTT_SLOTS];
   std::atomic<bool> _slot_attempt_pending[RUNTIME_MQTT_SLOTS] = {};
+  std::atomic<bool> _slot_transport_fault_pending[RUNTIME_MQTT_SLOTS] = {};
+  std::atomic<bool> _slot_health_reset_pending[RUNTIME_MQTT_SLOTS] = {};
+  std::atomic<bool> _slot_health_recovering[RUNTIME_MQTT_SLOTS] = {};
+  std::atomic<uint32_t> _slot_health_recoveries[RUNTIME_MQTT_SLOTS] = {};
+  std::atomic<uint8_t> _slot_health_reason[RUNTIME_MQTT_SLOTS] = {};
+  std::atomic<uint32_t> _slot_health_ack_wait_secs[RUNTIME_MQTT_SLOTS] = {};
   std::atomic<bool> _status_publish_pending[RUNTIME_MQTT_SLOTS] = {};
   uint32_t _network_publish_acks[RUNTIME_MQTT_SLOTS] = {};
   bool _network_espnow_restore_pending = false;
@@ -237,6 +249,10 @@ struct MQTTBridge {
   bool isRunning() const { return true; }
   bool isNetworkSuspended() const { return _network_suspended.load(); }
   bool requestNtpTimeEstimate();
+  bool hasPendingSlotConnection() const;
+  void serviceSlotTransportHealth(uint32_t now);
+  bool recoverSlotTransport(int index, uint32_t now);
+  void updateSlotTransportDiag(int index, uint32_t now);
   bool serviceNetworkPower(uint32_t now);
   void serviceEspNowChannelRestore(uint32_t now);
   void serviceBackgroundNtp(uint32_t now);
@@ -334,6 +350,40 @@ static void failedSdkStopWithholdsHandoff() {
           "retry after successful SDK stop failed to suspend");
   require(!bridge.clients[1].started && !bridge.clients[2].started && WiFi.offs == 1,
           "successful retry leaked a transport or radio");
+}
+
+static void failedSuspendLateConnectCannotAbandonTransportOwnership() {
+  resetEnvironment();
+  MQTTBridge bridge;
+  for (auto& pending : bridge._slot_attempt_pending) pending = false;
+  bridge.serviceNetworkPower(clock_ms);
+  bridge.clients[1].fail_stop = true;
+  clock_ms += grace;
+  require(!bridge.serviceNetworkPower(clock_ms), "failed stop did not hold handoff");
+  require(bridge._slot_transport_fault_pending[1] && bridge.hasPendingSlotConnection(),
+          "failed suspension abandoned a running MQTT transport");
+  // A foreground owner wakes networking and a late CONNACK sets a fresh-session
+  // latch. Neither proves the failed SDK stop completed or frees admission.
+  mesh::wifi::networkPower().setHold(mesh::wifi::NetworkPowerHold::WebConfig, true);
+  bridge._slots[1].connected = bridge.clients[1].live = true;
+  bridge._slot_attempt_pending[1] = false;
+  bridge._slot_health_reset_pending[1] = true;
+  require(bridge.serviceNetworkPower(++clock_ms), "foreground owner did not keep radio");
+  bridge.serviceSlotTransportHealth(clock_ms);
+  require(bridge.clients[1].started && bridge.hasPendingSlotConnection(),
+          "foreground wake or late CONNACK released failed-stop reservation");
+  require(!bridge._slots[1].connected && !bridge._network_suspended,
+          "failed transport was advertised healthy or handed station away");
+  require(bridge._slots[1].transport_health.recoveries == 0,
+          "failed SDK stop was counted as recovered");
+  bridge.clients[1].fail_stop = false;
+  bridge.serviceSlotTransportHealth(++clock_ms);
+  require(!bridge.clients[1].started && !bridge.hasPendingSlotConnection(),
+          "proven successful stop did not release ownership");
+  require(bridge._slots[1].transport_health.recoveries == 1,
+          "successful owner cleanup was not counted");
+  require(WiFi.offs == 0 && WiFi.disconnects == 0,
+          "transport recovery stopped foreground WiFi");
 }
 
 static void recoveryHasOneBoundedWindow() {
@@ -686,6 +736,7 @@ int main(int argc, char** argv) {
   try {
     if (name == "handoff") failureStopsBothServicesBeforeWifi();
     else if (name == "failed-stop") failedSdkStopWithholdsHandoff();
+    else if (name == "failed-stop-wake") failedSuspendLateConnectCannotAbandonTransportOwnership();
     else if (name == "recovery") recoveryHasOneBoundedWindow();
     else if (name == "owners") foregroundAndEspNowArePreserved();
     else if (name == "background-estimate") automaticClockEstimateCannotWakeSuspendedNetwork();
@@ -769,6 +820,10 @@ class MqttWiFiNetworkPowerTests(unittest.TestCase):
             "void MQTTBridge::refreshNTP(",
             "void MQTTBridge::pollNtpRefresh(",
             "bool MQTTBridge::requestNtpTimeEstimate(",
+            "bool MQTTBridge::hasPendingSlotConnection(",
+            "void MQTTBridge::serviceSlotTransportHealth(",
+            "bool MQTTBridge::recoverSlotTransport(",
+            "void MQTTBridge::updateSlotTransportDiag(",
         ))
         cls.temporary = tempfile.TemporaryDirectory(prefix="meshcore-mqtt-network-power-")
         cls.addClassCleanup(cls.temporary.cleanup)
@@ -814,6 +869,9 @@ class MqttWiFiNetworkPowerTests(unittest.TestCase):
 
     def test_failed_sdk_transport_stop_keeps_station_owned_and_awake(self):
         self.run_case("failed-stop")
+
+    def test_failed_suspend_late_connect_and_foreground_wake_keep_sdk_reservation(self):
+        self.run_case("failed-stop-wake")
 
     def test_recovery_restarts_once_and_stops_after_bounded_probe_across_wrap(self):
         self.run_case("recovery")

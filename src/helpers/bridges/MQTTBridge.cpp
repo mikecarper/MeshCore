@@ -426,6 +426,10 @@ void MQTTBridge::formatMqttStatusReply(char* buf, size_t bufsize, const MQTTPref
     } else if (!b->isSlotReady(i)) {
       name = slot.preset ? slot.preset->name : "custom";
       state = "wait";
+    } else if (b->_slot_health_recovering[i].load(std::memory_order_acquire) ||
+               b->_slot_transport_fault_pending[i].load(std::memory_order_acquire)) {
+      name = slot.preset ? slot.preset->name : "custom";
+      state = "recover";
     } else if (slot.connected) {
       name = slot.preset ? slot.preset->name : "custom";
       state = "ok";
@@ -551,6 +555,9 @@ bool MQTTBridge::getSlotStatusSnapshot(int slot_index, SlotStatusSnapshot* out) 
     out->name = slot.preset ? slot.preset->name : "custom";
     if (!b->isSlotReady(slot_index)) {
       out->state = "wait";
+    } else if (b->_slot_health_recovering[slot_index].load(std::memory_order_acquire) ||
+               b->_slot_transport_fault_pending[slot_index].load(std::memory_order_acquire)) {
+      out->state = "recover";
     } else if (slot.connected) {
       out->state = "ok";
     } else if (slot.circuit_breaker_tripped) {
@@ -657,6 +664,9 @@ void MQTTBridge::formatSlotDiagReply(char* buf, size_t bufsize, int slot_index) 
   } else if (!slot.client) {
     // Ready to connect but the client object could not be allocated.
     state = "no client";
+  } else if (b->_slot_health_recovering[slot_index].load(std::memory_order_acquire) ||
+             b->_slot_transport_fault_pending[slot_index].load(std::memory_order_acquire)) {
+    state = "recover";
   } else if (slot.connected) {
     state = "ok";
   } else if (slot.circuit_breaker_tripped) {
@@ -689,7 +699,7 @@ void MQTTBridge::formatSlotDiagReply(char* buf, size_t bufsize, int slot_index) 
   }
 
   // Connected with no errors: nothing more to say about the connection.
-  if (slot.connected && slot.last_error_time == 0) {
+  if (slot.connected && strcmp(state, "ok") == 0 && slot.last_error_time == 0) {
     replyAppendf(buf, bufsize, &pos, ", no errors");
   } else if (slot.last_error_time > 0) {
     // TLS error with human-friendly description
@@ -740,6 +750,28 @@ void MQTTBridge::formatSlotDiagReply(char* buf, size_t bufsize, int slot_index) 
     const int remaining = pos < (int)bufsize ? (int)bufsize - 1 - pos : 0;
     if (ack_len > 0 && ack_len < (int)sizeof(ack_text) && ack_len <= remaining) {
       replyAppendf(buf, bufsize, &pos, "%s", ack_text);
+    }
+  }
+
+  // Recovery/ACK age are owner-task snapshots. Append complete fields only;
+  // error details and the existing broker ACK count retain reply priority.
+  const uint32_t recoveries = b->_slot_health_recoveries[slot_index].load(std::memory_order_relaxed);
+  const auto recovery_reason = static_cast<MQTTTransportHealth::RecoveryReason>(
+      b->_slot_health_reason[slot_index].load(std::memory_order_relaxed));
+  if (recoveries || recovery_reason != MQTTTransportHealth::RecoveryReason::None) {
+    char recovery_text[48];
+    const int len = snprintf(recovery_text, sizeof(recovery_text), ", rec:%lu/%s",
+        static_cast<unsigned long>(recoveries), MQTTTransportHealth::reasonLabel(recovery_reason));
+    if (len > 0 && len < (int)sizeof(recovery_text) && len <= (int)bufsize - 1 - pos) {
+      replyAppendf(buf, bufsize, &pos, "%s", recovery_text);
+    }
+  }
+  const uint32_t ack_wait = b->_slot_health_ack_wait_secs[slot_index].load(std::memory_order_relaxed);
+  if (ack_wait != UINT32_MAX) {
+    char wait_text[32];
+    const int len = snprintf(wait_text, sizeof(wait_text), ", ack_wait:%lus", static_cast<unsigned long>(ack_wait));
+    if (len > 0 && len < (int)sizeof(wait_text) && len <= (int)bufsize - 1 - pos) {
+      replyAppendf(buf, bufsize, &pos, "%s", wait_text);
     }
   }
 
@@ -875,11 +907,11 @@ MQTTBridge::MQTTBridge(const MQTTNodeInfo& node_info, MQTTPrefs *obs,
 
   // Initialize all slots to empty/disabled state
   for (int i = 0; i < RUNTIME_MQTT_SLOTS; i++) {
-    memset(&_slots[i], 0, sizeof(MQTTSlot));
+    _slots[i] = MQTTSlot{};
     _slots[i].enabled = false;
     _slots[i].client = nullptr;
     _slots[i].preset = nullptr;
-    // auth_token == nullptr after memset above - allocated on first token creation
+    // auth_token == nullptr after value initialization - allocated on first token creation
     _slots[i].connected = false;
     _slots[i].initial_connect_done = false;
     _slots[i].token_expires_at = 0;
@@ -893,6 +925,13 @@ MQTTBridge::MQTTBridge(const MQTTNodeInfo& node_info, MQTTPrefs *obs,
     _slot_reconfigure_pending[i] = false;
     _slot_force_jwt_mint[i] = false;
     _slot_attempt_pending[i] = false;
+    _slot_transport_fault_pending[i] = false;
+    _slot_health_reset_pending[i] = false;
+    _slots[i].transport_health = MQTTTransportHealth::State();
+    _slot_health_recoveries[i] = 0;
+    _slot_health_reason[i] = static_cast<uint8_t>(MQTTTransportHealth::RecoveryReason::None);
+    _slot_health_recovering[i] = false;
+    _slot_health_ack_wait_secs[i] = UINT32_MAX;
     _status_publish_pending[i] = false;
   }
 
@@ -1024,6 +1063,11 @@ void MQTTBridge::begin() {
     _slots[i].broker_uri[0] = '\0';
     _slots[i].port = 1883;
     _slot_reconfigure_pending[i] = false;
+    _slot_transport_fault_pending[i] = false;
+    _slot_health_reset_pending[i] = false;
+    _slots[i].transport_health.resetSession();
+    _slots[i].transport_health.recovery_reason = MQTTTransportHealth::RecoveryReason::None;
+    updateSlotTransportDiag(i, static_cast<uint32_t>(millis()));
   }
   _cached_has_connected_slots = false;
   _slots_setup_done = false;
@@ -1617,13 +1661,33 @@ bool MQTTBridge::serviceNetworkPower(uint32_t now) {
       cancelNtpRefresh();
       _ntp_sync_pending = false;
       for (int i = 0; i < RUNTIME_MQTT_SLOTS; ++i) {
+        // A foreground/probe request can resume the network policy after a
+        // failed suspension. Keep a transport reservation until stop is proven.
+        if (_slots[i].client && _slots[i].client->isStarted()) {
+          _slot_transport_fault_pending[i].store(true, std::memory_order_release);
+        }
         _slot_attempt_pending[i] = false;
         if (_slots[i].client && _slots[i].client->isStarted()) {
           _slots[i].client->disconnect();
           // The wrapper only clears isStarted after SDK stop succeeds. Never
           // hand station ownership off while any transport still runs.
-          if (_slots[i].client->isStarted()) return false;
+          if (_slots[i].client->isStarted()) {
+            _slots[i].transport_health.requestRecovery(MQTTTransportHealth::RecoveryReason::AdapterDisconnected);
+            _slots[i].connected = false;
+            _slots[i].connected_at_ms = 0;
+            if (_slots[i].current_outage_started_ms == 0) {
+              _slots[i].current_outage_started_ms = now ? now : 1;
+            }
+            updateSlotTransportDiag(i, static_cast<uint32_t>(millis()));
+            updateCachedConnectionStatus();
+            return false;
+          }
         }
+        _slot_transport_fault_pending[i].store(false, std::memory_order_release);
+        _slot_health_reset_pending[i].store(false, std::memory_order_release);
+        _slots[i].transport_health.resetSession();
+        _slots[i].transport_health.recovery_reason = MQTTTransportHealth::RecoveryReason::None;
+        updateSlotTransportDiag(i, static_cast<uint32_t>(millis()));
         _slots[i].connected = false;
         _slots[i].connected_at_ms = 0;
         _status_publish_pending[i] = false;
@@ -2040,8 +2104,8 @@ void MQTTBridge::mqttTaskLoop() {
       }
     }
 
-    // Update cached connection status periodically (every 5 seconds)
-    // This ensures cache stays accurate even if callbacks miss updates
+    // Refresh the aggregate cache periodically; owner maintenance above
+    // reconciles adapter state and bounds missed terminal callbacks.
     static unsigned long last_slot_status_update = 0;
     if (now - last_slot_status_update > 5000) {
       updateCachedConnectionStatus();
@@ -2092,6 +2156,7 @@ bool MQTTBridge::ensureSlotClient(int index) {
     MQTT_DEBUG_PRINTLN("MQTT%d connected", index + 1);
     _slot_attempt_pending[index] = false;
     _slots[index].connected = true;
+    _slot_health_reset_pending[index].store(true, std::memory_order_release);
     _slot_force_jwt_mint[index] = false;
     // NOTE: reconnect_backoff / max_backoff_failures are NOT reset here.
     // A CONNACK alone doesn't prove the link is healthy -- a broker that
@@ -2142,6 +2207,10 @@ bool MQTTBridge::ensureSlotClient(int index) {
     updateCachedConnectionStatus();
   });
   slot.client->onError([this, index](esp_mqtt_error_codes error) {
+    // The adapter is already disconnected at MQTT_EVENT_ERROR. Do not stop
+    // its SDK task from inside that task's callback, or release the global
+    // handshake reservation before the owner proves the SDK has stopped.
+    _slot_transport_fault_pending[index].store(true, std::memory_order_release);
     _slots[index].last_tls_err = error.esp_tls_last_esp_err;
     _slots[index].last_tls_stack_err = error.esp_tls_stack_err;
     _slots[index].last_sock_errno = error.esp_transport_sock_errno;
@@ -2255,7 +2324,9 @@ bool MQTTBridge::hasPendingSlotConnection() const {
   // Callbacks run on esp-mqtt tasks. Time spacing alone cannot establish that
   // an earlier handshake has finished, particularly on a slow WiFi link.
   for (int i = 0; i < RUNTIME_MQTT_SLOTS; ++i) {
-    if (_slot_attempt_pending[i].load(std::memory_order_acquire)) return true;
+    if (_slot_attempt_pending[i].load(std::memory_order_acquire) ||
+        _slot_transport_fault_pending[i].load(std::memory_order_acquire) ||
+        _slots[i].transport_health.recovery_reason != MQTTTransportHealth::RecoveryReason::None) return true;
   }
   return false;
 }
@@ -2326,6 +2397,9 @@ bool MQTTBridge::setupSlot(int index) {
       slot.client->disconnect();
     }
     if (slot.client->isStarted()) {
+      _slot_transport_fault_pending[index].store(true, std::memory_order_release);
+      slot.transport_health.requestRecovery(MQTTTransportHealth::RecoveryReason::AdapterDisconnected);
+      updateSlotTransportDiag(index, static_cast<uint32_t>(millis()));
       slot.last_reconnect_attempt = millis();
       return false;
     }
@@ -2558,7 +2632,14 @@ void MQTTBridge::teardownSlot(int index, bool force) {
     delay(50);
     #endif
   }
-  if (slot.client && !force && slot.client->isStarted()) return;
+  if (slot.client && !force && slot.client->isStarted()) {
+    // Even a deliberate reconfigure must retain admission ownership if SDK
+    // stop failed. The worker will retry cleanup; no second handshake may run.
+    _slot_transport_fault_pending[index].store(true, std::memory_order_release);
+    slot.transport_health.requestRecovery(MQTTTransportHealth::RecoveryReason::AdapterDisconnected);
+    updateSlotTransportDiag(index, static_cast<uint32_t>(millis()));
+    return;
+  }
 
   // Invalidate the token but keep the buffer: the client survives teardown and still
   // holds this pointer in its config (see MQTTSlot::auth_token).
@@ -2575,6 +2656,11 @@ void MQTTBridge::teardownSlot(int index, bool force) {
   slot.last_log_time = 0;
   slot.last_deferred_log_ms = 0;
   _slot_force_jwt_mint[index] = false;
+  _slot_transport_fault_pending[index] = false;
+  _slot_health_reset_pending[index] = false;
+  slot.transport_health.resetSession();
+  slot.transport_health.recovery_reason = MQTTTransportHealth::RecoveryReason::None;
+  updateSlotTransportDiag(index, static_cast<uint32_t>(millis()));
 }
 
 esp_err_t MQTTBridge::reconnectSlotClient(int index) {
@@ -2586,6 +2672,7 @@ esp_err_t MQTTBridge::reconnectSlotClient(int index) {
 
   const bool was_pending = _slot_attempt_pending[index];
   const bool starting = !slot.client->isStarted();
+  slot.transport_health.beginAttempt(static_cast<uint32_t>(millis()));
   _slot_attempt_pending[index] = true;  // callbacks may run before the call returns
   esp_err_t result;
   if (starting) {
@@ -2597,6 +2684,7 @@ esp_err_t MQTTBridge::reconnectSlotClient(int index) {
   if (result != ESP_OK) {
     if (MQTTConnectionHealth::clearPendingAfterRejectedRequest(starting, was_pending)) {
       _slot_attempt_pending[index] = false;
+      slot.transport_health.completeAttempt();
     }
     if (starting) {
       slot.start_failures = MQTTConnectionHealth::incrementFailures(slot.start_failures);
@@ -2605,8 +2693,112 @@ esp_err_t MQTTBridge::reconnectSlotClient(int index) {
   return result;
 }
 
+void MQTTBridge::updateSlotTransportDiag(int index, uint32_t now) {
+  const MQTTTransportHealth::State& health = _slots[index].transport_health;
+  _slot_health_recoveries[index].store(health.recoveries, std::memory_order_relaxed);
+  const auto reason = health.recovery_reason != MQTTTransportHealth::RecoveryReason::None
+      ? health.recovery_reason : health.last_recovery_reason;
+  _slot_health_reason[index].store(static_cast<uint8_t>(reason), std::memory_order_relaxed);
+  _slot_health_recovering[index].store(
+      health.recovery_reason != MQTTTransportHealth::RecoveryReason::None,
+      std::memory_order_release);
+  _slot_health_ack_wait_secs[index].store(
+      health.ack_pending ? (now - health.ack_started_ms) / 1000UL : UINT32_MAX,
+      std::memory_order_relaxed);
+}
+
+bool MQTTBridge::recoverSlotTransport(int index, uint32_t now) {
+  MQTTSlot& slot = _slots[index];
+  auto& health = slot.transport_health;
+  if (!slot.client || health.recovery_reason == MQTTTransportHealth::RecoveryReason::None) return false;
+
+  MQTT_DEBUG_PRINTLN("MQTT%d transport recovery: %s", index + 1,
+                    MQTTTransportHealth::reasonLabel(health.recovery_reason));
+  const bool failed_attempt = MQTTConnectionHealth::disconnectFailedAttempt(
+      _slot_attempt_pending[index].load(std::memory_order_acquire), slot.connected);
+  const uint32_t failures_before_stop = slot.connect_failures;
+  // Retain the client, SDK buffers and credentials. disconnect() closes the
+  // transport and stops its task, and leaves isStarted() true if SDK stop fails.
+  // Never vTaskDelete a live SDK task or admit a second TLS handshake on failure.
+  slot.client->disconnect();
+  if (slot.client->isStarted()) {
+    updateSlotTransportDiag(index, static_cast<uint32_t>(millis()));
+    return false;
+  }
+
+  // SDK stop can consume its socket budget. Space the next handshake from
+  // completed cleanup, not from the earlier watchdog observation.
+  now = static_cast<uint32_t>(millis());
+
+  // A real DISCONNECTED callback may already have accounted this failure.
+  // ERROR-only/lost-callback attempts need the same accounting, once.
+  if (failed_attempt && slot.connect_failures == failures_before_stop) {
+    slot.connect_failures = MQTTConnectionHealth::incrementFailures(slot.connect_failures);
+  }
+  _slot_attempt_pending[index].store(false, std::memory_order_release);
+  _slot_transport_fault_pending[index].store(false, std::memory_order_release);
+  _slot_health_reset_pending[index].store(false, std::memory_order_release);
+  _status_publish_pending[index] = false;
+  slot.connected = false;
+  slot.connected_at_ms = 0;
+  if (slot.current_outage_started_ms == 0) slot.current_outage_started_ms = now ? now : 1;
+  slot.last_reconnect_attempt = now;
+  _last_slot_reconnect_ms = now;
+  health.recovered();
+  updateSlotTransportDiag(index, now);
+  updateCachedConnectionStatus();
+  return true;
+}
+
+void MQTTBridge::serviceSlotTransportHealth(uint32_t now) {
+  if (_stop_requested.load(std::memory_order_acquire)) return;
+  for (int i = 0; i < RUNTIME_MQTT_SLOTS; ++i) {
+    MQTTSlot& slot = _slots[i];
+    auto& health = slot.transport_health;
+    if (_slot_health_reset_pending[i].exchange(false, std::memory_order_acq_rel)) {
+      // A late CONNACK does not release an already-required SDK stop. Its
+      // session clocks may reset, but only proven cleanup clears recovery.
+      health.resetSession();
+    }
+    const bool pending = _slot_attempt_pending[i].load(std::memory_order_acquire);
+    if (!pending) health.completeAttempt();
+    if (slot.client) {
+      health.observeAck(static_cast<uint32_t>(slot.client->getPublishAck()));
+      if (_slot_transport_fault_pending[i].load(std::memory_order_acquire)) {
+        health.requestRecovery(MQTTTransportHealth::RecoveryReason::TransportError);
+      } else if (slot.connected && !slot.client->connected()) {
+        health.requestRecovery(MQTTTransportHealth::RecoveryReason::AdapterDisconnected);
+      } else if (pending && health.attemptExpired(now)) {
+        health.requestRecovery(MQTTTransportHealth::RecoveryReason::HandshakeTimeout);
+      } else if (slot.connected && health.ackExpired(now)) {
+        health.requestRecovery(MQTTTransportHealth::RecoveryReason::AckTimeout);
+      }
+      if (!slot.connected && !pending) health.resetSession();
+    }
+    if (health.recovery_reason != MQTTTransportHealth::RecoveryReason::None) {
+      // Stop advertising a healthy link immediately, including while SDK
+      // cleanup is still failing. Admission is held by the recovery state,
+      // independently of this observable connection flag.
+      slot.connected = false;
+      slot.connected_at_ms = 0;
+      if (slot.current_outage_started_ms == 0) slot.current_outage_started_ms = now ? now : 1;
+    }
+    updateSlotTransportDiag(i, now);
+  }
+  updateCachedConnectionStatus();
+  // Close no more than one SDK transport per pass. A failed stop keeps its
+  // recovery reservation and blocks all new handshakes on subsequent passes.
+  for (int i = 0; i < RUNTIME_MQTT_SLOTS; ++i) {
+    if (_slots[i].client && _slots[i].transport_health.recovery_reason != MQTTTransportHealth::RecoveryReason::None) {
+      recoverSlotTransport(i, now);
+      break;
+    }
+  }
+}
+
 void MQTTBridge::maintainSlotConnections() {
   if (_stop_requested.load(std::memory_order_acquire)) return;
+  serviceSlotTransportHealth(static_cast<uint32_t>(millis()));
   if (!_identity) return;
 
   // Check WiFi status first
@@ -3003,6 +3195,14 @@ bool MQTTBridge::publishToSlot(int index, const char* topic, const char* payload
   if (_stop_requested.load(std::memory_order_acquire)) return false;
   if (index < 0 || index >= RUNTIME_MQTT_SLOTS) return false;
   MQTTSlot& slot = _slots[index];
+  // On-connect status is processed before maintenance. Consume this new-
+  // session latch BEFORE enqueueing it, or maintenance would erase its ACK
+  // watch immediately afterwards. Only this owner task mutates health state.
+  if (_slot_health_reset_pending[index].exchange(false, std::memory_order_acq_rel)) {
+    slot.transport_health.resetSession();
+  }
+  if (slot.transport_health.recovery_reason != MQTTTransportHealth::RecoveryReason::None ||
+      _slot_transport_fault_pending[index].load(std::memory_order_acquire)) return false;
   if (!slot.client || !slot.connected) {
     unsigned long now = millis();
     if (now - slot.last_log_time > SLOT_LOG_INTERVAL) {
@@ -3020,16 +3220,23 @@ bool MQTTBridge::publishToSlot(int index, const char* topic, const char* payload
   //    write bypasses that drain ceiling entirely and does not store in the outbox. It can
   //    block the (Core-0, prio-1) MQTT task on a stalled socket, but only up to
   //    network_timeout_ms (configured in optimizeMqttClientConfig); mesh RX (Core 1) and the
-  //    WiFi/TCP stack (higher-prio system tasks) are unaffected, and a failed write flips
-  //    the slot to disconnected so subsequent packets skip it.
+  //    WiFi/TCP stack (higher-prio system tasks) are unaffected. A failed write reserves
+  //    owner-task transport recovery, so subsequent packets skip the failed slot.
   //  - QoS 1 (low-rate retained status): async, so it keeps the durable outbox + retransmit.
   //
   // Return convention: QoS 0 sync publish returns msg_id == 0 on success (no PUBACK
   // tracking). Negative values (-1 write/failure) are the only actual failures; the queue
   // retry/drop path below handles them.
   bool async = (qos > 0);
+  // Take the actual broker ACK counter before the SDK call: a fast PUBACK can
+  // arrive before enqueue returns. A post-call snapshot would lose that proof.
+  const uint32_t ack_before = static_cast<uint32_t>(slot.client->getPublishAck());
   int result = slot.client->publish(topic, qos, retained, payload, (int)payload_len, async);
   if (result < 0) {
+    if (!async) {
+      slot.transport_health.requestRecovery(MQTTTransportHealth::RecoveryReason::PublishFailure);
+      updateSlotTransportDiag(index, static_cast<uint32_t>(millis()));
+    }
     // QoS0 packet/raw publishes are best-effort and may be retried from the
     // bridge queue; avoid logging transient first-attempt failures here.
     if (qos > 0) {
@@ -3041,6 +3248,12 @@ bool MQTTBridge::publishToSlot(int index, const char* topic, const char* payload
       }
     }
     return false;
+  }
+  if (qos > 0) {
+    slot.transport_health.acceptedQos1(static_cast<uint32_t>(millis()), ack_before);
+    // Also reflect an ACK delivered during enqueue, not just on the next tick.
+    slot.transport_health.observeAck(static_cast<uint32_t>(slot.client->getPublishAck()));
+    updateSlotTransportDiag(index, static_cast<uint32_t>(millis()));
   }
   return true;
 }
@@ -3189,8 +3402,7 @@ void MQTTBridge::publishStatusToSlot(int index) {
     // on-connect status must not force retain=true. Custom slots default to
     // non-retained here too, keeping both status paths consistent.
     bool use_retain = slot.preset ? slot.preset->allow_retain : false;
-    int result = slot.client->publish(status_topic, 1, use_retain, json_buffer, len);
-    if (result <= 0) {
+    if (!publishToSlot(index, status_topic, json_buffer, static_cast<size_t>(len), use_retain, 1)) {
       MQTT_DEBUG_PRINTLN("MQTT%d status publish failed", index + 1);
     }
   }
@@ -3453,11 +3665,28 @@ bool MQTTBridge::handleWiFiConnection(unsigned long now) {
       s_wifi_connected_at = 0;
       // Disconnect all slot clients when WiFi drops
       for (int i = 0; i < RUNTIME_MQTT_SLOTS; i++) {
-        if (_slots[i].client && _slots[i].connected) {
+        // Include pending handshakes, not just sessions that reached CONNACK.
+        if (_slots[i].client && _slots[i].client->isStarted()) {
+          _slot_transport_fault_pending[i].store(true, std::memory_order_release);
           _slot_attempt_pending[i] = false;
           _slots[i].client->disconnect();
+          _slots[i].connected = false;
+          _slots[i].connected_at_ms = 0;
+          if (_slots[i].client->isStarted()) {
+            _slots[i].transport_health.requestRecovery(MQTTTransportHealth::RecoveryReason::AdapterDisconnected);
+            if (_slots[i].current_outage_started_ms == 0) {
+              _slots[i].current_outage_started_ms = now ? now : 1;
+            }
+          } else {
+            _slot_transport_fault_pending[i].store(false, std::memory_order_release);
+            _slot_health_reset_pending[i].store(false, std::memory_order_release);
+            _slots[i].transport_health.resetSession();
+            _slots[i].transport_health.recovery_reason = MQTTTransportHealth::RecoveryReason::None;
+          }
+          updateSlotTransportDiag(i, static_cast<uint32_t>(millis()));
         }
       }
+      updateCachedConnectionStatus();
     } else if (snapshot.down) {
       // Backoff ladder + wrap-safe timing live in MQTTConnectionPolicy (Phase 6),
       // exercised by host tests. Behavior is unchanged: both the link-down

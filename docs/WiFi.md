@@ -734,6 +734,20 @@ get mqtt1.diag
 get mqtt2.diag
 ```
 
+For a connection that works initially but later stops reporting, inspect each
+configured slot's `pub_ack` count in `get mqttN.diag`. Accepted publishes are
+not proof of delivery: a QoS 1 publish is confirmed only when the broker
+acknowledges it. A quiet radio channel alone is not a failed MQTT connection.
+
+The shared MQTT bridge recovers failed transports on its owning task, including
+errors without a subsequent disconnect callback and connection attempts that
+never finish. It also watches accepted QoS 1 publishes for missing broker
+acknowledgments. Recovery retains the existing broker configuration, memory
+admission and reconnect backoff; it does not reboot the node or cycle WiFi.
+See the [MQTT recovery regression](test-results/mqtt_tls_v4_regression.md#long-running-mqtt-recovery)
+for the deadlines, test coverage and hardware limitations. Older preview images
+do not gain these changes until their firmware is updated.
+
 Common causes are:
 
 - no saved SSID or a changed password;

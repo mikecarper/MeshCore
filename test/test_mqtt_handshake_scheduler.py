@@ -21,11 +21,14 @@ PREAMBLE = r'''
 #include <cstdio>
 #include <cstring>
 #include <functional>
+#include <new>
+#include <sys/time.h>
 #include <vector>
 #include "helpers/AlertFaultPolicy.h"
 #include "helpers/MQTTConnectionAdmission.h"
 #include "helpers/MQTTConnectionHealth.h"
 #include "helpers/MQTTConnectionPolicy.h"
+#include "helpers/MQTTTransportHealth.h"
 #include "helpers/WiFiPowerSave.h"
 #define ESP_PLATFORM 1
 #define MQTT_DEBUG_PRINTLN(...) ((void)0)
@@ -43,6 +46,11 @@ bool enforceStationChannel() { return true; }
 bool mqttStationWiFiMutationAllowed() { return true; }
 void esp_wifi_set_ps(wifi_ps_type_t) {}
 constexpr int MQTT_AUTH_JWT = 1;
+constexpr int MQTT_ERROR_TYPE_CONNECTION_REFUSED = 5;
+struct esp_mqtt_error_codes {
+  int esp_tls_last_esp_err = 0, esp_tls_stack_err = 0;
+  int esp_transport_sock_errno = 0, error_type = 0, connect_return_code = 0;
+};
 constexpr uint32_t MALLOC_CAP_INTERNAL = 1, MALLOC_CAP_DMA = 2;
 static uint32_t clock_ms = 1000;
 static unsigned long wall_seconds = 1800000000;
@@ -59,7 +67,8 @@ struct {
 } WiFi;
 struct { size_t size = 2097152; size_t getPsramSize() const { return size; } } ESP;
 size_t heap_caps_get_free_size(uint32_t caps) {
-  assert(caps == (MALLOC_CAP_INTERNAL | MALLOC_CAP_DMA)); return dma_free;
+  assert(caps == MALLOC_CAP_INTERNAL || caps == (MALLOC_CAP_INTERNAL | MALLOC_CAP_DMA));
+  return dma_free;
 }
 size_t heap_caps_get_largest_free_block(uint32_t caps) {
   assert(caps == (MALLOC_CAP_INTERNAL | MALLOC_CAP_DMA)); return dma_largest;
@@ -70,17 +79,61 @@ struct Preset {
   int auth_type = 0;
   unsigned long token_lifetime = 3300;
   bool enforce_exp = false;
+  bool allow_retain = false;
 };
 bool mqttPresetEnforcesTokenExp(const Preset* preset) {
   return preset && preset->enforce_exp;
 }
+namespace MQTTMessageBuilder {
+void formatIsoTimestampForMqtt(long, long, const char*, char* buffer, size_t size) {
+  snprintf(buffer, size, "2026-10-14T00:00:00+00:00");
+}
+template<typename... Args>
+int buildStatusMessage(int, const char*, const char*, const char*, const char*,
+                       const char*, const char*, const char*, const char*,
+                       char* buffer, int size, Args...) {
+  assert(size > 2);
+  strcpy(buffer, "{}");
+  return 2;
+}
+}
+void formatRadioInfo(float, float, int, int, char* buffer, size_t size) {
+  snprintf(buffer, size, "909.5,500,5,5");
+}
 struct PsychicMqttClient {
   bool initialized = false, started = false, live = false, model_task_heap = false;
+  bool stop_succeeds = true;
   int starts = 0, reconnects = 0, bounces = 0, credentials = 0, stops = 0;
+  uint32_t acknowledgments = 0;
+  int publish_result = 0, publishes = 0;
+  bool immediate_ack = false;
+  std::function<void(bool)> connected_callback, disconnected_callback;
+  std::function<void(esp_mqtt_error_codes)> error_callback;
   std::function<void()> disconnected;
   bool isInitialized() const { return initialized; }
   bool isStarted() const { return started; }
   bool connected() const { return live; }
+  uint32_t getPublishAck() const { return acknowledgments; }
+  void setAutoReconnect(bool enabled) { assert(!enabled); }
+  void onConnect(std::function<void(bool)> callback) { connected_callback = callback; }
+  void onDisconnect(std::function<void(bool)> callback) { disconnected_callback = callback; }
+  void onError(std::function<void(esp_mqtt_error_codes)> callback) { error_callback = callback; }
+  void errorWithoutDisconnect() {
+    live = false; // The real adapter does this before calling onError.
+    assert(error_callback);
+    error_callback(esp_mqtt_error_codes{});
+  }
+  void connectEvent() {
+    live = true;
+    assert(connected_callback);
+    connected_callback(false);
+  }
+  int publish(const char*, int qos, bool, const char*, int, bool async) {
+    assert(async == (qos > 0));
+    ++publishes;
+    if (immediate_ack && qos > 0 && publish_result >= 0) ++acknowledgments;
+    return publish_result;
+  }
   int connect() {
     ++starts;
     if (model_task_heap) {
@@ -93,9 +146,11 @@ struct PsychicMqttClient {
   int reconnect() { ++reconnects; return ESP_OK; }
   void disconnect() {
     ++stops;
+    if (!stop_succeeds) return;
     if (model_task_heap && started) dma_free += 6536;
     started = live = false;
     if (disconnected) disconnected();
+    if (disconnected_callback) disconnected_callback(false);
   }
   void softDisconnect() {
     ++bounces; live = false;
@@ -117,12 +172,26 @@ struct MQTTBridge {
     uint8_t reconnect_backoff = 0, max_backoff_failures = 0;
     bool circuit_breaker_tripped = false;
     uint32_t start_failures = 0;
+    uint32_t connect_failures = 0, disconnect_count = 0;
+    unsigned long first_disconnect_time = 0, current_outage_started_ms = 0;
+    unsigned long last_log_time = 0;
+    int32_t last_tls_err = 0, last_tls_stack_err = 0;
+    int last_sock_errno = 0;
+    unsigned long last_error_time = 0;
+    MQTTTransportHealth::State transport_health;
   } _slots[RUNTIME_MQTT_SLOTS];
   PsychicMqttClient clients[RUNTIME_MQTT_SLOTS];
   char tokens[RUNTIME_MQTT_SLOTS][16] = {};
   bool setup_succeeds[RUNTIME_MQTT_SLOTS] = {true, true, true, true, true, true};
   bool ready[RUNTIME_MQTT_SLOTS] = {true, true, true, true, true, true};
   std::atomic<bool> _slot_attempt_pending[RUNTIME_MQTT_SLOTS] = {};
+  std::atomic<bool> _slot_transport_fault_pending[RUNTIME_MQTT_SLOTS] = {};
+  std::atomic<bool> _slot_health_reset_pending[RUNTIME_MQTT_SLOTS] = {};
+  std::atomic<uint32_t> _slot_health_recoveries[RUNTIME_MQTT_SLOTS] = {};
+  std::atomic<uint8_t> _slot_health_reason[RUNTIME_MQTT_SLOTS] = {};
+  std::atomic<bool> _slot_health_recovering[RUNTIME_MQTT_SLOTS] = {};
+  std::atomic<uint32_t> _slot_health_ack_wait_secs[RUNTIME_MQTT_SLOTS] = {};
+  bool _status_publish_pending[RUNTIME_MQTT_SLOTS] = {};
   std::atomic<bool> _stop_requested{false}, _ntp_synced{true};
   bool _slot_force_jwt_mint[RUNTIME_MQTT_SLOTS] = {};
   void* _identity = this;
@@ -131,7 +200,11 @@ struct MQTTBridge {
   wl_status_t _last_wifi_status = WL_CONNECTED;
   unsigned long _last_wifi_check = 0, _last_wifi_reconnect_attempt = 0;
   uint8_t _wifi_reconnect_backoff_attempt = 0, _wifi_power_save = 1;
-  struct { bool canonical_wifi = false; } _node_info;
+  struct {
+    bool canonical_wifi = false;
+    float *freq = nullptr, *bw = nullptr;
+    int *sf = nullptr, *cr = nullptr;
+  } _node_info;
   struct Observer { uint8_t wifi_power_save = 1; } observer;
   Observer* _obs = &observer;
   AlertFaultPolicy::OutageSnapshot _wifi_outage{};
@@ -142,6 +215,39 @@ struct MQTTBridge {
   void beginWiFiStation() {}
   const char* _jwt_username = "jwt";
   static const unsigned long SLOT_SETUP_RETRY_INTERVAL = 60000;
+  static const unsigned long SLOT_LOG_INTERVAL = 60000;
+  static constexpr int STATUS_JSON_BUFFER_SIZE = 1024, MSG_STATUS = 0;
+  const char *_timezone = "UTC", *_origin = "node", *_device_id = "id";
+  const char *_board_model = "V4", *_firmware_version = "test";
+  int _json_scratch_doc = 0, _queue_count = 0;
+  char _json_scratch_buffer[STATUS_JSON_BUFFER_SIZE] = {};
+  struct Board { int getBattMilliVolts() const { return 4000; } };
+  struct Clock { uint32_t getMillis() const { return clock_ms; } };
+  struct Dispatcher {
+    int getErrFlags() const { return 0; }
+    int getTotalAirTime() const { return 0; }
+    int getReceiveAirTime() const { return 0; }
+    int getNumSentFlood() const { return 0; }
+    int getNumSentDirect() const { return 0; }
+    int getNumRecvFlood() const { return 0; }
+    int getNumRecvDirect() const { return 0; }
+  };
+  struct Radio {
+    int getNoiseFloor() const { return -120; }
+    int getPacketsRecvErrors() const { return 0; }
+  };
+  Board* _board = nullptr;
+  Clock* _ms = nullptr;
+  Dispatcher* _dispatcher = nullptr;
+  Radio* _radio = nullptr;
+  void refreshOriginFromPrefs() {}
+  void getClientVersion(char* output, size_t size) { snprintf(output, size, "test"); }
+  int repeatStatus() const { return 0; }
+  int collectConnHealth() const { return 0; }
+  bool buildTopicForSlot(int, int, char* output, size_t size) {
+    snprintf(output, size, "status");
+    return true;
+  }
   std::vector<int> setups;
   bool isSlotReady(int index) { return ready[index]; }
   bool setupSlot(int index) {
@@ -162,7 +268,14 @@ struct MQTTBridge {
   void complete(int index) {
     _slot_attempt_pending[index].store(false, std::memory_order_release);
     _slots[index].connected = clients[index].live = true;
+    if (_slots[index].client) _slots[index].client->live = true;
+    _slots[index].connected_at_ms = clock_ms;
+    _slot_health_reset_pending[index] = true;
   }
+  void updateCachedConnectionStatus() {}
+  bool ensureSlotClient(int index);
+  bool publishToSlot(int, const char*, const char*, size_t, bool, uint8_t);
+  void publishStatusToSlot(int);
   void only(int index) {
     for (int i = 0; i < RUNTIME_MQTT_SLOTS; ++i) _slots[i].enabled = i == index;
   }
@@ -173,6 +286,9 @@ struct MQTTBridge {
   esp_err_t reconnectSlotClient(int index);
   unsigned long slotTokenLifetime(int index) const;
   void maintainSlotConnections();
+  bool recoverSlotTransport(int index, uint32_t now);
+  void serviceSlotTransportHealth(uint32_t now);
+  void updateSlotTransportDiag(int index, uint32_t now);
   bool handleWiFiConnection(unsigned long);
   void maintainSlotConnection(int, unsigned long, unsigned long, bool, bool&, bool&);
 };
@@ -188,25 +304,36 @@ class MqttHandshakeSchedulerTest(unittest.TestCase):
             "bool MQTTBridge::hasPendingSlotConnection() const",
             "bool MQTTBridge::canStartSlotConnection(int index) const",
             "esp_err_t MQTTBridge::reconnectSlotClient(int index)",
+            "bool MQTTBridge::recoverSlotTransport(",
+            "void MQTTBridge::serviceSlotTransportHealth(",
+            "void MQTTBridge::updateSlotTransportDiag(",
+            "bool MQTTBridge::ensureSlotClient(",
+            "bool MQTTBridge::publishToSlot(",
+            "void MQTTBridge::publishStatusToSlot(",
             "unsigned long MQTTBridge::slotTokenLifetime(int index) const",
             "bool MQTTBridge::handleWiFiConnection(unsigned long now)",
             "void MQTTBridge::maintainSlotConnections()",
             "void MQTTBridge::maintainSlotConnection("))
 
-    def compile_run(self, main):
+    def compile_run(self, main, fixture=None, expect_rejection=False):
         compiler = shutil.which("g++") or shutil.which("clang++")
         self.assertIsNotNone(compiler, "a host C++ compiler is required")
         with tempfile.TemporaryDirectory(prefix="meshcore-mqtt-scheduler-") as temporary:
             work = Path(temporary)
             source, binary = work / "scheduler.cpp", work / "scheduler"
-            source.write_text(self.fixture() + main, encoding="utf-8")
+            source.write_text((self.fixture() if fixture is None else fixture) + main,
+                              encoding="utf-8")
             result = subprocess.run(
                 [compiler, "-std=c++17", "-Wall", "-Wextra", "-I", str(ROOT / "src"),
                  str(source), "-o", str(binary)], capture_output=True, text=True, timeout=60)
             self.assertEqual(result.returncode, 0, result.stderr)
             result = subprocess.run([str(binary)], cwd=work, capture_output=True,
                                     text=True, timeout=10)
-            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            if expect_rejection:
+                self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
+                self.assertIn("Assertion", result.stderr)
+            else:
+                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
     def test_first_start_is_immediate_and_delayed_callback_serializes_following_slots(self):
         self.compile_run(r'''
@@ -220,7 +347,7 @@ int main() {
   // still pending. Ordinary maintenance must not launch another SDK request.
   clock_ms = 16000;
   bridge.maintainSlotConnections();
-  clock_ms = 3600000;
+  clock_ms = 60000;
   bridge.maintainSlotConnections();
   assert(bridge.setups == std::vector<int>{0});
   assert(bridge.clients[0].starts == 1 && bridge.clients[0].reconnects == 0);
@@ -419,7 +546,7 @@ int main() {
   bridge.maintainSlotConnections();
   assert(bridge.clients[0].starts == 1 && dma_free == 35840);
   assert(bridge.hasPendingSlotConnection());
-  clock_ms += 3600000;
+  clock_ms += 60000;
   bridge.maintainSlotConnections();
   assert(bridge.clients[1].starts == 0 && bridge.clients[2].starts == 0);
   bridge.complete(0);
@@ -449,6 +576,371 @@ int main() {
   assert(!bridge.hasPendingSlotConnection());
 }
 ''')
+
+    def test_missing_handshake_callback_times_out_only_after_sdk_stop(self):
+        self.compile_run(r'''
+int main() {
+  MQTTBridge bridge;
+  bridge.only(0);
+  clock_ms = 1000;
+  bridge.maintainSlotConnections();
+  assert(bridge.clients[0].starts == 1 && bridge._slot_attempt_pending[0]);
+  clock_ms = 120999;
+  bridge.maintainSlotConnections();
+  assert(bridge.clients[0].stops == 0 && bridge._slot_attempt_pending[0]);
+  clock_ms = 121000;
+  bridge.maintainSlotConnections();
+  auto& slot = bridge._slots[0];
+  assert(bridge.clients[0].stops == 1 && !bridge.clients[0].isStarted());
+  assert(!bridge._slot_attempt_pending[0] && !bridge.hasPendingSlotConnection());
+  assert(slot.transport_health.recoveries == 1 && slot.connect_failures == 1);
+  assert(slot.transport_health.last_recovery_reason ==
+      MQTTTransportHealth::RecoveryReason::HandshakeTimeout);
+  assert(slot.last_reconnect_attempt == clock_ms);
+  // Cleanup doesn't start another SDK task in the same maintenance pass.
+  assert(bridge.clients[0].starts == 1);
+  clock_ms += 14999;
+  bridge.maintainSlotConnections();
+  assert(bridge.clients[0].starts == 1);
+  ++clock_ms;
+  bridge.maintainSlotConnections();
+  assert(bridge.clients[0].starts == 2 && bridge._slot_attempt_pending[0]);
+  assert(slot.reconnect_backoff == 1);
+}
+''')
+
+    def test_error_callback_without_disconnect_defers_cleanup_and_preserves_reservation(self):
+        self.compile_run(r'''
+int main() {
+  for (bool established : {false, true}) {
+    MQTTBridge bridge;
+    bridge.only(0);
+    clock_ms = 1000;
+    assert(bridge.ensureSlotClient(0));
+    auto& slot = bridge._slots[0];
+    slot.initial_connect_done = true;
+    auto* client = slot.client;
+    assert(bridge.reconnectSlotClient(0) == ESP_OK);
+    if (established) client->connectEvent();
+    client->errorWithoutDisconnect();
+    // The actual production callback latches work. It cannot stop its own
+    // esp-mqtt task or release a still-running handshake from that callback.
+    assert(client->stops == 0 && client->isStarted());
+    assert(bridge._slot_transport_fault_pending[0]);
+    assert(bridge.hasPendingSlotConnection() && !bridge.canStartSlotConnection(1));
+    client->stop_succeeds = false;
+    bridge.maintainSlotConnections();
+    assert(client->stops == 1 && client->isStarted());
+    assert(bridge._slot_transport_fault_pending[0]);
+    assert(bridge._slot_attempt_pending[0] == !established);
+    assert(bridge.hasPendingSlotConnection() && !bridge.canStartSlotConnection(1));
+    assert(slot.transport_health.recoveries == 0 && client->starts == 1);
+    // A later successful stop proves ownership ended, then recovery may admit
+    // another handshake. Failure accounting remains exactly once.
+    client->stop_succeeds = true;
+    bridge.maintainSlotConnections();
+    assert(client->stops == 2 && !client->isStarted());
+    assert(!bridge.hasPendingSlotConnection() && !bridge._slot_transport_fault_pending[0]);
+    assert(slot.transport_health.recoveries == 1);
+    assert(slot.connect_failures == (established ? 0u : 1u));
+    assert(slot.transport_health.last_recovery_reason ==
+        MQTTTransportHealth::RecoveryReason::TransportError);
+    assert(client->starts == 1); // completed cleanup starts the 15-second gap
+    delete client;
+    slot.client = nullptr;
+  }
+}
+''')
+
+    def test_failed_stop_after_lost_callback_blocks_every_new_handshake(self):
+        self.compile_run(r'''
+int main() {
+  MQTTBridge bridge;
+  clock_ms = 1000;
+  bridge.maintainSlotConnections();
+  bridge.clients[0].stop_succeeds = false;
+  clock_ms += MQTTTransportHealth::kAttemptTimeoutMs;
+  for (int pass = 0; pass < 3; ++pass) {
+    bridge.maintainSlotConnections();
+    assert(bridge.clients[0].stops == pass + 1 && bridge.clients[0].isStarted());
+    assert(bridge._slot_attempt_pending[0] && bridge.hasPendingSlotConnection());
+    assert(bridge._slots[0].transport_health.recoveries == 0);
+    assert(bridge.setups == std::vector<int>{0});
+    for (int i = 0; i < RUNTIME_MQTT_SLOTS; ++i)
+      assert(!bridge.canStartSlotConnection(i));
+    clock_ms += 15000;
+  }
+  bridge.clients[0].stop_succeeds = true;
+  bridge.maintainSlotConnections();
+  assert(!bridge.clients[0].isStarted() && !bridge.hasPendingSlotConnection());
+  assert(bridge._slots[0].transport_health.recoveries == 1);
+  assert(bridge.setups == std::vector<int>{0});
+}
+''')
+
+    def test_three_brokers_run_beyond_three_hours_and_only_missing_ack_recovers(self):
+        self.compile_run(r'''
+int main() {
+  MQTTBridge bridge;
+  clock_ms = 1000;
+  for (int i = 0; i < RUNTIME_MQTT_SLOTS; ++i) {
+    bridge._slots[i].enabled = i < 3;
+    if (i >= 3) continue;
+    auto& slot = bridge._slots[i];
+    slot.client = &bridge.clients[i];
+    slot.initial_connect_done = true;
+    slot.client->initialized = slot.client->started = true;
+    bridge.complete(i);
+    slot.client->immediate_ack = true;
+  }
+  // Two status publishers get real ACK-counter progress; the third is quiet
+  // (for example, its broker does not accept status topics). Neither condition
+  // is a transport stall, irrespective of connection age or packet activity.
+  for (int minute = 0; minute <= 180; ++minute) {
+    assert(bridge.publishToSlot(0, "status", "{}", 2, true, 1));
+    assert(bridge.publishToSlot(1, "status", "{}", 2, true, 1));
+    bridge.maintainSlotConnections();
+    for (int i = 0; i < 3; ++i) assert(bridge.clients[i].stops == 0);
+    clock_ms += 60000;
+    wall_seconds += 60;
+  }
+  assert(clock_ms > 3 * 60 * 60 * 1000);
+  bridge.clients[0].immediate_ack = false;
+  const uint32_t stalled_at = clock_ms;
+  assert(bridge.publishToSlot(0, "status", "{}", 2, true, 1));
+  for (uint32_t elapsed = 0; elapsed < 120000; elapsed += 30000) {
+    clock_ms = stalled_at + elapsed;
+    assert(bridge.publishToSlot(0, "status", "{}", 2, true, 1));
+    assert(bridge.publishToSlot(1, "status", "{}", 2, true, 1));
+    bridge.maintainSlotConnections();
+    assert(bridge.clients[0].stops == 0);
+    assert(bridge._slots[0].transport_health.ack_started_ms == stalled_at);
+  }
+  clock_ms = stalled_at + 120000;
+  bridge.maintainSlotConnections();
+  assert(bridge.clients[0].stops == 1 && !bridge._slots[0].connected);
+  assert(bridge._slots[0].transport_health.recoveries == 1);
+  assert(bridge._slots[0].transport_health.last_recovery_reason ==
+      MQTTTransportHealth::RecoveryReason::AckTimeout);
+  for (int i = 1; i < 3; ++i) {
+    assert(bridge.clients[i].stops == 0 && bridge._slots[i].connected);
+    assert(bridge._slots[i].transport_health.recoveries == 0);
+  }
+  assert(bridge._slot_health_recoveries[0] == 1);
+  assert(!bridge._slot_health_recovering[0]);
+}
+''')
+
+    def test_on_connect_status_watch_survives_maintenance_and_ack_clears_it(self):
+        self.compile_run(r'''
+int main() {
+  MQTTBridge bridge;
+  bridge.only(0); clock_ms = 1000;
+  assert(bridge.ensureSlotClient(0));
+  auto& slot = bridge._slots[0];
+  slot.initial_connect_done = true;
+  assert(bridge.reconnectSlotClient(0) == ESP_OK);
+  slot.client->connectEvent();
+  assert(bridge._slot_health_reset_pending[0] && bridge._status_publish_pending[0]);
+  // The real worker consumes an on-connect status before it calls maintenance.
+  bridge.publishStatusToSlot(0);
+  assert(slot.client->publishes == 1);
+  assert(!bridge._slot_health_reset_pending[0] && slot.transport_health.ack_pending);
+  bridge.maintainSlotConnections();
+  assert(slot.transport_health.ack_pending);
+  clock_ms += 119999;
+  ++slot.client->acknowledgments;
+  bridge.maintainSlotConnections();
+  assert(!slot.transport_health.ack_pending && slot.client->stops == 0);
+  assert(bridge._slot_health_ack_wait_secs[0] == UINT32_MAX);
+  slot.client->immediate_ack = true;
+  assert(bridge.publishToSlot(0, "status", "{}", 2, true, 1));
+  assert(!slot.transport_health.ack_pending); // ACK arrived inside enqueue
+  clock_ms += 3600000;
+  bridge.maintainSlotConnections();
+  assert(slot.client->stops == 0);
+  delete slot.client;
+  slot.client = nullptr;
+}
+''')
+
+    def test_negative_qos0_write_without_disconnect_requests_owner_recovery(self):
+        self.compile_run(r'''
+int main() {
+  MQTTBridge bridge;
+  bridge.only(0); clock_ms = 1000;
+  auto& slot = bridge._slots[0];
+  slot.client = &bridge.clients[0];
+  slot.client->initialized = slot.client->started = true;
+  slot.initial_connect_done = true;
+  bridge.complete(0);
+  slot.client->publish_result = -1;
+  assert(!bridge.publishToSlot(0, "packets", "{}", 2, false, 0));
+  assert(slot.client->stops == 0 && slot.connected && slot.client->connected());
+  assert(slot.transport_health.recovery_reason ==
+      MQTTTransportHealth::RecoveryReason::PublishFailure);
+  assert(bridge.hasPendingSlotConnection());
+  assert(!bridge.publishToSlot(0, "packets", "{}", 2, false, 0));
+  assert(slot.client->publishes == 1); // don't repeatedly hit the broken socket
+  bridge.maintainSlotConnections();
+  assert(slot.client->stops == 1 && !slot.connected && !slot.client->isStarted());
+  assert(slot.transport_health.recoveries == 1);
+  assert(slot.transport_health.last_recovery_reason ==
+      MQTTTransportHealth::RecoveryReason::PublishFailure);
+}
+''')
+
+    def test_handshake_and_ack_recovery_are_millis_wrap_safe(self):
+        self.compile_run(r'''
+int main() {
+  for (bool awaiting_ack : {false, true}) {
+    MQTTBridge bridge;
+    bridge.only(0); clock_ms = UINT32_MAX - 60000;
+    bridge.maintainSlotConnections();
+    auto& slot = bridge._slots[0];
+    if (awaiting_ack) {
+      bridge.complete(0);
+      assert(bridge.publishToSlot(0, "status", "{}", 2, true, 1));
+    }
+    clock_ms += 119999;
+    bridge.maintainSlotConnections();
+    assert(slot.client->stops == 0);
+    ++clock_ms;
+    bridge.maintainSlotConnections();
+    assert(slot.client->stops == 1 && slot.transport_health.recoveries == 1);
+    assert(slot.transport_health.last_recovery_reason == (awaiting_ack
+        ? MQTTTransportHealth::RecoveryReason::AckTimeout
+        : MQTTTransportHealth::RecoveryReason::HandshakeTimeout));
+  }
+}
+''')
+
+    def test_recovery_preserves_backoff_and_restart_memory_admission(self):
+        self.compile_run(r'''
+int main() {
+  MQTTBridge bridge;
+  bridge.only(0); clock_ms = 70000;
+  auto& slot = bridge._slots[0];
+  slot.client = &bridge.clients[0];
+  slot.client->initialized = slot.client->started = true;
+  slot.initial_connect_done = true;
+  bridge.complete(0);
+  slot.reconnect_backoff = 3;
+  slot.max_backoff_failures = 1;
+  bridge._slot_transport_fault_pending[0] = true;
+  bridge.maintainSlotConnections();
+  assert(slot.client->stops == 1 && slot.reconnect_backoff == 3);
+  assert(slot.max_backoff_failures == 1 && slot.connect_failures == 0);
+  clock_ms += 120000;
+  dma_free = 24575; dma_largest = 20000;
+  bridge.maintainSlotConnections();
+  assert(slot.client->starts == 0 && slot.reconnect_backoff == 3);
+  assert(slot.last_reconnect_attempt == 70000 && slot.start_failures == 0);
+  dma_free = 24576; dma_largest = 8191;
+  bridge.maintainSlotConnections();
+  assert(slot.client->starts == 0 && slot.reconnect_backoff == 3);
+  dma_largest = 8192;
+  bridge.maintainSlotConnections();
+  assert(slot.client->starts == 1 && bridge._slot_attempt_pending[0]);
+  assert(slot.reconnect_backoff == 4 && slot.max_backoff_failures == 1);
+}
+''')
+
+    def test_late_connected_callback_cannot_release_failed_stop_reservation(self):
+        self.compile_run(r'''
+int main() {
+  for (bool publish_before_maintenance : {false, true}) {
+    MQTTBridge bridge;
+    bridge.only(0); clock_ms = 1000;
+    assert(bridge.ensureSlotClient(0));
+    auto& slot = bridge._slots[0];
+    slot.initial_connect_done = true;
+    auto* client = slot.client;
+    assert(bridge.reconnectSlotClient(0) == ESP_OK);
+    client->connectEvent();
+    client->errorWithoutDisconnect();
+    client->stop_succeeds = false;
+    bridge.maintainSlotConnections();
+    assert(client->isStarted() && client->stops == 1);
+    assert(slot.transport_health.recovery_reason != MQTTTransportHealth::RecoveryReason::None);
+    // An in-flight SDK event arrives after stop failed. CONNACK may clear the
+    // attempt bit and set a new-session latch, but it cannot prove task join.
+    client->connectEvent();
+    assert(!bridge._slot_attempt_pending[0] && bridge._slot_health_reset_pending[0]);
+    assert(bridge.hasPendingSlotConnection() && !bridge.canStartSlotConnection(1));
+    if (publish_before_maintenance) {
+      assert(!bridge.publishToSlot(0, "status", "{}", 2, true, 1));
+      assert(client->publishes == 0 && bridge.hasPendingSlotConnection());
+    }
+    bridge.maintainSlotConnections();
+    assert(client->stops == 2 && client->isStarted());
+    assert(bridge.hasPendingSlotConnection() && !bridge.canStartSlotConnection(1));
+    assert(client->starts == 1 && bridge.setups.empty());
+    assert(slot.transport_health.recoveries == 0);
+    client->stop_succeeds = true;
+    bridge.maintainSlotConnections();
+    assert(!client->isStarted() && !bridge.hasPendingSlotConnection());
+    assert(slot.transport_health.recoveries == 1 && client->starts == 1);
+    delete client;
+    slot.client = nullptr;
+  }
+}
+''')
+
+    def test_wifi_loss_failed_stop_and_reconnect_cannot_release_sdk_reservation(self):
+        self.compile_run(r'''
+int main() {
+  for (bool established : {false, true}) {
+    MQTTBridge bridge;
+    bridge.only(0); clock_ms = 70000; WiFi.state = WL_CONNECTED;
+    assert(bridge.ensureSlotClient(0));
+    auto& slot = bridge._slots[0];
+    slot.initial_connect_done = true;
+    auto* client = slot.client;
+    assert(bridge.reconnectSlotClient(0) == ESP_OK);
+    if (established) client->connectEvent();
+    client->stop_succeeds = false;
+    WiFi.state = WL_DISCONNECTED;
+    assert(!bridge.handleWiFiConnection(clock_ms));
+    assert(client->isStarted() && client->stops == 1 && !slot.connected);
+    assert(bridge._slot_transport_fault_pending[0] && bridge.hasPendingSlotConnection());
+    assert(!bridge.canStartSlotConnection(1));
+    clock_ms += 11000;
+    WiFi.state = WL_CONNECTED;
+    assert(bridge.handleWiFiConnection(clock_ms));
+    client->connectEvent(); // late SDK callback after WiFi recovered
+    assert(bridge.hasPendingSlotConnection());
+    bridge.maintainSlotConnections();
+    assert(client->isStarted() && client->stops == 2 && !slot.connected);
+    assert(bridge.hasPendingSlotConnection() && !bridge.canStartSlotConnection(1));
+    assert(client->starts == 1 && bridge.setups.empty());
+    client->stop_succeeds = true;
+    bridge.maintainSlotConnections();
+    assert(!client->isStarted() && !bridge.hasPendingSlotConnection());
+    assert(slot.transport_health.recoveries == 1 && client->starts == 1);
+    delete client;
+    slot.client = nullptr;
+  }
+}
+''')
+
+    def test_pre_fix_error_callback_without_owner_signal_fails_regression(self):
+        source = self.fixture()
+        old_callback = source.replace(
+            "_slot_transport_fault_pending[index].store(true, std::memory_order_release);",
+            "/* pre-fix onError had no owner-task recovery signal */", 1)
+        self.assertNotEqual(source, old_callback)
+        self.compile_run(r'''
+int main() {
+  MQTTBridge bridge;
+  bridge.only(0); clock_ms = 1000;
+  assert(bridge.ensureSlotClient(0));
+  auto* client = bridge._slots[0].client;
+  assert(bridge.reconnectSlotClient(0) == ESP_OK);
+  client->errorWithoutDisconnect();
+  assert(bridge._slot_transport_fault_pending[0]);
+}
+''', fixture=old_callback, expect_rejection=True)
 
 
 if __name__ == "__main__":

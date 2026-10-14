@@ -6,6 +6,7 @@
 #include <vector>
 #include "helpers/AlertFaultPolicy.h"
 #include "helpers/MQTTConnectionPolicy.h"
+#include "helpers/MQTTTransportHealth.h"
 #include "helpers/WiFiPowerSave.h"
 #include "helpers/WiFiNetworkPowerPolicy.h"
 #define MQTT_DEBUG_PRINTLN(...) ((void)0)
@@ -90,8 +91,16 @@ struct MQTTBridge{
  struct{bool canonical_wifi=true;}_node_info;
  struct{uint8_t wifi_power_save=1;}prefs,*_obs=&prefs;
  struct Client{void disconnect(){}bool isStarted()const{return false;}};
- struct Slot{Client* client=nullptr;bool connected=false;}_slots[RUNTIME_MQTT_SLOTS];
+ struct Slot{
+  Client* client=nullptr;bool connected=false;
+  uint32_t connected_at_ms=0,current_outage_started_ms=0;
+  MQTTTransportHealth::State transport_health;
+ }_slots[RUNTIME_MQTT_SLOTS];
  bool _slot_attempt_pending[RUNTIME_MQTT_SLOTS]={};
+ std::atomic<bool> _slot_transport_fault_pending[RUNTIME_MQTT_SLOTS]={};
+ std::atomic<bool> _slot_health_reset_pending[RUNTIME_MQTT_SLOTS]={};
+ void updateSlotTransportDiag(int,uint32_t){}
+ void updateCachedConnectionStatus(){}
  std::vector<std::string> cleanup;
  void cancelNtpRefresh(){cleanup.push_back("ntp");}
  void teardownSlot(int index){cleanup.push_back("slot"+std::to_string(index));}

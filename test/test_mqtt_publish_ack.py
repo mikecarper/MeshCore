@@ -79,6 +79,7 @@ PREAMBLE = r'''
 #undef private
 #include "helpers/MQTTReplyFormat.h"
 #include "helpers/MQTTConnectionHealth.h"
+#include "helpers/MQTTTransportHealth.h"
 #include "helpers/MQTTPacketFilter.h"
 #include "helpers/bridges/MQTTErrorLabels.h"
 template<typename... Args> void test_log(Args&&...) {}
@@ -161,6 +162,14 @@ struct MQTTBridge {
     int last_sock_errno = 0;
   };
   MQTTSlot _slots[RUNTIME_MQTT_SLOTS];
+  std::atomic<bool> _slot_transport_fault_pending[RUNTIME_MQTT_SLOTS] = {};
+  std::atomic<bool> _slot_health_recovering[RUNTIME_MQTT_SLOTS] = {};
+  std::atomic<uint32_t> _slot_health_recoveries[RUNTIME_MQTT_SLOTS] = {};
+  std::atomic<uint8_t> _slot_health_reason[RUNTIME_MQTT_SLOTS] = {};
+  std::atomic<uint32_t> _slot_health_ack_wait_secs[RUNTIME_MQTT_SLOTS] = {};
+  MQTTBridge() {
+    for (auto& wait : _slot_health_ack_wait_secs) wait.store(UINT32_MAX);
+  }
   bool _initialized = true;
   bool ready = true;
   MQTTPrefs* _obs = nullptr;
@@ -434,6 +443,49 @@ int main() {
   assert(destroy_calls == 2);
   PsychicMqttClient fresh;
   assert(!fresh.isInitialized() && !fresh.isStarted());
+}
+''')
+
+    def test_production_recovery_diagnostics_never_claim_no_errors(self):
+        self.compile_run(r'''
+int main() {
+  PsychicMqttClient client;
+  MQTTBridge bridge;
+  bridge._slots[0].client = &client;
+  s_mqtt_bridge_instance = &bridge;
+  bridge._slot_health_reason[0] = static_cast<uint8_t>(
+      MQTTTransportHealth::RecoveryReason::AckTimeout);
+  bridge._slot_health_recoveries[0] = 3;
+  bridge._slot_health_ack_wait_secs[0] = 120;
+  for (bool fault_latched : {false, true}) {
+    bridge._slot_health_recovering[0] = !fault_latched;
+    bridge._slot_transport_fault_pending[0] = fault_latched;
+    char reply[160];
+    MQTTBridge::formatSlotDiagReply(reply, sizeof(reply), 0);
+    assert(strcmp(reply, "> mqtt1: recover, pub_ack:0, rec:3/puback, ack_wait:120s") == 0);
+    assert(strstr(reply, "no errors") == nullptr);
+  }
+  bridge._slot_health_recovering[0] = false;
+  bridge._slot_transport_fault_pending[0] = false;
+  char recovered[160];
+  MQTTBridge::formatSlotDiagReply(recovered, sizeof(recovered), 0);
+  assert(strstr(recovered, "> mqtt1: ok, no errors") == recovered);
+  assert(strstr(recovered, "rec:3/puback") != nullptr); // retain history
+
+  bridge._slot_health_recovering[0] = true;
+  bridge._slot_health_recoveries[0] = UINT32_MAX;
+  bridge._slot_health_ack_wait_secs[0] = UINT32_MAX - 1;
+  for (size_t capacity = 1; capacity <= 160; ++capacity) {
+    unsigned char bounded[168];
+    memset(bounded, 0xA5, sizeof(bounded));
+    char* reply = reinterpret_cast<char*>(bounded);
+    MQTTBridge::formatSlotDiagReply(reply, capacity, 0);
+    assert(memchr(reply, '\0', capacity) != nullptr);
+    for (size_t pos = capacity; pos < sizeof(bounded); ++pos) assert(bounded[pos] == 0xA5);
+    // Every appended numeric field is omitted whole when it cannot fit.
+    if (strstr(reply, "rec:")) assert(strstr(reply, "rec:4294967295/puback"));
+    if (strstr(reply, "ack_wait:")) assert(strstr(reply, "ack_wait:4294967294s"));
+  }
 }
 ''')
 

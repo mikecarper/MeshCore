@@ -32,6 +32,7 @@ PREAMBLE = r'''
 #include <cassert>
 #include <functional>
 #include "helpers/MQTTConnectionHealth.h"
+#include "helpers/MQTTTransportHealth.h"
 using esp_err_t = int;
 using esp_mqtt_client_handle_t = void*;
 constexpr int ESP_OK=0, ESP_FAIL=-1, ESP_ERR_INVALID_STATE=2, ESP_ERR_NO_MEM=3;
@@ -53,6 +54,7 @@ static int register_result=ESP_OK, config_result=ESP_OK;
 static int start_result=ESP_OK, reconnect_result=ESP_OK;
 static int init_calls=0, register_calls=0, destroy_calls=0, config_calls=0;
 static int start_calls=0, reconnect_calls=0;
+unsigned long millis() { return 1000; }
 static std::function<void()> sdk_callback;
 void* test_malloc(size_t size) { return fail_malloc ? nullptr : std::malloc(size); }
 #define malloc test_malloc
@@ -88,9 +90,11 @@ struct MQTTBridge {
   struct MQTTSlot {
     PsychicMqttClient* client=nullptr;
     uint32_t start_failures=0;
+    MQTTTransportHealth::State transport_health;
   };
   MQTTSlot _slots[RUNTIME_MQTT_SLOTS];
   std::atomic<bool> _slot_attempt_pending[RUNTIME_MQTT_SLOTS] = {};
+  std::atomic<bool> _slot_transport_fault_pending[RUNTIME_MQTT_SLOTS] = {};
   std::atomic<bool> _stop_requested{false};
   bool hasPendingSlotConnection() const;
   bool canStartSlotConnection(int index) const;
