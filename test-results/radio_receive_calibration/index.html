@@ -2298,8 +2298,10 @@ gain/tuning changes, AGC resets, and radio recovery still request a fresh block
 promptly. Dual-profile scanning retains
 its separate refresh policy.</p>
 <p>Frequent configured AGC resets can still dominate calibration time: Cascade
-repeater builds default to an eight-second AGC interval, and MQTT observers
-use 28 seconds. Those resets are not throttled by the routine cooldown. After
+repeater builds start with an eight-second AGC interval, and MQTT observers
+use 28 seconds. With device power saving on, their adaptive AGC schedule backs
+off separately, up to 60 seconds; see <a href="../../cli_commands/">AGC reset settings</a>.
+AGC resets still bypass the routine noise-floor cooldown. After
 a timed-out startup block with no valid floor, the next routine RXPS attempt
 also waits 60 seconds; passive retries retain their existing bounded busy
 escape while waiting for a valid baseline.</p>

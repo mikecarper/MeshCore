@@ -9303,6 +9303,31 @@ hardware busy-result count.</p>
 <p><strong>Parameters:</strong>
 - <code>value</code>: Interval in seconds, 0-1020, rounded down to a multiple of 4 (17 becomes 16). 0 to disable.</p>
 <p><strong>Default:</strong> <code>0.0</code></p>
+<p>With device <code>powersaving</code> on and a nonzero AGC interval, Companion, Repeater,
+Room Server, and Sensor firmware use adaptive reset scheduling. The saved
+interval is the starting/minimum interval. After every two admitted maintenance
+attempts without an observed radio recovery, the interval doubles, capped at
+60 seconds (or the saved interval if it is already longer). For example,
+8 -&gt; 16 -&gt; 32 -&gt; 60 seconds, with two attempts at each step. An observed radio
+recovery returns the schedule to the saved interval. Changing the interval or
+power-saving mode starts a fresh schedule; adaptive history is not persisted.</p>
+<p><code>get agc.reset.interval</code> still reports the saved starting interval, not the
+current adaptive interval. <code>0</code> disables periodic AGC maintenance even with
+power saving on. With power saving off, fixed-interval behavior is retained.
+This follows device <code>powersaving</code>, independently of LoRa <code>radio.rxps</code>.</p>
+<p>Adaptive scheduling does not treat a quiet mesh, strong packets, a stable
+noise floor, or a successful transmission as proof of full receiver sensitivity.
+TX cannot continually postpone adaptive maintenance. Pending RX/TX, a BUSY
+chip outside known RX duty cycling, carrier/Morse ownership, and an active
+noise-floor block can defer it; deferred attempts do not advance backoff and
+are retried after 50 ms. The
+60-second bound is a scheduling interval, not permission to interrupt a packet.
+An armed RXPS radio uses the existing explicit wake/reset path, avoiding retry
+polling that could miss every short listen window.
+Existing radio recovery watchdogs remain active. These conservative intervals
+have host regression coverage, but are not hardware-qualified sensitivity or
+battery-life results; noisy sites may require a short fixed interval with
+device power saving off.</p>
 <hr />
 <h4 id="view-or-change-the-radio-watchdog-interval-mqtt-observer-only">View or change the radio watchdog interval (MQTT observer only)</h4>
 <p><strong>Usage:</strong>
