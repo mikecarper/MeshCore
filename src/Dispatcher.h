@@ -8,6 +8,7 @@
 #include <helpers/MeshtextConfig.h>
 #include <helpers/MorseTx.h>
 #include <helpers/MorseRx.h>
+#include <helpers/AGCResetScheduler.h>
 #ifndef RADIO_LIVENESS_SOFT_ONLY
   #include <helpers/RadioLivenessTracker.h>
 #endif
@@ -216,6 +217,10 @@ public:
   uint32_t getCADScanTimeoutMillis() const { return 0; }
 
   virtual void resetAGC() { }
+  // True means the maintenance sequence was admitted, not that receiver
+  // sensitivity has been measured. Busy implementations may defer it.
+  virtual bool tryResetAGC() { resetAGC(); return true; }
+  virtual uint32_t getRecoveryCount() const { return 0; }
 
   virtual uint8_t getRadioState() const { return 0; }
   virtual unsigned long getLastRecvMillis() const { return 0; }
@@ -363,9 +368,7 @@ class Dispatcher {
   uint32_t ota_tx_airtime = 0;
   unsigned long cad_busy_start;
   unsigned long radio_nonrx_start;
-  unsigned long next_floor_calib_time, next_agc_reset_time;
-  int   armed_agc_reset_interval;
-  bool  agc_reset_armed;
+  unsigned long next_floor_calib_time;
   bool  radio_nonrx_timer_armed;
   bool  prev_isrecv_mode;
   bool  radio_available;
@@ -382,10 +385,6 @@ class Dispatcher {
   unsigned long tx_budget_ms;
   unsigned long last_budget_update;
   unsigned long duty_cycle_window_ms;
-  uint8_t receive_context_profile = 0;
-  uint32_t receive_context_generation = 0;
-  bool receive_context_active = false;
-  uint32_t profile_cad_busy[2] = {};
 #if MESH_ENABLE_MESHTEXT_CHAT
   // One bounded user-send slot; never placed in the MeshCore packet pool.
   uint8_t foreign_radio_bytes[MAX_TRANS_UNIT] = {};
@@ -454,9 +453,7 @@ protected:
     last_meshcore_recv_millis = 0;
     next_tx_time = ms.getMillis();
     cad_busy_start = 0;
-    next_floor_calib_time = next_agc_reset_time = 0;
-    armed_agc_reset_interval = 0;
-    agc_reset_armed = false;
+    next_floor_calib_time = 0;
     _err_flags = 0;
     radio_nonrx_start = 0;
     radio_nonrx_timer_armed = false;
@@ -522,6 +519,7 @@ protected:
   virtual int getInterferenceThreshold() const { return 0; }    // disabled by default
   virtual bool getCADEnabled() const { return false; }    // hardware CAD disabled by default
   virtual int getAGCResetInterval() const { return 0; }    // disabled by default
+  virtual bool useAdaptiveAGC() const { return false; }
   virtual unsigned long getDutyCycleWindowMs() const { return 3600000; }
 #ifdef WITH_MQTT_BRIDGE
   virtual uint32_t getRadioWatchdogMillis() const;  // observer-only radio recovery
@@ -591,6 +589,12 @@ public:
   unsigned long futureMillis(int millis_from_now) const;
 
 private:
+  // Keep the frequently accessed core fields at compact ARM load offsets.
+  AGCResetScheduler agc_reset;
+  uint32_t receive_context_generation = 0;
+  uint32_t profile_cad_busy[2] = {};
+  uint8_t receive_context_profile = 0;
+  bool receive_context_active = false;
 #if MESH_PACKET_LOGGING
   void logPacketLine(const char* direction, const Packet* packet, int len,
                      bool include_rx_metrics, float score,

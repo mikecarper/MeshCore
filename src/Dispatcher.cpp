@@ -60,8 +60,7 @@ void Dispatcher::setRadioAvailable(bool available) {
   const unsigned long now = _ms->getMillis();
   radio_nonrx_start = now;
   next_floor_calib_time = now;
-  armed_agc_reset_interval = 0;
-  agc_reset_armed = false;
+  agc_reset.reset();
   _radio->begin();
   prev_isrecv_mode = _radio->isInRecvMode();
 #ifdef RADIO_LIVENESS_SOFT_ONLY
@@ -99,8 +98,7 @@ void Dispatcher::begin() {
   last_budget_update = _ms->getMillis();
 
   const unsigned long now = _ms->getMillis();
-  armed_agc_reset_interval = 0;
-  agc_reset_armed = false;
+  agc_reset.reset();
   dispatcher_started = true;
   if (radio_available) {
     _radio->begin();
@@ -467,6 +465,17 @@ bool Dispatcher::getNextQueueWakeDelay(uint32_t& delay_millis) const {
   const uint32_t now = _ms->getMillis();
   bool found = false;
   uint32_t shortest_delay = 0;
+  // Timed MCU sleep must not skip the adaptive maintenance/retry deadline.
+  // Preserve the legacy queue-only query when power saving is off.
+  if (radio_available && useAdaptiveAGC()) {
+    found = agc_reset.nextDelay(now, shortest_delay);
+    if (found && !agc_reset.recoveryMatches(_radio->getRecoveryCount())) {
+      // A Dispatcher-owned recovery can occur after configure() this loop.
+      // Poll once before sleeping so the base cadence is restored promptly.
+      delay_millis = 0;
+      return true;
+    }
+  }
 
   if (outbound != NULL) {
     if (outbound_radio_retry_pending) {
@@ -481,7 +490,8 @@ bool Dispatcher::getNextQueueWakeDelay(uint32_t& delay_millis) const {
 
   if (outbound_restore_cr) {
     const int32_t restore_delay = (int32_t)(outbound_restore_retry_at - now);
-    shortest_delay = restore_delay > 0 ? (uint32_t)restore_delay : 0;
+    const uint32_t delay = restore_delay > 0 ? (uint32_t)restore_delay : 0;
+    if (!found || delay < shortest_delay) shortest_delay = delay;
     found = true;
   }
 
@@ -541,6 +551,10 @@ void Dispatcher::loop() {
 #endif
 
   const unsigned long now = _ms->getMillis();
+  const int agc_interval = getAGCResetInterval();
+  const bool adaptive = useAdaptiveAGC();
+  agc_reset.configure(now, agc_interval > 0 ? agc_interval : 0,
+                      adaptive, adaptive ? _radio->getRecoveryCount() : 0);
   if (!radio_nonrx_timer_armed) {
     // Application setup can outlast the watchdog after begin() leaves the
     // radio in standby. Start observing when loop service actually begins,
@@ -711,35 +725,26 @@ void Dispatcher::loop() {
     }
 
     // going back into receive mode now...
-    const int agc_interval = getAGCResetInterval();
-    if (agc_interval > 0) {
-      next_agc_reset_time = futureMillis(agc_interval);
-      armed_agc_reset_interval = agc_interval;
-      agc_reset_armed = true;
-    } else {
-      armed_agc_reset_interval = 0;
-      agc_reset_armed = false;
-    }
+    agc_reset.noteTransmit(_ms->getMillis());
   }
 
-  const int agc_interval = getAGCResetInterval();
-  if (agc_interval <= 0) {
-    armed_agc_reset_interval = 0;
-    agc_reset_armed = false;
-  } else if (!agc_reset_armed
-             || agc_interval != armed_agc_reset_interval) {
-    // MyMesh loads persisted preferences after Dispatcher::begin().  Arm from
-    // the first loop so the real configured interval is used, and so a freshly
-    // initialized radio/frontend gets one full settle interval before the
-    // first warm-sleep AGC reset. A live interval change also gets a complete
-    // new interval instead of inheriting the old setting's deadline.
-    next_agc_reset_time = futureMillis(agc_interval);
-    armed_agc_reset_interval = agc_interval;
-    agc_reset_armed = true;
-  } else if (millisHasNowPassed(next_agc_reset_time)) {
-    _radio->resetAGC();
-    next_agc_reset_time = futureMillis(agc_interval);
-    armed_agc_reset_interval = agc_interval;
+  const uint32_t agc_now = _ms->getMillis();
+  if ((!adaptive || !recovered_this_loop) && agc_interval > 0
+      && (adaptive ? agc_reset.due(agc_now)
+      : millisHasNowPassed(agc_reset.nextAt()))) {
+    bool attempted;
+    if (!adaptive) {
+      _radio->resetAGC();
+      attempted = true;
+    } else {
+      attempted = !_radio->isCalibratingNoiseFloor() && _radio->tryResetAGC();
+    }
+    if (attempted) {
+      agc_reset.noteAttempt(_ms->getMillis());
+    } else {
+      // Ownership/calibration deferral is not a reset or health evidence.
+      agc_reset.noteDeferred(_ms->getMillis());
+    }
   }
 
   // check inbound (delayed) queue

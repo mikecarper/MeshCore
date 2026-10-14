@@ -207,6 +207,7 @@ protected:
   int getInterferenceThreshold() const override;
   bool getCADEnabled() const override;
   int getAGCResetInterval() const override;
+  bool useAdaptiveAGC() const override { return _prefs.powersaving_enabled != 0; }
   uint8_t getDefaultTxCodingRate() const override {
     return active_cr;
   }

@@ -203,6 +203,7 @@ protected:
   void rxPsWatchdogCheck();
   void requestPeriodicNoiseFloorRefresh();
   void requestNoiseFloorRefresh();
+  bool resetAGCIfIdle();
   void requestRestartRecv();
   bool isPacketPendingOrReceiving();
   void noiseFloorCalibCheck(unsigned long now);
@@ -463,6 +464,8 @@ public:
     return cadScanTimeoutMillis();
   }
   void resetAGC() override;
+  bool tryResetAGC() override;
+  uint32_t getRecoveryCount() const override { return n_wd_soft + n_wd_hard; }
 
   void loop() override;
   bool setTrackerSleep(bool sleeping) override;

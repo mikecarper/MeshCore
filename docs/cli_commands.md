@@ -2762,6 +2762,34 @@ hardware busy-result count.
 
 **Default:** `0.0`
 
+With device `powersaving` on and a nonzero AGC interval, Companion, Repeater,
+Room Server, and Sensor firmware use adaptive reset scheduling. The saved
+interval is the starting/minimum interval. After every two admitted maintenance
+attempts without an observed radio recovery, the interval doubles, capped at
+60 seconds (or the saved interval if it is already longer). For example,
+8 -> 16 -> 32 -> 60 seconds, with two attempts at each step. An observed radio
+recovery returns the schedule to the saved interval. Changing the interval or
+power-saving mode starts a fresh schedule; adaptive history is not persisted.
+
+`get agc.reset.interval` still reports the saved starting interval, not the
+current adaptive interval. `0` disables periodic AGC maintenance even with
+power saving on. With power saving off, fixed-interval behavior is retained.
+This follows device `powersaving`, independently of LoRa `radio.rxps`.
+
+Adaptive scheduling does not treat a quiet mesh, strong packets, a stable
+noise floor, or a successful transmission as proof of full receiver sensitivity.
+TX cannot continually postpone adaptive maintenance. Pending RX/TX, a BUSY
+chip outside known RX duty cycling, carrier/Morse ownership, and an active
+noise-floor block can defer it; deferred attempts do not advance backoff and
+are retried after 50 ms. The
+60-second bound is a scheduling interval, not permission to interrupt a packet.
+An armed RXPS radio uses the existing explicit wake/reset path, avoiding retry
+polling that could miss every short listen window.
+Existing radio recovery watchdogs remain active. These conservative intervals
+have host regression coverage, but are not hardware-qualified sensitivity or
+battery-life results; noisy sites may require a short fixed interval with
+device power saving off.
+
 ---
 
 #### View or change the radio watchdog interval (MQTT observer only)

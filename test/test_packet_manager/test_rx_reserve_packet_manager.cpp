@@ -14,12 +14,18 @@ public:
   uint8_t pending_rx[MAX_TRANS_UNIT];
   int pending_rx_len = 0;
   int send_starts = 0;
+  uint32_t airtime_ms = 1;
   bool receiving = false;
   bool in_recv_mode = true;
   int soft_recoveries = 0;
   int hard_recoveries = 0;
   int cad_set_calls = 0;
   int agc_resets = 0;
+  int agc_attempts = 0;
+  bool agc_admitted = true;
+  bool noise_floor_active = false;
+  mutable unsigned noise_floor_reads = 0;
+  uint32_t recovery_count = 0;
   bool cad_enabled = false;
   unsigned long last_irq = 0;
   bool recovery_result = true;
@@ -37,7 +43,7 @@ public:
     pending_rx_len = 0;
     return len;
   }
-  uint32_t getEstAirtimeFor(int) override { return 1; }
+  uint32_t getEstAirtimeFor(int) override { return airtime_ms; }
   float packetScore(float, int) override { return 0; }
   bool startSendRaw(const uint8_t* bytes, int len) override {
     if (send_starts < 3) {
@@ -56,6 +62,15 @@ public:
     cad_enabled = enable;
   }
   void resetAGC() override { agc_resets++; }
+  bool tryResetAGC() override {
+    agc_attempts++;
+    if (!agc_admitted) return false;
+    resetAGC();
+    return true;
+  }
+  bool isCalibratingNoiseFloor() const override { return noise_floor_active; }
+  int getNoiseFloor() const override { noise_floor_reads++; return -120; }
+  uint32_t getRecoveryCount() const override { return recovery_count; }
   unsigned long getLastRadioInterruptMillis() const override { return last_irq; }
   bool recoverRadio(bool hard) override {
     if (hard) {
@@ -121,12 +136,14 @@ public:
   bool bypass_rx_delay = false;
   bool configured_cad_enabled = false;
   int configured_agc_interval = 0;
+  bool adaptive_agc = false;
   float ota_speed = 1.0f;
   float getOtaSpeedFactor() const override { return ota_speed; }
 
   int getAGCResetInterval() const override {
     return configured_agc_interval;
   }
+  bool useAdaptiveAGC() const override { return adaptive_agc; }
 
   TestDispatcher(TestRadio& radio, TestClock& clock, RxReservePacketManager& mgr)
     : mesh::Dispatcher(radio, clock, mgr), manager(mgr) { }
@@ -687,6 +704,292 @@ TEST(Dispatcher, AgcResetDeadlineSurvivesMillisRollover) {
   clock.now = 0x101UL;
   dispatcher.loop();
   EXPECT_EQ(1, radio.agc_resets);
+}
+
+static uint32_t nextAgcWake(TestDispatcher& dispatcher) {
+  uint32_t delay = UINT32_MAX;
+  EXPECT_TRUE(dispatcher.nextQueueWakeDelay(delay));
+  return delay;
+}
+
+static void dispatchNextAgc(TestDispatcher& dispatcher, TestClock& clock) {
+  clock.now = uint32_t(clock.now) + nextAgcWake(dispatcher) + 1;
+  dispatcher.loop();
+}
+
+TEST(Dispatcher, AdaptiveAgcDoublesAfterTwoAdmittedAttemptsAndCapsAtOneMinute) {
+  RxReservePacketManager manager(4, 1);
+  TestClock clock;
+  TestRadio radio;
+  TestDispatcher dispatcher(radio, clock, manager);
+  dispatcher.configured_agc_interval = 8000;
+  dispatcher.adaptive_agc = true;
+  dispatcher.begin();
+  dispatcher.loop();
+  EXPECT_EQ(8000U, nextAgcWake(dispatcher));
+  const uint32_t expected[] = {8000, 16000, 16000, 32000, 32000, 60000, 60000, 60000};
+  for (unsigned attempt = 0; attempt < sizeof(expected) / sizeof(expected[0]); ++attempt) {
+    SCOPED_TRACE(attempt);
+    dispatchNextAgc(dispatcher, clock);
+    EXPECT_EQ(int(attempt + 1), radio.agc_resets);
+    EXPECT_EQ(expected[attempt], nextAgcWake(dispatcher));
+  }
+  EXPECT_EQ(radio.agc_resets, radio.agc_attempts);
+  EXPECT_EQ(0U, radio.noise_floor_reads); // No new RSSI/floor probes to justify backoff.
+  EXPECT_EQ(0, radio.soft_recoveries);
+  EXPECT_EQ(0, radio.hard_recoveries);
+}
+
+TEST(Dispatcher, AdaptiveAgcKeepsZeroOffAndDoesNotShortenLongManualBase) {
+  RxReservePacketManager manager(4, 1);
+  TestClock clock;
+  TestRadio radio;
+  TestDispatcher dispatcher(radio, clock, manager);
+  dispatcher.adaptive_agc = true;
+  dispatcher.begin();
+  dispatcher.loop();
+  uint32_t delay = 77;
+  EXPECT_FALSE(dispatcher.nextQueueWakeDelay(delay));
+  clock.now = 900000;
+  dispatcher.loop();
+  EXPECT_EQ(0, radio.agc_attempts);
+  dispatcher.configured_agc_interval = 120000;
+  dispatcher.loop();
+  for (unsigned attempt = 0; attempt < 4; ++attempt) {
+    EXPECT_EQ(120000U, nextAgcWake(dispatcher));
+    dispatchNextAgc(dispatcher, clock);
+  }
+  EXPECT_EQ(4, radio.agc_resets);
+  EXPECT_EQ(120000U, nextAgcWake(dispatcher));
+}
+
+TEST(Dispatcher, AdaptiveAgcModeIntervalAndDisableChangesStartFreshFullIntervals) {
+  RxReservePacketManager manager(4, 1);
+  TestClock clock;
+  TestRadio radio;
+  TestDispatcher dispatcher(radio, clock, manager);
+  dispatcher.configured_agc_interval = 8000;
+  dispatcher.adaptive_agc = true;
+  dispatcher.begin();
+  dispatcher.loop();
+  dispatchNextAgc(dispatcher, clock);
+  dispatchNextAgc(dispatcher, clock);
+  ASSERT_EQ(16000U, nextAgcWake(dispatcher));
+  ++clock.now;
+  dispatcher.adaptive_agc = false;
+  dispatcher.loop();
+  uint32_t delay = 0;
+  EXPECT_FALSE(dispatcher.nextQueueWakeDelay(delay)); // Fixed mode keeps its queue-only query.
+  for (unsigned i = 0; i < 3; ++i) {
+    clock.now += 8001;
+    dispatcher.loop();
+    EXPECT_EQ(int(3 + i), radio.agc_resets); // Power saving off stays fixed.
+  }
+  dispatcher.adaptive_agc = true;
+  ++clock.now;
+  dispatcher.loop();
+  ASSERT_EQ(8000U, nextAgcWake(dispatcher));
+  dispatchNextAgc(dispatcher, clock);
+  EXPECT_EQ(8000U, nextAgcWake(dispatcher)); // No inherited fixed-mode streak.
+  dispatcher.configured_agc_interval = 12000;
+  dispatcher.loop();
+  EXPECT_EQ(12000U, nextAgcWake(dispatcher));
+  dispatcher.configured_agc_interval = 0;
+  dispatcher.loop();
+  EXPECT_FALSE(dispatcher.nextQueueWakeDelay(delay));
+  const int attempts = radio.agc_attempts;
+  clock.now += 120000;
+  dispatcher.loop();
+  EXPECT_EQ(attempts, radio.agc_attempts);
+  dispatcher.configured_agc_interval = 8000;
+  dispatcher.loop();
+  EXPECT_EQ(8000U, nextAgcWake(dispatcher));
+}
+
+TEST(Dispatcher, AdaptiveAgcDeclinesAndNoiseFloorWindowsDoNotPromoteOrHotRetry) {
+  RxReservePacketManager manager(4, 1);
+  TestClock clock;
+  TestRadio radio;
+  TestDispatcher dispatcher(radio, clock, manager);
+  dispatcher.configured_agc_interval = 8000;
+  dispatcher.adaptive_agc = true;
+  dispatcher.begin();
+  dispatcher.loop();
+  radio.agc_admitted = false;
+  dispatchNextAgc(dispatcher, clock);
+  ASSERT_EQ(1, radio.agc_attempts);
+  EXPECT_EQ(0, radio.agc_resets);
+  EXPECT_EQ(50U, nextAgcWake(dispatcher));
+  clock.now += 49;
+  dispatcher.loop();
+  EXPECT_EQ(1, radio.agc_attempts);
+  EXPECT_EQ(1U, nextAgcWake(dispatcher));
+  ++clock.now;
+  dispatcher.loop();
+  EXPECT_EQ(2, radio.agc_attempts);
+  EXPECT_EQ(0, radio.agc_resets);
+  radio.agc_admitted = true;
+  clock.now += 50;
+  dispatcher.loop();
+  ASSERT_EQ(1, radio.agc_resets);
+  EXPECT_EQ(8000U, nextAgcWake(dispatcher));
+  radio.noise_floor_active = true;
+  dispatchNextAgc(dispatcher, clock);
+  EXPECT_EQ(3, radio.agc_attempts); // Dispatcher defers without touching the radio.
+  EXPECT_EQ(1, radio.agc_resets);
+  EXPECT_EQ(50U, nextAgcWake(dispatcher));
+  radio.noise_floor_active = false;
+  clock.now += 50;
+  dispatcher.loop();
+  EXPECT_EQ(2, radio.agc_resets);
+  EXPECT_EQ(16000U, nextAgcWake(dispatcher)); // Exactly two accepted attempts.
+}
+
+TEST(Dispatcher, AdaptiveAgcRecoveryCounterChangesIncludingWrapRestoreBase) {
+  const uint32_t before[] = {10, UINT32_MAX, 10};
+  const uint32_t after[] = {11, 0, 0};
+  for (unsigned scenario = 0; scenario < 3; ++scenario) {
+    SCOPED_TRACE(scenario);
+    RxReservePacketManager manager(4, 1);
+    TestClock clock;
+    TestRadio radio;
+    radio.recovery_count = before[scenario];
+    TestDispatcher dispatcher(radio, clock, manager);
+    dispatcher.configured_agc_interval = 8000;
+    dispatcher.adaptive_agc = true;
+    dispatcher.begin();
+    dispatcher.loop();
+    dispatchNextAgc(dispatcher, clock);
+    dispatchNextAgc(dispatcher, clock);
+    ASSERT_EQ(16000U, nextAgcWake(dispatcher));
+    clock.now += 100;
+    radio.recovery_count = after[scenario];
+    dispatcher.loop();
+    EXPECT_EQ(2, radio.agc_resets);
+    EXPECT_EQ(8000U, nextAgcWake(dispatcher));
+    dispatchNextAgc(dispatcher, clock);
+    EXPECT_EQ(3, radio.agc_resets);
+    EXPECT_EQ(8000U, nextAgcWake(dispatcher)); // Recovery cleared the old streak.
+  }
+}
+
+TEST(Dispatcher, FrequentTransmitsPostponeFixedButNotAdaptiveAgc) {
+  for (bool adaptive : {false, true}) {
+    SCOPED_TRACE(adaptive);
+    RxReservePacketManager manager(4, 1);
+    TestClock clock;
+    clock.now = 1000;
+    TestRadio radio;
+    TestDispatcher dispatcher(radio, clock, manager);
+    dispatcher.configured_agc_interval = 8000;
+    dispatcher.adaptive_agc = adaptive;
+    dispatcher.begin();
+    dispatcher.loop();
+    for (uint32_t send_at : {2000U, 4000U, 8000U}) {
+      clock.now = send_at;
+      auto* packet = dispatcher.obtainNewPacket();
+      ASSERT_NE(packet, nullptr);
+      packet->header = ROUTE_TYPE_DIRECT | (PAYLOAD_TYPE_RAW_CUSTOM << PH_TYPE_SHIFT);
+      packet->payload_len = 1;
+      packet->payload[0] = 0x42;
+      ASSERT_TRUE(dispatcher.sendPacket(packet, 0));
+      dispatcher.loop();
+      ++clock.now;
+      radio.send_complete = true;
+      dispatcher.loop();
+      radio.send_complete = false;
+    }
+    ASSERT_EQ(3, radio.send_starts);
+    ASSERT_EQ(3, dispatcher.completed_packets);
+    clock.now = 9001;
+    dispatcher.loop();
+    EXPECT_EQ(adaptive ? 1 : 0, radio.agc_resets);
+  }
+}
+
+TEST(Dispatcher, AdaptiveAgcWaitsForOnAirTransmitButKeepsTheOverdueDeadline) {
+  RxReservePacketManager manager(4, 1);
+  TestClock clock;
+  clock.now = 1000;
+  TestRadio radio;
+  radio.airtime_ms = 200; // Keep this simulated send inside its real Dispatcher timeout.
+  TestDispatcher dispatcher(radio, clock, manager);
+  dispatcher.configured_agc_interval = 8000;
+  dispatcher.adaptive_agc = true;
+  dispatcher.begin();
+  dispatcher.loop();
+  clock.now = 8990;
+  auto* packet = dispatcher.obtainNewPacket();
+  ASSERT_NE(packet, nullptr);
+  packet->header = ROUTE_TYPE_DIRECT | (PAYLOAD_TYPE_RAW_CUSTOM << PH_TYPE_SHIFT);
+  packet->payload_len = 1;
+  packet->payload[0] = 0x42;
+  ASSERT_TRUE(dispatcher.sendPacket(packet, 0));
+  dispatcher.loop();
+  ASSERT_EQ(1, radio.send_starts);
+  clock.now = 9001;
+  dispatcher.loop();
+  EXPECT_EQ(0, radio.agc_attempts);
+  EXPECT_EQ(0U, nextAgcWake(dispatcher)); // Normal fast TX lifecycle remains due.
+  clock.now = 9100;
+  radio.send_complete = true;
+  dispatcher.loop();
+  EXPECT_EQ(1, dispatcher.completed_packets);
+  EXPECT_EQ(1, radio.agc_resets);
+  EXPECT_EQ(8000U, nextAgcWake(dispatcher));
+}
+
+TEST(Dispatcher, AdaptiveAgcWakeLimitSharesTheEarliestQueuedDeadline) {
+  RxReservePacketManager manager(4, 1);
+  TestClock clock;
+  clock.now = 1000;
+  TestRadio radio;
+  TestDispatcher dispatcher(radio, clock, manager);
+  dispatcher.configured_agc_interval = 8000;
+  dispatcher.adaptive_agc = true;
+  dispatcher.begin();
+  dispatcher.loop();
+  EXPECT_EQ(8000U, nextAgcWake(dispatcher)); // Idle device must still wake for AGC.
+  auto* packet = dispatcher.obtainNewPacket();
+  ASSERT_NE(packet, nullptr);
+  packet->header = ROUTE_TYPE_DIRECT | (PAYLOAD_TYPE_RAW_CUSTOM << PH_TYPE_SHIFT);
+  packet->payload_len = 1;
+  packet->payload[0] = 0x42;
+  manager.queueInbound(packet, 2000);
+  EXPECT_EQ(1000U, nextAgcWake(dispatcher));
+  clock.now = 2001;
+  dispatcher.loop();
+  EXPECT_EQ(1, dispatcher.received_packets);
+  EXPECT_EQ(6999U, nextAgcWake(dispatcher));
+}
+
+TEST(Dispatcher, AdaptiveAgcMillisRolloverAndSuccessfulRxDoNotMoveMaintenance) {
+  RxReservePacketManager manager(4, 1);
+  TestClock clock;
+  clock.now = UINT32_MAX - 4000U;
+  TestRadio radio;
+  TestDispatcher dispatcher(radio, clock, manager);
+  dispatcher.configured_agc_interval = 8000;
+  dispatcher.adaptive_agc = true;
+  dispatcher.begin();
+  dispatcher.loop();
+  ASSERT_EQ(8000U, nextAgcWake(dispatcher));
+  clock.now = 3998;
+  const uint8_t raw[] = {
+    ROUTE_TYPE_DIRECT | (PAYLOAD_TYPE_RAW_CUSTOM << PH_TYPE_SHIFT), 0, 0x42
+  };
+  radio.queueRx(raw, sizeof(raw));
+  dispatcher.loop();
+  EXPECT_EQ(1, dispatcher.received_packets);
+  EXPECT_EQ(0, radio.agc_resets);
+  EXPECT_EQ(1U, nextAgcWake(dispatcher)); // A good packet is not an AGC-health proof.
+  clock.now = 3999;
+  dispatcher.loop();
+  EXPECT_EQ(1, radio.agc_resets);
+  EXPECT_EQ(8000U, nextAgcWake(dispatcher));
+  dispatchNextAgc(dispatcher, clock);
+  EXPECT_EQ(2, radio.agc_resets);
+  EXPECT_EQ(16000U, nextAgcWake(dispatcher));
 }
 
 TEST(StaticPoolPacketManager, ReportsEarliestQueueTimesWithoutDequeuing) {
@@ -1327,6 +1630,62 @@ TEST(RxReservePacketManager, DispatcherKeepsOtaQueuedAcrossSlowQuietWindow) {
   EXPECT_EQ(dispatcher.failed_packet, nullptr);
   clock.now++; radio.send_complete = true; dispatcher.loop();
   EXPECT_EQ(manager.getFreeCount(), 8);
+}
+
+TEST(Dispatcher, SameLoopRecoveryPreventsSleepBeforeAdaptiveAgcRestoresBase) {
+  class RecoveringRadio : public TestRadio {
+  public:
+    bool recoverRadio(bool hard) override {
+      const bool recovered = TestRadio::recoverRadio(hard);
+      ++recovery_count;
+      if (recovered) in_recv_mode = true;
+      return recovered;
+    }
+  } radio;
+  RxReservePacketManager manager(4, 1);
+  TestClock clock;
+  TestDispatcher dispatcher(radio, clock, manager);
+  dispatcher.configured_agc_interval = 8000;
+  dispatcher.adaptive_agc = true;
+  dispatcher.begin();
+  dispatcher.loop();
+  for (unsigned attempt = 0; attempt < 6; ++attempt) {
+    dispatchNextAgc(dispatcher, clock);
+  }
+  ASSERT_EQ(6, radio.agc_resets);
+  ASSERT_EQ(60000U, nextAgcWake(dispatcher));
+
+  // This recovery runs after the loop's initial scheduler configuration.
+  // An RXPS driver can defer its requested floor calibration until next loop,
+  // so the application may immediately ask whether it can take a long sleep.
+  radio.in_recv_mode = false;
+  dispatcher.loop();
+  clock.now += 8001;
+  dispatcher.loop();
+  ASSERT_EQ(1, radio.soft_recoveries);
+  ASSERT_EQ(1U, radio.recovery_count);
+  EXPECT_EQ(6, radio.agc_resets);
+  EXPECT_EQ(0U, nextAgcWake(dispatcher));
+
+  dispatcher.loop();
+  EXPECT_EQ(8000U, nextAgcWake(dispatcher));
+  clock.now += 7999;
+  dispatcher.loop();
+  EXPECT_EQ(6, radio.agc_resets);
+  EXPECT_EQ(1U, nextAgcWake(dispatcher));
+  ++clock.now;
+  dispatcher.loop();
+  EXPECT_EQ(7, radio.agc_resets);
+  EXPECT_EQ(8000U, nextAgcWake(dispatcher));
+
+  // A disabled maintenance interval must not turn unrelated recoveries into
+  // an always-due wake request while its scheduler is intentionally reset.
+  dispatcher.configured_agc_interval = 0;
+  dispatcher.loop();
+  ++radio.recovery_count;
+  uint32_t delay = 123;
+  EXPECT_FALSE(dispatcher.nextQueueWakeDelay(delay));
+  EXPECT_EQ(123U, delay);
 }
 
 int main(int argc, char** argv) {

@@ -430,6 +430,7 @@ protected:
   int getAGCResetInterval() const override {
     return ((int)_prefs.agc_reset_interval) * 4000;   // milliseconds
   }
+  bool useAdaptiveAGC() const override { return _prefs.powersaving_enabled != 0; }
   uint8_t getExtraAckTransmitCount() const override {
     return _prefs.multi_acks;
   }

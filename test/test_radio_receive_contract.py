@@ -92,6 +92,7 @@ struct RadioLibWrapper {
   int arm_result = 0, chip_mode = 1;
   float rssi = -100;
   unsigned arms = 0, stops = 0, soft = 0, hard = 0, reads = 0, mode_reads = 0;
+  uint32_t n_wd_soft = 0, n_wd_hard = 0;
   unsigned calibration_arms = 0, gain_changes = 0, agc_resets = 0;
   bool inject_mode_irq = false;
   NoiseFloorEstimator _floor_estimator;
@@ -142,9 +143,19 @@ struct RadioLibWrapper {
   void requestNoiseFloorRefresh();
   void requestPeriodicNoiseFloorRefresh();
   void recalibrateNoiseFloor();
+  bool resetAGCIfIdle();
+  bool tryResetAGC();
   void resetAGC();
+  @RECOVERY_GETTER@
 };
 @METHODS@
+
+struct LegacyRadio {
+  unsigned resets = 0;
+  virtual void resetAGC() { ++resets; }
+  @LEGACY_TRY_RESET@
+  @LEGACY_RECOVERY_GETTER@
+};
 
 // Exercise both public callers and the shared policy itself. Continuous and
 // fallback Dispatcher triggers intentionally retain their unconditional legacy
@@ -318,8 +329,122 @@ static void periodicRefreshContracts() {
   std::printf("PASS: routine noise-floor cooldown (%u cases)\n", cases);
 }
 
+static void agcAdmissionContracts() {
+  unsigned cases = 0;
+  for (unsigned mode : {0U, 1U, 2U}) for (unsigned owned : {0U, 1U, 2U, 3U, 4U}) {
+    if (mode == 1 && owned == 1) continue; // known RXPS sleep has an explicit wake path
+    RadioLibWrapper w; selectMode(w, mode);
+    w._rx_ps_armed = mode == 1;
+    w._rx_boosted_gain_valid = w._cur_rx_boosted_gain = true;
+    w._nf_last_calib = now_ms;
+    w._nf_calib_deadline = now_ms + 800;
+    w._nf_sample_from = now_ms + NF_CALIB_SETTLE_MS;
+    assert(w._floor_estimator.add(-30, now_ms));
+    assert(w._secondary_floor_estimator.add(-30, now_ms));
+    if (owned == 0) w._cw_active = true;
+    if (owned == 1) w.busy = true; // unknown/continuous BUSY must defer
+    if (owned == 2) w.events.record();
+    if (owned == 3) w.packet = true;
+    if (owned == 4) w.state = STATE_TX_WAIT;
+    const auto state = w.state, armed = uint8_t(w._rx_ps_armed);
+    const auto deadline = w._nf_calib_deadline, sample_from = w._nf_sample_from;
+    unsigned admitted = 0;
+    for (unsigned retry = 0; retry < 3; ++retry) {
+      if (w.tryResetAGC()) ++admitted;
+      // Legacy AGC deliberately retains its historical ability to reset while
+      // BUSY. The adaptive try API defers outside known RXPS sleep.
+      if (owned != 1) w.resetAGC();
+      assert(admitted == 0 && w.agc_resets == 0 && w.gain_changes == 0);
+      assert(w.state == state && w._rx_ps_armed == bool(armed));
+      assert(w._nf_last_calib == now_ms && w._nf_refresh_requested);
+      assert(w._nf_calib_deadline == deadline && w._nf_sample_from == sample_from);
+      assert(w._floor_estimator.count() == 1 && w._secondary_floor_estimator.count() == 1);
+      assert(w._noise_floor_valid && w._noise_floor_secondary_valid);
+      assert(w._noise_floor_centi_dbm == -10500 && w._noise_floor_secondary_centi_dbm == -10600);
+      if (owned == 2) assert(w.hasPendingRadioInterrupt()); // never consume another owner's IRQ
+    }
+    w._cw_active = w.busy = w.packet = false;
+    w.claimRadioInterrupt(); w.state = STATE_RX;
+    assert(w.tryResetAGC()); ++admitted;
+    assert(admitted == 1 && w.agc_resets == 1 && w.gain_changes == 1);
+    assert(w.state == STATE_IDLE && w._nf_refresh_requested && w._nf_last_calib == 0);
+    assert(w._floor_estimator.count() == 0 && w._secondary_floor_estimator.count() == 0);
+    ++cases;
+  }
+  {
+    RadioLibWrapper w; selectMode(w, 1);
+    w._rx_ps_armed = true; w.busy = true;
+    bool admitted = false;
+    // A valid 1 ms listen / 49 ms sleep cycle can remain BUSY at every
+    // phase-25 poll. Known RXPS must use the legacy explicit wake sequence.
+    for (unsigned retry = 0; retry < 10000 && !admitted; ++retry) {
+      now_ms = 25 + retry * 50;
+      admitted = w.tryResetAGC();
+    }
+    assert(admitted && w.agc_resets == 1 && w.state == STATE_IDLE);
+    assert(w._nf_refresh_requested && w._noise_floor_valid);
+    assert(w.reads == 0 && w.radio.scans == 0);
+    ++cases;
+  }
+  for (unsigned mode : {0U, 1U, 2U}) {
+    RadioLibWrapper w; selectMode(w, mode);
+    w.busy = true; w._nf_refresh_requested = false; w._nf_last_calib = now_ms;
+    assert(!w.tryResetAGC() && w.agc_resets == 0 && !w._nf_refresh_requested);
+    w.resetAGC();
+    assert(w.agc_resets == 1 && w.state == STATE_IDLE);
+    assert(w._nf_refresh_requested && w._nf_last_calib == 0);
+    ++cases;
+  }
+  // Admission reports that the sequence ran, not that the hardware is healthy.
+  // Both public APIs preserve independent published floors/validity and the
+  // active window's bound while invalidating samples from the old AGC path.
+  for (unsigned mode : {0U, 1U, 2U}) for (bool primary : {false, true})
+  for (bool secondary : {false, true}) for (bool active_window : {false, true})
+  for (bool legacy : {false, true}) {
+    RadioLibWrapper w; selectMode(w, mode);
+    w._rx_ps_armed = mode == 1 && !active_window;
+    w._rx_boosted_gain_valid = w._cur_rx_boosted_gain = true;
+    w._noise_floor_valid = primary; w._noise_floor_secondary_valid = secondary;
+    w._nf_calib_active = active_window; w._nf_last_calib = now_ms;
+    w._nf_calib_deadline = now_ms + 800;
+    w.n_wd_soft = 2; w.n_wd_hard = 3;
+    assert(w.getRecoveryCount() == 5);
+    assert(w._floor_estimator.add(-30, now_ms));
+    assert(w._secondary_floor_estimator.add(-30, now_ms));
+    ++now_ms;
+    if (legacy) w.resetAGC();
+    else assert(w.tryResetAGC());
+    assert(w.agc_resets == 1 && w.gain_changes == 1 && w.arms == 0);
+    assert(w.state == STATE_IDLE && w._nf_refresh_requested && w._nf_last_calib == 0);
+    assert(w._noise_floor_valid == primary && w._noise_floor_secondary_valid == secondary);
+    assert(w._noise_floor == -105 && w._noise_floor_centi_dbm == -10500);
+    assert(w._noise_floor_secondary_centi_dbm == -10600);
+    assert(w._floor_estimator.count() == 0 && w._secondary_floor_estimator.count() == 0);
+    assert(w._nf_sample_from == now_ms + NF_CALIB_SETTLE_MS);
+    assert(w._nf_calib_active == active_window);
+    assert(w._nf_calib_deadline == (active_window ? now_ms + NF_CALIB_TIMEOUT_MS : 0));
+    assert(w.getRecoveryCount() == 5); // AGC attempts do not inflate watchdog recovery counters
+    ++cases;
+  }
+  {
+    RadioLibWrapper w;
+    assert(w.getRecoveryCount() == 0);
+    w.n_wd_soft = 1; assert(w.getRecoveryCount() == 1);
+    w.n_wd_hard = 2; assert(w.getRecoveryCount() == 3);
+    ++cases;
+  }
+  {
+    LegacyRadio radio;
+    assert(radio.tryResetAGC() && radio.resets == 1);
+    assert(radio.getRecoveryCount() == 0);
+    ++cases;
+  }
+  std::printf("PASS: AGC admission (%u cases)\n", cases);
+}
+
 int main() {
   periodicRefreshContracts();
+  agcAdmissionContracts();
   // A completed packet, current frame, or TX owns the radio; CAD cannot erase it.
   for (int owned : {1, 2, 3}) {
     RadioLibWrapper w;
@@ -776,10 +901,11 @@ int main() {
             result = subprocess.run([str(binary)], capture_output=True, text=True)
             self.assertEqual(result.returncode, 0, result.stderr)
 
-    def run_production_transitions(self, source=None, expect_failure=False):
+    def run_production_transitions(self, source=None, expect_failure=False, phase_failure=False):
         if source is None:
             source = (ROOT / 'src/helpers/radiolib/RadioLibWrappers.cpp').read_text()
         header = (ROOT / 'src/helpers/radiolib/RadioLibWrappers.h').read_text()
+        dispatcher = (ROOT / 'src/Dispatcher.h').read_text()
         rxps = (ROOT / 'src/helpers/radiolib/RXPowerSaving.h').read_text()
         names = [('int16_t','performChannelScanWithTimeout'), ('bool','isPacketPendingOrReceiving'),
                  ('bool','isChannelActive'), ('bool','isReceivingPassive'),
@@ -788,7 +914,8 @@ int main() {
                  ('void','loop'), ('void','triggerNoiseFloorCalibrate'), ('void','requestRestartRecv'), ('void','noiseFloorCalibCheck'),
                  ('void','endNoiseFloorCalib'), ('void','requestNoiseFloorRefresh'),
                  ('void','requestPeriodicNoiseFloorRefresh'),
-                 ('void','recalibrateNoiseFloor'), ('void','resetAGC')]
+                 ('void','recalibrateNoiseFloor'), ('bool','resetAGCIfIdle'),
+                 ('bool','tryResetAGC'), ('void','resetAGC')]
         methods = method(rxps, 'inline bool rxPowerSavingUsesContinuousFallback(') + '\n'
         methods += '\n'.join(method(source, f'{kind} RadioLibWrapper::{name}(') for kind,name in names)
         constants = '\n'.join(re.findall(r'^#define NF_\w+\s+[^\n]+', source, re.MULTILINE))
@@ -797,7 +924,10 @@ int main() {
         settle_start = header.index('#if defined(USE_SX1262) || defined(USE_SX1268) || defined(USE_LLCC68)')
         settle = header[settle_start:header.index('#endif', settle_start) + len('#endif')]
         harness = (HARNESS.replace('@METHODS@', methods).replace('@NF_CONSTANTS@', constants)
-                   .replace('@SETTLE_CONSTANT@', settle))
+                   .replace('@SETTLE_CONSTANT@', settle)
+                   .replace('@RECOVERY_GETTER@', method(header, 'uint32_t getRecoveryCount() const').replace('override', ''))
+                   .replace('@LEGACY_TRY_RESET@', method(dispatcher, 'virtual bool tryResetAGC('))
+                   .replace('@LEGACY_RECOVERY_GETTER@', method(dispatcher, 'virtual uint32_t getRecoveryCount(')))
         with tempfile.TemporaryDirectory(prefix='meshcore-radio-transitions-') as tmp:
             cpp = Path(tmp) / 'test.cpp'
             binary = Path(tmp) / 'test'
@@ -814,14 +944,27 @@ int main() {
             result = subprocess.run([str(binary)], capture_output=True, text=True, timeout=20)
             if expect_failure:
                 self.assertNotEqual(result.returncode, 0, 'unthrottled negative control escaped the regression')
-                self.assertIn('periodicRefreshContracts', result.stderr)
-                self.assertIn('w._nf_refresh_requested == expected', result.stderr)
+                if phase_failure:
+                    self.assertIn('agcAdmissionContracts', result.stderr)
+                    self.assertIn('admitted && w.agc_resets == 1', result.stderr)
+                else:
+                    self.assertIn('periodicRefreshContracts', result.stderr)
+                    self.assertIn('w._nf_refresh_requested == expected', result.stderr)
             else:
                 self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
                 self.assertIn('PASS: routine noise-floor cooldown (262 cases)', result.stdout)
+                self.assertIn('PASS: AGC admission (68 cases)', result.stdout)
 
     def test_production_transitions(self):
         self.run_production_transitions()
+
+    def test_busy_rxps_sleep_phase_lock_negative_control(self):
+        source = (ROOT / 'src/helpers/radiolib/RadioLibWrappers.cpp').read_text()
+        body = method(source, 'bool RadioLibWrapper::tryResetAGC(')
+        self.assertEqual(body.count('_rx_ps_armed || '), 1)
+        unguarded = body.replace('_rx_ps_armed || ', '')
+        self.run_production_transitions(source.replace(body, unguarded),
+                                        expect_failure=True, phase_failure=True)
 
     def test_unthrottled_periodic_callers_and_helper_negative_controls(self):
         source = (ROOT / 'src/helpers/radiolib/RadioLibWrappers.cpp').read_text()

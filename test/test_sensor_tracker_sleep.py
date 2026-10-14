@@ -198,8 +198,9 @@ struct Liveness {unsigned begins=0;uint32_t at=0;void begin(uint32_t now){++begi
 class Dispatcher {
 public:
  bool radio_available=true,dispatcher_started=true,radio_nonrx_timer_armed=true;
- bool agc_reset_armed=true,prev_isrecv_mode=false,nonrx_soft_recovery_attempted=true;
- uint32_t radio_nonrx_start=0,next_floor_calib_time=0,armed_agc_reset_interval=5;
+ bool prev_isrecv_mode=false,nonrx_soft_recovery_attempted=true;
+ struct { unsigned resets=0; void reset(){++resets;} } agc_reset;
+ uint32_t radio_nonrx_start=0,next_floor_calib_time=0;
  uint32_t rx_watchdog_window_start=0;
  Ms ms;Ms* _ms=&ms;DispatcherRadio radio;DispatcherRadio* _radio=&radio;Liveness radio_liveness;
  void setRadioAvailable(bool available);
@@ -220,7 +221,7 @@ int main(){
  assert(!d.radio_available&&!d.radio_nonrx_timer_armed&&d.radio.begins==0);
  d.setRadioAvailable(true);assert(d.radio_available&&d.radio.begins==1&&d.prev_isrecv_mode);
  assert(d.radio_nonrx_start==12345&&d.next_floor_calib_time==12345);
- assert(!d.agc_reset_armed&&d.armed_agc_reset_interval==0);
+ assert(d.agc_reset.resets==1);
 #ifdef RADIO_LIVENESS_SOFT_ONLY
  assert(d.rx_watchdog_window_start==12345);
 #else

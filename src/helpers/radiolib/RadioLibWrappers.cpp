@@ -814,9 +814,20 @@ void RadioLibWrapper::doResetAGC() {
 }
 
 void RadioLibWrapper::resetAGC() {
-  if (_cw_active) return;
+  resetAGCIfIdle();
+}
+
+bool RadioLibWrapper::tryResetAGC() {
+  // BUSY is expected during RXPS sleep. Reuse the legacy explicit wake/reset
+  // sequence there; polling only every 50 ms can miss every short RX window.
+  // Outside known duty cycling, a busy SPI command still defers admission.
+  return (_rx_ps_armed || !isChipBusy()) && resetAGCIfIdle();
+}
+
+bool RadioLibWrapper::resetAGCIfIdle() {
+  if (_cw_active) return false;
   // make sure we're not mid-receiving and mid-sending of packet!
-  if (isPacketPendingOrReceiving() || (state == STATE_TX_WAIT)) return;
+  if (isPacketPendingOrReceiving() || (state == STATE_TX_WAIT)) return false;
 
   doResetAGC();
   state = STATE_IDLE;   // trigger a startReceive()
@@ -830,6 +841,7 @@ void RadioLibWrapper::resetAGC() {
   recalibrateNoiseFloor();
   _noise_floor_valid = previous_valid;
   _noise_floor_secondary_valid = previous_secondary_valid;
+  return true;
 }
 
 bool RadioLibWrapper::recoverRadio(bool hard) {

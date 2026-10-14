@@ -1018,6 +1018,7 @@ protected:
   int getAGCResetInterval() const override {
     return ((int)_prefs.agc_reset_interval) * 4000;   // milliseconds
   }
+  bool useAdaptiveAGC() const override { return _prefs.powersaving_enabled != 0; }
 #ifdef WITH_MQTT_BRIDGE
   uint32_t getRadioWatchdogMillis() const override {
     return ((uint32_t)_cli.getObserverPrefs()->radio_watchdog_minutes) * 60000UL;
