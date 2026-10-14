@@ -3297,6 +3297,14 @@ to inspect listener state, registration, accepted clients, completed RX/TX
 frames, and errors without a PC port probe. <code>get display.wifi</code> also shows the
 actual <code>tcp</code> listener flag independently of the network-services flag. A
 listening socket alone cannot detect LAN firewall or guest-network isolation.</p>
+<p>ESP32 TCP sends are non-blocking, and inbound commands are serviced alongside
+outgoing data rather than waiting for an empty transmit queue. Unsolicited
+radio logs therefore cannot keep the app handshake unread. A live client with
+pending output is disconnected after 10 seconds without write progress;
+other transports continue running. Required replies retain their queue slots,
+so a new command waits if no reply can be admitted. Partially sent frames
+remain pinned to preserve framing, while already queued replies keep the same
+reconnection rules below.</p>
 <p>On WiFi TCP port 5000, reconnecting from the same IP retains queued outgoing
 frames. A different IP takes over immediately, but never receives the previous
 IP's replies: up to four queued frames are parked separately for 30 seconds

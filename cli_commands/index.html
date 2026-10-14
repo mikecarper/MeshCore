@@ -7140,7 +7140,7 @@ request. <code>reg=1</code> confirms the interface is registered for Companion c
 <code>client=1</code> means a TCP client is connected. <code>acc</code>, <code>rx</code>, and <code>tx</code> count accepted
 clients, complete received frames, and complete transmitted frames since boot;
 the value after <code>/</code> is the last frame's hexadecimal opcode. <code>fail</code>, <code>err</code>, and
-<code>retry</code> show listener failures, the last socket error, and seconds until retry.
+<code>retry</code> show listener failures, the last listener-start socket error, and seconds until retry.
 <code>drop</code> gives the last client-disconnect reason. These counters contain no
 message contents or credentials. An open listener does not prove a router or
 guest-network firewall permits access from the phone.</p>
@@ -7148,6 +7148,14 @@ guest-network firewall permits access from the phone.</p>
 reconnect WiFi, interrupt BLE/WebConfig/OTA, replace a healthy app connection,
 or re-enable explicitly disabled WiFi. <code>get display.wifi</code> includes <code>tcp=1</code>
 only when the listener is actually open; <code>services=1</code> alone is not proof.</p>
+<p>The ESP32 TCP transport services input even while radio logs or other outgoing
+frames are pending, so unsolicited traffic cannot starve the app handshake.
+Socket sends are non-blocking. A client that makes no outbound progress for
+10 seconds while data is pending is disconnected (<code>drop=tx-timeout</code>), without
+blocking the other transports. <code>drop=tx-error</code> identifies a fatal send error.
+Commands wait when all reply slots hold delivery-required data, rather than
+executing with nowhere to return their reply. A partly sent frame stays pinned
+until it finishes; input and output remain separate TCP streams.</p>
 <p>See <a href="../terminal_chat_cli/#local-maintenance-commands">local maintenance commands</a>
 for the complete access rules. WiFi-only Companions accept
 all three modes. A Full Companion that runs BLE and infrastructure WiFi
