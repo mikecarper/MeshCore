@@ -8,6 +8,8 @@
 .firmware-picker-intro,
 .firmware-picker-result,
 .firmware-picker-missing,
+.firmware-picker-help,
+.firmware-picker-board-notes,
 .firmware-asset-browser {
   border: 1px solid var(--picker-border);
   border-radius: 0.7rem;
@@ -338,6 +340,13 @@
   margin-top: 1.2rem;
 }
 
+.firmware-picker-help,
+.firmware-picker-board-notes {
+  margin-top: 1.2rem;
+}
+
+.firmware-picker-help summary,
+.firmware-picker-board-notes summary,
 .firmware-asset-browser summary {
   cursor: pointer;
   font-weight: 700;

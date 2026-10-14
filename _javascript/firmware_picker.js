@@ -1502,6 +1502,68 @@
       : { url: fallback, label: "Check partition-expansion availability" };
   }
 
+  function boardNotes(profile) {
+    if (!profile || typeof profile.target !== "string") return [];
+    const identity = parseTargetProfile(profile.target);
+    // Match the exact result, not its broad hardware-family filter. A TFT,
+    // legacy UART or different role must not inherit another image's claims.
+    if (identity.hardware !== profile.hardware || identity.role !== profile.role) return [];
+    const target = profile.target;
+    const info = profile.controls || {};
+    const notes = [];
+    const rak = /^RAK_(3401|4631)_repeater_unified_lora_ota(?:-(?:full|reduced)(?:-ota)?)?$/i.exec(target);
+    const lora = info.updateRequirements && info.updateRequirements.lora;
+    if (rak && info.platform === "NRF52_PLATFORM" && profile.ota === "lora-receiver" &&
+        ["full", "reduced"].includes(profile.sensorProfile) && lora &&
+        lora.storage === "adaptive_internal_or_external_qspi") {
+      notes.push("This unified repeater chooses supported internal or external OTA storage automatically. Full and Reduced select optional sensor drivers, not a storage module. Exact external-flash wiring and the matching OTAFIX bootloader are still required.");
+      notes.push("Internal flash accepts in-place deltas only; supported external QSPI storage accepts full images and in-place deltas. The update package must match the installed target and storage layout.");
+      if (rak[1] === "4631" && info.rs232 === true && info.gps === true) {
+        notes.push("Use UART2 for new RS-232 installations. UART1 remains reserved for potentially powered GPS hardware, and header-connected W25 flash also occupies its pins. Legacy GPS-free Serial1 images remain exact-filename compatibility downloads for existing wiring; selecting the unified image does not migrate wiring or OTA identity.");
+        notes.push("RAK4631 Ethernet requires its separate exact hardware image; it is not a storage choice in this unified repeater.");
+      }
+    }
+    if (/^RAK_4631_repeater_bridge_rs232_serial1(?:_lora_ota_no_external_sensors)?(?:-(?:full|reduced))?$/i.test(target) &&
+        info.platform === "NRF52_PLATFORM" && info.rs232 === true && info.gps === false) {
+      notes.push("This legacy GPS-free Serial1 bridge uses UART1. Do not connect powered UART GPS or header-connected W25 flash to the same pins. Prefer the unified UART2 image for new wiring, but changing images does not migrate an existing installation's wiring or OTA identity.");
+    }
+    if (/^RAK_4631_repeater_ethernet(?:-(?:full|reduced)(?:-ota)?)?$/i.test(target) &&
+        info.platform === "NRF52_PLATFORM" && profile.mode === "ethernet") {
+      notes.push("This is the separate RAK4631 Ethernet hardware image, not the unified internal/external-storage repeater. Use its exact Ethernet hardware and update target.");
+    }
+    if (/^LilyGo_TLora_V2_1_1_6_repeater(?:_observer_mqtt_?)?-full-(?:usb-wifi|logging)$/i.test(target) &&
+        info.platform === "ESP32_PLATFORM" && profile.feature === "full" && info.espnowBridge === true) {
+      const observer = /_observer_mqtt/i.test(target);
+      if (!observer && info.rs232 === true && info.mqtt === false) {
+        notes.push("T-LoRa V2.1 retains two RAM-safe Full images: UART plus ESP-NOW, or MQTT plus ESP-NOW. This image is the UART/RS-232 choice; it does not include direct Wi-Fi MQTT. Select the separate MQTT observer image if that is needed.");
+      } else if (observer && info.mqtt === true && info.rs232 === false) {
+        notes.push("T-LoRa V2.1 retains two RAM-safe Full images: UART plus ESP-NOW, or MQTT plus ESP-NOW. This image is the MQTT observer choice; it does not include the UART/RS-232 bridge. Select the separate UART image if that is needed.");
+      }
+    }
+    if (/^(?:Heltec_v3|Heltec_WSL3|RAK_3112)_repeater(?:_observer_mqtt_?)?-full-usb-wifi$/i.test(target) &&
+        info.platform === "ESP32_PLATFORM" && profile.feature === "full" &&
+        info.rs232 === true && info.mqtt === true && info.espnowBridge === true) {
+      notes.push("This Full MQTT repeater also retains independent RS-232 and ESP-NOW bridges. Use the separate restore-settings controls for each transport; the UART is not MQTT's historical bridge.enabled alias.");
+    }
+    const v4 = /^heltec_v4(?:_3)?(?:_expansionkit)?(?:_r8)?(?:_tft)?$/i.test(profile.hardware);
+    if (v4 && info.platform === "ESP32_PLATFORM" && info.primaryEspnow === false) {
+      if (isFullCompanion(profile) && /^heltec_v4(?:_[a-z0-9]+)*_companion_radio_full(?:_fem(?:on|off))?$/i.test(target)) {
+        notes.push("This Full Companion is LoRa-primary, not the LoRa/ESP-NOW repeater gateway role. For a gateway, choose this exact board's Full repeater when its ESP-NOW bridge is offered.");
+      } else if (profile.role === "repeater" && profile.feature === "full" && info.espnowBridge === true &&
+          /^heltec_v4(?:_[a-z0-9]+)*_repeater(?:_observer_mqtt_?)?-full-(?:usb-wifi|logging)$/i.test(target)) {
+        notes.push("This Full repeater keeps LoRa as its primary mesh radio and can bridge to ESP-NOW when that runtime bridge is enabled. Use the matching restore-settings controls below; the Full Companion is a different role, not the repeater gateway.");
+      }
+    }
+    if (profile.hardware === "wio-e5" && profile.role === "repeater" &&
+        (!info.platform || info.platform === "STM32_PLATFORM") &&
+        /^wio-e5(?:_|-)repeater(?:_bridge_rs232)?$/i.test(target)) {
+      // These exact historical recipes are intentionally separate; do not
+      // infer the RS-232 capability for an ordinary or Mini Companion image.
+      notes.push("Wio-E5 is a flash-capacity exception with separate ordinary repeater and RS-232 bridge images. For RS-232 wiring, choose the exact bridge image rather than assuming the ordinary repeater includes that bridge.");
+    }
+    return notes;
+  }
+
   function installSteps(profile, kind) {
     const common = [
       "Verify that the hardware name and every displayed variant match the physical board.",
@@ -1961,6 +2023,17 @@
       actions.appendChild(migration);
     }
     card.appendChild(actions);
+
+    const notes = boardNotes(profile);
+    if (notes.length) {
+      const details = createElement("details");
+      details.className = "firmware-picker-board-notes";
+      details.appendChild(createElement("summary", "Board notes"));
+      notes.forEach(function (text) {
+        details.appendChild(createElement("p", text));
+      });
+      card.appendChild(details);
+    }
 
     const steps = createElement("div");
     steps.className = "firmware-picker-steps";
@@ -2582,6 +2655,8 @@
     runtimeDirections: runtimeDirections,
     runtimePanelDirections: runtimePanelDirections,
     renderRuntimeDirections: renderRuntimeDirections,
+    renderProfileCard: renderProfileCard,
+    boardNotes: boardNotes,
     installSteps: installSteps,
     migrationReleaseUrl: migrationReleaseUrl,
     migrationPackageForProfile: migrationPackageForProfile,
