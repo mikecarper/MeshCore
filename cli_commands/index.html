@@ -2804,6 +2804,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#periodic-transmit-only-text-beacons" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Periodic transmit-only text beacons
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#view-or-change-the-radio-watchdog-interval-mqtt-observer-only" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -5679,6 +5690,17 @@
     <span class="md-ellipsis">
       
         View or change the AGC Reset Interval
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#periodic-transmit-only-text-beacons" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Periodic transmit-only text beacons
       
     </span>
   </a>
@@ -9329,6 +9351,10 @@ have host regression coverage, but are not hardware-qualified sensitivity or
 battery-life results; noisy sites may require a short fixed interval with
 device power saving off.</p>
 <hr />
+<h4 id="periodic-transmit-only-text-beacons">Periodic transmit-only text beacons</h4>
+<p>See <a href="../tx_beacons/">TX beacons</a> for the 12 independent MeshCore Public or
+Meshtext slots. <code>set beacon.interval 12|24|36|48</code> selects the shared cycle;
+the default is 24 hours. Slots are staggered and disabled until configured.</p>
 <h4 id="view-or-change-the-radio-watchdog-interval-mqtt-observer-only">View or change the radio watchdog interval (MQTT observer only)</h4>
 <p><strong>Usage:</strong>
 - <code>get radio.watchdog</code>
