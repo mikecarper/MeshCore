@@ -3158,6 +3158,9 @@ void MyMesh::begin(bool has_display, bool radio_available,
 #endif
 
   configureRadioFromPrefs();
+#if MESH_ENABLE_TX_BEACONS
+  beginBeacons();
+#endif
 #if MESH_ENABLE_MESHTEXT_CHAT
   beginMeshtext();
 #endif
@@ -3688,6 +3691,9 @@ bool MyMesh::handleLocalControlCommand(const char* command, char* reply,
   }
 
   if (handleTxRoutingCommand(command, reply, reply_size)) return true;
+#if MESH_ENABLE_TX_BEACONS
+  if (handleBeaconCommand(command, reply, reply_size)) return true;
+#endif
 #if MESH_ENABLE_MESHTEXT_CHAT
   if (handleMeshtextCommand(command, reply, reply_size)) return true;
 #endif
@@ -7234,6 +7240,9 @@ void MyMesh::handleCmdFrame(size_t len) {
       MESH_DEBUG_PRINTLN("Factory reset: disabling serial interface to prevent reconnects (BLE/WiFi)");
       _serial->disable(); // Phone app disconnects before we can send OK frame so it's safe here
     }
+#if MESH_ENABLE_TX_BEACONS
+    suspendBeacons();
+#endif
     bool success = _store->formatFileSystem();
     if (success) {
       writeOKFrame();
@@ -10030,6 +10039,10 @@ void MyMesh::handleTerminalCommand(char* command, bool reader_prompt,
         "  board\r\n"
         "  version\r\n");
     terminalOutput().print("  get storage.layout\r\n");
+#if MESH_ENABLE_TX_BEACONS
+    terminalOutput().print("  get beacon [slot] / set beacon <slot> <meshcore|meshtext> ...\r\n"
+        "  delete beacon <slot|all> / set beacon.interval <12|24|36|48> (default 24h)\r\n");
+#endif
 #if MESH_ENABLE_MESHTEXT_CHAT
     terminalOutput().print("  get mt.status / get mt.region / get mt.slot / get mt.hops\r\n"
         "  get mt.node / get mt.shortname\r\n"
@@ -10303,6 +10316,9 @@ bool MyMesh::handleDirectCommand(const char* command, char* reply, size_t reply_
     return true;
   }
   if (strcmp(command, "erase") == 0) {
+#if MESH_ENABLE_TX_BEACONS
+    suspendBeacons();
+#endif
     if (_store->formatFileSystem()) {
       stopContactsIterator();
       resetContacts();
@@ -10836,6 +10852,9 @@ complete_line:
       scanInternalExtraFS(output);
 #endif
     } else if (strcmp(cli_command, "rebuild") == 0) {
+#if MESH_ENABLE_TX_BEACONS
+      suspendBeacons();
+#endif
       bool success = _store->formatFileSystem();
       if (success) {
         const bool identity_saved = _store->saveMainIdentity(self_id);
@@ -10862,6 +10881,9 @@ complete_line:
         output.println("  Error: erase failed");
       }
     } else if (strcmp(cli_command, "erase") == 0) {
+#if MESH_ENABLE_TX_BEACONS
+      suspendBeacons();
+#endif
       bool success = _store->formatFileSystem();
 #if MESH_ENABLE_MESHTEXT_CHAT
       if (success && !eraseMeshtextSettings()) {
@@ -11119,6 +11141,9 @@ void MyMesh::loop() {
 #endif
 
   if (!mesh::morseTimingActive(_radio)) _radio_profiles.loop();
+#if MESH_ENABLE_TX_BEACONS
+  if (!mesh::morseTimingActive(_radio)) loopBeacons();
+#endif
 #if MESH_ENABLE_MESHTEXT_CHAT
   refreshMeshtextProfile();
 #endif

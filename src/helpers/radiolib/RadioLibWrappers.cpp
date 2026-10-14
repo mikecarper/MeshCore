@@ -168,6 +168,9 @@ bool RadioLibWrapper::claimRadioInterrupt() {
 }
 
 void RadioLibWrapper::begin() {
+#if MESH_ENABLE_TX_BEACONS
+  if (_beacon_owned) return;
+#endif
   syncProfileClock(_profiles.enabled());
 #ifdef USE_CC310_HW_CRYPTO
   // Initialize CryptoCell once from normal task context. The session helper
@@ -235,6 +238,9 @@ uint32_t RadioLibWrapper::getRngSeed() {
 }
 
 bool RadioLibWrapper::setTxPower(int8_t dbm) {
+#if MESH_ENABLE_TX_BEACONS
+  if (_beacon_owned) return false;
+#endif
   // A CW power-meter sweep may re-key the carrier. During Morse that would
   // turn an inter-symbol gap into RF and corrupt the text, so keep the whole
   // message exclusive (including cleanup retries).
@@ -276,6 +282,9 @@ bool RadioLibWrapper::setTxPower(int8_t dbm) {
 }
 
 uint8_t RadioLibWrapper::beginReconfigure() {
+#if MESH_ENABLE_TX_BEACONS
+  if (_beacon_owned && !_beacon_restoring) return 2;
+#endif
   if (_cw_active) return 2;
   const uint8_t base_state = state;
   // On SX126x/LR11xx duty-cycle RX, BUSY may remain asserted during the sleep
@@ -305,6 +314,9 @@ void RadioLibWrapper::endReconfigure(bool resume_rx) {
 }
 
 bool RadioLibWrapper::restoreAfterDeepInit() {
+#if MESH_ENABLE_TX_BEACONS
+  if (_beacon_owned) cacheBeaconRestoreParams();
+#endif
   if (!radioDeepInit()) return false;
 
   _rx_ps_armed = false;
@@ -318,7 +330,7 @@ bool RadioLibWrapper::restoreAfterDeepInit() {
     restored = _radio->setPreambleLength(currentPreambleLength())
         == RADIOLIB_ERR_NONE;
   }
-#if MESH_ENABLE_MESHTEXT_CHAT
+#if MESH_ENABLE_MESHTEXT_WIRE
   restored = restored && applyProtocol(_physical_protocol);
 #endif
   if (_dbm_valid) {
@@ -346,7 +358,7 @@ mesh::RadioParamApplyResult RadioLibWrapper::trySetParams(float freq, float bw, 
   const uint8_t previous_sf = _cur_sf;
   const uint8_t previous_cr = _cur_cr;
   const uint16_t previous_preamble = _physical_preamble;
-#if MESH_ENABLE_MESHTEXT_CHAT
+#if MESH_ENABLE_MESHTEXT_WIRE
   const auto previous_protocol = _physical_protocol;
 #endif
   const uint8_t previous_profile = _active_profile;
@@ -363,7 +375,7 @@ mesh::RadioParamApplyResult RadioLibWrapper::trySetParams(float freq, float bw, 
   _physical_preamble = profilePreamble(0);
 
   bool success = applyParams(freq, bw, sf, cr);
-#if MESH_ENABLE_MESHTEXT_CHAT
+#if MESH_ENABLE_MESHTEXT_WIRE
   success = success && applyProtocol(requested.protocol);
   if (success) _physical_protocol = requested.protocol;
 #endif
@@ -397,7 +409,7 @@ mesh::RadioParamApplyResult RadioLibWrapper::trySetParams(float freq, float bw, 
     _profile_generation = previous_generation;
     _profile_refresh_required = previous_refresh;
     _physical_preamble = previous_preamble;
-#if MESH_ENABLE_MESHTEXT_CHAT
+#if MESH_ENABLE_MESHTEXT_WIRE
     _physical_protocol = previous_protocol;
 #endif
     _rx_ps_enabled = previous_rxps;
@@ -408,7 +420,7 @@ mesh::RadioParamApplyResult RadioLibWrapper::trySetParams(float freq, float bw, 
     bool restored = had_previous_params
       && _radio->standby() == RADIOLIB_ERR_NONE
       && applyParams(previous_freq, previous_bw, previous_sf, previous_cr);
-#if MESH_ENABLE_MESHTEXT_CHAT
+#if MESH_ENABLE_MESHTEXT_WIRE
     restored = restored && applyProtocol(previous_protocol);
 #endif
 
@@ -448,6 +460,9 @@ bool RadioLibWrapper::validateProfile(const mesh::RadioProfileParams& p) const {
 }
 
 mesh::RadioParamApplyResult RadioLibWrapper::tuneProfile(uint8_t profile) {
+#if MESH_ENABLE_TX_BEACONS
+  if (_beacon_owned && !_beacon_restoring) return mesh::RadioParamApplyResult::BUSY;
+#endif
   if (_cw_active) return mesh::RadioParamApplyResult::BUSY;
   if (profile > 1 || (profile == 1 && !_profiles.enabled())) return mesh::RadioParamApplyResult::FAILED;
   const auto& p = _profiles.params(profile);
@@ -469,12 +484,12 @@ mesh::RadioParamApplyResult RadioLibWrapper::tuneProfile(uint8_t profile) {
   const bool old_refresh = _profile_refresh_required;
   const bool old_params_valid = _params_valid;
   const uint16_t old_preamble = _physical_preamble;
-#if MESH_ENABLE_MESHTEXT_CHAT
+#if MESH_ENABLE_MESHTEXT_WIRE
   const auto old_protocol = _physical_protocol;
 #endif
   _physical_preamble = preamble;
   bool applied = applyParams(p.freq, p.bw, p.sf, p.cr);
-#if MESH_ENABLE_MESHTEXT_CHAT
+#if MESH_ENABLE_MESHTEXT_WIRE
   // Changing only the protocol still changes the sync word. Conversely a
   // failed write must not publish the new generation or cached wire format.
   if (applied && (_physical_protocol != p.protocol || _profile_refresh_required)) {
@@ -504,12 +519,12 @@ mesh::RadioParamApplyResult RadioLibWrapper::tuneProfile(uint8_t profile) {
     _profile_generation = old_generation;
     _profile_refresh_required = old_refresh;
     _physical_preamble = old_preamble;
-#if MESH_ENABLE_MESHTEXT_CHAT
+#if MESH_ENABLE_MESHTEXT_WIRE
     _physical_protocol = old_protocol;
 #endif
     bool restored = old_params_valid && _radio->standby() == RADIOLIB_ERR_NONE
         && applyParams(old_freq, old_bw, old_sf, old_cr);
-#if MESH_ENABLE_MESHTEXT_CHAT
+#if MESH_ENABLE_MESHTEXT_WIRE
     restored = restored && applyProtocol(old_protocol);
 #endif
     if (!restored) restored = restoreAfterDeepInit();
@@ -533,11 +548,142 @@ mesh::RadioParamApplyResult RadioLibWrapper::tuneProfile(uint8_t profile) {
   return applied ? mesh::RadioParamApplyResult::APPLIED : mesh::RadioParamApplyResult::FAILED;
 }
 
+#if MESH_ENABLE_TX_BEACONS
+uint32_t RadioLibWrapper::getBeaconAirtime(const mesh::RadioProfileParams& p, int length) {
+  if (length <= 0 || length > MAX_TRANS_UNIT || !validateProfile(p)) return 0;
+  const uint16_t preamble = p.protocol == mesh::RadioProfileProtocol::Meshtext
+      ? 16 : (p.preamble ? p.preamble : 32);
+  if (!mesh::RadioProfiles::safePreamble(p, preamble)) return 0;
+  const double symbol = mesh::RadioProfiles::symbolUs(p);
+  const int de = symbol >= 16000 ? 1 : 0;
+  const double coded = ceil((8.0 * length - 4 * p.sf + (p.sf <= 6 ? 20 : 28) + 16)
+      / (4 * (p.sf - 2 * de)));
+  const double payload = 8 + (coded > 0 ? coded * p.cr : 0);
+  return static_cast<uint32_t>(ceil((preamble + (p.sf <= 6 ? 6.25 : 4.25) + payload)
+                                  * symbol / 1000.0));
+}
+
+void RadioLibWrapper::cacheBeaconRestoreParams() {
+  const uint8_t profile = _beacon_restore_profile == 1 && _profiles.enabled() ? 1 : 0;
+  const auto& p = _profiles.params(profile);
+  // These remain NORMAL cached settings even while the physical modem is
+  // briefly elsewhere. A hard recovery must never resurrect a beacon modem.
+  cacheParams(p.freq, p.bw, p.sf, p.cr);
+  _active_profile = profile;
+  _profile_generation = _profiles.generation[profile];
+  _physical_preamble = profilePreamble(profile);
+#if MESH_ENABLE_MESHTEXT_WIRE
+  _physical_protocol = p.protocol;
+#endif
+  _profile_refresh_required = true;
+}
+
+mesh::RadioParamApplyResult RadioLibWrapper::prepareBeaconTransmit(
+    const mesh::RadioProfileParams& p, int8_t power) {
+  using Result = mesh::RadioParamApplyResult;
+  if (_beacon_owned || _cw_active) return Result::BUSY;
+  if (!_params_valid || !_dbm_valid || !getBeaconAirtime(p, MAX_TRANS_UNIT)) return Result::FAILED;
+  if (isCalibratingNoiseFloor()) return Result::BUSY;
+
+  beginProfileRetune(isInRecvMode() && !_rx_ps_armed && !_rx_ps_enabled);
+  const uint8_t resume = beginReconfigure();
+  if (resume > 1) {
+    endProfileRetune(true);
+    return Result::BUSY;
+  }
+  // Admission consumed no pending receive. From this point every error keeps
+  // an exclusive lease until the ordinary receiver has been restored.
+  _beacon_restore_profile = _active_profile;
+  _beacon_owned = true;
+  _beacon_restore_at = 0;
+  _beacon_cad_timeout = cadScanTimeoutMillis(p.sf, p.bw);
+  _physical_preamble = p.protocol == mesh::RadioProfileProtocol::Meshtext
+      ? 16 : (p.preamble ? p.preamble : 32);
+  bool applied = _radio->standby() == RADIOLIB_ERR_NONE
+      && applyParams(p.freq, p.bw, p.sf, p.cr);
+#if MESH_ENABLE_MESHTEXT_WIRE
+  applied = applied && applyProtocol(p.protocol);
+  if (applied) _physical_protocol = p.protocol;
+#endif
+  applied = applied && applyCachedTxPower(power) == RADIOLIB_ERR_NONE;
+  endProfileRetune(applied);
+  _rx_hold_continuous = false;
+  state = STATE_IDLE;
+  // Do not startReceive: this is a TX-only excursion, not a third RX profile.
+  return applied ? Result::APPLIED : Result::FAILED;
+}
+
+bool RadioLibWrapper::isBeaconChannelBusy() {
+  if (!_beacon_owned || _beacon_restoring || state == STATE_TX_WAIT || isChipBusy()) return true;
+  const int16_t result = performChannelScanWithTimeout(_beacon_cad_timeout);
+  // CAD IRQs are not packets. Stop CAD even on failure before TX/restore, and
+  // never compare this frequency's RSSI with either normal profile's floor.
+  const bool stopped = _radio->standby() == RADIOLIB_ERR_NONE;
+  const bool cleared = _radio->clearIrqFlags(UINT32_MAX) == RADIOLIB_ERR_NONE;
+  claimRadioInterrupt();
+  state = STATE_IDLE;
+  return result != RADIOLIB_CHANNEL_FREE || !stopped || !cleared;
+}
+
+mesh::RadioParamApplyResult RadioLibWrapper::restoreBeaconReceive() {
+  using Result = mesh::RadioParamApplyResult;
+  if (!_beacon_owned) return Result::APPLIED;
+  if (state == STATE_TX_WAIT) return Result::BUSY;
+  const uint32_t now = millis();
+  if (_beacon_restore_at && static_cast<int32_t>(now - _beacon_restore_at) < 0) return Result::BUSY;
+  _beacon_restoring = true;
+  cacheBeaconRestoreParams();
+  const auto& p = _profiles.params(_active_profile);
+  bool restored = validateProfile(p) && !isChipBusy()
+      && _radio->standby() == RADIOLIB_ERR_NONE;
+  beginProfileRetune(false);
+  restored = restored && applyParams(p.freq, p.bw, p.sf, p.cr);
+#if MESH_ENABLE_MESHTEXT_WIRE
+  restored = restored && applyProtocol(p.protocol);
+#endif
+  restored = restored && applyCachedTxPower(_cur_dbm) == RADIOLIB_ERR_NONE;
+  endProfileRetune(restored);
+  if (restored) {
+    // No RX ran on the beacon tuple, so any remaining event belongs to its
+    // CAD/TX lifecycle. Retire it before the normal receiver is armed.
+    restored = _radio->clearIrqFlags(UINT32_MAX) == RADIOLIB_ERR_NONE;
+  }
+  if (!restored) {
+    restored = restoreAfterDeepInit()
+        && _radio->clearIrqFlags(UINT32_MAX) == RADIOLIB_ERR_NONE;
+  }
+  claimRadioInterrupt();
+  if (restored) {
+    state = STATE_IDLE;
+    startRecv();
+    restored = isInRecvMode();
+    if (!restored && restoreAfterDeepInit()) {
+      state = STATE_IDLE;
+      startRecv();
+      restored = isInRecvMode();
+    }
+  }
+  _beacon_restoring = false;
+  if (!restored) {
+    _beacon_restore_at = now + 100;
+    if (!_beacon_restore_at) _beacon_restore_at = 1;
+    return Result::BUSY;
+  }
+  _profile_refresh_required = false;
+  _beacon_restore_at = 0;
+  _beacon_owned = false;
+  return Result::APPLIED;
+}
+#endif
+
 mesh::RadioParamApplyResult RadioLibWrapper::prepareTransmitProfile(uint8_t profile) {
   return prepareTransmitProfile(profile, false);
 }
 
 mesh::RadioParamApplyResult RadioLibWrapper::prepareTransmitProfile(uint8_t profile, bool reply_rx_override) {
+#if MESH_ENABLE_TX_BEACONS
+  if (_beacon_owned) return mesh::RadioParamApplyResult::BUSY;
+#endif
   if (!_profiles.canTransmit(profile, reply_rx_override)) return mesh::RadioParamApplyResult::FAILED;
   if (_profiles.enabled() && (isChipBusy() || isPacketPendingOrReceiving())) {
     return mesh::RadioParamApplyResult::BUSY;
@@ -727,6 +873,9 @@ void RadioLibWrapper::idle() {
 }
 
 bool RadioLibWrapper::setTrackerSleep(bool sleeping) {
+#if MESH_ENABLE_TX_BEACONS
+  if (_beacon_owned) return false;
+#endif
   if (_cw_active || (state & 0x0f) == STATE_TX_WAIT) return false;
   if (sleeping && isPacketPendingOrReceiving()) return false;
   if (_radio->standby() != RADIOLIB_ERR_NONE) return false;
@@ -825,6 +974,9 @@ bool RadioLibWrapper::tryResetAGC() {
 }
 
 bool RadioLibWrapper::resetAGCIfIdle() {
+#if MESH_ENABLE_TX_BEACONS
+  if (_beacon_owned) return false;
+#endif
   if (_cw_active) return false;
   // make sure we're not mid-receiving and mid-sending of packet!
   if (isPacketPendingOrReceiving() || (state == STATE_TX_WAIT)) return false;
@@ -845,6 +997,11 @@ bool RadioLibWrapper::resetAGCIfIdle() {
 }
 
 bool RadioLibWrapper::recoverRadio(bool hard) {
+#if MESH_ENABLE_TX_BEACONS
+  // A failed startSendRaw() may request recovery. Defer that to the owner's
+  // restore transaction so a reset never reapplies the beacon wire settings.
+  if (_beacon_owned && !_beacon_restoring) return false;
+#endif
   if (_cw_active) return false;
   const uint8_t base_state = state;
   if (hasPendingRadioInterrupt() || base_state == STATE_TX_WAIT) return false;
@@ -1475,6 +1632,9 @@ bool RadioLibWrapper::serviceCarrierWave() {
 }
 
 void RadioLibWrapper::loop() {
+#if MESH_ENABLE_TX_BEACONS
+  if (_beacon_owned) return;
+#endif
   syncProfileClock(_profiles.enabled());
   if (serviceCarrierWave()) return;
   if (_profiles.enabled()) {
@@ -1618,6 +1778,9 @@ void RadioLibWrapper::loop() {
 }
 
 void RadioLibWrapper::startRecv() {
+#if MESH_ENABLE_TX_BEACONS
+  if (_beacon_owned && !_beacon_restoring) return;
+#endif
   if (_cw_active) return;
   int err = startReceiveMode();
   if (err == RADIOLIB_ERR_NONE) {
@@ -1687,6 +1850,9 @@ bool RadioLibWrapper::isInRecvMode() const {
 
 // RX PowerSaving
 bool RadioLibWrapper::setRxPowerSaving(bool enabled, uint32_t rx_us, uint32_t sleep_us) {
+#if MESH_ENABLE_TX_BEACONS
+  if (_beacon_owned) return false;
+#endif
   if (_cw_active) return false;
   if (_profile_rxps_suspended) {
     _profile_saved_rxps = enabled;
@@ -1711,6 +1877,9 @@ bool RadioLibWrapper::setRxPowerSaving(bool enabled, uint32_t rx_us, uint32_t sl
 }
 
 int RadioLibWrapper::recvRaw(uint8_t* bytes, int sz) {
+#if MESH_ENABLE_TX_BEACONS
+  if (_beacon_owned) return 0;
+#endif
   if (_cw_active) return 0;
   int len = 0;
   #if defined(USE_LR2021)

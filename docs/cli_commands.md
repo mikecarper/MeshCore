@@ -2792,6 +2792,12 @@ device power saving off.
 
 ---
 
+#### Periodic transmit-only text beacons
+
+See [TX beacons](tx_beacons.md) for the 12 independent MeshCore Public or
+Meshtext slots. `set beacon.interval 12|24|36|48` selects the shared cycle;
+the default is 24 hours. Slots are staggered and disabled until configured.
+
 #### View or change the radio watchdog interval (MQTT observer only)
 **Usage:**
 - `get radio.watchdog`

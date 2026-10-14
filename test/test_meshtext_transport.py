@@ -277,7 +277,8 @@ int main() {
   }
 }
 '''
-        self.compile_and_run(harness + methods + cases, ['-DMESH_ENABLE_MESHTEXT_CHAT=1'])
+        self.compile_and_run(harness + methods + cases,
+                             ['-DMESH_ENABLE_MESHTEXT_CHAT=1', '-DMESH_ENABLE_MESHTEXT_WIRE=1'])
 
     def test_sx1262_wire_settings_and_deep_recovery(self):
         wrapper = (ROOT/'src/helpers/radiolib/CustomSX1262Wrapper.h').read_text()
@@ -314,6 +315,8 @@ struct CustomSX1262: SX1262 {
 };
 struct RadioLibWrapper {
   CustomSX1262 chip;CustomSX1262* _radio=&chip;
+  bool supported=true;
+  bool supportsMeshtext() const { return supported; }
   bool _rx_ps_armed=true,_params_valid=true,_dbm_valid=false,_rx_boosted_gain_valid=false;
   int state=1;uint8_t _cur_sf=11,_cur_cr=5;float _cur_freq=906.875,_cur_bw=250;
   int8_t _cur_dbm=22;bool _cur_rx_boosted_gain=false;
@@ -343,11 +346,14 @@ int main() {
   assert(w.chip.sync==0x2b && w.chip.crc && w.chip.explicit_header && !w.chip.iq);
   assert(!w._rx_ps_armed && w.state==STATE_IDLE);
   w._physical_protocol=Protocol::MeshCore;assert(w.restoreAfterDeepInit());assert(w.chip.sync==0x12);
+  RadioLibWrapper disabled;disabled.supported=false;
+  assert(disabled.applyProtocol(Protocol::MeshCore));
+  assert(!disabled.applyProtocol(Protocol::Meshtext) && disabled.chip.step==0);
 }
 '''
         self.compile_and_run('#include <initializer_list>\n' + harness.replace('@WIRE@',wire)
                              .replace('@PROTOCOL@',protocol).replace('@RESTORE@',restore),
-                             ['-DMESH_ENABLE_MESHTEXT_CHAT=1'])
+                             ['-DMESH_ENABLE_MESHTEXT_CHAT=1', '-DMESH_ENABLE_MESHTEXT_WIRE=1'])
 
 
 if __name__ == '__main__':

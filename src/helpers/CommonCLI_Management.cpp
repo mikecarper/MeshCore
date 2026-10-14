@@ -244,6 +244,9 @@ static bool resolveDataScope(DataRouteState& route, TransportKey& scope,
 
 void CommonCLI::beginManagement(mesh::Mesh& mesh, FILESYSTEM* fs) {
   _management_mesh = &mesh; _management_fs = fs;
+#if MESH_ENABLE_TX_BEACONS
+  beginBeacons();
+#endif
   _management_last_ms = millis(); _management_uptime_ms = _management_last_ms;
 #if MESH_ENABLE_FLEET_CONTROL
   if (_callbacks->supportsFleetControl()

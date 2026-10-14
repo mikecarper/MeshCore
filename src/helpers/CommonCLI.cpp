@@ -175,6 +175,9 @@ void CommonCLI::loop() {
   if (!mesh::morseTimingActive(_callbacks->getProfileRadio())) {
     _radio_profiles.loop();
     loopManagement();
+#if MESH_ENABLE_TX_BEACONS
+    loopBeacons();
+#endif
   }
 #if defined(ESP32_PLATFORM) || defined(USER_GPIO_CONTROL)
   _user_gpio.loop();
@@ -2950,6 +2953,9 @@ void CommonCLI::handleCommand(uint32_t sender_timestamp, char* command, char* re
 #endif
     if (mesh::handleUsbLoggingWatchdogCommand(command, reply, 160)) return;
     if (handleManagementCommand(command, reply)) return;
+#if MESH_ENABLE_TX_BEACONS
+    if (handleBeaconCommand(command, reply, 157)) return;
+#endif
     if (mesh::wireless::control().handle(command, reply, 160, millis(),
                                        _callbacks->wirelessCommandSource(sender_timestamp))) return;
     // Infrastructure callers can already have reflected a three-byte CLI
@@ -3249,6 +3255,9 @@ void CommonCLI::handleCommand(uint32_t sender_timestamp, char* command, char* re
     } else if (memcmp(command, "del ", 4) == 0) {
       handleDelCmd(command, reply);
     } else if (sender_timestamp == 0 && strcmp(command, "erase") == 0) {
+#if MESH_ENABLE_TX_BEACONS
+      suspendBeacons();
+#endif
       bool s = _callbacks->formatFileSystem();
       sprintf(reply, "File system erase: %s", s ? "OK" : "Err");
     } else if (memcmp(command, "ver", 3) == 0) {

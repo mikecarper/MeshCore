@@ -618,6 +618,13 @@ public:
   void begin();
   void loop();
 
+#if MESH_ENABLE_TX_BEACONS
+  bool validateTextBeacon(const BeaconSlot& slot) const;
+  bool queueTextBeacon(const BeaconSlot& slot, const char* node_name,
+                       uint32_t mt_from, uint32_t mt_id);
+  uint32_t beaconNodeId() const;
+#endif
+
   LocalIdentity self_id;
 
   RNG* getRNG() const { return _rng; }

@@ -1,5 +1,7 @@
 #pragma once
 
+#include "BeaconFeatureConfig.h"
+
 // Resolve the chip in every translation unit, including Dispatcher.cpp which
 // includes this before Arduino.h. Otherwise different class layouts could be
 // selected for the same build depending on include order.
@@ -22,5 +24,19 @@
     #define MESH_ENABLE_MESHTEXT_CHAT 1
   #else
     #define MESH_ENABLE_MESHTEXT_CHAT 0
+  #endif
+#endif
+
+// Compile the bounded wire codec uniformly for beacon-enabled builds. Some
+// variants discover their radio chip only when Arduino includes the variant
+// header; using USE_SX1262 here would select inconsistent class layouts and
+// omit codec definitions in translation units that do not include Arduino.
+// Concrete driver capability still gates Meshtext TX independently. This
+// does not enable Companion chat, RX handling, or automatic radio2 management.
+#ifndef MESH_ENABLE_MESHTEXT_WIRE
+  #if MESH_ENABLE_MESHTEXT_CHAT || MESH_ENABLE_TX_BEACONS
+    #define MESH_ENABLE_MESHTEXT_WIRE 1
+  #else
+    #define MESH_ENABLE_MESHTEXT_WIRE 0
   #endif
 #endif

@@ -9,6 +9,7 @@
 #include <helpers/MorseTx.h>
 #include <helpers/MorseRx.h>
 #include <helpers/AGCResetScheduler.h>
+#include <helpers/BeaconConfig.h>
 #ifndef RADIO_LIVENESS_SOFT_ONLY
   #include <helpers/RadioLivenessTracker.h>
 #endif
@@ -91,6 +92,15 @@ public:
   virtual const RadioProfiles* profiles() const { return nullptr; }
   virtual bool validateProfile(const RadioProfileParams&) const { return false; }
   virtual bool supportsMeshtext() const { return false; }
+#if MESH_ENABLE_TX_BEACONS
+  virtual RadioParamApplyResult prepareBeaconTransmit(const RadioProfileParams&, int8_t) {
+    return RadioParamApplyResult::FAILED;
+  }
+  virtual RadioParamApplyResult restoreBeaconReceive() { return RadioParamApplyResult::APPLIED; }
+  virtual bool isBeaconRadioOwned() const { return false; }
+  virtual bool isBeaconChannelBusy() { return true; }
+  virtual uint32_t getBeaconAirtime(const RadioProfileParams&, int) { return 0; }
+#endif
   virtual uint8_t receiveProfile() const { return 0; }
   virtual uint32_t receiveProfileGeneration() const {
     return profiles() ? profiles()->generation[receiveProfile()] : 0;
@@ -553,6 +563,17 @@ protected:
 public:
   void begin();
   void loop();
+#if MESH_ENABLE_TX_BEACONS
+  ~Dispatcher();
+  bool queueBeaconRadioFrame(const uint8_t* bytes, size_t length,
+                            const RadioProfileParams& params, int8_t power);
+  void cancelBeaconRadioFrame();
+  bool hasBeaconRadioFrame() const { return beacon_tx != nullptr; }
+  void setBeaconWakeDelay(uint32_t now, uint32_t delay, bool enabled) {
+    beacon_wake_at = now + delay;
+    beacon_wake_enabled = enabled;
+  }
+#endif
   Radio* getProfileRadio() { return _radio; }
   bool isDualRadioActive() const { return _radio->profiles() && _radio->profiles()->enabled(); }
 
@@ -573,6 +594,9 @@ public:
   uint16_t getErrFlags() const { return _err_flags; }  // Get error flags
   bool hasOutbound() const {
     return outbound != NULL
+#if MESH_ENABLE_TX_BEACONS
+        || hasBeaconRadioFrame()
+#endif
 #if MESH_ENABLE_MESHTEXT_CHAT
         || hasForeignRadioFrame()
 #endif
@@ -595,6 +619,15 @@ private:
   uint32_t profile_cad_busy[2] = {};
   uint8_t receive_context_profile = 0;
   bool receive_context_active = false;
+#if MESH_ENABLE_TX_BEACONS
+  struct BeaconTransmit;
+  BeaconTransmit* beacon_tx = nullptr;
+  uint32_t beacon_wake_at = 0, beacon_last_start = 0;
+  bool beacon_wake_enabled = false, beacon_has_started = false;
+  bool serviceBeaconRadioFrame();
+  bool checkBeaconRadioSend();
+  void accountBeaconAirtime();
+#endif
 #if MESH_PACKET_LOGGING
   void logPacketLine(const char* direction, const Packet* packet, int len,
                      bool include_rx_metrics, float score,

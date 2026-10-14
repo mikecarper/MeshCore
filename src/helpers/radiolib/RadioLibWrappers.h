@@ -89,7 +89,7 @@ protected:
   mesh::RadioProfiles _profiles;
   uint8_t _active_profile = 0;
   uint16_t _physical_preamble = 0;
-#if MESH_ENABLE_MESHTEXT_CHAT
+#if MESH_ENABLE_MESHTEXT_WIRE
   mesh::RadioProfileProtocol _physical_protocol = mesh::RadioProfileProtocol::MeshCore;
   // Wire settings are a transaction with the modulation tuple. Unsupported
   // wrappers decline rather than claiming a profile was applied.
@@ -104,6 +104,16 @@ protected:
   bool _profile_rxps_suspended = false;
   bool _profile_saved_rxps = false;
   bool _profile_refresh_required = false;
+#if MESH_ENABLE_TX_BEACONS
+  // The normal cache is never overwritten by a transmit-only excursion.
+  // Retain ownership through failed TX and restoration retries.
+  bool _beacon_owned = false;
+  bool _beacon_restoring = false;
+  uint8_t _beacon_restore_profile = 0;
+  uint32_t _beacon_restore_at = 0;
+  uint32_t _beacon_cad_timeout = 0;
+  void cacheBeaconRestoreParams();
+#endif
   bool _cw_active = false;
   bool _cw_stopping = false;
   bool _cw_board_tx = false;
@@ -374,6 +384,14 @@ public:
   uint32_t receiveProfileGeneration() const override { return _profile_generation; }
   mesh::RadioParamApplyResult prepareTransmitProfile(uint8_t profile) override;
   mesh::RadioParamApplyResult prepareTransmitProfile(uint8_t profile, bool reply_rx_override) override;
+#if MESH_ENABLE_TX_BEACONS
+  mesh::RadioParamApplyResult prepareBeaconTransmit(const mesh::RadioProfileParams& params,
+                                                   int8_t power) override;
+  mesh::RadioParamApplyResult restoreBeaconReceive() override;
+  bool isBeaconChannelBusy() override;
+  uint32_t getBeaconAirtime(const mesh::RadioProfileParams& params, int length) override;
+  bool isBeaconRadioOwned() const override { return _beacon_owned; }
+#endif
   mesh::RadioParamApplyResult tryRestoreCodingRate(uint8_t cr) override;
   mesh::RadioParamApplyResult trySetPrimaryParams(const mesh::RadioProfileParams& params,
       bool temporary, const uint32_t* timings = nullptr) override;

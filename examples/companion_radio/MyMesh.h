@@ -29,6 +29,7 @@
 #include <helpers/RadioProfileCLI.h>
 #include <helpers/MorseReplyHandoff.h>
 #include <helpers/MeshtextConfig.h>
+namespace mesh { class BeaconManager; }
 #if MESH_ENABLE_MESHTEXT_CHAT
 #include <helpers/CompanionMeshtextChannel.h>
 #endif
@@ -984,6 +985,13 @@ private:
   uint32_t disc_nodes_count = 0;
 
   void checkControlDataForPendingDiscovery(uint8_t payload[], size_t p_len);
+#endif
+#if MESH_ENABLE_TX_BEACONS
+  mesh::BeaconManager* _beacons = nullptr;
+  void beginBeacons();
+  void loopBeacons();
+  void suspendBeacons();
+  bool handleBeaconCommand(const char* command, char* reply, size_t capacity);
 #endif
 };
 

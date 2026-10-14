@@ -1,6 +1,6 @@
 #include "MeshtextChat.h"
 
-#if defined(MESH_ENABLE_MESHTEXT_CHAT) && MESH_ENABLE_MESHTEXT_CHAT
+#if MESH_ENABLE_MESHTEXT_WIRE
 
 #include <AES.h>
 #include <string.h>

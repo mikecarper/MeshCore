@@ -41,7 +41,8 @@ public:
   CustomSX1262Wrapper(CustomSX1262& radio, mesh::MainBoard& board) : RadioLibWrapper(radio, board) { }
   bool supportsCarrierWave() const override { return true; }
   bool supportsMorseRx() const override { return MESH_ENABLE_MORSE_RX && supportsRadioDeepInit(); }
-#if MESH_ENABLE_MESHTEXT_CHAT
+#if MESH_ENABLE_MESHTEXT_WIRE && (MESH_ENABLE_MESHTEXT_CHAT \
+    || (MESH_ENABLE_TX_BEACONS && !defined(SENSECAP_INDICATOR_LORA)))
   bool supportsMeshtext() const override { return true; }
 #endif
 
@@ -70,8 +71,11 @@ protected:
     return restoreSX126xPacketRamp(static_cast<CustomSX1262*>(_radio)) == RADIOLIB_ERR_NONE
         && RadioLibWrapper::restoreCarrierWaveModem();
   }
-#if MESH_ENABLE_MESHTEXT_CHAT
+#if MESH_ENABLE_MESHTEXT_WIRE
   bool applyProtocol(mesh::RadioProfileProtocol protocol) override {
+    // Compiling a shared codec must not change unqualified MC-only modem
+    // behavior or require its foreign sync-word SPI path.
+    if (!supportsMeshtext()) return protocol == mesh::RadioProfileProtocol::MeshCore;
     auto* radio = static_cast<CustomSX1262*>(_radio);
     const uint8_t sync = protocol == mesh::RadioProfileProtocol::Meshtext ? 0x2b : 0x12;
     // Stage shared packet invariants only in a proven owned RX hop; normal
@@ -106,6 +110,9 @@ protected:
 
 public:
   bool setCodingRate(uint8_t cr) override {
+#if MESH_ENABLE_TX_BEACONS
+    if (isBeaconRadioOwned()) return false;
+#endif
     if (isCarrierWaveActive()) return false;
     return ((CustomSX1262 *)_radio)->setCodingRate(cr) == RADIOLIB_ERR_NONE;
   }
@@ -143,6 +150,9 @@ public:
   }
 
   bool setRxPowerSavingRfRxDisabled(bool disabled) override {
+#if MESH_ENABLE_TX_BEACONS
+    if (isBeaconRadioOwned()) return false;
+#endif
     if (isCarrierWaveActive()) return false;
     if (!supportsRxPowerSavingRfRxDisable()) return false;
 

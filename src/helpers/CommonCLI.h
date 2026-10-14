@@ -806,6 +806,7 @@ class LegacyUpgradeGate;
 namespace mesh {
 class ManagementReporter;
 struct DataRouteState;
+class BeaconManager;
 }
 class CommonCLI {
   mesh::ManagementReporter* _management = nullptr;
@@ -857,6 +858,13 @@ class CommonCLI {
   bool _common_save_succeeded = false;
   uint32_t _prefs_save_failures = 0;
   mesh::RadioProfileCLI _radio_profiles;
+#if MESH_ENABLE_TX_BEACONS
+  mesh::BeaconManager* _beacons = nullptr;
+  void beginBeacons();
+  void loopBeacons();
+  void suspendBeacons();
+  bool handleBeaconCommand(const char* command, char* reply, size_t capacity);
+#endif
   mesh::MorseReplyHandoff _morse_reply;
 #if MESH_ENABLE_FLEET_CONTROL
   mesh::FleetChannel* _fleet_channel = nullptr;  // allocate only when enrolled

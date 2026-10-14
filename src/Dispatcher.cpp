@@ -47,6 +47,9 @@ static uint32_t scaleCADDelayForQueue(uint32_t normal_delay, int ready_count,
 void Dispatcher::setRadioAvailable(bool available) {
   if (radio_available == available) return;
 
+#if MESH_ENABLE_TX_BEACONS
+  if (!available) cancelBeaconRadioFrame();
+#endif
   radio_available = available;
 #if MESH_ENABLE_MESHTEXT_CHAT
   if (!available && hasForeignRadioFrame()) {
@@ -56,6 +59,9 @@ void Dispatcher::setRadioAvailable(bool available) {
 #endif
   radio_nonrx_timer_armed = false;
   if (!dispatcher_started || !radio_available) return;
+#if MESH_ENABLE_TX_BEACONS
+  if (serviceBeaconRadioFrame()) return;
+#endif
 
   const unsigned long now = _ms->getMillis();
   radio_nonrx_start = now;
@@ -73,6 +79,10 @@ void Dispatcher::setRadioAvailable(bool available) {
 }
 
 void Dispatcher::begin() {
+#if MESH_ENABLE_TX_BEACONS
+  cancelBeaconRadioFrame();
+  if (hasBeaconRadioFrame()) return; // restoration owns the peripheral
+#endif
 #if MESH_ENABLE_MESHTEXT_CHAT
   if (hasForeignRadioFrame()) {
     if (foreign_radio_sending && radio_available) _radio->onSendFinished();
@@ -282,6 +292,9 @@ bool Dispatcher::isForeignRadioCurrent() const {
 
 bool Dispatcher::queueForeignRadioFrame(const uint8_t* bytes, size_t length,
                                         uint8_t profile, uint32_t generation) {
+#if MESH_ENABLE_TX_BEACONS
+  if (hasBeaconRadioFrame()) return false;
+#endif
   const auto* profiles = _radio->profiles();
   if (!bytes || !length || length > sizeof(foreign_radio_bytes) || hasForeignRadioFrame()
       || !radio_available || !_radio->supportsMeshtext() || _radio->isCarrierWaveActive()
@@ -465,11 +478,26 @@ bool Dispatcher::getNextQueueWakeDelay(uint32_t& delay_millis) const {
   const uint32_t now = _ms->getMillis();
   bool found = false;
   uint32_t shortest_delay = 0;
+#if MESH_ENABLE_TX_BEACONS
+  if (radio_available && hasBeaconRadioFrame()) {
+    // TX completion and restoration need the fast lifecycle, not timed sleep.
+    delay_millis = 0;
+    return true;
+  }
+  if (radio_available && beacon_wake_enabled) {
+    const int32_t wait = int32_t(beacon_wake_at - now);
+    shortest_delay = wait > 0 ? uint32_t(wait) : 0;
+    found = true;
+  }
+#endif
   // Timed MCU sleep must not skip the adaptive maintenance/retry deadline.
   // Preserve the legacy queue-only query when power saving is off.
   if (radio_available && useAdaptiveAGC()) {
-    found = agc_reset.nextDelay(now, shortest_delay);
-    if (found && !agc_reset.recoveryMatches(_radio->getRecoveryCount())) {
+    uint32_t agc_delay;
+    const bool agc_found = agc_reset.nextDelay(now, agc_delay);
+    if (agc_found && (!found || agc_delay < shortest_delay)) shortest_delay = agc_delay;
+    found = found || agc_found;
+    if (agc_found && !agc_reset.recoveryMatches(_radio->getRecoveryCount())) {
       // A Dispatcher-owned recovery can occur after configure() this loop.
       // Poll once before sleeping so the base cadence is restored promptly.
       delay_millis = 0;
@@ -535,6 +563,10 @@ void Dispatcher::loop() {
     return;
   }
 
+#if MESH_ENABLE_TX_BEACONS
+  // Restore before any calibration/scan/watchdog can observe a foreign tuple.
+  if (serviceBeaconRadioFrame()) return;
+#endif
   if (millisHasNowPassed(next_floor_calib_time)) {
     _radio->triggerNoiseFloorCalibrate(getInterferenceThreshold());
     _radio->setCADEnabled(getCADEnabled());
@@ -805,6 +837,9 @@ void Dispatcher::loop() {
     }
 #endif
   }
+#if MESH_ENABLE_TX_BEACONS
+  if (checkBeaconRadioSend()) { releaseDroppedOutbound(); return; }
+#endif
 #if MESH_ENABLE_MESHTEXT_CHAT
   if (!checkForeignRadioSend()) checkSend();
 #else
