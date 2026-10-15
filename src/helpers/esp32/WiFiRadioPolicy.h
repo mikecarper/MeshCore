@@ -4,6 +4,7 @@
 #include <esp_err.h>
 #include <esp_wifi.h>
 #include <helpers/WiFiChannelPolicy.h>
+#include <helpers/esp32/WiFiCompatibility.h>
 #include <atomic>
 
 #if defined(MESH_PRIMARY_ESPNOW) && MESH_PRIMARY_ESPNOW
@@ -47,6 +48,11 @@ static constexpr uint8_t kProtocolMask = WIFI_PROTOCOL_11B
 static constexpr uint8_t kAccessPointProtocolMask = WIFI_PROTOCOL_11B
     | WIFI_PROTOCOL_11G | WIFI_PROTOCOL_11N;
 
+inline uint8_t conventionalStationProtocolMask() {
+  return activeStationProtocol() == StationProtocol::Bg
+      ? WIFI_PROTOCOL_11B | WIFI_PROTOCOL_11G : kAccessPointProtocolMask;
+}
+
 static constexpr uint8_t kLongRangeRadioOwner = 1;
 static constexpr uint8_t kLongRangeBridgeOwner = 2;
 inline std::atomic<uint8_t>& longRangeOwners() {
@@ -60,6 +66,25 @@ inline void setLongRangeOwner(uint8_t owner, bool active) {
 inline bool accessPointCompatibleWithLongRange() {
   return longRangeOwners().load() == 0;
 }
+
+#if defined(ESP32)
+inline bool loadStationProtocolForBoot() {
+  return compatibility_detail::loadForBoot(
+      "sta_protocol", compatibility_detail::protocolPreference(),
+      kPrimaryEspNowRadio || !accessPointCompatibleWithLongRange());
+}
+inline CompatibilitySaveResult saveStationProtocol(StationProtocol value) {
+  if (static_cast<uint8_t>(value) > 1) {
+    return CompatibilitySaveResult::InvalidValue;
+  }
+  if (value == StationProtocol::Bg
+      && (kPrimaryEspNowRadio || !accessPointCompatibleWithLongRange())) {
+    return CompatibilitySaveResult::RadioConflict;
+  }
+  return compatibility_detail::save(
+      "sta_protocol", value, compatibility_detail::protocolPreference());
+}
+#endif
 
 // A bridge can start/stop independently of infrastructure WiFi. Its channel
 // constraint exists only while it runs; primary ESP-NOW keeps its boot policy.
@@ -133,6 +158,9 @@ inline bool saveConfiguredEspNowChannel(uint8_t) {
 // Check the SDK rather than Arduino's facade: an ESP-NOW bridge can own a
 // driver which Arduino has not initialized. An absent driver is safe to start.
 inline esp_err_t checkLongRangeRadioStart() {
+  if (activeStationProtocol() == StationProtocol::Bg) {
+    return ESP_ERR_INVALID_STATE;
+  }
   wifi_mode_t mode = WIFI_MODE_NULL;
   const esp_err_t result = esp_wifi_get_mode(&mode);
   if (result == ESP_ERR_WIFI_NOT_INIT) return ESP_OK;
@@ -154,11 +182,19 @@ inline esp_err_t applyAccessPointProtocolMask() {
 }
 
 inline esp_err_t applyStationProtocolMask(uint8_t protocols, bool require_lr = false) {
+  if (activeStationProtocol() == StationProtocol::Bg) {
+    if (require_lr || kPrimaryEspNowRadio
+        || !accessPointCompatibleWithLongRange()) return ESP_ERR_INVALID_STATE;
+  }
   wifi_mode_t mode = WIFI_MODE_NULL;
   esp_err_t result = esp_wifi_get_mode(&mode);
   if (result != ESP_OK) return result;
   if ((mode & WIFI_MODE_AP) && require_lr) return ESP_ERR_INVALID_STATE;
   if (mode & WIFI_MODE_AP) protocols = kAccessPointProtocolMask;
+  // Setup AP beacons stay B/G/N; only the station uses compatibility BG.
+  if (activeStationProtocol() == StationProtocol::Bg) {
+    protocols = conventionalStationProtocolMask();
+  }
 
   // persistent(false) only changes Arduino's next initialization preference.
   // Select RAM on this already initialized SDK driver before any LR write.
@@ -177,7 +213,7 @@ inline esp_err_t applyStationProtocolMask(uint8_t protocols, bool require_lr = f
     // An established LR owner already prevents AP startup. Do not silently
     // downgrade that owner when a later infrastructure-only mode read fails.
     if (accessPointCompatibleWithLongRange()) {
-      esp_wifi_set_protocol(WIFI_IF_STA, kAccessPointProtocolMask);
+      esp_wifi_set_protocol(WIFI_IF_STA, conventionalStationProtocolMask());
       applyAccessPointProtocolMask();
     }
     return result;
@@ -185,7 +221,7 @@ inline esp_err_t applyStationProtocolMask(uint8_t protocols, bool require_lr = f
   if (mode & WIFI_MODE_AP) {
     result = applyAccessPointProtocolMask();
     if (result != ESP_OK) {
-      esp_wifi_set_protocol(WIFI_IF_STA, kAccessPointProtocolMask);
+      esp_wifi_set_protocol(WIFI_IF_STA, conventionalStationProtocolMask());
       return result;
     }
     uint8_t actual = 0;

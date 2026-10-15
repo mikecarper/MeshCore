@@ -102,6 +102,7 @@ MultiSerialInterface interface_manager;
     #include <helpers/WiFiReconnectPolicy.h>
     #include <helpers/WiFiPowerSave.h>
     #include <helpers/CompanionWiFiNtpPolicy.h>
+    #include <helpers/CompanionWiFiStatusFormat.h>
     #include <helpers/WiFiNetworkPowerPolicy.h>
     #include <helpers/ui/DisplayTextLayout.h>
     #include <helpers/ui/IndicatorRenderProfile.h>
@@ -114,6 +115,9 @@ MultiSerialInterface interface_manager;
     #include <atomic>
     #include <esp_sntp.h>
     #include <esp_wifi.h>
+    #if defined(ESP32_PLATFORM) && defined(ENABLE_OTA)
+      #include <helpers/esp32/WiFiOtaSeeder.h>
+    #endif
     SerialWifiInterface wifi_interface;
     static bool companion_wifi_interface_registered = false;
     #ifndef WIFI_PWD
@@ -1584,7 +1588,9 @@ void halt() {
         "Companion transport: exclusive %s selected for this boot\r\n",
         companion_wifi_requested ? "WiFi" : "Bluetooth");
   }
+#endif
 
+#if defined(BLE_PIN_CODE)
   static void releaseCompanionBluetoothMemoryForWiFi() {
     const esp_err_t result = esp_bt_mem_release(ESP_BT_MODE_BTDM);
     if (result == ESP_OK) {
@@ -1757,7 +1763,8 @@ void halt() {
             : getCompanionTransportMode();
     return active_mode == CompanionTransportMode::Bluetooth;
 #elif defined(BLE_PIN_CODE)
-    return true;
+    return mesh::wifi::activeCompanionMode()
+        != mesh::wifi::CompanionMode::WiFiOnly;
 #else
     return false;
 #endif
@@ -1818,10 +1825,18 @@ void halt() {
         && mode == mesh::wifi::kPowerSaveMax) {
       return CompanionWiFiPowerSaveResult::PrimaryEspNowConflict;
     }
-    if (mesh::wifi::effectivePowerSave(
+    const bool bluetooth_conflict = mesh::wifi::effectivePowerSave(
             mode, companionWiFiBluetoothActive(),
             mesh::wifi::kPrimaryEspNowRadio)
-        != mode) {
+        != mode;
+    const bool next_boot_wifi_only =
+#if defined(COMPANION_EXCLUSIVE_WIFI_BLE)
+        false;
+#else
+        mesh::wifi::configuredCompanionMode()
+            == mesh::wifi::CompanionMode::WiFiOnly;
+#endif
+    if (bluetooth_conflict && !next_boot_wifi_only) {
       return CompanionWiFiPowerSaveResult::BluetoothConflict;
     }
     Preferences nvs;
@@ -1829,9 +1844,16 @@ void halt() {
       return CompanionWiFiPowerSaveResult::StorageError;
     }
     const bool saved =
-        nvs.putUChar("powersave", mode) == sizeof(uint8_t);
+        nvs.putUChar("powersave", mode) == sizeof(uint8_t)
+        && nvs.getUChar("powersave", 255) == mode;
     nvs.end();
     if (!saved) return CompanionWiFiPowerSaveResult::StorageError;
+
+    if (bluetooth_conflict) {
+      // Persist the requested next-boot value without feeding WIFI_PS_NONE to
+      // the SDK while the current boot still owns a Bluetooth controller.
+      return CompanionWiFiPowerSaveResult::SavedForNextBoot;
+    }
 
     companion_wifi_power_save = mode;
     companion_wifi_power_save_loaded = true;
@@ -1841,6 +1863,71 @@ void halt() {
     return applyCompanionWiFiPowerSave()
         ? CompanionWiFiPowerSaveResult::Applied
         : CompanionWiFiPowerSaveResult::SavedForNextConnection;
+  }
+
+  bool handleCompanionWiFiCompatibilityCommand(const char* command, char* reply,
+                                              size_t reply_size) {
+    if (!command || !reply || !reply_size) return false;
+    if (strcmp(command, "get wifi.protocol") == 0) {
+      snprintf(reply, reply_size, "%s (boot=%s%s)",
+               mesh::wifi::stationProtocolName(mesh::wifi::configuredStationProtocol()),
+               mesh::wifi::stationProtocolName(mesh::wifi::activeStationProtocol()),
+               mesh::wifi::stationProtocolRestartPending() ? "; reboot required" : "");
+      return true;
+    }
+    if (strncmp(command, "set wifi.protocol", 17) == 0
+        && (command[17] == 0 || command[17] == ' ' || command[17] == '\t')) {
+      const char* value = command + 17;
+      while (*value == ' ' || *value == '\t') ++value;
+      mesh::wifi::StationProtocol selected;
+      if (!mesh::wifi::parseStationProtocol(value, &selected)) {
+        snprintf(reply, reply_size, "Error: use set wifi.protocol bg|bgn");
+      } else {
+        const auto result = mesh::wifi::saveStationProtocol(selected);
+        if (result == mesh::wifi::CompatibilitySaveResult::RadioConflict) {
+          snprintf(reply, reply_size, "Error: bg conflicts with ESP-NOW/LR; use bgn");
+        } else if (result != mesh::wifi::CompatibilitySaveResult::Saved) {
+          snprintf(reply, reply_size, "Error: WiFi protocol could not be saved");
+        } else {
+          snprintf(reply, reply_size, "OK - wifi.protocol %s saved; reboot required", value);
+        }
+      }
+      return true;
+    }
+#if !defined(COMPANION_EXCLUSIVE_WIFI_BLE)
+    if (strcmp(command, "get wifi.mode") == 0) {
+      snprintf(reply, reply_size, "%s (boot=%s%s)",
+               mesh::wifi::companionModeName(mesh::wifi::configuredCompanionMode()),
+               mesh::wifi::companionModeName(mesh::wifi::activeCompanionMode()),
+               mesh::wifi::companionModeRestartPending() ? "; reboot required" : "");
+      return true;
+    }
+    if (strncmp(command, "set wifi.mode", 13) == 0
+        && (command[13] == 0 || command[13] == ' ' || command[13] == '\t')) {
+      const char* value = command + 13;
+      while (*value == ' ' || *value == '\t') ++value;
+      mesh::wifi::CompanionMode selected;
+      if (!mesh::wifi::parseCompanionMode(value, &selected)) {
+        snprintf(reply, reply_size, "Error: use set wifi.mode normal|wifi-only");
+      } else if (selected == mesh::wifi::CompanionMode::WiFiOnly
+                 && !the_mesh.getNodePrefs()->wifi_enabled) {
+        snprintf(reply, reply_size, "Error: set wifi.enabled 1 before selecting wifi-only");
+      } else if (mesh::wifi::saveCompanionMode(selected)
+                 != mesh::wifi::CompatibilitySaveResult::Saved) {
+        snprintf(reply, reply_size, "Error: WiFi mode could not be saved");
+      } else {
+        snprintf(reply, reply_size, "OK - wifi.mode %s saved; reboot required%s", value,
+                 selected == mesh::wifi::CompanionMode::WiFiOnly
+                     ? "; Bluetooth will not start" : "");
+      }
+      return true;
+    }
+#endif
+    if (strcmp(command, "get wifi.status") == 0) {
+      formatCompanionWiFiStatus(reply, reply_size);
+      return true;
+    }
+    return false;
   }
 
   static void loadCompanionWiFiCredentials() {
@@ -1935,16 +2022,84 @@ void halt() {
              SerialWifiInterface::disconnectReasonName(status.lastDisconnectReason));
   }
 
-#ifdef WITH_WEBCONFIG
   void formatCompanionWiFiStatus(char* reply, size_t reply_size) {
-    const mesh::wifi::CompanionWiFiRuntimeState runtime = {
-        companion_wifi_requested,
-        companion_wifi_active,
-        companion_wifi_credential_reload_pending,
-    };
-    WebConfigServer::formatWiFiStatus(reply, reply_size, &runtime);
-  }
+    if (!reply || !reply_size) return;
+    char ssid[33] = {}, ip[16] = {}, phy[8] = "n/a";
+    const char* state = "unconfigured";
+    const wl_status_t status = WiFi.status();
+    bool setup_ap = false, has_rssi = false;
+    int rssi = 0;
+#ifdef WITH_WEBCONFIG
+    setup_ap = WebConfigServer::getSetupInfo(ssid, sizeof(ssid), ip, sizeof(ip));
 #endif
+    if (!setup_ap && (WiFi.getMode() & WIFI_AP)
+        && static_cast<uint32_t>(WiFi.softAPIP()) != 0) {
+      setup_ap = true;
+      snprintf(ssid, sizeof(ssid), "%s", WiFi.softAPSSID().c_str());
+      snprintf(ip, sizeof(ip), "%s", WiFi.softAPIP().toString().c_str());
+    }
+    if (setup_ap) {
+      state = "setup-ap";
+    } else {
+      snprintf(ssid, sizeof(ssid), "%s", configured_wifi_ssid);
+      if (mesh::wifi::networkPower().backgroundSuspended()
+          && !mesh::wifi::networkPower().foregroundActive()) {
+        state = "suspended(30m)";
+      } else if (status == WL_CONNECTED) {
+        state = "connected";
+        snprintf(ssid, sizeof(ssid), "%s", WiFi.SSID().c_str());
+        snprintf(ip, sizeof(ip), "%s", WiFi.localIP().toString().c_str());
+        has_rssi = true;
+        rssi = WiFi.RSSI();
+      } else if (!companion_wifi_has_credentials) {
+        state = "unconfigured";
+      } else if (!companion_wifi_requested) {
+        state = "off";
+      } else if (!companion_wifi_active) {
+        state = "inactive";
+      } else if (companion_wifi_credential_reload_pending) {
+        state = "reconnect-pending";
+      } else {
+        switch (status) {
+          case WL_NO_SSID_AVAIL: state = "ssid-not-found"; break;
+          case WL_CONNECT_FAILED: state = "connect-failed"; break;
+          case WL_CONNECTION_LOST: state = "link-lost"; break;
+          default: state = "connecting/retrying"; break;
+        }
+      }
+    }
+    uint8_t protocols = 0;
+    wifi_ps_type_t power_save = WIFI_PS_MIN_MODEM;
+    if (esp_wifi_get_protocol(WIFI_IF_STA, &protocols) == ESP_OK) {
+      snprintf(phy, sizeof(phy), "0x%02x", protocols);
+    }
+    const bool ps_ready = esp_wifi_get_ps(&power_save) == ESP_OK;
+    const char* mode_saved;
+    const char* mode_boot;
+#if defined(COMPANION_EXCLUSIVE_WIFI_BLE)
+    mode_saved = getCompanionTransportMode() == CompanionTransportMode::WiFi ? "wifi" : "ble";
+    mode_boot = companionTransportWiFiActiveAtBoot() ? "wifi" : "ble";
+#else
+    mode_saved = mesh::wifi::companionModeName(mesh::wifi::configuredCompanionMode());
+    mode_boot = mesh::wifi::companionModeName(mesh::wifi::activeCompanionMode());
+#endif
+    bool ota_listening = false, ota_attached = false;
+    uint16_t ota_port = 0;
+#if defined(ESP32_PLATFORM) && defined(ENABLE_OTA)
+    ota_listening = mesh::ota::WiFiOtaSeeder::isListening();
+    ota_attached = mesh::ota::WiFiOtaSeeder::isAttached();
+    ota_port = mesh::ota::WiFiOtaSeeder::port();
+#endif
+    const mesh::wifi::CompanionWiFiStatusSnapshot snapshot = {
+        state, ssid, ip, has_rssi, rssi,
+        mesh::wifi::stationProtocolName(mesh::wifi::configuredStationProtocol()),
+        mesh::wifi::stationProtocolName(mesh::wifi::activeStationProtocol()), phy,
+        mode_saved, mode_boot,
+        !ps_ready ? "n/a" : power_save == WIFI_PS_NONE ? "none"
+            : power_save == WIFI_PS_MAX_MODEM ? "max" : "min",
+        companionWiFiBluetoothActive(), ota_listening, ota_attached, ota_port};
+    mesh::wifi::formatCompanionWiFiStatusSnapshot(reply, reply_size, snapshot);
+  }
 
   void requestCompanionWiFiSetup() {
     if (mesh::wireless::control().blocked(mesh::wireless::WiFi)) return;
@@ -2696,6 +2851,16 @@ void halt() {
   static void startCompanionBluetooth() {
     if (companion_bluetooth_initialized) return;
     companion_bluetooth_start_at = 0;
+#if defined(ESP32) && defined(WIFI_SSID) \
+    && !defined(COMPANION_EXCLUSIVE_WIFI_BLE)
+    if (mesh::wifi::activeCompanionMode()
+        == mesh::wifi::CompanionMode::WiFiOnly) {
+      snprintf(companion_bluetooth_start_failure,
+               sizeof(companion_bluetooth_start_failure),
+               "wifi-only boot; set wifi.mode normal and reboot to enable Bluetooth");
+      return;
+    }
+#endif
 
     mesh::usbLoggingPort().println("Companion: starting Bluetooth");
     CompanionNodePrefs* prefs = the_mesh.getNodePrefs();
@@ -3311,6 +3476,19 @@ void setup() {
 #endif
   mesh::beginUsbLoggingPort();
   board.begin();
+
+#if defined(ESP32) && defined(WIFI_SSID)
+  // MyMesh::begin can already read the power-save policy for MQTT/WebConfig.
+  // Freeze compatibility before that first read and before either RF stack.
+  mesh::wifi::loadStationProtocolForBoot();
+  mesh::wifi::loadCompanionModeForBoot();
+#if defined(BLE_PIN_CODE) && !defined(COMPANION_EXCLUSIVE_WIFI_BLE)
+  if (mesh::wifi::activeCompanionMode()
+      == mesh::wifi::CompanionMode::WiFiOnly) {
+    releaseCompanionBluetoothMemoryForWiFi();
+  }
+#endif
+#endif
 
 #ifdef HAS_EXTERNAL_WATCHDOG
   external_watchdog.begin();

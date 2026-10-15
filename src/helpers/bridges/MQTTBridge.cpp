@@ -3630,7 +3630,8 @@ bool MQTTBridge::handleWiFiConnection(unsigned long now) {
 #if defined(COMPANION_EXCLUSIVE_WIFI_BLE)
           false,
 #elif defined(BLE_PIN_CODE) && defined(WIFI_SSID)
-          true,
+          mesh::wifi::activeCompanionMode()
+              != mesh::wifi::CompanionMode::WiFiOnly,
 #else
           false,
 #endif

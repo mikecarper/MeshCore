@@ -176,7 +176,8 @@ static bool bluetoothWiFiCoexistenceRequired() {
   // Any running WebConfig instance therefore has no active Bluetooth stack.
   return false;
 #elif defined(BLE_PIN_CODE) && defined(WIFI_SSID)
-  return true;
+  return mesh::wifi::activeCompanionMode()
+      != mesh::wifi::CompanionMode::WiFiOnly;
 #else
   return false;
 #endif

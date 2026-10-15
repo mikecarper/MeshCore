@@ -21,6 +21,10 @@ class MQTTCanonicalWiFiTest(unittest.TestCase):
         web = (ROOT / "src/helpers/esp32/WebConfigServer.cpp").read_text()
         mqtt = (ROOT / "src/helpers/bridges/MQTTBridge.cpp").read_text()
         fixture = (ROOT / "test/fixtures/mqtt_canonical_wifi.cpp").read_text()
+        web_policy = "\n".join(extract_braced(web, signature) for signature in (
+            "static bool bluetoothWiFiCoexistenceRequired(",
+            "static uint8_t effectiveWiFiPowerSave(",
+        ))
         web_methods = "\n".join(extract_braced(web, signature) for signature in (
             "mesh::wifi::CredentialState WebConfigServer::resolveWiFi(",
             "bool WebConfigServer::hasConfiguredWiFi(",
@@ -31,6 +35,7 @@ class MQTTCanonicalWiFiTest(unittest.TestCase):
             "bool WebConfigServer::setStandaloneWiFiPassword(",
             "bool WebConfigServer::setStandaloneWiFiPowerSave(",
             "bool WebConfigServer::formatWiFiPassword(",
+            "bool WebConfigServer::formatWiFiPowerSave(",
             "bool WebConfigServer::reloadStandaloneWiFi(",
         ))
         batch_start = web.index('      if (_standalone_wifi && strcmp(e.key, "wifi.ssid")')
@@ -63,7 +68,8 @@ class MQTTCanonicalWiFiTest(unittest.TestCase):
         reconnect_start = mqtt.index("#ifdef ESP_PLATFORM", reconnect_start)
         reconnect_end = mqtt.index("#endif", reconnect_start) + len("#endif")
         reconnect = mqtt[reconnect_start:reconnect_end]
-        return (fixture.replace("@WEB_METHODS@", web_methods)
+        return (fixture.replace("@WEB_POLICY@", web_policy)
+                .replace("@WEB_METHODS@", web_methods)
                 .replace("@MQTT_METHODS@", mqtt_methods)
                 .replace("@BEGIN_GATE@", gate).replace("@RECONNECT@", reconnect)
                 .replace("@CLI_SET@", cli_set).replace("@CLI_GET@", cli_get)
@@ -80,7 +86,7 @@ class MQTTCanonicalWiFiTest(unittest.TestCase):
             (path / "test.cpp").write_text(source, encoding="ascii")
             result = subprocess.run([compiler, "-std=c++17", "-Wall", "-Wextra",
                 "-fsanitize=address,undefined", "-fno-sanitize-recover=all", "-fno-pie", "-no-pie",
-                "-DESP_PLATFORM=1", "-DWITH_MQTT_BRIDGE=1", *flags,
+                "-DESP_PLATFORM=1", "-DESP32=1", "-DWITH_MQTT_BRIDGE=1", *flags,
                 "-I", str(path), "-I", str(ROOT / "src"), str(path / "test.cpp"),
                 "-o", str(path / "test")], capture_output=True, text=True, timeout=60)
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)

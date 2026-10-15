@@ -35,6 +35,7 @@ bool selectCompanionTransportMode(CompanionTransportMode mode);
 enum class CompanionWiFiPowerSaveResult : uint8_t {
   Applied,
   SavedForNextConnection,
+  SavedForNextBoot,
   InvalidMode,
   BluetoothConflict,
   PrimaryEspNowConflict,
@@ -69,11 +70,13 @@ void formatCompanionWiFiDisplayStatus(char* reply, size_t reply_size);
 // Inspect the actual Companion TCP listener and completed protocol traffic;
 // reading this diagnostic never opens a client or restarts a live session.
 void formatCompanionWiFiTcpStatus(char* reply, size_t reply_size);
-#ifdef WITH_WEBCONFIG
+// Compatibility changes are saved for the next boot; never tear down the
+// transport carrying the command or disable modem sleep under a live BLE stack.
+bool handleCompanionWiFiCompatibilityCommand(const char* command, char* reply,
+                                            size_t reply_size);
 // Use Companion ownership state when formatting an otherwise ambiguous idle or
 // disconnected station; WebConfig being stopped does not mean WiFi is off.
 void formatCompanionWiFiStatus(char* reply, size_t reply_size);
-#endif
 
 // Display callbacks only queue these requests. The main loop owns the actual
 // WebConfig/WiFi transitions so input handling never tears down network

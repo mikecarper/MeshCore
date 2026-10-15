@@ -372,6 +372,31 @@ reply before sending the next line. The queue exists only in that browser page;
 closing it stops any commands that have not yet been sent. A lost connection
 also stops the remaining block.
 
+ESP32 WiFi Companions also expose AP-compatibility controls through the same
+local/framed command parser:
+
+- `get wifi.protocol` / `set wifi.protocol <bg|bgn>` (default `bgn`)
+- `get wifi.mode` / `set wifi.mode <normal|wifi-only>` (default `normal`)
+- `get wifi.status` (connection plus saved/boot/live radio settings)
+
+The same reply includes SSID, IP address and RSSI when connected,
+`protocol=<saved>/<boot>/<live bitmap>`, `mode=<saved>[/<boot>]`, live modem
+sleep (`ps`), Bluetooth coexistence (`coex`), and `ota=off|<port>:listen|<port>:client`.
+The boot mode is omitted only when it matches the saved mode; differing values
+mean a reboot is needed. No `detail` argument is required.
+
+Both controls are saved for the next reboot, without interrupting the command
+connection. `bg` excludes 802.11n and cannot override an ESP-NOW/LR owner.
+`wifi-only` requires `wifi.enabled 1` and skips Bluetooth stack initialization,
+while retaining USB and LoRa. To test without modem sleep, run
+`set wifi.mode wifi-only`, `set wifi.powersave none`, then `reboot`; `none`
+is safely deferred until that reboot if Bluetooth currently owns the radio.
+Restore with `set wifi.mode normal`, `set wifi.protocol bgn`,
+`set wifi.powersave min`, then `reboot`. Keep USB recovery available when
+testing a WLAN that may not work. The Indicator keeps its existing
+`companion.transport` selector instead of `wifi.mode`.
+See [Companion WiFi compatibility settings](WiFi.md#companion-wifi-compatibility-settings).
+
 Up/down arrow keys recall commands from the current browser session in
 single-command mode. A command that stops WebConfig, changes its WiFi
 connection, disables `wifi.cli`, or reboots the node stops the remaining block

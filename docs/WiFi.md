@@ -696,6 +696,77 @@ MQTT observer targets normally limit ESP32 WiFi transmit power to 11 dBm unless
 the board configuration overrides `MQTT_WIFI_TX_POWER`. This setting affects
 WiFi only, not LoRa transmit power.
 
+## Companion WiFi compatibility settings
+
+ESP32 WiFi Companions, including Full Companion, provide two independent,
+saved compatibility controls. Defaults remain `bgn` and `normal`; neither
+setting changes the running connection until a reboot. They are available
+through the USB terminal, framed Companion CLI over USB/BLE/TCP, and the
+browser command terminal where included.
+
+```text
+get wifi.protocol
+set wifi.protocol bg
+reboot
+```
+
+`wifi.protocol bgn` permits ordinary 802.11b/g/n. `bg` excludes 802.11n for
+access-point compatibility testing; it does not change LoRa or radio2.
+B/G-only is rejected when it conflicts with a primary ESP-NOW radio or an
+active long-range ESP-NOW owner. The temporary setup AP retains its existing
+B/G/N compatibility policy.
+
+The separate WiFi-only boot skips Bluetooth controller/host initialization,
+not merely advertising. USB and LoRa remain available; existing Bluetooth
+names, PINs and bonds are not erased. Enable and configure WiFi first, and
+retain USB access when testing an unreliable WLAN:
+
+```text
+set wifi.enabled 1
+set wifi.mode wifi-only
+set wifi.powersave none
+reboot
+get wifi.status
+```
+
+Saving `none` while a WiFi-only reboot is pending queues it for that boot;
+it never disables modem sleep while the current Bluetooth stack is active.
+`get wifi.status` reports the connection, SSID, IP and RSSI (dBm), followed by
+saved/boot/live radio settings in the same bounded reply:
+
+```text
+> connected ssid=MyWiFi ip=192.168.11.102 rssi=-74
+protocol=bgn/bgn/0x07 mode=normal ps=min coex=yes ota=5001:listen
+```
+
+`protocol` lists **saved / boot-selected / live SDK bitmap** (`0x03` = B/G,
+`0x07` = B/G/N). For example, `protocol=bg/bgn/0x07` shows a B/G-only change
+waiting for reboot. `mode` shows one value when saved and boot choices match,
+or **saved / boot-selected** when they differ, such as `wifi-only/normal`.
+`ps` is the live modem-sleep mode; `coex` indicates whether Bluetooth
+coexistence is required. `ota` is `off`, `<port>:listen`, or `<port>:client`.
+`n/a` means the SDK could not read that value; it does not claim the radio is
+off. IP and RSSI are omitted when not applicable. Individual getters remain
+available, but no separate detailed-status command is needed.
+
+Test B/G-only and WiFi-only separately to identify which change helps. A
+successful local test does not establish compatibility with an unavailable AP.
+Turning WiFi off/on, or using `set bluetooth off`, is not equivalent to a true
+WiFi-only reboot. During that boot, Bluetooth cannot be re-enabled until
+`wifi.mode normal` is saved and the device is rebooted.
+
+To restore the usual Cascade combination:
+
+```text
+set wifi.mode normal
+set wifi.protocol bgn
+set wifi.powersave min
+reboot
+```
+
+The SenseCAP Indicator's existing exclusive `companion.transport wifi|ble`
+selector remains authoritative; it does not expose `wifi.mode`.
+
 ## Recognizing the wrong firmware
 
 `get wifi.status`, `get wifi.ssid`, `get wifi.powersave`, and `get wifi.cli`

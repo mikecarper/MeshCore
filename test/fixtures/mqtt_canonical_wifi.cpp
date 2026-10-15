@@ -3,6 +3,7 @@
 #include <cstring>
 #include <string>
 #include "helpers/esp32/WiFiCredentials.h"
+#include "helpers/esp32/WiFiCompatibility.h"
 #include "helpers/MQTTPrefsStorage.h"
 
 using mesh::wifi::CredentialState;
@@ -15,7 +16,7 @@ void beginStation(const char* ssid, const char* password) {
   joined_ssid = ssid; joined_password = password; ++joins;
 }
 }}
-uint8_t effectiveWiFiPowerSave(uint8_t value) { return value; }
+@WEB_POLICY@
 enum { WIFI_OFF, WIFI_STA, WIFI_PS_NONE, WIFI_PS_MAX_MODEM, WIFI_PS_MIN_MODEM };
 struct { int getMode() { return WIFI_STA; } } WiFi;
 using wifi_ps_type_t = int;
@@ -41,7 +42,6 @@ struct WebConfigServer {
   struct Entry { const char* key; char reply[160] = {}; };
   Entry _batch[3] = {{"wifi.ssid"}, {"wifi.pwd"}, {"wifi.powersave"}};
   int _batch_count = 3;
-  bool bluetoothWiFiCoexistenceRequired() { return false; }
   bool reloadStandaloneWiFi();
   bool acceptWiFi(Entry& e, const char* value) {
 @CREDENTIAL_BATCH@
@@ -62,6 +62,7 @@ struct WebConfigServer {
   static bool setStandaloneWiFiPassword(const char*, char*, size_t, const void* = nullptr);
   static bool setStandaloneWiFiPowerSave(const char*, char*, size_t, const void* = nullptr);
   static bool formatWiFiPassword(char*, size_t, const void* = nullptr);
+  static bool formatWiFiPowerSave(char*, size_t, const void* = nullptr);
 };
 @WEB_METHODS@
 

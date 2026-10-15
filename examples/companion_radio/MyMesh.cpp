@@ -4298,6 +4298,9 @@ bool MyMesh::handleLocalControlCommand(const char* command, char* reply,
 #endif
 
 #if defined(ESP32) && defined(WIFI_SSID)
+  if (handleCompanionWiFiCompatibilityCommand(command, reply, reply_size)) {
+    return true;
+  }
   if (strcmp(command, "get wifi.ip") == 0) {
     char ip[16] = {};
 #ifdef WITH_WEBCONFIG
@@ -8585,6 +8588,11 @@ bool MyMesh::applyAndSaveWiFiPowerSaving(const char* value, char* reply,
     snprintf(reply, reply_size, "Error: failed to save WiFi power save");
     return false;
   }
+  if (result == CompanionWiFiPowerSaveResult::SavedForNextBoot) {
+    snprintf(reply, reply_size,
+             "OK - power save none saved for wifi-only boot; reboot required (current mode unchanged)");
+    return true;
+  }
 
   syncWiFiPowerSaving();
   if (result == CompanionWiFiPowerSaveResult::Applied) {
@@ -10126,8 +10134,15 @@ void MyMesh::handleTerminalCommand(char* command, bool reader_prompt,
 #endif
     terminalOutput().print("  get wifi.powersave\r\n");
     terminalOutput().print("  set wifi.powersave <none|min|max>\r\n");
+    terminalOutput().print("  get wifi.protocol\r\n");
+    terminalOutput().print("  get wifi.status (connection, saved/boot/live settings)\r\n");
+    terminalOutput().print("  set wifi.protocol <bg|bgn> (saved; reboot required)\r\n");
+#if !defined(COMPANION_EXCLUSIVE_WIFI_BLE)
+    terminalOutput().print("  get wifi.mode\r\n");
+    terminalOutput().print("  set wifi.mode <normal|wifi-only> (saved; reboot required)\r\n");
+#endif
 #ifdef WITH_WEBCONFIG
-    terminalOutput().print("  get wifi.{ssid|pwd|status}\r\n");
+    terminalOutput().print("  get wifi.{ssid|pwd}\r\n");
     terminalOutput().print("  set wifi.ssid <network name>\r\n");
     terminalOutput().print("  set wifi.pwd <password>\r\n");
     terminalOutput().print("  get webui\r\n");

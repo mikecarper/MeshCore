@@ -78,11 +78,12 @@ assert re.search(
 setup_start = main.index("void setup()")
 setup_end = main.index("\nvoid loop()", setup_start)
 setup = main[setup_start:setup_end]
+exclusive_setup = setup[setup.index("loadCompanionTransportModeForBoot();"):]
 assert "esp_bt_mem_release(ESP_BT_MODE_BTDM)" in main
-assert setup.index("loadCompanionTransportModeForBoot();") < setup.index(
+assert exclusive_setup.index("loadCompanionTransportModeForBoot();") < exclusive_setup.index(
     "releaseCompanionBluetoothMemoryForWiFi();"
 )
-assert setup.index("releaseCompanionBluetoothMemoryForWiFi();") < setup.index(
+assert exclusive_setup.index("releaseCompanionBluetoothMemoryForWiFi();") < exclusive_setup.index(
     "startCompanionWiFi();"
 )
 assert re.search(
@@ -185,7 +186,7 @@ class MQTTTransportPowerSaveTest(unittest.TestCase):
 
     compile = canonical_wifi.MQTTCanonicalWiFiTest.compile
 
-    def policy_fixture(self, bluetooth, primary_espnow):
+    def policy_fixture(self, bluetooth, primary_espnow, wifi_only=False):
         fixture = canonical_wifi.MQTTCanonicalWiFiTest.fixture(self)
         # Keep the shared production-method harness, with a smaller main that
         # exercises the connected worker's actual PS selection and driver call.
@@ -198,16 +199,19 @@ class MQTTTransportPowerSaveTest(unittest.TestCase):
                                   f"constexpr bool kPrimaryEspNowRadio = {str(primary_espnow).lower()};")
         fixture = fixture.replace("int esp_wifi_set_ps(int) { return 0; }",
                                   "int applied_ps = -1; int esp_wifi_set_ps(int mode) { applied_ps = mode; return 0; }")
-        fixture = fixture.replace("uint8_t effectiveWiFiPowerSave(uint8_t value) { return value; }",
-            "uint8_t effectiveWiFiPowerSave(uint8_t value) { return mesh::wifi::effectivePowerSave(value, "
-            + str(bluetooth).lower() + ", mesh::wifi::kPrimaryEspNowRadio); }")
         fixture = fixture.replace("  void beginWiFiStation();",
                                   "  void beginWiFiStation();\n  void applyConnectedPowerSave() {\n" + policy + "\n  }")
         modes = ["WIFI_PS_MIN_MODEM", "WIFI_PS_MIN_MODEM" if bluetooth else "WIFI_PS_NONE",
                  "WIFI_PS_MIN_MODEM" if primary_espnow else "WIFI_PS_MAX_MODEM"]
         return fixture + """
 int main() {
+  reset_nvs();
+  nvs_values["wifi_only"] = {PT_U8, {}, @WIFI_ONLY@};
+  assert(mesh::wifi::loadCompanionModeForBoot());
+  assert(mesh::wifi::activeCompanionMode() == (@WIFI_ONLY@
+      ? mesh::wifi::CompanionMode::WiFiOnly : mesh::wifi::CompanionMode::Normal));
   const int expected[] = { @MODES@ };
+  const uint8_t expected_pref[] = { @PREFS@ };
   MQTTPrefs obs{};
   strcpy(obs.mqtt_slot_preset[0], "test");
   strcpy(obs.wifi_ssid, "legacy"); strcpy(obs.wifi_password, "legacy-password");
@@ -224,11 +228,24 @@ int main() {
     MQTTBridge worker(obs); worker.begin();
     assert(worker.isReady() && worker._wifi_power_save == saved);
     worker.applyConnectedPowerSave(); assert(applied_ps == expected[saved]);
+    // Exercise the real WebConfig resolver and reload, not a policy mock:
+    // WiFiOnly preserves NONE while Normal+BLE clamps it to MIN everywhere.
+    char ssid[32]={}, password[65]={}; uint8_t web_ps=255;
+    assert(WebConfigServer::loadStandaloneWiFi(ssid,sizeof(ssid),password,sizeof(password),&web_ps,&obs));
+    assert(web_ps==expected_pref[saved]);
+    WebConfigServer server; server._mqtt_prefs=&obs;
+    assert(server.reloadStandaloneWiFi());
+    assert(server._wifi_power_save==expected_pref[saved]);
+    assert(WebConfigServer::formatWiFiPowerSave(reply,sizeof(reply),&obs));
+    assert(strcmp(reply,expected_pref[saved]==1 ? "> none" : expected_pref[saved]==2 ? "> max" : "> min")==0);
     // A later portal/CLI save or changed observer pref cannot change an active
     // canonical worker; reconnect uses its begin-scoped snapshot without NVS.
     stored.power_save = (saved + 2) % 3;
     assert(mesh::wifi::writeCredentials(stored));
     obs.wifi_power_save = (saved + 1) % 3;
+    assert(mesh::wifi::saveCompanionMode(@WIFI_ONLY@
+        ? mesh::wifi::CompanionMode::Normal : mesh::wifi::CompanionMode::WiFiOnly)
+        ==mesh::wifi::CompatibilitySaveResult::Saved);
     const int opens = nvs_opens;
     worker.applyConnectedPowerSave(); assert(applied_ps == expected[saved]);
     assert(nvs_opens == opens);
@@ -255,20 +272,25 @@ int main() {
   assert(saved_none._wifi_power_save == (@NONE_ALLOWED@ ? 1 : 0));
   assert(applied_ps == expected[@NONE_ALLOWED@ ? 1 : 0]);
 }
-""".replace("@MODES@", ", ".join(modes)).replace("@NONE_ALLOWED@", str(not bluetooth).lower())
+""".replace("@MODES@", ", ".join(modes)).replace(
+            "@PREFS@", f"0, {0 if bluetooth else 1}, {0 if primary_espnow else 2}"
+        ).replace("@NONE_ALLOWED@", str(not bluetooth).lower()).replace(
+            "@WIFI_ONLY@", "1" if wifi_only else "0")
 
     def test_connected_worker_snapshot_and_transport_coexistence(self):
         profiles = (
-            ("ordinary", False, False, ()),
-            ("simultaneous_ble", True, False, ("-DBLE_PIN_CODE=1", '-DWIFI_SSID="compiled"')),
-            ("exclusive_wifi", False, False, ("-DCOMPANION_EXCLUSIVE_WIFI_BLE=1", "-DBLE_PIN_CODE=1", '-DWIFI_SSID="compiled"')),
-            ("primary_espnow", False, True, ()),
-            ("espnow_with_ble", True, True, ("-DBLE_PIN_CODE=1", '-DWIFI_SSID="compiled"')),
-            ("espnow_exclusive_wifi", False, True, ("-DCOMPANION_EXCLUSIVE_WIFI_BLE=1", "-DBLE_PIN_CODE=1", '-DWIFI_SSID="compiled"')),
+            ("ordinary", False, False, False, ()),
+            ("simultaneous_ble", True, False, False, ("-DBLE_PIN_CODE=1", '-DWIFI_SSID="compiled"')),
+            ("wifi_only_ble_compiled", False, False, True, ("-DBLE_PIN_CODE=1", '-DWIFI_SSID="compiled"')),
+            ("exclusive_wifi", False, False, False, ("-DCOMPANION_EXCLUSIVE_WIFI_BLE=1", "-DBLE_PIN_CODE=1", '-DWIFI_SSID="compiled"')),
+            ("primary_espnow", False, True, False, ()),
+            ("espnow_with_ble", True, True, False, ("-DBLE_PIN_CODE=1", '-DWIFI_SSID="compiled"')),
+            ("espnow_wifi_only_ble_compiled", False, True, True, ("-DBLE_PIN_CODE=1", '-DWIFI_SSID="compiled"')),
+            ("espnow_exclusive_wifi", False, True, False, ("-DCOMPANION_EXCLUSIVE_WIFI_BLE=1", "-DBLE_PIN_CODE=1", '-DWIFI_SSID="compiled"')),
         )
-        for name, bluetooth, primary, flags in profiles:
+        for name, bluetooth, primary, wifi_only, flags in profiles:
             with self.subTest(profile=name):
-                self.compile(self.policy_fixture(bluetooth, primary), *flags)
+                self.compile(self.policy_fixture(bluetooth, primary, wifi_only), *flags)
 
     def test_worker_cannot_revert_to_mutable_legacy_power_save(self):
         fixture = self.policy_fixture(False, False)
@@ -278,6 +300,21 @@ int main() {
         self.assertNotEqual(stale, fixture)
         with self.assertRaises(canonical_wifi.FixtureFailure):
             self.compile(stale)
+
+    def test_wifi_only_rejects_old_compiled_ble_clamps_in_both_consumers(self):
+        fixture = self.policy_fixture(False, False, wifi_only=True)
+        for signature in ("static bool bluetoothWiFiCoexistenceRequired(",
+                          "void applyConnectedPowerSave("):
+            with self.subTest(consumer=signature):
+                current = canonical_wifi.extract_braced(fixture, signature)
+                old = re.sub(
+                    r"mesh::wifi::activeCompanionMode\(\)\s*"
+                    r"!= mesh::wifi::CompanionMode::WiFiOnly",
+                    "true", current)
+                self.assertNotEqual(current, old)
+                stale = fixture.replace(current, old, 1)
+                with self.assertRaises(canonical_wifi.FixtureFailure):
+                    self.compile(stale, "-DBLE_PIN_CODE=1", '-DWIFI_SSID="compiled"')
 
 
 if __name__ == "__main__":

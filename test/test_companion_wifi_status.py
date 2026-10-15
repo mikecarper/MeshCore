@@ -11,6 +11,18 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class CompanionWiFiStatusTest(unittest.TestCase):
+    def test_status_includes_connection_and_compatibility_in_one_command(self):
+        main = (ROOT / "examples/companion_radio/main.cpp").read_text()
+        mesh = (ROOT / "examples/companion_radio/MyMesh.cpp").read_text()
+        self.assertIn('strcmp(command, "get wifi.status") == 0', main)
+        self.assertNotIn('"get wifi.status detail"', main)
+        self.assertNotIn('"get wifi.compat"', main)
+        self.assertIn('get wifi.status (connection, saved/boot/live settings)', mesh)
+        self.assertIn('formatCompanionWiFiStatusSnapshot(reply, reply_size, snapshot);', main)
+        local = mesh[mesh.index("bool MyMesh::handleLocalControlCommand("):]
+        self.assertLess(local.index("handleCompanionWiFiCompatibilityCommand("),
+                        local.index("case mesh::cli::StandaloneWiFiKey::Status:"))
+
     def test_runtime_fallback_classification(self):
         source = r'''
 #include <helpers/CompanionWiFiStatus.h>
