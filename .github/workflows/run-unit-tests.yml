@@ -47,6 +47,18 @@ jobs:
       - name: Compile GPS-capable Sensor tracker on ESP32-S3
         run: pio run -e heltec_v4_sensor
 
+  esp32-ethernet-companion-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Build Environment
+        uses: ./.github/actions/setup-build-environment
+      - name: Qualify ESP32 Full Companion with radio2 Ethernet and existing Meshtext
+        run: >-
+          bash build.sh build-firmware heltec_v4_r8_companion_radio_full
+          --firmware-version v1.17.1.10-halo-keymind-cascade-dev
+          --radio-preset usa-cascade-fixed --profile cascade --require-ota
+
   management-reports:
     runs-on: ubuntu-latest
     steps:
@@ -212,6 +224,9 @@ jobs:
         run: |
           python3 -B test/test_mota_serial_deadline.py -v
           python3 -B test/test_mota_folder_deadline.py -v
+          python3 -B test/test_ota_direct_manager.py -v
+          python3 -B test/test_mota_kiss_direct.py -v
+          python3 -B test/test_ota_kiss_direct.py -v
 
       - name: Verify filter playground modes and built-in defaults
         run: node scripts/test_filter_tool.js
@@ -273,6 +288,10 @@ jobs:
         run: |
           python3 -B test/test_companion_channel_alias.py -v
           python3 -B test/test_companion_tx_routing.py -v
+          python3 -B test/test_companion_traffic_routing.py -v
+          python3 -B test/test_ethernet_kiss.py -v
+          python3 -B test/test_ethernet_radio.py -v
+          python3 -B test/test_companion_ethernet.py -v
           python3 -B test/test_companion_discovery.py -v
           python3 -B test/test_repeater_discovery.py -v
           python3 -B test/test_companion_discovery_correlation.py -v
@@ -306,6 +325,32 @@ jobs:
           python3 -B test/test_mqtt_prefs_commit.py -v
           python3 -B test/test_identity_and_settings_recovery.py -v
           python3 -B test/test_contact_cache.py -v
+
+      - name: Verify Ethernet RF harness framing, TX lock, isolation and safe serial ownership
+        run: |
+          python3 -B test/test_hil_tx_frequency_guard.py -v
+          python3 -B test/test_kiss_boot_trace.py -v
+          python3 -B test/test_kiss_ethernet_wire.py -v
+          python3 -B test/test_heltec_v3_flash_mode.py -v
+          python3 -B test/test_companion_ble_bench.py -v
+          python3 -B test/test_ble_visibility_probe.py -v
+          python3 -B test/test_ethernet_kiss_probe.py -v
+          python3 -B test/test_ethernet_tap_relay.py -v
+          python3 -B test/test_windows_usb_stdio_bridge.py -v
+          python3 -B test/test_ethernet_ssh_phone_bench.py -v
+          python3 -B test/test_meshcore_usb_sftp_bench.py -v
+          python3 -B test/test_ethernet_hil_serial_open.py -v
+          python3 -B test/test_ethernet_serial_guard.py -v
+          python3 -B test/test_ethernet_serial_rpc.py -v
+          python3 -B test/test_ethernet_primary_probe.py -v
+          python3 -B test/test_ethernet_radio2_sweep.py -v
+          python3 -B test/test_ethernet_preamble_bench.py -v
+          python3 -B test/test_ethernet_preamble_ssh_runner.py -v
+          python3 -B test/test_ethernet_kiss_modem_probe.py -v
+          python3 -B test/test_ethernet_tcp_stats.py -v
+          python3 -B test/test_meshcore_ip_relay.py -v
+          python3 -B test/test_meshcore_ip_ssh_phone_bench.py -v
+          python3 -B test/test_mcfirmware_bench_flash.py -v
 
       - name: Verify Meshtext chat codec, transport and Companion integration
         run: |

@@ -1,3 +1,7 @@
+<!-- meshcore-hosted-doc-link:start -->
+<p class="meshcore-hosted-doc-link"><a href="https://mikecarper.github.io/MeshCore/tx_beacons/">View this page on MeshCore Docs</a>.</p>
+<!-- meshcore-hosted-doc-link:end -->
+
 # Transmit-only text beacons
 
 Up to 12 disabled-by-default slots can send a short text message using their
