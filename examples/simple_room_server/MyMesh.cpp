@@ -3836,6 +3836,8 @@ void MyMesh::handleCommand(uint32_t sender_timestamp, char *command, char *reply
     } else {
       snprintf(reply, MAX_POST_TEXT_LEN, addSystemPost(msg) ? "OK" : "Err - post not retained");
     }
+  } else if (strcmp(command, "set repeat on") == 0) {
+    strcpy(reply, "ERR - repeat now deprecated");
   }
 #if MESH_ENABLE_ROOM_FLOOD_RULE_ENGINE
   else if (flood_rules.handleCommand(command, reply)) {

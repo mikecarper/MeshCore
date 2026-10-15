@@ -1145,13 +1145,14 @@ DispatcherAction Mesh::onRecvPacket(Packet* pkt) {
       removePathPrefix(pkt, pkt->getPathHashCount());
     } else if (self_id.isHashMatch(pkt->path, pkt->getPathHashSize()) || maybeShortCircuitDirect(pkt)) {
       if (allowPacketForward(pkt)) {
+        const uint32_t d = getDirectRetransmitDelay(pkt);
         if (pkt->getPayloadType() == PAYLOAD_TYPE_MULTIPART) {
-          return forwardMultipartDirect(pkt);
+          return forwardMultipartDirect(pkt, d);
         } else if (pkt->getPayloadType() == PAYLOAD_TYPE_ACK) {
           if (!_tables->wasSeen(pkt)) {  // don't retransmit!
             _tables->markSeen(pkt);
             removePathPrefix(pkt, 1);
-            routeDirectRecvAcks(pkt, 0);
+            routeDirectRecvAcks(pkt, d);
           }
           return ACTION_RELEASE;
         }
@@ -1163,7 +1164,6 @@ DispatcherAction Mesh::onRecvPacket(Packet* pkt) {
               && hasValidEncryptedPayloadLength(pkt->payload_len, 2);
           removePathPrefix(pkt, 1);
 
-          uint32_t d = getDirectRetransmitDelay(pkt);
           maybeScheduleDirectRetry(pkt, 0, final_hop_retry);
           return ACTION_RETRANSMIT_DELAYED(0, d);  // Routed traffic is HIGHEST priority
         }
@@ -1563,7 +1563,7 @@ DispatcherAction Mesh::routeRecvPacket(Packet* packet) {
   return ACTION_RELEASE;
 }
 
-DispatcherAction Mesh::forwardMultipartDirect(Packet* pkt) {
+DispatcherAction Mesh::forwardMultipartDirect(Packet* pkt, uint32_t delay_millis) {
   if (pkt == NULL || pkt->payload_len < 1) {
     return ACTION_RELEASE;
   }
@@ -1580,7 +1580,7 @@ DispatcherAction Mesh::forwardMultipartDirect(Packet* pkt) {
       tmp.payload_len = pkt->payload_len - 1;
       memcpy(tmp.payload, &pkt->payload[1], tmp.payload_len);
       removePathPrefix(&tmp, 1);
-      routeDirectRecvAcks(&tmp, ((uint32_t)remaining + 1) * 300);  // expect multipart ACKs 300ms apart (x2)
+      routeDirectRecvAcks(&tmp, delay_millis + ((uint32_t)remaining + 1) * 300);  // expect multipart ACKs 300ms apart (x2)
     }
   }
   return ACTION_RELEASE;
@@ -1590,7 +1590,6 @@ void Mesh::routeDirectRecvAcks(Packet* packet, uint32_t delay_millis) {
   if (!packet->isMarkedDoNotRetransmit()) {
     uint8_t extra = getExtraAckTransmitCount();
     while (extra > 0) {
-      delay_millis += getDirectRetransmitDelay(packet) + 300;
       auto a1 = createMultiAck(packet->payload, packet->payload_len, extra);
       if (a1) {
         a1->radio_reply = false;  // relayed ACK, not a local response
@@ -1599,6 +1598,7 @@ void Mesh::routeDirectRecvAcks(Packet* packet, uint32_t delay_millis) {
         a1->header |= ROUTE_TYPE_DIRECT;
         maybeScheduleDirectRetry(a1, 0);
         sendPacket(a1, 0, delay_millis);
+        delay_millis += 300;
       }
       extra--;
     }

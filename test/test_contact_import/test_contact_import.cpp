@@ -76,6 +76,7 @@ public:
   bool forward_packets = false, reject_primary_groups = false;
   bool bind_secondary_groups = false, packet_group_search = false;
   uint32_t direct_forward_delay = 0;
+  uint8_t extra_acks = 0;
   unsigned group_admissions = 0, group_searches = 0, received_groups = 0;
   uint8_t last_search_origin = 0xFF;
   mesh::GroupChannel primary_group, secondary_group, received_group;
@@ -88,6 +89,7 @@ public:
   bool canMutateContacts() const override { return writable; }
   bool allowPacketForward(const mesh::Packet*) override { return forward_packets; }
   uint32_t getDirectRetransmitDelay(const mesh::Packet*) override { return direct_forward_delay; }
+  uint8_t getExtraAckTransmitCount() const override { return extra_acks; }
   bool allowGroupPacketOnRadio(mesh::Packet* packet) override {
     ++group_admissions;
     // Stub only the application's policy, not the core admission/order path.
@@ -499,6 +501,72 @@ TEST_F(ContactImport, GroupAdmissionBindsDirectRelayBeforeCrossProfileFanout) {
   EXPECT_EQ(relayed->getPathHashCount(), 1);
   EXPECT_EQ(relayed->path[0], 0x93);
   EXPECT_EQ(pool.getFreeCount(), 7);
+}
+TEST_F(ContactImport, RelayedAckHonorsInitialDirectForwardDelay) {
+  chat.forward_packets = true;
+  chat.direct_forward_delay = 175;
+  mesh::Packet packet;
+  packet.header = ROUTE_TYPE_DIRECT | (PAYLOAD_TYPE_ACK << PH_TYPE_SHIFT);
+  packet.setPathHashSizeAndCount(1, 2);
+  packet.path[0] = chat.self_id.pub_key[0];
+  packet.path[1] = 0x93;
+  packet.payload_len = 4;
+  memset(packet.payload, 0x37, packet.payload_len);
+  chat.receive(packet);
+  ASSERT_EQ(pool.getOutboundTotal(), 1);
+  EXPECT_EQ(pool.getOutboundCount(174), 0);
+  EXPECT_EQ(pool.getOutboundCount(175), 1);
+  EXPECT_EQ(pool.getOutboundByIdx(0)->getPathHashCount(), 1);
+  EXPECT_EQ(pool.getOutboundByIdx(0)->path[0], 0x93);
+  EXPECT_FALSE(pool.getOutboundByIdx(0)->radio_reply);
+}
+
+TEST_F(ContactImport, ExtraForwardedAcksKeepInitialDelayAndThreeHundredMsSpacing) {
+  chat.forward_packets = true;
+  chat.direct_forward_delay = 175;
+  chat.extra_acks = 3;
+  mesh::Packet packet;
+  packet.header = ROUTE_TYPE_DIRECT | (PAYLOAD_TYPE_ACK << PH_TYPE_SHIFT);
+  packet.setPathHashSizeAndCount(1, 1);
+  packet.path[0] = chat.self_id.pub_key[0];
+  packet.payload_len = 4;
+  memset(packet.payload, 0x47, packet.payload_len);
+  chat.receive(packet);
+  ASSERT_EQ(pool.getOutboundTotal(), 4);
+  for (uint32_t index = 0; index < 4; ++index) {
+    const uint32_t due = 175 + 300 * index;
+    EXPECT_EQ(pool.getNextOutbound(due - 1), nullptr);
+    auto* ack = pool.getNextOutbound(due);
+    ASSERT_NE(ack, nullptr);
+    EXPECT_EQ(ack->getPayloadType(), index < 3 ? PAYLOAD_TYPE_MULTIPART : PAYLOAD_TYPE_ACK);
+    EXPECT_EQ(ack->getPathHashCount(), 0);
+    EXPECT_FALSE(ack->radio_reply);
+    pool.free(ack);
+  }
+  EXPECT_EQ(pool.getFreeCount(), 8);
+}
+
+TEST_F(ContactImport, MultipartAckAddsInitialDelayWithoutLosingDuplicateProtection) {
+  chat.forward_packets = true;
+  chat.direct_forward_delay = 175;
+  tables.deduplicate = true;
+  mesh::Packet packet;
+  packet.header = ROUTE_TYPE_DIRECT | (PAYLOAD_TYPE_MULTIPART << PH_TYPE_SHIFT);
+  packet.setPathHashSizeAndCount(1, 2);
+  packet.path[0] = chat.self_id.pub_key[0];
+  packet.path[1] = 0x93;
+  packet.payload_len = 5;
+  packet.payload[0] = (2 << 4) | PAYLOAD_TYPE_ACK;
+  memset(packet.payload + 1, 0x57, packet.payload_len - 1);
+  const auto duplicate = packet;
+  chat.receive(packet);
+  ASSERT_EQ(pool.getOutboundTotal(), 1);
+  EXPECT_EQ(pool.getOutboundCount(1074), 0);
+  EXPECT_EQ(pool.getOutboundCount(1075), 1);
+  auto second = duplicate;
+  chat.receive(second);
+  EXPECT_EQ(pool.getOutboundTotal(), 1);
+  EXPECT_EQ(tables.seen_marks, 1u);
 }
 } // namespace
 

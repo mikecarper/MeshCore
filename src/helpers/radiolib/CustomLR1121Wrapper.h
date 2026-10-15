@@ -54,8 +54,17 @@ protected:
     if (!_board->prepareRadioFrequency(frequency_mhz)) return RADIOLIB_ERR_INVALID_FREQUENCY;
     auto* radio = static_cast<CustomLR1121*>(_radio);
     const int16_t status = radio->setFrequency(frequency_mhz);
-    return status == RADIOLIB_ERR_NONE
-        ? radio->setOutputPower(_dbm_valid ? _cur_dbm : LORA_TX_POWER, false, 304) : status;
+    if (status != RADIOLIB_ERR_NONE) return status;
+#ifdef LR1121_FORCE_HP_PA
+    const bool force_hp = true;
+#else
+    const bool force_hp = false;
+#endif
+    // Preserve the Morse ramp while honoring HP-only wiring and the HF PA's
+    // 13 dBm ceiling, just like the normal packet-power path.
+    int8_t clipped = _dbm_valid ? _cur_dbm : LORA_TX_POWER;
+    radio->checkOutputPower(clipped, &clipped, force_hp);
+    return radio->setOutputPower(clipped, force_hp, 304);
   }
   bool restoreCarrierWaveModem() override {
     if (_morse_rx_fsk_mode) {

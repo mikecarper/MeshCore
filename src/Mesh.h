@@ -216,7 +216,7 @@ class Mesh : public Dispatcher {
   void decayOtaRelayBackoff();
   void serviceLoopMaintenance();
   //void routeRecvAcks(Packet* packet, uint32_t delay_millis);
-  DispatcherAction forwardMultipartDirect(Packet* pkt);
+  DispatcherAction forwardMultipartDirect(Packet* pkt, uint32_t delay_millis);
 
 protected:
   // Roles with lazily persisted state can veto an OTA reset until that state

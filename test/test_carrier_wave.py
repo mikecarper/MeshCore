@@ -87,6 +87,12 @@ struct Chip {
     standby(); if (power_result) return power_result;
     power=value; rfo=force_rfo; ramp_time=4; return 0;
   }
+  int checkOutputPower(int8_t value, int8_t* clipped, bool force_hp) {
+    const int minimum=frequency>1000 ? -18 : force_hp || value>14 ? -9 : -17;
+    const int maximum=frequency>1000 ? 13 : force_hp || value>14 ? 22 : 14;
+    if (clipped) *clipped=value<minimum ? minimum : value>maximum ? maximum : value;
+    return value<minimum || value>maximum ? -1 : 0;
+  }
   int setOutputPower(int8_t value, bool force_rfo, uint16_t ramp) {
     ++ramp_power_calls;
     const int result=setOutputPower(value,force_rfo);

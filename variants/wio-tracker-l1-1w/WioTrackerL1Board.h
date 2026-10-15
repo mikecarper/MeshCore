@@ -11,7 +11,7 @@ protected:
   KeyValueStore* _prefs = NULL;
 
 public:
-  WioTrackerL1Board() : NRF52Board("WioTrackerL1 OTA") {}
+  WioTrackerL1Board() : NRF52Board("WioTrackerL1_OTA") {}
   void begin();
   void attachDynamicPrefs(KeyValueStore* prefs);
   bool setLoRaFemPaGainEnabled(bool enable) override;
