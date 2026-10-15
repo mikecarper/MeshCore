@@ -407,7 +407,11 @@ static __attribute__((noinline)) bool handle_control_command(
 #if defined(OTA_SEEDER_ONLY)
     snprintf(reply, 160,
       "OTA seeder: status | stats | ls=find images | get <id> folder=capture | cancel | "
-      "announce | folder | config. LoRa install is disabled.");
+      "announce | folder | "
+#if defined(NRF52_PLATFORM) && defined(OTA_SD_STORE)
+      "cache | "
+#endif
+      "config. LoRa install is disabled.");
 #elif defined(NRF52_PLATFORM) && defined(OTA_FLASH_STORE) && !defined(OTA_SD_STORE) && \
       !defined(OTA_QSPI_STORE)
 #if defined(OTA_INTERNAL_BOOTLOADER_UPDATE)
@@ -817,7 +821,7 @@ static __attribute__((noinline)) bool handle_control_command(
   } else if (is_cmd(a, "announce|adv", &rest)) {
 #if defined(OTA_SEEDER_ONLY)
     c.manager.announce();
-    snprintf(reply, 160, "OK beacon sent (serving=%u host mOTA)",
+    snprintf(reply, 160, "OK beacon sent (serving=%u external mOTA)",
              (unsigned)c.manager.servedCount());
 #else
     if (c.self_serve_supported && !c.serving) c.serving = ota_serve_self(c, 0);
@@ -875,7 +879,10 @@ static __attribute__((noinline)) bool handle_control_command(
 #if defined(NRF52_PLATFORM)
     // nRF52 applies via the bootloader, so surface whether THIS device's bootloader can install this store.
     const OtaBlCaps& bl = c.bootloaderAppCaps();   // cached (flash scanned once)
-#if defined(OTA_TOWER_AUTO_STORE)
+#if defined(OTA_SEEDER_ONLY)
+    (void)bl;
+    snprintf(reply + n, 160 - n, " | source-only; local install disabled");
+#elif defined(OTA_TOWER_AUTO_STORE)
     snprintf(reply + n, 160 - n, " | store:%s | bootloader:%s",
              c.fetch_store.usesExternal() ? "SD" : c.fetch_store.usesInternal() ? "internal" : "unsafe",
              c.fetch_store.compatible() ? "apply OK" : "unsupported");

@@ -1363,9 +1363,11 @@ uint8_t EnvironmentSensorManager::detectWisBlockStorageHolds() {
       || (w25_id != 0 && w25_id != 0xFFFFFFUL)) {
     holds |= mesh::gps::ExternalStorage;
   }
-#elif defined(OTA_QSPI_SHARED_WISBLOCK_SPI) || defined(OTA_SD_STORE)
+#elif defined(OTA_QSPI_SHARED_WISBLOCK_SPI) || (defined(OTA_SD_STORE) && !defined(OTA_RAK15002_SD_CACHE))
   holds |= mesh::gps::ExternalStorage;
 #endif
+  // Exact RAK15002 uses connector pin 5 (unswitched 3V3), not 3V3_S. Its
+  // archive must not accidentally keep a GPS-only sensor rail powered.
   return holds;
 }
 #endif

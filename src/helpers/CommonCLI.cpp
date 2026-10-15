@@ -3632,6 +3632,9 @@ bool CommonCLI::handleSdCardSetCmd(const char* config, char* reply) {
     return true;
   }
 
+  // Heap-backed source-only builds may not have an OTA workspace yet. Never
+  // dereference it (or start card maintenance) after an allocation failure.
+  if (!mesh::ota::ota_acquire_context(reply, 160)) return true;
   mesh::ota::OtaContext& context = mesh::ota::ota_ctx();
   if (context.apply_pending) {
     strcpy(reply, "Error: OTA apply is pending");
@@ -3730,6 +3733,7 @@ bool CommonCLI::handleSdCardGetCmd(const char* config, char* reply) {
                         _sdcard_erase_at, now);
     snprintf(reply, 160, "> erase: %s", age);
   } else if (strcmp(query, "free") == 0) {
+    if (!mesh::ota::ota_acquire_context(reply, 160)) return true;
     uint64_t used_bytes = 0;
     uint64_t free_bytes = 0;
     mesh::ota::OtaStoreSdNrf52& store = mesh::ota::ota_ctx().sdStagingStore();
@@ -3761,6 +3765,7 @@ bool CommonCLI::handleSdCardGetCmd(const char* config, char* reply) {
       }
       page = parsed;
     }
+    if (!mesh::ota::ota_acquire_context(reply, 160)) return true;
     mesh::ota::OtaStoreSdNrf52& store = mesh::ota::ota_ctx().sdStagingStore();
     if (!store.listFiles(*_board, (uint16_t)page, reply, 160)) {
       snprintf(reply, 160, "Error: SD card list failed: %s", store.last_error());

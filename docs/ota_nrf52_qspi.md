@@ -380,3 +380,38 @@ OTAFIX enters USB/BLE recovery rather than booting a partial image.
 
 See [Easy firmware updates over LoRa](ota_easy.md) for the transfer commands and
 [the OTA protocol](ota_protocol.md) for the container and handoff details.
+
+## Experimental RAK15002 SD archive (source-only)
+
+`RAK_4631_repeater_rak15002_sd_seeder_only` is an optional RAK4631 repeater
+with a RAK15002 in the base board's IO slot. It keeps the reduced sensor/GPS,
+OLED and BLE recovery features. It automatically caches up to **16** complete
+peer `.mota` files on SD and serves them after reboot; the card also retains
+interrupted captures for verified resume. It is not an ordinary OTA receiver
+and is excluded from automatic Full/Reduced receiver releases. This profile
+has host regression/build checks but **has not been physically tested with
+a RAK15002**.
+
+The [official RAK15002 datasheet](https://docs.rakwireless.com/product-categories/wisblock/rak15002/datasheet/)
+specifies connector pins 25/26/27/28 for CS/SCK/MISO/MOSI, pin 38 for
+active-low card detection (IO6), and pin 5 for unswitched 3V3. On the RAK4631
+these SPI signals map to Arduino GPIO 26/3/29/30. A separate SPIM2 object at
+4 MHz accesses SD; global SPI/SPIM3 remains dedicated to the radio. This exact
+SD module does not need the GPS-only switched sensor rail held on. The card's
+3V3 supply is not software-switchable, so its idle current remains a hardware
+consideration. Card detection is not driven by this profile; absent or failed
+media reports an archive error and is retried without blocking USB startup.
+
+Do not combine this profile with RAK13800 Ethernet, RAK15001, or another
+external SPI/QSPI module. Compile-time guards reject the known conflicting
+firmware combinations; software cannot identify every physically connected
+module. Use a FAT/exFAT card supported by the pinned SdFat library. Existing
+files outside `/mota` are left alone; automatic capture reserves 8 MiB free
+space for manual staging/work rather than filling the card.
+
+Use `ota cache` for status, `ota cache off` to stop new captures (existing
+files still seed), `ota cache on` to resume, and `ota announce` to advertise.
+Source-only means `ota install`, bootloader installation, and `ota dev` apply
+are disabled even if the installed bootloader supports SD. No RAK15002 SD
+bootloader handoff is claimed. Update this trial firmware over USB/BLE; normal
+RAK4631 receiver targets and MeshTower SD self-update are unchanged.

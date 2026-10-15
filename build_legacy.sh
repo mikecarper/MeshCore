@@ -3081,6 +3081,11 @@ get_reduced_lora_ota_target() {
 }
 
 is_nrf52_sensor_ota_pair_target() {
+  # Optional SD archives serve other nodes; never turn their source-only
+  # contract into the ordinary Full/Reduced self-updating receiver pair.
+  case "${1,,}" in
+    rak_4631_repeater_rak15002_sd_seeder_only) return 1 ;;
+  esac
   [ "${PIO_ENV_PLATFORM_BY_NAME[$1]:-}" = "NRF52_PLATFORM" ] \
     && ! is_companion_build "$1" \
     && ! is_kiss_modem_target "$1" \
@@ -5643,11 +5648,11 @@ is_runtime_setting_alias_target() {
 }
 
 is_redundant_bulk_build_target() {
-  # Bench fixtures and migration utilities use their dedicated PlatformIO
-  # recipes; they are not node firmware for the release/OTA packaging matrix.
+  # Bench fixtures, migration utilities and the unqualified optional SD
+  # source use exact recipes, not the ordinary release/OTA receiver matrix.
   case "${1,,}" in
     profile_switch_*|profile_fixed_*|profile_four_tx_v4_rx|*partition_migrator*|*partition_expander*|*_partition_legacy_seed|\
-    *_legacy_partition_test|*_sim)
+    *_legacy_partition_test|*_sim|rak_4631_repeater_rak15002_sd_seeder_only)
       return 0
       ;;
   esac

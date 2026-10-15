@@ -15,11 +15,9 @@
 #include "OtaSdAuthRecord.h"
 #include "OtaSdBootToken.h"
 #include "OtaSelf.h"
+#include "OtaSdSpiBusNrf52.h"
 #include "flash/flash_nrf5x.h"
 
-#ifndef OTA_SD_CS_PIN
-#define OTA_SD_CS_PIN PIN_SPI1_NSS
-#endif
 #ifndef OTA_SD_SCK_MHZ
 #define OTA_SD_SCK_MHZ 8
 #endif
@@ -90,9 +88,10 @@ void OtaStoreSdNrf52::resetStoreState() {
 bool OtaStoreSdNrf52::beginCardOnly() {
   _error[0] = 0;
   resetStoreState();
+  ota_sd_prepare_chip_select();
   if (!_sd || !_file ||
       !_sd->cardBegin(SdSpiConfig(OTA_SD_CS_PIN, DEDICATED_SPI,
-                                  SD_SCK_MHZ(OTA_SD_SCK_MHZ), &SPI1))) {
+                                  SD_SCK_MHZ(OTA_SD_SCK_MHZ), &ota_sd_spi_bus()))) {
     fail("SD card init failed");
     return false;
   }
@@ -102,8 +101,9 @@ bool OtaStoreSdNrf52::beginCardOnly() {
 bool OtaStoreSdNrf52::mount() {
   if (_mounted) return true;
   _error[0] = 0;
+  ota_sd_prepare_chip_select();
   if (!_sd || !_file || !_sd->begin(SdSpiConfig(OTA_SD_CS_PIN, DEDICATED_SPI,
-                                                SD_SCK_MHZ(OTA_SD_SCK_MHZ), &SPI1))) {
+                                                SD_SCK_MHZ(OTA_SD_SCK_MHZ), &ota_sd_spi_bus()))) {
     fail("SD mount failed");
     return false;
   }

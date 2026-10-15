@@ -219,6 +219,10 @@ bool OtaCacheSdNrf52::begin(uint32_t total_size) {
   pathFor(_mid, "mota", final_path, sizeof(final_path));
   pathFor(_mid, "part", part_path, sizeof(part_path));
   if (contains(_mid)) { fail("SD archive already contains this mOTA"); return false; }
+  // The index is also the advertised archive capacity. Do not spend LoRa
+  // airtime/card space on a new container that this build cannot seed. Check
+  // before quarantining or replacing any existing final/partial bytes.
+  if (_count >= OTA_SD_CACHE_MAX) { fail("SD archive entry limit reached"); return false; }
   if (_owner->_sd->exists(final_path) && !quarantineFinal(_mid)) return false;
   // begin() means resumeStaged() already rejected any old partial. Drop it before measuring space so a
   // corrupt/obsolete .part is not double-counted against the new allocation and the install reserve.

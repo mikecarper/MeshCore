@@ -53,6 +53,11 @@ void initVariant()
   digitalWrite(26, HIGH);
   pinMode(31, OUTPUT);
   digitalWrite(31, HIGH);
+#elif defined(OTA_RAK15002_SD_CACHE)
+  // RAK15002 uses the unswitched 3V3 rail. Deselect it before any peripheral
+  // starts; its separate SPI object is constructed lazily after radio setup.
+  digitalWrite(26, HIGH);
+  pinMode(26, OUTPUT);
 #elif defined(OTA_QSPI_STORE) && defined(OTA_QSPI_CS_ARDUINO_PIN)
   // Deselect a wired OTA NOR before any other device can toggle shared
   // WisBlock SPI nets. The W25Q16 installation also needs a physical CS#

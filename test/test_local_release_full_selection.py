@@ -81,6 +81,15 @@ class ReleaseFullSelectionTest(unittest.TestCase):
                     self.assertCountEqual(select_ordinary_full_records([companion, modem]),
                                           [companion, modem])
 
+    def test_optional_sd_source_is_not_published_as_an_ordinary_receiver(self):
+        primary = record("RAK_4631_repeater_unified_lora_ota", platform="NRF52_PLATFORM")
+        for profile in ("standard", "auto", "full", "reduced"):
+            source = record("RAK_4631_repeater_rak15002_sd_seeder_only", profile,
+                            platform="NRF52_PLATFORM")
+            with self.subTest(profile=profile):
+                self.assertEqual(select_ordinary_full_records([source]), [])
+                self.assertEqual(select_ordinary_full_records([source, primary]), [primary])
+
     def test_unverified_selected_esp32_full_image_cannot_enter_release(self):
         for target in ("heltec_v4_room_server", "Station_G2_companion_radio_full"):
             for verified in (False, None):

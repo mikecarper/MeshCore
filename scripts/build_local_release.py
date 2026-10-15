@@ -259,6 +259,10 @@ def select_ordinary_full_records(records: list[dict]) -> list[dict]:
     # host-modem role and the ordinary release command skips it separately.
     def ordinary_record(record: dict) -> bool:
         manifest = record["manifest"]
+        if manifest["target"].lower() == "rak_4631_repeater_rak15002_sd_seeder_only":
+            # An exact opt-in, source-only hardware trial is not a qualified
+            # self-updating nRF52 release, including when resuming old output.
+            return False
         if manifest["platform"] != "ESP32_PLATFORM":
             return True
         target = manifest["target"].lower()

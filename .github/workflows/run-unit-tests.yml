@@ -34,9 +34,13 @@ jobs:
       - name: Setup Build Environment
         uses: ./.github/actions/setup-build-environment
       - name: Verify nRF52 HEX packaging with installed build dependencies
-        run: python3 -B test/test_nrf52_endf_hex.py -v
+        run: |
+          python3 -B test/test_nrf52_endf_hex.py -v
+          python3 -B test/test_endf_restamp.py -v
       - name: Compile GPS Sensor tracker on nRF52 boards
         run: pio run -e t1000e_sensor -e RAK_WisMesh_Tag_sensor
+      - name: Compile optional RAK15002 SD archive (no hardware qualification)
+        run: pio run -e RAK_4631_repeater_rak15002_sd_seeder_only
 
   esp32-sensor-smoke:
     runs-on: ubuntu-latest
@@ -687,6 +691,8 @@ jobs:
         run: |
           python3 -B test/test_nrf52_flash_trim.py -v
           python3 -B test/test_nrf52_tft_font_trim.py -v
+          python3 -B test/test_ota_sd_cache.py -v
+          python3 -B test/test_rak15002_sd_seeder.py -v
           python3 -B test/test_ota_target_names.py -v
           python3 -B test/test_ota_cli_listing.py -v
 

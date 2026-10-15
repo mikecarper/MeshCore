@@ -43,10 +43,15 @@ for utility in profile_switch_t096_sx1262 profile_four_tx_v4_rx xiao_s3_partitio
     heltec_v4_partition_migrator_lora_repeater \
     heltec_v4_partition_migrator_lora_repeater_lora_ota_no_external_sensors \
     Xiao_S3_WIO_partition_expander \
-    Heltec_v3_repeater_observer_mqtt_sim; do
+    Heltec_v3_repeater_observer_mqtt_sim \
+    RAK_4631_repeater_rak15002_sd_seeder_only; do
   is_redundant_bulk_build_target "$utility" \
     || fail "release matrix includes development utility $utility"
 done
+
+if is_nrf52_sensor_ota_pair_target RAK_4631_repeater_rak15002_sd_seeder_only; then
+  fail "source-only SD archive was rewritten into a self-updating receiver pair"
+fi
 
 # Reduced RAK profiles all retain the compact INA set, but GPS depends on
 # whether the bridge already owns Serial1. Keep those independent contracts so

@@ -114,6 +114,12 @@ struct OtaContext {
   // store object for OtaManager, while folder captures replace it with the
   // host-backed FolderMotaStore for the duration of the pull.
   OtaStoreRam<1> fetch_store;
+#if defined(NRF52_PLATFORM) && defined(OTA_SD_STORE)
+  // An archive is not an installation backend. Source-only boards retain a
+  // separate SD owner for the shared FAT volume without granting SD apply.
+  OtaStoreSdNrf52 sd_archive_store;
+  OtaCacheSdNrf52 sd_cache;
+#endif
 #elif defined(NRF52_PLATFORM) && defined(OTA_TOWER_AUTO_STORE)
   OtaStoreTowerNrf52 fetch_store;            // SD primary, qualified internal delta fallback
   OtaCacheSdNrf52 sd_cache;                 // always owns the stable SD store
@@ -681,7 +687,9 @@ struct OtaContext {
 
 #if defined(NRF52_PLATFORM) && defined(OTA_SD_STORE)
   OtaStoreSdNrf52& sdStagingStore() {
-#if defined(OTA_TOWER_AUTO_STORE)
+#if defined(OTA_SEEDER_ONLY)
+    return sd_archive_store;
+#elif defined(OTA_TOWER_AUTO_STORE)
     return fetch_store.sdStore();
 #else
     return fetch_store;
@@ -819,7 +827,11 @@ struct OtaContext {
     if (!sd_cache.autoCaptureEnabled() || apply_pending || manager.fetchState() != OtaManager::IDLE ||
         (_sd_cache_next_at && (int32_t)(now - _sd_cache_next_at) < 0)) return;
 
-    for (uint8_t i = 0; i < manager.catalogCount(); i++) {
+    // The index is also the publication limit: do not download containers
+    // that cannot be served. contains() can discover a valid file and grow
+    // the index, so recheck capacity before considering each catalog row.
+    for (uint8_t i = 0; i < manager.catalogCount() &&
+         sd_cache.capturedCount() < OTA_SD_CACHE_MAX; i++) {
       const OtaManager::CatRow* row = manager.catalogRow(i);
       if (!row || row->have_max == 0 || sd_cache.contains(row->mid)) continue;
       if (!manager.catalogReady(row, now)) continue;
