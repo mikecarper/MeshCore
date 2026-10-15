@@ -83,12 +83,14 @@ def _is_nrf52() -> bool:
 
 
 def _cppdef(name):                                # value of a -D<name>=<value> build flag, or None
+    value = None
     for d in env.get("CPPDEFINES", []):           # noqa: F821
-        if isinstance(d, (list, tuple)) and len(d) > 1 and d[0] == name:
-            return str(d[1])
-        if d == name:
-            return ""
-    return None
+        if isinstance(d, (list, tuple)) and d and d[0] == name:
+            value = str(d[1]) if len(d) > 1 else ""
+        elif d == name:
+            value = ""
+    # Ordered build overlays have the same last-define-wins semantics as GCC.
+    return value
 
 
 def _normalized_linker_path(value, project_dir):
@@ -234,12 +236,13 @@ def _append_endf(source, target, env):           # raw .bin path (ESP32 / RP2040
     path = str(target[0])
     with open(path, "rb") as f:
         data = f.read()
+    body = ml.parse_endf(data)[0] if ml.has_endf(data) else data
     ident = _firmware_ident()
-    out, h8 = ml.ensure_endf(data, ident)
-    if len(out) != len(data):
+    out, h8 = ml.ensure_endf(body, ident)
+    if out != data:
         with open(path, "wb") as f:
             f.write(out)
-        print(f"EndF: appended to {os.path.basename(path)} (body_len={len(data)} body_hash={h8.hex()} "
+        print(f"EndF: stamped {os.path.basename(path)} (body_len={len(body)} body_hash={h8.hex()} "
               f"target={ident.target_id:#010x} hw='{ident.hw_id}' fw={ident.fw_version:#010x})")
     else:
         print(f"EndF: already present in {os.path.basename(path)} (no change)")
@@ -254,8 +257,10 @@ def _append_endf_hex(source, target, env):        # Intel-HEX path (nRF52: app f
         print("EndF: empty .hex, skipping"); return
     app_start, app_end = segs[0]                  # first (lowest) segment = the application image
     raw_body = bytes(ih.tobinarray(start=app_start, size=app_end - app_start))
-    if ml.has_endf(raw_body):
-        print(f"EndF: already present in {os.path.basename(path)} (no change)"); return
+    # A valid trailer can still carry a previous build's identity/layout. Strip
+    # it in memory, but retain the original segment bounds for replacement.
+    # Never skip the current link/profile/size checks on an incremental build.
+    endf_free_body = ml.parse_endf(raw_body)[0] if ml.has_endf(raw_body) else raw_body
 
     app_region_size = _board_maximum_size(env)
     if app_region_size is None:
@@ -307,7 +312,7 @@ def _append_endf_hex(source, target, env):        # Intel-HEX path (nRF52: app f
                     (ml.NRF52_LAYOUT_FLAG_HYBRID_RAM if hybrid_ram else 0) |
                     (ml.NRF52_LAYOUT_FLAG_AUTO_STORE if auto_store else 0))
     layout = ml.Nrf52Layout(app_start, linked_app_end, stage_ceiling, layout_flags)
-    body = ml.ensure_nrf52_layout(raw_body, layout)
+    body = ml.ensure_nrf52_layout(endf_free_body, layout)
     ident = _firmware_ident()
     out, h8 = ml.ensure_endf(body, ident)
     seeder_only = _cppdef("OTA_SEEDER_ONLY") is not None
@@ -326,12 +331,23 @@ def _append_endf_hex(source, target, env):        # Intel-HEX path (nRF52: app f
     if image_limit is not None and len(out) > image_limit:
         raise RuntimeError(f"nRF52 OTA image is {len(out)} bytes; {limit_name} limit is "
                            f"{image_limit} bytes")
-    suffix = out[len(raw_body):]                   # layout record + EndF identity trailer
-    for i, b in enumerate(suffix):
-        ih[app_end + i] = b                        # write it right after the app's last byte
+    new_app_end = app_start + len(out)
+    if len(segs) > 1 and new_app_end >= segs[1][0]:
+        # Even exact adjacency would merge the next segment into the app on
+        # the next read, hiding the trailer beneath unrelated trailing bytes.
+        raise RuntimeError("nRF52 layout/EndF would reach a separate HEX segment")
+    if out == raw_body:
+        print(f"EndF: already present in {os.path.basename(path)} (no change)"); return
+    # Replace, do not append after the old EndF. A restamp normally keeps the
+    # same length; an older EndF without a layout record grows by 24 bytes.
+    # Delete only the original application segment; UICR, other segments and
+    # Intel HEX start-address metadata remain owned by the existing image.
+    for address in range(app_start, app_end):
+        del ih[address]
+    ih.frombytes(out, offset=app_start)
     ih.write_hex_file(path)
     endf_address = app_start + len(body)
-    print(f"EndF: appended to {os.path.basename(path)} at 0x{endf_address:X} "
+    print(f"EndF: stamped {os.path.basename(path)} at 0x{endf_address:X} "
           f"(app=0x{app_start:X}.. body_len={len(body)} body_hash={h8.hex()} "
           f"stage=0x{stage_ceiling:X} "
           f"target={ident.target_id:#010x} hw='{ident.hw_id}' fw={ident.fw_version:#010x})")
