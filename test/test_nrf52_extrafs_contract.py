@@ -1044,35 +1044,37 @@ class Nrf52ExtraFsContractTest(unittest.TestCase):
 
     def test_channel_update_rolls_back_when_atomic_save_fails(self):
         mesh = MESH.read_text(encoding="utf-8")
-        handler = function_body(mesh, "void MyMesh::handleCmdFrame(")
-        channel_at = handler.index(
-            "cmd_frame[0] == CMD_SET_CHANNEL && len >= 2 + 32 + 16"
-        )
-        next_command_at = handler.index(
-            "cmd_frame[0] == CMD_SIGN_START", channel_at
-        )
-        channel_update = handler[channel_at:next_command_at]
+        # Both wire encodings must snapshot the raw persisted representation.
+        # getChannel() resolves aliases into effective wire keys/TX routing;
+        # using it for rollback would corrupt a prefixed channel after failure.
+        # Exact-byte rollback is also executed by the native channel-alias and
+        # Meshtext command fixtures, not merely checked as source ordering.
+        for key_bytes in (16, 32):
+            with self.subTest(key_bytes=key_bytes):
+                channel_update = function_body(mesh,
+                    f"if (cmd_frame[0] == CMD_SET_CHANNEL && len >= 2 + 32 + {key_bytes})")
+                snapshot_at = channel_update.index(
+                    "getChannelForSave(channel_idx, previous)"
+                )
+                self.assertNotIn("getChannel(channel_idx, previous)", channel_update)
+                mutate_at = channel_update.index(
+                    "setChannel(channel_idx, channel)"
+                )
+                save_at = channel_update.index("saveChannels()")
+                rollback_at = channel_update.index(
+                    "setChannel(channel_idx, previous)", save_at
+                )
+                error_at = channel_update.index(
+                    "writeErrFrame(ERR_CODE_FILE_IO_ERROR)", rollback_at
+                )
+                ok_at = channel_update.index("writeOKFrame()")
 
-        snapshot_at = channel_update.index(
-            "getChannel(channel_idx, previous)"
-        )
-        mutate_at = channel_update.index(
-            "setChannel(channel_idx, channel)"
-        )
-        save_at = channel_update.index("saveChannels()")
-        rollback_at = channel_update.index(
-            "setChannel(channel_idx, previous)", save_at
-        )
-        error_at = channel_update.index(
-            "writeErrFrame(ERR_CODE_FILE_IO_ERROR)", rollback_at
-        )
-        ok_at = channel_update.index("writeOKFrame()")
-
-        self.assertLess(snapshot_at, mutate_at)
-        self.assertLess(mutate_at, save_at)
-        self.assertLess(save_at, ok_at)
-        self.assertLess(save_at, rollback_at)
-        self.assertLess(rollback_at, error_at)
+                self.assertLess(snapshot_at, mutate_at)
+                self.assertLess(mutate_at, save_at)
+                self.assertLess(save_at, ok_at)
+                self.assertLess(save_at, rollback_at)
+                self.assertLess(rollback_at, error_at)
+                self.assertEqual(channel_update.count("writeOKFrame()"), 1)
 
     def test_absent_advert_delete_avoids_bucket_rewrite_without_legacy_cache(self):
         store = STORE.read_text(encoding="utf-8")

@@ -16,6 +16,9 @@ public:
 #if MESH_ENABLE_MESHTEXT_WIRE
   bool supportsMeshtext() const override { return true; }
 #endif
+#if MESH_ENABLE_ETHERNET_WIRE
+  bool supportsEthernetTunnel() const override { return true; }
+#endif
 
   void powerOff() {
     if (isCarrierWaveActive()) setCarrierWave(0, 0);
@@ -23,11 +26,18 @@ public:
   }
 
 protected:
-#if MESH_ENABLE_MESHTEXT_WIRE
+#if MESH_ENABLE_MESHTEXT_WIRE || MESH_ENABLE_ETHERNET_WIRE
   bool applyProtocol(mesh::RadioProfileProtocol protocol) override {
-    if (protocol != mesh::RadioProfileProtocol::MeshCore
-        && protocol != mesh::RadioProfileProtocol::Meshtext) return false;
-    const uint8_t sync = protocol == mesh::RadioProfileProtocol::Meshtext ? 0x2b : 0x12;
+    uint8_t sync = 0x12;
+    if (protocol == mesh::RadioProfileProtocol::Meshtext) {
+      if (!supportsMeshtext()) return false;
+      sync = 0x2b;
+#if MESH_ENABLE_ETHERNET_WIRE
+    } else if (protocol == mesh::RadioProfileProtocol::Ethernet) {
+      if (!supportsEthernetTunnel()) return false;
+      sync = 0x16;
+#endif
+    } else if (protocol != mesh::RadioProfileProtocol::MeshCore) return false;
     return static_cast<CustomSX1276*>(_radio)->setProfileProtocol(sync) == RADIOLIB_ERR_NONE;
   }
 #endif

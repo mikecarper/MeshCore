@@ -69,6 +69,9 @@
 #define HW_CMD_GET_RADIO2        0x1C
 #define HW_CMD_SET_TEMPRADIO2    0x1D
 #define HW_CMD_GET_TEMPRADIO2    0x1E
+#define HW_CMD_SET_RADIO2_EXT    0x1F
+#define HW_CMD_GET_RADIO2_EXT    0x20
+#define HW_CMD_GET_LAB_TX_GUARD  0x21
 
 /* Response code = command code | 0x80.  Generic / unsolicited use 0xF0+. */
 #define HW_RESP(cmd)             ((cmd) | 0x80)
@@ -91,10 +94,12 @@
 
 #define KISS_RADIO_PARAMS_SIZE       10
 #define KISS_RADIO2_PARAMS_SIZE      13
+#define KISS_RADIO2_EXT_PARAMS_SIZE  14
 #define KISS_TEMPRADIO2_PARAMS_SIZE  15
 #define KISS_MAX_TEMPRADIO2_MINUTES  10080
 
-/* Version 2 adds the logical secondary-radio KISS port and radio2 commands. */
+/* Version 2 adds the logical secondary-radio KISS port and radio2 commands.
+ * Extended radio2 commands are additive; old firmware returns UnknownCmd. */
 #define KISS_FIRMWARE_VERSION 2
 
 typedef void (*SetRadioCallback)(float freq, float bw, uint8_t sf, uint8_t cr);
@@ -215,8 +220,8 @@ class KissModem {
   void handleSetRadio(const uint8_t* data, uint16_t len);
   void handleSetTxPower(const uint8_t* data, uint16_t len);
   void handleGetRadio();
-  void handleSetRadio2(const uint8_t* data, uint16_t len);
-  void handleGetRadio2();
+  void handleSetRadio2(const uint8_t* data, uint16_t len, bool extended = false);
+  void handleGetRadio2(bool extended = false);
   void handleSetTempRadio2(const uint8_t* data, uint16_t len);
   void handleGetTempRadio2();
   void handleGetTxPower();

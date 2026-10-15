@@ -2,6 +2,9 @@
 #include <helpers/BatteryChargeCLI.h>
 #include <helpers/MorseCLI.h>
 #include <helpers/MorseLoopPolicy.h>
+#if defined(MESH_HIL_TX_FREQ_MHZ)
+#include <helpers/radiolib/HilTxFrequencyGuard.h>
+#endif
 #if defined(RAK_4631)
 #include <helpers/PeripheralModePrefs.h>
 #endif
@@ -9,6 +12,7 @@
 #include "NotificationSettingsFile.h"
 #include "MyMesh.h"
 #include <helpers/CompanionTxRoutingCLI.h>
+#include <helpers/CompanionTrafficRouting.h>
 #include <helpers/CompanionChannelAlias.h>
 #include <helpers/FleetCommand.h>
 #include "CompanionBluetooth.h"
@@ -1713,7 +1717,15 @@ bool MyMesh::getChannel(int channel_idx, ChannelDetails& channel) {
 
 bool MyMesh::setChannel(int channel_idx, const ChannelDetails& channel) {
   if (parseCompanionChannelAlias(channel.name).kind == CompanionChannelKind::Invalid) return false;
-  return BaseChatMesh::setChannel(channel_idx, channel);
+#if MESH_ENABLE_ETHERNET_TUNNEL
+  if (_ethernet_settings.enabled && channel.name[0]
+      && parseCompanionChannelAlias(channel.name).kind != CompanionChannelKind::MeshCore) return false;
+#endif
+  const bool saved = BaseChatMesh::setChannel(channel_idx, channel);
+#if MESH_ENABLE_ETHERNET_TUNNEL
+  if (saved) ++_ethernet_channel_generation;
+#endif
+  return saved;
 }
 
 int MyMesh::searchChannelsForPacket(const mesh::Packet* packet, const uint8_t* hash,
@@ -3164,6 +3176,9 @@ void MyMesh::begin(bool has_display, bool radio_available,
 #if MESH_ENABLE_TX_BEACONS
   beginBeacons();
 #endif
+#if MESH_ENABLE_ETHERNET_TUNNEL
+  beginEthernetTunnel();
+#endif
 #if MESH_ENABLE_MESHTEXT_CHAT
   beginMeshtext();
 #endif
@@ -3566,6 +3581,58 @@ bool MyMesh::handleCadCommand(const char* command, char* reply,
   return true;
 }
 
+bool MyMesh::handleTrafficRoutingCommand(const char* command, char* reply, size_t reply_size) {
+  if (!reply || !reply_size) return false;
+  const auto parsed = mesh::companion::parseTrafficRouteCommand(command);
+  if (!parsed.matched) return false;
+  const char* kind = parsed.kind == mesh::companion::TrafficKind::Media ? "media" : "ssh";
+  if (!parsed.valid) {
+    snprintf(reply, reply_size, "Error: use get tx.%s or set tx.%s auto|radio|radio2|both|off", kind, kind);
+    return true;
+  }
+  uint8_t& policy = parsed.kind == mesh::companion::TrafficKind::Media ? _prefs.tx_media : _prefs.tx_ssh;
+  if (parsed.set) {
+    const uint8_t previous = policy;
+    policy = parsed.policy;
+    // Even an unchanged value must have durable storage before we say saved.
+    if (!savePrefs()) {
+      policy = previous;
+      snprintf(reply, reply_size, "Error: tx.%s was not saved", kind);
+      return true;
+    }
+  }
+  const uint8_t mask = mesh::companion::trafficTransmitMask(policy, _radio->profiles());
+  snprintf(reply, reply_size, "%s tx.%s %s; active=%s%s", parsed.set ? "OK -" : ">", kind,
+      mesh::radioTxPolicyName(policy), policy == mesh::RADIO_TX_AUTO ? "channel/global"
+          : mask ? mesh::radioTxPolicyName(mask) : "off",
+      (policy == mesh::RADIO_TX_SECONDARY || policy == mesh::RADIO_TX_BOTH) && !(mask & 2)
+          ? " (radio2 unavailable for TX)" : "");
+  return true;
+}
+
+bool MyMesh::sendClientGroupData(mesh::GroupChannel& channel, uint8_t* path, uint8_t path_len,
+                                uint16_t data_type, const uint8_t* data, int data_len) {
+  if (data_len < 0 || data_len > MAX_GROUP_DATA_LENGTH || (data_len && !data)) return false;
+  const uint8_t policy = mesh::companion::trafficPolicy(mesh::companion::groupTrafficKind(data_type),
+      _prefs.tx_media, _prefs.tx_ssh);
+  if (policy == mesh::RADIO_TX_AUTO) return sendGroupData(channel, path, path_len, data_type, data, data_len);
+  // Override only this datagram, not the saved channel, PSK, alias or text route.
+  mesh::GroupChannel routed = channel;
+  routed.tx_radio = policy;
+  return sendGroupData(routed, path, path_len, data_type, data, data_len);
+}
+
+bool MyMesh::sendClientRawData(const uint8_t* data, size_t data_len, uint8_t* path, uint8_t path_len) {
+  if (!data || data_len < 4) return false;
+  auto pkt = createRawData(data, data_len);
+  if (!pkt) return false;
+  const uint8_t policy = mesh::companion::trafficPolicy(mesh::companion::rawTrafficKind(data, data_len),
+      _prefs.tx_media, _prefs.tx_ssh);
+  if (policy != mesh::RADIO_TX_AUTO) pkt->tx_radio = policy;
+  // sendDirect owns/releases the packet on either success or failure.
+  return sendDirect(pkt, path, path_len);
+}
+
 bool MyMesh::handleTxRoutingCommand(const char* command, char* reply, size_t reply_size) {
   const auto parsed = mesh::companion::parseTxRouteCommand(command);
   if (!parsed.matched) return false;
@@ -3672,6 +3739,9 @@ bool MyMesh::handleLocalControlCommand(const char* command, char* reply,
                                        size_t reply_size) {
   if (!command || !reply || reply_size == 0) return false;
   while (*command == ' ') command++;
+#if defined(MESH_HIL_TX_FREQ_MHZ)
+  if (mesh::handleHilTxFrequencyCommand(command, reply, reply_size)) return true;
+#endif
 #if defined(RAK_4631)
   // This helper is also reached only after normal remote-admin admission.
   if (mesh::peripherals::handleCommand(_prefs.peripherals_shared, command,
@@ -3693,6 +3763,10 @@ bool MyMesh::handleLocalControlCommand(const char* command, char* reply,
     return true;
   }
 
+#if MESH_ENABLE_ETHERNET_TUNNEL
+  if (handleEthernetTunnelCommand(command, reply, reply_size)) return true;
+#endif
+  if (handleTrafficRoutingCommand(command, reply, reply_size)) return true;
   if (handleTxRoutingCommand(command, reply, reply_size)) return true;
 #if MESH_ENABLE_TX_BEACONS
   if (handleBeaconCommand(command, reply, reply_size)) return true;
@@ -6069,7 +6143,7 @@ void MyMesh::handleCmdFrame(size_t len) {
     } else if (payload_len > MAX_GROUP_DATA_LENGTH) {
       MESH_DEBUG_PRINTLN("CMD_SEND_CHANNEL_DATA payload too long: %d > %d", payload_len, MAX_GROUP_DATA_LENGTH);
       writeErrFrame(ERR_CODE_ILLEGAL_ARG);
-    } else if (sendGroupData(channel.channel, path, path_len, data_type, payload, payload_len)) {
+    } else if (sendClientGroupData(channel.channel, path, path_len, data_type, payload, payload_len)) {
       writeOKFrame();
     } else {
       writeErrFrame(ERR_CODE_TABLE_FULL);
@@ -6580,18 +6654,17 @@ void MyMesh::handleCmdFrame(size_t len) {
   } else if (cmd_frame[0] == CMD_SEND_RAW_DATA && len >= 6) {
     int i = 1;
     uint8_t path_len = cmd_frame[i++];
-    if (path_len >= 0 && mesh::Packet::isValidPathLen(path_len)) {
+    if (mesh::Packet::isValidPathLen(path_len)) {
       uint8_t path[MAX_PATH_SIZE];
-      i += mesh::Packet::writePath(path, &cmd_frame[i], path_len);
-      if (i + 4 > len) {  // min payload 4 bytes
+      const size_t path_bytes = static_cast<size_t>(path_len & 63) * ((path_len >> 6) + 1);
+      if (static_cast<size_t>(i) + path_bytes + 4 > len) { // min payload 4 bytes, before reading path
         writeErrFrame(ERR_CODE_ILLEGAL_ARG);
       } else {
-        auto pkt = createRawData(&cmd_frame[i], len - i);
-        if (pkt) {
-          sendDirect(pkt, path, path_len);
+        i += mesh::Packet::writePath(path, &cmd_frame[i], path_len);
+        if (sendClientRawData(&cmd_frame[i], len - i, path, path_len)) {
           writeOKFrame();
         } else {
-          writeErrFrame(ERR_CODE_TABLE_FULL);
+          writeErrFrame(ERR_CODE_BAD_STATE);
         }
       }
     } else {
@@ -10087,6 +10160,13 @@ void MyMesh::handleTerminalCommand(char* command, bool reader_prompt,
 #if COMPANION_FEATURE_READER
     terminalOutput().print("  get reader <chapter>[:<verse>[-<last>]] [page] (World English Bible, offline)\r\n");
 #endif
+    terminalOutput().print("  get/set tx.media auto|radio|radio2|both|off (binary media)\r\n"
+        "  get/set tx.ssh auto|radio|radio2|both|off (tagged tunnel data)\r\n");
+#if MESH_ENABLE_ETHERNET_TUNNEL
+    terminalOutput().print("  get ethernet / get ethernet.radio\r\n"
+        "  set ethernet.radio <MHz>,<kHz>,<SF>,<CR>[,<preamble>]\r\n"
+        "  set ethernet on|off (saved; trusted-LAN KISS TCP 5003, radio2 only)\r\n");
+#endif
     terminalOutput().print("  get pwrmgt.bootreason\r\n");
 #if COMPANION_FEATURE_MEMORY_DIAGNOSTICS
     terminalOutput().print("  memory\r\n");
@@ -10354,6 +10434,12 @@ bool MyMesh::handleDirectCommand(const char* command, char* reply, size_t reply_
       stopContactsIterator();
       resetContacts();
       mesh::resetLazyPersistenceAfterSuccess(dirty_contacts_expiry, dirty_contacts_failures);
+#if MESH_ENABLE_ETHERNET_TUNNEL
+      if (!eraseEthernetSettings()) {
+        snprintf(reply, reply_size, "File system erased; Error: Ethernet settings erase failed");
+        return true;
+      }
+#endif
 #if MESH_ENABLE_MESHTEXT_CHAT
       if (!eraseMeshtextSettings()) {
         snprintf(reply, reply_size, "File system erased; Error: MT settings erase failed");
@@ -10916,6 +11002,12 @@ complete_line:
       suspendBeacons();
 #endif
       bool success = _store->formatFileSystem();
+#if MESH_ENABLE_ETHERNET_TUNNEL
+      if (success && !eraseEthernetSettings()) {
+        output.println("  Error: file system erased, but Ethernet settings erase failed");
+        return;
+      }
+#endif
 #if MESH_ENABLE_MESHTEXT_CHAT
       if (success && !eraseMeshtextSettings()) {
         output.println("  Error: file system erased, but MT settings erase failed");
@@ -11177,6 +11269,9 @@ void MyMesh::loop() {
 #endif
 #if MESH_ENABLE_MESHTEXT_CHAT
   refreshMeshtextProfile();
+#endif
+#if MESH_ENABLE_ETHERNET_TUNNEL
+  if (!mesh::morseTimingActive(_radio)) loopEthernetTunnel();
 #endif
 #if defined(WITH_MQTT_BRIDGE) && defined(ESP32_PLATFORM) && defined(WIFI_SSID)
   if (_mqtt_bridge) _mqtt_bridge->servicePendingClockCorrection();

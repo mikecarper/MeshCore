@@ -329,6 +329,88 @@ int main(int argc, char** argv) {
 
 
 class RadioProfileAutoTest(unittest.TestCase):
+    def test_ota_raw_slot_does_not_enable_foreign_ownership_or_v2_settings(self):
+        code = r'''
+#define main existing_cli_main
+#include "test/fixtures/radio_profiles/cli_test.cpp"
+#undef main
+int main() {
+  Fixture f(true);
+  const bool foreign = MESH_ENABLE_MESHTEXT_CHAT || MESH_ENABLE_ETHERNET_TUNNEL;
+#if defined(ENABLE_OTA)
+  static_assert(MESH_ENABLE_OTA_KISS_DIRECT, "exercise the actual direct-OTA capability");
+  static_assert(MESH_ENABLE_FOREIGN_RADIO, "exercise the shared raw scheduler");
+#endif
+  assert(f.cli.canAutoSecondary() == foreign);
+  assert(!f.cli.autoSecondaryActive());
+  mesh::RadioProfileConfig config;
+  config.mode = mesh::RadioProfileMode::RxTx;
+  config.params.freq = 909.5f; config.params.bw = 250;
+  config.params.sf = 11; config.params.cr = 5; config.params.preamble = 16;
+#if MESH_ENABLE_MESHTEXT_CHAT
+  config.params.protocol = mesh::RadioProfileProtocol::Meshtext;
+#else
+  config.params.protocol = mesh::RadioProfileProtocol::Ethernet;
+#endif
+  assert(f.cli.requestAutoSecondary(config) == foreign);
+  f.cli.clearAutoSecondary();
+  assert(!f.radio.p.enabled());
+  assert(f.cli.useSecondaryProtocol(mesh::RadioProfileProtocol::Meshtext) == false);
+  char reply[160] = "unchanged";
+  assert(f.cli.handle("set radio2 auto", reply, sizeof reply));
+  assert((!strncmp(reply, "OK", 2)) == foreign);
+  if (foreign) f.advance(2000);
+  assert(f.cli.savePrimaryPreamble(120));
+  const auto image = f.fs.files["/radio_profiles"];
+  assert(image.size() == 24 && image[2] == (foreign ? 2 : 1));
+  f.cmd("set radio2 off");
+  assert(!f.cli.autoSecondaryActive());
+  assert(f.fs.files["/radio_profiles"][2] == (foreign ? 2 : 1));
+  Radio reboot; mesh::RadioProfileCLI restored;
+  restored.begin(&f.fs, &reboot, &f.clock, true);
+  assert(!reboot.p.enabled() && !restored.canAutoSecondary());
+#if defined(MESH_HIL_TX_FREQ_MHZ)
+  assert(restored.handle("get lab.tx", reply, sizeof reply));
+  assert(!strcmp(reply, "> HIL TX lock=909.500 MHz; off-frequency TX blocked; primary RX-only when off-frequency"));
+#else
+  assert(!restored.handle("get lab.tx", reply, sizeof reply));
+#endif
+  assert(!restored.handle("set lab.tx 909.5", reply, sizeof reply));
+  printf("profile_size=%zu\n", sizeof(mesh::RadioProfileCLI));
+}
+'''
+        sizes = {}
+        compiler = os.environ.get("CXX") or shutil.which("g++") or shutil.which("clang++")
+        with tempfile.TemporaryDirectory(prefix="radio-profile-capability-") as work:
+            source, binary = Path(work) / "capability.cpp", Path(work) / "capability"
+            source.write_text(code)
+            for name, ota, meshtext, ethernet, guard in (
+                ("baseline", 0, 0, 0, 0), ("ota", 1, 0, 0, 0),
+                ("meshtext", 1, 1, 0, 0), ("ethernet", 1, 0, 1, 0),
+                ("ota_guard", 1, 0, 0, 1),
+            ):
+                flags = [f"-DMESH_ENABLE_MESHTEXT_CHAT={meshtext}",
+                         f"-DMESH_ENABLE_ETHERNET_TUNNEL={ethernet}",
+                         "-DMESH_ENABLE_FLEET_CONTROL=0"]
+                if ota:
+                    flags.append("-DENABLE_OTA=1")
+                if guard:
+                    flags.append("-DMESH_HIL_TX_FREQ_MHZ=909.5")
+                result = subprocess.run([
+                    compiler, "-std=c++17", "-Wall", "-Wextra", *flags,
+                    "-I", str(ROOT), "-I", str(ROOT / "test/fixtures/radio_profiles/mocks"),
+                    "-I", str(ROOT / "test/mocks"), "-I", str(ROOT / "src"),
+                    str(ROOT / "src/helpers/RadioProfileCLI.cpp"), str(source), "-o", str(binary),
+                ], capture_output=True, text=True, timeout=60)
+                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                run = subprocess.run([str(binary)], capture_output=True, text=True, timeout=10)
+                self.assertEqual(run.returncode, 0, name + ": " + run.stdout + run.stderr)
+                sizes[name] = int(run.stdout.split("profile_size=", 1)[1].splitlines()[0])
+        self.assertEqual(sizes["baseline"], sizes["ota"])
+        self.assertEqual(sizes["baseline"], sizes["ota_guard"])
+        self.assertGreater(sizes["meshtext"], sizes["ota"])
+        self.assertEqual(sizes["meshtext"], sizes["ethernet"])
+
     @classmethod
     def setUpClass(cls):
         compiler = os.environ.get("CXX") or shutil.which("g++") or shutil.which("clang++")

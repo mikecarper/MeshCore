@@ -77,7 +77,7 @@ struct OtaManager {
   enum FetchError { FETCH_ERROR_NONE, FETCH_ERROR_MANIFEST, FETCH_ERROR_HASH_ALGO,
     FETCH_ERROR_VERSION, FETCH_ERROR_CODEC, FETCH_ERROR_GEOMETRY, FETCH_ERROR_TOO_LARGE,
     FETCH_ERROR_STORAGE, FETCH_ERROR_INTEGRITY, FETCH_ERROR_MANIFEST_TIMEOUT,
-    FETCH_ERROR_LEAVES_TIMEOUT };
+    FETCH_ERROR_LEAVES_TIMEOUT, FETCH_ERROR_RADIO_SESSION };
   enum { AUTOFETCH_ANY = 2, AUTOFETCH_SIGNED = 1 };
   struct ServeEntry { bool is_self; uint8_t mid[4]; uint32_t fw_version, have_count; };
   FetchState state = IDLE;
@@ -85,6 +85,8 @@ struct OtaManager {
   unsigned have = 0, total = 26;
   uint8_t mid[4] = {1, 2, 3, 4};
   FetchState fetchState() const { return state; }
+  bool directFetchActive() const { return false; }
+  bool directFetchConfirmed() const { return false; }
   FetchError fetchError() const { return error; }
   unsigned blocksHave() const { return have; }
   unsigned blocksTotal() const { return total; }

@@ -6,6 +6,7 @@
 #include "OtaMemoryPolicy.h"
 #include "OtaTiming.h"
 #include "OtaProtocol.h"
+#include "OtaDirectWire.h"
 #include "OtaByteIO.h"
 #include "OtaStore.h"
 #include "MotaContainer.h"
@@ -35,11 +36,17 @@ typedef bool (*OtaSend)(void* ctx, const uint8_t* msg, uint16_t len, bool flood)
 struct OtaReplyRoute {
   uint32_t generation = 0;
   uint8_t profile = 0xFF;  // no radio affinity (portable callers)
+  bool direct = false;    // negotiated zero-hop raw/KISS wire, not routed Packet data
   bool operator==(const OtaReplyRoute& other) const {
-    return profile == other.profile && generation == other.generation;
+    return profile == other.profile && generation == other.generation && direct == other.direct;
   }
 };
+static_assert(sizeof(OtaReplyRoute) == 8, "Direct OTA must use existing route padding");
 typedef bool (*OtaReplyRouteValid)(void* ctx, const OtaReplyRoute& route);
+
+inline constexpr uint32_t ota_advance_direct_epoch(uint32_t previous) {
+  return previous == UINT32_MAX ? 1u : previous + 1u;
+}
 
 // Device admission is separate from portable block transport. Signed-only
 // automatic fetches must authenticate the manifest before touching staging.
@@ -260,7 +267,7 @@ static_assert(OTA_AUTOFETCH_FAILURE_BACKOFF_MS > 0u &&
 
 class OtaManager {
 public:
-  OtaManager() = default;
+  OtaManager();
   ~OtaManager();
   OtaManager(const OtaManager&) = delete;
   OtaManager& operator=(const OtaManager&) = delete;
@@ -292,7 +299,8 @@ public:
     FETCH_ERROR_STORAGE,
     FETCH_ERROR_INTEGRITY,
     FETCH_ERROR_MANIFEST_TIMEOUT,
-    FETCH_ERROR_LEAVES_TIMEOUT
+    FETCH_ERROR_LEAVES_TIMEOUT,
+    FETCH_ERROR_RADIO_SESSION
   };
 
   // Sentinel for "no block" in the reassembly / peer-REQ / recently-served slots (a real block index is
@@ -385,6 +393,13 @@ public:
   // Defaults on for moving-forward 171-byte transfers. This switch exists for qualification and emergency
   // rollback; disabling it produces byte-for-byte legacy OTA_REQ/OTA_DATA behavior.
   void set_wire_v2_enabled(bool on) { _wire_v2_enabled = on; }
+  // Explicit transport capability, never inferred from block size or a sender.
+  // A fetch probes only after a validated zero-hop manifest at max_hops=0.
+  void set_direct_transport_enabled(bool on);
+  bool directFetchActive() const { return _direct_session; }
+  bool directFetchConfirmed() const { return _direct_session && _direct_confirmed; }
+  OtaReplyRoute directFetchRoute() const { return _fetch_route; }
+  uint32_t directTransportEpoch() const { return _direct_transport_epoch; }
 
   // Resume a fetch from a container already persisted in the store (after a reboot). want_mid=nullptr is
   // automatic adoption and rechecks current autofetch/target/version policy; a non-null MID is an explicit
@@ -523,7 +538,10 @@ public:
   // Max OTA flood reach in HOPS (runtime-tunable, persisted): a node accepts OTA from up to N hops away and
   // relays packets still under N hops; 0 = direct only (accept path_count 0, never relay). Bounds duty-cycle
   // when crossing repeaters. Default OTA_HOP_LIMIT_DEFAULT. Set via `ota config hops`.
-  void set_max_hops(uint8_t h) { _max_hops = h; }
+  void set_max_hops(uint8_t h) {
+    _max_hops = h;
+    if (h != 0 && _direct_session) downgradeDirectTransport();
+  }
   uint8_t max_hops() const { return _max_hops; }
   bool fetched_is_signed() const { return (_fflags & MFLAG_SIGNED) != 0; }  // flags of the fetched manifest
   bool fetched_is_bootloader() const { return (_fflags & MFLAG_BOOTLOADER) != 0; }
@@ -549,6 +567,7 @@ public:
 
   // Drop the current fetch session back to IDLE so a fresh `ota pull` / advert starts a new one.
   void reset_session() {
+    invalidateDirectTransport();
     _fstate = IDLE; _have = 0; _fbc = 0; _ftotal = 0; _fflags = 0;
     _paused_from = IDLE;
     _req_count = 0; _mf_retries = 0;
@@ -562,6 +581,7 @@ public:
     _resume_verify_idx = 0; _resume_invalidated = false;
     _resume_merkle.reset();
     _wire_empty_stalls = 0;
+    _direct_session = false; _direct_confirmed = false; _fetch_route = {};
   }
 
   FetchState fetchState() const { return _fstate; }
@@ -695,6 +715,15 @@ private:
   uint16_t wireRequestMask(uint32_t block, uint16_t need, uint16_t received,
                            uint16_t encoded_len) const;
   void downgradeWireToLegacy();                           // old source answered/ignored the v2 request profile
+  void downgradeDirectTransport();                       // preserve committed blocks; discard unverified geometry
+  void invalidateDirectTransport();                      // retire already-admitted direct raw frames
+  uint16_t fetchFragmentData() const {
+    return _direct_session ? OTA_DIRECT_FRAG_DATA :
+        (_wire_v2_session ? OTA_FRAG_DATA_V2 : OTA_FRAG_DATA);
+  }
+  const OtaReplyRoute* fetchReplyRoute() const {
+    return _fetch_route.profile < 2 ? &_fetch_route : nullptr;
+  }
   bool anyWireDataReceived() const;
   uint32_t blockLen(uint32_t i) const;
 
@@ -808,6 +837,11 @@ private:
   uint8_t    _max_hops = OTA_HOP_LIMIT_DEFAULT;          // OTA flood reach in hops; 0=direct only (persisted)
   uint8_t    _fflags = 0;                       // flags of the manifest currently being fetched
   bool       _wire_v2_enabled = true;            // advertise v2 in OTA_REQ while retaining transparent fallback
+  bool       _direct_transport_enabled = false;
+  bool       _direct_session = false;
+  bool       _direct_confirmed = false;
+  OtaReplyRoute _fetch_route;
+  uint32_t _direct_transport_epoch;
   bool       _wire_v2_session = true;            // false after an old source responds or the first request stalls
   bool       _wire_v2_confirmed = false;          // at least one structurally valid v2 DATA packet was observed
   bool       _wire_allow_deflate = false;        // session may request compressed blocks only with a decoder

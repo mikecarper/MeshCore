@@ -245,7 +245,7 @@ int main(){
  strcpy(prefs.node_name,"retained name");prefs.ble_pin=654321;prefs.gps_interval=42;
  assert(prefs.getCustom()->setByKey("snapshot_tag","original"));
  assert(store.savePrefs(prefs,47.2,-122.1));const auto disk=store.fs.files["/new_prefs"];
- assert(disk.size()==244);double lat=0,lon=0;
+ assert(disk.size()==252);double lat=0,lon=0;
  CompanionNodePrefs loaded;assert(loaded.getCustom()->setByKey("snapshot_tag","loaded"));
  assert(store.loadPrefsInt("/new_prefs",loaded,lat,lon));
  assert(loaded.peripherals_shared==1&&loaded.ble_pin==654321&&loaded.gps_interval==42);
@@ -259,6 +259,11 @@ int main(){
   assert(ok==(keep==236));if(ok)assert(candidate.peripherals_shared==0);
   else assert(candidate.peripherals_shared==1&&candidate.ble_pin==123456);
  }
+ // The previous complete RAK PMO footer remains an accepted legacy image.
+ DataStore old;old.fs.files["/new_prefs"]={disk.begin(),disk.begin()+244};
+ CompanionNodePrefs old_prefs;old_prefs.tx_media=mesh::RADIO_TX_OFF;
+ assert(old.loadPrefsInt("/new_prefs",old_prefs,lat,lon));
+ assert(old_prefs.peripherals_shared==1&&old_prefs.tx_media==mesh::RADIO_TX_AUTO);
  for(size_t byte=236;byte<244;++byte){
   DataStore damaged;damaged.fs.files["/new_prefs"]=disk;damaged.fs.files["/new_prefs"][byte]^=1;
   CompanionNodePrefs candidate;candidate.peripherals_shared=1;candidate.ble_pin=123456;

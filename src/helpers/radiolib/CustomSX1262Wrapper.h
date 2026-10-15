@@ -44,6 +44,9 @@ public:
 #if MESH_ENABLE_MESHTEXT_WIRE
   bool supportsMeshtext() const override { return true; }
 #endif
+#if MESH_ENABLE_ETHERNET_WIRE
+  bool supportsEthernetTunnel() const override { return true; }
+#endif
 
 protected:
   float morseReceiverBandwidthKHz() const override { return 4.8f; }
@@ -70,15 +73,24 @@ protected:
     return restoreSX126xPacketRamp(static_cast<CustomSX1262*>(_radio)) == RADIOLIB_ERR_NONE
         && RadioLibWrapper::restoreCarrierWaveModem();
   }
-#if MESH_ENABLE_MESHTEXT_WIRE
+#if MESH_ENABLE_MESHTEXT_WIRE || MESH_ENABLE_ETHERNET_WIRE
   bool applyProtocol(mesh::RadioProfileProtocol protocol) override {
-    if (protocol != mesh::RadioProfileProtocol::MeshCore
-        && protocol != mesh::RadioProfileProtocol::Meshtext) return false;
-    // Respect an explicitly disabled wire implementation, including builds
-    // that retain other beacon or Companion features.
+    uint8_t sync = 0x12;
+    if (protocol == mesh::RadioProfileProtocol::Meshtext) {
+      if (!supportsMeshtext()) return false;
+      sync = 0x2b;
+#if MESH_ENABLE_ETHERNET_WIRE
+    } else if (protocol == mesh::RadioProfileProtocol::Ethernet) {
+      if (!supportsEthernetTunnel()) return false;
+      sync = 0x16;
+#endif
+    } else if (protocol != mesh::RadioProfileProtocol::MeshCore) return false;
+    // No alternate wire implementation means no modem write is needed.
+    // Ethernet-only builds must still restore the MeshCore syncword.
+#if !MESH_ENABLE_ETHERNET_WIRE
     if (!supportsMeshtext()) return protocol == mesh::RadioProfileProtocol::MeshCore;
+#endif
     auto* radio = static_cast<CustomSX1262*>(_radio);
-    const uint8_t sync = protocol == mesh::RadioProfileProtocol::Meshtext ? 0x2b : 0x12;
     // Stage shared packet invariants only in a proven owned RX hop; normal
     // initialization/rollback still repairs the complete RadioLib state.
     return radio->setProfileProtocol(sync) == RADIOLIB_ERR_NONE;

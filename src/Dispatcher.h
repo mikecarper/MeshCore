@@ -92,6 +92,7 @@ public:
   virtual const RadioProfiles* profiles() const { return nullptr; }
   virtual bool validateProfile(const RadioProfileParams&) const { return false; }
   virtual bool supportsMeshtext() const { return false; }
+  virtual bool supportsEthernetTunnel() const { return false; }
 #if MESH_ENABLE_TX_BEACONS
   virtual RadioParamApplyResult prepareBeaconTransmit(const RadioProfileParams&, int8_t) {
     return RadioParamApplyResult::FAILED;
@@ -395,17 +396,22 @@ class Dispatcher {
   unsigned long tx_budget_ms;
   unsigned long last_budget_update;
   unsigned long duty_cycle_window_ms;
-#if MESH_ENABLE_MESHTEXT_CHAT
+#if MESH_ENABLE_FOREIGN_RADIO
   // One bounded user-send slot; never placed in the MeshCore packet pool.
   uint8_t foreign_radio_bytes[MAX_TRANS_UNIT] = {};
   uint16_t foreign_radio_length = 0;
   uint8_t foreign_radio_profile = 0;
+  RadioProfileProtocol foreign_radio_protocol = RadioProfileProtocol::MeshCore;
   uint32_t foreign_radio_generation = 0;
+#if MESH_ENABLE_OTA_KISS_DIRECT
+  uint32_t foreign_radio_ota_epoch = 0;
+#endif
   uint32_t foreign_radio_retry_at = 0, foreign_radio_prepare_deadline = 0;
   uint32_t foreign_radio_start = 0, foreign_radio_expiry = 0;
   bool foreign_radio_sending = false;
   bool foreign_radio_yield_meshcore = false;
   bool isForeignRadioCurrent() const;
+  bool supportsForeignRadioProtocol(RadioProfileProtocol protocol) const;
   bool serviceForeignRadioFrame();
   bool checkForeignRadioSend();
   void finishForeignRadioFrame(bool success, bool account_airtime);
@@ -490,13 +496,29 @@ protected:
   virtual void onTracePacketQueuedForSend(Packet* packet) { }
   virtual void onSendComplete(Packet* packet) { }
   virtual void onSendFail(Packet* packet) { }
-#if MESH_ENABLE_MESHTEXT_CHAT
+#if MESH_ENABLE_FOREIGN_RADIO
   // Foreign RX is consumed here before MeshCore parsing or any raw bridge.
   // Returning false drops the frame; it never falls through to MeshCore.
   virtual bool onForeignRadioFrame(const uint8_t*, size_t, uint8_t, uint32_t, float, float) { return false; }
   virtual void onForeignRadioSendComplete(bool) { }
   virtual bool allowForeignRadioTransmit() const { return true; }
-  bool queueForeignRadioFrame(const uint8_t* bytes, size_t length, uint8_t profile, uint32_t generation);
+#if MESH_ENABLE_OTA_KISS_DIRECT
+  // The KISS host framing is off-air. These are bounded, zero-hop OTA radio
+  // frames, never Packet objects and never a second physical TX owner.
+  virtual bool onDirectOtaRadioFrame(const uint8_t*, size_t, uint8_t, uint32_t) { return false; }
+  virtual bool allowDirectOtaTransmit(uint8_t, uint32_t) const { return false; }
+  // Captured when queued: abort, fallback and workspace replacement retire
+  // this token even when the physical temporary profile remains unchanged.
+  virtual uint32_t directOtaEpoch() const { return 0; }
+  bool queueDirectOtaRadioFrame(const uint8_t* message, uint16_t length,
+                               uint8_t profile, uint32_t generation);
+#endif
+  bool queueForeignRadioFrame(const uint8_t* bytes, size_t length, uint8_t profile, uint32_t generation,
+                             RadioProfileProtocol protocol = RadioProfileProtocol::Meshtext);
+  RadioProfileProtocol queuedForeignRadioProtocol() const { return foreign_radio_protocol; }
+  // Cancel host work that has not reached RF. An in-flight frame cannot be
+  // unsent and retains normal completion/airtime accounting.
+  bool discardQueuedForeignRadioFrame(RadioProfileProtocol protocol);
   bool hasForeignRadioFrame() const { return foreign_radio_length != 0; }
 #endif
   virtual void onRadioProfileCopyQueued(Packet* packet, const Packet* original, uint8_t priority) { }
@@ -597,7 +619,7 @@ public:
 #if MESH_ENABLE_TX_BEACONS
         || hasBeaconRadioFrame()
 #endif
-#if MESH_ENABLE_MESHTEXT_CHAT
+#if MESH_ENABLE_FOREIGN_RADIO
         || hasForeignRadioFrame()
 #endif
         ;

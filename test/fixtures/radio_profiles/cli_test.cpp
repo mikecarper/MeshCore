@@ -487,9 +487,13 @@ int main(int argc, char** argv) {
     f.advance(2000);
     f.finishTimingTest(8428);
     assert(f.radio.p.switchBudgetUs()==9271);
-    assert(f.radio.p.preamble(0,32)==128);
-    assert(strstr(f.cmd("get radio2.timing"),"WARN need >128: radio"));
-    assert(strstr(f.cmd("get radio2.status"),"WARN need >128: radio"));
+    assert(f.radio.p.preamble(0,32)==168);
+    assert(!strstr(f.cmd("get radio2.timing"),"WARN need >"));
+    assert(!strstr(f.cmd("get radio2.status"),"WARN need >"));
+    f.finishTimingTest(40000);
+    assert(f.radio.p.preamble(0,32)==512);
+    assert(strstr(f.cmd("get radio2.timing"),"WARN need >512: radio"));
+    assert(strstr(f.cmd("get radio2.status"),"WARN need >512: radio"));
   }
   {
     Fixture f;

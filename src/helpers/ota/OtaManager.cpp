@@ -10,11 +10,32 @@
 namespace mesh {
 namespace ota {
 
+namespace {
+// Construction and transfer state belong to the single mesh-loop owner. This
+// process token outlives heap/shared context recreation, without another queue.
+uint32_t direct_epoch = 0;
+}
+
+OtaManager::OtaManager() {
+  invalidateDirectTransport();
+}
+
+void OtaManager::invalidateDirectTransport() {
+  direct_epoch = ota_advance_direct_epoch(direct_epoch);
+  _direct_transport_epoch = direct_epoch;
+}
+
 OtaManager::~OtaManager() {
   free(_catalog_heap);
   free(_leaves_buf);
   free(_src_leaves);
   free(_scratch);
+}
+
+void OtaManager::set_direct_transport_enabled(bool on) {
+  if (_direct_transport_enabled != on) invalidateDirectTransport();
+  _direct_transport_enabled = on;
+  if (!on && _direct_session) downgradeDirectTransport();
 }
 
 bool OtaManager::set_speed(float speed) {
@@ -124,6 +145,7 @@ void OtaManager::begin(uint32_t my_target_id, OtaSend send, void* ctx) {
   _fstate = IDLE; _have = 0; _fbc = 0;
   _paused_from = IDLE;
   _fetch_error = FETCH_ERROR_NONE;
+  _direct_session = false; _direct_confirmed = false; _fetch_route = {};
   _archive_fetch = false; _validate = false;
   clearFetchIntent();
   _resume_verify_idx = 0; _resume_invalidated = false;
@@ -598,6 +620,7 @@ uint32_t OtaManager::proofEgressGapMs() const {
 }
 
 void OtaManager::clearPendingEgress() {
+  invalidateDirectTransport();
   _n_manifest_jobs = 0;
   _n_serve_jobs = 0;
   _serve_block_len = 0;
@@ -713,13 +736,8 @@ bool OtaManager::loadActiveServeBlock() {
   if (bs == 0 || bs > OTA_MAX_BLOCK) return false;
   uint32_t off = (uint32_t)job.block * bs;
   uint32_t blen = (off + bs <= v->m.payload_size) ? bs : (v->m.payload_size - off);
-  if (v->read) {
-    if (!v->read(v->read_ctx, off, _serve_block, blen)) return false;
-  } else {
-    memcpy(_serve_block, v->m.payload + off, blen);
-  }
   _serve_block_len = (uint16_t)blen;
-  _serve_wire_block = _serve_block;
+  _serve_wire_block = nullptr;
   _serve_wire_len = _serve_block_len;
   _serve_wire_deflated = false;
 
@@ -731,20 +749,38 @@ bool OtaManager::loadActiveServeBlock() {
     v->scratch_sz = v->scratch ? OTA_MAX_BLOCK : 0;
   }
   _source_buffer_used_at = _now_ms;
-  if (job.wire_v2 && job.allow_deflate && v->scratch && v->scratch_sz >= blen) {
+  // A host-precompressed representation is enough to serve DATA: proofs use
+  // authenticated leaves. Do not pull the same raw block over BLE/USB first.
+  if (job.wire_v2 && job.allow_deflate && v->read_deflated &&
+      v->scratch && v->scratch_sz >= blen) {
     uint16_t encoded_len = 0;
-    bool encoded = false;
-    if (v->read_deflated) {
-      encoded = v->read_deflated(v->deflate_ctx, job.block, v->scratch,
-                                  (uint16_t)blen, &encoded_len);
-    } else if (_deflate_encode) {
-      encoded = _deflate_encode(_deflate_encode_ctx, _serve_block, (uint16_t)blen,
-                                v->scratch, (uint16_t)blen, &encoded_len);
-    }
+    const bool encoded = v->read_deflated(v->deflate_ctx, job.block, v->scratch,
+                                         (uint16_t)blen, &encoded_len);
     if (encoded && encoded_len > 0 && encoded_len < blen) {
       _serve_wire_block = v->scratch;
       _serve_wire_len = encoded_len;
       _serve_wire_deflated = true;
+    }
+  }
+  if (!_serve_wire_block) {
+    if (v->read) {
+      if (!v->read(v->read_ctx, off, _serve_block, blen)) return false;
+    } else {
+      memcpy(_serve_block, v->m.payload + off, blen);
+    }
+    _serve_wire_block = _serve_block;
+    // Device encoders need raw input; host codec failures retain the existing
+    // raw fallback instead of allocating another encoder workspace.
+    if (job.wire_v2 && job.allow_deflate && !v->read_deflated && _deflate_encode &&
+        v->scratch && v->scratch_sz >= blen) {
+      uint16_t encoded_len = 0;
+      if (_deflate_encode(_deflate_encode_ctx, _serve_block, (uint16_t)blen,
+                          v->scratch, (uint16_t)blen, &encoded_len) &&
+          encoded_len > 0 && encoded_len < blen) {
+        _serve_wire_block = v->scratch;
+        _serve_wire_len = encoded_len;
+        _serve_wire_deflated = true;
+      }
     }
   }
   mh4(_serve_wire_id, _serve_wire_block, _serve_wire_len);
@@ -805,15 +841,16 @@ bool OtaManager::handleReq(const uint8_t* m, uint16_t n) {
     const uint32_t off = idx * block_size;
     if (off + blen > v->m.payload_size) blen = v->m.payload_size - off;
     const bool wire_v2 = ota_req_is_v2(rq.items[i].want_mask);
+    if (_request_route.direct && !wire_v2) continue;
     const bool allow_deflate = wire_v2 &&
         (rq.items[i].want_mask & OTA_REQ_V2_ALLOW_DEFLATE) != 0;
     const bool extended_length = wire_v2 &&
         ota_req_v2_extended_length(rq.items[i].want_mask);
     const bool block_requires_extended = v->m.block_size() > OTA_DATA_V2_LEGACY_MAX_ENCODED;
     if (wire_v2 && extended_length != block_requires_extended) continue;
-    const uint16_t valid_mask = frag_full_mask((blen +
-        (wire_v2 ? OTA_FRAG_DATA_V2 : OTA_FRAG_DATA) - 1) /
-        (wire_v2 ? OTA_FRAG_DATA_V2 : OTA_FRAG_DATA));
+    const uint16_t fragment_data = _request_route.direct ? OTA_DIRECT_FRAG_DATA :
+        (wire_v2 ? OTA_FRAG_DATA_V2 : OTA_FRAG_DATA);
+    const uint16_t valid_mask = frag_full_mask((blen + fragment_data - 1) / fragment_data);
     const uint16_t requested = wire_v2
         ? ota_req_v2_fragments(rq.items[i].want_mask) : rq.items[i].want_mask;
     const uint16_t want = (uint16_t)(requested & valid_mask);
@@ -835,6 +872,10 @@ bool OtaManager::handleReqProof(const uint8_t* m, uint16_t n) {
 }
 
 void OtaManager::serviceEgress(OtaReplyRouteValid route_valid, void* route_ctx) {
+  if (_fstate == FETCHING && _fetch_route.profile < 2 && route_valid &&
+      !route_valid(route_ctx, _fetch_route)) {
+    failFetch(FETCH_ERROR_RADIO_SESSION);
+  }
   // Metadata comes first so an older receiver gets every manifest fragment before its retry horizon. The
   // send callback supplies radio-queue backpressure, and a rejected fragment remains in this descriptor.
   if (serviceManifestEgress(route_valid, route_ctx)) return;
@@ -871,12 +912,13 @@ void OtaManager::serviceEgress(OtaReplyRouteValid route_valid, void* route_ctx) 
       popServeJob();
       return;
     }
-    const uint16_t fragment_data = job.wire_v2 ? OTA_FRAG_DATA_V2 : OTA_FRAG_DATA;
+    const uint16_t fragment_data = job.route.direct ? OTA_DIRECT_FRAG_DATA :
+        (job.wire_v2 ? OTA_FRAG_DATA_V2 : OTA_FRAG_DATA);
     const uint16_t valid_mask = frag_full_mask(
         (_serve_wire_len + fragment_data - 1u) / fragment_data);
     job.pending_mask &= valid_mask;
     if (job.pending_mask == 0) {
-      job.proof_ready_at = armedDeadline(_now_ms, proofEgressGapMs());
+      job.proof_ready_at = job.route.direct ? 0 : armedDeadline(_now_ms, proofEgressGapMs());
       return;
     }
     uint8_t fragment = 0;
@@ -891,7 +933,7 @@ void OtaManager::serviceEgress(OtaReplyRouteValid route_valid, void* route_ctx) 
     DataMsg dm;
     memcpy(dm.manifest_id, job.mid, 4);
     dm.block_idx = job.block;
-    uint8_t v2_data[OTA_DATA_V2_STREAM_ID_BYTES + OTA_FRAG_DATA_V2];
+    uint8_t v2_data[OTA_DATA_V2_STREAM_ID_BYTES + OTA_DIRECT_FRAG_DATA];
     if (job.wire_v2) {
       const bool packed = job.extended_length
           ? ota_data_v2_pack_extended(fragment, _serve_wire_len, dm.frag_off)
@@ -909,7 +951,7 @@ void OtaManager::serviceEgress(OtaReplyRouteValid route_valid, void* route_ctx) 
       dm.data = _serve_block + frag_off;
       dm.data_len = (uint16_t)frag_len;
     }
-    uint8_t b[MAX_PACKET_PAYLOAD];
+    uint8_t b[OTA_DIRECT_MESSAGE_MAX];
     if (emit(b, encode_data(b, sizeof(b), dm), false, &job.route)) {
       const uint16_t bit = (uint16_t)(1u << fragment);
       job.pending_mask &= (uint16_t)~bit;
@@ -919,7 +961,7 @@ void OtaManager::serviceEgress(OtaReplyRouteValid route_valid, void* route_ctx) 
         // proactive proof into the radio queue at the same instant: the two half-duplex transmissions would
         // collide and force the receiver onto its multi-second retry tick. Include every response that the
         // adapter can already have admitted ahead of this proof, then retain a bounded fast-link floor.
-        job.proof_ready_at = armedDeadline(_now_ms, proofEgressGapMs());
+        job.proof_ready_at = job.route.direct ? 0 : armedDeadline(_now_ms, proofEgressGapMs());
       }
     }
     return;
@@ -1274,6 +1316,7 @@ bool OtaManager::anyWireDataReceived() const {
 
 void OtaManager::downgradeWireToLegacy() {
   if (!_wire_v2_session) return;
+  if (_direct_session) downgradeDirectTransport();
   _wire_v2_session = false;
   _wire_v2_confirmed = false;
   _wire_allow_deflate = false;
@@ -1292,6 +1335,26 @@ void OtaManager::downgradeWireToLegacy() {
     slot.wire_stalls = 0;
   }
   OTA_DBG("OTA: source uses legacy 160-byte DATA geometry\n");
+}
+
+void OtaManager::downgradeDirectTransport() {
+  if (!_direct_session) return;
+  invalidateDirectTransport();
+  _direct_session = false;
+  _direct_confirmed = false;
+  _fetch_route.direct = false; // keep the original physical session binding
+  _wire_v2_confirmed = false;
+  _wire_empty_stalls = 0;
+  for (uint8_t i = 0; i < OTA_FETCH_PIPELINE; ++i) {
+    const uint32_t block = _reasm[i].block;
+    clearReassemblySlot(i);
+    if (block == NO_BLOCK) continue;
+    _reasm[i].block = block;
+    const uint16_t fragment_data = fetchFragmentData();
+    _reasm[i].need = frag_full_mask((blockLen(block) + fragment_data - 1u) / fragment_data);
+  }
+  _flight_dirty = true;
+  OTA_DBG("OTA: direct source unavailable; retain blocks and use routed DATA geometry\n");
 }
 
 int OtaManager::findReassemblySlot(uint32_t block) const {
@@ -1345,7 +1408,7 @@ uint32_t OtaManager::fetchRetryTimeoutMs() const {
         : (uint32_t)count_mask_bits((uint16_t)(slot.need & ~slot.mask)) + 1u;
   }
   if (active == 0) {
-    const uint32_t fragment_data = _wire_v2_session ? OTA_FRAG_DATA_V2 : OTA_FRAG_DATA;
+    const uint32_t fragment_data = fetchFragmentData();
     const uint32_t fragments = (_fbs + fragment_data - 1) / fragment_data;
     packets += (fragments + 1) * _pipeline_width;
   }
@@ -1429,6 +1492,7 @@ void OtaManager::clearFetchIntent() {
 }
 
 void OtaManager::failFetch(FetchError error) {
+  invalidateDirectTransport();
   if (error == FETCH_ERROR_STORAGE && _fetch && _fetch->canReconnect()
       && pauseFetchForDisconnect()) return;
   if (!_have_desired_mid && _desired_target == 0 && !_archive_fetch) {
@@ -1451,6 +1515,7 @@ void OtaManager::failFetch(FetchError error) {
 }
 
 void OtaManager::completeFetch() {
+  invalidateDirectTransport();
   _auto_failure_delay = 0;
   _fetch_error = FETCH_ERROR_NONE;
   _fstate = COMPLETE;
@@ -1501,6 +1566,7 @@ OtaManager::PullResult OtaManager::startFetch(const uint8_t* mid, uint32_t targe
   _wire_v2_confirmed = false;
   _wire_allow_deflate = _wire_v2_session && _deflate_decode != nullptr;
   _wire_empty_stalls = 0;
+  _direct_session = false; _direct_confirmed = false; _fetch_route = {};
   _fexpected_target = target;
   _validate = validate;                          // motatool folder-capture warm-start (seed leaf-diff)
   // A validate pull is a FRESH seed capture, not a resume: the store already holds the seed's payload (not a
@@ -1526,6 +1592,7 @@ bool OtaManager::resumeStagedExplicit(const uint8_t* want_mid, uint32_t expected
   _wire_v2_confirmed = false;
   _wire_allow_deflate = _wire_v2_session && _deflate_decode != nullptr;
   _wire_empty_stalls = 0;
+  _direct_session = false; _direct_confirmed = false; _fetch_route = {};
   _validate = false;
   _archive_fetch = false;
   _desired_target = expected_target;
@@ -1539,6 +1606,7 @@ bool OtaManager::resumeStagedExplicit(const uint8_t* want_mid, uint32_t expected
 
 bool OtaManager::pauseFetchForDisconnect() {
   if (!fetchActive()) return false;
+  invalidateDirectTransport();
   if (_fstate != PAUSED) _paused_from = _fstate;
   _fetch_error = FETCH_ERROR_STORAGE;
   _fstate = PAUSED;
@@ -1673,6 +1741,17 @@ void OtaManager::handleManifest(const uint8_t* m, uint16_t n) {
   _fpoff = payload_off; _floff = leaves_off; _fpsize = payload_size; _fbc = bc; _fbs = bs;
   _ftotal = total; _have = 0;
   clearReassembly();                             // fresh transfer: drop any prior per-block state
+  // The successful legacy manifest exchange proves a local source exists on
+  // this exact radio session. A new zero-hop request probes its direct codec;
+  // old sources drop the reserved wire version and receive a normal retry.
+  _direct_session = _direct_transport_enabled && _wire_v2_session &&
+      _max_hops == 0 && _observed_path_transmissions == 1 &&
+      _request_route.profile < 2 && !_request_route.direct;
+  _direct_confirmed = false;
+  if (_direct_session) {
+    _fetch_route = _request_route;
+    _fetch_route.direct = true;
+  }
   // Warm-start (folder-capture): if requested and the image is small enough for the fixed leaves bitmap,
   // bulk-fetch the target leaves and diff the seed already staged in the store; else just transfer normally.
   if (_validate && beginLeafDiff()) {
@@ -1824,6 +1903,7 @@ bool OtaManager::resumeStagedFor(const uint8_t* want_mid, bool automatic_resume)
   _wire_v2_confirmed = false;
   _wire_allow_deflate = _wire_v2_session && _deflate_decode != nullptr;
   _wire_empty_stalls = 0;
+  _direct_session = false; _direct_confirmed = false; _fetch_route = {};
   memcpy(_fid, m.merkle_root, 4);
   memcpy(_froot, m.merkle_root, 4);
   _fflags = m.flags;
@@ -1945,6 +2025,11 @@ bool OtaManager::handleData(const uint8_t* m, uint16_t n) {
   DataMsg dm;
   if (!decode_data(m, n, dm) || !_fetch) return false;
   if (_fstate != FETCHING || memcmp(dm.manifest_id, _fid, 4) != 0) return false;
+  if (_request_route.direct && (!_direct_session ||
+      !(_request_route == _fetch_route))) return false;
+  if (!_request_route.direct && _direct_session &&
+      (_direct_confirmed || _request_route.profile != _fetch_route.profile ||
+       _request_route.generation != _fetch_route.generation)) return false;
   if (dm.block_idx >= _fbc) return false;
   bool present;
   if (!readBlockPresent(dm.block_idx, present)) {
@@ -1958,6 +2043,7 @@ bool OtaManager::handleData(const uint8_t* m, uint16_t n) {
   uint32_t blen = blockLen(dm.block_idx);
 
   if ((dm.frag_off & OTA_DATA_V2_MARK) == 0) {
+    if (_request_route.direct) return false;                // direct wire is explicitly v2-only
     if (dm.frag_off % OTA_FRAG_DATA != 0) return false;       // canonical legacy-aligned slices only
     if ((uint32_t)dm.frag_off + dm.data_len > blen) return false;
     uint32_t expected_len = blen - dm.frag_off;
@@ -1965,6 +2051,7 @@ bool OtaManager::handleData(const uint8_t* m, uint16_t n) {
     if (dm.data_len != expected_len) return false;            // do not mark a short slice as complete
     uint32_t kf = dm.frag_off / OTA_FRAG_DATA;
     if (kf >= 16) return false;
+    if (_direct_session) downgradeDirectTransport();       // canonical old response, no geometry mixing
     // A deployed source ignores the v2 request bits, masks them against its seven-fragment geometry, and
     // responds here. Only a fully canonical legacy slice may select that profile; malformed matching-MID
     // traffic must not force a session-wide downgrade. Never mix it with already accepted v2 bytes.
@@ -1989,11 +2076,13 @@ bool OtaManager::handleData(const uint8_t* m, uint16_t n) {
     if (!unpacked) return false;
     if (encoded_len > blen || (deflated ? encoded_len >= blen : encoded_len != blen)) return false;
     const uint16_t fragment_len = (uint16_t)(dm.data_len - OTA_DATA_V2_STREAM_ID_BYTES);
-    const uint32_t fragment_off = (uint32_t)fragment * OTA_FRAG_DATA_V2;
+    const uint16_t fragment_data = _request_route.direct ? OTA_DIRECT_FRAG_DATA : OTA_FRAG_DATA_V2;
+    const uint32_t fragment_off = (uint32_t)fragment * fragment_data;
     if (fragment_off >= encoded_len || fragment_off + fragment_len > encoded_len) return false;
     uint32_t expected_len = encoded_len - fragment_off;
-    if (expected_len > OTA_FRAG_DATA_V2) expected_len = OTA_FRAG_DATA_V2;
+    if (expected_len > fragment_data) expected_len = fragment_data;
     if (fragment_len != expected_len) return false;
+    if (_direct_session && !_request_route.direct) downgradeDirectTransport();
     _wire_v2_confirmed = true;
 
     const uint8_t* stream_id = dm.data;
@@ -2003,7 +2092,7 @@ bool OtaManager::handleData(const uint8_t* m, uint16_t n) {
       slot.deflated = deflated;
       memcpy(slot.stream_id, stream_id, sizeof(slot.stream_id));
       slot.mask = 0;
-      slot.need = frag_full_mask((encoded_len + OTA_FRAG_DATA_V2 - 1) / OTA_FRAG_DATA_V2);
+      slot.need = frag_full_mask((encoded_len + fragment_data - 1) / fragment_data);
     } else if (!slot.wire_v2 || slot.encoded_len != encoded_len || slot.deflated != deflated ||
                memcmp(slot.stream_id, stream_id, sizeof(slot.stream_id)) != 0) {
       return false;                                          // another seeder's representation; never mix
@@ -2011,6 +2100,7 @@ bool OtaManager::handleData(const uint8_t* m, uint16_t n) {
     _wire_empty_stalls = 0;                                  // a valid v2 source is still serving this flight
     const uint16_t bit = (uint16_t)(1u << fragment);
     if (!(slot.need & bit)) return false;
+    if (_request_route.direct) _direct_confirmed = true;
     if (slot.mask & bit) return true;
     memcpy(slot.buf + fragment_off, dm.data + OTA_DATA_V2_STREAM_ID_BYTES, fragment_len);
     slot.mask |= bit;
@@ -2044,7 +2134,8 @@ bool OtaManager::handleData(const uint8_t* m, uint16_t n) {
       if (!decoded || decoded_len != blen) {
         _wire_allow_deflate = false;                         // retry this/future blocks as raw v2
         slot.mask = 0;
-        slot.need = frag_full_mask((blen + OTA_FRAG_DATA_V2 - 1) / OTA_FRAG_DATA_V2);
+        const uint16_t fragment_data = fetchFragmentData();
+        slot.need = frag_full_mask((blen + fragment_data - 1) / fragment_data);
         slot.encoded_len = 0;
         slot.wire_v2 = false;
         slot.deflated = false;
@@ -2067,6 +2158,8 @@ bool OtaManager::handleProof(const uint8_t* m, uint16_t n) {
   ProofMsg pm;
   if (!decode_proof(m, n, pm) || !_fetch) return false;
   if (_fstate != FETCHING || memcmp(pm.manifest_id, _fid, 4) != 0) return false;
+  if (_request_route.direct != _direct_session ||
+      (_request_route.direct && !(_request_route == _fetch_route))) return false;
   if (pm.block_idx >= _fbc) return false;
   int slot_index = findReassemblySlot(pm.block_idx);
   if (slot_index < 0 || !_reasm[slot_index].awaiting_proof) {
@@ -2146,7 +2239,7 @@ bool OtaManager::requestSlot(uint8_t slot_index) {
   if (slot.awaiting_proof) {
     ReqProofMsg rp; memcpy(rp.manifest_id, _fid, 4); rp.block_idx = (uint16_t)slot.block;
     uint8_t b[16];
-    bool sent = emit(b, encode_req_proof(b, sizeof(b), rp), false);
+    bool sent = emit(b, encode_req_proof(b, sizeof(b), rp), false, fetchReplyRoute());
     if (sent) {
       slot.proof_request_at = 0;
       noteFetchActivity();
@@ -2162,7 +2255,7 @@ bool OtaManager::requestSlot(uint8_t slot_index) {
   OTA_DBG("OTA: REQ block=%u want=%04x (have=%u/%u mask=%04x window=%u)\n",
           (unsigned)slot.block, (unsigned)want, (unsigned)_have, (unsigned)_fbc,
           (unsigned)slot.mask, (unsigned)_req_count);
-  bool sent = emit(b, encode_req(b, sizeof(b), rq), false);
+  bool sent = emit(b, encode_req(b, sizeof(b), rq), false, fetchReplyRoute());
   if (sent) noteFetchActivity();
   return sent;
 }
@@ -2185,7 +2278,7 @@ bool OtaManager::requestFlight() {
   OTA_DBG("OTA: REQ flight first=%u blocks=%u width=%u/%u\n",
           (unsigned)_req_start, (unsigned)_req_count,
           (unsigned)_pipeline_width, (unsigned)OTA_FETCH_PIPELINE);
-  bool sent = emit(b, encode_req_window(b, sizeof(b), request), false);
+  bool sent = emit(b, encode_req_window(b, sizeof(b), request), false, fetchReplyRoute());
   _flight_request_pending = !sent;
   if (sent) noteFetchActivity();
   return sent;
@@ -2203,7 +2296,7 @@ bool OtaManager::fillPipeline() {
     ReassemblySlot& slot = _reasm[slot_index];
     slot.block = block;
     slot.mask = 0;
-    const uint16_t fragment_data = _wire_v2_session ? OTA_FRAG_DATA_V2 : OTA_FRAG_DATA;
+    const uint16_t fragment_data = fetchFragmentData();
     slot.need = frag_full_mask((blockLen(block) + fragment_data - 1) / fragment_data);
     slot.awaiting_proof = false;
     slot.proof_request_at = 0;
@@ -2221,6 +2314,18 @@ void OtaManager::requestMissing() {
   // Admission backpressure is not evidence that the source ignored v2.
   // Keep the original flight and retry it before evaluating network loss.
   if (_flight_request_pending) { requestFlight(); return; }
+
+  // An unanswered first probe must still reach old sources promptly. Once
+  // direct DATA has proved support, one lost request/burst is not evidence of
+  // a legacy source: use the sparse retry below before changing geometry. Its
+  // existing empty-flight counter advances only after local admission, and
+  // valid DATA resets it, so backpressure never consumes this one retry.
+  if (_direct_session && !anyWireDataReceived() &&
+      (!_direct_confirmed || _wire_empty_stalls >= 1)) {
+    downgradeDirectTransport();
+    requestFlight();
+    return;
+  }
 
   // No v2 DATA at all means the request may have reached only deployed sources which ignored its profile
   // bits (or the first response burst was lost). Retry once in the universal legacy profile instead of
@@ -2255,7 +2360,7 @@ void OtaManager::requestMissing() {
       const uint32_t block = reassembly.block;
       clearReassemblySlot(slot);
       reassembly.block = block;
-      const uint16_t fragment_data = _wire_v2_session ? OTA_FRAG_DATA_V2 : OTA_FRAG_DATA;
+      const uint16_t fragment_data = fetchFragmentData();
       reassembly.need = frag_full_mask((blockLen(block) + fragment_data - 1u) / fragment_data);
     }
     const bool partial_v2 = _wire_v2_session && reassembly.wire_v2 && reassembly.mask != 0 &&
@@ -2264,7 +2369,8 @@ void OtaManager::requestMissing() {
       // A v2 seeder may disappear after establishing a representation while only deployed legacy seeders
       // remain. Keep one sparse retry, then fall back the whole flight to the universal profile. Clearing
       // every slot prevents geometry/representation mixing and guarantees that old sources can take over.
-      downgradeWireToLegacy();
+      if (_direct_session) downgradeDirectTransport();
+      else downgradeWireToLegacy();
     }
     if (requestSlot(slot)) {
       // Advance fallback evidence only when the sparse retry enters the
@@ -2376,6 +2482,8 @@ void OtaManager::loop() {
 // ---------------- dispatch ----------------
 
 bool OtaManager::on_message(const uint8_t* msg, uint16_t len, OtaReplyRoute route) {
+  if (route.direct && (!_direct_transport_enabled || route.profile >= 2 ||
+      len > OTA_DIRECT_MESSAGE_MAX)) return false;
   const OtaReplyRoute previous = _request_route;
   _request_route = route;
   const bool consumed = dispatchMessage(msg, len);

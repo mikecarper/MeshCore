@@ -252,6 +252,10 @@ bool RadioLibWrapper::setTxPower(int8_t dbm) {
       ) && _cw_active) return false;
   if (_cw_active) {
     if (_cw_stopping) return false;
+#if defined(MESH_HIL_TX_FREQ_MHZ)
+    if (!hilPacketTransmitAllowed() || _cw_profile != _active_profile
+        || _cw_generation != _profile_generation) return false;
+#endif
     // Permit meter sweeps through the board's normal power/PA calibration.
     // SX127x's power setter enters standby, so re-key without resetting the
     // modem or extending the original CW deadline.
@@ -331,7 +335,7 @@ bool RadioLibWrapper::restoreAfterDeepInit() {
     restored = _radio->setPreambleLength(currentPreambleLength())
         == RADIOLIB_ERR_NONE;
   }
-#if MESH_ENABLE_MESHTEXT_WIRE
+#if MESH_ENABLE_MESHTEXT_WIRE || MESH_ENABLE_ETHERNET_WIRE
   restored = restored && applyProtocol(_physical_protocol);
 #endif
   if (_dbm_valid) {
@@ -359,7 +363,7 @@ mesh::RadioParamApplyResult RadioLibWrapper::trySetParams(float freq, float bw, 
   const uint8_t previous_sf = _cur_sf;
   const uint8_t previous_cr = _cur_cr;
   const uint16_t previous_preamble = _physical_preamble;
-#if MESH_ENABLE_MESHTEXT_WIRE
+#if MESH_ENABLE_MESHTEXT_WIRE || MESH_ENABLE_ETHERNET_WIRE
   const auto previous_protocol = _physical_protocol;
 #endif
   const uint8_t previous_profile = _active_profile;
@@ -376,7 +380,7 @@ mesh::RadioParamApplyResult RadioLibWrapper::trySetParams(float freq, float bw, 
   _physical_preamble = profilePreamble(0);
 
   bool success = applyParams(freq, bw, sf, cr);
-#if MESH_ENABLE_MESHTEXT_WIRE
+#if MESH_ENABLE_MESHTEXT_WIRE || MESH_ENABLE_ETHERNET_WIRE
   success = success && applyProtocol(requested.protocol);
   if (success) _physical_protocol = requested.protocol;
 #endif
@@ -410,7 +414,7 @@ mesh::RadioParamApplyResult RadioLibWrapper::trySetParams(float freq, float bw, 
     _profile_generation = previous_generation;
     _profile_refresh_required = previous_refresh;
     _physical_preamble = previous_preamble;
-#if MESH_ENABLE_MESHTEXT_WIRE
+#if MESH_ENABLE_MESHTEXT_WIRE || MESH_ENABLE_ETHERNET_WIRE
     _physical_protocol = previous_protocol;
 #endif
     _rx_ps_enabled = previous_rxps;
@@ -421,7 +425,7 @@ mesh::RadioParamApplyResult RadioLibWrapper::trySetParams(float freq, float bw, 
     bool restored = had_previous_params
       && _radio->standby() == RADIOLIB_ERR_NONE
       && applyParams(previous_freq, previous_bw, previous_sf, previous_cr);
-#if MESH_ENABLE_MESHTEXT_WIRE
+#if MESH_ENABLE_MESHTEXT_WIRE || MESH_ENABLE_ETHERNET_WIRE
     restored = restored && applyProtocol(previous_protocol);
 #endif
 
@@ -441,6 +445,11 @@ mesh::RadioParamApplyResult RadioLibWrapper::trySetParams(float freq, float bw, 
 bool RadioLibWrapper::validateProfile(const mesh::RadioProfileParams& p) const {
   if (!mesh::RadioProfiles::valid(p)) return false;
   if (p.protocol == mesh::RadioProfileProtocol::Meshtext && !supportsMeshtext()) return false;
+#if MESH_ENABLE_ETHERNET_WIRE
+  if (p.protocol == mesh::RadioProfileProtocol::Ethernet && !supportsEthernetTunnel()) return false;
+#else
+  if (p.protocol == mesh::RadioProfileProtocol::Ethernet) return false;
+#endif
 #if MESH_RADIO_PROFILE_CHIP == 1276
   return p.freq >= 137 && p.freq <= 1020 && p.sf >= 7 && p.bw <= 500;
 #elif MESH_RADIO_PROFILE_CHIP == 1272
@@ -485,12 +494,12 @@ mesh::RadioParamApplyResult RadioLibWrapper::tuneProfile(uint8_t profile) {
   const bool old_refresh = _profile_refresh_required;
   const bool old_params_valid = _params_valid;
   const uint16_t old_preamble = _physical_preamble;
-#if MESH_ENABLE_MESHTEXT_WIRE
+#if MESH_ENABLE_MESHTEXT_WIRE || MESH_ENABLE_ETHERNET_WIRE
   const auto old_protocol = _physical_protocol;
 #endif
   _physical_preamble = preamble;
   bool applied = applyParams(p.freq, p.bw, p.sf, p.cr);
-#if MESH_ENABLE_MESHTEXT_WIRE
+#if MESH_ENABLE_MESHTEXT_WIRE || MESH_ENABLE_ETHERNET_WIRE
   // Changing only the protocol still changes the sync word. Conversely a
   // failed write must not publish the new generation or cached wire format.
   if (applied && (_physical_protocol != p.protocol || _profile_refresh_required)) {
@@ -520,12 +529,12 @@ mesh::RadioParamApplyResult RadioLibWrapper::tuneProfile(uint8_t profile) {
     _profile_generation = old_generation;
     _profile_refresh_required = old_refresh;
     _physical_preamble = old_preamble;
-#if MESH_ENABLE_MESHTEXT_WIRE
+#if MESH_ENABLE_MESHTEXT_WIRE || MESH_ENABLE_ETHERNET_WIRE
     _physical_protocol = old_protocol;
 #endif
     bool restored = old_params_valid && _radio->standby() == RADIOLIB_ERR_NONE
         && applyParams(old_freq, old_bw, old_sf, old_cr);
-#if MESH_ENABLE_MESHTEXT_WIRE
+#if MESH_ENABLE_MESHTEXT_WIRE || MESH_ENABLE_ETHERNET_WIRE
     restored = restored && applyProtocol(old_protocol);
 #endif
     if (!restored) restored = restoreAfterDeepInit();
@@ -573,7 +582,7 @@ void RadioLibWrapper::cacheBeaconRestoreParams() {
   _active_profile = profile;
   _profile_generation = _profiles.generation[profile];
   _physical_preamble = profilePreamble(profile);
-#if MESH_ENABLE_MESHTEXT_WIRE
+#if MESH_ENABLE_MESHTEXT_WIRE || MESH_ENABLE_ETHERNET_WIRE
   _physical_protocol = p.protocol;
 #endif
   _profile_refresh_required = true;
@@ -583,6 +592,10 @@ mesh::RadioParamApplyResult RadioLibWrapper::prepareBeaconTransmit(
     const mesh::RadioProfileParams& p, int8_t power) {
   using Result = mesh::RadioParamApplyResult;
   if (_beacon_owned || _cw_active) return Result::BUSY;
+#if defined(MESH_HIL_TX_FREQ_MHZ)
+  _hil_beacon_tx_frequency_mhz = 0;
+  if (!mesh::hilTransmitFrequencyAllowed(p.freq)) return Result::FAILED;
+#endif
   if (!_params_valid || !_dbm_valid || !getBeaconAirtime(p, MAX_TRANS_UNIT)) return Result::FAILED;
   if (isCalibratingNoiseFloor()) return Result::BUSY;
 
@@ -602,7 +615,7 @@ mesh::RadioParamApplyResult RadioLibWrapper::prepareBeaconTransmit(
       ? 16 : (p.preamble ? p.preamble : 32);
   bool applied = _radio->standby() == RADIOLIB_ERR_NONE
       && applyParams(p.freq, p.bw, p.sf, p.cr);
-#if MESH_ENABLE_MESHTEXT_WIRE
+#if MESH_ENABLE_MESHTEXT_WIRE || MESH_ENABLE_ETHERNET_WIRE
   applied = applied && applyProtocol(p.protocol);
   if (applied) _physical_protocol = p.protocol;
 #endif
@@ -611,6 +624,9 @@ mesh::RadioParamApplyResult RadioLibWrapper::prepareBeaconTransmit(
   _rx_hold_continuous = false;
   state = STATE_IDLE;
   // Do not startReceive: this is a TX-only excursion, not a third RX profile.
+#if defined(MESH_HIL_TX_FREQ_MHZ)
+  if (applied) _hil_beacon_tx_frequency_mhz = p.freq;
+#endif
   return applied ? Result::APPLIED : Result::FAILED;
 }
 
@@ -630,6 +646,9 @@ mesh::RadioParamApplyResult RadioLibWrapper::restoreBeaconReceive() {
   using Result = mesh::RadioParamApplyResult;
   if (!_beacon_owned) return Result::APPLIED;
   if (state == STATE_TX_WAIT) return Result::BUSY;
+#if defined(MESH_HIL_TX_FREQ_MHZ)
+  _hil_beacon_tx_frequency_mhz = 0;
+#endif
   const uint32_t now = millis();
   if (_beacon_restore_at && static_cast<int32_t>(now - _beacon_restore_at) < 0) return Result::BUSY;
   _beacon_restoring = true;
@@ -639,7 +658,7 @@ mesh::RadioParamApplyResult RadioLibWrapper::restoreBeaconReceive() {
       && _radio->standby() == RADIOLIB_ERR_NONE;
   beginProfileRetune(false);
   restored = restored && applyParams(p.freq, p.bw, p.sf, p.cr);
-#if MESH_ENABLE_MESHTEXT_WIRE
+#if MESH_ENABLE_MESHTEXT_WIRE || MESH_ENABLE_ETHERNET_WIRE
   restored = restored && applyProtocol(p.protocol);
 #endif
   restored = restored && applyCachedTxPower(_cur_dbm) == RADIOLIB_ERR_NONE;
@@ -682,6 +701,10 @@ mesh::RadioParamApplyResult RadioLibWrapper::prepareTransmitProfile(uint8_t prof
 }
 
 mesh::RadioParamApplyResult RadioLibWrapper::prepareTransmitProfile(uint8_t profile, bool reply_rx_override) {
+#if defined(MESH_HIL_TX_FREQ_MHZ)
+  if (profile > 1 || !mesh::hilTransmitFrequencyAllowed(_profiles.params(profile).freq))
+    return mesh::RadioParamApplyResult::FAILED;
+#endif
 #if MESH_ENABLE_TX_BEACONS
   if (_beacon_owned) return mesh::RadioParamApplyResult::BUSY;
 #endif
@@ -729,7 +752,7 @@ void RadioLibWrapper::serviceProfileScan() {
   }
   if (_profiles.enabled() && !_profiles.switchTestReady()) {
     // A bounded startup self-test uses the real RX-to-RX retune path for the
-    // active pair. Keep the 128-symbol provisional preamble until four good
+    // active pair. Keep the maximum automatic provisional preamble until four good
     // samples in each direction are available. A packet, TX, or BUSY radio
     // defers the remaining hops without counting an invalid measurement.
     for (uint8_t hops = 0; hops < 2 * mesh::RadioProfiles::SwitchTestSamplesPerDirection;
@@ -1221,6 +1244,9 @@ mesh::RadioParamApplyResult RadioLibWrapper::setCarrierWave(uint8_t profile, uin
   if (!duration_ms) return !_cw_active || stopCarrierWave() ? Result::APPLIED : Result::FAILED;
   if (profile > 1 || duration_ms > CarrierWaveMaxMillis || !_params_valid
       || !_profiles.canTransmit(profile)) return Result::FAILED;
+#if defined(MESH_HIL_TX_FREQ_MHZ)
+  if (!mesh::hilTransmitFrequencyAllowed(_profiles.params(profile).freq)) return Result::FAILED;
+#endif
   if (_cw_active) {
     if (_morse_owned
 #if MESH_ENABLE_MORSE_RX
@@ -1243,6 +1269,12 @@ mesh::RadioParamApplyResult RadioLibWrapper::setCarrierWave(uint8_t profile, uin
     startRecv();
     return Result::FAILED;
   }
+#if defined(MESH_HIL_TX_FREQ_MHZ)
+  if (!hilPacketTransmitAllowed()) {
+    startRecv();
+    return Result::FAILED;
+  }
+#endif
   _radio->clearPacketReceivedAction();
   state = STATE_IDLE;
   _rx_ps_armed = false;
@@ -1277,6 +1309,9 @@ mesh::MorseTxResult RadioLibWrapper::startMorseTx(float frequency_mhz,
   const Result valid_text = mesh::MorseTx::validate(text, wpm);
   if (valid_text != Result::Started) return valid_text;
   if (!_params_valid || !isfinite(frequency_mhz)) return Result::InvalidFrequency;
+#if defined(MESH_HIL_TX_FREQ_MHZ)
+  if (!mesh::hilTransmitFrequencyAllowed(frequency_mhz)) return Result::InvalidFrequency;
+#endif
   // Only the carrier frequency matters here: existing LoRa SF/BW/protocol
   // constraints must not accidentally limit an unmodulated transmission.
   if (!validateMorseFrequency(frequency_mhz)) return Result::InvalidFrequency;
@@ -1338,6 +1373,12 @@ bool RadioLibWrapper::serviceMorseTx() {
     if (static_cast<int32_t>(now - _cw_retry_at) >= 0) stopCarrierWave();
     return true;
   }
+#if defined(MESH_HIL_TX_FREQ_MHZ)
+  if (!mesh::hilTransmitFrequencyAllowed(_morse_frequency)) {
+    stopCarrierWave();
+    return true;
+  }
+#endif
   if (_morse_generation[0] != _profiles.generation[0]
       || _morse_generation[1] != _profiles.generation[1]) {
     stopCarrierWave();
@@ -1620,6 +1661,12 @@ bool RadioLibWrapper::serviceCarrierWave() {
 #endif
   if (serviceMorseTx()) return true;
   if (_cw_active) {
+#if defined(MESH_HIL_TX_FREQ_MHZ)
+    if (!hilPacketTransmitAllowed()) {
+      stopCarrierWave();
+      return true;
+    }
+#endif
     const uint32_t now = millis();
     if ((_cw_stopping && static_cast<int32_t>(now - _cw_retry_at) >= 0)
         || (!_cw_stopping && (static_cast<int32_t>(now - _cw_until) >= 0
@@ -1996,7 +2043,37 @@ uint32_t RadioLibWrapper::getEstAirtimeFor(int len_bytes) {
   return airtime_us / 1000;
 }
 
+#if defined(MESH_HIL_TX_FREQ_MHZ)
+bool RadioLibWrapper::hilPacketTransmitAllowed() const {
+#if MESH_ENABLE_TX_BEACONS
+  if (_beacon_owned) {
+    return !_beacon_restoring
+        && mesh::hilTransmitFrequencyAllowed(_hil_beacon_tx_frequency_mhz);
+  }
+#endif
+  // Check the committed physical cache, not only a requested profile. Failed
+  // retunes, stale generations, and an unresolved refresh never authorize RF.
+  if (!_params_valid || _profile_refresh_required || _active_profile > 1
+      || (_active_profile == 1 && !_profiles.enabled())
+      || _profile_generation != _profiles.generation[_active_profile]) return false;
+  const auto& p = _profiles.params(_active_profile);
+  return mesh::hilTransmitFrequencyAllowed(_cur_freq)
+      && _cur_freq == p.freq && _cur_bw == p.bw && _cur_sf == p.sf && _cur_cr == p.cr
+      && _physical_preamble == profilePreamble(_active_profile)
+#if MESH_ENABLE_MESHTEXT_WIRE || MESH_ENABLE_ETHERNET_WIRE
+      && _physical_protocol == p.protocol
+#endif
+      ;
+}
+#endif
+
 bool RadioLibWrapper::startSendRaw(const uint8_t* bytes, int len) {
+#if defined(MESH_HIL_TX_FREQ_MHZ)
+  if (!hilPacketTransmitAllowed()) {
+    MESH_DEBUG_PRINTLN("HIL: packet TX blocked outside the proven allowed frequency");
+    return false;
+  }
+#endif
   if (_cw_active || hasPendingRadioInterrupt()) return false;
   _rx_hold_continuous = false;
   if (_rx_ps_armed) {

@@ -460,6 +460,29 @@ void KissModem::handleHardwareCommand(uint8_t sub_cmd, const uint8_t* data, uint
     case HW_CMD_GET_TEMPRADIO2:
       handleGetTempRadio2();
       break;
+    case HW_CMD_SET_RADIO2_EXT:
+      handleSetRadio2(data, len, true);
+      break;
+    case HW_CMD_GET_RADIO2_EXT:
+      if (len != 0) writeHardwareError(HW_ERR_INVALID_LENGTH);
+      else handleGetRadio2(true);
+      break;
+#if defined(MESH_HIL_TX_FREQ_MHZ)
+    case HW_CMD_GET_LAB_TX_GUARD: {
+      if (len != 0) {
+        writeHardwareError(HW_ERR_INVALID_LENGTH);
+        break;
+      }
+      // This same compile-time boundary guards startSendRaw(). Never infer
+      // bench safety from a host-requested profile or a generic version byte.
+      static_assert(MESH_HIL_TX_FREQ_MHZ >= 150 && MESH_HIL_TX_FREQ_MHZ <= 2500,
+                    "HIL TX frequency must be an explicit valid MHz value");
+      uint8_t hz[4];
+      writeU32LE(hz, frequencyToHz(static_cast<float>(MESH_HIL_TX_FREQ_MHZ)));
+      writeHardwareFrame(HW_RESP(HW_CMD_GET_LAB_TX_GUARD), hz, sizeof(hz));
+      break;
+    }
+#endif
     default:
       writeHardwareError(HW_ERR_UNKNOWN_CMD);
       break;
@@ -821,8 +844,8 @@ void KissModem::handleGetRadio() {
   writeHardwareFrame(HW_RESP(HW_CMD_GET_RADIO), buf, sizeof(buf));
 }
 
-void KissModem::handleSetRadio2(const uint8_t* data, uint16_t len) {
-  if (len != KISS_RADIO2_PARAMS_SIZE) {
+void KissModem::handleSetRadio2(const uint8_t* data, uint16_t len, bool extended) {
+  if (len != (extended ? KISS_RADIO2_EXT_PARAMS_SIZE : KISS_RADIO2_PARAMS_SIZE)) {
     writeHardwareError(HW_ERR_INVALID_LENGTH);
     return;
   }
@@ -833,7 +856,27 @@ void KissModem::handleSetRadio2(const uint8_t* data, uint16_t len) {
   }
 
   Radio2Config config;
-  if (!decodeRadio2Config(data, config) || !validateRadio2Config(config)) {
+  if (!decodeRadio2Config(data, config)) {
+    writeHardwareError(HW_ERR_INVALID_PARAM);
+    return;
+  }
+  if (extended) {
+    const uint8_t protocol = data[KISS_RADIO2_PARAMS_SIZE];
+    if (protocol != (uint8_t)mesh::RadioProfileProtocol::MeshCore
+        && protocol != (uint8_t)mesh::RadioProfileProtocol::Ethernet) {
+      writeHardwareError(HW_ERR_INVALID_PARAM);
+      return;
+    }
+    config.profile.params.protocol = (mesh::RadioProfileProtocol)protocol;
+    // Reject unavailable wire support even for an off/zero tuple. The host
+    // must never mistake an accepted setting for a supported modem format.
+    if (config.profile.params.protocol == mesh::RadioProfileProtocol::Ethernet
+        && !_radio.supportsEthernetTunnel()) {
+      writeHardwareError(HW_ERR_INVALID_PARAM);
+      return;
+    }
+  }
+  if (!validateRadio2Config(config)) {
     writeHardwareError(HW_ERR_INVALID_PARAM);
     return;
   }
@@ -845,14 +888,16 @@ void KissModem::handleSetRadio2(const uint8_t* data, uint16_t len) {
   writeHardwareFrame(HW_RESP_OK, nullptr, 0);
 }
 
-void KissModem::handleGetRadio2() {
+void KissModem::handleGetRadio2(bool extended) {
   if (!_radio.profiles()) {
     writeHardwareError(HW_ERR_NO_CALLBACK);
     return;
   }
-  uint8_t buf[KISS_RADIO2_PARAMS_SIZE];
+  uint8_t buf[KISS_RADIO2_EXT_PARAMS_SIZE];
   encodeRadio2Config(_saved_radio2, buf);
-  writeHardwareFrame(HW_RESP(HW_CMD_GET_RADIO2), buf, sizeof(buf));
+  if (extended) buf[KISS_RADIO2_PARAMS_SIZE] = (uint8_t)_saved_radio2.profile.params.protocol;
+  writeHardwareFrame(HW_RESP(extended ? HW_CMD_GET_RADIO2_EXT : HW_CMD_GET_RADIO2), buf,
+      extended ? KISS_RADIO2_EXT_PARAMS_SIZE : KISS_RADIO2_PARAMS_SIZE);
 }
 
 void KissModem::handleSetTempRadio2(const uint8_t* data, uint16_t len) {

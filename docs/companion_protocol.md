@@ -213,7 +213,7 @@ catalog; bytes `0x2C`-`0x31` are parked and `0x35` is unused.
 | `0x15` | `CMD_SET_TUNING_PARAMS` | Set tuning parameters. |
 | `0x16` | `CMD_DEVICE_QUERY` | Negotiate protocol support and read device information. |
 | `0x17` / `0x18` | `CMD_EXPORT_PRIVATE_KEY` / `CMD_IMPORT_PRIVATE_KEY` | Export or import identity key material when enabled. |
-| `0x19` | `CMD_SEND_RAW_DATA` | Send an application raw-data packet. |
+| `0x19` | `CMD_SEND_RAW_DATA` | Send an application raw-data packet. Known media and opt-in SSH envelopes honor [application TX routing](radio_profiles.md#companion-media-and-ssh-tx-routing); other raw bytes retain normal routing. |
 | `0x1A`-`0x1D` | `CMD_SEND_LOGIN` through `CMD_LOGOUT` | Manage a server connection. |
 | `0x1E` | `CMD_GET_CONTACT_BY_KEY` | Look up a contact by public-key prefix. |
 | `0x1F` / `0x20` | `CMD_GET_CHANNEL` / `CMD_SET_CHANNEL` | Read or write a channel slot. |

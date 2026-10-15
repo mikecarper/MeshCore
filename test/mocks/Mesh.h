@@ -17,6 +17,7 @@ public:
   virtual RadioProfiles* profiles() { return nullptr; }
   virtual const RadioProfiles* profiles() const { return nullptr; }
   virtual bool validateProfile(const RadioProfileParams&) const { return false; }
+  virtual bool supportsEthernetTunnel() const { return false; }
   virtual uint8_t receiveProfile() const { return 0; }
   virtual uint32_t receiveProfileGeneration() const {
     const RadioProfiles* p = profiles();

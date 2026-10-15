@@ -5768,6 +5768,8 @@ TEST(OtaSpeed, MissingProofFallbackStaysArmedAtMillisRollover) {
   EXPECT_EQ(ota_msg_type(sent.items.back().data(), sent.items.back().size()), OTA_REQ_PROOF);
 }
 
+#include "test_ota_direct_manager.inc"
+
 int main(int argc, char** argv) {
   ::testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();

@@ -949,6 +949,47 @@ ACKs and addressed responses.
 See [Companion routing details and examples](radio_profiles.md#companion-tx-routing-by-contact-or-channel)
 for temporary profiles, persistence, and the traffic covered by each setting.
 
+## Set Companion media and SSH application TX profiles
+
+```text
+get tx.media
+set tx.media auto|radio|radio2|both|off
+get tx.ssh
+set tx.ssh auto|radio|radio2|both|off
+```
+
+Choose one value after `set`. Both default to `auto` and are saved across
+reboot. Explicit choices override a channel route for the matching application
+data only; they do not change ordinary text, adverts or contact ACKs.
+`radio2` requires an active `rxtx` MeshCore profile and never falls back to
+the primary. `both` uses the available profiles; `off` blocks sending only.
+Queries include the effective `active=` selection and warn if radio2 is
+unavailable for TX.
+
+Media covers Open TAK's binary photo/voice and fetch packets. SSH requires
+an application to opt into the new `0x5353` channel-data type or raw
+`53 53 48 01` envelope; existing untagged SSH/IP tunnel apps are not detected
+automatically. See the [application routing contract](radio_profiles.md#companion-media-and-ssh-tx-routing)
+for the exact framing, precedence and limits.
+
+## ESP32 Full Companion Ethernet tunnel
+
+```text
+get ethernet
+get ethernet.radio
+set ethernet.radio <MHz>,<kHz>,<SF>,<CR>[,<preamble>]
+set ethernet on
+set ethernet off
+```
+
+This separate `ethernet` mode carries the entire raw Ethernet link over
+radio2, including SSH, while primary radio stays MeshCore. It defaults off,
+saves its settings, and requires an explicitly configured supported RF tuple.
+Supported ESP32 Full SX1262/SX1276 builds expose trusted-LAN KISS-over-TCP on
+station port 5003. It does not add an SSH server, use `tx.ssh` tags, or bridge
+Ethernet into MeshCore. Conflicting radio2 owners are not overwritten.
+See [Ethernet setup, host commands and limits](radio_profiles.md#esp32-companion-ethernet-over-lora-kiss).
+
 ## Set repeater, room-server, and sensor reply profiles
 
 ```text

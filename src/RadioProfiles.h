@@ -9,7 +9,7 @@ namespace mesh {
 
 enum class RadioProfileMode : uint8_t { Off = 0, Rx = 1, RxTx = 2 };
 enum class RadioCrossMode : uint8_t { Auto = 0, On = 1, Off = 2 };
-enum class RadioProfileProtocol : uint8_t { MeshCore = 0, Meshtext = 1 };
+enum class RadioProfileProtocol : uint8_t { MeshCore = 0, Meshtext = 1, Ethernet = 2 };
 
 // These are modulation profiles of ONE transceiver, never additional radios.
 struct RadioProfileParams {
@@ -42,7 +42,7 @@ class RadioProfiles {
   static constexpr double MinFastListenSymbols = MinListenSymbols;
   static constexpr uint8_t AcquisitionSymbols = 8;
   static constexpr uint16_t MaxPreamble = 65528;
-  static constexpr uint16_t MaxAutomaticPreamble = 128;
+  static constexpr uint16_t MaxAutomaticPreamble = 512;
   // Successful RX-to-RX hops self-test the board-specific switch allowance.
   // Packet receptions can extend a visit. No fixed loop allowance is added to
   // the self-tested, guarded switch time in the idle-scan timing model.
@@ -120,7 +120,8 @@ class RadioProfiles {
   static bool valid(const RadioProfileParams& p) {
     if (!isfinite(p.freq) || !isfinite(p.bw) || p.freq < 150 || p.freq > 2500
         || p.sf < 5 || p.sf > 12 || p.cr < 5 || p.cr > 8
-        || (p.protocol != RadioProfileProtocol::MeshCore && p.protocol != RadioProfileProtocol::Meshtext)
+        || (p.protocol != RadioProfileProtocol::MeshCore && p.protocol != RadioProfileProtocol::Meshtext
+            && p.protocol != RadioProfileProtocol::Ethernet)
         || (p.preamble != 0 && (p.preamble < 8 || p.preamble > MaxPreamble))) return false;
     static constexpr float bandwidths[] = {7.8f, 10.4f, 15.6f, 20.8f, 31.25f, 41.7f,
                                62.5f, 125, 250, 500, 1000, 812.5f, 1625};
@@ -247,7 +248,7 @@ class RadioProfiles {
     for (uint8_t i = 0; i < (enabled() ? 2 : 1); ++i) {
       if (!valid(params(i)) || !safePreamble(params(i), preamble(i, 32))) return false;
     }
-    // Recommendations over 128 are reported as unsafe, but the profile can
+    // Recommendations above the automatic cap remain visible, but the profile can
     // still run at the cap when its physical preamble is legal.
     // A foreign network fixes its own preamble and cannot advertise our scan
     // cycle. Accept safe wire settings, but do not claim loss-free scanning.

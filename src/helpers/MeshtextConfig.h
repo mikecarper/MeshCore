@@ -1,6 +1,8 @@
 #pragma once
 
 #include "BeaconFeatureConfig.h"
+#include "EthernetTunnelConfig.h"
+#include "ota/OtaDirectConfig.h"
 
 // Resolve the chip in every translation unit, including Dispatcher.cpp which
 // includes this before Arduino.h. Otherwise different class layouts could be
@@ -39,4 +41,11 @@
   #else
     #define MESH_ENABLE_MESHTEXT_WIRE 0
   #endif
+#endif
+
+// Foreign transports and negotiated direct KISS OTA share one bounded raw
+// dispatcher slot. Direct OTA retains its temporary MeshCore profile; foreign
+// transports keep their existing radio2-only ownership.
+#ifndef MESH_ENABLE_FOREIGN_RADIO
+  #define MESH_ENABLE_FOREIGN_RADIO (MESH_ENABLE_MESHTEXT_CHAT || MESH_ENABLE_ETHERNET_TUNNEL || MESH_ENABLE_OTA_KISS_DIRECT)
 #endif

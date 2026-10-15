@@ -29,6 +29,10 @@
 #include <helpers/RadioProfileCLI.h>
 #include <helpers/MorseReplyHandoff.h>
 #include <helpers/MeshtextConfig.h>
+#if MESH_ENABLE_ETHERNET_TUNNEL
+#include <helpers/EthernetTunnelSettings.h>
+#include <helpers/esp32/EthernetKissServer.h>
+#endif
 namespace mesh { class BeaconManager; }
 #if MESH_ENABLE_MESHTEXT_CHAT
 #include <helpers/CompanionMeshtextChannel.h>
@@ -334,6 +338,10 @@ public:
   void beginUsbLoggingReplyBarrier(BaseSerialInterface* route);
   void endUsbLoggingReplyBarrier(bool reply_queued);
   bool handleTxRoutingCommand(const char* command, char* reply, size_t reply_size);
+  bool handleTrafficRoutingCommand(const char* command, char* reply, size_t reply_size);
+  bool sendClientGroupData(mesh::GroupChannel& channel, uint8_t* path, uint8_t path_len,
+                           uint16_t data_type, const uint8_t* data, int data_len);
+  bool sendClientRawData(const uint8_t* data, size_t data_len, uint8_t* path, uint8_t path_len);
 
   int  getRecentlyHeard(AdvertPath dest[], int max_num);
 
@@ -375,6 +383,41 @@ protected:
                        const mesh::GroupChannel& channel, uint8_t* data, size_t len) override;
   bool isAliasRadio2Defined() const;
   bool resolveChannelAlias(ChannelDetails& channel) const;
+#if MESH_ENABLE_ETHERNET_TUNNEL
+  mesh::ethernet::Settings _ethernet_settings;
+  mesh::ethernet::KissServer _ethernet_kiss;
+  bool _ethernet_settings_valid = true, _ethernet_active = false, _ethernet_owned = false;
+  uint32_t _ethernet_generation = 0;
+  uint32_t _ethernet_intent_generation = 0, _ethernet_channel_generation = 0;
+  uint32_t _ethernet_checked_channels = UINT32_MAX;
+  bool _ethernet_channels_conflict = false;
+  uint32_t _ethernet_received = 0, _ethernet_sent = 0, _ethernet_failed = 0;
+  const char* _ethernet_status = "off";
+  void beginEthernetTunnel();
+  bool ethernetChannelConflict();
+  bool ethernetRadioConflict(const mesh::ethernet::Settings& settings);
+  void releaseEthernetProfile();
+  bool saveEthernetSettings(const mesh::ethernet::Settings& settings);
+  bool eraseEthernetSettings();
+  bool handleEthernetTunnelCommand(const char* command, char* reply, size_t capacity);
+  void loopEthernetTunnel();
+  bool onEthernetFrame(const uint8_t* bytes, size_t length, uint8_t profile, uint32_t generation);
+#endif
+#if MESH_ENABLE_FOREIGN_RADIO
+  bool onForeignRadioFrame(const uint8_t* bytes, size_t length, uint8_t profile,
+                          uint32_t generation, float snr, float rssi) override;
+  void onForeignRadioSendComplete(bool success) override;
+  bool allowForeignRadioTransmit() const override {
+    return _radio_available && _scheduled_reboot_at == 0 && (
+#if MESH_ENABLE_MESHTEXT_CHAT
+        _mt_active ||
+#endif
+#if MESH_ENABLE_ETHERNET_TUNNEL
+        _ethernet_active ||
+#endif
+        false);
+  }
+#endif
 #if MESH_ENABLE_MESHTEXT_CHAT
   void beginMeshtext();
   void refreshMeshtextIdentity();
@@ -387,12 +430,6 @@ protected:
   bool eraseMeshtextSettings();
   bool sendMeshtextText(const ChannelDetails& channel, const char* text, size_t length);
   bool sendMeshtextNodeInfo(const ChannelDetails& channel);
-  bool onForeignRadioFrame(const uint8_t* bytes, size_t length, uint8_t profile,
-                          uint32_t generation, float snr, float rssi) override;
-  void onForeignRadioSendComplete(bool success) override;
-  bool allowForeignRadioTransmit() const override {
-    return _radio_available && _scheduled_reboot_at == 0 && _mt_active;
-  }
   mesh::mt::Region meshtextRegion() const;
 #endif
   bool queueChannelText(uint8_t index, const uint8_t secret[32], float snr,

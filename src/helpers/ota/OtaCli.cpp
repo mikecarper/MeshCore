@@ -113,6 +113,7 @@ static const char* fetch_error_word(OtaManager::FetchError error) {
     case OtaManager::FETCH_ERROR_INTEGRITY:        return "integrity check";
     case OtaManager::FETCH_ERROR_MANIFEST_TIMEOUT: return "manifest timeout";
     case OtaManager::FETCH_ERROR_LEAVES_TIMEOUT:   return "leaves timeout";
+    case OtaManager::FETCH_ERROR_RADIO_SESSION:    return "radio session changed";
     default:                                       return "none";
   }
 }
@@ -178,7 +179,9 @@ static __attribute__((noinline)) bool handle_status(char* reply, OtaContext& c) 
       else
         snprintf(dl, sizeof dl, "%sdownload: %s %u/%u (%u%%) id=%s %us",
                  c.manager.fetched_is_bootloader() ? "bootloader " : "",
-                 state_word(fs), have, tot, pct, midhx, age);
+                 fs == OtaManager::FETCHING && c.manager.directFetchActive() ?
+                     (c.manager.directFetchConfirmed() ? "direct240" : "direct240 probe") : state_word(fs),
+                 have, tot, pct, midhx, age);
     }
     const char* hw = (c.hw_id[0]) ? c.hw_id : "?";
 #if OTA_TARGET_NAME_TABLE && OTA_TARGET_NAME_FRONT_CODED

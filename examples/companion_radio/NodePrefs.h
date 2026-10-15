@@ -10,6 +10,7 @@
 #include <helpers/BluetoothMac.h>
 #include <helpers/CommonRadioPrefs.h>
 #include <helpers/DynamicConfigSerializer.h>
+#include <helpers/CompanionTrafficPrefs.h>
 
 #include "BluetoothName.h"
 
@@ -121,6 +122,9 @@ public:
   // A checked footer follows every existing on-flash field, never an insertion.
   uint8_t peripherals_shared = 0; // applied at boot, not on a live CLI save
 #endif
+  // Checked footer after all previously published fields/board footers.
+  uint8_t tx_media = mesh::RADIO_TX_AUTO;
+  uint8_t tx_ssh = mesh::RADIO_TX_AUTO;
 
 private:
   class RadioPrefs : public CommonRadioPrefs {
@@ -259,31 +263,23 @@ public:
   // untouched, and leave a normally constructed snapshot's adapters local.
   bool copyPersistedValuesFrom(const CompanionNodePrefs& source) {
     if (&source == this) return true;
-#if defined(RAK_4631)
-    const auto& last_value = peripherals_shared;
-#else
-    const auto& last_value = lost_reply;
-#endif
-    static_assert(sizeof(lost_reply) == sizeof(uint8_t),
-                  "The published lost reply preference is one byte");
+    const auto& last_value = tx_ssh;
+    static_assert(sizeof(tx_ssh) == sizeof(uint8_t),
+                  "The last persisted traffic policy is one byte");
     const uintptr_t first = reinterpret_cast<uintptr_t>(&airtime_factor);
     const uintptr_t last = reinterpret_cast<uintptr_t>(&last_value);
     if (last < first
-        || last - first > sizeof(*this) - sizeof(lost_reply)) {
+        || last - first > sizeof(*this) - sizeof(tx_ssh)) {
       return false;
     }
     const size_t size = static_cast<size_t>(last - first)
-        + sizeof(lost_reply);
+        + sizeof(tx_ssh);
     const auto bounded = [size](const CompanionNodePrefs& values) -> bool {
       const uintptr_t object = reinterpret_cast<uintptr_t>(&values);
       const uintptr_t begin =
           reinterpret_cast<uintptr_t>(&values.airtime_factor);
       const uintptr_t end = reinterpret_cast<uintptr_t>(
-#if defined(RAK_4631)
-          &values.peripherals_shared
-#else
-          &values.lost_reply
-#endif
+          &values.tx_ssh
       );
       const uintptr_t radio_begin = reinterpret_cast<uintptr_t>(&values.radio);
       const uintptr_t custom_begin = reinterpret_cast<uintptr_t>(&values.custom);
@@ -292,7 +288,7 @@ public:
       return begin >= object && begin - object <= sizeof(values)
           && size <= sizeof(values) - static_cast<size_t>(begin - object)
           && end >= begin
-          && end - begin == size - sizeof(values.lost_reply)
+          && end - begin == size - sizeof(values.tx_ssh)
           && radio_begin >= begin && size <= radio_begin - begin
           && custom_begin >= begin && size <= custom_begin - begin;
     };

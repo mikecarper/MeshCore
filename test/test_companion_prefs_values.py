@@ -36,9 +36,9 @@ static size_t adapterOffset(const CompanionNodePrefs& prefs) {
   // The value helper does not copy the adapters or their inter-field padding.
   // Use the complete object's byte representation for bounded observation.
   const uintptr_t first = reinterpret_cast<uintptr_t>(&prefs);
-  const uintptr_t last = reinterpret_cast<uintptr_t>(&prefs.lost_reply);
+  const uintptr_t last = reinterpret_cast<uintptr_t>(&prefs.tx_ssh);
   assert(last >= first && last - first < sizeof(prefs));
-  return static_cast<size_t>(last - first) + sizeof(prefs.lost_reply);
+  return static_cast<size_t>(last - first) + sizeof(prefs.tx_ssh);
 }
 
 static std::vector<uint8_t> adapterBytes(const CompanionNodePrefs& prefs) {
@@ -92,7 +92,10 @@ int main() {
     saved.bluetooth_enabled = static_cast<uint8_t>(trial);
     DataStore image_store;
     assert(image_store.savePrefs(saved, 47.125, -122.25));
-    const auto image = image_store.fs.files["/new_prefs"];
+    auto image = image_store.fs.files["/new_prefs"];
+    // The frozen reference remains authoritative only for the historical
+    // prefix. Checked new-footer behavior has dedicated persistence tests.
+    image.resize(image.size()-mesh::companion::traffic::FooterSize);
     // Test every possible old/torn image length, including every officially
     // supported append boundary and unknown lengths beyond the current tail.
     for (size_t length = 0; length <= image.size() + 5; ++length) {
@@ -124,7 +127,9 @@ int main() {
             "/new_prefs", actual, lat, lon);
         assert(got == expected);
         assert(READ_CALLS == expected_reads);
-        assert(AVAILABLE_CALLS == expected_available);
+        // The common footer reader adds one EOF probe after any recognized
+        // historical image; no original field read or ordering changes.
+        assert(AVAILABLE_CALLS == expected_available+(expected_reads.empty()?0:1));
         if (length == 84 && quota == 84) {
           // The original mandatory prefix has 21 reads, ending at ble_pin.
           // This order is an independent wire contract, not the new table.
@@ -141,8 +146,9 @@ int main() {
 #endif
           // Every absent optional field observes EOF, then the completed
           // image receives the existing final trailing-byte check.
-          assert(AVAILABLE_CALLS == optional_fields + 1);
+          assert(AVAILABLE_CALLS == optional_fields + 2);
         }
+        if(got)legacy.tx_media=legacy.tx_ssh=mesh::RADIO_TX_AUTO;
         equalValues(actual, legacy);
         assert(!memcmp(&lat, &legacy_lat, sizeof(lat)));
         assert(!memcmp(&lon, &legacy_lon, sizeof(lon)));
@@ -185,7 +191,7 @@ class CompanionPrefsValuesTests(unittest.TestCase):
             r'^\s*(?:float|char|u?int(?:8|16|32)_t)\s+([A-Za-z_][A-Za-z_0-9]*)',
             prefix, re.M)
         self.assertEqual(declarations[0], 'airtime_factor')
-        self.assertEqual(declarations[-2:], ['lost_reply', 'peripherals_shared'])
+        self.assertEqual(declarations[-2:], ['tx_media', 'tx_ssh'])
         optional = {
             'fan_mode': 'TBEAM_1W', 'fan_lo': 'TBEAM_1W', 'fan_hi': 'TBEAM_1W',
             'wifi_ssid': 'defined(RP2040_PLATFORM) && defined(ENABLE_WIFI_INTERFACE)',

@@ -55,17 +55,17 @@ int main(){
  assert(node.savePrefs());
  const auto original=node.store.fs.files["/new_prefs"];
 #if defined(TBEAM_1W)
- assert(original.size()==243);
+ assert(original.size()==251);
 #elif defined(RP2040_PLATFORM) && defined(ENABLE_WIFI_INTERFACE)
- assert(original.size()==333);
+ assert(original.size()==341);
 #else
- assert(original.size()==236);
+ assert(original.size()==244);
 #endif
- const size_t debug_offset=original.size()-2;
+ const size_t debug_offset=original.size()-mesh::companion::traffic::FooterSize-2;
  assert(original[debug_offset]==0&&original[debug_offset-3]==0);
  assert(original[debug_offset-2]==1&&original[debug_offset-1]==1);
  assert(original[debug_offset-4]==1&&original[158]==1);
- assert(original.back()==0);
+ assert(original[debug_offset+1]==0);
  char reply[160]={};
  for(const char* malformed : {"set usb.debug","set usb.debug ",
      "set usb.debug 1","set usb.debug ON","set usb.debug on ",

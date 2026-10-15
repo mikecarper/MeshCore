@@ -23,6 +23,9 @@ HARNESS = r'''
 #endif
 #include "examples/companion_radio/NodePrefs.h"
 #include "examples/companion_radio/PrefsStorageLayout.h"
+#if defined(RAK_4631)
+#include <helpers/PeripheralModePrefs.h>
+#endif
 #define MESH_DEBUG_PRINTLN(...) ((void)0)
 struct DataStore {
  MemoryFS fs;
@@ -59,6 +62,11 @@ int main(int argc,char** argv){
  original.gps_sync_interval_hours=336;
  original.usb_debug_enabled=1;
  original.lost_reply=2;
+ original.tx_media=mesh::RADIO_TX_SECONDARY;
+ original.tx_ssh=mesh::RADIO_TX_OFF;
+#if defined(RAK_4631)
+ original.peripherals_shared=1;
+#endif
 #ifdef TBEAM_1W
  strcpy(original.fan_mode,"on");original.fan_lo=33;original.fan_hi=42;
 #endif
@@ -67,6 +75,11 @@ int main(int argc,char** argv){
 #endif
  assert(store.savePrefs(original,47.1,-122.2));
  const auto disk=store.fs.files["/new_prefs"];
+ const size_t historical_size=disk.size()-mesh::companion::traffic::FooterSize
+#if defined(RAK_4631)
+     -mesh::peripherals::FooterSize
+#endif
+     ;
  CompanionNodePrefs changed=original;changed.freq=910.1f;
  if(scenario==0){
    store.fs.fail_write=true;
@@ -98,6 +111,10 @@ int main(int argc,char** argv){
    assert(loaded.gps_sync_interval_hours==336);
    assert(loaded.usb_debug_enabled==1);
    assert(loaded.lost_reply==2);
+   assert(loaded.tx_media==mesh::RADIO_TX_SECONDARY&&loaded.tx_ssh==mesh::RADIO_TX_OFF);
+#if defined(RAK_4631)
+   assert(loaded.peripherals_shared==1);
+#endif
 #ifdef TBEAM_1W
    assert(!strcmp(loaded.fan_mode,"on")&&loaded.fan_lo==33&&loaded.fan_hi==42);
 #endif
@@ -203,7 +220,7 @@ int main(int argc,char** argv){
  } else if(scenario==7){
    // Pre-consent image: all earlier settings survive with default-off consent.
    DataStore legacy;legacy.fs.files["/new_prefs"]=disk;
-   legacy.fs.files["/new_prefs"].resize(disk.size()-6);
+   legacy.fs.files["/new_prefs"].resize(historical_size-6);
    CompanionNodePrefs loaded;double lat=0,lon=0;
    assert(legacy.loadPrefs(loaded,lat,lon));
    assert(loaded.flood_retry_advert_enabled==0);
@@ -212,7 +229,7 @@ int main(int argc,char** argv){
    // The previous complete image loads with the board policy even when the
    // receiving prefs object previously held an explicit configured interval.
    DataStore legacy;legacy.fs.files["/new_prefs"]=disk;
-   legacy.fs.files["/new_prefs"].resize(disk.size()-4);
+   legacy.fs.files["/new_prefs"].resize(historical_size-4);
    CompanionNodePrefs loaded;loaded.gps_sync_interval_hours=24;loaded.usb_debug_enabled=1;
    double lat=0,lon=0;
    assert(legacy.loadPrefs(loaded,lat,lon));
@@ -220,12 +237,12 @@ int main(int argc,char** argv){
    assert(loaded.usb_debug_enabled==0);
    // Half of the two-byte append is never accepted as a complete image.
    DataStore torn;torn.fs.files["/new_prefs"]=disk;
-   torn.fs.files["/new_prefs"].resize(disk.size()-3);
+   torn.fs.files["/new_prefs"].resize(historical_size-3);
    assert(!torn.loadPrefsInt("/new_prefs",loaded,lat,lon));
    // The complete published GPS image is accepted without borrowing either
    // GPS byte as the new debug preference.
    DataStore gps_image;gps_image.fs.files["/new_prefs"]=disk;
-   gps_image.fs.files["/new_prefs"].resize(disk.size()-2);
+   gps_image.fs.files["/new_prefs"].resize(historical_size-2);
    loaded.usb_debug_enabled=1;
    assert(gps_image.loadPrefsInt("/new_prefs",loaded,lat,lon));
    assert(loaded.gps_sync_interval_hours==336&&loaded.usb_debug_enabled==0);
@@ -235,6 +252,68 @@ int main(int argc,char** argv){
    oversized.fs.files["/new_prefs"].resize(disk.size()+65536);
    assert(!oversized.loadPrefsInt("/new_prefs",loaded,lat,lon));
    assert(loaded.gps_sync_interval_hours==336&&loaded.usb_debug_enabled==0);
+ } else if(scenario==10){
+   // Even a checksum-consistent unknown policy tag must not become AUTO or
+   // update just one output. Version/size and both enum fields are checked.
+   for(unsigned value=0;value<256;++value){
+     uint8_t footer[mesh::companion::traffic::FooterSize];
+     mesh::companion::traffic::encodeFooter(footer,mesh::RADIO_TX_SECONDARY,mesh::RADIO_TX_OFF);
+     for(unsigned field : {4u,5u}){
+       mesh::companion::traffic::encodeFooter(footer,mesh::RADIO_TX_SECONDARY,mesh::RADIO_TX_OFF);
+       footer[field]=uint8_t(value);
+       uint16_t crc=mesh::companion::traffic::checksum(footer,6);
+       footer[6]=uint8_t(crc>>8);footer[7]=uint8_t(crc);
+       uint8_t media=mesh::RADIO_TX_BOTH,ssh=mesh::RADIO_TX_PRIMARY;
+       bool valid=value==0||(value>=0xa1&&value<=0xa4);
+       assert(mesh::companion::traffic::decodeFooter(footer,sizeof(footer),media,ssh)==valid);
+       if(!valid)assert(media==mesh::RADIO_TX_BOTH&&ssh==mesh::RADIO_TX_PRIMARY);
+     }
+   }
+   // Legacy preference files cannot borrow a configured live traffic route.
+   for(size_t size : {historical_size, disk.size()}){
+     DataStore boot;boot.fs.files["/new_prefs"]=disk;
+     boot.fs.files["/new_prefs"].resize(size);
+     CompanionNodePrefs loaded;loaded.tx_media=mesh::RADIO_TX_BOTH;
+     loaded.tx_ssh=mesh::RADIO_TX_PRIMARY;double lat=1,lon=2;
+     assert(boot.loadPrefsInt("/new_prefs",loaded,lat,lon));
+     assert(loaded.tx_media==(size==disk.size()?mesh::RADIO_TX_SECONDARY:mesh::RADIO_TX_AUTO));
+     assert(loaded.tx_ssh==(size==disk.size()?mesh::RADIO_TX_OFF:mesh::RADIO_TX_AUTO));
+     assert(loaded.freq==original.freq&&loaded.ble_pin==original.ble_pin);
+   }
+#if defined(RAK_4631)
+   DataStore old_rak;old_rak.fs.files["/new_prefs"]=disk;
+   old_rak.fs.files["/new_prefs"].resize(disk.size()-mesh::companion::traffic::FooterSize);
+   CompanionNodePrefs rak;rak.tx_media=mesh::RADIO_TX_BOTH;double lat=1,lon=2;
+   assert(old_rak.loadPrefsInt("/new_prefs",rak,lat,lon));
+   assert(rak.peripherals_shared==1&&rak.tx_media==mesh::RADIO_TX_AUTO);
+#endif
+   // Every torn and bit-flipped checked footer fails without any live mutation.
+   const size_t start=disk.size()-mesh::companion::traffic::FooterSize;
+   for(size_t offset=0;offset<mesh::companion::traffic::FooterSize;++offset){
+     for(bool truncate : {false,true}){
+       DataStore boot;auto candidate=disk;
+       if(truncate)candidate.resize(start+offset);
+       else candidate[start+offset]^=0x80;
+       boot.fs.files["/new_prefs"]=candidate;
+       CompanionNodePrefs loaded;loaded.freq=900;loaded.tx_media=mesh::RADIO_TX_BOTH;
+       loaded.tx_ssh=mesh::RADIO_TX_PRIMARY;double lat=1,lon=2;
+       const bool legacy=truncate&&offset==0;
+       assert(boot.loadPrefsInt("/new_prefs",loaded,lat,lon)==legacy);
+       if(!legacy)assert(loaded.freq==900&&loaded.tx_media==mesh::RADIO_TX_BOTH
+           &&loaded.tx_ssh==mesh::RADIO_TX_PRIMARY&&lat==1&&lon==2);
+       assert(boot.fs.files["/new_prefs"]==candidate);
+     }
+   }
+   // Check every valid independent policy pair through real persistence.
+   for(uint8_t media=0;media<=mesh::RADIO_TX_OFF;++media){
+     for(uint8_t ssh=0;ssh<=mesh::RADIO_TX_OFF;++ssh){
+       original.tx_media=media;original.tx_ssh=ssh;
+       assert(store.savePrefs(original,47.1,-122.2));
+       CompanionNodePrefs loaded;double lat=1,lon=2;
+       assert(store.loadPrefs(loaded,lat,lon));
+       assert(loaded.tx_media==media&&loaded.tx_ssh==ssh);
+     }
+   }
  } else if(scenario==8){
    for(uint8_t enabled : {0,1}){
      CompanionNodePrefs saved=original;saved.wifi_enabled=enabled;
@@ -321,7 +400,8 @@ inline char* utoa(unsigned int value,char* output,int base){
                 '#include "IdentityStore.h"', '#include <helpers/IdentityStore.h>'))
             (work / 'test.cpp').write_text(HARNESS.replace('@METHODS@', methods))
             for platform in ('ESP32_PLATFORM', 'RP2040_PLATFORM', 'STM32_PLATFORM', 'NRF52_PLATFORM',
-                             'ESP32_PLATFORM,TBEAM_1W', 'RP2040_PLATFORM,ENABLE_WIFI_INTERFACE'):
+                             'ESP32_PLATFORM,TBEAM_1W', 'RP2040_PLATFORM,ENABLE_WIFI_INTERFACE',
+                             'NRF52_PLATFORM,RAK_4631'):
                 with self.subTest(platform=platform):
                     binary = work / 'test'
                     sanitizer_flags = [] if os.name == 'nt' else [
@@ -341,7 +421,7 @@ inline char* utoa(unsigned int value,char* output,int base){
                         str(ROOT / 'src/helpers/TxtDataHelpers.cpp'),
                         '-o', str(binary)], capture_output=True, text=True)
                     self.assertEqual(build.returncode, 0, build.stdout + build.stderr)
-                    for scenario in range(10):
+                    for scenario in range(11):
                         with self.subTest(scenario=scenario):
                             run = subprocess.run([str(binary), str(scenario)], capture_output=True, text=True)
                             self.assertEqual(run.returncode, 0, run.stdout + run.stderr)

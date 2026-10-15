@@ -124,7 +124,7 @@ int main() {
         if (!p.automaticPreambleFits()) continue;
         if (p.automaticPreamble(0)>Profiles::MaxAutomaticPreamble
             || p.automaticPreamble(1)>Profiles::MaxAutomaticPreamble) {
-          assert(p.preamble(0,32)<=128 && p.preamble(1,32)<=128);
+          assert(p.preamble(0,32)<=512 && p.preamble(1,32)<=512);
           continue;
         }
         auto actual=p.chirpTiming();
@@ -141,7 +141,8 @@ int main() {
       }
   Profiles p;p.primary=params(7,62.5);p.secondary.params=params(7,500);
   p.secondary.mode=mesh::RadioProfileMode::Rx;
-  assert(p.preamble(0,32)==128 && p.preamble(1,32)==128 && !p.switchTestReady());
+  assert(Profiles::MaxAutomaticPreamble==512);
+  assert(p.preamble(0,32)==512 && p.preamble(1,32)==512 && !p.switchTestReady());
   for (unsigned n=0;n<Profiles::SwitchTestSamplesPerDirection;++n) {
     p.sampleSwitch(0,1,545);p.sampleSwitch(1,0,545);
   }
@@ -188,7 +189,7 @@ int main() {
   measured.secondary.params=params(7,500);
   measured.secondary.mode=mesh::RadioProfileMode::Rx;
   assert(!measured.switchTestReady() && measured.switchBudgetUs()==0);
-  assert(measured.preamble(0,32)==128 && measured.preamble(1,32)==128);
+  assert(measured.preamble(0,32)==512 && measured.preamble(1,32)==512);
   measured.sampleSwitch(0,0,10000); measured.sampleSwitch(0,1,0);
   assert(measured.switch_test_samples[0]==0);
   for (unsigned n=0;n<Profiles::SwitchTestSamplesPerDirection;++n) {
@@ -200,13 +201,27 @@ int main() {
   measured.sampleSwitch(0,1,8428);
   assert(measured.switchBudgetUs()==9271);
   assert(measured.automaticPreamble(0)>128);
-  assert(measured.preamble(0,32)==128 && measured.chirpTiming().preamble[0]>128);
+  assert(measured.preamble(0,32)==168 && measured.chirpTiming().preamble[0]==168);
+  // Ratios requiring 129..512 symbols must no longer be clipped at 128.
+  Profiles usa_fast;
+  usa_fast.primary=params(7,62.5);usa_fast.secondary.params=params(5,500);
+  usa_fast.secondary.mode=mesh::RadioProfileMode::RxTx;
+  for (unsigned n=0;n<Profiles::SwitchTestSamplesPerDirection;++n) {
+    usa_fast.sampleSwitch(0,1,2400);usa_fast.sampleSwitch(1,0,2400);
+  }
+  assert(usa_fast.automaticPreamble(1)>128 && usa_fast.automaticPreamble(1)<=512);
+  assert(usa_fast.preamble(1,32)==usa_fast.automaticPreamble(1));
+  assert(usa_fast.preamble(1,32)%8==0);
+  // Keep the new cap and uncapped diagnostics independently tested.
+  measured.sampleSwitch(0,1,40000);
+  assert(measured.automaticPreamble(0)>512 && measured.preamble(0,32)==512);
+  assert(measured.chirpTiming().preamble[0]>512);
   measured.secondary.params.preamble=88; // explicit overrides remain unchanged
   assert(measured.preamble(1,32)==88);
   auto replacement=measured.secondary;replacement.params.freq=910.5;
   measured.setSecondary(replacement,true);
   assert(!measured.switchTestReady() && measured.switchBudgetUs()==0);
-  assert(measured.preamble(0,32)==128 && measured.preamble(1,32)==88);
+  assert(measured.preamble(0,32)==512 && measured.preamble(1,32)==88);
 
   // A T1000-E-sized 977 us hop calibrates to 1075 us, yet SF8/500 no longer
   // inherits the historical 88-symbol floor or a fixed 300 us loop pad.

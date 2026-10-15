@@ -1116,6 +1116,8 @@ bool DataStore::loadPrefsInt(const char *filename,
     loaded_prefs.usb_debug_enabled = 0;
     // Old images cannot opt in using an unrelated runtime preference value.
     loaded_prefs.lost_reply = 0;
+    loaded_prefs.tx_media = mesh::RADIO_TX_AUTO;
+    loaded_prefs.tx_ssh = mesh::RADIO_TX_AUTO;
 #if defined(RAK_4631)
     loaded_prefs.peripherals_shared = 0;
 #endif
@@ -1201,6 +1203,16 @@ bool DataStore::loadPrefsInt(const char *filename,
         333,
 #else
         236,
+#endif
+#ifdef TBEAM_1W
+        243 + mesh::companion::traffic::FooterSize,
+#elif defined(RP2040_PLATFORM) && defined(ENABLE_WIFI_INTERFACE)
+        333 + mesh::companion::traffic::FooterSize,
+#elif defined(RAK_4631)
+        236 + mesh::peripherals::FooterSize
+            + mesh::companion::traffic::FooterSize,
+#else
+        236 + mesh::companion::traffic::FooterSize,
 #endif
     };
     const uint32_t prefs_size = file.size();
@@ -1377,6 +1389,16 @@ bool DataStore::loadPrefsInt(const char *filename,
     }
 #endif
 #endif
+
+    // The compact STM32 table and the explicit readers both end at the
+    // unchanged historical prefix. Consume the common footer only afterward.
+    if (file.available() != 0) {
+      uint8_t traffic_footer[mesh::companion::traffic::FooterSize] = {};
+      success = success
+          && file.read(traffic_footer, sizeof(traffic_footer)) == sizeof(traffic_footer)
+          && mesh::companion::traffic::decodeFooter(traffic_footer,
+              sizeof(traffic_footer), loaded_prefs.tx_media, loaded_prefs.tx_ssh);
+    }
 
     // Any bytes left over form only part of a historically appended field.
     // Preserve the file and defaults rather than treating that tail as EOF.
@@ -1582,6 +1604,11 @@ bool DataStore::savePrefs(const CompanionNodePrefs& _prefs, double node_lat, dou
         && file.write(image, sizeof(image)) == sizeof(image);
 #endif
 #endif
+    uint8_t traffic_footer[mesh::companion::traffic::FooterSize];
+    mesh::companion::traffic::encodeFooter(traffic_footer,
+        _prefs.tx_media, _prefs.tx_ssh);
+    success = success
+        && file.write(traffic_footer, sizeof(traffic_footer)) == sizeof(traffic_footer);
 #if defined(NRF52_PLATFORM) || defined(STM32_PLATFORM) || defined(ESP32_PLATFORM) || defined(RP2040_PLATFORM)
     success = file.commit(success);
     if (!success) MESH_DEBUG_PRINTLN("DataStore: atomic preferences write failed");

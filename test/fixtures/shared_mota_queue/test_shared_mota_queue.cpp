@@ -77,6 +77,7 @@ struct Bluetooth {
   int motaStream() { return 0; }
   bool isMotaChannelReady() const { return ready; }
   bool isMotaStreamActive() const { return active; }
+  uint16_t motaResponseCapacity() const { return ready && active ? 197 : 0; }
   void setMotaStreamActive(bool value) { active = value; }
 } bluetooth_interface;
 namespace mesh {
@@ -91,6 +92,8 @@ public:
     assert(::bluetooth_interface.active);
     ++session_resets;
   }
+protected:
+  virtual uint16_t responseFrameCapacity() const { return 197; }
 };
 } }
 #include "ble_control_under_test.h"

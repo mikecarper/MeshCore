@@ -61,6 +61,8 @@ static void seed(CompanionNodePrefs& prefs, uint32_t& random) {
     }
   };
   @SEED@
+  prefs.tx_media = random % 5;
+  prefs.tx_ssh = (random >> 8) % 5;
 }
 
 static std::vector<uint8_t> golden(const CompanionNodePrefs& prefs,
@@ -78,6 +80,18 @@ static std::vector<uint8_t> golden(const CompanionNodePrefs& prefs,
 #else
   assert(bytes.size() == 236);
 #endif
+  // Independent wire definition of the new checked traffic footer. Keep
+  // every historical byte above unchanged and encode the public policy tags.
+  bytes.insert(bytes.end(), {'T', 'X', 'R', 1,
+      uint8_t(prefs.tx_media ? 0xa0 | prefs.tx_media : 0),
+      uint8_t(prefs.tx_ssh ? 0xa0 | prefs.tx_ssh : 0)});
+  uint16_t crc = 0xffff;
+  for(size_t i=bytes.size()-6;i<bytes.size();++i){
+    crc ^= uint16_t(bytes[i]) << 8;
+    for(unsigned bit=0;bit<8;++bit)
+      crc = (crc&0x8000) ? uint16_t((crc<<1)^0x1021) : uint16_t(crc<<1);
+  }
+  bytes.push_back(uint8_t(crc>>8));bytes.push_back(uint8_t(crc));
   return bytes;
 }
 
@@ -105,14 +119,18 @@ int main() {
 
   CompanionNodePrefs original;
   assert(original.lost_reply == 0);
+  assert(original.tx_media == mesh::RADIO_TX_AUTO && original.tx_ssh == mesh::RADIO_TX_AUTO);
   strcpy(original.node_name, "durable image");
   original.freq = 915.25f; original.ble_pin = 123456;
   original.bluetooth_enabled = 1; original.usb_debug_enabled = 1;
   original.gps_sync_interval_hours = 336;
   original.lost_reply = 2;
+  original.tx_media = mesh::RADIO_TX_SECONDARY;
+  original.tx_ssh = mesh::RADIO_TX_OFF;
   DataStore initial;
   assert(initial.savePrefs(original, 47.125, -122.25));
   const auto before = golden(original, 47.125, -122.25);
+  const size_t historical_size=before.size()-mesh::companion::traffic::FooterSize;
   assert(initial.fs.files.at("/new_prefs") == before);
 
   // Every complete historical wire boundary stays readable, and an old
@@ -135,10 +153,12 @@ int main() {
     auto historical = before; historical.resize(length);
     reboot.fs.files["/new_prefs"] = historical;
     CompanionNodePrefs live; live.lost_reply = 2;
+    live.tx_media=mesh::RADIO_TX_BOTH;live.tx_ssh=mesh::RADIO_TX_PRIMARY;
     live.getCustom()->setByKey("local_tag", "unchanged");
     double lat = 1, lon = 2;
     assert(reboot.loadPrefsInt("/new_prefs", live, lat, lon));
     assert(live.lost_reply == 0 && live.ble_pin == original.ble_pin);
+    assert(live.tx_media==mesh::RADIO_TX_AUTO&&live.tx_ssh==mesh::RADIO_TX_AUTO);
     assert(live.freq == original.freq && !strcmp(live.node_name, original.node_name));
     assert(lat == 47.125 && lon == -122.25);
     assert(reboot.fs.files.at("/new_prefs") == historical);
@@ -151,6 +171,7 @@ int main() {
   // a full extra byte range, including sizes that could alias legacy values
   // if the underlying file size were accidentally narrowed with the table.
   std::vector<size_t> accepted_sizes = legacy_sizes;
+  accepted_sizes.push_back(historical_size);
   accepted_sizes.push_back(before.size());
   for (size_t length = 0; length <= before.size() + 256; ++length) {
     DataStore reboot;
@@ -167,7 +188,9 @@ int main() {
     assert(reboot.loadPrefsInt("/new_prefs", live, lat, lon) == expected);
     if (expected) {
       assert(live.freq == original.freq);
-      assert(live.lost_reply == (length == before.size() ? 2 : 0));
+      assert(live.lost_reply == (length >= historical_size ? 2 : 0));
+      assert(live.tx_media == (length == before.size() ? mesh::RADIO_TX_SECONDARY : mesh::RADIO_TX_AUTO));
+      assert(live.tx_ssh == (length == before.size() ? mesh::RADIO_TX_OFF : mesh::RADIO_TX_AUTO));
       assert(lat == 47.125 && lon == -122.25);
     } else {
       assert(live.freq == 920.5f && live.lost_reply == 1);
@@ -189,8 +212,9 @@ int main() {
     DataStore writer;
     assert(writer.savePrefs(saved, 47.125, -122.25));
     const auto disk = writer.fs.files.at("/new_prefs");
-    assert(disk.back() == value);
-    assert(std::equal(disk.begin(), disk.end() - 1, before.begin()));
+    assert(disk[historical_size-1] == value);
+    assert(std::equal(disk.begin(), disk.begin()+historical_size-1, before.begin()));
+    assert(std::equal(disk.begin()+historical_size, disk.end(), before.begin()+historical_size));
     DataStore reboot; reboot.fs.files["/new_prefs"] = disk;
     CompanionNodePrefs live; live.lost_reply = 2;
     double lat = 1, lon = 2;
@@ -272,6 +296,7 @@ int main() {
   assert(loaded.freq == changed.freq && loaded.ble_pin == changed.ble_pin);
   assert(loaded.gps_sync_interval_hours == 24 && loaded.usb_debug_enabled == 0);
   assert(loaded.lost_reply == 1);
+  assert(loaded.tx_media == original.tx_media && loaded.tx_ssh == original.tx_ssh);
   assert(lat == 42.25 && lon == -121.125);
 
 #if defined(STM32_PLATFORM)

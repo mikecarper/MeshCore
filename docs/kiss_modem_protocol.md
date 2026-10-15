@@ -153,6 +153,8 @@ MeshCore-specific functionality uses the standard KISS SetHardware command. The 
 | GetRadio2       | `0x1C` | -                                        |
 | SetTempRadio2   | `0x1D` | Radio2 parameters + duration (15)       |
 | GetTempRadio2   | `0x1E` | -                                        |
+| SetRadio2Ext    | `0x1F` | Radio2 parameters + protocol (14)        |
+| GetRadio2Ext    | `0x20` | -                                        |
 
 ### Response Sub-commands (TNC to Host)
 
@@ -184,6 +186,7 @@ Response codes use the high-bit convention: `response = command | 0x80`. Generic
 | SignalReport | `0x9A` | Status (1): 0x00=disabled, 0x01=enabled |
 | Radio2       | `0x9C` | Saved radio2 parameters (13)             |
 | TempRadio2   | `0x9E` | Active temporary radio2 + remaining minutes (15) |
+| Radio2Ext    | `0xA0` | Saved radio2 parameters + protocol (14)    |
 | OK           | `0xF0` | -                                       |
 | Error        | `0xF1` | Error code (1)                          |
 | TxDone       | `0xF8` | Result (1): 0x00=failed, 0x01=success   |
@@ -241,6 +244,44 @@ All values are little-endian. The mode values are `0=off`, `1=rx`, and
 `GetRadio2` returns this exact 13-byte tuple. The modem preserves the exact
 frequency and bandwidth values sent by the host even though its radio driver
 uses floating-point MHz/kHz internally.
+
+### Optional Extended Secondary Radio (SetRadio2Ext / Radio2Ext response)
+
+These additive commands retain protocol version 2 and all existing OpenHop
+commands unchanged. `SetRadio2Ext` takes the exact 13-byte secondary tuple above
+followed by one protocol byte: `0` = MeshCore (LoRa sync word `0x12`), or `2` =
+raw Ethernet (sync word `0x16`). Other values, unavailable wire support, invalid
+modem tuples and lengths other than 14 bytes are rejected without changing the
+saved or active profile. `GetRadio2Ext` takes no data and returns the saved tuple
+plus that protocol byte, exactly 14 bytes.
+
+Both modes use explicit-header, CRC-on, normal-IQ LoRa. Ethernet frames remain
+raw Data on KISS port 1 (`0x10`); the modem adds no IP stack, ARP implementation
+or WiFi server. Hosts provide Ethernet/IPv4/TCP and must respect the one-pending-
+TX limit by waiting for `TxDone` before submitting another Data frame. The
+standard KISS `TXDELAY` default is 500 ms; hosts may explicitly change it for a
+low-delay link. Signal reports retain their existing two-byte format.
+
+The extended setting is RAM-only and has the same saved/temporary semantics as
+`SetRadio2`: an active `SetTempRadio2` lease is not interrupted, and its expiry
+or cancellation restores the saved tuple **including its protocol**. The legacy
+13-byte `SetRadio2` and 15-byte `SetTempRadio2` always select MeshCore; the legacy
+`GetRadio2` remains exactly 13 bytes and does not report the protocol. Hosts that
+need Ethernet must first probe `GetRadio2Ext`; older firmware replies
+`UnknownCmd`. Do not silently fall back to MeshCore when this probe fails.
+
+Builders can opt a compatible raw KISS modem into Ethernet wire support with
+`MESH_ENABLE_ETHERNET_WIRE=1`, leaving `MESH_ENABLE_ETHERNET_TUNNEL=0`. The wire
+flag defaults to the tunnel flag, so existing Companion builds are unchanged.
+The radio chip must independently support the requested profile; for example,
+SX1276 cannot use SF5 even when Ethernet wire support is compiled in.
+
+Bench images compiled with `MESH_HIL_TX_FREQ_MHZ` additionally support the
+read-only SetHardware `GetLabTxGuard` (`0x21`, no request data). Its response
+`0xA1` is the compiled allowed frequency as `u32` little-endian Hz; the standard
+909.5 MHz bench lock returns `909500000`. It proves the same frequency boundary
+used by the radio TX guard, not merely a requested setting. Production images
+without this explicit build flag return `UnknownCmd`; no setter exists.
 
 ### Temporary Secondary Radio (SetTempRadio2 / TempRadio2 response)
 

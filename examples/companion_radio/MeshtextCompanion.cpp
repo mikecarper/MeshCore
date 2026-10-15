@@ -286,6 +286,16 @@ bool MyMesh::validateMeshtextChannelChange(int index, const ChannelDetails& cand
 }
 
 void MyMesh::refreshMeshtextProfile() {
+#if MESH_ENABLE_ETHERNET_TUNNEL
+  // This owner must never revoke an Ethernet lease simply because it has
+  // no Meshtext channels. Explicit channel conflicts suspend Ethernet too.
+  if (_ethernet_settings.enabled) {
+    _mt_active = false;
+    _mt_status = "radio2 reserved for Ethernet";
+    _mt_profile_dirty = true;
+    return;
+  }
+#endif
   const auto* current_profiles = _radio->profiles();
   const uint32_t primary_generation = current_profiles ? current_profiles->generation[0] : 0;
   const uint32_t secondary_generation = current_profiles ? current_profiles->generation[1] : 0;
@@ -424,6 +434,12 @@ bool MyMesh::sendMeshtextNodeInfo(const ChannelDetails& channel) {
 
 bool MyMesh::onForeignRadioFrame(const uint8_t* bytes, size_t length, uint8_t profile,
                                uint32_t generation, float snr, float rssi) {
+#if MESH_ENABLE_ETHERNET_TUNNEL
+  const auto* receiving_profiles = _radio->profiles();
+  if (receiving_profiles && profile < 2
+      && receiving_profiles->params(profile).protocol == mesh::RadioProfileProtocol::Ethernet)
+    return onEthernetFrame(bytes, length, profile, generation);
+#endif
   (void)rssi;
   const auto* profiles = _radio->profiles();
   if (!_mt_active || !profiles || profile != 1 || generation != profiles->generation[1]) return false;
@@ -454,6 +470,13 @@ bool MyMesh::onForeignRadioFrame(const uint8_t* bytes, size_t length, uint8_t pr
 }
 
 void MyMesh::onForeignRadioSendComplete(bool success) {
+#if MESH_ENABLE_ETHERNET_TUNNEL
+  if (queuedForeignRadioProtocol() == mesh::RadioProfileProtocol::Ethernet) {
+    if (success) ++_ethernet_sent;
+    else ++_ethernet_failed;
+    return;
+  }
+#endif
   if (success) ++_mt_sent;
   else ++_mt_failed;
 }

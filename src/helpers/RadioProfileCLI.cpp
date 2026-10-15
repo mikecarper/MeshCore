@@ -3,6 +3,7 @@
 #include "RadioProfileCommandUtils.h"
 #include "FilePresence.h"
 #include "radiolib/RXPowerSaving.h"
+#include "radiolib/HilTxFrequencyGuard.h"
 #include <Arduino.h>
 #include <stdio.h>
 #include <string.h>
@@ -147,7 +148,7 @@ bool RadioProfileCLI::prepareSavedImage(const char* path, const RadioProfileConf
                                       uint16_t preamble, RadioCrossMode cross, int8_t manual_secondary) {
   if (!fs_ || hold_) return false;
   uint8_t image[ImageSize] = {'R', '2', 1, (uint8_t)config.mode};
-#if MESH_ENABLE_MESHTEXT_CHAT
+#if MESH_ENABLE_MESHTEXT_CHAT || MESH_ENABLE_ETHERNET_TUNNEL
   // Version 2 keeps the 24-byte layout and CRC; bit 7 records explicit radio2
   // intent. Other settings can save an unused Off slot without claiming it.
   image[2] = 2;
@@ -188,7 +189,7 @@ void RadioProfileCLI::begin(FILESYSTEM* fs, Radio* radio, RTCClock* rtc, bool in
   recoverable_corrupt_store_ = false;
   manual_secondary_ = false;
   secondary_intent_generation_ = 0;
-#if MESH_ENABLE_MESHTEXT_CHAT
+#if MESH_ENABLE_MESHTEXT_CHAT || MESH_ENABLE_ETHERNET_TUNNEL
   auto_secondary_requested_ = secondary_protocol_overlay_ = false;
   owns_secondary_runtime_ = external_secondary_override_ = false;
 #endif
@@ -277,19 +278,19 @@ void RadioProfileCLI::publish() {
       ? (validReplySetting(reply_setting_) ? reply_setting_ & 7 : RADIO_TX_BOTH) : RADIO_TX_AUTO;
   radio_->profiles()->reply_force = infrastructure_replies_
       && validReplySetting(reply_setting_) && (reply_setting_ & 8);
-#if MESH_ENABLE_MESHTEXT_CHAT
+#if MESH_ENABLE_MESHTEXT_CHAT || MESH_ENABLE_ETHERNET_TUNNEL
   protectExternalSecondary();
   if (external_secondary_override_) return;
 #endif
   if (publish_pending_ && (int32_t)(millis() - publish_after_ms_) < 0) return;
-#if MESH_ENABLE_MESHTEXT_CHAT
+#if MESH_ENABLE_MESHTEXT_CHAT || MESH_ENABLE_ETHERNET_TUNNEL
   // An accepted remote command owns the old RX generation until its reply has
   // completed (or its atomic storage commit has succeeded).
   if (hasReplyMutation()) return;
 #endif
   publish_pending_ = false;
   RadioProfileConfig config = temp_active_ ? temporary_ : saved_;
-#if MESH_ENABLE_MESHTEXT_CHAT
+#if MESH_ENABLE_MESHTEXT_CHAT || MESH_ENABLE_ETHERNET_TUNNEL
   if (auto_secondary_requested_ && canAutoSecondary()) config = auto_secondary_;
   else if (secondary_protocol_overlay_ && manualSecondaryConfigured() && !secondaryRuntimeBusy()) {
     config.params.protocol = secondary_protocol_;
@@ -297,7 +298,7 @@ void RadioProfileCLI::publish() {
   }
 #endif
   radio_->profiles()->setSecondary(config, temp_active_);
-#if MESH_ENABLE_MESHTEXT_CHAT
+#if MESH_ENABLE_MESHTEXT_CHAT || MESH_ENABLE_ETHERNET_TUNNEL
   owns_secondary_runtime_ = auto_secondary_requested_ || secondary_protocol_overlay_;
   if (owns_secondary_runtime_) {
     owned_secondary_snapshot_ = config;
@@ -306,7 +307,7 @@ void RadioProfileCLI::publish() {
 #endif
 }
 
-#if MESH_ENABLE_MESHTEXT_CHAT
+#if MESH_ENABLE_MESHTEXT_CHAT || MESH_ENABLE_ETHERNET_TUNNEL
 bool RadioProfileCLI::runtimeSecondaryUnchanged() const {
   if (!owns_secondary_runtime_ || !radio_ || !radio_->profiles()) return true;
   const auto* profiles = radio_->profiles();
@@ -331,7 +332,7 @@ bool RadioProfileCLI::hasSecondarySchedule() const {
 }
 
 bool RadioProfileCLI::secondaryRuntimeBusy() const {
-#if MESH_ENABLE_MESHTEXT_CHAT
+#if MESH_ENABLE_MESHTEXT_CHAT || MESH_ENABLE_ETHERNET_TUNNEL
   if (external_secondary_override_ || !runtimeSecondaryUnchanged()) return true;
 #endif
   return !fs_ || !radio_ || !radio_->profiles() || hold_ || temp_pending_ || temp_active_
@@ -341,14 +342,14 @@ bool RadioProfileCLI::secondaryRuntimeBusy() const {
 
 void RadioProfileCLI::noteSecondaryManualChange() {
   ++secondary_intent_generation_;
-#if MESH_ENABLE_MESHTEXT_CHAT
+#if MESH_ENABLE_MESHTEXT_CHAT || MESH_ENABLE_ETHERNET_TUNNEL
   auto_secondary_requested_ = secondary_protocol_overlay_ = false;
   owns_secondary_runtime_ = external_secondary_override_ = false;
 #endif
 }
 
 bool RadioProfileCLI::canAutoSecondary() const {
-#if MESH_ENABLE_MESHTEXT_CHAT
+#if MESH_ENABLE_MESHTEXT_CHAT || MESH_ENABLE_ETHERNET_TUNNEL
   if (manual_secondary_ || saved_.mode != RadioProfileMode::Off || secondaryRuntimeBusy()) return false;
   const auto& current = radio_->profiles()->secondary;
   return current.mode == RadioProfileMode::Off || (auto_secondary_requested_
@@ -359,7 +360,7 @@ bool RadioProfileCLI::canAutoSecondary() const {
 }
 
 bool RadioProfileCLI::requestAutoSecondary(const RadioProfileConfig& config) {
-#if MESH_ENABLE_MESHTEXT_CHAT
+#if MESH_ENABLE_MESHTEXT_CHAT || MESH_ENABLE_ETHERNET_TUNNEL
   if (!canAutoSecondary() || config.mode == RadioProfileMode::Off
       || (uint8_t)config.mode > (uint8_t)RadioProfileMode::RxTx
       || !radio_->validateProfile(config.params)) return false;
@@ -379,7 +380,7 @@ bool RadioProfileCLI::requestAutoSecondary(const RadioProfileConfig& config) {
 }
 
 void RadioProfileCLI::clearAutoSecondary() {
-#if MESH_ENABLE_MESHTEXT_CHAT
+#if MESH_ENABLE_MESHTEXT_CHAT || MESH_ENABLE_ETHERNET_TUNNEL
   if (!auto_secondary_requested_) return;
   protectExternalSecondary();
   auto_secondary_requested_ = false;
@@ -389,7 +390,7 @@ void RadioProfileCLI::clearAutoSecondary() {
 }
 
 bool RadioProfileCLI::autoSecondaryActive() const {
-#if MESH_ENABLE_MESHTEXT_CHAT
+#if MESH_ENABLE_MESHTEXT_CHAT || MESH_ENABLE_ETHERNET_TUNNEL
   if (!auto_secondary_requested_ || !canAutoSecondary()) return false;
   const auto& current = radio_->profiles()->secondary;
   return !radio_->profiles()->secondary_temporary && current.mode == auto_secondary_.mode
@@ -400,17 +401,27 @@ bool RadioProfileCLI::autoSecondaryActive() const {
 }
 
 bool RadioProfileCLI::useSecondaryProtocol(RadioProfileProtocol protocol) {
-#if MESH_ENABLE_MESHTEXT_CHAT
+#if MESH_ENABLE_MESHTEXT_CHAT || MESH_ENABLE_ETHERNET_TUNNEL
   if (protocol == RadioProfileProtocol::MeshCore) {
     clearSecondaryProtocol();
     return true;
   }
-  if (protocol != RadioProfileProtocol::Meshtext || !manualSecondaryConfigured()
+  const bool supported_protocol =
+#if MESH_ENABLE_MESHTEXT_CHAT
+      protocol == RadioProfileProtocol::Meshtext ||
+#endif
+#if MESH_ENABLE_ETHERNET_TUNNEL
+      protocol == RadioProfileProtocol::Ethernet ||
+#endif
+      false;
+  if (!supported_protocol || !manualSecondaryConfigured()
       || secondaryRuntimeBusy()) return false;
+  // Never silently replace another foreign owner's overlay.
+  if (secondary_protocol_overlay_ && secondary_protocol_ != protocol) return false;
   auto preview = *radio_->profiles();
   auto config = saved_;
   config.params.protocol = protocol;
-  config.params.preamble = 16;
+  if (protocol == RadioProfileProtocol::Meshtext) config.params.preamble = 16;
   preview.setSecondary(config, false);
   if (!radio_->validateProfile(config.params) || !preview.automaticPreambleFits()) return false;
   secondary_protocol_ = protocol;
@@ -424,7 +435,7 @@ bool RadioProfileCLI::useSecondaryProtocol(RadioProfileProtocol protocol) {
 }
 
 void RadioProfileCLI::clearSecondaryProtocol() {
-#if MESH_ENABLE_MESHTEXT_CHAT
+#if MESH_ENABLE_MESHTEXT_CHAT || MESH_ENABLE_ETHERNET_TUNNEL
   if (!secondary_protocol_overlay_) return;
   protectExternalSecondary();
   secondary_protocol_overlay_ = false;
@@ -632,7 +643,8 @@ void RadioProfileCLI::appendChirpWarning(char* reply, size_t capacity, const Rad
   const bool over_a = timing.preamble[0] > RadioProfiles::MaxAutomaticPreamble;
   const bool over_b = timing.preamble[1] > RadioProfiles::MaxAutomaticPreamble;
   if (used < capacity && (over_a || over_b))
-    snprintf(reply + used, capacity - used, "; WARN need >128: %s",
+    snprintf(reply + used, capacity - used, "; WARN need >%u: %s",
+             unsigned(RadioProfiles::MaxAutomaticPreamble),
              over_a && over_b ? "radio,radio2" : over_a ? "radio" : "radio2");
   used = strlen(reply);
   const bool short_a = preview.primary.preamble && preview.primary.preamble < timing.preamble[0];
@@ -679,6 +691,9 @@ void RadioProfileCLI::formatConfig(char* reply, size_t capacity, const RadioProf
 }
 
 bool RadioProfileCLI::handle(const char* command, char* reply, size_t capacity, bool remote_origin) {
+#if defined(MESH_HIL_TX_FREQ_MHZ)
+  if (handleHilTxFrequencyCommand(command, reply, capacity)) return true;
+#endif
   if (handleCarrierWaveCommand(radio_, command, reply, capacity)) return true;
   const char* text = command;
   enum { Get, Set, Delete } verb = Get;
@@ -816,7 +831,7 @@ bool RadioProfileCLI::handle(const char* command, char* reply, size_t capacity, 
     return true;
   }
   if ((base || temporary) && verb == Get && !*args) {
-#if MESH_ENABLE_MESHTEXT_CHAT
+#if MESH_ENABLE_MESHTEXT_CHAT || MESH_ENABLE_ETHERNET_TUNNEL
     if (base && autoSecondaryActive()) {
       formatConfig(reply, capacity, auto_secondary_, false, 0, true);
       return true;
@@ -831,7 +846,7 @@ bool RadioProfileCLI::handle(const char* command, char* reply, size_t capacity, 
                       temporary, temp_pending_ ? pending_duration_ms_ : temp_remaining_ms_);
     return true;
   }
-#if MESH_ENABLE_MESHTEXT_CHAT
+#if MESH_ENABLE_MESHTEXT_CHAT || MESH_ENABLE_ETHERNET_TUNNEL
   if (base && verb == Set && !strcmp(args, "auto")) {
     // This clears only saved permission, never an active/pending lease or a
     // schedule. Remote acknowledgement staging must not weaken that contract.
@@ -991,7 +1006,7 @@ bool RadioProfileCLI::handle(const char* command, char* reply, size_t capacity, 
       noteSecondaryManualChange();
       pending_temporary_ = config; pending_duration_ms_ = minutes * 60000UL;
       temp_start_ms_ = millis() + 2000; temp_pending_ = true;
-#if MESH_ENABLE_MESHTEXT_CHAT
+#if MESH_ENABLE_MESHTEXT_CHAT || MESH_ENABLE_ETHERNET_TUNNEL
       publish_pending_ = true; publish_after_ms_ = temp_start_ms_;
 #endif
     }

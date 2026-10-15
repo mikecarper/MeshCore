@@ -130,8 +130,10 @@ public:
 
   mesh::RadioProfiles* profiles() override { return &_profiles; }
   const mesh::RadioProfiles* profiles() const override { return &_profiles; }
+  bool supportsEthernetTunnel() const override { return _ethernet_supported; }
   bool validateProfile(const mesh::RadioProfileParams& params) const override {
-    return mesh::RadioProfiles::valid(params);
+    return mesh::RadioProfiles::valid(params) && _profile_supported
+        && (params.protocol != mesh::RadioProfileProtocol::Ethernet || _ethernet_supported);
   }
   uint8_t receiveProfile() const override { return _active_profile; }
   mesh::RadioParamApplyResult prepareTransmitProfile(uint8_t profile) override {
@@ -171,6 +173,8 @@ public:
   void setSendComplete(bool complete) { _send_complete = complete; }
   void setPrepareResult(mesh::RadioParamApplyResult result) { _prepare_result = result; }
   void setReceiveProfile(uint8_t profile) { _active_profile = profile; }
+  void setEthernetSupported(bool enabled) { _ethernet_supported = enabled; }
+  void setProfileSupported(bool enabled) { _profile_supported = enabled; }
   int startSendCount() const { return _start_send_count; }
   int sendFinishedCount() const { return _send_finished_count; }
   uint8_t lastSentProfile() const { return _sent_profiles.empty() ? 0xff : _sent_profiles.back(); }
@@ -185,6 +189,8 @@ private:
   uint8_t _active_profile = 0;
   bool _start_send_result = true;
   bool _send_complete = true;
+  bool _ethernet_supported = true;
+  bool _profile_supported = true;
   int _start_send_count = 0;
   int _send_finished_count = 0;
   mesh::RadioParamApplyResult _prepare_result = mesh::RadioParamApplyResult::APPLIED;
@@ -553,6 +559,151 @@ TEST_F(KissModemFixture, TempRadio2RestoresSavedProfileAndLeavesSavedUpdatesDefe
   EXPECT_EQ(serial.writesSnapshot(), (std::vector<uint8_t>{
       KISS_FEND, KISS_CMD_SETHARDWARE, HW_RESP(HW_CMD_GET_TEMPRADIO2),
       0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, KISS_FEND}));
+}
+
+TEST_F(KissModemFixture, ExtendedRadio2RoundTripKeepsLegacyCommandsExactlyThirteenBytes) {
+  auto payload = radio2Payload(909500000, 500000, 5, 5,
+      (uint8_t)mesh::RadioProfileMode::RxTx, 512);
+  const auto legacy = payload;
+  payload.push_back((uint8_t)mesh::RadioProfileProtocol::Ethernet);
+  sendHardware(HW_CMD_SET_RADIO2_EXT, payload);
+  EXPECT_EQ(serial.writesSnapshot(), hardwareFrame(HW_RESP_OK));
+  EXPECT_EQ(radio.profileConfig().secondary.params.protocol, mesh::RadioProfileProtocol::Ethernet);
+  EXPECT_EQ(radio.profileConfig().secondary.params.preamble, 512);
+
+  serial.clearWrites();
+  sendHardware(HW_CMD_GET_RADIO2_EXT);
+  EXPECT_EQ(serial.writesSnapshot(), hardwareFrame(HW_RESP(HW_CMD_GET_RADIO2_EXT), payload));
+  serial.clearWrites();
+  sendHardware(HW_CMD_GET_RADIO2);
+  EXPECT_EQ(serial.writesSnapshot(), hardwareFrame(HW_RESP(HW_CMD_GET_RADIO2), legacy));
+
+  serial.clearWrites();
+  sendHardware(HW_CMD_SET_RADIO2, legacy);
+  EXPECT_EQ(serial.writesSnapshot(), hardwareFrame(HW_RESP_OK));
+  EXPECT_EQ(radio.profileConfig().secondary.params.protocol, mesh::RadioProfileProtocol::MeshCore);
+  serial.clearWrites();
+  sendHardware(HW_CMD_GET_RADIO2_EXT);
+  payload.back() = (uint8_t)mesh::RadioProfileProtocol::MeshCore;
+  EXPECT_EQ(serial.writesSnapshot(), hardwareFrame(HW_RESP(HW_CMD_GET_RADIO2_EXT), payload));
+}
+
+TEST_F(KissModemFixture, LabTransmitGuardIsReadOnlyAndExistsOnlyInExplicitHilBuilds) {
+  sendHardware(HW_CMD_GET_LAB_TX_GUARD);
+#if defined(MESH_HIL_TX_FREQ_MHZ)
+  static_assert(MESH_HIL_TX_FREQ_MHZ == 909.5, "This test fixture requires the standard lab lock");
+  EXPECT_EQ(serial.writesSnapshot(), hardwareFrame(HW_RESP(HW_CMD_GET_LAB_TX_GUARD),
+      {0x60, 0xDE, 0x35, 0x36})); // 909500000 Hz, little endian.
+  serial.clearWrites();
+  sendHardware(HW_CMD_GET_LAB_TX_GUARD, {0});
+  EXPECT_EQ(serial.writesSnapshot(), hardwareFrame(HW_RESP_ERROR, {HW_ERR_INVALID_LENGTH}));
+#else
+  EXPECT_EQ(serial.writesSnapshot(), hardwareFrame(HW_RESP_ERROR, {HW_ERR_UNKNOWN_CMD}));
+#endif
+  EXPECT_EQ(radio.startSendCount(), 0);
+}
+
+TEST_F(KissModemFixture, ExtendedRadio2RejectsInvalidLengthsProtocolsAndUnsupportedChipWithoutMutation) {
+  auto payload = radio2Payload(909500000, 500000, 5, 5,
+      (uint8_t)mesh::RadioProfileMode::RxTx, 512);
+  payload.push_back((uint8_t)mesh::RadioProfileProtocol::Ethernet);
+  sendHardware(HW_CMD_SET_RADIO2_EXT, payload);
+  const auto generation = radio.profileConfig().generation[1];
+  const auto original = radio.profileConfig().secondary.params;
+  for (size_t length : {size_t(0), size_t(13), size_t(15)}) {
+    auto changed = payload; changed.resize(length);
+    serial.clearWrites();
+    sendHardware(HW_CMD_SET_RADIO2_EXT, changed);
+    EXPECT_EQ(serial.writesSnapshot(), hardwareFrame(HW_RESP_ERROR, {HW_ERR_INVALID_LENGTH}));
+    EXPECT_EQ(radio.profileConfig().generation[1], generation);
+  }
+  for (uint8_t protocol : {uint8_t(1), uint8_t(3), uint8_t(255)}) {
+    auto changed = payload; changed.back() = protocol;
+    serial.clearWrites();
+    sendHardware(HW_CMD_SET_RADIO2_EXT, changed);
+    EXPECT_EQ(serial.writesSnapshot(), hardwareFrame(HW_RESP_ERROR, {HW_ERR_INVALID_PARAM}));
+    EXPECT_EQ(radio.profileConfig().generation[1], generation);
+  }
+  radio.setEthernetSupported(false);
+  for (uint8_t mode : {uint8_t(0), uint8_t(2)}) {
+    auto changed = payload; changed[10] = mode;
+    serial.clearWrites();
+    sendHardware(HW_CMD_SET_RADIO2_EXT, changed);
+    EXPECT_EQ(serial.writesSnapshot(), hardwareFrame(HW_RESP_ERROR, {HW_ERR_INVALID_PARAM}));
+    EXPECT_EQ(radio.profileConfig().generation[1], generation);
+  }
+  radio.setEthernetSupported(true);
+  radio.setProfileSupported(false); // e.g. modem cannot use the requested SF/BW.
+  serial.clearWrites();
+  sendHardware(HW_CMD_SET_RADIO2_EXT, payload);
+  EXPECT_EQ(serial.writesSnapshot(), hardwareFrame(HW_RESP_ERROR, {HW_ERR_INVALID_PARAM}));
+  EXPECT_EQ(radio.profileConfig().secondary.params, original);
+  EXPECT_EQ(radio.profileConfig().generation[1], generation);
+
+  serial.clearWrites();
+  sendHardware(HW_CMD_GET_RADIO2_EXT, {0});
+  EXPECT_EQ(serial.writesSnapshot(), hardwareFrame(HW_RESP_ERROR, {HW_ERR_INVALID_LENGTH}));
+}
+
+TEST_F(KissModemFixture, ExtendedSavedProtocolDoesNotInterruptTemporaryMeshCoreLease) {
+  auto temporary = radio2Payload(868000000, 125000, 7, 5,
+      (uint8_t)mesh::RadioProfileMode::RxTx, 32);
+  appendU16(temporary, 1);
+  sendHardware(HW_CMD_SET_TEMPRADIO2, temporary);
+  ASSERT_TRUE(radio.profileConfig().secondary_temporary);
+  auto saved = radio2Payload(909500000, 500000, 5, 5,
+      (uint8_t)mesh::RadioProfileMode::RxTx, 512);
+  saved.push_back((uint8_t)mesh::RadioProfileProtocol::Ethernet);
+  const auto temporary_generation = radio.profileConfig().generation[1];
+  serial.clearWrites();
+  sendHardware(HW_CMD_SET_RADIO2_EXT, saved);
+  EXPECT_EQ(serial.writesSnapshot(), hardwareFrame(HW_RESP_OK));
+  EXPECT_EQ(radio.profileConfig().secondary.params.protocol, mesh::RadioProfileProtocol::MeshCore);
+  EXPECT_EQ(radio.profileConfig().generation[1], temporary_generation);
+  serial.clearWrites();
+  sendHardware(HW_CMD_GET_RADIO2_EXT);
+  EXPECT_EQ(serial.writesSnapshot(), hardwareFrame(HW_RESP(HW_CMD_GET_RADIO2_EXT), saved));
+  delay(60000);
+  modem.loop();
+  EXPECT_FALSE(radio.profileConfig().secondary_temporary);
+  EXPECT_EQ(radio.profileConfig().secondary.params.protocol, mesh::RadioProfileProtocol::Ethernet);
+  EXPECT_FLOAT_EQ(radio.profileConfig().secondary.params.freq, 909.5f);
+}
+
+TEST_F(KissModemFixture, TemporaryCancelRestoresSavedEthernetProtocol) {
+  auto saved = radio2Payload(909500000, 500000, 5, 5,
+      (uint8_t)mesh::RadioProfileMode::RxTx, 512);
+  saved.push_back((uint8_t)mesh::RadioProfileProtocol::Ethernet);
+  sendHardware(HW_CMD_SET_RADIO2_EXT, saved);
+  auto temporary = radio2Payload(868000000, 125000, 7, 5,
+      (uint8_t)mesh::RadioProfileMode::RxTx, 32);
+  appendU16(temporary, 1);
+  sendHardware(HW_CMD_SET_TEMPRADIO2, temporary);
+  EXPECT_EQ(radio.profileConfig().secondary.params.protocol, mesh::RadioProfileProtocol::MeshCore);
+  serial.clearWrites();
+  sendHardware(HW_CMD_SET_TEMPRADIO2, std::vector<uint8_t>(KISS_TEMPRADIO2_PARAMS_SIZE, 0));
+  EXPECT_EQ(serial.writesSnapshot(), hardwareFrame(HW_RESP_OK));
+  EXPECT_FALSE(radio.profileConfig().secondary_temporary);
+  EXPECT_EQ(radio.profileConfig().secondary.params.protocol, mesh::RadioProfileProtocol::Ethernet);
+}
+
+TEST_F(KissModemFixture, ProtocolOnlyChangeInvalidatesQueuedSecondaryTransmitWithoutPrimaryFallback) {
+  auto payload = radio2Payload(909500000, 500000, 5, 5,
+      (uint8_t)mesh::RadioProfileMode::RxTx, 512);
+  sendHardware(HW_CMD_SET_RADIO2, payload);
+  serial.clearWrites();
+  serial.pushRx(dataFrame({0x42}, 1));
+  modem.loop(); // Bind the pending port-one packet before the protocol changes.
+  const auto generation = radio.profileConfig().generation[1];
+  payload.push_back((uint8_t)mesh::RadioProfileProtocol::Ethernet);
+  sendHardware(HW_CMD_SET_RADIO2_EXT, payload);
+  EXPECT_NE(radio.profileConfig().generation[1], generation);
+  serial.clearWrites();
+  delay(KISS_DEFAULT_TXDELAY * 10);
+  modem.loop();
+  modem.loop();
+  EXPECT_EQ(radio.startSendCount(), 0);
+  EXPECT_EQ(serial.writesSnapshot(), hardwareFrame(HW_RESP_TX_DONE, {0}));
 }
 
 TEST_F(KissModemFixture, SecondaryReceiveUsesPortOneWithoutChangingPacketOrRxMeta) {

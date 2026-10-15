@@ -1,5 +1,8 @@
 #include "Dispatcher.h"
 #include "helpers/ota/OtaTiming.h"
+#if MESH_ENABLE_OTA_KISS_DIRECT
+#include "helpers/ota/OtaDirectWire.h"
+#endif
 
 #if MESH_PACKET_LOGGING
   #include <Arduino.h>
@@ -51,7 +54,7 @@ void Dispatcher::setRadioAvailable(bool available) {
   if (!available) cancelBeaconRadioFrame();
 #endif
   radio_available = available;
-#if MESH_ENABLE_MESHTEXT_CHAT
+#if MESH_ENABLE_FOREIGN_RADIO
   if (!available && hasForeignRadioFrame()) {
     if (foreign_radio_sending) _radio->onSendFinished();
     finishForeignRadioFrame(false, foreign_radio_sending);
@@ -83,7 +86,7 @@ void Dispatcher::begin() {
   cancelBeaconRadioFrame();
   if (hasBeaconRadioFrame()) return; // restoration owns the peripheral
 #endif
-#if MESH_ENABLE_MESHTEXT_CHAT
+#if MESH_ENABLE_FOREIGN_RADIO
   if (hasForeignRadioFrame()) {
     if (foreign_radio_sending && radio_available) _radio->onSendFinished();
     finishForeignRadioFrame(false, foreign_radio_sending);
@@ -279,32 +282,84 @@ void Dispatcher::failOutboundTransmit() {
   outbound_cancellation = OutboundCancellation::None;
 }
 
+#if MESH_ENABLE_FOREIGN_RADIO
+bool Dispatcher::supportsForeignRadioProtocol(RadioProfileProtocol protocol) const {
+  switch (protocol) {
 #if MESH_ENABLE_MESHTEXT_CHAT
+    case RadioProfileProtocol::Meshtext: return _radio->supportsMeshtext();
+#endif
+#if MESH_ENABLE_ETHERNET_TUNNEL
+    case RadioProfileProtocol::Ethernet: return _radio->supportsEthernetTunnel();
+#endif
+    default: return false;
+  }
+}
+
 bool Dispatcher::isForeignRadioCurrent() const {
   const auto* profiles = _radio->profiles();
-  return radio_available && _radio->supportsMeshtext() && profiles
+#if MESH_ENABLE_OTA_KISS_DIRECT
+  if (foreign_radio_protocol == RadioProfileProtocol::MeshCore) {
+    return radio_available && profiles && foreign_radio_profile < 2
+        && profiles->canTransmit(foreign_radio_profile)
+        && profiles->params(foreign_radio_profile).protocol == RadioProfileProtocol::MeshCore
+        && foreign_radio_generation == profiles->generation[foreign_radio_profile]
+        && foreign_radio_ota_epoch != 0 && foreign_radio_ota_epoch == directOtaEpoch()
+        && allowDirectOtaTransmit(foreign_radio_profile, foreign_radio_generation);
+  }
+#endif
+  return radio_available && supportsForeignRadioProtocol(foreign_radio_protocol) && profiles
       && allowForeignRadioTransmit()
       && foreign_radio_profile == 1 && profiles->enabled()
       && profiles->canTransmit(foreign_radio_profile)
-      && profiles->params(foreign_radio_profile).protocol == RadioProfileProtocol::Meshtext
+      && profiles->params(foreign_radio_profile).protocol == foreign_radio_protocol
       && foreign_radio_generation == profiles->generation[foreign_radio_profile];
 }
 
+#if MESH_ENABLE_OTA_KISS_DIRECT
+bool Dispatcher::queueDirectOtaRadioFrame(const uint8_t* message, uint16_t length,
+                                         uint8_t profile, uint32_t generation) {
+#if MESH_ENABLE_TX_BEACONS
+  if (hasBeaconRadioFrame()) return false;
+#endif
+  const auto* profiles = _radio->profiles();
+  const uint32_t epoch = directOtaEpoch();
+  if (hasForeignRadioFrame() || !radio_available || _radio->isCarrierWaveActive()
+      || !epoch
+      || !profiles || profile >= 2 || !profiles->canTransmit(profile)
+      || profiles->params(profile).protocol != RadioProfileProtocol::MeshCore
+      || generation != profiles->generation[profile]
+      || !allowDirectOtaTransmit(profile, generation)) return false;
+  const uint16_t encoded = ota::ota_direct_wire_encode(
+      foreign_radio_bytes, sizeof(foreign_radio_bytes), message, length);
+  if (!encoded) return false;
+  foreign_radio_length = encoded;
+  foreign_radio_profile = profile;
+  foreign_radio_protocol = RadioProfileProtocol::MeshCore;
+  foreign_radio_generation = generation;
+  foreign_radio_ota_epoch = epoch;
+  foreign_radio_retry_at = foreign_radio_prepare_deadline = 0;
+  foreign_radio_sending = false;
+  return true;
+}
+#endif
+
 bool Dispatcher::queueForeignRadioFrame(const uint8_t* bytes, size_t length,
-                                        uint8_t profile, uint32_t generation) {
+                                        uint8_t profile, uint32_t generation,
+                                        RadioProfileProtocol protocol) {
 #if MESH_ENABLE_TX_BEACONS
   if (hasBeaconRadioFrame()) return false;
 #endif
   const auto* profiles = _radio->profiles();
   if (!bytes || !length || length > sizeof(foreign_radio_bytes) || hasForeignRadioFrame()
-      || !radio_available || !_radio->supportsMeshtext() || _radio->isCarrierWaveActive()
+      || !radio_available || !supportsForeignRadioProtocol(protocol) || _radio->isCarrierWaveActive()
       || !allowForeignRadioTransmit()
       || !profiles || profile != 1 || !profiles->enabled() || !profiles->canTransmit(profile)
-      || profiles->params(profile).protocol != RadioProfileProtocol::Meshtext
+      || profiles->params(profile).protocol != protocol
       || generation != profiles->generation[profile]) return false;
   memcpy(foreign_radio_bytes, bytes, length);
   foreign_radio_length = (uint16_t)length;
   foreign_radio_profile = profile;
+  foreign_radio_protocol = protocol;
   foreign_radio_generation = generation;
   foreign_radio_retry_at = foreign_radio_prepare_deadline = 0;
   foreign_radio_sending = false;
@@ -313,9 +368,14 @@ bool Dispatcher::queueForeignRadioFrame(const uint8_t* bytes, size_t length,
 
 void Dispatcher::finishForeignRadioFrame(bool success, bool account_airtime) {
   if (!hasForeignRadioFrame()) return;
+  const bool direct_ota = foreign_radio_protocol == RadioProfileProtocol::MeshCore;
   if (account_airtime) {
     const uint32_t elapsed = (uint32_t)_ms->getMillis() - foreign_radio_start;
     total_air_time += elapsed;
+    if (direct_ota) {
+      ota_tx_finished_at = _ms->getMillis();
+      ota_tx_airtime = elapsed;
+    }
     updateTxBudget();
     tx_budget_ms = elapsed >= tx_budget_ms ? 0 : tx_budget_ms - elapsed;
     if (tx_budget_ms < MIN_TX_BUDGET_RESERVE_MS) {
@@ -328,11 +388,24 @@ void Dispatcher::finishForeignRadioFrame(bool success, bool account_airtime) {
   // explicit user message. No retry is scheduled after any failure/timeout.
   foreign_radio_length = 0;
   foreign_radio_sending = false;
+#if MESH_ENABLE_OTA_KISS_DIRECT
+  foreign_radio_ota_epoch = 0;
+#endif
   foreign_radio_yield_meshcore = true;
   profile_cad_busy[foreign_radio_profile] = 0;
   foreign_radio_retry_at = foreign_radio_prepare_deadline = 0;
   radio_nonrx_start = _ms->getMillis();
-  onForeignRadioSendComplete(success);
+  // A direct OTA packet is not a Meshtext/Ethernet send, and must not change
+  // either transport's application counters or trigger its callbacks.
+  if (direct_ota) {
+    if (success) ++n_sent_direct;
+  } else onForeignRadioSendComplete(success);
+}
+
+bool Dispatcher::discardQueuedForeignRadioFrame(RadioProfileProtocol protocol) {
+  if (!hasForeignRadioFrame() || foreign_radio_sending || foreign_radio_protocol != protocol) return false;
+  finishForeignRadioFrame(false, false);
+  return true;
 }
 
 bool Dispatcher::serviceForeignRadioFrame() {
@@ -365,6 +438,11 @@ bool Dispatcher::checkForeignRadioSend() {
   }
   if (!restoreOutboundTxOverrides() || _radio->isCarrierWaveActive()) return false;
   const uint32_t now = _ms->getMillis();
+  if (foreign_radio_protocol == RadioProfileProtocol::MeshCore && ota_tx_airtime) {
+    const uint32_t quiet = ota::packetQuietTime(ota_tx_airtime, getOtaPacketSpeedFactor());
+    if (now - ota_tx_finished_at < quiet) return false;
+    ota_tx_airtime = 0;
+  }
   // Continuous explicit foreign chat must leave due MeshCore traffic a turn
   // between messages; a blocked/absent MeshCore queue does not stall MT.
   if (foreign_radio_yield_meshcore && _mgr->getOutboundCount(now) > 0) {
@@ -472,7 +550,7 @@ void Dispatcher::logPacketLine(const char* direction, const Packet* packet,
 
 bool Dispatcher::getNextQueueWakeDelay(uint32_t& delay_millis) const {
   if (isDualRadioActive()) { delay_millis = 0; return true; }
-#if MESH_ENABLE_MESHTEXT_CHAT
+#if MESH_ENABLE_FOREIGN_RADIO
   if (hasForeignRadioFrame()) { delay_millis = 0; return true; }
 #endif
   const uint32_t now = _ms->getMillis();
@@ -576,7 +654,7 @@ void Dispatcher::loop() {
   // A maintenance carrier has no TxDone packet. Keep its deadline serviced,
   // but leave queued packets and RX/AGC watchdogs alone until normal RX returns.
   if (_radio->isCarrierWaveActive()) return;
-#if MESH_ENABLE_MESHTEXT_CHAT
+#if MESH_ENABLE_FOREIGN_RADIO
   // Use the same physical-radio owner and cleanup path as MeshCore TX. A
   // foreign packet never enters the MeshCore retry/forwarding machinery.
   if (serviceForeignRadioFrame()) return;
@@ -840,7 +918,7 @@ void Dispatcher::loop() {
 #if MESH_ENABLE_TX_BEACONS
   if (checkBeaconRadioSend()) { releaseDroppedOutbound(); return; }
 #endif
-#if MESH_ENABLE_MESHTEXT_CHAT
+#if MESH_ENABLE_FOREIGN_RADIO
   if (!checkForeignRadioSend()) checkSend();
 #else
   checkSend();
@@ -942,13 +1020,23 @@ void Dispatcher::checkRecv() {
 
       const uint8_t profile = _radio->receiveProfile();
       const auto* profiles = _radio->profiles();
+      // A logical tuple may have been replaced while the physical modem was
+      // completing RX. Never reinterpret old Ethernet/Meshtext bytes under
+      // the new MeshCore tuple, even for raw logs or bridge hooks.
+      if (profiles && (profile >= 2
+          || _radio->receiveProfileGeneration() != profiles->generation[profile])) {
+        _radio->onReceiveProcessed();
+        return;
+      }
       // Protocol is selected by the receiving modem, never guessed from a
       // payload byte. No foreign bytes may leak into MeshCore raw sinks,
       // parsing, duplicate suppression, direct forwarding, or app counters.
       if (profiles && profile < 2
-          && profiles->params(profile).protocol == RadioProfileProtocol::Meshtext) {
-#if MESH_ENABLE_MESHTEXT_CHAT
-        if (profiles->enabled() && _radio->receiveProfileGeneration() == profiles->generation[profile]) {
+          && profiles->params(profile).protocol != RadioProfileProtocol::MeshCore) {
+#if MESH_ENABLE_FOREIGN_RADIO
+        if (profile == 1 && profiles->enabled()
+            && supportsForeignRadioProtocol(profiles->params(profile).protocol)
+            && _radio->receiveProfileGeneration() == profiles->generation[profile]) {
           rx_air_time += _radio->getProfileAirtime(profile, len);
           ++_radio->profiles()->rx_packets[profile];
           onForeignRadioFrame(raw, (size_t)len, profile, profiles->generation[profile], snr, rssi);
@@ -957,6 +1045,23 @@ void Dispatcher::checkRecv() {
         _radio->onReceiveProcessed();
         return;
       }
+
+#if MESH_ENABLE_OTA_KISS_DIRECT
+      // Consume the reserved direct extension before Packet allocation and
+      // before normal raw logs/bridges. Old firmware rejects its version.
+      // Malformed/unsolicited frames never become routed MeshCore traffic.
+      if (ota::ota_direct_wire_marker(raw, (size_t)len)) {
+        if (profiles && profile < 2
+            && onDirectOtaRadioFrame(raw, (size_t)len, profile,
+                                    _radio->receiveProfileGeneration())) {
+          rx_air_time += _radio->getProfileAirtime(profile, len);
+          ++_radio->profiles()->rx_packets[profile];
+          ++n_recv_direct;
+        }
+        _radio->onReceiveProcessed();
+        return;
+      }
+#endif
 
       // TRACE and CONTROL are direct-only.  Reject a flood framing before
       // raw hooks can expose it to USB logs, MQTT, ESP-NOW, or another bridge.

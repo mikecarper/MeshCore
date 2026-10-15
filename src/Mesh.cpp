@@ -7,6 +7,9 @@
 #include "helpers/ota/OtaContext.h"   // OTA mesh-integration is centralized here so every role gets it
 #include "helpers/ota/OtaSpeedConfig.h"
 #include "helpers/ota/OtaProtocol.h"  // decode_adv -> the `ota neighbors` discovery table
+#if MESH_ENABLE_OTA_KISS_DIRECT
+#include "helpers/ota/OtaDirectWire.h"
+#endif
 #if !defined(OTA_SEEDER_ONLY)
 #include "helpers/ota/OtaSelf.h"      // ota_self_firmware -> auto-advertise our own image
 #endif
@@ -196,6 +199,15 @@ static int queuedPacedOtaResponses(PacketManager* manager) {
 bool Mesh::otaSendAdapter(void* ctx, const uint8_t* msg, uint16_t len, bool /*flood*/) {
   Mesh* m = (Mesh*)ctx;
   if (!m->isAnyTempRadioActive()) return false;
+  const auto* context = ota::ota_context_if_active();
+  const auto route = context ? context->manager.replyRoute() : ota::OtaReplyRoute{};
+#if MESH_ENABLE_OTA_KISS_DIRECT
+  if (route.direct) {
+    // KISS/raw frames bypass the routed Packet pool entirely. The shared
+    // single-frame owner retains exact profile affinity until actual TxDone.
+    return m->queueDirectOtaRadioFrame(msg, len, route.profile, route.generation);
+  }
+#endif
   const bool paced = isPacedOtaResponse(msg, len);
   const int queued = paced ? queuedPacedOtaResponses(m->_mgr) : 0;
   // Routine OTA backpressure must not attempt an allocation, which would
@@ -205,16 +217,17 @@ bool Mesh::otaSendAdapter(void* ctx, const uint8_t* msg, uint16_t len, bool /*fl
   Packet* p = m->createOtaPacket(msg, len);
   if (!p) return false;
   p->radio_reply = len && ota::ota_is_response_message(msg[0]);
-  if (p->radio_reply) {
-    if (const auto* context = ota::ota_context_if_active()) {
-      const auto route = context->manager.replyRoute();
-      if (route.profile < 2) {
-        // DATA, PROOF and MANIFEST are emitted after the RX call stack ends.
-        // Restore origin only; normal reply policy still decides one/both TX.
-        p->radio_profile = p->radio_origin = route.profile;
-        p->radio_generation = p->radio_origin_generation = route.generation;
-        p->radio_local = false;
-      }
+  if (route.profile < 2) {
+    // DATA, PROOF and MANIFEST are emitted after the RX call stack ends.
+    // Restore origin only; normal reply policy still decides one/both TX.
+    p->radio_profile = p->radio_origin = route.profile;
+    p->radio_generation = p->radio_origin_generation = route.generation;
+    p->radio_local = false;
+    // A direct negotiation fallback stays on its original physical
+    // session instead of silently moving onto a replacement profile.
+    if (!p->radio_reply) {
+      p->radio_bound = true;
+      p->tx_radio = route.profile == 0 ? RADIO_TX_PRIMARY : RADIO_TX_SECONDARY;
     }
   }
   const uint8_t mask = m->getTransmitProfileMask(p);
@@ -233,6 +246,46 @@ bool Mesh::otaSendAdapter(void* ctx, const uint8_t* msg, uint16_t len, bool /*fl
 // Runtime OTA flood reach (`ota config hops`, persisted in NodePrefs): accept packets up to N hops away and
 // relay those still under N hops. 0 = direct only. Overridable per-role by subclassing.
 uint8_t Mesh::getOtaHopLimit() const { return ota::ota_hop_limit(); }
+
+#if MESH_ENABLE_OTA_KISS_DIRECT
+uint32_t Mesh::directOtaEpoch() const {
+  const auto* context = ota::ota_context_if_active();
+  return context ? context->manager.directTransportEpoch() : 0;
+}
+
+bool Mesh::allowDirectOtaTransmit(uint8_t profile, uint32_t generation) const {
+  if (!isAnyTempRadioActive() || !allowPacketTransmit(nullptr)) return false;
+  const auto* profiles = _radio->profiles();
+  if (!profiles || profile >= 2 || generation != profiles->generation[profile]
+      || profiles->params(profile).protocol != RadioProfileProtocol::MeshCore
+      || !profiles->canTransmit(profile)) return false;
+  // Never infer a normal-channel TX opportunity from a temporary window on
+  // the other tuple. Explicit cross policy retains its existing meaning.
+  return (profile == 0 ? (isTempRadioActive() || profiles->primary_temporary)
+                       : profiles->secondary_temporary)
+      || profiles->cross == RadioCrossMode::On;
+}
+
+bool Mesh::onDirectOtaRadioFrame(const uint8_t* bytes, size_t length,
+                                uint8_t profile, uint32_t generation) {
+  const uint8_t* message;
+  uint16_t message_len;
+  if (!allowDirectOtaTransmit(profile, generation)
+      || !ota::ota_direct_wire_decode(bytes, length, message, message_len)) return false;
+  auto* context = ota::ota_context_if_active();
+  if (!context) return false; // unsolicited bytes cannot allocate an OTA arena
+  syncOtaTiming(context->manager);
+  context->manager.set_direct_transport_enabled(true);
+  context->manager.note_rx_path_hops(0);
+  ota::OtaReplyRoute route;
+  route.profile = profile;
+  route.generation = generation;
+  route.direct = true;
+  context->manager.on_message(message, message_len, route);
+  context->track_session(context->manager.fetchState(), _ms->getMillis());
+  return true;
+}
+#endif
 #endif
 
 void Mesh::begin() {
@@ -463,6 +516,9 @@ void __attribute__((noinline)) Mesh::serviceLoopMaintenance() {
   if (!ota_active) {
     if (_ota_temp_was_active) {
       ota::ota_ctx().manager.clearPendingEgress();
+#if MESH_ENABLE_OTA_KISS_DIRECT
+      discardQueuedForeignRadioFrame(RadioProfileProtocol::MeshCore);
+#endif
       resetOtaRelayBackoff();
     }
     _ota_temp_was_active = false;
@@ -485,7 +541,11 @@ void __attribute__((noinline)) Mesh::serviceLoopMaintenance() {
   syncOtaTiming(ota::ota_ctx().manager);
   ota::ota_ctx().manager.serviceEgress([](void* ctx, const ota::OtaReplyRoute& route) {
     if (route.profile == 0xFF) return true;
-    const auto* profiles = static_cast<Mesh*>(ctx)->_radio->profiles();
+    const auto* mesh = static_cast<Mesh*>(ctx);
+    const auto* profiles = mesh->_radio->profiles();
+#if MESH_ENABLE_OTA_KISS_DIRECT
+    if (route.direct) return mesh->allowDirectOtaTransmit(route.profile, route.generation);
+#endif
     // A completed/reconfigured temp session must not leak its retained replies
     // onto the replacement channel, or pin a stale descriptor behind backpressure.
     return route.profile < 2 && (!profiles ? route.profile == 0
@@ -1412,6 +1472,12 @@ DispatcherAction Mesh::onRecvPacket(Packet* pkt) {
         ota::OtaReplyRoute route;
         route.profile = pkt->radio_profile;
         route.generation = pkt->radio_generation;
+#if MESH_ENABLE_OTA_KISS_DIRECT
+        if (!context->manager.directFetchActive()) {
+          context->manager.set_direct_transport_enabled(
+              allowDirectOtaTransmit(route.profile, route.generation));
+        }
+#endif
         terminal_ota = context->manager.on_message(pkt->payload, pkt->payload_len, route);
         context->track_session(context->manager.fetchState(), _ms->getMillis());
         onOtaRecv(pkt);

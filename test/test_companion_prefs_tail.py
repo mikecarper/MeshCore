@@ -55,22 +55,23 @@ int main() {
     assert(compact.savePrefs(prefs,47.1,-122.2));
     assert(legacy.savePrefsLegacy(prefs,47.1,-122.2));
     const auto& image=compact.fs.files["/new_prefs"];
-    assert(image==legacy.fs.files["/new_prefs"]);
+    const size_t historical_size=image.size()-mesh::companion::traffic::FooterSize;
+    assert(std::vector<uint8_t>(image.begin(),image.begin()+historical_size)==legacy.fs.files["/new_prefs"]);
 #if defined(TBEAM_1W)
-    assert(image.size()==243);
+    assert(historical_size==243);
 #elif defined(RP2040_PLATFORM) && defined(ENABLE_WIFI_INTERFACE)
-    assert(image.size()==333);
+    assert(historical_size==333);
 #else
-    assert(image.size()==236);
+    assert(historical_size==236);
 #endif
     const uint8_t expected[]={prefs.flood_retry_attempts,prefs.flood_retry_max_path,
         prefs.flood_retry_group_max_path,prefs.flood_retry_advert_enabled,
         prefs.one_key_dm_enabled,prefs.bluetooth_enabled,0,0,prefs.usb_debug_enabled,
         prefs.lost_reply};
-    assert(!memcmp(image.data()+image.size()-10,expected,6));
-    assert(!memcmp(image.data()+image.size()-4,&prefs.gps_sync_interval_hours,2));
-    assert(image[image.size()-2]==prefs.usb_debug_enabled);
-    assert(image.back()==prefs.lost_reply);
+    assert(!memcmp(image.data()+historical_size-10,expected,6));
+    assert(!memcmp(image.data()+historical_size-4,&prefs.gps_sync_interval_hours,2));
+    assert(image[historical_size-2]==prefs.usb_debug_enabled);
+    assert(image[historical_size-1]==prefs.lost_reply);
   }
   DataStore initial; assert(initial.savePrefs(original,47.1,-122.2));
   const auto disk=initial.fs.files["/new_prefs"];
@@ -94,9 +95,9 @@ int main() {
   };
   // A short return at each boundary of the single final write must abort the
   // transaction, including either byte of the two-byte GPS field.
-  for (unsigned boundary=0; boundary<10; ++boundary) {
+  for (unsigned boundary=0; boundary<10+mesh::companion::traffic::FooterSize; ++boundary) {
     DataStore store; store.fs.files["/new_prefs"]=disk;
-    store.fs.fail_write_after=int(disk.size()-10+boundary);
+    store.fs.fail_write_after=int(disk.size()-mesh::companion::traffic::FooterSize-10+boundary);
     assert(!store.savePrefs(changed,42.3,-121.2)); expectOld(store);
     store.fs.fail_write_after=-1;
     assert(store.savePrefs(changed,42.3,-121.2));
@@ -104,9 +105,9 @@ int main() {
   }
   // Fully written bytes still cannot replace the live image until readback
   // verifies every final-tail boundary. LittleFS's retries also must fail.
-  for (unsigned boundary=0; boundary<10; ++boundary) {
+  for (unsigned boundary=0; boundary<10+mesh::companion::traffic::FooterSize; ++boundary) {
     DataStore store; store.fs.files["/new_prefs"]=disk;
-    store.fs.fail_read_after=int(disk.size()-10+boundary);
+    store.fs.fail_read_after=int(disk.size()-mesh::companion::traffic::FooterSize-10+boundary);
     assert(!store.savePrefs(changed,42.3,-121.2)); expectOld(store);
   }
   {

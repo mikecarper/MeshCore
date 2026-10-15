@@ -125,6 +125,32 @@ a channel index, or `key:<unique public-key prefix>` for a contact.
 See the [routing guide](radio_profiles.md#companion-tx-routing-by-contact-or-channel)
 for which requests/replies are covered and how to reset a choice.
 
+## Companion media and SSH TX profiles
+
+```text
+get tx.media
+set tx.media radio2
+get tx.ssh
+set tx.ssh radio
+```
+
+Each setting accepts `auto`, `radio`, `radio2`, `both`, or `off`, defaults to
+`auto`, and is saved across reboot. `tx.media` handles Open TAK binary media;
+`tx.ssh` requires a tunnel app using the explicit SSH application tag, not
+an existing untagged SSH connection. See the
+[application routing guide](radio_profiles.md#companion-media-and-ssh-tx-routing)
+for the framing and routing rules. Ordinary text keeps its existing route.
+
+## ESP32 Full Companion Ethernet
+
+Use `set ethernet.radio <MHz>,<kHz>,<SF>,<CR>[,<preamble>]`, then
+`set ethernet on`. `get ethernet` reports state; `set ethernet off` closes
+the KISS service and releases its radio2 lease. Settings survive reboot.
+This is a separate whole-link mode, not the tagged `tx.ssh` application route.
+Normal USB/BLE/Companion TCP stay in Companion mode. The host instead uses
+KISS-over-TCP port 5003 on trusted station WiFi, with MTU 230.
+See [Ethernet setup and radio2 restrictions](radio_profiles.md#esp32-companion-ethernet-over-lora-kiss).
+
 ## Companion USB mode
 
 Updated 1.17.1.6 USB Companion builds, including ordinary and Full builds, start

@@ -1,4 +1,4 @@
-"""Exercise the actual outlined OTA dispatch/listing with the real name decoder."""
+"""Exercise real OTA listing, direct-transfer status, and the name decoder."""
 import os
 import re
 import shutil

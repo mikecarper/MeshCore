@@ -119,16 +119,23 @@ int main() {
     assert(w._profiles.switchTestReady());
     assert(w._profiles.switch_test_samples[0]==4 && w._profiles.switch_test_samples[1]==4);
     assert(w._profiles.switchBudgetUs()==1320); // measured 1200 us plus 10%, no nominal floor
-    assert(w._profiles.preamble(0,32)>=32 && w._profiles.preamble(0,32)<=128);
-    assert(w._profiles.preamble(1,32)>=32 && w._profiles.preamble(1,32)<=128);
+    assert(w._profiles.preamble(0,32)>=32 && w._profiles.preamble(0,32)<=512);
+    assert(w._profiles.preamble(1,32)>=32 && w._profiles.preamble(1,32)<=512);
     assert(w._profiles.preamble(0,32)%8==0 && w._profiles.preamble(1,32)%8==0);
   }
   {
     RadioLibWrapper w; w._profiles.primary.bw=w._cur_bw=500; w.switch_apply_us=8428;
     w.enable();
     assert(w._profiles.switchTestReady() && w._profiles.switchBudgetUs()==9271);
-    assert(w._profiles.preamble(0,32)==128 && w._profiles.preamble(1,32)<=128);
-    assert(w._profiles.chirpTiming().preamble[0]>128);
+    assert(w._profiles.preamble(0,32)==168 && w._profiles.preamble(1,32)<=512);
+    assert(w._profiles.chirpTiming().preamble[0]==168);
+  }
+  {
+    RadioLibWrapper w; w._profiles.primary.bw=w._cur_bw=500; w.switch_apply_us=40000;
+    w.enable();
+    assert(w._profiles.switchTestReady() && w._profiles.switchBudgetUs()==44000);
+    assert(w._profiles.preamble(0,32)==512 && w._profiles.preamble(1,32)<=512);
+    assert(w._profiles.chirpTiming().preamble[0]>512);
   }
   {
     RadioLibWrapper w; w.packet=true; w.enable();

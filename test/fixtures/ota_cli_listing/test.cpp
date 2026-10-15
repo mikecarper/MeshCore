@@ -39,7 +39,8 @@ struct OtaManager {
   enum FetchState { IDLE, WANT_MANIFEST, WANT_LEAVES, VERIFYING_STAGED, FETCHING, COMPLETE, PAUSED, FAILED };
   enum FetchError { FETCH_ERROR_MANIFEST, FETCH_ERROR_HASH_ALGO, FETCH_ERROR_VERSION,
     FETCH_ERROR_CODEC, FETCH_ERROR_GEOMETRY, FETCH_ERROR_TOO_LARGE, FETCH_ERROR_STORAGE,
-    FETCH_ERROR_INTEGRITY, FETCH_ERROR_MANIFEST_TIMEOUT, FETCH_ERROR_LEAVES_TIMEOUT };
+    FETCH_ERROR_INTEGRITY, FETCH_ERROR_MANIFEST_TIMEOUT, FETCH_ERROR_LEAVES_TIMEOUT,
+    FETCH_ERROR_RADIO_SESSION };
   struct CatRow {
     uint8_t mid[4] = {1, 2, 3, 4};
     uint32_t target_id = 0, fw_version = 0x01020300, last_ms = 9000;
@@ -49,6 +50,8 @@ struct OtaManager {
   unsigned count = 0, queries = 0, clock_calls = 0, speed_calls = 0;
   uint32_t target_id = 0;
   FetchState state = IDLE;
+  FetchError error = FETCH_ERROR_STORAGE;
+  bool direct = false, direct_confirmed = false;
   bool codec_supported = true;
   uint8_t served = 3;
   float adaptivePacketSpeed() const { return 2.5f; }
@@ -58,6 +61,8 @@ struct OtaManager {
   uint16_t catalogCount() const { return count; }
   unsigned sourceCount() const { return 2; }
   FetchState fetchState() const { return state; }
+  bool directFetchActive() const { return direct; }
+  bool directFetchConfirmed() const { return direct && direct_confirmed; }
   const uint8_t* fetchManifestId() const { return rows[0].mid; }
   uint32_t target() const { return target_id; }
   const CatRow* catalogRow(uint16_t index) const { return index < count ? &rows[index] : nullptr; }
@@ -66,7 +71,7 @@ struct OtaManager {
   void servedDigest(uint8_t* digest) const { memcpy(digest, rows[0].mid, 4); }
   unsigned blocksHave() const { return 1; }
   unsigned blocksTotal() const { return 2; }
-  FetchError fetchError() const { return FETCH_ERROR_STORAGE; }
+  FetchError fetchError() const { return error; }
   bool fetched_is_bootloader() const { return false; }
 };
 struct OtaContext {
@@ -199,6 +204,35 @@ static void listing_tests() {
   context.manager.rows[0].flags = MFLAG_BOOTLOADER;
   invoke("ota ls", reply); assert(strstr(reply.text, "[bootloader unsupported]"));
 }
+static void direct_status_tests() {
+  reset(); Reply reply;
+  context.manager.state = OtaManager::FETCHING;
+  context.manager.direct = true;
+  invoke("ota status", reply);
+#if !defined(OTA_SEEDER_ONLY)
+  assert(strstr(reply.text, "direct240 probe"));
+  context.manager.direct_confirmed = true;
+  invoke("ota status", reply);
+  assert(strstr(reply.text, "direct240") && !strstr(reply.text, "probe"));
+  context.manager.state = OtaManager::COMPLETE;
+  invoke("ota status", reply);
+  assert(strstr(reply.text, "ready to install") && !strstr(reply.text, "direct240"));
+  context.manager.state = OtaManager::PAUSED;
+  invoke("ota status", reply);
+  assert(strstr(reply.text, "folder link lost") && !strstr(reply.text, "direct240"));
+  context.manager.state = OtaManager::FETCHING;
+  context.manager.direct = false;
+  invoke("ota status", reply);
+  assert(!strstr(reply.text, "direct240"));
+  context.manager.state = OtaManager::FAILED;
+  context.manager.error = OtaManager::FETCH_ERROR_RADIO_SESSION;
+  invoke("ota status", reply);
+  assert(strstr(reply.text, "radio session changed"));
+#else
+  assert(strstr(reply.text, "OTA seeder | install:disabled"));
+  assert(!strstr(reply.text, "direct240"));
+#endif
+}
 static void name_tests(unsigned id, const char* name) {
   reset(); Reply reply; context.manager.count = 1;
   context.manager.rows[0].target_id = id;
@@ -212,6 +246,7 @@ static void name_tests(unsigned id, const char* name) {
 int main() {
   mesh::ota::dispatch_tests();
   mesh::ota::listing_tests();
+  mesh::ota::direct_status_tests();
   unsigned id; char name[68];
   while (scanf("%x %67s", &id, name) == 2) mesh::ota::name_tests(id, name);
 }

@@ -166,6 +166,16 @@ class DataStore {
 #endif
   struct IdentityAdapter {
     bool recover(const char*) { return true; }
+#if defined(ESP32_PLATFORM)
+    IdentityLoadResult loadResult(const char* name, mesh::LocalIdentity& identity) {
+      // The ESP32 entry point now delegates absence/error discrimination to
+      // IdentityStore, not a separate exists() short circuit. This fixture's
+      // adapter has no NVS; end-to-end migration cases use the real store.
+      if (filesystem.stat_error) return IdentityLoadResult::Unreadable;
+      if (!filesystem.files.count(identity_path)) return IdentityLoadResult::Missing;
+      return load(name, identity) ? IdentityLoadResult::Loaded : IdentityLoadResult::Unreadable;
+    }
+#endif
     bool load(const char*, mesh::LocalIdentity&) {
       File file = filesystem.open(identity_path);
       uint8_t data[96];

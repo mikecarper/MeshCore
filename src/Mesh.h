@@ -558,6 +558,12 @@ protected:
   // OTA mesh-integration is centralized in Mesh::begin()/loop()/dispatch, so every role (repeater,
   // companion, room, sensor, ...) gets fetch/serve/apply without per-example wiring.
   static bool otaSendAdapter(void* ctx, const uint8_t* msg, uint16_t len, bool flood);
+#if MESH_ENABLE_OTA_KISS_DIRECT
+  bool allowDirectOtaTransmit(uint8_t profile, uint32_t generation) const override;
+  uint32_t directOtaEpoch() const override;
+  bool onDirectOtaRadioFrame(const uint8_t* bytes, size_t length, uint8_t profile,
+                            uint32_t generation) override;
+#endif
   void syncOtaTiming(ota::OtaManager& manager);
   unsigned long _next_ota_tick = 0;
   ota::LongTimer _ota_announce_timer;     // supports long scaled intervals across millis rollovers
