@@ -25,6 +25,9 @@
 #endif
 #include <Mesh.h>
 #include <helpers/CompanionHardwareCommandCompat.h>
+#if defined(MESH_HIL_BLE_BENCH) && MESH_HIL_BLE_BENCH
+#include <helpers/CompanionBleBench.h>
+#endif
 #include <helpers/CompanionStatusResponse.h>
 #include <helpers/CompanionReader.h>
 #include <helpers/IdentityGeneration.h>
@@ -5741,6 +5744,19 @@ void MyMesh::handleCmdFrame(size_t len) {
     writeErrFrame(ERR_CODE_ILLEGAL_ARG);
     return;
   }
+
+#if defined(MESH_HIL_BLE_BENCH) && MESH_HIL_BLE_BENCH
+  if (cmd_frame[0] == mesh::companion::kBleBenchCommand) {
+    // Direct Companion transport benchmark only: no RF dispatch, settings,
+    // identity reads or persistent state. Reuse the normal reply queue and
+    // its required-frame admission/backpressure, including the source route.
+    const size_t echoed = mesh::companion::buildBleBenchEcho(
+        cmd_frame, len, out_frame, MAX_FRAME_SIZE);
+    if (echoed) _serial->writeFrame(out_frame, echoed);
+    else writeErrFrame(ERR_CODE_ILLEGAL_ARG);
+    return;
+  }
+#endif
 
   servicePendingSerialReply();
   const bool starts_long_lived_request =

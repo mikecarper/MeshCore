@@ -977,14 +977,38 @@ size_t SerialBLEInterface::writeFrame(const uint8_t src[], size_t len) {
   return 0;
 }
 
-#define  BLE_WRITE_MIN_INTERVAL   60
+#if defined(MESH_HIL_BLE_INTERVAL_MS)
+#if !defined(MESH_HIL_BLE_BENCH) || MESH_HIL_BLE_BENCH != 1
+#error "MESH_HIL_BLE_INTERVAL_MS requires the explicit MESH_HIL_BLE_BENCH=1 lab image"
+#endif
+#if MESH_HIL_BLE_INTERVAL_MS < 7 || MESH_HIL_BLE_INTERVAL_MS > 60
+#error "MESH_HIL_BLE_INTERVAL_MS must be in 7..60 milliseconds"
+#endif
+#define BLE_WRITE_MIN_INTERVAL MESH_HIL_BLE_INTERVAL_MS
+#else
+// Preserve the shipped pacing until a separate lab image has measured a safe
+// replacement. One value governs admission and both successful/failed sends.
+#define BLE_WRITE_MIN_INTERVAL 60
+#endif
 
 bool SerialBLEInterface::isReadBusy() const {
   return uxQueueMessagesWaiting(recv_queue) > 0;
 }
 
+bool SerialBLEInterface::hasRequiredReplyCapacity() const {
+  if (send_queue_len < FRAME_QUEUE_SIZE) return true;
+  // Match enqueueCompanionFrame's admission rule: a required response can
+  // displace best-effort traffic, but must never displace another required one.
+  for (int i = 0; i < send_queue_len; ++i) {
+    if (!mesh::companionFrameRequiresDelivery(send_queue[i].buf, send_queue[i].len))
+      return true;
+  }
+  return false;
+}
+
 bool SerialBLEInterface::isWriteBusy() const {
-  return !mesh::bleElapsedAtLeast((uint32_t)millis(), _last_write,
+  return !hasRequiredReplyCapacity()
+      || !mesh::bleElapsedAtLeast((uint32_t)millis(), _last_write,
                                   BLE_WRITE_MIN_INTERVAL);
 }
 
@@ -1052,7 +1076,11 @@ size_t SerialBLEInterface::checkRecvFrame(uint8_t dest[]) {
   }
 
   Frame frame;
-  if (deviceConnected && xQueueReceive(recv_queue, &frame, 0) == pdTRUE) {
+  // Service TX above even when full, then retain a command until its required
+  // reply can be admitted. Dequeuing while all TX slots are required causes
+  // one-shot replies (including CMD66) to be silently lost by writeFrame().
+  if (deviceConnected && hasRequiredReplyCapacity()
+      && xQueueReceive(recv_queue, &frame, 0) == pdTRUE) {
     memcpy(dest, frame.buf, frame.len);
     BLE_DEBUG_PRINTLN("readBytes: sz=%d, hdr=%d", (uint32_t) frame.len, (uint32_t) dest[0]);
     return frame.len;

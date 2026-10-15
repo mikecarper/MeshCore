@@ -61,6 +61,7 @@ inline uint32_t pin = 0;
 inline bool bonding = false, mitm = false, sc = false;
 inline std::vector<std::vector<uint8_t>> transmitted;
 inline unsigned disconnects = 0;
+inline unsigned notification_attempts = 0;
 }
 inline int ble_gap_wl_set(const ble_addr_t* peers, uint8_t count) {
   assert(count == 1);
@@ -91,6 +92,7 @@ struct NimBLECharacteristic {
   void setValue(const uint8_t* data, size_t size) { value.assign(data, data + size); }
   bool notify(uint16_t handle = 0xffff) const {
     assert(handle == 7);
+    ++fake_nimble::notification_attempts;
     if (!fake_nimble::accept_notification) return false;
     fake_nimble::transmitted.push_back(value);
     return true;

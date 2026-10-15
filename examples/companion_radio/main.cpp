@@ -469,7 +469,17 @@ public:
   }
 
 private:
-  mesh::ota::SerialMotaSource _source;
+  class Source : public mesh::ota::SerialMotaSource {
+  public:
+    using mesh::ota::SerialMotaSource::SerialMotaSource;
+  protected:
+    uint16_t responseFrameCapacity() const override {
+      return bluetooth_interface.motaResponseCapacity();
+    }
+  };
+  static_assert(sizeof(Source) == sizeof(mesh::ota::SerialMotaSource),
+                "BLE source MTU policy must not allocate additional state");
+  Source _source;
   uint32_t _packets_sent_at_start;
   uint32_t _last_packets_sent;
 };

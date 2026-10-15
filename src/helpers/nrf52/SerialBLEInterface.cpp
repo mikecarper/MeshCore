@@ -1194,6 +1194,17 @@ void SerialBLEInterface::loop() {
   }
 }
 
+bool SerialBLEInterface::hasRequiredReplyCapacity() const {
+  if (send_queue_len < FRAME_QUEUE_SIZE) return true;
+  // Required responses may evict an unsent packet log, never another required
+  // reply. Match enqueueCompanionFrame without growing either bounded queue.
+  for (uint8_t i = 0; i < send_queue_len; ++i) {
+    if (!mesh::companionFrameRequiresDelivery(send_queue[i].buf, send_queue[i].len))
+      return true;
+  }
+  return false;
+}
+
 size_t SerialBLEInterface::writeFrame(const uint8_t src[], size_t len) {
   if (len > MAX_FRAME_SIZE) {
     BLE_DEBUG_PRINTLN("writeFrame(), frame too big, len=%u", (unsigned)len);
@@ -1285,7 +1296,9 @@ size_t SerialBLEInterface::checkRecvFrame(uint8_t dest[]) {
     _tx_stall_watchdog.reset();
   }
   
-  if (recv_queue_len > 0) {
+  // TX/recovery above must run even when full. Retain RX until a required
+  // command reply can be admitted instead of silently losing that reply.
+  if (recv_queue_len > 0 && hasRequiredReplyCapacity()) {
     size_t len = recv_queue[0].len;
     memcpy(dest, recv_queue[0].buf, len);
     
@@ -1365,6 +1378,17 @@ bool SerialBLEInterface::isMotaChannelReady() {
   return _mota_available && isConnected()
       && _conn_handle != BLE_CONN_HANDLE_INVALID
       && _mota_request.notifyEnabled(_conn_handle);
+}
+
+uint16_t SerialBLEInterface::motaResponseCapacity() {
+  if (!isMotaChannelReady() || !_mota_stream.isActive()) return 0;
+  BLEConnection* connection = Bluefruit.Connection(_conn_handle);
+  if (!connection || !connection->connected()) return 0;
+  const uint16_t mtu = connection->getMtu();
+  if (mtu < 23) return 0;
+  const uint16_t capacity = (uint16_t)(mtu - 3u);
+  return capacity < mesh::ota::BLE_MOTA_RESPONSE_MAX
+      ? capacity : mesh::ota::BLE_MOTA_RESPONSE_MAX;
 }
 #endif
 

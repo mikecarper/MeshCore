@@ -622,6 +622,7 @@ jobs:
           python3 -B test/test_local_release_capacity_archive.py
           python3 -B test/test_t096_full_memory.py
           python3 -B test/test_nrf52_ble_startup.py
+          python3 -B test/test_nrf52_ble_backpressure.py
           python3 -B test/test_nrf52_ble_trace.py
           python3 -B test/test_nrf52_ble_debug_tools.py
           python3 -B test/test_nrf52_usb_power.py

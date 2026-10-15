@@ -67,6 +67,7 @@ class SerialBLEInterface : public BaseSerialInterface,
   Frame send_queue[FRAME_QUEUE_SIZE];
 
   void clearBuffers();
+  bool hasRequiredReplyCapacity() const;
   void servicePendingTxReset();
   void scheduleAdvertisingRestart(uint32_t now);
   void recoverStalledTx(const char* cause);

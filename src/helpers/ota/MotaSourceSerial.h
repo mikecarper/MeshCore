@@ -38,7 +38,14 @@ public:
   bool hasPendingResponse() const { return _response_pending; }
   void resetSessionState();
 
+protected:
+  // Full framed response capacity, including magic/op/status/checksum. The
+  // default preserves USB/UART/TCP geometry. A BLE source can override this
+  // using its current ATT MTU without storing another buffer or callback.
+  virtual uint16_t responseFrameCapacity() const { return 197; }
+
 private:
+  uint16_t responsePayloadCapacity() const;
   // Send a request (op+args) and read its response header; on OK, `payload` (if non-null) receives
   // `payload_len` bytes. Returns true iff a well-formed OK response for `op` arrived in time.
   bool txn(uint8_t op, const uint8_t* args, uint8_t arglen, uint8_t* payload, uint32_t payload_len);

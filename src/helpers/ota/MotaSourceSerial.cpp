@@ -202,13 +202,21 @@ bool SerialMotaSource::describe(uint8_t idx, MotaDesc& out) {
   return true;
 }
 
+uint16_t SerialMotaSource::responsePayloadCapacity() const {
+  uint16_t frame = responseFrameCapacity();
+  if (frame < 8) return 0;  // even a nonempty DEFLATE response must fit
+  if (frame > MOTA_SEEDER_READ_MAX + 5u) frame = MOTA_SEEDER_READ_MAX + 5u;
+  return (uint16_t)(frame - 5u);
+}
+
 bool SerialMotaSource::read(uint8_t idx, uint32_t off, uint8_t* buf, uint32_t len) {
   if (!buf && len != 0) return false;
   if (len > UINT32_MAX - off) return false;
   uint32_t done = 0;
   while (done < len) {
-    uint16_t chunk = (uint16_t)(len - done > MOTA_SEEDER_READ_MAX
-        ? MOTA_SEEDER_READ_MAX : len - done);
+    const uint16_t maximum = responsePayloadCapacity();
+    if (maximum == 0) return false;  // disconnected/invalid BLE session
+    uint16_t chunk = (uint16_t)(len - done > maximum ? maximum : len - done);
     uint8_t args[7];
     args[0] = idx;
     wr_u32le(args + 1, off + done);
@@ -223,6 +231,7 @@ bool SerialMotaSource::read_deflated_block(uint8_t idx, uint16_t block, uint8_t*
                                            uint16_t cap, uint16_t* len) {
   if (!buf || !len || cap == 0) return false;
   *len = 0;
+  if (responsePayloadCapacity() < 3) return false;
 
   uint8_t args[7] = { idx };
   args[1] = (uint8_t)(block & 0xFF); args[2] = (uint8_t)(block >> 8);
@@ -235,8 +244,11 @@ bool SerialMotaSource::read_deflated_block(uint8_t idx, uint16_t block, uint8_t*
 
   uint16_t done = 0;
   while (done < total) {
-    const uint16_t chunk = (uint16_t)((total - done > MOTA_SEEDER_DEFLATE_CHUNK_MAX)
-        ? MOTA_SEEDER_DEFLATE_CHUNK_MAX : total - done);
+    const uint16_t payload_capacity = responsePayloadCapacity();
+    if (payload_capacity < 3) return false;
+    const uint16_t maximum = (uint16_t)(payload_capacity - 2u);
+    const uint16_t chunk = (uint16_t)((total - done > maximum)
+        ? maximum : total - done);
     args[3] = (uint8_t)(done & 0xFF); args[4] = (uint8_t)(done >> 8);
     args[5] = (uint8_t)(chunk & 0xFF); args[6] = (uint8_t)(chunk >> 8);
     uint8_t response[2 + MOTA_SEEDER_DEFLATE_CHUNK_MAX];

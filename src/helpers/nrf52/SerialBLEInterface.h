@@ -109,6 +109,7 @@ class SerialBLEInterface : public BaseSerialInterface {
   Frame recv_queue[FRAME_QUEUE_SIZE];
 
   void clearBuffers();
+  bool hasRequiredReplyCapacity() const;
   void shiftSendQueueLeft();
   void shiftRecvQueueLeft();
   size_t writeBleUartFrame(const Frame& frame);
@@ -209,6 +210,7 @@ public:
 #if COMPANION_FEATURE_BLE_MOTA_SOURCE
   Stream& motaStream() { return _mota_stream; }
   bool isMotaChannelReady();
+  uint16_t motaResponseCapacity();
   bool isMotaStreamActive() const { return _mota_stream.isActive(); }
   void setMotaStreamActive(bool active) {
     _mota_stream.setActive(active);
