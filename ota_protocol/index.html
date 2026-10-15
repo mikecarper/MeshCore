@@ -2092,6 +2092,23 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="8.5 Sizing against MAX_PACKET_PAYLOAD = 184">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#851-negotiated-zero-hop-kissraw-radio-transport" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        8.5.1 Negotiated zero-hop KISS/raw-radio transport
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
         
           <li class="md-nav__item">
@@ -2846,6 +2863,23 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="8.5 Sizing against MAX_PACKET_PAYLOAD = 184">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#851-negotiated-zero-hop-kissraw-radio-transport" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        8.5.1 Negotiated zero-hop KISS/raw-radio transport
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
         
           <li class="md-nav__item">
@@ -3029,6 +3063,10 @@ document is the technical/wire specification.</p>
 <td><code>OtaProtocol.{h,cpp}</code></td>
 </tr>
 <tr>
+<td>Negotiated direct KISS framing / build policy</td>
+<td><code>OtaDirectWire.h</code>, <code>OtaDirectConfig.h</code></td>
+</tr>
+<tr>
 <td>Session engine (serve+fetch+discovery)</td>
 <td><code>OtaManager.{h,cpp}</code></td>
 </tr>
@@ -3146,7 +3184,7 @@ document is the technical/wire specification.</p>
 <tr>
 <td><code>MAX_PACKET_PAYLOAD</code></td>
 <td><code>184</code></td>
-<td>usable bytes per packet (<code>src/MeshCore.h</code>)</td>
+<td>ordinary routed packet payload (<code>src/MeshCore.h</code>); direct KISS exception: Section 8.5.1</td>
 </tr>
 <tr>
 <td>Default application block size</td>
@@ -3802,9 +3840,57 @@ OTA_LEAVES:        manifest_id[4]  frag_idx(1)  frag_total(1)  bytes[]      # up
 </table>
 <p>A served mota supports up to 1024 leaves in the default 4 KiB proof scratch (about 2 MiB of payload at the
 new 2 KiB default, or 1 MiB for a deployed 1 KiB container); larger self-images pass a bigger scratch buffer.</p>
+<h4 id="851-negotiated-zero-hop-kissraw-radio-transport">8.5.1 Negotiated zero-hop KISS/raw-radio transport</h4>
+<p><code>OtaDirectWire.h</code> defines an opt-in direct transport which bypasses the normal
+184-byte <code>Packet</code> payload without changing <code>Packet</code> layout or enlarging its pool:</p>
+<pre><code class="language-text">RF frame = F2 00 || ota_msg_type || existing OTA message body
+           2 B    &lt;----------- at most 253 B -----------&gt;
+</code></pre>
+<p><code>F2</code> selects reserved MeshCore version 4, <code>PAYLOAD_TYPE_OTA</code>, and direct routing;
+old MeshCore parsers reject that version. The second byte MUST be zero: no path,
+transport codes, relay envelope, or Ethernet header is permitted. Maximum RF
+length is <strong>255 bytes</strong>; v2 DATA retains its 9-byte OTA header and 4-byte stream ID,
+leaving <strong>240 data bytes</strong>. Thus raw 1 KiB/2 KiB blocks need five/nine DATA frames.
+Only transfer opcodes <code>0x04..0x0B</code> are legal; discovery <code>ADV/QUERY/HAVE</code> MUST retain
+ordinary framing. V2 descriptor bits, compression permission and stream identity
+are unchanged. The outer framing, not a new opcode or request-mask bit, selects
+240-byte geometry.</p>
+<p>A receiver MUST first validate a manifest obtained through ordinary OTA framing.
+It MAY probe direct mode only when <code>ota config hops</code> is zero, that manifest was
+observed at zero relay hops, v2 is usable, and the original temporary-radio
+physical session/profile generation remains valid. Direct responses MUST match
+that fetch's manifest, transport geometry and physical session. If direct support
+has not yet been confirmed, the first adaptive deadline without direct DATA MUST
+invalidate that probe and retry ordinary <strong>171-byte v2</strong> framing on the original
+session. After confirmation, a wholly empty later flight gets one admitted
+same-mode sparse retry before that downgrade. Local queue rejection MUST NOT
+consume the retry, and valid direct DATA resets its empty-flight evidence. The
+existing 160-byte legacy fallback remains available afterward. Reassembly for uncommitted
+blocks is reset when geometry changes; already proof-verified committed blocks
+remain staged. Missing-fragment masks continue to drive recovery.</p>
+<p>Endpoints MUST consume or reject this reserved envelope before normal <code>Packet</code>
+allocation, raw logs and mesh bridges. They MUST NOT relay it or reinterpret it
+as routed OTA; malformed, nonzero-path and unsolicited traffic cannot create an
+OTA context. A shared bounded raw-radio TX owner retains the selected profile
+generation and the OTA cancellation epoch until actual TX completion. It MUST
+honor carrier sensing, duty/airtime accounting and adaptive pacing, and discard
+pending work after cancellation, profile replacement or temporary-session expiry.
+Direct response trains permit the proof immediately after the final completed
+DATA frame; adaptive sub-1.0 quiet gaps still apply. KISS queue acceptance is not
+RF completion, and actual <code>F8 TX_DONE</code> is not receiver delivery acknowledgement.</p>
+<p>Manifest signatures, Merkle proofs, encoded-stream checks, staged bytes and
+explicit install authorization are unchanged. This is a transport optimization,
+not a new trust or installation path. <code>MESH_ENABLE_OTA_KISS_DIRECT</code> defaults on
+for <code>ENABLE_OTA</code> builds using the shared raw-radio scheduler, except primary
+ESP-NOW builds; <code>-DMESH_ENABLE_OTA_KISS_DIRECT=0</code> explicitly disables it. Enabling
+the build feature alone does not bypass the runtime negotiation/session gates.
+The separate host seeder's safe probe/serve examples and lab TX lock are in
+<a href="../tools/lora_ota/README.md"><code>tools/lora_ota/README.md</code></a>.</p>
 <h3 id="86-temporary-radio-and-transfer-boundary">8.6 Temporary-radio and transfer boundary</h3>
 <p>OTA packets may cross normal mesh relay hops, but each participating node processes or relays them only while
-its <code>tempradio</code> window is actually running. A receiver selects missing blocks in serial order into a bounded
+a matching <code>tempradio</code> or <code>tempradio2</code> window is actually running. Direct transfers remain bound to their
+original profile and generation; ending or replacing that window does not silently move them to the other
+radio. A receiver selects missing blocks in serial order into a bounded
 request flight. Every session starts with one block. A clean completed flight increases the next request by
 one block; a flight requiring fragment/proof recovery halves the next width (<code>4 -&gt; 2</code>, <code>3 -&gt; 2</code>, <code>2 -&gt; 1</code>).
 The default compiled cap is two blocks; the RAK3401 LoRa-OTA target caps at four, so it probes
@@ -3991,8 +4077,10 @@ deployment runner temporarily uses <code>0.3</code> on managed relays.</p>
 <p><strong>What to plug into <code>--serial</code>.</strong> Use the USB serial console of an OTA-enabled MeshCore node built with
 <code>OTA_FOLDER_SERIAL</code>. The node must have a working LoRa radio plus an
 <code>ota folder on</code> command; that command confirms it can host and advertise the folder. A <strong>KISS modem will not
-work</strong>: KISS firmware exposes a TNC/KISS frame interface, not the MeshCore CLI and <code>mota-seeder</code>
-request/response transport. An ESP32 WiFi companion or FULL ESP32 role with active WiFi is the alternative
+work with <code>motatool serve --serial</code></strong>: KISS firmware exposes a TNC/KISS frame interface, not the MeshCore CLI
+and <code>mota-seeder</code> request/response transport. The separate
+<a href="../tools/lora_ota/README.md"><code>mota_kiss_direct.py</code> source</a> implements that full KISS interface.
+An ESP32 WiFi companion or FULL ESP32 role with active WiFi is the alternative
 source connection: use its dedicated seeder port with <code>motatool serve --tcp &lt;host&gt;:5001</code>.
 An nRF52 Full Companion can instead pair with a phone or Linux host, subscribe
 to its mOTA request characteristic, and use protocol-v14

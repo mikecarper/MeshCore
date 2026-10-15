@@ -1547,6 +1547,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#companion-wifi-compatibility-settings" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Companion WiFi compatibility settings
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#recognizing-the-wrong-firmware" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2570,6 +2581,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#companion-wifi-compatibility-settings" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Companion WiFi compatibility settings
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#recognizing-the-wrong-firmware" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -3299,6 +3321,60 @@ infrastructure WiFi still must use the same fixed channel.</p>
 <p>MQTT observer targets normally limit ESP32 WiFi transmit power to 11 dBm unless
 the board configuration overrides <code>MQTT_WIFI_TX_POWER</code>. This setting affects
 WiFi only, not LoRa transmit power.</p>
+<h2 id="companion-wifi-compatibility-settings">Companion WiFi compatibility settings</h2>
+<p>ESP32 WiFi Companions, including Full Companion, provide two independent,
+saved compatibility controls. Defaults remain <code>bgn</code> and <code>normal</code>; neither
+setting changes the running connection until a reboot. They are available
+through the USB terminal, framed Companion CLI over USB/BLE/TCP, and the
+browser command terminal where included.</p>
+<pre><code class="language-text">get wifi.protocol
+set wifi.protocol bg
+reboot
+</code></pre>
+<p><code>wifi.protocol bgn</code> permits ordinary 802.11b/g/n. <code>bg</code> excludes 802.11n for
+access-point compatibility testing; it does not change LoRa or radio2.
+B/G-only is rejected when it conflicts with a primary ESP-NOW radio or an
+active long-range ESP-NOW owner. The temporary setup AP retains its existing
+B/G/N compatibility policy.</p>
+<p>The separate WiFi-only boot skips Bluetooth controller/host initialization,
+not merely advertising. USB and LoRa remain available; existing Bluetooth
+names, PINs and bonds are not erased. Enable and configure WiFi first, and
+retain USB access when testing an unreliable WLAN:</p>
+<pre><code class="language-text">set wifi.enabled 1
+set wifi.mode wifi-only
+set wifi.powersave none
+reboot
+get wifi.status
+</code></pre>
+<p>Saving <code>none</code> while a WiFi-only reboot is pending queues it for that boot;
+it never disables modem sleep while the current Bluetooth stack is active.
+<code>get wifi.status</code> reports the connection, SSID, IP and RSSI (dBm), followed by
+saved/boot/live radio settings in the same bounded reply:</p>
+<pre><code class="language-text">&gt; connected ssid=MyWiFi ip=192.168.11.102 rssi=-74
+protocol=bgn/bgn/0x07 mode=normal ps=min coex=yes ota=5001:listen
+</code></pre>
+<p><code>protocol</code> lists <strong>saved / boot-selected / live SDK bitmap</strong> (<code>0x03</code> = B/G,
+<code>0x07</code> = B/G/N). For example, <code>protocol=bg/bgn/0x07</code> shows a B/G-only change
+waiting for reboot. <code>mode</code> shows one value when saved and boot choices match,
+or <strong>saved / boot-selected</strong> when they differ, such as <code>wifi-only/normal</code>.
+<code>ps</code> is the live modem-sleep mode; <code>coex</code> indicates whether Bluetooth
+coexistence is required. <code>ota</code> is <code>off</code>, <code>&lt;port&gt;:listen</code>, or <code>&lt;port&gt;:client</code>.
+<code>n/a</code> means the SDK could not read that value; it does not claim the radio is
+off. IP and RSSI are omitted when not applicable. Individual getters remain
+available, but no separate detailed-status command is needed.</p>
+<p>Test B/G-only and WiFi-only separately to identify which change helps. A
+successful local test does not establish compatibility with an unavailable AP.
+Turning WiFi off/on, or using <code>set bluetooth off</code>, is not equivalent to a true
+WiFi-only reboot. During that boot, Bluetooth cannot be re-enabled until
+<code>wifi.mode normal</code> is saved and the device is rebooted.</p>
+<p>To restore the usual Cascade combination:</p>
+<pre><code class="language-text">set wifi.mode normal
+set wifi.protocol bgn
+set wifi.powersave min
+reboot
+</code></pre>
+<p>The SenseCAP Indicator's existing exclusive <code>companion.transport wifi|ble</code>
+selector remains authoritative; it does not expose <code>wifi.mode</code>.</p>
 <h2 id="recognizing-the-wrong-firmware">Recognizing the wrong firmware</h2>
 <p><code>get wifi.status</code>, <code>get wifi.ssid</code>, <code>get wifi.powersave</code>, and <code>get wifi.cli</code>
 are available on MQTT observers and on FULL non-MQTT repeater/room-server

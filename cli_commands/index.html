@@ -2030,6 +2030,28 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#set-companion-media-and-ssh-application-tx-profiles" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Set Companion media and SSH application TX profiles
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#esp32-full-companion-ethernet-tunnel" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ESP32 Full Companion Ethernet tunnel
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#set-repeater-room-server-and-sensor-reply-profiles" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -4923,6 +4945,28 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#set-companion-media-and-ssh-application-tx-profiles" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Set Companion media and SSH application TX profiles
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#esp32-full-companion-ethernet-tunnel" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ESP32 Full Companion Ethernet tunnel
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#set-repeater-room-server-and-sensor-reply-profiles" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -7106,6 +7150,29 @@ CLI command limit. The browser sends the lines sequentially and waits for each
 reply before sending the next line. The queue exists only in that browser page;
 closing it stops any commands that have not yet been sent. A lost connection
 also stops the remaining block.</p>
+<p>ESP32 WiFi Companions also expose AP-compatibility controls through the same
+local/framed command parser:</p>
+<ul>
+<li><code>get wifi.protocol</code> / <code>set wifi.protocol &lt;bg|bgn&gt;</code> (default <code>bgn</code>)</li>
+<li><code>get wifi.mode</code> / <code>set wifi.mode &lt;normal|wifi-only&gt;</code> (default <code>normal</code>)</li>
+<li><code>get wifi.status</code> (connection plus saved/boot/live radio settings)</li>
+</ul>
+<p>The same reply includes SSID, IP address and RSSI when connected,
+<code>protocol=&lt;saved&gt;/&lt;boot&gt;/&lt;live bitmap&gt;</code>, <code>mode=&lt;saved&gt;[/&lt;boot&gt;]</code>, live modem
+sleep (<code>ps</code>), Bluetooth coexistence (<code>coex</code>), and <code>ota=off|&lt;port&gt;:listen|&lt;port&gt;:client</code>.
+The boot mode is omitted only when it matches the saved mode; differing values
+mean a reboot is needed. No <code>detail</code> argument is required.</p>
+<p>Both controls are saved for the next reboot, without interrupting the command
+connection. <code>bg</code> excludes 802.11n and cannot override an ESP-NOW/LR owner.
+<code>wifi-only</code> requires <code>wifi.enabled 1</code> and skips Bluetooth stack initialization,
+while retaining USB and LoRa. To test without modem sleep, run
+<code>set wifi.mode wifi-only</code>, <code>set wifi.powersave none</code>, then <code>reboot</code>; <code>none</code>
+is safely deferred until that reboot if Bluetooth currently owns the radio.
+Restore with <code>set wifi.mode normal</code>, <code>set wifi.protocol bgn</code>,
+<code>set wifi.powersave min</code>, then <code>reboot</code>. Keep USB recovery available when
+testing a WLAN that may not work. The Indicator keeps its existing
+<code>companion.transport</code> selector instead of <code>wifi.mode</code>.
+See <a href="../WiFi/#companion-wifi-compatibility-settings">Companion WiFi compatibility settings</a>.</p>
 <p>Up/down arrow keys recall commands from the current browser session in
 single-command mode. A command that stops WebConfig, changes its WiFi
 connection, disables <code>wifi.cli</code>, or reboots the node stops the remaining block
@@ -7718,6 +7785,38 @@ phone-app and terminal messages. A contact's <code>off</code> setting also block
 ACKs and addressed responses.</p>
 <p>See <a href="../radio_profiles/#companion-tx-routing-by-contact-or-channel">Companion routing details and examples</a>
 for temporary profiles, persistence, and the traffic covered by each setting.</p>
+<h2 id="set-companion-media-and-ssh-application-tx-profiles">Set Companion media and SSH application TX profiles</h2>
+<pre><code class="language-text">get tx.media
+set tx.media auto|radio|radio2|both|off
+get tx.ssh
+set tx.ssh auto|radio|radio2|both|off
+</code></pre>
+<p>Choose one value after <code>set</code>. Both default to <code>auto</code> and are saved across
+reboot. Explicit choices override a channel route for the matching application
+data only; they do not change ordinary text, adverts or contact ACKs.
+<code>radio2</code> requires an active <code>rxtx</code> MeshCore profile and never falls back to
+the primary. <code>both</code> uses the available profiles; <code>off</code> blocks sending only.
+Queries include the effective <code>active=</code> selection and warn if radio2 is
+unavailable for TX.</p>
+<p>Media covers Open TAK's binary photo/voice and fetch packets. SSH requires
+an application to opt into the new <code>0x5353</code> channel-data type or raw
+<code>53 53 48 01</code> envelope; existing untagged SSH/IP tunnel apps are not detected
+automatically. See the <a href="../radio_profiles/#companion-media-and-ssh-tx-routing">application routing contract</a>
+for the exact framing, precedence and limits.</p>
+<h2 id="esp32-full-companion-ethernet-tunnel">ESP32 Full Companion Ethernet tunnel</h2>
+<pre><code class="language-text">get ethernet
+get ethernet.radio
+set ethernet.radio &lt;MHz&gt;,&lt;kHz&gt;,&lt;SF&gt;,&lt;CR&gt;[,&lt;preamble&gt;]
+set ethernet on
+set ethernet off
+</code></pre>
+<p>This separate <code>ethernet</code> mode carries the entire raw Ethernet link over
+radio2, including SSH, while primary radio stays MeshCore. It defaults off,
+saves its settings, and requires an explicitly configured supported RF tuple.
+Supported ESP32 Full SX1262/SX1276 builds expose trusted-LAN KISS-over-TCP on
+station port 5003. It does not add an SSH server, use <code>tx.ssh</code> tags, or bridge
+Ethernet into MeshCore. Conflicting radio2 owners are not overwritten.
+See <a href="../radio_profiles/#esp32-companion-ethernet-over-lora-kiss">Ethernet setup, host commands and limits</a>.</p>
 <h2 id="set-repeater-room-server-and-sensor-reply-profiles">Set repeater, room-server, and sensor reply profiles</h2>
 <pre><code class="language-text">get tx.reply
 set tx.reply both

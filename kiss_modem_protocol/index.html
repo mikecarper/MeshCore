@@ -2011,6 +2011,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#optional-extended-secondary-radio-setradio2ext-radio2ext-response" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Optional Extended Secondary Radio (SetRadio2Ext / Radio2Ext response)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#temporary-secondary-radio-settempradio2-tempradio2-response" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2909,6 +2920,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#optional-extended-secondary-radio-setradio2ext-radio2ext-response" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Optional Extended Secondary Radio (SetRadio2Ext / Radio2Ext response)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#temporary-secondary-radio-settempradio2-tempradio2-response" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -3451,6 +3473,16 @@ Clients that need temporary-lease state can poll <code>GetTempRadio2</code>.</p>
 <td><code>0x1E</code></td>
 <td>-</td>
 </tr>
+<tr>
+<td>SetRadio2Ext</td>
+<td><code>0x1F</code></td>
+<td>Radio2 parameters + protocol (14)</td>
+</tr>
+<tr>
+<td>GetRadio2Ext</td>
+<td><code>0x20</code></td>
+<td>-</td>
+</tr>
 </tbody>
 </table>
 <h3 id="response-sub-commands-tnc-to-host">Response Sub-commands (TNC to Host)</h3>
@@ -3583,6 +3615,11 @@ Clients that need temporary-lease state can poll <code>GetTempRadio2</code>.</p>
 <td>TempRadio2</td>
 <td><code>0x9E</code></td>
 <td>Active temporary radio2 + remaining minutes (15)</td>
+</tr>
+<tr>
+<td>Radio2Ext</td>
+<td><code>0xA0</code></td>
+<td>Saved radio2 parameters + protocol (14)</td>
 </tr>
 <tr>
 <td>OK</td>
@@ -3740,6 +3777,38 @@ All values are little-endian. The mode values are <code>0=off</code>, <code>1=rx
 <p><code>GetRadio2</code> returns this exact 13-byte tuple. The modem preserves the exact
 frequency and bandwidth values sent by the host even though its radio driver
 uses floating-point MHz/kHz internally.</p>
+<h3 id="optional-extended-secondary-radio-setradio2ext-radio2ext-response">Optional Extended Secondary Radio (SetRadio2Ext / Radio2Ext response)</h3>
+<p>These additive commands retain protocol version 2 and all existing OpenHop
+commands unchanged. <code>SetRadio2Ext</code> takes the exact 13-byte secondary tuple above
+followed by one protocol byte: <code>0</code> = MeshCore (LoRa sync word <code>0x12</code>), or <code>2</code> =
+raw Ethernet (sync word <code>0x16</code>). Other values, unavailable wire support, invalid
+modem tuples and lengths other than 14 bytes are rejected without changing the
+saved or active profile. <code>GetRadio2Ext</code> takes no data and returns the saved tuple
+plus that protocol byte, exactly 14 bytes.</p>
+<p>Both modes use explicit-header, CRC-on, normal-IQ LoRa. Ethernet frames remain
+raw Data on KISS port 1 (<code>0x10</code>); the modem adds no IP stack, ARP implementation
+or WiFi server. Hosts provide Ethernet/IPv4/TCP and must respect the one-pending-
+TX limit by waiting for <code>TxDone</code> before submitting another Data frame. The
+standard KISS <code>TXDELAY</code> default is 500 ms; hosts may explicitly change it for a
+low-delay link. Signal reports retain their existing two-byte format.</p>
+<p>The extended setting is RAM-only and has the same saved/temporary semantics as
+<code>SetRadio2</code>: an active <code>SetTempRadio2</code> lease is not interrupted, and its expiry
+or cancellation restores the saved tuple <strong>including its protocol</strong>. The legacy
+13-byte <code>SetRadio2</code> and 15-byte <code>SetTempRadio2</code> always select MeshCore; the legacy
+<code>GetRadio2</code> remains exactly 13 bytes and does not report the protocol. Hosts that
+need Ethernet must first probe <code>GetRadio2Ext</code>; older firmware replies
+<code>UnknownCmd</code>. Do not silently fall back to MeshCore when this probe fails.</p>
+<p>Builders can opt a compatible raw KISS modem into Ethernet wire support with
+<code>MESH_ENABLE_ETHERNET_WIRE=1</code>, leaving <code>MESH_ENABLE_ETHERNET_TUNNEL=0</code>. The wire
+flag defaults to the tunnel flag, so existing Companion builds are unchanged.
+The radio chip must independently support the requested profile; for example,
+SX1276 cannot use SF5 even when Ethernet wire support is compiled in.</p>
+<p>Bench images compiled with <code>MESH_HIL_TX_FREQ_MHZ</code> additionally support the
+read-only SetHardware <code>GetLabTxGuard</code> (<code>0x21</code>, no request data). Its response
+<code>0xA1</code> is the compiled allowed frequency as <code>u32</code> little-endian Hz; the standard
+909.5 MHz bench lock returns <code>909500000</code>. It proves the same frequency boundary
+used by the radio TX guard, not merely a requested setting. Production images
+without this explicit build flag return <code>UnknownCmd</code>; no setter exists.</p>
 <h3 id="temporary-secondary-radio-settempradio2-tempradio2-response">Temporary Secondary Radio (SetTempRadio2 / TempRadio2 response)</h3>
 <p><code>SetTempRadio2</code> is the binary KISS equivalent of <code>tempradio2</code>: the 13-byte
 secondary tuple followed by <code>duration_minutes:u16</code>, from 1 to 10080. It is

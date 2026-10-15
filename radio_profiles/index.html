@@ -1346,6 +1346,45 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#companion-media-and-ssh-tx-routing" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Companion media and SSH TX routing
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#esp32-companion-ethernet-over-lora-kiss" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ESP32 Companion Ethernet over LoRa (KISS)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="ESP32 Companion Ethernet over LoRa (KISS)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#attach-a-linux-ethernet-interface" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Attach a Linux Ethernet interface
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#companion-channel-name-routing-aliases" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2526,6 +2565,45 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#companion-media-and-ssh-tx-routing" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Companion media and SSH TX routing
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#esp32-companion-ethernet-over-lora-kiss" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ESP32 Companion Ethernet over LoRa (KISS)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="ESP32 Companion Ethernet over LoRa (KISS)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#attach-a-linux-ethernet-interface" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Attach a Linux Ethernet interface
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#companion-channel-name-routing-aliases" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2905,6 +2983,119 @@ channel key. Replacing a channel's key or deleting/replacing a contact clears
 its choice. They use reserved bytes in existing saved records, so record
 sizes and the phone protocol are unchanged. Older firmware ignores these
 bytes and may reset the choices when it saves the records.</p>
+<h2 id="companion-media-and-ssh-tx-routing">Companion media and SSH TX routing</h2>
+<p>Companions also save independent application-data routes:</p>
+<pre><code class="language-text">get tx.media
+set tx.media radio2
+get tx.ssh
+set tx.ssh radio
+</code></pre>
+<p>Both accept <code>auto|radio|radio2|both|off</code> and default to <code>auto</code>. An explicit
+application route overrides the channel's TX choice for that datagram only;
+<code>auto</code> preserves the channel/global behavior. <code>radio2</code> never falls back to
+<code>radio</code>, and must be an enabled <code>rxtx</code> <strong>MeshCore</strong> profile. <code>both</code> uses the
+profiles available for MeshCore transmission. <code>off</code> blocks transmission, not
+reception. Getters show the saved choice and current <code>active=</code> mask; <code>auto</code>
+shows <code>active=channel/global</code>, because the effective route depends on the
+destination channel (or global rules for raw data). Settings
+survive reboot; a failed save returns an error and keeps the previous choice.
+Already queued packets retain their original route.</p>
+<p><code>tx.media</code> recognizes Open TAK photo/voice channel data type <code>0x5643</code>, raw
+clip packets <code>0x56</code>/<code>0x57</code>, and well-formed binary fetch requests <code>0x72</code>.
+Text announcements (<code>VE3:</code>, <code>VM1:</code>, <code>VI1:</code>), text fetch requests (<code>VR3:</code>),
+ordinary chat, contact ACKs, adverts, OTA, and unrelated raw data keep their
+normal routing. The format is defined in
+<a href="https://github.com/jade-on-mesh/meshcore-open-tak/blob/main/lib/vox/voice_wire.dart">Open TAK's voice/media wire implementation</a>.</p>
+<p><code>tx.ssh</code> uses a <strong>new opt-in application contract</strong>, not automatic inspection
+of encrypted SSH or arbitrary IP tunnels. A tunnel client must use either:</p>
+<ul>
+<li><code>CMD_SEND_CHANNEL_DATA</code> with data type <code>0x5353</code> (wire bytes <code>53 53</code>), or</li>
+<li><code>CMD_SEND_RAW_DATA</code> with the four-byte prefix <code>53 53 48 01</code> (<code>SSH</code>, version 1),
+  followed by at least one application byte, on <strong>every</strong> tunnel packet.</li>
+</ul>
+<p>The firmware does not add/remove the prefix, decrypt the tunnel, or run an
+SSH server. Both endpoints must understand this framing. Untagged existing
+tunnel apps remain unchanged and are <strong>not</strong> affected by <code>tx.ssh</code> until they
+adopt the contract. Other channel data types do not acquire an SSH route
+merely because their contents start with <code>SSH</code>. Raw packets still require
+a direct path, including zero-hop; this does not enable raw flooding.</p>
+<p>For a media-only side channel, configure <code>radio2</code>/<code>tempradio2</code> in <code>rxtx</code>,
+set <code>radio2.cross off</code>, then set <code>tx.media radio2</code>. Ordinary text can stay on
+the primary profile without routing every raw application onto radio2.</p>
+<h2 id="esp32-companion-ethernet-over-lora-kiss">ESP32 Companion Ethernet over LoRa (KISS)</h2>
+<p>ESP32 <strong>Full Companion</strong> builds with a supported SX1262/SX1276 modem can
+carry raw Ethernet on radio2 while the primary profile stays MeshCore. This
+separate feature is named <code>ethernet</code>, not <code>tx.ssh</code>: it transports the
+<strong>whole Ethernet link</strong>, including ARP, TCP acknowledgments, IP fragments
+and SSH on any port. There is no Ethernet-to-MeshCore forwarding.</p>
+<p>The mode is off by default. It requires an explicit RF tuple; it never
+chooses a frequency or starts WiFi automatically. For a dedicated lab link:</p>
+<pre><code class="language-text">set ethernet.radio 909.5,500,5,5,512
+set ethernet on
+get ethernet
+get ethernet.radio
+get radio2.timing
+</code></pre>
+<p>Use an appropriate frequency and permitted power for your network. Both
+ends must match frequency, bandwidth, SF, coding rate and sync word.
+Ethernet uses sync word <code>0x16</code>, explicit headers, normal IQ and a LoRa CRC.
+The optional preamble defaults to 32 symbols; it can be set explicitly
+(8–65528, subject to driver/timing limits). SX1276 requires SF7 or higher.</p>
+<p>Do not assume 32 symbols is enough for a fast SF5/BW500 link. Run
+<code>get radio2.timing</code> after its switching self-test completes, and accommodate
+the slower end of the link. The lab example uses a 32.8 ms preamble and was
+tested on a Heltec V4/V3 pair, not an I/O-expander-controlled board. Both
+primary and secondary preambles matter if
+primary MeshCore traffic must also be heard while time-sharing. Longer
+preambles consume airtime; they do not prevent half-duplex collisions.</p>
+<p>On that V4/V3 pair, the actual MeshCore-open SSH backend verified the remote
+host key, authenticated with a public key, opened a PTY and received exactly
+4096 test bytes with a matching SHA-256 check. Radio1 stayed on the USA
+receive profile (<code>910.525,62.5,7,5</code>); its TX counter remained zero on both
+boards. Raw Ethernet still had losses, so this demonstrates TCP/SSH recovery,
+not loss-free RF or a minimum preamble guaranteed for every board. The bench
+used an explicit test-image TX-frequency lock; it did not transmit test
+packets on the USA profile.</p>
+<p>The settings are saved in a checked atomic NVS blob. <code>set ethernet off</code>
+closes the host connection and releases only this feature's runtime radio2
+lease; it does not rewrite the saved MeshCore profiles. A manually configured
+radio2 must already match the Ethernet RF tuple, including explicit preamble,
+and be <code>rxtx</code>; its protocol is borrowed only while Ethernet is enabled.
+An explicit saved <code>radio2 off</code>, a temporary/scheduled profile, or conflicting
+<code>r2-</code>/<code>mt-</code> channels prevents automatic takeover. Those channel aliases cannot
+be added while Ethernet is enabled. Clear conflicts or disable Ethernet first.
+Only one secondary profile can be active: Meshtext and Ethernet cannot share
+radio2 at the same time.</p>
+<h3 id="attach-a-linux-ethernet-interface">Attach a Linux Ethernet interface</h3>
+<p>Connect the Companion to station WiFi. Its <strong>station IP</strong> exposes a single
+KISS-over-TCP listener on port <strong>5003</strong>, separate from Companion binary TCP
+5000, OTA TCP 5001 and the existing text terminal on TCP 5002.
+Use <a href="https://github.com/markqvist/tncattach">tncattach</a> on the host:</p>
+<pre><code class="language-sh">sudo tncattach -T -H 192.168.1.100 -P 5003 --ethernet --mtu 230 --noipv6 --ipv4 10.10.10.10/24
+</code></pre>
+<p>Replace the station IP. Attach the other end with a different IP in the
+same subnet, then use normal host tools such as ping or SSH. A peer running
+<a href="https://github.com/datapartyjs/MeshTNC#ethernet-over-lora">MeshTNC's Ethernet-over-LoRa mode</a>
+uses the same raw Ethernet framing; configure its PHY to match this link.
+No custom <code>SSH</code> prefix or MeshCore packet wrapper is added.</p>
+<p><strong>Enable only on a trusted LAN.</strong> KISS has no authentication and permits raw
+RF transmission. The service binds to the station address, not the setup AP;
+do not expose port 5003 to the Internet. The ESP32 does not run an SSH server:
+SSH connects the attached host computers.</p>
+<p>The host MTU must fit one RF frame: MTU 230 plus the 14-byte Ethernet header
+is 244 bytes. Ethernet frames of 14–255 bytes are supported; larger frames
+are rejected, never truncated. There is no firmware fragmentation protocol,
+compression, retransmission or autonomous Ethernet forwarding. Queues are
+bounded and host TCP is backpressured. Host disconnects, WiFi/IP changes,
+disabling and profile changes discard stale queued/partial host traffic;
+an RF frame already transmitting cannot be unsent.</p>
+<p>One transceiver time-shares reception between the two profiles. Short
+preambles on an unmodified peer can be missed while listening to MeshCore;
+TCP handles losses but performance is not equivalent to two physical radios.
+Host/codec and firmware-build tests do not establish an RF interoperability
+or throughput guarantee. nRF52 and non-Full Companion builds do not acquire
+this Ethernet service. <code>tx.media</code> and tagged <code>tx.ssh</code> remain independent
+MeshCore application policies; neither controls this raw Ethernet link.</p>
 <h2 id="companion-channel-name-routing-aliases">Companion channel-name routing aliases</h2>
 <p>Companions recognize the case-sensitive prefixes <code>r2-</code> and <code>mt-</code>, immediately
 after the optional leading <code>#</code>. Keep the prefix in the app's displayed name.
@@ -3104,6 +3295,10 @@ apply. The reply says <strong>queued</strong>, not delivered or acknowledged.</p
 <p>There are no automatic NodeInfo advertisements: not at boot, on a timer, when
 names change, when chat is sent, or in response to received packets. Received
 NodeInfo is still ignored; this backend does not maintain a node database.</p>
+<p>Outgoing Meshtext chat and explicitly requested NodeInfo set <strong>OK to MQTT</strong>
+on by default, allowing a compatible receiving gateway to upload those packets.
+This does not start an MQTT client, bridge networks, request a reply, or mark
+the packet as having arrived through MQTT. The 228-byte text limit is unchanged.</p>
 <p>Region, frequency slot, hop limit, shortname and node-ID override are saved
 atomically together; changing one preserves the others. Current 40-byte <code>MT03</code>
 settings include both overrides. New firmware accepts valid legacy
@@ -3160,6 +3355,12 @@ automatic profile. Explicit manual RF settings are retained: named aliases
 must match their BW/SF/CR and fit the selected region, but do not overwrite
 their frequency. The runtime MT overlay uses its required 16-symbol preamble;
 the saved manual preamble is retained.</p>
+<p>With a Meshtext secondary, an automatic primary MeshCore preamble keeps its
+normal SF/BW-derived wire length (32 symbols for the USA SF7/BW62.5 preset),
+so scan recommendations do not silently lengthen normal-network transmissions.
+An explicit primary preamble is still honored. Automatic sizing for two
+MeshCore profiles is unchanged; mixed-network reception remains best-effort
+and time-shared.</p>
 <p><code>set radio2 off</code> is an explicit manual veto, including after reboot. Older
 saved off profiles are conservatively treated as manual. Local
 <code>set radio2 auto</code> clears the saved manual RF/off choice and permits automatic
@@ -3274,10 +3475,10 @@ the role. Getters include the preamble. Omit it, or use <code>auto</code>/<code>
 it automatically. Explicit values are used as entered, subject to the radio's
 limits and safe airtime arithmetic.</p>
 <p>Automatic dual-profile preambles round <strong>up to a multiple of eight</strong>, with a
-32-symbol minimum and a 128-symbol maximum. When a second profile activates,
+32-symbol minimum and a 512-symbol maximum. When a second profile activates,
 the radio first self-tests four successful RX-to-RX switches in each direction
 using the actual tuples. It defers the test while receiving, transmitting or
-busy, and never counts a failed switch. The 128-symbol automatic preamble is
+busy, and never counts a failed switch. The 512-symbol automatic preamble is
 provisional until the test completes. The largest successful hop, rounded up
 with a <strong>10% guard</strong>, then supplies the per-switch allowance for both the
 automatic preambles and the scan dwell. There is no fixed switch-time floor.
@@ -3387,8 +3588,8 @@ the resulting preamble. <code>off</code> disables the dual-profile
 warning. <code>get radio2.status</code> shows self-test progress and the resulting guarded
 switch budget; its separate <code>max</code> field remains a lifetime diagnostic that can
 include failed/rolled-back retunes and is not used for calibration. If the
-recommendation exceeds 128, it additionally reports
-<code>WARN need &gt;128</code>; an automatic preamble stays at 128, which may not be enough
+recommendation exceeds 512, it additionally reports
+<code>WARN need &gt;512</code>; an automatic preamble stays at 512, which may not be enough
 for reliable reception on that pair. Explicit preambles are not rewritten and
 still use the radio's ordinary validation limits. A timing readout does not
 change settings or transmit a packet.</p>
@@ -3421,7 +3622,7 @@ switch allowance above. Swapping <code>radio</code> and <code>radio2</code> swap
 <p>Production scheduling and automatic preambles use the <strong>self-tested maximum
 successful switch plus 10%</strong>, without an additional fixed loop allowance. Subsequent
 successful hops can only raise that allowance until the next profile change.
-The measured recommendation is rounded up to eight symbols and capped at 128
+The measured recommendation is rounded up to eight symbols and capped at 512
 for automatic settings. The calculator and warnings retain the <em>uncapped</em>
 recommendation so a slow board is not shown as safe merely because it hit the
 limit. Older V4 tests peaked at 836 us (827 us in the 4.6/0.3 ms run), and

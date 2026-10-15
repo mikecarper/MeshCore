@@ -3838,7 +3838,7 @@ catalog; bytes <code>0x2C</code>-<code>0x31</code> are parked and <code>0x35</co
 <tr>
 <td><code>0x19</code></td>
 <td><code>CMD_SEND_RAW_DATA</code></td>
-<td>Send an application raw-data packet.</td>
+<td>Send an application raw-data packet. Known media and opt-in SSH envelopes honor <a href="../radio_profiles/#companion-media-and-ssh-tx-routing">application TX routing</a>; other raw bytes retain normal routing.</td>
 </tr>
 <tr>
 <td><code>0x1A</code>-<code>0x1D</code></td>

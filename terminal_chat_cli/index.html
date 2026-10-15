@@ -1771,6 +1771,28 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#companion-media-and-ssh-tx-profiles" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Companion media and SSH TX profiles
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#esp32-full-companion-ethernet" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ESP32 Full Companion Ethernet
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#companion-usb-mode" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2404,6 +2426,28 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#companion-media-and-ssh-tx-profiles" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Companion media and SSH TX profiles
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#esp32-full-companion-ethernet" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ESP32 Full Companion Ethernet
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#companion-usb-mode" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2582,6 +2626,26 @@ persist and also apply to messages sent by the phone app. Use exact names,
 a channel index, or <code>key:&lt;unique public-key prefix&gt;</code> for a contact.
 See the <a href="../radio_profiles/#companion-tx-routing-by-contact-or-channel">routing guide</a>
 for which requests/replies are covered and how to reset a choice.</p>
+<h2 id="companion-media-and-ssh-tx-profiles">Companion media and SSH TX profiles</h2>
+<pre><code class="language-text">get tx.media
+set tx.media radio2
+get tx.ssh
+set tx.ssh radio
+</code></pre>
+<p>Each setting accepts <code>auto</code>, <code>radio</code>, <code>radio2</code>, <code>both</code>, or <code>off</code>, defaults to
+<code>auto</code>, and is saved across reboot. <code>tx.media</code> handles Open TAK binary media;
+<code>tx.ssh</code> requires a tunnel app using the explicit SSH application tag, not
+an existing untagged SSH connection. See the
+<a href="../radio_profiles/#companion-media-and-ssh-tx-routing">application routing guide</a>
+for the framing and routing rules. Ordinary text keeps its existing route.</p>
+<h2 id="esp32-full-companion-ethernet">ESP32 Full Companion Ethernet</h2>
+<p>Use <code>set ethernet.radio &lt;MHz&gt;,&lt;kHz&gt;,&lt;SF&gt;,&lt;CR&gt;[,&lt;preamble&gt;]</code>, then
+<code>set ethernet on</code>. <code>get ethernet</code> reports state; <code>set ethernet off</code> closes
+the KISS service and releases its radio2 lease. Settings survive reboot.
+This is a separate whole-link mode, not the tagged <code>tx.ssh</code> application route.
+Normal USB/BLE/Companion TCP stay in Companion mode. The host instead uses
+KISS-over-TCP port 5003 on trusted station WiFi, with MTU 230.
+See <a href="../radio_profiles/#esp32-companion-ethernet-over-lora-kiss">Ethernet setup and radio2 restrictions</a>.</p>
 <h2 id="companion-usb-mode">Companion USB mode</h2>
 <p>Updated 1.17.1.6 USB Companion builds, including ordinary and Full builds, start
 in ASCII at 115200 baud. A valid framed app command automatically selects Binary
