@@ -198,6 +198,7 @@ jobs:
           python3 -B test/test_contact_clock_bootstrap.py -v
           python3 -B test/test_rtc_discovery.py -v
           python3 -B test/test_upstream_routing_merge.py -v
+          python3 -B test/test_iotthinks_merge.py -v
           python3 -B test/test_upstream_power_policy_merge.py -v
           python3 -B test/test_lr1121_power_merge.py -v
           python3 -B test/test_radio_interrupt_recovery.py -v
