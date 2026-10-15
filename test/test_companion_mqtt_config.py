@@ -22,6 +22,7 @@ def function(source, signature):
 
 PREAMBLE = r"""
 #include <cassert>
+#include <initializer_list>
 #include <cctype>
 #include <cstring>
 #include <helpers/CompanionMqttPrefsNvs.h>
@@ -47,20 +48,33 @@ void applyMQTTDefaults(MQTTPrefs* p) {
   memset(p, 0, sizeof(*p));
   for (auto& preset : p->mqtt_slot_preset) strcpy(preset, "none");
 }
-MQTTPrefs saved;
+CompanionMqttPrefsNvs::Record persisted;
+MQTTPrefs& saved = persisted.prefs;
+size_t saved_length = CompanionMqttPrefsNvs::kWriteSize;
 struct Preferences {
   bool begin(const char*, bool) { return true; }
   bool isKey(const char*) { return true; }
   uint16_t getUShort(const char*, uint16_t) { return MQTT_PREFS_VERSION; }
-  size_t getBytesLength(const char*) { return CompanionMqttPrefsNvs::kWriteSize; }
+  size_t getBytesLength(const char*) { return saved_length; }
   size_t getBytes(const char*, void* dest, size_t length) {
-    memcpy(dest, &saved, length);
+    memcpy(dest, &persisted, length);
     return length;
+  }
+  size_t putBytes(const char*, const void* source, size_t length) {
+    memset(&persisted, 0, sizeof(persisted));
+    memcpy(&persisted, source, length);
+    saved_length = length;
+    return length;
+  }
+  size_t putUShort(const char*, uint16_t version) {
+    assert(version == MQTT_PREFS_VERSION);
+    return sizeof(version);
   }
   void end() {}
 };
 struct CompanionMqttSetupPortal {
   static bool loadStoredConfig(MQTTPrefs&);
+  static bool saveStoredConfig(const MQTTPrefs&);
   static bool hasConfiguredSlot(const MQTTPrefs&);
 };
 """
@@ -75,6 +89,35 @@ int main() {
   assert(CompanionMqttSetupPortal::loadStoredConfig(result));
   assert(memcmp(&result, &saved, sizeof(saved)) == 0);
   assert(!CompanionMqttSetupPortal::hasConfiguredSlot(result));
+
+  // Enabling verification persists the appended flag, without lengthening
+  // ordinary default-off Companion records or losing any broker credentials.
+  MQTTPrefs enabled = result;
+  enabled.mqtt_advert_verify = 1;
+  assert(CompanionMqttSetupPortal::saveStoredConfig(enabled));
+  assert(saved_length == 2881);
+  assert(CompanionMqttSetupPortal::loadStoredConfig(result));
+  assert(result.mqtt_advert_verify == 1);
+  assert(strcmp(result.mqtt_slot_password[0], "keep-this-secret") == 0);
+  // Every old recovery padding value is unconditionally default-off.
+  saved_length=2880;
+  for (uint8_t padding : {uint8_t(0), uint8_t(1), uint8_t(255)}) {
+    saved.mqtt_advert_verify=padding;
+    assert(CompanionMqttSetupPortal::loadStoredConfig(result));
+    assert(result.mqtt_advert_verify==0);
+    assert(strcmp(result.mqtt_slot_password[0], "keep-this-secret")==0);
+  }
+  saved_length=2881;
+  saved.mqtt_advert_verify=1; persisted.marker=0; // malformed marker
+  assert(CompanionMqttSetupPortal::loadStoredConfig(result));
+  assert(result.mqtt_advert_verify==0);
+  persisted.marker=CompanionMqttPrefsNvs::kVerifiedMarker;
+  saved.mqtt_advert_verify=255;
+  assert(CompanionMqttSetupPortal::loadStoredConfig(result));
+  assert(result.mqtt_advert_verify == 0);
+  assert(strcmp(result.mqtt_slot_password[0], "keep-this-secret") == 0);
+  assert(CompanionMqttSetupPortal::saveStoredConfig(result));
+  assert(saved_length == 2876);
 
   // Saving a custom broker in stages must not reset it on the next boot.
   strcpy(saved.mqtt_slot_preset[0], "custom");
@@ -143,6 +186,7 @@ class CompanionMqttConfigTests(unittest.TestCase):
         for signature in (
             "static bool isThreeLetterCode",
             "bool CompanionMqttSetupPortal::loadStoredConfig",
+            "bool CompanionMqttSetupPortal::saveStoredConfig",
             "bool CompanionMqttSetupPortal::hasConfiguredSlot",
         ):
             actual += function(source, signature)

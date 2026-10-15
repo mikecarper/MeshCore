@@ -5213,6 +5213,29 @@ USB logging remains independent. On images with both outputs,
 
 ---
 
+#### View or change MQTT advert signature filtering
+
+**Usage:**
+
+- `get mqtt.advert.verify`
+- `set mqtt.advert.verify <on|off>`
+
+**Parameters:**
+
+- `on`: verify the Ed25519 signature of each received advert and skip publishing any that fail (the same check the mesh applies before relaying)
+- `off`: publish received adverts as heard
+
+**Default:** `off`
+
+> **Note:** Adverts are uploaded before the mesh validates them, so a frame corrupted over the air that still passes the LoRa CRC is published with a mangled name or location. Leaving this off keeps that corruption visible to collectors; turning it on hides it from them. Dropped adverts are counted as `badsig=` in `get mqtt.stats`. Takes effect immediately.
+
+On Companion builds, enabling this setting opts into a marked MQTT preference
+record. Before rolling back to firmware without this setting, turn it off to
+restore the older record format and retain the saved MQTT setup. Ordinary
+default-off updates keep the existing record size.
+
+---
+
 #### View or change periodic neighbors publishing (MQTT observer, neighbors feature)
 **Usage:**
 - `get mqtt.neighbors`

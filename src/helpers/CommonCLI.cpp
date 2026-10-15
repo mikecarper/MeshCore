@@ -2776,11 +2776,11 @@ void CommonCLI::loadMQTTPrefs(
   if (MQTTPrefsCodec::repairDisplayPrefs(&_mqtt_prefs)) {
     // Old payloads retain valid defaults because the object was defaulted before
     // their shorter prefix was copied. This branch repairs only a full/newer
-    // payload carrying invalid display values.
+    // payload carrying invalid display or advert-verification values.
     if (!_mqtt_prefs_hold) {
       mqtt_rewrite_pending = true;
     }
-    MESH_DEBUG_PRINTLN("MQTT: invalid display preferences reset to defaults");
+    MESH_DEBUG_PRINTLN("MQTT: invalid display/advert preferences reset to defaults");
   }
   _legacy_tail.valid = false;
 

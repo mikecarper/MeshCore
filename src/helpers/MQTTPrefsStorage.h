@@ -125,10 +125,13 @@ struct MQTTPrefs {
 
   // Runtime display controls. These are an append-only v1 tail: older payloads
   // stop before them and retain the defaults below. The serialized payload ends
-  // after display_flip at byte 2879; the compiler's final alignment byte is not
-  // part of the on-flash format.
+  // after display_flip at byte 2879 on pre-verification firmware.
   uint16_t display_timeout_secs;
   uint8_t display_flip;
+  // Drop received adverts whose Ed25519 signature fails before publishing.
+  // Append-only v1 tail at byte 2879 (formerly final struct padding). Defaults
+  // off; only enabling verification requires the 2880-byte serialized payload.
+  uint8_t mqtt_advert_verify;
 };
 
 // Neighbor discovery is scheduled with the wrap-safe millis() helpers, whose
@@ -144,7 +147,7 @@ static const uint32_t MQTT_NEIGHBORS_DEFAULT_INTERVAL_MS = MQTT_NEIGHBORS_DEFAUL
 static const uint16_t DISPLAY_TIMEOUT_DEFAULT_SECS = 60;
 static const uint16_t DISPLAY_TIMEOUT_MAX_SECS = 3600;
 
-// Version-1 has five payload layouts this firmware can decode. Never infer a
+// Version-1 has six payload layouts this firmware can decode. Never infer a
 // compatible payload from an arbitrary SHORTER size: raw prefs have no
 // checksum, so a short length has to match a boundary that was really shipped.
 //
@@ -157,18 +160,20 @@ static const uint16_t DISPLAY_TIMEOUT_MAX_SECS = 3600;
 //   - PRE_NEIGHBORS (2860): full observer tail, no neighbors fields yet.
 //   - PRE_FILTER    (2864): neighbors tail, no per-slot packet filters.
 //   - PRE_DISPLAY   (2876): six filter masks, no runtime display controls.
-//   - FULL          (2879): timeout plus flip, excluding final struct padding.
+//   - PRE_ADVERT    (2879): timeout plus flip, excluding final struct padding.
+//   - FULL          (2880): advert verification consumes that former padding.
 //
 // FULL is the maximum written, not the default: MQTTPrefsCodec::payloadLenFor()
 // keeps emitting PRE_FILTER while every slot and display control has its
 // default. A non-default filter writes PRE_DISPLAY; a non-default display
-// control writes FULL. See the rollback note there -- /mqtt_prefs also carries
-// the WiFi credentials.
+// control writes PRE_ADVERT; enabling advert verification writes FULL. See the
+// rollback note there -- /mqtt_prefs also carries the WiFi credentials.
 static const size_t MQTT_PREFS_V1_PRE_OBSERVER_PAYLOAD_SIZE = 2736;
 static const size_t MQTT_PREFS_V1_PRE_NEIGHBORS_PAYLOAD_SIZE = 2860;
 static const size_t MQTT_PREFS_V1_PRE_FILTER_PAYLOAD_SIZE = 2864;
 static const size_t MQTT_PREFS_V1_PRE_DISPLAY_PAYLOAD_SIZE = 2876;
-static const size_t MQTT_PREFS_V1_FULL_PAYLOAD_SIZE = 2879;
+static const size_t MQTT_PREFS_V1_PRE_ADVERT_PAYLOAD_SIZE = 2879;
+static const size_t MQTT_PREFS_V1_FULL_PAYLOAD_SIZE = 2880;
 
 // /mqtt_prefs starts with a self-describing 8-byte header. Headerless files
 // are deployed legacy layouts and continue to be distinguished by size.
@@ -303,8 +308,13 @@ static_assert(offsetof(MQTTPrefs, mqtt_slot_packet_filter) == MQTT_PREFS_V1_PRE_
 static_assert(offsetof(MQTTPrefs, display_timeout_secs) == MQTT_PREFS_V1_PRE_DISPLAY_PAYLOAD_SIZE,
               "display timeout must begin at the pre-display payload boundary");
 static_assert(offsetof(MQTTPrefs, display_flip) + sizeof(MQTTPrefs::display_flip) ==
-                  MQTT_PREFS_V1_FULL_PAYLOAD_SIZE,
+                  MQTT_PREFS_V1_PRE_ADVERT_PAYLOAD_SIZE,
               "serialized display tail must end immediately after display_flip");
+static_assert(offsetof(MQTTPrefs, mqtt_advert_verify) == MQTT_PREFS_V1_PRE_ADVERT_PAYLOAD_SIZE,
+              "advert verification must consume only the former final padding byte");
+static_assert(offsetof(MQTTPrefs, mqtt_advert_verify) + sizeof(MQTTPrefs::mqtt_advert_verify) ==
+                  MQTT_PREFS_V1_FULL_PAYLOAD_SIZE,
+              "serialized advert verification tail must end immediately after its flag");
 static_assert(sizeof(OldMQTTPrefs) == 472, "frozen pre-slot /mqtt_prefs layout changed");
 static_assert(sizeof(PreWifiPowerOldMQTTPrefs) == 472, "frozen pre-WiFi-power /mqtt_prefs layout changed");
 static_assert(offsetof(OldMQTTPrefs, wifi_power_save) == 144,

@@ -594,11 +594,19 @@ bool CompanionMqttSetupPortal::loadStoredConfig(MQTTPrefs& prefs) {
   // default its append-only display tail so adding observer UI preferences
   // cannot discard an existing Companion MQTT setup after an update.
   const bool shape_ok = CompanionMqttPrefsNvs::accepts(version, length);
-  MQTTPrefs loaded;
+  CompanionMqttPrefsNvs::Record record = {};
+  MQTTPrefs& loaded = record.prefs;
   applyMQTTDefaults(&loaded);
-  const size_t read = shape_ok ? nvs.getBytes(NVS_PREFS_KEY, &loaded, length) : 0;
+  const size_t read = shape_ok ? nvs.getBytes(NVS_PREFS_KEY, &record, length) : 0;
   nvs.end();
   if (!shape_ok || read != length) return false;
+
+  // The old 2880-byte recovery blob ended with unspecified padding, including
+  // potentially 1. Only an explicitly marked new blob can opt into filtering.
+  // Invalid optional metadata must not discard otherwise valid credentials.
+  if (length != CompanionMqttPrefsNvs::kVerifiedSize ||
+      record.marker != CompanionMqttPrefsNvs::kVerifiedMarker ||
+      loaded.mqtt_advert_verify > 1) loaded.mqtt_advert_verify = 0;
 
   if (!storedStringsAreValid(loaded)
       || loaded.mqtt_status_enabled > 1
@@ -663,15 +671,20 @@ bool CompanionMqttSetupPortal::saveEnabled(bool enabled) {
 bool CompanionMqttSetupPortal::saveStoredConfig(const MQTTPrefs& prefs) {
   Preferences nvs;
   if (!nvs.begin(NVS_NAMESPACE, false)) return false;
-  // Companion does not consume the appended observer display tail. Keeping
-  // this record at the pre-display boundary makes a firmware rollback retain
-  // the MQTT setup. loadStoredConfig() still accepts the briefly written 2880
-  // byte runtime shape so development images remain recoverable.
-  const size_t written = nvs.putBytes(
-      NVS_PREFS_KEY, &prefs, CompanionMqttPrefsNvs::kWriteSize);
+  // Default configuration keeps the rollback-readable pre-display boundary.
+  // Advert verification and its format marker are one atomic NVS blob write,
+  // not separate preference keys that can disagree after power loss.
+  const size_t payload_size = CompanionMqttPrefsNvs::writeSizeFor(prefs);
+  size_t written;
+  if (prefs.mqtt_advert_verify != 0) {
+    const CompanionMqttPrefsNvs::Record record = {prefs, CompanionMqttPrefsNvs::kVerifiedMarker};
+    written = nvs.putBytes(NVS_PREFS_KEY, &record, payload_size);
+  } else {
+    written = nvs.putBytes(NVS_PREFS_KEY, &prefs, payload_size);
+  }
   const size_t version_written = nvs.putUShort(NVS_VERSION_KEY, MQTT_PREFS_VERSION);
   nvs.end();
-  return written == CompanionMqttPrefsNvs::kWriteSize
+  return written == payload_size
       && version_written == sizeof(uint16_t);
 }
 

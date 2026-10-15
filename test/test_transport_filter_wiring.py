@@ -47,6 +47,10 @@ HARNESS = r'''
 #define MAX_ESPNOW_PACKET_SIZE 256
 unsigned millis() { return 100; }
 namespace mesh {
+struct Identity {
+ explicit Identity(const uint8_t*) {}
+ bool verify(const uint8_t*,const uint8_t*,int) {assert(false);return false;}
+};
 namespace espnow {
  struct ESPNowRawFrames {uint8_t count=0;uint16_t lengths[2]={};uint8_t data[2][256]={};};
  bool encodeEspNowRawFrames(const uint8_t*,size_t,ESPNowRawFrames& f) {f.count=1;return true;}
@@ -56,6 +60,10 @@ namespace bridge {
  size_t espNowMaxMeshPacketSize(int) {return 256;}
  const char* espNowFormatName(int) {return "raw";}
 }
+}
+namespace AdvertSignature {
+ constexpr unsigned kMaxMessageLen=68;
+ int buildMessage(const uint8_t*,int,uint8_t*,const uint8_t**) {assert(false);return -1;}
 }
 struct Seen {
  unsigned checks=0,marks=0;
@@ -112,11 +120,11 @@ struct ESPNowBridge : BridgeBase {
 };
 struct MQTTBridge : BridgeBase {
  std::atomic<bool> _stop_requested{false};
- struct Obs {bool mqtt_packets_enabled=true,mqtt_rx_enabled=true;uint8_t mqtt_tx_enabled=1;} obs;
+ struct Obs {bool mqtt_packets_enabled=true,mqtt_rx_enabled=true,mqtt_advert_verify=false;uint8_t mqtt_tx_enabled=1;} obs;
  Obs* _obs=&obs;
  struct Identity {uint8_t pub_key[32]={};} id;
  Identity* _identity=&id;
- unsigned _filtered_packets=0;
+ unsigned _filtered_packets=0,_bad_sig_adverts=0;
  bool _staged_raw_valid=false;
  bool shouldQueuePacketType(uint8_t,bool&) {return true;}
  void queuePacket(mesh::Packet*,bool) {++queued;}

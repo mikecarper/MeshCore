@@ -2188,6 +2188,7 @@ void WebConfigServer::handleConfigGet(AsyncWebServerRequest* req) {
     mqtt["tx"] = obs->mqtt_tx_enabled == 2 ? "advert"
                  : obs->mqtt_tx_enabled == 1 ? "on" : "off";
     mqtt["rx"] = (bool)obs->mqtt_rx_enabled;
+    mqtt["advert_verify"] = (bool)obs->mqtt_advert_verify;
     mqtt["interval"] = obs->mqtt_status_interval / 60000;
     mqtt["neighbors"] = (bool)obs->mqtt_neighbors_enabled;
     mqtt["neighbors_interval"] = obs->mqtt_neighbors_interval / 3600000UL;

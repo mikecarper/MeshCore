@@ -154,7 +154,7 @@ TEST(MQTTPrefsJsonImport, DecodesEveryObserverGroupAndDisplayTail) {
       "wifi:{ssid:\"mesh-net\",password:\"p\\\\\\\"ass\\nword\",power_save:2},"
       "time:{timezone:\"MST7MDT\",utc_offset:-6,ntp_server:\"time.example\"},"
       "mqtt:{origin:\"observer-one\",iata:\"sea\",packets_enabled:1,"
-      "raw_enabled:1,tx_enabled:1,rx_enabled:0,"
+      "raw_enabled:1,tx_enabled:1,rx_enabled:0,advert_verify:1,"
       "status:{enabled:1,interval_ms:60000},"
       "neighbors:{enabled:1,interval_ms:43200000},"
       "owner:{public_key:\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\","
@@ -182,6 +182,7 @@ TEST(MQTTPrefsJsonImport, DecodesEveryObserverGroupAndDisplayTail) {
   EXPECT_STREQ("SEA", candidate.mqtt_iata);
   EXPECT_EQ(1, candidate.mqtt_raw_enabled);
   EXPECT_EQ(0, candidate.mqtt_rx_enabled);
+  EXPECT_EQ(1, candidate.mqtt_advert_verify);
   EXPECT_EQ(60000u, candidate.mqtt_status_interval);
   EXPECT_EQ(MQTT_NEIGHBORS_MIN_INTERVAL_MS,
             candidate.mqtt_neighbors_interval);
@@ -213,6 +214,7 @@ TEST(MQTTPrefsJsonImport, MissingFieldsRetainCurrentBuildDefaults) {
   EXPECT_EQ(0, candidate.wifi_power_save);
   EXPECT_EQ(300000u, candidate.mqtt_status_interval);
   EXPECT_EQ(60, candidate.display_timeout_secs);
+  EXPECT_EQ(0, candidate.mqtt_advert_verify);
 }
 
 TEST(MQTTPrefsJsonImport, SemanticRepairsUseSchemaAndCurrentWifiDefaults) {
@@ -221,7 +223,7 @@ TEST(MQTTPrefsJsonImport, SemanticRepairsUseSchemaAndCurrentWifiDefaults) {
   const char* text =
       "{version:1,wifi:{power_save:9},time:{utc_offset:99,ntp_server:\"bad/host\"},"
       "mqtt:{iata:\"bad!\",packets_enabled:-1,raw_enabled:2,tx_enabled:9,"
-      "rx_enabled:2,status:{enabled:3,interval_ms:10},"
+      "rx_enabled:2,advert_verify:5,status:{enabled:3,interval_ms:10},"
       "neighbors:{enabled:2,interval_ms:100},"
       "slot1:{preset:\"bogus\",port:-1,packet_filter:70000}},"
       "snmp:{enabled:2},radio:{watchdog_min:121},"
@@ -238,6 +240,7 @@ TEST(MQTTPrefsJsonImport, SemanticRepairsUseSchemaAndCurrentWifiDefaults) {
   EXPECT_EQ(0, candidate.mqtt_raw_enabled);
   EXPECT_EQ(2, candidate.mqtt_tx_enabled);
   EXPECT_EQ(1, candidate.mqtt_rx_enabled);
+  EXPECT_EQ(0, candidate.mqtt_advert_verify);
   EXPECT_EQ(300000u, candidate.mqtt_status_interval);
   EXPECT_EQ(MQTT_NEIGHBORS_DEFAULT_INTERVAL_MS,
             candidate.mqtt_neighbors_interval);
@@ -267,6 +270,9 @@ TEST(MQTTPrefsJsonImport, RejectsKnownTypeDuplicateLengthAndOverflowErrors) {
            "{version:{x:1}}",
            "{version:1,mqtt:1}",
            "{version:1,mqtt:{slot1:1}}",
+           "{version:1,mqtt:{advert_verify:true}}",
+           "{version:1,mqtt:{advert_verify:\"on\"}}",
+           "{version:1,mqtt:{advert_verify:1,advert_verify:0}}",
            "{version:1,mqtt:{status:{enabled:1},status:{interval_ms:60000}}}"}) {
     MQTTPrefs candidate = defaults;
     EXPECT_FALSE(Import::loaded(decodeText(text, defaults, &candidate))) << text;
@@ -339,16 +345,31 @@ TEST(MQTTPrefsJsonImport, ParsedDisplayPrefsRouteThroughFullAtomicBinaryCommit) 
   ASSERT_EQ(Import::Result::Loaded,
             decodeText("{version:1,display:{timeout_s:45,flip:1}}",
                        defaults, &candidate));
-  EXPECT_EQ(MQTT_PREFS_V1_FULL_PAYLOAD_SIZE,
+  EXPECT_EQ(MQTT_PREFS_V1_PRE_ADVERT_PAYLOAD_SIZE,
             MQTTPrefsCodec::payloadLenFor(candidate));
 
   CommitStore store(true);
   ASSERT_EQ(Atomic::Result::Committed, commitPrefs(&store, candidate));
-  ASSERT_EQ(sizeof(MQTTPrefsHeader) + MQTT_PREFS_V1_FULL_PAYLOAD_SIZE,
+  ASSERT_EQ(sizeof(MQTTPrefsHeader) + MQTT_PREFS_V1_PRE_ADVERT_PAYLOAD_SIZE,
             store.primary.size());
   MQTTPrefsHeader header = {};
   memcpy(&header, store.primary.data(), sizeof(header));
-  EXPECT_EQ(MQTT_PREFS_V1_FULL_PAYLOAD_SIZE, header.payload_len);
+  EXPECT_EQ(MQTT_PREFS_V1_PRE_ADVERT_PAYLOAD_SIZE, header.payload_len);
+}
+
+TEST(MQTTPrefsJsonImport, AdvertVerifyDefaultsOffRoundTripsAndPersistsThroughBinaryCommit) {
+  const MQTTPrefs defaults = makeDefaults();
+  EXPECT_EQ(0, defaults.mqtt_advert_verify);
+  MQTTPrefs candidate = defaults;
+  ASSERT_EQ(Import::Result::Loaded,
+            decodeText("{version:1,mqtt:{advert_verify:1}}", defaults, &candidate));
+  ASSERT_EQ(1, candidate.mqtt_advert_verify);
+  CommitStore store(true);
+  ASSERT_EQ(Atomic::Result::Committed, commitPrefs(&store, candidate));
+  ASSERT_EQ(sizeof(MQTTPrefsHeader) + 2880u, store.primary.size());
+  MQTTPrefs loaded = defaults;
+  memcpy(&loaded, store.primary.data() + sizeof(MQTTPrefsHeader), 2880);
+  EXPECT_EQ(1, loaded.mqtt_advert_verify);
 }
 
 TEST(MQTTPrefsJsonImport, FailedAtomicPublishPreservesPreviousBinaryImage) {

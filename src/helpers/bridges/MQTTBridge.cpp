@@ -11,6 +11,7 @@
 #include "../MQTTReplyFormat.h"
 #include "../MQTTRuntimeBufferLifecycle.h"
 #include "../MQTTTopicRouter.h"
+#include "../AdvertSignature.h"
 #include "../TxtDataHelpers.h"
 #include "../UsbLogging.h"
 #include "../WiFiPowerSave.h"
@@ -519,6 +520,14 @@ void MQTTBridge::formatMqttStatsReply(char* buf, size_t bufsize) {
   if (b->_filtered_packets > 0) {
     replyAppendf(buf, bufsize, &pos, " filt=%lu", b->_filtered_packets);
   }
+  // badsig=<n>: RX adverts dropped by mqtt.advert.verify. Omitted while zero.
+  if (b->_bad_sig_adverts > 0) {
+    replyAppendf(buf, bufsize, &pos, " badsig=%lu", b->_bad_sig_adverts);
+  }
+  // down=<n>: ready slots that are not connected. Without this the reply cannot
+  // show an outage at all - sN= counts publishes, and a slot that never connects
+  // never publishes, so its ok freezes and its err stays 0 for the whole outage.
+  // Omitted while zero, like filt=, so a healthy node's reply keeps its length.
   int down = 0;
   for (int i = 0; i < RUNTIME_MQTT_SLOTS; i++) {
     if (MQTTConnectionHealth::isOutageSlot(
@@ -3929,6 +3938,19 @@ void MQTTBridge::onPacketReceived(mesh::Packet *packet) {
   if (!allowsPacket(packet)) {
     _filtered_packets++;
     return;
+  }
+
+  // Opt-in: drop adverts that fail verification (RF corruption that passed the
+  // LoRa CRC). The observer callback runs before Mesh::onRecvPacket validates
+  // received adverts; its opt-in filter must enforce the same signed layout.
+  if (_obs->mqtt_advert_verify && packet->getPayloadType() == PAYLOAD_TYPE_ADVERT) {
+    uint8_t message[AdvertSignature::kMaxMessageLen];
+    const uint8_t* sig = nullptr;
+    int msg_len = AdvertSignature::buildMessage(packet->payload, packet->payload_len, message, &sig);
+    if (msg_len < 0 || !mesh::Identity(packet->payload).verify(sig, message, msg_len)) {
+      _bad_sig_adverts++;
+      return;
+    }
   }
 
   // Queue packet for transmission

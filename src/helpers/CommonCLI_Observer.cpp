@@ -330,6 +330,19 @@ bool CommonCLI::handleObserverSetCmd(uint32_t sender_timestamp, const char* conf
     _mqtt_prefs.mqtt_rx_enabled = memcmp(&config[8], "on", 2) == 0 ? 1 : 0;
     saveObserverPrefs();
     strcpy(reply, "OK");
+  } else if (memcmp(config, "mqtt.advert.verify ", 19) == 0) {
+    if (strcmp(config + 19, "on") != 0 && strcmp(config + 19, "off") != 0) {
+      strcpy(reply, "Error: must be on or off");
+      return true;
+    }
+    const uint8_t previous = _mqtt_prefs.mqtt_advert_verify;
+    _mqtt_prefs.mqtt_advert_verify = strcmp(config + 19, "on") == 0;
+    if (!saveObserverPrefs()) {
+      _mqtt_prefs.mqtt_advert_verify = previous;
+      strcpy(reply, "Error: settings could not be saved");
+      return true;
+    }
+    strcpy(reply, "OK");
   } else if (memcmp(config, "mqtt.interval ", 14) == 0) {
     uint32_t minutes = _atoi(&config[14]);
     if (minutes >= 1 && minutes <= 60) {
@@ -956,6 +969,8 @@ bool CommonCLI::handleObserverGetCmd(uint32_t sender_timestamp, const char* conf
     sprintf(reply, "> %s", tx_str);
   } else if (memcmp(config, "mqtt.rx", 7) == 0) {
     sprintf(reply, "> %s", _mqtt_prefs.mqtt_rx_enabled ? "on" : "off");
+  } else if (strcmp(config, "mqtt.advert.verify") == 0) {
+    sprintf(reply, "> %s", _mqtt_prefs.mqtt_advert_verify ? "on" : "off");
   } else if (memcmp(config, "mqtt.interval", 13) == 0) {
     uint32_t minutes = (_mqtt_prefs.mqtt_status_interval + 29999) / 60000;
     sprintf(reply, "> %u minutes (%lu ms)", minutes, (unsigned long)_mqtt_prefs.mqtt_status_interval);

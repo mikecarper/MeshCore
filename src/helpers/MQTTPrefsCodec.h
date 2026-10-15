@@ -40,21 +40,24 @@ static const size_t kV1PreObserverPayloadSize = MQTT_PREFS_V1_PRE_OBSERVER_PAYLO
 static const size_t kV1PreNeighborsPayloadSize = MQTT_PREFS_V1_PRE_NEIGHBORS_PAYLOAD_SIZE;
 static const size_t kV1PreFilterPayloadSize = MQTT_PREFS_V1_PRE_FILTER_PAYLOAD_SIZE;
 static const size_t kV1PreDisplayPayloadSize = MQTT_PREFS_V1_PRE_DISPLAY_PAYLOAD_SIZE;
+static const size_t kV1PreAdvertPayloadSize = MQTT_PREFS_V1_PRE_ADVERT_PAYLOAD_SIZE;
 static const size_t kV1BaselinePayloadSize = MQTT_PREFS_V1_FULL_PAYLOAD_SIZE;
 static const size_t kEncodedSize = sizeof(MQTTPrefsHeader) + kV1BaselinePayloadSize;
 
 // Shortest payload length that still round-trips this configuration.
 //
-// The packet-filter and display tails are optional. Their defaults are exactly
+// The packet-filter, display and advert-verification tails are optional. Their
+// defaults are exactly
 // what a decoder supplies when the corresponding tail is missing, so merely
 // upgrading does not lengthen the file. That matters because /mqtt_prefs also
 // carries WiFi credentials: old firmware that cannot read a longer payload can
 // otherwise lose its network configuration after a downgrade. Changing a
-// filter or display control deliberately opts the node into the required tail.
+// filter, display or verification control deliberately opts into its tail.
 inline size_t payloadLenFor(const MQTTPrefs& prefs) {
+  if (prefs.mqtt_advert_verify != 0) return kV1BaselinePayloadSize;
   if (prefs.display_timeout_secs != DISPLAY_TIMEOUT_DEFAULT_SECS ||
       prefs.display_flip != 0) {
-    return kV1BaselinePayloadSize;
+    return kV1PreAdvertPayloadSize;
   }
   return MQTTPacketFilter::allMasksDefault(prefs.mqtt_slot_packet_filter,
                                            MQTT_PREFS_SLOT_COUNT)
@@ -62,7 +65,8 @@ inline size_t payloadLenFor(const MQTTPrefs& prefs) {
       : kV1PreDisplayPayloadSize;
 }
 
-// Clamp the display tail after loading. Returns true when a persisted value was
+// Clamp the optional display/verification tails after loading. Retain the helper
+// name for callers predating advert verification. Returns true when a value was
 // repaired and should be rewritten (unless the source file is being held).
 inline bool repairDisplayPrefs(MQTTPrefs* prefs) {
   if (prefs == nullptr) return false;
@@ -73,6 +77,10 @@ inline bool repairDisplayPrefs(MQTTPrefs* prefs) {
   }
   if (prefs->display_flip > 1) {
     prefs->display_flip = 0;
+    repaired = true;
+  }
+  if (prefs->mqtt_advert_verify > 1) {
+    prefs->mqtt_advert_verify = 0;
     repaired = true;
   }
   return repaired;
@@ -155,6 +163,10 @@ inline DecodePlan classify(const uint8_t* prefix, size_t prefix_read, size_t fil
       }
       if (header.payload_len == kV1BaselinePayloadSize) {
         return {Source::Current, false, false, true, kV1BaselinePayloadSize};
+      }
+      if (header.payload_len == kV1PreAdvertPayloadSize) {
+        // Former complete layout. The default keeps advert verification off.
+        return {Source::Current, false, false, true, kV1PreAdvertPayloadSize};
       }
       if (header.payload_len == kV1PreDisplayPayloadSize) {
         // Written before runtime display controls. Defaults supply timeout and

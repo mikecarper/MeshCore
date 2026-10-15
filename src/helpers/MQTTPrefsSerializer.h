@@ -203,10 +203,10 @@ class MQTTPrefsSerializer : public ConfigSerializer {
 
   class MqttPrefs : public ConfigSerializer {
     MQTTPrefs* _prefs;
-    int32_t _packets_enabled, _raw_enabled, _tx_enabled, _rx_enabled;
+    int32_t _packets_enabled, _raw_enabled, _tx_enabled, _rx_enabled, _advert_verify;
     char _default_iata[sizeof(MQTTPrefs::mqtt_iata)];
     bool _seen_origin = false, _seen_iata = false, _seen_packets = false;
-    bool _seen_raw = false, _seen_tx = false, _seen_rx = false;
+    bool _seen_raw = false, _seen_tx = false, _seen_rx = false, _seen_advert_verify = false;
     bool _seen_status = false, _seen_neighbors = false, _seen_owner = false;
     bool _seen_slot1 = false, _seen_slot2 = false, _seen_slot3 = false;
     bool _seen_slot4 = false, _seen_slot5 = false, _seen_slot6 = false;
@@ -224,6 +224,7 @@ class MQTTPrefsSerializer : public ConfigSerializer {
       defStrict("raw_enabled", _raw_enabled, _seen_raw);
       defStrict("tx_enabled", _tx_enabled, _seen_tx);
       defStrict("rx_enabled", _rx_enabled, _seen_rx);
+      defStrict("advert_verify", _advert_verify, _seen_advert_verify);
       defStrict("status", _status, _seen_status);
       defStrict("neighbors", _neighbors, _seen_neighbors);
       defStrict("owner", _owner, _seen_owner);
@@ -239,7 +240,8 @@ class MQTTPrefsSerializer : public ConfigSerializer {
               MQTTPrefsPresetValidator preset_valid)
         : _prefs(prefs), _packets_enabled(prefs->mqtt_packets_enabled),
           _raw_enabled(prefs->mqtt_raw_enabled), _tx_enabled(prefs->mqtt_tx_enabled),
-          _rx_enabled(prefs->mqtt_rx_enabled), _status(prefs), _neighbors(prefs),
+          _rx_enabled(prefs->mqtt_rx_enabled), _advert_verify(prefs->mqtt_advert_verify),
+          _status(prefs), _neighbors(prefs),
           _owner(prefs), _slot1(prefs, 0, preset_valid),
           _slot2(prefs, 1, preset_valid), _slot3(prefs, 2, preset_valid),
           _slot4(prefs, 3, preset_valid), _slot5(prefs, 4, preset_valid),
@@ -257,10 +259,12 @@ class MQTTPrefsSerializer : public ConfigSerializer {
       if (_raw_enabled < 0 || _raw_enabled > 1) { _raw_enabled = 0; *repaired = true; }
       if (_tx_enabled < 0 || _tx_enabled > 2) { _tx_enabled = 2; *repaired = true; }
       if (_rx_enabled < 0 || _rx_enabled > 1) { _rx_enabled = 1; *repaired = true; }
+      if (_advert_verify < 0 || _advert_verify > 1) { _advert_verify = 0; *repaired = true; }
       _prefs->mqtt_packets_enabled = static_cast<uint8_t>(_packets_enabled);
       _prefs->mqtt_raw_enabled = static_cast<uint8_t>(_raw_enabled);
       _prefs->mqtt_tx_enabled = static_cast<uint8_t>(_tx_enabled);
       _prefs->mqtt_rx_enabled = static_cast<uint8_t>(_rx_enabled);
+      _prefs->mqtt_advert_verify = static_cast<uint8_t>(_advert_verify);
       if (_prefs->mqtt_iata[0] != '\0') {
         if (!mqttIataValid(_prefs->mqtt_iata)) {
           memcpy(_prefs->mqtt_iata, _default_iata, sizeof(_default_iata));

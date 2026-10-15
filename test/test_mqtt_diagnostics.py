@@ -75,6 +75,7 @@ struct MQTTBridge {
   void* _packet_queue_handle = reinterpret_cast<void*>(1);
   int _queue_count = 3, _skipped_publishes = 0;
   unsigned long _filtered_packets = 0;
+  unsigned long _bad_sig_adverts = 0;
   static constexpr int MAX_QUEUE_SIZE = 50;
   bool isSlotReady(int) const { return true; }
   static void formatMqttStatsReply(char*, size_t);
@@ -114,6 +115,10 @@ int main() {
 #endif
   // Normal five-slot stats still fit the fixed LoRa reply budget.
   assert(strstr(reply, "s5=123/4") != nullptr);
+  assert(strstr(reply, "badsig=") == nullptr);
+  bridge._bad_sig_adverts = 7;
+  MQTTBridge::formatMqttStatsReply(reply, sizeof(reply));
+  assert(strstr(reply, "badsig=7") != nullptr);
 
   bridge.logMemoryStatus();
 #ifdef ESP_PLATFORM
@@ -126,6 +131,7 @@ int main() {
   struct { char reply[32]; unsigned char guard[8]; } bounded;
   memset(&bounded, 0xA5, sizeof(bounded));
   bridge._filtered_packets = 4294967295UL;
+  bridge._bad_sig_adverts = 4294967295UL;
   dma_free = 4294967295UL;
   dma_largest = 4294967295UL;
   MQTTBridge::formatMqttStatsReply(bounded.reply, sizeof(bounded.reply));

@@ -242,6 +242,7 @@ TEST(MQTTPrefsCodec, CurrentVersionedPayloadRoundTripsExactly) {
   }
   source.display_timeout_secs = 300;
   source.display_flip = 1;
+  source.mqtt_advert_verify = 1;
   std::vector<uint8_t> bytes(Codec::kEncodedSize);
   ASSERT_EQ(Codec::kEncodedSize, Codec::encode(source, bytes.data(), bytes.size()));
 
@@ -331,11 +332,12 @@ TEST(MQTTPrefsCodec, EncodeRefusesAnOutputBufferShorterThanItsChosenPayload) {
   MQTTPrefs longest = defaults();
   longest.mqtt_slot_packet_filter[0] = 0;
   longest.display_flip = 1;
+  longest.mqtt_advert_verify = 1;
   EXPECT_EQ(0u, Codec::encode(longest, bytes.data(), short_size));
   EXPECT_EQ(Codec::kEncodedSize, Codec::encode(longest, bytes.data(), bytes.size()));
 }
 
-TEST(MQTTPrefsCodec, EitherNonDefaultDisplayControlOptsIntoTheFullTail) {
+TEST(MQTTPrefsCodec, EitherNonDefaultDisplayControlKeepsThePreAdvertTail) {
   for (int scenario = 0; scenario < 2; ++scenario) {
     MQTTPrefs source = defaults();
     if (scenario == 0) {
@@ -344,18 +346,70 @@ TEST(MQTTPrefsCodec, EitherNonDefaultDisplayControlOptsIntoTheFullTail) {
       source.display_flip = 1;
     }
 
-    ASSERT_EQ(Codec::kV1BaselinePayloadSize, Codec::payloadLenFor(source));
+    ASSERT_EQ(Codec::kV1PreAdvertPayloadSize, Codec::payloadLenFor(source));
     std::vector<uint8_t> bytes(Codec::kEncodedSize);
-    ASSERT_EQ(Codec::kEncodedSize,
-              Codec::encode(source, bytes.data(), bytes.size()));
+    const size_t written = Codec::encode(source, bytes.data(), bytes.size());
+    ASSERT_EQ(sizeof(MQTTPrefsHeader) + Codec::kV1PreAdvertPayloadSize, written);
+    bytes.resize(written);
 
     const Codec::DecodePlan plan = classify(bytes);
     ASSERT_EQ(Codec::Source::Current, plan.source);
-    ASSERT_EQ(Codec::kV1BaselinePayloadSize, plan.payload_len);
+    ASSERT_EQ(Codec::kV1PreAdvertPayloadSize, plan.payload_len);
     MQTTPrefs loaded = defaults();
     memcpy(&loaded, bytes.data() + sizeof(MQTTPrefsHeader), plan.payload_len);
     EXPECT_EQ(source.display_timeout_secs, loaded.display_timeout_secs);
     EXPECT_EQ(source.display_flip, loaded.display_flip);
+    EXPECT_EQ(0, loaded.mqtt_advert_verify);
+  }
+}
+
+TEST(MQTTPrefsCodec, AdvertVerifyRoundTripsInOneAppendOnlyByteAndDefaultsOffOnOldFiles) {
+  MQTTPrefs source = defaults();
+  strcpy(source.wifi_ssid, "keep-network");
+  strcpy(source.mqtt_slot_password[0], "keep-credentials");
+  EXPECT_EQ(0, source.mqtt_advert_verify);
+  EXPECT_EQ(2864u, Codec::payloadLenFor(source));
+  source.mqtt_advert_verify = 1;
+  EXPECT_EQ(2880u, Codec::payloadLenFor(source));
+  std::vector<uint8_t> bytes(Codec::kEncodedSize);
+  ASSERT_EQ(bytes.size(), Codec::encode(source, bytes.data(), bytes.size()));
+  EXPECT_EQ(1, bytes[sizeof(MQTTPrefsHeader) + 2879]);
+  const Codec::DecodePlan plan = classify(bytes);
+  ASSERT_EQ(2880u, plan.payload_len);
+  MQTTPrefs loaded = defaults();
+  memcpy(&loaded, bytes.data() + sizeof(MQTTPrefsHeader), plan.payload_len);
+  EXPECT_EQ(1, loaded.mqtt_advert_verify);
+  EXPECT_STREQ("keep-network", loaded.wifi_ssid);
+  EXPECT_STREQ("keep-credentials", loaded.mqtt_slot_password[0]);
+
+  // Each shipped older v1 boundary leaves the new default intact.
+  const auto complete = bytes;
+  for (size_t boundary : {size_t(2736), size_t(2860), size_t(2864),
+                           size_t(2876), size_t(2879)}) {
+    bytes = complete;
+    bytes.resize(sizeof(MQTTPrefsHeader) + boundary);
+    writeHeader(&bytes, MQTT_PREFS_VERSION, static_cast<uint16_t>(boundary));
+    const Codec::DecodePlan older = classify(bytes);
+    ASSERT_EQ(Codec::Source::Current, older.source) << boundary;
+    ASSERT_EQ(boundary, older.payload_len);
+    loaded = defaults();
+    memcpy(&loaded, bytes.data() + sizeof(MQTTPrefsHeader), older.payload_len);
+    EXPECT_EQ(0, loaded.mqtt_advert_verify) << boundary;
+    EXPECT_STREQ("keep-network", loaded.wifi_ssid);
+  }
+}
+
+TEST(MQTTPrefsCodec, InvalidAdvertVerifyRepairsWithoutDiscardingCredentials) {
+  MQTTPrefs prefs = defaults();
+  strcpy(prefs.wifi_ssid, "keep-network");
+  prefs.mqtt_advert_verify = 1;
+  EXPECT_FALSE(Codec::repairDisplayPrefs(&prefs));
+  for (uint8_t value : {uint8_t(2), uint8_t(255)}) {
+    prefs.mqtt_advert_verify = value;
+    EXPECT_TRUE(Codec::repairDisplayPrefs(&prefs));
+    EXPECT_EQ(0, prefs.mqtt_advert_verify);
+    EXPECT_EQ(2864u, Codec::payloadLenFor(prefs));
+    EXPECT_STREQ("keep-network", prefs.wifi_ssid);
   }
 }
 
@@ -655,6 +709,12 @@ TEST(MQTTPrefsCodec, LongerDeclaredLengthWithoutTheBytesIsStillCorrupt) {
 }
 
 TEST(CompanionMqttPrefsNvs, WritesRollbackReadableShapeAndAcceptsRecoveryShape) {
+  MQTTPrefs prefs = defaults();
+  EXPECT_EQ(2876u, CompanionMqttPrefsNvs::writeSizeFor(prefs));
+  prefs.mqtt_advert_verify = 1;
+  EXPECT_EQ(2881u, CompanionMqttPrefsNvs::writeSizeFor(prefs));
+  prefs.mqtt_advert_verify = 0;
+  EXPECT_EQ(2876u, CompanionMqttPrefsNvs::writeSizeFor(prefs));
   EXPECT_EQ(MQTT_PREFS_V1_PRE_DISPLAY_PAYLOAD_SIZE,
             CompanionMqttPrefsNvs::kWriteSize);
   EXPECT_LT(CompanionMqttPrefsNvs::kWriteSize, sizeof(MQTTPrefs));
@@ -663,6 +723,8 @@ TEST(CompanionMqttPrefsNvs, WritesRollbackReadableShapeAndAcceptsRecoveryShape) 
       MQTT_PREFS_VERSION, CompanionMqttPrefsNvs::kWriteSize));
   EXPECT_TRUE(CompanionMqttPrefsNvs::accepts(
       MQTT_PREFS_VERSION, CompanionMqttPrefsNvs::kRecoverySize));
+  EXPECT_TRUE(CompanionMqttPrefsNvs::accepts(
+      MQTT_PREFS_VERSION, CompanionMqttPrefsNvs::kVerifiedSize));
   EXPECT_EQ(2880u, CompanionMqttPrefsNvs::kRecoverySize);
   EXPECT_LE(CompanionMqttPrefsNvs::kRecoverySize, sizeof(MQTTPrefs));
   EXPECT_FALSE(CompanionMqttPrefsNvs::accepts(

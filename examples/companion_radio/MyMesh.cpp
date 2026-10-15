@@ -5189,6 +5189,7 @@ void MyMesh::execCommand(char* cmd, char* reply) {
     else if (strcmp(key, "mqtt.packets") == 0) value = _mqtt_prefs.mqtt_packets_enabled ? "on" : "off";
     else if (strcmp(key, "mqtt.raw") == 0) value = _mqtt_prefs.mqtt_raw_enabled ? "on" : "off";
     else if (strcmp(key, "mqtt.rx") == 0) value = _mqtt_prefs.mqtt_rx_enabled ? "on" : "off";
+    else if (strcmp(key, "mqtt.advert.verify") == 0) value = _mqtt_prefs.mqtt_advert_verify ? "on" : "off";
     else if (strcmp(key, "mqtt.tx") == 0) value = _mqtt_prefs.mqtt_tx_enabled == 2 ? "advert" : _mqtt_prefs.mqtt_tx_enabled ? "on" : "off";
     else if (strcmp(key, "mqtt.ntp") == 0) value = _mqtt_prefs.mqtt_ntp_server;
     else if (strcmp(key, "mqtt.owner") == 0) value = _mqtt_prefs.mqtt_owner_public_key;
@@ -5459,6 +5460,7 @@ void MyMesh::execCommand(char* cmd, char* reply) {
     }
   } else if (strcmp(key, "mqtt.status") == 0 || strcmp(key, "mqtt.packets") == 0
              || strcmp(key, "mqtt.raw") == 0 || strcmp(key, "mqtt.rx") == 0
+             || strcmp(key, "mqtt.advert.verify") == 0
              || strcmp(key, "snmp") == 0) {
     bool enabled;
     if (!wcParseBool(value, enabled)) {
@@ -5469,6 +5471,7 @@ void MyMesh::execCommand(char* cmd, char* reply) {
     else if (strcmp(key, "mqtt.packets") == 0) _mqtt_prefs.mqtt_packets_enabled = enabled;
     else if (strcmp(key, "mqtt.raw") == 0) _mqtt_prefs.mqtt_raw_enabled = enabled;
     else if (strcmp(key, "mqtt.rx") == 0) _mqtt_prefs.mqtt_rx_enabled = enabled;
+    else if (strcmp(key, "mqtt.advert.verify") == 0) _mqtt_prefs.mqtt_advert_verify = enabled;
     else _mqtt_prefs.snmp_enabled = enabled;
     changed = true;
   } else if (strcmp(key, "mqtt.tx") == 0) {

@@ -29,7 +29,7 @@ static const char* const WC_ALLOWED_SET_KEYS[] = {
   // MQTTPrefs (WiFi / MQTT / misc observer)
   "wifi.ssid", "wifi.pwd", "wifi.powersave", "espnow.channel",
   "mqtt.enabled", "mqtt.origin", "mqtt.iata", "mqtt.status", "mqtt.packets", "mqtt.raw",
-  "mqtt.tx", "mqtt.rx", "mqtt.interval", "mqtt.neighbors", "mqtt.neighbors.interval",
+  "mqtt.tx", "mqtt.rx", "mqtt.advert.verify", "mqtt.interval", "mqtt.neighbors", "mqtt.neighbors.interval",
   "mqtt.ntp", "mqtt.owner", "mqtt.email",
   "timezone", "timezone.offset", "snmp", "snmp.community",
 };
