@@ -228,6 +228,13 @@ class RadioProfiles {
     if (p.protocol == RadioProfileProtocol::Meshtext) return 16;
     if (p.preamble) return p.preamble;
     if (!enabled()) return single_profile_default;
+    // A foreign profile cannot teach MeshCore peers our scan timing. Keep
+    // the normal network's canonical TX preamble (including during startup),
+    // since peers' RXPS header windows depend on it. Scanning remains best
+    // effort; chirpTiming() still reports any longer capture recommendation.
+    if (profile == 0 && p.protocol == RadioProfileProtocol::MeshCore
+        && secondary.params.protocol == RadioProfileProtocol::Meshtext)
+      return single_profile_default;
     // Do not expose an unmeasured short preamble while the startup test runs.
     if (!switchTestReady()) return MaxAutomaticPreamble;
     double symbols = automaticPreamble(profile);

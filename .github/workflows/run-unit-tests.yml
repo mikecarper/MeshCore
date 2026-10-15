@@ -312,6 +312,7 @@ jobs:
           python3 -B test/test_meshtext_chat.py -v
           python3 -B test/test_meshtext_config.py -v
           python3 -B test/test_meshtext_transport.py -v
+          python3 -B test/test_meshtext_primary_preamble.py -v
           python3 -B test/test_meshtext_license.py -v
           python3 -B test/test_beacon_frames.py -v
           python3 -B test/test_beacon_manager.py -v

@@ -28,8 +28,11 @@ bool modemConfig(Region region, Preset preset, RadioProfileParams& params, uint3
 
 static constexpr size_t HeaderSize = 16;
 static constexpr size_t MaxFrameSize = 255;
-static constexpr size_t MaxDataSize = 233;
-static constexpr size_t MaxTextSize = 228; // Data port + payload tag/length overhead.
+static constexpr size_t MaxTextSize = 228;
+// Keep the existing text limit with port/payload (5B) and MQTT consent (2B).
+// The peer's 233B limit applies to Data.payload, not the complete protobuf.
+static constexpr size_t MaxDataSize = MaxTextSize + 7;
+static_assert(HeaderSize + MaxDataSize <= MaxFrameSize, "Meshtext frame exceeds radio limit");
 static constexpr size_t MaxLongNameSize = 24; // Current stock User.long_name bound.
 static constexpr size_t MaxShortNameSize = 4; // Stock max_size:5 includes NUL.
 static constexpr size_t MaxShortNameCharacters = 4; // Unicode scalar values.
@@ -44,6 +47,8 @@ struct DecodedText {
 
 // Expanded AES-128/256 PSK only. No unencrypted-key fallback. Names are exact,
 // canonical peer channel names (<12 bytes), without local display markers.
+// Outgoing text and explicit NodeInfo permit peer MQTT upload (Data.bitfield
+// bit 0); this neither enables a local MQTT client nor marks traffic via_mqtt.
 // Returns 0 for invalid arguments, malformed UTF-8, embedded NUL or overflow.
 size_t encodeText(uint32_t from, uint32_t id, uint8_t hop_limit, const char* channel_name,
                   const uint8_t* key, size_t key_len, const char* text, size_t text_len,

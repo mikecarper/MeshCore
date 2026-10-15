@@ -95,7 +95,7 @@ class CompanionMeshtextTest(unittest.TestCase):
             if long_name:
                 user += field(2, long_name)
             user += field(3, short_name) + b"\x38\x01\x48\x01"  # CLIENT_MUTE; no DMs
-            data = b"\x08\x04" + field(2, user)  # NODEINFO_APP, no want_response
+            data = b"\x08\x04" + field(2, user) + b"\x48\x01"  # NODEINFO_APP; MQTT consent only
             args = {} if key is None else {"key": key}
             return reference_frame(data, name, sender=sender, packet_id=packet_id, flags=0xE7, **args)
         default_node = int.from_bytes(hashlib.sha256(bytes([42]) + bytes(31)).digest()[:4], "little")

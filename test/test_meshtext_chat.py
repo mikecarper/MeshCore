@@ -40,7 +40,7 @@ def data_nodeinfo(long_name, short_name, sender):
         user += b"\x12" + varint(len(long_name)) + long_name
     user += b"\x1a" + varint(len(short_name)) + short_name
     user += b"\x38\x01\x48\x01"  # CLIENT_MUTE=1, is_unmessagable=true.
-    return b"\x08\x04\x12" + varint(len(user)) + user
+    return b"\x08\x04\x12" + varint(len(user)) + user + b"\x48\x01"
 
 
 def reference_frame(data, name="LongFast", key=DEFAULT_KEY, *, to=0xFFFFFFFF,
@@ -158,6 +158,30 @@ static void frames() {
   }
   assert(!memcmp(DefaultPsk, golden[0].key, 16));
   puts("PASS frames");
+}
+static void mqtt_defaults() {
+  uint8_t keys[2][32] = {};
+  memcpy(keys[0], DefaultPsk, 16);
+  for (unsigned i = 0; i < 32; ++i) keys[1][i] = i;
+  char text[MaxTextSize]; memset(text, 'x', sizeof(text));
+  for (unsigned i = 0; i < 2; ++i) {
+    const size_t key_len = i == 0 ? 16 : 32;
+    uint8_t frame[MaxFrameSize + 1]; memset(frame, 0xa5, sizeof(frame));
+    size_t count = encodeText(0x11223344, 0x89abcdef, 7, "LongFast", keys[i], key_len,
+                              text, sizeof(text), frame);
+    assert(count == HeaderSize + MaxDataSize && count == 251);
+    assert(frame[count] == 0xa5 && frame[MaxFrameSize] == 0xa5);
+    printf("TEXT%u ", unsigned(key_len * 8));
+    for (size_t j = 0; j < count; ++j) printf("%02x", frame[j]);
+    puts("");
+    count = encodeNodeInfo(0x11223344, 0x89abcdef, 7, "LongFast", keys[i], key_len,
+                           "MeshCore", 8, "CORE", 4, frame);
+    assert(count != 0);
+    printf("NODEINFO%u ", unsigned(key_len * 8));
+    for (size_t j = 0; j < count; ++j) printf("%02x", frame[j]);
+    puts("");
+  }
+  puts("PASS mqtt_defaults");
 }
 static void malformed_frames() {
   for (const auto& test : malformed) {
@@ -319,6 +343,7 @@ int main(int argc, char** argv) {
   assert(argc == 2);
   if (!strcmp(argv[1], "presets")) presets();
   else if (!strcmp(argv[1], "frames")) frames();
+  else if (!strcmp(argv[1], "mqtt_defaults")) mqtt_defaults();
   else if (!strcmp(argv[1], "malformed")) malformed_frames();
   else if (!strcmp(argv[1], "nodeinfo")) node_info_frames();
   else if (!strcmp(argv[1], "nodeinfo_bounds")) node_info_bounds();
@@ -341,7 +366,7 @@ def vectors():
               (DEFAULT_KEY, "LongFast", "\u0080\u07ff\u0800\ud7ff\ue000\uffff\U00010000\U0010ffff".encode())]
     golden = []
     for key, name, text in inputs:
-        frame = reference_frame(data_text(text), name, key)
+        frame = reference_frame(data_text(text) + b"\x48\x01", name, key)
         golden.append("{" + array(key) + "," + str(len(key)) + ',"' + name + '",'
                       + literal(text) + "," + str(len(text)) + "," + array(frame) + "," + str(len(frame)) + "}")
     stock_zero_bitfield = []
@@ -464,6 +489,43 @@ class MeshtextChatTest(unittest.TestCase):
 
     def test_actual_aes128_aes256_against_independent_golden_frames(self):
         self.run_case("frames")
+
+    def test_outgoing_text_and_manual_nodeinfo_default_mqtt_consent_not_mqtt_origin(self):
+        from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+
+        result = subprocess.run([str(self.binary), "mqtt_defaults"], capture_output=True,
+                                text=True, timeout=30)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        encoded = dict(line.split(" ", 1) for line in result.stdout.splitlines()
+                       if not line.startswith("PASS "))
+        self.assertEqual(set(encoded), {"TEXT128", "TEXT256", "NODEINFO128", "NODEINFO256"})
+        for label, wire_hex in encoded.items():
+            with self.subTest(label=label):
+                frame = bytes.fromhex(wire_hex)
+                self.assertEqual(frame[12], 0xE7)  # No want_ack or via_mqtt.
+                key = DEFAULT_KEY if label.endswith("128") else bytes(range(32))
+                nonce = struct.pack("<Q", PACKET_ID) + struct.pack("<Q", FROM)
+                decryptor = Cipher(algorithms.AES(key), modes.CTR(nonce)).decryptor()
+                data = decryptor.update(frame[16:]) + decryptor.finalize()
+                # Independently parse standard Data fields; no production decoder.
+                self.assertEqual(data[:3], b"\x08\x01\x12" if label.startswith("TEXT")
+                                 else b"\x08\x04\x12")
+                offset, payload_length, shift = 3, 0, 0
+                while True:
+                    byte = data[offset]
+                    offset += 1
+                    payload_length |= (byte & 127) << shift
+                    if not byte & 128:
+                        break
+                    shift += 7
+                payload = data[offset:offset + payload_length]
+                self.assertEqual(data[offset + payload_length:], b"\x48\x01",
+                                 "field9=1 sets only MQTT consent, not want_response")
+                if label.startswith("TEXT"):
+                    self.assertEqual(payload, b"x" * 228)
+                    self.assertEqual(len(frame), 251)
+                else:
+                    self.assertEqual(payload, data_nodeinfo(b"MeshCore", b"CORE", FROM)[4:-2])
 
     def test_malformed_protobuf_utf8_and_broadcast_only(self):
         self.run_case("malformed")

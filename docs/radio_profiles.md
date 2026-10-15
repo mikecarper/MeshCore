@@ -393,6 +393,11 @@ There are no automatic NodeInfo advertisements: not at boot, on a timer, when
 names change, when chat is sent, or in response to received packets. Received
 NodeInfo is still ignored; this backend does not maintain a node database.
 
+Outgoing Meshtext chat and explicitly requested NodeInfo set **OK to MQTT**
+on by default, allowing a compatible receiving gateway to upload those packets.
+This does not start an MQTT client, bridge networks, request a reply, or mark
+the packet as having arrived through MQTT. The 228-byte text limit is unchanged.
+
 Region, frequency slot, hop limit, shortname and node-ID override are saved
 atomically together; changing one preserves the others. Current 40-byte `MT03`
 settings include both overrides. New firmware accepts valid legacy
@@ -459,6 +464,13 @@ automatic profile. Explicit manual RF settings are retained: named aliases
 must match their BW/SF/CR and fit the selected region, but do not overwrite
 their frequency. The runtime MT overlay uses its required 16-symbol preamble;
 the saved manual preamble is retained.
+
+With a Meshtext secondary, an automatic primary MeshCore preamble keeps its
+normal SF/BW-derived wire length (32 symbols for the USA SF7/BW62.5 preset),
+so scan recommendations do not silently lengthen normal-network transmissions.
+An explicit primary preamble is still honored. Automatic sizing for two
+MeshCore profiles is unchanged; mixed-network reception remains best-effort
+and time-shared.
 
 `set radio2 off` is an explicit manual veto, including after reboot. Older
 saved off profiles are conservatively treated as manual. Local

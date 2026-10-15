@@ -283,6 +283,9 @@ size_t encodeText(uint32_t from, uint32_t id, uint8_t hop_limit, const char* cha
   if (text_len >= 128) data[count++] = static_cast<uint8_t>(text_len) | 0x80;
   data[count++] = static_cast<uint8_t>(text_len >> (text_len >= 128 ? 7 : 0));
   memcpy(data + count, text, text_len); count += text_len;
+  // Data.bitfield field 9, bit 0: allow a receiving gateway to upload to MQTT.
+  // This is consent, not the radio header's via_mqtt origin flag.
+  data[count++] = 0x48; data[count++] = 1;
   return finishFrame(from, id, hop_limit, channel_name, key, key_len, out, count);
 }
 
@@ -319,6 +322,7 @@ size_t encodeNodeInfo(uint32_t from, uint32_t id, uint8_t hop_limit, const char*
   data[count++] = 0x38; data[count++] = 1; // Config.DeviceConfig.Role.CLIENT_MUTE.
   data[count++] = 0x48; data[count++] = 1; // User.is_unmessagable explicitly true.
   data[3] = static_cast<uint8_t>(count - 4);
+  data[count++] = 0x48; data[count++] = 1; // Data.bitfield: MQTT upload consent.
   return finishFrame(from, id, hop_limit, channel_name, key, key_len, out, count);
 }
 
