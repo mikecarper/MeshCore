@@ -3,6 +3,7 @@
 #include "FilePresence.h"
 #if defined(ESP32_PLATFORM)
 #include <Preferences.h>
+#include <nvs.h>
 #endif
 #if defined(NRF52_PLATFORM) || defined(STM32_PLATFORM)
 #include "AtomicFileWriter.h"
@@ -53,17 +54,32 @@ IdentityLoadResult IdentityStore::loadResult(
   // generated a temporary key. Restore the original before normal startup
   // accepts either that temporary key or a missing identity.
   if (strcmp(_dir, "/identity") == 0 && strcmp(name, "_main") == 0) {
-    Preferences migration_nvs;
-    // A fresh device has no migration namespace. Open read-write to create the
-    // empty namespace once instead of logging NVS_NOT_FOUND on every boot.
-    if (migration_nvs.begin("mesh-pt-migrate", false)) {
-      const bool pending = migration_nvs.getBool("id-pending", false);
+    // Probe without creating an empty migration namespace on ordinary boots.
+    // Direct NVS distinguishes a clean absence (without Preferences logging)
+    // from storage/type failures that must not accept a temporary/new key.
+    nvs_handle_t migration_handle;
+    const esp_err_t opened = nvs_open("mesh-pt-migrate", NVS_READONLY,
+                                      &migration_handle);
+    if (opened != ESP_OK && opened != ESP_ERR_NVS_NOT_FOUND)
+      return IdentityLoadResult::Unreadable;
+    if (opened == ESP_OK) {
+      uint8_t pending_value = 0;
+      const esp_err_t flag = nvs_get_u8(migration_handle, "id-pending",
+                                       &pending_value);
+      if ((flag != ESP_OK && flag != ESP_ERR_NVS_NOT_FOUND)
+          || (flag == ESP_OK && pending_value > 1)) {
+        nvs_close(migration_handle);
+        return IdentityLoadResult::Unreadable;
+      }
+      const bool pending = flag == ESP_OK && pending_value == 1;
       uint8_t file_bytes[PUB_KEY_SIZE + PRV_KEY_SIZE];
-      const size_t staged = pending
-          ? migration_nvs.getBytes("identity", file_bytes, sizeof(file_bytes)) : 0;
-      migration_nvs.end();
+      size_t staged = sizeof(file_bytes);
+      const esp_err_t identity_result = pending
+          ? nvs_get_blob(migration_handle, "identity", file_bytes, &staged) : ESP_OK;
+      nvs_close(migration_handle);
       if (pending) {
-        if (staged != sizeof(file_bytes)) return IdentityLoadResult::Unreadable;
+        if (identity_result != ESP_OK || staged != sizeof(file_bytes))
+          return IdentityLoadResult::Unreadable;
         uint8_t export_bytes[sizeof(file_bytes)];
         memcpy(export_bytes, file_bytes + PUB_KEY_SIZE, PRV_KEY_SIZE);
         memcpy(export_bytes + PRV_KEY_SIZE, file_bytes, PUB_KEY_SIZE);
@@ -77,6 +93,7 @@ IdentityLoadResult IdentityStore::loadResult(
             && memcmp(file_bytes, verified, sizeof(file_bytes)) == 0;
         if (restored) restored.close();
         if (!matches) return IdentityLoadResult::Unreadable;
+        Preferences migration_nvs;
         if (!migration_nvs.begin("mesh-pt-migrate", false))
           return IdentityLoadResult::Unreadable;
         // Clear the pending flag first: a power cut cannot then leave a

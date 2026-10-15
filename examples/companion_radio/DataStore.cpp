@@ -945,7 +945,15 @@ bool DataStore::formatInternalExtraFSHealth(char* reply,
 #endif
 
 bool DataStore::loadMainIdentity(mesh::LocalIdentity &identity) {
-#if defined(ESP32_PLATFORM) || defined(RP2040_PLATFORM)
+#if defined(ESP32_PLATFORM)
+  // A missing SPIFFS file can still have its original identity staged in NVS
+  // by partition migration. Let the migration-aware, tri-state loader decide
+  // whether absence is safe before startup is allowed to generate a new key.
+  const IdentityLoadResult result = identity_store.loadResult("_main", identity);
+  _identity_creation_blocked = result == IdentityLoadResult::Unreadable;
+  return result == IdentityLoadResult::Loaded;
+#else
+#if defined(RP2040_PLATFORM)
   if (!identity_store.recover("_main")) {
     _identity_creation_blocked = true;
     return false;
@@ -989,6 +997,7 @@ bool DataStore::loadMainIdentity(mesh::LocalIdentity &identity) {
   }
   _identity_creation_blocked = false;
   return true;
+#endif
 #endif
 }
 
