@@ -254,14 +254,19 @@ BeaconManager::ReadResult BeaconManager::readIds(const char* path, uint32_t& las
 bool BeaconManager::commit(const char* path, const char* backup,
                            const char* temporary, bool& hold) {
   bool active_present = false, backup_present = false;
+  bool active_backed_up = false;
   if (!filePresence(fs_, path, active_present) || !filePresence(fs_, backup, backup_present)) return false;
   if (active_present) {
     if (backup_present && !fs_->remove(backup)) return false;
     if (!fs_->rename(path, backup)) return false;
+    active_backed_up = true;
     backup_present = true;
   }
   if (!fs_->rename(temporary, path)) {
-    if (backup_present && !fs_->rename(backup, path)) hold = true;
+    // A pre-existing backup can be older than an already transmitted ID.
+    // Roll back only the active image moved by this transaction; promoting
+    // an unrelated backup could make that ID reusable after the next boot.
+    if (active_backed_up && !fs_->rename(backup, path)) hold = true;
     return false;
   }
   // A leftover backup after a successful commit is harmless. Never choose it

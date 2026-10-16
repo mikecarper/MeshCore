@@ -350,6 +350,57 @@ void staleBackup() {
       && uninitialized.fs.files.at("/beacon_ids.bak") == stale);
 }
 
+void liveBackupRollback() {
+  {
+    Fixture f;
+    f.mt();
+    const auto stale = f.fs.files.at("/beacon_ids");
+    f.tick(2 * H);
+    assert(f.mesh.sends.size() == 1 && f.mesh.sends[0].id == 0x1234567a);
+    // A failed backup cleanup can leave an older image. If the active entry
+    // disappears during this boot, a later failed promotion must not turn
+    // that unrelated image into authoritative metadata.
+    f.fs.files["/beacon_ids.bak"] = stale;
+    f.fs.files.erase("/beacon_ids");
+    f.fs.fail_rename_from = {"/beacon_ids.tmp"};
+    f.tick(24 * H);
+    assert(f.mesh.sends.size() == 1);
+    assert(!f.fs.files.count("/beacon_ids"));
+    assert(f.fs.files.at("/beacon_ids.bak") == stale);
+    f.fs.fail_rename_from.clear();
+    f.tick(24 * H); // The failed counter write holds this boot too.
+    assert(f.mesh.sends.size() == 1);
+    f.manager.begin(&f.fs, &f.mesh, &f.clock, f.name);
+    f.tick(2 * H);
+    assert(f.mesh.sends.size() == 1); // Reboot must not reuse 0x1234567a.
+    f.cmd("set beacon 1 meshtext US LongFast 14 Still held", false);
+    f.mc(2);
+    f.tick(2 * H);
+    assert(f.mesh.sends.size() == 2
+        && f.mesh.sends.back().slot.radio.protocol == mesh::RadioProfileProtocol::MeshCore);
+  }
+  {
+    Fixture f;
+    f.mc(1, "Old");
+    const auto stale = f.fs.files.at("/beacons");
+    f.mc(1, "Current");
+    f.fs.files["/beacons.bak"] = stale;
+    f.fs.files.erase("/beacons");
+    f.fs.fail_rename_from = {"/beacons.tmp"};
+    f.cmd("set beacon 1 meshcore 907.5,125,8,6,10 New", false);
+    assert(!f.fs.files.count("/beacons"));
+    assert(f.fs.files.at("/beacons.bak") == stale);
+    assert(std::strstr(f.cmd("get beacon 1"), "Current"));
+    // Configuration can still commit a complete replacement on a later
+    // successful command, removing the stale backup after that commit.
+    f.fs.fail_rename_from.clear();
+    f.cmd("set beacon 1 meshcore 907.5,125,8,6,10 New");
+    assert(!f.fs.files.count("/beacons.bak"));
+    f.manager.begin(&f.fs, &f.mesh, &f.clock, f.name);
+    assert(std::strstr(f.cmd("get beacon 1"), "New"));
+  }
+}
+
 int main(int argc, char** argv) {
   assert(argc == 2);
   if (!std::strcmp(argv[1], "commands")) commands();
@@ -359,6 +410,7 @@ int main(int argc, char** argv) {
   else if (!std::strcmp(argv[1], "ids")) ids();
   else if (!std::strcmp(argv[1], "mutations")) mutations();
   else if (!std::strcmp(argv[1], "stale_backup")) staleBackup();
+  else if (!std::strcmp(argv[1], "live_backup")) liveBackupRollback();
   else assert(false);
   std::printf("beacon manager %s passed\n", argv[1]);
 }
