@@ -224,6 +224,7 @@ jobs:
           python3 -B test/test_meshtracker_x1_battery.py -v
           python3 -B test/test_drv2605_power.py -v
           python3 -B test/test_radio_interrupt_recovery.py -v
+          python3 -B test/test_forwarding_profile_timing.py -v
           python3 -B test/test_bridge_recovery.py -v
           python3 -B test/test_bridge_ingress.py -v
 

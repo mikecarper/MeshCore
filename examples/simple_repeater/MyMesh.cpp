@@ -1408,17 +1408,19 @@ int MyMesh::calcRxDelayForPacket(const mesh::Packet* packet, float score,
 }
 
 uint32_t MyMesh::getRetransmitDelay(const mesh::Packet *packet) {
-  uint32_t t = (_radio->getEstAirtimeFor(packet->getPathByteLen() + packet->payload_len + 2) * _prefs.tx_delay_factor);
+  uint32_t t = (_radio->getProfileAirtime(packet->radio_profile,
+      packet->getRawLength(), packet->tx_cr) * _prefs.tx_delay_factor);
   return getRNG()->nextInt(0, 5*t + 1);
 }
 uint32_t MyMesh::getSlowScopeRetransmitDelay(const mesh::Packet* packet) {
   uint32_t airtime =
-      _radio->getEstAirtimeFor(packet->getPathByteLen() + packet->payload_len + 2);
+      _radio->getProfileAirtime(packet->radio_profile, packet->getRawLength(), packet->tx_cr);
   uint32_t max_delay = FloodFilterPolicy::slowScopeMaxDelay(airtime);
   return getRNG()->nextInt(0, max_delay + 1);
 }
 uint32_t MyMesh::getDirectRetransmitDelay(const mesh::Packet *packet) {
-  uint32_t t = (_radio->getEstAirtimeFor(packet->getPathByteLen() + packet->payload_len + 2) * _prefs.direct_tx_delay_factor);
+  uint32_t t = (_radio->getProfileAirtime(packet->radio_profile,
+      packet->getRawLength(), packet->tx_cr) * _prefs.direct_tx_delay_factor);
   return getRNG()->nextInt(0, 5*t + 1);
 }
 
