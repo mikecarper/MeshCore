@@ -22,6 +22,7 @@ HARNESS = r'''
 #include <vector>
 #include <helpers/CompanionFrameQueue.h>
 #include <helpers/BleTxStallWatchdog.h>
+#include <helpers/nrf52/BleRxFrameQueue.h>
 
 #define MAX_FRAME_SIZE 176
 #define FRAME_QUEUE_SIZE 12
@@ -33,8 +34,16 @@ uint32_t millis() { return current_millis; }
 
 struct SerialBLEInterface {
   struct Frame { uint8_t len = 0; uint8_t buf[MAX_FRAME_SIZE] = {}; };
-  uint8_t send_queue_len = 0, recv_queue_len = 0;
-  Frame send_queue[FRAME_QUEUE_SIZE], recv_queue[FRAME_QUEUE_SIZE];
+  struct RxQueueGuard {};
+  using RxQueue = mesh_nrf52::BleRxFrameQueue<Frame, FRAME_QUEUE_SIZE, RxQueueGuard>;
+  uint8_t send_queue_len = 0;
+  Frame send_queue[FRAME_QUEUE_SIZE];
+  RxQueue recv_queue;
+  SerialBLEInterface() {
+    recv_queue.setEnabled(true);
+    recv_queue.connect(1);
+    recv_queue.secure(1);
+  }
   unsigned long _last_retry_attempt = 0;
   mesh::BleTxStallWatchdog _tx_stall_watchdog;
   mesh::BleDisconnectRecovery _tx_disconnect_recovery;
@@ -53,12 +62,15 @@ struct SerialBLEInterface {
     return frame.len;
   }
   void receive(const uint8_t* bytes, size_t size) {
-    assert(recv_queue_len < FRAME_QUEUE_SIZE && size <= MAX_FRAME_SIZE);
-    recv_queue[recv_queue_len].len = size;
-    memcpy(recv_queue[recv_queue_len++].buf, bytes, size);
+    assert(size <= MAX_FRAME_SIZE);
+    uint32_t generation;
+    assert(recv_queue.snapshot(1, generation));
+    Frame frame;
+    frame.len = size;
+    memcpy(frame.buf, bytes, size);
+    assert(recv_queue.push(1, generation, frame) == RxQueue::PushResult::Accepted);
   }
   void shiftSendQueueLeft();
-  void shiftRecvQueueLeft();
   bool hasRequiredReplyCapacity() const;
   bool isWriteBusy() const;
   size_t writeFrame(const uint8_t*, size_t);
@@ -78,19 +90,19 @@ static void full_required_queue() {
   link.receive(command, sizeof(command));
   uint8_t received[MAX_FRAME_SIZE] = {};
   assert(link.checkRecvFrame(received) == 0);
-  assert(link.recv_queue_len == 1 && link.send_queue_len == FRAME_QUEUE_SIZE);
+  assert(link.recv_queue.size() == 1 && link.send_queue_len == FRAME_QUEUE_SIZE);
   assert(link.write_attempts == 1 && link.transmitted.empty());
   ++current_millis;
   assert(link.checkRecvFrame(received) == 0);
   assert(link.write_attempts == 1); // Existing 250 ms retry throttle is retained.
-  assert(link.recv_queue_len == 1 && link.isWriteBusy());
+  assert(link.recv_queue.size() == 1 && link.isWriteBusy());
 
   current_millis = 351;
   link.allow_write = true;
   // A completed TX frees admission on this SAME call, before RX is examined.
   assert(link.checkRecvFrame(received) == sizeof(command));
   assert(memcmp(received, command, sizeof(command)) == 0);
-  assert(link.recv_queue_len == 0 && link.send_queue_len == FRAME_QUEUE_SIZE - 1);
+  assert(link.recv_queue.size() == 0 && link.send_queue_len == FRAME_QUEUE_SIZE - 1);
   const uint8_t reply[] = {29, 'A', '7', '|', 'O', 'K'};
   assert(link.writeFrame(reply, sizeof(reply)) == sizeof(reply));
   for (unsigned i = 0; i < FRAME_QUEUE_SIZE + 2; ++i) {
@@ -101,7 +113,7 @@ static void full_required_queue() {
   for (uint8_t i = 0; i < FRAME_QUEUE_SIZE; ++i)
     assert((link.transmitted[i] == std::vector<uint8_t>{0x0d, i}));
   assert(link.transmitted.back() == std::vector<uint8_t>(reply, reply + sizeof(reply)));
-  assert(link.send_queue_len == 0 && link.recv_queue_len == 0);
+  assert(link.send_queue_len == 0 && link.recv_queue.size() == 0);
 }
 
 static void best_effort_eviction() {
@@ -149,7 +161,7 @@ static void producer_threshold_and_recovery_ordering() {
   link._tx_disconnect_recovery.begin();
   uint8_t received[MAX_FRAME_SIZE] = {};
   assert(link.checkRecvFrame(received) == 0);
-  assert(link.recovery_services == 1 && link.write_attempts == 0 && link.recv_queue_len == 1);
+  assert(link.recovery_services == 1 && link.write_attempts == 0 && link.recv_queue.size() == 1);
 
   SerialBLEInterface partial;
   partial.partial_write = true;
@@ -157,7 +169,7 @@ static void producer_threshold_and_recovery_ordering() {
   partial.receive(command, sizeof(command));
   assert(partial.checkRecvFrame(received) == 0);
   assert(partial.recoveries == 1 && partial.write_attempts == 1);
-  assert(partial.recv_queue_len == 1); // Recovery is invoked instead of dispatch.
+  assert(partial.recv_queue.size() == 1); // Recovery is invoked instead of dispatch.
 }
 
 int main() {
@@ -172,7 +184,6 @@ class Nrf52BleBackpressureTests(unittest.TestCase):
     def test_real_queue_dispatch_throttle_and_recovery_under_sanitizers(self):
         source = SOURCE.read_text()
         signatures = ["void SerialBLEInterface::shiftSendQueueLeft()",
-                      "void SerialBLEInterface::shiftRecvQueueLeft()",
                       "size_t SerialBLEInterface::writeFrame(",
                       "size_t SerialBLEInterface::checkRecvFrame(",
                       "bool SerialBLEInterface::isWriteBusy() const"]

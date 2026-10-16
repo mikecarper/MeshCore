@@ -32,9 +32,6 @@ __attribute__((used, externally_visible)) MeshBleTraceBuffer mesh_ble_trace;
 #define BLE_ADV_INTERVAL_MAX       244    // 152.5ms (units: 0.625ms)
 #define BLE_ADV_FAST_TIMEOUT       30     // seconds
 
-// RX drain buffer size for overflow protection
-#define BLE_RX_DRAIN_BUF_SIZE      32
-
 static SerialBLEInterface* instance = nullptr;
 
 #if defined(MESH_NRF52_BLE_TRACE) && MESH_NRF52_BLE_TRACE
@@ -45,7 +42,7 @@ void SerialBLEInterface::formatDebugState(char* reply, size_t capacity) {
       (unsigned)_isDeviceConnected, (unsigned)Bluefruit.Advertising.isRunning(),
       (unsigned)Bluefruit.connected(),
       (unsigned)_companionDataSeen.load(std::memory_order_acquire),
-      (unsigned)send_queue_len, (unsigned)recv_queue_len,
+      (unsigned)send_queue_len, (unsigned)recv_queue.size(),
       (unsigned)_tx_disconnect_recovery.pending(),
       (unsigned)(_conn_handle != BLE_CONN_HANDLE_INVALID && bleuart.notifyEnabled(_conn_handle)),
       (unsigned)_debug_mtu.load());
@@ -273,6 +270,7 @@ void SerialBLEInterface::onSecured(uint16_t connection_handle) {
       }
 
       instance->_isDeviceConnected = true;
+      instance->recv_queue.secure(connection_handle);
 #if defined(MESH_NRF52_BLE_TRACE) && MESH_NRF52_BLE_TRACE
       mesh_ble_trace.secured.fetch_add(1);
       meshBleTrace(0xf006, connection_handle, conn->bonded(),
@@ -431,6 +429,10 @@ void SerialBLEInterface::onBLEEvent(ble_evt_t* evt) {
   if (evt->header.evt_id == BLE_GAP_EVT_CONNECTED) {
     ble_gap_evt_connected_t const* connected = &evt->evt.gap_evt.params.connected;
     if (connected->role == BLE_GAP_ROLE_PERIPH) {
+      // Observe the physical session in the BLE worker before its deferred
+      // onConnect callback. A disable/re-enable between the event and that
+      // callback must not allow the old link to reopen the RX queue.
+      instance->recv_queue.connect(evt->evt.gap_evt.conn_handle);
       instance->_peer_address = connected->peer_addr;
       instance->_peer_address_valid = true;
       instance->_bond_removed_for_connection = false;
@@ -480,6 +482,7 @@ void SerialBLEInterface::onBLEEvent(ble_evt_t* evt) {
   } else if (evt->header.evt_id == BLE_GATTS_EVT_SYS_ATTR_MISSING) {
     BLE_DEBUG_PRINTLN("CCCD RAM system attributes missing");
   } else if (evt->header.evt_id == BLE_GAP_EVT_DISCONNECTED) {
+    instance->recv_queue.disconnect(evt->evt.gap_evt.conn_handle);
     ble_gap_evt_disconnected_t const* disconnected = &evt->evt.gap_evt.params.disconnected;
     if (isBondAuthenticationFailure(disconnected->reason)) {
       instance->removeStoredBondForPeer("authentication disconnect");
@@ -986,11 +989,10 @@ void SerialBLEInterface::cancelStealthPairingTransition() {
 
 void SerialBLEInterface::clearBuffers() {
   send_queue_len = 0;
-  recv_queue_len = 0;
   _last_retry_attempt = 0;
   _tx_stall_watchdog.reset();
   _tx_disconnect_recovery.complete();
-  bleuart.flush();
+  recv_queue.reset([this]() { bleuart.flush(); });
 }
 
 void SerialBLEInterface::shiftSendQueueLeft() {
@@ -998,15 +1000,6 @@ void SerialBLEInterface::shiftSendQueueLeft() {
     send_queue_len--;
     for (uint8_t i = 0; i < send_queue_len; i++) {
       send_queue[i] = send_queue[i + 1];
-    }
-  }
-}
-
-void SerialBLEInterface::shiftRecvQueueLeft() {
-  if (recv_queue_len > 0) {
-    recv_queue_len--;
-    for (uint8_t i = 0; i < recv_queue_len; i++) {
-      recv_queue[i] = recv_queue[i + 1];
     }
   }
 }
@@ -1071,7 +1064,7 @@ void SerialBLEInterface::serviceTxRecovery(uint32_t now) {
 }
 
 void SerialBLEInterface::recoverStalledTx(const char* cause) {
-  meshBleTrace(0xf020, _conn_handle, send_queue_len, recv_queue_len);
+  meshBleTrace(0xf020, _conn_handle, send_queue_len, recv_queue.size());
   if (_tx_disconnect_recovery.pending()) return;
 
   BLE_DEBUG_PRINTLN("SerialBLEInterface: %s; forcing reconnect", cause);
@@ -1080,11 +1073,11 @@ void SerialBLEInterface::recoverStalledTx(const char* cause) {
   // disconnection, but make isConnected() false through the recovery state so
   // no more companion frames enter this damaged stream.
   send_queue_len = 0;
-  recv_queue_len = 0;
+  recv_queue.disconnect(_conn_handle);
   _last_retry_attempt = 0;
   _tx_stall_watchdog.reset();
   _companion_start_timer.cancel();
-  bleuart.flush();
+  recv_queue.reset([this]() { bleuart.flush(); });
 #if COMPANION_FEATURE_BLE_MOTA_SOURCE
   setMotaStreamActive(false);
 #endif
@@ -1113,6 +1106,7 @@ bool SerialBLEInterface::isAdvertising() const {
 void SerialBLEInterface::enable() {
   if (_isEnabled) return;
 
+  recv_queue.setEnabled(true);
   _pairingRequestPending.store(false, std::memory_order_release);
   _isEnabled = true;
   clearBuffers();
@@ -1126,6 +1120,7 @@ void SerialBLEInterface::enable() {
 
 void SerialBLEInterface::disconnect() {
   if (_conn_handle != BLE_CONN_HANDLE_INVALID) {
+    recv_queue.disconnect(_conn_handle);
     const uint32_t result = sd_ble_gap_disconnect(_conn_handle, BLE_HCI_REMOTE_USER_TERMINATED_CONNECTION);
     meshBleTrace(0xf013, _conn_handle, result, 0);
     (void)result;
@@ -1133,6 +1128,7 @@ void SerialBLEInterface::disconnect() {
 }
 
 void SerialBLEInterface::disable() {
+  recv_queue.setEnabled(false);
   _isEnabled = false;
   _pairingRequestPending.store(false, std::memory_order_release);
   BLE_DEBUG_PRINTLN("SerialBLEInterface: disable");
@@ -1298,13 +1294,11 @@ size_t SerialBLEInterface::checkRecvFrame(uint8_t dest[]) {
   
   // TX/recovery above must run even when full. Retain RX until a required
   // command reply can be admitted instead of silently losing that reply.
-  if (recv_queue_len > 0 && hasRequiredReplyCapacity()) {
-    size_t len = recv_queue[0].len;
-    memcpy(dest, recv_queue[0].buf, len);
-    
-    BLE_DEBUG_PRINTLN("readBytes: sz=%u, hdr=%u", (unsigned)len, (unsigned)dest[0]);
-    
-    shiftRecvQueueLeft();
+  if (hasRequiredReplyCapacity()) {
+    const size_t len = recv_queue.pop(dest);
+    if (len) {
+      BLE_DEBUG_PRINTLN("readBytes: sz=%u, hdr=%u", (unsigned)len, (unsigned)dest[0]);
+    }
     return len;
   }
   
@@ -1312,50 +1306,49 @@ size_t SerialBLEInterface::checkRecvFrame(uint8_t dest[]) {
 }
 
 void SerialBLEInterface::onBleUartRX(uint16_t conn_handle) {
-  if (!instance) {
-    return;
-  }
-  
-  meshBleTrace(0xf030, conn_handle, instance->bleuart.available(),
-               instance->isConnected());
-  if (instance->_conn_handle != conn_handle || !instance->isConnected()) {
-    while (instance->bleuart.available() > 0) {
-      instance->bleuart.read();
-    }
-    return;
-  }
-  
-  while (instance->bleuart.available() > 0) {
-    if (instance->recv_queue_len >= FRAME_QUEUE_SIZE) {
-      while (instance->bleuart.available() > 0) {
-        instance->bleuart.read();
-      }
-      meshBleTrace(0xf034, conn_handle, instance->recv_queue_len);
-      BLE_DEBUG_PRINTLN("onBleUartRX: recv queue full, dropping data");
-      break;
-    }
-    
-    int avail = instance->bleuart.available();
-    
+  SerialBLEInterface* self = instance;
+  if (!self) return;
+
+  uint32_t generation;
+  if (!self->recv_queue.snapshot(conn_handle, generation)
+      || !self->isConnected()) return;
+  meshBleTrace(0xf030, conn_handle, self->bleuart.available(), true);
+
+  while (self->recv_queue.current(conn_handle, generation)) {
+    const int avail = self->bleuart.available();
+    if (avail <= 0) return;
     if (avail > MAX_FRAME_SIZE) {
       BLE_DEBUG_PRINTLN("onBleUartRX: WARN: BLE RX overflow, avail=%d, draining all", avail);
-      uint8_t drain_buf[BLE_RX_DRAIN_BUF_SIZE];
-      while (instance->bleuart.available() > 0) {
-        int chunk = instance->bleuart.available() > BLE_RX_DRAIN_BUF_SIZE ? BLE_RX_DRAIN_BUF_SIZE : instance->bleuart.available();
-        instance->bleuart.readBytes(drain_buf, chunk);
-      }
-      continue;
+      self->bleuart.flush();
+      return;
     }
-    
-    int read_len = avail;
-    instance->recv_queue[instance->recv_queue_len].len = read_len;
-    instance->bleuart.readBytes(instance->recv_queue[instance->recv_queue_len].buf, read_len);
-    instance->recv_queue_len++;
+
+    // BLEUart::read() is an immediate FIFO read. Stream::readBytes() may wait
+    // for bytes flushed by a simultaneous reset. Stage outside the critical
+    // section, then reject the frame if its connection generation changed.
+    Frame frame = {};
+    const int read_len = self->bleuart.read(frame.buf, avail);
+    if (read_len != avail) return;
+    frame.len = read_len;
+    RxQueue::PushResult result;
+    {
+      RxQueueGuard guard;
+      result = self->recv_queue.push(conn_handle, generation, frame);
+      if (result == RxQueue::PushResult::Accepted) {
+        self->_companionDataSeen.store(true, std::memory_order_release);
+        self->_companion_start_timer.cancel();
+      }
+    }
+    if (result == RxQueue::PushResult::Stale) return;
+    if (result == RxQueue::PushResult::Full) {
+      self->bleuart.flush();
+      meshBleTrace(0xf034, conn_handle, FRAME_QUEUE_SIZE);
+      BLE_DEBUG_PRINTLN("onBleUartRX: recv queue full, dropping data");
+      return;
+    }
 #if defined(MESH_NRF52_BLE_TRACE) && MESH_NRF52_BLE_TRACE
     mesh_ble_trace.rx.fetch_add(1);
 #endif
-    instance->_companionDataSeen.store(true, std::memory_order_release);
-    instance->_companion_start_timer.cancel();
   }
 }
 
@@ -1393,7 +1386,7 @@ uint16_t SerialBLEInterface::motaResponseCapacity() {
 #endif
 
 bool SerialBLEInterface::isReadBusy() const {
-  return (recv_queue_len > 0);
+  return recv_queue.size() > 0;
 }
 
 bool SerialBLEInterface::isWriteBusy() const {
@@ -1401,5 +1394,5 @@ bool SerialBLEInterface::isWriteBusy() const {
 }
 
 bool SerialBLEInterface::hasPendingIO() const {
-  return recv_queue_len > 0 || send_queue_len > 0;
+  return recv_queue.size() > 0 || send_queue_len > 0;
 }

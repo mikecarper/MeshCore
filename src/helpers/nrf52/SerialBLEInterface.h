@@ -5,6 +5,7 @@
 #include "../BleTxStallWatchdog.h"
 #include "../UsbLogging.h"
 #include "SecuritySessionTimer.h"
+#include "BleRxFrameQueue.h"
 #include <bluefruit.h>
 #include <atomic>
 #if COMPANION_FEATURE_BLE_MOTA_SOURCE
@@ -105,13 +106,17 @@ class SerialBLEInterface : public BaseSerialInterface {
   uint8_t send_queue_len;
   Frame send_queue[FRAME_QUEUE_SIZE];
   
-  uint8_t recv_queue_len;
-  Frame recv_queue[FRAME_QUEUE_SIZE];
+  struct RxQueueGuard {
+    RxQueueGuard() { taskENTER_CRITICAL(); }
+    ~RxQueueGuard() { taskEXIT_CRITICAL(); }
+  };
+  using RxQueue = mesh_nrf52::BleRxFrameQueue<Frame, FRAME_QUEUE_SIZE,
+                                             RxQueueGuard>;
+  RxQueue recv_queue;
 
   void clearBuffers();
   bool hasRequiredReplyCapacity() const;
   void shiftSendQueueLeft();
-  void shiftRecvQueueLeft();
   size_t writeBleUartFrame(const Frame& frame);
   void recoverStalledTx(const char* cause);
   void serviceTxRecovery(uint32_t now);
@@ -156,7 +161,6 @@ public:
     _bonded_only = false;
     _bonded_only_configure_pending = false;
     send_queue_len = 0;
-    recv_queue_len = 0;
   }
 
   /**
