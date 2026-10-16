@@ -78,7 +78,7 @@ int main() {
     def test_context_handoff_frees_idle_self_serve_and_preserves_busy_ota(self):
         header = (ROOT / "src/helpers/ota/OtaContext.h").read_text()
         start = header.index("  // Only the main thread may change ownership.")
-        end = header.index("#endif\n\n#if defined(NRF52_PLATFORM) && defined(OTA_SD_STORE)", start)
+        end = header.index("#endif\n\n#if defined(OTA_RAK15002_SD_STORE)", start)
         body = header[start:end]
         source = r'''
 #include <cassert>

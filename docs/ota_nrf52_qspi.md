@@ -415,3 +415,124 @@ Source-only means `ota install`, bootloader installation, and `ota dev` apply
 are disabled even if the installed bootloader supports SD. No RAK15002 SD
 bootloader handoff is claimed. Update this trial firmware over USB/BLE; normal
 RAK4631 receiver targets and MeshTower SD self-update are unchanged.
+
+## Optional RAK15002 storage in canonical RAK4631 images
+
+This is a separate **STORE** path, not an expansion of the older
+`RAK_4631_repeater_rak15002_sd_seeder_only` CACHE-only experiment above. It is
+limited to the canonical RAK4631 Full/Reduced LoRa-OTA receiver roles
+(repeater, room server, Ethernet room server, and sensor) and to
+`RAK_4631_companion_radio_full`. Existing exact-NOR identities, non-OTA roles,
+and the CACHE-only seeder retain their previous storage contracts.
+
+The receiver and Full Companion use the same optional card hardware, but not
+the same update authority:
+
+| Image type | RAK15002 role | Local firmware install from that card |
+| --- | --- | --- |
+| Canonical RAK4631 receiver | Adaptive application staging, plus the retained mOTA archive/source | Only a trusted, signed **application** package, after bootloader capability checks |
+| `RAK_4631_companion_radio_full` | Cache and serve peer `.mota` files | Never; it remains a source-only Companion |
+| `RAK_4631_repeater_rak15002_sd_seeder_only` | Historical strict cache/source-only profile | Never |
+
+The receiver chooses the card only during real OTA/cache work, not at boot or
+while merely reporting status. With no card it retains its existing qualified
+internal/NOR selection. With a card fitted, the firmware deliberately does
+**not** probe NOR as a fallback, even if the card, filesystem, or installed
+loader is unsuitable: both devices use CS26, so issuing a NOR probe could
+clock the card. RAK15002 card-detect is active-low WisBlock IO6 (Arduino pin
+10), not Arduino pin 6; the SD bus is SPIM2 at 4 MHz on 29/3/30 with CS26.
+
+The new STORE path accepts **FAT16/FAT32 only**. It deliberately uses the
+smaller FAT-only SdFat types to fit the RAK4631 flash budget and reduce its
+RAM use; an exFAT card is not a supported STORE volume. This restriction does
+not change the historical CACHE-only RAK15002 seeder or MeshTower SD profiles,
+which retain their existing `SdFs`/`FsFile` (FAT/exFAT) behavior.
+
+### Future receiver loader prerequisite and update flow
+
+The matching `wiscore_rak4631_auto` **all-in-one OTAFIX bootloader** is only a
+local candidate today: it is not released and has not been hardware-qualified.
+Do not provision it as an SD-apply upgrade. Until a released, qualified loader
+explicitly advertises the supplemental authenticated RAK15002-SD
+*application* capability, the receiver fails SD application apply closed and
+continues to use its qualified internal/NOR path when no card is selected.
+
+Once such a loader is released, it must preserve the deployed internal/NOR
+capabilities while adding the separate SD application handoff record. A stock,
+older, or otherwise ordinary RAK4631 OTAFIX bootloader must refuse the SD
+handoff. Its first migration will need to be performed locally over USB/BLE DFU
+or SWD; it must not be bootstrapped from the SD card or with a LoRa bootloader
+package.
+
+The supplemental capability is application-only: an SD card never authorizes
+a bootloader update. Existing qualified internal bootloader-update behavior is
+separate and still applies only to its exact package and loader identity. The
+Full Companion's archive/source feature never installs firmware locally, so it
+does not need this SD-apply bootloader capability.
+
+Only after that future matching loader is released, installed locally, and
+qualified may a receiver use the normal explicit application flow:
+
+```text
+ota status
+ota ls
+ota pull <MID8> flash
+# wait for `ota status` to show the same fetch as ready
+ota install
+```
+
+`ota cache` manages the card-backed archive/source (`ota cache off` stops new
+captures; retained files can still seed). `ota storage` and `ota self` report
+the selected backend and loader state, but they intentionally do not force a
+removable-media probe at startup. After the future loader is present, a
+card-backed receiver reports `SD store` and `authenticated SD apply OK`; before
+then, a missing supplemental capability, unsigned application, incompatible
+media, or a busy store fails before reboot/approval.
+
+### RAK13800 Ethernet ownership
+
+The SD-capable Ethernet-room receiver
+`RAK_4631_room_server_ethernet_lora_ota_no_external_sensors` is also an
+explicit one-at-a-time profile. Its RAK13800 Ethernet starts off on **every**
+reboot and is not a saved setting. With the card removed and no active/cache,
+staged, serving, or NOR work, enable it from local USB or an existing Telnet
+session with either command spelling:
+
+```text
+eth on
+# or: set eth on
+eth.status
+eth off
+```
+
+`eth on`/`set eth on` refuses a fitted card, retained NOR owner, or busy OTA
+state. `eth off`/`set eth off` is cooperative and likewise refuses to release
+the bus while OTA work is active. Do not use these commands as a way to switch
+media during a transfer.
+
+#### Full Companion
+
+The Full Companion is deliberately different: its optional RAK15002 holds
+peer archives for caching and serving, never its own install image. It may
+also compile RAK13800 Ethernet, but Ethernet and the card electrically share
+CS26 and cannot operate together. In this combined profile physical Ethernet
+starts **off** and `set eth on` is only a this-boot choice.
+
+To use Ethernet, stop/cancel any active OTA capture or serve work, detach any
+host folder source, **physically remove the SD card**, then run:
+
+```text
+get eth
+set eth on
+```
+
+The command refuses unsafe ownership states rather than forcing the bus. To
+return to the card, run `set eth off`, wait for it to report off, then insert
+the card and use `get sdcard [free]` or `ota cache [on|off]`. If a card is
+inserted while Ethernet is active, Ethernet fails closed; use `set eth off`
+before accessing the card. This is not a supported hot-swap procedure.
+
+The combined RAK15002 receiver/Companion/RAK13800 path has host-side checks,
+but **has not yet received hardware qualification**. Do not treat these rules
+as proof that a particular card, Ethernet module, loader migration, or live
+card insertion has been field-tested.

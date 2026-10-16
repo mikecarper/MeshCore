@@ -466,7 +466,9 @@ bool ota_apply_detools_mota(const uint8_t*, uint32_t, const SignerAllowlist&, Ap
 static OtaStoreFlashNrf52* g_nrf52_apply_store = nullptr;
 #endif
 #if defined(OTA_QSPI_STORE)
-static uint8_t g_nrf52_qspi_handoff = GPREGRET2_OTA_STAGE_QSPI;
+// Set by the successfully verified external application path, never inferred
+// from compile-time store flags: the same RAK image supports NOR and SD.
+static uint8_t g_nrf52_external_handoff = GPREGRET2_OTA_STAGE_QSPI;
 #endif
 
 static void ota_nrf52_set_reset_handoff(uint8_t request, uint8_t source) {
@@ -514,13 +516,13 @@ void ota_reboot_to_apply() {                   // public: set the apply magic + 
 #if defined(OTA_TOWER_AUTO_STORE)
     stage_handoff = GPREGRET2_OTA_STAGE_SD;
 #else
-    stage_handoff = g_nrf52_qspi_handoff;
+    stage_handoff = g_nrf52_external_handoff;
 #endif
   }
 #elif defined(OTA_SD_STORE)
   stage_handoff = GPREGRET2_OTA_STAGE_SD;
 #elif defined(OTA_QSPI_STORE)
-  stage_handoff = g_nrf52_qspi_handoff;
+  stage_handoff = g_nrf52_external_handoff;
 #elif defined(OTA_FLASH_STORE)
   if (g_nrf52_apply_store && g_nrf52_apply_store->is_hybrid()) {
     // The bootloader admits retained SRAM only after a clean software-reset
@@ -1155,8 +1157,20 @@ static bool ota_prepare_bootloader_update_external(Store& store,
 #if defined(OTA_SD_STORE)
 bool ota_apply_mota_nrf52(OtaStoreSdNrf52& store, const SignerAllowlist& allow,
                           ApplyState& st, char* msg) {
-#if defined(OTA_TOWER_AUTO_STORE)
+#if defined(OTA_TOWER_AUTO_STORE) || defined(OTA_RAK_AUTO_STORE)
   g_nrf52_apply_store = nullptr;
+#endif
+#if defined(OTA_RAK15002_SD_STORE)
+  OtaBootloaderIdentity rak_identity;
+  const OtaBlCaps rak_caps = ota_bootloader_app_caps();
+  if (rak_caps.optional_sd_app_storage != OTA_BL_STORAGE_SD ||
+      !ota_installed_bootloader_identity(rak_identity) || !rak_identity.crc_ok ||
+      (strcmp(rak_identity.device_name, "4631_DFU") != 0 &&
+       strcmp(rak_identity.device_name, "4631_AUTO_DFU") != 0)) {
+    st = ApplyState();
+    strcpy(msg, "RAK SD application OTA requires the matching all-in-one OTAFIX bootloader");
+    return false;
+  }
 #endif
 #if defined(OTA_SD_BOOTLOADER_UPDATE)
   OtaBootloaderIdentity installed;
@@ -1170,7 +1184,12 @@ bool ota_apply_mota_nrf52(OtaStoreSdNrf52& store, const SignerAllowlist& allow,
     return false;
   }
 #endif
-  return ota_apply_mota_nrf52_external(store, allow, OTA_BL_STORAGE_SD, "SD", true, st, msg);
+  if (!ota_apply_mota_nrf52_external(store, allow, OTA_BL_STORAGE_SD, "SD", true, st, msg))
+    return false;
+#if defined(OTA_RAK15002_SD_STORE) && defined(OTA_RAK_AUTO_STORE)
+  g_nrf52_external_handoff = GPREGRET2_OTA_STAGE_SD;
+#endif
+  return true;
 }
 
 #if defined(OTA_SD_BOOTLOADER_UPDATE)
@@ -1214,13 +1233,13 @@ bool ota_apply_mota_nrf52(OtaStoreQspiNrf52& store, const SignerAllowlist& allow
 #if defined(OTA_RAK_AUTO_STORE)
   g_nrf52_apply_store = nullptr;
 #endif
-  g_nrf52_qspi_handoff = GPREGRET2_OTA_STAGE_QSPI;
+  g_nrf52_external_handoff = GPREGRET2_OTA_STAGE_QSPI;
   if (!ota_apply_mota_nrf52_external(store, allow, OTA_BL_STORAGE_QSPI, "QSPI", false, st, msg)) {
     return false;
   }
 #if defined(OTA_RAK_AUTO_STORE)
   if (OtaStoreQspiNrf52::headerW25Detected()) {
-    g_nrf52_qspi_handoff = GPREGRET2_OTA_STAGE_HEADER_W25;
+    g_nrf52_external_handoff = GPREGRET2_OTA_STAGE_HEADER_W25;
   }
 #endif
 #if defined(OTA_RAK_AUTO_STORE) && !defined(RAK_3401)
@@ -1228,7 +1247,7 @@ bool ota_apply_mota_nrf52(OtaStoreQspiNrf52& store, const SignerAllowlist& allow
     OtaBootloaderIdentity identity;
     if (ota_installed_bootloader_identity(identity) && identity.crc_ok &&
         strcmp(identity.device_name, "4631_AUTO_DFU") == 0) {
-      g_nrf52_qspi_handoff = GPREGRET2_OTA_STAGE_RAK15001;
+      g_nrf52_external_handoff = GPREGRET2_OTA_STAGE_RAK15001;
     }
   }
 #endif
@@ -1338,6 +1357,16 @@ bool ota_prepare_bootloader_update_nrf52(OtaStoreFlashNrf52& store,
       ota_bl_optional_app_storage(image, OTA_BOOT_IMAGE_SIZE) != optional_storage) {
     strcpy(msg, "candidate must retain optional RAK application storage"); return false;
   }
+#if defined(RAK_4631) || defined(OTA_RAK15002_SD_STORE)
+  const OtaBlCaps installed_app_caps = ota_bootloader_app_caps();
+  if (installed_app_caps.optional_sd_app_storage != 0 &&
+      ota_bl_rak_sd_app_storage(image, OTA_BOOT_IMAGE_SIZE,
+          candidate_caps.storage_flags,
+          ota_bl_optional_app_storage(image, OTA_BOOT_IMAGE_SIZE)) !=
+              installed_app_caps.optional_sd_app_storage) {
+    strcpy(msg, "candidate must retain authenticated RAK SD application storage"); return false;
+  }
+#endif
 #endif
   const OtaBootloaderContinuityGate continuity = ota_bootloader_continuity_gate(
       installed, candidate, m.fw_version, OTA_BOOT_CONTINUITY_FAMILY_S140,

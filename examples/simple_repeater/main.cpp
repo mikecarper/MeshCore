@@ -86,17 +86,40 @@ static bool prepareCombinedEthernet(void*, char* error, size_t capacity) {
     snprintf(error, capacity, "Error: OTA storage is not ready");
     return false;
   }
+#if defined(OTA_RAK15002_SD_STORE)
+  if (mesh::ota::ota_rak15002_sd_card_present()) {
+    snprintf(error, capacity, "Error: RAK15002 SD card fitted; Ethernet shares its IO slot");
+    return false;
+  }
+  if (!context->prepareRakSdForEthernet() ||
+      !mesh::ota::rak4631_try_acquire_spi(mesh::ota::RakSharedSpiOwner::Ethernet)) {
+    snprintf(error, capacity, "Error: Ethernet bus is locked by OTA activity or storage");
+    return false;
+  }
+  return true;
+#else
   return context->prepareRakEthernet(error, capacity);
+#endif
 }
 
 static bool canReleaseCombinedEthernet(void*) {
   auto* context = mesh::ota::ota_context_if_active();
+#if defined(OTA_RAK15002_SD_STORE)
+  return context && context->canReleaseRakSdForEthernet();
+#else
   return context && context->canReleaseRakEthernet();
+#endif
 }
 
 static bool releaseCombinedEthernet(void*) {
   auto* context = mesh::ota::ota_context_if_active();
+#if defined(OTA_RAK15002_SD_STORE)
+  if (!context || !context->releasedRakSdEthernet()) return false;
+  mesh::ota::rak4631_release_spi(mesh::ota::RakSharedSpiOwner::Ethernet);
+  return true;
+#else
   return context && context->releaseRakEthernet();
+#endif
 }
 #endif
 
@@ -372,6 +395,9 @@ void setup() {
   hooks.prepare = prepareCombinedEthernet;
   hooks.can_release = canReleaseCombinedEthernet;
   hooks.released = releaseCombinedEthernet;
+#if defined(OTA_RAK15002_SD_STORE)
+  hooks.storage_conflict = [](void*) { return mesh::ota::ota_rak15002_sd_card_present(); };
+#endif
   ethernet_configure(hooks);  // First prototype defaults OFF on every restart.
 #endif
   ethernet_start_task();

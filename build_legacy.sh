@@ -285,6 +285,7 @@ for section, options in data:
     ota_enabled = False
     ota_disabled = False
     sd_ota = False
+    rak15002_sd_store = False
     qspi_ota = False
     admin_enabled = False
     espnow_enabled = "bridge_espnow" in env_name.lower()
@@ -317,11 +318,19 @@ for section, options in data:
                 ota_disabled = True
             if "OTA_SD_STORE" in str(flag):
                 sd_ota = True
+            if "OTA_RAK15002_SD_STORE" in str(flag):
+                rak15002_sd_store = True
             if "OTA_QSPI_STORE" in str(flag):
                 qspi_ota = True
             match = pattern.search(str(flag))
             if match and platform is None:
                 platform = match.group(0)
+    # RAK15002 STORE is an optional member of the adaptive RAK recipe, not an
+    # SD-primary image.  Keep the old CACHE-only and all other SD profiles in
+    # the SD-primary bucket so their release/bootloader safeguards remain
+    # unchanged.
+    if rak15002_sd_store:
+        sd_ota = False
     if platform:
         full_enabled = platform == "ESP32_PLATFORM" and (
             mqtt_enabled or espnow_enabled or admin_enabled
@@ -2917,6 +2926,31 @@ is_nrf52_companion_radio_full_target() {
     && is_companion_radio_full_target "$1"
 }
 
+# The RAK15002 STORE path is deliberately limited to the canonical RAK4631
+# receiver identities and the RAK4631 Full Companion.  Exact NOR targets,
+# deployed bridge identities, ordinary non-OTA roles, and the older strict
+# CACHE-only RAK15002 seeder keep their existing storage contracts.
+is_rak4631_rak15002_sd_store_target() {
+  case "${1,,}" in
+    rak_4631_repeater_unified_lora_ota|\
+    rak_4631_repeater_lora_ota_no_external_sensors|\
+    rak_4631_room_server_lora_ota_no_external_sensors|\
+    rak_4631_room_server_ethernet_lora_ota_no_external_sensors|\
+    rak_4631_sensor_lora_ota_no_external_sensors|\
+    rak_4631_companion_radio_full)
+      return 0
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
+is_rak4631_rak15002_sd_store_receiver_target() {
+  is_rak4631_rak15002_sd_store_target "$1" \
+    && [ "${1,,}" != "rak_4631_companion_radio_full" ]
+}
+
 requires_esp32_arduino3_framework() {
   local env_name=$1
   local pio_env_name=$2
@@ -3938,6 +3972,29 @@ apply_lora_ota_no_external_sensors_profile() {
   fi
 }
 
+# Generated RAK4631 room-server and sensor OTA identities compile an ordinary
+# role environment, so their storage recipe cannot live only in a PlatformIO
+# stanza.  Apply the same bounded RAK15002 STORE contract as the explicit
+# repeater receiver, after reduced-sensor flags have been resolved.  The
+# Companion remains source-only; receiver roles retain the adaptive
+# internal/NOR path as well as optional SD.
+apply_rak4631_rak15002_sd_store_profile() {
+  local env_name=$1
+  local auto_store_flags="-DOTA_RAK_AUTO_STORE=1 -DOTA_QSPI_STORE=1 -DOTA_FLASH_STORE=1 -DOTA_QSPI_SHARED_WISBLOCK_SPI=1 -DOTA_QSPI_SCK_ARDUINO_PIN=3 -DOTA_QSPI_CS_ARDUINO_PIN=31 -DOTA_QSPI_IO0_ARDUINO_PIN=30 -DOTA_QSPI_IO1_ARDUINO_PIN=29 -DOTA_QSPI_IO2_NOT_CONNECTED=1 -DOTA_QSPI_IO3_NOT_CONNECTED=1 -DOTA_QSPI_SCK_FREQUENCY=NRF_QSPI_FREQ_32MDIV4 -DOTA_QSPI_EXPECTED_SIZE=2097152UL"
+  local sd_flags="-DOTA_RAK15002_SD_STORE=1 -DOTA_SD_STORE=1 -DOTA_SD_CS_PIN=26 -DOTA_SD_SCK_MHZ=4 -DOTA_SD_CACHE_MAX=16 -DOTA_MAX_SERVE=24"
+
+  [ "${PIO_ENV_PLATFORM_BY_NAME[$env_name]:-}" = "NRF52_PLATFORM" ] || return 0
+  is_rak4631_rak15002_sd_store_target "$env_name" || return 0
+
+  if is_rak4631_rak15002_sd_store_receiver_target "$env_name"; then
+    # A receiver may select its existing internal flash or qualified NOR
+    # backend when no card is present. The runtime owns the shared slot and
+    # never treats RAK15002 as a generic SD-primary bootloader store.
+    export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} ${auto_store_flags}"
+  fi
+  export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} ${sd_flags}"
+}
+
 append_platformio_build_unflags() {
   local flags=$1
   local flag
@@ -4073,14 +4130,23 @@ apply_nrf52_lora_ota_build_recipe() {
 # app-preserving bootloader staging. Keep this list narrower than generic nRF52
 # OTA support: external QSPI/SD, ExtraFS Companions, Ethernet, and
 # unqualified/full-sensor roles must not advertise this privileged path. The
-# same inventory is consumed by the nrf52_base pre-script so direct explicit-env
-# and build.sh release builds cannot silently differ.
+# listed RAK4631 adaptive receiver aliases are the one intentional exception:
+# their STORE overlay is applied after this decision, but still requires the
+# same fixed 64 KiB hybrid-RAM / internal-bootloader-update contract. The same
+# inventory is consumed by the nrf52_base pre-script so direct explicit-env and
+# build.sh release builds cannot silently differ.
 supports_nrf52_internal_bootloader_update() {
   [ "${PIO_ENV_PLATFORM_BY_NAME[$1]:-}" = "NRF52_PLATFORM" ] || return 1
-  if [ "${PIO_ENV_QSPI_OTA_BY_NAME[$1]:-0}" != "0" ]; then
-    pio_env_option_contains "$1" build_flags "OTA_RAK_AUTO_STORE" || return 1
+  local rak15002_receiver=0
+  if is_rak4631_rak15002_sd_store_receiver_target "$1"; then
+    rak15002_receiver=1
   fi
-  [ "${PIO_ENV_SD_OTA_BY_NAME[$1]:-0}" = "0" ] || return 1
+  if [ "${PIO_ENV_QSPI_OTA_BY_NAME[$1]:-0}" != "0" ]; then
+    pio_env_option_contains "$1" build_flags "OTA_RAK_AUTO_STORE" \
+      || [ "$rak15002_receiver" = "1" ] || return 1
+  fi
+  [ "${PIO_ENV_SD_OTA_BY_NAME[$1]:-0}" = "0" ] \
+    || [ "$rak15002_receiver" = "1" ] || return 1
   is_lora_ota_build "$1" || return 1
   grep -Fqx -- "$1" tools/mota/nrf52_internal_bootloader_targets.txt
 }
@@ -4169,10 +4235,17 @@ apply_companion_radio_full_profile() {
 
   # Every full Companion is a LoRa mOTA source, never an update destination.
   # Remove inherited staging/install stores before adding the platform's host
-  # folder transport. Full also restores WebConfig when a constrained legacy
-  # WiFi sibling disabled it only to fit its smaller application partition.
-  append_platformio_build_unflags "-UENABLE_OTA -DOTA_FLASH_STORE=1 -DOTA_SD_STORE=1 -DDISABLE_LORA_OTA=1 -DWEBCONFIG_DISABLED=1"
-  export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -UDISABLE_LORA_OTA -DENABLE_OTA=1 -UOTA_FLASH_STORE -UOTA_SD_STORE -UWEBCONFIG_DISABLED -DOTA_SEEDER_ONLY=1 -DMOTA_TARGET_ID=0 -DCOMPANION_RADIO_FULL=1 -DCOMPANION_FEATURE_TEMP_RADIO=1 -DCOMPANION_FEATURE_OTA_CLI=1 -DENABLE_USB_INTERFACE=1 -DBLE_PIN_CODE=123456 -DMESH_DEBUG=1 -DMESH_PACKET_LOGGING=1"
+  # folder transport. The RAK4631 Full has an optional RAK15002 archive/cache:
+  # retain only that STORE while still removing its internal install store.
+  # Full also restores WebConfig when a constrained legacy WiFi sibling
+  # disabled it only to fit its smaller application partition.
+  if is_rak4631_rak15002_sd_store_target "$env_name"; then
+    append_platformio_build_unflags "-UENABLE_OTA -DOTA_FLASH_STORE=1 -DDISABLE_LORA_OTA=1 -DWEBCONFIG_DISABLED=1"
+    export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -UDISABLE_LORA_OTA -DENABLE_OTA=1 -UOTA_FLASH_STORE -DOTA_SD_STORE=1 -UWEBCONFIG_DISABLED -DOTA_SEEDER_ONLY=1 -DMOTA_TARGET_ID=0 -DCOMPANION_RADIO_FULL=1 -DCOMPANION_FEATURE_TEMP_RADIO=1 -DCOMPANION_FEATURE_OTA_CLI=1 -DENABLE_USB_INTERFACE=1 -DBLE_PIN_CODE=123456 -DMESH_DEBUG=1 -DMESH_PACKET_LOGGING=1"
+  else
+    append_platformio_build_unflags "-UENABLE_OTA -DOTA_FLASH_STORE=1 -DOTA_SD_STORE=1 -DDISABLE_LORA_OTA=1 -DWEBCONFIG_DISABLED=1"
+    export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -UDISABLE_LORA_OTA -DENABLE_OTA=1 -UOTA_FLASH_STORE -UOTA_SD_STORE -UWEBCONFIG_DISABLED -DOTA_SEEDER_ONLY=1 -DMOTA_TARGET_ID=0 -DCOMPANION_RADIO_FULL=1 -DCOMPANION_FEATURE_TEMP_RADIO=1 -DCOMPANION_FEATURE_OTA_CLI=1 -DENABLE_USB_INTERFACE=1 -DBLE_PIN_CODE=123456 -DMESH_DEBUG=1 -DMESH_PACKET_LOGGING=1"
+  fi
 
   if is_nrf52_companion_radio_full_target "$env_name"; then
     # CDC 0 starts as an ASCII CLI and automatically hands an incoming framed
@@ -5117,6 +5190,7 @@ build_firmware_one_profile() {
   apply_stm32_companion_size_profile "$env_name"
   apply_nrf52_size_profile "$env_name"
   apply_lora_ota_no_external_sensors_profile "$env_name"
+  apply_rak4631_rak15002_sd_store_profile "$env_name"
   apply_radio_overrides
   apply_firmware_profile_overrides
   declare_build_capability_contract "$env_name" "$env_platform"

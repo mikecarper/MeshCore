@@ -4,8 +4,7 @@
 
 #include "OtaSource.h"
 #include "OtaStore.h"
-
-class FsFile;
+#include "OtaSdTypesNrf52.h"
 
 namespace mesh {
 namespace ota {
@@ -23,7 +22,7 @@ class OtaStoreSdNrf52;
 
 // Persistent capture destination and MotaSource for the SD OTA archive. Completed containers live as
 // /mota/<mid>.mota; an in-progress capture uses /mota/<mid>.part and can resume after interruption.
-// This object shares the staging store's mounted SdFs volume so FAT metadata never has two independent
+// This object shares the staging store's mounted volume so FAT metadata never has two independent
 // caches for the same card.
 class OtaCacheSdNrf52 : public OtaStore, public MotaSource {
 public:
@@ -68,14 +67,48 @@ private:
 
   bool ready();
   bool ensureDir();
-  bool describeFile(FsFile& file, MotaDesc& out) const;
+  bool describeFile(OtaSdFile& file, MotaDesc& out) const;
   bool quarantineFinal(const uint8_t mid[4]);
   void pathFor(const uint8_t mid[4], const char* ext, char* out, size_t cap) const;
   void fail(const char* message);
 
   OtaStoreSdNrf52* _owner = nullptr;
-  FsFile* _file = nullptr;
+  OtaSdFile* _file = nullptr;
+#if defined(OTA_RAK15002_SD_STORE)
+  // Valid archive files all have the fixed manifest followed immediately by
+  // leaves and payload. Keep every descriptor field without caching three
+  // redundant offsets/sizes per entry (192 bytes saved at 16 entries).
+  struct CachedDesc {
+    uint8_t mid[4];
+    uint32_t target_id, fw_version, block_count, payload_size;
+    uint8_t codec_id, flags, block_size_log2, source_caps;
+    CachedDesc& operator=(const MotaDesc& d) {
+      for (unsigned i = 0; i < 4; ++i) mid[i] = d.mid[i];
+      target_id = d.target_id; fw_version = d.fw_version;
+      block_count = d.block_count; payload_size = d.payload_size;
+      codec_id = d.codec_id; flags = d.flags;
+      block_size_log2 = d.block_size_log2; source_caps = d.source_caps;
+      return *this;
+    }
+    uint32_t totalSize() const { return 8u + MOTA_MFL + block_count * 4u + payload_size + 5u; }
+    operator MotaDesc() const {
+      MotaDesc d;
+      for (unsigned i = 0; i < 4; ++i) d.mid[i] = mid[i];
+      d.target_id = target_id; d.fw_version = fw_version;
+      d.block_count = block_count; d.payload_size = payload_size;
+      d.codec_id = codec_id; d.flags = flags;
+      d.block_size_log2 = block_size_log2; d.source_caps = source_caps;
+      d.leaves_off = 8u + MOTA_MFL;
+      d.payload_off = d.leaves_off + block_count * 4u;
+      d.total_size = totalSize();
+      return d;
+    }
+  };
+  static_assert(sizeof(CachedDesc) == 24u, "bounded RAK SD index changed");
+  CachedDesc _entries[OTA_SD_CACHE_MAX];
+#else
   MotaDesc _entries[OTA_SD_CACHE_MAX];
+#endif
   uint8_t _count = 0;
   uint8_t _mid[4] = {0};
   uint32_t _total = 0;

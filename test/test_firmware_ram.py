@@ -751,6 +751,48 @@ int main() {
             with self.assertRaises(ValueError):
                 ram.requirements(platform, definitions, "companion")
 
+    def test_optional_rak_sd_counts_lazy_volume_and_files_without_hiding_source_scratch(self):
+        flags = {"ENABLE_OTA": 1, "OTA_SD_STORE": 1}
+        base = ram.requirements("NRF52_PLATFORM", flags, "RAK_4631_repeater")
+        flags["OTA_RAK15002_SD_STORE"] = 1
+        sd = ram.requirements("NRF52_PLATFORM", flags, "RAK_4631_repeater")
+        self.assertEqual(sd["required_heap_bytes"] - base["required_heap_bytes"], 2048)
+        self.assertEqual(sd["components"]["sd_fat_volume_and_files"], 2048)
+        self.assertEqual(sd["components"]["ota_generic_source_buffers"],
+                         base["components"]["ota_generic_source_buffers"])
+
+    def test_optional_sd_room_ethernet_counts_exclusive_worker_but_companion_has_no_worker(self):
+        flags = {"ENABLE_OTA": 1, "OTA_SD_STORE": 1, "OTA_RAK15002_SD_STORE": 1,
+                 "ETHERNET_ENABLED": 1, "RAK_4631": 1, "OTA_RAK_AUTO_STORE": 1,
+                 "MESHCORE_OTA_DEVICE_DEFLATE": 1}
+        room = ram.requirements("NRF52_PLATFORM", flags, "RAK_4631_room_server")
+        parts = room["components"]
+        self.assertIn("ethernet_or_external_ota_workspaces", parts)
+        self.assertEqual(parts["ethernet_or_external_ota_workspaces"], 15440)
+        self.assertEqual(parts["sd_fat_volume_and_files"], 2048)
+        self.assertNotIn("ota_generic_source_buffers", parts)
+        large = ram.requirements("NRF52_PLATFORM", {**flags, "RAK4631_ETHERNET_TASK_STACK_WORDS": 4096},
+                                 "RAK_4631_room_server")
+        self.assertEqual(large["components"]["ethernet_or_external_ota_workspaces"], 17216)
+        companion = ram.requirements("NRF52_PLATFORM", {**flags, "OTA_SEEDER_ONLY": 1},
+                                     "RAK_4631_companion_radio_full")
+        self.assertNotIn("ethernet_or_external_ota_workspaces", companion["components"])
+        self.assertIn("ota_generic_source_buffers", companion["components"])
+
+    def test_only_rak_sd_full_companion_counts_large_name_lookup(self):
+        flags = {"ENABLE_OTA": 1, "OTA_SD_STORE": 1, "OTA_RAK15002_SD_STORE": 1,
+                 "OTA_TARGET_NAME_FRONT_CODED": 1, "COMPANION_RADIO_FULL": 1, "OTA_SEEDER_ONLY": 1}
+        full = ram.requirements("NRF52_PLATFORM", flags, "RAK_4631_companion_radio_full")
+        self.assertEqual(full["components"]["ota_target_name_lookup"], 4112)
+        for missing in ("OTA_RAK15002_SD_STORE", "OTA_TARGET_NAME_FRONT_CODED"):
+            other = ram.requirements("NRF52_PLATFORM", {key: value for key, value in flags.items() if key != missing},
+                                     "RAK_4631_companion_radio_full")
+            self.assertNotIn("ota_target_name_lookup", other["components"])
+        receiver = ram.requirements("NRF52_PLATFORM", {key: value for key, value in flags.items()
+                                     if key not in ("COMPANION_RADIO_FULL", "OTA_SEEDER_ONLY")},
+                                     "RAK_4631_repeater_unified_lora_ota")
+        self.assertNotIn("ota_target_name_lookup", receiver["components"])
+
     def test_queue_sharing_applies_to_qualified_direct_full_builds_only(self):
         source = '#include "src/helpers/ota/OtaMemoryPolicy.h"\n#ifdef OTA_SHARED_COMPANION_QUEUE\nSHARING_ENABLED\n#endif\n'
         for flags, expected in (

@@ -3,7 +3,10 @@
 # shared allowlist for build.sh release aliases and the subset that are also
 # literal PlatformIO envs. Synthetic aliases are activated by build.sh.
 # External QSPI/SD, internal ExtraFS, seeder-only, Ethernet, and full-sensor
-# roles are intentionally absent.
+# roles are intentionally absent, except for the explicitly listed RAK4631
+# adaptive receiver aliases below.  Their optional RAK15002 SD path retains
+# the existing internal/NOR shared-slot contract and must use the matching
+# all-in-one OTAFIX loader; it is not a generic SD-primary profile.
 Heltec_tower_v2_repeater_lora_ota_no_external_sensors
 Heltec_t096_repeater_lora_ota_no_external_sensors
 Heltec_t096_repeater_bridge_rs232_lora_ota_no_external_sensors
@@ -20,6 +23,9 @@ ThinkNode_M3_repeater_lora_ota_no_external_sensors
 RAK_3401_repeater_lora_ota_no_external_sensors
 RAK_4631_repeater_lora_ota_no_external_sensors
 RAK_4631_repeater_unified_lora_ota
+RAK_4631_room_server_lora_ota_no_external_sensors
+RAK_4631_room_server_ethernet_lora_ota_no_external_sensors
+RAK_4631_sensor_lora_ota_no_external_sensors
 RAK_3401_repeater_unified_lora_ota
 RAK_4631_repeater_bridge_rs232_serial1_lora_ota_no_external_sensors
 RAK_4631_repeater_bridge_rs232_serial2_lora_ota_no_external_sensors

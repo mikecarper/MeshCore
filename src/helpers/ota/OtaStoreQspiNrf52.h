@@ -7,7 +7,9 @@
 #endif
 
 #if defined(OTA_QSPI_SHARED_WISBLOCK_SPI) && defined(ETHERNET_ENABLED) && \
-    !defined(RAK4631_COMBINED_ETHERNET)
+    !defined(RAK4631_COMBINED_ETHERNET) && \
+    !(defined(OTA_RAK15002_SD_STORE) && defined(NRF52_PLATFORM) && \
+      defined(RAK_4631) && defined(OTA_RAK_AUTO_STORE))
 #error "WisBlock SPI OTA staging cannot share the bus/chip-select with Ethernet"
 #endif
 
@@ -17,7 +19,8 @@
 #error "Combined RAK4631 Ethernet requires its adaptive OTA and shared-SPI ownership contract"
 #endif
 
-#if defined(OTA_QSPI_SHARED_WISBLOCK_SPI) && defined(OTA_SD_STORE)
+#if defined(OTA_QSPI_SHARED_WISBLOCK_SPI) && defined(OTA_SD_STORE) && \
+    !(defined(OTA_RAK15002_SD_STORE) && defined(RAK_4631) && defined(OTA_RAK_AUTO_STORE))
 #error "WisBlock SPI OTA staging cannot share the bus/chip-select with SD staging"
 #endif
 

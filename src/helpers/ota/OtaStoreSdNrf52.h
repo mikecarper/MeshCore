@@ -3,9 +3,7 @@
 #if defined(NRF52_PLATFORM) && defined(OTA_SD_STORE)
 
 #include "OtaStore.h"
-
-class SdFs;
-class FsFile;
+#include "OtaSdTypesNrf52.h"
 
 namespace mesh {
 
@@ -55,6 +53,9 @@ public:
   // Mount-only probe for the MeshTower selector. Never opens/removes staging
   // files or changes their live session state.
   bool probeMedia() { return mount() && capacity() != 0u; }
+  // Caller first detaches the archive and proves no queued/pinned SD source
+  // remains. Never unmount an installable or partially received container.
+  bool releaseBus();
   const char* last_error() const { return _error; }
 
 private:
@@ -62,14 +63,21 @@ private:
   static const char* const PATH;
 
   bool mount();
+  bool acquireBus();
+  bool busAccessAllowed() const;
+  void releaseBusClaim();
   bool beginCardOnly();
   bool locate_file();
   void resetStoreState();
   void fail(const char* message);
 
-  SdFs* _sd = nullptr;
-  mutable FsFile* _file = nullptr;
+  OtaSdFs* _sd = nullptr;
+  mutable OtaSdFile* _file = nullptr;
   bool _mounted = false;
+#if defined(OTA_RAK15002_SD_STORE)
+  bool _bus_owned = false;
+  bool _bus_started = false;
+#endif
   bool _planned_bootloader = false;
   uint32_t _total = 0;
   uint32_t _first_sector = 0;

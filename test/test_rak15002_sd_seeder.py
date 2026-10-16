@@ -104,6 +104,24 @@ class Rak15002SdSeederTests(unittest.TestCase):
         recipes = Recipes()
         self.assertEqual(recipes.config.get(ENV, "extends"), BASE)
         flags = recipes.value(ENV, "build_flags")
+        unflags = recipes.value(ENV, "build_unflags")
+
+        # The ordinary reduced receiver is now adaptive internal/NOR/SD, but
+        # this historical exact profile must still compile as its distinct
+        # CACHE-only source. Check the effective compiler macro set rather
+        # than treating a parent recipe's library dependency as a child store.
+        def macros(text, directive):
+            return set(re.findall(
+                r"(?:^|\s)-" + directive + r"\s*([A-Za-z_][A-Za-z0-9_]*)",
+                text,
+            ))
+
+        effective = macros(flags, "D")
+        effective -= macros(flags, "U")
+        # PlatformIO's build_unflags removes inherited compiler arguments;
+        # -D entries here deliberately fence an adaptive parent macro.
+        effective -= macros(unflags, "D")
+        effective -= macros(unflags, "U")
         for flag in ("OTA_SEEDER_ONLY=1", "OTA_SD_STORE=1", "OTA_RAK15002_SD_CACHE=1",
                      "OTA_SD_CS_PIN=26", "OTA_SD_SCK_MHZ=4", "OTA_SD_CACHE_MAX=16",
                      "OTA_MAX_SERVE=24", "OTA_HEAP_CONTEXT=1"):
@@ -114,13 +132,20 @@ class Rak15002SdSeederTests(unittest.TestCase):
             self.assertIn(flag, flags)
         for flag in ("OTA_QSPI_STORE", "OTA_RAK_AUTO_STORE", "OTA_TOWER_AUTO_STORE",
                      "OTA_SD_BOOTLOADER_UPDATE", "COMPANION_RADIO_FULL", "ETHERNET_ENABLED"):
-            self.assertNotRegex(flags, r"-D\s*" + flag + r"(?:=|\s|$)")
+            self.assertNotIn(flag, effective)
+        self.assertNotIn("OTA_RAK15002_SD_STORE", effective)
+        self.assertNotIn("OTA_FLASH_STORE", effective)
+        for flag in ("OTA_SEEDER_ONLY", "OTA_SD_STORE", "OTA_RAK15002_SD_CACHE",
+                     "OTA_HEAP_CONTEXT"):
+            self.assertIn(flag, effective)
         libraries = recipes.value(ENV, "lib_deps")
         self.assertIn("SdFat-beta.git#a249cfa", libraries)
         self.assertIn("u-blox", libraries)
         self.assertIn("SSD1306", libraries)
-        self.assertNotIn("OTA_RAK15002_SD_CACHE", recipes.value(BASE, "build_flags"))
-        self.assertNotIn("SdFat", recipes.value(BASE, "lib_deps"))
+        base_flags = recipes.value(BASE, "build_flags")
+        self.assertIn("OTA_RAK15002_SD_STORE=1", base_flags)
+        self.assertNotIn("OTA_RAK15002_SD_CACHE", base_flags)
+        self.assertIn("SdFat", recipes.value(BASE, "lib_deps"))
 
     def test_real_bus_keeps_radio_pins_and_cs_safe(self):
         build(self, BUS_TEST, DEFINES, {"SPI.h": SPI_MOCK})
@@ -167,6 +192,7 @@ class EnvironmentSensorManager { public: uint8_t detectWisBlockStorageHolds(); }
 int main() { EnvironmentSensorManager sensors; assert(sensors.detectWisBlockStorageHolds() == EXPECT_HOLD); }
 '''.replace("@METHOD@", method)
         for defines in (["OTA_SD_STORE", "OTA_RAK15002_SD_CACHE", "EXPECT_HOLD=0"],
+                        ["OTA_SD_STORE", "OTA_RAK15002_SD_STORE", "EXPECT_HOLD=0"],
                         ["OTA_SD_STORE", "EXPECT_HOLD=mesh::gps::ExternalStorage"],
                         ["OTA_QSPI_SHARED_WISBLOCK_SPI", "EXPECT_HOLD=mesh::gps::ExternalStorage"],
                         ["EXPECT_HOLD=0"]):

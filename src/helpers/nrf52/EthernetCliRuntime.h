@@ -3,13 +3,17 @@
 #include <cstdlib>
 #include "EthernetCliTransmit.h"
 
-// Included by EthernetCLI.h only for the opt-in combined RAK4631 prototype.
-// Legacy Ethernet profiles retain their established implementation.
+// Included by EthernetCLI.h for combined or optional-SD RAK4631 recipes.
+// Both require explicit startup and a completed storage-owner handoff before
+// any worker may touch the IO-slot pins. Legacy-only profiles are unchanged.
 struct EthernetCliHooks {
   bool (*prepare)(void*, char*, size_t) = nullptr;
   bool (*can_release)(void*) = nullptr;
   bool (*released)(void*) = nullptr;
   bool (*save)(void*, bool) = nullptr;
+#if defined(OTA_RAK15002_SD_STORE)
+  bool (*storage_conflict)(void*) = nullptr; // GPIO-only, safe from either thread.
+#endif
   void* context = nullptr;
 };
 
@@ -41,6 +45,9 @@ static uint32_t ethernet_line_generation = 0; // Main-thread partial input owner
 static std::atomic<bool> ethernet_command_check_requested{false};
 static std::atomic<uint32_t> ethernet_command_check_started{0};
 static bool ethernet_controller_faulted = false;
+#if defined(OTA_RAK15002_SD_STORE)
+static std::atomic<bool> ethernet_storage_faulted{false};
+#endif
 static mesh::nrf52::EthernetCliTransmit ethernet_transmit;
 
 #ifndef ETHERNET_CLI_TX_BUFFER_BYTES
@@ -69,6 +76,25 @@ static void ethernet_notify_worker() {
   taskENTER_CRITICAL();
   if (ethernet_task_handle != nullptr) xTaskNotifyGive(ethernet_task_handle);
   taskEXIT_CRITICAL();
+}
+
+static bool ethernet_storage_conflict() {
+#if defined(OTA_RAK15002_SD_STORE)
+  if (ethernet_storage_faulted.load()) return true;
+  if (ethernet_bus_reserved && (!ethernet_hooks.storage_conflict ||
+      ethernet_hooks.storage_conflict(ethernet_hooks.context))) {
+    // A fitted card shares CS26. Gate new socket/controller transactions
+    // immediately, but leave the worker to finish any already-entered vendor
+    // call before ending SPI. Retain ownership until an explicit safe OFF.
+    ethernet_storage_faulted.store(true);
+    ethernet_running.store(false);
+    ethernet_state.store(EthernetCliState::Faulted);
+    ethernet_session_reset.store(true);
+    ethernet_notify_worker();
+    return true;
+  }
+#endif
+  return false;
 }
 
 static void ethernet_queue_clear() {
@@ -116,10 +142,10 @@ class EthernetClientAccess {
   bool acquired = false;
 public:
   EthernetClientAccess() {
-    if (!ethernet_running.load()) return;
+    if (ethernet_storage_conflict() || !ethernet_running.load()) return;
     EthernetSpiAccess expected = EthernetSpiAccess::Idle;
     acquired = ethernet_spi_access.compare_exchange_strong(expected, EthernetSpiAccess::Client);
-    if (acquired && !ethernet_running.load()) {
+    if (acquired && (ethernet_storage_conflict() || !ethernet_running.load())) {
       ethernet_spi_access.store(EthernetSpiAccess::Idle);
       acquired = false;
     }
@@ -210,7 +236,7 @@ static void ethernet_stop_hardware() {
   // The W5100S has four sockets; there is no EthernetServer::end() in the
   // library. Stop listener, accepted-client and DHCP sockets before SPI.end.
   // Never toggle the PHY reset or shared WisBlock supply during shutdown.
-  if (ethernet_spi_started && ethernet_hardware_found) {
+  if (!ethernet_storage_conflict() && ethernet_spi_started && ethernet_hardware_found) {
     for (uint8_t index = 0; index < 4; ++index) {
       (void)mesh::nrf52::EthernetCliTransmit::close(index);
     }
@@ -319,6 +345,7 @@ static bool ethernet_publish_online() {
 }
 
 static void ethernet_cache_ip() {
+  if (ethernet_storage_conflict()) return;
   const IPAddress ip = Ethernet.localIP();
   ethernet_cached_ip.store(static_cast<uint32_t>(ip[0]) |
       (static_cast<uint32_t>(ip[1]) << 8) |
@@ -334,6 +361,7 @@ static bool ethernet_has_tx_work() {
 }
 
 static bool ethernet_controller_commands_idle() {
+  if (ethernet_storage_conflict()) return false;
   SPIClass* spi = W5100.getSPI();
   if (!spi) return false;
   spi->beginTransaction(SPI_ETHERNET_SETTINGS);
@@ -359,6 +387,7 @@ static void ethernet_poll_command_check() {
 // Worker-only, while SPI access is Worker. No library socketSend/execCmdSn
 // calls: stalled TCP acknowledgement must never hold the mesh loop.
 static void ethernet_pump_tx() {
+  if (ethernet_storage_conflict()) return;
   ethernet_transmit.poll(millis());
   if (ethernet_transmit.failed()) {
     if (ethernet_raw_client) {
@@ -395,9 +424,10 @@ static void ethernet_pump_tx() {
 }
 
 static void ethernet_drain_before_stop() {
-  if (!ethernet_spi_started || !ethernet_hardware_found) return;
+  if (ethernet_storage_conflict() || !ethernet_spi_started || !ethernet_hardware_found) return;
   const uint32_t started = millis();
   while (ethernet_has_tx_work() && static_cast<uint32_t>(millis() - started) < 250) {
+    if (ethernet_storage_conflict()) return;
     ethernet_pump_tx();
     if (!ethernet_has_tx_work()) break;
     (void)ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(10));
@@ -409,7 +439,7 @@ static void ethernet_drain_before_stop() {
 // OFF interrupts retry waits, then lets an in-progress library call finish;
 // never delete another task in the middle of its SPI transaction.
 static void ethernet_task(void*) {
-  if (ethernet_enabled.load()) {
+  if (ethernet_enabled.load() && !ethernet_storage_conflict()) {
     pinMode(PIN_ETHERNET_RESET, OUTPUT);
     digitalWrite(PIN_ETHERNET_RESET, HIGH);
     ETHERNET_SPI_PORT.begin();
@@ -418,7 +448,9 @@ static void ethernet_task(void*) {
     uint8_t mac[6];
     generateEthernetMac(mac);
     while (ethernet_enabled.load()) {
+      if (ethernet_storage_conflict()) break;
       const bool connected = Ethernet.begin(mac, 10000, 2000) != 0;
+      if (ethernet_storage_conflict()) break;
       ethernet_hardware_found = Ethernet.hardwareStatus() != EthernetNoHardware;
       if (!ethernet_enabled.load()) break;
       if (!ethernet_hardware_found) {
@@ -427,6 +459,7 @@ static void ethernet_task(void*) {
         return;
       }
       if (connected) {
+        if (ethernet_storage_conflict()) break;
         ethernet_server.begin();
         ethernet_cache_ip();
         ethernet_last_maintain.store(millis());
@@ -435,10 +468,12 @@ static void ethernet_task(void*) {
           // An online OFF is notified by the next mesh-loop maintain call,
           // allowing a command received over Ethernet to send its reply first.
           ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(20));
+          if (ethernet_storage_conflict()) break;
           if (!ethernet_enabled.load()) break;
           if (ethernet_controller_faulted) continue;
           const bool maintain = ethernet_maintain_requested.exchange(false);
           ethernet_worker_take_access();
+          if (ethernet_storage_conflict()) break;
           ethernet_poll_command_check();
           if (ethernet_controller_faulted || ethernet_command_check_requested.load()) {
             // Preserve the maintenance request while command checking yields.
@@ -446,6 +481,7 @@ static void ethernet_task(void*) {
             continue;
           }
           if (maintain) (void)Ethernet.maintain();
+          if (ethernet_storage_conflict()) break;
           if (!ethernet_enabled.load()) break;
           if (maintain) ethernet_last_maintain.store(millis());
           // Do not enter vendor accept/relisten while SEND/RECV is pending.
@@ -465,10 +501,17 @@ static void ethernet_task(void*) {
   ethernet_worker_take_access();
   ethernet_drain_before_stop();
   ethernet_stop_hardware();
-  ethernet_finish_task(EthernetCliState::Stopping);
+  ethernet_finish_task(ethernet_storage_conflict() && ethernet_enabled.load()
+      ? EthernetCliState::Faulted : EthernetCliState::Stopping);
 }
 
 static bool ethernet_request_start(char* reply, bool persist) {
+#if defined(OTA_RAK15002_SD_STORE)
+  if (ethernet_storage_faulted.load() && ethernet_enabled.load()) {
+    strcpy(reply, "Error: SD insertion stopped Ethernet; turn Ethernet off first");
+    return false;
+  }
+#endif
   if (ethernet_state.load() == EthernetCliState::Stopping) {
     strcpy(reply, "Error: Ethernet is still stopping");
     return false;
@@ -489,6 +532,12 @@ static bool ethernet_request_start(char* reply, bool persist) {
     strcpy(reply, "Error: Ethernet bus safety hooks unavailable");
     return false;
   }
+#if defined(OTA_RAK15002_SD_STORE)
+  if (!ethernet_hooks.storage_conflict) {
+    strcpy(reply, "Error: Ethernet storage-conflict hook unavailable");
+    return false;
+  }
+#endif
   reply[0] = 0;
   if (!ethernet_hooks.prepare(ethernet_hooks.context, reply, 160)) {
     if (!reply[0]) strcpy(reply, "Error: Ethernet bus is busy");
@@ -510,6 +559,9 @@ static bool ethernet_request_start(char* reply, bool persist) {
     return false;
   }
   ethernet_enabled.store(true);
+#if defined(OTA_RAK15002_SD_STORE)
+  ethernet_storage_faulted.store(false);
+#endif
   ethernet_controller_faulted = false;
   ethernet_command_check_requested.store(false);
   ethernet_maintain_requested.store(false);

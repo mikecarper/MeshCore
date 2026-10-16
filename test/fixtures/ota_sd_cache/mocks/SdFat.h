@@ -138,3 +138,14 @@ public:
   uint32_t bytesPerCluster() const { return sd_test::medium.cluster_bytes; }
   SdCard* card() { return sd_test::medium.connected ? &_card : nullptr; }
 };
+
+// The optional RAK15002 STORE profile intentionally restricts the card to
+// FAT16/FAT32. Its production aliases select SdFat32/FatFile; map those
+// names to distinct classes over the same in-memory filesystem boundary.
+// These must remain classes, matching the real library's forward declarations.
+class SdFat32 : public SdFs {};
+class FatFile : public FsFile {
+public:
+  FatFile() = default;
+  FatFile(const FsFile& file) : FsFile(file) {}
+};

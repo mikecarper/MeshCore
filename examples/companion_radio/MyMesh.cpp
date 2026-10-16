@@ -53,6 +53,9 @@
 #endif
 #if defined(ENABLE_OTA)
 #include <helpers/ota/OtaContext.h>
+#if defined(OTA_RAK15002_SD_STORE) && defined(ETHERNET_USE_RAK13800)
+bool handleRak4631PeripheralCommand(const char* command, char* reply, size_t capacity);
+#endif
 #endif
 #if defined(ENABLE_OTA)
 #include <helpers/ota/OtaSpeedConfig.h>
@@ -3787,6 +3790,9 @@ bool MyMesh::handleLocalControlCommand(const char* command, char* reply,
                                        size_t reply_size) {
   if (!command || !reply || reply_size == 0) return false;
   while (*command == ' ') command++;
+#if defined(OTA_RAK15002_SD_STORE) && defined(ETHERNET_USE_RAK13800)
+  if (handleRak4631PeripheralCommand(command, reply, reply_size)) return true;
+#endif
 #if defined(MESH_HIL_TX_FREQ_MHZ)
   if (mesh::handleHilTxFrequencyCommand(command, reply, reply_size)) return true;
 #endif
@@ -10234,6 +10240,10 @@ void MyMesh::handleTerminalCommand(char* command, bool reader_prompt,
     terminalOutput().print("  get ethernet / get ethernet.radio\r\n"
         "  set ethernet.radio <MHz>,<kHz>,<SF>,<CR>[,<preamble>]\r\n"
         "  set ethernet on|off (saved; trusted-LAN KISS TCP 5003, radio2 only)\r\n");
+#endif
+#if defined(OTA_RAK15002_SD_STORE) && defined(ETHERNET_USE_RAK13800)
+    terminalOutput().print("  get eth / set eth on|off (physical RAK13800; default off, this boot)\r\n"
+        "  get sdcard [free] / ota cache [on|off] (RAK15002; mutually exclusive with Ethernet)\r\n");
 #endif
     terminalOutput().print("  get pwrmgt.bootreason\r\n");
 #if COMPANION_FEATURE_MEMORY_DIAGNOSTICS

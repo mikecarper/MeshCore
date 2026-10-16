@@ -30,8 +30,10 @@ requires a reboot to apply its exclusive transport selection; primary ESP-NOW
 mesh operation is unaffected by the infrastructure-WiFi default.
 
 The full Companion is deliberately not a LoRa OTA destination: it has no
-firmware staging store, refuses `ota install`, and never advertises its own
-firmware as an mOTA image.
+installable firmware staging store, refuses `ota install`, and never
+advertises its own firmware as an mOTA image. The RAK4631 Full variant can
+optionally keep a source-only RAK15002 SD archive of peer `.mota` files; that
+does not make the Companion an update destination.
 
 Preference changes through the Companion protocol, WebConfig, or USB terminal
 report a storage error if saving fails, and restore their previous values.
@@ -44,12 +46,38 @@ a busy radio rollback remains pending for recovery instead of reporting success.
 | BLE Binary Companion | Yes | Yes |
 | USB ASCII terminal | Yes | Yes |
 | Dedicated USB plaintext logging | No - shares the one USB TTY | Yes |
-| Host-backed LoRa mOTA source | WiFi TCP 5001 | Exclusive USB mode or encrypted BLE |
+| Host-backed LoRa mOTA source | WiFi TCP 5001 | Exclusive USB mode or encrypted BLE; RAK4631 Full can additionally cache/serve peer images from optional RAK15002 SD |
 | WiFi Companion/WebConfig | Yes | No - nRF52840 has no WiFi |
 | Hardware serial Companion | On targets with assigned serial pins | On targets with assigned serial pins |
-| Ethernet Companion | On targets with an Ethernet module | On RAK4631 with RAK13800 |
+| Ethernet Companion | On targets with an Ethernet module | On RAK4631 with RAK13800; the RAK15002 combination is explicitly one-at-a-time |
 | LoRa self-update | No | No |
 | Optional self-update | WiFi on existing dual-app layouts; USB on single-app layouts | Bluetooth DFU with a compatible bootloader; USB always supported |
+
+### RAK4631 Full Companion: optional RAK15002 archive and RAK13800 Ethernet
+
+`RAK_4631_companion_radio_full` can cache and serve peer mOTA files from an
+optional RAK15002 card. This remains a source-only archive: `ota install` and
+bootloader installation are unavailable on the Companion, whether or not a
+card is inserted. Check the archive with `ota cache [on|off]`; use
+`get sdcard [free]` for card space.
+
+The optional RAK13800 Ethernet module and RAK15002 share CS26. Ethernet is
+therefore **off by default** in this combined Full image and is controlled only
+for the current boot:
+
+```text
+get eth
+set eth on
+set eth off
+```
+
+Remove the SD card and end/cancel active OTA cache, transfer, serve, or host
+folder activity before `set eth on`. The command refuses unsafe states. Turn
+Ethernet off before inserting or accessing a card; an insertion during
+Ethernet use fails closed and still requires `set eth off`. This is not a
+supported hot-swap workflow. The combined RAK15002/Ethernet hardware path has
+not yet been hardware-qualified; see [nRF52 RAK15002 storage](ota_nrf52_qspi.md#optional-rak15002-storage-in-canonical-rak4631-images)
+for the receiver's separate signed-application path and loader prerequisite.
 
 ### Screenless nRF52 spoken button confirmations
 

@@ -22,6 +22,14 @@
 #define OTA_SD_SCK_MHZ 8
 #endif
 
+#if defined(OTA_RAK15002_SD_STORE)
+// The mounted FAT/exFAT volume and both retained file handles (staging and
+// archive) are lazy heap objects, not linked globals. Bind their total plus
+// allocator metadata to the runtime RAM policy's separate 2 KiB allowance.
+static_assert(sizeof(mesh::ota::OtaSdFs) + 2u * sizeof(mesh::ota::OtaSdFile) + 3u * 32u <= 2048u,
+              "RAK15002 FAT volume/file allocations exceed the RAM allowance");
+#endif
+
 namespace mesh {
 namespace ota {
 
@@ -35,6 +43,7 @@ static void clear_sd_auth_record() {
   __DSB();
 }
 
+#if !defined(OTA_SEEDER_ONLY)
 static bool publish_sd_auth_record(const uint8_t record[MOTA_SD_AUTH_LEN]) {
   volatile uint8_t* const retained =
       reinterpret_cast<volatile uint8_t*>(MOTA_SD_AUTH_ADDR);
@@ -52,13 +61,17 @@ static bool publish_sd_auth_record(const uint8_t record[MOTA_SD_AUTH_LEN]) {
     if (retained[i] != record[i]) return false;
   return true;
 }
+#endif
 
 } // namespace
 
 const char* const OtaStoreSdNrf52::PATH = "/meshcore-ota.mota";
 
 OtaStoreSdNrf52::OtaStoreSdNrf52()
-    : _sd(new (std::nothrow) SdFs()), _file(new (std::nothrow) FsFile()) {
+#if !defined(OTA_RAK15002_SD_STORE)
+    : _sd(new (std::nothrow) OtaSdFs()), _file(new (std::nothrow) OtaSdFile())
+#endif
+{
   // If an earlier reset did not enter OTAFIX, stale authorization must not arm a
   // later unrelated reboot. OTAFIX runs before application constructors and
   // consumes a valid record on the intended apply boot.
@@ -66,8 +79,59 @@ OtaStoreSdNrf52::OtaStoreSdNrf52()
 }
 
 OtaStoreSdNrf52::~OtaStoreSdNrf52() {
-  if (_file) { _file->close(); delete _file; }
-  if (_sd) { _sd->end(); delete _sd; }
+  resetStoreState();
+  if (_file) delete _file;
+  if (_sd) delete _sd;
+  releaseBusClaim();
+}
+
+bool OtaStoreSdNrf52::acquireBus() {
+#if defined(OTA_RAK15002_SD_STORE)
+  if (!ota_rak15002_sd_card_present()) { fail("SD card absent"); return false; }
+  if (!rak4631_try_acquire_spi(RakSharedSpiOwner::Sd)) {
+    fail("WisBlock SPI owned by Ethernet or NOR"); return false;
+  }
+  _bus_owned = true;
+  if (!_sd) _sd = new (std::nothrow) OtaSdFs();
+  if (!_file) _file = new (std::nothrow) OtaSdFile();
+  if (!_sd || !_file) {
+    fail("SD allocation failed"); releaseBusClaim(); return false;
+  }
+#endif
+  return true;
+}
+
+bool OtaStoreSdNrf52::busAccessAllowed() const {
+#if defined(OTA_RAK15002_SD_STORE)
+  return _bus_owned && rak4631_spi_owner() == RakSharedSpiOwner::Sd
+      && ota_rak15002_sd_card_present();
+#else
+  return true;
+#endif
+}
+
+void OtaStoreSdNrf52::releaseBusClaim() {
+#if defined(OTA_RAK15002_SD_STORE)
+  if (!_bus_owned) return;
+  if (_bus_started) {
+    ota_sd_spi_bus().end();
+    // Leave the powered, unswitched card deselected, and stop driving the
+    // shared clock/data pads before another peripheral claims them.
+    digitalWrite(OTA_SD_CS_PIN, HIGH);
+    pinMode(OTA_SD_CS_PIN, OUTPUT);
+    pinMode(3, INPUT); pinMode(29, INPUT); pinMode(30, INPUT);
+    _bus_started = false;
+  }
+  rak4631_release_spi(RakSharedSpiOwner::Sd);
+  _bus_owned = false;
+#endif
+}
+
+bool OtaStoreSdNrf52::releaseBus() {
+  if (_total) { fail("SD staged update is pinned"); return false; }
+  resetStoreState();
+  releaseBusClaim();
+  return true;
 }
 
 void OtaStoreSdNrf52::fail(const char* message) {
@@ -80,31 +144,48 @@ void OtaStoreSdNrf52::resetStoreState() {
   _first_sector = 0;
   _allocated_sectors = 0;
   _planned_bootloader = false;
-  if (_file && *_file) _file->close();
-  if (_sd) _sd->end();
+#if defined(OTA_RAK15002_SD_STORE)
+  // Ownership persists if a card is physically removed. Cleanup still owns
+  // the controller and can release it, but no other device may steal it.
+  const bool access = _bus_owned && rak4631_spi_owner() == RakSharedSpiOwner::Sd;
+#else
+  const bool access = true;
+#endif
+  if (access && _file && *_file) _file->close();
+  if (access && _sd) _sd->end();
   _mounted = false;
 }
 
 bool OtaStoreSdNrf52::beginCardOnly() {
   _error[0] = 0;
+  if (!acquireBus()) return false;
   resetStoreState();
   ota_sd_prepare_chip_select();
+#if defined(OTA_RAK15002_SD_STORE)
+  _bus_started = true;
+#endif
   if (!_sd || !_file ||
       !_sd->cardBegin(SdSpiConfig(OTA_SD_CS_PIN, DEDICATED_SPI,
                                   SD_SCK_MHZ(OTA_SD_SCK_MHZ), &ota_sd_spi_bus()))) {
     fail("SD card init failed");
+    resetStoreState(); releaseBusClaim();
     return false;
   }
   return true;
 }
 
 bool OtaStoreSdNrf52::mount() {
-  if (_mounted) return true;
+  if (_mounted) return busAccessAllowed();
   _error[0] = 0;
+  if (!acquireBus()) return false;
   ota_sd_prepare_chip_select();
+#if defined(OTA_RAK15002_SD_STORE)
+  _bus_started = true;
+#endif
   if (!_sd || !_file || !_sd->begin(SdSpiConfig(OTA_SD_CS_PIN, DEDICATED_SPI,
                                                 SD_SCK_MHZ(OTA_SD_SCK_MHZ), &ota_sd_spi_bus()))) {
     fail("SD mount failed");
+    resetStoreState(); releaseBusClaim();
     return false;
   }
   _mounted = true;
@@ -119,12 +200,14 @@ bool OtaStoreSdNrf52::formatCard(MainBoard& board) {
   if (!_sd->format()) {
     fail("SD format failed");
     _sd->end();
+    releaseBusClaim();
     return false;
   }
   board.serviceWatchdog();
   if (!_sd->volumeBegin()) {
     fail("SD remount after format failed");
     _sd->end();
+    releaseBusClaim();
     return false;
   }
 
@@ -142,6 +225,7 @@ bool OtaStoreSdNrf52::eraseCard(MainBoard& board) {
   if (!card || sector_count == 0) {
     fail("SD sector count failed");
     _sd->end();
+    releaseBusClaim();
     return false;
   }
 
@@ -159,6 +243,7 @@ bool OtaStoreSdNrf52::eraseCard(MainBoard& board) {
     if (!card->erase(first_sector, last_sector)) {
       fail("SD erase failed");
       _sd->end();
+      releaseBusClaim();
       return false;
     }
     first_sector += count;
@@ -168,9 +253,11 @@ bool OtaStoreSdNrf52::eraseCard(MainBoard& board) {
   if (!card->syncDevice()) {
     fail("SD erase sync failed");
     _sd->end();
+    releaseBusClaim();
     return false;
   }
   _sd->end();
+  releaseBusClaim();
   return true;
 }
 
@@ -257,8 +344,8 @@ static bool append_sd_list_entry(SdListState& state, const char* path, uint64_t 
   return true;
 }
 
-static bool scan_sd_files(FsFile& dir, SdListState& state) {
-  FsFile file;
+static bool scan_sd_files(OtaSdFile& dir, SdListState& state) {
+  OtaSdFile file;
   while (file.openNext(&dir, O_RDONLY)) {
     state.board.serviceWatchdog();
     const size_t parent_len = state.path_len;
@@ -309,7 +396,7 @@ bool OtaStoreSdNrf52::listFiles(MainBoard& board, uint16_t page,
   _error[0] = 0;
   if (!mount()) return false;
 
-  FsFile root = _sd->open("/", O_RDONLY);
+  OtaSdFile root = _sd->open("/", O_RDONLY);
   if (!root || !root.isDir()) { fail("SD root directory open failed"); return false; }
   SdListState state(board, (uint32_t)(page - 1) * SD_LIST_PAGE_SIZE);
   bool scanned = ensure_list_path(state, 2) && scan_sd_files(root, state);
@@ -331,7 +418,37 @@ bool OtaStoreSdNrf52::listFiles(MainBoard& board, uint16_t page,
   return true;
 }
 
+uint32_t OtaStoreSdNrf52::capacity() const {
+  if (!busAccessAllowed() || !_mounted || !_sd || !_sd->card()) return 0;
+  uint64_t bytes = (uint64_t)_sd->card()->sectorCount() * MOTA_SD_AUTH_SECTOR_SIZE;
+  return bytes > UINT32_MAX ? UINT32_MAX : (uint32_t)bytes;
+}
+
+#if defined(OTA_SEEDER_ONLY)
+// The source-only context uses OtaStoreRam<1> for install fetches and this
+// object only owns the FAT volume shared with OtaCacheSdNrf52. Its archive
+// has its own file/read/write methods. Do not retain unreachable installer
+// vtable code (or permit accidental staging/approval) in a Companion image.
+bool OtaStoreSdNrf52::plan_layout(bool, uint32_t, uint32_t, uint32_t, bool) {
+  fail("source-only SD archive cannot stage/apply"); return false;
+}
+bool OtaStoreSdNrf52::begin(uint32_t) {
+  fail("source-only SD archive cannot stage/apply"); return false;
+}
+bool OtaStoreSdNrf52::set_meta_size(uint32_t) { return false; }
+bool OtaStoreSdNrf52::write(uint32_t, const uint8_t*, uint32_t) { return false; }
+bool OtaStoreSdNrf52::read(uint32_t, uint8_t*, uint32_t) const { return false; }
+bool OtaStoreSdNrf52::finalize() { return false; }
+void OtaStoreSdNrf52::checkpoint() {}
+bool OtaStoreSdNrf52::reopen() { return false; }
+bool OtaStoreSdNrf52::discard() { return false; }
+void OtaStoreSdNrf52::clear() {}
+bool OtaStoreSdNrf52::approve_for_bootloader(const uint8_t[32], const uint8_t[32]) {
+  fail("source-only SD archive cannot stage/apply"); return false;
+}
+#else
 bool OtaStoreSdNrf52::locate_file() {
+  if (!busAccessAllowed()) return false;
   Sector_t first = 0, last = 0;
   if (!_file || !_file->contiguousRange(&first, &last) || last < first) {
     fail("OTA file is not contiguous");
@@ -418,7 +535,7 @@ bool OtaStoreSdNrf52::set_meta_size(uint32_t meta_bytes) {
 }
 
 bool OtaStoreSdNrf52::write(uint32_t offset, const uint8_t* data, uint32_t len) {
-  if (!_file || !*_file || (uint64_t)offset + len > _total || !_file->seekSet(offset) ||
+  if (!busAccessAllowed() || !_file || !*_file || (uint64_t)offset + len > _total || !_file->seekSet(offset) ||
       _file->write(data, len) != len) {
     fail("SD OTA write failed");
     return false;
@@ -427,20 +544,15 @@ bool OtaStoreSdNrf52::write(uint32_t offset, const uint8_t* data, uint32_t len) 
 }
 
 bool OtaStoreSdNrf52::read(uint32_t offset, uint8_t* buf, uint32_t len) const {
-  if (!_file || !*_file || (uint64_t)offset + len > _total || !_file->seekSet(offset) ||
+  if (!busAccessAllowed() || !_file || !*_file || (uint64_t)offset + len > _total || !_file->seekSet(offset) ||
       _file->read(buf, len) != (int)len) {
     return false;
   }
   return true;
 }
 
-uint32_t OtaStoreSdNrf52::capacity() const {
-  if (!_mounted || !_sd || !_sd->card()) return 0;
-  uint64_t bytes = (uint64_t)_sd->card()->sectorCount() * MOTA_SD_AUTH_SECTOR_SIZE;
-  return bytes > UINT32_MAX ? UINT32_MAX : (uint32_t)bytes;
-}
-
 bool OtaStoreSdNrf52::finalize() {
+  if (!busAccessAllowed()) return false;
   SdCard* const card = _sd ? _sd->card() : nullptr;
   if (!_file || !*_file || !card || !_file->sync() || !card->syncDevice()) {
     fail("SD OTA sync failed");
@@ -450,7 +562,7 @@ bool OtaStoreSdNrf52::finalize() {
 }
 
 void OtaStoreSdNrf52::checkpoint() {
-  if (_file && *_file) {
+  if (busAccessAllowed() && _file && *_file) {
     _file->sync();
     if (_sd->card()) _sd->card()->syncDevice();
   }
@@ -604,6 +716,7 @@ bool OtaStoreSdNrf52::approve_for_bootloader(
   }
   return true;
 }
+#endif // OTA_SEEDER_ONLY
 
 } // namespace ota
 } // namespace mesh

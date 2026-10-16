@@ -722,6 +722,10 @@ jobs:
           python3 -B test/test_rak_ethernet_transmit.py -v
           python3 -B test/test_rak4631_ethernet_runtime.py -v
           python3 -B test/test_ethernet_terminal_shutdown.py -v
+          python3 -B test/test_rak_sd_receiver.py -v
+          python3 -B test/test_rak15002_shared_spi.py -v
+          python3 -B test/test_rak_sd_context_handoff.py -v
+          python3 -B test/test_rak_sd_room_ethernet.py -v
 
       - name: Verify nRF52 infrastructure trims and unchanged Companion scope
         run: |
@@ -729,6 +733,7 @@ jobs:
           python3 -B test/test_nrf52_tft_font_trim.py -v
           python3 -B test/test_ota_sd_cache.py -v
           python3 -B test/test_rak15002_sd_seeder.py -v
+          python3 -B test/test_rak4631_rak15002_sd_recipes.py -v
           python3 -B test/test_ota_target_names.py -v
           python3 -B test/test_ota_cli_listing.py -v
 

@@ -158,6 +158,8 @@ def requirements(platform, defines, target):
         parts["display_dma_and_bus"] = 16384
     mqtt = None
     combined_rak_ethernet = "RAK4631_COMBINED_ETHERNET" in defines
+    cooperative_rak_ethernet = combined_rak_ethernet or (
+        "OTA_RAK15002_SD_STORE" in defines and "ETHERNET_ENABLED" in defines and not companion)
     if combined_rak_ethernet and (platform != "NRF52_PLATFORM"
                                  or not {"RAK_4631", "ETHERNET_ENABLED", "OTA_RAK_AUTO_STORE"}.issubset(defines)):
         raise ValueError("combined RAK Ethernet budget requires RAK4631 adaptive nRF52 storage")
@@ -172,9 +174,19 @@ def requirements(platform, defines, target):
     if platform == "NRF52_PLATFORM":
         parts["loop_and_callback_stacks"] = integer(defines, "MESH_NRF52_LOOP_STACK_WORDS", 2048) * 4 + 3072
         parts["core_usb_filesystems_sensors"] = 12288
+        if "OTA_RAK15002_SD_STORE" in defines:
+            # New optional RAK SD allocates one SdFs volume and separate
+            # staging/archive FsFile handles lazily; production bounds the
+            # complete objects plus allocation metadata to this allowance.
+            parts["sd_fat_volume_and_files"] = 2048
+            if full and integer(defines, "OTA_TARGET_NAME_FRONT_CODED", 0):
+                # RAK Full uses larger independent Zopfli chunks for its
+                # complete name index, with a rare, freed-on-return heap
+                # lookup buffer instead of increasing the loop stack.
+                parts["ota_target_name_lookup"] = 4096 + 16
         if "BLE_PIN_CODE" in defines:
             parts["bluetooth_worker_stacks"] = 5920
-        if combined_rak_ethernet and "WITH_RS232_BRIDGE" in defines:
+        if cooperative_rak_ethernet and "WITH_RS232_BRIDGE" in defines:
             # The bridge owns a packet/ACK duplicate table, RX/TX frames and
             # heartbeat state. The source assertion bounds the complete object
             # to 2816 bytes; retain room for allocation metadata and the UART TX semaphore.
@@ -278,7 +290,7 @@ def requirements(platform, defines, target):
         # running nRF52840 app is <1 MiB: <=512 2-KiB leaves. Compression needs
         # one block; raw diagnostic serving retains a leaf-sized output.
         parts["ota_self_source_scratch"] = 2 * 2048 + 2 * 16
-    if combined_rak_ethernet:
+    if cooperative_rak_ethernet:
         words = integer(defines, "RAK4631_ETHERNET_TASK_STACK_WORDS", 1024)
         if words < 1024:
             raise ValueError("combined RAK Ethernet task requires at least 1024 stack words")
@@ -333,7 +345,7 @@ def requirements(platform, defines, target):
         largest = max(largest, 8192 + parts["expanded_message_previews"])
     for name in ("client_table", "flood_filter_table", "room_flood_rule_table", "neighbor_history",
                  "ota_context", "screen_objects_and_history", "ota_encoder_workspace",
-                 "ota_generic_source_buffers", "ethernet_or_external_ota_workspaces"):
+                 "ota_generic_source_buffers", "ethernet_or_external_ota_workspaces", "ota_target_name_lookup"):
         largest = max(largest, parts.get(name, 0))
     if "room_browser_mailbox" in parts:
         largest = max(largest, 8192, parts["room_browser_mailbox"])
