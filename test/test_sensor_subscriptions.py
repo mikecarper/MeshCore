@@ -17,7 +17,8 @@ FIXTURE = ROOT / 'test/fixtures/sensor_subscriptions/test_sensor_subscriptions.c
 
 
 def production_methods(source):
-    methods = extract_braced(source, 'static float findTelemValue(') + '\n'
+    methods = extract_braced(source, 'static const uint8_t* findTelemData(') + '\n'
+    methods += extract_braced(source, 'static float findTelemValue(') + '\n'
     methods += extract_braced(source, 'bool SensorMesh::telemHasChanged(') + '\n'
     if 'void SensorMesh::snapshotTelemetry(' in source:
         methods += extract_braced(source, 'void SensorMesh::snapshotTelemetry(') + '\n'
@@ -73,6 +74,22 @@ class SensorSubscriptionTest(unittest.TestCase):
 
     def test_allocation_and_queue_failures_keep_delta_available_for_retry(self):
         self.passed('admission')
+
+    def test_raw_snapshots_preserve_scalars_and_unchanged_pushes_stop(self):
+        self.passed('snapshot')
+
+    def test_lossy_float_snapshot_negative_control(self):
+        def old(source):
+            current = '''    const uint8_t* value = findTelemData(buf, size, ch, t);
+    if (value) memcpy(&c->extra.sensor.prev_telem[i + 2], value, sz);
+    else memset(&c->extra.sensor.prev_telem[i + 2], 0, sz);'''
+            self.assertEqual(source.count(current), 1)
+            return source.replace(current, '''    float v = findTelemValue(buf, size, ch, t, 0.0f);
+    LPPData::putFloat(&c->extra.sensor.prev_telem[i + 2], v, sz,
+                      LPPData::getMultiplier(t), LPPData::isSigned(t));''', 1)
+        result = self.execute('snapshot', old)
+        self.assertNotEqual(result.returncode, 0, 'lossy snapshot escaped regression')
+        self.assertIn('snapshot must preserve the delivered LPP bytes', result.stderr)
 
     def test_subscription_collection_and_push_fit_host_packet_budget(self):
         self.passed('capacity')

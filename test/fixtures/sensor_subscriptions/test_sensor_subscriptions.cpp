@@ -247,6 +247,82 @@ static void tracker_mode_checks() {
     assert(target.allocations == 2 && target.queued == 1);
   }
 }
+static void snapshot_checks() {
+  for (uint8_t stored_path : {0, 0xFF}) {
+    for (unsigned refusal = 0; refusal < 3; ++refusal) {
+      SensorMesh target;
+      target.acl.clients.resize(1);
+      ClientInfo& client = target.acl.clients[0];
+      client.out_path_len = stored_path;
+      assert(subscribe(target, client, LPP_VOLTAGE, 2) == 12);
+      target.telemetry.bytes = {1, LPP_VOLTAGE, 1, 164}; // Delivered 4.20 V.
+      target.refuse_allocation = refusal == 1;
+      target.refuse_queue = refusal == 2;
+      target.pushSubscriptions();
+      if (refusal) {
+        assert(!target.queued && client.extra.sensor.prev_telem[2] == 0);
+        assert(client.extra.sensor.prev_telem[3] == 0 && target.telemHasChanged(&client));
+        target.refuse_allocation = target.refuse_queue = false;
+        target.pushSubscriptions();
+      }
+      assert(!memcmp(client.extra.sensor.prev_telem, target.telemetry.bytes.data(), 4)
+          && "snapshot must preserve the delivered LPP bytes");
+      assert(target.queued == 1 && !target.telemHasChanged(&client));
+      for (unsigned repeat = 0; repeat < 10; ++repeat) target.pushSubscriptions();
+      assert(target.queued == 1 && !target.telemHasChanged(&client));
+    }
+  }
+  uint32_t samples = 0;
+  for (unsigned type = 0; type < 256; ++type) {
+    if (!LPPData::isScalarType(type)) continue;
+    SensorMesh target;
+    ClientInfo client;
+    const uint8_t size = LPPData::getDataSize(type);
+    assert(subscribe(target, client, type, size) == 12);
+    // Exhaust every one-/two-byte encoding, including signed/scaled data.
+    // Four-byte samples straddle float's exact-integer range and sign limits.
+    const std::vector<uint32_t> wide = {0, 1, 0xffff, 0x10000, 0xffffff,
+        0x1000000, 0x1000001, 0x7fffffff, 0x80000000, 0xfffffffe, 0xffffffff};
+    const uint32_t count = size < 4 ? uint32_t(1) << (8 * size) : wide.size();
+    target.telemetry.bytes.resize(2 + size);
+    target.telemetry.bytes[0] = 1;
+    target.telemetry.bytes[1] = type;
+    for (uint32_t index = 0; index < count; ++index) {
+      uint32_t raw = size < 4 ? index : wide[index];
+      for (unsigned byte = size; byte > 0; --byte) {
+        target.telemetry.bytes[1 + byte] = uint8_t(raw);
+        raw >>= 8;
+      }
+      memset(client.extra.sensor.prev_telem, 0xa5, sizeof(client.extra.sensor.prev_telem));
+      target.snapshotTelemetry(&client);
+      assert(!memcmp(client.extra.sensor.prev_telem, target.telemetry.bytes.data(), 2 + size)
+          && "snapshot must preserve the delivered LPP bytes");
+      assert(!target.telemHasChanged(&client));
+      ++samples;
+    }
+  }
+  SensorMesh target;
+  ClientInfo client;
+  assert(subscribe(target, client, LPP_VOLTAGE, 2) == 12);
+  target.telemetry.bytes = {2, LPP_RELATIVE_HUMIDITY, 127, 1, LPP_VOLTAGE, 1, 164,
+                           1, LPP_VOLTAGE, 1, 194};
+  target.snapshotTelemetry(&client);
+  assert(client.extra.sensor.prev_telem[2] == 1 && client.extra.sensor.prev_telem[3] == 164);
+  assert(findTelemValue(target.telemetry.getBuffer(), target.telemetry.getSize(),
+      1, LPP_VOLTAGE, -99) == LPPData::getFloat(target.telemetry.getBuffer() + 5, 2, 100, true));
+  // Missing/truncated records keep the existing zero baseline and lookup default.
+  const auto original = target.telemetry.bytes;
+  for (unsigned length = 0; length <= 6; ++length) {
+    target.telemetry.bytes.assign(original.begin(), original.begin() + length);
+    memset(client.extra.sensor.prev_telem, 0xa5, sizeof(client.extra.sensor.prev_telem));
+    target.snapshotTelemetry(&client);
+    assert(client.extra.sensor.prev_telem[0] == 1 && client.extra.sensor.prev_telem[1] == LPP_VOLTAGE);
+    assert(client.extra.sensor.prev_telem[2] == 0 && client.extra.sensor.prev_telem[3] == 0);
+    assert(findTelemValue(target.telemetry.getBuffer(), target.telemetry.getSize(),
+        1, LPP_VOLTAGE, -99) == -99);
+  }
+  std::cout << "Raw LPP snapshot samples checked: " << samples << '\n';
+}
 static void writer_checks() {
   uint8_t buffer[16];
   memset(buffer, 0xAA, sizeof(buffer));
@@ -355,6 +431,7 @@ int main(int argc, char** argv) {
   else if (!strcmp(argv[1], "capacity")) capacity_checks();
   else if (!strcmp(argv[1], "writer")) writer_checks();
   else if (!strcmp(argv[1], "tracker")) tracker_mode_checks();
+  else if (!strcmp(argv[1], "snapshot")) snapshot_checks();
   else assert(false);
   std::cout << "Sensor subscription checks passed\n";
 }

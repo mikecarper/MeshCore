@@ -107,7 +107,7 @@ static File openAppend(FILESYSTEM* _fs, const char* fname) {
 
 /* --------------------- Cayenne LPP helpers ----------------------------*/
 
-static float findTelemValue(const uint8_t* buf, uint8_t size, uint8_t channel, uint8_t type, float def_value) {
+static const uint8_t* findTelemData(const uint8_t* buf, uint8_t size, uint8_t channel, uint8_t type) {
   uint8_t i = 0;
 
   while (i + 2 < size) {
@@ -119,11 +119,17 @@ static float findTelemValue(const uint8_t* buf, uint8_t size, uint8_t channel, u
     if (sz > size - i) break;
 
     if (ch == channel && t == type) {
-      return LPPData::getFloat(&buf[i], sz, LPPData::getMultiplier(t), LPPData::isSigned(t));
+      return &buf[i];
     }
     i += sz;  // skip
   }
-  return def_value;   // not found
+  return nullptr;   // not found
+}
+
+static float findTelemValue(const uint8_t* buf, uint8_t size, uint8_t channel, uint8_t type, float def_value) {
+  const uint8_t* data = findTelemData(buf, size, channel, type);
+  return data ? LPPData::getFloat(data, LPPData::getDataSize(type),
+      LPPData::getMultiplier(type), LPPData::isSigned(type)) : def_value;
 }
 
 /* ------------------ end Cayenne LPP helpers ----------------------*/
@@ -166,9 +172,11 @@ void SensorMesh::snapshotTelemetry(ClientInfo* c) {
 
     c->extra.sensor.prev_telem[i] = ch;
     c->extra.sensor.prev_telem[i + 1] = t;
-    float v = findTelemValue(buf, size, ch, t, 0.0f);
-    LPPData::putFloat(&c->extra.sensor.prev_telem[i + 2], v, sz,
-                      LPPData::getMultiplier(t), LPPData::isSigned(t));
+    // Retain exactly what was delivered; a float round trip can lose one LSB
+    // and repeatedly report the same unchanged reading as a new delta.
+    const uint8_t* value = findTelemData(buf, size, ch, t);
+    if (value) memcpy(&c->extra.sensor.prev_telem[i + 2], value, sz);
+    else memset(&c->extra.sensor.prev_telem[i + 2], 0, sz);
     i += 2 + sz;
   }
 }
