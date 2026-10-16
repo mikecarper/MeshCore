@@ -209,6 +209,7 @@ jobs:
           python3 -B test/test_lr1121_power_merge.py -v
           python3 -B test/test_radio_interrupt_recovery.py -v
           python3 -B test/test_bridge_recovery.py -v
+          python3 -B test/test_bridge_ingress.py -v
 
       - name: Verify signed private fleet management
         run: |
@@ -384,6 +385,15 @@ jobs:
           python3 -B test/test_radio_profile_auto.py -v
           python3 -B test/test_companion_meshtext.py -v
           python3 -B test/test_companion_meshtext_storage.py -v
+          python3 -B test/test_meshtext_delivery_hil.py -v
+          python3 -B test/test_meshtext_speed_hil.py -v
+          python3 -B test/test_companion_raw_radio2_sweep.py -v
+          python3 -B test/test_meshtext_listen_hil.py -v
+          python3 -B test/test_mercer_mt_flash.py -v
+          python3 -B test/test_mercer_nrf_app_flash.py -v
+          python3 -B test/test_indicator_repeater_hil_recipe.py -v
+          python3 -B test/test_mota_usb_seeder_hil.py -v
+          python3 -B test/test_mota_espnow_chain_hil.py -v
           python3 -B test/test_meshtext_auto_radio2_hil.py -v
           python3 -B test/test_meshtext_auto_radio2_hil_sdk.py -v
 

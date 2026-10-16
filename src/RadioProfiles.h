@@ -40,6 +40,13 @@ class RadioProfiles {
   static constexpr double MinListenSymbols = 4.6;
   static constexpr double SlowListenSymbols = MinListenSymbols;
   static constexpr double MinFastListenSymbols = MinListenSymbols;
+#if defined(MESH_HIL_MESHTEXT_LISTEN_SYMBOLS)
+  // Opt-in RF experiment only: no production dwell/default changes. Compare
+  // foreign-network acquisition independently from normal MeshCore scanning.
+  static_assert(MESH_HIL_MESHTEXT_LISTEN_SYMBOLS > 0
+      && MESH_HIL_MESHTEXT_LISTEN_SYMBOLS <= 64,
+      "MESH_HIL_MESHTEXT_LISTEN_SYMBOLS must be greater than 0 and at most 64");
+#endif
   static constexpr uint8_t AcquisitionSymbols = 8;
   static constexpr uint16_t MaxPreamble = 65528;
   static constexpr uint16_t MaxAutomaticPreamble = 512;
@@ -161,7 +168,14 @@ class RadioProfiles {
   }
   static uint32_t minimumListenUs(const RadioProfileParams& p, bool slow = false) {
     const double symbol = symbolUs(p);
+#if defined(MESH_HIL_MESHTEXT_LISTEN_SYMBOLS)
+    const double baseline = slow ? SlowListenSymbols : MinFastListenSymbols;
+    const double symbols = p.protocol == RadioProfileProtocol::Meshtext
+        && MESH_HIL_MESHTEXT_LISTEN_SYMBOLS > baseline
+        ? MESH_HIL_MESHTEXT_LISTEN_SYMBOLS : baseline;
+#else
     const double symbols = slow ? SlowListenSymbols : MinFastListenSymbols;
+#endif
     return isfinite(symbol) && symbol > 0 && symbol <= UINT32_MAX / symbols
         ? (uint32_t)ceil(symbols * symbol) : 0;
   }

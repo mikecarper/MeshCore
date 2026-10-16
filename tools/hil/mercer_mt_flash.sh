@@ -11,17 +11,21 @@ adapter_usage() {
     printf '%s\n' \
       'Usage: mercer_mt_flash.sh --flasher PATH --port /dev/tty... --workdir DIR' \
       '  [--board LABEL] [--expect-mac XX:XX:XX:XX:XX:XX --flash-bytes N]' \
-      '  [--read-baud 115200|460800] [--allow-write] [--allow-erase] -- MODE ARGS' \
+      '  [--read-baud 115200|460800] [--allow-write] [--allow-erase] [--allow-reset] -- MODE ARGS' \
+      '  [--watchdog-finish] (write-flash only; verified ESP32-S3 session)' \
       'Modes: probe; read-flash OFFSET LENGTH NEW_OUTPUT; write-flash OFFSET FILE ...;' \
-      '       erase-flash; erase-region OFFSET LENGTH' \
+      '       erase-flash; erase-region OFFSET LENGTH; reset-runtime' \
       'All non-probe modes require an expected MAC and flash size. Reads must write' \
       'new files inside workdir; writes/erases require their explicit allow flag.' \
-      'probe also enters ROM and finishes using the original identity-safe reset.'
+      'probe also enters ROM and finishes using the original identity-safe reset.' \
+      '--watchdog-finish clears only the volatile S3 forced-ROM bit before watchdog reset.' \
+      'reset-runtime requires --allow-reset, an exact MAC and flash size; it never writes flash.'
 }
 
 adapter_flasher='' adapter_port='' adapter_workdir='' adapter_board='ESP32-S3'
 adapter_expected_mac='' adapter_expected_bytes='' adapter_read_baud=115200
-adapter_allow_write=0 adapter_allow_erase=0 adapter_session_active=0
+adapter_allow_write=0 adapter_allow_erase=0 adapter_session_active=0 adapter_watchdog_finish=0
+adapter_allow_reset=0
 while (($#)); do
     case "$1" in
         --flasher|--port|--workdir|--board|--expect-mac|--flash-bytes|--read-baud)
@@ -38,6 +42,8 @@ while (($#)); do
             shift 2 ;;
         --allow-write) adapter_allow_write=1; shift ;;
         --allow-erase) adapter_allow_erase=1; shift ;;
+        --allow-reset) adapter_allow_reset=1; shift ;;
+        --watchdog-finish) adapter_watchdog_finish=1; shift ;;
         --help|-h) adapter_usage; exit 0 ;;
         --) shift; break ;;
         *) adapter_die "Unknown option: $1" ;;
@@ -59,7 +65,7 @@ if [[ -n "$adapter_expected_mac" ]]; then
 fi
 if [[ -n "$adapter_expected_bytes" ]]; then
     [[ "$adapter_expected_bytes" =~ ^[0-9]+$ ]] || adapter_die 'Flash bytes must be decimal.'
-    [[ "$adapter_expected_bytes" == 8388608 || "$adapter_expected_bytes" == 16777216 ]] || adapter_die 'Only confirmed Heltec 8 MiB/16 MiB boards are in scope.'
+    [[ "$adapter_expected_bytes" == 8388608 || "$adapter_expected_bytes" == 16777216 ]] || adapter_die 'Only confirmed 8 MiB/16 MiB ESP32-S3 devices are in scope.'
 fi
 case "$adapter_mode" in
     probe) ((${#adapter_operation_args[@]} == 0)) || adapter_die 'probe takes no arguments.' ;;
@@ -73,8 +79,17 @@ case "$adapter_mode" in
     erase-region)
         ((adapter_allow_erase)) || adapter_die 'erase-region requires --allow-erase.'
         ((${#adapter_operation_args[@]} == 2)) || adapter_die 'erase-region requires OFFSET LENGTH.' ;;
+    reset-runtime)
+        ((adapter_allow_reset)) || adapter_die 'reset-runtime requires --allow-reset.'
+        ((${#adapter_operation_args[@]} == 0)) || adapter_die 'reset-runtime takes no arguments.' ;;
     *) adapter_die "Unsupported mode: $adapter_mode" ;;
 esac
+if ((adapter_watchdog_finish)); then
+    [[ "$adapter_mode" == write-flash ]] || adapter_die '--watchdog-finish requires write-flash.'
+fi
+if ((adapter_allow_reset)); then
+    [[ "$adapter_mode" == reset-runtime ]] || adapter_die '--allow-reset requires reset-runtime.'
+fi
 if [[ "$adapter_mode" != probe ]]; then
     [[ -n "$adapter_expected_mac" && -n "$adapter_expected_bytes" ]] || adapter_die 'Probe first, then supply the verified expected MAC and flash bytes.'
 fi
@@ -210,6 +225,9 @@ ESP32_OPERATION_BEFORE=$NORESET
 adapter_session_active=1
 prepare_esp32_flash_session "$adapter_port" "$adapter_board"
 [[ "$ESP32_SESSION_IS_S3" == 1 ]] || adapter_die 'Probe did not identify ESP32-S3.'
+if ((adapter_watchdog_finish)) || [[ "$adapter_mode" == reset-runtime ]]; then
+    [[ "${WATCHDOGRESET:-}" == watchdog-reset ]] || adapter_die 'A supported S3 watchdog reset is required before writing or resetting.'
+fi
 if [[ -n "$adapter_expected_mac" && "$ESP32_FLASH_EXPECTED_MAC" != "$adapter_expected_mac" ]]; then
     adapter_die "MAC mismatch: typed $adapter_expected_mac, probe $ESP32_FLASH_EXPECTED_MAC."
 fi
@@ -223,7 +241,7 @@ if [[ -n "$adapter_expected_bytes" && "$adapter_detected_bytes" != "$adapter_exp
     adapter_die "Flash size mismatch: expected $adapter_expected_bytes, detected $adapter_detected_bytes."
 fi
 printf 'VERIFIED mac=%s chip=ESP32-S3 flash_bytes=%s port=%s\n' "$ESP32_FLASH_EXPECTED_MAC" "$adapter_detected_bytes" "$adapter_live_port"
-if [[ "$adapter_mode" != probe ]]; then
+if [[ "$adapter_mode" != probe && "$adapter_mode" != reset-runtime ]]; then
     # Re-resolve by-id and re-probe MAC for READS too. Destructive commands also
     # repeat this inside the untouched run_esp32_session_esptool implementation.
     adapter_live_port=$(esp32_verified_destructive_port "$DEVICE_PORT" "$adapter_mode")
@@ -236,6 +254,29 @@ if [[ "$adapter_mode" != probe ]]; then
         sha256sum -- "$adapter_output"
     fi
 fi
-finish_esp32_flash_session "$DEVICE_PORT"
+if ((adapter_watchdog_finish)) || [[ "$adapter_mode" == reset-runtime ]]; then
+    # In write-flash mode the write above must already have succeeded, including
+    # the real flasher's positive flash-hash verification. reset-runtime instead
+    # reaches here without any write/erase operation or corresponding authority.
+    # A USB/JTAG bootloader entry
+    # can retain FORCE_DOWNLOAD_BOOT, so a watchdog alone would return to ROM.
+    # Clear only bit 0 of volatile RTC_CNTL_OPTION1, as in the S3 ROM helper;
+    # this is not a flash, eFuse, erase or persistent bootloader modification.
+    # Re-prove the bound USB identity and chip MAC before EACH finish phase.
+    adapter_live_port=$(esp32_verified_destructive_port "$DEVICE_PORT" 'S3 volatile forced-ROM bit clear')
+    adapter_assert_unowned "$adapter_live_port"
+    run_esp32_session_esptool "$adapter_live_port" --after "$NORESET" --baud 115200 \
+        write-mem 0x6000812c 0 0x1
+    adapter_live_port=$(esp32_verified_destructive_port "$DEVICE_PORT" 'S3 watchdog finish')
+    adapter_assert_unowned "$adapter_live_port"
+    # Once reset may have started the application, no automatic ROM recovery
+    # or second reset is authorized. Any lost final reply is an explicit error.
+    BOOTLOADER_PROBE_ACTIVE=0
+    BOOTLOADER_PROBE_PORT=''
+    run_esp32_session_esptool "$adapter_live_port" --after "$WATCHDOGRESET" --baud 115200 "$READMAC"
+    ESP32_NATIVE_ROM_READY=0
+else
+    finish_esp32_flash_session "$DEVICE_PORT"
+fi
 adapter_session_active=0
 printf 'Session finished. Application boot still requires an application-level check. State: %s\n' "$adapter_state_dir"
