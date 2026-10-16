@@ -1078,8 +1078,7 @@ bool RadioLibWrapper::recoverRadio(bool hard) {
   if (isReceivingPacket()) return false;
   n_wd_soft++;
   MESH_DEBUG_PRINTLN("RadioLibWrapper: liveness watchdog: soft AGC/RX re-arm");
-  resetAGC();
-  return true;
+  return resetAGCIfIdle();
 #else
   const bool busy = isChipBusy();
   if (!busy && isReceivingPacket()) return false;
@@ -1095,8 +1094,7 @@ bool RadioLibWrapper::recoverRadio(bool hard) {
     // successful no-op. A stuck BUSY pin still reports failure and is retried.
     if (busy) return false;
     MESH_DEBUG_PRINTLN("RadioLibWrapper: hard reset unavailable; using RX re-arm");
-    resetAGC();
-    return true;
+    return resetAGCIfIdle();
   }
 
   // Never issue a warm-sleep/standby command while BUSY is stuck high.  The
@@ -1104,8 +1102,7 @@ bool RadioLibWrapper::recoverRadio(bool hard) {
   if (busy) return false;
   n_wd_soft++;
   MESH_DEBUG_PRINTLN("RadioLibWrapper: liveness watchdog: soft AGC/RX re-arm");
-  resetAGC();
-  return true;
+  return resetAGCIfIdle();
 #endif
 }
 

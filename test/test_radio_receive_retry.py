@@ -11,7 +11,7 @@ from test_radio_receive_contract import HARNESS, ROOT, method
 
 
 class RadioReceiveRetryTests(unittest.TestCase):
-    def build(self, folder, mutation=None):
+    def build(self, folder, mutation=None, soft_only=False):
         source = (ROOT / 'src/helpers/radiolib/RadioLibWrappers.cpp').read_text()
         header = (ROOT / 'src/helpers/radiolib/RadioLibWrappers.h').read_text()
         dispatcher = (ROOT / 'src/Dispatcher.h').read_text()
@@ -31,6 +31,11 @@ class RadioReceiveRetryTests(unittest.TestCase):
             self.assertEqual(body.count('state == STATE_RX && _rx_hold_continuous'), 1)
             source = source.replace(body, body.replace(
                 'state == STATE_RX && _rx_hold_continuous', 'false && _rx_hold_continuous'))
+        if mutation == 'recovery_admission':
+            body = method(source, 'bool RadioLibWrapper::recoverRadio(')
+            self.assertEqual(body.count('return resetAGCIfIdle();'), 3)
+            source = source.replace(body, body.replace(
+                'return resetAGCIfIdle();', 'resetAGC(); return true;'))
         getter = method(header, 'bool isCalibratingNoiseFloor() const')
         if mutation == 'pending_veto':
             getter = getter.replace('isInRecvMode() && !_rx_ps_armed && ', '')
@@ -67,19 +72,27 @@ class RadioReceiveRetryTests(unittest.TestCase):
         harness = harness.replace('bool isChipBusy() { return busy; }',
             'bool isChipBusy() { ++busy_probes; return busy; }')
         harness = harness.replace('bool isReceivingPacket() { return packet; }',
-            'bool isReceivingPacket() { ++packet_probes; return packet; }')
+            '''bool isReceivingPacket() {
+              if (++packet_probes == inject_packet_irq_at) events.record();
+              return packet;
+            }''')
         harness = harness.replace('  void serviceWatchdog()',
             '  unsigned after = 0;\n  int getStartupReason() { return 0; }\n'
             '  void onAfterTransmit() { ++after; }\n  void serviceWatchdog()')
         harness = harness.replace('  int startChannelScan()', '''
-  unsigned packet_length = 0, direct_arms = 0;
+  unsigned packet_length = 0, direct_arms = 0, fifo_reads = 0;
+  uint8_t fifo[8] = {0x42,0x42,0x42,0x42,0x42,0x42,0x42,0x42};
   int startReceive() { ++direct_arms; return start_result; }
   int setPreambleLength(uint16_t) { return 0; }
   int finishTransmit() { return 0; }
   size_t getPacketLength() { return packet_length; }
   float getSNR() { return 0; }
   float getRSSI() { return 0; }
-  int readData(uint8_t* out, int len) { for (int i=0;i<len;++i) out[i]=0x42; return 0; }
+  int readData(uint8_t* out, int len) {
+    ++fifo_reads;
+    for (int i=0;i<len;++i) out[i]=fifo[i % sizeof(fifo)];
+    return 0;
+  }
   int startChannelScan()''')
         harness = harness.replace('return events.pending();', 'return _loop_event_pending || events.pending();')
         harness = harness.replace('bool claimRadioInterrupt() { return events.claim(); }', '''
@@ -103,7 +116,7 @@ class RadioReceiveRetryTests(unittest.TestCase):
   void finishReceiveProcessing();
   void onReceiveProcessed() override { ++processed; finishReceiveProcessing(); }
   unsigned processed = 0;
-  unsigned busy_probes = 0, packet_probes = 0;
+  unsigned busy_probes = 0, packet_probes = 0, inject_packet_irq_at = 0;
   uint32_t last_radio_interrupt_millis = 0, last_recv_millis = 0;
   float _last_snr = 0, _last_rssi = 0;
   unsigned n_recv = 0, n_recv_errors = 0, sends = 0;
@@ -134,6 +147,7 @@ class RadioReceiveRetryTests(unittest.TestCase):
             dispatcher_source.write_text(original.replace(alignment, ''), encoding='ascii')
         built = subprocess.run([os.environ.get('CXX', 'g++'), '-std=c++17', '-O1',
             '-DUSE_SX1262=1', '-fsanitize=address,undefined', '-fno-sanitize-recover=all',
+            *(['-DRADIO_LIVENESS_SOFT_ONLY=1'] if soft_only else []),
             '-fno-pie', '-no-pie', '-I', str(ROOT / 'test/mocks'), '-I', str(ROOT / 'src'),
             str(cpp), str(dispatcher_source), str(ROOT / 'src/Packet.cpp'),
             str(ROOT / 'src/helpers/StaticPoolPacketManager.cpp'), '-o', str(binary)],
@@ -141,10 +155,27 @@ class RadioReceiveRetryTests(unittest.TestCase):
         self.assertEqual(built.returncode, 0, built.stderr)
         return binary
 
-    def run_probe(self, binary):
+    def run_probe(self, binary, scenario=None):
         env = os.environ.copy()
         env['ASAN_OPTIONS'] = env.get('ASAN_OPTIONS', '') + ':detect_leaks=0'
-        return subprocess.run([str(binary)], capture_output=True, text=True, env=env, timeout=20)
+        return subprocess.run([str(binary), *([scenario] if scenario else [])],
+                              capture_output=True, text=True, env=env, timeout=20)
+
+    def test_recovery_reports_ownership_recheck_refusal_and_preserves_fifo(self):
+        for soft_only in (False, True):
+            with self.subTest(soft_only=soft_only), tempfile.TemporaryDirectory(
+                    prefix='meshcore-rx-recovery-admission-') as folder:
+                result = self.run_probe(self.build(folder, soft_only=soft_only), 'recovery')
+                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                self.assertIn('PASS: recovery ownership admission (12 cases)', result.stdout)
+
+    def test_old_success_after_refused_recovery_negative_control(self):
+        for soft_only in (False, True):
+            with self.subTest(soft_only=soft_only), tempfile.TemporaryDirectory(
+                    prefix='meshcore-rx-recovery-negative-') as folder:
+                result = self.run_probe(self.build(folder, 'recovery_admission', soft_only), 'recovery')
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn('refused recovery must not report success', result.stderr)
 
     def test_actual_dispatcher_and_receive_lifecycle(self):
         with tempfile.TemporaryDirectory(prefix='meshcore-rx-retry-') as folder:

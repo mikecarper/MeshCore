@@ -282,7 +282,51 @@ static void deferredCalibrationRestore() {
   std::printf("PASS: deferred calibration restoration (%u cases)\n", cases);
 }
 
-int main() {
+static void recoveryOwnershipAdmission() {
+  unsigned cases = 0;
+  for (unsigned mode : {0U, 1U, 2U}) for (bool hard : {false, true})
+  for (bool between_checks : {false, true}) {
+    RadioLibWrapper w; selectMode(w, mode);
+    w._rx_ps_armed = mode == 1;
+    w._rx_boosted_gain_valid = w._cur_rx_boosted_gain = true;
+    w._nf_refresh_requested = false; w._nf_last_calib = now_ms;
+    assert(w._floor_estimator.add(-105, now_ms));
+    const uint8_t payload[] = {0x18, 0x27, 0x36, 0x45, 0x54};
+    memcpy(w.radio.fifo, payload, sizeof(payload));
+    w.radio.packet_length = sizeof(payload);
+    if (between_checks) w.inject_packet_irq_at = 1;
+    else w.events.record();
+    const auto state = w.state;
+    const auto armed = w._rx_ps_armed;
+    assert(!w.recoverRadio(hard) && "refused recovery must not report success");
+    assert(w.hasPendingRadioInterrupt() && w.state == state && w._rx_ps_armed == armed);
+    assert(w.agc_resets == 0 && w.gain_changes == 0 && w.arms == 0 && w.stops == 0);
+    assert(w._floor_estimator.count() == 1 && !w._nf_refresh_requested);
+    assert(w.radio.fifo_reads == 0 && w.radio.packet_length == sizeof(payload));
+    assert(!memcmp(w.radio.fifo, payload, sizeof(payload)));
+    assert(w.packet_probes == unsigned(between_checks));
+    // The receive owner still drains the original FIFO once, then a clean
+    // recovery can be admitted normally. Neither refusal consumes its IRQ.
+    uint8_t received[sizeof(payload)] = {};
+    assert(w.recvRaw(received, sizeof(received)) == int(sizeof(payload)));
+    assert(!memcmp(received, payload, sizeof(payload)) && w.radio.fifo_reads == 1);
+    assert(!w.hasPendingRadioInterrupt() && w.n_recv == 1);
+    w.onReceiveProcessed();
+    assert(w.recoverRadio(hard));
+    assert(w.agc_resets == 1 && w.gain_changes == 1 && w.state == STATE_IDLE);
+    assert(w._floor_estimator.count() == 0 && w._nf_refresh_requested);
+    ++cases;
+  }
+  std::printf("PASS: recovery ownership admission (%u cases)\n", cases);
+}
+
+int main(int argc, char** argv) {
+  if (argc == 2) {
+    assert(!strcmp(argv[1], "recovery"));
+    recoveryOwnershipAdmission();
+    return 0;
+  }
+  assert(argc == 1);
   persistentFailure(); rampAndRollover(); ownersAndImmediateRearms();
   pendingSetupAndTx(); retainedOutboundWake(); busyAfterFailure();
   deferredCalibrationRestore();
