@@ -159,6 +159,7 @@ int main() {
                     tested = subprocess.run([str(binary)], capture_output=True, text=True, timeout=10)
                     self.assertEqual(tested.returncode, 0, tested.stderr)
                     self.assertIn('USB watchdog runtime and persistence passed', tested.stdout)
+                    self.assertIn('14 USB watchdog setter durability scenarios passed', tested.stdout)
 
     def test_unsupported_transport_has_no_recovery_or_storage_work(self):
         compiler = os.environ.get('CXX') or shutil.which('g++') or shutil.which('clang++')

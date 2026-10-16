@@ -387,7 +387,7 @@ bool handleUsbLoggingWatchdogCommand(const char* command, char* reply,
   Config candidate = config;
   candidate.mode = mode;
   if (!saveConfig(candidate, true)) {
-    snprintf(reply, capacity, "Error: USB watchdog state not durable; unchanged");
+    snprintf(reply, capacity, "Error: save unconfirmed; reboot may differ");
   } else {
     config = candidate;
     if (config.last_event.sequence) config.last_event.persisted = true;
