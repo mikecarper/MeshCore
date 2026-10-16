@@ -2390,7 +2390,10 @@ If damaged contacts cannot be removed, the node remains usable with volatile
 contacts; explicit saves still report failure, while reboot/shutdown remain
 available. Identity, credentials, channels and unrelated settings are not erased.
 Allocation/capacity failures and shared filesystem-migration authority errors
-are not corrupt-contact evidence and do not authorize this reset. The path checksum also rejects
+are not corrupt-contact evidence and do not authorize this reset. Failed source
+discovery also preserves contact files; if authority stays unknown, use volatile
+contacts instead of deleting readable pages or selecting a potentially stale view.
+The path checksum also rejects
 a cold path changed underneath a live handle; it does not add a new checksum
 to the legacy ESP32 on-disk format.</p>
 <h2 id="shared-secrets-and-power">Shared secrets and power</h2>
