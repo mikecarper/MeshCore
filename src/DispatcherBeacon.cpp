@@ -23,7 +23,7 @@ bool Dispatcher::queueBeaconRadioFrame(const uint8_t* bytes, size_t length,
       || _radio->isBeaconRadioOwned()
       || _radio->isMorseTxActive() || _radio->isMorseRxActive()
       || !RadioProfiles::valid(params) || !_radio->validateProfile(params)) return false;
-#if MESH_ENABLE_MESHTEXT_CHAT
+#if MESH_ENABLE_FOREIGN_RADIO
   if (hasForeignRadioFrame()) return false;
 #endif
   const uint32_t now = _ms->getMillis();

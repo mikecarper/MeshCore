@@ -19,6 +19,9 @@ ROOT = Path(__file__).resolve().parents[1]
 HARNESS = r'''
 #include <Dispatcher.h>
 #include <helpers/StaticPoolPacketManager.h>
+#if MESH_ENABLE_OTA_KISS_DIRECT
+#include <helpers/ota/OtaFormat.h>
+#endif
 #include <cassert>
 #include <cstring>
 #include <cstdio>
@@ -59,6 +62,7 @@ public:
   RadioProfiles* profiles() override { return &p; }
   const RadioProfiles* profiles() const override { return &p; }
   bool supportsMeshtext() const override { return true; }
+  bool supportsEthernetTunnel() const override { return true; }
   bool validateProfile(const RadioProfileParams& params) const override {
     return valid && RadioProfiles::valid(params);
   }
@@ -132,7 +136,26 @@ public:
       : Dispatcher(radio, clock, manager) {}
   using Dispatcher::setRadioAvailable;
   using Dispatcher::getNextQueueWakeDelay;
+#if MESH_ENABLE_FOREIGN_RADIO
   using Dispatcher::queueForeignRadioFrame;
+  using Dispatcher::hasForeignRadioFrame;
+  bool queueOtherOwner(const uint8_t* bytes, size_t length) {
+#if MESH_ENABLE_MESHTEXT_CHAT || MESH_ENABLE_ETHERNET_TUNNEL
+    const auto protocol = MESH_ENABLE_MESHTEXT_CHAT
+        ? RadioProfileProtocol::Meshtext : RadioProfileProtocol::Ethernet;
+    _radio->profiles()->secondary.params.protocol = protocol;
+    _radio->profiles()->secondary.mode = RadioProfileMode::RxTx;
+    return queueForeignRadioFrame(bytes, length, 1, _radio->profiles()->generation[1], protocol);
+#elif MESH_ENABLE_OTA_KISS_DIRECT
+    const uint8_t message[] = {ota::OTA_DATA, 0x23};
+    return queueDirectOtaRadioFrame(message, sizeof(message), 0, _radio->profiles()->generation[0]);
+#endif
+  }
+#if MESH_ENABLE_OTA_KISS_DIRECT
+  bool allowDirectOtaTransmit(uint8_t, uint32_t) const override { return true; }
+  uint32_t directOtaEpoch() const override { return 1; }
+#endif
+#endif
   DispatcherAction onRecvPacket(Packet*) override { ++received; return ACTION_RELEASE; }
   void onSendComplete(Packet*) override { ++mc_sent; }
   void onSendFail(Packet*) override { ++failed; }
@@ -176,7 +199,10 @@ static void basic() {
   f.tick();
   assert(f.radio.beacon_sends == 1 && f.radio.owned && f.radio.physical == beacon_params());
   assert(f.radio.sent == std::vector<uint8_t>(bytes, bytes + sizeof(bytes)));
-  assert(f.radio.power == 17 && !f.d.queueForeignRadioFrame(bytes, sizeof(bytes), 1, 1));
+  assert(f.radio.power == 17);
+#if MESH_ENABLE_FOREIGN_RADIO
+  assert(!f.d.queueForeignRadioFrame(bytes, sizeof(bytes), 1, 1));
+#endif
   f.tick(20); assert(f.d.hasOutbound() && f.radio.finishes == 0);
   f.radio.complete = true; f.tick();
   assert(!f.d.hasOutbound() && !f.radio.owned && f.radio.finishes == 1);
@@ -269,10 +295,32 @@ static void priority() {
     f.radio.complete = true; f.tick(); f.tick(5000);
     assert(f.radio.normal_sends == 1); f.radio.complete = true; f.tick(); }
   { Fixture f; normal(f); f.tick(); assert(!queue(f)); f.radio.complete = true; f.tick(); }
+#if MESH_ENABLE_MESHTEXT_CHAT
   { Fixture f; f.radio.p.secondary.params.protocol = RadioProfileProtocol::Meshtext;
     f.radio.p.secondary.mode = RadioProfileMode::RxTx;
     assert(f.d.queueForeignRadioFrame(bytes, sizeof(bytes), 1, f.radio.p.generation[1]));
     assert(!queue(f)); f.tick(); f.radio.complete = true; f.tick(); }
+#endif
+}
+static void owners() {
+  Fixture f;
+#if MESH_ENABLE_FOREIGN_RADIO
+  assert(f.d.queueOtherOwner(bytes, sizeof(bytes)) && f.d.hasForeignRadioFrame());
+  assert(!queue(f)); // A queued foreign frame already owns the shared raw slot.
+  f.tick();
+  assert(f.radio.normal_sends == 1 && !f.radio.beacon_sends);
+  assert(!queue(f)); // Ownership also survives until its TX completes.
+  f.radio.complete = true; f.tick();
+  assert(!f.d.hasForeignRadioFrame());
+#endif
+  assert(queue(f));
+#if MESH_ENABLE_FOREIGN_RADIO
+  assert(!f.d.queueOtherOwner(bytes, sizeof(bytes)));
+#endif
+  f.tick();
+  assert(f.radio.beacon_sends == 1 && f.radio.owned);
+  f.radio.complete = true; f.tick();
+  assert(!f.radio.owned && !f.d.hasBeaconRadioFrame());
 }
 static void budget_and_hour() {
   { Fixture f; f.d.duty_window = 200; f.d.begin();
@@ -343,6 +391,7 @@ int main(int argc, char** argv) {
   else if (!strcmp(argv[1], "restoration")) restoration();
   else if (!strcmp(argv[1], "availability")) availability();
   else if (!strcmp(argv[1], "priority")) priority();
+  else if (!strcmp(argv[1], "owners")) owners();
   else if (!strcmp(argv[1], "budget")) budget_and_hour();
   else if (!strcmp(argv[1], "hourly")) hourly_cad_delay();
   else if (!strcmp(argv[1], "sleep")) sleep_deadlines();
@@ -366,7 +415,7 @@ class BeaconDispatcherTest(unittest.TestCase):
         cpp.write_text(HARNESS, encoding="ascii")
         cls.binary = work / ("dispatcher.exe" if sys.platform == "win32" else "dispatcher")
         flags = ["-std=c++17", "-Wall", "-Wextra", "-Wno-unused-parameter",
-                 "-DMESH_ENABLE_TX_BEACONS=1", "-DMESH_ENABLE_MESHTEXT_CHAT=1"]
+                 "-DMESH_ENABLE_TX_BEACONS=1"]
         if sys.platform.startswith("linux"):
             flags += ["-fsanitize=address,undefined", "-fno-sanitize-recover=all",
                       "-fno-omit-frame-pointer", "-fno-pie", "-no-pie"]
@@ -376,9 +425,12 @@ class BeaconDispatcherTest(unittest.TestCase):
             raise AssertionError(result.stdout + result.stderr)
 
     @classmethod
-    def compile_variant(cls, beacon_source, binary):
+    def compile_variant(cls, beacon_source, binary, feature_flags=None):
+        if feature_flags is None:
+            feature_flags = ["-DMESH_ENABLE_MESHTEXT_CHAT=1"]
         return subprocess.run(
-            [cls.compiler, *cls.flags, "-I" + str(ROOT / "test/mocks"), "-I" + str(ROOT / "src"),
+            [cls.compiler, *cls.flags, *feature_flags,
+             "-I" + str(ROOT / "test/mocks"), "-I" + str(ROOT / "src"),
              str(ROOT / "src/Dispatcher.cpp"), str(beacon_source),
              str(ROOT / "src/Packet.cpp"), str(ROOT / "src/helpers/StaticPoolPacketManager.cpp"),
              str(cls.cpp), "-o", str(binary)], capture_output=True, text=True, timeout=90)
@@ -411,6 +463,43 @@ class BeaconDispatcherTest(unittest.TestCase):
 
     def test_due_normal_traffic_wins_and_meshtext_ownership_is_exclusive(self):
         self.run_case("priority")
+
+    OWNER_FEATURES = {
+        "chat": ["-DMESH_ENABLE_MESHTEXT_CHAT=1"],
+        "ethernet": ["-DMESH_ENABLE_MESHTEXT_CHAT=0", "-DMESH_ENABLE_ETHERNET_TUNNEL=1"],
+        "direct_ota": ["-DMESH_ENABLE_MESHTEXT_CHAT=0", "-DENABLE_OTA=1"],
+        "none": ["-DMESH_ENABLE_MESHTEXT_CHAT=0", "-DMESH_ENABLE_FOREIGN_RADIO=0"],
+    }
+
+    def test_foreign_owners_are_exclusive_across_feature_matrix(self):
+        for name, flags in self.OWNER_FEATURES.items():
+            with self.subTest(features=name):
+                binary = self.work / ("owner-" + name)
+                compiled = self.compile_variant(ROOT / "src/DispatcherBeacon.cpp", binary, flags)
+                self.assertEqual(compiled.returncode, 0, compiled.stdout + compiled.stderr)
+                env = dict(os.environ, ASAN_OPTIONS="detect_leaks=0")
+                checked = subprocess.run([str(binary), "owners"], capture_output=True,
+                                         text=True, env=env, cwd=self.work, timeout=30)
+                self.assertEqual(checked.returncode, 0, checked.stdout + checked.stderr)
+                self.assertIn("PASS", checked.stdout)
+
+    def test_old_chat_only_owner_guard_is_rejected(self):
+        source = (ROOT / "src/DispatcherBeacon.cpp").read_text(encoding="ascii")
+        guard = "#if MESH_ENABLE_FOREIGN_RADIO\n  if (hasForeignRadioFrame()) return false;"
+        self.assertEqual(source.count(guard), 1)
+        broken = self.work / "old-owner-guard.cpp"
+        broken.write_text(source.replace(guard, guard.replace("FOREIGN_RADIO", "MESHTEXT_CHAT")),
+                          encoding="ascii")
+        for name in ("ethernet", "direct_ota"):
+            with self.subTest(features=name):
+                binary = self.work / ("old-owner-" + name)
+                compiled = self.compile_variant(broken, binary, self.OWNER_FEATURES[name])
+                self.assertEqual(compiled.returncode, 0, compiled.stdout + compiled.stderr)
+                env = dict(os.environ, ASAN_OPTIONS="detect_leaks=0")
+                checked = subprocess.run([str(binary), "owners"], capture_output=True,
+                                         text=True, env=env, cwd=self.work, timeout=30)
+                self.assertNotEqual(checked.returncode, 0, "old owner guard unexpectedly passed")
+                self.assertIn("!queue(f)", checked.stderr)
 
     def test_budget_hour_guard_and_millisecond_rollover(self):
         self.run_case("budget")
