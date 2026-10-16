@@ -84,7 +84,12 @@ public:
 
   TraceTestMesh(mesh::Radio& radio, mesh::MillisecondClock& ms, mesh::RNG& rng,
                 mesh::RTCClock& rtc, mesh::PacketManager& mgr, mesh::MeshTables& tables)
-    : mesh::Mesh(radio, ms, rng, rtc, mgr, tables) { }
+    : mesh::Mesh(radio, ms, rng, rtc, mgr, tables) {
+    // Every firmware role begins the mesh before RX/TX. Helpers which invoke
+    // receivePacket() directly need that same retry/timer initialization;
+    // otherwise stack-allocated fixtures read indeterminate retry-slot flags.
+    mesh::Mesh::begin();
+  }
 
   uint8_t airtimeFactor(const mesh::Packet* packet) const {
     return getDirectRetryPacketAirtimeFactor(packet);
