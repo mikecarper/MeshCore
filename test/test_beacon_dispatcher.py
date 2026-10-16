@@ -383,6 +383,77 @@ static void begin_lifecycle() {
   assert(!f.radio.begin_while_owned && !f.radio.owned && !f.d.hasBeaconRadioFrame());
   assert(f.radio.finishes == 1 && f.radio.restore_calls == 1);
 }
+static void configure_agc(Fixture& f, bool adaptive) {
+  f.d.interval = 4000;
+  f.d.adaptive = adaptive;
+  f.tick(0);
+  assert(f.radio.agc == 0);
+  f.clock.now += 3990; // TX begins just before the original maintenance deadline.
+}
+static void agc_retirement() {
+  for (bool adaptive : {false, true}) for (bool wrap : {false, true}) {
+    const uint32_t initial = wrap ? UINT32_MAX - 2000U : 1000U;
+    Fixture ordinary(initial);
+    configure_agc(ordinary, adaptive);
+    normal(ordinary); ordinary.d.loop();
+    assert(ordinary.radio.normal_sends == 1 && ordinary.radio.agc == 0);
+    ordinary.clock.now += 100; ordinary.radio.complete = true; ordinary.d.loop();
+    assert(ordinary.radio.agc == unsigned(adaptive)); // Existing normal TX policy.
+
+    for (bool abort : {false, true}) {
+      Fixture f(initial);
+      configure_agc(f, adaptive);
+      assert(queue(f)); f.d.loop();
+      assert(f.radio.beacon_sends == 1 && f.radio.agc == 0);
+      f.clock.now += 100;
+      if (abort) f.d.cancelBeaconRadioFrame();
+      else f.radio.complete = true;
+      f.d.loop();
+      assert(!f.radio.owned && !f.d.hasBeaconRadioFrame() && f.radio.finishes == 1);
+      assert(f.d.getTotalAirTime() == 100);
+      assert(f.radio.agc == unsigned(adaptive)
+          && "beacon TX must follow normal fixed/adaptive AGC retirement policy");
+    }
+
+    // Count retirement once, not again for each failed restore/cancel attempt.
+    Fixture delayed(initial);
+    configure_agc(delayed, adaptive);
+    assert(queue(delayed)); delayed.d.loop();
+    delayed.radio.restore = RadioParamApplyResult::BUSY;
+    delayed.clock.now += 100;
+    delayed.radio.complete = true; delayed.d.loop();
+    assert(delayed.radio.owned && delayed.radio.agc == 0);
+    delayed.clock.now += 1000; delayed.d.cancelBeaconRadioFrame();
+    assert(delayed.d.getTotalAirTime() == 100 && delayed.radio.finishes == 1);
+    delayed.clock.now = initial + 8091U;
+    delayed.radio.restore = RadioParamApplyResult::APPLIED; delayed.d.loop();
+    assert(delayed.radio.agc == 1 && "restore retries must not postpone AGC again");
+
+    // No accepted Sending phase means no TX retirement. In particular, a
+    // queued frame, failed preparation/CAD/start, or rejected admission cannot
+    // use periodic beacon attempts to starve fixed maintenance.
+    for (unsigned failure = 0; failure < 6; ++failure) {
+      Fixture f(initial);
+      configure_agc(f, adaptive);
+      if (failure == 0) {
+        f.radio.valid = false;
+        assert(!queue(f));
+      } else {
+        if (failure == 2) f.radio.prepare = RadioParamApplyResult::FAILED;
+        if (failure == 3) f.radio.channel_busy = true;
+        if (failure == 4) f.radio.start_ok = false;
+        if (failure == 5) f.radio.prepare = RadioParamApplyResult::BUSY;
+        assert(queue(f));
+        if (failure == 1) f.d.cancelBeaconRadioFrame();
+        else f.d.loop();
+      }
+      f.clock.now += 100;
+      f.d.cancelBeaconRadioFrame(); f.d.loop();
+      assert(f.radio.agc == 1 && "unsent beacon must not postpone AGC");
+      assert(f.d.getTotalAirTime() == 0);
+    }
+  }
+}
 int main(int argc, char** argv) {
   assert(argc == 2);
   if (!strcmp(argv[1], "basic")) basic();
@@ -396,6 +467,7 @@ int main(int argc, char** argv) {
   else if (!strcmp(argv[1], "hourly")) hourly_cad_delay();
   else if (!strcmp(argv[1], "sleep")) sleep_deadlines();
   else if (!strcmp(argv[1], "begin")) begin_lifecycle();
+  else if (!strcmp(argv[1], "agc")) agc_retirement();
   else assert(false);
   puts("PASS");
 }
@@ -529,6 +601,24 @@ class BeaconDispatcherTest(unittest.TestCase):
 
     def test_begin_retires_an_in_flight_beacon_before_radio_initialization(self):
         self.run_case("begin")
+
+    def test_sent_beacon_retires_agc_once_like_normal_tx_but_unsent_work_does_not(self):
+        self.run_case("agc")
+
+    def test_missing_beacon_agc_retirement_negative_control(self):
+        source = (ROOT / "src/DispatcherBeacon.cpp").read_text(encoding="ascii")
+        notify = "  agc_reset.noteTransmit(_ms->getMillis());\n"
+        self.assertEqual(source.count(notify), 1)
+        broken = self.work / "old-beacon-agc.cpp"
+        broken.write_text(source.replace(notify, ""), encoding="ascii")
+        binary = self.work / ("old-beacon-agc.exe" if sys.platform == "win32" else "old-beacon-agc")
+        compiled = self.compile_variant(broken, binary)
+        self.assertEqual(compiled.returncode, 0, compiled.stdout + compiled.stderr)
+        checked = subprocess.run([str(binary), "agc"], capture_output=True, text=True,
+                                 env=dict(os.environ, ASAN_OPTIONS="detect_leaks=0"),
+                                 cwd=self.work, timeout=30)
+        self.assertNotEqual(checked.returncode, 0, "missing AGC retirement escaped regression")
+        self.assertIn("beacon TX must follow normal fixed/adaptive AGC retirement policy", checked.stderr)
 
 
 if __name__ == "__main__":

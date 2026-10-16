@@ -45,6 +45,8 @@ bool Dispatcher::queueBeaconRadioFrame(const uint8_t* bytes, size_t length,
 void Dispatcher::accountBeaconAirtime() {
   const uint32_t elapsed = uint32_t(_ms->getMillis()) - beacon_tx->start;
   total_air_time += elapsed;
+  // Match ordinary TX retirement without postponing adaptive maintenance.
+  agc_reset.noteTransmit(_ms->getMillis());
   updateTxBudget();
   tx_budget_ms = elapsed >= tx_budget_ms ? 0 : tx_budget_ms - elapsed;
   if (tx_budget_ms < 100) {
