@@ -8,16 +8,13 @@ import sys
 import tempfile
 import unittest
 
+from cpp_source import body
+
 ROOT = Path(__file__).resolve().parents[1]
 
 def method(text, signature):
-    start = text.index(signature)
-    end = text.index('{', start) + 1
-    depth = 1
-    while depth:
-        depth += (text[end] == '{') - (text[end] == '}')
-        end += 1
-    return text[start:end]
+    """Keep the shared legacy API without double-counting C++ alternatives."""
+    return body(text, signature)
 
 HARNESS = r'''
 #include <cassert>
