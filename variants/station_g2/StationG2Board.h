@@ -1,4 +1,5 @@
 #pragma once
+#include <helpers/ESP32GpioHold.h>
 
 #include <Arduino.h>
 #include <helpers/ESP32Board.h>
@@ -15,8 +16,8 @@ public:
         startup_reason = BD_STARTUP_RX_PACKET;
       }
 
-      rtc_gpio_hold_dis((gpio_num_t)P_LORA_NSS);
-      rtc_gpio_deinit((gpio_num_t)P_LORA_DIO_1);
+      mesh::esp32::releaseRtcGpioIfSupported((gpio_num_t)P_LORA_NSS);
+      mesh::esp32::deinitRtcGpioIfSupported((gpio_num_t)P_LORA_DIO_1);
     }
   }
 

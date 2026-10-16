@@ -162,9 +162,15 @@ public:
     return false;
   }
   virtual LocationProvider* getLocationProvider() { return NULL; }
+  // Terminal deep sleep only. Providers may cut power without ending their
+  // UART; a concrete manager can release its own transport before pad hold.
+  virtual void shutdownGpsTransportForDeepSleep() { }
   // WisBlock slot power is a boot-time choice, separate from logical GPS on/off.
   virtual bool supportsSharedPeripheralMode() const { return false; }
   virtual void configureSharedPeripheralMode(bool shared) { (void)shared; }
+  // Terminal rail removal must not interrupt external storage or its retained
+  // recovery state. Unknown managers/discovery fail closed; no probing here.
+  virtual bool canRemoveSharedStoragePowerForDeepSleep() const { return false; }
   virtual bool isGpsPowered() const {
     LocationProvider* location = const_cast<SensorManager*>(this)->getLocationProvider();
     return location != NULL && location->isEnabled();

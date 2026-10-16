@@ -4204,7 +4204,10 @@ void loop() {
 #endif
   }
 #if defined(ESP32_PLATFORM)
-  else if (!morse_timing && the_mesh.getNodePrefs()->powersaving_enabled) {
+  else if (!morse_timing && !the_mesh.isDualRadioActive()
+      && the_mesh.getNodePrefs()->powersaving_enabled) {
+    // The scanner has a zero-delay polling contract and sub-ms RX visits.
+    // Keep the idle yield for USB/logging/button holds, not live radio2.
     delay(1); // CPU idle remains available while USB/logging/button holds are active.
   }
 #endif

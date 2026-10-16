@@ -32,6 +32,7 @@ static TaskHandle_t ethernet_task_handle = nullptr;
 static bool ethernet_bus_reserved = false;
 static bool ethernet_spi_started = false;
 static bool ethernet_hardware_found = false;
+static bool ethernet_terminal_pads_released = false; // Main-thread, per bus acquisition.
 static EthernetClient ethernet_raw_client;
 static std::atomic<bool> ethernet_client_attached{false};
 static std::atomic<uint32_t> ethernet_session_generation{0};
@@ -194,9 +195,11 @@ public:
   using Print::write;
 };
 static EthernetCliClient ethernet_client;
+static bool ethernet_terminal_shutdown(void*, uint32_t timeout_ms);
 
 static bool ethernet_configure(const EthernetCliHooks& hooks, bool saved_enabled = false) {
   if (ethernet_bus_reserved || ethernet_worker_active.load()) return false;
+  if (!mesh::nrf52::registerTerminalEthernetShutdown(ethernet_terminal_shutdown, nullptr)) return false;
   ethernet_hooks = hooks;
   ethernet_enabled.store(saved_enabled);
   ethernet_state.store(EthernetCliState::Off);
@@ -251,6 +254,36 @@ static bool ethernet_complete_release() {
     ethernet_session_reset = true;
   }
   return true;
+}
+
+static bool ethernet_terminal_shutdown(void*, uint32_t timeout_ms) {
+  // This is a terminal lifecycle request, not a saved eth.off preference.
+  // A blocked DHCP/vendor call keeps its live bus and supply on until it
+  // cooperatively finishes; never delete that task or remap its pads early.
+  const bool had_bus = ethernet_bus_reserved || ethernet_spi_started || ethernet_worker_active.load();
+  ethernet_enabled.store(false);
+  ethernet_running.store(false);
+  ethernet_state.store(EthernetCliState::Stopping);
+  ethernet_notify_worker();
+  const uint32_t started = millis();
+  for (;;) {
+    if (!ethernet_worker_active.load() || ethernet_worker_stopped.load()) {
+      if (had_bus && !ethernet_terminal_pads_released) {
+        // The stopped worker has ended its SPI controller. Release Ethernet
+        // pads before the OTA hook can reacquire those nets for storage.
+        mesh::nrf52::releaseRakEthernetBusPads();
+        ethernet_terminal_pads_released = true;
+      }
+      // Includes synchronous task reclamation and the OTA-owner release hook
+      // (which can restore the radio). It must precede board common shutdown.
+      if (ethernet_complete_release()) {
+        ethernet_state.store(EthernetCliState::Off);
+        return true;
+      }
+    }
+    if (static_cast<uint32_t>(millis() - started) >= timeout_ms) return false;
+    vTaskDelay(pdMS_TO_TICKS(1));
+  }
 }
 
 static void ethernet_worker_take_access() {
@@ -462,6 +495,7 @@ static bool ethernet_request_start(char* reply, bool persist) {
     return false;
   }
   ethernet_bus_reserved = true;
+  ethernet_terminal_pads_released = false;
   ethernet_tx_queue = static_cast<uint8_t*>(malloc(ETHERNET_CLI_TX_BUFFER_BYTES));
   if (!ethernet_tx_queue) {
     (void)ethernet_complete_release();

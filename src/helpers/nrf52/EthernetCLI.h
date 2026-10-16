@@ -7,9 +7,8 @@
 #include <RAK13800_W5100S.h>
 #include <helpers/nrf52/EthernetMac.h>
 #include <helpers/UsbLogging.h>
-#if defined(RAK4631_COMBINED_ETHERNET)
-  #include <atomic>
-#endif
+#include "TerminalPeripheralShutdown.h"
+#include <atomic>
 
 // Ethernet startup runs on a FreeRTOS task, and client acceptance runs in the
 // mesh loop. Never let either path wait on a CDC host which stopped reading.
@@ -44,11 +43,7 @@ static EthernetServer ethernet_server(ETHERNET_TCP_PORT);
 #if !defined(RAK4631_COMBINED_ETHERNET)
 static EthernetClient ethernet_client;
 #endif
-#if defined(RAK4631_COMBINED_ETHERNET)
 static std::atomic<bool> ethernet_running{false};
-#else
-static volatile bool ethernet_running = false;
-#endif
 #if defined(RAK4631_COMBINED_ETHERNET)
 static std::atomic<bool> ethernet_session_reset{false};
 static bool ethernet_line_discarding = false; // Main-thread framing state.
@@ -72,19 +67,58 @@ static void ethernet_check_client();
 #include "EthernetCliRuntime.h"
 #else
 
+static std::atomic<bool> ethernet_legacy_stop{false};
+static std::atomic<bool> ethernet_legacy_worker_active{false};
+static bool ethernet_legacy_spi_started = false; // Published by worker completion.
+static TaskHandle_t ethernet_legacy_task_handle = nullptr;
+
+static void ethernet_legacy_finish_task() {
+  // No more hardware accesses after publication. This task deletes itself;
+  // terminal shutdown must never force-delete it inside a vendor SPI call.
+  taskENTER_CRITICAL();
+  ethernet_legacy_worker_active.store(false);
+  ethernet_legacy_task_handle = nullptr;
+  taskEXIT_CRITICAL();
+  vTaskDelete(nullptr);
+}
+
+static bool ethernet_terminal_shutdown(void*, uint32_t timeout_ms) {
+  ethernet_legacy_stop.store(true);
+  ethernet_running = false;
+  taskENTER_CRITICAL();
+  if (ethernet_legacy_task_handle) xTaskNotifyGive(ethernet_legacy_task_handle);
+  taskEXIT_CRITICAL();
+  const uint32_t started = millis();
+  while (ethernet_legacy_worker_active.load()) {
+    if (static_cast<uint32_t>(millis() - started) >= timeout_ms) return false;
+    vTaskDelay(pdMS_TO_TICKS(1));
+  }
+  ethernet_running = false;
+  // Main-loop client/maintain calls are now gated and the worker has no more
+  // hardware work. Do not call client.stop(): vendor ACK waits are unbounded.
+  ethernet_client = EthernetClient();
+  ethernet_session_reset = true;
+  if (ethernet_legacy_spi_started) {
+    ETHERNET_SPI_PORT.end();
+    ethernet_legacy_spi_started = false;
+    mesh::nrf52::releaseRakEthernetBusPads();
+  }
+  return true;
+}
+
 // FreeRTOS task: handles hw init, DHCP, and retries in the background
 static void ethernet_task(void* param) {
   (void)param;
+  if (ethernet_legacy_stop.load()) { ethernet_legacy_finish_task(); return; }
 
   ETHERNET_CLI_LOG("Initializing hardware");
-  // WB_IO2 (power enable) is already driven HIGH by early constructor
-  // in RAK4631Board.cpp to support POE boot.
-  // Skip hardware reset - the W5100S comes out of power-on reset cleanly,
-  // and toggling reset kills the PHY link which breaks POE power.
+  // WB_IO2 supplies the Ethernet controller, not PoE's separate 5V input.
+  // Retain the existing no-reset startup so the PHY link is not disturbed.
   pinMode(PIN_ETHERNET_RESET, OUTPUT);
   digitalWrite(PIN_ETHERNET_RESET, HIGH);
 
   ETHERNET_SPI_PORT.begin();
+  ethernet_legacy_spi_started = true;
   Ethernet.init(ETHERNET_SPI_PORT, PIN_ETHERNET_SS);
 
   uint8_t mac[6];
@@ -93,12 +127,14 @@ static void ethernet_task(void* param) {
       mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
 
   // Retry loop: keep trying until we get an IP
-  while (!ethernet_running) {
+  while (!ethernet_running && !ethernet_legacy_stop.load()) {
     ETHERNET_CLI_LOG("Attempting DHCP...");
-    if (Ethernet.begin(mac, 10000, 2000) == 0) {
+    const bool connected = Ethernet.begin(mac, 10000, 2000) != 0;
+    if (ethernet_legacy_stop.load()) break;
+    if (!connected) {
       if (Ethernet.hardwareStatus() == EthernetNoHardware) {
         ETHERNET_CLI_LOG("Hardware not found, giving up");
-        vTaskDelete(NULL);
+        ethernet_legacy_finish_task();
         return;
       }
       if (Ethernet.linkStatus() == LinkOFF) {
@@ -106,7 +142,7 @@ static void ethernet_task(void* param) {
       } else {
         ETHERNET_CLI_LOG("DHCP failed, will retry");
       }
-      vTaskDelay(pdMS_TO_TICKS(ETHERNET_RETRY_INTERVAL_MS));
+      (void)ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(ETHERNET_RETRY_INTERVAL_MS));
       continue;
     }
 
@@ -114,15 +150,25 @@ static void ethernet_task(void* param) {
     ETHERNET_CLI_LOG("IP: %u.%u.%u.%u", ip[0], ip[1], ip[2], ip[3]);
     ETHERNET_CLI_LOG("Listening on TCP port %d", ETHERNET_TCP_PORT);
     ethernet_server.begin();
-    ethernet_running = true;
+    taskENTER_CRITICAL();
+    if (!ethernet_legacy_stop.load()) ethernet_running = true;
+    taskEXIT_CRITICAL();
   }
 
   // DHCP succeeded, task is done
-  vTaskDelete(NULL);
+  ethernet_legacy_finish_task();
 }
 
 static void ethernet_start_task() {
-  xTaskCreate(ethernet_task, "eth_init", 1024, NULL, 1, NULL);
+  if (ethernet_legacy_worker_active.load() || ethernet_running || ethernet_legacy_stop.load()) return;
+  if (!mesh::nrf52::registerTerminalEthernetShutdown(ethernet_terminal_shutdown, nullptr)) return;
+  taskENTER_CRITICAL();
+  ethernet_legacy_worker_active.store(true);
+  if (xTaskCreate(ethernet_task, "eth_init", 1024, nullptr, 1, &ethernet_legacy_task_handle) != pdPASS) {
+    ethernet_legacy_worker_active.store(false);
+    ethernet_legacy_task_handle = nullptr;
+  }
+  taskEXIT_CRITICAL();
 }
 #endif
 

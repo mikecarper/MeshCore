@@ -43,6 +43,12 @@ SCENARIOS = (
     "new peer cannot receive previous peer synchronous or retained async output",
     "partial record from a replaced peer cannot concatenate with new input",
     "concurrent worker replacement cannot steal a record's response owner",
+    "never-started terminal shutdown leaves storage bus pads untouched",
+    "terminal DHCP timeout retains live SPI without task deletion or preference changes",
+    "online terminal shutdown completes owner handoff and is idempotent",
+    "terminal release refusal remains fail-closed until OTA owner permits handoff",
+    "terminal renewal timeout retains active worker and SPI until cooperative completion",
+    "terminal stop deadline survives millis rollover",
 )
 
 

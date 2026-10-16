@@ -1,5 +1,7 @@
 #include "RAK13800EthernetInterface.h"
 #include "../../nrf52/EthernetMac.h"
+#include "../../nrf52/TerminalPeripheralShutdown.h"
+#include "../../nrf52/EthernetCliTransmit.h"
 #include <SPI.h>
 #include <EthernetUdp.h>
 
@@ -14,11 +16,10 @@ SPIClass ETHERNET_SPI_PORT(NRF_SPIM1, PIN_SPI1_MISO, PIN_SPI1_SCK, PIN_SPI1_MOSI
 #define PIN_ETHERNET_SS 26
 
 bool RAK13800EthernetInterface::begin() {
-
-  // WB_IO2 (power enable) is already driven HIGH by early constructor
-  // in RAK4631Board.cpp to support POE boot.
-  // Skip hardware reset — the W5100S comes out of power-on reset cleanly,
-  // and toggling reset kills the PHY link which breaks POE power.
+  if (_terminalStopping) return false;
+  if (!mesh::nrf52::registerTerminalEthernetShutdown(terminalShutdown, this)) return false;
+  // Preserve existing startup/link timing. PoE supplies separate 5V through
+  // the base's VCC_IN; WB_IO2 only supplies the W5100S's switched 3V3_S.
 #ifdef PIN_ETHERNET_RESET
         pinMode(PIN_ETHERNET_RESET, OUTPUT);
         digitalWrite(PIN_ETHERNET_RESET, HIGH);
@@ -36,6 +37,7 @@ bool RAK13800EthernetInterface::begin() {
       mac[4],
       mac[5]);
   ETHERNET_SPI_PORT.begin();
+  _spiStarted = true;
   Ethernet.init(ETHERNET_SPI_PORT, PIN_ETHERNET_SS);
 
   // Use static IP if build flags are defined, otherwise DHCP
@@ -71,15 +73,39 @@ bool RAK13800EthernetInterface::begin() {
   return true;
 }
 
+bool RAK13800EthernetInterface::terminalShutdown(void* context, uint32_t timeout_ms) {
+  return static_cast<RAK13800EthernetInterface*>(context)->shutdownForPowerOff(timeout_ms);
+}
+
+bool RAK13800EthernetInterface::shutdownForPowerOff(uint32_t timeout_ms) {
+  (void)timeout_ms; // All operations below are finite register transfers.
+  _terminalStopping = true;
+  // disable() cancels framed/session producers, but disconnectClient() must
+  // not enter the vendor socket-stop/ACK wait during terminal shutdown.
+  SerialEthernetInterface::disable();
+  if (!_spiStarted) return true;
+  for (uint8_t socket = 0; socket < 4; ++socket) {
+    (void)mesh::nrf52::EthernetCliTransmit::close(socket);
+  }
+  client = EthernetClient();
+  ETHERNET_SPI_PORT.end();
+  _spiStarted = false;
+  mesh::nrf52::releaseRakEthernetBusPads();
+  return true;
+}
+
 int RAK13800EthernetInterface::available() {
+  if (!_spiStarted || _terminalStopping) return 0;
   return client.available();
 }
 
 int RAK13800EthernetInterface::read() {
+  if (!_spiStarted || _terminalStopping) return -1;
   return client.read();
 }
 
 size_t RAK13800EthernetInterface::write(const uint8_t *buf, size_t size) {
+  if (!_spiStarted || _terminalStopping) return 0;
   return client.write(buf, size);
 }
 
@@ -89,11 +115,11 @@ bool RAK13800EthernetInterface::isConnected() const {
 
 void RAK13800EthernetInterface::disconnectClient() {
   _isConnected = false;
-  client.stop();
+  if (_spiStarted && !_terminalStopping) client.stop();
 }
 
 void RAK13800EthernetInterface::loop() {
-
+  if (!_spiStarted || _terminalStopping) return;
   Ethernet.maintain();
   if (!isEnabled()) return;
   if (_isConnected && !client.connected()) {

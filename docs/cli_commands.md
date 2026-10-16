@@ -1791,6 +1791,37 @@ Station G2/G3 targets default to `off`.
 
 ---
 
+#### Select the Station G3 physical radio slot
+
+```text
+get radio.slot
+set radio.slot auto
+set radio.slot 1
+set radio.slot 2
+reboot
+```
+
+Station G3 SX1262 builds support both physical RF sockets in the same image.
+The default, `auto`, probes both sockets at boot without transmitting. If both
+work, it prefers the last successfully used socket; on a fresh installation,
+it prefers socket 1. A forced `1` or `2` never silently uses the other socket.
+
+`get radio.slot` reports the saved selection, active socket, detected sockets,
+and whether a reboot is needed. Changes are saved immediately but applied only
+after reboot, never during a transmission. The selector does not change keys,
+node settings, or the time-shared `radio2` profile. The legacy `_r2` build name
+means physical socket 2, not a motherboard revision; both build names now
+support this selector.
+
+If no usable socket is found, startup waits with both LNAs disabled instead of
+reboot-looping. A limited USB recovery console accepts `!g3 get radio.slot`,
+`!g3 set radio.slot auto|1|2`, `!g3 reboot`, and `!g3 help`. The `!g3` prefix is
+required in this recovery console; it is not the normal running CLI. KISS
+firmware uses binary slot commands during normal operation, documented in the
+[KISS protocol](kiss_modem_protocol.md).
+
+---
+
 ### System
 
 #### View or change this node's name
@@ -2515,6 +2546,18 @@ the BLE/WiFi drivers, ESP-NOW, GPS UART, logging, and USB host sessions are
 inactive and no work is pending. Compiling those transports into Full does not
 itself prevent sleep. Turning off BLE advertising alone leaves its controller
 running and therefore retains idle behavior rather than manual light sleep.
+
+An active radio2 requires continuous software scanning. With power saving on,
+ESP32 Companion, Repeater, Room and Sensor builds do not insert the ordinary
+1 ms idle delay while dual-radio scanning is active. This avoids delaying
+sub-millisecond scan visits; it does not make active dual-radio scanning a sleep mode.
+
+The verified Meshnology W12 layout enables the LR2021 radio's DC-DC regulator
+after LoRa and Morse receive initialization, including recovery. This setting
+is independent of `powersaving` and does not remove radio features. Other
+LR2021 layouts retain their existing regulator behavior unless their recipe
+explicitly enables `LR2021_USE_DCDC` after confirming the required inductor;
+the X1 is not opted in without that hardware confirmation.
 
 ---
 

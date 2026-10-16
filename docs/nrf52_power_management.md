@@ -71,6 +71,46 @@ Notes:
 
 ## Technical Details
 
+### RAK peripheral shutdown
+
+Explicit power-off and timed deep sleep on RAK4631 and RAK3401 stop peripheral
+owners before switching off the shared `3V3_S` supply. On RAK4631, Ethernet
+must quiesce first; if its worker cannot stop within the bounded shutdown
+interval, keep its rail and bus intact instead of removing power during an SPI
+operation. Detected external-storage holds also retain the supply, including
+after an unresolved flash-operation timeout. Before storage discovery and
+configuration finish, rail removal is refused. Shutdown does not probe again,
+cancel a staged update, or float a storage owner's select pin.
+This does not change ordinary interrupt-idle sleep, boot/low-voltage
+protection, or the configured WisBlock GPS/shared-rail policy during normal
+operation.
+
+The [RAK19007 power schematic](https://images.docs.rakwireless.com/wisblock/rak19007/datasheet/power-schematic.png)
+and [RAK13800 connector schematic](https://images.docs.rakwireless.com/wisblock/rak13800/datasheet/image-20211116120503808.png)
+show that IO2 switches `3V3_S`, not the separate upstream PoE `VCC_IN` supply.
+Merely compiling Ethernet support therefore does not require this rail to
+stay on after terminal shutdown. The RAK4631 radio-enable GPIO controls the
+RF-switch supply, not the SX1262 core supply.
+
+RAK3401's external RAK13302 radio and RAK13800 Ethernet use the same IO slot,
+SPI signals, select pin and IO3 control. Their simultaneous operation is not
+supported; Ethernet owner registration on RAK3401 is rejected rather than
+allowing those electrically conflicting controls to run together.
+
+Software shutdown cannot remove every hardware leakage path. The baseboard
+has I2C pull-ups to unswitched VDD. RAK13302 VD's boost enable follows IO2, but
+the legacy VC default resistor configuration connects it directly to VBAT;
+that boost cannot be switched off by firmware alone.
+
+### XIAO battery-divider safety
+
+XIAO and XIAO-based Ikoka startup preload `READ_BAT_ENABLE` LOW before enabling
+its output. XIAO protective and user shutdown also keep it LOW. Seeed warns
+that HIGH can overvoltage the ADC input during charging, so this is not a
+safe pin to switch HIGH as a power optimization. The schematic's 1 MOhm +
+510 kOhm divider draws about 3 microamps at 4.2 V, not 3 milliamps. Charging
+current settings are unchanged. See [Seeed's battery guidance](https://wiki.seeedstudio.com/XIAO_BLE/#q3-what-are-the-considerations-when-using-xiao-nrf52840-sense-for-battery-charging).
+
 ### Architecture
 
 The power management functionality is integrated into the `NRF52Board` base class in `src/helpers/NRF52Board.cpp`. Board variants provide hardware-specific configuration via a `PowerMgtConfig` struct and override `initiateShutdown(uint8_t reason)` to perform board-specific power-down work and conditionally enable voltage wake (LPCOMP + VBUS).

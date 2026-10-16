@@ -1,10 +1,12 @@
 #include "MeshnologyW12Board.h"
+#include <helpers/ESP32GpioHold.h>
 
 void MeshnologyW12Board::begin() {
     ESP32Board::begin();
 
-    rtc_gpio_hold_dis((gpio_num_t)P_LORA_LF_PA_POWER);
-    rtc_gpio_hold_dis((gpio_num_t)P_LORA_HF_PA_POWER);
+    // Keep both FEM rails off while releasing a retained terminal shutdown.
+    mesh::esp32::releaseOutputAfterDeepSleep((gpio_num_t)P_LORA_LF_PA_POWER, LOW);
+    mesh::esp32::releaseOutputAfterDeepSleep((gpio_num_t)P_LORA_HF_PA_POWER, LOW);
     pinMode(PIN_ADC_CTRL, OUTPUT);
     digitalWrite(PIN_ADC_CTRL, LOW); // Disable battery sense until required
 
@@ -22,8 +24,8 @@ void MeshnologyW12Board::begin() {
         startup_reason = BD_STARTUP_RX_PACKET;
     }
 
-      rtc_gpio_hold_dis((gpio_num_t)P_LORA_NSS);
-      rtc_gpio_deinit((gpio_num_t)P_LORA_DIO_1);
+      mesh::esp32::releaseRtcGpioIfSupported((gpio_num_t)P_LORA_NSS);
+      mesh::esp32::deinitRtcGpioIfSupported((gpio_num_t)P_LORA_DIO_1);
     }
   }
 
@@ -59,7 +61,7 @@ void MeshnologyW12Board::begin() {
     rtc_gpio_set_direction((gpio_num_t)P_LORA_DIO_1, RTC_GPIO_MODE_INPUT_ONLY);
     rtc_gpio_pulldown_en((gpio_num_t)P_LORA_DIO_1);
 
-    rtc_gpio_hold_en((gpio_num_t)P_LORA_NSS);
+    mesh::esp32::holdRtcGpioIfSupported((gpio_num_t)P_LORA_NSS);
 
     if (pin_wake_btn < 0) {
       esp_sleep_enable_ext1_wakeup( (1L << P_LORA_DIO_1), ESP_EXT1_WAKEUP_ANY_HIGH);  // wake up on: recv LoRa packet
@@ -79,10 +81,8 @@ void MeshnologyW12Board::begin() {
     // A shutdown must not retain the packet-wake deep-sleep behavior above.
     // Disable both external FEM rails, then use the base shutdown path so the
     // display, GPS, radio, serial buffers, and stale wake sources are handled.
-    digitalWrite(P_LORA_LF_PA_POWER, LOW);
-    digitalWrite(P_LORA_HF_PA_POWER, LOW);
-    rtc_gpio_hold_en((gpio_num_t)P_LORA_LF_PA_POWER);
-    rtc_gpio_hold_en((gpio_num_t)P_LORA_HF_PA_POWER);
+    mesh::esp32::holdOutputForDeepSleep((gpio_num_t)P_LORA_LF_PA_POWER, LOW);
+    mesh::esp32::holdOutputForDeepSleep((gpio_num_t)P_LORA_HF_PA_POWER, LOW);
     ESP32Board::powerOff();
   }
 

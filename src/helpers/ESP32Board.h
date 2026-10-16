@@ -16,8 +16,12 @@
 #include "esp_system.h"
 #include <driver/rtc_io.h>
 #include "ESP32TrueRandom.h"
+#include "ESP32GpioHold.h"
 #include "UsbLogging.h"
 #include "UsbHostSleepPolicy.h"
+#if defined(STATION_G3_ESP32)
+#include <StationG3RadioSlot.h>
+#endif
 
 #ifndef MESH_ESP32_USB_HOST_LOSS_SLEEP_GRACE_MS
   #define MESH_ESP32_USB_HOST_LOSS_SLEEP_GRACE_MS 120000UL
@@ -53,6 +57,16 @@ protected:
 
 public:
   void begin() {
+    // Digital deep-sleep auto-hold survives wake. Clear it before runtime,
+    // restoring the dedicated radio select before releasing its per-pin hold.
+    mesh::esp32::resetTerminalDeepSleepHolds();
+  #if defined(STATION_G3_ESP32)
+    mesh::esp32::releaseOutputAfterDeepSleep(
+        (gpio_num_t)station_g3::activePins().nss, HIGH);
+  #elif defined(P_LORA_NSS)
+    mesh::esp32::releaseOutputAfterDeepSleep((gpio_num_t)P_LORA_NSS, HIGH);
+  #endif
+
     // Arduino's early init hook normally captured this before initVariant().
     // Keep this idempotent fallback before this class touches ADC peripherals.
     mesh::initializeESP32TrueRandom();

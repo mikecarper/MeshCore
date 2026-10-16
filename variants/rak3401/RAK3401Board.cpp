@@ -1,7 +1,10 @@
 #include <Arduino.h>
 #include <Wire.h>
+#include <SPI.h>
 
 #include "RAK3401Board.h"
+#include "target.h"
+#include "../../src/helpers/nrf52/TerminalPeripheralShutdown.h"
 
 #ifdef NRF52_POWER_MANAGEMENT
 // Static configuration for power management
@@ -16,7 +19,8 @@ void RAK3401Board::initiateShutdown(uint8_t reason) {
   // Disable SKY66122 FEM (CSD+CPS LOW = shutdown, <1 uA)
   digitalWrite(SX126X_POWER_EN, LOW);
 
-  // Disable 3V3 switched peripherals and 5V boost
+  // Disable switched 3V3 peripherals and the RAK13302 VD boost (IO2 EN).
+  // Legacy VC hardware ties boost EN to VBAT unless its resistors are changed.
   digitalWrite(PIN_3V3_EN, LOW);
 
   if (reason == SHUTDOWN_REASON_LOW_VOLTAGE ||
@@ -27,6 +31,54 @@ void RAK3401Board::initiateShutdown(uint8_t reason) {
   enterSystemOff(reason);
 }
 #endif
+
+void RAK3401Board::shutdownPeripherals() {
+  // Runtime sleep/recovery must retain the RAK13302/shared rail. Only the
+  // terminal power-off/deep-sleep path reaches this virtual board hook.
+  const bool ethernet_stopped = mesh::nrf52::terminalEthernetShutdown();
+  // Ethernet cannot register on this board (same IO slot, SPI and IO3).
+  // Still fail closed if an unexpected owner appears: even base radio sleep
+  // would remap that live SPI bus and lowering the FEM would reset W5100S.
+  if (!ethernet_stopped) return;
+  const bool storage_power_safe = sensors.canRemoveSharedStoragePowerForDeepSleep();
+  NRF52Board::shutdownPeripherals();
+#if ENV_INCLUDE_GPS && defined(PIN_GPS_TX) && defined(PIN_GPS_RX)
+  if (storage_power_safe) {
+    if (Serial1) Serial1.end();  // never end an unstarted Adafruit UART
+    pinMode(PIN_GPS_TX, INPUT);
+    pinMode(PIN_GPS_RX, INPUT);
+  }
+#endif
+  Wire.end();
+  pinMode(PIN_WIRE_SDA, INPUT);
+  pinMode(PIN_WIRE_SCL, INPUT);
+  // The RAK13302 is an external, switched-supply radio. The base shutdown
+  // sleeps it but leaves SPI and NRESET/NSS driven; those signals can feed
+  // an unpowered module through its I/O protection. Release both controllers
+  // first (the base prepares SPI, while this radio uses SPI1). begin/end is
+  // deliberate: Adafruit SPI.end() asserts if its object has never begun.
+  if (storage_power_safe) {
+    SPI.end();
+    SPI1.begin();
+    SPI1.end();
+    pinMode(P_LORA_NSS, INPUT);
+    pinMode(P_LORA_RESET, INPUT);
+    pinMode(P_LORA_SCLK, INPUT);
+    pinMode(P_LORA_MOSI, INPUT);
+    pinMode(P_LORA_MISO, INPUT);
+  }
+  // Sleeping the SX1262 alone does not disable the SKY66122's CSD input.
+  // A legacy RAK13302 VC boost can remain supplied independently of IO2.
+  digitalWrite(SX126X_POWER_EN, LOW);
+  pinMode(SX126X_POWER_EN, OUTPUT);
+  // PoE/external 5V enters the base separately from the switched 3V3_S rail.
+  // An external NOR can still be recovering an unknown-WIP operation. Keep
+  // its shared supply and driven CS/header pads until qualified teardown.
+  if (storage_power_safe) {
+    digitalWrite(PIN_3V3_EN, LOW);
+    pinMode(PIN_3V3_EN, OUTPUT);
+  }
+}
 
 void RAK3401Board::begin() {
   NRF52BoardDCDC::begin();
@@ -50,10 +102,9 @@ void RAK3401Board::begin() {
   checkBootVoltage(&power_config);
 #endif
 
-  // WB_IO2 controls the shared 3V3_S peripheral rail and the RAK13302 boost
-  // converter. Keep it enabled during normal operation. Cycling this rail as
-  // part of radio recovery also resets fitted GPS and sensor modules and does
-  // not provide a reliable reset of the SX1262 core.
+  // WB_IO2 controls shared 3V3_S and the RAK13302 VD boost (or a modified VC).
+  // Keep it enabled normally. Cycling it during radio recovery also resets
+  // fitted GPS/sensors and does not reliably reset the SX1262 core.
   pinMode(PIN_3V3_EN, OUTPUT);
   digitalWrite(PIN_3V3_EN, HIGH);
 

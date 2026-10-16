@@ -1,5 +1,8 @@
 #include "KissModem.h"
 #include <CayenneLPP.h>
+#if defined(STATION_G3_ESP32)
+  #include "StationG3RadioSlot.h"
+#endif
 
 namespace {
 
@@ -467,6 +470,14 @@ void KissModem::handleHardwareCommand(uint8_t sub_cmd, const uint8_t* data, uint
       if (len != 0) writeHardwareError(HW_ERR_INVALID_LENGTH);
       else handleGetRadio2(true);
       break;
+#if defined(STATION_G3_ESP32)
+    case HW_CMD_GET_RADIO_SLOT:
+      handleGetRadioSlot(len);
+      break;
+    case HW_CMD_SET_RADIO_SLOT:
+      handleSetRadioSlot(data, len);
+      break;
+#endif
 #if defined(MESH_HIL_TX_FREQ_MHZ)
     case HW_CMD_GET_LAB_TX_GUARD: {
       if (len != 0) {
@@ -488,6 +499,48 @@ void KissModem::handleHardwareCommand(uint8_t sub_cmd, const uint8_t* data, uint
       break;
   }
 }
+
+#if defined(STATION_G3_ESP32)
+void KissModem::handleGetRadioSlot(uint16_t len) {
+  if (len != 0) {
+    writeHardwareError(HW_ERR_INVALID_LENGTH);
+    return;
+  }
+  const auto& state = station_g3::slotState();
+  const uint8_t status[KISS_RADIO_SLOT_STATUS_SIZE] = {
+      state.savedMode, state.active, state.detected,
+      static_cast<uint8_t>(state.savedMode != state.bootMode)};
+  writeHardwareFrame(HW_RESP(HW_CMD_GET_RADIO_SLOT), status, sizeof(status));
+}
+
+void KissModem::handleSetRadioSlot(const uint8_t* data, uint16_t len) {
+  if (len != 1) {
+    writeHardwareError(HW_ERR_INVALID_LENGTH);
+    return;
+  }
+  if (data[0] > 2) {
+    writeHardwareError(HW_ERR_INVALID_PARAM);
+    return;
+  }
+  static const char* const commands[] = {
+      "set radio.slot auto", "set radio.slot 1", "set radio.slot 2"};
+  char reply[160] = {};
+  if (!_board.handleCommand(commands[data[0]], 0, reply)) {
+    writeHardwareError(HW_ERR_NO_CALLBACK);
+    return;
+  }
+  // handleCommand's bool means "recognized", not "saved". The board is the
+  // single checked-persistence owner; never acknowledge its error as success.
+  if (strncmp(reply, "OK - ", 5) != 0
+      || station_g3::slotState().savedMode != data[0]) {
+    writeHardwareError(HW_ERR_SAVE_FAILED);
+    return;
+  }
+  // This changes only next-boot selection. No radio retune, probe, RF packet,
+  // physical pin switch or reboot is performed by the KISS control command.
+  writeHardwareFrame(HW_RESP_OK, nullptr, 0);
+}
+#endif
 
 void KissModem::expireTemporaryRadio2() {
   if (!_temporary_radio2_active

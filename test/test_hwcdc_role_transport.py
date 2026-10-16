@@ -149,6 +149,11 @@ class HwcdcRoleTransportTest(unittest.TestCase):
                            "KISS_UART_RX=43", "KISS_UART_TX=44", "EXPECT_UART=1"],
             "tinyusb": ["ARDUINO_USB_MODE=0", "ARDUINO_USB_CDC_ON_BOOT=1"],
             "classic-uart": ["ARDUINO_USB_MODE=1", "ARDUINO_USB_CDC_ON_BOOT=0"],
+            "g3-hwcdc": ["STATION_G3_ESP32=1", "ARDUINO_USB_MODE=1",
+                         "ARDUINO_USB_CDC_ON_BOOT=1", "EXPECT_HWCDC=1"],
+            "g3-uart-hwcdc": ["STATION_G3_ESP32=1", "ARDUINO_USB_MODE=1",
+                              "ARDUINO_USB_CDC_ON_BOOT=1", "KISS_UART_RX=16",
+                              "KISS_UART_TX=17", "EXPECT_UART=1"],
         }
         sanitizers = (["-fsanitize=address,undefined", "-fno-sanitize-recover=all",
                        "-fno-pie", "-no-pie"] if os.name != "nt" else [])

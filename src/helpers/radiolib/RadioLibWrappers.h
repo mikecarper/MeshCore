@@ -9,6 +9,9 @@
 #include "RadioAirtime.h"
 #include "RXPowerSaving.h"
 #include "HilTxFrequencyGuard.h"
+#if defined(STATION_G3_ESP32)
+#include <StationG3RadioSlot.h>
+#endif
 
 // Fallback RX powersaving timings, only used until setRxPowerSaving() is called
 // (begin() always applies the persisted values). The authoritative defaults live
@@ -201,6 +204,11 @@ protected:
     return estimator.samplesRemaining() * (cycle_us / 1000000.0f);
   }
 
+  #if defined(STATION_G3_ESP32)
+  static bool hasDirectRadioResetPin() {
+    return station_g3::activePins().reset != static_cast<uint8_t>(RADIOLIB_NC);
+  }
+  #else
   static constexpr bool hasDirectRadioResetPin() {
 #if defined(P_LORA_RESET)
     return P_LORA_RESET != RADIOLIB_NC;
@@ -208,6 +216,7 @@ protected:
     return false;
 #endif
   }
+  #endif
   bool prepareRadioHardReset() {
     if (_board->supportsRadioHardReset()) return _board->resetRadio();
     // A direct NRST is pulsed by the RadioLib begin() call that follows.

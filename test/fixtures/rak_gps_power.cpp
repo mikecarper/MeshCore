@@ -291,6 +291,7 @@ static void storage() {
   assert(sensors.begin()); assert(!sensors.isGPSDetected()&&Serial1.begins==0);
   sensors.configureSharedPeripheralMode(false);
   assert(sensors._wisblock_power.holds()&mesh::gps::ExternalStorage);
+  assert(!sensors.canRemoveSharedStoragePowerForDeepSleep());
   assert(digitalRead(WB_IO2)==HIGH); requireNoLow();
   sensors.configureSharedPeripheralMode(true);
   assert(digitalRead(WB_IO2)==HIGH); requireNoLow();
@@ -298,6 +299,7 @@ static void storage() {
 static void fixedStorage() {
   fresh(); TestLocation location; TestEnvironment sensors(location); bootUart(sensors,location);
   assert(sensors._wisblock_power.holds()&mesh::gps::ExternalStorage);
+  assert(!sensors.canRemoveSharedStoragePowerForDeepSleep());
   assert(sensors.isGpsPowered()&&digitalRead(WB_IO2)==HIGH);
   assert(!sensors.active()&&!Serial1.installed); requireNoLow();
   assert(mesh::ota::OtaStoreQspiNrf52::probes==0);
@@ -319,6 +321,7 @@ static void storageIds() {
         sensors.configureSharedPeripheralMode(false);
         const bool storage_held=selected!=0||(id!=0&&id!=0xffffffU);
         assert(bool(sensors._wisblock_power.holds()&mesh::gps::ExternalStorage)==storage_held);
+        assert(sensors.canRemoveSharedStoragePowerForDeepSleep()==!storage_held);
         assert(digitalRead(WB_IO2)==int(storage_held||compile_held));
         assert(mesh::ota::OtaStoreQspiNrf52::probes>0);
       }
@@ -418,6 +421,32 @@ static void dedicated() {
 #endif
 }
 
+static void terminalStorage() {
+  SensorManager unknown;
+  assert(!unknown.canRemoveSharedStoragePowerForDeepSleep());
+  for(uint8_t holds:{uint8_t(0),uint8_t(mesh::gps::RadioPower),uint8_t(mesh::gps::EthernetPower),
+                     uint8_t(mesh::gps::ExternalStorage),uint8_t(0x80)}) {
+    for(bool shared:{false,true}) {
+      fresh();TestLocation location;TestEnvironment sensors(location);
+      sensors._wisblock_power=mesh::gps::WisBlockSharedPowerPolicy(holds);
+      assert(!sensors.canRemoveSharedStoragePowerForDeepSleep());
+      assert(sensors._wisblock_power.configure(shared?mesh::gps::WisBlockPeripheralMode::Shared
+                                                   :mesh::gps::WisBlockPeripheralMode::GpsOnly));
+      assert(!sensors.canRemoveSharedStoragePowerForDeepSleep());
+      sensors._wisblock_power.setDiscoveryActive(false);
+      const size_t events=hardware_events.size();
+      const unsigned probes=mesh::ota::OtaStoreQspiNrf52::probes;
+      const bool allowed=(holds&(mesh::gps::ExternalStorage|0x80))==0;
+      assert(sensors.canRemoveSharedStoragePowerForDeepSleep()==allowed);
+      sensors._wisblock_power.setGpsActive(true);
+      assert(sensors.canRemoveSharedStoragePowerForDeepSleep()==allowed);
+      assert(hardware_events.size()==events&&mesh::ota::OtaStoreQspiNrf52::probes==probes);
+      sensors._wisblock_power.setDiscoveryActive(true);
+      assert(!sensors.canRemoveSharedStoragePowerForDeepSleep());
+    }
+  }
+}
+
 int main(int argc,char** argv) {
   assert(argc==2);
   if(!std::strcmp(argv[1],"uart")) uart(false);
@@ -440,5 +469,6 @@ int main(int argc,char** argv) {
   else if(!std::strcmp(argv[1],"wake_bus_failure")) i2c(false,4);
   else if(!std::strcmp(argv[1],"initial_config_failure")) initialConfigFailure();
   else if(!std::strcmp(argv[1],"dedicated")) dedicated();
+  else if(!std::strcmp(argv[1],"terminal_storage")) terminalStorage();
   else assert(false&&"unknown scenario");
 }

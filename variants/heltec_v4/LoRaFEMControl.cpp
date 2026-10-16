@@ -1,4 +1,5 @@
 #include "LoRaFEMControl.h"
+#include <helpers/ESP32GpioHold.h>
 #include <driver/rtc_io.h>
 #include <esp_sleep.h>
 #include <Arduino.h>
@@ -9,7 +10,7 @@ void LoRaFEMControl::init(void)
     // atomic transition (no glitch on deep sleep wake).
     pinMode(P_LORA_PA_POWER, OUTPUT);
     digitalWrite(P_LORA_PA_POWER, HIGH);
-    rtc_gpio_hold_dis((gpio_num_t)P_LORA_PA_POWER);
+    mesh::esp32::releaseRtcGpioIfSupported((gpio_num_t)P_LORA_PA_POWER);
 
     esp_reset_reason_t reason = esp_reset_reason();
     if (reason != ESP_RST_DEEPSLEEP) {
@@ -19,7 +20,7 @@ void LoRaFEMControl::init(void)
     // Auto-detect FEM type via shared GPIO2 default pull level.
     // GC1109 CSD: internal pull-down -> reads LOW
     // KCT8103L CSD: internal pull-up -> reads HIGH
-    rtc_gpio_hold_dis((gpio_num_t)P_LORA_KCT8103L_PA_CSD);
+    mesh::esp32::releaseRtcGpioIfSupported((gpio_num_t)P_LORA_KCT8103L_PA_CSD);
     pinMode(P_LORA_KCT8103L_PA_CSD, INPUT);
     delay(1);
     if(digitalRead(P_LORA_KCT8103L_PA_CSD)==HIGH) {
@@ -27,7 +28,7 @@ void LoRaFEMControl::init(void)
         fem_type= KCT8103L_PA;
         pinMode(P_LORA_KCT8103L_PA_CSD, OUTPUT);
         digitalWrite(P_LORA_KCT8103L_PA_CSD, HIGH);
-        rtc_gpio_hold_dis((gpio_num_t)P_LORA_KCT8103L_PA_CTX);
+        mesh::esp32::releaseRtcGpioIfSupported((gpio_num_t)P_LORA_KCT8103L_PA_CTX);
         pinMode(P_LORA_KCT8103L_PA_CTX, OUTPUT);
         digitalWrite(P_LORA_KCT8103L_PA_CTX, lna_enabled ? LOW : HIGH);
         setLnaCanControl(true);
@@ -85,20 +86,20 @@ void LoRaFEMControl::setRxModeEnable(void)
 void LoRaFEMControl::setRxModeEnableWhenMCUSleep(void)
 {
     digitalWrite(P_LORA_PA_POWER, HIGH);
-    rtc_gpio_hold_en((gpio_num_t)P_LORA_PA_POWER);
+    mesh::esp32::holdRtcGpioIfSupported((gpio_num_t)P_LORA_PA_POWER);
     if(fem_type==GC1109_PA) {
         digitalWrite(P_LORA_GC1109_PA_EN, HIGH);
-        rtc_gpio_hold_en((gpio_num_t)P_LORA_GC1109_PA_EN);
+        mesh::esp32::holdRtcGpioIfSupported((gpio_num_t)P_LORA_GC1109_PA_EN);
         gpio_pulldown_en((gpio_num_t)P_LORA_GC1109_PA_TX_EN);
     } else if(fem_type==KCT8103L_PA) {
         digitalWrite(P_LORA_KCT8103L_PA_CSD, HIGH);
-        rtc_gpio_hold_en((gpio_num_t)P_LORA_KCT8103L_PA_CSD);
+        mesh::esp32::holdRtcGpioIfSupported((gpio_num_t)P_LORA_KCT8103L_PA_CSD);
         if(lna_enabled) {
             digitalWrite(P_LORA_KCT8103L_PA_CTX, LOW);   // LNA on
         } else {
             digitalWrite(P_LORA_KCT8103L_PA_CTX, HIGH);  // LNA bypass
         }
-        rtc_gpio_hold_en((gpio_num_t)P_LORA_KCT8103L_PA_CTX);
+        mesh::esp32::holdRtcGpioIfSupported((gpio_num_t)P_LORA_KCT8103L_PA_CTX);
     }
 }
 

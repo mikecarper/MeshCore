@@ -19,6 +19,7 @@ protected:
 public:
   RAK3401Board() : NRF52Board("RAK3401_OTA") {}
   void begin();
+  void shutdownPeripherals() override;
   bool recoverRadio();
   void enableRadioFrontend();
   bool supportsRadioHardReset() const override { return true; }

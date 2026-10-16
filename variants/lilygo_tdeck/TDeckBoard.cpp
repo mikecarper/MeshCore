@@ -1,4 +1,5 @@
 #include <Arduino.h>
+#include <helpers/ESP32GpioHold.h>
 #include "TDeckBoard.h"
 
 uint32_t deviceOnline = 0x00;
@@ -29,7 +30,7 @@ void TDeckBoard::begin() {
       startup_reason = BD_STARTUP_RX_PACKET; // received a LoRa packet (while in deep sleep)
     }
 
-    rtc_gpio_hold_dis((gpio_num_t)P_LORA_NSS);
-    rtc_gpio_deinit((gpio_num_t)P_LORA_DIO_1);
+    mesh::esp32::releaseRtcGpioIfSupported((gpio_num_t)P_LORA_NSS);
+    mesh::esp32::deinitRtcGpioIfSupported((gpio_num_t)P_LORA_DIO_1);
   }
 }

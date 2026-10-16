@@ -47,6 +47,7 @@ extern MockFicr mock_ficr;
 #define NRF_SPIM1 1
 #define WB_IO2 2
 #define OUTPUT 1
+#define INPUT 0
 #define HIGH 1
 #define INPUT_PULLUP 2
 inline void pinMode(int, int) {}
@@ -55,4 +56,11 @@ inline int digitalRead(int) { return HIGH; }
 inline void vTaskDelete(void*) {}
 inline void vTaskDelay(uint32_t value) { delay(value); }
 inline uint32_t pdMS_TO_TICKS(uint32_t value) { return value; }
-inline void xTaskCreate(void (*)(void*), const char*, int, void*, int, void*) {}
+using TaskHandle_t = void*;
+#define pdPASS 1
+#define pdTRUE 1
+#define taskENTER_CRITICAL() do {} while(0)
+#define taskEXIT_CRITICAL() do {} while(0)
+inline void xTaskNotifyGive(TaskHandle_t) {}
+inline uint32_t ulTaskNotifyTake(int, uint32_t value) { delay(value);return 0; }
+inline int xTaskCreate(void (*)(void*), const char*, int, void*, int, TaskHandle_t*) { return pdPASS; }

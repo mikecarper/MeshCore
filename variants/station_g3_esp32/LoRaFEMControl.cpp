@@ -1,20 +1,21 @@
 #include "LoRaFEMControl.h"
+#include <helpers/ESP32GpioHold.h>
 
 #include <Arduino.h>
 #include <driver/rtc_io.h>
+#include "StationG3RadioSlot.h"
 
 void LoRaFEMControl::init() {
 #ifdef P_PA1_EN
-  rtc_gpio_hold_dis((gpio_num_t)P_PA1_EN);
-  pinMode(P_PA1_EN, OUTPUT);
+  mesh::esp32::releaseOutputAfterDeepSleep((gpio_num_t)P_PA1_EN,
+      pa_gain_enabled ? P_PA1_EN_ACTIVE : !P_PA1_EN_ACTIVE);
   applyPAGain();
 #endif
 
-#ifdef P_PRIMARY_LNA_EN
-  rtc_gpio_hold_dis((gpio_num_t)P_PRIMARY_LNA_EN);
-  pinMode(P_PRIMARY_LNA_EN, OUTPUT);
-  setRxModeEnable();
-#endif
+  // Neither socket's receive amplifier is enabled before radio detection.
+  for (uint8_t slot = 1; slot <= 2; ++slot)
+    mesh::esp32::releaseOutputAfterDeepSleep(
+        (gpio_num_t)station_g3::pinsForSlot(slot).lna, HIGH);
 }
 
 void LoRaFEMControl::setSleepModeEnable() {
@@ -23,8 +24,9 @@ void LoRaFEMControl::setSleepModeEnable() {
   digitalWrite(P_PA1_EN, !P_PA1_EN_ACTIVE);
 #endif
 #ifdef P_PRIMARY_LNA_EN
-  // Preserve the existing Station G3 power-off state.
-  digitalWrite(P_PRIMARY_LNA_EN, P_PRIMARY_LNA_EN_ACTIVE);
+  // LNA P/S are active LOW. Bypass/disable the receive amplifier on shutdown,
+  // rather than retaining the same enabled state used during normal receive.
+  digitalWrite(station_g3::activePins().lna, !P_PRIMARY_LNA_EN_ACTIVE);
 #endif
 }
 
@@ -34,13 +36,14 @@ void LoRaFEMControl::setTxModeEnable() {
   // the PA is still driven at full input power.
   applyPAGain();
 #ifdef P_PRIMARY_LNA_EN
-  digitalWrite(P_PRIMARY_LNA_EN, !P_PRIMARY_LNA_EN_ACTIVE);
+  digitalWrite(station_g3::activePins().lna, !P_PRIMARY_LNA_EN_ACTIVE);
 #endif
 }
 
 void LoRaFEMControl::setRxModeEnable() {
 #ifdef P_PRIMARY_LNA_EN
-  digitalWrite(P_PRIMARY_LNA_EN, lna_enabled ? P_PRIMARY_LNA_EN_ACTIVE : !P_PRIMARY_LNA_EN_ACTIVE);
+  digitalWrite(station_g3::activePins().lna,
+      lna_enabled ? P_PRIMARY_LNA_EN_ACTIVE : !P_PRIMARY_LNA_EN_ACTIVE);
 #endif
 }
 

@@ -9,6 +9,12 @@
 #define LR2021_TX_BUSY_TIMEOUT_MS 1000UL
 #endif
 
+// SIMO needs a fitted external inductor. Opt in only for verified board
+// layouts; LR2021 also supports LDO-only designs without that circuitry.
+#ifndef LR2021_USE_DCDC
+#define LR2021_USE_DCDC 0
+#endif
+
 class CustomLR2021 : public LR2021 {
   uint32_t _preambleMillis = 66;
   uint32_t _maxPayloadMillis = 3934;
@@ -64,6 +70,11 @@ class CustomLR2021 : public LR2021 {
       const uint8_t gain = mesh::lr2021::isHighBand(frequency_mhz) ? gainModeHf : gainModeLf;
       int16_t status = LR2021::beginGFSK(frequency_mhz,
           mesh::MorseRx::ReceiverBitRateKbps, 0.6f, 4.8f, 2, 16, tcxoVoltage);
+      // Native modem initialization resets the regulator to LDO. Verified
+      // SIMO boards must restore DC/DC before admitting RX after any reset.
+    #if LR2021_USE_DCDC
+      if (status == RADIOLIB_ERR_NONE) status = setRegulatorDCDC();
+    #endif
       if (status == RADIOLIB_ERR_NONE) status = restoreRfSwitchTable();
       if (status == RADIOLIB_ERR_NONE) status = LR2021::setRxBoostedGainMode(gain);
       if (status == RADIOLIB_ERR_NONE) {
@@ -114,6 +125,13 @@ class CustomLR2021 : public LR2021 {
         mesh::usbLoggingPort().println(status);
         return false;  // fail
       }
+
+    #if LR2021_USE_DCDC
+      // Also reached by radioDeepInit() when restoring LoRa after Morse RX.
+      // Check this before later setters can overwrite a regulator error.
+      status = setRegulatorDCDC();
+      if (status != RADIOLIB_ERR_NONE) return false;
+    #endif
 
       status = setCRC(2);
       if (status != RADIOLIB_ERR_NONE) return false;

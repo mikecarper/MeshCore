@@ -171,6 +171,13 @@ void setup() {
   mesh::setUsbLoggingEnabled(false);
   mesh::setUsbDebugEnabled(false);
 #endif
+#if defined(STATION_G3_ESP32)
+  // G3 can wait in no-radio recovery before modem construction. Bring up
+  // USB now so its prefixed recovery console is reachable on an empty slot.
+  mesh::prepareUsbLoggingPort();
+  Serial.begin(115200);
+  mesh::beginUsbLoggingPort();
+#endif
   KISS_BOOT_STAGE("board.before");
   board.begin();
   KISS_BOOT_STAGE("board.after");
@@ -239,6 +246,7 @@ void setup() {
 #endif
   modem = new KissModem(Serial1, identity, rng, radio_driver, board, sensors);
 #else
+#if !defined(STATION_G3_ESP32)
 #if KISS_HWCDC_TRANSPORT
   // Allocate the USB queues before begin() enables the live driver ISR.
   mesh::prepareUsbLoggingPort();
@@ -247,6 +255,7 @@ void setup() {
 #if KISS_HWCDC_TRANSPORT
   mesh::beginUsbLoggingPort();
 #endif
+#endif // G3 already started USB before radio discovery, including UART builds.
   uint32_t start = millis();
   while (!Serial && millis() - start < 3000) delay(10);
   delay(100);

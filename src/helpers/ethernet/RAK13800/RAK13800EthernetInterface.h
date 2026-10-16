@@ -7,11 +7,15 @@
 class RAK13800EthernetInterface : public SerialEthernetInterface {
   
   bool _isConnected;
+  bool _spiStarted = false;
+  bool _terminalStopping = false;
   EthernetServer server;
   EthernetClient client;
 
   protected:
     void disconnectClient() override;
+    bool shutdownForPowerOff(uint32_t timeout_ms);
+    static bool terminalShutdown(void* context, uint32_t timeout_ms);
 
   public:
     RAK13800EthernetInterface() : server(EthernetServer(ETHERNET_TCP_PORT)) {

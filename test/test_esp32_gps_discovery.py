@@ -36,8 +36,9 @@ struct SerialMock {
   unsigned begins=0, ends=0, polls=0, baud=0;
   int first_pin=-1, second_pin=-1, bytes=0;
   bool installed=false;
+  explicit operator bool() const { return installed; }
   void setPins(int first, int second) { first_pin=first; second_pin=second; }
-  void begin(unsigned speed) { installed=true; baud=speed; ++begins; }
+  void begin(unsigned speed) { installed=true; baud=speed; ++begins; gpio_modes[first_pin]=INPUT; gpio_modes[second_pin]=OUTPUT; }
   void end() { installed=false; ++ends; }
   int available() { ++polls; return bytes; }
 } Serial1;
@@ -82,6 +83,7 @@ struct EnvironmentSensorManager : SensorManager {
   bool gpsSerialTransportMayConflict(uint8_t uart) const override;
   bool gpsSerialTransportCanYield(uint8_t uart) const override;
   bool setGpsSerialTransportBlocked(uint8_t uart, bool blocked) override;
+  void shutdownGpsTransportForDeepSleep() override;
 };
 @METHODS@
 
@@ -113,6 +115,12 @@ static void absent() {
   now_ms=5100; sensors.loop();
   assert(!sensors.gps_discovery_pending && !sensors.gps_detected && !sensors.gps_active);
   assert(!location.powered && location.stops==1 && !sensors.gpsUsesSerialUart(1));
+#ifdef ESP32_PLATFORM
+  assert(!Serial1.installed && Serial1.ends==1);
+  assert(gpio_modes[PIN_GPS_TX]==INPUT && gpio_modes[PIN_GPS_RX]==INPUT);
+#else
+  assert(Serial1.installed && Serial1.ends==0); // nRF lifecycle is unchanged.
+#endif
   const unsigned polls=Serial1.polls;
   Serial1.bytes=8; now_ms=6100; sensors.loop();
   assert(Serial1.polls==polls && !sensors.gps_detected && location.stops==1);
@@ -277,6 +285,7 @@ def harness(*, negative=None):
         "bool EnvironmentSensorManager::gpsSerialTransportMayConflict(",
         "bool EnvironmentSensorManager::gpsSerialTransportCanYield(",
         "bool EnvironmentSensorManager::setGpsSerialTransportBlocked(",
+        "void EnvironmentSensorManager::shutdownGpsTransportForDeepSleep()",
         "void EnvironmentSensorManager::loop()",
     )
     # These two methods live under the production platform/provider guard.
@@ -297,6 +306,8 @@ def harness(*, negative=None):
                          "    // Negative control: leave the pending receiver powered."),
         "preference_loss": ("    gps_discovery_preference_known = true;",
                             "    // Negative control: forget that an explicit preference was loaded."),
+        "failed_uart": ("  if (!found) shutdownGpsTransportForDeepSleep();",
+                        "  // Negative control: abandon the failed probe with TX driven."),
     }
     if negative:
         before, after = mutations[negative]
@@ -317,7 +328,9 @@ class CooperativeGpsDiscoveryTests(unittest.TestCase):
         with tempfile.TemporaryDirectory(prefix="meshcore-esp32-gps-") as directory:
             work = Path(directory)
             for name, text in {
-                "Arduino.h": ARDUINO, "Mesh.h": MESH, "CayenneLPP.h": CAYENNE,
+                "Arduino.h": ARDUINO.replace("inline void pinMode(int,int){}",
+                    "#define INPUT 0\ninline int gpio_modes[64]={};\ninline void pinMode(int pin,int mode){gpio_modes[pin]=mode;}"),
+                "Mesh.h": MESH, "CayenneLPP.h": CAYENNE,
                 "Wire.h": "#pragma once\nclass TwoWire {};\n",
             }.items():
                 (work / name).write_text(text, encoding="utf-8")
@@ -411,6 +424,10 @@ class CooperativeGpsDiscoveryTests(unittest.TestCase):
                                         (("latest",), "preference_loss", ("PERSISTANT_GPS=1",))):
             self.compile_run(cases, negative=negative, defines=defines,
                              platform="NRF52_PLATFORM")
+
+    def test_failed_esp32_probe_releases_its_uart_before_ownership_is_dropped(self):
+        self.compile_run(("absent",))
+        self.compile_run(("absent",), negative="failed_uart")
 
 
 if __name__ == "__main__":

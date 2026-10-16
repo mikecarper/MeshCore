@@ -67,6 +67,7 @@ def lifecycle_harness(gps=True, negative=None):
         "void EnvironmentSensorManager::applyWisBlockRailPower()",
         "uint8_t EnvironmentSensorManager::detectWisBlockStorageHolds()",
         "void EnvironmentSensorManager::configureSharedPeripheralMode(",
+        "bool EnvironmentSensorManager::canRemoveSharedStoragePowerForDeepSleep() const",
         "bool EnvironmentSensorManager::isGpsPowered()",
         "void EnvironmentSensorManager::rakGPSInit()",
         "bool EnvironmentSensorManager::gpsIsAwake(",
@@ -77,6 +78,7 @@ def lifecycle_harness(gps=True, negative=None):
         "bool EnvironmentSensorManager::gpsSerialTransportMayConflict(",
         "bool EnvironmentSensorManager::gpsSerialTransportCanYield(",
         "bool EnvironmentSensorManager::setGpsSerialTransportBlocked(",
+        "void EnvironmentSensorManager::shutdownGpsTransportForDeepSleep()",
         "void EnvironmentSensorManager::loop()",
     )
     if not gps:
@@ -198,6 +200,12 @@ class RakGpsPowerTests(unittest.TestCase):
         for store in ("OTA_QSPI_SHARED_WISBLOCK_SPI", "OTA_SD_STORE"):
             with self.subTest(store=store):
                 compile_lifecycle(self, ("fixed_storage",), ("-DRAK_4631", "-D" + store), auto_store=False)
+
+    def test_terminal_storage_query_is_frozen_read_only_and_fail_closed(self):
+        for defines in (("-DRAK_4631",), ("-DRAK_3401",),
+                        ("-DRAK_4631", "-DETHERNET_ENABLED=1")):
+            with self.subTest(defines=defines):
+                compile_lifecycle(self, ("terminal_storage",), defines)
 
 
 if __name__ == "__main__":

@@ -1,15 +1,18 @@
 #include "StationG3Board.h"
+#include <helpers/ESP32GpioHold.h>
 
 void StationG3Board::shutdownPeripherals() {
   ESP32Board::shutdownPeripherals();
 
   loRaFEMControl.setSleepModeEnable();
 #ifdef P_PA1_EN
-  rtc_gpio_hold_en((gpio_num_t)P_PA1_EN);
+  mesh::esp32::holdOutputForDeepSleep((gpio_num_t)P_PA1_EN, !P_PA1_EN_ACTIVE);
 #endif
 
 #ifdef P_PRIMARY_LNA_EN
-  rtc_gpio_hold_en((gpio_num_t)P_PRIMARY_LNA_EN);
+  for (uint8_t slot = 1; slot <= 2; ++slot)
+    mesh::esp32::holdOutputForDeepSleep(
+        (gpio_num_t)station_g3::pinsForSlot(slot).lna, !P_PRIMARY_LNA_EN_ACTIVE);
 #endif
 }
 
@@ -66,6 +69,26 @@ bool StationG3Board::handleCommand(const char* command, uint32_t sender_timestam
   (void)sender_timestamp;
   if (command == nullptr || reply == nullptr) {
     return false;
+  }
+
+  if (strcmp(command, "get radio.slot") == 0) {
+    const auto& state = station_g3::slotState();
+    snprintf(reply, 160, "> %s; active=%u; detected=%s%s%s",
+        station_g3::slotModeName(state.savedMode), state.active,
+        state.detected == 3 ? "1,2" : state.detected == 1 ? "1" : state.detected == 2 ? "2" : "none",
+        state.savedMode != state.bootMode ? "; reboot required" : "",
+        state.settingsHealthy ? "" : "; WARN settings unavailable/invalid");
+    return true;
+  }
+  if (strncmp(command, "set radio.slot ", 15) == 0) {
+    const char* value = command + 15;
+    const int mode = strcmp(value, "auto") == 0 ? 0 : strcmp(value, "1") == 0 ? 1 : strcmp(value, "2") == 0 ? 2 : -1;
+    if (mode < 0) strcpy(reply, "Error: radio.slot must be auto, 1, or 2");
+    else if (!station_g3::saveSlotMode(static_cast<uint8_t>(mode)))
+      strcpy(reply, "Error: radio.slot could not be saved; running slot unchanged");
+    else snprintf(reply, 160, "OK - radio.slot %s saved; reboot to apply (active=%u)",
+        station_g3::slotModeName(mode), station_g3::slotState().active);
+    return true;
   }
 
   if (strcmp(command, "get radio.fem.rxgain") == 0) {

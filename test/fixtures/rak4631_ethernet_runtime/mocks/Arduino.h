@@ -52,6 +52,7 @@ extern MockFicr mock_ficr;
 #define NRF_SPIM1 1
 #define WB_IO2 34
 #define OUTPUT 1
+#define INPUT 0
 #define HIGH 1
 #define LOW 0
 void pinMode(int pin, int mode);

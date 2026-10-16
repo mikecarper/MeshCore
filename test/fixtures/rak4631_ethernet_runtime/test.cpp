@@ -33,6 +33,7 @@ static std::atomic<int> hardware_operations{0};
 static std::atomic<int> main_hardware_operations{0};
 static std::atomic<int> live_task_allocations{0};
 static std::atomic<int> task_deletions{0};
+static unsigned terminal_pad_releases = 0;
 static bool fail_task_creation = false;
 static std::atomic<bool> defer_task_start{false};
 static std::mutex library_mutex;
@@ -80,7 +81,13 @@ void mock_spi_end() {
   assert(spi_active.exchange(false));
   ++hardware_operations;
 }
-void pinMode(int pin, int mode) { assert(pin == 21 && mode == OUTPUT); }
+void pinMode(int pin, int mode) {
+  if (mode == INPUT) {
+    assert((pin==3||pin==29||pin==30||pin==26||pin==21)&&!spi_active.load());
+    assert(!ethernet_worker_active.load()||ethernet_worker_stopped.load());
+    ++terminal_pad_releases;
+  } else assert(pin == 21 && mode == OUTPUT);
+}
 void digitalWrite(int pin, int value) {
   assert((pin == 21 || pin == 26) && value == HIGH);
 }
@@ -129,6 +136,11 @@ uint32_t ulTaskNotifyTake(int clear_on_exit, uint32_t ticks) {
   return notifications;
 }
 void vTaskDelay(uint32_t ticks) {
+  if (current_task == nullptr) {
+    mock_millis.fetch_add(ticks);
+    std::this_thread::sleep_for(std::chrono::milliseconds(ticks));
+    return;
+  }
   assert(current_task != nullptr);
   if (ticks == portMAX_DELAY) {
     std::unique_lock<std::mutex> lock(current_task->mutex);
@@ -733,6 +745,76 @@ int main(int argc, char** argv) {
       ethernet_send_reply("old-record-result");
       finish_off();
       assert(output().find("old-record-result") == std::string::npos);
+      break;
+    }
+    case 29: { // Registered but never-started Ethernet must not touch storage's pads.
+      assert(mesh::nrf52::terminalEthernetShutdown(0));
+      assert(hardware_operations.load()==0&&terminal_pad_releases==0&&context.saves==0);
+      break;
+    }
+    case 30: { // A blocked DHCP owner times out without task deletion or pad remapping.
+      configure(context,true);
+      Ethernet.begin_blocked.store(true);
+      assert(command("eth on").find("starting")!=std::string::npos);
+      wait_until([] { return Ethernet.begin_count.load()==1; });
+      const unsigned saves=context.saves;
+      const uint32_t started=millis();
+      assert(!mesh::nrf52::terminalEthernetShutdown(20));
+      assert(static_cast<uint32_t>(millis()-started)>=20);
+      assert(spi_active.load()&&bus_owner.load()&&context.releases==0);
+      assert(task_deletions.load()==0&&terminal_pad_releases==0&&context.saves==saves);
+      unblock(Ethernet.begin_blocked);
+      wait_until([] { return ethernet_worker_stopped.load(); });
+      assert(mesh::nrf52::terminalEthernetShutdown(500));
+      assert(task_deletions.load()==1&&terminal_pad_releases==5&&context.saves==saves);
+      break;
+    }
+    case 31: { // Online terminal stop completes all owner hooks without changing preferences.
+      configure(context,true);
+      assert(command("eth on").find("starting")!=std::string::npos);
+      wait_until([] { return ethernet_is_running(); });
+      const unsigned saves=context.saves;
+      assert(mesh::nrf52::terminalEthernetShutdown(500));
+      assert(!ethernet_running.load()&&!ethernet_enabled.load());
+      assert(context.releases==1&&context.saves==saves&&terminal_pad_releases==5);
+      assert(task_deletions.load()==1&&!spi_active.load()&&!bus_owner.load());
+      // Repeated shutdown is harmless and does not end an unstarted SPI object.
+      const int operations=hardware_operations.load();
+      assert(mesh::nrf52::terminalEthernetShutdown(0));
+      assert(hardware_operations.load()==operations&&context.releases==1);
+      break;
+    }
+    case 32: { // An OTA release refusal cannot be mistaken for permission to cut the rail.
+      start_online();context.release_allowed=false;
+      assert(!mesh::nrf52::terminalEthernetShutdown(50));
+      assert(!spi_active.load()&&live_task_allocations.load()==0&&bus_owner.load());
+      assert(context.releases>0&&terminal_pad_releases==5);
+      context.release_allowed=true;
+      assert(mesh::nrf52::terminalEthernetShutdown(500));
+      assert(!bus_owner.load()&&context.saves==0&&terminal_pad_releases==5);
+      break;
+    }
+    case 33: { // Slow renewal cannot be force-deleted or lose its supply.
+      start_online();Ethernet.maintain_blocked.store(true);
+      mock_millis.fetch_add(1000);ethernet_loop_maintain();
+      wait_until([] { return Ethernet.maintain_count.load()==1; });
+      assert(!mesh::nrf52::terminalEthernetShutdown(20));
+      assert(spi_active.load()&&task_deletions.load()==0&&terminal_pad_releases==0);
+      unblock(Ethernet.maintain_blocked);
+      wait_until([] { return ethernet_worker_stopped.load(); });
+      assert(mesh::nrf52::terminalEthernetShutdown(500));
+      break;
+    }
+    case 34: { // Stop deadline remains bounded across millis() rollover.
+      Ethernet.begin_blocked.store(true);
+      assert(command("eth on").find("starting")!=std::string::npos);
+      wait_until([] { return Ethernet.begin_count.load()==1; });
+      mock_millis.store(UINT32_MAX-9);
+      assert(!mesh::nrf52::terminalEthernetShutdown(20));
+      assert(millis()<100&&spi_active.load()&&terminal_pad_releases==0);
+      unblock(Ethernet.begin_blocked);
+      wait_until([] { return ethernet_worker_stopped.load(); });
+      assert(mesh::nrf52::terminalEthernetShutdown(500));
       break;
     }
     default: assert(false);

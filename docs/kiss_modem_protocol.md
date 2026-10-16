@@ -155,6 +155,8 @@ MeshCore-specific functionality uses the standard KISS SetHardware command. The 
 | GetTempRadio2   | `0x1E` | -                                        |
 | SetRadio2Ext    | `0x1F` | Radio2 parameters + protocol (14)        |
 | GetRadio2Ext    | `0x20` | -                                        |
+| GetRadioSlot    | `0x22` | - (Station G3 only)                      |
+| SetRadioSlot    | `0x23` | Mode (1): 0=auto, 1=slot 1, 2=slot 2 (Station G3 only) |
 
 ### Response Sub-commands (TNC to Host)
 
@@ -187,6 +189,7 @@ Response codes use the high-bit convention: `response = command | 0x80`. Generic
 | Radio2       | `0x9C` | Saved radio2 parameters (13)             |
 | TempRadio2   | `0x9E` | Active temporary radio2 + remaining minutes (15) |
 | Radio2Ext    | `0xA0` | Saved radio2 parameters + protocol (14)    |
+| RadioSlot    | `0xA2` | Saved mode, active slot, detected mask, reboot needed (4 bytes) |
 | OK           | `0xF0` | -                                       |
 | Error        | `0xF1` | Error code (1)                          |
 | TxDone       | `0xF8` | Result (1): 0x00=failed, 0x01=success   |
@@ -203,6 +206,25 @@ Response codes use the high-bit convention: `response = command | 0x80`. Generic
 | UnknownCmd    | `0x05` | Unknown sub-command     |
 | EncryptFailed | `0x06` | Encryption failed       |
 | TxBusy        | `0x07` | Radio TX busy, or host output queue full |
+| SaveFailed    | `0x08` | Setting could not be saved; running slot unchanged |
+
+### Station G3 physical radio slot
+
+`GetRadioSlot` takes no data and replies with four bytes: saved mode (`0` auto,
+`1` or `2` forced socket), active socket (`0` unavailable, `1` or `2`), detected
+socket mask (bit 0 = socket 1, bit 1 = socket 2), and reboot-needed flag (`0` or
+`1`). This selects the physical SX1262 daughterboard socket, not the logical
+`radio2` PHY profile. Other boards return `UnknownCmd`.
+
+`SetRadioSlot` requires exactly one mode byte (`0`–`2`). An `OK` means the mode
+was saved; the running socket stays unchanged until a separate `Reboot` command
+or power cycle. Radio settings and identity are untouched. A failed save returns
+`SaveFailed`, with no change to the running socket.
+
+If no usable socket is found during boot, the normal KISS modem has not started.
+Use the separate USB recovery console: `!g3 get radio.slot`,
+`!g3 set radio.slot auto`, then `!g3 reboot`. Recovery accepts only these
+prefixed management commands (and `!g3 help`), never KISS packet payloads.
 
 ### Unsolicited Events
 

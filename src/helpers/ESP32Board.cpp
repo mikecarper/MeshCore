@@ -1,4 +1,5 @@
 #ifdef ESP_PLATFORM
+#include <helpers/ESP32GpioHold.h>
 
 #include "ESP32Board.h"
 #include "WirelessControl.h"
@@ -1285,20 +1286,22 @@ void ESP32Board::shutdownPeripherals() {
   // Power off LoRa
   radio_driver.powerOff();
 
-  #ifdef P_LORA_NSS
-  // Keep LoRa inactive during deepsleep
-  digitalWrite(P_LORA_NSS, HIGH);
-#if defined(CONFIG_IDF_TARGET_ESP32C3) || defined(CONFIG_IDF_TARGET_ESP32C6)
-  gpio_hold_en((gpio_num_t)P_LORA_NSS);
-#else
-  rtc_gpio_hold_en((gpio_num_t)P_LORA_NSS);
-#endif
+  #if defined(STATION_G3_ESP32)
+  mesh::esp32::holdOutputForDeepSleep(
+      (gpio_num_t)station_g3::activePins().nss, HIGH);
+  #elif defined(P_LORA_NSS)
+  // Keep LoRa deselected even when NSS is not an RTC pad (classic GPIO18,
+  // Station G3 slot2 GPIO43). Configure OUTPUT even after partial radio init.
+  mesh::esp32::holdOutputForDeepSleep((gpio_num_t)P_LORA_NSS, HIGH);
   #endif
 
   // Power off GPS if any
   if (sensors.getLocationProvider() != NULL) {
     sensors.getLocationProvider()->stop();
   }
+  // A stopped receiver may already have lost its rail. Avoid latching an
+  // idle-high UART output into it when digital deep-sleep auto-hold is armed.
+  sensors.shutdownGpsTransportForDeepSleep();
 
   // Native USB must not wait for a host which has stopped reading.
   // Keep the original flush behavior for UART targets.
@@ -1326,6 +1329,7 @@ void ESP32Board::enterDeepSleep(uint32_t secs) {
   }
 
   // Finally set ESP32 into deepsleep
+  mesh::esp32::commitTerminalDeepSleepHolds();
   esp_deep_sleep_start(); // CPU halts here and never returns!
 }
 #endif

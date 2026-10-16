@@ -244,8 +244,13 @@ extern uint64_t wakeup_mask;
 inline int esp_reset_reason() { return reset_reason; }
 inline int esp_sleep_get_wakeup_cause() { return 0; }
 inline uint64_t esp_sleep_get_ext1_wakeup_status() { return wakeup_mask; }
-inline void rtc_gpio_hold_dis(int) {}
-inline void rtc_gpio_deinit(int) {}
+inline bool rtc_gpio_is_valid_gpio(int pin) {
+  return pin == 0 || pin == 2 || pin == 4 || (pin >= 12 && pin <= 15)
+      || (pin >= 25 && pin <= 27) || (pin >= 32 && pin <= 39);
+}
+inline int rtc_gpio_hold_dis(int) { return 0; }
+inline int rtc_gpio_hold_en(int) { return 0; }
+inline int rtc_gpio_deinit(int) { return 0; }
 inline void pinMode(int, int) {}
 inline void digitalWrite(int, int) {}
 inline void attachInterrupt(int, void(*)(), int) {}
@@ -341,6 +346,16 @@ struct XPowersAXP2101 : XPowersLibInterface {
 using esp_err_t = int;
 using nvs_handle_t = uint32_t;
 constexpr int ESP_OK = 0, ESP_FAIL = 1, ESP_ERR_NVS_NOT_FOUND = 2;
+constexpr int ESP_ERR_INVALID_ARG=258;
+constexpr int GPIO_MODE_OUTPUT=2,GPIO_PULLUP_DISABLE=0,GPIO_PULLDOWN_DISABLE=0,GPIO_INTR_DISABLE=0;
+#define GPIO_IS_VALID_OUTPUT_GPIO(pin) ((pin)>=0 && (pin)<49)
+struct gpio_config_t { uint64_t pin_bit_mask;int mode,pull_up_en,pull_down_en,intr_type; };
+inline int gpio_set_level(int,int) { return 0; }
+inline int gpio_config(const gpio_config_t*) { return 0; }
+inline int gpio_hold_en(int) { return 0; }
+inline int gpio_hold_dis(int) { return 0; }
+inline void gpio_deep_sleep_hold_en() {}
+inline void gpio_deep_sleep_hold_dis() {}
 constexpr int NVS_READONLY = 0, NVS_READWRITE = 1;
 extern std::map<std::string,uint16_t> saved;
 extern std::string opened_namespace;
@@ -566,7 +581,7 @@ class TBeamChargeTargetTest(unittest.TestCase):
                     directory = Path(temporary)
                     (directory / "MockSdk.h").write_text(MOCK_SDK, encoding="ascii")
                     for name in ("Arduino.h", "Wire.h", "XPowersLib.h", "nvs.h",
-                                 "helpers/ESP32Board.h"):
+                                 "helpers/ESP32Board.h", "driver/rtc_io.h", "driver/gpio.h"):
                         stub = directory / name
                         stub.parent.mkdir(parents=True, exist_ok=True)
                         stub.write_text('#include "MockSdk.h"\n', encoding="ascii")

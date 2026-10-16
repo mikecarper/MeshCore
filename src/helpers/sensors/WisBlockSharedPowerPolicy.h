@@ -17,9 +17,10 @@ enum WisBlockRailHold : uint8_t {
   ExternalStorage = 1U << 2,
 };
 
-// These are hardware dependencies, not whether the corresponding service is
-// enabled at runtime. In particular, removing Ethernet power can brown out a
-// PoE-powered core even when its network service is disabled.
+// Conservative live-service/bus ownership holds, not proof of physical module
+// presence. Ethernet builds may still have an active worker or retained bus;
+// keep their normal runtime policy until an explicit owner-aware handoff.
+// RAK13800 PoE's separate 5V input does not depend on this switched 3V3_S rail.
 constexpr uint8_t wisBlockCompileRailHolds() {
   return 0
 #if defined(RAK_3401)

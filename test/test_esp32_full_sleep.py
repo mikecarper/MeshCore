@@ -136,9 +136,10 @@ struct TestRadio : mesh::Radio {
   bool isCarrierWaveActive() const override { return cw; }
 } timing_radio;
 struct Mesh {
-  bool pending = false;
+  bool pending = false, dual = false;
   Prefs* getNodePrefs() { return &prefs; }
   bool hasPendingWork() const { return pending; }
+  bool isDualRadioActive() const { return dual; }
   mesh::Radio* getProfileRadio() { return &timing_radio; }
 } the_mesh;
 struct Interfaces { bool pending = false; bool hasPendingIO() const { return pending; } } interface_manager;

@@ -29,11 +29,13 @@ SIGNATURES = (
     "void EnvironmentSensorManager::setPowerSavingEnabled(",
     "bool EnvironmentSensorManager::supportsSharedPeripheralMode()",
     "void EnvironmentSensorManager::configureSharedPeripheralMode(",
+    "bool EnvironmentSensorManager::canRemoveSharedStoragePowerForDeepSleep() const",
     "bool EnvironmentSensorManager::isGpsPowered()",
     "bool EnvironmentSensorManager::gpsUsesSerialUart(",
     "bool EnvironmentSensorManager::gpsSerialTransportMayConflict(",
     "bool EnvironmentSensorManager::gpsSerialTransportCanYield(",
     "bool EnvironmentSensorManager::setGpsSerialTransportBlocked(",
+    "void EnvironmentSensorManager::shutdownGpsTransportForDeepSleep()",
 )
 
 GENERIC = r'''
@@ -63,6 +65,7 @@ int main() {
   assert(!hooks.supportsSharedPeripheralMode());
   hooks.configureSharedPeripheralMode(true);
   hooks.configureSharedPeripheralMode(false);
+  assert(!hooks.canRemoveSharedStoragePowerForDeepSleep());
   assert(!hooks.isGpsPowered() && !hooks.isGPSDetected());
   assert(!hooks.gpsUsesSerialUart(1) && !hooks.setGpsSerialTransportBlocked(1, true));
 }

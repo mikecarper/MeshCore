@@ -20,11 +20,18 @@ public:
     analogReference(AR_INTERNAL_3_0);
     analogReadResolution(12);
     delay(10);
-    float volts = (analogRead(BATTERY_PIN) * ADC_MULTIPLIER * AREF_VOLTAGE) / 4096;
+    const int raw = analogRead(BATTERY_PIN);
+   #ifdef PIN_BAT_ADC_EN
+    // The divider is only needed while sampling; do not leave it powered
+    // between battery checks, including after an invalid ADC result.
+    digitalWrite(PIN_BAT_ADC_EN, LOW);
+   #endif
 
     analogReference(AR_DEFAULT);  // put back to default
     analogReadResolution(10);
 
+    if (raw < 0 || raw > 4095) return 0;
+    float volts = (raw * ADC_MULTIPLIER * AREF_VOLTAGE) / 4096;
     return volts * 1000;
   #else
     return 0;

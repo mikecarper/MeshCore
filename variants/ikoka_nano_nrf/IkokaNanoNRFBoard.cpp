@@ -9,8 +9,10 @@ void IkokaNanoNRFBoard::begin() {
   NRF52Board::begin();
 
   pinMode(PIN_VBAT, INPUT);
+  // Seeed's XIAO charging guidance requires READ_BAT_ENABLE to stay LOW.
+  // Preload the safe latch before enabling the output; do not pulse HIGH.
+  digitalWrite(VBAT_ENABLE, LOW);
   pinMode(VBAT_ENABLE, OUTPUT);
-  digitalWrite(VBAT_ENABLE, HIGH);
 
 #ifdef PIN_USER_BTN
   pinMode(PIN_USER_BTN, INPUT_PULLUP);

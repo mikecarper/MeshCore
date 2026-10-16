@@ -182,13 +182,30 @@ public:
 """,
                 "driver/rtc_io.h": """#pragma once
 using gpio_num_t = int;
+using esp_err_t = int;
+constexpr int ESP_OK = 0;
 using esp_reset_reason_t = int;
 constexpr int ESP_RST_DEEPSLEEP = 1;
 inline int esp_reset_reason() { return 0; }
 inline long esp_sleep_get_ext1_wakeup_status() { return 0; }
-inline void rtc_gpio_hold_dis(int) {}
-inline void rtc_gpio_hold_en(int) {}
-inline void rtc_gpio_deinit(int) {}
+inline bool rtc_gpio_is_valid_gpio(int pin) { return pin >= 0 && pin <= 21; }
+inline int rtc_gpio_hold_dis(int) { return 0; }
+inline int rtc_gpio_hold_en(int) { return 0; }
+inline int rtc_gpio_deinit(int) { return 0; }
+""",
+                "driver/gpio.h": """#pragma once
+#include <cstdint>
+#include "rtc_io.h"
+constexpr int ESP_ERR_INVALID_ARG=258;
+constexpr int GPIO_MODE_OUTPUT=2,GPIO_PULLUP_DISABLE=0,GPIO_PULLDOWN_DISABLE=0,GPIO_INTR_DISABLE=0;
+#define GPIO_IS_VALID_OUTPUT_GPIO(pin) ((pin)>=0 && (pin)<49)
+struct gpio_config_t { uint64_t pin_bit_mask;int mode,pull_up_en,pull_down_en,intr_type; };
+inline int gpio_set_level(int,int) { return 0; }
+inline int gpio_config(const gpio_config_t*) { return 0; }
+inline int gpio_hold_en(int) { return 0; }
+inline int gpio_hold_dis(int) { return 0; }
+inline void gpio_deep_sleep_hold_en() {}
+inline void gpio_deep_sleep_hold_dis() {}
 """,
                 "test.cpp": TEST,
             }

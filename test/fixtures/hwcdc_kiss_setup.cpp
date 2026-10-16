@@ -9,6 +9,8 @@ static std::vector<std::string> calls;
 static bool usb_logging = true, usb_debug = true;
 static bool serial_live = false;
 static bool reset_event = false, cleanup_ready = false;
+static bool simulate_no_radio = false;
+static unsigned identity_loads = 0;
 struct TestSerial : Stream {
   int rx = -1, tx = -1;
   unsigned baud = 0;
@@ -76,8 +78,20 @@ struct Sensors {
   void begin() {}
   void loop() { calls.push_back("sensors.loop"); }
 } sensors;
-static bool radio_init() { return true; }
-static void loadOrCreateIdentity() {}
+struct RecoveryReached {};
+static bool radio_init() {
+#if defined(STATION_G3_ESP32)
+  assert(serial_live && "empty-slot recovery must have USB before radio init");
+  if (simulate_no_radio) {
+    calls.push_back("radio.recovery");
+    throw RecoveryReached();
+  }
+#endif
+  return true;
+}
+static void loadOrCreateIdentity() { ++identity_loads; }
+struct Filesystem { bool begin(bool format_if_empty) { assert(format_if_empty);return true; } } SPIFFS;
+static void halt() { assert(false); }
 static void onSetRadio() {}
 static void onSetTxPower() {}
 static void onGetCurrentRssi() {}
@@ -102,6 +116,7 @@ public:
 };
 static KissModem* modem = nullptr;
 #define MESH_DEBUG_PRINTLN(...) ((void)0)
+#define KISS_BOOT_STAGE(stage) ((void)0)
 @TRANSPORT_SELECTION@
 @LOOP_STATE@
 @SETUP@
@@ -112,16 +127,30 @@ int main() {
   assert(modem != nullptr);
 #if EXPECT_HWCDC
   assert(modem->port == &guarded_port);
+#if defined(STATION_G3_ESP32)
+  const std::vector<std::string> expected = {
+      "logging.gate", "debug.gate", "prepare", "serial.begin", "begin.logging",
+      "board.begin", "radio.begin", "modem.construct", "modem.begin", "boot.complete"};
+#else
   const std::vector<std::string> expected = {
       "logging.gate", "debug.gate", "board.begin", "radio.begin", "prepare",
       "serial.begin", "begin.logging", "modem.construct", "modem.begin", "boot.complete"};
+#endif
   assert(calls == expected);
 #elif EXPECT_UART
   assert(modem->port == &Serial1);
   assert(Serial1.rx == KISS_UART_RX && Serial1.tx == KISS_UART_TX);
-  assert(Serial1.baud == 115200 && !serial_live);
+  assert(Serial1.baud == 115200);
+#if defined(STATION_G3_ESP32)
+  assert(serial_live);
+  const std::vector<std::string> expected = {
+      "prepare", "serial.begin", "begin.logging", "board.begin", "radio.begin",
+      "uart.begin", "modem.construct", "modem.begin", "boot.complete"};
+#else
+  assert(!serial_live);
   const std::vector<std::string> expected = {
       "board.begin", "radio.begin", "uart.begin", "modem.construct", "modem.begin", "boot.complete"};
+#endif
   assert(calls == expected);
 #else
   assert(modem->port == &Serial);
@@ -166,4 +195,25 @@ int main() {
   assert(calls == normal);
 #endif
   delete modem;
+#if defined(STATION_G3_ESP32)
+  // Execute the same production setup with radio discovery suspended at its
+  // recovery loop. Neither a working modem nor identity creation is required
+  // to make the primary USB console reachable, even for UART-hosted KISS.
+  modem = nullptr;
+  const unsigned old_identity_loads = identity_loads;
+  serial_live = false;
+  calls.clear();
+  simulate_no_radio = true;
+  try { setup(); assert(false); } catch (const RecoveryReached&) {}
+  assert(serial_live && modem == nullptr && identity_loads == old_identity_loads);
+#if EXPECT_HWCDC
+  const std::vector<std::string> recovery = {
+      "logging.gate", "debug.gate", "prepare", "serial.begin", "begin.logging",
+      "board.begin", "radio.recovery"};
+#else
+  const std::vector<std::string> recovery = {
+      "prepare", "serial.begin", "begin.logging", "board.begin", "radio.recovery"};
+#endif
+  assert(calls == recovery);
+#endif
 }

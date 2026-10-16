@@ -1222,6 +1222,12 @@ void EnvironmentSensorManager::setPowerSavingEnabled(bool enabled) {
 void EnvironmentSensorManager::finishBasicGpsDiscovery(bool found) {
   gps_discovery_pending = false;
   gps_detected = found;
+#if defined(ESP32_PLATFORM)
+  // Relinquish the failed probe's UART while ownership is still known. Leaving
+  // its idle-high TX installed after the receiver rail is cut can back-power
+  // the receiver, especially when terminal deep sleep retains digital pads.
+  if (!found) shutdownGpsTransportForDeepSleep();
+#endif
   gps_serial_transport = found;
   if (found) {
     MESH_DEBUG_PRINTLN("GPS detected");
@@ -1385,6 +1391,19 @@ void EnvironmentSensorManager::configureSharedPeripheralMode(bool shared) {
   applyWisBlockRailPower();
 #else
   (void)shared;
+#endif
+}
+
+bool EnvironmentSensorManager::canRemoveSharedStoragePowerForDeepSleep() const {
+#if defined(RAK_BOARD) && !defined(RAK_WISMESH_TAG)
+  // Only the boot-frozen, read-only ownership result is relevant. Do not
+  // re-probe NOR, cancel a stage, reset a store, or assume unknown WIP ended.
+  // Radio and Ethernet are separately quiesced by the terminal board hook.
+  const uint8_t stopped_owners = mesh::gps::RadioPower | mesh::gps::EthernetPower;
+  return _wisblock_power.isConfigured() && !_wisblock_power.discoveryActive()
+      && (_wisblock_power.holds() & static_cast<uint8_t>(~stopped_owners)) == 0;
+#else
+  return false;
 #endif
 }
 
@@ -1666,6 +1685,22 @@ bool EnvironmentSensorManager::gpsUsesSerialUart(uint8_t uart) const {
 #else
   (void)uart;
   return false;
+#endif
+}
+
+void EnvironmentSensorManager::shutdownGpsTransportForDeepSleep() {
+#if defined(ESP32_PLATFORM) && ENV_INCLUDE_GPS \
+    && defined(PIN_GPS_TX) && PIN_GPS_TX >= 0 \
+    && defined(PIN_GPS_RX) && PIN_GPS_RX >= 0
+  // gpsUsesSerialUart stays true while a bridge temporarily owns the UART.
+  // Do not end that owner's transport or touch an I2C/shared peripheral bus.
+  if (gps_serial_transport && !gps_serial_transport_blocked) {
+    if (Serial1) Serial1.end();
+    // The Arduino pin names are from the receiver's perspective on several
+    // boards. Release BOTH pads rather than assuming which one drives TX.
+    pinMode(PIN_GPS_TX, INPUT);
+    pinMode(PIN_GPS_RX, INPUT);
+  }
 #endif
 }
 

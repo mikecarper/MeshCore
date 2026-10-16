@@ -18,8 +18,10 @@ void XiaoNrf52Board::initiateShutdown(uint8_t reason) {
   bool enable_lpcomp = (reason == SHUTDOWN_REASON_LOW_VOLTAGE ||
                         reason == SHUTDOWN_REASON_BOOT_PROTECT);
 
+  // Keep the divider's lower leg grounded even for user shutdown: driving
+  // READ_BAT_ENABLE HIGH can overvoltage the ADC input during charging.
+  digitalWrite(VBAT_ENABLE, LOW);
   pinMode(VBAT_ENABLE, OUTPUT);
-  digitalWrite(VBAT_ENABLE, enable_lpcomp ? LOW : HIGH);
 
   if (enable_lpcomp) {
     configureVoltageWake(power_config.lpcomp_ain_channel, power_config.lpcomp_refsel);
@@ -34,8 +36,8 @@ void XiaoNrf52Board::begin() {
 
   // Configure battery voltage ADC
   pinMode(PIN_VBAT, INPUT);
-  pinMode(VBAT_ENABLE, OUTPUT);
   digitalWrite(VBAT_ENABLE, LOW);  // Enable VBAT divider for reading
+  pinMode(VBAT_ENABLE, OUTPUT);
   analogReadResolution(12);
   analogReference(AR_INTERNAL_3_0);
   delay(50);  // Allow ADC to settle

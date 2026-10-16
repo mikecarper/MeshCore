@@ -102,9 +102,11 @@ public:
   void setPowerSavingEnabled(bool enabled) override;
   bool supportsSharedPeripheralMode() const override;
   void configureSharedPeripheralMode(bool shared) override;
+  bool canRemoveSharedStoragePowerForDeepSleep() const override;
   bool isGpsPowered() const override;
   bool gpsUsesSerialUart(uint8_t uart) const override;
   bool gpsSerialTransportMayConflict(uint8_t uart) const override;
   bool gpsSerialTransportCanYield(uint8_t uart) const override;
   bool setGpsSerialTransportBlocked(uint8_t uart, bool blocked) override;
+  void shutdownGpsTransportForDeepSleep() override;
 };

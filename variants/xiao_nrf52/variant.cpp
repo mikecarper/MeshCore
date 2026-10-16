@@ -56,14 +56,11 @@ const uint32_t g_ADigitalPinMap[] = {
 };
 
 void initVariant() {
-  // Disable reading of the BAT voltage.
+  // Keep the battery divider enabled: HIGH can overvoltage the ADC while charging.
   // https://wiki.seeedstudio.com/XIAO_BLE#q3-what-are-the-considerations-when-using-xiao-nrf52840-sense-for-battery-charging
-  pinMode(VBAT_ENABLE, OUTPUT);
-  // digitalWrite(VBAT_ENABLE, HIGH);
-  //  This was taken from Seeed github butis not coherent with the doc,
-  //  VBAT_ENABLE should be kept to LOW to protect P0.14, (1500/500)*(4.2-3.3)+3.3 = 3.9V > 3.6V
-  //  This induces a 3mA current in the resistors :( but it's better than burning the nrf
+  // The 1 MOhm + 510 kOhm divider draws about 3 uA, not 3 mA.
   digitalWrite(VBAT_ENABLE, LOW);
+  pinMode(VBAT_ENABLE, OUTPUT);
 
   // Low charging current (50mA)
   // https://wiki.seeedstudio.com/XIAO_BLE#battery-charging-current

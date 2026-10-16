@@ -4,6 +4,9 @@
 #include <stdint.h>
 
 #include "sensors/EnvironmentI2CConfig.h"
+#if defined(STATION_G3_ESP32)
+#include <StationG3RadioSlot.h>
+#endif
 
 // Simulator targets do not include RadioLib, but board pin macros can still
 // use its sentinel value. Keep the fallback local to this header.
@@ -14,10 +17,15 @@
 
 // This header is intentionally included only after target.h. The target's
 // build-time pin definitions are the authoritative list of GPIOs claimed by
-// the firmware in that particular image.
+// the firmware, except boot-selectable G3 slots which reserve both pin sets.
 namespace UserGpioPinPolicy {
 
 inline bool isFirmwareReserved(uint8_t pin) {
+#if defined(STATION_G3_ESP32)
+  // A module may be present in the inactive slot too. Never offer its pins
+  // for user GPIO, even when the current boot selected the other slot.
+  if (station_g3::isRadioPin(pin)) return true;
+#endif
   // RadioLib 7 represents its disconnected-pin sentinel as unsigned
   // 0xFFFFFFFF. Use a signed type wide enough for that value as well as the
   // board definitions that use -1, then reject both forms with the 0..63

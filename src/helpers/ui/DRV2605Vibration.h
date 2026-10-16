@@ -23,7 +23,7 @@ class DRV2605Vibration {
 public:
   void begin();       // power up and init the DRV2605
   void trigger(bool force = false);   // trigger vibration; force skips the cooldown
-  void loop();        // no-op, the DRV2605 plays effects autonomously
+  void loop();        // return to standby after autonomous effects complete
   bool isVibrating();
   void stop();        // stop vibration immediately
   void pulse(bool on); // continuous RTP amplitude for scheduled ms pulses
@@ -34,6 +34,9 @@ private:
   Adafruit_DRV2605 drv;
   bool _ready = false;
   bool _quiet = false;
+  bool _effect_active = false;
+  bool _rtp_active = false;
+  uint32_t _last_effect_check = 0;
   unsigned long _last_trigger = 0;
 };
 

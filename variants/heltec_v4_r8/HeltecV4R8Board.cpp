@@ -1,4 +1,5 @@
 #include "HeltecV4R8Board.h"
+#include <helpers/ESP32GpioHold.h>
 
 // Expansion Kit V2 control-pin notes (kept here beside the shared-reset
 // sequencing): display/touch I2C is SDA 17 / SCL 18; GPIO 21 is the shared
@@ -30,8 +31,8 @@ void HeltecV4R8Board::begin() {
       startup_reason = BD_STARTUP_RX_PACKET;
     }
 
-    rtc_gpio_hold_dis((gpio_num_t)P_LORA_NSS);
-    rtc_gpio_deinit((gpio_num_t)P_LORA_DIO_1);
+    mesh::esp32::releaseRtcGpioIfSupported((gpio_num_t)P_LORA_NSS);
+    mesh::esp32::deinitRtcGpioIfSupported((gpio_num_t)P_LORA_DIO_1);
   }
 }
 
@@ -52,8 +53,7 @@ void HeltecV4R8Board::powerOff() {
 void HeltecV4R8Board::shutdownPeripherals() {
   ESP32Board::shutdownPeripherals();
   loRaFEMControl.setSleepModeEnable();
-  digitalWrite(P_LORA_PA_POWER, LOW);
-  rtc_gpio_hold_en((gpio_num_t)P_LORA_PA_POWER);
+  mesh::esp32::holdOutputForDeepSleep((gpio_num_t)P_LORA_PA_POWER, LOW);
   periph_power.release();  // Drop the permanent antenna-boost/VEXT claim from begin().
 }
 

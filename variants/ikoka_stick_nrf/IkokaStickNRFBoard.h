@@ -34,7 +34,7 @@ public:
 
     // We can't drive VBAT_ENABLE to HIGH as long 
     // as we don't know whether we are charging or not ...
-    // this is a 3mA loss (4/1500)
+    // About 3 uA through the 1 MOhm + 510 kOhm divider, not 3 mA.
     digitalWrite(VBAT_ENABLE, LOW);
     int adcvalue = 0;
     analogReadResolution(12);

@@ -1,4 +1,5 @@
 #include "WioTrackerL2Board.h"
+#include <helpers/ESP32GpioHold.h>
 
 // TCA9535 register map
 static const uint8_t TCA_REG_OUTPUT0 = 0x02;
@@ -136,8 +137,8 @@ void WioTrackerL2Board::begin() {
     if (wakeup_source & (1 << P_LORA_DIO_1)) {
       startup_reason = BD_STARTUP_RX_PACKET;  // LoRa packet woke us from deep sleep
     }
-    rtc_gpio_hold_dis((gpio_num_t)P_LORA_NSS);
-    rtc_gpio_deinit((gpio_num_t)P_LORA_DIO_1);
+    mesh::esp32::releaseRtcGpioIfSupported((gpio_num_t)P_LORA_NSS);
+    mesh::esp32::deinitRtcGpioIfSupported((gpio_num_t)P_LORA_DIO_1);
   }
 }
 

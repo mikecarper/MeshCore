@@ -375,7 +375,9 @@ void loop() {
 #endif
   }
 #if defined(ESP32_PLATFORM)
-  if (!morse_timing && !can_power_save && the_mesh.getNodePrefs()->powersaving_enabled) {
+  if (!morse_timing && !can_power_save && !the_mesh.isDualRadioActive()
+      && the_mesh.getNodePrefs()->powersaving_enabled) {
+    // Live radio2 needs the scanner's zero-delay polling cadence.
     delay(1); // Keep USB and the button wake interval serviced while idle.
   }
 #endif

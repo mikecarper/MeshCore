@@ -46,15 +46,18 @@ int main(int argc,char** argv) {
         mesh::ota::OtaStoreQspiNrf52::raw_id=id;
         mesh::ota::OtaStoreQspiNrf52::probes=0;
         TestEnvironment sensors;
+        assert(!sensors.canRemoveSharedStoragePowerForDeepSleep());
         if(prefs_first) {
           sensors.configureSharedPeripheralMode(shared);
           assert(sensors._wisblock_power.discoveryActive());
+          assert(!sensors.canRemoveSharedStoragePowerForDeepSleep());
           assert(digitalRead(WB_IO2)==HIGH);
         }
         assert(sensors.begin());
         if(!prefs_first) {
           // Even a no-GPS image must wait for validated mode after discovery.
           assert(digitalRead(WB_IO2)==HIGH);
+          assert(!sensors.canRemoveSharedStoragePowerForDeepSleep());
           sensors.configureSharedPeripheralMode(shared);
         }
         assert(sensors._wisblock_power.isConfigured()&&!sensors._wisblock_power.discoveryActive());
@@ -62,6 +65,11 @@ int main(int argc,char** argv) {
         const bool held=shared||storage||mesh::gps::wisBlockCompileRailHolds()!=0;
         assert(digitalRead(WB_IO2)==int(held));
         assert(bool(sensors._wisblock_power.holds()&mesh::gps::ExternalStorage)==storage);
+        const unsigned probes=mesh::ota::OtaStoreQspiNrf52::probes;
+        const size_t events=hardware_events.size();
+        assert(sensors.canRemoveSharedStoragePowerForDeepSleep()==!storage);
+        assert(sensors.canRemoveSharedStoragePowerForDeepSleep()==!storage);
+        assert(mesh::ota::OtaStoreQspiNrf52::probes==probes&&hardware_events.size()==events);
         assert(mesh::ota::OtaStoreQspiNrf52::probes>0);
         assert(!sensors.isGPSDetected()&&!sensors.isGpsPowered());
         assert(!sensors.setSettingValue("gps","1"));

@@ -1,4 +1,5 @@
 #include "HeltecTrackerV2Board.h"
+#include <helpers/ESP32GpioHold.h>
 
 void HeltecTrackerV2Board::begin() {
     ESP32Board::begin();
@@ -20,8 +21,8 @@ void HeltecTrackerV2Board::begin() {
         startup_reason = BD_STARTUP_RX_PACKET;
       }
 
-      rtc_gpio_hold_dis((gpio_num_t)P_LORA_NSS);
-      rtc_gpio_deinit((gpio_num_t)P_LORA_DIO_1);
+      mesh::esp32::releaseRtcGpioIfSupported((gpio_num_t)P_LORA_NSS);
+      mesh::esp32::deinitRtcGpioIfSupported((gpio_num_t)P_LORA_DIO_1);
     }
   }
 
@@ -42,8 +43,7 @@ void HeltecTrackerV2Board::begin() {
     // only in variants/heltec_tracker_v2/platformio.ini). Same guard idiom
     // LoRaFEMControl.cpp already uses for this macro.
 #if defined(P_LORA_PA_POWER)
-    digitalWrite(P_LORA_PA_POWER, LOW);
-    rtc_gpio_hold_en((gpio_num_t)P_LORA_PA_POWER);
+    mesh::esp32::holdOutputForDeepSleep((gpio_num_t)P_LORA_PA_POWER, LOW);
 #endif
   }
 

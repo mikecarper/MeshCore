@@ -162,7 +162,10 @@ static const uint8_t AREF = PIN_AREF;
 //   Setting IO3 HIGH enables the FEM (LNA for RX, PA path for TX).
 //   CTX is connected to SX1262 DIO2 - the radio handles TX/RX switching
 //   in hardware via SetDIO2AsRfSwitchCtrl (microsecond-accurate, no GPIO needed).
-//   The 5V boost for the PA is enabled by WB_IO2 (P0.34 = PIN_3V3_EN).
+//   WB_IO2 (P1.02 = PIN_3V3_EN) switches the module's 3V3_S supply. The
+//   RAK13302 VD boost defaults to EN=IO2 (R27 DNC, R28 fitted). Legacy VC
+//   defaults to EN=VBAT (R27 fitted, R28 DNC), so IO2 can disable its booster
+//   only after the resistor modification. External 5V is not software-gated.
 #define SX126X_POWER_EN (21)        // P0.21 = IO3 -> SKY66122 CSD+CPS (FEM enable)
 
 // CTX is driven by SX1262 DIO2, not a GPIO

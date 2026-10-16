@@ -1,4 +1,5 @@
 #include "HeltecV4Board.h"
+#include <helpers/ESP32GpioHold.h>
 
 void HeltecV4Board::begin() {
     ESP32Board::begin();
@@ -17,8 +18,8 @@ void HeltecV4Board::begin() {
         startup_reason = BD_STARTUP_RX_PACKET;
     }
 
-      rtc_gpio_hold_dis((gpio_num_t)P_LORA_NSS);
-      rtc_gpio_deinit((gpio_num_t)P_LORA_DIO_1);
+      mesh::esp32::releaseRtcGpioIfSupported((gpio_num_t)P_LORA_NSS);
+      mesh::esp32::deinitRtcGpioIfSupported((gpio_num_t)P_LORA_DIO_1);
     }
   }
 
@@ -36,8 +37,7 @@ void HeltecV4Board::begin() {
     ESP32Board::shutdownPeripherals();
 
     // Turn off PA
-    digitalWrite(P_LORA_PA_POWER, LOW);
-    rtc_gpio_hold_en((gpio_num_t)P_LORA_PA_POWER);
+    mesh::esp32::holdOutputForDeepSleep((gpio_num_t)P_LORA_PA_POWER, LOW);
   }
 
   uint16_t HeltecV4Board::getBattMilliVolts()  {

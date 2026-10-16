@@ -6,6 +6,9 @@
 #include "RXPowerSaving.h"
 #include "SX1262ProfileSwitchState.h"
 #include "SX126xMorseRssi.h"
+#if defined(STATION_G3_ESP32)
+#include <StationG3RadioSlot.h>
+#endif
 
 #ifndef MC_SX1262_FAST_PROFILE_SWITCH
 // CustomSX1262 targets use direct radio I/O unless a board opts out. Keep
@@ -372,7 +375,14 @@ class CustomSX1262 : public SX1262 {
 
       MESH_DEBUG_PRINTLN("SX1262 regulator requested: %s", useRegulatorLDO ? "LDO" : "DC-DC");
 
-  #if defined(P_LORA_SCLK)
+  #if defined(STATION_G3_ESP32)
+      // Reinitialization/watchdog recovery must keep the boot-selected slot;
+      // the build's historical slot macros are not the live SPI routing.
+      if (spi) {
+        const auto& pins = station_g3::activePins();
+        spi->begin(pins.sck, pins.miso, pins.mosi);
+      }
+  #elif defined(P_LORA_SCLK)
     #ifdef NRF52_PLATFORM
       if (spi) { spi->setPins(P_LORA_MISO, P_LORA_SCLK, P_LORA_MOSI); spi->begin(); }
     #elif defined(RP2040_PLATFORM)
