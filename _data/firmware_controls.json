@@ -58,6 +58,8 @@
     "ThinkNode_M7_room_server": "thinknode-m7-room-server",
     "ThinkNode_M9_repeater_": "thinknode-m9-repeater",
     "ThinkNode_M9_room_server_": "thinknode-m9-room-server",
+    "Waveshare_S3_LR1121_repeater_observer_mqtt": "waveshare-s3-lr1121-observer-repeater",
+    "Waveshare_S3_LR1121_room_server_observer_mqtt": "waveshare-s3-lr1121-observer-room-server",
     "Xiao_C3_repeater": "xiao-c3-repeater",
     "Xiao_C3_room_server": "xiao-c3-room-server",
     "Xiao_S3_WIO_repeater": "xiao-s3-wio",
