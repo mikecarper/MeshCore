@@ -61,6 +61,14 @@ last accepted sequence. It does not reveal the channel key. `set fleet.channel
 off` disables reception; `set fleet.controller off` revokes the publisher. Key
 changes use the existing individually authenticated admin path, never fleet
 commands.
+
+If a settings save reports `unconfirmed; restart required`, the durable result
+is unknown. Fleet reception and further fleet settings writes are disabled, and
+`get fleet.channel` reports `store=error`. Enrollment shown in RAM is not active
+authority while held. Restart to load and validate the public file, then check
+enrollment before retrying. A `not saved; retry later` error occurred before
+publication and does not impose this hold.
+
 `get fleet.stats` includes `parts`, the number of fragments currently buffered
 across the two bounded, incomplete two-packet command slots.
 

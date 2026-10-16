@@ -117,6 +117,9 @@ namespace fs {
 class FS { public:
  std::map<std::string,std::vector<uint8_t>> files;
  bool fail_open=false, fail_read=false, fail_write=false, fail_rename=false;
+ bool fail_after_publish=false, late_publish_error=false, fail_rollback=false;
+ bool false_success_rename=false, false_success_publish=false;
+ std::vector<uint8_t> substitute_temp;
  unsigned reads=0,writes=0,renames=0;
  std::string fail_rename_from;
  void _lockFS() {} void _unlockFS() {} FS* _getFS(){return this;}
@@ -125,11 +128,16 @@ class FS { public:
  bool mkdir(const char*) {return true;}
  bool rename(const char* old,const char* next) {
   ++renames; if(fail_rename || fail_rename_from==old || !exists(old)) return false;
-  files[next]=std::move(files[old]);files.erase(old);return true;
+  if(fail_rollback&&!strcmp(old,"/fleet_channel.bak"))return false;
+  if(false_success_rename||(false_success_publish&&!strcmp(old,"/fleet_channel.tmp")))return true;
+  files[next]=std::move(files[old]);files.erase(old);
+  if(!strcmp(next,"/fleet_channel")&&fail_after_publish)fail_read=true;
+  return !(late_publish_error&&!strcmp(old,"/fleet_channel.tmp"));
  }
  File open(const char* path,const char* mode="r") {
   if(!path||fail_open) return {};
   if(mode[0]=='w') {files[path].clear();return File(this,path,true);}
+  if(!strcmp(path,"/fleet_channel.tmp")&&!substitute_temp.empty())files[path]=substitute_temp;
   return File(this,path,exists(path));
  }
 };
@@ -961,7 +969,104 @@ int main(int argc,char** argv){
  if(scenario.rfind("fragments_",0)==0)return fragmentScenario(scenario);
  fs::FS fs;Mesh mesh;RadioProfileCLI profiles;
  FleetChannel fleet(&fs);LocalIdentity publisher;bind(fleet,mesh,profiles);
- if(scenario=="enrollment"){
+ if(scenario=="local_config_indeterminate"){
+  for(bool controller:{false,true}){
+   fs::FS disk;Mesh transport;RadioProfileCLI radio;FleetChannel receiver(&disk);enroll(receiver,publisher);
+   disk.fail_after_publish=true;
+   assert(config(receiver,controller?"set fleet.controller off":"set fleet.channel off").rfind("Err",0)==0);
+   const auto published=disk.files.at(Path);
+   assert(controller?std::all_of(published.begin()+24,published.begin()+56,[](uint8_t b){return b==0;}):published[4]==0);
+   disk.fail_after_publish=false;disk.fail_read=false;
+   assert(config(receiver,"get fleet.channel").find("store=error")!=std::string::npos);
+   const unsigned writes=disk.writes,renames=disk.renames,verifies=verify_calls;
+   Packet packet=command(publisher,transport.clock.now,"get radio2");
+   assert(apply(receiver,disk,transport,radio,packet)==0);
+   const std::string partial=controller?std::string("set fleet.channel ")+Key:
+       std::string("set fleet.controller ")+publicHex(publisher);
+   assert(config(receiver,partial).find("unconfirmed")!=std::string::npos);
+   assert(disk.files.at(Path)==published&&disk.writes==writes&&disk.renames==renames&&verify_calls==verifies);
+   FleetChannel rebooted(&disk);
+   assert(config(rebooted,"get fleet.channel").find("store=ok")!=std::string::npos);
+   assert(apply(rebooted,disk,transport,radio,packet)==0&&disk.files.at(Path)==published);
+   assert(config(rebooted,controller?std::string("set fleet.controller ")+publicHex(publisher):
+       std::string("set fleet.channel ")+Key).rfind("OK",0)==0);
+   assert(apply(rebooted,disk,transport,radio,packet)==1);
+  }
+ }else if(scenario=="local_config_prepublication"){
+  for(unsigned fault=0;fault<3;++fault){
+   fs::FS disk;Mesh transport;RadioProfileCLI radio;FleetChannel receiver(&disk);enroll(receiver,publisher);
+   const auto previous=disk.files.at(Path);
+   disk.fail_open=fault==0;disk.fail_write=fault==1;disk.fail_read=fault==2;
+   assert(config(receiver,"set fleet.controller off").rfind("Err",0)==0);
+   assert(disk.files.at(Path)==previous);
+   disk.fail_open=disk.fail_write=disk.fail_read=false;
+   assert(config(receiver,"get fleet.channel").find("store=ok")!=std::string::npos);
+   Packet packet=command(publisher,transport.clock.now,"get radio2");
+   assert(apply(receiver,disk,transport,radio,packet)==1);
+   assert(config(receiver,"set fleet.controller off").rfind("OK",0)==0);
+   ++transport.clock.now;packet=command(publisher,transport.clock.now,"get radio2");
+   assert(apply(receiver,disk,transport,radio,packet)==0);
+  }
+ }else if(scenario=="local_config_publish_reconciliation"){
+  for(bool false_success:{false,true}){
+   fs::FS disk;Mesh transport;RadioProfileCLI radio;FleetChannel receiver(&disk);enroll(receiver,publisher);
+   const auto previous=disk.files.at(Path);
+   disk.false_success_rename=false_success;disk.late_publish_error=!false_success;disk.fail_rollback=true;
+   const std::string reply=config(receiver,"set fleet.controller off");
+   assert(reply.rfind(false_success?"Err":"OK",0)==0);
+   disk.false_success_rename=disk.late_publish_error=disk.fail_rollback=false;
+   assert(config(receiver,"get fleet.channel").find(false_success?"store=error":"store=ok")!=std::string::npos);
+   Packet packet=command(publisher,transport.clock.now,"get radio2");
+   const auto published=disk.files.at(Path);const unsigned writes=disk.writes;
+   assert(apply(receiver,disk,transport,radio,packet)==0&&disk.writes==writes&&disk.files.at(Path)==published);
+   assert((published==previous)==false_success);
+   FleetChannel rebooted(&disk);
+   assert(apply(rebooted,disk,transport,radio,packet)==unsigned(false_success));
+  }
+ }else if(scenario=="local_config_missing_public"){
+  enroll(fleet,publisher);const auto previous=fs.files.at(Path);fs.false_success_publish=true;
+  assert(config(fleet,"set fleet.controller off").rfind("Err",0)==0);
+  fs.false_success_publish=false;
+  assert(config(fleet,"get fleet.channel").find("store=error")!=std::string::npos);
+#if defined(RP2040_PLATFORM)
+  // The fallback moved the old target to backup, then trusted the no-op
+  // publication and removed that backup. Fleet must quarantine the missing name.
+  assert(!fs.exists(Path)&&!fs.exists("/fleet_channel.bak"));
+#else
+  assert(fs.files.at(Path)==previous);
+#endif
+  const auto published=fs.files;const unsigned writes=fs.writes,renames=fs.renames;
+  Packet packet=command(publisher,mesh.clock.now,"get radio2");
+  assert(apply(fleet,fs,mesh,profiles,packet)==0);
+  assert(config(fleet,"set fleet.channel off").find("unconfirmed")!=std::string::npos);
+  assert(fs.files==published&&fs.writes==writes&&fs.renames==renames);
+  FleetChannel rebooted(&fs);
+#if defined(RP2040_PLATFORM)
+  assert(config(rebooted,"get fleet.channel").find("off,controller=unset,store=ok")!=std::string::npos);
+  assert(apply(rebooted,fs,mesh,profiles,packet)==0);
+#else
+  assert(apply(rebooted,fs,mesh,profiles,packet)==1);
+#endif
+ }else if(scenario=="local_config_staged_substitution"){
+  enroll(fleet,publisher);const auto previous=fs.files.at(Path);
+  fs.substitute_temp=previous;
+  assert(config(fleet,"set fleet.controller off").rfind("Err",0)==0);
+  assert(fs.files.at(Path)==previous);fs.substitute_temp.clear();
+#if defined(NRF52_PLATFORM)
+  // CRC32C detects the substituted IEEE-CRC-tail image before publication.
+  assert(config(fleet,"get fleet.channel").find("store=ok")!=std::string::npos);
+  assert(config(fleet,"set fleet.controller off").rfind("OK",0)==0);
+#else
+  // The fallback's IEEE whole-image residue matches. Exact public bytes must
+  // reject the old valid image and block any further stale writes until restart.
+  assert(config(fleet,"get fleet.channel").find("store=error")!=std::string::npos);
+  const unsigned writes=fs.writes;
+  assert(config(fleet,"set fleet.channel off").find("unconfirmed")!=std::string::npos);
+  Packet packet=command(publisher,mesh.clock.now,"get radio2");
+  assert(apply(fleet,fs,mesh,profiles,packet)==0&&fs.writes==writes&&fs.files.at(Path)==previous);
+  FleetChannel rebooted(&fs);assert(apply(rebooted,fs,mesh,profiles,packet)==1);
+#endif
+ }else if(scenario=="enrollment"){
   Packet packet=command(publisher,mesh.clock.now);assert(apply(fleet,fs,mesh,profiles,packet)==0);
   assert(config(fleet,"get fleet.channel").find("off,controller=unset,store=ok")!=std::string::npos);
   assert(config(fleet,"set fleet.channel 00000000000000000000000000000000").rfind("Err",0)==0);
@@ -1456,6 +1561,21 @@ class SHA256 : public SHA256Base {{ public:
 
     def test_failed_configuration_write_preserves_durable_enrollment(self):
         self.scenario("config_fault")
+
+    def test_uncertain_local_revocation_blocks_old_authority_and_partial_writes_until_restart(self):
+        self.scenario("local_config_indeterminate")
+
+    def test_proven_prepublication_configuration_failures_remain_retryable(self):
+        self.scenario("local_config_prepublication")
+
+    def test_local_configuration_reconciles_late_errors_and_rejects_false_success(self):
+        self.scenario("local_config_publish_reconciliation")
+
+    def test_valid_same_crc_tail_staged_substitution_cannot_acknowledge_revocation(self):
+        self.scenario("local_config_staged_substitution")
+
+    def test_false_success_final_rename_missing_public_image_blocks_live_writes(self):
+        self.scenario("local_config_missing_public")
 
     def test_corrupt_short_long_unreadable_images_fail_closed_and_backup_recovers(self):
         self.scenario("images")

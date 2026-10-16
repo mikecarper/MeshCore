@@ -58,10 +58,31 @@ bool FleetChannel::save(bool enabled, const uint8_t* key, const uint8_t* control
   storage::writeLE32(image + 60, storage::updateCRC32(0xffffffff, image, 60));
 #if defined(NRF52_PLATFORM) || defined(STM32_PLATFORM)
   AtomicFileWriter writer(fs_, Path);
+  const bool wrote = writer && writer.write(image, sizeof(image)) == sizeof(image);
+  const bool saved = writer.commit(wrote);
+  if (writer.outcome() == AtomicFileWriter::Outcome::Indeterminate) healthy_ = false;
+  return saved;
 #else
   ContactFileTransaction writer(fs_, Path, filePresence<FILESYSTEM>);
+  if (!writer || writer.write(image, sizeof(image)) != sizeof(image)) return false;
+  ContactFileTransaction::CommitProgress progress;
+  bool publishing;
+  do {
+    publishing = writer.readyToPublish();
+    progress = writer.serviceCommit();
+  } while (progress == ContactFileTransaction::CommitProgress::Pending);
+  if (!publishing) return false; // No publication attempt; local retry is safe.
+  // The fallback can report a late rename error or false success. Its IEEE
+  // checksum also cannot distinguish valid images carrying an IEEE CRC tail.
+  // Confirm exact public bytes before accepting new authority or using old RAM.
+  auto file = openFileRead(fs_, Path);
+  uint8_t verified[ImageSize];
+  healthy_ = file && !file.isDirectory() && file.size() == sizeof(verified)
+      && file.read(verified, sizeof(verified)) == (int)sizeof(verified)
+      && memcmp(image, verified, sizeof(image)) == 0;
+  file.close();
+  return healthy_;
 #endif
-  return writer && writer.write(image, sizeof(image)) == sizeof(image) && writer.commit();
 }
 
 bool FleetChannel::handleConfig(const char* command, char* reply, size_t capacity) {
@@ -94,7 +115,8 @@ bool FleetChannel::handleConfig(const char* command, char* reply, size_t capacit
       snprintf(reply, capacity, "Err - use a private random 128-bit key or off"); return true;
     }
     if (!save(enabled, key, controller_.pub_key, last_sequence_)) {
-      snprintf(reply, capacity, "Err - fleet settings not saved; store unavailable"); return true;
+      snprintf(reply, capacity, "Err - fleet settings %s", healthy_
+          ? "not saved; retry later" : "unconfirmed; restart required"); return true;
     }
     configured_ = enabled;
     clearAssembly();
@@ -113,7 +135,8 @@ bool FleetChannel::handleConfig(const char* command, char* reply, size_t capacit
       snprintf(reply, capacity, "Err - use publisher public key (64 hex) or off"); return true;
     }
     if (!save(configured_, channel_.secret, key, last_sequence_)) {
-      snprintf(reply, capacity, "Err - fleet settings not saved; store unavailable"); return true;
+      snprintf(reply, capacity, "Err - fleet settings %s", healthy_
+          ? "not saved; retry later" : "unconfirmed; restart required"); return true;
     }
     memcpy(controller_.pub_key, key, 32);
     controller_set_ = !zero(key, 32);
