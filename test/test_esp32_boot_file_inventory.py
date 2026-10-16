@@ -199,6 +199,8 @@ public:
   std::set<std::string> directories;
   fs::FileImplPtr last_open;
   bool fail_mutation = false, unreadable = false;
+  bool rename_false_after_move = false, rename_noop_success = false;
+  bool rename_metadata_error = false;
   NativeFSImpl() { mountpoint("/spiffs"); }
   static void requireInvalidated() {
     ++peripheral.mutations;
@@ -230,7 +232,10 @@ public:
   bool rename(const char* from, const char* to) override {
     requireInvalidated();
     if (fail_mutation || !files.count(from) || files.count(to)) return false;
-    files.erase(from); files.insert(to); return true;
+    if (rename_noop_success) return true;
+    files.erase(from); files.insert(to);
+    if (rename_metadata_error) peripheral.metadata_error = true;
+    return !rename_false_after_move;
   }
   bool remove(const char* path) override {
     requireInvalidated();
@@ -256,6 +261,8 @@ class ContactFileTransaction {
 public:
   using PresenceProbe = bool (*)(FILESYSTEM*, const char*, bool&);
   @PROBE@
+  @MOVE_STATE@
+  @MOVE@
   @RECOVER@
 };
 }
@@ -386,6 +393,22 @@ int main(int argc, char** argv) {
     view.endInventory();
     assert(inventory_buffers.empty());
     requireInactiveFallback(view);
+  } else if (which.rfind("recovery_", 0) == 0) {
+    populate(*native, {"com_prefs.bak"});
+    assert(view.beginInventory());
+    native->rename_false_after_move = which == "recovery_false_after_move";
+    native->rename_noop_success = which == "recovery_noop_success";
+    native->rename_metadata_error = which == "recovery_metadata_error";
+    native->fail_mutation = which == "recovery_no_move_failure";
+    const bool recovered = mesh::ContactFileTransaction::recover(
+        &view, "/com_prefs", mesh::filePresence<fs::FS>);
+    const bool moved = !native->rename_noop_success && !native->fail_mutation;
+    assert(recovered == (moved && !native->rename_metadata_error));
+    assert(native->files.count("/com_prefs") == unsigned(moved));
+    assert(native->files.count("/com_prefs.bak") == unsigned(!moved));
+    assert(peripheral.mutations == 1);
+    assert(peripheral.stats == (native->rename_metadata_error ? 2U : 3U));
+    requireInactiveFallback(view);
   } else if (which == "rename_backup" || which == "rename_temp") {
     const char* source = which == "rename_backup" ? "/com_prefs.bak" : "/com_prefs.tmp";
     populate(*native, {source + 1});
@@ -485,7 +508,7 @@ int main(int argc, char** argv) {
 '''
 
 
-def compile_boot_inventory_harness(work, mutation=None):
+def compile_boot_inventory_harness(work, mutation=None, transaction_mutation=None):
     """Return a compiled actual-class harness; all generated files live in work."""
     work = Path(work)
     compiler = os.environ.get("CXX") or shutil.which("g++") or shutil.which("clang++")
@@ -499,13 +522,17 @@ def compile_boot_inventory_harness(work, mutation=None):
     (work / "dirent.h").write_text(DIRENT_HEADER, encoding="utf-8")
     (work / "sys/stat.h").write_text(STAT_HEADER, encoding="utf-8")
     transaction = (ROOT / "src/helpers/ContactFileTransaction.h").read_text(encoding="utf-8")
+    if transaction_mutation is not None:
+        transaction = transaction_mutation(transaction)
     probe = extract_braced(transaction, "static bool probe(")
+    move_state = extract_braced(transaction, "enum class MoveState") + ";"
+    move = extract_braced(transaction, "static MoveState moveState(")
     recover = extract_braced(transaction, "static bool recover(")
     common_recover = extract_braced(
         (ROOT / "src/helpers/CommonCLI.cpp").read_text(encoding="utf-8"),
         "bool CommonCLI::recoverCommonPrefsFiles(")
-    harness = HARNESS.replace("@PROBE@", probe).replace("@RECOVER@", recover).replace(
-        "@COMMON_RECOVER@", common_recover)
+    harness = HARNESS.replace("@PROBE@", probe).replace("@MOVE_STATE@", move_state).replace(
+        "@MOVE@", move).replace("@RECOVER@", recover).replace("@COMMON_RECOVER@", common_recover)
     cpp = work / "harness.cpp"
     cpp.write_text(harness, encoding="utf-8")
     # Include real production under allocation-boundary substitution. Standard
@@ -563,6 +590,28 @@ class Esp32BootFileInventoryTest(unittest.TestCase):
         for case in ("basic", "empty", "rename_backup", "rename_temp", "positive_fault", "positive_directory"):
             with self.subTest(case=case):
                 self.run_case(case)
+
+    def test_recovery_observes_namespace_after_inventory_invalidation(self):
+        for case in ("recovery_observed_move", "recovery_false_after_move",
+                     "recovery_noop_success", "recovery_no_move_failure", "recovery_metadata_error"):
+            with self.subTest(case=case):
+                self.run_case(case)
+
+    def test_old_rename_result_recovery_misreports_observed_namespace(self):
+        def restore_rename_result(transaction):
+            before = ("    fs->rename(backup, target);\n"
+                      "    return moveState(fs, backup, target, presence) == MoveState::Moved;")
+            self.assertEqual(transaction.count(before), 1)
+            return transaction.replace(before, "    return fs->rename(backup, target);", 1)
+
+        with tempfile.TemporaryDirectory(prefix="boot-recovery-negative-") as folder:
+            binary = compile_boot_inventory_harness(folder, transaction_mutation=restore_rename_result)
+            for case in ("recovery_false_after_move", "recovery_noop_success"):
+                with self.subTest(case=case):
+                    result = subprocess.run([str(binary), case], cwd=folder,
+                                            capture_output=True, text=True, timeout=10)
+                    self.assertNotEqual(result.returncode, 0)
+                    self.assertIn("recovered == (moved && !native->rename_metadata_error)", result.stderr)
 
     def test_exact_owner_identity_and_permanent_end(self):
         for case in ("owner", "end", "global_end", "null_backend", "other_mount", "end_before_begin"):
