@@ -6877,7 +6877,11 @@
 RX-only mode, cross-transmission policy, and optional radio preambles.</p>
 <p>For supported Full Companions, see <a href="../radio_profiles/#meshtext-channel-chat">Meshtext channel chat</a>
 for <code>mt-</code> channels and the explicit <code>send mt.nodeinfo &lt;channel slot&gt;</code> command.
-Chat remains plain text; NodeInfo is sent only when that command is requested.</p>
+Chat remains plain text. A separate GPS-free NodeInfo is sent after the first
+successful chat transmission per used channel/identity per boot; the explicit
+command can also request one. MT heard-repeat retries use the Companion's
+<code>flood.retry.count</code>, with the metadata cap and <code>flood.retry.advert</code> gate for
+NodeInfo.</p>
 <p>See <a href="../carrier_wave/">carrier-wave RF checks</a> for <code>cw on [seconds]</code>,
 <code>cw2 on [seconds]</code>, and stopping a carrier with <code>off</code>.</p>
 <p>For keyed Morse TX, use <code>morse send TEST DE N0CALL</code> and <code>morse stop</code>.
@@ -10902,6 +10906,17 @@ ineligible even with <code>flood.retry.advert on</code>.</p>
 <p>The <code>infra</code>, <code>rooftop</code>, and <code>mobile</code> defaults and <code>retry.preset</code> command in this
 section apply to infrastructure roles. Companion does not expose repeater
 bridge or prefix retry filters.</p>
+<p>On builds with <a href="../radio_profiles/#heard-repeat-retries">Meshtext channel chat</a>,
+<code>flood.retry.count</code> also limits retries of the node's own MT channel text.
+Retries reuse the original encoded packet and stop after hearing a matching
+forwarded copy with a lower remaining hop limit. This is not a recipient ACK
+or a delivery guarantee. NodeInfo permits at most one additional transmission,
+only with nonzero retry count and <code>flood.retry.advert on</code>, and waits an extra
+minute beyond its airtime-based delay. These settings never enable relaying of
+received MT traffic or apply MeshCore prefix/bridge rules to MT packets.
+<code>set mt.hops 0</code> disables heard-repeat retries, without suppressing the original
+chat or its first-use NodeInfo. <code>get mt.retry</code> reports retry/heard/exhausted
+counters, pending work and the configured count without changing settings.</p>
 <p><strong>Search terms:</strong> flood tx retries, flood retry attempts, flood retransmissions, broadcast retries.</p>
 <p><strong>Usage:</strong>
 - <code>get flood.retry.count</code>

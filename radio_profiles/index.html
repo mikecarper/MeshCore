@@ -1405,6 +1405,23 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="Meshtext channel chat">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#heard-repeat-retries" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Heard-repeat retries
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
         
       </ul>
@@ -2624,6 +2641,23 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="Meshtext channel chat">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#heard-repeat-retries" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Heard-repeat retries
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
         
       </ul>
@@ -3237,6 +3271,7 @@ presets are unavailable in the supported EU868 plan. Use these CLI commands:</p>
 get mt.region
 get mt.slot
 get mt.hops
+get mt.retry
 get mt.node
 get mt.shortname
 set mt.node !12345678
@@ -3284,19 +3319,25 @@ name is the longest complete UTF-8 prefix that fits. The saved value is not
 changed. <code>set mt.shortname default</code> clears the override and uses the last four
 hexadecimal digits of the effective MT node ID. This does not change the
 MeshCore node name, add a label to chat text or transmit anything.</p>
-<p><code>send mt.nodeinfo &lt;channel slot&gt;</code> explicitly queues <strong>one</strong> standard
+<p>After the first chat packet actually finishes transmitting on a configured MT
+channel, the Companion queues a separate, GPS-free <code>NODEINFO_APP</code> broadcast.
+This happens once per used channel and sender identity per boot, not for every
+chat message. A rejected or failed chat send does not trigger it. There is no
+NodeInfo transmission just from booting, receiving traffic, changing settings
+or joining a channel, and there is no periodic NodeInfo timer.</p>
+<p><code>send mt.nodeinfo &lt;channel slot&gt;</code> still explicitly queues <strong>one</strong> standard
 <code>NODEINFO_APP</code> broadcast on the selected configured MT channel. The slot is
 the Companion channel index, not <code>mt.slot</code> (the frequency slot). The packet
 contains the actual sender ID, the global MeshCore node name as its long name
 (UTF-8-safe truncated to 24 bytes), the effective short name, <code>CLIENT_MUTE</code>
-(no relaying), and the no-DM flag. It omits MAC, public keys and unsupported
-metadata. The usual radio2 TX-mode, pending-TX, airtime and profile guards
-apply. The reply says <strong>queued</strong>, not delivered or acknowledged.</p>
-<p>There are no automatic NodeInfo advertisements: not at boot, on a timer, when
-names change, when chat is sent, or in response to received packets. Received
-NodeInfo is still ignored; this backend does not maintain a node database.</p>
-<p>Outgoing Meshtext chat and explicitly requested NodeInfo set <strong>OK to MQTT</strong>
-on by default, allowing a compatible receiving gateway to upload those packets.
+(no relaying), and the no-DM flag. Both automatic and explicit NodeInfo omit
+GPS/coordinates, MAC, public keys and unsupported metadata. The usual radio2
+TX-mode, pending-TX, airtime and profile guards apply. The reply says
+<strong>queued</strong>, not delivered or acknowledged.</p>
+<p>Received NodeInfo is still ignored; this backend does not maintain a node
+database.</p>
+<p>Outgoing Meshtext chat and automatic or explicitly requested NodeInfo set
+<strong>OK to MQTT</strong> on by default, allowing a compatible receiving gateway to upload those packets.
 This does not start an MQTT client, bridge networks, request a reply, or mark
 the packet as having arrived through MQTT. The 228-byte text limit is unchanged.</p>
 <p>Region, frequency slot, hop limit, shortname and node-ID override are saved
@@ -3379,12 +3420,12 @@ Outgoing MT chat is plain text exactly as entered, with the sender node ID in
 the standard radio header. It contains no custom name envelope or NodeInfo.
 Incoming text uses the exact sender-ID prefix <code>!12345678:</code> before the received
 payload when passed to the MeshCore app. Changing the shortname only changes
-future manually requested NodeInfo, not chat or the packet's sender ID;
+future NodeInfo, not chat or the packet's sender ID;
 <code>set mt.node</code> changes the actual Meshtext sender ID. Neither setting change
 emits advertisements. A successful
 send response means <strong>queued</strong>, not acknowledged by a remote node. This backend
 does not relay MT packets or provide ACKs, administrative commands, direct
-messages, automatic node-info adverts or a node database. MeshCore emergency forwarding
+messages, periodic node-info adverts or a node database. MeshCore emergency forwarding
 does not apply to MT traffic. Interoperability is with stock peers' PSK channel
 text using AES-CTR, not AES-CCM. AES-CTR channel traffic is not authenticated;
 successful decoding is not proof of sender identity.</p>
@@ -3403,6 +3444,36 @@ airtime, particularly LongFast, can leave substantial MeshCore receive gaps.
 The compatible protocol's fixed short preamble also does not provide the scan-aware long
 preamble described below. Do not treat this as continuous coverage of both
 networks or guaranteed message delivery.</p>
+<h4 id="heard-repeat-retries">Heard-repeat retries</h4>
+<p>MT channel chat uses the Companion's saved <code>flood.retry.count</code> budget: <code>0</code>
+disables retries, and <code>1</code>–<code>15</code> allows that many extra transmissions after the
+initial send. Locally originated MT traffic is hop zero for the
+<code>flood.retry.path</code> gate, so a gate of <code>0</code> still permits it; the group-data gate
+does not apply to channel text. <code>mt.hops 0</code> disables heard-repeat retries
+because peers cannot forward a packet with no remaining hop budget; the
+original chat and its first-use NodeInfo still transmit normally.
+Retries keep the exact encoded payload and
+packet ID, allowing peers to recognize duplicates. They use conservative,
+airtime-based flood spacing and the normal CAD and airtime limits rather than
+transmitting continuously.</p>
+<p><code>get mt.retry</code> is read-only diagnostics: it reports retry transmissions,
+matching heard repeats, exhausted retry sequences, pending work and the
+configured retry count. Use <code>set flood.retry.count</code>, not this getter, to change
+the budget.</p>
+<p>A matching over-air copy with a lower remaining hop limit cancels the retry
+sequence. Merely receiving another message, an unchanged-hop copy or a packet
+with the same ID but different payload does not. A heard repeat indicates a
+compatible peer forwarded the packet; it does <strong>not</strong> confirm that a particular
+person or app received it. This does not add DM delivery receipts or ACKs.</p>
+<p>NodeInfo follows the metadata retry cap: at most one extra send, only when
+<code>flood.retry.count</code> is nonzero and <code>flood.retry.advert</code> is <code>on</code>. Its wait adds
+one minute to the airtime-based delay, matching the conservative self-advert
+policy. Turning retry count off cancels retained retries. Channel, identity,
+settings or radio-profile changes invalidate retained work rather than sending
+it on a different network. The bounded pending-frame storage may reject a new
+send when full. Other people's MT packets are never forwarded by this backend;
+MeshCore repeater prefix/bridge IDs and flood-filter rules are not MT routing
+rules.</p>
 <h2 id="choose-whether-traffic-crosses-between-profiles">Choose whether traffic crosses between profiles</h2>
 <pre><code class="language-text">get radio2.cross
 set radio2.cross auto
