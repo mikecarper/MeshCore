@@ -103,6 +103,26 @@ class ContactStreamContractTests(unittest.TestCase):
         ):
             self.assertLess(body.index(statement, restart), marker)
 
+    def test_contact_recovery_preserves_the_stream_owner_until_revision_restart(self):
+        impl = source("examples/companion_radio/MyMesh.cpp")
+        reset = function_body(impl, "bool MyMesh::resetContactsForRecovery()")
+        reset_at = reset.index("resetContacts()")
+        self.assertLess(reset.index("_iter_pending_contact = ContactInfo()"), reset_at)
+        self.assertIn("#if MESH_CONTACT_CACHE\n  _iter_pending_contact = ContactInfo();\n#endif",
+                      reset)
+        self.assertLess(reset.index("_iter_contact_pending = false"), reset_at)
+        for cancelled in ("stopContactsIterator()", "_iter_started =",
+                          "_iter_reply_route =", "_iter_table_revision ="):
+            self.assertNotIn(cancelled, reset)
+        # Deliberate session/identity/factory resets still cancel their owner.
+        framed = function_body(impl, "void MyMesh::handleCmdFrame(")
+        start = framed.index("cmd_frame[0] == CMD_IMPORT_PRIVATE_KEY")
+        end = framed.index("cmd_frame[0] == CMD_SEND_RAW_DATA", start)
+        self.assertIn("stopContactsIterator()", framed[start:end])
+        cancellation = function_body(impl, "void MyMesh::cancelSerialResponseStream(")
+        self.assertIn("route == NULL || _iter_reply_route == route", cancellation)
+        self.assertIn("stopContactsIterator()", cancellation)
+
     def test_disconnected_flow_control_reports_required_frame_failure(self):
         impl = source("src/helpers/ArduinoSerialInterface.cpp")
         body = function_body(

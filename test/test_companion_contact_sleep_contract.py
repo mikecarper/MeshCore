@@ -37,7 +37,13 @@ class CompanionContactSleepContractTest(unittest.TestCase):
         self.assertIn("|| _store->contactRecoveryPending()",
                       function_body(mesh, "bool MyMesh::hasPendingWork() const"))
         reset = function_body(mesh, "bool MyMesh::resetContactsForRecovery()")
-        self.assertLess(reset.index("stopContactsIterator()"), reset.index("resetContacts()"))
+        self.assertNotIn("stopContactsIterator()", reset)
+        self.assertLess(reset.index("_iter_pending_contact = ContactInfo()"),
+                        reset.index("resetContacts()"))
+        self.assertIn("#if MESH_CONTACT_CACHE\n  _iter_pending_contact = ContactInfo();\n#endif",
+                      reset)
+        self.assertLess(reset.index("_iter_contact_pending = false"),
+                        reset.index("resetContacts()"))
         self.assertIn("MyMesh::onContactCacheFlushed()", reset)
         clear = function_body(mesh, "void MyMesh::onContactCacheFlushed()")
         self.assertIn("mesh::resetLazyPersistenceAfterSuccess(dirty_contacts_expiry, dirty_contacts_failures)", clear)

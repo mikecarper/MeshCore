@@ -7526,7 +7526,12 @@ void MyMesh::onContactCacheFlushed() {
 }
 
 bool MyMesh::resetContactsForRecovery() {
-  stopContactsIterator();
+  // Release retained paths before resetting the table. Keep the stream owner
+  // so its changed table revision restarts a complete list on the next pass.
+#if MESH_CONTACT_CACHE
+  _iter_pending_contact = ContactInfo();
+#endif
+  _iter_contact_pending = false;
   resetContacts();
   MyMesh::onContactCacheFlushed();
   return true;
