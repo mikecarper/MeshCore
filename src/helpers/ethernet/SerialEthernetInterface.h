@@ -17,6 +17,8 @@ class SerialEthernetInterface : public BaseSerialInterface {
   uint16_t _rx_len;
   uint8_t _rx_buf[MAX_FRAME_SIZE];
   uint32_t _rx_started = 0;
+  uint32_t _io_paused_at = 0;
+  bool _io_paused = false;
   size_t send_offset = 0;
   bool session_active = false;
   bool queue_has_ip = false;
@@ -45,11 +47,24 @@ class SerialEthernetInterface : public BaseSerialInterface {
     _frame_len = 0;
     _rx_len = 0;
     _rx_started = 0;
+    _io_paused_at = 0;
+    _io_paused = false;
   }
   void rejectInput();
+  bool updateIOPause(uint32_t now);
 
   protected:
     virtual void disconnectClient() = 0;
+    // A worker may own the hardware temporarily without ending the logical
+    // client session. Do not poll sockets or expire input while it does.
+    virtual bool isIOUnavailable() const { return false; }
+    // A backend can have transmitted bytes before returning their ACKed count.
+    // Keep that frame pinned even while send_offset still reads zero.
+    virtual bool hasInFlightFrame() const { return false; }
+    // Main-loop ownership handoffs must also service the timeout when another
+    // transport's locked response route keeps checkRecvFrame() from running.
+    // Workers must not call this: framing and session state remain main-only.
+    void serviceIOAvailability() { (void)updateIOPause((uint32_t)millis()); }
 
   public:
     SerialEthernetInterface() {

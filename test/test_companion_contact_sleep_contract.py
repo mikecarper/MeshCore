@@ -126,6 +126,56 @@ class CompanionContactSleepContractTest(unittest.TestCase):
         self.assertIn("event-driven sleep instead of timed sleep", body)
         self.assertIn("sd_app_evt_wait();", body)
 
+    def test_polled_rak_ethernet_holds_event_sleep_through_pending_off(self):
+        main = (ROOT / "examples/companion_radio/main.cpp").read_text()
+        start = main.index("bool can_sleep =")
+        gate = main[start:main.index("if (can_sleep)", start)]
+        fixture = r'''
+#include <cassert>
+struct Prefs { bool powersaving_enabled; };
+struct Mesh {
+  Prefs prefs; bool pending;
+  Prefs* getNodePrefs() { return &prefs; }
+  bool hasPendingWork() const { return pending; }
+} the_mesh;
+struct Board { bool usb; bool isUsbHostConnected() const { return usb; } } board;
+struct Ethernet { bool active; bool hardwareActive() const { return active; } } ethernet_interface;
+namespace mesh {
+bool watchdog;
+bool isUsbLoggingWatchdogArmed() { return watchdog; }
+namespace wireless {
+struct Control { bool work; bool pending() const { return work; } } instance;
+Control& control() { return instance; }
+} }
+int main() {
+  for (unsigned flags = 0; flags < 128; ++flags) {
+    the_mesh.prefs.powersaving_enabled = !(flags & 1);
+    the_mesh.pending = flags & 2;
+    bool morse_timing = flags & 4;
+    mesh::watchdog = flags & 8;
+    mesh::wireless::instance.work = flags & 16;
+    board.usb = flags & 32;
+    ethernet_interface.active = flags & 64; // includes OFF accepted but unreleased
+    @GATE@
+#if defined(ETHERNET_USE_RAK13800)
+    assert(can_sleep == (flags == 0));
+#else
+    assert(can_sleep == ((flags & 63) == 0));
+#endif
+  }
+}
+'''.replace('@GATE@', gate)
+        with tempfile.TemporaryDirectory(prefix='companion-ethernet-sleep-') as directory:
+            source, binary = Path(directory) / 'sleep.cpp', Path(directory) / 'sleep'
+            source.write_text(fixture, encoding='ascii')
+            for ethernet in (False, True):
+                with self.subTest(ethernet=ethernet):
+                    subprocess.run([os.environ.get('CXX', 'g++'), '-std=c++17',
+                                    '-Wall', '-Wextra', '-Werror', '-DNRF52_PLATFORM=1',
+                                    *(['-DETHERNET_USE_RAK13800=1'] if ethernet else []),
+                                    str(source), '-o', str(binary)], check=True, timeout=30)
+                    subprocess.run([str(binary)], check=True, timeout=5)
+
     def test_all_runtime_reboots_flush_contacts_first(self):
         mesh = (ROOT / "examples/companion_radio/MyMesh.cpp").read_text()
         header = (ROOT / "examples/companion_radio/MyMesh.h").read_text()

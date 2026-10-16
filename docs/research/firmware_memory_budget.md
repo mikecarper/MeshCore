@@ -292,6 +292,21 @@ hold the mesh loop waiting for an acknowledgement. DHCP and listener management
 run in the Ethernet worker. This is synthetic coverage and a build experiment,
 not a physical Ethernet/PoE soak qualification or a replacement release image.
 
+RAK13800 Companion transport also uses a 1024-word worker by default. Its
+existing four-frame queue stays in the linked object; it adds no raw CLI TX
+ring. Reserve the worker's 4096-byte stack plus 256 bytes for its TCB and
+allocation metadata in addition to OTA source workspaces: USB/BLE folder
+sources can coexist with Companion Ethernet. Stack overrides raise both the
+total and contiguous allocation requirements. Worker shutdown must complete
+before its stack is reclaimed or the shared SPI/storage owner is released.
+
+Full RAK Companion keeps every OTA target name while storing an eight-bit
+candidate fingerprint instead of a four-byte ID for each name. A lookup
+reconstructs candidate names in the existing 4096-byte heap workspace and
+checks their complete SHA-256:4 IDs before returning a match. Other targets
+retain their existing index. This trades bounded, infrequent display lookup
+work for flash space; no target names or firmware capabilities are removed.
+
 The [small-screen message layout](../test-results/v4_pixel5_font_trial.md) retains complete
 160-byte messages. Its expanded preview records add 2,816 bytes to the
 startup allowance and increase the contiguous history allocation budget.

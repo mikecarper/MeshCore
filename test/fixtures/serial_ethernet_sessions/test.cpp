@@ -38,25 +38,54 @@ static Bytes command(const Bytes& payload) {
 
 struct Transport : SerialEthernetInterface {
   bool connected = false;
+  bool io_unavailable = false;
+  bool pause_after_write = false;
+  bool pause_after_read = false;
+  bool pause_after_available = false;
+  int available_calls = 0;
+  int write_calls = 0;
+  int disconnect_calls = 0;
   Socket client;
   Socket next_client;
+  bool isIOUnavailable() const override { return io_unavailable; }
+  void loop() override { serviceIOAvailability(); }
   bool isConnected() const override { return isEnabled() && connected; }
   void disconnectClient() override {
+    ++disconnect_calls;
     connected = false;
     if (client) client->connected = false;
   }
-  int available() override { return client ? int(client->received.size()) : 0; }
+  int available() override {
+    assert(!io_unavailable);
+    ++available_calls;
+    if (pause_after_available) {
+      io_unavailable = true;
+      pause_after_available = false;
+    }
+    return client ? int(client->received.size()) : 0;
+  }
   int read() override {
+    assert(!io_unavailable);
     if (!client || client->received.empty()) return -1;
     const int value = client->received.front();
     client->received.pop_front();
     ++client->read_count;
+    if (pause_after_read) {
+      io_unavailable = true;
+      pause_after_read = false;
+    }
     return value;
   }
   size_t write(const uint8_t* src, size_t size) override {
+    assert(!io_unavailable);
+    ++write_calls;
     if (!isConnected() || !client) return 0;
     size = std::min(size, client->write_limit);
     client->sent.insert(client->sent.end(), src, src + size);
+    if (pause_after_write) {
+      io_unavailable = true;
+      pause_after_write = false;
+    }
     return size;
   }
   Socket connect(uint32_t ip, const Bytes& input = {}) {
@@ -244,6 +273,233 @@ int main(int argc, char** argv) {
     socket->received.insert(socket->received.end(), data.begin(), data.end());
     assert(f.transport.checkRecvFrame(nullptr) == 0);
     assert(!socket->connected && f.callbacks == 1);
+  } else if (scenario == 16) {
+    f.enqueue(reply);
+    socket->write_limit = 2;
+    assert(f.tick() == 0);
+    const Bytes prefix = socket->sent;
+    assert(prefix.size() == 2);
+    const Bytes request = command(other);
+    socket->received.insert(socket->received.end(), request.begin(), request.end());
+    const int available_calls = f.transport.available_calls;
+    const int write_calls = f.transport.write_calls;
+    const int disconnect_calls = f.transport.disconnect_calls;
+    f.transport.io_unavailable = true;
+    assert(f.transport.isConnected());
+    assert(f.transport.hasPendingIO());
+    assert(f.transport.isWriteBusy());
+    for (int i = 0; i < 10; ++i) {
+      mock_millis += 10000;
+      assert(f.tick() == 0);
+    }
+    assert(f.transport.available_calls == available_calls);
+    assert(f.transport.write_calls == write_calls);
+    assert(f.transport.disconnect_calls == disconnect_calls);
+    assert(socket->sent == prefix && socket->read_count == 0);
+    assert(f.callbacks == 0 && f.transport.isConnected());
+    f.transport.io_unavailable = false;
+    assert(!f.transport.isWriteBusy());
+    socket->write_limit = 100;
+    assert(f.tick() == 0);
+    assert(socket->sent == framed({reply}));
+    assert(f.tick() == other.size());
+    assert(f.input[0] == other[0] && f.callbacks == 0);
+  } else if (scenario == 17 || scenario == 18 || scenario == 19 || scenario == 24) {
+    if (scenario == 19) mock_millis = UINT32_MAX - 3000;
+    if (scenario == 24) mock_millis = UINT32_MAX - 1999;
+    Bytes partial = command(Bytes{'a', 'b'});
+    partial.pop_back();
+    socket->received.insert(socket->received.end(), partial.begin(), partial.end());
+    assert(f.tick() == 0 && f.transport.isReadBusy());
+    mock_millis += scenario == 18 ? 5000 : 2000;
+    f.transport.io_unavailable = true;
+    const int disconnect_calls = f.transport.disconnect_calls;
+    assert(f.tick() == 0 && socket->connected);
+    // Repeated polls must preserve the first pause boundary, including a
+    // boundary at millis()==0 and a pause that crosses the 32-bit rollover.
+    for (int i = 0; i < 3; ++i) {
+      mock_millis += 4000;
+      assert(f.tick() == 0 && socket->connected);
+    }
+    assert(f.transport.disconnect_calls == disconnect_calls);
+    f.transport.io_unavailable = false;
+#if !ETHERNET_RAW_LINE
+    if (scenario == 18) {
+      assert(f.tick() == 0 && !socket->connected);
+      assert(f.callbacks == 1 && !f.transport.isReadBusy());
+    } else {
+      assert(f.tick() == 0 && socket->connected);
+      mock_millis += 1499;
+      assert(f.tick() == 0 && socket->connected);
+      // A second long pause must preserve the 1501ms remaining, not grant a
+      // new five-second budget on each DHCP/renewal worker operation.
+      f.transport.io_unavailable = true;
+      assert(f.tick() == 0 && socket->connected);
+      mock_millis += 20000;
+      assert(f.tick() == 0 && socket->connected);
+      f.transport.io_unavailable = false;
+      assert(f.tick() == 0 && socket->connected);
+      mock_millis += 1500;
+      assert(f.tick() == 0 && socket->connected);
+      mock_millis += 1;
+      assert(f.tick() == 0 && !socket->connected);
+      assert(f.callbacks == 1 && !f.transport.isReadBusy());
+    }
+#else
+    // Human terminal input has no binary framing deadline, even when already
+    // older than five seconds at the start of worker ownership.
+    mock_millis += 60000;
+    socket->received.push_back('\n');
+    assert(f.tick() == 2 && f.input[0] == 'a' && f.input[1] == 'b');
+    assert(f.callbacks == 0 && !f.transport.isReadBusy());
+#endif
+  } else if (scenario >= 20 && scenario <= 23) {
+    Bytes partial = command(Bytes{'a', 'b'});
+    partial.pop_back();
+    socket->received.insert(socket->received.end(), partial.begin(), partial.end());
+    assert(f.tick() == 0 && f.transport.isReadBusy());
+    f.enqueue(reply);
+    socket->write_limit = 2;
+    assert(f.tick() == 0 && socket->sent.size() == 2);
+    mock_millis += 2000;
+    f.transport.io_unavailable = true;
+    assert(f.tick() == 0);
+    mock_millis += 20000;
+    Socket replacement;
+    if (scenario == 20) {
+      f.transport.disconnectClient();
+      f.transport.onClientDisconnected();
+      replacement = f.transport.connect(A);
+      assert(f.callbacks == 1);
+    } else if (scenario == 21) {
+      f.transport.disable();
+      f.transport.enable();
+      replacement = f.transport.connect(A);
+      assert(f.callbacks == 1);
+    } else {
+      replacement = f.transport.connect(scenario == 22 ? A : B);
+      assert(f.callbacks == (scenario == 22 ? 0 : 1));
+    }
+    assert(!f.transport.isReadBusy());
+    assert(f.tick() == 0 && replacement->connected);
+    mock_millis += 20000;
+    assert(f.tick() == 0 && replacement->connected);
+    f.transport.io_unavailable = false;
+    f.drain(replacement);
+    assert(replacement->sent == ((scenario == 20 || scenario == 22)
+                                 ? framed({reply}) : Bytes{}));
+    // The replacement's frame must receive its own full timeout and must not
+    // inherit any bytes or suspended time from the displaced stream.
+    replacement->received.insert(replacement->received.end(), partial.begin(), partial.end());
+    assert(f.tick() == 0 && f.transport.isReadBusy());
+    mock_millis += 4999;
+    assert(f.tick() == 0 && replacement->connected);
+    replacement->received.push_back(
+#if ETHERNET_RAW_LINE
+        '\n'
+#else
+        'b'
+#endif
+    );
+    assert(f.tick() == 2 && f.input[0] == 'a' && f.input[1] == 'b');
+  } else if (scenario == 25) {
+    f.transport.io_unavailable = true;
+    assert(f.tick() == 0);
+    mock_millis += 20000;
+    assert(f.tick() == 0);
+    f.transport.io_unavailable = false;
+    Bytes partial = command(Bytes{'a', 'b'});
+    partial.pop_back();
+    socket->received.insert(socket->received.end(), partial.begin(), partial.end());
+    assert(f.tick() == 0 && f.transport.isReadBusy());
+    mock_millis += 4999;
+    assert(f.tick() == 0 && socket->connected);
+    mock_millis += 1;
+#if ETHERNET_RAW_LINE
+    socket->received.push_back('\n');
+    assert(f.tick() == 2 && f.callbacks == 0);
+#else
+    assert(f.tick() == 0 && !socket->connected && f.callbacks == 1);
+#endif
+  } else if (scenario == 26) {
+    Bytes partial = command(Bytes{'a', 'b'});
+    partial.pop_back();
+    socket->received.insert(socket->received.end(), partial.begin(), partial.end());
+    assert(f.tick() == 0 && f.transport.isReadBusy());
+    f.enqueue(reply);
+    socket->write_limit = 2;
+    mock_millis += 2000;
+    f.transport.pause_after_write = true;
+    assert(f.tick() == 0 && socket->sent.size() == 2);
+    assert(f.transport.io_unavailable);
+    mock_millis += 12000;
+    f.transport.io_unavailable = false;
+    socket->write_limit = 100;
+    assert(f.tick() == 0 && socket->connected);
+    assert(socket->sent == framed({reply}));
+    mock_millis += 2999;
+    socket->received.push_back(
+#if ETHERNET_RAW_LINE
+        '\n'
+#else
+        'b'
+#endif
+    );
+    assert(f.tick() == 2 && f.input[0] == 'a' && f.input[1] == 'b');
+    assert(f.callbacks == 0);
+  } else if (scenario == 27 || scenario == 28) {
+    const Bytes request = command(Bytes{'a', 'b'});
+    socket->received.insert(socket->received.end(), request.begin(), request.end());
+    if (scenario == 27) f.transport.pause_after_read = true;
+    else f.transport.pause_after_available = true;
+    assert(f.tick() == 0 && socket->connected);
+    assert(f.transport.io_unavailable);
+    assert(socket->read_count == (scenario == 27 ? 1U : 0U));
+    assert(f.transport.isReadBusy() == (scenario == 27));
+    mock_millis += 12000;
+    f.transport.io_unavailable = false;
+    assert(f.tick() == 2 && f.input[0] == 'a' && f.input[1] == 'b');
+    assert(f.callbacks == 0 && !f.transport.isReadBusy());
+  } else if (scenario == 29) {
+    Bytes partial = command(Bytes{'a', 'b'});
+    partial.pop_back();
+    socket->received.insert(socket->received.end(), partial.begin(), partial.end());
+    assert(f.tick() == 0 && f.transport.isReadBusy());
+    // Exercise the actual MultiSerial routing path: another interface owns a
+    // multi-frame response, so Ethernet receives loop() service but no frame
+    // polls until that producer releases its route.
+    Transport other_transport;
+    assert(f.routes.addInterface(InterfaceType::USB, &other_transport));
+    other_transport.enable();
+    auto other_socket = other_transport.connect(B, command(Bytes{0x07}));
+    assert(f.tick() == 1 && f.input[0] == 0x07);
+    assert(f.routes.captureReplyRoute() == &other_transport);
+    f.routes.lockReplyRoute();
+    mock_millis += 2000;
+    f.transport.io_unavailable = true;
+    f.routes.loop(); // Main-side ownership handoff, not a frame poll.
+    const int available_calls = f.transport.available_calls;
+    for (int i = 0; i < 3; ++i) {
+      mock_millis += 4000;
+      f.routes.loop();
+      assert(f.tick() == 0 && socket->connected);
+    }
+    assert(f.transport.available_calls == available_calls);
+    assert(f.transport.isReadBusy() && f.callbacks == 0);
+    f.transport.io_unavailable = false;
+    f.routes.loop(); // Main-side completion releases the preserved budget.
+    f.routes.unlockReplyRoute();
+    mock_millis += 2999;
+    assert(f.tick() == 0 && socket->connected);
+    mock_millis += 1;
+#if ETHERNET_RAW_LINE
+    socket->received.push_back('\n');
+    assert(f.tick() == 2 && f.input[0] == 'a' && f.input[1] == 'b');
+    assert(f.callbacks == 0);
+#else
+    assert(f.tick() == 0 && !socket->connected && f.callbacks == 1);
+#endif
+    assert(other_socket->connected);
   } else {
     assert(false && "unknown scenario");
   }

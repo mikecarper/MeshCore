@@ -158,8 +158,11 @@ def requirements(platform, defines, target):
         parts["display_dma_and_bus"] = 16384
     mqtt = None
     combined_rak_ethernet = "RAK4631_COMBINED_ETHERNET" in defines
-    cooperative_rak_ethernet = combined_rak_ethernet or (
-        "OTA_RAK15002_SD_STORE" in defines and "ETHERNET_ENABLED" in defines and not companion)
+    cooperative_rak_ethernet = not companion and (combined_rak_ethernet or (
+        "OTA_RAK15002_SD_STORE" in defines and "ETHERNET_ENABLED" in defines))
+    companion_rak_ethernet = (platform == "NRF52_PLATFORM" and companion
+        and "ETHERNET_ENABLED" in defines and ("ETHERNET_USE_RAK13800" in defines
+            or {"OTA_RAK15002_SD_STORE", "RAK_4631"}.issubset(defines)))
     if combined_rak_ethernet and (platform != "NRF52_PLATFORM"
                                  or not {"RAK_4631", "ETHERNET_ENABLED", "OTA_RAK_AUTO_STORE"}.issubset(defines)):
         raise ValueError("combined RAK Ethernet budget requires RAK4631 adaptive nRF52 storage")
@@ -290,6 +293,15 @@ def requirements(platform, defines, target):
         # running nRF52840 app is <1 MiB: <=512 2-KiB leaves. Compression needs
         # one block; raw diagnostic serving retains a leaf-sized output.
         parts["ota_self_source_scratch"] = 2 * 2048 + 2 * 16
+    if companion_rak_ethernet:
+        words = integer(defines, "RAK4631_ETHERNET_TASK_STACK_WORDS", 1024)
+        if not 1024 <= words <= 65535:
+            raise ValueError("RAK Companion Ethernet task requires 1024..65535 stack words")
+        # Companion retains its existing statically allocated frame queue.
+        # Its worker can coexist with USB/BLE folder-source buffers, so this
+        # stack and TCB allowance is additive, never an exclusive OTA maximum.
+        # The source bounds StaticTask_t plus allocator metadata to 256 bytes.
+        parts["ethernet_companion_worker"] = words * 4 + 256
     if cooperative_rak_ethernet:
         words = integer(defines, "RAK4631_ETHERNET_TASK_STACK_WORDS", 1024)
         if words < 1024:
@@ -345,7 +357,8 @@ def requirements(platform, defines, target):
         largest = max(largest, 8192 + parts["expanded_message_previews"])
     for name in ("client_table", "flood_filter_table", "room_flood_rule_table", "neighbor_history",
                  "ota_context", "screen_objects_and_history", "ota_encoder_workspace",
-                 "ota_generic_source_buffers", "ethernet_or_external_ota_workspaces", "ota_target_name_lookup"):
+                 "ota_generic_source_buffers", "ethernet_or_external_ota_workspaces", "ota_target_name_lookup",
+                 "ethernet_companion_worker"):
         largest = max(largest, parts.get(name, 0))
     if "room_browser_mailbox" in parts:
         largest = max(largest, 8192, parts["room_browser_mailbox"])

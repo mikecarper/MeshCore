@@ -71,6 +71,13 @@ set eth on
 set eth off
 ```
 
+Startup and shutdown are asynchronous. `get eth` reports `starting`, `retrying`,
+`online`, `stopping`, or a failure state; accepting `set eth on` does not prove
+a DHCP lease. USB, BLE, and radio service continue while network operations
+wait. After requesting OFF, wait until `get eth` reports `off` before accessing SD.
+An already-entered vendor DHCP or renewal call cannot be cancelled midway;
+OFF keeps the SPI reservation until that call finishes and cleanup is safe.
+
 Remove the SD card and end/cancel active OTA cache, transfer, serve, or host
 folder activity before `set eth on`. The command refuses unsafe states. Turn
 Ethernet off before inserting or accessing a card; an insertion during
@@ -602,6 +609,9 @@ Binary WiFi/Ethernet frames must declare 1–176 payload bytes. Illegal lengths
 close the connection immediately, without waiting for the announced body or
 executing a truncated command. An incomplete binary header or payload has a
 five-second deadline once reception starts; reconnect to send a fresh frame.
+RAK13800 worker-owned SPI intervals pause this deadline without changing the
+connection or its queued replies. The remaining receive budget resumes when
+the worker hands the controller back; an already-expired frame is not revived.
 Ethernet raw-line terminal input has no typing deadline, but an overlong line
 also closes the connection instead of executing its prefix.
 

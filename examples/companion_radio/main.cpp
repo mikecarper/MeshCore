@@ -678,7 +678,7 @@ bool handleRak4631PeripheralCommand(const char* command, char* reply, size_t cap
       snprintf(reply, capacity, "Error: %s", ethernet_interface.last_error());
     } else {
       snprintf(reply, capacity, "%s eth=%s; RAK13800 (this boot)", get ? ">" : "OK -",
-               ethernet_interface.hardwareActive() ? "on" : "off");
+               ethernet_interface.status());
     }
     return true;
   }
@@ -4216,6 +4216,11 @@ void loop() {
   can_sleep = can_sleep && !usb_sleep_held;
 #elif defined(NRF52_PLATFORM)
   can_sleep = can_sleep && !board.isUsbHostConnected();
+#endif
+#if defined(NRF52_PLATFORM) && defined(ETHERNET_USE_RAK13800)
+  // Polled Ethernet has no GPIO wake for a client or parked worker. OFF also
+  // disables its logical transport before main-thread resource release ends.
+  can_sleep = can_sleep && !ethernet_interface.hardwareActive();
 #endif
 #if defined(MOMENTARY_BUTTON_WAKE_FROM_SLEEP) \
     && MOMENTARY_BUTTON_WAKE_FROM_SLEEP \

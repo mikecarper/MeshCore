@@ -6,6 +6,7 @@ import tempfile
 import unittest
 
 from test_replay_reset_integration import extract_braced
+from test_rak_companion_ethernet_worker import build_worker
 
 ROOT = Path(__file__).resolve().parents[1]
 ARDUINO = """#pragma once
@@ -272,50 +273,19 @@ int main(){
         run_sources(self, (LEGACY.replace("@LEGACY@", source[start:end]),), ("0","1","2","3","4"))
 
     def test_rak3401_rejects_electrically_conflicting_ethernet_before_hardware(self):
-        source = SYNC.split("int main(",1)[0]
-        stem = ROOT/"src/helpers/ethernet/RAK13800/RAK13800EthernetInterface"
-        header = stem.with_suffix(".h").read_text()
-        cpp = stem.with_suffix(".cpp").read_text()
-        cls = extract_braced(header,"class RAK13800EthernetInterface")+";"
-        # Only the actual begin() and virtual methods are needed; the complete
-        # implementation is already exercised above. Reuse its method builder.
-        methods = "\n".join(extract_braced(cpp,sig) for sig in (
-            "bool RAK13800EthernetInterface::begin()",
-            "bool RAK13800EthernetInterface::beginHardware()",
-            "bool RAK13800EthernetInterface::terminalShutdown(",
-            "bool RAK13800EthernetInterface::shutdownForPowerOff(",
-            "void RAK13800EthernetInterface::disconnectClient()",
-            "bool RAK13800EthernetInterface::isConnected() const",
-            "int RAK13800EthernetInterface::available()",
-            "int RAK13800EthernetInterface::read()",
-            "size_t RAK13800EthernetInterface::write(",
-            "void RAK13800EthernetInterface::loop()",
-        )).replace("uint16_t remotePort = newClient.remotePort();", "(void)newClient.remotePort();")
-        source = "#define RAK_3401 1\n"+source.replace("@CLASS@",cls).replace("@METHODS@",methods)
-        source += "int main(){RAK13800EthernetInterface owner;assert(!owner.begin());assert(!spi&&begins==0&&pads==0);}\n"
-        run_sources(self,(source,))
+        with tempfile.TemporaryDirectory(prefix="rak3401-ethernet-terminal-") as folder:
+            binary = build_worker(self, folder, adaptive=False, rak3401=True)
+            result = subprocess.run([str(binary), "22"], text=True, capture_output=True, timeout=10)
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
-    def test_actual_synchronous_companion_shutdown_is_bounded_and_initialized_only(self):
-        stem = ROOT/"src/helpers/ethernet/RAK13800/RAK13800EthernetInterface"
-        header = stem.with_suffix(".h").read_text()
-        cpp = stem.with_suffix(".cpp").read_text()
-        cls = extract_braced(header,"class RAK13800EthernetInterface")+";"
-        signatures = (
-            "bool RAK13800EthernetInterface::begin()",
-            "bool RAK13800EthernetInterface::beginHardware()",
-            "bool RAK13800EthernetInterface::terminalShutdown(",
-            "bool RAK13800EthernetInterface::shutdownForPowerOff(",
-            "void RAK13800EthernetInterface::disconnectClient()",
-            "bool RAK13800EthernetInterface::isConnected() const",
-            "int RAK13800EthernetInterface::available()",
-            "int RAK13800EthernetInterface::read()",
-            "size_t RAK13800EthernetInterface::write(",
-            "void RAK13800EthernetInterface::loop()",
-        )
-        methods = "\n".join(extract_braced(cpp,sig) for sig in signatures)
-        # Disabled debug logging intentionally discards remotePort.
-        methods = methods.replace("uint16_t remotePort = newClient.remotePort();", "(void)newClient.remotePort();")
-        run_sources(self,(SYNC.replace("@CLASS@",cls).replace("@METHODS@",methods),), ("0","1","2","3"))
+    def test_actual_async_companion_shutdown_is_bounded_and_initialized_only(self):
+        with tempfile.TemporaryDirectory(prefix="rak-companion-ethernet-terminal-") as folder:
+            binary = build_worker(self, folder)
+            for scenario in (14, 23, 24, 25, 26, 27):
+                with self.subTest(scenario=scenario):
+                    result = subprocess.run([str(binary), str(scenario)], text=True,
+                                            capture_output=True, timeout=10)
+                    self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
 
 if __name__ == "__main__":

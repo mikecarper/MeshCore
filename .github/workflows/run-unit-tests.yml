@@ -729,6 +729,7 @@ jobs:
           python3 -B test/test_ethernet_terminal_shutdown.py -v
           python3 -B test/test_rak_sd_receiver.py -v
           python3 -B test/test_rak15002_shared_spi.py -v
+          python3 -B test/test_rak_companion_ethernet_worker.py -v
           python3 -B test/test_rak_sd_context_handoff.py -v
           python3 -B test/test_rak_sd_room_ethernet.py -v
 

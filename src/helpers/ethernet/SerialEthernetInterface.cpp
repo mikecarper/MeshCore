@@ -40,7 +40,7 @@ size_t SerialEthernetInterface::writeFrame(const uint8_t src[], size_t len) {
   if (_isEnabled && isConnected() && src != nullptr && len > 0) {
     // A partly written frame must remain at the head even if a new response
     // displaces or reorders lower-priority frames in the waiting tail.
-    const int pinned = send_offset != 0 ? 1 : 0;
+    const int pinned = send_queue_len > 0 && (send_offset != 0 || hasInFlightFrame()) ? 1 : 0;
     int tail_len = send_queue_len - pinned;
     if (!mesh::enqueueCompanionFrame(send_queue + pinned, tail_len, FRAME_QUEUE_SIZE - pinned,
                                      src, len)) {
@@ -54,7 +54,7 @@ size_t SerialEthernetInterface::writeFrame(const uint8_t src[], size_t len) {
 }
 
 bool SerialEthernetInterface::isWriteBusy() const {
-  return send_queue_len >= (FRAME_QUEUE_SIZE * 2 / 3);
+  return isIOUnavailable() || send_queue_len >= (FRAME_QUEUE_SIZE * 2 / 3);
 }
 
 bool SerialEthernetInterface::isReadBusy() const {
@@ -96,9 +96,34 @@ void SerialEthernetInterface::rejectInput() {
   onClientDisconnected();
 }
 
+bool SerialEthernetInterface::updateIOPause(uint32_t now) {
+  const bool unavailable = isIOUnavailable();
+#if !ETHERNET_RAW_LINE
+  if (!isReadBusy()) {
+    _io_paused = false;
+    _io_paused_at = 0;
+  } else if (unavailable && !_io_paused) {
+    // Exclude only time owned by the worker. Never revive a frame whose
+    // original budget was already exhausted when backpressure was observed.
+    if ((uint32_t)(now - _rx_started) < ETHERNET_FRAME_TIMEOUT_MS) {
+      _io_paused_at = now;
+      _io_paused = true;
+    }
+  } else if (!unavailable && _io_paused) {
+    _rx_started += (uint32_t)(now - _io_paused_at);
+    _io_paused_at = 0;
+    _io_paused = false;
+  }
+#else
+  (void)now;
+#endif
+  return unavailable;
+}
+
 size_t SerialEthernetInterface::checkRecvFrame(uint8_t dest[]) {
   if (!_isEnabled) return 0;
   if (isConnected()) {
+    if (updateIOPause((uint32_t)millis())) return 0;
 #if !ETHERNET_RAW_LINE
     if (isReadBusy() && (uint32_t)((uint32_t)millis() - _rx_started) >= ETHERNET_FRAME_TIMEOUT_MS) {
       rejectInput();
@@ -130,6 +155,8 @@ size_t SerialEthernetInterface::checkRecvFrame(uint8_t dest[]) {
 #endif
       const size_t remaining = total - send_offset;
       const size_t written = write(pkt + send_offset, remaining);
+      // A bounded backend write may hand socket completion to its worker.
+      (void)updateIOPause((uint32_t)millis());
       send_offset += written < remaining ? written : remaining;
       if (send_offset < total) return 0;
       send_offset = 0;
@@ -138,7 +165,11 @@ size_t SerialEthernetInterface::checkRecvFrame(uint8_t dest[]) {
         send_queue[i] = send_queue[i + 1];
       }
     } else {
-      while (available()) {
+      while (true) {
+        // A read may likewise hand its receive-ACK command to the worker;
+        // leave the rest of the frame untouched until hardware is available.
+        if (updateIOPause((uint32_t)millis()) || !available()) break;
+        if (updateIOPause((uint32_t)millis())) break;
         int c = read();
         if (c < 0) break;
 

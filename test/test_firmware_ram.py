@@ -761,7 +761,7 @@ int main() {
         self.assertEqual(sd["components"]["ota_generic_source_buffers"],
                          base["components"]["ota_generic_source_buffers"])
 
-    def test_optional_sd_room_ethernet_counts_exclusive_worker_but_companion_has_no_worker(self):
+    def test_optional_sd_room_excludes_workspaces_but_companion_counts_worker_additively(self):
         flags = {"ENABLE_OTA": 1, "OTA_SD_STORE": 1, "OTA_RAK15002_SD_STORE": 1,
                  "ETHERNET_ENABLED": 1, "RAK_4631": 1, "OTA_RAK_AUTO_STORE": 1,
                  "MESHCORE_OTA_DEVICE_DEFLATE": 1}
@@ -778,6 +778,38 @@ int main() {
                                      "RAK_4631_companion_radio_full")
         self.assertNotIn("ethernet_or_external_ota_workspaces", companion["components"])
         self.assertIn("ota_generic_source_buffers", companion["components"])
+        self.assertEqual(companion["components"]["ethernet_companion_worker"], 4096 + 256)
+        without_eth = ram.requirements("NRF52_PLATFORM", {
+            **{key: value for key, value in flags.items() if key != "ETHERNET_ENABLED"},
+            "OTA_SEEDER_ONLY": 1}, "RAK_4631_companion_radio_full")
+        self.assertEqual(companion["required_heap_bytes"] - without_eth["required_heap_bytes"], 4352)
+        self.assertEqual(companion["components"]["ota_generic_source_buffers"],
+                         without_eth["components"]["ota_generic_source_buffers"])
+
+    def test_companion_rak_worker_budget_covers_legacy_and_stack_overrides(self):
+        flags = {"ETHERNET_ENABLED": 1, "ETHERNET_USE_RAK13800": 1}
+        base = ram.requirements("NRF52_PLATFORM", {}, "RAK_4631_companion_radio_ethernet")
+        for words in (1024, 2048, 8192):
+            with self.subTest(words=words):
+                worker = ram.requirements("NRF52_PLATFORM", {
+                    **flags, "RAK4631_ETHERNET_TASK_STACK_WORDS": words},
+                    "RAK_4631_companion_radio_ethernet")
+                expected = words * 4 + 256
+                self.assertEqual(worker["required_heap_bytes"] - base["required_heap_bytes"], expected)
+                self.assertEqual(worker["components"]["ethernet_companion_worker"], expected)
+                self.assertGreaterEqual(worker["required_contiguous_bytes"], expected)
+        for words in (0, 1023, 65536):
+            with self.subTest(words=words), self.assertRaisesRegex(ValueError, "1024..65535"):
+                ram.requirements("NRF52_PLATFORM", {
+                    **flags, "RAK4631_ETHERNET_TASK_STACK_WORDS": words},
+                    "RAK_4631_companion_radio_ethernet")
+        for platform, defines, target in (
+                ("ESP32_PLATFORM", flags, "esp32_companion_radio_full"),
+                ("NRF52_PLATFORM", {"ETHERNET_ENABLED": 1}, "other_companion"),
+                ("NRF52_PLATFORM", flags, "RAK_4631_repeater")):
+            with self.subTest(platform=platform, defines=defines, target=target):
+                self.assertNotIn("ethernet_companion_worker",
+                                 ram.requirements(platform, defines, target)["components"])
 
     def test_only_rak_sd_full_companion_counts_large_name_lookup(self):
         flags = {"ENABLE_OTA": 1, "OTA_SD_STORE": 1, "OTA_RAK15002_SD_STORE": 1,

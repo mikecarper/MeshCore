@@ -32,6 +32,20 @@ SCENARIOS = (
     "fragmented maximum frame and next command parse intact",
     "incomplete command deadline survives millis rollover",
     "null output never dispatches or dereferences a command",
+    "worker ownership blocks socket IO but preserves logical session and queue",
+    "worker pause retains only remaining framed input deadline",
+    "worker pause cannot revive an already expired frame",
+    "worker pause and remaining deadline survive millis rollover",
+    "disconnect resets worker pause while replaying whole same-IP backlog",
+    "disable resets worker pause and clears backlog",
+    "same-IP replacement resets partial input and pause while replaying backlog",
+    "different-IP replacement resets partial input pause and backlog",
+    "worker pause beginning at zero preserves remaining deadline",
+    "worker ownership without partial input cannot extend next frame deadline",
+    "write command ownership pauses input deadline immediately",
+    "read command ownership pauses before polling the socket again",
+    "availability command ownership prevents a following socket read",
+    "main-loop ownership service preserves timeout behind another locked route",
 )
 
 
@@ -67,12 +81,25 @@ class SerialEthernetSessionTests(unittest.TestCase):
             name = driver.split("/")[-1]
             loop = extract_braced(source, f"void {name}::loop()")
             with self.subTest(driver=name):
-                self.assertLess(loop.index("disconnectClient();"), loop.index("onClientConnected("))
-                self.assertLess(loop.index("onClientConnected((uint32_t)remoteIp);"),
-                                loop.index("client = newClient;"))
                 close = extract_braced(source, f"void {name}::disconnectClient()")
                 self.assertIn("_isConnected = false;", close)
-                self.assertIn("client.stop();", close)
+                if name == "RAK13800EthernetInterface":
+                    # The worker owns the physical socket until main commits
+                    # the session transition and acknowledges its event. The
+                    # logical route must remain unavailable during callbacks.
+                    self.assertLess(loop.index("_isConnected = false;"),
+                                    loop.index("onClientConnected("))
+                    self.assertLess(loop.index("onClientConnected("),
+                                    loop.index("_isConnected = true;"))
+                    self.assertLess(loop.index("_isConnected = true;"),
+                                    loop.index("_eventPending.store(false);"))
+                    self.assertIn("_closeRequested.store(true);", close)
+                    self.assertNotIn("client.stop();", close)
+                else:
+                    self.assertLess(loop.index("disconnectClient();"), loop.index("onClientConnected("))
+                    self.assertLess(loop.index("onClientConnected((uint32_t)remoteIp);"),
+                                    loop.index("client = newClient;"))
+                    self.assertIn("client.stop();", close)
 
 
 if __name__ == "__main__":

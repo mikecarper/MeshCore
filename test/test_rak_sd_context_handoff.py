@@ -147,10 +147,12 @@ class RakSdContextHandoffTests(unittest.TestCase):
 struct Board {} board;
 struct Ethernet {
   bool active = false, allowed = true;
+  const char* state = "off";
   unsigned enables = 0, disables = 0;
-  bool tryEnable() { ++enables; if (!allowed) return false; active = true; return true; }
-  bool tryDisable() { ++disables; if (!allowed) return false; active = false; return true; }
+  bool tryEnable() { ++enables; if (!allowed) return false; active = true; state = "starting"; return true; }
+  bool tryDisable() { ++disables; if (!allowed) return false; state = "stopping"; return true; }
   bool hardwareActive() const { return active; }
+  const char* status() const { return state; }
   const char* last_error() const { return "storage busy"; }
 } ethernet_interface;
 namespace mesh { namespace ota {
@@ -183,10 +185,19 @@ int main() {
   assert(strstr(reply, "storage busy") && !ethernet_interface.active);
   ethernet_interface.allowed = true;
   assert(handleRak4631PeripheralCommand("set eth on", reply, sizeof reply));
-  assert(strstr(reply, "eth=on") && ethernet_interface.active);
+  assert(strstr(reply, "eth=starting") && ethernet_interface.active);
+  ethernet_interface.state = "online";
+  assert(handleRak4631PeripheralCommand("get eth", reply, sizeof reply));
+  assert(strstr(reply, "eth=online"));
   assert(handleRak4631PeripheralCommand("get sdcard free", reply, sizeof reply));
   assert(strstr(reply, "Ethernet off") && !mesh::ota::acquires);
   assert(handleRak4631PeripheralCommand("set eth off", reply, sizeof reply));
+  assert(strstr(reply, "eth=stopping") && ethernet_interface.active);
+  assert(handleRak4631PeripheralCommand("get sdcard", reply, sizeof reply));
+  assert(strstr(reply, "Ethernet off") && !mesh::ota::acquires);
+  ethernet_interface.active = false; ethernet_interface.state = "off";
+  assert(handleRak4631PeripheralCommand("get eth", reply, sizeof reply));
+  assert(strstr(reply, "eth=off"));
   assert(!ethernet_interface.active);
   mesh::ota::admission = false;
   assert(handleRak4631PeripheralCommand("get sdcard", reply, sizeof reply));
