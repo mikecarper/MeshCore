@@ -134,6 +134,39 @@ int main() {
         assert(!strncmp(reply+2,state,strlen(state)));
       }
     }
+    // The saved byte represents four-second units. Reject malformed/out-of-
+    // range input before it can wrap (1024 used to silently disable AGC).
+    for (unsigned seconds=0; seconds<=1020; ++seconds) {
+      const unsigned saves=cli.callbacks.saves;
+      snprintf(text,sizeof(text),"set agc.reset.interval %u",seconds);
+      cli.call(sender,text,reply);
+      assert(!strncmp(reply,"OK",2) && cli.callbacks.saves==saves+1);
+      assert(cli.prefs.agc_reset_interval==seconds/4);
+      cli.call(sender,"get agc.reset.interval",reply);
+      unsigned actual=9999;
+      assert(sscanf(reply,"> %u",&actual)==1 && actual==(seconds/4)*4);
+      assert(cli.callbacks.saves==saves+1);
+    }
+    for (const char* value : {"1024", "1021", "1023", "-1", "-4", "",
+                              "garbage", "19tail", "1.5", "0x10", "+", "--4",
+                              "4294967295", "4294967296", "2147483648",
+                              "99999999999999999999999999999999999999"}) {
+      const unsigned saves=cli.callbacks.saves;
+      const uint8_t previous=cli.prefs.agc_reset_interval;
+      snprintf(text,sizeof(text),"set agc.reset.interval %s",value);
+      cli.call(sender,text,reply);
+      if (strncmp(reply,"Error",5))
+        fprintf(stderr,"invalid AGC interval %s accepted: %s\n",value,reply);
+      assert(!strncmp(reply,"Error",5));
+      assert(cli.prefs.agc_reset_interval==previous && cli.callbacks.saves==saves);
+    }
+    for (const char* value : {"+19", " 19 ", "\t19\t", "00019"}) {
+      const unsigned saves=cli.callbacks.saves;
+      snprintf(text,sizeof(text),"set agc.reset.interval %s",value);
+      cli.call(sender,text,reply);
+      assert(!strncmp(reply,"OK",2) && cli.callbacks.saves==saves+1);
+      assert(cli.prefs.agc_reset_interval==4);
+    }
     unsigned saves=cli.callbacks.saves;
     cli.call(sender,"set radio 916,125,8,6",reply);
     assert(!strncmp(reply,"OK",2) && cli.callbacks.saves==saves+1);

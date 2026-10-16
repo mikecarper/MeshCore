@@ -8,6 +8,7 @@ from pathlib import Path
 import re
 import shutil
 import subprocess
+import sys
 import tempfile
 import unittest
 from test_replay_reset_integration import extract_braced
@@ -259,9 +260,12 @@ class CLISettingsContractTest(unittest.TestCase):
             cpp.write_text(fixture, encoding='utf-8')
             for macros in ([], ['-DUSE_LR2021=1']):
                 with self.subTest(macros=macros):
-                    subprocess.run([compiler, '-std=c++17', '-Wall', '-Wextra', '-Werror', *macros,
-                                    '-I', str(ROOT/'src'), str(cpp), '-o', str(exe)], check=True)
-                    subprocess.run([str(exe)], check=True)
+                    sanitizers = (['-fsanitize=address,undefined', '-fno-sanitize-recover=all',
+                                   '-fno-pie', '-no-pie'] if sys.platform.startswith('linux') else [])
+                    subprocess.run([compiler, '-std=c++17', '-Wall', '-Wextra', '-Werror',
+                                    *sanitizers, *macros, '-I', str(ROOT/'src'), str(cpp),
+                                    '-o', str(exe)], check=True, timeout=60)
+                    subprocess.run([str(exe)], check=True, timeout=15)
 
 
 if __name__ == '__main__':
