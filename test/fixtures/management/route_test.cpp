@@ -1,6 +1,8 @@
 #include "IdentityStore.h"
 #include <Mesh.h>
 #include "ContactFileTransaction.h"
+#include "FilePresence.h"
+#include "FileRead.h"
 #include "PersistentStoreFormat.h"
 #include <cassert>
 #include <cstdio>

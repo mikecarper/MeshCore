@@ -40,6 +40,8 @@ public:
   bool fail_metadata = false, fail_final_read = false;
   int final_read_limit = -1;
   bool corrupt_publish = false, fail_metadata_after_publish = false;
+  std::string publication_path = "/telemetry_tx";
+  bool no_op_publish = false, late_publish_error = false;
   unsigned writes = 0, renames = 0;
 #if defined(NRF52_PLATFORM) || defined(STM32_PLATFORM)
   bool rename_replaces = true;
@@ -54,12 +56,14 @@ public:
     ++renames;
     if (fail_rename.count({from, to}) || !exists(from)
         || (!rename_replaces && exists(to))) return false;
+    if (from == publication_path + ".tmp" && no_op_publish) return true;
     files[to] = files[from]; files.erase(from);
-    if (!strcmp(from, "/telemetry_tx.tmp")) {
+    if (from == publication_path + ".tmp") {
       if (corrupt_publish) files[to][0] ^= 1;
       if (fail_final_read) fail_read_open.insert(to);
       if (final_read_limit >= 0) read_limit[to] = size_t(final_read_limit);
       if (fail_metadata_after_publish) fail_metadata = true;
+      if (late_publish_error) return false;
     }
     return true;
   }
@@ -82,6 +86,7 @@ public:
     fail_metadata = fail_final_read = corrupt_publish = false;
     final_read_limit = -1;
     fail_metadata_after_publish = false;
+    no_op_publish = late_publish_error = false;
   }
 };
 

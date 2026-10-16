@@ -1,6 +1,7 @@
 #include "CommonCLI.h"
 #include "ManagementReporter.h"
 #include "FileRead.h"
+#include "FilePresence.h"
 #include "PersistentStoreFormat.h"
 #include "HilStartupTrace.h"
 #include <new>
@@ -138,19 +139,35 @@ static bool dataRouteSave(DataRouteState& route) {
 #if defined(NRF52_PLATFORM) || defined(STM32_PLATFORM)
   AtomicFileWriter writer(route.fs, DATA_ROUTE_FILE);
 #else
-  ContactFileTransaction writer(route.fs, DATA_ROUTE_FILE);
+  ContactFileTransaction writer(route.fs, DATA_ROUTE_FILE, filePresence<FILESYSTEM>);
 #endif
-  const bool ok = writer && writer.write(data, sizeof(data)) == sizeof(data)
+  bool ok = writer && writer.write(data, sizeof(data)) == sizeof(data)
       && writer.commit();
+  if (writer.outcome() == decltype(writer)::Outcome::Indeterminate) route.healthy = false;
+#if defined(ESP32_PLATFORM) || defined(RP2040_PLATFORM)
+  if (ok || writer.outcome() == ContactFileTransaction::Outcome::Indeterminate) {
+    // A moved stage alone does not confirm the public bytes. Never resume the
+    // old RAM route when the new durable authority cannot be established.
+    auto file = openFileRead(route.fs, DATA_ROUTE_FILE);
+    uint8_t verified[DATA_ROUTE_SIZE];
+    ok = file && !file.isDirectory() && file.size() == sizeof(verified)
+        && file.read(verified, sizeof(verified)) == (int)sizeof(verified)
+        && memcmp(data, verified, sizeof(data)) == 0;
+    file.close();
+    route.healthy = ok;
+  }
+#endif
   if (ok) route.persisted = true;
   return ok;
 }
 
 static bool dataRouteLoad(DataRouteState& route) {
 #if defined(ESP32_PLATFORM) || defined(RP2040_PLATFORM)
-  if (!ContactFileTransaction::recover(route.fs, DATA_ROUTE_FILE)) return false;
+  if (!ContactFileTransaction::recover(route.fs, DATA_ROUTE_FILE, filePresence<FILESYSTEM>)) return false;
 #endif
-  if (!route.fs->exists(DATA_ROUTE_FILE)) return true;
+  bool present = false;
+  if (!filePresence(route.fs, DATA_ROUTE_FILE, present)) return false;
+  if (!present) return true;
   uint8_t data[DATA_ROUTE_SIZE] = {};
   for (unsigned retry = 0; retry < 3; ++retry) {
     auto file = openFileRead(route.fs, DATA_ROUTE_FILE);
@@ -401,7 +418,9 @@ bool CommonCLI::handleDataTxCommand(char* command, char* reply) {
     }
   }
   if (!mesh::dataRouteSave(*_data_route)) {
-    *_data_route = previous; strcpy(reply, "Err - unable to save data.tx"); return true;
+    const bool healthy = _data_route->healthy;
+    *_data_route = previous; _data_route->healthy = healthy;
+    strcpy(reply, "Err - unable to save data.tx"); return true;
   }
   strcpy(reply, "OK"); return true;
 }

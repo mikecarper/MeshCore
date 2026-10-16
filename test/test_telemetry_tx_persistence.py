@@ -30,9 +30,12 @@ class TelemetryPersistenceTests(unittest.TestCase):
         generated += extract_braced(utils, "void Utils::toHex(") + "\n"
         generated += "\n".join(extract_braced(common, signature) for signature in (
             "static uint32_t readRoute32(", "static void writeRoute32(",
+            "static uint8_t nibble(", "static char* trimDataRoute(",
+            "static bool parseDataPath(", "static void formatDataPath(",
             "static bool dataRouteSave(", "static bool dataRouteLoad(")) + "\n}\n"
         generated += "\n".join(extract_braced(common, signature) for signature in (
-            "bool CommonCLI::adoptLegacyDataTxPath(", "bool CommonCLI::getDataTxPath(")) + "\n"
+            "bool CommonCLI::adoptLegacyDataTxPath(", "bool CommonCLI::getDataTxPath(",
+            "bool CommonCLI::handleDataTxCommand(")) + "\n"
         generated += '#define TELEMETRY_HISTORY_TX_PREFS_FILE "/telemetry_tx"\n'
         for name in ("RETRY_MILLIS", "PACKET_SPACING_MILLIS", "DEFAULT_DAYS", "MAX_DAYS",
                      "TEMPERATURE", "VOLTAGE", "EXTERNAL_VOLTAGE"):

@@ -74,7 +74,8 @@ class ManagementTests(unittest.TestCase):
         # Compile the unchanged production runtime and transaction writer with
         # a memory filesystem/radio in place of the hardware-facing headers.
         fixture = ROOT / "test/fixtures/management"
-        for name in ("ManagementReporter.cpp", "ManagementReporter.h", "FileRead.h", "ContactFileTransaction.h", "PersistentStoreFormat.h"):
+        for name in ("ManagementReporter.cpp", "ManagementReporter.h", "FileRead.h", "FilePresence.h",
+                     "ContactFileTransaction.h", "PersistentStoreFormat.h"):
             shutil.copyfile(ROOT / "src/helpers" / name, Path(cls.work.name) / name)
         for name in ("CommonCLI.h", "Mesh.h"):
             shutil.copyfile(fixture / name, Path(cls.work.name) / name)

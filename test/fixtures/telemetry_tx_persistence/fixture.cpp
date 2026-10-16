@@ -45,12 +45,33 @@ struct Packet {
 struct Utils { static void toHex(char*, const uint8_t*, size_t); };
 struct DataRouteState;
 }
-class RegionMap;
+struct TransportKey {};
+struct RegionEntry { const char* name; };
+class RegionMap {
+public:
+  RegionEntry* findByNamePrefix(const char*) { return nullptr; }
+};
+namespace mesh {
+// Region selection is a boundary here; route storage and command handling are real.
+static bool usableScope(const DataRouteState&, RegionEntry*, TransportKey&) { return false; }
+}
 class CommonCLI {
 public:
   mesh::DataRouteState* _data_route = nullptr;
+  RegionMap* _region_map = nullptr;
   bool adoptLegacyDataTxPath(const uint8_t*, uint8_t);
   bool getDataTxPath(const uint8_t*&, uint8_t&) const;
+  bool resolveDataTxScope(TransportKey&, char*, size_t, bool* ambiguous = nullptr) const {
+    if (ambiguous) *ambiguous = false;
+    return false;
+  }
+  bool handleDataTxCommand(char*, char*);
+  std::string routeCommand(const char* text) {
+    std::vector<char> command(text, text + strlen(text) + 1);
+    char reply[160] = {};
+    assert(handleDataTxCommand(command.data(), reply));
+    return reply;
+  }
 };
 struct ClientInfo { bool admin = true; bool isAdmin() const { return admin; } };
 class MyMesh {
@@ -397,6 +418,119 @@ static void checkAmbiguousPublicationAndServiceGate() {
   assert(healthy.node.command("send telemetry.tx now").find("OK - telemetry.tx queued") == 0);
 }
 
+static void checkRoutePublicationAuthority() {
+  for (const bool migration : {false, true}) {
+    Fixture f; f.boot();
+    if (!migration) assert(f.node._cli.routeCommand("set data.tx path 12") == "OK");
+    f.fs.publication_path = "/data_tx";
+#if defined(NRF52_PLATFORM) || defined(STM32_PLATFORM)
+    // Atomic publication succeeds, but its mandatory public readback fails.
+    f.fs.fail_final_read = true;
+#else
+    // The old image is backed up but neither publication nor rollback happens.
+    if (migration) assert(mesh::dataRouteSave(f.route));
+    f.fs.fail_rename.insert({"/data_tx.tmp", "/data_tx"});
+    f.fs.fail_rename.insert({"/data_tx.bak", "/data_tx"});
+#endif
+    if (migration) {
+      const uint8_t path = 0x34;
+      // Force the legacy adoption path without discarding the existing disk image.
+      f.route.persisted = false;
+      assert(!f.node._cli.adoptLegacyDataTxPath(&path, 1));
+    } else {
+      assert(f.node._cli.routeCommand("set data.tx path 34") == "Err - unable to save data.tx");
+    }
+    // A reported failure cannot authorize old RAM when disk authority is unknown.
+    assert(!f.route.healthy);
+    const uint8_t* path = nullptr; uint8_t length = 0;
+    assert(!f.node._cli.getDataTxPath(path, length));
+    assert(f.node._cli.routeCommand("get data.tx") == "Err - data.tx storage fault");
+    const auto writes = f.fs.writes;
+    assert(f.node._cli.routeCommand("set data.tx path 56") == "Err - data.tx storage fault");
+    assert(f.fs.writes == writes);
+    f.fs.clearFaults(); f.boot();
+    assert(f.route.healthy);
+#if defined(NRF52_PLATFORM) || defined(STM32_PLATFORM)
+    assert(f.route.path_len == 1 && f.route.path[0] == 0x34);
+#else
+    assert(f.route.path_len == (migration ? 0 : 1));
+    if (!migration) assert(f.route.path[0] == 0x12);
+#endif
+  }
+}
+
+static void checkRouteReadbackAndRetry() {
+  for (const bool region : {false, true}) {
+    const char* command = region ? "set data.tx region none" : "set data.tx path 34";
+    for (const int failure : {0, 1, 2, 3, 4, 5}) {
+      Fixture f; f.boot();
+      assert(f.node._cli.routeCommand("set data.tx path 12") == "OK");
+      const auto previous = f.fs.files.at("/data_tx");
+      f.fs.publication_path = "/data_tx";
+      if (failure == 0) f.fs.fail_write_open.insert("/data_tx.tmp");
+      if (failure == 1) f.fs.write_limit["/data_tx.tmp"] = 107;
+      if (failure == 2) f.fs.fail_read_open.insert("/data_tx.tmp");
+      if (failure == 3) f.fs.fail_final_read = true;
+      if (failure == 4) f.fs.final_read_limit = 107;
+      if (failure == 5) f.fs.corrupt_publish = true;
+      assert(f.node._cli.routeCommand(command) == "Err - unable to save data.tx");
+      assert(f.route.healthy == (failure < 3));
+      assert(f.route.path_len == 1 && f.route.path[0] == 0x12);
+      assert(f.route.region_mode == mesh::DATA_REGION_AUTO);
+      if (failure < 3) {
+        assert(f.fs.files.at("/data_tx") == previous);
+        f.fs.clearFaults();
+        assert(f.node._cli.routeCommand(command) == "OK");
+        f.boot(); assert(f.route.healthy);
+      } else {
+        const auto writes = f.fs.writes;
+        const uint8_t* path = nullptr; uint8_t length = 0;
+        assert(!f.node._cli.getDataTxPath(path, length));
+        assert(f.node._cli.routeCommand(command) == "Err - data.tx storage fault");
+        assert(f.fs.writes == writes);
+        f.fs.clearFaults(); f.boot();
+        assert(f.route.healthy == (failure != 5));
+      }
+    }
+  }
+  for (const bool existing : {false, true}) {
+    for (const bool no_op : {false, true}) {
+      Fixture f; f.boot();
+      if (existing) assert(f.node._cli.routeCommand("set data.tx path 12") == "OK");
+      f.fs.publication_path = "/data_tx";
+      f.fs.no_op_publish = no_op;
+      f.fs.late_publish_error = !no_op;
+      const auto reply = f.node._cli.routeCommand("set data.tx path 34");
+      if (no_op) {
+        assert(reply == "Err - unable to save data.tx");
+#if defined(NRF52_PLATFORM) || defined(STM32_PLATFORM)
+        assert(!f.route.healthy); // Atomic writer cannot prove old authority.
+#else
+        assert(f.route.healthy); // Observed unchanged move + successful rollback.
+#endif
+      } else {
+        assert(reply == "OK" && f.route.healthy && f.route.path[0] == 0x34);
+      }
+      f.fs.clearFaults(); f.boot(); assert(f.route.healthy);
+      if (!no_op) assert(f.route.path_len == 1 && f.route.path[0] == 0x34);
+      else assert(f.route.path_len == (existing ? 1 : 0));
+    }
+  }
+#if !defined(RP2040_PLATFORM)
+  for (const bool existing : {false, true}) {
+    Fixture f; f.boot();
+    if (existing) assert(f.node._cli.routeCommand("set data.tx path 12") == "OK");
+    const auto files = f.fs.files;
+    f.fs.fail_metadata = true; f.boot();
+    assert(!f.route.healthy && f.fs.files == files);
+    const auto writes = f.fs.writes;
+    assert(f.node._cli.routeCommand("set data.tx path 34") == "Err - data.tx storage fault");
+    assert(f.fs.writes == writes);
+    f.fs.clearFaults(); f.boot(); assert(f.route.healthy);
+  }
+#endif
+}
+
 int main() {
   checkFreshAndValid();
   checkLoadFailures();
@@ -404,5 +538,7 @@ int main() {
   checkWriteAndValidationFailures();
   checkRecoveryAndRenameFailures();
   checkAmbiguousPublicationAndServiceGate();
+  checkRoutePublicationAuthority();
+  checkRouteReadbackAndRetry();
   puts("telemetry persistence checks passed");
 }
