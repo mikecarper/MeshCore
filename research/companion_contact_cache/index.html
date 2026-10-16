@@ -2382,8 +2382,15 @@ before replacing the file or recovering a saved transaction.</p>
 <p>Changing a copied contact preserves the old path for a pending app response
 or rollback. Dirty entries are saved before eviction. If storage cannot be
 read, written, or represented completely, the operation fails instead of
-silently losing a contact or sending along a different route. Reboot retries
-an incomplete load from the preserved files. The path checksum also rejects
+sending along a different route. Contact I/O failures request bounded recovery
+between callbacks: reload a readable live image, otherwise a readable backup,
+and discard only unrecoverable contact data if neither works. nRF52 preserves
+healthy pages when another page is damaged. No archival <code>.bad</code> files are kept.
+If damaged contacts cannot be removed, the node remains usable with volatile
+contacts; explicit saves still report failure, while reboot/shutdown remain
+available. Identity, credentials, channels and unrelated settings are not erased.
+Allocation/capacity failures and shared filesystem-migration authority errors
+are not corrupt-contact evidence and do not authorize this reset. The path checksum also rejects
 a cold path changed underneath a live handle; it does not add a new checksum
 to the legacy ESP32 on-disk format.</p>
 <h2 id="shared-secrets-and-power">Shared secrets and power</h2>
