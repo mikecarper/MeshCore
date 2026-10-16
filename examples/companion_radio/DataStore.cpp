@@ -2052,7 +2052,9 @@ bool DataStore::writeContactPage(DataStoreHost* host, uint8_t page,
   }
   if (!writer.commit(wrote)) {
 #if MESH_CONTACT_CACHE
-    paths.endCommit(false);
+    // Publication may have overwritten the old backing page. Keep preserved
+    // snapshots detached, but leave dirty handles and page generation pending.
+    paths.endCommit(writer.outcome() == mesh::AtomicFileWriter::Outcome::Indeterminate);
 #endif
     MESH_DEBUG_PRINTLN("DataStore: atomic contact page %u write failed", page);
     return false;
@@ -3371,14 +3373,16 @@ bool DataStore::migrateToSecondaryFS() {
     return MigrationJournalState::Invalid;
   };
 
-  auto writeJournal = [this](uint8_t state) -> bool {
+  using WriteOutcome = mesh::AtomicFileWriter::Outcome;
+  auto writeJournal = [this](uint8_t state) -> WriteOutcome {
     uint8_t payload[sizeof(journal_magic) + 1];
     memcpy(payload, journal_magic, sizeof(journal_magic));
     payload[sizeof(journal_magic)] = state;
     mesh::AtomicFileWriter journal(_fsExtra, SECONDARY_MIGRATION_JOURNAL);
-    return journal
-        && journal.write(payload, sizeof(payload)) == sizeof(payload)
-        && journal.commit();
+    const bool wrote = journal
+        && journal.write(payload, sizeof(payload)) == sizeof(payload);
+    journal.commit(wrote);
+    return journal.outcome();
   };
 
   auto hasSecondarySources = [this](bool& present) -> bool {
@@ -3532,20 +3536,27 @@ bool DataStore::migrateToSecondaryFS() {
       && (journal_state != MigrationJournalState::None
           || secondary_sources_present)) {
     if (journal_state == MigrationJournalState::None
-        && !writeJournal(SECONDARY_MIGRATION_PENDING)) {
+        && writeJournal(SECONDARY_MIGRATION_PENDING) != WriteOutcome::Committed) {
       MESH_DEBUG_PRINTLN("DataStore: could not start ExtraFS migration transaction");
       _fsExtra = nullptr;
       return false;
     }
-    if (!copySecondarySources()
-        || !writeJournal(SECONDARY_MIGRATION_COMMITTED)) {
-      // Pending means no source has been retired, so primary remains a complete
-      // fallback even if the destination contains harmless partial copies.
-      MESH_DEBUG_PRINTLN("DataStore: ExtraFS migration copy incomplete; using primary storage");
-      _fsExtra = nullptr;
+    const auto outcome = copySecondarySources()
+        ? writeJournal(SECONDARY_MIGRATION_COMMITTED) : WriteOutcome::NotCommitted;
+    // A final rename may have published COMMITTED despite a failed readback.
+    // Only a verified Pending journal or no publication attempt permits
+    // primary fallback; unknown authority must preserve both stores.
+    journal_state = outcome == WriteOutcome::Committed ? MigrationJournalState::Committed
+        : outcome == WriteOutcome::NotCommitted ? MigrationJournalState::Pending : readJournal();
+    if (journal_state != MigrationJournalState::Committed) {
+      if (journal_state == MigrationJournalState::Pending) {
+        MESH_DEBUG_PRINTLN("DataStore: ExtraFS migration copy incomplete; using primary storage");
+        _fsExtra = nullptr;
+      } else {
+        _contact_load_incomplete = true;
+      }
       return false;
     }
-    journal_state = MigrationJournalState::Committed;
   }
 
   if (journal_state == MigrationJournalState::Committed) {

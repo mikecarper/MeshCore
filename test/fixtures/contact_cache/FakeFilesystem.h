@@ -5,6 +5,7 @@
 #include <cassert>
 #include <cstdint>
 #include <cstring>
+#include <functional>
 #include <limits>
 #include <map>
 #include <string>
@@ -30,6 +31,7 @@ public:
   File(FakeFilesystem* fs, const char* path, bool write);
   bool open(const char* path, uint8_t mode);
   explicit operator bool() const { return _fs != nullptr; }
+  bool isDirectory() const { return false; } // This fixture models regular files only.
   size_t read(uint8_t* bytes, size_t length);
   size_t write(const uint8_t* bytes, size_t length);
   size_t size() const;
@@ -61,6 +63,9 @@ public:
   unsigned metadata_probes = 0, fail_metadata_probe = 0;
   unsigned removes = 0, missing_remove_logs = 0;
   unsigned fail_rename = 0, renames = 0, writes = 0, reads = 0, opens = 0;
+  unsigned false_success_rename = 0, late_rename_error = 0;
+  std::map<std::string, unsigned> read_open_failures;
+  std::function<void(FakeFilesystem&, const char*)> after_rename;
   std::vector<Files> rename_snapshots;
   std::map<std::string, unsigned> generations;
   bool exists(const char* path) const { return files.count(path) != 0; }
@@ -82,6 +87,11 @@ public:
       files[path].clear();
       return File(this, path, true);
     }
+    auto failure = read_open_failures.find(path);
+    if (failure != read_open_failures.end() && failure->second != 0) {
+      --failure->second;
+      return File();
+    }
     if (fail_read == path || !exists(path)) return File();
     return File(this, path, false);
   }
@@ -91,6 +101,7 @@ public:
   bool rename(const char* from, const char* to) {
     ++renames;
     if (renames == fail_rename || !exists(from)) return false;
+    if (renames == false_success_rename) return true;
 #if defined(ESP32_PLATFORM)
     if (exists(to)) return false;
 #endif
@@ -98,7 +109,8 @@ public:
     files.erase(from);
     ++generations[from]; ++generations[to];
     rename_snapshots.push_back(files);
-    return true;
+    if (after_rename) after_rename(*this, to);
+    return renames != late_rename_error;
   }
   size_t totalBytes() const { return capacity; }
   void setBlockCount(uint32_t count) { _config.block_count = count; }

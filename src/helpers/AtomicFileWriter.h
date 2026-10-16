@@ -12,9 +12,11 @@ namespace mesh {
  * Power-loss-safe file replacement for the Adafruit LittleFS backends.
  *
  * Data is written to a sibling .tmp file. commit() flushes and closes that
- * file, reads it back while checking its size and CRC32, and only then uses
- * LittleFS rename() to atomically replace the live file. A failed or abandoned
- * write removes the temporary file and leaves the previous live file intact.
+ * file, reads it back while checking its size and CRC32C, and only then uses
+ * LittleFS rename() to atomically replace the live file. Failures before that
+ * publication leave the previous live file intact. Once rename is attempted,
+ * a failure may leave the old or new image live; inspect outcome() before
+ * assuming that the previous image survived.
  */
 class AtomicFileWriter {
   static const size_t TEMP_PATH_CAPACITY = 96;
@@ -28,9 +30,13 @@ class AtomicFileWriter {
   uint32_t _crc;
   bool _opened;
   bool _write_ok;
-  bool _finished;
+public:
+  enum class Outcome : uint8_t { Pending, NotCommitted, Committed, Indeterminate };
 
-  static uint32_t updateCRC32(uint32_t crc, const uint8_t* data, size_t len);
+private:
+  Outcome _outcome;
+
+  static uint32_t updateCRC32C(uint32_t crc, const uint8_t* data, size_t len);
   void removeTempFile();
   bool validateFile(const char* path);
 
@@ -47,9 +53,12 @@ public:
 
   /**
    * Commit the staged file. content_valid lets callers include format-specific
-   * checks in the same decision; false always preserves the previous file.
+   * checks in the same decision; content_valid=false prevents publication.
+   * Returns true only after verifying the public image. A false return can be
+   * Indeterminate, not proof that publication did not happen.
    */
   bool commit(bool content_valid = true);
+  Outcome outcome() const { return _outcome; }
 
   size_t bytesWritten() const { return _bytes_written; }
   const char* tempPath() const { return _temp_path; }
@@ -61,11 +70,16 @@ public:
 
 namespace mesh {
 
-uint32_t AtomicFileWriter::updateCRC32(uint32_t crc, const uint8_t* data, size_t len) {
+// Share this loop between write and readback instead of duplicating it under LTO.
+__attribute__((noinline)) uint32_t AtomicFileWriter::updateCRC32C(
+    uint32_t crc, const uint8_t* data, size_t len) {
+  // Persistent images can end in their own IEEE CRC32. Reusing that polynomial
+  // here would give all valid same-sized images a fixed whole-image residue.
+  // This independent, nonpersistent fingerprint does not alter file formats.
   while (len-- > 0) {
     crc ^= *data++;
-    for (uint8_t bit = 0; bit < 8; bit++) {
-      crc = (crc >> 1) ^ ((crc & 1) ? 0xEDB88320UL : 0);
+    for (unsigned bit = 0; bit < 8; bit++) {
+      crc = (crc >> 1) ^ (0x82F63B78U & (0U - (crc & 1U)));
     }
   }
   return crc;
@@ -82,7 +96,7 @@ bool AtomicFileWriter::validateFile(const char* path) {
     File verify(*_fs);
     if (!verify.open(path, FILE_O_READ)) continue;
 
-    bool valid = verify.size() == _bytes_written;
+    bool valid = !verify.isDirectory() && verify.size() == _bytes_written;
     uint32_t read_crc = 0xFFFFFFFFUL;
     size_t remaining = _bytes_written;
     uint8_t buf[64];
@@ -94,7 +108,7 @@ bool AtomicFileWriter::validateFile(const char* path) {
         valid = false;
         break;
       }
-      read_crc = updateCRC32(read_crc, buf, chunk);
+      read_crc = updateCRC32C(read_crc, buf, chunk);
       remaining -= chunk;
     }
 
@@ -106,7 +120,7 @@ bool AtomicFileWriter::validateFile(const char* path) {
 
 AtomicFileWriter::AtomicFileWriter(FILESYSTEM* fs, const char* target_path)
   : _fs(fs), _target_path(target_path), _file(*fs), _bytes_written(0),
-    _crc(0xFFFFFFFFUL), _opened(false), _write_ok(true), _finished(false) {
+    _crc(0xFFFFFFFFUL), _opened(false), _write_ok(true), _outcome(Outcome::Pending) {
   _temp_path[0] = 0;
   if (target_path == NULL) {
     _write_ok = false;
@@ -130,7 +144,7 @@ AtomicFileWriter::AtomicFileWriter(FILESYSTEM* fs, const char* target_path)
 }
 
 AtomicFileWriter::~AtomicFileWriter() {
-  if (_finished) return;
+  if (_outcome != Outcome::Pending) return;
   if (_opened) {
     _file.close();
     _opened = false;
@@ -155,12 +169,12 @@ size_t AtomicFileWriter::write(const uint8_t* data, size_t len) {
   }
 
   _bytes_written += written;
-  _crc = updateCRC32(_crc, data, written);
+  _crc = updateCRC32C(_crc, data, written);
   return written;
 }
 
 bool AtomicFileWriter::commit(bool content_valid) {
-  if (_finished) return false;
+  if (_outcome != Outcome::Pending) return false;
 
   bool success = _opened && _write_ok && content_valid;
   if (_opened) {
@@ -171,14 +185,19 @@ bool AtomicFileWriter::commit(bool content_valid) {
   }
 
   if (success) success = validateFile(_temp_path);
-  if (success) success = _fs->rename(_temp_path, _target_path);
-  // A lower layer can acknowledge a metadata update before the physical page
-  // is durable. Validate the public filename too; callers must never clear a
-  // dirty flag or announce success while the old/corrupt file is still live.
-  if (success) success = validateFile(_target_path);
-  if (!success) removeTempFile();
-
-  _finished = true;
+  if (success) {
+    // Rename can report an error after publishing, or acknowledge a change
+    // without replacing the public image. Its return value cannot establish
+    // either outcome: always verify the public bytes against the staged CRC.
+    _fs->rename(_temp_path, _target_path);
+    success = validateFile(_target_path);
+    _outcome = success ? Outcome::Committed : Outcome::Indeterminate;
+  } else {
+    _outcome = Outcome::NotCommitted;
+  }
+  // A failed rename may leave scratch even when the public image already
+  // matches. It is never an authority or a rollback image.
+  removeTempFile();
   return success;
 }
 

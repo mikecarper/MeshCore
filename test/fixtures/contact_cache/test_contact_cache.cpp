@@ -116,6 +116,7 @@ public:
   }
 #endif
 #if defined(NRF52_PLATFORM)
+  uint32_t pageGeneration(uint8_t page) const { return _contact_page_generations[page]; }
   bool loadContactPages(DataStoreHost*, uint16_t, uint32_t);
   bool writeContactPage(DataStoreHost*, uint8_t, bool (*filter)(const ContactInfo&));
   bool markContactDirty(const ContactInfo& c) {
@@ -924,6 +925,43 @@ static void nrf52_migration_snapshots_and_failed_page_replacement() {
   assert(!f.host.contacts[3].getPath());
   assert(!f.store.writeContactPage(&f.host, 0, cachedContactFilter));
 }
+
+static void nrf52_uncertain_page_publication_preserves_snapshots() {
+  for (unsigned fault = 0; fault < 3; ++fault) {
+    Fixture f;
+    for (uint8_t page = 0; page < 14; ++page)
+      assert(f.store.writeContactPage(&f.host, page, cachedContactFilter));
+    SPIFFS.remove("/contacts3");
+    const auto original = SPIFFS.files.at("/contacts4_00");
+    ContactInfo snapshot = f.host.contacts[0];
+    assert(f.host.contacts[0].setRawPath(route(1100).data()));
+    assert(f.store.markContactDirty(f.host.contacts[0]));
+    const auto generation = f.store.pageGeneration(0);
+    if (fault == 2) SPIFFS.false_success_rename = SPIFFS.renames + 1;
+    SPIFFS.after_rename = [fault](FakeFilesystem& fs, const char* path) {
+      if (strcmp(path, "/contacts4_00") != 0) return;
+      if (fault == 0) fs.late_rename_error = fs.renames;
+      else if (fault == 1) fs.read_open_failures[path] = 3;
+    };
+    assert(f.store.serviceContactWrites(&f.host, cachedContactFilter) == (fault == 0));
+    assert(f.store.hasPendingContactWrites() == (fault != 0));
+    assert(f.store.pageGeneration(0) == generation + (fault == 0));
+    assert((SPIFFS.files.at("/contacts4_00") == original) == (fault == 2));
+    // Make the retained old path cold if it still has an evictable disk binding.
+    for (unsigned i = 1; i < 350; ++i) f.check(i, route(i));
+    Path path;
+    assert(snapshot.copyPathTo(path.data()) && path == route(0));
+    f.check(0, route(1100));
+    SPIFFS.after_rename = {};
+    SPIFFS.false_success_rename = SPIFFS.late_rename_error = 0;
+    assert(f.store.serviceContactWrites(&f.host, cachedContactFilter));
+    assert(!f.store.hasPendingContactWrites());
+    assert(f.store.pageGeneration(0) == generation + 1);
+    for (unsigned i = 1; i < 350; ++i) f.check(i, route(i));
+    assert(snapshot.copyPathTo(path.data()) && path == route(0));
+    f.check(0, route(1100));
+  }
+}
 #endif
 
 static void contact_tx_policy_round_trips_without_growing_records() {
@@ -991,6 +1029,7 @@ int main() {
 #else
   nrf52_secret_cache_leaves_contact_storage_reserve();
   nrf52_migration_snapshots_and_failed_page_replacement();
+  nrf52_uncertain_page_publication_preserves_snapshots();
   encoded_paths_and_copy_assignment();
   failed_path_reads_fail_sends_without_leaking_packets();
   contact_reload_preserves_disk_on_cache_exhaustion();

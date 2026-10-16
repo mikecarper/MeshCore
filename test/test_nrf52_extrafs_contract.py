@@ -4,6 +4,7 @@
 from pathlib import Path
 import re
 import subprocess
+import tempfile
 import unittest
 
 
@@ -37,6 +38,34 @@ def function_body(source: str, signature: str) -> str:
 
 
 class Nrf52ExtraFsContractTest(unittest.TestCase):
+    def test_uncertain_journal_publication_preserves_storage_authority(self):
+        store = STORE.read_text(encoding="utf-8")
+        # Compile the complete production methods, including their platform branches.
+        def method(signature):
+            start = store.index(signature)
+            body = function_body(store, signature)
+            return store[start:store.index("{", start) + 1] + body + "}"
+
+        implementation = "\n".join(method(signature) for signature in (
+            "static void makeContactPagePath(", "bool DataStore::migrateToSecondaryFS()",
+            "bool DataStore::saveChannels("))
+        with tempfile.TemporaryDirectory(prefix="mesh-secondary-publication-") as directory:
+            directory = Path(directory)
+            (directory / "migration_under_test.h").write_text(implementation, encoding="ascii")
+            binary = directory / "migration"
+            compiled = subprocess.run([
+                "c++", "-std=c++17", "-O1", "-g", "-Wall", "-Wextra",
+                "-fsanitize=address,undefined", "-fno-omit-frame-pointer", "-fno-pie", "-no-pie",
+                "-DNRF52_PLATFORM=1", "-I", str(ROOT / "test/fixtures/contact_cache/mocks"),
+                "-I", str(ROOT / "test/fixtures/contact_cache"), "-I", str(ROOT / "src"),
+                "-I", str(directory), str(ROOT / "test/fixtures/contact_cache/test_secondary_migration.cpp"),
+                "-o", str(binary),
+            ], capture_output=True, text=True)
+            self.assertEqual(compiled.returncode, 0, compiled.stderr)
+            result = subprocess.run([str(binary)], capture_output=True, text=True)
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            self.assertIn("PASS: 10 secondary migration publication scenarios", result.stdout)
+
     def test_hil_stat_failure_is_consumed_before_source_discovery(self):
         store = STORE.read_text(encoding="utf-8")
         load_contacts = function_body(store, "void DataStore::loadContacts(")
@@ -552,7 +581,7 @@ class Nrf52ExtraFsContractTest(unittest.TestCase):
         self.assertLess(committed_at, retire_at)
         self.assertLess(retire_at, journal_remove_at)
         copy_failure_end = migration.index(
-            "journal_state = MigrationJournalState::Committed", committed_at
+            "if (journal_state == MigrationJournalState::Committed)", committed_at
         )
         self.assertIn(
             "_fsExtra = nullptr;", migration[copy_at:copy_failure_end]

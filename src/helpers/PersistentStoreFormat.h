@@ -125,8 +125,8 @@ inline void writeLE32(uint8_t* dest, uint32_t value) {
   dest[3] = (uint8_t)(value >> 24);
 }
 
-// Same CRC convention as AtomicFileWriter: reflected CRC-32, initial value
-// 0xFFFFFFFF, with no final xor.  Keeping this incremental makes it usable on
+// Persistent images use reflected IEEE CRC-32, initial value 0xFFFFFFFF,
+// with no final xor. Keeping this incremental makes it usable on
 // small targets without buffering an entire file.
 inline uint32_t updateCRC32(uint32_t crc, const uint8_t* data, size_t len) {
   while (len-- > 0) {
