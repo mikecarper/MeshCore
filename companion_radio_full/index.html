@@ -761,6 +761,17 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
+  <a href="#rak4631-full-companion-optional-rak15002-archive-and-rak13800-ethernet" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        RAK4631 Full Companion: optional RAK15002 archive and RAK13800 Ethernet
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#screenless-nrf52-spoken-button-confirmations" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2499,6 +2510,17 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
+  <a href="#rak4631-full-companion-optional-rak15002-archive-and-rak13800-ethernet" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        RAK4631 Full Companion: optional RAK15002 archive and RAK13800 Ethernet
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#screenless-nrf52-spoken-button-confirmations" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2732,8 +2754,10 @@ saved WiFi enablement is honored after an upgrade. The SenseCAP Indicator
 requires a reboot to apply its exclusive transport selection; primary ESP-NOW
 mesh operation is unaffected by the infrastructure-WiFi default.</p>
 <p>The full Companion is deliberately not a LoRa OTA destination: it has no
-firmware staging store, refuses <code>ota install</code>, and never advertises its own
-firmware as an mOTA image.</p>
+installable firmware staging store, refuses <code>ota install</code>, and never
+advertises its own firmware as an mOTA image. The RAK4631 Full variant can
+optionally keep a source-only RAK15002 SD archive of peer <code>.mota</code> files; that
+does not make the Companion an update destination.</p>
 <p>Preference changes through the Companion protocol, WebConfig, or USB terminal
 report a storage error if saving fails, and restore their previous values.
 Settings that also change GPS or radio power-saving state restore that state;
@@ -2770,7 +2794,7 @@ a busy radio rollback remains pending for recovery instead of reporting success.
 <tr>
 <td>Host-backed LoRa mOTA source</td>
 <td>WiFi TCP 5001</td>
-<td>Exclusive USB mode or encrypted BLE</td>
+<td>Exclusive USB mode or encrypted BLE; RAK4631 Full can additionally cache/serve peer images from optional RAK15002 SD</td>
 </tr>
 <tr>
 <td>WiFi Companion/WebConfig</td>
@@ -2785,7 +2809,7 @@ a busy radio rollback remains pending for recovery instead of reporting success.
 <tr>
 <td>Ethernet Companion</td>
 <td>On targets with an Ethernet module</td>
-<td>On RAK4631 with RAK13800</td>
+<td>On RAK4631 with RAK13800; the RAK15002 combination is explicitly one-at-a-time</td>
 </tr>
 <tr>
 <td>LoRa self-update</td>
@@ -2799,6 +2823,26 @@ a busy radio rollback remains pending for recovery instead of reporting success.
 </tr>
 </tbody>
 </table>
+<h3 id="rak4631-full-companion-optional-rak15002-archive-and-rak13800-ethernet">RAK4631 Full Companion: optional RAK15002 archive and RAK13800 Ethernet</h3>
+<p><code>RAK_4631_companion_radio_full</code> can cache and serve peer mOTA files from an
+optional RAK15002 card. This remains a source-only archive: <code>ota install</code> and
+bootloader installation are unavailable on the Companion, whether or not a
+card is inserted. Check the archive with <code>ota cache [on|off]</code>; use
+<code>get sdcard [free]</code> for card space.</p>
+<p>The optional RAK13800 Ethernet module and RAK15002 share CS26. Ethernet is
+therefore <strong>off by default</strong> in this combined Full image and is controlled only
+for the current boot:</p>
+<pre><code class="language-text">get eth
+set eth on
+set eth off
+</code></pre>
+<p>Remove the SD card and end/cancel active OTA cache, transfer, serve, or host
+folder activity before <code>set eth on</code>. The command refuses unsafe states. Turn
+Ethernet off before inserting or accessing a card; an insertion during
+Ethernet use fails closed and still requires <code>set eth off</code>. This is not a
+supported hot-swap workflow. The combined RAK15002/Ethernet hardware path has
+not yet been hardware-qualified; see <a href="../ota_nrf52_qspi/#optional-rak15002-storage-in-canonical-rak4631-images">nRF52 RAK15002 storage</a>
+for the receiver's separate signed-application path and loader prerequisite.</p>
 <h3 id="screenless-nrf52-spoken-button-confirmations">Screenless nRF52 spoken button confirmations</h3>
 <p>Full Companion builds for T1000-E, RAK WisMesh Tag, MeshTracker X1,
 Muziworks R1 Neo and ThinkNode M3 use prerecorded spoken confirmations for

@@ -11911,7 +11911,39 @@ these millivolt settings does not change that wake threshold; a unit may need
 to charge above it or have USB power restored before it wakes.</p>
 <hr />
 <h3 id="ethernet-when-ethernet-support-is-compiled-in">Ethernet (when Ethernet support is compiled in)</h3>
-<p>Ethernet support is available on RAK4631 boards with a RAK13800 (W5100S) Ethernet module. Use the <code>_ethernet</code> firmware variants (e.g. <code>RAK_4631_repeater_ethernet</code>) to enable this feature.</p>
+<p>Ethernet support is available on RAK4631 boards with a RAK13800 (W5100S)
+Ethernet module. Use the <code>_ethernet</code> firmware variants (for example,
+<code>RAK_4631_repeater_ethernet</code>) for the normal Ethernet-only configuration.</p>
+<p><code>RAK_4631_companion_radio_full</code> is a distinct combined profile: it can compile
+both physical RAK13800 Ethernet and an optional RAK15002 SD mOTA archive. They
+share CS26, so they are mutually exclusive. In that Full profile Ethernet is
+off at boot and is deliberately controlled only for the current boot:</p>
+<pre><code class="language-text">get eth
+set eth on
+set eth off
+get sdcard [free]
+ota cache [on|off]
+</code></pre>
+<p>Before <code>set eth on</code>, remove the SD card and finish/cancel any active OTA
+capture, transfer, serving, or host-folder work. The command rejects an
+inserted card or a busy archive instead of taking the shared bus. Turn
+Ethernet off before accessing or inserting the card. An insertion while
+Ethernet is live fails closed and still needs <code>set eth off</code>; it is not a
+supported hot-swap flow. This combined hardware path is not yet qualified.</p>
+<p>The SD-capable Ethernet-room receiver,
+<code>RAK_4631_room_server_ethernet_lora_ota_no_external_sensors</code>, uses the same
+shared CS26 safety rule but has its own cooperative Ethernet control. It starts
+off on every reboot and is never persisted. From USB or an already established
+Telnet session, use either spelling:</p>
+<pre><code class="language-text">eth on
+# or: set eth on
+eth.status
+eth off
+</code></pre>
+<p><code>eth on</code> rejects a fitted card, active/cache/staged OTA work, or a retained NOR
+owner. <code>eth off</code> waits for a safe release and refuses while OTA work is busy.
+Remove the card before enabling Ethernet and do not insert it while Ethernet
+is active.</p>
 <hr />
 <h4 id="view-ethernet-connection-status">View Ethernet connection status</h4>
 <p><strong>Usage:</strong>
@@ -11920,8 +11952,12 @@ to charge above it or have USB power restored before it wakes.</p>
 - <code>ETH: &lt;ip&gt;:&lt;port&gt;</code> when connected (e.g. <code>ETH: 192.168.1.50:23</code>)
 - <code>ETH: not connected</code> when Ethernet is not active</p>
 <p><strong>Notes:</strong>
-- Available on repeater and room server firmware only. Companion radio ethernet firmware does not expose a CLI.
-- The Ethernet interface obtains an IP address via DHCP automatically on boot.
+- Available on repeater and room server firmware only. The normal
+  <code>_ethernet</code> Companion image does not expose a CLI; the combined RAK4631 Full
+  profile above instead exposes <code>get eth</code> / <code>set eth on|off</code>.
+- The normal <code>_ethernet</code> variants obtain an IP address via DHCP automatically
+  on boot. The combined RAK4631 Full profile does not: Ethernet starts off
+  until <code>set eth on</code> succeeds.
 - A TCP server listens on port 23 (default) for CLI connections.
 - Connect with any TCP client (e.g. <code>nc</code>, PuTTY) to access the same CLI available over serial.</p>
 <hr />

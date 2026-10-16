@@ -1172,6 +1172,62 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#optional-rak15002-storage-in-canonical-rak4631-images" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Optional RAK15002 storage in canonical RAK4631 images
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Optional RAK15002 storage in canonical RAK4631 images">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#future-receiver-loader-prerequisite-and-update-flow" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Future receiver loader prerequisite and update flow
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#rak13800-ethernet-ownership" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        RAK13800 Ethernet ownership
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="RAK13800 Ethernet ownership">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#full-companion" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Full Companion
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -2525,6 +2581,62 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#optional-rak15002-storage-in-canonical-rak4631-images" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Optional RAK15002 storage in canonical RAK4631 images
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Optional RAK15002 storage in canonical RAK4631 images">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#future-receiver-loader-prerequisite-and-update-flow" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Future receiver loader prerequisite and update flow
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#rak13800-ethernet-ownership" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        RAK13800 Ethernet ownership
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="RAK13800 Ethernet ownership">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#full-companion" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Full Companion
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -3002,6 +3114,122 @@ Source-only means <code>ota install</code>, bootloader installation, and <code>o
 are disabled even if the installed bootloader supports SD. No RAK15002 SD
 bootloader handoff is claimed. Update this trial firmware over USB/BLE; normal
 RAK4631 receiver targets and MeshTower SD self-update are unchanged.</p>
+<h2 id="optional-rak15002-storage-in-canonical-rak4631-images">Optional RAK15002 storage in canonical RAK4631 images</h2>
+<p>This is a separate <strong>STORE</strong> path, not an expansion of the older
+<code>RAK_4631_repeater_rak15002_sd_seeder_only</code> CACHE-only experiment above. It is
+limited to the canonical RAK4631 Full/Reduced LoRa-OTA receiver roles
+(repeater, room server, Ethernet room server, and sensor) and to
+<code>RAK_4631_companion_radio_full</code>. Existing exact-NOR identities, non-OTA roles,
+and the CACHE-only seeder retain their previous storage contracts.</p>
+<p>The receiver and Full Companion use the same optional card hardware, but not
+the same update authority:</p>
+<table>
+<thead>
+<tr>
+<th>Image type</th>
+<th>RAK15002 role</th>
+<th>Local firmware install from that card</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Canonical RAK4631 receiver</td>
+<td>Adaptive application staging, plus the retained mOTA archive/source</td>
+<td>Only a trusted, signed <strong>application</strong> package, after bootloader capability checks</td>
+</tr>
+<tr>
+<td><code>RAK_4631_companion_radio_full</code></td>
+<td>Cache and serve peer <code>.mota</code> files</td>
+<td>Never; it remains a source-only Companion</td>
+</tr>
+<tr>
+<td><code>RAK_4631_repeater_rak15002_sd_seeder_only</code></td>
+<td>Historical strict cache/source-only profile</td>
+<td>Never</td>
+</tr>
+</tbody>
+</table>
+<p>The receiver chooses the card only during real OTA/cache work, not at boot or
+while merely reporting status. With no card it retains its existing qualified
+internal/NOR selection. With a card fitted, the firmware deliberately does
+<strong>not</strong> probe NOR as a fallback, even if the card, filesystem, or installed
+loader is unsuitable: both devices use CS26, so issuing a NOR probe could
+clock the card. RAK15002 card-detect is active-low WisBlock IO6 (Arduino pin
+10), not Arduino pin 6; the SD bus is SPIM2 at 4 MHz on 29/3/30 with CS26.</p>
+<p>The new STORE path accepts <strong>FAT16/FAT32 only</strong>. It deliberately uses the
+smaller FAT-only SdFat types to fit the RAK4631 flash budget and reduce its
+RAM use; an exFAT card is not a supported STORE volume. This restriction does
+not change the historical CACHE-only RAK15002 seeder or MeshTower SD profiles,
+which retain their existing <code>SdFs</code>/<code>FsFile</code> (FAT/exFAT) behavior.</p>
+<h3 id="future-receiver-loader-prerequisite-and-update-flow">Future receiver loader prerequisite and update flow</h3>
+<p>The matching <code>wiscore_rak4631_auto</code> <strong>all-in-one OTAFIX bootloader</strong> is only a
+local candidate today: it is not released and has not been hardware-qualified.
+Do not provision it as an SD-apply upgrade. Until a released, qualified loader
+explicitly advertises the supplemental authenticated RAK15002-SD
+<em>application</em> capability, the receiver fails SD application apply closed and
+continues to use its qualified internal/NOR path when no card is selected.</p>
+<p>Once such a loader is released, it must preserve the deployed internal/NOR
+capabilities while adding the separate SD application handoff record. A stock,
+older, or otherwise ordinary RAK4631 OTAFIX bootloader must refuse the SD
+handoff. Its first migration will need to be performed locally over USB/BLE DFU
+or SWD; it must not be bootstrapped from the SD card or with a LoRa bootloader
+package.</p>
+<p>The supplemental capability is application-only: an SD card never authorizes
+a bootloader update. Existing qualified internal bootloader-update behavior is
+separate and still applies only to its exact package and loader identity. The
+Full Companion's archive/source feature never installs firmware locally, so it
+does not need this SD-apply bootloader capability.</p>
+<p>Only after that future matching loader is released, installed locally, and
+qualified may a receiver use the normal explicit application flow:</p>
+<pre><code class="language-text">ota status
+ota ls
+ota pull &lt;MID8&gt; flash
+# wait for `ota status` to show the same fetch as ready
+ota install
+</code></pre>
+<p><code>ota cache</code> manages the card-backed archive/source (<code>ota cache off</code> stops new
+captures; retained files can still seed). <code>ota storage</code> and <code>ota self</code> report
+the selected backend and loader state, but they intentionally do not force a
+removable-media probe at startup. After the future loader is present, a
+card-backed receiver reports <code>SD store</code> and <code>authenticated SD apply OK</code>; before
+then, a missing supplemental capability, unsigned application, incompatible
+media, or a busy store fails before reboot/approval.</p>
+<h3 id="rak13800-ethernet-ownership">RAK13800 Ethernet ownership</h3>
+<p>The SD-capable Ethernet-room receiver
+<code>RAK_4631_room_server_ethernet_lora_ota_no_external_sensors</code> is also an
+explicit one-at-a-time profile. Its RAK13800 Ethernet starts off on <strong>every</strong>
+reboot and is not a saved setting. With the card removed and no active/cache,
+staged, serving, or NOR work, enable it from local USB or an existing Telnet
+session with either command spelling:</p>
+<pre><code class="language-text">eth on
+# or: set eth on
+eth.status
+eth off
+</code></pre>
+<p><code>eth on</code>/<code>set eth on</code> refuses a fitted card, retained NOR owner, or busy OTA
+state. <code>eth off</code>/<code>set eth off</code> is cooperative and likewise refuses to release
+the bus while OTA work is active. Do not use these commands as a way to switch
+media during a transfer.</p>
+<h4 id="full-companion">Full Companion</h4>
+<p>The Full Companion is deliberately different: its optional RAK15002 holds
+peer archives for caching and serving, never its own install image. It may
+also compile RAK13800 Ethernet, but Ethernet and the card electrically share
+CS26 and cannot operate together. In this combined profile physical Ethernet
+starts <strong>off</strong> and <code>set eth on</code> is only a this-boot choice.</p>
+<p>To use Ethernet, stop/cancel any active OTA capture or serve work, detach any
+host folder source, <strong>physically remove the SD card</strong>, then run:</p>
+<pre><code class="language-text">get eth
+set eth on
+</code></pre>
+<p>The command refuses unsafe ownership states rather than forcing the bus. To
+return to the card, run <code>set eth off</code>, wait for it to report off, then insert
+the card and use <code>get sdcard [free]</code> or <code>ota cache [on|off]</code>. If a card is
+inserted while Ethernet is active, Ethernet fails closed; use <code>set eth off</code>
+before accessing the card. This is not a supported hot-swap procedure.</p>
+<p>The combined RAK15002 receiver/Companion/RAK13800 path has host-side checks,
+but <strong>has not yet received hardware qualification</strong>. Do not treat these rules
+as proof that a particular card, Ethernet module, loader migration, or live
+card insertion has been field-tested.</p>
 
 
 
