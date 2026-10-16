@@ -4,6 +4,7 @@
 #include <BLE.h>
 #include <btstack.h>
 #include <helpers/BluetoothMac.h>
+#include <helpers/BleTxStallWatchdog.h>
 
 // Nordic UART service over the arduino-pico BLE library (BTstack on the CYW43).
 // Build with -D PIO_FRAMEWORK_ARDUINO_ENABLE_BLUETOOTH so the core links liblwip-bt.
@@ -26,7 +27,13 @@ class SerialBLEInterface : public BaseSerialInterface, BLEService, BLEServerCall
   Characteristic _rx;
   Characteristic _tx;
   bool _isEnabled;
+  bool _device_connected;
+  bool _advertising_start_pending;
   bool _tx_pending;   // a can-send-now callback is registered
+  bool _tx_retry_pending;
+  uint32_t _tx_retry_started;
+  mesh::BleTxStallWatchdog _tx_stall_watchdog;
+  mesh::BleDisconnectRecovery _tx_disconnect_recovery;
   btstack_context_callback_registration_t _can_send;
   uint8_t _scan_rsp[31];   // complete local name; BTstack keeps the pointer
 
@@ -36,6 +43,9 @@ class SerialBLEInterface : public BaseSerialInterface, BLEService, BLEServerCall
   Frame recv_queue[FRAME_QUEUE_SIZE];
 
   void clearBuffers();
+  bool hasRequiredReplyCapacity() const;
+  void serviceTxRecovery(uint32_t now);
+  void recoverStalledTx();
   void kickSend();
   void sendNext();
   static void onCanSend(void* ctx) { ((SerialBLEInterface*)ctx)->sendNext(); }
@@ -69,6 +79,7 @@ public:
   void enable() override;
   void disable() override;
   bool isEnabled() const override { return _isEnabled; }
+  void loop() override;
   bool isConnected() const override;
   bool isReadBusy() const override;
   bool isWriteBusy() const override;
