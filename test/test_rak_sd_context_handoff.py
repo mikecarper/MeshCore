@@ -3,6 +3,7 @@ from pathlib import Path
 import unittest
 
 from test_rak15002_sd_seeder import build
+from test_rak15002_shared_spi import run_native
 from test_replay_reset_integration import extract_braced
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -102,6 +103,28 @@ int main() {
 
 
 class RakSdContextHandoffTests(unittest.TestCase):
+    def test_card_maintenance_preserves_non_sd_install_sessions(self):
+        source = (ROOT / 'src/helpers/CommonCLI.cpp').read_text()
+        methods = '\n'.join(extract_braced(source, signature) for signature in (
+            'static void formatSdCardElapsed(', 'bool CommonCLI::handleSdCardSetCmd('))
+        fixture = (ROOT / 'test/fixtures/rak15002_sd_seeder/maintenance.cpp').read_text()
+        for profile in (
+                ['OTA_RAK15002_SD_STORE', 'OTA_RAK_AUTO_STORE'],
+                ['OTA_RAK15002_SD_STORE', 'OTA_SEEDER_ONLY'],
+                ['OTA_TOWER_AUTO_STORE'],
+                []):
+            with self.subTest(profile=profile):
+                run_native(self, fixture.replace('@METHODS@', methods),
+                           defines=['NRF52_PLATFORM', 'OTA_SD_STORE', *profile])
+        # A passing native compile alone is not a regression check. Removing
+        # only the new ownership guard must reproduce the destructive reset.
+        guard = extract_braced(methods, 'if (!context.fetch_store.usesSd() &&')
+        regressed = methods.replace(guard, '', 1)
+        self.assertNotEqual(regressed, methods)
+        run_native(self, fixture.replace('@METHODS@', regressed),
+                   defines=['NRF52_PLATFORM', 'OTA_SD_STORE',
+                            'OTA_RAK15002_SD_STORE', 'OTA_RAK_AUTO_STORE'], negative=True)
+
     def test_actual_idle_handoff_and_every_pinned_work_guard(self):
         source = (ROOT / 'src/helpers/ota/OtaContext.h').read_text()
         methods = '\n'.join(extract_braced(source, signature) for signature in (

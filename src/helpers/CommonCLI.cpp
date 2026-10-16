@@ -3659,12 +3659,22 @@ bool CommonCLI::handleSdCardSetCmd(const char* config, char* reply) {
     strcpy(reply, "Error: internal OTA slot is occupied; use ota cancel first");
     return true;
   }
+#elif defined(OTA_RAK15002_SD_STORE) && !defined(OTA_SEEDER_ONLY)
+  // The optional card is independent of an internal/NOR application fetch
+  // or an internal bootloader package. Formatting it must not reset that
+  // unrelated receive session or strand its still-pinned staging bytes.
+  if (!context.fetch_store.usesSd() &&
+      (context.manager.fetchState() != mesh::ota::OtaManager::IDLE ||
+       context.fetch_store.staged_size() != 0)) {
+    strcpy(reply, "Error: non-SD OTA slot is occupied; use ota cancel first");
+    return true;
+  }
 #endif
 
   mesh::ota::OtaStoreSdNrf52& card = context.sdStagingStore();
 
-  // A card-wide destructive operation invalidates any staged fetch. First let
-  // an archive capture checkpoint and close its shared card handles.
+  // A card-wide destructive operation invalidates the staged SD fetch. First
+  // let an archive capture checkpoint and close its shared card handles.
   context.prepareSdCardReset();
   context.manager.reset_session();
   context.manager.want(0);
