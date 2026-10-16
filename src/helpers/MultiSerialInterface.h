@@ -28,6 +28,7 @@ private:
 
   bool _enabled = false;
   bool _bluetooth_auto_enable = true;
+  uint8_t _nextRxIndex = 0;
   RegisteredInterface _interfaces[MAX_INTERFACES] = {};
   BaseSerialInterface* _lastRxInterface = nullptr;
   BaseSerialInterface* _lockedReplyInterface = nullptr;
@@ -144,6 +145,7 @@ public:
   // enable all interfaces
   void enable() override {
     _enabled = true;
+    _nextRxIndex = 0;
     _lastRxInterface = nullptr;
     _lockedReplyInterface = nullptr;
     for(auto iface : _interfaces){
@@ -157,6 +159,7 @@ public:
   // disable all interfaces
   void disable() override {
     _enabled = false;
+    _nextRxIndex = 0;
     _lastRxInterface = nullptr;
     _lockedReplyInterface = nullptr;
     for(auto iface : _interfaces){
@@ -364,11 +367,15 @@ public:
       _lastRxInterface = nullptr;
     }
 
-    // try to read a frame from any enabled interface
-    for(auto iface : _interfaces){
+    // Start after the last command so a pipelined client cannot starve the
+    // other transports. Locked response streams retain their exclusive poll.
+    for (size_t offset = 0; offset < MAX_INTERFACES; ++offset) {
+      const size_t index = (_nextRxIndex + offset) % MAX_INTERFACES;
+      auto iface = _interfaces[index];
       if(iface.instance && iface.instance->isEnabled()){
         size_t frameSize = iface.instance->checkRecvFrame(dest);
         if(frameSize > 0){
+          _nextRxIndex = (index + 1) % MAX_INTERFACES;
           _lastRxInterface = iface.instance;
           return frameSize; 
         }

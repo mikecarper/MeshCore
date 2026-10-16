@@ -4,6 +4,8 @@
 #include <cassert>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
+#include <deque>
 #include <limits>
 #include <vector>
 
@@ -23,6 +25,31 @@ static Bytes framed(std::initializer_list<Bytes> frames) {
   }
   return result;
 }
+
+struct RoutingPeer : BaseSerialInterface {
+  bool enabled = false, connected = true;
+  unsigned polls = 0;
+  std::deque<Bytes> input;
+  std::vector<Bytes> output;
+  void enable() override { enabled = true; }
+  void disable() override { enabled = false; }
+  bool isEnabled() const override { return enabled; }
+  bool isConnected() const override { return connected; }
+  bool isReadBusy() const override { return !input.empty(); }
+  bool isWriteBusy() const override { return false; }
+  size_t writeFrame(const uint8_t* src, size_t length) override {
+    if (!enabled || !connected) return 0;
+    output.emplace_back(src, src + length);
+    return length;
+  }
+  size_t checkRecvFrame(uint8_t* dest) override {
+    ++polls;
+    if (!connected || input.empty()) return 0;
+    const Bytes frame = input.front(); input.pop_front();
+    memcpy(dest, frame.data(), frame.size());
+    return frame.size();
+  }
+};
 
 struct Fixture {
   SerialWifiInterface transport;
@@ -601,6 +628,152 @@ int main(int argc, char** argv) {
     f.transport.loop();
     assert(!socket->connected && f.cancellations == 1);
     assert(f.transport.getStatus().lastDisconnectReason == SerialWifiInterface::DisconnectReason::FrameTimeout);
+  } else if (scenario == 52) {
+    assert(f.start());
+    auto socket = f.connect(A);
+    socket->write_limit = std::numeric_limits<size_t>::max();
+    RoutingPeer usb;
+    MultiSerialInterface manager;
+    assert(manager.addInterface(InterfaceType::WiFi, &f.transport));
+    assert(manager.addInterface(InterfaceType::USB, &usb)); manager.enable();
+    const Bytes wifi_reply{0x0d, 0xa1}, usb_reply{0x0d, 0xb1};
+    unsigned wifi_commands = 0;
+    for (unsigned poll = 0; poll < 10000; ++poll) {
+      const uint8_t query[] = {'<', 2, 0, 0x16, 3};
+      for (uint8_t byte : query) socket->received.push_back(byte);
+      if (poll % 100 == 0) usb.input.push_back(Bytes{0x16, 4});
+      ++mock_millis; manager.loop();
+      assert(manager.checkRecvFrame(f.input) == 2 && f.input[0] == 0x16);
+      auto* route = manager.captureReplyRoute();
+      assert(route == (f.input[1] == 3 ? static_cast<BaseSerialInterface*>(&f.transport) : &usb));
+      const Bytes& reply = route == &usb ? usb_reply : wifi_reply;
+      if (route == &f.transport) ++wifi_commands;
+      assert(manager.writeFrame(reply.data(), reply.size()) == reply.size());
+      assert((poll % 100 < 1 || usb.input.empty())
+          && "an unlocked pipelined WiFi client must not starve a ready USB command");
+    }
+    // Finish the finite WiFi pipeline and the last accepted response.
+    for (unsigned poll = 0; poll < 102; ++poll) {
+      const size_t length = manager.checkRecvFrame(f.input);
+      if (length == 0) break;
+      assert(length == 2 && manager.captureReplyRoute() == &f.transport);
+      ++wifi_commands;
+      assert(manager.writeFrame(wifi_reply.data(), wifi_reply.size()) == wifi_reply.size());
+    }
+    assert(socket->received.empty() && wifi_commands == 10000);
+    assert(f.transport.getStatus().txFrames == wifi_commands);
+    Bytes expected;
+    const Bytes wire_reply = framed({wifi_reply});
+    for (unsigned i = 0; i < wifi_commands; ++i)
+      expected.insert(expected.end(), wire_reply.begin(), wire_reply.end());
+    assert(socket->sent == expected && usb.output == std::vector<Bytes>(100, usb_reply));
+  } else if (scenario == 53) {
+    assert(f.start());
+    auto socket = f.connect(A);
+    socket->write_limit = std::numeric_limits<size_t>::max();
+    RoutingPeer usb, ble, ethernet;
+    MultiSerialInterface manager;
+    BaseSerialInterface* routes[] = {&f.transport, &usb, &ble, &ethernet};
+    RoutingPeer* peers[] = {&usb, &ble, &ethernet};
+    const InterfaceType types[] = {InterfaceType::WiFi, InterfaceType::USB,
+                                  InterfaceType::Bluetooth, InterfaceType::Ethernet};
+    for (unsigned i = 0; i < 4; ++i) assert(manager.addInterface(types[i], routes[i]));
+    manager.enable();
+    socket->received = {'<', 2, 0, 0x16, 0};
+    for (unsigned i = 0; i < 3; ++i) peers[i]->input.push_back(Bytes{0x16, uint8_t(i + 1)});
+    unsigned counts[4] = {};
+    BaseSerialInterface* captured_wifi = nullptr;
+    for (unsigned poll = 0; poll < 16000; ++poll) {
+      ++mock_millis; manager.loop();
+      assert(manager.checkRecvFrame(f.input) == 2);
+      const unsigned index = poll % 4;
+      assert(manager.captureReplyRoute() == routes[index]
+          && "each unlocked ready transport must be served within one registration cycle");
+      assert(f.input[0] == 0x16 && f.input[1] == index);
+      ++counts[index];
+      const uint8_t reply[] = {0x0d, uint8_t(index)};
+      assert(manager.writeFrame(reply, sizeof(reply)) == sizeof(reply));
+      if (index == 0) {
+        captured_wifi = manager.captureReplyRoute();
+        if (counts[index] < 4000) socket->received = {'<', 2, 0, 0x16, 0};
+      } else if (counts[index] < 4000) {
+        peers[index - 1]->input.push_back(Bytes{0x16, uint8_t(index)});
+      }
+    }
+    assert(manager.checkRecvFrame(f.input) == 0); // Drain WiFi's final response.
+    for (unsigned count : counts) assert(count == 4000);
+    for (unsigned i = 0; i < 3; ++i)
+      assert(peers[i]->output == std::vector<Bytes>(4000, Bytes{0x0d, uint8_t(i + 1)}));
+    Bytes expected;
+    for (unsigned i = 0; i < 4000; ++i) {
+      const Bytes frame = framed({Bytes{0x0d, 0}});
+      expected.insert(expected.end(), frame.begin(), frame.end());
+    }
+    assert(socket->sent == expected && f.transport.getStatus().txFrames == 4000);
+    // A captured delayed route is independent of the most recent requester.
+    assert(manager.captureReplyRoute() == &ethernet && captured_wifi == &f.transport);
+    const uint8_t delayed[] = {0x85, 0x41};
+    assert(manager.writeFrameToRoute(captured_wifi, delayed, sizeof(delayed)) == sizeof(delayed));
+    assert(manager.checkRecvFrame(f.input) == 0);
+    const Bytes last = framed({Bytes{0x85, 0x41}});
+    expected.insert(expected.end(), last.begin(), last.end());
+    assert(socket->sent == expected && ethernet.output.size() == 4000);
+  } else if (scenario == 54) {
+    assert(f.start());
+    auto socket = f.connect(A, Bytes{'<', 2, 0, 0x16, 3});
+    RoutingPeer usb, ble;
+    MultiSerialInterface manager;
+    assert(manager.addInterface(InterfaceType::WiFi, &f.transport));
+    assert(manager.addInterface(InterfaceType::USB, &usb));
+    assert(manager.addInterface(InterfaceType::Bluetooth, &ble)); manager.enable();
+    socket->received = {'<', 2, 0, 0x16, 3};
+    assert(manager.checkRecvFrame(f.input) == 2); manager.lockReplyRoute();
+    usb.input.push_back(Bytes{0x16, 4}); ble.input.push_back(Bytes{0x16, 5});
+    const uint8_t reply[] = {0x03, 0x41};
+    for (unsigned poll = 0; poll < 8; ++poll) {
+      socket->received = {'<', 2, 0, 0x16, 3};
+      assert(manager.checkRecvFrame(f.input) == 2 && manager.captureReplyRoute() == &f.transport);
+      assert(manager.writeFrame(reply, sizeof(reply)) == sizeof(reply));
+      socket->write_limit = std::numeric_limits<size_t>::max();
+    }
+    assert(manager.checkRecvFrame(f.input) == 0 && manager.captureReplyRoute() == &f.transport);
+    assert(usb.polls == 0 && ble.polls == 0 && usb.output.empty() && ble.output.empty());
+    socket->connected = false; manager.loop();
+    assert(!manager.isConnected() && manager.checkRecvFrame(f.input) == 0);
+    assert(manager.writeFrame(reply, sizeof(reply)) == 0);
+    assert(usb.polls == 0 && ble.polls == 0);
+    // The response producer owns cancellation; forgetting its disconnected
+    // route releases the lock without leaking the abandoned response.
+    manager.forgetReplyRouteForDisconnected(&f.transport);
+    assert(manager.checkRecvFrame(f.input) == 2 && manager.captureReplyRoute() == &usb);
+    assert(manager.writeFrame(reply, sizeof(reply)) == sizeof(reply));
+    assert((usb.output == std::vector<Bytes>{Bytes{0x03, 0x41}} && ble.output.empty()));
+    assert(manager.checkRecvFrame(f.input) == 2 && manager.captureReplyRoute() == &ble);
+  } else if (scenario == 55) {
+    RoutingPeer first, removed, third, fourth, replacement;
+    RoutingPeer* peers[] = {&first, &removed, &third, &fourth};
+    MultiSerialInterface manager;
+    for (auto* peer : peers) assert(manager.addInterface(InterfaceType::USB, peer));
+    manager.enable();
+    for (auto* peer : peers) peer->input.push_back(Bytes{0x16, 3});
+    assert(manager.checkRecvFrame(f.input) == 2 && manager.captureReplyRoute() == &first);
+    assert(manager.removeInterface(&removed));
+    assert(manager.checkRecvFrame(f.input) == 2 && manager.captureReplyRoute() == &third);
+    assert(manager.addInterface(InterfaceType::Ethernet, &replacement)); replacement.enable();
+    replacement.input.push_back(Bytes{0x16, 3}); first.input.push_back(Bytes{0x16, 3});
+    assert(manager.checkRecvFrame(f.input) == 2 && manager.captureReplyRoute() == &fourth);
+    assert(manager.checkRecvFrame(f.input) == 2 && manager.captureReplyRoute() == &first);
+    assert(manager.checkRecvFrame(f.input) == 2 && manager.captureReplyRoute() == &replacement);
+    third.input.push_back(Bytes{0x16, 3}); third.disable();
+    fourth.input.push_back(Bytes{0x16, 3});
+    assert(manager.checkRecvFrame(f.input) == 2 && manager.captureReplyRoute() == &fourth);
+    assert(third.input.size() == 1 && removed.input.size() == 1);
+    first.input.push_back(Bytes{0x16, 3}); manager.disable();
+    assert(manager.checkRecvFrame(f.input) == 0 && manager.captureReplyRoute() == nullptr);
+    assert(first.input.size() == 1);
+    manager.enable();
+    assert(manager.checkRecvFrame(f.input) == 2 && manager.captureReplyRoute() == &first);
+    assert(manager.checkRecvFrame(f.input) == 2 && manager.captureReplyRoute() == &third);
   } else {
     assert(false && "unknown scenario");
   }

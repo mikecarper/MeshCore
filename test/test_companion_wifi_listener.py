@@ -73,10 +73,51 @@ SCENARIOS = (
     "reply-capacity pause preserves the remaining inbound timeout budget",
     "new queue pressure cannot retroactively forgive an expired inbound frame",
     "reply-capacity timeout pause survives millis rollover",
+    "pipelined WiFi commands cannot starve a ready USB command or steal its replies",
+    "four continuously ready transports each receive bounded service and preserve captured replies",
+    "locked WiFi owner remains exclusive through idle and disconnect until route cleanup",
+    "round-robin skips removed and disabled slots and restarts registration order on enable",
 )
 
 
 class CompanionWiFiListenerTests(unittest.TestCase):
+    def test_fixed_priority_negative_control_reproduces_cross_transport_starvation(self):
+        compiler = os.environ.get("CXX") or shutil.which("g++") or shutil.which("clang++")
+        if compiler is None:
+            self.skipTest("a host C++17 compiler is required")
+        header = (ROOT / "src/helpers/MultiSerialInterface.h").read_text(encoding="ascii")
+        rotating_index = "const size_t index = (_nextRxIndex + offset) % MAX_INTERFACES;"
+        self.assertEqual(header.count(rotating_index), 1)
+        # Retain all routing, locking, and backend code. Only restore the old
+        # fixed-priority scan, which always started at registration slot zero.
+        legacy = header.replace(rotating_index, "const size_t index = offset;")
+        with tempfile.TemporaryDirectory(prefix="meshcore-wifi-priority-") as directory:
+            work = Path(directory)
+            (work / "helpers").mkdir()
+            (work / "helpers/MultiSerialInterface.h").write_text(legacy, encoding="ascii")
+            binary = work / "fixed-priority.exe"
+            compiled = subprocess.run(
+                [compiler, "-std=c++17", "-Wall", "-Wextra", "-Werror",
+                 *SANITIZERS, "-DESP32=1", f"-I{work}", f"-I{MOCKS}",
+                 f"-I{ROOT / 'src'}", f"-I{ROOT / 'src/helpers'}",
+                 str(FIXTURE), str(ROOT / "src/helpers/wifi/SerialWifiInterface.cpp"),
+                 "-o", str(binary)], capture_output=True, text=True, timeout=60,
+            )
+            self.assertEqual(compiled.returncode, 0, compiled.stdout + compiled.stderr)
+            for scenario, oracle in (
+                    (52, "an unlocked pipelined WiFi client must not starve a ready USB command"),
+                    (53, "each unlocked ready transport must be served within one registration cycle")):
+                with self.subTest(scenario=scenario):
+                    checked = subprocess.run([str(binary), str(scenario)], capture_output=True,
+                                             text=True, timeout=10)
+                    self.assertNotEqual(checked.returncode, 0)
+                    self.assertIn(oracle, checked.stderr)
+            # Exclusive response streams are an intentional policy and were
+            # already correct; the old polling order must still pass this.
+            checked = subprocess.run([str(binary), "54"], capture_output=True, text=True, timeout=10)
+            self.assertEqual(checked.returncode, 0, checked.stdout + checked.stderr)
+            self.assertIn("PASS: Wi-Fi listener scenario 54", checked.stdout)
+
     def test_production_listener_faults(self):
         compiler = os.environ.get("CXX") or shutil.which("g++") or shutil.which("clang++")
         if compiler is None:
