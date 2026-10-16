@@ -82,6 +82,10 @@ class CompanionMeshtextTest(unittest.TestCase):
         fixture = (ROOT / "test/fixtures/radio_profiles/cli_test.cpp").read_text(encoding="utf-8")
         fixture = fixture[:fixture.index("static void permanentScheduleOrder()")]
         text = (ROOT / "test/fixtures/companion_meshtext.cpp").read_text(encoding="utf-8")
+        radio_source = (ROOT / "src/helpers/radiolib/RadioLibWrappers.cpp").read_text(encoding="utf-8")
+        airtime = body(radio_source, "uint32_t RadioLibWrapper::getProfileAirtime(")
+        airtime = "uint32_t actualProfileAirtime(uint8_t profile, int len, uint8_t cr=0) " + airtime[airtime.index("{"):]
+        text = text.replace("@PROFILE_AIRTIME@", airtime)
         payload = ("A" * 153 + "\u20ac" + "B" * 69).encode()  # 225 bytes, truncation splits a scalar
         vectors = {
             "@RX_FRAME@": reference_frame(data_text(payload), packet_id=101),
@@ -89,30 +93,40 @@ class CompanionMeshtextTest(unittest.TestCase):
             "@RX_DM@": reference_frame(data_text(b"dm"), to=0x99887766, packet_id=103),
             "@RX_ACK@": reference_frame(data_text(b"want ack") + b"\x18\x01", flags=0x6B, packet_id=104),
             "@RX_OTHER@": reference_frame(b"\x08\x02\x12\x01x", packet_id=105),
+            "@RELAY_SHORT@": reference_frame(data_text(b"relay short"), packet_id=201),
+            "@RELAY_LONG@": reference_frame(data_text(b"L" * 180), packet_id=202),
+            "@RELAY_NODEINFO@": reference_frame(b"\x08\x04\x12\x00", packet_id=203),
+            "@RELAY_PRIVATE128@": reference_frame(data_text(b"private relay"), "Team", bytes(range(1, 17)), packet_id=204),
+            "@RELAY_PRIVATE256@": reference_frame(data_text(b"L" * 180), "Team", bytes(range(1, 33)), packet_id=205),
         }
         # Independent standard User/NodeInfo wire expectations; never encode
         # an expected NodeInfo through the production codec under test.
-        def nodeinfo_frame(sender, packet_id, long_name, short_name, name="LongFast", key=None):
+        def nodeinfo_frame(sender, packet_id, long_name, short_name, name="LongFast", key=None,
+                           rebroadcast=False):
             def field(number, value):
                 return varint((number << 3) | 2) + varint(len(value)) + value
             user = field(1, ("!%08x" % sender).encode())
             if long_name:
                 user += field(2, long_name)
-            user += field(3, short_name) + b"\x38\x01\x48\x01"  # CLIENT_MUTE; no DMs
+            user += field(3, short_name) + b"\x38" + varint(0 if rebroadcast else 1) + b"\x48\x01"
             data = b"\x08\x04" + field(2, user) + b"\x48\x01"  # NODEINFO_APP; MQTT consent only
             args = {} if key is None else {"key": key}
             return reference_frame(data, name, sender=sender, packet_id=packet_id, flags=0xE7, **args)
         default_node = int.from_bytes(hashlib.sha256(bytes([42]) + bytes(31)).digest()[:4], "little")
         vectors.update({
+            "@RELAY_NODEINFO@": nodeinfo_frame(0x11223344, 203, b"Peer", b"PEER"),
             "@NODEINFO_DEFAULT@": nodeinfo_frame(default_node, 0x12345678, b"Test",
                                                 ("%04x" % (default_node & 0xFFFF)).encode()),
             "@NODEINFO_AFTER_CHAT@": nodeinfo_frame(default_node, 0x12345679, b"Test",
                                                    ("%04x" % (default_node & 0xFFFF)).encode()),
+            "@NODEINFO_REBROADCAST@": nodeinfo_frame(default_node, 0x12345679, b"Test",
+                                                     ("%04x" % (default_node & 0xFFFF)).encode(),
+                                                     rebroadcast=True),
             "@NODEINFO_RENAMED@": nodeinfo_frame(default_node, 0x1234567A, b"Renamed",
                                                 ("%04x" % (default_node & 0xFFFF)).encode()),
-            "@NODEINFO_NAMED@": nodeinfo_frame(0x12345678, 0x12345679, b"Mike Carper", b"MIKE"),
-            "@NODEINFO_UTF8@": nodeinfo_frame(0x12345678, 0x1234567B, b"A" * 22, "\U0001f600".encode()),
-            "@NODEINFO_PRIVATE@": nodeinfo_frame(0x12345678, 0x1234567C, b"A" * 22,
+            "@NODEINFO_NAMED@": nodeinfo_frame(0x12345678, 0x1234567A, b"Mike Carper", b"MIKE"),
+            "@NODEINFO_UTF8@": nodeinfo_frame(0x12345678, 0x1234567C, b"A" * 22, "\U0001f600".encode()),
+            "@NODEINFO_PRIVATE@": nodeinfo_frame(0x12345678, 0x1234567D, b"A" * 22,
                                                 "\U0001f600".encode(), "Team", bytes(range(1, 33))),
         })
         text = text.replace("@FIXTURE@", fixture).replace("@CONSTANTS@", "\n".join(constants))
@@ -130,6 +144,17 @@ class CompanionMeshtextTest(unittest.TestCase):
         legacy_hops[5] = 3
         legacy_hops[12:] = hashlib.sha256(legacy_hops[:12]).digest()[:4]
         text = text.replace("@LEGACY_HOPS_SETTINGS@", array(legacy_hops))
+        mt03 = bytearray(40)
+        mt03[:4] = b"MT03"
+        mt03[4:6] = bytes((1, 3))
+        mt03[8:12] = (2).to_bytes(4, "little")
+        mt03[36:] = hashlib.sha256(mt03[:36]).digest()[:4]
+        text = text.replace("@LEGACY_MT03_SETTINGS@", array(mt03))
+        mt03_named = bytearray(mt03)
+        mt03_named[12:15] = b"OLD"
+        mt03_named[32:36] = (0x12345678).to_bytes(4, "little")
+        mt03_named[36:] = hashlib.sha256(mt03_named[:36]).digest()[:4]
+        text = text.replace("@LEGACY_MT03_NAMED@", array(mt03_named))
         public_key = bytes([42]) + bytes(31)
         text = text.replace("@LOCAL_NODE@", str(int.from_bytes(hashlib.sha256(public_key).digest()[:4], "little")))
         for first in (43, 44):
@@ -245,6 +270,21 @@ class CompanionMeshtextTest(unittest.TestCase):
 
     def test_same_tuple_publish_busy_release_refreshes_without_stealing_external_owner(self):
         self.run_case("readiness-cache")
+
+    def test_rebroadcast_is_opt_in_persisted_atomically_and_legacy_settings_default_off(self):
+        self.run_case("rebroadcast-settings")
+
+    def test_rebroadcast_waits_five_exact_airtimes_plus_jitter_and_never_arms_local_metadata(self):
+        self.run_case("rebroadcast-timing")
+
+    def test_rebroadcast_duplicates_cancel_before_seen_shortcut_and_inflight_is_not_unsent(self):
+        self.run_case("rebroadcast-duplicates")
+
+    def test_rebroadcast_stale_work_expires_or_cancels_and_explicit_chat_has_priority(self):
+        self.run_case("rebroadcast-lifecycle")
+
+    def test_rebroadcast_requires_decoded_broadcast_text_capacity_and_uses_secondary_phy(self):
+        self.run_case("rebroadcast-guards-phy")
 
     def test_delivery_service_is_wired_before_radio_processing_and_paused_for_morse(self):
         source = (ROOT / "examples/companion_radio/MyMesh.cpp").read_text(encoding="utf-8")

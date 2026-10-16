@@ -50,11 +50,13 @@ bool validNodeOverride(uint32_t node) {
   return node == 0 || (node >= 4 && node != UINT32_MAX);
 }
 void makeSettings(uint8_t image[SettingsSize], mesh::mt::Region region, uint32_t slot,
-                  uint8_t hops, const char* short_name, uint32_t node_override) {
+                  uint8_t hops, const char* short_name, uint32_t node_override,
+                  bool rebroadcast = false) {
   memset(image, 0, SettingsSize);
-  memcpy(image, "MT03", 4);
+  memcpy(image, "MT04", 4);
   image[4] = static_cast<uint8_t>(region);
   image[5] = hops;
+  image[6] = rebroadcast ? 1 : 0;
   for (unsigned i = 0; i < 4; ++i) image[8 + i] = slot >> (8 * i);
   memcpy(image + 12, short_name, strlen(short_name));
   for (unsigned i = 0; i < 4; ++i) image[32 + i] = node_override >> (8 * i);
@@ -145,6 +147,8 @@ void MyMesh::beginMeshtext() {
       const auto region = static_cast<mesh::mt::Region>(image[4]);
       const bool legacy = size == LegacySettingsSize;
       const bool legacy_v1 = legacy && memcmp(image, "MT01", 4) == 0;
+      const bool legacy_v3 = !legacy && memcmp(image, "MT03", 4) == 0;
+      const uint8_t rebroadcast = legacy || legacy_v3 ? 0 : image[6];
       const uint8_t hops = legacy_v1 ? 7 : image[5];
       const uint32_t slot = uint32_t(image[8]) | (uint32_t(image[9]) << 8)
           | (uint32_t(image[10]) << 16) | (uint32_t(image[11]) << 24);
@@ -156,13 +160,20 @@ void MyMesh::beginMeshtext() {
       } else if (validShortName(reinterpret_cast<const char*>(image + 12))) {
         const uint32_t node_override = uint32_t(image[32]) | (uint32_t(image[33]) << 8)
             | (uint32_t(image[34]) << 16) | (uint32_t(image[35]) << 24);
-        if (validNodeOverride(node_override))
-          makeSettings(expected, region, slot, hops, reinterpret_cast<const char*>(image + 12), node_override);
+        if (validNodeOverride(node_override) && rebroadcast <= 1) {
+          makeSettings(expected, region, slot, hops, reinterpret_cast<const char*>(image + 12),
+                       node_override, rebroadcast);
+          if (legacy_v3) {
+            memcpy(expected, "MT03", 4);
+            mesh::Utils::sha256(expected + 36, 4, expected, 36);
+          }
+        }
       }
       _mt_settings_valid = region <= mesh::mt::Region::ANZ && slot <= 1024 && hops <= 7
           && memcmp(image, expected, size) == 0;
       if (_mt_settings_valid) {
         _mt_region = region; _mt_slot = slot; _mt_hop_limit = hops;
+        _mt_rebroadcast = rebroadcast != 0;
         if (!legacy) {
           memcpy(_mt_short_name, image + 12, sizeof(_mt_short_name));
           _mt_node_override = uint32_t(image[32]) | (uint32_t(image[33]) << 8)
@@ -179,14 +190,15 @@ void MyMesh::beginMeshtext() {
 }
 
 bool MyMesh::saveMeshtextSettings(mesh::mt::Region region, uint32_t slot, uint8_t hops,
-                                  const char* short_name, uint32_t node_override) {
+                                  const char* short_name, uint32_t node_override, uint8_t rebroadcast) {
   if (hops == UINT8_MAX) hops = _mt_hop_limit;
   if (!short_name) short_name = _mt_short_name;
   if (node_override == UINT32_MAX) node_override = _mt_node_override;
+  if (rebroadcast == UINT8_MAX) rebroadcast = _mt_rebroadcast ? 1 : 0;
   if (region > mesh::mt::Region::ANZ || slot > 1024 || hops > 7 || !validShortName(short_name)
-      || !validNodeOverride(node_override) || hasForeignRadioFrame()) return false;
+      || !validNodeOverride(node_override) || rebroadcast > 1 || hasForeignRadioFrame()) return false;
   uint8_t image[SettingsSize];
-  makeSettings(image, region, slot, hops, short_name, node_override);
+  makeSettings(image, region, slot, hops, short_name, node_override, rebroadcast);
 #if defined(NRF52_PLATFORM)
   const bool ok = _store->saveMeshtextSettings(image);
 #else
@@ -209,8 +221,10 @@ bool MyMesh::saveMeshtextSettings(mesh::mt::Region region, uint32_t slot, uint8_
     return false;
   }
   const bool announcement_changed = region != _mt_region || slot != _mt_slot
-      || node_override != _mt_node_override || strcmp(short_name, _mt_short_name) != 0;
+      || node_override != _mt_node_override || strcmp(short_name, _mt_short_name) != 0
+      || (rebroadcast != 0) != _mt_rebroadcast;
   _mt_region = region; _mt_slot = slot; _mt_hop_limit = hops; _mt_settings_valid = true;
+  _mt_rebroadcast = rebroadcast != 0;
   for (auto& frame : _mt_delivery) frame.cancelled = true;
   if (announcement_changed)
     memset(_mt_nodeinfo_announced, 0, sizeof(_mt_nodeinfo_announced));
@@ -227,6 +241,7 @@ bool MyMesh::saveMeshtextSettings(mesh::mt::Region region, uint32_t slot, uint8_
 }
 
 bool MyMesh::eraseMeshtextSettings() {
+  _mt_rebroadcast = false;
   for (auto& frame : _mt_delivery) frame.cancelled = true;
   memset(_mt_nodeinfo_pending, 0, sizeof(_mt_nodeinfo_pending));
   // The filesystem erase also removes channels/identity on the next boot.
@@ -439,6 +454,7 @@ bool MyMesh::meshtextDeliveryCurrent(const mesh::mt::PendingFrame& frame) {
 }
 
 uint8_t MyMesh::meshtextRetryLimit(const mesh::mt::PendingFrame& frame) const {
+  if (frame.relayed) return 0; // One opportunistic relay, never origin flood retries.
   // These are local, zero-hop origins: any general path gate admits them.
   // GRP_DATA-only gates do not apply to channel text. No forwarding echo can
   // exist when mt.hops is zero, so don't force all configured duplicates.
@@ -489,6 +505,54 @@ bool MyMesh::queueMeshtextDelivery(const ChannelDetails& channel, const uint8_t*
   return false;
 }
 
+bool MyMesh::preemptMeshtextRelay() {
+  // Explicit user chat has priority over an optional, not-yet-sent relay.
+  for (unsigned i = 0; i < mesh::mt::ChatDeliverySlots; ++i) {
+    auto& frame = _mt_delivery[i];
+    if (!frame.length || !frame.relayed) continue;
+    if (_mt_tx_slot == static_cast<int>(i)) {
+      frame.cancelled = true;
+      if (!discardQueuedForeignRadioFrame(mesh::RadioProfileProtocol::Meshtext)) return false;
+    } else frame.clear();
+  }
+  return !hasForeignRadioFrame();
+}
+
+void MyMesh::maybeRebroadcastMeshtext(const ChannelDetails& channel, const uint8_t* bytes,
+                                     size_t length) {
+  // Called only after successful text decryption/parsing and local admission.
+  // Never forward unknown channels, opaque frames, DMs, NodeInfo or GPS.
+  if (!_mt_rebroadcast || !_mt_active || !bytes || length <= mesh::mt::HeaderSize
+      || length > mesh::mt::MaxFrameSize || !(bytes[12] & 7)
+      || (bytes[12] >> 5) < (bytes[12] & 7) || bytes[14] != 0) return;
+  const auto* profiles = _radio->profiles();
+  if (!profiles || !profiles->canTransmit(1)
+      || profiles->secondary.params.protocol != mesh::RadioProfileProtocol::Meshtext) return;
+  for (const auto& pending : _mt_delivery) if (pending.length && pending.relayed) return;
+  uint8_t fingerprint[8];
+  const int index = meshtextChannelIndex(channel, fingerprint);
+  if (index < 0) return;
+  const uint64_t airtime = _radio->getProfileAirtime(1, length);
+  if (!airtime) return;
+  // Five ADDITIONAL exact packet airtimes, plus flood jitter. This does not
+  // replace the Dispatcher's existing CAD, RX-busy or airtime-budget waits.
+  uint64_t delay = 5 * airtime + airtime * getRNG()->nextInt(0, 201) / 100;
+  if (delay > 0x7fffffffULL) delay = 0x7fffffffULL;
+  for (unsigned i = 0; i < mesh::mt::ChatDeliverySlots; ++i) {
+    auto& frame = _mt_delivery[i];
+    if (frame.length) continue;
+    frame = {};
+    memcpy(frame.bytes, bytes, length);
+    frame.bytes[12] = (bytes[12] & 0xf8) | ((bytes[12] & 7) - 1);
+    frame.bytes[15] = static_cast<uint8_t>(_mt_node);
+    memcpy(frame.fingerprint, fingerprint, sizeof(fingerprint));
+    frame.length = length; frame.channel = index; frame.relayed = true;
+    frame.generation = profiles->generation[1];
+    frame.due = millis() + static_cast<uint32_t>(delay);
+    return; // Reuse one chat slot; no additional frame-sized RAM allocation.
+  }
+}
+
 void MyMesh::loopMeshtextDelivery() {
   const auto* profiles = _radio->profiles();
   const uint32_t now = millis();
@@ -502,6 +566,8 @@ void MyMesh::loopMeshtextDelivery() {
     if (!frame.length) continue;
     if (!usable || profiles->generation[1] != frame.generation
         || (_mt_delivery_config_dirty && !meshtextDeliveryCurrent(frame))) frame.cancelled = true;
+    if (frame.relayed && (!_mt_rebroadcast || static_cast<int32_t>(now - frame.due) > 60000))
+      frame.cancelled = true; // Do not emit an opportunistic relay minutes later.
     if (frame.cancelled || (frame.sent && !meshtextRetryLimit(frame))) {
       if (_mt_tx_slot == static_cast<int>(i)) {
         frame.cancelled = true;
@@ -536,8 +602,13 @@ void MyMesh::loopMeshtextDelivery() {
   }
   for (unsigned i = 0; i < mesh::mt::DeliverySlots; ++i) {
     auto& frame = _mt_delivery[i];
-    if (!frame.length || !frame.sent || static_cast<int32_t>(now - frame.due) < 0) continue;
+    if (!frame.length || static_cast<int32_t>(now - frame.due) < 0) continue;
     if (!meshtextDeliveryCurrent(frame)) { frame.clear(); continue; }
+    if (frame.relayed) {
+      if (queueForeignRadioFrame(frame.bytes, frame.length, 1, frame.generation)) _mt_tx_slot = i;
+      return;
+    }
+    if (!frame.sent) continue;
     if (frame.retries >= meshtextRetryLimit(frame)) {
       ++_mt_exhausted; frame.clear(); continue;
     }
@@ -550,7 +621,7 @@ void MyMesh::loopMeshtextDelivery() {
 
 bool MyMesh::sendMeshtextText(const ChannelDetails& channel, const char* text, size_t length) {
   refreshMeshtextProfile();
-  if (!_mt_active || !text || !length || hasForeignRadioFrame()) return false;
+  if (!_mt_active || !text || !length) return false;
   const auto* profiles = _radio->profiles();
   if (!profiles || !profiles->canTransmit(1)
       || profiles->secondary.params.protocol != mesh::RadioProfileProtocol::Meshtext) return false;
@@ -563,10 +634,12 @@ bool MyMesh::sendMeshtextText(const ChannelDetails& channel, const char* text, s
   const uint32_t id = _mt_packet_id++;
   uint8_t raw[mesh::mt::MaxFrameSize];
   // Outbound Meshtext channel chat defaults to seven hops; the CLI can reduce it.
-  // This does not enable forwarding or ACK responses in this Companion.
+  // Forwarding remains a separate, default-off setting; no ACK responses.
   const size_t size = mesh::mt::encodeText(_mt_node, id, _mt_hop_limit, wire.name, wire.key,
                                          wire.key_length, text, length, raw);
-  return size && queueMeshtextDelivery(channel, raw, size, false);
+  // A rejected local message must not evict a valid pending relay. Validate
+  // and encode first, then give an admitted user chat priority over it.
+  return size && preemptMeshtextRelay() && queueMeshtextDelivery(channel, raw, size, false);
 }
 
 bool MyMesh::sendMeshtextNodeInfo(const ChannelDetails& channel) {
@@ -588,7 +661,8 @@ bool MyMesh::sendMeshtextNodeInfo(const ChannelDetails& channel) {
   const uint32_t id = _mt_packet_id++;
   uint8_t raw[mesh::mt::MaxFrameSize];
   const size_t size = mesh::mt::encodeNodeInfo(_mt_node, id, _mt_hop_limit, wire.name, wire.key,
-      wire.key_length, _prefs.node_name, long_length, short_name, strlen(short_name), raw);
+      wire.key_length, _prefs.node_name, long_length, short_name, strlen(short_name), raw,
+      _mt_rebroadcast);
   // Explicit CLI or first successfully transmitted chat, never a GPS packet.
   return size && queueMeshtextDelivery(channel, raw, size, true);
 }
@@ -606,6 +680,14 @@ bool MyMesh::onForeignRadioFrame(const uint8_t* bytes, size_t length, uint8_t pr
   if (!_mt_active || !profiles || profile != 1 || generation != profiles->generation[1]) return false;
   for (unsigned i = 0; i < mesh::mt::DeliverySlots; ++i) {
     auto& frame = _mt_delivery[i];
+    if (frame.generation == generation && frame.matchesRelayCopy(bytes, length)
+        && meshtextDeliveryCurrent(frame)) {
+      frame.heard = frame.cancelled = true;
+      if (_mt_tx_slot == static_cast<int>(i))
+        discardQueuedForeignRadioFrame(mesh::RadioProfileProtocol::Meshtext);
+      else frame.clear();
+      return true; // Cancel before the received-packet dedup early return.
+    }
     if (frame.generation != generation || !frame.matchesEcho(bytes, length)
         || !meshtextDeliveryCurrent(frame)) continue;
     if (!frame.heard) ++_mt_heard;
@@ -635,6 +717,7 @@ bool MyMesh::onForeignRadioFrame(const uint8_t* bytes, size_t length, uint8_t pr
     if (queueChannelText(i, policy_channel.channel.secret, snr, decoded.hops, timestamp, text, false)) {
       _mt_seen.remember(decoded.from, decoded.id);
       ++_mt_received;
+      maybeRebroadcastMeshtext(channel, bytes, length);
     }
     return true;
   }
@@ -657,6 +740,12 @@ void MyMesh::onForeignRadioSendComplete(bool success) {
     return; // e.g. an explicitly configured text beacon, not delivery work.
   }
   auto& frame = _mt_delivery[slot];
+  if (frame.relayed) {
+    if (success) ++_mt_sent;
+    else if (!frame.heard && !frame.cancelled) ++_mt_failed;
+    frame.clear();
+    return; // No local packet ID, NodeInfo, origin retry or announcement state.
+  }
   if (frame.nodeinfo && !success) _mt_nodeinfo_pending[frame.channel] = false;
   if (success) {
     ++_mt_sent;
@@ -782,22 +871,32 @@ bool MyMesh::handleMeshtextCommand(const char* command, char* reply, size_t capa
   const bool get_region = !strcmp(command, "get mt.region");
   const bool get_slot = !strcmp(command, "get mt.slot");
   const bool get_hops = !strcmp(command, "get mt.hops");
+  const bool get_rebroadcast = !strcmp(command, "get mt.rebroadcast")
+      || !strcmp(command, "get mt.maybe_rebroadcast");
   const bool get_node = !strcmp(command, "get mt.node");
   const bool get_short_name = !strcmp(command, "get mt.shortname");
   const char* region_value = !strncmp(command, "set mt.region ", 14) ? command + 14 : nullptr;
   const char* slot_value = !strncmp(command, "set mt.slot ", 12) ? command + 12 : nullptr;
   const char* hops_value = !strncmp(command, "set mt.hops ", 12) ? command + 12 : nullptr;
+  const char* rebroadcast_value = !strncmp(command, "set mt.rebroadcast ", 19) ? command + 19
+      : !strncmp(command, "set mt.maybe_rebroadcast ", 25) ? command + 25 : nullptr;
   const char* node_value = !strncmp(command, "set mt.node ", 12) ? command + 12 : nullptr;
   const char* short_name_value = !strncmp(command, "set mt.shortname ", 17) ? command + 17 : nullptr;
   if (!strcmp(command, "set mt.node")) node_value = "";
   if (!strcmp(command, "set mt.shortname")) short_name_value = "";
-  if (!status && !get_region && !get_slot && !get_hops && !get_node && !get_short_name
-      && !region_value && !slot_value && !hops_value && !node_value && !short_name_value) return false;
-  if (region_value || slot_value || hops_value || node_value || short_name_value) {
+  if (!status && !get_region && !get_slot && !get_hops && !get_node && !get_short_name && !get_rebroadcast
+      && !region_value && !slot_value && !hops_value && !node_value && !short_name_value && !rebroadcast_value) return false;
+  if (region_value || slot_value || hops_value || node_value || short_name_value || rebroadcast_value) {
     auto region = _mt_region; uint32_t slot = _mt_slot;
     uint32_t hops = _mt_hop_limit;
     uint32_t node_override = _mt_node_override;
     const char* short_name = _mt_short_name;
+    uint8_t rebroadcast = _mt_rebroadcast ? 1 : 0;
+    if (rebroadcast_value) {
+      if (!strcmp(rebroadcast_value, "on")) rebroadcast = 1;
+      else if (!strcmp(rebroadcast_value, "off")) rebroadcast = 0;
+      else { snprintf(reply, capacity, "Error: use set mt.rebroadcast on|off"); return true; }
+    }
     if (region_value && !mesh::mt::parseRegion(region_value, region)) {
       snprintf(reply, capacity, "Error: use set mt.region auto|us|eu868|eu433|anz"); return true;
     }
@@ -828,8 +927,10 @@ bool MyMesh::handleMeshtextCommand(const char* command, char* reply, size_t capa
         snprintf(reply, capacity, "Error: mt.shortname must be 1..4 UTF-8 characters (no spaces/control/colon), or default"); return true;
       }
     }
-    if (!saveMeshtextSettings(region, slot, hops, short_name, node_override))
+    if (!saveMeshtextSettings(region, slot, hops, short_name, node_override, rebroadcast))
       snprintf(reply, capacity, "Error: Meshtext settings not saved (pending TX or storage error)");
+    else if (rebroadcast_value)
+      snprintf(reply, capacity, "OK - mt.rebroadcast=%s; extra wait=5 packet airtimes", rebroadcast ? "on" : "off");
     else if (node_value)
       snprintf(reply, capacity, "OK - mt.node=!%08lx (%s); choose a unique ID", (unsigned long)_mt_node,
           _mt_node_override ? "saved override" : "identity default");
@@ -843,6 +944,7 @@ bool MyMesh::handleMeshtextCommand(const char* command, char* reply, size_t capa
   if (get_region) snprintf(reply, capacity, "> %s; effective=%s", mesh::mt::regionName(_mt_region), mesh::mt::regionName(meshtextRegion()));
   else if (get_slot) snprintf(reply, capacity, "> %lu%s", (unsigned long)_mt_slot, _mt_slot ? "" : " (preset default)");
   else if (get_hops) snprintf(reply, capacity, "> %u", _mt_hop_limit);
+  else if (get_rebroadcast) snprintf(reply, capacity, "> %s; extra wait=5 packet airtimes", _mt_rebroadcast ? "on" : "off");
   else if (get_node) snprintf(reply, capacity, "> !%08lx (%s)", (unsigned long)_mt_node,
       _mt_node_override ? "saved override" : "identity default");
   else if (get_short_name) {
@@ -853,8 +955,8 @@ bool MyMesh::handleMeshtextCommand(const char* command, char* reply, size_t capa
   else {
     const auto* profiles = _radio->profiles();
     const auto p = profiles ? profiles->secondary.params : mesh::RadioProfileParams{};
-    snprintf(reply, capacity, "> Meshtext !%08lx; %s; %s; %.3f/%g/SF%u/CR%u; hops=%u; RX=%lu TX=%lu fail=%lu; RX time-shared",
-        (unsigned long)_mt_node, _mt_status, _radio_profiles.autoSecondaryActive() ? "auto radio2" : "manual radio2",
+    snprintf(reply, capacity, "> Meshtext !%08lx; rebroadcast=%s; %s; %s; %.3f/%g/SF%u/CR%u; hops=%u; RX=%lu TX=%lu fail=%lu; RX time-shared",
+        (unsigned long)_mt_node, _mt_rebroadcast ? "on" : "off", _mt_status, _radio_profiles.autoSecondaryActive() ? "auto radio2" : "manual radio2",
         p.freq, p.bw, p.sf, p.cr, _mt_hop_limit, (unsigned long)_mt_received, (unsigned long)_mt_sent, (unsigned long)_mt_failed);
   }
   return true;

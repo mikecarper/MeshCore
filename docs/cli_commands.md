@@ -955,6 +955,22 @@ ACKs and addressed responses.
 See [Companion routing details and examples](radio_profiles.md#companion-tx-routing-by-contact-or-channel)
 for temporary profiles, persistence, and the traffic covered by each setting.
 
+## Companion Meshtext rebroadcasting
+
+```text
+get mt.rebroadcast
+set mt.rebroadcast on|off
+```
+
+Choose `on` or `off` after `set`. This saved option defaults to `off` and is
+also shown in `get mt.status`. Only broadcast text successfully decoded with
+a configured channel key can be relayed; unknown-key, non-text and direct
+messages are excluded. Relays wait five additional actual packet airtimes
+plus flood jitter, on top of existing radio waits. Hearing another forwarded
+copy cancels the pending relay. `mt.maybe_rebroadcast` is an equivalent alias.
+See [optional decoded-text rebroadcasting](radio_profiles.md#optional-decoded-text-rebroadcasting)
+for hop limits, cancellation and queue behavior.
+
 ## Set Companion media and SSH application TX profiles
 
 ```text

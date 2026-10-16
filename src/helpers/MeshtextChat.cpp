@@ -291,7 +291,8 @@ size_t encodeText(uint32_t from, uint32_t id, uint8_t hop_limit, const char* cha
 
 size_t encodeNodeInfo(uint32_t from, uint32_t id, uint8_t hop_limit, const char* channel_name,
                       const uint8_t* key, size_t key_len, const char* long_name, size_t long_name_len,
-                      const char* short_name, size_t short_name_len, uint8_t out[MaxFrameSize]) {
+                      const char* short_name, size_t short_name_len, uint8_t out[MaxFrameSize],
+                      bool rebroadcast) {
   size_t short_characters = 0;
   if (out == nullptr || key == nullptr || (key_len != 16 && key_len != 32)
       || !validName(channel_name) || from <= 3 || from == Broadcast || id == 0 || hop_limit > 7
@@ -319,7 +320,7 @@ size_t encodeNodeInfo(uint32_t from, uint32_t id, uint8_t hop_limit, const char*
   }
   data[count++] = 0x1a; data[count++] = static_cast<uint8_t>(short_name_len);
   memcpy(data + count, short_name, short_name_len); count += short_name_len;
-  data[count++] = 0x38; data[count++] = 1; // Config.DeviceConfig.Role.CLIENT_MUTE.
+  data[count++] = 0x38; data[count++] = rebroadcast ? 0 : 1; // CLIENT / CLIENT_MUTE.
   data[count++] = 0x48; data[count++] = 1; // User.is_unmessagable explicitly true.
   data[3] = static_cast<uint8_t>(count - 4);
   data[count++] = 0x48; data[count++] = 1; // Data.bitfield: MQTT upload consent.
