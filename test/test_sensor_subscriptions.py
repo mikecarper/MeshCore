@@ -19,6 +19,7 @@ FIXTURE = ROOT / 'test/fixtures/sensor_subscriptions/test_sensor_subscriptions.c
 def production_methods(source):
     methods = extract_braced(source, 'static const uint8_t* findTelemData(') + '\n'
     methods += extract_braced(source, 'static float findTelemValue(') + '\n'
+    methods += extract_braced(source, 'static int64_t readTelemRawValue(') + '\n'
     methods += extract_braced(source, 'bool SensorMesh::telemHasChanged(') + '\n'
     if 'void SensorMesh::snapshotTelemetry(' in source:
         methods += extract_braced(source, 'void SensorMesh::snapshotTelemetry(') + '\n'
@@ -77,6 +78,40 @@ class SensorSubscriptionTest(unittest.TestCase):
 
     def test_raw_snapshots_preserve_scalars_and_unchanged_pushes_stop(self):
         self.passed('snapshot')
+
+    def test_delta_threshold_boundaries_signed_values_and_missing_fields(self):
+        self.passed('delta')
+
+    def test_full_width_four_byte_deltas_and_signed_decoder_extrema(self):
+        self.passed('wide-delta')
+
+    def test_signed_four_byte_delta_arithmetic_without_narrowing(self):
+        def signed_scalar(helper):
+            original = 'return type == LPP_VOLTAGE || type == LPP_CURRENT'
+            self.assertEqual(helper.count(original), 1)
+            return helper.replace(original, 'return type == LPP_GENERIC_SENSOR || type == LPP_VOLTAGE || type == LPP_CURRENT', 1)
+        # Current four-byte types are unsigned. Exercise the same production
+        # arithmetic with signed metadata to check the full decoder range.
+        result = self.execute('signed-wide-delta', helper_transform=signed_scalar)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn('Sensor subscription checks passed', result.stdout)
+
+    def test_old_float_detector_misses_wide_changes_and_miscompares_equal_deltas(self):
+        def old(source):
+            begin = source.index('    const bool is_signed =', source.index('bool SensorMesh::telemHasChanged('))
+            end = source.index('\n    i += 2 + sz;', begin)
+            original = '''    float min_delta = LPPData::getFloat(&c->extra.sensor.min_deltas[i + 2], sz, LPPData::getMultiplier(t), LPPData::isSigned(t));
+    float pv = LPPData::getFloat(&c->extra.sensor.prev_telem[i + 2], sz, LPPData::getMultiplier(t), LPPData::isSigned(t));
+
+    float v = findTelemValue(buf, size, ch, t, 0.0f);
+    if (fabsf(v - pv) > min_delta) changed = true;
+'''
+            return source[:begin] + original + source[end:]
+        for case in ('delta', 'wide-delta'):
+            with self.subTest(case=case):
+                result = self.execute(case, old)
+                self.assertNotEqual(result.returncode, 0, 'float detector escaped regression')
+                self.assertIn('raw LPP delta must use the exact strict threshold', result.stderr)
 
     def test_lossy_float_snapshot_negative_control(self):
         def old(source):

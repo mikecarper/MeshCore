@@ -132,6 +132,16 @@ static float findTelemValue(const uint8_t* buf, uint8_t size, uint8_t channel, u
       LPPData::getMultiplier(type), LPPData::isSigned(type)) : def_value;
 }
 
+static int64_t readTelemRawValue(const uint8_t* data, uint8_t size, bool is_signed) {
+  if (!data || size == 0 || size > sizeof(uint32_t)) return 0;
+  int64_t value = 0;
+  for (uint8_t i = 0; i < size; ++i) value = (value << 8) | data[i];
+  if (is_signed && (value & (int64_t(1) << (size * 8 - 1)))) {
+    value -= int64_t(1) << (size * 8);
+  }
+  return value;
+}
+
 /* ------------------ end Cayenne LPP helpers ----------------------*/
 
 bool SensorMesh::telemHasChanged(ClientInfo* c) {
@@ -147,11 +157,14 @@ bool SensorMesh::telemHasChanged(ClientInfo* c) {
     if (!LPPData::isScalarType(t)
         || sz > c->extra.sensor.min_deltas_len - i - 2) return false;
 
-    float min_delta = LPPData::getFloat(&c->extra.sensor.min_deltas[i + 2], sz, LPPData::getMultiplier(t), LPPData::isSigned(t));
-    float pv = LPPData::getFloat(&c->extra.sensor.prev_telem[i + 2], sz, LPPData::getMultiplier(t), LPPData::isSigned(t));
-
-    float v = findTelemValue(buf, size, ch, t, 0.0f);
-    if (fabsf(v - pv) > min_delta) changed = true;
+    const bool is_signed = LPPData::isSigned(t);
+    const int64_t min_delta = readTelemRawValue(&c->extra.sensor.min_deltas[i + 2], sz, is_signed);
+    const int64_t pv = readTelemRawValue(&c->extra.sensor.prev_telem[i + 2], sz, is_signed);
+    const int64_t v = readTelemRawValue(findTelemData(buf, size, ch, t), sz, is_signed);
+    // The common LPP multiplier cancels. Compare raw units so float rounding
+    // cannot hide a one-LSB change or push an equal delta over the threshold.
+    const int64_t difference = v >= pv ? v - pv : pv - v;
+    if (difference > min_delta) changed = true;
 
     i += 2 + sz;  // skip
   }
