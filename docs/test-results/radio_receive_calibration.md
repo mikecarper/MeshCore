@@ -11,6 +11,16 @@ Periodic requests coalesce while a block is active. RXPS resumes after a complet
 block, including a held block, or at timeout. Receive and transmit activity are
 never interrupted just to finish calibration.
 
+A calibration request waiting for successful RX does not keep the MCU awake.
+Repeated failed receive starts retry after 20, 40, 80, 160, 320, 640, and 1280 ms,
+then at most once every 2000 ms. Only the repeated idle fallback is paced:
+packet/TX completion and explicit retune/CAD restoration still rearm promptly.
+Calibration and recovery requests retain the failed-start backoff; successful
+RX or a new radio session clears it. A retry blocked by BUSY or an RX owner
+waits 2000 ms without issuing another RX command. The Dispatcher includes this
+retry deadline in its wake query, and deferred adaptive AGC joins a later RX
+retry instead of forcing 50 ms wakeups throughout a persistent fault.
+
 In single-profile RXPS, routine refreshes wait at least 60 seconds after the
 last completed or timed-out block before requesting another continuous-RX
 window. Both periodic maintenance and passive retry checks use this cooldown;
@@ -108,11 +118,12 @@ radio windows of at least 12 hours use a 12-hour deadline; shorter windows
 disable that reboot watchdog until the window ends. The temporary timing
 overrides are held in RAM and do not replace saved normal-mode preferences.
 
-The status read uses the two-byte GetStatus transaction. The pinned RadioLib
-getStatus() helper requests zero copied data bytes, so its return value is not
-usable for this mode check. The dedicated read restores the normal SPI command
-layout afterward and does not wake a duty-cycling radio to inspect its mode.
+The status read uses the two-byte GetStatus transaction. RadioLib 7.8.1 also
+reads the response byte directly; the dedicated probe additionally preserves
+the existing SPI layout, checks transport errors, and avoids waiting on BUSY.
+It does not wake a duty-cycling radio to inspect its mode.
 
 Validation lives in `test_noise_floor_estimator`, `test_rx_power_saving`,
 `test_radio_liveness`, `test_radio_receive_contract.py`, and
-`test_sx126x_receive_mode.py`.
+`test_sx126x_receive_mode.py`, and `test_radio_receive_retry.py`. These host
+checks do not establish battery-life or hardware fault-recovery results.

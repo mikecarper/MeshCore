@@ -584,15 +584,28 @@ bool Dispatcher::getNextQueueWakeDelay(uint32_t& delay_millis) const {
     }
   }
 
+  uint32_t receive_retry_delay = 0;
+  const bool receive_retry = radio_available
+      && _radio->getReceiveRetryDelay(now, receive_retry_delay);
   if (outbound != NULL) {
     if (outbound_radio_retry_pending) {
       int32_t signed_retry_delay = (int32_t)(outbound_radio_retry_at - now);
       delay_millis = signed_retry_delay > 0 ? (uint32_t)signed_retry_delay : 0;
+      // This backoff branch services checkRecv(), but returns before AGC.
+      // Wake for a failed RX retry without making overdue AGC a hot poll.
+      if (receive_retry && receive_retry_delay < delay_millis) {
+        delay_millis = receive_retry_delay;
+      }
     } else {
       // TX completion/timeout still needs the normal fast lifecycle path.
       delay_millis = 0;
     }
     return true;
+  }
+
+  if (receive_retry) {
+    if (!found || receive_retry_delay < shortest_delay) shortest_delay = receive_retry_delay;
+    found = true;
   }
 
   if (outbound_restore_cr) {
@@ -854,7 +867,11 @@ void Dispatcher::loop() {
       agc_reset.noteAttempt(_ms->getMillis());
     } else {
       // Ownership/calibration deferral is not a reset or health evidence.
-      agc_reset.noteDeferred(_ms->getMillis());
+      const uint32_t deferred_at = _ms->getMillis();
+      uint32_t retry_delay = 50, receive_delay;
+      if (adaptive && _radio->getReceiveRetryDelay(deferred_at, receive_delay)
+          && receive_delay > retry_delay) retry_delay = receive_delay;
+      agc_reset.noteDeferred(deferred_at, retry_delay);
     }
   }
 

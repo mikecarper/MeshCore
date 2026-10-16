@@ -215,6 +215,11 @@ public:
     return getNoiseFloorCalibrationSecondsRemaining();
   }
   virtual bool isCalibratingNoiseFloor() const { return false; }
+  // A failed receive start may need a later retry without keeping the MCU
+  // awake. Transports without a deferred receive retry retain their cadence.
+  virtual bool getReceiveRetryDelay(uint32_t now, uint32_t& delay_ms) const {
+    (void)now; (void)delay_ms; return false;
+  }
 
   virtual void triggerNoiseFloorCalibrate(int threshold) { }
 

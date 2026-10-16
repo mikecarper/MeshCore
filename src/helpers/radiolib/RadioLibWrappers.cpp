@@ -207,6 +207,9 @@ void RadioLibWrapper::begin() {
   }
 #endif
   state = STATE_IDLE;
+  _rx_retry_at = 0;
+  _rx_retry_delay_ms = 0;
+  _rx_retry_pending = false;
 
   if (_board->getStartupReason() == BD_STARTUP_RX_PACKET) {  // received a LoRa packet (while in deep sleep)
     _loop_event_pending = true; // Main-owned wake event; ISR remains sole publisher
@@ -1877,6 +1880,8 @@ void RadioLibWrapper::startRecv() {
     // Keep the partial block, but wait for the frontend before its next sample.
     _nf_sample_from = millis() + NF_CALIB_SETTLE_MS;
     _startrx_fails = 0;
+    _rx_retry_pending = false;
+    _rx_retry_delay_ms = 0;
     if (_rx_ps_armed) {
       // (re)base the duty-cycle watchdog on the freshly armed cycle
       _wd_last_busy = isChipBusy();
@@ -1895,6 +1900,15 @@ void RadioLibWrapper::startRecv() {
       if (_wd_observe_ms > 1500) _wd_observe_ms = 1500;
     }
   } else {
+    state = STATE_IDLE;
+    _rx_ps_armed = false;
+    // Recover a transient failure promptly, then permit whole-second timed
+    // sleep under persistent failure. Direct retune/CAD/packet rearms remain
+    // immediate; only recvRaw's repeated idle fallback observes this deadline.
+    _rx_retry_delay_ms = _rx_retry_delay_ms == 0 ? 20
+        : (_rx_retry_delay_ms < 1000 ? _rx_retry_delay_ms * 2 : 2000);
+    _rx_retry_at = millis() + _rx_retry_delay_ms;
+    _rx_retry_pending = true;
     if (_startrx_fails < 255) _startrx_fails++;
     MESH_DEBUG_PRINTLN("RadioLibWrapper: error: startReceiveMode(%d)", err);
   }
@@ -1933,6 +1947,15 @@ bool RadioLibWrapper::isInRecvMode() const {
   return state == STATE_RX;
 }
 
+bool RadioLibWrapper::getReceiveRetryDelay(uint32_t now, uint32_t& delay_ms) const {
+#if MESH_ENABLE_TX_BEACONS
+  if (_beacon_owned) return false;
+#endif
+  if (!_rx_retry_pending || state != STATE_IDLE || _cw_active) return false;
+  delay_ms = static_cast<int32_t>(now - _rx_retry_at) >= 0 ? 0 : _rx_retry_at - now;
+  return true;
+}
+
 // RX PowerSaving
 bool RadioLibWrapper::setRxPowerSaving(bool enabled, uint32_t rx_us, uint32_t sleep_us) {
 #if MESH_ENABLE_TX_BEACONS
@@ -1965,7 +1988,7 @@ int RadioLibWrapper::recvRaw(uint8_t* bytes, int sz) {
 #if MESH_ENABLE_TX_BEACONS
   if (_beacon_owned) return 0;
 #endif
-  if (_cw_active) return 0;
+  if (_cw_active || state == STATE_TX_WAIT) return 0;
   int len = 0;
   #if defined(USE_LR2021)
   bool receiver_stopped = false;
@@ -2005,6 +2028,8 @@ int RadioLibWrapper::recvRaw(uint8_t* bytes, int sz) {
         //  Serial.print("  readData() -> "); Serial.println(len);
           n_recv++;
           last_recv_millis = millis();
+          _rx_retry_pending = false;
+          _rx_retry_delay_ms = 0;
         }
       }
     }
@@ -2022,6 +2047,9 @@ int RadioLibWrapper::recvRaw(uint8_t* bytes, int sz) {
       return 0;
     }
     #endif
+    // Serviced receive events retain the normal immediate rearm, even if an
+    // earlier idle start failed. A pending IRQ probe above still owns its FIFO.
+    _rx_retry_pending = false;
     state = STATE_IDLE;   // need another startReceive()
   }
 
@@ -2033,16 +2061,32 @@ int RadioLibWrapper::recvRaw(uint8_t* bytes, int sz) {
     int err = _radio->startReceive();
     if (err == RADIOLIB_ERR_NONE) {
       state = STATE_RX;
+      _rx_retry_pending = false;
+      _rx_retry_delay_ms = 0;
       if (_nf_calib_active) {
         _nf_sample_from = millis() + NF_CALIB_SETTLE_MS;
       }
     } else {
+      _rx_retry_delay_ms = 20;  // the delivered packet just proved RX was working
+      _rx_retry_at = millis() + _rx_retry_delay_ms;
+      _rx_retry_pending = true;
       MESH_DEBUG_PRINTLN("RadioLibWrapper: error: startReceive after packet (%d)", err);
     }
     return len;
   }
 
   if (state != STATE_RX) {
+    if (_rx_retry_pending) {
+      const uint32_t now = millis();
+      if (static_cast<int32_t>(now - _rx_retry_at) < 0) return len;
+      // A command error can leave hardware receiving despite the idle software
+      // state. Preserve that owner and move the retry deadline forward instead
+      // of keeping a permanently due wake or issuing SPI while BUSY is high.
+      if (isChipBusy() || isPacketPendingOrReceiving() || hasPendingRadioInterrupt()) {
+        _rx_retry_at = now + 2000;
+        return len;
+      }
+    }
     startRecv();
   }
   return len;
@@ -2164,6 +2208,7 @@ void RadioLibWrapper::onSendFinished() {
   claimRadioInterrupt();
   _irq_probe_failures = 0;
   _board->onAfterTransmit();
+  _rx_retry_pending = false;  // TX retirement gets its usual immediate RX rearm
   state = STATE_IDLE;
 }
 

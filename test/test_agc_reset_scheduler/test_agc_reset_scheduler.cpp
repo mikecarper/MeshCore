@@ -216,6 +216,36 @@ TEST(AGCResetScheduler, DeferredRetriesWaitFiftyMillisWithoutPromotingStage) {
   EXPECT_TRUE(scheduler.due(39));
 }
 
+TEST(AGCResetScheduler, ReceiveRetryDeferralPreservesStageAndValidatesDelay) {
+  for (uint32_t origin : {100u, UINT32_MAX - 1999u}) {
+    AGCResetScheduler scheduler;
+    scheduler.configure(origin, 8000, true, 0);
+    scheduler.noteAttempt(origin + 8000u); // one admitted attempt, no promotion yet
+    scheduler.noteDeferred(origin, 2000);
+    EXPECT_EQ(scheduler.interval(), 8000u);
+    EXPECT_EQ(scheduler.nextAt(), origin + 2000u);
+    EXPECT_FALSE(scheduler.due(origin + 1999u));
+    EXPECT_TRUE(scheduler.due(origin + 2000u));
+    scheduler.noteAttempt(origin + 2000u);
+    EXPECT_EQ(scheduler.interval(), 16000u); // deferral retained the first attempt
+  }
+  for (uint32_t requested : {0u, uint32_t(INT32_MAX) + 1u, UINT32_MAX}) {
+    AGCResetScheduler scheduler;
+    scheduler.configure(0, 8000, true, 0);
+    scheduler.noteDeferred(UINT32_MAX - 10u, requested);
+    EXPECT_EQ(scheduler.nextAt(), 39u);
+    EXPECT_FALSE(scheduler.due(38));
+    EXPECT_TRUE(scheduler.due(39));
+  }
+  AGCResetScheduler scheduler;
+  scheduler.configure(0, 8000, true, 0);
+  scheduler.noteDeferred(100, INT32_MAX);
+  EXPECT_FALSE(scheduler.due(100 + uint32_t(INT32_MAX) - 1));
+  EXPECT_TRUE(scheduler.due(100 + uint32_t(INT32_MAX)));
+  scheduler.reset(); scheduler.noteDeferred(100, 2000);
+  uint32_t ignored = 0; EXPECT_FALSE(scheduler.nextDelay(100, ignored));
+}
+
 TEST(AGCResetScheduler, LateServiceDoesNotReplayMissedResetSlots) {
   AGCResetScheduler scheduler;
   scheduler.configure(10, 8000, true, 0);

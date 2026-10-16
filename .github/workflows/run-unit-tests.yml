@@ -412,6 +412,7 @@ jobs:
         run: |
           python3 -B test/test_dispatcher_startup_watchdog.py -v
           python3 -B test/test_radio_receive_contract.py
+          python3 -B test/test_radio_receive_retry.py -v
           python3 -B test/test_adaptive_agc_roles.py -v
           python3 - <<'PY'
           from pathlib import Path

@@ -54,8 +54,9 @@ public:
 
   // A busy operation changes only its retry deadline, never the reset cadence
   // or adaptive stage. This permits sleep instead of spinning on a due reset.
-  void noteDeferred(uint32_t now) {
-    if (_state) _next = now + 50;
+  void noteDeferred(uint32_t now, uint32_t retry_delay_ms = 50) {
+    if (retry_delay_ms == 0 || retry_delay_ms > INT32_MAX) retry_delay_ms = 50;
+    if (_state) _next = now + retry_delay_ms;
   }
 
   // Call only after an actual accepted reset sequence, not a busy/deferred one.

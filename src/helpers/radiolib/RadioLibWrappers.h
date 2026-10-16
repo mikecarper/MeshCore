@@ -58,6 +58,11 @@ protected:
   NoiseFloorEstimator _secondary_floor_estimator;
   uint32_t _rx_mode_checked_at = 0;
   uint8_t _rx_mode_failures = 0;
+  // Independent of calibration and watchdog counters: repeated failed starts
+  // must retain their backoff through an AGC reset or radio recovery attempt.
+  uint32_t _rx_retry_at = 0;
+  uint16_t _rx_retry_delay_ms = 0;
+  bool _rx_retry_pending = false;
   unsigned long last_recv_millis;
   unsigned long last_radio_interrupt_millis;  // updated on any ISR event, even CRC errors
   bool _rx_ps_enabled;
@@ -530,10 +535,11 @@ public:
   // true while a noise-floor batch needs prompt loop service; the app's
   // hasPendingWork() keeps the MCU awake for the bounded spaced-sample window.
   bool isCalibratingNoiseFloor() const override {
-    return _nf_calib_active
+    return isInRecvMode() && !_rx_ps_armed && (_nf_calib_active
         || (_nf_refresh_requested
-            && (!_rx_ps_enabled || _rx_ps_continuous_fallback));
+            && (!_rx_ps_enabled || _rx_ps_continuous_fallback)));
   }
+  bool getReceiveRetryDelay(uint32_t now, uint32_t& delay_ms) const override;
   void resetStats() { n_recv = n_sent = n_recv_errors = 0; }
 
   uint8_t getRadioState() const override;

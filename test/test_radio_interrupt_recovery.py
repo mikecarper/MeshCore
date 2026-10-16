@@ -108,6 +108,9 @@ struct RadioLibWrapper {
  bool _rx_ps_continuous_fallback=false, _nf_calib_active=false;
  float _last_snr=0, _last_rssi=0;
  unsigned n_recv=0,n_recv_errors=0,n_sent=0;
+ uint32_t _rx_retry_at=0;
+ uint16_t _rx_retry_delay_ms=0;
+ bool _rx_retry_pending=false;
  uint32_t last_recv_millis=0,last_radio_interrupt_millis=0,_nf_sample_from=0;
  Board board;Board* _board=&board;
  Chip chip;Chip* _radio=&chip;
@@ -121,6 +124,8 @@ public:
  int recvRaw(uint8_t*,int);
  void onSendFinished();
  void idle(){state=STATE_IDLE;}
+ bool isChipBusy(){return false;}
+ bool isPacketPendingOrReceiving(){return hasPendingRadioInterrupt();}
  bool recoverRadio(bool){return !hasPendingRadioInterrupt();}
  void stopReceiveDutyCycle(){_rx_ps_armed=false;chip.standby();}
  void startRecv(){if(chip.startReceive()==0)state=STATE_RX;}

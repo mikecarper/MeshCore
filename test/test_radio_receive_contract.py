@@ -84,6 +84,9 @@ struct RadioLibWrapper {
   bool _rx_boosted_gain_valid = false, _cur_rx_boosted_gain = false;
   bool _wd_last_busy = false;
   uint8_t _startrx_fails = 0, _rx_mode_failures = 0;
+  uint32_t _rx_retry_at = 0;
+  uint16_t _rx_retry_delay_ms = 0;
+  bool _rx_retry_pending = false;
   uint32_t _rx_mode_checked_at = 0, _rx_ps_rx_us = 50000, _rx_ps_sleep_us = 50000;
   unsigned long _nf_last_calib = 0, _nf_calib_deadline = 0, _nf_sample_from = 0;
   unsigned long _wd_last_transition = 0, _wd_stuck_thresh = 0, _wd_observe_ms = 0;

@@ -2912,7 +2912,9 @@ noise floor, or a successful transmission as proof of full receiver sensitivity.
 TX cannot continually postpone adaptive maintenance. Pending RX/TX, a BUSY
 chip outside known RX duty cycling, carrier/Morse ownership, and an active
 noise-floor block can defer it; deferred attempts do not advance backoff and
-are retried after 50 ms. The
+normally retry after 50 ms. When a failed receive start already has a later
+retry deadline, adaptive AGC waits at least until that deadline too, allowing
+sleep during persistent receive-start failures. The
 60-second bound is a scheduling interval, not permission to interrupt a packet.
 An armed RXPS radio uses the existing explicit wake/reset path, avoiding retry
 polling that could miss every short listen window.
