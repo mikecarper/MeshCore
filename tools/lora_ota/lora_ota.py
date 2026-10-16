@@ -3956,7 +3956,7 @@ class SeederProcess:
         try:
             detail = self.log_path.read_text(encoding="utf-8", errors="replace")
         except OSError:
-            return 0, math.ceil(package.payload_size / package.block_size)
+            return 0, math.ceil(package.payload_size / package.block_size), 0
         offsets = [
             int(match)
             for match in re.findall(r"\bREAD\s+\d+\s+@(\d+)\s+OK\b", detail)

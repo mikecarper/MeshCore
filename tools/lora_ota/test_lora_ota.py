@@ -2543,6 +2543,40 @@ class DownloadSessionTests(unittest.TestCase):
         self.assertEqual(controller.commands, ["ota status"])
         self.assertEqual(seeder.calls, total)
 
+    def test_monitor_uses_quiet_window_when_source_log_is_unavailable(self) -> None:
+        args = argparse.Namespace(
+            target="remote", transfer_timeout_minutes=1, poll_seconds=1,
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            seeder = object.__new__(ota.SeederProcess)
+            seeder.log_path = Path(directory) / "missing-serve.log"
+            seeder.log_file = None
+            seeder.process = mock.Mock()
+            seeder.process.poll.return_value = None
+            for unreadable in (False, True):
+                with self.subTest(unreadable=unreadable), contextlib.ExitStack() as stack:
+                    if unreadable:
+                        stack.enter_context(mock.patch.object(
+                            Path, "read_text", side_effect=PermissionError("unreadable log")))
+                    elapsed = [0.0]
+
+                    def advance(seconds: float) -> None:
+                        elapsed[0] += seconds
+
+                    stack.enter_context(mock.patch.object(
+                        ota.time, "monotonic", side_effect=lambda: elapsed[0]))
+                    stack.enter_context(mock.patch.object(
+                        ota.time, "sleep", side_effect=advance))
+                    stack.enter_context(contextlib.redirect_stdout(io.StringIO()))
+                    controller = self.Controller([
+                        f"OTA | download: ready to install 9/9 id={self.package.manifest_id} 2s"
+                    ])
+                    status = ota.monitor_download(controller, args, self.package, seeder)
+                    self.assertIn(self.package.manifest_id, status)
+                    self.assertEqual(controller.commands, ["ota status"])
+                    self.assertEqual(
+                        elapsed[0], ota.passive_progress_stall_seconds(args, self.package))
+
     def test_lost_pull_reply_is_resolved_without_blind_replay(self) -> None:
         controller = self.Controller([
             "OTA | no download",
@@ -5314,6 +5348,22 @@ class ReliabilityTests(unittest.TestCase):
             seeder.log_path = log
             seeder.log_file = None
             self.assertEqual(seeder.payload_read_progress(package), (2, 3, 2))
+
+    def test_seeder_progress_missing_log_keeps_all_three_counters(self) -> None:
+        package = ota.parse_mota(mota_blob(firmware(b"B" * 2500, VERSION_NEW)))
+        with tempfile.TemporaryDirectory() as directory:
+            seeder = object.__new__(ota.SeederProcess)
+            seeder.log_path = Path(directory) / "missing-serve.log"
+            seeder.log_file = None
+            self.assertEqual(seeder.payload_read_progress(package), (0, 3, 0))
+
+    def test_seeder_progress_unreadable_log_keeps_all_three_counters(self) -> None:
+        package = ota.parse_mota(mota_blob(firmware(b"B" * 2500, VERSION_NEW)))
+        seeder = object.__new__(ota.SeederProcess)
+        seeder.log_path = Path("unreadable-serve.log")
+        seeder.log_file = None
+        with mock.patch.object(Path, "read_text", side_effect=PermissionError("unreadable log")):
+            self.assertEqual(seeder.payload_read_progress(package), (0, 3, 0))
 
     def test_marked_output_excludes_queued_messages(self) -> None:
         controller = object.__new__(ota.Controller)
