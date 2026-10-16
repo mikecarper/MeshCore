@@ -190,6 +190,34 @@ require("Heltec_E290_companion_usb_ble", "build_flags", "ENABLE_USB_INTERFACE")
 require("Heltec_E290_companion_usb_ble", "build_flags", "BLE_PIN_CODE=123456")
 require("Heltec_T190_companion_radio_usb_ble_", "build_flags", "ENABLE_USB_INTERFACE")
 require("Heltec_T190_companion_radio_usb_ble_", "build_flags", "BLE_PIN_CODE=123456")
+waveshare_full = "Waveshare_S3_LR1121_companion_radio_full"
+require(waveshare_full, "board", "esp32-s3-zero")
+require(waveshare_full, "board_build.flash_mode", "dio")
+for flag in (
+    "BOARD_HAS_PSRAM", "RADIO_CLASS=CustomLR1121", "WRAPPER_CLASS=CustomLR1121Wrapper",
+    "LR1121_FORCE_HP_PA", "LR11X0_DIO3_TCXO_VOLTAGE=1.8", "P_LORA_NSS=42",
+    "P_LORA_DIO_1=38", "P_LORA_RESET=39", "P_LORA_BUSY=41", "P_LORA_SCLK=40",
+    "P_LORA_MISO=46", "P_LORA_MOSI=45", "MAX_CONTACTS=350", "MAX_GROUP_CHANNELS=40",
+    "OFFLINE_QUEUE_SIZE=256", "ENABLE_USB_INTERFACE",
+):
+    require(waveshare_full, "build_flags", flag)
+require(waveshare_full, "build_src_filter", "variants/waveshare_esp32s3_lr1121")
+
+wio_l2_full = "Wio_Tracker_L2_companion_radio_full"
+require(wio_l2_full, "board", "seeed_wio_tracker_l2")
+require(wio_l2_full, "board_build.flash_mode", "dio")
+for flag in (
+    "SEEED_WIO_TRACKER_L2", "USE_SX1262", "DISPLAY_CLASS=WioTrackerL2Display",
+    "HAS_TOUCH=1", "AUTO_OFF_MILLIS=60000", "ENV_INCLUDE_GPS=1", "PIN_GPS_TX=18",
+    "PIN_GPS_RX=17", "ENV_SKIP_GPS_DETECT=1", "ENV_INCLUDE_INA219=0",
+    "MAX_CONTACTS=350", "MAX_GROUP_CHANNELS=40", "OFFLINE_QUEUE_SIZE=256",
+    "ENABLE_USB_INTERFACE",
+):
+    require(wio_l2_full, "build_flags", flag)
+require(wio_l2_full, "build_src_filter", "variants/wio-tracker-l2")
+require(wio_l2_full, "build_src_filter", "examples/companion_radio/ui-new")
+require(wio_l2_full, "lib_deps", "LovyanGFX @ 1.2.30")
+require(wio_l2_full, "lib_deps", "arduino-audio-driver/archive/v0.2.1.zip")
 require("heltec_v4_expansionkit_tft_companion_radio_full_femon", "platform", "platformio/espressif32@6.11.0")
 require("heltec_v4_expansionkit_tft_companion_radio_full_femon", "build_flags", "ARDUINO_USB_MODE=1")
 full_env_names = sorted(
@@ -234,6 +262,8 @@ for env_name in (
     "Station_G3_ESP32_companion_radio_full",
     "Heltec_v3_companion_radio_full",
     "heltec_tracker_v2_companion_radio_full_femon",
+    "Waveshare_S3_LR1121_companion_radio_full",
+    "Wio_Tracker_L2_companion_radio_full",
 ):
     require(env_name, "platform", "platformio/espressif32@6.11.0")
     reject(env_name, "platform", "55.03.311")
@@ -457,6 +487,7 @@ init_project_context >/dev/null
   mapfile -t menu_targets < <(get_interactive_build_targets)
   menu_text=$(printf '%s\n' "${menu_targets[@]}")
   for expected in Heltec_v3_companion_radio_full Heltec_v3_repeater \
+      Waveshare_S3_LR1121_companion_radio_full Wio_Tracker_L2_companion_radio_full \
       LilyGo_TLora_V2_1_1_6_repeater \
       LilyGo_TLora_V2_1_1_6_repeater_observer_mqtt_ \
       RAK_3401_repeater \
@@ -468,6 +499,8 @@ init_project_context >/dev/null
       || fail "ordinary board menu omitted needed choice $expected"
   done
   for hidden in Heltec_v3_companion_radio_usb Heltec_v3_companion_radio_ble \
+      Waveshare_S3_LR1121_companion_radio_usb Waveshare_S3_LR1121_companion_radio_ble \
+      Wio_Tracker_L2_companion_radio_usb Wio_Tracker_L2_companion_radio_ble \
       Heltec_v3_repeater_observer_mqtt \
       Heltec_v3_repeater_lora_ota_no_external_sensors \
       RAK_3401_repeater_lora_ota_no_external_sensors \
@@ -895,6 +928,10 @@ Heltec_T190_companion_radio_usb_ble_|Heltec_T190_companion_radio_full_|Heltec_T1
 SenseCapIndicator-ESPNow_comp_radio_usb|SenseCapIndicator-ESPNow_companion_radio_full|SenseCapIndicator-ESPNow_comp_radio_usb
 SenseCapIndicator-LoRa_comp_radio_usb_wifi|SenseCapIndicator-LoRa_companion_radio_full|SenseCapIndicator-LoRa_comp_radio_usb_wifi
 SenseCapIndicator-LoRa-N16R2_comp_radio_usb_wifi|SenseCapIndicator-LoRa-N16R2_companion_radio_full|SenseCapIndicator-LoRa-N16R2_comp_radio_usb_wifi
+Waveshare_S3_LR1121_companion_radio_usb|Waveshare_S3_LR1121_companion_radio_full|Waveshare_S3_LR1121_companion_radio_full
+Waveshare_S3_LR1121_companion_radio_ble|Waveshare_S3_LR1121_companion_radio_full|Waveshare_S3_LR1121_companion_radio_full
+Wio_Tracker_L2_companion_radio_usb|Wio_Tracker_L2_companion_radio_full|Wio_Tracker_L2_companion_radio_full
+Wio_Tracker_L2_companion_radio_ble|Wio_Tracker_L2_companion_radio_full|Wio_Tracker_L2_companion_radio_full
 FULL_COMPANION_SPECS
 
 # The Full overlay, not the historical transport used as its build base, owns
