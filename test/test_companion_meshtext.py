@@ -56,7 +56,8 @@ class CompanionMeshtextTest(unittest.TestCase):
         mt = (ROOT / "examples/companion_radio/MeshtextCompanion.cpp").read_text(encoding="utf-8")
         mt = mt[mt.index("namespace {"):].rsplit("#endif", 1)[0]
         signatures = ("bool MyMesh::isAliasRadio2Defined(", "bool MyMesh::resolveChannelAlias(",
-                      "bool MyMesh::getChannel(", "bool MyMesh::setChannel(", "bool MyMesh::queueChannelText(")
+                      "bool MyMesh::getChannel(", "bool MyMesh::setChannel(", "bool MyMesh::queueChannelText(",
+                      "bool MyMesh::saveAdvertName(")
         methods = "\n".join(body(source, signature) for signature in signatures)
         utils_source = (ROOT / "src/Utils.cpp").read_text(encoding="utf-8")
         # CLI keys use the production strict hexadecimal parser as well.
@@ -104,6 +105,8 @@ class CompanionMeshtextTest(unittest.TestCase):
                                                 ("%04x" % (default_node & 0xFFFF)).encode()),
             "@NODEINFO_AFTER_CHAT@": nodeinfo_frame(default_node, 0x12345679, b"Test",
                                                    ("%04x" % (default_node & 0xFFFF)).encode()),
+            "@NODEINFO_RENAMED@": nodeinfo_frame(default_node, 0x1234567A, b"Renamed",
+                                                ("%04x" % (default_node & 0xFFFF)).encode()),
             "@NODEINFO_NAMED@": nodeinfo_frame(0x12345678, 0x12345679, b"Mike Carper", b"MIKE"),
             "@NODEINFO_UTF8@": nodeinfo_frame(0x12345678, 0x1234567B, b"A" * 22, "\U0001f600".encode()),
             "@NODEINFO_PRIVATE@": nodeinfo_frame(0x12345678, 0x1234567C, b"A" * 22,
@@ -213,6 +216,9 @@ class CompanionMeshtextTest(unittest.TestCase):
     def test_first_successful_chat_announces_once_per_channel_with_no_position(self):
         self.run_case("auto-nodeinfo")
 
+    def test_automatic_nodeinfo_waits_for_quiet_tx_gap_with_retry_refresh_and_wrap(self):
+        self.run_case("auto-nodeinfo-quiet")
+
     def test_heard_repeat_retries_identical_packets_bounded_by_existing_settings(self):
         self.run_case("heard-retries")
 
@@ -230,6 +236,12 @@ class CompanionMeshtextTest(unittest.TestCase):
 
     def test_announcement_alias_settings_key_changes_and_failure_do_not_storm(self):
         self.run_case("announcement-lifecycle")
+
+    def test_advert_name_change_cancels_only_stale_metadata_and_waits_for_new_chat(self):
+        self.run_case("advert-name-delivery")
+
+    def test_same_tuple_publish_busy_release_refreshes_without_stealing_external_owner(self):
+        self.run_case("readiness-cache")
 
     def test_delivery_service_is_wired_before_radio_processing_and_paused_for_morse(self):
         source = (ROOT / "examples/companion_radio/MyMesh.cpp").read_text(encoding="utf-8")

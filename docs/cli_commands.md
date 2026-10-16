@@ -11,7 +11,9 @@ For supported Full Companions, see [Meshtext channel chat](radio_profiles.md#mes
 for `mt-` channels and the explicit `send mt.nodeinfo <channel slot>` command.
 Chat remains plain text. A separate GPS-free NodeInfo is sent after the first
 successful chat transmission per used channel/identity per boot; the explicit
-command can also request one. MT heard-repeat retries use the Companion's
+command can also request one. Automatic metadata waits for a 250 ms gap after
+the latest successful MT transmission; explicit requests bypass that gap.
+MT heard-repeat retries use the Companion's
 `flood.retry.count`, with the metadata cap and `flood.retry.advert` gate for
 NodeInfo.
 

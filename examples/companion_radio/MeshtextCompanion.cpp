@@ -13,6 +13,7 @@
 namespace {
 constexpr size_t LegacySettingsSize = 16;
 constexpr size_t SettingsSize = 40;
+constexpr uint32_t AutoNodeInfoQuietMillis = 250;
 bool validShortName(const char* name) {
   if (!name) return false;
   const size_t length = strnlen(name, 17);
@@ -321,12 +322,16 @@ void MyMesh::refreshMeshtextProfile() {
   const uint32_t primary_generation = current_profiles ? current_profiles->generation[0] : 0;
   const uint32_t secondary_generation = current_profiles ? current_profiles->generation[1] : 0;
   const uint32_t intent_generation = _radio_profiles.secondaryIntentGeneration();
+  const bool secondary_ready = _radio_profiles.secondaryRuntimeAvailable();
   if (!_mt_profile_dirty && primary_generation == _mt_primary_generation
       && secondary_generation == _mt_secondary_generation && intent_generation == _mt_intent_generation
-      && _mt_last_radio_ready == _radio_available && _mt_primary_frequency == _prefs.freq) return;
+      && _mt_last_radio_ready == _radio_available && _mt_primary_frequency == _prefs.freq
+      && _mt_last_secondary_ready == secondary_ready) return;
   // Hashing names and scanning the channel table every radio loop would add
   // blind time to the dual-profile scanner. Recompute only on configuration
-  // or lease/generation edges; RX/TX still derive a fresh bounded wire copy.
+  // or lease/generation/readiness edges. Publishing an unchanged saved tuple
+  // can release a busy guard without changing either RF generation.
+  // RX/TX still derive a fresh bounded wire copy.
   struct CacheUpdate {
     MyMesh& owner;
     ~CacheUpdate() {
@@ -335,6 +340,7 @@ void MyMesh::refreshMeshtextProfile() {
       owner._mt_secondary_generation = p ? p->generation[1] : 0;
       owner._mt_intent_generation = owner._radio_profiles.secondaryIntentGeneration();
       owner._mt_last_radio_ready = owner._radio_available;
+      owner._mt_last_secondary_ready = owner._radio_profiles.secondaryRuntimeAvailable();
       owner._mt_primary_frequency = owner._prefs.freq;
       owner._mt_profile_dirty = false;
     }
@@ -508,7 +514,11 @@ void MyMesh::loopMeshtextDelivery() {
   if (!usable || hasForeignRadioFrame()) return;
   // Announce only channels which actually completed a user text TX. Never
   // turn boot, received traffic, a timer, or a configuration edit into TX.
-  for (int i = 0; i < MAX_GROUP_CHANNELS; ++i) {
+  // Stock peers need time to re-arm RX after chat/rebroadcast processing.
+  // Every successful MT TX restarts this gap; ordinary chat retries remain
+  // eligible below while the automatic announcement is still only intent.
+  const bool metadata_quiet = uint32_t(now - _mt_last_tx_completed_at) >= AutoNodeInfoQuietMillis;
+  for (int i = 0; metadata_quiet && i < MAX_GROUP_CHANNELS; ++i) {
     if (!_mt_nodeinfo_pending[i]) continue;
     ChannelDetails channel;
     uint8_t fingerprint[8];
@@ -639,6 +649,7 @@ void MyMesh::onForeignRadioSendComplete(bool success) {
     return;
   }
 #endif
+  if (success) _mt_last_tx_completed_at = millis();
   const int slot = _mt_tx_slot;
   _mt_tx_slot = -1;
   if (slot < 0 || slot >= static_cast<int>(mesh::mt::DeliverySlots)) {

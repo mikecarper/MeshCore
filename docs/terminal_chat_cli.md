@@ -63,6 +63,7 @@ channel 0 Hello
 Use a configured `mt-` channel slot. Chat carries only the entered text. After
 the first successful over-air chat transmission per used channel/identity per
 boot, the firmware queues a separate standard name/ID NodeInfo advertisement.
+Automatic metadata waits for a 250 ms quiet TX gap so the peer can resume RX.
 `send mt.nodeinfo` can also request one explicitly. Neither contains GPS or
 coordinates. No NodeInfo is sent just from booting, configuration, receiving
 traffic or a timer. The long name comes from the existing node name;

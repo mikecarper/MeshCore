@@ -8079,7 +8079,20 @@ bool MyMesh::saveAdvertName(const char* name) {
   char previous[sizeof(_prefs.node_name)];
   memcpy(previous, _prefs.node_name, sizeof(previous));
   StrHelper::strncpy(_prefs.node_name, name, sizeof(_prefs.node_name));
-  if (savePrefs()) return true;
+  if (savePrefs()) {
+#if MESH_ENABLE_MESHTEXT_CHAT
+    if (strncmp(previous, _prefs.node_name, sizeof(previous)) != 0) {
+      // NodeInfo contains the global advert name; retained ciphertext must
+      // not advertise the previous name after a successful rename. Preserve
+      // independent text retries, and wait for a new successful chat before
+      // announcing again rather than transmitting from a settings edit.
+      for (auto& frame : _mt_delivery) if (frame.nodeinfo) frame.cancelled = true;
+      memset(_mt_nodeinfo_announced, 0, sizeof(_mt_nodeinfo_announced));
+      memset(_mt_nodeinfo_pending, 0, sizeof(_mt_nodeinfo_pending));
+    }
+#endif
+    return true;
+  }
   memcpy(_prefs.node_name, previous, sizeof(previous));
   return false;
 }
@@ -10154,7 +10167,7 @@ void MyMesh::handleTerminalCommand(char* command, bool reader_prompt,
         "  set mt.hops <0..7> (saved; default 7)\r\n"
         "  set mt.node <!8hex|default> (saved; use a unique ID)\r\n"
         "  set mt.shortname <1..4 UTF-8 characters|default> (saved; NodeInfo uses 4 bytes)\r\n"
-        "  send mt.nodeinfo <channel slot> (one manual advert; no automatic adverts)\r\n"
+        "  send mt.nodeinfo <channel slot> (GPS-free; also automatic after first chat)\r\n"
         "  set mt.preset <longfast|shortturbo|...> (saved manual radio2)\r\n"
         "  set mt.channel <slot> <mt-name> <32/64 hex digits|AQ==>\r\n"
         "  get mt.channel <slot> / delete mt.channel <slot>\r\n"

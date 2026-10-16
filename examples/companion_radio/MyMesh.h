@@ -768,10 +768,12 @@ private:
   bool _mt_nodeinfo_announced[MAX_GROUP_CHANNELS] = {};
   bool _mt_nodeinfo_pending[MAX_GROUP_CHANNELS] = {};
   uint32_t _mt_nodeinfo_generation = 0;
+  uint32_t _mt_last_tx_completed_at = 0;
   bool _mt_delivery_config_dirty = false;
   uint32_t _mt_retried = 0, _mt_heard = 0, _mt_exhausted = 0;
   bool _mt_settings_valid = true, _mt_active = false;
   bool _mt_profile_dirty = true, _mt_last_radio_ready = false;
+  bool _mt_last_secondary_ready = false;
   uint32_t _mt_primary_generation = 0, _mt_secondary_generation = 0, _mt_intent_generation = 0;
   float _mt_primary_frequency = 0;
   const char* _mt_status = "no Meshtext channels";
