@@ -21,15 +21,53 @@ void ArduinoSerialInterface::resetReceiveState() {
   _frame_len = 0;
   rx_len = 0;
   _last_rx_byte_ms = 0;
+  _receive_capacity_paused = false;
+  _receive_capacity_paused_at = 0;
 }
 
 void ArduinoSerialInterface::serviceReceiveTimeout() {
+  updateReceiveCapacityPause(millis());
   if (_state != RECV_STATE_IDLE && _serial != nullptr
+      && !_receive_capacity_paused
       && _serial->available() == 0
       && (uint32_t)(millis() - _last_rx_byte_ms) >= RX_FRAME_TIMEOUT_MS) {
     // A truncated length-prefixed frame must not hold the MCU awake forever or
     // turn bytes from a later session into the missing tail of the old frame.
     resetReceiveState();
+  }
+}
+
+bool ArduinoSerialInterface::responseCapacityAvailable() const {
+  if (!_flow_ctl || _tx_queue_len < TX_QUEUE_SIZE) return true;
+  // Match enqueueFrame(): a required reply may replace an unsent best-effort
+  // push, but the prefix of a partly sent frame must remain intact.
+  for (uint8_t i = _tx_offset == 0 ? 0 : 1; i < _tx_queue_len; ++i) {
+    const TxFrame& frame = _tx_queue[i];
+    if (!mesh::companionFrameRequiresDelivery(&frame.buf[3], frame.len - 3)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+void ArduinoSerialInterface::updateReceiveCapacityPause(uint32_t now) {
+  if (_state == RECV_STATE_IDLE) {
+    _receive_capacity_paused = false;
+    _receive_capacity_paused_at = 0;
+    return;
+  }
+  const bool pause = !responseCapacityAvailable();
+  if (pause && !_receive_capacity_paused) {
+    // Backpressure must not retroactively extend an already expired frame.
+    if ((uint32_t)(now - _last_rx_byte_ms) >= RX_FRAME_TIMEOUT_MS) return;
+    _receive_capacity_paused = true;
+    _receive_capacity_paused_at = now;
+  } else if (!pause && _receive_capacity_paused) {
+    // Bytes retained for reply capacity keep the framing budget they had when
+    // RX was paused, even if the host takes a long time to resume reading.
+    _last_rx_byte_ms += (uint32_t)(now - _receive_capacity_paused_at);
+    _receive_capacity_paused = false;
+    _receive_capacity_paused_at = 0;
   }
 }
 
@@ -82,6 +120,7 @@ bool ArduinoSerialInterface::enqueueFrame(const uint8_t src[], size_t len) {
   frame.buf[1] = (uint8_t)(len & 0xFF);
   frame.buf[2] = (uint8_t)(len >> 8);
   memcpy(&frame.buf[3], src, len);
+  updateReceiveCapacityPause(millis());
   return true;
 }
 
@@ -204,6 +243,7 @@ bool ArduinoSerialInterface::isConnected() const {
 void ArduinoSerialInterface::loop() {
   serviceReceiveTimeout();
   serviceTransmit();
+  updateReceiveCapacityPause(millis());
 }
 
 bool ArduinoSerialInterface::isReadBusy() const {
@@ -240,6 +280,7 @@ size_t ArduinoSerialInterface::writeFrame(const uint8_t src[], size_t len) {
     }
     if (!enqueueFrame(src, len)) return 0;
     serviceTransmit();
+    updateReceiveCapacityPause(millis());
     return len;
   }
 
@@ -255,7 +296,12 @@ size_t ArduinoSerialInterface::checkRecvFrame(uint8_t dest[]) {
   if (_serial == nullptr || dest == nullptr) return 0;
   serviceReceiveTimeout();
   serviceTransmit();
+  updateReceiveCapacityPause(millis());
   if (_passthroughMode) return 0;
+  // Immediate command handlers do not retain rejected replies. Leave the
+  // complete input and any partial parser state untouched until one required
+  // response can be admitted, rather than executing a command without a reply.
+  if (!responseCapacityAvailable()) return 0;
 
   // Newly arriving bytes belong to the next mesh loop; a continuously writing
   // host must not keep the radio/watchdog loop trapped in this parser.

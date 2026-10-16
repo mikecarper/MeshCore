@@ -196,12 +196,22 @@ int main() {
   reset(); stream.capacity=0; command("set usb.logging on");
   cancelUsbSerialOperations(); usb_serial_interface.resetSessionState();
   stream.capacity=4096; serviceUsbLoggingReplyBarrier(); assert(!logging);
-  // A queue unable to accept the acknowledgement cannot start the handoff.
+  // A full reply queue leaves the logging command unread until its
+  // acknowledgement can fit; draining then permits the normal handoff.
   reset(); stream.capacity=0;
   const uint8_t required[]={29,1};
   for(unsigned i=0;i<4;++i) assert(usb_serial_interface.writeFrame(required,2)==2);
-  command("set usb.logging on");
+  stream.receive("set usb.logging on");
+  assert(interface_manager.checkRecvFrame(the_mesh.cmd_frame)==0);
+  assert(stream.cursor==0 && stream.available()>0);
   assert(!usb_logging_reply_pending && !logging && ble.tx.empty());
+  stream.capacity=4096;
+  size_t resumed=interface_manager.checkRecvFrame(the_mesh.cmd_frame);
+  assert(resumed>0 && interface_manager.captureReplyRoute()==&usb_serial_interface);
+  the_mesh.handleCmdFrame(resumed);
+  assert(usb_logging_reply_pending && !logging && !the_mesh.terminal);
+  serviceUsbLoggingReplyBarrier();
+  assert(logging && the_mesh.terminal && !usb_logging_reply_pending);
   // A later explicit setting supersedes an earlier pending on request.
   reset(); stream.capacity=0; command("set usb.logging on");
   the_mesh.applyUsbLoggingState(false);
