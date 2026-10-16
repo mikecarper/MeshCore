@@ -752,20 +752,21 @@ void UITask::newMsg(uint8_t path_len, const char* from_name, const char* text,
 void UITask::userLedHandler() {
   if (_notification_led_owned || !(_notification_outputs & mesh::notify::Led)) return;
 #ifdef PIN_STATUS_LED
-  int cur_time = millis();
-  if (cur_time > next_led_change) {
+  const uint32_t cur_time = millis();
+  // Phase age also survives long notification-owned or disabled intervals.
+  if (static_cast<uint32_t>(cur_time - last_led_change) > led_phase_millis) {
     if (led_state == 0) {
       led_state = 1;
       if (_msgcount > 0) {
-        last_led_increment = LED_ON_MSG_MILLIS;
+        led_phase_millis = LED_ON_MSG_MILLIS;
       } else {
-        last_led_increment = LED_ON_MILLIS;
+        led_phase_millis = LED_ON_MILLIS;
       }
-      next_led_change = cur_time + last_led_increment;
     } else {
       led_state = 0;
-      next_led_change = cur_time + LED_CYCLE_MILLIS - last_led_increment;
+      led_phase_millis = LED_CYCLE_MILLIS - led_phase_millis;
     }
+    last_led_change = cur_time;
     digitalWrite(PIN_STATUS_LED, led_state == LED_STATE_ON);
   }
 #endif

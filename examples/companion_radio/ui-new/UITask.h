@@ -87,8 +87,8 @@ class UITask : public AbstractUITask {
 #endif
 #ifdef PIN_STATUS_LED
   int led_state = 0;
-  int next_led_change = 0;
-  int last_led_increment = 0;
+  uint32_t last_led_change = 0;
+  uint32_t led_phase_millis = 0;
 #endif
 
 #ifdef PIN_USER_BTN_ANA

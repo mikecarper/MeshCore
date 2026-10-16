@@ -563,23 +563,24 @@ void UITask::userLedHandler() {
   }
 #elif defined(PIN_STATUS_LED)
   static int state = 0;
-  static int next_change = 0;
-  static int last_increment = 0;
+  static uint32_t last_change = 0;
+  static uint32_t phase_millis = 0;
 
-  int cur_time = millis();
-  if (cur_time > next_change) {
+  const uint32_t cur_time = millis();
+  // Phase age also survives long notification-owned or disabled intervals.
+  if (static_cast<uint32_t>(cur_time - last_change) > phase_millis) {
     if (state == 0) {
       state = 1;
       if (_msgcount > 0) {
-        last_increment = LED_ON_MSG_MILLIS;
+        phase_millis = LED_ON_MSG_MILLIS;
       } else {
-        last_increment = LED_ON_MILLIS;
+        phase_millis = LED_ON_MILLIS;
       }
-      next_change = cur_time + last_increment;
     } else {
       state = 0;
-      next_change = cur_time + LED_CYCLE_MILLIS - last_increment;
+      phase_millis = LED_CYCLE_MILLIS - phase_millis;
     }
+    last_change = cur_time;
     digitalWrite(PIN_STATUS_LED, state == LED_STATE_ON);
   }
 #endif
