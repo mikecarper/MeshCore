@@ -577,6 +577,27 @@ protected:
   // This includes queue schedules, delayed inbound processing, airtime-budget
   // waits, and short channel-busy deferrals.
   bool getNextQueueWakeDelay(uint32_t& delay_millis) const;
+  // Timed MCU wakes are not RF leases: an idle tracker can suspend the radio
+  // across AGC maintenance and a future beacon, but not actual packet work.
+  bool hasPendingRadioWork() const {
+    if (hasOutbound() || outbound_restore_cr || _mgr->getOutboundTotal() != 0
+        || _radio->isCarrierWaveActive() || _radio->isMorseTxActive()
+        || _radio->isMorseRxActive()) return true;
+    uint32_t ignored;
+    return _mgr->getNextInboundTime(_ms->getMillis(), ignored)
+        || (radio_available && _radio->getReceiveRetryDelay(_ms->getMillis(), ignored));
+  }
+#if MESH_ENABLE_TX_BEACONS
+  // A deliberately suspended tracker must still wake before the beacon CLI
+  // consumes its one admission attempt. Other unavailable radios retain the
+  // existing getNextQueueWakeDelay() policy.
+  bool getNextBeaconWakeDelay(uint32_t& delay_millis) const {
+    if (!beacon_wake_enabled) return false;
+    const int32_t wait = int32_t(beacon_wake_at - uint32_t(_ms->getMillis()));
+    delay_millis = wait > 0 ? uint32_t(wait) : 0;
+    return true;
+  }
+#endif
   bool hasQueuedWorkDue() const {
     uint32_t delay_millis;
     return getNextQueueWakeDelay(delay_millis) && delay_millis == 0;

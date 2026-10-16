@@ -199,6 +199,8 @@ public:
   bool hasPendingOtaApply() const { return pending_ota; }
   bool isDualRadioActive() const { return dual; }
   bool getNextQueueWakeDelay(uint32_t& value) const { value = 1; return queue_wake; }
+  bool hasPendingRadioWork() const { return queue_wake; }
+  bool getNextBeaconWakeDelay(uint32_t&) const { return false; }
   bool getNextRetryWakeDelay(uint32_t& value) const { value = 1; return retry_wake; }
   void setRadioAvailable(bool value) { available = value; }
   void updateAdvertTimer() { ++advert_timer_updates; }

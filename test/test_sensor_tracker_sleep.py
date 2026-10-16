@@ -1,5 +1,6 @@
 """Execute Sensor tracker sleep gates, real wake arming and radio handoff."""
 from pathlib import Path
+import os
 import re
 import shutil
 import subprocess
@@ -9,6 +10,7 @@ import unittest
 
 from test_gps_upstream_adaptations import ARDUINO
 from test_replay_reset_integration import extract_braced
+from cpp_source import body
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -57,6 +59,7 @@ public:
  bool hasQueuedWorkDue()const{return queue_due;}
  bool hasRetryWorkDue()const{return retry_due;}
  bool getNextQueueWakeDelay(uint32_t& out)const{out=queue_delay;return queue_delay_set;}
+ bool hasPendingRadioWork()const{return queue_delay_set;}
  bool getNextRetryWakeDelay(uint32_t& out)const{out=retry_delay;return retry_delay_set;}
  bool isMillisTimerDue(unsigned long timestamp)const;
  uint32_t limitSleepToMillisTimer(unsigned long timestamp,uint32_t sleep_secs)const;
@@ -307,6 +310,91 @@ class SensorTrackerSleepTest(unittest.TestCase):
                         ("STM32_PLATFORM=1", "ENV_INCLUDE_GPS=1", "MESH_ENABLE_SENSOR_TRACKER=1", "EXPECTED=1")):
             with self.subTest(defines=defines):
                 self.compile_run(source, defines)
+
+    def cross_layer_source(self, mutation=None):
+        sensor = (ROOT / "examples/simple_sensor/SensorMesh.cpp").read_text(encoding="ascii")
+        tracker = (ROOT / "examples/simple_sensor/Tracker.cpp").read_text(encoding="ascii")
+        if mutation == "old-radio-lease":
+            lease = "  if (hasPendingRadioWork() || getNextRetryWakeDelay(delay)) return true;"
+            self.assertEqual(tracker.count(lease), 1)
+            tracker = tracker.replace(lease,
+                "  if (getNextQueueWakeDelay(delay) || getNextRetryWakeDelay(delay)) return true;", 1)
+        elif mutation == "no-beacon-radio-wake":
+            due = "  if (getNextBeaconWakeDelay(delay) && delay == 0) return true;"
+            self.assertEqual(tracker.count(due), 1)
+            tracker = tracker.replace(due, "", 1)
+        elif mutation == "no-beacon-mcu-wake":
+            start = "#if MESH_ENABLE_SENSOR_TRACKER && MESH_ENABLE_TX_BEACONS\n"
+            self.assertEqual(sensor.count(start), 1)
+            begin = sensor.index(start)
+            end = sensor.index("#endif", begin) + len("#endif")
+            sensor = sensor[:begin] + sensor[end:]
+        methods = "\n".join(body(sensor, signature) for signature in (
+            "bool SensorMesh::isMillisTimerDue(", "uint32_t SensorMesh::limitSleepToMillisTimer(",
+            "bool SensorMesh::hasPendingWork(", "uint32_t SensorMesh::getPowerSaveSleepSeconds("))
+        methods += "\n" + "\n".join(body(tracker, signature) for signature in (
+            "bool SensorMesh::trackerNeedsRadio(", "void SensorMesh::wakeTrackerRadio("))
+        # Execute the actual wake-before-CLI order. Application sensor work
+        # after Mesh::loop has separate tracker client/GPS regression coverage.
+        loop = body(sensor, "void SensorMesh::loop()")
+        end = "  mesh::Mesh::loop();"
+        self.assertEqual(loop.count(end), 1)
+        methods += "\n" + loop[:loop.index(end) + len(end)].replace(
+            "void SensorMesh::loop()", "void SensorMesh::loopBeforeService()", 1) + "\n}\n"
+        source = (ROOT / "test/fixtures/sensor_tracker_radio_lease.cpp").read_text(encoding="ascii")
+        return source.replace("@METHODS@", methods).replace("@SLEEP_BLOCK@", body(
+            tracker, "if (!trackerNeedsRadio() && !radio_driver.isWatchdogObserving()"))
+
+    def run_cross_layer(self, defines, scenarios=("agc", "leases", "beacons"), mutation=None):
+        with tempfile.TemporaryDirectory(prefix="meshcore-tracker-radio-lease-") as directory:
+            path = Path(directory)
+            source, binary = path / "lease.cpp", path / "lease"
+            source.write_text(self.cross_layer_source(mutation), encoding="ascii")
+            result = subprocess.run([
+                self.compiler, "-std=c++17", "-O1", "-g", "-Wall", "-Wextra",
+                "-Wno-unused-parameter", "-DMESH_ENABLE_SENSOR_TRACKER=1", *defines,
+                *(["-fsanitize=address,undefined", "-fno-sanitize-recover=all", "-fno-pie", "-no-pie"]
+                  if sys.platform.startswith("linux") else []),
+                "-I" + str(ROOT / "test/mocks"), "-I" + str(ROOT / "src"),
+                str(ROOT / "src/Dispatcher.cpp"), str(ROOT / "src/DispatcherBeacon.cpp"),
+                str(ROOT / "src/Packet.cpp"), str(ROOT / "src/helpers/StaticPoolPacketManager.cpp"),
+                str(source), "-o", str(binary),
+            ], capture_output=True, text=True, timeout=90)
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            env = dict(os.environ, ASAN_OPTIONS="detect_leaks=0")
+            for scenario in scenarios:
+                result = subprocess.run([str(binary), scenario], capture_output=True,
+                                        text=True, env=env, timeout=20)
+                if mutation:
+                    self.assertNotEqual(result.returncode, 0, "old behavior escaped cross-layer regression")
+                    self.assertIn("Assertion", result.stderr)
+                    self.assertIn({
+                        "old-radio-lease": "a future AGC wake is not an RF lease",
+                        "no-beacon-radio-wake": "due beacon must wake RF before the CLI admission attempt",
+                        "no-beacon-mcu-wake": "RF suspension must not hide the next beacon MCU wake",
+                    }[mutation], result.stderr)
+                else:
+                    self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                    self.assertIn("PASS: tracker radio lease", result.stdout)
+
+    def test_real_dispatcher_distinguishes_rf_leases_from_mcu_deadlines(self):
+        for beacons, foreign, platform in ((0, 0, ()), (1, 0, ()), (1, 1, ()),
+                                            (1, 0, ("-DNRF52_PLATFORM=1",))):
+            with self.subTest(beacons=beacons, foreign=foreign, platform=platform):
+                self.run_cross_layer((f"-DMESH_ENABLE_TX_BEACONS={beacons}",
+                                      f"-DMESH_ENABLE_MESHTEXT_CHAT={foreign}", *platform))
+
+    def test_negative_control_agc_deadline_is_not_a_tracker_rf_lease(self):
+        self.run_cross_layer(("-DMESH_ENABLE_TX_BEACONS=0", "-DMESH_ENABLE_MESHTEXT_CHAT=0"),
+                             ("agc",), "old-radio-lease")
+
+    def test_negative_control_due_beacon_wakes_radio_before_cli(self):
+        self.run_cross_layer(("-DMESH_ENABLE_TX_BEACONS=1", "-DMESH_ENABLE_MESHTEXT_CHAT=0"),
+                             ("beacons",), "no-beacon-radio-wake")
+
+    def test_negative_control_suspended_radio_keeps_beacon_mcu_deadline(self):
+        self.run_cross_layer(("-DMESH_ENABLE_TX_BEACONS=1", "-DMESH_ENABLE_MESHTEXT_CHAT=0"),
+                             ("beacons",), "no-beacon-mcu-wake")
 
 
 if __name__ == "__main__":

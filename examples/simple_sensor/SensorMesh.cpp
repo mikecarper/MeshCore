@@ -1731,6 +1731,14 @@ uint32_t SensorMesh::getPowerSaveSleepSeconds(uint32_t max_secs) const {
     uint32_t wake_delay_secs = mesh::power::powerSaveSleepSeconds(wake_delay_ms);
     if (wake_delay_secs < sleep_secs) sleep_secs = wake_delay_secs;
   }
+#if MESH_ENABLE_SENSOR_TRACKER && MESH_ENABLE_TX_BEACONS
+  // The normal queue query omits RF maintenance while radio_available is
+  // false. A tracker's deliberate RF sleep must not hide its next beacon.
+  if (tracker.enabled && getNextBeaconWakeDelay(wake_delay_ms)) {
+    uint32_t wake_delay_secs = mesh::power::powerSaveSleepSeconds(wake_delay_ms);
+    if (wake_delay_secs < sleep_secs) sleep_secs = wake_delay_secs;
+  }
+#endif
   if (getNextRetryWakeDelay(wake_delay_ms)) {
     uint32_t wake_delay_secs = mesh::power::powerSaveSleepSeconds(wake_delay_ms);
     if (wake_delay_secs < sleep_secs) sleep_secs = wake_delay_secs;

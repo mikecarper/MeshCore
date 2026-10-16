@@ -86,7 +86,10 @@ bool SensorMesh::trackerNeedsRadio() const {
       || _cli.hasActiveUserGpioTimer() || hasOutbound() || _mgr->getOutboundTotal() != 0)
     return true;
   uint32_t delay;
-  if (getNextQueueWakeDelay(delay) || getNextRetryWakeDelay(delay)) return true;
+  if (hasPendingRadioWork() || getNextRetryWakeDelay(delay)) return true;
+#if MESH_ENABLE_TX_BEACONS
+  if (getNextBeaconWakeDelay(delay) && delay == 0) return true;
+#endif
   if (tracker_pending || tracker_acquiring
       || (tracker_awake_until && !millisHasNowPassed(tracker_awake_until))) return true;
   return !tracker_storage_fault && getRTCClock()->getCurrentTime() >= tracker_next_check;
