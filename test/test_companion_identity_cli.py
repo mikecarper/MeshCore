@@ -36,6 +36,9 @@ public:
 struct MyMesh {
  mesh::LocalIdentity self_id;
  unsigned fallback_calls=0;
+ // Routing commands have their own production-method tests. This identity
+ // harness exercises fall-through to the shared read-only key query.
+ bool handleTrafficRoutingCommand(const char*,char*,size_t){return false;}
  bool handleLocalControlCommand(const char*,char*,size_t);
 };
 @COMMAND@
