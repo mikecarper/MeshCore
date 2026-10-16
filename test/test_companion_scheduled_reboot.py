@@ -3,6 +3,7 @@
 
 from pathlib import Path
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -31,6 +32,13 @@ def production_methods(source):
     methods = "void MyMesh::terminalCommand(const char* command) {\n" + terminal + "\n}\n"
     methods += "bool MyMesh::loggingCommand(const char* command, char* reply, size_t reply_size) {\n"
     methods += logging + "\nreturn false;\n}\n"
+    methods += re.search(r"^#define LAZY_CONTACTS_WRITE_DELAY\s+\d+", source,
+                         re.MULTILINE).group(0) + "\n"
+    for signature in ("void MyMesh::onContactCacheFlushed()",
+                      "void MyMesh::scheduleContactWriteRetry()",
+                      "bool MyMesh::flushContactsBeforeReboot()",
+                      "bool MyMesh::prepareForUiShutdown()"):
+        methods += extract_braced(source, signature) + "\n"
     methods += extract_braced(source, "void MyMesh::repairInternalExtraFS(") + "\n"
     methods += "void MyMesh::service() {\n" + service + "\n}\n"
     dispatcher = (ROOT / "src/Dispatcher.cpp").read_text(encoding="ascii")

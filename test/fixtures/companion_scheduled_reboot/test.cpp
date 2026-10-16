@@ -34,13 +34,21 @@ bool usbLoggingInterfaceRestartRequired() { return true; }
 bool isUsbLoggingPacketStream() { return false; }
 }
 struct Store {
-  bool incomplete = true, repair_ok = true;
-  unsigned repairs = 0, contact_saves = 0;
+  bool incomplete = true, repair_ok = true, vol = false;
+  bool contacts_saved = true, flush_ok = true, pending = false;
+  unsigned repairs = 0, contact_saves = 0, contact_flushes = 0;
+  uint32_t capacity = 100;
   bool hasIncompleteContactLoad() const { return incomplete; }
   bool repairInternalExtraFS() { ++repairs; return repair_ok; }
-  bool saveContacts(void*, int) { ++contact_saves; return true; }
-  bool hasPendingContactWrites() const { return false; }
-  uint32_t getStorageTotalKb() const { return 100; }
+  bool contactsAreVolatile() const { return vol; }
+  bool saveContacts(void*, int) { ++contact_saves; return contacts_saved; }
+  bool flushContactWrites(void*, int) {
+    ++contact_flushes;
+    if (flush_ok) pending = false;
+    return flush_ok;
+  }
+  bool hasPendingContactWrites() const { return pending; }
+  uint32_t getStorageTotalKb() const { return capacity; }
 };
 struct MyMesh {
   Clock* _ms = &clock_source;
@@ -54,13 +62,15 @@ struct MyMesh {
   unsigned long dirty_contacts_expiry = 0;
   uint8_t dirty_contacts_failures = 0;
   int save_filter = 0;
-  bool prefs_ok = true, flush_ok = true;
-  unsigned flushes = 0, pref_saves = 0, logging_applies = 0;
+  bool prefs_ok = true, channels_ok = true;
+  unsigned pref_saves = 0, channel_saves = 0, logging_applies = 0;
   Stream& terminalOutput() { return output; }
-  bool flushContactsBeforeReboot() { ++flushes; return flush_ok; }
+  void onContactCacheFlushed();
+  bool flushContactsBeforeReboot();
+  bool prepareForUiShutdown();
   bool savePrefs() { ++pref_saves; return prefs_ok; }
-  bool saveChannels() { return true; }
-  void scheduleContactWriteRetry() { assert(false); }
+  bool saveChannels() { ++channel_saves; return channels_ok; }
+  void scheduleContactWriteRetry();
   void applyUsbLoggingState(bool) { ++logging_applies; }
   bool millisHasNowPassed(unsigned long timestamp) const;
   unsigned long futureMillis(int millis_from_now) const;
@@ -82,6 +92,7 @@ static void arm(MyMesh& node, Arm command) {
     node.repairInternalExtraFS(node.output);
     assert(node.output.text.find("rebooting to reload authoritative data") != std::string::npos);
     assert(node.store.repairs == 1 && node.store.contact_saves == 0);
+    assert(node.channel_saves == 0 && node.store.incomplete);
   } else {
     node.terminalCommand("reboot");
     assert(node.output.text.find("rebooting in 1 second") != std::string::npos);
@@ -104,20 +115,21 @@ static void timing_checks(Arm command) {
     const uint32_t armed = node._scheduled_reboot_at;
     now_ms = start + 999U;
     node.service();
-    assert(board.reboots == 0 && node.flushes == 0);
+    assert(board.reboots == 0 && node.store.contact_flushes == 0);
     if (raw_deadline == 0) {
       now_ms = 0;
       node.service();
-      assert(board.reboots == 0 && node.flushes == 0);
+      assert(board.reboots == 0 && node.store.contact_flushes == 0);
     }
     now_ms = deadline;
     node.service(); // Equality must service the arm despite Dispatcher's strict > helper.
-    assert(board.reboots == 1 && node.flushes == 1
+    assert(board.reboots == 1 && node.store.contact_flushes == 0
         && "a wrapped reboot deadline must still reboot exactly once");
     assert(armed == deadline && node._scheduled_reboot_at == 0);
     ++now_ms;
     node.service();
-    assert(board.reboots == 1 && node.flushes == 1);
+    assert(board.reboots == 1 && node.store.contact_flushes == 0);
+    assert(node.store.contact_saves == 0); // Never rebuild an incomplete RAM view.
   }
 }
 static void service_gate_checks(Arm command) {
@@ -131,21 +143,81 @@ static void service_gate_checks(Arm command) {
     node.service();
     now_ms += 100;
     node.service();
-    assert(board.reboots == 0 && node.flushes == 0 && node._scheduled_reboot_at == deadline);
+    assert(board.reboots == 0 && node.store.contact_flushes == 0
+        && node._scheduled_reboot_at == deadline);
     morse_active = false;
     node.service();
-    assert(board.reboots == 1 && node.flushes == 1 && node._scheduled_reboot_at == 0);
+    assert(board.reboots == 1 && node.store.contact_flushes == 0
+        && node._scheduled_reboot_at == 0);
   }
+  for (bool flush_ok : {false, true}) {
+    reset(100);
+    MyMesh node;
+    arm(node, command);
+    // Model a valid running table with accepted work newer than disk.
+    node.store.incomplete = false;
+    node.store.pending = true;
+    node.store.flush_ok = flush_ok;
+    node.dirty_contacts_expiry = 123;
+    node.dirty_contacts_failures = flush_ok ? 2 : 0;
+    now_ms = node._scheduled_reboot_at;
+    node.service();
+    assert(board.reboots == unsigned(flush_ok) && node.store.contact_flushes == 1);
+    assert(node._scheduled_reboot_at == 0 && node.store.pending == !flush_ok);
+    if (flush_ok) {
+      assert(node.dirty_contacts_expiry == 0 && node.dirty_contacts_failures == 0);
+    } else {
+      assert(node.dirty_contacts_failures == 1);
+      assert(node.dirty_contacts_expiry == now_ms + LAZY_CONTACTS_WRITE_DELAY);
+    }
+    ++now_ms;
+    node.service();
+    assert(board.reboots == unsigned(flush_ok) && node.store.contact_flushes == 1);
+    if (!flush_ok) {
+      // A recovered medium must not resurrect a cancelled one-shot arm.
+      node.store.flush_ok = true;
+      now_ms = node.dirty_contacts_expiry;
+      node.service();
+      assert(board.reboots == 0 && node.store.contact_flushes == 1);
+    }
+  }
+  // Volatile contacts block explicit durability promises, not hardware reboot.
   reset(100);
   MyMesh node;
   arm(node, command);
-  node.flush_ok = false;
+  node.store.vol = true; node.store.pending = true; node.store.flush_ok = false;
+  node.dirty_contacts_expiry = 123; node.dirty_contacts_failures = 2;
+  assert(!node.flushContactsBeforeReboot() && node.store.contact_flushes == 0);
   now_ms = node._scheduled_reboot_at;
   node.service();
-  assert(board.reboots == 0 && node.flushes == 1 && node._scheduled_reboot_at == 0);
-  ++now_ms;
-  node.service();
-  assert(board.reboots == 0 && node.flushes == 1);
+  assert(board.reboots == 1 && node._scheduled_reboot_at == 0);
+  assert(node.store.contact_flushes == 0 && node.store.pending);
+  assert(node.dirty_contacts_expiry == 123 && node.dirty_contacts_failures == 2);
+  ++now_ms; node.service();
+  assert(board.reboots == 1 && node.store.contact_flushes == 0);
+}
+static void repair_rebuild_checks() {
+  for (unsigned fault = 0; fault != 5; ++fault) {
+    reset(100);
+    MyMesh node;
+    node.store.incomplete = false;
+    node.dirty_contacts_expiry = 123; node.dirty_contacts_failures = 2;
+    if (fault == 1) node.store.contacts_saved = false;
+    if (fault == 2) node.store.pending = true;
+    if (fault == 3) node.channels_ok = false;
+    if (fault == 4) node.store.capacity = 80;
+    node.repairInternalExtraFS(node.output);
+    assert(node.store.repairs == 1 && node.store.contact_saves == 1
+        && node.channel_saves == 1);
+    assert(node._scheduled_reboot_at == 0 && node.store.contact_flushes == 0);
+    if (fault == 1 || fault == 2) {
+      assert(node.dirty_contacts_failures == 3);
+      assert(node.dirty_contacts_expiry == now_ms + 4 * LAZY_CONTACTS_WRITE_DELAY);
+    } else {
+      assert(node.dirty_contacts_expiry == 0 && node.dirty_contacts_failures == 0);
+    }
+    assert(node.output.text.find(fault == 0 ? "rebuilt" : "failed") != std::string::npos);
+  }
 }
 static void rejected_command_checks(Arm command) {
   reset(0);
@@ -173,7 +245,7 @@ static void rejected_command_checks(Arm command) {
     now_ms = now;
     node.service();
   }
-  assert(board.reboots == 0 && node.flushes == 0);
+  assert(board.reboots == 0 && node.store.contact_flushes == 0);
 }
 int main(int argc, char** argv) {
   assert(argc == 2);
@@ -182,5 +254,6 @@ int main(int argc, char** argv) {
   timing_checks(command);
   service_gate_checks(command);
   rejected_command_checks(command);
+  if (command == Arm::Repair) repair_rebuild_checks();
   std::printf("PASS: scheduled Companion reboot (%s)\n", argv[1]);
 }
