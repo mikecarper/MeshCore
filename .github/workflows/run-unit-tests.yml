@@ -341,6 +341,7 @@ jobs:
           python3 -B test/test_companion_ack_delivery.py -v
           python3 -B test/test_companion_lost_reply.py -v
           python3 -B test/test_companion_delayed_reply_delivery.py -v
+          python3 -B test/test_companion_scheduled_reboot.py -v
           python3 -B test/test_companion_hardware_serial.py -v
           python3 -B test/test_companion_hardware_serial_gps.py -v
           python3 -B test/test_companion_contact_lifetime.py -v

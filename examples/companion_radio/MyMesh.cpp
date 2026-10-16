@@ -4034,6 +4034,7 @@ bool MyMesh::handleLocalControlCommand(const char* command, char* reply,
               "OK - USB logging %s (saved); rebooting to change USB interfaces",
               enabled ? (packet_stream ? "stream" : "on") : "off");
           _scheduled_reboot_at = futureMillis(1000);
+          if (_scheduled_reboot_at == 0) _scheduled_reboot_at = 1;
         } else {
           snprintf(reply, reply_size,
               "OK - USB logging %s (saved); reboot required to change USB interfaces",
@@ -7652,6 +7653,7 @@ void MyMesh::repairInternalExtraFS(Stream& output) {
     output.println(
         "  > internal ExtraFS repaired; rebooting to reload authoritative data");
     _scheduled_reboot_at = futureMillis(1000);
+    if (_scheduled_reboot_at == 0) _scheduled_reboot_at = 1;
     return;
   }
 
@@ -10191,6 +10193,7 @@ void MyMesh::handleTerminalCommand(char* command, bool reader_prompt,
   } else if (strcmp(command, "reboot") == 0) {
     terminalOutput().print("  OK - rebooting in 1 second\r\n");
     _scheduled_reboot_at = futureMillis(1000);
+    if (_scheduled_reboot_at == 0) _scheduled_reboot_at = 1;
 #if defined(NRF52_PLATFORM) && defined(EXTRAFS) && !defined(QSPIFLASH)
   } else if (strcmp(command, "repair extrafs") == 0) {
     repairInternalExtraFS(terminalOutput());
