@@ -41,7 +41,7 @@ MIGRATED_BOARD_COUNTS = {
     "heltec_e290": 9,
     "heltec_t190": 9,
     "heltec_tracker_v1_1": 2,
-    "heltec_tracker_v2": 15,
+    "heltec_tracker_v2": 16,
     "station-g2": 12,
     "station-g3-esp32": 16,
     "t_beam_1w": 11,
@@ -74,12 +74,12 @@ UNCHANGED_COUNTS = {
     ("esp32-c6-devkitm-1", "hwcdc"): 16,
     ("esp32-s3-devkitc-1", "hwcdc"): 22,
     ("esp32-s3-devkitc-1", "uart"): 55,
-    ("esp32-s3-zero", "hwcdc"): 17,
+    ("esp32-s3-zero", "hwcdc"): 24,
     ("esp32dev", "classic_uart"): 5,
     ("esp32doit-devkit-v1", "classic_uart"): 19,
     ("esp32s3box", "hwcdc"): 7,
     ("heltec-rc32", "hwcdc"): 22,
-    ("heltec_v4", "hwcdc"): 45,
+    ("heltec_v4", "hwcdc"): 46,
     ("heltec_v4_migrator", "hwcdc"): 1,
     ("heltec_v4_migrator", "uart"): 4,
     ("heltec_v4_r8", "hwcdc"): 25,
@@ -89,6 +89,7 @@ UNCHANGED_COUNTS = {
     ("seeed_xiao_esp32s3", "hwcdc"): 26,
     ("seeed_xiao_esp32s3_migrator", "hwcdc"): 1,
     ("seeed_xiao_esp32s3_migrator", "uart"): 3,
+    ("seeed_wio_tracker_l2", "hwcdc"): 4,
     ("t-deck", "hwcdc"): 4,
     ("t3_s3_v1_x", "hwcdc"): 19,
     ("t_beams3_supreme", "hwcdc"): 9,
@@ -96,6 +97,7 @@ UNCHANGED_COUNTS = {
     ("thinknode_m9", "uart"): 6,
     ("ttgo-lora32-v1", "classic_uart"): 12,
     ("ttgo-t-beam", "classic_uart"): 16,
+    ("waveshare_s3_lr1121_migrator", "uart"): 2,
 }
 
 # Native-only CI does not install the ESP32 platform's standard manifests.
@@ -251,7 +253,7 @@ class Esp32HwcdcRecipeTests(unittest.TestCase):
                     migrated.add(name)
         self.assertEqual(counts, MIGRATED_BOARD_COUNTS)
         self.assertTrue(PREVIOUS_G2_HWCDC <= self.rows.keys())
-        self.assertEqual(len(migrated), 80)
+        self.assertEqual(len(migrated), 81)
 
     def test_migrated_uploads_use_hardware_reset_without_touch_or_port_wait(self):
         for name, row in self.rows.items():
@@ -279,7 +281,7 @@ class Esp32HwcdcRecipeTests(unittest.TestCase):
                 self.assertEqual(self.sdk["hwcdc_primary_enabled"](row["env"]),
                                  row["kind"] == "hwcdc")
                 self.assertFalse(self.sdk["native_primary_enabled"](row["env"]))
-        expected = Counter({"hwcdc": 323, "uart": 118, "classic_uart": 61})
+        expected = Counter({"hwcdc": 336, "uart": 120, "classic_uart": 61})
         expected.update(kind for _, _, kind in USB_PARTITION_BRIDGES.values())
         self.assertEqual(counts, expected)
 
@@ -359,7 +361,7 @@ class Esp32HwcdcRecipeTests(unittest.TestCase):
                 self.assertEqual(row["values"], {USB_MODE: "0", USB_CDC: "0"})
                 self.assertFalse(self.sdk["hwcdc_primary_enabled"](row["env"]))
                 self.assertFalse(self.sdk["native_primary_enabled"](row["env"]))
-        self.assertEqual(count, 321)
+        self.assertEqual(count, 323)
 
     def test_only_existing_partition_diagnostics_keep_their_cdc_override(self):
         # These two pre-existing diagnostic recipes intentionally select CDC1
