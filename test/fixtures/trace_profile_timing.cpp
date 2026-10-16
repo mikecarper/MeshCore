@@ -11,6 +11,8 @@
 #include <helpers/TracePathHelpers.h>
 
 #define ERR_EVENT_FULL 1
+#define ACTION_RELEASE 0
+#define ACTION_RETRANSMIT_DELAYED(pri, delay) ((((uint32_t)1 + (pri))<<24) | (delay))
 #include "constants.inc"
 
 class RadioLibWrapper {
@@ -42,7 +44,9 @@ struct Manager {
   std::array<mesh::Packet, 4> packets;
   std::array<bool, 4> used{};
   std::vector<mesh::Packet*> queued;
+  unsigned allocations = 0, releases = 0;
   mesh::Packet* allocNew() {
+    ++allocations;
     for (unsigned i = 0; i != used.size(); ++i) if (!used[i]) {
       used[i] = true; return &packets[i];
     }
@@ -53,7 +57,7 @@ struct Manager {
   }
   void free(mesh::Packet* packet) {
     for (unsigned i = 0; i != used.size(); ++i) if (&packets[i] == packet) {
-      assert(used[i]); used[i] = false; return;
+      assert(used[i]); used[i] = false; ++releases; return;
     }
     assert(false);
   }
@@ -84,13 +88,26 @@ public:
   bool queueOutboundPacket(Packet*, uint8_t, uint32_t);
   bool sendPacket(Packet*, uint8_t, uint32_t);
 };
-struct Tables { void markSent(const Packet*) {} };
-static uint8_t getTraceDirectPriority(const Packet*) { return 0; }
+struct Tables {
+  void markSent(const Packet*) {}
+  bool wasSeen(const Packet*) { return false; }
+  void markSeen(const Packet*) {}
+};
+#include "trace_priority.inc"
 class Mesh : public Dispatcher {
 public:
   Tables tables;
   Tables* _tables = &tables;
   void maybeScheduleDirectRetry(Packet*, uint8_t) {}
+  struct Identity {
+    uint8_t key[8] = {};
+    bool isHashMatch(const uint8_t* bytes, size_t length) { return memcmp(bytes, key, length) == 0; }
+  } self_id;
+  unsigned completed = 0;
+  bool allowPacketForward(const Packet*) { return true; }
+  uint32_t getDirectRetransmitDelay(const Packet*) { return 0; }
+  void onTraceRecv(Packet*, uint32_t, uint32_t, uint8_t, const uint8_t*, const uint8_t*, uint8_t) { ++completed; }
+  uint32_t receiveTrace(Packet*);
   Packet* createTrace(uint32_t, uint32_t, uint8_t);
   bool sendDirect(Packet*, const uint8_t*, uint8_t, uint32_t = 0);
 };
@@ -211,10 +228,10 @@ static unsigned producerChecks() {
   unsigned cases = 0;
   for (unsigned mode = 0; mode != 10; ++mode) for (bool swapped : {false, true})
   for (bool terminal : {false, true}) for (uint8_t hash_size : {1, 2, 4, 8})
-  for (uint8_t hops : {1, 7, 20, 21, 31, 41, 43, 63, 64}) {
+  for (uint8_t hops : {1, 7, 20, 21, 31, 41, 43, 63}) {
     const unsigned bytes = unsigned(hash_size) * hops;
     if (bytes > MAX_PACKET_PAYLOAD - 9 || (!terminal && bytes > MAX_FRAME_SIZE - 10)
-        || (terminal && (hash_size == 8 || hops == 64))) continue;
+        || (terminal && hash_size == 8)) continue;
     uint8_t route[MAX_PACKET_PAYLOAD] = {};
     for (unsigned i = 0; i < bytes; ++i) route[i] = uint8_t(i + 1);
     const uint8_t flags = hash_size == 8 ? 3 : mesh::traceFlagsForHashSize(hash_size);
@@ -283,7 +300,95 @@ static unsigned helperChecks() {
   return cases;
 }
 
-int main() {
+struct TraceWalk {
+  unsigned forwarded, completed, path_length, snr_bytes, wire_length;
+};
+
+static TraceWalk forwardTrace(MyMesh& origin, uint8_t hash_size, uint8_t hops) {
+  uint8_t wire[MAX_TRANS_UNIT];
+  unsigned length = origin.manager.queued.front()->writeTo(wire);
+  for (unsigned hop = 0; hop != hops; ++hop) {
+    MyMesh receiver; receiver._radio = origin._radio;
+    auto* packet = receiver.obtainNewPacket(); assert(packet);
+    assert(packet->readFrom(wire, length));
+    memcpy(receiver.self_id.key, packet->payload + 9 + hop * hash_size, hash_size);
+    packet->_snr = 16;
+    const uint32_t action = receiver.receiveTrace(packet);
+    assert(action != ACTION_RELEASE && receiver.completed == 0);
+    assert(packet->path_len == hop + 1);
+    assert(receiver.queueOutboundPacket(packet, (action >> 24) - 1, action & 0x00ffffff));
+    length = packet->writeTo(wire);
+    assert(length <= MAX_TRANS_UNIT);
+    receiver.releasePacket(packet);
+  }
+  MyMesh endpoint; endpoint._radio = origin._radio;
+  auto* packet = endpoint.obtainNewPacket(); assert(packet);
+  assert(packet->readFrom(wire, length));
+  assert(endpoint.receiveTrace(packet) == ACTION_RELEASE);
+  TraceWalk result{hops, endpoint.completed, packet->path_len,
+                   packet->getPathByteLen(), length};
+  endpoint.releasePacket(packet);
+  return result;
+}
+
+static void hopBoundaryChecks(unsigned selected_hash = 0) {
+  for (uint8_t hash_size : {1, 2}) {
+    if (selected_hash && selected_hash != hash_size) continue;
+    for (uint8_t hops : {63, 64}) {
+      Radio radio; configure(radio, 2, false);
+      MyMesh node; node._radio = &radio;
+      node.cmd_frame[0] = CMD_SEND_TRACE_PATH;
+      const uint32_t tag = 17, auth = 23;
+      memcpy(node.cmd_frame + 1, &tag, 4); memcpy(node.cmd_frame + 5, &auth, 4);
+      node.cmd_frame[9] = hash_size - 1;
+      for (unsigned hop = 0; hop != hops; ++hop) {
+        node.cmd_frame[10 + hop * hash_size] = hop + 1;
+        if (hash_size == 2) node.cmd_frame[11 + hop * hash_size] = 0x99;
+      }
+      const size_t host_length = 10 + hash_size * hops;
+      assert(host_length <= MAX_FRAME_SIZE);
+      node.handleTraceFrame(host_length);
+      if (hops == 63) {
+        assert(node.error == 0 && node._delayed_replies.hasBinaryTrace());
+        assert(node.manager.allocations == 1 && node.manager.queued.size() == 1);
+        const auto walked = forwardTrace(node, hash_size, hops);
+        assert(walked.forwarded == 63 && walked.completed == 1);
+        assert(walked.path_length == 63 && walked.snr_bytes == 63);
+      } else if (node.error != ERR_CODE_ILLEGAL_ARG) {
+        // Exact old admission exposes two independent protocol limits: a raw
+        // path_len of 64 serializes as packed hash-size 2/count 0, and TRACE's
+        // completion callback is guarded by path_len < MAX_PATH_SIZE.
+        assert(node.error == 0 && node._delayed_replies.hasBinaryTrace());
+        assert(node.manager.allocations == 1 && node.manager.queued.size() == 1);
+        const auto walked = forwardTrace(node, hash_size, hops);
+        assert(walked.forwarded == 64 && walked.completed == 0);
+        assert(walked.path_length == 64 && walked.snr_bytes == 0);
+        const uint32_t airtime = radio.driver.getProfileAirtime(0, 11 + hash_size * hops);
+        const uint32_t wrapped = 500U + (6U * airtime + 250U);
+        const uint32_t unwrapped = 500U + (6U * airtime + 250U) * 65U;
+        assert(node._delayed_replies.trace.timeout == wrapped && wrapped < unwrapped);
+        fprintf(stderr, "old 64-hop admission hash=%u host=%zu forwarded=%u completed=%u snr_bytes=%u timeout=%u unwrapped=%u\n",
+            hash_size, host_length, walked.forwarded, walked.completed, walked.snr_bytes, wrapped, unwrapped);
+        assert(false && "64-hop trace must be rejected: admitted route cannot complete and timeout count wraps");
+      } else {
+        assert(node.manager.allocations == 0 && node.manager.releases == 0);
+        assert(node.manager.queued.empty() && node.rng.calls == 0);
+        assert(!node._delayed_replies.hasBinaryTrace() && !node._terminal_trace_pending);
+        assert(node._delayed_replies.trace.phase == mesh::CompanionDelayedReplies::Empty);
+        for (unsigned i = 0; i != mesh::CompanionDelayedReplies::HISTORY_SIZE; ++i)
+          assert(node._delayed_replies.reserveTrace(tag + i, auth, node.clock.now)
+              != mesh::CompanionDelayedReplies::NO_HISTORY);
+      }
+    }
+  }
+  puts("PASS: 63-hop traces complete and 64-hop commands have no side effects");
+}
+
+int main(int argc, char** argv) {
+  if (argc == 2 && strncmp(argv[1], "hop-boundary", 12) == 0) {
+    hopBoundaryChecks(strlen(argv[1]) == 14 ? argv[1][13] - '0' : 0);
+    return 0;
+  }
   const unsigned producers = producerChecks(), helpers = helperChecks();
   printf("PASS: trace timing %u producer cases, %u existing/helper policy cases\n", producers, helpers);
 }

@@ -7037,7 +7037,7 @@ void MyMesh::handleCmdFrame(size_t len) {
     uint8_t path_len = len - 10;
     uint8_t flags = cmd_frame[9];
     uint8_t path_sz = flags & 0x03;  // NEW v1.11+
-    if ((path_len >> path_sz) > MAX_PATH_SIZE || (path_len % (1 << path_sz)) != 0) { // make sure is multiple of path_sz
+    if ((path_len >> path_sz) >= MAX_PATH_SIZE || (path_len % (1 << path_sz)) != 0) { // make sure is multiple of path_sz
       writeErrFrame(ERR_CODE_ILLEGAL_ARG);
     } else {
       uint32_t tag, auth;
