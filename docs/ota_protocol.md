@@ -418,6 +418,8 @@ package and keeps target `0` as a MID-only wildcard. Stores keep `leaves[]` in R
 auto-GC, preserving resumable progress. The debug/operator equivalent is `ota dev resume <MID8>`; after a
 reboot the MID is mandatory, while a no-argument form may only reuse a still-active session MID. It never
 uses the `nullptr` automatic-adoption path, so a malformed MID or no active MID fails closed.
+The CLI refuses resume while an application or bootloader update is armed, before reopening storage
+can reset the approved handoff state.
 Raw ESP32/nRF52 staging scans every valid header before adoption: address order is not creation order.
 Explicit resume selects a unique matching MID/target; automatic resume refuses multiple valid headers
 without erasing them. A leaf-marker read error is never treated as a missing block: reconnectable storage

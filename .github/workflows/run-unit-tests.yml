@@ -486,6 +486,7 @@ jobs:
           python3 -B test/test_tower_auto_integration.py -v
           python3 -B test/test_ota_dev_staging.py -v
           python3 -B test/test_ota_dev_reboot_guard.py -v
+          python3 -B test/test_ota_dev_resume.py -v
 
       - name: Verify dual-profile switching and chirp timing
         working-directory: test

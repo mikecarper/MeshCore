@@ -1351,6 +1351,11 @@ static bool handle_dev(const char* d, char* reply, OtaContext& c) {
             r.root_ok, r.payload_ok, r.image_ok, r.sig_ok, r.trusted);
 
   } else if (is_cmd(d, "resume", &d)) {     // explicit re-adopt of a known/active staged MID (test/debug)
+    // Reopening can reset an approved store even when no checkpoint is found.
+    if (c.apply_pending || c.bootloader_apply_pending) {
+      strcpy(reply, "ERR another update is already armed");
+      return true;
+    }
     uint8_t mid[4];
     if (*d) {
       if (!parse_hex_exact(d, mid, sizeof(mid))) {

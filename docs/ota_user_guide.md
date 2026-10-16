@@ -504,6 +504,8 @@ discovering a source or reconnecting its storage. Reissuing an explicit
 For bring-up/debugging, `ota dev resume <MID8>` performs the same explicit MID-bound re-adoption without
 starting a new network fetch. After reboot it requires the MID; bare `ota dev resume` is accepted only while
 an active/requested session MID still exists, and malformed or missing identifiers are rejected.
+Resume is refused while an application or bootloader update is armed, preserving its approved staging
+and pending reboot.
 If raw flash contains multiple valid staged headers, automatic resume leaves them untouched rather than
 guessing which is newest. Specify the intended MID to select its unique checkpoint; ambiguous matches are
 rejected. Temporary storage read failures no longer consume a download slot indefinitely: host storage
