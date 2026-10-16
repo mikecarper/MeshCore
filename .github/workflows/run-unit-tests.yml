@@ -96,6 +96,7 @@ jobs:
 
       - name: Verify compact STM32 signature arithmetic
         run: |
+          python3 -B test/test_stm32_companion_profile.py -v
           python3 -B test/test_ed25519_compact_scalar.py -v
           python3 -B test/test_ed25519_compact.py -v
 
