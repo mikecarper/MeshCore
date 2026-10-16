@@ -1163,6 +1163,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#waveshare-esp32-s3-lr1121-observer-migration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Waveshare ESP32-S3 LR1121 observer migration
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#repeatable-esp32-build-recipe" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2415,6 +2426,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#waveshare-esp32-s3-lr1121-observer-migration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Waveshare ESP32-S3 LR1121 observer migration
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#repeatable-esp32-build-recipe" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2559,7 +2581,7 @@ table-prefix test; the bridge core is otherwise shared.</p>
 <td>4 MiB</td>
 <td><code>variants/dual_ota_full_4MB.csv</code></td>
 <td>0x1F0000 / 0x1F0000</td>
-<td>ThinkNode M2/M5, LilyGo T3S3, Nibble, Heltec CT62</td>
+<td>ThinkNode M2/M5, LilyGo T3S3, Nibble, Heltec CT62, Waveshare LR1121 observers</td>
 </tr>
 <tr>
 <td>8 MiB</td>
@@ -2593,7 +2615,7 @@ USB/serial using that board's flashing procedure; the merged image contains
 the bootloader, partition table, and application. Never upload a merged image
 through an app-only browser or LoRa updater.</p>
 <p>The new Full defaults outside the migration catalog, including ESP32-C6
-boards and boards introduced with <code>min_spiffs.csv</code>, have no reviewed wireless
+boards and other boards introduced with <code>min_spiffs.csv</code>, have no reviewed wireless
 expansion package in this recipe. If their Full app fits the unchanged live
 layout and update identity, an ordinary app update can suffice. A table change
 requires USB/serial until a matching migration package is reviewed. A Full
@@ -2601,6 +2623,38 @@ image fitting physical flash does not by itself prove it can be installed
 through an old updater. Full Companion images with a single app slot likewise
 need USB/serial for local firmware replacement; their host-backed LoRa sending
 role does not provide a second local update slot.</p>
+<h2 id="waveshare-esp32-s3-lr1121-observer-migration">Waveshare ESP32-S3 LR1121 observer migration</h2>
+<p>Only the Waveshare <strong>repeater observer</strong> and <strong>room-server observer</strong> select the
+larger 4 MiB table. Ordinary repeater, room, Companion and KISS recipes retain
+<code>min_spiffs.csv</code>. The two exact migration selections are:</p>
+<pre><code class="language-bash">sh scripts/build_esp32_partition_migration.sh \
+  --board waveshare-s3-lr1121-observer-repeater \
+  --board waveshare-s3-lr1121-observer-room-server \
+  --version v1.18.0-test --radio-preset usa-cascadia --profile cascade --dry-run
+</code></pre>
+<p>Remove <code>--dry-run</code> only to build and verify the packages from a clean commit;
+this command does not flash hardware. Each observer role has its own exact-target
+Partition Expander. Both its Wi-Fi application and first-stage LoRa package use
+that same configuration-preserving bridge, not the older identity-only LoRa
+handoff. It accepts a reviewed source layout, stages and verifies identity and
+supported configuration before destructive writes, and refuses unknown layouts
+or saved data that cannot be preserved safely. The final table has two
+1984 KiB application slots and only <strong>64 KiB SPIFFS</strong>.</p>
+<p>The bridge can migrate from either existing OTA slot. After reboot it must
+verify the new table, private key and saved configuration before enabling the
+LoRa receiver. It uses the saved primary radio profile and fetches only the
+exact observer role's Full image. The node name, ACL, radio 1/radio 2 and saved
+GPS preferences remain part of the configuration handoff; temporary sessions
+are not converted into permanent preferences. Already-expanded boards use the
+existing verified-image/no-handoff safety checks rather than migrating again.</p>
+<p>The recipes reuse the real LR1121 board implementation, including its 1.8 V
+TCXO and HP-PA/RF-switch wiring. The first-stage image must pass the legacy
+1.25 MiB size limit and both final-image and mOTA staging guards. A failed guard
+must fail the package, not produce a reduced image. These are build/host-test
+contracts, <strong>not physical qualification</strong>: test both A/B placements, restored
+settings and interruptions on a sacrificial Waveshare before remote deployment.
+The ESP32's single partition-table-sector erase/write is still not atomic;
+power loss in that window can require cable recovery.</p>
 <h2 id="repeatable-esp32-build-recipe">Repeatable ESP32 build recipe</h2>
 <p>From a clean commit, run the shell menu in WSL/Linux:</p>
 <pre><code class="language-bash">sh scripts/build_esp32_partition_migration.sh
@@ -2730,7 +2784,7 @@ node name and preferences, radio profiles, ACL and login replay state, region
 keys, and selected network/OTA, filtering, display, and telemetry settings.
 It refuses migration if the saved files cannot fit or verify in NVS. The older
 LoRa handoff route preserves only the private identity, so saved settings may
-reset. The two board-specific Partition Expander routes preserve their
+reset. The board/role-specific Partition Expander routes preserve their
 supported configuration and automatically fetch the exact-target Full image;
 follow the package README for those routes.</p>
 <p>The old SPIFFS image is deliberately not raw-copied into an expanded partition:

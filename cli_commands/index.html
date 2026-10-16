@@ -3693,6 +3693,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#view-or-change-mqtt-advert-signature-filtering" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        View or change MQTT advert signature filtering
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#view-or-change-periodic-neighbors-publishing-mqtt-observer-neighbors-feature" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -6601,6 +6612,17 @@
     <span class="md-ellipsis">
       
         View or change MQTT TX packet uplinking
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#view-or-change-mqtt-advert-signature-filtering" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        View or change MQTT advert signature filtering
       
     </span>
   </a>
@@ -11501,6 +11523,26 @@ completed MQTT shutdown before it can write firmware.</p>
 <blockquote>
 <p><strong>Note:</strong> <code>mqtt.rx</code> and <code>mqtt.tx</code> take effect immediately - no restart required. Both can be enabled simultaneously.</p>
 </blockquote>
+<hr />
+<h4 id="view-or-change-mqtt-advert-signature-filtering">View or change MQTT advert signature filtering</h4>
+<p><strong>Usage:</strong></p>
+<ul>
+<li><code>get mqtt.advert.verify</code></li>
+<li><code>set mqtt.advert.verify &lt;on|off&gt;</code></li>
+</ul>
+<p><strong>Parameters:</strong></p>
+<ul>
+<li><code>on</code>: verify the Ed25519 signature of each received advert and skip publishing any that fail (the same check the mesh applies before relaying)</li>
+<li><code>off</code>: publish received adverts as heard</li>
+</ul>
+<p><strong>Default:</strong> <code>off</code></p>
+<blockquote>
+<p><strong>Note:</strong> Adverts are uploaded before the mesh validates them, so a frame corrupted over the air that still passes the LoRa CRC is published with a mangled name or location. Leaving this off keeps that corruption visible to collectors; turning it on hides it from them. Dropped adverts are counted as <code>badsig=</code> in <code>get mqtt.stats</code>. Takes effect immediately.</p>
+</blockquote>
+<p>On Companion builds, enabling this setting opts into a marked MQTT preference
+record. Before rolling back to firmware without this setting, turn it off to
+restore the older record format and retain the saved MQTT setup. Ordinary
+default-off updates keep the existing record size.</p>
 <hr />
 <h4 id="view-or-change-periodic-neighbors-publishing-mqtt-observer-neighbors-feature">View or change periodic neighbors publishing (MQTT observer, neighbors feature)</h4>
 <p><strong>Usage:</strong>
