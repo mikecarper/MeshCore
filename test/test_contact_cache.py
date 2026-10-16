@@ -107,6 +107,7 @@ class ContactCacheTest(unittest.TestCase):
             (temp / "send_under_test.h").write_text(
                 "namespace mesh {\n" + method(mesh, "bool Mesh::sendDirect(") + "\n}\n"
                 + "\n".join(method(chat, signature) for signature in (
+                    "int BaseChatMesh::sendContactPacket(",
                     "int BaseChatMesh::sendLogin(", "int BaseChatMesh::sendAnonReq(",
                     "bool BaseChatMesh::allocateRequestTag(",
                     "int  BaseChatMesh::sendRequest(const ContactInfo& recipient, const uint8_t*",
@@ -133,6 +134,7 @@ class ContactCacheTest(unittest.TestCase):
                 self.assertIn("crc_read_passes == 104", result.stderr)
             else:
                 self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                self.assertIn('PASS: 114 shared request/login payload and routing traces', result.stdout)
 
 
 if __name__ == "__main__":

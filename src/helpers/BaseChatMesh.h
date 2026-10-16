@@ -97,6 +97,7 @@ class BaseChatMesh : public mesh::Mesh {
   ConnectionInfo connections[MAX_CONNECTIONS];
 
   mesh::Packet* composeMsgPacket(const ContactInfo& recipient, uint32_t timestamp, uint8_t attempt, const char *text, uint32_t& expected_ack);
+  int sendContactPacket(const ContactInfo& recipient, mesh::Packet* packet, uint32_t& est_timeout);
 
 protected:
   void sendAckTo(const ContactInfo& dest, const uint8_t* ack_hash, uint8_t ack_len=4);

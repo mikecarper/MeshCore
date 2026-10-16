@@ -108,6 +108,7 @@ struct BaseChatMesh {
   uint32_t calcFloodTimeoutMillisFor(uint32_t) const { return 5000; }
   uint32_t calcDirectTimeoutMillisFor(uint32_t, uint8_t) const { return direct_timeout; }
   void startConnection(const ContactInfo&, uint16_t) { ++connection_starts; }
+  int sendContactPacket(const ContactInfo&, mesh::Packet*, uint32_t&);
   int sendLogin(const ContactInfo&, const char*, uint32_t&);
   int sendAnonReq(const ContactInfo&, const uint8_t*, uint8_t, uint32_t&, uint32_t&);
   int sendRequest(const ContactInfo&, const uint8_t*, uint8_t, uint32_t&, uint32_t&);

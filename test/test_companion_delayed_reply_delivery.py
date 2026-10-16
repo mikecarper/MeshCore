@@ -47,7 +47,8 @@ def production_methods(source, base, packet, dispatcher):
     ))
     methods += "\n#if COMPANION_FEATURE_TEXT_TERMINAL\n" + terminal + "\n#endif\n"
     methods += "\n" + "\n".join(extract_braced(base, signature) for signature in (
-        "bool BaseChatMesh::onContactPathRecv(", "int BaseChatMesh::sendLogin(",
+        "bool BaseChatMesh::onContactPathRecv(", "int BaseChatMesh::sendContactPacket(",
+        "int BaseChatMesh::sendLogin(",
         "bool BaseChatMesh::allocateRequestTag(",
         "int BaseChatMesh::sendAnonReq(",
         "int  BaseChatMesh::sendRequest(const ContactInfo& recipient, const uint8_t*",

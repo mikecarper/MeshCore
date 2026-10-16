@@ -43,6 +43,7 @@ public:
   unsigned fail_rename = 0, fail_remove = 0, fail_config = 0;
   bool fail_metadata = false, fail_open = false, partial_open = false;
   bool fail_read = false, short_write = false, fail_close = false, fail_format = false;
+  size_t read_limit = SIZE_MAX;
   size_t max_backend_write = 0;
   bool exists(const char* path) const { return files.count(path) != 0; }
   bool mkdir(const char*) { ++operations; return true; }
@@ -113,7 +114,8 @@ inline size_t File::read(uint8_t* data, size_t length) {
   assert(stream && !stream->writer); ++stream->fs->operations;
   if (stream->fs->fail_read) return 0;
   const auto& bytes = stream->fs->files.at(stream->path);
-  size_t n = std::min(length, bytes.size()-std::min(stream->position, bytes.size()));
+  size_t n = std::min(std::min(length, stream->fs->read_limit),
+                      bytes.size()-std::min(stream->position, bytes.size()));
   if (n) memcpy(data, bytes.data()+stream->position, n);
   stream->position += n; return n;
 }

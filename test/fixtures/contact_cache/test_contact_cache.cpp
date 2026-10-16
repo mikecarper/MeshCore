@@ -153,9 +153,15 @@ protected:
   const char* getLogDateTime() { return "test"; }
 public:
   Packet packet;
-  unsigned released = 0, queued = 0;
+  unsigned released = 0, queued = 0, queue_attempts = 0;
+  bool queue_accepts = true;
   void releasePacket(Packet*) { ++released; }
-  bool sendPacket(Packet*, uint8_t, uint32_t) { ++queued; return true; }
+  bool sendPacket(Packet* packet, uint8_t, uint32_t) {
+    ++queue_attempts;
+    if (!queue_accepts) { releasePacket(packet); return false; }
+    ++queued;
+    return true;
+  }
   bool sendDirect(Packet*, const uint8_t*, uint8_t, uint32_t = 0);
 };
 }
@@ -166,6 +172,7 @@ public:
 #define ADV_TYPE_ROOM 3
 class BaseChatMesh : public mesh::Mesh {
   uint32_t getTransmitAirtime(const mesh::Packet* packet) const {
+    ++airtime_queries;
     return _radio->getEstAirtimeFor(packet->getRawLength());
   }
   struct Radio { uint32_t getEstAirtimeFor(int) { return 20; } } radio;
@@ -176,23 +183,38 @@ class BaseChatMesh : public mesh::Mesh {
   Clock* getRTCClock() { return &clock; }
   Rng* getRNG() { return &rng; }
   mesh::Packet* createDatagram(uint8_t type, const mesh::Identity&,
-      const uint8_t*, const uint8_t*, size_t length) {
+      const uint8_t* secret, const uint8_t* data, size_t length) {
+    ++allocations;
+    payload.assign(data, data + length);
+    memcpy(shared_secret.data(), secret, shared_secret.size());
+    if (!allocation_succeeds) return nullptr;
     packet = mesh::Packet();
     packet.header = type << PH_TYPE_SHIFT;
     packet.payload_len = length;
+    assert(length <= sizeof(packet.payload));
+    memcpy(packet.payload, data, length);
     return &packet;
   }
   mesh::Packet* createAnonDatagram(uint8_t type, const mesh::LocalIdentity&,
       const mesh::Identity& peer, const uint8_t* secret, const uint8_t* data, size_t length) {
     return createDatagram(type, peer, secret, data, length);
   }
-  bool sendFloodScoped(const ContactInfo&, mesh::Packet* p) { return sendPacket(p, 0, 0); }
+  bool sendFloodScoped(const ContactInfo&, mesh::Packet* p) {
+    ++flood_calls;
+    return sendPacket(p, 0, 0);
+  }
   uint32_t calcFloodTimeoutMillisFor(uint32_t t) { return t * 2; }
   uint32_t calcDirectTimeoutMillisFor(uint32_t t, uint8_t n) { return t * (n + 1); }
+  int sendContactPacket(const ContactInfo&, mesh::Packet*, uint32_t&);
 public:
+  unsigned allocations = 0, tag_checks = 0, flood_calls = 0;
+  mutable unsigned airtime_queries = 0;
+  bool allocation_succeeds = true, tag_allowed = true;
+  std::vector<uint8_t> payload;
+  std::array<uint8_t, 32> shared_secret = {};
   int sendLogin(const ContactInfo&, const char*, uint32_t&);
   int sendAnonReq(const ContactInfo&, const uint8_t*, uint8_t, uint32_t&, uint32_t&);
-  virtual bool allowRequestTag(uint32_t) { return true; }
+  virtual bool allowRequestTag(uint32_t) { ++tag_checks; return tag_allowed; }
   virtual bool allocateRequestTag(uint32_t&);
   int sendRequest(const ContactInfo&, const uint8_t*, uint8_t, uint32_t&, uint32_t&);
   int sendRequest(const ContactInfo&, uint8_t, uint32_t&, uint32_t&);
@@ -390,6 +412,108 @@ static void failed_path_reads_fail_sends_without_leaking_packets() {
     assert(mesh.queued == (fail ? 0u : 4u));
     if (!fail) assert(memcmp(mesh.packet.path, route(29).data(), 63) == 0);
   }
+}
+
+static void shared_request_tail_keeps_payload_routes_and_timeouts() {
+  Fixture f(1);
+  mesh::contactSecretCache().attach(&f.store);
+  BaseChatMesh mesh;
+  ContactInfo recipient = f.host.contacts[0];
+  recipient.sync_since = 0x12345678;
+  std::vector<uint8_t> request(MAX_PACKET_PAYLOAD, 0x6D);
+  std::array<uint8_t, 32> first_secret = {};
+  bool have_secret = false;
+  unsigned traces = 0;
+  for (unsigned kind = 0; kind != 4; ++kind) {
+    for (uint8_t path_len : {uint8_t(OUT_PATH_UNKNOWN), uint8_t(0), uint8_t(0x42)}) {
+      recipient.out_path_len = path_len;
+      for (unsigned outcome = 0; outcome != 4; ++outcome) {
+        if (kind == 0 && outcome == 3) continue; // Login does not allocate request tags.
+        const unsigned variants = kind == 0 ? 6 : kind == 3 ? 1 : 2;
+        for (unsigned variant = 0; variant != variants; ++variant) {
+          mesh.allocation_succeeds = outcome != 2;
+          mesh.queue_accepts = outcome != 1;
+          mesh.tag_allowed = outcome != 3;
+          const unsigned allocations = mesh.allocations, attempted = mesh.queue_attempts;
+          const unsigned queued = mesh.queued, released = mesh.released;
+          const unsigned airtime_queries = mesh.airtime_queries, floods = mesh.flood_calls;
+          const unsigned tag_checks = mesh.tag_checks;
+          uint32_t timeout = 0xDEADBEEF, tag = 0xCAFEBABE;
+          int result;
+          std::vector<uint8_t> expected(4);
+          const uint32_t timestamp = 100;
+          memcpy(expected.data(), &timestamp, sizeof(timestamp));
+          if (kind == 0) {
+            recipient.type = variant < 3 ? ADV_TYPE_ROOM : 1;
+            const size_t lengths[] = {0, 15, 16};
+            const std::string password(lengths[variant % 3], 'p');
+            if (recipient.type == ADV_TYPE_ROOM) {
+              const auto* since = reinterpret_cast<const uint8_t*>(&recipient.sync_since);
+              expected.insert(expected.end(), since, since + 4);
+            }
+            expected.insert(expected.end(), std::min(password.size(), size_t(15)), 'p');
+            result = mesh.sendLogin(recipient, password.c_str(), timeout);
+          } else if (kind == 1 || kind == 2) {
+            // Leave the same timestamp/encryption envelope required by the
+            // production datagram builders, not just the caller's scratch.
+            const unsigned overhead = kind == 1 ? 1 + PUB_KEY_SIZE : CIPHER_MAC_SIZE;
+            const uint8_t length = variant == 0 ? 0
+                : MAX_PACKET_PAYLOAD - 4 - overhead - (CIPHER_BLOCK_SIZE - 1);
+            expected.insert(expected.end(), request.begin(), request.begin() + length);
+            result = kind == 1
+                ? mesh.sendAnonReq(recipient, request.data(), length, tag, timeout)
+                : mesh.sendRequest(recipient, request.data(), length, tag, timeout);
+          } else {
+            expected.push_back(0x71);
+            expected.insert(expected.end(), 4, 0);
+            expected.insert(expected.end(), 4, 42);
+            result = mesh.sendRequest(recipient, 0x71, tag, timeout);
+          }
+          ++traces;
+          assert(mesh.tag_checks == tag_checks + unsigned(kind != 0));
+          if (outcome == 3) {
+            assert(result == MSG_SEND_FAILED && tag == timestamp);
+            assert(mesh.allocations == allocations && mesh.queue_attempts == attempted);
+            assert(mesh.airtime_queries == airtime_queries && mesh.released == released);
+            assert(timeout == 0xDEADBEEF);
+            continue;
+          }
+          assert(mesh.allocations == allocations + 1 && mesh.payload == expected);
+          if (mesh.allocation_succeeds)
+            assert(mesh.packet.getPayloadType() == (kind < 2 ? PAYLOAD_TYPE_ANON_REQ : PAYLOAD_TYPE_REQ));
+          if (kind != 0) assert(tag == timestamp);
+          if (!have_secret) { first_secret = mesh.shared_secret; have_secret = true; }
+          assert(mesh.shared_secret == first_secret);
+          if (outcome == 2) {
+            assert(result == MSG_SEND_FAILED && timeout == 0xDEADBEEF);
+            assert(mesh.queue_attempts == attempted && mesh.released == released);
+            assert(mesh.airtime_queries == airtime_queries && mesh.flood_calls == floods);
+            continue;
+          }
+          assert(mesh.airtime_queries == airtime_queries + 1);
+          assert(mesh.queue_attempts == attempted + 1);
+          assert(mesh.flood_calls == floods + unsigned(path_len == OUT_PATH_UNKNOWN));
+          if (outcome == 1) {
+            assert(result == MSG_SEND_FAILED && timeout == 0xDEADBEEF);
+            assert(mesh.queued == queued && mesh.released == released + 1);
+          } else {
+            const bool flood = path_len == OUT_PATH_UNKNOWN;
+            assert(result == (flood ? MSG_SEND_SENT_FLOOD : MSG_SEND_SENT_DIRECT));
+            assert(timeout == (flood ? 40u : 20u * (path_len + 1u)));
+            assert(mesh.queued == queued + 1 && mesh.released == released);
+            if (!flood) {
+              assert(mesh.packet.getRouteType() == ROUTE_TYPE_DIRECT);
+              const unsigned path_bytes = (path_len & 63) * ((path_len >> 6) + 1);
+              assert(mesh.packet.path_len == path_len);
+              assert(!memcmp(mesh.packet.path, route(0).data(), path_bytes));
+            }
+          }
+        }
+      }
+    }
+  }
+  assert(traces == 114);
+  printf("PASS: %u shared request/login payload and routing traces\n", traces);
 }
 
 static void contact_reload_preserves_disk_on_cache_exhaustion() {
@@ -841,6 +965,7 @@ static void deferred_cleanup_publishes_actual_cached_handles() {
 
 int main() {
   contact_tx_policy_round_trips_without_growing_records();
+  shared_request_tail_keeps_payload_routes_and_timeouts();
 #if defined(ESP32_PLATFORM)
   deferred_cleanup_publishes_actual_cached_handles();
   cooperative_save_services_commands_and_preserves_snapshots();

@@ -801,7 +801,16 @@ bool BaseChatMesh::shareContactZeroHop(const ContactInfo& contact) {
   auto packet = obtainNewPacket();
   if (packet == NULL) return false;  // no Packets available
 
-  packet->readFrom(temp_buf, plen);  // restore Packet from 'blob'
+  // A cache read may be short or corrupt. Never share a partial packet or a
+  // different identity that happens to occupy the same cache-key prefix.
+  if (!packet->readFrom(temp_buf, plen)
+      || packet->getPayloadType() != PAYLOAD_TYPE_ADVERT
+      || packet->payload_len < PUB_KEY_SIZE + 4 + SIGNATURE_SIZE
+      || packet->payload_len > PUB_KEY_SIZE + 4 + SIGNATURE_SIZE + MAX_ADVERT_DATA_SIZE
+      || memcmp(packet->payload, contact.id.pub_key, PUB_KEY_SIZE) != 0) {
+    releasePacket(packet);
+    return false;
+  }
   uint16_t codes[2];
   codes[0] = codes[1] = 0;   // { 0, 0 } means 'send this nowhere'
   sendZeroHop(packet, codes);
@@ -830,6 +839,24 @@ bool BaseChatMesh::importContact(const uint8_t src_buf[], uint8_t len) {
   return false; // error
 }
 
+// Keep the identical request/login routing tail shared on flash-limited nodes.
+__attribute__((noinline))
+int BaseChatMesh::sendContactPacket(const ContactInfo& recipient, mesh::Packet* pkt, uint32_t& est_timeout) {
+  if (pkt) {
+    uint32_t t = getTransmitAirtime(pkt);
+    if (recipient.out_path_len == OUT_PATH_UNKNOWN) {
+      if (!sendFloodScoped(recipient, pkt)) return MSG_SEND_FAILED;
+      est_timeout = calcFloodTimeoutMillisFor(t);
+      return MSG_SEND_SENT_FLOOD;
+    } else {
+      if (!sendDirect(pkt, recipient.getPath(), recipient.out_path_len)) return MSG_SEND_FAILED;
+      est_timeout = calcDirectTimeoutMillisFor(t, recipient.out_path_len);
+      return MSG_SEND_SENT_DIRECT;
+    }
+  }
+  return MSG_SEND_FAILED;
+}
+
 int BaseChatMesh::sendLogin(const ContactInfo& recipient, const char* password, uint32_t& est_timeout) {
   mesh::Packet* pkt;
   {
@@ -850,19 +877,7 @@ int BaseChatMesh::sendLogin(const ContactInfo& recipient, const char* password, 
 
     pkt = createAnonDatagram(PAYLOAD_TYPE_ANON_REQ, self_id, recipient.id, recipient.getSharedSecret(self_id), temp, tlen);
   }
-  if (pkt) {
-    uint32_t t = getTransmitAirtime(pkt);
-    if (recipient.out_path_len == OUT_PATH_UNKNOWN) {
-      if (!sendFloodScoped(recipient, pkt)) return MSG_SEND_FAILED;
-      est_timeout = calcFloodTimeoutMillisFor(t);
-      return MSG_SEND_SENT_FLOOD;
-    } else {
-      if (!sendDirect(pkt, recipient.getPath(), recipient.out_path_len)) return MSG_SEND_FAILED;
-      est_timeout = calcDirectTimeoutMillisFor(t, recipient.out_path_len);
-      return MSG_SEND_SENT_DIRECT;
-    }
-  }
-  return MSG_SEND_FAILED;
+  return sendContactPacket(recipient, pkt, est_timeout);
 }
 
 bool BaseChatMesh::allocateRequestTag(uint32_t& tag) {
@@ -880,19 +895,7 @@ int BaseChatMesh::sendAnonReq(const ContactInfo& recipient, const uint8_t* data,
 
     pkt = createAnonDatagram(PAYLOAD_TYPE_ANON_REQ, self_id, recipient.id, recipient.getSharedSecret(self_id), temp, 4 + len);
   }
-  if (pkt) {
-    uint32_t t = getTransmitAirtime(pkt);
-    if (recipient.out_path_len == OUT_PATH_UNKNOWN) {
-      if (!sendFloodScoped(recipient, pkt)) return MSG_SEND_FAILED;
-      est_timeout = calcFloodTimeoutMillisFor(t);
-      return MSG_SEND_SENT_FLOOD;
-    } else {
-      if (!sendDirect(pkt, recipient.getPath(), recipient.out_path_len)) return MSG_SEND_FAILED;
-      est_timeout = calcDirectTimeoutMillisFor(t, recipient.out_path_len);
-      return MSG_SEND_SENT_DIRECT;
-    }
-  }
-  return MSG_SEND_FAILED;
+  return sendContactPacket(recipient, pkt, est_timeout);
 }
 
 int  BaseChatMesh::sendRequest(const ContactInfo& recipient, const uint8_t* req_data, uint8_t data_len, uint32_t& tag, uint32_t& est_timeout) {
@@ -907,19 +910,7 @@ int  BaseChatMesh::sendRequest(const ContactInfo& recipient, const uint8_t* req_
 
     pkt = createDatagram(PAYLOAD_TYPE_REQ, recipient.id, recipient.getSharedSecret(self_id), temp, 4 + data_len);
   }
-  if (pkt) {
-    uint32_t t = getTransmitAirtime(pkt);
-    if (recipient.out_path_len == OUT_PATH_UNKNOWN) {
-      if (!sendFloodScoped(recipient, pkt)) return MSG_SEND_FAILED;
-      est_timeout = calcFloodTimeoutMillisFor(t);
-      return MSG_SEND_SENT_FLOOD;
-    } else {
-      if (!sendDirect(pkt, recipient.getPath(), recipient.out_path_len)) return MSG_SEND_FAILED;
-      est_timeout = calcDirectTimeoutMillisFor(t, recipient.out_path_len);
-      return MSG_SEND_SENT_DIRECT;
-    }
-  }
-  return MSG_SEND_FAILED;
+  return sendContactPacket(recipient, pkt, est_timeout);
 }
 
 int  BaseChatMesh::sendRequest(const ContactInfo& recipient, uint8_t req_type, uint32_t& tag, uint32_t& est_timeout) {
@@ -934,19 +925,7 @@ int  BaseChatMesh::sendRequest(const ContactInfo& recipient, uint8_t req_type, u
 
     pkt = createDatagram(PAYLOAD_TYPE_REQ, recipient.id, recipient.getSharedSecret(self_id), temp, sizeof(temp));
   }
-  if (pkt) {
-    uint32_t t = getTransmitAirtime(pkt);
-    if (recipient.out_path_len == OUT_PATH_UNKNOWN) {
-      if (!sendFloodScoped(recipient, pkt)) return MSG_SEND_FAILED;
-      est_timeout = calcFloodTimeoutMillisFor(t);
-      return MSG_SEND_SENT_FLOOD;
-    } else {
-      if (!sendDirect(pkt, recipient.getPath(), recipient.out_path_len)) return MSG_SEND_FAILED;
-      est_timeout = calcDirectTimeoutMillisFor(t, recipient.out_path_len);
-      return MSG_SEND_SENT_DIRECT;
-    }
-  }
-  return MSG_SEND_FAILED;
+  return sendContactPacket(recipient, pkt, est_timeout);
 }
 
 bool BaseChatMesh::startConnection(const ContactInfo& contact, uint16_t keep_alive_secs) {
