@@ -1,6 +1,7 @@
 #include <helpers/sensors/EnvironmentSensorManager.h>
 #include <helpers/sensors/I2CAddressClaimPolicy.h>
 #include <helpers/sensors/NmeaSentenceProbe.h>
+#include <helpers/sensors/MicroNMEALocationProvider.h>
 #include <cassert>
 #include <cstring>
 #include <cstdio>
@@ -421,6 +422,30 @@ static void dedicated() {
 #endif
 }
 
+static void dedicatedProviderStop() {
+#if defined(PIN_GPS_EN) && PIN_GPS_EN >= 0
+  fresh();
+  const int reset_pin=7;
+  MicroNMEALocationProvider location(Serial1,nullptr,reset_pin,PIN_GPS_EN);
+  EnvironmentSensorManager sensors(location);
+  Serial1.nmea(); assert(sensors.begin());
+  assert(sensors.isGPSDetected()&&sensors.isGpsPowered());
+  // RAK discovery controls power directly, without provider.begin(). Match
+  // NRF52Board::shutdownPeripherals(), which stops the selected provider.
+  sensors.getLocationProvider()->stop();
+  assert(digitalRead(PIN_GPS_EN)==!PIN_GPS_EN_ACTIVE);
+  assert(digitalRead(reset_pin)==GPS_RESET_ACTIVE);
+  // A repeated stop must still force safe pins if another owner woke GPS.
+  digitalWrite(PIN_GPS_EN,PIN_GPS_EN_ACTIVE);
+  digitalWrite(reset_pin,!GPS_RESET_ACTIVE);
+  sensors.getLocationProvider()->stop();
+  assert(digitalRead(PIN_GPS_EN)==!PIN_GPS_EN_ACTIVE);
+  assert(digitalRead(reset_pin)==GPS_RESET_ACTIVE);
+#else
+  assert(false&&"dedicated provider scenario requires a separate enable pin");
+#endif
+}
+
 static void terminalStorage() {
   SensorManager unknown;
   assert(!unknown.canRemoveSharedStoragePowerForDeepSleep());
@@ -469,6 +494,7 @@ int main(int argc,char** argv) {
   else if(!std::strcmp(argv[1],"wake_bus_failure")) i2c(false,4);
   else if(!std::strcmp(argv[1],"initial_config_failure")) initialConfigFailure();
   else if(!std::strcmp(argv[1],"dedicated")) dedicated();
+  else if(!std::strcmp(argv[1],"dedicated_provider_stop")) dedicatedProviderStop();
   else if(!std::strcmp(argv[1],"terminal_storage")) terminalStorage();
   else assert(false&&"unknown scenario");
 }

@@ -9,7 +9,7 @@ import os
 import subprocess
 import tempfile
 import unittest
-from test_gps_upstream_adaptations import ARDUINO, CAYENNE, MESH
+from test_gps_upstream_adaptations import ARDUINO, CAYENNE, MESH, NMEA, RTC
 from test_replay_reset_integration import extract_braced
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -111,6 +111,7 @@ inline void digitalWrite(int pin,int value){assert(pin>=0&&pin<64);pin_values[pi
 inline int digitalRead(int pin){assert(pin>=0&&pin<64);return pin_values[pin];}
 ''')
         for name, content in {"Arduino.h": arduino, "Mesh.h": MESH, "CayenneLPP.h": CAYENNE,
+                              "MicroNMEA.h": NMEA, "RTClib.h": RTC,
                               "Wire.h": "#pragma once\nclass TwoWire {};\ninline TwoWire Wire;\n"}.items():
             (work / name).write_text(content, encoding="utf-8")
         cpp, binary = work / "lifecycle.cpp", work / "lifecycle"
@@ -186,7 +187,7 @@ class RakGpsPowerTests(unittest.TestCase):
     def test_actual_dedicated_gps_control_isolated_from_shared_slot_power(self):
         for active in (0, 1):
             with self.subTest(active_level=active):
-                compile_lifecycle(self, ("dedicated",),
+                compile_lifecycle(self, ("dedicated", "dedicated_provider_stop"),
                                   ("-DRAK_4631", "-DPIN_GPS_EN=14", f"-DPIN_GPS_EN_ACTIVE={active}"))
 
     def test_actual_boot_policy_protects_storage_and_poe_even_when_gps_is_not_compiled(self):

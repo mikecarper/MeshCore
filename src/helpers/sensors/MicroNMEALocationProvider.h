@@ -146,14 +146,16 @@ public :
 
     void stop() override {
         _stop_calls++;
-        if (!_started) return;
-        _started = false;
+        // RAK discovery and board code can power GPS without begin(). Always
+        // force the control pins off; only release a claim acquired here.
         if (_pin_en != -1) {
             digitalWrite(_pin_en, !GPS_EN_ACTIVE);
         }
         if (_pin_reset != -1) {
             digitalWrite(_pin_reset, GPS_RESET_ACTIVE);
         }
+        if (!_started) return;
+        _started = false;
         release();
     }
 

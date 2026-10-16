@@ -476,12 +476,19 @@ int main() {
   Stream serial; RefCountedDigitalPin rail(5); rail.begin();
   MicroNMEALocationProvider gps(serial, nullptr, 7, 6, &rail);
   gps.stop(); assert(digitalRead(5)==LOW);
+  rail.claim(); // An external owner powers a receiver never begun here.
+  for (unsigned attempt=0; attempt<2; ++attempt) {
+    digitalWrite(6, HIGH); digitalWrite(7, HIGH);
+    gps.stop();
+    assert(digitalRead(5)==HIGH && digitalRead(6)==LOW && digitalRead(7)==LOW);
+  }
+  rail.release(); assert(digitalRead(5)==LOW);
   for (unsigned cycle=0; cycle<300; ++cycle) {
     rail.claim(); // Another peripheral owns the same supply.
     gps.begin(); gps.begin();
-    assert(digitalRead(5)==HIGH && digitalRead(6)==HIGH);
+    assert(digitalRead(5)==HIGH && digitalRead(6)==HIGH && digitalRead(7)==HIGH);
     gps.stop(); gps.stop();
-    assert(digitalRead(5)==HIGH && digitalRead(6)==LOW);
+    assert(digitalRead(5)==HIGH && digitalRead(6)==LOW && digitalRead(7)==LOW);
     rail.release(); assert(digitalRead(5)==LOW);
   }
 }
