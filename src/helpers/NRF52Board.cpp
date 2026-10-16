@@ -4,6 +4,7 @@
 #include "NRF52VoltagePolicy.h"
 #include "Nrf52BootloaderVersion.h"
 #include "nrf52/SoftDeviceState.h"
+#include "nrf52/ShutdownLeds.h"
 #include <target.h>
 #include "UserGpioPinPolicy.h"
 
@@ -339,6 +340,10 @@ void NRF52Board::initiateShutdown(uint8_t reason) {
 void NRF52Board::enterSystemOff(uint8_t reason) {
   MESH_DEBUG_PRINTLN("PWRMGT: Entering SYSTEMOFF (%s)", getShutdownReasonString(reason));
 
+  // This path can run before BLE begin() during boot voltage protection.
+  // autoConnLed(false) is safe then too and stops future automatic LED writes.
+  Bluefruit.autoConnLed(false);
+
   // Record shutdown reason in GPREGRET2
   uint8_t sd_enabled = 0;
   mesh_nrf52::softdeviceIsEnabled(sd_enabled);
@@ -352,6 +357,7 @@ void NRF52Board::enterSystemOff(uint8_t reason) {
   // Flush serial buffers
   Serial.flush();
   delay(100);
+  mesh_nrf52::turnOffShutdownLeds();
 
   // Enter SYSTEMOFF
   if (sd_enabled) {
@@ -556,6 +562,11 @@ float NRF52Board::getMCUTemperature() {
 }
 
 void NRF52Board::shutdownPeripherals() {
+  // Stop Bluefruit's LED owner before setting a final OFF latch. Its timer
+  // stop is queued, so allow the existing shutdown delay to drain a pending
+  // blinky callback before the final write below (also safe before BLE begin).
+  Bluefruit.autoConnLed(false);
+
   // Power off the display if any
 #ifdef DISPLAY_CLASS
   if (display.isOn()) {
@@ -613,10 +624,13 @@ void NRF52Board::shutdownPeripherals() {
   // Flush serial buffers
   Serial.flush();
   delay(100);
+  mesh_nrf52::turnOffShutdownLeds();
 }
 
 void NRF52Board::powerOff() {
   shutdownPeripherals();
+  // Board-specific hooks may signal button release after calling the base.
+  mesh_nrf52::turnOffShutdownLeds();
 
   // Enter SYSTEMOFF
   uint8_t sd_enabled = 0;
@@ -633,6 +647,7 @@ void NRF52Board::enterDeepSleep(uint32_t secs) {
     powerOff(); // Not wake up
   } else {
     shutdownPeripherals();
+    mesh_nrf52::turnOffShutdownLeds();
 
 // Clear FPU interrupt flags to avoid insomnia
 // see errata 87 for details
