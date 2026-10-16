@@ -264,6 +264,12 @@ struct OtaContext {
   }
 
   bool apply_fetched_impl(const uint8_t* rescue_base_hash, bool trusted_auto, char* msg) {
+    // The armed update owns its store and handoff until deferred reboot.
+    // Re-entering an applier can reset that handoff before a later read fails.
+    if (apply_pending || bootloader_apply_pending) {
+      strcpy(msg, "another update is already armed");
+      return false;
+    }
     if (fetch_to_folder) {
       strncpy(msg, "refused: completed fetch was captured to a folder, not local install storage", 96);
       msg[95] = 0;
@@ -392,6 +398,10 @@ struct OtaContext {
 
   bool apply_fetched_bootloader(const uint8_t operator_mid[4],
                                 const uint8_t operator_hash8[8], char* msg) {
+    if (apply_pending || bootloader_apply_pending) {
+      strcpy(msg, "another update is already armed");
+      return false;
+    }
 #if defined(NRF52_PLATFORM) && !defined(OTA_SEEDER_ONLY) && \
     (defined(OTA_QSPI_BOOTLOADER_UPDATE) || defined(OTA_INTERNAL_BOOTLOADER_UPDATE) || \
      defined(OTA_SD_BOOTLOADER_UPDATE))

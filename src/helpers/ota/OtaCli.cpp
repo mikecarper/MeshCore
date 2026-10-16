@@ -1091,6 +1091,10 @@ static __attribute__((noinline)) bool handle_control_command(
       return true;
     }
 #endif
+    if (c.apply_pending || c.bootloader_apply_pending) {
+      strcpy(reply, "ERR another update is already armed");
+      return true;
+    }
     if (c.fetch_to_folder) {
       strcpy(reply, "ERR the complete update was captured to a folder, not staged for install; use `ota cancel`");
       return true;

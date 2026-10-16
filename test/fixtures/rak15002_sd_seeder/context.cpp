@@ -52,7 +52,7 @@ struct OtaManager {
 };
 struct Context {
 @MEMBERS@
-  bool apply_pending = false, fetch_to_folder = false;
+  bool apply_pending = false, bootloader_apply_pending = false, fetch_to_folder = false;
   bool _sd_cache_source_attached = false, _sd_cache_fetching = false;
   uint8_t _sd_cache_mid[4] = {};
   uint32_t _sd_cache_init_retry_at = 0, _sd_cache_next_at = 0;
