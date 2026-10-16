@@ -14,7 +14,10 @@ import shlex
 import shutil
 import subprocess
 import sys
+import tempfile
 import unittest
+
+from test_upstream_power_policy_merge import Recipes
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -72,7 +75,7 @@ def has_define(flags, define):
     return re.search(r"(?:^|\s)-D\s*" + re.escape(define) + r"(?:\s|$)", flags) is not None
 
 
-def run_shell(script):
+def run_shell(script, input_data=None):
     # Windows' App Execution Alias can resolve `bash` to the WSL launcher,
     # which accepts the command but loses shell-local assignments. Prefer the
     # Git-for-Windows Bash used by the build scripts there; ordinary POSIX
@@ -85,8 +88,10 @@ def run_shell(script):
         [bash, "-c", script, "rak15002-recipe-test"],
         cwd=ROOT,
         text=True,
+        input=input_data,
         capture_output=True,
         check=False,
+        timeout=60,
     )
     if completed.returncode:
         raise AssertionError(
@@ -185,6 +190,80 @@ class Rak4631Rak15002SdRecipeTests(unittest.TestCase):
             with self.subTest(section=section):
                 self.assertIn(helper,
                               self.rak[section]["lib_deps"])
+
+    def test_real_pair_mapping_keeps_pinned_sd_dependency_on_compiled_environment(self):
+        # Resolve the tracked inventory without invoking PlatformIO, then run
+        # the actual pair orchestration and build_firmware_one_profile(). A
+        # stub compiler stops before artifact publication and reports the PIO
+        # environment selected after all feature/OTA overlays have run.
+        recipes = Recipes()
+        options = ('board', 'build_flags', 'build_src_filter', 'lib_deps', 'extra_scripts')
+        inventory = [
+            [section, [[option, recipes.value(section, option).splitlines()
+                        if option != 'board' else recipes.value(section, option)]
+                       for option in options]]
+            for section in recipes.config.sections() if section.startswith('env:')
+        ]
+        script = r'''
+set -euo pipefail
+source ./build_legacy.sh
+fixture_work=@WORK@
+export TMPDIR="$fixture_work"
+export PLATFORMIO_BUILD_DIR="$fixture_work/build"
+OUTPUT_DIR="$fixture_work/artifacts"
+RESUME_BUILD_OUTPUT=0
+unset PLATFORMIO_BUILD_FLAGS PLATFORMIO_BUILD_UNFLAGS PLATFORMIO_BUILD_SRC_FILTER PLATFORMIO_EXTRA_SCRIPTS
+pio() {
+  if [ "$1" != run ] || [ "$2" != -e ]; then
+    echo 'UNEXPECTED_PLATFORMIO_QUERY' >&2
+    return 99
+  fi
+  local one_line_flags=${PLATFORMIO_BUILD_FLAGS//$'\n'/ }
+  printf 'SD_RECIPE\t%s\t%s\t%s\t%s\n' "$requested_target" \
+    "$NRF52_OTA_SENSOR_PROFILE" "$3" "$one_line_flags"
+  return 89 # stop this fixture before artifact collection, never call PlatformIO
+}
+collect_build_artifacts() { echo 'UNEXPECTED_ARTIFACT_PUBLICATION' >&2; return 99; }
+print_build_flags() { :; }
+compute_build_recipe_digest() { printf '%064d\n' 0; }
+IFS= read -r PIO_CONFIG_JSON
+ALL_PIO_ENVS=(recipe-fixture) # inventory is supplied on stdin; no PIO queries
+init_project_context
+FIRMWARE_VERSION=v1.17.1.10-recipe-test
+for requested_target in RAK_4631_repeater_lora_ota_no_external_sensors \
+    RAK_4631_room_server_lora_ota_no_external_sensors \
+    RAK_4631_room_server_ethernet_lora_ota_no_external_sensors \
+    RAK_4631_sensor_lora_ota_no_external_sensors; do
+  if run_nrf52_sensor_ota_pair "$requested_target"; then
+    echo 'STUB_COMPILER_STATUS_WAS_IGNORED' >&2
+    exit 1
+  fi
+done
+'''
+        with tempfile.TemporaryDirectory(prefix='rak15002-pair-recipes-') as directory:
+            output = run_shell(script.replace('@WORK@', shlex.quote(Path(directory).as_posix())),
+                               json.dumps(inventory) + '\n')
+            self.assertFalse((Path(directory) / 'artifacts').exists())
+            self.assertFalse((Path(directory) / 'build').exists())
+        rows = [line.split('\t', 4)[1:] for line in output.splitlines()
+                if line.startswith('SD_RECIPE\t')]
+        self.assertEqual(len(rows), 8, output)
+        pin = recipes.value('nrf52_rak15002_sd_store', 'lib_deps').strip()
+        self.assertIn('SdFat-beta.git#a249cfa121e25a96ee14d8813abf01755f1f6a25', pin)
+        for target in RECEIVERS[1:]:
+            pair = [row for row in rows if row[0] == target]
+            self.assertEqual([row[1] for row in pair], ['full', 'reduced'])
+            for _, profile, compiled_env, flags in pair:
+                with self.subTest(target=target, profile=profile):
+                    self.assertEqual(compiled_env, target.removesuffix('_lora_ota_no_external_sensors'))
+                    self.assert_store_defines(flags)
+                    deps = recipes.value('env:' + compiled_env, 'lib_deps').splitlines()
+                    self.assertIn(pin, [line.strip() for line in deps])
+                    # Dependency injection must extend, not replace, the
+                    # board's sensors, GNSS, display, radio and crypto libs.
+                    for dep in recipes.value('rak4631', 'lib_deps').splitlines():
+                        if dep.strip():
+                            self.assertIn(dep.strip(), [line.strip() for line in deps])
 
     def test_legacy_cache_only_seeder_fences_off_adaptive_receiver_flags(self):
         seeder = self.rak["env:RAK_4631_repeater_rak15002_sd_seeder_only"]
