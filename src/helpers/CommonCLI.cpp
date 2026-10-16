@@ -4901,9 +4901,11 @@ void CommonCLI::handleSetCmd(uint32_t sender_timestamp, char* command, char* rep
     }
   } else if (memcmp(config, "flood.retry.bucket ", 19) == 0) {
     const char* params = &config[19];
-    uint8_t bucket = atoi(params);
+    char* end;
+    const long bucket = strtol(params, &end, 10);
+    while (*end == '\t') end++;
     const char* list = strchr(params, ' ');
-    if (bucket < 1 || bucket > FLOOD_RETRY_BRIDGE_BUCKETS || list == NULL || *(list + 1) == 0) {
+    if (bucket < 1 || bucket > FLOOD_RETRY_BRIDGE_BUCKETS || end != list || list == NULL || *(list + 1) == 0) {
       sprintf(reply, "Error, usage: set flood.retry.bucket <1-%d> <prefixes|none>", FLOOD_RETRY_BRIDGE_BUCKETS);
     } else if (parseFloodRetryPrefixList(_prefs->flood_retry_bridge_buckets[bucket - 1],
                                          FLOOD_RETRY_BUCKET_PREFIXES, list + 1)) {
