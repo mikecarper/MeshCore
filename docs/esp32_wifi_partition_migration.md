@@ -34,7 +34,7 @@ table-prefix test; the bridge core is otherwise shared.
 
 | Flash size | Target table | app0 / app1 size | Typical board |
 | --- | --- | --- | --- |
-| 4 MiB | `variants/dual_ota_full_4MB.csv` | 0x1F0000 / 0x1F0000 | ThinkNode M2/M5, LilyGo T3S3, Nibble, Heltec CT62 |
+| 4 MiB | `variants/dual_ota_full_4MB.csv` | 0x1F0000 / 0x1F0000 | ThinkNode M2/M5, LilyGo T3S3, Nibble, Heltec CT62, Waveshare LR1121 observers |
 | 8 MiB | `default_8MB.csv` | 0x330000 / 0x330000 | Seeed XIAO ESP32-S3, Heltec V3 |
 | 16 MiB | `default_16MB.csv` | 0x640000 / 0x640000 | Heltec V4 / V4.3, Station G2 |
 
@@ -60,7 +60,7 @@ the bootloader, partition table, and application. Never upload a merged image
 through an app-only browser or LoRa updater.
 
 The new Full defaults outside the migration catalog, including ESP32-C6
-boards and boards introduced with `min_spiffs.csv`, have no reviewed wireless
+boards and other boards introduced with `min_spiffs.csv`, have no reviewed wireless
 expansion package in this recipe. If their Full app fits the unchanged live
 layout and update identity, an ordinary app update can suffice. A table change
 requires USB/serial until a matching migration package is reviewed. A Full
@@ -68,6 +68,45 @@ image fitting physical flash does not by itself prove it can be installed
 through an old updater. Full Companion images with a single app slot likewise
 need USB/serial for local firmware replacement; their host-backed LoRa sending
 role does not provide a second local update slot.
+
+## Waveshare ESP32-S3 LR1121 observer migration
+
+Only the Waveshare **repeater observer** and **room-server observer** select the
+larger 4 MiB table. Ordinary repeater, room, Companion and KISS recipes retain
+`min_spiffs.csv`. The two exact migration selections are:
+
+```bash
+sh scripts/build_esp32_partition_migration.sh \
+  --board waveshare-s3-lr1121-observer-repeater \
+  --board waveshare-s3-lr1121-observer-room-server \
+  --version v1.18.0-test --radio-preset usa-cascadia --profile cascade --dry-run
+```
+
+Remove `--dry-run` only to build and verify the packages from a clean commit;
+this command does not flash hardware. Each observer role has its own exact-target
+Partition Expander. Both its Wi-Fi application and first-stage LoRa package use
+that same configuration-preserving bridge, not the older identity-only LoRa
+handoff. It accepts a reviewed source layout, stages and verifies identity and
+supported configuration before destructive writes, and refuses unknown layouts
+or saved data that cannot be preserved safely. The final table has two
+1984 KiB application slots and only **64 KiB SPIFFS**.
+
+The bridge can migrate from either existing OTA slot. After reboot it must
+verify the new table, private key and saved configuration before enabling the
+LoRa receiver. It uses the saved primary radio profile and fetches only the
+exact observer role's Full image. The node name, ACL, radio 1/radio 2 and saved
+GPS preferences remain part of the configuration handoff; temporary sessions
+are not converted into permanent preferences. Already-expanded boards use the
+existing verified-image/no-handoff safety checks rather than migrating again.
+
+The recipes reuse the real LR1121 board implementation, including its 1.8 V
+TCXO and HP-PA/RF-switch wiring. The first-stage image must pass the legacy
+1.25 MiB size limit and both final-image and mOTA staging guards. A failed guard
+must fail the package, not produce a reduced image. These are build/host-test
+contracts, **not physical qualification**: test both A/B placements, restored
+settings and interruptions on a sacrificial Waveshare before remote deployment.
+The ESP32's single partition-table-sector erase/write is still not atomic;
+power loss in that window can require cable recovery.
 
 ## Repeatable ESP32 build recipe
 
@@ -202,7 +241,7 @@ node name and preferences, radio profiles, ACL and login replay state, region
 keys, and selected network/OTA, filtering, display, and telemetry settings.
 It refuses migration if the saved files cannot fit or verify in NVS. The older
 LoRa handoff route preserves only the private identity, so saved settings may
-reset. The two board-specific Partition Expander routes preserve their
+reset. The board/role-specific Partition Expander routes preserve their
 supported configuration and automatically fetch the exact-target Full image;
 follow the package README for those routes.
 

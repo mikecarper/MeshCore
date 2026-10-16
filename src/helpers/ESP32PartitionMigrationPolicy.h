@@ -71,6 +71,17 @@ constexpr PartitionGeometry kExpanded4MBLayout = {
     0x3F0000, 0x10000,
 };
 
+// Arduino-ESP32 min_spiffs.csv, used by the Waveshare ESP32-S3 LR1121
+// observer builds. The final 64 KiB is a separate coredump partition, NOT
+// part of this 128 KiB filesystem.
+constexpr PartitionGeometry kMinSpiffs4MBLayout = {
+    0x9000, 0x5000,
+    0xE000, 0x2000,
+    0x10000, 0x1E0000,
+    0x1F0000, 0x1E0000,
+    0x3D0000, 0x20000,
+};
+
 constexpr bool sameGeometry(const PartitionGeometry& left,
                             const PartitionGeometry& right) {
   return left.nvs_address == right.nvs_address
@@ -92,6 +103,49 @@ constexpr bool isLegacyLayout(const PartitionGeometry& geometry) {
 constexpr bool isExpandedLayout(const PartitionGeometry& geometry) {
   return sameGeometry(geometry, kExpandedLayout);
 }
+
+// New strict 4 MiB packages accept only reviewed maps, not merely partitions
+// that happen to be inside flash. The target is included for the no-op path.
+constexpr bool isReviewed4MBSource(uint32_t flash_bytes,
+                                   const PartitionGeometry& geometry) {
+  return flash_bytes == kSmallRequiredFlashBytes
+      && (sameGeometry(geometry, kLegacyLayout)
+          || sameGeometry(geometry, kMinSpiffs4MBLayout)
+          || sameGeometry(geometry, kExpanded4MBLayout));
+}
+
+// Conservative admission budget for a freshly formatted 64 KiB SPIFFS. Charge
+// only 192 payload bytes per 256-byte page, two metadata pages per file, four
+// whole blocks for lookup/GC/headroom, and one extra largest-file allocation
+// for the successor's atomic preference rewrites. This is a refusal guard,
+// not an assertion of the physical filesystem's exact free-space accounting.
+struct PreservationBudget {
+  static constexpr uint32_t kMaximumFileBytes = 16384;
+  static constexpr uint32_t kMaximumFiles = 33; // identity plus 32 config files
+  uint32_t filesystem_bytes;
+  uint32_t files = 0;
+  uint64_t file_bytes = 0;
+  uint64_t largest_file_bytes = 0;
+
+  explicit PreservationBudget(uint32_t bytes) : filesystem_bytes(bytes) {}
+
+  uint64_t requiredBytes() const {
+    return 4U * kSectorBytes + file_bytes + largest_file_bytes;
+  }
+
+  bool addFile(uint32_t bytes) {
+    if (bytes == 0 || bytes > kMaximumFileBytes || files >= kMaximumFiles)
+      return false;
+    const uint64_t cost = ((static_cast<uint64_t>(bytes) + 191U) / 192U + 2U) * 256U;
+    const uint64_t largest = cost > largest_file_bytes ? cost : largest_file_bytes;
+    if (4U * kSectorBytes + file_bytes + cost + largest > filesystem_bytes)
+      return false;
+    ++files;
+    file_bytes += cost;
+    largest_file_bytes = largest;
+    return true;
+  }
+};
 
 constexpr bool canMigrate(uint32_t flash_bytes,
                           const PartitionGeometry& geometry) {

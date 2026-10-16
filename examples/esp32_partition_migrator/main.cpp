@@ -80,6 +80,10 @@ constexpr ConfigFile kConfigFiles[] = {
 };
 constexpr size_t kConfigFileCount = sizeof(kConfigFiles) / sizeof(kConfigFiles[0]);
 static_assert(kConfigFileCount <= 32, "config presence mask is 32 bits");
+#if defined(MESHCORE_MIGRATION_STRICT_4MB) && MESHCORE_MIGRATION_STRICT_4MB
+static_assert(kConfigFileCount + 1 <= migration::PreservationBudget::kMaximumFiles,
+              "strict filesystem inventory must cover every staged config file");
+#endif
 struct ConfigStage {
   uint32_t magic;
   uint32_t present;
@@ -337,6 +341,11 @@ bool stageLegacyIdentity() {
   }
   const bool saved = migration_nvs.putBytes(kMigrationIdentityKey, copy_buffer,
                                              kIdentityFileBytes) == kIdentityFileBytes
+#if defined(MESHCORE_MIGRATION_STRICT_4MB) && MESHCORE_MIGRATION_STRICT_4MB
+      && migration_nvs.getBytes(kMigrationIdentityKey, partition_table_verified,
+                                kIdentityFileBytes) == kIdentityFileBytes
+      && memcmp(copy_buffer, partition_table_verified, kIdentityFileBytes) == 0
+#endif
       && migration_nvs.putBool(kMigrationIdentityPendingKey, true);
   migration_nvs.end();
   if (!saved) strcpy(status_text, "Could not save private key for migration");
@@ -593,6 +602,90 @@ bool restoreStagedConfig() {
   nvs.end();
   return restored;
 }
+
+#if defined(MESHCORE_MIGRATION_STRICT_4MB) && MESHCORE_MIGRATION_STRICT_4MB
+bool inventoryStrictDirectory(const char* path, unsigned depth,
+                              migration::PreservationBudget& budget,
+                              uint64_t& seen) {
+  if (depth > 1) {
+    strcpy(status_text, "Refused: unsupported saved-data directory nesting");
+    return false;
+  }
+  File directory = SPIFFS.open(path, "r");
+  if (!directory || !directory.isDirectory()) {
+    strcpy(status_text, "Refused: could not enumerate saved filesystem");
+    return false;
+  }
+  bool valid = true;
+  for (File entry = directory.openNextFile(); valid && entry;
+       entry = directory.openNextFile()) {
+    const char* name = entry.path();
+    if (!name || name[0] != '/' || strnlen(name, 96) >= 96) {
+      strcpy(status_text, "Refused: invalid saved-data path");
+      valid = false;
+    } else if (entry.isDirectory()) {
+      // The preservation set has one known directory. Even an unknown empty
+      // directory is refused instead of guessing whether its content matters.
+      if (strcmp(name, "/identity") != 0 || depth != 0) {
+        snprintf(status_text, sizeof(status_text), "Refused: unsupported saved directory %.80s", name);
+        valid = false;
+      } else {
+        valid = inventoryStrictDirectory(name, depth + 1, budget, seen);
+      }
+    } else {
+      size_t index = 0;
+      if (strcmp(name, "/identity/_main.id") != 0) {
+        for (index = 0; index < kConfigFileCount; ++index)
+          if (strcmp(name, kConfigFiles[index].path) == 0) break;
+        if (index == kConfigFileCount) {
+          snprintf(status_text, sizeof(status_text), "Refused: unpreserved saved file %.80s", name);
+          valid = false;
+        }
+        ++index; // bit zero belongs only to the identity
+      }
+      if (valid) {
+        const uint64_t bit = uint64_t(1) << index;
+        const size_t bytes = entry.size();
+        if ((seen & bit) != 0 || (index == 0 && bytes != kIdentityFileBytes)) {
+          strcpy(status_text, "Refused: ambiguous or unsupported private identity record");
+          valid = false;
+        } else if (bytes > UINT32_MAX || !budget.addFile(static_cast<uint32_t>(bytes))) {
+          snprintf(status_text, sizeof(status_text), "Refused: %.80s exceeds safe 64 KiB preservation budget", name);
+          valid = false;
+        } else {
+          seen |= bit;
+        }
+      }
+    }
+    entry.close();
+  }
+  directory.close();
+  return valid;
+}
+
+bool preflightStrictPreservation(const migration::TargetPlan& plan) {
+  if (plan.flash_bytes != migration::kSmallRequiredFlashBytes ||
+      plan.layout.spiffs_size != 0x10000 || !SPIFFS.begin(false)) {
+    strcpy(status_text, "Refused: strict source filesystem is unavailable");
+    return false;
+  }
+  migration::PreservationBudget budget(plan.layout.spiffs_size);
+  uint64_t seen = 0;
+  bool valid = inventoryStrictDirectory("/", 0, budget, seen);
+  if (valid && (seen & 1U) == 0) {
+    strcpy(status_text, "Refused: private identity is absent from saved-data inventory");
+    valid = false;
+  }
+  for (size_t i = 0; valid && i < kConfigFileCount; ++i) {
+    if (SPIFFS.exists(kConfigFiles[i].path) != ((seen & (uint64_t(1) << (i + 1))) != 0)) {
+      strcpy(status_text, "Refused: incomplete saved-data inventory");
+      valid = false;
+    }
+  }
+  SPIFFS.end();
+  return valid;
+}
+#endif
 
 #if defined(MESHCORE_MIGRATION_RESUME_OTA) || defined(MOTA_MIGRATION_TARGET_ID)
 uint32_t readLe32(const uint8_t* bytes) {
@@ -905,6 +998,19 @@ void runMigration() {
     Serial.println(status_text);
     return;
   }
+#if defined(MESHCORE_MIGRATION_STRICT_4MB) && MESHCORE_MIGRATION_STRICT_4MB
+  if (!migration::isReviewed4MBSource(flash_bytes, geometry)) {
+    strcpy(status_text, "Refused: source is not a reviewed 4 MiB partition layout");
+    Serial.println(status_text);
+    return;
+  }
+  // Admission happens before identity/config staging, app copying, OTA-select
+  // writes and the non-atomic partition-table erase/write window.
+  if (!preflightStrictPreservation(*plan)) {
+    Serial.println(status_text);
+    return;
+  }
+#endif
 
   const esp_partition_t* running = esp_ota_get_running_partition();
   // Partition handles are opaque; their addresses, rather than their pointer

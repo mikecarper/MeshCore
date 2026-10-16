@@ -5,6 +5,7 @@ Resolve inheritance and interpolation without starting PlatformIO or a build.
 The existing board recipes remain authoritative for hardware and OTA policy.
 """
 import configparser
+import csv
 import fnmatch
 from pathlib import Path
 import re
@@ -22,6 +23,7 @@ BOARDS = {
     "lilygo_teth_elite": ("LilyGo_TETH_Elite_sx1262",),
     "meshnology_w12": ("meshnology_w12",),
     "xiao_s3": ("Xiao_S3",),
+    "waveshare_esp32s3_lr1121": ("Waveshare_S3_LR1121",),
 }
 NAMES = tuple(
     f"{board}_{role}_observer_mqtt"
@@ -72,8 +74,8 @@ class UpstreamObserverRecipeTests(unittest.TestCase):
     def setUpClass(cls):
         cls.recipes = Recipes()
 
-    def test_all_22_named_additions_exist_once(self):
-        self.assertEqual(len(NAMES), 22)
+    def test_all_24_named_additions_exist_once(self):
+        self.assertEqual(len(NAMES), 24)
         for family, boards in BOARDS.items():
             text = (ROOT / "variants" / family / "platformio.ini").read_text()
             for board in boards:
@@ -136,6 +138,26 @@ class UpstreamObserverRecipeTests(unittest.TestCase):
             for role in ("repeater", "room_server"):
                 section = f"env:{board}_{role}_observer_mqtt"
                 self.assertIn("MQTT_NEIGHBORS_WITHOUT_PSRAM=1", self.recipes.value(section, "build_flags"))
+
+    def test_waveshare_observers_have_two_larger_slots_and_64k_filesystem(self):
+        table = "variants/dual_ota_full_4MB.csv"
+        for role in ("repeater", "room_server"):
+            self.assertEqual(self.recipes.value(
+                f"env:Waveshare_S3_LR1121_{role}_observer_mqtt", "board_build.partitions"), table)
+        for role in ("repeater", "room_server", "companion_radio_usb", "companion_radio_ble", "kiss_modem"):
+            self.assertEqual(self.recipes.value(
+                f"env:Waveshare_S3_LR1121_{role}", "board_build.partitions"), "min_spiffs.csv")
+        rows = list(csv.reader(line for line in (ROOT / table).read_text().splitlines()
+                               if line.strip() and not line.lstrip().startswith("#")))
+        parts = {row[0].strip(): (int(row[3], 0), int(row[4], 0)) for row in rows}
+        self.assertEqual(parts["app0"], (0x10000, 0x1F0000))
+        self.assertEqual(parts["app1"], (0x200000, 0x1F0000))
+        self.assertEqual(parts["spiffs"], (0x3F0000, 0x10000))
+        end = 0
+        for offset, size in sorted(parts.values()):
+            self.assertGreaterEqual(offset, end)
+            end = offset + size
+        self.assertEqual(end, 4 * 1024 * 1024)
 
     def test_rc32_local_startup_platform_and_safety_remain_inherited(self):
         for board in ("heltec_rc32", "heltec_rc32_without_display"):

@@ -270,6 +270,26 @@ add_roles("generic-e22-sx1268", 4, {
     "repeater": "Generic_E22_sx1268_repeater",
 }, bridge="esp32_4mb_partition_migrator")
 
+# Only these observer identities use the enlarged Waveshare table. Ordinary
+# Waveshare roles retain min_spiffs.csv and must not silently change layout.
+add_roles("waveshare-s3-lr1121-observer", 4, {
+    "repeater": "Waveshare_S3_LR1121_repeater_observer_mqtt",
+    "room-server": "Waveshare_S3_LR1121_room_server_observer_mqtt",
+})
+for role, suffix in (("repeater", "repeater"), ("room-server", "room_server")):
+    specification = BOARDS[f"waveshare-s3-lr1121-observer-{role}"]
+    expander = f"Waveshare_S3_LR1121_partition_expander_{suffix}_observer_mqtt"
+    # Both wireless routes use the same self-hosted receiver, not the older
+    # identity-only resume bridge which can reset ACL/radio preferences.
+    specification.update({
+        "wifi_bridge": expander,
+        "lora_bridge": expander,
+        "expander_bridge": expander,
+        "source_partition_table": "min_spiffs.csv",
+        "spiffs_address": 0x3F0000,
+        "spiffs_bytes": 0x10000,
+    })
+
 USB_BRIDGE_MARKER = b"MeshCore USB partition migration bridge v1"
 USB_NVS_GUARD_MARKER = b"MeshCore USB NVS no-autoerase guard v1"
 USB_BRIDGE_PROFILES = {
@@ -288,7 +308,9 @@ def usb_bridge_profile(spec: dict) -> tuple[int, str]:
     if wifi.startswith("esp32_c3_"):
         chip = 5
     elif wifi.startswith("esp32_s3_") or wifi in (
-            "heltec_v4_partition_migrator", "xiao_s3_partition_migrator"):
+            "heltec_v4_partition_migrator", "xiao_s3_partition_migrator",
+            "Waveshare_S3_LR1121_partition_expander_repeater_observer_mqtt",
+            "Waveshare_S3_LR1121_partition_expander_room_server_observer_mqtt"):
         chip = 9
     elif wifi.startswith("esp32_"):
         chip = 0
@@ -444,6 +466,8 @@ def check_esp32_stage(package: bytes, image: bytes, slot_bytes: int) -> None:
 
 def readme(board: str, spec: dict, version: str, source: str,
            has_full_mota: bool = True, full_mota_blocks: int = 0) -> str:
+    self_hosted_lora = bool(spec.get("expander_bridge")) and (
+        spec.get("lora_bridge") == spec["expander_bridge"])
     usb_return = (
         "On native ESP32-S3/C3, it then returns to the chip's ROM download "
         "mode in software."
@@ -473,7 +497,7 @@ failed.
 
 `partition-expander.mota` offers the same bridge as a first-stage LoRa update
 only if the installed old firmware already supports compatible mOTA and its
-target ID matches this repeater. A stock image without mOTA must use its
+target ID matches this exact hardware/role. A stock image without mOTA must use its
 existing Wi-Fi updater for stage one. Keep a compatible seeder available before
 installing the bridge; the bridge does not itself repeat normal traffic.
 """
@@ -511,7 +535,32 @@ authorize the final app. After verified completion, write `full-application.bin`
 to the expanded OTA slots with the active slot last. Never write
 `target-partitions.bin` directly or erase NVS to force success.
 """
-    if spec["lora_bridge"]:
+    if self_hosted_lora:
+        lora_instructions = f"""## LoRa route (self-hosted, configuration-preserving)
+
+The installed old firmware must support compatible mOTA and the exact target
+ID in `manifest.json`. `lora-bridge.mota` and `partition-expander.mota` contain
+the same role-pinned Partition Expander. It works from either old OTA slot;
+it does not reboot into an old receiver with reset settings.
+
+1. Serve `lora-bridge.mota` from a compatible seeder. On the old node run
+   `ota ls`, `ota pull <id> flash`, then `ota install` after verification.
+2. Keep power stable. The bridge stages and verifies the private key and
+   supported saved configuration, expands the table, then restores and verifies
+   them before enabling its LoRa receiver on the saved primary radio profile.
+3. Serve this package's `full-application.mota` on that saved profile. The
+   expander automatically fetches only this exact successor target and installs
+   it after complete verification. Wi-Fi recovery remains available.
+
+The final image has {full_mota_blocks} blocks; the seeder needs at least
+{full_mota_blocks * 4} bytes of proof scratch. Confirm that a capable seeder
+lists it before stage one. The old mOTA receiver's target ID must already
+match this observer role; do not use a repeater-only or room-only identity.
+This path has not been physically qualified on a Waveshare board. An A/B,
+configuration-preservation and interruption test is still required before
+remote deployment. The partition-table erase/write is not power-loss atomic.
+"""
+    elif spec["lora_bridge"]:
         slot_instructions = (
             """On this **4 MiB** layout, the bridge must be installed in old slot B
 while a verified old LoRa receiver remains in old slot A. If the old node is
@@ -586,6 +635,23 @@ Some older room-server images also have no LoRa mOTA receiver. Do not upload
 the Full image through LoRa before the new layout is active. {full_mota_note}
 `target-partitions.bin` is for verification only, not browser upload.
 """
+    source_note = (
+        f"\nThis observer-only recipe expands the reviewed `{spec['source_partition_table']}` "
+        "layout to `variants/dual_ota_full_4MB.csv`: two 0x1F0000-byte app "
+        "slots and only 64 KiB SPIFFS. Ordinary Waveshare roles keep their "
+        "existing table. Oversized or unsupported saved configuration must be "
+        "rejected before destructive migration.\n"
+        if spec.get("source_partition_table") else ""
+    )
+    restore_note = (
+        "The self-hosted bridge restores and verifies the private identity and\n"
+        "supported configuration in expanded SPIFFS before enabling LoRa. It\n"
+        "does not hand off to a legacy receiver."
+        if self_hosted_lora else
+        "On 8/16 MiB LoRa and Wi-Fi routes the bridge restores and verifies the\n"
+        "identity in expanded SPIFFS; on the older 4 MiB LoRa handoff route the\n"
+        "new Full firmware does so at first boot."
+    )
     return f"""# {board} in-place partition migration
 
 Source: `{source}`; firmware version: `{version}`. This package is only for the
@@ -598,12 +664,11 @@ preserves only the private identity. The LoRa route, where present,
 requires the old image's exact target ID.
 The current partition table must have stable NVS at 0x9000, OTA metadata at
 0xE000, two OTA apps, and SPIFFS with `/identity/_main.id`.
+{source_note}
 
 The bridge checks the live layout and refuses unsupported boards. It stages
-the 96-byte public/private identity in unchanged NVS, preserves a bootable old
-receiver, and changes the partition table. On 8/16 MiB LoRa and Wi-Fi routes
-the bridge restores and verifies the identity in expanded SPIFFS; on the
-4 MiB LoRa route the new Full firmware does so at first boot. No full-chip
+the 96-byte public/private identity in unchanged NVS, preserves a bootable
+recovery image, and changes the partition table. {restore_note} No full-chip
 erase is used. The Wi-Fi/LoRa routes need no USB connection; the separate USB
 route below is managed by an identity-verified host flasher.
 The table sector and inactive app sectors are erased as part of migration.
@@ -656,6 +721,9 @@ def package_board(name: str, spec: dict, build_dir: Path, output_dir: Path,
             or entries.get("app0") != (0x10000, spec["slot_bytes"])
             or entries.get("app1") != (spec["slot1_address"], spec["slot_bytes"])):
         raise ValueError(f"{name}: built partition table differs from the migration plan")
+    if spec.get("spiffs_bytes") is not None and entries.get("spiffs") != (
+            spec["spiffs_address"], spec["spiffs_bytes"]):
+        raise ValueError(f"{name}: built SPIFFS differs from the reviewed migration plan")
     _label, slot_bytes = app_partition_size(table)
     full_image = full_path.read_bytes()
     full_ident = parse_endf_ident(full_image)
@@ -738,7 +806,9 @@ def package_board(name: str, spec: dict, build_dir: Path, output_dir: Path,
             "application_usb_cdc": False,
             "completion": "verified-target-table-nvs-restoration-otadata",
         },
-        "lora_bridge_mode": ("slot-b-only-full-identity-recovery"
+        "lora_bridge_mode": ("self-hosted-either-slot-verified-configuration"
+                             if spec.get("expander_bridge") == spec.get("lora_bridge")
+                             else "slot-b-only-full-identity-recovery"
                              if spec["flash_bytes"] == 4 * 1024 * 1024
                              else "either-slot-preserve-receiver"),
         "partition_expander": spec.get("expander_bridge"),
