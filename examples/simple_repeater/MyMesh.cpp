@@ -10528,10 +10528,12 @@ uint32_t MyMesh::estimateClockTransitMillis(const mesh::Packet* packet) const {
 
   // The origin sends the packet without a path entry. Each relay then appends
   // one entry, waits for its flood jitter, and transmits the longer packet.
-  uint64_t total = _radio->getEstAirtimeFor(base_length);
+  uint64_t total = _radio->getProfileAirtime(packet->radio_profile,
+      base_length, packet->tx_cr);
   const uint64_t maximum = (uint64_t)CLOCK_SYNC_CONSENSUS_WINDOW_SECONDS * 1000ULL;
   for (uint8_t relay = 1; relay <= hops; relay++) {
-    uint32_t airtime = _radio->getEstAirtimeFor(base_length + relay * hash_size);
+    uint32_t airtime = _radio->getProfileAirtime(packet->radio_profile,
+        base_length + relay * hash_size, packet->tx_cr);
     if (_prefs.tx_delay_factor > 0.0f) {
       // Flood forwarding selects uniformly from 0..5*t, where
       // t=airtime*tx_delay_factor. Use its midpoint as the best expectation.

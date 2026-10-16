@@ -366,10 +366,12 @@ uint32_t MeshClockSync::estimateTransitMillis(const Packet* packet) const {
   int base_length = packet->getRawLength() - packet->getPathByteLen();
   if (base_length < 2) return 0;
 
-  uint64_t total = _radio->getEstAirtimeFor(base_length);
+  uint64_t total = _radio->getProfileAirtime(packet->radio_profile,
+      base_length, packet->tx_cr);
   const uint64_t maximum = (uint64_t)CONSENSUS_WINDOW_SECONDS * 1000ULL;
   for (uint8_t relay = 1; relay <= hops; relay++) {
-    uint32_t airtime = _radio->getEstAirtimeFor(base_length + relay * hash_size);
+    uint32_t airtime = _radio->getProfileAirtime(packet->radio_profile,
+        base_length + relay * hash_size, packet->tx_cr);
     if (*_tx_delay_factor > 0.0f) {
       float expected_delay = (float)airtime * *_tx_delay_factor * 2.5f;
       if (expected_delay > 0.0f) total += (uint32_t)(expected_delay + 0.5f);
