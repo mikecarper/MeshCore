@@ -207,6 +207,14 @@ static const size_t LEGACY_MQTT_GAP_6SLOT = 306 + 6 * 186;  // 1422
 static const size_t LEGACY_MQTT_GAP_3SLOT = 306 + 3 * 186;  // 864
 static const size_t LEGACY_OBS_TAIL_MAX = 124;  // rx_boosted(1) + flood(2) + snmp(25) + watchdog(1) + alert block(95)
 
+static bool copyCLIArgument(char* dest, size_t capacity, const char* argument) {
+  size_t len = 0;
+  while (len < capacity && argument[len] != 0) len++;
+  if (len == capacity) return false;
+  memcpy(dest, argument, len + 1);
+  return true;
+}
+
 static bool looksNumeric(const char* s) {
   if (s == NULL) return false;
   while (*s == ' ') s++;
@@ -3323,7 +3331,10 @@ void CommonCLI::handleCommand(uint32_t sender_timestamp, char* command, char* re
         strcpy(reply, "null");
       }
     } else if (memcmp(command, "sensor set ", 11) == 0) {
-      strcpy(tmp, &command[11]);
+      if (!copyCLIArgument(tmp, sizeof(tmp), &command[11])) {
+        strcpy(reply, "Error, argument too long");
+        return;
+      }
       const char *parts[2];
       int num = mesh::Utils::parseTextParts(tmp, parts, 2, ' ');
       const char *key = (num > 0) ? parts[0] : "";
@@ -4890,6 +4901,10 @@ void CommonCLI::handleSetCmd(uint32_t sender_timestamp, char* command, char* rep
               (unsigned int)FLOOD_RETRY_BUCKET_PREFIXES);
     }
   } else if (memcmp(config, "direct.retry.cr ", 16) == 0) {
+    if (!copyCLIArgument(tmp, sizeof(tmp), &config[16])) {
+      strcpy(reply, "Error, argument too long");
+      return;
+    }
     if (strcmp(&config[16], "off") == 0) {
       _prefs->direct_retry_cr_enabled = 0;
       savePrefs();
@@ -4903,7 +4918,6 @@ void CommonCLI::handleSetCmd(uint32_t sender_timestamp, char* command, char* rep
         strcpy(reply, "Error, use on or off on this role");
       }
     } else {
-      strcpy(tmp, &config[16]);
       const char *parts[4];
       int num = mesh::Utils::parseTextParts(tmp, parts, 4, ',');
       if (num == 4 && looksNumeric(parts[0]) && looksNumeric(parts[1]) && looksNumeric(parts[2]) && looksNumeric(parts[3])) {
@@ -4927,7 +4941,10 @@ void CommonCLI::handleSetCmd(uint32_t sender_timestamp, char* command, char* rep
       }
     }
   } else if (memcmp(config, "recent.repeater ", 16) == 0) {
-    strcpy(tmp, &config[16]);
+    if (!copyCLIArgument(tmp, sizeof(tmp), &config[16])) {
+      strcpy(reply, "Error, argument too long");
+      return;
+    }
     const char *parts[2];
     int num = mesh::Utils::parseTextParts(tmp, parts, 2, ' ');
     uint8_t prefix[MAX_HASH_SIZE];
