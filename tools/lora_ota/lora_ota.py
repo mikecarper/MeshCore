@@ -3863,10 +3863,22 @@ class SeederProcess:
                 creationflags=creationflags,
             )
         except FileNotFoundError as exc:
-            self.log_file.close()
+            self._close_log()
             raise OtaError(f"required command was not found: {self.args.motatool}") from exc
         self._wait_until_attached()
         print("[seeder] running (device COUNT confirmed)")
+
+    def _close_log(self) -> None:
+        log_file = self.log_file
+        self.log_file = None
+        if log_file is not None and not log_file.closed:
+            try:
+                log_file.close()
+            except OSError as exc:
+                print(
+                    f"WARNING: could not close seeder log {self.log_path}: {exc}",
+                    file=sys.stderr,
+                )
 
     def _read_log(self) -> str:
         if self.log_file is not None and not self.log_file.closed:
@@ -3998,22 +4010,24 @@ class SeederProcess:
         return len(set(payload_reads)), total, len(payload_reads)
 
     def stop(self) -> None:
-        if self.process is None:
-            return
-        if self.process.poll() is None:
+        process = self.process
+        if process is not None and process.poll() is None:
             try:
                 if os.name == "nt":
-                    self.process.terminate()
+                    process.terminate()
                 else:
-                    self.process.send_signal(signal.SIGINT)
-                self.process.wait(timeout=10)
+                    process.send_signal(signal.SIGINT)
+                process.wait(timeout=10)
             except (subprocess.TimeoutExpired, ProcessLookupError):
-                self.process.kill()
-                self.process.wait(timeout=5)
-        if self.log_file is not None and not self.log_file.closed:
-            self.log_file.close()
+                process.kill()
+                process.wait(timeout=5)
+        # Keep ownership if shutdown fails: the child may still own the source
+        # serial port. Once exit is confirmed, a log-close failure must not
+        # prevent the caller from restoring radio and RXPS policies.
         self.process = None
-        print("[seeder] stopped")
+        self._close_log()
+        if process is not None:
+            print("[seeder] stopped")
 
 
 def parse_relay(value: str, default_password: str) -> tuple[str, str]:

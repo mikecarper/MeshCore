@@ -1670,6 +1670,100 @@ class SourceCliTests(unittest.TestCase):
         self.assertEqual(result, 2)
         self.assertEqual(restore_source.call_count, 2)
 
+    def test_seeder_log_close_failure_does_not_skip_failure_policy_restore(self) -> None:
+        saved = ota.RxpsSettings(True, 18205, 20423, 8, 16)
+        image = firmware(b"seeder-close-failure" * 500, VERSION_NEW)
+        package = ota.parse_mota(mota_blob(image))
+        expected_body_hash = ota.parse_endf(image).body_hash
+        normal = ota.RadioSettings(910.525, 62.5, 7, 5, False)
+        controller = mock.Mock()
+        controller.get_radio.return_value = normal
+        controller.remote_command.return_value = "OK"
+        cleanup = []
+
+        def fail_close():
+            cleanup.append("close log")
+            raise OSError("log close failed")
+
+        with tempfile.TemporaryDirectory() as directory:
+            work_dir = Path(directory) / "work"
+            argv = [
+                "release.mota", "remote",
+                "--controller-serial", "/dev/controller",
+                "--source-serial", "/dev/source",
+                "--password", "secret", "--work-dir", str(work_dir), "--yes",
+            ]
+            seeder = ota.SeederProcess(
+                argparse.Namespace(
+                    motatool="motatool", source_serial="/dev/source",
+                    source_tcp=None, source_baud=115200,
+                ),
+                Path(directory), work_dir,
+            )
+            seeder.start = mock.Mock()
+            seeder.process = mock.Mock()
+            seeder.process.poll.return_value = 0
+            log_file = seeder.log_file = mock.Mock(closed=False)
+            log_file.close.side_effect = fail_close
+            error = io.StringIO()
+            with contextlib.ExitStack() as stack:
+                for name in (
+                    "preflight_inputs", "preflight_source_cli",
+                    "ensure_source_clock_gate_safe", "ensure_controller_clock_safe",
+                    "verify_shared_source_identity", "confirm_update",
+                    "run_temp_radio_preflight", "arm_target_temp_radio",
+                    "arm_source_temp_radio_once", "switch_controller_to_temp_radio",
+                    "find_and_start_pull",
+                ):
+                    stack.enter_context(mock.patch.object(ota, name))
+                stack.enter_context(mock.patch.object(ota, "read_source_rxps", return_value=saved))
+                stack.enter_context(mock.patch.object(ota, "disable_source_rxps", return_value=True))
+                restore_source = stack.enter_context(mock.patch.object(
+                    ota, "restore_source_rxps",
+                    side_effect=lambda *args: cleanup.append("restore source RXPS"),
+                ))
+                stack.enter_context(mock.patch.object(ota, "query_target", return_value=target()))
+                stack.enter_context(mock.patch.object(
+                    ota, "prepare_package",
+                    return_value=(Path("release.mota"), package, expected_body_hash),
+                ))
+                stack.enter_context(mock.patch.object(
+                    ota, "read_lora_ota_participant_versions",
+                    return_value={"destination": VERSION_NEW},
+                ))
+                stack.enter_context(mock.patch.object(
+                    ota, "read_remote_rxps", return_value=ota.RxpsSettings(False, 0, 0),
+                ))
+                monitor = stack.enter_context(mock.patch.object(
+                    ota, "monitor_download", side_effect=ota.OtaError("synthetic transfer failure"),
+                ))
+                shorten_source = stack.enter_context(mock.patch.object(
+                    ota, "shorten_source_temp_window", return_value=True,
+                ))
+                stack.enter_context(mock.patch.object(ota, "SeederProcess", return_value=seeder))
+                stack.enter_context(mock.patch.object(ota.time, "sleep"))
+                source_command = stack.enter_context(mock.patch.object(
+                    ota, "source_cli_command",
+                    side_effect=lambda args, command, **kwargs: cleanup.append(command) or "OK",
+                ))
+                stack.enter_context(contextlib.redirect_stdout(io.StringIO()))
+                stack.enter_context(contextlib.redirect_stderr(error))
+                result = ota.main(argv, controller_override=controller)
+
+        self.assertEqual(result, 2)
+        monitor.assert_called_once()
+        log_file.close.assert_called_once_with()
+        self.assertIsNone(seeder.process)
+        self.assertIsNone(seeder.log_file)
+        source_command.assert_called_once_with(mock.ANY, "ota folder off", check=False)
+        shorten_source.assert_called_once_with(mock.ANY, check=False)
+        controller.set_radio.assert_called_once_with(normal, "restore controller radio after failure")
+        restore_source.assert_called_once_with(mock.ANY, saved)
+        self.assertEqual(cleanup, ["close log", "ota folder off", "restore source RXPS"])
+        self.assertIn("ERROR: synthetic transfer failure", error.getvalue())
+        self.assertIn("WARNING: could not close seeder log", error.getvalue())
+        self.assertIn("log close failed", error.getvalue())
+
     def test_shared_failure_cleanup_never_persists_temp_radio_tuple(self) -> None:
         normal = ota.RadioSettings(910.525, 62.5, 7, 5, False)
         controller = mock.Mock()

@@ -4,6 +4,7 @@ import argparse
 import contextlib
 import io
 from pathlib import Path
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -243,6 +244,130 @@ class SeederStartupTests(unittest.TestCase):
         self.assertIn("child diagnostic", str(failure.exception))
 
 
+class SeederStopTests(unittest.TestCase):
+    def seeder(self, return_code=0):
+        args = argparse.Namespace(
+            motatool="motatool", source_serial="/dev/source",
+            source_tcp=None, source_baud=115200,
+        )
+        seeder = ota.SeederProcess(args, Path("/served"), Path("/work"))
+        seeder.process = mock.Mock()
+        seeder.process.poll.return_value = return_code
+        seeder.log_file = mock.Mock(closed=False)
+        return seeder
+
+    def test_log_close_failure_warns_once_and_allows_later_cleanup(self):
+        seeder = self.seeder()
+        process, log_file = seeder.process, seeder.log_file
+        log_file.close.side_effect = OSError("log close failed")
+        output, error = io.StringIO(), io.StringIO()
+        restored = []
+        with contextlib.redirect_stdout(output), contextlib.redirect_stderr(error):
+            seeder.stop()
+            restored.append("policy restored")
+            seeder.stop()
+        self.assertEqual(restored, ["policy restored"])
+        self.assertIsNone(seeder.process)
+        self.assertIsNone(seeder.log_file)
+        process.send_signal.assert_not_called()
+        process.kill.assert_not_called()
+        log_file.close.assert_called_once_with()
+        self.assertEqual(output.getvalue().count("[seeder] stopped"), 1)
+        self.assertEqual(error.getvalue().count("WARNING:"), 1)
+        self.assertIn("/work/motatool-serve.log", error.getvalue())
+        self.assertIn("log close failed", error.getvalue())
+
+    def test_running_child_is_waited_for_before_releasing_ownership(self):
+        seeder = self.seeder(return_code=None)
+        process, log_file = seeder.process, seeder.log_file
+        with mock.patch.object(ota.os, "name", "posix"), contextlib.redirect_stdout(io.StringIO()):
+            seeder.stop()
+        process.send_signal.assert_called_once_with(ota.signal.SIGINT)
+        process.wait.assert_called_once_with(timeout=10)
+        process.kill.assert_not_called()
+        log_file.close.assert_called_once_with()
+        self.assertIsNone(seeder.process)
+        self.assertIsNone(seeder.log_file)
+
+    def test_graceful_timeout_is_followed_by_confirmed_kill(self):
+        seeder = self.seeder(return_code=None)
+        process, log_file = seeder.process, seeder.log_file
+        process.wait.side_effect = [subprocess.TimeoutExpired("motatool", 10), 0]
+        with contextlib.redirect_stdout(io.StringIO()):
+            seeder.stop()
+        process.kill.assert_called_once_with()
+        self.assertEqual(process.wait.call_args_list, [
+            mock.call(timeout=10), mock.call(timeout=5),
+        ])
+        log_file.close.assert_called_once_with()
+        self.assertIsNone(seeder.process)
+        self.assertIsNone(seeder.log_file)
+
+    def test_failed_shutdown_retains_ownership_and_does_not_claim_stopped(self):
+        for failure in ("kill", "final wait"):
+            with self.subTest(failure=failure):
+                seeder = self.seeder(return_code=None)
+                process, log_file = seeder.process, seeder.log_file
+                process.wait.side_effect = [
+                    subprocess.TimeoutExpired("motatool", 10),
+                    subprocess.TimeoutExpired("motatool", 5),
+                ]
+                expected = subprocess.TimeoutExpired
+                if failure == "kill":
+                    process.kill.side_effect = OSError("kill failed")
+                    expected = OSError
+                output = io.StringIO()
+                with contextlib.redirect_stdout(output), self.assertRaises(expected):
+                    seeder.stop()
+                self.assertIs(seeder.process, process)
+                self.assertIs(seeder.log_file, log_file)
+                log_file.close.assert_not_called()
+                self.assertNotIn("stopped", output.getvalue())
+
+    def test_log_without_a_child_is_closed_and_detached(self):
+        for close_error in (None, OSError("log close failed")):
+            with self.subTest(close_error=close_error):
+                seeder = self.seeder()
+                seeder.process = None
+                log_file = seeder.log_file
+                log_file.close.side_effect = close_error
+                output, error = io.StringIO(), io.StringIO()
+                with contextlib.redirect_stdout(output), contextlib.redirect_stderr(error):
+                    seeder.stop()
+                log_file.close.assert_called_once_with()
+                self.assertIsNone(seeder.log_file)
+                self.assertNotIn("stopped", output.getvalue())
+                self.assertEqual(bool(error.getvalue()), close_error is not None)
+
+    def test_already_closed_log_is_detached_without_closing_again(self):
+        seeder = self.seeder()
+        log_file = seeder.log_file
+        log_file.closed = True
+        with contextlib.redirect_stdout(io.StringIO()):
+            seeder.stop()
+        log_file.close.assert_not_called()
+        self.assertIsNone(seeder.process)
+        self.assertIsNone(seeder.log_file)
+
+    def test_spawn_failure_retains_primary_diagnostic_if_log_close_fails(self):
+        seeder = self.seeder()
+        seeder.process = None
+        log_file = seeder.log_file
+        log_file.close.side_effect = OSError("log close failed")
+        error = io.StringIO()
+        with (
+            mock.patch.object(Path, "open", return_value=log_file),
+            mock.patch.object(ota.subprocess, "Popen", side_effect=FileNotFoundError("missing")),
+            contextlib.redirect_stdout(io.StringIO()),
+            contextlib.redirect_stderr(error),
+            self.assertRaisesRegex(ota.OtaError, "required command was not found: motatool"),
+        ):
+            seeder.start()
+        self.assertIn("log close failed", error.getvalue())
+        self.assertIsNone(seeder.process)
+        self.assertIsNone(seeder.log_file)
+
+
 class SeederOptionTests(unittest.TestCase):
     def arguments(self, chain=False, *options):
         parser = rak_chain.build_parser() if chain else ota.build_parser()
@@ -317,6 +442,7 @@ class SeederSubprocessTests(unittest.TestCase):
             self.assertIn("running (device COUNT confirmed)", output.getvalue())
             self.assertIn("host compression complete", output.getvalue())
             self.assertIsNone(seeder.process)
+            self.assertIsNone(seeder.log_file)
 
 
 if __name__ == "__main__":
