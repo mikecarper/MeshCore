@@ -37,7 +37,10 @@ Changing a copied contact preserves the old path for a pending app response
 or rollback. Dirty entries are saved before eviction. If storage cannot be
 read, written, or represented completely, the operation fails instead of
 sending along a different route. Contact I/O failures request bounded recovery
-between callbacks: reload a readable live image, otherwise a readable backup,
+between callbacks. A raw cached-path read fault first rechecks the current
+immutable paths without resetting accepted RAM changes or their save deadline.
+Persistent faults or uncertain file publication reload a readable live image,
+otherwise a readable backup,
 and discard only unrecoverable contact data if neither works. nRF52 preserves
 healthy pages when another page is damaged. No archival `.bad` files are kept.
 If damaged contacts cannot be removed, the node remains usable with volatile

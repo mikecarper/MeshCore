@@ -50,6 +50,12 @@ class ContactCacheTest(unittest.TestCase):
     def test_esp32_disabled_contact_recovery_is_detected(self):
         self.run_cache_test("ESP32_PLATFORM", disable_recovery=True)
 
+    def test_esp32_unconditional_contact_reset_is_detected(self):
+        self.run_cache_test("ESP32_PLATFORM", disable_raw_recovery=True)
+
+    def test_nrf52_unconditional_contact_reset_is_detected(self):
+        self.run_cache_test("NRF52_PLATFORM", disable_raw_recovery=True)
+
     def test_nrf52_unsafe_legacy_discovery_recovery_is_detected(self):
         self.run_cache_test("NRF52_PLATFORM", unsafe_legacy_discovery=True)
 
@@ -57,6 +63,7 @@ class ContactCacheTest(unittest.TestCase):
         self.run_cache_test("NRF52_PLATFORM", unsafe_page_discovery=True)
 
     def run_cache_test(self, platform, disable_crc_batch=False, disable_recovery=False,
+                       disable_raw_recovery=False,
                        unsafe_legacy_discovery=False, unsafe_page_discovery=False):
         with tempfile.TemporaryDirectory(prefix="mesh-contact-cache-") as temp:
             temp = Path(temp)
@@ -119,6 +126,12 @@ class ContactCacheTest(unittest.TestCase):
                 self.assertIn(recovery, implementation)
                 implementation = implementation.replace(
                     recovery, "void DataStore::recoverContacts(DataStoreHost*) {}")
+            if disable_raw_recovery:
+                # Restore the exact pre-fix unconditional host-reset path,
+                # leaving fault classification and bounded fallback unchanged.
+                raw_retry = method(store, "if (_contact_recovery & ContactRecoveryRawOnly) {")
+                self.assertEqual(implementation.count(raw_retry), 1)
+                implementation = implementation.replace(raw_retry, "")
             if unsafe_legacy_discovery:
                 discovery = method(store,
                     'if (!contactPathPresence(contacts_fs, "/contacts3", legacy_exists))')
@@ -182,7 +195,11 @@ class ContactCacheTest(unittest.TestCase):
             ], capture_output=True, text=True)
             self.assertEqual(result.returncode, 0, result.stderr)
             result = subprocess.run([str(binary)], capture_output=True, text=True)
-            if unsafe_page_discovery:
+            if disable_raw_recovery:
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn("raw_read_recovery_preserves_accepted_ram_state", result.stderr)
+                self.assertIn("f.host.recovery_resets == 0", result.stderr)
+            elif unsafe_page_discovery:
                 self.assertNotEqual(result.returncode, 0)
                 self.assertIn("nrf52_unknown_page_stat_preserves_contact_authority", result.stderr)
                 self.assertIn("f.host.contacts.size()", result.stderr)

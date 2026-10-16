@@ -2194,7 +2194,35 @@ bool DataStore::prepareContactSave() {
 #endif
 
 void DataStore::recoverContacts(DataStoreHost* host) {
-  if (!contactRecoveryPending() || !host->resetContactsForRecovery()) return;
+  if (!contactRecoveryPending()) return;
+#if MESH_CONTACT_CACHE
+  if (_contact_recovery & ContactRecoveryRawOnly) {
+    // A failed cold read did not change names/generations. Retry immutable
+    // current paths before retiring accepted, not-yet-persisted RAM changes.
+    const uint8_t previous = _contact_recovery;
+    _contact_recovery &= ~(ContactRecoveryPending | ContactRecoveryRawOnly
+        | ContactRecoveryLegacy);
+#if defined(NRF52_PLATFORM)
+    const auto unread = _unread_contact_pages;
+    _unread_contact_pages.clearAll();
+#endif
+    uint8_t path[64];
+    bool readable = true;
+    for (uint32_t i = 0;; ++i) {
+      const ContactInfo* contact = host->getContactForStore(i);
+      if (contact == nullptr) break;
+      // copyPathTo uses checksum-checked read(), not allocating/evicting view().
+      if (!contact->copyPathTo(path)) { readable = false; break; }
+    }
+    if (readable && !contactRecoveryPending()) return;
+#if defined(NRF52_PLATFORM)
+    for (uint8_t page = 0; page < mesh::storage::CONTACT_PAGE_COUNT; ++page)
+      if (unread.bits() & (1UL << page)) _unread_contact_pages.mark(page);
+#endif
+    queueContactRecovery((previous & ContactRecoveryLegacy) != 0);
+  }
+#endif
+  if (!host->resetContactsForRecovery()) return;
 #if defined(ESP32_PLATFORM)
   cancelContactWrite();
   _contact_write_requested = false;
@@ -4590,7 +4618,7 @@ bool DataStore::readStoredPath(uint16_t source, uint8_t path[64]) {
         && file.seek(offset + 76) && file.read(path, 64) == 64;
     if (!ok) {
       file.close();
-      queueContactRecovery(true);
+      queueContactReadRecovery(true);
     }
     return ok;
   }
@@ -4615,9 +4643,9 @@ bool DataStore::readStoredPath(uint16_t source, uint8_t path[64]) {
     if (source & mesh::ContactPathStorage::PAGED)
       _unread_contact_pages.mark((source & ~mesh::ContactPathStorage::PAGED)
           / mesh::storage::CONTACTS_PER_PAGE);
-    queueContactRecovery((source & mesh::ContactPathStorage::PAGED) == 0);
+    queueContactReadRecovery((source & mesh::ContactPathStorage::PAGED) == 0);
 #else
-    queueContactRecovery(true);
+    queueContactReadRecovery(true);
 #endif
   }
   // The pool checks the CRC captured when this immutable path value was bound.

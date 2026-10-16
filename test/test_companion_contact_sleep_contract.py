@@ -54,24 +54,32 @@ class CompanionContactSleepContractTest(unittest.TestCase):
         )
         methods = "\n".join(signature + " {" + function_body(mesh, signature) + "}"
                             for signature in signatures)
+        recovery_guard = "if (_store->contactRecoveryPending() && !mesh::morseTimingActive(_radio))"
+        methods += "\nvoid MyMesh::serviceRecovery() {" + recovery_guard + " {"
+        methods += function_body(loop, recovery_guard) + "}}\n"
         fixture = r'''
 #include <cassert>
 #include <cstdint>
+#include <initializer_list>
 #define MESH_DEBUG_PRINTLN(...) do {} while (0)
 namespace mesh {
 void resetLazyPersistenceAfterSuccess(uint32_t& deadline, uint8_t& failures) {
   deadline = 0; failures = 0;
 }
 uint32_t nonzeroLazyPersistenceDeadline(uint32_t value) { return value ? value : 1; }
+bool morseTimingActive(int) { return false; }
 }
 constexpr unsigned CONTACT_PAGE_WRITE_GAP = 10;
+constexpr unsigned LAZY_CONTACTS_WRITE_DELAY = 50;
 bool save_filter(int) { return true; }
 struct Board { unsigned resets = 0; void reboot() { ++resets; } } board;
 struct Store {
-  bool vol = false, saved = true, pending = true;
+  bool vol = false, saved = true, pending = true, recovery = false;
   unsigned writes = 0;
   bool contactsAreVolatile() const { return vol; }
   bool hasPendingContactWrites() const { return pending; }
+  bool contactRecoveryPending() const { return recovery; }
+  void recoverContacts(void*) { recovery = false; }
   bool flushContactWrites(void*, bool (*)(int)) { ++writes; return saved; }
   bool saveContacts(void*, bool (*)(int)) { ++writes; return saved; }
 };
@@ -80,6 +88,9 @@ struct MyMesh {
   uint32_t dirty_contacts_expiry = 1;
   uint8_t dirty_contacts_failures = 1;
   unsigned retries = 0;
+  int _radio = 0;
+  void updateGpsTelemetryPolicy() {}
+  void serviceRecovery();
   uint32_t futureMillis(unsigned value) { return 100 + value; }
   void scheduleContactWriteRetry() { ++retries; }
   bool flushContactsBeforeReboot(); bool prepareForUiShutdown();
@@ -114,6 +125,19 @@ int main() {
   derived.saveContacts();
   assert(derived.overrides == 0 && derived.dirty_contacts_expiry == 0);
   assert(derived.dirty_contacts_failures == 0 && derived.store.writes == 0);
+  // Execute the actual outer-loop recovery preamble. Fast raw-read recovery
+  // must not postpone even an already-overdue accepted mutation deadline.
+  for (uint32_t deadline : {1u, 321u}) {
+    node.dirty_contacts_expiry = deadline;
+    node.dirty_contacts_failures = 3;
+    node.store.pending = true; node.store.recovery = true;
+    node.serviceRecovery();
+    assert(node.dirty_contacts_expiry == deadline);
+    assert(node.dirty_contacts_failures == 3 && !node.store.recovery);
+  }
+  node.dirty_contacts_expiry = 0; node.store.recovery = true;
+  node.serviceRecovery();
+  assert(node.dirty_contacts_expiry == 100 + LAZY_CONTACTS_WRITE_DELAY);
 }
 '''.replace("@METHODS@", methods)
         with tempfile.TemporaryDirectory(prefix="companion-contact-recovery-") as directory:

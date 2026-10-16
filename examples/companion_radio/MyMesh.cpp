@@ -11352,7 +11352,7 @@ void MyMesh::loop() {
   if (_store->contactRecoveryPending() && !mesh::morseTimingActive(_radio)) {
     _store->recoverContacts(this);
     updateGpsTelemetryPolicy();
-    if (_store->hasPendingContactWrites()) {
+    if (!dirty_contacts_expiry && _store->hasPendingContactWrites()) {
       dirty_contacts_expiry = mesh::nonzeroLazyPersistenceDeadline(
           futureMillis(LAZY_CONTACTS_WRITE_DELAY));
     }

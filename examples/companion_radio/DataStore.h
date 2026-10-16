@@ -50,12 +50,28 @@ class DataStore
   // permission to discard contacts. No recovery files or boot counters needed.
   enum : uint8_t { ContactRecoveryPending = 1, ContactRecoveryLegacy = 2,
                    ContactRecoveryBackup = 4, ContactStorageUnavailable = 8,
-                   ContactMigrationDeferred = 16 };
+                   ContactMigrationDeferred = 16,
+#if MESH_CONTACT_CACHE
+                   ContactRecoveryRawOnly = 32,
+#endif
+  };
   uint8_t _contact_recovery = 0;
   void queueContactRecovery(bool legacy = false) {
+#if MESH_CONTACT_CACHE
+    // Source/publication uncertainty always supersedes a raw-read retry.
+    _contact_recovery &= ~ContactRecoveryRawOnly;
+#endif
     _contact_recovery |= ContactRecoveryPending
         | (legacy ? ContactRecoveryLegacy : 0);
   }
+#if MESH_CONTACT_CACHE
+  void queueContactReadRecovery(bool legacy = false) {
+    if (!(_contact_recovery & ContactRecoveryPending))
+      _contact_recovery |= ContactRecoveryRawOnly;
+    _contact_recovery |= ContactRecoveryPending
+        | (legacy ? ContactRecoveryLegacy : 0);
+  }
+#endif
   void clearContactLoadFailure();
 #if !defined(NRF52_PLATFORM)
   const char* selectContactFile(bool& present);

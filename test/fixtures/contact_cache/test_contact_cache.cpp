@@ -24,6 +24,8 @@ struct Host {
   unsigned cache_flushes = 0;
   unsigned recovery_resets = 0;
   bool recovery_reset_allowed = true;
+  unsigned long dirty_deadline = 0;
+  uint8_t dirty_failures = 0;
   size_t capacity = 350;
   std::vector<ContactInfo> contacts;
   bool onContactLoaded(const ContactInfo& c) {
@@ -36,6 +38,8 @@ struct Host {
     if (!recovery_reset_allowed) return false;
     ++recovery_resets;
     contacts.clear();
+    dirty_deadline = 0;
+    dirty_failures = 0;
     return true;
   }
   ContactInfo* getContactForStore(uint32_t index) {
@@ -113,6 +117,11 @@ public:
   void loadContacts(DataStoreHost*);
   void recoverContacts(DataStoreHost*);
 #include "contact_recovery_api_under_test.h"
+  bool rawRecoveryOnly() const {
+    return (_contact_recovery & ContactRecoveryRawOnly) != 0;
+  }
+  void requireStrongRecovery(bool legacy = false) { queueContactRecovery(legacy); }
+  void requireRawReadRecovery(bool legacy = false) { queueContactReadRecovery(legacy); }
   bool saveContacts(DataStoreHost*, bool (*filter)(const ContactInfo&));
   bool flushContactWrites(DataStoreHost*, bool (*filter)(const ContactInfo&));
   bool readStoredPath(uint16_t, uint8_t[64]) override;
@@ -135,6 +144,10 @@ public:
     return _contact_write != nullptr && !static_cast<bool>(*_contact_write);
   }
   bool activeJob() const { return _contact_write != nullptr; }
+  const void* jobAddress() const { return _contact_write; }
+  uint32_t jobIndex() const { return _contact_write_index; }
+  uint32_t writeRevision() const { return _contact_write_revision; }
+  bool writeRequested() const { return _contact_write_requested; }
   bool verifying() const { return _contact_write_verifying; }
   bool readyToPublish() const {
     return _contact_write && _contact_write->readyToPublish();
@@ -142,6 +155,9 @@ public:
 #endif
 #if defined(NRF52_PLATFORM)
   uint32_t pageGeneration(uint8_t page) const { return _contact_page_generations[page]; }
+  uint32_t unreadPages() const { return _unread_contact_pages.bits(); }
+  uint32_t dirtyPages() const { return _dirty_contact_pages.bits(); }
+  void markDirtyPage(uint8_t page) { assert(_dirty_contact_pages.mark(page)); }
   bool loadContactPages(DataStoreHost*, uint16_t, uint32_t);
   bool writeContactPage(DataStoreHost*, uint8_t, bool (*filter)(const ContactInfo&));
   bool markContactDirty(const ContactInfo& c) {
@@ -287,6 +303,200 @@ struct Fixture {
     assert(actual && memcmp(actual, expected.data(), 64) == 0);
   }
 };
+
+static void raw_read_recovery_preserves_accepted_ram_state() {
+  for (bool paged : {false, true}) {
+#if !defined(NRF52_PLATFORM)
+    if (paged) continue;
+#endif
+    Fixture f(30);
+    const char* source = "/contacts3";
+#if defined(NRF52_PLATFORM)
+    if (paged) {
+      assert(f.store.writeContactPage(&f.host, 0, cachedContactFilter));
+      assert(f.store.writeContactPage(&f.host, 1, cachedContactFilter));
+      assert(SPIFFS.remove("/contacts3"));
+      source = "/contacts4_00";
+    }
+#endif
+    // These app-accepted changes are newer than disk, including a new peer.
+    snprintf(f.host.contacts[0].name, sizeof(f.host.contacts[0].name), "accepted rename");
+    f.host.contacts[0].lastmod = 0x12345678;
+    assert(f.host.contacts[1].setRawPath(route(2401).data()));
+    assert(f.store.markContactDirty(f.host.contacts[0]));
+    assert(f.store.markContactDirty(f.host.contacts[1]));
+    {
+      ContactInfo added = f.host.contacts.back();
+      added.id.pub_key[30] = 0xAA;
+      added.id.pub_key[31] = 0xBB;
+      snprintf(added.name, sizeof(added.name), "accepted new peer");
+      assert(added.setRawPath(route(2430).data()));
+#if defined(NRF52_PLATFORM)
+      added.storage_slot = 30;
+#endif
+      f.host.contacts.push_back(added);
+    }
+    assert(f.store.markContactDirty(f.host.contacts.back()));
+    f.host.dirty_deadline = 0x76543210;
+    f.host.dirty_failures = 3;
+#if defined(NRF52_PLATFORM)
+    f.store.markDirtyPage(0);
+    f.store.markDirtyPage(1);
+    const uint32_t dirty_pages = f.store.dirtyPages();
+    const uint32_t generation = f.store.pageGeneration(0);
+#else
+    for (unsigned step = 0; step < 12; ++step)
+      assert(f.store.serviceContactWrites(&f.host, cachedContactFilter));
+    assert(f.store.activeJob() && !f.store.verifying());
+    const void* job = f.store.jobAddress();
+    const uint32_t job_index = f.store.jobIndex();
+    const uint32_t revision = f.store.writeRevision();
+    const bool requested = f.store.writeRequested();
+#endif
+    std::vector<std::array<uint8_t, 152>> accepted(f.host.contacts.size());
+    std::vector<uint16_t> handles;
+    for (unsigned i = 0; i < f.host.contacts.size(); ++i) {
+      assert(serializeContactRecord(f.host.contacts[i], accepted[i].data()));
+      handles.push_back(f.host.contacts[i].path_ref.handle());
+    }
+    // Exhaust the remaining handle budget: the retry must use nonallocating,
+    // checksum-checked path reads, not a replacement/reload of ContactInfo.
+    std::vector<mesh::ContactPathRef> pressure(359);
+    for (auto& path : pressure) assert(path.bind(0, route(0).data()));
+    mesh::ContactPathRef no_room;
+    assert(!no_room.bind(0, route(0).data()));
+    const auto durable = SPIFFS.files;
+    const unsigned writes = SPIFFS.writes, removes = SPIFFS.removes;
+    const unsigned renames = SPIFFS.renames, flushes = f.host.cache_flushes;
+    Path path;
+    SPIFFS.fail_read = source;
+    assert(!f.host.contacts[20].copyPathTo(path.data()));
+    assert(f.store.contactRecoveryPending() && f.store.rawRecoveryOnly());
+#if defined(NRF52_PLATFORM)
+    assert(f.store.unreadPages() == (paged ? 1u : 0u));
+#endif
+    SPIFFS.fail_read.clear();
+    f.store.recoverContacts(&f.host);
+    assert(!f.store.contactRecoveryPending() && !f.store.hasIncompleteContactLoad());
+    assert(f.host.recovery_resets == 0);
+    assert(!f.store.rawRecoveryOnly() && !f.store.contactsAreVolatile());
+    assert(f.host.contacts.size() == accepted.size());
+    assert(f.host.dirty_deadline == 0x76543210 && f.host.dirty_failures == 3);
+    assert(f.host.cache_flushes == flushes && SPIFFS.files == durable);
+    assert(SPIFFS.writes == writes && SPIFFS.removes == removes && SPIFFS.renames == renames);
+    for (unsigned i = 0; i < f.host.contacts.size(); ++i) {
+      std::array<uint8_t, 152> current;
+      assert(serializeContactRecord(f.host.contacts[i], current.data()));
+      assert(current == accepted[i] && f.host.contacts[i].path_ref.handle() == handles[i]);
+    }
+#if defined(NRF52_PLATFORM)
+    assert(f.store.unreadPages() == 0 && f.store.dirtyPages() == dirty_pages);
+    assert(f.store.pageGeneration(0) == generation);
+#else
+    assert(f.store.jobAddress() == job && f.store.jobIndex() == job_index);
+    assert(f.store.writeRevision() == revision && f.store.writeRequested() == requested);
+    assert(f.store.hasPendingContactWrites());
+#endif
+    pressure.clear();
+#if defined(ESP32_PLATFORM)
+    unsigned passes = 0;
+    while (f.store.hasPendingContactWrites()) {
+      assert(++passes < 1000);
+      assert(f.store.serviceContactWrites(&f.host, cachedContactFilter));
+    }
+#else
+    assert(f.store.saveContacts(&f.host, cachedContactFilter));
+    // This fixture's migration lifecycle seam omits legacy truncation. Finish
+    // that step only after every actual page write succeeded, then reboot.
+    if (!paged) assert(SPIFFS.remove("/contacts3"));
+#endif
+    f.host.contacts.clear();
+    DataStore rebooted(f.host);
+    rebooted.loadContacts(&f.host);
+    assert(!rebooted.hasIncompleteContactLoad() && f.host.contacts.size() == accepted.size());
+    for (unsigned i = 0; i < f.host.contacts.size(); ++i) {
+      std::array<uint8_t, 152> current;
+      assert(serializeContactRecord(f.host.contacts[i], current.data()));
+      assert(current == accepted[i]);
+    }
+  }
+}
+
+static void raw_read_recovery_falls_back_on_persistent_io_or_checksum_failure() {
+  for (bool checksum_failure : {false, true}) {
+    Fixture f(30);
+    const char* failed = "/contacts3";
+#if defined(NRF52_PLATFORM)
+    assert(f.store.writeContactPage(&f.host, 0, cachedContactFilter));
+    assert(f.store.writeContactPage(&f.host, 1, cachedContactFilter));
+    assert(SPIFFS.remove("/contacts3"));
+    failed = "/contacts4_00";
+#endif
+    Path path;
+    SPIFFS.fail_read = failed;
+    assert(!f.host.contacts[20].copyPathTo(path.data()));
+    assert(f.store.contactRecoveryPending() && f.store.rawRecoveryOnly());
+    if (checksum_failure) {
+      SPIFFS.fail_read.clear();
+#if defined(NRF52_PLATFORM)
+      SPIFFS.files.at("/contacts4_01")[mesh::storage::CONTACT_PAGE_HEADER_SIZE + 4 * 152 + 76] ^= 1;
+#else
+      SPIFFS.files.at("/contacts3")[29 * 152 + 76] ^= 1;
+#endif
+    }
+    f.host.dirty_deadline = 42;
+    f.store.recoverContacts(&f.host);
+    assert(!f.store.contactRecoveryPending() && !f.store.hasIncompleteContactLoad());
+    assert(f.host.recovery_resets > 0 && f.host.dirty_deadline == 0);
+    assert(!f.store.rawRecoveryOnly());
+    SPIFFS.fail_read.clear();
+  }
+}
+
+static void strong_recovery_faults_cannot_be_downgraded_by_raw_reads() {
+  for (bool strong_first : {false, true}) {
+    Fixture f(30);
+    snprintf(f.host.contacts[0].name, sizeof(f.host.contacts[0].name), "unsaved rename");
+    if (strong_first) f.store.requireStrongRecovery(true);
+    f.store.requireRawReadRecovery(true);
+    if (!strong_first) {
+      assert(f.store.rawRecoveryOnly());
+      f.store.requireStrongRecovery(true);
+    }
+    assert(f.store.contactRecoveryPending() && !f.store.rawRecoveryOnly());
+    f.store.recoverContacts(&f.host);
+    assert(!f.store.contactRecoveryPending() && f.host.recovery_resets > 0);
+    assert(f.host.contacts.size() == 30 && !strcmp(f.host.contacts[0].name, "Contact 0"));
+  }
+}
+
+#if defined(NRF52_PLATFORM)
+static void raw_read_recheck_preserves_old_and_new_unread_page_scopes() {
+  Fixture f(30);
+  assert(f.store.writeContactPage(&f.host, 0, cachedContactFilter));
+  assert(f.store.writeContactPage(&f.host, 1, cachedContactFilter));
+  assert(SPIFFS.remove("/contacts3"));
+  const auto durable = SPIFFS.files;
+  Path path;
+  SPIFFS.fail_read = "/contacts4_00";
+  assert(!f.host.contacts[20].copyPathTo(path.data()));
+  assert(f.store.unreadPages() == 1 && f.store.rawRecoveryOnly());
+  // A different page fails during recheck. A refused boundary must preserve
+  // both scopes for the later strong recovery, not just its freshest fault.
+  SPIFFS.fail_read = "/contacts4_01";
+  f.host.recovery_reset_allowed = false;
+  f.store.recoverContacts(&f.host);
+  assert(f.store.contactRecoveryPending() && !f.store.rawRecoveryOnly());
+  assert(f.store.unreadPages() == 3 && f.host.recovery_resets == 0);
+  assert(f.host.contacts.size() == 30 && SPIFFS.files == durable);
+  SPIFFS.fail_read.clear();
+  f.host.recovery_reset_allowed = true;
+  f.store.recoverContacts(&f.host);
+  assert(!f.store.contactRecoveryPending() && !f.store.hasIncompleteContactLoad());
+  assert(f.host.recovery_resets > 0 && f.host.contacts.size() == 30);
+  assert(SPIFFS.files == durable);
+}
+#endif
 
 static void routes_survive_eviction_and_full_sync() {
   Fixture f;
@@ -635,6 +845,33 @@ static void contact_recovery_retries_and_discards_only_unread_contacts() {
 }
 
 #if defined(ESP32_PLATFORM)
+static void uncertain_publication_is_not_a_raw_read_retry() {
+  Fixture f(30);
+  assert(f.host.contacts[0].setRawPath(route(2470).data()));
+  assert(f.store.markContactDirty(f.host.contacts[0]));
+  unsigned passes = 0;
+  while (!f.store.readyToPublish()) {
+    assert(++passes < 1000);
+    assert(f.store.serviceContactWrites(&f.host, cachedContactFilter));
+  }
+  SPIFFS.after_rename = [](FakeFilesystem& fs, const char* path) {
+    if (!strcmp(path, "/contacts3")) fs.metadata_error = true;
+  };
+  assert(!f.store.serviceContactWrites(&f.host, cachedContactFilter));
+  assert(f.store.contactRecoveryPending() && !f.store.rawRecoveryOnly());
+  assert(!f.store.activeJob() && f.store.hasIncompleteContactLoad());
+  SPIFFS.after_rename = {};
+  SPIFFS.metadata_error = false;
+  // Ordinary publication uncertainty must still reload even though every
+  // current path would read correctly from the now-published file.
+  f.store.requireRawReadRecovery(true);
+  assert(!f.store.rawRecoveryOnly());
+  f.store.recoverContacts(&f.host);
+  assert(!f.store.contactRecoveryPending() && !f.store.hasIncompleteContactLoad());
+  assert(f.host.recovery_resets > 0 && f.host.contacts.size() == 30);
+  f.check(0, route(2470));
+}
+
 static unsigned drain_cooperative_save(Fixture& f) {
   unsigned serviced_commands = 0;
   while (f.store.hasPendingContactWrites()) {
@@ -1303,9 +1540,13 @@ static void deferred_cleanup_publishes_actual_cached_handles() {
 #endif
 
 int main() {
+  raw_read_recovery_preserves_accepted_ram_state();
+  raw_read_recovery_falls_back_on_persistent_io_or_checksum_failure();
+  strong_recovery_faults_cannot_be_downgraded_by_raw_reads();
   contact_tx_policy_round_trips_without_growing_records();
   shared_request_tail_keeps_payload_routes_and_timeouts();
 #if defined(ESP32_PLATFORM)
+  uncertain_publication_is_not_a_raw_read_retry();
   deferred_cleanup_publishes_actual_cached_handles();
   cooperative_save_services_commands_and_preserves_snapshots();
   background_crc_verification_uses_bounded_batches();
@@ -1330,6 +1571,7 @@ int main() {
   persisted_secret_matches_the_real_peer_key_exchange();
   secret_corruption_reordering_and_full_storage();
 #else
+  raw_read_recheck_preserves_old_and_new_unread_page_scopes();
   nrf52_secret_cache_leaves_contact_storage_reserve();
   nrf52_migration_snapshots_and_failed_page_replacement();
   nrf52_resource_refusals_never_discard_contact_pages();
