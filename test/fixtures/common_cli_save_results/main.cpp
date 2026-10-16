@@ -112,7 +112,7 @@ int main() {
     cli.callbacks.common_ok = false;
     if (guest) cli.set("guest.password new-guest", reply);
     else cli.password("password new-admin", reply);
-    assert(error(reply) && strstr(reply, "unchanged"));
+    assert(error(reply) && strstr(reply, "unconfirmed") && strstr(reply, "reboot"));
     assert(strcmp(cli.prefs.password, "old-admin") == 0);
     assert(strcmp(cli.prefs.guest_password, "old-guest") == 0);
     assert(cli.prefs.advert_interval == 2 && cli.callbacks.local_updates == 0);
@@ -143,7 +143,7 @@ int main() {
     assert(error(reply) && cli.callbacks.saves == 0);
     cli.callbacks.common_ok = false;
     cli.set((std::string(key) + (flood ? "3" : "120")).c_str(), reply);
-    assert(error(reply) && strstr(reply, "unchanged"));
+    assert(error(reply) && strstr(reply, "unconfirmed") && strstr(reply, "reboot"));
     assert(cli.prefs.advert_interval == 30 && cli.prefs.flood_advert_interval == 12);
     assert(cli.callbacks.local_updates == 0 && cli.callbacks.flood_updates == 0);
     cli.callbacks.common_ok = true;
@@ -188,7 +188,8 @@ int main() {
     cli.prefs.dirty = false;
     cli.callbacks.common_ok = false;
     cli.set("multi.acks 2", reply);
-    assert(error(reply) && strstr(reply, "unsaved changes"));
+    assert(error(reply) && strstr(reply, "unconfirmed") && strstr(reply, "may be active")
+           && strstr(reply, "reboot may differ"));
     assert(cli.prefs.multi_acks == 2 && cli.callbacks.persisted.multi_acks == 0);
     assert(cli.prefs.dirty && cli._prefs_save_failures == 1);
     cli.callbacks.common_ok = true;

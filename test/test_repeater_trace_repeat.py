@@ -81,7 +81,7 @@ int main() {
       if (fault == 2) cli.fs.fail_read_open = true;
       if (fault == 3) cli.fs.fail_rename = 1;
       cli.set(desired ? "repeat.trace on" : "repeat.trace off", reply);
-      assert(!strcmp(reply, "Error: Repeat trace not saved; unchanged"));
+      assert(!strcmp(reply, "Error: save unconfirmed; reboot may differ"));
       assert(cli.prefs.trace_when_repeat_off == uint8_t(!desired));
       assert(cli.fs.files["/com_prefs"] == committed);
       assert(cli.callbacks.retry_updates == callbacks_before);

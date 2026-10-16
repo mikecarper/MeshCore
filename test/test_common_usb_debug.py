@@ -213,7 +213,7 @@ int main() {
     if (fault == 3) cli.fs.fail_rename = 1;
     const unsigned updates = mesh::debug_updates;
     cli.set("usb.debug on", reply);
-    assert(strcmp(reply, "Error: USB debug not saved; unchanged") == 0);
+    assert(strcmp(reply, "Error: save unconfirmed; reboot may differ") == 0);
     assert(cli.prefs.usb_debug_enabled == 0 && !mesh::isUsbDebugEnabled());
     assert(mesh::debug_updates == updates && !mesh::isUsbLoggingEnabled());
     assert(cli.fs.files["/com_prefs"] == debug_off);

@@ -183,7 +183,7 @@ int main() {
   cli.save_ok=false;
   assert(cli.run("ota branch prod", reply));
   assert(cli.prefs.ota_channel==OTA_CH_DEV && cli.persisted==OTA_CH_DEV);
-  assert(strstr(reply, "ERR: OTA channel save failed"));
+  assert(strstr(reply, "ERR: save unconfirmed") && strstr(reply, "reboot may differ"));
   const int saves=cli.saves;
   assert(cli.run("ota branch Beta", reply) && cli.saves==saves);
   assert(!cli.run("ota branches", reply));

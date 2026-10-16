@@ -373,18 +373,18 @@ int main() {
   assert(cli.saves == disabled_saves && mesh.isMqttBridgeRunning() && mesh.isEspNowBridgeRunning());
   cli.fail_save = true;
   cli.set("rs232.enabled on", reply);
-  assert(strstr(reply, "setting unchanged") && !mesh.bridge && !mesh._prefs.rs232_bridge_enabled);
+  assert(strstr(reply, "unconfirmed") && strstr(reply, "reboot") && !mesh.bridge && !mesh._prefs.rs232_bridge_enabled);
   assert(cli.saves == disabled_saves && mesh.isMqttBridgeRunning() && mesh.isEspNowBridgeRunning());
   cli.fail_save = false;
   cli.set("rs232.enabled on", reply); assert(strcmp(reply, "OK") == 0);
   const unsigned saved_after_enable = cli.saves;
   cli.fail_save = true;
   cli.set("rs232.enabled off", reply);
-  assert(strstr(reply, "setting unchanged") && mesh.isRs232BridgeRunning() && mesh._prefs.rs232_bridge_enabled);
+  assert(strstr(reply, "unconfirmed") && strstr(reply, "reboot") && mesh.isRs232BridgeRunning() && mesh._prefs.rs232_bridge_enabled);
   cli.set("bridge.baud 19200", reply);
-  assert(strstr(reply, "baud unchanged") && mesh._prefs.bridge_baud == 57600 && Serial2.baud == 57600);
+  assert(strstr(reply, "unconfirmed") && strstr(reply, "reboot") && mesh._prefs.bridge_baud == 57600 && Serial2.baud == 57600);
   cli.set("bridge.uart 2", reply);
-  assert(strstr(reply, "UART unchanged") && mesh._prefs.bridge_uart == 2 && mesh.isRs232BridgeRunning());
+  assert(strstr(reply, "unconfirmed") && strstr(reply, "reboot") && mesh._prefs.bridge_uart == 2 && mesh.isRs232BridgeRunning());
   assert(cli.saves == saved_after_enable && mesh.mqtt_bridge->begins == wifi_starts);
   assert(mesh.espnow_bridge.begins == wireless_starts);
   cli.fail_save = false;
@@ -405,7 +405,7 @@ int main() {
   // A failed intent save must not signal an uncancellable worker stop.
   cli.fail_save = true;
   cli.set("mqtt.enabled off", reply);
-  assert(strstr(reply, "not saved; unchanged") && mesh._prefs.bridge_enabled);
+  assert(strstr(reply, "unconfirmed") && strstr(reply, "reboot") && mesh._prefs.bridge_enabled);
   assert(mesh.isMqttBridgeRunning() && !mesh.isMqttBridgeStopping());
   cli.fail_save = false;
   cli.set("mqtt.enabled off", reply);
@@ -427,7 +427,7 @@ int main() {
   expect_get(cli, "mqtt.stopping", "> off");
   cli.fail_save = true;
   cli.set("mqtt.enabled on", reply);
-  assert(strstr(reply, "not saved; unchanged") && !mesh._prefs.bridge_enabled);
+  assert(strstr(reply, "unconfirmed") && strstr(reply, "reboot") && !mesh._prefs.bridge_enabled);
   assert(!mesh.isMqttBridgeRunning());
   cli.fail_save = false;
   cli.set("espnow.enabled on", reply); assert(strcmp(reply, "OK") == 0);

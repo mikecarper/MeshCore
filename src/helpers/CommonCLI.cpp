@@ -2852,6 +2852,9 @@ void CommonCLI::savePrefs(PrefsSaveRouting::Scope scope) {
   }
 }
 
+// Failure does not prove the previous image is still on disk: publication can
+// succeed before readback fails. Callers can restore runtime values, but must
+// describe the durable save as unconfirmed rather than promise disk rollback.
 bool CommonCLI::trySavePrefs(PrefsSaveRouting::Scope scope) {
   const PrefsSaveRouting::Plan plan = PrefsSaveRouting::planFor(scope);
   const uint8_t old_advert_interval = _prefs->advert_interval;
@@ -3242,7 +3245,7 @@ void CommonCLI::handleCommand(uint32_t sender_timestamp, char* command, char* re
       StrHelper::strncpy(_prefs->password, &command[9], sizeof(_prefs->password));
       if (!trySavePrefs()) {
         memcpy(_prefs->password, previous, sizeof(previous));
-        strcpy(reply, "Error: password not saved; unchanged");
+        strcpy(reply, "Error: save unconfirmed; reboot may differ");
         return;
       }
       sprintf(reply, "password now: %s", _prefs->password);   // echo back just to let admin know for sure!!
@@ -3827,7 +3830,7 @@ void CommonCLI::handleSetCmd(uint32_t sender_timestamp, char* command, char* rep
     _prefs->trace_when_repeat_off = strcmp(value, "on") == 0 ? 1 : 0;
     if (!trySavePrefs()) {
       _prefs->trace_when_repeat_off = previous;
-      strcpy(reply, "Error: Repeat trace not saved; unchanged");
+      strcpy(reply, "Error: save unconfirmed; reboot may differ");
       return;
     }
     _callbacks->onRetryConfigChanged();
@@ -3865,7 +3868,7 @@ void CommonCLI::handleSetCmd(uint32_t sender_timestamp, char* command, char* rep
       _prefs->gps_sync_interval_hours = hours;
       if (!trySavePrefs()) {
         _prefs->gps_sync_interval_hours = previous;
-        strcpy(reply, "Error: GPS sync interval could not be saved");
+        strcpy(reply, "Error: save unconfirmed; reboot may differ");
       } else {
         _sensors->applyGpsTimeSyncInterval(hours);
         snprintf(reply, 160, "OK - GPS sync interval %u hours (saved)", (unsigned)hours);
@@ -3923,7 +3926,7 @@ void CommonCLI::handleSetCmd(uint32_t sender_timestamp, char* command, char* rep
       _prefs->usb_logging_enabled = enabled ? 1 : 0;
       if (!trySavePrefs()) {
         _prefs->usb_logging_enabled = previous;
-        strcpy(reply, "Error: USB logging not saved; unchanged");
+        strcpy(reply, "Error: save unconfirmed; reboot may differ");
         return;
       }
       // Commit before changing the stream's live protocol ownership.
@@ -3945,7 +3948,7 @@ void CommonCLI::handleSetCmd(uint32_t sender_timestamp, char* command, char* rep
       _prefs->usb_debug_enabled = enabled ? 1 : 0;
       if (!trySavePrefs()) {
         _prefs->usb_debug_enabled = previous;
-        strcpy(reply, "Error: USB debug not saved; unchanged");
+        strcpy(reply, "Error: save unconfirmed; reboot may differ");
         return;
       }
       mesh::setUsbDebugEnabled(enabled);
@@ -3978,7 +3981,7 @@ void CommonCLI::handleSetCmd(uint32_t sender_timestamp, char* command, char* rep
     if (!trySavePrefs()) {
       _prefs->usb_logging_enabled = previous_usb;
       _prefs->bridge_enabled = previous_bridge;
-      strcpy(reply, "Error: logging output not saved; unchanged");
+      strcpy(reply, "Error: save unconfirmed; reboot may differ");
       return;
     }
     mesh::setUsbLoggingEnabled(usb_enabled);
@@ -4053,7 +4056,7 @@ void CommonCLI::handleSetCmd(uint32_t sender_timestamp, char* command, char* rep
       // intent first so a failed write leaves the running service unchanged.
       if (!trySavePrefs()) {
         _prefs->bridge_enabled = previous;
-        strcpy(reply, "Error: MQTT setting not saved; unchanged");
+        strcpy(reply, "Error: save unconfirmed; reboot may differ");
         return;
       }
       const bool applied = enable ? _callbacks->setMqttBridgeState(true)
@@ -4075,7 +4078,7 @@ void CommonCLI::handleSetCmd(uint32_t sender_timestamp, char* command, char* rep
     _prefs->rs232_heartbeat = enable ? 1 : 0;
     if (!trySavePrefs()) {
       _prefs->rs232_heartbeat = previous;
-      strcpy(reply, "Error: RS232 heartbeat not saved; unchanged");
+      strcpy(reply, "Error: save unconfirmed; reboot may differ");
     } else {
       strcpy(reply, enable ? "OK - RS232 heartbeat enabled" : "OK - heartbeat and standby disabled");
     }
@@ -4092,7 +4095,7 @@ void CommonCLI::handleSetCmd(uint32_t sender_timestamp, char* command, char* rep
     _prefs->rs232_autosleep = force ? 2 : enable ? 1 : 0;
     if (!trySavePrefs()) {
       _prefs->rs232_autosleep = previous;
-      strcpy(reply, "Error: RS232 autosleep not saved; unchanged");
+      strcpy(reply, "Error: save unconfirmed; reboot may differ");
     } else {
       strcpy(reply, force ? "OK - forced standby; stock/unknown peers can miss packets"
           : enable ? "OK - standby after peer heartbeat confirmed; stock stays active"
@@ -4112,7 +4115,7 @@ void CommonCLI::handleSetCmd(uint32_t sender_timestamp, char* command, char* rep
     _prefs->rs232_idle_seconds = static_cast<uint16_t>(seconds);
     if (!trySavePrefs()) {
       _prefs->rs232_idle_seconds = previous;
-      strcpy(reply, "Error: RS232 idle not saved; unchanged");
+      strcpy(reply, "Error: save unconfirmed; reboot may differ");
     } else {
       sprintf(reply, "OK - RS232 idle %us", static_cast<unsigned>(seconds));
     }
@@ -4147,9 +4150,11 @@ void CommonCLI::handleSetCmd(uint32_t sender_timestamp, char* command, char* rep
       // Saved-on may currently be in soft standby. Restore an owner as well
       // as its intent, otherwise no object remains to execute the wake timer.
       const bool restored = _callbacks->setRs232BridgeState(previous_enabled != 0);
-      strcpy(reply, restored
-          ? "Error: RS232 change failed; setting unchanged"
-          : "Error: RS232 change failed; previous runtime could not be restored");
+      strcpy(reply, applied
+          ? (restored ? "Error: save unconfirmed; reboot may differ"
+                      : "Error: save unconfirmed; runtime restore failed; reboot may differ")
+          : (restored ? "Error: RS232 change failed; setting unchanged"
+                      : "Error: RS232 change failed; previous runtime could not be restored"));
     } else {
       strcpy(reply, enable && _sensors->gpsUsesSerialUart(_prefs->bridge_uart)
           ? "OK - UART GPS paused" : "OK");
@@ -4313,7 +4318,7 @@ void CommonCLI::handleSetCmd(uint32_t sender_timestamp, char* command, char* rep
       _prefs->flood_advert_interval = (uint8_t)(hours);
       if (!trySavePrefs()) {
         _prefs->flood_advert_interval = previous;
-        strcpy(reply, "Error: interval not saved; unchanged");
+        strcpy(reply, "Error: save unconfirmed; reboot may differ");
         return;
       }
       _callbacks->updateFloodAdvertTimer();
@@ -4329,7 +4334,7 @@ void CommonCLI::handleSetCmd(uint32_t sender_timestamp, char* command, char* rep
       _prefs->advert_interval = (uint8_t)(mins / 2);
       if (!trySavePrefs()) {
         _prefs->advert_interval = previous;
-        strcpy(reply, "Error: interval not saved; unchanged");
+        strcpy(reply, "Error: save unconfirmed; reboot may differ");
         return;
       }
       _callbacks->updateAdvertTimer();
@@ -4341,7 +4346,7 @@ void CommonCLI::handleSetCmd(uint32_t sender_timestamp, char* command, char* rep
     StrHelper::strncpy(_prefs->guest_password, &config[15], sizeof(_prefs->guest_password));
     if (!trySavePrefs()) {
       memcpy(_prefs->guest_password, previous, sizeof(previous));
-      strcpy(reply, "Error: guest password not saved; unchanged");
+      strcpy(reply, "Error: save unconfirmed; reboot may differ");
       return;
     }
     strcpy(reply, "OK");
@@ -5103,9 +5108,11 @@ void CommonCLI::handleSetCmd(uint32_t sender_timestamp, char* command, char* rep
           // non-running heap-backed bridge instance.
           restored = _callbacks->setRs232BridgeState(previous_running);
         }
-        strcpy(reply, restored
-            ? "Error: bridge state change failed; setting unchanged"
-            : "Error: bridge state change failed; previous runtime state could not be restored");
+        strcpy(reply, applied
+            ? (restored ? "Error: save unconfirmed; reboot may differ"
+                        : "Error: save unconfirmed; runtime restore failed; reboot may differ")
+            : (restored ? "Error: bridge state change failed; setting unchanged"
+                        : "Error: bridge state change failed; previous runtime state could not be restored"));
       }
 #else
       // MQTT and ESP-NOW preserve configured intent across missing WiFi
@@ -5176,9 +5183,11 @@ void CommonCLI::handleSetCmd(uint32_t sender_timestamp, char* command, char* rep
         const bool restored = previous_running
             ? _callbacks->restartRs232Bridge()
             : _callbacks->setRs232BridgeState(false);
-        strcpy(reply, restored
-            ? "Error: bridge failed to restart; baud unchanged"
-            : "Error: bridge failed to restart; previous baud could not be restored");
+        strcpy(reply, applied
+            ? (restored ? "Error: save unconfirmed; reboot may differ"
+                        : "Error: save unconfirmed; runtime restore failed; reboot may differ")
+            : (restored ? "Error: bridge failed to restart; baud unchanged"
+                        : "Error: bridge failed to restart; previous baud could not be restored"));
       }
     } else {
       sprintf(reply, "Error: baud rate must be between 9600-%d",BRIDGE_MAX_BAUD);
@@ -5231,9 +5240,11 @@ void CommonCLI::handleSetCmd(uint32_t sender_timestamp, char* command, char* rep
         const bool restored = previous_running
             ? _callbacks->restartRs232Bridge()
             : _callbacks->setRs232BridgeState(false);
-        strcpy(reply, restored
-            ? "Error: bridge failed to restart; UART unchanged"
-            : "Error: bridge failed to restart; previous UART could not be restored");
+        strcpy(reply, applied
+            ? (restored ? "Error: save unconfirmed; reboot may differ"
+                        : "Error: save unconfirmed; runtime restore failed; reboot may differ")
+            : (restored ? "Error: bridge failed to restart; UART unchanged"
+                        : "Error: bridge failed to restart; previous UART could not be restored"));
       } else if (
 #ifdef WITH_MQTT_BRIDGE
                  _prefs->rs232_bridge_enabled

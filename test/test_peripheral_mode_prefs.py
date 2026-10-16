@@ -127,8 +127,8 @@ int main(){Common common;Companion companion;char reply[160];
  assert(companion._prefs.peripherals_shared==1&&companion.durable.peripherals_shared==1&&strstr(reply,"reboot"));
  assert(common.sensor.applications==0&&companion.sensors.applications==0);
  common.ok=companion.ok=false;
- common.set("set peripherals.mode gps-only",reply);assert(strstr(reply,"could not be saved"));
- assert(companion.command("set peripherals.mode gps-only",reply,sizeof(reply))&&strstr(reply,"could not be saved"));
+ common.set("set peripherals.mode gps-only",reply);assert(strstr(reply,"unconfirmed")&&strstr(reply,"reboot"));
+ assert(companion.command("set peripherals.mode gps-only",reply,sizeof(reply))&&strstr(reply,"unconfirmed")&&strstr(reply,"reboot"));
  assert(common.prefs.peripherals_shared==1&&companion._prefs.peripherals_shared==1);
  common.get("get peripherals.mode",reply);assert(strstr(reply,"shared"));
  assert(companion.command("get peripherals.mode",reply,sizeof(reply))&&strstr(reply,"shared"));
@@ -164,7 +164,7 @@ int main(){
   assert(strstr(reply,"Error")&&saves==before&&mode==durable);
  }
  ok=false;assert(mesh::peripherals::handleCommand(mode,"set peripherals.mode shared",reply,sizeof(reply),true,save));
- assert(mode==0&&durable==0&&strstr(reply,"could not be saved"));
+ assert(mode==0&&durable==0&&strstr(reply,"unconfirmed")&&strstr(reply,"reboot"));
  unsigned before=saves;
  assert(mesh::peripherals::handleCommand(mode,"set peripherals.mode shared",reply,sizeof(reply),false,save));
  assert(strstr(reply,"unsupported")&&saves==before&&mode==0);

@@ -1326,7 +1326,7 @@ bool CommonCLI::handleObserverCommand(uint32_t sender_timestamp, char* command, 
         _prefs->ota_channel = ch;
         if (!saveCommonPrefs()) {
           _prefs->ota_channel = previous;
-          strcpy(reply, "ERR: OTA channel save failed; setting unchanged");
+          strcpy(reply, "ERR: save unconfirmed; reboot may differ");
         } else {
           snprintf(reply, 160, "channel set to %s, base %s; run ota update to switch",
                    ota_channel_name(ch), ota_resolve_base(ch));

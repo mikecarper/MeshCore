@@ -92,7 +92,7 @@ bool handleCommand(uint8_t& shared, const char* command, char* reply,
   shared = strcmp(value, "shared") == 0 ? 1 : 0;
   if (!save()) {
     shared = previous;
-    snprintf(reply, capacity, "Error: peripheral mode could not be saved");
+    snprintf(reply, capacity, "Error: save unconfirmed; reboot may differ");
   } else {
     snprintf(reply, capacity, "OK - %s saved; reboot to apply", value);
   }

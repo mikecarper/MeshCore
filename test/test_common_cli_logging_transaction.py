@@ -57,7 +57,8 @@ static void check(const char* command, bool usb, bool wifi, bool failed) {
   assert(cli.persisted.usb_logging_enabled == (failed ? !usb : usb));
   assert(live_usb == (failed ? !usb : usb));
   assert(usb_calls == (failed ? 0u : 1u));
-  assert(strstr(reply, failed ? "unchanged" : "(saved)"));
+  assert(strstr(reply, failed ? "unconfirmed" : "(saved)"));
+  if (failed) assert(strstr(reply, "reboot may differ"));
   if (strncmp(command, "logging.output", 14) == 0) {
     assert(cli.prefs.bridge_enabled == (failed ? !wifi : wifi));
     assert(cli.persisted.bridge_enabled == (failed ? !wifi : wifi));

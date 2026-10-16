@@ -86,7 +86,7 @@ int main() {
   }
   common.save_ok=companion.save_ok=false;
   const unsigned common_applied=common.sensors.applications, companion_applied=companion.sensors.applications;
-  common.set("gps.sync.interval 7",reply);assert(strstr(reply,"could not be saved"));
+  common.set("gps.sync.interval 7",reply);assert(strstr(reply,"unconfirmed")&&strstr(reply,"reboot"));
   assert(companion.command("set gps.sync.interval 7",reply,sizeof(reply)) && strstr(reply,"could not be saved"));
   assert(common.prefs.gps_sync_interval_hours==336 && common.persisted.gps_sync_interval_hours==336);
   assert(companion._prefs.gps_sync_interval_hours==336 && companion.persisted.gps_sync_interval_hours==336);

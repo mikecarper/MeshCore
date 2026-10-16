@@ -15,7 +15,7 @@ public:
       : _failures(failures), _start(failures), _reply(reply) {}
   ~PrefsSaveReplyGuard() {
     if (_failures != _start) {
-      strcpy(_reply, "Error: settings not saved; unsaved changes may remain active until reboot");
+      strcpy(_reply, "Error: save unconfirmed; changes may be active; reboot may differ");
     }
   }
 };
