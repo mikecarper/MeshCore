@@ -1666,6 +1666,28 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
+  <a href="#rak-peripheral-shutdown" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        RAK peripheral shutdown
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#xiao-battery-divider-safety" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        XIAO battery-divider safety
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#architecture" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2610,6 +2632,28 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
+  <a href="#rak-peripheral-shutdown" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        RAK peripheral shutdown
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#xiao-battery-divider-safety" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        XIAO battery-divider safety
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#architecture" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2919,6 +2963,39 @@
   for boot protection and automated low-voltage shutdown.
 - VBUS detection is used to skip boot lockout on external power, and VBUS wake is configured alongside LPCOMP when supported hardware exposes VBUS to the nRF52.</p>
 <h2 id="technical-details">Technical Details</h2>
+<h3 id="rak-peripheral-shutdown">RAK peripheral shutdown</h3>
+<p>Explicit power-off and timed deep sleep on RAK4631 and RAK3401 stop peripheral
+owners before switching off the shared <code>3V3_S</code> supply. On RAK4631, Ethernet
+must quiesce first; if its worker cannot stop within the bounded shutdown
+interval, keep its rail and bus intact instead of removing power during an SPI
+operation. Detected external-storage holds also retain the supply, including
+after an unresolved flash-operation timeout. Before storage discovery and
+configuration finish, rail removal is refused. Shutdown does not probe again,
+cancel a staged update, or float a storage owner's select pin.
+This does not change ordinary interrupt-idle sleep, boot/low-voltage
+protection, or the configured WisBlock GPS/shared-rail policy during normal
+operation.</p>
+<p>The <a href="https://images.docs.rakwireless.com/wisblock/rak19007/datasheet/power-schematic.png">RAK19007 power schematic</a>
+and <a href="https://images.docs.rakwireless.com/wisblock/rak13800/datasheet/image-20211116120503808.png">RAK13800 connector schematic</a>
+show that IO2 switches <code>3V3_S</code>, not the separate upstream PoE <code>VCC_IN</code> supply.
+Merely compiling Ethernet support therefore does not require this rail to
+stay on after terminal shutdown. The RAK4631 radio-enable GPIO controls the
+RF-switch supply, not the SX1262 core supply.</p>
+<p>RAK3401's external RAK13302 radio and RAK13800 Ethernet use the same IO slot,
+SPI signals, select pin and IO3 control. Their simultaneous operation is not
+supported; Ethernet owner registration on RAK3401 is rejected rather than
+allowing those electrically conflicting controls to run together.</p>
+<p>Software shutdown cannot remove every hardware leakage path. The baseboard
+has I2C pull-ups to unswitched VDD. RAK13302 VD's boost enable follows IO2, but
+the legacy VC default resistor configuration connects it directly to VBAT;
+that boost cannot be switched off by firmware alone.</p>
+<h3 id="xiao-battery-divider-safety">XIAO battery-divider safety</h3>
+<p>XIAO and XIAO-based Ikoka startup preload <code>READ_BAT_ENABLE</code> LOW before enabling
+its output. XIAO protective and user shutdown also keep it LOW. Seeed warns
+that HIGH can overvoltage the ADC input during charging, so this is not a
+safe pin to switch HIGH as a power optimization. The schematic's 1 MOhm +
+510 kOhm divider draws about 3 microamps at 4.2 V, not 3 milliamps. Charging
+current settings are unchanged. See <a href="https://wiki.seeedstudio.com/XIAO_BLE/#q3-what-are-the-considerations-when-using-xiao-nrf52840-sense-for-battery-charging">Seeed's battery guidance</a>.</p>
 <h3 id="architecture">Architecture</h3>
 <p>The power management functionality is integrated into the <code>NRF52Board</code> base class in <code>src/helpers/NRF52Board.cpp</code>. Board variants provide hardware-specific configuration via a <code>PowerMgtConfig</code> struct and override <code>initiateShutdown(uint8_t reason)</code> to perform board-specific power-down work and conditionally enable voltage wake (LPCOMP + VBUS).</p>
 <h3 id="early-boot-capture">Early Boot Capture</h3>

@@ -1961,6 +1961,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#station-g3-physical-radio-slot" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Station G3 physical radio slot
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#unsolicited-events" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2870,6 +2881,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#station-g3-physical-radio-slot" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Station G3 physical radio slot
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#unsolicited-events" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -3483,6 +3505,16 @@ Clients that need temporary-lease state can poll <code>GetTempRadio2</code>.</p>
 <td><code>0x20</code></td>
 <td>-</td>
 </tr>
+<tr>
+<td>GetRadioSlot</td>
+<td><code>0x22</code></td>
+<td>- (Station G3 only)</td>
+</tr>
+<tr>
+<td>SetRadioSlot</td>
+<td><code>0x23</code></td>
+<td>Mode (1): 0=auto, 1=slot 1, 2=slot 2 (Station G3 only)</td>
+</tr>
 </tbody>
 </table>
 <h3 id="response-sub-commands-tnc-to-host">Response Sub-commands (TNC to Host)</h3>
@@ -3622,6 +3654,11 @@ Clients that need temporary-lease state can poll <code>GetTempRadio2</code>.</p>
 <td>Saved radio2 parameters + protocol (14)</td>
 </tr>
 <tr>
+<td>RadioSlot</td>
+<td><code>0xA2</code></td>
+<td>Saved mode, active slot, detected mask, reboot needed (4 bytes)</td>
+</tr>
+<tr>
 <td>OK</td>
 <td><code>0xF0</code></td>
 <td>-</td>
@@ -3688,8 +3725,27 @@ Clients that need temporary-lease state can poll <code>GetTempRadio2</code>.</p>
 <td><code>0x07</code></td>
 <td>Radio TX busy, or host output queue full</td>
 </tr>
+<tr>
+<td>SaveFailed</td>
+<td><code>0x08</code></td>
+<td>Setting could not be saved; running slot unchanged</td>
+</tr>
 </tbody>
 </table>
+<h3 id="station-g3-physical-radio-slot">Station G3 physical radio slot</h3>
+<p><code>GetRadioSlot</code> takes no data and replies with four bytes: saved mode (<code>0</code> auto,
+<code>1</code> or <code>2</code> forced socket), active socket (<code>0</code> unavailable, <code>1</code> or <code>2</code>), detected
+socket mask (bit 0 = socket 1, bit 1 = socket 2), and reboot-needed flag (<code>0</code> or
+<code>1</code>). This selects the physical SX1262 daughterboard socket, not the logical
+<code>radio2</code> PHY profile. Other boards return <code>UnknownCmd</code>.</p>
+<p><code>SetRadioSlot</code> requires exactly one mode byte (<code>0</code>–<code>2</code>). An <code>OK</code> means the mode
+was saved; the running socket stays unchanged until a separate <code>Reboot</code> command
+or power cycle. Radio settings and identity are untouched. A failed save returns
+<code>SaveFailed</code>, with no change to the running socket.</p>
+<p>If no usable socket is found during boot, the normal KISS modem has not started.
+Use the separate USB recovery console: <code>!g3 get radio.slot</code>,
+<code>!g3 set radio.slot auto</code>, then <code>!g3 reboot</code>. Recovery accepts only these
+prefixed management commands (and <code>!g3 help</code>), never KISS packet payloads.</p>
 <h3 id="unsolicited-events">Unsolicited Events</h3>
 <p>The TNC sends these SetHardware frames without a preceding request:</p>
 <p><strong>TxDone (0xF8)</strong>: Sent after radio transmission completes. Contains a single byte: 0x01 for success, 0x00 for failure. Delivery to the host may be delayed under serial backpressure but is not dropped.</p>

@@ -2362,6 +2362,17 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#select-the-station-g3-physical-radio-slot" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Select the Station G3 physical radio slot
+      
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -5288,6 +5299,17 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#select-the-station-g3-physical-radio-slot" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Select the Station G3 physical radio slot
+      
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -6879,7 +6901,9 @@ RX-only mode, cross-transmission policy, and optional radio preambles.</p>
 for <code>mt-</code> channels and the explicit <code>send mt.nodeinfo &lt;channel slot&gt;</code> command.
 Chat remains plain text. A separate GPS-free NodeInfo is sent after the first
 successful chat transmission per used channel/identity per boot; the explicit
-command can also request one. MT heard-repeat retries use the Companion's
+command can also request one. Automatic metadata waits for a 250 ms gap after
+the latest successful MT transmission; explicit requests bypass that gap.
+MT heard-repeat retries use the Companion's
 <code>flood.retry.count</code>, with the metadata cap and <code>flood.retry.advert</code> gate for
 NodeInfo.</p>
 <p>See <a href="../carrier_wave/">carrier-wave RF checks</a> for <code>cw on [seconds]</code>,
@@ -8603,6 +8627,30 @@ Station G2/G3 targets default to <code>off</code>.</p>
 - Select an operating level and SX1262 transmit power that comply with local RF limits and the Station G3 power-supply requirements.
 - The setting is saved immediately, but on Station G3 the level is applied to the hardware at the start of the next transmit, so that the PA supply rail is never re-targeted while the PA is being driven. <code>get</code> reports the configured state, which may lead the hardware until the node next transmits.</p>
 <hr />
+<h4 id="select-the-station-g3-physical-radio-slot">Select the Station G3 physical radio slot</h4>
+<pre><code class="language-text">get radio.slot
+set radio.slot auto
+set radio.slot 1
+set radio.slot 2
+reboot
+</code></pre>
+<p>Station G3 SX1262 builds support both physical RF sockets in the same image.
+The default, <code>auto</code>, probes both sockets at boot without transmitting. If both
+work, it prefers the last successfully used socket; on a fresh installation,
+it prefers socket 1. A forced <code>1</code> or <code>2</code> never silently uses the other socket.</p>
+<p><code>get radio.slot</code> reports the saved selection, active socket, detected sockets,
+and whether a reboot is needed. Changes are saved immediately but applied only
+after reboot, never during a transmission. The selector does not change keys,
+node settings, or the time-shared <code>radio2</code> profile. The legacy <code>_r2</code> build name
+means physical socket 2, not a motherboard revision; both build names now
+support this selector.</p>
+<p>If no usable socket is found, startup waits with both LNAs disabled instead of
+reboot-looping. A limited USB recovery console accepts <code>!g3 get radio.slot</code>,
+<code>!g3 set radio.slot auto|1|2</code>, <code>!g3 reboot</code>, and <code>!g3 help</code>. The <code>!g3</code> prefix is
+required in this recovery console; it is not the normal running CLI. KISS
+firmware uses binary slot commands during normal operation, documented in the
+<a href="../kiss_modem_protocol/">KISS protocol</a>.</p>
+<hr />
 <h3 id="system">System</h3>
 <h4 id="view-or-change-this-nodes-name">View or change this node's name</h4>
 <p><strong>Usage:</strong>
@@ -9219,6 +9267,16 @@ the BLE/WiFi drivers, ESP-NOW, GPS UART, logging, and USB host sessions are
 inactive and no work is pending. Compiling those transports into Full does not
 itself prevent sleep. Turning off BLE advertising alone leaves its controller
 running and therefore retains idle behavior rather than manual light sleep.</p>
+<p>An active radio2 requires continuous software scanning. With power saving on,
+ESP32 Companion, Repeater, Room and Sensor builds do not insert the ordinary
+1 ms idle delay while dual-radio scanning is active. This avoids delaying
+sub-millisecond scan visits; it does not make active dual-radio scanning a sleep mode.</p>
+<p>The verified Meshnology W12 layout enables the LR2021 radio's DC-DC regulator
+after LoRa and Morse receive initialization, including recovery. This setting
+is independent of <code>powersaving</code> and does not remove radio features. Other
+LR2021 layouts retain their existing regulator behavior unless their recipe
+explicitly enables <code>LR2021_USE_DCDC</code> after confirming the required inductor;
+the X1 is not opted in without that hardware confirmation.</p>
 <hr />
 <h4 id="view-or-set-the-reboot-interval-repeater-and-room-server">View or set the reboot interval (Repeater and room server)</h4>
 <p><strong>Usage:</strong>

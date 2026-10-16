@@ -658,6 +658,42 @@
     });
   }
 
+  function stationG3SharedSlotProfile(profile) {
+    const controls = profile && profile.controls;
+    return Boolean(controls && controls.platform === "ESP32_PLATFORM" &&
+      controls.radioSlotAuto === true && controls.radioSlotFamily === "sx1262" &&
+      /^[0-9a-f]{40}$/.test(controls.radioSlotSource || "") &&
+      Array.isArray(profile.files) && profile.files.length > 0 &&
+      profile.files.every(function (file) {
+        const hash = String(file.name || "").match(/-([0-9a-f]{8,40})(?:-merged)?\.(?:bin|hex|uf2|zip)$/i);
+        return hash && controls.radioSlotSource.startsWith(hash[1].toLowerCase());
+      }));
+  }
+
+  function hardwareChoiceLabel(field, value, profiles, family) {
+    const matches = (profiles || []).filter(function (profile) {
+      return profile[field] === value;
+    });
+    if (value === "Station_G3_ESP32" && matches.length > 0 &&
+        matches.every(function (profile) {
+          return profile.hardware === "Station_G3_ESP32" && stationG3SharedSlotProfile(profile);
+        })) {
+      return "Station G3 ESP32 (automatic slot detection)";
+    }
+    return field === "hardware" && family
+      ? humanizeHardwareVariant(value, family) : humanizeHardware(value);
+  }
+
+  function omitStationG3SlotDuplicates(profiles) {
+    const successors = new Set((profiles || []).filter(stationG3SharedSlotProfile)
+      .map(function (profile) { return profile.target; }));
+    return (profiles || []).filter(function (profile) {
+      const target = String(profile.target || "");
+      const match = /^Station_G3_ESP32_r2_(repeater(?:_observer_mqtt)?|room_server(?:_observer_mqtt)?|sensor)((?:-(?:full|reduced|usb|wifi|logging|ota))*)$/.exec(target);
+      return !match || !successors.has("Station_G3_ESP32_" + match[1] + match[2]);
+    });
+  }
+
   function omitRakStorageProfilesWhenUnified(profiles) {
     const targets = new Set((profiles || []).map(function (profile) {
       return String(profile && profile.target || "").toLowerCase();
@@ -972,7 +1008,9 @@
     return {
       releaseSet: releaseSet,
       rows: firmwareRows,
-      profiles: profiles,
+      // Old releases have no shared-slot proof and retain both choices. Raw
+      // assets remain searchable even when a new exact successor replaces R2.
+      profiles: omitStationG3SlotDuplicates(profiles),
     };
   }
 
@@ -1285,6 +1323,18 @@
     FACET_FIELDS.forEach(function (field) {
       requested[field] = params.get(field) || "";
     });
+    if (!profiles.some(function (profile) {
+          return profile.hardware === "Station_G3_ESP32_r2" &&
+            (!requested.role || profile.role === requested.role);
+        }) &&
+        profiles.some(function (profile) {
+          return profile.hardware === "Station_G3_ESP32" && stationG3SharedSlotProfile(profile) &&
+            (!requested.role || profile.role === requested.role);
+        })) {
+      ["hardware", "hardwareFamily"].forEach(function (field) {
+        if (requested[field] === "Station_G3_ESP32_r2") requested[field] = "Station_G3_ESP32";
+      });
+    }
     // Handwritten links may specify just the exact hardware variant.
     if (requested.hardware && !requested.hardwareFamily) {
       const profile = profiles.find(function (item) {
@@ -1511,6 +1561,9 @@
     const target = profile.target;
     const info = profile.controls || {};
     const notes = [];
+    if (identity.hardware === "Station_G3_ESP32" && stationG3SharedSlotProfile(profile)) {
+      notes.push("Automatically selects physical radio slot 1 or 2. Use this same image for either slot.");
+    }
     const rak = /^RAK_(3401|4631)_repeater_unified_lora_ota(?:-(?:full|reduced)(?:-ota)?)?$/i.exec(target);
     const lora = info.updateRequirements && info.updateRequirements.lora;
     if (rak && info.platform === "NRF52_PLATFORM" && profile.ota === "lora-receiver" &&
@@ -1976,7 +2029,7 @@
     card.className = "firmware-picker-card";
     card.appendChild(createElement(
       "h3",
-      humanizeHardware(profile.hardware) + " - " +
+      hardwareChoiceLabel("hardware", profile.hardware, [profile]) + " - " +
         (ROLE_LABELS[profile.role] || profile.role)
     ));
 
@@ -2140,6 +2193,8 @@
 
     function setSelectOptions(select, field, values, selected) {
       select.replaceChildren();
+      const hardwareProfiles = field === "hardware" || field === "hardwareFamily"
+        ? matchingProfiles(field) : [];
       const placeholders = {
         chipFamily: "Any chip family - skip this filter",
         hardwareFamily: "Any hardware",
@@ -2153,8 +2208,8 @@
       values.slice().sort(function (a, b) {
         return optionSort(field, a, b);
       }).forEach(function (value) {
-        const label = field === "hardware"
-          ? humanizeHardwareVariant(value, filters.hardwareFamily)
+        const label = field === "hardware" || field === "hardwareFamily"
+          ? hardwareChoiceLabel(field, value, hardwareProfiles, filters.hardwareFamily)
           : labelFor(field, value, filters.hardware || filters.hardwareFamily);
         const option = createElement("option", label);
         option.value = value;
@@ -2165,12 +2220,14 @@
     }
 
     function setRadioOptions(container, field, values, selected) {
+      const hardwareProfiles = field === "hardware" || field === "hardwareFamily"
+        ? matchingProfiles(field) : [];
       const options = [{ value: "", label: "Any" }].concat(
         values.slice().sort(function (a, b) {
           return optionSort(field, a, b);
         }).map(function (value) {
-          return { value: value, label: field === "hardware"
-            ? humanizeHardwareVariant(value, filters.hardwareFamily)
+          return { value: value, label: field === "hardware" || field === "hardwareFamily"
+            ? hardwareChoiceLabel(field, value, hardwareProfiles, filters.hardwareFamily)
             : labelFor(field, value, filters.hardware || filters.hardwareFamily) };
         })
       );
@@ -2627,6 +2684,7 @@
     omitTransportsReplacedByFull: omitTransportsReplacedByFull,
     omitLegacyObserverCompatibilityProfiles:
       omitLegacyObserverCompatibilityProfiles,
+    omitStationG3SlotDuplicates: omitStationG3SlotDuplicates,
     omitTransportsReplacedByDualCdcFull:
       omitTransportsReplacedByFull,
     omitNrf52TransportsReplacedByFull:
@@ -2663,6 +2721,7 @@
     migrationAssetForProfile: migrationAssetForProfile,
     migrationLink: migrationLink,
     humanizeHardware: humanizeHardware,
+    hardwareChoiceLabel: hardwareChoiceLabel,
     humanizeVariant: humanizeVariant,
     labelFor: labelFor,
     formatBytes: formatBytes,

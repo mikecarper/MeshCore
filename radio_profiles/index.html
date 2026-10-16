@@ -3321,10 +3321,15 @@ hexadecimal digits of the effective MT node ID. This does not change the
 MeshCore node name, add a label to chat text or transmit anything.</p>
 <p>After the first chat packet actually finishes transmitting on a configured MT
 channel, the Companion queues a separate, GPS-free <code>NODEINFO_APP</code> broadcast.
+Automatic metadata waits for a 250 ms gap after the most recent successful MT
+transmission, including retries, so a stock peer can re-arm its receiver.
+Explicit <code>send mt.nodeinfo</code> does not wait for this automatic-metadata gap.
 This happens once per used channel and sender identity per boot, not for every
 chat message. A rejected or failed chat send does not trigger it. There is no
 NodeInfo transmission just from booting, receiving traffic, changing settings
-or joining a channel, and there is no periodic NodeInfo timer.</p>
+or joining a channel, and there is no periodic NodeInfo timer.
+Changing the node name cancels old-name metadata retries; the next new
+successful chat announces the updated name without sending from the rename.</p>
 <p><code>send mt.nodeinfo &lt;channel slot&gt;</code> still explicitly queues <strong>one</strong> standard
 <code>NODEINFO_APP</code> broadcast on the selected configured MT channel. The slot is
 the Companion channel index, not <code>mt.slot</code> (the frequency slot). The packet
