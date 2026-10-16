@@ -92,8 +92,11 @@ for help_line in ('  board\\r\\n', '  version\\r\\n',
                   '  get mt.node / get mt.shortname\\r\\n',
                   '  set mt.node <!8hex|default> (saved; use a unique ID)\\r\\n',
                   '  set mt.shortname <1..4 UTF-8 characters|default> (saved; NodeInfo uses 4 bytes)\\r\\n',
-                  '  send mt.nodeinfo <channel slot> (one manual advert; no automatic adverts)\\r\\n'):
+                  '  send mt.nodeinfo <channel slot> (GPS-free; also automatic after first chat)\\r\\n'):
     assert help_line in help_branch
+# Explicit NodeInfo remains available, but first successful chat also arms
+# separate GPS-free metadata. Do not restore the obsolete manual-only policy.
+assert "no automatic adverts" not in help_branch
 assert re.search(
     r"#if COMPANION_FEATURE_MEMORY_DIAGNOSTICS\s+"
     r'terminalOutput\(\)\.print\("  memory\\r\\n"\);\s+#endif',
