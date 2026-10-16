@@ -9,9 +9,19 @@ from test_replay_reset_integration import extract_braced
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def fixture_prefix():
+def fixture_prefix(owner_only=False):
     text = (ROOT / 'test/fixtures/companion_uncached_storage/test.cpp').read_text()
-    return text[:text.index('struct Host {')]
+    text = text[:text.index('struct Host {')]
+    if owner_only:
+        # Adafruit File cannot be default constructed. Failed opens still
+        # return a closed handle attached to the filesystem that owns it.
+        assert text.count('File() = default;') == 1
+        assert text.count('return File();') == 1
+        assert text.count(': File();') == 1
+        text = text.replace('File() = default;', 'File() = delete;')
+        text = text.replace('return File();', 'return File(*this);')
+        text = text.replace(': File();', ': File(*this);')
+    return text
 
 
 def compile_run(program, platform, actual_node_prefs=False):
@@ -21,6 +31,8 @@ def compile_run(program, platform, actual_node_prefs=False):
         (directory / 'Adafruit_LittleFS.h').write_text(
             '#pragma once\nusing Adafruit_LittleFS = FakeFilesystem;\n'
             'namespace Adafruit_LittleFS_Namespace {}\n')
+        (directory / 'InternalFileSystem.h').write_text(
+            '#pragma once\ninline FakeFilesystem InternalFS;\n')
         helper_sources = []
         if actual_node_prefs:
             # Keep the actual owner-bearing adapters in the preferences
@@ -68,7 +80,8 @@ class IdentityAndSettingsRecovery(unittest.TestCase):
     def check_identity(self, platform):
         source = (ROOT / 'src/helpers/IdentityStore.cpp').read_text()
         presence = (ROOT / 'src/helpers/FilePresence.h').read_text()
-        program = fixture_prefix() + '\n#include <helpers/IdentityStore.h>\n'
+        program = fixture_prefix(owner_only=platform == 'STM32_PLATFORM')
+        program += '\n#include <helpers/IdentityStore.h>\n'
         if platform == 'ESP32_PLATFORM':
             # Identity startup precedes the inventory. Include its real owner
             # registry so the extracted metadata probe takes the normal path.
@@ -186,6 +199,35 @@ struct DataStore {
                 program += extract_braced(companion, signature) + '\n'
         program += r'''
 int main() {
+#if defined(STM32_PLATFORM)
+  // Exercise the real FileRead helper with an owner-only File. Constructing
+  // an empty handle does no I/O, and later open() uses the requested owner,
+  // including the InternalFS fallback when the requested owner is null.
+  FakeFilesystem owner;
+  owner.files["/owner"] = {17};
+  InternalFS.files["/fallback"] = {29};
+  const unsigned owner_opens = owner.read_opens;
+  const unsigned fallback_opens = InternalFS.read_opens;
+  File owned_empty = mesh::emptyFile(&owner);
+  File missing = mesh::openFileRead(&owner, "/missing");
+  File null_path = mesh::openFileRead(&owner, nullptr);
+  File fallback_empty = mesh::emptyFile(static_cast<FakeFilesystem*>(nullptr));
+  File null_owner = mesh::openFileRead(static_cast<FakeFilesystem*>(nullptr), "/fallback");
+  assert(!owned_empty && !missing && !null_path && !fallback_empty && !null_owner);
+  assert(owner.read_opens == owner_opens && InternalFS.read_opens == fallback_opens);
+  uint8_t value = 0;
+  for (File* file : {&owned_empty, &missing, &null_path}) {
+    assert(file->open("/owner", FILE_O_READ));
+    assert(file->read(&value, 1) == 1 && value == 17);
+    file->close();
+  }
+  for (File* file : {&fallback_empty, &null_owner}) {
+    assert(file->open("/fallback", FILE_O_READ));
+    assert(file->read(&value, 1) == 1 && value == 29);
+    file->close();
+  }
+  InternalFS.files.clear();
+#endif
   // Startup reads reopen a transiently failing file and never publish a
   // partially read key. Exhausted reads still permit provisioning a new key.
   for (bool display : {false, true}) {
