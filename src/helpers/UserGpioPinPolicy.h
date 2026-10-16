@@ -540,6 +540,29 @@ inline bool isFirmwareReserved(uint8_t pin) {
 #ifdef SDCARD_CS
     SDCARD_CS,
 #endif
+#if defined(NRF52_PLATFORM) && defined(OTA_QSPI_STORE)
+    // The raw NOR backend owns these configured pads even while its bus is
+    // released or no matching chip was found. User GPIO/timers must not
+    // defeat a later OTA storage claim or drive an installed flash's CS.
+#ifdef OTA_QSPI_SCK_ARDUINO_PIN
+    OTA_QSPI_SCK_ARDUINO_PIN,
+#endif
+#ifdef OTA_QSPI_CS_ARDUINO_PIN
+    OTA_QSPI_CS_ARDUINO_PIN,
+#endif
+#ifdef OTA_QSPI_IO0_ARDUINO_PIN
+    OTA_QSPI_IO0_ARDUINO_PIN,
+#endif
+#ifdef OTA_QSPI_IO1_ARDUINO_PIN
+    OTA_QSPI_IO1_ARDUINO_PIN,
+#endif
+#if defined(OTA_QSPI_IO2_ARDUINO_PIN) && !defined(OTA_QSPI_IO2_NOT_CONNECTED)
+    OTA_QSPI_IO2_ARDUINO_PIN,
+#endif
+#if defined(OTA_QSPI_IO3_ARDUINO_PIN) && !defined(OTA_QSPI_IO3_NOT_CONNECTED)
+    OTA_QSPI_IO3_ARDUINO_PIN,
+#endif
+#endif
 #ifdef SENSOR_POWER_CTRL_PIN
     SENSOR_POWER_CTRL_PIN,
 #endif
