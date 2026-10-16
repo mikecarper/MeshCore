@@ -23,6 +23,15 @@ class PickerControlsTests(unittest.TestCase):
         self.assertEqual(expected['Station_G2_repeater'], 'station-g2-repeater')
         self.assertEqual(expected['Station_G2_logging_repeater'], 'station-g2-logging-repeater')
         self.assertEqual(expected['nibble_zero_connect_room_server_'], 'nibble-zero-room-server')
+        self.assertEqual(expected['Waveshare_S3_LR1121_repeater_observer_mqtt'],
+                         'waveshare-s3-lr1121-observer-repeater')
+        self.assertEqual(expected['Waveshare_S3_LR1121_room_server_observer_mqtt'],
+                         'waveshare-s3-lr1121-observer-room-server')
+        # Only observer roles use the enlarged layout. Do not advertise an
+        # observer migration package for ordinary fixed-layout firmware.
+        for role in ('repeater', 'room_server', 'sensor',
+                     'companion_radio_usb', 'companion_radio_ble'):
+            self.assertNotIn('Waveshare_S3_LR1121_' + role, expected)
 
     def test_runtime_metadata_uses_verified_image_capabilities(self):
         source = 'a' * 40
