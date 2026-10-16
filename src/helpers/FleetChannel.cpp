@@ -64,16 +64,15 @@ bool FleetChannel::save(bool enabled, const uint8_t* key, const uint8_t* control
   return saved;
 #else
   ContactFileTransaction writer(fs_, Path, filePresence<FILESYSTEM>);
-  if (!writer || writer.write(image, sizeof(image)) != sizeof(image)) return false;
-  ContactFileTransaction::CommitProgress progress;
-  bool publishing;
-  do {
-    publishing = writer.readyToPublish();
-    progress = writer.serviceCommit();
-  } while (progress == ContactFileTransaction::CommitProgress::Pending);
-  if (!publishing) return false; // No publication attempt; local retry is safe.
-  // The fallback can report a late rename error or false success. Its staged
-  // fingerprint does not establish which bytes have the final public name.
+  if (!writer || writer.write(image, sizeof(image)) != sizeof(image)) {
+    if (writer.outcome() == ContactFileTransaction::Outcome::Indeterminate)
+      healthy_ = false;
+    return false;
+  }
+  writer.commit();
+  if (writer.outcome() == ContactFileTransaction::Outcome::NotCommitted) return false;
+  // Namespace checks establish the move of the prevalidated stage, but do not
+  // establish a fresh public-byte readback. Reconcile uncertain moves too.
   // Confirm exact public bytes before accepting new authority or using old RAM.
   auto file = openFileRead(fs_, Path);
   uint8_t verified[ImageSize];

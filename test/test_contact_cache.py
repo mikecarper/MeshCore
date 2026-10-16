@@ -47,13 +47,19 @@ class ContactCacheTest(unittest.TestCase):
     def test_esp32_default_crc_cadence_is_detected(self):
         self.run_cache_test("ESP32_PLATFORM", disable_crc_batch=True)
 
-    def run_cache_test(self, platform, disable_crc_batch=False):
+    def test_esp32_disabled_contact_recovery_is_detected(self):
+        self.run_cache_test("ESP32_PLATFORM", disable_recovery=True)
+
+    def run_cache_test(self, platform, disable_crc_batch=False, disable_recovery=False):
         with tempfile.TemporaryDirectory(prefix="mesh-contact-cache-") as temp:
             temp = Path(temp)
             store = (ROOT / "examples/companion_radio/DataStore.cpp").read_text()
             functions = [
                 "static bool serializeContactRecord(",
                 "static bool deserializeContactRecord(",
+                "void DataStore::clearContactLoadFailure(",
+                "void DataStore::recoverContacts(",
+                "bool DataStore::hasIncompleteContactLoad() const",
                 "void DataStore::loadContacts(",
                 "bool DataStore::saveContacts(",
                 "bool DataStore::flushContactWrites(",
@@ -67,6 +73,13 @@ class ContactCacheTest(unittest.TestCase):
             helper_end = store.index("bool DataStore::readStoredPath(", helper_start)
             implementation = store[helper_start:helper_end]
             header = (ROOT / "examples/companion_radio/DataStore.h").read_text()
+            recovery_start = header.index("  // Contact-only recovery")
+            recovery_end = header.index("#if defined(ESP32_PLATFORM)", recovery_start)
+            (temp / "contact_recovery_state_under_test.h").write_text(
+                header[recovery_start:recovery_end])
+            (temp / "contact_recovery_api_under_test.h").write_text(
+                method(header, "  bool contactRecoveryPending() const") + "\n" +
+                method(header, "  bool contactsAreVolatile() const"))
             state_start = header.index("  mesh::ContactFileTransaction* _contact_write")
             state_end = header.index("\n#endif", state_start)
             (temp / "contact_write_state_under_test.h").write_text(
@@ -74,6 +87,9 @@ class ContactCacheTest(unittest.TestCase):
             functions.append("DataStore::~DataStore()")
             if platform == "ESP32_PLATFORM":
                 functions.extend((
+                    "static bool readableContactFile(",
+                    "const char* DataStore::selectContactFile(",
+                    "bool DataStore::prepareContactSave(",
                     "void DataStore::cancelContactWrite(",
                     "bool DataStore::cancelCooperativeWrite(",
                     "bool DataStore::serviceContactWrite(",
@@ -89,7 +105,21 @@ class ContactCacheTest(unittest.TestCase):
                 implementation += method(store, "static void discardInvalidContactPage(") + "\n"
                 functions.append("bool DataStore::writeContactPage(")
                 functions.append("bool DataStore::loadContactPages(")
+                functions.append("void DataStore::resetContactPageState(")
             implementation += "\n".join(method(store, signature) for signature in functions)
+            if disable_recovery:
+                recovery = method(store, "void DataStore::recoverContacts(")
+                self.assertIn(recovery, implementation)
+                implementation = implementation.replace(
+                    recovery, "void DataStore::recoverContacts(DataStoreHost*) {}")
+            if platform == "NRF52_PLATFORM":
+                # Fault only the page snapshot allocation; keep production
+                # loading/recovery logic and unrelated crypto allocations.
+                allocation = "(uint8_t*)malloc(mesh::storage::CONTACT_PAGE_PAYLOAD_SIZE)"
+                self.assertEqual(implementation.count(allocation), 1)
+                implementation = implementation.replace(
+                    allocation,
+                    "(uint8_t*)allocateContactPagePayload(mesh::storage::CONTACT_PAGE_PAYLOAD_SIZE)")
             if disable_crc_batch:
                 self.assertIn("_contact_write->serviceCommit(true, 8, true)", implementation)
                 implementation = implementation.replace(
@@ -129,7 +159,10 @@ class ContactCacheTest(unittest.TestCase):
             ], capture_output=True, text=True)
             self.assertEqual(result.returncode, 0, result.stderr)
             result = subprocess.run([str(binary)], capture_output=True, text=True)
-            if disable_crc_batch:
+            if disable_recovery:
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn("!f.store.contactRecoveryPending()", result.stderr)
+            elif disable_crc_batch:
                 self.assertNotEqual(result.returncode, 0)
                 self.assertIn("crc_read_passes == 104", result.stderr)
             else:

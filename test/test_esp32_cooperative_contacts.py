@@ -29,6 +29,9 @@ class UncachedESPContactsTest(unittest.TestCase):
     def test_default_background_crc_cadence_is_detected(self):
         self.run_fixture(["-DBOARD_HAS_PSRAM=1"], disable="crc_batch")
 
+    def test_disabled_contact_recovery_is_detected(self):
+        self.run_fixture(["-DBOARD_HAS_PSRAM=1"], disable="recovery")
+
     def test_bounded_buffers_reduce_backend_work_without_stack_growth(self):
         previous = self.run_fixture(["-DBOARD_HAS_PSRAM=1"], benchmark="previous")
         current = self.run_fixture(["-DBOARD_HAS_PSRAM=1"], benchmark="current")
@@ -55,12 +58,24 @@ class UncachedESPContactsTest(unittest.TestCase):
             temp = Path(directory)
             source = (ROOT / "examples/companion_radio/DataStore.cpp").read_text()
             header = (ROOT / "examples/companion_radio/DataStore.h").read_text()
+            recovery_start = header.index("  // Contact-only recovery")
+            recovery_end = header.index("#if defined(ESP32_PLATFORM)", recovery_start)
+            (temp / "contact_recovery_state_under_test.h").write_text(
+                header[recovery_start:recovery_end])
+            (temp / "contact_recovery_api_under_test.h").write_text(
+                method(header, "  bool contactRecoveryPending() const") + "\n" +
+                method(header, "  bool contactsAreVolatile() const"))
             start = header.index("  mesh::ContactFileTransaction* _contact_write")
             end = header.index("\n#endif", start)
             (temp / "contact_write_state_under_test.h").write_text(header[start:end])
             signatures = (
                 "static bool serializeContactRecord(",
                 "static bool deserializeContactRecord(",
+                "static bool readableContactFile(",
+                "const char* DataStore::selectContactFile(",
+                "bool DataStore::prepareContactSave(",
+                "void DataStore::clearContactLoadFailure(",
+                "void DataStore::recoverContacts(",
                 "DataStore::~DataStore()",
                 "void DataStore::cancelContactWrite(",
                 "bool DataStore::serviceContactWrite(",
@@ -75,7 +90,12 @@ class UncachedESPContactsTest(unittest.TestCase):
                 "inline void makeBlobPath(",
             )
             implementation = "\n".join(method(source, signature) for signature in signatures)
-            if disable == "begin":
+            if disable == "recovery":
+                recovery = method(source, "void DataStore::recoverContacts(")
+                self.assertIn(recovery, implementation)
+                implementation = implementation.replace(
+                    recovery, "void DataStore::recoverContacts(DataStoreHost*) {}")
+            elif disable == "begin":
                 self.assertIn('"/contacts3", companionPathPresence, true)', implementation)
                 implementation = implementation.replace(
                     '"/contacts3", companionPathPresence, true)',
@@ -171,7 +191,8 @@ class UncachedESPContactsTest(unittest.TestCase):
                     return measurements
             else:
                 self.assertNotEqual(result.returncode, 0)
-                marker = ("SPIFFS.startupOperations() - before == 1" if disable == "begin" else
+                marker = ("!failed_boot.hasIncompleteContactLoad()" if disable == "recovery" else
+                          "SPIFFS.startupOperations() - before == 1" if disable == "begin" else
                           "crc_read_passes == 104" if disable == "crc_batch" else
                           "largest_backend_" + ("write" if disable == "writer" else "read"))
                 self.assertIn(marker, result.stderr)

@@ -144,6 +144,9 @@ int main() {
 #if defined(RP2040_PLATFORM) && defined(ENABLE_WIFI_INTERFACE)
           optional_fields += 2;
 #endif
+#if defined(RAK_4631)
+          optional_fields += 1; // Checked peripheral footer has its own EOF probe.
+#endif
           // Every absent optional field observes EOF, then the completed
           // image receives the existing final trailing-byte check.
           assert(AVAILABLE_CALLS == optional_fields + 2);
@@ -179,6 +182,28 @@ class CompanionPrefsValuesTests(unittest.TestCase):
         # is the authority for all old/torn images and read failure traces.
         legacy = (ROOT / 'test/fixtures/companion_prefs_storage/legacy_loader.inc').read_text()
         self.assertNotIn('copyPersistedValuesFrom', legacy)
+        # Keep the frozen scalar prefix independent of the new GNU table.
+        # The RAK-only checked tail was published later; add it explicitly
+        # to this test-local reference without rewriting the frozen fixture.
+        legacy = legacy.replace('    loaded_prefs.lost_reply = 0;',
+            '    loaded_prefs.lost_reply = 0;\n'
+            '#if defined(RAK_4631)\n    loaded_prefs.peripherals_shared = 0;\n#endif')
+        size_check = '    if (prefs_size < MIN_PREFS_SIZE || !known_size) {'
+        self.assertEqual(legacy.count(size_check), 1)
+        legacy = legacy.replace(size_check,
+            '#if defined(RAK_4631)\n'
+            '    known_size = known_size || prefs_size == 244;\n'
+            '#endif\n' + size_check)
+        trailing_check = '    // Any bytes left over form only part of a historically appended field.'
+        self.assertEqual(legacy.count(trailing_check), 1)
+        legacy = legacy.replace(trailing_check,
+            '#if defined(RAK_4631)\n'
+            '    if (file.available() != 0) {\n'
+            '      uint8_t footer[8] = {};\n'
+            '      success = success && readField(footer, sizeof(footer))\n'
+            '          && mesh::peripherals::decodeFooter(footer, sizeof(footer),\n'
+            '              loaded_prefs.peripherals_shared);\n'
+            '    }\n#endif\n\n' + trailing_check)
         methods = esp_recovery_helpers(source) + '\n'.join((loader, legacy,
             method(source, 'bool DataStore::savePrefs(')))
         code = HARNESS.split('int main(')[0].replace('@METHODS@', methods)
@@ -251,7 +276,7 @@ inline char* utoa(unsigned int value,char* output,int base){
             (work / 'helpers/IdentityStore.h').write_text(fs)
             cpp = work / 'test.cpp'
             cpp.write_text(code + tests)
-            for platform in ('STM32_PLATFORM', 'NRF52_PLATFORM', 'ESP32_PLATFORM', 'RP2040_PLATFORM',
+            for platform in ('STM32_PLATFORM', 'NRF52_PLATFORM', 'NRF52_PLATFORM,RAK_4631', 'ESP32_PLATFORM', 'RP2040_PLATFORM',
                              'ESP32_PLATFORM,TBEAM_1W', 'RP2040_PLATFORM,ENABLE_WIFI_INTERFACE'):
                 with self.subTest(platform=platform):
                     binary = work / 'test'

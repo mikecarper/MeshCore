@@ -3202,6 +3202,7 @@ void MyMesh::begin(bool has_display, bool radio_available,
 
   resetContacts();
   _store->loadContacts(this);
+  _store->recoverContacts(this);
   if (_store->hasPendingContactWrites()) {
     dirty_contacts_expiry = mesh::nonzeroLazyPersistenceDeadline(
         futureMillis(LAZY_CONTACTS_WRITE_DELAY));
@@ -5158,7 +5159,7 @@ bool MyMesh::isWebConfigWiFiRecoveryActive() const {
 }
 
 void MyMesh::rebootNow() {
-  if (flushContactsBeforeReboot()) {
+  if (MyMesh::prepareForUiShutdown()) {
     board.reboot();
   } else {
     MESH_DEBUG_PRINTLN("Reboot refused: pending contacts could not be saved");
@@ -6642,7 +6643,7 @@ void MyMesh::handleCmdFrame(size_t len) {
       else writeErrFrame(ERR_CODE_FILE_IO_ERROR);
     }
   } else if (cmd_frame[0] == CMD_REBOOT && len >= 7 && memcmp(&cmd_frame[1], "reboot", 6) == 0) {
-    if (!flushContactsBeforeReboot()) {
+    if (!MyMesh::prepareForUiShutdown()) {
       writeErrFrame(ERR_CODE_FILE_IO_ERROR);
       return;
     }
@@ -6695,9 +6696,9 @@ void MyMesh::handleCmdFrame(size_t len) {
           // re-load contacts, to invalidate ecdh shared_secrets
           stopContactsIterator();
           resetContacts();
-          mesh::resetLazyPersistenceAfterSuccess(
-              dirty_contacts_expiry, dirty_contacts_failures);
+          MyMesh::onContactCacheFlushed();
           _store->loadContacts(this);
+          _store->recoverContacts(this);
           if (_store->hasPendingContactWrites()) {
             mesh::scheduleLazyPersistenceMutation(
                 dirty_contacts_expiry, dirty_contacts_failures,
@@ -7517,13 +7518,25 @@ static bool save_filter(const ContactInfo& c) {
   return c.type != ADV_TYPE_NONE;   // don't save the transient/anon entries
 }
 
+__attribute__((noinline))
 void MyMesh::onContactCacheFlushed() {
-  // Eviction already saved the pending mutations. Avoid writing them again
-  // when the old five-second lazy-save deadline arrives.
+  // Share the deadline reset after successful persistence or deliberate
+  // retirement of the old RAM table. Internal calls bypass virtual overrides.
   mesh::resetLazyPersistenceAfterSuccess(dirty_contacts_expiry, dirty_contacts_failures);
 }
 
+bool MyMesh::resetContactsForRecovery() {
+  stopContactsIterator();
+  resetContacts();
+  MyMesh::onContactCacheFlushed();
+  return true;
+}
+
 void MyMesh::saveContacts() {
+  if (_store->contactsAreVolatile()) {
+    MyMesh::onContactCacheFlushed();
+    return;
+  }
   const bool success = _store->saveContacts(this, save_filter);
   if (!success) {
     scheduleContactWriteRetry();
@@ -7532,8 +7545,7 @@ void MyMesh::saveContacts() {
     dirty_contacts_expiry = mesh::nonzeroLazyPersistenceDeadline(
         futureMillis(CONTACT_PAGE_WRITE_GAP));
   } else {
-    mesh::resetLazyPersistenceAfterSuccess(
-        dirty_contacts_expiry, dirty_contacts_failures);
+    MyMesh::onContactCacheFlushed();
   }
 }
 
@@ -7556,6 +7568,8 @@ bool MyMesh::isContactWriteDue() const {
 }
 
 bool MyMesh::flushContactsBeforeReboot() {
+  // This helper also backs explicit durability promises such as tx.contact.
+  if (_store->contactsAreVolatile()) return false;
 #if defined(ESP32_PLATFORM)
   const uint32_t now = _ms->getMillis();
   if (_store->hasPendingAdvertWrites() && !_store->isAdvertWriteDue(now)) return false;
@@ -7568,12 +7582,12 @@ bool MyMesh::flushContactsBeforeReboot() {
     scheduleContactWriteRetry();
     return false;
   }
-  mesh::resetLazyPersistenceAfterSuccess(
-      dirty_contacts_expiry, dirty_contacts_failures);
+  MyMesh::onContactCacheFlushed();
   return true;
 }
 
 bool MyMesh::prepareForOtaReboot() {
+  if (_store->contactsAreVolatile()) return true;
   // Once a write has failed, honor its bounded retry deadline instead of
   // letting the armed OTA apply hammer the same filesystem every loop.
   if (dirty_contacts_failures != 0 && dirty_contacts_expiry != 0
@@ -7583,8 +7597,9 @@ bool MyMesh::prepareForOtaReboot() {
   return flushContactsBeforeReboot();
 }
 
+__attribute__((noinline))
 bool MyMesh::prepareForUiShutdown() {
-  return flushContactsBeforeReboot();
+  return _store->contactsAreVolatile() || flushContactsBeforeReboot();
 }
 
 bool MyMesh::scheduleContactWrite(const ContactInfo& contact) {
@@ -7592,6 +7607,7 @@ bool MyMesh::scheduleContactWrite(const ContactInfo& contact) {
   // deliberately excluded from contact storage. Never allocate a persistent
   // slot for one when a path/message callback updates its runtime state.
   if (contact.type == ADV_TYPE_NONE || isTransientContact(contact)) return true;
+  if (_store->contactsAreVolatile()) return true;
   if (!_store->markContactDirty(contact)) {
     MESH_DEBUG_PRINTLN(
         "Contact persistence scheduling failed: no persistent slot");
@@ -7615,6 +7631,7 @@ bool MyMesh::scheduleContactWriteAfterRelease(const ContactInfo& contact,
         "Contact removal scheduling failed: persistent slot was not reserved");
     return false;
   }
+  if (_store->contactsAreVolatile()) return true;
   mesh::scheduleLazyPersistenceMutation(
       dirty_contacts_expiry, dirty_contacts_failures,
       futureMillis(LAZY_CONTACTS_WRITE_DELAY));
@@ -7664,16 +7681,14 @@ void MyMesh::repairInternalExtraFS(Stream& output) {
       && (capacity_kib % 4) == 0;
   if (contacts_saved && channels_saved && capacity_ready
       && !_store->hasPendingContactWrites()) {
-    mesh::resetLazyPersistenceAfterSuccess(
-        dirty_contacts_expiry, dirty_contacts_failures);
+    MyMesh::onContactCacheFlushed();
     output.printf("  > internal ExtraFS repaired (%lu KiB); contacts and channels rebuilt\n",
                   (unsigned long)_store->getStorageTotalKb());
   } else {
     if (!contacts_saved || _store->hasPendingContactWrites()) {
       scheduleContactWriteRetry();
     } else {
-      mesh::resetLazyPersistenceAfterSuccess(
-          dirty_contacts_expiry, dirty_contacts_failures);
+      MyMesh::onContactCacheFlushed();
     }
     output.println("  Error: ExtraFS is active, but data rebuild/verification failed; retry repair extrafs");
   }
@@ -10520,7 +10535,7 @@ bool MyMesh::handleDirectCommand(const char* command, char* reply, size_t reply_
     if (_store->formatFileSystem()) {
       stopContactsIterator();
       resetContacts();
-      mesh::resetLazyPersistenceAfterSuccess(dirty_contacts_expiry, dirty_contacts_failures);
+      MyMesh::onContactCacheFlushed();
 #if MESH_ENABLE_ETHERNET_TUNNEL
       if (!eraseEthernetSettings()) {
         snprintf(reply, reply_size, "File system erased; Error: Ethernet settings erase failed");
@@ -11069,8 +11084,7 @@ complete_line:
             contacts_saved && !_store->hasPendingContactWrites();
 
         if (contacts_complete) {
-          mesh::resetLazyPersistenceAfterSuccess(
-              dirty_contacts_expiry, dirty_contacts_failures);
+          MyMesh::onContactCacheFlushed();
         } else {
           scheduleContactWriteRetry();
         }
@@ -11241,7 +11255,7 @@ complete_line:
       }
 
     } else if (strcmp(cli_command, "reboot") == 0) {
-      if (flushContactsBeforeReboot()) {
+      if (MyMesh::prepareForUiShutdown()) {
         board.reboot();  // doesn't return
       } else {
         output.println("  Error: pending contacts could not be saved; reboot cancelled");
@@ -11333,6 +11347,16 @@ void MyMesh::checkSerialInterface() {
 }
 
 void MyMesh::loop() {
+  // Storage callbacks can request recovery while holding ContactInfo/path
+  // references. Retire those references only here, between callbacks.
+  if (_store->contactRecoveryPending() && !mesh::morseTimingActive(_radio)) {
+    _store->recoverContacts(this);
+    updateGpsTelemetryPolicy();
+    if (_store->hasPendingContactWrites()) {
+      dirty_contacts_expiry = mesh::nonzeroLazyPersistenceDeadline(
+          futureMillis(LAZY_CONTACTS_WRITE_DELAY));
+    }
+  }
 #if MESH_ENABLE_MORSE_RX
   if (_morse_reply.pending()) {
     const ContactInfo* actor = lookupContactByPubKey(_morse_reply.actor(), PUB_KEY_SIZE);
@@ -11368,7 +11392,7 @@ void MyMesh::loop() {
       && (_scheduled_reboot_at == _ms->getMillis()
           || millisHasNowPassed(_scheduled_reboot_at))) {
     _scheduled_reboot_at = 0;
-    if (flushContactsBeforeReboot()) {
+    if (MyMesh::prepareForUiShutdown()) {
       board.reboot();
     } else {
       MESH_DEBUG_PRINTLN("Scheduled reboot cancelled: pending contacts could not be saved");
@@ -11467,8 +11491,7 @@ void MyMesh::loop() {
       dirty_contacts_expiry = mesh::nonzeroLazyPersistenceDeadline(
           futureMillis(CONTACT_PAGE_WRITE_GAP));
     } else {
-      mesh::resetLazyPersistenceAfterSuccess(
-          dirty_contacts_expiry, dirty_contacts_failures);
+      MyMesh::onContactCacheFlushed();
     }
   }
 #endif
@@ -11512,8 +11535,7 @@ void MyMesh::servicePersistence() {
       dirty_contacts_expiry = mesh::nonzeroLazyPersistenceDeadline(
           futureMillis(CONTACT_PAGE_WRITE_GAP));
     } else {
-      mesh::resetLazyPersistenceAfterSuccess(
-          dirty_contacts_expiry, dirty_contacts_failures);
+      MyMesh::onContactCacheFlushed();
     }
   }
 }
@@ -11599,6 +11621,7 @@ bool MyMesh::hasPendingWork() const {
 #endif
           && (!radio_apply_retry_at || millisHasNowPassed(radio_apply_retry_at)))
       || contact_write_needs_polling
+      || _store->contactRecoveryPending()
 #if defined(ESP32_PLATFORM)
       || _store->hasPendingAdvertWrites()
 #endif

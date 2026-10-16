@@ -26,6 +26,7 @@ public:
   bool contact_pending=false;
   unsigned contact_passes=0;
 #include "advert_state.h"
+#include "contact_recovery.h"
   explicit DataStore(FakeFilesystem& fs):_fs(&fs) {}
   File openRead(FakeFilesystem* fs,const char* path){return fs->open(path);}
   void cancelContactWrite(){}
@@ -81,6 +82,7 @@ public:
   DelayedReplies _delayed_replies;
   bool putBlobByKey(const uint8_t[],int,const uint8_t[],int);
   void servicePersistence();
+  void onContactCacheFlushed();
   bool flushContactsBeforeReboot();
   bool hasPendingWork() const;
   bool canRecoverUsbLogging() const;
@@ -265,9 +267,12 @@ void failuresAndLifecycle() {
   enqueue(store,k,b);until(store,fs,Stage::Write);assert(fs.handles==1);
   store.begin();assert(fs.handles==0 && !store.hasPendingAdvertWrites());
   enqueue(store,k,b);until(store,fs,Stage::Write);fs.fail_format=true;
+  store._contact_recovery=DataStore::ContactStorageUnavailable;
   assert(!store.formatFileSystem());assert(fs.handles==0 && get(store,k)==b);
+  assert(store.contactsAreVolatile());
   fs.fail_format=false;drain(store,fs);enqueue(store,k,blob(2));
   assert(store.formatFileSystem());assert(!store.hasPendingAdvertWrites() && get(store,k).empty());
+  assert(!store.contactsAreVolatile() && !store.contactRecoveryPending());
   // Reboot and identity-import paths use the real MyMesh durability gate.
   Clock clock;MyMesh mesh{&store,&clock};enqueue(store,k,b);
   assert(mesh.flushContactsBeforeReboot());assert(get(store,k)==b && fs.handles==0);
@@ -293,6 +298,9 @@ void pendingWorkAndRecovery() {
   FakeFilesystem fs;DataStore store(fs);Clock clock;MyMesh mesh{&store,&clock};
   const auto k=key(1);const auto b=blob(1);
   assert(!mesh.hasPendingWork() && mesh.canRecoverUsbLogging());
+  store._contact_recovery=DataStore::ContactRecoveryPending;
+  assert(mesh.hasPendingWork());
+  store._contact_recovery=0;
   enqueue(store,k,b);
   assert(mesh.hasPendingWork() && !mesh.canRecoverUsbLogging());
   fs.fail_open=true;

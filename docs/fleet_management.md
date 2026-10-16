@@ -67,7 +67,13 @@ is unknown. Fleet reception and further fleet settings writes are disabled, and
 `get fleet.channel` reports `store=error`. Enrollment shown in RAM is not active
 authority while held. Restart to load and validate the public file, then check
 enrollment before retrying. A `not saved; retry later` error occurred before
-publication and does not impose this hold.
+publication or after a confirmed rollback, and does not impose this hold. On
+ESP32/RP2040, rename return values alone are not sufficient: the transaction
+checks both names before accepting the move or rollback. Fleet also checks the
+exact public settings image before acknowledging new authority. A Fleet hold
+does not stop the node's normal radio, USB, or individually authenticated admin
+services; it prevents uncertain credentials or replay state from granting remote
+Fleet control.
 
 `get fleet.stats` includes `parts`, the number of fragments currently buffered
 across the two bounded, incomplete two-packet command slots.

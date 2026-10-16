@@ -104,6 +104,12 @@ class AdvertCacheTest(unittest.TestCase):
         start = header.index('  struct AdvertWriteState {')
         end = header.index('\n#endif', start)
         state = header[start:end]
+        recovery_start = header.index('  enum : uint8_t { ContactRecoveryPending')
+        recovery_end = header.index('  uint8_t _contact_recovery = 0;', recovery_start)
+        recovery_end += len('  uint8_t _contact_recovery = 0;')
+        recovery_state = header[recovery_start:recovery_end]
+        recovery_state += '\n' + '\n'.join(method(header, signature) for signature in (
+            '  bool contactRecoveryPending() const', '  bool contactsAreVolatile() const'))
         signatures = ('static File openWrite(', 'inline void makeBlobPath(', 'bool DataStore::queueAdvertByKey(',
                       'void DataStore::retireAdvertWrite(', 'void DataStore::invalidateAdvertWrite(',
                       'bool DataStore::consumeSynchronousAdvertIO(',
@@ -127,6 +133,7 @@ class AdvertCacheTest(unittest.TestCase):
         mesh_source = (ROOT / 'examples/companion_radio/MyMesh.cpp').read_text()
         scheduling = method(mesh_source, 'void MyMesh::servicePersistence()')
         flush = method(mesh_source, 'bool MyMesh::flushContactsBeforeReboot()')
+        flushed = method(mesh_source, 'void MyMesh::onContactCacheFlushed()')
         work = method(mesh_source, 'bool MyMesh::hasPendingWork() const')
         recovery = method(mesh_source, 'bool MyMesh::canRecoverUsbLogging() const')
         # The entire production scheduling body runs below. This order check
@@ -137,9 +144,10 @@ class AdvertCacheTest(unittest.TestCase):
         with tempfile.TemporaryDirectory(prefix='mesh-advert-jobs-') as directory:
             temp = Path(directory)
             (temp / 'advert_state.h').write_text(state)
+            (temp / 'contact_recovery.h').write_text(recovery_state)
             (temp / 'presence.h').write_text(presence)
             (temp / 'store.h').write_text(implementation)
-            (temp / 'mesh.h').write_text('\n'.join((route, scheduling, flush, work, recovery)))
+            (temp / 'mesh.h').write_text('\n'.join((route, scheduling, flushed, flush, work, recovery)))
             binary = temp / 'test'
             result = subprocess.run([
                 'c++', '-std=c++17', '-O1', '-g', '-Wall', '-Wextra',

@@ -543,6 +543,7 @@ protected:
   bool getContactForSave(uint32_t idx, ContactInfo& contact) override { return getContactByIdx(idx, contact); }
   ContactInfo* getContactForStore(uint32_t idx) override { return getContactPtrByIdx(idx); }
   void onContactCacheFlushed() override;
+  bool resetContactsForRecovery() override;
   // A legacy malformed alias must not quarantine every other saved channel.
   // The raw slot remains visible to the app so it can be renamed or deleted.
   bool onChannelLoaded(uint8_t channel_idx, const ChannelDetails& ch) override { return BaseChatMesh::setChannel(channel_idx, ch); }

@@ -1015,38 +1015,59 @@ int main(int argc,char** argv){
    const std::string reply=config(receiver,"set fleet.controller off");
    assert(reply.rfind(false_success?"Err":"OK",0)==0);
    disk.false_success_rename=disk.late_publish_error=disk.fail_rollback=false;
-   assert(config(receiver,"get fleet.channel").find(false_success?"store=error":"store=ok")!=std::string::npos);
+#if defined(RP2040_PLATFORM)
+   // Both public names prove that the rejected backup move left the old
+   // enrollment untouched. This failed local edit remains retryable.
+   const bool held=false;
+   if(false_success)assert(reply.find("retry later")!=std::string::npos);
+#else
+   const bool held=false_success;
+#endif
+   assert(config(receiver,"get fleet.channel").find(held?"store=error":"store=ok")!=std::string::npos);
    Packet packet=command(publisher,transport.clock.now,"get radio2");
    const auto published=disk.files.at(Path);const unsigned writes=disk.writes;
-   assert(apply(receiver,disk,transport,radio,packet)==0&&disk.writes==writes&&disk.files.at(Path)==published);
+   const bool allowed=false_success&&!held;
+   assert(apply(receiver,disk,transport,radio,packet)==unsigned(allowed));
+   if(!allowed)assert(disk.writes==writes&&disk.files.at(Path)==published);
    assert((published==previous)==false_success);
    FleetChannel rebooted(&disk);
-   assert(apply(rebooted,disk,transport,radio,packet)==unsigned(false_success));
+   assert(apply(rebooted,disk,transport,radio,packet)==unsigned(false_success&&!allowed));
   }
  }else if(scenario=="local_config_missing_public"){
-  enroll(fleet,publisher);const auto previous=fs.files.at(Path);fs.false_success_publish=true;
-  assert(config(fleet,"set fleet.controller off").rfind("Err",0)==0);
-  fs.false_success_publish=false;
-  assert(config(fleet,"get fleet.channel").find("store=error")!=std::string::npos);
+  for(bool rollback_fault:{false,true}){
+   fs::FS disk;Mesh transport;RadioProfileCLI radio;FleetChannel receiver(&disk);enroll(receiver,publisher);
+   const auto previous=disk.files.at(Path);
+   disk.false_success_publish=true;disk.fail_rollback=rollback_fault;
+   const auto reply=config(receiver,"set fleet.controller off");assert(reply.rfind("Err",0)==0);
+   disk.false_success_publish=disk.fail_rollback=false;
 #if defined(RP2040_PLATFORM)
-  // The fallback moved the old target to backup, then trusted the no-op
-  // publication and removed that backup. Fleet must quarantine the missing name.
-  assert(!fs.exists(Path)&&!fs.exists("/fleet_channel.bak"));
+   const bool held=rollback_fault;
+   if(held){
+    assert(!disk.exists(Path)&&disk.files.at("/fleet_channel.bak")==previous);
+    assert(disk.exists("/fleet_channel.tmp"));
+   }else{
+    // A no-op publication must not delete the only prior enrollment. A
+    // confirmed rollback keeps the old controller usable without a reboot.
+    assert(disk.files.at(Path)==previous&&!disk.exists("/fleet_channel.bak"));
+    assert(!disk.exists("/fleet_channel.tmp"));
+    assert(reply.find("retry later")!=std::string::npos);
+   }
 #else
-  assert(fs.files.at(Path)==previous);
+   const bool held=true;
+   assert(disk.files.at(Path)==previous);
 #endif
-  const auto published=fs.files;const unsigned writes=fs.writes,renames=fs.renames;
-  Packet packet=command(publisher,mesh.clock.now,"get radio2");
-  assert(apply(fleet,fs,mesh,profiles,packet)==0);
-  assert(config(fleet,"set fleet.channel off").find("unconfirmed")!=std::string::npos);
-  assert(fs.files==published&&fs.writes==writes&&fs.renames==renames);
-  FleetChannel rebooted(&fs);
-#if defined(RP2040_PLATFORM)
-  assert(config(rebooted,"get fleet.channel").find("off,controller=unset,store=ok")!=std::string::npos);
-  assert(apply(rebooted,fs,mesh,profiles,packet)==0);
-#else
-  assert(apply(rebooted,fs,mesh,profiles,packet)==1);
-#endif
+   assert(config(receiver,"get fleet.channel").find(held?"store=error":"store=ok")!=std::string::npos);
+   const auto published=disk.files;const unsigned writes=disk.writes,renames=disk.renames;
+   Packet packet=command(publisher,transport.clock.now,"get radio2");
+   assert(apply(receiver,disk,transport,radio,packet)==unsigned(!held));
+   if(held){
+    assert(config(receiver,"set fleet.channel off").find("unconfirmed")!=std::string::npos);
+    assert(disk.files==published&&disk.writes==writes&&disk.renames==renames);
+   }
+   FleetChannel rebooted(&disk);
+   assert(config(rebooted,"get fleet.channel").find("store=ok")!=std::string::npos);
+   assert(apply(rebooted,disk,transport,radio,packet)==unsigned(held));
+  }
  }else if(scenario=="local_config_staged_substitution"){
   enroll(fleet,publisher);const auto previous=fs.files.at(Path);
   fs.substitute_temp=previous;
@@ -1566,7 +1587,7 @@ class SHA256 : public SHA256Base {{ public:
     def test_valid_same_crc_tail_staged_substitution_cannot_acknowledge_revocation(self):
         self.scenario("local_config_staged_substitution")
 
-    def test_false_success_final_rename_missing_public_image_blocks_live_writes(self):
+    def test_noop_final_rename_restores_old_enrollment_or_retains_backup_on_rollback_failure(self):
         self.scenario("local_config_missing_public")
 
     def test_corrupt_short_long_unreadable_images_fail_closed_and_backup_recovers(self):

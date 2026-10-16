@@ -38,6 +38,16 @@ def function_body(source: str, signature: str) -> str:
 
 
 class Nrf52ExtraFsContractTest(unittest.TestCase):
+    def test_verified_factory_erase_clears_contact_recovery_state(self):
+        store = STORE.read_text(encoding="utf-8")
+        body = function_body(store, "bool DataStore::formatFileSystem()")
+        self.assertEqual(body.count("_contact_recovery = 0;"), 3)
+        self.assertIn("if (success) _contact_recovery = 0;", body)
+        rp = body[body.index("const bool success = LittleFS.format();"):]
+        self.assertIn("if (success) {\n    _contact_recovery = 0;", rp)
+        esp = body[body.index("if (fs_success && nvs_err == ESP_OK)"):]
+        self.assertTrue(esp.startswith("if (fs_success && nvs_err == ESP_OK) {\n    _contact_recovery = 0;"))
+
     def test_uncertain_journal_publication_preserves_storage_authority(self):
         store = STORE.read_text(encoding="utf-8")
         # Compile the complete production methods, including their platform branches.

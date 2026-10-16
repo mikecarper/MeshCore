@@ -48,6 +48,9 @@ struct DataStore {
  FILESYSTEM fs;
  bool _channel_load_incomplete=false;
  bool _uncached_contact_load_incomplete=false;
+ enum : uint8_t { ContactRecoveryPending=1 };
+ uint8_t _contact_recovery=0;
+ @RECOVERY_METHOD@
  const char* _channel_recovery_source=nullptr;
  bool hasIncompleteContactLoad() const;
  FILESYSTEM* _getContactsChannelsFS() { return &fs; }
@@ -104,6 +107,10 @@ int main() {
  node.radio.config.secondary_temporary=true;
  char reply[160];
  auto cmd=[&](const char* text) { assert(node.handleTxRoutingCommand(text,reply,sizeof(reply))); };
+ node.store._contact_recovery=DataStore::ContactRecoveryPending;
+ cmd("set tx.channel 0 off"); assert(strstr(reply,"storage unavailable"));
+ assert(node.writes==0 && node.channels[0].channel.tx_radio==mesh::RADIO_TX_AUTO);
+ node.store._contact_recovery=0;
  cmd("set tx.user \"Alice Jones\" radio2"); assert(!strncmp(reply,"OK",2));
  assert(strstr(reply,"active=radio2") && node.contacts[1].tx_radio==mesh::RADIO_TX_SECONDARY);
  assert(node.contacts[2].tx_radio==mesh::RADIO_TX_AUTO);
@@ -271,6 +278,7 @@ class CompanionTxRoutingTest(unittest.TestCase):
     def test_cli_resolution_persistence_and_failures(self):
         companion = (ROOT / 'examples/companion_radio/MyMesh.cpp').read_text()
         store = (ROOT / 'examples/companion_radio/DataStore.cpp').read_text()
+        store_header = (ROOT / 'examples/companion_radio/DataStore.h').read_text()
         methods = esp_recovery_helpers(store) + method(companion, 'bool MyMesh::handleTxRoutingCommand(')
         methods += '\n' + method(store, 'void DataStore::loadChannels(')
         methods += '\n' + method(store, 'bool DataStore::saveChannels(')
@@ -282,7 +290,8 @@ class CompanionTxRoutingTest(unittest.TestCase):
             transaction = (ROOT / 'src/helpers/ContactFileTransaction.h').read_text()
             (work / 'ContactFileTransaction.h').write_text(transaction.replace(
                 '#include "IdentityStore.h"', '#include <helpers/IdentityStore.h>'))
-            (work / 'test.cpp').write_text(HARNESS.replace('@METHODS@', methods))
+            (work / 'test.cpp').write_text(HARNESS.replace('@METHODS@', methods).replace(
+                '@RECOVERY_METHOD@', method(store_header, '  bool contactRecoveryPending() const')))
             for platform in ('ESP32_PLATFORM', 'RP2040_PLATFORM', 'STM32_PLATFORM'):
                 with self.subTest(platform=platform):
                     build = subprocess.run(['g++', '-std=c++17', '-Wall', '-Wextra', '-D'+platform+'=1',

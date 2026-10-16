@@ -24,6 +24,11 @@ class CompanionUncachedStorageTest(unittest.TestCase):
         source = (ROOT / "examples/companion_radio/DataStore.cpp").read_text()
         signatures = [
             "static bool companionPathPresence(",
+            "static bool readableContactFile(",
+            "const char* DataStore::selectContactFile(",
+            "bool DataStore::prepareContactSave(",
+            "void DataStore::clearContactLoadFailure(",
+            "void DataStore::recoverContacts(",
             "bool DataStore::loadMainIdentity(",
             "bool DataStore::canCreateMainIdentity() const",
             "bool DataStore::saveMainIdentity(",
@@ -55,6 +60,13 @@ class CompanionUncachedStorageTest(unittest.TestCase):
             temp = Path(temp)
             (temp / "store_under_test.h").write_text(generated)
             header = (ROOT / "examples/companion_radio/DataStore.h").read_text()
+            start = header.index("  // Contact-only recovery")
+            end = header.index("#if defined(ESP32_PLATFORM)", start)
+            (temp / "contact_recovery_state_under_test.h").write_text(header[start:end])
+            (temp / "contact_recovery_api_under_test.h").write_text("\n".join(
+                extract_braced(header, signature) for signature in (
+                    "  bool contactRecoveryPending() const",
+                    "  bool contactsAreVolatile() const")))
             start = header.index("  mesh::ContactFileTransaction* _contact_write")
             end = header.index("\n#endif", start)
             (temp / "contact_write_state_under_test.h").write_text(header[start:end])
@@ -63,6 +75,8 @@ class CompanionUncachedStorageTest(unittest.TestCase):
             (temp / "FS.h").write_text(
                 "#pragma once\nnamespace fs { using FS = FakeFilesystem; }\n"
             )
+            (temp / "InternalFileSystem.h").write_text(
+                "#pragma once\n#define InternalFS filesystem\n")
             binary = temp / "test"
             compiled = subprocess.run([
                 "c++", "-std=c++17", "-O1", "-g", "-Wall", "-Wextra",

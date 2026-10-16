@@ -159,6 +159,7 @@ struct MyMesh : CompanionFleetFixture {
     return false;
   }
   void stopContactsIterator(){}
+  void onContactCacheFlushed();
   void cancelAllFloodRetries(){}
   void resetContacts(){++resets;}
   bool savePrefs(){++saves;return save_ok;}
@@ -271,11 +272,14 @@ int main() {
   node.onCLICommandRecv(ContactInfo{},nullptr,0,"erase",reply);
   assert(node.store.erased==0);
   assert(node.handleCommand("erase",0,reply));
-  assert(node.store.erased==1 && node.resets==1 && node.dirty_contacts_expiry==0);
+  assert(node.store.erased==1 && node.resets==1 && node.dirty_contacts_expiry==0
+         && node.dirty_contacts_failures==0);
   assert(strstr(reply,"OK"));
   node.store.success=false;
+  node.dirty_contacts_expiry=2; node.dirty_contacts_failures=3;
   assert(node.handleCommand("erase",0,reply));
-  assert(node.resets==1 && strstr(reply,"Err"));
+  assert(node.resets==1 && strstr(reply,"Err") && node.dirty_contacts_expiry==2
+         && node.dirty_contacts_failures==3);
   for(const char* command:{"poweroff","shutdown"}) {
     const int previous=board.power_offs;
     node.handleCommand(command,100,reply);
@@ -397,6 +401,7 @@ int main() {
             "static bool isCompanionRadioPrefsCommand(",
             "MyMesh::RadioSettingResult MyMesh::applyAndSaveTxPower(",
             "bool MyMesh::saveAdvertName(",
+            "void MyMesh::onContactCacheFlushed()",
             "bool MyMesh::handleDirectCommand(", "bool MyMesh::handleCommand(",
             "void MyMesh::onCLICommandRecv("))
         for export, webconfig in ((0, False), (1, False), (0, True), (1, True)):

@@ -22,6 +22,8 @@ public:
   virtual bool getContactForSave(uint32_t idx, ContactInfo& contact) =0;
   virtual ContactInfo* getContactForStore(uint32_t idx) =0;
   virtual void onContactCacheFlushed() {}
+  // Only called by explicit recovery between packet/app callbacks.
+  virtual bool resetContactsForRecovery() { return false; }
   virtual bool onChannelLoaded(uint8_t channel_idx, const ChannelDetails& ch) =0;
   virtual bool getChannelForSave(uint8_t channel_idx, ChannelDetails& ch) =0;
 };
@@ -44,6 +46,21 @@ class DataStore
   IdentityStore identity_store;
   bool _identity_creation_blocked = false;
   bool _prefs_load_incomplete = false;
+  // Contact-only recovery must not reinterpret a channel/migration error as
+  // permission to discard contacts. No recovery files or boot counters needed.
+  enum : uint8_t { ContactRecoveryPending = 1, ContactRecoveryLegacy = 2,
+                   ContactRecoveryBackup = 4, ContactStorageUnavailable = 8,
+                   ContactMigrationDeferred = 16 };
+  uint8_t _contact_recovery = 0;
+  void queueContactRecovery(bool legacy = false) {
+    _contact_recovery |= ContactRecoveryPending
+        | (legacy ? ContactRecoveryLegacy : 0);
+  }
+  void clearContactLoadFailure();
+#if !defined(NRF52_PLATFORM)
+  const char* selectContactFile(bool& present);
+  bool prepareContactSave();
+#endif
 #if defined(ESP32_PLATFORM)
   const char* _prefs_recovery_source = nullptr;
   const char* _channel_recovery_source = nullptr;
@@ -207,6 +224,13 @@ public:
   bool saveReaderBookmark(mesh::bible::Position pos);
 #endif
   void loadContacts(DataStoreHost* host);
+  bool contactRecoveryPending() const {
+    return (_contact_recovery & ContactRecoveryPending) != 0;
+  }
+  bool contactsAreVolatile() const {
+    return (_contact_recovery & (ContactStorageUnavailable | ContactMigrationDeferred)) != 0;
+  }
+  void recoverContacts(DataStoreHost* host);
   bool saveContacts(DataStoreHost* host, bool (*filter)(const ContactInfo& c) = NULL);
   bool markContactDirty(const ContactInfo& contact);
   bool releaseContact(const ContactInfo& contact);

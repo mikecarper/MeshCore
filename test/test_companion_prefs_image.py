@@ -1,4 +1,4 @@
-"""Check the explicit preference wire layout and bounded STM32 staging."""
+"""Check explicit preference bytes, STM32 staging and nRF field streaming."""
 from pathlib import Path
 import os
 import subprocess
@@ -63,6 +63,9 @@ static void seed(CompanionNodePrefs& prefs, uint32_t& random) {
   @SEED@
   prefs.tx_media = random % 5;
   prefs.tx_ssh = (random >> 8) % 5;
+#if defined(RAK_4631)
+  prefs.peripherals_shared = uint8_t(random >> 16);
+#endif
 }
 
 static std::vector<uint8_t> golden(const CompanionNodePrefs& prefs,
@@ -79,6 +82,18 @@ static std::vector<uint8_t> golden(const CompanionNodePrefs& prefs,
   assert(bytes.size() == 333);
 #else
   assert(bytes.size() == 236);
+#endif
+#if defined(RAK_4631)
+  bytes.insert(bytes.end(), {'P', 'M', 'O', 1,
+      uint8_t(prefs.peripherals_shared == 0 ? 0 : 1), 0});
+  uint16_t peripheral_crc = 0xffff;
+  for (size_t i = bytes.size() - 6; i < bytes.size(); ++i) {
+    peripheral_crc ^= uint16_t(bytes[i]) << 8;
+    for (unsigned bit = 0; bit < 8; ++bit)
+      peripheral_crc = (peripheral_crc & 0x8000)
+          ? uint16_t((peripheral_crc << 1) ^ 0x1021) : uint16_t(peripheral_crc << 1);
+  }
+  bytes.push_back(uint8_t(peripheral_crc >> 8)); bytes.push_back(uint8_t(peripheral_crc));
 #endif
   // Independent wire definition of the new checked traffic footer. Keep
   // every historical byte above unchanged and encode the public policy tags.
@@ -111,9 +126,24 @@ int main() {
     // and migration remain the loader/CLI's existing responsibility.
     seed(prefs, random);
     DataStore store;
+    WRITE_CALLS.clear();
     assert(store.savePrefs(prefs, 47.125, -122.25));
     assert(store.fs.files.at("/new_prefs") == golden(prefs, 47.125, -122.25));
     assert(!store.fs.exists("/new_prefs.tmp"));
+#if defined(NRF52_PLATFORM)
+    const std::vector<size_t> streaming = {@WRITE_SIZES@
+#if defined(RAK_4631)
+        , 8
+#endif
+        , 8};
+    assert(WRITE_CALLS == streaming); // Direct fields, never a 236-byte staging write.
+#if defined(RAK_4631)
+    assert(store.fs.files.at("/new_prefs").size() == 252);
+#endif
+#endif
+    DataStore reference;
+    assert(reference.savePrefsLegacy(prefs, 47.125, -122.25));
+    assert(reference.fs.files.at("/new_prefs") == store.fs.files.at("/new_prefs"));
     ++comparisons;
   }
 
@@ -127,10 +157,17 @@ int main() {
   original.lost_reply = 2;
   original.tx_media = mesh::RADIO_TX_SECONDARY;
   original.tx_ssh = mesh::RADIO_TX_OFF;
+#if defined(RAK_4631)
+  original.peripherals_shared = 1;
+#endif
   DataStore initial;
   assert(initial.savePrefs(original, 47.125, -122.25));
   const auto before = golden(original, 47.125, -122.25);
-  const size_t historical_size=before.size()-mesh::companion::traffic::FooterSize;
+  const size_t historical_size=before.size()-mesh::companion::traffic::FooterSize
+#if defined(RAK_4631)
+      - mesh::peripherals::FooterSize
+#endif
+      ;
   assert(initial.fs.files.at("/new_prefs") == before);
 
   // Every complete historical wire boundary stays readable, and an old
@@ -172,6 +209,9 @@ int main() {
   // if the underlying file size were accidentally narrowed with the table.
   std::vector<size_t> accepted_sizes = legacy_sizes;
   accepted_sizes.push_back(historical_size);
+#if defined(RAK_4631)
+  accepted_sizes.push_back(historical_size + mesh::peripherals::FooterSize);
+#endif
   accepted_sizes.push_back(before.size());
   for (size_t length = 0; length <= before.size() + 256; ++length) {
     DataStore reboot;
@@ -191,6 +231,9 @@ int main() {
       assert(live.lost_reply == (length >= historical_size ? 2 : 0));
       assert(live.tx_media == (length == before.size() ? mesh::RADIO_TX_SECONDARY : mesh::RADIO_TX_AUTO));
       assert(live.tx_ssh == (length == before.size() ? mesh::RADIO_TX_OFF : mesh::RADIO_TX_AUTO));
+#if defined(RAK_4631)
+      assert(live.peripherals_shared == (length >= 244 ? 1 : 0));
+#endif
       assert(lat == 47.125 && lon == -122.25);
     } else {
       assert(live.freq == 920.5f && live.lost_reply == 1);
@@ -255,6 +298,11 @@ int main() {
     write.fs.fail_write_after = static_cast<int>(quota);
     assert(!write.savePrefs(changed, 42.25, -121.125));
     unchanged(write, before);
+    DataStore reference;
+    reference.fs.files["/new_prefs"] = before;
+    reference.fs.fail_write_after = static_cast<int>(quota);
+    assert(!reference.savePrefsLegacy(changed, 42.25, -121.125));
+    unchanged(reference, before);
     write.fs.fail_write_after = -1;
     assert(write.savePrefs(changed, 42.25, -121.125));
     assert(write.fs.files.at("/new_prefs") == after);
@@ -265,6 +313,22 @@ int main() {
     unchanged(read, before);
     ++comparisons;
   }
+#if defined(RAK_4631)
+  // All checked peripheral-footer bits are validation inputs, including the
+  // boundary immediately before the independent traffic footer.
+  for (unsigned bit = 0; bit < 64; ++bit) {
+    DataStore corrupt;
+    auto candidate = before;
+    candidate[236 + bit / 8] ^= uint8_t(1u << (bit % 8));
+    corrupt.fs.files["/new_prefs"] = candidate;
+    CompanionNodePrefs live; live.freq = 920.5f; live.peripherals_shared = 0;
+    double lat = 1, lon = 2;
+    assert(!corrupt.loadPrefsInt("/new_prefs", live, lat, lon));
+    assert(live.freq == 920.5f && live.peripherals_shared == 0 && lat == 1 && lon == 2);
+    assert(corrupt.fs.files.at("/new_prefs") == candidate);
+    ++comparisons;
+  }
+#endif
   for (unsigned fault = 0; fault < 3; ++fault) {
     DataStore store;
     store.fs.files["/new_prefs"] = before;
@@ -335,10 +399,28 @@ class CompanionPrefsImageTests(unittest.TestCase):
     def test_explicit_wire_layout_and_atomic_staging(self):
         source = (ROOT / 'examples/companion_radio/DataStore.cpp').read_text()
         save = method(source, 'bool DataStore::savePrefs(')
+        nrf_branch_start = save.index('#elif defined(NRF52_PLATFORM) && defined(__GNUC__)')
+        nrf_branch = save[nrf_branch_start:save.index('\n#else', nrf_branch_start)]
+        self.assertIn('file.write(', nrf_branch)
+        self.assertIn('prefValue(', nrf_branch)
+        self.assertNotIn('image[', nrf_branch)
+        self.assertNotIn('memcpy', nrf_branch)
+        legacy_writer = (ROOT / 'test/fixtures/companion_prefs_storage/legacy_writer.inc').read_text()
+        commit = '    success = file.commit(success);'
+        self.assertEqual(legacy_writer.count(commit), 1)
+        legacy_writer = legacy_writer.replace(commit, '''#if defined(RAK_4631)
+    uint8_t peripheral_footer[8];
+    mesh::peripherals::encodeFooter(peripheral_footer, _prefs.peripherals_shared);
+    success = success && file.write(peripheral_footer, sizeof(peripheral_footer)) == sizeof(peripheral_footer);
+#endif
+    uint8_t traffic_footer[8];
+    mesh::companion::traffic::encodeFooter(traffic_footer, _prefs.tx_media, _prefs.tx_ssh);
+    success = success && file.write(traffic_footer, sizeof(traffic_footer)) == sizeof(traffic_footer);
+''' + commit)
         methods = esp_recovery_helpers(source) + '\n'.join(
             method(source, signature) for signature in (
                 'bool DataStore::loadPrefs(', 'bool DataStore::loadPrefsInt(')
-        ) + '\n' + save
+        ) + '\n' + save + '\n' + legacy_writer
         for suffix, capacity in (('TooSmall', 235), ('TooLarge', 237)):
             variant = save.replace('DataStore::savePrefs(', 'DataStore::savePrefs' + suffix + '(', 1)
             self.assertIn('uint8_t image[236];', variant)
@@ -347,6 +429,7 @@ class CompanionPrefsImageTests(unittest.TestCase):
         code = HARNESS.split('int main(')[0].replace('@METHODS@', methods)
         code = code.replace(' bool savePrefs(const CompanionNodePrefs&, double, double);',
                             ' bool savePrefs(const CompanionNodePrefs&, double, double);\n'
+                            ' bool savePrefsLegacy(const CompanionNodePrefs&, double, double);\n'
                             ' bool savePrefsTooSmall(const CompanionNodePrefs&, double, double);\n'
                             ' bool savePrefsTooLarge(const CompanionNodePrefs&, double, double);')
         self.assertEqual(sum(size for _, size in WIRE_FIELDS), 226)
@@ -361,6 +444,8 @@ class CompanionPrefsImageTests(unittest.TestCase):
         tests = TESTS
         for placeholder, value in generated.items():
             tests = tests.replace(placeholder, value)
+        tests = tests.replace('@WRITE_SIZES@', ', '.join(
+            str(size) for _, size in WIRE_FIELDS + TAIL_FIELDS))
         with tempfile.TemporaryDirectory(prefix='meshcore-prefs-image-') as directory:
             work = Path(directory)
             (work / 'Utils.h').write_text('''#pragma once
@@ -383,6 +468,11 @@ inline char* utoa(unsigned int value,char* output,int base){
             # Reuse the existing memory-filesystem boundary, adding only an
             # observable open failure needed to exercise the actual writer.
             fs = (ROOT / 'test/fixtures/radio_profiles/mocks/helpers/IdentityStore.h').read_text()
+            fs = fs.replace('class MemoryFS;',
+                            'static std::vector<size_t> WRITE_CALLS;\nclass MemoryFS;')
+            fs = fs.replace('inline size_t File::write(const uint8_t* data, size_t size) {',
+                            'inline size_t File::write(const uint8_t* data, size_t size) {\n'
+                            '  WRITE_CALLS.push_back(size);')
             fs = fs.replace('  bool fail_write = false;',
                             '  bool fail_write = false, fail_write_open = false;')
             fs = fs.replace('    if (*mode == \'w\') files[path].clear();',
@@ -392,7 +482,7 @@ inline char* utoa(unsigned int value,char* output,int base){
             (work / 'helpers/IdentityStore.h').write_text(fs)
             cpp = work / 'test.cpp'
             cpp.write_text(code + tests)
-            for platform in ('STM32_PLATFORM', 'NRF52_PLATFORM', 'ESP32_PLATFORM',
+            for platform in ('STM32_PLATFORM', 'NRF52_PLATFORM', 'NRF52_PLATFORM,RAK_4631', 'ESP32_PLATFORM',
                              'RP2040_PLATFORM', 'ESP32_PLATFORM,TBEAM_1W',
                              'RP2040_PLATFORM,ENABLE_WIFI_INTERFACE'):
                 with self.subTest(platform=platform):

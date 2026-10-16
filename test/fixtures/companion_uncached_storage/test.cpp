@@ -21,7 +21,7 @@ public:
   explicit File(FakeFilesystem& filesystem) : fs(&filesystem) {}
   File(FakeFilesystem* filesystem, const char* name, bool write)
       : fs(filesystem), path(name), writing(write) {}
-  explicit operator bool() const { return fs != nullptr; }
+  explicit operator bool() const { return fs != nullptr && !path.empty(); }
   bool isDirectory() const { return false; }
   bool open(const char* name, uint8_t mode);
   size_t read(uint8_t* bytes, size_t length);
@@ -42,6 +42,7 @@ public:
   std::string fail_open;
   unsigned fail_open_remaining = std::numeric_limits<unsigned>::max();
   int stat_error = 0;
+  bool fail_remove = false;
   unsigned fail_rename = 0, renames = 0, writes = 0;
   unsigned read_opens = 0;
   std::vector<Files> snapshots;
@@ -52,7 +53,7 @@ public:
     return files.count(path) != 0;
   }
   bool mkdir(const char*) { return true; }
-  bool remove(const char* path) { return files.erase(path) != 0; }
+  bool remove(const char* path) { return !fail_remove && files.erase(path) != 0; }
   void _lockFS() {}
   void _unlockFS() {}
   FakeFilesystem* _getFS() { return this; }
@@ -106,7 +107,7 @@ size_t File::write(const uint8_t* bytes, size_t length) {
   fs->snapshots.push_back(fs->files);
   return count;
 }
-size_t File::size() const { return fs ? fs->files.at(path).size() : 0; }
+size_t File::size() const { return *this ? fs->files.at(path).size() : 0; }
 
 #if defined(RP2040_PLATFORM)
 #include <FS.h>
@@ -117,6 +118,7 @@ size_t File::size() const { return fs ? fs->files.at(path).size() : 0; }
 #include <helpers/ContactInfo.h>
 #include <helpers/PersistentStoreFormat.h>
 #include <helpers/ContactFileTransaction.h>
+#include <helpers/FileRead.h>
 #define ATOMIC_FILE_WRITER_IMPLEMENTATION
 #include <helpers/AtomicFileWriter.h>
 
@@ -142,7 +144,9 @@ static const char* identity_path = "/identity/_main.id";
 
 struct Host {
   size_t capacity = 100;
+  unsigned resets = 0;
   std::vector<ContactInfo> contacts;
+  bool resetContactsForRecovery() { ++resets; contacts.clear(); return true; }
   bool getContactForSave(uint32_t index, ContactInfo& c) {
     if (index >= contacts.size()) return false;
     c = contacts[index];
@@ -161,6 +165,7 @@ class DataStore {
   bool _identity_creation_blocked = false;
   bool _channel_load_incomplete = false;
   bool _uncached_contact_load_incomplete = false;
+#include "contact_recovery_state_under_test.h"
 #if defined(ESP32_PLATFORM)
 #include "contact_write_state_under_test.h"
 #endif
@@ -187,6 +192,8 @@ class DataStore {
     }
   } identity_store;
 public:
+#include "contact_recovery_api_under_test.h"
+  void recoverContacts(DataStoreHost*);
 #if defined(ESP32_PLATFORM)
   ~DataStore();
   bool markContactDirty(const ContactInfo&);
@@ -343,7 +350,72 @@ static void contact_checks() {
   assert(filesystem.files.at("/contacts3").empty());
 }
 
+static void recovery_checks() {
+  const auto original = make_original();
+  for (unsigned fault = 0; fault < 3; ++fault) {
+    filesystem = FakeFilesystem();
+    filesystem.files["/contacts3"] = original;
+    filesystem.files["/contacts3"].pop_back();
+    filesystem.files[identity_path] = std::vector<uint8_t>(96, 7);
+    filesystem.files["/channels2"] = {3, 4, 5};
+    filesystem.files["/prefs"] = {6, 7};
+    const auto identity = filesystem.files.at(identity_path);
+    const auto channels = filesystem.files.at("/channels2");
+    const auto prefs = filesystem.files.at("/prefs");
+    if (fault == 1) filesystem.fail_remove = true;
+    DataStore store;
+    Host host;
+    store.loadContacts(&host);
+    assert(store.hasIncompleteContactLoad() && store.contactRecoveryPending());
+    if (fault == 2) filesystem.files["/contacts3"] = original;
+    store.recoverContacts(&host);
+    assert(!store.hasIncompleteContactLoad() && !store.contactRecoveryPending());
+    assert(host.resets >= 1 && store.contactsAreVolatile() == (fault == 1));
+    assert(host.contacts.size() == (fault == 2 ? 2U : 0U));
+    assert(filesystem.files.at(identity_path) == identity);
+    assert(filesystem.files.at("/channels2") == channels);
+    assert(filesystem.files.at("/prefs") == prefs);
+    for (const auto& item : filesystem.files) assert(item.first.find(".bad") == std::string::npos);
+    host.contacts.push_back(contact(5));
+    const auto before = filesystem.files;
+    const auto writes = filesystem.writes;
+    assert(store.saveContacts(&host) == (fault != 1));
+    if (fault == 1) assert(filesystem.files == before && filesystem.writes == writes);
+  }
+  {
+    filesystem = FakeFilesystem();
+    filesystem.files["/contacts3"] = original;
+    DataStore store;
+    Host host;
+    host.capacity = 1;
+    store.loadContacts(&host);
+    assert(store.hasIncompleteContactLoad() && !store.contactRecoveryPending());
+    store.recoverContacts(&host);
+    assert(host.resets == 0 && host.contacts.size() == 1);
+    assert(!store.contactsAreVolatile() && filesystem.files.at("/contacts3") == original);
+  }
+#if !defined(STM32_PLATFORM)
+  for (bool blocked_promotion : {false, true}) {
+    filesystem = FakeFilesystem();
+    filesystem.files["/contacts3"] = {0xff};
+    filesystem.files["/contacts3.bak"] = original;
+    if (blocked_promotion) filesystem.fail_rename = 1;
+    DataStore store;
+    Host host;
+    store.loadContacts(&host);
+    assert(!store.hasIncompleteContactLoad() && host.contacts.size() == 2);
+    if (blocked_promotion) assert(filesystem.files.at("/contacts3.bak") == original);
+    else assert(filesystem.files.at("/contacts3") == original);
+    host.contacts.push_back(contact(6));
+    assert(store.saveContacts(&host));
+    assert(!filesystem.files.count("/contacts3.bak"));
+    assert(filesystem.files.at("/contacts3").size() == 3 * mesh::storage::CONTACT_RECORD_SIZE);
+  }
+#endif
+}
+
 int main() {
   identity_checks();
   contact_checks();
+  recovery_checks();
 }

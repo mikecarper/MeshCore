@@ -4,6 +4,7 @@
 #define FILESYSTEM FakeFilesystem
 #include <helpers/ContactInfo.h>
 #include <helpers/ContactFileTransaction.h>
+#include <helpers/FileRead.h>
 #include "packet_under_test.h"
 
 static_assert(MESH_CONTACT_CACHE == 0,
@@ -25,10 +26,18 @@ int fixtureStat(FakeFilesystem* fs, const char* vfs_path, struct stat*) {
 struct Host {
   std::vector<ContactInfo> contacts;
   unsigned copies = 0;
+  unsigned recovery_resets = 0;
+  bool recovery_reset_allowed = true;
   size_t capacity = 350;
   bool onContactLoaded(const ContactInfo& c) {
     if (contacts.size() >= capacity) return false;
     contacts.push_back(c);
+    return true;
+  }
+  bool resetContactsForRecovery() {
+    if (!recovery_reset_allowed) return false;
+    ++recovery_resets;
+    contacts.clear();
     return true;
   }
   bool getContactForSave(uint32_t index, ContactInfo& contact) {
@@ -55,6 +64,7 @@ class DataStore {
   void retireAdvertWrite(const uint8_t[], int) {}
   bool _channel_load_incomplete = false;
   bool _uncached_contact_load_incomplete = false;
+#include "contact_recovery_state_under_test.h"
 #include "contact_write_state_under_test.h"
 public:
   explicit DataStore(FakeFilesystem& fs) : _fs(&fs) {}
@@ -63,6 +73,8 @@ public:
   File openRead(FakeFilesystem* fs, const char* path) { return fs->open(path); }
   bool hasIncompleteContactLoad() const;
   void loadContacts(DataStoreHost*);
+  void recoverContacts(DataStoreHost*);
+#include "contact_recovery_api_under_test.h"
   bool saveContacts(DataStoreHost*, bool (*)(const ContactInfo&));
   bool flushContactWrites(DataStoreHost*, bool (*)(const ContactInfo&));
   bool markContactDirty(const ContactInfo&);
@@ -266,7 +278,8 @@ void deferredBeginCancellationAndCrashRecovery() {
   SPIFFS.files["/contacts3.bak"] = old;
   {
     Writer writer(&SPIFFS, "/contacts3", companionPathPresence, true);
-    for (unsigned pass = 0; pass < 7; ++pass) {
+    // Restoring a backup also verifies both names in separate setup passes.
+    for (unsigned pass = 0; pass < 9; ++pass) {
       assert(writer.serviceBegin() != Writer::BeginProgress::Failed);
       FakeFilesystem rebooted;
       rebooted.files = SPIFFS.files;
@@ -513,10 +526,115 @@ void rebootAbortRecoveryAndDurableRemoval() {
   DataStore failed_boot(SPIFFS);
   failed_boot.loadContacts(&incomplete);
   assert(failed_boot.hasIncompleteContactLoad());
+  assert(failed_boot.contactRecoveryPending());
   const auto before = SPIFFS.files;
   assert(!failed_boot.serviceContactWrites(&incomplete, nullptr));
   assert(!failed_boot.flushContactWrites(&incomplete, nullptr));
   assert(SPIFFS.files == before);
+  SPIFFS.fail_read.clear();
+  failed_boot.recoverContacts(&incomplete);
+  assert(!failed_boot.hasIncompleteContactLoad() && !failed_boot.contactRecoveryPending());
+  // A fully readable prior backup may have replaced the unread target.
+  assert(image(incomplete) == before.at("/contacts3") && SPIFFS.files == before);
+}
+
+void contactRecoveryPreservesSettingsAndResourceRefusals() {
+  for (unsigned fault = 0; fault < 3; ++fault) {
+    SPIFFS = FakeFilesystem();
+    Host original = table(32), loaded;
+    SPIFFS.files["/contacts3"] = image(original);
+    for (const char* name : {"/_main.id", "/new_prefs", "/channels2", "/fleet_channel",
+                             "/mesh_mt", "/mesh_eth"}) SPIFFS.files[name] = {7, 3, 9};
+    if (fault == 1) {
+      SPIFFS.files["/contacts3"] = {8, 9};
+      SPIFFS.files["/contacts3.bak"] = {4};
+    } else SPIFFS.fail_read = "/contacts3";
+    const auto durable = SPIFFS.files;
+    DataStore store(SPIFFS);
+    store.loadContacts(&loaded);
+    assert(store.hasIncompleteContactLoad() && store.contactRecoveryPending());
+    assert(loaded.recovery_resets == 0);
+    loaded.recovery_reset_allowed = false;
+    store.recoverContacts(&loaded);
+    assert(store.contactRecoveryPending() && SPIFFS.files == durable);
+    loaded.recovery_reset_allowed = true;
+    SPIFFS.fail_remove = fault == 2;
+    store.recoverContacts(&loaded);
+    assert(!store.contactRecoveryPending() && !store.hasIncompleteContactLoad());
+    assert(loaded.contacts.empty() && loaded.recovery_resets > 0);
+    auto expected = durable;
+    if (fault != 2) {
+      expected.erase("/contacts3");
+      expected.erase("/contacts3.bak");
+    }
+    assert(SPIFFS.files == expected); // No archive or broad settings reset.
+    const unsigned removes = SPIFFS.removes;
+    store.recoverContacts(&loaded);
+    assert(SPIFFS.removes == removes && SPIFFS.files == expected);
+    SPIFFS.fail_read.clear(); SPIFFS.fail_remove = false;
+    if (fault == 2) {
+      assert(!store.saveContacts(&loaded, nullptr)); // Failed media stays volatile this boot.
+      assert(SPIFFS.files == expected);
+    } else {
+      loaded.contacts.push_back(contact(909));
+      assert(store.saveContacts(&loaded, nullptr));
+      bootCheck(loaded);
+    }
+  }
+  SPIFFS = FakeFilesystem();
+  Host original = table(32), limited;
+  SPIFFS.files["/contacts3"] = image(original);
+  const auto durable = SPIFFS.files;
+  limited.capacity = 20;
+  DataStore store(SPIFFS);
+  store.loadContacts(&limited);
+  assert(store.hasIncompleteContactLoad() && !store.contactRecoveryPending());
+  const unsigned writes = SPIFFS.writes, removes = SPIFFS.removes;
+  store.recoverContacts(&limited);
+  assert(!store.saveContacts(&limited, nullptr));
+  assert(SPIFFS.files == durable && SPIFFS.writes == writes && SPIFFS.removes == removes);
+  assert(limited.recovery_resets == 0);
+}
+
+void validBackupSurvivesFailedPromotion() {
+  for (bool removal_failure : {false, true}) {
+    SPIFFS = FakeFilesystem();
+    Host original = table(32), loaded;
+    const auto valid = image(original);
+    SPIFFS.files["/contacts3"] = {9};
+    SPIFFS.files["/contacts3.bak"] = valid;
+    SPIFFS.fail_remove = removal_failure;
+    if (!removal_failure) SPIFFS.fail_rename = SPIFFS.renames + 1;
+    DataStore store(SPIFFS);
+    store.loadContacts(&loaded);
+    assert(!store.hasIncompleteContactLoad() && !store.contactRecoveryPending());
+    assert(image(loaded) == valid && loaded.recovery_resets == 0);
+    assert(SPIFFS.files.at("/contacts3.bak") == valid);
+    if (!removal_failure) SPIFFS.fail_rename = SPIFFS.renames + 1;
+    assert(!store.saveContacts(&loaded, nullptr));
+    assert(SPIFFS.files.at("/contacts3.bak") == valid);
+    SPIFFS.fail_remove = false; SPIFFS.fail_rename = 0;
+    assert(store.saveContacts(&loaded, nullptr));
+    bootCheck(loaded);
+  }
+  SPIFFS = FakeFilesystem();
+  Host original = table(32), loaded;
+  const auto valid = image(original);
+  SPIFFS.files["/contacts3"] = {9};
+  SPIFFS.files["/contacts3.bak"] = valid;
+  SPIFFS.fail_rename = SPIFFS.renames + 1;
+  DataStore store(SPIFFS);
+  store.loadContacts(&loaded);
+  assert(image(loaded) == valid && !store.hasIncompleteContactLoad());
+  SPIFFS.fail_rename = 0;
+  SPIFFS.after_rename = [](FakeFilesystem& fs, const char* path) {
+    if (!strcmp(path, "/contacts3")) fs.metadata_error = true;
+  };
+  assert(!store.saveContacts(&loaded, nullptr));
+  assert(SPIFFS.files.at("/contacts3") == valid && !SPIFFS.exists("/contacts3.bak"));
+  SPIFFS.metadata_error = false; SPIFFS.after_rename = {};
+  assert(store.saveContacts(&loaded, nullptr));
+  bootCheck(loaded);
 }
 
 void expectedAbsenceAndRealDeleteFailures() {
@@ -671,6 +789,8 @@ int main() {
   syncFlushAndFilterChange();
   realBackupCleanupFailure();
   rebootAbortRecoveryAndDurableRemoval();
+  contactRecoveryPreservesSettingsAndResourceRefusals();
+  validBackupSurvivesFailedPromotion();
   expectedAbsenceAndRealDeleteFailures();
 #endif
 }

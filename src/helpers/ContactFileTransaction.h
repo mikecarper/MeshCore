@@ -1,8 +1,8 @@
 #pragma once
 
 // SPIFFS cannot replace an existing name in one rename. Preserve the previous
-// file as .bak until the verified replacement has its final name. Recovery of
-// the rename gap happens before loading contacts on the next boot.
+// file as .bak until the verified replacement has its final name. Recover the
+// rename gap before loading a store, including an explicit runtime reload.
 #if defined(ESP32_PLATFORM) || defined(RP2040_PLATFORM)
 #include "IdentityStore.h"
 #include "PersistentStoreFormat.h"
@@ -12,6 +12,11 @@ namespace mesh {
 class ContactFileTransaction {
 public:
   using PresenceProbe = bool (*)(FILESYSTEM*, const char*, bool&);
+  enum class CommitProgress : uint8_t { Pending, Succeeded, Failed };
+  // Committed combines staged readback with an observed namespace move, not
+  // fresh public-byte readback. PresenceProbe must report metadata errors;
+  // the bare exists() fallback cannot distinguish those errors from absence.
+  enum class Outcome : uint8_t { Pending, NotCommitted, Committed, Indeterminate };
 private:
   FILESYSTEM* _fs;
   const char* _target;
@@ -22,7 +27,7 @@ private:
   size_t _size = 0;
   uint32_t _crc = 0xffffffff;
   bool _ok = false;
-  bool _finished = false;
+  Outcome _outcome = Outcome::Pending;
   enum class CommitStage : uint8_t { Flush, Open, Verify, Publish };
   CommitStage _commit_stage = CommitStage::Flush;
   uint32_t _verify_crc = 0xffffffff;
@@ -38,7 +43,9 @@ private:
   static_assert(storage::CONTACT_RECORD_SIZE <= ESP_WRITE_BUFFER_SIZE,
                 "Contact records must fit one bounded writer buffer");
   enum class BeginStage : uint8_t {
-    Target, Backup, Recover, RetireBackup, Temp, Remove, Open, Configure, Ready, Failed
+    Target, Backup, Recover, RecoverTarget, RecoverBackup,
+    RecoverTargetRetire, RecoverBackupRetire, RetireBackup,
+    Temp, Remove, Open, Configure, Ready, Failed
   };
   BeginStage _begin_stage = BeginStage::Target;
   bool _begin_target_exists = false;
@@ -65,13 +72,81 @@ private:
     present = fs->exists(path);
     return true;
   }
-  static bool removeIfPresent(FILESYSTEM* fs, const char* path,
-                              PresenceProbe presence) {
+  // Do not add another frame to the bounded publication/cleanup call chain.
+  __attribute__((always_inline)) static bool removeIfPresent(
+      FILESYSTEM* fs, const char* path, PresenceProbe presence) {
     bool present = false;
     return probe(fs, path, present, presence) && (!present || fs->remove(path));
   }
+  enum class MoveState : uint8_t { Moved, Unchanged, Unknown };
+  __attribute__((always_inline)) static MoveState moveState(
+      FILESYSTEM* fs, const char* from, const char* to, PresenceProbe presence) {
+    bool source = false, destination = false;
+    if (!probe(fs, from, source, presence)
+        || !probe(fs, to, destination, presence)) return MoveState::Unknown;
+    if (!source && destination) return MoveState::Moved;
+    if (source && !destination) return MoveState::Unchanged;
+    return MoveState::Unknown;
+  }
+  __attribute__((noinline)) CommitProgress finishCommit(bool valid,
+                                                       bool defer_backup_cleanup) {
+    _outcome = Outcome::NotCommitted;
+    bool backup_exists = false, target_exists = false;
+    bool ok = valid && probe(_fs, _backup, backup_exists, _presence)
+        && probe(_fs, _target, target_exists, _presence);
+    if (ok && backup_exists && !target_exists) {
+      // A prior public file is no longer where construction found it. Never
+      // retire the only recoverable copy or replace unknown authority.
+      _outcome = Outcome::Indeterminate;
+      return CommitProgress::Failed;
+    }
+    if (ok && backup_exists) {
+      ok = _fs->remove(_backup)
+          && probe(_fs, _backup, backup_exists, _presence) && !backup_exists;
+    }
+    bool backed_up = false;
+    if (ok && target_exists) {
+      _fs->rename(_target, _backup);
+      const MoveState moved = moveState(_fs, _target, _backup, _presence);
+      if (moved == MoveState::Unknown) {
+        _outcome = Outcome::Indeterminate;
+        return CommitProgress::Failed;
+      }
+      ok = backed_up = moved == MoveState::Moved;
+    }
+    if (ok) {
+      _fs->rename(_temp, _target);
+      const MoveState moved = moveState(_fs, _temp, _target, _presence);
+      if (moved == MoveState::Moved) {
+        _outcome = Outcome::Committed;
+#if defined(ESP32_PLATFORM)
+        if (!defer_backup_cleanup)
+#else
+        (void)defer_backup_cleanup;
+#endif
+          removeIfPresent(_fs, _backup, _presence);
+        return CommitProgress::Succeeded;
+      }
+      // An unknown publication may already have installed the candidate.
+      // In particular, Pico rename can replace a live destination: never
+      // blindly roll an old backup over a possibly committed public file.
+      if (moved == MoveState::Unknown) {
+        _outcome = Outcome::Indeterminate;
+        return CommitProgress::Failed;
+      }
+      if (backed_up) {
+        _fs->rename(_backup, _target);
+        if (moveState(_fs, _backup, _target, _presence) != MoveState::Moved) {
+          _outcome = Outcome::Indeterminate;
+          return CommitProgress::Failed;
+        }
+      }
+    }
+    removeIfPresent(_fs, _temp, _presence);
+    return CommitProgress::Failed;
+  }
 public:
-  enum class CommitProgress : uint8_t { Pending, Succeeded, Failed };
+  Outcome outcome() const { return _outcome; }
   static bool recover(FILESYSTEM* fs, const char* target,
                       PresenceProbe presence = nullptr) {
     char backup[48];
@@ -80,7 +155,9 @@ public:
     if (!probe(fs, target, target_exists, presence)
         || !probe(fs, backup, backup_exists, presence)) return false;
     if (target_exists) return true;
-    return !backup_exists || fs->rename(backup, target);
+    if (!backup_exists) return true;
+    fs->rename(backup, target);
+    return moveState(fs, backup, target, presence) == MoveState::Moved;
   }
   ContactFileTransaction(FILESYSTEM* fs, const char* target,
                          PresenceProbe presence = nullptr
@@ -98,7 +175,12 @@ public:
       while (serviceBegin() == BeginProgress::Pending) {}
     }
 #else
-    if (!recover(fs, target, presence)) return;
+    if (!recover(fs, target, presence)) {
+      // Recovery may already have moved the old backup. We do not own any
+      // prior scratch and must not remove it when that result is unknown.
+      _outcome = Outcome::Indeterminate;
+      return;
+    }
     if (!removeIfPresent(fs, _temp, presence)) return;
 #if defined(RP2040_PLATFORM)
     _file = fs->open(_temp, "w");
@@ -111,7 +193,7 @@ public:
   ~ContactFileTransaction() {
     if (_file) _file.close();
     if (_verify) _verify.close();
-    if (!_finished
+    if (_outcome == Outcome::Pending
 #if defined(ESP32_PLATFORM)
         && _owns_temp
 #endif
@@ -133,15 +215,32 @@ public:
         break;
       case BeginStage::Recover:
         if (!_begin_target_exists && _begin_backup_exists) {
-          ok = _fs->rename(_backup, _target);
-          if (ok) {
-            _begin_target_exists = true;
-            _begin_backup_exists = false;
-          }
+          _fs->rename(_backup, _target);
+          _begin_stage = background_contact_write
+              ? BeginStage::RecoverTargetRetire : BeginStage::RecoverTarget;
+          break;
         }
         if (ok) _begin_stage = background_contact_write
             ? BeginStage::RetireBackup : BeginStage::Temp;
         break;
+      case BeginStage::RecoverTarget:
+      case BeginStage::RecoverTargetRetire: {
+        const bool retire = _begin_stage == BeginStage::RecoverTargetRetire;
+        ok = probe(_fs, _target, _begin_target_exists, _presence);
+        if (!ok) _outcome = Outcome::Indeterminate;
+        if (ok) _begin_stage = retire
+            ? BeginStage::RecoverBackupRetire : BeginStage::RecoverBackup;
+        break;
+      }
+      case BeginStage::RecoverBackup:
+      case BeginStage::RecoverBackupRetire: {
+        const bool retire = _begin_stage == BeginStage::RecoverBackupRetire;
+        ok = probe(_fs, _backup, _begin_backup_exists, _presence)
+            && _begin_target_exists && !_begin_backup_exists;
+        if (!ok) _outcome = Outcome::Indeterminate;
+        if (ok) _begin_stage = retire ? BeginStage::RetireBackup : BeginStage::Temp;
+        break;
+      }
       case BeginStage::RetireBackup:
         // A successful prior publication may retain its old backup. Retire it
         // in a separate setup pass only when the original target was present.
@@ -192,10 +291,10 @@ public:
   }
 #endif
   bool readyToPublish() const {
-    return !_finished && _commit_stage == CommitStage::Publish;
+    return _outcome == Outcome::Pending && _commit_stage == CommitStage::Publish;
   }
   size_t write(const uint8_t* data, size_t len) {
-    if (!_ok || _finished || _commit_stage != CommitStage::Flush) return 0;
+    if (!_ok || _outcome != Outcome::Pending || _commit_stage != CommitStage::Flush) return 0;
     const size_t wrote = _file.write(data, len);
     _ok = wrote == len;
     _size += wrote;
@@ -213,7 +312,7 @@ public:
     // the deferred setup operations inside this call.
     if (_begin_stage != BeginStage::Ready) return CommitProgress::Failed;
 #endif
-    if (_finished) return CommitProgress::Failed;
+    if (_outcome != Outcome::Pending) return CommitProgress::Failed;
     bool ok = _ok && valid;
     if (ok && _commit_stage == CommitStage::Flush) {
       if (_file) { _file.flush(); _file.close(); }
@@ -272,31 +371,7 @@ public:
     // not run between removing the target name and installing its replacement.
     if (_file) _file.close();
     if (_verify) _verify.close();
-    bool backup_exists = false, target_exists = false;
-    if (ok) ok = probe(_fs, _backup, backup_exists, _presence)
-        && probe(_fs, _target, target_exists, _presence);
-    if (ok && backup_exists) ok = _fs->remove(_backup);
-    bool backed_up = false;
-    if (ok && target_exists) {
-      ok = _fs->rename(_target, _backup);
-      backed_up = ok;
-    }
-    if (ok) ok = _fs->rename(_temp, _target);
-    if (!ok && backed_up) _fs->rename(_backup, _target);
-    // Cleanup remains best effort after the publish/rollback result, but an
-    // absent file must not trigger the SDK's error log on the shared USB port.
-    if (ok) {
-#if defined(ESP32_PLATFORM)
-      // Background contacts publish the target and its path handles now.
-      // A later transaction retires this recoverable old backup separately.
-      if (!defer_backup_cleanup)
-#else
-      (void)defer_backup_cleanup; // Other platforms retain immediate cleanup.
-#endif
-        removeIfPresent(_fs, _backup, _presence);
-    } else removeIfPresent(_fs, _temp, _presence);
-    _finished = true;
-    return ok ? CommitProgress::Succeeded : CommitProgress::Failed;
+    return finishCommit(ok, defer_backup_cleanup);
   }
   bool commit(bool valid = true) {
     CommitProgress progress;

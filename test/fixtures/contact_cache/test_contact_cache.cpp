@@ -4,15 +4,26 @@
 #include <helpers/ContactInfo.h>
 #include <helpers/ContactSecretCache.h>
 #include <helpers/ContactFileTransaction.h>
+#if !defined(NRF52_PLATFORM)
+#include <helpers/FileRead.h>
+#endif
 #if defined(NRF52_PLATFORM)
 #define ATOMIC_FILE_WRITER_IMPLEMENTATION
 #include <helpers/AtomicFileWriter.h>
 #endif
 #include "packet_under_test.h"
 #define ADV_TYPE_NONE 0
+#if defined(NRF52_PLATFORM)
+static bool fail_contact_page_allocation = false;
+static void* allocateContactPagePayload(size_t size) {
+  return fail_contact_page_allocation ? nullptr : malloc(size);
+}
+#endif
 
 struct Host {
   unsigned cache_flushes = 0;
+  unsigned recovery_resets = 0;
+  bool recovery_reset_allowed = true;
   size_t capacity = 350;
   std::vector<ContactInfo> contacts;
   bool onContactLoaded(const ContactInfo& c) {
@@ -21,6 +32,12 @@ struct Host {
     return true;
   }
   void onContactCacheFlushed() { ++cache_flushes; }
+  bool resetContactsForRecovery() {
+    if (!recovery_reset_allowed) return false;
+    ++recovery_resets;
+    contacts.clear();
+    return true;
+  }
   ContactInfo* getContactForStore(uint32_t index) {
     return index < contacts.size() ? &contacts[index] : nullptr;
   }
@@ -29,12 +46,15 @@ using DataStoreHost = Host;
 
 #if defined(NRF52_PLATFORM)
 static const char* CONTACT_MIGRATION_MARKER = "/contacts4.mig";
+static bool fail_contact_migration_marker = false;
 bool contactPathPresence(FakeFilesystem* fs, const char* path, bool& present) {
+  if (fail_contact_migration_marker && !strcmp(path, CONTACT_MIGRATION_MARKER)) return false;
   present = fs->exists(path);
   return true;
 }
 #else
 bool companionPathPresence(FakeFilesystem* fs, const char* path, bool& present) {
+  if (fs->metadata_error) return false;
   present = fs->exists(path);
   return true;
 }
@@ -46,11 +66,13 @@ bool companionPathPresence(FakeFilesystem* fs, const char* path, bool& present) 
 class DataStore : public mesh::ContactPathBackend, public mesh::ContactSecretBackend {
   DataStoreHost* _cache_host;
   bool _cache_load_incomplete = false;
+#include "contact_recovery_state_under_test.h"
 #if defined(ESP32_PLATFORM)
   // Advert queue lifecycle has a dedicated production fixture. The contact
   // reinitialization test needs only this unrelated hardware lifecycle seam.
   struct { void clear() {} } _advert_write;
   File _contact_path_reader;
+  bool _channel_load_incomplete = false;
 #include "contact_write_state_under_test.h"
   FakeFilesystem* _fs = &SPIFFS;
   FakeFilesystem* _fsExtra = nullptr;
@@ -64,7 +86,7 @@ class DataStore : public mesh::ContactPathBackend, public mesh::ContactSecretBac
   uint16_t _legacy_contact_count = 0;
   mesh::storage::ContactSlotMap _contact_slots;
   mesh::storage::DirtyPageSet _dirty_contact_pages, _unread_contact_pages;
-  void resetContactPageState() { _contact_slots.clear(); }
+  void resetContactPageState(bool clear_incomplete = false);
   bool prepareLegacyContactMigration() { _legacy_migration_ready = true; return true; }
 #endif
 public:
@@ -80,14 +102,10 @@ public:
 #endif
   }
   File openRead(FakeFilesystem* fs, const char* path) { return fs->open(path); }
-  bool hasIncompleteContactLoad() const {
-    return _cache_load_incomplete
-#if defined(NRF52_PLATFORM)
-        || _contact_load_incomplete || !_unread_contact_pages.empty()
-#endif
-        ;
-  }
+  bool hasIncompleteContactLoad() const;
   void loadContacts(DataStoreHost*);
+  void recoverContacts(DataStoreHost*);
+#include "contact_recovery_api_under_test.h"
   bool saveContacts(DataStoreHost*, bool (*filter)(const ContactInfo&));
   bool flushContactWrites(DataStoreHost*, bool (*filter)(const ContactInfo&));
   bool readStoredPath(uint16_t, uint8_t[64]) override;
@@ -328,6 +346,9 @@ static void storage_failures_preserve_routes() {
   assert(!f.store.saveContacts(&f.host, cachedContactFilter));
   assert(SPIFFS.files.at("/contacts3") == original);
   SPIFFS.fail_read.clear();
+  assert(f.store.contactRecoveryPending());
+  f.store.recoverContacts(&f.host);
+  assert(!f.store.contactRecoveryPending() && !f.store.hasIncompleteContactLoad());
   SPIFFS.files["/contacts3"][100 * 152 + 76] ^= 1;
   assert(!f.host.contacts[100].getPath()); // CRC protects a cold route after boot
   assert(!f.store.saveContacts(&f.host, cachedContactFilter));
@@ -399,11 +420,16 @@ static void failed_path_reads_fail_sends_without_leaking_packets() {
   Fixture f(30);
   mesh::contactSecretCache().attach(&f.store);
   BaseChatMesh mesh;
-  const auto& recipient = f.host.contacts[29];
   uint8_t request[] = {1};
   uint32_t tag, timeout;
   for (bool fail : {true, false}) {
     SPIFFS.fail_read = fail ? "/contacts3" : "";
+    if (!fail) {
+      assert(f.store.contactRecoveryPending() && f.host.contacts.size() == 30);
+      f.store.recoverContacts(&f.host); // Safe boundary: no recipient reference is held.
+      assert(!f.store.contactRecoveryPending() && f.host.contacts.size() == 30);
+    }
+    const auto& recipient = f.host.contacts[29];
     const int expected = fail ? MSG_SEND_FAILED : MSG_SEND_SENT_DIRECT;
     assert(mesh.sendLogin(recipient, "test", timeout) == expected);
     assert(mesh.sendAnonReq(recipient, request, 1, tag, timeout) == expected);
@@ -539,6 +565,8 @@ static void contact_reload_preserves_disk_on_cache_exhaustion() {
   f.store.loadContacts(&f.host);
   assert(f.store.hasIncompleteContactLoad());
   assert(f.host.contacts.empty());
+  assert(!f.store.contactRecoveryPending()); // Handle pressure is not corrupt data.
+  f.store.recoverContacts(&f.host);
   assert(!f.store.saveContacts(&f.host, cachedContactFilter));
   assert(SPIFFS.files == durable && SPIFFS.writes == writes);
   pending.clear();
@@ -548,6 +576,55 @@ static void contact_reload_preserves_disk_on_cache_exhaustion() {
   rebooted.loadContacts(&f.host);
   assert(!rebooted.hasIncompleteContactLoad() && f.host.contacts.size() == 350);
   for (unsigned i = 0; i < 350; ++i) f.check(i, route(i));
+}
+
+static void contact_recovery_retries_and_discards_only_unread_contacts() {
+  for (unsigned fault = 0; fault < 3; ++fault) {
+    const bool persistent_failure = fault != 0;
+    const bool removal_failure = fault == 2;
+    Fixture f(30);
+#if defined(NRF52_PLATFORM)
+    assert(f.store.writeContactPage(&f.host, 0, cachedContactFilter));
+    assert(f.store.writeContactPage(&f.host, 1, cachedContactFilter));
+    SPIFFS.remove("/contacts3");
+    const char* failed_path = "/contacts4_00";
+#else
+    const char* failed_path = "/contacts3";
+#endif
+    for (const char* name : {"/_main.id", "/new_prefs", "/channels2", "/fleet_channel",
+                             "/mesh_mt", "/mesh_eth"}) SPIFFS.files[name] = {7, 3, 9};
+    const auto durable = SPIFFS.files;
+    f.host.contacts.clear();
+    SPIFFS.fail_read = failed_path;
+    f.store.loadContacts(&f.host);
+    assert(f.store.hasIncompleteContactLoad() && f.store.contactRecoveryPending());
+    assert(f.host.recovery_resets == 0); // The load callback never resets its host.
+    f.host.recovery_reset_allowed = false;
+    f.store.recoverContacts(&f.host);
+    assert(f.store.contactRecoveryPending() && SPIFFS.files == durable);
+    assert(f.host.recovery_resets == 0); // No discard without the safe host boundary.
+    f.host.recovery_reset_allowed = true;
+    if (!persistent_failure) SPIFFS.fail_read.clear();
+    SPIFFS.fail_remove = removal_failure;
+    f.store.recoverContacts(&f.host);
+    assert(!f.store.contactRecoveryPending() && !f.store.hasIncompleteContactLoad());
+    assert(f.store.contactsAreVolatile() == removal_failure);
+    assert(f.host.recovery_resets > 0);
+    auto expected = durable;
+    if (persistent_failure && !removal_failure) expected.erase(failed_path);
+    assert(SPIFFS.files == expected); // No archive or unrelated settings reset.
+#if defined(NRF52_PLATFORM)
+    assert(f.host.contacts.size() == (persistent_failure ? 5u : 30u));
+    for (unsigned i = 0; i < f.host.contacts.size(); ++i)
+      f.check(i, route(i + (persistent_failure ? 25u : 0u)));
+#else
+    assert(f.host.contacts.size() == (persistent_failure ? 0u : 30u));
+    for (unsigned i = 0; i < f.host.contacts.size(); ++i) f.check(i, route(i));
+#endif
+    SPIFFS.fail_read.clear(); SPIFFS.fail_remove = false;
+    assert(f.store.saveContacts(&f.host, cachedContactFilter) == !removal_failure);
+    if (removal_failure) assert(SPIFFS.files == expected);
+  }
 }
 
 #if defined(ESP32_PLATFORM)
@@ -786,17 +863,60 @@ static void lifecycle_cancels_jobs_and_closes_prior_filesystem_readers() {
 }
 
 static void partial_loads_cannot_replace_the_complete_file() {
-  for (bool capacity_failure : {false, true}) {
+  Fixture f(40);
+  f.host.contacts.clear();
+  const auto durable = SPIFFS.files;
+  const unsigned removes = SPIFFS.removes, writes = SPIFFS.writes;
+  f.host.capacity = 20;
+  f.store.loadContacts(&f.host);
+  assert(f.store.hasIncompleteContactLoad());
+  assert(!f.store.contactRecoveryPending()); // Host refusal is not a storage fault.
+  f.store.recoverContacts(&f.host);
+  assert(!f.store.saveContacts(&f.host, cachedContactFilter));
+  assert(SPIFFS.files == durable && SPIFFS.removes == removes && SPIFFS.writes == writes);
+}
+
+static void valid_backup_routes_survive_failed_promotion() {
+  for (bool removal_failure : {false, true}) {
     Fixture f(40);
+    const auto valid = SPIFFS.files.at("/contacts3");
     f.host.contacts.clear();
-    const auto durable = SPIFFS.files;
-    if (capacity_failure) f.host.capacity = 20;
-    else SPIFFS.fail_read = "/contacts3";
+    SPIFFS.files["/contacts3"] = {9};
+    SPIFFS.files["/contacts3.bak"] = valid;
+    SPIFFS.fail_remove = removal_failure;
+    if (!removal_failure) SPIFFS.fail_rename = SPIFFS.renames + 1;
     f.store.loadContacts(&f.host);
-    assert(f.store.hasIncompleteContactLoad());
+    assert(!f.store.hasIncompleteContactLoad() && !f.store.contactRecoveryPending());
+    assert(f.host.contacts.size() == 40 && f.host.recovery_resets == 0);
+    assert(SPIFFS.files.at("/contacts3.bak") == valid);
+    for (unsigned i = 0; i < 40; ++i) f.check(i, route(i));
+    if (!removal_failure) SPIFFS.fail_rename = SPIFFS.renames + 1;
     assert(!f.store.saveContacts(&f.host, cachedContactFilter));
-    assert(SPIFFS.files == durable);
+    assert(SPIFFS.files.at("/contacts3.bak") == valid);
+    assert(!f.store.contactRecoveryPending() && f.host.recovery_resets == 0);
+    SPIFFS.fail_remove = false; SPIFFS.fail_rename = 0;
+    assert(f.store.saveContacts(&f.host, cachedContactFilter));
+    assert(SPIFFS.files.at("/contacts3") == valid);
+    for (unsigned i = 0; i < 40; ++i) f.check(i, route(i));
   }
+  Fixture f(40);
+  const auto valid = SPIFFS.files.at("/contacts3");
+  f.host.contacts.clear();
+  SPIFFS.files["/contacts3"] = {9};
+  SPIFFS.files["/contacts3.bak"] = valid;
+  SPIFFS.fail_rename = SPIFFS.renames + 1;
+  f.store.loadContacts(&f.host);
+  assert(f.host.contacts.size() == 40 && !f.store.hasIncompleteContactLoad());
+  SPIFFS.fail_rename = 0;
+  SPIFFS.after_rename = [](FakeFilesystem& fs, const char* path) {
+    if (!strcmp(path, "/contacts3")) fs.metadata_error = true;
+  };
+  assert(!f.store.saveContacts(&f.host, cachedContactFilter));
+  assert(SPIFFS.files.at("/contacts3") == valid && !SPIFFS.exists("/contacts3.bak"));
+  SPIFFS.metadata_error = false; SPIFFS.after_rename = {};
+  assert(f.store.saveContacts(&f.host, cachedContactFilter));
+  assert(SPIFFS.files.at("/contacts3") == valid);
+  for (unsigned i = 0; i < 40; ++i) f.check(i, route(i));
 }
 #endif
 
@@ -926,6 +1046,78 @@ static void nrf52_migration_snapshots_and_failed_page_replacement() {
   assert(!f.store.writeContactPage(&f.host, 0, cachedContactFilter));
 }
 
+static void nrf52_resource_refusals_never_discard_contact_pages() {
+  for (bool allocation_failure : {false, true}) {
+    Fixture f(30);
+    assert(f.store.writeContactPage(&f.host, 0, cachedContactFilter));
+    assert(f.store.writeContactPage(&f.host, 1, cachedContactFilter));
+    SPIFFS.remove("/contacts3");
+    const auto durable = SPIFFS.files;
+    const unsigned writes = SPIFFS.writes, removes = SPIFFS.removes;
+    f.host.contacts.clear();
+    fail_contact_page_allocation = allocation_failure;
+    if (!allocation_failure) f.host.capacity = 20;
+    f.store.loadContacts(&f.host);
+    assert(f.store.hasIncompleteContactLoad() && !f.store.contactRecoveryPending());
+    f.store.recoverContacts(&f.host);
+    assert(f.host.recovery_resets == 0);
+    assert(!f.store.saveContacts(&f.host, cachedContactFilter));
+    assert(SPIFFS.files == durable && SPIFFS.writes == writes && SPIFFS.removes == removes);
+    fail_contact_page_allocation = false;
+    f.host.capacity = 350;
+    f.host.contacts.clear();
+    DataStore rebooted(f.host);
+    rebooted.loadContacts(&f.host);
+    assert(!rebooted.hasIncompleteContactLoad() && f.host.contacts.size() == 30);
+    for (unsigned i = 0; i < 30; ++i) f.check(i, route(i));
+  }
+}
+
+static void nrf52_marker_error_keeps_a_usable_contact_view() {
+  Fixture f(30);
+  const auto durable = SPIFFS.files;
+  f.host.contacts.clear();
+  fail_contact_migration_marker = true;
+  f.store.loadContacts(&f.host);
+  fail_contact_migration_marker = false;
+  assert(!f.store.hasIncompleteContactLoad() && !f.store.contactRecoveryPending());
+  assert(f.store.contactsAreVolatile() && f.host.contacts.size() == 30);
+  for (unsigned i = 0; i < 30; ++i) f.check(i, route(i));
+  const unsigned writes = SPIFFS.writes, removes = SPIFFS.removes;
+  f.store.recoverContacts(&f.host);
+  assert(f.host.recovery_resets == 0);
+  assert(!f.store.saveContacts(&f.host, cachedContactFilter));
+  assert(SPIFFS.files == durable && SPIFFS.writes == writes && SPIFFS.removes == removes);
+}
+
+static void nrf52_unread_legacy_and_unknown_marker_cannot_resurrect_stale_pages() {
+  Fixture f(30);
+  assert(f.store.writeContactPage(&f.host, 0, cachedContactFilter));
+  assert(f.store.writeContactPage(&f.host, 1, cachedContactFilter));
+  SPIFFS.files["/contacts3"] = {9};
+  SPIFFS.files["/contacts4_00.tmp"] = {8};
+  SPIFFS.files["/contacts4.mig"] = {};
+  const FakeFilesystem::Files unrelated = {
+      {"/_main.id", {1, 3}}, {"/new_prefs", {2, 4}}, {"/channels2", {5, 7}},
+      {"/.extrafs.mig", {'M', 'C', 'X', 'F', 1, 2}}};
+  for (const auto& file : unrelated) SPIFFS.files[file.first] = file.second;
+  f.host.contacts.clear();
+  fail_contact_migration_marker = true;
+  f.store.loadContacts(&f.host);
+  assert(f.store.contactRecoveryPending());
+  f.store.recoverContacts(&f.host);
+  assert(!f.store.contactRecoveryPending() && !f.store.hasIncompleteContactLoad());
+  assert(f.host.contacts.empty());
+  assert(!SPIFFS.exists("/contacts3") && !SPIFFS.exists("/contacts4_00")
+      && !SPIFFS.exists("/contacts4_01") && !SPIFFS.exists("/contacts4_00.tmp"));
+  for (const auto& file : unrelated) assert(SPIFFS.files.at(file.first) == file.second);
+  fail_contact_migration_marker = false;
+  DataStore rebooted(f.host);
+  rebooted.loadContacts(&f.host);
+  assert(!rebooted.hasIncompleteContactLoad() && !rebooted.contactRecoveryPending());
+  assert(f.host.contacts.empty() && SPIFFS.files == unrelated);
+}
+
 static void nrf52_uncertain_page_publication_preserves_snapshots() {
   for (unsigned fault = 0; fault < 3; ++fault) {
     Fixture f;
@@ -1022,17 +1214,23 @@ int main() {
   encoded_paths_and_copy_assignment();
   failed_path_reads_fail_sends_without_leaking_packets();
   contact_reload_preserves_disk_on_cache_exhaustion();
+  contact_recovery_retries_and_discards_only_unread_contacts();
   partial_loads_cannot_replace_the_complete_file();
+  valid_backup_routes_survive_failed_promotion();
   secrets_load_from_flash_instead_of_recalculating();
   persisted_secret_matches_the_real_peer_key_exchange();
   secret_corruption_reordering_and_full_storage();
 #else
   nrf52_secret_cache_leaves_contact_storage_reserve();
   nrf52_migration_snapshots_and_failed_page_replacement();
+  nrf52_resource_refusals_never_discard_contact_pages();
+  nrf52_marker_error_keeps_a_usable_contact_view();
+  nrf52_unread_legacy_and_unknown_marker_cannot_resurrect_stale_pages();
   nrf52_uncertain_page_publication_preserves_snapshots();
   encoded_paths_and_copy_assignment();
   failed_path_reads_fail_sends_without_leaking_packets();
   contact_reload_preserves_disk_on_cache_exhaustion();
+  contact_recovery_retries_and_discards_only_unread_contacts();
   secrets_load_from_flash_instead_of_recalculating();
   persisted_secret_matches_the_real_peer_key_exchange();
 #endif

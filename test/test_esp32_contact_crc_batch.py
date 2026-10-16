@@ -150,10 +150,29 @@ class ContactCRCBatchTest(unittest.TestCase):
                 str(temp / "frame.cpp"), "-o", str(temp / "frame.o"),
             ], capture_output=True, text=True)
             self.assertEqual(result.returncode, 0, result.stderr)
-            frames = [line.split("\t") for line in (temp / "frame.su").read_text().splitlines()
+            usage = (temp / "frame.su").read_text().splitlines()
+            frames = [line.split("\t") for line in usage
                       if "ContactFileTransaction::serviceCommit(" in line]
             self.assertEqual(len(frames), 1)
-            self.assertEqual(int(frames[0][1]), 128)
+            self.assertEqual(int(frames[0][1]), 112)
+            # Publication is separate from the 64-byte read buffer. Include
+            # every known nested helper, not just the smaller caller frame.
+            # The old opaque fixture peaked at 128 + 48 + 32 = 208 bytes;
+            # the new chain retains that bound. SDK/callback frames remain
+            # outside this isolated contract, as does the full firmware ABI.
+            helper_frames = {}
+            for name, expected in (("finishCommit", 64), ("probe", 32), ("updateCRC32C", 32)):
+                found = [line.split("\t") for line in usage
+                         if "ContactFileTransaction::" + name + "(" in line]
+                self.assertEqual(len(found), 1, name)
+                helper_frames[name] = int(found[0][1])
+                self.assertEqual(helper_frames[name], expected, name)
+            self.assertFalse(any("ContactFileTransaction::moveState(" in line
+                                 or "ContactFileTransaction::removeIfPresent(" in line
+                                 for line in usage))
+            self.assertEqual(int(frames[0][1]) + max(
+                helper_frames["updateCRC32C"],
+                helper_frames["finishCommit"] + helper_frames["probe"]), 208)
             nm = str(Path(compiler).with_name("xtensa-esp32s3-elf-nm"))
             symbols = subprocess.check_output([nm, "-S", str(temp / "frame.o")], text=True)
             size = next(int(line.split()[1], 16) for line in symbols.splitlines()
