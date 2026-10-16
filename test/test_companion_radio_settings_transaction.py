@@ -246,7 +246,12 @@ struct {
   bool isWatchdogObserving() const { return false; }
   bool isCalibratingNoiseFloor() const { return false; }
 } radio_driver;
+struct ContactStore {
+@CONTACT_RECOVERY_API@
+};
 struct MyMesh {
+  ContactStore store;
+  ContactStore* _store=&store;
   bool _radio_available=true, _iter_started=false, command_radio_apply_pending=false;
   bool saved_radio_apply_pending=false, _terminal_trace_pending=false;
   uint32_t radio_apply_retry_at=0, _scheduled_reboot_at=0;
@@ -274,6 +279,11 @@ struct MyMesh {
 int main() {
   MyMesh m;
   assert(!m.hasPendingWork());
+  m.store._contact_recovery=ContactStore::ContactRecoveryPending;
+  assert(m.hasPendingWork()); // Storage repair still needs the outer loop.
+  m.store._contact_recovery=ContactStore::ContactRecoveryLegacy;
+  assert(!m.hasPendingWork()); // A source flag alone must not keep it awake.
+  m.store._contact_recovery=0;
   m.saved_radio_apply_pending=true;
   assert(m.hasPendingWork());
   m.radio_apply_retry_at=now_ms+10;
@@ -318,6 +328,13 @@ class CompanionRadioSettingsTransactionTests(unittest.TestCase):
         text = SOURCE.read_text(encoding='utf-8')
         pending = extract_braced(text, 'bool MyMesh::hasPendingWork() const')
         harness = SLEEP_HARNESS.replace('@PENDING_WORK@', pending)
+        header = (SOURCE.parent / 'DataStore.h').read_text(encoding='utf-8')
+        start = header.index('  enum : uint8_t { ContactRecoveryPending')
+        field = '  uint8_t _contact_recovery = 0;'
+        end = header.index(field, start) + len(field)
+        recovery = header[start:end] + '\n' + extract_braced(
+            header, '  bool contactRecoveryPending() const')
+        harness = harness.replace('@CONTACT_RECOVERY_API@', recovery)
         with tempfile.TemporaryDirectory(prefix='mesh-companion-radio-sleep-') as tmp:
             cpp = Path(tmp) / 'test.cpp'
             binary = Path(tmp) / ('test.exe' if os.name == 'nt' else 'test')
