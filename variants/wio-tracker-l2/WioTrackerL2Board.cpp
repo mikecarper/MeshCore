@@ -66,9 +66,12 @@ bool WioTrackerL2Board::initExpander() {
   delay(10);
   expSetOutput(EXP_PIN_BAT_ADC_EN, HIGH);
   delay(10);
-  expSetOutput(EXP_PIN_GNSS_EN, HIGH);
+  // The location provider owns this rail, including saved GPS-off settings.
+  // Keep it off until its explicit power/reset sequence starts acquisition.
+  expSetOutput(EXP_PIN_GNSS_EN, LOW);
   delay(10);
-  // GNSS reset is active HIGH; hold 10ms then release LOW so the L76K runs
+  // Configure active-HIGH reset while unpowered. The provider pulses it again
+  // after enabling the GNSS rail, before it starts receiving NMEA.
   expSetOutput(EXP_PIN_GNSS_RST, HIGH);
   delay(10);
   expWritePin(EXP_PIN_GNSS_RST, LOW);

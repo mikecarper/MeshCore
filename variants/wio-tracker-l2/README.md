@@ -55,6 +55,9 @@ PIN shown on the device screen.
 - **GNSS**: GPS+BeiDou+GLONASS are enabled at start (`$PCAS04,7`). A watchdog
   resets the module if it tracks 4+ strong satellites for minutes without
   producing a fix. Raw NMEA can be logged to SD for diagnosis.
+  The GNSS rail starts off. The board-local provider powers it only while
+  GPS is enabled, including scheduled wake periods, and releases the UART
+  pads before cutting power so they cannot back-power the receiver.
 - **Power**: CPU drops to 80 MHz while the screen sleeps; the speaker amp and
   I2S clocks run only while a tone plays; the GNSS and Grove rails are gated;
   idle Bluetooth switches to slow advertising.

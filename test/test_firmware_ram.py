@@ -121,6 +121,58 @@ class FirmwareRamTest(unittest.TestCase):
         }, "muzi_base_uno_superIO_companion_radio_ble")
         self.assertEqual(policy["components"]["display_pixels_and_driver"], 4096)
 
+    def test_wio_l2_counts_internal_sprite_fallback_and_dma_beside_psram(self):
+        flags = {"DISPLAY_CLASS": "WioTrackerL2Display", "UI_ZOOM": 2}
+        for target in ("Wio_Tracker_L2_repeater", "Wio_Tracker_L2_companion_radio_ble"):
+            with self.subTest(target=target):
+                policy = ram.requirements("ESP32_PLATFORM", flags, target)
+                self.assertEqual(policy["components"]["display_pixels_and_driver"],
+                                 160 * 120 + 1024)
+                self.assertEqual(policy["components"]["display_dma_and_bus"], 16384)
+                self.assertGreaterEqual(policy["required_contiguous_bytes"], 160 * 120 + 1024)
+                psram = ram.requirements("ESP32_PLATFORM", {**flags, "BOARD_HAS_PSRAM": 1}, target)
+                self.assertEqual(psram, policy)
+                without = ram.requirements("ESP32_PLATFORM", {"UI_ZOOM": 2}, target)
+                display_components = (policy["components"]["display_pixels_and_driver"]
+                                      + policy["components"]["display_dma_and_bus"]
+                                      + policy["components"]["screen_objects_and_history"])
+                self.assertEqual(policy["required_heap_bytes"] - without["required_heap_bytes"],
+                                 display_components)
+
+    def test_wio_l2_zoom_and_base_color_depth_cannot_erase_actual_sprite_cost(self):
+        flags = {"DISPLAY_CLASS": "WioTrackerL2Display"}
+        cases = (({}, 320 * 240), ({"UI_ZOOM": 2, "UI_BUFFER_COLOR_DEPTH": 4}, 160 * 120),
+                 ({"UI_ZOOM": 2, "UI_COORD_SCALE": 2}, 160 * 120),
+                 ({"UI_ZOOM": 2, "UI_BUFFER_COLOR_DEPTH": 16}, 160 * 120 * 2),
+                 ({"UI_ZOOM": "1.5f", "UI_BUFFER_COLOR_DEPTH": 24}, 214 * 160 * 3),
+                 ({"UI_ZOOM": "0.5", "UI_BUFFER_COLOR_DEPTH": 32}, 640 * 480 * 4))
+        for overrides, pixels in cases:
+            with self.subTest(overrides=overrides):
+                policy = ram.requirements("ESP32_PLATFORM", {**flags, **overrides}, "Wio_Tracker_L2_repeater")
+                self.assertEqual(policy["components"]["display_pixels_and_driver"], pixels + 1024)
+                self.assertGreaterEqual(policy["required_contiguous_bytes"], pixels + 1024)
+        for override in ({"UI_ZOOM": 0}, {"UI_ZOOM": -1}, {"UI_ZOOM": "inf"},
+                         {"UI_ZOOM": "nan"}, {"UI_ZOOM": "auto"},
+                         {"UI_COORD_SCALE": 0}, {"UI_BUFFER_COLOR_DEPTH": 7}):
+            with self.subTest(invalid=override), self.assertRaises(ValueError):
+                ram.requirements("ESP32_PLATFORM", {**flags, **override}, "Wio_Tracker_L2_repeater")
+        with self.assertRaisesRegex(ValueError, "requires ESP32"):
+            ram.requirements("NRF52_PLATFORM", flags, "unsupported_display")
+
+    def test_wio_l2_budget_tracks_real_sprite_and_qspi_geometry(self):
+        display = (ROOT / "variants/wio-tracker-l2/WioTrackerL2Display.h").read_text()
+        base = (ROOT / "src/helpers/ui/LGFXDisplay.cpp").read_text()
+        self.assertIn("WioTrackerL2Display() : LGFXDisplay(320, 240, disp)", display)
+        self.assertIn("cfg.panel_width = 240;", display)
+        self.assertIn("cfg.panel_height = 320;", display)
+        self.assertIn("buffer.setColorDepth(8);", display)
+        self.assertIn("buffer.setPsram(true);", display)
+        self.assertIn("buffer.createSprite(width(), height());", display)
+        self.assertIn("lgfx::Bus_SPI _bus_instance;", display)
+        self.assertIn("buffer.setPsram(false);", base)
+        self.assertIn("buffer.setColorDepth(UI_BUFFER_COLOR_DEPTH);", base)
+        self.assertIn("buffer.createSprite(width() * _coordinateScale,", base)
+
     def test_heap_tables_and_ota_remain_in_runtime_budget(self):
         policy = ram.requirements("ESP32_PLATFORM", {
             "ENABLE_OTA": 1, "OTA_HEAP_CONTEXT": 1,

@@ -14,6 +14,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import math
 from pathlib import Path
 import re
 import struct
@@ -97,6 +98,34 @@ def mqtt_requirements(defines):
     }
 
 
+def wio_tracker_l2_display_heap(defines):
+    # Both LGFXDisplay::begin()'s internal canvas and Wio's concrete begin()
+    # must fit. The latter requests PSRAM, but LovyanGFX 1.2.30 explicitly
+    # falls back to internal DMA memory when that allocation fails.
+    zoom_text = str(defines.get("UI_ZOOM", 1)).strip().strip("()")
+    zoom_text = re.sub(r"[fFlL]$", "", zoom_text)
+    try:
+        zoom = float(zoom_text)
+    except ValueError as error:
+        raise ValueError(f"memory budget needs a numeric UI_ZOOM, got {zoom_text!r}") from error
+    if not math.isfinite(zoom) or zoom <= 0:
+        raise ValueError("Wio Tracker L2 UI_ZOOM must be finite and positive")
+    if integer(defines, "UI_COORD_SCALE", 1) == 0:
+        raise ValueError("Wio Tracker L2 UI_COORD_SCALE must be positive")
+    depth = integer(defines, "UI_BUFFER_COLOR_DEPTH", 8)
+    if depth not in (1, 2, 4, 8, 16, 24, 32):
+        raise ValueError("unsupported Wio Tracker L2 UI_BUFFER_COLOR_DEPTH")
+    # The base constructor divides physical dimensions by zoom*coordinate
+    # scale; its render path multiplies by coordinate scale again. Rounding
+    # upward bounds both that canvas and Wio's fixed-8bpp logical sprite.
+    width = math.ceil(320 / zoom)
+    height = math.ceil(240 / zoom)
+    row_bytes = (width * max(8, depth) + 7) // 8
+    # Include the sprite's extra trailing pixel, up to a 256-entry RGB888
+    # palette, alignment and allocation metadata, even with working PSRAM.
+    return row_bytes * height + 1024
+
+
 def requirements(platform, defines, target):
     if platform not in SUPPORTED:
         raise ValueError(f"no memory policy for {platform}")
@@ -111,11 +140,22 @@ def requirements(platform, defines, target):
         depth = integer(defines, "UI_BUFFER_COLOR_DEPTH", 8)
         pixels = 480 * 480 if "INDICATOR_TRANSPORT_RENDER_PROFILE" in defines else 320 * 320
         display_heap = (pixels * depth + 7) // 8 + 1024
+    elif display == "WioTrackerL2Display":
+        if platform != "ESP32_PLATFORM":
+            raise ValueError("Wio Tracker L2 display budget requires ESP32")
+        display_heap = wio_tracker_l2_display_heap(defines)
     elif display in DISPLAY_HEAP:
         display_heap = DISPLAY_HEAP[display]
     else:
         raise ValueError(f"add a runtime allocation budget for display {display!r}")
     parts = {}
+    if display == "WioTrackerL2Display":
+        # The pinned LGFX QSPI bus has two DMA flip buffers. RGB565 conversion
+        # requests at most 2048 bytes each (2304 for RGB888); shrinking can
+        # briefly retain a third. Reserve 16 KiB for those, queued descriptors
+        # (up to 320 rows, including overlap while growing) and SDK bus/touch
+        # driver metadata. These allocations coexist with the UI sprite.
+        parts["display_dma_and_bus"] = 16384
     mqtt = None
     combined_rak_ethernet = "RAK4631_COMBINED_ETHERNET" in defines
     if combined_rak_ethernet and (platform != "NRF52_PLATFORM"

@@ -8,7 +8,7 @@
 #include <helpers/AutoDiscoverRTCClock.h>
 #include <helpers/SensorManager.h>
 #include <helpers/sensors/EnvironmentSensorManager.h>
-#include <helpers/sensors/MicroNMEALocationProvider.h>
+#include "WioTrackerL2LocationProvider.h"
 #include "GpsTap.h"
 #ifdef DISPLAY_CLASS
   #include "WioTrackerL2Display.h"

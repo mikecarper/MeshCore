@@ -11,7 +11,7 @@ WRAPPER_CLASS radio_driver(radio, board);
 ESP32RTCClock fallback_clock;
 AutoDiscoverRTCClock rtc_clock(fallback_clock);
 GpsTapStream gps_tap(Serial1);   // GSV sats-in-view / SNR watcher
-MicroNMEALocationProvider gps(gps_tap, &rtc_clock);
+WioTrackerL2LocationProvider gps(board, gps_tap, &rtc_clock);
 EnvironmentSensorManager sensors(gps);
 
 #ifdef DISPLAY_CLASS
