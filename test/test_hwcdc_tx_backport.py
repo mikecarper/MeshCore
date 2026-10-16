@@ -362,6 +362,7 @@ int main(){
             'static void handleEsp32HwcdcEvent(',
             'static void serviceEsp32HwcdcTxKickExclusive(',
             'static void purgeEsp32HwcdcQueues(',
+            'static bool beginEsp32HwcdcSessionReset(',
             'bool resetUsbCompanionTransport(',
             'UsbLoggingObservation observeUsbLoggingTransport('])
         prefix=self.harness()[:self.harness().index('int main(){')]
@@ -443,7 +444,7 @@ int main(){
   handleEsp32HwcdcEvent(nullptr,0,ARDUINO_HW_CDC_RX_EVENT,nullptr);
   handleEsp32HwcdcEvent(nullptr,0,ARDUINO_HW_CDC_BUS_RESET_EVENT,nullptr);
  };
- assert(resetUsbCompanionTransport());
+ assert(!resetUsbCompanionTransport());
  assert(!mesh_hwcdc_tx_allowed&&!canAccessEsp32Hwcdc(nullptr));
  assert(esp32_hwcdc_allowed_generation.load()<esp32_hwcdc_access_generation.load());
  assert(resetUsbCompanionTransport());assert(mesh_hwcdc_tx_allowed&&canAccessEsp32Hwcdc(nullptr));

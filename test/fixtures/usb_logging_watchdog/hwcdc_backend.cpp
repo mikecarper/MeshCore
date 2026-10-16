@@ -15,6 +15,8 @@
 #include <cassert>
 #include <cstdio>
 #include <cstdlib>
+#include <deque>
+#include <functional>
 #include <string>
 
 #define portENTER_CRITICAL(value) ((void)0)
@@ -22,6 +24,8 @@
 static bool in_isr = false;
 static bool xPortInIsrContext() { return in_isr; }
 static void delay(uint32_t duration) { mock_watchdog_millis += duration; }
+using esp_event_base_t = int;
+enum { ARDUINO_HW_CDC_BUS_RESET_EVENT = 1, ARDUINO_HW_CDC_RX_EVENT, ARDUINO_HW_CDC_TX_EVENT };
 
 namespace mesh {
 static bool logging_enabled = true, client_active = false;
@@ -50,14 +54,19 @@ static UsbSelfResetBurstGuard esp32_hwcdc_self_reset_guard;
 static bool pads_enabled = true, host_connected = false, reader_connected = false;
 static size_t ring_available = 0;
 static unsigned detach_calls = 0, flush_calls = 0;
-static bool exclusive_busy = false;
+static bool exclusive_busy = false, drain_on_flush = false;
+static std::deque<uint8_t> host_rx;
+static std::function<void()> at_restore;
 static bool detachEsp32HwcdcPads() {
   ++detach_calls;
   const bool previous = pads_enabled;
   pads_enabled = false;
   return previous;
 }
-static void restoreEsp32HwcdcPads(bool enabled) { pads_enabled = enabled; }
+static void restoreEsp32HwcdcPads(bool enabled) {
+  pads_enabled = enabled;
+  if (at_restore) { auto callback = at_restore; at_restore = nullptr; callback(); }
+}
 enum { USB_SERIAL_JTAG_INTR_SERIAL_IN_EMPTY = 1 };
 [[maybe_unused]] static void usb_serial_jtag_ll_disable_intr_mask(unsigned) {}
 [[maybe_unused]] static void usb_serial_jtag_ll_ena_intr_mask(unsigned) {}
@@ -67,11 +76,18 @@ bool meshEsp32HwcdcDiscardTxStash() { return true; }
 void meshEsp32HwcdcSetTxAllowed(bool) {}
 void meshEsp32HwcdcKickTx() {}
 struct SerialMock {
-  int read() { return -1; }
+  int read() {
+    if (host_rx.empty()) return -1;
+    int value = host_rx.front(); host_rx.pop_front(); return value;
+  }
   int availableForWrite() { return int(ring_available); }
   bool isPlugged() { return pads_enabled && host_connected; }
   explicit operator bool() { return isPlugged() && reader_connected; }
-  void flush() { ++flush_calls; }  // A stuck ring deliberately does not drain.
+  void setDebugOutput(bool) {}
+  void flush() {
+    ++flush_calls;
+    if (drain_on_flush && !pads_enabled) ring_available = 4096;
+  }
 } Serial;
 struct Exclusive {
   // No writer owns this gate in the fault reproduction. Safety deferrals are
@@ -108,7 +124,9 @@ struct MeshMock {
   bool usb_work = true, ble_work = true, network_work = true;
   bool usb_stream = true, ble_stream = true, network_stream = true;
   bool input_stale = true, terminal_mode = true;
-  unsigned input_resets = 0;
+  unsigned input_resets = 0, serial_cancels = 0;
+  void cancelPendingSerialOutput() { ++serial_cancels; }
+  bool hasPendingSerialOutput() const { return false; }
   void cancelSerialResponseStream(UsbProtocolMock* route) {
     assert(route == &usb_serial_interface); usb_stream = false;
   }
@@ -133,6 +151,10 @@ static void leaveUsbTerminalMode(bool) {
 }
 namespace mesh { void discardUsbTerminalOutput() { ++discarded_output; } }
 @COMPANION_METHODS@
+static char command[64];
+static bool command_overflow = false;
+namespace mesh { bool canAcceptUsbConsoleCommand() { return true; } }
+@ORDINARY_METHODS@
 
 using Policy = mesh::UsbLoggingWatchdogPolicy;
 using Event = mesh::UsbLoggingWatchdogEvent;
@@ -164,10 +186,17 @@ struct Fixture {
     mesh::esp32_hwcdc_cleanup_pending = false;
     mesh::esp32_hwcdc_access_generation.store(0);
     mesh::esp32_hwcdc_allowed_generation.store(0);
+    mesh::esp32_hwcdc_bus_reset_generation.store(0);
+    mesh::esp32_hwcdc_taken_bus_reset_generation = 0;
+    mesh::esp32_hwcdc_startup_pending.store(true);
+    mesh::esp32_hwcdc_self_reset_guard.notePostCleanActivity();
     mesh::esp32_hwcdc_tx_kick_pending.store(false);
     mesh::usb_logging_tx_progress.store(0);
     mesh::pads_enabled = true;
     mesh::exclusive_busy = false;
+    mesh::drain_on_flush = false;
+    mesh::host_rx.clear();
+    mesh::at_restore = nullptr;
     mesh::detach_calls = mesh::flush_calls = 0;
     usb_terminal_host_reset_completion_pending = false;
     usb_terminal_host_reset_retry_at = 0;
@@ -181,6 +210,7 @@ struct Fixture {
     terminal_leaves = discarded_output = 0;
     usb_binary_startup_probe.start(mock_watchdog_millis, 7);
     usb_ascii_session_default.cancel();
+    command[0] = 0; command_overflow = false;
 #if defined(ENABLE_OTA)
     mesh::ota::test_ota_context = nullptr;
 #endif
@@ -203,8 +233,25 @@ struct Fixture {
     assert(status.recovery_count == 2 && status.persistence_ready);
     assert(status.last_event.action == Event::REENUMERATE && status.last_event.persisted);
     assert(mesh::detach_calls == 1);
+    assert(mesh::esp32_hwcdc_cleanup_pending && !mesh::pads_enabled);
+    assert(!mesh::canAccessEsp32Hwcdc(nullptr) && mesh::flush_calls == 0);
   }
 };
+
+static void assertFreshAppStartSurvives() {
+  // A complete minimal APP_START frame: marker, little-endian length, payload.
+  const std::deque<uint8_t> app_start{'<', 8, 0, 1, 3, 0, 0, 0, 0, 0, 0};
+  mesh::host_rx = app_start;
+  const unsigned resets = the_mesh.input_resets, detaches = mesh::detach_calls;
+  const uint32_t generation = mesh::esp32_hwcdc_access_generation.load();
+  for (unsigned i = 0; i < 3; ++i) {
+    ++mock_watchdog_millis;
+    serviceUsbTerminalHostSessionReset();
+  }
+  assert(mesh::host_rx == app_start && "a consumed watchdog boundary must not discard fresh APP_START");
+  assert(the_mesh.input_resets == resets && mesh::detach_calls == detaches);
+  assert(mesh::esp32_hwcdc_access_generation.load() == generation);
+}
 
 int main(int argc, char** argv) {
   setbuf(stdout, nullptr);
@@ -233,6 +280,7 @@ int main(int argc, char** argv) {
   } else if (scenario == "healthy") {
     Fixture f(1, step, false, true);
     f.enter_stage2();
+    serviceUsbTerminalHostSessionReset();
     assert(!mesh::esp32_hwcdc_cleanup_pending && mesh::pads_enabled);
     assert(mesh::flush_calls >= 2);
     mesh::host_connected = mesh::reader_connected = mesh::client_active = true;
@@ -332,6 +380,111 @@ int main(int argc, char** argv) {
     assert(the_mesh.input_resets == 1 && usb_serial_interface.resets == 1);
     assert(mesh::esp32_hwcdc_access_generation.load() == generation);
     assert(usb_ascii_session_default.shouldRestore(true, false, 7));
+  } else if (scenario.rfind("success-", 0) == 0) {
+    const bool stalled = scenario.find("stall") != std::string::npos;
+    const bool automatic = scenario.find("auto") != std::string::npos;
+    Fixture f(automatic ? 2 : 1, step, false, !stalled);
+    mesh::host_connected = mesh::reader_connected = mesh::client_active = true;
+    mesh::drain_on_flush = stalled;
+    usb_terminal_line[0] = 0; usb_terminal_line_len = 0;
+    usb_terminal_discard_line = false; usb_logging_reply_pending = false;
+    usb_binary_startup_probe.cancel();
+    serviceUsbTerminalHostSessionReset();
+    assert(!f.run(0));
+    assert(!f.run(1)); // Auto observes the logger before its active policy edge.
+    if (stalled) {
+      assert(!f.run(Policy::STALL_OBSERVE_MS + 1));
+      assert(mesh::usbLoggingStatus().stalled);
+      strcpy(usb_terminal_line, "set password ");
+      usb_terminal_line_len = strlen(usb_terminal_line);
+    } else {
+      mesh::client_active = false;
+      assert(!f.run(2));
+    }
+    const uint32_t fault = stalled ? 1 : 2;
+    assert(!f.run(fault + Policy::EARLY_RECOVERY_MS));
+    assert(!f.run(fault + Policy::EARLY_RECOVERY_MS + Policy::RECOVERY_GRACE_MS));
+    assert(mesh::esp32_hwcdc_cleanup_pending && !mesh::pads_enabled && mesh::flush_calls == 0);
+    assert(the_mesh.input_resets == 0 && usb_serial_interface.resets == 0);
+    const uint32_t generation = mesh::esp32_hwcdc_access_generation.load();
+    serviceUsbTerminalHostSessionReset();
+    assert(!mesh::esp32_hwcdc_cleanup_pending && mesh::pads_enabled);
+    assert(!usb_terminal_line_len && !usb_terminal_discard_line && !the_mesh.terminal_mode);
+    assert(the_mesh.input_resets == 1 && usb_serial_interface.resets == 1);
+    assert(mesh::detach_calls == 1 && mesh::esp32_hwcdc_access_generation.load() == generation);
+    assert(mesh::esp32_hwcdc_taken_bus_reset_generation == mesh::esp32_hwcdc_bus_reset_generation.load());
+    assertFreshAppStartSurvives();
+  } else if (scenario.rfind("ordinary-", 0) == 0) {
+    Fixture f(1, step, false, false);
+    mesh::host_connected = mesh::reader_connected = mesh::client_active = true;
+    mesh::drain_on_flush = true;
+    strcpy(command, "set password "); command_overflow = true;
+    const auto service = scenario == "ordinary-repeater" ? service_simple_repeater
+        : scenario == "ordinary-room" ? service_simple_room_server : service_simple_sensor;
+    service();
+    assert(!f.run(0) && !f.run(Policy::STALL_OBSERVE_MS));
+    assert(mesh::usbLoggingStatus().stalled);
+    assert(!f.run(Policy::EARLY_RECOVERY_MS));
+    assert(!f.run(Policy::EARLY_RECOVERY_MS + Policy::RECOVERY_GRACE_MS));
+    assert(mesh::esp32_hwcdc_cleanup_pending && !mesh::pads_enabled);
+    service();
+    assert(command[0] == 0 && !mesh::esp32_hwcdc_cleanup_pending && mesh::pads_enabled);
+    if (scenario != "ordinary-sensor") assert(the_mesh.serial_cancels == 1);
+    if (scenario == "ordinary-repeater") assert(!command_overflow);
+    strcpy(command, "new host input");
+    service();
+    assert(strcmp(command, "new host input") == 0 && mesh::detach_calls == 1);
+  } else if (scenario == "idempotent-stage2") {
+    Fixture f(1, step, false, true);
+    f.enter_stage2();
+    const uint32_t epoch = mesh::esp32_hwcdc_access_generation.load();
+    const uint32_t boundary = mesh::esp32_hwcdc_bus_reset_generation.load();
+    assert(mesh::recoverUsbLoggingTransport(2) == mesh::UsbLoggingRecoveryResult::Attempted);
+    assert(mesh::esp32_hwcdc_access_generation.load() == epoch);
+    assert(mesh::esp32_hwcdc_bus_reset_generation.load() == boundary && mesh::detach_calls == 1);
+    serviceUsbTerminalHostSessionReset();
+    assert(the_mesh.input_resets == 1 && mesh::detach_calls == 1);
+    assertFreshAppStartSurvives();
+  } else if (scenario == "superseded-before" || scenario == "superseded-during") {
+    Fixture f(1, step, false, true);
+    assert(!mesh::takeUsbTerminalSessionReset()); // Initial owner service, no synthetic edge.
+    f.enter_stage2();
+    const auto reset = [] {
+      mesh::handleEsp32HwcdcEvent(nullptr, 0, ARDUINO_HW_CDC_RX_EVENT, nullptr);
+      mesh::handleEsp32HwcdcEvent(nullptr, 0, ARDUINO_HW_CDC_BUS_RESET_EVENT, nullptr);
+    };
+    if (scenario == "superseded-before") reset();
+    else mesh::at_restore = reset;
+    serviceUsbTerminalHostSessionReset();
+    assert(usb_terminal_host_reset_completion_pending
+           && "a superseding hardware epoch must keep Companion pending");
+    assert(!mesh::canAccessEsp32Hwcdc(nullptr) && !mesh::esp32_hwcdc_cleanup_pending);
+    assert(mesh::isUsbLoggingTransportRecoveryPending());
+    assert(mesh::esp32_hwcdc_allowed_generation.load() != mesh::esp32_hwcdc_access_generation.load());
+    assert(the_mesh.input_resets == 1);
+    char reply[160];
+    assert(mesh::handleUsbLoggingWatchdogCommand("set usb.watchdog off", reply, sizeof(reply)));
+    mesh::logging_enabled = false;
+    assert(mesh::isUsbLoggingWatchdogArmed());
+    if (scenario == "superseded-before") {
+      // Both edges were consumed together; no event is left to drive retry.
+      mock_watchdog_millis += USB_TRANSPORT_RESET_RETRY_MS - 1;
+      serviceUsbTerminalHostSessionReset();
+      assert(usb_terminal_host_reset_completion_pending && mesh::detach_calls == 1);
+      ++mock_watchdog_millis;
+    } else ++mock_watchdog_millis;
+    serviceUsbTerminalHostSessionReset();
+    assert(!usb_terminal_host_reset_completion_pending && mesh::canAccessEsp32Hwcdc(nullptr));
+    assert(!mesh::isUsbLoggingTransportRecoveryPending() && !mesh::isUsbLoggingWatchdogArmed());
+    assert(mesh::detach_calls == 2);
+    assert(the_mesh.input_resets == (scenario == "superseded-before" ? 1U : 2U));
+    assertFreshAppStartSurvives();
+  } else if (scenario == "cold-start") {
+    Fixture f(2, step, false, true);
+    mesh::host_connected = mesh::reader_connected = true;
+    assertFreshAppStartSurvives();
+    assert(!mesh::esp32_hwcdc_startup_pending.load() && mesh::detach_calls == 0);
+    assert(the_mesh.input_resets == 0 && mesh::flush_calls == 0);
   } else if (scenario == "isr") {
     Fixture f(1, step);
     in_isr = true;

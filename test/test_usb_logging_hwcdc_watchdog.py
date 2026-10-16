@@ -16,11 +16,15 @@ SIGNATURES = (
     "static void serviceEsp32HwcdcTxKickExclusive(",
     "static void serviceEsp32HwcdcTxKick()",
     "static void purgeEsp32HwcdcQueues(",
+    "static bool beginEsp32HwcdcSessionReset(",
     "bool resetUsbCompanionTransport()",
     "UsbLoggingObservation observeUsbLoggingTransport()",
     "UsbLoggingRecoveryResult recoverUsbLoggingTransport(",
     "bool isUsbLoggingTransportRecoveryPending()",
     "bool takeUsbTerminalSessionReset()",
+    "bool tryCompleteUsbTerminalSessionReset()",
+    "void noteUsbLoggingTxComplete()",
+    "static void handleEsp32HwcdcEvent(",
 )
 
 
@@ -39,32 +43,42 @@ class HwcdcLoggingWatchdogTests(unittest.TestCase):
         cls.companion_methods = "\n".join(body(companion, signature) for signature in (
             "static void clearUsbTerminalLine()", "static void cancelUsbSerialOperations()",
             "static void resetUsbTerminalHostSession()", "static void serviceUsbTerminalHostSessionReset()"))
+        cls.ordinary_methods = ""
+        for role in ("simple_repeater", "simple_room_server", "simple_sensor"):
+            text = (ROOT / "examples" / role / "main.cpp").read_text()
+            start = text.index("  if (mesh::takeUsbTerminalSessionReset())")
+            stop = text.index("\n#endif", start)
+            cls.ordinary_methods += ("static void service_" + role + "() {\n"
+                "  bool usb_ready = true;\n" + text[start:stop] + "\n  (void)usb_ready;\n}\n")
         cls.binaries = {(backport, ota): cls.compile_backend(backport, ota)
                         for backport in (0, 1) for ota in (False, True)}
 
     @classmethod
-    def compile_backend(cls, backport, ota, legacy=False, no_bridge=False):
-        suffix = f"{backport}-{int(ota)}-{int(legacy)}-{int(no_bridge)}"
+    def compile_backend(cls, backport, ota, legacy=False, no_bridge=False, stale_ready=False):
+        suffix = f"{backport}-{int(ota)}-{int(legacy)}-{int(no_bridge)}-{int(stale_ready)}"
         methods = cls.methods
+        request = ("    if (beginEsp32HwcdcSessionReset()) {\n"
+                   "      esp32_hwcdc_bus_reset_generation.fetch_add(1, std::memory_order_acq_rel);\n"
+                   "    }")
         if legacy:
-            attempted = "    (void)resetUsbCompanionTransport();"
-            assert methods.count(attempted) == 1
-            methods = methods.replace(attempted,
+            assert methods.count(request) == 1
+            methods = methods.replace(request,
                                       "    if (!resetUsbCompanionTransport())\n"
                                       "      return UsbLoggingRecoveryResult::Deferred;")
+        if no_bridge:
+            assert methods.count(request) == 1
+            methods = methods.replace(request, "    (void)beginEsp32HwcdcSessionReset();")
+        if stale_ready:
+            ready = ("  return esp32_hwcdc_allowed_generation.load(std::memory_order_acquire)\n"
+                     "      == esp32_hwcdc_access_generation.load(std::memory_order_acquire);")
+            assert methods.count(ready) == 1
+            methods = methods.replace(ready, "  return true;")
         source = cls.folder / f"backend-{suffix}.cpp"
         service = cls.companion_methods
-        if no_bridge:
-            bridge = ("  if (!usb_terminal_host_reset_completion_pending\n"
-                      "      && mesh::isUsbLoggingTransportRecoveryPending()) {\n"
-                      "    resetUsbTerminalHostSession();\n"
-                      "    return;\n"
-                      "  }\n")
-            assert service.count(bridge) == 1
-            service = service.replace(bridge, "")
         source.write_text((FIXTURE / "hwcdc_backend.cpp").read_text()
                           .replace("@BACKEND_METHODS@", methods)
-                          .replace("@COMPANION_METHODS@", service), encoding="ascii")
+                          .replace("@COMPANION_METHODS@", service)
+                          .replace("@ORDINARY_METHODS@", cls.ordinary_methods), encoding="ascii")
         # Copy unchanged bytes so the runtime's quoted OTA include resolves
         # through the isolated dependency fake, not the full firmware graph.
         runtime = cls.folder / "UsbLoggingWatchdog.cpp"
@@ -114,6 +128,16 @@ class HwcdcLoggingWatchdogTests(unittest.TestCase):
     def test_actual_ota_veto_before_detach_and_at_reboot_deadline(self):
         self.check_cases(("ota-start", "ota-deadline"), ota_only=True)
 
+    def test_successful_recovery_clears_protocol_before_reopen_exactly_once(self):
+        self.check_cases(("success-appgap", "success-stall", "success-appgap-auto", "success-stall-auto",
+                          "idempotent-stage2", "cold-start"))
+
+    def test_all_ordinary_owners_discard_stalled_partial_commands(self):
+        self.check_cases(("ordinary-repeater", "ordinary-room", "ordinary-sensor"))
+
+    def test_newer_hardware_epochs_remain_quarantined_until_their_own_cleanup(self):
+        self.check_cases(("superseded-before", "superseded-during"))
+
     def test_legacy_deferred_classification_negative_control(self):
         binary = self.compile_backend(1, True, legacy=True)
         for scenario in ("zero", "stuck"):
@@ -124,7 +148,7 @@ class HwcdcLoggingWatchdogTests(unittest.TestCase):
                     self.assertIn("CHECK: HWCDC stage-2 detach was requested", result.stdout)
                     self.assertIn("HWCDC detach request must count as attempted", result.stderr)
 
-    def test_missing_companion_pending_cleanup_bridge_negative_control(self):
+    def test_missing_watchdog_protocol_boundary_negative_control(self):
         binary = self.compile_backend(1, True, no_bridge=True)
         for scenario in ("resume-auto", "resume-off"):
             with self.subTest(scenario=scenario):
@@ -132,6 +156,12 @@ class HwcdcLoggingWatchdogTests(unittest.TestCase):
                 self.assertNotEqual(result.returncode, 0)
                 self.assertIn("Companion must adopt a pending watchdog cleanup without a host edge",
                               result.stderr)
+
+    def test_stale_finish_must_not_report_ready_negative_control(self):
+        binary = self.compile_backend(1, True, stale_ready=True)
+        result = self.run_case(binary, "superseded-during", 0)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("a superseding hardware epoch must keep Companion pending", result.stderr)
 
 
 if __name__ == "__main__":

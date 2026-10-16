@@ -1309,6 +1309,41 @@ static void purgeEsp32HwcdcQueues(void* opaque) {
 
   while (Serial.read() >= 0) {}
 }
+
+static bool beginEsp32HwcdcSessionReset() {
+  if (esp32_hwcdc_cleanup_pending) return false;
+  // HWCDC owns RTOS queues, a TX mutex, an ISR, and an event task. Calling
+  // end()/begin() here can delete those objects while a WiFi/MQTT/diagnostic
+  // producer is writing. Close the independent transport gate first. Runtime
+  // logging changes remain preferences while the low-level debug route is
+  // forced off by that gate.
+  portENTER_CRITICAL(&esp32_hwcdc_session_mux);
+  esp32_hwcdc_cleanup_generation =
+      esp32_hwcdc_access_generation.fetch_add(
+          1, std::memory_order_acq_rel) + 1U;
+  esp32_hwcdc_tx_kick_pending.store(false, std::memory_order_release);
+  esp32_hwcdc_tx_primed.store(false, std::memory_order_release);
+#if MESH_HWCDC_PINNED_TX_BACKPORT
+  meshEsp32HwcdcSetTxAllowed(false);
+#else
+  usb_serial_jtag_ll_disable_intr_mask(
+      USB_SERIAL_JTAG_INTR_SERIAL_IN_EMPTY);
+#endif
+  portEXIT_CRITICAL(&esp32_hwcdc_session_mux);
+  setPlatformDebugOutputEnabled(false);
+
+  esp32_hwcdc_restore_pad_enabled = detachEsp32HwcdcPads();
+  esp32_hwcdc_cleanup_pending = true;
+  // Always hold a real host-visible detach interval. The SOF tracker may
+  // already be false when a physical-loss edge reaches the main loop.
+  delay(10);
+  const uint32_t detached_at = millis();
+  while (Serial.isPlugged()
+         && (uint32_t)(millis() - detached_at) < 50U) {
+    delay(1);
+  }
+  return true;
+}
 #endif
 
 bool resetUsbCompanionTransport() {
@@ -1318,39 +1353,7 @@ bool resetUsbCompanionTransport() {
   return esp32_tinyusb_clean_generation.load(std::memory_order_acquire)
       == esp32_tinyusb_reset_generation.load(std::memory_order_acquire);
 #elif MESH_ESP32_HWCDC_SESSION_GUARD
-  // HWCDC owns RTOS queues, a TX mutex, an ISR, and an event task. Calling
-  // end()/begin() here can delete those objects while a WiFi/MQTT/diagnostic
-  // producer is writing. Close the independent transport gate first. Runtime
-  // logging changes remain preferences while the low-level debug route is
-  // forced off by that gate.
-  if (!esp32_hwcdc_cleanup_pending) {
-    portENTER_CRITICAL(&esp32_hwcdc_session_mux);
-    esp32_hwcdc_cleanup_generation =
-        esp32_hwcdc_access_generation.fetch_add(
-            1, std::memory_order_acq_rel) + 1U;
-    esp32_hwcdc_tx_kick_pending.store(false, std::memory_order_release);
-    esp32_hwcdc_tx_primed.store(false, std::memory_order_release);
-#if MESH_HWCDC_PINNED_TX_BACKPORT
-    meshEsp32HwcdcSetTxAllowed(false);
-#else
-    usb_serial_jtag_ll_disable_intr_mask(
-        USB_SERIAL_JTAG_INTR_SERIAL_IN_EMPTY);
-#endif
-    portEXIT_CRITICAL(&esp32_hwcdc_session_mux);
-    setPlatformDebugOutputEnabled(false);
-
-    esp32_hwcdc_restore_pad_enabled = detachEsp32HwcdcPads();
-    esp32_hwcdc_cleanup_pending = true;
-    // Always hold a real host-visible detach interval. The SOF tracker may
-    // already be false when a physical-loss edge reaches the main loop.
-    delay(10);
-    const uint32_t detached_at = millis();
-    while (Serial.isPlugged()
-           && (uint32_t)(millis() - detached_at) < 50U) {
-      delay(1);
-    }
-  }
-
+  (void)beginEsp32HwcdcSessionReset();
   // tryRunExclusive() shares the same writer guard as all primary Stream
   // facades. Retry briefly if a producer entered Serial.write() just before
   // the access gate closed; HWCDC writes are capped at five milliseconds.
@@ -1390,6 +1393,8 @@ bool resetUsbCompanionTransport() {
   // A concurrent runtime preference change is authoritative; never restore a
   // stale snapshot taken before the purge.
   setPlatformDebugOutputEnabled(isUsbDebugLoggingEnabled());
+  return esp32_hwcdc_allowed_generation.load(std::memory_order_acquire)
+      == esp32_hwcdc_access_generation.load(std::memory_order_acquire);
 #endif
   return true;
 }
@@ -1753,10 +1758,12 @@ UsbLoggingRecoveryResult recoverUsbLoggingTransport(uint8_t stage) {
     serviceEsp32HwcdcTxKick();
     probeUsbLoggingTransport();
   } else {
-    // The helper always issues the PHY detach before attempting cleanup.
-    // Pending cleanup stays quarantined, but it must not prevent the final
-    // watchdog deadline forever. Attempted means requested, not healthy.
-    (void)resetUsbCompanionTransport();
+    // Publish a boundary even when every queue is already empty. The protocol
+    // owner must clear its old parser/routes before finishing this same reset;
+    // reopening here could hide the detach from its host-loss debounce.
+    if (beginEsp32HwcdcSessionReset()) {
+      esp32_hwcdc_bus_reset_generation.fetch_add(1, std::memory_order_acq_rel);
+    }
   }
   return UsbLoggingRecoveryResult::Attempted;
 #elif defined(NRF52_PLATFORM) && defined(USE_TINYUSB)
@@ -1796,7 +1803,9 @@ bool isUsbLoggingTransportRecoveryPending() {
   const auto state = esp32_tinyusb_reenumeration_state.load(std::memory_order_acquire);
   return usb_logging_watchdog_detached || state == 1 || state == 3;
 #elif MESH_ESP32_HWCDC_SESSION_GUARD
-  return esp32_hwcdc_cleanup_pending;
+  return esp32_hwcdc_cleanup_pending
+      || esp32_hwcdc_allowed_generation.load(std::memory_order_acquire)
+          != esp32_hwcdc_access_generation.load(std::memory_order_acquire);
 #else
   return false;
 #endif

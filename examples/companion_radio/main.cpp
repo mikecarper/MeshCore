@@ -1123,11 +1123,11 @@ static void serviceUsbTerminalHostSessionReset() {
   }
 #elif defined(ESP32) && defined(ARDUINO_USB_MODE) && ARDUINO_USB_MODE == 1 \
     && defined(ARDUINO_USB_CDC_ON_BOOT) && ARDUINO_USB_CDC_ON_BOOT
-  // A watchdog detach can start without a host-loss edge. Clear the old USB
-  // protocol state once, then finish that same quarantine through our bounded
-  // retry path even if logging or its watchdog is subsequently disabled.
-  if (!usb_terminal_host_reset_completion_pending
-      && mesh::isUsbLoggingTransportRecoveryPending()) {
+  // Consume hardware and watchdog boundaries before retrying their cleanup.
+  // This clears the old USB owner exactly once, including when its queues are
+  // already empty, before the same quarantined epoch is allowed to reopen.
+  const bool hardware_bus_reset = mesh::takeUsbTerminalSessionReset();
+  if (hardware_bus_reset) {
     resetUsbTerminalHostSession();
     return;
   }
@@ -1148,12 +1148,11 @@ static void serviceUsbTerminalHostSessionReset() {
   (void)usb_hwcdc_host_presence.observeHost(
       host_present, millis(), USB_HOST_LOSS_EDGE_MS,
       USB_HOST_LOSS_GRACE_MS);
-  const bool hardware_bus_reset = mesh::takeUsbTerminalSessionReset();
   const bool physical_host_loss =
       usb_hwcdc_host_presence.takeHostLossEdge();
   const bool sustained_host_loss =
       usb_hwcdc_host_presence.takeSustainedHostLoss();
-  if (hardware_bus_reset || physical_host_loss || sustained_host_loss) {
+  if (physical_host_loss || sustained_host_loss) {
     resetUsbTerminalHostSession();
   }
 #endif

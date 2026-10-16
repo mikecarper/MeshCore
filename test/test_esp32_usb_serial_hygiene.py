@@ -182,10 +182,10 @@ int main() {
         self.assertIn("takeSustainedHostLoss()", service)
         self.assertIn("takeHostLossEdge()", service)
         self.assertIn("mesh::takeUsbTerminalSessionReset()", service)
-        self.assertIn(
-            "hardware_bus_reset || physical_host_loss || sustained_host_loss",
-            service,
-        )
+        self.assertIn("if (hardware_bus_reset)", service)
+        self.assertIn("if (physical_host_loss || sustained_host_loss)", service)
+        self.assertLess(service.index("const bool hardware_bus_reset"),
+                        service.index("if (usb_terminal_host_reset_completion_pending)"))
         self.assertIn("usb_terminal_host_reset_completion_pending", service)
         self.assertIn("USB_TRANSPORT_RESET_RETRY_MS", service)
         self.assertIn("resetUsbTerminalHostSession();", service)
@@ -205,11 +205,12 @@ int main() {
             "Stream& usbLoggingPort()", purge_start
         )]
         self.assertIn(
-            "esp32_hwcdc_access_generation.fetch_add(", purge
+            "esp32_hwcdc_access_generation.fetch_add(", helper
         )
-        self.assertIn("setPlatformDebugOutputEnabled(false);", purge)
-        self.assertIn("detachEsp32HwcdcPads()", purge)
-        self.assertIn("delay(10);", purge)
+        self.assertIn("setPlatformDebugOutputEnabled(false);", helper)
+        self.assertIn("detachEsp32HwcdcPads()", helper)
+        self.assertIn("delay(10);", helper)
+        self.assertIn("(void)beginEsp32HwcdcSessionReset();", purge)
         self.assertIn("tryRunExclusive(", purge)
         self.assertIn("Serial.flush();", helper)
         self.assertIn("flush_attempts >= 2", helper)
