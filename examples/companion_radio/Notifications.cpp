@@ -3,9 +3,11 @@
 #include "NotificationSettingsFile.h"
 
 #if COMPANION_FEATURE_NOTIFICATIONS
+// The UI's STATUS_LED_RGB define is local to its own translation unit.
 uint8_t MyMesh::capabilities() const {
   uint8_t bits = _ui ? _ui->notificationCapabilities() : 0;
-#if defined(PIN_STATUS_LED) || defined(STATUS_LED_RGB)
+#if defined(PIN_STATUS_LED) || \
+    (defined(PIN_STATUS_LED_R) && defined(PIN_STATUS_LED_G) && defined(PIN_STATUS_LED_B))
   bits |= mesh::notify::Led;
 #endif
   for(unsigned pin=0;pin<64;++pin)if(gpioAvailable(pin)) { bits|=mesh::notify::Gpio;break; }
@@ -18,7 +20,7 @@ void MyMesh::pulse(mesh::notify::Output output,bool on,int8_t pin) {
   } else if(output==mesh::notify::Vibration) {
     if(_ui)_ui->notificationVibration(on);
   } else if(output==mesh::notify::Led) {
-#ifdef STATUS_LED_RGB
+#if defined(PIN_STATUS_LED_R) && defined(PIN_STATUS_LED_G) && defined(PIN_STATUS_LED_B)
     analogWrite(PIN_STATUS_LED_R,on?255:0);
     analogWrite(PIN_STATUS_LED_G,on?90:0);
     analogWrite(PIN_STATUS_LED_B,0);

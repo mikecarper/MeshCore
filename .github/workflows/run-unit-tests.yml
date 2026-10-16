@@ -797,6 +797,7 @@ jobs:
           python3 -B test/test_startup_screen.py
           node test/test_notification_builder.js
           python3 -B test/test_notification_settings.py
+          python3 -B test/test_notification_led_ownership.py -v
           python3 -B test/test_display_power.py
           python3 -B test/test_legacy_ui_version_bounds.py -v
           python3 -B test/test_ssd1306_power.py -v
