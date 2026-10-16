@@ -377,7 +377,8 @@ void BaseChatMesh::onPeerDataRecv(mesh::Packet* packet, uint8_t type, int sender
       uint8_t ack_hash[6];    // calc truncated hash of the message timestamp + text + sender pub_key, to prove to sender that we got it
       mesh::Utils::sha256(ack_hash, 4, data, 5 + text_len, from.id.pub_key, PUB_KEY_SIZE);
       // NEW: append (potential) extended attempt byte (to make packethash unique)
-      ack_hash[4] = data[5 + text_len + 1];
+      const size_t attempt_offset = 5 + text_len + 1;
+      ack_hash[4] = attempt_offset < len ? data[attempt_offset] : 0;
       getRNG()->random(&ack_hash[5], 1);  // make 6th byte random
 
       if (packet->isRouteFlood()) {

@@ -18,6 +18,15 @@ SANITIZERS = (["-fsanitize=address,undefined", "-fno-sanitize-recover=all",
 
 class RoomReceiveAdmissionTests(unittest.TestCase):
     def test_actual_receive_queue_retry_and_notifications(self):
+        self.run_fixture()
+
+    def test_plain_ack_attempt_field_bounds_and_valid_extensions(self):
+        self.run_fixture(ack_bounds=True)
+
+    def test_unbounded_plain_ack_attempt_negative_control(self):
+        self.run_fixture(ack_bounds=True, unbounded_attempt=True)
+
+    def run_fixture(self, *, ack_bounds=False, unbounded_attempt=False):
         compiler = shutil.which("g++") or shutil.which("clang++")
         self.assertIsNotNone(compiler, "a host C++17 compiler is required")
         base = (ROOT / "src/helpers/BaseChatMesh.cpp").read_text()
@@ -45,6 +54,12 @@ class RoomReceiveAdmissionTests(unittest.TestCase):
             ("notify-without-admission", receive, queue.replace(
                 "if (txt_type == TXT_TYPE_SIGNED_PLAIN && !queued) return false;", ""), False),
         )
+        if ack_bounds:
+            if unbounded_attempt:
+                bounded = "ack_hash[4] = attempt_offset < len ? data[attempt_offset] : 0;"
+                self.assertEqual(receive.count(bounded), 1)
+                receive = receive.replace(bounded, "ack_hash[4] = data[attempt_offset];", 1)
+            variants = (("plain-ack-bounds", receive, queue, not unbounded_attempt),)
         with tempfile.TemporaryDirectory(prefix="room-receive-admission-") as directory:
             work = Path(directory)
             (work / "frame.inc").write_text(extract_braced(header, "struct Frame") + ";\n", encoding="ascii")
@@ -58,13 +73,17 @@ class RoomReceiveAdmissionTests(unittest.TestCase):
                         "-Wno-unused-parameter", *SANITIZERS, f"-I{work}", f"-I{ROOT / 'src'}",
                         str(FIXTURE), "-o", str(binary)], capture_output=True, text=True, timeout=60)
                     self.assertEqual(built.returncode, 0, built.stdout + built.stderr)
-                    tested = subprocess.run([str(binary)], capture_output=True, text=True, timeout=20)
+                    command = [str(binary)] + (["ack-bounds"] if ack_bounds else [])
+                    tested = subprocess.run(command, capture_output=True, text=True, timeout=20)
                     if passes:
                         self.assertEqual(tested.returncode, 0, tested.stdout + tested.stderr)
-                        self.assertIn("PASS: production room receive admission", tested.stdout)
+                        self.assertIn("PASS: production plain ACK bounds" if ack_bounds else
+                                      "PASS: production room receive admission", tested.stdout)
                     else:
                         self.assertNotEqual(tested.returncode, 0, "negative control escaped the delivery checks")
                         self.assertIn("Assertion", tested.stderr)
+                        if unbounded_attempt:
+                            self.assertIn("ACK attempt must come only from authenticated plaintext", tested.stderr)
 
 
 if __name__ == "__main__":

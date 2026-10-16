@@ -42,8 +42,13 @@ struct Packet {
   bool isRouteFlood() const { return flood; }
 };
 struct Utils {
-  static void sha256(uint8_t* out, size_t size, const uint8_t*, size_t,
-                     const uint8_t*, size_t) { memset(out, 0x55, size); }
+  inline static std::vector<uint8_t> hash_input, hash_key;
+  static void sha256(uint8_t* out, size_t size, const uint8_t* input, size_t input_length,
+                     const uint8_t* key, size_t key_length) {
+    hash_input.assign(input, input + input_length);
+    hash_key.assign(key, key + key_length);
+    memset(out, 0x55, size);
+  }
 };
 }
 struct ContactInfo {
@@ -58,7 +63,11 @@ struct Clock {
   uint32_t getCurrentTime() const { return now; }
   uint32_t getCurrentTimeUnique() { return now++; }
 };
-struct Rng { void random(uint8_t* out, size_t length) { memset(out, 0, length); } };
+struct Rng {
+  unsigned calls = 0;
+  size_t last_length = 0;
+  void random(uint8_t* out, size_t length) { ++calls; last_length = length; memset(out, 0, length); }
+};
 struct BaseChatMesh {
   ContactInfo contacts[MAX_CONTACTS];
   int matching_peer_indexes[1] = {0}, num_contacts = MAX_CONTACTS;
@@ -168,7 +177,69 @@ static unsigned effects(const MyMesh& m) {
   return m.ui.messages + m.ui.notifications + m.ui.overrides + m.serial.writes
       + m._notifications.remote + m._notifications.ordinary + m.active + unsigned(m.saved.size());
 }
-int main() {
+static void plainAckBounds() {
+  unsigned cases = 0;
+  for (bool flood : {false, true}) {
+    // Mesh::onRecvPacket decrypts whole AES blocks into an otherwise uncleared
+    // 184-byte local buffer. Seed its unused tail independently of the text.
+    // Exercise every representable text length, not only ordinary sender caps.
+    for (size_t text_length = 0; text_length <= 171; ++text_length) {
+      MyMesh m; mesh::Packet packet; packet.flood = flood;
+      uint8_t data[184], secret[32] = {};
+      memset(data, 0xa5, sizeof(data));
+      const size_t wire_length = 5 + text_length;
+      const size_t decrypted_length = (wire_length + 15) / 16 * 16;
+      memset(data, 0, decrypted_length);
+      memset(data + 5, 'X', text_length);
+      m.onPeerDataRecv(&packet, PAYLOAD_TYPE_TXT_MSG, 0, secret, data, decrypted_length);
+      assert(m.direct_acks == unsigned(!flood) && m.flood_acks == unsigned(flood));
+      assert(m.ack.size() == 6 && m.ack[5] == 0);
+      assert(m.ack[4] == 0 && "ACK attempt must come only from authenticated plaintext");
+      assert(std::equal(m.ack.begin(), m.ack.begin() + 4, "\x55\x55\x55\x55"));
+      assert(mesh::Utils::hash_input == std::vector<uint8_t>(data, data + wire_length));
+      assert(mesh::Utils::hash_key == std::vector<uint8_t>(m.contacts[0].id.pub_key,
+          m.contacts[0].id.pub_key + PUB_KEY_SIZE));
+      assert(m.rng.calls == 1 && m.rng.last_length == 1);
+      assert(data[decrypted_length] == 0 && data[decrypted_length + 1] == 0xa5);
+      assert(m.contacts[0].sync_since == 50 && m.contacts[0].lastmod == 1200);
+      ++cases;
+    }
+    // composeMsgPacket encodes extended attempts after the text terminator.
+    // Preserve the complete byte, including values outside its low two bits.
+    for (size_t text_length = 0; text_length <= 158; ++text_length) {
+      for (uint8_t attempt : {0, 4, 5, 127, 255}) {
+        MyMesh m; mesh::Packet packet; packet.flood = flood;
+        uint8_t data[184], secret[32] = {};
+        memset(data, 0xa5, sizeof(data));
+        const size_t wire_length = 5 + text_length + 2;
+        const size_t decrypted_length = (wire_length + 15) / 16 * 16;
+        memset(data, 0, decrypted_length);
+        data[4] = attempt & 3;
+        memset(data + 5, 'X', text_length);
+        data[5 + text_length + 1] = attempt;
+        m.onPeerDataRecv(&packet, PAYLOAD_TYPE_TXT_MSG, 0, secret, data, decrypted_length);
+        assert(m.direct_acks == unsigned(!flood) && m.flood_acks == unsigned(flood));
+        assert(m.ack.size() == 6 && m.ack[4] == attempt && m.ack[5] == 0);
+        assert(std::equal(m.ack.begin(), m.ack.begin() + 4, "\x55\x55\x55\x55"));
+        assert(mesh::Utils::hash_input == std::vector<uint8_t>(data, data + 5 + text_length));
+        assert(mesh::Utils::hash_key == std::vector<uint8_t>(m.contacts[0].id.pub_key,
+            m.contacts[0].id.pub_key + PUB_KEY_SIZE));
+        assert(m.rng.calls == 1 && m.rng.last_length == 1);
+        assert(data[decrypted_length] == 0 && data[decrypted_length + 1] == 0xa5);
+        ++cases;
+      }
+    }
+  }
+  assert(cases == 1934);
+  printf("PASS: production plain ACK bounds (%u cases, direct/flood, AES padding and complete attempt bytes)\n", cases);
+}
+int main(int argc, char** argv) {
+  if (argc == 2) {
+    assert(strcmp(argv[1], "ack-bounds") == 0);
+    plainAckBounds();
+    return 0;
+  }
+  assert(argc == 1);
   unsigned cases = 0;
   for (int version : {2, 3}) for (bool flood : {false, true}) for (bool connected : {false, true}) {
     MyMesh m; m.app_target_ver = version; m.serial.connected = connected; m.fill();
