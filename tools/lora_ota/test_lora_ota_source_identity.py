@@ -77,6 +77,66 @@ class SourceIdentityTests(unittest.TestCase):
         self.assertNotIn("get public.key", command[-1])
         self.assertFalse(self.args.source_companion_terminal)  # No persistent mode flag change.
 
+    def test_usb_identity_accepts_error_words_in_valid_welcome_names(self):
+        self.args.source_cli_tcp = None
+        self.args.source_serial = "COM42"
+        for name in ("Error Ridge", "ERR Station", "Unknown command Ridge"):
+            result = subprocess.CompletedProcess([], 0, banner(name=name) + VERSION + "\r\n", "")
+            with self.subTest(name=name), mock.patch.object(ota, "run_checked", return_value=result):
+                self.assertEqual(ota.read_source_public_key_bounded(self.args), KEY)
+
+    def test_usb_ordinary_commands_accept_error_words_in_welcome_and_get_values(self):
+        self.args.source_cli_tcp = None
+        self.args.source_serial = "COM42"
+        for command, reply in (("ota status", "OTA seeder | install:disabled | serving:0"),
+                               ("get name", "> Error Ridge")):
+            output = banner(name="Error Ridge") + "\r\n  -> " + reply + "\r\n> "
+            result = subprocess.CompletedProcess([], 0, output, "")
+            with self.subTest(command=command), mock.patch.object(ota, "run_checked", return_value=result):
+                self.assertIn(reply, ota.source_cli_command(self.args, command))
+
+    def test_tcp_identity_and_ordinary_commands_accept_error_words_in_names(self):
+        for command, reply in (("ver", VERSION), ("get name", "> Error Ridge"),
+                               ("ota status", "OTA seeder | install:disabled | serving:0")):
+            conn = connection(banner(name="Error Ridge"), reply)
+            with self.subTest(command=command), mock.patch.object(
+                    ota.socket, "create_connection", return_value=conn):
+                if command == "ver":
+                    self.assertEqual(ota.read_source_public_key_bounded(self.args), KEY)
+                else:
+                    self.assertEqual(ota.source_cli_command(self.args, command), reply)
+
+    def test_usb_real_rejections_survive_valid_welcome_and_identity_modes(self):
+        self.args.source_cli_tcp = None
+        self.args.source_serial = "COM42"
+        for reply in ("ERR permission denied", "ERROR: unavailable", "FAIL", "Unknown command"):
+            for identity in (False, True):
+                output = banner(name="Error Ridge") + "\r\n  -> " + reply + "\r\n> "
+                result = subprocess.CompletedProcess([], 0, output, "")
+                with self.subTest(reply=reply, identity=identity), mock.patch.object(
+                        ota, "run_checked", return_value=result):
+                    with self.assertRaisesRegex(ota.OtaError, "source rejected"):
+                        ota.source_cli_command(self.args, "ver" if identity else "ota status",
+                                               full_companion_identity=identity)
+
+    def test_valid_usb_banner_cannot_hide_errors_before_or_inside_it(self):
+        self.args.source_cli_tcp = None
+        self.args.source_serial = "COM42"
+        welcome = banner(name="Error Ridge")
+        for output in ("ERROR: old mode failed\r\n" + welcome + VERSION,
+                       welcome.replace("\r\n> ", "\r\nERR terminal unavailable\r\n> ") + VERSION):
+            result = subprocess.CompletedProcess([], 0, output, "")
+            with self.subTest(output=output), mock.patch.object(ota, "run_checked", return_value=result):
+                with self.assertRaisesRegex(ota.OtaError, "source rejected"):
+                    ota.read_source_public_key_bounded(self.args)
+
+    def test_tcp_real_rejections_remain_errors_after_valid_welcome(self):
+        for reply in ("ERR permission denied", "ERROR: unavailable", "FAIL", "Unknown command"):
+            conn = connection(banner(name="Error Ridge"), reply)
+            with self.subTest(reply=reply), mock.patch.object(ota.socket, "create_connection", return_value=conn):
+                with self.assertRaisesRegex(ota.OtaError, "source rejected"):
+                    ota.source_cli_command(self.args, "ota status")
+
     def test_usb_can_use_explicit_cli_port(self):
         self.args.source_cli_tcp = None
         self.args.source_cli_serial = "COM43"

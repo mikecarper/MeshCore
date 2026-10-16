@@ -3146,12 +3146,19 @@ def prompt_for_next_125khz_sf(args: argparse.Namespace) -> bool:
     return True
 
 
+_SOURCE_TERMINAL_HEADER = re.compile(
+    r"(?m)^===== MeshCore (?:Full )?Companion Terminal =====[ \t]*$"
+)
+_SOURCE_CLI_ERROR_LINE = re.compile(
+    r"^[ \t]*(?:->[ \t]*)?(?:error|err|fail|unknown[ \t]+command)\b",
+    re.IGNORECASE | re.MULTILINE,
+)
+
+
 def parse_source_terminal_banner(value: str) -> tuple[str, str]:
     """Read one Full/Companion welcome identity, not an advert or cached name."""
     text = value.replace("\r", "")
-    headers = list(re.finditer(
-        r"(?m)^===== MeshCore (?:Full )?Companion Terminal =====[ \t]*$", text,
-    ))
+    headers = list(_SOURCE_TERMINAL_HEADER.finditer(text))
     if len(headers) != 1:
         raise OtaError("OTA source did not expose one fresh Companion terminal banner")
     tail = text[headers[0].end():]
@@ -3167,6 +3174,21 @@ def parse_source_terminal_banner(value: str) -> tuple[str, str]:
     if len(keys) != 1 or welcome != keys:
         raise OtaError("OTA source Companion banner did not expose one exact public key after WELCOME")
     return keys[0].lower(), tail[prompt.end():]
+
+
+def _source_cli_response_text(value: str) -> str:
+    """Exclude a validated welcome banner from command reply classification."""
+    text = value.replace("\r", "")
+    header = _SOURCE_TERMINAL_HEADER.search(text)
+    if header is None:
+        return text
+    _, response = parse_source_terminal_banner(text)
+    banner_end = len(text) - len(response)
+    # Preserve errors outside the welcome record and unexpected rejection
+    # lines mixed into it. A valid welcome key cannot hide a real failure.
+    banner_errors = [line for line in text[header.start():banner_end].splitlines()
+                     if _SOURCE_CLI_ERROR_LINE.search(line)]
+    return "\n".join((text[:header.start()], *banner_errors, response))
 
 
 def source_cli_command(
@@ -3319,9 +3341,9 @@ def source_cli_command(
             except OtaError as exc:
                 raise TransmissionError(f"source CLI link failed: {exc}") from exc
             output = f"{result.stdout}\n{result.stderr}".strip()
-        lowered = output.lower()
-        if ("error" in lowered or "unknown command" in lowered or "err " in lowered
-                or re.search(r"(?:^|\n)\s*(?:->\s*)?(?:err|fail)(?:\b|:)", lowered)):
+        response_output = _source_cli_response_text(output)
+        lowered = response_output.lower()
+        if _SOURCE_CLI_ERROR_LINE.search(response_output):
             raise OtaError(f"source rejected {command_text!r}: {output}")
         if full_companion_identity:
             version_output = output.replace("\r", "")
