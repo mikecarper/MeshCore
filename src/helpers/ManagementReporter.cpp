@@ -34,6 +34,35 @@ static unsigned parseDays(const char* text) {
   } while (*text);
   return days;
 }
+
+// MGR2 has three or four decimal version bytes, followed only by an optional
+// release/build label. Keep that label opaque for existing tagged builds.
+static bool parseManagementFirmwareVersion(const char* text, uint32_t& version) {
+  if (!text) return false;
+  if (*text == 'v') ++text;
+  uint32_t packed = 0;
+  unsigned components = 0;
+  while (true) {
+    if (*text < '0' || *text > '9') return false;
+    unsigned component = 0;
+    do {
+      const unsigned digit = *text++ - '0';
+      if (component > (255U - digit) / 10U) return false;
+      component = component * 10U + digit;
+    } while (*text >= '0' && *text <= '9');
+    packed = (packed << 8) | component;
+    ++components;
+    if (*text != '.') break;
+    if (components == 4) return false;
+    ++text;
+  }
+  if (components < 3) return false;
+  if (*text && ((*text != '-' && *text != '+') || !text[1])) return false;
+  if (components == 3) packed <<= 8;
+  version = packed;
+  return true;
+}
+
 struct ManagementReporter::Working {
   History history;
   Extrema during_report;
@@ -201,11 +230,9 @@ void ManagementReporter::snapshot() {
 #endif
   // If EndF is absent, only publish a version we can parse unambiguously.
   if (!(valid & FIRMWARE)) {
-    unsigned major = 0, minor = 0, patch = 0, pre = 0;
-    const char* version = callbacks.getFirmwareVer(); if (*version == 'v') ++version;
-    const int n = sscanf(version, "%u.%u.%u.%u", &major, &minor, &patch, &pre);
-    if (n >= 3 && major <= 255 && minor <= 255 && patch <= 255 && pre <= 255) {
-      write32(p + 28, major << 24 | minor << 16 | patch << 8 | pre); valid |= FIRMWARE;
+    uint32_t version;
+    if (parseManagementFirmwareVersion(callbacks.getFirmwareVer(), version)) {
+      write32(p + 28, version); valid |= FIRMWARE;
     }
   }
   write16(p + 76, valid);

@@ -29,7 +29,8 @@ public:
 };
 class CommonCLICallbacks {
 public:
-  const char* getFirmwareVer() { return "v1.17.1.5"; }
+  const char* firmware_version = "v1.17.1.5";
+  const char* getFirmwareVer() { return firmware_version; }
   const char* getRole() { return "repeater"; }
 };
 struct LocationProvider { bool isEnabled() { return false; } };
