@@ -2167,13 +2167,13 @@ void MyMesh::seedEmergencyChannelNotice(uint8_t index, const ChannelDetails& pre
   if (!isEmergencyNoticeChannelName(previous.name)) pending |= bit;
   if (!(pending & bit)) return; // Edits and reapplying a saved channel are not joins.
 
-  int capacity = getOfflineQueueCapacity();
-#if ONE_KEY_DM_SHARED_OFFLINE_QUEUE
-  capacity -= held_dm_count;
+  // Drain real traffic first. Starting with an empty inbox also makes this
+  // notice the oldest evictable channel frame if more traffic arrives later.
+  // Do not take a newly freed slot while a real one-key DM is still held.
+  if (offline_queue_len != 0) return;
+#if MESH_ENABLE_ONE_KEY_DM
+  if (held_dm_count != 0) return;
 #endif
-  // A welcome notice must never evict an actual message. Retry after sync
-  // frees queue space, including space temporarily reserved for held DMs.
-  if (offline_queue_len >= capacity) return;
   if (queueChannelText(index, channel.channel.secret, 0, 0xFF,
       getRTCClock()->getCurrentTime(),
       "#EMERGENCY: This is an emergency channel. Do not use for testing or small talk.",
@@ -11428,10 +11428,10 @@ void MyMesh::loop() {
 #endif
   }
   servicePendingRadioParamApply();
-  if (!mesh::morseTimingActive(_radio)) servicePendingChannelNotices();
 #if MESH_ENABLE_ONE_KEY_DM
   if (held_dm_count != 0 || verified_pending_count != 0) releaseHeldOneKeyDMs();
 #endif
+  if (!mesh::morseTimingActive(_radio)) servicePendingChannelNotices();
 
 #if defined(ESP32_PLATFORM)
   servicePersistence();

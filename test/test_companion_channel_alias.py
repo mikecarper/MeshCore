@@ -416,8 +416,14 @@ using std::isfinite;
 #define DISPLAY_CLASS NoticeDisplay
 #define MESH_DEBUG_PRINTLN(...) ((void)0)
 #define OFFLINE_QUEUE_SIZE 4
+#define MESH_ENABLE_ONE_KEY_DM @ONE_KEY@
 #define ONE_KEY_DM_SHARED_OFFLINE_QUEUE @HELD@
 #define MESH_ENABLE_MESHTEXT_CHAT 1
+#define PUB_KEY_SIZE 32
+#define MAX_TEXT_LEN 160
+#define ONE_KEY_DM_ID_SIZE 8
+#define ROUTE_TYPE_DIRECT 2
+#define ROUTE_TYPE_FLOOD 1
 static bool checking_ack_order=false,ack_written=false;
 struct NoticeCommandScope {
   NoticeCommandScope(){checking_ack_order=true;ack_written=false;}
@@ -445,6 +451,13 @@ struct NoticeTerminal {unsigned echoes=0;void printf(const char*,...){++echoes;}
 struct NoticeTerminalDisplay {bool shouldShowChannel(bool)const{return true;}};
 '''
 
+NOTICE_DM_STUBS = r'''
+struct ContactInfo {
+  struct {uint8_t pub_key[PUB_KEY_SIZE]={};} id;
+  const uint8_t* getSharedSecret(int)const{return id.pub_key;}
+};
+'''
+
 NOTICE_MEMBERS = r'''
   NoticeUI ui; NoticeUI* _ui=&ui;
   NoticeNotifications _notifications;
@@ -453,10 +466,35 @@ NOTICE_MEMBERS = r'''
   bool hasTerminalOutput()const{return true;}NoticeTerminal& terminalOutput(){return terminal;}
   uint8_t app_target_ver=3,out_frame[MAX_FRAME_SIZE]={};
   uint8_t pending_emergency_notices[(MAX_GROUP_CHANNELS+7)/8]={};
+#if MESH_ENABLE_ONE_KEY_DM
   unsigned held_dm_count=0;
+  unsigned verified_pending_count=0;
+  uint8_t verified_pending_keys[15][PUB_KEY_SIZE]={};
+  struct HeldOneKeyDM {
+    uint8_t sender_key[PUB_KEY_SIZE]={},id[8]={};
+    mesh::Packet packet;
+  } held_dms[15];
+  ContactInfo held_contact;
+  int self_id=0;
+  unsigned held_deliveries=0,held_acks=0;
+  ContactInfo* lookupPersistentContactByPubKey(const uint8_t*,size_t){return &held_contact;}
+  void forgetVerifiedPendingSender(const uint8_t*){verified_pending_count=0;}
+  bool wasDeliveredOneKeyDM(const uint8_t*,const uint8_t*)const{return false;}
+  void rememberDeliveredOneKeyDM(const uint8_t*,const uint8_t*){}
+  void onMessageRecv(const ContactInfo&,mesh::Packet*,uint32_t,const char*){
+    const uint8_t dm[]={7,99};assert(addToOfflineQueue(dm,sizeof(dm)));++held_deliveries;
+  }
+  void sendAckTo(const ContactInfo&,const uint8_t*,size_t){++held_acks;}
+  void releaseHeldOneKeyDMs();
+#endif
   struct Frame {uint8_t len=0,buf[MAX_FRAME_SIZE]={};bool isChannelMsg()const;};
   Frame offline_queue[OFFLINE_QUEUE_SIZE];
   int offline_queue_len=0,offline_queue_head=0;
+  bool reject_next_enqueue=false;
+#if ONE_KEY_DM_SHARED_OFFLINE_QUEUE
+  Frame& heldDMFrameAt(uint8_t);
+  void removeHeldOneKeyDM(uint8_t);
+#endif
   int getOfflineQueueCapacity()const;
   Frame& offlineQueueFrameAt(int);
   bool addToOfflineQueue(const uint8_t*,int);
@@ -509,6 +547,14 @@ static void fillRealMessages(MyMesh& node){
     assert(node.addToOfflineQueue(frame,sizeof(frame)));
   }
 }
+static void drainRealMessages(MyMesh& node,unsigned first,unsigned count){
+  uint8_t frame[MAX_FRAME_SIZE]={};
+  for(unsigned i=0;i<count;++i){
+    assert(node.getFromOfflineQueue(frame)==2 && frame[0]==RESP_CODE_CHANNEL_MSG_RECV && frame[1]==first+i);
+    node.servicePendingChannelNotices();
+    if(i+1<count) assert(node.ui.messages==0);
+  }
+}
 int main(){
   for(uint8_t app:{uint8_t(1),uint8_t(3)}) for(bool connected:{false,true})
   for(const char* name:{"#emergency","#r2-emergency"}){
@@ -559,27 +605,89 @@ int main(){
     assert(node.error==ERR_CODE_BAD_STATE && node.offline_queue_len==0 && !pending(node,0));
   }
   for(bool cancel:{false,true}){
-    MyMesh node;node.held_dm_count=ONE_KEY_DM_SHARED_OFFLINE_QUEUE ? 1:0;
-    fillRealMessages(node);const unsigned full=node.offline_queue_len;
+    MyMesh node;fillRealMessages(node);const unsigned full=node.offline_queue_len;
     applySet(node,16,channel("#emergency"));
     assert(node.ok && pending(node,16) && node.offline_queue_len==int(full));
     node.servicePendingChannelNotices();node.servicePendingChannelNotices();
     // Even a queue of evictable channel messages must remain untouched.
     for(unsigned i=0;i<full;++i){const auto& f=node.offlineQueueFrameAt(i);assert(f.len==2 && f.buf[1]==40+i);}
     if(cancel){ChannelDetails deleted{};applySet(node,16,deleted);assert(node.ok && !pending(node,16));}
-    node.popOfflineQueue();node.servicePendingChannelNotices();
-    if(cancel) assert(node.offline_queue_len==int(full-1) && node.ui.messages==0);
-    else {assert(node.offline_queue_len==int(full));verifyNotice(node,16);}
+    drainRealMessages(node,40,full);
+    if(cancel) assert(node.offline_queue_len==0 && node.ui.messages==0);
+    else {assert(node.offline_queue_len==1);verifyNotice(node,16);}
     const int length=node.offline_queue_len;
     node.servicePendingChannelNotices();assert(node.offline_queue_len==length);
   }
   {
     MyMesh node;fillRealMessages(node);
     applySet(node,8,channel("#emergency"));applySet(node,16,channel("#r2-emergency"));
-    assert(pending(node,8) && pending(node,16));node.popOfflineQueue();node.popOfflineQueue();
-    node.servicePendingChannelNotices();assert(!pending(node,8) && pending(node,16));verifyNotice(node,8);
-    node.servicePendingChannelNotices();assert(!pending(node,16));verifyNotice(node,16);
+    assert(pending(node,8) && pending(node,16));drainRealMessages(node,40,effectiveCapacity(node));
+    assert(!pending(node,8) && pending(node,16));verifyNotice(node,8);
+    node.servicePendingChannelNotices();assert(node.offline_queue_len==1 && pending(node,16));
+    node.popOfflineQueue();node.servicePendingChannelNotices();assert(!pending(node,16));verifyNotice(node,16);
     const int length=node.offline_queue_len;node.servicePendingChannelNotices();assert(node.offline_queue_len==length);
+  }
+  {
+    // A notice must not consume the last slot and cause the next real arrival
+    // to evict older real channel traffic while retaining the local notice.
+    MyMesh node;
+    for(unsigned i=0;i<3;++i){
+      const uint8_t real[]={RESP_CODE_CHANNEL_MSG_RECV,uint8_t(40+i)};
+      assert(node.addToOfflineQueue(real,sizeof(real)));
+    }
+    applySet(node,9,channel("#emergency"));
+    assert(pending(node,9) && node.offline_queue_len==3);
+    const uint8_t dm[]={7,99};assert(node.addToOfflineQueue(dm,sizeof(dm)));
+    assert(node.offline_queue_len==4 && node.ui.messages==0);
+    drainRealMessages(node,40,3);
+    uint8_t frame[MAX_FRAME_SIZE]={};
+    assert(node.getFromOfflineQueue(frame)==2 && frame[0]==7 && frame[1]==99);
+    node.servicePendingChannelNotices();verifyNotice(node,9);
+    // Once materialized in an empty inbox, the notice is the first evictable
+    // channel frame, so later overflow preserves every subsequent real DM.
+    for(unsigned i=0;i<4;++i){
+      const uint8_t real_dm[]={7,uint8_t(100+i)};
+      assert(node.addToOfflineQueue(real_dm,sizeof(real_dm)));
+    }
+    for(unsigned i=0;i<4;++i){
+      assert(node.getFromOfflineQueue(frame)==2 && frame[0]==7 && frame[1]==100+i);
+    }
+  }
+#if MESH_ENABLE_ONE_KEY_DM
+  {
+    // The same held-message rule applies to separate and shared queue builds.
+    MyMesh node;node.held_dm_count=1;node.verified_pending_count=1;
+#if ONE_KEY_DM_SHARED_OFFLINE_QUEUE
+    auto& held=node.heldDMFrameAt(0);
+    uint32_t timestamp=123;memcpy(held.buf,&timestamp,sizeof(timestamp));
+    held.buf[8]=0xff;held.buf[10]=4;memcpy(held.buf+11,"real",5);held.len=16;
+#else
+    auto& packet=node.held_dms[0].packet;
+    const uint8_t data[]={1,2,3,4,0,'r','e','a','l'};
+    memcpy(packet.payload+2,data,sizeof(data));packet.payload_len=sizeof(data)+2;
+#endif
+    applySet(node,9,channel("#emergency"));
+    assert(pending(node,9) && node.offline_queue_len==0);
+    node.servicePendingChannelNotices();assert(node.offline_queue_len==0);
+    node.releaseHeldOneKeyDMs();
+    assert(node.held_dm_count==0 && node.verified_pending_count==0);
+    assert(node.held_deliveries==1 && node.held_acks==1 && node.offline_queue_len==1);
+    node.servicePendingChannelNotices();assert(node.offline_queue_len==1 && pending(node,9));
+    uint8_t frame[MAX_FRAME_SIZE]={};
+    assert(node.getFromOfflineQueue(frame)==2 && frame[0]==7 && frame[1]==99);
+    node.servicePendingChannelNotices();verifyNotice(node,9);
+  }
+  {
+    // A verified sender without a held payload has no real message to drain.
+    MyMesh node;node.verified_pending_count=1;applySet(node,9,channel("#emergency"));
+    assert(node.offline_queue_len==1);verifyNotice(node,9);
+  }
+#endif
+  {
+    // A rejected queue write must retain the pending bit for a later retry.
+    MyMesh node;node.reject_next_enqueue=true;applySet(node,9,channel("#emergency"));
+    assert(node.ok && pending(node,9) && node.offline_queue_len==0 && node.ui.messages==0);
+    node.servicePendingChannelNotices();assert(node.offline_queue_len==1);verifyNotice(node,9);
   }
   {
     // Loading/reapplying saved channels during startup is not an app join.
@@ -852,6 +960,19 @@ class CompanionChannelAliasTest(unittest.TestCase):
             "int MyMesh::peekOfflineQueue(", "int MyMesh::getFromOfflineQueue(",
         )
         methods = "\n".join(body(companion, signature) for signature in signatures)
+        # Keep the real admission/eviction code while exposing a deterministic
+        # transport/storage rejection boundary for the pending-bit retry case.
+        queue_signature = "bool MyMesh::addToOfflineQueue("
+        queue_method = body(companion, queue_signature)
+        methods = methods.replace(queue_method, queue_method.replace(
+            "{", "{\n  if (reject_next_enqueue) { reject_next_enqueue=false; return false; }", 1))
+        methods += "\n#if MESH_ENABLE_ONE_KEY_DM\n" + body(
+            companion, "void MyMesh::releaseHeldOneKeyDMs()") + "\n#endif\n"
+        methods += "\n#if ONE_KEY_DM_SHARED_OFFLINE_QUEUE\n" + "\n".join(
+            body(companion, signature) for signature in (
+                "MyMesh::Frame& MyMesh::heldDMFrameAt(",
+                "void MyMesh::removeHeldOneKeyDM(",
+            )) + "\n#endif\n"
         branches = " else ".join(body(companion, signature) for signature in (
             "if (cmd_frame[0] == CMD_GET_CHANNEL && len >= 2)",
             "if (cmd_frame[0] == CMD_SET_CHANNEL && len >= 2 + 32 + 32)",
@@ -875,7 +996,22 @@ class CompanionChannelAliasTest(unittest.TestCase):
                                   "void writeOKFrame() { ok = true; ack_written = true; }")
         fixture = RUNTIME_HARNESS[:RUNTIME_HARNESS.index("\nint main()")]
         fixture = fixture.replace("#define MAX_GROUP_CHANNELS 5", "#define MAX_GROUP_CHANNELS 17")
-        fixture = fixture.replace("class MyMesh :", COMMAND_STUBS + "\nclass MyMesh :")
+        fixture = fixture.replace("class MyMesh :", COMMAND_STUBS + NOTICE_DM_STUBS + "\nclass MyMesh :")
+        fixture = fixture.replace(
+            "uint8_t radio_origin = 0, tx_radio = RADIO_TX_AUTO;",
+            "uint8_t radio_origin = 0, tx_radio = RADIO_TX_AUTO, header = ROUTE_TYPE_FLOOD, path_len = 0;\n"
+            "                int8_t _snr = 0; bool isRouteFlood()const{return header==ROUTE_TYPE_FLOOD;}")
+        fixture = fixture.replace(
+            "  static bool isZeroes(",
+            "  static void sha256(uint8_t* out,size_t n,const uint8_t*,size_t,const uint8_t*,size_t){memset(out,0,n);}\n"
+            "  static bool isZeroes(")
+        # Held-message release retains the real queue and FIFO control flow.
+        # The cipher boundary uses an explicitly prepared plaintext packet.
+        fixture = fixture.replace(
+            "static int MACThenDecrypt(const uint8_t* key, uint8_t*, const uint8_t* data, int length) {\n"
+            "    return length == 16 && !memcmp(key, data, 16) ? 1 : 0;",
+            "static int MACThenDecrypt(const uint8_t* key, uint8_t* out, const uint8_t* data, int length) {\n"
+            "    memcpy(out,data,length);return length;")
         fixture = fixture.replace("@SAVE_GETTER@", save_getter + "\n" + members + NOTICE_MEMBERS)
         command_helpers = COMMAND_HARNESS[:COMMAND_HARNESS.index("\nint main()")]
         command_helpers = command_helpers.replace("uint8_t out_frame[128] = {};",
@@ -885,22 +1021,33 @@ class CompanionChannelAliasTest(unittest.TestCase):
         program = (shared + constants + "\n" + NOTICE_STUBS + fixture + command_helpers + NOTICE_CASES)
         program = program.replace("@VECTORS@", vectors).replace("@KEY_VECTORS@", key_vectors)
         program = program.replace("@METHODS@", methods).replace("@COMMAND_BRANCHES@", branches)
-        for held in (0, 1):
-            with self.subTest(shared_held_dm_queue=held):
-                self.run_native_program(program.replace("@HELD@", str(held)), "notice",
+        for one_key, held in ((0, 0), (1, 0), (1, 1)):
+            with self.subTest(one_key_dm=one_key, shared_held_dm_queue=held):
+                configured = program.replace("@ONE_KEY@", str(one_key)).replace("@HELD@", str(held))
+                self.run_native_program(configured, "notice",
                                         extra_flags=("-Wno-unused-parameter",))
-        # Prove the executable fixture catches the two dangerous regressions:
-        # treating a local seed like a real audible message, or letting the
-        # general queue policy evict real traffic to make room for the seed.
+        configured = program.replace("@ONE_KEY@", "1").replace("@HELD@", "0")
+        # Prove that quiet delivery, an empty inbox, and real held-message
+        # priority are each enforced by the executable fixture.
         self.assertIn("true, false)) pending", program)
-        self.run_native_program(program.replace("@HELD@", "0").replace(
+        self.run_native_program(configured.replace(
             "true, false)) pending", "true, true)) pending", 1), "notice",
             extra_flags=("-Wno-unused-parameter",), expect_failure="node.ui.last_quiet")
-        self.assertIn("if (offline_queue_len >= capacity) return;", program)
-        self.run_native_program(program.replace("@HELD@", "1").replace(
-            "if (offline_queue_len >= capacity) return;",
-            "if (offline_queue_len > capacity) return;", 1), "notice",
-            extra_flags=("-Wno-unused-parameter",), expect_failure="pending(node,16)")
+        self.assertIn("if (offline_queue_len != 0) return;", program)
+        self.run_native_program(configured.replace(
+            "if (offline_queue_len != 0) return;",
+            "if (offline_queue_len >= getOfflineQueueCapacity()) return;", 1), "notice",
+            extra_flags=("-Wno-unused-parameter",), expect_failure="node.ui.messages==0")
+        self.assertIn("if (held_dm_count != 0) return;", program)
+        self.run_native_program(configured.replace(
+            "if (held_dm_count != 0) return;", "", 1), "notice",
+            extra_flags=("-Wno-unused-parameter",), expect_failure="pending(node,9) && node.offline_queue_len==0")
+        self.run_native_program(configured.replace(
+            "true, false)) pending &= ~bit;", "true, false)); pending &= ~bit;", 1), "notice",
+            extra_flags=("-Wno-unused-parameter", "-Wno-empty-body", "-Wno-misleading-indentation"),
+            expect_failure="node.ok && pending(node,9)")
+        loop = body(companion, "void MyMesh::loop()")
+        self.assertLess(loop.index("releaseHeldOneKeyDMs()"), loop.index("servicePendingChannelNotices()"))
 
     def run_native_program(self, source_text, expected, extra_flags=(), expect_failure=None):
         compiler = os.environ.get("CXX") or shutil.which("g++") or shutil.which("clang++")

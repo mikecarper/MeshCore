@@ -428,10 +428,13 @@ its local chat with this notice, using `#EMERGENCY` as the sender:
 This is a local onboarding message, not an RF transmission or an emergency
 alert. It does not change the node's name. It is added only after the channel
 is successfully saved, not on every connection, reboot, key edit, or alias
-rename. Deleting and adding the channel again adds a fresh notice. If the
-receive queue is full, the notice waits for free space rather than replacing
-an actual message. As with other pending received messages, it is RAM-backed
-until downloaded by the app; a reboot before download can discard it.
+rename. Deleting and adding the channel again adds a fresh notice. Queued
+real messages are delivered first: the notice waits for an empty receive
+inbox and for held one-key DMs to be released, retrying as the app downloads
+messages. If later traffic fills the inbox, the local notice is the first
+channel message eligible for eviction. As with other pending received
+messages, it is RAM-backed until downloaded by the app; a reboot before
+download can discard it.
 
 ### Meshtext channel chat
 
