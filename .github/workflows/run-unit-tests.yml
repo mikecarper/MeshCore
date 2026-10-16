@@ -27,6 +27,13 @@ jobs:
           python3 -m pip install unicorn==2.1.4
           python3 -B scripts/check_nrf52_companion_crypto.py .pio/build/RAK_4631_companion_radio_full/firmware.elf
 
+      - name: Qualify direct-OTA-only XIAO Full Companion
+        # This configuration has no Meshtext/Ethernet application callbacks.
+        run: >-
+          bash build.sh build-firmware Xiao_nrf52_companion_radio_full
+          --firmware-version v1.17.1.10-halo-keymind-cascade-dev
+          --radio-preset usa-cascade-fixed --profile cascade --require-ota
+
   nrf52-sensor-smoke:
     runs-on: ubuntu-latest
     steps:
@@ -247,6 +254,7 @@ jobs:
           python3 -B test/test_ota_direct_manager.py -v
           python3 -B test/test_mota_kiss_direct.py -v
           python3 -B test/test_ota_kiss_direct.py -v
+          python3 -B test/test_companion_foreign_hooks.py -v
 
       - name: Verify filter playground modes and built-in defaults
         run: node scripts/test_filter_tool.js

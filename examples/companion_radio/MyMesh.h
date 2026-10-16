@@ -405,9 +405,12 @@ protected:
   bool onEthernetFrame(const uint8_t* bytes, size_t length, uint8_t profile, uint32_t generation);
 #endif
 #if MESH_ENABLE_FOREIGN_RADIO
+#if MESH_ENABLE_MESHTEXT_CHAT || MESH_ENABLE_ETHERNET_TUNNEL
   bool onForeignRadioFrame(const uint8_t* bytes, size_t length, uint8_t profile,
                           uint32_t generation, float snr, float rssi) override;
   void onForeignRadioSendComplete(bool success) override;
+#endif
+  // Direct-only OTA inherits the Dispatcher's drop/no-op foreign callbacks.
   bool allowForeignRadioTransmit() const override {
     return _radio_available && _scheduled_reboot_at == 0 && (
 #if MESH_ENABLE_MESHTEXT_CHAT
