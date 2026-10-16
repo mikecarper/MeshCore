@@ -15,6 +15,31 @@ from pathlib import Path
 
 HEADER, ENTRY, PER_PAGE, TAG, MAX_KEYS = 83, 13, 6, 16, 36
 CURRENT_HEADER, CURRENT_PER_PAGE = 111, 4
+MAX_JSON_DEPTH = 64
+
+
+def _load_input_json(text):
+    # Do not rely on the interpreter's JSON scanner using recursive calls.
+    # Check before decoding so excessive containers never become a deep tree.
+    depth = 0
+    quoted = escaped = False
+    for char in text:
+        if quoted:
+            if escaped:
+                escaped = False
+            elif char == "\\":
+                escaped = True
+            elif char == '"':
+                quoted = False
+        elif char == '"':
+            quoted = True
+        elif char in "[{":
+            depth += 1
+            if depth > MAX_JSON_DEPTH:
+                raise ValueError("input JSON is nested too deeply")
+        elif char in "]}":
+            depth -= 1
+    return json.loads(text)
 
 
 def _layout(payload):
@@ -258,9 +283,10 @@ def main():
                 raise ValueError("administrator key must be 32 bytes")
         text = args.pages.read_text(encoding="utf-8")
         if args.mqtt:
-            messages = json.loads(text) if text.lstrip().startswith("[") else [json.loads(line) for line in text.splitlines() if line.strip()]
+            messages = (_load_input_json(text) if text.lstrip().startswith("[") else
+                        [_load_input_json(line) for line in text.splitlines() if line.strip()])
         else:
-            payloads = [bytes.fromhex(p) for p in json.loads(text)]
+            payloads = [bytes.fromhex(p) for p in _load_input_json(text)]
         password = getpass.getpass("Management password: ")
         if args.mqtt:
             reports = mqtt_reports(messages, password)

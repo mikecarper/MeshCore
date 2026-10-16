@@ -244,6 +244,47 @@ class ManagementTests(unittest.TestCase):
                 self.assertNotIn("Traceback", errors.getvalue())
                 password_prompt.assert_not_called()
 
+    def test_cli_rejects_deep_mqtt_jsonl_before_password_prompt(self):
+        path = Path(self.work.name) / "cli-deep-jsonl.json"
+        deep = '{"metadata":' * 10000 + "0" + "}" * 10000
+        for text in ("{}\n" + deep, deep + "\n{}"):
+            path.write_text(text, encoding="ascii")
+            output, errors = io.StringIO(), io.StringIO()
+            with mock.patch.object(report.getpass, "getpass") as password_prompt, \
+                    mock.patch.object(sys, "argv", ["report.py", str(path), "--mqtt"]), \
+                    contextlib.redirect_stdout(output), contextlib.redirect_stderr(errors):
+                with self.assertRaises(SystemExit) as failure:
+                    report.main()
+            self.assertEqual(failure.exception.code, 2)
+            self.assertEqual(output.getvalue(), "")
+            self.assertIn("nested too deeply", errors.getvalue())
+            self.assertNotIn("Traceback", errors.getvalue())
+            password_prompt.assert_not_called()
+
+    def test_input_json_depth_limit_is_explicit_and_checks_before_decoding(self):
+        limit = report.MAX_JSON_DEPTH
+        for opening, closing in (("[", "]"), ('{"metadata":', "}")):
+            with self.subTest(opening=opening):
+                value = report._load_input_json(opening * limit + "0" + closing * limit)
+                for _ in range(limit):
+                    value = value[0] if isinstance(value, list) else value["metadata"]
+                self.assertEqual(value, 0)
+                text = opening * (limit + 1) + "0" + closing * (limit + 1)
+                with mock.patch.object(report.json, "loads") as decoder:
+                    with self.assertRaisesRegex(ValueError, "nested too deeply"):
+                        report._load_input_json(text)
+                    decoder.assert_not_called()
+
+    def test_input_json_depth_ignores_string_brackets_and_escaped_quotes(self):
+        text = 'brackets [{]} and quote " and backslash \\ ' * 1000
+        document = {"metadata": text, "raw": "\\"}
+        self.assertEqual(report._load_input_json(json.dumps(document)), document)
+        # An escaped backslash before a closing quote must not hide the next
+        # actual container, including when the following record exceeds depth.
+        deep = "[" * report.MAX_JSON_DEPTH + "0" + "]" * report.MAX_JSON_DEPTH
+        with self.assertRaisesRegex(ValueError, "nested too deeply"):
+            report._load_input_json("[" + json.dumps("\\") + "," + deep + "]")
+
     def test_interoperable_full_report(self):
         decoded = report.decode_report(list(reversed(self.pages)), "management test password")
         self.assertEqual(decoded["sequence"], 42)
