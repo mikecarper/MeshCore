@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Guard the headless RAK Companion's size recipe and deployed storage contract.
+"""Guard headless STM32 Companion size recipes and deployed storage contracts.
 
 The stm32-companion-smoke job also links the actual image. These checks prevent
 fixing its size limit by silently shrinking storage or Companion capacities.
@@ -15,11 +15,15 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class STM32CompanionProfileTest(unittest.TestCase):
+    variant = "rak3x72"
+    target = "RAK_3x72_companion_radio_usb"
+    base = "rak3x72"
+
     def setUp(self):
         self.config = configparser.ConfigParser(
             interpolation=None, inline_comment_prefixes=(";",))
-        self.config.read(ROOT / "variants/rak3x72/platformio.ini")
-        self.companion = self.config["env:RAK_3x72_companion_radio_usb"]
+        self.config.read(ROOT / "variants" / self.variant / "platformio.ini")
+        self.companion = self.config["env:" + self.target]
 
     def test_unused_timer_wrappers_are_removed_only_from_headless_companion(self):
         for flag in ("RADIOLIB_TONE_UNSUPPORTED", "HAL_TIM_MODULE_ONLY"):
@@ -30,10 +34,10 @@ class STM32CompanionProfileTest(unittest.TestCase):
 
     def test_flash_and_filesystem_boundaries_do_not_move(self):
         self.assertNotIn("board_upload.maximum_size", self.companion)
-        self.assertEqual(self.config["rak3x72"].getint("board_upload.maximum_size"),
+        self.assertEqual(self.config[self.base].getint("board_upload.maximum_size"),
                          229376)
         self.assertNotIn("LFS_FLASH_TOTAL_SIZE", self.companion["build_flags"])
-        self.assertNotIn("LFS_FLASH_TOTAL_SIZE", self.config["rak3x72"]["build_flags"])
+        self.assertNotIn("LFS_FLASH_TOTAL_SIZE", self.config[self.base]["build_flags"])
         header = (ROOT / "src/helpers/stm32/InternalFileSystem.h").read_text()
         self.assertRegex(header, r"#define\s+LFS_FLASH_TOTAL_SIZE\s+\(16\s*\*\s*2048\)")
         self.assertEqual(229376 + 16 * 2048, 256 * 1024)
@@ -43,13 +47,25 @@ class STM32CompanionProfileTest(unittest.TestCase):
         for definition in ("MAX_CONTACTS=100", "MAX_GROUP_CHANNELS=8",
                            "ENABLE_USB_INTERFACE"):
             self.assertRegex(flags, r"-D\s+" + re.escape(definition) + r"\b")
-        for flags in (flags, self.config["rak3x72"]["build_flags"]):
+        for flags in (flags, self.config[self.base]["build_flags"]):
             self.assertNotRegex(flags, r"COMPANION_FEATURE_\w+=0")
             self.assertNotRegex(flags, r"MESH_ENABLE_\w+=0")
         self.assertIn("+<../examples/companion_radio/*.cpp>",
                       self.companion["build_src_filter"])
         self.assertIn("-Oz", self.companion["build_flags"])
-        self.assertEqual(self.companion["build_unflags"], "-Os")
+        self.assertEqual(self.companion["build_unflags"].split(), ["-Os"])
+
+
+class WioSTM32CompanionProfileTest(STM32CompanionProfileTest):
+    variant = "wio-e5-mini"
+    target = "wio-e5-mini_companion_radio_usb"
+    base = "lora_e5_mini"
+
+    def test_headless_button_controls_are_retained(self):
+        self.assertRegex(self.companion["build_flags"],
+                         r"-D\s+WIO_E5_MINI_HEADLESS_COMPANION_UI=1\b")
+        self.assertRegex(self.config[self.base]["build_flags"],
+                         r"-D\s+PIN_USER_BTN=USER_BTN\b")
 
 
 if __name__ == "__main__":
