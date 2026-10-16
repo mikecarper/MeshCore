@@ -111,16 +111,12 @@ void UITask::begin(DisplayDriver* display, SensorManager* sensors, CompanionNode
     _display->servicePower(_board->isExternalPowered() || _board->isUsbHostConnected(), hasConnection());
   }
 
-  // strip off dash and commit hash by changing dash to null terminator
+  // strip off dash and commit hash without allocating a mutable version copy
   // e.g: v1.2.3-abcdef -> v1.2.3
-  char *version = strdup(FIRMWARE_VERSION);
-  char *dash = strchr(version, '-');
-  if (dash) {
-    *dash = 0;
-  }
-
   // v1.2.3 (1 Jan 2025)
-  sprintf(_version_info, "%s (%s)", version, FIRMWARE_BUILD_DATE);
+  const size_t version_len = strcspn(FIRMWARE_VERSION, "-");
+  snprintf(_version_info, sizeof(_version_info), "%.*s (%s)",
+           static_cast<int>(version_len), FIRMWARE_VERSION, FIRMWARE_BUILD_DATE);
 
 #ifdef PIN_BUZZER
   buzzer.begin();
