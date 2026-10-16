@@ -39,7 +39,11 @@ class IotthinksMergeTests(unittest.TestCase):
         rak = self.flags("env:RAK_3401_repeater_bridge_rs232_serial1")
         tracker = self.flags("env:heltec_tracker_v2_repeater_bridge_rs232")
         self.assertIn("-D WITH_RS232_BRIDGE=Serial1", rak)
+        self.assertIn("-D WITH_RS232_BRIDGE_UART=1", rak)
+        self.assertIn("-UENV_INCLUDE_GPS", rak)
+        self.assertIn("-D ENV_INCLUDE_GPS=0", rak)
         self.assertIn("-D WITH_RS232_BRIDGE=Serial2", tracker)
+        self.assertIn("-D WITH_RS232_BRIDGE_UART=2", tracker)
         self.assertIn("-D WITH_RS232_BRIDGE_RX=44", tracker)
         self.assertIn("-D WITH_RS232_BRIDGE_TX=43", tracker)
 
