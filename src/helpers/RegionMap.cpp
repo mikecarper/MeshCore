@@ -288,7 +288,10 @@ int RegionMap::getTransportKeysFor(const RegionEntry& src, TransportKey dest[], 
 }
 
 RegionEntry* RegionMap::findMatch(const mesh::Packet* packet, uint8_t mask) {
-  if (packet->transport_codes[0] == 0) return &wildcard;
+  if (packet->transport_codes[0] == 0) {
+    // Zero means unscoped, not an exemption from the wildcard's deny policy.
+    return (wildcard.flags & mask) == 0 ? &wildcard : NULL;
+  }
   for (int i = 0; i < num_regions; i++) {
     auto region = &regions[i];
     if ((region->flags & mask) == 0) {   // does region allow this? (per 'mask' param)

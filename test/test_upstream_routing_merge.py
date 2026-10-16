@@ -45,6 +45,15 @@ int main() {
   assert(regions.lookups == 0);
   packet.transport_codes[1] = 0x9999;
   assert(regions.findMatch(input, 1) == &regions.wildcard);
+  regions.wildcard.flags = 1;
+  assert(regions.findMatch(input, 1) == nullptr);
+  assert(regions.findMatch(input, 2) == &regions.wildcard);
+  assert(regions.findMatch(input, 0) == &regions.wildcard);
+  assert(regions.lookups == 0);  // A denied wildcard must not fall into a region.
+  regions.wildcard.flags = 3;
+  assert(regions.findMatch(input, 1) == nullptr);
+  assert(regions.findMatch(input, 2) == nullptr);
+  regions.wildcard.flags = 0;
   packet.transport_codes[0] = 0x1234;
   assert(regions.findMatch(input, 1) == &regions.regions[0]);
   regions.regions[0].flags = 1;
@@ -62,6 +71,56 @@ int main() {
                             str(cpp), "-o", str(exe)], check=True, timeout=30,
                            capture_output=True)
             subprocess.run([str(exe)], check=True, timeout=10, capture_output=True)
+
+    def test_zero_transport_code_obeys_ordinary_unscoped_hop_limits(self):
+        compiler = shutil.which("g++") or shutil.which("c++")
+        if not compiler:
+            self.skipTest("native C++ compiler required")
+        # Include the production packet representation and routing policy;
+        # only the constructor's platform-independent reset is supplied here.
+        packet_constructor = extract_braced((ROOT / "src/Packet.cpp").read_text(),
+                                           "Packet::Packet()")
+        source = r'''
+#include <cassert>
+#include <initializer_list>
+#include <helpers/RoutingPolicy.h>
+namespace mesh {
+@CONSTRUCTOR@
+}
+int main() {
+  for (uint8_t hash_size : {1, 2, 3}) {
+    for (uint8_t payload : {PAYLOAD_TYPE_RESPONSE, PAYLOAD_TYPE_ADVERT}) {
+      mesh::Packet packet;
+      packet.header = ROUTE_TYPE_TRANSPORT_FLOOD | (payload << PH_TYPE_SHIFT);
+      packet.transport_codes[0] = 0;
+      packet.transport_codes[1] = 0x5678;
+      packet.setPathHashSizeAndCount(hash_size, 0);
+      assert(mesh::isFloodHopLimitExceeded(&packet, 64, 0, 8));
+      packet.setPathHashCount(2);
+      assert(!mesh::isFloodHopLimitExceeded(&packet, 64, 3, 8));
+      packet.setPathHashCount(3);
+      assert(mesh::isFloodHopLimitExceeded(&packet, 64, 3, 8));
+      packet.transport_codes[0] = 0x1234;
+      assert(!mesh::isFloodHopLimitExceeded(&packet, 64, 0, 8));
+      assert(mesh::isFloodHopLimitExceeded(&packet, 3, 64, 8));
+      if (payload == PAYLOAD_TYPE_ADVERT)
+        assert(mesh::isFloodHopLimitExceeded(&packet, 64, 64, 3));
+    }
+  }
+}
+'''.replace("@CONSTRUCTOR@", packet_constructor)
+        with tempfile.TemporaryDirectory(prefix="mesh-upstream-hop-limits-") as directory:
+            cpp, exe = Path(directory) / "routing.cpp", Path(directory) / "routing"
+            cpp.write_text(source)
+            built = subprocess.run([
+                compiler, "-std=c++17", "-Wall", "-Wextra", "-Werror",
+                "-Wno-unused-parameter",
+                "-fsanitize=address,undefined", "-fno-pie", "-no-pie",
+                "-I", str(ROOT / "src"), str(cpp), "-o", str(exe),
+            ], text=True, capture_output=True, timeout=30)
+            self.assertEqual(built.returncode, 0, built.stderr)
+            ran = subprocess.run([str(exe)], text=True, capture_output=True, timeout=10)
+            self.assertEqual(ran.returncode, 0, ran.stderr)
 
     def test_room_repeat_deprecation_keeps_full_rules_and_clock_sync(self):
         source = (ROOT / "examples/simple_room_server/MyMesh.cpp").read_text()

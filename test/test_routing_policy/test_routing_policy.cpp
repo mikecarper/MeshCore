@@ -6,6 +6,10 @@ using namespace mesh;
 static Packet makeFlood(uint8_t route_type, uint8_t payload_type, uint8_t hops) {
     Packet p;
     p.header = route_type | (payload_type << PH_TYPE_SHIFT);
+    // A genuine scoped fixture needs a nonzero code; zero is unscoped even
+    // when it is carried in the transport-flood wire format.
+    p.transport_codes[0] = route_type == ROUTE_TYPE_TRANSPORT_FLOOD ? 0x1234 : 0;
+    p.transport_codes[1] = 0;
     p.setPathHashSizeAndCount(1, hops);
     p.payload_len = 1;
     return p;
@@ -30,6 +34,27 @@ TEST(FloodHopLimit, UnscopedFloodSurvivesUpToMaxUnscopedHops) {
 
     auto too_far = makeFlood(ROUTE_TYPE_FLOOD, PAYLOAD_TYPE_RESPONSE, 3);
     EXPECT_TRUE(isFloodHopLimitExceeded(&too_far, 64, 3, 8));
+}
+
+TEST(FloodHopLimit, ZeroTransportCodeUsesUnscopedLimit) {
+    auto pkt = makeFlood(ROUTE_TYPE_TRANSPORT_FLOOD, PAYLOAD_TYPE_RESPONSE, 0);
+    pkt.transport_codes[0] = 0;
+    pkt.transport_codes[1] = 0x5678;  // The second code cannot make it scoped.
+    EXPECT_TRUE(isFloodHopLimitExceeded(&pkt, 64, 0, 8));
+    pkt.setPathHashCount(2);
+    EXPECT_FALSE(isFloodHopLimitExceeded(&pkt, 64, 3, 8));
+    pkt.setPathHashCount(3);
+    EXPECT_TRUE(isFloodHopLimitExceeded(&pkt, 64, 3, 8));
+}
+
+TEST(FloodHopLimit, ZeroTransportAdvertUsesEveryApplicableLimit) {
+    auto pkt = makeFlood(ROUTE_TYPE_TRANSPORT_FLOOD, PAYLOAD_TYPE_ADVERT, 0);
+    pkt.transport_codes[0] = 0;
+    EXPECT_TRUE(isFloodHopLimitExceeded(&pkt, 64, 0, 8));
+    pkt.setPathHashCount(2);
+    EXPECT_FALSE(isFloodHopLimitExceeded(&pkt, 64, 3, 8));
+    EXPECT_TRUE(isFloodHopLimitExceeded(&pkt, 2, 3, 8));
+    EXPECT_TRUE(isFloodHopLimitExceeded(&pkt, 64, 3, 2));
 }
 
 TEST(FloodHopLimit, ScopedFloodStillHonoursFloodMaxAndAdvertMax) {
