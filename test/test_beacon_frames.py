@@ -42,6 +42,7 @@ public:
   bool valid = true, meshtext = true;
   RadioProfiles profiles;
   bool validateProfile(const RadioProfileParams& p) const { return valid && RadioProfiles::valid(p); }
+  bool validateBeaconPower(float, int8_t power) const { return power >= -9 && power <= 22; }
   bool supportsMeshtext() const { return meshtext; }
 };
 class TestClock {

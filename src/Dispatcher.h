@@ -94,6 +94,9 @@ public:
   virtual bool supportsMeshtext() const { return false; }
   virtual bool supportsEthernetTunnel() const { return false; }
 #if MESH_ENABLE_TX_BEACONS
+  // Check the requested antenna power at the prospective beacon frequency.
+  // Validation must not retune the radio or alter its current power setting.
+  virtual bool validateBeaconPower(float, int8_t) const { return false; }
   virtual RadioParamApplyResult prepareBeaconTransmit(const RadioProfileParams&, int8_t) {
     return RadioParamApplyResult::FAILED;
   }

@@ -3,7 +3,6 @@
 #if MESH_ENABLE_TX_BEACONS
 
 #include <helpers/BeaconFrames.h>
-#include <helpers/radiolib/RadioPowerLimits.h>
 #include <string.h>
 
 namespace mesh {
@@ -12,7 +11,7 @@ bool Mesh::validateTextBeacon(const BeaconSlot& slot) const {
   if (!beacon::validText(slot.text) || slot.hops > 7
       || !RadioProfiles::valid(slot.radio)
       || !RadioProfiles::safePreamble(slot.radio, slot.radio.preamble ? slot.radio.preamble : 32)
-      || slot.power < -9 || !isLoRaTxPowerValid(slot.power, slot.radio.freq)
+      || !_radio->validateBeaconPower(slot.radio.freq, slot.power)
       || !_radio->validateProfile(slot.radio)) return false;
   if (slot.radio.protocol == RadioProfileProtocol::MeshCore) return true;
 #if MESH_ENABLE_MESHTEXT_WIRE

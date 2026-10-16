@@ -272,6 +272,11 @@ protected:
   virtual int16_t applyCachedTxPower(int8_t dbm) {
     return _radio->setOutputPower(dbm);
   }
+#if MESH_ENABLE_TX_BEACONS
+  // External amplifiers override this in antenna dBm. The public capability
+  // still checks the board's explicit limits before consulting this hook.
+  virtual bool checkBeaconOutputPower(float frequency_mhz, int8_t dbm) const;
+#endif
   virtual bool applyRxBoostedGainMode(bool) { return false; }
   virtual int16_t enterCarrierWave() { return _radio->transmitDirect(); }
   virtual bool validateMorseFrequency(float frequency_mhz) const {
@@ -409,6 +414,7 @@ public:
   mesh::RadioParamApplyResult prepareTransmitProfile(uint8_t profile) override;
   mesh::RadioParamApplyResult prepareTransmitProfile(uint8_t profile, bool reply_rx_override) override;
 #if MESH_ENABLE_TX_BEACONS
+  bool validateBeaconPower(float frequency_mhz, int8_t power) const override;
   mesh::RadioParamApplyResult prepareBeaconTransmit(const mesh::RadioProfileParams& params,
                                                    int8_t power) override;
   mesh::RadioParamApplyResult restoreBeaconReceive() override;

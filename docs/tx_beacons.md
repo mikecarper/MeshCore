@@ -40,10 +40,22 @@ Meshtext takes an explicit `us`, `eu868`, `eu433`, or `anz` region, a recognized
 preset, and dBm. Its frequency is calculated using the stock preset channel;
 its preamble is fixed at 16 symbols. Invalid modem, region, power, or text
 settings are rejected. Use settings permitted for your hardware and location.
+Power is checked against the driver's range at the beacon frequency and any
+explicit board limits. External-PA drivers interpret it in antenna dBm using
+their calibration range; the normal receive profile's power is unchanged.
 
 Each message body is limited to 80 bytes and is prefixed with the node name.
 Settings are saved separately from ordinary preferences and channels.
 Configuration changes do not immediately transmit a beacon.
+
+A structurally valid saved slot that the current board or firmware cannot
+transmit remains available through `get beacon`. Its scheduled opportunity is
+skipped, while supported slots continue normally. Use `set beacon` to repair
+that slot or `delete beacon` to remove it; unsupported Meshtext slots do not
+consume packet IDs. This also permits repairing an out-of-range power saved
+by older firmware. Corrupt images retain the existing safe backup recovery;
+without a valid backup they remain held. Unreadable or unknown-version files
+remain held without transmitting or overwriting them.
 
 ## Radio ownership and limits
 

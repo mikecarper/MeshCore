@@ -57,6 +57,9 @@ class BeaconManagerTest(unittest.TestCase):
     def test_every_config_short_write_and_recovery(self):
         self.run_scenario("storage")
 
+    def test_structural_config_corruption_remains_held(self):
+        self.run_scenario("structural_storage")
+
     def test_durable_meshtext_ids_fail_closed(self):
         self.run_scenario("ids")
 

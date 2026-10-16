@@ -422,6 +422,7 @@ jobs:
                           '--storage-dir', '.pio/libdeps/radio-status-test'], check=True)
           PY
           python3 -B test/test_sx126x_receive_mode.py
+          python3 -B test/test_beacon_power.py -v
 
       - name: Verify temporary-radio timing and exact reply delivery
         run: |
