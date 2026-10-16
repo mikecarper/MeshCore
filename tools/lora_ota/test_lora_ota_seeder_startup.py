@@ -209,6 +209,39 @@ class SeederStartupTests(unittest.TestCase):
         seeder._wait_until_attached()
         self.assertEqual(self.clock.now, 10)
 
+    def test_flush_failure_does_not_hide_a_real_count(self):
+        seeder = ota.SeederProcess(self.args, Path("/served"), Path("/work"))
+        seeder.process = mock.Mock()
+        seeder.process.poll.return_value = None
+        seeder.log_file = mock.Mock(closed=False)
+        seeder.log_file.flush.side_effect = OSError("log flush failed")
+        with mock.patch.object(Path, "read_text", return_value="[dev] COUNT -> 1\n"):
+            seeder._wait_until_attached()
+        self.assertEqual(self.clock.now, 0)
+
+    def test_flush_and_read_failures_cannot_prove_readiness_or_skip_deadline(self):
+        seeder = ota.SeederProcess(self.args, Path("/served"), Path("/work"))
+        seeder.process = mock.Mock()
+        seeder.process.poll.return_value = None
+        seeder.log_file = mock.Mock(closed=False)
+        seeder.log_file.flush.side_effect = OSError("log flush failed")
+        with mock.patch.object(Path, "read_text", side_effect=PermissionError("unreadable log")):
+            with self.assertRaisesRegex(ota.OtaError, "COUNT acknowledgement within 5s") as failure:
+                seeder._wait_until_attached()
+        self.assertIn("could not read seeder log", str(failure.exception))
+        self.assertEqual(self.clock.now, 5)
+
+    def test_flush_failure_preserves_process_exit_diagnostics(self):
+        seeder = ota.SeederProcess(self.args, Path("/served"), Path("/work"))
+        seeder.process = mock.Mock()
+        seeder.process.poll.return_value = 17
+        seeder.log_file = mock.Mock(closed=False)
+        seeder.log_file.flush.side_effect = OSError("log flush failed")
+        with mock.patch.object(Path, "read_text", return_value="child diagnostic\n"):
+            with self.assertRaisesRegex(ota.OtaError, "exited with status 17") as failure:
+                seeder.ensure_running("during startup")
+        self.assertIn("child diagnostic", str(failure.exception))
+
 
 class SeederOptionTests(unittest.TestCase):
     def arguments(self, chain=False, *options):

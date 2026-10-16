@@ -3868,11 +3868,19 @@ class SeederProcess:
         self._wait_until_attached()
         print("[seeder] running (device COUNT confirmed)")
 
-    def _log_tail(self) -> str:
+    def _read_log(self) -> str:
         if self.log_file is not None and not self.log_file.closed:
-            self.log_file.flush()
+            try:
+                self.log_file.flush()
+            except OSError:
+                # The subprocess writes directly to this descriptor. A parent
+                # flush failure must not hide bytes already readable on disk.
+                pass
+        return self.log_path.read_text(encoding="utf-8", errors="replace")
+
+    def _log_tail(self) -> str:
         try:
-            detail = self.log_path.read_text(encoding="utf-8", errors="replace")
+            detail = self._read_log()
         except OSError as exc:
             return f"could not read seeder log: {exc}"
         return detail[-4096:].strip() or "no seeder log output"
@@ -3973,10 +3981,8 @@ class SeederProcess:
         ``ota status``, reading it consumes no LoRa airtime and cannot collide
         with the transfer it is observing.
         """
-        if self.log_file is not None and not self.log_file.closed:
-            self.log_file.flush()
         try:
-            detail = self.log_path.read_text(encoding="utf-8", errors="replace")
+            detail = self._read_log()
         except OSError:
             return 0, math.ceil(package.payload_size / package.block_size), 0
         offsets = [

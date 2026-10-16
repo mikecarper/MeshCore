@@ -2553,8 +2553,13 @@ class DownloadSessionTests(unittest.TestCase):
             seeder.log_file = None
             seeder.process = mock.Mock()
             seeder.process.poll.return_value = None
-            for unreadable in (False, True):
-                with self.subTest(unreadable=unreadable), contextlib.ExitStack() as stack:
+            for unreadable, flush_failed in ((False, False), (True, False),
+                                             (False, True), (True, True)):
+                with self.subTest(unreadable=unreadable, flush_failed=flush_failed), \
+                        contextlib.ExitStack() as stack:
+                    seeder.log_file = mock.Mock(closed=False) if flush_failed else None
+                    if flush_failed:
+                        seeder.log_file.flush.side_effect = OSError("log flush failed")
                     if unreadable:
                         stack.enter_context(mock.patch.object(
                             Path, "read_text", side_effect=PermissionError("unreadable log")))
@@ -5364,6 +5369,30 @@ class ReliabilityTests(unittest.TestCase):
         seeder.log_file = None
         with mock.patch.object(Path, "read_text", side_effect=PermissionError("unreadable log")):
             self.assertEqual(seeder.payload_read_progress(package), (0, 3, 0))
+
+    def test_seeder_progress_flush_failure_preserves_readable_progress(self) -> None:
+        package = ota.parse_mota(mota_blob(firmware(b"B" * 2500, VERSION_NEW)))
+        seeder = object.__new__(ota.SeederProcess)
+        seeder.log_path = Path("serve.log")
+        seeder.log_file = mock.Mock(closed=False)
+        seeder.log_file.flush.side_effect = OSError("log flush failed")
+        detail = (f"[dev] READ 0 @{package.payload_offset} OK\n"
+                  f"[dev] READ 0 @{package.payload_offset + 2 * package.block_size} OK\n"
+                  f"[dev] READ 0 @{package.payload_offset} OK\n")
+        with mock.patch.object(Path, "read_text", return_value=detail):
+            self.assertEqual(seeder.payload_read_progress(package), (2, 3, 3))
+
+    def test_seeder_progress_flush_and_read_failures_keep_zero_activity(self) -> None:
+        package = ota.parse_mota(mota_blob(firmware(b"B" * 2500, VERSION_NEW)))
+        seeder = object.__new__(ota.SeederProcess)
+        seeder.log_path = Path("serve.log")
+        seeder.log_file = mock.Mock(closed=False)
+        seeder.log_file.flush.side_effect = OSError("log flush failed")
+        for error in (FileNotFoundError("missing log"), PermissionError("unreadable log")):
+            with self.subTest(error=error), mock.patch.object(
+                    Path, "read_text", side_effect=error) as read:
+                self.assertEqual(seeder.payload_read_progress(package), (0, 3, 0))
+                read.assert_called_once()
 
     def test_marked_output_excludes_queued_messages(self) -> None:
         controller = object.__new__(ota.Controller)
