@@ -7052,7 +7052,7 @@ void MyMesh::handleCmdFrame(size_t len) {
       if (pkt) {
         // Compute before handing ownership to sendDirect(), which releases the
         // packet itself if validation or queueing fails.
-        uint32_t t = _radio->getEstAirtimeFor(9 + path_len + 2);
+        uint32_t t = getTransmitAirtime(pkt, 2 + pkt->payload_len + path_len);
         uint32_t est_timeout = calcDirectTimeoutMillisFor(t, path_len >> path_sz);
         if (sendDirect(pkt, &cmd_frame[10], path_len)) {
           _delayed_replies.armBinaryTrace(est_timeout, _ms->getMillis());
@@ -9585,8 +9585,15 @@ void MyMesh::sendTerminalTraceRoute(const uint8_t* route, uint8_t hash_size,
     return;
   }
 
-  const uint32_t airtime = _radio->getEstAirtimeFor(9 + route_byte_len + 2);
+  mesh::Packet* packet = createTrace(0, 0, flags);
+  if (packet == NULL) {
+    terminalOutput().print("  ERROR: unable to allocate trace packet\r\n");
+    return;
+  }
+  const uint32_t airtime =
+      getTransmitAirtime(packet, 2 + packet->payload_len + route_byte_len);
   if (airtime == 0) {
+    releasePacket(packet);
     terminalOutput().print("  ERROR: unable to estimate trace timeout\r\n");
     return;
   }
@@ -9597,6 +9604,7 @@ void MyMesh::sendTerminalTraceRoute(const uint8_t* route, uint8_t hash_size,
                                                  trace_timeout)
       || trace_timeout > 0x7FFFFFFFU
           - mesh::CompanionDelayedReplies::DELIVERY_GRACE_MS) {
+    releasePacket(packet);
     terminalOutput().print("  ERROR: trace timeout is out of range\r\n");
     return;
   }
@@ -9605,18 +9613,14 @@ void MyMesh::sendTerminalTraceRoute(const uint8_t* route, uint8_t hash_size,
   uint32_t auth = 0;
   getRNG()->random((uint8_t*)&tag, sizeof(tag));
   getRNG()->random((uint8_t*)&auth, sizeof(auth));
+  memcpy(packet->payload, &tag, sizeof(tag));
+  memcpy(&packet->payload[4], &auth, sizeof(auth));
   const uint8_t history = _delayed_replies.reserveTrace(tag, auth, _ms->getMillis());
   if (history == mesh::CompanionDelayedReplies::NO_HISTORY) {
+    releasePacket(packet);
     terminalOutput().print("  ERROR: trace tag is quarantined or reply history is full\r\n");
     return;
   }
-  mesh::Packet* packet = createTrace(tag, auth, flags);
-  if (packet == NULL) {
-    _delayed_replies.abandonTrace(history);
-    terminalOutput().print("  ERROR: unable to allocate trace packet\r\n");
-    return;
-  }
-
   if (!sendDirect(packet, route, static_cast<uint8_t>(route_byte_len))) {
     _delayed_replies.abandonTrace(history);
     terminalOutput().print("  ERROR: unable to send trace\r\n");

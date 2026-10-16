@@ -610,6 +610,9 @@ protected:
   // Planned fan-out before transport filters; also bounds OTA queue admission.
   uint8_t getTransmitProfileMask(const Packet* packet) const;
   uint32_t getTransmitAirtime(const Packet* packet) const;
+  // TRACE callers supply final DIRECT length; createTrace()'s unset route
+  // bits would otherwise add four transport-code bytes before sendDirect().
+  uint32_t getTransmitAirtime(const Packet* packet, int wire_length) const;
 
 public:
   void begin();

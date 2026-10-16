@@ -1449,11 +1449,15 @@ uint8_t Dispatcher::getTransmitProfileMask(const Packet* packet) const {
 }
 
 uint32_t Dispatcher::getTransmitAirtime(const Packet* packet) const {
+  return getTransmitAirtime(packet, packet->getRawLength());
+}
+
+uint32_t Dispatcher::getTransmitAirtime(const Packet* packet, int wire_length) const {
   const uint8_t mask = getTransmitProfileMask(packet);
   uint32_t total = 0;
   for (uint8_t profile = 0; profile < 2; ++profile) {
     if (mask & (1U << profile))
-      total += _radio->getProfileAirtime(profile, packet->getRawLength(), packet->tx_cr);
+      total += _radio->getProfileAirtime(profile, wire_length, packet->tx_cr);
   }
   return total;
 }

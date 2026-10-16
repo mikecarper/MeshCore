@@ -80,10 +80,11 @@ struct BaseChatMesh {
   Identity self_id;
   mesh::Packet packet;
   Bytes transmitted_payload;
-  unsigned allocations = 0, transmissions = 0, connection_starts = 0;
+  unsigned allocations = 0, releases = 0, transmissions = 0, connection_starts = 0;
   uint32_t txt_send_timeout = 0;
   uint32_t direct_timeout = 5000;
-  bool radio_accepts = true;
+  uint32_t trace_airtime = 100;
+  bool radio_accepts = true, allocation_accepts = true;
   RtcBoundary* getRTCClock() { return &rtc; }
   RngBoundary* getRNG() { return &rng; }
   virtual bool allowRequestTag(uint32_t) { return true; }
@@ -94,17 +95,32 @@ struct BaseChatMesh {
   bool processAck(const uint8_t*, ContactInfo*&) { return false; }
   bool onContactPathRecv(ContactInfo&, uint8_t*, uint8_t, uint8_t*, uint8_t,
                          uint8_t, uint8_t*, uint8_t);
-  mesh::Packet* allocate() { ++allocations; return &packet; }
+  mesh::Packet* allocate() { ++allocations; return allocation_accepts ? &packet : nullptr; }
+  void releasePacket(mesh::Packet*) { ++releases; }
   mesh::Packet* createDatagram(uint8_t, const Identity&, const uint8_t*, const uint8_t* data, size_t len) {
     transmitted_payload.assign(data, data + len);
     return allocate();
   }
   mesh::Packet* createAnonDatagram(uint8_t, const Identity&, const Identity&,
                                   const uint8_t*, const uint8_t*, size_t) { return allocate(); }
-  mesh::Packet* createTrace(uint32_t, uint32_t, uint8_t) { return allocate(); }
-  bool sendDirect(mesh::Packet*, const uint8_t*, uint8_t) { ++transmissions; return radio_accepts; }
+  mesh::Packet* createTrace(uint32_t tag, uint32_t auth, uint8_t flags) {
+    auto* result = allocate();
+    if (result) {
+      memcpy(result->payload, &tag, sizeof(tag));
+      memcpy(result->payload + 4, &auth, sizeof(auth));
+      result->payload[8] = flags;
+      result->payload_len = 9;
+    }
+    return result;
+  }
+  bool sendDirect(mesh::Packet* packet, const uint8_t*, uint8_t) {
+    ++transmissions;
+    if (!radio_accepts) releasePacket(packet);
+    return radio_accepts;
+  }
   bool sendFloodScoped(const ContactInfo&, mesh::Packet*) { ++transmissions; return radio_accepts; }
   uint32_t getTransmitAirtime(mesh::Packet*) const { return 100; }
+  uint32_t getTransmitAirtime(mesh::Packet*, int) const { return trace_airtime; }
   uint32_t calcFloodTimeoutMillisFor(uint32_t) const { return 5000; }
   uint32_t calcDirectTimeoutMillisFor(uint32_t, uint8_t) const { return direct_timeout; }
   void startConnection(const ContactInfo&, uint16_t) { ++connection_starts; }
@@ -828,6 +844,26 @@ int main() {
   // The timeout plus retirement grace must stay in the signed half-range.
   // Test the last reachable tripled base estimate and the next estimate,
   // including a millis wrap while a maximum-duration trace is pending.
+  for(unsigned invalid=0;invalid<7;++invalid) {
+    Fixture f; uint8_t route[176]={};
+    const uint8_t hashes[]={1,1,1,0,3,8,4}, hops[]={1,0,64,1,1,1,44};
+    f.mesh.sendTerminalTraceRoute(invalid==0?nullptr:route,hashes[invalid],hops[invalid],"synthetic");
+    assert(!f.mesh._terminal_trace_pending && f.mesh.allocations==0 && f.mesh.releases==0);
+    assert(f.mesh.rng.calls==0 && f.mesh.transmissions==0);
+    assert(f.mesh._terminal_trace_history==Tracker::NO_HISTORY);
+    const std::string text(f.mesh.terminal_stream.output.begin(),f.mesh.terminal_stream.output.end());
+    const char* expected=invalid<3?"trace path must contain 1-63 prefixes"
+        :invalid<6?"trace hash size must be 1, 2, or 4 bytes":"trace path is too long";
+    assert(text.find(expected)!=std::string::npos);++checks;
+  }
+  {
+    Fixture f;uint8_t route[]={0x12};f.mesh.sendTerminalTraceRoute(route,1,1,"synthetic");
+    assert(f.mesh._terminal_trace_pending);
+    f.mesh.sendTerminalTraceRoute(nullptr,0,0,"ignored");
+    assert(f.mesh.allocations==1 && f.mesh.releases==0 && f.mesh.rng.calls==2 && f.mesh.transmissions==1);
+    const std::string text(f.mesh.terminal_stream.output.begin(),f.mesh.terminal_stream.output.end());
+    assert(text.find("trace to synthetic is still pending")!=std::string::npos);++checks;
+  }
   for(uint32_t start : {100U,0xfffffff0U}) {
     Fixture f;g_mock_millis=start;uint8_t route[]={0x12};
     const uint32_t ceiling=0x7fffffffU-Tracker::DELIVERY_GRACE_MS;
@@ -847,13 +883,57 @@ int main() {
     Fixture f;uint8_t route[]={0x12};
     f.mesh.direct_timeout=(0x7fffffffU-Tracker::DELIVERY_GRACE_MS)/3U+1U;
     f.mesh.sendTerminalTraceRoute(route,1,1,"synthetic");
-    assert(!f.mesh._terminal_trace_pending && f.mesh.transmissions==0 && f.mesh.allocations==0);
+    assert(!f.mesh._terminal_trace_pending && f.mesh.transmissions==0);
+    assert(f.mesh.allocations==1 && f.mesh.releases==1);
     assert(f.mesh.rng.calls==0 && f.mesh._terminal_trace_history==Tracker::NO_HISTORY);
     const std::string text(f.mesh.terminal_stream.output.begin(),f.mesh.terminal_stream.output.end());
     assert(text.find("trace timeout is out of range")!=std::string::npos);
     for(unsigned i=0;i<Tracker::HISTORY_SIZE;++i)
       assert(f.mesh._delayed_replies.reserveTrace(i+1,23,millis())!=Tracker::NO_HISTORY);
     assert(f.mesh._delayed_replies.reserveTrace(99,23,millis())==Tracker::NO_HISTORY);++checks;
+  }
+  {
+    Fixture f; uint8_t route[]={0x12}; f.mesh.trace_airtime=0;
+    f.mesh.sendTerminalTraceRoute(route,1,1,"synthetic");
+    assert(!f.mesh._terminal_trace_pending && f.mesh.transmissions==0);
+    assert(f.mesh.allocations==1 && f.mesh.releases==1 && f.mesh.rng.calls==0);
+    assert(f.mesh._terminal_trace_history==Tracker::NO_HISTORY);
+    const std::string text(f.mesh.terminal_stream.output.begin(),f.mesh.terminal_stream.output.end());
+    assert(text.find("unable to estimate trace timeout")!=std::string::npos);
+    for(unsigned i=0;i<Tracker::HISTORY_SIZE;++i)
+      assert(f.mesh._delayed_replies.reserveTrace(i+1,23,millis())!=Tracker::NO_HISTORY);
+    ++checks;
+  }
+  {
+    Fixture f; uint8_t route[]={0x12}; f.mesh.allocation_accepts=false;
+    f.mesh.sendTerminalTraceRoute(route,1,1,"synthetic");
+    assert(!f.mesh._terminal_trace_pending && f.mesh.transmissions==0);
+    assert(f.mesh.allocations==1 && f.mesh.releases==0 && f.mesh.rng.calls==0);
+    const std::string text(f.mesh.terminal_stream.output.begin(),f.mesh.terminal_stream.output.end());
+    assert(text.find("unable to allocate trace packet")!=std::string::npos);++checks;
+  }
+  {
+    Fixture f; uint8_t route[]={0x12};
+    for(unsigned i=0;i<Tracker::HISTORY_SIZE;++i)
+      assert(f.mesh._delayed_replies.reserveTrace(i+1,23,millis())!=Tracker::NO_HISTORY);
+    f.mesh.sendTerminalTraceRoute(route,1,1,"synthetic");
+    assert(!f.mesh._terminal_trace_pending && f.mesh.transmissions==0);
+    assert(f.mesh.allocations==1 && f.mesh.releases==1 && f.mesh.rng.calls==2);
+    const std::string text(f.mesh.terminal_stream.output.begin(),f.mesh.terminal_stream.output.end());
+    assert(text.find("trace tag is quarantined or reply history is full")!=std::string::npos);++checks;
+  }
+  {
+    Fixture f; uint8_t route[]={0x12}; f.mesh.radio_accepts=false;
+    for(unsigned i=0;i<Tracker::HISTORY_SIZE+2;++i) {
+      f.mesh.sendTerminalTraceRoute(route,1,1,"synthetic");
+      assert(!f.mesh._terminal_trace_pending && f.mesh.allocations==i+1 && f.mesh.releases==i+1);
+    }
+    f.mesh.radio_accepts=true;
+    f.mesh.sendTerminalTraceRoute(route,1,1,"synthetic");
+    assert(f.mesh._terminal_trace_pending && f.mesh.allocations==f.mesh.releases+1);
+    uint32_t tag,auth; memcpy(&tag,f.mesh.packet.payload,4);memcpy(&auth,f.mesh.packet.payload+4,4);
+    assert(tag==f.mesh._terminal_trace_tag && auth==f.mesh._terminal_trace_auth);
+    assert(tag==17 && auth==23 && f.mesh.packet.payload[8]==0);++checks;
   }
   {
     Fixture f;f.mesh.sendTerminalLogin(f.mesh.recipient,"x");
