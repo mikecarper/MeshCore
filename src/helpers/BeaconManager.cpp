@@ -185,6 +185,23 @@ bool openWrite(FILESYSTEM* fs, const char* path, File& file) {
 #endif
   return bool(file);
 }
+enum class FileMove : uint8_t { Moved, Unchanged, Unknown };
+__attribute__((noinline)) FileMove moveFile(FILESYSTEM* fs, const char* from, const char* to) {
+  fs->rename(from, to);
+  bool source = false, destination = false;
+  if (!filePresence(fs, from, source) || !filePresence(fs, to, destination))
+    return FileMove::Unknown;
+  // This confirms the namespace move of the prevalidated image, not a fresh
+  // public-byte readback. Pico's boolean metadata API cannot expose IO errors.
+  if (!source && destination) return FileMove::Moved;
+  if (source && !destination) return FileMove::Unchanged;
+  return FileMove::Unknown;
+}
+bool removeFile(FILESYSTEM* fs, const char* path) {
+  fs->remove(path);
+  bool present = false;
+  return filePresence(fs, path, present) && !present;
+}
 } // namespace
 
 BeaconManager::~BeaconManager() { delete[] slots_; }
@@ -263,16 +280,24 @@ bool BeaconManager::commit(const char* path, const char* backup,
   bool active_backed_up = false;
   if (!filePresence(fs_, path, active_present) || !filePresence(fs_, backup, backup_present)) return false;
   if (active_present) {
-    if (backup_present && !fs_->remove(backup)) return false;
-    if (!fs_->rename(path, backup)) return false;
+    if (backup_present && !removeFile(fs_, backup)) return false;
+    const FileMove moved = moveFile(fs_, path, backup);
+    if (moved != FileMove::Moved) {
+      if (moved == FileMove::Unknown) hold = true;
+      return false;
+    }
     active_backed_up = true;
     backup_present = true;
   }
-  if (!fs_->rename(temporary, path)) {
+  const FileMove published = moveFile(fs_, temporary, path);
+  if (published != FileMove::Moved) {
+    // A candidate may already be public. Preserve every surviving name and
+    // never let a replacing rename roll an old image over uncertain new data.
+    if (published == FileMove::Unknown) { hold = true; return false; }
     // A pre-existing backup can be older than an already transmitted ID.
     // Roll back only the active image moved by this transaction; promoting
     // an unrelated backup could make that ID reusable after the next boot.
-    if (active_backed_up && !fs_->rename(backup, path)) hold = true;
+    if (active_backed_up && moveFile(fs_, backup, path) != FileMove::Moved) hold = true;
     return false;
   }
   // A leftover backup after a successful commit is harmless. Never choose it
@@ -304,7 +329,10 @@ bool BeaconManager::saveConfig(unsigned changed_slot, const BeaconSlot* changed,
   uint8_t verified_hours = 0; bool verified_initialized = false;
   if (!ok || readConfig(ConfigTemp, nullptr, verified_hours, verified_initialized) != ReadResult::Valid
       || verified_hours != hours || verified_initialized != initialized) return false;
-  return commit(ConfigPath, ConfigBackup, ConfigTemp, hold_);
+  const bool saved = commit(ConfigPath, ConfigBackup, ConfigTemp, hold_);
+  // A held manager must not leave an already-admitted old beacon running.
+  if (hold_ && mesh_) mesh_->cancelBeaconRadioFrame();
+  return saved;
 }
 
 bool BeaconManager::saveIds(uint32_t last) {
@@ -360,8 +388,9 @@ void BeaconManager::begin(FILESYSTEM* fs, Mesh* mesh, RTCClock* rtc, const char*
   else if (result != ReadResult::Valid) {
     const ReadResult backup = readConfig(ConfigBackup, nullptr, hours, initialized);
     if (backup == ReadResult::Valid) {
-      if ((fs_->exists(ConfigPath) && !fs_->remove(ConfigPath))
-          || !fs_->rename(ConfigBackup, ConfigPath)) hold_ = true;
+      bool present = false;
+      if (!filePresence(fs_, ConfigPath, present) || (present && !removeFile(fs_, ConfigPath))
+          || moveFile(fs_, ConfigBackup, ConfigPath) != FileMove::Moved) hold_ = true;
       result = ReadResult::Valid;
     } else if (result != ReadResult::Missing || backup != ReadResult::Missing) hold_ = true;
   }
