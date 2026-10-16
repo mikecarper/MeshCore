@@ -3459,6 +3459,16 @@ declare_build_capability_contract() {
   fi
 
   if [ "$env_platform" = "ESP32_PLATFORM" ]; then
+    case "$env_name" in
+      Station_G3_ESP32_*)
+        # Only the uploadable application, not ELF metadata or a guessed name,
+        # can qualify future shared-slot picker/release consolidation.
+        if [ "${PIO_ENV_BOARD_BY_NAME[$env_name]:-}" = station-g3-esp32 ]; then
+          record_application_expectation "radio.station_g3.auto_slots" \
+            "meshcore.capability.station_g3.auto_slots.v1"
+        fi
+        ;;
+    esac
     if is_companion_radio_full_target "$env_name" \
         || { [ "$BUILD_PROFILE_FOR_TARGET" = "standard" ] \
              && requires_esp32_field_browser_ota "$env_name"; }; then
@@ -5633,6 +5643,12 @@ get_merged_espnow_repeater_replacement() {
 }
 
 is_runtime_setting_alias_target() {
+  # Physical-slot selection is now runtime/automatic on Station G3. Retain
+  # exact R2 environment names for explicit historical builds, not duplicate
+  # ordinary releases. This does not rewrite their deployed OTA identities.
+  if get_station_g3_shared_slot_replacement "$1" >/dev/null; then
+    return 0
+  fi
   if is_legacy_companion_power_saving_target "$1" \
       || is_legacy_companion_femoff_target "$1" \
       || is_legacy_radio_gain_profile_target "$1" \
@@ -5645,6 +5661,41 @@ is_runtime_setting_alias_target() {
       ;;
   esac
   return 1
+}
+
+get_station_g3_shared_slot_replacement() {
+  local target=$1 candidate
+  case "$target" in
+    Station_G3_ESP32_r2_repeater|Station_G3_ESP32_r2_room_server|\
+    Station_G3_ESP32_r2_sensor|Station_G3_ESP32_r2_repeater_observer_mqtt|\
+    Station_G3_ESP32_r2_room_server_observer_mqtt)
+      candidate=${target/Station_G3_ESP32_r2_/Station_G3_ESP32_}
+      ;;
+    *) return 1 ;;
+  esac
+  # Do not collapse another radio family, role, platform or missing recipe.
+  [ "${PIO_ENV_PLATFORM_BY_NAME[$target]:-}" = ESP32_PLATFORM ] \
+    && [ "${PIO_ENV_PLATFORM_BY_NAME[$candidate]:-}" = ESP32_PLATFORM ] \
+    && [ "${PIO_ENV_BOARD_BY_NAME[$target]:-}" = station-g3-esp32 ] \
+    && [ "${PIO_ENV_BOARD_BY_NAME[$candidate]:-}" = station-g3-esp32 ] || return 1
+  [ -n "$PIO_CONFIG_JSON" ] || return 1
+  # Use effective flags (including -U/later overrides), not a substring that
+  # could mistake an overridden SX1262 declaration for the running radio.
+  python3 -c '
+import json,re,sys
+rows = {name:dict(options) for name,options in json.load(sys.stdin)}
+for target in sys.argv[1:]:
+    definitions={}
+    for flag in rows.get("env:"+target,{}).get("build_flags",[]):
+        match=re.fullmatch(r"-([DU])\s*(\w+)(?:=(.*))?",str(flag).strip())
+        if not match: continue
+        kind,key,value=match.groups()
+        if kind=="U": definitions.pop(key,None)
+        else: definitions[key]="1" if value is None else value
+    if definitions.get("RADIO_CLASS")!="CustomSX1262": sys.exit(1)
+    if definitions.get("USE_SX1262","0") in ("0","false"): sys.exit(1)
+' "$target" "$candidate" <<<"$PIO_CONFIG_JSON" || return 1
+  printf '%s\n' "$candidate"
 }
 
 is_redundant_bulk_build_target() {

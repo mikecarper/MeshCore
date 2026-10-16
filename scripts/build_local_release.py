@@ -18,6 +18,7 @@ import tempfile
 from build_esp32_partition_migration import bundle_release, verify_archive
 from package_esp32_partition_migration import BOARDS, resolve_pio_build_dir
 from package_cascade_release import category, collect_artifacts, nrf52_sensor_profile
+from station_g3_profiles import omit_redundant_slot_records
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -286,7 +287,8 @@ def select_ordinary_full_records(records: list[dict]) -> list[dict]:
             return False
         return manifest["build_profile"] == "full"
 
-    records = [record for record in records if ordinary_record(record)]
+    records = omit_redundant_slot_records(
+        [record for record in records if ordinary_record(record)])
 
     tower_primary = "heltec_tower_v2_sdcard_repeater_lora_ota_no_external_sensors"
     tower_legacy = {

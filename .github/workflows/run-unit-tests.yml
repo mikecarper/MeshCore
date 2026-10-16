@@ -50,6 +50,9 @@ jobs:
         uses: ./.github/actions/setup-build-environment
       - name: Compile GPS-capable Sensor tracker on ESP32-S3
         run: pio run -e heltec_v4_sensor
+      - name: Compile shared-slot Station G3 and legacy alias with buffered KISS
+        # One PlatformIO process: these environments share the checkout build tree.
+        run: pio run -e Station_G3_ESP32_repeater -e Station_G3_ESP32_r2_repeater -e Station_G3_ESP32_kiss_modem
 
   esp32-ethernet-companion-smoke:
     runs-on: ubuntu-latest
@@ -207,6 +210,9 @@ jobs:
           python3 -B test/test_upstream_20261015_wifi_boot.py -v
           python3 -B test/test_wio_tracker_l2_gps_power.py -v
           python3 -B test/test_lr1121_power_merge.py -v
+          python3 -B test/test_lr2021_power.py -v
+          python3 -B test/test_meshtracker_x1_battery.py -v
+          python3 -B test/test_drv2605_power.py -v
           python3 -B test/test_radio_interrupt_recovery.py -v
           python3 -B test/test_bridge_recovery.py -v
           python3 -B test/test_bridge_ingress.py -v
@@ -295,6 +301,8 @@ jobs:
           python3 -B test/test_sensor_tracker_gps.py -v
           python3 -B test/test_sensor_tracker_sleep.py -v
           python3 -B test/test_power_saving_deadlines.py -v
+          python3 -B test/test_esp32_scanner_power_yield.py -v
+          python3 -B test/test_esp32_gpio_hold.py -v
 
       - name: Verify Companion contact and channel TX routing
         run: |
@@ -542,6 +550,8 @@ jobs:
           python3 -B test/test_gps_sync_interval.py -v
           python3 -B test/test_gps_sync_preferences.py -v
           python3 -B test/test_rak_gps_power.py -v
+          python3 -B test/test_rak_shutdown_power.py -v
+          python3 -B test/test_xiao_battery_safety.py -v
           python3 -B test/test_peripheral_mode_prefs.py -v
           python3 -B test/test_t1000e_sensor_power.py -v
           python3 -B test/test_sensor_battery_alerts.py -v
@@ -646,6 +656,13 @@ jobs:
 
       - name: Verify Full logging compiler flags and packaged capabilities
         run: |
+          python3 -B test/test_station_g3_radio_pins.py -v
+          python3 -B test/test_station_g3_slot_settings.py -v
+          python3 -B test/test_station_g3_slot_detection.py -v
+          python3 -B test/test_station_g3_boot_recovery.py -v
+          python3 -B test/test_kiss_radio_slot.py -v
+          python3 -B test/test_station_g3_release_profiles.py -v
+          node test/test_station_g3_picker.js
           python3 -B test/test_upstream_observer_recipes.py -v
           python3 -B test/test_station_g3_sensor_recipes.py -v
           python3 -B test/test_full_build_flag_dedup.py
@@ -701,6 +718,7 @@ jobs:
           python3 -B test/test_rak_combined_ota.py -v
           python3 -B test/test_rak_ethernet_transmit.py -v
           python3 -B test/test_rak4631_ethernet_runtime.py -v
+          python3 -B test/test_ethernet_terminal_shutdown.py -v
 
       - name: Verify nRF52 infrastructure trims and unchanged Companion scope
         run: |
