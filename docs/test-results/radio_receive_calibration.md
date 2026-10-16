@@ -11,6 +11,15 @@ Periodic requests coalesce while a block is active. RXPS resumes after a complet
 block, including a held block, or at timeout. Receive and transmit activity are
 never interrupted just to finish calibration.
 
+If a reception delays the return to RXPS, the pending restoration is retried
+after every Dispatcher receive poll, including empty polls. A false preamble
+that expires without another packet interrupt therefore cannot leave the radio
+in continuous RX until the next calibration or AGC reset. An unread packet or
+active reception still owns the radio; TX completion retains its normal rearm.
+The retry wake query reports this pending restoration as immediate work, keeping
+event-driven sleepers awake until the existing preamble/header timeout or RX
+completion releases the owner. The query does not issue SPI commands.
+
 A calibration request waiting for successful RX does not keep the MCU awake.
 Repeated failed receive starts retry after 20, 40, 80, 160, 320, 640, and 1280 ms,
 then at most once every 2000 ms. Only the repeated idle fallback is paced:

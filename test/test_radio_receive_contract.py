@@ -78,6 +78,7 @@ struct RadioLibWrapper {
   Board board; Board* _board = &board;
   Radio radio{&events}; Radio* _radio = &radio;
   bool _rx_ps_enabled = false, _rx_ps_armed = false, _rx_ps_continuous_fallback = false;
+  bool _rx_hold_continuous = false;
   bool _nf_calib_active = false, _nf_refresh_requested = true, _noise_floor_valid = true,
       _noise_floor_secondary_valid = true;
   bool _cad_enabled = true, packet = false, busy = false, inject_arm_irq = false;

@@ -11,6 +11,7 @@ struct RetryDispatcher : mesh::Dispatcher {
   bool useAdaptiveAGC() const override { return adaptive; }
   uint32_t getCADFailRetryDelay() const override { return 5000; }
   using Dispatcher::getNextQueueWakeDelay;
+  using Dispatcher::hasQueuedWorkDue;
 };
 
 static uint32_t retryDelay(const RadioLibWrapper& w) {
@@ -170,8 +171,120 @@ static void busyAfterFailure() {
   std::printf("30s BUSY after RX error: arms=%u later_sleep_windows=%u\n", w.arms, sleep_windows);
 }
 
+static void deferredCalibrationRestore() {
+  enum Owner {
+    Receiving, PacketIRQ, Tx, DisableAfter, FallbackAfter, FailedRearm,
+    EmptyIRQ, DisableBefore, FallbackBefore
+  };
+  unsigned cases = 0;
+  for (bool complete : {false, true})
+  for (Owner owner : {Receiving, PacketIRQ, Tx, DisableAfter, FallbackAfter,
+                      FailedRearm, EmptyIRQ, DisableBefore, FallbackBefore}) {
+    RadioLibWrapper w; RetryClock clock; StaticPoolPacketManager manager{4};
+    RetryDispatcher d(w, clock, manager); d.interval = 0;
+    now_ms = 1000; d.begin(); selectMode(w, 1);
+    d.loop(); ++now_ms; d.loop();
+    assert(w._nf_calib_active && w.state == STATE_RX && !w._rx_ps_armed);
+    if (complete) {
+      for (unsigned i = 0; i < NoiseFloorEstimator::SAMPLE_COUNT; ++i) {
+        now_ms += NoiseFloorEstimator::SAMPLE_INTERVAL_MS;
+        assert(w._floor_estimator.add(-105, now_ms));
+      }
+    } else {
+      now_ms = w._nf_calib_deadline;
+    }
+    const unsigned arms = w.arms;
+    if (owner == PacketIRQ || owner == EmptyIRQ) {
+      w.events.record(); w.radio.packet_length = owner == PacketIRQ ? 1 : 0;
+    } else if (owner == Tx) { w.state = STATE_TX_WAIT; w.events.record(); }
+    else w.packet = true;
+    if (owner == DisableBefore) assert(w.setRxPowerSaving(false, 50000, 50000));
+    if (owner == FallbackBefore) {
+      assert(w.setRxPowerSaving(true, RX_POWERSAVING_CONTINUOUS_FALLBACK_US,
+                               RX_POWERSAVING_CONTINUOUS_FALLBACK_US));
+    }
+    const unsigned processed = w.processed;
+    d.loop();
+    assert(!w._nf_calib_active && !w._nf_refresh_requested);
+    assert(w.processed == processed + 1); // includes empty receive polls
+    if (owner == PacketIRQ || owner == EmptyIRQ) {
+      assert(w.n_recv == (owner == PacketIRQ ? 1U : 0U) && !w.hasPendingRadioInterrupt());
+      assert(w._rx_ps_armed && !w._rx_hold_continuous && w.arms == arms + 1);
+    } else if (owner == Tx) {
+      assert(w.state == STATE_TX_WAIT && w.hasPendingRadioInterrupt());
+      assert(!w._rx_hold_continuous && w.arms == arms);
+      w.onSendFinished(); ++now_ms; d.loop();
+      assert(w._rx_ps_armed && w.arms == arms + 1);
+    } else if (owner == DisableBefore || owner == FallbackBefore) {
+      assert(!w._rx_hold_continuous && !w._rx_ps_armed && w.arms == arms);
+      w.packet = false; ++now_ms; d.loop();
+      assert(!w._rx_ps_armed && w.arms == arms); // no RXPS restoration is wanted
+    } else {
+      assert(w._rx_hold_continuous && !w._rx_ps_armed && w.arms == arms);
+      // Match the application pending-work gate for event-driven nRF52 sleep
+      // as well as ESP32 timed sleep. Calibration itself is already finished.
+      uint32_t wake = UINT32_MAX;
+      assert(!w.isCalibratingNoiseFloor());
+      assert(d.getNextQueueWakeDelay(wake) && wake == 0 && d.hasQueuedWorkDue());
+      assert(mesh::power::powerSaveSleepSeconds(wake) == 0);
+      // The const wake query must not read RSSI, IRQ status or other SPI state.
+      const unsigned reads = w.reads, probes = w.mode_reads;
+      const unsigned busy_probes = w.busy_probes, packet_probes = w.packet_probes;
+      assert(w.getReceiveRetryDelay(now_ms, wake) && wake == 0);
+      assert(w.reads == reads && w.mode_reads == probes
+             && w.busy_probes == busy_probes && w.packet_probes == packet_probes);
+      assert(w._rx_hold_continuous && !w._rx_retry_pending);
+      // Known owners and intentional continuous RX do not request an extra
+      // prompt poll; active calibration already has its separate sleep veto.
+      for (unsigned excluded : {0U, 1U, 2U, 3U, 4U, 5U, 6U}) {
+        if (excluded == 0) w._cw_active = true;
+        if (excluded == 1) w._rx_ps_enabled = false;
+        if (excluded == 2) w._rx_ps_continuous_fallback = true;
+        if (excluded == 3) w._rx_ps_armed = true;
+        if (excluded == 4) w.state = STATE_TX_WAIT;
+        if (excluded == 5) w.state = STATE_IDLE;
+        if (excluded == 6) w._nf_calib_active = true;
+        assert(!w.getReceiveRetryDelay(now_ms, wake) && w._rx_hold_continuous);
+        w._cw_active = false; w._rx_ps_enabled = true;
+        w._rx_ps_continuous_fallback = w._rx_ps_armed = w._nf_calib_active = false;
+        w.state = STATE_RX;
+      }
+      // Keep a partial/false reception intact. No IRQ is needed to clear it.
+      for (unsigned i = 0; i < 100; ++i) { ++now_ms; d.loop(); }
+      assert(w._rx_hold_continuous && w.arms == arms);
+      if (owner == DisableAfter) assert(w.setRxPowerSaving(false, 50000, 50000));
+      if (owner == FallbackAfter) {
+        assert(w.setRxPowerSaving(true, RX_POWERSAVING_CONTINUOUS_FALLBACK_US,
+                                 RX_POWERSAVING_CONTINUOUS_FALLBACK_US));
+      }
+      if (owner == DisableAfter || owner == FallbackAfter) {
+        assert(!w.getReceiveRetryDelay(now_ms, wake));
+      }
+      w.packet = false;
+      if (owner == FailedRearm) w.arm_result = -5;
+      ++now_ms; d.loop();
+      assert(!w._rx_hold_continuous);
+      if (owner == DisableAfter || owner == FallbackAfter) {
+        assert(!w._rx_ps_armed && w.arms == arms); // continuous RX is now intentional
+      } else if (owner == FailedRearm) {
+        assert(w.state == STATE_IDLE && !w._rx_ps_armed && w.arms == arms + 1);
+        assert(retryDelay(w) == 20);
+        ++now_ms; d.loop(); assert(w.arms == arms + 1 && retryDelay(w) == 19);
+        w.arm_result = 0; now_ms += 19; d.loop();
+        assert(w._rx_ps_armed && w.arms == arms + 2 && !w._rx_retry_pending);
+      } else {
+        assert(w._rx_ps_armed && w.arms == arms + 1);
+      }
+      assert(!w._rx_hold_continuous && !d.hasQueuedWorkDue());
+    }
+    ++cases;
+  }
+  std::printf("PASS: deferred calibration restoration (%u cases)\n", cases);
+}
+
 int main() {
   persistentFailure(); rampAndRollover(); ownersAndImmediateRearms();
   pendingSetupAndTx(); retainedOutboundWake(); busyAfterFailure();
+  deferredCalibrationRestore();
   std::puts("PASS: receive retry lifecycle");
 }

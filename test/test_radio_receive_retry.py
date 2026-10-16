@@ -18,6 +18,19 @@ class RadioReceiveRetryTests(unittest.TestCase):
         rxps = (ROOT / 'src/helpers/radiolib/RXPowerSaving.h').read_text()
         if mutation == 'unpaced':
             source = source.replace('    if (_rx_retry_pending) {', '    if (false) {')
+        if mutation == 'lost_restore':
+            body = method(source, 'void RadioLibWrapper::endNoiseFloorCalib(')
+            self.assertEqual(body.count('    _rx_hold_continuous = true;'), 1)
+            source = source.replace(body, body.replace('    _rx_hold_continuous = true;', ''))
+        if mutation == 'duplicate_restore':
+            body = method(source, 'void RadioLibWrapper::finishReceiveProcessing(')
+            self.assertEqual(body.count('      || _rx_ps_armed'), 1)
+            source = source.replace(body, body.replace('      || _rx_ps_armed', ''))
+        if mutation == 'restore_sleep':
+            body = method(source, 'bool RadioLibWrapper::getReceiveRetryDelay(')
+            self.assertEqual(body.count('state == STATE_RX && _rx_hold_continuous'), 1)
+            source = source.replace(body, body.replace(
+                'state == STATE_RX && _rx_hold_continuous', 'false && _rx_hold_continuous'))
         getter = method(header, 'bool isCalibratingNoiseFloor() const')
         if mutation == 'pending_veto':
             getter = getter.replace('isInRecvMode() && !_rx_ps_armed && ', '')
@@ -31,6 +44,7 @@ class RadioReceiveRetryTests(unittest.TestCase):
                  ('void', 'requestNoiseFloorRefresh'), ('void', 'requestPeriodicNoiseFloorRefresh'),
                  ('void', 'recalibrateNoiseFloor'), ('bool', 'resetAGCIfIdle'),
                  ('bool', 'tryResetAGC'), ('void', 'resetAGC'), ('int', 'recvRaw'),
+                 ('void', 'finishReceiveProcessing'),
                  ('void', 'onSendFinished'), ('void', 'begin'),
                  ('bool', 'getReceiveRetryDelay'), ('void', 'rxPsWatchdogCheck')]
         methods = method(rxps, 'inline bool rxPowerSavingUsesContinuousFallback(') + '\n'
@@ -50,6 +64,10 @@ class RadioReceiveRetryTests(unittest.TestCase):
                                   '::Radio radio{&events}; ::Radio* _radio')
         harness = harness.replace('unsigned long getEstAirtimeFor(int)', 'uint32_t getEstAirtimeFor(int)')
         harness = harness.replace('void rxPsWatchdogCheck() {}', 'void rxPsWatchdogCheck();')
+        harness = harness.replace('bool isChipBusy() { return busy; }',
+            'bool isChipBusy() { ++busy_probes; return busy; }')
+        harness = harness.replace('bool isReceivingPacket() { return packet; }',
+            'bool isReceivingPacket() { ++packet_probes; return packet; }')
         harness = harness.replace('  void serviceWatchdog()',
             '  unsigned after = 0;\n  int getStartupReason() { return 0; }\n'
             '  void onAfterTransmit() { ++after; }\n  void serviceWatchdog()')
@@ -81,7 +99,11 @@ class RadioReceiveRetryTests(unittest.TestCase):
   bool startSendRaw(const uint8_t*, int) override { ++sends; return false; }
   bool isSendComplete() override { return false; }
   float packetScore(float, int) override { return 0; }
-  bool _rx_hold_continuous = false, _loop_event_pending = false;
+  bool _loop_event_pending = false;
+  void finishReceiveProcessing();
+  void onReceiveProcessed() override { ++processed; finishReceiveProcessing(); }
+  unsigned processed = 0;
+  unsigned busy_probes = 0, packet_probes = 0;
   uint32_t last_radio_interrupt_millis = 0, last_recv_millis = 0;
   float _last_snr = 0, _last_rssi = 0;
   unsigned n_recv = 0, n_recv_errors = 0, sends = 0;
@@ -139,6 +161,14 @@ class RadioReceiveRetryTests(unittest.TestCase):
                 self.assertNotEqual(result.returncode, 0)
                 self.assertIn('busyAfterFailure' if mutation == 'agc_fast'
                               else 'persistentFailure', result.stderr)
+
+    def test_lost_calibration_restore_negative_control(self):
+        for mutation in ('lost_restore', 'duplicate_restore', 'restore_sleep'):
+            with self.subTest(mutation=mutation), tempfile.TemporaryDirectory(
+                    prefix='meshcore-rx-restore-negative-') as folder:
+                result = self.run_probe(self.build(folder, mutation))
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn('deferredCalibrationRestore', result.stderr)
 
 
 if __name__ == '__main__':

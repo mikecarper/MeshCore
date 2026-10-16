@@ -1231,6 +1231,13 @@ void RadioLibWrapper::endNoiseFloorCalib(unsigned long now) {
   if (state != STATE_TX_WAIT
       && !isPacketPendingOrReceiving()) {
     requestRestartRecv();
+  } else if (state == STATE_RX && !_rx_ps_armed
+      && _rx_ps_enabled && !_rx_ps_continuous_fallback) {
+    // A false preamble can release RX without producing another interrupt.
+    // Keep the restoration pending: Dispatcher calls onReceiveProcessed()
+    // even after an empty poll, so its normal packet-owner guard retries once
+    // the reception or unread packet is gone. TX retirement rearms on its own.
+    _rx_hold_continuous = true;
   }
 }
 
@@ -1951,7 +1958,15 @@ bool RadioLibWrapper::getReceiveRetryDelay(uint32_t now, uint32_t& delay_ms) con
 #if MESH_ENABLE_TX_BEACONS
   if (_beacon_owned) return false;
 #endif
-  if (!_rx_retry_pending || state != STATE_IDLE || _cw_active) return false;
+  if (_cw_active) return false;
+  if (state == STATE_RX && _rx_hold_continuous && _rx_ps_enabled
+      && !_rx_ps_continuous_fallback && !_rx_ps_armed && !_nf_calib_active) {
+    // A false preamble can expire without any wake interrupt. Keep the normal
+    // empty-poll completion path running until it can restore duty-cycle RX.
+    delay_ms = 0;
+    return true;
+  }
+  if (!_rx_retry_pending || state != STATE_IDLE) return false;
   delay_ms = static_cast<int32_t>(now - _rx_retry_at) >= 0 ? 0 : _rx_retry_at - now;
   return true;
 }
@@ -2106,7 +2121,8 @@ void RadioLibWrapper::finishReceiveProcessing() {
   }
 
   _rx_hold_continuous = false;
-  if (!_rx_ps_enabled || _rx_ps_continuous_fallback || _nf_calib_active) return;
+  if (!_rx_ps_enabled || _rx_ps_continuous_fallback || _nf_calib_active
+      || _rx_ps_armed) return; // an empty/error IRQ may already have rearmed RXPS
 
   state = STATE_IDLE;
   startRecv();
