@@ -619,7 +619,7 @@ static bool parseFloodRetryPrefixList(uint8_t dest[][FLOOD_RETRY_PREFIX_LEN], ui
   }
 
   char local[FLOOD_RETRY_LIST_TEXT_MAX];
-  StrHelper::strncpy(local, value, sizeof(local));
+  if (!copyCLIArgument(local, sizeof(local), value)) return false;
   const char* parts[FLOOD_RETRY_LIST_PREFIXES + 1];
   int num = mesh::Utils::parseTextParts(local, parts, FLOOD_RETRY_LIST_PREFIXES + 1);
   if (num > max_prefixes) {

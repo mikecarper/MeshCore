@@ -162,6 +162,35 @@ static void prefixValidation() {
   }
 }
 
+static void oversizedPrefixes() {
+  std::string list;
+  for (unsigned i = 1; i <= FLOOD_RETRY_BUCKET_PREFIXES; ++i) {
+    char prefix[7];
+    snprintf(prefix, sizeof(prefix), "A1B2%02X", i);
+    if (!list.empty()) list += ',';
+    list += prefix;
+  }
+  // None of these suffixes may disappear at the scratch buffer boundary.
+  for (const std::string& suffix : std::array<std::string, 5>{
+           ",A1B2FF", ",", "F", "garbage", std::string(512, 'F')})
+    rejected("6 " + list + suffix);
+
+  for (uint8_t capacity : {uint8_t(1), uint8_t(FLOOD_RETRY_IGNORE_PREFIXES),
+                           uint8_t(FLOOD_RETRY_BUCKET_PREFIXES)}) {
+    struct Destination {
+      uint32_t before;
+      uint8_t prefixes[FLOOD_RETRY_LIST_PREFIXES][FLOOD_RETRY_PREFIX_LEN];
+      uint32_t after;
+    } destination;
+    memset(&destination, 0x55, sizeof(destination));
+    const auto previous = destination;
+    for (const std::string& value : {list + ",A1B2FF", list + "F", std::string(4096, 'A')}) {
+      assert(!parseFloodRetryPrefixList(destination.prefixes, capacity, value.c_str()));
+      assert(!memcmp(&previous, &destination, sizeof(previous)));
+    }
+  }
+}
+
 static void collisionWarnings() {
   CommonCLI cli;
   assert(cli.run("1 112233") == "OK - WARNING: 1-byte 11 matches buckets 1 and 2");
@@ -190,10 +219,12 @@ static void getters() {
 
 int main(int argc, char** argv) {
   assert(argc == 2);
+  (void)&copyCLIArgument; // Keep the real helper in the old-copy negative control too.
   const std::string scenario = argv[1];
   if (scenario == "valid") validSetters();
   else if (scenario == "invalid") invalidSetters();
   else if (scenario == "prefixes") prefixValidation();
+  else if (scenario == "oversized-prefixes") oversizedPrefixes();
   else if (scenario == "warnings") collisionWarnings();
   else if (scenario == "getters") getters();
   else rejected(scenario + " none");
@@ -216,7 +247,8 @@ class FloodRetryBucketCLITests(unittest.TestCase):
         core = (ROOT / "src/MeshCore.h").read_text(encoding="ascii")
         constants += re.search(r"^#define PRV_KEY_SIZE\s+.+$", core, re.MULTILINE).group()
         helpers = "\n".join(body(common, signature) for signature in (
-            "static void formatFloodRetryPrefixList(", "static bool parseFloodRetryPrefixList(",
+            "static bool copyCLIArgument(", "static void formatFloodRetryPrefixList(",
+            "static bool parseFloodRetryPrefixList(",
             "static const uint8_t* floodRetryBucketPrefixAt(",
             "static uint8_t floodRetryBucketPrefixCount(",
             "static bool findFloodRetryFirstByteCollision(",
@@ -244,10 +276,16 @@ class FloodRetryBucketCLITests(unittest.TestCase):
         }
         cls.work = tempfile.TemporaryDirectory(prefix="meshcore-flood-retry-bucket-")
         cls.binaries = {}
-        for name, branch in (("production", setter), ("legacy", legacy)):
+        for name, branch in (("production", setter), ("legacy", legacy), ("old-copy", setter)):
             generated = FIXTURE.replace("@SET_BRANCH@", branch)
             for key, value in replacements.items():
                 generated = generated.replace("@" + key + "@", value)
+            if name == "old-copy":
+                checked_copy = "if (!copyCLIArgument(local, sizeof(local), value)) return false;"
+                if generated.count(checked_copy) != 1:
+                    raise AssertionError("Review the prefix-copy negative control after source changes")
+                generated = generated.replace(checked_copy,
+                    "StrHelper::strncpy(local, value, sizeof(local));", 1)
             directory = Path(cls.work.name)
             path, binary = directory / (name + ".cpp"), directory / name
             path.write_text(generated, encoding="ascii")
@@ -284,6 +322,14 @@ class FloodRetryBucketCLITests(unittest.TestCase):
 
     def test_prefix_validation_and_maximum_list_remain_intact(self):
         self.assert_case("prefixes")
+
+    def test_oversized_prefix_lists_never_truncate_or_change_preferences(self):
+        self.assert_case("oversized-prefixes")
+
+    def test_previous_prefix_copy_silently_accepts_truncated_suffixes(self):
+        result = self.run_case("oversized-prefixes", "old-copy")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("Assertion", result.stderr)
 
     def test_cross_bucket_collision_warnings_remain_intact(self):
         self.assert_case("warnings")
