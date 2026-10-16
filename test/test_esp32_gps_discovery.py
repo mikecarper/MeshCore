@@ -38,8 +38,8 @@ struct SerialMock {
   bool installed=false;
   explicit operator bool() const { return installed; }
   void setPins(int first, int second) { first_pin=first; second_pin=second; }
-  void begin(unsigned speed) { installed=true; baud=speed; ++begins; gpio_modes[first_pin]=INPUT; gpio_modes[second_pin]=OUTPUT; }
-  void end() { installed=false; ++ends; }
+  void begin(unsigned speed) { assert(!installed); installed=true; baud=speed; ++begins; gpio_modes[first_pin]=INPUT; gpio_modes[second_pin]=OUTPUT; }
+  void end() { assert(installed); installed=false; ++ends; }
   int available() { ++polls; return bytes; }
 } Serial1;
 
@@ -49,7 +49,11 @@ struct TestLocation : LocationProvider {
   bool powered=false;
   void begin() override { powered=true; ++begins; }
   void reset() override { ++resets; }
-  void stop() override { powered=false; ++stops; }
+  void stop() override {
+    assert(!Serial1.installed);
+    assert(gpio_modes[PIN_GPS_TX]==INPUT && gpio_modes[PIN_GPS_RX]==INPUT);
+    powered=false; ++stops;
+  }
   void loop() override { ++loops; }
   int getPinEn() override { return enable_pin; }
   bool isEnabled() override { return powered; }
@@ -73,6 +77,8 @@ struct EnvironmentSensorManager : SensorManager {
   bool userEnabled() const { return isGpsTelemetryUserEnabled(); }
   bool transportAvailable() const { return isGpsTelemetryTransportAvailable(); }
   void initBasicGPS();
+  void startGpsSerialTransport();
+  void stopGpsSerialTransport();
   void armGpsPowerSavingCycle();
   void start_gps();
   void stop_gps();
@@ -94,7 +100,8 @@ static void requireImmediateInit(EnvironmentSensorManager& sensors) {
   const uint32_t before=millis();
   sensors.initBasicGPS();
   assert(millis()==before && delay_count==0);
-  assert(Serial1.installed && Serial1.first_pin==PIN_GPS_TX && Serial1.second_pin==PIN_GPS_RX);
+  assert(Serial1.installed==(sensors.gps_discovery_pending || sensors.gps_active));
+  assert(Serial1.first_pin==PIN_GPS_TX && Serial1.second_pin==PIN_GPS_RX);
 #ifdef GPS_BAUD_RATE
   assert(Serial1.baud==GPS_BAUD_RATE);
 #else
@@ -115,12 +122,8 @@ static void absent() {
   now_ms=5100; sensors.loop();
   assert(!sensors.gps_discovery_pending && !sensors.gps_detected && !sensors.gps_active);
   assert(!location.powered && location.stops==1 && !sensors.gpsUsesSerialUart(1));
-#ifdef ESP32_PLATFORM
   assert(!Serial1.installed && Serial1.ends==1);
   assert(gpio_modes[PIN_GPS_TX]==INPUT && gpio_modes[PIN_GPS_RX]==INPUT);
-#else
-  assert(Serial1.installed && Serial1.ends==0); // nRF lifecycle is unchanged.
-#endif
   const unsigned polls=Serial1.polls;
   Serial1.bytes=8; now_ms=6100; sensors.loop();
   assert(Serial1.polls==polls && !sensors.gps_detected && location.stops==1);
@@ -250,6 +253,43 @@ static void noEnablePin() {
   assert(!sensors.gps_discovery_pending && !sensors.gps_detected && !location.powered);
 }
 
+static void offDutyAndShutdown() {
+  fresh(); TestLocation location; EnvironmentSensorManager sensors(location);
+  // Shutdown before the first GPS begin must never call the nRF UARTE end.
+  sensors.shutdownGpsTransportForDeepSleep();
+  assert(Serial1.ends==0);
+  Serial1.bytes=8; sensors.initBasicGPS();
+  assert(sensors.gps_detected && sensors.gpsUsesSerialUart(1));
+  sensors.setPowerSavingEnabled(true);
+  assert(sensors.setSettingValue("gps", "1"));
+  assert(sensors.gps_active && sensors.gps_serial_open && Serial1.installed);
+  const unsigned ends=Serial1.ends, begins=Serial1.begins;
+  // Repeated discovery must reuse the driver that GPS already opened.
+  sensors.startGpsSerialTransport();
+  assert(Serial1.begins==begins);
+  location.stopTimeSync(); location.setNextGPSOff(millis()+1); now_ms+=2;
+  sensors.loop();
+  assert(!sensors.gps_active && !sensors.gps_serial_open && !Serial1.installed);
+  assert(Serial1.ends==ends+1 && sensors.gpsUsesSerialUart(1));
+  const uint32_t wake=location.getNextGPSOn(); assert(wake!=0);
+  sensors.stop_gps(); sensors.shutdownGpsTransportForDeepSleep();
+  sensors.shutdownGpsTransportForDeepSleep();
+  assert(Serial1.ends==ends+1);
+  now_ms=wake; sensors.loop();
+  assert(sensors.gps_active && Serial1.installed && Serial1.begins==begins+1);
+  assert(sensors.setSettingValue("gps", "0"));
+  assert(!location.powered && !Serial1.installed && Serial1.ends==ends+2);
+  // A bridge can acquire an already-off GPS. Its driver and pads then belong
+  // to that bridge even though GPS keeps its logical UART reservation.
+  assert(sensors.setGpsSerialTransportBlocked(1, true));
+  Serial1.begin(115200);
+  const unsigned bridge_ends=Serial1.ends;
+  sensors.shutdownGpsTransportForDeepSleep(); sensors.stop_gps();
+  sensors.loop(); sensors.initBasicGPS();
+  assert(Serial1.installed && Serial1.baud==115200 && Serial1.ends==bridge_ends);
+  assert(gpio_modes[PIN_GPS_RX]==OUTPUT && !location.powered);
+}
+
 int main(int argc, char** argv) {
   assert(argc==2);
   if (!strcmp(argv[1], "absent")) absent();
@@ -259,6 +299,7 @@ int main(int argc, char** argv) {
   else if (!strcmp(argv[1], "wrap")) wrap();
   else if (!strcmp(argv[1], "blocked")) blockedRelease();
   else if (!strcmp(argv[1], "no_enable")) noEnablePin();
+  else if (!strcmp(argv[1], "off_duty_shutdown")) offDutyAndShutdown();
   else assert(false && "unknown scenario");
   std::printf("PASS %s\n", argv[1]);
 }
@@ -302,12 +343,14 @@ def harness(*, negative=None):
                      "  gps_discovery_started_at = millis();\n  delay(5000);"),
         "blocked_poll": ("if (!gps_discovery_pending || gps_serial_transport_blocked) return;",
                          "if (!gps_discovery_pending) return;"),
-        "cancellation": ("    if (gps_discovery_pending) _location->stop();",
-                         "    // Negative control: leave the pending receiver powered."),
+        "cancellation": ("      _location->stop();",
+                         "      // Negative control: leave the pending receiver powered."),
         "preference_loss": ("    gps_discovery_preference_known = true;",
                             "    // Negative control: forget that an explicit preference was loaded."),
-        "failed_uart": ("  if (!found) shutdownGpsTransportForDeepSleep();",
-                        "  // Negative control: abandon the failed probe with TX driven."),
+        "failed_uart": ("  stopGpsSerialTransport();\n  _location->stop();\n  gps_active = false;\n  if (found",
+                        "  _location->stop();\n  gps_active = false;\n  if (found"),
+        "unopened_end": ("  if (!gps_serial_open) return;",
+                         "  // Negative control: end an unopened UART."),
     }
     if negative:
         before, after = mutations[negative]
@@ -358,7 +401,7 @@ class CooperativeGpsDiscoveryTests(unittest.TestCase):
                         self.assertIn("PASS " + case, result.stdout)
 
     def test_boot_is_cooperative_and_loop_finishes_cold_gps(self):
-        self.compile_run(("absent", "late", "latest", "awake", "wrap", "blocked", "no_enable"),
+        self.compile_run(("absent", "late", "latest", "awake", "wrap", "blocked", "no_enable", "off_duty_shutdown"),
                          defines=("GPS_BAUD_RATE=38400",))
 
     def test_persistent_default_cannot_replace_loaded_user_preference(self):
@@ -385,7 +428,7 @@ class CooperativeGpsDiscoveryTests(unittest.TestCase):
     def test_nrf52_basic_gps_uses_production_guarded_state_and_methods(self):
         for defines in (("GPS_BAUD_RATE=38400",), ("PERSISTANT_GPS=1",),
                         ("RAK_BOARD=1", "RAK_WISMESH_TAG=1")):
-            self.compile_run(("absent", "late", "latest", "awake", "wrap", "blocked", "no_enable"),
+            self.compile_run(("absent", "late", "latest", "awake", "wrap", "blocked", "no_enable", "off_duty_shutdown"),
                              defines=defines, platform="NRF52_PLATFORM")
         for defines in (("ENV_SKIP_GPS_DETECT=1",),
                         ("ENV_SKIP_GPS_DETECT=1", "PERSISTANT_GPS=1")):
@@ -428,6 +471,10 @@ class CooperativeGpsDiscoveryTests(unittest.TestCase):
     def test_failed_esp32_probe_releases_its_uart_before_ownership_is_dropped(self):
         self.compile_run(("absent",))
         self.compile_run(("absent",), negative="failed_uart")
+
+    def test_nrf52_uart_stop_requires_an_open_driver(self):
+        self.compile_run(("off_duty_shutdown",), platform="NRF52_PLATFORM",
+                         negative="unopened_end")
 
 
 if __name__ == "__main__":

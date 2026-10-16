@@ -397,7 +397,7 @@ class Nrf52VariantContractsTest(unittest.TestCase):
             "setGpsTelemetryTransportAvailable(false)",
             "gps_serial_transport_blocked = true",
             "stop_gps()",
-            "Serial1.end()",
+            "stopGpsSerialTransport()",
         ):
             self.assertLess(refusal, block.index(mutation))
         self.assertIn("setGpsTelemetryTransportAvailable(false)", sensors)

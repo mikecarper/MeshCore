@@ -56,7 +56,7 @@ public:
   Uart& state() const { return uarts[port]; }
   void setPins(int receive, int transmit) { state().rx = receive; state().tx = transmit; }
   void begin(unsigned speed) { state().baud = speed; state().installed = true; }
-  void end() { state().installed = false; }
+  void end() { assert(state().installed); state().installed = false; state().fifo.input.clear(); }
   int available() override { return state().fifo.available(); }
   int availableForWrite() override {
     return state().installed ? state().fifo.availableForWrite() : 0;
@@ -88,6 +88,7 @@ struct Location {
 };
 struct EnvironmentSensorManager {
   bool gps_serial_transport_blocked = false, gps_serial_transport = false;
+  bool gps_serial_open = false;
   bool gps_detected = false, gps_active = false, powersaving_enabled = false;
   bool telemetry_user_enabled = false;
   Location location;
@@ -96,6 +97,8 @@ struct EnvironmentSensorManager {
   void setGpsTelemetryUserEnabled(bool value) { telemetry_user_enabled = value; }
   void armGpsPowerSavingCycle() {}
   void initBasicGPS();
+  void startGpsSerialTransport();
+  void stopGpsSerialTransport();
   void start_gps();
   void stop_gps();
 };
@@ -154,7 +157,7 @@ int main() {
   sensors.initBasicGPS();
   assertCompanionConfiguration();
   assert(Serial1.state().baud == 9600);
-  assert(Serial1.available() == gps_bytes);
+  assert(Serial1.available() == 0); // Closing GPS discards only its own FIFO.
   companion_serial.state().fifo.write_capacity = 128;
   interface_manager.loop();
   const std::vector<uint8_t> expected = {'>', 1, 0, 0x00};
@@ -197,6 +200,12 @@ public:
     tx_owner.at(transmit) = int(port);
   }
   void begin(unsigned speed) { state().baud = speed; state().installed = true; }
+  void end() {
+    assert(state().installed);
+    state().installed = false;
+    state().fifo.input.clear();
+    if (tx_owner.at(state().tx) == int(port)) tx_owner.at(state().tx) = -1;
+  }
   int available() override { return state().fifo.available(); }
   int availableForWrite() override {
     return state().installed ? state().fifo.availableForWrite() : 0;
@@ -373,6 +382,8 @@ class CompanionHardwareSerialGpsTest(unittest.TestCase):
         source = source.replace("@GPS_FUNCTIONS@", "\n".join(
             extract_braced(gps, signature) for signature in (
                 "void EnvironmentSensorManager::initBasicGPS()",
+                "void EnvironmentSensorManager::startGpsSerialTransport()",
+                "void EnvironmentSensorManager::stopGpsSerialTransport()",
                 "void EnvironmentSensorManager::start_gps()",
                 "void EnvironmentSensorManager::stop_gps()")))
         scenarios = (
@@ -450,6 +461,8 @@ class CompanionHardwareSerialGpsTest(unittest.TestCase):
         source = source.replace("@GPS_FUNCTIONS@", "\n".join(
             extract_braced(gps, signature) for signature in (
                 "void EnvironmentSensorManager::initBasicGPS()",
+                "void EnvironmentSensorManager::startGpsSerialTransport()",
+                "void EnvironmentSensorManager::stopGpsSerialTransport()",
                 "void EnvironmentSensorManager::start_gps()",
                 "void EnvironmentSensorManager::stop_gps()")))
         scenarios = []

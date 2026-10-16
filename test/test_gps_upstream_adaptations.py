@@ -27,6 +27,7 @@ ARDUINO = r'''
 #define HIGH 1
 #define LOW 0
 #define OUTPUT 1
+#define INPUT 0
 inline uint32_t now_ms=0;
 inline uint32_t delay_count=0;
 inline uint32_t millis(){return now_ms;}
@@ -280,6 +281,7 @@ struct SerialMock {
  unsigned begins=0,polls=0;
  void setPins(int,int){}
  void begin(int){++begins;start=millis();}
+ void end(){}
  int available(){++polls;return arrival!=UINT32_MAX&&static_cast<uint32_t>(millis()-start)>=arrival;}
 } Serial1;
 struct Location {
@@ -289,12 +291,15 @@ struct Location {
 struct EnvironmentSensorManager {
  Location* _location;
  bool gps_serial_transport_blocked=false,gps_serial_transport=false;
+ bool gps_serial_open=false;
  bool gps_detected=false,gps_active=false,user_enabled=false;
  unsigned transport_resets=0;
  explicit EnvironmentSensorManager(Location& p):_location(&p){}
  void resetGpsTelemetryTransportState(){++transport_resets;}
  void setGpsTelemetryUserEnabled(bool enabled){user_enabled=enabled;}
  void initBasicGPS();
+ void startGpsSerialTransport();
+ void stopGpsSerialTransport();
 };
 @INIT@
 int main(){
@@ -401,11 +406,11 @@ class GpsUpstreamAdaptationsTest(unittest.TestCase):
         if cls.compiler is None:
             raise unittest.SkipTest("a host C++17 compiler is required")
 
-    def compile_run(self, source, defines=(), extra_sources=()):
+    def compile_run(self, source, defines=(), extra_sources=(), *, arduino=ARDUINO):
         with tempfile.TemporaryDirectory(prefix="meshcore-gps-upstream-") as directory:
             path = Path(directory)
             for name, text in {
-                "Arduino.h": ARDUINO, "Mesh.h": MESH, "MicroNMEA.h": NMEA,
+                "Arduino.h": arduino, "Mesh.h": MESH, "MicroNMEA.h": NMEA,
                 "RTClib.h": RTC, "CayenneLPP.h": CAYENNE,
                 "Wire.h": "#pragma once\nclass TwoWire {};\n",
             }.items():
@@ -450,9 +455,37 @@ int main(){SensorManager sensors;assert(!sensors.requestGpsTelemetryTimeSync(UIN
     def test_bounded_discovery_fast_cold_absent_bypass_and_uart_owner(self):
         source = (ROOT / "src/helpers/sensors/EnvironmentSensorManager.cpp").read_text()
         init = extract_braced(source, "void EnvironmentSensorManager::initBasicGPS()")
+        init += "\n" + "\n".join(extract_braced(source, signature) for signature in (
+            "void EnvironmentSensorManager::startGpsSerialTransport()",
+            "void EnvironmentSensorManager::stopGpsSerialTransport()"))
         for defines in ((), ("ENV_SKIP_GPS_DETECT=1",), ("PERSISTANT_GPS=1",)):
             with self.subTest(defines=defines):
                 self.compile_run(COLD.replace("@INIT@", init), defines)
+
+    def test_provider_repeated_begin_stop_preserves_shared_power_owners(self):
+        arduino = ARDUINO.replace(
+            "inline void digitalWrite(int,int){}\ninline int digitalRead(int){return HIGH;}",
+            "inline int pin_values[64]={};\n"
+            "inline void digitalWrite(int pin,int value){pin_values[pin]=value;}\n"
+            "inline int digitalRead(int pin){return pin_values[pin];}")
+        self.compile_run(r'''
+#include <cassert>
+#include <helpers/sensors/MicroNMEALocationProvider.h>
+void LocationProvider::sendSentence(const char*) {}
+int main() {
+  Stream serial; RefCountedDigitalPin rail(5); rail.begin();
+  MicroNMEALocationProvider gps(serial, nullptr, 7, 6, &rail);
+  gps.stop(); assert(digitalRead(5)==LOW);
+  for (unsigned cycle=0; cycle<300; ++cycle) {
+    rail.claim(); // Another peripheral owns the same supply.
+    gps.begin(); gps.begin();
+    assert(digitalRead(5)==HIGH && digitalRead(6)==HIGH);
+    gps.stop(); gps.stop();
+    assert(digitalRead(5)==HIGH && digitalRead(6)==LOW);
+    rail.release(); assert(digitalRead(5)==LOW);
+  }
+}
+''', arduino=arduino)
 
     def run_rak_uart_probe(self, *, negative=False):
         source = (ROOT / "src/helpers/sensors/EnvironmentSensorManager.cpp").read_text()

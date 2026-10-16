@@ -353,14 +353,6 @@ static void setRakGpsControl(uint8_t pin, bool shared_power_rail,
   digitalWrite(pin, enabled ? active : static_cast<uint8_t>(!active));
 }
 
-static void stopRakGpsUart() {
-  Serial1.end();
-  // UARTE teardown disconnects PSEL but does not restore GPIO configuration.
-  // Remove output drive and pulls so serial pads cannot back-power an off GPS.
-  pinMode(PIN_GPS_TX, INPUT);
-  pinMode(PIN_GPS_RX, INPUT);
-}
-
 static bool serialHasValidGpsSentence(Stream& serial, uint32_t timeout_ms) {
   mesh::NmeaSentenceProbe probe;
   const uint32_t started = millis();
@@ -1218,16 +1210,42 @@ void EnvironmentSensorManager::setPowerSavingEnabled(bool enabled) {
 }
 
 #if ENV_INCLUDE_GPS
+void EnvironmentSensorManager::startGpsSerialTransport() {
+  if (gps_serial_open) return;
+  Serial1.setPins(PIN_GPS_TX, PIN_GPS_RX);
+#ifdef GPS_BAUD_RATE
+  Serial1.begin(GPS_BAUD_RATE);
+#else
+  Serial1.begin(9600);
+#endif
+  gps_serial_open = true;
+}
+
+void EnvironmentSensorManager::stopGpsSerialTransport() {
+  // Logical reservation survives GPS-off and bridge handoff. Only this state
+  // proves that GPS opened the driver: nRF52 Uart::end() can hang unopened.
+  if (!gps_serial_open) return;
+  gps_serial_open = false;
+#if defined(ESP32_PLATFORM)
+  // A board-specific provider may already have closed the ESP32 driver while
+  // switching its receiver rail. Its bool conversion reports that condition.
+  if (Serial1)
+#endif
+    Serial1.end();
+  // UARTE/ESP32 teardown need not restore GPIO configuration. Release BOTH
+  // pads before receiver power changes; several boards name them from GPS.
+#if defined(PIN_GPS_TX) && PIN_GPS_TX >= 0
+  pinMode(PIN_GPS_TX, INPUT);
+#endif
+#if defined(PIN_GPS_RX) && PIN_GPS_RX >= 0
+  pinMode(PIN_GPS_RX, INPUT);
+#endif
+}
+
 #if (defined(ESP32_PLATFORM) || defined(NRF52_PLATFORM)) && !defined(RAK_WISBLOCK_GPS)
 void EnvironmentSensorManager::finishBasicGpsDiscovery(bool found) {
   gps_discovery_pending = false;
   gps_detected = found;
-#if defined(ESP32_PLATFORM)
-  // Relinquish the failed probe's UART while ownership is still known. Leaving
-  // its idle-high TX installed after the receiver rail is cut can back-power
-  // the receiver, especially when terminal deep sleep retains digital pads.
-  if (!found) shutdownGpsTransportForDeepSleep();
-#endif
   gps_serial_transport = found;
   if (found) {
     MESH_DEBUG_PRINTLN("GPS detected");
@@ -1245,6 +1263,7 @@ void EnvironmentSensorManager::finishBasicGpsDiscovery(bool found) {
   } else {
     MESH_DEBUG_PRINTLN("No GPS detected");
   }
+  stopGpsSerialTransport();
   _location->stop();
   gps_active = false;
   if (found && isGpsTelemetryUserEnabled()) {
@@ -1286,13 +1305,7 @@ void EnvironmentSensorManager::initBasicGPS() {
   gps_active = false;
 #endif
 
-  Serial1.setPins(PIN_GPS_TX, PIN_GPS_RX);
-
-  #ifdef GPS_BAUD_RATE
-  Serial1.begin(GPS_BAUD_RATE);
-  #else
-  Serial1.begin(9600);
-  #endif
+  startGpsSerialTransport();
 
   // Try to detect if GPS is physically connected to determine if we should expose the setting
   _location->begin();
@@ -1335,6 +1348,7 @@ void EnvironmentSensorManager::initBasicGPS() {
   } else {
     MESH_DEBUG_PRINTLN("No GPS detected");
   }
+  stopGpsSerialTransport();
   _location->stop();
   gps_active = false; //Set GPS visibility off until setting is changed
 #endif
@@ -1456,13 +1470,7 @@ void EnvironmentSensorManager::rakGPSInit() {
   gps_serial_transport_blocked = false;
   _location = _configured_location;
 
-  Serial1.setPins(PIN_GPS_TX, PIN_GPS_RX);
-
-#ifdef GPS_BAUD_RATE
-  Serial1.begin(GPS_BAUD_RATE);
-#else
-  Serial1.begin(9600);
-#endif
+  startGpsSerialTransport();
 
   // A RAK-derived board with a real GPS-enable pin must use it. Stock WisBlock
   // bases have no dedicated GPS switch, so their fallback is shared WB_IO2.
@@ -1478,12 +1486,12 @@ void EnvironmentSensorManager::rakGPSInit() {
     // WB_IO2 is not an independently owned GPS pin. A provider must never
     // lower it during reset/begin/stop behind the shared-power policy's back.
     _location->setPinEn(shared_power_rail ? -1 : gps_control_pin);
-    if (i2cGPSFlag) stopRakGpsUart();
+    if (i2cGPSFlag) stopGpsSerialTransport();
   } else {
     MESH_DEBUG_PRINTLN("No GPS found");
     gps_active = false;
     gps_detected = false;
-    stopRakGpsUart();
+    stopGpsSerialTransport();
     return;
   }
 
@@ -1620,12 +1628,7 @@ void EnvironmentSensorManager::start_gps() {
   }
 #endif
   if (gps_serial_transport) {
-    Serial1.setPins(PIN_GPS_TX, PIN_GPS_RX);
-#ifdef GPS_BAUD_RATE
-    Serial1.begin(GPS_BAUD_RATE);
-#else
-    Serial1.begin(9600);
-#endif
+    startGpsSerialTransport();
   }
   gps_active = true;
 #ifdef RAK_WISBLOCK_GPS
@@ -1652,9 +1655,9 @@ void EnvironmentSensorManager::stop_gps() {
     _location->setNextWake();
   }
 
-#ifdef RAK_WISBLOCK_GPS
   // End the MCU UART before removing receiver power, never the reverse.
-  if (serialGPSFlag) stopRakGpsUart();
+  stopGpsSerialTransport();
+#ifdef RAK_WISBLOCK_GPS
   _wisblock_power.setGpsActive(false);
 #if defined(PIN_GPS_EN) && PIN_GPS_EN >= 0
   setRakGpsControl(PIN_GPS_EN, false, false);
@@ -1689,18 +1692,10 @@ bool EnvironmentSensorManager::gpsUsesSerialUart(uint8_t uart) const {
 }
 
 void EnvironmentSensorManager::shutdownGpsTransportForDeepSleep() {
-#if defined(ESP32_PLATFORM) && ENV_INCLUDE_GPS \
-    && defined(PIN_GPS_TX) && PIN_GPS_TX >= 0 \
-    && defined(PIN_GPS_RX) && PIN_GPS_RX >= 0
+#if ENV_INCLUDE_GPS
   // gpsUsesSerialUart stays true while a bridge temporarily owns the UART.
   // Do not end that owner's transport or touch an I2C/shared peripheral bus.
-  if (gps_serial_transport && !gps_serial_transport_blocked) {
-    if (Serial1) Serial1.end();
-    // The Arduino pin names are from the receiver's perspective on several
-    // boards. Release BOTH pads rather than assuming which one drives TX.
-    pinMode(PIN_GPS_TX, INPUT);
-    pinMode(PIN_GPS_RX, INPUT);
-  }
+  if (!gps_serial_transport_blocked) stopGpsSerialTransport();
 #endif
 }
 
@@ -1755,12 +1750,13 @@ bool EnvironmentSensorManager::setGpsSerialTransportBlocked(uint8_t uart,
     setGpsTelemetryTransportAvailable(false);
     gps_serial_transport_blocked = true;
 #if (defined(ESP32_PLATFORM) || defined(NRF52_PLATFORM)) && !defined(RAK_WISBLOCK_GPS)
-    if (gps_discovery_pending) _location->stop();
+    if (gps_discovery_pending) {
+      stopGpsSerialTransport();
+      _location->stop();
+    }
 #endif
     if (gps_active) stop_gps();
-#ifndef RAK_WISBLOCK_GPS
-    Serial1.end();
-#endif
+    stopGpsSerialTransport();
   } else {
     gps_serial_transport_blocked = false;
 #if (defined(ESP32_PLATFORM) || defined(NRF52_PLATFORM)) && !defined(RAK_WISBLOCK_GPS)

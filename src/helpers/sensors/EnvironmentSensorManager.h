@@ -27,6 +27,7 @@ protected:
   bool     gps_active = false;
   bool     gps_serial_transport = false;
   bool     gps_serial_transport_blocked = false;
+  bool     gps_serial_open = false;
 #if defined(RAK_BOARD) && !defined(RAK_WISMESH_TAG)
   mesh::gps::WisBlockSharedPowerPolicy _wisblock_power;
   bool _wisblock_discovery_completed = false;
@@ -63,6 +64,8 @@ protected:
   LocationProvider* _location;
   LocationProvider* _configured_location;
   void armGpsPowerSavingCycle();
+  void startGpsSerialTransport();
+  void stopGpsSerialTransport();
   void start_gps();
   void stop_gps();
   bool telemetryGpsDetected() const override { return gps_detected; }

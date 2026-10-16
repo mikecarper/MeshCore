@@ -346,8 +346,10 @@ int main(){ using namespace mesh::esp32;
                     extra_source=(variant/'LoRaFEMControl.cpp').read_text(),files=files)
 
     def test_terminal_gps_uart_release_respects_owner_and_leaves_i2c_alone(self):
-        hook=body((ROOT/'src/helpers/sensors/EnvironmentSensorManager.cpp').read_text(),
+        source=(ROOT/'src/helpers/sensors/EnvironmentSensorManager.cpp').read_text()
+        hook=body(source,
             'void EnvironmentSensorManager::shutdownGpsTransportForDeepSleep()')
+        stop=body(source,'void EnvironmentSensorManager::stopGpsSerialTransport()')
         code=r'''
 #include <helpers/ESP32GpioHold.h>
 #define INPUT 0
@@ -356,27 +358,34 @@ struct Port { bool installed=false;unsigned ends=0;explicit operator bool()const
  void end(){assert(installed);installed=false;++ends;} } Serial1;
 void pinMode(int pin,int mode){assert(!Serial1.installed && mode==INPUT);++released_pads;pads[pin].output=false;}
 class EnvironmentSensorManager {public:bool gps_serial_transport=false,gps_serial_transport_blocked=false;
- void shutdownGpsTransportForDeepSleep();};
+ bool gps_serial_open=false;
+ void shutdownGpsTransportForDeepSleep();void stopGpsSerialTransport();};
+#if ENV_INCLUDE_GPS
+@STOP@
+#endif
 @HOOK@
 int main(){ EnvironmentSensorManager sensors;
  // I2C/no-owned GPS: an unrelated serial user is untouched.
  Serial1.installed=true;sensors.shutdownGpsTransportForDeepSleep();assert(Serial1.installed && !Serial1.ends && !released_pads);
  sensors.gps_serial_transport=true;sensors.gps_serial_transport_blocked=true;
  sensors.shutdownGpsTransportForDeepSleep();assert(Serial1.installed && !Serial1.ends && !released_pads);
- sensors.gps_serial_transport_blocked=false;sensors.shutdownGpsTransportForDeepSleep();
+ sensors.gps_serial_transport_blocked=false;sensors.gps_serial_open=true;
+ sensors.shutdownGpsTransportForDeepSleep();
 #if EXPECT_RELEASE
- assert(!Serial1.installed && Serial1.ends==1 && released_pads==2);
- sensors.shutdownGpsTransportForDeepSleep();assert(Serial1.ends==1 && released_pads==4);
+ assert(!Serial1.installed && Serial1.ends==1 && released_pads==EXPECT_PADS);
+ sensors.shutdownGpsTransportForDeepSleep();assert(Serial1.ends==1 && released_pads==EXPECT_PADS);
 #else
  assert(Serial1.installed && !Serial1.ends && !released_pads);
 #endif
 }
-'''.replace('@HOOK@',hook)
+'''.replace('@HOOK@',hook).replace('@STOP@',stop)
         for definitions in (
-            ('ESP32_PLATFORM=1','ENV_INCLUDE_GPS=1','PIN_GPS_TX=18','PIN_GPS_RX=17','EXPECT_RELEASE=1'),
+            ('ESP32_PLATFORM=1','ENV_INCLUDE_GPS=1','PIN_GPS_TX=18','PIN_GPS_RX=17','EXPECT_RELEASE=1','EXPECT_PADS=2'),
             ('ESP32_PLATFORM=1','ENV_INCLUDE_GPS=0','PIN_GPS_TX=18','PIN_GPS_RX=17','EXPECT_RELEASE=0'),
-            ('NRF52_PLATFORM=1','ENV_INCLUDE_GPS=1','PIN_GPS_TX=18','PIN_GPS_RX=17','EXPECT_RELEASE=0'),
-            ('ESP32_PLATFORM=1','ENV_INCLUDE_GPS=1','PIN_GPS_TX=-1','PIN_GPS_RX=17','EXPECT_RELEASE=0'),
+            ('NRF52_PLATFORM=1','ENV_INCLUDE_GPS=1','PIN_GPS_TX=18','PIN_GPS_RX=17','EXPECT_RELEASE=1','EXPECT_PADS=2'),
+            ('ESP32_PLATFORM=1','ENV_INCLUDE_GPS=1','PIN_GPS_TX=-1','PIN_GPS_RX=17','EXPECT_RELEASE=1','EXPECT_PADS=1'),
+            ('ESP32_PLATFORM=1','ENV_INCLUDE_GPS=1','EXPECT_RELEASE=1','EXPECT_PADS=0'),
+            ('NRF52_PLATFORM=1','ENV_INCLUDE_GPS=0','PIN_GPS_TX=-1','PIN_GPS_RX=-1','EXPECT_RELEASE=0'),
         ):
             self.compile_run(code,defines=definitions)
 

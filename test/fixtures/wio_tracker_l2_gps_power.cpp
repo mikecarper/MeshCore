@@ -22,6 +22,7 @@ class EnvironmentSensorManager : public SensorManager {
 public:
   LocationProvider* _location;
   bool gps_detected=false, gps_active=false, gps_serial_transport=false;
+  bool gps_serial_open=false;
   bool gps_serial_transport_blocked=false, gps_discovery_pending=false;
   bool gps_discovery_preference_known=false;
   uint32_t gps_discovery_started_at=0;
@@ -36,6 +37,8 @@ public:
   void finishBasicGpsDiscovery(bool found);
   void serviceBasicGpsDiscovery();
   void initBasicGPS();
+  void startGpsSerialTransport();
+  void stopGpsSerialTransport();
   void armGpsPowerSavingCycle();
   void start_gps();
   void stop_gps();

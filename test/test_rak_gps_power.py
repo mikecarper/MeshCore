@@ -28,8 +28,8 @@ def lifecycle_harness(gps=True, negative=None):
             "_location->setPinEn(shared_power_rail ? -1 : gps_control_pin);\n"
             "    setGpsTelemetryUserEnabled(true);"),
         "no_wake_settle": ("if (!was_powered) delay(500);", "// Negative control: use UART before cold receiver settles."),
-        "no_pad_release": ("pinMode(PIN_GPS_TX, INPUT);\n  pinMode(PIN_GPS_RX, INPUT);",
-                           "// Negative control: retain driven serial pads after receiver power-off."),
+        "no_pad_release": ("  pinMode(PIN_GPS_TX, INPUT);",
+                           "  // Negative control: retain the serial pad after receiver power-off."),
     }
     if negative in mutations:
         before, after = mutations[negative]
@@ -37,9 +37,9 @@ def lifecycle_harness(gps=True, negative=None):
         source = source.replace(before, after, 1)
     elif negative == "power_before_uart_end":
         before = extract_braced(source, "void EnvironmentSensorManager::stop_gps()")
-        after = before.replace("if (serialGPSFlag) stopRakGpsUart();", "// Negative control: release UART too late.")
+        after = before.replace("stopGpsSerialTransport();", "// Negative control: release UART too late.")
         assert after != before, "negative-control UART stop anchor changed"
-        after = after.replace("applyWisBlockRailPower();", "applyWisBlockRailPower();\n  if (serialGPSFlag) stopRakGpsUart();", 1)
+        after = after.replace("applyWisBlockRailPower();", "applyWisBlockRailPower();\n  stopGpsSerialTransport();", 1)
         source = source.replace(before, after, 1)
     elif negative is not None:
         raise ValueError("unknown lifecycle negative control")
@@ -48,7 +48,6 @@ def lifecycle_harness(gps=True, negative=None):
     helpers = "\n".join(extract_braced(source, signature) for signature in (
         "static uint8_t rakGpsControlActiveLevel(",
         "static void setRakGpsControl(",
-        "static void stopRakGpsUart(",
         "static bool serialHasValidGpsSentence(",
         "static bool configureRakUbloxReceiver(",
     )) if gps else ""
@@ -72,6 +71,8 @@ def lifecycle_harness(gps=True, negative=None):
         "void EnvironmentSensorManager::rakGPSInit()",
         "bool EnvironmentSensorManager::gpsIsAwake(",
         "void EnvironmentSensorManager::armGpsPowerSavingCycle()",
+        "void EnvironmentSensorManager::startGpsSerialTransport()",
+        "void EnvironmentSensorManager::stopGpsSerialTransport()",
         "void EnvironmentSensorManager::start_gps()",
         "void EnvironmentSensorManager::stop_gps()",
         "bool EnvironmentSensorManager::gpsUsesSerialUart(",
@@ -86,6 +87,8 @@ def lifecycle_harness(gps=True, negative=None):
             "void EnvironmentSensorManager::rakGPSInit()",
             "bool EnvironmentSensorManager::gpsIsAwake(",
             "void EnvironmentSensorManager::armGpsPowerSavingCycle()",
+            "void EnvironmentSensorManager::startGpsSerialTransport()",
+            "void EnvironmentSensorManager::stopGpsSerialTransport()",
             "void EnvironmentSensorManager::start_gps()",
             "void EnvironmentSensorManager::stop_gps()",
             "void EnvironmentSensorManager::loop()",

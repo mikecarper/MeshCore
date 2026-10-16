@@ -58,6 +58,7 @@ public:
 class HardwareSerial : public Stream {
 public:
  bool installed=false;
+ explicit operator bool() const { return installed; }
  unsigned begins=0, ends=0;
  int rx=-1,tx=-1;
  std::deque<char> incoming;
@@ -149,6 +150,8 @@ def harness(mutation=None):
         "void EnvironmentSensorManager::serviceBasicGpsDiscovery()",
         "void EnvironmentSensorManager::initBasicGPS()",
         "void EnvironmentSensorManager::armGpsPowerSavingCycle()",
+        "void EnvironmentSensorManager::startGpsSerialTransport()",
+        "void EnvironmentSensorManager::stopGpsSerialTransport()",
         "void EnvironmentSensorManager::start_gps()",
         "void EnvironmentSensorManager::stop_gps()",
         "void EnvironmentSensorManager::loop()",

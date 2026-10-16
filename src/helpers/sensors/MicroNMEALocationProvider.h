@@ -50,6 +50,7 @@ class MicroNMEALocationProvider : public LocationProvider {
     Stream* _gps_serial;
     RefCountedDigitalPin* _peripher_power;
     int8_t _claims = 0;
+    bool _started = false;
     int _pin_reset;
     int _pin_en;
     unsigned long next_check = 0;
@@ -119,6 +120,8 @@ public :
 
     void begin() override {
         _begin_calls++;
+        if (_started) return;
+        _started = true;
         claim();
         if (_pin_en != -1) {
             digitalWrite(_pin_en, GPS_EN_ACTIVE);
@@ -143,6 +146,8 @@ public :
 
     void stop() override {
         _stop_calls++;
+        if (!_started) return;
+        _started = false;
         if (_pin_en != -1) {
             digitalWrite(_pin_en, !GPS_EN_ACTIVE);
         }
