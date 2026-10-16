@@ -204,6 +204,8 @@ jobs:
           python3 -B test/test_upstream_routing_merge.py -v
           python3 -B test/test_iotthinks_merge.py -v
           python3 -B test/test_upstream_power_policy_merge.py -v
+          python3 -B test/test_upstream_20261015_wifi_boot.py -v
+          python3 -B test/test_wio_tracker_l2_gps_power.py -v
           python3 -B test/test_lr1121_power_merge.py -v
           python3 -B test/test_radio_interrupt_recovery.py -v
           python3 -B test/test_bridge_recovery.py -v
@@ -271,6 +273,7 @@ jobs:
           python3 -B test/test_mqtt_handshake_scheduler.py -v
           python3 -B test/test_mqtt_transport_health.py -v
           python3 -B test/test_mqtt_diagnostics.py -v
+          python3 -B test/test_mqtt_advert_verify.py -v
           python3 -B test/test_mqtt_publish_ack.py -v
           python3 -B test/test_wifi_network_power_policy.py -v
           python3 -B test/test_mqtt_wifi_network_power.py -v
@@ -643,6 +646,7 @@ jobs:
           python3 -B test/test_firmware_capabilities.py
           MESHCORE_TEST_REAL_PIO_PATHS=1 python3 -B test/test_esp32_partition_migration_build_dir.py -v
           python3 -B test/test_esp32_partition_migration_usb.py -v
+          python3 -B test/test_waveshare_partition_migration.py -v
           python3 -B test/test_usb_partition_bridge_set.py -v
           bash test/test_build_profiles.sh
           bash test/test_full_infrastructure_selection.sh
@@ -679,6 +683,7 @@ jobs:
           python3 -B test/test_nrf52_ble_trace.py
           python3 -B test/test_nrf52_ble_debug_tools.py
           python3 -B test/test_nrf52_usb_power.py
+          python3 -B test/test_nrf52_shutdown_leds.py -v
           python3 -B test/test_shared_mota_queue.py
 
       - name: Verify opt-in RAK4631 combined Ethernet and OTA modes

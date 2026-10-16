@@ -11,6 +11,8 @@ PREAMBLE = r'''
 #include <helpers/ui/CompanionHomeLayout.h>
 #include <helpers/ui/BluetoothPairingUiPolicy.h>
 #include <helpers/ui/ReaderNavigationHint.h>
+#include <helpers/ui/RadioProfileDisplayPage.h>
+#include <RadioProfiles.h>
 #include <cassert>
 #include <cstdio>
 #include <string>
@@ -62,7 +64,13 @@ struct Task {
   const char* inboxTitle(){return "HISTORY";}
   const char* connectedClientLabel(){return connected ? "BLUETOOTH" : nullptr;}
 };
-struct Mesh { uint32_t pin=123456; uint32_t getBLEPin(){return pin;} } the_mesh;
+struct Mesh {
+  uint32_t pin=123456;
+  uint32_t getBLEPin(){return pin;}
+  bool isDualRadioActive(){return false;}
+} the_mesh;
+const mesh::RadioProfiles* configuredRadioProfiles(){return nullptr;}
+bool showingSecondaryRadioProfilePage(){return false;}
 struct HomePage { enum { FIRST=0 }; };
 struct IPAddress { int operator[](int i){return 255-i;} };
 struct Wifi { IPAddress localIP(){return {};} int status(){return 3;} } WiFi;
