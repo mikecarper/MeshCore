@@ -400,9 +400,23 @@ int main(){
                    defines=FLAGS + ["OTA_SEEDER_ONLY"])
 
     def test_actual_companion_eth_is_opt_in_and_busy_handoff_never_touches_spi(self):
+        self._run_companion_eth_probe()
+
+    def test_companion_eth_cs_reacquisition_negative_controls(self):
+        for mutation in ("missing_cs_direction", "missing_cs_preload"):
+            with self.subTest(mutation=mutation):
+                self._run_companion_eth_probe(mutation)
+
+    def _run_companion_eth_probe(self, mutation=None):
         stem = ROOT / "src/helpers/ethernet/RAK13800/RAK13800EthernetInterface"
         cls = extract_braced(stem.with_suffix(".h").read_text(), "class RAK13800EthernetInterface") + ";"
         cpp = stem.with_suffix(".cpp").read_text()
+        if mutation:
+            statement = ("  pinMode(PIN_ETHERNET_SS, OUTPUT);" if mutation == "missing_cs_direction"
+                         else "  digitalWrite(PIN_ETHERNET_SS, HIGH);")
+            startup = extract_braced(cpp, "bool RAK13800EthernetInterface::beginHardware()")
+            self.assertEqual(startup.count(statement), 1)
+            cpp = cpp.replace(startup, startup.replace(statement, ""))
         signatures = ("bool RAK13800EthernetInterface::begin()", "bool RAK13800EthernetInterface::beginHardware()",
                       "bool RAK13800EthernetInterface::tryEnable()", "bool RAK13800EthernetInterface::tryDisable()",
                       "bool RAK13800EthernetInterface::terminalShutdown(", "bool RAK13800EthernetInterface::shutdownForPowerOff(",
@@ -418,6 +432,13 @@ int main(){
         source = source.replace("struct SPIClass {void begin(){assert(!spi);spi=true;++begins;} void end(){assert(spi);spi=false;++ends;}} ETHERNET_SPI_PORT;",
                                 "struct EthSpi{void begin(){assert(!spi);spi=true;++begins;}void end(){assert(spi);spi=false;++ends;}} ETHERNET_SPI_PORT;")
         source = source.replace("void init(SPIClass&,int)", "void init(EthSpi&,int)")
+        # The pinned W5100 init returns early after its first success, so
+        # only that first call configures CS. GPIO writes do not restore an
+        # input's output direction on nRF52; each acquisition must do so.
+        source = source.replace("int begin(uint8_t*){return result;}",
+            "int begin(uint8_t*){static bool initialized=false;"
+            "if(!initialized){pinMode(26,OUTPUT);digitalWrite(26,HIGH);initialized=true;}"
+            "assert(mock_pin_modes[26]==OUTPUT && mock_pin_values[26]==HIGH);return result;}")
         source = source.replace("void disable(){disconnectClient();++cancels;}", "virtual void enable(){}\n  virtual void disable(){disconnectClient();++cancels;}")
         source = source.replace("@CLASS@", cls).replace("@METHODS@", methods)
         source = source.replace("assert(spi);++closes;", "assert(spi&&!inserted);++closes;")
@@ -431,27 +452,42 @@ bool release(void*){assert(!spi&&!rak4631_ethernet_owns_spi());++released;return
 int main(){
  RAK13800EthernetInterface owner;assert(owner.begin());owner.enable();
  assert(!owner.hardwareActive()&&!spi&&!begins&&!owner.tryEnable());
+ assert(mock_cs_driven==0);
  owner.setSpiOwnershipHooks(prepare,canRelease,release,nullptr);
  inserted=true;assert(!owner.tryEnable()&&!prepared&&!begins);
  inserted=false;busy=true;assert(!owner.tryEnable()&&prepared==1&&!begins);
  busy=false;assert(rak4631_try_acquire_spi(RakSharedSpiOwner::Sd));
  assert(!owner.tryEnable()&&!begins&&rak4631_spi_owner()==RakSharedSpiOwner::Sd);
+ assert(mock_cs_driven==0); // Rejected admission must never drive shared CS.
  rak4631_release_spi(RakSharedSpiOwner::Sd);
  assert(owner.tryEnable()&&owner.hardwareActive()&&rak4631_ethernet_owns_spi());
  release_busy=true;assert(!owner.tryDisable()&&owner.hardwareActive()&&ends==0);
  release_busy=false;assert(owner.tryDisable()&&!owner.hardwareActive()&&ends==1&&closes==4);
+ assert(mock_pin_modes[26]==INPUT);
  assert(!rak4631_ethernet_owns_spi()&&released==2);
  Ethernet.result=0;assert(!owner.tryEnable()&&!owner.hardwareActive()&&ends==2&&!rak4631_ethernet_owns_spi());
  Ethernet.result=1;assert(owner.tryEnable());inserted=true;const auto calls=reads;
  assert(owner.available()==0&&owner.read()==-1&&owner.write(nullptr,0)==0&&reads==calls);
  owner.loop();assert(!owner.hardwareActive()&&rak4631_ethernet_owns_spi()&&reads==calls);
  assert(!owner.tryEnable());assert(owner.tryDisable()&&!rak4631_ethernet_owns_spi());
+ assert(mock_pin_modes[26]==INPUT);
+ inserted=false;assert(owner.tryEnable()&&owner.hardwareActive());
+ assert(mock_pin_modes[26]==OUTPUT); // Also recover after SD insertion and removal.
+ assert(owner.tryDisable()&&mock_pin_modes[26]==INPUT);
 }
 '''
         # The existing fixture's pad counter is irrelevant to the new mapped
         # GPIO mock; ownership/SPI/socket traffic remains production code.
         source = source.replace("ends=0,pads=0,cancels", "ends=0,cancels")
-        run_native(self, source)
+        spi = SPI.replace("inline void pinMode(int pin,int){touched.push_back(pin);}",
+            "inline int mock_pin_modes[64]={},mock_pin_values[64]={};\n"
+            "inline unsigned mock_cs_driven=0;\n"
+            "inline void pinMode(int pin,int mode){"
+            "if(pin==26&&mode==OUTPUT){assert(mock_pin_values[pin]==HIGH);++mock_cs_driven;}"
+            "mock_pin_modes[pin]=mode;touched.push_back(pin);}")
+        spi = spi.replace("inline void digitalWrite(int pin,int){touched.push_back(pin);}",
+            "inline void digitalWrite(int pin,int value){mock_pin_values[pin]=value;touched.push_back(pin);}")
+        run_native(self, source, {"SPI.h": spi}, negative=mutation is not None)
 
 
 if __name__ == "__main__":

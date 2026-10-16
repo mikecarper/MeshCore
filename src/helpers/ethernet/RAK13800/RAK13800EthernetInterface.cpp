@@ -97,6 +97,13 @@ bool RAK13800EthernetInterface::beginHardware() {
       mac[3],
       mac[4],
       mac[5]);
+#if defined(OTA_RAK15002_SD_STORE)
+  // OFF releases the shared pads to inputs. The vendor W5100 init is cached
+  // after its first success and will not restore CS direction on reacquire.
+  // Only tryEnable() reaches here, after storage and SPI ownership admission.
+  digitalWrite(PIN_ETHERNET_SS, HIGH);
+  pinMode(PIN_ETHERNET_SS, OUTPUT);
+#endif
   ETHERNET_SPI_PORT.begin();
   _spiStarted = true;
   Ethernet.init(ETHERNET_SPI_PORT, PIN_ETHERNET_SS);
