@@ -43,6 +43,7 @@ struct MyMesh {
   Prefs* _prefs = &prefs;
   Sensors* _sensors = &sensors;
   unsigned saves = 0;
+  bool dual_radio_active = false;
   void savePrefs() { ++saves; }
   void set(const char* config, char* reply) { @SETTER@ }
   void get(const char* config, char* reply) { @GETTER@ }
@@ -53,6 +54,7 @@ struct MyMesh {
   }
   void cancelPendingSerialOutput() {}
   bool hasPendingSerialOutput() { return false; }
+  bool isDualRadioActive() { return dual_radio_active; }
   Prefs* getNodePrefs() { return _prefs; }
   unsigned getPowerSaveSleepSeconds(unsigned limit) { return limit; }
   bool millisHasNowPassed(unsigned deadline) { return millis() > deadline; }
