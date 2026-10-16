@@ -74,7 +74,7 @@ UNCHANGED_COUNTS = {
     ("esp32-c6-devkitm-1", "hwcdc"): 16,
     ("esp32-s3-devkitc-1", "hwcdc"): 22,
     ("esp32-s3-devkitc-1", "uart"): 55,
-    ("esp32-s3-zero", "hwcdc"): 24,
+    ("esp32-s3-zero", "hwcdc"): 25,
     ("esp32dev", "classic_uart"): 5,
     ("esp32doit-devkit-v1", "classic_uart"): 19,
     ("esp32s3box", "hwcdc"): 7,
@@ -89,7 +89,7 @@ UNCHANGED_COUNTS = {
     ("seeed_xiao_esp32s3", "hwcdc"): 26,
     ("seeed_xiao_esp32s3_migrator", "hwcdc"): 1,
     ("seeed_xiao_esp32s3_migrator", "uart"): 3,
-    ("seeed_wio_tracker_l2", "hwcdc"): 4,
+    ("seeed_wio_tracker_l2", "hwcdc"): 5,
     ("t-deck", "hwcdc"): 4,
     ("t3_s3_v1_x", "hwcdc"): 19,
     ("t_beams3_supreme", "hwcdc"): 9,
@@ -281,9 +281,25 @@ class Esp32HwcdcRecipeTests(unittest.TestCase):
                 self.assertEqual(self.sdk["hwcdc_primary_enabled"](row["env"]),
                                  row["kind"] == "hwcdc")
                 self.assertFalse(self.sdk["native_primary_enabled"](row["env"]))
-        expected = Counter({"hwcdc": 336, "uart": 120, "classic_uart": 61})
+        expected = Counter({"hwcdc": 338, "uart": 120, "classic_uart": 61})
         expected.update(kind for _, _, kind in USB_PARTITION_BRIDGES.values())
         self.assertEqual(counts, expected)
+
+    def test_canonical_full_companions_preserve_their_usb_base_transport(self):
+        for name, board in (
+            ("Waveshare_S3_LR1121_companion_radio_full", "esp32-s3-zero"),
+            ("Wio_Tracker_L2_companion_radio_full", "seeed_wio_tracker_l2"),
+        ):
+            with self.subTest(environment=name):
+                base_name = name.removesuffix("_full") + "_usb"
+                self.assertEqual(self.config.get(f"env:{name}", "extends"),
+                                 [f"env:{base_name}"])
+                for row in (self.rows[name], self.rows[base_name]):
+                    self.assertEqual((row["board"], row["mcu"], row["kind"]),
+                                     (board, "esp32s3", "hwcdc"))
+                    self.assertEqual(row["values"], {USB_MODE: "1", USB_CDC: "1"})
+                    self.assertTrue(self.sdk["hwcdc_primary_enabled"](row["env"]))
+                    self.assertFalse(self.sdk["native_primary_enabled"](row["env"]))
 
     def test_usb_partition_bridges_keep_application_usb_disabled(self):
         names = {name for name in self.rows if name.startswith("esp32_")
