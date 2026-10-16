@@ -2386,8 +2386,11 @@ sending along a different route. Contact I/O failures request bounded recovery
 between callbacks. A raw cached-path read fault first rechecks the current
 immutable paths without resetting accepted RAM changes or their save deadline.
 Persistent faults or uncertain file publication reload a readable live image,
-otherwise a readable backup,
-and discard only unrecoverable contact data if neither works. nRF52 preserves
+otherwise a readable backup, and discard only unrecoverable contact data if
+neither works. Recovery releases a pending contact-list snapshot before resetting
+the table but preserves its requesting route; the changed table revision starts
+a fresh list that can finish normally. Explicit session cancellation still stops
+the stream. nRF52 preserves
 healthy pages when another page is damaged. No archival <code>.bad</code> files are kept.
 If damaged contacts cannot be removed, the node remains usable with volatile
 contacts; explicit saves still report failure, while reboot/shutdown remain
