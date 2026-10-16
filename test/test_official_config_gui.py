@@ -230,7 +230,14 @@ class OfficialConfigGuiTests(unittest.TestCase):
             witness = (FIXTURE / "bootstrap-witness.js").read_text()
             self.assertEqual(bootstrap, witness.rstrip("\n"), "Pinned GUI bootstrap witness changed")
             (work / "bootstrap.js").write_text(bootstrap, encoding="ascii")
-            for name, text in {"Arduino.h": gps.ARDUINO, "Mesh.h": gps.MESH,
+            # Discovery's UART double and shutdown assertions share the GPIO
+            # mode bookkeeping used by its standalone hardware-boundary mock.
+            pin_mode_stub = "inline void pinMode(int,int){}"
+            self.assertEqual(gps.ARDUINO.count(pin_mode_stub), 1)
+            gps_arduino = gps.ARDUINO.replace(pin_mode_stub,
+                "inline int gpio_modes[64]={};\n"
+                "inline void pinMode(int pin,int mode){gpio_modes[pin]=mode;}")
+            for name, text in {"Arduino.h": gps_arduino, "Mesh.h": gps.MESH,
                                "CayenneLPP.h": gps.CAYENNE,
                                "Wire.h": "#pragma once\nclass TwoWire {};\n"}.items():
                 (work / name).write_text(text, encoding="ascii")
