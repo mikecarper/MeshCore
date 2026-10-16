@@ -442,7 +442,9 @@ protected:
 #endif
   bool queueChannelText(uint8_t index, const uint8_t secret[32], float snr,
                         uint8_t path_len, uint32_t timestamp, const char* text,
-                        bool is_emergency_channel);
+                        bool is_emergency_channel, bool notify = true);
+  void seedEmergencyChannelNotice(uint8_t index, const ChannelDetails& previous);
+  void servicePendingChannelNotices();
   int findChannelIdxForPacket(const mesh::GroupChannel& channel, const mesh::Packet* packet);
   bool allowFloodRetry(const mesh::Packet* packet) const override;
   uint8_t getFloodRetryMaxPathLength(const mesh::Packet* packet) const override;
@@ -916,6 +918,8 @@ private:
   void initializeOfflineQueue();
   int offline_queue_len;
   int offline_queue_head;
+  // Local onboarding only: RAM-backed like the receive queue, not RF traffic.
+  uint8_t pending_emergency_notices[(MAX_GROUP_CHANNELS + 7) / 8] = {};
 #if defined(OTA_SHARED_COMPANION_QUEUE)
   static_assert(OFFLINE_QUEUE_SIZE == 256, "Shared mOTA queue requires 256 normal slots");
   mesh::BorrowableFrameBuffer<Frame, OFFLINE_QUEUE_SIZE, 128, mesh::ota::OtaContext> offline_queue;

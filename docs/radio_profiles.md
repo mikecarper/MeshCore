@@ -416,6 +416,23 @@ Repeater/room/sensor hashtag behavior is unchanged; those nodes can join the
 canonical MeshCore channel (`#emergency`). Older Companion firmware does not
 recognize these aliases.
 
+### Local emergency-channel notice
+
+When a Companion app adds `#emergency` (or `#r2-emergency`), the firmware seeds
+its local chat with this notice, using `#EMERGENCY` as the sender:
+
+```text
+#EMERGENCY: This is an emergency channel. Do not use for testing or small talk.
+```
+
+This is a local onboarding message, not an RF transmission or an emergency
+alert. It does not change the node's name. It is added only after the channel
+is successfully saved, not on every connection, reboot, key edit, or alias
+rename. Deleting and adding the channel again adds a fresh notice. If the
+receive queue is full, the notice waits for free space rather than replacing
+an actual message. As with other pending received messages, it is RAM-backed
+until downloaded by the app; a reboot before download can discard it.
+
 ### Meshtext channel chat
 
 `MESH_ENABLE_MESHTEXT_CHAT` enables the text-only Meshtext backend in the

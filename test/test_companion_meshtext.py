@@ -56,7 +56,10 @@ class CompanionMeshtextTest(unittest.TestCase):
         mt = (ROOT / "examples/companion_radio/MeshtextCompanion.cpp").read_text(encoding="utf-8")
         mt = mt[mt.index("namespace {"):].rsplit("#endif", 1)[0]
         signatures = ("bool MyMesh::isAliasRadio2Defined(", "bool MyMesh::resolveChannelAlias(",
-                      "bool MyMesh::getChannel(", "bool MyMesh::setChannel(", "bool MyMesh::queueChannelText(",
+                      "bool MyMesh::getChannel(", "bool MyMesh::setChannel(",
+                      "static bool isEmergencyNoticeChannelName(",
+                      "void MyMesh::seedEmergencyChannelNotice(",
+                      "void MyMesh::servicePendingChannelNotices(", "bool MyMesh::queueChannelText(",
                       "bool MyMesh::saveAdvertName(")
         methods = "\n".join(body(source, signature) for signature in signatures)
         utils_source = (ROOT / "src/Utils.cpp").read_text(encoding="utf-8")

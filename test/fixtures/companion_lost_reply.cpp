@@ -89,7 +89,7 @@ struct BaseSerialInterface {
   size_t writeFrameToRoute(BaseSerialInterface*, const uint8_t*, size_t n) { ++writes; return n; }
   size_t writeFrame(const uint8_t*, size_t n) { ++writes; return n; }
 };
-struct UI { void setMessageNotificationOverride(bool) {} };
+struct UI { void setMessageNotificationOverride(bool, bool = false) {} };
 struct Terminal {
   void print(const char*) {}
   template<typename... T> void printf(const char*, T...) {}
@@ -231,7 +231,7 @@ public:
   void onCLICommandRecv(const ContactInfo&, mesh::Packet*, uint32_t, const char*, char*);
   bool onSignedMessageRecv(const ContactInfo&, mesh::Packet*, uint32_t, const uint8_t*, const char*);
   void onChannelMessageRecv(const mesh::GroupChannel&, mesh::Packet*, uint32_t, const char*);
-  bool queueChannelText(uint8_t, const uint8_t[32], float, uint8_t, uint32_t, const char*, bool);
+  bool queueChannelText(uint8_t, const uint8_t[32], float, uint8_t, uint32_t, const char*, bool, bool = true);
   bool handleDirectCommand(const char*, char*, size_t);
   bool handleCommand(const char*, uint32_t, char*);
   mesh::Packet* composeMsgPacket(const ContactInfo&, uint32_t, uint8_t, const char*, uint32_t&);

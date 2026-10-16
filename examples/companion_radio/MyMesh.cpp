@@ -2148,9 +2148,51 @@ void MyMesh::onChannelMessageRecv(const mesh::GroupChannel &channel, mesh::Packe
   }
 }
 
+static bool isEmergencyNoticeChannelName(const char* name) {
+  const auto alias = parseCompanionChannelAlias(name);
+  return alias.hashtag && alias.kind != CompanionChannelKind::Invalid
+      && alias.kind != CompanionChannelKind::Meshtext
+      && strcmp(alias.tail, "emergency") == 0;
+}
+
+void MyMesh::seedEmergencyChannelNotice(uint8_t index, const ChannelDetails& previous) {
+  if (index >= MAX_GROUP_CHANNELS) return;
+  const uint8_t bit = 1U << (index % 8);
+  uint8_t& pending = pending_emergency_notices[index / 8];
+  ChannelDetails channel;
+  if (!getChannel(index, channel) || !isEmergencyNoticeChannelName(channel.name)) {
+    pending &= ~bit;
+    return;
+  }
+  if (!isEmergencyNoticeChannelName(previous.name)) pending |= bit;
+  if (!(pending & bit)) return; // Edits and reapplying a saved channel are not joins.
+
+  int capacity = getOfflineQueueCapacity();
+#if ONE_KEY_DM_SHARED_OFFLINE_QUEUE
+  capacity -= held_dm_count;
+#endif
+  // A welcome notice must never evict an actual message. Retry after sync
+  // frees queue space, including space temporarily reserved for held DMs.
+  if (offline_queue_len >= capacity) return;
+  if (queueChannelText(index, channel.channel.secret, 0, 0xFF,
+      getRTCClock()->getCurrentTime(),
+      "#EMERGENCY: This is an emergency channel. Do not use for testing or small talk.",
+      true, false)) pending &= ~bit;
+}
+
+void MyMesh::servicePendingChannelNotices() {
+  for (unsigned index = 0; index < MAX_GROUP_CHANNELS; ++index) {
+    if (!(pending_emergency_notices[index / 8] & (1U << (index % 8)))) continue;
+    ChannelDetails current{};
+    getChannel(index, current);
+    seedEmergencyChannelNotice(index, current);
+    return; // At most one local notice per loop, never a radio send.
+  }
+}
+
 bool MyMesh::queueChannelText(uint8_t channel_idx, const uint8_t secret[32], float snr,
                             uint8_t path_len, uint32_t timestamp, const char* text,
-                            bool is_emergency_channel) {
+                            bool is_emergency_channel, bool notify) {
   if (!text || channel_idx >= MAX_GROUP_CHANNELS) return false;
   int i = 0;
   if (app_target_ver >= 3) {
@@ -2180,23 +2222,26 @@ bool MyMesh::queueChannelText(uint8_t channel_idx, const uint8_t secret[32], flo
   if (!queued) return false;
 
 #if COMPANION_FEATURE_NOTIFICATIONS
-  const bool notification_managed = _notifications.message(nullptr, secret, _serial && _serial->isConnected(), millis());
+  const bool notification_managed = notify && _notifications.message(nullptr, secret, _serial && _serial->isConnected(), millis());
   if (_ui) _ui->setMessageNotificationOverride(notification_managed, _notifications.overridesScreen());
 #else
   const bool notification_managed = false;
 #endif
+  // Older screen UIs can vibrate inside newMsg(), independently of notify().
+  // Treat local notices as managed/screen-suppressed while retaining history.
+  if (!notify && _ui) _ui->setMessageNotificationOverride(true, true);
   if (_serial && _serial->isConnected()) {
     uint8_t frame[1];
     frame[0] = PUSH_CODE_MSG_WAITING;
     _serial->writeFrame(frame, 1);
   } else {
 #ifdef DISPLAY_CLASS
-    if (_ui && !notification_managed) _ui->notify(UIEventType::channelMessage);
+    if (notify && _ui && !notification_managed) _ui->notify(UIEventType::channelMessage);
 #endif
   }
 
 #if COMPANION_FEATURE_TEXT_TERMINAL
-  if (hasTerminalOutput()
+  if (notify && hasTerminalOutput()
       && _terminal_display.shouldShowChannel(is_emergency_channel)) {
     ChannelDetails details;
     const char* channel_name = getChannel(channel_idx, details) ? details.name : "Unknown";
@@ -6915,6 +6960,8 @@ void MyMesh::handleCmdFrame(size_t len) {
       refreshMeshtextProfile();
 #endif
       writeOKFrame();
+      // Local history seed only after the durable save and its acknowledgement.
+      seedEmergencyChannelNotice(channel_idx, previous);
     } else {
       // AtomicFileWriter preserves the last complete channels file. Keep the
       // live table consistent with it when a full or failing filesystem cannot
@@ -11381,6 +11428,7 @@ void MyMesh::loop() {
 #endif
   }
   servicePendingRadioParamApply();
+  if (!mesh::morseTimingActive(_radio)) servicePendingChannelNotices();
 #if MESH_ENABLE_ONE_KEY_DM
   if (held_dm_count != 0 || verified_pending_count != 0) releaseHeldOneKeyDMs();
 #endif

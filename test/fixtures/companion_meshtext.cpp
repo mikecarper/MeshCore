@@ -69,7 +69,14 @@ struct Serial {
   bool isConnected() { return connected; }
   void writeFrame(const uint8_t* bytes,int size) { assert(size>=0); frames.emplace_back(bytes,bytes+size); }
 };
-struct UI { void setMessageNotificationOverride(bool,bool=false) {} };
+struct UI {
+  bool managed=false,screen=false;
+  unsigned quiet_overrides=0;
+  void setMessageNotificationOverride(bool value,bool suppress_screen=false) {
+    managed=value;screen=value && suppress_screen;
+    if(managed && screen) ++quiet_overrides;
+  }
+};
 struct Notifications {
   uint8_t key[32]={}; unsigned calls=0;
   bool message(const void*,const uint8_t* secret,bool,uint32_t) { ++calls; memcpy(key,secret,32); return false; }
@@ -116,6 +123,8 @@ public:
   unsigned foreign_admissions=0,meshcore_sends=0;
   std::vector<std::vector<uint8_t>> foreign,offline;
   size_t offline_capacity=4;
+  int offline_queue_len=0;
+  uint8_t pending_emergency_notices[(MAX_GROUP_CHANNELS+7)/8]={};
   Serial serial; Serial* _serial=&serial; UI ui; UI* _ui=&ui; Notifications _notifications;
   uint8_t out_frame[MAX_FRAME_SIZE]={}; uint8_t app_target_ver=3;
   int error=-1;
@@ -145,7 +154,10 @@ public:
   bool onForeignRadioFrame(const uint8_t*,size_t,uint8_t,uint32_t,float,float);
   void onForeignRadioSendComplete(bool);
   bool handleMeshtextCommand(const char*,char*,size_t);
-  bool queueChannelText(uint8_t,const uint8_t[32],float,uint8_t,uint32_t,const char*,bool);
+  bool queueChannelText(uint8_t,const uint8_t[32],float,uint8_t,uint32_t,const char*,bool,bool=true);
+  void seedEmergencyChannelNotice(uint8_t,const ChannelDetails&);
+  void servicePendingChannelNotices();
+  int getOfflineQueueCapacity() const { return offline_capacity; }
   bool hasForeignRadioFrame() const { return foreign_pending; }
   bool queueForeignRadioFrame(const uint8_t* bytes,size_t size,uint8_t profile,uint32_t generation) {
     if(!admit_foreign || foreign_pending) return false;
@@ -173,7 +185,7 @@ public:
   Random* getRNG() { return &random; }
   bool addToOfflineQueue(const uint8_t* bytes,int size) {
     assert(size>=0 && size<=MAX_FRAME_SIZE); if(offline.size()>=offline_capacity) return false;
-    offline.emplace_back(bytes,bytes+size); return true;
+    offline.emplace_back(bytes,bytes+size); offline_queue_len=offline.size(); return true;
   }
   bool saveChannels() { return save_result; }
   bool savePrefs() { return save_result; }
@@ -396,6 +408,17 @@ static void receive() {
   assert(node.offline.back()[1]==128 && node.offline.back()[5]==255);
   assert(node.queueChannelText(0,ordinary_key,std::numeric_limits<float>::quiet_NaN(),0,124,"nan",false));
   assert(node.offline.back()[1]==0);
+  node.offline_capacity=8;
+  const unsigned alerts=node._notifications.calls,quiet_overrides=node.ui.quiet_overrides;
+  const size_t queued=node.offline.size(),pushes=node.serial.frames.size();
+  assert(node.queueChannelText(0,ordinary_key,0,255,125,"#EMERGENCY: local notice",true,false));
+  assert(node.offline.size()==queued+1 && node.serial.frames.size()==pushes+1);
+  assert(node.serial.frames.back()==std::vector<uint8_t>{PUSH_CODE_MSG_WAITING});
+  assert(node._notifications.calls==alerts && node.ui.quiet_overrides==quiet_overrides+1);
+  assert(!node.ui.managed && !node.ui.screen); // Quiet suppression is scoped to this message.
+  assert(node.queueChannelText(0,ordinary_key,0,0,126,"ordinary message",false));
+  assert(node._notifications.calls==alerts+1 && node.ui.quiet_overrides==quiet_overrides+1);
+  assert(!node.ui.managed && !node.ui.screen);
   uint8_t empty_secret[32]={}; assert(!node.queueChannelText(MAX_GROUP_CHANNELS,empty_secret,0,0,0,"x",false));
   assert(!node.queueChannelText(0,empty_secret,0,0,0,nullptr,false));
   puts("PASS receive");
