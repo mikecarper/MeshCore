@@ -54,6 +54,8 @@ public:
   int getCount() const { return num_regions; }
   const RegionEntry* getByIdx(int i) const { return &regions[i]; }
   const RegionEntry* getRoot() const { return &wildcard; }
+  // Capacity includes the terminator. Null/nonpositive capacity writes nothing.
+  // Every non-null destination with positive capacity is null-terminated.
   int exportNamesTo(char *dest, int max_len, uint8_t mask, bool invert = false);
   int getTransportKeysFor(const RegionEntry& src, TransportKey dest[], int max_num);
 

@@ -486,11 +486,12 @@ size_t RegionMap::exportTo(char *dest, size_t max_len) const {
 }
 
 int RegionMap::exportNamesTo(char *dest, int max_len, uint8_t mask, bool invert) {
+  if (!dest || max_len <= 0) return 0;
   char *dp = dest;
   
   // Check wildcard region
   bool wildcard_matches = invert ? (wildcard.flags & mask) : !(wildcard.flags & mask);
-  if (wildcard_matches) {
+  if (wildcard_matches && max_len >= 2) {
     *dp++ = '*';
     *dp++ = ',';
   }
