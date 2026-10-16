@@ -70,6 +70,12 @@ public:
     (void)want_mid; (void)expected_target; return reopen();
   }
 
+  // A failed reopen normally means no usable container, so a new pull may
+  // begin by erasing it. Reconnectable stores must distinguish an I/O failure:
+  // an unavailable host has not established that its staged bytes are invalid.
+  // Query only after reopen()/reopenFor() returned false.
+  virtual bool reopenHadIoError() const { return false; }
+
   // External host stores can disappear temporarily while retaining their file.
   // Preserve the selected fetch on an I/O failure until that link reconnects.
   virtual bool canReconnect() const { return false; }

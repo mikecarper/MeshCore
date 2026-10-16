@@ -114,8 +114,12 @@ bool FolderMotaStore::finalize() {
 }
 
 bool FolderMotaStore::reopen() {
+  _reopen_io_error = false;
   uint8_t pl[5];
-  if (!txn(MS_OP_STAT, _mid, 4, pl, 5)) return false;
+  if (!txn(MS_OP_STAT, _mid, 4, pl, 5)) {
+    _reopen_io_error = true;
+    return false;
+  }
   if (pl[0] == 0) return false;                     // host has no partial/complete file -> start fresh
   uint32_t total = rd_u32le(pl + 1);
   if (total < 13) return false;                     // implausible container

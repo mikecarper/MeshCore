@@ -243,6 +243,7 @@ jobs:
         run: |
           python3 -B test/test_mota_serial_deadline.py -v
           python3 -B test/test_mota_folder_deadline.py -v
+          python3 -B test/test_ota_folder_resume.py -v
           python3 -B test/test_ota_direct_manager.py -v
           python3 -B test/test_mota_kiss_direct.py -v
           python3 -B test/test_ota_kiss_direct.py -v
