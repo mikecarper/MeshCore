@@ -17,6 +17,7 @@ MOCKS = r'''
 #include <cstdio>
 #include <helpers/bridges/RS232Heartbeat.h>
 #define MAX_TRANS_UNIT 255
+#define PAYLOAD_TYPE_OTA 0x0c
 using portMUX_TYPE=int;
 #define portMUX_INITIALIZER_UNLOCKED 0
 struct esp_now_recv_info_t {const uint8_t* src_addr;};
@@ -41,6 +42,7 @@ struct Packet {
  }
  int getRawLength()const{return length;}
  uint16_t writeTo(uint8_t* out)const{memcpy(out,data,length);return length;}
+ uint8_t getPayloadType()const{return (data[0]>>2)&0x0f;}
  bool violatesRoutePolicy()const{return false;}
 };
 struct PacketManager {
@@ -78,6 +80,7 @@ public:
  virtual void begin()=0;virtual void end()=0;virtual void loop()=0;
  virtual void sendPacket(mesh::Packet*)=0;virtual void onPacketReceived(mesh::Packet*)=0;
  bool allowsPacket(const mesh::Packet*)const{return allowed;}
+ bool preparePacketIngress(mesh::Packet*)const{return true;}
  static uint16_t fletcher16(const uint8_t*,size_t);
  bool validateChecksum(const uint8_t*,size_t,uint16_t);
  void handleReceivedPacket(mesh::Packet*);
@@ -160,6 +163,42 @@ class BridgeRecoveryTests(unittest.TestCase):
                     self.assertEqual(result.returncode, 0, result.stderr)
                     result = subprocess.run([str(exe)], capture_output=True, text=True)
                     self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_ota_identical_retries_cross_espnow_and_uart_without_permanent_dedup(self):
+        self.run_fixture(r'''
+int main(){
+ Backend backend;backend.wifi=true;mesh::wireless::control().begin(backend);
+ sdk_initialized=sdk_started=true;sdk_mode=WIFI_STA;
+ NodePrefs prefs;mesh::PacketManager mgr;mesh::RTCClock rtc;
+ ESPNowBridge espnow(&prefs,&mgr,&rtc);espnow.begin();
+ const uint8_t mac[6]={1,2,3,4,5,6};
+ auto ota=packet(0x31); // flood-framed PAYLOAD_TYPE_OTA, byte-identical retry
+ espnow._seen_packets.markSeen(&ota); // even a preexisting FIFO row cannot pin it
+ espnow.sendPacket(&ota);espnow.loop();complete(espnow);
+ assert(sent.size()==1&&espnow._tx_count==0);
+ espnow.sendPacket(&ota);espnow.loop();complete(espnow);
+ assert(sent.size()==2&&sent[0]==sent[1]);
+ espnow.queueReceivedFrame(mac,ota.data,ota.length);espnow.loop();
+ espnow.queueReceivedFrame(mac,ota.data,ota.length);espnow.loop();
+ assert((mgr.received==std::vector<uint8_t>{0x31,0x31}));
+ // Ordinary message duplicates still stop in both bridge directions.
+ auto chat=packet(0x15);espnow.sendPacket(&chat);espnow.loop();complete(espnow);
+ const auto count=sent.size();espnow.sendPacket(&chat);espnow.loop();
+ assert(sent.size()==count);
+ espnow.queueReceivedFrame(mac,chat.data,chat.length);espnow.loop();
+ assert(mgr.received.size()==2);espnow.end();
+ HardwareSerial serial;RS232Bridge uart(&prefs,serial,1,2,&mgr,&rtc);uart.begin();
+ uart._seen_packets.markSeen(&ota);uart.sendPacket(&ota);uart.sendPacket(&ota);
+ auto doubled=uart_frame(ota);const auto tail=doubled;
+ doubled.insert(doubled.end(),tail.begin(),tail.end());assert(serial.output==doubled);
+ append(serial,uart_frame(ota));append(serial,uart_frame(ota));uart.loop();
+ assert((mgr.received==std::vector<uint8_t>{0x31,0x31,0x31,0x31}));
+ assert(!uart._legacy_rx); // reflected OTA is not proof of an external peer
+ uart.sendPacket(&chat);const auto length=serial.output.size();uart.sendPacket(&chat);
+ assert(serial.output.size()==length);append(serial,uart_frame(chat));uart.loop();
+ assert(mgr.received.size()==4&&mgr.allocs==mgr.frees);
+}
+''')
 
     def test_uart_pool_pressure_order_parser_bounds_and_restart(self):
         self.run_fixture(r'''

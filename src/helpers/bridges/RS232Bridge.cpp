@@ -293,9 +293,10 @@ void RS232Bridge::drainReceivedPackets() {
   _rx_packet_ready = false;
   if (valid) {
     // A cable loopback or replay of our own accepted mesh TX is not peer proof.
-    // Discard here to avoid testing/counting the same duplicate a second time
-    // inside BridgeBase::handleReceivedPacket().
-    if (_seen_packets.wasSeen(pkt)) {
+    // OTA must still reach the mesh's timed retry/echo policy, but it cannot
+    // refresh UART peer liveness merely by reflecting our own transmission.
+    const bool seen = _seen_packets.wasSeen(pkt);
+    if (pkt->getPayloadType() != PAYLOAD_TYPE_OTA && seen) {
       _mgr->free(pkt);
       return;
     }
@@ -304,18 +305,20 @@ void RS232Bridge::drainReceivedPackets() {
     // peer may have replaced the negotiated one. Unarm the safe default rather
     // than eventually sleeping that quiet legacy link. A later fresh ACK can
     // immediately restore negotiated capability; force mode remains explicit.
-    if (_have_ack && (!_ack_fresh
-        || static_cast<uint32_t>(_rx_packet_received_ms - _last_ack)
-            > mesh::bridge::rs232heartbeat::ACTIVE_PING_MS
-                + mesh::bridge::rs232heartbeat::ACK_MAX_AGE_MS)) {
-      _have_ack = false;
-      _peer_session = 0;
+    if (!seen) {
+      if (_have_ack && (!_ack_fresh
+          || static_cast<uint32_t>(_rx_packet_received_ms - _last_ack)
+              > mesh::bridge::rs232heartbeat::ACTIVE_PING_MS
+                  + mesh::bridge::rs232heartbeat::ACK_MAX_AGE_MS)) {
+        _have_ack = false;
+        _peer_session = 0;
+      }
+      _legacy_rx = true;
+      _legacy_fresh = true;
+      _last_legacy_rx = _rx_packet_received_ms;
+      _power.notePeer(_rx_packet_received_ms);
+      _partial_suspend_grace = false;
     }
-    _legacy_rx = true;
-    _legacy_fresh = true;
-    _last_legacy_rx = _rx_packet_received_ms;
-    _power.notePeer(_rx_packet_received_ms);
-    _partial_suspend_grace = false;
     onPacketReceived(pkt);
   }
   else _mgr->free(pkt);
@@ -431,7 +434,10 @@ void RS232Bridge::sendPacket(mesh::Packet *packet) {
   drainTransmit(millis(), true);
   if (_tx_size != 0) return; // Never interleave mesh traffic with a partial frame.
 
-  if (!_seen_packets.wasSeen(packet)) {
+  // The mesh's timed OTA retry cache, not the permanent bridge FIFO, owns
+  // duplicate suppression for resumable request/data packets.
+  const bool ota = packet->getPayloadType() == PAYLOAD_TYPE_OTA;
+  if (ota || !_seen_packets.wasSeen(packet)) {
     const int expected = packet->getRawLength();
     if (expected <= 0 || expected > MAX_TRANS_UNIT + 1) return;
     uint8_t* buffer = _tx_buffer;
@@ -460,6 +466,8 @@ void RS232Bridge::sendPacket(mesh::Packet *packet) {
     _tx_size = static_cast<uint16_t>(len + SERIAL_OVERHEAD);
     _tx_pos = 0;
     _tx_is_ping = false;
+    // Retain an outgoing OTA hash solely to reject reflected data as UART
+    // peer-liveness proof. It never suppresses OTA delivery in either direction.
     _seen_packets.markSeen(packet);
     drainTransmit(millis(), true);
 

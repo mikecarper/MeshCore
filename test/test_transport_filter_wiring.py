@@ -13,9 +13,14 @@ PACKET = r'''
 #include <cstdint>
 #include <cstddef>
 #include <cstring>
+#include <RadioProfiles.h>
+#include <RadioTxPolicy.h>
 namespace mesh {
 struct Packet {
  uint8_t payload[64] = {}, payload_len = 32, type = 5, header = (5 << 2);
+ uint8_t radio_profile=0,radio_origin=0,tx_radio=RADIO_TX_AUTO;
+ uint32_t radio_generation=0,radio_origin_generation=0;
+ bool radio_bound=false,radio_local=true,radio_reply=false,radio_reply_force=false;
  uint8_t getPayloadType() const { return (header >> 2) & 0x0f; }
  bool violatesRoutePolicy() const {
    const uint8_t route = header & 0x03;
@@ -38,6 +43,7 @@ HARNESS = r'''
 #define BRIDGE_DEBUG_PRINTLN(...) ((void)0)
 #define PUB_KEY_SIZE 32
 #define PAYLOAD_TYPE_ADVERT 4
+#define PAYLOAD_TYPE_OTA 0x0c
 #define MAX_SERIAL_PACKET_SIZE 300
 #define MAX_TRANS_UNIT 256
 #define SERIAL_OVERHEAD 6

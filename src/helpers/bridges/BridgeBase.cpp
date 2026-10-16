@@ -39,13 +39,17 @@ void BridgeBase::handleReceivedPacket(mesh::Packet *packet) {
     return;
   }
 
-  if (!allowsPacket(packet)) {
+  if (!preparePacketIngress(packet) || !allowsPacket(packet)) {
     _mgr->free(packet);
     return;
   }
 
-  if (!_seen_packets.wasSeen(packet)) {
-    _seen_packets.markSeen(packet);
+  // OTA retries deliberately reuse the same request/data bytes. The mesh
+  // owns their bounded retry/longer-path echo cache and hop ceiling; the
+  // ordinary bridge FIFO has no expiry and would pin a lost burst forever.
+  const bool ota = packet->getPayloadType() == PAYLOAD_TYPE_OTA;
+  if (ota || !_seen_packets.wasSeen(packet)) {
+    if (!ota) _seen_packets.markSeen(packet);
     // bridge_delay provides a buffer to prevent immediate processing conflicts in the mesh network.
     _mgr->queueInbound(packet, millis() + _prefs->bridge_delay);
   } else {

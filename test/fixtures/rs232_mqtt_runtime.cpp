@@ -9,6 +9,7 @@
 #include <helpers/bridges/ESPNowBridgeFormat.h>
 #include <helpers/bridges/RS232PowerSettings.h>
 struct FakeRng { void random(uint8_t* out, size_t size) { memset(out, 0x42, size); } };
+struct FakeRadio { const void* profiles() const { return nullptr; } };
 #define BRIDGE_MAX_BAUD 115200
 #define PUB_KEY_SIZE 32
 #define MESH_DEBUG_PRINTLN(...) ((void)0)
@@ -64,6 +65,7 @@ public:
   void setPacketFilter(bool (*check)(void*, const mesh::Packet*), void* context) {
     filter = check; filter_context = context; ++filters;
   }
+  void setIngressProfiles(const void*) {}
 };
 class RS232Bridge : public AbstractBridge {
   NodePrefs* prefs;
@@ -217,7 +219,8 @@ public:
   FakeCLI _cli;
   FakeAlerter _alerter;
   mesh::LocalIdentity self_id;
-  void* _mgr = nullptr; void* _radio = nullptr; void* _ms = nullptr;
+  FakeRadio radio; FakeRadio* _radio = &radio;
+  void* _mgr = nullptr; void* _ms = nullptr;
   void* getRTCClock() { return nullptr; }
   FakeRng rng;
   FakeRng* getRNG() { return &rng; }

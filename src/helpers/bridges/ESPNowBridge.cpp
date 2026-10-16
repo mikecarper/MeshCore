@@ -618,7 +618,10 @@ void ESPNowBridge::sendPacket(mesh::Packet *packet) {
 
   if (!allowsPacket(packet)) return;
 
-  if (!_seen_packets.wasSeen(packet)) {
+  // Core OTA forwarding already bounds repeated requests and rejects longer
+  // downstream echoes. Do not permanently suppress its byte-identical retry.
+  const bool ota = packet->getPayloadType() == PAYLOAD_TYPE_OTA;
+  if (ota || !_seen_packets.wasSeen(packet)) {
     // Check the serialized size before writing into the ESP-NOW-sized buffer.
     const int expectedMeshPacketLen = packet->getRawLength();
     const size_t maxPayload =
@@ -670,7 +673,7 @@ void ESPNowBridge::sendPacket(mesh::Packet *packet) {
     }
 
     if (encoded && queueTransmitFrames(frames, *packet)) {
-      _seen_packets.markSeen(packet);
+      if (!ota) _seen_packets.markSeen(packet);
       BRIDGE_DEBUG_PRINTLN("TX %s, len=%d, frames=%u\n",
                            mesh::bridge::espNowFormatName(_active_format),
                            meshPacketLen, (unsigned)frames.count);

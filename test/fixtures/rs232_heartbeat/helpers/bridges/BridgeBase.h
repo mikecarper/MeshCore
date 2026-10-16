@@ -4,6 +4,7 @@
 #include <vector>
 
 #define MAX_TRANS_UNIT 255
+#define PAYLOAD_TYPE_OTA 0x0c
 #define BRIDGE_DEBUG_PRINTLN(...) ((void)0)
 struct NodePrefs { uint32_t bridge_baud = 115200; };
 
@@ -11,6 +12,7 @@ namespace mesh {
 struct Packet {
   std::vector<uint8_t> payload{1, 2, 3};
   bool allowed = true;
+  uint8_t getPayloadType() const { return payload.empty() ? 0 : (payload[0] >> 2) & 0x0f; }
   int getRawLength() const { return static_cast<int>(payload.size()); }
   uint16_t writeTo(uint8_t* out) const {
     for (size_t i = 0; i < payload.size(); ++i) out[i] = payload[i];
