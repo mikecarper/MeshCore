@@ -612,6 +612,7 @@ jobs:
           python3 -B test/test_esp32_cooperative_contacts.py -v
           python3 -B test/test_esp32_contact_writer_batch.py -v
           python3 -B test/test_esp32_contact_crc_batch.py -v
+          python3 -B test/test_contact_file_transaction.py -v
           python3 -B test/test_esp32_contact_publication.py -v
           python3 -B test/test_esp32_advert_cache.py -v
 

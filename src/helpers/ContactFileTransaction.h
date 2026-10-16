@@ -46,6 +46,19 @@ private:
   bool _begin_temp_exists = false;
   bool _owns_temp = false;
 #endif
+  __attribute__((noinline)) static uint32_t updateCRC32C(
+      uint32_t crc, const uint8_t* data, size_t len) {
+    // Persistent images may end in their own IEEE CRC32. Reusing that
+    // polynomial here gives valid images a fixed whole-file residue. This
+    // independent fingerprint is private to the transaction, never persisted.
+    while (len-- > 0) {
+      crc ^= *data++;
+      for (unsigned bit = 0; bit < 8; bit++) {
+        crc = (crc >> 1) ^ (0x82F63B78U & (0U - (crc & 1U)));
+      }
+    }
+    return crc;
+  }
   static bool probe(FILESYSTEM* fs, const char* path, bool& present,
                     PresenceProbe presence) {
     if (presence) return presence(fs, path, present);
@@ -186,7 +199,7 @@ public:
     const size_t wrote = _file.write(data, len);
     _ok = wrote == len;
     _size += wrote;
-    _crc = storage::updateCRC32(_crc, data, wrote);
+    _crc = updateCRC32C(_crc, data, wrote);
     return wrote;
   }
   // The default verification pass reads one 64-byte chunk. ESP background
@@ -242,7 +255,7 @@ public:
               ? _verify_remaining : sizeof(buf);
           ok = _verify.read(buf, chunk) == chunk;
           if (!ok) break;
-          _verify_crc = storage::updateCRC32(_verify_crc, buf, chunk);
+          _verify_crc = updateCRC32C(_verify_crc, buf, chunk);
           _verify_remaining -= chunk;
         } while (--max_verify_chunks != 0 && _verify_remaining != 0);
         if (ok) return CommitProgress::Pending;

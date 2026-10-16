@@ -72,8 +72,8 @@ bool FleetChannel::save(bool enabled, const uint8_t* key, const uint8_t* control
     progress = writer.serviceCommit();
   } while (progress == ContactFileTransaction::CommitProgress::Pending);
   if (!publishing) return false; // No publication attempt; local retry is safe.
-  // The fallback can report a late rename error or false success. Its IEEE
-  // checksum also cannot distinguish valid images carrying an IEEE CRC tail.
+  // The fallback can report a late rename error or false success. Its staged
+  // fingerprint does not establish which bytes have the final public name.
   // Confirm exact public bytes before accepting new authority or using old RAM.
   auto file = openFileRead(fs_, Path);
   uint8_t verified[ImageSize];

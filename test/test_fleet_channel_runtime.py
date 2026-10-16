@@ -1052,20 +1052,12 @@ int main(int argc,char** argv){
   fs.substitute_temp=previous;
   assert(config(fleet,"set fleet.controller off").rfind("Err",0)==0);
   assert(fs.files.at(Path)==previous);fs.substitute_temp.clear();
-#if defined(NRF52_PLATFORM)
   // CRC32C detects the substituted IEEE-CRC-tail image before publication.
   assert(config(fleet,"get fleet.channel").find("store=ok")!=std::string::npos);
   assert(config(fleet,"set fleet.controller off").rfind("OK",0)==0);
-#else
-  // The fallback's IEEE whole-image residue matches. Exact public bytes must
-  // reject the old valid image and block any further stale writes until restart.
-  assert(config(fleet,"get fleet.channel").find("store=error")!=std::string::npos);
-  const unsigned writes=fs.writes;
-  assert(config(fleet,"set fleet.channel off").find("unconfirmed")!=std::string::npos);
   Packet packet=command(publisher,mesh.clock.now,"get radio2");
-  assert(apply(fleet,fs,mesh,profiles,packet)==0&&fs.writes==writes&&fs.files.at(Path)==previous);
-  FleetChannel rebooted(&fs);assert(apply(rebooted,fs,mesh,profiles,packet)==1);
-#endif
+  assert(apply(fleet,fs,mesh,profiles,packet)==0);
+  FleetChannel rebooted(&fs);assert(apply(rebooted,fs,mesh,profiles,packet)==0);
  }else if(scenario=="enrollment"){
   Packet packet=command(publisher,mesh.clock.now);assert(apply(fleet,fs,mesh,profiles,packet)==0);
   assert(config(fleet,"get fleet.channel").find("off,controller=unset,store=ok")!=std::string::npos);
