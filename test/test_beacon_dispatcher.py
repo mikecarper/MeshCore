@@ -607,7 +607,7 @@ class BeaconDispatcherTest(unittest.TestCase):
 
     def test_missing_beacon_agc_retirement_negative_control(self):
         source = (ROOT / "src/DispatcherBeacon.cpp").read_text(encoding="ascii")
-        notify = "  agc_reset.noteTransmit(_ms->getMillis());\n"
+        notify = "  agc_reset.noteTransmit(now);\n"
         self.assertEqual(source.count(notify), 1)
         broken = self.work / "old-beacon-agc.cpp"
         broken.write_text(source.replace(notify, ""), encoding="ascii")
