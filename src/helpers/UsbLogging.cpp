@@ -1752,8 +1752,11 @@ UsbLoggingRecoveryResult recoverUsbLoggingTransport(uint8_t stage) {
     // stage, and the bounded existing helper retains the driver/descriptors.
     serviceEsp32HwcdcTxKick();
     probeUsbLoggingTransport();
-  } else if (!resetUsbCompanionTransport()) {
-    return UsbLoggingRecoveryResult::Deferred;
+  } else {
+    // The helper always issues the PHY detach before attempting cleanup.
+    // Pending cleanup stays quarantined, but it must not prevent the final
+    // watchdog deadline forever. Attempted means requested, not healthy.
+    (void)resetUsbCompanionTransport();
   }
   return UsbLoggingRecoveryResult::Attempted;
 #elif defined(NRF52_PLATFORM) && defined(USE_TINYUSB)

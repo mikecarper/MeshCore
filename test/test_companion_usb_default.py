@@ -90,6 +90,7 @@ void discardUsbTerminalOutput() {}
 bool takeUsbTerminalSessionReset() { bool value = reset_event; reset_event = false; return value; }
 bool resetUsbCompanionTransport() { return transport_ready; }
 bool tryCompleteUsbTerminalSessionReset() { return transport_ready; }
+bool isUsbLoggingTransportRecoveryPending() { return false; } // Explicit host-edge scenarios.
 bool hasDedicatedUsbLoggingPort() { return dedicated_logging; }
 bool isUsbLoggingEnabled() { return logging_enabled; }
 void setUsbLoggingEnabled(bool enabled) {

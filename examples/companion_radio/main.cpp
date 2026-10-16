@@ -1123,6 +1123,14 @@ static void serviceUsbTerminalHostSessionReset() {
   }
 #elif defined(ESP32) && defined(ARDUINO_USB_MODE) && ARDUINO_USB_MODE == 1 \
     && defined(ARDUINO_USB_CDC_ON_BOOT) && ARDUINO_USB_CDC_ON_BOOT
+  // A watchdog detach can start without a host-loss edge. Clear the old USB
+  // protocol state once, then finish that same quarantine through our bounded
+  // retry path even if logging or its watchdog is subsequently disabled.
+  if (!usb_terminal_host_reset_completion_pending
+      && mesh::isUsbLoggingTransportRecoveryPending()) {
+    resetUsbTerminalHostSession();
+    return;
+  }
   if (usb_terminal_host_reset_completion_pending) {
     if ((int32_t)(millis() - usb_terminal_host_reset_retry_at) >= 0) {
       if (mesh::resetUsbCompanionTransport()) {

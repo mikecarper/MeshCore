@@ -661,6 +661,7 @@ jobs:
           python3 -B test/test_usb_watchdog_event.py
           python3 -B test/test_usb_logging_client_activity.py
           python3 -B test/test_usb_logging_watchdog_runtime.py
+          python3 -B test/test_usb_logging_hwcdc_watchdog.py -v
           python3 -B test/test_usb_logging_watchdog_roles.py
           python3 -B test/test_nrf52_usb_console.py
           python3 -B test/test_esp32_tinyusb_nonblocking.py
