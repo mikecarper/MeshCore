@@ -3379,6 +3379,11 @@ bool DataStore::saveChannels(DataStoreHost* host) {
     file.close();
 #endif
   }
+#if defined(NRF52_PLATFORM) || defined(STM32_PLATFORM) || defined(ESP32_PLATFORM) || defined(RP2040_PLATFORM)
+  // Failed publication can leave disk newer than the caller's rolled-back RAM.
+  if (file.outcome() == decltype(file)::Outcome::Indeterminate)
+    _channel_load_incomplete = true;
+#endif
   return success;
 }
 

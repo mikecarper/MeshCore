@@ -94,6 +94,16 @@ public:
 };
 @METHODS@
 
+static void reloadChannelsAfterReboot(MyMesh& node) {
+ const auto disk=node.store.fs.files;
+ node.store=DataStore{};
+ node.store.fs.files=disk;
+#if defined(STM32_PLATFORM)
+ node.store.fs.rename_replaces=true;
+#endif
+ node.store.loadChannels(&node);
+}
+
 int main() {
  MyMesh node;
 #if defined(STM32_PLATFORM)
@@ -211,6 +221,15 @@ int main() {
    cmd("set tx.channel 0 off"); assert(strstr(reply,"not saved"));
    assert(node.channels[0].channel.tx_radio==mesh::RADIO_TX_BOTH);
    assert(node.store.fs.files["/channels2"]==disk);
+#if defined(STM32_PLATFORM)
+   // Atomic rename failure has unknown publication authority even when this
+   // particular backend seam retained the old bytes. Only fresh load clears it.
+   assert(node.store.hasIncompleteChannelLoad()&&!node.store.hasIncompleteContactLoad());
+   cmd("set tx.channel 0 both"); assert(strstr(reply,"storage unavailable"));
+   reloadChannelsAfterReboot(node);
+#else
+   assert(!node.store.hasIncompleteChannelLoad()); // Confirmed CFT rollback.
+#endif
  }
 #if !defined(STM32_PLATFORM)
  // If both publish and rollback fail, the verified backup remains available
@@ -240,7 +259,8 @@ int main() {
  assert(failed_boot.store.fs.files["/channels2.bak"]==disk);
 #endif
  node.store.fs.fail_rename_from.clear();
- node.store.loadChannels(&node);
+ assert(node.store.hasIncompleteChannelLoad()&&!node.store.hasIncompleteContactLoad());
+ reloadChannelsAfterReboot(node);
  assert(!node.store.hasIncompleteContactLoad());
  assert(node.store.fs.files["/channels2"]==disk);
  assert(node.channels[0].channel.tx_radio==mesh::RADIO_TX_BOTH);

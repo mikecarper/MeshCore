@@ -3698,7 +3698,7 @@ bool MyMesh::handleTxRoutingCommand(const char* command, char* reply, size_t rep
   }
   if (parsed.set && (!canMutateContacts()
       || (parsed.channel && _store->hasIncompleteChannelLoad()))) {
-    snprintf(reply, reply_size, "Error: storage unavailable");
+    snprintf(reply, reply_size, "Error: storage unavailable; TX routing not saved");
     return true;
   }
 
@@ -3768,7 +3768,7 @@ bool MyMesh::handleTxRoutingCommand(const char* command, char* reply, size_t rep
       }
     }
     if (!saved) {
-      snprintf(reply, reply_size, "Error: TX routing was not saved");
+      snprintf(reply, reply_size, "Error: storage unavailable; TX routing not saved");
       return true;
     }
     policy = parsed.policy;
