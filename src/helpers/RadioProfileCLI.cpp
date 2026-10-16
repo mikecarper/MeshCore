@@ -283,11 +283,9 @@ void RadioProfileCLI::publish() {
   if (external_secondary_override_) return;
 #endif
   if (publish_pending_ && (int32_t)(millis() - publish_after_ms_) < 0) return;
-#if MESH_ENABLE_MESHTEXT_CHAT || MESH_ENABLE_ETHERNET_TUNNEL
-  // An accepted remote command owns the old RX generation until its reply has
-  // completed (or its atomic storage commit has succeeded).
-  if (hasReplyMutation()) return;
-#endif
+  // Reply packets own the old RX generation until they finish. A post-ACK
+  // storage retry must not extend an expired temporary lease.
+  if (hasReplyMutation() && !remote_delivered_) return;
   publish_pending_ = false;
   RadioProfileConfig config = temp_active_ ? temporary_ : saved_;
 #if MESH_ENABLE_MESHTEXT_CHAT || MESH_ENABLE_ETHERNET_TUNNEL
@@ -547,9 +545,9 @@ void RadioProfileCLI::loop() {
   last_ms_ = now;
   remote_commit_retry_ms_ = elapsed >= remote_commit_retry_ms_ ? 0 : remote_commit_retry_ms_ - elapsed;
   if (remote_delivered_ && !remote_commit_retry_ms_ && !applyReplyMutation()) {
-    // Keep the accepted operation pending and the old channel live if the
-    // post-ACK atomic rename fails. Never report/apparently apply an unsaved
-    // tuple, and avoid a hot storage retry loop.
+    // Keep the accepted operation pending if the post-ACK atomic rename fails.
+    // Saved intent stays authoritative while expired leases can restore it;
+    // never apply an unsaved tuple or retry storage in a hot loop.
     remote_commit_retry_ms_ = 1000;
   }
   if (!hasReplyMutation() && temp_pending_ && (int32_t)(now - temp_start_ms_) >= 0) {

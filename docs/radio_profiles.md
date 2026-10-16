@@ -71,10 +71,15 @@ copies finish, with at least one successfully transmitted. A reply that cannot
 be queued or whose copies all fail cancels the change. Queued replies have a
 five-minute deadline; an already-transmitting copy may finish under the normal
 radio watchdog. This confirms transmission, not reception by the remote client.
+An active temporary profile keeps its radio generation until those tracked
+reply copies finish or are retired, but its remaining lease continues counting
+down during that wait.
 
 Permanent remote changes are prepared in an uncommitted file before replying;
 the saved configuration is replaced only after reply transmission. If that
-replacement fails, the old channel remains active and the commit retries.
+replacement fails, the requested settings remain pending and the commit retries.
+An expired temporary profile returns to the last saved configuration during
+those post-reply storage retries; the uncommitted settings do not become active.
 Local `get radio2.status` reports this pending state. Roles without the tracked remote
 reply path require local USB for these immediate secondary-profile changes.
 
