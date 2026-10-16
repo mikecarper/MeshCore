@@ -66,7 +66,8 @@ struct UITask {
   UIScreen* home = &home_screen;
   UIScreen* msg_preview = &preview_screen;
   UIScreen* curr = home;
-  unsigned long _pairing_screen_until = 0, _next_refresh = 0;
+  unsigned long _pairing_screen_until = 0;
+  uint32_t _next_refresh = 0;
   bool _pairing_from_button = false, _deferred_msg_preview = false;
   int _msgcount = 0;
   UITask(TestDisplay* display, Board* board, Interfaces* interfaces)
@@ -77,7 +78,7 @@ struct UITask {
   const char* connectedClientLabel() const {
     return _interfaceManager->ble ? "BLUETOOTH" : _interfaceManager->usb ? "USB" : nullptr;
   }
-  void setCurrScreen(UIScreen* screen) { curr = screen; _next_refresh = 100; }
+  void setCurrScreen(UIScreen* screen);
   void gotoHomeScreen() { setCurrScreen(home); }
   bool isPairingPromptActive() const { return isPairingScreenActive(); }
   bool isPairingScreenActive() const;
@@ -163,6 +164,7 @@ class CompanionPairingDisplayTests(unittest.TestCase):
     def test_real_pairing_methods_and_usb_oled_selection(self):
         source = (ROOT / "examples/companion_radio/ui-new/UITask.cpp").read_text()
         signatures = (
+            "void UITask::setCurrScreen(",
             "bool UITask::isPairingScreenActive() const",
             "void UITask::renderPairingBanner()",
             "void UITask::showPairingPin(bool from_button)",

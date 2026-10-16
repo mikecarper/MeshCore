@@ -408,7 +408,7 @@ class MessageNavigationTest(unittest.TestCase):
         implementation = "\n".join(extract_braced(source, signature) for signature in (
             "char UITask::checkDisplayOn(", "char UITask::handleDoubleClick(",
             "char UITask::handleMultiClick(", "bool UITask::isButtonGesturePending("))
-        self.assertIn("millis() >= _next_refresh && curr && !isButtonGesturePending()", source)
+        self.assertIn("static_cast<int32_t>(millis() - _next_refresh) >= 0 && curr && !isButtonGesturePending()", source)
         implementation += "\n" + extract_braced(source, "class MsgPreviewScreen :") + ";\n"
         implementation += "void UITask::pollButton() { char c=0; int ev=user_btn.check();\n"
         implementation += button_route + "\nif(c && curr) curr->handleInput(c);\n}\n"

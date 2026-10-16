@@ -30,10 +30,13 @@ class TouchDebugCliTest(unittest.TestCase):
         setter = extract_braced(mesh, 'if (strncmp(command, "set display.touch", 17) == 0')
         source = r'''
 #include <cassert>
+#include <cstdint>
 #include <cstdio>
 #include <cstring>
 #include <string>
 #include <initializer_list>
+static uint32_t mock_now = 0x80001000u;
+static uint32_t millis() { return mock_now; }
 struct UIScreen {};
 struct Display {};
 struct AbstractUITask {
@@ -41,7 +44,7 @@ BASE_HOOKS
 };
 struct UITask : AbstractUITask {
   Display* _display=nullptr;
-  unsigned long _next_refresh=999;
+  uint32_t _next_refresh=999;
   int wakes=0;
   char checkDisplayOn(char c) { assert(c==0); ++wakes; return 0; }
 FIELDS
@@ -76,7 +79,7 @@ int main() {
   assert(ui.supportsTouchDebug());
   assert(command("get display.touch")=="display.touch off (off after reboot)");
   assert(command("set display.touch on")=="OK - display.touch on (off after reboot)");
-  assert(ui.isTouchDebugEnabled() && ui.wakes==1 && ui._next_refresh==0);
+  assert(ui.isTouchDebugEnabled() && ui.wakes==1 && ui._next_refresh==millis());
   assert(command("get display.touch")=="display.touch on (off after reboot)");
   // Invalid inputs must not mutate state or accidentally accept a suffix.
   for(const char* input : {"set display.touch", "set display.touch ",
@@ -90,7 +93,7 @@ int main() {
   ui._touch_debug_area=4; ui._touch_debug_screen=&screen;
   ui._next_refresh=999;
   assert(command("set display.touch\t off")=="OK - display.touch off (off after reboot)");
-  assert(!ui.isTouchDebugEnabled() && ui.wakes==1 && ui._next_refresh==0);
+  assert(!ui.isTouchDebugEnabled() && ui.wakes==1 && ui._next_refresh==millis());
   assert(ui._touch_debug_x==-1 && ui._touch_debug_y==-1 && ui._touch_debug_area==-1);
   assert(ui._touch_debug_screen==nullptr);
   assert(command("set display.touch on").find("OK")==0);

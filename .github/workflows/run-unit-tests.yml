@@ -782,6 +782,8 @@ jobs:
         run: |
           python3 -B test/test_rtttl_rollover.py -v
           python3 -B test/test_rtttl_rollover_recipes.py -v
+          python3 -B test/test_companion_ui_deadlines.py -v
+          python3 -B test/test_scrolling_status_bar_rollover.py -v
           python3 -B test/test_gps_voice_buttons.py -v
           python3 -B test/test_gps_voice_generator.py -v
           python3 -B test/test_button_voice_actions.py -v

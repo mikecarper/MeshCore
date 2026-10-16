@@ -159,6 +159,7 @@ void UITask::begin(DisplayDriver* display, SensorManager* sensors, CompanionNode
   _userButtonAnalog->onAnyPress([this]() { handleButtonAnyPress(); });
 #endif
   ui_started_at = millis();
+  _next_refresh = ui_started_at;
 }
 
 void UITask::resetRadioProfileDisplayPage() {
@@ -666,7 +667,7 @@ void UITask::showPairingPin() {
   const unsigned long now = millis();
   _pairing_screen_until = now + BLE_PAIRING_DISPLAY_MILLIS;
   _need_refresh = true;
-  _next_refresh = 0;
+  _next_refresh = millis();
   if (_display != NULL && !_display->isOn()) {
     _display->servicePower(_board->isExternalPowered() || _board->isUsbHostConnected(), hasConnection(), true);
   }
@@ -675,7 +676,7 @@ void UITask::showPairingPin() {
 void UITask::finishPairingScreen(bool timed_out) {
   _pairing_screen_until = 0;
   _need_refresh = true;
-  _next_refresh = 0;
+  _next_refresh = millis();
   if (_display == NULL) return;
 
   if (timed_out) {
@@ -698,7 +699,7 @@ void UITask::servicePairingState() {
   if (_display != NULL && _display->servicePower(
       _board->isExternalPowered() || _board->isUsbHostConnected(),
       hasConnection(), isPairingScreenActive())) {
-    _next_refresh = 0;
+    _next_refresh = millis();
     _need_refresh = true;
   }
 }
@@ -709,6 +710,13 @@ void UITask::loop() {
   vibration.loop();
 #endif
   servicePairingState();
+
+  // Keep an already-due refresh due while clean or asleep, without moving
+  // a future throttle. It must not age past the signed clock's half range.
+  const uint32_t refresh_now = millis();
+  if (static_cast<int32_t>(refresh_now - _next_refresh) >= 0) {
+    _next_refresh = refresh_now;
+  }
 
   #ifdef PIN_USER_BTN
     if (_userButton) {
@@ -739,7 +747,7 @@ void UITask::loop() {
       _need_refresh = true;
       _firstBoot = false;
     }
-    if (millis() >= _next_refresh && _need_refresh) {
+    if (static_cast<int32_t>(millis() - _next_refresh) >= 0 && _need_refresh) {
       _display->startFrame();
       renderCurrScreen();
       _display->endFrame();

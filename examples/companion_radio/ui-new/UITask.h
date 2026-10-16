@@ -39,14 +39,15 @@ class UITask : public AbstractUITask {
 #elif defined(PIN_VIBRATION)
   GenericVibration vibration;
 #endif
-  unsigned long _next_refresh;
+  uint32_t _next_refresh;
   unsigned long _pairing_screen_until;
   bool _deferred_msg_preview;
   CompanionNodePrefs* _node_prefs;
   char _alert[80];
-  unsigned long _alert_expiry;
+  uint32_t _alert_expiry;
   int _msgcount;
-  unsigned long ui_started_at, next_batt_chck;
+  unsigned long ui_started_at;
+  uint32_t next_batt_chck;
   int next_backlight_btn_check = 0;
 #ifdef HAS_TOUCH
   #ifndef TOUCH_CENTER_ZONE_PERCENT
@@ -155,7 +156,7 @@ public:
     _touch_debug_enabled = enabled;
     _touch_debug_x = _touch_debug_y = _touch_debug_area = -1;
     _touch_debug_screen = nullptr;
-    _next_refresh = 0;  // Also removes already-drawn outlines when disabling.
+    _next_refresh = millis();  // Also removes already-drawn outlines when disabling.
     if (enabled) checkDisplayOn(0);  // Wake without selecting or navigating.
     return true;
   }
@@ -185,7 +186,7 @@ public:
   void msgRead(int msgcount) override;
   void syncMessageQueue(int msgcount, int removed_index = -1) override;
   bool supportsInboxModes() const override { return _display != nullptr; }
-  void inboxModeChanged() override { _next_refresh = 0; }
+  void inboxModeChanged() override { _next_refresh = millis(); }
   const char* inboxTitle() const;
   void newMsg(uint8_t path_len, const char* from_name, const char* text,
               int msgcount, int channel_idx = -1,

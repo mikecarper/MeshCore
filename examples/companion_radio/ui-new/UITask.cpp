@@ -1964,6 +1964,8 @@ void UITask::begin(DisplayDriver* display, SensorManager* sensors, CompanionNode
 #endif
 
   ui_started_at = millis();
+  next_batt_chck = _next_refresh = ui_started_at;
+  _alert[0] = 0;
   _alert_expiry = 0;
 
   splash = new SplashScreen(this);
@@ -1977,7 +1979,7 @@ void UITask::serviceWiFiToggleButton() {
   if (wifi_btn.check() == BUTTON_EVENT_CLICK) {
     const bool enabled = toggleCompanionWiFi();
     showAlert(enabled ? "WiFi: ON" : "WiFi: OFF", 1200);
-    _next_refresh = 0;
+    _next_refresh = millis();
   }
 #endif
 }
@@ -2054,7 +2056,7 @@ if (_notification_outputs & mesh::notify::Sound) switch(t){
 
 void UITask::msgRead(int msgcount) {
   _msgcount = msgcount;
-  _next_refresh = 0;
+  _next_refresh = millis();
 }
 
 void UITask::syncMessageQueue(int msgcount, int removed_index) {
@@ -2093,7 +2095,7 @@ void UITask::newMsg(uint8_t path_len, const char* from_name, const char* text,
     if (shouldWakeDisplayForMessage()) {
       _display->wake(mesh::ui::DisplayWake::Message);
     }
-    if (_display->isOn()) _next_refresh = 0;
+    if (_display->isOn()) _next_refresh = millis();
   }
 }
 
@@ -2127,7 +2129,7 @@ void UITask::setCurrScreen(UIScreen* c) {
   }
 #endif
   curr = c;
-  _next_refresh = 100;
+  _next_refresh = millis();
 }
 
 bool UITask::isPairingScreenActive() const {
@@ -2169,7 +2171,7 @@ void UITask::showPairingPin(bool from_button) {
   setCurrScreen(home);
   if (_display != NULL) {
     _display->servicePower(_board->isExternalPowered() || _board->isUsbHostConnected(), hasConnection(), true);
-    _next_refresh = 0;
+    _next_refresh = millis();
   }
 }
 
@@ -2187,7 +2189,7 @@ void UITask::finishPairingScreen(bool timed_out) {
     if (timed_out && _display != NULL) {
       _display->dismiss();
     } else {
-      _next_refresh = 0;
+      _next_refresh = millis();
     }
   }
 }
@@ -2207,7 +2209,7 @@ void UITask::servicePairingState() {
   if (_display != NULL && _display->servicePower(
       _board->isExternalPowered() || _board->isUsbHostConnected(),
       hasConnection(), isPairingScreenActive())) {
-    _next_refresh = 0;
+    _next_refresh = millis();
 #if COMPANION_FEATURE_READER
     if (!_display->isOn() && isReaderActive())
       static_cast<ReaderScreen*>(reader)->flush();
@@ -2271,6 +2273,20 @@ void UITask::loop() {
   const bool morse_timing = mesh::morseTimingActive(&radio_driver);
   serviceWiFiToggleButton();
   servicePairingState();
+
+  // Keep an already-due refresh due while drawing is deferred, without
+  // moving a future throttle or letting it age past half the clock range.
+  const uint32_t refresh_now = millis();
+  if (static_cast<int32_t>(refresh_now - _next_refresh) >= 0) {
+    _next_refresh = refresh_now;
+  }
+
+  // Retire the popup even while sleep, Morse or input prevents drawing.
+  // Its deadline may be zero after wrapping; empty text means inactive.
+  if (_alert[0] && static_cast<int32_t>(millis() - _alert_expiry) >= 0) {
+    _alert[0] = 0;
+    _next_refresh = millis();
+  }
 
   char c = 0;
 #if UI_HAS_JOYSTICK
@@ -2384,7 +2400,7 @@ void UITask::loop() {
               && touch_input.hasSeparateVerticalSwipes(),
           split_transport_selector, reader_touch_bar);
       const int debug_area = mesh::ui::touchDebugAreaAt(debug_areas, _touch_debug_x, _touch_debug_y);
-      if (debug_area != _touch_debug_area || curr != _touch_debug_screen) _next_refresh = 0;
+      if (debug_area != _touch_debug_area || curr != _touch_debug_screen) _next_refresh = millis();
       _touch_debug_area = debug_area;
       _touch_debug_screen = curr;
     }
@@ -2449,7 +2465,7 @@ void UITask::loop() {
   if (c != 0 && curr) {
     _display->wake(mesh::ui::DisplayWake::Button);
     curr->handleInput(c);
-    _next_refresh = 100;  // trigger refresh
+    _next_refresh = millis();  // trigger refresh
   }
 
   userLedHandler();
@@ -2464,11 +2480,11 @@ void UITask::loop() {
 #endif
 
   if (_display != NULL && _display->isOn()) {
-    if (!morse_timing && millis() >= _next_refresh && curr && !isButtonGesturePending()) {
+    if (!morse_timing && static_cast<int32_t>(millis() - _next_refresh) >= 0 && curr && !isButtonGesturePending()) {
       _display->startFrame();
       int delay_millis = curr->render(*_display);
       renderPairingBanner();
-      if (millis() < _alert_expiry) {  // render alert popup
+      if (_alert[0] && static_cast<int32_t>(millis() - _alert_expiry) < 0) {  // render alert popup
         _display->setTextSize(1);
         int y = _display->height() / 3;
         int p = _display->height() / 32;
@@ -2510,7 +2526,7 @@ void UITask::loop() {
 #endif
 
 #ifdef AUTO_SHUTDOWN_MILLIVOLTS
-  if (millis() > next_batt_chck) {
+  if (static_cast<int32_t>(millis() - next_batt_chck) >= 0) {
     uint16_t milliVolts = getBattMilliVolts();
     if (milliVolts > 0 && milliVolts < AUTO_SHUTDOWN_MILLIVOLTS) {
       if(!board.isExternalPowered()) {
@@ -2574,7 +2590,7 @@ char UITask::checkDisplayOn(char c) {
       }
       c = 0;
     }
-    _next_refresh = 0;  // trigger refresh
+    _next_refresh = millis();  // trigger refresh
   }
   return c;
 }
@@ -2655,7 +2671,7 @@ void UITask::toggleGPS() {
         }
         the_mesh.savePrefs();
         showAlert(_node_prefs->gps_enabled ? "GPS: Enabled" : "GPS: Disabled", 800);
-        _next_refresh = 0;
+        _next_refresh = millis();
         break;
       }
     }
@@ -2675,7 +2691,7 @@ void UITask::toggleBuzzer() {
     the_mesh.setNotificationOutputMute(mesh::notify::Sound, _node_prefs->buzzer_quiet);
     the_mesh.savePrefs();
     showAlert(buzzer.isQuiet() ? "Buzzer: OFF" : "Buzzer: ON", 800);
-    _next_refresh = 0;  // trigger refresh
+    _next_refresh = millis();  // trigger refresh
   #endif
 }
 
@@ -2701,7 +2717,7 @@ void UITask::notificationMelody(const char* text) {
 void UITask::notificationScreen(int8_t mode) {
   if (!_display) return;
   _display->notificationPower(mode);
-  _next_refresh = 0;
+  _next_refresh = millis();
 }
 void UITask::notificationVibration(bool on) {
 #ifdef HAS_DRV2605

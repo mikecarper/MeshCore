@@ -20,7 +20,7 @@ class ScrollingStatusBar {
   int _text_width;
   int _scroll_x;
   int _display_width;
-  unsigned long _next_scroll;
+  uint32_t _next_scroll;
   unsigned long _next_update;
   bool _needs_redraw;
 
@@ -43,8 +43,9 @@ public:
   void begin(int display_width) {
     _display_width = display_width;
     _scroll_x = 0;
-    _next_scroll = 0;
+    _next_scroll = millis();
     _next_update = 0;
+    _needs_redraw = true;
   }
 
   // Call periodically to update the status string content.
@@ -92,8 +93,9 @@ public:
 
   // Returns true if the status bar needs a redraw this frame.
   bool needsRedraw() {
-    if (_text_width <= _display_width) return _needs_redraw;  // static, no scrolling
-    return millis() >= _next_scroll;
+    if (_needs_redraw) return true;
+    if (_text_width <= _display_width) return false;  // static, no scrolling
+    return static_cast<int32_t>(millis() - _next_scroll) >= 0;
   }
 
   // Render the status bar via DisplayDriver.

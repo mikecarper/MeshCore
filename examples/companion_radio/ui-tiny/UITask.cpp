@@ -665,6 +665,8 @@ void UITask::begin(DisplayDriver* display, SensorManager* sensors, CompanionNode
 #endif
 
   ui_started_at = millis();
+  next_batt_chck = _next_refresh = ui_started_at;
+  _alert[0] = 0;
   _alert_expiry = 0;
 
   splash = new SplashScreen(this);
@@ -739,7 +741,7 @@ void UITask::newMsg(uint8_t path_len, const char* from_name, const char* text,
     if (shouldWakeDisplayForMessage()) {
       _display->wake(mesh::ui::DisplayWake::Message);
     }
-    if (_display->isOn()) _next_refresh = 0;
+    if (_display->isOn()) _next_refresh = millis();
   }
 }
 
@@ -767,7 +769,7 @@ void UITask::userLedHandler() {
 
 void UITask::setCurrScreen(UIScreen* c) {
   curr = c;
-  _next_refresh = 100;
+  _next_refresh = millis();
 }
 
 bool UITask::isPairingScreenActive() const {
@@ -786,13 +788,13 @@ void UITask::showPairingPin() {
   setCurrScreen(home);
   if (_display != NULL) {
     _display->servicePower(_board->isExternalPowered() || _board->isUsbHostConnected(), hasConnection(), true);
-    _next_refresh = 0;
+    _next_refresh = millis();
   }
 }
 
 void UITask::finishPairingScreen(bool timed_out) {
   _pairing_screen_until = 0;
-  _next_refresh = 0;
+  _next_refresh = millis();
 #if UI_SMALL_MESSAGE_FONT == 1
   if (_deferred_msg_preview) {
     _deferred_msg_preview = false;
@@ -820,7 +822,7 @@ void UITask::servicePairingState() {
   }
   if (_display != NULL && _display->servicePower(
       _board->isExternalPowered() || _board->isUsbHostConnected(),
-      hasConnection(), isPairingScreenActive())) _next_refresh = 0;
+      hasConnection(), isPairingScreenActive())) _next_refresh = millis();
 }
 
 /*
@@ -861,6 +863,25 @@ bool UITask::isButtonPressed() const {
 void UITask::loop() {
   const bool morse_timing = mesh::morseTimingActive(&radio_driver);
   servicePairingState();
+
+  // Keep already-due work due across long display-off/Morse intervals,
+  // without moving a future refresh or triggering any display/ADC work.
+  const uint32_t refresh_now = millis();
+  if (static_cast<int32_t>(refresh_now - _next_refresh) >= 0) {
+    _next_refresh = refresh_now;
+  }
+#ifndef AUTO_SHUTDOWN_MILLIVOLTS
+  if (static_cast<int32_t>(refresh_now - next_batt_chck) >= 0) {
+    next_batt_chck = refresh_now;
+  }
+#endif
+
+  // Retire the popup even while sleep, Morse or input prevents drawing.
+  // Its deadline may be zero after wrapping; empty text means inactive.
+  if (_alert[0] && static_cast<int32_t>(millis() - _alert_expiry) >= 0) {
+    _alert[0] = 0;
+    _next_refresh = millis();
+  }
 
   char c = 0;
 #if UI_HAS_JOYSTICK
@@ -942,7 +963,7 @@ void UITask::loop() {
   if (c != 0 && curr) {
     _display->wake(mesh::ui::DisplayWake::Button);
     curr->handleInput(c);
-    _next_refresh = 100;  // trigger refresh
+    _next_refresh = millis();  // trigger refresh
   }
 
   userLedHandler();
@@ -962,7 +983,7 @@ void UITask::loop() {
         isBluetoothEnabled());
 
     bool status_dirty = _statusBar.needsRedraw();
-    bool content_dirty = (millis() >= _next_refresh && curr);
+    bool content_dirty = (static_cast<int32_t>(millis() - _next_refresh) >= 0 && curr);
 
     if (status_dirty || content_dirty) {
       _display->startFrame();
@@ -975,7 +996,7 @@ void UITask::loop() {
         }
       }
 
-      if (!isPairingScreenActive() && millis() < _alert_expiry) {  // render alert popup
+      if (!isPairingScreenActive() && _alert[0] && static_cast<int32_t>(millis() - _alert_expiry) < 0) {  // render alert popup
         _display->setTextSize(1);
         int y = _display->height() / 3;
         int p = _display->height() / 32;
@@ -1001,7 +1022,7 @@ void UITask::loop() {
 #endif
 
 #ifdef AUTO_SHUTDOWN_MILLIVOLTS
-  if (millis() > next_batt_chck) {
+  if (static_cast<int32_t>(millis() - next_batt_chck) >= 0) {
     _cached_batt_mv = getBattMilliVolts();
     if (_cached_batt_mv > 0 && _cached_batt_mv < AUTO_SHUTDOWN_MILLIVOLTS) {
       if(!board.isExternalPowered()) {
@@ -1020,7 +1041,7 @@ void UITask::loop() {
     next_batt_chck = millis() + 8000;
   }
 #else
-  if (!morse_timing && _display != NULL && _display->isOn() && millis() >= next_batt_chck) {
+  if (!morse_timing && _display != NULL && _display->isOn() && static_cast<int32_t>(millis() - next_batt_chck) >= 0) {
     _cached_batt_mv = getBattMilliVolts();
     next_batt_chck = millis() + 8000;
   }
@@ -1035,7 +1056,7 @@ char UITask::checkDisplayOn(char c) {
     if (!was_on) {
       c = 0;
     }
-    _next_refresh = 0;  // trigger refresh
+    _next_refresh = millis();  // trigger refresh
   }
   return c;
 }
@@ -1091,7 +1112,7 @@ void UITask::toggleGPS() {
         }
         the_mesh.savePrefs();
         showAlert(_node_prefs->gps_enabled ? "GPS: Enabled" : "GPS: Disabled", 800);
-        _next_refresh = 0;
+        _next_refresh = millis();
         break;
       }
     }
@@ -1111,7 +1132,7 @@ void UITask::toggleBuzzer() {
     the_mesh.setNotificationOutputMute(mesh::notify::Sound, _node_prefs->buzzer_quiet);
     the_mesh.savePrefs();
     showAlert(buzzer.isQuiet() ? "Buzzer: OFF" : "Buzzer: ON", 800);
-    _next_refresh = 0;  // trigger refresh
+    _next_refresh = millis();  // trigger refresh
   #endif
 }
 
@@ -1137,7 +1158,7 @@ void UITask::notificationMelody(const char* text) {
 void UITask::notificationScreen(int8_t mode) {
   if (!_display) return;
   _display->notificationPower(mode);
-  _next_refresh = 0;
+  _next_refresh = millis();
 }
 void UITask::notificationVibration(bool on) {
 #ifdef HAS_DRV2605

@@ -159,7 +159,7 @@ class TouchDebugOverlayTest(unittest.TestCase):
         profile = (ROOT / "variants/sensecap_indicator-espnow/platformio.ini").read_text()
         self.assertNotIn("UI_TOUCH_DEBUG_OUTLINES", profile)
         self.assertIn("TOUCH_MIRROR_TAP_X_ENABLED ? _display->width() - 1 - touch_x : touch_x", loop)
-        self.assertIn("if (debug_area != _touch_debug_area || curr != _touch_debug_screen) _next_refresh = 0;", loop)
+        self.assertIn("if (debug_area != _touch_debug_area || curr != _touch_debug_screen) _next_refresh = millis();", loop)
         self.assertIn("_touch_debug_screen == curr ? _touch_debug_x : -1", loop)
 
 

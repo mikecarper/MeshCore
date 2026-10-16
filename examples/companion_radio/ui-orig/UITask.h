@@ -31,7 +31,7 @@ class UITask : public AbstractUITask {
 #elif defined(PIN_VIBRATION)
   GenericVibration vibration;
 #endif
-  unsigned long _next_refresh;
+  uint32_t _next_refresh;
   CompanionNodePrefs* _node_prefs;
   char _version_info[32];
   char _origin[62];

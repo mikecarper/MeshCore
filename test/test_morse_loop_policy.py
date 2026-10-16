@@ -207,7 +207,7 @@ int main() {
     def test_actual_all_six_ui_redraw_blocks_defer_without_consuming_deadlines(self):
         specs = (
             ("examples/companion_radio/ui-new/UITask.cpp",
-             "if (!morse_timing && millis() >= _next_refresh"),
+             "if (!morse_timing && static_cast<int32_t>(millis() - _next_refresh) >= 0"),
             ("examples/companion_radio/ui-tiny/UITask.cpp",
              "if (!morse_timing && _display != NULL && _display->isOn())"),
             ("examples/companion_radio/ui-orig/UITask.cpp",
@@ -247,7 +247,7 @@ int main() {
             with self.subTest(ui=variant):
                 source = (ROOT / f"examples/companion_radio/{variant}/UITask.cpp").read_text(encoding="ascii")
                 loop = method(source, "void UITask::loop()")
-                cutoff = method(loop, "if (millis() > next_batt_chck)")
+                cutoff = method(loop, "if (static_cast<int32_t>(millis() - next_batt_chck) >= 0)")
                 self.assertNotIn("morse_timing", cutoff)
                 code = FIXTURE.replace("@REDRAW@", "").replace("@CUTOFF@", cutoff) + r'''
 int main() {
