@@ -2369,14 +2369,14 @@ void DataStore::loadContacts(DataStoreHost* host) {
       MESH_DEBUG_PRINTLN(
           "DataStore: HIL injecting contact page %u stat failure", page);
       _contact_load_incomplete = true;
-      _unread_contact_pages.mark(page);
       queueContactRecovery();
       return;
     }
 #endif
     if (!contactPathPresence(contacts_fs, path, page_exists)) {
       _contact_load_incomplete = true;
-      _unread_contact_pages.mark(page);
+      // Discovery failed before the contact source was selected. This is not
+      // evidence that the page payload is unreadable or safe to discard.
       queueContactRecovery();
       return;
     }
@@ -2388,7 +2388,9 @@ void DataStore::loadContacts(DataStoreHost* host) {
   bool migration_marker_exists = false;
   if (!contactPathPresence(contacts_fs, "/contacts3", legacy_exists)) {
     _contact_load_incomplete = true;
-    queueContactRecovery(true);
+    // Unknown legacy presence does not make readable pages expendable: they
+    // may be the only authoritative store. Retry without authorizing erasure.
+    queueContactRecovery();
     return;
   }
   if (!contactPathPresence(contacts_fs, CONTACT_MIGRATION_MARKER,

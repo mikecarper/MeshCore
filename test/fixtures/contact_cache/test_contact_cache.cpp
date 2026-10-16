@@ -47,7 +47,14 @@ using DataStoreHost = Host;
 #if defined(NRF52_PLATFORM)
 static const char* CONTACT_MIGRATION_MARKER = "/contacts4.mig";
 static bool fail_contact_migration_marker = false;
+static bool fail_contact_legacy_stat = false;
+static int fail_contact_page_stats = 0;
 bool contactPathPresence(FakeFilesystem* fs, const char* path, bool& present) {
+  if (fail_contact_page_stats && !strcmp(path, "/contacts4_00")) {
+    if (fail_contact_page_stats > 0) --fail_contact_page_stats;
+    return false;
+  }
+  if (fail_contact_legacy_stat && !strcmp(path, "/contacts3")) return false;
   if (fail_contact_migration_marker && !strcmp(path, CONTACT_MIGRATION_MARKER)) return false;
   present = fs->exists(path);
   return true;
@@ -1090,6 +1097,108 @@ static void nrf52_marker_error_keeps_a_usable_contact_view() {
   assert(SPIFFS.files == durable && SPIFFS.writes == writes && SPIFFS.removes == removes);
 }
 
+static void nrf52_unknown_legacy_stat_preserves_contact_authority() {
+  for (bool legacy_present : {false, true}) {
+    for (bool persistent_failure : {false, true}) {
+      Fixture f(30);
+      assert(f.store.writeContactPage(&f.host, 0, cachedContactFilter));
+      assert(f.store.writeContactPage(&f.host, 1, cachedContactFilter));
+      if (legacy_present) {
+        // A downgrade may leave a shorter authoritative legacy view beside
+        // stale, otherwise completely readable pages. No migration marker
+        // permits treating those extra records as a committed page tail.
+        SPIFFS.files["/contacts3"].resize(5 * mesh::storage::CONTACT_RECORD_SIZE);
+      } else {
+        SPIFFS.remove("/contacts3");
+      }
+      const FakeFilesystem::Files unrelated = {
+          {"/_main.id", {1, 3}}, {"/new_prefs", {2, 4}}, {"/channels2", {5, 7}},
+          {"/.extrafs.mig", {'M', 'C', 'X', 'F', 1, 2}}};
+      for (const auto& file : unrelated) SPIFFS.files[file.first] = file.second;
+      const auto durable = SPIFFS.files;
+      const unsigned writes = SPIFFS.writes, removes = SPIFFS.removes;
+      f.host.contacts.clear();
+      fail_contact_legacy_stat = true;
+      f.store.loadContacts(&f.host);
+      assert(f.store.contactRecoveryPending() && f.store.hasIncompleteContactLoad());
+      assert(f.host.contacts.empty() && SPIFFS.files == durable);
+      if (!persistent_failure) fail_contact_legacy_stat = false;
+      f.store.recoverContacts(&f.host);
+      assert(!f.store.contactRecoveryPending() && !f.store.hasIncompleteContactLoad());
+      assert(f.store.contactsAreVolatile() == persistent_failure);
+      const unsigned expected_contacts = legacy_present ? 5 : 30;
+      assert(f.host.contacts.size() == (persistent_failure ? 0 : expected_contacts));
+      if (persistent_failure) {
+        // Unknown source authority is not a corrupt legacy image. Keep both
+        // candidate namespaces unchanged and permit usable volatile hardware.
+        assert(SPIFFS.files == durable);
+        assert(SPIFFS.writes == writes && SPIFFS.removes == removes);
+        assert(!f.store.saveContacts(&f.host, cachedContactFilter));
+        f.store.recoverContacts(&f.host);
+        assert(SPIFFS.files == durable && f.host.contacts.empty());
+      }
+      for (const auto& file : unrelated) assert(SPIFFS.files.at(file.first) == file.second);
+      fail_contact_legacy_stat = false;
+      f.host.contacts.clear();
+      DataStore rebooted(f.host);
+      rebooted.loadContacts(&f.host);
+      assert(!rebooted.hasIncompleteContactLoad() && !rebooted.contactRecoveryPending());
+      assert(!rebooted.contactsAreVolatile() && f.host.contacts.size() == expected_contacts);
+      for (unsigned i = 0; i < expected_contacts; ++i) f.check(i, route(i));
+    }
+  }
+}
+
+static void nrf52_unknown_page_stat_preserves_contact_authority() {
+  for (bool legacy_present : {false, true}) {
+    for (int failures : {1, 2, -1}) {
+      Fixture f(30);
+      assert(f.store.writeContactPage(&f.host, 0, cachedContactFilter));
+      assert(f.store.writeContactPage(&f.host, 1, cachedContactFilter));
+      if (legacy_present) {
+        SPIFFS.files["/contacts3"].resize(5 * mesh::storage::CONTACT_RECORD_SIZE);
+      } else {
+        SPIFFS.remove("/contacts3");
+      }
+      const FakeFilesystem::Files unrelated = {
+          {"/_main.id", {1, 3}}, {"/new_prefs", {2, 4}}, {"/channels2", {5, 7}},
+          {"/.extrafs.mig", {'M', 'C', 'X', 'F', 1, 2}}};
+      for (const auto& file : unrelated) SPIFFS.files[file.first] = file.second;
+      const auto durable = SPIFFS.files;
+      const unsigned writes = SPIFFS.writes, removes = SPIFFS.removes;
+      f.host.contacts.clear();
+      fail_contact_page_stats = failures;
+      f.store.loadContacts(&f.host);
+      assert(f.store.contactRecoveryPending() && f.store.hasIncompleteContactLoad());
+      assert(f.host.contacts.empty() && SPIFFS.files == durable);
+      f.store.recoverContacts(&f.host);
+      const bool persistent_failure = failures < 0;
+      assert(!f.store.contactRecoveryPending() && !f.store.hasIncompleteContactLoad());
+      assert(f.store.contactsAreVolatile() == persistent_failure);
+      const unsigned expected_contacts = legacy_present ? 5 : 30;
+      assert(f.host.contacts.size() == (persistent_failure ? 0 : expected_contacts));
+      // In particular, two metadata failures clear just before the cleanup
+      // probe. That later successful stat is not permission to erase a page
+      // whose complete bytes never failed validation or even a read attempt.
+      assert(SPIFFS.files == durable);
+      assert(SPIFFS.writes == writes && SPIFFS.removes == removes);
+      for (const auto& file : unrelated) assert(SPIFFS.files.at(file.first) == file.second);
+      if (persistent_failure) {
+        assert(!f.store.saveContacts(&f.host, cachedContactFilter));
+        f.store.recoverContacts(&f.host);
+        assert(SPIFFS.files == durable && f.host.contacts.empty());
+      }
+      fail_contact_page_stats = 0;
+      f.host.contacts.clear();
+      DataStore rebooted(f.host);
+      rebooted.loadContacts(&f.host);
+      assert(!rebooted.hasIncompleteContactLoad() && !rebooted.contactRecoveryPending());
+      assert(!rebooted.contactsAreVolatile() && f.host.contacts.size() == expected_contacts);
+      for (unsigned i = 0; i < expected_contacts; ++i) f.check(i, route(i));
+    }
+  }
+}
+
 static void nrf52_unread_legacy_and_unknown_marker_cannot_resurrect_stale_pages() {
   Fixture f(30);
   assert(f.store.writeContactPage(&f.host, 0, cachedContactFilter));
@@ -1225,6 +1334,8 @@ int main() {
   nrf52_migration_snapshots_and_failed_page_replacement();
   nrf52_resource_refusals_never_discard_contact_pages();
   nrf52_marker_error_keeps_a_usable_contact_view();
+  nrf52_unknown_legacy_stat_preserves_contact_authority();
+  nrf52_unknown_page_stat_preserves_contact_authority();
   nrf52_unread_legacy_and_unknown_marker_cannot_resurrect_stale_pages();
   nrf52_uncertain_page_publication_preserves_snapshots();
   encoded_paths_and_copy_assignment();

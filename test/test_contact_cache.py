@@ -50,7 +50,14 @@ class ContactCacheTest(unittest.TestCase):
     def test_esp32_disabled_contact_recovery_is_detected(self):
         self.run_cache_test("ESP32_PLATFORM", disable_recovery=True)
 
-    def run_cache_test(self, platform, disable_crc_batch=False, disable_recovery=False):
+    def test_nrf52_unsafe_legacy_discovery_recovery_is_detected(self):
+        self.run_cache_test("NRF52_PLATFORM", unsafe_legacy_discovery=True)
+
+    def test_nrf52_unsafe_page_discovery_recovery_is_detected(self):
+        self.run_cache_test("NRF52_PLATFORM", unsafe_page_discovery=True)
+
+    def run_cache_test(self, platform, disable_crc_batch=False, disable_recovery=False,
+                       unsafe_legacy_discovery=False, unsafe_page_discovery=False):
         with tempfile.TemporaryDirectory(prefix="mesh-contact-cache-") as temp:
             temp = Path(temp)
             store = (ROOT / "examples/companion_radio/DataStore.cpp").read_text()
@@ -112,6 +119,22 @@ class ContactCacheTest(unittest.TestCase):
                 self.assertIn(recovery, implementation)
                 implementation = implementation.replace(
                     recovery, "void DataStore::recoverContacts(DataStoreHost*) {}")
+            if unsafe_legacy_discovery:
+                discovery = method(store,
+                    'if (!contactPathPresence(contacts_fs, "/contacts3", legacy_exists))')
+                self.assertEqual(discovery.count("queueContactRecovery();"), 1)
+                self.assertEqual(implementation.count(discovery), 1)
+                implementation = implementation.replace(discovery, discovery.replace(
+                    "queueContactRecovery();", "queueContactRecovery(true);"))
+            if unsafe_page_discovery:
+                discovery = method(store,
+                    "if (!contactPathPresence(contacts_fs, path, page_exists))")
+                self.assertNotIn("_unread_contact_pages.mark(page);", discovery)
+                self.assertEqual(discovery.count("queueContactRecovery();"), 1)
+                self.assertEqual(implementation.count(discovery), 1)
+                implementation = implementation.replace(discovery, discovery.replace(
+                    "queueContactRecovery();",
+                    "_unread_contact_pages.mark(page);\n      queueContactRecovery();"))
             if platform == "NRF52_PLATFORM":
                 # Fault only the page snapshot allocation; keep production
                 # loading/recovery logic and unrelated crypto allocations.
@@ -159,7 +182,15 @@ class ContactCacheTest(unittest.TestCase):
             ], capture_output=True, text=True)
             self.assertEqual(result.returncode, 0, result.stderr)
             result = subprocess.run([str(binary)], capture_output=True, text=True)
-            if disable_recovery:
+            if unsafe_page_discovery:
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn("nrf52_unknown_page_stat_preserves_contact_authority", result.stderr)
+                self.assertIn("f.host.contacts.size()", result.stderr)
+            elif unsafe_legacy_discovery:
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn("nrf52_unknown_legacy_stat_preserves_contact_authority", result.stderr)
+                self.assertIn("SPIFFS.files == durable", result.stderr)
+            elif disable_recovery:
                 self.assertNotEqual(result.returncode, 0)
                 self.assertIn("!f.store.contactRecoveryPending()", result.stderr)
             elif disable_crc_batch:
