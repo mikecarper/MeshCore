@@ -98,7 +98,7 @@ class T096FullMemoryTest(unittest.TestCase):
 #define AUTO_OFF_MILLIS 15000
 #define UI_RECENT_LIST_SIZE 3
 #define TELEM_CHANNEL_SELF 0
-unsigned long millis() { return 100; }
+uint32_t millis() { return 100; }
 struct Lpp {
   uint8_t storage[8];
   bool allocated = false;
@@ -121,7 +121,8 @@ struct Board { int getBattMilliVolts() { return 4000; } } board;
 struct Sensors { int calls = 0; void querySensors(int, Lpp&) { ++calls; } } sensors;
 struct Home {
   Lpp sensors_lpp;
-  int sensors_nb = 5, sensors_scroll_offset = 4, next_sensors_refresh = 0;
+  int sensors_nb = 5, sensors_scroll_offset = 4;
+  uint32_t last_sensors_refresh = 0;
   bool sensors_scroll = true;
   @REFRESH@
 };
@@ -133,7 +134,7 @@ int main() {
   home.sensors_lpp.allocated = true;
   home.refresh_sensors();
   assert(home.sensors_nb == 1 && sensors.calls == 1);
-  assert(home.next_sensors_refresh == 5100);
+  assert(home.last_sensors_refresh == 100);
   home.refresh_sensors();
   assert(sensors.calls == 1);
 }

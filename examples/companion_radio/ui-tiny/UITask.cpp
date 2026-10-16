@@ -168,13 +168,21 @@ class HomeScreen : public UIScreen {
   int sensors_nb = 0;
   bool sensors_scroll = false;
   int sensors_scroll_offset = 0;
-  int next_sensors_refresh = 0;
+  uint32_t last_sensors_refresh = 0;
   uint32_t _radio_profile_page_started_at = 0;
   uint8_t _radio_status_page = 0;
   bool _dual_radio_enabled_seen = false;
 
   void refresh_sensors() {
-    if (millis() > next_sensors_refresh) {
+#if AUTO_OFF_MILLIS > 0
+    const uint32_t refresh_interval = 5000;
+#else
+    const uint32_t refresh_interval = 60000;
+#endif
+    // Empty data requests an initial/forced sample. Elapsed time also handles
+    // returning to this page after more than half a millis() cycle.
+    if (sensors_lpp.getSize() == 0
+        || static_cast<uint32_t>(millis() - last_sensors_refresh) >= refresh_interval) {
       sensors_lpp.reset();
       sensors_nb = 0;
       sensors_lpp.addVoltage(TELEM_CHANNEL_SELF, (float)board.getBattMilliVolts() / 1000.0f);
@@ -186,11 +194,7 @@ class HomeScreen : public UIScreen {
         sensors_nb ++;
       }
       sensors_scroll = sensors_nb > UI_RECENT_LIST_SIZE;
-#if AUTO_OFF_MILLIS > 0
-      next_sensors_refresh = millis() + 5000; // refresh sensor values every 5 sec
-#else
-      next_sensors_refresh = millis() + 60000; // refresh sensor values every 1 min
-#endif
+      last_sensors_refresh = millis();
     }
   }
 
@@ -575,7 +579,7 @@ public:
 #if UI_SENSORS_PAGE == 1
     if (c == KEY_ENTER && _page == HomePage::SENSORS) {
       _task->toggleGPS();
-      next_sensors_refresh=0;
+      sensors_lpp.reset();
       return true;
     }
 #endif
