@@ -42,6 +42,9 @@ struct Transport : SerialEthernetInterface {
   bool pause_after_write = false;
   bool pause_after_read = false;
   bool pause_after_available = false;
+  bool replenish_read = false;
+  size_t read_guard = 0;
+  Bytes append_after_read;
   int available_calls = 0;
   int write_calls = 0;
   int disconnect_calls = 0;
@@ -67,9 +70,16 @@ struct Transport : SerialEthernetInterface {
   int read() override {
     assert(!io_unavailable);
     if (!client || client->received.empty()) return -1;
+    assert((read_guard == 0 || client->read_count < read_guard)
+        && "Ethernet RX invocation exceeded bounded read guard");
     const int value = client->received.front();
     client->received.pop_front();
     ++client->read_count;
+    if (replenish_read) client->received.push_back(uint8_t(value));
+    if (!append_after_read.empty()) {
+      client->received.insert(client->received.end(), append_after_read.begin(), append_after_read.end());
+      append_after_read.clear();
+    }
     if (pause_after_read) {
       io_unavailable = true;
       pause_after_read = false;
@@ -500,6 +510,52 @@ int main(int argc, char** argv) {
     assert(f.tick() == 0 && !socket->connected && f.callbacks == 1);
 #endif
     assert(other_socket->connected);
+  } else if (scenario >= 30 && scenario <= 35) {
+    const bool replenish = scenario <= 32;
+    static constexpr size_t budgets[] = {1, 7, 257};
+    const size_t budget = budgets[(scenario - 30) % 3];
+    const Bytes request = command(Bytes{'a', 'b'});
+#if ETHERNET_RAW_LINE
+    const uint8_t junk = '\n';
+#else
+    const uint8_t junk = 'x';
+#endif
+    socket->received.assign(budget, junk);
+    f.transport.read_guard = 4096; // The live-availability negative control must terminate.
+    f.transport.replenish_read = replenish;
+    if (!replenish) f.transport.append_after_read = request;
+    assert(f.tick() == 0 && "new arrivals must wait for the next mesh loop");
+    assert(socket->read_count == budget && f.transport.available_calls == 1);
+    assert(socket->received.size() == (replenish ? budget : request.size()));
+    assert(socket->connected && !f.transport.isReadBusy() && f.callbacks == 0);
+    f.transport.replenish_read = false;
+    if (replenish) socket->received.insert(socket->received.end(), request.begin(), request.end());
+    // Nothing was dropped: existing idle bytes and a newly arrived complete
+    // command remain in wire order and parse on the following mesh loop.
+    assert(f.tick() == 2 && f.input[0] == 'a' && f.input[1] == 'b');
+    assert(socket->received.empty() && f.transport.available_calls == 2);
+  } else if (scenario >= 36 && scenario <= 39) {
+    const bool zero_available = scenario >= 38;
+    mock_millis = (scenario & 1) ? UINT32_MAX - 1000U : 0;
+    const Bytes request = command(Bytes{'a', 'b'});
+    socket->received.push_back(request[0]);
+    if (!zero_available) f.transport.pause_after_read = true;
+    assert(f.tick() == 0 && f.transport.isReadBusy());
+    if (zero_available) {
+      mock_millis += 2000;
+      f.transport.pause_after_available = true;
+      assert(f.tick() == 0);
+    }
+    assert(f.transport.io_unavailable && socket->read_count == 1);
+    const int available_calls = f.transport.available_calls;
+    mock_millis += 12000;
+    assert(f.tick() == 0 && f.transport.available_calls == available_calls);
+    f.transport.io_unavailable = false;
+    f.transport.loop();
+    mock_millis += zero_available ? 2999 : 4999;
+    socket->received.insert(socket->received.end(), request.begin() + 1, request.end());
+    assert((f.tick() == 2 && socket->connected && f.input[0] == 'a' && f.input[1] == 'b'
+        && f.callbacks == 0) && "worker handoff must preserve remaining frame deadline");
   } else {
     assert(false && "unknown scenario");
   }

@@ -165,10 +165,12 @@ size_t SerialEthernetInterface::checkRecvFrame(uint8_t dest[]) {
         send_queue[i] = send_queue[i + 1];
       }
     } else {
-      while (true) {
+      // Newly arriving bytes belong to the next mesh loop. A continuously
+      // writing peer must not monopolize radio and watchdog service.
+      int pending = available();
+      while (pending-- > 0) {
         // A read may likewise hand its receive-ACK command to the worker;
         // leave the rest of the frame untouched until hardware is available.
-        if (updateIOPause((uint32_t)millis()) || !available()) break;
         if (updateIOPause((uint32_t)millis())) break;
         int c = read();
         if (c < 0) break;
@@ -231,6 +233,9 @@ size_t SerialEthernetInterface::checkRecvFrame(uint8_t dest[]) {
         }
 #endif
       }
+      // Snapshot availability or the final budgeted read can hand IO to the
+      // worker. Observe that pause after the byte has changed parser state.
+      (void)updateIOPause((uint32_t)millis());
     }
   }
 

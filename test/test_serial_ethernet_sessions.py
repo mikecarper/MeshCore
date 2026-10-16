@@ -46,10 +46,30 @@ SCENARIOS = (
     "read command ownership pauses before polling the socket again",
     "availability command ownership prevents a following socket read",
     "main-loop ownership service preserves timeout behind another locked route",
+    "continuously replenished idle input yields after entry budget 1",
+    "continuously replenished idle input yields after entry budget 7",
+    "continuously replenished idle input yields after entry budget 257",
+    "new command waits behind entry budget 1 until next loop",
+    "new command waits behind entry budget 7 until next loop",
+    "new command waits behind entry budget 257 until next loop",
+    "last budgeted read records worker pause after parser state changes",
+    "last budgeted read worker pause preserves deadline across rollover",
+    "zero-available snapshot records worker pause immediately",
+    "zero-available worker pause preserves deadline across rollover",
 )
 
 
 class SerialEthernetSessionTests(unittest.TestCase):
+    def compile_transport(self, compiler, raw, binary, source):
+        compiled = subprocess.run(
+            [compiler, "-std=c++17", "-Wall", "-Wextra", "-Werror",
+             *SANITIZER_FLAGS, f"-DETHERNET_RAW_LINE={raw}",
+             f"-I{MOCKS}", f"-I{ROOT / 'src'}",
+             f"-I{ROOT / 'src/helpers/ethernet'}", str(FIXTURE / "test.cpp"),
+             str(source), "-o", str(binary)], capture_output=True, text=True, timeout=60,
+        )
+        self.assertEqual(compiled.returncode, 0, compiled.stdout + compiled.stderr)
+
     def test_production_transport_sessions(self):
         compiler = os.environ.get("CXX") or shutil.which("g++") or shutil.which("clang++")
         if compiler is None:
@@ -57,15 +77,8 @@ class SerialEthernetSessionTests(unittest.TestCase):
         with tempfile.TemporaryDirectory(prefix="meshcore-ethernet-sessions-") as directory:
             binary = Path(directory) / "ethernet-sessions.exe"
             for raw in (0, 1):
-                compiled = subprocess.run(
-                    [compiler, "-std=c++17", "-Wall", "-Wextra", "-Werror",
-                     *SANITIZER_FLAGS, f"-DETHERNET_RAW_LINE={raw}",
-                     f"-I{MOCKS}", f"-I{ROOT / 'src'}",
-                     str(FIXTURE / "test.cpp"),
-                     str(ROOT / "src/helpers/ethernet/SerialEthernetInterface.cpp"),
-                     "-o", str(binary)], capture_output=True, text=True, timeout=60,
-                )
-                self.assertEqual(compiled.returncode, 0, compiled.stdout + compiled.stderr)
+                self.compile_transport(compiler, raw, binary,
+                                       ROOT / "src/helpers/ethernet/SerialEthernetInterface.cpp")
                 for scenario, description in enumerate(SCENARIOS):
                     with self.subTest(raw=raw, scenario=description):
                         checked = subprocess.run(
@@ -74,6 +87,44 @@ class SerialEthernetSessionTests(unittest.TestCase):
                         )
                         self.assertEqual(checked.returncode, 0, checked.stdout + checked.stderr)
                         self.assertIn(f"PASS: Ethernet session scenario {scenario}", checked.stdout)
+
+    def test_live_available_and_missing_final_pause_negative_controls(self):
+        compiler = os.environ.get("CXX") or shutil.which("g++") or shutil.which("clang++")
+        if compiler is None:
+            self.skipTest("a host C++17 compiler is required")
+        source = (ROOT / "src/helpers/ethernet/SerialEthernetInterface.cpp").read_text()
+        snapshot = '''      int pending = available();
+      while (pending-- > 0) {
+        // A read may likewise hand its receive-ACK command to the worker;
+        // leave the rest of the frame untouched until hardware is available.
+        if (updateIOPause((uint32_t)millis())) break;'''
+        live = '''      while (true) {
+        if (updateIOPause((uint32_t)millis()) || !available()) break;
+        if (updateIOPause((uint32_t)millis())) break;'''
+        pause = '''      // Snapshot availability or the final budgeted read can hand IO to the
+      // worker. Observe that pause after the byte has changed parser state.
+      (void)updateIOPause((uint32_t)millis());'''
+        self.assertEqual(source.count(snapshot), 1)
+        self.assertEqual(source.count(pause), 1)
+        with tempfile.TemporaryDirectory(prefix="meshcore-ethernet-rx-negative-") as directory:
+            work = Path(directory)
+            for name, modified, modes, scenarios in (
+                    ("live", source.replace(snapshot, live), (0, 1), range(30, 36)),
+                    ("naive", source.replace(pause, ""), (0,), range(36, 40))):
+                variant = work / (name + ".cpp")
+                variant.write_text(modified)
+                for raw in modes:
+                    binary = work / (name + str(raw) + ".exe")
+                    self.compile_transport(compiler, raw, binary, variant)
+                    for scenario in scenarios:
+                        with self.subTest(variant=name, raw=raw, scenario=SCENARIOS[scenario]):
+                            checked = subprocess.run([str(binary), str(scenario)], capture_output=True,
+                                                     text=True, timeout=10)
+                            self.assertNotEqual(checked.returncode, 0, "unsafe RX loop escaped regression")
+                            expected = ("bounded read guard" if scenario <= 32 else
+                                        "new arrivals must wait" if scenario <= 35 else
+                                        "worker handoff must preserve remaining frame deadline")
+                            self.assertIn(expected, checked.stderr)
 
     def test_hardware_drivers_cancel_before_exposing_new_client(self):
         for driver in ("ch390/CH390EthernetInterface", "RAK13800/RAK13800EthernetInterface"):
