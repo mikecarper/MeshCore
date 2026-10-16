@@ -323,6 +323,7 @@ jobs:
           python3 -B test/test_companion_channel_alias.py -v
           python3 -B test/test_companion_tx_routing.py -v
           python3 -B test/test_companion_channel_publication.py -v
+          python3 -B test/test_companion_tx_raw_alias.py -v
           python3 -B test/test_companion_traffic_routing.py -v
           python3 -B test/test_ethernet_kiss.py -v
           python3 -B test/test_ethernet_radio.py -v

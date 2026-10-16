@@ -54,6 +54,11 @@ struct DataStore {
  @CHANNEL_METHOD@
  const char* _channel_recovery_source=nullptr;
  bool hasIncompleteContactLoad() const;
+ DataStore() {
+#if defined(STM32_PLATFORM)
+   fs.rename_replaces=true;
+#endif
+ }
  FILESYSTEM* _getContactsChannelsFS() { return &fs; }
  File openRead(FILESYSTEM* fs, const char* name) { return fs->open(name,"r"); }
  void loadChannels(DataStoreHost*);
@@ -68,6 +73,8 @@ public:
  DataStore store;
  DataStore* _store=&store;
  bool writable=true, writes_ok=true; unsigned writes=0;
+ unsigned channel_sets=0, _ethernet_channel_generation=0;
+ bool _mt_delivery_config_dirty=false;
  bool canMutateContacts() const { return writable && !store.hasIncompleteContactLoad(); }
  int getTotalContactSlots() const { return contacts.size(); }
  ContactInfo* getContactPtrByIdx(int i) { return &contacts.at(i); }
@@ -81,7 +88,11 @@ public:
    }
    return true;
  }
- bool setChannel(int i, const ChannelDetails& c) { if (i<0 || i>=MAX_GROUP_CHANNELS) return false; channels[i]=c; return true; }
+ bool setChannel(int i, const ChannelDetails& c) {
+   if (i<0 || i>=MAX_GROUP_CHANNELS) return false;
+   ++channel_sets; ++_ethernet_channel_generation; _mt_delivery_config_dirty=true;
+   channels[i]=c; return true;
+ }
  bool saveChannels() { ++writes; return writes_ok && store.saveChannels(this); }
  bool scheduleContactWrite(const ContactInfo&) { ++writes; return writes_ok; }
  bool flushContactsBeforeReboot() { return writes_ok; }
@@ -126,6 +137,9 @@ int main() {
  cmd("set tx.user \"Alice Jones\" radio2"); assert(!strncmp(reply,"OK",2));
  assert(strstr(reply,"active=radio2") && node.contacts[1].tx_radio==mesh::RADIO_TX_SECONDARY);
  assert(node.contacts[2].tx_radio==mesh::RADIO_TX_AUTO);
+ const unsigned unchanged_contact_writes=node.writes;
+ cmd("set tx.user \"Alice Jones\" radio2"); assert(!strncmp(reply,"OK",2));
+ assert(node.writes==unchanged_contact_writes);
  cmd("get tx.user Alice Jones"); assert(strstr(reply,"radio2"));
  cmd("set tx.user Bob off"); assert(strstr(reply,"ambiguous"));
  cmd("set tx.user key:111111111111 off"); assert(strstr(reply,"ambiguous"));
@@ -291,9 +305,16 @@ int main() {
  aliased.radio.config.secondary.mode=mesh::RadioProfileMode::RxTx;
  auto alias_cmd=[&](const char* text) { assert(aliased.handleTxRoutingCommand(text,reply,sizeof(reply))); };
  alias_cmd("get tx.channel 1"); assert(strstr(reply,"active=radio2"));
+ assert(aliased.writes==0);
  alias_cmd("set tx.channel 1 radio"); assert(strstr(reply,"prefix controls routing"));
  assert(aliased.writes==0 && aliased.channels[1].channel.tx_radio==mesh::RADIO_TX_AUTO);
- alias_cmd("set tx.channel 1 radio2"); assert(!strncmp(reply,"OK",2) && aliased.writes==0);
+ alias_cmd("set tx.channel 1 radio2"); assert(!strncmp(reply,"OK",2) && aliased.writes==1);
+ assert(aliased.channel_sets==0 && aliased._ethernet_channel_generation==0);
+ assert(!aliased._mt_delivery_config_dirty);
+ assert(aliased.channels[1].channel.tx_radio==mesh::RADIO_TX_AUTO);
+ assert(aliased.store.fs.files["/channels2"][68]==mesh::encodeRadioTxPolicy(mesh::RADIO_TX_AUTO));
+ assert(aliased.store.fs.files["/channels2"][68+36]==42);
+ assert(!strcmp(reinterpret_cast<const char*>(aliased.store.fs.files["/channels2"].data()+68+4),"#r2-emergency"));
  aliased.radio.config.secondary.mode=mesh::RadioProfileMode::Off;
  alias_cmd("set tx.channel 1 radio"); assert(!strncmp(reply,"OK",2));
  assert(aliased.channels[1].channel.tx_radio==mesh::RADIO_TX_PRIMARY);

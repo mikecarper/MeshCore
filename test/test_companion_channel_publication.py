@@ -12,7 +12,7 @@ from test_companion_preferences_transaction import esp_recovery_helpers
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def publication_fixture(work, missing_latch):
+def publication_fixture(work, missing_latch, skip_noop_save=False):
     store = (ROOT / "examples/companion_radio/DataStore.cpp").read_text()
     header = (ROOT / "examples/companion_radio/DataStore.h").read_text()
     mesh = (ROOT / "examples/companion_radio/MyMesh.cpp").read_text()
@@ -74,7 +74,18 @@ def publication_fixture(work, missing_latch):
     errno = EIO;
     return -1; // ESP metadata errors remain distinguishable from absence.
   }""", 1)
-    methods = recovery + "\n" + method(mesh, "bool MyMesh::handleTxRoutingCommand(")
+    route = method(mesh, "bool MyMesh::handleTxRoutingCommand(")
+    if skip_noop_save:
+        # Restore exactly the pre-fix outer changed-policy condition and skip
+        # the new unchanged-channel branch; all writer and latch code remains.
+        opening = route.index("  if (parsed.set) {", route.index("  uint8_t policy ="))
+        changed = "    } else if (parsed.channel) {"
+        changed_end = route.index(changed, opening) + len(changed)
+        assert "if (parsed.channel) saved = saveChannels();" in route[opening:changed_end]
+        route = (route[:opening]
+                 + "  if (parsed.set && policy != parsed.policy) {\n    bool saved;\n    if (parsed.channel) {"
+                 + route[changed_end:])
+    methods = recovery + "\n" + route
     methods += "\n" + method(store, "void DataStore::loadChannels(")
     methods += "\n" + save + "\n" + method(store, "bool DataStore::hasIncompleteContactLoad(")
     binary_start = mesh.index("  } else if (cmd_frame[0] == CMD_SET_CHANNEL && len >= 2 + 32 + 16) {")
@@ -131,10 +142,10 @@ static bool contactPathPresence(FILESYSTEM* fs, const char* path, bool& present,
 
 
 class CompanionChannelPublicationTest(unittest.TestCase):
-    def run_platform(self, platform, missing_latch=False):
+    def run_platform(self, platform, missing_latch=False, skip_noop_save=False):
         with tempfile.TemporaryDirectory(prefix="mesh-channel-publication-") as directory:
             work = Path(directory)
-            fixture = publication_fixture(work, missing_latch)
+            fixture = publication_fixture(work, missing_latch, skip_noop_save)
             binary = work / "test"
             compiled = subprocess.run([
                 "g++", "-std=c++17", "-O1", "-g", "-Wall", "-Wextra", "-D" + platform + "=1",
@@ -146,7 +157,10 @@ class CompanionChannelPublicationTest(unittest.TestCase):
             ], capture_output=True, text=True, timeout=60)
             self.assertEqual(compiled.returncode, 0, compiled.stdout + compiled.stderr)
             result = subprocess.run([str(binary)], capture_output=True, text=True, timeout=10)
-            if missing_latch:
+            if skip_noop_save:
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn('mesh::decodeRadioTxPolicy(node.store.fs.files.at("/channels2")[0]) == mesh::RADIO_TX_BOTH', result.stderr)
+            elif missing_latch:
                 self.assertNotEqual(result.returncode, 0)
                 self.assertIn('strstr(reply, "storage unavailable")', result.stderr)
             else:
@@ -176,6 +190,12 @@ class CompanionChannelPublicationTest(unittest.TestCase):
 
     def test_missing_rp2040_publication_latch_is_detected(self):
         self.run_platform("RP2040_PLATFORM", missing_latch=True)
+
+    def test_esp32_old_same_value_skip_after_stale_backup_is_detected(self):
+        self.run_platform("ESP32_PLATFORM", skip_noop_save=True)
+
+    def test_rp2040_old_same_value_skip_after_stale_backup_is_detected(self):
+        self.run_platform("RP2040_PLATFORM", skip_noop_save=True)
 
 
 if __name__ == "__main__":

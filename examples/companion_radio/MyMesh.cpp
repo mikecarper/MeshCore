@@ -3744,13 +3744,17 @@ bool MyMesh::handleTxRoutingCommand(const char* command, char* reply, size_t rep
     return true;
   }
   uint8_t policy = parsed.channel ? channel.channel.tx_radio : contact->tx_radio;
-  if (parsed.set && policy != parsed.policy) {
-    bool saved;
-    if (parsed.channel) {
+  if (parsed.set) {
+    bool saved = true;
+    if (policy == parsed.policy) {
+      // A prior recovery may have restored older disk data. Save the raw
+      // table without mutating a resolved alias or its runtime generation.
+      if (parsed.channel) saved = saveChannels();
+    } else if (parsed.channel) {
       const auto alias = parseCompanionChannelAlias(channel.name);
       if (isAliasRadio2Defined()
           && (alias.kind == CompanionChannelKind::Radio2 || alias.kind == CompanionChannelKind::Meshtext)) {
-        snprintf(reply, reply_size, "Error: channel prefix controls routing; rename it to change routing");
+        snprintf(reply, reply_size, "Error: prefix controls routing; rename channel");
         return true;
       }
       // Persist the app PSK, not the resolved wire-key copy used for reporting.
