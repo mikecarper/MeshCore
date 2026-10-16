@@ -3,7 +3,8 @@
 
 // -1: no reliable observation, 0: confirmed non-RX mode, 1: RX.
 // GetStatus is C0 followed by one response byte (Semtech sx126x driver).
-// RadioLib's pinned getStatus() requests zero payload bytes and returns zero.
+// RadioLib 7.8.1 also reads that response directly. This probe additionally
+// avoids waiting on BUSY, preserves the SPI layout and checks transport errors.
 template <typename Radio>
 inline int8_t sx126xReceiveMode(Radio* radio) {
   Module* module = radio->getMod();
