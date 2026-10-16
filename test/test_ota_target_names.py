@@ -91,9 +91,22 @@ class OtaTargetNameTest(unittest.TestCase):
     def test_cpp_standard_and_compact_match_all_names(self):
         ids = [target for target, _ in self.rows] + [0, 0xffffffff]
         expected = [name for _, name in self.rows] + ["?", "?"]
-        for flags in ([], ["-DOTA_TARGET_NAME_FRONT_CODED=1"]):
+        for flags in ([], ["-DOTA_TARGET_NAME_FRONT_CODED=1"],
+                      ["-DOTA_TARGET_NAME_FRONT_CODED=1", "-DOTA_RAK15002_SD_STORE=1", "-DCOMPANION_RADIO_FULL=1"]):
             with self.subTest(flags=flags):
                 self.assertEqual(self.compile_and_lookup(flags, ids), expected)
+
+    def test_rak_full_lookup_fails_closed_without_heap_and_keeps_every_name(self):
+        flags = ["-DOTA_TARGET_NAME_FRONT_CODED=1", "-DOTA_RAK15002_SD_STORE=1", "-DCOMPANION_RADIO_FULL=1"]
+        data, offsets, lengths, firsts = gen_targets.compressed_name_chunks(
+            self.rows, gen_targets.RAK_FULL_NAME_DECODE_CHUNK_SIZE)
+        ordinary = gen_targets.compressed_name_chunks(self.rows)
+        self.assertGreater(len(ordinary[0]) - len(data), 1500)
+        self.assertLessEqual(max(lengths), 4096)
+        self.assertEqual(firsts[-1], len(self.rows))
+        self.assertEqual(offsets[-1], len(data))
+        no_heap = '#include <stdlib.h>\n#define malloc(bytes) nullptr\n' + self.text
+        self.assertEqual(self.compile_and_lookup(flags, [self.rows[0][0], 0], no_heap), ["?", "?"])
 
     def test_table_disabled_preserves_optional_local_name(self):
         local_id, local_name = self.rows[0]
@@ -128,8 +141,9 @@ class OtaTargetNameTest(unittest.TestCase):
                 lambda match: match[1] + f"\n    0, {len(stream)}," + match[2],
                 altered, flags=re.S)
             with self.subTest(stream=stream.hex()):
-                self.assertEqual(self.compile_and_lookup(
-                    ["-DOTA_TARGET_NAME_FRONT_CODED=1"], [1], altered), ["?"])
+                for flags in (["-DOTA_TARGET_NAME_FRONT_CODED=1"],
+                              ["-DOTA_TARGET_NAME_FRONT_CODED=1", "-DOTA_RAK15002_SD_STORE=1", "-DCOMPANION_RADIO_FULL=1"]):
+                    self.assertEqual(self.compile_and_lookup(flags, [1], altered), ["?"])
 
     def test_generator_rejects_unencodable_names(self):
         for name in ("x\0y", "x" * 256):

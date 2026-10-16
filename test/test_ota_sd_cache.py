@@ -14,6 +14,7 @@ FIXTURE = ROOT / "test/fixtures/ota_sd_cache"
 
 
 class OtaSdCacheTests(unittest.TestCase):
+    extra_defines = ()
     @classmethod
     def setUpClass(cls):
         compiler = os.environ.get("CXX") or shutil.which("g++") or shutil.which("clang++")
@@ -27,6 +28,7 @@ class OtaSdCacheTests(unittest.TestCase):
             compiler, "-std=c++17", "-O1", "-Wall", "-Wextra", "-Werror",
             "-Wno-unused-parameter", "-Wno-sign-compare", *SANITIZER_FLAGS,
             "-DNRF52_PLATFORM=1", "-DOTA_SD_STORE=1", "-DOTA_SD_CACHE_MAX=16",
+            *["-D" + define for define in cls.extra_defines],
             "-I", str(FIXTURE / "mocks"), "-I", str(ROOT / "src"),
             "-I", str(ROOT / "test/mocks"), str(FIXTURE / "test.cpp"),
             *[str(ROOT / "src/helpers/ota" / name) for name in source_names],
@@ -57,6 +59,12 @@ class OtaSdCacheTests(unittest.TestCase):
     def test_malformed_final_is_quarantined_before_replacement(self): self.run_case(8)
     def test_real_managers_transfer_sd_image_and_verify_merkle_blocks(self): self.run_case(9)
     def test_full_index_refuses_seventeenth_without_losing_resumable_partial(self): self.run_case(10)
+
+
+class RakOtaSdCacheTests(OtaSdCacheTests):
+    # Run all production capture/serve/reboot/error boundaries against the
+    # lossless bounded RAK descriptor index as well as the original index.
+    extra_defines = ("OTA_RAK15002_SD_STORE=1",)
 
 
 if __name__ == "__main__":

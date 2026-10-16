@@ -18,7 +18,7 @@ namespace ota {
 const char* const OtaCacheSdNrf52::DIR = "/mota";
 const char* const OtaCacheSdNrf52::DISABLED_PATH = "/mota/cache.off";
 
-OtaCacheSdNrf52::OtaCacheSdNrf52() : _file(new (std::nothrow) FsFile()) {}
+OtaCacheSdNrf52::OtaCacheSdNrf52() : _file(new (std::nothrow) OtaSdFile()) {}
 
 OtaCacheSdNrf52::~OtaCacheSdNrf52() {
   if (_file) { _file->close(); delete _file; }
@@ -58,6 +58,9 @@ bool OtaCacheSdNrf52::ensureDir() {
 }
 
 bool OtaCacheSdNrf52::initialize() {
+#if defined(OTA_RAK15002_SD_STORE)
+  if (!ready()) return false;
+#endif
   if (_initialized) return true;
   _error[0] = 0;
   if (!ready() || !ensureDir()) return false;
@@ -72,7 +75,7 @@ static int cache_hex_nibble(char c) {
   return -1;
 }
 
-bool OtaCacheSdNrf52::describeFile(FsFile& file, MotaDesc& out) const {
+bool OtaCacheSdNrf52::describeFile(OtaSdFile& file, MotaDesc& out) const {
   uint64_t size64 = file.fileSize();
   if (size64 < 8 + MOTA_MFL + 5 || size64 > UINT32_MAX) return false;
   const uint32_t total = (uint32_t)size64;
@@ -111,9 +114,9 @@ bool OtaCacheSdNrf52::rescan() {
   _count = 0;
   if (!ready() || !ensureDir()) return false;
 
-  FsFile dir = _owner->_sd->open(DIR, O_RDONLY);
+  OtaSdFile dir = _owner->_sd->open(DIR, O_RDONLY);
   if (!dir || !dir.isDir()) { fail("SD archive directory open failed"); return false; }
-  FsFile file;
+  OtaSdFile file;
   while (_count < OTA_SD_CACHE_MAX && file.openNext(&dir, O_RDONLY)) {
     if (!file.isDir()) {
       char name[24] = {0};
@@ -156,7 +159,7 @@ bool OtaCacheSdNrf52::contains(const uint8_t mid[4]) {
   // never enough: malformed files must remain eligible for quarantine and a clean re-download.
   char path[32];
   pathFor(mid, "mota", path, sizeof(path));
-  FsFile file = _owner->_sd->open(path, O_RDONLY);
+  OtaSdFile file = _owner->_sd->open(path, O_RDONLY);
   MotaDesc d;
   bool valid = file && describeFile(file, d) && memcmp(d.mid, mid, 4) == 0;
   file.close();
@@ -188,7 +191,7 @@ bool OtaCacheSdNrf52::setAutoCaptureEnabled(bool enabled) {
       return false;
     }
   } else {
-    FsFile marker = _owner->_sd->open(DISABLED_PATH, O_WRONLY | O_CREAT | O_TRUNC);
+    OtaSdFile marker = _owner->_sd->open(DISABLED_PATH, O_WRONLY | O_CREAT | O_TRUNC);
     static const uint8_t off[] = {'o', 'f', 'f', '\n'};
     if (!marker || marker.write(off, sizeof(off)) != sizeof(off) || !marker.sync()) {
       marker.close();
@@ -295,6 +298,9 @@ bool OtaCacheSdNrf52::set_meta_size(uint32_t meta_bytes) {
 }
 
 bool OtaCacheSdNrf52::write(uint32_t off, const uint8_t* data, uint32_t len) {
+#if defined(OTA_RAK15002_SD_STORE)
+  if (!_owner || !_owner->busAccessAllowed()) return false;
+#endif
   if (!_file || !*_file || (uint64_t)off + len > _total || !_file->seekSet(off) ||
       _file->write(data, len) != len) {
     fail("SD archive write failed");
@@ -304,17 +310,26 @@ bool OtaCacheSdNrf52::write(uint32_t off, const uint8_t* data, uint32_t len) {
 }
 
 bool OtaCacheSdNrf52::read(uint32_t off, uint8_t* buf, uint32_t len) const {
+#if defined(OTA_RAK15002_SD_STORE)
+  if (!_owner || !_owner->busAccessAllowed()) return false;
+#endif
   return _file && *_file && (uint64_t)off + len <= _total && _file->seekSet(off) &&
          _file->read(buf, len) == (int)len;
 }
 
 uint32_t OtaCacheSdNrf52::capacity() const {
+#if defined(OTA_RAK15002_SD_STORE)
+  if (!_owner || !_owner->busAccessAllowed()) return 0;
+#endif
   if (!_owner || !_owner->_mounted || !_owner->_sd || !_owner->_sd->card()) return 0;
   uint64_t bytes = (uint64_t)_owner->_sd->card()->sectorCount() * 512;
   return bytes > UINT32_MAX ? UINT32_MAX : (uint32_t)bytes;
 }
 
 void OtaCacheSdNrf52::checkpoint() {
+#if defined(OTA_RAK15002_SD_STORE)
+  if (!_owner || !_owner->busAccessAllowed()) return;
+#endif
   if (_file && *_file) {
     _file->sync();
     if (_owner && _owner->_sd->card()) _owner->_sd->card()->syncDevice();
@@ -322,6 +337,9 @@ void OtaCacheSdNrf52::checkpoint() {
 }
 
 bool OtaCacheSdNrf52::finalize() {
+#if defined(OTA_RAK15002_SD_STORE)
+  if (!_owner || !_owner->busAccessAllowed()) return false;
+#endif
   if (!_file || !*_file || !_total || !_file->sync()) { fail("SD archive sync failed"); return false; }
   if (_owner->_sd->card() && !_owner->_sd->card()->syncDevice()) {
     fail("SD archive card sync failed");
@@ -332,7 +350,7 @@ bool OtaCacheSdNrf52::finalize() {
   pathFor(_mid, "part", part_path, sizeof(part_path));
   _file->close();
 
-  FsFile check = _owner->_sd->open(part_path, O_RDONLY);
+  OtaSdFile check = _owner->_sd->open(part_path, O_RDONLY);
   MotaDesc d;
   bool valid = check && describeFile(check, d) && memcmp(d.mid, _mid, 4) == 0;
   check.close();
@@ -396,11 +414,16 @@ bool OtaCacheSdNrf52::describe(uint8_t idx, MotaDesc& out) {
 }
 
 bool OtaCacheSdNrf52::read(uint8_t idx, uint32_t off, uint8_t* buf, uint32_t len) {
-  if (!_initialized || idx >= _count || (uint64_t)off + len > _entries[idx].total_size || !ready())
-    return false;
+  if (!_initialized || idx >= _count) return false;
+#if defined(OTA_RAK15002_SD_STORE)
+  const uint32_t total_size = _entries[idx].totalSize();
+#else
+  const uint32_t total_size = _entries[idx].total_size;
+#endif
+  if ((uint64_t)off + len > total_size || !ready()) return false;
   char path[32];
   pathFor(_entries[idx].mid, "mota", path, sizeof(path));
-  FsFile file = _owner->_sd->open(path, O_RDONLY);
+  OtaSdFile file = _owner->_sd->open(path, O_RDONLY);
   bool ok = file && file.seekSet(off) && file.read(buf, len) == (int)len;
   file.close();
   return ok;

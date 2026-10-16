@@ -5652,7 +5652,47 @@ to charge above it or have USB power restored before it wakes.
 
 ### Ethernet (when Ethernet support is compiled in)
 
-Ethernet support is available on RAK4631 boards with a RAK13800 (W5100S) Ethernet module. Use the `_ethernet` firmware variants (e.g. `RAK_4631_repeater_ethernet`) to enable this feature.
+Ethernet support is available on RAK4631 boards with a RAK13800 (W5100S)
+Ethernet module. Use the `_ethernet` firmware variants (for example,
+`RAK_4631_repeater_ethernet`) for the normal Ethernet-only configuration.
+
+`RAK_4631_companion_radio_full` is a distinct combined profile: it can compile
+both physical RAK13800 Ethernet and an optional RAK15002 SD mOTA archive. They
+share CS26, so they are mutually exclusive. In that Full profile Ethernet is
+off at boot and is deliberately controlled only for the current boot:
+
+```text
+get eth
+set eth on
+set eth off
+get sdcard [free]
+ota cache [on|off]
+```
+
+Before `set eth on`, remove the SD card and finish/cancel any active OTA
+capture, transfer, serving, or host-folder work. The command rejects an
+inserted card or a busy archive instead of taking the shared bus. Turn
+Ethernet off before accessing or inserting the card. An insertion while
+Ethernet is live fails closed and still needs `set eth off`; it is not a
+supported hot-swap flow. This combined hardware path is not yet qualified.
+
+The SD-capable Ethernet-room receiver,
+`RAK_4631_room_server_ethernet_lora_ota_no_external_sensors`, uses the same
+shared CS26 safety rule but has its own cooperative Ethernet control. It starts
+off on every reboot and is never persisted. From USB or an already established
+Telnet session, use either spelling:
+
+```text
+eth on
+# or: set eth on
+eth.status
+eth off
+```
+
+`eth on` rejects a fitted card, active/cache/staged OTA work, or a retained NOR
+owner. `eth off` waits for a safe release and refuses while OTA work is busy.
+Remove the card before enabling Ethernet and do not insert it while Ethernet
+is active.
 
 ---
 
@@ -5665,8 +5705,12 @@ Ethernet support is available on RAK4631 boards with a RAK13800 (W5100S) Etherne
 - `ETH: not connected` when Ethernet is not active
 
 **Notes:**
-- Available on repeater and room server firmware only. Companion radio ethernet firmware does not expose a CLI.
-- The Ethernet interface obtains an IP address via DHCP automatically on boot.
+- Available on repeater and room server firmware only. The normal
+  `_ethernet` Companion image does not expose a CLI; the combined RAK4631 Full
+  profile above instead exposes `get eth` / `set eth on|off`.
+- The normal `_ethernet` variants obtain an IP address via DHCP automatically
+  on boot. The combined RAK4631 Full profile does not: Ethernet starts off
+  until `set eth on` succeeds.
 - A TCP server listens on port 23 (default) for CLI connections.
 - Connect with any TCP client (e.g. `nc`, PuTTY) to access the same CLI available over serial.
 

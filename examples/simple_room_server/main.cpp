@@ -41,6 +41,42 @@ SimpleMeshTables tables;
 MyMesh the_mesh(board, radio_driver, *new ArduinoMillis(), fast_rng, rtc_clock, tables);
 #include "../InfrastructureWireless.h"
 
+#if defined(ETHERNET_ENABLED) && defined(OTA_RAK15002_SD_STORE)
+#include <helpers/ota/OtaContext.h>
+// The RAK15002 and RAK13800 occupy the same IO-slot chip select. Ethernet is
+// opt-in, and only the mesh thread may release cached sources/staging owners
+// and reserve the bus before its asynchronous DHCP worker starts.
+static bool prepareSdEthernet(void*, char* error, size_t capacity) {
+  auto* context = mesh::ota::ota_context_if_active();
+  if (!context) {
+    snprintf(error, capacity, "Error: OTA storage is not ready");
+    return false;
+  }
+  if (mesh::ota::ota_rak15002_sd_card_present()) {
+    snprintf(error, capacity, "Error: RAK15002 SD card fitted; Ethernet shares its IO slot");
+    return false;
+  }
+  if (!context->prepareRakSdForEthernet() ||
+      !mesh::ota::rak4631_try_acquire_spi(mesh::ota::RakSharedSpiOwner::Ethernet)) {
+    snprintf(error, capacity, "Error: Ethernet bus is locked by OTA activity or storage");
+    return false;
+  }
+  return true;
+}
+
+static bool canReleaseSdEthernet(void*) {
+  auto* context = mesh::ota::ota_context_if_active();
+  return context && context->canReleaseRakSdForEthernet();
+}
+
+static bool releaseSdEthernet(void*) {
+  auto* context = mesh::ota::ota_context_if_active();
+  if (!context || !context->releasedRakSdEthernet()) return false;
+  mesh::ota::rak4631_release_spi(mesh::ota::RakSharedSpiOwner::Ethernet);
+  return true;
+}
+#endif
+
 void halt() {
   while (1) ;
 }
@@ -226,6 +262,14 @@ void setup() {
 #endif
 
 #ifdef ETHERNET_ENABLED
+#if defined(OTA_RAK15002_SD_STORE)
+  EthernetCliHooks hooks;
+  hooks.prepare = prepareSdEthernet;
+  hooks.can_release = canReleaseSdEthernet;
+  hooks.released = releaseSdEthernet;
+  hooks.storage_conflict = [](void*) { return mesh::ota::ota_rak15002_sd_card_present(); };
+  ethernet_configure(hooks); // Shared IO slot defaults OFF on every restart.
+#endif
   ethernet_start_task();
 #endif
 
@@ -316,7 +360,11 @@ void loop() {
 
 #ifdef ETHERNET_ENABLED
   ethernet_loop_maintain();
+#if defined(OTA_RAK15002_SD_STORE)
+  if (ethernet_take_session_reset() || !ethernet_get_enabled()) {
+#else
   if (ethernet_take_session_reset() || !ethernet_client.connected()) {
+#endif
     the_mesh.cancelLocalOutput(ethernet_client);
     ethernet_command[0] = 0;
   }

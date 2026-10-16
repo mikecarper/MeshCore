@@ -39,19 +39,28 @@ static SPIClass ETHERNET_SPI_PORT(NRF_SPIM1, PIN_SPI1_MISO, PIN_SPI1_SCK, PIN_SP
 
 #define ETHERNET_RETRY_INTERVAL_MS 30000
 
+// New optional-SD infrastructure recipes need the same cooperative, OFF by
+// default bus handoff as the combined prototype. Never start legacy DHCP on
+// the shared IO-slot CS merely because Ethernet was compiled into the image.
+#if defined(RAK4631_COMBINED_ETHERNET) || defined(OTA_RAK15002_SD_STORE)
+  #define MESH_RAK_ETHERNET_CLI_RUNTIME 1
+#else
+  #define MESH_RAK_ETHERNET_CLI_RUNTIME 0
+#endif
+
 static EthernetServer ethernet_server(ETHERNET_TCP_PORT);
-#if !defined(RAK4631_COMBINED_ETHERNET)
+#if !MESH_RAK_ETHERNET_CLI_RUNTIME
 static EthernetClient ethernet_client;
 #endif
 static std::atomic<bool> ethernet_running{false};
-#if defined(RAK4631_COMBINED_ETHERNET)
+#if MESH_RAK_ETHERNET_CLI_RUNTIME
 static std::atomic<bool> ethernet_session_reset{false};
 static bool ethernet_line_discarding = false; // Main-thread framing state.
 #else
 static bool ethernet_session_reset = false;
 #endif
 static bool ethernet_take_session_reset() {
-#if defined(RAK4631_COMBINED_ETHERNET)
+#if MESH_RAK_ETHERNET_CLI_RUNTIME
   const bool changed = ethernet_session_reset.exchange(false);
   if (changed) ethernet_line_discarding = false;
   return changed;
@@ -62,7 +71,7 @@ static bool ethernet_take_session_reset() {
 #endif
 }
 
-#if defined(RAK4631_COMBINED_ETHERNET)
+#if MESH_RAK_ETHERNET_CLI_RUNTIME
 static void ethernet_check_client();
 #include "EthernetCliRuntime.h"
 #else
@@ -174,7 +183,7 @@ static void ethernet_start_task() {
 
 // Format ethernet status into reply buffer. Returns true if command was handled.
 static bool ethernet_handle_command(const char* command, char* reply) {
-#if defined(RAK4631_COMBINED_ETHERNET)
+#if MESH_RAK_ETHERNET_CLI_RUNTIME
   if (strcmp(command, "eth on") == 0 || strcmp(command, "set eth on") == 0) {
     (void)ethernet_request_start(reply, true);
     return true;
@@ -193,7 +202,7 @@ static bool ethernet_handle_command(const char* command, char* reply) {
   }
 #endif
   if (strcmp(command, "eth.status") == 0) {
-#if defined(RAK4631_COMBINED_ETHERNET)
+#if MESH_RAK_ETHERNET_CLI_RUNTIME
     const EthernetCliState state = ethernet_state.load();
     if (state != EthernetCliState::Online) {
       const char* status = state == EthernetCliState::Off ? "off" :
@@ -228,7 +237,8 @@ static bool ethernet_handle_command(const char* command, char* reply) {
 // available() also returns existing connected sockets that have data, which
 // would force us to disambiguate every inbound packet from a real new client.
 static void ethernet_check_client() {
-#if defined(RAK4631_COMBINED_ETHERNET)
+#if MESH_RAK_ETHERNET_CLI_RUNTIME
+  if (ethernet_storage_conflict()) return;
   // Combined accept/relisten can call vendor controller commands; run only
   // in the background worker while the mesh-facing Stream is gated.
   auto newClient = ethernet_server.accept();
@@ -272,7 +282,10 @@ static void ethernet_check_client() {
 
 // Call from loop() to maintain DHCP and check for new clients
 static void ethernet_loop_maintain() {
-#if defined(RAK4631_COMBINED_ETHERNET)
+#if MESH_RAK_ETHERNET_CLI_RUNTIME
+#if defined(OTA_RAK15002_SD_STORE)
+  if (ethernet_enabled.load() && ethernet_storage_conflict()) return;
+#endif
   if (ethernet_state.load() == EthernetCliState::Stopping) {
     if (ethernet_worker_active.load() && !ethernet_worker_stopped.load()) {
       EthernetSpiAccess expected = EthernetSpiAccess::Idle;
@@ -309,7 +322,7 @@ static void ethernet_loop_maintain() {
 // Returns true when a complete line is ready to process (command is null-terminated).
 // The caller should process the command and then reset ethernet_command[0] = 0.
 static bool ethernet_read_line(char* ethernet_command, size_t buf_size) {
-#if defined(RAK4631_COMBINED_ETHERNET)
+#if MESH_RAK_ETHERNET_CLI_RUNTIME
   if (buf_size < 2) return false;
   EthernetClientAccess access;
   if (!access || !ethernet_client_attached.load()) return false;
@@ -389,7 +402,7 @@ static bool ethernet_read_line(char* ethernet_command, size_t buf_size) {
 // Send a reply to the Ethernet client
 static void ethernet_send_reply(const char* reply) {
   if (reply[0]) {
-#if defined(RAK4631_COMBINED_ETHERNET)
+#if MESH_RAK_ETHERNET_CLI_RUNTIME
     // One RAM-only enqueue keeps a synchronous command's complete reply even
     // if the worker begins renewal between command dispatch and this call.
     char frame[170];

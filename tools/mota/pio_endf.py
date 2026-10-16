@@ -268,9 +268,18 @@ def _append_endf_hex(source, target, env):        # Intel-HEX path (nRF52: app f
     linked_app_end = app_start + app_region_size
     internal_extrafs = (_cppdef("EXTRAFS") is not None and _cppdef("QSPIFLASH") is None
                         and _builds_companion_radio())
-    sd_backed = _cppdef("OTA_SD_STORE") is not None
+    sd_enabled = _cppdef("OTA_SD_STORE") is not None
     qspi_backed = _cppdef("OTA_QSPI_STORE") is not None
     auto_store = _cppdef("OTA_RAK_AUTO_STORE") is not None
+    seeder_only = _cppdef("OTA_SEEDER_ONLY") is not None
+    optional_rak_sd = _cppdef("OTA_RAK15002_SD_STORE") is not None
+    if optional_rak_sd and (not sd_enabled or _cppdef("RAK_4631") is None or
+                            not (auto_store or (seeder_only and _builds_companion_radio()))):
+        raise RuntimeError("optional RAK15002 SD requires an exact RAK4631 adaptive receiver or source-only Companion")
+    # Optional SD does not change the frozen application layout: receivers
+    # retain AUTO+HYBRID internal staging, and Full Companion retains ExtraFS.
+    # The runtime selects SD only after validating its separate loader ABI.
+    sd_backed = sd_enabled and not optional_rak_sd
     qspi_bootloader_update = _cppdef("OTA_QSPI_BOOTLOADER_UPDATE") is not None
     hybrid_ram = _cppdef("OTA_HYBRID_RAM_STORE") is not None
     internal_bootloader_update = _cppdef("OTA_INTERNAL_BOOTLOADER_UPDATE") is not None
@@ -315,7 +324,6 @@ def _append_endf_hex(source, target, env):        # Intel-HEX path (nRF52: app f
     body = ml.ensure_nrf52_layout(endf_free_body, layout)
     ident = _firmware_ident()
     out, h8 = ml.ensure_endf(body, ident)
-    seeder_only = _cppdef("OTA_SEEDER_ONLY") is not None
     if seeder_only:
         # A source-only full Companion never stages or applies an update to
         # itself, so it does not need to fit in OTAFIX's in-place workspace.

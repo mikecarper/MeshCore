@@ -281,6 +281,7 @@ int main(){
         # implementation is already exercised above. Reuse its method builder.
         methods = "\n".join(extract_braced(cpp,sig) for sig in (
             "bool RAK13800EthernetInterface::begin()",
+            "bool RAK13800EthernetInterface::beginHardware()",
             "bool RAK13800EthernetInterface::terminalShutdown(",
             "bool RAK13800EthernetInterface::shutdownForPowerOff(",
             "void RAK13800EthernetInterface::disconnectClient()",
@@ -301,6 +302,7 @@ int main(){
         cls = extract_braced(header,"class RAK13800EthernetInterface")+";"
         signatures = (
             "bool RAK13800EthernetInterface::begin()",
+            "bool RAK13800EthernetInterface::beginHardware()",
             "bool RAK13800EthernetInterface::terminalShutdown(",
             "bool RAK13800EthernetInterface::shutdownForPowerOff(",
             "void RAK13800EthernetInterface::disconnectClient()",

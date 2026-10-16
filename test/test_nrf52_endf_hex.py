@@ -224,6 +224,47 @@ class Nrf52EndfHexTests(unittest.TestCase):
                 stamp(action, path, env)
             self.assertEqual(path.read_bytes(), before)
 
+    def test_optional_rak_sd_preserves_adaptive_hybrid_and_companion_extrafs_layouts(self):
+        app_base = ml.NRF52_APP_BASE_S140_V6
+        for companion in (False, True):
+            with self.subTest(companion=companion), tempfile.TemporaryDirectory() as directory:
+                env = BuildEnvironment(app_base)
+                env["CPPDEFINES"].extend(["RAK_4631", "OTA_SD_STORE", "OTA_RAK15002_SD_STORE"])
+                if companion:
+                    env.source_filter = "+<examples/companion_radio>"
+                    env.maximum_size = ml.NRF52_EXTRAFS_START - app_base
+                    env["CPPDEFINES"].extend(["OTA_SEEDER_ONLY", "EXTRAFS"])
+                    expected_flags = ml.NRF52_LAYOUT_FLAG_INTERNAL_EXTRAFS
+                    expected_ceiling = ml.NRF52_EXTRAFS_START
+                else:
+                    env["CPPDEFINES"].extend(["OTA_RAK_AUTO_STORE", "OTA_QSPI_STORE", "OTA_FLASH_STORE",
+                                              "OTA_HYBRID_RAM_STORE", "OTA_INTERNAL_BOOTLOADER_UPDATE"])
+                    env.linker = str(ROOT / "boards/nrf52840_s140_v6_mota64.ld")
+                    env["LDSCRIPT_PATH"] = env.linker
+                    expected_flags = ml.NRF52_LAYOUT_FLAG_AUTO_STORE | ml.NRF52_LAYOUT_FLAG_HYBRID_RAM
+                    expected_ceiling = ml.NRF52_APP_END
+                load_post_script(env)
+                path = Path(directory) / "firmware.hex"
+                original = IntelHex()
+                original.frombytes(bytes(range(256)), offset=app_base)
+                original.write_hex_file(str(path))
+                action = env.post_actions["$BUILD_DIR/${PROGNAME}.hex"]
+                stamp(action, path, env)
+                layout = ml.parse_nrf52_layout(read_application(path))
+                self.assertEqual(layout.flags, expected_flags)
+                self.assertEqual(layout.stage_ceiling, expected_ceiling)
+                before = path.read_bytes()
+                for missing in ("RAK_4631", "OTA_SD_STORE"):
+                    env["CPPDEFINES"].remove(missing)
+                    with self.assertRaisesRegex(RuntimeError, "optional RAK15002"):
+                        stamp(action, path, env)
+                    self.assertEqual(path.read_bytes(), before)
+                    env["CPPDEFINES"].append(missing)
+                env["CPPDEFINES"].remove("OTA_SEEDER_ONLY" if companion else "OTA_RAK_AUTO_STORE")
+                with self.assertRaisesRegex(RuntimeError, "optional RAK15002"):
+                    stamp(action, path, env)
+                self.assertEqual(path.read_bytes(), before)
+
     def test_hex_exact_size_limit_and_smaller_profile_revalidated_after_stamp(self):
         app_base = ml.NRF52_APP_BASE_S140_V7
         with tempfile.TemporaryDirectory() as directory:

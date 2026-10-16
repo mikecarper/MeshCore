@@ -76,7 +76,26 @@ void formatStorageLayout(MainBoard& board, char* reply, size_t reply_size) {
            (unsigned long)internal_fs_start,
            (unsigned long)(internal_fs_size / 1024UL));
 
-#if defined(ENABLE_OTA) && defined(OTA_RAK_AUTO_STORE)
+#if defined(ENABLE_OTA) && defined(OTA_RAK15002_SD_STORE)
+  (void)board;
+  // Optional SD discovery can be slow and takes ownership of the IO-slot
+  // bus. A layout/status query must not mount it or allocate an OTA context.
+  const auto* context = mesh::ota::ota_context_if_active();
+  if (!context) {
+    appendStorageLayout(reply, reply_size, "; ext:sd=optional ota=not-prepared");
+  } else {
+#if defined(OTA_SEEDER_ONLY)
+    appendStorageLayout(reply, reply_size, "; ext:sd=optional owner=ota-archive source-only");
+#else
+    const auto& store = context->fetch_store;
+    appendStorageLayout(reply, reply_size, "; ota=%s medium=%s staged=%lu",
+                        store.selectionReason(),
+                        store.usesSd() ? "sd" : store.usesQspi() ? "qspi" :
+                        store.usesInternal() ? "internal" : "not-prepared",
+                        (unsigned long)store.staged_size());
+#endif
+  }
+#elif defined(ENABLE_OTA) && defined(OTA_RAK_AUTO_STORE)
   (void)board;
   mesh::ota::OtaStoreAdaptiveNrf52& store = mesh::ota::ota_ctx().fetch_store;
   if (store.usesExternal()) {

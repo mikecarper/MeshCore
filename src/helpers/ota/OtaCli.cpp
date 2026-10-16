@@ -200,7 +200,7 @@ static __attribute__((noinline)) bool handle_status(char* reply, OtaContext& c) 
         c.fetch_store.usesInternal() ? "internal" : "storage-ERR";
 #elif defined(OTA_RAK_AUTO_STORE)
     const char* bl_state = !bl.present ? "NONE" :
-        c.fetch_store.usesExternal() ? "QSPI" :
+        c.fetch_store.usesSd() ? "SD" : c.fetch_store.usesQspi() ? "QSPI" :
         c.fetch_store.usesInternal() ? "internal" : "storage-ERR";
 #elif defined(OTA_QSPI_STORE)
     const char* bl_state = !bl.present ? "NONE" :
@@ -267,7 +267,8 @@ static __attribute__((noinline)) bool handle_neighbors(
     const OtaBlCaps& list_bl_update = c.bootloaderUpdateCaps();
 #endif
 #endif
-#if defined(NRF52_PLATFORM) && defined(OTA_FLASH_STORE) && !defined(OTA_SD_STORE) && \
+#if defined(NRF52_PLATFORM) && defined(OTA_FLASH_STORE) && \
+    (!defined(OTA_SD_STORE) || defined(OTA_RAK15002_SD_STORE)) && \
     (!defined(OTA_QSPI_STORE) || defined(OTA_RAK_AUTO_STORE))
     SelfFwInfo list_self;
     bool list_has_endf = ota_self_firmware(list_self) && list_self.valid;
@@ -337,11 +338,17 @@ static __attribute__((noinline)) bool handle_neighbors(
         installable = installable && c.fetch_store.compatible();
         if (h->codec == CODEC_FULL)
           installable = installable && c.fetch_store.usesExternal();
-#elif defined(OTA_SD_STORE)
+#elif defined(OTA_SD_STORE) && !defined(OTA_RAK_AUTO_STORE)
         installable = installable && (list_bl.storage_flags & OTA_BL_STORAGE_SD);
 #elif defined(OTA_RAK_AUTO_STORE)
-        if (c.fetch_store.usesExternal())
+        if (c.fetch_store.usesQspi())
           installable = installable && (list_bl.storage_flags & OTA_BL_STORAGE_QSPI);
+#if defined(OTA_RAK15002_SD_STORE)
+        if (c.fetch_store.usesSd())
+          installable = installable && list_bl.optional_sd_app_storage == OTA_BL_STORAGE_SD &&
+                        (h->flags & MFLAG_SIGNED);
+#endif
+        installable = installable && (c.fetch_store.usesExternal() || c.fetch_store.usesInternal());
         if (h->codec == CODEC_FULL)
           installable = installable && c.fetch_store.usesExternal();
 #elif defined(OTA_QSPI_STORE)
@@ -388,6 +395,11 @@ bool handle_ota_command(const char* command, char* reply, mesh::MainBoard& board
 #endif
   const char* rest = a;
   if (*a == 0 || is_cmd(a, "status|st", &rest)) return handle_status(reply, c);
+#if defined(NRF52_PLATFORM) && defined(OTA_RAK15002_SD_STORE) && !defined(OTA_SEEDER_ONLY)
+  // Radio/USB startup and status remain independent of removable storage.
+  // Explicit transfer/catalog/cache work may prepare it at this main-loop boundary.
+  if (!is_cmd(a, "qspi|storage|self|id|stats|help|?|h", &rest)) c.prepareRakStorage();
+#endif
   if (is_cmd(a, "neighbors|nbrs|updates|ls|n", &rest))
     return handle_neighbors(rest, reply, c);
   return handle_control_command(a, reply, board, c);
@@ -425,7 +437,11 @@ static __attribute__((noinline)) bool handle_control_command(
 #endif
 #elif defined(NRF52_PLATFORM) && defined(OTA_RAK_AUTO_STORE)
     strcpy(reply,
-      "OTA: status | stats | ls | get <id> flash | install | bootloader | cancel | announce | self | serve | storage | folder | config | key");
+      "OTA: status | stats | ls | get <id> flash | install | bootloader | cancel | announce | self | serve | storage | folder | "
+#if defined(OTA_RAK15002_SD_STORE)
+      "cache | "
+#endif
+      "config | key");
 #elif defined(NRF52_PLATFORM) && defined(OTA_QSPI_STORE)
 #if defined(OTA_QSPI_BOOTLOADER_UPDATE)
     strcpy(reply,
@@ -658,7 +674,7 @@ static __attribute__((noinline)) bool handle_control_command(
         snprintf(reply, 160, "ERR OTA storage unsafe: %s", c.fetch_store.selectionReason());
         return true;
       }
-#elif defined(OTA_SD_STORE)
+#elif defined(OTA_SD_STORE) && !defined(OTA_RAK_AUTO_STORE)
       if (!(bl.storage_flags & OTA_BL_STORAGE_SD)) {
         strcpy(reply, "ERR bootloader cannot apply an update staged on SD; update it over USB first");
         return true;
@@ -667,10 +683,26 @@ static __attribute__((noinline)) bool handle_control_command(
       // Bootloader packages passed their separate privileged checks above and
       // select internal staging when their manifest arrives. The currently
       // selected application backend must not veto that transition.
-      if (!selboot && c.fetch_store.usesExternal() && !(bl.storage_flags & OTA_BL_STORAGE_QSPI)) {
+      if (!selboot &&
+#if defined(OTA_RAK15002_SD_STORE)
+          c.fetch_store.usesQspi() &&
+#else
+          c.fetch_store.usesExternal() &&
+#endif
+          !(bl.storage_flags & OTA_BL_STORAGE_QSPI)) {
         strcpy(reply, "ERR bootloader cannot apply from detected QSPI storage");
         return true;
       }
+#if defined(OTA_RAK15002_SD_STORE)
+      if (!selboot && c.fetch_store.usesSd() && bl.optional_sd_app_storage != OTA_BL_STORAGE_SD) {
+        strcpy(reply, "ERR bootloader lacks authenticated RAK SD application support");
+        return true;
+      }
+      if (!selboot && c.fetch_store.usesSd() && !(selflags & MFLAG_SIGNED)) {
+        strcpy(reply, "ERR SD application install requires a trusted signed package; use folder to inspect");
+        return true;
+      }
+#endif
       if (!selboot && !c.fetch_store.usesExternal() && !c.fetch_store.usesInternal()) {
         snprintf(reply, 160, "ERR OTA storage unsafe: %s", c.fetch_store.selectionReason());
         return true;
@@ -682,7 +714,8 @@ static __attribute__((noinline)) bool handle_control_command(
       }
 #endif
 #endif
-#if defined(NRF52_PLATFORM) && defined(OTA_FLASH_STORE) && !defined(OTA_SD_STORE) && \
+#if defined(NRF52_PLATFORM) && defined(OTA_FLASH_STORE) && \
+    (!defined(OTA_SD_STORE) || defined(OTA_RAK15002_SD_STORE)) && \
     (!defined(OTA_QSPI_STORE) || defined(OTA_RAK_AUTO_STORE))
       SelfFwInfo self;
       bool has_endf = ota_self_firmware(self) && self.valid;
@@ -767,6 +800,11 @@ static __attribute__((noinline)) bool handle_control_command(
 #endif
     const bool discarded = !was_folder && !was_sd_archive &&
                            c.fetch_store.discard();
+#if defined(NRF52_PLATFORM) && defined(OTA_RAK15002_SD_STORE) && !defined(OTA_SEEDER_ONLY)
+    // Keep cache sources/independent serving mounted; only refresh the
+    // application policy after the selected staged file was invalidated.
+    c.prepareRakStorage();
+#endif
 #if defined(NRF52_PLATFORM) && defined(OTA_TOWER_AUTO_STORE)
     if (discarded || (!c.fetch_store.usesExternal() && !c.fetch_store.usesInternal())) {
       c.fetch_store.resetSelection();
@@ -837,7 +875,13 @@ static __attribute__((noinline)) bool handle_control_command(
     snprintf(reply, 160, "OTA storage: %s; capacity=%luK; SD primary, internal application deltas only",
              c.fetch_store.selectionReason(), (unsigned long)(c.fetch_store.capacity() / 1024));
 #elif defined(NRF52_PLATFORM) && defined(OTA_RAK_AUTO_STORE)
-    if (c.fetch_store.usesExternal()) {
+#if defined(OTA_RAK15002_SD_STORE)
+    if (c.fetch_store.usesSd()) {
+      snprintf(reply, 160, "OTA storage: RAK15002 SD; staged=%lu; use get sdcard free for media space",
+               (unsigned long)c.fetch_store.sdStore().staged_size());
+    } else
+#endif
+    if (c.fetch_store.usesQspi()) {
       const uint32_t qspi_capacity = c.fetch_store.qspiCapacity();
       snprintf(reply, 160, "QSPI %s jedec=%06lX size=%luK sr1=%02X stage=%s%s%s",
                c.fetch_store.selectionReason(), (unsigned long)c.fetch_store.jedec_id(),
@@ -845,16 +889,26 @@ static __attribute__((noinline)) bool handle_control_command(
                c.fetch_store.last_stage(), c.fetch_store.last_error()[0] ? " error=" : "",
                c.fetch_store.last_error());
     } else if (c.fetch_store.usesInternal()) {
+#if defined(OTA_RAK15002_SD_STORE)
+      snprintf(reply, 160, "OTA storage: %s; internal capacity=%luK",
+               c.fetch_store.selectionReason(), (unsigned long)(c.fetch_store.capacity() / 1024));
+#else
       uint32_t rak_id = 0, w25_id = 0;
       OtaStoreQspiNrf52::autoProbeIds(rak_id, w25_id);
       snprintf(reply, 160, "OTA storage: %s; internal capacity=%luK; probe rak=%06lX w25=%06lX",
                c.fetch_store.selectionReason(), (unsigned long)(c.fetch_store.capacity() / 1024),
                (unsigned long)rak_id, (unsigned long)w25_id);
+#endif
     } else {
+#if defined(OTA_RAK15002_SD_STORE)
+      snprintf(reply, 160, "OTA storage: %s; optional storage is prepared by OTA transfer/cache work",
+               c.fetch_store.selectionReason());
+#else
       uint32_t rak_id = 0, w25_id = 0;
       OtaStoreQspiNrf52::autoProbeIds(rak_id, w25_id);
       snprintf(reply, 160, "OTA storage unsafe: %s; probe rak=%06lX w25=%06lX",
                c.fetch_store.selectionReason(), (unsigned long)rak_id, (unsigned long)w25_id);
+#endif
     }
 #elif defined(NRF52_PLATFORM) && defined(OTA_QSPI_STORE)
     // This probe only reads JEDEC/SR1. capacity() deliberately preserves a
@@ -889,7 +943,13 @@ static __attribute__((noinline)) bool handle_control_command(
              c.fetch_store.usesExternal() ? "SD" : c.fetch_store.usesInternal() ? "internal" : "unsafe",
              c.fetch_store.compatible() ? "apply OK" : "unsupported");
 #elif defined(OTA_RAK_AUTO_STORE)
-    if (c.fetch_store.usesExternal()) {
+#if defined(OTA_RAK15002_SD_STORE)
+    if (c.fetch_store.usesSd()) {
+      snprintf(reply + n, 160 - n, " | SD store | bootloader: %s",
+               bl.optional_sd_app_storage == OTA_BL_STORAGE_SD ? "authenticated SD apply OK" : "NO SD apply");
+    } else
+#endif
+    if (c.fetch_store.usesQspi()) {
       const uint32_t qspi_capacity = c.fetch_store.qspiCapacity();
       snprintf(reply + n, 160 - n, " | QSPI store:%s%uK | bootloader: %s",
                qspi_capacity ? "" : "ERR ",
@@ -1397,6 +1457,9 @@ static bool handle_dev(const char* d, char* reply, OtaContext& c) {
       strcpy(reply, "OK cleared SD archive session; partial retained for resume");
     } else {
       const bool discarded = c.fetch_store.discard();
+#if defined(NRF52_PLATFORM) && defined(OTA_RAK15002_SD_STORE) && !defined(OTA_SEEDER_ONLY)
+      c.prepareRakStorage();
+#endif
 #if defined(NRF52_PLATFORM) && defined(OTA_TOWER_AUTO_STORE)
       if (discarded || (!c.fetch_store.usesExternal() && !c.fetch_store.usesInternal())) {
         c.fetch_store.resetSelection();

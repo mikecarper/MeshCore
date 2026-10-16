@@ -94,6 +94,10 @@ bool ota_rescue_mota_nrf52(const uint8_t* buf, uint32_t len,
                            uint32_t local_target_id, ApplyState& st, char* msg);
 #if defined(NRF52_PLATFORM) && defined(OTA_SD_STORE)
 class OtaStoreSdNrf52;
+// Removable-media application apply always requires a trusted signature and
+// contiguous staging plus retained authorization. RAK15002 additionally needs
+// the exact supplemental all-in-one loader capability; SD never stages its
+// bootloader packages, which continue through the internal-store overload.
 bool ota_apply_mota_nrf52(OtaStoreSdNrf52& store,
                           const SignerAllowlist& allow, ApplyState& st, char* msg);
 #if defined(OTA_SD_BOOTLOADER_UPDATE)

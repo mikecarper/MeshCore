@@ -26,6 +26,7 @@ ROOT = Path(__file__).resolve().parents[2]
 OUT = ROOT / "src" / "helpers" / "ota" / "OtaTargets.h"
 INTERNAL_BOOTLOADER_TARGETS = ROOT / "tools" / "mota" / "nrf52_internal_bootloader_targets.txt"
 NAME_DECODE_CHUNK_SIZE = 512
+RAK_FULL_NAME_DECODE_CHUNK_SIZE = 4096
 
 
 def resolved_config():
@@ -126,8 +127,21 @@ def _compressed_name_chunks(rows, max_chunk_size):
 
 
 def generate_header(rows):
-    data, offsets, raw_lengths, firsts = compressed_name_chunks(rows)
     capacity = max((len(name.encode("utf-8")) + 1 for _, name in rows), default=1)
+
+    def chunk_tables(chunk_size):
+        data, offsets, raw_lengths, firsts = compressed_name_chunks(rows, chunk_size)
+        lines = [f"  enum {{ DECODE_CHUNK_BYTES = {chunk_size} }};"]
+        for name, values in (("OFFSETS", offsets), ("RAW_LENGTHS", raw_lengths), ("FIRSTS", firsts)):
+            lines += [f"  static const uint16_t {name}[] = {{"]
+            lines += ["    " + ", ".join(str(value) for value in values[i:i + 12]) + ","
+                      for i in range(0, len(values), 12)]
+            lines += ["  };"]
+        lines += [f"  // {len(data)} encoded bytes; {len(raw_lengths)} independent chunks, at most {chunk_size} decoded bytes.",
+                  "  static const uint8_t NAMES[] = {"]
+        lines += ["    " + ", ".join(f"0x{byte:02x}" for byte in data[i:i + 16]) + ","
+                  for i in range(0, len(data), 16)]
+        return lines + ["  };"]
 
     out = [
         "#pragma once",
@@ -151,6 +165,9 @@ def generate_header(rows):
         "",
         "#if OTA_TARGET_NAME_TABLE && OTA_TARGET_NAME_FRONT_CODED",
         '  #include "tinf/tinf.h"',
+        "  #if defined(OTA_RAK15002_SD_STORE) && defined(COMPANION_RADIO_FULL)",
+        "    #include <stdlib.h>",
+        "  #endif",
         "#endif",
         "",
         "namespace mesh { namespace ota {",
@@ -167,33 +184,23 @@ def generate_header(rows):
     ]
     out += ["    " + ", ".join(f"0x{tid:08x}" for tid, _ in rows[i:i + 8]) + ","
             for i in range(0, len(rows), 8)]
+    out += ["  };", "#if defined(OTA_RAK15002_SD_STORE) && defined(COMPANION_RADIO_FULL)"]
+    out += chunk_tables(RAK_FULL_NAME_DECODE_CHUNK_SIZE)
+    out += ["#else"] + chunk_tables(NAME_DECODE_CHUNK_SIZE) + ["#endif"]
     out += [
-        "  };",
-        "  static const uint16_t OFFSETS[] = {",
-    ]
-    out += ["    " + ", ".join(str(offset) for offset in offsets[i:i + 12]) + ","
-            for i in range(0, len(offsets), 12)]
-    out += ["  };", "  static const uint16_t RAW_LENGTHS[] = {"]
-    out += ["    " + ", ".join(str(length) for length in raw_lengths[i:i + 12]) + ","
-            for i in range(0, len(raw_lengths), 12)]
-    out += ["  };", "  static const uint16_t FIRSTS[] = {"]
-    out += ["    " + ", ".join(str(first) for first in firsts[i:i + 12]) + ","
-            for i in range(0, len(firsts), 12)]
-    out += [
-        "  };",
-        f"  // {len(data)} encoded bytes; {len(raw_lengths)} independent chunks, at most {NAME_DECODE_CHUNK_SIZE} decoded bytes.",
-        "  static const uint8_t NAMES[] = {",
-    ]
-    out += ["    " + ", ".join(f"0x{byte:02x}" for byte in data[i:i + 16]) + ","
-            for i in range(0, len(data), 16)]
-    out += [
-        "  };",
         "  for (unsigned i = 0; i < sizeof(IDS) / sizeof(IDS[0]); i++) {",
         "    if (IDS[i] != target_id) continue;",
         "    unsigned group = 0;",
         "    while (i >= FIRSTS[group + 1]) group++;",
-        f"    uint8_t raw[{NAME_DECODE_CHUNK_SIZE}];",
-        "    unsigned int produced = sizeof raw;",
+        "#if defined(OTA_RAK15002_SD_STORE) && defined(COMPANION_RADIO_FULL)",
+        "    // Rare display lookup: larger chunks save flash without growing the loop stack.",
+        "    uint8_t* raw = (uint8_t*)malloc(DECODE_CHUNK_BYTES);",
+        "    if (!raw) return nullptr;",
+        "    struct Scratch { uint8_t* bytes; ~Scratch() { free(bytes); } } scratch = {raw};",
+        "#else",
+        "    uint8_t raw[DECODE_CHUNK_BYTES];",
+        "#endif",
+        "    unsigned int produced = DECODE_CHUNK_BYTES;",
         "    if (tinf_uncompress_exact(raw, &produced, NAMES + OFFSETS[group],",
         "                              OFFSETS[group + 1] - OFFSETS[group]) != TINF_OK ||",
         "        produced != RAW_LENGTHS[group]) return nullptr;",

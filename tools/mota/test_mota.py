@@ -52,7 +52,16 @@ def test_internal_bootloader_target_wiring_is_central_and_not_duplicated():
         if line.strip() and not line.lstrip().startswith("#")
     ]
     assert len(inventory) == len(set(inventory))
-    assert len(inventory) == 23
+    # The RAK4631 adaptive RAK15002 receiver contract deliberately adds the
+    # three generated receiver roles to the established exact inventory. Keep
+    # the count and the names fixed so an unrelated target cannot silently
+    # acquire the retained-RAM / internal-bootloader-update layout.
+    assert len(inventory) == 26
+    assert {
+        "RAK_4631_room_server_lora_ota_no_external_sensors",
+        "RAK_4631_room_server_ethernet_lora_ota_no_external_sensors",
+        "RAK_4631_sensor_lora_ota_no_external_sensors",
+    } <= set(inventory)
     gat_targets = {
         "GAT562_30S_Mesh_Kit_repeater_lora_ota_no_external_sensors",
         "GAT562_Mesh_Tracker_Pro_repeater_lora_ota_no_external_sensors",
@@ -1019,13 +1028,25 @@ def test_ota_target_generation_honors_explicit_disable():
 def test_rak_nrf52_ota_profiles_keep_ina_and_gps_where_uart_is_available():
     root = Path(__file__).resolve().parents[2]
 
-    def env_section(path, name):
+    def section(path, header):
         text = path.read_text(encoding="utf-8")
-        return text.split(f"[env:{name}]", 1)[1].split("\n[", 1)[0]
+        return text.split(f"[{header}]", 1)[1].split("\n[", 1)[0]
+
+    def env_section(path, name):
+        return section(path, f"env:{name}")
 
     rak4631_path = root / "variants/rak4631/platformio.ini"
+    rak4631_reduced = section(rak4631_path, "rak4631_repeater_reduced_ota_base")
+    rak4631_reduced_wrapper = env_section(
+        rak4631_path, "RAK_4631_repeater_lora_ota_no_external_sensors"
+    )
+    # The adaptive storage flags live in the wrapper; the pre-adaptive base
+    # remains the single source of the reduced INA/GPS contract and is also
+    # deliberately reused by the strict historical SD cache seeder.
+    assert "${rak4631_repeater_reduced_ota_base.build_flags}" in rak4631_reduced_wrapper
+    assert "${rak4631_repeater_reduced_ota_base.lib_deps}" in rak4631_reduced_wrapper
     gps_profiles = (
-        env_section(rak4631_path, "RAK_4631_repeater_lora_ota_no_external_sensors"),
+        rak4631_reduced,
         env_section(
             rak4631_path,
             "RAK_4631_repeater_bridge_rs232_serial2_lora_ota_no_external_sensors",

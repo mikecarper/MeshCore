@@ -13,8 +13,11 @@
   #include <SPI.h>
 #endif
 #include <string.h>
-#if defined(RAK4631_COMBINED_ETHERNET)
+#if defined(RAK4631_COMBINED_ETHERNET) || defined(OTA_RAK15002_SD_STORE)
   #include "../nrf52/Rak4631SharedSpi.h"
+#endif
+#if defined(OTA_RAK15002_SD_STORE)
+  #include "OtaSdSpiBusNrf52.h"
 #endif
 
 namespace mesh {
@@ -327,12 +330,20 @@ static uint32_t probe_nor(uint8_t cs) {
 
 #if defined(OTA_RAK_AUTO_STORE)
 uint8_t OtaStoreQspiNrf52::autoDetect() {
+#if defined(OTA_RAK15002_SD_STORE)
+  // SD and the RAK15001 use the same CS26. Even an unmounted/unsupported
+  // inserted card must never see the NOR wake or JEDEC command sequence.
+  if (ota_rak15002_sd_card_present()) return 0u;
+#endif
 #if defined(RAK4631_COMBINED_ETHERNET)
   // Do not even bit-bang a JEDEC probe while the Ethernet task owns SPI.
   // Leave the cached physical discovery unchanged for the next idle handoff.
   if (rak4631_ethernet_owns_spi()) return 0u;
 #endif
   if (auto_detection != 0xFFu) return auto_detection;
+#if defined(OTA_RAK15002_SD_STORE)
+  if (!rak4631_try_acquire_spi(RakSharedSpiOwner::Nor)) return 0u;
+#endif
 
   const uint8_t w25_cs = arduino_to_physical(31);
   nrf_gpio_pin_set(w25_cs);
@@ -382,6 +393,9 @@ uint8_t OtaStoreQspiNrf52::autoDetect() {
     auto_cs_pin = w25_cs;
     auto_jedec_id = 0xEF4015UL;
   }
+#if defined(OTA_RAK15002_SD_STORE)
+  rak4631_release_spi(RakSharedSpiOwner::Nor);
+#endif
   return auto_detection;
 }
 
@@ -487,6 +501,12 @@ bool OtaStoreQspiNrf52::waitMemoryReady(uint32_t timeout_ms) {
 }
 
 bool OtaStoreQspiNrf52::ensureFlash() {
+#if defined(OTA_RAK15002_SD_STORE)
+  if (ota_rak15002_sd_card_present() || !rak4631_try_acquire_spi(RakSharedSpiOwner::Nor)) {
+    fail("SD card present or WisBlock SPI owned by SD/Ethernet");
+    return false;
+  }
+#endif
 #if defined(RAK4631_COMBINED_ETHERNET)
   if (rak4631_ethernet_owns_spi()) {
     fail("Ethernet owns WisBlock SPI; external OTA unavailable");
@@ -627,8 +647,13 @@ bool OtaStoreQspiNrf52::ensureFlash() {
 }
 
 void OtaStoreQspiNrf52::releaseFlash() {
+#if defined(OTA_RAK15002_SD_STORE)
+  // The failed-acquire path must not touch somebody else's live controller,
+  // chip select or supply. No callback may forcibly overwrite this claim.
+  if (rak4631_spi_owner() != RakSharedSpiOwner::Nor) return;
+#endif
   bool send_power_down = _qspi_awake && !_memory_operation_pending;
-#if defined(RAK4631_COMBINED_ETHERNET)
+#if defined(RAK4631_COMBINED_ETHERNET) || defined(OTA_RAK15002_SD_STORE)
   send_power_down = send_power_down && !rak4631_ethernet_owns_spi();
 #endif
   if (send_power_down) {
@@ -650,7 +675,7 @@ void OtaStoreQspiNrf52::releaseFlash() {
   // disabling the peripheral. Trigger it after every successful ENABLE, even
   // when wake or JEDEC identification failed before _qspi_ready was set.
   if (_qspi_active) {
-#if defined(RAK4631_COMBINED_ETHERNET)
+#if defined(RAK4631_COMBINED_ETHERNET) || defined(OTA_RAK15002_SD_STORE)
     // Also release the QSPI pin assignments after a successful operation so
     // the Ethernet SPIM can safely acquire the same pads at an idle handoff.
     const bool disconnect_pins = true;
@@ -698,6 +723,11 @@ void OtaStoreQspiNrf52::releaseFlash() {
     release_rak3401_radio_bus();
     _shared_radio_bus_acquired = false;
   }
+#endif
+#if defined(OTA_RAK15002_SD_STORE)
+  // An uncertain program/erase retains exclusive ownership until a later
+  // successful status poll proves the NOR idle; never hand its nets to SD.
+  if (!_memory_operation_pending) rak4631_release_spi(RakSharedSpiOwner::Nor);
 #endif
 }
 

@@ -4,6 +4,9 @@
 #include "../../nrf52/EthernetCliTransmit.h"
 #include <SPI.h>
 #include <EthernetUdp.h>
+#if defined(OTA_RAK15002_SD_STORE)
+  #include "../../ota/OtaSdSpiBusNrf52.h"
+#endif
 
 #define PIN_SPI1_MISO (29) // (0 + 29)
 #define PIN_SPI1_MOSI (30) // (0 + 30)
@@ -16,6 +19,64 @@ SPIClass ETHERNET_SPI_PORT(NRF_SPIM1, PIN_SPI1_MISO, PIN_SPI1_SCK, PIN_SPI1_MOSI
 #define PIN_ETHERNET_SS 26
 
 bool RAK13800EthernetInterface::begin() {
+#if defined(OTA_RAK15002_SD_STORE)
+  // Rare shared-CS Ethernet is explicitly enabled after the SD/NOR context
+  // has supplied its pin/transfer ownership hooks. Boot remains USB/BLE-only.
+  return mesh::nrf52::registerTerminalEthernetShutdown(terminalShutdown, this);
+#else
+  return beginHardware();
+#endif
+}
+
+#if defined(OTA_RAK15002_SD_STORE)
+bool RAK13800EthernetInterface::tryEnable() {
+  if (_terminalStopping) { _spiError = "terminal shutdown"; return false; }
+  if (_spiStarted) { SerialEthernetInterface::enable(); return true; }
+  if (_ownsSharedSpi) { _spiError = "release stopped Ethernet with set eth off first"; return false; }
+  if (!_prepareSpi || !_canReleaseSpi || !_releasedSpi) {
+    _spiError = "OTA ownership hooks unavailable"; return false;
+  }
+  if (mesh::ota::ota_rak15002_sd_card_present()) {
+    _spiError = "remove SD card: Ethernet and SD share CS26"; return false;
+  }
+  if (!_prepareSpi(_spiContext)) { _spiError = "OTA storage busy"; return false; }
+  if (!mesh::ota::rak4631_try_acquire_spi(mesh::ota::RakSharedSpiOwner::Ethernet)) {
+    (void)_releasedSpi(_spiContext);
+    _spiError = "WisBlock SPI busy"; return false;
+  }
+  _ownsSharedSpi = true;
+  if (!beginHardware()) {
+    (void)shutdownForPowerOff(0);
+    _terminalStopping = false;
+    (void)_releasedSpi(_spiContext);
+    _spiError = "Ethernet startup failed"; return false;
+  }
+  SerialEthernetInterface::enable();
+  _spiError = "on";
+  return true;
+}
+
+bool RAK13800EthernetInterface::tryDisable() {
+  if (_terminalStopping) { _spiError = "terminal shutdown"; return false; }
+  if (!_ownsSharedSpi) {
+    SerialEthernetInterface::disable();
+    _spiError = "off";
+    return true;
+  }
+  if (_ownsSharedSpi && (!_canReleaseSpi || !_canReleaseSpi(_spiContext))) {
+    _spiError = "OTA storage busy"; return false;
+  }
+  (void)shutdownForPowerOff(0);
+  _terminalStopping = false;
+  if (_releasedSpi && !_releasedSpi(_spiContext)) {
+    _spiError = "OTA storage release pending"; return false;
+  }
+  _spiError = "off";
+  return true;
+}
+
+#endif
+bool RAK13800EthernetInterface::beginHardware() {
   if (_terminalStopping) return false;
   if (!mesh::nrf52::registerTerminalEthernetShutdown(terminalShutdown, this)) return false;
   // Preserve existing startup/link timing. PoE supplies separate 5V through
@@ -83,29 +144,53 @@ bool RAK13800EthernetInterface::shutdownForPowerOff(uint32_t timeout_ms) {
   // disable() cancels framed/session producers, but disconnectClient() must
   // not enter the vendor socket-stop/ACK wait during terminal shutdown.
   SerialEthernetInterface::disable();
-  if (!_spiStarted) return true;
-  for (uint8_t socket = 0; socket < 4; ++socket) {
-    (void)mesh::nrf52::EthernetCliTransmit::close(socket);
+  if (_spiStarted) {
+#if defined(OTA_RAK15002_SD_STORE)
+    // A newly inserted card also selects on CS26. Do not clock Ethernet
+    // socket commands into it during recovery or terminal shutdown.
+    if (!mesh::ota::ota_rak15002_sd_card_present())
+#endif
+    for (uint8_t socket = 0; socket < 4; ++socket) {
+      (void)mesh::nrf52::EthernetCliTransmit::close(socket);
+    }
+    client = EthernetClient();
+    ETHERNET_SPI_PORT.end();
+    _spiStarted = false;
+    mesh::nrf52::releaseRakEthernetBusPads();
   }
-  client = EthernetClient();
-  ETHERNET_SPI_PORT.end();
-  _spiStarted = false;
-  mesh::nrf52::releaseRakEthernetBusPads();
+#if defined(OTA_RAK15002_SD_STORE)
+  if (_ownsSharedSpi) {
+    mesh::ota::rak4631_release_spi(mesh::ota::RakSharedSpiOwner::Ethernet);
+    _ownsSharedSpi = false;
+  }
+#endif
   return true;
 }
 
 int RAK13800EthernetInterface::available() {
   if (!_spiStarted || _terminalStopping) return 0;
+#if defined(OTA_RAK15002_SD_STORE)
+  if (mesh::ota::ota_rak15002_sd_card_present()
+      || !mesh::ota::rak4631_ethernet_owns_spi()) return 0;
+#endif
   return client.available();
 }
 
 int RAK13800EthernetInterface::read() {
   if (!_spiStarted || _terminalStopping) return -1;
+#if defined(OTA_RAK15002_SD_STORE)
+  if (mesh::ota::ota_rak15002_sd_card_present()
+      || !mesh::ota::rak4631_ethernet_owns_spi()) return -1;
+#endif
   return client.read();
 }
 
 size_t RAK13800EthernetInterface::write(const uint8_t *buf, size_t size) {
   if (!_spiStarted || _terminalStopping) return 0;
+#if defined(OTA_RAK15002_SD_STORE)
+  if (mesh::ota::ota_rak15002_sd_card_present()
+      || !mesh::ota::rak4631_ethernet_owns_spi()) return 0;
+#endif
   return client.write(buf, size);
 }
 
@@ -115,11 +200,31 @@ bool RAK13800EthernetInterface::isConnected() const {
 
 void RAK13800EthernetInterface::disconnectClient() {
   _isConnected = false;
+#if defined(OTA_RAK15002_SD_STORE)
+  if (mesh::ota::ota_rak15002_sd_card_present()
+      || !mesh::ota::rak4631_ethernet_owns_spi()) return;
+#endif
   if (_spiStarted && !_terminalStopping) client.stop();
 }
 
 void RAK13800EthernetInterface::loop() {
   if (!_spiStarted || _terminalStopping) return;
+#if defined(OTA_RAK15002_SD_STORE)
+  if (mesh::ota::ota_rak15002_sd_card_present()) {
+    // Fail closed on insertion while Ethernet owns the bus. Do not send a
+    // socket-close command on shared CS26 or switch a live internal OTA store.
+    _terminalStopping = true;
+    SerialEthernetInterface::disable();
+    _terminalStopping = false;
+    digitalWrite(PIN_ETHERNET_SS, HIGH);
+    ETHERNET_SPI_PORT.end();
+    _spiStarted = false;
+    mesh::nrf52::releaseRakEthernetBusPads();
+    _spiError = "SD inserted; set eth off before SD access";
+    return; // Retain Ethernet's claim until the context permits release.
+  }
+  if (!mesh::ota::rak4631_ethernet_owns_spi()) return;
+#endif
   Ethernet.maintain();
   if (!isEnabled()) return;
   if (_isConnected && !client.connected()) {

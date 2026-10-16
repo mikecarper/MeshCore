@@ -21,6 +21,13 @@
 namespace UserGpioPinPolicy {
 
 inline bool isFirmwareReserved(uint8_t pin) {
+#if defined(OTA_RAK15002_SD_STORE)
+  // The exact RAK15002 recipe claims these WisBlock nets even when no card
+  // is fitted: user GPIO must not defeat card detection or a later SD/NOR/
+  // Ethernet handoff. WB_IO6 is Arduino pin 10, not GPIO number 6.
+  if (pin == PIN_SPI_SCK || pin == WB_IO6 || pin == 26
+      || pin == PIN_SPI_MISO || pin == PIN_SPI_MOSI) return true;
+#endif
 #if defined(STATION_G3_ESP32)
   // A module may be present in the inactive slot too. Never offer its pins
   // for user GPIO, even when the current boot selected the other slot.

@@ -18,7 +18,7 @@ using namespace mesh::ota;
 // hardware boundary: no boot authorization, flash writes, or apply call exists
 // in this executable. The real archive implementation is compiled separately.
 namespace mesh { namespace ota {
-OtaStoreSdNrf52::OtaStoreSdNrf52() : _sd(new SdFs), _file(new FsFile) {}
+OtaStoreSdNrf52::OtaStoreSdNrf52() : _sd(new OtaSdFs), _file(new OtaSdFile) {}
 OtaStoreSdNrf52::~OtaStoreSdNrf52() { delete _file; delete _sd; }
 bool OtaStoreSdNrf52::mount() {
   if (_mounted) return true;
@@ -26,6 +26,7 @@ bool OtaStoreSdNrf52::mount() {
   if (!_mounted) fail("SD mount failed");
   return _mounted;
 }
+bool OtaStoreSdNrf52::busAccessAllowed() const { return _mounted && sd_test::medium.connected; }
 void OtaStoreSdNrf52::fail(const char* text) { snprintf(_error, sizeof(_error), "%s", text); }
 bool OtaStoreSdNrf52::begin(uint32_t) { assert(false); return false; }
 bool OtaStoreSdNrf52::write(uint32_t, const uint8_t*, uint32_t) { assert(false); return false; }
@@ -69,6 +70,13 @@ static void published(OtaCacheSdNrf52& cache) {
   assert(cache.describe(0, d) && !cache.describe(1, d));
   assert(d.target_id == SIM_TARGET_ID && d.total_size == length && d.block_count == 2);
   assert(d.block_size_log2 == 11 && d.flags == (MFLAG_FULL | MFLAG_SIGNED));
+  MotaManifest manifest;
+  assert(mota_parse_manifest(bytes + 8, MOTA_MFL, manifest));
+  assert(!memcmp(d.mid, manifest.merkle_root, 4));
+  assert(d.fw_version == manifest.fw_version && d.codec_id == manifest.codec_id);
+  assert(d.source_caps == 0 && d.leaves_off == 8 + MOTA_MFL);
+  assert(d.payload_off == d.leaves_off + manifest.block_count * 4);
+  assert(d.payload_size == manifest.payload_size);
   std::vector<uint8_t> loaded(length);
   assert(cache.read(0, 0, loaded.data(), length));
   assert(!memcmp(loaded.data(), bytes, length));

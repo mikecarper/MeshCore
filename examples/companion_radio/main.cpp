@@ -653,6 +653,53 @@ static void cancelCompanionEthernetSession(void*) {
   the_mesh.cancelSerialOperationsForRoute(&ethernet_interface);
   interface_manager.forgetReplyRouteForDisconnected(&ethernet_interface);
 }
+#if defined(OTA_RAK15002_SD_STORE) && defined(ETHERNET_USE_RAK13800)
+static bool prepareCompanionRakEthernet(void*) {
+  auto* context = mesh::ota::ota_context_if_active();
+  return !context || context->prepareRakSdForEthernet();
+}
+static bool canReleaseCompanionRakEthernet(void*) {
+  auto* context = mesh::ota::ota_context_if_active();
+  return !context || context->canReleaseRakSdForEthernet();
+}
+static bool releasedCompanionRakEthernet(void*) {
+  auto* context = mesh::ota::ota_context_if_active();
+  return !context || context->releasedRakSdEthernet();
+}
+
+bool handleRak4631PeripheralCommand(const char* command, char* reply, size_t capacity) {
+  const bool get = strcmp(command, "get eth") == 0;
+  const char* value = strncmp(command, "set eth ", 8) == 0 ? command + 8 : nullptr;
+  if (get || value) {
+    if (value && strcmp(value, "on") && strcmp(value, "off")) {
+      snprintf(reply, capacity, "Error: use set eth on|off");
+    } else if (value && !(strcmp(value, "on") == 0
+        ? ethernet_interface.tryEnable() : ethernet_interface.tryDisable())) {
+      snprintf(reply, capacity, "Error: %s", ethernet_interface.last_error());
+    } else {
+      snprintf(reply, capacity, "%s eth=%s; RAK13800 (this boot)", get ? ">" : "OK -",
+               ethernet_interface.hardwareActive() ? "on" : "off");
+    }
+    return true;
+  }
+  if (strcmp(command, "get sdcard") == 0 || strcmp(command, "get sdcard free") == 0) {
+    if (ethernet_interface.hardwareActive()) {
+      snprintf(reply, capacity, "Error: turn Ethernet off before accessing SD");
+    } else if (mesh::ota::ota_acquire_context(reply, capacity)) {
+      uint64_t used = 0, free = 0;
+      auto& card = mesh::ota::ota_ctx().sdStagingStore();
+      if (card.getSpace(board, used, free)) {
+        snprintf(reply, capacity, "> SD used=%llu free=%llu bytes; ota cache for archive status",
+                 (unsigned long long)used, (unsigned long long)free);
+      } else {
+        snprintf(reply, capacity, "Error: %s", card.last_error());
+      }
+    }
+    return true;
+  }
+  return false;
+}
+#endif
 #endif
 
 #if defined(ENABLE_USB_INTERFACE)
@@ -3950,6 +3997,10 @@ void setup() {
 // add ethernet interface
 #if defined(ETHERNET_ENABLED)
   ethernet_interface.setSessionChangedCallback(cancelCompanionEthernetSession, nullptr);
+#if defined(OTA_RAK15002_SD_STORE) && defined(ETHERNET_USE_RAK13800)
+  ethernet_interface.setSpiOwnershipHooks(prepareCompanionRakEthernet,
+      canReleaseCompanionRakEthernet, releasedCompanionRakEthernet, nullptr);
+#endif
   ethernet_interface.begin();
   interface_manager.addInterface(InterfaceType::Ethernet, &ethernet_interface);
 #endif

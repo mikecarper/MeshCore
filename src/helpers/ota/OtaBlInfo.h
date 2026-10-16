@@ -29,6 +29,7 @@ struct OtaBlCaps {
   uint16_t codec_mask = 0;   // bit i set => can apply codec_id i (in-place delta = bit 2)
   uint8_t  storage_flags = 0; // OTA_BL_STORAGE_* capability bits
   uint8_t  optional_app_storage = 0; // separate MOTASTOR record, scoped to its qualified primary profile
+  uint8_t  optional_sd_app_storage = 0; // supplemental MOTASDRA; application-only RAK15002 support
 };
 
 // Independent marker for the reset-retained hybrid source. Keep this separate
@@ -256,12 +257,37 @@ inline uint8_t ota_bl_profile_optional_app_storage(const uint8_t* bytes,
   return 0;
 }
 
+// The all-in-one RAK4631 loader deliberately keeps its deployed internal/NOR
+// capability bytes unchanged. SD application apply is a separate, exact ABI;
+// it never grants SD bootloader updates. Count every aligned magic, including
+// malformed/truncated declarations, so a second record cannot hide a conflict.
+inline uint8_t ota_bl_rak_sd_app_storage(const uint8_t* bytes, size_t len,
+                                         uint8_t primary_storage,
+                                         uint8_t optional_storage) {
+  static const uint8_t marker[16] = {
+    'M', 'O', 'T', 'A', 'S', 'D', 'R', 'A', 1, 0, 72, 0, 1, 0x53, 0, 0,
+  };
+  if (!bytes || primary_storage != OTA_BL_PROFILE_INTERNAL_BOOT_UPDATE ||
+      optional_storage != (OTA_BL_STORAGE_QSPI | OTA_BL_STORAGE_HEADER_W25)) return 0;
+  unsigned matches = 0;
+  for (size_t off = 0; off + 8u <= len; off += 4u) {
+    if (memcmp(bytes + off, marker, 8u) != 0) continue;
+    if (++matches != 1u || off + sizeof(marker) > len ||
+        memcmp(bytes + off, marker, sizeof(marker)) != 0) return 0;
+  }
+  return matches == 1u ? OTA_BL_STORAGE_SD : 0;
+}
+
 inline OtaBlCaps ota_bl_app_caps_scan(const uint8_t* bytes, size_t len) {
   OtaBlCaps aligned = ota_bl_caps_scan_aligned(bytes, len, false);
   if (aligned.present && aligned.apply_abi >= 3) {
     aligned.optional_app_storage = ota_bl_profile_optional_app_storage(
         bytes, len, aligned.storage_flags);
-    aligned.storage_flags |= aligned.optional_app_storage;
+#if !defined(NRF52_PLATFORM) || defined(RAK_4631) || defined(OTA_RAK15002_SD_STORE)
+    aligned.optional_sd_app_storage = ota_bl_rak_sd_app_storage(
+        bytes, len, aligned.storage_flags, aligned.optional_app_storage);
+#endif
+    aligned.storage_flags |= aligned.optional_app_storage | aligned.optional_sd_app_storage;
   }
   if (aligned.present) return aligned;
   return ota_bl_legacy_app_caps_scan_halfword(bytes, len);
@@ -276,6 +302,10 @@ inline OtaBlCaps ota_bl_update_caps_scan_aligned(const uint8_t* bytes, size_t le
     // require an existing optional application capability in a successor.
     caps.optional_app_storage = ota_bl_profile_optional_app_storage(
         bytes, len, caps.storage_flags);
+#if !defined(NRF52_PLATFORM) || defined(RAK_4631) || defined(OTA_RAK15002_SD_STORE)
+    caps.optional_sd_app_storage = ota_bl_rak_sd_app_storage(
+        bytes, len, caps.storage_flags, caps.optional_app_storage);
+#endif
   }
   return caps;
 }
@@ -317,7 +347,15 @@ inline OtaBlCaps ota_bootloader_update_caps() {
 #if defined(OTA_INTERNAL_BOOTLOADER_UPDATE) && defined(OTA_RAK_AUTO_STORE)
   // Unified RAK applications support the existing internal board identity as
   // well as the adaptive successor. Both require one privileged marker.
-  const OtaBlCaps caps = ota_bl_caps_scan_aligned(lo, (size_t)(hi - lo), true);
+  OtaBlCaps caps = ota_bl_caps_scan_aligned(lo, (size_t)(hi - lo), true);
+  if (caps.present) {
+    caps.optional_app_storage = ota_bl_profile_optional_app_storage(
+        lo, (size_t)(hi - lo), caps.storage_flags);
+#if defined(RAK_4631) || defined(OTA_RAK15002_SD_STORE)
+    caps.optional_sd_app_storage = ota_bl_rak_sd_app_storage(
+        lo, (size_t)(hi - lo), caps.storage_flags, caps.optional_app_storage);
+#endif
+  }
   return ota_bootloader_self_update_caps_valid(caps) ? caps : OtaBlCaps();
 #else
   return ota_bl_update_caps_scan_aligned(
