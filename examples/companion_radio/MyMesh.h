@@ -427,12 +427,15 @@ protected:
   bool validateMeshtextChannelChange(int index, const ChannelDetails& channel);
   bool handleMeshtextCommand(const char* command, char* reply, size_t capacity);
   bool saveMeshtextSettings(mesh::mt::Region region, uint32_t slot, uint8_t hops = UINT8_MAX,
-                             const char* short_name = nullptr, uint32_t node_override = UINT32_MAX);
+                             const char* short_name = nullptr, uint32_t node_override = UINT32_MAX,
+                             uint8_t rebroadcast = UINT8_MAX);
   bool eraseMeshtextSettings();
   bool sendMeshtextText(const ChannelDetails& channel, const char* text, size_t length);
   bool sendMeshtextNodeInfo(const ChannelDetails& channel);
   bool queueMeshtextDelivery(const ChannelDetails& channel, const uint8_t* bytes,
                             size_t length, bool nodeinfo);
+  void maybeRebroadcastMeshtext(const ChannelDetails& channel, const uint8_t* bytes, size_t length);
+  bool preemptMeshtextRelay();
   int meshtextChannelIndex(const ChannelDetails& channel, uint8_t fingerprint[8]);
   bool meshtextDeliveryCurrent(const mesh::mt::PendingFrame& pending);
   uint8_t meshtextRetryLimit(const mesh::mt::PendingFrame& pending) const;
@@ -762,6 +765,7 @@ private:
   uint32_t _mt_default_node = 0, _mt_node_override = 0;
   char _mt_short_name[17] = {};
   uint8_t _mt_hop_limit = 7;
+  bool _mt_rebroadcast = false;
   uint32_t _mt_sent = 0, _mt_failed = 0, _mt_received = 0;
   mesh::mt::SeenPackets _mt_seen;
   mesh::mt::PendingFrame _mt_delivery[mesh::mt::DeliverySlots];

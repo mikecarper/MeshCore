@@ -10209,6 +10209,8 @@ void MyMesh::handleTerminalCommand(char* command, bool reader_prompt,
 #if MESH_ENABLE_MESHTEXT_CHAT
     terminalOutput().print("  get mt.status / get mt.region / get mt.slot / get mt.hops\r\n"
         "  get mt.node / get mt.shortname\r\n"
+        "  get mt.rebroadcast / set mt.rebroadcast <on|off> (saved; default off)\r\n"
+        "    Relay decoded channel text only; adds 5 packet airtimes before TX\r\n"
         "  set mt.region <auto|us|eu868|eu433|anz>\r\n"
         "  set mt.slot <0|1-based frequency slot>\r\n"
         "  set mt.hops <0..7> (saved; default 7)\r\n"

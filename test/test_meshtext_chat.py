@@ -32,14 +32,14 @@ def data_text(text):
     return b"\x08\x01\x12" + varint(len(text)) + text
 
 
-def data_nodeinfo(long_name, short_name, sender):
+def data_nodeinfo(long_name, short_name, sender, rebroadcast=False):
     # Independent handwritten schema oracle: User fields 1/2/3/7/9 only.
     user_id = ("!%08x" % sender).encode("ascii")
     user = b"\x0a" + varint(len(user_id)) + user_id
     if long_name:
         user += b"\x12" + varint(len(long_name)) + long_name
     user += b"\x1a" + varint(len(short_name)) + short_name
-    user += b"\x38\x01\x48\x01"  # CLIENT_MUTE=1, is_unmessagable=true.
+    user += b"\x38" + bytes([0 if rebroadcast else 1]) + b"\x48\x01"
     return b"\x08\x04\x12" + varint(len(user)) + user + b"\x48\x01"
 
 
@@ -64,7 +64,9 @@ def literal(value):
 
 HARNESS = r'''
 #include <helpers/MeshtextChat.h>
+#include <helpers/MeshtextDelivery.h>
 #include <cassert>
+#include <cstddef>
 #include <cmath>
 #include <cstdio>
 #include <cstring>
@@ -84,6 +86,7 @@ struct NodeInfoGolden {
   uint32_t from, id; uint8_t hops; uint8_t frame[255]; size_t frame_len;
 };
 static const NodeInfoGolden node_info_golden[] = { @NODEINFO_GOLDEN@ };
+static const NodeInfoGolden relay_node_info_golden[] = { @RELAY_NODEINFO_GOLDEN@ };
 struct Malformed { const char* label; uint8_t frame[255]; size_t length; };
 static const Malformed malformed[] = { @MALFORMED@ };
 struct Modem {
@@ -260,6 +263,100 @@ static void node_info_bounds() {
   assert(encodeNodeInfo(4, 1, 3, "LongFast", DefaultPsk, 16, "\xc3\xa9", 2, "\xf0\x9f\x9a\x80", 4, frame));
   puts("PASS nodeinfo_bounds");
 }
+static void node_info_roles() {
+  for (size_t i = 0; i < sizeof(node_info_golden) / sizeof(node_info_golden[0]); ++i) {
+    const auto& original = node_info_golden[i];
+    const auto& expected = relay_node_info_golden[i];
+    uint8_t passive[MaxFrameSize], explicit_false[MaxFrameSize], forwarding[MaxFrameSize];
+    const size_t count = encodeNodeInfo(original.from, original.id, original.hops,
+        original.name, original.key, original.key_len, original.long_name,
+        original.long_name_len, original.short_name, original.short_name_len, passive);
+    assert(count == original.frame_len && !memcmp(passive, original.frame, count));
+    assert(encodeNodeInfo(original.from, original.id, original.hops, original.name,
+        original.key, original.key_len, original.long_name, original.long_name_len,
+        original.short_name, original.short_name_len, explicit_false, false) == count);
+    assert(!memcmp(passive, explicit_false, count));
+    assert(encodeNodeInfo(expected.from, expected.id, expected.hops, expected.name,
+        expected.key, expected.key_len, expected.long_name, expected.long_name_len,
+        expected.short_name, expected.short_name_len, forwarding, true) == count);
+    assert(count == expected.frame_len && !memcmp(forwarding, expected.frame, count));
+    assert(!memcmp(passive, forwarding, HeaderSize));
+    size_t changes = 0;
+    for (size_t offset = HeaderSize; offset < count; ++offset) {
+      if (passive[offset] != forwarding[offset]) {
+        ++changes;
+        assert((passive[offset] ^ forwarding[offset]) == 1);
+      }
+    }
+    assert(changes == 1); // Only User.role changes; CTR leaves all other bytes identical.
+    DecodedText decoded;
+    assert(!decodeText(forwarding, count, expected.name, expected.key,
+                       expected.key_len, 0x99887766, decoded)); // Still not text/GPS/DM.
+  }
+  puts("PASS nodeinfo_roles");
+}
+static void relay_matching() {
+  struct PreviousPendingFrame {
+    uint8_t bytes[MaxFrameSize] = {}, fingerprint[8] = {};
+    uint32_t generation = 0, due = 0;
+    uint16_t length = 0;
+    uint8_t channel = 0, retries = 0;
+    bool nodeinfo = false, sent = false, heard = false, cancelled = false;
+  };
+  static_assert(sizeof(PendingFrame) == sizeof(PreviousPendingFrame), "relay flag must reuse padding");
+  static_assert(offsetof(PendingFrame, generation) == offsetof(PreviousPendingFrame, generation),
+                "relay flag must not move existing aligned state");
+  static_assert(offsetof(PendingFrame, relayed) == offsetof(PendingFrame, fingerprint) + 8,
+                "relay flag belongs immediately after fingerprint");
+  const auto& golden_frame = golden[0];
+  PendingFrame pending;
+  pending.length = golden_frame.frame_len;
+  memcpy(pending.bytes, golden_frame.frame, pending.length);
+  pending.sent = true;
+  uint8_t copy[MaxFrameSize]; memcpy(copy, pending.bytes, pending.length);
+  assert(!pending.relayed && !pending.matchesRelayCopy(copy, pending.length));
+  assert(!pending.matchesEcho(copy, pending.length)); // Original copy has not been relayed.
+  copy[12] = (copy[12] & 0xf8) | 2;
+  assert(pending.matchesEcho(copy, pending.length));
+  pending.relayed = true;
+  assert(!pending.matchesEcho(copy, pending.length)); // Relays are not originated delivery ACKs.
+  pending.bytes[12] = (pending.bytes[12] & 0xf8) | 2; // Planned relay remaining hops.
+  pending.sent = false; // Cancellation is allowed before the first relay TX.
+  assert(pending.matchesRelayCopy(copy, pending.length));
+  for (uint8_t remaining : {0, 1, 2}) {
+    copy[12] = (pending.bytes[12] & 0xf8) | remaining;
+    copy[14] = 0x12; copy[15] = 0x34; // Mutable routing bytes do not defeat cancellation.
+    assert(pending.matchesRelayCopy(copy, pending.length));
+  }
+  for (uint8_t remaining : {3, 4, 5, 6, 7}) {
+    copy[12] = (pending.bytes[12] & 0xf8) | remaining;
+    assert(!pending.matchesRelayCopy(copy, pending.length));
+  }
+  for (size_t offset = 0; offset < pending.length; ++offset) {
+    memcpy(copy, pending.bytes, pending.length);
+    if (offset == 12 || offset == 14 || offset == 15) continue;
+    copy[offset] ^= 1;
+    assert(!pending.matchesRelayCopy(copy, pending.length));
+  }
+  for (uint8_t flag : {0x08, 0x10, 0x20, 0x40, 0x80}) {
+    memcpy(copy, pending.bytes, pending.length); copy[12] ^= flag;
+    assert(!pending.matchesRelayCopy(copy, pending.length));
+  }
+  memcpy(copy, pending.bytes, pending.length);
+  assert(!pending.matchesRelayCopy(nullptr, pending.length));
+  assert(!pending.matchesRelayCopy(copy, pending.length - 1));
+  assert(!pending.matchesRelayCopy(copy, pending.length + 1));
+  pending.relayed = false;
+  assert(!pending.matchesRelayCopy(copy, pending.length));
+  pending.relayed = true;
+  pending.length = HeaderSize;
+  assert(!pending.matchesRelayCopy(copy, pending.length));
+  pending.length = MaxFrameSize + 1;
+  assert(!pending.matchesRelayCopy(copy, pending.length));
+  pending.clear();
+  assert(!pending.matchesRelayCopy(copy, 0));
+  puts("PASS relay_matching");
+}
 static void argument_bounds() {
   uint8_t frame[MaxFrameSize] = {};
   char text[MaxTextSize + 2]; memset(text, 'x', sizeof(text));
@@ -347,6 +444,8 @@ int main(int argc, char** argv) {
   else if (!strcmp(argv[1], "malformed")) malformed_frames();
   else if (!strcmp(argv[1], "nodeinfo")) node_info_frames();
   else if (!strcmp(argv[1], "nodeinfo_bounds")) node_info_bounds();
+  else if (!strcmp(argv[1], "nodeinfo_roles")) node_info_roles();
+  else if (!strcmp(argv[1], "relay_matching")) relay_matching();
   else if (!strcmp(argv[1], "bounds")) argument_bounds();
   else if (!strcmp(argv[1], "extensions")) extensions();
   else if (!strcmp(argv[1], "stock_zero_bitfield")) stock_zero_bitfield_frames();
@@ -386,15 +485,19 @@ def vectors():
     node_inputs += [(DEFAULT_KEY, "LongFast", "\u6d4b\u8bd5".encode(), "\u6d4bA".encode(), FROM, hops)
                     for hops in (2, 4, 5, 6)]
     node_info = []
+    relay_node_info = []
     for offset, (key, name, long_name, short_name, sender, hops) in enumerate(node_inputs):
         packet_id = PACKET_ID + offset
         frame = reference_frame(data_nodeinfo(long_name, short_name, sender), name, key,
                                 sender=sender, packet_id=packet_id, flags=hops | (hops << 5))
-        node_info.append("{" + array(key) + "," + str(len(key)) + ',"' + name + '",'
-                         + literal(long_name) + "," + str(len(long_name)) + ","
-                         + literal(short_name) + "," + str(len(short_name)) + ","
-                         + str(sender) + "U," + str(packet_id) + "U," + str(hops) + ","
-                         + array(frame) + "," + str(len(frame)) + "}")
+        prefix = ("{" + array(key) + "," + str(len(key)) + ',"' + name + '",'
+                  + literal(long_name) + "," + str(len(long_name)) + ","
+                  + literal(short_name) + "," + str(len(short_name)) + ","
+                  + str(sender) + "U," + str(packet_id) + "U," + str(hops) + ",")
+        node_info.append(prefix + array(frame) + "," + str(len(frame)) + "}")
+        relay = reference_frame(data_nodeinfo(long_name, short_name, sender, rebroadcast=True),
+                                name, key, sender=sender, packet_id=packet_id, flags=hops | (hops << 5))
+        relay_node_info.append(prefix + array(relay) + "," + str(len(relay)) + "}")
     bad_data = {
         "empty Data": b"", "missing port": b"\x12\x01x", "missing text": b"\x08\x01",
         "empty text": b"\x08\x01\x12\x00", "other app": b"\x08\x02\x12\x01x",
@@ -441,6 +544,7 @@ def vectors():
     return (HARNESS.replace("@GOLDEN@", ",\n".join(golden)).replace("@MALFORMED@", ",\n".join(malformed))
             .replace("@STOCK_ZERO_BITFIELD@", ",\n".join(stock_zero_bitfield))
             .replace("@NODEINFO_GOLDEN@", ",\n".join(node_info))
+            .replace("@RELAY_NODEINFO_GOLDEN@", ",\n".join(relay_node_info))
             .replace("@MODEMS@", ",\n".join(modems)).replace("@EXTENSION_FRAME@", array(extension))
             .replace("@REQUEST_FRAME@", array(request)))
 
@@ -535,6 +639,12 @@ class MeshtextChatTest(unittest.TestCase):
 
     def test_nodeinfo_stock_name_utf8_and_argument_bounds(self):
         self.run_case("nodeinfo_bounds")
+
+    def test_default_nodeinfo_unchanged_and_opt_in_changes_only_client_role(self):
+        self.run_case("nodeinfo_roles")
+
+    def test_bounded_relay_copy_match_and_origin_echo_are_disjoint_without_ram_growth(self):
+        self.run_case("relay_matching")
 
     def test_argument_and_text_bounds(self):
         self.run_case("bounds")

@@ -54,7 +54,9 @@ size_t encodeText(uint32_t from, uint32_t id, uint8_t hop_limit, const char* cha
                   const uint8_t* key, size_t key_len, const char* text, size_t text_len,
                   uint8_t out[MaxFrameSize]);
 // Explicit broadcast NODEINFO_APP containing only User id, long/short names,
-// CLIENT_MUTE (no forwarding), and is_unmessagable=true (no direct messages).
+// CLIENT_MUTE by default (no forwarding), and is_unmessagable=true (no DMs).
+// Explicitly enabled rebroadcast advertises CLIENT instead, without adding
+// any fields or changing encryption, names, hop policy or MQTT consent.
 // Names use explicit UTF-8 byte lengths, without their terminating NUL. Long
 // names may be empty; short names require 1..4 UTF-8 bytes (stock wire bound).
 // This can hold four ASCII characters but fewer multi-byte characters. Longer
@@ -63,9 +65,11 @@ size_t encodeText(uint32_t from, uint32_t id, uint8_t hop_limit, const char* cha
 // explicit and first-successful-chat announcements and bounded retries.
 size_t encodeNodeInfo(uint32_t from, uint32_t id, uint8_t hop_limit, const char* channel_name,
                       const uint8_t* key, size_t key_len, const char* long_name, size_t long_name_len,
-                      const char* short_name, size_t short_name_len, uint8_t out[MaxFrameSize]);
+                      const char* short_name, size_t short_name_len, uint8_t out[MaxFrameSize],
+                      bool rebroadcast = false);
 // Only broadcast TEXT_MESSAGE_APP is delivered. No DMs, ACKs, administrative
-// handling, relaying or automatic transmissions. AES-CTR is not authenticated;
+// handling or automatic transmissions occur in this decoder; a caller can
+// separately opt into bounded relay handling. AES-CTR is not authenticated;
 // a successful parse is not a proof of sender identity or PSK authenticity.
 // On failure, decoded is left unchanged. Caller records dedup only on success.
 bool decodeText(const uint8_t* raw, size_t length, const char* channel_name,

@@ -60,8 +60,16 @@ struct BaseChatMesh {
 };
 struct MtRadio : Radio {
   bool supported=true;
+  bool physical_airtime=false;
+  uint32_t fixed_airtime=10;
+  std::vector<std::pair<uint8_t,int>> airtime_calls;
+  mesh::RadioProfiles& _profiles=p;
   bool supportsMeshtext() const override { return supported; }
-  uint32_t getProfileAirtime(uint8_t,int,uint8_t=0) override { return 10; }
+  @PROFILE_AIRTIME@
+  uint32_t getProfileAirtime(uint8_t profile,int length,uint8_t cr=0) override {
+    airtime_calls.emplace_back(profile,length);
+    return physical_airtime ? actualProfileAirtime(profile,length,cr):fixed_airtime;
+  }
 };
 struct Serial {
   bool connected=false;
@@ -99,6 +107,7 @@ public:
   uint32_t _mt_slot=0,_mt_node=0,_mt_packet_id=0,_mt_sent=0,_mt_failed=0,_mt_received=0;
   uint32_t _mt_default_node=0,_mt_node_override=0;
   uint8_t _mt_hop_limit=7;
+  bool _mt_rebroadcast=false;
   char _mt_short_name[17]={};
   mesh::mt::SeenPackets _mt_seen;
   mesh::mt::PendingFrame _mt_delivery[mesh::mt::DeliverySlots];
@@ -138,7 +147,8 @@ public:
   void refreshMeshtextIdentity();
   void beginMeshtext();
   bool saveMeshtextSettings(mesh::mt::Region,uint32_t,uint8_t hops=UINT8_MAX,
-                             const char* short_name=nullptr,uint32_t node_override=UINT32_MAX);
+                             const char* short_name=nullptr,uint32_t node_override=UINT32_MAX,
+                             uint8_t rebroadcast=UINT8_MAX);
   bool eraseMeshtextSettings();
   bool isMeshtextChannel(const ChannelDetails&) const;
   bool validateMeshtextChannelChange(int,const ChannelDetails&);
@@ -146,6 +156,8 @@ public:
   bool sendMeshtextText(const ChannelDetails&,const char*,size_t);
   bool sendMeshtextNodeInfo(const ChannelDetails&);
   bool queueMeshtextDelivery(const ChannelDetails&,const uint8_t*,size_t,bool);
+  void maybeRebroadcastMeshtext(const ChannelDetails&,const uint8_t*,size_t);
+  bool preemptMeshtextRelay();
   int meshtextChannelIndex(const ChannelDetails&,uint8_t[8]);
   bool meshtextDeliveryCurrent(const mesh::mt::PendingFrame&);
   uint8_t meshtextRetryLimit(const mesh::mt::PendingFrame&) const;
@@ -544,7 +556,7 @@ static void hops() {
     char command[32]; snprintf(command,sizeof(command),"set mt.hops %u",limit);
     assert(node.handleMeshtextCommand(command,reply,sizeof(reply)) && !strncmp(reply,"OK",2));
     assert(node._mt_hop_limit==limit && node._mt_region==mesh::mt::Region::Unset && node._mt_slot==0);
-    assert(Preferences::blob.size()==40 && !memcmp(Preferences::blob.data(),"MT03",4));
+    assert(Preferences::blob.size()==40 && !memcmp(Preferences::blob.data(),"MT04",4));
     assert(Preferences::blob[5]==limit && Preferences::blob[6]==0 && Preferences::blob[7]==0);
     MyMesh reboot; reboot.stored[0]=node.stored[0]; reboot.beginMeshtext();
     assert(reboot._mt_hop_limit==limit && reboot._mt_active && reboot._mt_region==node._mt_region && reboot._mt_slot==node._mt_slot);
@@ -592,7 +604,7 @@ static void hops() {
   assert(migrated._mt_region==mesh::mt::Region::US && migrated._mt_slot==2);
   assert(Preferences::writes==0 && Preferences::blob==legacy_blob);
   assert(migrated.handleMeshtextCommand("set mt.hops 3",reply,sizeof(reply)) && !strncmp(reply,"OK",2));
-  assert(Preferences::writes==1 && !memcmp(Preferences::blob.data(),"MT03",4) && Preferences::blob[5]==3);
+  assert(Preferences::writes==1 && !memcmp(Preferences::blob.data(),"MT04",4) && Preferences::blob[5]==3);
   assert(migrated._mt_region==mesh::mt::Region::US && migrated._mt_slot==2);
   MyMesh migrated_reboot; migrated_reboot.stored[0]=migrated.stored[0]; migrated_reboot.beginMeshtext();
   assert(migrated_reboot._mt_active && migrated_reboot._mt_hop_limit==3);
@@ -627,7 +639,7 @@ static void shortname() {
   assert(node.handleMeshtextCommand("set mt.shortname MIKE",reply,sizeof(reply)) && !strncmp(reply,"OK",2));
   assert(!strcmp(node._mt_short_name,"MIKE") && node._mt_node==default_node && node._mt_packet_id==original_packet);
   assert(!memcmp(meshcore_identity,node.self_id.pub_key,32));
-  assert(Preferences::blob.size()==40 && !memcmp(Preferences::blob.data(),"MT03",4));
+  assert(Preferences::blob.size()==40 && !memcmp(Preferences::blob.data(),"MT04",4));
   assert(!memcmp(Preferences::blob.data()+12,"MIKE\0",5));
   for(unsigned i=17;i<36;++i) assert(Preferences::blob[i]==0);
   assert(node.handleMeshtextCommand("get mt.shortname",reply,sizeof(reply)) && strstr(reply,"MIKE"));
@@ -694,7 +706,7 @@ static void shortname() {
     assert(legacy._mt_node==default_node && legacy._mt_hop_limit==(version?3:7));
     assert(Preferences::writes==0 && Preferences::blob==before);
     assert(legacy.handleMeshtextCommand("set mt.shortname TEST",reply,sizeof(reply)) && !strncmp(reply,"OK",2));
-    assert(Preferences::writes==1 && Preferences::blob.size()==40 && !memcmp(Preferences::blob.data(),"MT03",4));
+    assert(Preferences::writes==1 && Preferences::blob.size()==40 && !memcmp(Preferences::blob.data(),"MT04",4));
     assert(legacy._mt_region==mesh::mt::Region::US && legacy._mt_slot==2 && legacy._mt_hop_limit==(version?3:7));
     assertUntouched(legacy);
   }
@@ -826,6 +838,9 @@ static void nodeinfo() {
   assert(node.handleMeshtextCommand("send mt.nodeinfo 0",reply,sizeof(reply)) && !strncmp(reply,"Error",5));
   assert(node._mt_packet_id==pending_id && node.foreign.size()==pending_count);
   assert(!node.sendMeshtextText(node.stored[0],"busy",4));
+  // A fully encoded local attempt can lose TX admission, but its CTR nonce
+  // must remain consumed rather than being reused by the following metadata.
+  assert(node._mt_packet_id==pending_id+1 && node.foreign.size()==pending_count);
   assert(!node.saveMeshtextSettings(mesh::mt::Region::US,0));
   node.releaseForeign();
   assert(node.handleMeshtextCommand("set mt.node !12345678",reply,sizeof(reply)) && !strncmp(reply,"OK",2));
@@ -835,7 +850,7 @@ static void nodeinfo() {
   assert(node.foreign.back()==std::vector<uint8_t>(expected_named,expected_named+sizeof(expected_named)));
   node.releaseForeign();
   auto text=decodeOwnText(node,"hello",5);
-  assert(text.id==0x1234567a && !strcmp(text.text,"hello"));
+  assert(text.id==0x1234567b && !strcmp(text.text,"hello"));
   const char* emojis="\xf0\x9f\x98\x80\xf0\x9f\x98\x80\xf0\x9f\x98\x80\xf0\x9f\x98\x80";
   assert(node.saveMeshtextSettings(node._mt_region,node._mt_slot,UINT8_MAX,emojis));
   memset(node._prefs.node_name,'A',22); strcpy(node._prefs.node_name+22,"\xe2\x82\xac" "rest");
@@ -1311,6 +1326,282 @@ static void readinessCache() {
   }
   puts("PASS readiness-cache");
 }
+static const uint8_t relay_short[]=@RELAY_SHORT@,relay_long[]=@RELAY_LONG@,
+    relay_nodeinfo[]=@RELAY_NODEINFO@,relay_private128[]=@RELAY_PRIVATE128@,
+    relay_private256[]=@RELAY_PRIVATE256@;
+static mesh::mt::PendingFrame* pendingRelay(MyMesh& node) {
+  mesh::mt::PendingFrame* found=nullptr;
+  for(auto& frame:node._mt_delivery) if(frame.length && frame.relayed) {
+    assert(!found);found=&frame; // Retained forwarding is bounded to ONE copy.
+  }
+  return found;
+}
+static void enableRelay(MyMesh& node) {
+  char reply[256];assert(node.handleMeshtextCommand("set mt.rebroadcast on",reply,sizeof(reply)));
+  assert(!strncmp(reply,"OK",2) && node._mt_rebroadcast);node.advance(0);
+}
+static std::vector<uint8_t> plannedRelay(MyMesh& node,const uint8_t* raw,size_t length) {
+  std::vector<uint8_t> expected(raw,raw+length);
+  expected[12]=(raw[12]&0xf8)|((raw[12]&7)-1);expected[15]=uint8_t(node._mt_node);
+  return expected;
+}
+static void assertRelayBytes(MyMesh& node,const uint8_t* raw,size_t length) {
+  const auto* frame=pendingRelay(node);assert(frame && frame->length==length);
+  const auto expected=plannedRelay(node,raw,length);
+  assert(!memcmp(frame->bytes,expected.data(),length));
+  assert(!frame->nodeinfo && !frame->sent && !frame->retries && !frame->cancelled);
+  assert(frame->generation==node.radio.p.generation[1]);
+}
+static void rebroadcastSettings() {
+  Preferences::reset();MyMesh node;active(node);char reply[256];
+  assert(!node._mt_rebroadcast);
+  for(const char* get:{"get mt.rebroadcast","get mt.maybe_rebroadcast"}) {
+    assert(node.handleMeshtextCommand(get,reply,sizeof(reply)) && strstr(reply,"> off;"));
+  }
+  assert(node.handleMeshtextCommand("get mt.status",reply,sizeof(reply)) && strstr(reply,"rebroadcast=off"));
+  const auto original=Preferences::blob;const auto packet=node._mt_packet_id;
+  for(const char* invalid:{"set mt.rebroadcast ","set mt.rebroadcast yes","set mt.rebroadcast true",
+      "set mt.rebroadcast 1","set mt.rebroadcast ON","set mt.rebroadcast on junk",
+      "set mt.maybe_rebroadcast -1"}) {
+    assert(node.handleMeshtextCommand(invalid,reply,sizeof(reply)) && !strncmp(reply,"Error",5));
+    assert(!node._mt_rebroadcast && Preferences::blob==original);
+  }
+  assert(!node.saveMeshtextSettings(node._mt_region,node._mt_slot,UINT8_MAX,nullptr,UINT32_MAX,2));
+  assert(node.handleMeshtextCommand("set mt.maybe_rebroadcast on",reply,sizeof(reply)) && !strncmp(reply,"OK",2));
+  assert(node._mt_rebroadcast && Preferences::blob.size()==40 && !memcmp(Preferences::blob.data(),"MT04",4));
+  assert(Preferences::blob[6]==1 && Preferences::blob[7]==0 && node._mt_packet_id==packet);
+  uint8_t digest[4];mesh::Utils::sha256(digest,4,Preferences::blob.data(),36);
+  assert(!memcmp(digest,Preferences::blob.data()+36,4));
+  assert(node.handleMeshtextCommand("set mt.hops 3",reply,sizeof(reply)) && !strncmp(reply,"OK",2));
+  assert(node._mt_rebroadcast && node._mt_hop_limit==3 && Preferences::blob[6]==1);
+  MyMesh reboot;reboot.stored[0]=node.stored[0];reboot.beginMeshtext();
+  assert(reboot._mt_active && reboot._mt_rebroadcast && reboot._mt_hop_limit==3);assertUntouched(reboot);
+  const auto valid=Preferences::blob;
+  for(unsigned fault=0;fault<3;++fault) {
+    Preferences::blob=valid;
+    if(fault==0) Preferences::blob[6]=2;
+    if(fault==1) Preferences::blob[7]=1;
+    if(fault==2) {memcpy(Preferences::blob.data(),"MT03",4);Preferences::blob[6]=1;}
+    mesh::Utils::sha256(Preferences::blob.data()+36,4,Preferences::blob.data(),36);
+    MyMesh invalid;invalid.stored[0]=node.stored[0];invalid.beginMeshtext();
+    assert(!invalid._mt_settings_valid && !invalid._mt_active && !invalid._mt_rebroadcast);assertUntouched(invalid);
+  }
+  Preferences::blob=valid;Preferences::fail_write=true;
+  assert(node.handleMeshtextCommand("set mt.rebroadcast off",reply,sizeof(reply)) && !strncmp(reply,"Error",5));
+  assert(node._mt_rebroadcast && Preferences::blob==valid && !node._mt_active && !node._mt_settings_valid);
+  Preferences::fail_write=false;Preferences::fail_read=true;
+  assert(!node.saveMeshtextSettings(node._mt_region,node._mt_slot,UINT8_MAX,nullptr,UINT32_MAX,0));
+  assert(node._mt_rebroadcast && !node._mt_active && !node._mt_settings_valid && Preferences::blob[6]==0);
+  Preferences::fail_read=false;MyMesh recovered;recovered.stored[0]=node.stored[0];recovered.beginMeshtext();
+  assert(recovered._mt_active && recovered._mt_settings_valid && !recovered._mt_rebroadcast);
+  assert(recovered.handleMeshtextCommand("set mt.rebroadcast on",reply,sizeof(reply)) && !strncmp(reply,"OK",2));
+  assert(recovered.eraseMeshtextSettings() && !recovered._mt_rebroadcast && Preferences::blob.empty());
+  const uint8_t mt01[]=@LEGACY_SETTINGS@,mt02[]=@LEGACY_HOPS_SETTINGS@,mt03[]=@LEGACY_MT03_SETTINGS@,
+      mt03_named[]=@LEGACY_MT03_NAMED@;
+  const std::vector<std::vector<uint8_t>> legacy={
+      {mt01,mt01+sizeof(mt01)},{mt02,mt02+sizeof(mt02)},{mt03,mt03+sizeof(mt03)},
+      {mt03_named,mt03_named+sizeof(mt03_named)}};
+  for(const auto& image:legacy) {
+    Preferences::reset();Preferences::blob=image;MyMesh old;old.stored[0]=channel("#mt-longfast");old.beginMeshtext();
+    assert(old._mt_active && old._mt_settings_valid && !old._mt_rebroadcast && Preferences::writes==0);
+    assert(Preferences::blob==image && receiveFrame(old,relay_short,sizeof(relay_short)));
+    old.advance(100000);assertUntouched(old);assert(!pendingRelay(old));
+    if(image.size()==40 && image[12]) {
+      assert(!strcmp(old._mt_short_name,"OLD") && old._mt_node_override==0x12345678 && old._mt_node==0x12345678);
+    }
+    const uint32_t old_node=old._mt_node,old_override=old._mt_node_override,old_slot=old._mt_slot;
+    const uint8_t old_hops=old._mt_hop_limit;const std::string old_name=old._mt_short_name;
+    assert(old.handleMeshtextCommand("set mt.rebroadcast on",reply,sizeof(reply)) && !strncmp(reply,"OK",2));
+    assert(old._mt_rebroadcast && !memcmp(Preferences::blob.data(),"MT04",4) && Preferences::writes==1);
+    assert(old._mt_node==old_node && old._mt_node_override==old_override && old._mt_slot==old_slot
+        && old._mt_hop_limit==old_hops && old_name==old._mt_short_name);assertUntouched(old);
+  }
+  puts("PASS rebroadcast-settings");
+}
+static void rebroadcastTiming() {
+  Preferences::reset();MyMesh off;active(off);
+  assert(receiveFrame(off,relay_short,sizeof(relay_short)));off.advance(100000);
+  assert(!pendingRelay(off) && off.offline.size()==1);assertUntouched(off);
+  for(uint32_t jitter:{0U,200U}) {
+    Preferences::reset();MyMesh node;active(node);enableRelay(node);node.random.jitter=jitter;
+    const auto packet=node._mt_packet_id;
+    assert(receiveFrame(node,relay_short,sizeof(relay_short)));assertRelayBytes(node,relay_short,sizeof(relay_short));
+    const auto due=pendingRelay(node)->due;assert(uint32_t(due-millis())==50+jitter/10);
+    assert(node.radio.airtime_calls.back()==std::make_pair(uint8_t(1),int(sizeof(relay_short))));
+    node.advance(uint32_t(due-millis())-1);assertUntouched(node);
+    node.advance(1);assert(node.foreign_pending && node.foreign.size()==1);
+    assert(node.foreign.back()==plannedRelay(node,relay_short,sizeof(relay_short)));
+    assert(node.foreign_profile==1 && node.foreign_generation==node.radio.p.generation[1]);
+    assert(node._mt_packet_id==packet && node._mt_received==1);
+    node.completeForeign();assert(!pendingRelay(node) && node._mt_sent==1 && !node._mt_retried && !node._mt_exhausted);
+    for(bool pending:node._mt_nodeinfo_pending) assert(!pending);
+    for(bool announced:node._mt_nodeinfo_announced) assert(!announced);
+    node.advance(3600000);assert(node.foreign.size()==1 && node._mt_packet_id==packet && !node.meshcore_sends);
+  }
+  Preferences::reset();MyMesh wrap;active(wrap);enableRelay(wrap);g_mock_millis=UINT32_MAX-20;
+  assert(receiveFrame(wrap,relay_short,sizeof(relay_short)));assert(uint32_t(pendingRelay(wrap)->due-millis())==50);
+  wrap.advance(49);assertUntouched(wrap);wrap.advance(1);assert(wrap.foreign_pending);wrap.completeForeign();
+  Preferences::reset();MyMesh zero;active(zero);enableRelay(zero);zero.radio.fixed_airtime=0;
+  assert(receiveFrame(zero,relay_short,sizeof(relay_short)));zero.advance(100000);assert(!pendingRelay(zero));assertUntouched(zero);
+  // A later explicit chat, rather than relaying by itself, announces the
+  // standard CLIENT role with no position / direct-message capability.
+  const uint8_t expected_info[]=@NODEINFO_REBROADCAST@;
+  Preferences::reset();MyMesh named;active(named);enableRelay(named);named._prefs.flood_retry_attempts=0;
+  assert(receiveFrame(named,relay_short,sizeof(relay_short)));advanceTo(named,pendingRelay(named)->due);named.completeForeign();
+  named.advance(1000);assert(named.foreign.size()==1);
+  assert(named.sendMeshtextText(named.stored[0],"human",5));named.completeForeign();named.advance(250);
+  assert(named.foreign.size()==3 && named.foreign.back()==std::vector<uint8_t>(expected_info,expected_info+sizeof(expected_info)));
+  puts("PASS rebroadcast-timing");
+}
+static void rebroadcastDuplicates() {
+  for(uint8_t remaining:{uint8_t(2),uint8_t(0)}) {
+    Preferences::reset();MyMesh node;active(node);enableRelay(node);
+    assert(receiveFrame(node,relay_short,sizeof(relay_short)));const auto due=pendingRelay(node)->due;
+    assert(receiveFrame(node,relay_short,sizeof(relay_short))); // Original sender's retry is not a relay.
+    assert(pendingRelay(node) && pendingRelay(node)->due==due && node.offline.size()==1);
+    auto peer=plannedRelay(node,relay_short,sizeof(relay_short));peer[12]=(peer[12]&0xf8)|remaining;
+    peer[14]=0x42;peer[15]=0x43;assert(receiveFrame(node,peer.data(),peer.size()));
+    assert(!pendingRelay(node) && node.offline.size()==1 && !node._mt_heard);
+    assert(receiveFrame(node,relay_short,sizeof(relay_short)));node.advance(100000);
+    assert(!pendingRelay(node));assertUntouched(node);
+  }
+  Preferences::reset();MyMesh exact;active(exact);enableRelay(exact);
+  assert(receiveFrame(exact,relay_short,sizeof(relay_short)));
+  const auto expected=plannedRelay(exact,relay_short,sizeof(relay_short));
+  for(unsigned changed:{0U,4U,8U,12U,13U,16U}) {
+    auto wrong=expected;wrong[changed]^=changed==12 ? 0x10:1;
+    receiveFrame(exact,wrong.data(),wrong.size());assert(pendingRelay(exact));
+  }
+  auto shorter=expected;shorter.pop_back();receiveFrame(exact,shorter.data(),shorter.size());assert(pendingRelay(exact));
+  assert(!exact.onForeignRadioFrame(expected.data(),expected.size(),0,exact.radio.p.generation[1],3,-90));
+  assert(!exact.onForeignRadioFrame(expected.data(),expected.size(),1,exact.radio.p.generation[1]-1,3,-90));
+  assert(pendingRelay(exact));
+  for(bool inflight:{false,true}) {
+    Preferences::reset();MyMesh node;active(node);enableRelay(node);
+    assert(receiveFrame(node,relay_short,sizeof(relay_short)));advanceTo(node,pendingRelay(node)->due);
+    assert(node.foreign_pending);node.foreign_sending=inflight;
+    auto peer=plannedRelay(node,relay_short,sizeof(relay_short));const auto failed=node._mt_failed;
+    assert(receiveFrame(node,peer.data(),peer.size()));
+    assert(node.foreign_pending==inflight);
+    if(inflight) {assert(pendingRelay(node)->cancelled);node.completeForeign();}
+    assert(!pendingRelay(node) && node._mt_failed==failed && !node._mt_retried);
+    node.advance(100000);assert(node.foreign.size()==1);
+    for(bool pending:node._mt_nodeinfo_pending) assert(!pending);
+  }
+  puts("PASS rebroadcast-duplicates");
+}
+static void rebroadcastLifecycle() {
+  for(unsigned change=0;change<7;++change) {
+    Preferences::reset();MyMesh node;active(node);enableRelay(node);
+    assert(receiveFrame(node,relay_short,sizeof(relay_short)));assert(pendingRelay(node));
+    char reply[256];
+    switch(change) {
+      case 0:assert(node.handleMeshtextCommand("set mt.rebroadcast off",reply,sizeof(reply)) && !strncmp(reply,"OK",2));break;
+      case 1:node.commit(0,{});break;
+      case 2:node.commit(0,channel("#mt-longfast",32));break;
+      case 3:node.self_id.pub_key[0]=43;node.refreshMeshtextIdentity();break;
+      case 4:node._radio_available=false;break;
+      case 5:node.cli("set radio2 off");break;
+      case 6:node.cli("set tempradio2 909.5,500,5,5,rx,1,32");break;
+    }
+    node.advance(2000);node.advance(100000);
+    assert(!pendingRelay(node) && !node.foreign_pending && !node._mt_retried && !node._mt_exhausted);assertUntouched(node);
+  }
+  Preferences::reset();MyMesh expired;active(expired);enableRelay(expired);
+  assert(receiveFrame(expired,relay_short,sizeof(relay_short)));expired.admit_foreign=false;
+  advanceTo(expired,pendingRelay(expired)->due);assert(pendingRelay(expired));
+  expired.advance(59999);assert(pendingRelay(expired));expired.advance(2);assert(!pendingRelay(expired));
+  expired.admit_foreign=true;expired.advance(100000);assertUntouched(expired);
+  Preferences::reset();MyMesh priority;active(priority);enableRelay(priority);
+  assert(receiveFrame(priority,relay_short,sizeof(relay_short)));const auto packet=priority._mt_packet_id;
+  assert(priority.sendMeshtextText(priority.stored[0],"human",5));
+  assert(!pendingRelay(priority) && priority.foreign_pending && priority.foreign.size()==1 && priority._mt_packet_id==packet+1);
+  mesh::mt::DecodedText decoded;const auto& raw=priority.foreign.back();
+  assert(mesh::mt::decodeText(raw.data(),raw.size(),"LongFast",mesh::mt::DefaultPsk,16,1,decoded));
+  assert(!strcmp(decoded.text,"human") && decoded.from==priority._mt_node);
+  for(unsigned invalid=0;invalid<3;++invalid) {
+    Preferences::reset();MyMesh node;active(node);enableRelay(node);
+    assert(receiveFrame(node,relay_short,sizeof(relay_short)));
+    const auto retained=*pendingRelay(node);std::string oversized(229,'x');
+    const char invalid_utf8[]={char(0xc0),char(0xaf)};const char embedded_nul[]={'x',0,'y'};
+    const char* text=invalid==0 ? oversized.data():invalid==1 ? invalid_utf8:embedded_nul;
+    const size_t length=invalid==0 ? oversized.size():invalid==1 ? sizeof(invalid_utf8):sizeof(embedded_nul);
+    assert(!node.sendMeshtextText(node.stored[0],text,length));
+    const auto* current=pendingRelay(node);
+    assert(current && current->length==retained.length && current->due==retained.due && !current->cancelled);
+    assert(!memcmp(current->bytes,retained.bytes,retained.length));assertUntouched(node);
+  }
+  for(bool inflight:{false,true}) {
+    Preferences::reset();MyMesh node;active(node);enableRelay(node);
+    assert(receiveFrame(node,relay_short,sizeof(relay_short)));advanceTo(node,pendingRelay(node)->due);
+    node.foreign_sending=inflight;const auto packet=node._mt_packet_id,failed=node._mt_failed;
+    const bool accepted=node.sendMeshtextText(node.stored[0],"priority",8);
+    const uint32_t after_attempt=node._mt_packet_id;
+    assert(after_attempt>=packet && after_attempt<=packet+1);
+    assert(accepted==!inflight);
+    if(inflight) {
+      assert(node.foreign_pending && pendingRelay(node)->cancelled);
+      node.completeForeign();assert(!pendingRelay(node));
+      assert(node.sendMeshtextText(node.stored[0],"priority",8));
+    }
+    assert(node.foreign_pending && !pendingRelay(node) && node._mt_packet_id==after_attempt+unsigned(inflight) && node._mt_failed==failed);
+    mesh::mt::DecodedText sent;const auto& bytes=node.foreign.back();
+    assert(mesh::mt::decodeText(bytes.data(),bytes.size(),"LongFast",mesh::mt::DefaultPsk,16,1,sent));
+    assert(!strcmp(sent.text,"priority") && sent.from==node._mt_node && sent.id==node._mt_packet_id-1);
+  }
+  Preferences::reset();MyMesh bounded;active(bounded);enableRelay(bounded);
+  assert(receiveFrame(bounded,relay_short,sizeof(relay_short)));const auto retained=pendingRelay(bounded)->length;
+  assert(receiveFrame(bounded,relay_long,sizeof(relay_long)));
+  assert(pendingRelay(bounded)->length==retained && bounded.offline.size()==2);
+  Preferences::reset();MyMesh full;active(full);enableRelay(full);
+  for(unsigned i=0;i<mesh::mt::ChatDeliverySlots;++i) {
+    assert(full.sendMeshtextText(full.stored[0],"local",5));full.completeForeign();
+  }
+  const auto count=full.foreign.size();assert(receiveFrame(full,relay_short,sizeof(relay_short)));
+  assert(!pendingRelay(full) && full.foreign.size()==count && full.offline.size()==1);
+  puts("PASS rebroadcast-lifecycle");
+}
+static void rebroadcastGuardsAndPhy() {
+  for(unsigned invalid=0;invalid<7;++invalid) {
+    Preferences::reset();MyMesh node;active(node);enableRelay(node);
+    std::vector<uint8_t> raw(relay_short,relay_short+sizeof(relay_short));
+    if(invalid==0) raw[12]&=0xf8; // No hops left.
+    if(invalid==1) raw[12]=(1U<<5)|3; // Malformed hop_start < hop_limit.
+    if(invalid==2) raw[14]=1; // Explicit next-hop routing is not a broadcast relay.
+    if(invalid==3) raw[0]=1; // A DM / non-broadcast destination.
+    if(invalid==4) raw.assign(relay_nodeinfo,relay_nodeinfo+sizeof(relay_nodeinfo));
+    if(invalid==5) raw.assign(rx_other,rx_other+sizeof(rx_other));
+    if(invalid==6) raw.resize(mesh::mt::HeaderSize); // Opaque/truncated ciphertext.
+    receiveFrame(node,raw.data(),raw.size());node.advance(100000);
+    assert(!pendingRelay(node));assertUntouched(node);
+  }
+  Preferences::reset();MyMesh capacity;active(capacity);enableRelay(capacity);capacity.offline_capacity=0;
+  assert(receiveFrame(capacity,relay_short,sizeof(relay_short)));
+  assert(!pendingRelay(capacity) && !capacity._mt_seen.seen(0x11223344,201));
+  capacity.offline_capacity=4;assert(receiveFrame(capacity,relay_short,sizeof(relay_short)));assert(pendingRelay(capacity));
+  for(unsigned key_bytes:{16U,32U}) {
+    Preferences::reset();MyMesh node;node.beginMeshtext();
+    node.cli(key_bytes==16 ? "set radio2 909.5,500,7,5,rxtx,32":"set radio2 909.5,125,9,5,rxtx,32");
+    node.advance(2000);node.commit(0,channel("mt-Team",key_bytes));assert(node._mt_active);enableRelay(node);
+    node.radio.physical_airtime=true;node.radio.airtime_calls.clear();node.random.jitter=key_bytes==16 ? 0:200;
+    const auto* raw=key_bytes==16 ? relay_private128:relay_private256;
+    const size_t length=key_bytes==16 ? sizeof(relay_private128):sizeof(relay_private256);
+    const uint32_t airtime=node.radio.actualProfileAirtime(1,length);
+    const auto packet=node._mt_packet_id;
+    assert(receiveFrame(node,raw,length));assertRelayBytes(node,raw,length);
+    assert((node.radio.airtime_calls==std::vector<std::pair<uint8_t,int>>({{1,int(length)}})));
+    const uint32_t delay=airtime*(key_bytes==16 ? 5:7);
+    assert(uint32_t(pendingRelay(node)->due-millis())==delay && delay>0);
+    node.advance(delay-1);assertUntouched(node);node.advance(1);
+    assert(node.foreign_pending && node.foreign.back()==plannedRelay(node,raw,length));
+    node.completeForeign();node.advance(100000);
+    assert(node.foreign.size()==1 && node._mt_packet_id==packet && !node._mt_retried && !node._mt_exhausted);
+  }
+  Preferences::reset();MyMesh wrong_key;active(wrong_key);enableRelay(wrong_key);
+  assert(!receiveFrame(wrong_key,relay_private256,sizeof(relay_private256)));
+  wrong_key.advance(100000);assert(!pendingRelay(wrong_key));assertUntouched(wrong_key);
+  puts("PASS rebroadcast-guards-phy");
+}
 int main(int argc,char** argv) {
   assert(argc==2);
   if(!strcmp(argv[1],"keys"))keys();
@@ -1336,5 +1627,10 @@ int main(int argc,char** argv) {
   else if(!strcmp(argv[1],"announcement-lifecycle"))announcementLifecycle();
   else if(!strcmp(argv[1],"advert-name-delivery"))advertNameDelivery();
   else if(!strcmp(argv[1],"readiness-cache"))readinessCache();
+  else if(!strcmp(argv[1],"rebroadcast-settings"))rebroadcastSettings();
+  else if(!strcmp(argv[1],"rebroadcast-timing"))rebroadcastTiming();
+  else if(!strcmp(argv[1],"rebroadcast-duplicates"))rebroadcastDuplicates();
+  else if(!strcmp(argv[1],"rebroadcast-lifecycle"))rebroadcastLifecycle();
+  else if(!strcmp(argv[1],"rebroadcast-guards-phy"))rebroadcastGuardsAndPhy();
   else assert(!"unknown test case");
 }

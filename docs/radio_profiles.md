@@ -486,6 +486,7 @@ get mt.region
 get mt.slot
 get mt.hops
 get mt.retry
+get mt.rebroadcast
 get mt.node
 get mt.shortname
 set mt.node !12345678
@@ -494,6 +495,7 @@ set mt.region auto
 set mt.region us
 set mt.slot 0
 set mt.hops 7
+set mt.rebroadcast off
 set mt.shortname HALO
 set mt.shortname default
 send mt.nodeinfo 0
@@ -512,8 +514,8 @@ does not mean the MT backend is active.
 Outgoing MT messages default to a hop limit of **7**. `set mt.hops <0..7>`
 changes this budget, and `get mt.hops` or `get mt.status` shows it. `0` sends
 only the initial over-air hop with no forwarding budget; larger values permit
-protocol-compatible peers to forward within that budget. The Companion itself still
-does not relay MT packets.
+protocol-compatible peers to forward within that budget. The Companion itself
+does not relay MT packets unless explicitly enabled as described below.
 
 `get mt.node` shows the effective Meshtext sender node ID. By default it is
 SHA-derived from the MeshCore public identity and remains stable for that
@@ -556,8 +558,9 @@ successful chat announces the updated name without sending from the rename.
 the Companion channel index, not `mt.slot` (the frequency slot). The packet
 contains the actual sender ID, the global MeshCore node name as its long name
 (UTF-8-safe truncated to 24 bytes), the effective short name, `CLIENT_MUTE`
-(no relaying), and the no-DM flag. Both automatic and explicit NodeInfo omit
-GPS/coordinates, MAC, public keys and unsupported metadata. The usual radio2
+by default (`CLIENT` when `mt.rebroadcast` is on), and the no-DM flag.
+Both automatic and explicit NodeInfo omit GPS/coordinates, MAC, public keys
+and unsupported metadata. The usual radio2
 TX-mode, pending-TX, airtime and profile guards apply. The reply says
 **queued**, not delivered or acknowledged.
 
@@ -569,13 +572,14 @@ Outgoing Meshtext chat and automatic or explicitly requested NodeInfo set
 This does not start an MQTT client, bridge networks, request a reply, or mark
 the packet as having arrived through MQTT. The 228-byte text limit is unchanged.
 
-Region, frequency slot, hop limit, shortname and node-ID override are saved
-atomically together; changing one preserves the others. Current 40-byte `MT03`
-settings include both overrides. New firmware accepts valid legacy
-`MT01`/`MT02` settings and defaults the shortname to the sender-ID suffix and
+Region, frequency slot, hop limit, shortname, node-ID override and rebroadcast
+choice are saved atomically together; changing one preserves the others.
+Current 40-byte `MT04` settings include all of them. New firmware accepts valid
+legacy `MT01`/`MT02` settings and defaults the shortname to the sender-ID suffix and
 the node ID to the MeshCore identity; `MT01` also defaults the hop limit to 7.
-Older MT firmware cannot read `MT03`, so downgrading does not preserve access
-to these settings. Invalid or unsupported stored settings block MT operation
+Valid `MT03` settings preserve both overrides. All legacy versions default
+rebroadcasting to off. Older MT firmware cannot read `MT04`, so downgrading
+does not preserve access to these settings. Invalid or unsupported stored settings block MT operation
 rather than silently selecting another network.
 
 Private channels can be provisioned directly through the Companion CLI:
@@ -667,8 +671,8 @@ future NodeInfo, not chat or the packet's sender ID;
 `set mt.node` changes the actual Meshtext sender ID. Neither setting change
 emits advertisements. A successful
 send response means **queued**, not acknowledged by a remote node. This backend
-does not relay MT packets or provide ACKs, administrative commands, direct
-messages, periodic node-info adverts or a node database. MeshCore emergency forwarding
+does not relay MT packets by default. It does not provide ACKs, administrative
+commands, direct messages, periodic node-info adverts or a node database. MeshCore emergency forwarding
 does not apply to MT traffic. Interoperability is with stock peers' PSK channel
 text using AES-CTR, not AES-CCM. AES-CTR channel traffic is not authenticated;
 successful decoding is not proof of sender identity.
@@ -721,9 +725,48 @@ one minute to the airtime-based delay, matching the conservative self-advert
 policy. Turning retry count off cancels retained retries. Channel, identity,
 settings or radio-profile changes invalidate retained work rather than sending
 it on a different network. The bounded pending-frame storage may reject a new
-send when full. Other people's MT packets are never forwarded by this backend;
-MeshCore repeater prefix/bridge IDs and flood-filter rules are not MT routing
-rules.
+send when full. Forwarding other people's decoded channel text is a separate,
+default-off option below. MeshCore repeater prefix/bridge IDs and flood-filter
+rules are not MT routing rules.
+
+#### Optional decoded-text rebroadcasting
+
+```text
+get mt.rebroadcast
+set mt.rebroadcast on
+set mt.rebroadcast off
+```
+
+This saved option defaults to **off**. `mt.maybe_rebroadcast` is an alias for
+`mt.rebroadcast`; `get mt.status` also shows the current choice.
+
+When enabled, only broadcast **text successfully decrypted and parsed with a
+configured channel's key**, and admitted to the local receive queue, is eligible.
+Unknown channels, wrong keys, malformed packets, DMs, NodeInfo, GPS and other
+non-text traffic are not relayed. A packet must have a valid remaining hop
+budget. AES-CTR is unauthenticated: decoding does not authenticate its sender.
+
+Before queuing a relay, the Companion waits **five additional packet airtimes**
+calculated from that packet's actual length and the current radio2 settings,
+plus the normal flood jitter. Existing CAD, receive-busy and airtime-budget
+waits still apply; this does not replace or shorten them. Hearing another
+forwarded copy while waiting cancels the redundant relay. An unchanged-hop
+retry from the original sender does not cancel it.
+
+The forwarded frame retains the original sender, packet ID, channel and
+ciphertext; only remaining hops and the relay-node byte change. It is sent
+at most once, without originated-message retries or an automatic local NodeInfo
+announcement. At most one relay occupies the existing bounded chat delivery
+slots, with no additional frame-sized buffer. A new local chat can displace
+an unsent relay. Full queues skip the relay, and work delayed more than a
+minute past its due time expires. Changes to the channel/key, identity or
+radio profile cancel stale work instead of forwarding it on another network.
+Turning the option off cancels pending relay work; settings edits are refused
+while a radio transmission is already queued or in progress.
+
+Relays stay on Meshtext radio2. This is not a MeshCore bridge, and ordinary
+MeshCore forwarding rules remain unchanged. Enabling it does not add periodic
+traffic or cause NodeInfo to be sent just because something was received.
 
 ## Choose whether traffic crosses between profiles
 
