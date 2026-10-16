@@ -465,6 +465,7 @@ get mt.status
 get mt.region
 get mt.slot
 get mt.hops
+get mt.retry
 get mt.node
 get mt.shortname
 set mt.node !12345678
@@ -518,21 +519,28 @@ changed. `set mt.shortname default` clears the override and uses the last four
 hexadecimal digits of the effective MT node ID. This does not change the
 MeshCore node name, add a label to chat text or transmit anything.
 
-`send mt.nodeinfo <channel slot>` explicitly queues **one** standard
+After the first chat packet actually finishes transmitting on a configured MT
+channel, the Companion queues a separate, GPS-free `NODEINFO_APP` broadcast.
+This happens once per used channel and sender identity per boot, not for every
+chat message. A rejected or failed chat send does not trigger it. There is no
+NodeInfo transmission just from booting, receiving traffic, changing settings
+or joining a channel, and there is no periodic NodeInfo timer.
+
+`send mt.nodeinfo <channel slot>` still explicitly queues **one** standard
 `NODEINFO_APP` broadcast on the selected configured MT channel. The slot is
 the Companion channel index, not `mt.slot` (the frequency slot). The packet
 contains the actual sender ID, the global MeshCore node name as its long name
 (UTF-8-safe truncated to 24 bytes), the effective short name, `CLIENT_MUTE`
-(no relaying), and the no-DM flag. It omits MAC, public keys and unsupported
-metadata. The usual radio2 TX-mode, pending-TX, airtime and profile guards
-apply. The reply says **queued**, not delivered or acknowledged.
+(no relaying), and the no-DM flag. Both automatic and explicit NodeInfo omit
+GPS/coordinates, MAC, public keys and unsupported metadata. The usual radio2
+TX-mode, pending-TX, airtime and profile guards apply. The reply says
+**queued**, not delivered or acknowledged.
 
-There are no automatic NodeInfo advertisements: not at boot, on a timer, when
-names change, when chat is sent, or in response to received packets. Received
-NodeInfo is still ignored; this backend does not maintain a node database.
+Received NodeInfo is still ignored; this backend does not maintain a node
+database.
 
-Outgoing Meshtext chat and explicitly requested NodeInfo set **OK to MQTT**
-on by default, allowing a compatible receiving gateway to upload those packets.
+Outgoing Meshtext chat and automatic or explicitly requested NodeInfo set
+**OK to MQTT** on by default, allowing a compatible receiving gateway to upload those packets.
 This does not start an MQTT client, bridge networks, request a reply, or mark
 the packet as having arrived through MQTT. The 228-byte text limit is unchanged.
 
@@ -630,12 +638,12 @@ Outgoing MT chat is plain text exactly as entered, with the sender node ID in
 the standard radio header. It contains no custom name envelope or NodeInfo.
 Incoming text uses the exact sender-ID prefix `!12345678: ` before the received
 payload when passed to the MeshCore app. Changing the shortname only changes
-future manually requested NodeInfo, not chat or the packet's sender ID;
+future NodeInfo, not chat or the packet's sender ID;
 `set mt.node` changes the actual Meshtext sender ID. Neither setting change
 emits advertisements. A successful
 send response means **queued**, not acknowledged by a remote node. This backend
 does not relay MT packets or provide ACKs, administrative commands, direct
-messages, automatic node-info adverts or a node database. MeshCore emergency forwarding
+messages, periodic node-info adverts or a node database. MeshCore emergency forwarding
 does not apply to MT traffic. Interoperability is with stock peers' PSK channel
 text using AES-CTR, not AES-CCM. AES-CTR channel traffic is not authenticated;
 successful decoding is not proof of sender identity.
@@ -656,6 +664,41 @@ airtime, particularly LongFast, can leave substantial MeshCore receive gaps.
 The compatible protocol's fixed short preamble also does not provide the scan-aware long
 preamble described below. Do not treat this as continuous coverage of both
 networks or guaranteed message delivery.
+
+#### Heard-repeat retries
+
+MT channel chat uses the Companion's saved `flood.retry.count` budget: `0`
+disables retries, and `1`–`15` allows that many extra transmissions after the
+initial send. Locally originated MT traffic is hop zero for the
+`flood.retry.path` gate, so a gate of `0` still permits it; the group-data gate
+does not apply to channel text. `mt.hops 0` disables heard-repeat retries
+because peers cannot forward a packet with no remaining hop budget; the
+original chat and its first-use NodeInfo still transmit normally.
+Retries keep the exact encoded payload and
+packet ID, allowing peers to recognize duplicates. They use conservative,
+airtime-based flood spacing and the normal CAD and airtime limits rather than
+transmitting continuously.
+
+`get mt.retry` is read-only diagnostics: it reports retry transmissions,
+matching heard repeats, exhausted retry sequences, pending work and the
+configured retry count. Use `set flood.retry.count`, not this getter, to change
+the budget.
+
+A matching over-air copy with a lower remaining hop limit cancels the retry
+sequence. Merely receiving another message, an unchanged-hop copy or a packet
+with the same ID but different payload does not. A heard repeat indicates a
+compatible peer forwarded the packet; it does **not** confirm that a particular
+person or app received it. This does not add DM delivery receipts or ACKs.
+
+NodeInfo follows the metadata retry cap: at most one extra send, only when
+`flood.retry.count` is nonzero and `flood.retry.advert` is `on`. Its wait adds
+one minute to the airtime-based delay, matching the conservative self-advert
+policy. Turning retry count off cancels retained retries. Channel, identity,
+settings or radio-profile changes invalidate retained work rather than sending
+it on a different network. The bounded pending-frame storage may reject a new
+send when full. Other people's MT packets are never forwarded by this backend;
+MeshCore repeater prefix/bridge IDs and flood-filter rules are not MT routing
+rules.
 
 ## Choose whether traffic crosses between profiles
 

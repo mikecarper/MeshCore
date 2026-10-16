@@ -102,6 +102,8 @@ class CompanionMeshtextTest(unittest.TestCase):
         vectors.update({
             "@NODEINFO_DEFAULT@": nodeinfo_frame(default_node, 0x12345678, b"Test",
                                                 ("%04x" % (default_node & 0xFFFF)).encode()),
+            "@NODEINFO_AFTER_CHAT@": nodeinfo_frame(default_node, 0x12345679, b"Test",
+                                                   ("%04x" % (default_node & 0xFFFF)).encode()),
             "@NODEINFO_NAMED@": nodeinfo_frame(0x12345678, 0x12345679, b"Mike Carper", b"MIKE"),
             "@NODEINFO_UTF8@": nodeinfo_frame(0x12345678, 0x1234567B, b"A" * 22, "\U0001f600".encode()),
             "@NODEINFO_PRIVATE@": nodeinfo_frame(0x12345678, 0x1234567C, b"A" * 22,
@@ -200,15 +202,40 @@ class CompanionMeshtextTest(unittest.TestCase):
         self.assertEqual(imported.count("refreshMeshtextIdentity();"), 1,
                          "the refresh belongs only to the successfully saved identity branch")
 
-    def test_manual_nodeinfo_standard_fields_shared_sequence_guards_and_no_automatic_adverts(self):
+    def test_manual_nodeinfo_standard_fields_shared_sequence_guards_and_no_periodic_adverts(self):
         self.run_case("nodeinfo")
         source = (ROOT / "examples/companion_radio/MeshtextCompanion.cpp").read_text(encoding="utf-8")
-        self.assertEqual(source.count("sendMeshtextNodeInfo("), 2,
-                         "NodeInfo has exactly one caller: the explicit CLI")
         chat = body(source, "bool MyMesh::sendMeshtextText(")
         self.assertNotIn("_mt_short_name", chat)
         self.assertNotIn("node_name", chat)
         self.assertNotIn("encodeNodeInfo", chat)
+
+    def test_first_successful_chat_announces_once_per_channel_with_no_position(self):
+        self.run_case("auto-nodeinfo")
+
+    def test_heard_repeat_retries_identical_packets_bounded_by_existing_settings(self):
+        self.run_case("heard-retries")
+
+    def test_only_exact_forwarded_echo_on_the_current_profile_stops_retries(self):
+        self.run_case("strict-echo")
+
+    def test_profile_channel_key_identity_and_radio_changes_cancel_stale_delivery(self):
+        self.run_case("delivery-lifecycle")
+
+    def test_busy_queue_new_chat_backpressure_and_queued_vs_inflight_echo(self):
+        self.run_case("delivery-contention")
+
+    def test_rollover_jitter_origin_path_gates_and_advert_retry_cap(self):
+        self.run_case("delivery-timing")
+
+    def test_announcement_alias_settings_key_changes_and_failure_do_not_storm(self):
+        self.run_case("announcement-lifecycle")
+
+    def test_delivery_service_is_wired_before_radio_processing_and_paused_for_morse(self):
+        source = (ROOT / "examples/companion_radio/MyMesh.cpp").read_text(encoding="utf-8")
+        loop = body(source, "void MyMesh::loop()")
+        self.assertIn("if (!mesh::morseTimingActive(_radio)) loopMeshtextDelivery();", loop)
+        self.assertLess(loop.index("loopMeshtextDelivery();"), loop.index("BaseChatMesh::loop();"))
 
 
 if __name__ == "__main__":

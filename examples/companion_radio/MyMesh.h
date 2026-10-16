@@ -36,6 +36,7 @@
 namespace mesh { class BeaconManager; }
 #if MESH_ENABLE_MESHTEXT_CHAT
 #include <helpers/CompanionMeshtextChannel.h>
+#include <helpers/MeshtextDelivery.h>
 #endif
 #include <helpers/CompanionNotificationPolicy.h>
 #include "NodePrefs.h"
@@ -430,6 +431,13 @@ protected:
   bool eraseMeshtextSettings();
   bool sendMeshtextText(const ChannelDetails& channel, const char* text, size_t length);
   bool sendMeshtextNodeInfo(const ChannelDetails& channel);
+  bool queueMeshtextDelivery(const ChannelDetails& channel, const uint8_t* bytes,
+                            size_t length, bool nodeinfo);
+  int meshtextChannelIndex(const ChannelDetails& channel, uint8_t fingerprint[8]);
+  bool meshtextDeliveryCurrent(const mesh::mt::PendingFrame& pending);
+  uint8_t meshtextRetryLimit(const mesh::mt::PendingFrame& pending) const;
+  uint32_t meshtextRetryDelay(const mesh::mt::PendingFrame& pending);
+  void loopMeshtextDelivery();
   mesh::mt::Region meshtextRegion() const;
 #endif
   bool queueChannelText(uint8_t index, const uint8_t secret[32], float snr,
@@ -754,6 +762,14 @@ private:
   uint8_t _mt_hop_limit = 7;
   uint32_t _mt_sent = 0, _mt_failed = 0, _mt_received = 0;
   mesh::mt::SeenPackets _mt_seen;
+  mesh::mt::PendingFrame _mt_delivery[mesh::mt::DeliverySlots];
+  int8_t _mt_tx_slot = -1;
+  uint8_t _mt_nodeinfo_fingerprint[MAX_GROUP_CHANNELS][8] = {};
+  bool _mt_nodeinfo_announced[MAX_GROUP_CHANNELS] = {};
+  bool _mt_nodeinfo_pending[MAX_GROUP_CHANNELS] = {};
+  uint32_t _mt_nodeinfo_generation = 0;
+  bool _mt_delivery_config_dirty = false;
+  uint32_t _mt_retried = 0, _mt_heard = 0, _mt_exhausted = 0;
   bool _mt_settings_valid = true, _mt_active = false;
   bool _mt_profile_dirty = true, _mt_last_radio_ready = false;
   uint32_t _mt_primary_generation = 0, _mt_secondary_generation = 0, _mt_intent_generation = 0;

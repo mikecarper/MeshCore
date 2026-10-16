@@ -60,11 +60,35 @@ send mt.nodeinfo 0
 channel 0 Hello
 ```
 
-Use a configured `mt-` channel slot. The explicit `send mt.nodeinfo` command
-queues one standard name/ID advertisement; chat carries only the entered text.
-There are no automatic NodeInfo sends or responses. The long name comes from
-the existing node name; `get mt.shortname` shows the effective four-byte short
-name. These commands are not added to smaller or feature-disabled builds.
+Use a configured `mt-` channel slot. Chat carries only the entered text. After
+the first successful over-air chat transmission per used channel/identity per
+boot, the firmware queues a separate standard name/ID NodeInfo advertisement.
+`send mt.nodeinfo` can also request one explicitly. Neither contains GPS or
+coordinates. No NodeInfo is sent just from booting, configuration, receiving
+traffic or a timer. The long name comes from the existing node name;
+`get mt.shortname` shows the effective four-byte short name. These commands
+are not added to smaller or feature-disabled builds.
+
+MT chat uses `flood.retry.count` (`0`–`15`) to retry when no matching forwarded
+copy is heard. A heard repeat stops retries, but is not a recipient delivery
+receipt. NodeInfo has at most one retry, only with a nonzero count and
+`flood.retry.advert on`, with an extra one-minute wait. For example:
+
+```text
+get flood.retry.count
+set flood.retry.count 3
+set flood.retry.advert on
+get mt.retry
+```
+
+`get mt.retry` shows retry/heard/exhausted counters, pending work and the
+configured count; it does not change settings. With `set mt.hops 0`, no peer
+can forward a copy, so heard-repeat retries are disabled. The original chat
+and first-use NodeInfo are unaffected.
+
+This does not make the Companion relay other people's MT packets. See
+[heard-repeat retries](radio_profiles.md#heard-repeat-retries) for the airtime
+limits, exact-packet matching and cancellation rules.
 
 Local means a connection directly to the node: USB, BLE or WiFi/Ethernet
 Companion protocol, a TCP terminal, or the browser CLI on the LAN. These

@@ -3,6 +3,7 @@
 @FIXTURE@
 #include <SHA256.h>
 #include <helpers/CompanionMeshtextChannel.h>
+#include <helpers/MeshtextDelivery.h>
 #include <helpers/CompanionFrameLimits.h>
 #include <helpers/UTF8Helpers.h>
 #include <cmath>
@@ -60,6 +61,7 @@ struct BaseChatMesh {
 struct MtRadio : Radio {
   bool supported=true;
   bool supportsMeshtext() const override { return supported; }
+  uint32_t getProfileAirtime(uint8_t,int,uint8_t=0) override { return 10; }
 };
 struct Serial {
   bool connected=false;
@@ -80,7 +82,11 @@ class MyMesh : public BaseChatMesh {
 public:
   MemoryFS fs; Clock clock; MtRadio radio; mesh::Radio* _radio=&radio;
   mesh::RadioProfileCLI _radio_profiles;
-  struct {float freq=909.5; char node_name[32]="Test";} _prefs;
+  struct {
+    float freq=909.5; char node_name[32]="Test";
+    uint8_t flood_retry_attempts=15,flood_retry_max_path=1;
+    uint8_t flood_retry_group_max_path=0xff,flood_retry_advert_enabled=1;
+  } _prefs;
   mesh::LocalIdentity self_id;
   mesh::mt::Region _mt_region=mesh::mt::Region::Unset;
   uint32_t _mt_slot=0,_mt_node=0,_mt_packet_id=0,_mt_sent=0,_mt_failed=0,_mt_received=0;
@@ -88,10 +94,22 @@ public:
   uint8_t _mt_hop_limit=7;
   char _mt_short_name[17]={};
   mesh::mt::SeenPackets _mt_seen;
+  mesh::mt::PendingFrame _mt_delivery[mesh::mt::DeliverySlots];
+  int8_t _mt_tx_slot=-1;
+  uint8_t _mt_nodeinfo_fingerprint[MAX_GROUP_CHANNELS][8]={};
+  bool _mt_nodeinfo_announced[MAX_GROUP_CHANNELS]={},_mt_nodeinfo_pending[MAX_GROUP_CHANNELS]={};
+  uint32_t _mt_nodeinfo_generation=0,_mt_retried=0,_mt_heard=0,_mt_exhausted=0;
+  struct Random {
+    uint32_t jitter=0;
+    uint32_t nextInt(uint32_t low,uint32_t high) {
+      assert(low==0 && high==201 && jitter<high); return jitter;
+    }
+  } random;
   bool _mt_settings_valid=true,_mt_active=false,_mt_profile_dirty=true,_mt_last_radio_ready=false;
+  bool _mt_delivery_config_dirty=true;
   uint32_t _mt_primary_generation=0,_mt_secondary_generation=0,_mt_intent_generation=0;
   float _mt_primary_frequency=0; const char* _mt_status="no Meshtext channels";
-  bool _radio_available=true,foreign_pending=false,admit_foreign=true,save_result=true,ok=false;
+  bool _radio_available=true,foreign_pending=false,foreign_sending=false,admit_foreign=true,save_result=true,ok=false;
   uint32_t foreign_generation=0; uint8_t foreign_profile=255;
   unsigned foreign_admissions=0,meshcore_sends=0;
   std::vector<std::vector<uint8_t>> foreign,offline;
@@ -116,6 +134,12 @@ public:
   void refreshMeshtextProfile();
   bool sendMeshtextText(const ChannelDetails&,const char*,size_t);
   bool sendMeshtextNodeInfo(const ChannelDetails&);
+  bool queueMeshtextDelivery(const ChannelDetails&,const uint8_t*,size_t,bool);
+  int meshtextChannelIndex(const ChannelDetails&,uint8_t[8]);
+  bool meshtextDeliveryCurrent(const mesh::mt::PendingFrame&);
+  uint8_t meshtextRetryLimit(const mesh::mt::PendingFrame&) const;
+  uint32_t meshtextRetryDelay(const mesh::mt::PendingFrame&);
+  void loopMeshtextDelivery();
   bool onForeignRadioFrame(const uint8_t*,size_t,uint8_t,uint32_t,float,float);
   void onForeignRadioSendComplete(bool);
   bool handleMeshtextCommand(const char*,char*,size_t);
@@ -126,7 +150,25 @@ public:
     ++foreign_admissions; foreign.emplace_back(bytes,bytes+size); foreign_profile=profile;
     foreign_generation=generation; foreign_pending=true; return true;
   }
+  void completeForeign(bool success=true) {
+    assert(foreign_pending);
+    // The real Dispatcher releases queue ownership before the application
+    // completion callback. Successful RF TX is not a delivery acknowledgement.
+    foreign_pending=false;
+    foreign_sending=false;
+    onForeignRadioSendComplete(success);
+  }
+  bool discardQueuedForeignRadioFrame(mesh::RadioProfileProtocol protocol) {
+    assert(protocol==mesh::RadioProfileProtocol::Meshtext);
+    if(!foreign_pending || foreign_sending) return false;
+    completeForeign(false); return true;
+  }
+  void releaseForeign() {
+    if(foreign_pending) completeForeign(false);
+    loopMeshtextDelivery();
+  }
   mesh::RTCClock* getRTCClock() { return &clock; }
+  Random* getRNG() { return &random; }
   bool addToOfflineQueue(const uint8_t* bytes,int size) {
     assert(size>=0 && size<=MAX_FRAME_SIZE); if(offline.size()>=offline_capacity) return false;
     offline.emplace_back(bytes,bytes+size); return true;
@@ -146,7 +188,10 @@ public:
     }
     return reply;
   }
-  void advance(uint32_t ms) { g_mock_millis+=ms; clock.epoch+=ms/1000; _radio_profiles.loop(); refreshMeshtextProfile(); }
+  void advance(uint32_t ms) {
+    g_mock_millis+=ms; clock.epoch+=ms/1000;
+    _radio_profiles.loop(); refreshMeshtextProfile(); loopMeshtextDelivery();
+  }
 };
 @METHODS@
 void MyMesh::command(uint8_t* cmd_frame,int len) {
@@ -183,7 +228,7 @@ static void keys() {
     auto c=channel("#mt-longfast",size); const auto before=c;
     assert(describe(c,wire) && wire.key_length==size && !memcmp(wire.key,c.channel.secret,32));
     assert(!memcmp(c.channel.secret,before.channel.secret,32));
-    node.foreign_pending=false; assert(node.sendMeshtextText(c,"private",7));
+    node.releaseForeign(); node.commit(0,c); assert(node.sendMeshtextText(c,"private",7));
     mesh::mt::DecodedText decoded;
     assert(mesh::mt::decodeText(node.foreign.back().data(),node.foreign.back().size(),wire.name,wire.key,size,1,decoded));
     assert(!strcmp(decoded.text,"private"));
@@ -364,7 +409,7 @@ static void transmit() {
   assert(frame[12]==0xe7); // limit/start 7, no want-ACK or MQTT flag.
   assert(!mesh::mt::decodeText(frame.data(),frame.size(),"LongFast",mesh::mt::DefaultPsk,16,node._mt_node,decoded));
   node.command(request,12); assert(!node.ok && node.error==ERR_CODE_BAD_STATE && node.foreign.size()==1);
-  node.foreign_pending=false; node.onForeignRadioSendComplete(true); node.onForeignRadioSendComplete(false);
+  node.completeForeign(); node.onForeignRadioSendComplete(false);
   assert(node._mt_sent==1 && node._mt_failed==1);
   char oversized[229]; memset(oversized,'x',sizeof(oversized));
   assert(!node.sendMeshtextText(node.stored[0],oversized,sizeof(oversized)));
@@ -538,13 +583,13 @@ static void hops() {
   assertUntouched(migrated); assertUntouched(migrated_reboot); puts("PASS hops");
 }
 static mesh::mt::DecodedText decodeOwnText(MyMesh& node,const char* text,size_t length) {
-  node.foreign_pending=false;
+  node.releaseForeign();
   const uint32_t expected_packet=node._mt_packet_id;
   assert(node.sendMeshtextText(node.stored[0],text,length));
   const auto& raw=node.foreign.back(); mesh::mt::DecodedText decoded;
   assert(mesh::mt::decodeText(raw.data(),raw.size(),"LongFast",mesh::mt::DefaultPsk,16,1,decoded));
   assert(decoded.from==node._mt_node && decoded.id==expected_packet && node._mt_packet_id==expected_packet+1);
-  node.foreign_pending=false; return decoded;
+  node.releaseForeign(); return decoded;
 }
 static void shortname() {
   Preferences::reset(); MyMesh node; active(node); char reply[256];
@@ -742,7 +787,7 @@ static void nodeinfo() {
   assertUntouched(node);
   assert(node.handleMeshtextCommand("get mt.shortname",reply,sizeof(reply)));
   char fallback[5]; snprintf(fallback,sizeof(fallback),"%04lx",(unsigned long)(node._mt_node&0xffff));
-  assert(strstr(reply,fallback) && strstr(reply,"manual NodeInfo only"));
+  assert(strstr(reply,fallback) && strstr(reply,"first-chat/manual NodeInfo"));
   const uint8_t expected_default[]=@NODEINFO_DEFAULT@,expected_named[]=@NODEINFO_NAMED@,
       expected_utf8[]=@NODEINFO_UTF8@,expected_private[]=@NODEINFO_PRIVATE@;
   const auto original_settings=Preferences::blob; const auto original_writes=Preferences::writes;
@@ -755,13 +800,13 @@ static void nodeinfo() {
   assert(node._mt_packet_id==pending_id && node.foreign.size()==pending_count);
   assert(!node.sendMeshtextText(node.stored[0],"busy",4));
   assert(!node.saveMeshtextSettings(mesh::mt::Region::US,0));
-  node.foreign_pending=false;
+  node.releaseForeign();
   assert(node.handleMeshtextCommand("set mt.node !12345678",reply,sizeof(reply)) && !strncmp(reply,"OK",2));
   assert(node.handleMeshtextCommand("set mt.shortname MIKE",reply,sizeof(reply)) && !strncmp(reply,"OK",2));
   strcpy(node._prefs.node_name,"Mike Carper");
   assert(node.handleMeshtextCommand("send mt.nodeinfo 0",reply,sizeof(reply)) && strstr(reply,"queued"));
   assert(node.foreign.back()==std::vector<uint8_t>(expected_named,expected_named+sizeof(expected_named)));
-  node.foreign_pending=false;
+  node.releaseForeign();
   auto text=decodeOwnText(node,"hello",5);
   assert(text.id==0x1234567a && !strcmp(text.text,"hello"));
   const char* emojis="\xf0\x9f\x98\x80\xf0\x9f\x98\x80\xf0\x9f\x98\x80\xf0\x9f\x98\x80";
@@ -771,10 +816,10 @@ static void nodeinfo() {
   assert(node.handleMeshtextCommand("send mt.nodeinfo 0",reply,sizeof(reply)) && strstr(reply,"queued"));
   assert(node.foreign.back()==std::vector<uint8_t>(expected_utf8,expected_utf8+sizeof(expected_utf8)));
   assert(strlen(node._prefs.node_name)==29 && strlen(node._mt_short_name)==16); // no mutation
-  node.foreign_pending=false; node.commit(1,channel("mt-Team",32));
+  node.releaseForeign(); node.commit(1,channel("mt-Team",32));
   assert(node.handleMeshtextCommand("send mt.nodeinfo 1",reply,sizeof(reply)) && strstr(reply,"queued"));
   assert(node.foreign.back()==std::vector<uint8_t>(expected_private,expected_private+sizeof(expected_private)));
-  node.foreign_pending=false;
+  node.releaseForeign();
   const auto count=node.foreign.size(); const uint32_t packet=node._mt_packet_id;
   node.commit(2,channel("ordinary"));
   for(const char* bad:{"send mt.nodeinfo","send mt.nodeinfo ","send mt.nodeinfo -1",
@@ -805,12 +850,286 @@ static void nodeinfo() {
   node.cli("set radio2 auto"); node.advance(2000);
   node._mt_packet_id=UINT32_MAX;
   assert(node.handleMeshtextCommand("send mt.nodeinfo 0",reply,sizeof(reply)) && strstr(reply,"queued"));
-  node.foreign_pending=false;
+  node.releaseForeign();
   assert(node._mt_packet_id==0 && !node.sendMeshtextText(node.stored[0],"done",4));
   assert(node.handleMeshtextCommand("send mt.nodeinfo 0",reply,sizeof(reply)) && !strncmp(reply,"Error",5));
   MyMesh reboot; reboot.stored[0]=node.stored[0]; reboot.beginMeshtext();
   assertUntouched(reboot); assert(!node.meshcore_sends);
   puts("PASS nodeinfo");
+}
+static mesh::mt::PendingFrame* pendingChat(MyMesh& node) {
+  for(unsigned i=0;i<mesh::mt::ChatDeliverySlots;++i)
+    if(node._mt_delivery[i].length) return &node._mt_delivery[i];
+  return nullptr;
+}
+static void advanceTo(MyMesh& node,uint32_t due) {
+  const int32_t delta=static_cast<int32_t>(due-millis());
+  node.advance(delta>0?static_cast<uint32_t>(delta):0);
+}
+static std::vector<uint8_t> repeated(const std::vector<uint8_t>& original) {
+  auto echo=original;
+  assert((echo[12]&7)>0);
+  echo[12]=static_cast<uint8_t>((echo[12]&0xf8)|((echo[12]&7)-1));
+  echo[14]=0x42; echo[15]=0x43; // Forwarder-controlled header fields.
+  return echo;
+}
+static void announce(MyMesh& node) {
+  node._prefs.flood_retry_attempts=0;
+  assert(node.sendMeshtextNodeInfo(node.stored[0]));
+  node.completeForeign(); node.advance(0);
+  assert(!node.foreign_pending);
+  node._prefs.flood_retry_attempts=15;
+}
+static void automaticNodeinfo() {
+  const uint8_t expected[]=@NODEINFO_AFTER_CHAT@;
+  Preferences::reset(); MyMesh node; active(node);
+  node._prefs.flood_retry_attempts=0;
+  node.advance(3600000); assertUntouched(node);
+  assert(node.sendMeshtextText(node.stored[0],"hello",5));
+  const auto text=node.foreign.back();
+  node.advance(60000); assert(node.foreign.size()==1); // Admission is not RF success.
+  node.completeForeign(); assert(node.foreign.size()==1);
+  node.advance(1);
+  assert(node.foreign.size()==2 && node.foreign.back()==std::vector<uint8_t>(expected,expected+sizeof(expected)));
+  // Exact independent protobuf/AES bytes prove only User/NodeInfo was sent:
+  // no position packet, coordinates, MAC, public key or custom name envelope.
+  node.completeForeign(); node.advance(3600000); assert(node.foreign.size()==2);
+  assert(node.sendMeshtextText(node.stored[0],"again",5));
+  node.completeForeign(); node.advance(100000); assert(node.foreign.size()==3);
+  node.commit(1,channel("mt-Team",32));
+  assert(node.sendMeshtextText(node.stored[1],"private",7));
+  node.completeForeign(); node.advance(1); assert(node.foreign.size()==5);
+  auto private_info=node.foreign.back();
+  mesh::mt::DecodedText private_decoded;
+  assert(private_info!=text && !mesh::mt::decodeText(private_info.data(),private_info.size(),
+      "Team",node.stored[1].channel.secret,32,1,private_decoded));
+  node.completeForeign(); node.advance(3600000); assert(node.foreign.size()==5);
+  assert(node.offline.empty() && !node.meshcore_sends && !node._notifications.calls);
+
+  Preferences::reset(); MyMesh failure; active(failure); failure._prefs.flood_retry_attempts=0;
+  failure.admit_foreign=false; assert(!failure.sendMeshtextText(failure.stored[0],"rejected",8));
+  failure.admit_foreign=true; failure.advance(1); assertUntouched(failure);
+  assert(failure.sendMeshtextText(failure.stored[0],"failed",6));
+  failure.completeForeign(false); failure.advance(100000); assert(failure.foreign.size()==1);
+  assert(failure.sendMeshtextText(failure.stored[0],"success",7));
+  failure.completeForeign(); failure.advance(1); assert(failure.foreign.size()==3);
+  failure.completeForeign();
+
+  Preferences::reset(); MyMesh manual; active(manual); announce(manual);
+  manual._prefs.flood_retry_attempts=0;
+  assert(manual.sendMeshtextText(manual.stored[0],"already named",13));
+  manual.completeForeign(); manual.advance(100000); assert(manual.foreign.size()==2);
+  puts("PASS auto-nodeinfo");
+}
+static void heardRetries() {
+  Preferences::reset(); MyMesh node; active(node); announce(node);
+  node._prefs.flood_retry_attempts=2;
+  assert(node.sendMeshtextText(node.stored[0],"retry this",10));
+  const auto original=node.foreign.back(); const auto packet=node._mt_packet_id;
+  const auto start=node.foreign.size();
+  node.completeForeign(); auto* pending=pendingChat(node); assert(pending);
+  uint32_t due=pending->due;
+  node.advance(static_cast<uint32_t>(due-millis()-1)); assert(node.foreign.size()==start);
+  node.advance(1); assert(node.foreign.size()==start+1 && node.foreign.back()==original);
+  assert(node._mt_packet_id==packet && node._mt_retried==0);
+  node.completeForeign(); assert(node._mt_retried==1); pending=pendingChat(node); assert(pending);
+  advanceTo(node,pending->due);
+  assert(node.foreign.size()==start+2 && node.foreign.back()==original && node._mt_retried==1);
+  node.completeForeign(); assert(node._mt_retried==2); pending=pendingChat(node); assert(pending); // Final echo window remains.
+  auto echo=repeated(original);
+  assert(receiveFrame(node,echo.data(),echo.size()));
+  assert(node._mt_heard==1 && !node._mt_exhausted && node.offline.empty());
+  node.advance(3600000); assert(node.foreign.size()==start+2 && !pendingChat(node));
+
+  Preferences::reset(); MyMesh capped; active(capped); announce(capped);
+  capped._prefs.flood_retry_attempts=15;
+  assert(capped.sendMeshtextText(capped.stored[0],"bounded",7));
+  const auto cap_original=capped.foreign.back(); capped.completeForeign();
+  for(unsigned i=0;i<15;++i) {
+    auto* current=pendingChat(capped); assert(current);
+    advanceTo(capped,current->due);
+    assert(capped.foreign_pending && capped.foreign.back()==cap_original);
+    capped.completeForeign();
+  }
+  assert(capped._mt_retried==15 && capped.foreign.size()==17);
+  auto* current=pendingChat(capped); assert(current); advanceTo(capped,current->due);
+  assert(capped._mt_exhausted==1 && !pendingChat(capped));
+  capped.advance(3600000); assert(capped.foreign.size()==17);
+
+  Preferences::reset(); MyMesh disabled; active(disabled); announce(disabled);
+  disabled._prefs.flood_retry_attempts=0;
+  assert(disabled.sendMeshtextText(disabled.stored[0],"once",4));
+  disabled.completeForeign(); disabled.advance(3600000);
+  assert(disabled.foreign.size()==2 && !disabled._mt_retried && !pendingChat(disabled));
+  disabled._prefs.flood_retry_attempts=15; disabled._mt_hop_limit=0;
+  assert(disabled.sendMeshtextText(disabled.stored[0],"no hops",7));
+  disabled.completeForeign(); disabled.advance(3600000);
+  assert(disabled.foreign.size()==3 && !disabled._mt_retried && !pendingChat(disabled));
+  puts("PASS heard-retries");
+}
+static void strictEcho() {
+  Preferences::reset(); MyMesh node; active(node); announce(node);
+  assert(node.sendMeshtextText(node.stored[0],"strict echo",11));
+  const auto original=node.foreign.back(); auto echo=repeated(original);
+  node.completeForeign(); const auto count=node.foreign.size();
+  receiveFrame(node,original.data(),original.size()); assert(!node._mt_heard);
+  for(unsigned position:{0U,4U,8U,12U,13U,16U,unsigned(echo.size()-1)}) {
+    auto wrong=echo; wrong[position]^=position==12?0x20:1;
+    receiveFrame(node,wrong.data(),wrong.size()); assert(!node._mt_heard);
+  }
+  receiveFrame(node,echo.data(),echo.size()-1); assert(!node._mt_heard);
+  node.onForeignRadioFrame(echo.data(),echo.size(),0,node.radio.p.generation[1],1,-80);
+  node.onForeignRadioFrame(echo.data(),echo.size(),1,node.radio.p.generation[1]-1,1,-80);
+  assert(!node._mt_heard && pendingChat(node));
+  assert(receiveFrame(node,echo.data(),echo.size()) && node._mt_heard==1);
+  receiveFrame(node,echo.data(),echo.size()); assert(node._mt_heard==1);
+  node.advance(100000); assert(node.foreign.size()==count && node.offline.empty());
+  puts("PASS strict-echo");
+}
+static void deliveryLifecycle() {
+  for(unsigned change=0;change<7;++change) {
+    Preferences::reset(); MyMesh node; active(node); announce(node);
+    assert(node.sendMeshtextText(node.stored[0],"stale",5));
+    node.completeForeign(); assert(pendingChat(node));
+    const auto count=node.foreign.size(); char reply[256];
+    switch(change) {
+      case 0: ++node.radio.p.generation[1]; break;
+      case 1: node.cli("set radio2 off"); break;
+      case 2: node.cli("set radio2 906.875,250,11,5,rx,16"); break;
+      case 3: node.commit(0,channel("#mt-longfast",32)); break;
+      case 4:
+        assert(node.handleMeshtextCommand("set mt.node !12345678",reply,sizeof(reply))
+            && !strncmp(reply,"OK",2)); break;
+      case 5: node.commit(0,{}); break;
+      case 6: node._radio_available=false; break;
+    }
+    node.advance(2000); node.advance(100000);
+    assert(!pendingChat(node) && !node.foreign_pending && node.foreign.size()==count);
+    assert(!node._mt_retried && !node._mt_exhausted);
+  }
+  // Configuration changes before RF completion cannot arm metadata intent.
+  Preferences::reset(); MyMesh inflight; active(inflight);
+  assert(inflight.sendMeshtextText(inflight.stored[0],"not sent",8));
+  inflight.commit(0,channel("#mt-longfast",32)); inflight.advance(1);
+  assert(!inflight.foreign_pending && inflight.foreign.size()==1);
+  inflight.advance(100000); assert(inflight.foreign.size()==1);
+  // Config edits and RX by themselves remain completely silent.
+  inflight.self_id.pub_key[0]=43; inflight.refreshMeshtextIdentity(); inflight.advance(1);
+  assert(inflight.foreign.size()==1);
+  puts("PASS delivery-lifecycle");
+}
+static void deliveryContention() {
+  Preferences::reset(); MyMesh node; active(node); announce(node);
+  assert(node.sendMeshtextText(node.stored[0],"older",5));
+  const auto original=node.foreign.back(); node.completeForeign();
+  auto* pending=pendingChat(node); assert(pending); const auto due=pending->due;
+  const auto count=node.foreign.size();
+  node.admit_foreign=false; advanceTo(node,due);
+  assert(node.foreign.size()==count && !node._mt_retried && pending->retries==0);
+  node.admit_foreign=true;
+  assert(node.sendMeshtextText(node.stored[0],"newer",5)); // Don't block users for an echo window.
+  node.completeForeign(); node.advance(0);
+  assert(node.foreign_pending && node.foreign.back()==original && !node._mt_retried);
+  const auto failed=node._mt_failed; auto echo=repeated(original);
+  assert(receiveFrame(node,echo.data(),echo.size())); // Arrives while a retry is queued.
+  assert(!node.foreign_pending && node._mt_heard==1 && node._mt_failed==failed);
+  pending=pendingChat(node); assert(pending); advanceTo(node,pending->due);
+  assert(node.foreign_pending); // Newer chat's own timer still works.
+  const auto newer=node.foreign.back(); node.foreign_sending=true;
+  auto newer_echo=repeated(newer);
+  assert(receiveFrame(node,newer_echo.data(),newer_echo.size()));
+  assert(node.foreign_pending && node._mt_heard==2); // In-flight RF cannot be discarded.
+  node.completeForeign(); node.advance(100000);
+  assert(!node.foreign_pending && !pendingChat(node) && node._mt_failed==failed && node._mt_retried==1);
+  char reply[256]; assert(node.handleMeshtextCommand("get mt.retry",reply,sizeof(reply)));
+  assert(strstr(reply,"heard=2") && strstr(reply,"pending=0"));
+
+  Preferences::reset(); MyMesh full; active(full); announce(full);
+  for(unsigned i=0;i<mesh::mt::ChatDeliverySlots;++i) {
+    assert(full.sendMeshtextText(full.stored[0],"pending",7)); full.completeForeign();
+  }
+  const auto full_count=full.foreign.size();
+  assert(!full.sendMeshtextText(full.stored[0],"backpressure",12));
+  assert(full.foreign.size()==full_count && !full.foreign_pending);
+  puts("PASS delivery-contention");
+}
+static void deliveryTiming() {
+  Preferences::reset(); MyMesh node; active(node); announce(node);
+  g_mock_millis=UINT32_MAX-100;
+  node._prefs.flood_retry_max_path=0; node._prefs.flood_retry_group_max_path=0;
+  assert(node.sendMeshtextText(node.stored[0],"wrap",4));
+  const auto original=node.foreign.back(); node.completeForeign();
+  auto* pending=pendingChat(node); assert(pending && pending->due==109);
+  const auto count=node.foreign.size(); node.advance(209);
+  assert(node.foreign.size()==count); node.advance(1);
+  assert(node.foreign.size()==count+1 && node.foreign.back()==original);
+  node.completeForeign(); auto echo=repeated(original);
+  assert(receiveFrame(node,echo.data(),echo.size()) && node._mt_heard==1);
+  node.advance(100000); assert(!pendingChat(node));
+
+  Preferences::reset(); MyMesh metadata; active(metadata); metadata.random.jitter=200;
+  assert(metadata.sendMeshtextNodeInfo(metadata.stored[0]));
+  const auto info=metadata.foreign.back(); const auto packet=metadata._mt_packet_id;
+  metadata.completeForeign(); auto& advert=metadata._mt_delivery[mesh::mt::ChatDeliverySlots];
+  assert(advert.length && advert.due-millis()==60230);
+  metadata.advance(60229); assert(metadata.foreign.size()==1);
+  metadata.advance(1); assert(metadata.foreign.size()==2 && metadata.foreign.back()==info);
+  assert(metadata._mt_packet_id==packet && metadata._mt_retried==0);
+  metadata.completeForeign(); assert(metadata._mt_retried==1); advanceTo(metadata,advert.due);
+  assert(!advert.length && metadata._mt_exhausted==1);
+  metadata.advance(3600000); assert(metadata.foreign.size()==2); // Metadata cap is one, not 15.
+
+  Preferences::reset(); MyMesh no_advert; active(no_advert);
+  no_advert._prefs.flood_retry_advert_enabled=0;
+  assert(no_advert.sendMeshtextNodeInfo(no_advert.stored[0]));
+  no_advert.completeForeign(); no_advert.advance(3600000);
+  assert(no_advert.foreign.size()==1 && !no_advert._mt_retried);
+  puts("PASS delivery-timing");
+}
+static void announcementLifecycle() {
+  Preferences::reset(); MyMesh node; active(node); announce(node);
+  node._prefs.flood_retry_attempts=0;
+  char reply[256];
+  for(const char* command:{"set mt.hops 7","set mt.hops 3"}) {
+    assert(node.handleMeshtextCommand(command,reply,sizeof(reply)) && !strncmp(reply,"OK",2));
+    node.advance(1); const auto count=node.foreign.size();
+    assert(node.sendMeshtextText(node.stored[0],"no reannounce",13));
+    node.completeForeign(); node.advance(1); assert(node.foreign.size()==count+1);
+  }
+  node.commit(1,channel("#mt-LoNgFaSt"));
+  const auto before_alias=node.foreign.size();
+  assert(node.sendMeshtextText(node.stored[1],"same wire",9));
+  node.completeForeign(); node.advance(1); assert(node.foreign.size()==before_alias+1);
+  assert(node.handleMeshtextCommand("set mt.shortname NEW",reply,sizeof(reply)) && !strncmp(reply,"OK",2));
+  node.advance(100000); assert(node.foreign.size()==before_alias+1); // Name changes do not send alone.
+  assert(node.sendMeshtextText(node.stored[0],"new name",8));
+  node.completeForeign(); node.advance(1); assert(node.foreign.size()==before_alias+3);
+  node.completeForeign();
+  auto changed=channel("#mt-longfast",32); changed.channel.secret[0]^=0x40;
+  node.commit(0,changed); node.advance(1); const auto before_key=node.foreign.size();
+  assert(node.sendMeshtextText(node.stored[0],"new key",7));
+  node.completeForeign(); node.advance(1); assert(node.foreign.size()==before_key+2);
+  node.completeForeign();
+
+  for(bool fail_admission:{false,true}) {
+    Preferences::reset(); MyMesh failure; active(failure);
+    failure._prefs.flood_retry_attempts=0;
+    assert(failure.sendMeshtextText(failure.stored[0],"first",5)); failure.completeForeign();
+    const auto first_count=failure.foreign.size();
+    failure.admit_foreign=!fail_admission; failure.advance(1);
+    if(!fail_admission) {
+      assert(failure.foreign_pending); failure.completeForeign(false);
+    }
+    const auto attempts=failure.foreign_admissions,packet=failure._mt_packet_id;
+    for(unsigned i=0;i<100;++i) failure.advance(1);
+    assert(!failure.foreign_pending && failure.foreign_admissions==attempts && failure._mt_packet_id==packet);
+    assert(failure.foreign.size()==first_count+(fail_admission?0:1));
+    failure.admit_foreign=true;
+    assert(failure.sendMeshtextText(failure.stored[0],"another",7)); failure.completeForeign();
+    failure.advance(1); assert(failure.foreign_pending);
+    failure.completeForeign();
+  }
+  puts("PASS announcement-lifecycle");
 }
 int main(int argc,char** argv) {
   assert(argc==2);
@@ -827,5 +1146,12 @@ int main(int argc,char** argv) {
   else if(!strcmp(argv[1],"shortname"))shortname();
   else if(!strcmp(argv[1],"node"))nodeOverride();
   else if(!strcmp(argv[1],"nodeinfo"))nodeinfo();
+  else if(!strcmp(argv[1],"auto-nodeinfo"))automaticNodeinfo();
+  else if(!strcmp(argv[1],"heard-retries"))heardRetries();
+  else if(!strcmp(argv[1],"strict-echo"))strictEcho();
+  else if(!strcmp(argv[1],"delivery-lifecycle"))deliveryLifecycle();
+  else if(!strcmp(argv[1],"delivery-contention"))deliveryContention();
+  else if(!strcmp(argv[1],"delivery-timing"))deliveryTiming();
+  else if(!strcmp(argv[1],"announcement-lifecycle"))announcementLifecycle();
   else assert(!"unknown test case");
 }

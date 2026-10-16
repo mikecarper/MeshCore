@@ -1722,6 +1722,9 @@ bool MyMesh::setChannel(int channel_idx, const ChannelDetails& channel) {
       && parseCompanionChannelAlias(channel.name).kind != CompanionChannelKind::MeshCore) return false;
 #endif
   const bool saved = BaseChatMesh::setChannel(channel_idx, channel);
+#if MESH_ENABLE_MESHTEXT_CHAT
+  if (saved) _mt_delivery_config_dirty = true;
+#endif
 #if MESH_ENABLE_ETHERNET_TUNNEL
   if (saved) ++_ethernet_channel_generation;
 #endif
@@ -11272,6 +11275,7 @@ void MyMesh::loop() {
 #endif
 #if MESH_ENABLE_MESHTEXT_CHAT
   refreshMeshtextProfile();
+  if (!mesh::morseTimingActive(_radio)) loopMeshtextDelivery();
 #endif
 #if MESH_ENABLE_ETHERNET_TUNNEL
   if (!mesh::morseTimingActive(_radio)) loopEthernetTunnel();

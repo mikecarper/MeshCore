@@ -498,7 +498,8 @@ bool Dispatcher::checkForeignRadioSend() {
   foreign_radio_start = _ms->getMillis();
   if (!_radio->startSendRaw(foreign_radio_bytes, foreign_radio_length)) {
     // RadioLib owns failure cleanup (including the board's FEM). Unlike
-    // MeshCore reliable routing, foreign chat never retries autonomously.
+    // MeshCore reliable routing, this transport never retries autonomously.
+    // Companion may later submit a separately validated retained chat copy.
     finishForeignRadioFrame(false, false);
     return false;
   }

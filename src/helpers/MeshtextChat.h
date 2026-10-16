@@ -8,7 +8,7 @@
 // Bounded adaptation of MIT-licensed esp-cpp/espp wire helpers.
 // See licenses/ESPP-Meshtext-MIT.txt for the pinned source and license.
 // Meshtext is a bounded text interoperability component, not a peer firmware fork.
-// NodeInfo may only be explicitly encoded; received NodeInfo stays ignored.
+// NodeInfo is a separate GPS-free User packet; received NodeInfo stays ignored.
 namespace mesh {
 namespace mt {
 
@@ -47,7 +47,7 @@ struct DecodedText {
 
 // Expanded AES-128/256 PSK only. No unencrypted-key fallback. Names are exact,
 // canonical peer channel names (<12 bytes), without local display markers.
-// Outgoing text and explicit NodeInfo permit peer MQTT upload (Data.bitfield
+// Outgoing text and NodeInfo permit peer MQTT upload (Data.bitfield
 // bit 0); this neither enables a local MQTT client nor marks traffic via_mqtt.
 // Returns 0 for invalid arguments, malformed UTF-8, embedded NUL or overflow.
 size_t encodeText(uint32_t from, uint32_t id, uint8_t hop_limit, const char* channel_name,
@@ -59,7 +59,8 @@ size_t encodeText(uint32_t from, uint32_t id, uint8_t hop_limit, const char* cha
 // names may be empty; short names require 1..4 UTF-8 bytes (stock wire bound).
 // This can hold four ASCII characters but fewer multi-byte characters. Longer
 // names are rejected, not byte-truncated. No MAC, PSK, public key or MC identity
-// is copied. No ACK/response is requested and no automatic send is performed.
+// is copied. No GPS/position or ACK/response is requested. The caller controls
+// explicit and first-successful-chat announcements and bounded retries.
 size_t encodeNodeInfo(uint32_t from, uint32_t id, uint8_t hop_limit, const char* channel_name,
                       const uint8_t* key, size_t key_len, const char* long_name, size_t long_name_len,
                       const char* short_name, size_t short_name_len, uint8_t out[MaxFrameSize]);
