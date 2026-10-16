@@ -2030,6 +2030,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#companion-meshtext-rebroadcasting" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Companion Meshtext rebroadcasting
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#set-companion-media-and-ssh-application-tx-profiles" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -4967,6 +4978,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#companion-meshtext-rebroadcasting" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Companion Meshtext rebroadcasting
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#set-companion-media-and-ssh-application-tx-profiles" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -7835,6 +7857,18 @@ phone-app and terminal messages. A contact's <code>off</code> setting also block
 ACKs and addressed responses.</p>
 <p>See <a href="../radio_profiles/#companion-tx-routing-by-contact-or-channel">Companion routing details and examples</a>
 for temporary profiles, persistence, and the traffic covered by each setting.</p>
+<h2 id="companion-meshtext-rebroadcasting">Companion Meshtext rebroadcasting</h2>
+<pre><code class="language-text">get mt.rebroadcast
+set mt.rebroadcast on|off
+</code></pre>
+<p>Choose <code>on</code> or <code>off</code> after <code>set</code>. This saved option defaults to <code>off</code> and is
+also shown in <code>get mt.status</code>. Only broadcast text successfully decoded with
+a configured channel key can be relayed; unknown-key, non-text and direct
+messages are excluded. Relays wait five additional actual packet airtimes
+plus flood jitter, on top of existing radio waits. Hearing another forwarded
+copy cancels the pending relay. <code>mt.maybe_rebroadcast</code> is an equivalent alias.
+See <a href="../radio_profiles/#optional-decoded-text-rebroadcasting">optional decoded-text rebroadcasting</a>
+for hop limits, cancellation and queue behavior.</p>
 <h2 id="set-companion-media-and-ssh-application-tx-profiles">Set Companion media and SSH application TX profiles</h2>
 <pre><code class="language-text">get tx.media
 set tx.media auto|radio|radio2|both|off
