@@ -988,11 +988,23 @@ void SerialBLEInterface::cancelStealthPairingTransition() {
 }
 
 void SerialBLEInterface::clearBuffers() {
+  _tx_reset_pending.store(true, std::memory_order_release);
+  recv_queue.reset([this]() { bleuart.flush(); });
+}
+
+void SerialBLEInterface::resetTxState() {
   send_queue_len = 0;
   _last_retry_attempt = 0;
   _tx_stall_watchdog.reset();
   _tx_disconnect_recovery.complete();
-  recv_queue.reset([this]() { bleuart.flush(); });
+  _tx_recovery_handle = BLE_CONN_HANDLE_INVALID;
+  _tx_recovery_generation = 0;
+}
+
+bool SerialBLEInterface::servicePendingTxReset() {
+  if (!_tx_reset_pending.exchange(false, std::memory_order_acq_rel)) return false;
+  resetTxState();
+  return true;
 }
 
 void SerialBLEInterface::shiftSendQueueLeft() {
@@ -1005,9 +1017,13 @@ void SerialBLEInterface::shiftSendQueueLeft() {
 }
 
 size_t SerialBLEInterface::writeBleUartFrame(const Frame& frame) {
-  BLEConnection* conn = Bluefruit.Connection(_conn_handle);
+  const uint16_t handle = _conn_handle;
+  uint32_t generation;
+  if (!recv_queue.snapshot(handle, generation)
+      || generation != _send_queue_generation) return 0;
+  BLEConnection* conn = Bluefruit.Connection(handle);
   if (conn == nullptr || !conn->connected() ||
-      !bleuart.notifyEnabled(_conn_handle)) {
+      !bleuart.notifyEnabled(handle)) {
     return 0;
   }
 
@@ -1021,37 +1037,53 @@ size_t SerialBLEInterface::writeBleUartFrame(const Frame& frame) {
   // already on the stream and must never be followed by a whole-frame retry.
   return mesh::writeBleFrameInChunks(
       frame.buf, frame.len, mtu - 3,
-      [this](const uint8_t* data, size_t len) {
-        return bleuart.write(_conn_handle, data, len);
+      [this, handle, generation](const uint8_t* data, size_t len) -> size_t {
+        // Never continue an old frame on a replacement connection, including
+        // when SoftDevice reuses the same numeric handle after a reconnect.
+        // FIFO/SDK calls remain outside the RX metadata critical section.
+        if (!recv_queue.current(handle, generation)) return 0;
+        const size_t written = bleuart.write(handle, data, len);
+        return recv_queue.current(handle, generation) ? written : 0;
       });
 }
 
 void SerialBLEInterface::serviceTxRecovery(uint32_t now) {
   if (!_tx_disconnect_recovery.pending()) return;
+  if (servicePendingTxReset()) return;
+  const uint16_t handle = _tx_recovery_handle;
+  const uint32_t generation = _tx_recovery_generation;
+  if (handle == BLE_CONN_HANDLE_INVALID || _conn_handle != handle
+      || recv_queue.generation() != generation) {
+    resetTxState();
+    return;
+  }
 
-  BLEConnection* conn = _conn_handle == BLE_CONN_HANDLE_INVALID
-                            ? nullptr
-                            : Bluefruit.Connection(_conn_handle);
-  if (_conn_handle == BLE_CONN_HANDLE_INVALID || conn == nullptr ||
-      !conn->connected()) {
+  BLEConnection* conn = Bluefruit.Connection(handle);
+  if (conn == nullptr || !conn->connected()) {
     BLE_DEBUG_PRINTLN("SerialBLEInterface: stalled TX link is already closed");
-    _conn_handle = BLE_CONN_HANDLE_INVALID;
-    _isDeviceConnected = false;
-    _peer_address_valid = false;
-    _security_timer.cancel();
-    _companion_start_timer.cancel();
-    clearBuffers();
-    if (advertisingAllowed() && !isAdvertising()) {
+    {
+      RxQueueGuard guard;
+      if (_conn_handle != handle || recv_queue.generation() != generation) return;
+      _conn_handle = BLE_CONN_HANDLE_INVALID;
+      _isDeviceConnected = false;
+      _peer_address_valid = false;
+      _security_timer.cancel();
+      _companion_start_timer.cancel();
+      resetTxState();
+    }
+    if (_conn_handle == BLE_CONN_HANDLE_INVALID && advertisingAllowed() && !isAdvertising()) {
       startAdvertising("advertising failed after TX recovery");
     }
     return;
   }
 
   if (!_tx_disconnect_recovery.shouldAttempt(now)) return;
+  if (servicePendingTxReset() || _conn_handle != handle
+      || recv_queue.generation() != generation) return;
 
   const uint32_t result = sd_ble_gap_disconnect(
-      _conn_handle, BLE_HCI_REMOTE_USER_TERMINATED_CONNECTION);
-  meshBleTrace(0xf013, _conn_handle, result, 1);
+      handle, BLE_HCI_REMOTE_USER_TERMINATED_CONNECTION);
+  meshBleTrace(0xf013, handle, result, 1);
   if (result == NRF_SUCCESS) {
     BLE_DEBUG_PRINTLN("SerialBLEInterface: stalled TX disconnect requested");
   } else if (result == NRF_ERROR_INVALID_STATE) {
@@ -1063,8 +1095,14 @@ void SerialBLEInterface::serviceTxRecovery(uint32_t now) {
   }
 }
 
-void SerialBLEInterface::recoverStalledTx(const char* cause) {
-  meshBleTrace(0xf020, _conn_handle, send_queue_len, recv_queue.size());
+void SerialBLEInterface::recoverStalledTx(const char* cause,
+                                          uint16_t expected_handle,
+                                          uint32_t expected_generation) {
+  if (expected_handle == BLE_CONN_HANDLE_INVALID) {
+    expected_handle = _conn_handle;
+    if (!recv_queue.snapshot(expected_handle, expected_generation)) return;
+  }
+  meshBleTrace(0xf020, expected_handle, send_queue_len, recv_queue.size());
   if (_tx_disconnect_recovery.pending()) return;
 
   BLE_DEBUG_PRINTLN("SerialBLEInterface: %s; forcing reconnect", cause);
@@ -1072,16 +1110,24 @@ void SerialBLEInterface::recoverStalledTx(const char* cause) {
   // Keep the physical connection state intact until the SoftDevice confirms
   // disconnection, but make isConnected() false through the recovery state so
   // no more companion frames enter this damaged stream.
-  send_queue_len = 0;
-  recv_queue.disconnect(_conn_handle);
-  _last_retry_attempt = 0;
-  _tx_stall_watchdog.reset();
-  _companion_start_timer.cancel();
-  recv_queue.reset([this]() { bleuart.flush(); });
+  {
+    RxQueueGuard guard;
+    if (_tx_reset_pending.load(std::memory_order_acquire)
+        || !recv_queue.current(expected_handle, expected_generation)) return;
+    send_queue_len = 0;
+    _last_retry_attempt = 0;
+    _tx_stall_watchdog.reset();
+    _companion_start_timer.cancel();
+    recv_queue.disconnect(expected_handle);
+    _tx_recovery_handle = expected_handle;
+    _tx_recovery_generation = recv_queue.generation();
+    _tx_disconnect_recovery.begin();
+  }
+  // Invalidate RX immediately, but let normal connection cleanup flush its
+  // FIFO. An old recovery must not flush a replacement link after yielding.
 #if COMPANION_FEATURE_BLE_MOTA_SOURCE
   setMotaStreamActive(false);
 #endif
-  _tx_disconnect_recovery.begin();
   serviceTxRecovery((uint32_t)millis());
 }
 
@@ -1110,6 +1156,7 @@ void SerialBLEInterface::enable() {
   _pairingRequestPending.store(false, std::memory_order_release);
   _isEnabled = true;
   clearBuffers();
+  servicePendingTxReset();
   _last_health_check = millis();
 
   if (advertisingAllowed()) {
@@ -1129,6 +1176,7 @@ void SerialBLEInterface::disconnect() {
 
 void SerialBLEInterface::disable() {
   recv_queue.setEnabled(false);
+  _tx_reset_pending.store(true, std::memory_order_release);
   _isEnabled = false;
   _pairingRequestPending.store(false, std::memory_order_release);
   BLE_DEBUG_PRINTLN("SerialBLEInterface: disable");
@@ -1152,6 +1200,7 @@ void SerialBLEInterface::loop() {
   _debug_last_loop_ms = now;
 #endif
   serviceBondedOnlyTransition();
+  servicePendingTxReset();
   if (_tx_disconnect_recovery.pending()) {
     serviceTxRecovery(now);
     return;
@@ -1191,6 +1240,7 @@ void SerialBLEInterface::loop() {
 }
 
 bool SerialBLEInterface::hasRequiredReplyCapacity() const {
+  if (_tx_reset_pending.load(std::memory_order_acquire)) return true;
   if (send_queue_len < FRAME_QUEUE_SIZE) return true;
   // Required responses may evict an unsent packet log, never another required
   // reply. Match enqueueCompanionFrame without growing either bounded queue.
@@ -1207,12 +1257,22 @@ size_t SerialBLEInterface::writeFrame(const uint8_t src[], size_t len) {
     return 0;
   }
 
+  servicePendingTxReset();
+  const uint16_t handle = _conn_handle;
+  uint32_t generation;
+  if (!recv_queue.snapshot(handle, generation)) return 0;
+  if (send_queue_len && _send_queue_generation != generation) resetTxState();
+  _send_queue_generation = generation;
   bool connected = isConnected();
   if (connected && len > 0) {
     if (!mesh::enqueueCompanionFrame(send_queue, send_queue_len, FRAME_QUEUE_SIZE,
                                      src, len)) {
       meshBleTrace(0xf033, _conn_handle, send_queue_len, len);
       BLE_DEBUG_PRINTLN("writeFrame(), send_queue is full!");
+      return 0;
+    }
+    if (servicePendingTxReset() || !recv_queue.current(handle, generation)) {
+      resetTxState();
       return 0;
     }
     return len;
@@ -1223,6 +1283,7 @@ size_t SerialBLEInterface::writeFrame(const uint8_t src[], size_t len) {
 size_t SerialBLEInterface::checkRecvFrame(uint8_t dest[]) {
   const uint32_t check_now = (uint32_t)millis();
   serviceBondedOnlyTransition();
+  servicePendingTxReset();
   if (_tx_disconnect_recovery.pending()) {
     serviceTxRecovery(check_now);
     return 0;
@@ -1239,11 +1300,20 @@ size_t SerialBLEInterface::checkRecvFrame(uint8_t dest[]) {
       bool throttle_active = (_last_retry_attempt > 0 && (now - _last_retry_attempt) < BLE_RETRY_THROTTLE_MS);
 
       if (!throttle_active) {
+        const uint16_t handle = _conn_handle;
+        const uint32_t generation = _send_queue_generation;
         Frame frame_to_send = send_queue[0];
         const bool delivery_required = mesh::companionFrameRequiresDelivery(
             frame_to_send.buf, frame_to_send.len);
 
         size_t written = writeBleUartFrame(frame_to_send);
+        // A callback may reset or replace the link while the SDK waits for a
+        // notification slot. Discard only the old TX state; do not recover or
+        // dequeue against the replacement session using the old write result.
+        if (servicePendingTxReset() || !recv_queue.current(handle, generation)) {
+          resetTxState();
+          return 0;
+        }
         meshBleTrace(0xf031, _conn_handle, frame_to_send.len, written);
 #if defined(MESH_NRF52_BLE_TRACE) && MESH_NRF52_BLE_TRACE
         if (written) mesh_ble_trace.tx.fetch_add(1);
@@ -1261,7 +1331,7 @@ size_t SerialBLEInterface::checkRecvFrame(uint8_t dest[]) {
           // protocol frame. Reconnect instead of following it with another
           // frame on the same BLE UART stream.
           meshBleTrace(0xf025, _conn_handle, written, frame_to_send.len);
-          recoverStalledTx("partial BLE UART frame");
+          recoverStalledTx("partial BLE UART frame", handle, generation);
           return 0;
         } else {
           if (!isConnected()) {
@@ -1275,7 +1345,7 @@ size_t SerialBLEInterface::checkRecvFrame(uint8_t dest[]) {
             if (delivery_required) {
               if (_tx_stall_watchdog.noteBlocked((uint32_t)now)) {
                 meshBleTrace(0xf024, _conn_handle);
-                recoverStalledTx("command reply blocked for 10 seconds");
+                recoverStalledTx("command reply blocked for 10 seconds", handle, generation);
                 return 0;
               }
             } else {
@@ -1362,7 +1432,10 @@ void SerialBLEInterface::onBleUartOverflow(uint16_t handle, uint16_t leftover) {
 #endif
 
 bool SerialBLEInterface::isConnected() const {
-  return !_tx_disconnect_recovery.pending() && _isDeviceConnected &&
+  uint32_t generation;
+  return _isEnabled && (_tx_reset_pending.load(std::memory_order_acquire)
+                       || !_tx_disconnect_recovery.pending()) && _isDeviceConnected &&
+         recv_queue.snapshot(_conn_handle, generation) &&
          Bluefruit.connected() > 0;
 }
 
@@ -1390,9 +1463,11 @@ bool SerialBLEInterface::isReadBusy() const {
 }
 
 bool SerialBLEInterface::isWriteBusy() const {
-  return send_queue_len >= (FRAME_QUEUE_SIZE * 2 / 3);
+  return !_tx_reset_pending.load(std::memory_order_acquire)
+      && send_queue_len >= (FRAME_QUEUE_SIZE * 2 / 3);
 }
 
 bool SerialBLEInterface::hasPendingIO() const {
-  return recv_queue.size() > 0 || send_queue_len > 0;
+  return recv_queue.size() > 0
+      || (!_tx_reset_pending.load(std::memory_order_acquire) && send_queue_len > 0);
 }

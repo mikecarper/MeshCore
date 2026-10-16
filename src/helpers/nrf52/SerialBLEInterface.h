@@ -105,6 +105,12 @@ class SerialBLEInterface : public BaseSerialInterface {
   
   uint8_t send_queue_len;
   Frame send_queue[FRAME_QUEUE_SIZE];
+  // Only the application task mutates the TX queue and retry state. Deferred
+  // Bluefruit callbacks request a reset instead of interrupting queue copies.
+  std::atomic<bool> _tx_reset_pending{false};
+  uint32_t _send_queue_generation = 0;
+  uint16_t _tx_recovery_handle = BLE_CONN_HANDLE_INVALID;
+  uint32_t _tx_recovery_generation = 0;
   
   struct RxQueueGuard {
     RxQueueGuard() { taskENTER_CRITICAL(); }
@@ -115,10 +121,14 @@ class SerialBLEInterface : public BaseSerialInterface {
   RxQueue recv_queue;
 
   void clearBuffers();
+  void resetTxState();
+  bool servicePendingTxReset();
   bool hasRequiredReplyCapacity() const;
   void shiftSendQueueLeft();
   size_t writeBleUartFrame(const Frame& frame);
-  void recoverStalledTx(const char* cause);
+  void recoverStalledTx(const char* cause,
+                        uint16_t expected_handle = BLE_CONN_HANDLE_INVALID,
+                        uint32_t expected_generation = 0);
   void serviceTxRecovery(uint32_t now);
   bool removeStoredBondForPeer(const char* cause);
   void noteSuccessfulConnection(const ble_gap_addr_t& peer_address);

@@ -19,6 +19,7 @@ HARNESS = r'''
 #include <cassert>
 #include <cstdint>
 #include <cstring>
+#include <atomic>
 #include <vector>
 #include <helpers/CompanionFrameQueue.h>
 #include <helpers/BleTxStallWatchdog.h>
@@ -26,6 +27,7 @@ HARNESS = r'''
 
 #define MAX_FRAME_SIZE 176
 #define FRAME_QUEUE_SIZE 12
+#define BLE_CONN_HANDLE_INVALID 0xffff
 #define BLE_RETRY_THROTTLE_MS 250
 #define BLE_DEBUG_PRINTLN(...) do {} while (0)
 #define meshBleTrace(...) do {} while (0)
@@ -38,6 +40,11 @@ struct SerialBLEInterface {
   using RxQueue = mesh_nrf52::BleRxFrameQueue<Frame, FRAME_QUEUE_SIZE, RxQueueGuard>;
   uint8_t send_queue_len = 0;
   Frame send_queue[FRAME_QUEUE_SIZE];
+  uint16_t _conn_handle = 1;
+  std::atomic<bool> _tx_reset_pending{false};
+  uint32_t _send_queue_generation = 0;
+  uint16_t _tx_recovery_handle = BLE_CONN_HANDLE_INVALID;
+  uint32_t _tx_recovery_generation = 0;
   RxQueue recv_queue;
   SerialBLEInterface() {
     recv_queue.setEnabled(true);
@@ -53,7 +60,9 @@ struct SerialBLEInterface {
   bool isConnected() const { return connected && !_tx_disconnect_recovery.pending(); }
   void serviceBondedOnlyTransition() {}
   void serviceTxRecovery(uint32_t) { ++recovery_services; }
-  void recoverStalledTx(const char*) { ++recoveries; _tx_disconnect_recovery.begin(); }
+  void recoverStalledTx(const char*, uint16_t = BLE_CONN_HANDLE_INVALID, uint32_t = 0) {
+    ++recoveries; _tx_disconnect_recovery.begin();
+  }
   size_t writeBleUartFrame(const Frame& frame) {
     ++write_attempts;
     if (partial_write) return 1;
@@ -71,6 +80,8 @@ struct SerialBLEInterface {
     assert(recv_queue.push(1, generation, frame) == RxQueue::PushResult::Accepted);
   }
   void shiftSendQueueLeft();
+  void resetTxState();
+  bool servicePendingTxReset();
   bool hasRequiredReplyCapacity() const;
   bool isWriteBusy() const;
   size_t writeFrame(const uint8_t*, size_t);
@@ -184,6 +195,8 @@ class Nrf52BleBackpressureTests(unittest.TestCase):
     def test_real_queue_dispatch_throttle_and_recovery_under_sanitizers(self):
         source = SOURCE.read_text()
         signatures = ["void SerialBLEInterface::shiftSendQueueLeft()",
+                      "void SerialBLEInterface::resetTxState()",
+                      "bool SerialBLEInterface::servicePendingTxReset()",
                       "size_t SerialBLEInterface::writeFrame(",
                       "size_t SerialBLEInterface::checkRecvFrame(",
                       "bool SerialBLEInterface::isWriteBusy() const"]

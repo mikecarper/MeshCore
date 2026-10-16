@@ -115,6 +115,11 @@ public:
     Guard guard;
     return _count;
   }
+
+  uint32_t generation() const {
+    Guard guard;
+    return _generation;
+  }
 };
 
 }  // namespace mesh_nrf52

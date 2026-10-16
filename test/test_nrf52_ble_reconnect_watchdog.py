@@ -48,6 +48,7 @@ struct SerialBLEInterface {
   int advertisements = 0;
   int recovery_services = 0;
   void serviceBondedOnlyTransition() {}
+  bool servicePendingTxReset() { return false; }
   void serviceTxRecovery(uint32_t) { ++recovery_services; }
   void disconnect() { ++disconnects; }
   void recoverStalledTx(const char*) {

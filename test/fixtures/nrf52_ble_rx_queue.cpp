@@ -133,6 +133,9 @@ struct SerialBLEInterface {
   using RxQueue = mesh_nrf52::BleRxFrameQueue<Frame, FRAME_QUEUE_SIZE, RxQueueGuard>;
   RxQueue recv_queue;
   uint8_t send_queue_len = 0;
+  std::atomic<bool> _tx_reset_pending{false};
+  uint16_t _tx_recovery_handle = BLE_CONN_HANDLE_INVALID;
+  uint32_t _tx_recovery_generation = 0;
   unsigned long _last_retry_attempt = 0;
   mesh::BleTxStallWatchdog _tx_stall_watchdog;
   mesh::BleDisconnectRecovery _tx_disconnect_recovery;
@@ -201,6 +204,8 @@ struct SerialBLEInterface {
     ++bonded_recoveries;
   }
   void clearBuffers();
+  void resetTxState();
+  bool servicePendingTxReset();
   static void onBLEEvent(ble_evt_t*);
   static void onConnect(uint16_t);
   static void onDisconnect(uint16_t, uint8_t);
@@ -446,6 +451,8 @@ static void production_connection_events_preserve_disconnect_cleanup() {
     SerialBLEInterface::onDisconnect(7, reason);
     assert(link._conn_handle == BLE_CONN_HANDLE_INVALID && !link._isDeviceConnected);
     assert(!link._security_timer.pending() && !link._companion_start_timer.pending());
+    assert(link._tx_reset_pending && link.send_queue_len == 3);
+    assert(link.servicePendingTxReset()); // Application task applies the TX reset.
     assert(link.send_queue_len == 0 && link.recv_queue.size() == 0);
   }
 

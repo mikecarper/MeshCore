@@ -27,6 +27,8 @@ class Nrf52BleRxQueueTests(unittest.TestCase):
     def test_production_queue_and_callback_interleavings_under_sanitizers(self):
         source = (ROOT / "src/helpers/nrf52/SerialBLEInterface.cpp").read_text()
         signatures = ["void SerialBLEInterface::clearBuffers()",
+                      "void SerialBLEInterface::resetTxState()",
+                      "bool SerialBLEInterface::servicePendingTxReset()",
                       "static bool isBondAuthenticationFailure(",
                       "void SerialBLEInterface::onBLEEvent(",
                       "void SerialBLEInterface::onConnect(",
