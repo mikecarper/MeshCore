@@ -223,7 +223,8 @@ class CompanionSettingsPersistenceContractTests(unittest.TestCase):
         presence_at = load.index(
             'contactPathPresence(contacts_fs, "/channels2",'
         )
-        open_at = load.index('openRead(contacts_fs, "/channels2")')
+        self.assertIn('const char* channel_path = "/channels2";', load)
+        open_at = load.index("openRead(contacts_fs, channel_path)")
         self.assertLess(presence_at, open_at)
 
         # Stat and open errors are distinct from a cleanly absent file, and
@@ -250,7 +251,19 @@ class CompanionSettingsPersistenceContractTests(unittest.TestCase):
         self.assertGreaterEqual(load.count("incomplete = true;"), 4)
 
         save = function_body(self.store, "bool DataStore::saveChannels(")
+        self.assertIn("if (_channel_load_incomplete) return false;", save)
         self.assertIn("if (_contact_load_incomplete) return false;", save)
+
+    def test_channel_quarantine_does_not_poison_contact_authority(self):
+        contact_health = function_body(self.store, "bool DataStore::hasIncompleteContactLoad(")
+        self.assertNotIn("_channel_load_incomplete", contact_health)
+        self.assertIn("contactRecoveryPending()", contact_health)
+        self.assertIn("_contact_load_incomplete", contact_health)
+        load = function_body(self.store, "void DataStore::loadChannels(")
+        self.assertIn("bool& incomplete = _channel_load_incomplete;", load)
+        self.assertNotIn("_contact_load_incomplete = true", load)
+        clear = function_body(self.store, "void DataStore::clearContactLoadFailure(")
+        self.assertNotIn("_channel_load_incomplete", clear)
 
     def test_failed_legacy_preferences_recovery_latches_preferences(self):
         migrate = function_body(self.store, "bool DataStore::migrateToSecondaryFS()")

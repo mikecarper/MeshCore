@@ -64,7 +64,9 @@ class ContactCacheTest(unittest.TestCase):
 
     def run_cache_test(self, platform, disable_crc_batch=False, disable_recovery=False,
                        disable_raw_recovery=False,
-                       unsafe_legacy_discovery=False, unsafe_page_discovery=False):
+                       unsafe_legacy_discovery=False, unsafe_page_discovery=False,
+                       fixture_transform=None, expected_failure=None,
+                       expected_marker='PASS: 114 shared request/login payload and routing traces'):
         with tempfile.TemporaryDirectory(prefix="mesh-contact-cache-") as temp:
             temp = Path(temp)
             store = (ROOT / "examples/companion_radio/DataStore.cpp").read_text()
@@ -180,6 +182,9 @@ class ContactCacheTest(unittest.TestCase):
                     "int  BaseChatMesh::sendRequest(const ContactInfo& recipient, uint8_t"))
             )
             binary = temp / "test"
+            fixture = ROOT / "test/fixtures/contact_cache/test_contact_cache.cpp"
+            if fixture_transform is not None:
+                fixture = fixture_transform(temp)
             result = subprocess.run([
                 "c++", "-std=c++17", "-O1", "-g", "-Wall", "-Wextra",
                 "-fsanitize=address,undefined", "-fno-omit-frame-pointer",
@@ -189,13 +194,16 @@ class ContactCacheTest(unittest.TestCase):
                 "-I", str(ROOT / "test/fixtures/contact_cache/mocks"),
                 "-I", str(ROOT / "lib/ed25519"),
                 "-I", str(ROOT / "src"), "-I", str(temp),
-                str(ROOT / "test/fixtures/contact_cache/test_contact_cache.cpp"),
+                str(fixture),
                 str(ROOT / "src/helpers/ContactInfo.cpp"), *crypto_objects(temp),
                 "-lcrypto", "-o", str(binary),
             ], capture_output=True, text=True)
             self.assertEqual(result.returncode, 0, result.stderr)
             result = subprocess.run([str(binary)], capture_output=True, text=True)
-            if disable_raw_recovery:
+            if expected_failure is not None:
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn(expected_failure, result.stdout + result.stderr)
+            elif disable_raw_recovery:
                 self.assertNotEqual(result.returncode, 0)
                 self.assertIn("raw_read_recovery_preserves_accepted_ram_state", result.stderr)
                 self.assertIn("f.host.recovery_resets == 0", result.stderr)
@@ -215,7 +223,7 @@ class ContactCacheTest(unittest.TestCase):
                 self.assertIn("crc_read_passes == 104", result.stderr)
             else:
                 self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-                self.assertIn('PASS: 114 shared request/login payload and routing traces', result.stdout)
+                self.assertIn(expected_marker, result.stdout)
 
 
 if __name__ == "__main__":

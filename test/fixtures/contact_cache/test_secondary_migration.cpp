@@ -26,6 +26,7 @@ class DataStore {
   FakeFilesystem* _fsExtra;
   bool _contact_load_incomplete = false, _identity_creation_blocked = false;
   bool _prefs_load_incomplete = false;
+  bool _channel_load_incomplete = false;
   DataStore(FakeFilesystem& primary, FakeFilesystem& secondary) : _fs(&primary), _fsExtra(&secondary) {}
   File openRead(FakeFilesystem* fs, const char* path) { return fs->open(path); }
   FakeFilesystem* _getContactsChannelsFS() { return _fsExtra ? _fsExtra : _fs; }

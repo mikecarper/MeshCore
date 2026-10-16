@@ -3696,8 +3696,9 @@ bool MyMesh::handleTxRoutingCommand(const char* command, char* reply, size_t rep
         kind, parsed.channel ? "index" : "key:hex");
     return true;
   }
-  if (parsed.set && !canMutateContacts()) {
-    snprintf(reply, reply_size, "Error: contact/channel storage unavailable");
+  if (parsed.set && (!canMutateContacts()
+      || (parsed.channel && _store->hasIncompleteChannelLoad()))) {
+    snprintf(reply, reply_size, "Error: storage unavailable");
     return true;
   }
 

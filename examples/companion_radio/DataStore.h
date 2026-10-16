@@ -146,8 +146,8 @@ class DataStore
   void invalidateAdvertWrite(const uint8_t key[], int key_len);
   void retireAdvertWrite(const uint8_t key[], int key_len);
 #endif
-#if !defined(NRF52_PLATFORM)
   bool _channel_load_incomplete = false;
+#if !defined(NRF52_PLATFORM)
 #if !MESH_CONTACT_CACHE
   bool _uncached_contact_load_incomplete = false;
 #endif
@@ -255,6 +255,7 @@ public:
   bool flushContactWrites(DataStoreHost* host, bool (*filter)(const ContactInfo& c) = NULL);
   bool hasPendingContactWrites() const;
   bool hasIncompleteContactLoad() const;
+  bool hasIncompleteChannelLoad() const { return _channel_load_incomplete; }
   void loadChannels(DataStoreHost* host);
   bool saveChannels(DataStoreHost* host);
   bool migrateToSecondaryFS();

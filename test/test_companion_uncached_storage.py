@@ -20,7 +20,7 @@ class CompanionUncachedStorageTest(unittest.TestCase):
     def test_rp2040_uncached_storage(self):
         self.run_platform("RP2040_PLATFORM")
 
-    def run_platform(self, platform):
+    def run_platform(self, platform, fixture_transform=None, expected_failure=None):
         source = (ROOT / "examples/companion_radio/DataStore.cpp").read_text()
         signatures = [
             "static bool companionPathPresence(",
@@ -78,6 +78,9 @@ class CompanionUncachedStorageTest(unittest.TestCase):
             (temp / "InternalFileSystem.h").write_text(
                 "#pragma once\n#define InternalFS filesystem\n")
             binary = temp / "test"
+            fixture = ROOT / "test/fixtures/companion_uncached_storage/test.cpp"
+            if fixture_transform is not None:
+                fixture = fixture_transform(temp)
             compiled = subprocess.run([
                 "c++", "-std=c++17", "-O1", "-g", "-Wall", "-Wextra",
                 "-Werror", "-Wno-unused-parameter", "-fsanitize=address,undefined", "-fno-pie", "-no-pie",
@@ -86,12 +89,16 @@ class CompanionUncachedStorageTest(unittest.TestCase):
                 "-I", str(ROOT / "test/fixtures/contact_cache/mocks"),
                 "-I", str(ROOT / "src"),
                 "-I", str(ROOT / "lib/ed25519"),
-                str(ROOT / "test/fixtures/companion_uncached_storage/test.cpp"),
+                str(fixture),
                 "-o", str(binary),
             ], capture_output=True, text=True, timeout=60)
             self.assertEqual(compiled.returncode, 0, compiled.stdout + compiled.stderr)
             result = subprocess.run([str(binary)], capture_output=True, text=True, timeout=30)
-            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            if expected_failure is None:
+                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            else:
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn(expected_failure, result.stdout + result.stderr)
 
 
 if __name__ == "__main__":

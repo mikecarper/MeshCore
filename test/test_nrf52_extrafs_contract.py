@@ -758,10 +758,22 @@ class Nrf52ExtraFsContractTest(unittest.TestCase):
         save_channels = function_body(
             store, "bool DataStore::saveChannels(DataStoreHost* host)"
         )
-        self.assertIn("bool& incomplete = _contact_load_incomplete;", load_channels)
+        # Unknown shared-filesystem authority still blocks channel loading,
+        # but channel-only failures must not poison the contact health latch.
+        self.assertIn("bool& incomplete = _channel_load_incomplete;", load_channels)
+        self.assertLess(
+            load_channels.index("if (_contact_load_incomplete) return;"),
+            load_channels.index("bool& incomplete = _channel_load_incomplete;"),
+        )
         self.assertLess(
             load_channels.index("if (incomplete) return;"),
-            load_channels.index('openRead(contacts_fs, "/channels2")'),
+            load_channels.index("openRead(contacts_fs,"),
+        )
+        self.assertNotIn("_contact_load_incomplete", function_body(
+            load_channels, "if (!success)"))
+        self.assertLess(
+            save_channels.index("if (_channel_load_incomplete) return false;"),
+            save_channels.index("mesh::AtomicFileWriter file("),
         )
         self.assertLess(
             save_channels.index("if (_contact_load_incomplete) return false;"),

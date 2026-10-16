@@ -574,6 +574,7 @@ void DataStore::useVolatilePrimaryFS(FILESYSTEM& fs) {
   _secondary_authority_unknown = false;
   _identity_creation_blocked = false;
   _contact_load_incomplete = false;
+  _channel_load_incomplete = false;
   _prefs_load_incomplete = false;
 }
 
@@ -835,6 +836,7 @@ bool DataStore::formatFileSystem() {
   // failed erase must keep the boot's load quarantine latched.
   if (success) {
     _contact_load_incomplete = false;
+    _channel_load_incomplete = false;
 #if MESH_CONTACT_CACHE
     _cache_load_incomplete = false;
 #endif
@@ -3132,10 +3134,11 @@ bool DataStore::hasPendingContactWrites() const {
 #endif
 }
 
+// Share the repeated admission/persistence checks instead of duplicating them under LTO.
+__attribute__((noinline))
 bool DataStore::hasIncompleteContactLoad() const {
   if (contactRecoveryPending()) return true;
 #if !defined(NRF52_PLATFORM)
-  if (_channel_load_incomplete) return true;
 #if !MESH_CONTACT_CACHE
   if (_uncached_contact_load_incomplete) return true;
 #endif
@@ -3164,9 +3167,14 @@ void DataStore::loadChannels(DataStoreHost* host) {
       if (!file) continue;
       static const uint32_t RECORD_SIZE = 4 + 32 + 32;
       const size_t size = file.size();
-      if (size % RECORD_SIZE != 0 || size / RECORD_SIZE > MAX_GROUP_CHANNELS) {
+      if (size % RECORD_SIZE != 0) {
         file.close();
         break;
+      }
+      if (size / RECORD_SIZE > MAX_GROUP_CHANNELS) {
+        file.close();
+        _channel_load_incomplete = true;
+        return;
       }
       const uint8_t count = size / RECORD_SIZE;
       ChannelDetails* loaded = count == 0 ? nullptr
@@ -3209,10 +3217,11 @@ void DataStore::loadChannels(DataStoreHost* host) {
   return;
 #else
 #if defined(NRF52_PLATFORM)
-  bool& incomplete = _contact_load_incomplete;
-#else
-  bool& incomplete = _channel_load_incomplete;
+  // Contact/migration failures can still make the shared filesystem's
+  // authority unknowable. A channel-only failure must not set that veto.
+  if (_contact_load_incomplete) return;
 #endif
+  bool& incomplete = _channel_load_incomplete;
   if (incomplete) return;
   FILESYSTEM* contacts_fs = _getContactsChannelsFS();
 #if defined(ESP32_PLATFORM) || defined(RP2040_PLATFORM)
@@ -3234,74 +3243,98 @@ void DataStore::loadChannels(DataStoreHost* host) {
 #else
   if (!contacts_fs->exists("/channels2")) return;
 #endif
-  File file = openRead(contacts_fs, "/channels2");
-  if (!file) {
-    MESH_DEBUG_PRINTLN("DataStore: channels file open failed; storage quarantined");
-    incomplete = true;
-    return;
-  }
-#if defined(NRF52_PLATFORM)
-  if (file.size() != channels_size) {
-    file.close();
-    MESH_DEBUG_PRINTLN("DataStore: channels file changed while opening; storage quarantined");
-    incomplete = true;
-    return;
-  }
-#else
-  channels_size = file.size();
-#endif
-  static const uint32_t CHANNEL_RECORD_SIZE = 4 + 32 + 32;
-  if ((channels_size % CHANNEL_RECORD_SIZE) != 0
-      || channels_size / CHANNEL_RECORD_SIZE > MAX_GROUP_CHANNELS) {
-    file.close();
-    MESH_DEBUG_PRINTLN("DataStore: invalid channels file size; storage quarantined");
-    incomplete = true;
-    return;
-  }
-  const uint8_t channel_count =
-      static_cast<uint8_t>(channels_size / CHANNEL_RECORD_SIZE);
-  ChannelDetails* loaded = channel_count == 0 ? nullptr
-      : static_cast<ChannelDetails*>(
-          malloc(sizeof(ChannelDetails) * channel_count));
-  if (channel_count != 0 && loaded == nullptr) {
-    file.close();
-    MESH_DEBUG_PRINTLN(
-        "DataStore: no memory for channels snapshot; storage quarantined");
-    incomplete = true;
-    return;
-  }
-  bool success = true;
-  for (uint8_t channel_idx = 0; channel_idx < channel_count; channel_idx++) {
-    uint8_t unused[4];
-    success = file.read(unused, sizeof(unused)) == sizeof(unused)
-        && file.read(reinterpret_cast<uint8_t*>(loaded[channel_idx].name),
-                     sizeof(loaded[channel_idx].name))
-            == sizeof(loaded[channel_idx].name)
-        && file.read(loaded[channel_idx].channel.secret,
-                     sizeof(loaded[channel_idx].channel.secret))
-            == sizeof(loaded[channel_idx].channel.secret);
-    if (!success) break;
-    loaded[channel_idx].name[sizeof(loaded[channel_idx].name) - 1] = 0;
-    loaded[channel_idx].channel.tx_radio = mesh::decodeRadioTxPolicy(unused[0]);
-  }
-  file.close();
-  if (!success) {
-    free(loaded);
-    MESH_DEBUG_PRINTLN(
-        "DataStore: channels file read failed; storage quarantined");
-    incomplete = true;
-    return;
-  }
-  for (uint8_t channel_idx = 0; channel_idx < channel_count; channel_idx++) {
-    if (!host->onChannelLoaded(channel_idx, loaded[channel_idx])) {
-      free(loaded);
-      MESH_DEBUG_PRINTLN(
-          "DataStore: channel host refused durable record; storage quarantined");
+  const char* channel_path = "/channels2";
+  for (;;) {
+    File file = openRead(contacts_fs, channel_path);
+    if (!file) {
+      MESH_DEBUG_PRINTLN("DataStore: channels file open failed; storage quarantined");
       incomplete = true;
       return;
     }
+#if defined(NRF52_PLATFORM)
+    if (file.size() != channels_size) {
+      file.close();
+      MESH_DEBUG_PRINTLN("DataStore: channels file changed while opening; storage quarantined");
+      incomplete = true;
+      return;
+    }
+#else
+    channels_size = file.size();
+#endif
+    static const uint32_t CHANNEL_RECORD_SIZE = 4 + 32 + 32;
+    const bool malformed = (channels_size % CHANNEL_RECORD_SIZE) != 0;
+    if (malformed || channels_size / CHANNEL_RECORD_SIZE > MAX_GROUP_CHANNELS) {
+      file.close();
+#if defined(RP2040_PLATFORM)
+      // A rename-gap backup takes precedence over replacing a malformed image.
+      // Read and admit that complete snapshot before changing either name.
+      if (malformed && channel_path[sizeof("/channels2") - 1] == 0
+          && contacts_fs->exists("/channels2.bak")) {
+        channel_path = "/channels2.bak";
+        continue;
+      }
+#endif
+      MESH_DEBUG_PRINTLN("DataStore: invalid channels file size");
+      incomplete = !malformed;
+      return;
+    }
+    const uint8_t channel_count =
+        static_cast<uint8_t>(channels_size / CHANNEL_RECORD_SIZE);
+    ChannelDetails* loaded = channel_count == 0 ? nullptr
+        : static_cast<ChannelDetails*>(
+            malloc(sizeof(ChannelDetails) * channel_count));
+    if (channel_count != 0 && loaded == nullptr) {
+      file.close();
+      MESH_DEBUG_PRINTLN(
+          "DataStore: no memory for channels snapshot; storage quarantined");
+      incomplete = true;
+      return;
+    }
+    bool success = true;
+    for (uint8_t channel_idx = 0; channel_idx < channel_count; channel_idx++) {
+      uint8_t unused[4];
+      success = file.read(unused, sizeof(unused)) == sizeof(unused)
+          && file.read(reinterpret_cast<uint8_t*>(loaded[channel_idx].name),
+                       sizeof(loaded[channel_idx].name))
+              == sizeof(loaded[channel_idx].name)
+          && file.read(loaded[channel_idx].channel.secret,
+                       sizeof(loaded[channel_idx].channel.secret))
+              == sizeof(loaded[channel_idx].channel.secret);
+      if (!success) break;
+      loaded[channel_idx].name[sizeof(loaded[channel_idx].name) - 1] = 0;
+      loaded[channel_idx].channel.tx_radio = mesh::decodeRadioTxPolicy(unused[0]);
+    }
+    file.close();
+    if (!success) {
+      free(loaded);
+      MESH_DEBUG_PRINTLN(
+          "DataStore: channels file read failed; storage quarantined");
+      incomplete = true;
+      return;
+    }
+    for (uint8_t channel_idx = 0; channel_idx < channel_count; channel_idx++) {
+      if (!host->onChannelLoaded(channel_idx, loaded[channel_idx])) {
+        free(loaded);
+        MESH_DEBUG_PRINTLN(
+            "DataStore: channel host refused durable record; storage quarantined");
+        incomplete = true;
+        return;
+      }
+    }
+    free(loaded);
+#if defined(RP2040_PLATFORM)
+    if (channel_path[sizeof("/channels2") - 1] != 0) {
+      // Only the proven malformed target is retired. Failed promotion keeps
+      // the validated RAM table and protects the surviving backup from saves.
+      contacts_fs->remove("/channels2");
+      if (contacts_fs->exists("/channels2")
+          || !mesh::ContactFileTransaction::recover(contacts_fs, "/channels2")
+          || !contacts_fs->exists("/channels2")
+          || contacts_fs->exists("/channels2.bak")) incomplete = true;
+    }
+#endif
+    return;
   }
-  free(loaded);
 #endif
 }
 
@@ -3310,9 +3343,7 @@ bool DataStore::saveChannels(DataStoreHost* host) {
   if (!promoteCompanionRecoveryFile(_getContactsChannelsFS(), "/channels2",
                                     _channel_recovery_source)) return false;
 #endif
-#if !defined(NRF52_PLATFORM)
   if (_channel_load_incomplete) return false;
-#endif
 #if defined(NRF52_PLATFORM)
   if (_contact_load_incomplete) return false;
 #endif

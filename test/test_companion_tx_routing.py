@@ -51,6 +51,7 @@ struct DataStore {
  enum : uint8_t { ContactRecoveryPending=1 };
  uint8_t _contact_recovery=0;
  @RECOVERY_METHOD@
+ @CHANNEL_METHOD@
  const char* _channel_recovery_source=nullptr;
  bool hasIncompleteContactLoad() const;
  FILESYSTEM* _getContactsChannelsFS() { return &fs; }
@@ -65,6 +66,7 @@ public:
  ChannelDetails channels[MAX_GROUP_CHANNELS];
  Radio radio; Radio* _radio=&radio;
  DataStore store;
+ DataStore* _store=&store;
  bool writable=true, writes_ok=true; unsigned writes=0;
  bool canMutateContacts() const { return writable && !store.hasIncompleteContactLoad(); }
  int getTotalContactSlots() const { return contacts.size(); }
@@ -146,8 +148,8 @@ int main() {
  assert(disk.size()==MAX_GROUP_CHANNELS*68);
  assert(disk[0]==mesh::encodeRadioTxPolicy(mesh::RADIO_TX_BOTH));
  assert(disk[68]==mesh::encodeRadioTxPolicy(mesh::RADIO_TX_SECONDARY));
- // Loading is all-or-nothing. ESP32 retries recovery and then permits an
- // explicitly requested defaults save; the other backends remain fail-closed.
+ // Channels have their own quarantine. A partial fixed record may be
+ // replaced with defaults, but readable overcapacity and IO failures cannot.
  for(int fault : {0,1,2,3,4}) {
    MyMesh boot;
    boot.store.fs.files["/channels2"]=disk;
@@ -159,22 +161,29 @@ int main() {
    if(fault==4) boot.store.fs.files["/channels2"].resize((MAX_GROUP_CHANNELS+1)*68);
    auto durable=boot.store.fs.files["/channels2"];
    boot.store.loadChannels(&boot);
-#if defined(ESP32_PLATFORM)
    assert(!boot.store.hasIncompleteContactLoad());
+   const bool quarantined =
+#if defined(ESP32_PLATFORM)
+       fault==4;
 #else
-   assert(boot.store.hasIncompleteContactLoad());
+       fault!=3;
 #endif
+   assert(boot.store.hasIncompleteChannelLoad()==quarantined);
    assert(!strcmp(boot.channels[0].name,"keep existing"));
    assert(!boot.channels[1].name[0]);
    boot.store.fs.fail_read_open=false;boot.store.fs.fail_read_after=-1;
-#if defined(ESP32_PLATFORM)
    assert(boot.store.fs.files["/channels2"]==durable);
-   assert(boot.canMutateContacts()&&boot.store.saveChannels(&boot));
-   assert(boot.store.fs.files["/channels2"]!=disk);
-#else
-   assert(!boot.canMutateContacts()&&!boot.store.saveChannels(&boot));
-   assert(boot.store.fs.files["/channels2"]==durable);
-#endif
+   assert(boot.canMutateContacts());
+   const unsigned attempts=boot.writes;
+   assert(boot.handleTxRoutingCommand("set tx.channel 0 auto",reply,sizeof(reply)));
+   if(quarantined) {
+     assert(strstr(reply,"storage unavailable")&&boot.writes==attempts);
+     assert(!boot.store.saveChannels(&boot));
+     assert(boot.store.fs.files["/channels2"]==durable);
+   } else assert(!strncmp(reply,"OK",2));
+   strcpy(boot.contacts[1].name,"healthy contact");
+   assert(boot.handleTxRoutingCommand("set tx.user \"healthy contact\" both",reply,sizeof(reply)));
+   assert(!strncmp(reply,"OK",2)&&boot.contacts[1].tx_radio==mesh::RADIO_TX_BOTH);
  }
  MyMesh fresh;fresh.store.loadChannels(&fresh);
  assert(!fresh.store.hasIncompleteContactLoad()); // absent file is a fresh boot
@@ -221,10 +230,12 @@ int main() {
  assert(failed_boot.store.saveChannels(&failed_boot));
  assert(failed_boot.store.fs.files["/channels2"]==disk);
 #else
- assert(failed_boot.store.hasIncompleteContactLoad());
+ assert(!failed_boot.store.hasIncompleteContactLoad());
+ assert(failed_boot.store.hasIncompleteChannelLoad());
  failed_boot.store.fs.fail_rename_from.clear();
  failed_boot.store.loadChannels(&failed_boot);
- assert(failed_boot.store.hasIncompleteContactLoad());
+ assert(!failed_boot.store.hasIncompleteContactLoad());
+ assert(failed_boot.store.hasIncompleteChannelLoad());
  assert(!failed_boot.store.saveChannels(&failed_boot));
  assert(failed_boot.store.fs.files["/channels2.bak"]==disk);
 #endif
@@ -291,7 +302,8 @@ class CompanionTxRoutingTest(unittest.TestCase):
             (work / 'ContactFileTransaction.h').write_text(transaction.replace(
                 '#include "IdentityStore.h"', '#include <helpers/IdentityStore.h>'))
             (work / 'test.cpp').write_text(HARNESS.replace('@METHODS@', methods).replace(
-                '@RECOVERY_METHOD@', method(store_header, '  bool contactRecoveryPending() const')))
+                '@RECOVERY_METHOD@', method(store_header, '  bool contactRecoveryPending() const')).replace(
+                '@CHANNEL_METHOD@', method(store_header, '  bool hasIncompleteChannelLoad() const')))
             for platform in ('ESP32_PLATFORM', 'RP2040_PLATFORM', 'STM32_PLATFORM'):
                 with self.subTest(platform=platform):
                     build = subprocess.run(['g++', '-std=c++17', '-Wall', '-Wextra', '-D'+platform+'=1',
