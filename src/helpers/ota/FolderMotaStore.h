@@ -40,6 +40,7 @@ public:
   void clear() override { _total = 0; }
   bool finalize() override;
   bool reopen() override;                                       // OP_STAT: adopt an existing file for resume
+  bool reopenHadIoError() const override { return _reopen_io_error; }
   bool canReconnect() const override { return true; }
 
   // A host-backed store is fully random-access, so it needs no pinned-meta RAM page and no layout planning.
@@ -58,6 +59,7 @@ private:
   MotaStreamWritePolicy _write_policy;
   uint8_t  _mid[4] = {0, 0, 0, 0};
   uint32_t _total = 0;
+  bool _reopen_io_error = false;
 };
 
 } // namespace ota

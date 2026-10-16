@@ -96,6 +96,7 @@ jobs:
 
       - name: Verify compact STM32 signature arithmetic
         run: |
+          python3 -B test/test_stm32_companion_profile.py -v
           python3 -B test/test_ed25519_compact_scalar.py -v
           python3 -B test/test_ed25519_compact.py -v
 
@@ -242,6 +243,7 @@ jobs:
         run: |
           python3 -B test/test_mota_serial_deadline.py -v
           python3 -B test/test_mota_folder_deadline.py -v
+          python3 -B test/test_ota_folder_resume.py -v
           python3 -B test/test_ota_direct_manager.py -v
           python3 -B test/test_mota_kiss_direct.py -v
           python3 -B test/test_ota_kiss_direct.py -v
@@ -422,6 +424,7 @@ jobs:
                           '--storage-dir', '.pio/libdeps/radio-status-test'], check=True)
           PY
           python3 -B test/test_sx126x_receive_mode.py
+          python3 -B test/test_beacon_power.py -v
 
       - name: Verify temporary-radio timing and exact reply delivery
         run: |
@@ -563,6 +566,7 @@ jobs:
         run: |
           python3 -B test/test_companion_usb_default.py
           python3 -B test/test_companion_usb_input.py
+          python3 -B test/test_arduino_serial_backpressure.py -v
           python3 -B test/test_companion_ota_includes.py
           python3 -B test/test_companion_usb_logging_handoff.py
           python3 -B test/test_companion_usb_mota_exit.py

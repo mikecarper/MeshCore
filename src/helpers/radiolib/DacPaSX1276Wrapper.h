@@ -139,6 +139,12 @@ public:
   }
 
 protected:
+#if MESH_ENABLE_TX_BEACONS
+  bool checkBeaconOutputPower(float frequency_mhz, int8_t dbm) const override {
+    (void)frequency_mhz;
+    return dbm >= _min_dbm && dbm <= _max_dbm;
+  }
+#endif
   // Emit a gain-control code. Override for a PA driven by PWM or an external
   // DAC instead of the MCU's own.
   virtual void writeGainControl(uint8_t code) {

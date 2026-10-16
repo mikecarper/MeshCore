@@ -1572,10 +1572,21 @@ OtaManager::PullResult OtaManager::startFetch(const uint8_t* mid, uint32_t targe
   // A validate pull is a FRESH seed capture, not a resume: the store already holds the seed's payload (not a
   // real partial), so never adopt it via resumeStaged - always re-begin and run the manifest->leaves->diff.
   const bool automatic = !_have_desired_mid && _desired_target == 0 && !_archive_fetch;
-  if (!validate && resumeStagedFor(mid, automatic)) return PULL_RESUMED; // adopt a partial container left in the store
   memcpy(_fid, mid, 4);
   _have = 0; _fbc = 0; _ftotal = 0; _fflags = 0;
   _observed_path_transmissions = 0;              // learn the actual source/relay path from this fetch's replies
+  if (!validate) {
+    if (resumeStagedFor(mid, automatic)) return PULL_RESUMED;
+    if (_fetch_error == FETCH_ERROR_STORAGE) {
+      // A failed host read cannot authorize BEGIN to erase a valid partial.
+      // IDLE records that adoption itself must be retried on reconnect; no
+      // fresh-container initialization has been authorized yet.
+      _fstate = PAUSED;
+      _paused_from = IDLE;
+      clearReassembly();
+      return PULL_STARTED;
+    }
+  }
   _fstate = WANT_MANIFEST;
   _mf_total = 0; _mf_mask = 0; _mf_len = 0; _mf_retries = 0; _loop_last_mfmask = 0;   // fresh manifest reassembly
   memset(_mf_buf, 0, sizeof(_mf_buf));
@@ -1616,7 +1627,14 @@ bool OtaManager::pauseFetchForDisconnect() {
 
 bool OtaManager::resumeFetchAfterReconnect() {
   if (_fstate != PAUSED || !_fetch) return false;
-  if (_paused_from == WANT_MANIFEST || _paused_from == WANT_LEAVES) {
+  if (_paused_from == IDLE) {
+    // The first resume probe lost its link before it could establish whether
+    // staging was usable. Retry it before allowing a fresh initialization.
+    uint8_t mid[4]; memcpy(mid, _fid, sizeof(mid));
+    _fstate = IDLE;
+    PullResult result = startFetch(mid, _fexpected_target, _validate);
+    if ((result != PULL_STARTED && result != PULL_RESUMED) || _fstate == PAUSED) return false;
+  } else if (_paused_from == WANT_MANIFEST || _paused_from == WANT_LEAVES) {
     // begin/header/manifest/trailer may only have partly reached the host.
     // Re-request the manifest and run the full initialization transaction.
     // Leaf-diff also restarts initialization: the reconnected host may have
@@ -1859,15 +1877,23 @@ bool OtaManager::resumeStagedFor(const uint8_t* want_mid, bool automatic_resume)
   const uint32_t expected_target = automatic_resume
       ? (_migration_target ? _migration_target : _target)
       : _fexpected_target;
-  if (!_fetch->reopenFor(want_mid, expected_target)) return false;
+  auto readFailure = [&]() {
+    if (_fetch->canReconnect()) _fetch_error = FETCH_ERROR_STORAGE;
+    return false;
+  };
+  if (!_fetch->reopenFor(want_mid, expected_target)) {
+    return _fetch->reopenHadIoError() ? readFailure() : false;
+  }
   uint32_t total = _fetch->staged_size();
   uint8_t hdr[8];
-  if (total < 8u + MOTA_MFL + 5u || !_fetch->read(0, hdr, sizeof(hdr))
-      || memcmp(hdr, MOTA_MAGIC, 4) != 0 || rd_u32le(hdr + 4) != total) return false;
+  if (total < 8u + MOTA_MFL + 5u) return false;
+  if (!_fetch->read(0, hdr, sizeof(hdr))) return readFailure();
+  if (memcmp(hdr, MOTA_MAGIC, 4) != 0 || rd_u32le(hdr + 4) != total) return false;
   // read + parse the stored manifest (everything before leaves[]) to recompute the geometry
   uint8_t mbuf[MOTA_MFL];
   MotaManifest m;
-  if (!_fetch->read(8, mbuf, sizeof(mbuf)) || !mota_parse_manifest(mbuf, sizeof(mbuf), m)) return false;
+  if (!_fetch->read(8, mbuf, sizeof(mbuf))) return readFailure();
+  if (!mota_parse_manifest(mbuf, sizeof(mbuf), m)) return false;
   if (want_mid && memcmp(m.merkle_root, want_mid, 4) != 0) return false;   // a different fw is staged
   // A boot-time resume is an automatic fetch decision and therefore belongs
   // only to this node. An explicit pull retains target=0 as an intentional
@@ -1896,8 +1922,8 @@ bool OtaManager::resumeStagedFor(const uint8_t* want_mid, bool automatic_resume)
   uint32_t payload_off = leaves_off + bc * 4;
   if ((uint64_t)payload_off + m.payload_size + 5 != total) return false;   // geometry must match the header
   uint8_t trailer[5];
-  if (!_fetch->read(total - sizeof(trailer), trailer, sizeof(trailer))
-      || memcmp(trailer, MOTA_TRAILER, sizeof(trailer)) != 0) return false;
+  if (!_fetch->read(total - sizeof(trailer), trailer, sizeof(trailer))) return readFailure();
+  if (memcmp(trailer, MOTA_TRAILER, sizeof(trailer)) != 0) return false;
 
   _wire_v2_session = _wire_v2_enabled;
   _wire_v2_confirmed = false;

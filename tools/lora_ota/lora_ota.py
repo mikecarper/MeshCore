@@ -3146,12 +3146,19 @@ def prompt_for_next_125khz_sf(args: argparse.Namespace) -> bool:
     return True
 
 
+_SOURCE_TERMINAL_HEADER = re.compile(
+    r"(?m)^===== MeshCore (?:Full )?Companion Terminal =====[ \t]*$"
+)
+_SOURCE_CLI_ERROR_LINE = re.compile(
+    r"^[ \t]*(?:->[ \t]*)?(?:error|err|fail|unknown[ \t]+command)\b",
+    re.IGNORECASE | re.MULTILINE,
+)
+
+
 def parse_source_terminal_banner(value: str) -> tuple[str, str]:
     """Read one Full/Companion welcome identity, not an advert or cached name."""
     text = value.replace("\r", "")
-    headers = list(re.finditer(
-        r"(?m)^===== MeshCore (?:Full )?Companion Terminal =====[ \t]*$", text,
-    ))
+    headers = list(_SOURCE_TERMINAL_HEADER.finditer(text))
     if len(headers) != 1:
         raise OtaError("OTA source did not expose one fresh Companion terminal banner")
     tail = text[headers[0].end():]
@@ -3167,6 +3174,21 @@ def parse_source_terminal_banner(value: str) -> tuple[str, str]:
     if len(keys) != 1 or welcome != keys:
         raise OtaError("OTA source Companion banner did not expose one exact public key after WELCOME")
     return keys[0].lower(), tail[prompt.end():]
+
+
+def _source_cli_response_text(value: str) -> str:
+    """Exclude a validated welcome banner from command reply classification."""
+    text = value.replace("\r", "")
+    header = _SOURCE_TERMINAL_HEADER.search(text)
+    if header is None:
+        return text
+    _, response = parse_source_terminal_banner(text)
+    banner_end = len(text) - len(response)
+    # Preserve errors outside the welcome record and unexpected rejection
+    # lines mixed into it. A valid welcome key cannot hide a real failure.
+    banner_errors = [line for line in text[header.start():banner_end].splitlines()
+                     if _SOURCE_CLI_ERROR_LINE.search(line)]
+    return "\n".join((text[:header.start()], *banner_errors, response))
 
 
 def source_cli_command(
@@ -3319,9 +3341,9 @@ def source_cli_command(
             except OtaError as exc:
                 raise TransmissionError(f"source CLI link failed: {exc}") from exc
             output = f"{result.stdout}\n{result.stderr}".strip()
-        lowered = output.lower()
-        if ("error" in lowered or "unknown command" in lowered or "err " in lowered
-                or re.search(r"(?:^|\n)\s*(?:->\s*)?(?:err|fail)(?:\b|:)", lowered)):
+        response_output = _source_cli_response_text(output)
+        lowered = response_output.lower()
+        if _SOURCE_CLI_ERROR_LINE.search(response_output):
             raise OtaError(f"source rejected {command_text!r}: {output}")
         if full_companion_identity:
             version_output = output.replace("\r", "")
@@ -3841,16 +3863,36 @@ class SeederProcess:
                 creationflags=creationflags,
             )
         except FileNotFoundError as exc:
-            self.log_file.close()
+            self._close_log()
             raise OtaError(f"required command was not found: {self.args.motatool}") from exc
         self._wait_until_attached()
         print("[seeder] running (device COUNT confirmed)")
 
-    def _log_tail(self) -> str:
+    def _close_log(self) -> None:
+        log_file = self.log_file
+        self.log_file = None
+        if log_file is not None and not log_file.closed:
+            try:
+                log_file.close()
+            except OSError as exc:
+                print(
+                    f"WARNING: could not close seeder log {self.log_path}: {exc}",
+                    file=sys.stderr,
+                )
+
+    def _read_log(self) -> str:
         if self.log_file is not None and not self.log_file.closed:
-            self.log_file.flush()
+            try:
+                self.log_file.flush()
+            except OSError:
+                # The subprocess writes directly to this descriptor. A parent
+                # flush failure must not hide bytes already readable on disk.
+                pass
+        return self.log_path.read_text(encoding="utf-8", errors="replace")
+
+    def _log_tail(self) -> str:
         try:
-            detail = self.log_path.read_text(encoding="utf-8", errors="replace")
+            detail = self._read_log()
         except OSError as exc:
             return f"could not read seeder log: {exc}"
         return detail[-4096:].strip() or "no seeder log output"
@@ -3951,12 +3993,10 @@ class SeederProcess:
         ``ota status``, reading it consumes no LoRa airtime and cannot collide
         with the transfer it is observing.
         """
-        if self.log_file is not None and not self.log_file.closed:
-            self.log_file.flush()
         try:
-            detail = self.log_path.read_text(encoding="utf-8", errors="replace")
+            detail = self._read_log()
         except OSError:
-            return 0, math.ceil(package.payload_size / package.block_size)
+            return 0, math.ceil(package.payload_size / package.block_size), 0
         offsets = [
             int(match)
             for match in re.findall(r"\bREAD\s+\d+\s+@(\d+)\s+OK\b", detail)
@@ -3970,22 +4010,24 @@ class SeederProcess:
         return len(set(payload_reads)), total, len(payload_reads)
 
     def stop(self) -> None:
-        if self.process is None:
-            return
-        if self.process.poll() is None:
+        process = self.process
+        if process is not None and process.poll() is None:
             try:
                 if os.name == "nt":
-                    self.process.terminate()
+                    process.terminate()
                 else:
-                    self.process.send_signal(signal.SIGINT)
-                self.process.wait(timeout=10)
+                    process.send_signal(signal.SIGINT)
+                process.wait(timeout=10)
             except (subprocess.TimeoutExpired, ProcessLookupError):
-                self.process.kill()
-                self.process.wait(timeout=5)
-        if self.log_file is not None and not self.log_file.closed:
-            self.log_file.close()
+                process.kill()
+                process.wait(timeout=5)
+        # Keep ownership if shutdown fails: the child may still own the source
+        # serial port. Once exit is confirmed, a log-close failure must not
+        # prevent the caller from restoring radio and RXPS policies.
         self.process = None
-        print("[seeder] stopped")
+        self._close_log()
+        if process is not None:
+            print("[seeder] stopped")
 
 
 def parse_relay(value: str, default_password: str) -> tuple[str, str]:

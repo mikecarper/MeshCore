@@ -57,6 +57,9 @@ class BeaconManagerTest(unittest.TestCase):
     def test_every_config_short_write_and_recovery(self):
         self.run_scenario("storage")
 
+    def test_structural_config_corruption_remains_held(self):
+        self.run_scenario("structural_storage")
+
     def test_durable_meshtext_ids_fail_closed(self):
         self.run_scenario("ids")
 
@@ -65,6 +68,9 @@ class BeaconManagerTest(unittest.TestCase):
 
     def test_missing_active_counter_never_rewinds_to_backup(self):
         self.run_scenario("stale_backup")
+
+    def test_failed_live_promotion_never_restores_an_unrelated_backup(self):
+        self.run_scenario("live_backup")
 
     def negative_control(self, name, source, scenario):
         generated = Path(self.work.name) / (name + ".cpp")
@@ -96,6 +102,14 @@ class BeaconManagerTest(unittest.TestCase):
       else result = ReadResult::Valid;"""
         self.assertEqual(source.count(held), 1)
         self.negative_control("rewound", source.replace(held, restored), "stale_backup")
+
+    def test_negative_control_live_counter_backup_rewind_is_detected(self):
+        source = (ROOT / "src/helpers/BeaconManager.cpp").read_text(encoding="ascii")
+        guard = "if (active_backed_up && !fs_->rename(backup, path))"
+        self.assertEqual(source.count(guard), 1)
+        self.negative_control("live_rewound", source.replace(
+            guard, "if ((active_backed_up || backup_present) && !fs_->rename(backup, path))"),
+            "live_backup")
 
 
 if __name__ == "__main__":

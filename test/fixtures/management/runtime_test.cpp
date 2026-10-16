@@ -58,7 +58,60 @@ struct Fixture {
     return legacy;
   }
 };
-int main() {
+static void versionSnapshot(const char* version, bool valid_version, uint32_t packed = 0) {
+  Fixture f;
+  f.callbacks.firmware_version = version;
+  f.configure(); f.advance(5 * DAY + 60);
+  assert(f.mesh.packets.size() == 1);
+  const auto* header = f.mesh.packets[0].payload;
+  assert(!memcmp(header, "MGR2", 4));
+  const bool reported_valid = (read16(header + 76) & FIRMWARE) != 0;
+  const uint32_t reported_version = read32(header + 28);
+  if (reported_valid != valid_version || reported_version != packed)
+    fprintf(stderr, "version %s: expected valid=%u packed=%08x; got valid=%u packed=%08x\n",
+        version ? version : "(null)", unsigned(valid_version), unsigned(packed),
+        unsigned(reported_valid), unsigned(reported_version));
+  assert(reported_valid == valid_version && reported_version == packed);
+}
+
+static void versionSnapshots() {
+  for (const char* version : {"1.2.3", "v1.2.3", "v001.002.003",
+      "v1.2.3-release", "v1.2.3+build_42", "v1.2.3-rc.1+build_42"})
+    versionSnapshot(version, true, 0x01020300);
+  for (const char* version : {"1.2.3.4", "v1.2.3.004", "v1.2.3.4-preview1",
+      "v1.2.3.4+build_42", "v1.2.3.4-label_with_underscores"})
+    versionSnapshot(version, true, 0x01020304);
+  versionSnapshot("v1.18.0", true, 0x01120000); // Direct-build example default.
+  versionSnapshot("v1.17.1.9-halo-keymind-cascade-dev-5f4d242f", true, 0x01110109);
+  versionSnapshot("v1.17.1.9-halo-keymind-cascade-dev.42-observer-dev-5f4d242f", true, 0x01110109);
+  versionSnapshot("v1.18.0.42-5f4d242f", true, 0x0112002a); // Three-part base + build number.
+  versionSnapshot("255.255.255.255", true, UINT32_MAX);
+  versionSnapshot("0.0.0", true);
+  versionSnapshot("v0.0.0.0+build_0", true);
+  for (const char* version : {"", "v", "1", "1.2", "1..3", "1.2.", "1.2.3.",
+      "1.2.3.4.5", "1.2.3.xyz", "1.2.3garbage", "1.2.3.4garbage", "1.2.3 arbitrary text",
+      "1.2.3-", "1.2.3+", "1.2.3.4-", "1.2.3.4+", "release-v1.2.3",
+      " 1.2.3", "1. 2.3", "1.2.3 ", "1.2.3. 4", "+1.2.3", "1.+2.3", "1.2.-3",
+      "1.2.3.+4", "1.2.3.-4", "256.0.0", "0.256.0", "0.0.256", "0.0.0.256",
+      "v4294967297.2.3", "v1.2.3.4294967297", "v-4294967295.2.3", "dev-5f4d242f"})
+    versionSnapshot(version, false);
+  const std::string huge_component(4096, '9');
+  versionSnapshot(("v" + huge_component + ".2.3").c_str(), false);
+  versionSnapshot(("v1.2.3." + huge_component).c_str(), false);
+  versionSnapshot(nullptr, false);
+}
+
+int main(int argc, char** argv) {
+  if (argc == 2 && !strcmp(argv[1], "versions")) {
+    versionSnapshots();
+    puts("PASS production MGR2 firmware version snapshots");
+    return 0;
+  }
+  if (argc == 2 && !strcmp(argv[1], "version-malformed")) {
+    versionSnapshot("v1.2.3garbage", false);
+    return 0;
+  }
+  assert(argc == 1);
   {
     Fixture f;
     assert(f.cmd("get mgmt").find("direct=5d") != std::string::npos);

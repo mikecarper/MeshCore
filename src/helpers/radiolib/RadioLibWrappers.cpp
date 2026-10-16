@@ -3,6 +3,9 @@
 #include "RadioLibWrappers.h"
 #include "RadioInterruptEvents.h"
 #include "RadioProfileChip.h"
+#if MESH_ENABLE_TX_BEACONS
+#include "RadioPowerLimits.h"
+#endif
 #include <new>
 #if defined(ESP32_PLATFORM)
 #include <esp_heap_caps.h>
@@ -559,6 +562,39 @@ mesh::RadioParamApplyResult RadioLibWrapper::tuneProfile(uint8_t profile) {
 }
 
 #if MESH_ENABLE_TX_BEACONS
+bool RadioLibWrapper::validateBeaconPower(float frequency_mhz, int8_t power) const {
+  return isfinite(frequency_mhz) && mesh::isLoRaTxPowerValid(power, frequency_mhz)
+      && checkBeaconOutputPower(frequency_mhz, power);
+}
+
+bool RadioLibWrapper::checkBeaconOutputPower(float frequency_mhz, int8_t power) const {
+  (void)frequency_mhz;
+#if MESH_RADIO_PROFILE_CHIP == 1276
+  // SX127x's setter automatically selects RFO below 2 dBm. Its two-argument
+  // checker assumes PA_BOOST, so use the same selection as setOutputPower().
+  return static_cast<SX1276*>(_radio)->checkOutputPower(power, nullptr, power < 2)
+      == RADIOLIB_ERR_NONE;
+#elif MESH_RADIO_PROFILE_CHIP == 1272
+  return static_cast<SX1272*>(_radio)->checkOutputPower(power, nullptr, power < 2)
+      == RADIOLIB_ERR_NONE;
+#elif MESH_RADIO_PROFILE_CHIP == 1121
+  // RadioLib's checker uses its current band. Validate the prospective band
+  // without changing the cached frequency or triggering a hardware retune.
+  if (frequency_mhz > 1000.0f) return power >= -18 && power <= 13;
+#ifdef LR1121_FORCE_HP_PA
+  return power >= -9 && power <= 22;
+#else
+  return power >= -17 && power <= 22;
+#endif
+#elif MESH_RADIO_PROFILE_CHIP == 2021
+  return mesh::lr2021::isHighBand(frequency_mhz)
+      ? power >= -19 && power <= 12 : power >= -9 && power <= 22;
+#else
+  // These RadioLib checkers inspect configuration only; no SPI is performed.
+  return _radio->checkOutputPower(power, nullptr) == RADIOLIB_ERR_NONE;
+#endif
+}
+
 uint32_t RadioLibWrapper::getBeaconAirtime(const mesh::RadioProfileParams& p, int length) {
   if (length <= 0 || length > MAX_TRANS_UNIT || !validateProfile(p)) return 0;
   const uint16_t preamble = p.protocol == mesh::RadioProfileProtocol::Meshtext
@@ -596,7 +632,8 @@ mesh::RadioParamApplyResult RadioLibWrapper::prepareBeaconTransmit(
   _hil_beacon_tx_frequency_mhz = 0;
   if (!mesh::hilTransmitFrequencyAllowed(p.freq)) return Result::FAILED;
 #endif
-  if (!_params_valid || !_dbm_valid || !getBeaconAirtime(p, MAX_TRANS_UNIT)) return Result::FAILED;
+  if (!_params_valid || !_dbm_valid || !getBeaconAirtime(p, MAX_TRANS_UNIT)
+      || !validateBeaconPower(p.freq, power)) return Result::FAILED;
   if (isCalibratingNoiseFloor()) return Result::BUSY;
 
   beginProfileRetune(isInRecvMode() && !_rx_ps_armed && !_rx_ps_enabled);

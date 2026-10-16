@@ -773,7 +773,9 @@ static __attribute__((noinline)) bool handle_control_command(
       return true;
     }
     snprintf(reply, 160, "OK %s mid=%s -> %s (primary traffic)",
-             result == OtaManager::PULL_RESUMED ? "resuming" : "pulling", midhx, dname);
+             c.manager.fetchState() == OtaManager::PAUSED
+                 ? "paused (folder I/O error; reconnect to resume)"
+                 : result == OtaManager::PULL_RESUMED ? "resuming" : "pulling", midhx, dname);
 
   // ---- discard the current session (e.g. a stalled old fetch) to free the slot ----
   } else if (is_cmd(a, "drop|cancel|stop", &rest)) {

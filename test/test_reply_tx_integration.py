@@ -246,17 +246,18 @@ int main() {
 #include <cassert>
 #include <cstdint>
 #include <initializer_list>
-#include <helpers/ota/OtaFormat.h>
+#include <Packet.h>
+#include <helpers/ota/OtaManager.h>
 namespace mesh {
-struct Packet {
-  bool radio_reply=false, radio_local=true;
-  uint8_t radio_profile=0, radio_origin=0;
-  uint32_t radio_generation=0, radio_origin_generation=0;
-};
 namespace ota {
-struct Route { uint32_t generation=0; uint8_t profile=0xFF; };
-struct Context { struct Manager { Route replyRoute() const { return {}; } } manager; };
-Context* ota_context_if_active() { return nullptr; }
+struct Context {
+  struct Manager {
+    OtaReplyRoute route;
+    OtaReplyRoute replyRoute() const { return route; }
+  } manager;
+};
+static Context* active = nullptr;
+Context* ota_context_if_active() { return active; }
 }
 struct Manager { int free=10; int getFreeCount() { return free; } };
 static int queued;
@@ -274,7 +275,9 @@ struct Mesh {
     ++allocations;
     // Deliberately opposite to expected for half the types: classification
     // must not accidentally depend on the receive call stack or a prior send.
-    packet.radio_reply=!packet.radio_reply;
+    const bool previous_reply=packet.radio_reply;
+    packet=Packet();
+    packet.radio_reply=!previous_reply;
     if (!allocation || !manager.free) return nullptr;
     --manager.free;
     return &packet;
@@ -326,6 +329,32 @@ int main() {
   assert(!node.otaSendAdapter(&node,&data,1,true)); assert(node.sends==sends);
   node.allocation=true; node.admit=false;
   assert(!node.otaSendAdapter(&node,&data,1,true));
+
+  // Use the actual Packet and deferred-route definitions. A routed reply
+  // retains its origin without binding normal reply fan-out. A negotiation
+  // fallback is not a reply and must stay bound to its original radio.
+  node.admit=true; node.mask=1;
+  mesh::ota::Context context;
+  mesh::ota::active=&context;
+  for (uint8_t profile : {0,1}) {
+    context.manager.route.generation=1234+profile;
+    context.manager.route.profile=profile;
+    for (uint8_t type : {mesh::ota::OTA_QUERY,mesh::ota::OTA_DATA}) {
+      assert(node.otaSendAdapter(&node,&type,1,false));
+      const bool reply=type==mesh::ota::OTA_DATA;
+      assert(node.packet.radio_reply==reply && !node.packet.radio_local);
+      assert(node.packet.radio_profile==profile && node.packet.radio_origin==profile);
+      assert(node.packet.radio_generation==1234+profile);
+      assert(node.packet.radio_origin_generation==1234+profile);
+      assert(node.packet.radio_bound==!reply);
+      assert(node.packet.tx_radio==(reply ? mesh::RADIO_TX_AUTO
+          : profile==0 ? mesh::RADIO_TX_PRIMARY : mesh::RADIO_TX_SECONDARY));
+    }
+  }
+  context.manager.route={};
+  assert(node.otaSendAdapter(&node,&data,1,false));
+  assert(node.packet.radio_local && !node.packet.radio_bound);
+  assert(node.packet.tx_radio==mesh::RADIO_TX_AUTO);
 }
 '''
         with tempfile.TemporaryDirectory() as folder:
@@ -334,13 +363,36 @@ int main() {
             header = (ROOT / 'src/Mesh.h').read_text()
             credit = re.search(r'#define OTA_EGRESS_QUEUE_CREDIT (\d+)', header).group(1)
             reserve = re.search(r'#define OTA_EGRESS_MIN_FREE (\d+)', header).group(1)
-            cpp.write_text(harness.replace('@ADAPTER@', adapter).replace('@PACED@', paced)
-                           .replace('@CREDIT@', credit).replace('@RESERVE@', reserve))
-            result = subprocess.run([os.environ.get('CXX', 'g++'), '-std=c++17',
-                '-Wall', '-Wextra', '-I', str(ROOT / 'src'), str(cpp), '-o', str(exe)],
-                capture_output=True, text=True)
-            self.assertEqual(result.returncode, 0, result.stderr)
-            subprocess.run([str(exe)], check=True)
+            template = harness.replace('@PACED@', paced).replace('@CREDIT@', credit)
+            template = template.replace('@RESERVE@', reserve)
+            sanitizers = ([] if os.name == 'nt' else ['-fsanitize=address,undefined',
+                '-fno-sanitize-recover=all', '-fno-pie', '-no-pie'])
+            command = [os.environ.get('CXX', 'g++'), '-std=c++17',
+                '-Wall', '-Wextra', *sanitizers, '-I', str(ROOT / 'src'),
+                '-I', str(ROOT / 'test/mocks'), str(cpp), str(ROOT / 'src/Packet.cpp'),
+                '-o', str(exe)]
+            variants = [('production', adapter, None)]
+            for old, new, failure in (
+                ('p->radio_bound = true;', 'p->radio_bound = false;',
+                 'node.packet.radio_bound==!reply'),
+                ('queued + copies > OTA_EGRESS_QUEUE_CREDIT', 'false',
+                 'node.otaSendAdapter(&node,&type,1,true)==allowed'),
+            ):
+                self.assertEqual(adapter.count(old), 1)
+                variants.append((old, adapter.replace(old, new), failure))
+            for label, candidate, failure in variants:
+                with self.subTest(adapter=label):
+                    cpp.write_text(template.replace('@ADAPTER@', candidate), encoding='ascii')
+                    result = subprocess.run(command, capture_output=True, text=True, timeout=60)
+                    self.assertEqual(result.returncode, 0, result.stderr)
+                    checked = subprocess.run([str(exe)], capture_output=True, text=True, timeout=15)
+                    if failure is None:
+                        self.assertEqual(checked.returncode, 0, checked.stdout + checked.stderr)
+                    else:
+                        self.assertNotEqual(checked.returncode, 0,
+                                            'negative control unexpectedly passed')
+                        self.assertIn('Assertion', checked.stderr)
+                        self.assertIn(failure, checked.stderr)
 
     def test_all_infrastructure_roles_enable_replies_and_mark_delayed_completions(self):
         common = (ROOT / 'src/helpers/CommonCLI.cpp').read_text()

@@ -5,6 +5,7 @@
 #include <Mesh.h>
 #include <helpers/FilePresence.h>
 #include <helpers/MeshtextChat.h>
+#include <helpers/UTF8Helpers.h>
 #include <Arduino.h>
 #include <ctype.h>
 #include <errno.h>
@@ -75,12 +76,15 @@ bool decodeSlot(const uint8_t bytes[RecordSize], BeaconSlot& slot) {
   slot.power = int8_t(bytes[13]); slot.preset = bytes[14]; slot.hops = bytes[15];
   slot.enabled = true;
   memcpy(slot.text, bytes + 17, BeaconSlot::TextCapacity);
+  const size_t text_length = strlen(slot.text);
   // Reject noncanonical trailing data instead of carrying hidden text bytes.
-  for (size_t i = strlen(slot.text) + 1; i < BeaconSlot::TextCapacity; ++i)
+  for (size_t i = text_length + 1; i < BeaconSlot::TextCapacity; ++i)
     if (slot.text[i]) return false;
   for (const unsigned char* c = reinterpret_cast<const unsigned char*>(slot.text); *c; ++c)
     if (*c < 32 || *c == 127) return false;
-  return isfinite(slot.radio.freq) && isfinite(slot.radio.bw)
+  return validUtf8PrefixLength(slot.text, text_length) == text_length
+      && RadioProfiles::valid(slot.radio)
+      && RadioProfiles::safePreamble(slot.radio, slot.radio.preamble ? slot.radio.preamble : 32)
       && (slot.radio.protocol != RadioProfileProtocol::Meshtext
           || (slot.preset <= uint8_t(mt::Preset::LongSlow) && slot.radio.preamble == 16));
 }
@@ -218,7 +222,9 @@ BeaconManager::ReadResult BeaconManager::readConfig(
     }
     crc = crcUpdate(crc, bytes, sizeof(bytes));
     BeaconSlot slot;
-    if (!decodeSlot(bytes, slot) || (slot.enabled && (!mesh_ || !mesh_->validateTextBeacon(slot)))
+    // Disk validity is independent of the current board's radio capabilities.
+    // Preserve unsupported slots so an upgrade can still query/repair them.
+    if (!decodeSlot(bytes, slot)
         || (slot.enabled && slot.radio.protocol == RadioProfileProtocol::Meshtext && !header[6]))
       valid = false;
     if (output) output[i] = slot;
@@ -254,14 +260,19 @@ BeaconManager::ReadResult BeaconManager::readIds(const char* path, uint32_t& las
 bool BeaconManager::commit(const char* path, const char* backup,
                            const char* temporary, bool& hold) {
   bool active_present = false, backup_present = false;
+  bool active_backed_up = false;
   if (!filePresence(fs_, path, active_present) || !filePresence(fs_, backup, backup_present)) return false;
   if (active_present) {
     if (backup_present && !fs_->remove(backup)) return false;
     if (!fs_->rename(path, backup)) return false;
+    active_backed_up = true;
     backup_present = true;
   }
   if (!fs_->rename(temporary, path)) {
-    if (backup_present && !fs_->rename(backup, path)) hold = true;
+    // A pre-existing backup can be older than an already transmitted ID.
+    // Roll back only the active image moved by this transaction; promoting
+    // an unrelated backup could make that ID reusable after the next boot.
+    if (active_backed_up && !fs_->rename(backup, path)) hold = true;
     return false;
   }
   // A leftover backup after a successful commit is harmless. Never choose it
@@ -398,7 +409,9 @@ void BeaconManager::loop(uint32_t now) {
   if (hour > 0 && handled_hour_ != hour) {
     const unsigned index = unsigned((hour - 1) % SlotCount);
     BeaconSlot& slot = slots_[index];
-    if (!slot.enabled) handled_hour_ = hour;
+    // A retained slot may be unsupported by this board or firmware. Skip it
+    // before allocating a durable Meshtext packet ID or entering the TX queue.
+    if (!slot.enabled || !mesh_->validateTextBeacon(slot)) handled_hour_ = hour;
     else {
       uint64_t guard = last_send_ && elapsed_ - last_send_ < HourMillis
           ? HourMillis - (elapsed_ - last_send_) : 0;

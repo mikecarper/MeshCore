@@ -57,6 +57,62 @@ void put32(uint8_t* bytes, uint32_t value) {
 }
 void fixCrc(std::vector<uint8_t>& bytes) { put32(bytes.data() + bytes.size() - 4, crc(bytes.data(), bytes.size() - 4)); }
 
+void structuralStorage() {
+  Fixture mc; mc.mc(1, "Old");
+  Fixture mt; mt.mt();
+  for (unsigned fault = 0; fault < 15; ++fault) {
+    Fixture f;
+    f.fs.files = fault >= 12 ? mt.fs.files : mc.fs.files;
+    auto& bytes = f.fs.files.at("/beacons");
+    uint8_t* record = bytes.data() + 8;
+    switch (fault) {
+      case 0: record[10] = 255; break; // Invalid SF.
+      case 1: record[11] = 4; break; // Invalid coding rate.
+      case 2: {
+        const float bw = 123;
+        std::memcpy(record + 4, &bw, 4); break;
+      }
+      case 3: record[8] = 7; record[9] = 0; break;
+      case 4: { // Valid tuple, but its long preamble overflows safe airtime.
+        const float bw = 7.8f;
+        std::memcpy(record + 4, &bw, 4);
+        record[10] = 12; record[8] = 248; record[9] = 255; break;
+      }
+      case 5: put32(record, 0x7fc00000U); break; // NaN frequency.
+      case 6: record[17] = 255; break; // Malformed UTF-8.
+      case 7: record[17] = '\n'; break;
+      case 8: record[21] = 'X'; break; // Hidden bytes after the terminator.
+      case 9: record[16] = 0; break; // Disabled records must be all zero.
+      case 10: record[12] = uint8_t(mesh::RadioProfileProtocol::Ethernet); break;
+      case 11: record[15] = 8; break;
+      case 12: record[14] = 255; break; // Invalid MT preset.
+      case 13: record[8] = 32; record[9] = 0; break; // MT preamble is fixed.
+      case 14: bytes[6] = 0; break; // MT requires durable ID initialization.
+    }
+    fixCrc(bytes);
+    const auto original = f.fs.files;
+    f.manager.begin(&f.fs, &f.mesh, &f.clock, f.name);
+    f.cmd("get beacon", false);
+    f.cmd("set beacon.interval 12", false);
+    f.cmd("delete beacon all", false);
+    f.tick(48 * H);
+    assert(f.mesh.attempts == 0 && f.fs.files == original);
+  }
+  // Neither a future schema nor a read error may fall back to an older image.
+  for (bool unreadable : {false, true}) {
+    Fixture f;
+    f.fs.files = mc.fs.files;
+    f.fs.files["/beacons.bak"] = f.fs.files.at("/beacons");
+    if (unreadable) f.fs.fail_read_open = true;
+    else f.fs.files.at("/beacons")[4] = 2;
+    const auto original = f.fs.files;
+    f.manager.begin(&f.fs, &f.mesh, &f.clock, f.name);
+    f.cmd("get beacon", false);
+    f.tick(48 * H);
+    assert(f.mesh.attempts == 0 && f.fs.files == original);
+  }
+}
+
 void commands() {
   Fixture f;
   assert(!f.mesh.wake_enabled && f.fs.files.empty());
@@ -350,15 +406,68 @@ void staleBackup() {
       && uninitialized.fs.files.at("/beacon_ids.bak") == stale);
 }
 
+void liveBackupRollback() {
+  {
+    Fixture f;
+    f.mt();
+    const auto stale = f.fs.files.at("/beacon_ids");
+    f.tick(2 * H);
+    assert(f.mesh.sends.size() == 1 && f.mesh.sends[0].id == 0x1234567a);
+    // A failed backup cleanup can leave an older image. If the active entry
+    // disappears during this boot, a later failed promotion must not turn
+    // that unrelated image into authoritative metadata.
+    f.fs.files["/beacon_ids.bak"] = stale;
+    f.fs.files.erase("/beacon_ids");
+    f.fs.fail_rename_from = {"/beacon_ids.tmp"};
+    f.tick(24 * H);
+    assert(f.mesh.sends.size() == 1);
+    assert(!f.fs.files.count("/beacon_ids"));
+    assert(f.fs.files.at("/beacon_ids.bak") == stale);
+    f.fs.fail_rename_from.clear();
+    f.tick(24 * H); // The failed counter write holds this boot too.
+    assert(f.mesh.sends.size() == 1);
+    f.manager.begin(&f.fs, &f.mesh, &f.clock, f.name);
+    f.tick(2 * H);
+    assert(f.mesh.sends.size() == 1); // Reboot must not reuse 0x1234567a.
+    f.cmd("set beacon 1 meshtext US LongFast 14 Still held", false);
+    f.mc(2);
+    f.tick(2 * H);
+    assert(f.mesh.sends.size() == 2
+        && f.mesh.sends.back().slot.radio.protocol == mesh::RadioProfileProtocol::MeshCore);
+  }
+  {
+    Fixture f;
+    f.mc(1, "Old");
+    const auto stale = f.fs.files.at("/beacons");
+    f.mc(1, "Current");
+    f.fs.files["/beacons.bak"] = stale;
+    f.fs.files.erase("/beacons");
+    f.fs.fail_rename_from = {"/beacons.tmp"};
+    f.cmd("set beacon 1 meshcore 907.5,125,8,6,10 New", false);
+    assert(!f.fs.files.count("/beacons"));
+    assert(f.fs.files.at("/beacons.bak") == stale);
+    assert(std::strstr(f.cmd("get beacon 1"), "Current"));
+    // Configuration can still commit a complete replacement on a later
+    // successful command, removing the stale backup after that commit.
+    f.fs.fail_rename_from.clear();
+    f.cmd("set beacon 1 meshcore 907.5,125,8,6,10 New");
+    assert(!f.fs.files.count("/beacons.bak"));
+    f.manager.begin(&f.fs, &f.mesh, &f.clock, f.name);
+    assert(std::strstr(f.cmd("get beacon 1"), "New"));
+  }
+}
+
 int main(int argc, char** argv) {
   assert(argc == 2);
   if (!std::strcmp(argv[1], "commands")) commands();
   else if (!std::strcmp(argv[1], "schedule")) schedule();
   else if (!std::strcmp(argv[1], "rolling")) rolling();
   else if (!std::strcmp(argv[1], "storage")) storage();
+  else if (!std::strcmp(argv[1], "structural_storage")) structuralStorage();
   else if (!std::strcmp(argv[1], "ids")) ids();
   else if (!std::strcmp(argv[1], "mutations")) mutations();
   else if (!std::strcmp(argv[1], "stale_backup")) staleBackup();
+  else if (!std::strcmp(argv[1], "live_backup")) liveBackupRollback();
   else assert(false);
   std::printf("beacon manager %s passed\n", argv[1]);
 }

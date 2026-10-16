@@ -38,6 +38,8 @@ private:
   uint32_t _last_frame_ms;
   uint32_t _completed_frame_count;
   uint32_t _last_rx_byte_ms;
+  uint32_t _receive_capacity_paused_at;
+  bool _receive_capacity_paused;
   bool _has_received_frame;
   Stream* _serial;
   const char* _controlSequence;
@@ -51,6 +53,8 @@ private:
   bool checkControlLineByte(uint8_t c);
   void resetReceiveState();
   void serviceReceiveTimeout();
+  bool responseCapacityAvailable() const;
+  void updateReceiveCapacityPause(uint32_t now);
   void resetTransmitState();
   bool enqueueFrame(const uint8_t src[], size_t len);
   void serviceTransmit();
@@ -63,6 +67,7 @@ public:
         _controlSequenceCursor(nullptr), _secondaryControlSequenceCursor(nullptr),
         _frame_len(0), rx_len(0),
         _last_frame_ms(0), _completed_frame_count(0), _last_rx_byte_ms(0),
+        _receive_capacity_paused_at(0), _receive_capacity_paused(false),
         _has_received_frame(false),
         _serial(nullptr), _controlSequence(nullptr),
         _secondaryControlSequence(nullptr), _conn_check(nullptr),
@@ -114,11 +119,13 @@ public:
   // Optional: queue complete frames and drain one at a time according to the
   // stream's TX capacity, so short writes cannot discard or interleave bytes.
   // Report busy while a frame remains queued so bulk streams get paced.
+  // Defer input, including control lines, while a required reply cannot fit.
   // Only enable this for streams which really implement availableForWrite()
   // (USB-CDC does, the Print default returns 0).
   void enableFlowControl(bool enable) {
     if (!enable) resetTransmitState();
     _flow_ctl = enable;
+    updateReceiveCapacityPause(millis());
   }
 
   // BaseSerialInterface methods

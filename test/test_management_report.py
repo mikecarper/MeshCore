@@ -18,6 +18,18 @@ spec = importlib.util.spec_from_file_location("management", ROOT / "tools/manage
 report = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(report)
 
+# Audited old snapshot fallback: the real libc conversion accepts a malformed
+# numeric prefix as a valid-looking MGR2 version. Keep a negative runtime
+# control so the snapshot regression proves it detects that bug.
+LEGACY_VERSION_FALLBACK = r'''if (!(valid & FIRMWARE)) {
+    unsigned major = 0, minor = 0, patch = 0, pre = 0;
+    const char* version = callbacks.getFirmwareVer(); if (*version == 'v') ++version;
+    const int n = sscanf(version, "%u.%u.%u.%u", &major, &minor, &patch, &pre);
+    if (n >= 3 && major <= 255 && minor <= 255 && patch <= 255 && pre <= 255) {
+      write32(p + 28, major << 24 | minor << 16 | patch << 8 | pre); valid |= FIRMWARE;
+    }
+  }'''
+
 
 class ManagementTests(unittest.TestCase):
     @classmethod
@@ -76,6 +88,17 @@ class ManagementTests(unittest.TestCase):
         runtime_cmd += [str(cls.crypto / p) for p in sources] + ["-o", str(runtime)]
         subprocess.run(runtime_cmd, check=True, capture_output=True, text=True)
         cls.runtime = runtime
+        runtime_source = Path(cls.work.name) / "ManagementReporter.cpp"
+        runtime_text = runtime_source.read_text(encoding="ascii")
+        fallback = extract_braced(runtime_text, "if (!(valid & FIRMWARE))")
+        legacy_source = Path(cls.work.name) / "ManagementReporter-legacy.cpp"
+        legacy_source.write_text(runtime_text.replace(fallback, LEGACY_VERSION_FALLBACK, 1),
+                                 encoding="ascii")
+        cls.legacy_runtime = Path(cls.work.name) / "runtime-legacy-version"
+        legacy_cmd = list(runtime_cmd)
+        legacy_cmd[legacy_cmd.index(str(runtime_source))] = str(legacy_source)
+        legacy_cmd[-1] = str(cls.legacy_runtime)
+        subprocess.run(legacy_cmd, check=True, capture_output=True, text=True)
 
     @classmethod
     def tearDownClass(cls):
@@ -436,6 +459,20 @@ process.stdin.on('end', async () => {
 
     def test_runtime_storage_scheduling_rollover_and_failures(self):
         subprocess.run([str(self.runtime)], check=True)
+
+    def test_production_snapshot_versions_are_bounded_and_release_compatible(self):
+        result = subprocess.run([str(self.runtime), "versions"], capture_output=True,
+                                text=True, timeout=30)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("PASS production MGR2 firmware version snapshots", result.stdout)
+
+    def test_previous_snapshot_parser_reports_malformed_input_as_a_valid_version(self):
+        result = subprocess.run([str(self.legacy_runtime), "version-malformed"], capture_output=True,
+                                text=True, timeout=30)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("version v1.2.3garbage: expected valid=0", result.stderr)
+        self.assertIn("got valid=1", result.stderr)
+        self.assertIn("Assertion", result.stderr)
 
     def test_actual_legacy_route_adoption_persistence_and_precedence(self):
         source = (ROOT / "src/helpers/CommonCLI_Management.cpp").read_text(encoding="utf-8")

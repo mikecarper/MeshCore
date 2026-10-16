@@ -42,6 +42,7 @@ public:
   bool valid = true, meshtext = true;
   RadioProfiles profiles;
   bool validateProfile(const RadioProfileParams& p) const { return valid && RadioProfiles::valid(p); }
+  bool validateBeaconPower(float, int8_t power) const { return power >= -9 && power <= 22; }
   bool supportsMeshtext() const { return meshtext; }
 };
 class TestClock {
@@ -340,10 +341,13 @@ class BeaconFramesTest(unittest.TestCase):
         expected = b"\x15\0" + hashlib.sha256(PUBLIC_KEY).digest()[:1] + mac + encrypted
         self.run_case("public", expected.hex())
 
-    def test_longfast_and_mediumfast_match_independent_aes_ctr_wire_oracle(self):
+    def test_longfast_and_mediumfast_match_independent_wire_and_mqtt_consent_oracle(self):
         for preset, hops in (("LongFast", 3), ("MediumFast", 7)):
             with self.subTest(preset=preset):
-                frame = reference_frame(data_text("Node: caf\u00e9".encode()), preset, DEFAULT_KEY,
+                # The text encoder also grants MQTT upload consent in Data
+                # field 9, bit 0. This is not the radio via_mqtt origin flag.
+                data = data_text("Node: caf\u00e9".encode()) + b"\x48\x01"
+                frame = reference_frame(data, preset, DEFAULT_KEY,
                                         flags=hops | (hops << 5))
                 self.run_case(preset.lower(), frame.hex())
 

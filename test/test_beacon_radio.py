@@ -25,6 +25,8 @@ HARNESS = r'''
 #include <cstdio>
 #include <initializer_list>
 #include <RadioProfiles.h>
+#include <helpers/radiolib/RadioProfileChip.h>
+#include <helpers/radiolib/RadioPowerLimits.h>
 #define MESH_ENABLE_TX_BEACONS 1
 #define MESH_ENABLE_MESHTEXT_WIRE 1
 #define STATE_IDLE 0
@@ -60,6 +62,7 @@ struct Modem {
     int finishTransmit() { ++finishes; return 0; }
     int startTransmit(uint8_t*, int) { return tx_result; }
     int setPreambleLength(uint16_t value) { preamble = value; return 0; }
+    int checkOutputPower(int8_t value, int8_t*) { return value >= -9 && value <= 22 ? 0 : -1; }
 };
 struct RadioLibWrapper {
     Modem modem;
@@ -162,6 +165,8 @@ struct RadioLibWrapper {
     bool startSendRaw(const uint8_t*, int);
     void onSendFinished();
     uint32_t getBeaconAirtime(const mesh::RadioProfileParams&, int);
+    bool validateBeaconPower(float, int8_t) const;
+    virtual bool checkBeaconOutputPower(float, int8_t) const;
     void cacheBeaconRestoreParams();
     Result prepareBeaconTransmit(const mesh::RadioProfileParams&, int8_t);
     Result restoreBeaconReceive();
@@ -311,6 +316,13 @@ int main() {
         assert(w.prepareBeaconTransmit(p, 10) == Result::FAILED && !w._beacon_owned);
         ++cases;
     }
+    for (int power : {-10, 23, 100, 127}) {
+        RadioLibWrapper w;
+        assert(w.prepareBeaconTransmit(beacon(), int8_t(power)) == Result::FAILED);
+        assert(!w._beacon_owned && !w.applications && !w.power_sets);
+        assert(!w.modem.standbys && !w.retune_begins && !w.stops);
+        ++cases;
+    }
     std::printf("PASS: %u actual-method beacon radio cases\n", cases);
 }
 '''
@@ -327,6 +339,8 @@ class BeaconRadioTest(unittest.TestCase):
             "bool RadioLibWrapper::startSendRaw(const uint8_t* bytes, int len)",
             "void RadioLibWrapper::onSendFinished()",
             "uint32_t RadioLibWrapper::getBeaconAirtime(",
+            "bool RadioLibWrapper::validateBeaconPower(",
+            "bool RadioLibWrapper::checkBeaconOutputPower(",
             "void RadioLibWrapper::cacheBeaconRestoreParams()",
             "mesh::RadioParamApplyResult RadioLibWrapper::prepareBeaconTransmit(",
             "bool RadioLibWrapper::isBeaconChannelBusy()",
