@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Exercise real contact handles, cache policy and persistence under sanitizers."""
 from pathlib import Path
+import re
 import subprocess
 import tempfile
 import unittest
@@ -22,6 +23,35 @@ def crypto_objects(temp):
 
 
 class ContactCacheTest(unittest.TestCase):
+    def test_empty_path_pool_has_no_flash_load_image(self):
+        # The 390-handle pool must occupy zero-initialized storage, not a
+        # multi-KiB initialized-data image containing repeated empty markers.
+        # Compile a real static instance; source-shape checks cannot establish
+        # whether the compiler emits a flash initializer for it.
+        with tempfile.TemporaryDirectory(prefix="mesh-path-pool-image-") as directory:
+            source = Path(directory) / "pool.cpp"
+            obj = Path(directory) / "pool.o"
+            source.write_text('''#include <helpers/ContactPathCache.h>
+mesh::ContactPathStorage& testPathStorage() {
+  static mesh::ContactPathPool<390> pool;
+  return pool;
+}
+''', encoding="ascii")
+            compiled = subprocess.run([
+                "c++", "-std=c++17", "-Os", "-fno-threadsafe-statics",
+                "-fno-rtti", "-fno-exceptions", "-I", str(ROOT / "src"),
+                "-c", str(source), "-o", str(obj),
+            ], capture_output=True, text=True)
+            self.assertEqual(compiled.returncode, 0, compiled.stdout + compiled.stderr)
+            symbols = subprocess.run(["nm", "-S", "-C", "--defined-only", str(obj)],
+                                     capture_output=True, text=True)
+            self.assertEqual(symbols.returncode, 0, symbols.stdout + symbols.stderr)
+            match = re.search(r"^\S+\s+([0-9a-fA-F]+)\s+(\w) testPathStorage\(\)::pool$",
+                              symbols.stdout, re.MULTILINE)
+            self.assertIsNotNone(match, symbols.stdout)
+            self.assertGreater(int(match[1], 16), 5000)
+            self.assertEqual(match[2].lower(), "b", symbols.stdout)
+
     def test_default_policy_covers_high_contact_nrf52_without_full(self):
         cases = (
             ({"NRF52_PLATFORM": 1, "MAX_CONTACTS": 350}, 1),

@@ -401,6 +401,40 @@ App CLI replies remain bounded and supply a continuation command.
 The physical RAK passed all 21 chapters, ranges, app-style continuation replies,
 a paused USB reader exceeding the 4 KiB queue, and disconnect cancellation.
 
+### Empty contact-path cache initialization
+
+The contact-path pool now has an explicit runtime constructor. Its existing
+member defaults still initialize every empty handle and resident entry, and
+`Slot()` still resets released handles. This moves the local static pool from
+initialized `.data` to zero-initialized `.bss`: the vtable pointer and repeated
+`NONE`/255 slot markers no longer require a 5,780-byte flash load image. The
+pool is constructed on first use by the existing main-loop contact owner.
+Its layout, 390 handle slots, 16 resident paths, reference/snapshot behavior
+and persistent contact records are unchanged.
+
+The RAK4631 Full release recipe at `c0672b90`, with the full
+`v1.17.1.10-halo-keymind-cascade-dev` version and commit suffix, measured:
+
+| Measurement | Before | Runtime pool construction |
+| --- | ---: | ---: |
+| Linked initialized flash bytes | 716,448 | 710,908 |
+| Application image including EndF | 716,528 | 710,988 |
+| Linked available heap bytes | 79,388 | 79,388 |
+| Required runtime heap bytes | 74,576 | 74,576 |
+
+The net flash saving is 5,540 bytes after constructor/guard code. The image
+passes the existing 712,704-byte application ceiling, capability checks, RAM
+budget and DFU handoff checks. Its padded UF2 ends at `0xD3A00`, below the
+unchanged `0xD4000` boundary. Sensors, BLE/USB/Ethernet, SD, logging, Meshtext,
+OTA, Reader data and the 8 KiB loop stack remain enabled.
+
+The contact-cache test compiles a real static pool and checks its zero-initialized
+storage, alongside the existing sanitized eviction, snapshot, migration and
+transaction tests. The compiled ARM Companion check also rejects a pool in an
+initialized ELF section, so compiler promotion cannot silently restore the
+flash image. Its normal linked crypto vectors and Reader retention checks
+remain required.
+
 ## Release evidence and regression tests
 
 Full Companions without PSRAM also use

@@ -45,6 +45,9 @@ def check(path):
     reader = "_ZN4mesh5bible9generatedL10readerDataE"
     if reader not in elf.symbols:
         raise ValueError("Companion Reader corpus is missing")
+    path_cache = elf.symbols.get("_ZZN4mesh18contactPathStorageEvE4pool")
+    if path_cache and elf.sections[path_cache[2]][1] != 8:  # SHT_NOBITS
+        raise ValueError("Contact path cache has a flash load image; expected zero-initialized storage")
     uc = Uc(UC_ARCH_ARM, UC_MODE_THUMB | UC_MODE_MCLASS)
     uc.mem_map(0, 0x100000)
     uc.mem_map(0x20000000, 0x40000)
@@ -100,6 +103,7 @@ def check(path):
         "passed": True, "elf_sha256": hashlib.sha256(elf.data).hexdigest(),
         "base_table_bytes": elf.symbols["base"][1],
         "reader_data_bytes": elf.symbols[reader][1], "vectors": rows,
+        "zero_initialized_path_cache_bytes": path_cache[1] if path_cache else 0,
         "stack_limit_bytes": 2048,
         "scope": "Crypto function frames only; excludes caller/ISR/task stacks and physical timing.",
     }

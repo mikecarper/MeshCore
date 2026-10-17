@@ -170,6 +170,11 @@ class ContactPathPool : public ContactPathStorage {
   }
 
 public:
+  // Construct the empty cache on first use instead of storing a flash load
+  // image of every slot's NONE/255 sentinels and the vtable pointer. Keep the
+  // member defaults for both initial construction and Slot() resets.
+  ContactPathPool() {}
+
   void attach(ContactPathBackend* backend) override { _backend = backend; }
   uint16_t bind(uint16_t location, const uint8_t path[64]) override {
     if (location == NONE) return NONE;
