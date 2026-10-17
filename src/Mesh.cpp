@@ -601,7 +601,7 @@ void __attribute__((noinline)) Mesh::serviceLoopMaintenance() {
     }
     // Re-arm: tight spacing during the boot burst; afterwards the fixed cadence (default 24h). When periodic
     // advert is disabled (0), re-check on a slow timer so a later `ota config advert <mins>` takes effect live.
-    uint32_t gap = in_burst       ? OTA_ANNOUNCE_BURST_MS
+    uint32_t gap = _ota_announce_count < OTA_ANNOUNCE_BURST ? OTA_ANNOUNCE_BURST_MS
                  : (mins != 0)    ? mins * 60000UL
                                   : OTA_ANNOUNCE_DISABLED_POLL_MS;
     _ota_announce_timer.arm(_ms->getMillis(), gap, ota_speed);
