@@ -126,7 +126,22 @@ class OtaStoreQspiNrf52 : public OtaStore {
   static const uint32_t PAGE = 4096;
   static const uint32_t PROGRAM = 256;
   static const uint32_t MAX_FLASH = 16UL * 1024 * 1024;
-  static const uint32_t MAX_PAGES = MAX_FLASH / PAGE;
+  // Exact-board recipes already reject a different physical capacity before
+  // any page access. Track only that accepted geometry, without reducing the
+  // 16 MiB capability of generic builds or either staging page buffer.
+#if defined(OTA_QSPI_EXPECTED_SIZE)
+  // Check the original constant before narrowing: 4 GiB + 2 MiB must not
+  // silently wrap into an apparently valid 2 MiB geometry.
+  static_assert((OTA_QSPI_EXPECTED_SIZE) >= (1ULL << 20) &&
+                (OTA_QSPI_EXPECTED_SIZE) <= MAX_FLASH &&
+                ((OTA_QSPI_EXPECTED_SIZE) & ((OTA_QSPI_EXPECTED_SIZE) - 1ULL)) == 0ULL,
+                "expected QSPI capacity must match accepted 1..16 MiB JEDEC geometry");
+  static const uint32_t TRACKED_FLASH = OTA_QSPI_EXPECTED_SIZE;
+#else
+  static const uint32_t TRACKED_FLASH = MAX_FLASH;
+#endif
+  static const uint32_t MAX_PAGES = TRACKED_FLASH / PAGE;
+  static const uint32_t KNOWN_PAGE_BYTES = (MAX_PAGES + 7u) / 8u;
   static const uint32_t INVALID_PAGE = 0xFFFFFFFFUL;
 
   uint32_t _total = 0;
@@ -150,7 +165,7 @@ class OtaStoreQspiNrf52 : public OtaStore {
   alignas(4) uint8_t _meta_page[PAGE];
   alignas(4) uint8_t _data_page[PAGE];
   alignas(4) uint8_t _bounce[PROGRAM];
-  uint8_t _known_pages[MAX_PAGES / 8];
+  uint8_t _known_pages[KNOWN_PAGE_BYTES ? KNOWN_PAGE_BYTES : 1u];
 
   void fail(const char *message);
   bool ensureFlash();

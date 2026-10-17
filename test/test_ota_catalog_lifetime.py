@@ -7,6 +7,9 @@ import subprocess
 import tempfile
 import unittest
 
+# Existing CI entry point also protects feature-preserving OTA RAM layouts.
+from test_ota_memory_layout import OtaMemoryLayoutTest
+
 ROOT = Path(__file__).resolve().parents[1]
 
 

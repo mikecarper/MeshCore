@@ -324,15 +324,19 @@ public:
   };
   // A lightweight catalog entry: what we advertise per mota + how to load its ServeView on demand.
   struct ServeEntry {
-    uint8_t     mid[4];
-    uint32_t    target_id, fw_version;
-    uint8_t     codec_id, flags;
-    uint32_t    have_count;                // blocks we currently hold (== block_count when complete)
-    bool        is_self;                   // true => entry is view0 (our own fw / RAM mota)
+    // Named fields only: this is not a wire/persistent layout. Group aligned
+    // values ahead of byte flags instead of paying three padding gaps per row.
     MotaSource* src;                       // load from this external source ...
-    uint8_t     src_idx;                   // ... at this index
     MotaDesc    desc;                      // cached region offsets for the source entry
+    uint32_t    target_id, fw_version;
+    uint32_t    have_count;                // blocks we currently hold (== block_count when complete)
+    uint8_t     mid[4];
+    uint8_t     codec_id, flags;
+    bool        is_self;                   // true => entry is view0 (our own fw / RAM mota)
+    uint8_t     src_idx;                   // ... at this index
   };
+  static_assert(sizeof(ServeEntry) <= sizeof(MotaDesc) + sizeof(MotaSource*) + 20u,
+                "OTA source catalog must not add per-entry alignment padding");
   // Context for the source-payload reader trampoline.
   struct SrcReadCtx { MotaSource* src; uint8_t idx; uint32_t payload_off; };
 
@@ -905,17 +909,18 @@ private:
   struct Source {
     uint8_t seeder[4];
     uint8_t digest[4];
-    uint8_t n_motas;
     uint32_t last_ms;
+    uint32_t have_mask;
+    uint32_t query_at;
+    uint32_t query_retry_at;
+    uint8_t n_motas;
     bool have_catalog;
     uint8_t have_total;
-    uint32_t have_mask;
     bool query_pending;
     bool query_owned;
     uint8_t query_retries;
-    uint32_t query_at;
-    uint32_t query_retry_at;
   };
+  static_assert(sizeof(Source) == 32u, "OTA source discovery rows must retain compact natural alignment");
   Source     _sources[OTA_MAX_SOURCES];
   uint8_t    _n_src = 0;
   CatRow     _catalog_inline[OTA_INLINE_CATALOG];
