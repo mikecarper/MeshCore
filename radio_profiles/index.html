@@ -1463,6 +1463,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#mcu-power-saving-while-scanning" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        MCU power saving while scanning
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#preamble" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2721,6 +2732,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#mcu-power-saving-while-scanning" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        MCU power saving while scanning
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#preamble" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -3637,6 +3659,34 @@ An RX-only <code>tempradio2</code> also blocks locally generated OTA requests un
 <code>auto</code> or <code>off</code>; they do not fall back to the normal primary channel. Use <code>rxtx</code>
 for a fetching node that needs to exchange requests and data. Infrastructure
 OTA responses follow <code>tx.reply</code> independently of this crossing table.</p>
+<h2 id="mcu-power-saving-while-scanning">MCU power saving while scanning</h2>
+<p>On nRF52, <code>set powersaving on</code> also permits interrupt-driven MCU idle during a
+settled <code>radio2</code> or <code>tempradio2</code> listening visit. The RF receiver stays on.
+This includes a Meshtext LongFast visit (SF11 / 250 kHz), whose minimum visit
+is about 37.7 ms. No extra command is needed.</p>
+<p>The scanner first completes its switch self-test and both noise-floor
+baselines. It polls again for pending packets, calibration, changed settings,
+retries, or short visits. All normal USB, logging, bridge, OTA, queue and role
+sleep guards still apply. An nRF52 periodic interrupt bounds each wait to
+about 0.977 ms; admission reserves another 0.488 ms before the visit deadline
+and is rechecked immediately before sleeping. If that wake source is not
+available, scanning keeps polling. Other MCU families retain polling until
+their timing is validated.</p>
+<p>The integer admission gate requires at least 49 RTC2 ticks (about 1.495 ms)
+remaining after the work checks. A configured visit must also cover the loop
+work before that point. Eligibility is therefore per visit, not an SF/BW
+cutoff: a fast SF5 secondary can still idle the MCU when the primary profile
+gives it a sufficiently long listening visit.</p>
+<p>For example, the RAK3401 bench with USA primary <code>910.525,62.5,7,5,32</code> and
+secondary <code>909.5,500,5,5,rxtx,384</code> had roughly 9.4/21.3 ms visits. MCU sleep
+was observed in 35% of 4265 debugger samples with power saving on, versus
+zero of 2129 with it off. This is a CPU-state spot check, not a current or
+Ethernet throughput measurement. Enabling power saving changed neither preamble.</p>
+<p>Radio RX duty cycling remains suspended while scanning, then its previous
+setting is restored when radio2 stops. Meshtext's fixed 16-symbol preamble
+does not have the same sleep margin as a longer MeshCore preamble. Adding
+RF sleep inside a scan visit would introduce extra blind time, so this
+optimization saves MCU activity without shortening either listening visit.</p>
 <h2 id="preamble">Preamble</h2>
 <p>Append the preamble to the end of a command:</p>
 <pre><code class="language-text">set radio2 910.5,500,8,5,rxtx,88
