@@ -4,6 +4,9 @@
 #include <cstdarg>
 static unsigned usb_services=0,command_services=0,transport_services=0,delays=0;
 static bool usb_watchdog_armed=false,wireless_pending=false;
+bool profileIdlePreparationAllowed();
+bool profileIdleQueryAllowed();
+bool profileIdleSleepAllowed();
 struct Stream {
   int available() const { return 0; }
   char read() const { return 0; }
@@ -31,12 +34,19 @@ Control& control() { return controller; }
 }
 struct Board {
   unsigned calls=0,watchdogs=0,sleeps=0,fans=0,reboots=0,preparations=0;
-  unsigned millisecond_sleeps=0,last_sleep_ms=0;
-  void prepareSleepCycle() { ++preparations; }
+  unsigned millisecond_sleeps=0,last_sleep_ms=0,profile_preparations=0;
+  bool profile_prepared=false;
+  void prepareSleepCycle() { ++preparations; profile_prepared=false; }
+  void prepareProfileIdleCycle() {
+    assert(profileIdlePreparationAllowed());
+    ++profile_preparations; profile_prepared=true;
+  }
   void loop() { ++calls; }
   void feedWatchdog(bool=true) { ++watchdogs; }
-  void sleep(uint32_t) { ++sleeps; }
-  void sleepMilliseconds(uint32_t ms) { ++sleeps; ++millisecond_sleeps; last_sleep_ms=ms; }
+  void sleep(uint32_t) { assert(profileIdleSleepAllowed()); ++sleeps; }
+  void sleepMilliseconds(uint32_t ms) {
+    assert(profileIdleSleepAllowed()); ++sleeps; ++millisecond_sleeps; last_sleep_ms=ms;
+  }
   bool isUsbDataConnected() { return false; }
   bool isUsbHostConnected() { return false; }
   void reboot() { ++reboots; }
@@ -53,6 +63,8 @@ struct Mesh {
   struct Prefs { bool powersaving_enabled=true,system_watchdog_enabled=true; uint32_t reboot_interval=0; } prefs;
   unsigned calls=0;
   bool noise_floor_wait=false,work_pending=false;
+  bool dual_radio=false,profile_idle_allowed=true;
+  mutable unsigned profile_idle_queries=0;
   uint32_t noise_floor_delay_ms=50,sleep_budget_ms=1000;
   void loop() { ++calls; }
   Prefs* getNodePrefs() { return &prefs; }
@@ -62,14 +74,33 @@ struct Mesh {
   }
   bool millisHasNowPassed(uint32_t) { return true; }
   bool isTrackerModeEnabled() { return false; }
+  bool isDualRadioActive() const { return dual_radio; }
+  bool canIdleDualRadio() const {
+    if (!dual_radio) return true;
+    assert(profileIdleQueryAllowed());
+    ++profile_idle_queries;
+    return profile_idle_allowed;
+  }
   bool hasPendingWork() { return false; }
   mesh::powerdiag::Mask pendingWorkReason() const {
+    if (!canIdleDualRadio()) return mesh::powerdiag::mask(mesh::powerdiag::Reason::DualRadio);
     return work_pending ? mesh::powerdiag::mask(mesh::powerdiag::Reason::Queue) : 0;
   }
   void handleCommand(uint32_t,char*,char* reply) { reply[0]=0; ++command_services; }
   void handleUsbCommand(char*,char* reply) { reply[0]=0; ++command_services; }
 } the_mesh;
 TestRadio radio_driver;
+bool profileIdlePreparationAllowed() {
+  return (the_mesh.prefs.powersaving_enabled || the_mesh.isTrackerModeEnabled())
+      && the_mesh.isDualRadioActive() && !mesh::morseTimingActive(&radio_driver);
+}
+bool profileIdleQueryAllowed() {
+  return profileIdlePreparationAllowed() && board.profile_prepared;
+}
+bool profileIdleSleepAllowed() {
+  return !mesh::morseTimingActive(&radio_driver)
+      && (!the_mesh.isDualRadioActive() || (profileIdleQueryAllowed() && the_mesh.profile_idle_allowed));
+}
 void serviceCommandInterfaces() { ++command_services; }
 void serviceUsbLoggingOnlySession() { ++usb_services; }
 void serviceUsbTerminalHostSessionReset() { ++usb_services; }
@@ -179,4 +210,53 @@ int main() {
 #endif
   }
 #endif
+  assert(board.profile_preparations==0); // Ordinary single-radio loops do not prepare a scan idle.
+  // A scanner can prepare its board wake contract without admitting sleep.
+  // Once settled it may idle, but it must not override Morse or other owners.
+  the_mesh.noise_floor_wait=false;
+  the_mesh.work_pending=false;
+  the_mesh.sleep_budget_ms=1000;
+  the_mesh.dual_radio=true;
+  the_mesh.profile_idle_allowed=false;
+  auto profile_preparations=board.profile_preparations;
+  auto profile_sleeps=board.sleeps;
+  auto idle_queries=the_mesh.profile_idle_queries;
+  loop();
+  assert(board.profile_preparations==profile_preparations+1 && board.sleeps==profile_sleeps);
+  assert(the_mesh.profile_idle_queries>idle_queries);
+  the_mesh.profile_idle_allowed=true;
+  idle_queries=the_mesh.profile_idle_queries;
+  loop();
+  assert(board.profile_preparations==profile_preparations+2 && board.sleeps==profile_sleeps+1);
+  assert(the_mesh.profile_idle_queries>idle_queries);
+  profile_preparations=board.profile_preparations;
+  profile_sleeps=board.sleeps;
+  idle_queries=the_mesh.profile_idle_queries;
+  for (unsigned mode=0;mode<3;++mode) {
+    radio_driver.active=mode==0;
+    radio_driver.rx_active=mode!=0;
+    radio_driver.rx_recovering=mode==2;
+    const auto sensor_before=sensors.calls;
+    const auto ui_before=ui_task.calls;
+    const auto watchdog_before=board.watchdogs;
+    const auto usb_before=usb_services;
+    loop();
+    assert(board.profile_preparations==profile_preparations && board.sleeps==profile_sleeps);
+    assert(the_mesh.profile_idle_queries==idle_queries);
+    assert(sensors.calls==sensor_before && ui_task.calls==ui_before+1);
+    assert(board.watchdogs==watchdog_before+1 && usb_services>usb_before);
+  }
+  radio_driver.active=radio_driver.rx_active=radio_driver.rx_recovering=false;
+  the_mesh.prefs.powersaving_enabled=false;
+  loop();
+  assert(board.profile_preparations==profile_preparations && board.sleeps==profile_sleeps);
+  assert(the_mesh.profile_idle_queries==idle_queries);
+  the_mesh.prefs.powersaving_enabled=true;
+  usb_watchdog_armed=true;
+  loop();
+  assert(board.profile_preparations==profile_preparations+1 && board.sleeps==profile_sleeps);
+  usb_watchdog_armed=false;
+  the_mesh.dual_radio=false;
+  loop();
+  assert(board.profile_preparations==profile_preparations+1 && board.sleeps==profile_sleeps+1);
 }
