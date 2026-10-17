@@ -8155,7 +8155,14 @@ Size-constrained <code>MESH_PACKET_LOGGING_COMPACT</code> images instead use <co
 expected by ordinary USB-to-MQTT parsers.</p>
 <p>Ordinary non-OTA artifacts compile packet logging into the canonical image and
 control its live USB output at runtime; no separate <code>-logging-</code> artifact is
-emitted. Use the separately named <code>-ota-</code> artifact when LoRa OTA is required. A
+emitted. Canonical RAK3401/RAK4631 repeater, room and sensor OTA pairs, plus
+Tower SD repeater and Tower room pairs, also retain packet logging in both
+Full-sensor and Reduced-sensor artifacts. Verbose debug stays off by default;
+<code>get/set usb.logging</code> controls packet output. Their capability manifests must
+verify both <code>logging.usb.packets</code> and <code>logging.usb.control</code> in the packaged
+application. Specialized storage/transport aliases and other space-constrained
+OTA-only targets retain their target-specific logging policy.</p>
+<p>For other roles, use the separately named <code>-ota-</code> artifact when required. A
 <code>-full-usb-wifi-ota-</code> artifact combines USB packet logging, direct WiFi MQTT,
 LoRa OTA, and the expanded FULL feature set. A <code>-full-logging-ota-</code> artifact is
 emitted only when that hardware/role has no matching WiFi MQTT environment.</p>
