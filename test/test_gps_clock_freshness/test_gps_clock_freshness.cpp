@@ -462,8 +462,9 @@ TEST(GpsClockFreshness, PartialOrNonNumericRmcClockFieldsCannotCount) {
   }
 }
 
-TEST(GpsClockFreshness, CompleteRmcTimeAllowsSupportedDecimalSeconds) {
-  for (const char* time : {"120002.00", "120002.000", "120002.123456"}) {
+TEST(GpsClockFreshness, CompleteRmcTimeAllowsIntegerAndDecimalSeconds) {
+  for (const char* time : {"120002", "120002.0", "120002.00",
+                           "120002.000", "120002.123456"}) {
     SCOPED_TRACE(time);
     GpsRig rig;
     rig.window(pair("120000.00"));
@@ -475,25 +476,22 @@ TEST(GpsClockFreshness, CompleteRmcTimeAllowsSupportedDecimalSeconds) {
   }
 }
 
-TEST(GpsClockFreshness, PinnedParserShortTimeFractionsAreRejectedThenDecimalRecovers) {
-  for (const char* time : {"120002", "120002.0"}) {
-    SCOPED_TRACE(time);
+TEST(GpsClockFreshness, GgaAndRmcTimePrecisionPreservesFixAndClockAcquisition) {
+  for (const char* fraction : {"", ".0", ".00", ".000", ".123456"}) {
+    SCOPED_TRACE(fraction);
     GpsRig rig;
-    rig.window(pair("120000.00"));
-    rig.window(pair("120001.00"));
-    // MicroNMEA 2.0.6 skips a fixed nine time characters before seeking the
-    // next field. No fraction or one fractional digit is not a provider fix.
-    // Reject these formats rather than reusing retained clock data; accepting
-    // them requires a separate parser/location compatibility fix.
-    rig.window(gga("120002.00") + rmc(time));
-    EXPECT_FALSE(rig.gps.isValid());
+    rig.window(pair(std::string("120000") + fraction));
+    ASSERT_TRUE(rig.gps.isValid());
+    EXPECT_EQ(8, rig.gps.satellitesCount());
+    EXPECT_EQ(48117300L, rig.gps.getLatitude());
+    EXPECT_EQ(11516666L, rig.gps.getLongitude());
+    EXPECT_EQ(545400L, rig.gps.getAltitude());
+    rig.window(pair(std::string("120001") + fraction));
     EXPECT_TRUE(rig.rtc.writes.empty());
-    rig.window(pair("120003.00"));
-    rig.window(pair("120004.00"));
-    EXPECT_TRUE(rig.rtc.writes.empty());
-    rig.window(pair("120005.00"));
+    rig.window(pair(std::string("120002") + fraction));
     ASSERT_EQ(1U, rig.rtc.writes.size());
-    EXPECT_EQ(NOON_2026_10_17 + 5, rig.rtc.writes.back().after);
+    EXPECT_EQ(NOON_2026_10_17 + 2, rig.rtc.writes.back().after);
+    EXPECT_EQ(1U, rig.gps.getTimeSyncGeneration());
   }
 }
 

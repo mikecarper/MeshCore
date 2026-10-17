@@ -578,6 +578,8 @@ jobs:
           python3 -B test/test_esp32_gps_discovery.py -v
           python3 -B test/test_gps_sync_interval.py -v
           python3 -B test/test_rak_gps_clock_freshness.py -v
+          python3 -B test/test_micronmea_time_fix.py -v
+          python3 -B test/test_micronmea_time_fix_recipes.py -v
           python3 -B test/test_gps_sync_preferences.py -v
           python3 -B test/test_rak_gps_power.py -v
           python3 -B test/test_rak_shutdown_power.py -v
