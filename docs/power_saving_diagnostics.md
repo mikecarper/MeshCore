@@ -153,3 +153,22 @@ Nano G2 Ultra, ThinkNode M1/M8 and Keepteen LT1 retain their plain `NRF52Board`
 initializers for the same reason. The MeshTracker X1's LR2021 regulator likewise
 remains unchanged. Do not turn on a switching regulator without its required
 inductor/capacitor network. The MCU and LoRa regulator choices are independent.
+
+## Meshnology W12 transmit preparation
+
+The W12 adopts the GC1109 TX preparation from
+[upstream PR #3579](https://github.com/meshcore-dev/MeshCore/pull/3579), but keeps
+the PA shut down in ordinary standby rather than permanently selecting TX mode.
+Before sub-GHz packet or Morse CW transmission, it temporarily enables the LF
+PA in standby, waits 1 ms, starts TX, then restores the normal standby mask.
+The TX mask stays unchanged during that restoration. Failure paths restore all
+affected DIOs and request radio recovery if the PA state cannot be confirmed.
+The 2.4 GHz path and other LR2021 boards do not use this LF prearm policy.
+
+LF/HF FEM rail changes now settle for 1 ms instead of 100 ms. Packet-wake deep
+sleep retains only the selected FEM rail; terminal shutdown retains both rails
+off. This is separate from the W12's existing circuit-verified DC/DC setting.
+
+Native fault-injection tests cover the mask transitions and power retention;
+RF envelope and battery-current measurements on a physical W12 are still needed
+to validate the TX improvement and quantify power use.

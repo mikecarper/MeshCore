@@ -65,6 +65,10 @@ jobs:
       - name: Compile shared-slot Station G3 and legacy alias with buffered KISS
         # One PlatformIO process: these environments share the checkout build tree.
         run: pio run -e Station_G3_ESP32_repeater -e Station_G3_ESP32_r2_repeater -e Station_G3_ESP32_kiss_modem
+      - name: Compile W12 low-power FEM TX preparation in repeater and Full Companion
+        run: |
+          pio run -e meshnology_w12_repeater
+          bash build.sh build-firmware meshnology_w12_companion_radio_full --firmware-version v1.17.1.10-halo-keymind-cascade-dev --radio-preset usa-cascade-fixed --profile cascade --require-ota
 
   esp32-ethernet-companion-smoke:
     runs-on: ubuntu-latest
@@ -228,6 +232,7 @@ jobs:
           python3 -B test/test_wio_tracker_l2_gps_power.py -v
           python3 -B test/test_lr1121_power_merge.py -v
           python3 -B test/test_lr2021_power.py -v
+          python3 -B test/test_lr2021_tx_prearm.py -v
           python3 -B test/test_meshtracker_x1_battery.py -v
           python3 -B test/test_drv2605_power.py -v
           python3 -B test/test_radio_interrupt_recovery.py -v

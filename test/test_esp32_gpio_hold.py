@@ -398,6 +398,7 @@ int main(){ EnvironmentSensorManager sensors;
         prefix=begin[:begin.index('    prepareRadioFrequency(')]+'}\n'
         code=r'''
 #include <helpers/ESP32GpioHold.h>
+#include <initializer_list>
 #define HIGH 1
 #define LOW 0
 #define OUTPUT 1
@@ -410,11 +411,15 @@ class ESP32Board {public:void begin(){mesh::esp32::resetTerminalDeepSleepHolds()
 class MeshnologyW12Board:public ESP32Board {public:void begin();};
 @BEGIN@
 int main(){ using namespace mesh::esp32;
- holdOutputForDeepSleep(4,LOW);holdOutputForDeepSleep(3,LOW);
- pads[4].output=false;pads[3].output=false;require_configured_release=true;
- MeshnologyW12Board board;board.begin();
- assert(!pads[3].hold && !pads[4].hold && physical(3)==LOW && physical(4)==LOW);
- assert(!deep_hold && !terminalDigitalHoldPending());
+ for(int active : {-1,3,4}) {
+   // Wake safely from terminal shutdown or either band's packet-wake sleep.
+   holdOutputForDeepSleep(4,active==4?HIGH:LOW);
+   holdOutputForDeepSleep(3,active==3?HIGH:LOW);
+   pads[4].output=false;pads[3].output=false;require_configured_release=true;
+   MeshnologyW12Board board;board.begin();
+   assert(!pads[3].hold && !pads[4].hold && physical(3)==LOW && physical(4)==LOW);
+   assert(!deep_hold && !terminalDigitalHoldPending());
+ }
 }
 '''
         self.compile_run(code.replace('@BEGIN@',prefix),s3=1)
@@ -422,6 +427,99 @@ int main(){ using namespace mesh::esp32;
         broken=prefix.replace('releaseOutputAfterDeepSleep((gpio_num_t)P_LORA_LF_PA_POWER, LOW)',
             'releaseRtcGpioIfSupported((gpio_num_t)P_LORA_LF_PA_POWER)')
         self.compile_run(code.replace('@BEGIN@',broken),s3=1,helper_mutation=lambda text:text)
+
+    def test_w12_packet_wake_retains_only_selected_band_and_terminal_shutdown_disables_both(self):
+        source=(ROOT/'variants/meshnology_w12/MeshnologyW12Board.cpp').read_text()
+        methods='\n'.join(body(source,signature) for signature in (
+            'bool MeshnologyW12Board::prepareRadioFrequency(float frequency)',
+            'void MeshnologyW12Board::enterDeepSleep(uint32_t secs, int pin_wake_btn)',
+            'void MeshnologyW12Board::powerOff()'))
+        code=r'''
+#include <helpers/ESP32GpioHold.h>
+#include <helpers/radiolib/LR2021Band.h>
+#include <vector>
+#define HIGH 1
+#define LOW 0
+#define P_LORA_LF_PA_POWER 4
+#define P_LORA_HF_PA_POWER 3
+#define P_LORA_DIO_1 14
+#define P_LORA_NSS 8
+constexpr int ESP_PD_DOMAIN_RTC_PERIPH=1,ESP_PD_OPTION_ON=1;
+constexpr int RTC_GPIO_MODE_INPUT_ONLY=0,ESP_EXT1_WAKEUP_ANY_HIGH=1;
+static bool slept=false,shutdown=false;
+static unsigned settles=0;
+static uint64_t wake_mask=0,timer=0;
+static std::vector<int> writes;
+void digitalWrite(int pin,int level){
+ assert(!pads[pin].hold);pads[pin].output=true;gpio_set_level(pin,level);
+ writes.push_back(pin*2+level);
+ // Never power both FEMs, even transiently, while changing bands.
+ assert(physical(3)!=HIGH || physical(4)!=HIGH);
+}
+void delay(unsigned ms){assert(ms==1);++settles;}
+void esp_sleep_pd_config(int domain,int option){assert(domain==1 && option==1);}
+void rtc_gpio_set_direction(int pin,int mode){assert(pin==14 && mode==0);}
+void rtc_gpio_pulldown_en(int pin){assert(pin==14);}
+void esp_sleep_enable_ext1_wakeup(uint64_t mask,int mode){assert(mode==1);wake_mask=mask;}
+void esp_sleep_enable_timer_wakeup(uint64_t value){timer=value;}
+void sleep_pads(){
+ // Unretained outputs may float once the CPU domain powers down.
+ for(int pin : {3,4}) if(!pads[pin].hold) pads[pin].output=false;
+}
+void esp_deep_sleep_start(){sleep_pads();slept=true;}
+class ESP32Board {public:void powerOff(){
+ assert(pads[3].hold && pads[4].hold && physical(3)==LOW && physical(4)==LOW);
+ sleep_pads();shutdown=true;
+}};
+class MeshnologyW12Board:public ESP32Board {
+public:
+ bool radio_band_initialized=false,radio_high_band=false;
+ bool prepareRadioFrequency(float frequency);
+ void enterDeepSleep(uint32_t secs,int pin_wake_btn);
+ void powerOff();
+};
+@METHODS@
+int main(){using namespace mesh::esp32;
+ for(bool high_band : {false,true}) {
+   resetTerminalDeepSleepHolds();
+   releaseOutputAfterDeepSleep(3,LOW);releaseOutputAfterDeepSleep(4,LOW);
+   MeshnologyW12Board board;
+   const float frequency=high_band?2440.0f:909.5f;
+   const unsigned before=settles;
+   assert(board.prepareRadioFrequency(frequency) && settles==before+1);
+   assert(writes[writes.size()-3]==4*2 && writes[writes.size()-2]==3*2);
+   assert(physical(3)==high_band && physical(4)==!high_band);
+   assert(board.prepareRadioFrequency(frequency) && settles==before+1);
+   // A real LF/HF crossing disables the previous rail before enabling the next.
+   assert(board.prepareRadioFrequency(high_band?909.5f:2440.0f));
+   assert(physical(3)==!high_band && physical(4)==high_band);
+   assert(board.prepareRadioFrequency(frequency) && settles==before+3);
+   for(int button : {-1,0}) {
+     slept=false;timer=0;
+     board.enterDeepSleep(button<0?5:0,button);
+     assert(slept && pads[3].hold && pads[4].hold);
+     assert(physical(3)==high_band && physical(4)==!high_band);
+     assert(wake_mask==((1ULL<<14)|(button<0?0:(1ULL<<button))));
+     assert(timer==(button<0?5000000:0));
+     assert(!deep_hold && !terminalDigitalHoldPending());
+     // Deep sleep never returns: model begin() releasing the retained rails,
+     // then its normal band selection, before the next runtime operation.
+     releaseOutputAfterDeepSleep(3,LOW);releaseOutputAfterDeepSleep(4,LOW);
+     board.radio_band_initialized=false;
+     assert(board.prepareRadioFrequency(frequency));
+   }
+   // Explicit runtime shutdown must disable whichever band was powered.
+   board.powerOff();assert(shutdown && physical(3)==LOW && physical(4)==LOW);
+ }
+}
+'''
+        self.compile_run(code.replace('@METHODS@',methods),s3=1)
+        # Detect either active-rail loss or a floating inactive rail on sleep.
+        for rail in ('P_LORA_LF_PA_POWER','P_LORA_HF_PA_POWER'):
+            broken=re.sub(r'(?m)^\s*mesh::esp32::holdOutputForDeepSleep\(\(gpio_num_t\)'+rail+
+                          r', radio_high_band[^;]*;', '', methods)
+            self.assertNotEqual(broken,methods)
+            self.compile_run(code.replace('@METHODS@',broken),s3=1,helper_mutation=lambda text:text)
 
     def test_all_production_hold_release_deinit_sites_use_capability_wrapper(self):
         # No board or FEM may keep using unsupported RTC calls behind the fix.

@@ -47,7 +47,9 @@ void MeshnologyW12Board::begin() {
     digitalWrite(P_LORA_LF_PA_POWER, LOW);
     digitalWrite(P_LORA_HF_PA_POWER, LOW);
     digitalWrite(high_band ? P_LORA_HF_PA_POWER : P_LORA_LF_PA_POWER, HIGH);
-    delay(100);
+    // The FEM rail needs only 1 ms to settle. TX control-line prearming is
+    // handled separately immediately before transmit, not by idling the PA on.
+    delay(1);
 
     radio_high_band = high_band;
     radio_band_initialized = true;
@@ -62,6 +64,12 @@ void MeshnologyW12Board::begin() {
     rtc_gpio_pulldown_en((gpio_num_t)P_LORA_DIO_1);
 
     mesh::esp32::holdRtcGpioIfSupported((gpio_num_t)P_LORA_NSS);
+
+    // Packet-wake sleep leaves the radio receiving. Retain the selected FEM
+    // rail and the inactive rail's LOW level; both PA enable pins are RTC GPIOs
+    // on this ESP32-S3. Terminal powerOff() deliberately retains both LOW.
+    mesh::esp32::holdOutputForDeepSleep((gpio_num_t)P_LORA_LF_PA_POWER, radio_high_band ? LOW : HIGH);
+    mesh::esp32::holdOutputForDeepSleep((gpio_num_t)P_LORA_HF_PA_POWER, radio_high_band ? HIGH : LOW);
 
     if (pin_wake_btn < 0) {
       esp_sleep_enable_ext1_wakeup( (1L << P_LORA_DIO_1), ESP_EXT1_WAKEUP_ANY_HIGH);  // wake up on: recv LoRa packet

@@ -70,8 +70,10 @@ inline esp_err_t configureHeldOutput(gpio_num_t pin, uint32_t level) {
   return gpio_config(&config);
 }
 
-// Terminal shutdown only: explicitly select a known output before latching
-// it. The IDF GPIO API selects the correct RTC/digital hold implementation.
+// Explicitly select a known output before latching it. RTC pads can also be
+// retained for packet-wake sleep (e.g. W12 FEM rails). Non-RTC/digital pads
+// require the terminal-only commit below; never globally freeze live pads.
+// The IDF GPIO API selects the correct RTC/digital hold implementation.
 inline esp_err_t holdOutputForDeepSleep(gpio_num_t pin, uint32_t level) {
   esp_err_t result = configureHeldOutput(pin, level);
   if (result != ESP_OK) return result;
