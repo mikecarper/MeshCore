@@ -215,6 +215,7 @@ int main() {
 #include <cassert>
 #include <cstring>
 #include <helpers/PowerSavingDiagnostics.h>
+#include <helpers/nrf52/SleepCycleState.h>
 static uint32_t now_us = 1000, wait_duration = 547, sdk_error = 0;
 static bool softdevice = true;
 static char sequence[32] = {}; static unsigned steps = 0, yields = 0;
@@ -234,28 +235,38 @@ struct NRF52Board {
   void sleep(uint32_t secs);
 };
 @METHOD@
+static void prepare() {
+  auto& state = mesh_nrf52::sleepCycleState();
+  const uint32_t token = state.begin();
+  assert(state.publish(token, softdevice, 0));
+}
 int main() {
   using namespace mesh::powerdiag;
   NRF52Board board;
+  prepare();
   board.sleep(0);
   assert(steps == 1 && sequence[0] == 'A');
   assert(snapshot(millis()).calls == 0);
   setEnabled(true, millis()); reset(millis());
+  prepare();
   board.sleep(0);
   auto value = snapshot(millis());
   assert(value.calls == 1 && value.returns == 1 && value.last_call_us == 547);
   assert(value.errors == 0 && value.board_vetoes == 0);
   board.test = true;
+  prepare();
   board.sleep(0);
   value = snapshot(millis());
   assert(steps == 2 && yields == 1);
   assert(value.calls == 1 && value.board_vetoes == 1 && value.detail == 2);
   assert(value.current & mask(Reason::Board));
   board.test = false; sdk_error = 17;
+  prepare();
   board.sleep(0);
   value = snapshot(millis());
   assert(value.errors == 1 && value.detail == 17 && value.calls == 2 && value.returns == 2);
   softdevice = false; steps = 0; memset(sequence, 0, sizeof(sequence));
+  prepare();
   board.sleep(0);
   assert(!strcmp(sequence, "WSW")); // Do not erase a radio GPIO edge with SEV/WFE/WFE.
   value = snapshot(millis());

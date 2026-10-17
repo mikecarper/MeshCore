@@ -298,6 +298,9 @@ static bool usbLoggingRecoverySafe(void*) {
 }
 
 void loop() {
+#if defined(NRF52_PLATFORM)
+  board.prepareSleepCycle();
+#endif
   mesh::serviceUsbLoggingPort();
   mesh::wireless::control().service(millis());
 #if defined(NRF52_PLATFORM)

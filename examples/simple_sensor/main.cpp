@@ -275,6 +275,9 @@ static bool usbLoggingRecoverySafe(void*) {
 }
 
 void loop() {
+#if defined(NRF52_PLATFORM)
+  board.prepareSleepCycle();
+#endif
   mesh::serviceUsbLoggingPort();
 #if defined(NRF52_PLATFORM)
   board.feedWatchdog(the_mesh.getNodePrefs()->system_watchdog_enabled != 0);

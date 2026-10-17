@@ -284,7 +284,14 @@ class UsbLoggingWatchdogRoleTests(unittest.TestCase):
                 self.assertIn('mesh::serviceUsbLoggingPort();', loop)
                 self.assertIn('if (mesh::serviceUsbLoggingWatchdog(usbLoggingRecoverySafe)) '
                               'board.reboot();', loop)
-                self.assertIn('!mesh::isUsbLoggingWatchdogArmed()', source)
+                if role == 'companion_radio':
+                    guard = method(loop, 'mesh::powerdiag::Mask sleep_reason = [&]()')
+                    self.assertIn('if (mesh::isUsbLoggingWatchdogArmed()) '
+                                  'return mask(Reason::UsbRecovery);', guard)
+                    self.assertIn('const bool can_sleep = sleep_reason == 0;', loop)
+                    self.assertLess(loop.index(guard), loop.index('if (can_sleep)'))
+                else:
+                    self.assertIn('!mesh::isUsbLoggingWatchdogArmed()', loop)
 
     @staticmethod
     def _harness(declaration, definition, callback, role, commands, companion):

@@ -4,6 +4,7 @@
 #include "NRF52VoltagePolicy.h"
 #include "Nrf52BootloaderVersion.h"
 #include "nrf52/SoftDeviceState.h"
+#include "nrf52/SleepCycleState.h"
 #include "nrf52/ShutdownLeds.h"
 #include <target.h>
 #include "UserGpioPinPolicy.h"
@@ -13,6 +14,7 @@
 #include "ble_gap.h"
 #include "ble_hci.h"
 #include <nrf.h>
+#include <nrf_nvic.h>
 #include <nrf_soc.h>
 #ifdef USE_TINYUSB
 #include <Adafruit_TinyUSB.h>
@@ -464,17 +466,86 @@ void NRF52BoardDCDC::begin() {
 }
 
 bool NRF52Board::isExternalPowered() {
-  // Check if SoftDevice is enabled before using its API
+  mesh_nrf52::SleepCycleSnapshot cycle;
+  if (mesh_nrf52::sleepCycleState().snapshot(cycle))
+    return (cycle.usb_status & POWER_USBREGSTATUS_VBUSDETECT_Msk) != 0;
+
+  // Setup and callers outside a prepared loop retain the SDK access policy.
+  // Never reuse a cached value after a SoftDevice transition invalidated it.
   uint8_t sd_enabled = 0;
-  mesh_nrf52::softdeviceIsEnabled(sd_enabled);
+  if (mesh_nrf52::softdeviceIsEnabled(sd_enabled) != NRF_SUCCESS) return false;
 
   if (sd_enabled) {
-    uint32_t usb_status;
-    sd_power_usbregstatus_get(&usb_status);
+    volatile uint32_t status = 0;
+    const uint32_t error = sd_power_usbregstatus_get((uint32_t*)&status);
+    __asm volatile ("" ::: "memory");
+    if (error != NRF_SUCCESS) return false;
+    const uint32_t usb_status = status;
     return (usb_status & POWER_USBREGSTATUS_VBUSDETECT_Msk) != 0;
   } else {
     return (NRF_POWER->USBREGSTATUS & POWER_USBREGSTATUS_VBUSDETECT_Msk) != 0;
   }
+}
+
+void NRF52Board::prepareSleepCycle() {
+  auto& state = mesh_nrf52::sleepCycleState();
+  const uint32_t token = state.begin();
+  const auto application_context = []() {
+    return __get_IPSR() == 0 && __get_PRIMASK() == 0
+        && __get_BASEPRI() == 0 && __get_FAULTMASK() == 0
+        // SDK critical regions can mask application IRQs in the NVIC even
+        // while the CPU mask registers are clear. This public field is
+        // volatile: read it afresh before queries and after the forced yield.
+        && nrf_nvic_state.__cr_flag == 0
+        && xTaskGetSchedulerState() == taskSCHEDULER_RUNNING;
+  };
+  if (!application_context()) {
+    state.publish(token, false, 0, NRF_ERROR_INVALID_STATE);
+    return;
+  }
+#ifdef NRF_CRYPTOCELL
+  // The pinned Adafruit CC310 library polls (no-interrupts archive), but can
+  // leave its disabled NVIC IRQ pending. The SDK treats that as application
+  // work forever. Match the core's waitForEvent cleanup only at loop entry;
+  // never clear an enabled IRQ belonging to an interrupt-driven owner.
+  if (NVIC_GetEnableIRQ(CRYPTOCELL_IRQn) == 0)
+    NVIC_ClearPendingIRQ(CRYPTOCELL_IRQn);
+#endif
+  uint8_t sd_enabled = 0;
+  uint32_t error = mesh_nrf52::softdeviceIsEnabled(sd_enabled);
+  uint32_t usb_status = 0;
+  if (error == NRF_SUCCESS) {
+    if (sd_enabled) {
+      volatile uint32_t status = 0;
+      error = sd_power_usbregstatus_get((uint32_t*)&status);
+      __asm volatile ("" ::: "memory");
+      usb_status = status;
+    } else {
+      usb_status = NRF_POWER->USBREGSTATUS;
+    }
+  }
+  if (error == NRF_SUCCESS && sd_enabled && state.current(token)) {
+    // Raw SEV/WFE does not acknowledge the SDK's separate application-IRQ
+    // bookkeeping. First force a real application PendSV while the loop task
+    // remains ready (so the RTOS idle task cannot consume that acknowledgement).
+    // The public SDK contract then makes this one early wait non-blocking.
+    // The pinned S140 6.1.1/7.3.0 forwarding/wait code confirms its private IRQ
+    // sequence cannot wrap back to the last acknowledged value. Do not access
+    // those SDK-private counters or rely on SEV alone to release an SDK wait.
+    taskYIELD();
+    if (!application_context() || (SCB->ICSR & SCB_ICSR_PENDSVSET_Msk)) {
+      error = NRF_ERROR_INVALID_STATE;
+    } else if (state.current(token)) {
+      error = sd_app_evt_wait();
+    }
+  }
+  state.publish(token, sd_enabled != 0, usb_status, error);
+
+  // FreeRTOS yields and the state-query SVC can both leave a stale event.
+  // Clear it ONLY at loop entry, before servicing/checking application work.
+  // A radio interrupt after this point must remain visible to the late wait.
+  __SEV();
+  __WFE();
 }
 
 bool NRF52Board::isUsbDataConnected() {
@@ -498,9 +569,22 @@ bool NRF52Board::isUsbHostConnected() {
 }
 
 void NRF52Board::sleep(uint32_t secs) {
+  (void)secs;
   const bool diagnostics = mesh::powerdiag::enabled();
+  auto& state = mesh_nrf52::sleepCycleState();
+  mesh_nrf52::SleepCycleSnapshot cycle;
+  const bool prepared = state.take(cycle);
   if (isRadioTestActive()) {
     if (diagnostics) mesh::powerdiag::boardVeto(mesh::powerdiag::Reason::Board, millis(), 2);
+    delay(1);
+    return;
+  }
+  if (!prepared || !state.current(cycle.generation)) {
+    if (diagnostics) {
+      const uint32_t error = state.lastError();
+      if (error != NRF_SUCCESS) mesh::powerdiag::boardError(static_cast<int32_t>(error), millis());
+      else mesh::powerdiag::boardVeto(mesh::powerdiag::Reason::Board, millis(), 3);
+    }
     delay(1);
     return;
   }
@@ -514,10 +598,7 @@ void NRF52Board::sleep(uint32_t secs) {
 
   // On nRF52, we use event-driven sleep instead of timed sleep
   // The 'secs' parameter is ignored - we wake on any interrupt
-  uint8_t sd_enabled = 0;
-  mesh_nrf52::softdeviceIsEnabled(sd_enabled);
-
-  if (sd_enabled) {
+  if (cycle.softdevice_enabled) {
     // A single call is required here. If an interrupt arrived since the last
     // wait, SoftDevice returns immediately so the main loop can service the
     // flag or BLE queue before sleeping again.
@@ -708,6 +789,9 @@ bool NRF52Board::startOTAUpdate(const char *id, char reply[], bool force_ap) {
     Bluefruit.configPrphConn(BLE_GATT_ATT_MTU_DEFAULT,
                              BLE_GAP_EVENT_LENGTH_MIN, 2, 1);
 
+    // Even a failed begin can leave SoftDevice enabled partway through SDK
+    // startup. Require a fresh authoritative query before the next sleep.
+    mesh_nrf52::sleepCycleState().invalidate();
     if (!Bluefruit.begin(1, 0)) {
       return false;
     }

@@ -2,6 +2,7 @@
 #include <helpers/PowerSavingDiagnostics.h>
 #include <cstdarg>
 static unsigned usb_services=0,command_services=0,transport_services=0,delays=0;
+static bool usb_watchdog_armed=false,wireless_pending=false;
 struct Stream {
   int available() const { return 0; }
   char read() const { return 0; }
@@ -18,17 +19,18 @@ namespace mesh {
 void serviceUsbLoggingPort() { ++usb_services; }
 void serviceUsbTerminalPort() { ++usb_services; }
 bool isUsbLoggingEnabled() { return false; }
-bool isUsbLoggingWatchdogArmed() { return false; }
+bool isUsbLoggingWatchdogArmed() { return usb_watchdog_armed; }
 bool serviceUsbLoggingWatchdog(bool(*)()) { ++usb_services; return false; }
 Stream& usbConsolePort() { return console; }
 void noteUsbLoggingStatsCommand(const char*) { ++usb_services; }
 namespace wireless {
-struct Control { void service(uint32_t) { ++transport_services; } bool pending() { return false; } } controller;
+struct Control { void service(uint32_t) { ++transport_services; } bool pending() { return wireless_pending; } } controller;
 Control& control() { return controller; }
 }
 }
 struct Board {
-  unsigned calls=0,watchdogs=0,sleeps=0,fans=0,reboots=0;
+  unsigned calls=0,watchdogs=0,sleeps=0,fans=0,reboots=0,preparations=0;
+  void prepareSleepCycle() { ++preparations; }
   void loop() { ++calls; }
   void feedWatchdog(bool=true) { ++watchdogs; }
   void sleep(uint32_t) { ++sleeps; }
@@ -102,6 +104,7 @@ int main() {
   loop();
   assert(sensors.calls==3 && ui_task.calls==6 && board.sleeps==3 && !delays);
   assert(the_mesh.calls==6 && rtc_clock.calls==6 && board.watchdogs==6);
+  assert(board.preparations==6); // Prepare even when Morse vetoes actual sleep.
 #if !ROLE_SENSOR
   assert(board.fans==6);
 #endif
@@ -113,5 +116,16 @@ int main() {
   assert(transport_services==6 && board.calls==6);
 #else
   assert(board.calls==6);
+#endif
+  const auto sleeps_before_hold=board.sleeps;
+  usb_watchdog_armed=true;
+  loop();
+  assert(board.sleeps==sleeps_before_hold);
+  usb_watchdog_armed=false;
+#if !ROLE_SENSOR
+  wireless_pending=true;
+  loop();
+  assert(board.sleeps==sleeps_before_hold);
+  wireless_pending=false;
 #endif
 }

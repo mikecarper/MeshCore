@@ -736,7 +736,27 @@ static size_t writeTinyUsbCdcOnce(void* context, const uint8_t* data,
   return tud_cdc_n_write(instance, data, attempt);
 }
 
-static SingleAttemptNonBlockingStream nonblocking_primary_usb_companion_port(
+#if defined(ENABLE_USB_INTERFACE) || defined(USE_TINYUSB)
+// Adafruit's empty CDC available() calls yield(), which sets the Cortex-M
+// event register through FreeRTOS. Polling an idle console must not recreate
+// that scheduler event after the loop has prepared its sleep decision.
+// Only CDC0 is the primary protocol/console; CDC1 keeps its logging owner.
+class Nrf52PrimaryUsbStream : public SingleAttemptNonBlockingStream {
+ public:
+  using SingleAttemptNonBlockingStream::SingleAttemptNonBlockingStream;
+
+  int available() override {
+    if (!canAccessPrimaryUsbSession(nullptr)) return 0;
+    const int count = static_cast<int>(tud_cdc_n_available(0));
+    // A USB owner callback may have closed the epoch during the FIFO query.
+    return canAccessPrimaryUsbSession(nullptr) ? count : 0;
+  }
+};
+#else
+using Nrf52PrimaryUsbStream = SingleAttemptNonBlockingStream;
+#endif
+
+static Nrf52PrimaryUsbStream nonblocking_primary_usb_companion_port(
     Serial, writeTinyUsbCdcOnce, reinterpret_cast<void*>(uintptr_t{0})
 #if defined(ENABLE_USB_INTERFACE) || defined(USE_TINYUSB)
     , canAccessPrimaryUsbSession

@@ -62,3 +62,7 @@ wrap (about 49 days).
 
 See the [CLI reference](cli_commands.md#diagnose-what-prevents-power-saving)
 for all page names and commands.
+
+The [nRF52 idle-sleep investigation](nrf52_sleep_event_validation.md) describes
+an eligible-but-not-sleeping regression, its fix, controlled hardware evidence
+and the limits of CPU-state sampling without a current meter.

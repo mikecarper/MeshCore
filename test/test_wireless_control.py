@@ -301,7 +301,17 @@ int main(){
             source = (ROOT/'examples'/role/'main.cpp').read_text()
             self.assertIn(f'control().begin({backend})', source)
             self.assertIn('control().service(millis())', source[source.index('\nvoid loop()'):])
-            self.assertIn('&& !mesh::wireless::control().pending()', source[source.index('\nvoid loop()'):])
+            loop = method(source, '\nvoid loop()')
+            if role == 'companion_radio':
+                guard = method(loop, 'mesh::powerdiag::Mask sleep_reason = [&]()')
+                self.assertIn('if (mesh::wireless::control().pending()) '
+                              'return mask(Reason::Wireless);', guard)
+                self.assertIn('const bool can_sleep = sleep_reason == 0;', loop)
+                self.assertLess(loop.index(guard), loop.index('if (can_sleep)'))
+            else:
+                self.assertIn('&& sleep_guard(!mesh::wireless::control().pending(), '
+                              'mesh::powerdiag::Reason::Wireless)', loop)
+                self.assertIn('return allowed;', method(loop, 'const auto sleep_guard = []'))
         gates = {
             'src/helpers/bridges/MQTTBridge.cpp': 'WiFi',
             'src/helpers/bridges/ESPNowBridge.cpp': 'EspNow',

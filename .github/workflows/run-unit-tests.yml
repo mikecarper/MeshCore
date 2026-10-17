@@ -320,6 +320,8 @@ jobs:
           python3 -B test/test_power_saving_diagnostics.py -v
           python3 -B test/test_power_saving_role_diagnostics.py -v
           python3 -B test/test_companion_power_diagnostics.py -v
+          python3 -B test/test_nrf52_sleep_cycle.py -v
+          python3 -B test/test_nrf52_sleep_events.py -v
           python3 -B test/test_esp32_scanner_power_yield.py -v
           python3 -B test/test_esp32_gpio_hold.py -v
 

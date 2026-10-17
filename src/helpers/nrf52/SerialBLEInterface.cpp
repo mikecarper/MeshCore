@@ -2,6 +2,7 @@
 #include "../BluetoothMac.h"
 #include "../CompanionFrameQueue.h"
 #include "SoftDeviceState.h"
+#include "SleepCycleState.h"
 #include "BleDebugTrace.h"
 #include <stdio.h>
 #include <string.h>
@@ -712,6 +713,9 @@ bool SerialBLEInterface::begin(const char* prefix, const char* name,
   // task observation incorrectly reports that the BLE/SOC workers never
   // started. Bluefruit.begin() is the reliable startup result available to
   // this application.
+  // A partial/failed begin must not leave the current loop's cached
+  // SoftDevice state eligible for bare-metal sleep.
+  mesh_nrf52::sleepCycleState().invalidate();
   if (!Bluefruit.begin()) {
     uint8_t softdevice_enabled = 0;
     const uint32_t softdevice_status =

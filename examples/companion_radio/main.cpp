@@ -4086,6 +4086,9 @@ static bool usbLoggingRecoverySafe(void*) {
 }
 
 void loop() {
+#if defined(NRF52_PLATFORM)
+  board.prepareSleepCycle();
+#endif
 #if defined(RP2040_PLATFORM) && defined(ENABLE_WIFI_INTERFACE)
   if (pico_wifi_active && WiFi.status() != WL_CONNECTED
       && static_cast<uint32_t>(millis() - last_wifi_reconnect_attempt)

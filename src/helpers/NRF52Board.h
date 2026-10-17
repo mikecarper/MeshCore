@@ -73,6 +73,9 @@ public:
   virtual bool getBootloaderVersion(char* version, size_t max_len) override;
   virtual bool startOTAUpdate(const char *id, char reply[], bool force_ap = false) override;
   virtual bool stopOTAUpdate(char reply[]) override;
+  // Must precede all work servicing/checks in each application loop. The
+  // authoritative SDK queries and stale-event clear are never done at sleep.
+  void prepareSleepCycle();
   virtual void sleep(uint32_t secs) override;
   bool isUserGpioAvailable(uint8_t pin) const override;
   bool isExternalPowered() override;

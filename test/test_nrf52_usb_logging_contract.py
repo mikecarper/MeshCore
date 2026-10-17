@@ -1,8 +1,12 @@
 #!/usr/bin/env python3
-"""Static integration guards for nRF52 nonblocking USB diagnostics."""
+"""Integration guards and native tests for nRF52 nonblocking USB diagnostics."""
 
 from pathlib import Path
+import os
 import re
+import shutil
+import subprocess
+import tempfile
 import unittest
 
 from test_replay_reset_integration import extract_braced
@@ -133,11 +137,7 @@ class Nrf52UsbLoggingContractTest(unittest.TestCase):
         source = (ROOT / "src/helpers/UsbLogging.cpp").read_text()
         main = (ROOT / "examples/companion_radio/main.cpp").read_text()
 
-        helper_start = source.index("static size_t writeTinyUsbCdcOnce(")
-        helper_end = source.index(
-            "static SingleAttemptNonBlockingStream", helper_start
-        )
-        helper = source[helper_start:helper_end]
+        helper = extract_braced(source, "static size_t writeTinyUsbCdcOnce(")
         self.assertEqual(helper.count("tud_cdc_n_write(instance, data, attempt)"), 1)
         self.assertNotIn("Adafruit_USBD_CDC::write", helper)
         self.assertIn("tud_cdc_n_connected(instance)", helper)
@@ -147,6 +147,134 @@ class Nrf52UsbLoggingContractTest(unittest.TestCase):
         self.assertIn(
             "usb_serial_interface.begin(mesh::usbCompanionPort(),", main
         )
+
+    def test_primary_empty_rx_query_never_yields_and_preserves_session_gates(self):
+        source = (ROOT / "src/helpers/UsbLogging.cpp").read_text(encoding="ascii")
+        facade = extract_braced(source, "class Nrf52PrimaryUsbStream") + ";"
+        access = extract_braced(source, "static bool canAccessPrimaryUsbSession(")
+        self.assertIn("static Nrf52PrimaryUsbStream nonblocking_primary_usb_companion_port(", source)
+        self.assertIn("using Nrf52PrimaryUsbStream = SingleAttemptNonBlockingStream;", source)
+        fixture = r'''
+#include <atomic>
+#include <cassert>
+#include <functional>
+#include <helpers/NonBlockingWriteStream.h>
+static bool mounted = true;
+static unsigned queried[2] = {}, delegate_queries = 0, delegate_yields = 0;
+static unsigned rx[2] = {};
+static std::function<void()> during_query, during_read;
+static bool tud_mounted() { return mounted; }
+static uint32_t tud_cdc_n_available(uint8_t instance) {
+  assert(instance < 2);
+  ++queried[instance];
+  const uint32_t count = rx[instance];
+  if (during_query) {
+    auto callback = std::move(during_query);
+    during_query = nullptr;
+    callback();
+  }
+  return count;
+}
+struct Delegate : Stream {
+  int available() override {
+    ++delegate_queries;
+    if (rx[0] == 0) ++delegate_yields;
+    return static_cast<int>(rx[0]);
+  }
+  int read() override {
+    const bool had_byte = rx[0] != 0;
+    if (had_byte) --rx[0];
+    if (during_read) {
+      auto callback = std::move(during_read);
+      during_read = nullptr;
+      callback();
+    }
+    return had_byte ? 42 : -1;
+  }
+  int peek() override { return rx[0] ? 42 : -1; }
+};
+namespace mesh {
+static std::atomic<uint32_t> primary_usb_reset_generation{0};
+static std::atomic<uint32_t> primary_usb_allowed_generation{0};
+static std::atomic<bool> primary_usb_terminal_discard_pending{false};
+static std::atomic<bool> nrf52_usb_reenumeration_pending{false};
+static std::atomic<bool> primary_usb_line_state_dtr{true};
+static std::atomic<uint32_t> primary_usb_rx_generation{UINT32_MAX};
+static uint32_t primaryUsbSessionGeneration() { return primary_usb_reset_generation.load(); }
+@ACCESS@
+@FACADE@
+}
+int main() {
+  Delegate delegate;
+  mesh::Nrf52PrimaryUsbStream port(delegate, nullptr, nullptr,
+                                 mesh::canAccessPrimaryUsbSession);
+  static_assert(sizeof(port) == sizeof(mesh::SingleAttemptNonBlockingStream),
+                "Primary RX polling must not add per-stream RAM");
+  for (unsigned i = 0; i < 1000; ++i) assert(port.available() == 0);
+  assert(delegate_queries == 0 && delegate_yields == 0);
+  assert(queried[0] == 1000 && queried[1] == 0);
+  rx[1] = 17;
+  assert(port.available() == 0 && queried[1] == 0); // Never borrow CDC1 input.
+  rx[0] = 3;
+  assert(port.available() == 3 && port.peek() == 42);
+  assert(port.read() == 42 && rx[0] == 2); // Keep the inherited read/peek route.
+  during_query = [] { ++mesh::primary_usb_reset_generation; };
+  assert(port.available() == 0); // Closed during the count query.
+  const unsigned closed_queries = queried[0];
+  assert(port.available() == 0 && queried[0] == closed_queries);
+  mesh::primary_usb_allowed_generation = mesh::primaryUsbSessionGeneration();
+  mesh::primary_usb_line_state_dtr = false;
+  mesh::primary_usb_rx_generation = UINT32_MAX;
+  rx[0] = 0;
+  assert(port.available() == 0);
+  assert(mesh::primary_usb_rx_generation == UINT32_MAX); // Empty RX is not proof.
+  rx[0] = 2;
+  assert(port.available() == 2); // MeshCLI may send with DTR low.
+  assert(mesh::primary_usb_rx_generation == mesh::primaryUsbSessionGeneration());
+  assert(port.read() == 42 && port.available() == 1);
+  during_read = [] { ++mesh::primary_usb_reset_generation; };
+  assert(port.read() == -1); // Inherited read drops an old-epoch byte.
+  assert(port.available() == 0);
+  mesh::primary_usb_allowed_generation = mesh::primaryUsbSessionGeneration();
+  mesh::primary_usb_line_state_dtr = true;
+  for (auto* gate : {&mesh::primary_usb_terminal_discard_pending,
+                    &mesh::nrf52_usb_reenumeration_pending}) {
+    *gate = true;
+    const unsigned before = queried[0];
+    assert(port.available() == 0 && queried[0] == before);
+    *gate = false;
+  }
+  mounted = false;
+  assert(port.available() == 0);
+  assert(delegate_queries == 0 && delegate_yields == 0 && queried[1] == 0);
+}
+'''.replace("@ACCESS@", access).replace("@FACADE@", facade)
+        controls = {
+            "production": fixture,
+            "delegated-empty-query": fixture.replace(
+                "static_cast<int>(tud_cdc_n_available(0))", "SingleAttemptNonBlockingStream::available()"),
+            "missing-post-query-gate": fixture.replace(
+                "return canAccessPrimaryUsbSession(nullptr) ? count : 0;", "return count;"),
+            "wrong-cdc-index": fixture.replace(
+                "static_cast<int>(tud_cdc_n_available(0))", "static_cast<int>(tud_cdc_n_available(1))"),
+        }
+        compiler = shutil.which(os.environ.get("CXX", "g++"))
+        self.assertIsNotNone(compiler, "a host C++17 compiler is required")
+        with tempfile.TemporaryDirectory(prefix="meshcore-nrf52-empty-rx-") as directory:
+            for label, code in controls.items():
+                with self.subTest(control=label):
+                    cpp, binary = Path(directory) / f"{label}.cpp", Path(directory) / label
+                    cpp.write_text(code, encoding="ascii")
+                    built = subprocess.run([
+                        compiler, "-std=c++17", "-Wall", "-Wextra", "-Werror",
+                        "-Wno-unused-parameter", "-Wno-sign-compare",
+                        *([] if os.name == "nt" else ["-fsanitize=address,undefined",
+                          "-fno-sanitize-recover=all", "-fno-pie", "-no-pie"]),
+                        "-I", str(ROOT / "test/mocks"), "-I", str(ROOT / "src"),
+                        str(cpp), "-o", str(binary)], capture_output=True, text=True, timeout=30)
+                    self.assertEqual(built.returncode, 0, built.stdout + built.stderr)
+                    ran = subprocess.run([str(binary)], capture_output=True, text=True, timeout=10)
+                    self.assertEqual(ran.returncode == 0, label == "production", ran.stdout + ran.stderr)
 
     def test_dedicated_logging_is_drained_only_from_tinyusb_task(self):
         source = (ROOT / "src/helpers/UsbLogging.cpp").read_text()
