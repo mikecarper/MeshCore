@@ -470,62 +470,71 @@ static void statusLedWheel(uint8_t pos) {   // smooth hue sweep, 0..255
 void UITask::userLedHandler() {
   if (_notification_led_owned || !(_notification_outputs & mesh::notify::Led)) return;
 #ifdef STATUS_LED_RGB
-  static bool booted = false;
-  static bool flourish_active = false;
-  static unsigned long flourish_until = 0;
+  enum class FlourishState : uint8_t { Unseen, Boot, Message, Idle };
+  static FlourishState flourish = FlourishState::Unseen;
+  static uint32_t flourish_started = 0;
   static int prev_msgcount = 0;
   static int state = 0;
-  static unsigned long next_change = 0;
-  static int last_increment = 0;
-  static unsigned long next_batt_check = 0;
-  static bool low_batt = false;
+  static uint32_t last_change = 0;
+  static uint32_t phase_millis = 0;
+  static uint32_t last_batt_check = 0;
+  enum class BatteryState : uint8_t { Unseen, Normal, Low };
+  static BatteryState battery_state = BatteryState::Unseen;
 
-  unsigned long cur_time = millis();
+  const uint32_t cur_time = millis();
 
-  if (!booted) {   // color sweep on boot
-    booted = true;
-    flourish_until = cur_time + 1200;
-    flourish_active = true;
+  if (flourish == FlourishState::Unseen) {   // color sweep on boot
+    flourish_started = cur_time;
+    flourish = FlourishState::Boot;
   }
   if (_msgcount > prev_msgcount) {   // color sweep when a new message arrives
-    flourish_until = cur_time + 800;
-    flourish_active = true;
+    flourish_started = cur_time;
+    flourish = FlourishState::Message;
   }
   prev_msgcount = _msgcount;
 
-  if (flourish_active) {
-    if (cur_time < flourish_until) {
+  if (flourish == FlourishState::Boot || flourish == FlourishState::Message) {
+    const uint32_t duration = flourish == FlourishState::Boot ? 1200 : 800;
+    if (static_cast<uint32_t>(cur_time - flourish_started) < duration) {
       statusLedWheel((cur_time % 1200) * 255 / 1200);
       return;
     }
     statusLedWrite(0, 0, 0);
-    flourish_active = false;
+    flourish = FlourishState::Idle;
     state = 0;
-    next_change = cur_time;
+    last_change = cur_time;
+    phase_millis = 0;
   }
 
-  if (cur_time > next_batt_check) {   // battery reads are not free, keep them rare
+  // Keep the cached entry-time cadence, including across wrap and long idle.
+  // Sample state distinguishes an initial check from a completed check at zero.
+  if (battery_state == BatteryState::Unseen ? cur_time > 0
+      : static_cast<uint32_t>(cur_time - last_batt_check) > 60000) {
     uint16_t low_batt_mv = LOW_BATT_MILLIVOLTS;
 #if defined(NRF52_POWER_MANAGEMENT)
     low_batt_mv = mesh::power::remapBatteryWarningMillivolts(
         LOW_BATT_MILLIVOLTS, BATT_MIN_MILLIVOLTS, BATT_MAX_MILLIVOLTS,
         mesh::power::configuredEmpty(), mesh::power::configuredFull());
 #endif
-    low_batt = _board->getBattMilliVolts() < low_batt_mv;
-    next_batt_check = cur_time + 60000;
+    battery_state = _board->getBattMilliVolts() < low_batt_mv
+        ? BatteryState::Low : BatteryState::Normal;
+    last_batt_check = cur_time;
   }
 
 #ifdef EXT_CHRG_DETECT
   // charge status display while docked (skipped when messages are waiting,
   // so the unread indication is never masked)
-  static unsigned long next_pwr_check = 0;
-  static bool ext_powered = false, ext_charging = false;
-  if (cur_time > next_pwr_check) {
-    ext_powered = _board->isExternalPowered();
-    ext_charging = ext_powered && digitalRead(EXT_CHRG_DETECT) == LOW;
-    next_pwr_check = cur_time + 1000;
+  static uint32_t last_pwr_check = 0;
+  enum class PowerState : uint8_t { Unseen, No, Yes };
+  static PowerState power_state = PowerState::Unseen;
+  static bool ext_charging = false;
+  if (power_state == PowerState::Unseen ? cur_time > 0
+      : static_cast<uint32_t>(cur_time - last_pwr_check) > 1000) {
+    power_state = _board->isExternalPowered() ? PowerState::Yes : PowerState::No;
+    ext_charging = power_state == PowerState::Yes && digitalRead(EXT_CHRG_DETECT) == LOW;
+    last_pwr_check = cur_time;
   }
-  if (ext_powered && _msgcount == 0) {
+  if (power_state == PowerState::Yes && _msgcount == 0) {
     if (ext_charging) {
       // amber breathing while charging
       int ph = cur_time % 2000;
@@ -536,17 +545,17 @@ void UITask::userLedHandler() {
       statusLedWrite(0, 40, 0);   // dim solid green: charge complete
     }
     state = 0;
-    next_change = cur_time;
+    last_change = cur_time;
+    phase_millis = 0;
     return;
   }
 #endif
 
-  if (cur_time > next_change) {
+  if (static_cast<uint32_t>(cur_time - last_change) > phase_millis) {
     if (state == 0) {
       state = 1;
-      last_increment = (_msgcount > 0) ? LED_ON_MSG_MILLIS : LED_ON_MILLIS;
-      next_change = cur_time + last_increment;
-      if (low_batt) {
+      phase_millis = (_msgcount > 0) ? LED_ON_MSG_MILLIS : LED_ON_MILLIS;
+      if (battery_state == BatteryState::Low) {
         statusLedWrite(255, 0, 0);      // red: battery low
       } else if (_msgcount > 0) {
         statusLedWrite(255, 90, 0);     // amber: unread messages
@@ -557,9 +566,10 @@ void UITask::userLedHandler() {
       }
     } else {
       state = 0;
-      next_change = cur_time + LED_CYCLE_MILLIS - last_increment;
+      phase_millis = LED_CYCLE_MILLIS - phase_millis;
       statusLedWrite(0, 0, 0);
     }
+    last_change = cur_time;
   }
 #elif defined(PIN_STATUS_LED)
   static int state = 0;
