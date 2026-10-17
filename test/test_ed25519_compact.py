@@ -52,6 +52,10 @@ void public_from_scalar(unsigned char *out, const unsigned char *scalar) {
                 ("small_sha512", ["-DED25519_SMALL_BASE=1", "-DED25519_COMPACT_SHA512=1"]),
                 ("small_all", ["-DED25519_SMALL_BASE=1", "-DED25519_COMPACT_SHA512=1",
                                "-DED25519_COMPACT_SCALAR=1"]),
+                ("small_field", ["-DED25519_SMALL_BASE=1", "-DED25519_COMPACT_SHA512=1",
+                                 "-DED25519_COMPACT_SCALAR=1", "-DED25519_COMPACT_FIELD=1"]),
+                ("compact_field", ["-DED25519_COMPACT_BASE=1", "-DED25519_COMPACT_SHA512=1",
+                                   "-DED25519_COMPACT_SCALAR=1", "-DED25519_COMPACT_FIELD=1"]),
             ):
                 path = Path(directory) / (label + ".so")
                 subprocess.run(["cc", "-std=c99", "-O2", "-Wall", "-Wextra", "-Werror",
@@ -65,6 +69,9 @@ void public_from_scalar(unsigned char *out, const unsigned char *scalar) {
                 library.ed25519_sign.argtypes = [ctypes.c_void_p, ctypes.c_void_p,
                                                 ctypes.c_size_t, ctypes.c_void_p, ctypes.c_void_p]
                 library.ed25519_key_exchange.argtypes = [ctypes.c_void_p] * 3
+                library.ed25519_verify.argtypes = [ctypes.c_void_p, ctypes.c_void_p,
+                                                  ctypes.c_size_t, ctypes.c_void_p]
+                library.ed25519_verify.restype = ctypes.c_int
                 libraries.append(library)
             rng = random.Random(0xED960)
             scalars = [0, (1 << 255) - 1]
@@ -93,6 +100,12 @@ void public_from_scalar(unsigned char *out, const unsigned char *scalar) {
                     library.ed25519_create_keypair(peer, peer_prv, peer_seed)
                     library.ed25519_sign(sig, message, len(message), pub, prv)
                     library.ed25519_key_exchange(secret, peer, prv)
+                    self.assertEqual(library.ed25519_verify(sig, message, len(message), pub), 1)
+                    damaged = bytearray(sig.raw)
+                    damaged[iteration % len(damaged)] ^= 1 << (iteration % 8)
+                    self.assertEqual(library.ed25519_verify(bytes(damaged), message, len(message), pub), 0)
+                    wrong_message = bytes([message[0] ^ 1]) + message[1:] if message else b"x"
+                    self.assertEqual(library.ed25519_verify(sig, wrong_message, len(wrong_message), pub), 0)
                     outputs.append((pub.raw, prv.raw, sig.raw, secret.raw))
                 for output in outputs[1:]:
                     self.assertEqual(outputs[0], output)
@@ -187,6 +200,10 @@ void public_from_scalar(unsigned char *out, const unsigned char *scalar) {
                 ("compact_all", ["-DED25519_COMPACT_BASE=1",
                                  "-DED25519_COMPACT_SHA512=1",
                                  "-DED25519_COMPACT_SCALAR=1"]),
+                ("compact_field", ["-DED25519_COMPACT_BASE=1",
+                                   "-DED25519_COMPACT_SHA512=1",
+                                   "-DED25519_COMPACT_SCALAR=1",
+                                   "-DED25519_COMPACT_FIELD=1"]),
             ):
                 executable = Path(temp_dir) / label
                 subprocess.run(

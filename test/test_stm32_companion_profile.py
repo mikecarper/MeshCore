@@ -55,6 +55,10 @@ class STM32CompanionProfileTest(unittest.TestCase):
         self.assertIn("-Oz", self.companion["build_flags"])
         self.assertEqual(self.companion["build_unflags"].split(), ["-Os"])
 
+    def test_size_profile_uses_equivalent_fixed_loop_field_products(self):
+        self.assertRegex(self.companion["build_flags"],
+                         r"-D\s+ED25519_COMPACT_FIELD=1\b")
+
 
 class WioSTM32CompanionProfileTest(STM32CompanionProfileTest):
     variant = "wio-e5-mini"

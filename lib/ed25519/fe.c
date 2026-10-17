@@ -1,6 +1,10 @@
 #include "fixedint.h"
 #include "fe.h"
 
+#if defined(ED25519_COMPACT_FIELD) && ED25519_COMPACT_FIELD
+#include "fe_compact.h"
+#endif
+
 
 /*
     helper functions
@@ -78,6 +82,7 @@ void fe_1(fe h) {
        |h| bounded by 1.1*2^26,1.1*2^25,1.1*2^26,1.1*2^25,etc.
 */
 
+#if !defined(ED25519_COMPACT_FIELD) || !ED25519_COMPACT_FIELD
 void fe_add(fe h, const fe f, const fe g) {
     int32_t f0 = f[0];
     int32_t f1 = f[1];
@@ -293,6 +298,8 @@ void fe_copy(fe h, const fe f) {
 /*
     Ignores top bit of h.
 */
+
+#endif
 
 void fe_frombytes(fe h, const unsigned char *s) {
     int64_t h0 = load_4(s);
@@ -553,6 +560,7 @@ int fe_isnonzero(const fe f) {
     With tighter constraints on inputs can squeeze carries into int32.
 */
 
+#if !defined(ED25519_COMPACT_FIELD) || !ED25519_COMPACT_FIELD
 void fe_mul(fe h, const fe f, const fe g) {
     int32_t f0 = f[0];
     int32_t f1 = f[1];
@@ -763,6 +771,7 @@ void fe_mul(fe h, const fe f, const fe g) {
     h[8] = (int32_t) h8;
     h[9] = (int32_t) h9;
 }
+#endif
 
 
 /*
@@ -843,6 +852,7 @@ Postconditions:
    |h| bounded by 1.1*2^25,1.1*2^24,1.1*2^25,1.1*2^24,etc.
 */
 
+#if !defined(ED25519_COMPACT_FIELD) || !ED25519_COMPACT_FIELD
 void fe_neg(fe h, const fe f) {
     int32_t f0 = f[0];
     int32_t f1 = f[1];
@@ -877,6 +887,8 @@ void fe_neg(fe h, const fe f) {
     h[9] = h9;
 }
 
+
+#endif
 
 void fe_pow22523(fe out, const fe z) {
     fe t0;
@@ -979,6 +991,7 @@ Postconditions:
 See fe_mul.c for discussion of implementation strategy.
 */
 
+#if !defined(ED25519_COMPACT_FIELD) || !ED25519_COMPACT_FIELD
 void fe_sq(fe h, const fe f) {
     int32_t f0 = f[0];
     int32_t f1 = f[1];
@@ -1298,6 +1311,7 @@ void fe_sq2(fe h, const fe f) {
     h[8] = (int32_t) h8;
     h[9] = (int32_t) h9;
 }
+#endif
 
 
 /*
@@ -1312,6 +1326,7 @@ Postconditions:
    |h| bounded by 1.1*2^26,1.1*2^25,1.1*2^26,1.1*2^25,etc.
 */
 
+#if !defined(ED25519_COMPACT_FIELD) || !ED25519_COMPACT_FIELD
 void fe_sub(fe h, const fe f, const fe g) {
     int32_t f0 = f[0];
     int32_t f1 = f[1];
@@ -1382,6 +1397,8 @@ Proof:
   Have q+2^(-255)x = 2^(-255)(h + 19 2^(-25) h9 + 2^(-1))
   so floor(2^(-255)(h + 19 2^(-25) h9 + 2^(-1))) = q.
 */
+
+#endif
 
 void fe_tobytes(unsigned char *s, const fe h) {
     int32_t h0 = h[0];

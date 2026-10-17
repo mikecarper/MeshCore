@@ -114,6 +114,7 @@ jobs:
         run: |
           python3 -B test/test_stm32_companion_profile.py -v
           python3 -B test/test_ed25519_compact_scalar.py -v
+          python3 -B test/test_ed25519_compact_field.py -v
           python3 -B test/test_ed25519_compact.py -v
 
       - name: Compile ordinary STM32 USB Companion with pinned core and RadioLib
