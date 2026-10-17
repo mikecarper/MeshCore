@@ -53,6 +53,64 @@ SCENARIOS = (
 
 
 class Rak4631EthernetRuntimeTests(unittest.TestCase):
+    def test_fixture_retries_busy_and_short_writes_without_duplicates(self):
+        compiler = os.environ.get("CXX") or shutil.which("g++") or shutil.which("clang++")
+        if compiler is None:
+            self.skipTest("a host C++17 compiler is required")
+        fixture = (FIXTURE / "test.cpp").read_text(encoding="ascii")
+        waiter = method(fixture, "static void wait_until(")
+        writer = method(fixture, "static void write_all(")
+        harness = r'''
+#include <cassert>
+#include <chrono>
+#include <cstdint>
+#include <functional>
+#include <string>
+#include <thread>
+struct Client {
+  unsigned calls = 0;
+  std::string output;
+  size_t write(const uint8_t* data, size_t size) {
+    const size_t capacity[] = {0, 2, 0, 1, 1, 1};
+    assert(calls < sizeof(capacity) / sizeof(capacity[0]));
+    const size_t offered = capacity[calls++];
+    const size_t accepted = size < offered ? size : offered;
+    output.append(reinterpret_cast<const char*>(data), accepted);
+    return accepted;
+  }
+} ethernet_client;
+@WAITER@
+@WRITER@
+int main() {
+  const uint8_t payload[] = {'a', 'b', 'c', 'd', 'e'};
+  write_all(payload, sizeof(payload));
+  assert(ethernet_client.output == "abcde" && "busy/short retries must preserve exact bytes");
+  assert(ethernet_client.calls == 6);
+}
+'''
+        with tempfile.TemporaryDirectory(prefix="meshcore-ethernet-fixture-write-") as directory:
+            for name, implementation in (
+                ("retry-unsent", writer),
+                ("single-attempt", "static void write_all(const uint8_t* data, size_t size) {\n"
+                 "wait_until([] { return true; });\n"
+                 "assert(ethernet_client.write(data, size) == size);\n}"),
+                ("duplicate-prefix", writer.replace("data + accepted", "data")),
+            ):
+                with self.subTest(implementation=name):
+                    binary = Path(directory) / name
+                    compiled = subprocess.run(
+                        [compiler, "-std=c++17", "-pthread", "-Wall", "-Wextra", "-Werror",
+                         *SANITIZER_FLAGS, "-x", "c++", "-", "-o", str(binary)],
+                        input=harness.replace("@WAITER@", waiter).replace("@WRITER@", implementation),
+                        capture_output=True, text=True, timeout=60)
+                    self.assertEqual(compiled.returncode, 0, compiled.stdout + compiled.stderr)
+                    checked = subprocess.run([str(binary)], capture_output=True, text=True, timeout=10)
+                    if name == "retry-unsent":
+                        self.assertEqual(checked.returncode, 0, checked.stdout + checked.stderr)
+                    else:
+                        self.assertNotEqual(checked.returncode, 0)
+                        self.assertIn("Assertion", checked.stderr)
+
     def test_unblock_holds_predicate_mutex_before_notifying(self):
         compiler = os.environ.get("CXX") or shutil.which("g++") or shutil.which("clang++")
         if compiler is None:
@@ -141,7 +199,9 @@ int main() {
                 capture_output=True, text=True, timeout=60,
             )
             self.assertEqual(compiled.returncode, 0, compiled.stdout + compiled.stderr)
-            for scenario, description in enumerate(SCENARIOS):
+            cases = list(enumerate(SCENARIOS))
+            cases.extend((7, f"online ownership race repeat {index}") for index in range(32))
+            for scenario, description in cases:
                 with self.subTest(scenario=description):
                     checked = subprocess.run([str(binary), str(scenario)],
                                              capture_output=True, text=True, timeout=10)

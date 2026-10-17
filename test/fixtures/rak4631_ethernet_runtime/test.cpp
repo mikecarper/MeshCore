@@ -60,6 +60,16 @@ static void wait_until(const std::function<bool()>& condition) {
     std::this_thread::sleep_for(std::chrono::milliseconds(1));
   }
 }
+static void write_all(const uint8_t* data, size_t size) {
+  size_t accepted = 0;
+  wait_until([&] {
+    const size_t remaining = size - accepted;
+    const size_t written = ethernet_client.write(data + accepted, remaining);
+    assert(written <= remaining);
+    accepted += written;
+    return accepted == size;
+  });
+}
 void mock_bus_touch() {
   assert(bus_owner.load() && spi_active.load());
   assert(ethernet_spi_access.load() != EthernetSpiAccess::Idle);
@@ -392,23 +402,27 @@ int main(int argc, char** argv) {
       start_online();
       assert(command("get eth") == "> on");
       assert(command("eth on").find("already on") != std::string::npos);
-      const int before_status = hardware_operations.load();
+      const int before_status = main_hardware_operations.load();
       assert(command("eth.status") == "ETH: 192.168.1.42:23");
-      assert(hardware_operations.load() == before_status);
+      assert(main_hardware_operations.load() == before_status);
       accept_connection();
       assert(ethernet_take_session_reset() && !ethernet_take_session_reset());
-      assert(ethernet_client.connected());
+      wait_until([] { return ethernet_client.connected(); });
       mock_ethernet_input = "eth.status\r\n";
       char line[32] = {};
-      assert(ethernet_read_line(line, sizeof(line)) && std::string(line) == "eth.status");
-      wait_until([] { return ethernet_is_running(); });
-      assert(ethernet_client.write(reinterpret_cast<const uint8_t*>("abcde"), 5) == 5);
-      wait_until([] { return output().find("abcde") != std::string::npos && ethernet_is_running(); });
+      // Online is only a snapshot, not a reservation against the SPI worker.
+      // Keep parser state and retry only bytes the Stream has not accepted.
+      wait_until([&] { return ethernet_read_line(line, sizeof(line)); });
+      assert(std::string(line) == "eth.status");
+      write_all(reinterpret_cast<const uint8_t*>("abcde"), 5);
+      const std::string expected = std::string(ETHERNET_CLI_BANNER) + "\r\n\r\nabcde";
+      wait_until([&] { return output() == expected; });
       mock_socket_connected[0].store(false);
       wait_until([] { return ethernet_session_reset.load() && !ethernet_client_attached.load(); });
       wait_until([] { return ethernet_is_running(); });
       assert(ethernet_take_session_reset() && !ethernet_client.connected());
       finish_off();
+      assert(output() == expected); // No delayed duplicate writes after drain.
       break;
     }
     case 8: { // Renewal owns SPI; every retained Stream call yields without raw IO.
