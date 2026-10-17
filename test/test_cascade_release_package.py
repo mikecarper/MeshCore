@@ -5,6 +5,7 @@ from pathlib import Path
 import tempfile
 import unittest
 import subprocess
+import struct
 import sys
 import hashlib
 from unittest.mock import patch
@@ -97,8 +98,9 @@ class ReleaseQualificationTest(unittest.TestCase):
             package.validate_manifest(manifest)
 
     def sensor_record(self, directory, sensor, *, target='test_repeater', target_id=None,
-                      hw_id='TEST', app_base=0x26000, flags=0x10, fw_version=0x01110107):
-        stem = target + '-' + sensor + '-ota-v1.17.1.7-dev-deadbeef'
+                      hw_id='TEST', app_base=0x26000, flags=0x10, fw_version=0x01110107,
+                      version='v1.17.1.7-dev-deadbeef', storage='internal_flash_and_retained_ram'):
+        stem = target + '-' + sensor + '-ota-' + version
         application, _ = ensure_endf(ensure_nrf52_layout(b'OTA: status\0invalid in-place patch geometry\0',
             Nrf52Layout(app_base, 0xED000, 0xED000, flags)),
             FwIdent(fw_version, target_id_for_env(target) if target_id is None else target_id, hw_id))
@@ -112,8 +114,100 @@ class ReleaseQualificationTest(unittest.TestCase):
             platform='NRF52_PLATFORM', build_profile='auto', capabilities=['sensor.profile.' + sensor,
                 'ota.update.lora'], ota_update_methods=['lora'],
             verification=[dict(capability='ota.update.lora', present=True, source='linked image')],
-            ota_update_requirements={'lora': {'storage': 'internal_flash_and_retained_ram'}})
+            ota_update_requirements={'lora': {'storage': storage}})
         return {'manifest': manifest, 'files': [path]}
+
+    def sensor_package_fixture(self, directory, target, sensor, *, external=False):
+        """Write fictional, structurally valid packages for the real CLI path."""
+        record = self.sensor_record(directory, sensor, target=target,
+            version='v1.17.1.5-halo-keymind-cascade-dev-deadbeef',
+            flags=0x04 if external else 0x10,
+            storage='external_qspi' if external else 'internal_flash_and_retained_ram')
+        path = record['files'][0]
+        with zipfile.ZipFile(path) as archive:
+            application = archive.read('application.bin')
+        self.assertLessEqual(len(application), 256)
+        uf2 = (struct.pack('<8I', 0x0A324655, 0x9E5D5157, 0x2000, 0x26000,
+                           256, 0, 1, 0xADA52840)
+               + application.ljust(256, b'\xff') + b'\0' * 220
+               + struct.pack('<I', 0x0AB16F30))
+        path.with_suffix('.uf2').write_bytes(uf2)
+        path.with_suffix('.capabilities.json').write_text(json.dumps(record['manifest']))
+        files = [path, path.with_suffix('.uf2'), path.with_suffix('.capabilities.json')]
+        proof = dict(schema_version=1, passed=True, available_internal_bytes=100000,
+                     required_heap_bytes=10000, largest_internal_region_bytes=100000,
+                     required_contiguous_bytes=5120, elf_sha256='a' * 64,
+                     files={p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in files})
+        path.with_suffix('.memory.json').write_text(json.dumps(proof))
+        return record['manifest']
+
+    def matrix_package_command(self, directory):
+        commit = 'deadbeef' + '0' * 32
+        label = 'v1.17.1.5-halo-keymind-cascade-dev'
+        status = directory / 'status'
+        status.write_text(f'state=completed\nexit_code=0\nworking_directory={directory}\n'
+                          f'output_directory=input\nsource_commit={commit}\n'
+                          f'firmware_version={label}\nfirmware_profile=cascade\n'
+                          'radio_frequency=910.525\nradio_bandwidth=62.5\nradio_sf=7\nradio_cr=5\n')
+        return [sys.executable, str(ROOT / 'scripts/package_cascade_release.py'),
+                '--input', str(directory / 'input'), '--output', str(directory / 'stage'),
+                '--build-status', str(status), '--commit', commit]
+
+    def test_direct_matrix_packaging_omits_resumed_solar_internal_room_packages(self):
+        with tempfile.TemporaryDirectory() as temp:
+            directory = Path(temp)
+            inputs = directory / 'input'
+            inputs.mkdir()
+            retired = []
+            expected = []
+            for board in ('30S', '33S'):
+                target = 'solarxiao_' + board + '_room_server'
+                for sensor in ('full', 'reduced'):
+                    retired.append(self.sensor_package_fixture(inputs, target, sensor))
+                    expected.append(self.sensor_package_fixture(inputs, target + '_lora_ota', sensor,
+                                                                external=True))
+            for target in ('Xiao_nrf52_room_server', 'RAK_3401_room_server'):
+                for sensor in ('full', 'reduced'):
+                    expected.append(self.sensor_package_fixture(inputs, target, sensor))
+            before = {p.name: p.read_bytes() for p in inputs.iterdir()}
+            result = subprocess.run(self.matrix_package_command(directory), capture_output=True, text=True)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual({p.name: p.read_bytes() for p in inputs.iterdir()}, before)
+            stage = directory / 'stage'
+            manifests = [manifest for path in stage.glob('*/TARGET-MANIFEST.json')
+                         for manifest in json.loads(path.read_text())]
+            self.assertCountEqual([m['artifact_target'] for m in manifests],
+                                  [m['artifact_target'] for m in expected])
+            self.assertTrue(all(m['target'] not in {old['target'] for old in retired} for m in manifests))
+            by_artifact = {m['artifact_target']: m for m in manifests}
+            for manifest in expected:
+                staged = by_artifact[manifest['artifact_target']]
+                self.assertEqual(staged['target'], manifest['target'])
+                self.assertEqual(staged['ota_update_requirements'], manifest['ota_update_requirements'])
+                for name in staged['files']:
+                    matches = list(stage.glob('*/' + name))
+                    self.assertEqual(len(matches), 1)
+                    self.assertEqual(matches[0].read_bytes(), before[name])
+            for manifest in retired:
+                prefix = manifest['artifact_target'] + '-v'
+                self.assertFalse(any(path.name.startswith(prefix) for path in stage.rglob('*')))
+
+    def test_direct_matrix_packaging_rejects_legacy_without_matching_qspi_room_pair(self):
+        for board, other in (('30S', '33S'), ('33S', '30S')):
+            with self.subTest(board=board), tempfile.TemporaryDirectory() as temp:
+                directory = Path(temp)
+                inputs = directory / 'input'
+                inputs.mkdir()
+                for sensor in ('full', 'reduced'):
+                    self.sensor_package_fixture(inputs, 'solarxiao_' + board + '_room_server', sensor)
+                    self.sensor_package_fixture(inputs, 'solarxiao_' + other + '_room_server_lora_ota',
+                                                sensor, external=True)
+                before = {p.name: p.read_bytes() for p in inputs.iterdir()}
+                result = subprocess.run(self.matrix_package_command(directory), capture_output=True, text=True)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn('qualified external-QSPI Full/Reduced pair', result.stderr)
+                self.assertFalse((directory / 'stage').exists())
+                self.assertEqual({p.name: p.read_bytes() for p in inputs.iterdir()}, before)
 
     def test_sensor_pair_requires_one_of_each_with_matching_packaged_identity_and_layout(self):
         with tempfile.TemporaryDirectory() as temp:

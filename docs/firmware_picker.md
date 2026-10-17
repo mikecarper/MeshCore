@@ -481,6 +481,18 @@ enough that the images have little or no size difference. Packaging requires
 both profiles with matching packaged OTA identity and flash geometry, even
 when a matrix is resumed or partial publication is requested. A failed build
 is reported, never presented as a supported download. Companion is unchanged.
+
+Normal SolarXiao 30S and 33S Room Server builds use the module's onboard QSPI
+storage (`solarxiao_30S_room_server_lora_ota` and
+`solarxiao_33S_room_server_lora_ota`), with both sensor profiles retained.
+Internal-only Room recipes remain available by exact name for explicit
+compatibility/recovery builds, but are excluded from ordinary build menus,
+future releases, and picker recommendations. Existing downloads remain
+available through exact filename searches. The legacy and QSPI images have
+different OTA identities and layouts: a QSPI package is not a cross-target
+LoRa update for an internal-only installation. Use the matching bootloader
+and documented local migration path when changing layouts.
+
 The legacy `no_external_sensors` profile is labeled **Receives LoRa OTA -
 Reduced optional sensors** on the same button. On RAK3401 and RAK4631 this
 compact profile uses internal storage without an external storage board. The

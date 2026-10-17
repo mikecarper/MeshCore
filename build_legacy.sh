@@ -5772,7 +5772,20 @@ for target in sys.argv[1:]:
   printf '%s\n' "$candidate"
 }
 
+is_solarxiao_internal_room_compatibility_target() {
+  case "${1,,}" in
+    solarxiao_30s_room_server|solarxiao_33s_room_server) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
 is_redundant_bulk_build_target() {
+  # SolarXiao has onboard QSPI. Its internal-only Room recipes retain their
+  # exact legacy OTA identities for explicit compatibility/recovery builds,
+  # but must not be offered as ordinary builds or mapped to the QSPI identity.
+  if is_solarxiao_internal_room_compatibility_target "$1"; then
+    return 0
+  fi
   # Bench fixtures, migration utilities and the unqualified optional SD
   # source use exact recipes, not the ordinary release/OTA receiver matrix.
   case "${1,,}" in

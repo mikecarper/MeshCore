@@ -55,6 +55,42 @@ def nrf52_sensor_profile(manifest):
     return next(iter(choices))
 
 
+def omit_internal_solar_room_records(records):
+    """Omit resumed internal-only Solar Room packages from ordinary releases.
+
+    Call after package qualification. Keep the original files and OTA
+    identities intact, and require each retired board's matching qualified
+    external-QSPI Full/Reduced pair before excluding its recovery packages.
+    """
+    legacy_targets = {
+        "solarxiao_30s_room_server": "solarxiao_30s_room_server_lora_ota",
+        "solarxiao_33s_room_server": "solarxiao_33s_room_server_lora_ota",
+    }
+    targets = {record["manifest"]["target"].lower() for record in records}
+    for legacy, primary in legacy_targets.items():
+        if legacy not in targets:
+            continue
+        # collect_artifacts() has already checked the packaged OTA identity
+        # and layout-matched sensor pair. Do not let internal-only leftovers
+        # conceal a missing normal release pair for this exact hardware.
+        replacements = [record["manifest"] for record in records
+                        if record["manifest"]["target"].lower() == primary]
+        error = (legacy + ": ordinary SolarXiao Room release requires the qualified "
+                 "external-QSPI Full/Reduced pair for " + primary
+                 + "; internal-only artifacts cannot substitute for its distinct OTA identity")
+        try:
+            profiles = [nrf52_sensor_profile(manifest) for manifest in replacements]
+        except ValueError as cause:
+            raise ValueError(error) from cause
+        if (sorted(profiles) != ["full", "reduced"]
+                or any((manifest.get("ota_update_requirements") or {})
+                       .get("lora", {}).get("storage") != "external_qspi"
+                       for manifest in replacements)):
+            raise ValueError(error)
+    return [record for record in records
+            if record["manifest"]["target"].lower() not in legacy_targets]
+
+
 def release_profile_label(manifest):
     sensor = nrf52_sensor_profile(manifest)
     if sensor:
@@ -378,6 +414,7 @@ def main():
             raise ValueError("matrix did not use Cascade runtime defaults")
         radio = {key: status["radio_" + key] for key in ("frequency", "bandwidth", "sf", "cr")}
         records = collect_artifacts(args.input, version)
+    records = omit_internal_solar_room_records(records)
     if args.output.exists() and any(args.output.iterdir()):
         raise ValueError("staging directory must be empty; existing releases are never overwritten")
     base_tag = version

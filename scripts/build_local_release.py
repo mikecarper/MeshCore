@@ -17,7 +17,8 @@ import tempfile
 
 from build_esp32_partition_migration import bundle_release, verify_archive
 from package_esp32_partition_migration import BOARDS, resolve_pio_build_dir
-from package_cascade_release import category, collect_artifacts, nrf52_sensor_profile
+from package_cascade_release import (category, collect_artifacts, nrf52_sensor_profile,
+                                     omit_internal_solar_room_records)
 from station_g3_profiles import omit_redundant_slot_records
 
 
@@ -248,10 +249,11 @@ def select_ordinary_full_records(records: list[dict]) -> list[dict]:
     Explicit alternate images and old partition identities still belong in
     their separately built migration packages or direct --full-exact builds.
     This also removes stale sibling artifacts when a matrix build is resumed.
-    nRF52 Full/reduced sensor OTA records always pass through independently,
-    even when their logical target ID and storage layout are the same. The
-    MeshTower SD primary replaces stale internal-only artifacts on resume;
-    those files must never be relabeled with the primary's different OTA ID.
+    nRF52 Full/reduced sensor OTA records pass through independently, even
+    when their logical target ID and storage layout are the same. MeshTower
+    SD and SolarXiao external-QSPI primaries replace stale internal-only
+    artifacts on resume; those files must never be relabeled with a primary's
+    different OTA ID.
     """
     # Resumed directories can contain portable or transport-specific images
     # from older release policies. They are recovery inputs, not ordinary
@@ -289,6 +291,7 @@ def select_ordinary_full_records(records: list[dict]) -> list[dict]:
 
     records = omit_redundant_slot_records(
         [record for record in records if ordinary_record(record)])
+    records = omit_internal_solar_room_records(records)
 
     tower_primary = "heltec_tower_v2_sdcard_repeater_lora_ota_no_external_sensors"
     tower_legacy = {

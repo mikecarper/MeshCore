@@ -718,6 +718,53 @@ for room_ota_env in solarxiao_33S_room_server_lora_ota \
   printf '%s\n' "$room_release_targets" | grep -Fx "$room_ota_env" >/dev/null \
     || fail "room-server release resolution omitted $room_ota_env"
 done
+
+# SolarXiao Room normally uses the module's onboard QSPI, not an additional
+# internal-only choice. Keep direct recovery recipes and their OTA identities
+# intact while excluding them from every ordinary selection path.
+solar_room_targets=$(resolve_room_server_firmwares)
+solar_all_targets=$(resolve_all_firmwares)
+solar_logging_targets=$(resolve_logging_matrix_firmwares)
+solar_menu_targets=$(get_interactive_build_targets)
+for solar_board in solarxiao_30S solarxiao_33S; do
+  legacy_room=${solar_board}_room_server
+  qspi_room=${legacy_room}_lora_ota
+  is_supported_build_env "$legacy_room" \
+    || fail "$legacy_room explicit compatibility recipe disappeared"
+  validate_build_target "$legacy_room" \
+    || fail "$legacy_room explicit compatibility recipe is invalid"
+  is_redundant_bulk_build_target "$legacy_room" \
+    || fail "$legacy_room internal-only recipe remains an ordinary build"
+  is_redundant_bulk_build_target "${legacy_room^^}" \
+    || fail "$legacy_room retirement policy is not case insensitive"
+  [ "$(get_pio_build_env "$legacy_room")" = "$legacy_room" ] \
+    || fail "$legacy_room silently changed its PlatformIO recipe"
+  [ "$(get_nrf52_sensor_ota_pair_target "$legacy_room")" = "$legacy_room" ] \
+    || fail "$legacy_room silently changed its OTA identity"
+  [ "$(get_nrf52_sensor_ota_pair_target "$qspi_room")" = "$qspi_room" ] \
+    || fail "$qspi_room lost its distinct QSPI OTA identity"
+  for solar_selection in "$room_release_targets" "$solar_room_targets" \
+      "$solar_all_targets" "$solar_logging_targets" "$solar_menu_targets"; do
+    if printf '%s\n' "$solar_selection" | grep -Fx "$legacy_room" >/dev/null; then
+      fail "$legacy_room leaked into an ordinary build selection"
+    fi
+    printf '%s\n' "$solar_selection" | grep -Fx "$qspi_room" >/dev/null \
+      || fail "$qspi_room missing from an ordinary build selection"
+  done
+  (
+    REQUIRE_OTA_UPDATES=0
+    resolve_command_targets build-firmware "$legacy_room"
+    [ "${#RESOLVED_BUILD_TARGETS[@]}" -eq 1 ] \
+      && [ "${RESOLVED_BUILD_TARGETS[0]}" = "$legacy_room" ] \
+      || fail "$legacy_room direct recovery build changed its exact target"
+  )
+done
+if is_solarxiao_internal_room_compatibility_target Xiao_nrf52_room_server \
+    || is_solarxiao_internal_room_compatibility_target solarxiao_30S_repeater \
+    || is_solarxiao_internal_room_compatibility_target solarxiao_33S_room_server_lora_ota; then
+  fail "SolarXiao internal Room policy retired an unrelated recipe"
+fi
+
 sensor_release_targets=$(resolve_sensor_firmwares)
 while IFS='|' read -r sensor_env sensor_ota_env; do
   is_supported_build_env "$sensor_ota_env" \

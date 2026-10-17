@@ -1179,6 +1179,55 @@ const currentCatalog = picker.buildCatalog([
 ], currentControls);
 assert.strictEqual(currentCatalog.rows.length, currentAssets.length);
 assert(currentCatalog.profiles.every(profile => profile.controls && profile.chipFamily !== 'unknown'));
+for (const hardware of ['solarxiao_30S', 'solarxiao_33S']) {
+  const roomBase = hardware + '_room_server';
+  const roomProfiles = currentCatalog.profiles.filter(profile =>
+    picker.profileMatchesFacets(profile, {hardware, role: 'room'}));
+  assert.deepStrictEqual(roomProfiles.map(profile => profile.target).sort(),
+    ['full', 'reduced'].map(policy => roomBase + '_lora_ota-' + policy),
+    hardware + ' must recommend only QSPI room builds while retaining both sensor policies');
+  for (const profile of roomProfiles) {
+    assert.strictEqual(profile.controls.updateRequirements.lora.storage, 'external_qspi');
+    assert.strictEqual(profile.sensorProfile, profile.target.endsWith('-full') ? 'full' : 'reduced');
+    assert(profile.files.every(file => file.target === profile.target),
+      'QSPI recommendations must keep their exact files and OTA target identities');
+  }
+  for (const policy of ['full', 'reduced']) {
+    const target = roomBase + '-' + policy;
+    const original = currentAssets.find(file => file.name.startsWith(target + '-'));
+    assert(original, 'The fixture must exercise an internal-only compatibility file');
+    assert(currentCatalog.rows.some(row => row.target === target &&
+      row.name === original.name && row.url === original.browser_download_url),
+      'Internal-only files must retain their exact names, downloads and target identities');
+  }
+}
+const solarFullLink = picker.selectionFromUrl(
+  'https://mikecarper.github.io/MeshCore/firmware_picker/?s=1.hsolarxiao_33S.olora-receiver.ffull.vdefault#firmware-picker-1-results',
+  currentCatalog.profiles);
+assert.deepStrictEqual(solarFullLink.unavailable, []);
+const solarFullMatches = currentCatalog.profiles.filter(profile =>
+  picker.profileMatchesFacets(profile, solarFullLink.filters));
+assert.deepStrictEqual(solarFullMatches.map(profile => profile.target).sort(), [
+  'solarxiao_33S_repeater-full', 'solarxiao_33S_room_server_lora_ota-full',
+]);
+assert.deepStrictEqual(solarFullMatches.filter(profile =>
+  picker.profileMatchesFacets(profile, {...solarFullLink.filters, role: 'room'}))
+  .map(profile => profile.target), ['solarxiao_33S_room_server_lora_ota-full']);
+const internalSolarTargets = ['solarxiao_30S', 'solarxiao_33S'].flatMap(hardware =>
+  ['', '-full', '-reduced', '-full-ota', '-reduced-ota'].map(suffix =>
+    hardware + '_room_server' + suffix));
+const internalSolarAssets = internalSolarTargets.map(target =>
+  asset(target + '-ota-' + family + '.uf2'));
+const internalSolarCatalog = picker.buildCatalog([
+  release(family, '2026-10-16T00:00:00Z', internalSolarAssets),
+]);
+assert.deepStrictEqual(internalSolarCatalog.profiles, [],
+  'A missing QSPI image must never restore internal-only room recommendations');
+assert.deepStrictEqual(internalSolarCatalog.rows.map(row => row.target), internalSolarTargets);
+assert.deepStrictEqual(internalSolarCatalog.rows.map(row => row.name),
+  internalSolarAssets.map(file => file.name),
+  'Every legacy publication form must remain available to exact filename search');
+console.log('SolarXiao QSPI-only room recommendations and exact compatibility downloads passed');
 for (const [hardware, bases] of [
   ['RAK_4631', ['RAK_4631_repeater_unified_lora_ota', 'RAK_4631_repeater_ethernet']],
   ['RAK_3401', ['RAK_3401_repeater_unified_lora_ota']],

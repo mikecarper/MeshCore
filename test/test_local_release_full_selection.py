@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Full selection preserves qualified transports and board capacity exceptions."""
 
+from copy import deepcopy
 import sys
 import unittest
 from pathlib import Path
@@ -17,6 +18,21 @@ def record(target: str, profile: str = "full", platform: str = "ESP32_PLATFORM",
                                            "source": "linked image", "evidence": capability}
                                           for capability in capabilities]},
             "files": []}
+
+
+def sensor_pair(target: str, storage: str = "external_qspi") -> list[dict]:
+    variants = []
+    for sensor in ("full", "reduced"):
+        item = record(target, "auto", "NRF52_PLATFORM",
+                      ("sensor.profile." + sensor, "ota.update.lora"))
+        item["manifest"].update(
+            artifact_target=target + "-" + sensor + "-ota",
+            ota_update_verified=True, ota_update_methods=["lora"],
+            ota_update_requirements={"lora": {"storage": storage}})
+        item["files"] = [Path(item["manifest"]["artifact_target"] + ".uf2"),
+                         Path(item["manifest"]["artifact_target"] + ".zip")]
+        variants.append(item)
+    return variants
 
 
 class ReleaseFullSelectionTest(unittest.TestCase):
@@ -243,6 +259,92 @@ class ReleaseFullSelectionTest(unittest.TestCase):
             with self.subTest(target=target):
                 with self.assertRaisesRegex(ValueError, "requires the SD primary"):
                     select_ordinary_full_records([record(target, "auto", "NRF52_PLATFORM")])
+
+    def test_solar_qspi_room_pairs_keep_both_profiles_and_original_identities(self):
+        variants = []
+        for board in ("30S", "33S"):
+            variants.extend(sensor_pair("solarxiao_" + board + "_room_server_lora_ota"))
+        for inputs in (variants, list(reversed(variants))):
+            before = deepcopy(inputs)
+            selected = select_ordinary_full_records(inputs)
+            self.assertEqual(selected, inputs)
+            self.assertEqual(inputs, before)
+            self.assertTrue(all(actual is original for actual, original in zip(selected, inputs)))
+
+    def test_solar_resume_filters_exact_internal_room_targets_without_mutating_files(self):
+        legacy = []
+        primaries = []
+        for board in ("30S", "33S"):
+            # Target matching is case-insensitive; publication identities stay
+            # exactly as they appeared in the qualified manifest.
+            target = "SOLARXIAO_" + board + "_ROOM_SERVER"
+            legacy.extend(sensor_pair(target, "internal_flash_and_retained_ram"))
+            legacy.append(record(target, "auto", "NRF52_PLATFORM"))
+            primaries.extend(sensor_pair(target + "_LORA_OTA"))
+        unrelated = [record(target, "auto", "NRF52_PLATFORM") for target in (
+            "Xiao_nrf52_room_server", "Xiao_nrf52_room_server_lora_ota_no_external_sensors",
+            "RAK_3401_room_server", "RAK_4631_room_server_lora_ota_no_external_sensors",
+            "solarxiao_30S_repeater", "solarxiao_33S_sensor",
+        )]
+        for inputs in (legacy + primaries + unrelated, unrelated + primaries + legacy,
+                       list(reversed(legacy + primaries + unrelated))):
+            before = deepcopy(inputs)
+            expected = [item for item in inputs if all(item is not old for old in legacy)]
+            selected = select_ordinary_full_records(inputs)
+            self.assertEqual(selected, expected)
+            self.assertEqual(inputs, before)
+            self.assertTrue(all(actual is original for actual, original in zip(selected, expected)))
+
+    def test_solar_internal_rooms_cannot_replace_missing_matching_qspi_pair(self):
+        for board, other_board in (("30S", "33S"), ("33S", "30S")):
+            target = "solarxiao_" + board + "_room_server"
+            other_pair = sensor_pair("solarxiao_" + other_board + "_room_server_lora_ota")
+            for stale in ([record(target, "auto", "NRF52_PLATFORM")],
+                          sensor_pair(target, "internal_flash_and_retained_ram")):
+                for inputs in (stale, stale + other_pair, other_pair + stale):
+                    before = deepcopy(inputs)
+                    with self.subTest(board=board, count=len(inputs)):
+                        with self.assertRaisesRegex(ValueError, "qualified external-QSPI Full/Reduced pair"):
+                            select_ordinary_full_records(inputs)
+                        self.assertEqual(inputs, before)
+
+    def test_solar_resume_requires_complete_qualified_external_qspi_pair(self):
+        for board in ("30S", "33S"):
+            target = "solarxiao_" + board + "_room_server"
+            for fault in ("missing_full", "missing_reduced", "duplicate_profile", "unverified",
+                          "no_ota", "no_lora", "unproven_lora", "wrong_platform",
+                          "internal_storage", "missing_storage", "missing_sensor_profile"):
+                pair = sensor_pair(target + "_lora_ota")
+                manifest = pair[0]["manifest"]
+                if fault == "missing_full":
+                    pair.pop(0)
+                elif fault == "missing_reduced":
+                    pair.pop()
+                elif fault == "duplicate_profile":
+                    pair.append(deepcopy(pair[0]))
+                elif fault == "unverified":
+                    manifest["verified"] = False
+                elif fault == "no_ota":
+                    manifest["ota_update_verified"] = False
+                elif fault == "no_lora":
+                    manifest["ota_update_methods"] = []
+                elif fault == "unproven_lora":
+                    manifest["verification"] = []
+                elif fault == "wrong_platform":
+                    manifest["platform"] = "ESP32_PLATFORM"
+                elif fault == "internal_storage":
+                    manifest["ota_update_requirements"]["lora"]["storage"] = "internal_flash"
+                elif fault == "missing_storage":
+                    del manifest["ota_update_requirements"]
+                else:
+                    manifest["capabilities"].remove("sensor.profile.full")
+                stale = sensor_pair(target, "internal_flash_and_retained_ram")
+                for inputs in (stale + pair, pair + stale):
+                    before = deepcopy(inputs)
+                    with self.subTest(board=board, fault=fault):
+                        with self.assertRaisesRegex(ValueError, "qualified external-QSPI Full/Reduced pair"):
+                            select_ordinary_full_records(inputs)
+                        self.assertEqual(inputs, before)
 
     def test_nrf52_full_and_reduced_ota_pair_is_never_collapsed(self):
         for role in ('repeater', 'room_server', 'sensor'):

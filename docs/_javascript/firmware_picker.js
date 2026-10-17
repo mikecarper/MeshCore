@@ -522,6 +522,10 @@
     const lowerTarget = target.toLowerCase();
     return HIDDEN_PROFILE_HARDWARE.includes(profile.sourceHardware) ||
       HIDDEN_PROFILE_TARGETS.includes(target) ||
+      // SolarXiao room installations use the onboard external-QSPI recipe.
+      // Retain internal-only downloads for exact compatibility searches,
+      // including when a release has no matching QSPI image.
+      /^solarxiao_(?:30|33)s_room_server(?:-(?:full|reduced)(?:-ota)?)?$/.test(lowerTarget) ||
       (lowerTarget.includes("companion_radio_") &&
         /(?:^|[_-])(?:ps|femoff)(?=$|[_-])/.test(lowerTarget));
   }
