@@ -51,6 +51,7 @@ class RadioReceiveRetryTests(unittest.TestCase):
                  ('bool', 'tryResetAGC'), ('void', 'resetAGC'), ('int', 'recvRaw'),
                  ('void', 'finishReceiveProcessing'),
                  ('void', 'onSendFinished'), ('void', 'begin'),
+                 ('bool', 'getNoiseFloorWakeDelay'),
                  ('bool', 'getReceiveRetryDelay'), ('void', 'rxPsWatchdogCheck')]
         methods = method(rxps, 'inline bool rxPowerSavingUsesContinuousFallback(') + '\n'
         methods += '\n'.join(method(source, f'{kind} RadioLibWrapper::{name}(')

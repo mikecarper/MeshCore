@@ -171,6 +171,12 @@ protected:
   // refresh briefly drops to continuous RX, publishes an average, then re-arms
   // the duty cycle.
   bool _nf_calib_active;
+  // Explicit arming distinguishes a legitimate wrapped deadline of zero.
+  bool _nf_window_armed = false;
+  // Only an accepted full block earns the lazy routine cadence. Held rises
+  // and failed/timeout attempts retain a one-minute retry without hot polling.
+  bool _nf_lazy_refresh = false;
+  bool _nf_refresh_attempted = false;
   unsigned long _nf_last_calib;       // millis of last completed/attempted window
   unsigned long _nf_calib_deadline;   // abort window if the batch can't complete
   unsigned long _nf_sample_from;      // no samples before this (RX entry settle)
@@ -532,14 +538,15 @@ public:
   // true while the watchdog is actively watching for BUSY transitions; used by
   // the app's hasPendingWork() to keep the MCU out of light sleep for the window
   bool isWatchdogObserving() const { return _wd_observe_until != 0; }
-  // true while a noise-floor batch needs prompt loop service; the app's
-  // hasPendingWork() keeps the MCU awake for the bounded spaced-sample window.
+  // Full-batch RF ownership for UI and recovery guards. CPU idle between
+  // readings is governed separately by getNoiseFloorWakeDelay().
   bool isCalibratingNoiseFloor() const override {
     return isInRecvMode() && !_rx_ps_armed && (_nf_calib_active
         || (_nf_refresh_requested
             && (!_rx_ps_enabled || _rx_ps_continuous_fallback)));
   }
   bool getReceiveRetryDelay(uint32_t now, uint32_t& delay_ms) const override;
+  bool getNoiseFloorWakeDelay(uint32_t now, uint32_t& delay_ms) const override;
   void resetStats() { n_recv = n_sent = n_recv_errors = 0; }
 
   uint8_t getRadioState() const override;

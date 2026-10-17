@@ -43,6 +43,7 @@ struct RadioLibWrapper {
   bool _profile_saved_rxps=false, _profile_rxps_suspended=false;
   bool _profile_standby_held=false, _saved_standby_xosc=false;
   bool _nf_calib_active=false, _nf_refresh_requested=false, _noise_floor_valid=true, _noise_floor_secondary_valid=true, _profile_refresh_required=false;
+  bool _nf_window_armed=false, _nf_lazy_refresh=false, _nf_refresh_attempted=false;
   unsigned long _nf_last_calib=0, _nf_calib_deadline=0, _nf_sample_from=0;
   NoiseFloorEstimator _floor_estimator;
   NoiseFloorEstimator _secondary_floor_estimator;
@@ -105,6 +106,20 @@ struct RadioLibWrapper {
 @METHODS@
 int main() {
   using Result=mesh::RadioParamApplyResult;
+  {
+    RadioLibWrapper w;
+    w._nf_window_armed=w._nf_lazy_refresh=w._nf_refresh_attempted=true;
+    w.enable();
+    assert(!w._nf_window_armed && !w._nf_lazy_refresh && !w._nf_refresh_attempted);
+    w._nf_window_armed=w._nf_lazy_refresh=w._nf_refresh_attempted=true;
+    mesh::RadioProfileConfig replacement;
+    replacement.params=w._profiles.primary;
+    replacement.params.freq=911.5;
+    replacement.mode=mesh::RadioProfileMode::RxTx;
+    w._profiles.setSecondary(replacement,false);
+    w.serviceProfileScan();
+    assert(!w._nf_window_armed && !w._nf_lazy_refresh && !w._nf_refresh_attempted);
+  }
   {
     RadioLibWrapper w;
     w.enable();

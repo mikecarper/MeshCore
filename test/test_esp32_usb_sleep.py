@@ -70,6 +70,7 @@ constexpr int GPIO_INTR_POSEDGE = 1;
 constexpr int GPIO_INTR_DISABLE = 0;
 static unsigned sleep_calls = 0;
 static uint64_t timer_us = 0;
+static int timer_error = ESP_OK;
 static bool radio_irq_high = false;
 static int critical_depth = 0;
 static int wake_pin = -1;
@@ -80,7 +81,11 @@ static bool button_pressed = false;
 static bool press_during_sleep = false;
 static unsigned yield_ms = 0;
 static void delay(unsigned ms) { yield_ms += ms; }
-static int esp_sleep_enable_timer_wakeup(uint64_t us) { timer_us = us; return ESP_OK; }
+static int esp_sleep_enable_timer_wakeup(uint64_t us) {
+  if (timer_error != ESP_OK) return timer_error;
+  timer_us = us;
+  return ESP_OK;
+}
 static int esp_light_sleep_start() {
   ++sleep_calls;
   if (press_during_sleep) {
@@ -116,6 +121,7 @@ struct MainBoard {
   bool radio_test_active = false;
   bool isRadioTestActive() const { return radio_test_active; }
   virtual void sleep(uint32_t) = 0;
+  virtual void sleepMilliseconds(uint32_t) = 0;
   virtual bool isUsbDataConnected() = 0;
   virtual bool isUsbHostConnected() = 0;
 };
@@ -257,6 +263,13 @@ def board_method(signature: str) -> str:
     return source[start:end]
 
 
+def board_sleep_methods() -> str:
+    return "\n".join(board_method(signature) for signature in (
+        "void sleep(uint32_t secs) override",
+        "void sleepMilliseconds(uint32_t millisecs) override",
+        "void sleepMicroseconds(uint64_t wake_us, bool require_timer = false)"))
+
+
 def v4_profile_config():
     config = configparser.ConfigParser(
         interpolation=None, inline_comment_prefixes=("#", ";"))
@@ -370,6 +383,7 @@ static int esp_light_sleep_start() {
 #define portEXIT_CRITICAL(mux) (--critical_depth)
 struct MainBoard {
   virtual void sleep(uint32_t) = 0;
+  virtual void sleepMilliseconds(uint32_t) = 0;
   virtual bool isUsbDataConnected() = 0;
   virtual bool isUsbHostConnected() = 0;
   bool isRadioTestActive() const { return false; }
@@ -509,8 +523,7 @@ class Esp32UsbSleepTest(unittest.TestCase):
 
     def test_v4_sleep_button_poller_and_real_ui_wake_the_screen(self):
         config = v4_profile_config()
-        methods = "\n".join(board_method(signature) for signature in (
-            "void sleep(uint32_t secs) override",
+        methods = board_sleep_methods() + "\n" + "\n".join(board_method(signature) for signature in (
             "bool isUsbDataConnected() override",
             "bool isUsbHostConnected() override", "bool isUsbSleepHeld()"))
         compiler = os.environ.get("CXX", "c++")
@@ -593,8 +606,8 @@ class Esp32UsbSleepTest(unittest.TestCase):
                                 self.assertIn(expected_error, result.stderr)
 
     def test_raw_uart_driver_preserves_fresh_console_indefinitely_until_end(self):
-        methods = "\n".join(board_method(signature) for signature in (
-            "void sleep(uint32_t secs) override", "bool isUsbDataConnected() override",
+        methods = board_sleep_methods() + "\n" + "\n".join(board_method(signature) for signature in (
+            "bool isUsbDataConnected() override",
             "bool isUsbHostConnected() override", "bool isUsbSleepHeld()"))
         harness = HARNESS.split("int main()", 1)[0] + r'''
 int main() {
@@ -639,8 +652,7 @@ int main() {
     def test_native_host_survives_terminal_close_and_reconnect(self):
         compiler = os.environ.get("CXX", "c++")
         self.assertIsNotNone(shutil.which(compiler), "a C++17 compiler is required")
-        methods = "\n".join(board_method(signature) for signature in (
-            "void sleep(uint32_t secs) override",
+        methods = board_sleep_methods() + "\n" + "\n".join(board_method(signature) for signature in (
             "bool isUsbDataConnected() override",
             "bool isUsbHostConnected() override",
             "bool isUsbSleepHeld()",
@@ -669,8 +681,7 @@ int main() {
                     self.assertEqual(result.returncode, 0, result.stderr)
 
     def test_native_host_reboot_grace_without_logging(self):
-        methods = "\n".join(board_method(signature) for signature in (
-            "void sleep(uint32_t secs) override",
+        methods = board_sleep_methods() + "\n" + "\n".join(board_method(signature) for signature in (
             "bool isUsbDataConnected() override",
             "bool isUsbHostConnected() override",
             "bool isUsbSleepHeld()",
@@ -776,6 +787,118 @@ int main() {
                     ], capture_output=True, text=True)
                     self.assertEqual(compiled.returncode, 0, compiled.stderr)
                     result = subprocess.run([str(binary)], capture_output=True, text=True)
+                    self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_millisecond_sleep_preserves_precision_and_all_common_guards(self):
+        methods = board_sleep_methods() + "\n" + "\n".join(board_method(signature) for signature in (
+            "bool isUsbDataConnected() override",
+            "bool isUsbHostConnected() override", "bool isUsbSleepHeld()"))
+        harness = HARNESS.split("int main()", 1)[0] + r'''
+int main() {
+  try {
+    ESP32Board board;
+    MainBoard& polymorphic = board;
+    attachHost(true);
+    const unsigned before_zero = yield_ms;
+    polymorphic.sleepMilliseconds(0);
+    require(sleep_calls == 0 && timer_us == 0 && wake_pin == -1
+            && critical_depth == 0 && yield_ms == before_zero,
+            "zero milliseconds entered sleep or touched peripherals");
+    polymorphic.sleepMilliseconds(125);
+    require(sleep_calls == 0 && timer_us == 0 && critical_depth == 0,
+            "millisecond path bypassed the USB/UART console guard");
+    attachHost(false);
+    Serial.end();
+    mock_millis += MESH_ESP32_USB_HOST_LOSS_SLEEP_GRACE_MS;
+    polymorphic.sleepMilliseconds(1);
+    require(sleep_calls == 1 && timer_us == 1000ULL,
+            "one millisecond did not arm an exact subsecond wake timer");
+    polymorphic.sleepMilliseconds(999);
+    require(sleep_calls == 2 && timer_us == 999000ULL,
+            "millisecond timer was rounded to seconds");
+    polymorphic.sleepMilliseconds(UINT32_MAX);
+    require(sleep_calls == 3 && timer_us == 4294967295000ULL,
+            "millisecond conversion overflowed before widening");
+    board.sleep(UINT32_MAX);
+    require(sleep_calls == 4 && timer_us == 4294967295000000ULL,
+            "existing seconds API lost precision or overflowed");
+    timer_error = 17;
+    polymorphic.sleepMilliseconds(125);
+    require(sleep_calls == 4 && timer_us == 4294967295000000ULL
+            && critical_depth == 0,
+            "failed millisecond timer setup reused an older long timer");
+    timer_error = ESP_OK;
+    const unsigned before_guards = sleep_calls;
+    board.inhibit_sleep = true;
+    polymorphic.sleepMilliseconds(125);
+    require(sleep_calls == before_guards && critical_depth == 0,
+            "millisecond path bypassed explicit sleep inhibition");
+    board.inhibit_sleep = false;
+    board.radio_test_active = true;
+    polymorphic.sleepMilliseconds(125);
+    require(sleep_calls == before_guards && critical_depth == 0,
+            "millisecond path bypassed radio test ownership");
+    board.radio_test_active = false;
+    radio_irq_high = true;
+    polymorphic.sleepMilliseconds(125);
+    require(sleep_calls == before_guards && critical_depth == 0,
+            "millisecond path slept over a pending radio IRQ");
+    radio_irq_high = false;
+#if MOMENTARY_BUTTON_WAKE_FROM_SLEEP
+    button_pressed = true;
+    polymorphic.sleepMilliseconds(125);
+    require(sleep_calls == before_guards && critical_depth == 0,
+            "millisecond path slept over a pending button press");
+    button_pressed = false;
+#endif
+    mesh::logging_enabled = true;
+    polymorphic.sleepMilliseconds(125);
+#if MESH_USB_LOGGING_AVAILABLE
+    require(sleep_calls == before_guards,
+            "millisecond path bypassed the USB logging veto");
+#else
+    require(sleep_calls == before_guards + 1,
+            "compiled-out logging blocked millisecond sleep");
+#endif
+    mesh::logging_enabled = false;
+    board.irq = static_cast<uint32_t>(-1);
+    const unsigned before_timer = sleep_calls;
+    polymorphic.sleepMilliseconds(125);
+    require(sleep_calls == before_timer + 1 && timer_us == 125000ULL
+            && critical_depth == 0,
+            "millisecond timer-only wake failed or left interrupts masked");
+    const unsigned after_timer = sleep_calls;
+    const uint64_t last_timer = timer_us;
+    polymorphic.sleepMilliseconds(0);
+    require(sleep_calls == after_timer && timer_us == last_timer,
+            "zero milliseconds reused a previously configured wake source");
+  } catch (const std::exception& error) {
+    std::cerr << error.what() << '\n'; return 1;
+  }
+}
+'''
+        compiler = os.environ.get("CXX", "c++")
+        self.assertIsNotNone(shutil.which(compiler), "a C++17 compiler is required")
+        with tempfile.TemporaryDirectory(prefix="meshcore-ms-sleep-") as directory:
+            cpp = Path(directory) / "sleep.cpp"
+            cpp.write_text(harness.replace("@METHODS@", methods), encoding="ascii")
+            for mode, cdc, button, logging in ((0, 1, 1, 1), (1, 1, 0, 1),
+                                                (0, 0, 0, 1), (0, 1, 0, 0)):
+                with self.subTest(usb_mode=mode, cdc=cdc, button=button, logging=logging):
+                    binary = Path(directory) / f"sleep-{mode}-{cdc}-{button}-{logging}"
+                    result = subprocess.run([
+                        compiler, "-std=c++17", "-Wall", "-Wextra",
+                        f"-DARDUINO_USB_MODE={mode}",
+                        f"-DARDUINO_USB_CDC_ON_BOOT={cdc}",
+                        f"-DMESH_ESP32_USB_CONSOLE_COOPERATIVE={int(bool(cdc))}",
+                        f"-DMOMENTARY_BUTTON_WAKE_FROM_SLEEP={button}",
+                        f"-DMESH_USB_LOGGING_AVAILABLE={logging}", "-DPIN_USER_BTN=38",
+                        "-DCONFIG_TINYUSB_ENABLED=1", "-I", str(ROOT / "src"),
+                        str(cpp), "-o", str(binary)], capture_output=True, text=True,
+                        timeout=60)
+                    self.assertEqual(result.returncode, 0, result.stderr)
+                    result = subprocess.run([str(binary)], capture_output=True, text=True,
+                                            timeout=10)
                     self.assertEqual(result.returncode, 0, result.stderr)
 
     def test_g3_enables_gesture_polling_after_gpio_wake(self):

@@ -549,6 +549,11 @@ void Dispatcher::logPacketLine(const char* direction, const Packet* packet,
 }
 #endif
 
+bool Dispatcher::getNextNoiseFloorWakeDelay(uint32_t& delay_millis) const {
+  return radio_available
+      && _radio->getNoiseFloorWakeDelay(_ms->getMillis(), delay_millis);
+}
+
 bool Dispatcher::getNextQueueWakeDelay(uint32_t& delay_millis) const {
   if (isDualRadioActive()) { delay_millis = 0; return true; }
 #if MESH_ENABLE_FOREIGN_RADIO

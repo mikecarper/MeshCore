@@ -4321,7 +4321,9 @@ mesh::powerdiag::Mask MyMesh::pendingWorkReason() const {
 #endif
 #endif
   if (radio_driver.isWatchdogObserving()) return mask(Reason::RadioWatchdog);
-  if (radio_driver.isCalibratingNoiseFloor()) return mask(Reason::Calibration);
+  uint32_t noise_floor_delay_ms;
+  if (getNextNoiseFloorWakeDelay(noise_floor_delay_ms) && noise_floor_delay_ms == 0)
+    return mask(Reason::Calibration);
   if (hasQueuedWorkDue()) return mask(Reason::Queue);
   if (hasRetryWorkDue()) return mask(Reason::Retry);
   if (acl.getNumClients() > 0 && isMillisTimerDue(next_push)) return mask(Reason::Scheduled);

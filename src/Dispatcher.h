@@ -215,6 +215,15 @@ public:
     return getNoiseFloorCalibrationSecondsRemaining();
   }
   virtual bool isCalibratingNoiseFloor() const { return false; }
+  // MCU service deadline only: RF calibration can continue in continuous RX
+  // while the CPU idles between readings. Unknown implementations retain the
+  // conservative whole-batch veto rather than inventing a safe sample gap.
+  virtual bool getNoiseFloorWakeDelay(uint32_t now, uint32_t& delay_ms) const {
+    (void)now;
+    if (!isCalibratingNoiseFloor()) return false;
+    delay_ms = 0;
+    return true;
+  }
   // A failed receive start may need a later retry without keeping the MCU
   // awake. Transports without a deferred receive retry retain their cadence.
   virtual bool getReceiveRetryDelay(uint32_t now, uint32_t& delay_ms) const {
@@ -615,6 +624,9 @@ protected:
   uint32_t getTransmitAirtime(const Packet* packet, int wire_length) const;
 
 public:
+  // Kept separate from whole-second queue sleep policy: a 50 ms calibration
+  // deadline needs a bounded millisecond wake, not a zero-second queue veto.
+  bool getNextNoiseFloorWakeDelay(uint32_t& delay_millis) const;
   void begin();
   void loop();
 #if MESH_ENABLE_TX_BEACONS

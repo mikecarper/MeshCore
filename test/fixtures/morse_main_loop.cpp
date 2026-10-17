@@ -1,5 +1,6 @@
 #include <helpers/MorseLoopPolicy.h>
 #include <helpers/PowerSavingDiagnostics.h>
+#include <helpers/PowerManagementUtils.h>
 #include <cstdarg>
 static unsigned usb_services=0,command_services=0,transport_services=0,delays=0;
 static bool usb_watchdog_armed=false,wireless_pending=false;
@@ -30,10 +31,12 @@ Control& control() { return controller; }
 }
 struct Board {
   unsigned calls=0,watchdogs=0,sleeps=0,fans=0,reboots=0,preparations=0;
+  unsigned millisecond_sleeps=0,last_sleep_ms=0;
   void prepareSleepCycle() { ++preparations; }
   void loop() { ++calls; }
   void feedWatchdog(bool=true) { ++watchdogs; }
   void sleep(uint32_t) { ++sleeps; }
+  void sleepMilliseconds(uint32_t ms) { ++sleeps; ++millisecond_sleeps; last_sleep_ms=ms; }
   bool isUsbDataConnected() { return false; }
   bool isUsbHostConnected() { return false; }
   void reboot() { ++reboots; }
@@ -49,13 +52,20 @@ bool display_ready=true;
 struct Mesh {
   struct Prefs { bool powersaving_enabled=true,system_watchdog_enabled=true; uint32_t reboot_interval=0; } prefs;
   unsigned calls=0;
+  bool noise_floor_wait=false,work_pending=false;
+  uint32_t noise_floor_delay_ms=50;
   void loop() { ++calls; }
   Prefs* getNodePrefs() { return &prefs; }
-  uint32_t getPowerSaveSleepSeconds(unsigned) { return 1; }
+  uint32_t getPowerSaveSleepSeconds(unsigned) { return work_pending ? 0 : 1; }
+  bool getNextNoiseFloorWakeDelay(uint32_t& ms) const {
+    ms=noise_floor_delay_ms; return noise_floor_wait;
+  }
   bool millisHasNowPassed(uint32_t) { return true; }
   bool isTrackerModeEnabled() { return false; }
   bool hasPendingWork() { return false; }
-  mesh::powerdiag::Mask pendingWorkReason() const { return 0; }
+  mesh::powerdiag::Mask pendingWorkReason() const {
+    return work_pending ? mesh::powerdiag::mask(mesh::powerdiag::Reason::Queue) : 0;
+  }
   void handleCommand(uint32_t,char*,char* reply) { reply[0]=0; ++command_services; }
   void handleUsbCommand(char*,char* reply) { reply[0]=0; ++command_services; }
 } the_mesh;
@@ -128,4 +138,27 @@ int main() {
   assert(board.sleeps==sleeps_before_hold);
   wireless_pending=false;
 #endif
+  // Calibration remains RF work, but its future sample deadline permits
+  // bounded MCU idle in every actual role loop. Due work and other vetoes win.
+  the_mesh.noise_floor_wait=true;
+  auto before_noise_sleep=board.sleeps;
+  loop();
+  assert(board.sleeps==before_noise_sleep+1 && board.millisecond_sleeps==1);
+#if ROLE_COMPANION
+  assert(board.last_sleep_ms==10); // Preserve the shorter Companion cadence.
+#else
+  assert(board.last_sleep_ms==50);
+#endif
+  the_mesh.noise_floor_delay_ms=1;
+  loop();
+  assert(board.sleeps==before_noise_sleep+2 && board.last_sleep_ms==1);
+  the_mesh.noise_floor_delay_ms=0;
+  loop();
+  assert(board.sleeps==before_noise_sleep+2); // Sample/transition now due.
+  the_mesh.noise_floor_delay_ms=50; the_mesh.work_pending=true;
+  loop();
+  assert(board.sleeps==before_noise_sleep+2); // Never widen another owner's veto.
+  the_mesh.work_pending=false; usb_watchdog_armed=true;
+  loop();
+  assert(board.sleeps==before_noise_sleep+2);
 }

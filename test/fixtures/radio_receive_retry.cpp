@@ -20,6 +20,35 @@ static uint32_t retryDelay(const RadioLibWrapper& w) {
   return delay;
 }
 
+static void noiseFloorDeadlines() {
+  for (unsigned mode : {0U, 1U, 2U}) {
+    RadioLibWrapper w; RetryClock clock; StaticPoolPacketManager manager{4};
+    RetryDispatcher d(w, clock, manager); d.interval = 0;
+    now_ms = 1000; d.begin(); selectMode(w, mode);
+    d.loop(); d.loop();
+    uint32_t wait = 0;
+    assert(d.getNextNoiseFloorWakeDelay(wait) && wait == NF_CALIB_SETTLE_MS);
+    // A subsecond sample is not a whole-second queue veto on timed sleepers.
+    uint32_t queue = UINT32_MAX;
+    assert(!d.getNextQueueWakeDelay(queue) && !d.hasQueuedWorkDue());
+    const unsigned reads = w.reads, probes = w.mode_reads;
+    const unsigned busy = w.busy_probes, packets = w.packet_probes;
+    for (unsigned i = 0; i < 100; ++i)
+      assert(d.getNextNoiseFloorWakeDelay(wait) && wait == NF_CALIB_SETTLE_MS);
+    assert(w.reads == reads && w.mode_reads == probes && w.busy_probes == busy
+           && w.packet_probes == packets);
+    now_ms += wait; d.loop();
+    assert(w.reads == 1 && d.getNextNoiseFloorWakeDelay(wait) && wait == 50);
+    w.events.record();
+    assert(d.getNextNoiseFloorWakeDelay(wait) && w.hasPendingRadioInterrupt());
+    w.radio.packet_length = 1;
+    d.loop();
+    assert(w.n_recv == 1 && !w.hasPendingRadioInterrupt());
+    assert(!d.hasQueuedWorkDue());
+  }
+  std::puts("PASS: actual Dispatcher noise-floor deadlines (3 modes)");
+}
+
 static void persistentFailure() {
   uint8_t bytes[8];
   for (unsigned mode : {0U, 1U, 2U}) {
@@ -327,7 +356,7 @@ int main(int argc, char** argv) {
     return 0;
   }
   assert(argc == 1);
-  persistentFailure(); rampAndRollover(); ownersAndImmediateRearms();
+  noiseFloorDeadlines(); persistentFailure(); rampAndRollover(); ownersAndImmediateRearms();
   pendingSetupAndTx(); retainedOutboundWake(); busyAfterFailure();
   deferredCalibrationRestore();
   std::puts("PASS: receive retry lifecycle");

@@ -271,6 +271,7 @@ struct Mesh {
   mesh::powerdiag::Mask pendingWorkReason() const {
     return pending ? mesh::powerdiag::mask(mesh::powerdiag::Reason::Mesh) : 0;
   }
+  bool getNextNoiseFloorWakeDelay(uint32_t&) const { return false; }
 } the_mesh;
 struct Board { bool usb; bool isUsbHostConnected() const { return usb; } } board;
 struct Ethernet { bool active; bool hardwareActive() const { return active; } } ethernet_interface;

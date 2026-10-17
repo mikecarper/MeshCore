@@ -273,6 +273,7 @@ struct MyMesh {
   bool hasPendingOtaApply() const { return false; }
   bool hasPendingReqs() const { return _delayed_replies.hasRequest(); }
   bool hasQueuedWorkDue() const { return false; }
+  bool getNextNoiseFloorWakeDelay(uint32_t&) const { return false; }
   bool hasRetryWorkDue() const { return false; }
   bool hasPendingWork() const;
   mesh::powerdiag::Mask pendingWorkReason() const;

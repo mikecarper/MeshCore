@@ -15,7 +15,7 @@ import tempfile
 import unittest
 import urllib.request
 
-from test_esp32_usb_sleep import HARNESS, board_method
+from test_esp32_usb_sleep import HARNESS, board_method, board_sleep_methods
 from test_hwcdc_tx_backport import body
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -56,8 +56,8 @@ def firmware_harness(*, lose_sleep_guard=False, lose_crlf=False,
                  "        millis(), MESH_ESP32_USB_HOST_LOSS_SLEEP_GRACE_MS);")
         assert guard in sleep_held, "Missing native USB negative-control boundary"
         sleep_held = sleep_held.replace(guard, "return false;")
-    methods = "\n".join(board_method(signature) for signature in (
-        "void sleep(uint32_t secs) override", "bool isUsbDataConnected() override",
+    methods = board_sleep_methods() + "\n" + "\n".join(board_method(signature) for signature in (
+        "bool isUsbDataConnected() override",
         "bool isUsbHostConnected() override")) + "\n" + sleep_held
     if lose_raw_uart_guard:
         expression = "keep_awake = keep_awake || hold(static_cast<bool>(Serial), Reason::Serial);"
@@ -98,6 +98,11 @@ struct Radio {
 static mesh::Radio radio_driver;
 '''.replace("@MORSE_HELPER@", morse_helper)
     fixture = (ROOT / "test/fixtures/official_web_console/firmware.cpp").read_text()
+    sleep_getter = "  unsigned getPowerSaveSleepSeconds(unsigned limit) { return limit; }"
+    assert fixture.count(sleep_getter) == 1, "Missing sleep-deadline peripheral boundary"
+    fixture = fixture.replace(sleep_getter, sleep_getter + "\n" +
+        "  bool getNextNoiseFloorWakeDelay(uint32_t&) const { return false; }")
+    source += "\n#include <helpers/PowerManagementUtils.h>\n"
     return source + morse_radio + (fixture.replace("@SETTER@", setter).replace("@GETTER@", getter)
                      .replace("@COMMAND_PUMP@", pump).replace("@POWER_LOOP@", power_loop))
 

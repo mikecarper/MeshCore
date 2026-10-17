@@ -50,6 +50,12 @@ struct Node {
 int main() {
   Node node;
   assert(mesh::power::powerSaveSleepSeconds(0) == 0);
+  assert(mesh::power::limitSleepMilliseconds(0, 50) == 0);
+  assert(mesh::power::limitSleepMilliseconds(30, 0) == 0);
+  assert(mesh::power::limitSleepMilliseconds(30, 50) == 50);
+  assert(mesh::power::limitSleepMilliseconds(1, 1001) == 1000);
+  assert(mesh::power::limitSleepMilliseconds(UINT32_MAX, 50) == 50);
+  assert(mesh::power::limitSleepMilliseconds(UINT32_MAX, UINT32_MAX) == UINT32_MAX);
 #if EXPECT_INTERRUPT_IDLE
   assert(mesh::power::powerSaveSleepSeconds(UINT32_MAX) == 4294968U);
 #else
@@ -110,6 +116,50 @@ int main() {
 
 
 class PowerSavingDeadlineTests(unittest.TestCase):
+    def test_real_board_millisecond_idle_preserves_port_wake_contract(self):
+        source = (ROOT / 'src/MeshCore.h').read_text(encoding='ascii')
+        implementation = method(source, 'virtual void sleepMilliseconds(uint32_t millisecs)')
+        code = r'''
+#include <cassert>
+#include <cstdint>
+struct Board {
+  unsigned calls = 0;
+  uint32_t last = 0;
+  virtual void sleep(uint32_t secs) { ++calls; last = secs; }
+@METHOD@
+};
+int main() {
+  Board board;
+  board.sleepMilliseconds(0);
+  assert(board.calls == 0);
+  for (uint32_t ms : {1U, 50U, 999U, 1000U, 1001U, UINT32_MAX}) {
+    const auto before = board.calls;
+    board.sleepMilliseconds(ms);
+#if EXPECT_INTERRUPT_IDLE
+    assert(board.calls == before + 1 && board.last == 0);
+#else
+    assert(board.calls == before + (ms >= 1000));
+    if (ms >= 1000) assert(board.last == ms / 1000);
+#endif
+  }
+}
+'''.replace('@METHOD@', implementation).replace(
+            '#include <cstdint>', '#include <cstdint>\n#include <initializer_list>')
+        with tempfile.TemporaryDirectory(prefix='meshcore-board-ms-idle-') as directory:
+            cpp, exe = Path(directory) / 'test.cpp', Path(directory) / 'test'
+            cpp.write_text(code, encoding='ascii')
+            for platform in ('', 'NRF52_PLATFORM', 'RP2040_PLATFORM', 'STM32_PLATFORM'):
+                with self.subTest(platform=platform or 'unknown-timed'):
+                    built = subprocess.run([
+                        os.environ.get('CXX', 'g++'), '-std=c++17', '-Wall', '-Wextra', '-Werror',
+                        '-DEXPECT_INTERRUPT_IDLE=' + ('1' if platform else '0'),
+                        *(['-D' + platform + '=1'] if platform else []),
+                        str(cpp), '-o', str(exe),
+                    ], capture_output=True, text=True)
+                    self.assertEqual(built.returncode, 0, built.stdout + built.stderr)
+                    ran = subprocess.run([str(exe)], capture_output=True, text=True)
+                    self.assertEqual(ran.returncode, 0, ran.stdout + ran.stderr)
+
     def test_real_role_deadlines_preserve_timed_and_interrupt_idle(self):
         with tempfile.TemporaryDirectory(prefix='meshcore-sleep-deadlines-') as directory:
             work = Path(directory)

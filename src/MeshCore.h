@@ -181,6 +181,18 @@ public:
 #endif
 #endif
   }
+  // Bounded MCU idle without changing the radio's receive mode. Interrupt-idle
+  // ports keep their existing periodic-clock wake contract; timed sleepers
+  // override this to provide a real sub-second timer. An unknown timed port
+  // must not round a short deadline up and sleep past it.
+  virtual void sleepMilliseconds(uint32_t millisecs) {
+    if (millisecs == 0) return;
+#if defined(NRF52_PLATFORM) || defined(RP2040_PLATFORM) || defined(STM32_PLATFORM)
+    sleep(0);
+#else
+    if (millisecs >= 1000UL) sleep(millisecs / 1000UL);
+#endif
+  }
   virtual uint32_t getGpio() { return 0; }
   virtual void setGpio(uint32_t values) {}
   // Returns true only for physical MCU GPIOs that are safe for the user to

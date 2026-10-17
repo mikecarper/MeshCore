@@ -228,6 +228,7 @@ struct MyMesh {
   bool isMillisTimerDue(unsigned long) const { return false; }
   bool getNextQueueWakeDelay(uint32_t&) const { return false; }
   bool getNextRetryWakeDelay(uint32_t&) const { return false; }
+  bool getNextNoiseFloorWakeDelay(uint32_t&) const { return false; }
   bool isDualRadioActive() const { return false; }
   uint32_t limitSleepToMillisTimer(unsigned long, uint32_t secs) const { return secs; }
   uint32_t limitSleepToScheduledRadioWork(uint32_t secs) const { return secs; }

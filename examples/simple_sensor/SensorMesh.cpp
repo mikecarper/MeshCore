@@ -1730,7 +1730,9 @@ mesh::powerdiag::Mask SensorMesh::pendingWorkReason() const {
   if (hasPendingOtaApply()) return mask(Reason::Ota);
   if (_cli.hasActiveUserGpioTimer()) return mask(Reason::Scheduled);
   if (radio_driver.isWatchdogObserving()) return mask(Reason::RadioWatchdog);
-  if (radio_driver.isCalibratingNoiseFloor()) return mask(Reason::Calibration);
+  uint32_t noise_floor_delay_ms;
+  if (getNextNoiseFloorWakeDelay(noise_floor_delay_ms) && noise_floor_delay_ms == 0)
+    return mask(Reason::Calibration);
   if (hasQueuedWorkDue()) return mask(Reason::Queue);
   if (hasRetryWorkDue()) return mask(Reason::Retry);
   if (isMillisTimerDue(next_flood_advert)

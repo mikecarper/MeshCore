@@ -128,6 +128,15 @@ public:
   }
 
   void sleep(uint32_t secs) override {
+    sleepMicroseconds(static_cast<uint64_t>(secs) * 1000000ULL);
+  }
+
+  void sleepMilliseconds(uint32_t millisecs) override {
+    if (millisecs != 0)
+      sleepMicroseconds(static_cast<uint64_t>(millisecs) * 1000ULL, true);
+  }
+
+  void sleepMicroseconds(uint64_t wake_us, bool require_timer = false) {
     using mesh::powerdiag::Reason;
     const bool diagnostics = mesh::powerdiag::enabled();
     // Native USB loses its connection in light sleep. An enumerated host
@@ -167,8 +176,14 @@ public:
     // Otherwise its real elapsed time would be mislabelled as blocked time.
     esp_err_t setup_error = ESP_OK;
     // Configure timer wakeup
-    if (secs > 0) {
-      const esp_err_t error = esp_sleep_enable_timer_wakeup(secs * 1000000ULL); // Wake up periodically to do scheduled jobs
+    if (wake_us > 0) {
+      const esp_err_t error = esp_sleep_enable_timer_wakeup(wake_us);
+      // A calibration slice must not inherit an old, longer timer after a
+      // setup failure. Keep the legacy seconds API's policy unchanged.
+      if (require_timer && error != ESP_OK) {
+        if (diagnostics) mesh::powerdiag::boardError(error, millis());
+        return;
+      }
       if (diagnostics && error != ESP_OK) setup_error = error;
     }
 
@@ -181,7 +196,7 @@ public:
     const int button_gpio = -1;
 #endif
     if (!radio_wakeup && button_gpio < 0) {
-      if (secs > 0) {
+      if (wake_us > 0) {
         if (diagnostics) mesh::powerdiag::sleepBegin(micros());
         const esp_err_t error = esp_light_sleep_start();
         if (diagnostics) {

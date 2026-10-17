@@ -374,6 +374,7 @@ jobs:
           python3 -B test/test_mqtt_prefs_commit.py -v
           python3 -B test/test_identity_and_settings_recovery.py -v
           python3 -B test/test_contact_cache.py -v
+          python3 -B test/test_one_key_dm_shared_queue.py -v
 
       - name: Verify Ethernet RF harness framing, TX lock, isolation and safe serial ownership
         run: |
@@ -438,6 +439,7 @@ jobs:
         run: |
           python3 -B test/test_dispatcher_startup_watchdog.py -v
           python3 -B test/test_radio_receive_contract.py
+          python3 -B test/test_noise_floor_sleep.py -v
           python3 -B test/test_radio_receive_retry.py -v
           python3 -B test/test_adaptive_agc_roles.py -v
           python3 - <<'PY'

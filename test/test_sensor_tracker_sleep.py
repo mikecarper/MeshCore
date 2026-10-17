@@ -62,6 +62,7 @@ public:
  bool getNextQueueWakeDelay(uint32_t& out)const{out=queue_delay;return queue_delay_set;}
  bool hasPendingRadioWork()const{return queue_delay_set;}
  bool getNextRetryWakeDelay(uint32_t& out)const{out=retry_delay;return retry_delay_set;}
+ bool getNextNoiseFloorWakeDelay(uint32_t& out)const{out=0;return radio_driver.calibration;}
  bool isMillisTimerDue(unsigned long timestamp)const;
  uint32_t limitSleepToMillisTimer(unsigned long timestamp,uint32_t sleep_secs)const;
  bool hasPendingWork()const;
@@ -126,6 +127,7 @@ TIMER = r'''
 #include <Arduino.h>
 #include <cassert>
 #include <helpers/PowerSavingDiagnostics.h>
+#include <helpers/PowerManagementUtils.h>
 using TimerHandle_t=void*;
 using TickType_t=uint32_t;
 bool allocate=true,queue_ok=true,active=false;
@@ -158,9 +160,13 @@ static void trackerWakeCallback(TimerHandle_t){}
 struct Mesh {bool tracker=true;uint32_t sleep_secs=30;
  bool isTrackerModeEnabled()const{return tracker;}
  uint32_t getPowerSaveSleepSeconds(uint32_t max)const{assert(max==30);return sleep_secs;}
+ bool getNextNoiseFloorWakeDelay(uint32_t&)const{return false;}
  bool millisHasNowPassed(uint32_t deadline)const{return (int32_t)(millis()-deadline)>=0;}
 } the_mesh;
-struct Board {unsigned sleeps=0,last=0;void sleep(unsigned value){++sleeps;last=value;}} board;
+struct Board {unsigned sleeps=0,last=0;
+ void sleep(unsigned value){++sleeps;last=value;}
+ void sleepMilliseconds(unsigned value){++sleeps;last=value;}
+} board;
 static const unsigned long POWERSAVING_FIRST_SLEEP_SECS=120;
 void sleepGate(bool can_power_save){
 @GATE@

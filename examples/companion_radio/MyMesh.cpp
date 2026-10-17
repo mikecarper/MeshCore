@@ -11602,7 +11602,9 @@ mesh::powerdiag::Mask MyMesh::pendingWorkReason() const {
 #endif
   if (isDualRadioActive()) return mask(Reason::DualRadio);
   if (_radio_available && radio_driver.isWatchdogObserving()) return mask(Reason::RadioWatchdog);
-  if (_radio_available && radio_driver.isCalibratingNoiseFloor()) return mask(Reason::Calibration);
+  uint32_t noise_floor_delay_ms;
+  if (getNextNoiseFloorWakeDelay(noise_floor_delay_ms) && noise_floor_delay_ms == 0)
+    return mask(Reason::Calibration);
 #if defined(NRF52_PLATFORM)
   // nRF52 sleep is event-driven, so a future lazy-write deadline has no
   // guaranteed interrupt to wake the loop when it becomes due. Keep polling

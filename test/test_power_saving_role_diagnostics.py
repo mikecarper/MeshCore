@@ -28,6 +28,55 @@ class PowerSavingRoleDiagnosticsTests(unittest.TestCase):
             result = subprocess.run([str(binary)], capture_output=True, text=True, timeout=20)
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
+    def test_actual_radio_default_and_public_dispatcher_deadline_forwarder(self):
+        header = (ROOT / 'src/Dispatcher.h').read_text(encoding='ascii')
+        source = (ROOT / 'src/Dispatcher.cpp').read_text(encoding='ascii')
+        conservative = extract_braced(header, 'virtual bool getNoiseFloorWakeDelay(')
+        forwarder = extract_braced(source, 'bool Dispatcher::getNextNoiseFloorWakeDelay(')
+        self.execute(r'''
+#include <cassert>
+#include <cstdint>
+struct Radio {
+  bool calibrating = false;
+  bool isCalibratingNoiseFloor() const { return calibrating; }
+@DEFAULT@
+};
+struct SpacedRadio : Radio {
+  mutable unsigned reads = 0;
+  uint32_t delay = 50;
+  bool getNoiseFloorWakeDelay(uint32_t now, uint32_t& out) const override {
+    assert(now == 123); ++reads; out = delay; return true;
+  }
+};
+struct Clock {
+  unsigned reads = 0;
+  uint32_t getMillis() { ++reads; return 123; }
+};
+struct Dispatcher {
+  bool radio_available = true;
+  Radio* _radio;
+  Clock* _ms;
+  bool getNextNoiseFloorWakeDelay(uint32_t&) const;
+};
+@FORWARDER@
+int main() {
+  Radio legacy;
+  Clock clock;
+  Dispatcher node{true, &legacy, &clock};
+  uint32_t delay = 71;
+  assert(!node.getNextNoiseFloorWakeDelay(delay) && delay == 71);
+  legacy.calibrating = true;
+  assert(node.getNextNoiseFloorWakeDelay(delay) && delay == 0);
+  SpacedRadio spaced;
+  node._radio = &spaced;
+  assert(node.getNextNoiseFloorWakeDelay(delay) && delay == 50 && spaced.reads == 1);
+  node.radio_available = false;
+  const auto before = clock.reads;
+  assert(!node.getNextNoiseFloorWakeDelay(delay));
+  assert(clock.reads == before && spaced.reads == 1);
+}
+'''.replace('@DEFAULT@', conservative).replace('@FORWARDER@', forwarder))
+
     def test_actual_role_guards_preserve_short_circuit_and_ignore_charger_only(self):
         for role in ("simple_repeater", "simple_room_server", "simple_sensor"):
             with self.subTest(role=role):
@@ -128,7 +177,7 @@ struct MyMesh {
   bool dual = false, ota = false, queue = false, retry = false, scheduled = false;
   bool bridge_enabled = true;
   bool queue_delay_set = false, retry_delay_set = false;
-  uint32_t queue_delay = 0, retry_delay = 0;
+  uint32_t queue_delay = 0, retry_delay = 0, calibration_delay = 0;
   struct { bool busy_value = false; bool busy() const { return busy_value; } } _local_cli_output;
   struct { bool pending = false; } deferred_cli_command;
   struct { bool gpio = false; bool hasActiveUserGpioTimer() const { return gpio; } } _cli;
@@ -152,6 +201,9 @@ struct MyMesh {
   bool isMillisTimerDue(unsigned long value) const { return value && value <= millis(); }
   bool getNextQueueWakeDelay(uint32_t& value) const { value = queue_delay; return queue_delay_set; }
   bool getNextRetryWakeDelay(uint32_t& value) const { value = retry_delay; return retry_delay_set; }
+  bool getNextNoiseFloorWakeDelay(uint32_t& value) const {
+    value = calibration_delay; return radio_driver.calibration;
+  }
   uint32_t limitSleepToMillisTimer(unsigned long value, uint32_t seconds) const {
     return value && value <= millis() ? 0 : seconds;
   }
@@ -193,6 +245,11 @@ int main() {
     node.uart.wake_ms = 60000;
     check(node.radio_driver.watchdog, Reason::RadioWatchdog);
     check(node.radio_driver.calibration, Reason::Calibration);
+    node.radio_driver.calibration = true; node.calibration_delay = 50;
+    assert(!node.hasPendingWork() && node.getPowerSaveSleepSeconds(30) == 30);
+    node.calibration_delay = 0;
+    assert(node.pendingWorkReason() == mask(Reason::Calibration));
+    node.radio_driver.calibration = false;
     check(node.queue, Reason::Queue); check(node.retry, Reason::Retry);
     check(node.scheduled, Reason::Scheduled);
     node.queue_delay_set = true; node.queue_delay = 500;
@@ -278,7 +335,11 @@ int main() {
 
     def test_esp32_real_veto_and_sdk_failure_timing_does_not_invent_blocked_residency(self):
         source = (ROOT / "src/helpers/ESP32Board.h").read_text(encoding="ascii")
-        method = extract_braced(source, "void sleep(uint32_t secs) override")
+        method = "\n".join(extract_braced(source, signature) for signature in (
+            "void sleep(uint32_t secs) override",
+            "void sleepMilliseconds(uint32_t millisecs) override",
+            "void sleepMicroseconds(uint64_t wake_us, bool require_timer = false)",
+        ))
         code = r'''
 #include <cassert>
 #include <helpers/PowerSavingDiagnostics.h>
@@ -297,7 +358,8 @@ static bool radio_pending = false;
 static uint32_t millis() { return now_us / 1000; }
 static uint32_t micros() { return now_us; }
 static void delay(unsigned ms) { yields += ms; }
-static esp_err_t esp_sleep_enable_timer_wakeup(uint64_t) { return timer_error; }
+static uint64_t timer_us = 0;
+static esp_err_t esp_sleep_enable_timer_wakeup(uint64_t value) { timer_us = value; return timer_error; }
 static esp_err_t esp_sleep_enable_gpio_wakeup() { return gpio_error; }
 static esp_err_t gpio_wakeup_enable(gpio_num_t, int) { return pin_error; }
 static void gpio_wakeup_disable(gpio_num_t) {}
@@ -310,7 +372,10 @@ namespace mesh {
 static bool logging = false;
 static bool isUsbLoggingEnabled() { return logging; }
 }
-struct MainBoard { virtual void sleep(uint32_t) = 0; };
+struct MainBoard {
+  virtual void sleep(uint32_t) = 0;
+  virtual void sleepMilliseconds(uint32_t) = 0;
+};
 struct ESP32Board : MainBoard {
   bool inhibit_sleep = false, usb = false, test = false;
   uint32_t irq = 14;
@@ -324,15 +389,26 @@ int main() {
   ESP32Board board;
   board.sleep(30);
   assert(sdk_calls == 1 && snapshot(millis()).calls == 0);
+  assert(timer_us == 30000000ULL);
+  board.sleepMilliseconds(50);
+  assert(sdk_calls == 2 && timer_us == 50000ULL);
+  board.sleepMilliseconds(0);
+  assert(sdk_calls == 2 && timer_us == 50000ULL);
   setEnabled(true, millis()); reset(millis()); decision(0, millis());
   timer_error = 29; gpio_error = 31; pin_error = 33;
   board.sleep(30); // Diagnostics may observe failures, never repair/change policy.
   auto value = snapshot(millis());
-  assert(sdk_calls == 2 && value.calls == 1 && value.returns == 1 && value.errors == 1);
+  assert(sdk_calls == 3 && value.calls == 1 && value.returns == 1 && value.errors == 1);
   assert(value.detail == 29); // First setup failure, without changing later SDK calls.
   assert(value.last_call_us == 7000 && value.eligible_ms == 7);
   assert(value.blocked_ms[static_cast<size_t>(Reason::Board)] == 0);
   assert(critical_depth == 0);
+  reset(millis()); decision(0, millis());
+  const auto before_failed_slice = sdk_calls;
+  board.sleepMilliseconds(50);
+  value = snapshot(millis());
+  assert(sdk_calls == before_failed_slice && value.calls == 0);
+  assert(value.errors == 1 && value.detail == 29 && critical_depth == 0);
   reset(millis()); decision(0, millis());
   timer_error = gpio_error = pin_error = 0; sleep_error = 41;
   board.sleep(30);

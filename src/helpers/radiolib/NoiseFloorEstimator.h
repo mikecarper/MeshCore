@@ -31,7 +31,12 @@ public:
   }
   bool complete() const { return _count == SAMPLE_COUNT; }
   bool ready(uint32_t now) const {
-    return !complete() && (_count == 0 || uint32_t(now - _last_sample_at) >= SAMPLE_INTERVAL_MS);
+    return !complete() && sampleDelay(now) == 0;
+  }
+  uint32_t sampleDelay(uint32_t now) const {
+    if (_count == 0 || complete()) return 0;
+    const uint32_t elapsed = now - _last_sample_at;
+    return elapsed >= SAMPLE_INTERVAL_MS ? 0 : SAMPLE_INTERVAL_MS - elapsed;
   }
   uint8_t heldBlocks() const { return _held_blocks; }
 

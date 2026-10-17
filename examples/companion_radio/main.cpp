@@ -4248,11 +4248,18 @@ void loop() {
   // retains a two-minute wake interval after button activity.
   if (!sleep_reason && user_btn.needsPolling()) sleep_reason = mask(Reason::Button);
 #endif
+  uint32_t noise_floor_delay_ms = 0;
+  const bool noise_floor_wait = !sleep_reason
+      && the_mesh.getNextNoiseFloorWakeDelay(noise_floor_delay_ms);
+  if (noise_floor_wait && noise_floor_delay_ms == 0) sleep_reason = mask(Reason::Calibration);
   if (mesh::powerdiag::enabled()) mesh::powerdiag::decision(sleep_reason, millis());
   const bool can_sleep = sleep_reason == 0;
   if (can_sleep) {
+    const uint32_t idle_slice_ms = noise_floor_wait && noise_floor_delay_ms < 10
+        ? noise_floor_delay_ms : 10;
 #if defined(NRF52_PLATFORM)
-    board.sleep(0); // nrf ignores seconds param, sleeps whenever possible
+    if (noise_floor_wait) board.sleepMilliseconds(idle_slice_ms);
+    else board.sleep(0); // nrf ignores seconds param, sleeps whenever possible
 #elif defined(ESP32_PLATFORM)
 #if defined(ENABLE_USB_INTERFACE) \
     && defined(ARDUINO_USB_CDC_ON_BOOT) && ARDUINO_USB_CDC_ON_BOOT \
@@ -4266,7 +4273,7 @@ void loop() {
       if (mesh::powerdiag::enabled()) mesh::powerdiag::boardVeto(Reason::Board, millis());
       sleep_failed = true;
     } else {
-      esp_err_t error = esp_sleep_enable_timer_wakeup(10000ULL);
+      esp_err_t error = esp_sleep_enable_timer_wakeup(static_cast<uint64_t>(idle_slice_ms) * 1000ULL);
       if (error == ESP_OK) {
         if (mesh::powerdiag::enabled()) mesh::powerdiag::sleepBegin(micros());
         error = esp_light_sleep_start();
@@ -4278,19 +4285,20 @@ void loop() {
       }
     }
     if (sleep_failed) {
-      vTaskDelay(pdMS_TO_TICKS(10));
+      vTaskDelay(pdMS_TO_TICKS(idle_slice_ms));
     }
 #elif COMPANION_IDF_PM_AVAILABLE
     // Yield long enough for ESP-IDF automatic light sleep to enter when no
     // driver holds a power-management lock.
-    vTaskDelay(pdMS_TO_TICKS(10));
+    vTaskDelay(pdMS_TO_TICKS(idle_slice_ms));
 #else
     // Connected transports need their own modem sleep and must retain the
     // normal FreeRTOS idle behavior.
-    vTaskDelay(pdMS_TO_TICKS(10));
+    vTaskDelay(pdMS_TO_TICKS(idle_slice_ms));
 #endif
 #elif defined(RP2040_PLATFORM) || defined(STM32_PLATFORM)
-    board.sleep(0); // event-driven idle; interrupts wake the main loop
+    if (noise_floor_wait) board.sleepMilliseconds(idle_slice_ms);
+    else board.sleep(0); // event-driven idle; interrupts wake the main loop
 #endif
   }
 #if defined(ESP32_PLATFORM)

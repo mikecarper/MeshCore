@@ -23,10 +23,11 @@ extern "C" caddr_t _sbrk(int increment);
 
 // Bounded noise-floor calibration in continuous RX, including RXPS refreshes.
 // Requests are coalesced so retries cannot repeatedly force continuous RX.
-#define NF_CALIB_INTERVAL_MS  2000UL    // continuous-RX refresh / forced-window cooldown
-// A quiet block needs about 3.2 s of continuous RX. Do not reopen one after
-// only 2 s of duty cycling: routine maintenance would defeat RX power saving.
+#define NF_CALIB_INTERVAL_MS  (60UL * 1000UL)
 #define NF_RXPS_REFRESH_INTERVAL_MS (60UL * 1000UL)
+// A successful baseline need not hold the radio in continuous RX every minute.
+// Rejected rise/failed attempts retain the shorter retry, not this lazy cadence.
+#define NF_LAZY_REFRESH_INTERVAL_MS (5UL * 60UL * 1000UL)
 #define NF_CALIB_TIMEOUT_MS   NoiseFloorEstimator::WINDOW_TIMEOUT_MS
 #define NF_CONTINUOUS_TIMEOUT_MS NoiseFloorEstimator::WINDOW_TIMEOUT_MS
 #define NF_CALIB_SETTLE_MS    RadioLibWrapper::NoiseFloorSettleMillis
@@ -232,6 +233,7 @@ void RadioLibWrapper::begin() {
   _floor_estimator.reset(true);
   _secondary_floor_estimator.reset(true);
   _nf_calib_active = false;
+  _nf_window_armed = _nf_lazy_refresh = _nf_refresh_attempted = false;
   _nf_last_calib = 0;
   _nf_sample_from = 0;
   _nf_refresh_requested = true;  // establish one baseline after startup
@@ -784,6 +786,7 @@ void RadioLibWrapper::serviceProfileScan() {
     _nf_refresh_requested = true;
     _nf_last_calib = 0;
     _nf_calib_deadline = 0;
+    _nf_window_armed = _nf_lazy_refresh = _nf_refresh_attempted = false;
     _floor_estimator.reset(true);
     _secondary_floor_estimator.reset(true);
     _profile_refresh_required = true; // refresh side detectors even if the tuple is unchanged
@@ -824,6 +827,7 @@ void RadioLibWrapper::serviceProfileScan() {
     _nf_refresh_requested = true;
     _nf_last_calib = 0;
     _nf_calib_deadline = 0;
+    _nf_window_armed = _nf_lazy_refresh = _nf_refresh_attempted = false;
     _floor_estimator.reset(true);
     _secondary_floor_estimator.reset(true);
   }
@@ -970,13 +974,7 @@ void RadioLibWrapper::triggerNoiseFloorCalibrate(int threshold) {
     }
     return;
   }
-  if (_rx_ps_enabled && !_rx_ps_continuous_fallback) {
-    requestPeriodicNoiseFloorRefresh();
-  } else {
-    // RX is already continuous. Keep the original maintenance-tick behavior;
-    // only passive retry probes apply the existing two-second age check.
-    requestNoiseFloorRefresh();
-  }
+  requestPeriodicNoiseFloorRefresh();
 }
 
 void RadioLibWrapper::recalibrateNoiseFloor() {
@@ -986,29 +984,34 @@ void RadioLibWrapper::recalibrateNoiseFloor() {
   _noise_floor_secondary_valid = false;
   _nf_refresh_requested = true;
   _nf_last_calib = 0;
+  _nf_lazy_refresh = _nf_refresh_attempted = false;
   _floor_estimator.reset(true);
   _secondary_floor_estimator.reset(true);
 
   const unsigned long now = millis();
-  _nf_sample_from = now + NF_CALIB_SETTLE_MS;
+  _nf_sample_from = uint32_t(now) + (_rx_ps_armed ? 0 : NF_CALIB_SETTLE_MS);
   if (_nf_calib_active) {
     // Keep an already-open continuous-RX calibration window active, but restart
     // its sample and timeout bounds around the newly selected gain path.
     _nf_calib_deadline = now + NF_CALIB_TIMEOUT_MS;
+    _nf_window_armed = true;
   } else {
     // Continuous RX starts its deadline in loop(); RX power saving opens a
     // bounded continuous-RX window in noiseFloorCalibCheck().
     _nf_calib_deadline = 0;
+    _nf_window_armed = false;
   }
 }
 
 void RadioLibWrapper::requestPeriodicNoiseFloorRefresh() {
-  const uint32_t interval = _rx_ps_enabled && !_rx_ps_continuous_fallback
-      ? NF_RXPS_REFRESH_INTERVAL_MS : NF_CALIB_INTERVAL_MS;
+  const uint32_t interval = _nf_lazy_refresh ? NF_LAZY_REFRESH_INTERVAL_MS
+      : (_rx_ps_enabled && !_rx_ps_continuous_fallback
+          ? NF_RXPS_REFRESH_INTERVAL_MS : NF_CALIB_INTERVAL_MS);
   // Startup must not wait for a maintenance tick. Subsequent attempts, even
   // failed ones, need a real rest interval. Forced RF-path/AGC recalibration
   // bypasses this routine policy and retains its existing prompt behavior.
-  if (_profiles.enabled() || (!_noise_floor_valid && _nf_last_calib == 0)
+  if (_profiles.enabled()
+      || (!_noise_floor_valid && _nf_last_calib == 0 && !_nf_refresh_attempted)
       || static_cast<uint32_t>(millis() - _nf_last_calib) >= interval) {
     requestNoiseFloorRefresh();
   }
@@ -1017,9 +1020,12 @@ void RadioLibWrapper::requestPeriodicNoiseFloorRefresh() {
 void RadioLibWrapper::requestNoiseFloorRefresh() {
   if (_nf_refresh_requested) return;
   _nf_refresh_requested = true;
+  _nf_lazy_refresh = false;
   _floor_estimator.reset();
   _secondary_floor_estimator.reset();
   _nf_calib_deadline = 0;  // starts when continuous RX is actually available
+  _nf_window_armed = false;
+  _nf_sample_from = uint32_t(millis()) + (_rx_ps_armed ? 0 : NF_CALIB_SETTLE_MS);
 }
 
 void RadioLibWrapper::doResetAGC() {
@@ -1189,27 +1195,32 @@ bool RadioLibWrapper::isPacketPendingOrReceiving() {
 }
 
 void RadioLibWrapper::noiseFloorCalibCheck(unsigned long now) {
+  const uint32_t now_ms = static_cast<uint32_t>(now);
   if (_nf_calib_active) {
     if (!_rx_ps_enabled
-        || ((long)(now - _nf_calib_deadline) >= 0
+        || (static_cast<int32_t>(now_ms - uint32_t(_nf_calib_deadline)) >= 0
             && !_floor_estimator.complete())) {
       // powersaving turned off mid-window, or the batch couldn't complete
       // (busy channel) - keep the previous floor
       endNoiseFloorCalib(now);
-    } else if (_rx_ps_armed && !isPacketPendingOrReceiving()) {
+    } else if (_rx_ps_armed
+        && static_cast<int32_t>(now_ms - uint32_t(_nf_sample_from)) >= 0) {
       // A packet can delay the transition from RXPS to continuous RX. Retry
-      // once the radio is idle without discarding a pending interrupt.
-      requestRestartRecv();
+      // at a bounded cadence without discarding a pending interrupt.
+      _nf_sample_from = now_ms + NoiseFloorEstimator::SAMPLE_INTERVAL_MS;
+      if (!isPacketPendingOrReceiving()) requestRestartRecv();
     }
   } else if (_nf_refresh_requested && _rx_ps_enabled && _rx_ps_armed && state == STATE_RX
-             && ((!_noise_floor_valid && _nf_last_calib == 0)
-                 || now - _nf_last_calib >= NF_CALIB_INTERVAL_MS)
-             && !isPacketPendingOrReceiving()) {
+             && static_cast<int32_t>(now_ms - uint32_t(_nf_sample_from)) >= 0) {
     // never interrupt an ongoing reception to calibrate (a TX in flight is
-    // already excluded by state == STATE_RX); retries next loop iteration
+    // already excluded by state == STATE_RX). A requested forced baseline is
+    // prompt; routine cooldown was enforced before creating the request.
+    _nf_sample_from = now_ms + NoiseFloorEstimator::SAMPLE_INTERVAL_MS;
+    if (isPacketPendingOrReceiving()) return;
     _nf_calib_active = true;
-    _nf_calib_deadline = now + NF_CALIB_TIMEOUT_MS;
-    _nf_sample_from = now + NF_CALIB_SETTLE_MS;
+    _nf_calib_deadline = now_ms + NF_CALIB_TIMEOUT_MS;
+    _nf_window_armed = true;
+    _nf_sample_from = now_ms + NF_CALIB_SETTLE_MS;
     _floor_estimator.reset();
     if (!isPacketPendingOrReceiving()) {
       requestRestartRecv();   // startReceiveMode() selects continuous RX
@@ -1222,6 +1233,8 @@ void RadioLibWrapper::endNoiseFloorCalib(unsigned long now) {
   _nf_refresh_requested = false;
   _nf_last_calib = now;
   _nf_calib_deadline = 0;
+  _nf_window_armed = false;
+  _nf_refresh_attempted = true;
   // force a receive re-arm back into duty-cycle mode, but don't clobber a
   // completed-but-unread packet or an in-flight TX (recvRaw()/onSendFinished()
   // will re-arm right after those anyway; same guard style as setRxPowerSaving)
@@ -1802,14 +1815,16 @@ void RadioLibWrapper::loop() {
   }
   if (_nf_refresh_requested
       && (!_rx_ps_enabled || _rx_ps_continuous_fallback)
-      && _nf_calib_deadline == 0
+      && !_nf_window_armed
       && state == STATE_RX) {
     // Measure the awake-time bound from actual continuous RX, not from begin()
     // or a request made while the radio is idle, transmitting, or starting up.
-    _nf_calib_deadline = now + NF_CONTINUOUS_TIMEOUT_MS;
+    _nf_calib_deadline = uint32_t(now) + NF_CONTINUOUS_TIMEOUT_MS;
+    _nf_window_armed = true;
   }
   if (_nf_refresh_requested && _floor_estimator.complete()) {
-    if (_floor_estimator.publish(_noise_floor_centi_dbm, _noise_floor_valid)) {
+    _nf_lazy_refresh = _floor_estimator.publish(_noise_floor_centi_dbm, _noise_floor_valid);
+    if (_nf_lazy_refresh) {
       _noise_floor_valid = true;
       // Retain the whole-dB API/wire format and the fractional display value.
       _noise_floor = (_noise_floor_centi_dbm - 50) / 100;
@@ -1817,6 +1832,8 @@ void RadioLibWrapper::loop() {
     _nf_refresh_requested = false;
     _nf_last_calib = now;
     _nf_calib_deadline = 0;
+    _nf_window_armed = false;
+    _nf_refresh_attempted = true;
 
     MESH_DEBUG_PRINTLN("RadioLibWrapper: noise_floor = %d", (int)_noise_floor);
 
@@ -1828,14 +1845,17 @@ void RadioLibWrapper::loop() {
 
   if (_nf_refresh_requested
       && (!_rx_ps_enabled || _rx_ps_continuous_fallback)
-      && _nf_calib_deadline != 0
-      && (long)(now - _nf_calib_deadline) >= 0) {
+      && _nf_window_armed
+      && static_cast<int32_t>(uint32_t(now) - uint32_t(_nf_calib_deadline)) >= 0) {
     // A continuously busy channel can reject every candidate sample. Do not
     // keep the MCU awake indefinitely; retain the previous floor and let the
     // next scheduled calibration request retry an invalid startup baseline.
     _nf_refresh_requested = false;
     _nf_last_calib = now;
     _nf_calib_deadline = 0;
+    _nf_window_armed = false;
+    _nf_lazy_refresh = false;
+    _nf_refresh_attempted = true;
     _floor_estimator.reset();
   }
 
@@ -1848,12 +1868,12 @@ void RadioLibWrapper::loop() {
     // ~-127 dBm garbage).
     if (!_rx_ps_armed
         && _floor_estimator.ready(static_cast<uint32_t>(now))
-        && !(_nf_sample_from != 0 && (long)(now - _nf_sample_from) < 0)
-        && !isChipBusy() && !isPacketPendingOrReceiving()) {
+        && static_cast<int32_t>(uint32_t(now) - uint32_t(_nf_sample_from)) >= 0) {
       // Silent RX loss can leave software in STATE_RX while standby RSSI is
       // meaningless. Reject that observation before it can lower the floor.
       // Space rejected attempts too; an empty block must not hammer SPI.
-      _nf_sample_from = now + NoiseFloorEstimator::SAMPLE_INTERVAL_MS;
+      _nf_sample_from = uint32_t(now) + NoiseFloorEstimator::SAMPLE_INTERVAL_MS;
+      if (isChipBusy() || isPacketPendingOrReceiving()) return;
       if (readReceiveMode() == 0) {
         _floor_estimator.reset(true);
         return;
@@ -1882,7 +1902,8 @@ void RadioLibWrapper::startRecv() {
     state = STATE_RX;
     // RSSI is unsettled after every RX entry, including CAD/TX completion.
     // Keep the partial block, but wait for the frontend before its next sample.
-    _nf_sample_from = millis() + NF_CALIB_SETTLE_MS;
+    _nf_sample_from = uint32_t(millis())
+        + (_rx_ps_armed ? 0 : NF_CALIB_SETTLE_MS);
     _startrx_fails = 0;
     _rx_retry_pending = false;
     _rx_retry_delay_ms = 0;
@@ -1965,6 +1986,34 @@ bool RadioLibWrapper::getReceiveRetryDelay(uint32_t now, uint32_t& delay_ms) con
   }
   if (!_rx_retry_pending || state != STATE_IDLE) return false;
   delay_ms = static_cast<int32_t>(now - _rx_retry_at) >= 0 ? 0 : _rx_retry_at - now;
+  return true;
+}
+
+bool RadioLibWrapper::getNoiseFloorWakeDelay(uint32_t now, uint32_t& delay_ms) const {
+#if MESH_ENABLE_TX_BEACONS
+  if (_beacon_owned) return false;
+#endif
+  // Dual-profile scanning and foreign owners retain their existing cadence.
+  // Failed RX startup has its separate retry deadline, not an active batch.
+  if (_cw_active || _profiles.enabled() || state != STATE_RX
+      || (!_nf_refresh_requested && !_nf_calib_active)) return false;
+  if (_floor_estimator.complete()
+      || (!_nf_window_armed && !_rx_ps_armed)) {
+    delay_ms = 0;  // Publish or establish the continuous-RX timeout first.
+    return true;
+  }
+
+  const int32_t until_attempt = static_cast<int32_t>(uint32_t(_nf_sample_from) - now);
+  delay_ms = until_attempt > 0 ? uint32_t(until_attempt) : 0;
+  if (!_rx_ps_armed) {
+    const uint32_t until_sample = _floor_estimator.sampleDelay(now);
+    if (until_sample > delay_ms) delay_ms = until_sample;
+  }
+  if (_nf_window_armed) {
+    const int32_t until_timeout = static_cast<int32_t>(uint32_t(_nf_calib_deadline) - now);
+    const uint32_t timeout = until_timeout > 0 ? uint32_t(until_timeout) : 0;
+    if (timeout < delay_ms) delay_ms = timeout;
+  }
   return true;
 }
 

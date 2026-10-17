@@ -25,8 +25,10 @@ The ordinary Wio Tracker L1 BLE build reproduced a runtime RAM failure with
 48,964 bytes available against 59,968 required. Enabling the existing cache
 for high-contact nRF52 profiles recovered 30,200 bytes: the linked build has
 79,164 bytes available and a 19,196-byte margin against the unchanged budget.
-Its 350 contacts, 40 channels and configured 256-frame offline/held-DM pool
-are retained. This is a linked-capacity result, not a physical load/soak test.
+It keeps 350 contacts, 40 channels and 256 normal offline frames. As on the
+cached RAK profiles, up to 15 held one-key DMs temporarily use queue slots;
+their storage is shared instead of reserving a second pool. This is a
+linked-capacity result, not a physical load/soak test.
 
 ## Paths and persistence
 

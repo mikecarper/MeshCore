@@ -128,11 +128,14 @@ int main(int argc, char** argv) {
             "accepted deferred timings not retained");
       CHECK(w.rx_starts == starts && w.chip.standbys == standbys && w.applies == applies
           && w._nf_refresh_requested == refresh, "deferred setting touched live scan I/O/calibration");
+      w._nf_window_armed = w._nf_lazy_refresh = w._nf_refresh_attempted = true;
       w._profiles.setSecondary({}, false);
       w.serviceProfileScan();
       CHECK(!w._profile_rxps_suspended && w.state == STATE_RX
           && w._rx_ps_enabled == requested && w._rx_ps_armed == requested,
             "accepted deferred policy not restored after scan");
+      CHECK(!w._nf_window_armed && !w._nf_lazy_refresh && !w._nf_refresh_attempted,
+            "scan exit must invalidate stale single-profile calibration policy/deadline");
     }
   } else if (!std::strcmp(scenario, "unsupported-disable")) {
     for (bool scan : {false, true}) {

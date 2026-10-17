@@ -269,7 +269,10 @@ class FEMBoard:public ESP32Board { void shutdownPeripherals() override {
 int main(){FEMBoard board; board.enterDeepSleep(5); assert(slept);}
 '''.replace('@SLEEP@',sleep),s3=1)
         header=(ROOT/'src/helpers/ESP32Board.h').read_text()
-        light=body(header,'void sleep(uint32_t secs) override')
+        light='\n'.join(body(header, signature) for signature in (
+            'void sleep(uint32_t secs) override',
+            'void sleepMilliseconds(uint32_t millisecs) override',
+            'void sleepMicroseconds(uint64_t wake_us, bool require_timer = false)'))
         self.assertNotIn('commitTerminalDeepSleepHolds',light)
         for folder in (ROOT/'src',ROOT/'variants'):
             for path in folder.rglob('*'):

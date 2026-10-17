@@ -31,7 +31,9 @@ after off starts a fresh window. Collection defaults off at every boot.
 - `bridge`, `bridge.cleanup`, `bridge.wake`: active UART/network bridge,
   shutdown work or an overdue standby wake. A suspended RS232 owner is not
   diagnosed as running just because its saved enabled flag is on.
-- `calibration`, `radio.watchdog`: radio observation/calibration work.
+- `calibration`: noise-floor work is due now. The CPU can idle between sample
+  deadlines even while the radio remains in continuous RX for calibration.
+- `radio.watchdog`: radio observation/recovery work.
 - `queue`, `retry`, `scheduled`, `mesh`, `ota`, `radio2`: pending role work.
 - `wireless`, `network`, `serial`, `button`, `tracker`, `morse`: a matching
   existing service guard is active.
@@ -59,6 +61,27 @@ most 256 bytes of collector state. Each wait-call interval must be shorter
 than the 32-bit `micros()` wrap (about 71 minutes); the normal wait paths here
 are much shorter. Keep gaps between policy observations below the `millis()`
 wrap (about 49 days).
+
+## Noise-floor sampling and sleep
+
+Startup still collects a complete baseline promptly: 64 accepted samples,
+at least 50 ms apart, after the radio frontend has settled. Collection keeps
+the radio in continuous RX when needed, but the CPU may sleep between reads.
+Pending packet interrupts retain their normal receive owner. Rejected readings
+retry at 50 ms intervals, and the existing 30-second collection timeout bounds
+an attempt on a busy channel.
+
+After a successful baseline, ordinary single-profile refresh waits five
+minutes. A rejected rise or failed attempt retains the last usable floor and
+retries after one minute. Gain, tuning and AGC changes still request immediate
+recalibration, so a configured short AGC interval can refresh more frequently.
+Dual-profile scanning keeps its existing timing and calibration policy.
+
+ESP32 timed sleep uses a millisecond timer capped at the next sample deadline.
+nRF52, RP2040 and STM32 retain their interrupt-idle wake paths. Other sleep
+guards, including USB/logging, packet queues and bridges, still apply.
+These changes have host scheduling tests and firmware build coverage; their
+power benefit requires a new matched hardware/current measurement.
 
 See the [CLI reference](cli_commands.md#diagnose-what-prevents-power-saving)
 for all page names and commands.

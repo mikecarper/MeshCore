@@ -17,6 +17,11 @@ inline uint32_t powerSaveSleepSeconds(uint32_t delay_ms) {
 #endif
 }
 
+inline uint32_t limitSleepMilliseconds(uint32_t max_seconds, uint32_t deadline_ms) {
+  const uint64_t maximum_ms = static_cast<uint64_t>(max_seconds) * 1000ULL;
+  return deadline_ms < maximum_ms ? deadline_ms : static_cast<uint32_t>(maximum_ms);
+}
+
 inline uint16_t medianVoltage(uint16_t a, uint16_t b, uint16_t c) {
   if (a > b) { uint16_t t = a; a = b; b = t; }
   if (b > c) { uint16_t t = b; b = c; c = t; }

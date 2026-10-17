@@ -78,6 +78,7 @@ struct RadioLibWrapper {
   bool _rx_hold_continuous = false;
   bool _nf_calib_active = false, _nf_refresh_requested = true, _noise_floor_valid = true,
       _noise_floor_secondary_valid = true;
+  bool _nf_window_armed = false, _nf_lazy_refresh = false, _nf_refresh_attempted = false;
   bool _cad_enabled = true, packet = false, busy = false, inject_arm_irq = false;
   bool _rx_boosted_gain_valid = false, _cur_rx_boosted_gain = false;
   bool _wd_last_busy = false;
@@ -146,6 +147,7 @@ struct RadioLibWrapper {
   void recalibrateNoiseFloor();
   bool resetAGCIfIdle();
   bool tryResetAGC();
+  bool getNoiseFloorWakeDelay(uint32_t, uint32_t&) const;
   void resetAGC();
   @RECOVERY_GETTER@
 };
@@ -158,9 +160,7 @@ struct LegacyRadio {
   @LEGACY_RECOVERY_GETTER@
 };
 
-// Exercise both public callers and the shared policy itself. Continuous and
-// fallback Dispatcher triggers intentionally retain their unconditional legacy
-// request; only passive polling and the helper use the two-second age gate.
+// Public Dispatcher/passive callers share the same bounded routine policy.
 static void routineRequest(RadioLibWrapper& w, unsigned path, int margin = 7) {
   if (path == 0) w.triggerNoiseFloorCalibrate(margin);
   else if (path == 1) {
@@ -178,7 +178,8 @@ static void selectMode(RadioLibWrapper& w, unsigned mode) {
 
 static void periodicRefreshContracts() {
   static_assert(NF_RXPS_REFRESH_INTERVAL_MS == 60000UL, "Routine RXPS refresh must rest one minute");
-  static_assert(NF_CALIB_INTERVAL_MS == 2000UL, "Continuous passive refresh retains its two-second cadence");
+  static_assert(NF_CALIB_INTERVAL_MS == 60000UL, "Failed routine refresh must rest one minute");
+  static_assert(NF_LAZY_REFRESH_INTERVAL_MS == 300000UL, "Successful floor refresh becomes lazy");
   unsigned cases = 0;
   for (unsigned path : {0U, 1U, 2U}) for (unsigned mode : {0U, 1U, 2U})
   for (uint32_t last : {10000U, 0xfffffff0U}) for (bool valid : {false, true})
@@ -189,7 +190,7 @@ static void periodicRefreshContracts() {
     now_ms = last + age;
     routineRequest(w, path);
     const uint32_t interval = mode == 1 ? NF_RXPS_REFRESH_INTERVAL_MS : NF_CALIB_INTERVAL_MS;
-    const bool expected = (path == 0 && mode != 1) || age >= interval;
+    const bool expected = age >= interval;
     assert(w._nf_refresh_requested == expected);
     assert(w._threshold == (path == 0 ? 7 : 42)); // threshold changes never wait
     assert(w.arms == 0 && w.stops == 0 && w.radio.scans == 0);
@@ -213,12 +214,10 @@ static void periodicRefreshContracts() {
     RadioLibWrapper w; selectMode(w, from);
     w._nf_last_calib = 10000; w._nf_refresh_requested = false;
     now_ms = 20000; selectMode(w, to); routineRequest(w, path);
-    assert(w._nf_refresh_requested == (to != 1));
-    if (to == 1) {
-      now_ms = 10000 + NF_RXPS_REFRESH_INTERVAL_MS - 1; routineRequest(w, path);
-      assert(!w._nf_refresh_requested);
-      ++now_ms; routineRequest(w, path); assert(w._nf_refresh_requested);
-    }
+    assert(!w._nf_refresh_requested);
+    now_ms = 10000 + NF_RXPS_REFRESH_INTERVAL_MS - 1; routineRequest(w, path);
+    assert(!w._nf_refresh_requested);
+    ++now_ms; routineRequest(w, path); assert(w._nf_refresh_requested);
     ++cases;
   }
   // A periodic request may join, but must not reset or extend, a partial block.
@@ -291,7 +290,7 @@ static void periodicRefreshContracts() {
     w.loop(); assert(w._nf_calib_active);
     ++cases;
   }
-  // A failed initial block gets the same one-minute rest as a valid block.
+  // A failed initial block rests one minute; an accepted baseline rests five.
   // Quiet and busy windows are exercised through the actual loop/re-arm path.
   for (bool busy : {false, true}) for (unsigned path : {0U, 1U}) {
     RadioLibWrapper w; selectMode(w, 1); w._rx_ps_armed = true;
@@ -313,7 +312,8 @@ static void periodicRefreshContracts() {
     assert(w._noise_floor_valid == !busy);
     if (busy) assert(w.reads == 0 && w._noise_floor_centi_dbm == -10500);
     // A quiet passive caller reads RSSI, but those reads do not open windows.
-    for (; uint32_t(now_ms - finished) < NF_RXPS_REFRESH_INTERVAL_MS; ++now_ms) {
+    const uint32_t interval = busy ? NF_RXPS_REFRESH_INTERVAL_MS : NF_LAZY_REFRESH_INTERVAL_MS;
+    for (; uint32_t(now_ms - finished) < interval; ++now_ms) {
       if (uint32_t(now_ms - finished) % NF_CALIB_INTERVAL_MS == 0) {
         if (path == 0) w.triggerNoiseFloorCalibrate(7);
         else routineRequest(w, path);
@@ -421,7 +421,7 @@ static void agcAdmissionContracts() {
     assert(w._noise_floor == -105 && w._noise_floor_centi_dbm == -10500);
     assert(w._noise_floor_secondary_centi_dbm == -10600);
     assert(w._floor_estimator.count() == 0 && w._secondary_floor_estimator.count() == 0);
-    assert(w._nf_sample_from == now_ms + NF_CALIB_SETTLE_MS);
+    assert(w._nf_sample_from == now_ms + (w._rx_ps_armed ? 0 : NF_CALIB_SETTLE_MS));
     assert(w._nf_calib_active == active_window);
     assert(w._nf_calib_deadline == (active_window ? now_ms + NF_CALIB_TIMEOUT_MS : 0));
     assert(w.getRecoveryCount() == 5); // AGC attempts do not inflate watchdog recovery counters
@@ -680,6 +680,39 @@ int main() {
 }
 '''
 
+def transition_harness(source=None):
+    """Build the shared actual-method harness, including its counted I/O adapters."""
+    if source is None:
+        source = (ROOT / 'src/helpers/radiolib/RadioLibWrappers.cpp').read_text()
+    header = (ROOT / 'src/helpers/radiolib/RadioLibWrappers.h').read_text()
+    dispatcher = (ROOT / 'src/Dispatcher.h').read_text()
+    rxps = (ROOT / 'src/helpers/radiolib/RXPowerSaving.h').read_text()
+    names = [('int16_t', 'performChannelScanWithTimeout'), ('bool', 'isPacketPendingOrReceiving'),
+             ('bool', 'isChannelActive'), ('bool', 'isReceivingPassive'),
+             ('bool', 'setRxPowerSaving'), ('bool', 'setRxBoostedGainMode'),
+             ('void', 'startRecv'), ('void', 'checkReceiveMode'),
+             ('void', 'loop'), ('void', 'triggerNoiseFloorCalibrate'),
+             ('void', 'requestRestartRecv'), ('void', 'noiseFloorCalibCheck'),
+             ('void', 'endNoiseFloorCalib'), ('void', 'requestNoiseFloorRefresh'),
+             ('void', 'requestPeriodicNoiseFloorRefresh'), ('void', 'recalibrateNoiseFloor'),
+             ('bool', 'resetAGCIfIdle'), ('bool', 'tryResetAGC'), ('void', 'resetAGC'),
+             ('bool', 'getNoiseFloorWakeDelay')]
+    methods = method(rxps, 'inline bool rxPowerSavingUsesContinuousFallback(') + '\n'
+    methods += '\n'.join(method(source, f'{kind} RadioLibWrapper::{name}(')
+                         for kind, name in names)
+    constants = '\n'.join(re.findall(r'^#define NF_\w+\s+[^\n]+', source, re.MULTILINE))
+    constants += '\n' + re.search(
+        r'^#define RX_POWERSAVING_CONTINUOUS_FALLBACK_US\s+[^\n]+', rxps,
+        re.MULTILINE).group(0)
+    settle_start = header.index('#if defined(USE_SX1262) || defined(USE_SX1268) || defined(USE_LLCC68)')
+    settle = header[settle_start:header.index('#endif', settle_start) + len('#endif')]
+    return (HARNESS.replace('@METHODS@', methods).replace('@NF_CONSTANTS@', constants)
+            .replace('@SETTLE_CONSTANT@', settle)
+            .replace('@RECOVERY_GETTER@', method(header, 'uint32_t getRecoveryCount() const').replace('override', ''))
+            .replace('@LEGACY_TRY_RESET@', method(dispatcher, 'virtual bool tryResetAGC('))
+            .replace('@LEGACY_RECOVERY_GETTER@', method(dispatcher, 'virtual uint32_t getRecoveryCount(')))
+
+
 class RadioReceiveContractTest(unittest.TestCase):
     def test_preamble_margin_and_receive_deadlines(self):
         radio_source = (ROOT / 'src/helpers/radiolib/RadioLibWrappers.cpp').read_text()
@@ -903,32 +936,7 @@ int main() {
             self.assertEqual(result.returncode, 0, result.stderr)
 
     def run_production_transitions(self, source=None, expect_failure=False, phase_failure=False):
-        if source is None:
-            source = (ROOT / 'src/helpers/radiolib/RadioLibWrappers.cpp').read_text()
-        header = (ROOT / 'src/helpers/radiolib/RadioLibWrappers.h').read_text()
-        dispatcher = (ROOT / 'src/Dispatcher.h').read_text()
-        rxps = (ROOT / 'src/helpers/radiolib/RXPowerSaving.h').read_text()
-        names = [('int16_t','performChannelScanWithTimeout'), ('bool','isPacketPendingOrReceiving'),
-                 ('bool','isChannelActive'), ('bool','isReceivingPassive'),
-                 ('bool','setRxPowerSaving'), ('bool','setRxBoostedGainMode'),
-                 ('void','startRecv'), ('void','checkReceiveMode'),
-                 ('void','loop'), ('void','triggerNoiseFloorCalibrate'), ('void','requestRestartRecv'), ('void','noiseFloorCalibCheck'),
-                 ('void','endNoiseFloorCalib'), ('void','requestNoiseFloorRefresh'),
-                 ('void','requestPeriodicNoiseFloorRefresh'),
-                 ('void','recalibrateNoiseFloor'), ('bool','resetAGCIfIdle'),
-                 ('bool','tryResetAGC'), ('void','resetAGC')]
-        methods = method(rxps, 'inline bool rxPowerSavingUsesContinuousFallback(') + '\n'
-        methods += '\n'.join(method(source, f'{kind} RadioLibWrapper::{name}(') for kind,name in names)
-        constants = '\n'.join(re.findall(r'^#define NF_\w+\s+[^\n]+', source, re.MULTILINE))
-        constants += '\n' + re.search(
-            r'^#define RX_POWERSAVING_CONTINUOUS_FALLBACK_US\s+[^\n]+', rxps, re.MULTILINE).group(0)
-        settle_start = header.index('#if defined(USE_SX1262) || defined(USE_SX1268) || defined(USE_LLCC68)')
-        settle = header[settle_start:header.index('#endif', settle_start) + len('#endif')]
-        harness = (HARNESS.replace('@METHODS@', methods).replace('@NF_CONSTANTS@', constants)
-                   .replace('@SETTLE_CONSTANT@', settle)
-                   .replace('@RECOVERY_GETTER@', method(header, 'uint32_t getRecoveryCount() const').replace('override', ''))
-                   .replace('@LEGACY_TRY_RESET@', method(dispatcher, 'virtual bool tryResetAGC('))
-                   .replace('@LEGACY_RECOVERY_GETTER@', method(dispatcher, 'virtual uint32_t getRecoveryCount(')))
+        harness = transition_harness(source)
         with tempfile.TemporaryDirectory(prefix='meshcore-radio-transitions-') as tmp:
             cpp = Path(tmp) / 'test.cpp'
             binary = Path(tmp) / 'test'
