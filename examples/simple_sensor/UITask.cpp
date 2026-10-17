@@ -100,6 +100,11 @@ void UITask::begin(NodePrefs* node_prefs, const char* build_date, const char* fi
   // v1.2.3 (1 Jan 2025)
   snprintf(_version_info, sizeof(_version_info), "%s (%s)", version, build_date);
   free(version);
+
+  // Make the first read/frame immediately due, including begin() after wrap.
+  const uint32_t now = millis();
+  _last_read = now - 200u;
+  _last_refresh = now - 1000u;
 }
 
 void UITask::resetRadioProfileDisplayPage() {
@@ -208,7 +213,7 @@ void UITask::loop() {
   const bool morse_timing = mesh::morseTimingActive(activeSensorMesh().getProfileRadio());
   if (_display->servicePower(board.isExternalPowered() || board.isUsbHostConnected())) {
     resetRadioProfileDisplayPage();
-    _next_refresh = 0;
+    _last_refresh = millis() - 1000u;
   }
 #if defined(PIN_USER_BTN) && defined(DISPLAY_CLASS) \
     && defined(MOMENTARY_BUTTON_WAKE_FROM_SLEEP) \
@@ -218,12 +223,12 @@ void UITask::loop() {
     if (!_display->isOn()) {
       _display->wake(mesh::ui::DisplayWake::Button);
       resetRadioProfileDisplayPage();
-      _next_refresh = 0;
+      _last_refresh = millis() - 1000u;
     }
     _display->wake(mesh::ui::DisplayWake::Button);
   }
 #elif defined(PIN_USER_BTN)
-  if (millis() >= _next_read) {
+  if (static_cast<uint32_t>(millis() - _last_read) >= 200u) {
     int btnState = digitalRead(PIN_USER_BTN);
     if (btnState != _prevBtnState) {
       if (btnState == USER_BTN_PRESSED) {  // pressed?
@@ -237,17 +242,17 @@ void UITask::loop() {
       }
       _prevBtnState = btnState;
     }
-    _next_read = millis() + 200;  // 5 reads per second
+    _last_read = millis();  // 5 reads per second, timed from completed I/O
   }
 #endif
 
   if (!morse_timing && _display->isOn()) {
-    if (millis() >= _next_refresh) {
+    if (static_cast<uint32_t>(millis() - _last_refresh) >= 1000u) {
       _display->startFrame();
       renderCurrScreen();
       _display->endFrame();
 
-      _next_refresh = millis() + 1000;   // refresh every second
+      _last_refresh = millis();   // refresh every second, after the frame ends
     }
 #if MOMENTARY_BUTTON_WAKE_HOLD_MS > 0 && defined(PIN_USER_BTN)
     if (user_btn.isWakeHoldActive()) _display->wake(mesh::ui::DisplayWake::Button);

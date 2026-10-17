@@ -5,7 +5,8 @@
 
 class UITask {
   DisplayDriver* _display;
-  unsigned long _next_read, _next_refresh;
+  // Completion timestamps keep periodic work due across millis() rollover.
+  uint32_t _last_read, _last_refresh;
   int _prevBtnState;
   NodePrefs* _node_prefs;
   char _version_info[32];
@@ -16,7 +17,7 @@ class UITask {
   bool showingSecondaryRadioProfilePage();
   void renderCurrScreen();
 public:
-  UITask(DisplayDriver& display) : _display(&display) { _next_read = _next_refresh = 0; }
+  UITask(DisplayDriver& display) : _display(&display) { _last_read = _last_refresh = 0; }
   void begin(NodePrefs* node_prefs, const char* build_date, const char* firmware_version);
 
   void loop();

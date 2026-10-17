@@ -67,6 +67,7 @@ struct UI {
   struct Prefs { const char* node_name="test"; } prefs;
   Prefs* _node_prefs=&prefs;
   uint32_t _next_refresh=0,_alert_expiry=0,ui_started_at=0,next_batt_chck=0;
+  uint32_t _last_refresh=0;
   uint16_t _cached_batt_mv=4000,voltage=3350;
   bool _need_refresh=true;
   char _alert[4]={},_origin[4]={},_msg[4]={};
@@ -224,22 +225,29 @@ int main() {
                 self.assertIn("_display->startFrame()", redraw)
                 code = FIXTURE.replace("@REDRAW@", redraw).replace("@CUTOFF@", "") + r'''
 int main() {
+  constexpr bool sensor_timestamps=@SENSOR_TIMESTAMPS@;
   for(bool external : {false,true}) {
     board.external=external;
     for(unsigned mode=0;mode<4;++mode) {
       UI ui; adc_reads=frames=0;
+      const uint32_t last_refresh_before=ui._last_refresh;
       radio_driver.tx=mode==1; radio_driver.rx=mode==2; radio_driver.cw=mode==3;
       ui.redraw();
       if(mode==1 || mode==2) {
-        assert(frames==0 && adc_reads==0 && ui._next_refresh==0);
+        if(sensor_timestamps)
+          assert(frames==0 && adc_reads==0 && ui._last_refresh==last_refresh_before);
+        else assert(frames==0 && adc_reads==0 && ui._next_refresh==0);
         radio_driver.tx=radio_driver.rx=false;
         ui.redraw(); assert(frames==1 && adc_reads==1);
       } else assert(frames==1 && adc_reads==1);
-      assert(ui._next_refresh>now_ms);
+      if(sensor_timestamps) assert(ui._last_refresh==now_ms);
+      else assert(ui._next_refresh>now_ms);
     }
   }
 }
 '''
+                code = code.replace("@SENSOR_TIMESTAMPS@",
+                                    "true" if path == "examples/simple_sensor/UITask.cpp" else "false")
                 compile_run(self, code, flags=("-Wno-unused-variable",), headers={"Dispatcher.h": RADIO})
 
     def test_actual_full_and_tiny_ui_cutoff_reads_fresh_voltage_even_during_morse(self):
