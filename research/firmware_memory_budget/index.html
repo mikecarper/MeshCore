@@ -2308,6 +2308,23 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="nRF52 Companion flash savings">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#empty-contact-path-cache-initialization" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Empty contact-path cache initialization
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -2799,6 +2816,59 @@ so a peer that stops reading cannot hold the mesh loop in WiFiClient retries.
 App CLI replies remain bounded and supply a continuation command.
 The physical RAK passed all 21 chapters, ranges, app-style continuation replies,
 a paused USB reader exceeding the 4 KiB queue, and disconnect cancellation.</p>
+<h3 id="empty-contact-path-cache-initialization">Empty contact-path cache initialization</h3>
+<p>The contact-path pool now has an explicit runtime constructor. Its existing
+member defaults still initialize every empty handle and resident entry, and
+<code>Slot()</code> still resets released handles. This moves the local static pool from
+initialized <code>.data</code> to zero-initialized <code>.bss</code>: the vtable pointer and repeated
+<code>NONE</code>/255 slot markers no longer require a 5,780-byte flash load image. The
+pool is constructed on first use by the existing main-loop contact owner.
+Its layout, 390 handle slots, 16 resident paths, reference/snapshot behavior
+and persistent contact records are unchanged.</p>
+<p>The RAK4631 Full release recipe at <code>c0672b90</code>, with the full
+<code>v1.17.1.10-halo-keymind-cascade-dev</code> version and commit suffix, measured:</p>
+<table>
+<thead>
+<tr>
+<th>Measurement</th>
+<th style="text-align: right;">Before</th>
+<th style="text-align: right;">Runtime pool construction</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Linked initialized flash bytes</td>
+<td style="text-align: right;">716,448</td>
+<td style="text-align: right;">710,908</td>
+</tr>
+<tr>
+<td>Application image including EndF</td>
+<td style="text-align: right;">716,528</td>
+<td style="text-align: right;">710,988</td>
+</tr>
+<tr>
+<td>Linked available heap bytes</td>
+<td style="text-align: right;">79,388</td>
+<td style="text-align: right;">79,388</td>
+</tr>
+<tr>
+<td>Required runtime heap bytes</td>
+<td style="text-align: right;">74,576</td>
+<td style="text-align: right;">74,576</td>
+</tr>
+</tbody>
+</table>
+<p>The net flash saving is 5,540 bytes after constructor/guard code. The image
+passes the existing 712,704-byte application ceiling, capability checks, RAM
+budget and DFU handoff checks. Its padded UF2 ends at <code>0xD3A00</code>, below the
+unchanged <code>0xD4000</code> boundary. Sensors, BLE/USB/Ethernet, SD, logging, Meshtext,
+OTA, Reader data and the 8 KiB loop stack remain enabled.</p>
+<p>The contact-cache test compiles a real static pool and checks its zero-initialized
+storage, alongside the existing sanitized eviction, snapshot, migration and
+transaction tests. The compiled ARM Companion check also rejects a pool in an
+initialized ELF section, so compiler promotion cannot silently restore the
+flash image. Its normal linked crypto vectors and Reader retention checks
+remain required.</p>
 <h2 id="release-evidence-and-regression-tests">Release evidence and regression tests</h2>
 <p>Full Companions without PSRAM also use
 <a href="../companion_contact_cache/">16-entry path and shared-secret caches</a>.
