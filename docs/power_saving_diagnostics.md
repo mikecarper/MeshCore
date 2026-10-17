@@ -96,3 +96,27 @@ for all page names and commands.
 The [nRF52 idle-sleep investigation](nrf52_sleep_event_validation.md) describes
 an eligible-but-not-sleeping regression, its fix, controlled hardware evidence
 and the limits of CPU-state sampling without a current meter.
+
+## Board regulator initialization
+
+RAK4631 Companion uses the same nRF52840 REG1 DC/DC initialization as the other
+RAK4631 roles. The former Companion-only force-LDO flag has been removed. This
+does not change REG0, the SX1262 regulator, storage layout, or boot-voltage
+protection. The shared initializer uses the SoftDevice API when BLE's stack is
+already active and the hardware register otherwise; Companion starts the board
+before it starts Bluetooth.
+
+[RAK documents DC/DC support](https://docs.rakwireless.com/product-categories/wisduo/rak4630-module/quickstart/)
+for the module. The related upstream [battery-startup report #1878](https://github.com/meshcore-dev/MeshCore/issues/1878)
+concerned Repeater firmware, with BLE Companion reported working on an affected
+board. It did not establish filesystem corruption or a Companion-specific
+DC/DC failure. [PR #1914](https://github.com/meshcore-dev/MeshCore/pull/1914)
+also changes boot-voltage/wakeup handling and is not proof that every failure
+in that thread has the same cause.
+
+Host startup tests cover both SoftDevice states and regulator selection before
+the boot-voltage check. Firmware compilation is not hardware qualification:
+compare battery-only cold starts, low-voltage recovery, BLE operation and
+settings writes/reboots on the actual board/baseboard revisions before a fleet
+rollout. USB power can mask the reported startup symptoms. A current meter is
+still needed to quantify the power difference.
