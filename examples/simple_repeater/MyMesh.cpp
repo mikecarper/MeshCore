@@ -5214,9 +5214,10 @@ uint32_t MyMesh::getPowerSaveSleepSeconds(uint32_t max_secs) const {
   if (before_scheduled > 0 && sleep_secs == 0) blocked |= mask(Reason::Scheduled);
 #if defined(WITH_RS232_BRIDGE)
   if (bridge && rs232BridgeEnabled()) {
-    // Floor the deadline, not ceil: the ESP32 timed-light-sleep API uses whole
-    // seconds and must never sleep past a UART rendezvous or cleanup retry.
-    const uint32_t bridge_sleep_secs = bridge->powerWakeDelayMs(millis()) / 1000UL;
+    // Timed sleepers must not overshoot; interrupt-idle boards can still
+    // sleep with a positive sub-second remainder and wake on their clock IRQ.
+    const uint32_t bridge_sleep_secs = mesh::power::powerSaveSleepSeconds(
+        bridge->powerWakeDelayMs(millis()));
     if (bridge_sleep_secs < sleep_secs) sleep_secs = bridge_sleep_secs;
     if (bridge_sleep_secs == 0) blocked |= mask(Reason::BridgeWake);
   }

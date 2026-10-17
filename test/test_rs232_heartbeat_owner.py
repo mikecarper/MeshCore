@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Execute RS-232 UART/GPS ownership and whole-second standby sleep gates."""
+"""Execute RS-232 UART/GPS ownership and timed/interrupt standby sleep gates."""
 
 from pathlib import Path
 import shutil
@@ -18,6 +18,7 @@ HARNESS = r'''
 #include <cstring>
 #include <new>
 #include <limits>
+#include <initializer_list>
 #include <helpers/PowerManagementUtils.h>
 #include <helpers/PowerSavingDiagnostics.h>
 #define WITH_BRIDGE 1
@@ -216,8 +217,15 @@ int main() {
     const unsigned loops = node.bridge->loops;
     node.serviceRs232BridgePower(); assert(node.bridge->loops == loops);
     assert(node.getPowerSaveSleepSeconds(30) == 30);
-    node.bridge->wake_delay = 29999; assert(node.getPowerSaveSleepSeconds(30) == 29);
-    node.bridge->wake_delay = 999; assert(node.getPowerSaveSleepSeconds(30) == 0);
+    for (uint32_t remainder : {1U, 50U, 999U, 1000U, 29999U, 30000U}) {
+      node.bridge->wake_delay = remainder;
+#ifdef NRF52_PLATFORM
+      const uint32_t expected = (remainder + 999U) / 1000U;
+#else
+      const uint32_t expected = remainder / 1000U;
+#endif
+      assert(node.getPowerSaveSleepSeconds(30) == expected);
+    }
     node.bridge->wake_delay = 0; assert(node.hasPendingWork());
 #ifdef WITH_MQTT_BRIDGE
     MQTTBridge broker; node.mqtt_bridge = &broker;
@@ -304,13 +312,15 @@ class RS232HeartbeatOwnerTests(unittest.TestCase):
             "uint32_t MyMesh::getPowerSaveSleepSeconds(uint32_t max_secs) const",
         ))
         source = HARNESS.replace("@OWNER@", owner).replace("@SLEEP@", sleep)
-        for gps in (0, 1):
+        for gps, nrf in ((0, False), (1, False), (0, True), (1, True)):
             for mqtt in (False, True):
-                with self.subTest(gps=gps, mqtt=mqtt), tempfile.TemporaryDirectory(prefix="rs232-owner-") as directory:
+                with self.subTest(gps=gps, mqtt=mqtt, nrf=nrf), tempfile.TemporaryDirectory(prefix="rs232-owner-") as directory:
                     work = Path(directory)
                     cpp, binary = work / "test.cpp", work / "test"
                     cpp.write_text(source, encoding="ascii")
                     flags = [f"-DENV_INCLUDE_GPS={gps}"]
+                    if nrf:
+                        flags.append("-DNRF52_PLATFORM=1")
                     if mqtt:
                         flags.append("-DWITH_MQTT_BRIDGE=1")
                     built = subprocess.run([compiler, "-std=c++17", "-Wall", "-Wextra", "-Werror",
