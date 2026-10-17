@@ -2436,6 +2436,56 @@ compare battery-only cold starts, low-voltage recovery, BLE operation and
 settings writes/reboots on the actual board/baseboard revisions before a fleet
 rollout. USB power can mask the reported startup symptoms. A current meter is
 still needed to quantify the power difference.</p>
+<p>The following boards also now call their declared <code>NRF52BoardDCDC</code> initializer
+instead of bypassing it with <code>NRF52Board::begin()</code>. This applies to every role
+that uses the board class, not just Companion, and does not require enabling
+the runtime sleep policy. The nRF52840 hardware manages the enabled regulator
+according to load. This is REG1 only, not a blanket change to REG0 or an
+external LDO, PMIC output, or radio regulator.</p>
+<table>
+<thead>
+<tr>
+<th>Board</th>
+<th>Circuit evidence used for REG1 support</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Heltec T1</td>
+<td><a href="https://resource.heltec.cn/download/Mesh_Node_T1/schematic/Mesh_Node_T1_V1.0.pdf">T1 V1.0 schematic</a>, DCC-to-DEC4 inductors and capacitors.</td>
+</tr>
+<tr>
+<td>Heltec MeshPocket</td>
+<td><a href="https://resource.heltec.cn/download/MeshPocket/schematic/MeshPocket_nRF52840%2BSX1262.pdf">MeshPocket schematic</a>, DCC-to-DEC4 L1/L2 and C5/C6.</td>
+</tr>
+<tr>
+<td>Heltec MeshSolar and MeshTower V2</td>
+<td><a href="https://resource.heltec.cn/download/MeshTower-V2/schematic/HT-N5262M_Schematic_Diagram.pdf">HT-N5262M module circuit</a>, L1/L2 and C1/C2. Heltec links this circuit from its <a href="https://heltec.org/project/meshtower/">MeshTower V2 resources</a>; <a href="https://resource.heltec.cn/download/MeshSolar/datasheet/MeshSolar_V1.0.0.pdf">MeshSolar's datasheet</a> identifies the module.</td>
+</tr>
+<tr>
+<td>LilyGO T-Echo</td>
+<td><a href="https://raw.githubusercontent.com/Xinyuan-LilyGO/T-Echo/main/schematic/T-Echo_Schematic.pdf">T-Echo schematic</a>, REG1 DC/DC network and explicit DC/DC-enabled design note.</td>
+</tr>
+<tr>
+<td>Ikoka Handheld, Nano and Stick nRF52</td>
+<td><a href="https://files.seeedstudio.com/wiki/XIAO-BLE/Seeed_Studio_XIAO_nRF52840_PDF.pdf">XIAO nRF52840 circuit</a>, DCC L1 and DEC4 capacitors. The designers identify XIAO as the MCU for <a href="https://github.com/ndoo/ikoka-handheld-meshtastic-device">Handheld</a>, <a href="https://ndoo.sg/projects:amateur_radio:meshtastic:diy_devices:ikoka_nano">Nano</a> and <a href="https://github.com/ndoo/ikoka-stick-meshtastic-device">Stick</a>.</td>
+</tr>
+<tr>
+<td>Minew ME25LS01</td>
+<td><a href="https://store.minewsemi.com/wp-content/uploads/2024/03/ME25LS01_LR1110_Datasheet_K_EN.pdf">Manufacturer datasheet</a>, electrical schematic page 9: MCU DCC through ML2/ML3 to DEC4_6 and MC15/MC16.</td>
+</tr>
+</tbody>
+</table>
+<p>The startup tests execute each real <code>begin()</code> with SoftDevice off/on and power
+management compiled out/in. They require DC/DC before peripheral initialization
+and before any enabled boot-voltage check, while retaining one common board
+initialization. The previous bypass fails these tests.</p>
+<p>ThinkNode M3/M4/M6 and generic ProMicro remain unchanged pending exact circuit
+or physical-board confirmation; their DC/DC inheritance alone is not evidence.
+Nano G2 Ultra, ThinkNode M1/M8 and Keepteen LT1 retain their plain <code>NRF52Board</code>
+initializers for the same reason. The MeshTracker X1's LR2021 regulator likewise
+remains unchanged. Do not turn on a switching regulator without its required
+inductor/capacitor network. The MCU and LoRa regulator choices are independent.</p>
 
 
 
