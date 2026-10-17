@@ -300,4 +300,6 @@ PY
   done
 done
 
+python3 -B test/test_nrf52_paired_logging.py -v
+
 echo "test_nrf52_ota_profiles: OK"

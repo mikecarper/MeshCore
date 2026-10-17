@@ -189,7 +189,13 @@ FULL-capable non-companion hardware/role that has a matching MQTT environment.
 It compiles USB packet logging and direct WiFi MQTT together. A
 `*-full-logging-ota-*` fallback is emitted only when there is no MQTT sibling;
 ordinary non-OTA roles compile runtime USB logging into their canonical image,
-so separate standard-logging artifacts are not emitted. Non-MQTT FULL twins
+so separate standard-logging artifacts are not emitted. Canonical RAK3401/RAK4631
+repeater, room and sensor OTA pairs, and Tower SD repeater/room pairs, retain
+runtime USB packet logging in both sensor variants too. Verbose debug is off
+by default; packaged `logging.usb.packets` and `logging.usb.control` capability
+checks prevent a stale no-logger image from satisfying a resumed build.
+Specialized storage/transport aliases and other constrained OTA targets keep
+their existing logging policy. Non-MQTT FULL twins
 are also skipped for covered ESP32 roles. MQTT observers and ESP-NOW bridges are emitted only with
 expanded FULL partitions. Menu option 8, or `build-full-esp32-firmwares`,
 builds the unified profiles plus necessary fallbacks. Menu option 9, or

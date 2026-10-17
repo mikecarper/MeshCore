@@ -216,8 +216,9 @@ Environment Variables:
                            A single custom version suffix found in existing OUTPUT_DIR
                            artifacts is carried forward after the new numeric version.
   DISABLE_DEBUG=1: Disables build-time debug logging. Full Companion retains its
-                   runtime-gated diagnostics; canonical XIAO QSPI repeaters retain
-                   runtime-gated USB packet logging while MESH_DEBUG stays disabled.
+                   runtime-gated diagnostics; canonical XIAO QSPI repeaters and
+                   qualified RAK/Tower sensor-OTA pairs retain runtime-gated USB
+                   packet logging while MESH_DEBUG stays disabled.
                    If not set, debug flags from variant platformio.ini files are used.
   RESUME_BUILD_OUTPUT=1: Preserves out/ and skips targets whose expected output
                          artifacts already exist. Option 3 resumes by default.
@@ -2721,7 +2722,9 @@ disable_debug_flags() {
   # apparent order in PLATFORMIO_BUILD_FLAGS.
   if [ -n "$env_name" ] && is_companion_radio_full_target "$env_name"; then
     usb_logging_undefs=""
-  elif [ -n "$env_name" ] && is_xiao_qspi_canonical_repeater_build "$env_name"; then
+  elif [ -n "$env_name" ] \
+      && { is_xiao_qspi_canonical_repeater_build "$env_name" \
+           || is_nrf52_paired_runtime_logging_build "$env_name"; }; then
     # Its combined artifact promises runtime USB packet logging. Keep the
     # logger linked without retaining optional MESH_DEBUG output.
     usb_logging_undefs="-UMESH_DEBUG"
@@ -2761,7 +2764,9 @@ apply_debug_overrides() {
   if [ -n "$env_name" ] && is_companion_radio_full_target "$env_name"; then
     preserve_full_companion_logging=1
     preserve_runtime_packet_logging=1
-  elif [ -n "$env_name" ] && is_xiao_qspi_canonical_repeater_build "$env_name"; then
+  elif [ -n "$env_name" ] \
+      && { is_xiao_qspi_canonical_repeater_build "$env_name" \
+           || is_nrf52_paired_runtime_logging_build "$env_name"; }; then
     preserve_runtime_packet_logging=1
   fi
 
@@ -2794,6 +2799,37 @@ apply_debug_overrides() {
   esac
 }
 
+is_nrf52_paired_runtime_logging_build() {
+  local env_name=$1
+
+  # Required sensor pairs normalize normal nodes onto historical OTA aliases.
+  # Those aliases must not silently discard the ordinary USB logger. Qualify
+  # these exact canonical board/role recipes first; do not broaden the old
+  # size-limited OTA or specialized transport policy for unrelated targets.
+  [ "${PIO_ENV_PLATFORM_BY_NAME[$env_name]:-}" = "NRF52_PLATFORM" ] || return 1
+  case "${NRF52_OTA_SENSOR_PROFILE:-}" in
+    full|reduced) ;;
+    *) return 1 ;;
+  esac
+  case "${env_name,,}" in
+    rak_3401_repeater|rak_3401_room_server|rak_3401_sensor|\
+    rak_3401_repeater_lora_ota_no_external_sensors|\
+    rak_3401_room_server_lora_ota_no_external_sensors|\
+    rak_3401_sensor_lora_ota_no_external_sensors|\
+    rak_3401_repeater_unified_lora_ota|\
+    rak_4631_repeater|rak_4631_room_server|rak_4631_sensor|\
+    rak_4631_repeater_lora_ota_no_external_sensors|\
+    rak_4631_room_server_lora_ota_no_external_sensors|\
+    rak_4631_sensor_lora_ota_no_external_sensors|\
+    rak_4631_repeater_unified_lora_ota|\
+    heltec_tower_v2_sdcard_repeater_lora_ota_no_external_sensors|\
+    heltec_tower_v2_room_server|\
+    heltec_tower_v2_room_server_lora_ota_no_external_sensors)
+      return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
 uses_merged_standard_usb_logging() {
   local env_name=$1
 
@@ -2806,6 +2842,8 @@ uses_merged_standard_usb_logging() {
       return 1
       ;;
   esac
+
+  is_nrf52_paired_runtime_logging_build "$env_name" && return 0
 
   # These profiles either own Serial for framed traffic, deliberately trade
   # logging for OTA space, or provide their own logging contract. Keep those
@@ -2834,12 +2872,17 @@ apply_merged_standard_usb_logging_profile() {
 
   uses_merged_standard_usb_logging "$env_name" || return 0
 
-  # Canonical XIAO QSPI repeaters include packet logging in the immutable
-  # combined artifact. The saved usb.logging switch controls its live stream.
+  # Canonical combined recipes include packet logging in the immutable
+  # artifact. The saved usb.logging switch controls its live stream.
   local preserve_runtime_packet_logging=0
-  if is_xiao_qspi_canonical_repeater_build "$env_name"; then
+  if is_xiao_qspi_canonical_repeater_build "$env_name" \
+      || is_nrf52_paired_runtime_logging_build "$env_name"; then
     preserve_runtime_packet_logging=1
     export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -DMESH_PACKET_LOGGING=1 -DMESH_USB_LOGGING_MERGED=1"
+  fi
+  if is_nrf52_paired_runtime_logging_build "$env_name" \
+      && [ "${MESHDEBUG_OVERRIDE,,}" != "on" ]; then
+    export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -UMESH_DEBUG"
   fi
 
   # Explicit diagnostic overrides retain their documented meaning. Canonical
@@ -2853,7 +2896,9 @@ apply_merged_standard_usb_logging_profile() {
     export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -DMESH_PACKET_LOGGING=1 -DMESH_USB_LOGGING_MERGED=1"
   fi
   if [ "${MESHDEBUG_OVERRIDE,,}" != "off" ] \
-      && ! is_logging_size_constrained_target "$env_name"; then
+      && ! is_logging_size_constrained_target "$env_name" \
+      && { ! is_nrf52_paired_runtime_logging_build "$env_name" \
+           || [ "${MESHDEBUG_OVERRIDE,,}" = "on" ]; }; then
     export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -DMESH_DEBUG=1"
   fi
 }
@@ -3424,7 +3469,8 @@ declare_full_logging_application_contract() {
   local env_name=$1
   BUILD_APPLICATION_EXPECTATIONS=()
   if requires_full_usb_packet_logging "$env_name" \
-      || is_xiao_qspi_canonical_repeater_build "$env_name"; then
+      || is_xiao_qspi_canonical_repeater_build "$env_name" \
+      || is_nrf52_paired_runtime_logging_build "$env_name"; then
     # Inspect the packaged application, not an ELF debug/symbol string. The
     # settings alone can exist in debug-only builds with packet logging absent.
     record_application_expectation "logging.usb.packets" \

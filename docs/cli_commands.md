@@ -1249,7 +1249,15 @@ expected by ordinary USB-to-MQTT parsers.
 
 Ordinary non-OTA artifacts compile packet logging into the canonical image and
 control its live USB output at runtime; no separate `-logging-` artifact is
-emitted. Use the separately named `-ota-` artifact when LoRa OTA is required. A
+emitted. Canonical RAK3401/RAK4631 repeater, room and sensor OTA pairs, plus
+Tower SD repeater and Tower room pairs, also retain packet logging in both
+Full-sensor and Reduced-sensor artifacts. Verbose debug stays off by default;
+`get/set usb.logging` controls packet output. Their capability manifests must
+verify both `logging.usb.packets` and `logging.usb.control` in the packaged
+application. Specialized storage/transport aliases and other space-constrained
+OTA-only targets retain their target-specific logging policy.
+
+For other roles, use the separately named `-ota-` artifact when required. A
 `-full-usb-wifi-ota-` artifact combines USB packet logging, direct WiFi MQTT,
 LoRa OTA, and the expanded FULL feature set. A `-full-logging-ota-` artifact is
 emitted only when that hardware/role has no matching WiFi MQTT environment.
