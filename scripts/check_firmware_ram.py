@@ -27,7 +27,6 @@ from firmware_elf import FirmwareElf
 SUPPORTED = {"NRF52_PLATFORM", "ESP32_PLATFORM", "RP2040_PLATFORM", "STM32_PLATFORM"}
 DISPLAY_HEAP = {
     "": 0, "NullDisplayDriver": 0,
-    "ST7735Display": 25602,
     "SSD1306Display": 4096, "SH1106Display": 4096, "U8g2Display": 4096,
     "SH1107Display": 4096,
     # These drivers render directly or embed their pixel storage in globals.
@@ -144,6 +143,17 @@ def requirements(platform, defines, target):
         if platform != "ESP32_PLATFORM":
             raise ValueError("Wio Tracker L2 display budget requires ESP32")
         display_heap = wio_tracker_l2_display_heap(defines)
+    elif display == "ST7735Display":
+        depth = integer(defines, "ST7735_BUFFER_COLOR_DEPTH", 16)
+        if depth not in (8, 16):
+            raise ValueError("ST7735_BUFFER_COLOR_DEPTH must be 8 or 16")
+        # TFT_eSprite adds one trailing pixel. The opt-in RGB332 path also
+        # source-bounds its complete sprite object plus allocator metadata to
+        # 1 KiB. Its 320-byte wire scanline lives on the unchanged loop stack;
+        # the existing transient allowance remains additive.
+        display_heap = (160 * 80 + 1) * (depth // 8)
+        if depth == 8:
+            display_heap += 1024
     elif display in DISPLAY_HEAP:
         display_heap = DISPLAY_HEAP[display]
     else:

@@ -34,6 +34,11 @@ jobs:
           --firmware-version v1.17.1.10-halo-keymind-cascade-dev
           --radio-preset usa-cascade-fixed --profile cascade --require-ota
 
+      - name: Compile both legacy T096 BLE FEM settings with their RAM gates
+        # Sequential environments in one process; do not replace these with
+        # Full overlays, which have different OTA and runtime allocations.
+        run: pio run -e Heltec_t096_companion_radio_ble_femoff -e Heltec_t096_companion_radio_ble_femon
+
   nrf52-sensor-smoke:
     runs-on: ubuntu-latest
     steps:
@@ -750,6 +755,7 @@ jobs:
           python3 -B test/test_local_release_full_selection.py
           python3 -B test/test_local_release_capacity_archive.py
           python3 -B test/test_t096_full_memory.py
+          python3 -B test/test_st7735_framebuffer.py -v
           python3 -B test/test_nrf52_ble_startup.py
           python3 -B test/test_nrf52_ble_backpressure.py
           python3 -B test/test_nrf52_ble_rx_queue.py -v

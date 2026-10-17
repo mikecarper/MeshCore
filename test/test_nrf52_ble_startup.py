@@ -31,6 +31,7 @@ HARNESS = r'''
 #include <helpers/BleMotaProtocol.h>
 #include <helpers/nrf52/SecuritySessionTimer.h>
 #include <helpers/nrf52/BleDebugTrace.h>
+#include <helpers/nrf52/SleepCycleState.h>
 #ifndef COMPANION_FEATURE_BLE_MOTA_SOURCE
 #define COMPANION_FEATURE_BLE_MOTA_SOURCE 1
 #endif
@@ -194,7 +195,17 @@ int main() {
     // services are extensions: registration failure must leave UART BLE
     // available for pairing, diagnostics, and recovery.
     const bool expected = fault != 1 && fault != 2;
+    auto& sleep_state = mesh_nrf52::sleepCycleState();
+    const uint32_t before_start = sleep_state.begin();
+    assert(sleep_state.publish(before_start, false, 42));
+    mesh_nrf52::SleepCycleSnapshot snapshot;
+    assert(sleep_state.snapshot(snapshot));
+    assert(snapshot.generation == before_start);
     assert(port.begin("MC-", "T096", 123456) == expected);
+    // Even a failed/partial SoftDevice start invalidates the pre-start view:
+    // the next sleep decision must query and publish fresh SDK state.
+    assert(!sleep_state.current(before_start));
+    assert(!sleep_state.snapshot(snapshot));
     assert(Bluefruit.mtu == COMPANION_BLE_PRPH_MTU);
     assert(Bluefruit.event_length == COMPANION_BLE_PRPH_EVENT_LENGTH);
     assert(Bluefruit.hvn_queue == COMPANION_BLE_PRPH_HVN_QUEUE);
@@ -202,9 +213,18 @@ int main() {
     assert(Bluefruit.starts == starts + 1);
     assert((instance == &port) == expected);
     // Retrying a failed partial init must never allocate another stack/FIFO.
+    // Likewise, an already-attempted begin does not invalidate a fresh sleep
+    // snapshot because it never attempts SoftDevice startup again.
     for (int retry = 0; retry < 4; ++retry) {
+      const uint32_t before_retry = sleep_state.begin();
+      assert(sleep_state.publish(before_retry, expected, 43 + retry));
       assert(port.begin("MC-", "T096", 123456) == expected);
       assert(Bluefruit.starts == starts + 1);
+      assert(sleep_state.current(before_retry));
+      assert(sleep_state.snapshot(snapshot));
+      assert(snapshot.generation == before_retry);
+      assert(snapshot.softdevice_enabled == expected);
+      assert(snapshot.usb_status == unsigned(43 + retry));
     }
   }
 }
