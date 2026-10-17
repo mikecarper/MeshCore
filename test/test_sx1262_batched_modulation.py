@@ -59,7 +59,7 @@ struct Radio {
   int16_t result=0;
   uint8_t getPacketType() { ++queries; return packetType; }
   int16_t setModulationParams(uint8_t sf,uint8_t bw,uint8_t cr,uint8_t ldro) {
-    // RadioLib 187ef247 reads these caches, not just the command arguments,
+    // The pinned RadioLib reads these caches, not just the command arguments,
     // when deciding LDRO. Assert they are synchronized before that call.
     assert(spreadingFactor==sf && bandwidth==bw && codingRate==cr);
     if (ldroAuto) ldrOptimize=((1U<<spreadingFactor)/bandwidthKhz)>=16.0f;

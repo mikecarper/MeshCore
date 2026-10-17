@@ -75,7 +75,13 @@ class BenchWrapper : public CustomSX1262Wrapper {
   uint32_t detourFirstMod=0,detourFinalMod=0;
   uint32_t lastFirstPassUs=0,lastSecondPassUs=0,secondPassBlocked=0;
   using CustomSX1262Wrapper::CustomSX1262Wrapper;
-  uint32_t receiveStartedUs() const { return _profile_visit_us; }
+  uint32_t receiveStartedUs() const {
+#if !defined(ESP32_PLATFORM)
+#error "profile_switch.cpp requires the ESP32 microsecond profile clock"
+#endif
+    // ESP32 profile stamps are micros(), not the nRF52 RTC2 tick clock.
+    return _profile_visit_stamp;
+  }
   mesh::RadioParamApplyResult hop(uint8_t target) {
     const bool detour=firstPassDetour && hopPasses==2;
     const auto desired=_profiles.params(target);
@@ -231,6 +237,9 @@ void run(bool warm, int sf, unsigned count, bool batched, unsigned mask, unsigne
   uint32_t skipped = 0, failed = 0, modeErrors = 0, cacheErrors = 0, timeouts = 0, completed = 0;
   const uint32_t start = millis();
   const uint32_t fastStart = chip.getOptimizedProfileSwitches();
+  const uint32_t fsStart = chip.hilFsEntries;
+  const uint32_t packetStart = chip.hilPacketSkips;
+  const uint32_t iqStart = chip.hilIqWorkaroundSkips;
   for (unsigned attempt = 0; completed < count + 8 && attempt < count * 4 + 32; ++attempt) {
     if (uint32_t(millis() - start) > 30000) break;
     drain();
@@ -261,10 +270,19 @@ void run(bool warm, int sf, unsigned count, bool batched, unsigned mask, unsigne
   lastRunResult.text[0]=0;
   appendBenchResult(lastRunResult,"{\"result\":%u,\"warm\":%s,\"batched\":%s,\"mask\":%u,\"spi_mhz\":%u,\"sf500\":%d,\"requested\":%u,"
                 "\"skipped_busy\":%u,\"failures\":%u,\"busy_timeouts\":%u,\"rx_mode_errors\":%u,"
-                "\"cache_errors\":%u,\"tcxo_delay_us\":%u,\"optimized_rx_resumes\":%u,\"directions\":[",
+                "\"cache_errors\":%u,\"tcxo_delay_us\":%u,\"optimized_rx_resumes\":%u,"
+                "\"fs\":%s,\"packet_cache\":%s,\"fs_entries\":%u,\"packet_skips\":%u,"
+                "\"iq_cache\":%s,\"iq_workaround_skips\":%u,",
                 sequence,warm ? "true" : "false", batched ? "true" : "false", mask, spiMHz, sf, count,
                 skipped, failed, timeouts, modeErrors, cacheErrors,
-                unsigned(chip.tcxoDelay),unsigned(chip.getOptimizedProfileSwitches()-fastStart));
+                unsigned(chip.tcxoDelay),unsigned(chip.getOptimizedProfileSwitches()-fastStart),
+                chip.hilUseFsOnRetune ? "true" : "false", chip.hilSkipUnchangedPacket ? "true" : "false",
+                unsigned(chip.hilFsEntries-fsStart),unsigned(chip.hilPacketSkips-packetStart),
+                chip.hilSkipUnchangedIq ? "true" : "false",unsigned(chip.hilIqWorkaroundSkips-iqStart));
+#ifdef HIL_INDICATOR
+  appendBenchResult(lastRunResult,"\"port0\":%s,",radioHal.hilUsePort0Only ? "true" : "false");
+#endif
+  appendBenchResult(lastRunResult,"\"directions\":[");
   for (int i = 0; i < 2; ++i) {
     if (i) appendBenchResult(lastRunResult,",");
     appendBenchResult(lastRunResult,"{\"to_profile\":%d,", i);
@@ -292,6 +310,43 @@ void run(bool warm, int sf, unsigned count, bool batched, unsigned mask, unsigne
 #include "profile_switch_channels.h"
 #include "profile_preamble_diagnostic.h"
 #include "profile_stationary_baseline.h"
+
+// HIL-only, same-image controls for the existing production state machine.
+// They do not relax ownership, BUSY polling, or command-status checks, and
+// CustomSX1262 resets all three fast policies to false on benchmark reboot.
+bool selectProfileFastPolicy(const char* line) {
+  unsigned value;
+  char trailing;
+  unsigned policy;
+  if (sscanf(line, "fs %u %c", &value, &trailing) == 1 && value <= 1) {
+    policy = 0;
+  } else if (sscanf(line, "packetcache %u %c", &value, &trailing) == 1
+             && value <= 1) {
+    policy = 1;
+  } else if (sscanf(line, "iqcache %u %c", &value, &trailing) == 1 && value <= 1) {
+    policy = 3;
+#ifdef HIL_INDICATOR
+  } else if (sscanf(line, "port0 %u %c", &value, &trailing) == 1 && value <= 1) {
+    policy = 2;
+#endif
+  } else {
+    return false;
+  }
+  if (packetListening || stationaryBaseline.active || preambleDiagnostic.active
+      || channelSweep.active) {
+    Serial.println("{\"error\":\"stop receiver before changing fast policy\"}");
+  } else {
+    if (policy == 0) chip.hilUseFsOnRetune = value;
+    else if (policy == 1) chip.hilSkipUnchangedPacket = value;
+    else if (policy == 3) chip.hilSkipUnchangedIq = value;
+#ifdef HIL_INDICATOR
+    else radioHal.hilUsePort0Only = value;
+#endif
+    Serial.printf("{\"%s\":%s}\n", policy == 0 ? "fs" : policy == 1 ? "packet_cache" : policy == 3 ? "iq_cache" : "port0",
+                  value ? "true" : "false");
+  }
+  return true;
+}
 
 void setup() {
 #ifndef HIL_INDICATOR
@@ -455,6 +510,8 @@ void loop() {
         stopChannelSweep();
       } else if (channelSweep.active && strcmp(line,"info") && strncmp(line,"result ",7) && strcmp(line,"reboot")) {
         Serial.println("{\"error\":\"stop channel sweep before other experiments\"}");
+      } else if (selectProfileFastPolicy(line)) {
+        // The helper also rejects an active single-packet probe.
       } else if (sscanf(line, "run %d %d %u %d %u %u %u", &warm, &sf, &count, &batched, &mask, &spiMHz, &seq) == 7 && seq
           && (warm == 0 || warm == 1) && (batched == 0 || batched == 1)
           && mask <= 1023 && (spiMHz == 2 || spiMHz == 4 || spiMHz == 8)

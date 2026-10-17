@@ -64,6 +64,9 @@ struct SX1262ProfileSwitchState {
         && packetCrc == crc && packetImplicitLen == implicitLen
         && packetHeader == header && packetIq == iq;
   }
+  bool matchesPacketIq(uint8_t iq) const {
+    return canResumeFast() && packetValid && packetIq == iq;
+  }
   void packetResult(int16_t result, size_t preamble, uint8_t crc,
                     uint8_t implicitLen, uint8_t header, uint8_t iq) {
     if (result != 0) {

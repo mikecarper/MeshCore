@@ -12,10 +12,11 @@ uint8_t IndicatorRadioHal::expanderIndex(uint32_t pin) {
   return static_cast<uint8_t>(pin & ~EXPANDER_FLAG);
 }
 
-bool IndicatorRadioHal::readRegister(uint8_t reg, uint16_t& value) {
-  uint8_t data[2];
+bool IndicatorRadioHal::readRegister(uint8_t reg, uint16_t& value,
+                                     bool firstPortOnly) {
+  uint8_t data[2] = {};
   if (!lgfx::i2c::readRegister(I2C_PORT, EXPANDER_ADDRESS, reg, data,
-                               sizeof(data), I2C_FREQUENCY)
+                               firstPortOnly ? 1 : sizeof(data), I2C_FREQUENCY)
            .has_value()) {
     return false;
   }
@@ -24,14 +25,15 @@ bool IndicatorRadioHal::readRegister(uint8_t reg, uint16_t& value) {
   return true;
 }
 
-bool IndicatorRadioHal::writeRegister(uint8_t reg, uint16_t value) {
+bool IndicatorRadioHal::writeRegister(uint8_t reg, uint16_t value,
+                                      bool firstPortOnly) {
   uint8_t data[] = {
       reg,
       static_cast<uint8_t>(value),
       static_cast<uint8_t>(value >> 8),
   };
   return lgfx::i2c::transactionWrite(I2C_PORT, EXPANDER_ADDRESS, data,
-                                     sizeof(data), I2C_FREQUENCY)
+                                     firstPortOnly ? 2 : sizeof(data), I2C_FREQUENCY)
       .has_value();
 }
 
@@ -58,8 +60,9 @@ bool IndicatorRadioHal::beginExpander() {
   return true;
 }
 
-bool IndicatorRadioHal::readInputs(uint16_t& value) {
-  if (!beginExpander() || !readRegister(INPUT_REGISTER, value)) return false;
+bool IndicatorRadioHal::readInputs(uint16_t& value, bool firstPortOnly) {
+  if (!beginExpander()
+      || !readRegister(INPUT_REGISTER, value, firstPortOnly)) return false;
   processInterruptLevel(value);
   return true;
 }
@@ -100,7 +103,9 @@ void IndicatorRadioHal::pinMode(uint32_t pin, uint32_t mode) {
   } else {
     next |= 1U << index;
   }
-  if (next != _config && writeRegister(CONFIG_REGISTER, next)) _config = next;
+  if (next != _config && writeRegister(CONFIG_REGISTER, next, useFirstPortOnly(index))) {
+    _config = next;
+  }
 }
 
 void IndicatorRadioHal::digitalWrite(uint32_t pin, uint32_t value) {
@@ -113,7 +118,9 @@ void IndicatorRadioHal::digitalWrite(uint32_t pin, uint32_t value) {
   if (index >= 16 || !beginExpander()) return;
   uint16_t next = value == GpioLevelHigh ? _output | (1U << index)
                                          : _output & ~(1U << index);
-  if (next != _output && writeRegister(OUTPUT_REGISTER, next)) _output = next;
+  if (next != _output && writeRegister(OUTPUT_REGISTER, next, useFirstPortOnly(index))) {
+    _output = next;
+  }
 }
 
 uint32_t IndicatorRadioHal::digitalRead(uint32_t pin) {
@@ -121,7 +128,10 @@ uint32_t IndicatorRadioHal::digitalRead(uint32_t pin) {
 
   uint8_t index = expanderIndex(pin);
   uint16_t inputs;
-  if (index >= 16 || !readInputs(inputs)) {
+  // All four radio signals occupy Port 0. Do not clock the unrelated Port 1
+  // byte for each BUSY check. This is still a fresh I2C sample every time;
+  // the expander's INT level is not a safe replacement for reading BUSY.
+  if (index >= 16 || !readInputs(inputs, useFirstPortOnly(index))) {
     // A failed BUSY read must prevent an unsafe SPI command. Other failed
     // reads are treated as inactive.
     return pin == P_LORA_BUSY ? GpioLevelHigh : GpioLevelLow;

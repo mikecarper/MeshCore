@@ -28,6 +28,8 @@ void listenPacket(unsigned sf, unsigned target, unsigned seq, unsigned mask, uns
   chip.productionPath = chip.experiment == 0;
   chip.setProfileSwitchOptimization((mask & 512) != 0);
   const uint32_t fastStart=chip.getOptimizedProfileSwitches();
+  const uint32_t fsStart=chip.hilFsEntries, packetStart=chip.hilPacketSkips;
+  const uint32_t iqStart=chip.hilIqWorkaroundSkips;
   radioHal.bulkTransfer = (mask & 256) != 0;
   mesh::RadioProfileParams primary;
   primary.freq=909.5f;primary.bw=62.5f;primary.sf=7;primary.cr=5;
@@ -47,8 +49,13 @@ void listenPacket(unsigned sf, unsigned target, unsigned seq, unsigned mask, uns
   packetSequence=seq;packetTarget=target;packetSf=sf;packetListening=true;
   packetErrorsAtStart=driver.getPacketsRecvErrors();
   packetDeadline=millis()+5000;
-  recordBenchResult(lastListenResult,seq,"{\"listening\":%u,\"profile\":%u,\"sf500\":%u,\"preamble\":%u,\"optimized_rx_resumes\":%u}\n",
-                seq,target,sf,driver.profilePreamble(target),unsigned(chip.getOptimizedProfileSwitches()-fastStart));
+  recordBenchResult(lastListenResult,seq,"{\"listening\":%u,\"profile\":%u,\"sf500\":%u,\"preamble\":%u,\"optimized_rx_resumes\":%u,"
+                "\"fs\":%s,\"packet_cache\":%s,\"fs_entries\":%u,\"packet_skips\":%u,"
+                "\"iq_cache\":%s,\"iq_workaround_skips\":%u}\n",
+                seq,target,sf,driver.profilePreamble(target),unsigned(chip.getOptimizedProfileSwitches()-fastStart),
+                chip.hilUseFsOnRetune ? "true" : "false", chip.hilSkipUnchangedPacket ? "true" : "false",
+                unsigned(chip.hilFsEntries-fsStart),unsigned(chip.hilPacketSkips-packetStart),
+                chip.hilSkipUnchangedIq ? "true" : "false",unsigned(chip.hilIqWorkaroundSkips-iqStart));
 }
 
 void sendPacket(unsigned sf, unsigned target, unsigned seq, unsigned len, unsigned preamble, int power, unsigned spiMHz, bool bulk) {

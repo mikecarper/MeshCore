@@ -16,6 +16,10 @@ public:
 
   bool beginExpander();
   void serviceInterrupt();
+#ifdef MC_SX1262_HIL
+  // Same-image bus-width A/B only; production always uses the narrow port.
+  bool hilUsePort0Only = true;
+#endif
 
   void pinMode(uint32_t pin, uint32_t mode) override;
   void digitalWrite(uint32_t pin, uint32_t value) override;
@@ -45,8 +49,15 @@ private:
 
   static bool isExpanderPin(uint32_t pin);
   static uint8_t expanderIndex(uint32_t pin);
-  bool readRegister(uint8_t reg, uint16_t& value);
-  bool writeRegister(uint8_t reg, uint16_t value);
-  bool readInputs(uint16_t& value);
+  bool useFirstPortOnly(uint8_t index) const {
+    return index < 8
+#ifdef MC_SX1262_HIL
+        && hilUsePort0Only
+#endif
+        ;
+  }
+  bool readRegister(uint8_t reg, uint16_t& value, bool firstPortOnly = false);
+  bool writeRegister(uint8_t reg, uint16_t value, bool firstPortOnly = false);
+  bool readInputs(uint16_t& value, bool firstPortOnly = false);
   void processInterruptLevel(uint16_t inputs);
 };

@@ -25,7 +25,12 @@
 #define MC_SX1262_FAST_PACKET_CACHE MC_SX1262_FAST_PROFILE_SWITCH
 #endif
 
-#if (MC_SX1262_FAST_FS || MC_SX1262_FAST_PACKET_CACHE) && !MC_SX1262_FAST_PROFILE_SWITCH
+#ifndef MC_SX1262_FAST_IQ_CACHE
+// An additional optimization, enabled per board only after hardware testing.
+#define MC_SX1262_FAST_IQ_CACHE 0
+#endif
+
+#if (MC_SX1262_FAST_FS || MC_SX1262_FAST_PACKET_CACHE || MC_SX1262_FAST_IQ_CACHE) && !MC_SX1262_FAST_PROFILE_SWITCH
 #error "SX1262 SetFs/packet reuse requires the owned fast profile-switch path"
 #endif
 
@@ -75,8 +80,9 @@ class CustomSX1262 : public SX1262 {
     // Same-image A/B overrides; these default off on every HIL reboot.
     bool hilUseFsOnRetune = false;
     bool hilSkipUnchangedPacket = false;
+    bool hilSkipUnchangedIq = false;
     float hilFrequencyMHz() const { return freqMHz; }
-    uint32_t hilFsEntries = 0, hilPacketSkips = 0;
+    uint32_t hilFsEntries = 0, hilPacketSkips = 0, hilIqWorkaroundSkips = 0;
 #endif
 
     int16_t restoreTcxoAfterSleep() {
@@ -555,6 +561,38 @@ class CustomSX1262 : public SX1262 {
       return RADIOLIB_ERR_NONE;
     }
 
+#if MC_SX1262_FAST_IQ_CACHE || defined(MC_SX1262_HIL)
+    // Firmware-level direct register/packet writes are not an acknowledged
+    // owned RX tuple, even when they fail or restore the same software IQ.
+    int16_t writeRegister(uint16_t address, const uint8_t* data, uint8_t size) {
+      _profileSwitch.invalidatePacket();
+      return SX1262::writeRegister(address, data, size);
+    }
+    int16_t setPacketParams(uint16_t preamble, uint8_t crc, uint8_t payload,
+                            uint8_t header, uint8_t iq) {
+      _profileSwitch.invalidatePacket();
+      return SX1262::setPacketParams(preamble, crc, payload, header, iq);
+    }
+  private:
+    int16_t writeProfilePacketParams(bool reuseIq) {
+      if (!reuseIq) {
+        return setPacketParams(preambleLengthLoRa, crcTypeLoRa, implicitLen,
+                               headerType, invertIQEnabled);
+      }
+      // Only the acknowledged IQ workaround is retained. A changed preamble
+      // still needs the COMPLETE ordinary SetPacketParams command. Preserve
+      // its on-wire field order and Module BUSY/status/error handling.
+      const uint8_t data[] = {
+          static_cast<uint8_t>(preambleLengthLoRa >> 8),
+          static_cast<uint8_t>(preambleLengthLoRa), headerType,
+          static_cast<uint8_t>(implicitLen),
+          crcTypeLoRa, invertIQEnabled};
+      return getMod()->SPIwriteStream(RADIOLIB_SX126X_CMD_SET_PACKET_PARAMS,
+                                     data, sizeof(data));
+    }
+  public:
+#endif
+
     int16_t startReceive() override {
       if (_profileSwitch.canResumeFast()) {
         // Existing continuous RX already established buffer bases and the
@@ -567,14 +605,31 @@ class CustomSX1262 : public SX1262 {
         skipPacket = skipPacket && _profileSwitch.matchesPacket(
             preambleLengthLoRa, crcTypeLoRa, implicitLen,
             headerType, invertIQEnabled);
+#if MC_SX1262_FAST_IQ_CACHE || defined(MC_SX1262_HIL)
+        bool reuseIq = MC_SX1262_FAST_IQ_CACHE != 0;
+#ifdef MC_SX1262_HIL
+        reuseIq = hilSkipUnchangedIq;
+#endif
+        // Capture this capability BEFORE revoking rxValid for the command
+        // sequence. Packet/IQ setters, protocol changes, sleep, reset, TX/CAD,
+        // duty cycling and command failures revoke the acknowledged tuple.
+        reuseIq = reuseIq && _profileSwitch.matchesPacketIq(invertIQEnabled);
+#endif
         _profileSwitch.rxValid = false;  // fail closed on any command error
         int16_t rc = clearIrqStatus();
 #ifdef MC_SX1262_HIL
         if (rc == RADIOLIB_ERR_NONE && skipPacket) ++hilPacketSkips;
 #endif
         if (rc == RADIOLIB_ERR_NONE && !skipPacket) {
+#if MC_SX1262_FAST_IQ_CACHE || defined(MC_SX1262_HIL)
+          rc = writeProfilePacketParams(reuseIq);
+#ifdef MC_SX1262_HIL
+          if (rc == RADIOLIB_ERR_NONE && reuseIq) ++hilIqWorkaroundSkips;
+#endif
+#else
           rc = setPacketParams(preambleLengthLoRa, crcTypeLoRa, implicitLen,
                                headerType, invertIQEnabled);
+#endif
           _profileSwitch.packetResult(rc, preambleLengthLoRa, crcTypeLoRa,
                                       implicitLen, headerType, invertIQEnabled);
         }

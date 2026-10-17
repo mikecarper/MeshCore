@@ -444,6 +444,7 @@ jobs:
           python3 -B test/test_mercer_mt_flash.py -v
           python3 -B test/test_mercer_nrf_app_flash.py -v
           python3 -B test/test_indicator_repeater_hil_recipe.py -v
+          python3 -B test/test_indicator_radio_hal.py -v
           python3 -B test/test_mota_usb_seeder_hil.py -v
           python3 -B test/test_mota_espnow_chain_hil.py -v
           python3 -B test/test_meshtext_auto_radio2_hil.py -v
