@@ -4,8 +4,8 @@
 
 # Companion contact caches
 
-Full Companions on ESP32 and nRF52 without PSRAM, plus the high-contact RAK4631
-USB/BLE profiles, keep 16 outgoing paths
+Full Companions on ESP32 and nRF52 without PSRAM, plus nRF52 USB/BLE
+profiles with more than 300 contacts, keep 16 outgoing paths
 and 16 shared secrets in RAM. Every contact remains in the contact table;
 selecting a different contact loads its saved path as needed. This recovers
 about 25.4 KiB of internal RAM in the 350-contact ESP32 qualification builds.
@@ -14,11 +14,19 @@ See the [qualification results](../test-results/companion_contact_cache_results.
 six-board RAM comparison, physical tests, and shared-secret timings.
 
 PSRAM boards retain their existing complete contact table in external RAM.
-Most legacy USB/BLE/WiFi Companion profiles retain inline paths and secrets.
-The high-contact RAK4631 USB/BLE profiles also enable the same cache,
+Lower-contact legacy profiles and ordinary ESP32 USB/BLE/WiFi Companion
+profiles retain inline paths and secrets. High-contact nRF52 USB/BLE profiles
+(including Wio Tracker L1) enable the same cache,
 keeping all 350 contacts while making room for the shared 256-frame offline/DM
 pool. The build flag `MESH_CONTACT_CACHE=0` or `1` overrides this policy for
 qualification; it is not a runtime feature switch.
+
+The ordinary Wio Tracker L1 BLE build reproduced a runtime RAM failure with
+48,964 bytes available against 59,968 required. Enabling the existing cache
+for high-contact nRF52 profiles recovered 30,200 bytes: the linked build has
+79,164 bytes available and a 19,196-byte margin against the unchanged budget.
+Its 350 contacts, 40 channels and configured 256-frame offline/held-DM pool
+are retained. This is a linked-capacity result, not a physical load/soak test.
 
 ## Paths and persistence
 

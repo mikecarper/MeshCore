@@ -1,10 +1,14 @@
 #pragma once
 
 // PSRAM boards already keep the complete contact table outside internal RAM.
+// High-contact nRF52 USB/BLE recipes need the same cache as Full Companion:
+// inline paths/secrets can otherwise leave too little heap for startup.
 // An explicit 0/1 override is useful for matched qualification builds.
 #ifndef MESH_CONTACT_CACHE
-#if defined(COMPANION_RADIO_FULL) && !defined(BOARD_HAS_PSRAM) && \
-    (defined(ESP32_PLATFORM) || defined(NRF52_PLATFORM))
+#if !defined(BOARD_HAS_PSRAM) && \
+    ((defined(COMPANION_RADIO_FULL) && \
+      (defined(ESP32_PLATFORM) || defined(NRF52_PLATFORM))) || \
+     (defined(NRF52_PLATFORM) && defined(MAX_CONTACTS) && MAX_CONTACTS > 300))
 #define MESH_CONTACT_CACHE 1
 #else
 #define MESH_CONTACT_CACHE 0

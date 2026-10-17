@@ -22,6 +22,30 @@ def crypto_objects(temp):
 
 
 class ContactCacheTest(unittest.TestCase):
+    def test_default_policy_covers_high_contact_nrf52_without_full(self):
+        cases = (
+            ({"NRF52_PLATFORM": 1, "MAX_CONTACTS": 350}, 1),
+            ({"NRF52_PLATFORM": 1, "MAX_CONTACTS": 301}, 1),
+            ({"NRF52_PLATFORM": 1, "MAX_CONTACTS": 300}, 0),
+            ({"NRF52_PLATFORM": 1}, 0),
+            ({"ESP32_PLATFORM": 1, "MAX_CONTACTS": 350}, 0),
+            ({"NRF52_PLATFORM": 1, "COMPANION_RADIO_FULL": 1}, 1),
+            ({"ESP32_PLATFORM": 1, "COMPANION_RADIO_FULL": 1}, 1),
+            ({"NRF52_PLATFORM": 1, "MAX_CONTACTS": 350, "BOARD_HAS_PSRAM": 1}, 0),
+            ({"ESP32_PLATFORM": 1, "COMPANION_RADIO_FULL": 1, "BOARD_HAS_PSRAM": 1}, 0),
+            ({"NRF52_PLATFORM": 1, "MAX_CONTACTS": 350, "MESH_CONTACT_CACHE": 0}, 0),
+            ({"NRF52_PLATFORM": 1, "MAX_CONTACTS": 100, "MESH_CONTACT_CACHE": 1}, 1),
+        )
+        for defines, expected in cases:
+            with self.subTest(defines=defines):
+                result = subprocess.run([
+                    "c++", "-E", "-P", "-x", "c++", "-",
+                    "-I", str(ROOT / "src"),
+                    *("-D%s=%s" % item for item in defines.items()),
+                ], input='#include <helpers/ContactCachePolicy.h>\nMESH_CONTACT_CACHE\n',
+                    text=True, capture_output=True, check=True)
+                self.assertEqual(result.stdout.strip(), str(expected))
+
     def test_esp32_misses_recalculate_without_flash_io(self):
         with tempfile.TemporaryDirectory(prefix="mesh-secret-power-") as temp:
             temp = Path(temp)
@@ -43,6 +67,11 @@ class ContactCacheTest(unittest.TestCase):
 
     def test_nrf52_paged_store_migration_and_snapshots(self):
         self.run_cache_test("NRF52_PLATFORM")
+
+    def test_standard_nrf52_policy_preserves_migration_and_snapshots(self):
+        # No Full or explicit cache flag: exercise the ordinary 350-contact
+        # recipe's default through the same real cache/persistence harness.
+        self.run_cache_test("NRF52_PLATFORM", standard_nrf52=True)
 
     def test_esp32_default_crc_cadence_is_detected(self):
         self.run_cache_test("ESP32_PLATFORM", disable_crc_batch=True)
@@ -66,7 +95,8 @@ class ContactCacheTest(unittest.TestCase):
                        disable_raw_recovery=False,
                        unsafe_legacy_discovery=False, unsafe_page_discovery=False,
                        fixture_transform=None, expected_failure=None,
-                       expected_marker='PASS: 114 shared request/login payload and routing traces'):
+                       expected_marker='PASS: 114 shared request/login payload and routing traces',
+                       standard_nrf52=False):
         with tempfile.TemporaryDirectory(prefix="mesh-contact-cache-") as temp:
             temp = Path(temp)
             store = (ROOT / "examples/companion_radio/DataStore.cpp").read_text()
@@ -188,7 +218,7 @@ class ContactCacheTest(unittest.TestCase):
             result = subprocess.run([
                 "c++", "-std=c++17", "-O1", "-g", "-Wall", "-Wextra",
                 "-fsanitize=address,undefined", "-fno-omit-frame-pointer",
-                "-DMESH_CONTACT_CACHE=1", "-DCOMPANION_RADIO_FULL=1",
+                *([] if standard_nrf52 else ["-DMESH_CONTACT_CACHE=1", "-DCOMPANION_RADIO_FULL=1"]),
                 "-DMESH_CONTACT_SECRET_FLASH_CACHE=1",
                 "-D" + platform + "=1", "-DMAX_CONTACTS=350",
                 "-I", str(ROOT / "test/fixtures/contact_cache/mocks"),
