@@ -121,6 +121,49 @@ class FirmwareRamTest(unittest.TestCase):
         }, "muzi_base_uno_superIO_companion_radio_ble")
         self.assertEqual(policy["components"]["display_pixels_and_driver"], 4096)
 
+    def test_t096_legacy_ble_rgb332_fits_without_reducing_other_reserves(self):
+        flags = {"DISPLAY_CLASS": "ST7735Display", "BLE_PIN_CODE": 123456,
+                 "ENABLE_OTA": 1}
+        for suffix in ("femon", "femoff"):
+            target = "Heltec_t096_companion_radio_ble_" + suffix
+            with self.subTest(target=target):
+                original = ram.requirements("NRF52_PLATFORM", flags, target)
+                compact = ram.requirements("NRF52_PLATFORM", {
+                    **flags, "ST7735_BUFFER_COLOR_DEPTH": 8,
+                }, target)
+                self.assertEqual(original["required_heap_bytes"], 81474)
+                self.assertEqual(compact["required_heap_bytes"], 69697)
+                self.assertEqual(compact["components"]["display_pixels_and_driver"], 12801 + 1024)
+                self.assertGreater(original["required_heap_bytes"], 75396)
+                self.assertLess(compact["required_heap_bytes"], 75396)
+                for name, value in original["components"].items():
+                    if name != "display_pixels_and_driver":
+                        self.assertEqual(compact["components"][name], value)
+                self.assertEqual(compact["components"]["expanded_message_previews"], 2816)
+                self.assertEqual(compact["components"]["ota_generic_source_buffers"], 6176)
+                self.assertEqual(compact["components"]["allocation_and_transient_margin"], 4096)
+
+    def test_st7735_color_depth_default_and_invalid_values_fail_closed(self):
+        flags = {"DISPLAY_CLASS": "ST7735Display"}
+        default = ram.requirements("NRF52_PLATFORM", flags, "other_companion")
+        explicit = ram.requirements("NRF52_PLATFORM", {
+            **flags, "ST7735_BUFFER_COLOR_DEPTH": 16,
+        }, "other_companion")
+        self.assertEqual(default, explicit)
+        self.assertEqual(default["components"]["display_pixels_and_driver"], 25602)
+        for depth in (0, 1, 4, 12, 24, 32):
+            with self.subTest(depth=depth), self.assertRaisesRegex(ValueError, "ST7735_BUFFER_COLOR_DEPTH"):
+                ram.requirements("NRF52_PLATFORM", {
+                    **flags, "ST7735_BUFFER_COLOR_DEPTH": depth,
+                }, "other_companion")
+
+    def test_t096_canvas_configuration_does_not_reduce_companion_capacities(self):
+        config = (ROOT / "variants/heltec_t096/platformio.ini").read_text()
+        self.assertIn("-D ST7735_BUFFER_COLOR_DEPTH=8", config)
+        self.assertIn("-D MAX_CONTACTS=350", config)
+        self.assertIn("-D MAX_GROUP_CHANNELS=40", config)
+        self.assertIn("-D OFFLINE_QUEUE_SIZE=256", config)
+
     def test_wio_l2_counts_internal_sprite_fallback_and_dma_beside_psram(self):
         flags = {"DISPLAY_CLASS": "WioTrackerL2Display", "UI_ZOOM": 2}
         for target in ("Wio_Tracker_L2_repeater", "Wio_Tracker_L2_companion_radio_ble"):

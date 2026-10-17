@@ -5,6 +5,21 @@
 #endif
 #include <TFT_eSPI.h>
 
+// Most ST7735 recipes keep the original RGB565 canvas. RAM-constrained
+// targets can retain the complete UI in RGB332 and expand only one scanline
+// while sending it to the panel; the panel still receives RGB565 pixels.
+#ifndef ST7735_BUFFER_COLOR_DEPTH
+  #define ST7735_BUFFER_COLOR_DEPTH 16
+#endif
+static_assert(ST7735_BUFFER_COLOR_DEPTH == 8 || ST7735_BUFFER_COLOR_DEPTH == 16,
+              "ST7735_BUFFER_COLOR_DEPTH must be 8 or 16");
+#if ST7735_BUFFER_COLOR_DEPTH == 8
+// Bind the separate sprite/allocator allowance to the actual dependency. The
+// framebuffer itself is 160*80+1 bytes (including TFT_eSPI's sentinel pixel).
+static_assert(sizeof(TFT_eSprite) + 2 * 16 <= 1024,
+              "Increase the ST7735 sprite-object runtime RAM allowance");
+#endif
+
 #if defined(NRF52_PLATFORM)
   #include <nrf_gpio.h>
 #endif
@@ -452,6 +467,7 @@ bool ST7735Display::begin() {
       mesh::usbLoggingPort().println("ST7735Display: failed to alloc canvas");
       return false;
     }
+    sprite->setColorDepth(ST7735_BUFFER_COLOR_DEPTH);
     if (!sprite->createSprite(160, 80)) {
       mesh::usbLoggingPort().println(
           "ST7735Display: failed to alloc canvas pixels");
@@ -669,6 +685,25 @@ void ST7735Display::endFrame() {
   set_CS(LOW);
   _spi->beginTransaction(_spiSettings);
   uint16_t x, y;
+#if ST7735_BUFFER_COLOR_DEPTH == 8
+  const uint8_t* pixels = static_cast<const uint8_t*>(sprite->getPointer());
+  // This bounded stack buffer replaces a second full-size canvas. Explicit
+  // wire bytes preserve the panel's high-byte-first order on every MCU.
+  uint8_t scanline[160 * 2];
+  for (y = 0; y < 80; y++, pixels += 160) {
+    for (x = 0; x < 160; ++x) {
+      const uint16_t color = lcd.color8to16(pixels[x]);
+      scanline[2 * x] = static_cast<uint8_t>(color >> 8);
+      scanline[2 * x + 1] = static_cast<uint8_t>(color);
+    }
+    setAddrWindow(0, y, 160, 1);
+#ifdef ESP_PLATFORM
+    _spi->transferBytes(scanline, NULL, sizeof(scanline));
+#else
+    _spi->transfer(scanline, NULL, sizeof(scanline));
+#endif
+  }
+#else
   uint16_t* pixels = (uint16_t *) ((TFT_eSprite *) sprite)->getPointer();
   for (y = 0; y < 80; y++, pixels += 160) {
     setAddrWindow(0, y, 160, 1);
@@ -678,6 +713,7 @@ void ST7735Display::endFrame() {
     _spi->transfer(pixels, NULL, 2 * 160);
 #endif
   }
+#endif
 
   _spi->endTransaction();
   set_CS(HIGH);
