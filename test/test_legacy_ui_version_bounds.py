@@ -53,7 +53,7 @@ struct UITask {
   SensorManager* _sensors = nullptr;
   CompanionNodePrefs* _node_prefs = nullptr;
   unsigned clears = 0, resets = 0;
-  unsigned long ui_started_at = 0;
+  unsigned long ui_started_at = 0, _next_refresh = 0;
   explicit UITask(char (&label)[@CAPACITY@]) : _version_info(label) {}
   void clearMsgPreview() { ++clears; }
   void resetRadioProfileDisplayPage() { ++resets; }
@@ -75,6 +75,7 @@ static void exercise(const std::string& version, const std::string& date,
   assert(allocations == 0);
   assert(ui._sensors == &sensors && ui._node_prefs == &prefs);
   assert(ui.clears == 1 && ui.resets == 1 && ui.ui_started_at == 1234);
+  assert(ui._next_refresh == ui.ui_started_at);
   assert(display.power_calls == unsigned(use_display));
   if (use_display) assert(display.rotation == 270);
 }
