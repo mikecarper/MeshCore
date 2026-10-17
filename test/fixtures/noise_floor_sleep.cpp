@@ -157,6 +157,49 @@ int main(int argc, char** argv) {
       CHECK(w._nf_refresh_requested && !w._nf_lazy_refresh && !w._noise_floor_valid,
             "forced tuning/gain baseline must bypass lazy routine cadence");
     }
+  } else if (!std::strcmp(scenario, "agc-idle")) {
+    for (unsigned mode : {0U, 1U, 2U}) for (bool lazy : {false, true})
+    for (uint32_t last : {0U, 100U, UINT32_MAX - 2000U}) {
+      RadioLibWrapper w;
+      w._rx_ps_enabled = mode != 0;
+      w._rx_ps_continuous_fallback = mode == 2;
+      w._rx_ps_armed = mode == 1;
+      w._noise_floor_valid = true;
+      w._nf_refresh_requested = w._nf_calib_active = false;
+      w._nf_lazy_refresh = lazy;
+      w._nf_refresh_attempted = true;
+      w._nf_last_calib = last;
+      const uint32_t interval = lazy ? NF_LAZY_REFRESH_INTERVAL_MS : NF_CALIB_INTERVAL_MS;
+      for (uint32_t age : {1000U, 2000U, interval - 1}) {
+        now_ms = last + age;
+        w.requestPeriodicNoiseFloorRefresh();
+        CHECK(w.tryResetAGC(), "idle maintenance must run the reset sequence");
+        CHECK(!w._nf_refresh_requested && w._noise_floor_valid
+              && w._nf_lazy_refresh == lazy && w._nf_last_calib == last,
+              "maintenance must preserve the floor and original refresh deadline");
+        w.startRecv();
+        CHECK(w._rx_ps_armed == (mode == 1) && !w._nf_calib_active,
+              "maintenance must return immediately to the selected RX policy");
+      }
+      now_ms = last + interval;
+      w.requestPeriodicNoiseFloorRefresh();
+      CHECK(w._nf_refresh_requested, "maintenance postponed a routine refresh or failed retry");
+    }
+    for (unsigned reason : {0U, 1U, 2U, 3U, 4U, 5U}) {
+      RadioLibWrapper w;
+      w._nf_refresh_requested = w._nf_calib_active = false;
+      w._noise_floor_valid = true;
+      w._nf_last_calib = now_ms;
+      if (reason == 0) w._noise_floor_valid = false;
+      if (reason == 1) w._nf_refresh_requested = true;
+      if (reason == 2) w._nf_calib_active = true;
+      if (reason == 3) w._profiles.secondary.mode = mesh::RadioProfileMode::RxTx;
+      if (reason == 5) { w._rx_boosted_gain_valid = true; w.gain_apply_success = false; }
+      if (reason == 4) w.resetAGC(); // Recovery/legacy uses the forced API.
+      else CHECK(w.tryResetAGC(), "idle reset was unexpectedly refused");
+      CHECK(w._nf_refresh_requested && w._nf_last_calib == 0,
+            "startup, pending, dual-profile, failed gain and recovery floors must still refresh");
+    }
   } else if (!std::strcmp(scenario, "timeout-zero")) {
     RadioLibWrapper w;
     // A legitimate 30-second timeout lands exactly on uint32_t zero.

@@ -39,6 +39,7 @@ class NoiseFloorSleepTests(unittest.TestCase):
         fixture = (ROOT / 'test/fixtures/noise_floor_sleep.cpp').read_text()
         variants = {
             'production': getter,
+            'agc_forces_floor': getter,
             'old_batch_veto': getter[:getter.index('{') + 1] + '''
   (void)now;
   if (!isCalibratingNoiseFloor()) return false;
@@ -55,7 +56,9 @@ class NoiseFloorSleepTests(unittest.TestCase):
             for name, implementation in variants.items():
                 filename = name + '_' + family
                 cpp, binary = work / (filename + '.cpp'), work / filename
-                cpp.write_text((harness + implementation + fixture).replace('\u2014', '-'),
+                variant_harness = harness.replace('resetAGCIfIdle(false)', 'resetAGCIfIdle()') \
+                    if name == 'agc_forces_floor' else harness
+                cpp.write_text((variant_harness + implementation + fixture).replace('\u2014', '-'),
                                encoding='ascii')
                 built = subprocess.run([os.environ.get('CXX', 'g++'), '-std=c++17',
                     '-O1', '-g', '-Wall', '-Wextra', '-Werror',
@@ -95,6 +98,13 @@ class NoiseFloorSleepTests(unittest.TestCase):
 
     def test_timeout_timestamp_zero_is_not_an_unarmed_or_startup_sentinel(self):
         self.run_case('timeout-zero')
+
+    def test_adaptive_agc_keeps_valid_floor_cadence_but_not_changed_paths(self):
+        self.run_case('agc-idle')
+
+    def test_old_agc_forced_collection_negative_control(self):
+        self.run_case('agc-idle', 'agc_forces_floor',
+                      'maintenance must preserve the floor')
 
     def test_old_whole_batch_sleep_veto_negative_control(self):
         self.run_case('quiet', 'old_batch_veto', 'pending batch must permit idle')

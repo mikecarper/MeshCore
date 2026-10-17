@@ -1040,10 +1040,10 @@ bool RadioLibWrapper::tryResetAGC() {
   // BUSY is expected during RXPS sleep. Reuse the legacy explicit wake/reset
   // sequence there; polling only every 50 ms can miss every short RX window.
   // Outside known duty cycling, a busy SPI command still defers admission.
-  return (_rx_ps_armed || !isChipBusy()) && resetAGCIfIdle();
+  return (_rx_ps_armed || !isChipBusy()) && resetAGCIfIdle(false);
 }
 
-bool RadioLibWrapper::resetAGCIfIdle() {
+bool RadioLibWrapper::resetAGCIfIdle(bool refresh_floor) {
 #if MESH_ENABLE_TX_BEACONS
   if (_beacon_owned) return false;
 #endif
@@ -1053,11 +1053,20 @@ bool RadioLibWrapper::resetAGCIfIdle() {
 
   doResetAGC();
   state = STATE_IDLE;   // trigger a startReceive()
-  if (_rx_boosted_gain_valid) applyRxBoostedGainMode(_cur_rx_boosted_gain);
+  const bool gain_restored = !_rx_boosted_gain_valid
+      || applyRxBoostedGainMode(_cur_rx_boosted_gain);
 
-  // AGC reset discards stale samples, but the established floor remains usable
-  // for LBT while the next spaced block is collected. Gain/tuning changes use
-  // recalibrateNoiseFloor() directly to seed a fresh baseline.
+  // Adaptive maintenance restores the same RF path. A valid, idle baseline
+  // keeps its existing refresh deadline instead of spending another complete
+  // continuous-RX window on every reset. Never cancel a requested collection,
+  // postpone failed-sample retries, or change dual-profile scanning policy.
+  if (!refresh_floor && gain_restored && _noise_floor_valid
+      && !_profiles.enabled() && !_nf_refresh_requested && !_nf_calib_active) {
+    return true;
+  }
+
+  // Recovery, legacy resets, changed/unknown paths and pending collections
+  // retain prompt resampling. Do not mix samples across the analog reset.
   const bool previous_valid = _noise_floor_valid;
   const bool previous_secondary_valid = _noise_floor_secondary_valid;
   recalibrateNoiseFloor();

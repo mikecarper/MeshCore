@@ -73,8 +73,11 @@ an attempt on a busy channel.
 
 After a successful baseline, ordinary single-profile refresh waits five
 minutes. A rejected rise or failed attempt retains the last usable floor and
-retries after one minute. Gain, tuning and AGC changes still request immediate
-recalibration, so a configured short AGC interval can refresh more frequently.
+retries after one minute. Gain/tuning changes and radio recovery still request
+immediate recalibration. Adaptive AGC maintenance with an unchanged RF path
+retains a valid baseline and its existing refresh deadline; it does not cancel
+a pending collection or postpone a failed-sample retry. Legacy fixed-cadence
+AGC resets still request recalibration.
 Dual-profile scanning keeps its existing timing and calibration policy.
 
 ESP32 timed sleep uses a millisecond timer capped at the next sample deadline.

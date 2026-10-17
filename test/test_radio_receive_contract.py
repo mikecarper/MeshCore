@@ -80,7 +80,7 @@ struct RadioLibWrapper {
       _noise_floor_secondary_valid = true;
   bool _nf_window_armed = false, _nf_lazy_refresh = false, _nf_refresh_attempted = false;
   bool _cad_enabled = true, packet = false, busy = false, inject_arm_irq = false;
-  bool _rx_boosted_gain_valid = false, _cur_rx_boosted_gain = false;
+  bool _rx_boosted_gain_valid = false, _cur_rx_boosted_gain = false, gain_apply_success = true;
   bool _wd_last_busy = false;
   uint8_t _startrx_fails = 0, _rx_mode_failures = 0;
   uint32_t _rx_retry_at = 0;
@@ -117,7 +117,7 @@ struct RadioLibWrapper {
   unsigned long getEstAirtimeFor(int) { return 10; }
   void stopReceiveDutyCycle() { ++stops; _rx_ps_armed = false; }
   void doResetAGC() { ++agc_resets; }
-  bool applyRxBoostedGainMode(bool) { ++gain_changes; return true; }
+  bool applyRxBoostedGainMode(bool) { ++gain_changes; return gain_apply_success; }
   uint8_t beginReconfigure() { return 0; } // counted SPI/RX boundaries are separate
   void endReconfigure(bool) {}
   bool supportsRxPowerSaving() const { return true; }
@@ -145,7 +145,7 @@ struct RadioLibWrapper {
   void requestNoiseFloorRefresh();
   void requestPeriodicNoiseFloorRefresh();
   void recalibrateNoiseFloor();
-  bool resetAGCIfIdle();
+  bool resetAGCIfIdle(bool refresh_floor = true);
   bool tryResetAGC();
   bool getNoiseFloorWakeDelay(uint32_t, uint32_t&) const;
   void resetAGC();

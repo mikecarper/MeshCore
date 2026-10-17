@@ -242,7 +242,7 @@ protected:
   void rxPsWatchdogCheck();
   void requestPeriodicNoiseFloorRefresh();
   void requestNoiseFloorRefresh();
-  bool resetAGCIfIdle();
+  bool resetAGCIfIdle(bool refresh_floor = true);
   void requestRestartRecv();
   bool isPacketPendingOrReceiving();
   void noiseFloorCalibCheck(unsigned long now);
