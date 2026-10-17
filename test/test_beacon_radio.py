@@ -85,6 +85,7 @@ struct RadioLibWrapper {
     bool _cw_active = false, pending = false, packet = false, busy = false, calibrating = false;
     bool _rx_ps_enabled = false, _rx_ps_armed = false, _rx_hold_continuous = false;
     bool _rx_ps_continuous_fallback = false, _nf_calib_active = false;
+    bool _nf_refresh_requested = false;
     bool _rx_boosted_gain_valid = true, _cur_rx_boosted_gain = true;
     bool _noise_floor_valid = true, _noise_floor_secondary_valid = true;
     bool _wd_last_busy = false;
@@ -162,7 +163,7 @@ struct RadioLibWrapper {
     }
     void doResetAGC() { ++resets; }
     bool isPacketPendingOrReceiving() { return hasPendingRadioInterrupt() || isReceivingPacket(); }
-    bool resetAGCIfIdle();
+    bool resetAGCIfIdle(bool refresh_floor = true);
     void resetAGC();
     void idle() { modem.standby(); state = STATE_IDLE; }
     uint8_t beginReconfigure();
@@ -209,6 +210,7 @@ int main() {
         assert(w.beginReconfigure() == 2);
         w.startRecv(); assert(w.arms == 0);
         assert(w.recoverRadio(true) == false && w.deep_calls == 0);
+        assert(!w.resetAGCIfIdle(false) && w.resets == 0 && w.recalibrations == 0);
         assert(!w.isBeaconChannelBusy() && !w.pending && w.state == STATE_IDLE);
         assert(w.restoreBeaconReceive() == Result::APPLIED);
         assert(!w._beacon_owned && w.state == STATE_RX && w._rx_ps_armed == rxps);
@@ -342,7 +344,7 @@ class BeaconRadioTest(unittest.TestCase):
             "uint8_t RadioLibWrapper::beginReconfigure()",
             "bool RadioLibWrapper::restoreAfterDeepInit()",
             "bool RadioLibWrapper::recoverRadio(bool hard)",
-            "bool RadioLibWrapper::resetAGCIfIdle()",
+            "bool RadioLibWrapper::resetAGCIfIdle(bool refresh_floor)",
             "void RadioLibWrapper::resetAGC()",
             "void RadioLibWrapper::startRecv()",
             "bool RadioLibWrapper::startSendRaw(const uint8_t* bytes, int len)",

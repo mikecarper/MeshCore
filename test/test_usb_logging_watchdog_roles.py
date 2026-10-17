@@ -289,7 +289,8 @@ class UsbLoggingWatchdogRoleTests(unittest.TestCase):
                     self.assertIn('if (mesh::isUsbLoggingWatchdogArmed()) '
                                   'return mask(Reason::UsbRecovery);', guard)
                     self.assertIn('const bool can_sleep = sleep_reason == 0;', loop)
-                    self.assertLess(loop.index(guard), loop.index('if (can_sleep)'))
+                    self.assertLess(loop.index(guard), loop.index(
+                        'if (can_sleep && the_mesh.canIdleDualRadio())'))
                 else:
                     self.assertIn('!mesh::isUsbLoggingWatchdogArmed()', loop)
 

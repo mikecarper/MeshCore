@@ -307,7 +307,8 @@ int main(){
                 self.assertIn('if (mesh::wireless::control().pending()) '
                               'return mask(Reason::Wireless);', guard)
                 self.assertIn('const bool can_sleep = sleep_reason == 0;', loop)
-                self.assertLess(loop.index(guard), loop.index('if (can_sleep)'))
+                self.assertLess(loop.index(guard), loop.index(
+                    'if (can_sleep && the_mesh.canIdleDualRadio())'))
             else:
                 self.assertIn('&& sleep_guard(!mesh::wireless::control().pending(), '
                               'mesh::powerdiag::Reason::Wireless)', loop)
