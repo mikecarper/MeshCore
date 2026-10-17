@@ -1228,6 +1228,169 @@ assert.deepStrictEqual(internalSolarCatalog.rows.map(row => row.name),
   internalSolarAssets.map(file => file.name),
   'Every legacy publication form must remain available to exact filename search');
 console.log('SolarXiao QSPI-only room recommendations and exact compatibility downloads passed');
+const fixedQspiHardware = ['LilyGo_T-Echo', 'SenseCap_Solar', 'ThinkNode_M1',
+  'ThinkNode_M6', 'WioTrackerL1'];
+const newQspiRoomHardware = ['Xiao_nrf52', 'ikoka_handheld_nrf_e22_30dbm',
+  'ikoka_nano_nrf_22dbm', 'ikoka_nano_nrf_30dbm', 'ikoka_nano_nrf_33dbm',
+  'ikoka_stick_nrf_22dbm', 'ikoka_stick_nrf_30dbm', 'ikoka_stick_nrf_33dbm',
+  'LilyGo_T-Echo-Lite', ...fixedQspiHardware];
+for (const hardware of newQspiRoomHardware) {
+  assert(!currentCatalog.profiles.some(profile => profile.hardware === hardware && profile.role === 'room'),
+    'An older release without the new QSPI room recipe must not recommend internal storage');
+  for (const policy of ['full', 'reduced']) {
+    const target = hardware + '_room_server_lora_ota_no_external_sensors-' + policy;
+    assert(currentCatalog.rows.some(row => row.target === target),
+      'Retired room images must remain available for exact compatibility search');
+  }
+}
+const qspiFixtureSource = 'deadbeef' + '0'.repeat(32);
+const qspiFixtureFamily = 'v1.17.1.10-halo-keymind-cascade-dev-deadbeef';
+const qspiRoomControls = {familyTag: qspiFixtureFamily, profiles: {}};
+const qspiRoomTargets = [];
+for (const hardware of [...newQspiRoomHardware, 'solarxiao_30S', 'solarxiao_33S']) {
+  for (const base of [hardware + '_room_server',
+    hardware + '_room_server_lora_ota_no_external_sensors', hardware + '_room_server_lora_ota']) {
+    for (const policy of ['full', 'reduced']) {
+      const target = base + '-' + policy;
+      qspiRoomTargets.push(target);
+      qspiRoomControls.profiles[target] = {
+        platform: 'NRF52_PLATFORM', otaRole: 'lora-receiver', updateMethods: ['lora'],
+        sensorProfile: policy, sensorProfileSource: qspiFixtureSource,
+        updateRequirements: {lora: {storage: base.endsWith('_lora_ota') ? 'external_qspi' : 'internal_flash'}},
+      };
+    }
+  }
+}
+const qspiRoomAssets = qspiRoomTargets.map(target => asset(target + '-ota-' + qspiFixtureFamily + '.uf2'));
+const qspiRoomCatalog = picker.buildCatalog([
+  release(qspiFixtureFamily, '2026-10-16T00:00:00Z', qspiRoomAssets),
+], qspiRoomControls);
+assert.deepStrictEqual(qspiRoomCatalog.rows.map(row => row.target), qspiRoomTargets);
+for (const hardware of [...newQspiRoomHardware, 'solarxiao_30S', 'solarxiao_33S']) {
+  const visible = qspiRoomCatalog.profiles.filter(profile => profile.hardware === hardware);
+  assert.deepStrictEqual(visible.map(profile => profile.target).sort(),
+    ['full', 'reduced'].map(policy => hardware + '_room_server_lora_ota-' + policy));
+  assert(visible.every(profile => profile.sensorProfile &&
+    profile.files.every(file => file.target === profile.target)),
+    'New QSPI room recommendations must retain qualified sensor policies and exact identities');
+}
+const retiredRoomOnly = picker.buildCatalog([
+  release(qspiFixtureFamily, '2026-10-16T00:00:00Z', qspiRoomAssets.filter(file =>
+    !file.name.includes('_room_server_lora_ota-full-') && !file.name.includes('_room_server_lora_ota-reduced-'))),
+], qspiRoomControls);
+assert.deepStrictEqual(retiredRoomOnly.profiles, [],
+  'No retired board may fall back to its internal room recipe without a QSPI replacement');
+const liteRepeaterTargets = ['', '_lora_ota_no_external_sensors', '_lora_ota'].flatMap(suffix =>
+  ['full', 'reduced'].map(policy => 'LilyGo_T-Echo-Lite_repeater' + suffix + '-' + policy));
+const liteRepeaterAssets = liteRepeaterTargets.map(target =>
+  asset(target + '-ota-' + qspiFixtureFamily + '.uf2'));
+const liteRepeaterCatalog = picker.buildCatalog([
+  release(qspiFixtureFamily, '2026-10-16T00:00:00Z', liteRepeaterAssets),
+]);
+assert.deepStrictEqual(liteRepeaterCatalog.profiles.map(profile => profile.target).sort(),
+  ['full', 'reduced'].map(policy => 'LilyGo_T-Echo-Lite_repeater_lora_ota-' + policy));
+assert.deepStrictEqual(liteRepeaterCatalog.rows.map(row => row.target), liteRepeaterTargets);
+assert(!currentCatalog.profiles.some(profile =>
+  profile.hardware === 'LilyGo_T-Echo-Lite' && profile.role === 'repeater'),
+  'The old internal Lite repeater must not be recommended before its QSPI release exists');
+for (const hardware of ['LilyGo_T-Echo_Card', 'muzi_base_uno', 'muzi_base_duo', 'Nano_G2_Ultra']) {
+  const original = Object.keys(currentControls.profiles).filter(target =>
+    target.startsWith(hardware + '_repeater_') || target.startsWith(hardware + '_room_server_'));
+  assert(original.length > 0, 'The fixture must exercise each hardware-pending board');
+  for (const target of original) {
+    assert(currentCatalog.profiles.some(profile => profile.target === target),
+      'Hardware-pending QSPI boards must retain their supported current firmware');
+  }
+}
+for (const hardware of fixedQspiHardware) {
+  const base = hardware + '_repeater';
+  const visible = currentCatalog.profiles.filter(profile => profile.hardware === hardware && profile.role === 'repeater');
+  assert.deepStrictEqual(visible.map(profile => profile.target).sort(),
+    ['full', 'reduced'].map(policy => base + '-' + policy),
+    'Qualified QSPI canonical pairs must replace duplicate repeater recommendations');
+  for (const policy of ['full', 'reduced']) {
+    assert(currentCatalog.rows.some(row => row.target === base + '_lora_ota_no_external_sensors-' + policy));
+  }
+  for (const fault of ['missing_full', 'missing_reduced', 'stale_source', 'mixed_source',
+    'internal_storage', 'missing_controls']) {
+    const changedControls = JSON.parse(JSON.stringify(currentControls));
+    let files = currentAssets.filter(file => file.name.startsWith(base + '-full-') ||
+      file.name.startsWith(base + '-reduced-') || file.name.startsWith(base + '_lora_ota_no_external_sensors-'));
+    if (fault.startsWith('missing_') && fault !== 'missing_controls') {
+      files = files.filter(file => !file.name.startsWith(base + '-' + fault.slice('missing_'.length) + '-'));
+    } else if (fault === 'stale_source') {
+      changedControls.profiles[base + '-full'].sensorProfileSource = 'f'.repeat(40);
+    } else if (fault === 'mixed_source') {
+      changedControls.profiles[base + '-full'].sensorProfileSource = 'a'.repeat(40);
+      files = files.map(file => file.name.startsWith(base + '-full-')
+        ? asset(file.name.replace(/-[0-9a-f]{8}\.uf2$/, '-aaaaaaaa.uf2')) : file);
+    } else if (fault === 'internal_storage') {
+      changedControls.profiles[base + '-full'].updateRequirements.lora.storage = 'internal_flash';
+    }
+    const partial = picker.buildCatalog([
+      release(currentControls.familyTag, '2026-10-16T00:00:00Z', files),
+    ], fault === 'missing_controls' ? undefined : changedControls);
+    for (const policy of ['full', 'reduced']) {
+      assert(partial.profiles.some(profile => profile.target === base + '_lora_ota_no_external_sensors-' + policy),
+        hardware + ': retain exact aliases when canonical QSPI qualification is incomplete (' + fault + ')');
+    }
+  }
+}
+const xiaoBridgeBase = 'Xiao_nrf52_repeater_bridge_rs232';
+const xiaoBridgeBases = [xiaoBridgeBase, xiaoBridgeBase + '_lora_ota_no_external_sensors'];
+assert(['full', 'reduced'].every(policy => currentCatalog.profiles.some(profile =>
+  profile.target === xiaoBridgeBase + '-' + policy)),
+  'The old canonical image has no merged bridge proof and must retain both bridge downloads');
+const mergedXiaoControls = JSON.parse(JSON.stringify(currentControls));
+for (const policy of ['full', 'reduced']) {
+  Object.assign(mergedXiaoControls.profiles['Xiao_nrf52_repeater-' + policy], {
+    rs232: true, rs232Merged: true,
+    rs232Source: currentControls.profiles['Xiao_nrf52_repeater-' + policy].sensorProfileSource,
+  });
+  mergedXiaoControls.profiles[xiaoBridgeBases[1] + '-' + policy] = {
+    ...currentControls.profiles[xiaoBridgeBase + '-' + policy],
+  };
+}
+const xiaoRepeaterAssets = currentAssets.filter(file =>
+  file.name.startsWith('Xiao_nrf52_repeater-full-') ||
+  file.name.startsWith('Xiao_nrf52_repeater-reduced-') || file.name.startsWith(xiaoBridgeBase + '-'))
+  .concat(['full', 'reduced'].map(policy =>
+    asset(xiaoBridgeBases[1] + '-' + policy + '-ota-' + currentControls.familyTag + '.uf2')));
+const mergedXiaoCatalog = picker.buildCatalog([
+  release(currentControls.familyTag, '2026-10-16T00:00:00Z', xiaoRepeaterAssets),
+], mergedXiaoControls);
+assert.deepStrictEqual(mergedXiaoCatalog.profiles.map(profile => profile.target).sort(),
+  ['full', 'reduced'].map(policy => 'Xiao_nrf52_repeater-' + policy));
+for (const profile of mergedXiaoCatalog.profiles) {
+  assert.deepStrictEqual(picker.profileFieldValues(profile, 'mode'), ['standard', 'rs232']);
+  assert(profile.files.every(file => file.target === profile.target));
+}
+assert(xiaoBridgeBases.every(base => ['full', 'reduced'].every(policy =>
+  mergedXiaoCatalog.rows.some(row => row.target === base + '-' + policy))),
+  'Retired bridge identities must remain exact searchable compatibility files');
+for (const fault of ['missing_full', 'missing_reduced', 'unmerged', 'missing_source', 'stale_source', 'no_rs232']) {
+  const changedControls = JSON.parse(JSON.stringify(mergedXiaoControls));
+  let files = xiaoRepeaterAssets;
+  const info = changedControls.profiles['Xiao_nrf52_repeater-full'];
+  if (fault === 'missing_full' || fault === 'missing_reduced') {
+    files = files.filter(file => !file.name.startsWith('Xiao_nrf52_repeater-' + fault.slice(8) + '-'));
+  } else if (fault === 'unmerged') {
+    delete info.rs232Merged;
+  } else if (fault === 'missing_source') {
+    delete info.rs232Source;
+  } else if (fault === 'stale_source') {
+    info.rs232Source = 'f'.repeat(40);
+  } else {
+    info.rs232 = false;
+  }
+  const partial = picker.buildCatalog([
+    release(currentControls.familyTag, '2026-10-16T00:00:00Z', files),
+  ], changedControls);
+  assert(xiaoBridgeBases.every(base => ['full', 'reduced'].every(policy =>
+    partial.profiles.some(profile => profile.target === base + '-' + policy))),
+    'Keep bridge functionality until both canonical policies prove merged control: ' + fault);
+}
+console.log('onboard-QSPI room retirement and qualified repeater alias replacements passed');
 for (const [hardware, bases] of [
   ['RAK_4631', ['RAK_4631_repeater_unified_lora_ota', 'RAK_4631_repeater_ethernet']],
   ['RAK_3401', ['RAK_3401_repeater_unified_lora_ota']],

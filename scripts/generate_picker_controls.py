@@ -95,6 +95,21 @@ def runtime_metadata(manifest, mqtt, release_source=None):
         result['loggingSource'] = manifest.get('source_commit', release_source)
     if 'companion.dedicated_usb_logging' in verified:
         result['dedicatedUsbLogging'] = True
+    linked = {check['capability'] for check in manifest.get('verification', [])
+              if check.get('present') is True and check.get('source') == 'linked image'
+              and check.get('evidence')}
+    merged_runtime = any(check.get('capability') == 'bridge.rs232.merged'
+                         and check.get('present') is True
+                         and check.get('source') == 'packaged application'
+                         and check.get('evidence')
+                         for check in manifest.get('verification', []))
+    if (manifest.get('verified') is True
+            and {'bridge.rs232', 'bridge.rs232.merged'} <= capabilities
+            and 'bridge.rs232' in linked and merged_runtime):
+        source = manifest.get('source_commit', release_source)
+        if not isinstance(source, str) or not re.fullmatch(r'[0-9a-f]{40}', source):
+            raise ValueError('Merged RS232 requires an exact source commit: ' + manifest['target'])
+        result.update(rs232Merged=True, rs232Source=source)
     return result
 
 

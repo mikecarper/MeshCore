@@ -482,9 +482,13 @@ both profiles with matching packaged OTA identity and flash geometry, even
 when a matrix is resumed or partial publication is requested. A failed build
 is reported, never presented as a supported download. Companion is unchanged.
 
-Normal SolarXiao 30S and 33S Room Server builds use the module's onboard QSPI
-storage (`solarxiao_30S_room_server_lora_ota` and
-`solarxiao_33S_room_server_lora_ota`), with both sensor profiles retained.
+Normal SolarXiao, XIAO nRF52, Ikoka Nano/Stick/Handheld, T-Echo, T-Echo Lite,
+ThinkNode M1/M6, Wio Tracker L1 and SenseCAP Solar Room Server builds use
+onboard QSPI storage through their exact `*_room_server_lora_ota` targets,
+with both sensor profiles retained. T-Echo Lite Repeater similarly uses its
+exact `LilyGo_T-Echo-Lite_repeater_lora_ota` target. Each requires the
+board-matched QSPI-capable OTAFIX bootloader; a shared board-family name is
+not enough to choose a bootloader.
 Internal-only Room recipes remain available by exact name for explicit
 compatibility/recovery builds, but are excluded from ordinary build menus,
 future releases, and picker recommendations. Existing downloads remain
@@ -492,6 +496,25 @@ available through exact filename searches. The legacy and QSPI images have
 different OTA identities and layouts: a QSPI package is not a cross-target
 LoRa update for an internal-only installation. Use the matching bootloader
 and documented local migration path when changing layouts.
+
+T-Echo, SenseCAP Solar, ThinkNode M1/M6 and Wio Tracker L1 already use QSPI
+in their ordinary Repeater targets. Their older
+`*_repeater_lora_ota_no_external_sensors` identities remain explicit
+compatibility builds, not extra normal Full/Reduced choices. The picker hides
+these aliases only when a source-matched, qualified ordinary QSPI pair exists.
+XIAO nRF52 Repeater now also includes its runtime RS232 bridge, disabled by
+default (`set rs232.enabled on|off`). The separate bridge recommendation is
+hidden only after both ordinary sensor profiles prove the linked driver and
+packaged runtime controls. Existing bridge OTA identities remain unchanged.
+
+Muzi Base Uno/Duo, T-Echo Card and Nano G2 Ultra have explicit
+`*_repeater_lora_ota` and `*_room_server_lora_ota` qualification recipes.
+Their dedicated bootloader ports still require physical qualification and
+publication. These experimental recipes reserve raw QSPI for OTA (no shared
+QSPI filesystem), are excluded from ordinary menus and bulk builds, and carry
+`hardware.qualification.pending` in their capability manifests so release
+packaging refuses them. Their current normal builds and picker choices remain
+available; do not install another board's bootloader to bypass this gate.
 
 The legacy `no_external_sensors` profile is labeled **Receives LoRa OTA -
 Reduced optional sensors** on the same button. On RAK3401 and RAK4631 this

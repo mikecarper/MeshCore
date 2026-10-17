@@ -219,6 +219,17 @@
     "ikoka_handheld_nrf_e22_30dbm_096_rotated_companion_radio_full",
   ]);
 
+  const QSPI_REPEATER_ALIAS_HARDWARE = Object.freeze([
+    "lilygo_t-echo", "sensecap_solar", "thinknode_m1", "thinknode_m6", "wiotrackerl1",
+  ]);
+
+  const QSPI_ROOM_HARDWARE = Object.freeze([
+    "xiao_nrf52", "ikoka_handheld_nrf_e22_30dbm",
+    "ikoka_nano_nrf_22dbm", "ikoka_nano_nrf_30dbm", "ikoka_nano_nrf_33dbm",
+    "ikoka_stick_nrf_22dbm", "ikoka_stick_nrf_30dbm", "ikoka_stick_nrf_33dbm",
+    "solarxiao_30s", "solarxiao_33s", "lilygo_t-echo-lite",
+  ].concat(QSPI_REPEATER_ALIAS_HARDWARE));
+
   let pickerInstanceCount = 0;
   let runtimeGroupCount = 0;
 
@@ -522,10 +533,14 @@
     const lowerTarget = target.toLowerCase();
     return HIDDEN_PROFILE_HARDWARE.includes(profile.sourceHardware) ||
       HIDDEN_PROFILE_TARGETS.includes(target) ||
-      // SolarXiao room installations use the onboard external-QSPI recipe.
+      // These room installations use their onboard external-QSPI recipe.
       // Retain internal-only downloads for exact compatibility searches,
       // including when a release has no matching QSPI image.
-      /^solarxiao_(?:30|33)s_room_server(?:-(?:full|reduced)(?:-ota)?)?$/.test(lowerTarget) ||
+      (QSPI_ROOM_HARDWARE.includes(String(profile.sourceHardware || "").toLowerCase()) &&
+        /^_room_server(?:_lora_ota_no_external_sensors)?(?:-(?:full|reduced)(?:-ota)?)?$/
+          .test(lowerTarget.slice(profile.sourceHardware.length))) ||
+      /^lilygo_t-echo-lite_repeater(?:_lora_ota_no_external_sensors)?(?:-(?:full|reduced)(?:-ota)?)?$/
+        .test(lowerTarget) ||
       (lowerTarget.includes("companion_radio_") &&
         /(?:^|[_-])(?:ps|femoff)(?=$|[_-])/.test(lowerTarget));
   }
@@ -706,6 +721,47 @@
       const target = String(profile && profile.target || "").toLowerCase();
       const match = /^rak_(3401|4631)_repeater_(?:lora_ota_no_external_sensors|w25q16_lora_ota|rak15001_slot_c_lora_ota|rak13302_w25q16_lora_ota)(-(?:full|reduced))?$/.exec(target);
       return !match || !targets.has("rak_" + match[1] + "_repeater_unified_lora_ota" + (match[2] || ""));
+    });
+  }
+
+  function omitReplacedQspiProfiles(profiles) {
+    const canonicalPairs = new Map();
+    (profiles || []).forEach(function (profile) {
+      const controls = profile.controls;
+      const hardware = String(profile.hardware || "").toLowerCase();
+      const target = String(profile.target || "").toLowerCase();
+      if (!controls || controls.platform !== "NRF52_PLATFORM" ||
+          profile.ota !== "lora-receiver" || !profile.sensorProfile ||
+          !controls.updateRequirements || !controls.updateRequirements.lora ||
+          controls.updateRequirements.lora.storage !== "external_qspi" ||
+          target !== hardware + "_repeater-" + profile.sensorProfile) return;
+      if (!canonicalPairs.has(hardware)) canonicalPairs.set(hardware, new Map());
+      canonicalPairs.get(hardware).set(profile.sensorProfile, profile);
+    });
+    return (profiles || []).filter(function (profile) {
+      const hardware = String(profile.hardware || "").toLowerCase();
+      const pair = canonicalPairs.get(hardware);
+      if (!pair || !pair.has("full") || !pair.has("reduced")) return true;
+      if (pair.get("full").controls.sensorProfileSource.toLowerCase() !==
+          pair.get("reduced").controls.sensorProfileSource.toLowerCase()) return true;
+      const target = String(profile.target || "").toLowerCase();
+      if (QSPI_REPEATER_ALIAS_HARDWARE.includes(hardware) &&
+          /^_repeater_lora_ota_no_external_sensors(?:-(?:full|reduced)(?:-ota)?)?$/
+            .test(target.slice(hardware.length))) return false;
+      if (hardware === "xiao_nrf52" &&
+          /^xiao_nrf52_repeater_bridge_rs232(?:_lora_ota_no_external_sensors)?(?:-(?:full|reduced)(?:-ota)?)?$/.test(target)) {
+        // A filename or static UART flag cannot prove the merged image's
+        // runtime bridge control. Each qualified policy needs release-bound
+        // packaged control evidence for the same source as its sensor proof.
+        return !["full", "reduced"].every(function (policy) {
+          const controls = pair.get(policy).controls;
+          return controls.rs232 === true && controls.rs232Merged === true &&
+            typeof controls.rs232Source === "string" &&
+            /^[0-9a-f]{40}$/i.test(controls.rs232Source) &&
+            controls.rs232Source.toLowerCase() === controls.sensorProfileSource.toLowerCase();
+        });
+      }
+      return true;
     });
   }
 
@@ -1012,9 +1068,9 @@
     return {
       releaseSet: releaseSet,
       rows: firmwareRows,
-      // Old releases have no shared-slot proof and retain both choices. Raw
-      // assets remain searchable even when a new exact successor replaces R2.
-      profiles: omitStationG3SlotDuplicates(profiles),
+      // Recommendation filters retain original files and target identities in
+      // the raw catalog, including when a qualified successor replaces them.
+      profiles: omitReplacedQspiProfiles(omitStationG3SlotDuplicates(profiles)),
     };
   }
 

@@ -55,40 +55,80 @@ def nrf52_sensor_profile(manifest):
     return next(iter(choices))
 
 
-def omit_internal_solar_room_records(records):
-    """Omit resumed internal-only Solar Room packages from ordinary releases.
+def omit_retired_onboard_qspi_records(records):
+    """Omit retired onboard-QSPI alternatives from ordinary releases.
 
     Call after package qualification. Keep the original files and OTA
     identities intact, and require each retired board's matching qualified
     external-QSPI Full/Reduced pair before excluding its recovery packages.
     """
-    legacy_targets = {
-        "solarxiao_30s_room_server": "solarxiao_30s_room_server_lora_ota",
-        "solarxiao_33s_room_server": "solarxiao_33s_room_server_lora_ota",
-    }
+    room_bases = (
+        "solarxiao_30s_room_server", "solarxiao_33s_room_server",
+        "xiao_nrf52_room_server",
+        "ikoka_nano_nrf_22dbm_room_server", "ikoka_nano_nrf_30dbm_room_server",
+        "ikoka_nano_nrf_33dbm_room_server", "ikoka_stick_nrf_22dbm_room_server",
+        "ikoka_stick_nrf_30dbm_room_server", "ikoka_stick_nrf_33dbm_room_server",
+        "ikoka_handheld_nrf_e22_30dbm_room_server",
+        "lilygo_t-echo_room_server", "sensecap_solar_room_server",
+        "thinknode_m1_room_server", "thinknode_m6_room_server", "wiotrackerl1_room_server",
+        "lilygo_t-echo-lite_room_server",
+    )
+    legacy_targets = {}
+    for base in room_bases + ("lilygo_t-echo-lite_repeater",):
+        for legacy in (base, base + "_lora_ota_no_external_sensors"):
+            legacy_targets[legacy] = base + "_lora_ota"
+    for primary in ("lilygo_t-echo_repeater", "sensecap_solar_repeater", "thinknode_m1_repeater",
+                    "thinknode_m6_repeater", "wiotrackerl1_repeater"):
+        legacy_targets[primary + "_lora_ota_no_external_sensors"] = primary
+    bridge_legacy = {"xiao_nrf52_repeater_bridge_rs232",
+                     "xiao_nrf52_repeater_bridge_rs232_lora_ota_no_external_sensors"}
+    legacy_targets.update({legacy: "xiao_nrf52_repeater" for legacy in bridge_legacy})
     targets = {record["manifest"]["target"].lower() for record in records}
     for legacy, primary in legacy_targets.items():
         if legacy not in targets:
             continue
         # collect_artifacts() has already checked the packaged OTA identity
-        # and layout-matched sensor pair. Do not let internal-only leftovers
+        # and layout-matched sensor pair. Do not let retired leftovers
         # conceal a missing normal release pair for this exact hardware.
         replacements = [record["manifest"] for record in records
                         if record["manifest"]["target"].lower() == primary]
-        error = (legacy + ": ordinary SolarXiao Room release requires the qualified "
+        error = (legacy + ": ordinary onboard-QSPI release requires the qualified "
                  "external-QSPI Full/Reduced pair for " + primary
-                 + "; internal-only artifacts cannot substitute for its distinct OTA identity")
+                 + "; retired artifacts cannot substitute for its distinct OTA identity")
         try:
             profiles = [nrf52_sensor_profile(manifest) for manifest in replacements]
         except ValueError as cause:
             raise ValueError(error) from cause
         if (sorted(profiles) != ["full", "reduced"]
-                or any((manifest.get("ota_update_requirements") or {})
+                or any("hardware.qualification.pending" in manifest.get("capabilities", [])
+                       or (manifest.get("ota_update_requirements") or {})
                        .get("lora", {}).get("storage") != "external_qspi"
-                       for manifest in replacements)):
+                       for manifest in replacements)
+                or replacements[0].get("source_commit") != replacements[1].get("source_commit")
+                or replacements[0].get("ota_update_requirements") !=
+                   replacements[1].get("ota_update_requirements")):
             raise ValueError(error)
+        if legacy in bridge_legacy:
+            # The ordinary QSPI repeater may retire the separate UART role
+            # only when both sensor profiles retain the linked driver and
+            # prove its runtime controls in the packaged application.
+            required = {"bridge.rs232": "linked image",
+                        "bridge.rs232.merged": "packaged application"}
+            for manifest in replacements:
+                proven = {check.get("capability") for check in manifest.get("verification", [])
+                          if check.get("present") is True
+                          and required.get(check.get("capability")) == check.get("source")
+                          and isinstance(check.get("evidence"), str) and check["evidence"].strip()}
+                if (not required.keys() <= set(manifest.get("capabilities", []))
+                        or not required.keys() <= proven):
+                    raise ValueError(error + "; replacement requires a verified runtime RS232 bridge")
     return [record for record in records
             if record["manifest"]["target"].lower() not in legacy_targets]
+
+
+def omit_internal_solar_room_records(records):
+    """Compatibility entry point for the shared onboard-QSPI retirement policy."""
+    return omit_retired_onboard_qspi_records(records)
 
 
 def release_profile_label(manifest):
@@ -153,6 +193,8 @@ def validate_nrf52_sensor_pairs(records):
 
 def validate_manifest(manifest):
     target = manifest["target"]
+    if "hardware.qualification.pending" in manifest.get("capabilities", []):
+        raise ValueError(f"{target}: hardware qualification pending; experimental firmware cannot be published")
     if manifest.get("schema_version", 0) < 2 or not manifest.get("verified"):
         raise ValueError(f"{target}: firmware capability qualification failed")
     if not is_companion(target) and not manifest.get("ota_update_verified"):
@@ -414,7 +456,7 @@ def main():
             raise ValueError("matrix did not use Cascade runtime defaults")
         radio = {key: status["radio_" + key] for key in ("frequency", "bandwidth", "sf", "cr")}
         records = collect_artifacts(args.input, version)
-    records = omit_internal_solar_room_records(records)
+    records = omit_retired_onboard_qspi_records(records)
     if args.output.exists() and any(args.output.iterdir()):
         raise ValueError("staging directory must be empty; existing releases are never overwritten")
     base_tag = version

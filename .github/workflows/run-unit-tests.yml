@@ -712,6 +712,7 @@ jobs:
           python3 -B test/test_waveshare_partition_migration.py -v
           python3 -B test/test_usb_partition_bridge_set.py -v
           bash test/test_build_profiles.sh
+          python3 -B test/test_onboard_qspi_profiles.py -v
           bash test/test_full_infrastructure_selection.sh
           bash test/test_nrf52_ota_profiles.sh
           bash test/test_xiao_qspi_combined.sh

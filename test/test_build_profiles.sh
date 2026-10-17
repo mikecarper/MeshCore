@@ -765,6 +765,89 @@ if is_solarxiao_internal_room_compatibility_target Xiao_nrf52_room_server \
   fail "SolarXiao internal Room policy retired an unrelated recipe"
 fi
 
+# Every supported onboard-QSPI Room has a normal exact external identity,
+# while old internal identities stay directly buildable without being remapped.
+for qspi_board in Xiao_nrf52 \
+    ikoka_nano_nrf_22dbm ikoka_nano_nrf_30dbm ikoka_nano_nrf_33dbm \
+    ikoka_stick_nrf_22dbm ikoka_stick_nrf_30dbm ikoka_stick_nrf_33dbm \
+    ikoka_handheld_nrf_e22_30dbm LilyGo_T-Echo SenseCap_Solar \
+    ThinkNode_M1 ThinkNode_M6 WioTrackerL1 LilyGo_T-Echo-Lite; do
+  legacy_room=${qspi_board}_room_server
+  legacy_alias=${legacy_room}_lora_ota_no_external_sensors
+  qspi_room=${legacy_room}_lora_ota
+  [ "$(get_onboard_qspi_normal_replacement "$legacy_room")" = "$qspi_room" ] \
+    || fail "$legacy_room lacks its normal QSPI replacement"
+  for old in "$legacy_room" "$legacy_alias"; do
+    is_supported_build_env "$old" || fail "$old lost explicit compatibility builds"
+    is_redundant_bulk_build_target "$old" || fail "$old remains an ordinary Room choice"
+    [ "$(get_pio_build_env "$old")" = "$legacy_room" ] \
+      || fail "$old changed its original internal recipe"
+  done
+  for selection in "$room_release_targets" "$solar_room_targets" \
+      "$solar_all_targets" "$solar_logging_targets" "$solar_menu_targets"; do
+    grep -Fxq "$qspi_room" <<<"$selection" || fail "$qspi_room missing from ordinary selection"
+    if grep -Fxq -e "$legacy_room" -e "$legacy_alias" <<<"$selection"; then
+      fail "$legacy_room internal identity leaked into ordinary selection"
+    fi
+  done
+  (
+    REQUIRE_OTA_UPDATES=0
+    resolve_command_targets build-firmware "$legacy_room"
+    [ "${#RESOLVED_BUILD_TARGETS[@]}" -eq 1 ] \
+      && [ "${RESOLVED_BUILD_TARGETS[0]}" = "$legacy_alias" ] \
+      || fail "$legacy_room direct build lost its deployed internal pair identity"
+  )
+done
+repeater_release_targets=$(print_release_firmware_targets get-repeater-firmwares-to-build)
+for board in LilyGo_T-Echo SenseCap_Solar ThinkNode_M1 ThinkNode_M6 WioTrackerL1; do
+  canonical=${board}_repeater
+  alias=${canonical}_lora_ota_no_external_sensors
+  is_supported_build_env "$alias" || fail "$alias lost its exact deployed recipe"
+  for selection in "$repeater_release_targets" "$solar_all_targets" \
+      "$solar_logging_targets" "$solar_menu_targets"; do
+    grep -Fxq "$canonical" <<<"$selection" || fail "$canonical missing its normal QSPI pair"
+    if grep -Fxq "$alias" <<<"$selection"; then fail "$alias duplicates its normal QSPI pair"; fi
+  done
+done
+for selection in "$repeater_release_targets" "$solar_all_targets" \
+    "$solar_logging_targets" "$solar_menu_targets"; do
+  grep -Fxq LilyGo_T-Echo-Lite_repeater_lora_ota <<<"$selection" \
+    || fail "Lite QSPI repeater missing from ordinary selection"
+  if grep -Fxq -e LilyGo_T-Echo-Lite_repeater \
+      -e LilyGo_T-Echo-Lite_repeater_lora_ota_no_external_sensors \
+      -e Xiao_nrf52_repeater_bridge_rs232 \
+      -e Xiao_nrf52_repeater_bridge_rs232_lora_ota_no_external_sensors <<<"$selection"; then
+    fail "internal Lite/bridge identity leaked into ordinary selection"
+  fi
+done
+for pending in muzi_base_duo_repeater_lora_ota muzi_base_duo_room_server_lora_ota \
+    muzi_base_uno_repeater_lora_ota muzi_base_uno_room_server_lora_ota \
+    LilyGo_T-Echo_Card_repeater_lora_ota LilyGo_T-Echo_Card_room_server_lora_ota \
+    Nano_G2_Ultra_repeater_lora_ota Nano_G2_Ultra_room_server_lora_ota; do
+  is_supported_build_env "$pending" || fail "$pending qualification recipe missing"
+  for selection in "$room_release_targets" "$repeater_release_targets" "$solar_all_targets" \
+      "$solar_logging_targets" "$solar_menu_targets"; do
+    if grep -Fxq "$pending" <<<"$selection"; then fail "$pending escaped qualification quarantine"; fi
+  done
+  (
+    BUILD_PROFILE_FOR_TARGET=standard
+    ESP32_FULL_BUILD=0
+    BUILD_CAPABILITIES=() BUILD_EXPECTATIONS=() BUILD_APPLICATION_EXPECTATIONS=() BUILD_REDUCTIONS=()
+    declare_build_capability_contract "$pending" NRF52_PLATFORM
+    [[ " ${BUILD_CAPABILITIES[*]} " == *" hardware.qualification.pending "* ]] \
+      || fail "$pending lacks its package publication prohibition"
+  )
+done
+(
+  BUILD_PROFILE_FOR_TARGET=standard
+  ESP32_FULL_BUILD=0
+  BUILD_CAPABILITIES=() BUILD_EXPECTATIONS=() BUILD_APPLICATION_EXPECTATIONS=() BUILD_REDUCTIONS=()
+  declare_build_capability_contract Xiao_nrf52_repeater NRF52_PLATFORM
+  [[ " ${BUILD_EXPECTATIONS[*]} " == *"bridge.rs232="* \
+      && " ${BUILD_APPLICATION_EXPECTATIONS[*]} " == *"bridge.rs232.merged="* ]] \
+    || fail "merged XIAO bridge lacks linked driver and packaged runtime proof"
+)
+
 sensor_release_targets=$(resolve_sensor_firmwares)
 while IFS='|' read -r sensor_env sensor_ota_env; do
   is_supported_build_env "$sensor_ota_env" \

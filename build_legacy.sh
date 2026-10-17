@@ -81,7 +81,7 @@ BUILD_BACKGROUND_HANDOFF_STATE=""
 BUILD_SCRIPT_LOCK_FD=""
 INTERACTIVE_BUILD_SELECTION=0
 
-ENV_VARIANT_SUFFIX_PATTERN='companion_radio_(wifi_mqtt|serial|wifi|usb|ble|full)(_ps)?(_fem(on|off))?|companion_radio_ethernet|comp_radio_usb|companion_usb|companion_ble|repeater_bridge_rs232_serial1_lora_ota_no_external_sensors|repeater_bridge_rs232_serial2_lora_ota_no_external_sensors|repeater_bridge_rs232_lora_ota_no_external_sensors|repeater_rak13302_w25q16_lora_ota|repeater_rak15001_slot_c_lora_ota|repeater_w25q16_lora_ota|repeater_lora_ota_no_external_sensors|repeater_bridge_rs232_serial1|repeater_bridge_rs232_serial2|repeater_bridge_rs232|repeater_bridge_espnow|repeater_observer_mqtt|repeater_ethernet|room_server_ethernet_lora_ota_no_external_sensors|room_server_lora_ota_no_external_sensors|room_svr_lora_ota_no_external_sensors|room_server_lora_ota|room_server_observer_mqtt|room_server_ethernet|terminal_chat|room_server|room_svr|kiss_modem|sensor_lora_ota_no_external_sensors|sensor|repeatr|repeater'
+ENV_VARIANT_SUFFIX_PATTERN='companion_radio_(wifi_mqtt|serial|wifi|usb|ble|full)(_ps)?(_fem(on|off))?|companion_radio_ethernet|comp_radio_usb|companion_usb|companion_ble|repeater_bridge_rs232_serial1_lora_ota_no_external_sensors|repeater_bridge_rs232_serial2_lora_ota_no_external_sensors|repeater_bridge_rs232_lora_ota_no_external_sensors|repeater_rak13302_w25q16_lora_ota|repeater_rak15001_slot_c_lora_ota|repeater_w25q16_lora_ota|repeater_lora_ota_no_external_sensors|repeater_lora_ota|repeater_bridge_rs232_serial1|repeater_bridge_rs232_serial2|repeater_bridge_rs232|repeater_bridge_espnow|repeater_observer_mqtt|repeater_ethernet|room_server_ethernet_lora_ota_no_external_sensors|room_server_lora_ota_no_external_sensors|room_svr_lora_ota_no_external_sensors|room_server_lora_ota|room_server_observer_mqtt|room_server_ethernet|terminal_chat|room_server|room_svr|kiss_modem|sensor_lora_ota_no_external_sensors|sensor|repeatr|repeater'
 BOARD_MODIFIER_WITHOUT_DISPLAY="_without_display"
 BOARD_MODIFIER_LOGGING="_logging"
 BOARD_MODIFIER_TFT="_tft"
@@ -1980,6 +1980,13 @@ print_release_firmware_targets() {
       ;;
     get-repeater-firmwares-to-build)
       get_pio_envs_ending_with_string "_repeater"
+      local qspi_target
+      for qspi_target in "${SUPPORTED_PIO_ENVS[@]}"; do
+        if [[ "$qspi_target" == *_repeater_lora_ota ]] \
+            && ! is_redundant_bulk_build_target "$qspi_target"; then
+          printf '%s\n' "$qspi_target"
+        fi
+      done
       # MeshTower keeps its deployed SD target identity as the one canonical
       # repeater recipe, including when SD staging falls back to internal staging.
       if is_supported_build_env "Heltec_tower_v2_sdcard_repeater_lora_ota_no_external_sensors"; then
@@ -2021,8 +2028,9 @@ print_release_firmware_targets() {
       get_pio_envs_ending_with_string "_room_server"
       for env_name in "${SUPPORTED_PIO_ENVS[@]}"; do
         if is_room_server_role_target "$env_name" \
-            && { is_lora_ota_no_external_sensors_target "$env_name" \
-                 || [[ "$env_name" == solarxiao_*_room_server_lora_ota ]]; }; then
+        && { is_lora_ota_no_external_sensors_target "$env_name" \
+          || [[ "$env_name" == *_room_server_lora_ota ]]; } \
+        && ! is_redundant_bulk_build_target "$env_name"; then
           printf '%s\n' "$env_name"
         fi
       done
@@ -3445,6 +3453,9 @@ declare_build_capability_contract() {
   declare_full_logging_application_contract "$env_name"
   record_build_capability "profile.${BUILD_PROFILE_FOR_TARGET}"
   pio_env_name=$(get_pio_build_env "$env_name")
+  if is_qspi_hardware_qualification_target "$env_name"; then
+    record_build_capability "hardware.qualification.pending"
+  fi
   if [ "$BUILD_PROFILE_FOR_TARGET" = "full" ] \
       && is_esp32_canonical_full_release_target "$env_name"; then
     pio_env_name=$(get_exact_identity_full_pio_env "$env_name")
@@ -3456,6 +3467,10 @@ declare_build_capability_contract() {
     # Check both the logical and compiled recipes so substituting sources
     # cannot silently remove RS-232 while its legacy image is retired.
     record_build_expectation "bridge.rs232" "_ZN11RS232Bridge5beginEv"
+    if pio_env_option_contains "$pio_env_name" build_flags "RS232_BRIDGE_MERGED=1"; then
+      record_application_expectation "bridge.rs232.merged" \
+        "Error: use set rs232.enabled on|off"
+    fi
   fi
   if [ "$BUILD_PROFILE_FOR_TARGET" = "full" ] \
       && supports_esp32_full_shared_espnow "$pio_env_name"; then
@@ -5666,6 +5681,9 @@ get_merged_rs232_repeater_replacement() {
     solarxiao_33s_repeater_bridge_rs232)
       printf '%s\n' solarxiao_33S_repeater
       ;;
+    xiao_nrf52_repeater_bridge_rs232|xiao_nrf52_repeater_bridge_rs232_lora_ota_no_external_sensors)
+      printf '%s\n' Xiao_nrf52_repeater
+      ;;
     heltec_v3_repeater_bridge_rs232)
       printf '%s\n' Heltec_v3_repeater
       ;;
@@ -5779,11 +5797,52 @@ is_solarxiao_internal_room_compatibility_target() {
   esac
 }
 
+get_onboard_qspi_normal_replacement() {
+  local target=$1 base
+  base=${target%_lora_ota_no_external_sensors}
+  case "${base,,}" in
+    solarxiao_30s_room_server|solarxiao_33s_room_server|xiao_nrf52_room_server|\
+    ikoka_nano_nrf_22dbm_room_server|ikoka_nano_nrf_30dbm_room_server|ikoka_nano_nrf_33dbm_room_server|\
+    ikoka_stick_nrf_22dbm_room_server|ikoka_stick_nrf_30dbm_room_server|ikoka_stick_nrf_33dbm_room_server|\
+    ikoka_handheld_nrf_e22_30dbm_room_server|lilygo_t-echo_room_server|\
+    sensecap_solar_room_server|thinknode_m1_room_server|thinknode_m6_room_server|\
+    wiotrackerl1_room_server|lilygo_t-echo-lite_room_server|lilygo_t-echo-lite_repeater)
+      printf '%s_lora_ota\n' "$base"
+      return 0
+      ;;
+    lilygo_t-echo_repeater|sensecap_solar_repeater|thinknode_m1_repeater|\
+    thinknode_m6_repeater|wiotrackerl1_repeater)
+      if [ "$base" != "$target" ]; then
+        printf '%s\n' "$base"
+        return 0
+      fi
+      ;;
+    xiao_nrf52_repeater_bridge_rs232)
+      printf '%s\n' Xiao_nrf52_repeater
+      return 0
+      ;;
+  esac
+  return 1
+}
+
+is_qspi_hardware_qualification_target() {
+  case "${1,,}" in
+    muzi_base_duo_repeater_lora_ota|muzi_base_duo_room_server_lora_ota|\
+    muzi_base_uno_repeater_lora_ota|muzi_base_uno_room_server_lora_ota|\
+    lilygo_t-echo_card_repeater_lora_ota|lilygo_t-echo_card_room_server_lora_ota|\
+    nano_g2_ultra_repeater_lora_ota|nano_g2_ultra_room_server_lora_ota)
+      return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
 is_redundant_bulk_build_target() {
-  # SolarXiao has onboard QSPI. Its internal-only Room recipes retain their
-  # exact legacy OTA identities for explicit compatibility/recovery builds,
-  # but must not be offered as ordinary builds or mapped to the QSPI identity.
-  if is_solarxiao_internal_room_compatibility_target "$1"; then
+  # Known onboard-QSPI normal recipes replace old internal/lean choices.
+  # Retain exact legacy OTA identities for explicit compatibility/recovery;
+  # do not remap them to the QSPI identity. Hardware-pending external ports
+  # are explicit qualification builds, never ordinary release choices.
+  if get_onboard_qspi_normal_replacement "$1" >/dev/null \
+      || is_qspi_hardware_qualification_target "$1"; then
     return 0
   fi
   # Bench fixtures, migration utilities and the unqualified optional SD

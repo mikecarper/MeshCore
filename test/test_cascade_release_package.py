@@ -63,6 +63,12 @@ class ReleaseQualificationTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "wireless updater"):
             package.validate_manifest(self.manifest(ota_update_verified=False))
 
+    def test_pending_hardware_qualification_cannot_be_published(self):
+        for platform in ('NRF52_PLATFORM', 'ESP32_PLATFORM'):
+            manifest = self.manifest(platform=platform, capabilities=['hardware.qualification.pending'])
+            with self.subTest(platform=platform), self.assertRaisesRegex(ValueError, 'hardware qualification pending'):
+                package.validate_manifest(manifest)
+
     def test_usb_companion_is_accepted(self):
         package.validate_manifest(self.manifest("test_companion_radio_usb", ota_update_verified=False))
 
@@ -99,9 +105,11 @@ class ReleaseQualificationTest(unittest.TestCase):
 
     def sensor_record(self, directory, sensor, *, target='test_repeater', target_id=None,
                       hw_id='TEST', app_base=0x26000, flags=0x10, fw_version=0x01110107,
-                      version='v1.17.1.7-dev-deadbeef', storage='internal_flash_and_retained_ram'):
+                      version='v1.17.1.7-dev-deadbeef', storage='internal_flash_and_retained_ram',
+                      extra_application=b''):
         stem = target + '-' + sensor + '-ota-' + version
-        application, _ = ensure_endf(ensure_nrf52_layout(b'OTA: status\0invalid in-place patch geometry\0',
+        application, _ = ensure_endf(ensure_nrf52_layout(b'OTA: status\0invalid in-place patch geometry\0'
+                                                       + extra_application,
             Nrf52Layout(app_base, 0xED000, 0xED000, flags)),
             FwIdent(fw_version, target_id_for_env(target) if target_id is None else target_id, hw_id))
         path = directory / (stem + '.zip')
@@ -117,12 +125,23 @@ class ReleaseQualificationTest(unittest.TestCase):
             ota_update_requirements={'lora': {'storage': storage}})
         return {'manifest': manifest, 'files': [path]}
 
-    def sensor_package_fixture(self, directory, target, sensor, *, external=False):
+    def sensor_package_fixture(self, directory, target, sensor, *, external=False,
+                               merged_bridge=False, extra_capabilities=()):
         """Write fictional, structurally valid packages for the real CLI path."""
         record = self.sensor_record(directory, sensor, target=target,
             version='v1.17.1.5-halo-keymind-cascade-dev-deadbeef',
             flags=0x04 if external else 0x10,
-            storage='external_qspi' if external else 'internal_flash_and_retained_ram')
+            storage='external_qspi' if external else 'internal_flash_and_retained_ram',
+            extra_application=b'meshcore.capability.rs232.merged.v1\0' if merged_bridge else b'')
+        manifest = record['manifest']
+        manifest['capabilities'].extend(extra_capabilities)
+        if merged_bridge:
+            for capability, source, evidence in (
+                    ('bridge.rs232', 'linked image', '_ZN11RS232Bridge5beginEv'),
+                    ('bridge.rs232.merged', 'packaged application', 'meshcore.capability.rs232.merged.v1')):
+                manifest['capabilities'].append(capability)
+                manifest['verification'].append(dict(capability=capability, source=source,
+                                                     present=True, evidence=evidence))
         path = record['files'][0]
         with zipfile.ZipFile(path) as archive:
             application = archive.read('application.bin')
@@ -153,20 +172,30 @@ class ReleaseQualificationTest(unittest.TestCase):
                 '--input', str(directory / 'input'), '--output', str(directory / 'stage'),
                 '--build-status', str(status), '--commit', commit]
 
-    def test_direct_matrix_packaging_omits_resumed_solar_internal_room_packages(self):
+    def test_direct_matrix_packaging_omits_resumed_onboard_qspi_alternatives(self):
         with tempfile.TemporaryDirectory() as temp:
             directory = Path(temp)
             inputs = directory / 'input'
             inputs.mkdir()
             retired = []
             expected = []
-            for board in ('30S', '33S'):
-                target = 'solarxiao_' + board + '_room_server'
+            cases = [(target, target + '_lora_ota') for target in (
+                'solarxiao_30S_room_server', 'solarxiao_33S_room_server', 'Xiao_nrf52_room_server',
+                'ikoka_nano_nrf_33dbm_room_server', 'ikoka_stick_nrf_22dbm_room_server',
+                'ikoka_handheld_nrf_e22_30dbm_room_server', 'LilyGo_T-Echo_room_server',
+                'SenseCap_Solar_room_server', 'ThinkNode_M1_room_server', 'ThinkNode_M6_room_server',
+                'WioTrackerL1_room_server', 'LilyGo_T-Echo-Lite_room_server', 'LilyGo_T-Echo-Lite_repeater')]
+            cases += [(target + '_lora_ota_no_external_sensors', target) for target in (
+                'LilyGo_T-Echo_repeater', 'SenseCap_Solar_repeater', 'ThinkNode_M1_repeater',
+                'ThinkNode_M6_repeater', 'WioTrackerL1_repeater')]
+            cases.append(('Xiao_nrf52_repeater_bridge_rs232', 'Xiao_nrf52_repeater'))
+            for target, primary in cases:
                 for sensor in ('full', 'reduced'):
                     retired.append(self.sensor_package_fixture(inputs, target, sensor))
-                    expected.append(self.sensor_package_fixture(inputs, target + '_lora_ota', sensor,
-                                                                external=True))
-            for target in ('Xiao_nrf52_room_server', 'RAK_3401_room_server'):
+                    expected.append(self.sensor_package_fixture(inputs, primary, sensor, external=True,
+                                                               merged_bridge=primary == 'Xiao_nrf52_repeater'))
+            for target in ('muzi_base_uno_room_server', 'RAK_3401_room_server',
+                           'Nano_G2_Ultra_room_server', 'LilyGo_T-Echo_Card_room_server'):
                 for sensor in ('full', 'reduced'):
                     expected.append(self.sensor_package_fixture(inputs, target, sensor))
             before = {p.name: p.read_bytes() for p in inputs.iterdir()}
@@ -184,6 +213,7 @@ class ReleaseQualificationTest(unittest.TestCase):
                 staged = by_artifact[manifest['artifact_target']]
                 self.assertEqual(staged['target'], manifest['target'])
                 self.assertEqual(staged['ota_update_requirements'], manifest['ota_update_requirements'])
+                self.assertEqual(staged['capabilities'], manifest['capabilities'])
                 for name in staged['files']:
                     matches = list(stage.glob('*/' + name))
                     self.assertEqual(len(matches), 1)
@@ -208,6 +238,38 @@ class ReleaseQualificationTest(unittest.TestCase):
                 self.assertIn('qualified external-QSPI Full/Reduced pair', result.stderr)
                 self.assertFalse((directory / 'stage').exists())
                 self.assertEqual({p.name: p.read_bytes() for p in inputs.iterdir()}, before)
+
+    def test_direct_matrix_packaging_requires_xiao_runtime_bridge_in_each_profile(self):
+        for missing_sensor in ('full', 'reduced'):
+            with self.subTest(profile=missing_sensor), tempfile.TemporaryDirectory() as temp:
+                directory = Path(temp)
+                inputs = directory / 'input'
+                inputs.mkdir()
+                for sensor in ('full', 'reduced'):
+                    self.sensor_package_fixture(inputs, 'Xiao_nrf52_repeater_bridge_rs232', sensor)
+                    self.sensor_package_fixture(inputs, 'Xiao_nrf52_repeater', sensor, external=True,
+                                                merged_bridge=sensor != missing_sensor)
+                before = {p.name: p.read_bytes() for p in inputs.iterdir()}
+                result = subprocess.run(self.matrix_package_command(directory), capture_output=True, text=True)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn('verified runtime RS232 bridge', result.stderr)
+                self.assertFalse((directory / 'stage').exists())
+                self.assertEqual({p.name: p.read_bytes() for p in inputs.iterdir()}, before)
+
+    def test_direct_matrix_packaging_rejects_experimental_qspi_even_with_complete_pair(self):
+        with tempfile.TemporaryDirectory() as temp:
+            directory = Path(temp)
+            inputs = directory / 'input'
+            inputs.mkdir()
+            for sensor in ('full', 'reduced'):
+                self.sensor_package_fixture(inputs, 'experimental_repeater_lora_ota', sensor, external=True,
+                                            extra_capabilities=('hardware.qualification.pending',))
+            before = {p.name: p.read_bytes() for p in inputs.iterdir()}
+            result = subprocess.run(self.matrix_package_command(directory), capture_output=True, text=True)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn('hardware qualification pending', result.stderr)
+            self.assertFalse((directory / 'stage').exists())
+            self.assertEqual({p.name: p.read_bytes() for p in inputs.iterdir()}, before)
 
     def test_sensor_pair_requires_one_of_each_with_matching_packaged_identity_and_layout(self):
         with tempfile.TemporaryDirectory() as temp:

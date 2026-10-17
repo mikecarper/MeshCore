@@ -35,6 +35,37 @@ def sensor_pair(target: str, storage: str = "external_qspi") -> list[dict]:
     return variants
 
 
+def onboard_qspi_retirements() -> list[tuple[str, str]]:
+    rooms = ("solarxiao_30S_room_server", "solarxiao_33S_room_server", "Xiao_nrf52_room_server",
+             "ikoka_nano_nrf_22dbm_room_server", "ikoka_nano_nrf_30dbm_room_server",
+             "ikoka_nano_nrf_33dbm_room_server", "ikoka_stick_nrf_22dbm_room_server",
+             "ikoka_stick_nrf_30dbm_room_server", "ikoka_stick_nrf_33dbm_room_server",
+             "ikoka_handheld_nrf_e22_30dbm_room_server", "LilyGo_T-Echo_room_server",
+             "SenseCap_Solar_room_server", "ThinkNode_M1_room_server", "ThinkNode_M6_room_server",
+             "WioTrackerL1_room_server", "LilyGo_T-Echo-Lite_room_server")
+    cases = [(legacy, base + "_lora_ota")
+             for base in rooms + ("LilyGo_T-Echo-Lite_repeater",)
+             for legacy in (base, base + "_lora_ota_no_external_sensors")]
+    cases += [(target + "_lora_ota_no_external_sensors", target) for target in (
+        "LilyGo_T-Echo_repeater", "SenseCap_Solar_repeater", "ThinkNode_M1_repeater",
+        "ThinkNode_M6_repeater", "WioTrackerL1_repeater")]
+    cases += [(target, "Xiao_nrf52_repeater") for target in (
+        "Xiao_nrf52_repeater_bridge_rs232",
+        "Xiao_nrf52_repeater_bridge_rs232_lora_ota_no_external_sensors")]
+    return cases
+
+
+def prove_runtime_rs232(variants: list[dict]) -> list[dict]:
+    for item in variants:
+        manifest = item["manifest"]
+        for capability, source in (("bridge.rs232", "linked image"),
+                                   ("bridge.rs232.merged", "packaged application")):
+            manifest["capabilities"].append(capability)
+            manifest["verification"].append(dict(capability=capability, source=source,
+                                                  present=True, evidence=capability))
+    return variants
+
+
 class ReleaseFullSelectionTest(unittest.TestCase):
     def test_resume_discards_everyday_esp32_standard_profiles_with_or_without_full(self):
         for target in ("heltec_v4_repeater", "heltec_v4_room_server", "heltec_v4_sensor",
@@ -282,7 +313,8 @@ class ReleaseFullSelectionTest(unittest.TestCase):
             legacy.append(record(target, "auto", "NRF52_PLATFORM"))
             primaries.extend(sensor_pair(target + "_LORA_OTA"))
         unrelated = [record(target, "auto", "NRF52_PLATFORM") for target in (
-            "Xiao_nrf52_room_server", "Xiao_nrf52_room_server_lora_ota_no_external_sensors",
+            "muzi_base_uno_room_server", "Nano_G2_Ultra_room_server",
+            "LilyGo_T-Echo_Card_room_server", "R1Neo_sensor",
             "RAK_3401_room_server", "RAK_4631_room_server_lora_ota_no_external_sensors",
             "solarxiao_30S_repeater", "solarxiao_33S_sensor",
         )]
@@ -345,6 +377,90 @@ class ReleaseFullSelectionTest(unittest.TestCase):
                         with self.assertRaisesRegex(ValueError, "qualified external-QSPI Full/Reduced pair"):
                             select_ordinary_full_records(inputs)
                         self.assertEqual(inputs, before)
+
+    def test_onboard_qspi_retirement_preserves_pairs_files_sources_and_original_identities(self):
+        legacy = []
+        primaries = {}
+        for old, primary in onboard_qspi_retirements():
+            legacy.extend(sensor_pair(old.upper(), "internal_flash"))
+            if primary not in primaries:
+                pair = sensor_pair(primary)
+                if primary == "Xiao_nrf52_repeater":
+                    prove_runtime_rs232(pair)
+                primaries[primary] = pair
+        for item in legacy:
+            item["manifest"].update(source_commit="original-recovery-source", target_id=1234)
+        current = [item for pair in primaries.values() for item in pair]
+        for item in current:
+            item["manifest"].update(source_commit="qualified-normal-source", target_id=5678)
+        unrelated = [record(target, "auto", "NRF52_PLATFORM") for target in (
+            "muzi_base_duo_repeater", "muzi_base_uno_room_server", "Nano_G2_Ultra_room_server",
+            "LilyGo_T-Echo_Card_room_server", "RAK_3401_room_server", "R1Neo_sensor")]
+        for inputs in (legacy + current + unrelated, unrelated + current + legacy,
+                       list(reversed(legacy + current + unrelated))):
+            before = deepcopy(inputs)
+            expected = [item for item in inputs if all(item is not old for old in legacy)]
+            selected = select_ordinary_full_records(inputs)
+            self.assertEqual(selected, expected)
+            self.assertTrue(all(actual is original for actual, original in zip(selected, expected)))
+            self.assertEqual(inputs, before)
+
+    def test_all_onboard_qspi_retirements_require_the_exact_complete_matching_pair(self):
+        for old, primary in onboard_qspi_retirements():
+            for fault in ("missing", "wrong_board", "full_only", "reduced_only", "duplicate",
+                          "source_mismatch", "pending_hardware"):
+                pair = sensor_pair(primary)
+                if primary == "Xiao_nrf52_repeater":
+                    prove_runtime_rs232(pair)
+                if fault == "missing":
+                    pair = []
+                elif fault == "wrong_board":
+                    pair = sensor_pair("unrelated_room_server_lora_ota")
+                elif fault == "full_only":
+                    pair = pair[:1]
+                elif fault == "reduced_only":
+                    pair = pair[1:]
+                elif fault == "duplicate":
+                    pair.append(deepcopy(pair[0]))
+                elif fault == "source_mismatch":
+                    pair[0]["manifest"]["source_commit"] = "different-source"
+                else:
+                    pair[0]["manifest"]["capabilities"].append("hardware.qualification.pending")
+                stale = sensor_pair(old, "internal_flash")
+                inputs = stale + pair
+                before = deepcopy(inputs)
+                with self.subTest(old=old, fault=fault):
+                    with self.assertRaisesRegex(ValueError, "qualified external-QSPI Full/Reduced pair"):
+                        select_ordinary_full_records(inputs)
+                    self.assertEqual(inputs, before)
+
+    def test_xiao_bridge_retirement_requires_packaged_runtime_and_linked_driver_proof_in_both_profiles(self):
+        for old in ("Xiao_nrf52_repeater_bridge_rs232",
+                    "Xiao_nrf52_repeater_bridge_rs232_lora_ota_no_external_sensors"):
+            for index in (0, 1):
+                for capability in ("bridge.rs232", "bridge.rs232.merged"):
+                    for fault in ("missing_capability", "missing_proof", "false_proof",
+                                  "wrong_source", "empty_evidence"):
+                        pair = prove_runtime_rs232(sensor_pair("Xiao_nrf52_repeater"))
+                        manifest = pair[index]["manifest"]
+                        check = next(item for item in manifest["verification"]
+                                     if item["capability"] == capability)
+                        if fault == "missing_capability":
+                            manifest["capabilities"].remove(capability)
+                        elif fault == "missing_proof":
+                            manifest["verification"].remove(check)
+                        elif fault == "false_proof":
+                            check["present"] = False
+                        elif fault == "wrong_source":
+                            check["source"] = "filename"
+                        else:
+                            check["evidence"] = ""
+                        inputs = sensor_pair(old, "internal_flash") + pair
+                        before = deepcopy(inputs)
+                        with self.subTest(old=old, profile=index, capability=capability, fault=fault):
+                            with self.assertRaisesRegex(ValueError, "verified runtime RS232 bridge"):
+                                select_ordinary_full_records(inputs)
+                            self.assertEqual(inputs, before)
 
     def test_nrf52_full_and_reduced_ota_pair_is_never_collapsed(self):
         for role in ('repeater', 'room_server', 'sensor'):

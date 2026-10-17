@@ -79,6 +79,42 @@ class PickerControlsTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'ambiguous'):
             GENERATOR.runtime_metadata(manifest, False, source)
 
+    def test_merged_rs232_requires_qualified_linked_and_packaged_proof(self):
+        source = 'a' * 40
+        manifest = dict(target='Xiao_nrf52_repeater', source_commit=source, verified=True,
+                        capabilities=['bridge.rs232', 'bridge.rs232.merged'],
+                        verification=[dict(capability='bridge.rs232', present=True,
+                                           source='linked image', evidence='RS232Bridge::begin'),
+                                      dict(capability='bridge.rs232.merged', present=True,
+                                           source='packaged application', evidence='rs232.enabled')])
+        self.assertEqual(GENERATOR.runtime_metadata(manifest, False),
+                         dict(otaRole='none', rs232Merged=True, rs232Source=source))
+        for fault in ('unverified', 'no_driver', 'no_runtime', 'no_capability',
+                      'wrong_driver_source', 'wrong_runtime_source', 'no_evidence', 'not_present'):
+            changed = json.loads(json.dumps(manifest))
+            if fault == 'unverified':
+                changed['verified'] = False
+            elif fault == 'no_driver':
+                changed['verification'].pop(0)
+            elif fault == 'no_runtime':
+                changed['verification'].pop()
+            elif fault == 'no_capability':
+                changed['capabilities'].remove('bridge.rs232.merged')
+            elif fault == 'wrong_driver_source':
+                changed['verification'][0]['source'] = 'filename'
+            elif fault == 'wrong_runtime_source':
+                changed['verification'][1]['source'] = 'linked image'
+            elif fault == 'no_evidence':
+                changed['verification'][1]['evidence'] = ''
+            else:
+                changed['verification'][1]['present'] = False
+            with self.subTest(fault=fault):
+                self.assertNotIn('rs232Merged', GENERATOR.runtime_metadata(changed, False))
+                self.assertNotIn('rs232Source', GENERATOR.runtime_metadata(changed, False))
+        manifest['source_commit'] = 'aaaaaaaa'
+        with self.assertRaisesRegex(ValueError, 'exact source commit'):
+            GENERATOR.runtime_metadata(manifest, False)
+
     def test_generates_independent_controls_for_same_identity_sensor_pair(self):
         source = 'a' * 40
         family = 'v1.17.1.7-dev-aaaaaaaa'
