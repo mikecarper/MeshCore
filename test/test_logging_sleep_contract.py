@@ -68,6 +68,7 @@ struct MyMesh {
   uint32_t limitSleepToScheduledRadioWork(uint32_t secs) const { return secs; }
   bool hasPendingWork() const;
   mesh::powerdiag::Mask pendingWorkReason() const;
+  uint32_t getPowerSaveSleepMilliseconds(uint32_t) const;
   uint32_t getPowerSaveSleepSeconds(uint32_t) const;
 };
 @METHODS@
@@ -151,6 +152,7 @@ class LoggingSleepContractTest(unittest.TestCase):
                     methods = "\n".join(method(source, signature) for signature in (
                         "bool MyMesh::hasPendingWork() const",
                         "mesh::powerdiag::Mask MyMesh::pendingWorkReason() const",
+                        "uint32_t MyMesh::getPowerSaveSleepMilliseconds(uint32_t max_ms) const",
                         "uint32_t MyMesh::getPowerSaveSleepSeconds(uint32_t max_secs) const",
                     ))
                     cpp = Path(temp) / f"{role}.cpp"

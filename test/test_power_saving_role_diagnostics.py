@@ -157,6 +157,7 @@ int main() {
         methods = "\n".join(extract_braced(source, signature) for signature in (
             "bool MyMesh::hasPendingWork() const",
             "mesh::powerdiag::Mask MyMesh::pendingWorkReason() const",
+            "uint32_t MyMesh::getPowerSaveSleepMilliseconds(uint32_t max_ms) const",
             "uint32_t MyMesh::getPowerSaveSleepSeconds(uint32_t max_secs) const",
         ))
         code = r'''
@@ -210,6 +211,7 @@ struct MyMesh {
   uint32_t limitSleepToScheduledRadioWork(uint32_t value) const { return value; }
   bool hasPendingWork() const;
   mesh::powerdiag::Mask pendingWorkReason() const;
+  uint32_t getPowerSaveSleepMilliseconds(uint32_t max_ms) const;
   uint32_t getPowerSaveSleepSeconds(uint32_t max_secs) const;
 };
 @METHODS@
@@ -240,8 +242,9 @@ int main() {
     assert(node.pendingWorkReason() == mask(Reason::BridgeWake));
     node.uart.wake_ms = 500;
     assert(!node.hasPendingWork());
-    assert(node.getPowerSaveSleepSeconds(30) == 0); // Whole-second bridge rendezvous floor.
-    if (diagnostics) assert(snapshot(millis()).current == mask(Reason::BridgeWake));
+    reset(millis());
+    assert(node.getPowerSaveSleepMilliseconds(30000) == 500);
+    if (diagnostics) assert(snapshot(millis()).current == 0);
     node.uart.wake_ms = 60000;
     check(node.radio_driver.watchdog, Reason::RadioWatchdog);
     check(node.radio_driver.calibration, Reason::Calibration);
@@ -253,10 +256,18 @@ int main() {
     check(node.queue, Reason::Queue); check(node.retry, Reason::Retry);
     check(node.scheduled, Reason::Scheduled);
     node.queue_delay_set = true; node.queue_delay = 500;
-    assert(!node.hasPendingWork() && node.getPowerSaveSleepSeconds(30) == 0);
+    reset(millis());
+    assert(!node.hasPendingWork() && node.getPowerSaveSleepMilliseconds(30000) == 500);
+    if (diagnostics) assert(snapshot(millis()).current == 0);
+    node.queue_delay = 0;
+    assert(node.getPowerSaveSleepMilliseconds(30000) == 0);
     if (diagnostics) assert(snapshot(millis()).current == mask(Reason::Queue));
     node.queue_delay_set = false; node.retry_delay_set = true; node.retry_delay = 500;
-    assert(node.getPowerSaveSleepSeconds(30) == 0);
+    reset(millis());
+    assert(node.getPowerSaveSleepMilliseconds(30000) == 500);
+    if (diagnostics) assert(snapshot(millis()).current == 0);
+    node.retry_delay = 0;
+    assert(node.getPowerSaveSleepMilliseconds(30000) == 0);
     if (diagnostics) assert(snapshot(millis()).current == mask(Reason::Retry));
     node.retry_delay_set = false; node.dirty_contacts_expiry = millis();
     assert(node.pendingWorkReason() == mask(Reason::Scheduled));

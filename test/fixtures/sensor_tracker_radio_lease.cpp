@@ -145,6 +145,7 @@ public:
   uint32_t limitSleepToMillisTimer(unsigned long, uint32_t) const;
   bool hasPendingWork() const;
   mesh::powerdiag::Mask pendingWorkReason() const;
+  uint32_t getPowerSaveSleepMilliseconds(uint32_t) const;
   uint32_t getPowerSaveSleepSeconds(uint32_t) const;
   void loopBeforeService();
   void sleepIfIdle() { @SLEEP_BLOCK@ }

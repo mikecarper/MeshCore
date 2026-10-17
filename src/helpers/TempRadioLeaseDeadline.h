@@ -25,6 +25,14 @@ public:
         && now_uptime_millis >= hard_end_uptime_millis;
   }
 
+  static uint32_t millisecondsUntil(uint64_t now_uptime_millis,
+                                    uint64_t hard_end_uptime_millis) {
+    if (hard_end_uptime_millis == 0) return UINT32_MAX;
+    if (now_uptime_millis >= hard_end_uptime_millis) return 0;
+    const uint64_t remaining = hard_end_uptime_millis - now_uptime_millis;
+    return remaining > UINT32_MAX ? UINT32_MAX : static_cast<uint32_t>(remaining);
+  }
+
   static uint32_t secondsUntil(uint64_t now_uptime_millis,
                                uint64_t hard_end_uptime_millis) {
     if (hard_end_uptime_millis == 0) return UINT32_MAX;

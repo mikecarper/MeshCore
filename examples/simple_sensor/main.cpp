@@ -384,23 +384,24 @@ void loop() {
   can_power_save = can_power_save && sleep_guard(!user_btn.needsPolling(), mesh::powerdiag::Reason::Button);
 #endif
   if (can_power_save) {
-    uint32_t sleep_secs = the_mesh.getPowerSaveSleepSeconds(30);
+    uint32_t sleep_ms = the_mesh.getPowerSaveSleepMilliseconds(30000);
     uint32_t noise_floor_delay_ms = 0;
     const bool noise_floor_wait = the_mesh.getNextNoiseFloorWakeDelay(noise_floor_delay_ms);
+    if (noise_floor_wait && noise_floor_delay_ms < sleep_ms) sleep_ms = noise_floor_delay_ms;
     if (noise_floor_wait && noise_floor_delay_ms == 0) {
       if (mesh::powerdiag::enabled())
         mesh::powerdiag::decision(mesh::powerdiag::mask(mesh::powerdiag::Reason::Calibration), millis());
-      sleep_secs = 0;
+      sleep_ms = 0;
     }
 #ifdef HAS_EXTERNAL_WATCHDOG
-    if (sleep_secs > 0) external_watchdog.feed();
+    if (sleep_ms > 0) external_watchdog.feed();
 #endif
 #if defined(NRF52_PLATFORM)
-    if (sleep_secs > 0) {
+    if (sleep_ms > 0) {
 #if MESH_ENABLE_SENSOR_TRACKER
-      if (!the_mesh.isTrackerModeEnabled() || armTrackerSleepWake(sleep_secs)) {
+      if (!the_mesh.isTrackerModeEnabled() || armTrackerSleepWake(mesh::power::powerSaveSleepSeconds(sleep_ms))) {
         if (mesh::powerdiag::enabled()) mesh::powerdiag::decision(0, millis());
-        if (noise_floor_wait) board.sleepMilliseconds(mesh::power::limitSleepMilliseconds(sleep_secs, noise_floor_delay_ms));
+        if (noise_floor_wait) board.sleepMilliseconds(sleep_ms);
         else board.sleep(0);
       }
       else {
@@ -410,18 +411,17 @@ void loop() {
       }
 #else
       if (mesh::powerdiag::enabled()) mesh::powerdiag::decision(0, millis());
-      if (noise_floor_wait) board.sleepMilliseconds(mesh::power::limitSleepMilliseconds(sleep_secs, noise_floor_delay_ms));
+      if (noise_floor_wait) board.sleepMilliseconds(sleep_ms);
       else board.sleep(0);
 #endif
     }
 #else
-    if (sleep_secs > 0
+    if (sleep_ms > 0
         && the_mesh.millisHasNowPassed(
             POWERSAVING_FIRST_SLEEP_SECS * 1000UL)) {
       if (mesh::powerdiag::enabled()) mesh::powerdiag::decision(0, millis());
-      if (noise_floor_wait) board.sleepMilliseconds(mesh::power::limitSleepMilliseconds(sleep_secs, noise_floor_delay_ms));
-      else board.sleep(sleep_secs);
-    } else if (sleep_secs > 0 && mesh::powerdiag::enabled()) {
+      board.sleepMilliseconds(sleep_ms);
+    } else if (sleep_ms > 0 && mesh::powerdiag::enabled()) {
       mesh::powerdiag::decision(mesh::powerdiag::mask(mesh::powerdiag::Reason::Startup), millis());
     }
 #endif

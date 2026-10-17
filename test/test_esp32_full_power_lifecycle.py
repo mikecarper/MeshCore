@@ -240,6 +240,7 @@ struct MyMesh {
   void suspendUnconfiguredSetupBridges(); void serviceIdleWiFi();
   bool startWebConfigImpl(bool force_ap, char* reply, bool automatic_setup);
   bool startWebConfig(bool force_ap, char* reply); bool stopWebConfig(char* reply);
+  uint32_t getPowerSaveSleepMilliseconds(uint32_t) const;
   bool hasPendingWork() const; uint32_t getPowerSaveSleepSeconds(uint32_t) const;
   mesh::powerdiag::Mask pendingWorkReason() const;
   @INLINE_METHODS@
@@ -391,6 +392,7 @@ class ESP32FullPowerLifecycleTest(unittest.TestCase):
             "bool MyMesh::startWebConfig(", "bool MyMesh::startWebConfigImpl(",
             "bool MyMesh::stopWebConfig(",
             "bool MyMesh::hasPendingWork() const", "mesh::powerdiag::Mask MyMesh::pendingWorkReason() const",
+            "uint32_t MyMesh::getPowerSaveSleepMilliseconds(",
             "uint32_t MyMesh::getPowerSaveSleepSeconds("))
         defaults_start = source.index("  // bridge defaults")
         defaults = source[defaults_start:source.index("  _prefs.bridge_delay", defaults_start)]

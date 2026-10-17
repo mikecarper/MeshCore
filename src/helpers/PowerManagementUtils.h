@@ -5,6 +5,11 @@
 namespace mesh {
 namespace power {
 
+inline uint32_t secondsToSleepMilliseconds(uint32_t seconds) {
+  const uint64_t millisecs = static_cast<uint64_t>(seconds) * 1000ULL;
+  return millisecs > UINT32_MAX ? UINT32_MAX : static_cast<uint32_t>(millisecs);
+}
+
 inline uint32_t powerSaveSleepSeconds(uint32_t delay_ms) {
   const uint32_t seconds = delay_ms / 1000UL;
 #if defined(NRF52_PLATFORM) || defined(RP2040_PLATFORM) || defined(STM32_PLATFORM)
