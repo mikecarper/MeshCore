@@ -528,6 +528,124 @@ static void check_real_progress_not_probe_or_purge_and_master_reenable() {
   assert(recovery_calls.size() == attempts + 1);
 }
 
+static void check_cancelled_stall_requires_progress_and_restarts_full_recovery() {
+  unsigned scenarios = 0;
+#if defined(ENABLE_OTA)
+  const unsigned veto_kinds = 2;
+#else
+  const unsigned veto_kinds = 1;
+#endif
+  for (uint32_t origin : {0U, UINT32_MAX - Policy::BASE_MS / 2}) {
+    for (unsigned veto = 0; veto < veto_kinds; ++veto) {
+      for (bool completes_after_cancel : {false, true}) {
+        Fixture fixture(1, 0, 0, 0, origin);
+#if defined(ENABLE_OTA)
+        mesh::ota::OtaContext ota;
+        if (veto == 1) mesh::ota::test_ota_context = &ota;
+#endif
+        observed = {true, true, true, true, 7};
+        assert(!fixture.run(0));
+        assert(!fixture.run(Policy::STALL_OBSERVE_MS));
+        assert(mesh::usbLoggingStatus().stalled);
+        assert(!fixture.run(Policy::EARLY_RECOVERY_MS));
+        assert(!fixture.run(Policy::EARLY_RECOVERY_MS + Policy::RECOVERY_GRACE_MS));
+        assert((recovery_calls == std::vector<uint8_t>{1, 2}));
+        // Backend cleanup can remove demand without completing a USB TX.
+        observed.pending = false;
+        assert(!fixture.run(Policy::EARLY_RECOVERY_MS + Policy::RECOVERY_GRACE_MS + 1));
+        assert(mesh::usbLoggingStatus().stalled && mesh::usbLoggingStatus().stage == 2);
+        fixture.fs.after_final_rename = [&] {
+#if defined(ENABLE_OTA)
+          if (veto == 1) ota.apply_pending = true;
+          else
+#endif
+          fixture.safe = false;
+        };
+        const uint32_t cancelled_at = Policy::BASE_MS;
+        assert(!fixture.run(cancelled_at));
+        auto status = mesh::usbLoggingStatus();
+        assert(status.persistence_ready && status.backoff_step == 1 && status.stage == 0);
+        assert(status.reboot_count == 1 && status.recovery_count == 2);
+        assert(status.stalled && !status.logger_active);
+        assert(status.last_event.action == Event::REBOOT_CANCELLED
+            && status.last_event.reasons == Event::TX_STALLED && !status.last_event.persisted);
+        auto request = status.last_event;
+        request.action = Event::REBOOT_REQUESTED;
+        --request.sequence;
+        request.persisted = true;
+        assert(fixture.fs.files.at("/usb_wdg") == image(1, 1, 2, 1, &request));
+        const auto writes = fixture.fs.write_opens;
+        assert(!fixture.run(cancelled_at + 1));
+        assert(fixture.fs.write_opens == writes); // Still unsafe: cancellation remains pending.
+        assert(!mesh::usbLoggingStatus().last_event.persisted);
+        fixture.fs.after_final_rename = {};
+        fixture.safe = true;
+#if defined(ENABLE_OTA)
+        ota.apply_pending = false;
+#endif
+        assert(!fixture.run(cancelled_at + 2));
+        assert(mesh::usbLoggingStatus().last_event.persisted);
+        assert(fixture.fs.files.at("/usb_wdg") == current_image(1, 1, 2, 1));
+        assert(fixture.fs.write_opens == writes + 1);
+        assert(!fixture.run(cancelled_at + 1000));
+        status = mesh::usbLoggingStatus();
+        assert(status.stalled && status.stage == 0 && status.inactive_seconds == 1
+            && "cancelled purge must remain faulty without TX completion");
+        assert(status.backoff_step == 1 && !status.logger_active);
+        assert(!observed.pending && observed.tx_progress == 7);
+
+        if (completes_after_cancel) {
+          // Unlike a purge, a downstream completion is genuine health evidence.
+          const uint32_t healthy_at = cancelled_at + 1001;
+          ++observed.tx_progress;
+          assert(!fixture.run(healthy_at));
+          status = mesh::usbLoggingStatus();
+          assert(!status.stalled && status.stage == 0 && status.inactive_seconds == 0);
+          assert(status.logger_active && status.backoff_step == 1);
+          assert(!fixture.run(healthy_at + Policy::HEALTHY_RESET_MS - 1));
+          assert(mesh::usbLoggingStatus().backoff_step == 1);
+          assert(!fixture.run(healthy_at + Policy::HEALTHY_RESET_MS));
+          assert(mesh::usbLoggingStatus().backoff_step == 0);
+          assert((recovery_calls == std::vector<uint8_t>{1, 2}));
+          assert(fixture.fs.files.at("/usb_wdg") == current_image(1, 0, 2, 1));
+        } else {
+          assert(!fixture.run(cancelled_at + Policy::EARLY_RECOVERY_MS - 1));
+          assert((recovery_calls == std::vector<uint8_t>{1, 2}));
+          assert(!fixture.run(cancelled_at + Policy::EARLY_RECOVERY_MS));
+          assert((recovery_calls == std::vector<uint8_t>{1, 2, 1}));
+          assert(mesh::usbLoggingStatus().stage == 1);
+          assert(!fixture.run(cancelled_at + Policy::EARLY_RECOVERY_MS + Policy::RECOVERY_GRACE_MS - 1));
+          assert(recovery_calls.size() == 3);
+          assert(!fixture.run(cancelled_at + Policy::EARLY_RECOVERY_MS + Policy::RECOVERY_GRACE_MS));
+          assert((recovery_calls == std::vector<uint8_t>{1, 2, 1, 2}));
+          assert(mesh::usbLoggingStatus().stage == 2);
+          assert(!fixture.run(cancelled_at + Policy::HEALTHY_RESET_MS));
+          status = mesh::usbLoggingStatus();
+          assert(status.stalled && !status.logger_active && status.backoff_step == 1
+              && status.recovery_count == 4 && status.reboot_count == 1
+              && "purged stalled TX must not reset its durable retry tier as healthy");
+          assert(!observed.pending && observed.tx_progress == 7);
+          const uint32_t retry_at = cancelled_at + Policy::intervalMs(1);
+          assert(!fixture.run(retry_at - 1));
+          assert(fixture.run(retry_at));
+          status = mesh::usbLoggingStatus();
+          assert(status.stage == 3 && status.backoff_step == 2
+              && status.recovery_count == 4 && status.reboot_count == 2);
+          assert(status.last_event.action == Event::REBOOT_REQUESTED
+              && status.last_event.reasons == Event::TX_STALLED && status.last_event.persisted);
+          assert(fixture.fs.files.at("/usb_wdg") == current_image(1, 2, 4, 2));
+        }
+#if defined(ENABLE_OTA)
+        mesh::ota::test_ota_context = nullptr;
+#endif
+        ++scenarios;
+      }
+    }
+  }
+  assert(scenarios == 4 * veto_kinds);
+  std::printf("%u cancelled-stall recovery timelines passed\n", scenarios);
+}
+
 static void check_healthy_reset_is_continuous_safe_and_saved_once() {
   Fixture fixture(1, 5);
   observed = {true, true, true, false, 0};
@@ -1184,6 +1302,7 @@ int main() {
   check_ownership_deferred_and_no_work_when_inactive();
   check_reboot_commit_failure_and_postcommit_veto();
   check_real_progress_not_probe_or_purge_and_master_reenable();
+  check_cancelled_stall_requires_progress_and_restarts_full_recovery();
   check_healthy_reset_is_continuous_safe_and_saved_once();
   check_auto_promotion_continuity_and_failed_write();
   check_auto_seen_reader_usb_only_and_probe_is_not_health();

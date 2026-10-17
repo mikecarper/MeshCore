@@ -326,6 +326,65 @@ static void check_pre_recovery_purge_cannot_erase_a_stall() {
   assert(!policy.stalled() && policy.stage() == 0);
 }
 
+static void check_restarted_interval_preserves_completion_requirement() {
+  for (uint8_t step : {uint8_t(0), uint8_t(1), uint8_t(8)})
+  for (uint32_t origin : {0U, UINT32_MAX - 360100U})
+  for (bool purged : {false, true}) {
+    Policy policy;
+    Clock clock(origin);
+    auto observation = pending();
+    observation.tx_progress = UINT32_MAX;
+    policy.begin(clock.now(), step);
+    assert(policy.update(clock.now(), true, observation) == Action::None);
+    clock.advance(Policy::EARLY_RECOVERY_MS);
+    assert(policy.update(clock.now(), true, observation) == Action::SoftRecovery);
+    policy.actionAttempted(Action::SoftRecovery);
+    clock.advance(Policy::RECOVERY_GRACE_MS);
+    assert(policy.update(clock.now(), true, observation) == Action::Reenumerate);
+    policy.actionAttempted(Action::Reenumerate);
+    observation.pending = !purged;
+    clock.advance(Policy::intervalMs(step) - clock.elapsed);
+    assert(policy.update(clock.now(), true, observation) == Action::Reboot);
+    const uint8_t next = Policy::nextStep(step);
+    policy.backoffCommitted(next);
+    policy.restartInterval(); // Durable request was cancelled by its owner.
+    assert(policy.stalled() && "restart must retain unresolved USB stall");
+    assert(policy.stage() == 0 && policy.inactiveSeconds() == 0);
+    const uint64_t restart = clock.elapsed;
+    clock.advance(Policy::EARLY_RECOVERY_MS - 1);
+    assert(policy.update(clock.now(), true, observation) == Action::None);
+    assert(policy.stalled() && policy.inactiveSeconds() == 299);
+    clock.advance(1);
+    assert(policy.update(clock.now(), true, observation) == Action::SoftRecovery);
+    policy.actionAttempted(Action::SoftRecovery);
+    clock.advance(Policy::RECOVERY_GRACE_MS - 1);
+    assert(policy.update(clock.now(), true, observation) == Action::None);
+    clock.advance(1);
+    assert(policy.update(clock.now(), true, observation) == Action::Reenumerate);
+    policy.actionAttempted(Action::Reenumerate);
+    clock.advance(Policy::HEALTHY_RESET_MS - (clock.elapsed - restart));
+    assert(policy.update(clock.now(), true, observation) == Action::None);
+    assert(policy.stalled() && policy.backoffStep() == next && policy.stage() == 2);
+    clock.advance(Policy::intervalMs(next) - (clock.elapsed - restart) - 1);
+    assert(policy.update(clock.now(), true, observation) == Action::None);
+    clock.advance(1);
+    assert(policy.update(clock.now(), true, observation) == Action::Reboot);
+    assert(policy.inactiveSeconds() == Policy::intervalMs(next) / 1000);
+
+    // Real completion, including counter wrap, still restores health and can
+    // reset the durable tier after the normal continuous healthy interval.
+    ++observation.tx_progress;
+    observation.pending = false;
+    assert(policy.update(clock.now(), true, observation) == Action::None);
+    policy.restartInterval();
+    assert(!policy.stalled() && policy.stage() == 0 && policy.inactiveSeconds() == 0);
+    clock.advance(Policy::HEALTHY_RESET_MS - 1);
+    assert(policy.update(clock.now(), true, observation) == Action::None);
+    clock.advance(1);
+    assert(policy.update(clock.now(), true, observation) == Action::ResetBackoff);
+  }
+}
+
 static void check_auto_qualification_is_continuous() {
   AutoArm policy;
   policy.begin(100);
@@ -464,6 +523,7 @@ int main() {
   check_millis_wrap_long_run_and_old_samples();
   check_pending_resets_after_real_progress();
   check_pre_recovery_purge_cannot_erase_a_stall();
+  check_restarted_interval_preserves_completion_requirement();
   check_auto_qualification_is_continuous();
   check_auto_clock_wrap_and_saturation();
   check_auto_stall_observation_does_not_arm_recovery();
@@ -495,6 +555,36 @@ class UsbLoggingWatchdogTest(unittest.TestCase):
             tested = subprocess.run([str(binary)], capture_output=True, text=True, timeout=10)
             self.assertEqual(tested.returncode, 0, tested.stderr)
             self.assertIn('USB watchdog policy timelines passed', tested.stdout)
+
+    def test_old_restart_clear_has_intended_semantic_failure(self):
+        compiler = os.environ.get('CXX') or shutil.which('g++') or shutil.which('clang++')
+        if compiler is None:
+            self.skipTest('a host C++17 compiler is required')
+        header = (ROOT / 'src/helpers/UsbLoggingWatchdogPolicy.h').read_text(encoding='ascii')
+        restart = '    _stage = 0;\n    _fault_since = _now;\n'
+        self.assertEqual(header.count(restart), 1)
+        legacy = header.replace(restart, restart + '    _need_progress = false;\n', 1)
+        sanitizer_flags = [] if os.name == 'nt' else [
+            '-fsanitize=address,undefined', '-fno-sanitize-recover=all',
+            '-fno-pie', '-no-pie']
+        with tempfile.TemporaryDirectory(prefix='usb-watchdog-restart-negative-') as directory:
+            work = Path(directory)
+            (work / 'helpers').mkdir()
+            (work / 'helpers/UsbLoggingWatchdogPolicy.h').write_text(legacy, encoding='ascii')
+            cpp = work / 'test.cpp'
+            binary = work / ('test.exe' if os.name == 'nt' else 'test')
+            cpp.write_text(HARNESS, encoding='ascii')
+            built = subprocess.run([
+                compiler, '-std=c++17', '-Wall', '-Wextra', '-Werror',
+                *sanitizer_flags, '-I' + str(work), '-I' + str(ROOT / 'src'),
+                '-I' + str(ROOT / 'src/helpers'), str(cpp), '-o', str(binary)],
+                capture_output=True, text=True, timeout=60)
+            self.assertEqual(built.returncode, 0, built.stderr)
+            tested = subprocess.run([str(binary)], capture_output=True, text=True, timeout=10)
+            self.assertNotEqual(tested.returncode, 0)
+            self.assertIn('restart must retain unresolved USB stall', tested.stderr)
+            self.assertNotIn('runtime error:', tested.stderr)
+            self.assertNotIn('AddressSanitizer:', tested.stderr)
 
 
 if __name__ == '__main__':

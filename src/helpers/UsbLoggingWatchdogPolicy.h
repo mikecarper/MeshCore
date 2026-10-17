@@ -111,7 +111,8 @@ class UsbLoggingWatchdogPolicy {
   void restartInterval() {
     _stage = 0;
     _fault_since = _now;
-    _need_progress = false;
+    // Restarting after a veto is not evidence of transport completion.
+    // Only update() clears a latched stall after real TX progress.
   }
   uint8_t backoffStep() const { return _step; }
   uint8_t stage() const { return _stage; }

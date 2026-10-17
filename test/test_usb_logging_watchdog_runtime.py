@@ -128,6 +128,12 @@ int main() {
             self.assertEqual(tested.returncode, 0, tested.stderr)
 
     def test_production_runtime_and_persistence(self):
+        self.run_runtime()
+
+    def test_old_cancelled_stall_clear_has_intended_semantic_failure(self):
+        self.run_runtime(legacy=True)
+
+    def run_runtime(self, legacy=False):
         compiler = os.environ.get('CXX') or shutil.which('g++') or shutil.which('clang++')
         if compiler is None:
             self.skipTest('a host C++17 compiler is required')
@@ -140,26 +146,46 @@ int main() {
                 with self.subTest(ota_enabled=ota):
                     binary = Path(directory) / ('ota' + str(ota) + '.exe')
                     compile_source = source
-                    if ota:
-                        # Copy this translation unit byte-for-byte. Its quoted
-                        # OTA include can then use an isolated dependency fake,
-                        # while every tested production statement is unchanged.
-                        compile_source = Path(directory) / 'UsbLoggingWatchdog.cpp'
+                    if ota or legacy:
+                        # Copy this translation unit byte-for-byte so quoted
+                        # includes can use the isolated OTA fake or negative
+                        # policy header. Production statements stay unchanged.
+                        shadow = Path(directory) / 'helpers'
+                        shadow.mkdir(exist_ok=True)
+                        compile_source = shadow / 'UsbLoggingWatchdog.cpp'
                         compile_source.write_bytes(source.read_bytes())
+                        if legacy:
+                            header = (ROOT / 'src/helpers/UsbLoggingWatchdogPolicy.h').read_text(
+                                encoding='ascii')
+                            restart = '    _stage = 0;\n    _fault_since = _now;\n'
+                            self.assertEqual(header.count(restart), 1)
+                            (shadow / 'UsbLoggingWatchdogPolicy.h').write_text(
+                                header.replace(restart, restart + '    _need_progress = false;\n', 1),
+                                encoding='ascii')
                     built = subprocess.run([
                         compiler, '-std=c++17', '-Wall', '-Wextra', '-Werror', '-pthread',
                         *sanitizer_flags, '-DARDUINO', '-DESP32', '-DESP32_PLATFORM',
                         '-DARDUINO_USB_MODE=0', '-DARDUINO_USB_CDC_ON_BOOT=1',
                         *(['-DENABLE_OTA'] if ota else []),
+                        '-I' + directory,
                         '-I' + str(FIXTURE / 'mocks'),
                         '-I' + str(ROOT / 'src' / 'helpers'), '-I' + str(ROOT / 'src'),
                         str(compile_source), str(FIXTURE / 'test_usb_logging_watchdog_runtime.cpp'),
                         '-o', str(binary)], capture_output=True, text=True, timeout=60)
                     self.assertEqual(built.returncode, 0, built.stderr)
                     tested = subprocess.run([str(binary)], capture_output=True, text=True, timeout=10)
-                    self.assertEqual(tested.returncode, 0, tested.stderr)
-                    self.assertIn('USB watchdog runtime and persistence passed', tested.stdout)
-                    self.assertIn('14 USB watchdog setter durability scenarios passed', tested.stdout)
+                    if legacy:
+                        self.assertNotEqual(tested.returncode, 0)
+                        self.assertIn('cancelled purge must remain faulty without TX completion',
+                                      tested.stderr)
+                        self.assertNotIn('runtime error:', tested.stderr)
+                        self.assertNotIn('AddressSanitizer:', tested.stderr)
+                    else:
+                        self.assertEqual(tested.returncode, 0, tested.stderr)
+                        self.assertIn('USB watchdog runtime and persistence passed', tested.stdout)
+                        self.assertIn('14 USB watchdog setter durability scenarios passed', tested.stdout)
+                        self.assertIn(f'{8 if ota else 4} cancelled-stall recovery timelines passed',
+                                      tested.stdout)
 
     def test_unsupported_transport_has_no_recovery_or_storage_work(self):
         compiler = os.environ.get('CXX') or shutil.which('g++') or shutil.which('clang++')
