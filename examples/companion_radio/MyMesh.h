@@ -665,6 +665,8 @@ private:
   void formatEspNowChannel(char* reply, size_t reply_size) const;
 #endif
   bool applyAndSavePowerSaving(const char* value, char* reply);
+  bool handleRxPowerSavingGetCommand(const char* command, char* reply,
+                                      size_t reply_size) const;
   bool applyAndSaveRxPowerSaving(const char* value, char* reply);
   void appendRxPowerSavingAdjustmentNote(char* reply, size_t reply_size,
                                          uint8_t sf, float bw) const;

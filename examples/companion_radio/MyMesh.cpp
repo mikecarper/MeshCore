@@ -3846,6 +3846,7 @@ bool MyMesh::handleLocalControlCommand(const char* command, char* reply,
 #endif
   if (handleCompanionBluetoothCommand(command, reply, reply_size)) return true;
   if (handleCompanionWirelessCommand(command, reply, reply_size)) return true;
+  if (handleRxPowerSavingGetCommand(command, reply, reply_size)) return true;
 
   if (strcmp(command, "get powersaving") == 0 || strcmp(command, "powersaving") == 0) {
     snprintf(reply, reply_size, "> %s", _prefs.powersaving_enabled ? "on" : "off");
@@ -5214,17 +5215,6 @@ void MyMesh::execAdminCommand(char* cmd, char* reply) {
     return;
   }
   if (handleCommand(cmd, 0, reply)) return;
-  if (strcmp(cmd, "get radio.rxps") == 0 || strcmp(cmd, "get radio.rxps.config") == 0) {
-    if (!radio_driver.supportsRxPowerSaving()) {
-      strcpy(reply, "Error: RX power saving is unsupported on this radio");
-    } else {
-      snprintf(reply, 160, "> %s,level=%u,preamble=%u,rx=%lu,sleep=%lu",
-               _prefs.rx_powersaving_enabled ? "on" : "off",
-               (unsigned)_prefs.rx_ps_level, (unsigned)_prefs.rx_ps_preamble,
-               (unsigned long)_prefs.rx_ps_rx_us, (unsigned long)_prefs.rx_ps_sleep_us);
-    }
-    return;
-  }
   // The settings form already implements the Companion's MQTT and remaining
   // configuration setters. Its batch hooks persist/restart MQTT once per batch.
   execCommand(cmd, reply);
@@ -8796,6 +8786,56 @@ bool MyMesh::applyAndSaveWiFiPowerSaving(const char* value, char* reply,
 }
 #endif
 
+bool MyMesh::handleRxPowerSavingGetCommand(const char* command, char* reply,
+                                           size_t reply_size) const {
+  if (!command || !reply || reply_size == 0) return false;
+  const bool config = strcmp(command, "get radio.rxps.config") == 0;
+  if (!config && strcmp(command, "get radio.rxps") != 0) return false;
+  if (!radio_driver.supportsRxPowerSaving()) {
+    snprintf(reply, reply_size, "Error: RX power saving is unsupported on this radio");
+    return true;
+  }
+
+  uint32_t rx_us = _prefs.rx_ps_rx_us;
+  uint32_t sleep_us = _prefs.rx_ps_sleep_us;
+  uint8_t effective_level = 0;
+  uint8_t effective_preamble = 0;
+  if (!config && _prefs.rx_ps_level != 0) {
+    uint8_t sf = _prefs.sf;
+    float bw = _prefs.bw;
+#if COMPANION_FEATURE_TEMP_RADIO
+    if (isTempRadioActive()) {
+      sf = _temp_radio_sf;
+      bw = _temp_radio_bw;
+    }
+#endif
+    // Calculate into locals only. A diagnostic must not change saved timings,
+    // apply radio parameters, or create a pending preference write.
+    recalcRxPowerSavingFromLevel(_prefs.rx_ps_level, sf, bw,
+        _prefs.rx_ps_preamble, &rx_us, &sleep_us,
+        &effective_level, &effective_preamble);
+  }
+  snprintf(reply, reply_size, "> %s,level=%u,preamble=%u,rx=%lu,sleep=%lu%s",
+           _prefs.rx_powersaving_enabled ? "on" : "off",
+           (unsigned)_prefs.rx_ps_level, (unsigned)_prefs.rx_ps_preamble,
+           (unsigned long)rx_us, (unsigned long)sleep_us,
+           !config && radio_driver.isRxPowerSavingContinuousFallback()
+               ? ",mode=continuous-fast" : "");
+  size_t used = strlen(reply);
+  if (!config && effective_level != 0 && effective_level != _prefs.rx_ps_level
+      && used < reply_size - 1) {
+    snprintf(reply + used, reply_size - used, ",effective-level=%u",
+             (unsigned)effective_level);
+  }
+  used = strlen(reply);
+  if (!config && effective_preamble != 0 && effective_preamble != _prefs.rx_ps_preamble
+      && used < reply_size - 1) {
+    snprintf(reply + used, reply_size - used, ",effective-preamble=%u",
+             (unsigned)effective_preamble);
+  }
+  return true;
+}
+
 bool MyMesh::applyAndSaveRxPowerSaving(const char* value, char* reply) {
   if (!radio_driver.supportsRxPowerSaving()) {
     strcpy(reply, "Error: RX power saving unsupported");
@@ -9753,6 +9793,14 @@ void MyMesh::handleTerminalCommand(char* command, bool reader_prompt,
   // Match the repeater ASCII reply envelope so unmodified serial packet
   // bridges can query this role. Framed/BLE replies retain their payloads.
   char local_reply[160];
+  if (handleRxPowerSavingGetCommand(command, local_reply, sizeof(local_reply))) {
+    if (local_reply[0] == '>') {
+      terminalOutput().printf("  %s %s\r\n", command + 4, local_reply + 2);
+    } else {
+      terminalOutput().printf("  ERROR: %s\r\n", local_reply + 7);
+    }
+    return;
+  }
   if (handleCompanionWirelessCommand(command, local_reply, sizeof(local_reply),
                                      _terminal_mode ? CompanionWirelessSource::Usb : CompanionWirelessSource::Network)
       || handleCompanionBluetoothCommand(command, local_reply, sizeof(local_reply),
@@ -10012,66 +10060,6 @@ void MyMesh::handleTerminalCommand(char* command, bool reader_prompt,
     char reply[160];
     applyAndSavePowerSaving(command + 12, reply);
     terminalOutput().printf("  -> %s\r\n", reply);
-  } else if (strcmp(command, "get radio.rxps.config") == 0) {
-    if (!radio_driver.supportsRxPowerSaving()) {
-      terminalOutput().print("  ERROR: RX power saving is unsupported on this radio\r\n");
-    } else {
-      terminalOutput().printf(
-          "  radio.rxps.config %s,level=%u,preamble=%u,rx=%lu,sleep=%lu\r\n",
-          _prefs.rx_powersaving_enabled ? "on" : "off",
-          (unsigned)_prefs.rx_ps_level,
-          (unsigned)_prefs.rx_ps_preamble,
-          (unsigned long)_prefs.rx_ps_rx_us,
-          (unsigned long)_prefs.rx_ps_sleep_us);
-    }
-  } else if (strcmp(command, "get radio.rxps") == 0) {
-    if (!radio_driver.supportsRxPowerSaving()) {
-      terminalOutput().print("  ERROR: RX power saving is unsupported on this radio\r\n");
-    } else {
-      uint8_t effective_level = 0;
-      uint8_t effective_preamble = 0;
-      uint32_t effective_rx_us = _prefs.rx_ps_rx_us;
-      uint32_t effective_sleep_us = _prefs.rx_ps_sleep_us;
-      uint8_t active_sf = _prefs.sf;
-      float active_bw = _prefs.bw;
-#if COMPANION_FEATURE_TEMP_RADIO
-      if (isTempRadioActive()) {
-        active_sf = _temp_radio_sf;
-        active_bw = _temp_radio_bw;
-      }
-#endif
-      if (_prefs.rx_ps_level != 0) {
-        recalcRxPowerSavingFromLevel(
-            _prefs.rx_ps_level, active_sf, active_bw,
-            _prefs.rx_ps_preamble, &effective_rx_us, &effective_sleep_us,
-            &effective_level, &effective_preamble);
-      }
-      char effective_suffix[48] = {};
-      const bool adjusted_level = effective_level != 0
-          && effective_level != _prefs.rx_ps_level;
-      const bool adjusted_preamble = effective_preamble != 0
-          && effective_preamble != _prefs.rx_ps_preamble;
-      if (adjusted_level && adjusted_preamble) {
-        snprintf(effective_suffix, sizeof(effective_suffix),
-                 ",effective-level=%u,effective-preamble=%u",
-                 (unsigned)effective_level, (unsigned)effective_preamble);
-      } else if (adjusted_level) {
-        snprintf(effective_suffix, sizeof(effective_suffix),
-                 ",effective-level=%u", (unsigned)effective_level);
-      } else if (adjusted_preamble) {
-        snprintf(effective_suffix, sizeof(effective_suffix),
-                 ",effective-preamble=%u", (unsigned)effective_preamble);
-      }
-      terminalOutput().printf("  radio.rxps %s,level=%u,preamble=%u,rx=%lu,sleep=%lu%s%s\r\n",
-                    _prefs.rx_powersaving_enabled ? "on" : "off",
-                    (unsigned)_prefs.rx_ps_level,
-                    (unsigned)_prefs.rx_ps_preamble,
-                    (unsigned long)effective_rx_us,
-                    (unsigned long)effective_sleep_us,
-                    radio_driver.isRxPowerSavingContinuousFallback()
-                        ? ",mode=continuous-fast" : "",
-                    effective_suffix);
-    }
 #if defined(ESP32) && defined(WIFI_SSID)
   } else if (strcmp(command, "get wifi.powersave") == 0) {
     char reply[160];
