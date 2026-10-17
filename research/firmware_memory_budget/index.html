@@ -2412,7 +2412,23 @@ current startup policy; these figures describe historical linked checks.
 Its ordinary release retains separate UART/ESP-NOW and MQTT/ESP-NOW Full
 images; routing capacities remain unchanged.
 A 160x80 ST7735
-framebuffer needs 25,602 bytes. ESP32 SSD1306 uses a source-bounded 2 KiB
+RGB565 framebuffer needs 25,602 bytes. T096 recipes instead select
+<code>ST7735_BUFFER_COLOR_DEPTH=8</code>: the RGB332 canvas needs 12,801 bytes, plus
+a source-bounded 1 KiB allowance for the complete sprite object and allocator
+metadata. Each frame expands one 160-pixel scanline into a 320-byte stack buffer
+and sends the same RGB565 wire format. The current primary UI colors remain
+exact; resolution, fonts, all 32 message previews, 350 contacts, 40 channels and
+the 256-frame offline queue are unchanged. Other ST7735 recipes retain the
+16-bit default. A future sprite-object increase beyond the allowance fails a
+C++ assertion rather than silently reducing available heap. The existing loop
+stack and transient margin remain additive.</p>
+<p>The ordinary T096 BLE FEM-on/off policy includes its receiving OTA source
+scratch and full-length previews: the reported 81,474-byte requirement becomes
+69,697 bytes with the smaller canvas and explicit sprite-object allowance.
+The old 75,396-byte linked capacity therefore failed correctly; the check is
+not bypassed or relaxed to accept it. Full Companion's independent 72 KiB
+floor remains in place.</p>
+<p>ESP32 SSD1306 uses a source-bounded 2 KiB
 allowance for its fixed 1,024-byte framebuffer, driver and metadata; other
 OLED and ordinary non-ESP32 allowances remain unchanged. nRF52 Full with that
 color framebuffer must have at least 72 KiB available before startup allocations.
@@ -2796,6 +2812,7 @@ missing files and changed firmware. Do not reuse a report for another build.</p>
 <p>Run PlatformIO commands sequentially in this checkout:</p>
 <pre><code class="language-sh">python3 -B test/test_firmware_ram.py
 python3 -B test/test_t096_full_memory.py
+python3 -B test/test_st7735_framebuffer.py
 python3 -B test/test_nrf52_ble_startup.py
 python3 -B test/test_shared_mota_queue.py
 python3 -B test/test_cascade_release_package.py
@@ -2809,7 +2826,12 @@ stop/disconnect and repeated reuse. Bluetooth tests inject task and service
 startup failures. The manual staging buffer also has allocation-failure and
 repeated release tests. ESP32 tests run the actual WiFi mOTA listener and source
 framing through complete transfers, idle polling, queue-full refusal, network
-loss, CLI detach and USB/TCP ownership changes under address/leak sanitizers.</p>
+loss, CLI detach and USB/TCP ownership changes under address/leak sanitizers.
+The ST7735 tests check all 256 RGB332 values, exact UI primary colors, full
+160x80 scanout and byte order on both SPI APIs, the unchanged 16-bit path,
+allocation failures, and retained-buffer wake/retry behavior. CI also compiles
+both ordinary T096 BLE FEM variants with their real runtime-RAM gates, not only
+the distinct Full Companion overlay.</p>
 <p>For older releases without saved ELFs, an audit can compare their ESP allocator
 tables against a matching pinned SDK ELF and read reservations from the
 <strong>published application itself</strong> using <code>scripts/audit_esp32_image_ram.py</code>.
