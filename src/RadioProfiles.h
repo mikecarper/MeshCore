@@ -55,6 +55,7 @@ class RadioProfiles {
   // the self-tested, guarded switch time in the idle-scan timing model.
   static constexpr uint32_t LoopBudgetUs = 0;
   static constexpr uint8_t SwitchTestSamplesPerDirection = 4;
+  static constexpr uint32_t SwitchRecommendationWindowMs = 120000;
 
   struct ChirpTiming {
     bool valid = false;
@@ -83,19 +84,40 @@ class RadioProfiles {
   uint32_t longest_switch_us = 0;
   uint32_t switch_test_max_us[2] = {};
   uint8_t switch_test_samples[2] = {};
+  uint32_t switch_runtime_started_ms = 0;
+  bool switch_runtime_started = false;
+  bool switch_runtime_ready = false;
 
   void resetSwitchTest() {
     switch_test_max_us[0] = switch_test_max_us[1] = 0;
     switch_test_samples[0] = switch_test_samples[1] = 0;
+    switch_runtime_started_ms = 0;
+    switch_runtime_started = switch_runtime_ready = false;
   }
-  void sampleSwitch(uint8_t from, uint8_t to, uint32_t elapsed_us) {
+  void sampleSwitch(uint8_t from, uint8_t to, uint32_t elapsed_us, uint32_t now_ms = 0) {
     if (!enabled() || from > 1 || to > 1 || from == to || !elapsed_us) return;
     if (switch_test_samples[from] < SwitchTestSamplesPerDirection) ++switch_test_samples[from];
     if (elapsed_us > switch_test_max_us[from]) switch_test_max_us[from] = elapsed_us;
+    // Delay only the displayed recommendation. Startup readiness, guarded
+    // maxima, automatic preambles and scanner behavior remain unchanged.
+    if (!switch_runtime_started) {
+      switch_runtime_started = true;
+      switch_runtime_started_ms = now_ms;
+    }
+    if (switchTestReady()
+        && uint32_t(now_ms - switch_runtime_started_ms) >= SwitchRecommendationWindowMs)
+      switch_runtime_ready = true;
   }
   bool switchTestReady() const {
     return switch_test_samples[0] >= SwitchTestSamplesPerDirection
         && switch_test_samples[1] >= SwitchTestSamplesPerDirection;
+  }
+  bool recommendationReady() const { return switch_runtime_ready; }
+  uint32_t recommendationRemainingMs(uint32_t now_ms) const {
+    if (recommendationReady()) return 0;
+    if (!switch_runtime_started) return SwitchRecommendationWindowMs;
+    const uint32_t elapsed = now_ms - switch_runtime_started_ms;
+    return elapsed < SwitchRecommendationWindowMs ? SwitchRecommendationWindowMs - elapsed : 0;
   }
   uint32_t switchBudgetUs() const {
     const uint32_t observed = switch_test_max_us[0] > switch_test_max_us[1]

@@ -562,7 +562,7 @@ mesh::RadioParamApplyResult RadioLibWrapper::tuneProfile(uint8_t profile) {
   // then continue raising the observed maximum as later good hops run.
   // Deferred and rolled-back operations are not samples.
   if (applied && resume && old_profile != profile) {
-    _profiles.sampleSwitch(old_profile, profile, elapsed);
+    _profiles.sampleSwitch(old_profile, profile, elapsed, millis());
   }
   return applied ? mesh::RadioParamApplyResult::APPLIED : mesh::RadioParamApplyResult::FAILED;
 }

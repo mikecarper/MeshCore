@@ -868,6 +868,19 @@ The rapid startup hops briefly interrupt reception on each channel; a new
 packet beginning during this test may be missed. An already detected packet
 defers the test instead of being interrupted.
 
+Displayed preamble recommendations and warnings wait until the active pair has
+run for at least two minutes, measured from its first successful RX-to-RX hop.
+Four successful hops in each direction are still required. A pair change starts
+a fresh wait; an unchanged or rejected request does not. Use a temporary lease
+longer than two minutes if you want its recommendation before it expires.
+
+This is a display-only delay. The bounded startup test, guarded maximum switch
+budget, automatic preambles, ordinary scanning and MCU-idle behavior do not wait
+two minutes. Live switch and scan diagnostics remain available, marked pending
+with `wait=Ns` until advice is ready. Waiting does not discard an early maximum
+or replace it with an average. No extra retunes are forced at the deadline; a
+successful normal hop completes the display wait.
+
 Each idle scan starts with **4.6 symbols on the slower
 profile**, then spends the remaining budgeted time on the faster profile,
 also with a **4.6-symbol floor**. Slower
@@ -911,8 +924,9 @@ receiver's setting does not lengthen packets sent by other nodes.
 
 `get radio2.timing` (alias `get radio.timing`) reports the active pair in
 `radio,radio2` order: dwell in chirps, recommended preambles in symbols, and
-the switching/loop allowances. Before calibration it reports `timing self-test
-pending` and the provisional preambles. On nRF52 boards, enabling `radio2`
+the switching/loop allowances. During the two-minute advice wait it reports
+`timing self-test pending`, the remaining wait and the current provisional
+switch allowance/preambles, without a final `need=` recommendation. On nRF52 boards, enabling `radio2`
 uses RTC2 for both retune timing and scan visits (about 31 us resolution);
 turning `radio2` off stops RTC2 and returns to the usual `micros()` clock.
 Previously, the nRF52 `micros()` fallback counted 1,024 Hz RTOS ticks: a real

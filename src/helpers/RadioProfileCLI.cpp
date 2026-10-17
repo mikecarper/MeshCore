@@ -630,9 +630,11 @@ void RadioProfileCLI::appendPrimaryChirpWarning(char* reply, size_t capacity, ui
 
 void RadioProfileCLI::appendChirpWarning(char* reply, size_t capacity, const RadioProfiles& preview) {
   if (!capacity || !preview.enabled()) return;
-  if (!preview.switchTestReady()) {
+  if (!preview.recommendationReady()) {
     const size_t used = strlen(reply);
-    if (used < capacity) snprintf(reply + used, capacity - used, "; timing self-test pending");
+    if (used < capacity) snprintf(reply + used, capacity - used,
+        "; timing self-test pending; wait=%lus",
+        (unsigned long)((preview.recommendationRemainingMs(millis()) + 999) / 1000));
     return;
   }
   const auto timing = preview.chirpTiming();
@@ -761,10 +763,12 @@ bool RadioProfileCLI::handle(const char* command, char* reply, size_t capacity, 
     const auto& p = *radio_->profiles();
     const auto t = p.chirpTiming();
     if (!p.enabled()) snprintf(reply, capacity, "> off");
-    else if (!p.switchTestReady()) snprintf(reply, capacity,
-        "> timing self-test pending; test=%u/%u,%u/%u; provisional preamble=%u,%u",
+    else if (!p.recommendationReady()) snprintf(reply, capacity,
+        "> timing self-test pending; test=%u/%u,%u/%u; wait=%lus; provisional switch=%luus preamble=%u,%u",
         p.switch_test_samples[0], RadioProfiles::SwitchTestSamplesPerDirection,
         p.switch_test_samples[1], RadioProfiles::SwitchTestSamplesPerDirection,
+        (unsigned long)((p.recommendationRemainingMs(millis()) + 999) / 1000),
+        (unsigned long)p.switchBudgetUs(),
         radio_->profilePreamble(0), radio_->profilePreamble(1));
     else if (!t.valid) snprintf(reply, capacity, "Error: timing unavailable");
     else {
@@ -823,7 +827,7 @@ bool RadioProfileCLI::handle(const char* command, char* reply, size_t capacity, 
       if (used < capacity) snprintf(reply + used, capacity - used, "; test=%u/%u,%u/%u%s budget=%luus",
           p.switch_test_samples[0], RadioProfiles::SwitchTestSamplesPerDirection,
           p.switch_test_samples[1], RadioProfiles::SwitchTestSamplesPerDirection,
-          p.switchTestReady() ? " ready" : " pending", (unsigned long)p.switchBudgetUs());
+          p.recommendationReady() ? " ready" : " pending", (unsigned long)p.switchBudgetUs());
       appendChirpWarning(reply, capacity, p);
     }
     return true;

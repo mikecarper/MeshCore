@@ -43,11 +43,14 @@ struct Fixture {
   }
   void advance(uint32_t ms, bool epoch=true) { g_mock_millis+=ms; if(epoch)clock.epoch+=ms/1000; cli.loop(); }
   void finishTimingTest(uint32_t switch_us=545) {
+    const uint32_t start = g_mock_millis - mesh::RadioProfiles::SwitchRecommendationWindowMs;
     for (unsigned i=0;i<mesh::RadioProfiles::SwitchTestSamplesPerDirection;++i) {
-      radio.p.sampleSwitch(0,1,switch_us);
-      radio.p.sampleSwitch(1,0,switch_us);
+      radio.p.sampleSwitch(0,1,switch_us,start+i);
+      radio.p.sampleSwitch(1,0,switch_us,start+i);
     }
+    radio.p.sampleSwitch(0,1,switch_us,g_mock_millis);
     assert(radio.p.switchTestReady());
+    assert(radio.p.recommendationReady());
   }
 };
 static void permanentScheduleOrder() {
@@ -386,6 +389,44 @@ int main(int argc, char** argv) {
     assert(!f.radio.p.secondary_temporary && f.radio.p.secondary.params.freq==910.5f);
     f.cmd("set radio2 off"); f.advance(2000); assert(!f.radio.p.enabled());
     f.cmd("get radio2.status");
+  }
+  {
+    Fixture f;
+    f.cmd("set radio2 910.5,500,7,5,rx");
+    f.advance(2000);
+    for (unsigned i=0;i<mesh::RadioProfiles::SwitchTestSamplesPerDirection;++i) {
+      f.radio.p.sampleSwitch(0,1,545,g_mock_millis);
+      f.radio.p.sampleSwitch(1,0,545,g_mock_millis);
+    }
+    assert(f.radio.p.switchTestReady() && !f.radio.p.recommendationReady());
+    const auto wire_preamble = f.radio.p.preamble(1,32);
+    assert(wire_preamble==64 && f.radio.p.switchBudgetUs()==600);
+    assert(strstr(f.cmd("get radio2"),"rx,64 (auto)"));
+    assert(strstr(f.reply,"wait=120s") && !strstr(f.reply,"WARN"));
+    assert(strstr(f.cmd("get radio2.timing"),"provisional switch=600us"));
+    assert(!strstr(f.reply,"need=") && !strstr(f.reply,"WARN"));
+    f.advance(119999);
+    f.radio.p.sampleSwitch(0,1,545,g_mock_millis);
+    assert(!f.radio.p.recommendationReady());
+    assert(strstr(f.cmd("get radio2.timing"),"wait=1s"));
+    f.advance(1);
+    assert(!f.radio.p.recommendationReady()); // No synthetic retune at deadline.
+    f.radio.p.sampleSwitch(1,0,545,g_mock_millis);
+    assert(f.radio.p.recommendationReady());
+    assert(f.radio.p.preamble(1,32)==wire_preamble && f.radio.p.switchBudgetUs()==600);
+    assert(strstr(f.cmd("get radio2.timing"),"need=32,64"));
+    assert(strstr(f.reply,"WARN recommended preamble: radio2=64"));
+    assert(!strstr(f.reply,"timing self-test pending"));
+    // The UI delay never changes ongoing maximum-based timing policy.
+    f.radio.p.sampleSwitch(0,1,8428,g_mock_millis);
+    assert(f.radio.p.switchBudgetUs()==9271);
+    assert(strstr(f.cmd("get radio2.timing"),"switch=9271us"));
+    f.cmd("set radio2 910.5,500,7,5,rx");
+    assert(f.radio.p.recommendationReady()); // No-op leaves the window intact.
+    f.cmd("set radio2 911.5,500,7,5,rx");
+    f.advance(2000);
+    assert(!f.radio.p.recommendationReady());
+    assert(strstr(f.cmd("get radio2.timing"),"wait=120s"));
   }
   {
     Fixture f;
