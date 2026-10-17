@@ -53,10 +53,10 @@ struct Mesh {
   struct Prefs { bool powersaving_enabled=true,system_watchdog_enabled=true; uint32_t reboot_interval=0; } prefs;
   unsigned calls=0;
   bool noise_floor_wait=false,work_pending=false;
-  uint32_t noise_floor_delay_ms=50;
+  uint32_t noise_floor_delay_ms=50,sleep_budget_ms=1000;
   void loop() { ++calls; }
   Prefs* getNodePrefs() { return &prefs; }
-  uint32_t getPowerSaveSleepSeconds(unsigned) { return work_pending ? 0 : 1; }
+  uint32_t getPowerSaveSleepMilliseconds(unsigned) { return work_pending ? 0 : sleep_budget_ms; }
   bool getNextNoiseFloorWakeDelay(uint32_t& ms) const {
     ms=noise_floor_delay_ms; return noise_floor_wait;
   }
@@ -142,8 +142,9 @@ int main() {
   // bounded MCU idle in every actual role loop. Due work and other vetoes win.
   the_mesh.noise_floor_wait=true;
   auto before_noise_sleep=board.sleeps;
+  const auto before_noise_ms_sleep=board.millisecond_sleeps;
   loop();
-  assert(board.sleeps==before_noise_sleep+1 && board.millisecond_sleeps==1);
+  assert(board.sleeps==before_noise_sleep+1 && board.millisecond_sleeps==before_noise_ms_sleep+1);
 #if ROLE_COMPANION
   assert(board.last_sleep_ms==10); // Preserve the shorter Companion cadence.
 #else
@@ -161,4 +162,21 @@ int main() {
   the_mesh.work_pending=false; usb_watchdog_armed=true;
   loop();
   assert(board.sleeps==before_noise_sleep+2);
+  usb_watchdog_armed=false;
+#if !ROLE_COMPANION
+  // The role's earlier queue/bridge/timer deadline wins over calibration.
+  the_mesh.sleep_budget_ms=17;
+  loop();
+  assert(board.last_sleep_ms==17);
+  the_mesh.noise_floor_wait=false;
+  for (uint32_t remaining : {1U,50U,999U,1001U,29999U}) {
+    const auto before=board.sleeps;
+    the_mesh.sleep_budget_ms=remaining;
+    loop();
+    assert(board.sleeps==before+1);
+#if !defined(NRF52_PLATFORM)
+    assert(board.last_sleep_ms==remaining); // No whole-second busy tail.
+#endif
+  }
+#endif
 }

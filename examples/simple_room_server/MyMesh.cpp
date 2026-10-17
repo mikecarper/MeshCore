@@ -4186,59 +4186,61 @@ bool MyMesh::isMillisTimerDue(unsigned long timestamp) const {
   return timestamp && millisHasNowPassed(timestamp);
 }
 
-uint32_t MyMesh::limitSleepToMillisTimer(unsigned long timestamp, uint32_t sleep_secs) const {
-  if (!timestamp || sleep_secs == 0) {
-    return sleep_secs;
+uint32_t MyMesh::limitSleepToMillisTimer(unsigned long timestamp, uint32_t sleep_ms) const {
+  if (!timestamp || sleep_ms == 0) {
+    return sleep_ms;
   }
   const uint32_t now = millis();
   if ((int32_t)(now - (uint32_t)timestamp) >= 0) {
     return 0;
   }
   const uint32_t remaining_ms = (uint32_t)timestamp - now;
-  uint32_t remaining_secs = mesh::power::powerSaveSleepSeconds(remaining_ms);
-  return remaining_secs < sleep_secs ? remaining_secs : sleep_secs;
+  return remaining_ms < sleep_ms ? remaining_ms : sleep_ms;
 }
 
 uint32_t MyMesh::getPowerSaveSleepSeconds(uint32_t max_secs) const {
+  return mesh::power::powerSaveSleepSeconds(getPowerSaveSleepMilliseconds(
+      mesh::power::secondsToSleepMilliseconds(max_secs)));
+}
+
+uint32_t MyMesh::getPowerSaveSleepMilliseconds(uint32_t max_ms) const {
   using mesh::powerdiag::mask;
   using mesh::powerdiag::Reason;
-  const mesh::powerdiag::Mask pending = max_secs ? pendingWorkReason() : mask(Reason::NoWake);
+  const mesh::powerdiag::Mask pending = max_ms ? pendingWorkReason() : mask(Reason::NoWake);
   if (pending) {
     if (mesh::powerdiag::enabled()) mesh::powerdiag::decision(pending, millis());
     return 0;
   }
 
   mesh::powerdiag::Mask blocked = 0;
-  uint32_t sleep_secs = max_secs;
+  uint32_t sleep_ms = max_ms;
   uint32_t queue_delay_ms;
   if (getNextQueueWakeDelay(queue_delay_ms)) {
-    uint32_t queue_delay_secs = mesh::power::powerSaveSleepSeconds(queue_delay_ms);
-    if (queue_delay_secs < sleep_secs) sleep_secs = queue_delay_secs;
-    if (queue_delay_secs == 0) blocked |= mask(Reason::Queue);
+    if (queue_delay_ms < sleep_ms) sleep_ms = queue_delay_ms;
+    if (queue_delay_ms == 0) blocked |= mask(Reason::Queue);
   }
   uint32_t retry_delay_ms;
   if (getNextRetryWakeDelay(retry_delay_ms)) {
-    uint32_t retry_delay_secs = mesh::power::powerSaveSleepSeconds(retry_delay_ms);
-    if (retry_delay_secs < sleep_secs) sleep_secs = retry_delay_secs;
-    if (retry_delay_secs == 0) blocked |= mask(Reason::Retry);
+    if (retry_delay_ms < sleep_ms) sleep_ms = retry_delay_ms;
+    if (retry_delay_ms == 0) blocked |= mask(Reason::Retry);
   }
-  const uint32_t before_scheduled = sleep_secs;
+  const uint32_t before_scheduled = sleep_ms;
   if (acl.getNumClients() > 0) {
-    sleep_secs = limitSleepToMillisTimer(next_push, sleep_secs);
+    sleep_ms = limitSleepToMillisTimer(next_push, sleep_ms);
   }
-  sleep_secs = limitSleepToMillisTimer(next_flood_advert, sleep_secs);
-  sleep_secs = limitSleepToMillisTimer(next_local_advert, sleep_secs);
+  sleep_ms = limitSleepToMillisTimer(next_flood_advert, sleep_ms);
+  sleep_ms = limitSleepToMillisTimer(next_local_advert, sleep_ms);
   const bool radio_apply_backoff = radio_apply_retry_at && !millisHasNowPassed(radio_apply_retry_at);
   if (radio_apply_backoff) {
-    sleep_secs = limitSleepToMillisTimer(radio_apply_retry_at, sleep_secs);
+    sleep_ms = limitSleepToMillisTimer(radio_apply_retry_at, sleep_ms);
   } else {
-    sleep_secs = limitSleepToMillisTimer(set_radio_at, sleep_secs);
-    sleep_secs = limitSleepToMillisTimer(revert_radio_at, sleep_secs);
+    sleep_ms = limitSleepToMillisTimer(set_radio_at, sleep_ms);
+    sleep_ms = limitSleepToMillisTimer(revert_radio_at, sleep_ms);
   }
-  sleep_secs = limitSleepToMillisTimer(dirty_contacts_expiry, sleep_secs);
-  if (before_scheduled > 0 && sleep_secs == 0) blocked |= mask(Reason::Scheduled);
+  sleep_ms = limitSleepToMillisTimer(dirty_contacts_expiry, sleep_ms);
+  if (before_scheduled > 0 && sleep_ms == 0) blocked |= mask(Reason::Scheduled);
   if (blocked && mesh::powerdiag::enabled()) mesh::powerdiag::decision(blocked, millis());
-  return sleep_secs;
+  return sleep_ms;
 }
 
 // To check if there is pending work

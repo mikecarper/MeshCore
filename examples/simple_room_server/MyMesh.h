@@ -1041,6 +1041,7 @@ public:
   void buildStatsJson(char* buf, size_t buf_size) override;
 #endif
   uint32_t getPowerSaveSleepSeconds(uint32_t max_secs) const;
+  uint32_t getPowerSaveSleepMilliseconds(uint32_t max_ms) const;
 
   // To check if there is pending work
   bool hasPendingWork() const;
@@ -1048,5 +1049,5 @@ public:
 
 private:
   bool isMillisTimerDue(unsigned long timestamp) const;
-  uint32_t limitSleepToMillisTimer(unsigned long timestamp, uint32_t sleep_secs) const;
+  uint32_t limitSleepToMillisTimer(unsigned long timestamp, uint32_t sleep_ms) const;
 };

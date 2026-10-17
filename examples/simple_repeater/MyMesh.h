@@ -942,8 +942,8 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks
   void formatClockSyncTable(char* reply, size_t reply_len) const;
   void formatClockSyncSampleDetail(int index, char* reply, size_t reply_len) const;
   bool hasScheduledRadioWorkDue() const;
-  uint32_t limitSleepToMillisTimer(unsigned long timestamp, uint32_t sleep_secs) const;
-  uint32_t limitSleepToScheduledRadioWork(uint32_t sleep_secs) const;
+  uint32_t limitSleepToMillisTimer(unsigned long timestamp, uint32_t sleep_ms) const;
+  uint32_t limitSleepToScheduledRadioWork(uint32_t sleep_ms) const;
   bool hasStartedScheduledTempRadio() const;
   int findFreeScheduledRadioSlot() const;
   int countScheduledRadioSettings(bool temporary) const;
@@ -1236,6 +1236,7 @@ public:
 #endif
 
   uint32_t getPowerSaveSleepSeconds(uint32_t max_secs) const;
+  uint32_t getPowerSaveSleepMilliseconds(uint32_t max_ms) const;
 
 #if defined(WITH_BRIDGE)
 

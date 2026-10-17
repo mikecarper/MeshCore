@@ -56,7 +56,7 @@ struct MyMesh {
   bool hasPendingSerialOutput() { return false; }
   bool isDualRadioActive() { return dual_radio_active; }
   Prefs* getNodePrefs() { return _prefs; }
-  unsigned getPowerSaveSleepSeconds(unsigned limit) { return limit; }
+  unsigned getPowerSaveSleepMilliseconds(unsigned limit) { return limit; }
   bool millisHasNowPassed(unsigned deadline) { return millis() > deadline; }
 } the_mesh;
 static ESP32Board board;

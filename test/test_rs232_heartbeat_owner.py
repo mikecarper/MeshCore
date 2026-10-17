@@ -166,6 +166,7 @@ struct MyMesh : Callbacks {
   uint32_t limitSleepToScheduledRadioWork(uint32_t secs) const { return secs; }
   bool hasPendingWork() const;
   mesh::powerdiag::Mask pendingWorkReason() const;
+  uint32_t getPowerSaveSleepMilliseconds(uint32_t) const;
   uint32_t getPowerSaveSleepSeconds(uint32_t) const;
   @OWNER@
   ~MyMesh() override { assert(setRs232BridgeState(false)); }
@@ -225,6 +226,7 @@ int main() {
       const uint32_t expected = remainder / 1000U;
 #endif
       assert(node.getPowerSaveSleepSeconds(30) == expected);
+      assert(node.getPowerSaveSleepMilliseconds(30000) == remainder);
     }
     node.bridge->wake_delay = 0; assert(node.hasPendingWork());
 #ifdef WITH_MQTT_BRIDGE
@@ -309,6 +311,7 @@ class RS232HeartbeatOwnerTests(unittest.TestCase):
         sleep = "\n".join(extract_braced(implementation, signature) for signature in (
             "bool MyMesh::hasPendingWork() const",
             "mesh::powerdiag::Mask MyMesh::pendingWorkReason() const",
+            "uint32_t MyMesh::getPowerSaveSleepMilliseconds(uint32_t max_ms) const",
             "uint32_t MyMesh::getPowerSaveSleepSeconds(uint32_t max_secs) const",
         ))
         source = HARNESS.replace("@OWNER@", owner).replace("@SLEEP@", sleep)

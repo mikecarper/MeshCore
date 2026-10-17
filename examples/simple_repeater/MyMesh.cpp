@@ -5148,82 +5148,83 @@ bool MyMesh::hasScheduledRadioWorkDue() const {
           || millisHasNowPassed(next_scheduled_radio_check_at));
 }
 
-uint32_t MyMesh::limitSleepToMillisTimer(unsigned long timestamp, uint32_t sleep_secs) const {
-  if (!timestamp || sleep_secs == 0) {
-    return sleep_secs;
+uint32_t MyMesh::limitSleepToMillisTimer(unsigned long timestamp, uint32_t sleep_ms) const {
+  if (!timestamp || sleep_ms == 0) {
+    return sleep_ms;
   }
   const uint32_t now = millis();
   if ((int32_t)(now - (uint32_t)timestamp) >= 0) {
     return 0;
   }
   const uint32_t remaining_ms = (uint32_t)timestamp - now;
-  uint32_t remaining_secs = mesh::power::powerSaveSleepSeconds(remaining_ms);
-  return remaining_secs < sleep_secs ? remaining_secs : sleep_secs;
+  return remaining_ms < sleep_ms ? remaining_ms : sleep_ms;
 }
 
-uint32_t MyMesh::limitSleepToScheduledRadioWork(uint32_t sleep_secs) const {
-  sleep_secs = limitSleepToMillisTimer(next_scheduled_radio_check_at, sleep_secs);
+uint32_t MyMesh::limitSleepToScheduledRadioWork(uint32_t sleep_ms) const {
+  sleep_ms = limitSleepToMillisTimer(next_scheduled_radio_check_at, sleep_ms);
   const uint64_t current_uptime_millis =
       uptime_millis + (uint32_t)(millis() - last_millis);
   for (int i = 0; i < MAX_SCHEDULED_RADIO_SETTINGS; i++) {
     const ScheduledRadioSetting& setting = scheduled_radio_settings[i];
     if (!setting.active || !setting.temporary) continue;
-    const uint32_t hard_end_seconds =
-        mesh::TempRadioLeaseDeadline::secondsUntil(
+    const uint32_t hard_end_ms =
+        mesh::TempRadioLeaseDeadline::millisecondsUntil(
             current_uptime_millis, setting.hard_end_uptime_millis);
-    if (hard_end_seconds < sleep_secs) sleep_secs = hard_end_seconds;
+    if (hard_end_ms < sleep_ms) sleep_ms = hard_end_ms;
   }
   if (scheduled_radio_retry_at && !millisHasNowPassed(scheduled_radio_retry_at)) {
-    sleep_secs = limitSleepToMillisTimer(scheduled_radio_retry_at, sleep_secs);
+    sleep_ms = limitSleepToMillisTimer(scheduled_radio_retry_at, sleep_ms);
   }
-  return sleep_secs;
+  return sleep_ms;
 }
 
 uint32_t MyMesh::getPowerSaveSleepSeconds(uint32_t max_secs) const {
+  return mesh::power::powerSaveSleepSeconds(getPowerSaveSleepMilliseconds(
+      mesh::power::secondsToSleepMilliseconds(max_secs)));
+}
+
+uint32_t MyMesh::getPowerSaveSleepMilliseconds(uint32_t max_ms) const {
   using mesh::powerdiag::mask;
   using mesh::powerdiag::Reason;
-  const mesh::powerdiag::Mask pending = max_secs ? pendingWorkReason() : mask(Reason::NoWake);
+  const mesh::powerdiag::Mask pending = max_ms ? pendingWorkReason() : mask(Reason::NoWake);
   if (pending) {
     if (mesh::powerdiag::enabled()) mesh::powerdiag::decision(pending, millis());
     return 0;
   }
 
   mesh::powerdiag::Mask blocked = 0;
-  uint32_t sleep_secs = max_secs;
+  uint32_t sleep_ms = max_ms;
   uint32_t queue_delay_ms;
   if (getNextQueueWakeDelay(queue_delay_ms)) {
-    uint32_t queue_delay_secs = mesh::power::powerSaveSleepSeconds(queue_delay_ms);
-    if (queue_delay_secs < sleep_secs) sleep_secs = queue_delay_secs;
-    if (queue_delay_secs == 0) blocked |= mask(Reason::Queue);
+    if (queue_delay_ms < sleep_ms) sleep_ms = queue_delay_ms;
+    if (queue_delay_ms == 0) blocked |= mask(Reason::Queue);
   }
   uint32_t retry_delay_ms;
   if (getNextRetryWakeDelay(retry_delay_ms)) {
-    uint32_t retry_delay_secs = mesh::power::powerSaveSleepSeconds(retry_delay_ms);
-    if (retry_delay_secs < sleep_secs) sleep_secs = retry_delay_secs;
-    if (retry_delay_secs == 0) blocked |= mask(Reason::Retry);
+    if (retry_delay_ms < sleep_ms) sleep_ms = retry_delay_ms;
+    if (retry_delay_ms == 0) blocked |= mask(Reason::Retry);
   }
-  const uint32_t before_scheduled = sleep_secs;
-  sleep_secs = limitSleepToMillisTimer(next_flood_advert, sleep_secs);
-  sleep_secs = limitSleepToMillisTimer(next_local_advert, sleep_secs);
-  sleep_secs = limitSleepToMillisTimer(dirty_contacts_expiry, sleep_secs);
-  sleep_secs = limitSleepToMillisTimer(next_recent_repeater_sweep, sleep_secs);
+  const uint32_t before_scheduled = sleep_ms;
+  sleep_ms = limitSleepToMillisTimer(next_flood_advert, sleep_ms);
+  sleep_ms = limitSleepToMillisTimer(next_local_advert, sleep_ms);
+  sleep_ms = limitSleepToMillisTimer(dirty_contacts_expiry, sleep_ms);
+  sleep_ms = limitSleepToMillisTimer(next_recent_repeater_sweep, sleep_ms);
   if (_prefs.battery_alert_enabled) {
-    sleep_secs = limitSleepToMillisTimer(next_battery_alert_check, sleep_secs);
+    sleep_ms = limitSleepToMillisTimer(next_battery_alert_check, sleep_ms);
   }
-  sleep_secs = limitSleepToScheduledRadioWork(sleep_secs);
-  if (before_scheduled > 0 && sleep_secs == 0) blocked |= mask(Reason::Scheduled);
+  sleep_ms = limitSleepToScheduledRadioWork(sleep_ms);
+  if (before_scheduled > 0 && sleep_ms == 0) blocked |= mask(Reason::Scheduled);
 #if defined(WITH_RS232_BRIDGE)
   if (bridge && rs232BridgeEnabled()) {
-    // Timed sleepers must not overshoot; interrupt-idle boards can still
-    // sleep with a positive sub-second remainder and wake on their clock IRQ.
-    const uint32_t bridge_sleep_secs = mesh::power::powerSaveSleepSeconds(
-        bridge->powerWakeDelayMs(millis()));
-    if (bridge_sleep_secs < sleep_secs) sleep_secs = bridge_sleep_secs;
-    if (bridge_sleep_secs == 0) blocked |= mask(Reason::BridgeWake);
+    // Preserve the exact rendezvous deadline; the board selects timed sleep
+    // or interrupt idle without rounding away its sub-second remainder.
+    const uint32_t bridge_sleep_ms = bridge->powerWakeDelayMs(millis());
+    if (bridge_sleep_ms < sleep_ms) sleep_ms = bridge_sleep_ms;
+    if (bridge_sleep_ms == 0) blocked |= mask(Reason::BridgeWake);
   }
 #endif
   if (blocked && mesh::powerdiag::enabled()) mesh::powerdiag::decision(blocked, millis());
-  return sleep_secs;
+  return sleep_ms;
 }
 
 void MyMesh::applyTempRadioParams(float freq, float bw, uint8_t sf, uint8_t cr, int timeout_mins, uint16_t preamble) {

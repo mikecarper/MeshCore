@@ -87,6 +87,7 @@ public:
   const char* getNodeName() { return _prefs.node_name; }
   NodePrefs* getNodePrefs() { return &_prefs; }
   uint32_t getPowerSaveSleepSeconds(uint32_t max_secs) const;
+  uint32_t getPowerSaveSleepMilliseconds(uint32_t max_ms) const;
   bool isTrackerModeEnabled() const {
 #if MESH_ENABLE_SENSOR_TRACKER
     return tracker.enabled;
@@ -299,7 +300,7 @@ private:
   bool applySavedRadioParams();
   bool isMillisTimerDue(unsigned long timestamp) const;
   uint32_t limitSleepToMillisTimer(unsigned long timestamp,
-                                   uint32_t sleep_secs) const;
+                                   uint32_t sleep_ms) const;
   bool hasPendingWork() const;
   mesh::powerdiag::Mask pendingWorkReason() const;
   bool region_load_active;

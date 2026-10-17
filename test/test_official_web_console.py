@@ -98,7 +98,7 @@ struct Radio {
 static mesh::Radio radio_driver;
 '''.replace("@MORSE_HELPER@", morse_helper)
     fixture = (ROOT / "test/fixtures/official_web_console/firmware.cpp").read_text()
-    sleep_getter = "  unsigned getPowerSaveSleepSeconds(unsigned limit) { return limit; }"
+    sleep_getter = "  unsigned getPowerSaveSleepMilliseconds(unsigned limit) { return limit; }"
     assert fixture.count(sleep_getter) == 1, "Missing sleep-deadline peripheral boundary"
     fixture = fixture.replace(sleep_getter, sleep_getter + "\n" +
         "  bool getNextNoiseFloorWakeDelay(uint32_t&) const { return false; }")

@@ -145,6 +145,7 @@ struct Mesh {
     return pending ? mesh::powerdiag::mask(mesh::powerdiag::Reason::Mesh) : 0;
   }
   bool isDualRadioActive() const { return dual; }
+  bool getNextNoiseFloorWakeDelay(uint32_t&) const { return false; }
   mesh::Radio* getProfileRadio() { return &timing_radio; }
 } the_mesh;
 struct Interfaces { bool pending = false; bool hasPendingIO() const { return pending; } } interface_manager;

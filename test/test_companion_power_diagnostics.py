@@ -36,6 +36,7 @@ static int esp_light_sleep_start() { ++wait_calls; clock_us += 500; return sleep
 static unsigned pdMS_TO_TICKS(unsigned ms) { return ms; }
 static void vTaskDelay(unsigned ms) { assert(ms == 10); ++delay_calls; clock_us += 10000; }
 static void attempt() {
+  const uint32_t idle_slice_ms = 10;
 @BLOCK@
 }
 int main() {
