@@ -1235,8 +1235,18 @@ const newQspiRoomHardware = ['Xiao_nrf52', 'ikoka_handheld_nrf_e22_30dbm',
   'ikoka_stick_nrf_22dbm', 'ikoka_stick_nrf_30dbm', 'ikoka_stick_nrf_33dbm',
   'LilyGo_T-Echo-Lite', ...fixedQspiHardware];
 for (const hardware of newQspiRoomHardware) {
-  assert(!currentCatalog.profiles.some(profile => profile.hardware === hardware && profile.role === 'room'),
-    'An older release without the new QSPI room recipe must not recommend internal storage');
+  const oldRoomLink = picker.selectionFromUrl(
+    'https://example.com/p/?s=1.h' + hardware + '.rroom.olora-receiver.ffull.vdefault',
+    currentCatalog.profiles);
+  assert.deepStrictEqual(oldRoomLink.unavailable, [],
+    'Saved Room links must keep their role until a qualified QSPI replacement is published');
+  assert.strictEqual(oldRoomLink.filters.role, 'room');
+  assert.strictEqual(oldRoomLink.filters.ota, 'lora-receiver');
+  const oldRoomMatches = currentCatalog.profiles.filter(profile =>
+    picker.profileMatchesFacets(profile, oldRoomLink.filters));
+  assert.strictEqual(oldRoomMatches.length, 1);
+  assert.strictEqual(oldRoomMatches[0].target,
+    hardware + '_room_server_lora_ota_no_external_sensors-full');
   for (const policy of ['full', 'reduced']) {
     const target = hardware + '_room_server_lora_ota_no_external_sensors-' + policy;
     assert(currentCatalog.rows.some(row => row.target === target),
@@ -1278,21 +1288,85 @@ const retiredRoomOnly = picker.buildCatalog([
   release(qspiFixtureFamily, '2026-10-16T00:00:00Z', qspiRoomAssets.filter(file =>
     !file.name.includes('_room_server_lora_ota-full-') && !file.name.includes('_room_server_lora_ota-reduced-'))),
 ], qspiRoomControls);
-assert.deepStrictEqual(retiredRoomOnly.profiles, [],
-  'No retired board may fall back to its internal room recipe without a QSPI replacement');
+for (const hardware of newQspiRoomHardware) {
+  assert.strictEqual(retiredRoomOnly.profiles.filter(profile => profile.hardware === hardware).length, 4,
+    'Keep current internal Room identities when the release has no replacement downloads');
+}
+assert(!retiredRoomOnly.profiles.some(profile => profile.hardware.startsWith('solarxiao_')),
+  'The previously established SolarXiao retirement policy remains unconditional');
+for (const hardware of newQspiRoomHardware) {
+  const base = hardware + '_room_server_lora_ota';
+  for (const fault of ['missing_full', 'missing_reduced', 'stale_source', 'mixed_source',
+    'internal_storage', 'missing_controls']) {
+    const changedControls = JSON.parse(JSON.stringify(qspiRoomControls));
+    let files = qspiRoomAssets.filter(file => file.name.startsWith(hardware + '_room_server'));
+    if (fault === 'missing_full' || fault === 'missing_reduced') {
+      files = files.filter(file => !file.name.startsWith(base + '-' + fault.slice(8) + '-'));
+    } else if (fault === 'stale_source') {
+      changedControls.profiles[base + '-full'].sensorProfileSource = 'f'.repeat(40);
+    } else if (fault === 'mixed_source') {
+      changedControls.profiles[base + '-full'].sensorProfileSource = 'a'.repeat(40);
+      files = files.map(file => file.name.startsWith(base + '-full-')
+        ? asset(file.name.replace(/-[0-9a-f]{8}\.uf2$/, '-aaaaaaaa.uf2')) : file);
+    } else if (fault === 'internal_storage') {
+      changedControls.profiles[base + '-full'].updateRequirements.lora.storage = 'internal_flash';
+    }
+    const partial = picker.buildCatalog([
+      release(qspiFixtureFamily, '2026-10-16T00:00:00Z', files),
+    ], fault === 'missing_controls' ? undefined : changedControls);
+    for (const policy of ['full', 'reduced']) {
+      assert(partial.profiles.some(profile =>
+        profile.target === hardware + '_room_server_lora_ota_no_external_sensors-' + policy),
+        hardware + ': keep the existing Room download during incomplete QSPI rollout (' + fault + ')');
+    }
+  }
+}
 const liteRepeaterTargets = ['', '_lora_ota_no_external_sensors', '_lora_ota'].flatMap(suffix =>
   ['full', 'reduced'].map(policy => 'LilyGo_T-Echo-Lite_repeater' + suffix + '-' + policy));
 const liteRepeaterAssets = liteRepeaterTargets.map(target =>
   asset(target + '-ota-' + qspiFixtureFamily + '.uf2'));
+for (const target of liteRepeaterTargets) {
+  const policy = target.endsWith('-full') ? 'full' : 'reduced';
+  qspiRoomControls.profiles[target] = {
+    platform: 'NRF52_PLATFORM', otaRole: 'lora-receiver', updateMethods: ['lora'],
+    sensorProfile: policy, sensorProfileSource: qspiFixtureSource,
+    updateRequirements: {lora: {storage: /_lora_ota-(?:full|reduced)$/.test(target)
+      ? 'external_qspi' : 'internal_flash'}},
+  };
+}
 const liteRepeaterCatalog = picker.buildCatalog([
   release(qspiFixtureFamily, '2026-10-16T00:00:00Z', liteRepeaterAssets),
-]);
+], qspiRoomControls);
 assert.deepStrictEqual(liteRepeaterCatalog.profiles.map(profile => profile.target).sort(),
   ['full', 'reduced'].map(policy => 'LilyGo_T-Echo-Lite_repeater_lora_ota-' + policy));
 assert.deepStrictEqual(liteRepeaterCatalog.rows.map(row => row.target), liteRepeaterTargets);
-assert(!currentCatalog.profiles.some(profile =>
-  profile.hardware === 'LilyGo_T-Echo-Lite' && profile.role === 'repeater'),
-  'The old internal Lite repeater must not be recommended before its QSPI release exists');
+const oldLiteRepeaterLink = picker.selectionFromUrl(
+  'https://example.com/p/?s=1.hLilyGo_T-Echo-Lite.rrepeater.olora-receiver.ffull.vdefault',
+  currentCatalog.profiles);
+assert.deepStrictEqual(oldLiteRepeaterLink.unavailable, []);
+assert.strictEqual(oldLiteRepeaterLink.filters.role, 'repeater');
+assert.strictEqual(oldLiteRepeaterLink.filters.ota, 'lora-receiver');
+assert.deepStrictEqual(currentCatalog.profiles.filter(profile =>
+  picker.profileMatchesFacets(profile, oldLiteRepeaterLink.filters)).map(profile => profile.target),
+  ['LilyGo_T-Echo-Lite_repeater_lora_ota_no_external_sensors-full']);
+for (const fault of ['missing_full', 'missing_reduced', 'stale_source', 'missing_controls']) {
+  const changedControls = JSON.parse(JSON.stringify(qspiRoomControls));
+  let files = liteRepeaterAssets;
+  const base = 'LilyGo_T-Echo-Lite_repeater_lora_ota';
+  if (fault === 'missing_full' || fault === 'missing_reduced') {
+    files = files.filter(file => !file.name.startsWith(base + '-' + fault.slice(8) + '-'));
+  } else if (fault === 'stale_source') {
+    changedControls.profiles[base + '-full'].sensorProfileSource = 'f'.repeat(40);
+  }
+  const partial = picker.buildCatalog([
+    release(qspiFixtureFamily, '2026-10-16T00:00:00Z', files),
+  ], fault === 'missing_controls' ? undefined : changedControls);
+  for (const policy of ['full', 'reduced']) {
+    assert(partial.profiles.some(profile =>
+      profile.target === 'LilyGo_T-Echo-Lite_repeater_lora_ota_no_external_sensors-' + policy),
+      'Keep existing Lite repeater functionality during incomplete QSPI rollout: ' + fault);
+  }
+}
 for (const hardware of ['LilyGo_T-Echo_Card', 'muzi_base_uno', 'muzi_base_duo', 'Nano_G2_Ultra']) {
   const original = Object.keys(currentControls.profiles).filter(target =>
     target.startsWith(hardware + '_repeater_') || target.startsWith(hardware + '_room_server_'));

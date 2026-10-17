@@ -533,13 +533,10 @@
     const lowerTarget = target.toLowerCase();
     return HIDDEN_PROFILE_HARDWARE.includes(profile.sourceHardware) ||
       HIDDEN_PROFILE_TARGETS.includes(target) ||
-      // These room installations use their onboard external-QSPI recipe.
+      // SolarXiao room installations use their onboard external-QSPI recipe.
       // Retain internal-only downloads for exact compatibility searches,
       // including when a release has no matching QSPI image.
-      (QSPI_ROOM_HARDWARE.includes(String(profile.sourceHardware || "").toLowerCase()) &&
-        /^_room_server(?:_lora_ota_no_external_sensors)?(?:-(?:full|reduced)(?:-ota)?)?$/
-          .test(lowerTarget.slice(profile.sourceHardware.length))) ||
-      /^lilygo_t-echo-lite_repeater(?:_lora_ota_no_external_sensors)?(?:-(?:full|reduced)(?:-ota)?)?$/
+      /^solarxiao_(?:30|33)s_room_server(?:_lora_ota_no_external_sensors)?(?:-(?:full|reduced)(?:-ota)?)?$/
         .test(lowerTarget) ||
       (lowerTarget.includes("companion_radio_") &&
         /(?:^|[_-])(?:ps|femoff)(?=$|[_-])/.test(lowerTarget));
@@ -725,26 +722,40 @@
   }
 
   function omitReplacedQspiProfiles(profiles) {
-    const canonicalPairs = new Map();
+    const qspiPairs = new Map();
     (profiles || []).forEach(function (profile) {
       const controls = profile.controls;
-      const hardware = String(profile.hardware || "").toLowerCase();
       const target = String(profile.target || "").toLowerCase();
       if (!controls || controls.platform !== "NRF52_PLATFORM" ||
           profile.ota !== "lora-receiver" || !profile.sensorProfile ||
           !controls.updateRequirements || !controls.updateRequirements.lora ||
           controls.updateRequirements.lora.storage !== "external_qspi" ||
-          target !== hardware + "_repeater-" + profile.sensorProfile) return;
-      if (!canonicalPairs.has(hardware)) canonicalPairs.set(hardware, new Map());
-      canonicalPairs.get(hardware).set(profile.sensorProfile, profile);
+          !target.endsWith("-" + profile.sensorProfile)) return;
+      const base = target.slice(0, -profile.sensorProfile.length - 1);
+      if (!qspiPairs.has(base)) qspiPairs.set(base, new Map());
+      qspiPairs.get(base).set(profile.sensorProfile, profile);
     });
+    function qualifiedPair(base) {
+      const pair = qspiPairs.get(base);
+      if (!pair || !pair.has("full") || !pair.has("reduced")) return null;
+      return pair.get("full").controls.sensorProfileSource.toLowerCase() ===
+        pair.get("reduced").controls.sensorProfileSource.toLowerCase() ? pair : null;
+    }
     return (profiles || []).filter(function (profile) {
       const hardware = String(profile.hardware || "").toLowerCase();
-      const pair = canonicalPairs.get(hardware);
-      if (!pair || !pair.has("full") || !pair.has("reduced")) return true;
-      if (pair.get("full").controls.sensorProfileSource.toLowerCase() !==
-          pair.get("reduced").controls.sensorProfileSource.toLowerCase()) return true;
       const target = String(profile.target || "").toLowerCase();
+      // Keep supported roles in older releases until their exact QSPI pair
+      // is downloadable. A source-only recipe does not replace a download.
+      if (QSPI_ROOM_HARDWARE.includes(hardware) &&
+          /^_room_server(?:_lora_ota_no_external_sensors)?(?:-(?:full|reduced)(?:-ota)?)?$/
+            .test(target.slice(hardware.length)) &&
+          qualifiedPair(hardware + "_room_server_lora_ota")) return false;
+      if (hardware === "lilygo_t-echo-lite" &&
+          /^_repeater(?:_lora_ota_no_external_sensors)?(?:-(?:full|reduced)(?:-ota)?)?$/
+            .test(target.slice(hardware.length)) &&
+          qualifiedPair(hardware + "_repeater_lora_ota")) return false;
+      const pair = qualifiedPair(hardware + "_repeater");
+      if (!pair) return true;
       if (QSPI_REPEATER_ALIAS_HARDWARE.includes(hardware) &&
           /^_repeater_lora_ota_no_external_sensors(?:-(?:full|reduced)(?:-ota)?)?$/
             .test(target.slice(hardware.length))) return false;

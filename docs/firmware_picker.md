@@ -490,9 +490,13 @@ exact `LilyGo_T-Echo-Lite_repeater_lora_ota` target. Each requires the
 board-matched QSPI-capable OTAFIX bootloader; a shared board-family name is
 not enough to choose a bootloader.
 Internal-only Room recipes remain available by exact name for explicit
-compatibility/recovery builds, but are excluded from ordinary build menus,
-future releases, and picker recommendations. Existing downloads remain
-available through exact filename searches. The legacy and QSPI images have
+compatibility/recovery builds, but are excluded from ordinary build menus
+and future releases. For newly converted boards, the picker keeps an existing
+release's internal Room choice until that same release provides its qualified,
+source-matched QSPI Full/Reduced pair. This preserves working Room links during
+rollout; SolarXiao's already-retired internal choices stay hidden. Existing
+downloads remain available through exact filename searches. The legacy and
+QSPI images have
 different OTA identities and layouts: a QSPI package is not a cross-target
 LoRa update for an internal-only installation. Use the matching bootloader
 and documented local migration path when changing layouts.
