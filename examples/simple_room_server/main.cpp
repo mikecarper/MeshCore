@@ -401,6 +401,10 @@ void loop() {
 #ifdef HAS_EXTERNAL_WATCHDOG
   external_watchdog.loop();
 #endif
+#if defined(NRF52_PLATFORM)
+  if (the_mesh.getNodePrefs()->powersaving_enabled && the_mesh.isDualRadioActive()
+      && !morse_timing) board.prepareProfileIdleCycle();
+#endif
   const auto sleep_guard = [](bool allowed, mesh::powerdiag::Reason reason) {
     if (!allowed && mesh::powerdiag::enabled())
       mesh::powerdiag::decision(mesh::powerdiag::mask(reason), millis());
@@ -431,7 +435,7 @@ void loop() {
     if (sleep_ms > 0) external_watchdog.feed();
 #endif
 #if defined(NRF52_PLATFORM)
-    if (sleep_ms > 0) {
+    if (sleep_ms > 0 && the_mesh.canIdleDualRadio()) {
       if (mesh::powerdiag::enabled()) mesh::powerdiag::decision(0, millis());
       if (noise_floor_wait) board.sleepMilliseconds(sleep_ms);
       else board.sleep(0); // nrf ignores seconds param, sleeps whenever possible

@@ -555,13 +555,19 @@ bool Dispatcher::getNextNoiseFloorWakeDelay(uint32_t& delay_millis) const {
 }
 
 bool Dispatcher::getNextQueueWakeDelay(uint32_t& delay_millis) const {
-  if (isDualRadioActive()) { delay_millis = 0; return true; }
+  const bool dual_profile = isDualRadioActive();
+  uint32_t profile_delay = 0;
+  if (dual_profile && (!radio_available
+      || !_radio->getProfileIdleDelay(profile_delay) || profile_delay == 0)) {
+    delay_millis = 0;
+    return true;
+  }
 #if MESH_ENABLE_FOREIGN_RADIO
   if (hasForeignRadioFrame()) { delay_millis = 0; return true; }
 #endif
   const uint32_t now = _ms->getMillis();
-  bool found = false;
-  uint32_t shortest_delay = 0;
+  bool found = dual_profile;
+  uint32_t shortest_delay = profile_delay;
 #if MESH_ENABLE_TX_BEACONS
   if (radio_available && hasBeaconRadioFrame()) {
     // TX completion and restoration need the fast lifecycle, not timed sleep.
@@ -570,7 +576,8 @@ bool Dispatcher::getNextQueueWakeDelay(uint32_t& delay_millis) const {
   }
   if (radio_available && beacon_wake_enabled) {
     const int32_t wait = int32_t(beacon_wake_at - now);
-    shortest_delay = wait > 0 ? uint32_t(wait) : 0;
+    const uint32_t beacon_delay = wait > 0 ? uint32_t(wait) : 0;
+    if (!found || beacon_delay < shortest_delay) shortest_delay = beacon_delay;
     found = true;
   }
 #endif
@@ -600,6 +607,9 @@ bool Dispatcher::getNextQueueWakeDelay(uint32_t& delay_millis) const {
       // Wake for a failed RX retry without making overdue AGC a hot poll.
       if (receive_retry && receive_retry_delay < delay_millis) {
         delay_millis = receive_retry_delay;
+      }
+      if (dual_profile && profile_delay < delay_millis) {
+        delay_millis = profile_delay;
       }
     } else {
       // TX completion/timeout still needs the normal fast lifecycle path.

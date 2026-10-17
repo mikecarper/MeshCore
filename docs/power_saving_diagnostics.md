@@ -39,6 +39,11 @@ after off starts a fresh window. Collection defaults off at every boot.
   existing service guard is active.
 - `board`, `no.wake`: an inner board veto, SDK error or lack of a wake source.
 
+`radio2` means the scanner cannot safely idle right now: for example, a short
+remaining visit, calibration, pending reception or an unvalidated platform.
+On nRF52, settled long visits can idle the MCU with power saving enabled;
+the RF receiver stays on. See [radio profiles](radio_profiles.md#mcu-power-saving-while-scanning).
+
 The role reports the first actual short-circuit blocker. It does not query
 otherwise skipped hardware just to populate an exhaustive list. Board guards
 may add reasons. Per-reason durations therefore are observed guard time, not

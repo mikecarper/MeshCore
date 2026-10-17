@@ -64,6 +64,7 @@ struct MyMesh {
   bool getNextNoiseFloorWakeDelay(uint32_t&) const { return false; }
   bool dual_radio = false;
   bool isDualRadioActive() const { return dual_radio; }
+  bool canIdleDualRadio() const { return !dual_radio; }
   uint32_t limitSleepToMillisTimer(unsigned long, uint32_t secs) const { return secs; }
   uint32_t limitSleepToScheduledRadioWork(uint32_t secs) const { return secs; }
   bool hasPendingWork() const;

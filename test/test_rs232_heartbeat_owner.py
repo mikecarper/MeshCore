@@ -154,6 +154,7 @@ struct MyMesh : Callbacks {
   unsigned long dirty_contacts_expiry = 0, next_recent_repeater_sweep = 0;
   unsigned long next_battery_alert_check = 0;
   bool isDualRadioActive() const { return false; }
+  bool canIdleDualRadio() const { return true; }
   bool hasPendingOtaApply() const { return false; }
   bool hasQueuedWorkDue() const { return false; }
   bool hasRetryWorkDue() const { return false; }

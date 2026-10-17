@@ -89,11 +89,13 @@ public:
   mesh::powerdiag::Mask pendingWorkReason() const;
   bool canRecoverUsbLogging() const;
   bool isDualRadioActive() const{return false;}
+  bool canIdleDualRadio() const{return true;}
   bool hasOutbound() const{return false;}
   bool isAnyTempRadioActive() const{return false;}
   bool hasPendingOtaApply() const{return false;}
   bool hasPendingReqs() const{return false;}
   bool hasQueuedWorkDue() const{return false;}
+  bool getNextNoiseFloorWakeDelay(uint32_t&) const{return false;}
   bool hasRetryWorkDue() const{return false;}
   bool millisHasNowPassed(uint32_t when) const{return _ms->now>=when;}
   bool isContactWriteDue() const{return _store->contact_pending;}

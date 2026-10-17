@@ -175,7 +175,7 @@ struct AbstractBridge {
   uint32_t powerWakeDelayMs(uint32_t) const { return wake_ms; }
 };
 struct MyMesh {
-  bool dual = false, ota = false, queue = false, retry = false, scheduled = false;
+  bool dual = false, profile_idle = false, ota = false, queue = false, retry = false, scheduled = false;
   bool bridge_enabled = true;
   bool queue_delay_set = false, retry_delay_set = false;
   uint32_t queue_delay = 0, retry_delay = 0, calibration_delay = 0;
@@ -195,6 +195,7 @@ struct MyMesh {
   const AbstractBridge* activeBridge() const { return bridge; }
   bool rs232BridgeEnabled() const { return bridge_enabled; }
   bool isDualRadioActive() const { return dual; }
+  bool canIdleDualRadio() const { return !dual || profile_idle; }
   bool hasPendingOtaApply() const { return ota; }
   bool hasQueuedWorkDue() const { return queue; }
   bool hasRetryWorkDue() const { return retry; }
@@ -232,6 +233,11 @@ int main() {
       flag = false;
     };
     check(node.dual, Reason::DualRadio); check(node.ota, Reason::Ota);
+    node.dual = true; node.profile_idle = true;
+    assert(!node.hasPendingWork());
+    check(node.ota, Reason::Ota); // An idle scanner does not bypass other role guards.
+    check(node.queue, Reason::Queue); check(node.retry, Reason::Retry);
+    node.dual = node.profile_idle = false;
     check(node._local_cli_output.busy_value, Reason::Serial);
     check(node.deferred_cli_command.pending, Reason::Scheduled);
     check(node.uart.running, Reason::Bridge);

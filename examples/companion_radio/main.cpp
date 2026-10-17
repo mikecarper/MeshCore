@@ -4209,6 +4209,10 @@ void loop() {
 #ifdef ESP32_PLATFORM
   serviceCompanionPowerSaving();
 #endif
+#if defined(NRF52_PLATFORM)
+  if (the_mesh.getNodePrefs()->powersaving_enabled && the_mesh.isDualRadioActive()
+      && !morse_timing) board.prepareProfileIdleCycle();
+#endif
 
   // USB power alone (for example, a wall charger) does not inhibit sleep.
   // Host sessions, live logging, and button activity still need service.
@@ -4254,7 +4258,7 @@ void loop() {
   if (noise_floor_wait && noise_floor_delay_ms == 0) sleep_reason = mask(Reason::Calibration);
   if (mesh::powerdiag::enabled()) mesh::powerdiag::decision(sleep_reason, millis());
   const bool can_sleep = sleep_reason == 0;
-  if (can_sleep) {
+  if (can_sleep && the_mesh.canIdleDualRadio()) {
     const uint32_t idle_slice_ms = noise_floor_wait && noise_floor_delay_ms < 10
         ? noise_floor_delay_ms : 10;
 #if defined(NRF52_PLATFORM)

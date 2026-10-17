@@ -113,6 +113,14 @@ protected:
   bool _profile_rxps_suspended = false;
   bool _profile_saved_rxps = false;
   bool _profile_refresh_required = false;
+#if defined(NRF52_PLATFORM)
+  // Published by the scanner before the final sleep predicates. The late
+  // query uses integers only: floating-point work can leave a stale FPU event.
+  uint32_t _profile_idle_visit_ticks = 0;
+  uint32_t _profile_idle_stamp = 0;
+  uint32_t _profile_idle_switch_us = 0;
+  uint16_t _profile_idle_preamble = 0;
+#endif
 #if defined(MESH_HIL_TX_FREQ_MHZ)
   bool hilPacketTransmitAllowed() const;
 #endif
@@ -547,6 +555,7 @@ public:
   }
   bool getReceiveRetryDelay(uint32_t now, uint32_t& delay_ms) const override;
   bool getNoiseFloorWakeDelay(uint32_t now, uint32_t& delay_ms) const override;
+  bool getProfileIdleDelay(uint32_t& delay_ms) const override;
   void resetStats() { n_recv = n_sent = n_recv_errors = 0; }
 
   uint8_t getRadioState() const override;

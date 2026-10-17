@@ -11,7 +11,8 @@ struct SleepCycleSnapshot {
   bool softdevice_enabled = false;
 };
 
-// The application task publishes once at loop entry, before checking work.
+// The application task publishes before checking work. Profile idle can
+// re-baseline after servicing, but only before a complete new guard pass.
 // A SoftDevice startup attempt can invalidate from another task without
 // racing the publication. No SDK state is inferred from NVIC/vector state.
 class SleepCycleState {

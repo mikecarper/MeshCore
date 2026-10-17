@@ -230,6 +230,7 @@ struct MyMesh {
   bool getNextRetryWakeDelay(uint32_t&) const { return false; }
   bool getNextNoiseFloorWakeDelay(uint32_t&) const { return false; }
   bool isDualRadioActive() const { return false; }
+  bool canIdleDualRadio() const { return true; }
   uint32_t limitSleepToMillisTimer(unsigned long, uint32_t secs) const { return secs; }
   uint32_t limitSleepToScheduledRadioWork(uint32_t secs) const { return secs; }
   const AbstractBridge* activeBridge() const { return @WORKER@; }

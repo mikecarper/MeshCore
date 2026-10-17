@@ -13928,7 +13928,7 @@ mesh::powerdiag::Mask MyMesh::pendingWorkReason() const {
   using mesh::powerdiag::Reason;
   // Keep the original guard order and short circuit: diagnostics must not
   // probe additional hardware or change which work keeps the MCU awake.
-  if (isDualRadioActive()) return mask(Reason::DualRadio);
+  if (!canIdleDualRadio()) return mask(Reason::DualRadio);
   if (hasPendingOtaApply()) return mask(Reason::Ota);
 #if defined(ESP32_PLATFORM)
   if (mesh::wifi::networkPower().foregroundActive()) return mask(Reason::Network);

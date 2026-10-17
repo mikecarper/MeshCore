@@ -803,6 +803,40 @@ An RX-only `tempradio2` also blocks locally generated OTA requests under
 for a fetching node that needs to exchange requests and data. Infrastructure
 OTA responses follow `tx.reply` independently of this crossing table.
 
+## MCU power saving while scanning
+
+On nRF52, `set powersaving on` also permits interrupt-driven MCU idle during a
+settled `radio2` or `tempradio2` listening visit. The RF receiver stays on.
+This includes a Meshtext LongFast visit (SF11 / 250 kHz), whose minimum visit
+is about 37.7 ms. No extra command is needed.
+
+The scanner first completes its switch self-test and both noise-floor
+baselines. It polls again for pending packets, calibration, changed settings,
+retries, or short visits. All normal USB, logging, bridge, OTA, queue and role
+sleep guards still apply. An nRF52 periodic interrupt bounds each wait to
+about 0.977 ms; admission reserves another 0.488 ms before the visit deadline
+and is rechecked immediately before sleeping. If that wake source is not
+available, scanning keeps polling. Other MCU families retain polling until
+their timing is validated.
+
+The integer admission gate requires at least 49 RTC2 ticks (about 1.495 ms)
+remaining after the work checks. A configured visit must also cover the loop
+work before that point. Eligibility is therefore per visit, not an SF/BW
+cutoff: a fast SF5 secondary can still idle the MCU when the primary profile
+gives it a sufficiently long listening visit.
+
+For example, the RAK3401 bench with USA primary `910.525,62.5,7,5,32` and
+secondary `909.5,500,5,5,rxtx,384` had roughly 9.4/21.3 ms visits. MCU sleep
+was observed in 35% of 4265 debugger samples with power saving on, versus
+zero of 2129 with it off. This is a CPU-state spot check, not a current or
+Ethernet throughput measurement. Enabling power saving changed neither preamble.
+
+Radio RX duty cycling remains suspended while scanning, then its previous
+setting is restored when radio2 stops. Meshtext's fixed 16-symbol preamble
+does not have the same sleep margin as a longer MeshCore preamble. Adding
+RF sleep inside a scan visit would introduce extra blind time, so this
+optimization saves MCU activity without shortening either listening visit.
+
 ## Preamble
 
 Append the preamble to the end of a command:

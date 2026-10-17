@@ -229,6 +229,14 @@ public:
   virtual bool getReceiveRetryDelay(uint32_t now, uint32_t& delay_ms) const {
     (void)now; (void)delay_ms; return false;
   }
+  // A supported profile scanner may idle the MCU while RF keeps receiving.
+  // Return a conservative whole-millisecond service budget, not an RF sleep
+  // permission. False (unsupported/not ready) or zero retains fast polling.
+  // The caller must preserve every other work deadline and the validated
+  // board wake contract, then recheck admission immediately before waiting.
+  virtual bool getProfileIdleDelay(uint32_t& delay_millis) const {
+    (void)delay_millis; return false;
+  }
 
   virtual void triggerNoiseFloorCalibrate(int threshold) { }
 
@@ -642,6 +650,12 @@ public:
 #endif
   Radio* getProfileRadio() { return _radio; }
   bool isDualRadioActive() const { return _radio->profiles() && _radio->profiles()->enabled(); }
+  bool canIdleDualRadio() const {
+    if (!isDualRadioActive()) return true;
+    uint32_t delay_millis = 0;
+    return radio_available && _radio->getProfileIdleDelay(delay_millis)
+        && delay_millis > 0;
+  }
 
   Packet* obtainNewPacket();
   void releasePacket(Packet* packet);

@@ -54,6 +54,7 @@ public:
  const Clock* getRTCClock()const{return &rtc;}
  bool millisHasNowPassed(unsigned long time)const{return (int32_t)(millis()-time)>=0;}
  bool isDualRadioActive()const{return dual;}
+ bool canIdleDualRadio()const{return !dual;}
  bool hasPendingOtaApply()const{return ota;}
  bool isAnyTempRadioActive()const{return temp;}
  bool hasOutbound()const{return outbound;}
@@ -160,6 +161,7 @@ static void trackerWakeCallback(TimerHandle_t){}
 @ARM@
 struct Mesh {bool tracker=true;uint32_t sleep_secs=30;
  bool isTrackerModeEnabled()const{return tracker;}
+ bool canIdleDualRadio()const{return true;}
  uint32_t getPowerSaveSleepMilliseconds(uint32_t max)const{assert(max==30000);return sleep_secs*1000;}
  bool getNextNoiseFloorWakeDelay(uint32_t&)const{return false;}
  bool millisHasNowPassed(uint32_t deadline)const{return (int32_t)(millis()-deadline)>=0;}

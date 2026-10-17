@@ -73,9 +73,20 @@ public:
   virtual bool getBootloaderVersion(char* version, size_t max_len) override;
   virtual bool startOTAUpdate(const char *id, char reply[], bool force_ap = false) override;
   virtual bool stopOTAUpdate(char reply[]) override;
-  // Must precede all work servicing/checks in each application loop. The
-  // authoritative SDK queries and stale-event clear are never done at sleep.
+  // Normal loop-entry preparation must precede all work servicing/checks. The
+  // profile-only second preparation below precedes a complete new guard pass;
+  // authoritative SDK queries and event clearing never belong in sleep().
   void prepareSleepCycle();
+  // Radio-profile service can set an FPU event after loop entry. This second
+  // preparation belongs BEFORE the complete role sleep predicate, never after
+  // any work/USB/radio checks whose interrupt wake must remain visible.
+  void prepareProfileIdleCycle();
+  // Pure readiness check for the pinned 1024 Hz periodic RTC1 wake contract.
+  // The sketch task stays ready while waiting, so the idle task cannot suppress
+  // this tick. A profile must still reserve this interval plus its own guard.
+  static constexpr uint32_t ProfileIdleTickUs = 977;
+  static constexpr uint32_t ProfileIdleRtcTicks = 32;
+  static bool canIdleRadioProfile();
   virtual void sleep(uint32_t secs) override;
   bool isUserGpioAvailable(uint8_t pin) const override;
   bool isExternalPowered() override;

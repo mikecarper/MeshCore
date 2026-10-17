@@ -542,10 +542,47 @@ void NRF52Board::prepareSleepCycle() {
   state.publish(token, sd_enabled != 0, usb_status, error);
 
   // FreeRTOS yields and the state-query SVC can both leave a stale event.
-  // Clear it ONLY at loop entry, before servicing/checking application work.
-  // A radio interrupt after this point must remain visible to the late wait.
+  // Clear it only before a complete work/guard pass: at loop entry, or during
+  // explicit profile-idle preparation before all role sleep predicates. A radio
+  // interrupt after that pass begins must remain visible to the late wait.
   __SEV();
   __WFE();
+}
+
+bool NRF52Board::canIdleRadioProfile() {
+#if defined(configTICK_RATE_HZ) && configTICK_RATE_HZ == 1024
+  // RTC1 belongs to FreeRTOS. Only observe its periodic wake; never alter its
+  // counter, compare channels, IRQ ownership, or tickless-idle bookkeeping.
+  return __get_IPSR() == 0 && __get_PRIMASK() == 0
+      && __get_BASEPRI() == 0 && __get_FAULTMASK() == 0
+      && nrf_nvic_state.__cr_flag == 0
+      && xTaskGetSchedulerState() == taskSCHEDULER_RUNNING
+      && !(SCB->ICSR & SCB_ICSR_PENDSVSET_Msk)
+      && NRF_RTC1->PRESCALER == 31
+      && (NRF_RTC1->INTENSET & RTC_INTENSET_TICK_Msk) != 0
+      && NVIC_GetEnableIRQ(RTC1_IRQn) != 0;
+#else
+  return false;
+#endif
+}
+
+void NRF52Board::prepareProfileIdleCycle() {
+  if (canIdleRadioProfile()) {
+#if (__FPU_USED == 1)
+    // The disabled FPU IRQ can retain an inexact exception from profile math.
+    // Clear that known source before refreshing the event baseline. An enabled
+    // owner's flags/IRQ belong to its handler, not this polling cleanup.
+    if (NVIC_GetEnableIRQ(FPU_IRQn) == 0) {
+      __set_FPSCR(__get_FPSCR() & ~0x0000009FUL);
+      (void)__get_FPSCR();
+      NVIC_ClearPendingIRQ(FPU_IRQn);
+    }
+#endif
+  }
+  // This also revalidates context and SDK state, acknowledges a real PendSV
+  // when SoftDevice is on, and clears the old ARM event. All role predicates
+  // must run afterward; an interrupt during those checks is never erased.
+  prepareSleepCycle();
 }
 
 bool NRF52Board::isUsbDataConnected() {

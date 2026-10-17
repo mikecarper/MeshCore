@@ -4287,7 +4287,7 @@ bool MyMesh::hasPendingWork() const {
 mesh::powerdiag::Mask MyMesh::pendingWorkReason() const {
   using mesh::powerdiag::mask;
   using mesh::powerdiag::Reason;
-  if (isDualRadioActive()) return mask(Reason::DualRadio);
+  if (!canIdleDualRadio()) return mask(Reason::DualRadio);
   if (hasPendingOtaApply()) return mask(Reason::Ota);
 #if defined(ESP32_PLATFORM)
   if (mesh::wifi::networkPower().foregroundActive()) return mask(Reason::Network);

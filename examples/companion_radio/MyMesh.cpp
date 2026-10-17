@@ -11600,7 +11600,7 @@ mesh::powerdiag::Mask MyMesh::pendingWorkReason() const {
 #if COMPANION_FEATURE_NOTIFICATIONS
   if (_notifications.active()) return mask(Reason::Mesh);
 #endif
-  if (isDualRadioActive()) return mask(Reason::DualRadio);
+  if (!canIdleDualRadio()) return mask(Reason::DualRadio);
   if (_radio_available && radio_driver.isWatchdogObserving()) return mask(Reason::RadioWatchdog);
   uint32_t noise_floor_delay_ms;
   if (getNextNoiseFloorWakeDelay(noise_floor_delay_ms) && noise_floor_delay_ms == 0)

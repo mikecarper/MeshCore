@@ -243,7 +243,7 @@ int main() {
     def test_main_loop_gates_sleep_on_pending_work(self):
         main = (ROOT / "examples/companion_radio/main.cpp").read_text()
         sleep_start = main.index("  using mesh::powerdiag::Reason;")
-        sleep_end = main.index("if (can_sleep)", sleep_start)
+        sleep_end = main.index("if (can_sleep", sleep_start)
         sleep_gate = main[sleep_start:sleep_end]
 
         self.assertIn("the_mesh.pendingWorkReason()", sleep_gate)
@@ -258,7 +258,7 @@ int main() {
     def test_polled_rak_ethernet_holds_event_sleep_through_pending_off(self):
         main = (ROOT / "examples/companion_radio/main.cpp").read_text()
         start = main.index("  using mesh::powerdiag::Reason;")
-        gate = main[start:main.index("if (can_sleep)", start)]
+        gate = main[start:main.index("if (can_sleep", start)]
         fixture = r'''
 #include <cassert>
 #include <helpers/PowerSavingDiagnostics.h>

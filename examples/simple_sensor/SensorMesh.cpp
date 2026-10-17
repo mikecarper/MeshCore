@@ -1725,7 +1725,7 @@ mesh::powerdiag::Mask SensorMesh::pendingWorkReason() const {
       || (tracker_awake_until && !millisHasNowPassed(tracker_awake_until))
       || (!tracker_storage_fault && getRTCClock()->getCurrentTime() >= tracker_next_check))) return mask(Reason::Tracker);
 #endif
-  if (isDualRadioActive()) return mask(Reason::DualRadio);
+  if (!canIdleDualRadio()) return mask(Reason::DualRadio);
   if (hasPendingOtaApply()) return mask(Reason::Ota);
   if (_cli.hasActiveUserGpioTimer()) return mask(Reason::Scheduled);
   if (radio_driver.isWatchdogObserving()) return mask(Reason::RadioWatchdog);

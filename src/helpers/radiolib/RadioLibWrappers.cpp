@@ -11,6 +11,7 @@
 #include <esp_heap_caps.h>
 #elif defined(NRF52_PLATFORM)
 #include <utility/debug.h>
+#include "../NRF52Board.h"
 #elif defined(STM32_PLATFORM)
 #include <sys/types.h>
 extern "C" caddr_t _sbrk(int increment);
@@ -768,6 +769,9 @@ mesh::RadioParamApplyResult RadioLibWrapper::tryRestoreCodingRate(uint8_t cr) {
 }
 
 void RadioLibWrapper::serviceProfileScan() {
+#if defined(NRF52_PLATFORM)
+  _profile_idle_visit_ticks = 0; // Every deferred/restarted scan fails closed.
+#endif
   syncProfileClock(_profiles.enabled());
   if (_cw_active) return;
   if (!_params_valid || (_profile_retry_at && (int32_t)(millis() - _profile_retry_at) < 0)) return;
@@ -816,6 +820,10 @@ void RadioLibWrapper::serviceProfileScan() {
     if (!_profiles.switchTestReady()) return;
   }
   uint8_t target = _active_profile;
+#if defined(NRF52_PLATFORM)
+  const uint8_t visited_profile = _active_profile;
+#endif
+  uint32_t visit_us = 0;
   const bool restart_scan = _profiles.enabled()
       && (_profile_scan_generation[0] != _profiles.generation[0]
           || _profile_scan_generation[1] != _profiles.generation[1]);
@@ -834,7 +842,7 @@ void RadioLibWrapper::serviceProfileScan() {
   if (!_profiles.enabled()) target = 0;
   else if (restart_scan) target = _profiles.slowerProfile();
   else {
-    uint32_t visit_us = _profiles.listenUs(
+    visit_us = _profiles.listenUs(
         _active_profile, profilePreamble(_profiles.slowerProfile()));
     // A normal visit can be shorter than the RSSI settle interval on some
     // chips. Hold only a visit that is actually due to contribute its next
@@ -869,6 +877,55 @@ void RadioLibWrapper::serviceProfileScan() {
     recalibrateNoiseFloor();
     endReconfigure(resume);
   }
+#if defined(NRF52_PLATFORM)
+  // A real hop gets a fresh budget on the next pass. Never use the old
+  // profile's visit duration with the new profile's RX timestamp.
+  if (_profiles.enabled() && !restart_scan && _active_profile == visited_profile
+      && result == mesh::RadioParamApplyResult::APPLIED
+      && !isChipBusy() && !isPacketPendingOrReceiving()) {
+    _profile_idle_visit_ticks = uint64_t(visit_us) * 512 / 15625;
+    _profile_idle_stamp = _profile_visit_stamp;
+    _profile_idle_switch_us = _profiles.switchBudgetUs();
+    _profile_idle_preamble = _physical_preamble;
+  }
+#endif
+}
+
+bool RadioLibWrapper::getProfileIdleDelay(uint32_t& delay_ms) const {
+  delay_ms = 0;
+#if defined(NRF52_PLATFORM)
+  if (!_profiles.enabled() || !NRF52Board::canIdleRadioProfile()
+      || !_profile_idle_visit_ticks || !_params_valid || state != STATE_RX
+      || !_profile_rxps_suspended || _rx_ps_enabled || _rx_ps_armed
+      || _rx_hold_continuous || _rx_retry_pending || _profile_retry_at
+      || _profile_refresh_required || _nf_refresh_requested || _nf_calib_active
+      || !_noise_floor_valid || !_noise_floor_secondary_valid
+      || _wd_observe_until || _cw_active || _morse_owned || hasPendingRadioInterrupt()
+      || !_profiles.switchTestReady()
+      || _profile_scan_generation[0] != _profiles.generation[0]
+      || _profile_scan_generation[1] != _profiles.generation[1]
+      || _active_profile > 1 || _profile_generation != _profiles.generation[_active_profile]
+      || _profile_idle_stamp != _profile_visit_stamp
+      || _profile_idle_preamble != _physical_preamble
+      || _profile_idle_switch_us != _profiles.switchBudgetUs()) return false;
+#if MESH_ENABLE_TX_BEACONS
+  if (_beacon_owned) return false;
+#endif
+#if MESH_ENABLE_MORSE_RX
+  if (_morse_rx_owned) return false;
+#endif
+  const uint32_t elapsed = (NRF_RTC2->COUNTER - _profile_idle_stamp) & 0x00ffffffUL;
+  // RTC1 wakes the ready sketch task at 1024 Hz (32 RTC2 ticks). Retain
+  // another 16 ticks (488 us) for return-to-loop work, validated on RAK3401.
+  // Short visits poll; neither a new timer nor RF duty cycling is needed.
+  constexpr uint32_t guard_ticks = 16;
+  if (_profile_idle_visit_ticks >= 0x00800000UL || elapsed >= _profile_idle_visit_ticks
+      || _profile_idle_visit_ticks - elapsed <= 32 + guard_ticks) return false;
+  delay_ms = uint64_t(_profile_idle_visit_ticks - elapsed - guard_ticks) * 15625 / 512000;
+  return delay_ms != 0;
+#else
+  return false; // Other platforms retain polling until their wake path is validated.
+#endif
 }
 
 uint32_t RadioLibWrapper::getProfileAirtime(uint8_t profile, int len, uint8_t cr) {

@@ -269,6 +269,7 @@ struct MyMesh {
 #endif
   bool millisHasNowPassed(uint32_t at) const { return int32_t(now_ms-at)>=0; }
   bool isDualRadioActive() const { return false; }
+  bool canIdleDualRadio() const { return true; }
   bool isContactWriteDue() const { return false; }
   bool hasPendingOtaApply() const { return false; }
   bool hasPendingReqs() const { return _delayed_replies.hasRequest(); }
