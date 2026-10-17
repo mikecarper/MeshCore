@@ -2666,6 +2666,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#diagnose-what-prevents-power-saving" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Diagnose what prevents power saving
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#view-or-set-the-reboot-interval-repeater-and-room-server" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -5607,6 +5618,17 @@
     <span class="md-ellipsis">
       
         View or change this node's power saving flag
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#diagnose-what-prevents-power-saving" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Diagnose what prevents power saving
       
     </span>
   </a>
@@ -9296,6 +9318,60 @@ The G3 button also wakes the device for at least two minutes. See the
 for verification steps and the distinction between the fix and the published
 binaries.</p>
 <p>Companion firmware defaults this setting to <code>on</code>. Full Companion accepts the command from its local USB terminal and exposes the same setting in WebConfig. On ESP32, it lowers the CPU clock to 80 MHz, enables idle yielding, and enables the configured GPS duty cycle. USB and each active wireless transport remain available; SenseCAP Indicator Full keeps only its selected BLE or infrastructure-WiFi secondary transport active. <code>set powersaving off</code> restores the board's normal CPU clock and disables the GPS duty cycle. This device setting is separate from LoRa RXPS (<code>radio.rxps</code>) and WiFi modem power save (<code>wifi.powersave</code>). Infrastructure uses the same commands; its hardware and active-service sleep guards determine when the node can sleep.</p>
+<h4 id="diagnose-what-prevents-power-saving">Diagnose what prevents power saving</h4>
+<p>Companion, Repeater, Room Server and Sensor provide on-demand diagnostics:</p>
+<pre><code class="language-text">set powersaving.diag on
+get powersaving.diag
+get powersaving.diag calls
+get powersaving.diag time
+get powersaving.diag usb.session
+get powersaving.diag bridge
+get powersaving.diag 3
+set powersaving.diag off
+clear powersaving.diag
+</code></pre>
+<p>Diagnostics default to off and use only RAM. They do not change the saved
+power-saving flag, USB/DTR behavior, radio settings, logging or bridge state,
+and are lost on reboot. <code>on</code> starts a new window after <code>off</code>; repeated <code>on</code>
+keeps the current window. <code>off</code> freezes the counters for later inspection.
+<code>clear</code> resets them without changing whether collection is enabled. There is
+no automatic diagnostic log stream or flash write.</p>
+<p>The default/state page shows the last actual sleep decision (<code>why</code>, <code>mask</code>),
+its age, reasons seen, total blocked time and eligible time in milliseconds.
+Before the first observed decision it reports <code>unobserved</code>. Pages <code>3</code> through
+<code>8</code> list every reason's transition count and blocked milliseconds; use an
+exact reason name for a separate readback. Role guards preserve their normal
+short-circuit order, so they report the first guard actually checked that
+prevented sleep, not an exhaustive simultaneous inventory. Inner board vetoes
+can add another reason. Reason times can overlap; <code>blocked_ms</code> on the state
+page counts their union instead of adding them twice.</p>
+<p>Reasons include <code>policy.off</code>, <code>startup</code>, <code>usb.session</code>, <code>usb.logging</code>,
+<code>usb.recovery</code>, <code>wireless</code>, <code>button</code>, <code>morse</code>, <code>radio2</code>, <code>ota</code>, <code>calibration</code>,
+<code>radio.watchdog</code>, <code>queue</code>, <code>retry</code>, <code>scheduled</code>, <code>serial</code>, <code>bridge</code>,
+<code>bridge.cleanup</code>, <code>bridge.wake</code>, <code>network</code>, <code>mesh</code>, <code>tracker</code>, <code>board</code> and
+<code>no.wake</code>. Not every board/role has every guard. <code>mesh</code> includes pending
+protocol/storage work; <code>scheduled</code> can include a deadline too close for the
+existing whole-second sleep policy. RS232 merely being compiled or saved as
+enabled is not a blocker while its UART is suspended; running, cleanup and
+due wake are distinguished where those guards apply. USB power from a charger
+is not a host session. Logging enabled alone is not an nRF52 MCU sleep veto;
+on ESP32, the existing logging and raw-console guards can veto light sleep.</p>
+<p>The <code>calls</code> page counts actual instrumented wait calls, returns, short returns,
+board vetoes and SDK errors. <code>time</code> reports time spent inside those wait calls
+in microseconds, including SDK and interrupt work, <strong>not CPU sleep residency
+or electrical current</strong>. Returns under 100 us are marked short, not failed.
+An eligible decision with many short calls can indicate wake/event activity;
+an eligible ESP32 automatic-sleep path may yield without a direct instrumented
+wait, so zero calls alone is not proof of a fault. <code>detail</code> records the last
+board veto/error detail (SDK error code, or board-specific guard detail).
+Counters saturate instead of wrapping; observation timestamps must be sampled
+within one <code>millis()</code> wrap (about 49 days).</p>
+<p>Opening USB to read the results can itself add a host/serial blocker. For a
+battery test, enable collection, close the terminal, wait, then read the
+accumulated pages. Stop collection promptly if preserving that window. A meter
+is still needed to diagnose radio RX current, RXPS duty cycle, FEM/LNA gain,
+GPS, displays, regulator losses and other loads that can consume power even
+when the MCU sleeps correctly. See <a href="../power_saving_diagnostics/">power-saving diagnostics</a>.</p>
 <p>Native USB ESP32 Full Companions can also use short light-sleep intervals when
 the BLE/WiFi drivers, ESP-NOW, GPS UART, logging, and USB host sessions are
 inactive and no work is pending. Compiling those transports into Full does not
