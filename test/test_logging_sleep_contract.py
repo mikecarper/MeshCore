@@ -27,6 +27,8 @@ HARNESS = r'''
 #include <stdexcept>
 #include <iostream>
 #include <helpers/PowerManagementUtils.h>
+#include <helpers/PowerSavingDiagnostics.h>
+uint32_t millis() { return 0; }
 #define WITH_BRIDGE 1
 struct AbstractBridge { virtual bool isRunning() const = 0; };
 struct MQTTBridge : AbstractBridge {
@@ -64,6 +66,7 @@ struct MyMesh {
   uint32_t limitSleepToMillisTimer(unsigned long, uint32_t secs) const { return secs; }
   uint32_t limitSleepToScheduledRadioWork(uint32_t secs) const { return secs; }
   bool hasPendingWork() const;
+  mesh::powerdiag::Mask pendingWorkReason() const;
   uint32_t getPowerSaveSleepSeconds(uint32_t) const;
 };
 @METHODS@
@@ -146,6 +149,7 @@ class LoggingSleepContractTest(unittest.TestCase):
                     source = f"examples/{role}/MyMesh.cpp"
                     methods = "\n".join(method(source, signature) for signature in (
                         "bool MyMesh::hasPendingWork() const",
+                        "mesh::powerdiag::Mask MyMesh::pendingWorkReason() const",
                         "uint32_t MyMesh::getPowerSaveSleepSeconds(uint32_t max_secs) const",
                     ))
                     cpp = Path(temp) / f"{role}.cpp"

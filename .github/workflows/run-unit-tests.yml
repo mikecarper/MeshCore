@@ -317,6 +317,9 @@ jobs:
           python3 -B test/test_sensor_tracker_gps.py -v
           python3 -B test/test_sensor_tracker_sleep.py -v
           python3 -B test/test_power_saving_deadlines.py -v
+          python3 -B test/test_power_saving_diagnostics.py -v
+          python3 -B test/test_power_saving_role_diagnostics.py -v
+          python3 -B test/test_companion_power_diagnostics.py -v
           python3 -B test/test_esp32_scanner_power_yield.py -v
           python3 -B test/test_esp32_gpio_hold.py -v
 

@@ -134,7 +134,9 @@ class AdvertCacheTest(unittest.TestCase):
         scheduling = method(mesh_source, 'void MyMesh::servicePersistence()')
         flush = method(mesh_source, 'bool MyMesh::flushContactsBeforeReboot()')
         flushed = method(mesh_source, 'void MyMesh::onContactCacheFlushed()')
-        work = method(mesh_source, 'bool MyMesh::hasPendingWork() const')
+        work = '\n'.join(method(mesh_source, signature) for signature in (
+            'bool MyMesh::hasPendingWork() const',
+            'mesh::powerdiag::Mask MyMesh::pendingWorkReason() const'))
         recovery = method(mesh_source, 'bool MyMesh::canRecoverUsbLogging() const')
         # The entire production scheduling body runs below. This order check
         # additionally pins its call site after either serial dispatch route.

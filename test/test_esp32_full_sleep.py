@@ -99,10 +99,12 @@ int main() {
 #include <cassert>
 #include <cstdint>
 #include <helpers/UsbHostSleepPolicy.h>
+#include <helpers/PowerSavingDiagnostics.h>
 #include <helpers/WiFiNetworkPowerPolicy.h>
 #include <helpers/MorseLoopPolicy.h>
 static uint32_t now = 1000;
 uint32_t millis() { return now; }
+uint32_t micros() { return now * 1000U; }
 using esp_err_t = int;
 enum wifi_mode_t { WIFI_MODE_NULL, WIFI_MODE_STA, WIFI_MODE_AP, WIFI_MODE_APSTA };
 constexpr int ESP_OK = 0, ESP_ERR_WIFI_NOT_INIT = 1, ESP_ERR_WIFI_NOT_STARTED = 2;
@@ -139,6 +141,9 @@ struct Mesh {
   bool pending = false, dual = false;
   Prefs* getNodePrefs() { return &prefs; }
   bool hasPendingWork() const { return pending; }
+  mesh::powerdiag::Mask pendingWorkReason() const {
+    return pending ? mesh::powerdiag::mask(mesh::powerdiag::Reason::Mesh) : 0;
+  }
   bool isDualRadioActive() const { return dual; }
   mesh::Radio* getProfileRadio() { return &timing_radio; }
 } the_mesh;

@@ -41,7 +41,7 @@ class ESPNowRuntimeTests(unittest.TestCase):
                                              implementation.index("MyMesh::servicePostMeshLoop()"))
         service_end = implementation.index("  if (next_flood_advert", service_start)
         pending_start = implementation.index("#if defined(WITH_BRIDGE)",
-                                             implementation.index("bool MyMesh::hasPendingWork()"))
+                                             implementation.index("mesh::powerdiag::Mask MyMesh::pendingWorkReason()"))
         pending_end = implementation.index("  if (radio_driver.isWatchdogObserving()", pending_start)
         commands = "\n".join(extract_braced(cli, signature) for signature in (
             "void CommonCLI::handleSetCmd(", "void CommonCLI::handleGetCmd("))

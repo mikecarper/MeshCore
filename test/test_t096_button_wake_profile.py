@@ -63,7 +63,8 @@ class T096ButtonWakeProfileTest(unittest.TestCase):
             header,
         )
         self.assertIn("defined(MOMENTARY_BUTTON_WAKE_FROM_SLEEP)", main)
-        self.assertIn("!user_btn.needsPolling()", main)
+        self.assertIn("if (!sleep_reason && user_btn.needsPolling()) sleep_reason = mask(Reason::Button);", main)
+        self.assertIn("const bool can_sleep = sleep_reason == 0;", main)
         self.assertIn("defined(MOMENTARY_BUTTON_WAKE_FROM_SLEEP)", repeater_main)
         self.assertIn("!user_btn.needsPolling()", repeater_main)
         self.assertIn("defined(MOMENTARY_BUTTON_WAKE_FROM_SLEEP)", room_main)

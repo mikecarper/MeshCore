@@ -7,6 +7,7 @@
 #include "nrf52/ShutdownLeds.h"
 #include <target.h>
 #include "UserGpioPinPolicy.h"
+#include "PowerSavingDiagnostics.h"
 
 #include <bluefruit.h>
 #include "ble_gap.h"
@@ -497,7 +498,12 @@ bool NRF52Board::isUsbHostConnected() {
 }
 
 void NRF52Board::sleep(uint32_t secs) {
-  if (isRadioTestActive()) { delay(1); return; }
+  const bool diagnostics = mesh::powerdiag::enabled();
+  if (isRadioTestActive()) {
+    if (diagnostics) mesh::powerdiag::boardVeto(mesh::powerdiag::Reason::Board, millis(), 2);
+    delay(1);
+    return;
+  }
   // Clear FPU interrupt flags to avoid insomnia
   // see errata 87 for details https://docs.nordicsemi.com/bundle/errata_nRF52840_Rev3/page/ERR/nRF52840/Rev3/latest/anomaly_840_87.html
   #if (__FPU_USED == 1)
@@ -515,16 +521,23 @@ void NRF52Board::sleep(uint32_t secs) {
     // A single call is required here. If an interrupt arrived since the last
     // wait, SoftDevice returns immediately so the main loop can service the
     // flag or BLE queue before sleeping again.
-    sd_app_evt_wait();
+    if (diagnostics) mesh::powerdiag::sleepBegin(micros());
+    const uint32_t error = sd_app_evt_wait();
+    if (diagnostics) {
+      mesh::powerdiag::sleepEnd(micros());
+      if (error != NRF_SUCCESS) mesh::powerdiag::boardError(static_cast<int32_t>(error), millis());
+    }
   } else {
     // SoftDevice is disabled. Match the Adafruit core's race-preserving
     // waitForEvent() sequence: the first WFE sleeps or consumes an already-
     // pending event, then SEV/WFE reliably clears the event register before
     // returning. SEV/WFE/WFE can erase the only GPIO edge that arrived between
     // the caller's predicate and here.
+    if (diagnostics) mesh::powerdiag::sleepBegin(micros());
     __WFE();
     __SEV();
     __WFE();
+    if (diagnostics) mesh::powerdiag::sleepEnd(micros());
   }
 }
 

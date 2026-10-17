@@ -18,6 +18,7 @@ DEADLINES = r'''
 #include <Arduino.h>
 #include <cassert>
 #include <helpers/PowerManagementUtils.h>
+#include <helpers/PowerSavingDiagnostics.h>
 #define SENSOR_READ_INTERVAL_SECS 60
 bool logging=false;
 namespace mesh {bool isUsbLoggingWatchdogArmed(){return logging;}}
@@ -64,6 +65,7 @@ public:
  bool isMillisTimerDue(unsigned long timestamp)const;
  uint32_t limitSleepToMillisTimer(unsigned long timestamp,uint32_t sleep_secs)const;
  bool hasPendingWork()const;
+ mesh::powerdiag::Mask pendingWorkReason()const;
  uint32_t getPowerSaveSleepSeconds(uint32_t max_secs)const;
 #if MESH_ENABLE_SENSOR_TRACKER
  bool trackerNeedsRadio()const;
@@ -123,6 +125,7 @@ int main(){
 TIMER = r'''
 #include <Arduino.h>
 #include <cassert>
+#include <helpers/PowerSavingDiagnostics.h>
 using TimerHandle_t=void*;
 bool allocate=true,queue_ok=true;
 unsigned period_ms=0,begin_calls=0,queue_calls=0;
@@ -267,7 +270,8 @@ class SensorTrackerSleepTest(unittest.TestCase):
         tracker = (ROOT / "examples/simple_sensor/Tracker.cpp").read_text()
         methods = "\n".join(extract_braced(sensor, name) for name in (
             "bool SensorMesh::isMillisTimerDue(", "uint32_t SensorMesh::limitSleepToMillisTimer(",
-            "bool SensorMesh::hasPendingWork(", "uint32_t SensorMesh::getPowerSaveSleepSeconds("))
+            "bool SensorMesh::hasPendingWork(", "mesh::powerdiag::Mask SensorMesh::pendingWorkReason(",
+            "uint32_t SensorMesh::getPowerSaveSleepSeconds("))
         methods += "\n#if MESH_ENABLE_SENSOR_TRACKER\n" + extract_braced(
             tracker, "bool SensorMesh::trackerNeedsRadio(") + "\n#endif\n"
         for enabled in (0, 1):
@@ -371,7 +375,8 @@ int main(){
             sensor = sensor[:begin] + sensor[end:]
         methods = "\n".join(body(sensor, signature) for signature in (
             "bool SensorMesh::isMillisTimerDue(", "uint32_t SensorMesh::limitSleepToMillisTimer(",
-            "bool SensorMesh::hasPendingWork(", "uint32_t SensorMesh::getPowerSaveSleepSeconds("))
+            "bool SensorMesh::hasPendingWork(", "mesh::powerdiag::Mask SensorMesh::pendingWorkReason(",
+            "uint32_t SensorMesh::getPowerSaveSleepSeconds("))
         methods += "\n" + "\n".join(body(tracker, signature) for signature in (
             "bool SensorMesh::trackerNeedsRadio(", "void SensorMesh::wakeTrackerRadio("))
         # Execute the actual wake-before-CLI order. Application sensor work

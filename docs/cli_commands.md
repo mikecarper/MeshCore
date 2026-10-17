@@ -2557,6 +2557,69 @@ binaries.
 
 Companion firmware defaults this setting to `on`. Full Companion accepts the command from its local USB terminal and exposes the same setting in WebConfig. On ESP32, it lowers the CPU clock to 80 MHz, enables idle yielding, and enables the configured GPS duty cycle. USB and each active wireless transport remain available; SenseCAP Indicator Full keeps only its selected BLE or infrastructure-WiFi secondary transport active. `set powersaving off` restores the board's normal CPU clock and disables the GPS duty cycle. This device setting is separate from LoRa RXPS (`radio.rxps`) and WiFi modem power save (`wifi.powersave`). Infrastructure uses the same commands; its hardware and active-service sleep guards determine when the node can sleep.
 
+#### Diagnose what prevents power saving
+
+Companion, Repeater, Room Server and Sensor provide on-demand diagnostics:
+
+```text
+set powersaving.diag on
+get powersaving.diag
+get powersaving.diag calls
+get powersaving.diag time
+get powersaving.diag usb.session
+get powersaving.diag bridge
+get powersaving.diag 3
+set powersaving.diag off
+clear powersaving.diag
+```
+
+Diagnostics default to off and use only RAM. They do not change the saved
+power-saving flag, USB/DTR behavior, radio settings, logging or bridge state,
+and are lost on reboot. `on` starts a new window after `off`; repeated `on`
+keeps the current window. `off` freezes the counters for later inspection.
+`clear` resets them without changing whether collection is enabled. There is
+no automatic diagnostic log stream or flash write.
+
+The default/state page shows the last actual sleep decision (`why`, `mask`),
+its age, reasons seen, total blocked time and eligible time in milliseconds.
+Before the first observed decision it reports `unobserved`. Pages `3` through
+`8` list every reason's transition count and blocked milliseconds; use an
+exact reason name for a separate readback. Role guards preserve their normal
+short-circuit order, so they report the first guard actually checked that
+prevented sleep, not an exhaustive simultaneous inventory. Inner board vetoes
+can add another reason. Reason times can overlap; `blocked_ms` on the state
+page counts their union instead of adding them twice.
+
+Reasons include `policy.off`, `startup`, `usb.session`, `usb.logging`,
+`usb.recovery`, `wireless`, `button`, `morse`, `radio2`, `ota`, `calibration`,
+`radio.watchdog`, `queue`, `retry`, `scheduled`, `serial`, `bridge`,
+`bridge.cleanup`, `bridge.wake`, `network`, `mesh`, `tracker`, `board` and
+`no.wake`. Not every board/role has every guard. `mesh` includes pending
+protocol/storage work; `scheduled` can include a deadline too close for the
+existing whole-second sleep policy. RS232 merely being compiled or saved as
+enabled is not a blocker while its UART is suspended; running, cleanup and
+due wake are distinguished where those guards apply. USB power from a charger
+is not a host session. Logging enabled alone is not an nRF52 MCU sleep veto;
+on ESP32, the existing logging and raw-console guards can veto light sleep.
+
+The `calls` page counts actual instrumented wait calls, returns, short returns,
+board vetoes and SDK errors. `time` reports time spent inside those wait calls
+in microseconds, including SDK and interrupt work, **not CPU sleep residency
+or electrical current**. Returns under 100 us are marked short, not failed.
+An eligible decision with many short calls can indicate wake/event activity;
+an eligible ESP32 automatic-sleep path may yield without a direct instrumented
+wait, so zero calls alone is not proof of a fault. `detail` records the last
+board veto/error detail (SDK error code, or board-specific guard detail).
+Counters saturate instead of wrapping; observation timestamps must be sampled
+within one `millis()` wrap (about 49 days).
+
+Opening USB to read the results can itself add a host/serial blocker. For a
+battery test, enable collection, close the terminal, wait, then read the
+accumulated pages. Stop collection promptly if preserving that window. A meter
+is still needed to diagnose radio RX current, RXPS duty cycle, FEM/LNA gain,
+GPS, displays, regulator losses and other loads that can consume power even
+when the MCU sleeps correctly. See [power-saving diagnostics](power_saving_diagnostics.md).
+
 Native USB ESP32 Full Companions can also use short light-sleep intervals when
 the BLE/WiFi drivers, ESP-NOW, GPS UART, logging, and USB host sessions are
 inactive and no work is pending. Compiling those transports into Full does not

@@ -4,6 +4,7 @@
 #include <Arduino.h>
 #include <helpers/StaticPoolPacketManager.h>
 #include <helpers/PowerManagementUtils.h>
+#include <helpers/PowerSavingDiagnostics.h>
 #include <helpers/MorseLoopPolicy.h>
 #include <cassert>
 #include <cstdio>
@@ -143,6 +144,7 @@ public:
   bool isMillisTimerDue(unsigned long) const;
   uint32_t limitSleepToMillisTimer(unsigned long, uint32_t) const;
   bool hasPendingWork() const;
+  mesh::powerdiag::Mask pendingWorkReason() const;
   uint32_t getPowerSaveSleepSeconds(uint32_t) const;
   void loopBeforeService();
   void sleepIfIdle() { @SLEEP_BLOCK@ }

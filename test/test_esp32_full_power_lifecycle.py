@@ -25,6 +25,7 @@ FIXTURE = r'''
 #include <new>
 #include <helpers/WebConfigBatch.h>
 #include <helpers/PowerManagementUtils.h>
+#include <helpers/PowerSavingDiagnostics.h>
 #include <helpers/WiFiNetworkPowerPolicy.h>
 #include <helpers/WirelessControl.h>
 uint32_t now = 0;
@@ -239,6 +240,7 @@ struct MyMesh {
   bool startWebConfigImpl(bool force_ap, char* reply, bool automatic_setup);
   bool startWebConfig(bool force_ap, char* reply); bool stopWebConfig(char* reply);
   bool hasPendingWork() const; uint32_t getPowerSaveSleepSeconds(uint32_t) const;
+  mesh::powerdiag::Mask pendingWorkReason() const;
   @INLINE_METHODS@
   void defaults() { @DEFAULTS@ }
   void startupSetup() { @STARTUP@ }
@@ -387,7 +389,8 @@ class ESP32FullPowerLifecycleTest(unittest.TestCase):
             "void MyMesh::suspendUnconfiguredSetupBridges()", "void MyMesh::serviceIdleWiFi()",
             "bool MyMesh::startWebConfig(", "bool MyMesh::startWebConfigImpl(",
             "bool MyMesh::stopWebConfig(",
-            "bool MyMesh::hasPendingWork() const", "uint32_t MyMesh::getPowerSaveSleepSeconds("))
+            "bool MyMesh::hasPendingWork() const", "mesh::powerdiag::Mask MyMesh::pendingWorkReason() const",
+            "uint32_t MyMesh::getPowerSaveSleepSeconds("))
         defaults_start = source.index("  // bridge defaults")
         defaults = source[defaults_start:source.index("  _prefs.bridge_delay", defaults_start)]
         startup = source[source.index("  bool start_webui = WebConfigServer::loadEnabled(false);"):]

@@ -3,6 +3,7 @@
 #include <Arduino.h>
 #include <new>
 #include <Mesh.h>
+#include <helpers/PowerSavingDiagnostics.h>
 #if defined(ENABLE_OTA)
   #include <helpers/ota/OtaContext.h>
 #endif
@@ -1901,6 +1902,7 @@ public:
 
   // To check if there is pending work
   bool hasPendingWork() const;
+  mesh::powerdiag::Mask pendingWorkReason() const;
 
   bool setRxBoostedGain(bool enable) override;
   void recalibrateNoiseFloor() override { _radio->recalibrateNoiseFloor(); }

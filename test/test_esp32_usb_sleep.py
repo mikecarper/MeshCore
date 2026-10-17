@@ -20,12 +20,16 @@ HARNESS = r'''
 #include <iostream>
 #include <array>
 #include <helpers/UsbHostSleepPolicy.h>
+#include <helpers/PowerSavingDiagnostics.h>
 
 #ifndef MESH_ESP32_USB_HOST_LOSS_SLEEP_GRACE_MS
 #define MESH_ESP32_USB_HOST_LOSS_SLEEP_GRACE_MS 120000UL
 #endif
 static uint32_t mock_millis = 1000;
 static uint32_t millis() { return mock_millis; }
+static uint32_t micros() { return mock_millis * 1000U; }
+using esp_err_t = int;
+constexpr int ESP_OK = 0;
 
 static void require(bool ok, const char* message) {
   if (!ok) throw std::runtime_error(message);
@@ -76,8 +80,8 @@ static bool button_pressed = false;
 static bool press_during_sleep = false;
 static unsigned yield_ms = 0;
 static void delay(unsigned ms) { yield_ms += ms; }
-static void esp_sleep_enable_timer_wakeup(uint64_t us) { timer_us = us; }
-static void esp_light_sleep_start() {
+static int esp_sleep_enable_timer_wakeup(uint64_t us) { timer_us = us; return ESP_OK; }
+static int esp_light_sleep_start() {
   ++sleep_calls;
   if (press_during_sleep) {
     require(wake_levels[38] == GPIO_INTR_LOW_LEVEL,
@@ -87,14 +91,16 @@ static void esp_light_sleep_start() {
     button_pressed = true;
     press_during_sleep = false;
   }
+  return ESP_OK;
 }
-static void esp_sleep_enable_gpio_wakeup() {}
+static int esp_sleep_enable_gpio_wakeup() { return ESP_OK; }
 static int gpio_get_level(gpio_num_t pin) {
   return pin == 38 ? (button_pressed ? LOW : HIGH) : (radio_irq_high ? HIGH : LOW);
 }
-static void gpio_wakeup_enable(gpio_num_t pin, int level) {
+static int gpio_wakeup_enable(gpio_num_t pin, int level) {
   wake_pin = pin;
   wake_levels.at(pin) = level;
+  return ESP_OK;
 }
 static void gpio_wakeup_disable(gpio_num_t pin) {
   restored_pin = pin;
@@ -307,12 +313,16 @@ def conditional_block(source, start):
 V4_BUTTON_HARNESS = r'''
 #include <Arduino.h>
 #include <helpers/UsbHostSleepPolicy.h>
+#include <helpers/PowerSavingDiagnostics.h>
 #include <helpers/ui/MomentaryButton.h>
 #include <helpers/ui/DisplayPowerPolicy.h>
 #include <helpers/MorseLoopPolicy.h>
 #include <array>
 #include <stdexcept>
 #include <iostream>
+using esp_err_t = int;
+constexpr int ESP_OK = 0;
+static uint32_t micros() { return millis() * 1000U; }
 static void require(bool ok, const char* why) {
   if (!ok) throw std::runtime_error(why);
 }
@@ -336,15 +346,15 @@ static std::array<int, 64> wake_levels{}, restored_interrupts{};
 static unsigned sleep_calls = 0;
 static int critical_depth = 0;
 static bool press_during_sleep = false, radio_irq_high = false;
-static void esp_sleep_enable_timer_wakeup(uint64_t) {}
-static void esp_sleep_enable_gpio_wakeup() {}
+static int esp_sleep_enable_timer_wakeup(uint64_t) { return ESP_OK; }
+static int esp_sleep_enable_gpio_wakeup() { return ESP_OK; }
 static int gpio_get_level(gpio_num_t pin) {
   return pin == PIN_USER_BTN ? digitalRead(pin) : (radio_irq_high ? HIGH : LOW);
 }
-static void gpio_wakeup_enable(gpio_num_t pin, int level) { wake_levels.at(pin) = level; }
+static int gpio_wakeup_enable(gpio_num_t pin, int level) { wake_levels.at(pin) = level; return ESP_OK; }
 static void gpio_wakeup_disable(gpio_num_t pin) { wake_levels.at(pin) = 0; }
 static void gpio_set_intr_type(gpio_num_t pin, int type) { restored_interrupts.at(pin) = type; }
-static void esp_light_sleep_start() {
+static int esp_light_sleep_start() {
   ++sleep_calls;
   if (press_during_sleep) {
     require(wake_levels[PIN_USER_BTN] == GPIO_INTR_LOW_LEVEL,
@@ -354,6 +364,7 @@ static void esp_light_sleep_start() {
     g_mock_pin_levels[PIN_USER_BTN] = LOW;
     press_during_sleep = false;
   }
+  return ESP_OK;
 }
 #define portENTER_CRITICAL(mux) (++critical_depth)
 #define portEXIT_CRITICAL(mux) (--critical_depth)
@@ -403,6 +414,7 @@ struct UITask {
   }
 } ui;
 static bool roleCanPowerSave() {
+  const auto sleep_guard = [](bool allowed, mesh::powerdiag::Reason) { return allowed; };
   bool can_power_save = true;
 @ROLE_SLEEP_GUARD@
   return can_power_save;
@@ -539,7 +551,7 @@ class Esp32UsbSleepTest(unittest.TestCase):
                         cases.append(("missing-flag", harness, missing,
                                       "V4 slept over an already pressed button"))
                         cases.append(("missing-poller", harness.replace(
-                            "can_power_save = can_power_save && !user_btn.needsPolling();",
+                            "can_power_save = can_power_save && sleep_guard(!user_btn.needsPolling(), mesh::powerdiag::Reason::Button);",
                             ""), defines, "role slept before button debounce completed"))
                         cases.append(("missing-display-wake", harness.replace(
                             "_display->wake(mesh::ui::DisplayWake::Button);",
@@ -784,7 +796,12 @@ int main() {
             main = (ROOT / f"examples/{role}/main.cpp").read_text()
             guard = main.split("#if defined(MOMENTARY_BUTTON_WAKE_FROM_SLEEP)", 1)[1]
             guard = guard.split("#endif", 1)[0]
-            self.assertIn("!user_btn.needsPolling()", guard)
+            if role == "companion_radio":
+                self.assertIn("if (!sleep_reason && user_btn.needsPolling())", guard)
+                self.assertIn("sleep_reason = mask(Reason::Button);", guard)
+                self.assertIn("const bool can_sleep = sleep_reason == 0;", main)
+            else:
+                self.assertIn("sleep_guard(!user_btn.needsPolling(), mesh::powerdiag::Reason::Button)", guard)
 
     def test_button_holds_awake_for_two_minutes_and_renews_across_rollover(self):
         harness = r'''

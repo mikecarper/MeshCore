@@ -1715,41 +1715,59 @@ uint32_t SensorMesh::limitSleepToMillisTimer(unsigned long timestamp,
 }
 
 bool SensorMesh::hasPendingWork() const {
+  return pendingWorkReason() != 0;
+}
+
+mesh::powerdiag::Mask SensorMesh::pendingWorkReason() const {
+  using mesh::powerdiag::mask;
+  using mesh::powerdiag::Reason;
 #if MESH_ENABLE_SENSOR_TRACKER
   if (tracker.enabled && (tracker_pending || tracker_acquiring
       || (tracker_awake_until && !millisHasNowPassed(tracker_awake_until))
-      || (!tracker_storage_fault && getRTCClock()->getCurrentTime() >= tracker_next_check))) return true;
+      || (!tracker_storage_fault && getRTCClock()->getCurrentTime() >= tracker_next_check))) return mask(Reason::Tracker);
 #endif
-  if (isDualRadioActive()) return true;
-  if (hasPendingOtaApply()) return true;
-  if (_cli.hasActiveUserGpioTimer()) return true;
-  if (radio_driver.isWatchdogObserving()) return true;
-  if (radio_driver.isCalibratingNoiseFloor()) return true;
-  if (hasQueuedWorkDue() || hasRetryWorkDue()) return true;
+  if (isDualRadioActive()) return mask(Reason::DualRadio);
+  if (hasPendingOtaApply()) return mask(Reason::Ota);
+  if (_cli.hasActiveUserGpioTimer()) return mask(Reason::Scheduled);
+  if (radio_driver.isWatchdogObserving()) return mask(Reason::RadioWatchdog);
+  if (radio_driver.isCalibratingNoiseFloor()) return mask(Reason::Calibration);
+  if (hasQueuedWorkDue()) return mask(Reason::Queue);
+  if (hasRetryWorkDue()) return mask(Reason::Retry);
   if (isMillisTimerDue(next_flood_advert)
       || isMillisTimerDue(next_local_advert)
-      || isMillisTimerDue(dirty_contacts_expiry)) return true;
+      || isMillisTimerDue(dirty_contacts_expiry)) return mask(Reason::Scheduled);
   if (num_alert_tasks > 0
-      && isMillisTimerDue(alert_tasks[0]->send_expiry)) return true;
+      && isMillisTimerDue(alert_tasks[0]->send_expiry)) return mask(Reason::Scheduled);
 
   const bool radio_apply_backoff = radio_apply_retry_at
       && !millisHasNowPassed(radio_apply_retry_at);
   if (!radio_apply_backoff
       && (isMillisTimerDue(set_radio_at) || isMillisTimerDue(revert_radio_at)
-          || (saved_radio_apply_pending && !temp_radio_applied))) return true;
+          || (saved_radio_apply_pending && !temp_radio_applied))) return mask(Reason::Scheduled);
 
   uint32_t now_secs = getRTCClock()->getCurrentTime();
-  return now_secs >= last_read_time + SENSOR_READ_INTERVAL_SECS;
+  return now_secs >= last_read_time + SENSOR_READ_INTERVAL_SECS
+      ? mask(Reason::Scheduled) : 0;
 }
 
 uint32_t SensorMesh::getPowerSaveSleepSeconds(uint32_t max_secs) const {
-  if (max_secs == 0 || hasPendingWork()) return 0;
+  using mesh::powerdiag::mask;
+  using mesh::powerdiag::Reason;
+  const mesh::powerdiag::Mask pending = max_secs ? pendingWorkReason() : mask(Reason::NoWake);
+  if (pending) {
+    if (mesh::powerdiag::enabled()) mesh::powerdiag::decision(pending, millis());
+    return 0;
+  }
 
+  mesh::powerdiag::Mask blocked = 0;
   uint32_t sleep_secs = max_secs;
 #if MESH_ENABLE_SENSOR_TRACKER
   if (tracker.enabled && !tracker_storage_fault) {
     const uint32_t now = getRTCClock()->getCurrentTime();
-    if (now >= tracker_next_check) return 0;
+    if (now >= tracker_next_check) {
+      if (mesh::powerdiag::enabled()) mesh::powerdiag::decision(mask(Reason::Tracker), millis());
+      return 0;
+    }
     const uint32_t until_check = tracker_next_check - now;
     if (until_check < sleep_secs) sleep_secs = until_check;
   }
@@ -1758,6 +1776,7 @@ uint32_t SensorMesh::getPowerSaveSleepSeconds(uint32_t max_secs) const {
   if (getNextQueueWakeDelay(wake_delay_ms)) {
     uint32_t wake_delay_secs = mesh::power::powerSaveSleepSeconds(wake_delay_ms);
     if (wake_delay_secs < sleep_secs) sleep_secs = wake_delay_secs;
+    if (wake_delay_secs == 0) blocked |= mask(Reason::Queue);
   }
 #if MESH_ENABLE_SENSOR_TRACKER && MESH_ENABLE_TX_BEACONS
   // The normal queue query omits RF maintenance while radio_available is
@@ -1765,13 +1784,16 @@ uint32_t SensorMesh::getPowerSaveSleepSeconds(uint32_t max_secs) const {
   if (tracker.enabled && getNextBeaconWakeDelay(wake_delay_ms)) {
     uint32_t wake_delay_secs = mesh::power::powerSaveSleepSeconds(wake_delay_ms);
     if (wake_delay_secs < sleep_secs) sleep_secs = wake_delay_secs;
+    if (wake_delay_secs == 0) blocked |= mask(Reason::Queue);
   }
 #endif
   if (getNextRetryWakeDelay(wake_delay_ms)) {
     uint32_t wake_delay_secs = mesh::power::powerSaveSleepSeconds(wake_delay_ms);
     if (wake_delay_secs < sleep_secs) sleep_secs = wake_delay_secs;
+    if (wake_delay_secs == 0) blocked |= mask(Reason::Retry);
   }
 
+  const uint32_t before_scheduled = sleep_secs;
   sleep_secs = limitSleepToMillisTimer(next_flood_advert, sleep_secs);
   sleep_secs = limitSleepToMillisTimer(next_local_advert, sleep_secs);
   sleep_secs = limitSleepToMillisTimer(dirty_contacts_expiry, sleep_secs);
@@ -1795,5 +1817,7 @@ uint32_t SensorMesh::getPowerSaveSleepSeconds(uint32_t max_secs) const {
     uint32_t sensor_delay = sensor_due - now_secs;
     if (sensor_delay < sleep_secs) sleep_secs = sensor_delay;
   }
+  if (before_scheduled > 0 && sleep_secs == 0) blocked |= mask(Reason::Scheduled);
+  if (blocked && mesh::powerdiag::enabled()) mesh::powerdiag::decision(blocked, millis());
   return sleep_secs;
 }

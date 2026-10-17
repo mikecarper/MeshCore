@@ -2,6 +2,7 @@
 
 #include <Arduino.h>   // needed for PlatformIO
 #include <Mesh.h>
+#include <helpers/PowerSavingDiagnostics.h>
 #include "RoomServerFeatures.h"
 
 #if defined(NRF52_PLATFORM)
@@ -1043,6 +1044,7 @@ public:
 
   // To check if there is pending work
   bool hasPendingWork() const;
+  mesh::powerdiag::Mask pendingWorkReason() const;
 
 private:
   bool isMillisTimerDue(unsigned long timestamp) const;

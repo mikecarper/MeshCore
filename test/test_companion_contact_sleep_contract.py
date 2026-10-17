@@ -35,7 +35,7 @@ class CompanionContactSleepContractTest(unittest.TestCase):
                         loop.index("BaseChatMesh::loop()"))
         self.assertIn("contactRecoveryPending() && !mesh::morseTimingActive(_radio)", loop)
         self.assertIn("|| _store->contactRecoveryPending()",
-                      function_body(mesh, "bool MyMesh::hasPendingWork() const"))
+                      function_body(mesh, "mesh::powerdiag::Mask MyMesh::pendingWorkReason() const"))
         reset = function_body(mesh, "bool MyMesh::resetContactsForRecovery()")
         self.assertNotIn("stopContactsIterator()", reset)
         self.assertLess(reset.index("_iter_pending_contact = ContactInfo()"),
@@ -156,7 +156,7 @@ int main() {
 
     def test_initial_write_polls_but_failed_backoff_can_sleep(self):
         mesh = (ROOT / "examples/companion_radio/MyMesh.cpp").read_text()
-        body = function_body(mesh, "bool MyMesh::hasPendingWork() const")
+        body = function_body(mesh, "mesh::powerdiag::Mask MyMesh::pendingWorkReason() const")
 
         nrf_start = body.index("#if defined(NRF52_PLATFORM)")
         other_start = body.index("#else", nrf_start)
@@ -175,7 +175,7 @@ int main() {
             other,
             r"contact_write_needs_polling\s*=\s*isContactWriteDue\s*\(\s*\)",
         )
-        self.assertRegex(body, r"\|\|\s*contact_write_needs_polling")
+        self.assertRegex(body, r"if\s*\(\s*contact_write_needs_polling\s*\|\|")
 
     def test_contact_write_is_serviced_only_after_its_deadline(self):
         mesh = (ROOT / "examples/companion_radio/MyMesh.cpp").read_text()
@@ -242,11 +242,13 @@ int main() {
 
     def test_main_loop_gates_sleep_on_pending_work(self):
         main = (ROOT / "examples/companion_radio/main.cpp").read_text()
-        sleep_start = main.index("bool can_sleep =")
+        sleep_start = main.index("  using mesh::powerdiag::Reason;")
         sleep_end = main.index("if (can_sleep)", sleep_start)
         sleep_gate = main[sleep_start:sleep_end]
 
-        self.assertIn("!the_mesh.hasPendingWork()", sleep_gate)
+        self.assertIn("the_mesh.pendingWorkReason()", sleep_gate)
+        self.assertIn("if (pending) return pending;", sleep_gate)
+        self.assertIn("const bool can_sleep = sleep_reason == 0;", sleep_gate)
 
         nrf52 = (ROOT / "src/helpers/NRF52Board.cpp").read_text()
         body = function_body(nrf52, "void NRF52Board::sleep(uint32_t secs)")
@@ -255,15 +257,20 @@ int main() {
 
     def test_polled_rak_ethernet_holds_event_sleep_through_pending_off(self):
         main = (ROOT / "examples/companion_radio/main.cpp").read_text()
-        start = main.index("bool can_sleep =")
+        start = main.index("  using mesh::powerdiag::Reason;")
         gate = main[start:main.index("if (can_sleep)", start)]
         fixture = r'''
 #include <cassert>
+#include <helpers/PowerSavingDiagnostics.h>
+uint32_t millis() { return 0; }
 struct Prefs { bool powersaving_enabled; };
 struct Mesh {
   Prefs prefs; bool pending;
   Prefs* getNodePrefs() { return &prefs; }
   bool hasPendingWork() const { return pending; }
+  mesh::powerdiag::Mask pendingWorkReason() const {
+    return pending ? mesh::powerdiag::mask(mesh::powerdiag::Reason::Mesh) : 0;
+  }
 } the_mesh;
 struct Board { bool usb; bool isUsbHostConnected() const { return usb; } } board;
 struct Ethernet { bool active; bool hardwareActive() const { return active; } } ethernet_interface;
@@ -300,6 +307,7 @@ int main() {
                     subprocess.run([os.environ.get('CXX', 'g++'), '-std=c++17',
                                     '-Wall', '-Wextra', '-Werror', '-DNRF52_PLATFORM=1',
                                     *(['-DETHERNET_USE_RAK13800=1'] if ethernet else []),
+                                    '-I', str(ROOT / 'src'),
                                     str(source), '-o', str(binary)], check=True, timeout=30)
                     subprocess.run([str(binary)], check=True, timeout=5)
 
@@ -333,7 +341,7 @@ int main() {
         shutdown = function_body(mesh, "bool MyMesh::prepareForUiShutdown()")
         self.assertIn("_store->contactsAreVolatile() || flushContactsBeforeReboot()", shutdown)
 
-        pending = function_body(mesh, "bool MyMesh::hasPendingWork() const")
+        pending = function_body(mesh, "mesh::powerdiag::Mask MyMesh::pendingWorkReason() const")
         self.assertIn("|| _scheduled_reboot_at != 0", pending)
 
     def test_ota_apply_reboot_uses_companion_persistence_hook(self):
@@ -427,9 +435,9 @@ int main() {
         for role_source in role_sources:
             role = role_source.read_text()
             signature = (
-                "bool SensorMesh::hasPendingWork() const"
+                "mesh::powerdiag::Mask SensorMesh::pendingWorkReason() const"
                 if role_source.name == "SensorMesh.cpp"
-                else "bool MyMesh::hasPendingWork() const"
+                else "mesh::powerdiag::Mask MyMesh::pendingWorkReason() const"
             )
             has_pending_work = function_body(role, signature)
             self.assertIn("hasPendingOtaApply()", has_pending_work, role_source)

@@ -5180,21 +5180,29 @@ uint32_t MyMesh::limitSleepToScheduledRadioWork(uint32_t sleep_secs) const {
 }
 
 uint32_t MyMesh::getPowerSaveSleepSeconds(uint32_t max_secs) const {
-  if (max_secs == 0 || hasPendingWork()) {
+  using mesh::powerdiag::mask;
+  using mesh::powerdiag::Reason;
+  const mesh::powerdiag::Mask pending = max_secs ? pendingWorkReason() : mask(Reason::NoWake);
+  if (pending) {
+    if (mesh::powerdiag::enabled()) mesh::powerdiag::decision(pending, millis());
     return 0;
   }
 
+  mesh::powerdiag::Mask blocked = 0;
   uint32_t sleep_secs = max_secs;
   uint32_t queue_delay_ms;
   if (getNextQueueWakeDelay(queue_delay_ms)) {
     uint32_t queue_delay_secs = mesh::power::powerSaveSleepSeconds(queue_delay_ms);
     if (queue_delay_secs < sleep_secs) sleep_secs = queue_delay_secs;
+    if (queue_delay_secs == 0) blocked |= mask(Reason::Queue);
   }
   uint32_t retry_delay_ms;
   if (getNextRetryWakeDelay(retry_delay_ms)) {
     uint32_t retry_delay_secs = mesh::power::powerSaveSleepSeconds(retry_delay_ms);
     if (retry_delay_secs < sleep_secs) sleep_secs = retry_delay_secs;
+    if (retry_delay_secs == 0) blocked |= mask(Reason::Retry);
   }
+  const uint32_t before_scheduled = sleep_secs;
   sleep_secs = limitSleepToMillisTimer(next_flood_advert, sleep_secs);
   sleep_secs = limitSleepToMillisTimer(next_local_advert, sleep_secs);
   sleep_secs = limitSleepToMillisTimer(dirty_contacts_expiry, sleep_secs);
@@ -5203,14 +5211,17 @@ uint32_t MyMesh::getPowerSaveSleepSeconds(uint32_t max_secs) const {
     sleep_secs = limitSleepToMillisTimer(next_battery_alert_check, sleep_secs);
   }
   sleep_secs = limitSleepToScheduledRadioWork(sleep_secs);
+  if (before_scheduled > 0 && sleep_secs == 0) blocked |= mask(Reason::Scheduled);
 #if defined(WITH_RS232_BRIDGE)
   if (bridge && rs232BridgeEnabled()) {
     // Floor the deadline, not ceil: the ESP32 timed-light-sleep API uses whole
     // seconds and must never sleep past a UART rendezvous or cleanup retry.
     const uint32_t bridge_sleep_secs = bridge->powerWakeDelayMs(millis()) / 1000UL;
     if (bridge_sleep_secs < sleep_secs) sleep_secs = bridge_sleep_secs;
+    if (bridge_sleep_secs == 0) blocked |= mask(Reason::BridgeWake);
   }
 #endif
+  if (blocked && mesh::powerdiag::enabled()) mesh::powerdiag::decision(blocked, millis());
   return sleep_secs;
 }
 
@@ -13907,14 +13918,22 @@ void MyMesh::serviceIdleWiFi() {
 #endif
 
 bool MyMesh::hasPendingWork() const {
-  if (isDualRadioActive()) return true;
-  if (hasPendingOtaApply()) return true;
+  return pendingWorkReason() != 0;
+}
+
+mesh::powerdiag::Mask MyMesh::pendingWorkReason() const {
+  using mesh::powerdiag::mask;
+  using mesh::powerdiag::Reason;
+  // Keep the original guard order and short circuit: diagnostics must not
+  // probe additional hardware or change which work keeps the MCU awake.
+  if (isDualRadioActive()) return mask(Reason::DualRadio);
+  if (hasPendingOtaApply()) return mask(Reason::Ota);
 #if defined(ESP32_PLATFORM)
-  if (mesh::wifi::networkPower().foregroundActive()) return true;
+  if (mesh::wifi::networkPower().foregroundActive()) return mask(Reason::Network);
 #endif
 #ifdef WITH_WEBCONFIG
   if (isWebConfigActive() && (!mesh::wifi::networkPower().backgroundSuspended()
-      || _webconfig->isNetworkForegroundActive(millis()))) return true;
+      || _webconfig->isNetworkForegroundActive(millis()))) return mask(Reason::Network);
 #endif
 #if defined(ESP32_PLATFORM) \
     && (defined(WITH_WEBCONFIG) || defined(WITH_MQTT_BRIDGE) || defined(WITH_ESPNOW_BRIDGE) \
@@ -13924,44 +13943,45 @@ bool MyMesh::hasPendingWork() const {
   // Cleanup may fail while the Arduino facade already reports OFF. Require
   // the live SDK driver to be gone before permitting manual light sleep.
   wifi_mode_t sdk_mode = WIFI_MODE_NULL;
-  if (esp_wifi_get_mode(&sdk_mode) != ESP_ERR_WIFI_NOT_INIT) return true;
+  if (esp_wifi_get_mode(&sdk_mode) != ESP_ERR_WIFI_NOT_INIT) return mask(Reason::Network);
 #endif
 #if defined(WITH_WEBCONFIG) || defined(ETHERNET_ENABLED)
-  if (_local_cli_output.busy()) return true;
+  if (_local_cli_output.busy()) return mask(Reason::Serial);
 #endif
-  if (deferred_cli_command.pending || pending_self_advert || _cli.hasActiveUserGpioTimer()) return true;
+  if (deferred_cli_command.pending || pending_self_advert || _cli.hasActiveUserGpioTimer()) return mask(Reason::Scheduled);
 #if defined(WITH_BRIDGE)
   const AbstractBridge* active_bridge = activeBridge();
   if (active_bridge && active_bridge->isRunning()) {
 #ifdef WITH_MQTT_BRIDGE
-    if (active_bridge != mqtt_bridge || !mqtt_bridge->isNetworkSuspended()) return true;
+    if (active_bridge != mqtt_bridge || !mqtt_bridge->isNetworkSuspended()) return mask(Reason::Bridge);
 #else
-    return true;
+    return mask(Reason::Bridge);
 #endif
   }
 #ifdef WITH_MQTT_BRIDGE
-  if (mqtt_bridge && mqtt_bridge->isStopping()) return true;
+  if (mqtt_bridge && mqtt_bridge->isStopping()) return mask(Reason::BridgeCleanup);
 #endif
 #if defined(WITH_MQTT_BRIDGE) && defined(WITH_RS232_BRIDGE)
-  if (isRs232BridgeRunning()) return true;
+  if (isRs232BridgeRunning()) return mask(Reason::Bridge);
 #endif
 #if defined(WITH_RS232_BRIDGE)
   // A partial GPS release/claim is not a completed standby. Never allow MCU
   // sleep while its UART ownership remains unresolved, even if end stopped RX.
-  if (active_rs232_bridge_uart != 0) return true;
-  if (bridge && rs232BridgeEnabled() && bridge->powerWakeDelayMs(millis()) == 0) return true;
+  if (active_rs232_bridge_uart != 0) return mask(Reason::BridgeCleanup);
+  if (bridge && rs232BridgeEnabled() && bridge->powerWakeDelayMs(millis()) == 0) return mask(Reason::BridgeWake);
 #endif
 #if defined(WITH_ESPNOW_BRIDGE) \
     && (defined(WITH_MQTT_BRIDGE) || defined(WITH_RS232_BRIDGE))
-  if (espnow_bridge.isRunning()) return true;
+  if (espnow_bridge.isRunning()) return mask(Reason::Bridge);
 #endif
 #endif
-  if (radio_driver.isWatchdogObserving()) return true;  // keep MCU awake for one radio duty cycle
-  if (radio_driver.isCalibratingNoiseFloor()) return true;  // keep MCU awake for the noise-floor window
-  if (hasQueuedWorkDue() || hasRetryWorkDue()) return true;
-  if (isMillisTimerDue(next_flood_advert) || isMillisTimerDue(next_local_advert)) return true;
-  if (isMillisTimerDue(dirty_contacts_expiry)) return true;
-  if (isMillisTimerDue(next_recent_repeater_sweep)) return true;
-  if (_prefs.battery_alert_enabled && isMillisTimerDue(next_battery_alert_check)) return true;
-  return hasScheduledRadioWorkDue();
+  if (radio_driver.isWatchdogObserving()) return mask(Reason::RadioWatchdog);
+  if (radio_driver.isCalibratingNoiseFloor()) return mask(Reason::Calibration);
+  if (hasQueuedWorkDue()) return mask(Reason::Queue);
+  if (hasRetryWorkDue()) return mask(Reason::Retry);
+  if (isMillisTimerDue(next_flood_advert) || isMillisTimerDue(next_local_advert)) return mask(Reason::Scheduled);
+  if (isMillisTimerDue(dirty_contacts_expiry)) return mask(Reason::Scheduled);
+  if (isMillisTimerDue(next_recent_repeater_sweep)) return mask(Reason::Scheduled);
+  if (_prefs.battery_alert_enabled && isMillisTimerDue(next_battery_alert_check)) return mask(Reason::Scheduled);
+  return hasScheduledRadioWorkDue() ? mask(Reason::Scheduled) : 0;
 }

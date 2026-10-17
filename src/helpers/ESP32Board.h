@@ -19,6 +19,7 @@
 #include "ESP32GpioHold.h"
 #include "UsbLogging.h"
 #include "UsbHostSleepPolicy.h"
+#include "PowerSavingDiagnostics.h"
 #if defined(STATION_G3_ESP32)
 #include <StationG3RadioSlot.h>
 #endif
@@ -127,33 +128,48 @@ public:
   }
 
   void sleep(uint32_t secs) override {
+    using mesh::powerdiag::Reason;
+    const bool diagnostics = mesh::powerdiag::enabled();
     // Native USB loses its connection in light sleep. An enumerated host
     // still needs USB serviced when no terminal asserts CDC DTR (for example,
     // after a Pi closes its serial port). Guard every caller here.
     // Sample even when another blocker is active, so an open console/OTA does
     // not leave the last positive native USB host signal stale.
     const bool usb_sleep_held = isUsbSleepHeld();
-    bool keep_awake = inhibit_sleep || usb_sleep_held || isRadioTestActive();
+    Reason veto_reason = Reason::Board;
+    int32_t veto_detail = 1;  // Explicit inhibit_sleep.
+    const auto hold = [&veto_reason, &veto_detail](bool active, Reason reason, int32_t detail = 0) {
+      if (active) { veto_reason = reason; veto_detail = detail; }
+      return active;
+    };
+    bool keep_awake = inhibit_sleep
+        || hold(usb_sleep_held, Reason::UsbSession, 1)
+        || hold(isRadioTestActive(), Reason::Board, 2);
 #if !defined(ARDUINO_USB_CDC_ON_BOOT) || !ARDUINO_USB_CDC_ON_BOOT
     // External USB-to-UART chips cannot report host attachment here. Light
     // sleep loses their first input bytes; UART wake loses the wake character
     // too. HardwareSerial's bool reports an installed driver, not a USB host.
     // Keep an enabled console available even before its first command.
-    keep_awake = keep_awake || static_cast<bool>(Serial);
+    keep_awake = keep_awake || hold(static_cast<bool>(Serial), Reason::Serial);
 #endif
 #if MESH_USB_LOGGING_AVAILABLE
     // A live logging stream must also remain available before a host opens
     // it and across host disconnects. Compiled-out logging is not a blocker.
-    keep_awake = keep_awake || mesh::isUsbLoggingEnabled();
+    keep_awake = keep_awake || hold(mesh::isUsbLoggingEnabled(), Reason::UsbLogging);
 #endif
     if (keep_awake) {
+      if (diagnostics) mesh::powerdiag::boardVeto(veto_reason, millis(), veto_detail);
       delay(1); // Keep USB and OTA tasks running.
       return;
     }
 
+    // Capture setup failures, but report them only after the wait (or veto).
+    // Otherwise its real elapsed time would be mislabelled as blocked time.
+    esp_err_t setup_error = ESP_OK;
     // Configure timer wakeup
     if (secs > 0) {
-      esp_sleep_enable_timer_wakeup(secs * 1000000ULL); // Wake up periodically to do scheduled jobs
+      const esp_err_t error = esp_sleep_enable_timer_wakeup(secs * 1000000ULL); // Wake up periodically to do scheduled jobs
+      if (diagnostics && error != ESP_OK) setup_error = error;
     }
 
     const uint32_t irqGpio = getIRQGpio();
@@ -166,7 +182,15 @@ public:
 #endif
     if (!radio_wakeup && button_gpio < 0) {
       if (secs > 0) {
-        esp_light_sleep_start();
+        if (diagnostics) mesh::powerdiag::sleepBegin(micros());
+        const esp_err_t error = esp_light_sleep_start();
+        if (diagnostics) {
+          mesh::powerdiag::sleepEnd(micros());
+          if (setup_error != ESP_OK) mesh::powerdiag::boardError(setup_error, millis());
+          if (error != ESP_OK) mesh::powerdiag::boardError(error, millis());
+        }
+      } else if (diagnostics) {
+        mesh::powerdiag::boardVeto(Reason::NoWake, millis());
       }
       return;
     }
@@ -178,26 +202,37 @@ public:
     portENTER_CRITICAL(&sleepMux);
 
     // Do not sleep over a pending packet or a press that needs polling.
-    if ((radio_wakeup && gpio_get_level(wakeupPin) == HIGH)
-        || (button_gpio >= 0
+    const bool radio_pending = radio_wakeup && gpio_get_level(wakeupPin) == HIGH;
+    if (radio_pending || (button_gpio >= 0
             && gpio_get_level((gpio_num_t)button_gpio) == USER_BTN_PRESSED)) {
       portEXIT_CRITICAL(&sleepMux);
+      if (diagnostics && setup_error != ESP_OK) mesh::powerdiag::boardError(setup_error, millis());
+      if (diagnostics) mesh::powerdiag::boardVeto(
+          radio_pending ? Reason::Mesh : Reason::Button, millis(),
+          radio_pending ? static_cast<int32_t>(irqGpio) : button_gpio);
       delay(1);
       return;
     }
 
     // Configure GPIO wakeup
-    esp_sleep_enable_gpio_wakeup();
+    const esp_err_t gpio_error = esp_sleep_enable_gpio_wakeup();
+    if (diagnostics && setup_error == ESP_OK && gpio_error != ESP_OK) setup_error = gpio_error;
     if (radio_wakeup) {
-      gpio_wakeup_enable(wakeupPin, GPIO_INTR_HIGH_LEVEL);
+      const esp_err_t error = gpio_wakeup_enable(wakeupPin, GPIO_INTR_HIGH_LEVEL);
+      if (diagnostics && setup_error == ESP_OK && error != ESP_OK) setup_error = error;
     }
     if (button_gpio >= 0) {
-      gpio_wakeup_enable((gpio_num_t)button_gpio,
+      const esp_err_t error = gpio_wakeup_enable((gpio_num_t)button_gpio,
           USER_BTN_PRESSED == LOW ? GPIO_INTR_LOW_LEVEL : GPIO_INTR_HIGH_LEVEL);
+      if (diagnostics && setup_error == ESP_OK && error != ESP_OK) setup_error = error;
     }
 
     // MCU enters light sleep
-    esp_light_sleep_start();
+    if (diagnostics) mesh::powerdiag::sleepBegin(micros());
+    const esp_err_t sleep_error = esp_light_sleep_start();
+    if (diagnostics) {
+      mesh::powerdiag::sleepEnd(micros());
+    }
 
     // Avoid ISR flood during wakeup due to HIGH LEVEL interrupt
     if (radio_wakeup) {
@@ -212,6 +247,10 @@ public:
 
     // Enable CPU interrupt servicing
     portEXIT_CRITICAL(&sleepMux);
+    if (diagnostics) {
+      if (setup_error != ESP_OK) mesh::powerdiag::boardError(setup_error, millis());
+      if (sleep_error != ESP_OK) mesh::powerdiag::boardError(sleep_error, millis());
+    }
   }
 
   uint8_t getStartupReason() const override { return startup_reason; }

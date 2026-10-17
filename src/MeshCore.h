@@ -5,6 +5,10 @@
 #include <math.h>
 #include "helpers/UsbLogging.h"
 #include "helpers/BatteryChargeSupport.h"
+#include "helpers/PowerSavingDiagnostics.h"
+#if defined(ARDUINO) && (defined(RP2040_PLATFORM) || defined(STM32_PLATFORM))
+#include <Arduino.h>
+#endif
 
 #define MAX_HASH_SIZE        8
 #define PUB_KEY_SIZE        32
@@ -157,13 +161,24 @@ public:
   virtual void onBootComplete() { /* no op */ }
   virtual uint32_t getIRQGpio() { return -1; } // not supported. Returns DIO1 (SX1262) and DIO0 (SX127x)
   virtual void sleep(uint32_t secs)  {
-    if (isRadioTestActive()) return;
+    if (isRadioTestActive()) {
+#if defined(ARDUINO) && (defined(RP2040_PLATFORM) || defined(STM32_PLATFORM))
+      if (powerdiag::enabled()) powerdiag::boardVeto(powerdiag::Reason::Board, millis(), 2);
+#endif
+      return;
+    }
     (void)secs;
 #if defined(RP2040_PLATFORM) || defined(STM32_PLATFORM)
     // These platforms have no shared deep-sleep board implementation. WFI is
     // still a real CPU idle state and preserves all configured interrupt wake
     // sources, including the radio and USB.
+#if defined(ARDUINO)
+    if (powerdiag::enabled()) powerdiag::sleepBegin(micros());
+#endif
     __asm volatile("wfi");
+#if defined(ARDUINO)
+    if (powerdiag::enabled()) powerdiag::sleepEnd(micros());
+#endif
 #endif
   }
   virtual uint32_t getGpio() { return 0; }

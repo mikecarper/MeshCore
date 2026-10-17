@@ -5,6 +5,7 @@
 #include "AbstractUITask.h"
 #include "CompanionFeatures.h"
 #include <helpers/CompanionReader.h>
+#include <helpers/PowerSavingDiagnostics.h>
 
 /*------------ Frame Protocol --------------*/
 #define FIRMWARE_VER_CODE 14
@@ -588,6 +589,7 @@ public:
 #endif
 
   // To check if there is pending work
+  mesh::powerdiag::Mask pendingWorkReason() const;
   bool hasPendingWork() const;
   bool canRecoverUsbLogging() const;
 

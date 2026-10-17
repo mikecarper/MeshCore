@@ -342,15 +342,20 @@ void loop() {
   external_watchdog.loop();
 #endif
 
-  bool can_power_save = (the_mesh.getNodePrefs()->powersaving_enabled
-                        || the_mesh.isTrackerModeEnabled())
-      && !morse_timing
-      && !board.isUsbDataConnected()
-      && !mesh::isUsbLoggingWatchdogArmed();
+  const auto sleep_guard = [](bool allowed, mesh::powerdiag::Reason reason) {
+    if (!allowed && mesh::powerdiag::enabled())
+      mesh::powerdiag::decision(mesh::powerdiag::mask(reason), millis());
+    return allowed;
+  };
+  bool can_power_save = sleep_guard(the_mesh.getNodePrefs()->powersaving_enabled
+                        || the_mesh.isTrackerModeEnabled(), mesh::powerdiag::Reason::PolicyOff)
+      && sleep_guard(!morse_timing, mesh::powerdiag::Reason::Morse)
+      && sleep_guard(!board.isUsbDataConnected(), mesh::powerdiag::Reason::UsbSession)
+      && sleep_guard(!mesh::isUsbLoggingWatchdogArmed(), mesh::powerdiag::Reason::UsbRecovery);
 #if defined(MOMENTARY_BUTTON_WAKE_FROM_SLEEP) \
     && MOMENTARY_BUTTON_WAKE_FROM_SLEEP \
     && defined(PIN_USER_BTN) && defined(DISPLAY_CLASS)
-  can_power_save = can_power_save && !user_btn.needsPolling();
+  can_power_save = can_power_save && sleep_guard(!user_btn.needsPolling(), mesh::powerdiag::Reason::Button);
 #endif
   if (can_power_save) {
     uint32_t sleep_secs = the_mesh.getPowerSaveSleepSeconds(30);
@@ -360,9 +365,17 @@ void loop() {
 #if defined(NRF52_PLATFORM)
     if (sleep_secs > 0) {
 #if MESH_ENABLE_SENSOR_TRACKER
-      if (!the_mesh.isTrackerModeEnabled() || armTrackerSleepWake(sleep_secs)) board.sleep(0);
-      else delay(1);
+      if (!the_mesh.isTrackerModeEnabled() || armTrackerSleepWake(sleep_secs)) {
+        if (mesh::powerdiag::enabled()) mesh::powerdiag::decision(0, millis());
+        board.sleep(0);
+      }
+      else {
+        if (mesh::powerdiag::enabled())
+          mesh::powerdiag::boardVeto(mesh::powerdiag::Reason::NoWake, millis());
+        delay(1);
+      }
 #else
+      if (mesh::powerdiag::enabled()) mesh::powerdiag::decision(0, millis());
       board.sleep(0);
 #endif
     }
@@ -370,7 +383,10 @@ void loop() {
     if (sleep_secs > 0
         && the_mesh.millisHasNowPassed(
             POWERSAVING_FIRST_SLEEP_SECS * 1000UL)) {
+      if (mesh::powerdiag::enabled()) mesh::powerdiag::decision(0, millis());
       board.sleep(sleep_secs);
+    } else if (sleep_secs > 0 && mesh::powerdiag::enabled()) {
+      mesh::powerdiag::decision(mesh::powerdiag::mask(mesh::powerdiag::Reason::Startup), millis());
     }
 #endif
   }

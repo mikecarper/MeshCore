@@ -228,7 +228,7 @@ class RS232RuntimeTests(unittest.TestCase):
                                           implementation.index("MyMesh::servicePostMeshLoop()"))
         loop_end = implementation.index("  if (next_flood_advert", loop_start)
         pending_start = implementation.index("#if defined(WITH_BRIDGE)",
-                                             implementation.index("bool MyMesh::hasPendingWork()"))
+                                             implementation.index("mesh::powerdiag::Mask MyMesh::pendingWorkReason()"))
         pending_end = implementation.index("  if (radio_driver.isWatchdogObserving()", pending_start)
         # Preprocess complete dispatch methods before extracting branches.
         # Their feature guards cross the closing braces between else-if cases.

@@ -2,6 +2,7 @@
 #include "CommonCLI.h"
 #include "PrefsSaveReplyGuard.h"
 #include "UsbLoggingWatchdog.h"
+#include "PowerSavingDiagnostics.h"
 #include "HilStartupTrace.h"
 #include <helpers/ui/DisplayPowerSettings.h>
 #include <helpers/BatteryChargeCLI.h>
@@ -2963,6 +2964,7 @@ void CommonCLI::handleCommand(uint32_t sender_timestamp, char* command, char* re
     if (mesh::power::handleBatteryChargeCommand(*_board, command, reply, 160)) return;
 #endif
     if (mesh::handleUsbLoggingWatchdogCommand(command, reply, 160)) return;
+    if (mesh::powerdiag::handleCommand(command, reply, 157, millis())) return;
     if (handleManagementCommand(command, reply)) return;
 #if MESH_ENABLE_TX_BEACONS
     if (handleBeaconCommand(command, reply, 157)) return;

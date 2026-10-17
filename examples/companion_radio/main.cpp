@@ -4209,25 +4209,33 @@ void loop() {
 
   // USB power alone (for example, a wall charger) does not inhibit sleep.
   // Host sessions, live logging, and button activity still need service.
-  bool can_sleep = the_mesh.getNodePrefs()->powersaving_enabled
-      && !morse_timing
-      && !the_mesh.hasPendingWork()
-      && !mesh::isUsbLoggingWatchdogArmed()
-      && !mesh::wireless::control().pending();
+  using mesh::powerdiag::Reason;
+  using mesh::powerdiag::mask;
+  // Keep the existing short-circuit policy: report the first guard that
+  // actually vetoed sleep, without polling otherwise skipped peripherals.
+  mesh::powerdiag::Mask sleep_reason = [&]() -> mesh::powerdiag::Mask {
+    if (!the_mesh.getNodePrefs()->powersaving_enabled) return mask(Reason::PolicyOff);
+    if (morse_timing) return mask(Reason::Morse);
+    const auto pending = the_mesh.pendingWorkReason();
+    if (pending) return pending;
+    if (mesh::isUsbLoggingWatchdogArmed()) return mask(Reason::UsbRecovery);
+    if (mesh::wireless::control().pending()) return mask(Reason::Wireless);
+    return 0;
+  }();
 #if defined(ESP32_PLATFORM) && MESH_USB_LOGGING_AVAILABLE
   // The native-USB-only light-sleep path below bypasses ESP32Board::sleep.
-  can_sleep = can_sleep && !mesh::isUsbLoggingEnabled();
+  if (!sleep_reason && mesh::isUsbLoggingEnabled()) sleep_reason = mask(Reason::UsbLogging);
 #endif
 #if defined(ESP32_PLATFORM) && defined(ENABLE_USB_INTERFACE)
   const bool usb_sleep_held = board.isUsbSleepHeld();
-  can_sleep = can_sleep && !usb_sleep_held;
+  if (!sleep_reason && usb_sleep_held) sleep_reason = mask(Reason::UsbSession);
 #elif defined(NRF52_PLATFORM)
-  can_sleep = can_sleep && !board.isUsbHostConnected();
+  if (!sleep_reason && board.isUsbHostConnected()) sleep_reason = mask(Reason::UsbSession);
 #endif
 #if defined(NRF52_PLATFORM) && defined(ETHERNET_USE_RAK13800)
   // Polled Ethernet has no GPIO wake for a client or parked worker. OFF also
   // disables its logical transport before main-thread resource release ends.
-  can_sleep = can_sleep && !ethernet_interface.hardwareActive();
+  if (!sleep_reason && ethernet_interface.hardwareActive()) sleep_reason = mask(Reason::Network);
 #endif
 #if defined(MOMENTARY_BUTTON_WAKE_FROM_SLEEP) \
     && MOMENTARY_BUTTON_WAKE_FROM_SLEEP \
@@ -4235,8 +4243,10 @@ void loop() {
   // GPIO wake starts the poller, but multi-click and long-press results
   // are due after a time interval rather than another edge. The G3 also
   // retains a two-minute wake interval after button activity.
-  can_sleep = can_sleep && !user_btn.needsPolling();
+  if (!sleep_reason && user_btn.needsPolling()) sleep_reason = mask(Reason::Button);
 #endif
+  if (mesh::powerdiag::enabled()) mesh::powerdiag::decision(sleep_reason, millis());
+  const bool can_sleep = sleep_reason == 0;
   if (can_sleep) {
 #if defined(NRF52_PLATFORM)
     board.sleep(0); // nrf ignores seconds param, sleeps whenever possible
@@ -4248,9 +4258,23 @@ void loop() {
     // core. A short timer slice gives idle battery builds real light sleep without
     // delaying radio, GPS, button, or newly attached USB work by more than the
     // normal 10 ms loop cadence. can_sleep already proved no USB host is up.
-    if (!companionNativeUsbLightSleepReady()
-        || esp_sleep_enable_timer_wakeup(10000ULL) != ESP_OK
-        || esp_light_sleep_start() != ESP_OK) {
+    bool sleep_failed = false;
+    if (!companionNativeUsbLightSleepReady()) {
+      if (mesh::powerdiag::enabled()) mesh::powerdiag::boardVeto(Reason::Board, millis());
+      sleep_failed = true;
+    } else {
+      esp_err_t error = esp_sleep_enable_timer_wakeup(10000ULL);
+      if (error == ESP_OK) {
+        if (mesh::powerdiag::enabled()) mesh::powerdiag::sleepBegin(micros());
+        error = esp_light_sleep_start();
+        if (mesh::powerdiag::enabled()) mesh::powerdiag::sleepEnd(micros());
+      }
+      if (error != ESP_OK) {
+        if (mesh::powerdiag::enabled()) mesh::powerdiag::boardError(error, millis());
+        sleep_failed = true;
+      }
+    }
+    if (sleep_failed) {
       vTaskDelay(pdMS_TO_TICKS(10));
     }
 #elif COMPANION_IDF_PM_AVAILABLE

@@ -234,6 +234,7 @@ SLEEP_HARNESS = r'''
 #include <cstdint>
 #include <cstddef>
 #include <helpers/CompanionDelayedReplies.h>
+#include <helpers/PowerSavingDiagnostics.h>
 static uint32_t now_ms=100;
 struct Serial {
   bool hasPendingIO() const { return false; }
@@ -274,6 +275,7 @@ struct MyMesh {
   bool hasQueuedWorkDue() const { return false; }
   bool hasRetryWorkDue() const { return false; }
   bool hasPendingWork() const;
+  mesh::powerdiag::Mask pendingWorkReason() const;
 };
 @PENDING_WORK@
 int main() {
@@ -326,7 +328,9 @@ int main() {
 class CompanionRadioSettingsTransactionTests(unittest.TestCase):
     def test_lease_blocked_recovery_does_not_prevent_sleep(self):
         text = SOURCE.read_text(encoding='utf-8')
-        pending = extract_braced(text, 'bool MyMesh::hasPendingWork() const')
+        pending = '\n'.join(extract_braced(text, signature) for signature in (
+            'bool MyMesh::hasPendingWork() const',
+            'mesh::powerdiag::Mask MyMesh::pendingWorkReason() const'))
         harness = SLEEP_HARNESS.replace('@PENDING_WORK@', pending)
         header = (SOURCE.parent / 'DataStore.h').read_text(encoding='utf-8')
         start = header.index('  enum : uint8_t { ContactRecoveryPending')

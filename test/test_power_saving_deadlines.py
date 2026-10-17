@@ -14,6 +14,7 @@ HARNESS = r'''
 #include <cstdint>
 #include <initializer_list>
 #include <helpers/PowerManagementUtils.h>
+#include <helpers/PowerSavingDiagnostics.h>
 #define SENSOR_READ_INTERVAL_SECS 60
 static uint32_t now_ms = 1000;
 uint32_t millis() { return now_ms; }
@@ -33,6 +34,9 @@ struct Node {
   struct Clock { uint32_t getCurrentTime() const { return 100; } } clock;
   const Clock* getRTCClock() const { return &clock; }
   bool hasPendingWork() const { return pending; }
+  mesh::powerdiag::Mask pendingWorkReason() const {
+    return pending ? mesh::powerdiag::mask(mesh::powerdiag::Reason::Mesh) : 0;
+  }
   bool getNextQueueWakeDelay(uint32_t& out) const { out = queue_ms; return queue; }
   bool getNextRetryWakeDelay(uint32_t& out) const { out = retry_ms; return retry; }
   bool millisHasNowPassed(unsigned long at) const {

@@ -60,7 +60,7 @@ def firmware_harness(*, lose_sleep_guard=False, lose_crlf=False,
         "void sleep(uint32_t secs) override", "bool isUsbDataConnected() override",
         "bool isUsbHostConnected() override")) + "\n" + sleep_held
     if lose_raw_uart_guard:
-        expression = "keep_awake = keep_awake || static_cast<bool>(Serial);"
+        expression = "keep_awake = keep_awake || hold(static_cast<bool>(Serial), Reason::Serial);"
         assert expression in methods, "Missing raw UART negative-control boundary"
         methods = methods.replace(expression, "keep_awake = keep_awake || false;")
     source = source.replace("@METHODS@", methods)
@@ -73,7 +73,7 @@ def firmware_harness(*, lose_sleep_guard=False, lose_crlf=False,
     if lose_crlf:
         pump = pump.replace('console.printf("  -> %s\\r\\n", reply);',
                             'console.printf("  -> %s\\n", reply);')
-    start = main.index("  bool can_power_save =")
+    start = main.index("  const auto sleep_guard =")
     end = main.index("  if (the_mesh.getNodePrefs()->reboot_interval", start)
     morse_declaration = "  const bool morse_timing = mesh::morseTimingActive(&radio_driver);"
     assert morse_declaration in main[:start], "Missing live Morse ownership snapshot"

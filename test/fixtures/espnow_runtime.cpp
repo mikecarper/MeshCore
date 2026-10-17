@@ -6,6 +6,7 @@
 #include <cstdint>
 #include <initializer_list>
 #include <helpers/CLICommandUtils.h>
+#include <helpers/PowerSavingDiagnostics.h>
 #include <helpers/bridges/ESPNowBridgeFormat.h>
 #define MESH_DEBUG_PRINTLN(...) ((void)0)
 
@@ -80,6 +81,8 @@ public:
     @SERVICE@
   }
   bool bridgesPreventSleep() const {
+    using mesh::powerdiag::mask;
+    using mesh::powerdiag::Reason;
     @PENDING@
     return false;
   }

@@ -61,7 +61,7 @@ class RS232MQTTRuntimeTests(unittest.TestCase):
                                              implementation.index("MyMesh::servicePostMeshLoop()"))
         service_end = implementation.index("  if (next_flood_advert", service_start)
         pending_start = implementation.index("#if defined(WITH_BRIDGE)",
-                                             implementation.index("bool MyMesh::hasPendingWork()"))
+                                             implementation.index("mesh::powerdiag::Mask MyMesh::pendingWorkReason()"))
         pending_end = implementation.index("  if (radio_driver.isWatchdogObserving()", pending_start)
         commands = preprocess("\n".join(extract_braced(cli, signature) for signature in (
             "void CommonCLI::handleSetCmd(", "void CommonCLI::handleGetCmd(")))
@@ -158,7 +158,7 @@ class RS232MQTTRuntimeTests(unittest.TestCase):
         boot_end = implementation.index('mesh::hilStartupTrace("mesh_bridge_ready");', boot_start)
         service_start = implementation.index("#if defined(WITH_MQTT_BRIDGE)\n  // MQTT owns TLS", implementation.index("MyMesh::servicePostMeshLoop()"))
         service_end = implementation.index("  if (next_flood_advert", service_start)
-        pending_start = implementation.index("#if defined(WITH_BRIDGE)", implementation.index("bool MyMesh::hasPendingWork()"))
+        pending_start = implementation.index("#if defined(WITH_BRIDGE)", implementation.index("mesh::powerdiag::Mask MyMesh::pendingWorkReason()"))
         pending_end = implementation.index("  if (radio_driver.isWatchdogObserving()", pending_start)
         route = {}
         for name in ("logRx", "logTx"):

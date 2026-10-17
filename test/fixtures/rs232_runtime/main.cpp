@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <vector>
 #include <helpers/CLICommandUtils.h>
+#include <helpers/PowerSavingDiagnostics.h>
 #include <helpers/bridges/ESPNowBridgeFormat.h>
 #include <helpers/bridges/RS232PowerSettings.h>
 
@@ -172,6 +173,8 @@ public:
     @SERVICE@
   }
   bool bridgesPreventSleep() const {
+    using mesh::powerdiag::mask;
+    using mesh::powerdiag::Reason;
     @PENDING@
     return false;
   }

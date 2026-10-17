@@ -620,18 +620,26 @@ void loop() {
 #ifdef HAS_EXTERNAL_WATCHDOG
   external_watchdog.loop();
 #endif
-  bool can_power_save = the_mesh.getNodePrefs()->powersaving_enabled
-      && !morse_timing
-      && !board.isUsbDataConnected()
-      && !mesh::isUsbLoggingWatchdogArmed()
-      && !mesh::wireless::control().pending();
+  // Report the guard that really stopped this iteration, without probing
+  // later guards or changing their short-circuit hardware access.
+  const auto sleep_guard = [](bool allowed, mesh::powerdiag::Reason reason) {
+    if (!allowed && mesh::powerdiag::enabled())
+      mesh::powerdiag::decision(mesh::powerdiag::mask(reason), millis());
+    return allowed;
+  };
+  bool can_power_save = sleep_guard(the_mesh.getNodePrefs()->powersaving_enabled,
+                                    mesh::powerdiag::Reason::PolicyOff)
+      && sleep_guard(!morse_timing, mesh::powerdiag::Reason::Morse)
+      && sleep_guard(!board.isUsbDataConnected(), mesh::powerdiag::Reason::UsbSession)
+      && sleep_guard(!mesh::isUsbLoggingWatchdogArmed(), mesh::powerdiag::Reason::UsbRecovery)
+      && sleep_guard(!mesh::wireless::control().pending(), mesh::powerdiag::Reason::Wireless);
 #if defined(MOMENTARY_BUTTON_WAKE_FROM_SLEEP) \
     && MOMENTARY_BUTTON_WAKE_FROM_SLEEP \
     && defined(PIN_USER_BTN) && defined(DISPLAY_CLASS)
   // GPIO wake starts the first poll. Keep debounce and multi-click deadlines
   // awake too, so a release cannot strand the remaining 25/280 ms interval.
   // The G3 also retains its two-minute button wake interval here.
-  can_power_save = can_power_save && !user_btn.needsPolling();
+  can_power_save = can_power_save && sleep_guard(!user_btn.needsPolling(), mesh::powerdiag::Reason::Button);
 #endif
   if (can_power_save) {
     uint32_t sleep_secs = the_mesh.getPowerSaveSleepSeconds(30);
@@ -640,11 +648,15 @@ void loop() {
 #endif
 #if defined(NRF52_PLATFORM)
     if (sleep_secs > 0) {
+      if (mesh::powerdiag::enabled()) mesh::powerdiag::decision(0, millis());
       board.sleep(0); // nrf ignores seconds param, sleeps whenever possible
     }
 #else
     if (sleep_secs > 0 && the_mesh.millisHasNowPassed(POWERSAVING_FIRSTSLEEP_SECS * 1000)) { // To check if it is time to sleep
+      if (mesh::powerdiag::enabled()) mesh::powerdiag::decision(0, millis());
       board.sleep(sleep_secs); // Sleep. Wake up for scheduled jobs or when receiving a LoRa packet
+    } else if (sleep_secs > 0 && mesh::powerdiag::enabled()) {
+      mesh::powerdiag::decision(mesh::powerdiag::mask(mesh::powerdiag::Reason::Startup), millis());
     }
 #endif
   }

@@ -6,6 +6,7 @@
 #include <initializer_list>
 #include <new>
 #include <helpers/CLICommandUtils.h>
+#include <helpers/PowerSavingDiagnostics.h>
 #include <helpers/bridges/ESPNowBridgeFormat.h>
 #include <helpers/bridges/RS232PowerSettings.h>
 struct FakeRng { void random(uint8_t* out, size_t size) { memset(out, 0x42, size); } };
@@ -247,6 +248,8 @@ public:
     @SERVICE@
   }
   bool bridgesPreventSleep() const {
+    using mesh::powerdiag::mask;
+    using mesh::powerdiag::Reason;
     @PENDING@
     return false;
   }

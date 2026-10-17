@@ -2,6 +2,7 @@
 
 #include <Arduino.h>   // needed for PlatformIO
 #include <Mesh.h>
+#include <helpers/PowerSavingDiagnostics.h>
 
 #include "TimeSeriesData.h"
 
@@ -300,6 +301,7 @@ private:
   uint32_t limitSleepToMillisTimer(unsigned long timestamp,
                                    uint32_t sleep_secs) const;
   bool hasPendingWork() const;
+  mesh::powerdiag::Mask pendingWorkReason() const;
   bool region_load_active;
 
   bool telemHasChanged(ClientInfo* c);

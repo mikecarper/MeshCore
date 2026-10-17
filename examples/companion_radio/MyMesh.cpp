@@ -3798,6 +3798,7 @@ bool MyMesh::handleLocalControlCommand(const char* command, char* reply,
                                        size_t reply_size) {
   if (!command || !reply || reply_size == 0) return false;
   while (*command == ' ') command++;
+  if (mesh::powerdiag::handleCommand(command, reply, reply_size, millis())) return true;
 #if defined(OTA_RAK15002_SD_STORE) && defined(ETHERNET_USE_RAK13800)
   if (handleRak4631PeripheralCommand(command, reply, reply_size)) return true;
 #endif
@@ -11587,16 +11588,21 @@ bool MyMesh::canRecoverUsbLogging() const {
 }
 
 bool MyMesh::hasPendingWork() const {
+  return pendingWorkReason() != 0;
+}
+
+mesh::powerdiag::Mask MyMesh::pendingWorkReason() const {
+  using mesh::powerdiag::Reason;
+  using mesh::powerdiag::mask;
 #if COMPANION_FEATURE_READER
-  if (mesh::readerCommandActive()) return true;
+  if (mesh::readerCommandActive()) return mask(Reason::Mesh);
 #endif
 #if COMPANION_FEATURE_NOTIFICATIONS
-  if (_notifications.active()) return true;
+  if (_notifications.active()) return mask(Reason::Mesh);
 #endif
-  if (isDualRadioActive()) return true;
-  if (_radio_available
-      && (radio_driver.isWatchdogObserving()
-          || radio_driver.isCalibratingNoiseFloor())) return true;
+  if (isDualRadioActive()) return mask(Reason::DualRadio);
+  if (_radio_available && radio_driver.isWatchdogObserving()) return mask(Reason::RadioWatchdog);
+  if (_radio_available && radio_driver.isCalibratingNoiseFloor()) return mask(Reason::Calibration);
 #if defined(NRF52_PLATFORM)
   // nRF52 sleep is event-driven, so a future lazy-write deadline has no
   // guaranteed interrupt to wake the loop when it becomes due. Keep polling
@@ -11609,38 +11615,36 @@ bool MyMesh::hasPendingWork() const {
 #else
   const bool contact_write_needs_polling = isContactWriteDue();
 #endif
-  return (_serial != NULL && _serial->hasPendingIO())
-      || (_iter_started && _serial != NULL
-          && _serial->isReplyRouteAvailable(_iter_reply_route))
-      || hasPendingOtaApply()
-      || command_radio_apply_pending
-      || _scheduled_reboot_at != 0
-      || hasPendingReqs()
-      || _delayed_replies.hasBinaryTrace()
+  if (_serial != NULL && _serial->hasPendingIO()) return mask(Reason::Serial);
+  if (_iter_started && _serial != NULL
+      && _serial->isReplyRouteAvailable(_iter_reply_route)) return mask(Reason::Serial);
+  if (hasPendingOtaApply()) return mask(Reason::Ota);
+  if (command_radio_apply_pending || _scheduled_reboot_at != 0) return mask(Reason::Scheduled);
+  if (hasPendingReqs() || _delayed_replies.hasBinaryTrace()) return mask(Reason::Mesh);
 #if COMPANION_FEATURE_TEXT_TERMINAL
-      || _terminal_trace_pending
+  if (_terminal_trace_pending) return mask(Reason::Mesh);
 #endif
-      || sign_data != NULL
-      || hasQueuedWorkDue() || hasRetryWorkDue()
-      || (saved_radio_apply_pending
+  if (sign_data != NULL) return mask(Reason::Mesh);
+  if (hasQueuedWorkDue()) return mask(Reason::Queue);
+  if (hasRetryWorkDue()) return mask(Reason::Retry);
+  if (saved_radio_apply_pending
 #if COMPANION_FEATURE_TEMP_RADIO
           // Match loop()'s restore gate: a lease-blocked rollback is not
           // runnable work. The lease's own timers below wake it when due.
           && !_temp_radio_applied && _temp_radio_set_at == 0
           && _temp_radio_revert_at == 0
 #endif
-          && (!radio_apply_retry_at || millisHasNowPassed(radio_apply_retry_at)))
-      || contact_write_needs_polling
-      || _store->contactRecoveryPending()
+      && (!radio_apply_retry_at || millisHasNowPassed(radio_apply_retry_at))) return mask(Reason::Scheduled);
+  if (contact_write_needs_polling || _store->contactRecoveryPending()) return mask(Reason::Mesh);
 #if defined(ESP32_PLATFORM)
-      || _store->hasPendingAdvertWrites()
+  if (_store->hasPendingAdvertWrites()) return mask(Reason::Mesh);
 #endif
-      || (emergency_client_repeat_packet != NULL
-          && millisHasNowPassed(emergency_client_repeat_send_at))
+  if (emergency_client_repeat_packet != NULL
+      && millisHasNowPassed(emergency_client_repeat_send_at)) return mask(Reason::Queue);
 #if COMPANION_FEATURE_TEMP_RADIO
-      || (_temp_radio_set_at != 0 && millisHasNowPassed(_temp_radio_set_at))
+  if ((_temp_radio_set_at != 0 && millisHasNowPassed(_temp_radio_set_at))
       || (_temp_radio_revert_at != 0 && millisHasNowPassed(_temp_radio_revert_at))
-      || (_temp_radio_retry_at != 0 && millisHasNowPassed(_temp_radio_retry_at))
+      || (_temp_radio_retry_at != 0 && millisHasNowPassed(_temp_radio_retry_at))) return mask(Reason::Scheduled);
 #endif
-      ;
+  return 0;
 }

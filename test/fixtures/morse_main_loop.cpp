@@ -1,4 +1,5 @@
 #include <helpers/MorseLoopPolicy.h>
+#include <helpers/PowerSavingDiagnostics.h>
 #include <cstdarg>
 static unsigned usb_services=0,command_services=0,transport_services=0,delays=0;
 struct Stream {
@@ -52,6 +53,7 @@ struct Mesh {
   bool millisHasNowPassed(uint32_t) { return true; }
   bool isTrackerModeEnabled() { return false; }
   bool hasPendingWork() { return false; }
+  mesh::powerdiag::Mask pendingWorkReason() const { return 0; }
   void handleCommand(uint32_t,char*,char* reply) { reply[0]=0; ++command_services; }
   void handleUsbCommand(char*,char* reply) { reply[0]=0; ++command_services; }
 } the_mesh;

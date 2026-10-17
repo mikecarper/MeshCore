@@ -1,6 +1,7 @@
 #include "FakeFilesystem.h"
 #include <array>
 #include <helpers/LazyPersistence.h>
+#include <helpers/PowerSavingDiagnostics.h>
 #define FILESYSTEM FakeFilesystem
 namespace mesh { struct Utils {
   static void toHex(char* dest, const uint8_t* src, int length) {
@@ -85,6 +86,7 @@ public:
   void onContactCacheFlushed();
   bool flushContactsBeforeReboot();
   bool hasPendingWork() const;
+  mesh::powerdiag::Mask pendingWorkReason() const;
   bool canRecoverUsbLogging() const;
   bool isDualRadioActive() const{return false;}
   bool hasOutbound() const{return false;}
