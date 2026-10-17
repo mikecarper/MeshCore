@@ -2392,6 +2392,10 @@ a pending collection or postpone a failed-sample retry. Legacy fixed-cadence
 AGC resets still request recalibration.
 Dual-profile scanning keeps its existing timing and calibration policy.</p>
 <p>ESP32 timed sleep uses a millisecond timer capped at the next sample deadline.
+Repeater, Room and Sensor also preserve millisecond queue, retry, RS232 standby,
+scheduled-radio and maintenance deadlines, so the last fraction of a second
+does not become a busy-wait tail. A future sub-second deadline is not reported
+as blocked work; a deadline that is already due still prevents sleep.
 nRF52, RP2040 and STM32 retain their interrupt-idle wake paths. Other sleep
 guards, including USB/logging, packet queues and bridges, still apply.
 These changes have host scheduling tests and firmware build coverage; their
