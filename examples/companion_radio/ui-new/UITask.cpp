@@ -2444,13 +2444,17 @@ void UITask::loop() {
   }
 #endif
 #if defined(BACKLIGHT_BTN)
-  if (millis() > next_backlight_btn_check) {
-    static bool was_pressed = false;
+  // First-poll state must not collide with a completed poll at timestamp zero.
+  enum class BacklightButtonState : uint8_t { Unseen, Released, Pressed };
+  static BacklightButtonState button_state = BacklightButtonState::Unseen;
+  const uint32_t backlight_now = millis();
+  if (button_state == BacklightButtonState::Unseen ? backlight_now > 0
+      : static_cast<uint32_t>(backlight_now - last_backlight_btn_check) > 300) {
     const bool pressed = digitalRead(PIN_BUTTON2) == LOW;
-    if (pressed && !was_pressed && _display != NULL)
+    if (pressed && button_state != BacklightButtonState::Pressed && _display != NULL)
       _display->wake(mesh::ui::DisplayWake::Button);
-    was_pressed = pressed;
-    next_backlight_btn_check = millis() + 300;
+    button_state = pressed ? BacklightButtonState::Pressed : BacklightButtonState::Released;
+    last_backlight_btn_check = millis();
   }
 #endif
 

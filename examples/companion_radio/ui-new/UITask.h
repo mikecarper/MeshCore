@@ -48,7 +48,7 @@ class UITask : public AbstractUITask {
   int _msgcount;
   unsigned long ui_started_at;
   uint32_t next_batt_chck;
-  int next_backlight_btn_check = 0;
+  uint32_t last_backlight_btn_check = 0;
 #ifdef HAS_TOUCH
   #ifndef TOUCH_CENTER_ZONE_PERCENT
     #define TOUCH_CENTER_ZONE_PERCENT 34
