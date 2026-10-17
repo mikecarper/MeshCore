@@ -15,7 +15,10 @@ class HostedDocLinksTest(unittest.TestCase):
     def test_every_served_document_has_its_current_exact_link(self):
         manifest = LINKS.transform(ROOT)
         self.assertTrue(manifest['pages'])
-        self.assertTrue(all(row['already_current'] for row in manifest['pages']))
+        pending = [row['source'] for row in manifest['pages'] if not row['already_current']]
+        self.assertEqual(pending, [],
+                         'Missing or stale hosted links: ' + ', '.join(pending)
+                         + '; run scripts/update_hosted_doc_links.py --apply')
         routes = {row['source']: row['url'] for row in manifest['pages']}
         self.assertEqual(routes['index.md'], LINKS.HOSTED_BASE)
         self.assertEqual(routes['research/index.md'], LINKS.HOSTED_BASE + 'research/')
