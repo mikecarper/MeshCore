@@ -744,15 +744,17 @@ private:
   uint8_t     _n_src_obj = 0;
   uint8_t     _src_manifest[OTA_SRC_MANIFEST_MAX];   // manifest-minus-leaves of the loaded source mota
   // Cold source leaves are sized to the selected image, within the unchanged
-  // capacity limit. Encoded DATA needs at most one logical block. These buffers
-  // remain pinned until queued egress drains, then return to the heap at idle.
+  // capacity limit. Device-encoder output needs at most one logical block;
+  // host-encoded output uses _serve_block. Cold buffers stay pinned until
+  // queued egress drains, then return to the heap at idle.
   uint8_t*    _src_leaves = nullptr;
   uint32_t    _src_leaves_capacity = 0;
   uint8_t*    _scratch = nullptr;
   uint32_t    _source_buffer_used_at = 0;
 
-  // Server-side response descriptors are tiny. The active logical block has its own buffer so proof generation
-  // or a simultaneous fetch cannot overwrite DATA retained behind radio-queue backpressure.
+  // Server-side response descriptors are tiny. Active DATA stays cached behind
+  // radio-queue backpressure. Proofs do not touch that cache; inbound decoding
+  // may reuse it but invalidates it before the next outbound fragment.
   struct ServeJob {
     OtaReplyRoute route;
     uint8_t mid[4] = {0};
@@ -790,7 +792,8 @@ private:
   uint8_t    _serve_block[OTA_MAX_BLOCK];
   uint16_t   _serve_block_len = 0;
   bool       _serve_block_loaded = false;
-  const uint8_t* _serve_wire_block = nullptr;       // raw _serve_block or DEFLATE bytes in ServeView::scratch
+  // Raw/host-encoded _serve_block, or device-encoder output in ServeView::scratch.
+  const uint8_t* _serve_wire_block = nullptr;
   uint16_t   _serve_wire_len = 0;
   bool       _serve_wire_deflated = false;
   uint8_t    _serve_wire_id[4] = {0};              // SHA-256:4 of this exact encoded representation

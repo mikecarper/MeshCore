@@ -742,22 +742,22 @@ bool OtaManager::loadActiveServeBlock() {
   _serve_wire_deflated = false;
 
   // A host-backed MotaSource can provide a pre-compressed block without putting an encoder in firmware.
-  // Other sources may opt into a caller-supplied encoder. Encoded DATA remains
-  // pinned until every fragment has left. Streaming proofs need no output buffer.
-  if (job.wire_v2 && job.allow_deflate && (v->read_deflated || _deflate_encode) && !v->scratch) {
+  // Only device encoders need separate raw input and compressed output. Host
+  // output can use the existing outbound cache, which remains pinned until
+  // every DATA fragment has left. Streaming proofs need no output buffer.
+  if (job.wire_v2 && job.allow_deflate && !v->read_deflated && _deflate_encode && !v->scratch) {
     v->scratch = ensureScratch();
     v->scratch_sz = v->scratch ? OTA_MAX_BLOCK : 0;
   }
   _source_buffer_used_at = _now_ms;
   // A host-precompressed representation is enough to serve DATA: proofs use
   // authenticated leaves. Do not pull the same raw block over BLE/USB first.
-  if (job.wire_v2 && job.allow_deflate && v->read_deflated &&
-      v->scratch && v->scratch_sz >= blen) {
+  if (job.wire_v2 && job.allow_deflate && v->read_deflated) {
     uint16_t encoded_len = 0;
-    const bool encoded = v->read_deflated(v->deflate_ctx, job.block, v->scratch,
+    const bool encoded = v->read_deflated(v->deflate_ctx, job.block, _serve_block,
                                          (uint16_t)blen, &encoded_len);
     if (encoded && encoded_len > 0 && encoded_len < blen) {
-      _serve_wire_block = v->scratch;
+      _serve_wire_block = _serve_block;
       _serve_wire_len = encoded_len;
       _serve_wire_deflated = true;
     }
