@@ -154,6 +154,21 @@ def _board_maximum_size(build_env):
         return None
 
 
+def _validate_nrf52_legacy_sd_profile(app_start, linked_app_end, active_linker,
+                                      configured_linker, project_dir):
+    """Legacy adaptive SD still needs its exact retained-authorization map."""
+    if app_start != ml.NRF52_APP_BASE_S140_V6 or linked_app_end != ml.NRF52_APP_END:
+        raise RuntimeError("legacy RAK SD OTA requires the exact S140 v6 0xED000 profile")
+    expected = _normalized_linker_path(
+        os.path.join(str(project_dir), "boards", "nrf52840_s140_v6_sd_ota.ld"), project_dir)
+    if not os.path.isfile(expected):
+        raise RuntimeError("legacy RAK SD authorization linker is missing")
+    for label, value in (("active", active_linker), ("configured", configured_linker)):
+        if _normalized_linker_path(value, project_dir) != expected:
+            raise RuntimeError(f"legacy RAK SD OTA requires {expected}; "
+                               f"{label} linker is {value or 'none'}")
+
+
 def _source_filter_text():
     """Resolved source-filter text for detecting code that is actually part of this environment."""
     srcf = ""
@@ -276,8 +291,9 @@ def _append_endf_hex(source, target, env):        # Intel-HEX path (nRF52: app f
     if optional_rak_sd and (not sd_enabled or _cppdef("RAK_4631") is None or
                             not (auto_store or (seeder_only and _builds_companion_radio()))):
         raise RuntimeError("optional RAK15002 SD requires an exact RAK4631 adaptive receiver or source-only Companion")
-    # Optional SD does not change the frozen application layout: receivers
-    # retain AUTO+HYBRID internal staging, and Full Companion retains ExtraFS.
+    # Optional SD does not change the frozen application flash layout: normal
+    # receivers retain AUTO+HYBRID, explicit legacy receivers use AUTO without
+    # hybrid RAM, and Full Companion retains ExtraFS.
     # The runtime selects SD only after validating its separate loader ABI.
     sd_backed = sd_enabled and not optional_rak_sd
     qspi_bootloader_update = _cppdef("OTA_QSPI_BOOTLOADER_UPDATE") is not None
@@ -291,9 +307,18 @@ def _append_endf_hex(source, target, env):        # Intel-HEX path (nRF52: app f
         env["PROJECT_DIR"])
     if sd_backed and qspi_backed:
         raise RuntimeError("nRF52 build cannot enable both SD and QSPI OTA stores")
-    if auto_store and (not qspi_backed or _cppdef("OTA_FLASH_STORE") is None or
-                       not hybrid_ram or not internal_bootloader_update):
-        raise RuntimeError("RAK adaptive OTA requires both stores and retained-RAM internal support")
+    if auto_store:
+        if not qspi_backed or _cppdef("OTA_FLASH_STORE") is None:
+            raise RuntimeError("RAK adaptive OTA requires both stores and retained-RAM internal support")
+        if os.environ.get("MESHCORE_NRF52_LEGACY_FLASH_OTA") == "1":
+            if (not optional_rak_sd or seeder_only or _builds_companion_radio() or
+                    hybrid_ram or internal_bootloader_update):
+                raise RuntimeError("legacy adaptive SD OTA requires a receiver without hybrid RAM or bootloader self-update")
+            _validate_nrf52_legacy_sd_profile(
+                app_start, linked_app_end, env.get("LDSCRIPT_PATH", ""),
+                board.get("build.ldscript", ""), env["PROJECT_DIR"])
+        elif not hybrid_ram or not internal_bootloader_update:
+            raise RuntimeError("RAK adaptive OTA requires both stores and retained-RAM internal support")
     if qspi_backed and _cppdef("QSPIFLASH") is not None:
         raise RuntimeError("raw QSPI OTA staging cannot share a chip with QSPIFLASH")
     if qspi_bootloader_update:

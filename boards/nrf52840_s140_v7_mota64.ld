@@ -30,6 +30,8 @@ SECTIONS
   /* Export the direct-access handoff ABI even though no input section owns it. */
   __mota_hybrid_handoff_start__ = ADDR(.persistent) + SIZEOF(.persistent);
   __mota_hybrid_handoff_end__ = ORIGIN(PERSISTENT_RAM) + LENGTH(PERSISTENT_RAM);
+  __mota_sd_auth_start__ = __mota_hybrid_handoff_start__;
+  __mota_sd_auth_end__ = __mota_hybrid_handoff_end__;
 
   ASSERT(ADDR(.persistent) == 0x20006000,
          "mOTA retained clock prefix start must remain fixed")
@@ -43,6 +45,8 @@ SECTIONS
          "mOTA hybrid handoff must remain exactly 72 bytes")
   ASSERT(ORIGIN(RAM) == __mota_hybrid_handoff_end__,
          "normal RAM must start immediately after the mOTA handoff")
+  ASSERT(ORIGIN(RAM) >= __mota_sd_auth_end__,
+         "application RAM must not overlap SD OTA authorization")
 
   . = ALIGN(4);
   .svc_data :

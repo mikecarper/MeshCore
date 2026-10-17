@@ -9,6 +9,7 @@ closed if a target does not use the normal S140 v6/v7 1 MiB application layout.
 
 Import("env")
 
+import importlib.util
 import os
 from pathlib import Path
 
@@ -65,7 +66,28 @@ if requested:
             f"linker={current or 'none'}"
         )
     if legacy_flash == "1":
-        print("nRF52 legacy flash OTA: ordinary linker; no hybrid RAM or bootloader self-update")
+        # Unified RAK receivers can select SD at runtime even in legacy flash
+        # mode. Reserve its 72-byte authorization ABI without a hybrid arena.
+        policy_path = Path(env["PROJECT_DIR"]) / "scripts/nrf52_flash_trim.py"
+        spec = importlib.util.spec_from_file_location("nrf52_legacy_sd_flags", policy_path)
+        policy = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(policy)
+        definitions = policy.flag_defines(env.get("BUILD_FLAGS", ()),
+                                          env.get("CPPDEFINES", ()))
+        sd_receiver = (definitions.get("OTA_SD_STORE") is not None and
+                       definitions.get("OTA_SEEDER_ONLY") is None)
+        if sd_receiver:
+            sd_linker = Path(env["PROJECT_DIR"]) / "boards" / (
+                "nrf52840_s140_%s_sd_ota.ld" % suffix
+            )
+            if not sd_linker.is_file():
+                raise RuntimeError("missing legacy SD authorization linker: %s" % sd_linker)
+            board.update("build.ldscript", str(sd_linker))
+            env.Replace(LDSCRIPT_PATH=str(sd_linker))
+            print("nRF52 legacy flash OTA: %s; reserved SD authorization; no hybrid RAM or bootloader self-update"
+                  % sd_linker.name)
+        else:
+            print("nRF52 legacy flash OTA: ordinary linker; no hybrid RAM or bootloader self-update")
     else:
         mota_linker = Path(env["PROJECT_DIR"]) / "boards" / (
             "nrf52840_s140_%s_mota64.ld" % suffix

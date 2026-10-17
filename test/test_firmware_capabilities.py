@@ -263,6 +263,7 @@ class FirmwareCapabilityCheckerTest(unittest.TestCase):
                                       (0, "internal_flash", ["in_place_delta"]),
                                       (4, "external_qspi", ["full", "in_place_delta"]),
                                       (48, "adaptive_internal_or_external_qspi", ["full", "in_place_delta"]),
+                                      (32, "adaptive_internal_or_external_qspi", ["full", "in_place_delta"]),
                                       (1, "external_sd", ["full", "in_place_delta"])]:
             result, manifest = self.run_checker(
                 b"dfu invalid in-place patch geometry", "--platform", "NRF52_PLATFORM",
@@ -279,6 +280,10 @@ class FirmwareCapabilityCheckerTest(unittest.TestCase):
                 self.assertIn("adaptive OTAFIX", details["bootloader"])
                 self.assertTrue(any("*_AUTO_DFU" in note for note in details["notes"]))
                 self.assertFalse(any("self-update is unavailable" in note for note in details["notes"]))
+            if flags == 32:
+                self.assertTrue(any("flash-only" in note for note in details["notes"]))
+                self.assertTrue(any("self-update are not compiled" in note for note in details["notes"]))
+                self.assertFalse(any("needs the retained-RAM" in note for note in details["notes"]))
 
     def test_nrf52_full_companion_cannot_claim_lora_self_update(self):
         result, manifest = self.run_checker(

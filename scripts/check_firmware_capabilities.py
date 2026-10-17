@@ -40,7 +40,11 @@ def nrf52_lora_details(application):
              "Artifact inspection verifies compiled support; it does not verify the bootloader installed on a physical device."]
     if layout.auto_store:
         notes.append("One application detects RAK external NOR and chooses QSPI only with the exact matching OTAFIX bootloader; otherwise it uses internal flash where safe.")
-        notes.append("External QSPI accepts full images and in-place deltas; internal flash accepts in-place deltas only and needs the retained-RAM OTAFIX profile.")
+        if layout.hybrid_ram:
+            notes.append("External QSPI accepts full images and in-place deltas; internal flash accepts in-place deltas only and needs the retained-RAM OTAFIX profile.")
+        else:
+            notes.append("External QSPI accepts full images and in-place deltas; this legacy application's internal staging is flash-only and accepts in-place deltas only.")
+            notes.append("Retained-RAM staging and bootloader self-update are not compiled into this legacy application.")
         notes.append("OTAFIX 2.4.11 provides normal RAK3401/RAK4631 *_auto bootloaders with standard board identities and internal signed bootloader-update staging. Historical *_AUTO_DFU or dedicated external identities need the documented local identity-matching migration, not a cross-profile LoRa update.")
     elif layout.hybrid_ram:
         notes.append("Requires the exact-board retained-RAM handoff bootloader profile; a transfer cannot resume after the receiver restarts.")

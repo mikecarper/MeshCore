@@ -8,6 +8,9 @@ import os
 from pathlib import Path
 import re
 import runpy
+import shutil
+import subprocess
+import tempfile
 import unittest
 from unittest import mock
 
@@ -44,6 +47,9 @@ class FakeEnvironment:
     def __getitem__(self, key):
         return self.values[key]
 
+    def get(self, key, default=None):
+        return self.values.get(key, default)
+
     def BoardConfig(self):
         return self.board
 
@@ -62,9 +68,11 @@ class FakeEnvironment:
             raise AssertionError(f"unexpected fake-SCons call: {values!r}")
 
 
-def run_selector(*, pioenv, board_values, project=ROOT, requested=False, legacy_flash=None):
+def run_selector(*, pioenv, board_values, project=ROOT, requested=False, legacy_flash=None,
+                 flags=(), cppdefines=()):
     board = FakeBoardConfig(board_values)
     environment = FakeEnvironment(project, pioenv, board)
+    environment.values.update(BUILD_FLAGS=flags, CPPDEFINES=cppdefines)
     process_environment = (
         {"MESHCORE_NRF52_INTERNAL_BOOTLOADER_UPDATE": "1"}
         if requested else {}
@@ -136,6 +144,42 @@ def c_integer(path, name):
 
 
 class Nrf52InternalBootloaderSelectorTest(unittest.TestCase):
+    def test_legacy_sd_receiver_reserves_auth_without_hybrid_features(self):
+        for flags, cppdefines in (("-D OTA_SD_STORE=1", ()),
+                                  ((), [("OTA_SD_STORE", 1)]),
+                                  ("-DOTA_SD_STORE -DOTA_SEEDER_ONLY -UOTA_SEEDER_ONLY", ())):
+            with self.subTest(flags=flags, cppdefines=cppdefines):
+                environment, output = run_selector(
+                    pioenv="RAK_4631_repeater_lora_ota_no_external_sensors",
+                    legacy_flash="1", flags=flags, cppdefines=cppdefines,
+                    board_values={"build.mcu": "nrf52840",
+                                  "build.ldscript": "boards/nrf52840_s140_v6.ld"},
+                )
+                expected = str(ROOT / "boards/nrf52840_s140_v6_sd_ota.ld")
+                self.assertEqual(environment.cppdefines, [])
+                self.assertEqual(environment.board.updates, [("build.ldscript", expected)])
+                self.assertEqual(environment.replacements, {"LDSCRIPT_PATH": expected})
+                self.assertIn("reserved SD authorization", output)
+
+    def test_legacy_source_only_or_undefined_sd_keeps_ordinary_linker(self):
+        for flags in ("-DOTA_SD_STORE -DOTA_SEEDER_ONLY=1",
+                      "-DOTA_SD_STORE -UOTA_SD_STORE",
+                      "-DOTA_SD_STORE -DOTA_SEEDER_ONLY=0"):
+            with self.subTest(flags=flags):
+                environment, _ = run_selector(
+                    pioenv=V6_TARGET, legacy_flash="1", flags=flags,
+                    board_values={"build.mcu": "nrf52840",
+                                  "build.ldscript": "nrf52840_s140_v6.ld"},
+                )
+                self.assertEqual(environment.board.updates, [])
+                self.assertEqual(environment.replacements, {})
+
+    def test_legacy_sd_unknown_reservation_map_fails_closed(self):
+        with self.assertRaisesRegex(RuntimeError, "missing legacy SD authorization linker"):
+            run_selector(pioenv=V7_TARGET, legacy_flash="1", flags="-DOTA_SD_STORE=1",
+                         board_values={"build.mcu": "nrf52840",
+                                       "build.ldscript": "nrf52840_s140_v7.ld"})
+
     def test_legacy_flash_preserves_linker_for_direct_and_release_builds(self):
         for requested in (False, True):
             with self.subTest(requested=requested):
@@ -262,6 +306,79 @@ class Nrf52InternalBootloaderSelectorTest(unittest.TestCase):
 
 
 class Nrf52HybridLinkerContractTest(unittest.TestCase):
+    def test_real_linker_markers_do_not_confuse_late_data_with_reservation(self):
+        compiler, linker, nm = (shutil.which(name) for name in ("cc", "ld", "nm"))
+        if not all((compiler, linker, nm)):
+            self.skipTest("native cc, ld and nm are required for linker fixtures")
+        # A large framework registration prefix moves .data beyond the auth
+        # ABI even in an unreserved map. Only the explicit region markers can
+        # distinguish it from a genuinely reserved receiver layout.
+        assembly = """
+.section .persistent_magic,"aw"
+.long 0
+.section .persistent_data,"aw"
+.long 0
+.section .svc_data,"aw"
+.space 128
+.section .fs_data,"aw"
+.space 32
+.section .data,"aw"
+.long 0x3f800000
+"""
+        common = """
+SECTIONS {
+  .data : { __data_start__ = .; *(.data) } > RAM
+}
+"""
+        with tempfile.TemporaryDirectory(prefix="meshcore-sd-auth-linker-") as directory:
+            work = Path(directory)
+            (work / "fixture.S").write_text(assembly, encoding="ascii")
+            (work / "nrf52_common.ld").write_text(common, encoding="ascii")
+            subprocess.run([compiler, "-c", str(work / "fixture.S"), "-o", str(work / "fixture.o")],
+                           check=True, capture_output=True, text=True, timeout=30)
+            for suffix in ("v6", "v7", "v6_sd_ota", "v6_mota64", "v7_mota64"):
+                with self.subTest(suffix=suffix):
+                    source = (ROOT / "boards" / f"nrf52840_s140_{suffix}.ld").read_text()
+                    # Native tools suffice: omit only the ARM C library group;
+                    # every production MEMORY/SECTIONS/ASSERT is kept verbatim.
+                    source = re.sub(r"^GROUP\([^\n]*\)\s*$", "", source, flags=re.M)
+                    (work / "fixture.ld").write_text(source, encoding="ascii")
+                    linked = subprocess.run([linker, "-T", "fixture.ld", "fixture.o", "-o", "fixture.elf"],
+                                            cwd=work, text=True, capture_output=True, timeout=30)
+                    self.assertEqual(linked.returncode, 0, linked.stdout + linked.stderr)
+                    output = subprocess.check_output([nm, str(work / "fixture.elf")], text=True)
+                    symbols = {name: int(value, 16) for value, _kind, name in
+                               (line.split() for line in output.splitlines())}
+                    self.assertGreaterEqual(symbols["__data_start__"], 0x20006050)
+                    if suffix in ("v6", "v7"):
+                        self.assertNotIn("__mota_sd_auth_start__", symbols)
+                        self.assertNotIn("__mota_sd_auth_end__", symbols)
+                    else:
+                        self.assertEqual(symbols["__mota_sd_auth_start__"], 0x20006008)
+                        self.assertEqual(symbols["__mota_sd_auth_end__"], 0x20006050)
+
+    def test_sd_authorization_has_explicit_reserved_boundaries(self):
+        for suffix in ("v6_sd_ota", "v6_mota64", "v7_mota64"):
+            with self.subTest(suffix=suffix):
+                path = ROOT / "boards" / f"nrf52840_s140_{suffix}.ld"
+                regions = memory_regions(path)
+                source = path.read_text(encoding="utf-8")
+                self.assertEqual(regions["RAM"][0], 0x20006050)
+                self.assertEqual(regions["PERSISTENT_RAM"], (0x20006000, 80))
+                self.assertIn("__mota_sd_auth_start__ = ", source)
+                self.assertIn("__mota_sd_auth_end__ = ", source)
+                self.assertIn("ASSERT(ORIGIN(RAM) >= __mota_sd_auth_end__,", source)
+                if suffix == "v6_sd_ota":
+                    self.assertEqual(regions["RAM"][1], 0x20040000 - 0x20006050)
+                    self.assertIn("ASSERT(__mota_sd_auth_start__ == 0x20006008,", source)
+                    self.assertIn("ASSERT(__mota_sd_auth_end__ == 0x20006050,", source)
+                else:
+                    self.assertIn("__mota_sd_auth_start__ = __mota_hybrid_handoff_start__;", source)
+                    self.assertIn("__mota_sd_auth_end__ = __mota_hybrid_handoff_end__;", source)
+        for version in ("v6", "v7"):
+            source = (ROOT / "boards" / f"nrf52840_s140_{version}.ld").read_text()
+            self.assertNotIn("__mota_sd_auth_", source)
+
     def test_v6_and_v7_maps_match_runtime_handoff_abi(self):
         handoff = ROOT / "src" / "helpers" / "ota" / "OtaHybridHandoff.h"
         layout = ROOT / "src" / "helpers" / "ota" / "OtaFlashLayout_nrf52.h"

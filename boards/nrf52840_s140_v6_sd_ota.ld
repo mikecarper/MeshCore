@@ -24,8 +24,19 @@ SECTIONS
     . = ALIGN(4);
   } > PERSISTENT_RAM
 
+  __mota_sd_auth_start__ = ADDR(.persistent) + SIZEOF(.persistent);
+  __mota_sd_auth_end__ = ORIGIN(PERSISTENT_RAM) + LENGTH(PERSISTENT_RAM);
+
+  ASSERT(ADDR(.persistent) == 0x20006000,
+         "SD OTA retained clock prefix start must remain fixed")
   ASSERT(SIZEOF(.persistent) == 8,
          "MeshTower SD OTA retained clock prefix must remain exactly 8 bytes")
+  ASSERT(__mota_sd_auth_start__ == 0x20006008,
+         "SD OTA authorization start must remain fixed")
+  ASSERT(__mota_sd_auth_end__ == 0x20006050,
+         "SD OTA authorization end must remain fixed")
+  ASSERT(ORIGIN(RAM) >= __mota_sd_auth_end__,
+         "application RAM must not overlap SD OTA authorization")
 
   . = ALIGN(4);
   .svc_data :

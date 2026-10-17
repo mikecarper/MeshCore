@@ -9,6 +9,7 @@ from pathlib import Path
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 from intelhex import IntelHex
 
@@ -73,6 +74,68 @@ def stamp(action, path, env):
 
 
 class Nrf52EndfHexTests(unittest.TestCase):
+    def test_explicit_legacy_rak_sd_stamps_actual_flash_only_adaptive_capability(self):
+        with tempfile.TemporaryDirectory() as directory:
+            env = BuildEnvironment(ml.NRF52_APP_BASE_S140_V6)
+            env["CPPDEFINES"].extend(["RAK_4631", "OTA_SD_STORE", "OTA_RAK15002_SD_STORE",
+                                      "OTA_RAK_AUTO_STORE", "OTA_QSPI_STORE", "OTA_FLASH_STORE"])
+            env.linker = str(ROOT / "boards/nrf52840_s140_v6_sd_ota.ld")
+            env["LDSCRIPT_PATH"] = env.linker
+            load_post_script(env)
+            path = Path(directory) / "legacy.hex"
+            image = IntelHex()
+            image.frombytes(bytes(range(256)), offset=env.app_base)
+            image.write_hex_file(str(path))
+            with mock.patch.dict(os.environ, {"MESHCORE_NRF52_LEGACY_FLASH_OTA": "1"}):
+                stamp(env.post_actions["$BUILD_DIR/${PROGNAME}.hex"], path, env)
+            layout = ml.parse_nrf52_layout(read_application(path))
+            self.assertEqual(layout, ml.Nrf52Layout(
+                env.app_base, ml.NRF52_APP_END, ml.NRF52_APP_END, ml.NRF52_LAYOUT_FLAG_AUTO_STORE))
+            self.assertTrue(layout.auto_store)
+            self.assertFalse(layout.hybrid_ram)
+            self.assertFalse(layout.external_backed)
+
+    def test_legacy_adaptive_exception_rejects_wrong_flags_maps_and_flash_geometry(self):
+        base_flags = ["RAK_4631", "OTA_SD_STORE", "OTA_RAK15002_SD_STORE",
+                      "OTA_RAK_AUTO_STORE", "OTA_QSPI_STORE", "OTA_FLASH_STORE"]
+        cases = (
+            ("not_explicit", {}, {}, "RAK adaptive OTA requires"),
+            ("missing_qspi", {"remove": "OTA_QSPI_STORE"}, {"MESHCORE_NRF52_LEGACY_FLASH_OTA": "1"}, "both stores"),
+            ("missing_flash", {"remove": "OTA_FLASH_STORE"}, {"MESHCORE_NRF52_LEGACY_FLASH_OTA": "1"}, "both stores"),
+            ("seeder", {"add": ["OTA_SEEDER_ONLY"]}, {"MESHCORE_NRF52_LEGACY_FLASH_OTA": "1"}, "requires a receiver"),
+            ("wrong_active", {"active": "boards/nrf52840_s140_v6.ld"}, {"MESHCORE_NRF52_LEGACY_FLASH_OTA": "1"}, "active linker"),
+            ("wrong_configured", {"configured": "boards/nrf52840_s140_v6.ld"}, {"MESHCORE_NRF52_LEGACY_FLASH_OTA": "1"}, "configured linker"),
+            ("wrong_softdevice", {"base": ml.NRF52_APP_BASE_S140_V7}, {"MESHCORE_NRF52_LEGACY_FLASH_OTA": "1"}, "exact S140 v6"),
+            ("wrong_flash_end", {"end": ml.NRF52_EXTRAFS_START}, {"MESHCORE_NRF52_LEGACY_FLASH_OTA": "1"}, "exact S140 v6"),
+            ("hybrid_only", {"add": ["OTA_HYBRID_RAM_STORE"]}, {"MESHCORE_NRF52_LEGACY_FLASH_OTA": "1"}, "enabled together"),
+            ("hybrid_pair", {"add": ["OTA_HYBRID_RAM_STORE", "OTA_INTERNAL_BOOTLOADER_UPDATE"],
+                             "configured": str(ROOT / "boards/nrf52840_s140_v6_mota64.ld"),
+                             "active": str(ROOT / "boards/nrf52840_s140_v6_mota64.ld")},
+             {"MESHCORE_NRF52_LEGACY_FLASH_OTA": "1"}, "without hybrid RAM"),
+            ("unmarked_sd_role", {"remove": "OTA_RAK15002_SD_STORE"}, {"MESHCORE_NRF52_LEGACY_FLASH_OTA": "1"}, "both SD and QSPI"),
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "legacy.hex"
+            for name, changes, process_env, error in cases:
+                with self.subTest(case=name):
+                    env = BuildEnvironment(changes.get("base", ml.NRF52_APP_BASE_S140_V6))
+                    env["CPPDEFINES"].extend(base_flags)
+                    if "remove" in changes:
+                        env["CPPDEFINES"].remove(changes["remove"])
+                    env["CPPDEFINES"].extend(changes.get("add", []))
+                    env.maximum_size = changes.get("end", ml.NRF52_APP_END) - env.app_base
+                    env.linker = changes.get("configured", str(ROOT / "boards/nrf52840_s140_v6_sd_ota.ld"))
+                    env["LDSCRIPT_PATH"] = changes.get("active", str(ROOT / "boards/nrf52840_s140_v6_sd_ota.ld"))
+                    load_post_script(env)
+                    image = IntelHex()
+                    image.frombytes(bytes(range(256)), offset=env.app_base)
+                    image.write_hex_file(str(path))
+                    before = path.read_bytes()
+                    with mock.patch.dict(os.environ, process_env, clear=True):
+                        with self.assertRaisesRegex(RuntimeError, error):
+                            stamp(env.post_actions["$BUILD_DIR/${PROGNAME}.hex"], path, env)
+                    self.assertEqual(path.read_bytes(), before)
+
     def test_hex_hook_appends_valid_identity_and_preserves_other_segments(self):
         for app_base in (ml.NRF52_APP_BASE_S140_V6, ml.NRF52_APP_BASE_S140_V7):
             with self.subTest(app_base=hex(app_base)), tempfile.TemporaryDirectory() as tmp:

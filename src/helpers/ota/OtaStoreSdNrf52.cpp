@@ -35,16 +35,35 @@ namespace ota {
 
 namespace {
 
+#if !defined(OTA_SEEDER_ONLY)
+// Only qualified receiver linkers reserve this fixed bootloader ABI. Ordinary
+// Companion maps place initialized application globals at the same address.
+// Weak, absent markers therefore mean no ownership, not permission to write.
+extern "C" {
+extern uint8_t __mota_sd_auth_start__[] __attribute__((weak));
+extern uint8_t __mota_sd_auth_end__[] __attribute__((weak));
+}
+
+static bool sd_auth_record_reserved() {
+  return reinterpret_cast<uintptr_t>(__mota_sd_auth_start__) == MOTA_SD_AUTH_ADDR &&
+      reinterpret_cast<uintptr_t>(__mota_sd_auth_end__) == MOTA_SD_AUTH_ADDR + MOTA_SD_AUTH_LEN;
+}
+#endif
+
 static void clear_sd_auth_record() {
+#if !defined(OTA_SEEDER_ONLY)
+  if (!sd_auth_record_reserved()) return;
   volatile uint8_t* const retained =
       reinterpret_cast<volatile uint8_t*>(MOTA_SD_AUTH_ADDR);
   for (uint32_t i = 0; i < MOTA_SD_AUTH_LEN; ++i) retained[i] = 0;
   __DMB();
   __DSB();
+#endif
 }
 
 #if !defined(OTA_SEEDER_ONLY)
 static bool publish_sd_auth_record(const uint8_t record[MOTA_SD_AUTH_LEN]) {
+  if (!sd_auth_record_reserved()) return false;
   volatile uint8_t* const retained =
       reinterpret_cast<volatile uint8_t*>(MOTA_SD_AUTH_ADDR);
   // Invalidate magic first, then publish the body and magic last. A reset at any
@@ -74,7 +93,8 @@ OtaStoreSdNrf52::OtaStoreSdNrf52()
 {
   // If an earlier reset did not enter OTAFIX, stale authorization must not arm a
   // later unrelated reboot. OTAFIX runs before application constructors and
-  // consumes a valid record on the intended apply boot.
+  // consumes a valid record on the intended apply boot. Source-only stores
+  // never own that record, and receivers require a linker-reserved region.
   clear_sd_auth_record();
 }
 

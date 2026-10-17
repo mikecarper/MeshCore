@@ -26,6 +26,7 @@ jobs:
         run: |
           python3 -m pip install unicorn==2.1.4
           python3 -B scripts/check_nrf52_companion_crypto.py .pio/build/RAK_4631_companion_radio_full/firmware.elf
+          python3 -B scripts/check_nrf52_companion_ota_workspace.py .pio/build/RAK_4631_companion_radio_full/firmware.elf
 
       - name: Qualify direct-OTA-only XIAO Full Companion
         # This configuration has no Meshtext/Ethernet application callbacks.
@@ -786,6 +787,8 @@ jobs:
           python3 -B test/test_ethernet_terminal_shutdown.py -v
           python3 -B test/test_rak_sd_receiver.py -v
           python3 -B test/test_rak15002_shared_spi.py -v
+          python3 -B test/test_ota_sd_auth_ownership.py -v
+          python3 -B test/test_nrf52_internal_bootloader_link.py -v
           python3 -B test/test_rak_nor_gpio_reservations.py -v
           python3 -B test/test_rak_companion_ethernet_worker.py -v
           python3 -B test/test_rak_sd_context_handoff.py -v
