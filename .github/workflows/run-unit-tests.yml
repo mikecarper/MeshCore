@@ -809,6 +809,7 @@ jobs:
           python3 -B test/test_rgb_led_rollover.py -v
           python3 -B test/test_display_power.py
           python3 -B test/test_legacy_ui_version_bounds.py -v
+          python3 -B test/test_infrastructure_ui_version.py -v
           python3 -B test/test_ssd1306_power.py -v
           python3 -B test/test_companion_inbox.py
           python3 -B test/test_heltec_r8_external_power.py

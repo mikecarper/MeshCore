@@ -350,17 +350,17 @@ void UITask::begin(NodePrefs* node_prefs, const char* build_date, const char* fi
   user_btn.begin();
 #endif
 
-  // strip off dash and commit hash by changing dash to null terminator
+  // strip off dash and commit hash without allocating a mutable version copy
   // e.g: v1.2.3-abcdef -> v1.2.3
-  char *version = strdup(firmware_version);
-  char *dash = strchr(version, '-');
-  if(dash){
-    *dash = 0;
+  size_t version_len = 0;
+  while (version_len < sizeof(_version_info) - 1
+      && firmware_version[version_len] && firmware_version[version_len] != '-') {
+    ++version_len;
   }
 
   // v1.2.3 (1 Jan 2025)
-  snprintf(_version_info, sizeof(_version_info), "%s (%s)", version, build_date);
-  free(version);
+  snprintf(_version_info, sizeof(_version_info), "%.*s (%s)",
+           static_cast<int>(version_len), firmware_version, build_date);
 }
 
 void UITask::resetRadioProfileDisplayPage() {
