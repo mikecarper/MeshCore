@@ -391,6 +391,7 @@ struct TestDisplay {
 struct UITask {
   TestDisplay* _display = &display;
   uint32_t _next_refresh = 0, _powering_off_at = 0, _next_read = 0;
+  uint32_t _last_refresh = 0, _last_read = 0; // Sensor uses elapsed-time anchors.
   int _prevBtnState = HIGH;
   void resetRadioProfileDisplayPage() {}
   void advanceRadioProfileDisplayPage() {}
@@ -451,6 +452,7 @@ int main() {
     g_mock_millis += MOMENTARY_BUTTON_MULTI_CLICK_MS;
     ui.loop();
     require(display.isOn(), "real UITask click did not wake the screen");
+@SENSOR_REFRESH_CHECK@
     require(!user_btn.needsPolling() && roleCanPowerSave(),
             "completed gesture permanently disabled power saving");
     timing_radio.tx = false;
@@ -522,6 +524,10 @@ class Esp32UsbSleepTest(unittest.TestCase):
                     harness = harness.replace("@BUTTON_CONSTRUCTOR@", constructor)
                     harness = harness.replace("@UI_BUTTON@", ui)
                     harness = harness.replace("@ROLE_SLEEP_GUARD@", guard)
+                    harness = harness.replace("@SENSOR_REFRESH_CHECK@",
+                        '    require(ui._last_refresh == millis() - 1000u, '
+                        '"sensor button wake did not rearm refresh");'
+                        if role == "simple_sensor" else "")
                     cases = [("profile", harness, defines, None)]
                     if family == "heltec_v4" and role == "simple_repeater":
                         # Removing the actual inherited flag reproduces the
@@ -536,6 +542,10 @@ class Esp32UsbSleepTest(unittest.TestCase):
                             "_display->wake(mesh::ui::DisplayWake::Button);",
                             "(void)0;"), defines,
                             "real UITask click did not wake the screen"))
+                    if role == "simple_sensor":
+                        cases.append(("missing-sensor-refresh", harness.replace(
+                            "_last_refresh = millis() - 1000u;", "(void)0;"), defines,
+                            "sensor button wake did not rearm refresh"))
                     for name, text, selected, expected_error in cases:
                         with self.subTest(profile=section, control=name):
                             stem = Path(directory) / f"{family}-{suffix}-{name}"
