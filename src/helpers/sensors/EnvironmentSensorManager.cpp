@@ -429,7 +429,6 @@ class RAK12500LocationProvider : public LocationProvider {
   int _sats = 0;
   long _epoch = 0;
   bool _fix = false;
-  bool _fresh_position_requested = false;
   mesh::RTCClock* _clock = NULL;
   unsigned long _next_time_check = 0;
   unsigned long _last_time_sync = 0;
@@ -449,7 +448,6 @@ public:
   bool isValid() override { return _fix; }
   bool clearPositionFix() override {
     _fix = false;
-    _fresh_position_requested = true;
     _next_time_check = 0;
     ublox_GNSS.flushPVT();
     return true;
@@ -466,7 +464,6 @@ public:
     _sats = 0;
     _epoch = 0;
     _fix = false;
-    _fresh_position_requested = false;
     _fresh_time_sync_required = false;
     _next_time_check = 0;
     _last_time_sync = 0;
@@ -483,17 +480,13 @@ public:
     if ((int32_t)(now - _next_time_check) >= 0) {
       _next_time_check = now + 1000;
 
-      if (_fresh_position_requested || _fresh_time_sync_required) {
-        // The library's scalar getters can return retained data even when
-        // their implicit PVT poll fails. Require a successfully received PVT
-        // before exposing a position for this tracker acquisition.
-        ublox_GNSS.flushPVT();
-        if (!ublox_GNSS.getPVT(8)) {
-          _fix = false;
-          _valid_time_samples = 0;
-          return;
-        }
-        _fresh_position_requested = false;
+      // Scalar getters return retained data even if their implicit poll fails.
+      // Require a received PVT in normal operation as well as tracker windows.
+      ublox_GNSS.flushPVT();
+      if (!ublox_GNSS.getPVT(8)) {
+        _fix = false;
+        _valid_time_samples = 0;
+        return;
       }
       if (ublox_GNSS.getGnssFixOk(8)) {
         _fix = true;

@@ -266,9 +266,12 @@ struct Gnss {
 @RAK_PROVIDER@;
 int main(){
  now_ms=1;RAK12500LocationProvider provider;
+ ublox_GNSS.available=true; // Establish the retained cache with a received PVT.
  provider.loop();assert(provider.isValid());
+ const unsigned flushes=ublox_GNSS.flushes;
  assert(provider.clearPositionFix());assert(!provider.isValid());
- assert(ublox_GNSS.flushes==1&&ublox_GNSS.stale);
+ assert(ublox_GNSS.flushes==flushes+1&&ublox_GNSS.stale);
+ ublox_GNSS.available=false;
  provider.loop();assert(!provider.isValid());
  ublox_GNSS.available=true;now_ms+=1000;
  provider.loop();assert(provider.isValid()&&provider.getLatitude()==47610000);

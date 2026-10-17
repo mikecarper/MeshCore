@@ -51,10 +51,10 @@ class MicroNMEALocationProvider : public LocationProvider {
     RefCountedDigitalPin* _peripher_power;
     int8_t _claims = 0;
     bool _started = false;
+    uint8_t time_valid = 0;
     int _pin_reset;
     int _pin_en;
     unsigned long next_check = 0;
-    long time_valid = 0;
     unsigned long _last_time_sync = 0;
 
 #ifdef GPS_L76K
@@ -81,6 +81,43 @@ class MicroNMEALocationProvider : public LocationProvider {
     bool _nmea_seen = false;
     bool _fix_seen = false;
     bool _fresh_clock_sample = false;
+    uint32_t _clock_sample_epoch = 0;
+    uint32_t _clock_sample_at = 0;
+    // Permit one validation period plus scheduling jitter, not retained fixes
+    // across receiver sleep or a paused foreground loop.
+    static constexpr uint32_t ClockSampleMaxAgeMillis = 2000;
+
+    static bool hasCompleteRmcClockFields(const char* sentence) {
+        // MicroNMEA retains previous date/time fields when an RMC leaves them
+        // empty, and its numeric parser assumes complete digit fields. Check
+        // the current sentence before treating its parsed UTC as fresh.
+        const char* time = strchr(sentence, ',');
+        if (time == NULL) return false;
+        ++time;
+        const char* end = strchr(time, ',');
+        if (end == NULL || end - time < 6) return false;
+        for (unsigned i = 0; i < 6; ++i) {
+            if (time[i] < '0' || time[i] > '9') return false;
+        }
+        if (end - time > 6) {
+            if (time[6] != '.' || end - time == 7) return false;
+            for (const char* digit = time + 7; digit < end; ++digit) {
+                if (*digit < '0' || *digit > '9') return false;
+            }
+        }
+
+        // UTC date is RMC field 9, after status, position, speed and course.
+        const char* date = end + 1;
+        for (unsigned field = 2; field < 9; ++field) {
+            while (*date != '\0' && *date != ',' && *date != '*') ++date;
+            if (*date != ',') return false;
+            ++date;
+        }
+        for (unsigned i = 0; i < 6; ++i) {
+            if (date[i] < '0' || date[i] > '9') return false;
+        }
+        return date[6] == ',' || date[6] == '*';
+    }
 
     static uint32_t ageMs(unsigned long timestamp) {
         return (uint32_t)(millis() - timestamp);
@@ -177,7 +214,12 @@ public :
         return _pin_en;
     }
 
-    void syncTime() override { nmea.clear(); LocationProvider::syncTime(); }
+    void syncTime() override {
+        nmea.clear();
+        time_valid = 0;
+        _fresh_clock_sample = false;
+        LocationProvider::syncTime();
+    }
     void beginFreshTimeSync() override {
         time_valid = 0;
         _fresh_clock_sample = false;
@@ -196,6 +238,8 @@ public :
     bool isValid() override { return nmea.isValid(); }
     bool clearPositionFix() override {
         nmea.clear();
+        time_valid = 0;
+        _fresh_clock_sample = false;
         // Discard only bytes already queued before the acquisition begins.
         // Snapshot the count so a noisy live UART cannot make this unbounded.
         int buffered = _gps_serial->available();
@@ -281,7 +325,21 @@ public :
                         (strcmp(message_id, "GGA") == 0 || strcmp(message_id, "RMC") == 0)) {
                         _last_fix_ms = millis();
                         _fix_seen = true;
-                        _fresh_clock_sample = true;
+                    }
+                    // GGA supplies only time-of-day. Never combine it with a
+                    // retained RMC date for a new clock write, especially at
+                    // midnight. Keep the complete UTC sample with its age.
+                    if (parsed && strcmp(message_id, "RMC") == 0) {
+                        const long epoch = isValid()
+                            && hasCompleteRmcClockFields(nmea.getSentence())
+                                ? getTimestamp() : 0;
+                        _fresh_clock_sample = epoch > 0;
+                        if (_fresh_clock_sample) {
+                            _clock_sample_epoch = static_cast<uint32_t>(epoch);
+                            _clock_sample_at = millis();
+                        } else {
+                            time_valid = 0;
+                        }
                     }
                 } else {
                     _nmea_checksum_bad++;
@@ -291,25 +349,30 @@ public :
 
         if (!isValid()) time_valid = 0;
 
-        if ((long)(millis() - next_check) > 0) {
-            next_check = millis() + 1000;
+        const uint32_t now = millis();
+        if (static_cast<int32_t>(now - static_cast<uint32_t>(next_check)) > 0) {
+            next_check = now + 1000UL;
             // Re-enable time sync periodically when GPS has valid fix
             if (!_time_sync_needed && _clock != NULL
                 && static_cast<uint32_t>(millis() - _last_time_sync)
                     >= periodicTimeSyncIntervalMillis()) {
                 _time_sync_needed = true;
             }
-            const long timestamp = getTimestamp();
-            if (isValid() && satellitesCount() >= 5 && timestamp > 0
-                && (!_fresh_time_sync_required || _fresh_clock_sample)) {
-                time_valid++;
-            } else {
+            const bool fresh_clock = _fresh_clock_sample
+                && static_cast<uint32_t>(now - _clock_sample_at) <= ClockSampleMaxAgeMillis;
+            if (!isValid() || satellitesCount() < 5) {
+                time_valid = 0;
+            } else if (fresh_clock) {
+                if (time_valid < 3) ++time_valid;
+            } else if (_fresh_time_sync_required) {
+                // Tracker acquisitions retain their consecutive-sample rule.
+                // Normal receivers can report more slowly than this 1s poll.
                 time_valid = 0;
             }
             _fresh_clock_sample = false;
-            if (_time_sync_needed && time_valid > 2) {
+            if (_time_sync_needed && time_valid >= 3 && fresh_clock) {
                 if (_clock != NULL) {
-                    _clock->setCurrentTime(timestamp);
+                    _clock->setCurrentTime(_clock_sample_epoch);
                     markTimeSyncApplied();
                     _time_sync_needed = false;
                     _last_time_sync = millis();

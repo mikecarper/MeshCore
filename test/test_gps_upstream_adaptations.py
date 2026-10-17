@@ -71,7 +71,7 @@ public:
  bool process(char c){if(c=='\n'){valid=true;return true;}return false;}
  static bool testChecksum(const char*){return true;}
  static void sendSentence(Stream&,const char*){}
- const char* getSentence()const{return "$GPRMC,valid*00";}
+ const char* getSentence()const{return "$GPRMC,120000.00,A,4807.038,N,01131.000,E,0.0,0.0,021026,,,A*00";}
  const char* getMessageID()const{return "RMC";}
  bool isValid()const{return valid;}
  long getLatitude()const{return 47610000;}
@@ -191,7 +191,7 @@ int main(){
 
  // Successful production NMEA sync marks monotonic time and leaves the edge
  // notification available for existing mesh clock consumers.
- now_ms=1100;gps.loop();now_ms=2200;gps.loop();
+ now_ms=1100;uart.fix();gps.loop();now_ms=2200;uart.fix();gps.loop();
  assert(!gps.waitingTimeSync());
  assert(gps.consumeTimeSyncApplied());assert(!gps.consumeTimeSyncApplied());
  now_ms=62199;assert(!gps.requestTimeSync(60));
@@ -573,7 +573,12 @@ int main(){
         self.assertIn("resetTimeSyncRequestState();", rak_provider)
         # Explicit CLI sync remains forced; scheduled power cycles honor the
         # configured hourly cadence, with force-sync retained for legacy0.
-        self.assertIn("void syncTime() override { nmea.clear(); LocationProvider::syncTime(); }", provider)
+        force_sync = extract_braced(provider, "void syncTime() override")
+        self.assertIn("nmea.clear();", force_sync)
+        self.assertIn("time_valid = 0;", force_sync)
+        self.assertIn("_fresh_clock_sample = false;", force_sync)
+        self.assertLess(force_sync.index("nmea.clear();"),
+                        force_sync.index("LocationProvider::syncTime();"))
         self.assertIn("_location->syncTimeForPowerSavingCycle();", extract_braced(rak, "void EnvironmentSensorManager::armGpsPowerSavingCycle()"))
 
 
