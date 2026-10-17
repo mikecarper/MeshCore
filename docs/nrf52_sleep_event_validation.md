@@ -77,8 +77,8 @@ was added.
 The test device was a RAK3401/nRF52840 with an external RAK13302 SX1262 on
 Mercerwood. Tests used 908.5 MHz, BW250, SF9, CR5, power saving on, manual
 RXPS 30000/10000 us, AGC 0, TX power 2, no forwarding/adverts and USB watchdog
-off. A single private benchmark binary allowed changes without reflashing
-between the decisive controls. Benchmark controls are not production features.
+off. Runtime switches in private benchmark binaries allowed same-binary paired
+controls without reflashing. Benchmark controls are not production features.
 
 | Control | Capture | Time-weighted sleeping observations |
 | --- | --- | --- |
@@ -89,7 +89,7 @@ between the decisive controls. Benchmark controls are not production features.
 | No late SVC, non-yielding USB poll, without early clear | 30 s | 0% |
 | Early clear, no late SVC, non-yielding USB poll | 90 s | 76.7% |
 | Never-DTR client held open, old empty USB poll | 30 s | 0% |
-| Same client held open, non-yielding USB poll | 30 s | 82.8% |
+| Same client held open, non-yielding USB poll | 30 s | 82.9% |
 
 The first production candidate restored sleeping observations with SoftDevice
 off (6522/8331 samples, about 78% over 90 s), but not with SoftDevice on
@@ -120,8 +120,9 @@ The final frozen SDK-on diagnostics had 281272 completed late waits, only
 than the capture; those counters are not its sleep-residency measurement.
 All final samples had the same valid debugger/clock state described below.
 
-The never-DTR client successfully issued `get powersaving` and held the same
-file descriptor open across both captures. Early clearing and removal of the
+In the controlled old/new USB-poll pair, the never-DTR client successfully
+issued `get powersaving` and held the same file descriptor open across both
+captures. Early clearing and removal of the
 late state SVC were held constant in that pair, isolating the USB poll change.
 A separate unsafe late-double-wait
 control also slept, but was rejected because of the lost-work race above.
@@ -143,6 +144,22 @@ GPS, screen, regulator and USB clock loads require matched electrical tests.
 In particular the T096 FEM/LNA default differs from EasySkyMesh; this RAK
 cannot measure that board-specific load. No RF delivery or long battery-life
 claim follows from these captures.
+
+## Sensor tracker wake timer
+
+A separate tracker-mode issue posted `xTimerChangePeriod()` on every eligible
+loop. Waking the higher-priority timer daemon recreates a scheduler event just
+before the late wait. The helper now reuses an active timer whose remaining
+time is nonzero and no later than the requested wake. Its active/expiry/tick
+snapshot is protected by a short FreeRTOS critical section. Dormant, expired
+or too-late timers are rearmed outside that section; allocation/queue failure
+still keeps the node polling. No late event clearing was added.
+
+Host tests execute the actual helper, including the original repeated-rearm
+negative control, deadline changes, one-shot expiration, queue failures, tick
+wrap and late IRQs. T1000e and RAK3401 Sensor builds pass. This timer follow-up
+has not been physically qualified in GPS tracker mode; the RAK captures above
+are repeater tests.
 
 See [power-saving diagnostics](power_saving_diagnostics.md) for the permanent
 on-demand CLI counters. Counters remain off by default. Wait-call counters

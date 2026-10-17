@@ -127,12 +127,21 @@ TIMER = r'''
 #include <cassert>
 #include <helpers/PowerSavingDiagnostics.h>
 using TimerHandle_t=void*;
-bool allocate=true,queue_ok=true;
+using TickType_t=uint32_t;
+bool allocate=true,queue_ok=true,active=false;
+TickType_t timer_now=0,expiry=0;
 unsigned period_ms=0,begin_calls=0,queue_calls=0;
-constexpr int pdPASS=1;
+constexpr int pdPASS=1,pdFALSE=0;
+void taskENTER_CRITICAL(){}
+void taskEXIT_CRITICAL(){}
+int xTimerIsTimerActive(TimerHandle_t){return active;}
+TickType_t xTimerGetExpiryTime(TimerHandle_t){assert(active);return expiry;}
+TickType_t xTaskGetTickCount(){return timer_now;}
 uint32_t pdMS_TO_TICKS(uint32_t value){return value/10;}
 int xTimerChangePeriod(TimerHandle_t handle,uint32_t ticks,int wait){
- assert(handle&&wait==0);++queue_calls;period_ms=ticks*10;return queue_ok?pdPASS:0;
+ assert(handle&&wait==0);++queue_calls;
+ if(!queue_ok)return 0;
+ period_ms=ticks*10;expiry=timer_now+ticks;active=true;return pdPASS;
 }
 class SoftwareTimer {
  TimerHandle_t handle=nullptr;
@@ -289,6 +298,33 @@ class SensorTrackerSleepTest(unittest.TestCase):
                         ("NRF52_PLATFORM=1", "MESH_ENABLE_SENSOR_TRACKER=0"),
                         ("ESP32_PLATFORM=1", "MESH_ENABLE_SENSOR_TRACKER=1"),
                         ("RP2040_PLATFORM=1", "MESH_ENABLE_SENSOR_TRACKER=1")):
+            with self.subTest(defines=defines):
+                self.compile_run(source, defines)
+
+    def test_actual_wake_timer_reuse_rearm_failures_wrap_and_late_irqs(self):
+        main = (ROOT / "examples/simple_sensor/main.cpp").read_text(encoding="ascii")
+        arm = body(main, "static bool armTrackerSleepWake(")
+        fixture = (ROOT / "test/fixtures/sensor_tracker_wake_timer.cpp").read_text(encoding="ascii")
+        self.compile_run(fixture.replace("@ARM@", arm))
+
+    def test_negative_control_reposting_timer_command_prevents_idle_sleep(self):
+        main = (ROOT / "examples/simple_sensor/main.cpp").read_text(encoding="ascii")
+        arm = body(main, "static bool armTrackerSleepWake(")
+        start = arm.index("  // Reposting an unchanged timer command")
+        end = arm.index("  // Dormant/expired timers", start)
+        old = arm[:start] + arm[end:]
+        fixture = (ROOT / "test/fixtures/sensor_tracker_wake_timer.cpp").read_text(encoding="ascii")
+        with self.assertRaisesRegex(AssertionError,
+                                   "idle timer poll must not requeue and relatch scheduler event"):
+            self.compile_run(fixture.replace("@ARM@", old))
+
+    def test_wake_timer_has_no_dependency_when_tracker_or_platform_is_disabled(self):
+        main = (ROOT / "examples/simple_sensor/main.cpp").read_text(encoding="ascii")
+        start = main.index("#if defined(NRF52_PLATFORM) && MESH_ENABLE_SENSOR_TRACKER\n")
+        end = main.index("\n#endif", start) + len("\n#endif")
+        source = main[start:end] + "\nint main() {}\n"
+        for defines in (("NRF52_PLATFORM=1", "MESH_ENABLE_SENSOR_TRACKER=0"),
+                        ("ESP32_PLATFORM=1", "MESH_ENABLE_SENSOR_TRACKER=1")):
             with self.subTest(defines=defines):
                 self.compile_run(source, defines)
 

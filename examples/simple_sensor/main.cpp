@@ -19,12 +19,34 @@ static void trackerWakeCallback(TimerHandle_t) { }
 // SYSTEMON event sleep has no built-in deadline. Arm a real timer before
 // leaving the loop; allocation/queue failure keeps polling instead of hanging.
 static bool armTrackerSleepWake(uint32_t seconds) {
+  if (seconds == 0 || seconds > 30) return false;
   if (!tracker_wake_timer.getHandle()) {
     tracker_wake_timer.begin(1000, trackerWakeCallback, nullptr, false);
   }
   const TimerHandle_t handle = tracker_wake_timer.getHandle();
-  if (!handle || seconds == 0 || seconds > 30) return false;
-  return xTimerChangePeriod(handle, pdMS_TO_TICKS(seconds * 1000UL), 0) == pdPASS;
+  if (!handle) return false;
+  const TickType_t requested_ticks = pdMS_TO_TICKS(seconds * 1000UL);
+  if (requested_ticks == 0) return false;
+
+  // Reposting an unchanged timer command wakes the higher-priority timer task
+  // and leaves a scheduler event immediately before every CPU sleep attempt.
+  // An existing earlier wake is sufficient; do not keep postponing it.
+  bool wake_ready = false;
+  taskENTER_CRITICAL();
+  if (xTimerIsTimerActive(handle) != pdFALSE) {
+    // The compound snapshot must not race the one-shot becoming dormant:
+    // xTimerGetExpiryTime() is defined only while the timer is active.
+    const TickType_t expiry = xTimerGetExpiryTime(handle);
+    const TickType_t now = xTaskGetTickCount();
+    const TickType_t remaining = static_cast<TickType_t>(expiry - now);
+    wake_ready = remaining != 0 && remaining <= requested_ticks;
+  }
+  taskEXIT_CRITICAL();
+  if (wake_ready) return true;
+
+  // Dormant/expired timers need a fresh command even when the period matches.
+  // A failed queue send cannot promise an earlier deadline; keep polling.
+  return xTimerChangePeriod(handle, requested_ticks, 0) == pdPASS;
 }
 #endif
 
