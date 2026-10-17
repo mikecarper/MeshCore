@@ -29,11 +29,12 @@ static void configure(SensorMesh& mesh) {
   assert(mesh.alert1.text[0] == 0 && mesh.alert2.text[0] == 0);
   assert(!mesh.next_local_advert && !mesh.next_flood_advert);
 }
-static Packet* queueCheck(SensorMesh& mesh, bool gps = true) {
-  mesh.serviceTracker();
+static Packet* queueCheck(SensorMesh& mesh, bool gps = true, bool foreground = false) {
+  const auto service = [&]() { if (foreground) mesh.loop(); else mesh.serviceTracker(); };
+  service();
   assert(mesh.tracker_acquiring && !mesh.tracker_pending && sensors.pending);
   if (gps) sensors.fix(); else { sensors.pending = false; sensors.fresh = false; }
-  mesh.serviceTracker();
+  service();
   assert(!mesh.tracker_acquiring && mesh.tracker_pending && !mesh.tracker_sent);
   assert(mesh.pool.queued.size() == 1);
   assert(mesh.last_payload.size() == 4 + RequestLength);
@@ -162,6 +163,112 @@ static void cadence() {
   assert(response(mesh, Safe, 65535));
   assert(!mesh.tracker_awake_until && mesh.tracker_next_check == mesh.rtc.now + 1800);
   ++scenarios;
+}
+
+static void awakeExpiry() {
+  for (uint32_t started : {100U, UINT32_MAX - 60000U}) {
+    for (unsigned path = 0; path < 4; ++path) {
+      SensorMesh mesh; mesh.now_ms = started; configure(mesh);
+      assert(command(mesh, "set tracker.lost.interval 86400") == "OK");
+      queueCheck(mesh, true, true); transmitted(mesh); assert(response(mesh, Lost, 120));
+      const auto before = mesh.tracker;
+      const auto writes = mesh.fs.write_opens;
+      const uint32_t deadline = uint32_t(started + 120000U);
+      mesh.now_ms = deadline; mesh.rtc.now += 120;
+      mesh.loop();
+      assert(mesh.tracker_awake_until == deadline && mesh.trackerNeedsRadio());
+      assert(!mesh.tracker_radio_asleep); // Production expiry is strictly > 0.
+      if (path == 1) {
+        mesh.tracker_radio_asleep = mesh.radio.sleeping = true; mesh.available = false;
+      } else if (path == 2) mesh.radio.morse_tx = true;
+      else if (path == 3) mesh.radio.morse_rx = true;
+      const auto wakes = mesh.radio.wakes, loops = mesh._clock_sync.loops;
+      const auto cli_loops = mesh._cli.loops, base_loops = mesh.base_loops;
+      ++mesh.now_ms; mesh.loop();
+      assert(mesh._cli.loops == cli_loops + 1 && mesh.base_loops == base_loops + 1);
+      assert(!mesh.tracker_awake_until && "observed expiry must retire the tracker awake lease");
+      assert(mesh.trackerNeedsRadio() == (path >= 2) && mesh.radio.wakes == wakes);
+      assert(mesh.tracker.last_lost == Lost && mesh.tracker.generation == before.generation);
+      assert(mesh.tracker_next_check == mesh.rtc.now - 120 + 86400);
+      assert(mesh.fs.write_opens == writes && !mesh.tracker_pending && !mesh.tracker_acquiring);
+      if (path < 2) assert(mesh.tracker_radio_asleep && !mesh.available);
+      else assert(mesh._clock_sync.loops == loops); // Still defers optional Morse work.
+      // Observation of expiry, not a half-cycle without servicing, is the
+      // supported guarantee. A retained deadline used to become future again.
+      mesh.now_ms += 0x80000000U; mesh.loop();
+      assert(mesh.trackerNeedsRadio() == (path >= 2) && !mesh.tracker_awake_until);
+      assert(mesh.radio.wakes == wakes && mesh.tracker.last_lost == Lost);
+      mesh.radio.morse_tx = mesh.radio.morse_rx = false; mesh.loop();
+      assert(!mesh.trackerNeedsRadio() && mesh.tracker_radio_asleep);
+      ++scenarios;
+    }
+  }
+}
+
+static void awakeOwners() {
+  SensorMesh mesh; configure(mesh);
+  assert(command(mesh, "set tracker.lost.interval 86400") == "OK");
+  queueCheck(mesh, true, true); transmitted(mesh); assert(response(mesh, Lost, 120));
+  mesh.now_ms += 120001; mesh.rtc.now += 120; mesh.loop();
+  assert(!mesh.tracker_awake_until && mesh.tracker_radio_asleep);
+  const auto next = mesh.tracker_next_check;
+  // The actual local-command lease runs before the following foreground pass.
+  mesh.localConsoleLease(1); assert(!mesh.tracker_awake_until && mesh.tracker_radio_asleep);
+  mesh.localConsoleLease(0); mesh.loop();
+  assert(mesh.tracker_awake_until == uint32_t(mesh.now_ms + 120000));
+  assert(mesh.trackerNeedsRadio() && !mesh.tracker_radio_asleep && mesh.tracker_next_check == next);
+  // Renewal during CLI service must survive retirement of the preceding lease.
+  mesh.now_ms += 120001; mesh.rtc.now += 120; mesh._cli.local_command = true; mesh.loop();
+  assert(mesh.tracker_awake_until == uint32_t(mesh.now_ms + 120000) && mesh.trackerNeedsRadio());
+  bool* owners[] = {&mesh.board.usb, &mesh.board.ota, &mesh.board.test, &mesh.temporary,
+    &mesh.pending_ota, &mesh.dual, &mesh.saved_radio_apply_pending, &mesh._cli.active,
+    &mesh.queue_wake, &mesh.retry_wake, &mesh::test_logging_watchdog};
+  for (bool* owner : owners) {
+    *owner = true; mesh.tracker_awake_until = mesh.now_ms - 1; mesh.loop();
+    assert(!mesh.tracker_awake_until && mesh.trackerNeedsRadio() && !mesh.tracker_radio_asleep);
+    assert(mesh.tracker.last_lost == Lost && mesh.tracker_next_check == next);
+    *owner = false;
+  }
+  for (bool pending : {false, true}) {
+    mesh.tracker_next_check = mesh.rtc.now; mesh.loop();
+    assert(mesh.tracker_acquiring && sensors.pending);
+    if (pending) { sensors.fix(); mesh.loop(); transmitted(mesh); }
+    const auto tag = mesh.tracker_pending_tag;
+    mesh.tracker_awake_until = mesh.now_ms - 1; mesh.loop();
+    assert(!mesh.tracker_awake_until && mesh.trackerNeedsRadio() && !mesh.tracker_radio_asleep);
+    assert(mesh.tracker_pending == pending && mesh.tracker_acquiring == !pending);
+    assert(mesh.tracker_pending_tag == tag && mesh.tracker.last_lost == Lost);
+    if (pending) assert(response(mesh, Lost, 300));
+    else { mesh.tracker_acquiring = false; sensors.pending = false; }
+  }
+  mesh.loop(); assert(mesh.tracker_awake_until == uint32_t(mesh.now_ms + 300000));
+  ++scenarios;
+}
+
+static void awakeLongCadence() {
+  for (unsigned stayawake : {0U, 120U}) for (bool unknown : {false, true}) {
+    SensorMesh mesh; configure(mesh);
+    assert(command(mesh, "set tracker.lost.interval 86400") == "OK");
+    const uint32_t origin = mesh.rtc.now; uint64_t elapsed_ms = 0;
+    const auto advance = [&](uint64_t delta) {
+      elapsed_ms += delta; mesh.now_ms = uint32_t(100 + elapsed_ms);
+      mesh.rtc.now = origin + uint32_t(elapsed_ms / 1000);
+    };
+    queueCheck(mesh, true, true); transmitted(mesh); assert(response(mesh, Lost, stayawake));
+    advance(120001); mesh.loop();
+    assert(!mesh.trackerNeedsRadio() && mesh.tracker_radio_asleep);
+    for (unsigned day = 1; day <= 26; ++day) {
+      const uint64_t due_ms = uint64_t(mesh.tracker_next_check - origin) * 1000;
+      advance(due_ms - elapsed_ms); queueCheck(mesh, true, true); transmitted(mesh);
+      if (unknown && day == 1) assert(response(mesh, Unknown));
+      else { advance(20001); mesh.loop(); }
+      assert(!mesh.tracker_pending && !mesh.tracker_acquiring && mesh.tracker.last_lost == Lost);
+      mesh.loop();
+      assert(!mesh.trackerNeedsRadio() && mesh.tracker_radio_asleep
+          && "expired tracker awake lease must not revive after signed half-wrap");
+    }
+    ++scenarios;
+  }
 }
 
 static void timing() {
@@ -551,6 +658,9 @@ int main(int argc, char** argv) {
   assert(argc == 2); const std::string name = argv[1];
   if (name == "commands") commands();
   else if (name == "cadence") cadence();
+  else if (name == "awake-expiry") awakeExpiry();
+  else if (name == "awake-owners") awakeOwners();
+  else if (name == "awake-long") awakeLongCadence();
   else if (name == "timing") timing();
   else if (name == "identity") identityAndNonce();
   else if (name == "paths") paths();

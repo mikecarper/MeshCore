@@ -311,6 +311,46 @@ class SensorTrackerSleepTest(unittest.TestCase):
             with self.subTest(defines=defines):
                 self.compile_run(source, defines)
 
+    def test_actual_foreground_loop_without_tracker_has_no_tracker_dependencies(self):
+        sensor = (ROOT / "examples/simple_sensor/SensorMesh.cpp").read_text(encoding="ascii")
+        loop = extract_braced(sensor, "void SensorMesh::loop()")
+        boundary = "\n  if (next_flood_advert &&"
+        self.assertEqual(loop.count(boundary), 1)
+        loop = loop[:loop.index(boundary)] + "}\n"
+        policy = (ROOT / "src/helpers/MorseLoopPolicy.h").read_text(encoding="ascii")
+        source = r'''
+#include <Arduino.h>
+#include <cassert>
+namespace mesh {
+struct Radio {
+ bool tx=false,rx=false;
+ bool isMorseTxActive()const{return tx;}
+ bool isMorseRxActive()const{return rx;}
+};
+struct Mesh {unsigned base_loops=0;void loop(){++base_loops;}};
+@MORSE@
+}
+struct SensorMesh:mesh::Mesh {
+ mesh::Radio radio;mesh::Radio* _radio=&radio;
+ struct Service {unsigned loops=0;void loop(){++loops;}} _cli,_clock_sync;
+ void loop();
+};
+@LOOP@
+int main(){
+ SensorMesh mesh;
+ mesh.loop();assert(mesh._cli.loops==1&&mesh.base_loops==1&&mesh._clock_sync.loops==1);
+ mesh.radio.tx=true;mesh.loop();
+ assert(mesh._cli.loops==2&&mesh.base_loops==2&&mesh._clock_sync.loops==1);
+ mesh.radio.tx=false;mesh.radio.rx=true;mesh.loop();
+ assert(mesh._cli.loops==3&&mesh.base_loops==3&&mesh._clock_sync.loops==1);
+ mesh.radio.rx=false;mesh.loop();
+ assert(mesh._cli.loops==4&&mesh.base_loops==4&&mesh._clock_sync.loops==2);
+}
+'''
+        source = source.replace("@MORSE@", extract_braced(
+            policy, "inline bool morseTimingActive(")).replace("@LOOP@", loop)
+        self.compile_run(source, ("MESH_ENABLE_SENSOR_TRACKER=0",))
+
     def cross_layer_source(self, mutation=None):
         sensor = (ROOT / "examples/simple_sensor/SensorMesh.cpp").read_text(encoding="ascii")
         tracker = (ROOT / "examples/simple_sensor/Tracker.cpp").read_text(encoding="ascii")

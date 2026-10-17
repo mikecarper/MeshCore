@@ -119,7 +119,7 @@ public:
       : mesh::Mesh(radio, time, manager), clock(time), radio_driver(radio) { begin(); }
   RTC* getRTCClock() const { return const_cast<RTC*>(&rtc); }
   bool millisHasNowPassed(unsigned long timestamp) const {
-    return int32_t(clock.now - uint32_t(timestamp)) >= 0;
+    return int32_t(clock.now - uint32_t(timestamp)) > 0;
   }
   bool isAnyTempRadioActive() const { return false; }
   bool hasPendingOtaApply() const { return false; }

@@ -1492,6 +1492,11 @@ bool  SensorMesh::getGPS(uint8_t channel, float& lat, float& lon, float& alt) {
 
 void SensorMesh::loop() {
 #if MESH_ENABLE_SENSOR_TRACKER
+  // Retire observed expiry even during Morse deferral. A retained deadline
+  // otherwise looks future again after half the 32-bit millis range.
+  if (tracker_awake_until && millisHasNowPassed(tracker_awake_until)) {
+    tracker_awake_until = 0;
+  }
   if (!mesh::morseTimingActive(_radio) && tracker.enabled && trackerNeedsRadio()) wakeTrackerRadio();
 #endif
   _cli.loop();

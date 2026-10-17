@@ -32,6 +32,8 @@ struct LocalIdentity : Identity {
 class Mesh {
 public:
   unsigned base_send_complete = 0, base_send_fail = 0;
+  unsigned base_loops = 0;
+  void loop() { ++base_loops; }
   void onSendComplete(Packet*) { ++base_send_complete; }
   void onSendFail(Packet*) { ++base_send_fail; }
 };
@@ -51,6 +53,9 @@ struct FakeBoard {
 };
 struct FakeRadio {
   bool permit_sleep = true, permit_wake = true, permit_recovery = true, sleeping = false;
+  bool morse_tx = false, morse_rx = false;
+  bool isMorseTxActive() const { return morse_tx; }
+  bool isMorseRxActive() const { return morse_rx; }
   unsigned sleeps = 0, wakes = 0, wake_attempts = 0, hard_recoveries = 0;
   bool setTrackerSleep(bool value) {
     if (!value) ++wake_attempts;
@@ -167,9 +172,14 @@ public:
     struct NoMorseReply { void complete(const void*) {} void fail(const void*) {} } morse;
     NoMorseReply& morseReply() { return morse; }
     bool active = false;
+    bool local_command = false;
+    unsigned loops = 0;
+    SensorMesh* owner = nullptr;
+    void loop();
     bool hasActiveUserGpioTimer() const { return active; }
   } _cli;
-  struct ClockSync { unsigned observed = 0;
+  struct ClockSync { unsigned observed = 0, loops = 0;
+    void loop() { ++loops; }
     void observeAcceptedFlood(const mesh::Packet*) { ++observed; } } _clock_sync;
   uint32_t set_radio_at = 0, revert_radio_at = 0;
   bool saved_radio_apply_pending = false, temporary = false, pending_ota = false, dual = false;
@@ -190,6 +200,7 @@ public:
     sensors.clock = &now_ms;
     metadata_filesystem = &fs;
     self_id.pub_key[0] = 0xf1;
+    _cli.owner = this;
   }
   FakeRTC* getRTCClock() const { return const_cast<FakeRTC*>(&rtc); }
   unsigned long futureMillis(int delta) const { return uint32_t(now_ms + uint32_t(delta)); }
@@ -199,7 +210,7 @@ public:
   bool hasPendingOtaApply() const { return pending_ota; }
   bool isDualRadioActive() const { return dual; }
   bool getNextQueueWakeDelay(uint32_t& value) const { value = 1; return queue_wake; }
-  bool hasPendingRadioWork() const { return queue_wake; }
+  bool hasPendingRadioWork() const { return queue_wake || radio.morse_tx || radio.morse_rx; }
   bool getNextBeaconWakeDelay(uint32_t&) const { return false; }
   bool getNextRetryWakeDelay(uint32_t& value) const { value = 1; return retry_wake; }
   void setRadioAvailable(bool value) { available = value; }
@@ -248,6 +259,8 @@ public:
   void sendZeroHop(mesh::Packet* p, int) { ++adverts; ++zero_hops; releasePacket(p); }
   bool isTrackerModeEnabled() const { return tracker.enabled; }
   bool handleTrackerCommand(uint32_t, const char*, char*);
+  void localConsoleLease(uint32_t);
+  void loop();
   void configureTrackerRuntime();
   bool saveTrackerRecord(mesh::tracker::TrackerRecord&);
   bool trackerNeedsRadio() const;
@@ -266,3 +279,11 @@ public:
   bool allowPacketForward(const mesh::Packet*);
   void sendSelfAdvertisement(int, bool);
 };
+
+inline void SensorMesh::CLI::loop() {
+  ++loops;
+  if (local_command) {
+    owner->localConsoleLease(0);
+    local_command = false;
+  }
+}

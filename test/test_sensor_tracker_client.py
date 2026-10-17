@@ -19,7 +19,21 @@ SANITIZERS = (["-fsanitize=address,undefined,float-cast-overflow", "-fno-sanitiz
 
 
 def peer_methods(source):
-    methods = ""
+    policy = (ROOT / "src/helpers/MorseLoopPolicy.h").read_text(encoding="ascii")
+    methods = "namespace mesh {\n" + extract_braced(
+        policy, "inline bool morseTimingActive(").replace(
+            "const Radio* radio", "const ::FakeRadio* radio") + "\n}\n"
+    # Execute the actual foreground ordering through tracker service, including
+    # the Morse early return. Later sensor/advert/persistence work is unrelated.
+    loop = extract_braced(source, "void SensorMesh::loop()")
+    boundary = "\n  if (next_flood_advert &&"
+    if loop.count(boundary) != 1:
+        raise AssertionError("tracker foreground service boundary changed")
+    methods += loop[:loop.index(boundary)] + "}\n"
+    # Preserve the existing local-console lease renewal, including its sender
+    # check. Command parsing and its timestamp normalization remain separate.
+    methods += "void SensorMesh::localConsoleLease(uint32_t sender_timestamp) {\n"
+    methods += extract_braced(source, "if (sender_timestamp == 0 && tracker.enabled)") + "\n}\n"
     for signature in ("int SensorMesh::searchPeersByHash(", "void SensorMesh::getPeerSharedSecret(",
                       "bool SensorMesh::allowPacketForward(", "void SensorMesh::sendSelfAdvertisement("):
         methods += extract_braced(source, signature) + "\n"
@@ -92,6 +106,37 @@ class SensorTrackerClientTests(unittest.TestCase):
 
     def test_safe_lost_unknown_intervals_and_awake_lease(self):
         self.run_group("cadence")
+
+    def test_awake_lease_strict_expiry_wrap_parked_and_morse_paths(self):
+        self.run_group("awake-expiry")
+
+    def test_expiry_preserves_other_owners_and_console_renewal(self):
+        self.run_group("awake-owners")
+
+    def test_expired_awake_lease_stays_retired_during_26_days_of_checks(self):
+        self.run_group("awake-long")
+
+    def test_negative_control_expired_awake_lease_resurrects(self):
+        guard = extract_braced(self.sensor,
+            "if (tracker_awake_until && millisHasNowPassed(tracker_awake_until))")
+        mutated = self.sensor.replace(guard, "", 1)
+        self.run_group("awake-long", self.build("retained-awake-lease", self.tracker, mutated), success=False)
+
+    def test_negative_control_parked_radio_must_retire_expired_lease(self):
+        guard = "if (tracker_awake_until && millisHasNowPassed(tracker_awake_until))"
+        self.assertEqual(self.sensor.count(guard), 1)
+        mutated = self.sensor.replace(guard,
+            "if (!tracker_radio_asleep && tracker_awake_until && millisHasNowPassed(tracker_awake_until))", 1)
+        self.run_group("awake-expiry", self.build("parked-awake-lease", self.tracker, mutated), success=False)
+
+    def test_negative_control_morse_cannot_defer_lease_retirement(self):
+        guard = extract_braced(self.sensor,
+            "if (tracker_awake_until && millisHasNowPassed(tracker_awake_until))")
+        mutated = self.sensor.replace(guard, "", 1)
+        after_morse = "  _clock_sync.loop();"
+        self.assertEqual(mutated.count(after_morse), 1)
+        mutated = mutated.replace(after_morse, guard + "\n" + after_morse, 1)
+        self.run_group("awake-expiry", self.build("morse-awake-lease", self.tracker, mutated), success=False)
 
     def test_reply_window_starts_after_transmission_and_wraps(self):
         self.run_group("timing")
