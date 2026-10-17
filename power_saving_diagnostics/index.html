@@ -2282,6 +2282,17 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#noise-floor-sampling-and-sleep" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Noise-floor sampling and sleep
+      
+    </span>
+  </a>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -2337,7 +2348,9 @@ after off starts a fresh window. Collection defaults off at every boot.</p>
 <li><code>bridge</code>, <code>bridge.cleanup</code>, <code>bridge.wake</code>: active UART/network bridge,
   shutdown work or an overdue standby wake. A suspended RS232 owner is not
   diagnosed as running just because its saved enabled flag is on.</li>
-<li><code>calibration</code>, <code>radio.watchdog</code>: radio observation/calibration work.</li>
+<li><code>calibration</code>: noise-floor work is due now. The CPU can idle between sample
+  deadlines even while the radio remains in continuous RX for calibration.</li>
+<li><code>radio.watchdog</code>: radio observation/recovery work.</li>
 <li><code>queue</code>, <code>retry</code>, <code>scheduled</code>, <code>mesh</code>, <code>ota</code>, <code>radio2</code>: pending role work.</li>
 <li><code>wireless</code>, <code>network</code>, <code>serial</code>, <code>button</code>, <code>tracker</code>, <code>morse</code>: a matching
   existing service guard is active.</li>
@@ -2363,6 +2376,23 @@ most 256 bytes of collector state. Each wait-call interval must be shorter
 than the 32-bit <code>micros()</code> wrap (about 71 minutes); the normal wait paths here
 are much shorter. Keep gaps between policy observations below the <code>millis()</code>
 wrap (about 49 days).</p>
+<h2 id="noise-floor-sampling-and-sleep">Noise-floor sampling and sleep</h2>
+<p>Startup still collects a complete baseline promptly: 64 accepted samples,
+at least 50 ms apart, after the radio frontend has settled. Collection keeps
+the radio in continuous RX when needed, but the CPU may sleep between reads.
+Pending packet interrupts retain their normal receive owner. Rejected readings
+retry at 50 ms intervals, and the existing 30-second collection timeout bounds
+an attempt on a busy channel.</p>
+<p>After a successful baseline, ordinary single-profile refresh waits five
+minutes. A rejected rise or failed attempt retains the last usable floor and
+retries after one minute. Gain, tuning and AGC changes still request immediate
+recalibration, so a configured short AGC interval can refresh more frequently.
+Dual-profile scanning keeps its existing timing and calibration policy.</p>
+<p>ESP32 timed sleep uses a millisecond timer capped at the next sample deadline.
+nRF52, RP2040 and STM32 retain their interrupt-idle wake paths. Other sleep
+guards, including USB/logging, packet queues and bridges, still apply.
+These changes have host scheduling tests and firmware build coverage; their
+power benefit requires a new matched hardware/current measurement.</p>
 <p>See the <a href="../cli_commands/#diagnose-what-prevents-power-saving">CLI reference</a>
 for all page names and commands.</p>
 <p>The <a href="../nrf52_sleep_event_validation/">nRF52 idle-sleep investigation</a> describes
