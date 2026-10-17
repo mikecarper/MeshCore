@@ -471,6 +471,7 @@ jobs:
           python3 -B test/test_radio_profile_spiffs_missing.py -v
           python3 -B test/test_radio_reply_mutation.py
           python3 -B test/test_radio_profile_scan.py
+          python3 -B test/test_radio_rxps_rejection.py -v
           python3 -B test/test_repeater_radio_timing_integration.py
           python3 -B test/test_temp_radio_reply_delivery_contract.py
           python3 -B test/test_reply_tx_integration.py

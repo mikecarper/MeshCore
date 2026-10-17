@@ -1974,14 +1974,13 @@ bool RadioLibWrapper::setRxPowerSaving(bool enabled, uint32_t rx_us, uint32_t sl
   if (_beacon_owned) return false;
 #endif
   if (_cw_active) return false;
+  // A rejected request must not become the policy restored after radio2 ends.
+  if (enabled && !supportsRxPowerSaving()) return false;
   if (_profile_rxps_suspended) {
     _profile_saved_rxps = enabled;
     _rx_ps_rx_us = rx_us;
     _rx_ps_sleep_us = sleep_us;
-    return !enabled || supportsRxPowerSaving();
-  }
-  if (enabled && !supportsRxPowerSaving()) {
-    return false;
+    return true;
   }
 
   uint8_t resume_rx = beginReconfigure();
