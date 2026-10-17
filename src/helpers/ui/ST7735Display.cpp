@@ -581,6 +581,12 @@ void ST7735Display::turnOff() {
     // Now turn off the backlight
     digitalWrite(PIN_TFT_LEDA_CTL, !PIN_TFT_LEDA_CTL_ACTIVE);
 
+    // DISPOFF only blanks the panel. GPS can retain the T096's shared rail,
+    // and some boards never gate it: stop the controller oscillator/converter
+    // too. Let Sleep In settle before releasing the pins or removing power.
+    sendCommand(ST77XX_SLPIN);
+    delay(5);
+
     // Prevent back-powering to save 2.8 mA. Keep the SPI object initialized:
     // begin() restores these GPIO directions explicitly on the next wake, and
     // retaining the peripheral avoids an unchecked nrfx uninit/reinit cycle.

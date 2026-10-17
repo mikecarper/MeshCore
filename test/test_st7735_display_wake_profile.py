@@ -1,7 +1,12 @@
 #!/usr/bin/env python3
 
 from pathlib import Path
+import os
+import subprocess
+import tempfile
 import unittest
+
+from cpp_source import body
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -9,6 +14,66 @@ DRIVER = ROOT / "src" / "helpers" / "ui" / "ST7735Display.cpp"
 
 
 class ST7735DisplayWakeProfileTest(unittest.TestCase):
+    def test_sleep_command_precedes_pin_release_with_shared_or_ungated_power(self):
+        source = r'''
+#include <cassert>
+#include <cstdint>
+#include <initializer_list>
+constexpr int INPUT = 0, PIN_TFT_CS = 1, PIN_TFT_DC = 2, PIN_TFT_SDA = 3;
+constexpr int PIN_TFT_SCL = 4, PIN_TFT_RST = 5, PIN_TFT_LEDA_CTL = 6;
+constexpr int PIN_TFT_LEDA_CTL_ACTIVE = 1;
+constexpr int ST77XX_DISPOFF = 0x28, ST77XX_SLPIN = 0x10;
+static unsigned commands, pins, waits, waited;
+static bool sleeping;
+void sendCommand(int command) {
+  assert(command == (commands == 0 ? ST77XX_DISPOFF : ST77XX_SLPIN));
+  assert(commands < 2 && pins == 0);
+  if (command == ST77XX_SLPIN) sleeping = true;
+  ++commands;
+}
+void digitalWrite(int pin, int value) {
+  assert(pin == PIN_TFT_LEDA_CTL && value == !PIN_TFT_LEDA_CTL_ACTIVE);
+}
+void delay(unsigned ms) { assert(sleeping); ++waits; waited += ms; }
+void pinMode(int, int mode) {
+  assert(mode == INPUT && sleeping && waited >= 5);
+  ++pins;
+}
+struct Rail {
+  unsigned claims;
+  void release() { assert(sleeping && waited >= 5 && pins == 6); --claims; }
+};
+struct ST7735Display {
+  bool _isOn = true;
+  Rail* _peripher_power;
+  void turnOff();
+};
+@METHOD@
+int main() {
+  // Standalone display, GPS sharing the rail, and boards with no rail control.
+  for (unsigned users : {1U, 2U, 0U}) {
+    commands = pins = waits = waited = 0; sleeping = false;
+    Rail rail{users};
+    ST7735Display display{true, users ? &rail : nullptr};
+    display.turnOff();
+    assert(sleeping && commands == 2 && waits == 1 && pins == 6 && !display._isOn);
+    assert(rail.claims == (users ? users - 1 : 0));
+    display.turnOff();
+    assert(commands == 2 && waits == 1 && pins == 6);
+  }
+}
+'''
+        source = source.replace('@METHOD@', body(DRIVER.read_text(),
+                                                'void ST7735Display::turnOff()'))
+        with tempfile.TemporaryDirectory(prefix='meshcore-tft-sleep-') as directory:
+            cpp, binary = Path(directory) / 'test.cpp', Path(directory) / 'test'
+            cpp.write_text(source, encoding='ascii')
+            subprocess.run([os.environ.get('CXX', 'c++'), '-std=c++17',
+                            '-Wall', '-Wextra', '-Werror', str(cpp), '-o', str(binary)],
+                           check=True, capture_output=True, text=True, timeout=60)
+            result = subprocess.run([str(binary)], capture_output=True, text=True, timeout=10)
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
     def test_power_off_releases_bus_without_uninitializing_spi(self):
         source = DRIVER.read_text(encoding="utf-8")
         turn_off_start = source.index("void ST7735Display::turnOff()")
