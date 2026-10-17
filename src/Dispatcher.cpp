@@ -647,6 +647,15 @@ uint32_t Dispatcher::getRadioWatchdogMillis() const {
 #endif
 
 void Dispatcher::loop() {
+#if MESH_ENABLE_TX_BEACONS
+  // Keep an expired RF-start guard retired through later millis() wraps.
+  // Observe it even while the radio is suspended or an active lease returns
+  // early; this retires only the guard, never the frame or radio ownership.
+  if (beacon_has_started
+      && uint32_t(_ms->getMillis() - beacon_last_start) >= BEACON_START_GUARD_MS) {
+    beacon_has_started = false;
+  }
+#endif
   if (!radio_available) {
     // Keep packet-manager cleanup alive, but never touch an uninitialized or
     // physically unavailable radio. sendPacket() rejects new outbound work

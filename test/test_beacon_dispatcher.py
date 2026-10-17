@@ -360,6 +360,110 @@ static void hourly_cad_delay() {
   assert(uint32_t(f.radio.beacon_starts[1] - f.radio.beacon_starts[0]) >= 3600000);
   f.radio.complete = true; f.tick();
 }
+static void hour_boundary() {
+  for (uint32_t initial : {1000u, UINT32_MAX - 500u, UINT32_MAX}) {
+    Fixture f(initial);
+    assert(queue(f)); f.tick();
+    assert(f.radio.beacon_sends == 1);
+    const uint32_t first = f.radio.beacon_starts[0];
+    f.radio.complete = true; f.tick(20);
+    f.clock.now = first + 3599999u;
+    assert(queue(f)); f.d.loop();
+    assert(f.radio.beacon_sends == 1 && !f.radio.owned);
+    f.d.cancelBeaconRadioFrame();
+    f.clock.now = first + 3600000u;
+    assert(queue(f)); f.d.loop();
+    assert(f.radio.beacon_sends == 2 && f.radio.owned);
+    f.radio.complete = true; f.tick(20);
+    assert(!f.d.hasBeaconRadioFrame() && !f.radio.owned);
+  }
+}
+static void hour_idle(unsigned mode) {
+  // Exercise normal idle, unavailable radio, maintenance carrier, an owned
+  // restoration retry, and a failed start that still consumes its hour.
+  for (uint32_t initial : {1000u, UINT32_MAX - 500u, UINT32_MAX}) {
+    Fixture f(initial);
+    if (mode == 4) f.radio.start_ok = false;
+    assert(queue(f)); f.tick();
+    assert(f.radio.beacon_sends == 1);
+    const uint32_t first = f.radio.beacon_starts[0];
+    if (mode != 4) {
+      if (mode == 3) f.radio.restore = RadioParamApplyResult::BUSY;
+      f.radio.complete = true; f.tick(20);
+    }
+    if (mode == 1) f.d.setRadioAvailable(false);
+    if (mode == 2) f.radio.carrier = true;
+    const unsigned loops = f.radio.loops, noise = f.radio.noise;
+    const unsigned restores = f.radio.restore_calls, prepares = f.radio.prepare_calls;
+    for (uint64_t elapsed : {uint64_t(3600000), uint64_t(86400000),
+         uint64_t(864000000), uint64_t(1728000000), uint64_t(2592000000),
+         uint64_t(3456000000), uint64_t(4294967296)}) {
+      f.clock.now = uint32_t(uint64_t(first) + elapsed);
+      f.d.loop();
+      assert(f.radio.beacon_sends == 1);
+      assert(f.d.hasBeaconRadioFrame() == (mode == 3));
+      assert(f.radio.owned == (mode == 3));
+      if (mode == 1) {
+        assert(f.radio.loops == loops && f.radio.noise == noise);
+        assert(f.radio.restore_calls == restores && f.radio.prepare_calls == prepares);
+      }
+    }
+    // A supported delete-all/re-enable path can make a newly configured
+    // 24-hour slot due here; the manager's 64-bit scheduler permits it.
+    f.clock.now = uint32_t(uint64_t(first) + (uint64_t(1) << 32) + 1800000);
+    if (mode == 1) f.d.setRadioAvailable(true);
+    if (mode == 2) f.radio.carrier = false;
+    if (mode == 3) {
+      f.radio.restore = RadioParamApplyResult::APPLIED;
+      f.d.loop();
+    }
+    f.radio.start_ok = true;
+    assert(!f.radio.owned && !f.d.hasBeaconRadioFrame());
+    assert(queue(f)); f.d.loop();
+    assert(f.radio.beacon_sends == 2
+        && "expired one-hour guard must not return after live full-wrap idle");
+    assert(f.radio.owned);
+    f.radio.complete = true; f.tick(20);
+    assert(!f.d.hasOutbound() && !f.radio.owned);
+    uint32_t delay = 99;
+    assert(!f.d.getNextQueueWakeDelay(delay)
+        && "retired beacon cannot pin the fast lifecycle for 30 seconds");
+
+    // A fresh attempt must establish a fresh real one-hour guard, even when
+    // the old guard has been retired. Cancelling this pending work cannot
+    // remove the actual RF-start restriction.
+    assert(queue(f)); f.tick();
+    assert(f.radio.beacon_sends == 2 && !f.radio.owned);
+    f.d.cancelBeaconRadioFrame();
+    assert(queue(f)); f.tick();
+    assert(f.radio.beacon_sends == 2 && !f.radio.owned);
+    f.tick(30000);
+    assert(!f.d.hasBeaconRadioFrame() && f.radio.beacon_sends == 2);
+  }
+}
+static void hour_late_observation() {
+  for (uint32_t initial : {1000u, UINT32_MAX}) {
+    for (uint32_t age : {3600000u, 0x80000000u, UINT32_MAX}) {
+      Fixture f(initial);
+      assert(queue(f)); f.tick();
+      assert(f.radio.beacon_sends == 1);
+      const uint32_t first = f.radio.beacon_starts[0];
+      f.radio.complete = true; f.tick(20);
+      // A late first observation still has a known full-width unsigned age.
+      // In particular, do not turn a >half-wrap elapsed time into a future
+      // signed deadline. No RF work is queued during this observation.
+      f.clock.now = first + age;
+      f.d.loop();
+      assert(!f.d.hasOutbound());
+      f.clock.now = uint32_t(uint64_t(first) + (uint64_t(1) << 32) + 1800000);
+      assert(queue(f)); f.d.loop();
+      assert(f.radio.beacon_sends == 2
+          && "expired one-hour guard must not return after a late observation");
+      f.radio.complete = true; f.tick(20);
+      assert(!f.d.hasOutbound() && !f.radio.owned);
+    }
+  }
+}
 static void sleep_deadlines() {
   Fixture f; f.d.interval = 8000; f.d.adaptive = true; f.tick();
   uint32_t delay = 0;
@@ -465,6 +569,13 @@ int main(int argc, char** argv) {
   else if (!strcmp(argv[1], "owners")) owners();
   else if (!strcmp(argv[1], "budget")) budget_and_hour();
   else if (!strcmp(argv[1], "hourly")) hourly_cad_delay();
+  else if (!strcmp(argv[1], "hour-boundary")) hour_boundary();
+  else if (!strcmp(argv[1], "hour-idle")) hour_idle(0);
+  else if (!strcmp(argv[1], "hour-unavailable")) hour_idle(1);
+  else if (!strcmp(argv[1], "hour-carrier")) hour_idle(2);
+  else if (!strcmp(argv[1], "hour-restoring")) hour_idle(3);
+  else if (!strcmp(argv[1], "hour-failed-start")) hour_idle(4);
+  else if (!strcmp(argv[1], "hour-late")) hour_late_observation();
   else if (!strcmp(argv[1], "sleep")) sleep_deadlines();
   else if (!strcmp(argv[1], "begin")) begin_lifecycle();
   else if (!strcmp(argv[1], "agc")) agc_retirement();
@@ -497,13 +608,13 @@ class BeaconDispatcherTest(unittest.TestCase):
             raise AssertionError(result.stdout + result.stderr)
 
     @classmethod
-    def compile_variant(cls, beacon_source, binary, feature_flags=None):
+    def compile_variant(cls, beacon_source, binary, feature_flags=None, dispatcher_source=None):
         if feature_flags is None:
             feature_flags = ["-DMESH_ENABLE_MESHTEXT_CHAT=1"]
         return subprocess.run(
             [cls.compiler, *cls.flags, *feature_flags,
              "-I" + str(ROOT / "test/mocks"), "-I" + str(ROOT / "src"),
-             str(ROOT / "src/Dispatcher.cpp"), str(beacon_source),
+             str(dispatcher_source or ROOT / "src/Dispatcher.cpp"), str(beacon_source),
              str(ROOT / "src/Packet.cpp"), str(ROOT / "src/helpers/StaticPoolPacketManager.cpp"),
              str(cls.cpp), "-o", str(binary)], capture_output=True, text=True, timeout=90)
 
@@ -578,6 +689,50 @@ class BeaconDispatcherTest(unittest.TestCase):
 
     def test_hourly_admission_waits_for_actual_rf_guard_after_cad_delay(self):
         self.run_case("hourly")
+
+    def test_real_one_hour_guard_preserves_zero_max_and_exact_boundary(self):
+        self.run_case("hour-boundary")
+
+    def test_expired_hour_guard_stays_retired_after_full_wrap_idle(self):
+        self.run_case("hour-idle")
+
+    def test_expired_hour_guard_retires_even_while_radio_is_unavailable(self):
+        self.run_case("hour-unavailable")
+
+    def test_expired_hour_guard_retires_before_carrier_early_return(self):
+        self.run_case("hour-carrier")
+
+    def test_expired_hour_guard_does_not_release_owned_restoration(self):
+        self.run_case("hour-restoring")
+
+    def test_failed_rf_attempt_guard_also_stays_expired_after_long_idle(self):
+        self.run_case("hour-failed-start")
+
+    def test_first_expiry_observation_uses_full_unsigned_elapsed_range(self):
+        self.run_case("hour-late")
+
+    def test_missing_expired_guard_retirement_negative_control(self):
+        source = (ROOT / "src/Dispatcher.cpp").read_text(encoding="ascii")
+        retirement = "    beacon_has_started = false;\n"
+        self.assertEqual(source.count(retirement), 1)
+        broken = self.work / "old-hour-retirement.cpp"
+        broken.write_text(source.replace(retirement, ""), encoding="ascii")
+        binary = self.work / ("old-hour-retirement.exe" if sys.platform == "win32"
+                              else "old-hour-retirement")
+        compiled = self.compile_variant(ROOT / "src/DispatcherBeacon.cpp", binary,
+                                        dispatcher_source=broken)
+        self.assertEqual(compiled.returncode, 0, compiled.stdout + compiled.stderr)
+        for case in ("hour-idle", "hour-unavailable", "hour-carrier",
+                     "hour-restoring", "hour-failed-start", "hour-late"):
+            with self.subTest(case=case):
+                checked = subprocess.run([str(binary), case], capture_output=True,
+                                         text=True, env=dict(os.environ, ASAN_OPTIONS="detect_leaks=0"),
+                                         cwd=self.work, timeout=30)
+                self.assertNotEqual(checked.returncode, 0,
+                                    "missing hourly retirement escaped regression")
+                self.assertIn("expired one-hour guard must not return", checked.stderr)
+                self.assertNotIn("AddressSanitizer:", checked.stderr)
+                self.assertNotIn("runtime error:", checked.stderr)
 
     def test_old_hour_guard_at_admission_is_rejected_by_regression(self):
         source = (ROOT / "src/DispatcherBeacon.cpp").read_text(encoding="utf-8")

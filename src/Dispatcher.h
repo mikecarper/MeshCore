@@ -674,6 +674,7 @@ private:
   uint8_t receive_context_profile = 0;
   bool receive_context_active = false;
 #if MESH_ENABLE_TX_BEACONS
+  static constexpr uint32_t BEACON_START_GUARD_MS = 3600000UL;
   struct BeaconTransmit;
   BeaconTransmit* beacon_tx = nullptr;
   uint32_t beacon_wake_at = 0, beacon_last_start = 0;

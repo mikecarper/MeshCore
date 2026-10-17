@@ -114,7 +114,7 @@ bool Dispatcher::checkBeaconRadioSend() {
     return beacon_tx != nullptr;
   }
   if (tx_budget_ms < airtime / 2 || !millisHasNowPassed(next_tx_time)
-      || (beacon_has_started && uint32_t(now - beacon_last_start) < 3600000UL)) {
+      || (beacon_has_started && uint32_t(now - beacon_last_start) < BEACON_START_GUARD_MS)) {
     beacon_tx->retry_at = now + 101;
     return false;
   }
