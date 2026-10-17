@@ -3064,8 +3064,18 @@ and published releases, including boards whose optional sensor set is small
 enough that the images have little or no size difference. Packaging requires
 both profiles with matching packaged OTA identity and flash geometry, even
 when a matrix is resumed or partial publication is requested. A failed build
-is reported, never presented as a supported download. Companion is unchanged.
-The legacy <code>no_external_sensors</code> profile is labeled <strong>Receives LoRa OTA -
+is reported, never presented as a supported download. Companion is unchanged.</p>
+<p>Normal SolarXiao 30S and 33S Room Server builds use the module's onboard QSPI
+storage (<code>solarxiao_30S_room_server_lora_ota</code> and
+<code>solarxiao_33S_room_server_lora_ota</code>), with both sensor profiles retained.
+Internal-only Room recipes remain available by exact name for explicit
+compatibility/recovery builds, but are excluded from ordinary build menus,
+future releases, and picker recommendations. Existing downloads remain
+available through exact filename searches. The legacy and QSPI images have
+different OTA identities and layouts: a QSPI package is not a cross-target
+LoRa update for an internal-only installation. Use the matching bootloader
+and documented local migration path when changing layouts.</p>
+<p>The legacy <code>no_external_sensors</code> profile is labeled <strong>Receives LoRa OTA -
 Reduced optional sensors</strong> on the same button. On RAK3401 and RAK4631 this
 compact profile uses internal storage without an external storage board. The
 reduction does not disable generic I2C or unrelated board-integrated peripherals.
@@ -3223,7 +3233,7 @@ and each replacement's <code>.memory.json</code> report before updating.</p>
       
         <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
       
-        <script src="../_javascript/firmware_picker.js?v=20261013-board-notes-1"></script>
+        <script src="../_javascript/firmware_picker.js?v=20261016-solar-room-qspi-1"></script>
       
         <script src="../_javascript/telemetry_decoder.js?v=20261007-hosted-form"></script>
       
