@@ -5,6 +5,7 @@
 #include <string>
 
 static uint32_t now_ms;
+static constexpr uint32_t BOOT_SCREEN_MILLIS = 4000;
 static uint32_t millis() { return now_ms; }
 static constexpr int HIGH = 1;
 static bool deny_copy;

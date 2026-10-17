@@ -5,12 +5,15 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
+#include <initializer_list>
 
 static uint32_t now_ms = 0;
 static uint32_t millis() { return now_ms; }
 static void delay(uint32_t duration) { now_ms += duration; }
 static constexpr uint32_t BOOT_SCREEN_MILLIS = 3000;
+#define MESH_DEBUG_PRINTLN(...) do {} while (0)
 struct Radio { bool timing = false; } radio_driver;
+struct TestMesh { unsigned rescues = 0; void enterCLIRescue() { ++rescues; } } the_mesh;
 namespace mesh {
 static bool morseTimingActive(const Radio* radio) { return radio && radio->timing; }
 namespace ui { enum class DisplayWake { Button }; }
@@ -52,6 +55,8 @@ struct UITask {
   HomeScreen screen;
   UIScreen* curr = &screen;
   UIScreen* home = &screen;
+  UIScreen preview;
+  UIScreen* msg_preview = &preview;
   StatusBar _statusBar;
   struct Prefs { const char* node_name = "test"; } prefs;
   Prefs* _node_prefs = &prefs;
@@ -59,10 +64,11 @@ struct UITask {
   uint32_t _next_refresh = 0, _alert_expiry = 0, ui_started_at = 0, next_batt_chck = 0;
   uint32_t _pairing_screen_until = 0;
   bool _pairing_from_button = false;
+  bool _startup_complete = false;
   uint16_t _cached_batt_mv = 4000, voltage = 4000;
   bool gesture_pending = false;
   bool _need_refresh = true;
-  unsigned battery_reads = 0, shutdowns = 0;
+  unsigned battery_reads = 0, shutdowns = 0, profile_services = 0;
   char _alert[80] = {}, _origin[80] = {}, _msg[80] = {};
   void servicePairingState() {}
   void serviceWiFiToggleButton() {}
@@ -73,13 +79,15 @@ struct UITask {
   bool isBluetoothEnabled() const { return false; }
   void userLedHandler() {}
   void renderPairingBanner() {}
-  void serviceRadioProfileDisplayPage() {}
+  void serviceRadioProfileDisplayPage() { ++profile_services; }
   void renderCurrScreen() { ++screen.renders; _need_refresh = false; }
   uint16_t getBattMilliVolts() { ++battery_reads; return voltage; }
   void shutdown() { ++shutdowns; }
   void showAlert(const char* text, int duration_millis);
   void setCurrScreen(UIScreen* screen);
   void loop();
+  void handleButtonLongPress();
+  char handleLongPress(char);
 };
 @LOOP@
 @ALERT@
@@ -100,6 +108,76 @@ int main(int argc, char** argv) {
   assert(argc == 2);
   const char* scenario = argv[1];
   UITask ui;
+  if (!std::strcmp(scenario, "startup-first-draw")) {
+#if UI_ORIG
+    ui.ui_started_at = now_ms = 1000;
+    ui._need_refresh = false;
+    ui.display.on = false;
+    ui.loop();
+    now_ms = 9000; ui.loop();
+    for (uint64_t day = 1; day <= 49; ++day) {
+      now_ms = uint32_t(1000u + day * 86400000ULL);
+      ui.loop();
+    }
+    now_ms = 2000; ui.loop(); // Full-wrap alias, startup already observed closed.
+    ui.display.on = true; ui.loop();
+    assert(ui.display.frames == 1 && "deferred first paint must remain post-startup after full wrap");
+#endif
+    std::puts("PASS: startup-first-draw");
+    return 0;
+  }
+  if (!std::strcmp(scenario, "startup-one-shot")) {
+    for (uint32_t started : {0u, 1000u, UINT32_MAX - 4000u}) {
+      for (unsigned gate = 0; gate < 4; ++gate) {
+        UITask window;
+        window.ui_started_at = started;
+        window._next_refresh = now_ms = started;
+        window.display.on = (gate & 1) == 0;
+        radio_driver.timing = (gate & 2) != 0;
+        window.loop();
+        now_ms = started + 7999u; window.loop();
+        const auto before = the_mesh.rescues;
+#if UI_ORIG
+        window.handleButtonLongPress();
+#else
+        assert(window.handleLongPress('x') == 0);
+#endif
+        assert(the_mesh.rescues == before + 1 && !window._startup_complete);
+        now_ms = started + 8000u; window.loop();
+#if UI_ORIG
+        window.handleButtonLongPress();
+        assert(window.shutdowns == 1);
+#else
+        assert(window.handleLongPress('x') == 'x');
+#endif
+        assert(the_mesh.rescues == before + 1); // Exact 8-second cutoff.
+        for (uint64_t day = 1; day <= 49; ++day) {
+          now_ms = uint32_t(started + day * 86400000ULL);
+          window.loop();
+        }
+        // Live observation of expiry precedes the complete-counter alias.
+        now_ms = started + 1000u; window.loop();
+        window.display.on = true; radio_driver.timing = false;
+        const auto profiles = window.profile_services;
+        window.loop();
+#if UI_ORIG
+        window.handleButtonLongPress();
+#else
+        (void)profiles;
+        const char returned = window.handleLongPress('x');
+#endif
+        assert(the_mesh.rescues == before + 1 && window._startup_complete
+            && "expired startup rescue must never reopen after full wrap");
+#if UI_ORIG
+        assert(window.shutdowns == 2 && window.profile_services == profiles + 1);
+#else
+        assert(returned == 'x');
+#endif
+      }
+    }
+    std::puts("PASS: startup-one-shot");
+    return 0;
+  }
   if (!std::strcmp(scenario, "orig-long-clean-idle")) {
 #if UI_ORIG
     now_ms = 0x90001000u;

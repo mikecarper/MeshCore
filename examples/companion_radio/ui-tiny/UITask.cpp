@@ -669,6 +669,7 @@ void UITask::begin(DisplayDriver* display, SensorManager* sensors, CompanionNode
 #endif
 
   ui_started_at = millis();
+  _startup_complete = false;
   next_batt_chck = _next_refresh = ui_started_at;
   _alert[0] = 0;
   _alert_expiry = 0;
@@ -866,6 +867,10 @@ bool UITask::isButtonPressed() const {
 }
 
 void UITask::loop() {
+  // Observe startup expiry even while display/Morse/input defers rendering.
+  if (!_startup_complete && static_cast<uint32_t>(millis() - ui_started_at) >= 8000u) {
+    _startup_complete = true;
+  }
   const bool morse_timing = mesh::morseTimingActive(&radio_driver);
   servicePairingState();
 
@@ -1071,7 +1076,7 @@ char UITask::checkDisplayOn(char c) {
 }
 
 char UITask::handleLongPress(char c) {
-  if (millis() - ui_started_at < 8000) {   // long press in first 8 seconds since startup -> CLI/rescue
+  if (!_startup_complete && static_cast<uint32_t>(millis() - ui_started_at) < 8000u) { // early-boot CLI/rescue only
     the_mesh.enterCLIRescue();
     c = 0;   // consume event
   }

@@ -244,6 +244,7 @@ int main() {
         source = r'''
 #include <cassert>
 #define UI_WIFI_SETUP_HOME_PAGE 1
+#include <cstdint>
 unsigned long now = 4000;
 unsigned long millis() { return now; }
 struct Screen {};
@@ -260,6 +261,7 @@ struct UITask {
   Screen* home;
   Screen* msg_preview;
   unsigned long ui_started_at = 0;
+  bool _startup_complete = false;
   char handleLongPress(char c);
 };
 ''' + ui[start:end] + r'''

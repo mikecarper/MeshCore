@@ -27,6 +27,7 @@ class UITask {
   unsigned long _started_at = 0;
   uint8_t _radio_profile_display_page = 0;
   bool _dual_radio_enabled_seen = false;
+  bool _startup_complete = false;
 
   void resetRadioProfileDisplayPage();
   void advanceRadioProfileDisplayPage();

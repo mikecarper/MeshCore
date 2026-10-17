@@ -801,6 +801,7 @@ jobs:
           python3 -B test/test_companion_pairing_display.py
           python3 -B test/test_companion_identity_startup.py
           python3 -B test/test_startup_screen.py
+          python3 -B test/test_ui_startup_windows.py -v
           node test/test_notification_builder.js
           python3 -B test/test_notification_settings.py
           python3 -B test/test_notification_led_ownership.py -v

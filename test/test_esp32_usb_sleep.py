@@ -388,8 +388,11 @@ struct TestDisplay {
   bool isOn() const { return policy.on(); }
   void wake(mesh::ui::DisplayWake reason) { policy.wake(reason, millis()); }
 } display;
+static constexpr uint32_t BOOT_SCREEN_MILLIS = 4000;
 struct UITask {
   TestDisplay* _display = &display;
+  bool _startup_complete = false;
+  uint32_t _started_at = 0;
   uint32_t _next_refresh = 0, _powering_off_at = 0, _next_read = 0;
   uint32_t _last_refresh = 0, _last_read = 0; // Sensor uses elapsed-time anchors.
   int _prevBtnState = HIGH;

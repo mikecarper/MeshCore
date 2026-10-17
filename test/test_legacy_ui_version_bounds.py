@@ -54,6 +54,7 @@ struct UITask {
   CompanionNodePrefs* _node_prefs = nullptr;
   unsigned clears = 0, resets = 0;
   unsigned long ui_started_at = 0, _next_refresh = 0;
+  bool _startup_complete = false;
   explicit UITask(char (&label)[@CAPACITY@]) : _version_info(label) {}
   void clearMsgPreview() { ++clears; }
   void resetRadioProfileDisplayPage() { ++resets; }

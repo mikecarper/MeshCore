@@ -159,6 +159,7 @@ void UITask::begin(DisplayDriver* display, SensorManager* sensors, CompanionNode
   _userButtonAnalog->onAnyPress([this]() { handleButtonAnyPress(); });
 #endif
   ui_started_at = millis();
+  _startup_complete = false;
   _next_refresh = ui_started_at;
 }
 
@@ -352,7 +353,8 @@ void UITask::renderCurrScreen() {
     _display->print(tmp);
 #endif
     _display->setColor(UIColor::secondary_txt); // last color will be kept on T114
-  } else if (!pairing_screen_active && (millis() - ui_started_at) < BOOT_SCREEN_MILLIS) { // boot screen
+  } else if (!pairing_screen_active && !_startup_complete
+      && static_cast<uint32_t>(millis() - ui_started_at) < BOOT_SCREEN_MILLIS) { // boot screen
     // meshcore logo
     _display->setColor(UIColor::corp_blue);
     int logoWidth = 128;
@@ -716,6 +718,10 @@ void UITask::servicePairingState() {
 }
 
 void UITask::loop() {
+  // Observe startup expiry before button callbacks and optional rendering.
+  if (!_startup_complete && static_cast<uint32_t>(millis() - ui_started_at) >= 8000u) {
+    _startup_complete = true;
+  }
   const bool morse_timing = mesh::morseTimingActive(&radio_driver);
 #ifdef PIN_VIBRATION
   vibration.loop();
@@ -750,11 +756,11 @@ void UITask::loop() {
 
   if (!morse_timing && _display != NULL && _display->isOn()) {
     if (!isPairingScreenActive() && !_alert[0] && !(_origin[0] && _msg[0])
-        && (millis() - ui_started_at) >= BOOT_SCREEN_MILLIS) {
+        && (_startup_complete || static_cast<uint32_t>(millis() - ui_started_at) >= BOOT_SCREEN_MILLIS)) {
       serviceRadioProfileDisplayPage();
     }
     static bool _firstBoot = true;
-    if(_firstBoot && (millis() - ui_started_at) >= BOOT_SCREEN_MILLIS) {
+    if(_firstBoot && (_startup_complete || static_cast<uint32_t>(millis() - ui_started_at) >= BOOT_SCREEN_MILLIS)) {
       _need_refresh = true;
       _firstBoot = false;
     }
@@ -995,7 +1001,7 @@ void UITask::handleButtonLongPress() {
   _button_notification_cleared = false;
 #endif
   MESH_DEBUG_PRINTLN("UITask: long press triggered");
-  if (millis() - ui_started_at < 8000) {   // long press in first 8 seconds since startup -> CLI/rescue
+  if (!_startup_complete && static_cast<uint32_t>(millis() - ui_started_at) < 8000u) { // early-boot CLI/rescue only
     the_mesh.enterCLIRescue();
 #if defined(PIN_BUZZER) && MESH_GPS_VOICE
     // enterCLIRescue is supported independently of the framed USB interface.

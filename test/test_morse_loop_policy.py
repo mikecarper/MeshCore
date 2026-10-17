@@ -70,6 +70,7 @@ struct UI {
   uint32_t _last_refresh=0;
   uint16_t _cached_batt_mv=4000,voltage=3350;
   bool _need_refresh=true;
+  bool _startup_complete=false;
   char _alert[4]={},_origin[4]={},_msg[4]={};
   bool isButtonGesturePending() { return false; }
   bool isPairingScreenActive() { return false; }

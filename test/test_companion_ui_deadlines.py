@@ -30,27 +30,58 @@ class CompanionUiDeadlineTests(unittest.TestCase):
         cls.addClassCleanup(cls.directory.cleanup)
         work = Path(cls.directory.name)
         cls.binaries = {}
+        cls.startup_mutants = {}
+        cls.first_paint_mutant = None
         for variant in BUILD_VARIANTS:
             source_variant = 'ui-tiny' if variant == 'ui-tiny-cache' else variant
             source = (ROOT / f'examples/companion_radio/{source_variant}/UITask.cpp').read_text(encoding='ascii')
             generated = FIXTURE.read_text(encoding='ascii').replace('@LOOP@', extract_braced(source, 'void UITask::loop()'))
+            handler = ('void UITask::handleButtonLongPress()' if source_variant == 'ui-orig'
+                       else 'char UITask::handleLongPress(char c)')
+            generated += '\n' + extract_braced(source, handler) + '\n'
             generated = generated.replace('@ALERT@', '' if variant == 'ui-orig' else
                                           extract_braced(source, 'void UITask::showAlert('))
             generated = generated.replace('@SCREEN@', '' if variant == 'ui-orig' else
                                           extract_braced(source, 'void UITask::setCurrScreen('))
             cpp, binary = work / (variant + '.cpp'), work / variant
             cpp.write_text(generated, encoding='ascii')
-            built = subprocess.run([
+            command = [
                 compiler, '-std=c++17', '-Wall', '-Wextra', '-Werror', '-Wno-unused-function',
                 '-fsanitize=address,undefined', '-fno-sanitize-recover=all', '-fno-pie', '-no-pie',
                 '-DUI_ORIG=' + str(int(variant == 'ui-orig')), '-DUI_HAS_JOYSTICK=0',
                 '-DUI_TINY_CACHE=' + str(int(variant == 'ui-tiny-cache')),
                 '-DCOMPANION_FEATURE_READER=0', '-DAUTO_OFF_MILLIS=0',
                 *([] if variant in ('ui-orig', 'ui-tiny-cache') else ['-DAUTO_SHUTDOWN_MILLIVOLTS=3400']),
-                str(cpp), '-o', str(binary)], capture_output=True, text=True, timeout=60)
+                str(cpp), '-o', str(binary)]
+            built = subprocess.run(command, capture_output=True, text=True, timeout=60)
             if built.returncode:
                 raise AssertionError(built.stdout + built.stderr)
             cls.binaries[variant] = binary
+            latch = extract_braced(source,
+                'if (!_startup_complete && static_cast<uint32_t>(millis() - ui_started_at) >= 8000u)')
+            if generated.count(latch) != 1:
+                raise AssertionError('startup retirement must appear once in the complete foreground loop')
+            mutant_cpp, mutant_binary = work / (variant + '-startup.cpp'), work / (variant + '-startup')
+            mutant_cpp.write_text(generated.replace(latch, '', 1), encoding='ascii')
+            mutant_command = [str(mutant_cpp) if arg == str(cpp)
+                              else str(mutant_binary) if arg == str(binary) else arg for arg in command]
+            built = subprocess.run(mutant_command, capture_output=True, text=True, timeout=60)
+            if built.returncode:
+                raise AssertionError(built.stdout + built.stderr)
+            cls.startup_mutants[variant] = mutant_binary
+            if variant == 'ui-orig':
+                first_paint = extract_braced(source, 'if(_firstBoot &&')
+                if first_paint.count('_startup_complete || ') != 1:
+                    raise AssertionError('first paint must recognize completed startup')
+                mutant_cpp, mutant_binary = work / 'orig-first-paint.cpp', work / 'orig-first-paint'
+                mutant_cpp.write_text(generated.replace(first_paint,
+                    first_paint.replace('_startup_complete || ', '', 1), 1), encoding='ascii')
+                mutant_command = [str(mutant_cpp) if arg == str(cpp)
+                                  else str(mutant_binary) if arg == str(binary) else arg for arg in command]
+                built = subprocess.run(mutant_command, capture_output=True, text=True, timeout=60)
+                if built.returncode:
+                    raise AssertionError(built.stdout + built.stderr)
+                cls.first_paint_mutant = mutant_binary
 
     def check_scenario(self, scenario, variants=VARIANTS):
         for variant in variants:
@@ -63,6 +94,24 @@ class CompanionUiDeadlineTests(unittest.TestCase):
 
     def test_healthy_refresh_schedule(self):
         self.check_scenario('healthy')
+
+    def test_startup_rescue_retires_outside_gates_and_stays_closed_after_full_wrap(self):
+        self.check_scenario('startup-one-shot', BUILD_VARIANTS)
+
+    def test_missing_foreground_startup_retirement_is_rejected(self):
+        for variant, binary in self.startup_mutants.items():
+            with self.subTest(variant=variant):
+                checked = subprocess.run([str(binary), 'startup-one-shot'],
+                                         capture_output=True, text=True, timeout=10)
+                self.assertNotEqual(checked.returncode, 0)
+                self.assertIn('expired startup rescue must never reopen after full wrap', checked.stderr)
+
+    def test_orig_first_paint_can_be_deferred_past_startup_and_wrap(self):
+        self.check_scenario('startup-first-draw', ('ui-orig',))
+        checked = subprocess.run([str(self.first_paint_mutant), 'startup-first-draw'],
+                                 capture_output=True, text=True, timeout=10)
+        self.assertNotEqual(checked.returncode, 0)
+        self.assertIn('deferred first paint must remain post-startup after full wrap', checked.stderr)
 
     def test_upper_half_refresh_schedule(self):
         self.check_scenario('upper-half')
@@ -140,6 +189,8 @@ class CompanionUiDeadlineWiringContract(unittest.TestCase):
                 # every actual begin/re-begin must re-arm from its fresh clock.
                 self.assertRegex(constructor, r'\b_next_refresh\s*=\s*0\s*;')
                 self.assertIn('ui_started_at = millis();', begin)
+                self.assertIn('_startup_complete = false;', begin)
+                self.assertIn('bool _startup_complete = false;', header)
                 self.assertLess(begin.index('ui_started_at = millis();'),
                                 begin.index('_next_refresh = ui_started_at;'))
                 without_constructor = header.replace(constructor, '', 1)

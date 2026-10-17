@@ -105,6 +105,7 @@ void UITask::begin(NodePrefs* node_prefs, const char* build_date, const char* fi
   const uint32_t now = millis();
   _last_read = now - 200u;
   _last_refresh = now - 1000u;
+  _startup_complete = now >= BOOT_SCREEN_MILLIS;
 }
 
 void UITask::resetRadioProfileDisplayPage() {
@@ -128,7 +129,7 @@ bool UITask::showingSecondaryRadioProfilePage() {
 
 void UITask::renderCurrScreen() {
   char tmp[80];
-  if (millis() < BOOT_SCREEN_MILLIS) { // boot screen
+  if (!_startup_complete && millis() < BOOT_SCREEN_MILLIS) { // boot screen
     // meshcore logo
     _display->setColor(UIColor::corp_blue);
     int logoWidth = 128;
@@ -210,6 +211,10 @@ void UITask::renderCurrScreen() {
 }
 
 void UITask::loop() {
+  // This UI's splash is relative to boot, not to begin(). Retire it once.
+  if (!_startup_complete && millis() >= BOOT_SCREEN_MILLIS) {
+    _startup_complete = true;
+  }
   const bool morse_timing = mesh::morseTimingActive(activeSensorMesh().getProfileRadio());
   if (_display->servicePower(board.isExternalPowered() || board.isUsbHostConnected())) {
     resetRadioProfileDisplayPage();

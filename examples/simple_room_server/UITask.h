@@ -28,6 +28,7 @@ class UITask {
   unsigned long _started_at = 0;
   uint32_t _radio_profile_page_started_at = 0;
   bool _dual_radio_enabled_seen = false;
+  bool _startup_complete = false;
 #ifdef DISPLAY_TOUCH_TOGGLE
   unsigned long _powering_off_at = 0;
 #endif

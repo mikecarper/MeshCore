@@ -332,6 +332,7 @@ static const uint8_t meshcore_logo [] PROGMEM = {
 void UITask::begin(NodePrefs* node_prefs, const char* build_date, const char* firmware_version) {
   _prevBtnState = HIGH;
   _started_at = millis();
+  _startup_complete = false;
   _node_prefs = node_prefs;
   resetRadioProfileDisplayPage();
 #ifdef DISPLAY_ACTIVITY_DASHBOARD
@@ -418,7 +419,7 @@ void UITask::renderCurrScreen() {
 #ifdef DISPLAY_ACTIVITY_DASHBOARD
   _rows_valid = false;
 #endif
-  if ((uint32_t)(millis() - _started_at) < BOOT_SCREEN_MILLIS) { // boot screen
+  if (!_startup_complete && (uint32_t)(millis() - _started_at) < BOOT_SCREEN_MILLIS) { // boot screen
     // meshcore logo
     _display->setColor(UIColor::corp_blue);
     int logoWidth = 128;
@@ -635,7 +636,7 @@ uint32_t UITask::getFrameSignature() {
   uint32_t signature = DisplayFrameSignature::INITIAL;
   char tmp[80];
 
-  if ((uint32_t)(millis() - _started_at) < BOOT_SCREEN_MILLIS) {
+  if (!_startup_complete && (uint32_t)(millis() - _started_at) < BOOT_SCREEN_MILLIS) {
     signature = DisplayFrameSignature::append(signature, "boot");
     return DisplayFrameSignature::append(signature, _version_info);
   }
@@ -845,6 +846,10 @@ void UITask::toggleDisplay(const char* source) {
 #endif
 
 void UITask::loop() {
+  // Observe expiry outside display/Morse/input gates; startup is one-shot.
+  if (!_startup_complete && (uint32_t)(millis() - _started_at) >= BOOT_SCREEN_MILLIS) {
+    _startup_complete = true;
+  }
   const bool morse_timing = mesh::morseTimingActive(the_mesh.getProfileRadio());
   if (_display->servicePower(board.isExternalPowered() || board.isUsbHostConnected())) {
     if (_display->isOn()) resetRadioProfileDisplayPage();

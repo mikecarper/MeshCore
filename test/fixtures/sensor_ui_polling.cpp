@@ -8,6 +8,7 @@ static uint32_t now_ms = 0, read_delay = 0, render_delay = 0, end_delay = 0;
 static unsigned reads = 0, renders = 0;
 static constexpr int HIGH = 1, LOW = 0, USER_BTN_PRESSED = LOW;
 static constexpr int BUTTON_EVENT_NONE = 0;
+static constexpr uint32_t BOOT_SCREEN_MILLIS = 4000;
 static int button_level = HIGH;
 static uint32_t millis() { return now_ms; }
 [[maybe_unused]] static int digitalRead(int pin) {

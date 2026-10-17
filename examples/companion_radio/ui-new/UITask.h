@@ -42,6 +42,7 @@ class UITask : public AbstractUITask {
   uint32_t _next_refresh;
   unsigned long _pairing_screen_until;
   bool _deferred_msg_preview;
+  bool _startup_complete = false;
   CompanionNodePrefs* _node_prefs;
   char _alert[80];
   uint32_t _alert_expiry;

@@ -49,6 +49,7 @@ class UITask : public AbstractUITask {
   uint32_t next_batt_chck;
   uint32_t last_backlight_btn_check = 0;
   uint16_t _cached_batt_mv;
+  bool _startup_complete = false;
 #ifdef PIN_STATUS_LED
   int led_state = 0;
   uint32_t last_led_change = 0;

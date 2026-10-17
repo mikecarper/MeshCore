@@ -56,6 +56,7 @@ class UITask : public AbstractUITask {
   unsigned long ui_started_at;
   uint32_t _radio_profile_page_started_at = 0;
   bool _dual_radio_enabled_seen = false;
+  bool _startup_complete = false;
   uint8_t _radio_profile_display_page = 0;
 
   // Button handlers
