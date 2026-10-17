@@ -6,7 +6,7 @@
 #include "IkokaStickNRFBoard.h"
 
 void IkokaStickNRFBoard::begin() {
-  NRF52Board::begin();
+  NRF52BoardDCDC::begin();
 
   pinMode(PIN_VBAT, INPUT);
   // Seeed's XIAO charging guidance requires READ_BAT_ENABLE to stay LOW.

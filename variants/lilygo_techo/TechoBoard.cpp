@@ -6,7 +6,7 @@
 #ifdef LILYGO_TECHO
 
 void TechoBoard::begin() {
-  NRF52Board::begin();
+  NRF52BoardDCDC::begin();
 
   Wire.begin();
 

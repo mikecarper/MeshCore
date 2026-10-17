@@ -6,7 +6,7 @@
 #include "IkokaNrf52Board.h"
 
 void IkokaNrf52Board::begin() {
-  NRF52Board::begin();
+  NRF52BoardDCDC::begin();
 
   // ensure we have pull ups on the screen i2c, this isn't always available
   // in hardware and it should only be 20k ohms. Disable the pullups if we

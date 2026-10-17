@@ -27,7 +27,7 @@ void T1Board::initiateShutdown(uint8_t reason) {
 #endif
 
 void T1Board::begin() {
-  NRF52Board::begin();
+  NRF52BoardDCDC::begin();
 
 #ifdef NRF52_POWER_MANAGEMENT
   checkBootVoltage(&power_config);

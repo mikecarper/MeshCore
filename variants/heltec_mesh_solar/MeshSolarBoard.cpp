@@ -4,7 +4,7 @@
 #include "MeshSolarBoard.h"
 
 void MeshSolarBoard::begin() {
-  NRF52Board::begin();
+  NRF52BoardDCDC::begin();
 
   meshSolarStart();
 

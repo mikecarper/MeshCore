@@ -4,7 +4,7 @@
 #include "MinewsemiME25LS01Board.h"
 
 void MinewsemiME25LS01Board::begin() {
-  NRF52Board::begin();
+  NRF52BoardDCDC::begin();
   btn_prev_state = HIGH;
   
   pinMode(PIN_VBAT_READ, INPUT);

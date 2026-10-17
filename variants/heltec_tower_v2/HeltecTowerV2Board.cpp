@@ -36,7 +36,7 @@ void HeltecTowerV2Board::initiateShutdown(uint8_t reason) {
 #endif
 
 void HeltecTowerV2Board::begin() {
-  NRF52Board::begin();
+  NRF52BoardDCDC::begin();
 
   pinMode(P_LORA_TX_LED, OUTPUT);
   digitalWrite(P_LORA_TX_LED, !LED_STATE_ON);
