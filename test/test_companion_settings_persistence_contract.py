@@ -2,6 +2,7 @@
 """Static contracts for fail-closed Companion preferences and channels."""
 
 from pathlib import Path
+import re
 import unittest
 
 
@@ -26,6 +27,52 @@ def function_body(text: str, signature: str) -> str:
     raise AssertionError(f"unterminated function: {signature}")
 
 
+def has_leading_quarantine_veto(body: str) -> bool:
+    """Recognize the initial fail-closed guard, including nested calls.
+
+    The quarantine flag must itself be the first top-level OR term, so setting
+    it reaches the immediate false return before any other expression runs.
+    A later guard or a flag under AND/negation does not establish that contract.
+    """
+    opening = re.match(r"\s*if\s*\(", body)
+    if opening is None:
+        return False
+    start = opening.end()
+    depth = 1
+    terms = []
+    term_start = start
+    position = start
+    while position < len(body):
+        char = body[position]
+        # This narrow source contract does not treat comments or literal text
+        # as executable terms; refuse them instead of parsing all of C++.
+        if char in "\"'" or body.startswith(("//", "/*"), position):
+            return False
+        if char == "(":
+            depth += 1
+        elif char == ")":
+            depth -= 1
+            if depth == 0:
+                terms.append(body[term_start:position].strip())
+                return (
+                    terms[0] == "_prefs_load_incomplete"
+                    and re.match(r"\s*return\s+false\s*;", body[position + 1 :])
+                    is not None
+                )
+        elif depth == 1:
+            # Lower-precedence operators can override a true OR term, and an
+            # if-init statement is not the condition which controls the return.
+            if char in "?,;":
+                return False
+            if body.startswith("||", position):
+                terms.append(body[term_start:position].strip())
+                position += 2
+                term_start = position
+                continue
+        position += 1
+    return False
+
+
 class CompanionSettingsPersistenceContractTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -43,10 +90,37 @@ class CompanionSettingsPersistenceContractTests(unittest.TestCase):
             self.store,
             "bool DataStore::savePrefs(const CompanionNodePrefs& _prefs",
         )
-        self.assertRegex(
-            save,
-            r"if\s*\([^)]*_prefs_load_incomplete[^)]*\)\s*return false;",
-        )
+        self.assertTrue(has_leading_quarantine_veto(save))
+
+    def test_quarantine_veto_matcher_accepts_nested_validity_calls(self):
+        for guard in (
+            "if (_prefs_load_incomplete) return false;",
+            "if (_prefs_load_incomplete || !timezone::valid(_prefs.tz_offset))\n"
+            "  return false;",
+            "if (_prefs_load_incomplete || !valid(check(_prefs.tz_offset))) "
+            "return false;",
+        ):
+            with self.subTest(guard=guard):
+                self.assertTrue(has_leading_quarantine_veto(guard))
+
+    def test_quarantine_veto_matcher_rejects_weakened_or_late_guards(self):
+        for guard in (
+            "if (!_prefs_load_incomplete) return false;",
+            "if (_prefs_load_incomplete && !valid(_prefs.tz_offset)) return false;",
+            "if ((_prefs_load_incomplete || !valid(_prefs.tz_offset)) && ready) "
+            "return false;",
+            "if (_prefs_load_incomplete || !valid(_prefs.tz_offset)) return true;",
+            "if (_prefs_load_incomplete || valid(value) ? false : true) return false;",
+            "if (_prefs_load_incomplete || valid(value), false) return false;",
+            "if (_prefs_load_incomplete || false; false) return false;",
+            "if (openWrite() || _prefs_load_incomplete) return false;",
+            "if (false /* || _prefs_load_incomplete || */) return false;",
+            'if (" || _prefs_load_incomplete || " == "unused") return false;',
+            "openWrite(); if (_prefs_load_incomplete) return false;",
+            "if (_prefs_load_incomplete || !valid(value) return false;",
+        ):
+            with self.subTest(guard=guard):
+                self.assertFalse(has_leading_quarantine_veto(guard))
 
     def test_preferences_source_discovery_does_not_treat_stat_error_as_absence(self):
         load = function_body(
