@@ -85,6 +85,7 @@ class CLISettingsContractTest(unittest.TestCase):
             'minimal': [],
             'nrf52_gps_sd': ['NRF52_PLATFORM', 'ENV_INCLUDE_GPS', 'OTA_SD_STORE', 'NRF52_POWER_MANAGEMENT'],
             'esp32_web': ['ESP_PLATFORM', 'ESP32_PLATFORM', 'ADMIN_PASSWORD', 'MESH_USB_LOGGING_AVAILABLE'],
+            'esp32_g3': ['ESP_PLATFORM', 'ESP32_PLATFORM', 'STATION_G3_ESP32'],
             'esp32_mqtt': ['ESP_PLATFORM', 'ESP32_PLATFORM', 'WITH_MQTT_BRIDGE', 'WITH_BRIDGE',
                            'WITH_MQTT_NEIGHBORS', 'MESH_USB_LOGGING_AVAILABLE'],
             'esp32_mqtt_espnow': ['ESP_PLATFORM', 'ESP32_PLATFORM', 'WITH_MQTT_BRIDGE',
@@ -231,35 +232,41 @@ class CLISettingsContractTest(unittest.TestCase):
         compiler = shutil.which('g++') or shutil.which('clang++')
         self.assertIsNotNone(compiler, 'Host C++ compiler required')
         source = COMMON.read_text(encoding='utf-8')
-        setter, getter = methods(source, 'void CommonCLI::handle')
+        original = '\n'.join(methods(source, 'void CommonCLI::handle'))
         keys = ['radio', 'freq', 'af', 'dutycycle', 'int.thresh', 'cad', 'radio.rxgain',
                 'tx', 'rxdelay', 'agc.reset.interval', 'multi.acks', 'txdelay', 'direct.txdelay',
                 'flood.max', 'flood.max.advert', 'flood.max.unscoped']
-        # Preserve the actual conditions and bodies. The only excluded branches
-        # are unrelated settings needing board-specific dependencies.
-        set_blocks = [extract_braced(setter, 'if (strncmp(config, "path.hash.mode", 14)')]
-        get_blocks = [extract_braced(getter, 'if (configKeyEquals(config, "path.hash.mode"))')]
-        set_blocks.append(extract_braced(setter, 'if (strcmp(config, "extra.sf") == 0 ||'))
-        get_blocks.append(extract_braced(getter, 'if (strcmp(config, "extra.sf") == 0)'))
-        for key in keys:
-            block = extract_braced(setter, f'if (memcmp(config, "{key} ", {len(key)+1}) == 0)')
-            # A feature guard immediately before this closing brace controls
-            # the following else-if arm, which is not part of this fixture.
-            block = re.sub(r'\n#if[^\n]*\n\s*}$', '\n}', block)
-            set_blocks.append(block)
-            get_blocks.append(extract_braced(getter, f'if (configKeyEquals(config, "{key}"))'))
         dispatch = ' else '.join(extract_braced(source, f'if (memcmp(command, "{verb} ", 4) == 0)')
                                  for verb in ('get', 'set'))
-        fixture = (ROOT/'test/fixtures/cli_settings/main.cpp').read_text(encoding='utf-8')
-        fixture = fixture.replace('@SET@', ' else '.join(set_blocks))
-        fixture = fixture.replace('@GET@', ' else '.join(get_blocks))
-        fixture = fixture.replace('@DISPATCH@', dispatch)
-        fixture = fixture.replace('@KEY_EQUALS@', extract_braced(source, 'static bool configKeyEquals('))
+        template = (ROOT/'test/fixtures/cli_settings/main.cpp').read_text(encoding='utf-8')
         with tempfile.TemporaryDirectory() as directory:
             cpp, exe = Path(directory)/'test.cpp', Path(directory)/'test.exe'
-            cpp.write_text(fixture, encoding='utf-8')
-            for macros in ([], ['-DUSE_LR2021=1']):
+            for macros in ([], ['-DUSE_LR2021=1'], ['-DSTATION_G3_ESP32=1'],
+                           ['-DSTATION_G3_ESP32=1', '-DUSE_LR2021=1']):
                 with self.subTest(macros=macros):
+                    # Resolve complete, balanced production methods first. A
+                    # following board-only else-if can own the closing brace
+                    # of extra.sf (or any selected arm). Extracting that arm
+                    # before preprocessing would retain its unmatched #if.
+                    result = subprocess.run(
+                        [compiler, '-E', '-P', '-x', 'c++', *macros, '-'],
+                        input=original, text=True, capture_output=True, check=True)
+                    setter, getter = methods(result.stdout, 'void CommonCLI::handle')
+                    # Keep the actual active conditions and bodies. Only
+                    # unrelated settings needing hardware dependencies are
+                    # omitted; board delegation has its own real G3 suite.
+                    set_blocks = [extract_braced(setter, 'if (strncmp(config, "path.hash.mode", 14)')]
+                    get_blocks = [extract_braced(getter, 'if (configKeyEquals(config, "path.hash.mode"))')]
+                    set_blocks.append(extract_braced(setter, 'if (strcmp(config, "extra.sf") == 0 ||'))
+                    get_blocks.append(extract_braced(getter, 'if (strcmp(config, "extra.sf") == 0)'))
+                    for key in keys:
+                        set_blocks.append(extract_braced(setter, f'if (memcmp(config, "{key} ", {len(key)+1}) == 0)'))
+                        get_blocks.append(extract_braced(getter, f'if (configKeyEquals(config, "{key}"))'))
+                    fixture = template.replace('@SET@', ' else '.join(set_blocks))
+                    fixture = fixture.replace('@GET@', ' else '.join(get_blocks))
+                    fixture = fixture.replace('@DISPATCH@', dispatch)
+                    fixture = fixture.replace('@KEY_EQUALS@', extract_braced(source, 'static bool configKeyEquals('))
+                    cpp.write_text(fixture, encoding='utf-8')
                     sanitizers = (['-fsanitize=address,undefined', '-fno-sanitize-recover=all',
                                    '-fno-pie', '-no-pie'] if sys.platform.startswith('linux') else [])
                     subprocess.run([compiler, '-std=c++17', '-Wall', '-Wextra', '-Werror',
