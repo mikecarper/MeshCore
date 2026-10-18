@@ -3157,6 +3157,12 @@ expose this tab.</p>
 <code>set usb.logging on|off</code>, WiFi controls, and MQTT settings. <code>set mqtt.enabled on|off</code> controls MQTT
 without erasing broker settings; <code>get mqtt.enabled</code>, <code>get mqtt.running</code>, and
 <code>get mqtt.status</code> distinguish the saved switch from current connections.
+On MQTT builds, <code>get mqtt.stats</code> reports free/largest heap and accepted/error
+publish counts. <code>get mqttN.diag</code> reports the connection state, transport errors,
+and <code>pub_ack</code>, the count of actual broker acknowledgments for that client.
+Accepted publishes are separate from broker acknowledgments. Runtime slot
+capacity depends on the hardware profile; the V4 OLED Full profile runs one
+slot even though six broker configurations can be saved.
 <code>set logging.output off|usb|wifi|both</code> selects both outputs together. The browser
 also uses the complete Companion terminal for <code>card</code>, <code>import meshcore://...</code>,
 <code>list</code>, <code>to</code>, <code>send</code>, <code>login</code>, <code>cmd</code>, and delayed replies, with the same syntax
