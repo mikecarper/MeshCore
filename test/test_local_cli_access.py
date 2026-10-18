@@ -16,6 +16,7 @@ PREAMBLE = r'''
 #include <cstring>
 #include <cstdint>
 #include <initializer_list>
+#include <string>
 #define TBEAM_SX1262 1
 #include <helpers/CLICommandUtils.h>
 #include <helpers/RadioProfileCommandUtils.h>
@@ -164,6 +165,7 @@ struct MyMesh : CompanionFleetFixture {
   void cancelAllFloodRetries(){}
   void resetContacts(){++resets;}
   bool savePrefs(){++saves;return save_ok;}
+  @SAVE_PREFERENCE@
   int getTotalAirTime(){return 0;}
   int getReceiveAirTime(){return 0;}
   int getNumSentFlood(){return 0;}
@@ -288,6 +290,23 @@ int main() {
     assert(node.handleCommand(command,0,reply));
     assert(!strcmp(reply,"OK") && board.power_offs==previous+1);
   }
+  // Exercise the real timezone dispatch and typed transaction helper, not a
+  // fixture-only setter: a failed save must preserve the exact fraction.
+  node.save_ok=true;
+  assert(node.handleCommand("set tz.offset 5.75",0,reply) && !strcmp(reply,"OK"));
+  assert(node._prefs.tz_offset==5.75f);
+  assert(node.handleCommand("get tz.offset",0,reply) && !strcmp(reply,"> 5.75"));
+  node.save_ok=false;
+  const int timezone_saves=node.saves;
+  assert(node.handleCommand("set tz.offset -3.5",0,reply));
+  assert(strstr(reply,"Error") && node.saves==timezone_saves+1);
+  assert(node._prefs.tz_offset==5.75f);
+  for(const char* bad:{"nan","inf","5.75junk","15","-12.25"}) {
+    const std::string command=std::string("set tz.offset ")+bad;
+    assert(node.handleCommand(command.c_str(),0,reply));
+    assert(strstr(reply,"Error") && node.saves==timezone_saves+1);
+    assert(node._prefs.tz_offset==5.75f);
+  }
 }
 '''
 
@@ -405,6 +424,9 @@ int main() {
             "void MyMesh::onContactCacheFlushed()",
             "bool MyMesh::handleDirectCommand(", "bool MyMesh::handleCommand(",
             "void MyMesh::onCLICommandRecv("))
+        header = (ROOT / "examples/companion_radio/MyMesh.h").read_text()
+        preamble = PREAMBLE.replace("@SAVE_PREFERENCE@", extract_braced(
+            header, "template <typename T> bool savePreference("))
         for export, webconfig in ((0, False), (1, False), (0, True), (1, True)):
             with self.subTest(export=export, webconfig=webconfig), tempfile.TemporaryDirectory() as temp:
                 binary = Path(temp) / "test"
@@ -415,7 +437,7 @@ int main() {
                     "-DMESH_ENABLE_LOST_REPLY=1",
                     *(["-DWITH_WEBCONFIG=1"] if webconfig else []),
                     *SANITIZER_FLAGS, "-o", str(binary),
-                ], input=PREAMBLE+implementation+SCENARIOS, text=True, capture_output=True)
+                ], input=preamble+implementation+SCENARIOS, text=True, capture_output=True)
                 self.assertEqual(result.returncode, 0, result.stderr)
                 result = subprocess.run([str(binary)], capture_output=True, text=True)
                 self.assertEqual(result.returncode, 0, result.stdout+result.stderr)

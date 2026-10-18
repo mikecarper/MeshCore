@@ -1420,22 +1420,23 @@ bool DataStore::loadPrefsInt(const char *filename,
     }
 #endif
 
-    // The compact ARM table and the explicit readers both end at the
-    // unchanged historical prefix. Consume the common footer only afterward.
-    if (file.available() != 0) {
-      uint8_t traffic_footer[mesh::companion::traffic::FooterSize] = {};
-      success = success
-          && file.read(traffic_footer, sizeof(traffic_footer)) == sizeof(traffic_footer)
-          && mesh::companion::traffic::decodeFooter(traffic_footer,
-              sizeof(traffic_footer), loaded_prefs.tx_media, loaded_prefs.tx_ssh);
-    }
-
-    if (prefs_size == TIMEZONE_PREFS_SIZE) {
-      uint8_t timezone_footer[mesh::companion::timezone::FooterSize] = {};
-      success = success
-          && file.read(timezone_footer, sizeof(timezone_footer)) == sizeof(timezone_footer)
-          && mesh::companion::timezone::decodeFooter(timezone_footer,
-              sizeof(timezone_footer), loaded_prefs.tz_offset);
+    // Both readers end at the frozen prefix. Read the existing TXR and
+    // optional TZF records together; their wire positions and CRCs stay
+    // independent. A short read never reaches either decoder. Use the declared
+    // known image size so a premature available()==0 cannot skip validation.
+    if (prefs_size >= TIMEZONE_PREFS_SIZE - mesh::companion::timezone::FooterSize) {
+      uint8_t footers[mesh::companion::traffic::FooterSize
+          + mesh::companion::timezone::FooterSize];
+      const bool fractional = prefs_size == TIMEZONE_PREFS_SIZE;
+      const size_t length = fractional ? sizeof(footers)
+          : mesh::companion::traffic::FooterSize;
+      success = success && file.read(footers, length) == length
+          && mesh::companion::traffic::decodeFooter(footers,
+              mesh::companion::traffic::FooterSize,
+              loaded_prefs.tx_media, loaded_prefs.tx_ssh)
+          && (!fractional || mesh::companion::timezone::decodeFooter(
+              footers + mesh::companion::traffic::FooterSize,
+              mesh::companion::timezone::FooterSize, loaded_prefs.tz_offset));
     }
 
     // Any bytes left over form only part of a historically appended field.
@@ -1474,15 +1475,20 @@ bool DataStore::savePrefs(const CompanionNodePrefs& _prefs, double node_lat, dou
   File file = openWrite(_fs, "/new_prefs");
 #endif
   if (file) {
+    static constexpr size_t MAX_PREFS_FOOTER_SIZE =
+        mesh::companion::traffic::FooterSize + mesh::companion::timezone::FooterSize;
+#if defined(STM32_PLATFORM)
+    static constexpr size_t PREFS_PREFIX_SIZE = 236;
+    uint8_t image[PREFS_PREFIX_SIZE + MAX_PREFS_FOOTER_SIZE];
+#endif
 #if defined(STM32_PLATFORM) && defined(__GNUC__)
     using namespace mesh::companion_prefs;
-    uint8_t image[236];
     const uint8_t pad[4] = {};
     size_t used = 0;
     for (const PrefField& field : PREF_FIELDS) {
-      if (field.length > sizeof(image) - used) {
+      if (field.length > PREFS_PREFIX_SIZE - used) {
         // Latch failure and stop before any out-of-bounds pointer arithmetic.
-        used = sizeof(image) + 1;
+        used = PREFS_PREFIX_SIZE + 1;
         break;
       }
       memcpy(image + used, prefValue(field, _prefs, node_lat, node_lon, pad),
@@ -1492,8 +1498,7 @@ bool DataStore::savePrefs(const CompanionNodePrefs& _prefs, double node_lat, dou
     // STM32 stages the frozen prefix: patch its published integer hour once,
     // rather than selecting an alternate source for every table entry.
     image[225] = static_cast<uint8_t>(legacy_tz_offset);
-    bool success = used == sizeof(image)
-        && file.write(image, sizeof(image)) == sizeof(image);
+    bool success = used == PREFS_PREFIX_SIZE;
 #elif defined(NRF52_PLATFORM) && defined(__GNUC__)
     // nRF52 retains streaming writes and its existing small stack footprint.
     // The table is the same validated wire order used by the scalar emitter.
@@ -1510,15 +1515,14 @@ bool DataStore::savePrefs(const CompanionNodePrefs& _prefs, double node_lat, dou
 #if defined(STM32_PLATFORM)
     // Keep the explicit wire field list, but make one bounded atomic write.
     // Other platforms retain direct writes and their existing stack footprint.
-    uint8_t image[236];
     size_t image_length = 0;
     const auto writeField = [&](const void* data, size_t size) -> bool {
-      if (image_length > sizeof(image)
-          || size > sizeof(image) - image_length) {
+      if (image_length > PREFS_PREFIX_SIZE
+          || size > PREFS_PREFIX_SIZE - image_length) {
         // Latch failure without reading data or advancing past the buffer.
         // The return value only preserves the common emitter interface;
         // the exact-length check below is the authoritative write gate.
-        image_length = sizeof(image) + 1;
+        image_length = PREFS_PREFIX_SIZE + 1;
         return true;
       }
       memcpy(image + image_length, data, size);
@@ -1648,8 +1652,7 @@ bool DataStore::savePrefs(const CompanionNodePrefs& _prefs, double node_lat, dou
         sizeof(_prefs.gps_sync_interval_hours));
     success = success && writeField(tail, sizeof(tail));
 #if defined(STM32_PLATFORM)
-    success = success && image_length == sizeof(image)
-        && file.write(image, sizeof(image)) == sizeof(image);
+    success = success && image_length == PREFS_PREFIX_SIZE;
 #endif
 #endif
 #if defined(RAK_4631)
@@ -1658,19 +1661,27 @@ bool DataStore::savePrefs(const CompanionNodePrefs& _prefs, double node_lat, dou
     success = success && file.write(peripheral_footer, sizeof(peripheral_footer))
         == sizeof(peripheral_footer);
 #endif
-    uint8_t traffic_footer[mesh::companion::traffic::FooterSize];
-    mesh::companion::traffic::encodeFooter(traffic_footer,
-        _prefs.tx_media, _prefs.tx_ssh);
-    success = success
-        && file.write(traffic_footer, sizeof(traffic_footer)) == sizeof(traffic_footer);
+#if defined(STM32_PLATFORM)
+    // Keep the frozen prefix bound separate from this larger image. Append
+    // the checked records in place, then stage the exact 244/254-byte image.
+    uint8_t* const footers = image + PREFS_PREFIX_SIZE;
+#else
+    uint8_t footers[MAX_PREFS_FOOTER_SIZE];
+#endif
+    mesh::companion::traffic::encodeFooter(footers, _prefs.tx_media, _prefs.tx_ssh);
+    size_t footer_length = mesh::companion::traffic::FooterSize;
     // Range was checked before opening the transaction. Reuse its integer
     // fallback instead of validating and converting the same float again.
     if (_prefs.tz_offset != legacy_tz_offset) {
-      uint8_t timezone_footer[mesh::companion::timezone::FooterSize];
-      mesh::companion::timezone::encodeFooter(timezone_footer, _prefs.tz_offset);
-      success = success
-          && file.write(timezone_footer, sizeof(timezone_footer)) == sizeof(timezone_footer);
+      mesh::companion::timezone::encodeFooter(footers + footer_length, _prefs.tz_offset);
+      footer_length = MAX_PREFS_FOOTER_SIZE;
     }
+#if defined(STM32_PLATFORM)
+    const size_t image_length_with_footers = PREFS_PREFIX_SIZE + footer_length;
+    success = success && file.write(image, image_length_with_footers) == image_length_with_footers;
+#else
+    success = success && file.write(footers, footer_length) == footer_length;
+#endif
 #if defined(NRF52_PLATFORM) || defined(STM32_PLATFORM) || defined(ESP32_PLATFORM) || defined(RP2040_PLATFORM)
     success = file.commit(success);
     if (!success) MESH_DEBUG_PRINTLN("DataStore: atomic preferences write failed");

@@ -132,9 +132,9 @@ int main() {
             "/new_prefs", actual, lat, lon);
         assert(got == expected);
         assert(READ_CALLS == expected_reads);
-        // The common footer reader adds one EOF probe after any recognized
-        // historical image; no original field read or ordering changes.
-        assert(AVAILABLE_CALLS == expected_available+(expected_reads.empty()?0:1));
+        // Footer presence follows the already validated declared size; every
+        // historical field read and EOF probe still matches the old reader.
+        assert(AVAILABLE_CALLS == expected_available);
         if (length == 84 && quota == 84) {
           // The original mandatory prefix has 21 reads, ending at ble_pin.
           // This order is an independent wire contract, not the new table.
@@ -154,7 +154,7 @@ int main() {
 #endif
           // Every absent optional field observes EOF, then the completed
           // image receives the existing final trailing-byte check.
-          assert(AVAILABLE_CALLS == optional_fields + 2);
+          assert(AVAILABLE_CALLS == optional_fields + 1);
         }
         if(got)legacy.tx_media=legacy.tx_ssh=mesh::RADIO_TX_AUTO;
         equalValues(actual, legacy);

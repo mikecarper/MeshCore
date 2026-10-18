@@ -130,6 +130,10 @@ int main() {
     assert(store.savePrefs(prefs, 47.125, -122.25));
     assert(store.fs.files.at("/new_prefs") == golden(prefs, 47.125, -122.25));
     assert(!store.fs.exists("/new_prefs.tmp"));
+#if defined(STM32_PLATFORM)
+    assert(WRITE_CALLS == std::vector<size_t>{244});
+    assert(store.fs.files.at("/new_prefs").size() == 244);
+#endif
 #if defined(NRF52_PLATFORM)
     const std::vector<size_t> streaming = {@WRITE_SIZES@
 #if defined(RAK_4631)
@@ -364,6 +368,43 @@ int main() {
   assert(lat == 42.25 && lon == -121.125);
 
 #if defined(STM32_PLATFORM)
+  // The extended STM32 image is still one atomic write. Its old prefix and
+  // TXR bytes come from the independent wire definition; TZF is a literal
+  // binary32/CRC vector, not the production footer encoder.
+  {
+    CompanionNodePrefs fractional;
+    assert(fractional.copyPersistedValuesFrom(changed));
+    fractional.tz_offset = 5.75f;
+    auto expected = golden(fractional, 42.25, -121.125);
+    expected.insert(expected.end(), {'T', 'Z', 'F', 1, 0, 0, 0xb8, 0x40, 0x7e, 0x2e});
+    assert(expected.size() == 254 && expected[225] == 5);
+    DataStore writer;
+    writer.fs.files["/new_prefs"] = before;
+    WRITE_CALLS.clear();
+    assert(writer.savePrefs(fractional, 42.25, -121.125));
+    assert(WRITE_CALLS == std::vector<size_t>{254});
+    assert(writer.fs.files.at("/new_prefs") == expected);
+    for (size_t quota = 0; quota < expected.size(); ++quota) {
+      for (bool readback : {false, true}) {
+        DataStore failed;
+        failed.fs.files["/new_prefs"] = before;
+        if (readback) failed.fs.fail_read_after = static_cast<int>(quota);
+        else failed.fs.fail_write_after = static_cast<int>(quota);
+        assert(!failed.savePrefs(fractional, 42.25, -121.125));
+        unchanged(failed, before);
+        failed.fs.fail_read_after = failed.fs.fail_write_after = -1;
+        WRITE_CALLS.clear();
+        assert(failed.savePrefs(fractional, 42.25, -121.125));
+        assert(WRITE_CALLS == std::vector<size_t>{254});
+        assert(failed.fs.files.at("/new_prefs") == expected);
+        ++comparisons;
+      }
+    }
+    CompanionNodePrefs reboot;
+    assert(writer.loadPrefsInt("/new_prefs", reboot, lat, lon));
+    assert(reboot.tz_offset == 5.75f && reboot.freq == fractional.freq);
+    assert(reboot.tx_media == fractional.tx_media && reboot.tx_ssh == fractional.tx_ssh);
+  }
   // A future field or wrong staging capacity must fail closed, not overrun
   // the stack or silently publish a truncated/extra-byte format.
   for (bool undersized : {false, true}) {
@@ -429,8 +470,9 @@ class CompanionPrefsImageTests(unittest.TestCase):
         ) + '\n' + save + '\n' + legacy_writer
         for suffix, capacity in (('TooSmall', 235), ('TooLarge', 237)):
             variant = save.replace('DataStore::savePrefs(', 'DataStore::savePrefs' + suffix + '(', 1)
-            self.assertIn('uint8_t image[236];', variant)
-            variant = variant.replace('uint8_t image[236];', f'uint8_t image[{capacity}];', 1)
+            prefix = 'static constexpr size_t PREFS_PREFIX_SIZE = 236;'
+            self.assertIn(prefix, variant)
+            variant = variant.replace(prefix, f'static constexpr size_t PREFS_PREFIX_SIZE = {capacity};', 1)
             methods += '\n#if defined(STM32_PLATFORM)\n' + variant + '\n#endif\n'
         code = HARNESS.split('int main(')[0].replace('@METHODS@', methods)
         code = code.replace(' bool savePrefs(const CompanionNodePrefs&, double, double);',

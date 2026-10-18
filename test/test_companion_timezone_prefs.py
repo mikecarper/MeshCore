@@ -189,6 +189,7 @@ public:
   DataStore store;
   unsigned saves = 0;
   bool savePrefs() { ++saves; return store.savePrefs(_prefs, 47.125, -122.25); }
+  @SAVE_PREFERENCE@
   bool command(const char* command, char* reply) {
     @GETTER@
     @SETTER@
@@ -303,6 +304,13 @@ int main() {
   const std::vector<uint8_t> fraction = @FIVE_SEVENTY_FIVE@;
   complete.insert(complete.end(), fraction.begin(), fraction.end());
   const size_t extension = sizeof(LEGACY_IMAGE);
+  // A declared fractional image must not silently fall back to its legacy
+  // byte when a stream prematurely reports EOF before the checked footers.
+  for (size_t cutoff : {size_t(84), extension - size_t(8), extension}) {
+    FORCED_EOF_CURSOR = cutoff;
+    rejectImage(complete, static_cast<int>(cutoff));
+    FORCED_EOF_CURSOR = size_t(-1);
+  }
   // Every damaged extension byte fails atomically. Removing the complete
   // optional footer is a legitimate old-format integer image, tested above.
   for (size_t i = 0; i < 10; ++i) {
@@ -459,7 +467,10 @@ int main() {
         code = HARNESS.split("int main(")[0].replace("@METHODS@", methods)
         getter = method(mesh, '  if (strcmp(command, "get tz.offset") == 0)')
         setter = method(mesh, '  if (strncmp(command, "set tz.offset ", 14) == 0)')
+        header = (ROOT / "examples/companion_radio/MyMesh.h").read_text()
+        save_preference = method(header, 'template <typename T> bool savePreference(')
         tests = TESTS.replace("@GETTER@", getter).replace("@SETTER@", setter)
+        tests = tests.replace("@SAVE_PREFERENCE@", save_preference)
         values = (5.5, 5.75, -3.5, -3.75, 12.75, 13.75, -11.75, .25, -.25)
         tests = tests.replace("@FRACTIONS@", ",\n  ".join(
             "{" + str(value) + "f," + cpp_bytes(fractional_footer(value)) + "}" for value in values))
@@ -485,6 +496,16 @@ inline char* utoa(unsigned int value,char* output,int base){
  if(base!=10)abort();sprintf(output,"%u",value);return output;
 }
 ''')
+            # Only the transport boundary is fault-injected: size() retains
+            # the complete declared image while available() can report EOF.
+            mock = (ROOT / "test/fixtures/radio_profiles/mocks/helpers/IdentityStore.h").read_text()
+            mock = mock.replace("class MemoryFS;", "static size_t FORCED_EOF_CURSOR = size_t(-1);\nclass MemoryFS;", 1)
+            available = "size_t available() const { return size() - cursor_; }"
+            self.assertEqual(mock.count(available), 1)
+            mock = mock.replace(available,
+                "size_t available() const { return cursor_ >= FORCED_EOF_CURSOR ? 0 : size() - cursor_; }")
+            (work / "helpers").mkdir()
+            (work / "helpers/IdentityStore.h").write_text(mock)
             transaction = (ROOT / "src/helpers/ContactFileTransaction.h").read_text()
             (work / "ContactFileTransaction.h").write_text(transaction.replace(
                 '#include "IdentityStore.h"', '#include <helpers/IdentityStore.h>'))

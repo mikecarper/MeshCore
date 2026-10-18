@@ -11003,13 +11003,8 @@ bool MyMesh::handleCommand(const char* command, uint32_t sender_timestamp,
         || !mesh::companion::timezone::valid(tz)) {
       strcpy(reply, "Error, must be from -12 to +14");
     } else {
-      const float previous = _prefs.tz_offset;
-      _prefs.tz_offset = tz;
-      if (savePrefs()) strcpy(reply, "OK");
-      else {
-        _prefs.tz_offset = previous;
-        strcpy(reply, "Error: setting could not be saved");
-      }
+      strcpy(reply, savePreference<float>(_prefs.tz_offset, tz)
+          ? "OK" : "Error: setting could not be saved");
     }
     return true;
   }
