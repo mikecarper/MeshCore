@@ -252,7 +252,27 @@
     return release.published_at || release.created_at || "";
   }
 
-  function selectReleaseSet(releases) {
+  function isT114PreviewTag(tag) {
+    return /^heltec-t114-v\d+(?:\.\d+){2,3}\.preview[1-9]\d*$/.test(tag || "");
+  }
+
+  function controlsForRelease(controlData, tag) {
+    if (!controlData) return null;
+    if ((controlData.releaseTag || controlData.familyTag) === tag) return controlData;
+    return (Array.isArray(controlData.supplementalReleases) ? controlData.supplementalReleases : [])
+      .find(function (entry) { return entry && entry.releaseTag === tag; }) || null;
+  }
+
+  function t114PreviewControls(controlData, tag) {
+    const entry = controlsForRelease(controlData, tag);
+    if (!isT114PreviewTag(tag) || !entry || !/^[0-9a-f]{40}$/.test(entry.source || "")) return null;
+    const family = tag.slice("heltec-t114-".length);
+    const hash = String(entry.familyTag || "").slice(family.length + 1);
+    return entry.familyTag === family + "-" + hash && /^[0-9a-f]{8,40}$/.test(hash) &&
+      entry.source.startsWith(hash) && entry.profiles ? entry : null;
+  }
+
+  function selectReleaseSet(releases, controlData) {
     const publicReleases = (Array.isArray(releases) ? releases : []).filter(
       function (release) {
         return release && !release.draft && typeof release.tag_name === "string";
@@ -263,10 +283,14 @@
     }).sort(function (a, b) {
       return releaseDate(b).localeCompare(releaseDate(a));
     });
-    const main = mainReleases[0];
+    const supplements = publicReleases.filter(function (release) {
+      return Boolean(t114PreviewControls(controlData, release.tag_name));
+    }).sort(function (a, b) { return releaseDate(b).localeCompare(releaseDate(a)); });
+    const main = mainReleases[0] || supplements[0];
     if (!main) return null;
 
-    const familyTag = main.tag_name;
+    const mainSupplement = t114PreviewControls(controlData, main.tag_name);
+    const familyTag = mainSupplement ? mainSupplement.familyTag : main.tag_name;
     const acceptedTags = new Set(RELEASE_PAGE_PREFIXES.map(function (prefix) {
       return prefix + familyTag;
     }));
@@ -276,7 +300,7 @@
     const chunkTag = new RegExp("^(?:" + chunkGroups.map(escapeRegExp).join("|") +
       ")-(?:[2-9]|[1-9][0-9]+)-" + escapeRegExp(familyTag) + "$");
     const familyReleases = publicReleases.filter(function (release) {
-      return acceptedTags.has(release.tag_name) || chunkTag.test(release.tag_name);
+      return acceptedTags.has(release.tag_name) || chunkTag.test(release.tag_name) || supplements.includes(release);
     }).sort(function (a, b) {
       return releaseDate(b).localeCompare(releaseDate(a));
     });
@@ -287,6 +311,10 @@
       url: isSafeGithubUrl(main.html_url) ? main.html_url : "",
       prerelease: Boolean(main.prerelease),
       releases: familyReleases,
+      supplementalReleases: supplements.map(function (release) {
+        const entry = t114PreviewControls(controlData, release.tag_name);
+        return { releaseTag: release.tag_name, familyTag: entry.familyTag, source: entry.source };
+      }),
     };
   }
 
@@ -309,6 +337,12 @@
               ? release.html_url
               : "",
             publishedAt: releaseDate(release),
+            familyTag: ((releaseSet.supplementalReleases || []).find(function (entry) {
+              return entry.releaseTag === release.tag_name;
+            }) || {}).familyTag || releaseSet.familyTag,
+            t114Preview: (releaseSet.supplementalReleases || []).some(function (entry) {
+              return entry.releaseTag === release.tag_name;
+            }),
           });
         }
       );
@@ -686,6 +720,57 @@
       }));
   }
 
+  function t114AutoDisplayProfile(profile) {
+    const controls = profile && profile.controls;
+    return Boolean(controls && controls.platform === "NRF52_PLATFORM" &&
+      controls.display === true && controls.displayAuto === true && controls.displayController === "st7789" &&
+      /^[0-9a-f]{40}$/.test(controls.displaySource || "") &&
+      /^heltec_t114_/i.test(profile.target || "") &&
+      Array.isArray(profile.files) && profile.files.length > 0 && profile.files.every(function (file) {
+        const hash = String(file.name || "").match(/-([0-9a-f]{8,40})\.(?:hex|uf2|zip)$/i);
+        return hash && controls.displaySource.startsWith(hash[1].toLowerCase());
+      }));
+  }
+
+  function t114HeadlessModemProfile(profile) {
+    return Boolean(profile && profile.role === "kiss" && profile.controls &&
+      profile.controls.platform === "NRF52_PLATFORM" && profile.controls.display === false &&
+      /^[0-9a-f]{40}$/.test(profile.controlsSource || "") && profile.files.length > 0 &&
+      profile.files.every(function (file) {
+        const hash = file.name.match(/-([0-9a-f]{8,40})\.(?:hex|uf2|zip)$/i);
+        return hash && profile.controlsSource.startsWith(hash[1].toLowerCase());
+      }));
+  }
+
+  function omitT114DisplayDuplicates(profiles) {
+    const families = new Map();
+    function role(profile) { return profile.role || parseTargetProfile(profile.target).role; }
+    function family(profile) { return profile.releaseFamily || profile.files[0].familyTag || ""; }
+    function qualified(profile) {
+      return /^heltec_t114_/i.test(profile.target || "") && !/_without_display_/i.test(profile.target) &&
+        (t114AutoDisplayProfile(profile) || t114HeadlessModemProfile(profile));
+    }
+    (profiles || []).forEach(function (profile) {
+      if (!qualified(profile)) return;
+      const key = role(profile);
+      const previous = families.get(key);
+      const date = String(profile.files[0].publishedAt || "");
+      const previousDate = previous && String(previous.files[0].publishedAt || "");
+      if (!previous || date > previousDate ||
+          (date === previousDate && profile.t114Preview && !previous.t114Preview)) {
+        families.set(key, profile);
+      }
+    });
+    return (profiles || []).filter(function (profile) {
+      if (!/^heltec_t114_/i.test(profile.target || "")) return true;
+      const replacement = families.get(role(profile));
+      // Recommend the newest qualified family for this role, including its
+      // real sensor/OTA choices. Historical screen-assumed and headless
+      // policies stay in raw rows, never renamed into a new OTA identity.
+      return !replacement || qualified(profile) && family(profile) === family(replacement);
+    });
+  }
+
   function hardwareChoiceLabel(field, value, profiles, family) {
     const matches = (profiles || []).filter(function (profile) {
       return profile[field] === value;
@@ -696,6 +781,8 @@
         })) {
       return "Station G3 ESP32 (automatic slot detection)";
     }
+    if (String(value).toLowerCase() === "heltec_t114" && matches.length > 0 &&
+        matches.every(t114AutoDisplayProfile)) return "Heltec T114 (automatic screen detection)";
     return field === "hardware" && family
       ? humanizeHardwareVariant(value, family) : humanizeHardware(value);
   }
@@ -971,25 +1058,27 @@
   }
 
   function buildCatalog(releases, controlData) {
-    const releaseSet = selectReleaseSet(releases);
+    const releaseSet = selectReleaseSet(releases, controlData);
     if (!releaseSet) {
       return { releaseSet: null, rows: [], profiles: [] };
     }
     const rows = flattenReleaseAssets(releaseSet);
     const firmwareRows = rows.map(function (row) {
-      return parseFirmwareAsset(row, releaseSet.familyTag);
+      return parseFirmwareAsset(row, row.familyTag);
     }).filter(Boolean);
     const grouped = new Map();
 
     firmwareRows.forEach(function (file) {
-      let profile = grouped.get(file.target);
+      const key = file.familyTag + ":" + file.target;
+      let profile = grouped.get(key);
       if (!profile) {
         profile = Object.assign(parseTargetProfile(file.target), {
           files: [],
           otaPackaged: false,
-          releaseFamily: releaseSet.familyTag,
+          releaseFamily: file.familyTag,
+          t114Preview: file.t114Preview,
         });
-        grouped.set(file.target, profile);
+        grouped.set(key, profile);
       }
       profile.files.push(file);
       profile.otaPackaged = profile.otaPackaged || file.otaPackaged;
@@ -1004,8 +1093,25 @@
       profile.files.sort(function (a, b) {
         return a.name.localeCompare(b.name);
       });
+      if (profile.t114Preview) {
+        const metadata = controlsForRelease(controlData, profile.files[0].releaseTag);
+        profile.controls = metadata && metadata.profiles[profile.target];
+        profile.controlsSource = metadata && metadata.source;
+        if (profile.controls) applyReleaseRuntimeCapabilities(profile, profile.controls);
+      }
       return profile;
     }).filter(function (profile) {
+      if (profile.t114Preview) {
+        const metadata = controlsForRelease(controlData, profile.files[0].releaseTag);
+        const hashesMatch = metadata && profile.files.every(function (file) {
+          const hash = file.name.match(/-([0-9a-f]{8,40})\.(?:hex|uf2|zip)$/i);
+          return hash && metadata.source.startsWith(hash[1].toLowerCase());
+        });
+        if (!hashesMatch || String(profile.hardware).toLowerCase() !== "heltec_t114" ||
+            !profile.controls || profile.controls.platform !== "NRF52_PLATFORM" ||
+            !(t114AutoDisplayProfile(profile) && profile.controls.displaySource === metadata.source ||
+              profile.role === "kiss" && profile.controls.display === false)) return false;
+      }
       return !isHiddenLegacyProfile(profile);
     });
     const profiles = omitLegacyObserverCompatibilityProfiles(
@@ -1029,12 +1135,14 @@
       return profile.hardware;
     })));
     profiles.forEach(function (profile) {
-      if (controlData && controlData.familyTag === releaseSet.familyTag &&
-          controlData.profiles && controlData.profiles[profile.target]) {
-        profile.controls = controlData.profiles[profile.target];
+      const metadata = profile.t114Preview ? controlsForRelease(controlData, profile.files[0].releaseTag) : controlData;
+      if (metadata && metadata.familyTag === profile.releaseFamily &&
+          metadata.profiles && metadata.profiles[profile.target]) {
+        profile.controls = metadata.profiles[profile.target];
+        profile.controlsSource = metadata.source;
         applyReleaseRuntimeCapabilities(profile, profile.controls);
         profile.migrationPackage = migrationPackageForProfile(
-          profile, controlData.partitionMigrations
+          profile, metadata.partitionMigrations
         );
         profile.migrationAsset = migrationAssetForProfile(profile, rows);
         if (isFullCompanion(profile) && profile.controls.mqtt &&
@@ -1078,10 +1186,14 @@
 
     return {
       releaseSet: releaseSet,
-      rows: firmwareRows,
+      rows: firmwareRows.filter(function (file) {
+        return !file.t114Preview || profiles.some(function (profile) {
+          return profile.t114Preview && profile.files.includes(file);
+        });
+      }),
       // Recommendation filters retain original files and target identities in
       // the raw catalog, including when a qualified successor replaces them.
-      profiles: omitReplacedQspiProfiles(omitStationG3SlotDuplicates(profiles)),
+      profiles: omitT114DisplayDuplicates(omitReplacedQspiProfiles(omitStationG3SlotDuplicates(profiles))),
     };
   }
 
@@ -1395,6 +1507,17 @@
       requested[field] = params.get(field) || "";
     });
     if (!profiles.some(function (profile) {
+      return String(profile.hardware).toLowerCase() === "heltec_t114_without_display" &&
+        (!requested.role || profile.role === requested.role);
+    }) && profiles.some(function (profile) {
+      return String(profile.hardware).toLowerCase() === "heltec_t114" && t114AutoDisplayProfile(profile) &&
+        (!requested.role || profile.role === requested.role);
+    })) {
+      ["hardware", "hardwareFamily"].forEach(function (field) {
+        if (String(requested[field]).toLowerCase() === "heltec_t114_without_display") requested[field] = "Heltec_t114";
+      });
+    }
+    if (!profiles.some(function (profile) {
           return profile.hardware === "Station_G3_ESP32_r2" &&
             (!requested.role || profile.role === requested.role);
         }) &&
@@ -1632,6 +1755,10 @@
     const target = profile.target;
     const info = profile.controls || {};
     const notes = [];
+    if (t114AutoDisplayProfile(profile)) {
+      notes.push("One T114 image detects the supported ST7789 screen at startup and also runs without a screen.");
+      notes.push("Switching from an older without_display image requires a local USB update; do not use a different target's LoRa OTA package. Keep your existing identity and settings; no erase is required.");
+    }
     if (identity.hardware === "Station_G3_ESP32" && stationG3SharedSlotProfile(profile)) {
       notes.push("Automatically selects physical radio slot 1 or 2. Use this same image for either slot.");
     }
@@ -2756,6 +2883,8 @@
     omitLegacyObserverCompatibilityProfiles:
       omitLegacyObserverCompatibilityProfiles,
     omitStationG3SlotDuplicates: omitStationG3SlotDuplicates,
+    t114AutoDisplayProfile: t114AutoDisplayProfile,
+    omitT114DisplayDuplicates: omitT114DisplayDuplicates,
     omitTransportsReplacedByDualCdcFull:
       omitTransportsReplacedByFull,
     omitNrf52TransportsReplacedByFull:

@@ -3552,6 +3552,10 @@ declare_build_capability_contract() {
   fi
 
   if [ "$env_platform" = "NRF52_PLATFORM" ] && ! is_kiss_modem_target "$env_name"; then
+    if is_t114_display_autodetect_build "$pio_env_name"; then
+      record_application_expectation "display.autodetect" \
+        "meshcore.capability.display.autodetect.t114.v1"
+    fi
     # Prove the real DFU service is linked, not merely a generic OTA CLI stub.
     record_build_expectation "ota.update.bluetooth" "_ZN6BLEDfu5beginEv"
     if { is_lora_ota_build "$env_name" \
@@ -5797,6 +5801,9 @@ is_runtime_setting_alias_target() {
   if get_station_g3_shared_slot_replacement "$1" >/dev/null; then
     return 0
   fi
+  if get_t114_display_replacement "$1" >/dev/null; then
+    return 0
+  fi
   if is_legacy_companion_power_saving_target "$1" \
       || is_legacy_companion_femoff_target "$1" \
       || is_legacy_radio_gain_profile_target "$1" \
@@ -5809,6 +5816,39 @@ is_runtime_setting_alias_target() {
       ;;
   esac
   return 1
+}
+
+is_t114_display_autodetect_build() {
+  local target=$1
+  [ "${PIO_ENV_PLATFORM_BY_NAME[$target]:-}" = NRF52_PLATFORM ] \
+    && [ "${PIO_ENV_BOARD_BY_NAME[$target]:-}" = heltec_t114 ] \
+    && [ -n "$PIO_CONFIG_JSON" ] || return 1
+  python3 -c '
+import json,re,sys
+rows={name:dict(options) for name,options in json.load(sys.stdin)}
+definitions={}
+for flag in rows.get("env:"+sys.argv[1],{}).get("build_flags",[]):
+    match=re.fullmatch(r"-([DU])\s*(\w+)(?:=(.*))?",str(flag).strip())
+    if not match: continue
+    kind,key,value=match.groups()
+    if kind=="U": definitions.pop(key,None)
+    else: definitions[key]="1" if value is None else value
+sys.exit(0 if definitions.get("HELTEC_T114","0") not in ("0","false")
+         and definitions.get("T114_DISPLAY_AUTODETECT")=="1"
+         and definitions.get("DISPLAY_CLASS")=="ST7789Display" else 1)
+' "$target" <<<"$PIO_CONFIG_JSON"
+}
+
+get_t114_display_replacement() {
+  local target=$1 candidate lower=${1,,}
+  # Synthetic lean OTA environments are generated before bulk filtering;
+  # filter their exact aliases as well as the original five recipe names.
+  [[ "$lower" =~ ^heltec_t114_without_display_((repeater(_bridge_rs232)?|room_server)(_lora_ota_no_external_sensors)?|companion_radio_(ble|usb|full))$ ]] || return 1
+  candidate=Heltec_t114_${lower#heltec_t114_without_display_}
+  [ "${PIO_ENV_PLATFORM_BY_NAME[$target]:-}" = NRF52_PLATFORM ] \
+    && [ "${PIO_ENV_BOARD_BY_NAME[$target]:-}" = heltec_t114 ] || return 1
+  is_t114_display_autodetect_build "$(get_pio_build_env "$candidate")" || return 1
+  printf '%s\n' "$candidate"
 }
 
 get_station_g3_shared_slot_replacement() {

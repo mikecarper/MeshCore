@@ -14,6 +14,10 @@ not require rebuilding it. USB remains the normal way to update the Companion
 itself. WiFi/Bluetooth updates are optional, and Full does not install LoRa
 MOTA packages on itself.
 
+New **Heltec T114** Full images automatically detect the optional screen and
+also run without it. Choose **Heltec T114** in the firmware picker for either
+board configuration; see the [T114 update guide](heltec_t114.md).
+
 The Wireless Paper Full memory-sharing update keeps 350 contacts and 256
 queued messages normally. During an mOTA session, 128 message slots are
 available while the other half holds its workspace. If more than 128 unread

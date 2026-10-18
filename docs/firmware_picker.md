@@ -147,6 +147,11 @@
 
 ## What the choices mean
 
+New **Heltec T114** images detect the optional screen automatically, so the
+same firmware works with or without it. Choose the board and firmware role;
+there is no screen option for an automatic-detection image. See the
+[T114 update guide](heltec_t114.md) when moving from an older screenless target.
+
 Pick the choices in any order. The controls stay limited to compatible
 firmware combinations that were actually built in the current release set.
 The result count stays visible while you scroll through the filters on a phone.

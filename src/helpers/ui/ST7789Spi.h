@@ -145,6 +145,11 @@ class ST7789Spi : public OLEDDisplay {
       digitalWrite(_rst, LOW);
       delay(10);
       digitalWrite(_rst, HIGH);
+#if defined(HELTEC_T114) && defined(T114_DISPLAY_AUTODETECT) && T114_DISPLAY_AUTODETECT
+      // Reset reloads the panel's NVM. Allow commands after >=5 ms and
+      // Sleep Out after >=120 ms, including reinitialization after wake.
+      delay(120);
+#endif
       _spi->begin ();
       //digitalWrite(_ledA, LED_A_ON);
       return true;

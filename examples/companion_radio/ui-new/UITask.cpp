@@ -2328,12 +2328,16 @@ void UITask::loop() {
   if (ev == BUTTON_EVENT_CLICK) {
     c = checkDisplayOn(KEY_ENTER);
   } else if (ev == BUTTON_EVENT_LONG_PRESS) {
-#if COMPANION_FEATURE_READER
-    if (isReaderActive() || (curr == home && static_cast<HomeScreen*>(home)->isRadioPage()))
+    if (_display == NULL) {
       c = handleLongPress(KEY_ENTER);
-    else
+    } else {
+#if COMPANION_FEATURE_READER
+      if (isReaderActive() || (curr == home && static_cast<HomeScreen*>(home)->isRadioPage()))
+        c = handleLongPress(KEY_ENTER);
+      else
 #endif
-    display.dismiss();
+      display.dismiss();
+    }
   } else if (ev == BUTTON_EVENT_DOUBLE_CLICK) {
     c = handleDoubleClick(KEY_SELECT);
   } else if (ev == BUTTON_EVENT_TRIPLE_CLICK || ev == BUTTON_EVENT_QUADRUPLE_CLICK) {
@@ -2476,7 +2480,7 @@ void UITask::loop() {
     c = 0;
   }
 
-  if (c != 0 && curr) {
+  if (c != 0 && curr && _display != NULL) {
     _display->wake(mesh::ui::DisplayWake::Button);
     curr->handleInput(c);
     _next_refresh = millis();  // trigger refresh
@@ -2606,18 +2610,18 @@ char UITask::checkDisplayOn(char c) {
     }
     _next_refresh = millis();  // trigger refresh
   }
-  return c;
+  return _display != NULL ? c : 0;
 }
 
 char UITask::handleLongPress(char c) {
   // Exit an incoming message preview even during the startup rescue window.
   // The on-screen reader hint must not unexpectedly enter CLI rescue.
-  if (curr == msg_preview) return c;
+  if (_display != NULL && curr == msg_preview) return c;
 #if COMPANION_FEATURE_READER
   // The radio page's reader gesture, including exit, takes precedence over
   // the global early-boot rescue gesture just like the WiFi setup page.
-  if (isReaderActive()) { closeReader(); return 0; }
-  if (curr == home && static_cast<HomeScreen*>(home)->isRadioPage()) {
+  if (_display != NULL && isReaderActive()) { closeReader(); return 0; }
+  if (_display != NULL && curr == home && static_cast<HomeScreen*>(home)->isRadioPage()) {
     showReader();
     return 0;
   }
@@ -2625,7 +2629,7 @@ char UITask::handleLongPress(char c) {
 #if UI_WIFI_SETUP_HOME_PAGE == 1
   // A setup AP may focus this page immediately at boot. Its documented HOLD
   // action must win over the otherwise-global early-boot CLI rescue gesture.
-  if (curr == home && static_cast<HomeScreen*>(home)->isWiFiSetupPage()) {
+  if (_display != NULL && curr == home && static_cast<HomeScreen*>(home)->isWiFiSetupPage()) {
     return c;
   }
 #endif
@@ -2633,22 +2637,22 @@ char UITask::handleLongPress(char c) {
     the_mesh.enterCLIRescue();
     c = 0;   // consume event
   }
-  return c;
+  return _display != NULL ? c : 0;
 }
 
 char UITask::handleDoubleClick(char c) {
   MESH_DEBUG_PRINTLN("UITask: double-click triggered");
   checkDisplayOn(c);
-  return c;
+  return _display != NULL ? c : 0;
 }
 
 char UITask::handleMultiClick(char c, bool backwards) {
   MESH_DEBUG_PRINTLN("UITask: %s-click triggered", backwards ? "quadruple" : "triple");
-  if (curr == msg_preview
+  if (_display != NULL && (curr == msg_preview
 #if COMPANION_FEATURE_READER
       || isReaderActive()
 #endif
-  ) {
+  )) {
     return checkDisplayOn(backwards ? KEY_UP : KEY_DOWN);
   }
   checkDisplayOn(c);

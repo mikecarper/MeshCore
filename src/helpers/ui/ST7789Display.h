@@ -13,6 +13,18 @@ class ST7789Display : public DisplayDriver {
   int _x=0, _y=0;
   int _line_height = 18;
 
+#if defined(HELTEC_T114) && defined(T114_DISPLAY_AUTODETECT) && T114_DISPLAY_AUTODETECT
+  bool _probeComplete = false;
+  bool _present = false;
+#endif
+  bool canDraw() const {
+#if defined(HELTEC_T114) && defined(T114_DISPLAY_AUTODETECT) && T114_DISPLAY_AUTODETECT
+    return _isOn;
+#else
+    return true;
+#endif
+  }
+
   bool i2c_probe(TwoWire& wire, uint8_t addr);
 public:
 #if defined(HELTEC_VISION_MASTER_T190)

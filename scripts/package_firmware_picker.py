@@ -9,7 +9,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def package(releases, controls, bootloaders=None):
-    if not any(r['tag_name'] == controls['familyTag'] for r in releases):
+    if not any(r['tag_name'] == controls.get('releaseTag', controls['familyTag']) for r in releases):
         raise ValueError('Controls must match the supplied release family')
     # Retain only data used by the picker; never embed authentication or API metadata.
     compact = []

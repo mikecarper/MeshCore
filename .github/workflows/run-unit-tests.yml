@@ -35,6 +35,12 @@ jobs:
           --firmware-version v1.17.1.10-halo-keymind-cascade-dev
           --radio-preset usa-cascade-fixed --profile cascade --require-ota
 
+      - name: Qualify unified T114 Full Companion with automatic screen detection
+        run: >-
+          bash build.sh build-firmware Heltec_t114_companion_radio_full
+          --firmware-version v1.18.0.1-halo-keymind-cascade-dev
+          --radio-preset usa-cascade-fixed --profile cascade --require-ota
+
       - name: Compile both legacy T096 BLE FEM settings with their RAM gates
         # Sequential environments in one process; do not replace these with
         # Full overlays, which have different OTA and runtime allocations.
@@ -52,6 +58,11 @@ jobs:
           python3 -B test/test_endf_restamp.py -v
       - name: Compile GPS Sensor tracker on nRF52 boards
         run: pio run -e t1000e_sensor -e RAK_WisMesh_Tag_sensor
+      - name: Qualify unified T114 Repeater with screen detection and LoRa OTA
+        run: >-
+          bash build.sh build-firmware Heltec_t114_repeater_lora_ota_no_external_sensors
+          --firmware-version v1.18.0.1-halo-keymind-cascade-dev
+          --radio-preset usa-cascade-fixed --profile cascade --require-ota
       - name: Compile optional RAK15002 SD archive (no hardware qualification)
         run: pio run -e RAK_4631_repeater_rak15002_sd_seeder_only
 
@@ -786,9 +797,12 @@ jobs:
           python3 -B test/test_picker_controls_generator.py
           python3 -B test/test_firmware_picker_package.py
           node test/test_firmware_picker.js
+          node test/test_t114_picker.js
+          python3 -B test/test_t114_release_profiles.py -v
 
       - name: Verify Full logging compiler flags and packaged capabilities
         run: |
+          python3 -B test/test_t114_autodisplay_recipes.py -v
           python3 -B test/test_station_g3_radio_pins.py -v
           python3 -B test/test_station_g3_cli_dispatch.py -v
           python3 -B test/test_station_g3_fem_control.py -v
@@ -918,6 +932,8 @@ jobs:
           python3 -B test/test_backlight_poll_rollover.py -v
           python3 -B test/test_rgb_led_rollover.py -v
           python3 -B test/test_display_power.py
+          python3 -B test/test_t114_display_detection.py -v
+          python3 -B test/test_companion_headless_buttons.py -v
           python3 -B test/test_st7735_display_wake_profile.py -v
           python3 -B test/test_legacy_ui_version_bounds.py -v
           python3 -B test/test_infrastructure_ui_version.py -v
