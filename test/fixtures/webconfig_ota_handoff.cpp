@@ -42,19 +42,25 @@ struct WebConfigServer {
   Mode _mode = MODE_LAN;
   bool _stopping = false, _keep_wifi_on_stop = false, _was_setup_ap = false;
   bool _owns_wifi = true, _stop_warned = false, _initial_setup = false;
+  bool _setup_provisioning_privilege = false;
   bool _retry_saved_wifi_in_setup = false, _setup_reconnect_in_progress = false;
   bool _batch_reboot_armed = false, _setup_wifi_handoff_pending = false;
   bool _admin_pwd_set = false, _board_cmds_probed = false;
+  bool _batch_reauth_required = false, _batch_reauth_delivered = false;
   uint32_t _stop_warn_at = 0, _setup_started_at = 0, _connect_deadline = 0;
   uint32_t _setup_reconnect_deadline = 0, _reboot_at = 0, _batch_state = 0;
   uint32_t _batch_next = 0, _setup_wifi_handoff_deadline = 0, _batch_kind = 0;
   uint32_t _board_cmds = 0;
   uint32_t _network_activity_until = 0;
+  uint32_t _ap_auth_generation = 0, _ap_rekey_generation = 0;
+  uint32_t _ap_rekey_after = 0, _ap_rekey_deadline = 0;
+  uint32_t _batch_reauth_until = 0, _session_generation = 0, _session_last_seen = 0;
   void* _mux = nullptr;
   struct Terminal { bool running = false; struct { bool pending = false; } queue; };
   Terminal* _terminal = nullptr;
   char _wifi_ssid[32] = {}, _setup_wifi_handoff_ip[16] = {};
   char _session_token[16] = {}, _stats_json[16] = {};
+  char _batch_owner_token[33] = {};
   bool routes = true;
   void detachRoutes() { routes = false; }
   void closeTerminal() {}
@@ -66,6 +72,7 @@ struct WebConfigServer {
   void requestStop();
   bool stopForOTA(char*);
   void finalizeTeardown();
+  void clearSessionLocked();
   ~WebConfigServer() { delete _room_mailbox; }
 };
 @METHODS@
@@ -77,6 +84,13 @@ int main() {
       portal._owns_wifi = owns_wifi;
       portal._was_setup_ap = setup;
       portal._mode = setup ? WebConfigServer::MODE_SETUP : WebConfigServer::MODE_LAN;
+      strcpy(portal._session_token, "old-session");
+      strcpy(portal._batch_owner_token, "old-batch-session");
+      portal._batch_reauth_required = true;
+      portal._batch_reauth_delivered = portal._setup_provisioning_privilege = true;
+      portal._ap_auth_generation = portal._ap_rekey_generation = 42;
+      portal._ap_rekey_after = portal._ap_rekey_deadline = 42;
+      portal._batch_reauth_until = portal._session_generation = portal._session_last_seen = 42;
       WiFi = WiFiFake{};
       WiFi.ap = setup;
       WiFi.sta = !setup;
@@ -94,6 +108,12 @@ int main() {
       portal.requestStop(); // A duplicate stop cannot revoke the handoff.
       portal.finalizeTeardown(); // Existing requests have finally drained.
       assert(portal._room_mailbox == nullptr);
+      assert(!portal._session_token[0] && !portal._batch_owner_token[0]);
+      assert(!portal._batch_reauth_required && !portal._batch_reauth_until
+          && !portal._session_generation && !portal._session_last_seen);
+      assert(!portal._batch_reauth_delivered && !portal._setup_provisioning_privilege);
+      assert(!portal._ap_auth_generation && !portal._ap_rekey_generation
+          && !portal._ap_rekey_after && !portal._ap_rekey_deadline);
       assert(WiFi.ap && WiFi.sta && WiFi.stops == 0);
       assert(WiFi.ap_stops == unsigned(setup));
       assert(portal.callbacks.stops == 1 && !portal._keep_wifi_on_stop);

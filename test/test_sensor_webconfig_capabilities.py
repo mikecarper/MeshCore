@@ -130,6 +130,8 @@ for value in "${BUILD_APPLICATION_EXPECTATIONS[@]}"; do printf 'A:%s\0' "$value"
         start = source.index('    } else if (memcmp(command, "start ota", 9)')
         ota = source[start:source.index('    } else if (memcmp(command, "clock", 5)', start)]
         fixture = r'''
+#define MESH_MANAGEMENT_PASSWORD_HOST_TEST 1
+#include <helpers/esp32/ManagementPassword.h>
 #include <cassert>
 #include <cstdio>
 #include <cstring>
@@ -153,7 +155,7 @@ struct Board {
   }
   bool stopOTAUpdate(char* reply) { ++stops; strcpy(reply, "Stopped OTA"); return true; }
 };
-struct Prefs { const char* node_name = "sensor"; };
+struct Prefs { const char* node_name = "sensor"; char password[16] = "password"; };
 struct CLI {
   Callbacks* _callbacks;
   Board* _board;

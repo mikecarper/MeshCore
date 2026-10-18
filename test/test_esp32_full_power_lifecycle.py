@@ -18,6 +18,8 @@ FLAGS = ["-DESP32_PLATFORM=1", "-DESP_PLATFORM=1", "-DADMIN_PASSWORD=1",
          "-DWEBCONFIG_UNCONFIGURED_SETUP_TIMEOUT_MS=1800000"]
 
 FIXTURE = r'''
+#define MESH_MANAGEMENT_PASSWORD_HOST_TEST 1
+#include <helpers/esp32/ManagementPassword.h>
 #include <cassert>
 #include <cstdint>
 #include <cstdio>
@@ -101,6 +103,7 @@ struct Prefs {
   int bridge_enabled = 0, espnow_bridge_enabled = 0, rs232_bridge_enabled = 0;
   bool battery_alert_enabled = false;
   const char* node_name = "test";
+  const char* password = "password";
   float freq = 915, bw = 125; uint8_t sf = 7, cr = 5, disable_fwd = 0;
 };
 struct ObserverPrefs { char wifi_ssid[33] = {}; };

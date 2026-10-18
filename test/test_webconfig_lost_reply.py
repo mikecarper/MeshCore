@@ -44,6 +44,10 @@ class LostReplyWebConfigTest(unittest.TestCase):
         allowed = extract_braced(server, "static bool isAllowedSetKey(")
         secret = extract_braced(server, "static bool isSecretKey(")
         post = extract_braced(server, "void WebConfigServer::handleConfigPost(")
+        auth = "\n".join(extract_braced(server, signature) for signature in (
+            "static bool fixedTimeEquals(", "static bool webConfigCookieMatches(",
+            "void WebConfigServer::clearSessionLocked(", "bool WebConfigServer::checkAuthLocked(",
+            "bool WebConfigServer::checkAuth(", "void WebConfigServer::beginBatchAuthorizationLocked("))
         get = extract_braced(server, "void WebConfigServer::handleConfigGet(")
         # Execute the actual snapshot-to-radio JSON branch. WiFi/MQTT fields
         # after this boundary are unrelated and require peripheral fixtures.
@@ -61,11 +65,24 @@ class LostReplyWebConfigTest(unittest.TestCase):
 #include <cstring>
 #include <string>
 #include <ArduinoJson.h>
+#define MESH_MANAGEMENT_PASSWORD_HOST_TEST 1
+#include <helpers/esp32/ManagementPassword.h>
 #include "helpers/WebConfigKeys.h"
 #include "helpers/WebConfigBatch.h"
-using String = std::string;
+struct String : std::string {
+  using std::string::string;
+  String(std::string value) : std::string(std::move(value)) {}
+  int indexOf(const char* value) const { auto pos = find(value); return pos == npos ? -1 : int(pos); }
+  String substring(int begin, int end) const { return substr(begin, end - begin); }
+  size_t write(uint8_t value) { push_back(char(value)); return 1; }
+  size_t write(const uint8_t* data, size_t count) { append(reinterpret_cast<const char*>(data), count); return count; }
+};
 struct WCLock { explicit WCLock(int) {} };
 uint32_t millis() { return 1; }
+static constexpr uint32_t WEBCONFIG_SESSION_TTL_MS = 120000;
+struct WiFiMock { int softAPIP() const { return 4; } } WiFi;
+struct Client { int localIP() const { return 4; } };
+struct Header { String cookies = "wcs=0123456789abcdef0123456789abcdef"; const String& value() const { return cookies; } };
 namespace mesh {
 struct Port { template<typename... Args> void printf(const char*, Args...) {} };
 Port& usbDebugPort() { static Port port; return port; }
@@ -75,11 +92,16 @@ static const char SECRET_SENTINEL[] = "********";
 @ALLOWED@
 @SECRET@
 struct AsyncWebServerRequest {
+  Client socket;
+  Header header;
   String input, output;
   void* _tempObject = nullptr;
   int status = 0;
   explicit AsyncWebServerRequest(String body = "") : input(body) { _tempObject = input.data(); }
   size_t contentLength() const { return input.size(); }
+  Client* client() { return &socket; }
+  bool hasHeader(const char*) const { return !header.cookies.empty(); }
+  Header* getHeader(const char*) { return &header; }
   void send(int code, const char* = nullptr, const String& body = "") { status = code; output = body; }
 };
 struct WebConfigServer {
@@ -95,9 +117,15 @@ struct WebConfigServer {
   static constexpr size_t MAX_BODY = 4096;
   static constexpr int MAX_BATCH = WebConfigBatch::kMaxBatch;
   int _mode = MODE_LAN, _mux = 0, _batch_kind = BATCH_CONFIG;
-  bool authorized = true, _initial_setup = false, _batch_reboot = false;
+  bool _initial_setup = false, _setup_provisioning_privilege = false, _batch_reboot = false;
   bool _batch_reboot_armed = false, _batch_all_ok = true;
   bool _standalone_wifi_dirty = false, _setup_wifi_handoff_pending = false;
+  bool _batch_reauth_required = false, _batch_reauth_delivered = false, _batch_started = false;
+  uint32_t _session_generation = 0, _session_last_seen = 1, _last_activity = 0;
+  uint32_t _batch_auth_generation = 0, _batch_reauth_until = 0;
+  uint32_t _ap_auth_generation = 0;
+  char _session_token[33] = "0123456789abcdef0123456789abcdef";
+  char _batch_owner_token[33] = {}, _wifi_ssid[33] = "fixture-network";
   uint32_t _setup_wifi_handoff_deadline = 0, _diag_until = 0;
   char _setup_wifi_handoff_ip[32] = {}, _batch_reqid[17] = {};
   int _batch_count = 0, _batch_next = 0;
@@ -106,16 +134,27 @@ struct WebConfigServer {
   WebConfigBatch::State _batch_state = WebConfigBatch::State::Idle;
   static constexpr auto BATCH_PENDING = WebConfigBatch::State::Pending;
   static WebConfigBatch::State toSpecState(WebConfigBatch::State state) { return state; }
-  bool checkAuth(AsyncWebServerRequest*) { return authorized; }
+  WebConfigServer() {
+    mesh::esp32::managementPassword::Snapshot current;
+    assert(mesh::esp32::managementPassword::snapshot(current));
+    _session_generation = current.generation;
+  }
+  void noteNetworkActivity() {}
+  void clearSessionLocked();
+  bool checkAuthLocked(AsyncWebServerRequest*, uint32_t* generation = nullptr);
+  bool checkAuth(AsyncWebServerRequest*);
+  void beginBatchAuthorizationLocked(uint32_t);
   void handleConfigGet(AsyncWebServerRequest*);
   void handleConfigPost(AsyncWebServerRequest*);
 };
+@AUTH_HELPERS@
 @GET@
 @POST@
 String writeBody(const char* value) {
   return String("{\"reqid\":\"0123456789abcdef\",\"set\":{\"lost.reply\":") + value + "}}";
 }
 int main() {
+  assert(mesh::esp32::managementPassword::publish("password"));
   const char* modes[] = {"off", "no", "yes"};
   for (int value : {0, 1, 2, 255}) {
     WebConfigServer server;
@@ -155,7 +194,7 @@ int main() {
   infrastructure.handleConfigPost(&forged);
   assert(forged.status == 400 && forged.output.find("setting unavailable") != String::npos);
   assert(infrastructure._batch_count == 0);
-  infrastructure.authorized = false;
+  infrastructure.clearSessionLocked();
   AsyncWebServerRequest unauthorized(writeBody("\"yes\""));
   infrastructure.handleConfigPost(&unauthorized);
   assert(unauthorized.status == 401 && infrastructure._batch_count == 0);
@@ -164,7 +203,7 @@ int main() {
 }
 '''.replace("@CAPABILITY@", capability).replace("@SNAPSHOT@", snapshot).replace(
             "@BATCH_ENTRY@", batch_entry).replace("@ALLOWED@", allowed).replace(
-            "@SECRET@", secret).replace("@GET@", get).replace("@POST@", post)
+            "@SECRET@", secret).replace("@AUTH_HELPERS@", auth).replace("@GET@", get).replace("@POST@", post)
 
     def test_actual_json_strings_and_capability_gated_settings_batch(self):
         # The shared compiler helper needs the production helper include path.

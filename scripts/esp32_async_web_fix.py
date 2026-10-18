@@ -46,6 +46,11 @@ def replace_async_source(build_env, node):
     if not destination.exists() or destination.read_text(encoding="ascii") != content:
         destination.write_text(content, encoding="ascii")
     build_env.PrependUnique(CPPPATH=[str(include_dir)])
+    if source.name == "AsyncElegantOTA.cpp":
+        # PlatformIO compiles libraries in cloned environments which need not
+        # inherit the application src include path. The current uploader uses
+        # the shared runtime management credential header from that directory.
+        build_env.AppendUnique(CPPPATH=[build_env.subst("$PROJECT_SRC_DIR")])
     return build_env.File(str(destination))
 
 

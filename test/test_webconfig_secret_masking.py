@@ -3,6 +3,9 @@
 import gzip
 from pathlib import Path
 import re
+import shutil
+import subprocess
+import tempfile
 import unittest
 
 
@@ -130,6 +133,78 @@ class WebConfigSecretMaskingTest(unittest.TestCase):
             handler = function_body(self.server, start, end)
             self.assertIn("_mode != MODE_LAN", handler)
             self.assertIn("checkAuth(req)", handler)
+
+    def password_reply_fixture(self):
+        batch = function_body(self.server, "void WebConfigServer::drainBatch(",
+                              "void WebConfigServer::attachRoutes(")
+        start = batch.index("      _cb->execCommand(e.cmd, e.reply);")
+        snippet = batch[start:batch.index("      // Keep the response snapshot", start)]
+        return r'''
+#include <cassert>
+#include <cstring>
+#include <helpers/WebConfigBatch.h>
+struct Callback {
+  const char* result;
+  void execCommand(char*, char* reply) { strcpy(reply, result); }
+};
+struct Fixture {
+  Callback cb{}, *_cb = &cb;
+  bool _admin_pwd_set = false;
+  struct { char cmd[160] = "password new-secret"; char reply[160] = {}; } e;
+  bool run(const char* reply) {
+    cb.result = reply;
+    _admin_pwd_set = false;
+    const bool admin_pwd = true;
+@SNIPPET@
+    if (e.reply[0] == 0) strcpy(e.reply, "OK");
+    return WebConfigBatch::nextAllOk(true, strncmp(e.reply, "OK", 2) == 0);
+  }
+};
+int main() {
+  Fixture fixture;
+  assert(fixture.run("password now: new-secret"));
+  assert(!strcmp(fixture.e.reply, "OK") && fixture._admin_pwd_set);
+  assert(fixture.run("OK"));
+  for (const char* error : {"Error: save unconfirmed; reboot may differ",
+                            "Error: unsupported command", ""}) {
+    const bool saved = fixture.run(error);
+    assert(!saved && !fixture._admin_pwd_set);
+    assert(strncmp(fixture.e.reply, "Error:", 6) == 0);
+    assert(WebConfigBatch::finishRebootAt(true, saved, 10) == 0);
+    if (error[0]) assert(!strcmp(fixture.e.reply, error));
+  }
+}
+'''.replace("@SNIPPET@", snippet)
+
+    def compile_password_reply_fixture(self, fixture, *, reject=False):
+        compiler = shutil.which("g++") or shutil.which("clang++")
+        if not compiler:
+            self.skipTest("host C++ compiler unavailable")
+        with tempfile.TemporaryDirectory(prefix="webconfig-password-reply-") as tmp:
+            path = Path(tmp)
+            source = path / "test.cpp"
+            binary = path / "test"
+            source.write_text(fixture)
+            result = subprocess.run([compiler, "-std=c++17", "-include", "initializer_list",
+                                     "-I", str(ROOT / "src"), str(source), "-o", str(binary)],
+                                    capture_output=True, text=True, timeout=30)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            result = subprocess.run([str(binary)], capture_output=True, text=True, timeout=10)
+            if reject:
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn("Assertion", result.stderr)
+            else:
+                self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_password_form_masks_success_but_preserves_failed_save(self):
+        self.compile_password_reply_fixture(self.password_reply_fixture())
+
+    def test_old_unconditional_password_mask_fails_regression(self):
+        fixture = self.password_reply_fixture()
+        old = fixture.replace("if (admin_pwd && WebConfigBatch::cliPasswordChanged(e.reply)) {",
+                              "if (admin_pwd) {", 1)
+        self.assertNotEqual(old, fixture)
+        self.compile_password_reply_fixture(old, reject=True)
 
 
 if __name__ == "__main__":

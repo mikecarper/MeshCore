@@ -305,9 +305,16 @@ Direct USB, BLE, WiFi TCP, and Ethernet clients can also use this command for
 `stats-core`, `stats-radio`, `stats-radio-diag`, `stats-packets`, `erase`,
 and `get prv.key` (when private key export is enabled).
 WiFi/MQTT builds accept `get wifi.pwd`, `get mqttN.password`, and
-`get mqttN.token`. `get password` reports that Companion has no admin password;
-infrastructure roles return their own admin password on a local CLI connection.
-These privileges do not apply to CLI commands relayed over LoRa.
+`get mqttN.token`. On ESP32 WiFi Companion, `get password` reports whether the
+management password is available without revealing it. `password <new-password>`
+changes the saved password shared by setup WiFi, WebConfig and browser OTA.
+Other Companion builds report that they have no admin password; infrastructure
+roles return their own admin password on a local CLI connection.
+These direct-client maintenance and secret-read privileges do not apply to
+CLI commands relayed over LoRa.
+Existing trusted Companion transports and contacts explicitly granted remote
+CLI access retain their command privileges. The browser login does not add a
+password handshake to those transports.
 ESP32 WiFi Companion builds expose the official app's `get/set wifi.enabled`,
 `get/set wifi.ssid`, and `get/set wifi.pwd` controls. Credentials use the shared
 WiFi store, and enablement is saved in node preferences. WiFi/BLE builds apply

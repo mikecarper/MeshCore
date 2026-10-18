@@ -246,6 +246,10 @@ public:
   }
 #endif
 
+#if defined(ESP32_PLATFORM) && defined(WIFI_SSID)
+  bool isManagementPasswordReady() const { return _management_password_ready; }
+#endif
+
 #ifdef WITH_WEBCONFIG
   bool startWebConfig(bool force_ap, char* reply);
   void stopWebConfig();
@@ -794,6 +798,10 @@ private:
 #endif
   uint16_t _temp_radio_preamble = 0;
   CompanionNodePrefs _prefs;
+#if defined(ESP32_PLATFORM) && defined(WIFI_SSID)
+  char _management_password[16] = {};
+  bool _management_password_ready = false;
+#endif
   #if COMPANION_FEATURE_NOTIFICATIONS
   mesh::notify::Controller _notifications{*this, *this};
   bool _notification_button_down = false;

@@ -647,9 +647,17 @@ jobs:
 
       - name: Verify WiFi OTA startup and WebConfig handoff
         run: |
+          python3 -B test/test_esp32_management_password.py -v
+          python3 -B test/test_companion_admin_password.py -v
+          python3 -B test/test_management_password_commands.py -v
+          python3 -B test/test_repeater_password_normalization.py -v
+          python3 -B test/test_wifi_setup_auth.py -v
+          python3 -B test/test_lightweight_ota_auth.py -v
+          python3 -B test/test_esp32_async_web_build_paths.py -v
           python3 -B test/test_wifi_ota_start.py -v
           python3 -B test/test_webconfig_ap_start.py -v
           python3 -B test/test_webconfig_recovery_auth.py -v
+          python3 -B test/test_webconfig_password_sessions.py -v
           python3 -B test/test_webconfig_login_throttle.py -v
           python3 -B test/test_esp32_wifi_scan_fix.py -v
           python3 -B test/test_esp32_wifi_scan_recipes.py -v

@@ -964,5 +964,180 @@ window.addEventListener("load",function(){
         self.assertIn('data-test-capture="clear"', dom)
 
 
+    def test_password_save_receipt_reauth_preserves_results_and_never_resends(self):
+        for case in ("saved", "partial", "failed", "legacy401", "login_retry", "reboot"):
+            with self.subTest(case=case):
+                status, config = self.setup_values()
+                status.update(mode="setup" if case == "legacy401" else "lan")
+                prelude = r'''<script>
+(function(){
+  var kind=%s,status=%s,config=%s,submitted=null,posts=0,polls=0,logins=0;
+  var authorized=true,wrongLogin=false,earlyRefresh=0,storageWrites=0,late=null;
+  if(window.Storage)Storage.prototype.setItem=function(){storageWrites++;throw new Error("persistent password storage")};
+  function response(value,code){code=code||200;return Promise.resolve({ok:code<400,status:code,json:function(){return Promise.resolve(value)}})}
+  window.fetch=function(path,options){
+    if(path==="/api/status")return response(status);
+    if(path==="/api/late")return new Promise(function(resolve){late=resolve});
+    if(path==="/api/config"&&options&&options.method==="POST"){
+      posts++;submitted=JSON.parse(options.body);authorized=kind==="failed";
+      return response({state:"pending",reqid:submitted.reqid},202);
+    }
+    if(path.indexOf("/api/config/result?")===0){
+      polls++;
+      if(path.indexOf("reqid="+submitted.reqid)<0)throw new Error("lost request id");
+      if(kind==="legacy401"&&!authorized)return response({error:"auth"},401);
+      if(polls===1)return response({state:"pending",reqid:submitted.reqid});
+      return response({state:"done",reqid:submitted.reqid,all_ok:kind!=="partial"&&kind!=="failed",
+        reboot:kind==="reboot",reauth_required:kind!=="failed"&&!authorized,results:[
+          {key:"password",reply:kind==="failed"?"Error: save unconfirmed; reboot may differ":"OK"},
+          {key:"name",reply:kind==="partial"?(authorized?"Error: rejected name":"Error"):"OK"}]});
+    }
+    if(path==="/api/login"){
+      logins++;
+      if(JSON.parse(options.body).password!=="new-admin")wrongLogin=true;
+      if(kind==="login_retry"&&logins===1)return response({error:"try the current password"},401);
+      authorized=true;return response({ok:true});
+    }
+    if(path==="/api/config"){
+      if(submitted&&!authorized){earlyRefresh++;return response({error:"auth"},401)}
+      return response(config);
+    }
+    if(path.indexOf("/api/scan")===0)return response({state:"done",networks:[]});
+    return response({},404);
+  };
+  window.addEventListener("load",function(){
+    setTimeout(function(){
+      if(kind==="saved")api("/api/late").catch(function(){});
+      st.dirty.password="new-admin";st.dirty.name="ChangedName";
+      document.querySelectorAll('[data-k="password"],[data-cfm="password"]').forEach(function(el){el.value="new-admin"});
+      saveChanges({reboot:kind==="partial"||kind==="failed"});
+    },120);
+    setTimeout(function(){
+      if(late)late({ok:false,status:401,json:function(){return Promise.resolve({error:"auth"})}});
+      if(kind==="login_retry"){
+        document.body.setAttribute("data-test-intermediate-note",document.getElementById("login-note").textContent);
+        document.body.setAttribute("data-test-intermediate-login",!document.getElementById("v-login").classList.contains("hide"));
+        document.getElementById("login-pwd").value="new-admin";
+        document.getElementById("login-form").dispatchEvent(new Event("submit",{bubbles:true,cancelable:true}));
+      }
+    },950);
+    setTimeout(function(){
+      var body=document.body,fields=document.querySelectorAll('[data-k="password"],[data-cfm="password"]');
+      body.setAttribute("data-test-posts",posts);body.setAttribute("data-test-polls",polls);
+      body.setAttribute("data-test-logins",logins);body.setAttribute("data-test-wrong-login",wrongLogin);
+      body.setAttribute("data-test-early-refresh",earlyRefresh);body.setAttribute("data-test-storage-writes",storageWrites);
+      body.setAttribute("data-test-login-visible",!document.getElementById("v-login").classList.contains("hide"));
+      body.setAttribute("data-test-wizard-visible",!document.getElementById("v-wizard").classList.contains("hide"));
+      body.setAttribute("data-test-password-cleared",Array.prototype.every.call(fields,function(el){return el.value===""}));
+      body.setAttribute("data-test-password-dirty",Object.prototype.hasOwnProperty.call(st.dirty,"password"));
+      body.setAttribute("data-test-name-dirty",Object.prototype.hasOwnProperty.call(st.dirty,"name"));
+      body.setAttribute("data-test-name-error",!!document.querySelector('#v-app [data-k="name"]').closest(".f").querySelector(".chip.err"));
+      body.setAttribute("data-test-name-detail",document.querySelector('#v-app [data-k="name"]').closest(".f").textContent.indexOf("rejected name")>=0);
+      body.setAttribute("data-test-password-error",!!document.querySelector('#v-app [data-k="password"]').closest(".f").querySelector(".chip.err"));
+      body.setAttribute("data-test-reboot",document.getElementById("reboot-ov").classList.contains("show"));
+      body.setAttribute("data-test-login-note",document.getElementById("login-note").textContent);
+    },1500);
+  });
+})();
+</script>''' % (json.dumps(case), json.dumps(status), json.dumps(config))
+                dom = self.run_page(prelude, virtual_time=1900)
+                for attr, expected in (("posts", "1"), ("wrong-login", "false"),
+                                       ("early-refresh", "0"), ("storage-writes", "0"),
+                                       ("login-visible", "false")):
+                    self.assertIn(f'data-test-{attr}="{expected}"', dom)
+                self.assertIn('data-test-logins="%s"' % (
+                    "0" if case == "failed" else "2" if case == "login_retry" else "1"), dom)
+                self.assertIn('data-test-polls="%s"' % ("2" if case in ("failed", "legacy401") else "3"), dom)
+                self.assertIn('data-test-reboot="%s"' % str(case == "reboot").lower(), dom)
+                self.assertIn('data-test-password-cleared="%s"' % str(case != "failed").lower(), dom)
+                self.assertIn('data-test-password-dirty="%s"' % str(case == "failed").lower(), dom)
+                self.assertIn('data-test-wizard-visible="%s"' % str(case == "legacy401").lower(), dom)
+                if case == "partial":
+                    self.assertIn('data-test-name-dirty="true"', dom)
+                    self.assertIn('data-test-name-error="true"', dom)
+                    self.assertIn('data-test-name-detail="true"', dom)
+                    self.assertIn("some settings were rejected. The node will not reboot.", dom)
+                if case == "failed":
+                    self.assertIn('data-test-password-error="true"', dom)
+                if case == "login_retry":
+                    self.assertIn('data-test-intermediate-login="true"', dom)
+                    self.assertIn('data-test-intermediate-note="Settings saved.', dom)
+
+    def test_cli_password_receipt_uses_last_success_and_stream_never_replays(self):
+        for streaming in (False, True):
+            with self.subTest(streaming=streaming):
+                status, config = self.setup_values()
+                status.update(mode="lan", cli=True, terminal_stream=streaming)
+                prelude = r'''<script>
+(function(){
+  var streaming=%s,status=%s,config=%s,submitted=null,posts=0,logins=0,wrongLogin=false,authorized=true,earlyRefresh=0;
+  function response(value,code){code=code||200;return Promise.resolve({ok:code<400,status:code,json:function(){return Promise.resolve(value)}})}
+  window.fetch=function(path,options){
+    if(path==="/api/status")return response(status);
+    if(path==="/api/config"){
+      if(!authorized){earlyRefresh++;throw new Error("config read before reauthentication")}
+      return response(config);
+    }
+    if((path==="/api/cli"||path==="/api/terminal")&&options&&options.method==="POST"){
+      posts++;submitted=JSON.parse(options.body);authorized=false;return response({state:"pending"},202);
+    }
+    if(path.indexOf("/api/terminal?")===0)return response({error:"auth"},401);
+    if(path.indexOf("/api/cli/result?")===0){
+      var second=path.indexOf("from=2")>=0;
+      return response({state:second?"done":"running",reqid:submitted.reqid,reauth_required:!authorized,
+        all_ok:!second,reboot:false,reboot_withheld:second,results:second?[
+          {ok:false,reply:authorized?"Error: rejected password":"Error"},{ok:true,reply:"OK - reboot queued"}]:[
+          {ok:true,reply:"OK"},{ok:true,reply:"> ******** (sign in again)"}]});
+    }
+    if(path==="/api/login"){
+      logins++;wrongLogin=wrongLogin||JSON.parse(options.body).password!=="first-new";
+      authorized=true;return response({ok:true});
+    }
+    return response({},404);
+  };
+  window.addEventListener("load",function(){
+    setTimeout(function(){cliRun(streaming?["password first-new","set freq 123"]:["password first-new","get wifi.pwd","password rejected-new","reboot"])},120);
+    setTimeout(function(){
+      var body=document.body;
+      body.setAttribute("data-test-posts",posts);body.setAttribute("data-test-logins",logins);body.setAttribute("data-test-early-refresh",earlyRefresh);
+      body.setAttribute("data-test-wrong-login",wrongLogin);body.setAttribute("data-test-busy",cli.busy);
+      body.setAttribute("data-test-login-visible",!document.getElementById("v-login").classList.contains("hide"));
+      body.setAttribute("data-test-reboot",document.getElementById("reboot-ov").classList.contains("show"));
+      body.setAttribute("data-test-stream-reset",!cliStream.session&&!cliStream.job);
+      body.setAttribute("data-test-withheld",document.getElementById("term-out").textContent.indexOf("Not rebooting")>=0);
+      body.setAttribute("data-test-error-detail",document.getElementById("term-out").textContent.indexOf("rejected password")>=0);
+    },1400);
+  });
+})();
+</script>''' % (json.dumps(streaming), json.dumps(status), json.dumps(config))
+                dom = self.run_page(prelude, virtual_time=1800)
+                for attr, expected in (("posts", "1"), ("logins", "1"),
+                                       ("wrong-login", "false"), ("early-refresh", "0"), ("busy", "false"),
+                                       ("login-visible", "false"), ("reboot", "false")):
+                    self.assertIn(f'data-test-{attr}="{expected}"', dom)
+                self.assertIn('data-test-stream-reset="true"', dom)
+                if not streaming:
+                    self.assertIn('data-test-withheld="true"', dom)
+                    self.assertIn('data-test-error-detail="true"', dom)
+
+    def test_admin_password_validation_counts_utf8_bytes(self):
+        status, config = self.setup_values()
+        status.update(mode="lan")
+        vectors = ["", "a" * 15, "a" * 16, "é" * 7 + "a", "é" * 8,
+                   "🙂" * 3 + "abc", "🙂" * 4, "line\nbreak", "line\rbreak", "\ud800"]
+        prelude = r'''<script>
+(function(){
+  var status=%s,config=%s,values=%s;
+  window.fetch=function(path){var value=path==="/api/status"?status:path==="/api/config"?config:{};return Promise.resolve({ok:true,status:200,json:function(){return Promise.resolve(value)}})};
+  window.addEventListener("load",function(){setTimeout(function(){
+    var result=values.map(function(value){st.dirty.password=value;document.querySelectorAll('[data-cfm="password"]').forEach(function(el){el.value=value});return adminPwdError(false)?"invalid":"valid"});
+    document.body.setAttribute("data-test-password-validation",result.join(","));
+  },200)});
+})();
+</script>''' % (json.dumps(status), json.dumps(config), json.dumps(vectors))
+        dom = self.run_page(prelude)
+        self.assertIn('data-test-password-validation="valid,valid,invalid,valid,invalid,valid,invalid,invalid,invalid,invalid"', dom)
+
+
 if __name__ == "__main__":
     unittest.main()

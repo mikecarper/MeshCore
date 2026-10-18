@@ -314,6 +314,7 @@ public:
   }
 
   bool startOTAUpdate(const char* id, char reply[], bool force_ap = false) override;
+  static bool rotateOTAAccessPoint(void* owner);
   bool stopOTAUpdate(char reply[]) override;
   bool isOTAUpdateRunning() const override { return ota_server != nullptr; }
   bool otaFromManifest(const char* manifest_base, const char* current_ver, bool dry_run, char reply[]) override;

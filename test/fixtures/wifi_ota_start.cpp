@@ -9,6 +9,9 @@
 #include <initializer_list>
 #include <string>
 #include <helpers/WirelessControl.h>
+#define MESH_MANAGEMENT_PASSWORD_HOST_TEST 1
+#include <helpers/esp32/ManagementPassword.h>
+static const bool published_password = mesh::esp32::managementPassword::publish("short");
 
 #define MESH_DEBUG_PRINTLN(...) ((void)0)
 constexpr int WL_CONNECTED = 3;
@@ -17,7 +20,7 @@ using wifi_mode_t = int;
 constexpr int WIFI_OFF = 0, WIFI_STA = 1, WIFI_AP = 2;
 constexpr int WIFI_MODE_NULL = WIFI_OFF, WIFI_MODE_AP = WIFI_AP;
 constexpr int ESP_OK = 0, WIFI_IF_AP = 1, WIFI_IF_STA = 0;
-constexpr int WIFI_AUTH_OPEN = 0;
+constexpr int WIFI_AUTH_OPEN = 0, WIFI_AUTH_WPA2_PSK = 3;
 constexpr int WIFI_SCAN_RUNNING = -1, WIFI_SCAN_FAILED = -2, AP_STARTED_BIT = 1;
 constexpr int LISTEN = 10;
 bool async_bind_allowed = true;
@@ -29,6 +32,7 @@ bool constrain_espnow_channel = true;
 struct wifi_config_t {
   struct {
     uint8_t ssid[32] = {};
+    uint8_t password[64] = {};
     uint8_t ssid_len = 0, ssid_hidden = 0, channel = 1;
     int authmode = WIFI_AUTH_OPEN;
   } ap;
@@ -86,11 +90,13 @@ struct WiFiFake {
     return allow_ap;
   }
   bool softAP(const char* ssid, const char* password, int channel = 1) {
-    assert(ssid && strlen(ssid) <= 32 && password == nullptr);
+    assert(ssid && strlen(ssid) <= 32);
     ap_channel = channel;
     ++starts; ap = allow_ap; radio = true;
     if (ap) {
       live_config = {};
+      live_config.ap.authmode = password && password[0] ? WIFI_AUTH_WPA2_PSK : WIFI_AUTH_OPEN;
+      if (password) strcpy(reinterpret_cast<char*>(live_config.ap.password), password);
       const char* live_ssid = fault == Fault::Ssid ? "old-hotspot" : ssid;
       live_config.ap.ssid_len = uint8_t(strlen(live_ssid));
       memcpy(live_config.ap.ssid, live_ssid, strlen(live_ssid));
@@ -181,6 +187,8 @@ struct AsyncWebServer {
 struct Elegant {
   bool busy = false;
   void setID(const char*) {}
+  void useManagementPassword() {}
+  bool authenticateRequest(AsyncWebServerRequest*) { return true; }
   void begin(AsyncWebServer*) {}
   bool setEnabled(bool enabled) { return enabled || !busy; }
 } AsyncElegantOTA;
@@ -198,6 +206,7 @@ struct ESP32Board {
   const char* getManufacturerName() const { return "test"; }
   bool startOTAUpdate(const char*, char*, bool);
   bool stopOTAUpdate(char*);
+  static bool rotateOTAAccessPoint(void*) { return true; }
 };
 struct LightweightServer {
   bool allow = true, running = false, allow_stop = true;

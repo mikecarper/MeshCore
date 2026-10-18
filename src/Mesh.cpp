@@ -1,6 +1,9 @@
 #include "Mesh.h"
 #include <helpers/ManagementReport.h>
 #include <SHA256.h>
+#ifdef ESP_PLATFORM
+#include <helpers/esp32/ManagementPassword.h>
+#endif
 #include "helpers/ota/OtaFormat.h"   // request types used by TempRadio relay-pressure tracking
 //#include <Arduino.h>
 #if defined(ENABLE_OTA)
@@ -407,6 +410,9 @@ void Mesh::loop() {
   if (_ota_forwarded[0].valid && !isAnyTempRadioActive()) resetOtaForwardCache();
   Dispatcher::loop();
   serviceLoopMaintenance();
+#ifdef ESP_PLATFORM
+  esp32::managementPassword::service(millis());
+#endif
 #if defined(ENABLE_OTA) && defined(ESP32_PLATFORM) && \
     (defined(WIFI_OTA_SEEDER) || defined(WIFI_SSID))
   ota::WiFiOtaSeeder::loop();

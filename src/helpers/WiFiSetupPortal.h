@@ -11,8 +11,9 @@ public:
 
   WiFiSetupPortal();
 
-  // Starts an open setup AP and captive HTTP form. The AP remains available
-  // after a failed association and shuts down shortly after a successful one.
+  // Starts a setup AP and captive HTTP form using the saved admin password.
+  // Legacy short passwords retain open WiFi plus authenticated HTTP. The AP
+  // stays available after a failed association and closes after success.
   bool begin(const char* ap_name, SaveCallback save_callback, void* context);
   void stop();
   // Retry interval is the steady-state cadence. initial_delay_ms defaults to

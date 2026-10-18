@@ -7,6 +7,7 @@
 #include "UsbLogging.h"
 #include "FileRead.h"
 #include "UserGpioPinPolicy.h"
+#include <helpers/esp32/ManagementPassword.h>
 
 namespace mesh {
 namespace esp32_clock {
@@ -145,7 +146,13 @@ class LightweightOTAServer {
     sendResponse(client, code, reason, "text/plain", error, strlen(error));
   }
 
-  void receiveUpdate(WiFiClient& client, size_t total) {
+  void receiveUpdate(WiFiClient& client, size_t total, uint32_t auth_generation) {
+    mesh::esp32::managementPassword::UploadGuard upload(auth_generation);
+    if (!upload.acquired()) {
+      static const char busy[] = "password change or OTA upload in progress; retry";
+      sendResponse(client, 409, "Conflict", "text/plain", busy, sizeof(busy) - 1);
+      return;
+    }
     if (total == 0) {
       static const char empty[] = "empty firmware image";
       sendResponse(client, 400, "Bad Request", "text/plain", empty, sizeof(empty) - 1);
@@ -208,17 +215,43 @@ class LightweightOTAServer {
     bool post_update = strncmp(line, "POST /update ", 13) == 0;
 
     size_t content_length = 0;
+    char authorization[96] = {};
+    bool duplicate_authorization = false, have_authorization = false;
     do {
       if (!readLine(client, line, sizeof(line))) return;
       if (strncasecmp(line, "Content-Length:", 15) == 0) {
         content_length = static_cast<size_t>(strtoul(line + 15, nullptr, 10));
+      } else if (strncasecmp(line, "Authorization:", 14) == 0) {
+        if (have_authorization) duplicate_authorization = true;
+        have_authorization = true;
+        const char* value = line + 14;
+        while (*value == ' ' || *value == '\t') ++value;
+        if (strlen(value) >= sizeof(authorization)) duplicate_authorization = true;
+        else memcpy(authorization, value, strlen(value) + 1);
       }
     } while (line[0]);
 
     if (!running) return;
+    uint32_t generation = 0;
+    const auto auth = mesh::esp32::managementPassword::authenticateBasic(
+        duplicate_authorization ? "invalid" : authorization, millis(), &generation);
+    memset(authorization, 0, sizeof(authorization));
+    if (auth != mesh::esp32::managementPassword::AuthResult::Authorized) {
+      if (auth == mesh::esp32::managementPassword::AuthResult::Unavailable) {
+        static const char unavailable[] = "saved admin password unavailable";
+        sendResponse(client, 503, "Service Unavailable", "text/plain", unavailable, sizeof(unavailable) - 1);
+      } else if (auth == mesh::esp32::managementPassword::AuthResult::Throttled) {
+        static const char throttled[] = "too many failed logins; wait 30 seconds";
+        sendResponse(client, 429, "Too Many Requests", "text/plain", throttled, sizeof(throttled) - 1);
+      } else {
+        client.print("HTTP/1.1 401 Unauthorized\r\nWWW-Authenticate: Basic realm=\"MeshCore admin\", charset=\"UTF-8\"\r\n"
+                     "Content-Length: 0\r\nConnection: close\r\nCache-Control: no-store\r\n\r\n");
+      }
+      return;
+    }
     if (get_page) sendPage(client);
     else if (get_log) sendLog(client);
-    else if (post_update) receiveUpdate(client, content_length);
+    else if (post_update) receiveUpdate(client, content_length, generation);
     else {
       static const char missing[] = "not found";
       sendResponse(client, 404, "Not Found", "text/plain", missing, sizeof(missing) - 1);
@@ -276,6 +309,11 @@ static LightweightOTAServer lightweight_ota_server;
 
 bool ESP32Board::startOTAUpdate(const char* id, char reply[], bool force_ap) {
   (void)id;
+  mesh::esp32::managementPassword::Snapshot credential;
+  if (!mesh::esp32::managementPassword::snapshot(credential) || !credential.password[0]) {
+    strcpy(reply, "ERR: saved admin password required for WiFi OTA");
+    return false;
+  }
   if (ota_server != nullptr && !lightweight_ota_server.isRunning()) {
     strcpy(reply, "ERR: OTA stopping; retry stop ota first");
     return false;
@@ -306,7 +344,7 @@ bool ESP32Board::startOTAUpdate(const char* id, char reply[], bool force_ap) {
       return false;
     }
     ota_started_radio = ota_started_radio || WiFi.getMode() == WIFI_OFF;
-    ota_started_ap = mesh::wifi::startOpenAccessPoint("MeshCore-OTA", ota_started_ap);
+    ota_started_ap = mesh::wifi::startManagementAccessPoint("MeshCore-OTA", ota_started_ap);
     if (!ota_started_ap) {
       inhibit_sleep = ota_server != nullptr;
       if (!inhibit_sleep) {
@@ -332,7 +370,12 @@ bool ESP32Board::startOTAUpdate(const char* id, char reply[], bool force_ap) {
     ota_server = &lightweight_ota_server;
   }
 
-  const char* network = use_ap ? "Join WiFi MeshCore-OTA" : "Use same WiFi/LAN";
+  if (ota_started_ap) mesh::esp32::managementPassword::watchOtaAccessPoint(
+      this, rotateOTAAccessPoint, credential.generation);
+  const char* network = !use_ap ? "Use same WiFi/LAN"
+      : mesh::esp32::managementPassword::apPasswordEligible(credential.password)
+          ? "Join WiFi MeshCore-OTA (admin password)"
+          : "Join WiFi MeshCore-OTA (OPEN compatibility; HTTP admin login)";
   if (LIGHTWEIGHT_OTA_PORT == 80) {
     snprintf(reply, 160, "Started: http://%s/update - WiFi on; %s", ip.toString().c_str(), network);
   } else {
@@ -344,6 +387,10 @@ bool ESP32Board::startOTAUpdate(const char* id, char reply[], bool force_ap) {
 }
 
 bool ESP32Board::stopOTAUpdate(char reply[]) {
+  if (mesh::esp32::managementPassword::uploadActive()) {
+    strcpy(reply, "ERR: OTA upload active; retry stop ota after it finishes");
+    return false;
+  }
   if (ota_server == nullptr) {
     if (ota_started_ap) WiFi.softAPdisconnect(true);
     ota_started_ap = false;
@@ -359,6 +406,7 @@ bool ESP32Board::stopOTAUpdate(char reply[]) {
     return false;
   }
   ota_server = nullptr;
+  mesh::esp32::managementPassword::forgetOtaAccessPoint(this);
   if (ota_started_ap) WiFi.softAPdisconnect(true);
   ota_started_ap = false;
   mesh::wifi::stopTemporaryAccessPointRadio(ota_started_radio);
@@ -385,6 +433,11 @@ bool ESP32Board::stopOTAUpdate(char reply[]) {
 static AsyncWebServer* async_ota_host = nullptr;
 
 bool ESP32Board::startOTAUpdate(const char* id, char reply[], bool force_ap) {
+  mesh::esp32::managementPassword::Snapshot credential;
+  if (!mesh::esp32::managementPassword::snapshot(credential) || !credential.password[0]) {
+    strcpy(reply, "ERR: saved admin password required for WiFi OTA");
+    return false;
+  }
   if (!mesh::wireless::control().allowWiFiForOTA()) {
     strcpy(reply, "ERR: wireless change pending; retry start ota");
     return false;
@@ -409,7 +462,7 @@ bool ESP32Board::startOTAUpdate(const char* id, char reply[], bool force_ap) {
       return false;
     }
     ota_started_radio = ota_started_radio || WiFi.getMode() == WIFI_OFF;
-    ota_started_ap = mesh::wifi::startOpenAccessPoint("MeshCore-OTA", ota_started_ap);
+    ota_started_ap = mesh::wifi::startManagementAccessPoint("MeshCore-OTA", ota_started_ap);
     if (!ota_started_ap) {
       inhibit_sleep = ota_server != nullptr;
       if (!inhibit_sleep) {
@@ -422,8 +475,11 @@ bool ESP32Board::startOTAUpdate(const char* id, char reply[], bool force_ap) {
     ip = WiFi.softAPIP();
   }
 
-  snprintf(reply, 160, "Started: http://%s/update - WiFi on; %s", ip.toString().c_str(),
-           use_ap ? "Join WiFi MeshCore-OTA" : "Use same WiFi/LAN");
+  const char* network = !use_ap ? "Use same WiFi/LAN"
+      : mesh::esp32::managementPassword::apPasswordEligible(credential.password)
+          ? "Join WiFi MeshCore-OTA (admin password)"
+          : "Join WiFi MeshCore-OTA (OPEN compatibility; HTTP admin login)";
+  snprintf(reply, 160, "Started: http://%s/update - WiFi on; %s", ip.toString().c_str(), network);
   MESH_DEBUG_PRINTLN("startOTAUpdate: %s", reply);
 
   // Select the requested network even when the HTTP listener already exists.
@@ -434,6 +490,8 @@ bool ESP32Board::startOTAUpdate(const char* id, char reply[], bool force_ap) {
       strcpy(reply, "ERR: OTA server failed; retry start ota");
       return false;
     }
+    if (ota_started_ap) mesh::esp32::managementPassword::watchOtaAccessPoint(
+        this, rotateOTAAccessPoint, credential.generation);
     return true;
   }
 
@@ -454,11 +512,14 @@ bool ESP32Board::startOTAUpdate(const char* id, char reply[], bool force_ap) {
       return false;
     }
     async_ota_host->on("/", HTTP_GET, [](AsyncWebServerRequest *request) {
+      if (!AsyncElegantOTA.authenticateRequest(request)) return;
       request->send(200, "text/html", home_buf);
     });
     async_ota_host->on("/log", HTTP_GET, [](AsyncWebServerRequest *request) {
+      if (!AsyncElegantOTA.authenticateRequest(request)) return;
       request->send(SPIFFS, "/packet_log", "text/plain");
     });
+    AsyncElegantOTA.useManagementPassword();
     AsyncElegantOTA.begin(async_ota_host);
   }
   ota_server = async_ota_host;
@@ -479,10 +540,16 @@ bool ESP32Board::startOTAUpdate(const char* id, char reply[], bool force_ap) {
     return false;
   }
 
+  if (ota_started_ap) mesh::esp32::managementPassword::watchOtaAccessPoint(
+      this, rotateOTAAccessPoint, credential.generation);
   return true;
 }
 
 bool ESP32Board::stopOTAUpdate(char reply[]) {
+  if (mesh::esp32::managementPassword::uploadActive()) {
+    strcpy(reply, "ERR: OTA upload active; retry stop ota after it finishes");
+    return false;
+  }
   if (ota_server == nullptr) {
     if (ota_started_ap) WiFi.softAPdisconnect(true);
     ota_started_ap = false;
@@ -499,6 +566,7 @@ bool ESP32Board::stopOTAUpdate(char reply[]) {
   }
   ota_server->end();
   ota_server = nullptr;
+  mesh::esp32::managementPassword::forgetOtaAccessPoint(this);
   if (ota_started_ap) WiFi.softAPdisconnect(true);
   ota_started_ap = false;
   mesh::wifi::stopTemporaryAccessPointRadio(ota_started_radio);
@@ -518,6 +586,26 @@ bool ESP32Board::startOTAUpdate(const char* id, char reply[], bool force_ap) {
 
 bool ESP32Board::stopOTAUpdate(char reply[]) {
   return false; // not supported
+}
+#endif
+
+#if (defined(LIGHTWEIGHT_WIFI_OTA) && (defined(ADMIN_PASSWORD) || defined(COMPANION_RADIO_FULL))) \
+    || (defined(ADMIN_PASSWORD) && !defined(DISABLE_WIFI_OTA))
+bool ESP32Board::rotateOTAAccessPoint(void* context) {
+  auto* owner = static_cast<ESP32Board*>(context);
+  if (!owner->ota_server || !owner->ota_started_ap) {
+    mesh::esp32::managementPassword::forgetOtaAccessPoint(owner);
+    return true;
+  }
+  if (!mesh::wifi::startManagementAccessPoint("MeshCore-OTA", false)) {
+    // A failed rekey must not leave an AP accepting the previous secret.
+    WiFi.softAPdisconnect(true);
+    owner->ota_started_ap = false;
+    char reply[160];
+    owner->stopOTAUpdate(reply);
+    mesh::esp32::managementPassword::forgetOtaAccessPoint(owner);
+  }
+  return true;
 }
 #endif
 

@@ -8,6 +8,12 @@
 #include <cstring>
 #include <initializer_list>
 #include <string>
+#define MESH_MANAGEMENT_PASSWORD_HOST_TEST
+#include <helpers/esp32/ManagementPassword.h>
+namespace password = mesh::esp32::managementPassword;
+#ifndef TEST_ADMIN_PASSWORD
+#define TEST_ADMIN_PASSWORD ""
+#endif
 
 using esp_err_t = int;
 using wifi_mode_t = int;
@@ -46,13 +52,14 @@ struct IPAddress {
 struct wifi_config_t {
   struct {
     uint8_t ssid[32] = {};
+    uint8_t password[64] = {};
     uint8_t ssid_len = 0, ssid_hidden = 0, channel = 1;
     wifi_auth_mode_t authmode = WIFI_AUTH_OPEN;
   } ap;
 };
 enum class Fault {
   None, StaleSsid, HiddenSsid, WrongChannel, WrongProtocol, MissingMode,
-  NotStarted, ZeroIp, DelayedStart, StaleOnce, SetterFailure, WrongAuth, StillConnected,
+  NotStarted, ZeroIp, DelayedStart, StaleOnce, SetterFailure, WrongAuth, WrongPassword, StillConnected,
   ModeSetterFailure, IpConfigSetterFailure, StaProtocolSetterFailure,
   SdkModeReadFailure, SdkConfigReadFailure, SdkProtocolReadFailure
 };
@@ -60,12 +67,8 @@ enum class ScanBehavior {
   Complete, SlowComplete, Failure, Stuck, StopDelayed, Unstoppable,
   FacadeFailedActive, FacadeFailedStopRejected
 };
-constexpr wifi_auth_mode_t expectedAuth() {
-#ifdef WEBCONFIG_AP_PASSWORD
-  return WEBCONFIG_AP_PASSWORD[0] ? WIFI_AUTH_WPA2_PSK : WIFI_AUTH_OPEN;
-#else
-  return WIFI_AUTH_OPEN;
-#endif
+wifi_auth_mode_t expectedAuth() {
+  return password::apPasswordEligible(TEST_ADMIN_PASSWORD) ? WIFI_AUTH_WPA2_PSK : WIFI_AUTH_OPEN;
 }
 void delay(unsigned amount);
 struct WiFiFake {
@@ -122,11 +125,9 @@ struct WiFiFake {
     return true;
   }
   bool softAP(const char* ssid, const char* password, int channel) {
-#ifdef WEBCONFIG_AP_PASSWORD
-    assert(password != nullptr && strcmp(password, WEBCONFIG_AP_PASSWORD) == 0);
-#else
-    assert(password == nullptr);
-#endif
+    if (expectedAuth() == WIFI_AUTH_WPA2_PSK) {
+      assert(password != nullptr && strcmp(password, TEST_ADMIN_PASSWORD) == 0);
+    } else assert(password == nullptr);
     assert(channel == 6);
     ++ap_calls; polls = 0;
     if (fault == Fault::SetterFailure) return false;
@@ -142,6 +143,8 @@ struct WiFiFake {
     live_config.ap.authmode = fault == Fault::WrongAuth
         ? (expectedAuth() == WIFI_AUTH_OPEN ? WIFI_AUTH_WPA2_PSK : WIFI_AUTH_OPEN)
         : expectedAuth();
+    if (password) strcpy(reinterpret_cast<char*>(live_config.ap.password),
+        fault == Fault::WrongPassword ? "obsolete-key" : password);
     ap_ip = fault == Fault::ZeroIp ? IPAddress() : planned_ip;
     ap_started = fault != Fault::NotStarted && fault != Fault::DelayedStart;
     // Every injected state error deliberately returns success here.
@@ -279,7 +282,7 @@ struct DNSServer {
 };
 unsigned DNSServer::starts = 0;
 struct NodeSnapshot { char admin_password[16] = {}; };
-struct Callbacks { void getNodeSnapshot(NodeSnapshot& node) { strcpy(node.admin_password, "configured"); } };
+struct Callbacks { void getNodeSnapshot(NodeSnapshot& node) { strcpy(node.admin_password, TEST_ADMIN_PASSWORD); } };
 struct AsyncResponseStream { std::string state; unsigned networks = 0; };
 struct AsyncWebServerRequest {
   int status = 0;
@@ -327,6 +330,9 @@ struct WebConfigServer {
   bool _owns_wifi = true, _stopping = false;
   bool _retry_saved_wifi_in_setup = true, _setup_reconnect_in_progress = true;
   bool _was_setup_ap = false, _initial_setup = false;
+  bool _setup_provisioning_privilege = false;
+  uint32_t _ap_auth_generation = 0, _ap_rekey_generation = 0;
+  uint32_t _ap_rekey_after = 0, _ap_rekey_deadline = 0;
   uint32_t _setup_reconnect_deadline = 5, _setup_started_at = 5, _last_activity = 0;
   const uint8_t _pub_key[2] = {0x62, 0xF2};
   char _ap_ssid[33] = {}, _wifi_ssid[32] = {};
@@ -339,6 +345,7 @@ struct WebConfigServer {
   void createServer() { ++servers; }
   void requestNetworkAccess() {}
   void refreshNetworkPowerHold(uint32_t) {}
+  void initializeManagementPassword();
   bool startSetupMode(char reply[]);
   bool checkAuth(AsyncWebServerRequest*) const { return auth_allowed; }
   void handleScan(AsyncWebServerRequest* req);
@@ -361,11 +368,20 @@ void requireEndpoint(const WebConfigServer& portal, const char* reply, bool cach
   assert(WiFi.scan_result == (cached_scan ? 2 : WIFI_SCAN_FAILED));
   assert(!WiFi.sdk_scan_active && WiFi.sdk_scan_stops == (stopped_scan ? 1u : 0u));
   assert(!WiFi.auto_reconnect && !portal._retry_saved_wifi_in_setup);
-  assert(strstr(reply, "join 'MC-62F2' then open http://192.168.4.1/"));
+  assert(strstr(reply, "join 'MC-62F2', http://192.168.4.1/"));
+  assert(strstr(reply, expectedAuth() == WIFI_AUTH_WPA2_PSK
+      ? "WiFi: admin password" : TEST_ADMIN_PASSWORD[0]
+        ? "open WiFi; admin login required" : "open WiFi; no admin password"));
+  assert(portal._setup_provisioning_privilege == (expectedAuth() == WIFI_AUTH_WPA2_PSK));
+  if (expectedAuth() == WIFI_AUTH_WPA2_PSK)
+    assert(strcmp(reinterpret_cast<const char*>(WiFi.live_config.ap.password), TEST_ADMIN_PASSWORD) == 0);
   assert(portal.servers == 1);
   assert(WiFi.initialized && WiFi.driver_stops == 0 && WiFi.driver_deinits == 0);
 }
 void reset(Fault fault = Fault::None) {
+  auto& state = password::detail::state();
+  { password::detail::Lock lock(state); state.current = {};
+    state.changing = state.uploading = state.rotating = false; }
   WiFi = WiFiFake{}; WiFi.fault = fault;
   clock_ms = 100;
   DNSServer::starts = 0; mesh::wireless::control().disabled = false;
@@ -383,10 +399,11 @@ int main() {
   }
   for (Fault fault : {Fault::StaleSsid, Fault::HiddenSsid, Fault::WrongChannel,
                      Fault::WrongProtocol, Fault::MissingMode, Fault::NotStarted,
-                     Fault::ZeroIp, Fault::SetterFailure, Fault::WrongAuth, Fault::StillConnected,
+                     Fault::ZeroIp, Fault::SetterFailure, Fault::WrongAuth, Fault::WrongPassword, Fault::StillConnected,
                      Fault::ModeSetterFailure, Fault::IpConfigSetterFailure,
                      Fault::StaProtocolSetterFailure, Fault::SdkModeReadFailure,
                      Fault::SdkConfigReadFailure, Fault::SdkProtocolReadFailure}) {
+    if (fault == Fault::WrongPassword && expectedAuth() == WIFI_AUTH_OPEN) continue;
     reset(fault); WiFi.shared_espnow = true;
     WebConfigServer portal;
     char reply[160] = {};

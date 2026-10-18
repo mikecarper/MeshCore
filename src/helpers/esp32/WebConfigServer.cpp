@@ -45,6 +45,7 @@ static_assert(sizeof(WEBCONFIG_AP_PREFIX) <= 28,
 #include "helpers/esp32/WiFiRadioPolicy.h"
 #include "helpers/esp32/WiFiAccessPointPolicy.h"
 #include "helpers/esp32/WiFiStationPolicy.h"
+#include "helpers/esp32/ManagementPassword.h"
 
 // ESPAsyncWebServer closes every ordinary response, so splitting the UI into
 // many HTTP requests exhausts a lossy link's TCP/WiFi resources. Its ordinary
@@ -805,23 +806,22 @@ static bool setupAccessPointStarted() {
 #endif
 }
 
-static bool setupAccessPointReady(const char* ssid, int channel) {
+static bool setupAccessPointReady(const char* ssid, int channel, const char* password) {
   wifi_mode_t mode = WIFI_MODE_NULL;
   wifi_config_t config = {};
   uint8_t protocol = 0;
   const size_t ssid_len = strlen(ssid);
-#ifdef WEBCONFIG_AP_PASSWORD
-  const wifi_auth_mode_t auth = WEBCONFIG_AP_PASSWORD[0]
+  const wifi_auth_mode_t auth = password && password[0]
       ? WIFI_AUTH_WPA2_PSK : WIFI_AUTH_OPEN;
-#else
-  const wifi_auth_mode_t auth = WIFI_AUTH_OPEN;
-#endif
   return setupAccessPointStarted()
       && esp_wifi_get_mode(&mode) == ESP_OK && (mode & WIFI_MODE_AP)
       && esp_wifi_get_config(WIFI_IF_AP, &config) == ESP_OK
       && config.ap.ssid_len == ssid_len
       && memcmp(config.ap.ssid, ssid, ssid_len) == 0
       && config.ap.ssid_hidden == 0 && config.ap.authmode == auth
+      && (!password || !password[0]
+          || strncmp(reinterpret_cast<const char*>(config.ap.password), password,
+                     sizeof(config.ap.password)) == 0)
       && config.ap.channel == channel
       && esp_wifi_get_protocol(WIFI_IF_AP, &protocol) == ESP_OK
       && protocol == mesh::wifi::kAccessPointProtocolMask
@@ -856,6 +856,14 @@ bool WebConfigServer::startSetupMode(char reply[]) {
     strcpy(reply, "Err: webconfig busy");
     return false;
   }
+  initializeManagementPassword();
+  mesh::esp32::managementPassword::Snapshot credential;
+  if (!mesh::esp32::managementPassword::snapshot(credential)) {
+    strcpy(reply, "Err: administrator credentials unavailable");
+    return false;
+  }
+  const char* ap_password = mesh::esp32::managementPassword::apPasswordEligible(
+      credential.password) ? credential.password : nullptr;
   // Publish the foreground owner before changing interfaces. The background
   // worker must not power down the station underneath this AP startup.
   requestNetworkAccess();
@@ -896,11 +904,7 @@ bool WebConfigServer::startSetupMode(char reply[]) {
     }
     const bool configured = scan_prepared && station_ok
         && WiFi.softAPConfig(ap_ip, ap_ip, ap_mask);
-#ifdef WEBCONFIG_AP_PASSWORD
-    ap_ok = configured && WiFi.softAP(_ap_ssid, WEBCONFIG_AP_PASSWORD, ap_channel);
-#else
-    ap_ok = configured && WiFi.softAP(_ap_ssid, nullptr, ap_channel);
-#endif
+    ap_ok = configured && WiFi.softAP(_ap_ssid, ap_password, ap_channel);
     if (ap_ok) {
       // ESP-NOW can leave the persistent AP protocol mask with the proprietary
       // LR bit set. The driver then reports a healthy SoftAP, but ordinary
@@ -912,7 +916,7 @@ bool WebConfigServer::startSetupMode(char reply[]) {
       if (ap_protocol_result == ESP_OK) {
         const uint32_t start_started = millis();
         do {
-          ap_ok = setupAccessPointReady(_ap_ssid, ap_channel);
+          ap_ok = setupAccessPointReady(_ap_ssid, ap_channel, ap_password);
           if (!ap_ok) delay(20);
         } while (!ap_ok && millis() - start_started < 300);
       }
@@ -941,18 +945,22 @@ bool WebConfigServer::startSetupMode(char reply[]) {
   _dns->start(53, "*", ip);  // captive portal: every name resolves to us
 
   _mode = MODE_SETUP;
-  if (!promote_lan) createServer();
   _was_setup_ap = true;
-  NodeSnapshot node = {};
-  _cb->getNodeSnapshot(node);
-  _initial_setup = _wifi_ssid[0] == 0 && node.admin_password[0] != 0;
+  _initial_setup = _wifi_ssid[0] == 0 && credential.password[0] != 0;
+  _setup_provisioning_privilege = _initial_setup && ap_password != nullptr;
+  _ap_auth_generation = credential.generation;
+  _ap_rekey_generation = _ap_rekey_after = _ap_rekey_deadline = 0;
   _setup_started_at = millis();
   _last_activity = _setup_started_at;
+  if (!promote_lan) createServer();
   refreshNetworkPowerHold(_setup_started_at);
   // Keep the pre-AP scan results for the picker. Only an explicit browser
   // rescan needs to leave the AP's home channel after clients have joined.
 
-  sprintf(reply, "WebConfig AP started: join '%s' then open http://%s/", _ap_ssid, ip.toString().c_str());
+  snprintf(reply, 160, "WebConfig AP: join '%s', http://%s/ (%s)", _ap_ssid,
+      ip.toString().c_str(), ap_password ? "WiFi: admin password"
+      : credential.password[0] ? "open WiFi; admin login required"
+      : "open WiFi; no admin password");
   return true;
 }
 
@@ -965,6 +973,7 @@ bool WebConfigServer::startLanMode(char reply[]) {
     strcpy(reply, "Err: WiFi not connected");
     return false;
   }
+  initializeManagementPassword();
   _mode = MODE_LAN;
   _setup_started_at = 0;
   _wifi_reconnect_tracker.noteConnected();
@@ -1121,6 +1130,8 @@ void WebConfigServer::finalizeTeardown() {
   _was_setup_ap = false;
   _keep_wifi_on_stop = false;
   _initial_setup = false;
+  _setup_provisioning_privilege = false;
+  _ap_auth_generation = _ap_rekey_generation = _ap_rekey_after = _ap_rekey_deadline = 0;
   _setup_started_at = 0;
   _stopping = false;
   _stop_warn_at = 0;
@@ -1138,7 +1149,14 @@ void WebConfigServer::finalizeTeardown() {
   _setup_wifi_handoff_ip[0] = 0;
   _batch_kind = BATCH_CONFIG;
   _admin_pwd_set = false;
-  _session_token[0] = 0;
+  {
+    WCLock lock(_mux);
+    clearSessionLocked();
+    memset(_batch_owner_token, 0, sizeof(_batch_owner_token));
+    _batch_reauth_required = false;
+    _batch_reauth_delivered = false;
+    _batch_reauth_until = 0;
+  }
   _stats_json[0] = 0;
   _board_cmds = 0;
   _board_cmds_probed = false;
@@ -1161,8 +1179,48 @@ void WebConfigServer::probeBoardCommands() {
   _board_cmds_probed = true;
 }
 
+void WebConfigServer::serviceSetupPassword(uint32_t now) {
+  if (_mode != MODE_SETUP || _stopping) return;
+  mesh::esp32::managementPassword::Snapshot credential;
+  if (!mesh::esp32::managementPassword::snapshot(credential)) return;
+  {
+    WCLock lock(_mux);
+    if (credential.generation == _ap_auth_generation || _reboot_at) return;
+    if (_ap_rekey_generation != credential.generation) {
+      _ap_rekey_generation = credential.generation;
+      _ap_rekey_after = WebConfigBatch::scheduleAt(now, 3000);
+      _ap_rekey_deadline = WebConfigBatch::scheduleAt(now, 30000);
+    }
+    if (_batch_state == BATCH_PENDING || handlerRefCount() != 0) return;
+    if (_batch_reauth_required && !_batch_reauth_delivered
+        && !WebConfigBatch::deadlineReached(now, _ap_rekey_deadline)) return;
+    if (!WebConfigBatch::deadlineReached(now, _ap_rekey_after)) return;
+  }
+  // Reserve outside the password callback: it already owns a ChangeGuard.
+  // AP restart and an accepted OTA upload must never race one another.
+  mesh::esp32::managementPassword::ChangeGuard rekey;
+  if (!rekey.acquired()
+      || !mesh::esp32::managementPassword::snapshot(credential)) return;
+  const char* password = mesh::esp32::managementPassword::apPasswordEligible(
+      credential.password) ? credential.password : nullptr;
+  const bool ready = mesh::wifi::startAccessPoint(_ap_ssid, true, password);
+  WCLock lock(_mux);
+  if (ready) {
+    _ap_auth_generation = credential.generation;
+    _ap_rekey_generation = _ap_rekey_after = _ap_rekey_deadline = 0;
+    if (!password) _setup_provisioning_privilege = false;
+  } else {
+    // An early SDK failure can leave the previous AP and its obsolete key live.
+    // Fail closed while retaining STA/the shared radio for the bounded retry.
+    WiFi.softAPdisconnect(true);
+    _ap_rekey_after = WebConfigBatch::scheduleAt(now, 5000);
+    mesh::usbDebugPort().println("WebConfig: AP password restart failed; retrying");
+  }
+}
+
 void WebConfigServer::tick(uint32_t now) {
   refreshNetworkPowerHold(now);
+  serviceSetupPassword(now);
   if (_stopping) {
     uint32_t refs = handlerRefCount();
     switch (WebConfigBatch::stopStep(refs, _stop_warned, _stop_warn_at, now)) {
@@ -1394,6 +1452,10 @@ void WebConfigServer::tick(uint32_t now) {
 void WebConfigServer::finishBatch(uint32_t now) {
   WCLock lock(_mux);
   _batch_state = BATCH_DONE;
+  if (_batch_reauth_required) {
+    _batch_reauth_until = WebConfigBatch::scheduleAt(
+        now, WebConfigBatch::kReauthReceiptMs);
+  }
   const uint32_t reboot_at =
       WebConfigBatch::finishRebootAt(_batch_reboot, _batch_all_ok, now);
   if (reboot_at != 0) {
@@ -1461,14 +1523,34 @@ void WebConfigServer::drainBatch(uint32_t now) {
   // clients (iPhones especially) to drop off mid-save.
   if (_batch_next == 0) {
     WCLock prefs_lock(_mux);
+    mesh::esp32::managementPassword::Snapshot credential;
+    if (!mesh::esp32::managementPassword::snapshot(credential)
+        || credential.generation != _batch_auth_generation) {
+      cancelStaleBatchLocked(now);
+      return;
+    }
     _cb->onConfigBatchStart();
+    _batch_started = true;
   } else if (WebConfigBatch::drainMustWait(_batch_next, _batch_count,
                                             now, _batch_last_cmd)) {
     return;  // let the WiFi task breathe between flash writes
   }
   if (_batch_next < _batch_count) {
     WCLock prefs_lock(_mux);
+    mesh::esp32::managementPassword::Snapshot credential;
+    if (!mesh::esp32::managementPassword::snapshot(credential)
+        || credential.generation != _batch_auth_generation) {
+      cancelStaleBatchLocked(now);
+      return;
+    }
     BatchEntry& e = _batch[_batch_next++];
+    const bool password_command = _batch_kind == BATCH_CLI
+        ? wcCliEchoesSecret(e.cmd) : wcIsAdminPasswordKey(e.key);
+    char requested_password[16] = {};
+    if (password_command) {
+      strncpy(requested_password, e.cmd + strlen("password "),
+              sizeof(requested_password) - 1);
+    }
     e.reply[0] = 0;
     uint32_t t0 = millis();
     if (_batch_kind == BATCH_CLI) {
@@ -1529,9 +1611,14 @@ void WebConfigServer::drainBatch(uint32_t now) {
       }
     } else {
       _cb->execCommand(e.cmd, e.reply);
-      // The CLI password command echoes the new secret. Never return it to a
-      // browser client, especially over the open setup AP.
-      if (admin_pwd) strcpy(e.reply, "OK");
+      // Mask only a confirmed save. An error must remain visible and prevent
+      // the batch from rebooting into settings that may not have persisted.
+      if (admin_pwd && WebConfigBatch::cliPasswordChanged(e.reply)) {
+        strcpy(e.reply, "OK");
+        _admin_pwd_set = true;
+      } else if (admin_pwd && e.reply[0] == 0) {
+        strcpy(e.reply, "Error: password save was not confirmed");
+      }
       // Keep the response snapshot current after MQTT/companion CLI handlers
       // persist a WiFi field. The browser can then soft-reload without a stale
       // value even before the requested reboot happens.
@@ -1549,6 +1636,27 @@ void WebConfigServer::drainBatch(uint32_t now) {
       _batch_all_ok = WebConfigBatch::nextAllOk(
           _batch_all_ok, strncmp(e.reply, "OK", 2) == 0);
     }
+    mesh::esp32::managementPassword::Snapshot committed;
+    const bool have_committed = mesh::esp32::managementPassword::snapshot(committed);
+    if (!have_committed
+        || committed.generation != _batch_auth_generation) {
+      if (have_committed && password_command && WebConfigBatch::cliPasswordChanged(e.reply)
+          && fixedTimeEquals(committed.password, requested_password,
+                             sizeof(committed.password))) {
+        // This accepted batch changed its own credential. Keep only a scoped
+        // receipt capability; the old cookie no longer authorizes any API.
+        _batch_auth_generation = committed.generation;
+        _batch_reauth_required = true;
+        _batch_reauth_until = WebConfigBatch::scheduleAt(
+            millis(), WebConfigBatch::kReauthReceiptMs);
+        clearSessionLocked();
+      } else {
+        memset(requested_password, 0, sizeof(requested_password));
+        cancelStaleBatchLocked(now);
+        return;
+      }
+    }
+    memset(requested_password, 0, sizeof(requested_password));
     _batch_last_cmd = millis();
     // Config entries are named by their (non-secret) key. A CLI command is
     // deliberately not logged: the operator can see what they typed, and a
@@ -1588,6 +1696,7 @@ void WebConfigServer::drainBatch(uint32_t now) {
   {
     WCLock prefs_lock(_mux);
     _cb->onConfigBatchEnd();
+    _batch_started = false;
   }
 
   bool wifi_credentials_changed = false;
@@ -1866,36 +1975,110 @@ void WebConfigServer::collectBody(AsyncWebServerRequest* req, uint8_t* data, siz
   if (req->_tempObject) memcpy((uint8_t*)req->_tempObject + index, data, len);
 }
 
-bool WebConfigServer::checkAuth(AsyncWebServerRequest* req) {
-  _last_activity = millis();
+void WebConfigServer::initializeManagementPassword() {
+  // Called only by loop-owned startup, after preferences have loaded. HTTP
+  // authentication must never read a setter's temporary, uncommitted RAM.
+  mesh::esp32::managementPassword::Snapshot current;
+  if (mesh::esp32::managementPassword::snapshot(current)) return;
+  NodeSnapshot node = {};
+  _cb->getNodeSnapshot(node);
+  mesh::esp32::managementPassword::initialize(node.admin_password);
+}
+
+void WebConfigServer::clearSessionLocked() {
+  memset(_session_token, 0, sizeof(_session_token));
+  _session_generation = 0;
+  _session_last_seen = 0;
+}
+
+static bool webConfigCookieMatches(AsyncWebServerRequest* req, const char* expected) {
+  if (!req || !expected || !expected[0] || !req->hasHeader("Cookie")) return false;
+  const String& cookies = req->getHeader("Cookie")->value();
+  const int idx = cookies.indexOf("wcs=");
+  if (idx < 0 || (int)cookies.length() < idx + 4 + 32) return false;
+  const String token = cookies.substring(idx + 4, idx + 4 + 32);
+  return fixedTimeEquals(token.c_str(), expected, 32);
+}
+
+bool WebConfigServer::checkAuthLocked(AsyncWebServerRequest* req, uint32_t* generation) {
   if (_mode == MODE_SETUP) {
     // AP+STA is used for scans and saved-network recovery. A first-time setup
     // may provision a new password from the physical AP. Losing access to a
     // saved WiFi network must not grant that same password-reset privilege.
     if (!req || !req->client()
         || req->client()->localIP() != WiFi.softAPIP()) return false;
-    if (_initial_setup || _wifi_ssid[0] == 0) { noteNetworkActivity(); return true; }
   } else if (_mode != MODE_LAN) {
     return false;
   }
-  NodeSnapshot node = {};
-  {
-    WCLock lock(_mux);
-    _cb->getNodeSnapshot(node);
+  mesh::esp32::managementPassword::Snapshot current;
+  if (!mesh::esp32::managementPassword::snapshot(current)) return false;
+  if (generation) *generation = current.generation;
+  if (_session_generation != current.generation) clearSessionLocked();
+  if ((_mode == MODE_SETUP && _setup_provisioning_privilege
+       && _ap_auth_generation == current.generation
+       && mesh::esp32::managementPassword::apPasswordEligible(current.password))
+      || current.password[0] == 0) {
+    noteNetworkActivity();
+    return true;
   }
-  if (node.admin_password[0] == 0) { noteNetworkActivity(); return true; }
-  if (_session_token[0] == 0) return false;
-  if (!req->hasHeader("Cookie")) return false;
-  const String& cookies = req->getHeader("Cookie")->value();
-  int idx = cookies.indexOf("wcs=");
-  if (idx < 0 || (int)cookies.length() < idx + 4 + 32) return false;
-  String token = cookies.substring(idx + 4, idx + 4 + 32);
-  uint32_t now = millis();
-  if ((uint32_t)(now - _session_last_seen) > WEBCONFIG_SESSION_TTL_MS) return false;
-  if (!fixedTimeEquals(token.c_str(), _session_token, 32)) return false;
+  const uint32_t now = millis();
+  if ((uint32_t)(now - _session_last_seen) > WEBCONFIG_SESSION_TTL_MS) {
+    clearSessionLocked();
+    return false;
+  }
+  if (!webConfigCookieMatches(req, _session_token)) return false;
   _session_last_seen = now;  // sliding expiry
   noteNetworkActivity();
   return true;
+}
+
+bool WebConfigServer::checkAuth(AsyncWebServerRequest* req) {
+  _last_activity = millis();
+  WCLock lock(_mux);
+  return checkAuthLocked(req);
+}
+
+void WebConfigServer::beginBatchAuthorizationLocked(uint32_t generation) {
+  _batch_auth_generation = generation;
+  memcpy(_batch_owner_token, _session_token, sizeof(_batch_owner_token));
+  _batch_reauth_required = false;
+  _batch_reauth_delivered = false;
+  _batch_reauth_until = 0;
+  _batch_started = false;
+}
+
+void WebConfigServer::cancelStaleBatchLocked(uint32_t now) {
+  while (_batch_next < _batch_count) {
+    strcpy(_batch[_batch_next++].reply,
+           "Error: administrator password changed; sign in again");
+  }
+  _batch_all_ok = false;
+  _batch_reauth_required = false;
+  _batch_reauth_delivered = false;
+  _batch_reauth_until = 0;
+  memset(_batch_owner_token, 0, sizeof(_batch_owner_token));
+  if (_standalone_wifi_dirty) {
+    _standalone_wifi_dirty = false;
+    reloadStandaloneWiFi();
+  }
+  if (_batch_started) _cb->onConfigBatchEnd();
+  _batch_started = false;
+  _batch_state = BATCH_DONE;
+  (void)now;
+}
+
+bool WebConfigServer::resultReceiptAllowedLocked(AsyncWebServerRequest* req,
+    const char* reqid, BatchKind kind, uint32_t now) {
+  if (_mode != MODE_SETUP && _mode != MODE_LAN) return false;
+  if (!_batch_reauth_required || _batch_kind != kind || !reqid
+      || strcmp(reqid, _batch_reqid) != 0 || !_batch_reauth_until
+      || WebConfigBatch::deadlineReached(now, _batch_reauth_until)
+      || !webConfigCookieMatches(req, _batch_owner_token)) return false;
+  if (_mode == MODE_SETUP && (!req->client()
+      || req->client()->localIP() != WiFi.softAPIP())) return false;
+  mesh::esp32::managementPassword::Snapshot current;
+  return mesh::esp32::managementPassword::snapshot(current)
+      && current.generation == _batch_auth_generation;
 }
 
 // ---------------------------------------------------------------------------
@@ -1969,12 +2152,29 @@ void WebConfigServer::handleStatus(AsyncWebServerRequest* req) {
   }
   const bool has_mqtt = _mqtt_prefs != NULL;
 
-  DynamicJsonDocument doc(896);
+  DynamicJsonDocument doc(1024);
   doc["mode"] = (_mode == MODE_SETUP) ? "setup" : "lan";
   doc["auth"] = authed;
   doc["needs_setup"] = (_wifi_ssid[0] == 0);
   doc["needs_password"] = _initial_setup;
-  doc["password_supported"] = node.admin_password[0] != 0;
+  mesh::esp32::managementPassword::Snapshot credential;
+  const bool have_credential = mesh::esp32::managementPassword::snapshot(credential);
+  doc["password_supported"] = have_credential && credential.password[0] != 0;
+  if (_mode == MODE_SETUP) {
+    char joined_password[65] = {};
+    const bool known = mesh::wifi::accessPointJoinPassword(
+        _ap_ssid, joined_password, sizeof(joined_password));
+    doc["ap_security"] = !known ? "unavailable" : joined_password[0]
+        ? "admin_password" : have_credential && credential.password[0]
+        ? "open_admin_login" : "open_no_password";
+    memset(joined_password, 0, sizeof(joined_password));
+    WCLock lock(_mux);
+    doc["ap_restart_pending"] = _ap_rekey_generation != 0 && !_reboot_at;
+    if (_ap_rekey_generation && !_reboot_at && _ap_rekey_after) {
+      doc["ap_restart_in_ms"] = WebConfigBatch::deadlineReached(millis(), _ap_rekey_after)
+          ? 1u : _ap_rekey_after - millis();
+    }
+  }
   doc["name"] = (const char*)node.name;
   char node_id[17];
   for (int i = 0; i < 8; i++) sprintf(&node_id[i * 2], "%02x", _pub_key[i]);
@@ -2050,18 +2250,17 @@ void WebConfigServer::handleLogin(AsyncWebServerRequest* req) {
       req->send(401, "application/json", "{\"error\":\"auth\"}");
       return;
     }
-    if (_initial_setup || _wifi_ssid[0] == 0) {
-      noteNetworkActivity();
-      req->send(200, "application/json", "{\"ok\":true}");
-      return;
-    }
   }
-  NodeSnapshot node = {};
-  {
-    WCLock lock(_mux);
-    _cb->getNodeSnapshot(node);
+  WCLock lock(_mux);
+  mesh::esp32::managementPassword::Snapshot credential;
+  if (!mesh::esp32::managementPassword::snapshot(credential)) {
+    req->send(503, "application/json", "{\"error\":\"credentials unavailable\"}");
+    return;
   }
-  if (node.admin_password[0] == 0) {
+  if (credential.password[0] == 0 || (_mode == MODE_SETUP
+      && _setup_provisioning_privilege
+      && _ap_auth_generation == credential.generation
+      && mesh::esp32::managementPassword::apPasswordEligible(credential.password))) {
     noteNetworkActivity();
     req->send(200, "application/json", "{\"ok\":true}");
     return;
@@ -2086,14 +2285,26 @@ void WebConfigServer::handleLogin(AsyncWebServerRequest* req) {
     return;
   }
   const char* pwd = doc["password"] | "";
-  if (!fixedTimeEquals(pwd, node.admin_password, sizeof(node.admin_password))) {
+  // Parsing can yield to the mesh loop. Verify the current committed mirror
+  // again before publishing a token, not a pre-parse preference snapshot.
+  if (!mesh::esp32::managementPassword::snapshot(credential)
+      || !fixedTimeEquals(pwd, credential.password, sizeof(credential.password))) {
     _login_throttle.noteFailure(client, now);
     req->send(401, "application/json", "{\"error\":\"wrong password\"}");
     return;
   }
   _login_throttle.noteSuccess(client);
-  for (int i = 0; i < 4; i++) sprintf(&_session_token[i * 8], "%08lx", (unsigned long)esp_random());
+  char token[33] = {};
+  for (int i = 0; i < 4; i++) sprintf(&token[i * 8], "%08lx", (unsigned long)esp_random());
+  mesh::esp32::managementPassword::Snapshot latest;
+  if (!mesh::esp32::managementPassword::snapshot(latest)
+      || latest.generation != credential.generation) {
+    req->send(401, "application/json", "{\"error\":\"password changed; sign in again\"}");
+    return;
+  }
+  memcpy(_session_token, token, sizeof(_session_token));
   _session_last_seen = now;
+  _session_generation = credential.generation;
   noteNetworkActivity();
 
   AsyncWebServerResponse* res = req->beginResponse(200, "application/json", "{\"ok\":true}");
@@ -2105,8 +2316,9 @@ void WebConfigServer::handleLogin(AsyncWebServerRequest* req) {
 
 void WebConfigServer::handleLogout(AsyncWebServerRequest* req) {
   if (_mode == MODE_OFF) { req->send(503); return; }
-  if (!checkAuth(req)) { req->send(401, "application/json", "{\"error\":\"auth\"}"); return; }
-  _session_token[0] = 0;
+  WCLock lock(_mux);
+  if (!checkAuthLocked(req)) { req->send(401, "application/json", "{\"error\":\"auth\"}"); return; }
+  clearSessionLocked();
   AsyncWebServerResponse* res = req->beginResponse(200, "application/json", "{\"ok\":true}");
   res->addHeader("Set-Cookie", "wcs=; Max-Age=0; Path=/");
   req->send(res);
@@ -2262,6 +2474,11 @@ void WebConfigServer::handleConfigPost(AsyncWebServerRequest* req) {
   }
 
   WCLock lock(_mux);
+  uint32_t auth_generation = 0;
+  if (!checkAuthLocked(req, &auth_generation)) {
+    req->send(401, "application/json", "{\"error\":\"auth\"}");
+    return;
+  }
   const WebConfigBatch::State bstate = toSpecState(_batch_state);
   const bool reqid_matches = _batch_kind == BATCH_CONFIG
       && strcmp(reqid, _batch_reqid) == 0;
@@ -2394,6 +2611,7 @@ void WebConfigServer::handleConfigPost(AsyncWebServerRequest* req) {
   _batch_reboot = reboot_after;
   _batch_reboot_armed = false;
   _batch_all_ok = true;
+  beginBatchAuthorizationLocked(auth_generation);
   strncpy(_batch_reqid, reqid, sizeof(_batch_reqid) - 1);
   _batch_reqid[sizeof(_batch_reqid) - 1] = 0;
   _standalone_wifi_dirty = false;
@@ -2423,11 +2641,6 @@ void WebConfigServer::handleConfigResult(AsyncWebServerRequest* req) {
     req->send(503);
     return;
   }
-  if (!checkAuth(req)) {
-    mesh::usbDebugPort().println("WC: result read -> 401");
-    req->send(401, "application/json", "{\"error\":\"auth\"}");
-    return;
-  }
   if (!req->hasParam("reqid")) {
     req->send(400, "application/json", "{\"error\":\"bad reqid\"}");
     return;
@@ -2444,6 +2657,12 @@ void WebConfigServer::handleConfigResult(AsyncWebServerRequest* req) {
       "WC: result entry mode=%d state=%d\n",
       (int)_mode, (int)_batch_state);
   WCLock lock(_mux);
+  const bool authenticated = checkAuthLocked(req);
+  if (!authenticated && !resultReceiptAllowedLocked(
+          req, requested_reqid.c_str(), BATCH_CONFIG, millis())) {
+    req->send(401, "application/json", "{\"error\":\"auth\"}");
+    return;
+  }
   // A CLI sequence occupying the shared slot is not a config save, whatever the
   // reqid says: its entries have no `key` and its results belong to the
   // terminal's reader. Treat it as unknown here (and vice versa there).
@@ -2469,6 +2688,7 @@ void WebConfigServer::handleConfigResult(AsyncWebServerRequest* req) {
     StaticJsonDocument<96> pending;
     pending["state"] = "pending";
     pending["reqid"] = (const char*)_batch_reqid;
+    pending["reauth_required"] = _batch_reauth_required && !authenticated;
     String out;
     serializeJson(pending, out);
     req->send(200, "application/json", out);
@@ -2483,6 +2703,12 @@ void WebConfigServer::handleConfigResult(AsyncWebServerRequest* req) {
   doc["reboot"] =
       WebConfigBatch::doneReportsReboot(_batch_reboot, _batch_all_ok);
   doc["all_ok"] = _batch_all_ok;
+  doc["reauth_required"] = _batch_reauth_required && !authenticated;
+  if (_batch_reauth_required && !_batch_reauth_delivered) {
+    _batch_reauth_delivered = true;
+    if (_ap_rekey_generation)
+      _ap_rekey_after = WebConfigBatch::scheduleAt(millis(), 3000);
+  }
   doc["reqid"] = (const char*)_batch_reqid;
   if (_setup_wifi_handoff_ip[0]) {
     doc["wifi_ip"] = (const char*)_setup_wifi_handoff_ip;
@@ -2491,7 +2717,9 @@ void WebConfigServer::handleConfigResult(AsyncWebServerRequest* req) {
   for (int i = 0; i < _batch_count; i++) {
     JsonObject r = results.createNestedObject();
     r["key"] = (const char*)_batch[i].key;
-    r["reply"] = (const char*)_batch[i].reply;
+    r["reply"] = authenticated ? (const char*)_batch[i].reply
+        : WebConfigBatch::cliWriteSucceeded(_batch[i].reply) ? "OK"
+        : "Error: setting failed; sign in again for details";
   }
   // State stays DONE (re-readable) until the next POST claims the slot.
   const uint32_t result_now = millis();
@@ -2549,6 +2777,12 @@ void WebConfigServer::closeTerminal() {
 void WebConfigServer::serviceTerminal(uint32_t now) {
   WCLock lock(_mux);
   if (!_terminal) return;
+  mesh::esp32::managementPassword::Snapshot credential;
+  if (!mesh::esp32::managementPassword::snapshot(credential)
+      || credential.generation != _terminal_auth_generation) {
+    closeTerminal();
+    return;
+  }
   if (now - _terminal->last_seen > (_terminal->closed ? 5000UL : 60000UL)) {
     closeTerminal();
     return;
@@ -2644,6 +2878,15 @@ void WebConfigServer::handleTerminalPost(AsyncWebServerRequest* req) {
     return;
   }
   WCLock lock(_mux);
+  uint32_t auth_generation = 0;
+  if (!checkAuthLocked(req, &auth_generation)) {
+    req->send(401, "application/json", "{\"error\":\"auth\"}");
+    return;
+  }
+  if (_terminal && _terminal_auth_generation != auth_generation) {
+    req->send(409, "application/json", "{\"error\":\"terminal session expired after password change\"}");
+    return;
+  }
   if (_terminal && strcmp(session, _terminal->session) != 0) {
     if (!_terminal->closed || _terminal->attached) {
       req->send(409, "application/json", "{\"error\":\"another browser owns the terminal\"}");
@@ -2666,6 +2909,7 @@ void WebConfigServer::handleTerminalPost(AsyncWebServerRequest* req) {
       return;
     }
     strlcpy(_terminal->session, session, sizeof(_terminal->session));
+    _terminal_auth_generation = auth_generation;
   }
   if (_terminal->closed) {
     req->send(409, "application/json", "{\"error\":\"terminal session closed\"}");
@@ -2757,6 +3001,11 @@ void WebConfigServer::handleCliPost(AsyncWebServerRequest* req) {
   }
 
   WCLock lock(_mux);
+  uint32_t auth_generation = 0;
+  if (!checkAuthLocked(req, &auth_generation)) {
+    req->send(401, "application/json", "{\"error\":\"auth\"}");
+    return;
+  }
   // Replay/Busy exactly as a config save classifies them: a repeated POST is
   // acknowledged rather than executed twice, and a different sequence while one
   // is still draining is refused.
@@ -2856,6 +3105,7 @@ void WebConfigServer::handleCliPost(AsyncWebServerRequest* req) {
   _batch_reboot = defer_reboot;
   _batch_reboot_armed = false;
   _batch_all_ok = true;
+  beginBatchAuthorizationLocked(auth_generation);
   strncpy(_batch_reqid, reqid, sizeof(_batch_reqid) - 1);
   _batch_reqid[sizeof(_batch_reqid) - 1] = 0;
   _batch_state = BATCH_PENDING;         // tick() picks it up on the loop task
@@ -2888,7 +3138,6 @@ void WebConfigServer::handleCliResult(AsyncWebServerRequest* req) {
               "{\"error\":\"terminal disabled; set wifi.cli on\"}");
     return;
   }
-  if (!checkAuth(req)) { req->send(401, "application/json", "{\"error\":\"auth\"}"); return; }
   if (!req->hasParam("reqid")) {
     req->send(400, "application/json", "{\"error\":\"bad reqid\"}");
     return;
@@ -2905,6 +3154,13 @@ void WebConfigServer::handleCliResult(AsyncWebServerRequest* req) {
   }
 
   WCLock lock(_mux);
+  const bool authenticated = checkAuthLocked(req);
+  const bool receipt_only = !authenticated && resultReceiptAllowedLocked(
+      req, requested_reqid.c_str(), BATCH_CLI, millis());
+  if (!authenticated && !receipt_only) {
+    req->send(401, "application/json", "{\"error\":\"auth\"}");
+    return;
+  }
   // A config save occupying the slot is not this client's sequence, whatever
   // the reqid says; treat it as unknown rather than serving `set` results
   // through the terminal's reader.
@@ -2937,15 +3193,27 @@ void WebConfigServer::handleCliResult(AsyncWebServerRequest* req) {
   doc["reqid"] = (const char*)_batch_reqid;
   doc["total"] = _batch_count;
   doc["from"] = from;
+  doc["reauth_required"] = _batch_reauth_required && !authenticated;
   JsonArray results = doc.createNestedArray("results");
   for (int i = from; i < from + page; i++) {
     JsonObject r = results.createNestedObject();
     // The command is deliberately NOT echoed: it may hold a password or token,
     // and the client already has the sequence it sent. It matches by index.
-    r["ok"] = !WebConfigBatch::cliReplyIsFailure(_batch[i].reply);
-    r["reply"] = (const char*)_batch[i].reply;
+    const bool failed = WebConfigBatch::cliReplyIsFailure(_batch[i].reply);
+    r["ok"] = !failed;
+    // Receipt authority is deliberately weaker than an authenticated terminal.
+    // Do not rely on a growing list of secret getters or echoing commands.
+    r["reply"] = !receipt_only ? (const char*)_batch[i].reply
+        : failed ? "Error: command failed; sign in again for details"
+        : WebConfigBatch::cliWriteSucceeded(_batch[i].reply) ? "OK"
+        : "Sign in again to read this result";
   }
   if (final_read) {
+    if (_batch_reauth_required && !_batch_reauth_delivered) {
+      _batch_reauth_delivered = true;
+      if (_ap_rekey_generation)
+        _ap_rekey_after = WebConfigBatch::scheduleAt(millis(), 3000);
+    }
     doc["all_ok"] = _batch_all_ok;
     const bool rebooting = WebConfigBatch::cliRebootAllowed(_batch_reboot, _batch_all_ok);
     doc["reboot"] = rebooting;

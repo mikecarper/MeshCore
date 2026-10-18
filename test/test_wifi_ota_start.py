@@ -103,6 +103,7 @@ struct PortalImpl {
   void* callback_context = nullptr;
   volatile bool* active = nullptr;
   uint32_t close_ap_at = 0, recovery_interval_ms = 0;
+  uint32_t ap_password_generation = 0, rekey_generation = 0, rekey_at = 0;
   char recovery_ssid[32] = {}, ap_name[33] = {};
   bool recovery_connecting = false;
 };
@@ -168,6 +169,142 @@ int main() {
             with self.subTest(arduino_major=major):
                 self.compile_and_run(fixture, f"-DESP_ARDUINO_VERSION_MAJOR={major}")
 
+    def test_management_ap_uses_current_password_and_rekeys_after_response_grace(self):
+        source = (ROOT / "src/helpers/ESP32Board.cpp").read_text()
+        lightweight, elegant = source.split("#elif defined(ADMIN_PASSWORD) && !defined(DISABLE_WIFI_OTA)", 1)
+        for implementation, flags in ((lightweight, ["-DLIGHTWEIGHT_WIFI_OTA=1"]), (elegant, [])):
+            with self.subTest(flags=flags):
+                methods = "\n".join(extract_braced(implementation, signature) for signature in (
+                    "bool ESP32Board::startOTAUpdate(", "bool ESP32Board::stopOTAUpdate("))
+                methods += "\n" + extract_braced(source, "bool ESP32Board::rotateOTAAccessPoint(")
+                fixture = self.ap_fixture().split("int main() {", 1)[0]
+                fixture = fixture.replace("static bool rotateOTAAccessPoint(void*) { return true; }",
+                                          "static bool rotateOTAAccessPoint(void*);")
+                fixture = fixture.replace("@METHODS@", methods) + r'''
+int main() {
+  using namespace mesh::esp32::managementPassword;
+  assert(publish("password"));
+  ESP32Board board; char reply[160];
+  assert(board.startOTAUpdate("fixture", reply, true));
+  assert(strstr(reply, "(admin password)") && WiFi.connected);
+  assert(WiFi.live_config.ap.authmode == WIFI_AUTH_WPA2_PSK);
+  assert(!strcmp(reinterpret_cast<char*>(WiFi.live_config.ap.password), "password"));
+  const unsigned starts = WiFi.starts;
+  assert(board.startOTAUpdate("fixture", reply, true) && WiFi.starts == starts);
+  // Reuse must check the actual driver password, not just authmode/SSID.
+  strcpy(reinterpret_cast<char*>(WiFi.live_config.ap.password), "stale-password");
+  assert(board.startOTAUpdate("fixture", reply, true) && WiFi.starts == starts + 1);
+  Snapshot current; snapshot(current);
+  {
+    UploadGuard upload(current.generation); assert(upload.acquired());
+    assert(!publish("new-password"));
+    assert(!board.stopOTAUpdate(reply) && strstr(reply, "upload active"));
+  }
+  assert(publish("new-password"));
+  const unsigned before = WiFi.starts;
+  service(100); service(849); assert(WiFi.starts == before);
+  service(850); assert(WiFi.starts == before + 1 && WiFi.connected);
+  assert(!strcmp(reinterpret_cast<char*>(WiFi.live_config.ap.password), "new-password"));
+  assert(publish("tiny")); service(1000); service(1750);
+  assert(WiFi.live_config.ap.authmode == WIFI_AUTH_OPEN && WiFi.connected);
+  assert(board.startOTAUpdate("fixture", reply, true) && strstr(reply, "OPEN compatibility"));
+  assert(board.stopOTAUpdate(reply));
+  assert(!WiFi.ap && WiFi.connected); // Preserve the station owner.
+}
+'''
+                self.compile_and_run(fixture, *flags, "-DESP_ARDUINO_VERSION_MAJOR=2")
+
+    def test_ota_refuses_missing_or_empty_published_admin_before_network_effects(self):
+        source = (ROOT / "src/helpers/ESP32Board.cpp").read_text()
+        lightweight, elegant = source.split("#elif defined(ADMIN_PASSWORD) && !defined(DISABLE_WIFI_OTA)", 1)
+        for implementation, flags in ((lightweight, ["-DLIGHTWEIGHT_WIFI_OTA=1"]), (elegant, [])):
+            methods = "\n".join(extract_braced(implementation, signature) for signature in (
+                "bool ESP32Board::startOTAUpdate(", "bool ESP32Board::stopOTAUpdate("))
+            fixture = self.ap_fixture().split("int main() {", 1)[0]
+            fixture = fixture.replace('static const bool published_password = mesh::esp32::managementPassword::publish("short");', "")
+            fixture = fixture.replace("@METHODS@", methods) + r'''
+int main() {
+  ESP32Board board; char reply[160];
+  assert(!board.startOTAUpdate("fixture", reply, true));
+  assert(!WiFi.starts && !server_starts && !board.inhibit_sleep);
+  assert(mesh::esp32::managementPassword::initialize(""));
+  assert(!board.startOTAUpdate("fixture", reply, true));
+  assert(!WiFi.starts && !server_starts && !board.inhibit_sleep);
+}
+'''
+            self.compile_and_run(fixture, *flags, "-DESP_ARDUINO_VERSION_MAJOR=2")
+
+    def test_elegant_root_and_log_do_not_bypass_management_auth(self):
+        source = (ROOT / "src/helpers/ESP32Board.cpp").read_text()
+        elegant = source.split("#elif defined(ADMIN_PASSWORD) && !defined(DISABLE_WIFI_OTA)", 1)[1]
+        handlers = []
+        for path in ("/", "/log"):
+            marker = 'async_ota_host->on("' + path + '", HTTP_GET, [](AsyncWebServerRequest *request)'
+            body = extract_braced(elegant, marker)
+            body = body[body.index("{"):]
+            handlers.append("void handle" + str(len(handlers)) + "(AsyncWebServerRequest* request) " + body)
+        fixture = r'''
+#include <cassert>
+struct AsyncWebServerRequest {
+  int replies = 0;
+  template<class... Args> void send(Args...) { ++replies; }
+};
+struct Auth {
+  bool permitted = false;
+  int checks = 0;
+  bool authenticateRequest(AsyncWebServerRequest*) { ++checks; return permitted; }
+} AsyncElegantOTA;
+static const char* home_buf = "fixture";
+int SPIFFS = 0;
+@HANDLERS@
+int main() {
+  for (auto handler : {handle0, handle1}) {
+    AsyncWebServerRequest request;
+    AsyncElegantOTA.permitted = false; handler(&request); assert(request.replies == 0);
+    AsyncElegantOTA.permitted = true; handler(&request); assert(request.replies == 1);
+  }
+  assert(AsyncElegantOTA.checks == 4);
+}
+'''
+        fixture = '#include <initializer_list>\n' + fixture.replace("@HANDLERS@", "\n".join(handlers))
+        self.compile_and_run(fixture)
+        old = fixture.replace("      if (!AsyncElegantOTA.authenticateRequest(request)) return;", "")
+        self.assertNotEqual(old, fixture)
+        with self.assertRaises(AssertionError):
+            self.compile_and_run(old)
+
+    def test_join_password_describes_live_ap_during_rekey_grace(self):
+        fixture = self.ap_fixture().split("static unsigned server_starts", 1)[0] + r'''
+int main() {
+  using namespace mesh::esp32::managementPassword;
+  char password[65] = "old-value";
+  assert(!mesh::wifi::accessPointJoinPassword("setup", password, sizeof(password)) && !password[0]);
+  assert(publish("password"));
+  assert(mesh::wifi::startManagementAccessPoint("setup", false));
+  assert(mesh::wifi::accessPointJoinPassword("setup", password, sizeof(password)));
+  assert(!strcmp(password, "password"));
+  assert(publish("different"));
+  assert(mesh::wifi::accessPointJoinPassword("setup", password, sizeof(password)));
+  assert(!strcmp(password, "password")); // Registry leads actual AP during reply grace.
+  assert(!mesh::wifi::accessPointJoinPassword("other", password, sizeof(password)) && !password[0]);
+  assert(!mesh::wifi::accessPointJoinPassword("setup", password, 4) && !password[0]);
+  assert(mesh::wifi::startManagementAccessPoint("setup", false));
+  assert(mesh::wifi::accessPointJoinPassword("setup", password, sizeof(password)));
+  assert(!strcmp(password, "different"));
+  WiFi.live_config.ap.authmode = 99;
+  assert(!mesh::wifi::accessPointJoinPassword("setup", password, sizeof(password)) && !password[0]);
+  WiFi.live_config.ap.authmode = WIFI_AUTH_WPA2_PSK;
+  memset(WiFi.live_config.ap.password, 'x', sizeof(WiFi.live_config.ap.password));
+  assert(!mesh::wifi::accessPointJoinPassword("setup", password, sizeof(password)) && !password[0]);
+  WiFi.live_config.ap.authmode = WIFI_AUTH_OPEN;
+  assert(mesh::wifi::accessPointJoinPassword("setup", password, sizeof(password)) && !password[0]);
+  WiFi.fault = Fault::ConfigRead;
+  assert(!mesh::wifi::accessPointJoinPassword("setup", password, sizeof(password)) && !password[0]);
+}
+'''
+        for major in (2, 3):
+            self.compile_and_run(fixture, f"-DESP_ARDUINO_VERSION_MAJOR={major}")
+
     def test_minimal_ota_never_reports_a_stale_sdk_hotspot_as_started(self):
         implementation = (ROOT / "src/helpers/ESP32Board.cpp").read_text().split(
             "#elif defined(ADMIN_PASSWORD) && !defined(DISABLE_WIFI_OTA)", 1)[0]
@@ -194,6 +331,8 @@ int main() {
         start = cli.index('    } else if (memcmp(command, "start ota", 9)')
         end = cli.index('    } else if (memcmp(command, "clock", 5)', start)
         fixture = r'''
+#define MESH_MANAGEMENT_PASSWORD_HOST_TEST 1
+#include <helpers/esp32/ManagementPassword.h>
 #include <cassert>
 #include <cstdio>
 #include <cstring>
@@ -237,6 +376,8 @@ int main() {
         start = cli.index('    } else if (memcmp(command, "start ota", 9)')
         end = cli.index('    } else if (memcmp(command, "clock", 5)', start)
         fixture = r'''
+#define MESH_MANAGEMENT_PASSWORD_HOST_TEST 1
+#include <helpers/esp32/ManagementPassword.h>
 #include <cassert>
 #include <cstdio>
 #include <cstring>
@@ -276,6 +417,7 @@ struct Board {
 } board;
 struct Prefs {
   const char* node_name = "test";
+  const char* password = "password";
   bool bridge_enabled = false, espnow_bridge_enabled = false;
 } prefs;
 struct CLI {
@@ -344,6 +486,7 @@ int main() {
         methods = "\n".join(extract_braced(source, signature) for signature in (
             "void WebConfigServer::requestStop(", "bool WebConfigServer::stopForOTA(",
             "void WebConfigServer::finalizeTeardown(",
+            "void WebConfigServer::clearSessionLocked(",
             "bool WebConfigServer::isNetworkForegroundActive(",
             "void WebConfigServer::refreshNetworkPowerHold("))
         fixture = (ROOT / "test/fixtures/webconfig_ota_handoff.cpp").read_text()
@@ -354,6 +497,8 @@ int main() {
         start = cli.index('    } else if (memcmp(command, "start ota", 9)')
         end = cli.index('    } else if (memcmp(command, "clock", 5)', start)
         fixture = r'''
+#define MESH_MANAGEMENT_PASSWORD_HOST_TEST 1
+#include <helpers/esp32/ManagementPassword.h>
 #include <cassert>
 #include <cstdio>
 #include <cstring>
@@ -396,6 +541,7 @@ struct Board {
 } board;
 struct Prefs {
   const char* node_name = "test";
+  const char* password = "password";
   bool bridge_enabled = true, espnow_bridge_enabled = true;
 } prefs;
 struct CLI {
@@ -476,6 +622,8 @@ int main() {
 
     def test_background_bridge_retry_waits_until_ota_stops(self):
         fixture = r'''
+#define MESH_MANAGEMENT_PASSWORD_HOST_TEST 1
+#include <helpers/esp32/ManagementPassword.h>
 #include <cassert>
 #include <cstdint>
 uint32_t now = 0;
@@ -541,6 +689,8 @@ int main() {
         source = (ROOT / "examples/companion_radio/MyMesh.cpp").read_text()
         command = extract_braced(source, 'if (strcmp(command, "start ota") == 0')
         fixture = r'''
+#define MESH_MANAGEMENT_PASSWORD_HOST_TEST 1
+#include <helpers/esp32/ManagementPassword.h>
 #include <cassert>
 #include <cstdio>
 #include <cstring>
@@ -596,6 +746,8 @@ int main() {
         implementation = source[source.index("class LightweightOTAServer {"):]
         method = extract_braced(implementation, "bool end()")
         fixture = r'''
+#define MESH_MANAGEMENT_PASSWORD_HOST_TEST 1
+#include <helpers/esp32/ManagementPassword.h>
 #include <cassert>
 #include <cstdint>
 static unsigned delays = 0;

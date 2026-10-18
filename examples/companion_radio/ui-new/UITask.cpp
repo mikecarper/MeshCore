@@ -306,12 +306,8 @@ static void drawCompanionWiFiSetupPage(DisplayDriver& display) {
     display.drawTextCentered(display.width() / 2, 37, setup_ssid);
 
     char payload[256];
-    const char* setup_password = nullptr;
-#ifdef WEBCONFIG_AP_PASSWORD
-    setup_password = WEBCONFIG_AP_PASSWORD;
-#endif
-    if (mesh::ui::buildWiFiSetupQrPayload(
-            payload, sizeof(payload), setup_ssid, setup_password)) {
+    if (mesh::ui::buildCurrentWiFiSetupQrPayload(
+            payload, sizeof(payload), setup_ssid)) {
       static constexpr int qr_size = 105;
       const int qr_x = (display.width() - qr_size) / 2;
       if (display.drawQrCode(payload, qr_x, 55, qr_size)) {

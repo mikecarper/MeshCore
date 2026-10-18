@@ -40,6 +40,10 @@
 #include <helpers/StatsFormatHelper.h>
 #include <helpers/UsbAsciiBinarySwitch.h>
 #include <helpers/UsbLogging.h>
+#if defined(ESP32_PLATFORM) && defined(WIFI_SSID)
+#include <helpers/esp32/CompanionAdminPassword.h>
+#include <helpers/esp32/ManagementPassword.h>
+#endif
 #include <helpers/UsbLoggingWatchdog.h>
 #if MESH_PACKET_LOGGING
 #include <helpers/SerialPacketLog.h>
@@ -3008,6 +3012,23 @@ void MyMesh::begin(bool has_display, bool radio_available,
   // load persisted prefs
   const bool prefs_ready =
       _store->loadPrefs(_prefs, sensors.node_lat, sensors.node_lon);
+#if defined(ESP32_PLATFORM) && defined(WIFI_SSID)
+#ifdef ADMIN_PASSWORD
+  const char* management_default = ADMIN_PASSWORD;
+#else
+  const char* management_default = "password";
+#endif
+  _management_password_ready = mesh::esp32::companionAdminPassword::load(
+      _management_password, management_default);
+  if (_management_password_ready) {
+    _management_password_ready =
+        mesh::esp32::managementPassword::publish(_management_password);
+  }
+  if (!_management_password_ready) {
+    mesh::usbLoggingPort().println(
+        "Management password unavailable; use password <new-password> on USB to repair");
+  }
+#endif
 #if defined(RAK_4631)
   // Only a verified image (or a fresh missing file) may permit GPS-only power.
   // A failed load never replaces a stored shared policy with an unsafe cut.
@@ -3798,6 +3819,39 @@ bool MyMesh::handleLocalControlCommand(const char* command, char* reply,
                                        size_t reply_size) {
   if (!command || !reply || reply_size == 0) return false;
   while (*command == ' ') command++;
+#if defined(ESP32_PLATFORM) && defined(WIFI_SSID)
+  if (strncmp(command, "password", 8) == 0
+      && (command[8] == 0 || command[8] == ' ' || command[8] == '\t')) {
+    const char* value = command + 8;
+    // Consume the command separator only. Extra spaces belong to the secret,
+    // exactly as in infrastructure CLI and browser password forms.
+    if (*value == ' ' || *value == '\t') ++value;
+    if (!mesh::esp32::managementPassword::validPassword(value)) {
+      snprintf(reply, reply_size,
+               "Error: password must be 1-15 bytes, no line breaks; use 8-15 ASCII for setup WiFi");
+      return true;
+    }
+    mesh::esp32::managementPassword::ChangeGuard change;
+    if (!change.acquired()) {
+      snprintf(reply, reply_size, "Error: OTA upload or password change busy; retry");
+      return true;
+    }
+    if (!mesh::esp32::companionAdminPassword::save(value)) {
+      snprintf(reply, reply_size, "Error: password save unconfirmed; reboot may differ");
+      return true;
+    }
+    memcpy(_management_password, value, strlen(value) + 1);
+    _management_password_ready = change.publish(_management_password);
+    if (!_management_password_ready) {
+      snprintf(reply, reply_size, "Error: password saved; management unavailable, reboot required");
+    } else {
+      // The browser batch recognizes this established success prefix and
+      // removes the secret before publishing its result.
+      snprintf(reply, reply_size, "password now: %s", value);
+    }
+    return true;
+  }
+#endif
   if (mesh::powerdiag::handleCommand(command, reply, reply_size, millis())) return true;
 #if defined(OTA_RAK15002_SD_STORE) && defined(ETHERNET_USE_RAK13800)
   if (handleRak4631PeripheralCommand(command, reply, reply_size)) return true;
@@ -3935,6 +3989,13 @@ bool MyMesh::handleLocalControlCommand(const char* command, char* reply,
     // Binary Companion callers may supply a shorter buffer.
     char ota_reply[160] = {0};
     bool webconfig_stopped = false;
+#if defined(ESP32_PLATFORM) && defined(WIFI_SSID)
+    if (!_management_password_ready
+        || !mesh::esp32::managementPassword::publish(_management_password)) {
+      snprintf(reply, reply_size, "Error: management password unavailable; set password on USB");
+      return true;
+    }
+#endif
 #ifdef WITH_WEBCONFIG
     if (isWebConfigActiveOrStopping()) {
       if (!_webconfig->stopForOTA(ota_reply)) {
@@ -5034,6 +5095,11 @@ static bool wcCopyValue(char* dest, size_t dest_size, const char* value) {
 
 void MyMesh::getNodeSnapshot(WebConfigServer::NodeSnapshot& s) {
   memset(&s, 0, sizeof(s));
+#if defined(ESP32_PLATFORM) && defined(WIFI_SSID)
+  if (_management_password_ready) {
+    wcCopyValue(s.admin_password, sizeof(s.admin_password), _management_password);
+  }
+#endif
   wcCopyValue(s.name, sizeof(s.name), _prefs.node_name);
   wcCopyValue(s.bluetooth_name, sizeof(s.bluetooth_name),
               _prefs.bluetooth_name);
@@ -5106,6 +5172,12 @@ void MyMesh::getNodeSnapshot(WebConfigServer::NodeSnapshot& s) {
 }
 
 bool MyMesh::startWebConfig(bool force_ap, char* reply) {
+#if defined(ESP32_PLATFORM) && defined(WIFI_SSID)
+  if (!_management_password_ready) {
+    strcpy(reply, "Err: management password unavailable; set password on USB");
+    return false;
+  }
+#endif
 #if defined(COMPANION_EXCLUSIVE_WIFI_BLE)
   if (!isCompanionWiFiEnabled()) {
     strcpy(reply,
@@ -5222,6 +5294,13 @@ void MyMesh::execAdminCommand(char* cmd, char* reply) {
 
 void MyMesh::execCommand(char* cmd, char* reply) {
   reply[0] = 0;
+#if defined(ESP32_PLATFORM) && defined(WIFI_SSID)
+  if (cmd && strncmp(cmd, "password", 8) == 0
+      && (cmd[8] == 0 || cmd[8] == ' ' || cmd[8] == '\t')) {
+    handleLocalControlCommand(cmd, reply, 160);
+    return;
+  }
+#endif
 #ifdef WITH_MQTT_BRIDGE
   if (cmd && strncmp(cmd, "set mqtt.enabled ", 17) == 0) {
     handleLocalControlCommand(cmd, reply, 160);
@@ -10230,7 +10309,12 @@ void MyMesh::handleTerminalCommand(char* command, bool reader_prompt,
         "Commands:\r\n"
         "  stats-core / stats-radio / stats-radio-diag / stats-packets\r\n"
         "  get prv.key (when private key export is enabled)\r\n"
+#if defined(ESP32_PLATFORM) && defined(WIFI_SSID)
+        "  password <new-password> (shared setup WiFi, WebConfig and WiFi OTA)\r\n"
+        "  get password (management password status)\r\n"
+#else
         "  get password (this role has no admin password)\r\n"
+#endif
         "  erase (erase stored settings and identity)\r\n"
         "  board\r\n"
         "  version\r\n");
@@ -10514,7 +10598,15 @@ bool MyMesh::handleDirectCommand(const char* command, char* reply, size_t reply_
     return true;
   }
   if (strcmp(command, "get password") == 0) {
+#if defined(ESP32_PLATFORM) && defined(WIFI_SSID)
+    // Binary Companion and its legacy TCP transports have no admin-login
+    // handshake. Report status there, never disclose the management secret.
+    snprintf(reply, reply_size, _management_password_ready
+        ? "> (management password set; use password <new-password> to change)"
+        : "Error: management password unavailable; set password on USB");
+#else
     snprintf(reply, reply_size, "> (no admin password on Companion)");
+#endif
     return true;
   }
   if (strcmp(command, "get prv.key") == 0) {

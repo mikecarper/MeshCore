@@ -24,6 +24,9 @@ SCENARIOS = (
 
 STUBS = r'''
 #include <helpers/WirelessControl.h>
+#define MESH_MANAGEMENT_PASSWORD_HOST_TEST 1
+#include <helpers/esp32/ManagementPassword.h>
+static const bool published_password = mesh::esp32::managementPassword::publish("short");
 #include <cassert>
 #include <cstdint>
 #include <cstdio>
@@ -40,11 +43,12 @@ constexpr int WL_CONNECTED = 3, WL_DISCONNECTED = 6, HTTP_GET = 0;
 enum wifi_mode_t { WIFI_OFF = 0, WIFI_STA = 1, WIFI_AP = 2 };
 constexpr wifi_mode_t WIFI_MODE_NULL = WIFI_OFF;
 constexpr wifi_mode_t WIFI_MODE_AP = WIFI_AP;
-constexpr int WIFI_IF_STA = 0, WIFI_IF_AP = 1, WIFI_AUTH_OPEN = 0;
+constexpr int WIFI_IF_STA = 0, WIFI_IF_AP = 1, WIFI_AUTH_OPEN = 0, WIFI_AUTH_WPA2_PSK = 3;
 constexpr int WIFI_SCAN_RUNNING = -1, AP_STARTED_BIT = 1;
 struct wifi_config_t {
   struct {
     uint8_t ssid[32] = {};
+    uint8_t password[64] = {};
     uint8_t ssid_len = 0, ssid_hidden = 0, channel = 1;
     int authmode = WIFI_AUTH_OPEN;
   } ap;
@@ -104,13 +108,15 @@ struct MockWiFi {
     configured_ap_ip = ip;
     return ap_config_ok;
   }
-  bool softAP(const char* ssid, const char*, int channel = 1) {
+  bool softAP(const char* ssid, const char* password, int channel = 1) {
     assert(channel == 1);
     ++ap_start_calls;
     if (ap_start_ok) {
       sdk_initialized = sdk_started = sdk_ap_active = true;
       initialized_cache = started_cache = true;
       ap_ip = configured_ap_ip;
+      ap_config.ap.authmode = password && password[0] ? WIFI_AUTH_WPA2_PSK : WIFI_AUTH_OPEN;
+      if (password) strcpy(reinterpret_cast<char*>(ap_config.ap.password), password);
       ap_config.ap.ssid_len = strlen(ssid);
       memcpy(ap_config.ap.ssid, ssid, strlen(ssid));
       ap_config.ap.channel = channel;
@@ -167,6 +173,8 @@ struct AsyncWebServer {
 };
 struct MockElegantOTA {
   void setID(const char*) {}
+  void useManagementPassword() {}
+  bool authenticateRequest(AsyncWebServerRequest*) { return true; }
   void begin(AsyncWebServer* server) { assert(server != nullptr); }
   bool setEnabled(bool) { return true; }
 } AsyncElegantOTA;
@@ -182,6 +190,7 @@ public:
   ~ESP32Board() { delete ota_server; }
   const char* getManufacturerName() const { return "test board"; }
   bool startOTAUpdate(const char* id, char reply[], bool force_ap);
+  static bool rotateOTAAccessPoint(void*) { return true; }
   @OTA_RUNNING@
 } board;
 
@@ -408,7 +417,7 @@ class WifiOtaLifecycleTests(unittest.TestCase):
     def assert_healthy_ota(self, scenario, url, ap_starts):
         observation = self.observations[scenario]
         self.assertTrue(observation["first_started"] and observation["started"])
-        network = "Join WiFi MeshCore-OTA" if url == "192.168.4.1" else "Use same WiFi/LAN"
+        network = "Join WiFi MeshCore-OTA (OPEN compatibility; HTTP admin login)" if url == "192.168.4.1" else "Use same WiFi/LAN"
         self.assertEqual(observation["reply"], f"Started: http://{url}/update - WiFi on; {network}")
         self.assertEqual(observation["server_count"], 1)
         self.assertEqual(observation["server_begin_calls"], 1)

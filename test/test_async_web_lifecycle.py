@@ -41,6 +41,7 @@ static std::atomic<bool> ota_upload_busy{false};"""
         rx=tcp[tcp.index("  // RX Timeout"):tcp.index("  // Everything is fine")]
         return (fixture.replace("@REBOOT_STATE@",state)
             .replace("@UPLOAD_STATE@",extract_braced(source,"struct OtaUploadState")+";")
+            .replace("@AUTH@",extract_braced(source,"bool AsyncElegantOtaClass::authenticateRequest("))
             .replace("@BEGIN@",begin)
             .replace("@RESTART@",extract_braced(source,"void AsyncElegantOtaClass::restart()"))
             .replace("@ACCEPT_TIMEOUT@",accept).replace("@RX_TIMEOUT@",rx))
@@ -67,6 +68,17 @@ static std::atomic<bool> ota_upload_busy{false};"""
         self.assertNotEqual(fixture,old,"The negative control must remove the production timeout fix")
         with self.assertRaises(AssertionError):
             self.compile_and_run(old,"-DESP32=1","-DTEST_OTA_BODY_TIMEOUT=1")
+
+    def test_management_auth_precedes_all_routes_and_upload_side_effects(self):
+        fixture = self.uploader_fixture()
+        self.compile_and_run(fixture, "-DESP32=1", "-DTEST_OTA_MANAGEMENT_PASSWORD=1")
+        # Exercise the actual chunk gate: omitting authentication must admit a
+        # wrong password and fail the zero-flash-effects assertion above.
+        gate = "        if (!authenticateRequest(request, &authenticated_generation)) return;"
+        old = fixture.replace(gate, "        authenticated_generation = mesh::esp32::managementPassword::detail::state().current.generation;")
+        self.assertNotEqual(old, fixture)
+        with self.assertRaises(AssertionError):
+            self.compile_and_run(old, "-DESP32=1", "-DTEST_OTA_MANAGEMENT_PASSWORD=1")
 
     def premature_commit_fixture(self, fixture):
         commit=extract_braced(fixture,"if (state && state->file_final")

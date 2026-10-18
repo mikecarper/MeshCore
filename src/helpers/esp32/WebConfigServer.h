@@ -5,18 +5,21 @@
 // companion builds. The UI removes MQTT controls when no bridge is present.
 //
 // Two modes:
-//  - SETUP: open SoftAP + captive portal, raised automatically on first boot
+//  - SETUP: admin-password SoftAP + captive portal, raised on first boot
 //    when no WiFi is configured (wifi_ssid empty), or manually via
 //    `start webconfig ap`. A credential save joins in AP+STA mode, reports the
 //    assigned LAN IP, then reboots; the AP auto-stops after an idle timeout.
+//    Legacy short/non-ASCII admin credentials use open WiFi plus HTTP login.
 //  - LAN: bound to an existing or portal-owned STA connection. Infrastructure
-//    roles require the node admin password; companions use their trusted LAN.
+//    roles use the committed node admin password. Explicit legacy passwordless
+//    configurations retain their local no-password policy.
 //
 // Concurrency model: AsyncWebServer handlers run on the async_tcp task and
 // must never touch the CLI, prefs persistence, or the radio. Config writes
 // and browser-terminal commands are marshaled to tick() - called from
 // MyMesh::loop() on the Arduino loop task - and run through the existing CLI
-// handlers there. Prefs-struct reads and request state are guarded by _mux.
+// handlers there. Request state is guarded by _mux; authentication uses the
+// separately published committed credential generation, never temporary prefs.
 //
 // The master switch and standalone WiFi credentials use independent NVS
 // namespaces, so role-specific prefs-file layouts remain untouched.
@@ -317,6 +320,7 @@ private:
   bool _keep_wifi_on_stop = false;
   bool _was_setup_ap = false;
   bool _initial_setup = false;
+  bool _setup_provisioning_privilege = false;
   uint32_t _setup_started_at = 0;
   uint32_t _connect_deadline = 0;
   char _wifi_ssid[32] = {0};
@@ -329,6 +333,10 @@ private:
   // sends the password with the rest, so it never needed the memory.
   bool _admin_pwd_set = false;
   char _ap_ssid[33] = {0};
+  uint32_t _ap_auth_generation = 0;
+  uint32_t _ap_rekey_generation = 0;
+  uint32_t _ap_rekey_after = 0;
+  uint32_t _ap_rekey_deadline = 0;
   WiFiReconnectPolicy::Tracker _wifi_reconnect_tracker;
   bool _retry_saved_wifi_in_setup = false;
   bool _setup_reconnect_in_progress = false;
@@ -349,7 +357,13 @@ private:
   bool _batch_reboot = false;
   bool _batch_reboot_armed = false;
   bool _batch_all_ok = true;
+  bool _batch_started = false;
   char _batch_reqid[24] = {0};
+  uint32_t _batch_auth_generation = 0;
+  char _batch_owner_token[33] = {0};
+  bool _batch_reauth_required = false;
+  bool _batch_reauth_delivered = false;
+  uint32_t _batch_reauth_until = 0;
   bool _standalone_wifi_dirty = false;
   bool _setup_wifi_handoff_pending = false;
   uint32_t _setup_wifi_handoff_deadline = 0;
@@ -358,9 +372,12 @@ private:
   WebTerminalStream* _terminal = NULL;
   mesh::RoomWebMailbox* _room_mailbox = NULL;
 
-  // LAN-mode session (single slot; new login evicts the old session)
+  // Browser login session, bound to the committed credential generation.
+  // One slot: a new login evicts the old session in LAN or recovery AP mode.
   char _session_token[33] = {0};
   uint32_t _session_last_seen = 0;
+  uint32_t _session_generation = 0;
+  uint32_t _terminal_auth_generation = 0;
   WebConfigLoginThrottle::Tracker _login_throttle;
 
   // Once set (via /api/portal/exit), OS captive probes get native "success"
@@ -401,9 +418,17 @@ private:
   void serviceRoom(uint32_t now);
   void closeTerminal();
   void serviceSetupWiFiHandoff(uint32_t now);
+  void serviceSetupPassword(uint32_t now);
   void finishBatch(uint32_t now);
   void finalizeTeardown();
+  void initializeManagementPassword();
+  void clearSessionLocked();
   bool checkAuth(AsyncWebServerRequest* req);
+  bool checkAuthLocked(AsyncWebServerRequest* req, uint32_t* generation = nullptr);
+  bool resultReceiptAllowedLocked(AsyncWebServerRequest* req, const char* reqid,
+                                  BatchKind kind, uint32_t now);
+  void beginBatchAuthorizationLocked(uint32_t generation);
+  void cancelStaleBatchLocked(uint32_t now);
   static void collectBody(AsyncWebServerRequest* req, uint8_t* data, size_t len,
                           size_t index, size_t total);
 

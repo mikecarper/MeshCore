@@ -266,6 +266,12 @@ access point. The reply gives the URL to open and tells you which network to
 use. `start ota ap` always selects the access point, including when OTA is
 already running on a LAN address. This is useful with client-isolated networks.
 
+The runtime browser uploader uses HTTP Basic authentication: username `admin`,
+password the node's saved admin password. The OTA hotspot reuses that password
+for WPA2 when it is 8–15 printable ASCII characters; otherwise it is open and
+the HTTP login still applies. Temporary partition migration and recovery apps
+retain their documented access policy.
+
 Starting OTA automatically stops WebConfig and reports `WebConfig stopped` in
 the reply. The existing LAN connection stays up; a setup hotspot is replaced
 by `MeshCore-OTA`. WebConfig's delayed HTTP cleanup cannot stop OTA's WiFi.
@@ -318,15 +324,18 @@ off while a temporary WebConfig session is currently active at that URL.
 It serves the shared WiFi, radio, flood, loop, and status page and reports its
 URL. MQTT builds also show the MQTT tab and wizard step; non-MQTT builds remove
 them entirely. Sign in with the node's admin password. If the node has no saved
-WiFi SSID, the command starts the open `MeshCore-Setup-XXXX` captive AP at
+WiFi SSID, the command starts the `MeshCore-Setup-XXXX` captive AP at
 <http://192.168.4.1/> instead.
 
 If a saved WiFi network is unavailable and the node falls back to its setup
 AP, sign in with the existing admin password before changing settings. Joining
-that AP does not grant permission to replace the password. First-time setup
-without a saved SSID keeps its AP provisioning flow. Images deliberately
-configured without an admin password, including passwordless Companions,
-retain their local no-password policy; use them only on a trusted network.
+that AP does not grant permission to replace the password. The hotspot uses
+the same admin password for WPA2 when it is 8–15 printable ASCII characters.
+Other valid admin passwords leave the hotspot open and require the HTTP admin
+login. Protected first-time setup without a saved SSID keeps its provisioning
+flow. ESP32 WiFi Companions also have a saved admin password, initially
+`password`. Deliberately passwordless images retain their local no-password
+policy; use them only on a trusted network.
 
 `start webconfig ap` forces captive-AP mode. It will not interrupt an active
 MQTT bridge, so run `set mqtt.enabled off` first. Use `stop webconfig` to
@@ -352,8 +361,8 @@ paused, rather than starting services from saved intent alone.
 Every ESP32 build with WebConfig supports the browser command terminal,
 including WiFi Companion and Full Companion. Companions use their complete
 USB/TCP terminal on the trusted LAN, including contact import, chat, recipient
-selection, and delayed replies. Repeater and Room Server use their local CLI
-after admin authentication.
+selection, and delayed replies. ESP32 roles require their WebConfig admin
+login before browser terminal access; the HTTP login does not protect TCP.
 
 To add a Companion contact, run `import meshcore://<full-contact-card-data>`,
 then `list` to confirm it appears. Get the complete card with `card` on the
@@ -365,9 +374,10 @@ The saved `wifi.cli` setting defaults to `on`. Use `set wifi.cli off` to disable
 the **CLI** tab.
 `get wifi.cli` reports `off`, `on, waiting for WiFi client`, or `on, active`.
 The saved setting becomes active only in station/LAN mode while the WiFi client
-is connected. It is deliberately unavailable on the open setup access point.
+is connected. It is deliberately unavailable on the setup access point.
 The tab displays each reply in the browser, including local diagnostics,
-`get password`, private-key and WiFi/MQTT credential reads, and `erase`.
+infrastructure `get password`, private-key and WiFi/MQTT credential reads, and
+`erase`. ESP32 Companion's `get password` reports status without the secret.
 Infrastructure `get acl` and raw `log` stream to the requesting browser, with
 backpressure for slow clients. These maintenance commands retain their LoRa
 restrictions. `set freq` works both here and through authorized LoRa CLI.
@@ -2172,7 +2182,7 @@ Older Companion firmware is not a safe transport for this backup flow.
 - `password <new_password>`
 
 **Parameters:**
-- `new_password`: New admin password
+- `new_password`: New admin password (on ESP32, 1–15 UTF-8 bytes without CR or LF)
 
 **Set by build flag:** `ADMIN_PASSWORD`
 
@@ -2180,8 +2190,27 @@ Older Companion firmware is not a safe transport for this backup flow.
 
 `get password` returns the current admin password only on a local connection:
 USB, Ethernet, or the authenticated LAN browser CLI. It is rejected over LoRa.
-Companion has no local admin password and reports that explicitly, including
-through binary command `0x42`; this command does not report the Bluetooth PIN.
+ESP32 WiFi Companion instead reports management-password status without revealing
+the secret. Its password is stored in NVS, survives a filesystem erase, and
+defaults to `password`. Other Companion builds retain their existing no-admin
+response. This command does not report the Bluetooth PIN.
+
+On ESP32, empty and overlong new passwords are rejected rather than truncated.
+Leading spaces are part of the password. For ESP32 setup WiFi protection, choose 8–15
+printable ASCII characters; other accepted passwords use an open hotspot with
+an HTTP admin login. WebConfig and runtime browser OTA share this admin
+credential (OTA's HTTP Basic username is `admin`).
+
+A confirmed password change invalidates existing browser sessions. The page
+that submitted it keeps a save receipt, tries the new password once, and reads
+the same result again after login; it does not resend commands. If another
+setting fails, the result remains visible and reboot is withheld. An
+unconfirmed password save keeps the previous runtime password active, but the
+saved state after reboot may differ; the error reports this uncertainty.
+
+Trusted TCP consoles and delegated remote CLI remain administrative paths and
+can change this password. The HTTP credential does not protect those ports or
+replace radio ACL permissions.
 
 **Note:** The password setter replies with confirmation.
 

@@ -16,6 +16,7 @@
 #include <helpers/esp32/WiFiAccessPointPolicy.h>
 #include <helpers/WirelessControl.h>
 #include <helpers/esp32/WiFiStationPolicy.h>
+#include <helpers/esp32/ManagementPassword.h>
 
 namespace {
 
@@ -41,6 +42,9 @@ struct PortalImpl {
   uint32_t next_recovery_at = 0;
   uint32_t recovery_deadline = 0;
   bool recovery_connecting = false;
+  uint32_t ap_password_generation = 0;
+  uint32_t rekey_generation = 0;
+  uint32_t rekey_at = 0;
 };
 
 static bool readLine(WiFiClient& client, char* line, size_t capacity) {
@@ -223,14 +227,53 @@ static void handleClient(PortalImpl* impl, WiFiClient& client) {
   bool post_save = strncmp(line, "POST /save ", 11) == 0;
   bool get_request = strncmp(line, "GET ", 4) == 0;
   size_t content_length = 0;
+  char authorization[96] = {};
+  bool has_authorization = false;
   do {
     if (!readLine(client, line, sizeof(line))) return;
     if (strncasecmp(line, "Content-Length:", 15) == 0) {
       content_length = static_cast<size_t>(strtoul(line + 15, nullptr, 10));
+    } else if (strncasecmp(line, "Authorization:", 14) == 0) {
+      const char* value = line + 14;
+      while (*value == ' ' || *value == '\t') ++value;
+      if (has_authorization || strlen(value) >= sizeof(authorization)) {
+        strcpy(authorization, "invalid");
+      } else {
+        memcpy(authorization, value, strlen(value) + 1);
+      }
+      has_authorization = true;
     }
   } while (line[0]);
 
+  using namespace mesh::esp32::managementPassword;
+  uint32_t authenticated_generation = 0;
+  const AuthResult auth = authenticateBasic(authorization, millis(), &authenticated_generation);
+  memset(authorization, 0, sizeof(authorization));
+  if (auth != AuthResult::Authorized) {
+    if (auth == AuthResult::Throttled) {
+      sendResponse(client, 429, "Too Many Requests", "text/plain", "Wait 30 seconds before signing in again.");
+    } else if (auth == AuthResult::Unavailable) {
+      sendResponse(client, 503, "Service Unavailable", "text/plain", "Set the node admin password on USB, then restart setup WiFi.");
+    } else {
+      static const char message[] = "Sign in as admin using the node admin password.";
+      client.printf("HTTP/1.1 401 Unauthorized\r\nWWW-Authenticate: Basic realm=\"MeshCore\", charset=\"UTF-8\"\r\n"
+                    "Content-Type: text/plain\r\nContent-Length: %u\r\nCache-Control: no-store\r\nConnection: close\r\n\r\n%s",
+                    static_cast<unsigned>(sizeof(message) - 1), message);
+    }
+    return;
+  }
+
   if (post_save) {
+    // Keep the accepted request bound to the authenticated credential while
+    // association and persistence run. A concurrent password change retries
+    // after this operation rather than authorizing a stale request midway.
+    ChangeGuard request;
+    Snapshot current;
+    if (!request.acquired() || !snapshot(current)
+        || current.generation != authenticated_generation) {
+      sendResponse(client, 409, "Conflict", "text/plain", "Settings changed or are busy; sign in again and retry.");
+      return;
+    }
     if (content_length == 0 || content_length >= 256) {
       sendResponse(client, 400, "Bad Request", "text/plain", "Invalid form data.");
       return;
@@ -260,6 +303,25 @@ static void portalTask(void* arg) {
   PortalImpl* impl = static_cast<PortalImpl*>(arg);
   while (impl->active && *impl->active) {
     impl->dns.processNextRequest();
+    {
+      using namespace mesh::esp32::managementPassword;
+      Snapshot current;
+      if (snapshot(current) && current.generation != impl->ap_password_generation) {
+        if (impl->rekey_generation != current.generation) {
+          impl->rekey_generation = current.generation;
+          impl->rekey_at = millis();
+        } else if (uint32_t(millis() - impl->rekey_at) >= 750U) {
+          ChangeGuard rekey;
+          if (rekey.acquired()) {
+            if (!snapshot(current)) break;
+            if (!mesh::wifi::startManagementAccessPoint(impl->ap_name, false)) break;
+            impl->ap_password_generation = current.generation;
+            impl->rekey_generation = 0;
+            mesh::usbLoggingPort().println("Setup WiFi updated; reconnect using the admin password");
+          }
+        }
+      }
+    }
     WiFiClient client = impl->server.available();
     if (client) {
       client.setTimeout(5000);
@@ -324,6 +386,10 @@ bool WiFiSetupPortal::begin(const char* ap_name, SaveCallback save_callback, voi
     _impl = impl;
   }
   if (impl->task != nullptr) return false;
+  mesh::esp32::managementPassword::ChangeGuard start;
+  if (!start.acquired()) return false;
+  mesh::esp32::managementPassword::Snapshot admin;
+  if (!mesh::esp32::managementPassword::snapshot(admin) || !admin.password[0]) return false;
 
   impl->save_callback = save_callback;
   impl->callback_context = context;
@@ -337,12 +403,14 @@ bool WiFiSetupPortal::begin(const char* ap_name, SaveCallback save_callback, voi
   impl->ap_name[sizeof(impl->ap_name) - 1] = 0;
 
   impl->started_radio = WiFi.getMode() == WIFI_OFF;
-  if (!mesh::wifi::startOpenAccessPoint(impl->ap_name, false)) {
+  if (!mesh::wifi::startManagementAccessPoint(impl->ap_name, false)) {
     WiFi.softAPdisconnect(true);
     mesh::wifi::stopTemporaryAccessPointRadio(impl->started_radio);
     impl->started_radio = false;
     return false;
   }
+  impl->ap_password_generation = admin.generation;
+  impl->rekey_generation = 0;
   if (!impl->dns.start(53, "*", SETUP_IP)) {
     WiFi.softAPdisconnect(true);
     mesh::wifi::stopTemporaryAccessPointRadio(impl->started_radio);

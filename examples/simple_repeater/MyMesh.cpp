@@ -11903,6 +11903,20 @@ void MyMesh::handleCommand(uint32_t sender_timestamp, ClientInfo* sender, char *
   // same over LoRa and serial. Keep leading whitespace intact until after the
   // region-load handler because it encodes region hierarchy indentation.
   char* command_end = command + strlen(command);
+#ifdef ESP_PLATFORM
+  // Password bytes are significant, including spaces and invalid line breaks
+  // that the ESP32 setter must reject rather than silently remove.
+  const char* password_command = command;
+  while (*password_command == ' ') password_command++;
+  if (strlen(password_command) > 4 && password_command[2] == '|') {
+    password_command += 3;
+  }
+  char command_verb[10];
+  strncpy(command_verb, password_command, sizeof(command_verb) - 1);
+  command_verb[sizeof(command_verb) - 1] = 0;
+  mesh::cli::normalizeCommandVerb(command_verb);
+  if (strcmp(command_verb, "password ") != 0)
+#endif
   while (command_end > command
       && (command_end[-1] == ' ' || command_end[-1] == '\t'
           || command_end[-1] == '\r' || command_end[-1] == '\n')) {

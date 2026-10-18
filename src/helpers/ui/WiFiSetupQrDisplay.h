@@ -2,9 +2,28 @@
 
 #include "DisplayDriver.h"
 #include "WiFiSetupQrPayload.h"
+#if defined(ESP_PLATFORM) || defined(ESP32_PLATFORM)
+#include "../esp32/WiFiAccessPointPolicy.h"
+#endif
 
 namespace mesh {
 namespace ui {
+
+inline bool buildCurrentWiFiSetupQrPayload(char* payload, size_t payload_size,
+                                          const char* ssid) {
+#if defined(ESP_PLATFORM) || defined(ESP32_PLATFORM)
+  char password[65];
+  if (!mesh::wifi::accessPointJoinPassword(ssid, password, sizeof(password)))
+    return false;
+  return buildWiFiSetupQrPayload(payload, payload_size, ssid, password);
+#else
+  const char* password = nullptr;
+#ifdef WEBCONFIG_AP_PASSWORD
+  password = WEBCONFIG_AP_PASSWORD;
+#endif
+  return buildWiFiSetupQrPayload(payload, payload_size, ssid, password);
+#endif
+}
 
 // Render a setup-AP join QR at the largest size that still leaves the right
 // half of compact displays available for a short textual fallback/reference.
@@ -16,12 +35,7 @@ inline bool drawWiFiSetupQr(DisplayDriver& display, const char* ssid,
                             const char* address, bool compact_border = false,
                             const char* action = nullptr) {
   char payload[256];
-  const char* password = nullptr;
-#ifdef WEBCONFIG_AP_PASSWORD
-  password = WEBCONFIG_AP_PASSWORD;
-#endif
-  if (!buildWiFiSetupQrPayload(
-          payload, sizeof(payload), ssid, password)) {
+  if (!buildCurrentWiFiSetupQrPayload(payload, sizeof(payload), ssid)) {
     return false;
   }
 

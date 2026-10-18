@@ -17,7 +17,8 @@ select **CLI**. The browser runs the same commands as the USB terminal and
 Full Companion's TCP terminal on port 5002, including contact import, contact
 selection, messages, remote login/commands, and delayed RF replies. Run `help`
 to list commands compiled into the device. Enable the tab with
-`set wifi.cli on`; the open setup AP does not expose it.
+`set wifi.cli on` and sign in with the node admin password. The setup AP does
+not expose this full terminal.
 
 For example, copy the complete `meshcore://...` string from `card` on another
 Companion, then run these commands on the receiving Companion:
@@ -101,7 +102,8 @@ the corresponding feature:
 | `stats-core`, `stats-radio`, `stats-radio-diag`, `stats-packets` | Runtime diagnostics |
 | `get public.key` | Read-only node identity public key; Companion returns `> ` followed by 64 uppercase hex characters |
 | `get prv.key` | Node identity private key; Companion requires private key export enabled in the build |
-| `get password` | Infrastructure admin password; Companion reports that it has no admin password |
+| `get password` | Infrastructure admin password; ESP32 WiFi Companion reports management-password status without revealing it; other Companions report no admin password |
+| `password <new-password>` | Change the saved admin password on infrastructure and ESP32 WiFi Companion |
 | `erase` | Erase stored identity and settings; reboot for a fresh node |
 | `get wifi.pwd` | Stored WiFi password on WiFi builds |
 | `get mqttN.password`, `get mqttN.token` | Stored credentials for MQTT slot N |
@@ -126,9 +128,12 @@ the binary contacts operations for Companion contacts. Interactive chat
 commands still use the text terminal or their corresponding binary protocol
 operations.
 
-The browser CLI requires station/LAN mode and `wifi.cli on`. Infrastructure
-uses its admin login; Companion uses the trusted LAN. Configuration forms keep
-password fields masked; explicit local CLI getters return their values.
+The browser CLI requires station/LAN mode, `wifi.cli on`, and the node admin
+login. Configuration forms keep password fields masked; explicit local CLI
+getters return their values, except ESP32 WiFi Companion's status-only
+`get password`. Existing USB/BLE/TCP clients and explicitly authorized remote
+CLI contacts retain their administrative command access. HTTP authentication
+does not add a password handshake to the raw TCP services.
 
 ## Companion contact and channel TX profiles
 

@@ -184,7 +184,7 @@ int main() {
         self.assertIn("37, setup_ssid", page)
         self.assertIn("static constexpr int qr_size = 105;", page)
         self.assertIn("payload, qr_x, 55, qr_size", page)
-        self.assertIn("mesh::ui::buildWiFiSetupQrPayload", page)
+        self.assertIn("mesh::ui::buildCurrentWiFiSetupQrPayload", page)
         self.assertIn("display.setCompactText(true);", page)
         self.assertGreaterEqual(page.count("display.setCompactText(false);"), 2)
         self.assertNotIn("startFrame", page)

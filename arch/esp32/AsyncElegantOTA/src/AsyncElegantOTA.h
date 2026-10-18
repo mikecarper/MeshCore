@@ -36,6 +36,11 @@ class AsyncElegantOtaClass{
         // Stop admission atomically with upload ownership. Existing GET
         // responses may drain while the containing listener is stopped.
         bool setEnabled(bool enabled);
+        // Opt in only after the role has published its confirmed runtime
+        // credential. Legacy migration callers retain their explicit policy.
+        void useManagementPassword() { _managementPassword = true; }
+        bool authenticateRequest(AsyncWebServerRequest* request,
+                                 uint32_t* generation = nullptr);
 
     private:
         AsyncWebServer *_server;
@@ -46,6 +51,7 @@ class AsyncElegantOtaClass{
         String _username = "";
         String _password = "";
         bool _authRequired = false;
+        bool _managementPassword = false;
 
 };
 

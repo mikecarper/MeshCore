@@ -405,6 +405,8 @@ get wifi.ssid
 get wifi.status
 get wifi.powersave
 get webui
+get password
+password my-admin-pass
 set wifi.ssid MyNetwork
 set wifi.pwd my-password
 set wifi.powersave min
@@ -416,8 +418,19 @@ stop webconfig
 ESP32 WiFi Companions with WebConfig, including Full Companion, expose a
 **CLI** tab at the node's LAN address. It defaults to on; use `get wifi.cli`,
 `set wifi.cli on`, or `set wifi.cli off`. Older builds that report the browser
-terminal as unavailable need a firmware update. The open setup AP does not
+terminal as unavailable need a firmware update. The setup AP does not
 expose this tab.
+
+ESP32 WebConfig and runtime browser OTA share the saved node admin password,
+initially `password`; the OTA HTTP Basic username is `admin`. `get password`
+reports status without revealing it. The password is stored in NVS and survives
+a filesystem erase. New values must be 1–15 UTF-8 bytes without CR or LF. Use
+8–15 printable ASCII characters to protect setup WiFi with the same password;
+otherwise the hotspot is open and requires an HTTP admin login. The display's
+WiFi join QR uses the hotspot's current credential. After a successful change,
+the submitting page keeps its save result and tries the new login once; other
+browser sessions must sign in again. An unconfirmed save keeps the previous
+runtime password active, but the saved state after reboot may differ.
 
 The browser accepts Companion configuration commands, including `get powersaving`,
 `set usb.logging on|off`, WiFi controls, and MQTT settings. `set mqtt.enabled on|off` controls MQTT
@@ -716,8 +729,12 @@ stealth remains enabled. Repeating `on` keeps an existing bond. Toggle `off`,
 then `on`, then reboot to reset first pairing. All flag changes need reboot.
 The node still sends directed or allowlisted BLE packets; it is not radio silent.
 
-ESP32 ports 5000, 5001, 5002, and WebConfig have no independent login layer.
-Expose them only on a trusted LAN or temporary setup network. See
+ESP32 TCP ports 5000, 5001, and 5002 remain trusted-network services. The HTTP
+admin login protects WebConfig and runtime browser OTA, and does not protect
+these ports or delegated remote CLI. Administrative console access can change
+the admin password. Expose TCP services only on a trusted LAN or temporary
+setup network. Temporary migration/recovery apps retain their documented
+access policy. See
 [WiFi setup](./WiFi.md) for credential setup and reconnect behavior.
 
 ## USB Binary and text terminal modes

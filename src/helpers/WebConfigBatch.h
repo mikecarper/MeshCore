@@ -46,6 +46,7 @@ static const uint32_t kRebootConfirmMs = 3000;    // .cpp:784 first result-read 
 static const uint32_t kSetupWiFiConnectTimeoutMs = 20000;
 static const uint32_t kSetupHandoffRebootConfirmMs = 1000;
 static const uint32_t kStopWarnMs = 10000;   // .h:95 STOP_WARN_MS
+static const uint32_t kReauthReceiptMs = 120000;
 static const uint32_t kFullSetupApWindowMs = 30UL * 60UL * 1000UL;
 
 // The batch lifecycle. A fresh POST moves Idle->Pending; the drainer moves

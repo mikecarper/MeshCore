@@ -5,6 +5,9 @@
 #include <string>
 #include <ArduinoJson.h>
 #include <helpers/WebConfigLoginThrottle.h>
+#define MESH_MANAGEMENT_PASSWORD_HOST_TEST
+#include <helpers/esp32/ManagementPassword.h>
+namespace password = mesh::esp32::managementPassword;
 static uint32_t now_ms=100000, random_word=0x12345678;
 uint32_t millis() { return now_ms; }
 uint32_t esp_random() { return ++random_word; }
@@ -37,11 +40,17 @@ struct WebConfigServer {
   enum { MODE_OFF, MODE_SETUP, MODE_LAN };
   int _mode=MODE_SETUP, _mux=0;
   char _wifi_ssid[33]="SavedNet", _session_token[33] = {};
-  bool _initial_setup=false;
+  bool _initial_setup=false, _setup_provisioning_privilege=false;
   uint32_t _last_activity=0, _session_last_seen=0;
+  uint32_t _session_generation=0, _ap_auth_generation=0;
   WebConfigLoginThrottle::Tracker _login_throttle;
   Callback callback; Callback* _cb=&callback;
-  WebConfigServer() { strcpy(callback.node.admin_password, "existing-secret"); }
+  WebConfigServer() {
+    // A candidate preference can differ while a save is in flight or failed.
+    // The HTTP handler must authenticate the committed mirror instead.
+    strcpy(callback.node.admin_password, "temporary-RAM");
+    assert(password::publish("existing-secret"));
+  }
   void noteNetworkActivity() {}
   void handleLogin(AsyncWebServerRequest*);
 };
@@ -64,6 +73,8 @@ int main() {
     assert(login(portal, attacker, "existing-secret")==429 && last_reply==kLocked);
     assert(login(portal, owner, "existing-secret")==200);
     assert(strlen(portal._session_token)==32);
+    password::Snapshot committed; assert(password::snapshot(committed));
+    assert(portal._session_generation==committed.generation);
     assert(login(portal, attacker, "existing-secret")==429 && last_reply==kLocked);
     now_ms+=30000;
     assert(login(portal, attacker, "existing-secret")==200);

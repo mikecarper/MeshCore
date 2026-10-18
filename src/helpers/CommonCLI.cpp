@@ -56,6 +56,7 @@
 #define BRIDGE_MAX_BAUD 115200
 #endif
 #ifdef ESP_PLATFORM
+#include <helpers/esp32/ManagementPassword.h>
 #include <WiFi.h>
 #include <WiFiClientSecure.h>
 #include <esp_wifi.h>
@@ -3046,6 +3047,11 @@ void CommonCLI::handleCommand(uint32_t sender_timestamp, char* command, char* re
 #if defined(ESP_PLATFORM) && defined(ADMIN_PASSWORD) && !defined(WEBCONFIG_DISABLED)
     } else if (memcmp(command, "start webconfig", 15) == 0
                && (command[15] == 0 || command[15] == ' ')) {
+      if (_prefs->password[0]
+          && !mesh::esp32::managementPassword::publish(_prefs->password)) {
+        strcpy(reply, "ERR: management password busy; retry");
+        return;
+      }
       const bool force_ap = command[15] == ' ' && strcmp(&command[16], "ap") == 0;
       if (command[15] == ' ' && !force_ap) {
         strcpy(reply, "ERR: usage start webconfig [ap]");
@@ -3077,6 +3083,12 @@ void CommonCLI::handleCommand(uint32_t sender_timestamp, char* command, char* re
         strcpy(reply, "ERR: usage start ota [ap]");
         return;
       }
+#ifdef ESP_PLATFORM
+      if (!mesh::esp32::managementPassword::publish(_prefs->password)) {
+        strcpy(reply, "ERR: set an admin password first, or wait for the active OTA upload");
+        return;
+      }
+#endif
 #if defined(WITH_ESPNOW_BRIDGE)
       const bool ota_was_running = _board->isOTAUpdateRunning();
       // Keep an outstanding pause if an earlier resume failed. Only a
@@ -3250,6 +3262,17 @@ void CommonCLI::handleCommand(uint32_t sender_timestamp, char* command, char* re
       }
     } else if (memcmp(command, "password ", 9) == 0) {
       // change admin password
+#ifdef ESP_PLATFORM
+      if (!mesh::esp32::managementPassword::validPassword(&command[9])) {
+        strcpy(reply, "Error: password must be 1-15 bytes, no line breaks; use 8-15 ASCII for setup WiFi");
+        return;
+      }
+      mesh::esp32::managementPassword::ChangeGuard change;
+      if (!change.acquired()) {
+        strcpy(reply, "Error: OTA upload or password change busy; retry");
+        return;
+      }
+#endif
       char previous[sizeof(_prefs->password)];
       memcpy(previous, _prefs->password, sizeof(previous));
       StrHelper::strncpy(_prefs->password, &command[9], sizeof(_prefs->password));
@@ -3258,6 +3281,12 @@ void CommonCLI::handleCommand(uint32_t sender_timestamp, char* command, char* re
         strcpy(reply, "Error: save unconfirmed; reboot may differ");
         return;
       }
+#ifdef ESP_PLATFORM
+      if (!change.publish(_prefs->password)) {
+        strcpy(reply, "Error: password saved; management unavailable, reboot required");
+        return;
+      }
+#endif
       sprintf(reply, "password now: %s", _prefs->password);   // echo back just to let admin know for sure!!
     } else if (memcmp(command, "clear stats", 11) == 0) {
       _callbacks->clearStats();

@@ -41,7 +41,11 @@ class WebConfigRecoveryAuthTest(unittest.TestCase):
     def fixture(self):
         source = (ROOT / "src/helpers/esp32/WebConfigServer.cpp").read_text()
         methods = "\n".join(extract_braced(source, signature) for signature in (
-            "static bool fixedTimeEquals(", "bool WebConfigServer::checkAuth(",
+            "static bool fixedTimeEquals(", "static bool webConfigCookieMatches(",
+            "void WebConfigServer::clearSessionLocked(",
+            "bool WebConfigServer::checkAuthLocked(", "bool WebConfigServer::checkAuth(",
+            "void WebConfigServer::beginBatchAuthorizationLocked(",
+            "bool WebConfigServer::resultReceiptAllowedLocked(",
             "void WebConfigServer::handleLogin(", "void WebConfigServer::handleLogout("))
         # The actual config POST entry gate must reject a replacement password
         # before parsing or queueing it; exercise its exact production prefix.
@@ -55,7 +59,8 @@ class WebConfigRecoveryAuthTest(unittest.TestCase):
 
     def test_old_interface_only_fallback_fails_executable_regression(self):
         fixture = self.fixture()
-        old = fixture.replace("if (_initial_setup || _wifi_ssid[0] == 0) { noteNetworkActivity(); return true; }", "return true;", 1)
+        old = fixture.replace("  } else if (_mode != MODE_LAN) {",
+                              "    return true;\n  } else if (_mode != MODE_LAN) {", 1)
         self.assertNotEqual(old, fixture)
         self.compile_run(old, expect_rejection=True)
 
@@ -64,7 +69,7 @@ class WebConfigRecoveryAuthTest(unittest.TestCase):
         signature = "void WebConfigServer::handleLogout("
         start = fixture.index(signature, fixture.index("@METHODS@") if "@METHODS@" in fixture else 0)
         prefix, logout = fixture[:start], fixture[start:]
-        gate = '  if (!checkAuth(req)) { req->send(401, "application/json", "{\\"error\\":\\"auth\\"}"); return; }\n'
+        gate = '  if (!checkAuthLocked(req)) { req->send(401, "application/json", "{\\"error\\":\\"auth\\"}"); return; }\n'
         old = prefix + logout.replace(gate, "", 1)
         self.assertNotEqual(old, fixture)
         self.compile_run(old, expect_rejection=True)

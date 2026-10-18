@@ -1,4 +1,6 @@
 #include <atomic>
+#define MESH_MANAGEMENT_PASSWORD_HOST_TEST 1
+#include <helpers/esp32/ManagementPassword.h>
 #include <cassert>
 #include <cstdlib>
 #include <cstring>
@@ -38,13 +40,15 @@ int xTaskCreate(Task task, const char*, unsigned, void*, unsigned, void*) {
 // algorithm; both vectors are fixed independently of the uploader callbacks.
 const char fixture_md5[]="7dea362b3fac8e00956a4952a3d4f474";
 const char fixture_corrupt_md5[]="33cdeccccebe80329f1fdbee7f5874cb";
-struct Parameter { String text=fixture_md5; String value() { return text; } };
+struct Parameter { String text=fixture_md5; const String& value() { return text; } };
 struct Response {
   int code;
   String body;
-  void addHeader(const char*, const char*) {}
+  std::vector<std::pair<String, String>> headers;
+  void addHeader(const char* key, const char* value) { headers.emplace_back(key, value); }
 };
 unsigned fixture_now=0;
+unsigned millis() { return fixture_now; }
 struct Client {
   unsigned _rx_timeout=0, _rx_last_packet=fixture_now;
   bool closed=false;
@@ -70,6 +74,10 @@ struct Request {
   Response* queued_response=nullptr;
   std::function<void()> disconnected;
   Parameter md5;
+  Parameter authorization;
+  bool authorization_present = false;
+  bool hasHeader(const char*) { return authorization_present; }
+  Parameter* getHeader(const char*) { return &authorization; }
   Client connection;
   Request() { accept(&connection); }
   ~Request() { free(_tempObject); delete queued_response; }
@@ -92,9 +100,12 @@ using AsyncWebServerRequest=Request;
 static AsyncWebServerRequest* ota_upload_owner=nullptr;
 using AsyncWebServerResponse=Response;
 struct AsyncWebServer {
+  std::vector<std::function<void(Request*)>> gets;
   std::function<void(Request*)> completion;
   std::function<void(Request*,String,size_t,uint8_t*,size_t,bool)> upload;
-  template<class F> void on(const char*, int, F) {}
+  template<class F> void on(const char*, int method, F callback) {
+    assert(method == HTTP_GET); gets.push_back(callback);
+  }
   template<class F,class U> void on(const char*, int method, F callback, U chunks) {
     assert(method==HTTP_POST); completion=callback; upload=chunks;
   }
@@ -154,12 +165,14 @@ struct UpdateFake {
 } Update;
 struct AsyncElegantOtaClass {
   AsyncWebServer* _server=nullptr;
-  bool _authRequired=false;
+  bool _authRequired=false, _managementPassword=false;
+  bool authenticateRequest(AsyncWebServerRequest*, uint32_t* generation=nullptr);
   String _username, _password, _id="fixture";
   void begin(AsyncWebServer*, const char*, const char*);
   void restart();
   bool setEnabled(bool);
 };
+@AUTH@
 @BEGIN@
 @RESTART@
 
@@ -178,6 +191,63 @@ int main() {
     server.upload(&request,"firmware",0,data,sizeof(data),true);
     in_network_callback=false;
   };
+#ifdef TEST_OTA_MANAGEMENT_PASSWORD
+  {
+  using namespace mesh::esp32::managementPassword;
+  ota._managementPassword = true;
+  Request unpublished;
+  server.gets[0](&unpublished); assert(unpublished.code == 503 && Update.begins == 0);
+  assert(publish("password"));
+  auto authorize = [](Request& request, const char* value = "Basic YWRtaW46cGFzc3dvcmQ=") {
+    request.authorization_present = true; request.authorization.text = value;
+  };
+  assert(server.gets.size() == 2);
+  for (auto& get : server.gets) {
+    Request absent; get(&absent); assert(absent.code == 401);
+    assert(absent.queued_response->headers.size() == 2);
+    assert(absent.queued_response->headers[0].first == "WWW-Authenticate"
+        && absent.queued_response->headers[0].second == "Basic realm=\"MeshCore admin\", charset=\"UTF-8\"");
+    assert(absent.queued_response->headers[1].first == "Cache-Control"
+        && absent.queued_response->headers[1].second == "no-store");
+    Request wrong; authorize(wrong, "Basic wrong"); get(&wrong); assert(wrong.code == 401);
+    Request good; authorize(good); get(&good); assert(good.code == 200);
+  }
+  Request wrong_post; authorize(wrong_post, "Basic wrong");
+  upload(wrong_post); complete(wrong_post);
+  assert(wrong_post.code == 401 && Update.begins == 0 && Update.writes == 0 && !uploadActive());
+  assert(publish("different"));
+  Request stale; authorize(stale); upload(stale); assert(stale.code == 401 && Update.begins == 0);
+  const char* updated = "Basic YWRtaW46ZGlmZmVyZW50";
+  {
+    ChangeGuard saving; assert(saving.acquired());
+    Request blocked; authorize(blocked, updated); upload(blocked);
+    assert(blocked.code == 409 && Update.begins == 0 && !uploadActive());
+  }
+  uint8_t half[4] = {};
+  Request partial; authorize(partial, updated);
+  server.upload(&partial, "firmware", 0, half, sizeof(half), false);
+  assert(Update.begins == 1 && Update.writes == 1 && uploadActive());
+  {
+    ChangeGuard changing; assert(!changing.acquired());
+    assert(!publish("not-committed"));
+  }
+  // Authentication is rechecked on every chunk before touching Update.
+  authorize(partial, "Basic wrong");
+  server.upload(&partial, "firmware", sizeof(half), half, sizeof(half), true);
+  assert(partial.code == 401 && Update.writes == 1 && Update.ends == 0);
+  in_network_callback = true; partial.disconnected(); in_network_callback = false;
+  assert(!uploadActive() && !ota_upload_busy.load() && Update.aborts == 1 && !pending_task);
+  Request valid; authorize(valid, updated); upload(valid);
+  assert(uploadActive() && Update.writes == 2);
+  complete(valid);
+  assert(valid.code == 200 && Update.boot_commits == 1 && uploadActive());
+  in_network_callback = true; valid.disconnected(); in_network_callback = false;
+  assert(!uploadActive() && pending_task);
+  auto task = pending_task; pending_task = nullptr; task(nullptr);
+  assert(ESP.restarts == 1);
+  return 0;
+  }
+#endif
 #if defined(TEST_OTA_SECOND_FILE) || defined(TEST_OTA_INCOMPLETE_POST)
   {
   Request rejected;

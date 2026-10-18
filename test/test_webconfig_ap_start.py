@@ -29,7 +29,7 @@ class WebConfigApStartTest(unittest.TestCase):
             helper += extract_braced(source, "static bool setupAccessPointReady(") + "\n"
         if "static bool scanSetupNetworks(" in source:
             helper += extract_braced(source, "static bool scanSetupNetworks(")
-        method = extract_braced(source, "bool WebConfigServer::startSetupMode(")
+        method = extract_braced(source, "void WebConfigServer::initializeManagementPassword(") + "\n" + extract_braced(source, "bool WebConfigServer::startSetupMode(")
         scan_handler = extract_braced(source, "void WebConfigServer::handleScan(")
         policy = (ROOT / "src/helpers/esp32/WiFiRadioPolicy.h").read_text(encoding="utf-8")
         mask = policy[policy.index("static constexpr uint8_t kAccessPointProtocolMask ="):]
@@ -51,19 +51,22 @@ class WebConfigApStartTest(unittest.TestCase):
             binary = work / "webconfig-ap-start.exe"
             sanitizer = (["-fsanitize=address,undefined", "-fno-sanitize-recover=all",
                           "-fno-pie", "-no-pie"] if sys.platform.startswith("linux") else [])
-            for arduino_major, protected in ((2, False), (2, True), (3, False), (3, True)):
-                with self.subTest(arduino_major=arduino_major, protected=protected):
-                    security_flags = ['-DWEBCONFIG_AP_PASSWORD="testpass"'] if protected else []
-                    compiled = subprocess.run([compiler, "-std=c++17", "-Wall", "-Wextra",
-                        *sanitizer, f"-DESP_ARDUINO_VERSION_MAJOR={arduino_major}",
-                        *security_flags,
-                        str(generated), "-o", str(binary)],
-                        capture_output=True, text=True, timeout=60)
-                    self.assertEqual(compiled.returncode, 0, compiled.stdout + compiled.stderr)
-                    checked = subprocess.run([str(binary)], capture_output=True,
-                                             text=True, timeout=15)
-                    self.assertEqual(checked.returncode, 0, checked.stdout + checked.stderr)
-                    self.assertIn("WebConfig AP startup regression checks passed", checked.stdout)
+            for arduino_major in (2, 3):
+                for password in ("", "runtimepass", "short", "long-é-pass"):
+                    with self.subTest(arduino_major=arduino_major, password_kind="protected" if password == "runtimepass" else "legacy"):
+                        security_flags = ['-DTEST_ADMIN_PASSWORD="' + password + '"']
+                        # This obsolete build secret must never select AP security.
+                        security_flags += ['-DWEBCONFIG_AP_PASSWORD="unused-old-key"']
+                        compiled = subprocess.run([compiler, "-std=c++17", "-Wall", "-Wextra",
+                            *sanitizer, f"-DESP_ARDUINO_VERSION_MAJOR={arduino_major}",
+                            *security_flags, "-I" + str(ROOT / "src"),
+                            str(generated), "-o", str(binary)],
+                            capture_output=True, text=True, timeout=60)
+                        self.assertEqual(compiled.returncode, 0, compiled.stdout + compiled.stderr)
+                        checked = subprocess.run([str(binary)], capture_output=True,
+                                                 text=True, timeout=15)
+                        self.assertEqual(checked.returncode, 0, checked.stdout + checked.stderr)
+                        self.assertIn("WebConfig AP startup regression checks passed", checked.stdout)
 
 
 if __name__ == "__main__":

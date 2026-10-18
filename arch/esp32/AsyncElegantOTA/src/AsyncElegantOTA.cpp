@@ -1,5 +1,8 @@
 #include "AsyncElegantOTA.h"
 #include <atomic>
+#if defined(ESP32)
+#include <helpers/esp32/ManagementPassword.h>
+#endif
 static std::atomic<bool> ota_uploads_enabled{false};
 static std::atomic<bool> ota_upload_busy{false};
 #if defined(ESP32)
@@ -19,6 +22,35 @@ void AsyncElegantOtaClass::setID(const char* id){
     _id = id;
 }
 
+bool AsyncElegantOtaClass::authenticateRequest(AsyncWebServerRequest* request,
+                                               uint32_t* generation) {
+#if defined(ESP32)
+    if (_managementPassword) {
+        const char* authorization = request->hasHeader("Authorization")
+            ? request->getHeader("Authorization")->value().c_str() : nullptr;
+        const auto result = mesh::esp32::managementPassword::authenticateBasic(
+            authorization, millis(), generation);
+        if (result == mesh::esp32::managementPassword::AuthResult::Authorized) return true;
+        if (result == mesh::esp32::managementPassword::AuthResult::Unavailable)
+            request->send(503, "text/plain", "saved admin password unavailable");
+        else if (result == mesh::esp32::managementPassword::AuthResult::Throttled)
+            request->send(429, "text/plain", "too many failed logins; wait 30 seconds");
+        else {
+            AsyncWebServerResponse* response = request->beginResponse(401, "text/plain", "admin password required");
+            response->addHeader("WWW-Authenticate", "Basic realm=\"MeshCore admin\", charset=\"UTF-8\"");
+            response->addHeader("Cache-Control", "no-store");
+            request->send(response);
+        }
+        return false;
+    }
+#endif
+    if (_authRequired && !request->authenticate(_username.c_str(), _password.c_str())) {
+        request->requestAuthentication();
+        return false;
+    }
+    return true;
+}
+
 void AsyncElegantOtaClass::begin(AsyncWebServer *server, const char* username, const char* password){
     _server = server;
     setEnabled(true);
@@ -34,11 +66,7 @@ void AsyncElegantOtaClass::begin(AsyncWebServer *server, const char* username, c
     }
 
     _server->on("/update/identity", HTTP_GET, [&](AsyncWebServerRequest *request){
-        if(_authRequired){
-            if(!request->authenticate(_username.c_str(), _password.c_str())){
-                return request->requestAuthentication();
-            }
-        }
+        if (!authenticateRequest(request)) return;
         #if defined(ESP8266)
             request->send(200, "application/json", "{\"id\": \""+_id+"\", \"hardware\": \"ESP8266\"}");
         #elif defined(ESP32)
@@ -47,22 +75,14 @@ void AsyncElegantOtaClass::begin(AsyncWebServer *server, const char* username, c
     });
 
     _server->on("/update", HTTP_GET, [&](AsyncWebServerRequest *request){
-        if(_authRequired){
-            if(!request->authenticate(_username.c_str(), _password.c_str())){
-                return request->requestAuthentication();
-            }
-        }
+        if (!authenticateRequest(request)) return;
         AsyncWebServerResponse *response = request->beginResponse_P(200, "text/html", ELEGANT_HTML, ELEGANT_HTML_SIZE);
         response->addHeader("Content-Encoding", "gzip");
         request->send(response);
     });
 
     _server->on("/update", HTTP_POST, [&](AsyncWebServerRequest *request) {
-        if(_authRequired){
-            if(!request->authenticate(_username.c_str(), _password.c_str())){
-                return request->requestAuthentication();
-            }
-        }
+        if (!authenticateRequest(request)) return;
         // send() queues a response until the request body has finished. Keep
         // an earlier upload error even before it has reached the wire.
         if (request->isSent() || request->getResponse()) return;
@@ -85,11 +105,8 @@ void AsyncElegantOtaClass::begin(AsyncWebServer *server, const char* username, c
     }, [&](AsyncWebServerRequest *request, String filename, size_t index, uint8_t *data, size_t len, bool final) {
         //Upload handler chunks in data
         if (request->isSent() || request->getResponse()) return;
-        if(_authRequired){
-            if(!request->authenticate(_username.c_str(), _password.c_str())){
-                return request->requestAuthentication();
-            }
-        }
+        uint32_t authenticated_generation = 0;
+        if (!authenticateRequest(request, &authenticated_generation)) return;
 
         if (!index) {
             if (!ota_uploads_enabled.load()) {
@@ -114,6 +131,13 @@ void AsyncElegantOtaClass::begin(AsyncWebServer *server, const char* username, c
                 return request->send(400, "text/plain", "MD5 parameter missing");
             }
 
+#if defined(ESP32)
+            if (_managementPassword && !mesh::esp32::managementPassword::beginUpload(authenticated_generation)) {
+                ota_upload_busy.store(false);
+                return request->send(409, "text/plain", "password change or OTA upload in progress; retry");
+            }
+#endif
+
             #if defined(ESP8266)
                 int cmd = (filename == "filesystem") ? U_FS : U_FLASH;
                 Update.runAsync(true);
@@ -125,6 +149,9 @@ void AsyncElegantOtaClass::begin(AsyncWebServer *server, const char* username, c
                 if (!Update.begin(UPDATE_SIZE_UNKNOWN, cmd)) { // Start with max available size
             #endif
                 ota_upload_busy.store(false);
+#if defined(ESP32)
+                if (_managementPassword) mesh::esp32::managementPassword::endUpload();
+#endif
                 return request->send(400, "text/plain", "OTA could not begin");
             }
             // Arduino Update.begin() clears the expected digest. Set it only
@@ -132,6 +159,9 @@ void AsyncElegantOtaClass::begin(AsyncWebServer *server, const char* username, c
             if(!Update.setMD5(request->getParam("MD5", true)->value().c_str())) {
                 Update.abort();
                 ota_upload_busy.store(false);
+#if defined(ESP32)
+                if (_managementPassword) mesh::esp32::managementPassword::endUpload();
+#endif
                 return request->send(400, "text/plain", "MD5 parameter invalid");
             }
 
@@ -146,6 +176,9 @@ void AsyncElegantOtaClass::begin(AsyncWebServer *server, const char* username, c
             if (!request->_tempObject) {
                 Update.abort();
                 ota_upload_busy.store(false);
+#if defined(ESP32)
+                if (_managementPassword) mesh::esp32::managementPassword::endUpload();
+#endif
                 return request->send(503, "text/plain", "OTA state allocation failed");
             }
             ota_upload_owner = request;
@@ -160,6 +193,9 @@ void AsyncElegantOtaClass::begin(AsyncWebServer *server, const char* username, c
                     Update.abort(); // Release a disconnected, partial upload.
                 }
                 ota_upload_busy.store(false);
+#if defined(ESP32)
+                if (_managementPassword) mesh::esp32::managementPassword::endUpload();
+#endif
             });
         }
 

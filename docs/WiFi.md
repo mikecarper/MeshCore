@@ -148,19 +148,39 @@ The bootstrap uses ES5 syntax and Promise-based loading, including on Android
 Most full-size ESP32 MQTT observer builds have the shared WebConfig portal. On a
 fresh device with no saved SSID:
 
-1. Join the open `MeshCore-Setup-XXXX` access point.
+1. Join `MeshCore-Setup-XXXX` with the node's admin password (factory default
+   `password`). A display's WiFi QR code uses the hotspot's current credential.
 2. If the captive page does not open, browse to `http://192.168.4.1/`.
 3. Enter WiFi, radio, identity, and MQTT settings.
 4. Select **Save & Reboot**.
 5. After reboot, check `get wifi.status` and `get mqtt.status`.
 
-First-time provisioning with no saved SSID does not require a portal admin
-login. A setup AP opened with a saved SSID, including saved-network recovery,
-requires the existing admin password before changing settings. Repeater and
-room-server builds also require that password on the normal LAN; deliberately
-passwordless images retain their no-password policy. `WEBCONFIG_AP_PASSWORD`
-controls access to the WiFi network separately. The portal uses plain HTTP, so
-use a trusted network.
+ESP32 management uses one saved admin password for WebConfig login, browser
+firmware uploads, and setup WiFi. Choose 8–15 printable ASCII characters so the
+hotspot can use it for WPA2. Other valid admin passwords (1–15 UTF-8 bytes,
+without CR or LF) leave the hotspot open and require an HTTP admin login.
+There is no separate setup WiFi password. A protected first-time setup AP with
+no saved SSID retains its provisioning flow; recovery with a saved SSID requires
+the existing admin login. Deliberately passwordless images retain their local
+no-password policy. The portal uses plain HTTP, so use a trusted network.
+
+Changing the password ends existing browser sessions after the save succeeds.
+The submitting page keeps the save result and tries the new password once,
+then asks you to sign in if needed. A partial save shows which settings failed
+and does not reboot. If the setup hotspot restarts, reconnect with the new
+password when it is eligible for WPA2. An unconfirmed password save keeps the
+previous runtime password active, but the saved state after reboot may differ;
+read the reported error before retrying.
+
+Credentials for other systems or different permissions remain separate:
+
+| Credential | Why it does not become the node admin password |
+|---|---|
+| Router WiFi and MQTT broker login | These are issued by the network or broker, which may serve many devices. |
+| Bluetooth pairing PIN | BLE pairing requires its numeric PIN format. |
+| Guest and room passwords | Members and guests should not receive node administration access. |
+| Channel, bridge, fleet and alert keys | These are shared with peers or recipients and have their own protocol requirements. |
+| SNMP community and management-report credentials | Monitoring systems receive these credentials; they should not also receive the node admin password. |
 
 Admin login limits apply on both LAN and recovery AP: five failures lock the
 failing address for 30 seconds after its fifth failure. All addresses also share
@@ -442,9 +462,11 @@ of running both. On a WiFi-selected boot, the LoRa layout accepts
 accepts `min|max` for the saved WiFi setting, while ESP-NOW + BLE requires
 `min`. Device power saving remains independent of this modem policy.
 
-WiFi companions do not have the repeater/room-server admin CLI password model,
-so their LAN WebConfig page is intentionally unauthenticated. Use them only on
-a trusted LAN.
+ESP32 WiFi Companions also have a saved admin password for LAN WebConfig and
+browser OTA, initially `password`. Their `get password` command reports status
+without revealing it. The credential is stored in NVS alongside the WiFi
+settings and survives a filesystem erase. Use `password <new_password>` through
+an available administrative connection to change it.
 
 The WebConfig **Advanced** card exposes device power saving on WiFi Companion,
 repeater, and room-server builds. It also exposes RX power saving on radio chips
@@ -496,9 +518,12 @@ motatool serve --dir ./motas --tcp <repeater-ip>:5001 -v
 
 The TCP connection supplies `.mota` files for the node to advertise and relay
 over LoRa; it is not a raw `.bin` uploader. `start ota` continues to provide the
-direct browser uploader on HTTP port 80. A FULL role without WebConfig but with
-browser OTA support can use the `MeshCore-OTA` access point raised by
-`start ota`; its seeder address is `192.168.4.1:5001`.
+direct browser uploader on HTTP port 80. Sign in with HTTP Basic username
+`admin` and the node's current admin password. A FULL role without WebConfig
+but with browser OTA support can use the `MeshCore-OTA` access point raised by
+`start ota`; its seeder address is `192.168.4.1:5001`. The runtime OTA hotspot
+uses the same WPA2 eligibility rule as setup WiFi. Temporary partition migration
+and recovery applications retain their own documented access policy.
 
 For browser uploads from an existing 1.17.1.8 ESP32 node, see the
 [1.17.1.9 WiFi upgrade guide](upgrading_1.17.1.8_to_1.17.1.9.md).
@@ -510,6 +535,10 @@ Only one external folder link can be active. A TCP client is rejected while
 removes the TCP folder. Port 5001 has no login layer, so expose it only on a
 trusted LAN or temporary setup network. Firmware target and hash checks still
 apply at the receiving node, along with its configured signature/trust policy.
+
+The HTTP admin login does not protect trusted TCP consoles or delegated remote
+CLI access. Those administrative paths can change the node's admin password;
+limit them to trusted users and networks.
 
 When the shared seeder is running, `get wifi.status` appends its live state:
 
@@ -840,8 +869,9 @@ Common causes are:
 - the wrong firmware role or an older compact-CLI build without WebConfig.
 
 For a WiFi companion, find its station IP in the router, connect the client to
-TCP port 5000, and use the open `MeshCore-Setup-XXXX` AP at
-`http://192.168.4.1/` if it cannot join the saved network. Current firmware
+TCP port 5000, and use the `MeshCore-Setup-XXXX` AP at
+`http://192.168.4.1/` if it cannot join the saved network. The hotspot uses the
+admin password when eligible for WPA2, as described above. Current firmware
 uses standard b/g/n for the setup AP, including ESP-NOW-capable targets.
 A running LR mesh conflicts with a conventional access point; current firmware
 refuses that AP startup and defers LR startup while an AP is active. A primary
