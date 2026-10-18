@@ -400,6 +400,12 @@ The browser accepts Companion configuration commands, including `get powersaving
 `set usb.logging on|off`, WiFi controls, and MQTT settings. `set mqtt.enabled on|off` controls MQTT
 without erasing broker settings; `get mqtt.enabled`, `get mqtt.running`, and
 `get mqtt.status` distinguish the saved switch from current connections.
+On MQTT builds, `get mqtt.stats` reports free/largest heap and accepted/error
+publish counts. `get mqttN.diag` reports the connection state, transport errors,
+and `pub_ack`, the count of actual broker acknowledgments for that client.
+Accepted publishes are separate from broker acknowledgments. Runtime slot
+capacity depends on the hardware profile; the V4 OLED Full profile runs one
+slot even though six broker configurations can be saved.
 `set logging.output off|usb|wifi|both` selects both outputs together. The browser
 also uses the complete Companion terminal for `card`, `import meshcore://...`,
 `list`, `to`, `send`, `login`, `cmd`, and delayed replies, with the same syntax

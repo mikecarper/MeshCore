@@ -5263,6 +5263,10 @@ void MyMesh::execCommand(char* cmd, char* reply) {
                && key[4] >= '1' && key[4] <= '0' + MAX_MQTT_SLOTS && key[5] == '.') {
       const int slot = key[4] - '1';
       const char* field = key + 6;
+      if (strcmp(field, "diag") == 0) {
+        MQTTBridge::formatSlotDiagReply(reply, 160, slot);
+        return;
+      }
       if (strcmp(field, "preset") == 0) value = _mqtt_prefs.mqtt_slot_preset[slot];
       else if (strcmp(field, "server") == 0) value = _mqtt_prefs.mqtt_slot_host[slot];
       else if (strcmp(field, "username") == 0) value = _mqtt_prefs.mqtt_slot_username[slot];
