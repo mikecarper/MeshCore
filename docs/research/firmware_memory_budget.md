@@ -563,3 +563,104 @@ receiver qualification. Exact storage/bootloader requirements still apply.
 This is a targeted build/capacity pass, not the complete canonical release
 matrix at one frozen commit, physical hardware/upgrade/soak qualification,
 or publication of a 1.18.0.1 release.
+
+### Wio-E5 Mini Repeater GCC 15 experiment, 2026-10-18 UTC
+
+The separate compiler experiment used source `6035f6631` and the same
+release recipe above. For the reported comparisons, firmware timestamps
+were fixed at `18-Oct-2026` and epoch `1792281600`. The actual compiler
+executables reported Arm GNU
+14.2.Rel1 / GCC 14.2.1 and Arm GNU 15.3.Rel1 / GCC 15.3.1; a private
+`platform_packages` override selected the latter. Production pins were not
+changed. Each PlatformIO build ran alone, with a fresh private build/output
+directory; no existing `out/` artifacts were replaced.
+
+These numbers are linker overflows beyond the **245,760-byte app region**,
+not successful firmware sizes. The 16,384-byte filesystem, host CLI,
+logging policy, radio preset and existing feature declarations were retained.
+
+| Matched recipe | GCC 14 overflow | GCC 15 overflow |
+| --- | ---: | ---: |
+| Original Mini Repeater recipe | 38,040 | 37,700 |
+| Compact crypto and unused timer wrappers | 19,496 | 19,060 |
+| Compact plus best tested five-flag bundle | 18,800 | 18,468 |
+
+Here, compact means adding `ED25519_COMPACT_SHA512=1`,
+`ED25519_COMPACT_SCALAR=1`, `ED25519_COMPACT_FIELD=1`,
+`RADIOLIB_TONE_UNSUPPORTED` and `HAL_TIM_MODULE_ONLY`. CompactBase was
+already enabled in the original recipe. These private additions were not
+retained in the production Mini Repeater configuration. Their combined
+savings must not be attributed to the compiler upgrade alone.
+
+The four-flag bundle was `-fno-caller-saves -fno-tree-dominator-opts
+-fno-reorder-blocks -fno-reorder-functions`. Adding
+`-fno-tree-switch-conversion` produced the five-flag winner. Full-source
+GCC 15 trials, all with the compact additions, measured:
+
+| Additional tuning beyond the four-flag bundle | Overflow bytes |
+| --- | ---: |
+| None | 18,500 |
+| `--param=max-inline-insns-single=70` | 18,556 |
+| `--param=max-inline-insns-single=30` | 18,556 |
+| `--param=max-inline-insns-single=15` | 18,588 |
+| `-fno-inline-functions-called-once` | 27,108 |
+| `-fno-jump-tables` | 18,588 |
+| `-fno-tree-switch-conversion` | 18,468 |
+| `-Os` instead of `-Oz`, compilation and link | 18,500 |
+| `-fno-inline` | 38,116 |
+| `--param=max-inline-insns-size=0 --param=inline-unit-growth=0` | 18,500 |
+| `-fno-tree-loop-optimize -fno-tree-scev-cprop -fno-tree-loop-distribute-patterns` | 19,228 |
+| `-mslow-flash-data` | 27,628 |
+
+The winning GCC 15 recipe reproduced the same 18,468-byte overflow in a
+second clean build. Its compiler-only improvement over the matched GCC 14
+recipe is **332 bytes**; the original recipe improves by 340 bytes. The
+19,572-byte recovery relative to the original GCC 14 build includes the
+compact/peripheral and tuning changes, not just GCC 15. The winning linked
+flash extent is 264,228 bytes, still 2,084 bytes beyond the chip's entire
+256 KiB flash even before reserving filesystem space.
+
+Actual verbose commands were checked across application, crypto library,
+Arduino framework and final LTO link. Experimental compile options were
+installed through the framework's late `build.framework_extra_flags.arduino`
+hook, preserving board defaults and overriding its inline threshold before
+library/application environments were cloned. A post-script forwarded the
+same tuning to the LTO driver. The true `-Os` trial also changed
+`build_unflags` to remove `-Oz`, so the inherited removal of `-Os` could not
+silently invalidate that comparison.
+
+Earlier mixed-scope post-script trials were preserved but excluded from
+the full-source comparison: those options reached framework/link stages,
+not the application/crypto compilation. One later link-only `-Os` control
+also measured 18,500 bytes; it is not the true full-source `-Os` trial above.
+No ABI-changing struct/enum options, fast-math assumptions, filesystem cuts,
+or capacity-check overrides were used. Every full-firmware attempt still
+failed at the flash link; none qualifies as a runtime-RAM pass, usable image,
+or hardware validation. GCC 15 was not adopted and no failing image was
+published.
+
+A private Unicorn 2.1.4 harness also checked generated Cortex-M4 code for
+eight standalone crypto profiles: GCC 14 compact, GCC 15 compact, the GCC 15
+four-flag bundle, its five-flag winner, and the four more aggressive trials
+in the last four table rows. All passed 432 positive function calls:
+40 key generations, 40 signatures and 352 SHA-512 checks. Each profile used
+two RFC 8032 signing vectors, three additional reference signing vectors,
+and 11 SHA-512 boundary lengths in one-shot and three streaming modes.
+All 16 corrupted-expected-signature/digest negative controls were rejected.
+
+The harness checked explicit Cortex-M4 CPU-model readback, allocated-section
+bounds within physical 256 KiB flash/64 KiB SRAM, read-only executable flash,
+non-executable SRAM, buffer canaries, unchanged inputs, per-instruction stack
+bounds, restored SP/callee-saved registers and bounded execution. Source and
+ELF hashes were verified. Maximum observed standalone call frames were
+3,376 bytes for GCC 14 compact, 3,368 for the GCC 15 winner and most other
+GCC 15 profiles, and 2,960 with no inlining. These are not whole-application
+stack/heap budgets.
+
+This is CPU instruction emulation, not a Wio-E5 Mini board model. The harness
+independently links repository keypair/sign/SHA-512 code through stable
+exported wrappers, with explicit `-Oz` at link; it is not the exact full
+firmware LTO image. It does not qualify signature verification, boot,
+interrupts, MMIO, radio, USB, flash/filesystem drivers, sleep, concurrent
+traffic, physical timing or cryptographic side channels. A passing standalone
+harness does not make any overflowing full-firmware image usable.
