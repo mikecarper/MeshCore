@@ -139,6 +139,7 @@ int main(void) {
                     profiles.append((ini.parent.name, section))
         self.assertEqual(sorted(profiles), [
             ("rak3x72", "[env:RAK_3x72_companion_radio_usb]"),
+            ("tiny_relay", "[env:Tiny_Relay_companion_radio_usb]"),
             ("wio-e5-dev", "[env:wio-e5_companion_radio_usb]"),
             ("wio-e5-mini", "[env:wio-e5-mini_companion_radio_usb]"),
         ])

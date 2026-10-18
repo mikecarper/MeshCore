@@ -61,6 +61,18 @@ class STM32CompanionProfileTest(unittest.TestCase):
                              r"-D\s+ED25519_COMPACT_" + definition + r"=1\b")
 
 
+class TinyRelaySTM32CompanionProfileTest(STM32CompanionProfileTest):
+    variant = "tiny_relay"
+    target = "Tiny_Relay_companion_radio_usb"
+    base = "Tiny_Relay"
+
+    def test_relay_gpio_and_adc_monitor_are_retained(self):
+        header = (ROOT / "variants" / self.variant / "target.h").read_text()
+        self.assertIn("digitalWrite(PA0, values & 1)", header)
+        self.assertIn("digitalWrite(PA1, (values & 2) >> 1)", header)
+        self.assertIn("analogRead(PIN_VBAT_READ)", header)
+
+
 class WioDevSTM32CompanionProfileTest(STM32CompanionProfileTest):
     variant = "wio-e5-dev"
     target = "wio-e5_companion_radio_usb"
