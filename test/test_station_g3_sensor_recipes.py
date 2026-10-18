@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Host contracts for the Station G3 Sensor role on each RF daughterboard slot.
+"""Host contracts for Station G3 boot recipes and each Sensor RF slot.
 
 Resolve tracked source recipes without starting PlatformIO, building firmware,
 flashing hardware, or changing a release catalog. These fixtures check routing
@@ -15,6 +15,7 @@ import tempfile
 import unittest
 
 from test_upstream_observer_recipes import Recipes
+from test_esp32_full_partition import apply_policy
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
@@ -62,6 +63,66 @@ class StationG3SensorRecipesTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.recipes = Recipes()
+
+    def assert_dio_boot_recipes(self, recipes):
+        board = json.loads((ROOT / "boards/station-g3-esp32.json").read_text())
+        self.assertEqual(board["build"]["flash_mode"], "dio")
+        self.assertEqual(board["build"]["arduino"]["memory_type"], "qio_opi")
+        targets = [section for section in recipes.config.sections()
+                   if section.startswith("env:Station_G3_ESP32_")]
+        self.assertGreaterEqual(len(targets), 16)
+        for slot in SLOTS:
+            for role in ("repeater", "room_server", "sensor",
+                         "repeater_observer_mqtt", "room_server_observer_mqtt"):
+                self.assertIn("env:" + slot + "_" + role, targets)
+        for role in ("companion_radio_usb", "companion_radio_ble",
+                     "companion_radio_wifi", "companion_radio_full", "kiss_modem"):
+            self.assertIn("env:Station_G3_ESP32_" + role, targets)
+        for section in targets:
+            with self.subTest(target=section):
+                self.assertEqual(recipes.value(section, "board"), "station-g3-esp32")
+                flash_mode = recipes.value(section, "board_build.flash_mode")
+                self.assertEqual(flash_mode or board["build"]["flash_mode"], "dio")
+                memory_type = recipes.value(section, "board_build.arduino.memory_type")
+                self.assertEqual(memory_type or board["build"]["arduino"]["memory_type"], "qio_opi")
+                psram_type = recipes.value(section, "board_build.psram_type")
+                self.assertIn(psram_type, ("", "opi"))
+
+        for target in ("Station_G3_ESP32_repeater", "Station_G3_ESP32_r2_repeater",
+                       "Station_G3_ESP32_companion_radio_full"):
+            section = "env:" + target
+            values = {
+                "build.mcu": board["build"]["mcu"],
+                "build.flash_mode": recipes.value(section, "board_build.flash_mode")
+                                    or board["build"]["flash_mode"],
+                "build.arduino.memory_type": board["build"]["arduino"]["memory_type"],
+                "build.partitions": recipes.value(section, "board_build.partitions"),
+                "upload.flash_size": board["upload"]["flash_size"],
+            }
+            with self.subTest(full_target=target):
+                # build.sh injects this existing policy for Full promotion;
+                # ordinary tracked recipes do not list it in extra_scripts.
+                full, _ = apply_policy(values, companion="companion_radio" in target)
+                self.assertEqual(full.values["build.flash_mode"], "dio")
+                self.assertEqual(full.values["build.arduino.memory_type"], "qio_opi")
+
+    def test_all_g3_roles_inherit_dio_without_changing_psram_or_full_policy(self):
+        self.assert_dio_boot_recipes(self.recipes)
+
+    def test_nested_role_override_cannot_silently_restore_qio(self):
+        recipes = Recipes()
+        recipes.config.set("env:Station_G3_ESP32_r2_sensor", "board_build.flash_mode", "qio")
+        # Exercise resolved inheritance, not a textual manifest-only assertion.
+        # subTest records failures instead of raising, so collect this control
+        # with an independent TestResult whose failure must be observable.
+        control = StationG3SensorRecipesTests(
+            "test_all_g3_roles_inherit_dio_without_changing_psram_or_full_policy")
+        control.recipes = recipes
+        result = unittest.TestResult()
+        control.run(result)
+        self.assertEqual(len(result.failures), 1)
+        self.assertFalse(result.errors)
+        self.assertIn("'qio' != 'dio'", result.failures[0][1])
 
     def test_each_sensor_inherits_its_own_slot_and_only_one_pin_set(self):
         text = (ROOT / "variants/station_g3_esp32/platformio.ini").read_text()

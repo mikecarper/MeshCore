@@ -1861,6 +1861,10 @@ required in this recovery console; it is not the normal running CLI. KISS
 firmware uses binary slot commands during normal operation, documented in the
 [KISS protocol](kiss_modem_protocol.md).
 
+If G2 firmware works on a G3 but the G3 image behaves differently, see the
+[G2/G3 compatibility checks](test-results/station_g3_g2_compatibility.md) for
+the verified pin assignments, startup fixes, and saved amplifier settings.
+
 ---
 
 ### System

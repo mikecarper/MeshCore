@@ -49,19 +49,25 @@ AutoDiscoverRTCClock rtc_clock(fallback_clock);
 #endif
 
 namespace {
-bool waitForProbeReady(const station_g3::RadioPins& pins) {
-  const uint32_t started = millis();
+constexpr uint32_t kProbeTimeoutMs = 1000;
+
+bool waitForProbeReady(const station_g3::RadioPins& pins, uint32_t started) {
   while (digitalRead(pins.busy)) {
-    if (static_cast<uint32_t>(millis() - started) >= 100) return false;
+    if (static_cast<uint32_t>(millis() - started) >= kProbeTimeoutMs) return false;
+#if MESH_USB_CONSOLE_COOPERATIVE
+    mesh::serviceUsbLoggingPort();
+    mesh::serviceUsbTerminalPort();
+#endif
     delay(1);
   }
-  return true;
+  return static_cast<uint32_t>(millis() - started) < kProbeTimeoutMs;
 }
 
 // Identification only: no SetTx, CAD, packet send, or saved profile changes.
 // Use a small bounded transaction rather than RadioLib's 10 reset attempts
 // (each may wait a second) on every empty socket.
 bool probeRadioSlot(uint8_t slot) {
+  const uint32_t started = millis();
   const auto& pins = station_g3::pinsForSlot(slot);
   spi.end();
   station_g3::slotState().candidate = slot;
@@ -79,8 +85,11 @@ bool probeRadioSlot(uint8_t slot) {
   delay(10);
   spi.begin(pins.sck, pins.miso, pins.mosi);
   bool found = false;
-  for (unsigned attempt = 0; attempt < 3 && !found; ++attempt) {
-    if (!waitForProbeReady(pins)) break;
+  // Match RadioLib's reset/RC-standby tolerance: some radios ignore their
+  // first commands after reset. Share one budget across BUSY and all retries,
+  // so an empty socket remains bounded without resetting a slow chip again.
+  while (!found) {
+    if (!waitForProbeReady(pins, started)) break;
     spi.beginTransaction(SPISettings(2000000, MSBFIRST, SPI_MODE0));
     digitalWrite(pins.nss, LOW);
     spi.transfer(RADIOLIB_SX126X_CMD_SET_STANDBY);
@@ -89,7 +98,7 @@ bool probeRadioSlot(uint8_t slot) {
     spi.endTransaction();
     // SX126x BUSY can assert just after NSS rises (RadioLib uses the same guard).
     delayMicroseconds(1);
-    if (!waitForProbeReady(pins)) break;
+    if (!waitForProbeReady(pins, started)) break;
     char version[16] = {};
     spi.beginTransaction(SPISettings(2000000, MSBFIRST, SPI_MODE0));
     digitalWrite(pins.nss, LOW);
@@ -102,7 +111,16 @@ bool probeRadioSlot(uint8_t slot) {
     spi.endTransaction();
     // SX1262 intentionally uses RadioLib's SX1261 silicon version signature.
     found = memcmp(version, RADIOLIB_SX1262_CHIP_TYPE, 6) == 0;
-    if (!found) delay(10);
+    if (!found) {
+#if MESH_USB_CONSOLE_COOPERATIVE
+      mesh::serviceUsbLoggingPort();
+      mesh::serviceUsbTerminalPort();
+#endif
+      const uint32_t elapsed = static_cast<uint32_t>(millis() - started);
+      if (elapsed >= kProbeTimeoutMs) break;
+      const uint32_t remaining = kProbeTimeoutMs - elapsed;
+      delay(remaining < 10 ? remaining : 10);
+    }
   }
   // Leave the unselected socket in reset, not receiving or driving an IRQ.
   // The chosen socket's std_init will perform its own verified reset.
