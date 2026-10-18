@@ -14,6 +14,51 @@ when its log identifies the physical device, firmware artifact, artifact hash,
 command result, and cold/warm boot outcome. Do not infer success from a tool's
 exit code when the tool has a documented false-success mode.
 
+## Mercerwood candidate campaign, 2026-10-18 UTC
+
+The [current hardware campaign](hardware_validation_mercerwood_1_18_0_1_2026-10-18.md)
+records actual candidate flashes, identity-bound USB/BLE and warm-contact
+checks, live Room authentication/browser results, and shipping Morse failures.
+It retains the original populated-board stack failures and the d52e4e93
+repeated-read/browser retests that passed. The matching-profile trials established
+LoRa reception and paced live-session mailbox operation; durable replay,
+final-role testing and other release gates remain open. These observations do
+not constitute release approval.
+
+The ec9ebc09 Full V4 logging-off native-console trial 03 passed 600.444 seconds
+with zero idle writes, complete replies/reopen and zero core error flags.
+The passed Room logging-on trial does not qualify Full logging-on.
+
+- [ ] **Full V4 logging-on idle/reopen:** trial 01 started at 09:02:25 UTC,
+  then lost target USB at 09:11:14. The kernel's preceding 09:11:13
+  `disabled by hub (EMI?), re-enabling...` message is not proof of EMI;
+  descriptor/address `-71` errors and failed enumeration continued through
+  09:11:16. The run ended at 09:13:42 with a TTY cleanup `FileNotFoundError`
+  masking its primary failure. No post-idle reply or qualified idle was obtained;
+  by-id/path remained absent at 09:22 and recovery was in progress. No firmware
+  or reset cause is established. The harness cleanup fix passed 35 offline
+  native-console/TTY checks and preserves primary and cleanup failures separately.
+  One subsequent identity-guarded reset-only request to exact parent-hub port 2
+  returned success; status changed `0x101` to `0x103` after two seconds, but the
+  target still did not enumerate and sibling T096 remained unchanged. No hub
+  power change or broader reset followed. Operator physical V4 RESET and a
+  verified return remain pending. ModemManager was restored active at 09:24:34
+  UTC and all four checked host services were active; device return remained
+  unverified.
+- [ ] **Current V4 settings restoration:** original NVS/SPIFFS readback and
+  returned-state checks passed before the native trials. Subsequent temporary
+  power saving on, USB logging on and MQTT off remained **unrestored** at 09:22,
+  pending USB recovery. The earlier preservation PASS is not a final-state check.
+- [ ] **Full V4 MQTT/WSS soak:** the pinned recovery-guarded runner is staged
+  but has **not launched**. Require real PUBACK/heap evidence and original-data
+  restoration before qualification.
+
+Complete CI runs [39110179910](https://github.com/mikecarper/MeshCore/actions/runs/39110179910)
+at `5fd33a230` and [39109551854](https://github.com/mikecarper/MeshCore/actions/runs/39109551854)
+at `7a5a7993c` are green. The native-console/TTY cleanup follow-up passed 35
+offline checks; its new CI result was pending at the authoring checkpoint.
+The completed runs do not qualify those follow-up changes.
+
 ## PR17–21 follow-up qualification, 2026-10-18 UTC
 
 The merged source checkpoint is `0a24279a3`. This audit adds host regressions,
@@ -44,11 +89,13 @@ and `esp32_s3_4mb_partition_migrator_usb`, including their application-size and
 runtime-RAM gates. This covers representative chip families and Wi-Fi,
 identity-only LoRa, Expander and USB code paths, rather than every board alias.
 
-### Remaining physical acceptance checks
+### Physical acceptance checks and subsequent campaign results
 
 Record the exact clean source revision, firmware SHA-256, device identity,
 observed result, and cold/warm boot outcome for each check. Record password
 classes and success/failure, never the passwords themselves.
+Checked entries below are later, candidate-specific campaign results; they do
+not change the host-only scope of the earlier `0a24279a3` audit.
 
 - [ ] **Migration credentials:** on cable-recoverable test hardware, join with
   a distinct saved 8–15-character printable ASCII admin password. Reject the
@@ -61,18 +108,32 @@ classes and success/failure, never the passwords themselves.
   identity/supported settings, final version, and cold-boot persistence.
   Exercise supported interruption/retry points on sacrificial hardware; the
   partition-table sector write is not atomic.
-- [ ] **WebConfig:** use two distinct source addresses on LAN and on a
-  saved-network recovery AP. One address's five failures must not lock the
-  other out; exhausting the shared budget must reject even a correct new
-  login. An existing authorized session must remain usable. Verify recovery
-  at the six-second refill and 30-second address-lock boundaries. Clients
-  sharing one address also share its lock.
-- [ ] **Room browser:** use separate real browser tabs/tokens for five
-  different wrong passwords. Nonempty credentials, including an already-open
-  admin tab, must wait for the shared window to expire; public empty-password
-  read-only access must remain available when enabled. Repeated stale-tab
-  passwords must not consume a new failure on every poll. Check visible error,
-  retry and unsaved-edit behavior against the real board.
+- [x] **WebConfig LAN and Room password windows:** the complete two-source
+  LAN suite passed on d52e4e93 in 161.67 seconds. It covered per-address/shared
+  limits, existing-session access, refill/recovery, Room duplicate-password
+  suppression and the shared window, including nonempty credential rejection
+  and continued public empty-password read-only access. No temporary lockout
+  remained. These runs use guarded timing windows; they do not establish exact
+  millisecond boundary behavior or saved-network recovery-AP acceptance.
+- [ ] **WebConfig saved-network recovery AP:** repeat the two-source checks
+  on the actual recovery AP. One address's five failures must not lock the
+  other out; shared-budget exhaustion must reject even a correct new login;
+  an existing session must remain usable. Verify refill/address-lock recovery
+  and remember that clients sharing one address also share its lock.
+- [x] **Room browser:** actual Chromium on d52e4e93 passed real admin form
+  login, five distinct wrong passwords across two tokens, visible automatic
+  throttle-error polling, production Connect retry, and preserved unsent draft
+  and Room boot identity. The browser used unmodified native fetch and issued
+  no compose/write requests. This completes the previously open real-board
+  error/retry/draft case for this candidate.
+- [x] **Room populated-board repeated reads:** d52e4e93 completed twenty
+  live index/article reads of the owned 2048-byte UTF-8 article with unchanged
+  content, boot identity and continuous uptime. Earlier 652/d3e05abc stack
+  failures remain historical evidence; subsequent candidates must retain this
+  regression check. A later sticky radio-watchdog flag `8` is consistent with
+  the five-minute no-successful-RX policy and does not establish an HTTP cause
+  or qualify radio reception. Original-filesystem restoration was independently
+  verified after the later Full Companion handoff.
 - [ ] **Guest sessions:** churn transient guest identities, then admit a new
   admin and an explicitly assigned writer. Power-cycle and verify privileged
   login replay floors remain authoritative. Document the expected captured
@@ -90,9 +151,11 @@ classes and success/failure, never the passwords themselves.
   sleep does not latch unrelated live pins. A successful build and simulated
   pad retention do not establish physical latch or current behavior.
 
-Remaining automated follow-ups are browser throttle-error/retry/draft cases
-and an executed configuration-restore-to-AP credential handoff. The host AP
-fixture supplies pre/post-restore files; it does not run an entire migration.
+The later d52e4e93 campaign completes the real-board browser
+throttle-error/retry/draft and reproduced repeated-read cases above. An executed
+configuration-restore-to-AP credential handoff remains open. The host AP fixture
+supplies pre/post-restore files; it does not run an entire migration. The current
+hardware campaign remains in progress and is not release qualification.
 
 ## ESP32 web console and browser OTA release gates
 
@@ -135,7 +198,8 @@ successful build or simulated peripheral is not a hardware pass.
    raw binary request. Confirm identity and settings were preserved, then restore temporary
    device settings and the test host's network connection.
 
-Keep the host regressions (`test_official_web_console.py`,
+Keep the host regressions (`test_official_console_acceptance.py`,
+`test_official_web_console.py`,
 `test_wifi_ota_start.py`, `test_wifi_ota_lifecycle.py`, and
 `test_async_web_lifecycle.py`) alongside these gates.
 They cover parsing, sleep policy, startup errors, network ownership, and
