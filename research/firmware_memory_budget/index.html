@@ -2338,6 +2338,17 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#11801-known-risk-matrix-2026-10-18-utc" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1.18.0.1 known-risk matrix, 2026-10-18 UTC
+      
+    </span>
+  </a>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -2517,14 +2528,17 @@ transport schemes, certificates and enabled UART/browser/OTA features. Record
 DMA free heap, largest DMA block and allocation failures throughout that
 workload. Host admission tests and passing ELF checks provide engineering
 evidence without claiming that hardware validation has been performed.</p>
-<p>The W12 Full MQTT profile remains unqualified: the current linked image has
-182,768 internal bytes available against 198,432 required, including the
-unchanged 16 KiB transient margin. Its standard repeater compiles and passes
-the RAM check, but the 1,322,304-byte application exceeds the 1,310,720-byte
-portable LoRa-OTA slot. Both limits also occur in the pre-stability baseline
-(Full: 182,800 available against 200,480 required under the earlier OLED
-estimate; standard application: 1,321,088 bytes). LR2021 compile and fault-test
-coverage does not qualify either package for release.</p>
+<p>The earlier W12 Full MQTT RAM failure (182,768 available against 198,432
+required) and standard portable-slot overflow (1,322,304 against 1,310,720
+bytes) are historical measurements, not the current expanded Full result.
+The 2026-10-18 UTC recheck at <code>060119af8</code> passes with 200,640 internal bytes
+available against 198,432 required, retaining the 16 KiB transient margin.
+Its largest region is 167,872 bytes against 18,464 required; the packaged
+2,280,072-byte application fits the expanded 6,553,600-byte OTA slots.
+MQTT is enabled and all ten declared capability checks pass, without declared
+reductions. This establishes linked capacity and packaged capabilities, not
+physical boot/soak or maximum TLS/WSS/outbox-load qualification. It also does
+not qualify an independently built compact portable-slot recipe.</p>
 <p>The experimental RAK4631 combined Ethernet/UART2/adaptive-storage config adds
 an explicit 2,560-byte allowance for the UART bridge and its TX semaphore.
 Its Ethernet worker reserves 1,024 stack words (4,096 bytes) plus 256 bytes for
@@ -2677,10 +2691,11 @@ boot or physical Ethernet/OTA soak results.</p>
 <p>The five changes pass representative repeater builds for RAK4631 combined
 Full, Heltec V4 (ESP32-S3), Heltec V2 (classic ESP32), and Seeed XIAO RP2040.
 RAK4631 room-server and Heltec V4 sensor builds also pass while retaining
-their complete ACL session layouts. Wio E5 Mini repeater compilation passes,
-but linking exceeds flash capacity: the baseline already overflowed by
-27,200 bytes, and these changes add 224 bytes for a 27,424-byte overflow.
-That STM32 image is unqualified and is not release-ready.</p>
+their complete ACL session layouts. At that measurement, Wio E5 Mini repeater
+compilation passed but linking exceeded flash capacity: the baseline already
+overflowed by 27,200 bytes, and those changes added 224 bytes for a 27,424-byte
+overflow. The newer 1.18.0.1 check below still fails; this cable-only STM32
+image remains unqualified and is not release-ready.</p>
 <p>Regression coverage includes unchanged ACL/FPF file bytes, full capacities,
 timestamp rollover, flag combinations, ARM access widths/alignment, streamed
 proofs against the existing reference algorithm, allocation failures, source
@@ -2881,6 +2896,7 @@ Packaging and resumed builds reject absent reports, failures, stale ELFs,
 missing files and changed firmware. Do not reuse a report for another build.</p>
 <p>Run PlatformIO commands sequentially in this checkout:</p>
 <pre><code class="language-sh">python3 -B test/test_firmware_ram.py
+python3 -B test/test_sh1106_memory.py
 python3 -B test/test_t096_full_memory.py
 python3 -B test/test_st7735_framebuffer.py
 python3 -B test/test_nrf52_ble_startup.py
@@ -2913,6 +2929,99 @@ exchange Bluetooth messages, visit every screen, wake with the button, enable
 logging/MQTT, transfer mOTA, and monitor heap during a sustained workload.
 See <a href="https://github.com/mikecarper/MeshCore/blob/keymindCascade/MEMORY_MONITORING.md">memory monitoring</a>
 for runtime diagnostics.</p>
+<h2 id="11801-known-risk-matrix-2026-10-18-utc">1.18.0.1 known-risk matrix, 2026-10-18 UTC</h2>
+<p>The targeted recheck used <code>v1.18.0.1-halo-keymind-cascade-dev</code>,
+<code>usa-cascade-fixed</code>, the Cascade profile, and release-default debug/logging
+policy (<code>DISABLE_DEBUG=0</code>). PlatformIO ran sequentially; new artifacts and
+logs were isolated from existing <code>out/</code> builds. Exact-identity expanded Full
+profiles were selected for ESP32 infrastructure. Required nRF52 receiver
+pairs built both Full and Reduced; a Reduced pass did not replace a Full pass.</p>
+<p>Twenty-five selections passed, producing 31 verified profiles:</p>
+<table>
+<thead>
+<tr>
+<th>Selections</th>
+<th style="text-align: right;">Passing profiles</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>RAK3401 and RAK4631 Full Companion</td>
+<td style="text-align: right;">2</td>
+</tr>
+<tr>
+<td>Wio L1 Full/BLE; T096 Full/BLE, each FEM-on/off</td>
+<td style="text-align: right;">6</td>
+</tr>
+<tr>
+<td>RAK4631 canonical and unified Repeater, Full/Reduced</td>
+<td style="text-align: right;">4</td>
+</tr>
+<tr>
+<td>RAK3401 unified and RAK13302/W25Q16 Repeater, Full/Reduced</td>
+<td style="text-align: right;">4</td>
+</tr>
+<tr>
+<td>MeshTower SD and T096 Repeater, Full/Reduced</td>
+<td style="text-align: right;">4</td>
+</tr>
+<tr>
+<td>RAK3x72, Wio-E5 Mini, Wio-E5 Dev and Tiny Relay USB Companion</td>
+<td style="text-align: right;">4</td>
+</tr>
+<tr>
+<td>W12 expanded Full Repeater, Room and MQTT Repeater</td>
+<td style="text-align: right;">3</td>
+</tr>
+<tr>
+<td>G2 Full Companion/MQTT Repeater, G3 r2 MQTT Repeater, V4 Full FEM-on</td>
+<td style="text-align: right;">4</td>
+</tr>
+</tbody>
+</table>
+<p>The separate 26th selection, <code>wio-e5-mini_repeater</code>, was an explicitly
+cable-only control using <code>--allow-no-ota</code>, not an eligible wireless release
+target. Its baseline at <code>3059d7994</code> overflows the existing 245,760-byte app
+region by 38,040 bytes. A private compact-crypto/unused-timer trial recovered
+18,544 bytes but still overflowed by 19,496. That unqualified trial was not
+retained. The 16 KiB filesystem, host CLI and existing features were not cut
+to manufacture a pass; no failing image was published.</p>
+<p>Three reproduced release-target failures were fixed:</p>
+<ul>
+<li><code>975521645</code>: Wio-E5 Dev Companion, 16,468-byte overflow to 508 bytes free.</li>
+<li><code>3059d7994</code>: Tiny Relay Companion, 16,424-byte overflow to 452 bytes free.</li>
+<li><code>29787c0b2</code>: G3 Full MQTT, 232-byte RAM-budget deficit to 1,816 bytes above
+  the required budget. The SH1106 wrapper now releases its previous BusIO
+  adapter before initialization/retry. Source assertions bound its fixed
+  1,024-byte framebuffer, complete display object, adapter and allocation
+  metadata within 2 KiB. Only the ESP32 SH1106 estimate changes; other
+  reserves remain intact. Linked available RAM remains 200,248 bytes.</li>
+</ul>
+<p>The STM32 changes reuse equivalent fixed-loop crypto and omit unused Arduino
+PWM/tone wrappers while retaining the low-level TIM HAL, 100 contacts, eight
+channels, GPIO/ADC interfaces and 32 KiB filesystems. CI now links all four
+small STM32 Companions serially at release-version length (<code>2ae109fea</code>) and
+the exact G3 Full MQTT profile. Display tests cover repeated successful and
+failed initialization, recovery, destruction, addressing and rendering under
+ASan/UBSan, including a missing-cleanup negative control.</p>
+<p>Passes retain their individual source SHAs (<code>060119af8</code>, <code>3059d7994</code>,
+<code>2ae109fea</code>, <code>29787c0b2</code>) and file-bound memory/capability reports. The affected
+G2/Wio L1 selections in this matrix and all four STM32 Companions were rebuilt
+at <code>29787c0b2</code>.
+The final 95 related host tests and artifact-hash checks pass.</p>
+<p>Margins remain narrow: RAK4631 Full Companion has 932 flash bytes free;
+canonical/unified RAK4631 Full Repeater have 548/540 bytes above their RAM
+budgets. W12/G2/G3 Full MQTT have 2,208/2,176/1,816 bytes above their budgets.
+These are linked-capacity margins, not measured running free heap.</p>
+<p>No new feature reductions were introduced. Existing declarations remain:
+RAK3401 unified has 47 flood rules, T096 Repeater has four, Reduced profiles
+omit selected optional sensor drivers, and nRF52 Full Companions loan half
+their 256-frame offline queue while mOTA is active. STM32 Companions remain
+cable-only; nRF52 Full Companion source support is not LoRa self-update
+receiver qualification. Exact storage/bootloader requirements still apply.</p>
+<p>This is a targeted build/capacity pass, not the complete canonical release
+matrix at one frozen commit, physical hardware/upgrade/soak qualification,
+or publication of a 1.18.0.1 release.</p>
 
 
 
