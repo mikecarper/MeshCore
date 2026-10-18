@@ -118,14 +118,17 @@ def served_html_hash(endpoint, timeout):
 class PassiveCDP(CDP):
     """Observe the existing transport without Fetch interception or patches."""
 
-    def __init__(self, websocket, debug_port, profile, origin):
+    def __init__(self, websocket, debug_port, profile, origin, *, setup_mode=False):
         self.origin = origin
+        self.setup_mode = setup_mode
         self.operations = Counter()
         self.unexpected_requests = 0
         self.write_requests = 0
         self.network_started = time.monotonic()
         self.requests = []
         self.request_ids = {}
+        self.approved_favicons = {}
+        self.ap_favicon_redirects = []
         self.room_operations = {}
         self.runtime_errors = Counter()
         self.browser_errors = Counter()
@@ -138,6 +141,30 @@ class PassiveCDP(CDP):
             # Release this partial connection before retrying the owned page.
             self.socket.close()
             raise
+
+    def is_ap_favicon_redirect(self, identifier, request, response):
+        previous = self.approved_favicons.get(identifier)
+        if not (self.setup_mode is True and isinstance(identifier, str) and identifier
+                and previous is not None and self.request_ids.get(identifier) is previous
+                and not previous["finished"] and not previous["failed"]
+                and isinstance(response, dict) and isinstance(response.get("headers"), dict)):
+            return False
+        locations = [value for key, value in response["headers"].items()
+                     if key.lower() == "location"]
+        return (response.get("url") == self.origin + "/favicon.ico"
+                and response.get("status") in (301, 302, 303, 307, 308)
+                and locations == ["http://192.168.4.1/"]
+                and request.get("method") == "GET"
+                and request.get("url") == "http://192.168.4.1/"
+                and not request.get("postData"))
+
+    def favicon_redirect_evidence(self):
+        return [{"from_ordinal": source["ordinal"], "to_ordinal": target["ordinal"],
+                 "redirect_status": source["status"],
+                 "followup_state": ("failed" if target["failed"] else
+                                    "finished" if target["finished"] else "pending"),
+                 "followup_finished": target["finished"], "followup_failed": target["failed"]}
+                for source, target in self.ap_favicon_redirects]
 
     def network(self, method, event):
         identifier = event.get("requestId")
@@ -171,6 +198,15 @@ class PassiveCDP(CDP):
                     operation = "unexpected"
             elif path == "/api/room/result":
                 operation = self.room_operations.get(sequence, "unmatched_result")
+            redirect_source = None
+            if "redirectResponse" in event:
+                # Only the setup portal's known favicon redirect may leave the
+                # forwarded origin. A redirect to another ordinarily allowed
+                # path must not regain permission through the normal allowlist.
+                read_only = self.is_ap_favicon_redirect(identifier, request, event["redirectResponse"])
+                if read_only:
+                    redirect_source = self.approved_favicons.pop(identifier)
+                    path = "captive_favicon_root"
             entry = {"ordinal": len(self.requests) + 1, "path": path,
                      "method": verb if verb in ("GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS") else "other",
                      "operation": operation, "room_sequence": sequence,
@@ -178,11 +214,19 @@ class PassiveCDP(CDP):
                      "finished": False, "failed": False}
             self.requests.append(entry)
             self.request_ids[identifier] = entry
+            if redirect_source is not None:
+                redirect_source.update(status=int(event["redirectResponse"]["status"]),
+                                       response_seconds=elapsed, redirected=True,
+                                       redirect_to_ordinal=entry["ordinal"])
+                entry["redirect_from_ordinal"] = redirect_source["ordinal"]
+                self.ap_favicon_redirects.append((redirect_source, entry))
             if not read_only:
                 self.unexpected_requests += 1
                 if verb not in ("GET", "HEAD", "OPTIONS"):
                     self.write_requests += 1
                 raise CheckFailure("unexpected_browser_request_observed_passively")
+            if path == "/favicon.ico" and isinstance(identifier, str) and identifier:
+                self.approved_favicons[identifier] = entry
             return
         entry = self.request_ids.get(identifier)
         if entry is None:
@@ -237,12 +281,12 @@ class PassiveCDP(CDP):
         raise CheckFailure("CDP_request_deadline")
 
 
-def wait_for_room_browser(websocket, debug_port, profile, origin, browser, timeout=60):
+def wait_for_room_browser(websocket, debug_port, profile, origin, browser, timeout=60, *, setup_mode=False):
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         require(browser.poll() is None, "owned_Chromium_exited_before_ready")
         try:
-            return PassiveCDP(websocket, debug_port, profile, origin)
+            return PassiveCDP(websocket, debug_port, profile, origin, setup_mode=setup_mode)
         except (OSError, urllib.error.URLError, websocket.WebSocketTimeoutException,
                 websocket.WebSocketConnectionClosedException):
             time.sleep(0.1)
@@ -383,7 +427,8 @@ def execute(args, manifest, private, report, record):
             "--remote-debugging-address=127.0.0.1", "--remote-debugging-port=" + str(debug_port),
             "--user-data-dir=" + str(profile), "about:blank"],
             stdout=browser_log, stderr=browser_log, start_new_session=True)
-        page = wait_for_room_browser(websocket, debug_port, profile, origin, browser)
+        page = wait_for_room_browser(websocket, debug_port, profile, origin, browser,
+                                     setup_mode=manifest["status"]["mode"] == "setup")
         report["browser_version"] = page.browser_version
         report["phase"] = "initial_admin_UI_login"
         page.call("Page.navigate", {"url": origin + "/room"})
@@ -489,6 +534,7 @@ def execute(args, manifest, private, report, record):
             report["unexpected_browser_requests_observed"] = page.unexpected_requests
             report["browser_write_requests_observed"] = page.write_requests
             report["browser_request_evidence"] = page.requests
+            report["ap_favicon_redirect_evidence"] = page.favicon_redirect_evidence()
             report["page_runtime_exception_classes"] = dict(page.runtime_errors)
             report["browser_error_sources"] = dict(page.browser_errors)
             page.socket.close()

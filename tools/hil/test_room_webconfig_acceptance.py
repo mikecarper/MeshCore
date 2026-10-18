@@ -240,6 +240,113 @@ class ContractTests(unittest.TestCase):
             resolve.assert_not_called()
 
 
+class BrowserFaviconRedirectTests(unittest.TestCase):
+    origin = "http://127.0.0.1:19081"
+
+    def page(self, *, setup=True, approve=True):
+        with mock.patch.object(browser_hil.CDP, "__init__", return_value=None), \
+                mock.patch.object(browser_hil.PassiveCDP, "call"):
+            page = browser_hil.PassiveCDP(None, 1, Path("/inert"), self.origin, setup_mode=setup)
+        if approve:
+            page.network("Network.requestWillBeSent", {"requestId": "favicon-1", "request": {
+                "url": self.origin + "/favicon.ico", "method": "GET", "headers": {}}})
+        return page
+
+    def redirect(self):
+        return {"requestId": "favicon-1", "request": {
+            "url": "http://192.168.4.1/", "method": "GET", "headers": {}},
+            "redirectResponse": {"url": self.origin + "/favicon.ico", "status": 302,
+                                 "headers": {"Location": "http://192.168.4.1/"}}}
+
+    def test_setup_favicon_exact_chain_is_passive_and_pending_is_not_finished(self):
+        page = self.page()
+        page.network("Network.requestWillBeSent", self.redirect())
+        source, target = page.requests
+        self.assertEqual(source["status"], 302)
+        self.assertTrue(source["redirected"])
+        self.assertFalse(source["finished"])
+        self.assertEqual(target["path"], "captive_favicon_root")
+        self.assertEqual(target["redirect_from_ordinal"], source["ordinal"])
+        self.assertEqual(page.unexpected_requests, 0)
+        self.assertEqual(page.write_requests, 0)
+        self.assertEqual(page.favicon_redirect_evidence(), [{
+            "from_ordinal": 1, "to_ordinal": 2, "redirect_status": 302,
+            "followup_state": "pending", "followup_finished": False, "followup_failed": False}])
+        for private in (self.origin, "192.168.4.1", "Location"):
+            self.assertNotIn(private, json.dumps(page.requests + page.favicon_redirect_evidence()))
+
+    def test_unused_favicon_failure_is_recorded_as_failed_not_drained(self):
+        page = self.page()
+        page.network("Network.requestWillBeSent", self.redirect())
+        page.network("Network.loadingFailed", {"requestId": "favicon-1", "errorText": "net::ERR_ADDRESS_UNREACHABLE"})
+        item = page.favicon_redirect_evidence()[0]
+        self.assertEqual(item["followup_state"], "failed")
+        self.assertTrue(item["followup_failed"])
+        self.assertFalse(item["followup_finished"])
+        self.assertEqual(page.requests[1]["failure_class"], "net::ERR_ADDRESS_UNREACHABLE")
+
+    def test_completed_favicon_response_preserves_both_statuses(self):
+        page = self.page()
+        page.network("Network.requestWillBeSent", self.redirect())
+        page.network("Network.responseReceived", {"requestId": "favicon-1", "response": {"status": 200}})
+        page.network("Network.loadingFinished", {"requestId": "favicon-1", "encodedDataLength": 100})
+        self.assertEqual([row["status"] for row in page.requests], [302, 200])
+        self.assertEqual(page.favicon_redirect_evidence()[0]["followup_state"], "finished")
+
+    def test_redirect_requires_setup_mode_and_same_preapproved_request(self):
+        for setup, approve, identifier in ((False, True, "favicon-1"),
+                                           (True, False, "favicon-1"),
+                                           (True, True, "another-request")):
+            with self.subTest(setup=setup, approve=approve, identifier=identifier):
+                page = self.page(setup=setup, approve=approve)
+                event = self.redirect()
+                event["requestId"] = identifier
+                with self.assertRaisesRegex(hil.CheckFailure, "unexpected_browser_request"):
+                    page.network("Network.requestWillBeSent", event)
+                self.assertEqual(page.favicon_redirect_evidence(), [])
+
+    def test_wrong_location_source_status_destination_or_write_is_rejected(self):
+        variations = [
+            ("response", "url", self.origin + "/api/status"),
+            ("response", "status", 200),
+            ("response", "headers", {}),
+            ("response", "headers", {"Location": "http://192.168.4.2/"}),
+            ("response", "headers", {"Location": "http://192.168.4.1/?other"}),
+            ("response", "headers", {"Location": "http://192.168.4.1/", "location": "http://192.168.4.1/"}),
+            ("request", "url", "http://192.168.4.1/?other"),
+            ("request", "url", "http://192.168.4.1/#other"),
+            ("request", "url", "http://192.168.4.1/api/status"),
+            ("request", "url", self.origin + "/room"),
+            ("request", "url", self.origin + "/api/status"),
+            ("request", "method", "POST"),
+            ("request", "postData", "unexpected-body"),
+        ]
+        for target, key, value in variations:
+            with self.subTest(target=target, key=key, value=value):
+                page = self.page()
+                event = self.redirect()
+                event["redirectResponse" if target == "response" else "request"][key] = value
+                with self.assertRaisesRegex(hil.CheckFailure, "unexpected_browser_request"):
+                    page.network("Network.requestWillBeSent", event)
+                self.assertEqual(page.favicon_redirect_evidence(), [])
+
+    def test_missing_redirect_metadata_terminal_prior_or_second_hop_is_rejected(self):
+        for case in ("missing-response", "prior-failed", "prior-finished", "second-hop"):
+            with self.subTest(case=case):
+                page = self.page()
+                event = self.redirect()
+                if case == "missing-response":
+                    del event["redirectResponse"]
+                elif case == "prior-failed":
+                    page.network("Network.loadingFailed", {"requestId": "favicon-1"})
+                elif case == "prior-finished":
+                    page.network("Network.loadingFinished", {"requestId": "favicon-1"})
+                else:
+                    page.network("Network.requestWillBeSent", event)
+                with self.assertRaisesRegex(hil.CheckFailure, "unexpected_browser_request"):
+                    page.network("Network.requestWillBeSent", event)
+
+
 class BrowserStartupTests(unittest.TestCase):
     def websocket(self):
         return SimpleNamespace(
@@ -274,9 +381,10 @@ class BrowserStartupTests(unittest.TestCase):
                 websocket.WebSocketConnectionClosedException(), page]) as attach, \
                 mock.patch.object(browser_hil.time, "sleep") as pause:
             actual = browser_hil.wait_for_room_browser(
-                websocket, 12345, Path("/owned"), "http://127.0.0.1:1234", process)
+                websocket, 12345, Path("/owned"), "http://127.0.0.1:1234", process, setup_mode=True)
         self.assertIs(actual, page)
         self.assertEqual(attach.call_count, 3)
+        self.assertTrue(all(call.kwargs == {"setup_mode": True} for call in attach.call_args_list))
         self.assertEqual(pause.call_count, 2)
 
     def test_ownership_refusal_is_not_retried(self):
