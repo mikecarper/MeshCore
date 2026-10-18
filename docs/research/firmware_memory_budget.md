@@ -664,3 +664,81 @@ firmware LTO image. It does not qualify signature verification, boot,
 interrupts, MMIO, radio, USB, flash/filesystem drivers, sleep, concurrent
 traffic, physical timing or cryptographic side channels. A passing standalone
 harness does not make any overflowing full-firmware image usable.
+
+### Mini Repeater approved-cut experiment, 2026-10-18 UTC
+
+The follow-up used an isolated source worktree at `9b616f4d1`, with the
+same fixed timestamps, release recipe, real GCC 15 executable, compact
+additions and five-flag bundle described above. Only Morse/CW tools and
+automated management reporting were approved feature cuts. No experimental
+firmware source/configuration changes were adopted in the production branch.
+
+Each comparison retained live USB packet logging for MQTT
+(`MESH_PACKET_LOGGING=1`, compact and merged USB logging), persistent
+`/packet_log` logging, the host-service bridge, normal authenticated CLI,
+50 neighbours, radio2 and the 16 KiB filesystem. The existing cable-only
+limitation was unchanged. The management cut also omits its shared
+`data.tx` routing implementation, not ordinary request/reply statistics.
+The Morse/CW cut removes carrier tools and their timer/state/direct-carrier
+hooks; Morse RX was already disabled for this target.
+
+These are conservative linked flash extents from the final `.data` load
+address plus its size, measured from flash base `0x08000000`, rather than
+PlatformIO's smaller sum of selected section sizes:
+
+| Private GCC 15 recipe | Linked extent | App overflow | Saving from control |
+| --- | ---: | ---: | ---: |
+| Compact/tuned control, all existing features | 264,228 | 18,468 | 0 |
+| Morse/CW tools off | 256,832 | 11,072 | 7,396 |
+| Management reporting off | 254,280 | 8,520 | 9,948 |
+| Both approved cuts | 246,908 | 1,148 | 17,320 |
+| Both cuts and shared numeric GET handlers | 246,748 | 988 | 17,480 |
+
+The two-cut result reproduced in fresh control builds. The proposed GET
+helper groups 27 simple scalar keys using typed member pointers and
+NUL-separated key lists; SET handlers, capability/Observer checks,
+matching rules, replies and persisted layouts are unchanged. It defaults
+off in the prototype and was not adopted merely for its 160-byte saving.
+
+Further full-source tuning did not close the remaining gap:
+
+| Additional option | Without GET helper: overflow | With GET helper: overflow |
+| --- | ---: | ---: |
+| None | 1,148 | 988 |
+| `-mword-relocations` | 1,148 | 988 |
+| `-fno-ipa-sra` | 1,844 | Not tested |
+| `-fno-tree-pre` | 1,148 | Not tested |
+| `-fno-ipa-ra` | 1,772 | Not tested |
+| `-fno-tree-sink` | 1,348 | Not tested |
+| `-fno-ipa-pta` | Not tested | 2,640 |
+| `-fno-ipa-cp` | Not tested | 1,744 |
+| `-fno-tree-forwprop` | Not tested | 1,404 |
+| `-fno-split-wide-types` | Not tested | 3,244 |
+
+Separate, unapproved diagnostic controls establish the tradeoffs but are
+not candidates: additionally removing the host-service bridge leaves
+1,620 bytes free on GCC 15 and 1,240 on GCC 14; additionally removing only
+persistent packet-file logging instead leaves 828 and 384 bytes free,
+respectively. Both controls keep live USB/MQTT packet logging enabled.
+Neither extra feature cut was adopted.
+
+Focused host tests exercised the actual raw RX/TX logging emitters and
+packet codec, exact line framing, maximum packets, short/non-draining
+serial writes, drop recovery, persistent logging callbacks and failed-TX
+handling across all eight carrier/management/file-logging combinations.
+Disabled-management tests verify fail-closed routing, password erasure,
+no management filesystem access and retained shared Fleet/beacon context.
+The full legacy/compact GET-body oracle passes 80,406 comparisons plus
+fallback checks under ASan/UBSan, including distinct fields, NaN/Inf,
+limits, whitespace and capability cases; four negative controls fail as
+expected. All ten CLI contract tests pass. Independent source/evidence
+review found no blocker, and `git diff --check` passes.
+
+These tests use host boundary stand-ins; they do not establish physical
+USB/MQTT broker integration, ARM runtime behaviour, board startup, radio
+timing, sleep or sustained load. No approved configuration fits yet, so
+there is no approved runtime-RAM pass or usable Mini Repeater image from
+this experiment. No hardware was flashed, no failing image was published,
+and existing build outputs were not overwritten. Production compiler pins,
+features and capacity checks remain unchanged; the private source/tests,
+configs, verbose logs and linker maps were retained for further work.
