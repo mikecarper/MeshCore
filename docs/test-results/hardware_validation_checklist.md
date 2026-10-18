@@ -54,29 +54,38 @@ The passed Room logging-on trial does not qualify Full logging-on.
   uptime 34→36 seconds, zero core errors and all owned cleanup checks; it did not
   pair or create another bond. The unchanged last watchdog journal belongs to
   the previous boot. USB remained absent at 09:48; physical reconnection of only
-  the V4 USB cable and verified USB recovery remain pending. No further software
-  or hub recovery is planned. Battery-backed USB reconnection does not qualify
-  cold boot. All four checked host services, including ModemManager, were active
-  by 09:48.
-- [ ] **Current V4 settings restoration:** original NVS/SPIFFS readback and
+  the V4 USB cable and verified recovery were then pending. All four checked host
+  services, including ModemManager, were active by 09:48. After the operator
+  reset the V4, exact by-id and physical-path USB endpoints were present at
+  15:09. A fresh Full ec9ebc09 binary identity snapshot passed with uptime
+  481→482 seconds, zero core errors/queue length, no contacts and all 40 channel
+  records. It did not verify the live application flash hash. The Pi had been
+  up approximately seven minutes at session start; no V4 cold boot is verified.
+  Full logging-on remains failed/unqualified despite USB return.
+- [x] **Current V4 settings restoration:** original NVS/SPIFFS readback and
   returned-state checks passed before the native trials. BLE restoration trial
   01 passed at 09:41:23: power saving off, logging off, MQTT on, WiFi off and
   MQTT not running, with immediate/final readbacks and zero error flags.
   Those values persisted through the verified warm reboot. A new owned BLE bond
-  was created by diagnostic 01 and is retained; authoritative original NVS/SPIFFS
-  restoration and full saved-state comparison await USB return.
-  The earlier preservation PASS is not a final-state check.
+  was created by diagnostic 01. After USB return, both original data partitions
+  matched their backup readbacks, with the active ec9 application, table and OTA
+  metadata unchanged. Fresh binary comparison matched identity, complete contacts
+  and all 40 channels; all 62 returned CLI fields and the original temporary
+  flags matched. Post-restore uptime was 85→86 with zero core errors. The owned
+  host diagnostic BLE bond was removed and all four original checked services
+  were active. This qualifies these readbacks, not cold boot or every runtime
+  preference.
 - [ ] **Full V4 MQTT/WSS soak:** the pinned recovery-guarded runner is staged
-  but has **not launched**. Require real PUBACK/heap evidence and original-data
-  restoration before qualification.
+  but has **not launched** while upstream changes are integrated. Require real
+  PUBACK/heap evidence and original-data restoration before qualification.
 
 Complete CI runs [39110179910](https://github.com/mikecarper/MeshCore/actions/runs/39110179910)
 at `5fd33a230` and [39109551854](https://github.com/mikecarper/MeshCore/actions/runs/39109551854)
 at `7a5a7993c` are green. The native-console/TTY cleanup follow-up passed 35
-offline checks; [run 39115389840](https://github.com/mikecarper/MeshCore/actions/runs/39115389840)
-at `76220d5d7` was in progress at 09:46 UTC, with ten of eleven jobs green and
-only the host test job still running.
-The completed runs do not qualify those follow-up changes.
+offline checks. Both [run 39115389840](https://github.com/mikecarper/MeshCore/actions/runs/39115389840)
+at `76220d5d7` and [run 39116894845](https://github.com/mikecarper/MeshCore/actions/runs/39116894845)
+at `7b41d2893` completed successfully with all eleven jobs green. Those CI passes
+do not qualify the failed hardware case.
 
 ## PR17–21 follow-up qualification, 2026-10-18 UTC
 

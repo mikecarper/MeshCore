@@ -8,11 +8,12 @@ This campaign is in progress. It is not release approval. Results below bind
 specific images and physical devices; successful compilation and older bench
 results do not qualify unexecuted hardware cases.
 
-At the 09:46 UTC recovery checkpoint, the V4 Full logging-on trial remained
-failed/unqualified and USB was still absent after a verified guarded warm
-restart. BLE verified that the three restored temporary flags persisted.
-The new owned diagnostic bond remains; authoritative original-data restoration
-and USB recovery remain open. The staged MQTT/WSS soak has not launched.
+After the operator reset the V4, its exact USB by-id and physical-path endpoints
+were present at 15:09 UTC. A fresh Full ec9ebc09 binary identity snapshot passed.
+Authoritative original-data restoration and fresh binary/62-field comparisons
+subsequently passed. The owned host diagnostic bond was removed and original
+services were active. Full logging-on remains failed/unqualified; the staged
+MQTT/WSS soak has not launched while upstream changes are integrated.
 
 ## Firmware and preservation
 
@@ -86,9 +87,12 @@ ESP-NOW; temporary test changes require their own restoration. Later native-cons
 tests enabled power saving and USB logging and disabled MQTT. Those flags were
 unrestored at 09:22 UTC, then passed identity-bound BLE restoration and readback
 at 09:41:23: power saving off, USB logging off and MQTT on, with WiFi off and
-MQTT not running. The diagnostic created a new owned BLE bond. Complete original
-NVS/SPIFFS restoration has not been repeated after that bond; the earlier
-partition/readback PASS does not establish current byte-identical saved state.
+MQTT not running. After USB returned, both original NVS/SPIFFS partitions again
+matched the backup on readback; the active application, table and OTA metadata
+were unchanged. Fresh binary and all 62 returned CLI fields matched the original
+baseline. The diagnostic's owned host BLE bond was removed after restoring the
+original device data. This establishes those readbacks and returned settings,
+without extending the earlier cold-boot or unexposed-runtime qualification.
 
 ## Executed Companion checks
 
@@ -413,10 +417,28 @@ uptime 2532 seconds and sequence 2 refer to the previous boot, not a new event.
 By 09:48 UTC all four checked host services, including ModemManager, were active;
 USB was still absent. No additional software or hub recovery is planned. The
 operator was asked to unplug and reconnect only the V4 USB cable; physical
-reconnection and verified USB recovery remain pending. Battery-backed USB
-reconnection will not establish cold boot. The new diagnostic BLE bond is retained;
-authoritative original-data restoration and complete saved-state comparison
-await USB return. Full logging-on remains failed/unqualified and WSS is unstarted.
+reconnection and verified USB recovery were pending at that checkpoint.
+Battery-backed USB reconnection does not qualify cold boot. The new diagnostic
+BLE bond was retained while authoritative restoration awaited USB return.
+
+After the operator reset the V4, its exact USB by-id and physical-path endpoints
+were verified present at 15:09 UTC. A fresh identity-bound binary snapshot passed
+the Full ec9ebc09 board/version/public-identity gates: uptime advanced 481→482
+seconds, core error flags and queue length were zero, contacts were empty and
+all 40 canonical channel records were read. That snapshot did not verify the
+live application flash hash. The Pi had been up approximately seven minutes at
+session start; neither that observation nor battery-backed USB return verifies
+a V4 cold boot.
+
+The authoritative original NVS/SPIFFS restoration then passed complete readbacks,
+with the active ec9 application, partition table and OTA metadata unchanged.
+A fresh binary snapshot passed with uptime 85→86 seconds and zero core errors;
+comparison matched original identity, complete contacts and all 40 channels.
+All 62 returned CLI fields and the original power/logging/MQTT flags matched.
+Only the owned diagnostic host BLE bond was removed; all four original checked
+services, including ModemManager, were active afterward. USB return and restored
+data do not qualify the failed Full logging-on case. No cause or firmware fix is
+established, and WSS remains unstarted while upstream changes are integrated.
 
 For Full, `tools/hil/official_console_acceptance.py` uses explicit
 `--terminal-mode companion`. It sends the shipping terminal-start control
@@ -469,11 +491,12 @@ The native-console cleanup follow-up preserves the primary JS/transport
 failure separately from browser/TTY cleanup failures, reports missing or
 replaced endpoints, and cannot qualify a cleanup failure. The native-console
 and Linux TTY suites passed 35 offline checks. The follow-up workflow at
-`76220d5d7` was in progress
-([run 39115389840](https://github.com/mikecarper/MeshCore/actions/runs/39115389840))
-at 09:46 UTC: ten of eleven jobs were green and only the host test job remained
-running. The earlier completed runs do not qualify those changes or rerun the
-failed hardware case.
+`76220d5d7` completed successfully with all eleven jobs green
+([run 39115389840](https://github.com/mikecarper/MeshCore/actions/runs/39115389840)).
+The later recovery-report workflow at `7b41d2893` also completed successfully
+with all eleven jobs green
+([run 39116894845](https://github.com/mikecarper/MeshCore/actions/runs/39116894845)).
+Those CI passes do not rerun or qualify the failed hardware case.
 Documentation route/link checks also passed in the CI-pinned renderer environment.
 
 ## Remaining release gates
@@ -487,12 +510,11 @@ Documentation route/link checks also passed in the CI-pinned renderer environmen
   V4 OLED has one runtime slot despite six saved configurations. Commit
   ec9ebc091 exposes the existing read-only diagnostic counter on Full. The
   recovery-guarded soak is staged and pinned but **not launched**.
-- Recover the V4 USB endpoint, repeat authoritative original-data restoration
-  and complete saved-state readbacks, and diagnose the failed Full logging-on
-  idle case before another attempt. The three temporary flags passed BLE
-  restoration and warm-reboot persistence checks; the new owned bond remains
-  outside the earlier original-partition restoration. Retain the Full
-  logging-off PASS and the two Room logging-mode passes as separate results.
+- Diagnose the failed Full logging-on idle case before another attempt. Original
+  data-partition readbacks, fresh binary/62-field comparisons and diagnostic-bond
+  cleanup passed after USB return. Retain the Full logging-off PASS and the two
+  Room logging-mode passes as separate results. Requalify the final source after
+  integrating upstream changes.
 - Complete two-source recovery-AP throttle checks beyond the passed existing-admin
   authentication and browser cases. Execute migration credentials and both source
   OTA slots, actual browser upload, interruption/recovery, privileged replay
