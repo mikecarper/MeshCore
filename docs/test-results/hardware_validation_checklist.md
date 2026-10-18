@@ -41,14 +41,31 @@ The passed Room logging-on trial does not qualify Full logging-on.
   One subsequent identity-guarded reset-only request to exact parent-hub port 2
   returned success; status changed `0x101` to `0x103` after two seconds, but the
   target still did not enumerate and sibling T096 remained unchanged. No hub
-  power change or broader reset followed. Operator physical V4 RESET and a
-  verified return remain pending. ModemManager was restored active at 09:24:34
-  UTC and all four checked host services were active; device return remained
-  unverified.
+  power change or broader hub reset followed. BLE diagnostic identity passed and
+  uptime 3959→3961 with zero errors established continued MCU operation through
+  the incident. The watchdog's volatile stage 2 and original SPIFFS namespace
+  absence of watchdog files establish two current-boot attempts; last event
+  reason `0x08` means client inactivity, not successful USB repair. ASCII
+  `stats-core` renews its 900-second lease; framed BLE does not. No evidence
+  selects the earlier lease-clear path or firmware/physical cause. A guarded
+  warm-restart request passed exact identity/flag gates, durable intent and
+  disconnect/cleanup checks, but USB remained absent at 09:45:07 with no new
+  kernel entries. Post-restart read-only trial 01 verified exact identity,
+  uptime 34→36 seconds, zero core errors and all owned cleanup checks; it did not
+  pair or create another bond. The unchanged last watchdog journal belongs to
+  the previous boot. USB remained absent at 09:48; physical reconnection of only
+  the V4 USB cable and verified USB recovery remain pending. No further software
+  or hub recovery is planned. Battery-backed USB reconnection does not qualify
+  cold boot. All four checked host services, including ModemManager, were active
+  by 09:48.
 - [ ] **Current V4 settings restoration:** original NVS/SPIFFS readback and
-  returned-state checks passed before the native trials. Subsequent temporary
-  power saving on, USB logging on and MQTT off remained **unrestored** at 09:22,
-  pending USB recovery. The earlier preservation PASS is not a final-state check.
+  returned-state checks passed before the native trials. BLE restoration trial
+  01 passed at 09:41:23: power saving off, logging off, MQTT on, WiFi off and
+  MQTT not running, with immediate/final readbacks and zero error flags.
+  Those values persisted through the verified warm reboot. A new owned BLE bond
+  was created by diagnostic 01 and is retained; authoritative original NVS/SPIFFS
+  restoration and full saved-state comparison await USB return.
+  The earlier preservation PASS is not a final-state check.
 - [ ] **Full V4 MQTT/WSS soak:** the pinned recovery-guarded runner is staged
   but has **not launched**. Require real PUBACK/heap evidence and original-data
   restoration before qualification.
@@ -56,7 +73,9 @@ The passed Room logging-on trial does not qualify Full logging-on.
 Complete CI runs [39110179910](https://github.com/mikecarper/MeshCore/actions/runs/39110179910)
 at `5fd33a230` and [39109551854](https://github.com/mikecarper/MeshCore/actions/runs/39109551854)
 at `7a5a7993c` are green. The native-console/TTY cleanup follow-up passed 35
-offline checks; its new CI result was pending at the authoring checkpoint.
+offline checks; [run 39115389840](https://github.com/mikecarper/MeshCore/actions/runs/39115389840)
+at `76220d5d7` was in progress at 09:46 UTC, with ten of eleven jobs green and
+only the host test job still running.
 The completed runs do not qualify those follow-up changes.
 
 ## PR17–21 follow-up qualification, 2026-10-18 UTC
