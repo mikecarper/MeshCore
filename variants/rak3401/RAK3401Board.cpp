@@ -4,6 +4,7 @@
 
 #include "RAK3401Board.h"
 #include "target.h"
+#include "OnboardRadioSleep.h"
 #include "../../src/helpers/nrf52/TerminalPeripheralShutdown.h"
 
 #ifdef NRF52_POWER_MANAGEMENT
@@ -82,6 +83,9 @@ void RAK3401Board::shutdownPeripherals() {
 
 void RAK3401Board::begin() {
   NRF52BoardDCDC::begin();
+  // Also handles a RAK4631 core with an external RAK13302. Do this before
+  // voltage protection can enter SYSTEMOFF and leave the unused chip awake.
+  rak3401::sleepOnboardRadio();
   pinMode(PIN_VBAT_READ, INPUT);
 #ifdef PIN_USER_BTN
   pinMode(PIN_USER_BTN, INPUT_PULLUP);

@@ -610,6 +610,7 @@ jobs:
           python3 -B test/test_gps_sync_preferences.py -v
           python3 -B test/test_rak_gps_power.py -v
           python3 -B test/test_rak_shutdown_power.py -v
+          python3 -B test/test_rak3401_onboard_radio.py -v
           python3 -B test/test_xiao_battery_safety.py -v
           python3 -B test/test_peripheral_mode_prefs.py -v
           python3 -B test/test_t1000e_sensor_power.py -v

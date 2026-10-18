@@ -106,6 +106,35 @@ The [nRF52 idle-sleep investigation](nrf52_sleep_event_validation.md) describes
 an eligible-but-not-sleeping regression, its fix, controlled hardware evidence
 and the limits of CPU-state sampling without a current meter.
 
+## RAK13302 builds with an unused onboard radio
+
+The RAK3401/external RAK13302 firmware now probes the private onboard-radio
+bus once during startup. This supports both a RAK3401 core (no onboard SX1262)
+and a RAK4631 core using the external RAK13302. It is adapted from
+[agessaman's optional-radio sleep change](https://github.com/agessaman/MeshCore/tree/feat/rak13302-auto-onboard-sleep).
+[RAK's internal connection table](https://docs.rakwireless.com/product-categories/wisblock/rak4631/datasheet/#internal-connections-between-nrf52840-mcu-and-sx1262-lora-transceiver)
+identifies the private SPI, reset, BUSY and RF-switch pins used by the probe.
+
+A matching six-byte chip signature triggers cold sleep with the RTC disabled.
+The RF switch stays off, NSS/reset stay high, and the temporary SPI/data/BUSY
+pads are released. Sleep confirmation reads BUSY only: another SPI transaction
+would wake the chip. Each BUSY wait is bounded to 20 ms, including when no chip
+is fitted. A timeout or mismatched signature does not block startup of the
+external radio. Debug-enabled startup logging reports `asleep`, `absent`,
+`busy-timeout` or `sleep-failed` when the USB debug output is available; a
+missing chip normally produces `busy-timeout`, not a verified sleep result.
+
+This happens before the boot-voltage check, so a low-voltage shutdown cannot
+skip the unused-radio sleep attempt. It does not cycle the shared GPS/storage
+rail, change external-radio recovery, or enable its FEM before initialization
+succeeds. There is no runtime probing or automatic primary-radio selection.
+
+Ordinary **RAK4631 firmware is unchanged**: its onboard SX1262 is the active
+primary radio and must not be disabled. Use the external RAK13302 image for
+that hardware arrangement, not a normal RAK4631 image. This startup change has
+host regression tests; sleep-current improvement still needs matched current
+measurements on the physical core/module combination.
+
 ## Board regulator initialization
 
 RAK4631 Companion uses the same nRF52840 REG1 DC/DC initialization as the other
