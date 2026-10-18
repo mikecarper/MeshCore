@@ -2347,6 +2347,23 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="1.18.0.1 known-risk matrix, 2026-10-18 UTC">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#wio-e5-mini-repeater-gcc-15-experiment-2026-10-18-utc" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Wio-E5 Mini Repeater GCC 15 experiment, 2026-10-18 UTC
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
     </ul>
@@ -3022,6 +3039,159 @@ receiver qualification. Exact storage/bootloader requirements still apply.</p>
 <p>This is a targeted build/capacity pass, not the complete canonical release
 matrix at one frozen commit, physical hardware/upgrade/soak qualification,
 or publication of a 1.18.0.1 release.</p>
+<h3 id="wio-e5-mini-repeater-gcc-15-experiment-2026-10-18-utc">Wio-E5 Mini Repeater GCC 15 experiment, 2026-10-18 UTC</h3>
+<p>The separate compiler experiment used source <code>6035f6631</code> and the same
+release recipe above. For the reported comparisons, firmware timestamps
+were fixed at <code>18-Oct-2026</code> and epoch <code>1792281600</code>. The actual compiler
+executables reported Arm GNU
+14.2.Rel1 / GCC 14.2.1 and Arm GNU 15.3.Rel1 / GCC 15.3.1; a private
+<code>platform_packages</code> override selected the latter. Production pins were not
+changed. Each PlatformIO build ran alone, with a fresh private build/output
+directory; no existing <code>out/</code> artifacts were replaced.</p>
+<p>These numbers are linker overflows beyond the <strong>245,760-byte app region</strong>,
+not successful firmware sizes. The 16,384-byte filesystem, host CLI,
+logging policy, radio preset and existing feature declarations were retained.</p>
+<table>
+<thead>
+<tr>
+<th>Matched recipe</th>
+<th style="text-align: right;">GCC 14 overflow</th>
+<th style="text-align: right;">GCC 15 overflow</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Original Mini Repeater recipe</td>
+<td style="text-align: right;">38,040</td>
+<td style="text-align: right;">37,700</td>
+</tr>
+<tr>
+<td>Compact crypto and unused timer wrappers</td>
+<td style="text-align: right;">19,496</td>
+<td style="text-align: right;">19,060</td>
+</tr>
+<tr>
+<td>Compact plus best tested five-flag bundle</td>
+<td style="text-align: right;">18,800</td>
+<td style="text-align: right;">18,468</td>
+</tr>
+</tbody>
+</table>
+<p>Here, compact means adding <code>ED25519_COMPACT_SHA512=1</code>,
+<code>ED25519_COMPACT_SCALAR=1</code>, <code>ED25519_COMPACT_FIELD=1</code>,
+<code>RADIOLIB_TONE_UNSUPPORTED</code> and <code>HAL_TIM_MODULE_ONLY</code>. CompactBase was
+already enabled in the original recipe. These private additions were not
+retained in the production Mini Repeater configuration. Their combined
+savings must not be attributed to the compiler upgrade alone.</p>
+<p>The four-flag bundle was <code>-fno-caller-saves -fno-tree-dominator-opts
+-fno-reorder-blocks -fno-reorder-functions</code>. Adding
+<code>-fno-tree-switch-conversion</code> produced the five-flag winner. Full-source
+GCC 15 trials, all with the compact additions, measured:</p>
+<table>
+<thead>
+<tr>
+<th>Additional tuning beyond the four-flag bundle</th>
+<th style="text-align: right;">Overflow bytes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>None</td>
+<td style="text-align: right;">18,500</td>
+</tr>
+<tr>
+<td><code>--param=max-inline-insns-single=70</code></td>
+<td style="text-align: right;">18,556</td>
+</tr>
+<tr>
+<td><code>--param=max-inline-insns-single=30</code></td>
+<td style="text-align: right;">18,556</td>
+</tr>
+<tr>
+<td><code>--param=max-inline-insns-single=15</code></td>
+<td style="text-align: right;">18,588</td>
+</tr>
+<tr>
+<td><code>-fno-inline-functions-called-once</code></td>
+<td style="text-align: right;">27,108</td>
+</tr>
+<tr>
+<td><code>-fno-jump-tables</code></td>
+<td style="text-align: right;">18,588</td>
+</tr>
+<tr>
+<td><code>-fno-tree-switch-conversion</code></td>
+<td style="text-align: right;">18,468</td>
+</tr>
+<tr>
+<td><code>-Os</code> instead of <code>-Oz</code>, compilation and link</td>
+<td style="text-align: right;">18,500</td>
+</tr>
+<tr>
+<td><code>-fno-inline</code></td>
+<td style="text-align: right;">38,116</td>
+</tr>
+<tr>
+<td><code>--param=max-inline-insns-size=0 --param=inline-unit-growth=0</code></td>
+<td style="text-align: right;">18,500</td>
+</tr>
+<tr>
+<td><code>-fno-tree-loop-optimize -fno-tree-scev-cprop -fno-tree-loop-distribute-patterns</code></td>
+<td style="text-align: right;">19,228</td>
+</tr>
+<tr>
+<td><code>-mslow-flash-data</code></td>
+<td style="text-align: right;">27,628</td>
+</tr>
+</tbody>
+</table>
+<p>The winning GCC 15 recipe reproduced the same 18,468-byte overflow in a
+second clean build. Its compiler-only improvement over the matched GCC 14
+recipe is <strong>332 bytes</strong>; the original recipe improves by 340 bytes. The
+19,572-byte recovery relative to the original GCC 14 build includes the
+compact/peripheral and tuning changes, not just GCC 15. The winning linked
+flash extent is 264,228 bytes, still 2,084 bytes beyond the chip's entire
+256 KiB flash even before reserving filesystem space.</p>
+<p>Actual verbose commands were checked across application, crypto library,
+Arduino framework and final LTO link. Experimental compile options were
+installed through the framework's late <code>build.framework_extra_flags.arduino</code>
+hook, preserving board defaults and overriding its inline threshold before
+library/application environments were cloned. A post-script forwarded the
+same tuning to the LTO driver. The true <code>-Os</code> trial also changed
+<code>build_unflags</code> to remove <code>-Oz</code>, so the inherited removal of <code>-Os</code> could not
+silently invalidate that comparison.</p>
+<p>Earlier mixed-scope post-script trials were preserved but excluded from
+the full-source comparison: those options reached framework/link stages,
+not the application/crypto compilation. One later link-only <code>-Os</code> control
+also measured 18,500 bytes; it is not the true full-source <code>-Os</code> trial above.
+No ABI-changing struct/enum options, fast-math assumptions, filesystem cuts,
+or capacity-check overrides were used. Every full-firmware attempt still
+failed at the flash link; none qualifies as a runtime-RAM pass, usable image,
+or hardware validation. GCC 15 was not adopted and no failing image was
+published.</p>
+<p>A private Unicorn 2.1.4 harness also checked generated Cortex-M4 code for
+eight standalone crypto profiles: GCC 14 compact, GCC 15 compact, the GCC 15
+four-flag bundle, its five-flag winner, and the four more aggressive trials
+in the last four table rows. All passed 432 positive function calls:
+40 key generations, 40 signatures and 352 SHA-512 checks. Each profile used
+two RFC 8032 signing vectors, three additional reference signing vectors,
+and 11 SHA-512 boundary lengths in one-shot and three streaming modes.
+All 16 corrupted-expected-signature/digest negative controls were rejected.</p>
+<p>The harness checked explicit Cortex-M4 CPU-model readback, allocated-section
+bounds within physical 256 KiB flash/64 KiB SRAM, read-only executable flash,
+non-executable SRAM, buffer canaries, unchanged inputs, per-instruction stack
+bounds, restored SP/callee-saved registers and bounded execution. Source and
+ELF hashes were verified. Maximum observed standalone call frames were
+3,376 bytes for GCC 14 compact, 3,368 for the GCC 15 winner and most other
+GCC 15 profiles, and 2,960 with no inlining. These are not whole-application
+stack/heap budgets.</p>
+<p>This is CPU instruction emulation, not a Wio-E5 Mini board model. The harness
+independently links repository keypair/sign/SHA-512 code through stable
+exported wrappers, with explicit <code>-Oz</code> at link; it is not the exact full
+firmware LTO image. It does not qualify signature verification, boot,
+interrupts, MMIO, radio, USB, flash/filesystem drivers, sleep, concurrent
+traffic, physical timing or cryptographic side channels. A passing standalone
+harness does not make any overflowing full-firmware image usable.</p>
 
 
 
