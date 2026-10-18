@@ -438,9 +438,35 @@ void MyMesh::processRoomRequest(const uint8_t* token, uint32_t sequence, char* r
   mesh::Identity author;
   mesh::Utils::sha256(author.pub_key, PUB_KEY_SIZE, token, 32, self_id.pub_key, PUB_KEY_SIZE);
   if (!room_access.allowsIdentity(author.pub_key)) { error("room access denied"); return; }
+  // Every request carries the password and a browser may send a new token each
+  // time, so one budget covers all tokens, with /api/login's numbers: five
+  // wrong passwords per thirty seconds. An empty password tests nothing and
+  // keeps public read-only access.
+  auto& limit = room_web_password_limit;
+  const uint32_t now = millis();
+  const bool window_open = uint32_t(now - limit.window) < 30000UL;
+  if (password[0] && limit.failures >= 5 && window_open) {
+    error("too many wrong room passwords; wait 30 seconds"); return;
+  }
   const auto authorization = mesh::authorizeRoomLogin(password, _prefs.password,
       _prefs.guest_password, false, 0, _prefs.allow_read_only, PERM_ACL_ROLE_MASK,
       PERM_ACL_GUEST, PERM_ACL_READ_WRITE, PERM_ACL_ADMIN);
+  // Read-only rooms admit a wrong password as a guest; it still failed. A
+  // password that already failed reveals nothing new, so a tab still polling
+  // with an old or mistyped one is counted once, not on every request.
+  if (password[0] && authorization.role == PERM_ACL_GUEST) {
+    uint8_t digest[8];
+    mesh::Utils::sha256(digest, sizeof(digest), (const uint8_t*)password, strlen(password));
+    digest[0] |= 1; // never matches an unused, all-zero slot
+    bool repeated = false;
+    for (const auto& recent : limit.recent) repeated |= memcmp(recent, digest, sizeof(digest)) == 0;
+    if (!repeated) {
+      memcpy(limit.recent[limit.recent_next], digest, sizeof(digest));
+      limit.recent_next = (limit.recent_next + 1) % 4;
+      if (!limit.failures || !window_open) { limit.window = now; limit.failures = 0; }
+      ++limit.failures;
+    }
+  }
   if (!authorization.accepted) { error("incorrect room password"); return; }
   room_web_request_authenticated = true;
   const uint8_t role = authorization.role & PERM_ACL_ROLE_MASK;
@@ -480,7 +506,6 @@ void MyMesh::processRoomRequest(const uint8_t* token, uint32_t sequence, char* r
     error("unknown room operation"); return;
   }
 
-  const uint32_t now = millis();
   RoomWebUser* user = nullptr;
   RoomWebUser* available = nullptr;
   for (auto& entry : room_web_users) {

@@ -140,6 +140,8 @@ struct MyMesh {
   bool room_web_request_authenticated = false;
   uint32_t room_web_boot_id = 71;
 #include "web_user.inc"
+#include "password_limit.inc"
+  uint8_t password_limit_guard[16] = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16};
   ACL acl;
   Clock clock;
   PostInfo posts[MAX_UNSYNCED_POSTS] = {};
@@ -184,7 +186,16 @@ struct MyMesh {
     ++retry_cancellations; cancelled_retry_timestamp = timestamp;
   }
 };
+// Count every real password evaluation made by the production callbacks.
+static unsigned password_checks = 0;
+namespace mesh {
+template <typename... Args> static RoomLoginAuthorization countedAuthorizeRoomLogin(Args... args) {
+  ++password_checks; return authorizeRoomLogin(args...);
+}
+}
+#define authorizeRoomLogin countedAuthorizeRoomLogin
 #include "production.inc"
+#undef authorizeRoomLogin
 
 static std::array<uint8_t, 32> token(uint8_t id = 1) { std::array<uint8_t, 32> value = {}; value[0] = id; return value; }
 static std::string execute(MyMesh& m, const std::string& input, uint32_t sequence,
@@ -195,6 +206,7 @@ static std::string execute(MyMesh& m, const std::string& input, uint32_t sequenc
   const auto key = token(owner);
   m.processRoomRequest(key.data(), sequence, request.data(), reply.data() + 1, capacity);
   assert(reply.front() == 0x7f && reply.back() == 0x7f && json_allocations == 0);
+  for (uint8_t i = 0; i < 16; ++i) assert(m.password_limit_guard[i] == i + 1); // password ring stays in bounds
   if (!capacity) return "";
   assert(memchr(reply.data() + 1, 0, capacity)); return reply.data() + 1;
 }
@@ -268,6 +280,117 @@ static void adminAuthorizationCases() {
   error(empty, request("admin.users", "admin-secret", ",\"cursor\":0"), 100, "admin");
   assert(floors(empty) == 0 && empty.acl.lookups == 0);
   printf("ADMIN_AUTH: %u rejected low-trust operations leave state and identity data unchanged\n", denied + 2);
+}
+// Browsers choose their own tokens, so every token shares one budget of five
+// distinct wrong room passwords per thirty seconds.
+static std::string guess(const char* prefix, unsigned i) { return prefix + std::to_string(i); }
+static void passwordLimitCases() {
+  uint32_t sequence = 1;
+  {
+    MyMesh m; enable(m); m._prefs.allow_read_only = false;
+    const uint32_t start = ticks; const unsigned checks = password_checks + 5;
+    for (uint8_t owner = 20; owner < 25; ++owner) {
+      ticks = start + (owner - 20) * 1000u;
+      error(m, request("status", guess("guess-", owner).c_str()), sequence++, "incorrect", owner);
+    }
+    assert(password_checks == checks);
+    // Once the budget is spent no password is evaluated, so a correct guess
+    // looks exactly like a wrong one and never authenticates.
+    const auto refused = execute(m, request("status", "guess-25"), sequence++, 25);
+    assert(strstr(refused.c_str(), "too many"));
+    for (const char* password : {"admin-secret", "write-secret", "guess-20"}) {
+      assert(execute(m, request("status", password), sequence++, 26) == refused);
+      assert(floors(m) == 0 && !m.room_web_request_authenticated);
+    }
+    // Refused requests are not counted, so a flood can neither wrap the
+    // counter nor extend the lock.
+    for (unsigned flood = 0; flood < 300; ++flood) {
+      assert(execute(m, request("status", guess("flood-", flood).c_str()), sequence++, uint8_t(100 + flood % 100)) == refused);
+    }
+    ticks = start + 29999; error(m, request("status", "admin-secret"), sequence++, "too many", 27);
+    assert(password_checks == checks);
+    ticks = start + 30000; assert(result(m, request("status", "admin-secret"), sequence++, 27)["role"] == PERM_ACL_ADMIN);
+    for (uint8_t owner = 30; owner < 35; ++owner) error(m, request("status", guess("later-", owner).c_str()), sequence++, "incorrect", owner);
+    error(m, request("status", "write-secret"), sequence++, "too many", 28);
+  }
+  {
+    MyMesh m; enable(m);
+    // Empty passwords test no credential: public readers neither spend the
+    // budget nor lose read-only access when it is spent.
+    for (unsigned i = 0; i < 6; ++i) assert(result(m, request("status", ""), sequence++, 20)["role"] == PERM_ACL_GUEST);
+    assert(result(m, request("status", "admin-secret"), sequence++, 21)["role"] == PERM_ACL_ADMIN);
+    // Read-only rooms admit a wrong password as a guest, but it still failed.
+    for (unsigned i = 0; i < 5; ++i) assert(result(m, request("status", guess("guess-", i).c_str()), sequence++, 22)["role"] == PERM_ACL_GUEST);
+    error(m, request("status", "admin-secret"), sequence++, "too many", 21);
+    assert(result(m, request("status", ""), sequence++, 20)["role"] == PERM_ACL_GUEST);
+  }
+  {
+    // The first window also starts at the first failure soon after boot.
+    const uint32_t later = ticks; ticks = 1000;
+    MyMesh m; enable(m); m._prefs.allow_read_only = false;
+    for (uint8_t owner = 20; owner < 25; ++owner) error(m, request("status", guess("guess-", owner).c_str()), sequence++, "incorrect", owner);
+    ticks = 30999; error(m, request("status", "admin-secret"), sequence++, "too many", 25);
+    ticks = 31000; assert(result(m, request("status", "admin-secret"), sequence++, 25)["role"] == PERM_ACL_ADMIN);
+    ticks = later;
+  }
+  {
+    MyMesh m; enable(m); m._prefs.allow_read_only = false;
+    // Neither the guest nor the admin password refunds failed guesses.
+    for (unsigned i = 0; i < 4; ++i) error(m, request("status", guess("guess-", i).c_str()), sequence++, "incorrect", 20);
+    assert(result(m, request("status", "write-secret"), sequence++, 21)["role"] == PERM_ACL_READ_WRITE);
+    assert(result(m, request("status", "admin-secret"), sequence++, 21)["role"] == PERM_ACL_ADMIN);
+    error(m, request("status", "guess-4"), sequence++, "incorrect", 20);
+    error(m, request("status", "admin-secret"), sequence++, "too many", 21);
+  }
+  {
+    MyMesh m; enable(m); m._prefs.allow_read_only = false;
+    // The fixture digest XOR-folds to eight bytes, so this guess folds to zero;
+    // unused ring slots must not make it look repeated.
+    error(m, request("status", "abcdefghabcdefgh"), sequence++, "incorrect", 20);
+    for (unsigned i = 0; i < 4; ++i) error(m, request("status", guess("guess-", i).c_str()), sequence++, "incorrect", 20);
+    error(m, request("status", "admin-secret"), sequence++, "too many", 21);
+  }
+  {
+    MyMesh m; enable(m); m._prefs.allow_read_only = false;
+    // Repeating a password that already failed reveals nothing, whichever
+    // token sends it, so it counts once.
+    for (uint8_t owner = 20; owner < 70; ++owner) error(m, request("status", "same-guess"), sequence++, "incorrect", owner);
+    assert(result(m, request("status", "admin-secret"), sequence++, 70)["role"] == PERM_ACL_ADMIN);
+    ticks += 30000;
+    // The last four wrong passwords are remembered, so four forgotten tabs
+    // with different old passwords, each polling every sixteen seconds, never
+    // lock out the owner. New passwords still count.
+    for (unsigned poll = 0; poll < 40; ++poll) {
+      error(m, request("status", guess("old-password-", poll % 4).c_str()), sequence++, "incorrect", uint8_t(80 + poll % 4));
+      ticks += 4000;
+    }
+    assert(result(m, request("status", "admin-secret"), sequence++, 70)["role"] == PERM_ACL_ADMIN);
+    for (unsigned i = 0; i < 5; ++i) error(m, request("status", guess("new-", i).c_str()), sequence++, "incorrect", 90);
+    error(m, request("status", "admin-secret"), sequence++, "too many", 70);
+  }
+  {
+    MyMesh m; enable(m);
+    // A read-only tab with a mistyped password keeps polling status and posts
+    // as a guest; its repeated password never blocks anyone else.
+    assert(result(m, request("post", "write-secret", ",\"boot\":71,\"name\":\"A\",\"text\":\"one\""), sequence++, 21)["ok"] == true);
+    for (unsigned poll = 0; poll < 20; ++poll) {
+      assert(result(m, request("status", "typo"), sequence++, 22)["role"] == PERM_ACL_GUEST);
+      for (unsigned page = 0; page < 3; ++page) result(m, request("posts", "typo", ",\"after\":0"), sequence++, 22);
+      ticks += 15000;
+    }
+    assert(result(m, request("status", "admin-secret"), sequence++, 21)["role"] == PERM_ACL_ADMIN);
+  }
+  {
+    MyMesh m; enable(m); m._prefs.allow_read_only = false;
+    // Distinct failures age out with the window: one every fifteen seconds
+    // never reaches the limit.
+    for (unsigned poll = 0; poll < 40; ++poll) {
+      error(m, request("status", guess("slow-", poll).c_str()), sequence++, "incorrect", 20);
+      assert(result(m, request("status", "admin-secret"), sequence++, 21)["role"] == PERM_ACL_ADMIN);
+      ticks += 15000;
+    }
+  }
+  printf("PASSWORD_LIMIT: five distinct wrong room passwords per thirty seconds across all browser tokens\n");
 }
 static std::string adminClientRequest(const char* operation, const ClientInfo& client,
                                        const std::string& fields = "", uint32_t boot = 71) {
@@ -910,6 +1033,7 @@ int main() {
     assert(m._num_posted == 40 && m.next_post_idx == 8 && m.last_room_timestamp == 1039); ++scenarios;
   }
   adminAuthorizationCases();
+  passwordLimitCases();
   adminRouteCases();
   adminCatchUpCases();
   adminListingCases();
@@ -926,5 +1050,5 @@ int main() {
   assert(result(boundary, saveRequest(1, 0, "Instructions", "Read only this article"), 2)["ok"] == true);
   printf("BOUNDARY_INDEX %s\n", execute(boundary, request("board.index", "write-secret", ",\"revision\":0,\"cursor\":0"), 3).c_str());
   printf("BOUNDARY_READ %s\n", execute(boundary, request("board.read", "write-secret", ",\"id\":1,\"version\":1,\"offset\":0"), 4).c_str());
-  printf("PASS: %u base, 6 admin and 6 mail actual room web service authorization, storage, quota, JSON and boundary groups\n", scenarios);
+  printf("PASS: %u base, 6 admin, 1 password-limit and 6 mail actual room web service authorization, storage, quota, JSON and boundary groups\n", scenarios);
 }
