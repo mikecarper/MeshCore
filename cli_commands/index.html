@@ -8690,7 +8690,10 @@ Station G2/G3 targets default to <code>off</code>.</p>
 - <code>state</code>: <code>on</code>|<code>off</code></p>
 <p><strong>Notes:</strong>
 - This controls the external LoRa FEM receive-path LNA where the board supports it.
-- This is separate from <code>radio.rxgain</code>, which controls the radio chip receive gain mode.</p>
+- This is separate from <code>radio.rxgain</code>, which controls the radio chip receive gain mode.
+- On Station G3, transmit temporarily bypasses the LNA. A gain change made
+  during transmission is applied when receive mode resumes; <code>get</code> reports the
+  configured receive preference. Startup and terminal sleep keep the LNA off.</p>
 <hr />
 <h4 id="view-or-change-the-lora-fem-transmit-path-gain-state-on-supported-boards">View or change the LoRa FEM transmit-path gain state on supported boards</h4>
 <p><strong>Usage:</strong>

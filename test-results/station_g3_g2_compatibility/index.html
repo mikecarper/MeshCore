@@ -2294,6 +2294,39 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#physical-socket-commands-in-the-normal-infrastructure-cli" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Physical socket commands in the normal infrastructure CLI
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#receive-gain-changes-during-transmission" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Receive-gain changes during transmission
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#complete-saved-radio-restoration-in-room-and-sensor-roles" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Complete saved-radio restoration in Room and Sensor roles
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#saved-fem-and-socket-settings" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2534,6 +2567,48 @@ the fixture. Negative controls restoring the old short BUSY budget or the
 three-attempt limit fail the delayed-startup regressions. These results prove
 the software tolerance gap; they do not prove it caused the user's hardware
 failure. No transmit or TCXO-setting override was introduced.</p>
+<h2 id="physical-socket-commands-in-the-normal-infrastructure-cli">Physical socket commands in the normal infrastructure CLI</h2>
+<p>The follow-up audit also found that Repeater, Room, and Sensor infrastructure
+commands consumed all <code>get</code> and <code>set</code> requests in the shared CLI. Their final
+board-command hook was reached only for other verbs. Consequently, the G3's
+normal <code>get radio.slot</code> and <code>set radio.slot ...</code> commands never reached the
+board implementation. The separate pre-radio USB recovery console and KISS
+binary commands called the board directly and were unaffected.</p>
+<p>Unknown shared getters and setters now reach the board-command hook before
+returning an unknown-setting reply. Shared commands, including the guarded FEM
+setters, retain priority. Socket changes still save only the next-boot selection;
+they never switch the running radio or reboot behind the operator's back.</p>
+<h2 id="receive-gain-changes-during-transmission">Receive-gain changes during transmission</h2>
+<p>The follow-up comparison from <code>eb00b5370</code> found another G3-specific runtime
+defect. G2 firmware leaves the external amplifier controls alone. G3's
+<code>setLNAEnable()</code> reapplied receive mode unconditionally, so even repeating
+<code>set radio.fem.rxgain on</code> during an active transmission enabled the LNA before
+the transmit-completion hook. This was reachable through both the normal
+infrastructure CLI and Companion gain setters.</p>
+<p>The G3 FEM now tracks startup/sleep, receive, and transmit mode. A gain setter
+updates the requested receive preference while preserving the transmit bypass;
+the requested state is applied when receive mode resumes. Startup and terminal
+sleep also keep the LNA disabled until an explicit receive transition. PA-level
+changes retain their existing policy of applying at the start of the next
+transmission. The inactive socket's LNA is left disabled.</p>
+<p>The unconditional receive-mode call came from the runtime FEM preference
+implementation in
+<a href="https://github.com/meshcore-dev/MeshCore/commit/7509e51e3d36010dccc81554a47df9b90b6915e4"><code>7509e51e3d</code></a>,
+Kevin Le, 2026-08-12. This finding concerns mode handling; the PA/LNA pin
+assignments and polarities match the manufacturer documentation.</p>
+<h2 id="complete-saved-radio-restoration-in-room-and-sensor-roles">Complete saved-radio restoration in Room and Sensor roles</h2>
+<p>The same comparison found a shared role issue that can affect G3, G2, and other
+boards. Room and Sensor could clear their saved-radio retry flag after accepting
+the frequency/modulation tuple even when the subsequent saved TX-power command
+was rejected. Room also ignored rejection of its saved internal RX-gain command.
+An incoming packet or BUSY response during runtime restoration could therefore
+leave only part of the saved configuration applied.</p>
+<p>Their saved-radio helper now reports success only after every applicable
+setting has been accepted. Rejection keeps the existing retry/backoff active,
+including restoration after a temporary radio setting expires. No preference
+layout, default setting, or Sensor RX-gain feature is added by this fix. This
+shared issue alone does not explain why G2 firmware works better on the user's
+G3.</p>
 <h2 id="saved-fem-and-socket-settings">Saved FEM and socket settings</h2>
 <p>G3 firmware actively drives its LNA and PA-level GPIOs. G2 firmware does not,
 so a saved FEM setting can have a visible effect only after switching to G3
@@ -2637,6 +2712,34 @@ QIO override must fail that check.</p>
 <tr>
 <td>Canonical Full Companion package</td>
 <td>PASS; 24 linked capability checks, internal RAM and application-slot checks passed; bootloader/application and merged-image headers verified as DIO</td>
+</tr>
+<tr>
+<td>Follow-up G3 gain-mode tests through production CLI/Companion setters and GPIO helpers</td>
+<td>PASS, 2 test methods; both sockets, failed saves and old-setter negative control</td>
+</tr>
+<tr>
+<td>Follow-up Room/Sensor saved-radio startup and runtime restoration</td>
+<td>PASS, 4 test methods; actual wrapper rejection, retry/backoff and temporary-radio expiry paths</td>
+</tr>
+<tr>
+<td>Follow-up normal infrastructure socket-command routing</td>
+<td>PASS, 7 test methods; real board/NVS dispatch, shared guards and old-dispatch negative controls</td>
+</tr>
+<tr>
+<td>Combined follow-up native regression batch</td>
+<td>PASS, 30 test methods with sanitizer coverage</td>
+</tr>
+<tr>
+<td>Follow-up Repeater, Room, Sensor and ESP32-C6 Room firmware builds</td>
+<td>PASS, all 4 environments</td>
+</tr>
+<tr>
+<td>Follow-up canonical Full Companion package</td>
+<td>PASS; 24 linked capability checks, internal RAM and application-slot checks passed</td>
+</tr>
+<tr>
+<td>Follow-up hosted documentation link checks</td>
+<td>PASS, 7 test methods</td>
 </tr>
 <tr>
 <td>Physical G3 boot and RF receive/transmit</td>
