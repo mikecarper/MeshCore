@@ -119,9 +119,20 @@ function makeIdentity(){
 }
 function message(error){$('error').textContent=error?String(error.message||error):''}
 const pause=ms=>new Promise(resolve=>setTimeout(resolve,ms));
-async function fetchBounded(url,options){
-  const controller=new AbortController(), timer=setTimeout(()=>controller.abort(),5000);
-  try{return await fetch(url,Object.assign({},options,{signal:controller.signal,cache:'no-store'}))}
+async function fetchBounded(url,options,received,timeout){
+  const controller=new AbortController(), timer=setTimeout(()=>controller.abort(),timeout);
+  try{
+    const response=await fetch(url,Object.assign({},options,{signal:controller.signal,cache:'no-store'}));
+    received(response);
+    // Drain admission, pending and busy replies too. The deadline covers the
+    // body, so stalled reads cannot keep a connection or the request chain open.
+    let result;
+    try{result=await response.json()}catch(e){
+      if(controller.signal.aborted)throw e;
+      const error=Error('Invalid response; refresh to check before retrying.');error.invalidResponse=true;throw error;
+    }
+    return {ok:response.ok,status:response.status,result:result};
+  }
   finally{clearTimeout(timer)}
 }
 function api(op,values={}){
@@ -144,12 +155,12 @@ async function request(op,values,generation,secret){
     if(generation!==connectionGeneration)throw Error('Room connection changed. Reconnect before trying again.');
     let response;
     try{response=await fetchBounded(accepted?'/api/room/result':'/api/room',
-      {method:'POST',headers:headers,body:accepted?undefined:body})}
-    catch(e){await pause(400);continue}
+      {method:'POST',headers:headers,body:accepted?undefined:body},
+      response=>{if(response.status===202)accepted=true},Math.min(5000,deadline-Date.now()))}
+    catch(e){if(e.invalidResponse)throw e;await pause(400);continue}
     if(!accepted&&response.status===429){await pause(500);continue}
     if(response.status===202){accepted=true;await pause(250);continue}
-    let result;
-    try{result=await response.json()}catch(e){throw Error('Invalid response; refresh to check before retrying.')}
+    const result=response.result;
     if(generation!==connectionGeneration)throw Error('Room connection changed. Reconnect before trying again.');
     if(!response.ok||result.error)throw Error(result.error||('Room request failed ('+response.status+').'));
     return result;

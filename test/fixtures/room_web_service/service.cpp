@@ -168,6 +168,10 @@ struct MyMesh {
   }
   Clock* getRTCClock() { return &clock; }
   bool handleRoomWebCommand(const char*, char*);
+  bool processRoomWebMail(const mesh::Identity&, uint8_t, uint32_t, JsonObjectConst,
+                         mesh::RoomJsonWriter&) __attribute__((noinline));
+  void processRoomWebAdmin(const char*, JsonObjectConst, mesh::RoomJsonWriter&) __attribute__((noinline));
+  void processRoomWebBoard(const char*, JsonObjectConst, mesh::RoomJsonWriter&) __attribute__((noinline));
   void processRoomRequest(const uint8_t*, uint32_t, char*, char*, size_t);
   void serviceRoomQuotas();
   bool storePost(const mesh::Identity&, const char*);
@@ -928,6 +932,19 @@ static void mailGlobalQueueCases() {
 }
 int main() {
   unsigned scenarios = 0;
+  {
+    // The actual page connects, refreshes status/chat, then loads an empty
+    // board. On ESP32 that last read used to overflow the loop task stack.
+    MyMesh m; enable(m);
+    assert(result(m, request("status", "admin-secret"), 1)["role"] == PERM_ACL_ADMIN);
+    assert(result(m, request("status", "admin-secret"), 2)["role"] == PERM_ACL_ADMIN);
+    assert(result(m, request("posts", "admin-secret", ",\"after\":0"), 3)["post"].isNull());
+    const auto board = result(m, request("board.index", "admin-secret", ",\"revision\":0,\"cursor\":0"), 4);
+    assert(board["revision"] == 0 && board["articles"].size() == 0 && board["next"] == 255);
+    assert(m.room_web_request_authenticated && m._num_posted == 0);
+    printf("WEB_OPERATION_DISPATCH: page startup reaches an empty information board without posting passed\n");
+    ++scenarios;
+  }
   {
     MyMesh m; assert(!m.room_web_enabled);
     error(m, request("status"), 1, "disabled"); assert(floors(m) == 0);

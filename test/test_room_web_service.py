@@ -29,6 +29,8 @@ class RoomWebServiceTest(unittest.TestCase):
         header = (ROOT / "examples/simple_room_server/MyMesh.h").read_text()
         production = "\n".join(extract_braced(source, signature) for signature in (
             "bool MyMesh::handleRoomWebCommand(", "static const char* roomWebString(",
+            "bool MyMesh::processRoomWebMail(", "void MyMesh::processRoomWebAdmin(",
+            "void MyMesh::processRoomWebBoard(",
             "void MyMesh::processRoomRequest(", "void MyMesh::serviceRoomQuotas(",
             "bool MyMesh::storePost(", "bool MyMesh::snapshotRoomHistory(",
             "bool MyMesh::executeClientPathCommand(", "bool MyMesh::setRoomClientPath(",
@@ -82,6 +84,7 @@ class RoomWebServiceTest(unittest.TestCase):
             checked = subprocess.run([str(binary)], capture_output=True, text=True, timeout=60)
             self.assertEqual(checked.returncode, 0, checked.stdout + checked.stderr)
             self.assertIn("actual room web service", checked.stdout)
+            self.assertIn("WEB_OPERATION_DISPATCH:", checked.stdout)
             for group in ("ADMIN_AUTH", "PASSWORD_LIMIT", "ADMIN_ROUTES", "ADMIN_CATCHUP", "ADMIN_USERS",
                           "ADMIN_SETTINGS", "ADMIN_INVALID", "MAIL_AUTH", "MAIL_DELIVERY",
                           "MAIL_ADMIN", "MAIL_PAGING", "MAIL_STORAGE", "MAIL_GLOBAL"):
@@ -93,6 +96,28 @@ class RoomWebServiceTest(unittest.TestCase):
                 expected = json.loads((FIXTURES / "boundary.json").read_text())[kind.lower()]
                 self.assertEqual(actual, expected)
             print(checked.stdout.splitlines()[-1])
+            # A native frame budget catches accidental reinlining of every
+            # operation's scratch arrays into the common callback. This is
+            # separate from sanitizer instrumentation, which inflates frames.
+            # ESP32 ELF frames and the real filesystem call chain must still
+            # be checked against its unchanged 8192-byte loop task stack.
+            stack_object = work / "room-web-stack.o"
+            stack_args = [argument for argument in built.args[:-2]
+                          if argument not in sanitizers]
+            stack_built = subprocess.run([*stack_args, "-Os", "-fstack-usage", "-c",
+                                          "-o", str(stack_object)],
+                                         capture_output=True, text=True, timeout=60)
+            self.assertEqual(stack_built.returncode, 0, stack_built.stdout + stack_built.stderr)
+            usage = "\n".join(path.read_text() for path in work.glob("*.su"))
+            frames = {}
+            for method, budget in (("processRoomRequest", 1024), ("processRoomWebAdmin", 1536),
+                                   ("processRoomWebBoard", 2048), ("processRoomWebMail", 3072)):
+                sizes = re.findall(r"(?:void|bool) MyMesh::" + method
+                                   + r"\([^\t\n]*\)\s*\t(\d+)\t[^\n]*", usage)
+                self.assertEqual(len(sizes), 1, "missing or ambiguous stack frame: " + method)
+                frames[method] = int(sizes[0])
+                self.assertLessEqual(frames[method], budget, method + " frame exceeds its host regression budget")
+            print("room web optimized host stack bytes: " + json.dumps(frames, sort_keys=True))
 
 
 if __name__ == "__main__":

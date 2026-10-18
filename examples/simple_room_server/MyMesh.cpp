@@ -413,6 +413,241 @@ static const char* roomWebString(JsonVariantConst value, size_t maximum) {
   return text.c_str();
 }
 
+// Keep operation-specific arrays and store call chains out of the common
+// callback's frame. The ESP32 loop task has an 8 KB stack, including printf
+// and filesystem frames; these private handlers must remain separate calls.
+bool MyMesh::processRoomWebMail(const mesh::Identity& author, uint8_t role,
+                                uint32_t sequence, JsonObjectConst input,
+                                mesh::RoomJsonWriter& json) {
+  return mesh::handleRoomMailWeb(_fs, author.pub_key,
+      role == PERM_ACL_READ_WRITE || role == PERM_ACL_ADMIN, role == PERM_ACL_ADMIN,
+      sequence, getRTCClock()->getCurrentTime(), input, json,
+      [this](const uint8_t* identity) { return room_access.allowsIdentity(identity); });
+}
+
+void MyMesh::processRoomWebAdmin(const char* operation, JsonObjectConst input,
+                                 mesh::RoomJsonWriter& json) {
+  auto error = [&json](const char* message) {
+    json.reset();
+    json.raw("{\"error\":"); json.string(message); json.raw("}"); json.finish();
+  };
+  if (strcmp(operation, "admin.settings") == 0) {
+    json.raw("{\"topic\":"); json.string(room_topic);
+    json.raw(",\"persistent_history\":"); json.raw(room_history_enabled ? "true" : "false");
+    json.raw(",\"post_rate\":"); json.number(room_access.postRate());
+    json.raw(",\"poll_rate\":"); json.number(room_access.pollRate());
+    json.raw(",\"boot\":"); json.number(room_web_boot_id);
+    json.raw("}"); json.finish(); return;
+  }
+  if (strcmp(operation, "admin.users") == 0) {
+    if (!input["cursor"].is<uint16_t>() || input["cursor"].as<uint16_t>() > acl.getNumClients()) {
+      error("invalid user cursor; reload users"); return;
+    }
+    const uint16_t cursor = input["cursor"].as<uint16_t>();
+    uint16_t active = 0, pending = 0, failed = 0;
+    uint32_t backlog = 0;
+    for (int i = 0; i < acl.getNumClients(); ++i) {
+      ClientInfo* client = acl.getClientByIdx(i);
+      active += client->last_activity != 0 && room_access.allowsIdentity(client->id.pub_key);
+      backlog += getUnsyncedCount(client);
+      pending += client->extra.room.pending_ack != 0;
+      failed += client->extra.room.push_failures != 0 || client->extra.room.topic_failures != 0;
+    }
+    json.raw("{\"users\":[");
+    uint16_t next = cursor;
+    for (; next < acl.getNumClients() && next < cursor + 2; ++next) {
+      if (next != cursor) json.raw(",");
+      writeRoomClientJson(json, acl.getClientByIdx(next), false);
+    }
+    json.raw("],\"next\":");
+    if (next < acl.getNumClients()) json.number(next); else json.raw("null");
+    json.raw(",\"total\":"); json.number(acl.getNumClients());
+    json.raw(",\"active\":"); json.number(active);
+    json.raw(",\"backlog\":"); json.number(backlog);
+    json.raw(",\"pending\":"); json.number(pending);
+    json.raw(",\"failed\":"); json.number(failed);
+    json.raw(",\"boot\":"); json.number(room_web_boot_id);
+    json.raw("}"); json.finish(); return;
+  }
+  char reply[157] = {};
+  if (strcmp(operation, "admin.topic") == 0) {
+    const char* value = roomWebString(input["value"], MAX_POST_TEXT_LEN);
+    const char* expected = roomWebString(input["expected"], MAX_POST_TEXT_LEN);
+    if (!value || !expected) { error("topic and expected topic required"); return; }
+    if (strcmp(expected, room_topic) != 0) { error("topic changed; refresh before editing"); return; }
+    char command[MAX_POST_TEXT_LEN + 11];
+    snprintf(command, sizeof(command), "set topic %s", value);
+    if (strcmp(value, room_topic) != 0) handleRoomTopicCommand(command, reply);
+  } else if (strcmp(operation, "admin.history") == 0) {
+    if (!input["enabled"].is<bool>() || !input["expected"].is<bool>()) {
+      error("history setting and expected setting required"); return;
+    }
+    if (input["expected"].as<bool>() != room_history_enabled) {
+      error("history setting changed; refresh before editing"); return;
+    }
+    if (input["enabled"].as<bool>() != room_history_enabled) {
+      handleRoomHistoryCommand(input["enabled"].as<bool>() ? "set room.history on"
+                                                          : "set room.history off", reply);
+    }
+  } else if (strcmp(operation, "admin.rates") == 0) {
+    if (!input["post_rate"].is<uint16_t>() || !input["poll_rate"].is<uint16_t>()) {
+      error("rates must be 0-65535"); return;
+    }
+    if (!room_access.setRates(_fs, input["post_rate"].as<uint16_t>(), input["poll_rate"].as<uint16_t>())) {
+      error("rate save failed; unchanged"); return;
+    }
+  } else {
+    const char* target = roomWebString(input["key"], PUB_KEY_SIZE * 2);
+    uint8_t decoded[PUB_KEY_SIZE];
+    if (!target || strlen(target) != PUB_KEY_SIZE * 2
+        || !mesh::Utils::fromHex(decoded, sizeof(decoded), target)) {
+      error("complete 64-hex public key required"); return;
+    }
+    ClientInfo* client = acl.getClient(decoded, sizeof(decoded));
+    if (strcmp(operation, "admin.ban") == 0) {
+      if (!input["banned"].is<bool>()) { error("ban setting required"); return; }
+      const bool banned = input["banned"].as<bool>();
+      const auto result = banned ? room_access.addBan(_fs, decoded) : room_access.removeBan(_fs, decoded);
+      if (result != mesh::RoomAccessPolicy::BanResult::Saved
+          && result != mesh::RoomAccessPolicy::BanResult::Unchanged) {
+        error("ban save failed or ban list full; unchanged"); return;
+      }
+    } else {
+      if (!client) { error("unknown room user; reload users"); return; }
+      if (strcmp(operation, "admin.user") == 0) {
+        json.raw("{\"user\":"); writeRoomClientJson(json, client, true);
+        json.raw(",\"boot\":"); json.number(room_web_boot_id);
+        json.raw("}"); json.finish(); return;
+      }
+      if (strcmp(operation, "admin.route") == 0) {
+        const char* which = roomWebString(input["which"], 7);
+        const char* value = roomWebString(input["value"], 191);
+        const char* expected = roomWebString(input["expected"], 154);
+        if (!which || !value || !expected
+            || (strcmp(which, "outpath") != 0 && strcmp(which, "altpath") != 0)) {
+          error("path selection, value and expected path required"); return;
+        }
+        const bool alternate = strcmp(which, "altpath") == 0;
+        char current[157];
+        mesh::formatRoomClientPathReply(alternate ? client->alt_path : client->out_path,
+            alternate ? client->alt_path_len : client->out_path_len, current, sizeof(current));
+        if (strcmp(expected, current + 2) != 0) { error("path changed; refresh before editing"); return; }
+        setRoomClientPath(client, which, value, reply);
+      } else if (strcmp(operation, "admin.catchup") == 0) {
+        const char* mode = roomWebString(input["mode"], 6);
+        if (!input["expected_sync"].is<uint32_t>()
+            || input["expected_sync"].as<uint32_t>() != client->extra.room.sync_since) {
+          error("catch-up position changed; refresh before editing"); return;
+        }
+        if (!mode || (strcmp(mode, "before") != 0 && strcmp(mode, "keep") != 0)
+            || (strcmp(mode, "before") == 0 ? !input["before"].is<uint32_t>()
+                                           : !input["count"].is<uint16_t>())) {
+          error("use before timestamp or keep count"); return;
+        }
+        applyRoomCatchUpCommand(client, mode, strcmp(mode, "before") == 0
+            ? input["before"].as<uint32_t>() : input["count"].as<uint16_t>(), reply);
+      } else if (strcmp(operation, "admin.access") == 0) {
+        if (!input["role"].is<uint8_t>() || input["role"].as<uint8_t>() > PERM_ACL_ADMIN
+            || !input["expected_role"].is<uint8_t>()
+            || input["expected_role"].as<uint8_t>() != (client->permissions & PERM_ACL_ROLE_MASK)) {
+          error("invalid role or access changed; refresh before editing"); return;
+        }
+        const uint8_t selected = input["role"].as<uint8_t>();
+        if (selected != (client->permissions & PERM_ACL_ROLE_MASK)
+            || !client->permissions_are_explicit || selected == PERM_ACL_GUEST) {
+          const uint8_t permissions = selected == PERM_ACL_GUEST ? 0
+              : (client->permissions & ~PERM_ACL_ROLE_MASK) | selected;
+          if (!acl.applyPermissions(self_id, decoded, sizeof(decoded), permissions)) {
+            error("access change failed; unchanged"); return;
+          }
+          mesh::scheduleLazyPersistenceMutation(dirty_contacts_expiry, contacts_save_failures,
+              futureMillis(LAZY_CONTACTS_WRITE_DELAY));
+        }
+        json.raw("{\"ok\":true,\"pending_save\":");
+        json.raw(dirty_contacts_expiry != 0 ? "true" : "false");
+        json.raw("}"); json.finish(); return;
+      }
+    }
+  }
+  if (strncmp(reply, "Err", 3) == 0) { error(reply); return; }
+  json.raw("{\"ok\":true}"); json.finish(); return;
+}
+
+void MyMesh::processRoomWebBoard(const char* operation, JsonObjectConst input,
+                                 mesh::RoomJsonWriter& json) {
+  auto error = [&json](const char* message) {
+    json.reset();
+    json.raw("{\"error\":"); json.string(message); json.raw("}"); json.finish();
+  };
+  mesh::RoomBoardIndex board;
+  if (!mesh::loadRoomBoard(_fs, board)) { error("information board storage unavailable"); return; }
+  if (strcmp(operation, "board.index") == 0) {
+    if (!input["revision"].is<uint32_t>() || !input["cursor"].is<uint8_t>()) { error("invalid board cursor"); return; }
+    const uint32_t revision = input["revision"].as<uint32_t>();
+    const uint8_t cursor = input["cursor"].as<uint8_t>();
+    if (cursor > board.count || (revision != board.revision && (revision != 0 || cursor != 0))) {
+      error("board changed; reload index"); return;
+    }
+    json.raw("{\"revision\":"); json.number(board.revision);
+    json.raw(",\"articles\":[");
+    uint8_t next = cursor;
+    for (; next < board.count && next < cursor + 2; ++next) {
+      if (next != cursor) json.raw(",");
+      const auto& article = board.articles[next];
+      json.raw("{\"id\":"); json.number(article.id);
+      json.raw(",\"version\":"); json.number(article.version);
+      json.raw(",\"length\":"); json.number(article.body_length);
+      json.raw(",\"title\":"); json.string(article.title); json.raw("}");
+    }
+    json.raw("],\"next\":"); json.number(next < board.count ? next : 255);
+    json.raw("}"); json.finish(); return;
+  }
+  if (!input["id"].is<uint8_t>() || !input["version"].is<uint32_t>()) { error("invalid article identity/version"); return; }
+  const uint8_t id = input["id"].as<uint8_t>();
+  const uint32_t version = input["version"].as<uint32_t>();
+  const mesh::RoomBoardArticle* article = nullptr;
+  for (uint8_t i = 0; i < board.count; ++i) if (board.articles[i].id == id) article = &board.articles[i];
+  if (strcmp(operation, "board.read") == 0) {
+    if (!input["offset"].is<uint16_t>()) { error("invalid article offset"); return; }
+    const uint16_t offset = input["offset"].as<uint16_t>();
+    uint8_t chunk[mesh::ROOM_BOARD_READ_MAX_CHUNK];
+    size_t length = 0;
+    const auto result = mesh::readRoomBoardArticle(_fs, id, version, offset, chunk, sizeof(chunk), length);
+    if (result != mesh::RoomBoardResult::Success || !article) { error("article changed or unavailable; reload index"); return; }
+    char encoded[4 * ((sizeof(chunk) + 2) / 3) + 1]; mesh::roomEncodeBase64(chunk, length, encoded);
+    json.raw("{\"version\":"); json.number(version);
+    json.raw(",\"offset\":"); json.number(offset);
+    json.raw(",\"next\":"); json.number(uint32_t(offset) + length);
+    json.raw(",\"total\":"); json.number(article->body_length);
+    json.raw(",\"data64\":"); json.string(encoded); json.raw("}"); json.finish(); return;
+  }
+  mesh::RoomBoardResult result;
+  if (strcmp(operation, "board.delete") == 0) {
+    if (version == 0) { error("deletion requires the current article version"); return; }
+    result = mesh::deleteRoomBoardArticle(_fs, id, version);
+  } else {
+    const char* title = roomWebString(input["title"], 63);
+    const char* encoded = roomWebString(input["body64"], 2732);
+    if (!title || !encoded || (article ? article->version != version : version != 0)) {
+      error("article changed; reload index before editing"); return;
+    }
+    auto* body = new (std::nothrow) uint8_t[mesh::ROOM_BOARD_MAX_BODY_LENGTH];
+    if (!body) { error("insufficient memory; article retained"); return; }
+    size_t length = 0;
+    if (!mesh::roomDecodeBase64(encoded, body, mesh::ROOM_BOARD_MAX_BODY_LENGTH, length)) {
+      delete[] body; error("invalid article encoding"); return;
+    }
+    result = mesh::saveRoomBoardArticle(_fs, id, title, length,
+        [body](size_t offset, uint8_t* out, size_t count) {
+          memcpy(out, body + offset, count); return count;
+        }, version);
+    delete[] body;
+  }
+  if (result != mesh::RoomBoardResult::Success) { error("article save failed or version changed; previous article retained"); return; }
+  json.raw("{\"ok\":true,\"version\":"); json.number(board.revision + 1);
+  json.raw("}"); json.finish();
+}
+
 void MyMesh::processRoomRequest(const uint8_t* token, uint32_t sequence, char* request,
                                char* response, size_t capacity) {
   room_web_request_authenticated = false;
@@ -527,151 +762,10 @@ void MyMesh::processRoomRequest(const uint8_t* token, uint32_t sequence, char* r
   }
   char key[65]; mesh::Utils::toHex(key, author.pub_key, PUB_KEY_SIZE);
   mesh::RoomJsonWriter json(response, capacity);
-  if (mesh::handleRoomMailWeb(_fs, author.pub_key,
-      role == PERM_ACL_READ_WRITE || role == PERM_ACL_ADMIN, role == PERM_ACL_ADMIN,
-      sequence, getRTCClock()->getCurrentTime(), input.as<JsonObjectConst>(), json,
-      [this](const uint8_t* identity) { return room_access.allowsIdentity(identity); })) return;
+  if ((mail_read || mail_write || strncmp(operation, "admin.mail.", 11) == 0)
+      && processRoomWebMail(author, role, sequence, input.as<JsonObjectConst>(), json)) return;
   if (admin_operation) {
-    if (strcmp(operation, "admin.settings") == 0) {
-      json.raw("{\"topic\":"); json.string(room_topic);
-      json.raw(",\"persistent_history\":"); json.raw(room_history_enabled ? "true" : "false");
-      json.raw(",\"post_rate\":"); json.number(room_access.postRate());
-      json.raw(",\"poll_rate\":"); json.number(room_access.pollRate());
-      json.raw(",\"boot\":"); json.number(room_web_boot_id);
-      json.raw("}"); json.finish(); return;
-    }
-    if (strcmp(operation, "admin.users") == 0) {
-      if (!input["cursor"].is<uint16_t>() || input["cursor"].as<uint16_t>() > acl.getNumClients()) {
-        error("invalid user cursor; reload users"); return;
-      }
-      const uint16_t cursor = input["cursor"].as<uint16_t>();
-      uint16_t active = 0, pending = 0, failed = 0;
-      uint32_t backlog = 0;
-      for (int i = 0; i < acl.getNumClients(); ++i) {
-        ClientInfo* client = acl.getClientByIdx(i);
-        active += client->last_activity != 0 && room_access.allowsIdentity(client->id.pub_key);
-        backlog += getUnsyncedCount(client);
-        pending += client->extra.room.pending_ack != 0;
-        failed += client->extra.room.push_failures != 0 || client->extra.room.topic_failures != 0;
-      }
-      json.raw("{\"users\":[");
-      uint16_t next = cursor;
-      for (; next < acl.getNumClients() && next < cursor + 2; ++next) {
-        if (next != cursor) json.raw(",");
-        writeRoomClientJson(json, acl.getClientByIdx(next), false);
-      }
-      json.raw("],\"next\":");
-      if (next < acl.getNumClients()) json.number(next); else json.raw("null");
-      json.raw(",\"total\":"); json.number(acl.getNumClients());
-      json.raw(",\"active\":"); json.number(active);
-      json.raw(",\"backlog\":"); json.number(backlog);
-      json.raw(",\"pending\":"); json.number(pending);
-      json.raw(",\"failed\":"); json.number(failed);
-      json.raw(",\"boot\":"); json.number(room_web_boot_id);
-      json.raw("}"); json.finish(); return;
-    }
-    char reply[157] = {};
-    if (strcmp(operation, "admin.topic") == 0) {
-      const char* value = roomWebString(input["value"], MAX_POST_TEXT_LEN);
-      const char* expected = roomWebString(input["expected"], MAX_POST_TEXT_LEN);
-      if (!value || !expected) { error("topic and expected topic required"); return; }
-      if (strcmp(expected, room_topic) != 0) { error("topic changed; refresh before editing"); return; }
-      char command[MAX_POST_TEXT_LEN + 11];
-      snprintf(command, sizeof(command), "set topic %s", value);
-      if (strcmp(value, room_topic) != 0) handleRoomTopicCommand(command, reply);
-    } else if (strcmp(operation, "admin.history") == 0) {
-      if (!input["enabled"].is<bool>() || !input["expected"].is<bool>()) {
-        error("history setting and expected setting required"); return;
-      }
-      if (input["expected"].as<bool>() != room_history_enabled) {
-        error("history setting changed; refresh before editing"); return;
-      }
-      if (input["enabled"].as<bool>() != room_history_enabled) {
-        handleRoomHistoryCommand(input["enabled"].as<bool>() ? "set room.history on"
-                                                            : "set room.history off", reply);
-      }
-    } else if (strcmp(operation, "admin.rates") == 0) {
-      if (!input["post_rate"].is<uint16_t>() || !input["poll_rate"].is<uint16_t>()) {
-        error("rates must be 0-65535"); return;
-      }
-      if (!room_access.setRates(_fs, input["post_rate"].as<uint16_t>(), input["poll_rate"].as<uint16_t>())) {
-        error("rate save failed; unchanged"); return;
-      }
-    } else {
-      const char* target = roomWebString(input["key"], PUB_KEY_SIZE * 2);
-      uint8_t decoded[PUB_KEY_SIZE];
-      if (!target || strlen(target) != PUB_KEY_SIZE * 2
-          || !mesh::Utils::fromHex(decoded, sizeof(decoded), target)) {
-        error("complete 64-hex public key required"); return;
-      }
-      ClientInfo* client = acl.getClient(decoded, sizeof(decoded));
-      if (strcmp(operation, "admin.ban") == 0) {
-        if (!input["banned"].is<bool>()) { error("ban setting required"); return; }
-        const bool banned = input["banned"].as<bool>();
-        const auto result = banned ? room_access.addBan(_fs, decoded) : room_access.removeBan(_fs, decoded);
-        if (result != mesh::RoomAccessPolicy::BanResult::Saved
-            && result != mesh::RoomAccessPolicy::BanResult::Unchanged) {
-          error("ban save failed or ban list full; unchanged"); return;
-        }
-      } else {
-        if (!client) { error("unknown room user; reload users"); return; }
-        if (strcmp(operation, "admin.user") == 0) {
-          json.raw("{\"user\":"); writeRoomClientJson(json, client, true);
-          json.raw(",\"boot\":"); json.number(room_web_boot_id);
-          json.raw("}"); json.finish(); return;
-        }
-        if (strcmp(operation, "admin.route") == 0) {
-          const char* which = roomWebString(input["which"], 7);
-          const char* value = roomWebString(input["value"], 191);
-          const char* expected = roomWebString(input["expected"], 154);
-          if (!which || !value || !expected
-              || (strcmp(which, "outpath") != 0 && strcmp(which, "altpath") != 0)) {
-            error("path selection, value and expected path required"); return;
-          }
-          const bool alternate = strcmp(which, "altpath") == 0;
-          char current[157];
-          mesh::formatRoomClientPathReply(alternate ? client->alt_path : client->out_path,
-              alternate ? client->alt_path_len : client->out_path_len, current, sizeof(current));
-          if (strcmp(expected, current + 2) != 0) { error("path changed; refresh before editing"); return; }
-          setRoomClientPath(client, which, value, reply);
-        } else if (strcmp(operation, "admin.catchup") == 0) {
-          const char* mode = roomWebString(input["mode"], 6);
-          if (!input["expected_sync"].is<uint32_t>()
-              || input["expected_sync"].as<uint32_t>() != client->extra.room.sync_since) {
-            error("catch-up position changed; refresh before editing"); return;
-          }
-          if (!mode || (strcmp(mode, "before") != 0 && strcmp(mode, "keep") != 0)
-              || (strcmp(mode, "before") == 0 ? !input["before"].is<uint32_t>()
-                                             : !input["count"].is<uint16_t>())) {
-            error("use before timestamp or keep count"); return;
-          }
-          applyRoomCatchUpCommand(client, mode, strcmp(mode, "before") == 0
-              ? input["before"].as<uint32_t>() : input["count"].as<uint16_t>(), reply);
-        } else if (strcmp(operation, "admin.access") == 0) {
-          if (!input["role"].is<uint8_t>() || input["role"].as<uint8_t>() > PERM_ACL_ADMIN
-              || !input["expected_role"].is<uint8_t>()
-              || input["expected_role"].as<uint8_t>() != (client->permissions & PERM_ACL_ROLE_MASK)) {
-            error("invalid role or access changed; refresh before editing"); return;
-          }
-          const uint8_t selected = input["role"].as<uint8_t>();
-          if (selected != (client->permissions & PERM_ACL_ROLE_MASK)
-              || !client->permissions_are_explicit || selected == PERM_ACL_GUEST) {
-            const uint8_t permissions = selected == PERM_ACL_GUEST ? 0
-                : (client->permissions & ~PERM_ACL_ROLE_MASK) | selected;
-            if (!acl.applyPermissions(self_id, decoded, sizeof(decoded), permissions)) {
-              error("access change failed; unchanged"); return;
-            }
-            mesh::scheduleLazyPersistenceMutation(dirty_contacts_expiry, contacts_save_failures,
-                futureMillis(LAZY_CONTACTS_WRITE_DELAY));
-          }
-          json.raw("{\"ok\":true,\"pending_save\":");
-          json.raw(dirty_contacts_expiry != 0 ? "true" : "false");
-          json.raw("}"); json.finish(); return;
-        }
-      }
-    }
-    if (strncmp(reply, "Err", 3) == 0) { error(reply); return; }
-    json.raw("{\"ok\":true}"); json.finish(); return;
+    processRoomWebAdmin(operation, input.as<JsonObjectConst>(), json); return;
   }
   if (strcmp(operation, "status") == 0) {
     bool mailbox_only = false;
@@ -719,73 +813,7 @@ void MyMesh::processRoomRequest(const uint8_t* token, uint32_t sequence, char* r
     json.raw("}"); json.finish(); return;
   }
 
-  mesh::RoomBoardIndex board;
-  if (!mesh::loadRoomBoard(_fs, board)) { error("information board storage unavailable"); return; }
-  if (strcmp(operation, "board.index") == 0) {
-    if (!input["revision"].is<uint32_t>() || !input["cursor"].is<uint8_t>()) { error("invalid board cursor"); return; }
-    const uint32_t revision = input["revision"].as<uint32_t>();
-    const uint8_t cursor = input["cursor"].as<uint8_t>();
-    if (cursor > board.count || (revision != board.revision && (revision != 0 || cursor != 0))) {
-      error("board changed; reload index"); return;
-    }
-    json.raw("{\"revision\":"); json.number(board.revision);
-    json.raw(",\"articles\":[");
-    uint8_t next = cursor;
-    for (; next < board.count && next < cursor + 2; ++next) {
-      if (next != cursor) json.raw(",");
-      const auto& article = board.articles[next];
-      json.raw("{\"id\":"); json.number(article.id);
-      json.raw(",\"version\":"); json.number(article.version);
-      json.raw(",\"length\":"); json.number(article.body_length);
-      json.raw(",\"title\":"); json.string(article.title); json.raw("}");
-    }
-    json.raw("],\"next\":"); json.number(next < board.count ? next : 255);
-    json.raw("}"); json.finish(); return;
-  }
-  if (!input["id"].is<uint8_t>() || !input["version"].is<uint32_t>()) { error("invalid article identity/version"); return; }
-  const uint8_t id = input["id"].as<uint8_t>();
-  const uint32_t version = input["version"].as<uint32_t>();
-  const mesh::RoomBoardArticle* article = nullptr;
-  for (uint8_t i = 0; i < board.count; ++i) if (board.articles[i].id == id) article = &board.articles[i];
-  if (strcmp(operation, "board.read") == 0) {
-    if (!input["offset"].is<uint16_t>()) { error("invalid article offset"); return; }
-    const uint16_t offset = input["offset"].as<uint16_t>();
-    uint8_t chunk[mesh::ROOM_BOARD_READ_MAX_CHUNK];
-    size_t length = 0;
-    const auto result = mesh::readRoomBoardArticle(_fs, id, version, offset, chunk, sizeof(chunk), length);
-    if (result != mesh::RoomBoardResult::Success || !article) { error("article changed or unavailable; reload index"); return; }
-    char encoded[4 * ((sizeof(chunk) + 2) / 3) + 1]; mesh::roomEncodeBase64(chunk, length, encoded);
-    json.raw("{\"version\":"); json.number(version);
-    json.raw(",\"offset\":"); json.number(offset);
-    json.raw(",\"next\":"); json.number(uint32_t(offset) + length);
-    json.raw(",\"total\":"); json.number(article->body_length);
-    json.raw(",\"data64\":"); json.string(encoded); json.raw("}"); json.finish(); return;
-  }
-  mesh::RoomBoardResult result;
-  if (strcmp(operation, "board.delete") == 0) {
-    if (version == 0) { error("deletion requires the current article version"); return; }
-    result = mesh::deleteRoomBoardArticle(_fs, id, version);
-  } else {
-    const char* title = roomWebString(input["title"], 63);
-    const char* encoded = roomWebString(input["body64"], 2732);
-    if (!title || !encoded || (article ? article->version != version : version != 0)) {
-      error("article changed; reload index before editing"); return;
-    }
-    auto* body = new (std::nothrow) uint8_t[mesh::ROOM_BOARD_MAX_BODY_LENGTH];
-    if (!body) { error("insufficient memory; article retained"); return; }
-    size_t length = 0;
-    if (!mesh::roomDecodeBase64(encoded, body, mesh::ROOM_BOARD_MAX_BODY_LENGTH, length)) {
-      delete[] body; error("invalid article encoding"); return;
-    }
-    result = mesh::saveRoomBoardArticle(_fs, id, title, length,
-        [body](size_t offset, uint8_t* out, size_t count) {
-          memcpy(out, body + offset, count); return count;
-        }, version);
-    delete[] body;
-  }
-  if (result != mesh::RoomBoardResult::Success) { error("article save failed or version changed; previous article retained"); return; }
-  json.raw("{\"ok\":true,\"version\":"); json.number(board.revision + 1);
-  json.raw("}"); json.finish();
+  processRoomWebBoard(operation, input.as<JsonObjectConst>(), json);
 }
 #endif
 

@@ -152,6 +152,162 @@ window.addEventListener('load',()=>{(async()=>{
         self.assertEqual(self.attribute(dom, "attempts"), "3")
         self.assertEqual(self.attribute(dom, "draft"), "keep this draft")
 
+    def test_admission_pending_and_busy_bodies_drain_before_the_next_request(self):
+        dom = self.run_page(r'''
+let attempts=0,polls=0,unread=0,overlap=0,drained=[],first=null;
+const drainResponse=(value,status)=>{
+  unread++;
+  return Promise.resolve({ok:status>=200&&status<300,status:status,json:()=>new Promise(resolve=>{
+    setTimeout(()=>{unread--;drained.push(status);resolve(value)},20);
+  })});
+};
+window.fetch=(url,options)=>{
+  if(unread){overlap++;throw Error('previous response body was not drained')}
+  const p=record(url,options),current=calls[calls.length-1];
+  if(url==='/api/room/result'){
+    polls++;mark('result-sequence',current.seq===first.seq&&current.token===first.token);
+    return polls===1?drainResponse({pending:true},202):drainResponse({error:'post not retained'},200);
+  }
+  if(p.op==='status')return response(boundary.status);
+  if(p.op==='posts')return response({post:null});
+  if(p.op==='board.index')return response({revision:0,articles:[],next:255});
+  if(p.op==='post'){
+    attempts++;
+    if(attempts===1){first=current;return drainResponse({error:'room service busy'},429)}
+    mark('same-intent',current.seq===first.seq&&current.body===first.body&&current.token===first.token);
+    return drainResponse({accepted:true},202);
+  }
+  throw Error('unexpected operation');
+};
+window.addEventListener('load',()=>{(async()=>{
+  submit('join');await until(()=>$('notices').textContent==='No notices published.');
+  $('message').value='keep this unsent draft';$('message').dispatchEvent(new Event('input'));submit('compose');
+  await until(()=>$('error').textContent==='post not retained');
+  mark('overlap',overlap);mark('unread',unread);mark('drained',JSON.stringify(drained));
+  mark('attempts',attempts);mark('polls',polls);mark('draft',$('message').value);mark('done',true);
+})().catch(e=>mark('js-error',e.message))});
+''')
+        self.assertEqual(self.attribute(dom, "overlap"), "0")
+        self.assertEqual(self.attribute(dom, "unread"), "0")
+        self.assertEqual(json.loads(self.attribute(dom, "drained")), [429, 202, 202, 200])
+        self.assertEqual(self.attribute(dom, "same-intent"), "true")
+        self.assertEqual(self.attribute(dom, "result-sequence"), "true")
+        self.assertEqual(self.attribute(dom, "attempts"), "2")
+        self.assertEqual(self.attribute(dom, "polls"), "2")
+        self.assertEqual(self.attribute(dom, "draft"), "keep this unsent draft")
+
+    def test_stalled_admission_body_aborts_and_only_polls_the_accepted_sequence(self):
+        dom = self.run_page(r'''
+let attempts=0,polls=0,aborts=0,abortElapsed=0,first=null;
+window.fetch=(url,options)=>{
+  const p=record(url,options),current=calls[calls.length-1];
+  if(url==='/api/room/result'){
+    polls++;mark('result-sequence',current.seq===first.seq&&current.token===first.token);
+    return response({error:'post not retained'});
+  }
+  if(p.op==='status')return response(boundary.status);
+  if(p.op==='posts')return response({post:null});
+  if(p.op==='board.index')return response({revision:0,articles:[],next:255});
+  if(p.op==='post'){
+    attempts++;first=current;const started=Date.now();
+    return Promise.resolve({ok:true,status:202,json:()=>new Promise((resolve,reject)=>{
+      options.signal.addEventListener('abort',()=>{aborts++;abortElapsed=Date.now()-started;reject(new DOMException('body stalled','AbortError'))},{once:true});
+    })});
+  }
+  throw Error('unexpected operation');
+};
+window.addEventListener('load',()=>{(async()=>{
+  submit('join');await until(()=>$('notices').textContent==='No notices published.');
+  $('message').value='draft across lost admission body';$('message').dispatchEvent(new Event('input'));submit('compose');
+  await new Promise(resolve=>setTimeout(resolve,1000));mark('during-stall-draft',$('message').value);
+  for(let i=0;i<700&&$('error').textContent!=='post not retained';i++)await new Promise(resolve=>setTimeout(resolve,10));
+  mark('error',$('error').textContent);mark('aborts',aborts);mark('abort-ms',abortElapsed);
+  mark('attempts',attempts);mark('polls',polls);mark('draft',$('message').value);mark('done',true);
+})().catch(e=>mark('js-error',e.message))});
+''', virtual_time=9500)
+        self.assertEqual(self.attribute(dom, "error"), "post not retained")
+        self.assertEqual(self.attribute(dom, "aborts"), "1")
+        self.assertGreaterEqual(int(self.attribute(dom, "abort-ms")), 4900)
+        self.assertLessEqual(int(self.attribute(dom, "abort-ms")), 5100)
+        self.assertEqual(self.attribute(dom, "attempts"), "1")
+        self.assertEqual(self.attribute(dom, "polls"), "1")
+        self.assertEqual(self.attribute(dom, "result-sequence"), "true")
+        self.assertEqual(self.attribute(dom, "during-stall-draft"), "draft across lost admission body")
+        self.assertEqual(self.attribute(dom, "draft"), "draft across lost admission body")
+
+    def test_stalled_busy_and_pending_bodies_keep_the_original_write_intent(self):
+        dom = self.run_page(r'''
+let attempts=0,polls=0,aborts=0,first=null;
+const stalled=(options,status)=>Promise.resolve({ok:status>=200&&status<300,status:status,json:()=>new Promise((resolve,reject)=>{
+  options.signal.addEventListener('abort',()=>{aborts++;reject(new DOMException('body stalled','AbortError'))},{once:true});
+})});
+window.fetch=(url,options)=>{
+  const p=record(url,options),current=calls[calls.length-1];
+  if(url==='/api/room/result'){
+    polls++;mark('result-sequence',current.seq===first.seq&&current.token===first.token);
+    return polls===1?stalled(options,202):response({error:'post not retained'});
+  }
+  if(p.op==='status')return response(boundary.status);
+  if(p.op==='posts')return response({post:null});
+  if(p.op==='board.index')return response({revision:0,articles:[],next:255});
+  if(p.op==='post'){
+    attempts++;
+    if(attempts===1){first=current;return stalled(options,429)}
+    mark('same-intent',current.seq===first.seq&&current.body===first.body&&current.token===first.token);
+    return response({accepted:true},202);
+  }
+  throw Error('unexpected operation');
+};
+window.addEventListener('load',()=>{(async()=>{
+  submit('join');await until(()=>$('notices').textContent==='No notices published.');
+  $('message').value='draft across busy and pending bodies';$('message').dispatchEvent(new Event('input'));submit('compose');
+  for(let i=0;i<1300&&$('error').textContent!=='post not retained';i++)await new Promise(resolve=>setTimeout(resolve,10));
+  mark('error',$('error').textContent);mark('aborts',aborts);mark('attempts',attempts);mark('polls',polls);
+  mark('draft',$('message').value);mark('done',true);
+})().catch(e=>mark('js-error',e.message))});
+''', virtual_time=14500)
+        self.assertEqual(self.attribute(dom, "error"), "post not retained")
+        self.assertEqual(self.attribute(dom, "aborts"), "2")
+        self.assertEqual(self.attribute(dom, "same-intent"), "true")
+        self.assertEqual(self.attribute(dom, "result-sequence"), "true")
+        self.assertEqual(self.attribute(dom, "attempts"), "2")
+        self.assertEqual(self.attribute(dom, "polls"), "2")
+        self.assertEqual(self.attribute(dom, "draft"), "draft across busy and pending bodies")
+
+    def test_stalled_result_bodies_reach_confirmation_deadline_without_losing_draft(self):
+        dom = self.run_page(r'''
+let attempts=0,polls=0,aborts=0,started=0,first=null;
+window.fetch=(url,options)=>{
+  const p=record(url,options),current=calls[calls.length-1];
+  if(url==='/api/room/result'){
+    polls++;mark('result-sequence',current.seq===first.seq&&current.token===first.token);
+    return Promise.resolve({ok:true,status:200,json:()=>new Promise((resolve,reject)=>{
+      options.signal.addEventListener('abort',()=>{aborts++;reject(new DOMException('body stalled','AbortError'))},{once:true});
+    })});
+  }
+  if(p.op==='status')return response(boundary.status);
+  if(p.op==='posts')return response({post:null});
+  if(p.op==='board.index')return response({revision:0,articles:[],next:255});
+  if(p.op==='post'){attempts++;first=current;started=Date.now();return response({accepted:true},202)}
+  throw Error('unexpected operation');
+};
+window.addEventListener('load',()=>{(async()=>{
+  submit('join');await until(()=>$('notices').textContent==='No notices published.');
+  $('message').value='keep draft until confirmation';$('message').dispatchEvent(new Event('input'));submit('compose');
+  for(let i=0;i<2200&&!$('error').textContent.includes('No confirmation');i++)await new Promise(resolve=>setTimeout(resolve,10));
+  mark('elapsed-ms',Date.now()-started);mark('error',$('error').textContent);mark('aborts',aborts);
+  mark('attempts',attempts);mark('polls',polls);mark('draft',$('message').value);mark('done',true);
+})().catch(e=>mark('js-error',e.message))});
+''', virtual_time=24500)
+        self.assertIn("No confirmation received", self.attribute(dom, "error"))
+        self.assertGreaterEqual(int(self.attribute(dom, "elapsed-ms")), 20000)
+        self.assertLess(int(self.attribute(dom, "elapsed-ms")), 21000)
+        self.assertEqual(self.attribute(dom, "aborts"), "4")
+        self.assertEqual(self.attribute(dom, "attempts"), "1")
+        self.assertEqual(self.attribute(dom, "polls"), "4")
+        self.assertEqual(self.attribute(dom, "result-sequence"), "true")
+        self.assertEqual(self.attribute(dom, "draft"), "keep draft until confirmation")
+
     def test_chunk_resume_version_restart_and_full_utf8_publication(self):
         dom = self.run_page(r'''
 let currentVersion=1,lostChunk=true,oldOffsets=[],newOffsets=[],publications=[],indexCount=0;

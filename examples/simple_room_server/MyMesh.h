@@ -87,6 +87,9 @@ namespace mesh { class RoomJsonWriter; }
 #if defined(ESP_PLATFORM) && defined(ADMIN_PASSWORD) && !defined(WEBCONFIG_DISABLED)
 #include "helpers/esp32/WebConfigServer.h"
 #endif
+#ifdef WITH_WEBCONFIG
+#include <ArduinoJson.h>
+#endif
 
 /* ------------------------------ Config -------------------------------- */
 
@@ -358,6 +361,12 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks,
     uint8_t recent[4][8] = {};
   } room_web_password_limit;
   bool handleRoomWebCommand(const char* command, char* reply);
+  bool processRoomWebMail(const mesh::Identity& author, uint8_t role, uint32_t sequence,
+                         JsonObjectConst input, mesh::RoomJsonWriter& json) __attribute__((noinline));
+  void processRoomWebAdmin(const char* operation, JsonObjectConst input,
+                          mesh::RoomJsonWriter& json) __attribute__((noinline));
+  void processRoomWebBoard(const char* operation, JsonObjectConst input,
+                          mesh::RoomJsonWriter& json) __attribute__((noinline));
   bool _unconfigured_setup_espnow_suspended = false;
   void suspendUnconfiguredSetupBridges();
   bool startWebConfigImpl(bool force_ap, char* reply, bool automatic_setup);
