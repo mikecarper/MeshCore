@@ -506,8 +506,12 @@ installing the bridge; the bridge does not itself repeat normal traffic.
 1. On the old node, run `start ota ap` through its authenticated terminal.
    Join its `MeshCore-OTA` Wi-Fi and upload `wifi-bridge.bin` at the exact
    `Started:` URL returned by the command (the port can vary by old build).
-2. Keep power stable. Join `MeshCore-Migrate` (password `meshcore-migrate`),
-   open `http://192.168.4.1/`, and wait for **Expanded layout ready**.
+2. Keep power stable. Join `MeshCore-Migrate` using the node's saved admin
+   password as the Wi-Fi password, open `http://192.168.4.1/`, and wait for
+   **Expanded layout ready**. If that password is shorter than 8 characters
+   or was never saved, the bridge falls back to the published
+   `meshcore-migrate`, which anyone nearby can use; set a longer admin
+   password before step 1.
 3. At that page's `/update`, upload `full-application.bin`.
 """
     usb_instructions = f"""## Host-managed USB route

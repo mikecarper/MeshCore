@@ -33,7 +33,9 @@ namespace migration = mesh::esp32_partition_migration;
 namespace {
 
 constexpr char kApSsid[] = "MeshCore-Migrate";
-constexpr char kApPassword[] = "meshcore-migrate";
+// Published in the docs, so it protects nothing. Used only when the node's own
+// admin password cannot serve as the WPA2 passphrase.
+constexpr char kFallbackApPassword[] = "meshcore-migrate";
 #ifndef MESHCORE_MIGRATION_DELAY_MS
 #define MESHCORE_MIGRATION_DELAY_MS 4500
 #endif
@@ -1193,11 +1195,46 @@ void sendHome(AsyncWebServerRequest* request) {
   request->send(200, "text/html", page);
 }
 
+bool ap_password_is_admin = false;
+
+// Anyone who joins the bridge AP can upload firmware while the private key is
+// staged. The operator started this migration from the node's authenticated
+// terminal, so its admin password is a secret they already hold. Stock and
+// keymindCascade /com_prefs (and older /node_prefs) images all keep its
+// 16-byte field at offset 56; stock 1.10/1.11 images end before byte 290.
+bool loadAdminApPassword(char (&password)[16]) {
+  constexpr size_t kPasswordOffset = 56;
+  memset(password, 0, sizeof(password));
+  // Never format: before migration this is the legacy filesystem.
+  if (!SPIFFS.begin(false)) return false;
+  const char* path = SPIFFS.exists("/com_prefs") ? "/com_prefs"
+      : (SPIFFS.exists("/node_prefs") ? "/node_prefs" : nullptr);
+  File prefs = path ? SPIFFS.open(path, "r") : File();
+  // Byte 15 stays zero, matching the firmware's own terminator.
+  bool valid = prefs && prefs.size() >= kPasswordOffset + sizeof(password)
+      && prefs.seek(kPasswordOffset)
+      && prefs.read(reinterpret_cast<uint8_t*>(password), sizeof(password) - 1)
+             == sizeof(password) - 1;
+  if (prefs) prefs.close();
+  SPIFFS.end();
+  // WPA2 needs 8-63 printable ASCII characters. Anything else falls back
+  // rather than leaving the bridge unreachable.
+  size_t length = 0;
+  while (valid && password[length] != 0) {
+    valid = password[length] >= 0x20 && password[length] <= 0x7E;
+    ++length;
+  }
+  return valid && length >= 8;
+}
+
 void startServer() {
   // A legacy ESP-NOW repeater can leave the AP protocol mask in proprietary
   // LR mode.  SoftAP then reports success but ordinary phones and laptops
   // cannot discover it.  Reuse the normal WebConfig recipe: AP+STA mode,
   // an explicit interoperable protocol mask, and the project AP channel.
+  char admin_password[16];
+  ap_password_is_admin = loadAdminApPassword(admin_password);
+  const char* ap_password = ap_password_is_admin ? admin_password : kFallbackApPassword;
   WiFi.mode(WIFI_AP_STA);
   WiFi.setAutoReconnect(false);
   WiFi.disconnect(false, true);
@@ -1206,7 +1243,7 @@ void startServer() {
   const IPAddress address(192, 168, 4, 1);
   const IPAddress netmask(255, 255, 255, 0);
   if (!WiFi.softAPConfig(address, address, netmask)
-      || !WiFi.softAP(kApSsid, kApPassword, mesh::wifi::accessPointChannel())
+      || !WiFi.softAP(kApSsid, ap_password, mesh::wifi::accessPointChannel())
       || mesh::wifi::applyAccessPointProtocolMask() != ESP_OK
       || esp_wifi_set_protocol(WIFI_IF_STA, mesh::wifi::kProtocolMask) != ESP_OK
       || esp_wifi_set_max_tx_power(78) != ESP_OK) {
@@ -1221,6 +1258,9 @@ void startServer() {
                 WiFi.softAPSSID().c_str(), WiFi.softAPIP().toString().c_str(),
                 (unsigned)ap_config.ap.channel, (unsigned)ap_config.ap.ssid_hidden,
                 max_tx_power / 4.0, (int)config_result, (int)power_result);
+  if (!ap_password_is_admin)
+    Serial.println("Warning: no saved admin password of 8-15 printable characters; "
+                   "anyone with the published fallback password can upload firmware");
   server.on("/", HTTP_GET, sendHome);
   server.on("/reboot", HTTP_GET, [](AsyncWebServerRequest* request) {
     if (!migration_complete) {
@@ -1347,7 +1387,8 @@ void setup() {
 #else
   startServer();
   Serial.printf("%s. Join %s (password: %s), then open http://192.168.4.1/\n",
-                status_text, kApSsid, kApPassword);
+                status_text, kApSsid,
+                ap_password_is_admin ? "this node's admin password" : kFallbackApPassword);
 #endif
 }
 

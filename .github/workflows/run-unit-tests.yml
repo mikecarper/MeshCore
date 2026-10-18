@@ -774,6 +774,7 @@ jobs:
           python3 -B test/test_firmware_capabilities.py
           MESHCORE_TEST_REAL_PIO_PATHS=1 python3 -B test/test_esp32_partition_migration_build_dir.py -v
           python3 -B test/test_esp32_partition_migration_usb.py -v
+          python3 -B test/test_esp32_partition_migrator_ap_password.py -v
           python3 -B test/test_waveshare_partition_migration.py -v
           python3 -B test/test_usb_partition_bridge_set.py -v
           bash test/test_build_profiles.sh
