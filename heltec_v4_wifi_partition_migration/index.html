@@ -2311,9 +2311,10 @@ to <code>default_16MB.csv</code>, with two 6.25 MiB OTA slots.</p>
 </code></pre>
 <p>The ZIP contains the Wi-Fi bridge, LoRa bridge, and exact-target Full image.
 Upload its <code>wifi-bridge.bin</code> through the
-legacy browser Wi-Fi updater. Rejoin <code>MeshCore-Migrate</code> with password
-<code>meshcore-migrate</code>; when it reports <strong>Expanded layout ready</strong>, upload the
-ZIP's <code>full-application.bin</code> at <code>/update</code>.</p>
+legacy browser Wi-Fi updater. Rejoin <code>MeshCore-Migrate</code> using the node's saved
+admin password as the Wi-Fi password (see the shared guide for the published
+fallback); when it reports <strong>Expanded layout ready</strong>, upload the ZIP's
+<code>full-application.bin</code> at <code>/update</code>.</p>
 <p>Do not use an <code>-merged.bin</code> in either browser uploader. Merged images contain
 bootloader and table offsets for cable flashing. The bridge preserves the
 private identity; other SPIFFS-backed settings may be recreated after the

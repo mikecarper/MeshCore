@@ -2820,10 +2820,20 @@ power-loss-proof on a device whose USB/serial flash port is inaccessible.</p>
 legacy-slot application image; its Full image keeps the old repeater's exact
 LoRa OTA target ID. Upload <code>wifi-bridge.bin</code> from the ZIP through the legacy
 node's existing Wi-Fi browser updater.
-Then join <code>MeshCore-Migrate</code> (password <code>meshcore-migrate</code>) and wait for
-<strong>Expanded layout ready</strong>. Upload <code>full-application.bin</code> at <code>/update</code>.
+Then join <code>MeshCore-Migrate</code> and wait for <strong>Expanded layout ready</strong>. Its Wi-Fi
+password is the admin password saved on the old node, so only someone who can
+already administer the node can join and upload firmware. Upload
+<code>full-application.bin</code> at <code>/update</code>.
 Do not upload an <code>-merged.bin</code>: merged images include
 bootloader and table offsets for cable flashing, not browser OTA.</p>
+<p>WPA2 needs a password of at least 8 printable ASCII characters. If the saved
+admin password is shorter, uses other characters, or was never saved (the node
+still runs on its built-in default), the bridge falls back to
+<code>meshcore-migrate</code>. That password is published here, so anyone nearby could
+then join and upload firmware. Before uploading the bridge, set an admin
+password of 8 to 15 characters with <code>password &lt;new password&gt;</code>. A LoRa
+first-stage bridge does not carry saved settings into the expanded layout, so
+its Wi-Fi recovery page after the table change normally uses the fallback.</p>
 <p><code>xiao_s3_partition_legacy_seed</code> is a disposable-hardware test image only. It
 models the legacy table and an identity file; it is not a deployable repeater.</p>
 <h2 id="lora-only-migration-of-a-listed-role">LoRa-only migration of a listed role</h2>
