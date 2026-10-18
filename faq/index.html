@@ -5068,13 +5068,23 @@ the matching package from the
    filename).</li>
 <li>From the MeshCore app, log in remotely to the repeater you want to update with admin privileges.</li>
 <li>Go to the Command Line tab, type <code>start ota</code> and hit enter.</li>
-<li>The reply confirms WiFi is on and gives the OTA upload URL and network to use.</li>
-<li>If the ESP32 is not already joined to Wi-Fi, <code>start ota</code> starts an open hotspot named <code>MeshCore-OTA</code> at <code>192.168.4.1</code>. If it is already joined, the command reports and uses its router-assigned address instead.</li>
-<li>From your phone or computer, connect to the <code>MeshCore-OTA</code> hotspot when one was started.</li>
-<li>Open the URL reported by <code>start ota</code> and upload the non-merged bin from the flasher. When the device started <code>MeshCore-OTA</code>, the URL is <a href="http://192.168.4.1/update">http://192.168.4.1/update</a>.</li>
+<li>The reply gives the OTA upload URL, network to use, and HTTP login details.</li>
+<li>If the ESP32 is not already joined to Wi-Fi, <code>start ota</code> starts the
+   <code>MeshCore-OTA</code> hotspot at <code>192.168.4.1</code>. It uses the node's admin password for
+   WPA2 when that password is 8–15 printable ASCII characters. Other accepted
+   admin passwords leave the hotspot open; the HTTP login still applies. If
+   the node is already joined, the command uses its router-assigned address.</li>
+<li>From your phone or computer, join <code>MeshCore-OTA</code> when one was started. Use
+   the node's admin password if the WiFi connection asks for a password.</li>
+<li>Open the exact URL reported by <code>start ota</code>. Sign in with HTTP Basic username
+   <code>admin</code> and the node's current admin password, then upload the non-merged
+   application bin from the flasher. The URL normally uses port 80, or port
+   8080 on Full Companion builds with browser OTA support.</li>
 </ol>
-<p><code>start ota</code> automatically stops WebConfig and reports the change; both servers
-use HTTP port 80. Stop the OTA uploader before running <code>start webconfig</code> again.</p>
+<p><code>start ota</code> automatically stops WebConfig and reports the change. Stop the OTA
+uploader before running <code>start webconfig</code> again. Temporary partition-migration
+and recovery applications retain their documented access policy. See the
+<a href="../WiFi/">WiFi guide</a> for the shared admin-password policy.</p>
 <h3 id="73-q-is-there-a-way-to-lower-the-chance-of-a-failed-ota-device-firmware-update-dfu">7.3. Q: Is there a way to lower the chance of a failed OTA device firmware update (DFU)?</h3>
 <p><strong>A:</strong> Yes, developer <code>che aporeps</code> has an enhanced OTA DFU bootloader for nRF52 based devices. With this bootloader, if it detects that the application firmware is invalid, it falls back to OTA DFU mode so you can attempt to flash again to recover. This bootloader has other changes to make the OTA DFU process more fault tolerant.</p>
 <p>Refer to <a href="https://github.com/oltaco/Adafruit_nRF52_Bootloader_OTAFIX">https://github.com/oltaco/Adafruit_nRF52_Bootloader_OTAFIX</a> for the latest information.</p>
@@ -5109,19 +5119,32 @@ use HTTP port 80. Stop the OTA uploader before running <code>start webconfig</co
 <h3 id="76-q-how-do-i-connect-to-the-companion-via-wi-fi-eg-using-a-heltec-v3">7.6. Q: How do I connect to the companion via Wi-Fi, e.g. using a Heltec V3?</h3>
 <p><strong>A:</strong>
 Flash an ESP32 companion Wi-Fi build. Its shared WebUI is enabled by default. If
-it has no saved Wi-Fi configuration, it starts an open <code>MeshCore-Setup-XXXX</code>
-access point. Join it and browse to <a href="http://192.168.4.1/">http://192.168.4.1/</a>. The wizard configures
-WiFi, node identity, and radio settings; MQTT companion builds add an MQTT step
-and MQTT tab, while non-MQTT companions remove those controls. After saving,
-the page and device screen show the station IP assigned by your router.</p>
+it has no saved Wi-Fi configuration, it starts a <code>MeshCore-Setup-XXXX</code> access
+point. The hotspot uses the node's admin password for WPA2 when it is 8–15
+printable ASCII characters; standard builds initially use <code>password</code>. Other
+accepted admin passwords leave the hotspot open and require an HTTP admin
+login. Join it and browse to <a href="http://192.168.4.1/">http://192.168.4.1/</a>. Protected first-time setup
+continues directly to the wizard, which configures WiFi, node identity, radio,
+and the admin password. MQTT companion builds add an MQTT step and tab, while
+non-MQTT companions remove those controls. After saving, the page and device
+screen show the station IP assigned by your router.</p>
 <p>If a saved network remains unreachable for two minutes, the setup AP starts as
-a fallback. If the original network returns, the companion closes that recovery
-portal and resumes normal LAN operation.</p>
+a fallback. Sign in with the existing admin password before changing settings
+on that recovery page. If the original network returns, the companion closes
+the recovery portal and resumes normal LAN operation.</p>
 <p>The setup AP always uses <code>192.168.4.1</code>; the companion's station IP is assigned by DHCP and can be different. A real <code>WIFI_SSID</code> and <code>WIFI_PWD</code> can still be supplied at compile time as initial defaults, but they are no longer required.</p>
-<p>On the LAN, the WebUI remains available at the companion's station IP and the
-companion protocol remains available on TCP port <code>5000</code>. Companion builds do not
-have an admin CLI password, so this configuration page trusts the local LAN; do
-not put the companion on an untrusted WiFi network.</p>
+<p>On the LAN, sign in to the WebUI at the companion's station IP with its saved
+admin password. ESP32 WiFi Companions share that password between WebConfig,
+protected setup WiFi, and runtime browser OTA; other Companion builds retain
+their existing no-admin-password behavior. Change it with
+<code>password &lt;new-password&gt;</code> on USB or another available administrative connection.
+An ESP32 WiFi Companion's password is stored in NVS and survives a filesystem
+erase; <code>get password</code> reports its availability without revealing it. If it
+reports an unavailable management password, set a new one over USB to repair it.</p>
+<p>The Companion protocol on TCP port <code>5000</code> retains its trusted-network policy;
+the browser login does not protect that port. Use a trusted WiFi network. Router
+WiFi passwords, MQTT credentials, and Bluetooth PINs remain separate. See the
+<a href="../WiFi/">WiFi guide</a> for password-change and reconnect behavior.</p>
 <p>ESP32 repeater and room-server builds use the same page, but keep it off by
 default. Run <code>set webui on</code> from the admin CLI, open the reported LAN URL, and
 sign in with the admin password; <code>get webui</code> reports its current address. Their
