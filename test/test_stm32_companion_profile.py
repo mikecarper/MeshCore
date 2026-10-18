@@ -8,6 +8,9 @@ fixing its size limit by silently shrinking storage or Companion capacities.
 import configparser
 from pathlib import Path
 import re
+import shlex
+import subprocess
+import textwrap
 import unittest
 
 
@@ -96,6 +99,26 @@ class WioSTM32CompanionProfileTest(STM32CompanionProfileTest):
                          r"-D\s+WIO_E5_MINI_HEADLESS_COMPANION_UI=1\b")
         self.assertRegex(self.config[self.base]["build_flags"],
                          r"-D\s+PIN_USER_BTN=USER_BTN\b")
+
+
+class STM32CompanionCICoverageTest(unittest.TestCase):
+    def test_every_small_companion_is_linked_serially_at_release_version_length(self):
+        workflow = (ROOT / ".github/workflows/run-unit-tests.yml").read_text()
+        job = re.search(r"^  stm32-companion-smoke:\n(.*?)(?=^  [\w-]+:|\Z)",
+                        workflow, re.MULTILINE | re.DOTALL)
+        self.assertIsNotNone(job)
+        script = job[1].replace("\\\n", "")
+        loop = re.search(r"for target in (.*?); do", script, re.DOTALL)
+        self.assertIsNotNone(loop)
+        self.assertEqual(set(shlex.split(loop[1])), {
+            "RAK_3x72_companion_radio_usb", "wio-e5-mini_companion_radio_usb",
+            "wio-e5_companion_radio_usb", "Tiny_Relay_companion_radio_usb"})
+        self.assertIn("set -euo pipefail", script)
+        self.assertIn('bash build.sh build-firmware "$target"', script)
+        self.assertIn("--firmware-version v1.18.0.1-halo-keymind-cascade-dev", script)
+        self.assertNotIn(" &", script)
+        command = textwrap.dedent(job[1].rsplit("        run: |\n", 1)[1])
+        subprocess.run(["bash", "-n"], input=command, text=True, check=True)
 
 
 if __name__ == "__main__":

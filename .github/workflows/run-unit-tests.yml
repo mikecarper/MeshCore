@@ -118,14 +118,18 @@ jobs:
           python3 -B test/test_ed25519_compact_field.py -v
           python3 -B test/test_ed25519_compact.py -v
 
-      - name: Compile ordinary STM32 USB Companion with pinned core and RadioLib
-        run: pio run -e RAK_3x72_companion_radio_usb
-
-      - name: Qualify Wio-E5 Mini Companion at release version length
-        run: >-
-          bash build.sh build-firmware wio-e5-mini_companion_radio_usb
-          --firmware-version v1.17.1.9-halo-keymind-cascade-dev
-          --radio-preset usa-cascade-fixed --profile cascade --require-ota
+      - name: Qualify all small STM32 USB Companions at release version length
+        run: |
+          set -euo pipefail
+          for target in \
+            RAK_3x72_companion_radio_usb \
+            wio-e5-mini_companion_radio_usb \
+            wio-e5_companion_radio_usb \
+            Tiny_Relay_companion_radio_usb; do
+            bash build.sh build-firmware "$target" \
+              --firmware-version v1.18.0.1-halo-keymind-cascade-dev \
+              --radio-preset usa-cascade-fixed --profile cascade --require-ota
+          done
 
   bootloader-version:
     runs-on: ubuntu-latest
