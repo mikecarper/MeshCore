@@ -72,7 +72,8 @@ inline esp_err_t configureHeldOutput(gpio_num_t pin, uint32_t level) {
 
 // Explicitly select a known output before latching it. RTC pads can also be
 // retained for packet-wake sleep (e.g. W12 FEM rails). Non-RTC/digital pads
-// require the terminal-only commit below; never globally freeze live pads.
+// on older chips require the terminal-only commit below; chips with per-pad
+// deep-sleep retention hold directly. Never globally freeze live pads.
 // The IDF GPIO API selects the correct RTC/digital hold implementation.
 inline esp_err_t holdOutputForDeepSleep(gpio_num_t pin, uint32_t level) {
   esp_err_t result = configureHeldOutput(pin, level);
@@ -92,15 +93,21 @@ inline esp_err_t releaseOutputAfterDeepSleep(gpio_num_t pin, uint32_t level) {
 }
 
 inline void resetTerminalDeepSleepHolds() {
+#if !defined(SOC_GPIO_SUPPORT_HOLD_SINGLE_IO_IN_DSLP) || !SOC_GPIO_SUPPORT_HOLD_SINGLE_IO_IN_DSLP
   gpio_deep_sleep_hold_dis();
+#endif
   terminalDigitalHoldPending() = false;
 }
 
 inline void commitTerminalDeepSleepHolds() {
+  // Chips such as C6 retain individual gpio_hold_en pads during deep sleep
+  // and do not expose the global auto-hold API. Older chips need auto-hold.
   // IDF4.4's digital auto-hold affects all digital pads DURING deep sleep.
   // Arm it only after every virtual shutdown hook and transport quiescence,
   // immediately before terminal deep sleep; never in runtime or light sleep.
+#if !defined(SOC_GPIO_SUPPORT_HOLD_SINGLE_IO_IN_DSLP) || !SOC_GPIO_SUPPORT_HOLD_SINGLE_IO_IN_DSLP
   if (terminalDigitalHoldPending()) gpio_deep_sleep_hold_en();
+#endif
 }
 
 } // namespace esp32

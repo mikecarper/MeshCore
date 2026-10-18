@@ -77,15 +77,21 @@ inline int gpio_hold_dis(int pin) {
   if(!api_result) pads[pin].hold=false;
   return api_result;
 }
+#if !SOC_GPIO_SUPPORT_HOLD_SINGLE_IO_IN_DSLP
 inline void gpio_deep_sleep_hold_en() { deep_hold=true; ++deep_hold_en_calls; }
 inline void gpio_deep_sleep_hold_dis() { deep_hold=false; ++deep_hold_dis_calls; }
+#endif
 inline void simulate_deep_sleep() {
   for(int pin=0;pin<64;++pin) {
     bool rtc=false;
 #if SOC_RTCIO_INPUT_OUTPUT_SUPPORTED
     rtc=rtc_gpio_is_valid_gpio(pin);
 #endif
+#if SOC_GPIO_SUPPORT_HOLD_SINGLE_IO_IN_DSLP
+    if(!rtc && !pads[pin].hold) { pads[pin].output=false; pads[pin].retained=-1; }
+#else
     if(!rtc && !deep_hold) { pads[pin].output=false; pads[pin].retained=-1; }
+#endif
   }
 }
 '''
@@ -248,6 +254,29 @@ int main(){ mesh::esp32::resetTerminalDeepSleepHolds(); femShutdown();
 #include <helpers/ESP32GpioHold.h>
 void femShutdown(){ assert(mesh::esp32::holdOutputForDeepSleep(42,1)==ESP_OK); }
 ''')
+
+    def test_single_pad_deep_sleep_hold_omits_unavailable_global_apis(self):
+        # IDF5.3 C6 headers omit the global APIs entirely. Per-pad holds are
+        # retained directly, including across reset until the pin is released.
+        self.compile_run(r'''
+#include <helpers/ESP32GpioHold.h>
+int main() {
+  using namespace mesh::esp32;
+  resetTerminalDeepSleepHolds();
+  assert(!terminalDigitalHoldPending() && deep_hold_dis_calls==0);
+  assert(holdOutputForDeepSleep(18,1)==ESP_OK);
+  commitTerminalDeepSleepHolds();
+  assert(!deep_hold && deep_hold_en_calls==0);
+  simulate_deep_sleep();
+  assert(physical(18)==1);
+  pads[18].latch=0; pads[18].output=false;
+  resetTerminalDeepSleepHolds();
+  assert(deep_hold_dis_calls==0);
+  assert(releaseOutputAfterDeepSleep(18,1)==ESP_OK);
+  assert(!pads[18].hold && physical(18)==1);
+}
+''', caps=1, defines=('SOC_GPIO_SUPPORT_HOLD_SINGLE_IO_IN_DSLP=1',
+                     'CONFIG_IDF_TARGET_ESP32C6=1'))
 
     def test_only_terminal_sleep_commits_after_virtual_shutdown_and_wake_setup(self):
         production=(ROOT/'src/helpers/ESP32Board.cpp').read_text()

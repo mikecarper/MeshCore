@@ -88,6 +88,16 @@ jobs:
           --firmware-version v1.17.1.10-halo-keymind-cascade-dev
           --radio-preset usa-cascade-fixed --profile cascade --require-ota
 
+  cross-platform-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Build Environment
+        uses: ./.github/actions/setup-build-environment
+      - name: Compile RP2040 contact storage and Arduino 3 ESP32-C6 room services
+        # One process: PlatformIO environments share this checkout's build tree.
+        run: pio run -e Xiao_rp2040_companion_radio_usb -e LilyGo_Tlora_C6_room_server_
+
   management-reports:
     runs-on: ubuntu-latest
     steps:
