@@ -5,6 +5,7 @@ import contextlib
 import io
 import json
 from pathlib import Path
+import re
 import struct
 import subprocess
 import sys
@@ -565,13 +566,27 @@ class FirmwareRamTest(unittest.TestCase):
         self.assertEqual(parts["mqtt_startup_allowance"], 24576)
         self.assertEqual(parts["allocation_and_transient_margin"], 16384)
         self.assertEqual(full["required_contiguous_bytes"], 18464)
-        for driver, expected in (("SH1106Display", 4096), ("SH1107Display", 4096),
+        for driver, expected in (("SH1106Display", 2048), ("SH1107Display", 4096),
                                  ("ST7735Display", 25602)):
             with self.subTest(driver=driver):
                 other = ram.requirements("ESP32_PLATFORM", {
                     **defines, "DISPLAY_CLASS": driver,
                 }, "Heltec_v3_repeater_observer_mqtt")
                 self.assertEqual(other["components"]["display_pixels_and_driver"], expected)
+                self.assertEqual(other["components"], {
+                    **parts, "display_pixels_and_driver": expected,
+                })
+                self.assertEqual(other["required_contiguous_bytes"], max(18464, expected))
+
+    def test_sh1106_full_mqtt_release_profile_is_linked_in_ci(self):
+        workflow = (ROOT / ".github/workflows/run-unit-tests.yml").read_text()
+        command = re.search(
+            r"bash build\.sh build-firmware Station_G3_ESP32_r2_repeater_observer_mqtt"
+            r"(?P<args>(?:\n          [^\n]+)+)", workflow)
+        self.assertIsNotNone(command)
+        self.assertIn("--full-exact", command["args"])
+        self.assertIn("--firmware-version v1.18.0.1-halo-keymind-cascade-dev", command["args"])
+        self.assertIn("--require-ota", command["args"])
 
     def test_source_allocation_guards_reject_growth_at_the_budget_boundary(self):
         # Compile the production guards themselves with exact-size stand-ins.
@@ -585,6 +600,11 @@ class FirmwareRamTest(unittest.TestCase):
              "struct SSD1306Display { unsigned char bytes[OBJECT_BYTES]; "
              "static constexpr unsigned FRAMEBUFFER_BYTES = FRAME_BYTES; };\n",
              ((992, 1024, True), (993, 1024, False), (124, 1025, False))),
+            ("src/helpers/ui/SH1106Display.cpp", "bool SH1106Display::i2c_probe(",
+             "struct Adafruit_I2CDevice { unsigned char bytes[16]; };\n"
+             "struct SH1106Display { unsigned char bytes[OBJECT_BYTES]; "
+             "static constexpr unsigned FRAMEBUFFER_BYTES = FRAME_BYTES; };\n",
+             ((944, 1024, True), (945, 1024, False), (124, 1025, False))),
         )
         for path, end, stand_in, cases in sources:
             prefix = (ROOT / path).read_text().split(end, 1)[0]
@@ -602,7 +622,9 @@ class FirmwareRamTest(unittest.TestCase):
                             "-DWITH_RS232_BRIDGE=1", f"-DOBJECT_BYTES={size}",
                             f"-DFRAME_BYTES={frame}", *["-D" + flag for flag in platform],
                         ], input=stand_in + prefix, text=True, capture_output=True)
-                        enforced = "ESP32=1" in platform or "RAK4631_COMBINED_ETHERNET=1" in platform
+                        enforced = "ESP32=1" in platform or (
+                            "RAK4631_COMBINED_ETHERNET=1" in platform
+                            and not path.endswith("SH1106Display.cpp"))
                         self.assertEqual(result.returncode == 0, bounded or not enforced,
                                          result.stderr)
 

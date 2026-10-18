@@ -66,6 +66,11 @@ jobs:
       - name: Compile shared-slot Station G3 and legacy alias with buffered KISS
         # One PlatformIO process: these environments share the checkout build tree.
         run: pio run -e Station_G3_ESP32_repeater -e Station_G3_ESP32_r2_repeater -e Station_G3_ESP32_kiss_modem
+      - name: Qualify Station G3 Full MQTT internal RAM and exact OTA identity
+        run: >-
+          bash build.sh build-firmware Station_G3_ESP32_r2_repeater_observer_mqtt
+          --firmware-version v1.18.0.1-halo-keymind-cascade-dev
+          --radio-preset usa-cascade-fixed --profile cascade --require-ota --full-exact
       - name: Compile W12 low-power FEM TX preparation in repeater and Full Companion
         run: |
           pio run -e meshnology_w12_repeater
@@ -765,6 +770,7 @@ jobs:
           MESHCORE_REQUIRE_ARM_COMPILER: '1'
         run: |
           python3 -B test/test_firmware_ram.py
+          python3 -B test/test_sh1106_memory.py -v
           python3 -B test/test_recent_repeater_storage.py -v
           python3 -B test/test_ota_cold_buffers.py -v
           python3 -B test/test_neighbor_scope_storage.py

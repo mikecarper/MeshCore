@@ -184,6 +184,12 @@ def requirements(platform, defines, target):
         # including it again retains a conservative allocation bound. Other
         # display drivers and ordinary non-ESP32 policies are unchanged.
         display_heap = 2048
+    if platform == "ESP32_PLATFORM" and display == "SH1106Display":
+        # Fixed 128x64 monochrome geometry: one reusable 1024-byte buffer and
+        # one BusIO adapter. The local subclass retires the previous adapter
+        # before begin/retry; source assertions bound the complete display,
+        # adapter and allocation metadata together, without touching reserves.
+        display_heap = 2048
     if platform == "NRF52_PLATFORM":
         parts["loop_and_callback_stacks"] = integer(defines, "MESH_NRF52_LOOP_STACK_WORDS", 2048) * 4 + 3072
         parts["core_usb_filesystems_sensors"] = 12288

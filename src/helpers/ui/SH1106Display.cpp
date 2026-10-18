@@ -2,6 +2,17 @@
 #include <Adafruit_GrayOLED.h>
 #include "Adafruit_SH110X.h"
 
+#if defined(ESP32_PLATFORM)
+// One fixed monochrome framebuffer and one BusIO adapter survive begin(),
+// including retries. Count the linked global display again conservatively,
+// plus metadata for both heap allocations. Shared Wire belongs to the core.
+static_assert(SH1106Display::FRAMEBUFFER_BYTES == 1024,
+              "Update the SH1106 OLED framebuffer budget");
+static_assert(sizeof(SH1106Display) + SH1106Display::FRAMEBUFFER_BYTES
+                  + sizeof(Adafruit_I2CDevice) + 64 <= 2048,
+              "Update the SH1106 OLED runtime budget");
+#endif
+
 bool SH1106Display::i2c_probe(TwoWire &wire, uint8_t addr)
 {
   wire.beginTransmission(addr);

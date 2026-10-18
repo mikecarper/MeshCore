@@ -14,9 +14,23 @@
 #define DISPLAY_ADDRESS 0x3C
 #endif
 
+// GrayOLED reuses the framebuffer but replaces i2c_dev on every begin().
+// Retire the previous adapter first so success and failure retries stay bounded.
+class BoundedSH1106G : public Adafruit_SH1106G
+{
+public:
+  using Adafruit_SH1106G::Adafruit_SH1106G;
+
+  bool begin(uint8_t addr, bool reset) {
+    delete i2c_dev;
+    i2c_dev = nullptr;
+    return Adafruit_SH1106G::begin(addr, reset);
+  }
+};
+
 class SH1106Display : public DisplayDriver
 {
-  Adafruit_SH1106G display;
+  BoundedSH1106G display;
   bool _initialized;
   bool _isOn;
   uint8_t _color;
@@ -24,7 +38,12 @@ class SH1106Display : public DisplayDriver
   bool i2c_probe(TwoWire &wire, uint8_t addr);
 
 public:
-  SH1106Display() : DisplayDriver(128, 64), display(128, 64, &Wire, PIN_OLED_RESET) {
+  static constexpr uint16_t DISPLAY_WIDTH = 128;
+  static constexpr uint16_t DISPLAY_HEIGHT = 64;
+  static constexpr uint16_t FRAMEBUFFER_BYTES = DISPLAY_WIDTH * ((DISPLAY_HEIGHT + 7) / 8);
+
+  SH1106Display() : DisplayDriver(DISPLAY_WIDTH, DISPLAY_HEIGHT),
+                    display(DISPLAY_WIDTH, DISPLAY_HEIGHT, &Wire, PIN_OLED_RESET) {
     _initialized = false;
     _isOn = false;
   }
