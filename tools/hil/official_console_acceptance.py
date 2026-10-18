@@ -33,8 +33,11 @@ PAGE = r'''<!doctype html><meta charset="utf-8"><title>Native official console a
 <script type="module">
 import {SerialConsole} from './console.js';
 window.hil = {ready:false, client:null, task:null, writes:0, replies:0,
-              pending:null, disconnected:false};
-hil.open = async function(vid,pid) {
+              setup_writes:0, pending:null, controlPending:null, disconnected:false,
+              terminalMode:'direct', loggingMode:null};
+hil.open = async function(vid,pid,terminalMode='direct') {
+  if(!['direct','companion'].includes(terminalMode)) throw Error('invalid_terminal_mode');
+  hil.terminalMode=terminalMode;hil.loggingMode=null;
   const ports=await navigator.serial.getPorts();
   if(ports.length!==1) throw Error('exactly_one_pregranted_native_port_required');
   const info=ports[0].getInfo();
@@ -45,6 +48,10 @@ hil.open = async function(vid,pid) {
     // A terminal prompt and the subsequent input echo share a CRLF line.
     // Accept that exact prefix as well as the bare echo after a fresh open.
     const line=text.replace(/\r?\n$/, '');
+    if(hil.controlPending && line==='OK - Binary mode' && text.endsWith('\n')) {
+      const waiter=hil.controlPending;hil.controlPending=null;
+      clearTimeout(waiter.timer);waiter.resolve();
+    }
     if(hil.pending && (line===hil.pending.command || line==='> '+hil.pending.command ||
                        line==='>'+hil.pending.command)) hil.pending.echo_seen=true;
     // The unmodified official CRLF transformer delivers these complete lines.
@@ -59,6 +66,12 @@ hil.open = async function(vid,pid) {
   while(!hil.client.connected) {
     if(hil.disconnected||performance.now()>end) throw Error('native_console_open_failed');
     await new Promise(resolve=>setTimeout(resolve,10));
+  }
+  if(terminalMode==='companion') {
+    ++hil.writes;++hil.setup_writes;
+    // The shipping binary parser consumes this exact CRLF control sequence
+    // and leaves following bytes buffered for its ASCII terminal consumer.
+    await hil.client.sendCommand('+++MESHCORE-TERM-START');
   }
   return {native_ports:ports.length, connected:hil.client.connected};
 };
@@ -84,9 +97,28 @@ hil.idle = async function(seconds) {
           connected:hil.client.connected};
 };
 hil.close = async function() {
-  if(hil.client) {await hil.client.disconnect();await hil.task;}
-  hil.client=null;hil.task=null;hil.disconnected=false;
-  return {native_streams_closed:true};
+  let binary_mode_restored=false;
+  try {
+    // Only a successfully queried logging-OFF Companion can return to binary.
+    // A primary logging-ON stream must remain an ASCII logging terminal.
+    if(hil.client?.connected && hil.terminalMode==='companion' && hil.loggingMode==='off') {
+      const confirmed=new Promise((resolve,reject)=>{
+        const timer=setTimeout(()=>{hil.controlPending=null;reject(Error('terminal_mode_exit_deadline'));},5000);
+        hil.controlPending={resolve,reject,timer};
+      });
+      ++hil.writes;++hil.setup_writes;
+      try {await hil.client.sendCommand('+++MESHCORE-TERM-STOP');}
+      catch(error) {
+        if(hil.controlPending){clearTimeout(hil.controlPending.timer);hil.controlPending=null;}
+        throw error;
+      }
+      await confirmed;binary_mode_restored=true;
+    }
+  } finally {
+    try {if(hil.client) {await hil.client.disconnect();await hil.task;}}
+    finally {hil.client=null;hil.task=null;hil.disconnected=false;}
+  }
+  return {native_streams_closed:true,binary_mode_restored};
 };
 hil.ready=true;
 </script>'''
@@ -168,6 +200,29 @@ def cleanup_on_sigterm():
 def require(condition, message):
     if not condition:
         raise RuntimeError(message)
+
+
+def usb_logging_mode(reply):
+    """Normalize the exact infrastructure and Companion getter replies.
+
+    A pending interface restart is deliberately rejected: the requested live
+    logging mode must already be configured before this read-only idle test.
+    """
+    if reply in ("> off", "> on", "> stream"):
+        return reply[2:]
+    ports = (
+        "primary USB serial port (tty/COM name is host-assigned)",
+        "dedicated USB CDC 1, interface 02 (Linux: *-if02; tty/COM name is host-assigned)",
+    )
+    if isinstance(reply, str):
+        for mode in ("off", "on", "stream"):
+            if any(reply == f"usb.logging {mode}; port: {port}" for port in ports):
+                return mode
+    raise RuntimeError("usb_logging_reply_format_unrecognized")
+
+
+def require_usb_logging_mode(reply, expected, error_code):
+    require(usb_logging_mode(reply) == expected, error_code)
 
 
 def sha256(path):
@@ -387,7 +442,7 @@ def execute(args, report):
                     time.sleep(0.1)
                 require(page.evaluate("!!window.hil?.ready"), "official_module_did_not_load")
                 report["phase"] = "native_serial_open"
-                page.evaluate(f"hil.open({device.vid},{device.pid})")
+                page.evaluate(f"hil.open({device.vid},{device.pid},{json.dumps(args.terminal_mode)})")
 
                 def query(command):
                     report["phase"] = "native_query:" + command
@@ -400,9 +455,10 @@ def execute(args, report):
                 board, _ = query("board")
                 version, _ = query("ver")
                 logging, _ = query("get usb.logging")
+                page.evaluate("hil.loggingMode=" + json.dumps(usb_logging_mode(logging)))
                 require(board == args.expected_board, "runtime_board_mismatch")
                 require(version == args.expected_version, "runtime_version_mismatch")
-                require(logging == "> " + args.logging, "logging_mode_must_be_preconfigured")
+                require_usb_logging_mode(logging, args.logging, "logging_mode_must_be_preconfigured")
                 before, _ = query("stats-core")
                 before = json.loads(before)
                 report["before"] = before
@@ -422,17 +478,21 @@ def execute(args, report):
                 report["phase"] = "native_serial_first_close"
                 report["first_close"] = page.evaluate("hil.close()")
                 report["phase"] = "native_serial_reopen"
-                page.evaluate(f"hil.open({device.vid},{device.pid})")
+                page.evaluate(f"hil.open({device.vid},{device.pid},{json.dumps(args.terminal_mode)})")
                 reopened, elapsed = query("stats-core")
                 reopened = json.loads(reopened)
                 require(reopened["uptime_secs"] >= after["uptime_secs"], "reopen_reset_or_uptime_regression")
                 require(query("board")[0] == args.expected_board and query("ver")[0] == args.expected_version,
                         "runtime_identity_changed_on_reopen")
-                require(query("get usb.logging")[0] == "> " + args.logging, "logging_mode_changed")
+                reopened_logging = query("get usb.logging")[0]
+                page.evaluate("hil.loggingMode=" + json.dumps(usb_logging_mode(reopened_logging)))
+                require_usb_logging_mode(reopened_logging, args.logging, "logging_mode_changed")
                 report.update(reopened=reopened, reopened_reply_ms=elapsed,
                               command_writes=page.evaluate("hil.writes"), complete_CRLF_replies=page.evaluate("hil.replies"))
                 report["phase"] = "native_serial_final_close"
                 report["final_close"] = page.evaluate("hil.close()")
+                report.update(command_writes=page.evaluate("hil.writes"),
+                              setup_writes=page.evaluate("hil.setup_writes"))
                 report["native_streams_closed"] = True
                 report["phase"] = "complete"
             finally:
@@ -454,6 +514,8 @@ def main(argv=None):
     parser.add_argument("--expected-board", required=True)
     parser.add_argument("--expected-version", required=True, help="Exact full ver reply, including Build suffix")
     parser.add_argument("--logging", choices=("on", "off"), required=True)
+    parser.add_argument("--terminal-mode", choices=("direct", "companion"), default="direct",
+                        help="Companion sends the shipping TERM-START on every open and TERM-STOP on logging-OFF close")
     parser.add_argument("--idle-seconds", type=int, default=600)
     parser.add_argument("--console-source", type=Path, required=True)
     parser.add_argument("--artifact-manifest", type=Path, required=True)
@@ -469,6 +531,8 @@ def main(argv=None):
         parser.error("serial must be an exact single-line USB identity")
     if not args.execute:
         print(json.dumps({"execute": False, "idle_seconds": args.idle_seconds,
+                          "terminal_mode": args.terminal_mode,
+                          "Companion_handoff_writes_outside_idle": args.terminal_mode == "companion",
                           "console_sha256": CONSOLE_SHA256, "native_WebSerial": True,
                           "commands": ["board", "ver", "get usb.logging", "stats-core"],
                           "settings_mutation": False, "reset_hooks": False}))
@@ -482,6 +546,7 @@ def main(argv=None):
               "started_utc": datetime.now(timezone.utc).isoformat(),
               "scope": "pinned-official-console-native-WebSerial-open-idle-reopen",
               "settings_mutation": False, "reset_hooks": False,
+              "terminal_mode": args.terminal_mode,
               "firmware_artifact_binding": "external manifest plus exact runtime board/version; no flash read"}
     status = 1
     try:

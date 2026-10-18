@@ -19,6 +19,49 @@ acceptance = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(acceptance)
 
 
+class UsbLoggingReplyTests(unittest.TestCase):
+    PRIMARY = "primary USB serial port (tty/COM name is host-assigned)"
+    DEDICATED = "dedicated USB CDC 1, interface 02 (Linux: *-if02; tty/COM name is host-assigned)"
+
+    def test_infrastructure_and_exact_companion_getters_preserve_each_mode(self):
+        for mode in ("off", "on", "stream"):
+            replies = ("> " + mode,
+                       f"usb.logging {mode}; port: {self.PRIMARY}",
+                       f"usb.logging {mode}; port: {self.DEDICATED}")
+            for reply in replies:
+                with self.subTest(mode=mode, reply=reply):
+                    self.assertEqual(acceptance.usb_logging_mode(reply), mode)
+                    acceptance.require_usb_logging_mode(reply, mode, "mode_mismatch")
+
+    def test_wrong_live_mode_remains_a_failure_for_initial_and_reopen_checks(self):
+        for error_code in ("logging_mode_must_be_preconfigured", "logging_mode_changed"):
+            for actual in ("on", "stream"):
+                for reply in ("> " + actual, f"usb.logging {actual}; port: {self.PRIMARY}"):
+                    with self.subTest(error_code=error_code, actual=actual), \
+                            self.assertRaisesRegex(RuntimeError, "^" + error_code + "$"):
+                        acceptance.require_usb_logging_mode(reply, "off", error_code)
+
+    def test_malformed_pending_or_unrelated_replies_are_rejected_without_echoing_input(self):
+        invalid = (None, "", "off", "> OFF", "> off trailing", "OK - USB logging off (saved)",
+                   "usb.logging off", "usb.logging off; port: unknown private endpoint",
+                   f"usb.logging off; port: {self.PRIMARY} (reboot required to change USB interfaces)",
+                   f"usb.logging off; port: {self.PRIMARY}\n> on",
+                   f"usb.logging off; port: {self.PRIMARY} ",
+                   f"> usb.logging off; port: {self.PRIMARY}")
+        for reply in invalid:
+            with self.subTest(reply=reply), \
+                    self.assertRaisesRegex(RuntimeError, "^usb_logging_reply_format_unrecognized$"):
+                acceptance.usb_logging_mode(reply)
+
+    def test_companion_port_descriptions_match_the_shipping_source(self):
+        root = HIL.parents[1]
+        source = (root / "src/helpers/UsbLogging.cpp").read_text()
+        companion = (root / "examples/companion_radio/MyMesh.cpp").read_text()
+        self.assertIn('return "' + self.PRIMARY + '";', source)
+        self.assertIn('return "' + self.DEDICATED + '";', source)
+        self.assertIn('"usb.logging %s; port: %s%s"', companion)
+
+
 class OwnedStartupTests(unittest.TestCase):
     def fixture(self, *, fail_first_page=False, wrong_profile=False, pages=1):
         requests, sockets, connections = [], [], []
@@ -247,6 +290,76 @@ class SafeJavaScriptFailureTests(unittest.TestCase):
         self.assertEqual(error.safe_details["code"], "unclassified_exception")
         self.assertEqual(error.safe_details["message_sha256"], acceptance.hashlib.sha256(message.encode()).hexdigest())
         self.assertNotIn("secret", str(error) + json.dumps(error.safe_details))
+
+    @unittest.skipUnless(shutil.which("node"), "Node required for offline PAGE protocol test")
+    def test_companion_handshakes_reopen_and_logging_gate_without_idle_writes(self):
+        script = acceptance.PAGE.split('<script type="module">', 1)[1].split('</script>', 1)[0]
+        script = script.replace("import {SerialConsole} from './console.js';", "")
+        setup = r'''
+import assert from 'node:assert/strict';
+globalThis.window=globalThis;
+Object.defineProperty(globalThis,'navigator',{value:{serial:{getPorts:async()=>[
+  {getInfo:()=>({usbVendorId:0x303a,usbProductId:0x1001})}
+]}}});
+const realTimeout=globalThis.setTimeout;
+globalThis.setTimeout=(fn,ms)=>realTimeout(fn,[10000,5000].includes(ms)?5:ms);
+let mode='binary',dropStopAck=false,closed=0;
+const sent=[];
+class SerialConsole {
+  constructor(port){this.port=port;this.connected=false;}
+  async connect(){this.connected=true;}
+  async disconnect(){this.connected=false;++closed;}
+  async reset(){throw Error('reset_must_never_be_called');}
+  async sendCommand(command){
+    sent.push(command);
+    if(command==='+++MESHCORE-TERM-START') {mode='ascii';return;}
+    if(command==='+++MESHCORE-TERM-STOP') {
+      assert.equal(mode,'ascii');mode='binary';
+      if(!dropStopAck)this.onOutput('OK - Binary mode\n');
+      return;
+    }
+    if(mode!=='ascii')return;
+    this.onOutput('> '+command+'\n');this.onOutput('  -> bench reply\n');
+  }
+}
+'''
+        checks = r'''
+// Direct remains inert and cannot accidentally make a binary Companion ASCII.
+await hil.open(0x303a,0x1001);
+assert.deepEqual(sent,[]);
+await assert.rejects(hil.query('board'),/framed_reply_deadline/);
+await hil.close();
+const start=sent.length;
+for(let open=0;open<2;++open){
+  await hil.open(0x303a,0x1001,'companion');
+  assert.equal(sent.at(-1),'+++MESHCORE-TERM-START');
+  assert.equal((await hil.query('board')).body,'bench reply');
+  hil.loggingMode='off'; // Actual Python path sets this from the strict getter.
+  const writes=hil.writes,setup=hil.setup_writes;
+  await hil.idle(0);
+  assert.equal(hil.writes,writes);assert.equal(hil.setup_writes,setup);
+  const result=await hil.close();
+  assert.equal(result.binary_mode_restored,true);assert.equal(mode,'binary');
+}
+assert.deepEqual(sent.slice(start),[
+ '+++MESHCORE-TERM-START','board','+++MESHCORE-TERM-STOP',
+ '+++MESHCORE-TERM-START','board','+++MESHCORE-TERM-STOP']);
+assert.equal(hil.setup_writes,4);
+await hil.open(0x303a,0x1001,'companion');
+hil.loggingMode='on';
+const before=sent.length;
+assert.equal((await hil.close()).binary_mode_restored,false);
+assert.equal(sent.length,before);assert.equal(mode,'ascii');
+// Missing ACK is failure, but cannot prevent owned native streams closing.
+await hil.open(0x303a,0x1001,'companion');
+hil.loggingMode='off';dropStopAck=true;
+const closedBefore=closed;
+await assert.rejects(hil.close(),/terminal_mode_exit_deadline/);
+assert.equal(closed,closedBefore+1);assert.equal(hil.client,null);
+'''
+        ran = subprocess.run([shutil.which("node"), "--input-type=module", "-"],
+                             input=setup + script + checks, capture_output=True, text=True, timeout=10)
+        self.assertEqual(ran.returncode, 0, ran.stderr)
 
     @unittest.skipUnless(shutil.which("node"), "Node required for offline PAGE protocol test")
     def test_page_accepts_exact_prompt_echo_and_requires_complete_response(self):
