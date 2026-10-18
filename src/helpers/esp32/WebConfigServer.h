@@ -36,6 +36,7 @@
 #include <helpers/RoomWebMailbox.h>
 #include <helpers/WiFiPowerSave.h>
 #include <helpers/WiFiReconnectPolicy.h>
+#include <helpers/WebConfigLoginThrottle.h>
 #include <helpers/WiFiNetworkPowerPolicy.h>
 #include <helpers/ui/DisplayBuildFlags.h>
 
@@ -360,8 +361,7 @@ private:
   // LAN-mode session (single slot; new login evicts the old session)
   char _session_token[33] = {0};
   uint32_t _session_last_seen = 0;
-  uint8_t _login_fails = 0;
-  uint32_t _login_lock_until = 0;
+  WebConfigLoginThrottle::Tracker _login_throttle;
 
   // Once set (via /api/portal/exit), OS captive probes get native "success"
   // replies so the phone's sign-in sheet can be dismissed without dropping the

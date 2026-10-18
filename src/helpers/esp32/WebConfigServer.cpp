@@ -2067,8 +2067,16 @@ void WebConfigServer::handleLogin(AsyncWebServerRequest* req) {
     return;
   }
   uint32_t now = millis();
-  if (_login_lock_until && (int32_t)(now - _login_lock_until) < 0) {
+  // Failures lock the failing address, not every client; a shared budget in
+  // WebConfigLoginThrottle still caps guesses across addresses.
+  const uint32_t client = req->client() ? req->client()->getRemoteAddress() : 0;
+  const WebConfigLoginThrottle::Verdict verdict = _login_throttle.check(client, now);
+  if (verdict == WebConfigLoginThrottle::CLIENT_LOCKED) {
     req->send(429, "application/json", "{\"error\":\"locked, retry in 30s\"}");
+    return;
+  }
+  if (verdict == WebConfigLoginThrottle::SHARED_LOCKED) {
+    req->send(429, "application/json", "{\"error\":\"too many failed logins, retry shortly\"}");
     return;
   }
   const char* body = (const char*)req->_tempObject;
@@ -2079,16 +2087,11 @@ void WebConfigServer::handleLogin(AsyncWebServerRequest* req) {
   }
   const char* pwd = doc["password"] | "";
   if (!fixedTimeEquals(pwd, node.admin_password, sizeof(node.admin_password))) {
-    if (++_login_fails >= 5) {
-      _login_lock_until = now + 30000;
-      if (_login_lock_until == 0) _login_lock_until = 1;
-      _login_fails = 0;
-    }
+    _login_throttle.noteFailure(client, now);
     req->send(401, "application/json", "{\"error\":\"wrong password\"}");
     return;
   }
-  _login_fails = 0;
-  _login_lock_until = 0;
+  _login_throttle.noteSuccess(client);
   for (int i = 0; i < 4; i++) sprintf(&_session_token[i * 8], "%08lx", (unsigned long)esp_random());
   _session_last_seen = now;
   noteNetworkActivity();

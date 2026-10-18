@@ -629,6 +629,7 @@ jobs:
           python3 -B test/test_wifi_ota_start.py -v
           python3 -B test/test_webconfig_ap_start.py -v
           python3 -B test/test_webconfig_recovery_auth.py -v
+          python3 -B test/test_webconfig_login_throttle.py -v
           python3 -B test/test_esp32_wifi_scan_fix.py -v
           python3 -B test/test_esp32_wifi_scan_recipes.py -v
 

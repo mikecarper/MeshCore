@@ -27,6 +27,7 @@ class WebConfigRecoveryAuthTest(unittest.TestCase):
                            "-fno-pie", "-no-pie"] if sys.platform.startswith("linux") else [])
             compiled = subprocess.run([compiler, "-std=c++17", "-Wall", "-Wextra",
                                        *sanitizers, "-I" + str(json_header.parent),
+                                       "-I" + str(ROOT / "src"),
                                        str(generated), "-o", str(binary)],
                                       capture_output=True, text=True, timeout=60)
             self.assertEqual(compiled.returncode, 0, compiled.stderr)
