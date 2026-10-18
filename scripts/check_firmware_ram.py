@@ -30,7 +30,7 @@ DISPLAY_HEAP = {
     "SSD1306Display": 4096, "SH1106Display": 4096, "U8g2Display": 4096,
     "SH1107Display": 4096,
     # These drivers render directly or embed their pixel storage in globals.
-    "ST7789Display": 0, "ST7789LCDDisplay": 0, "NV3001BDisplay": 0,
+    "ST7789LCDDisplay": 0, "NV3001BDisplay": 0,
     "GxEPDDisplay": 0, "E213Display": 8192, "E290Display": 8192,
 }
 
@@ -125,6 +125,25 @@ def wio_tracker_l2_display_heap(defines):
     return row_bytes * height + 1024
 
 
+def st7789_display_heap(defines):
+    # Match ST7789Display's constructor branches and ST7789Spi's byte-page
+    # geometry, including the partial last page on the T114 and T190 panels.
+    if "HELTEC_VISION_MASTER_T190" in defines:
+        width, height = 320, 170
+    elif "THINKNODE_M9" in defines:
+        width, height = 320, 240
+    else:
+        width, height = 240, 135
+    buffers = (1 if "OLEDDISPLAY_REDUCE_MEMORY" in defines
+               and "OLEDDISPLAY_DOUBLE_BUFFER" not in defines else 2)
+    # OLEDDisplay mallocs the persistent front/back buffers. ST7789Spi also
+    # mallocs one RGB565 scanline, freed before allocating the next line.
+    # The global driver is already linked; allocator overhead remains covered
+    # by the separate allocation/transient margin. Auto-detection must budget
+    # a present panel even when a particular board starts without one.
+    return width * ((height + 7) // 8) * buffers + width * 2
+
+
 def requirements(platform, defines, target):
     if platform not in SUPPORTED:
         raise ValueError(f"no memory policy for {platform}")
@@ -143,6 +162,8 @@ def requirements(platform, defines, target):
         if platform != "ESP32_PLATFORM":
             raise ValueError("Wio Tracker L2 display budget requires ESP32")
         display_heap = wio_tracker_l2_display_heap(defines)
+    elif display == "ST7789Display":
+        display_heap = st7789_display_heap(defines)
     elif display == "ST7735Display":
         depth = integer(defines, "ST7735_BUFFER_COLOR_DEPTH", 16)
         if depth not in (8, 16):

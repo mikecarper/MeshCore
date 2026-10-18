@@ -18,6 +18,7 @@ import check_firmware_ram as ram
 from firmware_elf import FirmwareElf
 import firmware_memory_manifest as proof
 from audit_esp32_image_ram import EspImage
+from test_replay_reset_integration import extract_braced
 
 
 def elf32(path, symbols, data=b"", address=0x3F400000):
@@ -68,6 +69,140 @@ def esp_fixture(path, modern=False, fragmented=False, internal_length=0x10000):
 
 
 class FirmwareRamTest(unittest.TestCase):
+    def test_st7789_budget_matches_production_allocation_peak_and_reuses_buffers(self):
+        ui = ROOT / "src/helpers/ui"
+        spi = (ui / "ST7789Spi.h").read_text()
+        oled = (ui / "OLEDDisplay.cpp").read_text()
+        header = (ui / "ST7789Display.h").read_text()
+        start = header.index("#if defined(HELTEC_VISION_MASTER_T190)")
+        constructors = header[start:header.index("#endif", start) + len("#endif")]
+        buffering = (ui / "OLEDDisplay.h").read_text()
+        start = buffering.index("#ifndef OLEDDISPLAY_REDUCE_MEMORY")
+        buffering = buffering[start:buffering.index("#endif", start) + len("#endif")]
+        fixture = r'''
+#include <algorithm>
+#include <cassert>
+#include <cstdint>
+#include <cstdio>
+#include <cstdlib>
+#include <utility>
+#include <vector>
+using std::min; using std::max;
+size_t live=0, peak=0, largest=0, calls=0;
+std::vector<std::pair<void*,size_t>> allocations;
+void* track_malloc(size_t size) {
+  void* p=std::malloc(size); assert(p); allocations.push_back({p,size});
+  live+=size; peak=max(peak,live); largest=max(largest,size); ++calls; return p;
+}
+void track_free(void* p) {
+  auto at=std::find_if(allocations.begin(),allocations.end(),[&](auto& a){return a.first==p;});
+  assert(at!=allocations.end()); live-=at->second; allocations.erase(at); std::free(p);
+}
+#define malloc track_malloc
+#define free track_free
+#define rtos_malloc track_malloc
+#define rtos_free track_free
+#define DEBUG_OLEDDISPLAY(...)
+#define LOW 0
+#define HIGH 1
+void yield() {}
+enum OLEDDISPLAY_GEOMETRY { GEOMETRY_128_128,GEOMETRY_128_64,GEOMETRY_128_32,
+                          GEOMETRY_64_48,GEOMETRY_64_32,GEOMETRY_RAWMODE };
+@BUFFERING@
+struct Bus {
+  unsigned rows=0;
+  template<class T> void beginTransaction(T) {}
+  void endTransaction() {}
+  void transfer(void*,void*,int) { ++rows; }
+};
+struct Panel {
+  uint16_t displayWidth=0,displayHeight=0,displayBufferSize=0,_buffheight=0,_RGB=0xffff;
+  OLEDDISPLAY_GEOMETRY geometry=GEOMETRY_RAWMODE;
+  unsigned logBufferSize=0,logBufferFilled=0,logBufferLine=0,logBufferMaxLines=0;
+  uint8_t* buffer=nullptr; uint8_t* buffer_back=nullptr; uint8_t* logBuffer=nullptr;
+  unsigned BufferOffset=0,_spiSettings=0;
+  Bus bus; Bus* _spi=&bus;
+  Panel(int*,uint8_t,uint8_t,uint8_t,OLEDDISPLAY_GEOMETRY g,uint16_t w,uint16_t h,
+        int=-1,int=-1,int=-1) { setGeometry(g,w,h); }
+  bool connect() { _buffheight=(displayHeight+7)/8; return true; }
+  void set_CS(int) {}
+  void setAddrWindow(uint16_t,uint16_t,uint16_t,uint16_t) {}
+@GEOMETRY@
+@ALLOCATE@
+@FLUSH@
+};
+int SPI=0,SPI1=0;
+constexpr uint8_t PIN_TFT_RST=2,PIN_TFT_DC=12,PIN_TFT_CS=11,PIN_TFT_SDA=41,PIN_TFT_SCL=40;
+constexpr uint8_t ST7789_RESET=14,ST7789_RS=15,ST7789_CS=16,ST7789_SDA=13,ST7789_MISO=14,ST7789_SCK=12;
+struct DisplayDriver { DisplayDriver(int,int) {} };
+struct ST7789Display:DisplayDriver {
+  Panel display; bool _isOn=false;
+@CONSTRUCTORS@
+};
+int main() {
+  ST7789Display d; Panel& p=d.display;
+  assert(p.allocateBuffer());
+  std::fill(p.buffer,p.buffer+p.displayBufferSize,0xff);
+#ifdef OLEDDISPLAY_DOUBLE_BUFFER
+  std::fill(p.buffer_back,p.buffer_back+p.displayBufferSize,0);
+#endif
+  p.display(); assert(p.bus.rows==p.displayHeight);
+  const auto count=calls, persistent=live;
+  assert(p.allocateBuffer()); assert(calls==count && live==persistent);
+  std::printf("%zu %zu %zu\n",live,peak,largest);
+  track_free(p.buffer);
+#ifdef OLEDDISPLAY_DOUBLE_BUFFER
+  track_free(p.buffer_back);
+#endif
+  assert(live==0);
+}
+'''
+        for marker, value in {
+                "@BUFFERING@": buffering, "@CONSTRUCTORS@": constructors,
+                "@GEOMETRY@": extract_braced(spi, "void setGeometry("),
+                "@ALLOCATE@": extract_braced(oled, "bool OLEDDisplay::allocateBuffer(").replace(
+                    "OLEDDisplay::", ""),
+                "@FLUSH@": extract_braced(spi, "void display(void)")}.items():
+            fixture = fixture.replace(marker, value)
+        with tempfile.TemporaryDirectory(prefix="st7789-ram-") as temporary:
+            for board in ({"HELTEC_T114": 1, "T114_DISPLAY_AUTODETECT": 1},
+                          {"HELTEC_VISION_MASTER_T190": 1}, {"THINKNODE_M9": 1}):
+                for buffers in ({}, {"OLEDDISPLAY_REDUCE_MEMORY": 0},
+                                {"OLEDDISPLAY_REDUCE_MEMORY": 1, "OLEDDISPLAY_DOUBLE_BUFFER": 0}):
+                    defines = {**board, **buffers, "DISPLAY_CLASS": "ST7789Display"}
+                    with self.subTest(defines=defines):
+                        binary = Path(temporary) / "allocations"
+                        compiled = subprocess.run([
+                            "c++", "-std=c++17", "-Wall", "-Wextra", "-Werror", "-x", "c++", "-",
+                            *[f"-D{k}={v}" for k,v in {**board, **buffers}.items()],
+                            "-fsanitize=address,undefined", "-fno-sanitize-recover=all", "-fno-pie", "-no-pie",
+                            "-o", str(binary)], input=fixture, text=True, capture_output=True)
+                        self.assertEqual(compiled.returncode, 0, compiled.stderr)
+                        checked = subprocess.run([str(binary)], text=True, capture_output=True, timeout=15)
+                        self.assertEqual(checked.returncode, 0, checked.stderr)
+                        persistent, peak, largest = map(int, checked.stdout.split())
+                        policy = ram.requirements("NRF52_PLATFORM", defines, "display_companion")
+                        self.assertEqual(policy["components"]["display_pixels_and_driver"], peak)
+                        self.assertGreater(peak, persistent)  # Scanline is heap, freed after each transfer.
+                        self.assertGreaterEqual(policy["required_contiguous_bytes"], largest)
+
+    def test_t114_present_panel_is_budgeted_for_auto_and_legacy_with_exact_admission(self):
+        flags = {"DISPLAY_CLASS": "ST7789Display", "HELTEC_T114": 1,
+                 "T114_DISPLAY_AUTODETECT": 1, "COMPANION_RADIO_FULL": 1, "BLE_PIN_CODE": 123456}
+        target = "Heltec_t114_companion_radio_full"
+        policy = ram.requirements("NRF52_PLATFORM", flags, target)
+        self.assertEqual(policy["components"]["display_pixels_and_driver"], 8640)
+        self.assertEqual(policy["components"]["allocation_and_transient_margin"], 4096)
+        legacy = {key:value for key,value in flags.items() if key != "T114_DISPLAY_AUTODETECT"}
+        self.assertEqual(ram.requirements("NRF52_PLATFORM", legacy, target), policy)
+        required = policy["required_heap_bytes"]
+        with tempfile.TemporaryDirectory() as temp:
+            path = Path(temp) / "firmware.elf"
+            for capacity, accepted in ((required-8640, False), (required-1, False), (required, True)):
+                with self.subTest(capacity=capacity), contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+                    elf32(path, {"__HeapBase": (0x2003F800-capacity,0), "__HeapLimit": (0x2003F800,0)})
+                    self.assertEqual(ram.check_firmware(path,"NRF52_PLATFORM","nrf52840",flags,target)==0, accepted)
+
     def test_device_encoder_budget_matches_storage_and_role_gates(self):
         matrix = [
             ("ESP32_PLATFORM", {"ENABLE_OTA": 1, "MESHCORE_OTA_DEVICE_DEFLATE": 1}, "v4_repeater", True),

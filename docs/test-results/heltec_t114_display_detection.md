@@ -35,6 +35,11 @@ does not require a single guessed factory ID.
 - A detected panel retains normal rendering, sleep, wake, and display settings.
 - Detection is specific to the T114 automatic-display recipe. Other boards
   using the shared ST7789 driver retain their existing behavior.
+- The RAM gate budgets a responding screen even when a particular board boots
+  headless. The T114 display needs two 4,080-byte buffers and one temporary
+  480-byte RGB565 row: 8,640 bytes of peak heap allocation, in addition to the
+  normal allocator and transient margin. The same model follows the shared
+  driver's T190 and M9 panel sizes and its single-buffer configuration.
 - Picker consolidation requires evidence from the exact published application.
   Historical releases retain their original screen behavior and update IDs.
 
@@ -46,6 +51,7 @@ does not require a single guessed factory ID.
 | Resolved recipe and compatibility-alias checks | PASS, 5 methods; actual PlatformIO configuration also confirms all 5 legacy aliases match their canonical targets |
 | Companion headless buttons and related navigation, reader, pairing, startup and deadline suites | PASS, 55 methods, including native headless fault regression and 4 input/reader configurations |
 | Picker and release-selection regressions | PASS, 78 Python methods and 3 Node suites; old assets, scoped previews, newest-role defaults and unavailable legacy choices covered |
+| Display allocation accounting and firmware RAM gates | PASS, 46 methods, including production allocation tracking across 3 panel sizes and buffer configurations |
 | T114 firmware and package checks | Pending |
 | Hosted documentation links | PASS, 7 methods |
 | Physical T114 with and without a screen | Not performed |
