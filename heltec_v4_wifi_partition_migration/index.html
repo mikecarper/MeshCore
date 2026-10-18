@@ -2312,17 +2312,23 @@ to <code>default_16MB.csv</code>, with two 6.25 MiB OTA slots.</p>
 <p>The ZIP contains the Wi-Fi bridge, LoRa bridge, and exact-target Full image.
 Upload its <code>wifi-bridge.bin</code> through the
 legacy browser Wi-Fi updater. Rejoin <code>MeshCore-Migrate</code> using the node's saved
-admin password as the Wi-Fi password (see the shared guide for the published
-fallback); when it reports <strong>Expanded layout ready</strong>, upload the ZIP's
+admin password as the Wi-Fi password (see the shared
+<a href="../esp32_wifi_partition_migration/#bridge-wi-fi-credentials">credential and fallback rules</a>);
+when it reports <strong>Expanded layout ready</strong>, upload the ZIP's
 <code>full-application.bin</code> at <code>/update</code>.</p>
 <p>Do not use an <code>-merged.bin</code> in either browser uploader. Merged images contain
 bootloader and table offsets for cable flashing. The bridge preserves the
-private identity; other SPIFFS-backed settings may be recreated after the
-Full image starts.</p>
+private identity and supported saved configuration, including node name,
+radio profiles, ACL and login replay state. Files outside the supported
+preservation set may need to be recreated after the Full image starts.</p>
 <p>For an existing <code>heltec_v4_repeater</code> that already supports LoRa mOTA, use the
-separate LoRa migration package described in the shared guide. It preserves
-the old repeater across the partition change so the full image can also be
-installed over LoRa without reaching the board's Wi-Fi network.</p>
+ZIP's <code>lora-bridge.mota</code> with the identity-only LoRa handoff described in the
+shared guide. It preserves the old repeater across the partition change so the
+Full image can also be installed over LoRa without reaching the board's Wi-Fi
+network.
+That route does not restore saved settings; its post-expansion Wi-Fi recovery
+AP normally uses the published fallback. The optional Partition Expander
+route instead restores supported settings and retains the saved admin password.</p>
 
 
 

@@ -3893,7 +3893,7 @@ for <code>ENABLE_OTA</code> builds using the shared raw-radio scheduler, except 
 ESP-NOW builds; <code>-DMESH_ENABLE_OTA_KISS_DIRECT=0</code> explicitly disables it. Enabling
 the build feature alone does not bypass the runtime negotiation/session gates.
 The separate host seeder's safe probe/serve examples and lab TX lock are in
-<a href="../tools/lora_ota/README.md"><code>tools/lora_ota/README.md</code></a>.</p>
+<a href="https://github.com/mikecarper/MeshCore/blob/keymindCascade/tools/lora_ota/README.md"><code>tools/lora_ota/README.md</code></a>.</p>
 <h3 id="86-temporary-radio-and-transfer-boundary">8.6 Temporary-radio and transfer boundary</h3>
 <p>OTA packets may cross normal mesh relay hops, but each participating node processes or relays them only while
 a matching <code>tempradio</code> or <code>tempradio2</code> window is actually running. Direct transfers remain bound to their
@@ -4087,7 +4087,7 @@ deployment runner temporarily uses <code>0.3</code> on managed relays.</p>
 <code>ota folder on</code> command; that command confirms it can host and advertise the folder. A <strong>KISS modem will not
 work with <code>motatool serve --serial</code></strong>: KISS firmware exposes a TNC/KISS frame interface, not the MeshCore CLI
 and <code>mota-seeder</code> request/response transport. The separate
-<a href="../tools/lora_ota/README.md"><code>mota_kiss_direct.py</code> source</a> implements that full KISS interface.
+<a href="https://github.com/mikecarper/MeshCore/blob/keymindCascade/tools/lora_ota/mota_kiss_direct.py"><code>mota_kiss_direct.py</code> source</a> implements that full KISS interface.
 An ESP32 WiFi companion or FULL ESP32 role with active WiFi is the alternative
 source connection: use its dedicated seeder port with <code>motatool serve --tcp &lt;host&gt;:5001</code>.
 An nRF52 Full Companion can instead pair with a phone or Linux host, subscribe

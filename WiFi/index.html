@@ -2854,10 +2854,19 @@ fresh device with no saved SSID:</p>
 <li>Select <strong>Save &amp; Reboot</strong>.</li>
 <li>After reboot, check <code>get wifi.status</code> and <code>get mqtt.status</code>.</li>
 </ol>
-<p>The setup AP is unauthenticated unless the firmware was built with
-<code>WEBCONFIG_AP_PASSWORD</code>. It uses plain HTTP, so provision it in a trusted
-location. When WebConfig is running on the normal LAN, repeater and room-server
-builds require the node's admin password.</p>
+<p>First-time provisioning with no saved SSID does not require a portal admin
+login. A setup AP opened with a saved SSID, including saved-network recovery,
+requires the existing admin password before changing settings. Repeater and
+room-server builds also require that password on the normal LAN; deliberately
+passwordless images retain their no-password policy. <code>WEBCONFIG_AP_PASSWORD</code>
+controls access to the WiFi network separately. The portal uses plain HTTP, so
+use a trusted network.</p>
+<p>Admin login limits apply on both LAN and recovery AP: five failures lock the
+failing address for 30 seconds after its fifth failure. All addresses also share
+a budget of six failures, refilling one allowance every 6 seconds; while empty,
+even correct credentials receive HTTP 429. A success clears only its own
+address's count. The <a href="../room_services/#local-wi-fi-chat-on-esp32">room browser</a>
+uses a separate password budget; a WebConfig session does not bypass it.</p>
 <p>On an expanded FULL profile with no saved SSID, this automatic setup AP has an
 absolute 30-minute window. Browser activity or a phone left associated with the
 AP does not extend it. If no SSID has been saved when the window expires,

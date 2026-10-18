@@ -2948,11 +2948,13 @@ appear in Access Control alongside administrators. Automatic guest-password
 read/write sessions remain transient; password-created administrators remain
 retained. The existing permission byte is unchanged.</p>
 <p>Guest-password logins do not allocate new durable login replay records, so
-guest churn cannot fill the bounded replay store. Any existing record from a
-previous privileged role still applies and is advanced. After reboot or
-transient client eviction, an identity without such a record can have captured
-guest login and message traffic accepted again. Assign an explicit read/write
-role with <code>setperm &lt;key&gt; 2</code> when durable login replay protection is required.
+guest churn cannot fill the bounded replay store. Existing records remain
+authoritative and are advanced, including guest-password records created by
+older firmware. This change does not reclaim space in an already full
+128-identity replay store. After reboot or transient client eviction, an
+identity without such a record can have captured guest login and message
+traffic accepted again. Assign an explicit read/write role with <code>setperm &lt;key&gt; 2</code>
+when durable login replay protection is required.
 Room-post deduplication and per-sender post replay timestamps remain in RAM:
 captured old posts can also be accepted after a legitimate newer login restores
 a lost session.</p>
@@ -3095,6 +3097,22 @@ explicitly enabled public read-only access. Readers cannot post or edit
 notices; only administrators can publish or delete them. Each operation
 rechecks credentials and bans. Use private Wi-Fi: the local page uses HTTP,
 and network access alone does not grant administrator permission.</p>
+<p>Room-browser password checks share one budget across all browsers and tokens.
+Five newly counted wrong passwords exhaust a 30-second window measured from its
+first counted failure. Until that window ends, every request with a nonempty
+password is refused, including correct guest/admin passwords and polls from an
+already connected admin tab. Correct passwords do not refund failures, and
+refused requests do not extend the window. The last four wrong passwords are
+remembered; repeats among those four do not count again. A wrong nonempty
+password still counts when read-only access admits it as a guest. An empty
+password never consumes this budget and remains usable
+for explicitly enabled public read-only access.</p>
+<p>This limit belongs to <code>/api/room</code>. The WebConfig admin login at <code>/api/login</code>
+has its own address limits and shared budget for the same admin password;
+neither endpoint clears or bypasses the other's limit. The room page does not
+require a WebConfig session, and this browser limit does not change radio
+logins. If password requests are blocked, wait for the window to end or use
+the local console to manage the node.</p>
 <p>The browser generates a secret token and its own moderation identity. It
 does not import a radio private key or inherit a claimed radio key's ACL role.
 The Access and history panel shows the complete browser identity for banning.
