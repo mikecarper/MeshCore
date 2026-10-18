@@ -14,6 +14,86 @@ when its log identifies the physical device, firmware artifact, artifact hash,
 command result, and cold/warm boot outcome. Do not infer success from a tool's
 exit code when the tool has a documented false-success mode.
 
+## PR17–21 follow-up qualification, 2026-10-18 UTC
+
+The merged source checkpoint is `0a24279a3`. This audit adds host regressions,
+operator documentation, and a C6 GPIO capability fix; it is not a hardware
+qualification. No device was flashed or contacted during the audit.
+
+Completed host coverage includes guest replay-store capacity and live-client
+eviction; per-address/shared WebConfig limits and room-password windows across
+`millis()` rollover; existing WebConfig sessions during login throttling;
+migration credential precedence and failed-identity upload denial; generated
+package instructions; and cached/uncached partial-contact recovery. The real
+Chromium room and WebConfig fixtures use mocked HTTP responses, so they do not
+prove the actual network/firmware interaction below.
+
+The merge was compiled for `Heltec_v3_room_server`,
+`heltec_v4_companion_radio_usb`, `esp32_s3_4mb_partition_migrator`, and all four
+small STM32 USB Companions at release-version length. Follow-up builds cover
+`Xiao_rp2040_companion_radio_usb` and Arduino 3's
+`LilyGo_Tlora_C6_room_server_`. The C6 build initially exposed unavailable
+global deep-sleep GPIO hold APIs; the helper now follows the SDK's per-pad
+capability, with a fixture that omits the unavailable declarations. The CI
+`cross-platform-smoke` job retains both RP2040 and C6 build checks.
+
+Additional migration builds passed for `esp32_8mb_partition_migrator`,
+`esp32_c3_4mb_partition_migrator`,
+`heltec_v4_partition_migrator_lora_repeater`, `heltec_v4_partition_expander`,
+and `esp32_s3_4mb_partition_migrator_usb`, including their application-size and
+runtime-RAM gates. This covers representative chip families and Wi-Fi,
+identity-only LoRa, Expander and USB code paths, rather than every board alias.
+
+### Remaining physical acceptance checks
+
+Record the exact clean source revision, firmware SHA-256, device identity,
+observed result, and cold/warm boot outcome for each check. Record password
+classes and success/failure, never the passwords themselves.
+
+- [ ] **Migration credentials:** on cable-recoverable test hardware, join with
+  a distinct saved 8–15-character printable ASCII admin password. Reject the
+  wrong password and published fallback. Repeat with unusable/missing saved
+  credentials and verify the documented fallback. Forget or update the host's
+  saved `MeshCore-Migrate` network between different credentials.
+- [ ] **Migration handoff:** test both source OTA slots and the distinct
+  identity-only LoRa and configuration-preserving Expander routes. Verify
+  recovery-AP credentials after expansion, actual browser upload, unchanged
+  identity/supported settings, final version, and cold-boot persistence.
+  Exercise supported interruption/retry points on sacrificial hardware; the
+  partition-table sector write is not atomic.
+- [ ] **WebConfig:** use two distinct source addresses on LAN and on a
+  saved-network recovery AP. One address's five failures must not lock the
+  other out; exhausting the shared budget must reject even a correct new
+  login. An existing authorized session must remain usable. Verify recovery
+  at the six-second refill and 30-second address-lock boundaries. Clients
+  sharing one address also share its lock.
+- [ ] **Room browser:** use separate real browser tabs/tokens for five
+  different wrong passwords. Nonempty credentials, including an already-open
+  admin tab, must wait for the shared window to expire; public empty-password
+  read-only access must remain available when enabled. Repeated stale-tab
+  passwords must not consume a new failure on every poll. Check visible error,
+  retry and unsaved-edit behavior against the real board.
+- [ ] **Guest sessions:** churn transient guest identities, then admit a new
+  admin and an explicitly assigned writer. Power-cycle and verify privileged
+  login replay floors remain authoritative. Document the expected captured
+  guest-traffic replay boundary after transient state is lost; no durable
+  guest record is added and an already-full older store is not reclaimed.
+- [ ] **Contact storage:** on ESP32 cached/uncached, RP2040 and STM32, exercise
+  legacy interrupted saves, full-volume/read failures and complete-backup
+  precedence. Require complete records to survive, the partial source to stay
+  unchanged until ordinary save, and identity/settings to remain untouched.
+  RP2040's `exists()` cannot distinguish absence from every metadata error;
+  include actual storage faults. nRF52 uses separate legacy migration rules
+  and is not covered by the partial-tail salvage change.
+- [ ] **C6 terminal sleep:** measure the selected radio/FEM output levels
+  through terminal deep sleep and wake/reset, and verify that runtime/light
+  sleep does not latch unrelated live pins. A successful build and simulated
+  pad retention do not establish physical latch or current behavior.
+
+Remaining automated follow-ups are browser throttle-error/retry/draft cases
+and an executed configuration-restore-to-AP credential handoff. The host AP
+fixture supplies pre/post-restore files; it does not run an entire migration.
+
 ## ESP32 web console and browser OTA release gates
 
 The [2026-10-05 V4/XIAO checkpoint](hardware_validation_esp32_web_console_ota_2026-10-05.md)

@@ -334,6 +334,25 @@ static void passwordLimitCases() {
     ticks = later;
   }
   {
+    // A window beginning before UINT32_MAX stays locked through rollover,
+    // expires at its original boundary, and permits a full new failure window.
+    const uint32_t later = ticks, start = UINT32_MAX - 1000u; ticks = start;
+    MyMesh m; enable(m); m._prefs.allow_read_only = false;
+    const unsigned checks = password_checks + 5;
+    for (uint8_t owner = 20; owner < 25; ++owner) error(m, request("status", guess("wrap-", owner).c_str()), sequence++, "incorrect", owner);
+    assert(password_checks == checks);
+    ticks = UINT32_MAX; error(m, request("status", "admin-secret"), sequence++, "too many", 25);
+    ticks = 0; error(m, request("status", "admin-secret"), sequence++, "too many", 25);
+    ticks = start + 29999u; error(m, request("status", "admin-secret"), sequence++, "too many", 25);
+    assert(password_checks == checks);
+    ticks = start + 30000u;
+    assert(result(m, request("status", "admin-secret"), sequence++, 25)["role"] == PERM_ACL_ADMIN);
+    for (uint8_t owner = 30; owner < 35; ++owner) error(m, request("status", guess("after-wrap-", owner).c_str()), sequence++, "incorrect", owner);
+    assert(password_checks == checks + 6);
+    error(m, request("status", "admin-secret"), sequence++, "too many", 25);
+    ticks = later;
+  }
+  {
     MyMesh m; enable(m); m._prefs.allow_read_only = false;
     // Neither the guest nor the admin password refunds failed guesses.
     for (unsigned i = 0; i < 4; ++i) error(m, request("status", guess("guess-", i).c_str()), sequence++, "incorrect", 20);

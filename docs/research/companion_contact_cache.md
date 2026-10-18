@@ -67,6 +67,36 @@ The path checksum also rejects
 a cold path changed underneath a live handle; it does not add a new checksum
 to the legacy ESP32 on-disk format.
 
+### Legacy interrupted contact saves
+
+ESP32, RP2040 and STM32 Companions can load the complete records before a
+partial final record in a legacy `/contacts3` file. This includes cached and
+uncached ESP32 builds. The file must contain at least one whole 152-byte
+record, and every whole record must be readable.
+The partial record is ignored; loading does not truncate the source. The next
+successful ordinary contact save writes the complete loaded contacts through
+the platform's existing transaction writer.
+
+On ESP32 and RP2040, this salvage applies only when the presence check reports
+`/contacts3.bak` absent. A readable complete backup takes precedence over the
+incomplete primary. An unreadable backup keeps the existing bounded retry and
+recovery behavior; the partial primary is not used to declare that backup
+expendable. ESP32 also defers salvage when backup presence is uncertain.
+RP2040's filesystem API does not distinguish a metadata I/O error from a
+missing file. STM32 does not select a contact backup.
+
+This recovers a readable prefix from an interrupted older in-place save, not
+arbitrary corruption. Legacy records have no file checksum, and the existing
+route validation and repair still apply. A file with no complete record, or
+one that remains unreadable after recovery retries, can still be discarded by
+contact-only recovery. Failure to remove damaged data leaves contacts volatile
+and explicit saves unavailable, without erasing identity or unrelated settings.
+
+nRF52 retains its separate legacy-size validation and paged-store migration;
+this partial-tail salvage does not apply to nRF52. The existing
+[ExtraFS recovery guide](../test-results/nrf52_companion_storage_recovery.md)
+describes its separate mount and metadata recovery boundaries.
+
 ## Shared secrets and power
 
 Both platforms reuse the 16 most recent secrets from RAM. Cache misses use a
@@ -188,6 +218,8 @@ change that layout or enable WiFi OTA.
 
 ```sh
 python3 -B test/test_contact_cache.py
+python3 -B test/test_companion_uncached_storage.py
+python3 -B test/test_companion_contact_partial_tail.py
 python3 -B test/test_companion_contact_persistence_contract.py
 python3 -B test/test_companion_contact_stream_contract.py
 python3 -B test/test_nrf52_extrafs_contract.py
@@ -202,6 +234,10 @@ adapters. They exercise 350 routes, eviction, snapshot rollback, page
 migration, identity changes, read/write/rename faults, handle exhaustion,
 packet release on a failed path read, and recovery after a simulated reset
 between file renames. They do not simulate a physical flash power cut.
+The partial-tail tests also check readable-prefix preservation, backup
+precedence, deferred normalization on save and reload on ESP32, RP2040 and
+STM32 using filesystem adapters. Real flash power-loss and full-volume
+qualification remains separate from these host checks.
 
 `tools/hil/contact_cache_serial_stress.py` checks all 350 paths over USB,
 replaces them with a different generation, and optionally exercises secret

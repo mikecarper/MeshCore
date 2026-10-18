@@ -125,6 +125,9 @@ static void whole_record_read_errors_keep_bounded_recovery() {
 static void a_complete_backup_still_wins() {
   const auto image = tailImage();
   for (unsigned fault = 0; fault < 3; ++fault) {
+#if defined(RP2040_PLATFORM)
+    if (fault == 2) continue;  // Arduino-Pico exists() hides metadata errors.
+#endif
     tailFs() = FakeFilesystem();
     tailFs().files["/contacts3"] = partial(image, 1);
     tailFs().files["/contacts3.bak"] = records(image, 2);
@@ -143,32 +146,77 @@ static void a_complete_backup_still_wins() {
     assert(!tailFs().files.count("/contacts3.bak"));
   }
 }
+
+#if defined(ESP32_PLATFORM)
+static void unknown_backup_presence_preserves_sources() {
+  const auto image = tailImage();
+  tailFs() = FakeFilesystem();
+  tailFs().files["/contacts3"] = partial(image, 1);
+  tailFs().files["/contacts3.bak"] = records(image, 2);
+  tailFs().files["/channels2"] = {3, 4, 5};
+  tailFs().files["/identity/_main.id"] = {7, 8, 9};
+  const auto durable = tailFs().files;
+  {
+    failMetadata(true);
+    TailBoot b;
+    b.store.loadContacts(&b.host);
+    assert(b.store.contactRecoveryPending() && b.host.contacts.empty());
+    assert(!tailSave(b) && tailFs().files == durable);
+    b.store.recoverContacts(&b.host);  // Presence remains unknown on the retry.
+    assert(!b.store.contactRecoveryPending() && b.store.contactsAreVolatile());
+    assert(b.host.contacts.empty() && tailFs().files == durable);
+    failMetadata(false);
+    assert(!tailSave(b) && tailFs().files == durable);  // Volatile for this boot.
+  }
+  TailBoot rebooted;
+  boot(rebooted);
+  assert(!rebooted.store.hasIncompleteContactLoad() && !rebooted.store.contactsAreVolatile());
+  checkLoaded(rebooted.host, image, 2);  // The complete backup still wins.
+  assert(tailFs().files.at("/contacts3") == records(image, 2));
+  assert(!tailFs().files.count("/contacts3.bak"));
+  assert(tailFs().files.at("/channels2") == durable.at("/channels2"));
+  assert(tailFs().files.at("/identity/_main.id") == durable.at("/identity/_main.id"));
+}
+#endif
 #endif
 
-#if !MESH_CONTACT_CACHE
 static void salvaged_primary_open_failure_is_not_absence() {
   const auto image = tailImage();
-  filesystem = FakeFilesystem();
-  filesystem.files["/contacts3"] = partial(image, 1);
+  tailFs() = FakeFilesystem();
+  tailFs().files["/contacts3"] = partial(image, 1);
   {
     TailBoot dry;  // The last read open of a healthy load opens the image to load.
     dry.store.loadContacts(&dry.host);
     assert(dry.host.contacts.size() == 3);
   }
-  const unsigned load_open = filesystem.read_opens;
-  filesystem = FakeFilesystem();
-  filesystem.files["/contacts3"] = partial(image, 1);
-  filesystem.fail_read_open = load_open;
-  TailBoot b;
-  b.store.loadContacts(&b.host);
-  assert(b.store.hasIncompleteContactLoad() && b.store.contactRecoveryPending());
-  const auto unchanged = filesystem.files;
-  assert(!tailSave(b) && filesystem.files == unchanged);
-  b.store.recoverContacts(&b.host);
-  assert(!b.store.hasIncompleteContactLoad() && !b.store.contactRecoveryPending());
-  checkLoaded(b.host, image, 3);
-}
+  const unsigned load_open = tailFs().read_opens;
+  for (bool add_backup : {false, true}) {
+#if defined(STM32_PLATFORM)
+    if (add_backup) continue;  // STM32 does not select a contact backup.
 #endif
+    tailFs() = FakeFilesystem();
+    tailFs().files["/contacts3"] = partial(image, 1);
+    tailFs().fail_read_open = load_open;
+    TailBoot b;
+    b.store.loadContacts(&b.host);
+    assert(tailFs().read_opens == load_open);
+    assert(b.store.hasIncompleteContactLoad() && b.store.contactRecoveryPending());
+    assert(b.host.contacts.empty());
+    const auto unchanged = tailFs().files;
+    const auto writes = tailFs().writes;
+    assert(!tailSave(b) && tailFs().files == unchanged && tailFs().writes == writes);
+    // A backup available at the recovery boundary takes precedence over the
+    // salvaged prefix, even though the first selection had admitted it.
+    if (add_backup) tailFs().files["/contacts3.bak"] = records(image, 2);
+    b.store.recoverContacts(&b.host);
+    assert(!b.store.hasIncompleteContactLoad() && !b.store.contactRecoveryPending());
+    checkLoaded(b.host, image, add_backup ? 2 : 3);
+    if (add_backup) {
+      assert(tailFs().files.at("/contacts3") == records(image, 2));
+      assert(!tailFs().files.count("/contacts3.bak"));
+    } else assert(tailFs().files == unchanged);
+  }
+}
 
 int main() {
   partial_tail_keeps_whole_records();
@@ -176,10 +224,11 @@ int main() {
   whole_record_read_errors_keep_bounded_recovery();
 #if !defined(STM32_PLATFORM)
   a_complete_backup_still_wins();
+#if defined(ESP32_PLATFORM)
+  unknown_backup_presence_preserves_sources();
 #endif
-#if !MESH_CONTACT_CACHE
+#endif
   salvaged_primary_open_failure_is_not_absence();
-#endif
   printf("''' + MARKER + r'''\n");
   return 0;
 }
@@ -206,7 +255,18 @@ def uncached_fixture(work):
 
 def cached_fixture(work):
     fixtures = ROOT / "test/fixtures/contact_cache"
-    (work / "FakeFilesystem.h").write_text((fixtures / "FakeFilesystem.h").read_text())
+    filesystem = (fixtures / "FakeFilesystem.h").read_text()
+    # Match the uncached fixture's one-shot final-load-open failure without
+    # changing the shared filesystem adapter used by unrelated cache tests.
+    for old, new in (("  unsigned false_success_rename = 0, late_rename_error = 0;\n",
+                      "  unsigned false_success_rename = 0, late_rename_error = 0;\n"
+                      "  unsigned read_opens = 0, fail_read_open = 0;\n"),
+                     ("    auto failure = read_open_failures.find(path);\n",
+                      "    if (++read_opens == fail_read_open) return File();\n"
+                      "    auto failure = read_open_failures.find(path);\n")):
+        assert filesystem.count(old) == 1, old
+        filesystem = filesystem.replace(old, new)
+    (work / "FakeFilesystem.h").write_text(filesystem)
     source = (fixtures / "test_contact_cache.cpp").read_text()
     generated = work / "partial_tail.cpp"
     generated.write_text("#include <cstdio>\n" + source[:source.index("int main() {")] + CHECKS)

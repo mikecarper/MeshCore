@@ -20,16 +20,22 @@ python3 -B scripts/build_esp32_partition_migration.py \
 The ZIP contains the Wi-Fi bridge, LoRa bridge, and exact-target Full image.
 Upload its `wifi-bridge.bin` through the
 legacy browser Wi-Fi updater. Rejoin `MeshCore-Migrate` using the node's saved
-admin password as the Wi-Fi password (see the shared guide for the published
-fallback); when it reports **Expanded layout ready**, upload the ZIP's
+admin password as the Wi-Fi password (see the shared
+[credential and fallback rules](esp32_wifi_partition_migration.md#bridge-wi-fi-credentials));
+when it reports **Expanded layout ready**, upload the ZIP's
 `full-application.bin` at `/update`.
 
 Do not use an `-merged.bin` in either browser uploader. Merged images contain
 bootloader and table offsets for cable flashing. The bridge preserves the
-private identity; other SPIFFS-backed settings may be recreated after the
-Full image starts.
+private identity and supported saved configuration, including node name,
+radio profiles, ACL and login replay state. Files outside the supported
+preservation set may need to be recreated after the Full image starts.
 
 For an existing `heltec_v4_repeater` that already supports LoRa mOTA, use the
-separate LoRa migration package described in the shared guide. It preserves
-the old repeater across the partition change so the full image can also be
-installed over LoRa without reaching the board's Wi-Fi network.
+ZIP's `lora-bridge.mota` with the identity-only LoRa handoff described in the
+shared guide. It preserves the old repeater across the partition change so the
+Full image can also be installed over LoRa without reaching the board's Wi-Fi
+network.
+That route does not restore saved settings; its post-expansion Wi-Fi recovery
+AP normally uses the published fallback. The optional Partition Expander
+route instead restores supported settings and retains the saved admin password.

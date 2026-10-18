@@ -12,6 +12,12 @@ matching bootloader profiles. Earlier preview versions mentioned below
 describe compatibility/migration history, not the current recommended download.
 Full Companion is a MOTA source and normally updates itself over USB.
 
+Before a Companion upgrade, export its contacts when possible. ESP32, RP2040
+and STM32 can retain complete legacy records ahead of an interrupted final
+record when no backup is reported present; nRF52 has separate migration rules.
+See [legacy interrupted contact saves](research/companion_contact_cache.md#legacy-interrupted-contact-saves)
+for the recovery limits and next-save behavior.
+
 
 This guide is for **node operators**: how to update your MeshCore device's firmware over the radio, in
 plain language. No cables, no programmer - your node can download a new firmware from a neighbour and

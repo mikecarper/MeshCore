@@ -487,6 +487,8 @@ ready**, it listens on the saved primary radio profile and automatically
 fetches only this package's exact-target Full application. Serve
 `full-application.mota` on that profile; do not upload it to the browser.
 The bridge's status page reports the receiver profile and block progress.
+Its recovery AP uses the restored saved admin password when usable; the
+shared credential rules above explain the fallback.
 Keep only the intended Full build for this target on the seeder during the
 migration; the bridge pins the hardware/role target, not an individual MID.
 If installed on an already-expanded board, it returns to a verified Full image
@@ -508,10 +510,8 @@ installing the bridge; the bridge does not itself repeat normal traffic.
    `Started:` URL returned by the command (the port can vary by old build).
 2. Keep power stable. Join `MeshCore-Migrate` using the node's saved admin
    password as the Wi-Fi password, open `http://192.168.4.1/`, and wait for
-   **Expanded layout ready**. If that password is shorter than 8 characters
-   or was never saved, the bridge falls back to the published
-   `meshcore-migrate`, which anyone nearby can use; set a longer admin
-   password before step 1.
+   **Expanded layout ready**. Follow the shared credential and fallback rules
+   above if the saved password is unusable.
 3. At that page's `/update`, upload `full-application.bin`.
 """
     usb_instructions = f"""## Host-managed USB route
@@ -555,6 +555,8 @@ it does not reboot into an old receiver with reset settings.
 3. Serve this package's `full-application.mota` on that saved profile. The
    expander automatically fetches only this exact successor target and installs
    it after complete verification. Wi-Fi recovery remains available.
+   Its AP uses the restored saved admin password when usable, with the fallback
+   described above.
 
 The final image has {full_mota_blocks} blocks; the seeder needs at least
 {full_mota_blocks * 4} bytes of proof scratch. Confirm that a capable seeder
@@ -607,6 +609,11 @@ The resized SPIFFS may reset saved radio settings. Before stage one, know
 the old receiver's compiled default radio profile and arrange a seeder on
 that profile for stage two; a remote node that cannot hear the seeder cannot
 finish its LoRa migration.
+
+This identity-only LoRa handoff does not restore saved settings. Its
+post-expansion Wi-Fi recovery AP normally uses `meshcore-migrate`, the published
+fallback, even when the old node had a usable saved admin password. This differs
+from the configuration-preserving Partition Expander route.
 
 1. Make `lora-bridge.mota` available from a compatible mOTA seeder. On the old
    node use `ota ls`, `ota pull <id> flash`, then `ota install` after the
@@ -684,6 +691,26 @@ The stock bootloader has no atomic backup partition table: power loss during
 the table-sector erase/write can still require cable recovery. Do not use this
 on an inaccessible node without accepting that risk and testing a sacrificial
 example of the same board first.
+
+## Bridge Wi-Fi credentials
+
+Join `MeshCore-Migrate` using the old node's saved admin password when it is
+usable. The firmware stores at most 15 characters; use **8 to 15 printable ASCII
+characters**. Before installing the bridge, set a strong, nonpublic password
+with `password <new password>` and verify it survives a normal reboot.
+
+The bridge uses the published fallback `meshcore-migrate` if the saved password
+is shorter than 8 characters, contains nonprintable or non-ASCII characters,
+or cannot be read. Missing saved preferences, including an unsaved built-in
+default, also cause fallback. Anyone nearby who knows the fallback can join
+and upload firmware when the updater is enabled. A saved default or other
+public admin password remains usable; it does not protect the bridge from
+someone who already knows it.
+
+The Wi-Fi bridge restores the saved password after expansion. The LoRa and
+Partition Expander sections below explain their recovery AP credentials.
+Forget or update any previously saved `MeshCore-Migrate` network before joining
+with a different password. Older bridge packages use the published fallback.
 
 {wifi_instructions}
 {usb_instructions}

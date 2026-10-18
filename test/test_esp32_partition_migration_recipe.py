@@ -147,6 +147,30 @@ class Esp32MigrationRecipeTest(unittest.TestCase):
         self.assertEqual("esp32_s3_8mb_partition_migrator_usb", steps[3][0][3])
         self.assertEqual("esp32_s3_8mb_partition_migrator_lora", steps[4][0][3])
 
+    def test_generated_guides_explain_credentials_for_each_recovery_route(self):
+        for board in ("heltec-v2-room-server", "heltec-v4",
+                      "waveshare-s3-lr1121-observer-repeater"):
+            with self.subTest(board=board):
+                guide = readme(board, BOARDS[board], "v1.18.0-test", "01234567")
+                credentials = " ".join(guide.split("## Bridge Wi-Fi credentials\n", 1)[1]
+                                       .split("## Wi-Fi route\n", 1)[0].split())
+                for rule in ("saved admin password", "8 to 15 printable ASCII characters",
+                             "shorter than 8", "nonprintable or non-ASCII", "cannot be read",
+                             "Missing saved preferences", "meshcore-migrate",
+                             "verify it survives a normal reboot"):
+                    self.assertIn(rule, credentials)
+                lora = " ".join(guide.split("## LoRa route", 1)[1].split())
+                if BOARDS[board].get("expander_bridge") == BOARDS[board]["lora_bridge"]:
+                    self.assertIn("uses the restored saved admin password", lora)
+                    self.assertNotIn("post-expansion Wi-Fi recovery AP normally uses", lora)
+                else:
+                    self.assertIn("post-expansion Wi-Fi recovery AP normally uses `meshcore-migrate`",
+                                  lora)
+                if BOARDS[board].get("expander_bridge"):
+                    expander = " ".join(guide.split("## Partition Expander route", 1)[1]
+                                        .split("## LoRa route", 1)[0].split())
+                    self.assertIn("uses the restored saved admin password", expander)
+
     def test_all_six_usb_chip_capacity_profiles_are_built_once_and_wifi_retained(self):
         steps = build_steps(list(BOARDS), "v1.17.1.7-test", "usa-cascadia", "cascade", 4)
         utilities = [command[3] for command, full in steps if not full]

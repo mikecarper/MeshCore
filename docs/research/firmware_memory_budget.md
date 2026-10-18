@@ -548,6 +548,26 @@ G2/Wio L1 selections in this matrix and all four STM32 Companions were rebuilt
 at `29787c0b2`.
 The final 95 related host tests and artifact-hash checks pass.
 
+### PR21 contact-recovery size recheck, 2026-10-18 UTC
+
+The combined PR17–21 merge tree `a40b1f662` was linked with
+`v1.18.0.1-halo-keymind-cascade-dev`, `usa-cascade-fixed`, and the Cascade
+profile. All four unchanged 229,376-byte application limits and runtime RAM
+gates passed. These are build results, not on-device qualification.
+
+| USB Companion | Application bytes | Free application bytes | Static RAM bytes |
+| --- | ---: | ---: | ---: |
+| RAK3x72 | 228,744 | 632 | 40,220 |
+| Wio-E5 Mini | 228,760 | 616 | 40,252 |
+| Wio-E5 Dev | 228,884 | 492 | 40,212 |
+| Tiny Relay | 228,940 | 436 | 40,220 |
+
+The earlier 508/452-byte margins above are historical checkpoints. Continue
+linking every small STM32 Companion at full release-version length: these
+margins do not justify relaxing the application, filesystem or runtime-RAM
+gates. Physical storage and boot checks remain in the
+[hardware checklist](../test-results/hardware_validation_checklist.md#pr1721-follow-up-qualification-2026-10-18-utc).
+
 Margins remain narrow: RAK4631 Full Companion has 932 flash bytes free;
 canonical/unified RAK4631 Full Repeater have 548/540 bytes above their RAM
 budgets. W12/G2/G3 Full MQTT have 2,208/2,176/1,816 bytes above their budgets.

@@ -120,6 +120,18 @@ static void guestChurnCannotLockOutNewIdentities() {
     CHECK(!login(room, guest, "published", 1000 + i));
     CHECK(login(room, guest, "published", 2000 + i));
   }
+  // A guest without a durable record loses its exact live floor on eviction.
+  // Re-admission starts another transient writer session, whose immediate
+  // replay is rejected without allocating a permanent replay-store slot.
+  const auto evicted_guest = member(0, 0x6E);
+  CHECK(!room.acl.getClient(evicted_guest.pub_key, PUB_KEY_SIZE));
+  CHECK(storedIdentities(fs) == 0);
+  CHECK(login(room, evicted_guest, "published", 1000));
+  const auto* readmitted = room.acl.getClient(evicted_guest.pub_key, PUB_KEY_SIZE);
+  CHECK(readmitted && readmitted->permissions == PERM_ACL_READ_WRITE
+        && !readmitted->permissions_are_explicit);
+  CHECK(!login(room, evicted_guest, "published", 1000));
+  CHECK(storedIdentities(fs) == 0);
   // A new Admin device and an assigned writer's first login are still admitted.
   CHECK(login(room, admin, "admin-secret", 3000));
   CHECK(login(room, writer, "", 3000));

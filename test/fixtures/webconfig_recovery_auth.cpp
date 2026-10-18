@@ -22,7 +22,11 @@ struct Callback {
 };
 struct WCLock { explicit WCLock(int) {} };
 struct WiFiMock { int softAPIP() const { return 4; } } WiFi;
-struct Client { int local_ip=4; int localIP() const { return local_ip; } uint32_t getRemoteAddress() const { return 0; } };
+struct Client {
+  int local_ip=4; uint32_t remote=0;
+  int localIP() const { return local_ip; }
+  uint32_t getRemoteAddress() const { return remote; }
+};
 struct Header { String cookies; const String& value() const { return cookies; } };
 struct AsyncWebServerResponse {
   int status; std::map<std::string, std::string> headers;
@@ -106,5 +110,25 @@ int main() {
   // password management. Keep that explicit no-password deployment policy.
   portal._initial_setup=false; portal.callback.node.admin_password[0]=0;
   assert(portal.checkAuth(&attacker)); portal.handleLogin(&attacker); assert(attacker.status==200);
+  // A spent login budget blocks new logins without revoking an existing
+  // authenticated session, on either the saved-network AP or the LAN.
+  for (int mode : {WebConfigServer::MODE_SETUP, WebConfigServer::MODE_LAN}) {
+    WebConfigServer active; active._mode=mode;
+    AsyncWebServerRequest owner; owner.socket.remote=100;
+    owner.password("existing-secret"); active.handleLogin(&owner);
+    assert(owner.status==200);
+    const std::string token=active._session_token;
+    owner.header.cookies=std::string("wcs=")+token;
+    for (uint32_t address = 1; address <= 6; address++) {
+      AsyncWebServerRequest wrong; wrong.socket.remote=address;
+      wrong.password("wrong"); active.handleLogin(&wrong); assert(wrong.status==401);
+    }
+    AsyncWebServerRequest login; login.socket.remote=200;
+    login.password("existing-secret"); active.handleLogin(&login);
+    assert(login.status==429 && token==active._session_token);
+    assert(active.checkAuth(&owner));
+    active.checkConfigPost(&owner); assert(active.config_accepted);
+    assert(token==active._session_token);
+  }
   puts("WebConfig recovery authentication regression checks passed");
 }

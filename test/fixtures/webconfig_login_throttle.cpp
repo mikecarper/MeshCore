@@ -84,6 +84,31 @@ int main() {
     assert(t.check(A, now) == ALLOW);
     assert(t.check(B, now) == ALLOW);
   }
+  // A lock started just before UINT32_MAX remains active across rollover and
+  // expires at exactly thirty seconds, then gives the client a fresh count.
+  {
+    Tracker t; const uint32_t start = UINT32_MAX - 1000u;
+    fail(t, A, start, kClientFails);
+    assert(t.check(A, UINT32_MAX) == CLIENT_LOCKED);
+    assert(t.check(A, 0) == CLIENT_LOCKED);
+    assert(t.check(B, 0) == ALLOW);
+    assert(t.check(A, start + kClientLockMs - 1) == CLIENT_LOCKED);
+    fail(t, A, start + kClientLockMs, kClientFails);
+    assert(t.check(A, start + kClientLockMs) == CLIENT_LOCKED);
+  }
+  // The shared allowance also refills across rollover, once per six seconds.
+  {
+    Tracker t; const uint32_t start = UINT32_MAX - 3000u;
+    uint32_t ip = 1;
+    for (int i = 0; i < kSharedBudget; i++) fail(t, ip++, start);
+    assert(t.check(ip, UINT32_MAX) == SHARED_LOCKED);
+    assert(t.check(ip, 0) == SHARED_LOCKED);
+    assert(t.check(ip, start + kSharedRefillMs - 1) == SHARED_LOCKED);
+    fail(t, ip++, start + kSharedRefillMs);
+    assert(t.check(ip, start + 2 * kSharedRefillMs - 1) == SHARED_LOCKED);
+    fail(t, ip++, start + 2 * kSharedRefillMs);
+    assert(t.check(ip, start + 2 * kSharedRefillMs) == SHARED_LOCKED);
+  }
   // Failures recorded without a check saturate instead of wrapping.
   {
     Tracker t; uint32_t now = 100000;

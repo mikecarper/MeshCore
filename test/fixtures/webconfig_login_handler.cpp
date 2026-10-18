@@ -96,6 +96,27 @@ int main() {
     assert(login(portal, owner, "existing-secret")==200);
     assert(login(portal, attacker, "existing-secret")==200);
   }
+  // Real handler responses retain their exact boundaries when millis wraps.
+  {
+    WebConfigServer portal; const uint32_t start=UINT32_MAX-1000u; now_ms=start;
+    for (int i = 0; i < 5; i++) assert(login(portal, attacker, "guess")==401);
+    now_ms=0;
+    assert(login(portal, attacker, "existing-secret")==429 && last_reply==kLocked);
+    now_ms=start+29999u;
+    assert(login(portal, attacker, "existing-secret")==429 && last_reply==kLocked);
+    now_ms=start+30000u;
+    assert(login(portal, attacker, "existing-secret")==200);
+  }
+  {
+    WebConfigServer portal; const uint32_t start=UINT32_MAX-3000u; now_ms=start;
+    for (uint32_t address = 10; address < 16; address++) assert(login(portal, address, "guess")==401);
+    now_ms=0;
+    assert(login(portal, owner, "existing-secret")==429 && last_reply==kShared);
+    now_ms=start+5999u;
+    assert(login(portal, owner, "existing-secret")==429 && last_reply==kShared);
+    now_ms=start+6000u;
+    assert(login(portal, owner, "existing-secret")==200);
+  }
   // LAN requests without a client object share one key and do not crash.
   {
     WebConfigServer portal; portal._mode=WebConfigServer::MODE_LAN;

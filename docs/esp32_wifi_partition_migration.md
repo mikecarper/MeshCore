@@ -7,10 +7,12 @@
 The partition-migration bridge lets a supported ESP32 node move from a small
 dual-OTA layout to a verified larger dual-OTA layout without cable flashing or
 a full-chip erase. It fits a legacy 1.25 MiB slot. The Wi-Fi version exposes an
-updater for the Full image after migration. The LoRa version preserves a
-verified old OTA receiver so it can fetch the Full image into the expanded
-inactive slot. On 8/16 MiB flash the bridge restores identity before handing
-off; the 4 MiB route keeps identity staged until the Full image's first boot.
+updater for the Full image after migration. The older identity-only LoRa
+handoff preserves a verified old OTA receiver so it can fetch the Full image
+into the expanded inactive slot. On 8/16 MiB flash that bridge restores identity
+before handing off; its 4 MiB route keeps identity staged until the Full image's
+first boot. Configuration-preserving Partition Expanders instead receive the
+Full image themselves after restoring identity and supported settings.
 
 The distinct USB version performs verified identity/configuration restoration
 before the host writes the final app. It keeps application USB CDC disabled
@@ -41,6 +43,30 @@ table-prefix test; the bridge core is otherwise shared.
 These are the supported migration plans. The 8/16 MiB tables retain more
 filesystem storage and a coredump partition; their application slots are not
 the absolute maximum permitted by the physical flash capacity.
+
+## Bridge Wi-Fi credentials
+
+Join `MeshCore-Migrate` using the admin password saved on the old node. This
+applies to the Wi-Fi bridge and the recovery AP of LoRa bridges and Partition
+Expanders. The firmware stores at most 15 password characters; the bridge can
+use a saved password of **8 to 15 printable ASCII characters** for WPA2.
+
+If the saved password is shorter than 8 characters, contains other characters,
+or cannot be read, the bridge uses the published fallback `meshcore-migrate`.
+Missing saved preferences, including a node still using an unsaved built-in
+default, also cause fallback. Anyone nearby who knows that published password
+can then join and upload firmware when the updater is enabled. A saved default
+or other public admin password is also usable, so choose a strong, nonpublic
+password before migration. On the old node, use `password <new password>` and
+verify that it remains valid after a normal reboot before uploading the bridge.
+
+The Wi-Fi bridge and configuration-preserving Partition Expanders restore the
+saved password before starting their AP in the expanded layout. The older
+identity-only LoRa handoff does not restore saved settings, so its Wi-Fi
+recovery AP after the table change normally uses the fallback. Follow the exact
+route in the package README. If a device remembers `MeshCore-Migrate` from an
+earlier bridge, forget that saved network or update its password before joining.
+Bridge packages built before this credential change use `meshcore-migrate`.
 
 ## Ordinary Full releases and installation
 
@@ -212,9 +238,11 @@ inclusion does **not** override either check.
 
 Every listed board/role has Wi-Fi and LoRa bridge recipes. Heltec V4 and XIAO
 S3 WIO repeaters retain their board-specific bridge names; the other entries
-use matching original-ESP32, ESP32-S3, or ESP32-C3 chip-family bridges. LoRa
-still requires a verified same-target old receiver, and 4 MiB boards require
-the slot-B-only sequence below. A 4 MiB Full build offers 1,984 KiB per slot.
+use matching original-ESP32, ESP32-S3, or ESP32-C3 chip-family bridges. The older
+identity-only LoRa handoff requires a verified same-target old receiver, and
+its 4 MiB route requires the slot-B-only sequence below. Configuration-preserving
+Partition Expanders use the route described in their package README instead.
+A 4 MiB Full build offers 1,984 KiB per slot.
 The packager verifies both the Full application's slot fit and its mOTA
 staging overhead. It supports at most 4096 blocks of 2 KiB for the Full
 transfer, and records the seeder proof-scratch requirement in the manifest.
@@ -234,7 +262,8 @@ followed by its 64-byte private key), stages them in an NVS namespace that is
 unchanged by the source and target layouts, then changes the table. The Wi-Fi
 bridge and 8/16 MiB LoRa bridge restore the staged value into expanded SPIFFS,
 read it back byte-for-byte, and only then clear the NVS staging record. On the
-4 MiB LoRa route, the Full application's first boot performs this restoration.
+4 MiB identity-only LoRa handoff, the Full application's first boot performs
+this restoration.
 
 The Wi-Fi bridge also stages and verifies its supported saved configuration:
 node name and preferences, radio profiles, ACL and login replay state, region
@@ -284,26 +313,20 @@ Use `--board xiao-s3-wio` with the recipe above. Its Wi-Fi bridge is a
 legacy-slot application image; its Full image keeps the old repeater's exact
 LoRa OTA target ID. Upload `wifi-bridge.bin` from the ZIP through the legacy
 node's existing Wi-Fi browser updater.
-Then join `MeshCore-Migrate` and wait for **Expanded layout ready**. Its Wi-Fi
-password is the admin password saved on the old node, so only someone who can
-already administer the node can join and upload firmware. Upload
-`full-application.bin` at `/update`.
+Then join `MeshCore-Migrate` using the node's saved admin password, following
+the [shared credential and fallback rules](#bridge-wi-fi-credentials), and wait
+for **Expanded layout ready**. Upload `full-application.bin` at `/update`.
 Do not upload an `-merged.bin`: merged images include
 bootloader and table offsets for cable flashing, not browser OTA.
-
-WPA2 needs a password of at least 8 printable ASCII characters. If the saved
-admin password is shorter, uses other characters, or was never saved (the node
-still runs on its built-in default), the bridge falls back to
-`meshcore-migrate`. That password is published here, so anyone nearby could
-then join and upload firmware. Before uploading the bridge, set an admin
-password of 8 to 15 characters with `password <new password>`. A LoRa
-first-stage bridge does not carry saved settings into the expanded layout, so
-its Wi-Fi recovery page after the table change normally uses the fallback.
 
 `xiao_s3_partition_legacy_seed` is a disposable-hardware test image only. It
 models the legacy table and an identity file; it is not a deployable repeater.
 
 ## LoRa-only migration of a listed role
+
+This section describes the older identity-only LoRa handoff. A package whose
+LoRa first stage is a configuration-preserving Partition Expander, including
+the Waveshare observer packages, uses its package README's self-hosted route.
 
 The exact old board/role must already support MeshCore LoRa mOTA and have a valid
 EndF image identity. The LoRa bridge checks the old app's target ID and body

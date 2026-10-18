@@ -7,6 +7,7 @@
 Completed validation reports, experiments, and test guides are collected here. Older page addresses redirect to these copies. Results are tied to the hardware and firmware versions named in each report; they do not automatically qualify a newer build.
 
 - [1.17.1.8 Preview 1 qualification and raw reports](preview-1.17.1.8/index.md)
+- [PR17–21 remaining hardware acceptance checks](hardware_validation_checklist.md#pr1721-follow-up-qualification-2026-10-18-utc)
 
 ## Radio and RF
 

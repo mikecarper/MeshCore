@@ -111,8 +111,9 @@ esp_err_t esp_wifi_get_max_tx_power(int8_t* power) { *power = 78; return ESP_OK;
 void delay(unsigned) {}
 
 struct AsyncWebServerRequest {
-  void send(int, const char*, const String&) {}
-  void send(int, const char*, const char*) {}
+  std::string body;
+  void send(int, const char*, const String& text) { body = text.s; }
+  void send(int, const char*, const char* text) { body = text; }
 };
 struct AsyncWebServer {
   std::vector<std::string> routes;
@@ -136,6 +137,7 @@ struct File {
 struct Filesystem {
   std::map<std::string, std::vector<uint8_t>> files;
   bool mountable = true, mounted = false, seek_fails = false, short_read = false;
+  std::string fail_open;
   unsigned begins = 0, ends = 0, opens = 0, closes = 0;
   // Before migration this is the legacy filesystem: it must never be formatted.
   bool begin(bool format) { assert(!format); ++begins; mounted = mountable; return mounted; }
@@ -145,7 +147,9 @@ struct Filesystem {
     assert(!strcmp(mode, "r"));
     File file;
     auto entry = files.find(path);
-    if (mounted && entry != files.end()) { file.data = &entry->second; ++opens; }
+    if (mounted && fail_open != path && entry != files.end()) {
+      file.data = &entry->second; ++opens;
+    }
     return file;
   }
 } SPIFFS;
@@ -235,6 +239,18 @@ void expectFallback() {
   balancedMount();
 }
 
+void expectUploadDisabled(const char* expected_password) {
+  startServer();
+  assert(WiFi.ap_calls == 1 && !WiFi.open && WiFi.password == expected_password);
+  assert(AsyncElegantOTA.begins == 0);
+  AsyncWebServerRequest request;
+  sendHome(&request);
+  assert(request.body.find("Private identity recovery did not complete") != std::string::npos);
+  assert(request.body.find("Firmware upload is disabled") != std::string::npos);
+  assert(request.body.find("href='/update'") == std::string::npos);
+  balancedMount();
+}
+
 int main(int argc, char** argv) {
   assert(argc == 2);
   const int scenario = atoi(argv[1]);
@@ -287,6 +303,19 @@ int main(int argc, char** argv) {
     expectFallback();
     reset(); SPIFFS.short_read = true;
     SPIFFS.files["/com_prefs"] = prefs(290, "Correct-Horse9");
+    expectFallback();
+  } else if (scenario == 7) {
+    reset(true); identity_ready = false;
+    SPIFFS.files["/com_prefs"] = prefs(290, "Correct-Horse9");
+    expectUploadDisabled("Correct-Horse9");
+    reset(true); identity_ready = false;
+    expectUploadDisabled(kFallback);
+  } else if (scenario == 8) {
+    // Existing /com_prefs wins even when it cannot be opened. Never use a
+    // potentially stale /node_prefs password to bypass that file precedence.
+    reset(); SPIFFS.fail_open = "/com_prefs";
+    SPIFFS.files["/com_prefs"] = prefs(290, "Com-prefs-pass");
+    SPIFFS.files["/node_prefs"] = prefs(290, "Node-prefs-pass");
     expectFallback();
   } else {
     return 2;
@@ -360,6 +389,12 @@ class MigrationBridgeApPasswordTests(unittest.TestCase):
 
     def test_failed_seek_or_partial_read_falls_back(self):
         self.run_scenario(6)
+
+    def test_failed_identity_restore_disables_upload_with_either_ap_credential(self):
+        self.run_scenario(7)
+
+    def test_unopenable_common_prefs_does_not_use_legacy_password(self):
+        self.run_scenario(8)
 
     def test_operator_instructions_name_the_admin_password(self):
         # Extra guard only: the instructions must not present the published
