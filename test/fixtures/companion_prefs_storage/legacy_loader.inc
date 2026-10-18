@@ -209,7 +209,9 @@ bool DataStore::loadPrefsLegacy(const char *filename,
     readOptionalField(&loaded_prefs.direct_tx_delay_factor, sizeof(loaded_prefs.direct_tx_delay_factor));
     readOptionalField(&loaded_prefs.interference_threshold, sizeof(loaded_prefs.interference_threshold));
     readOptionalField(&loaded_prefs.agc_reset_interval, sizeof(loaded_prefs.agc_reset_interval));
-    readOptionalField(&loaded_prefs.tz_offset, sizeof(loaded_prefs.tz_offset));
+    // Frozen historical representation, converted numerically for the new RAM type.
+    readOptionalField(&loaded_prefs.tz_offset_legacy, 1);
+    loaded_prefs.tz_offset = loaded_prefs.tz_offset_legacy;
 #ifdef TBEAM_1W
     readOptionalField(loaded_prefs.fan_mode, sizeof(loaded_prefs.fan_mode));
     readOptionalField(&loaded_prefs.fan_lo, sizeof(loaded_prefs.fan_lo));

@@ -383,7 +383,13 @@ int main() {
 def field_code(rows, seed=False):
     result = []
     for name, size in rows:
-        if seed:
+        if name == 'tz_offset':
+            if seed:
+                result.append('prefs.tz_offset = float(int(random % 27) - 12);')
+            else:
+                result.append('const int8_t legacy_tz = static_cast<int8_t>(prefs.tz_offset);')
+                result.append('append(&legacy_tz, 1);')
+        elif seed:
             if name is not None and not name.startswith('@'):
                 result.append(f'fill(&prefs.{name}, sizeof(prefs.{name}));')
         elif name is None:

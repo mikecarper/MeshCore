@@ -407,6 +407,7 @@ jobs:
           python3 -B test/test_companion_preferences_transaction.py -v
           python3 -B test/test_companion_prefs_values.py -v
           python3 -B test/test_companion_prefs_image.py -v
+          python3 -B test/test_companion_timezone_prefs.py -v
           python3 -B test/test_companion_prefs_tail.py -v
           python3 -B test/test_companion_radio_settings_transaction.py -v
           python3 -B test/test_companion_prefs_transactions.py -v
@@ -757,6 +758,7 @@ jobs:
           test_indicator_messages_profile test_t096_message_footer_profile
           test_indicator_display_profile test_indicator_render_profile
           test_indicator_exclusive_transport test_companion_transport_selector
+          test_companion_home_ble_profiles
 
       - name: Verify independent USB packet/debug logging, recovery, and instructions
         run: |

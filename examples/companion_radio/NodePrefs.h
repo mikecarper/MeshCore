@@ -11,6 +11,7 @@
 #include <helpers/CommonRadioPrefs.h>
 #include <helpers/DynamicConfigSerializer.h>
 #include <helpers/CompanionTrafficPrefs.h>
+#include <helpers/CompanionTimezonePrefs.h>
 
 #include "BluetoothName.h"
 
@@ -90,7 +91,9 @@ public:
   float direct_tx_delay_factor = 0.2f;
   uint8_t interference_threshold = 0;
   uint8_t agc_reset_interval = 0;  // seconds / 4
-  int8_t tz_offset = 0;
+  // Storage-only shadow for the published one-byte integer timezone slot.
+  // Fractional precision lives in the checked footer, never in this prefix.
+  int8_t tz_offset_legacy = 0;
 #ifdef TBEAM_1W
   char fan_mode[5] = "auto";
   uint8_t fan_lo = 30;
@@ -255,12 +258,16 @@ private:
   DynamicConfigSerializer custom;
 
 public:
+  // Keep the widened runtime value after the adapters: widening the historic
+  // one-byte member in place would move the compact ARM preference offsets.
+  float tz_offset = 0;
+
   CompanionNodePrefs() : radio(this), custom(&radio) { }
 
-  // Only the scalar/array value prefix is a snapshot. Copying the complete
-  // object also copies adapter owner/fallback pointers and costs two large
-  // memberwise copies in the transactional loader. Keep both live adapters
-  // untouched, and leave a normally constructed snapshot's adapters local.
+  // Snapshot the scalar/array prefix and the separate runtime timezone.
+  // Copying the complete object also copies adapter owner/fallback pointers
+  // and costs two large memberwise copies in the transactional loader. Keep
+  // both live adapters untouched and a scratch snapshot's adapters local.
   bool copyPersistedValuesFrom(const CompanionNodePrefs& source) {
     if (&source == this) return true;
     const auto& last_value = tx_ssh;
@@ -294,6 +301,7 @@ public:
     };
     if (!bounded(*this) || !bounded(source)) return false;
     memcpy(&airtime_factor, &source.airtime_factor, size);
+    tz_offset = source.tz_offset;
     return true;
   }
 

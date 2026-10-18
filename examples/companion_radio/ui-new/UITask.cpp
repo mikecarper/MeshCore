@@ -23,6 +23,7 @@
 #include "../CompanionWiFi.h"
 #include "target.h"
 #include <time.h>
+#include <math.h>
 #if defined(ENABLE_WIFI_INTERFACE) || defined(WIFI_SSID)
   #include <WiFi.h>
 #endif
@@ -429,7 +430,7 @@ class HomeScreen : public UIScreen {
     RADIO_STATUS,
 #ifdef COMPANION_EXCLUSIVE_WIFI_BLE
     TRANSPORT,
-#else
+#elif defined(BLE_PIN_CODE)
     BLUETOOTH,
 #endif
     ADVERT,
@@ -929,8 +930,11 @@ public:
         #ifdef UI_SHOW_CLOCK
         display.setTextSize(3);
         uint32_t now = _rtc->getCurrentTime();
-        int8_t tz = _node_prefs->tz_offset;
-        now += (int32_t)tz * 3600;
+        const float tz = _node_prefs->tz_offset;
+        // Keep fractional hours and reject corrupt values before conversion.
+        if (isfinite(tz) && tz >= -12.0f && tz <= 14.0f) {
+          now += static_cast<int32_t>(tz * 3600.0f);
+        }
         DateTime dt (now);
         sprintf(tmp, "%02d:%02d", dt.hour(), dt.minute());
         rows.draw(tmp);
@@ -1110,7 +1114,7 @@ public:
           display.width() / 2, layout.prompt_y, PRESS_LABEL);
 #endif
       display.setCompactText(false);
-#else
+#elif defined(BLE_PIN_CODE)
     } else if (_page == HomePage::BLUETOOTH) {
       display.setColor(UIColor::corp_blue);
       display.drawXbm((display.width() - 32) / 2, body_top - 2,
@@ -1374,7 +1378,7 @@ public:
       if (requested != active) _task->shutdown(true);
       return true;
     }
-#else
+#elif defined(BLE_PIN_CODE)
     if (key == KEY_ENTER && _page == HomePage::BLUETOOTH) {
       if (_task->isBluetoothEnabled()) {  // toggle Bluetooth on/off
         _task->disableBluetooth();

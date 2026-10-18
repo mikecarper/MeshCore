@@ -271,8 +271,9 @@ int main() {
             "if (_page == HomePage::TRANSPORT\n"
             "        && (key == KEY_ENTER || key == KEY_UP || key == KEY_DOWN))"
         )
-        handler_end = source.index("#else", handler_start)
-        handler = source[handler_start:handler_end]
+        handler = extract_braced(source[handler_start:],
+            "if (_page == HomePage::TRANSPORT\n"
+            "        && (key == KEY_ENTER || key == KEY_UP || key == KEY_DOWN))")
         active = handler.index("const CompanionTransportMode active")
         save = handler.index("selectCompanionTransportMode(requested)")
         error = handler.index('showAlert("Transport save failed"')

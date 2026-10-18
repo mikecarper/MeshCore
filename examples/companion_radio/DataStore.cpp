@@ -1123,6 +1123,9 @@ bool DataStore::loadPrefsInt(const char *filename,
     loaded_prefs.lost_reply = 0;
     loaded_prefs.tx_media = mesh::RADIO_TX_AUTO;
     loaded_prefs.tx_ssh = mesh::RADIO_TX_AUTO;
+    // Images predating byte 225 inherit the caller's valid timezone default.
+    loaded_prefs.tz_offset_legacy = mesh::companion::timezone::valid(_prefs.tz_offset)
+        ? static_cast<int8_t>(_prefs.tz_offset) : 0;
 #if defined(RAK_4631)
     loaded_prefs.peripherals_shared = 0;
 #endif
@@ -1225,8 +1228,24 @@ bool DataStore::loadPrefsInt(const char *filename,
         236 + mesh::companion::traffic::FooterSize,
 #endif
     };
+    // Keep the old compact allowlist unchanged. A fractional image has the
+    // complete current prefix and all existing footers, followed by TZF v1.
+    // Compare this length in a wide type (RAK's new length exceeds 255).
+    static constexpr uint32_t TIMEZONE_PREFS_SIZE =
+#ifdef TBEAM_1W
+        243
+#elif defined(RP2040_PLATFORM) && defined(ENABLE_WIFI_INTERFACE)
+        333
+#else
+        236
+#endif
+#if defined(RAK_4631)
+        + mesh::peripherals::FooterSize
+#endif
+        + mesh::companion::traffic::FooterSize
+        + mesh::companion::timezone::FooterSize;
     const uint32_t prefs_size = file.size();
-    bool known_size = false;
+    bool known_size = prefs_size == TIMEZONE_PREFS_SIZE;
     for (size_t i = 0;
          i < sizeof(KNOWN_PREFS_SIZES) / sizeof(KNOWN_PREFS_SIZES[0]); i++) {
       if (prefs_size == KNOWN_PREFS_SIZES[i]) {
@@ -1360,7 +1379,7 @@ bool DataStore::loadPrefsInt(const char *filename,
     readOptionalField(&loaded_prefs.direct_tx_delay_factor, sizeof(loaded_prefs.direct_tx_delay_factor));
     readOptionalField(&loaded_prefs.interference_threshold, sizeof(loaded_prefs.interference_threshold));
     readOptionalField(&loaded_prefs.agc_reset_interval, sizeof(loaded_prefs.agc_reset_interval));
-    readOptionalField(&loaded_prefs.tz_offset, sizeof(loaded_prefs.tz_offset));
+    readOptionalField(&loaded_prefs.tz_offset_legacy, sizeof(loaded_prefs.tz_offset_legacy));
 #ifdef TBEAM_1W
     readOptionalField(loaded_prefs.fan_mode, sizeof(loaded_prefs.fan_mode));
     readOptionalField(&loaded_prefs.fan_lo, sizeof(loaded_prefs.fan_lo));
@@ -1391,6 +1410,9 @@ bool DataStore::loadPrefsInt(const char *filename,
                       sizeof(loaded_prefs.usb_debug_enabled));
     readOptionalField(&loaded_prefs.lost_reply, sizeof(loaded_prefs.lost_reply));
 #endif
+    // Numeric conversion, never reinterpret the historic signed hour byte as
+    // the first byte of a float. A checked fractional footer may override it.
+    if (prefs_size >= 226) loaded_prefs.tz_offset = loaded_prefs.tz_offset_legacy;
 #if defined(RAK_4631)
     if (file.available() != 0) {
       uint8_t peripheral_footer[mesh::peripherals::FooterSize] = {};
@@ -1411,6 +1433,14 @@ bool DataStore::loadPrefsInt(const char *filename,
               sizeof(traffic_footer), loaded_prefs.tx_media, loaded_prefs.tx_ssh);
     }
 
+    if (prefs_size == TIMEZONE_PREFS_SIZE) {
+      uint8_t timezone_footer[mesh::companion::timezone::FooterSize] = {};
+      success = success
+          && file.read(timezone_footer, sizeof(timezone_footer)) == sizeof(timezone_footer)
+          && mesh::companion::timezone::decodeFooter(timezone_footer,
+              sizeof(timezone_footer), loaded_prefs.tz_offset);
+    }
+
     // Any bytes left over form only part of a historically appended field.
     // Preserve the file and defaults rather than treating that tail as EOF.
     success = success && file.available() == 0;
@@ -1428,7 +1458,9 @@ bool DataStore::loadPrefsInt(const char *filename,
 }
 
 bool DataStore::savePrefs(const CompanionNodePrefs& _prefs, double node_lat, double node_lon) {
-  if (_prefs_load_incomplete) return false;
+  if (_prefs_load_incomplete || !mesh::companion::timezone::valid(_prefs.tz_offset))
+    return false;
+  const int8_t legacy_tz_offset = static_cast<int8_t>(_prefs.tz_offset);
 #if defined(ESP32_PLATFORM)
   if (!promoteCompanionRecoveryFile(_fs, "/new_prefs", _prefs_recovery_source)) return false;
 #endif
@@ -1456,7 +1488,7 @@ bool DataStore::savePrefs(const CompanionNodePrefs& _prefs, double node_lat, dou
         used = sizeof(image) + 1;
         break;
       }
-      memcpy(image + used, prefValue(field, _prefs, node_lat, node_lon, pad),
+      memcpy(image + used, prefValue(field, _prefs, node_lat, node_lon, pad, &legacy_tz_offset),
           field.length);
       used += field.length;
     }
@@ -1471,7 +1503,7 @@ bool DataStore::savePrefs(const CompanionNodePrefs& _prefs, double node_lat, dou
     for (const PrefField& field : PREF_FIELDS) {
       if (!success) break;
       success = file.write(static_cast<const uint8_t*>(
-          prefValue(field, _prefs, node_lat, node_lon, pad)), field.length)
+          prefValue(field, _prefs, node_lat, node_lon, pad, &legacy_tz_offset)), field.length)
           == field.length;
     }
 #else
@@ -1590,8 +1622,7 @@ bool DataStore::savePrefs(const CompanionNodePrefs& _prefs, double node_lat, dou
         sizeof(_prefs.interference_threshold));
     success = success && writeField((uint8_t *)&_prefs.agc_reset_interval,
         sizeof(_prefs.agc_reset_interval));
-    success = success && writeField((uint8_t *)&_prefs.tz_offset,
-        sizeof(_prefs.tz_offset));
+    success = success && writeField(&legacy_tz_offset, sizeof(legacy_tz_offset));
 #ifdef TBEAM_1W
     success = success && writeField((uint8_t *)_prefs.fan_mode,
         sizeof(_prefs.fan_mode));
@@ -1632,6 +1663,12 @@ bool DataStore::savePrefs(const CompanionNodePrefs& _prefs, double node_lat, dou
         _prefs.tx_media, _prefs.tx_ssh);
     success = success
         && file.write(traffic_footer, sizeof(traffic_footer)) == sizeof(traffic_footer);
+    if (mesh::companion::timezone::fractional(_prefs.tz_offset)) {
+      uint8_t timezone_footer[mesh::companion::timezone::FooterSize];
+      mesh::companion::timezone::encodeFooter(timezone_footer, _prefs.tz_offset);
+      success = success
+          && file.write(timezone_footer, sizeof(timezone_footer)) == sizeof(timezone_footer);
+    }
 #if defined(NRF52_PLATFORM) || defined(STM32_PLATFORM) || defined(ESP32_PLATFORM) || defined(RP2040_PLATFORM)
     success = file.commit(success);
     if (!success) MESH_DEBUG_PRINTLN("DataStore: atomic preferences write failed");

@@ -355,6 +355,29 @@ set display.rotation 0
 
 `0` resets the screen to that board's compiled default orientation.
 
+The display clock accepts decimal hour offsets, including half-hour and
+quarter-hour timezones, from `-12` through `+14`:
+
+```text
+get tz.offset
+set tz.offset 5.75
+```
+
+This Companion display setting is separate from MQTT's `timezone.offset`.
+Invalid values leave the previous setting unchanged; a failed save restores
+its exact previous fractional value.
+
+Preference migration retains the published signed one-byte hour at offset
+225 and every following legacy field. Integer settings keep the existing
+image format. Fractional settings append a 10-byte `TZF` version-1 footer
+after the existing board and `TXR` footers: a little-endian 32-bit float and
+CRC-16/CCITT covering the first eight bytes, stored most-significant byte
+first. The old byte contains the hour truncated toward zero. A missing footer
+uses that legacy integer; malformed, truncated, nonfinite or out-of-range
+footers reject the complete image before changing live preferences. Older
+firmware with strict image-length validation cannot read a fractional image;
+set an integer offset and save before downgrading.
+
 Heltec E290 and T190 now use their Full Companion artifacts for simultaneous
 USB, BLE, and WiFi. Their older `usb_ble`, USB-only, and BLE-only names remain
 available only as explicit compatibility builds.

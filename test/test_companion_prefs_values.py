@@ -25,11 +25,14 @@ static void seedValues(CompanionNodePrefs& prefs, uint32_t& random) {
     }
   };
   @SEED_FIELDS@
+  prefs.tz_offset = float(int(random % 27) - 12);
+  prefs.tz_offset_legacy = static_cast<int8_t>(prefs.tz_offset);
 }
 
 static void equalValues(const CompanionNodePrefs& a,
                         const CompanionNodePrefs& b) {
   @COMPARE_FIELDS@
+  assert(a.tz_offset == b.tz_offset);
 }
 
 static size_t adapterOffset(const CompanionNodePrefs& prefs) {
@@ -43,7 +46,9 @@ static size_t adapterOffset(const CompanionNodePrefs& prefs) {
 
 static std::vector<uint8_t> adapterBytes(const CompanionNodePrefs& prefs) {
   const auto* bytes = reinterpret_cast<const uint8_t*>(&prefs);
-  return {bytes + adapterOffset(prefs), bytes + sizeof(prefs)};
+  // The separately copied runtime timezone follows both adapters.
+  return {bytes + adapterOffset(prefs),
+      reinterpret_cast<const uint8_t*>(&prefs.tz_offset)};
 }
 
 static void expectTag(CompanionNodePrefs& prefs, const char* expected) {

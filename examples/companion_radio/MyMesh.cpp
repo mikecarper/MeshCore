@@ -10994,15 +10994,16 @@ bool MyMesh::handleCommand(const char* command, uint32_t sender_timestamp,
 #endif
 
   if (strcmp(command, "get tz.offset") == 0) {
-    sprintf(reply, "> %d", _prefs.tz_offset);
+    sprintf(reply, "> %.9g", static_cast<double>(_prefs.tz_offset));
     return true;
   }
   if (strncmp(command, "set tz.offset ", 14) == 0) {
-    int32_t tz;
-    if (!mesh::cli::parseIntegerStrict(command + 14, tz) || tz < -12 || tz > 14) {
+    float tz;
+    if (!mesh::cli::parseDecimalStrict(command + 14, tz)
+        || !mesh::companion::timezone::valid(tz)) {
       strcpy(reply, "Error, must be from -12 to +14");
     } else {
-      const int8_t previous = _prefs.tz_offset;
+      const float previous = _prefs.tz_offset;
       _prefs.tz_offset = tz;
       if (savePrefs()) strcpy(reply, "OK");
       else {

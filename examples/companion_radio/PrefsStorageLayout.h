@@ -105,7 +105,7 @@ static constexpr PrefField PREF_FIELDS[] = {
   PREF_FIELD(direct_tx_delay_factor, 4),
   PREF_FIELD(interference_threshold, 1),
   PREF_FIELD(agc_reset_interval, 1),
-  PREF_FIELD(tz_offset, 1),
+  PREF_FIELD(tz_offset_legacy, 1),
   PREF_FIELD(flood_retry_attempts, 1),
   PREF_FIELD(flood_retry_max_path, 1),
   PREF_FIELD(flood_retry_group_max_path, 1),
@@ -128,11 +128,13 @@ static_assert(wireSize(FIELD_COUNT) == 236, "published preference prefix size");
 static const void* prefValue(const PrefField& field,
                             const CompanionNodePrefs& values,
                             const double& lat, const double& lon,
-                            const uint8_t pad[4]) {
+                            const uint8_t pad[4],
+                            const int8_t* timezone = nullptr) {
   if (field.offset == PrefsLat) return &lat;
   if (field.offset == PrefsLon) return &lon;
   if (field.offset == PrefsPad) return pad;
-  return reinterpret_cast<const uint8_t*>(&values) + field.offset;
+  const void* value = reinterpret_cast<const uint8_t*>(&values) + field.offset;
+  return timezone && value == &values.tz_offset_legacy ? timezone : value;
 }
 
 }  // namespace companion_prefs

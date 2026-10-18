@@ -113,8 +113,9 @@ bool DataStore::savePrefsLegacy(const CompanionNodePrefs& _prefs, double node_la
         sizeof(_prefs.interference_threshold));
     success = success && writeField((uint8_t *)&_prefs.agc_reset_interval,
         sizeof(_prefs.agc_reset_interval));
-    success = success && writeField((uint8_t *)&_prefs.tz_offset,
-        sizeof(_prefs.tz_offset));
+    // Frozen historical representation: one signed integer hour byte.
+    const int8_t legacy_tz_offset = static_cast<int8_t>(_prefs.tz_offset);
+    success = success && writeField(&legacy_tz_offset, 1);
 #ifdef TBEAM_1W
     success = success && writeField((uint8_t *)_prefs.fan_mode,
         sizeof(_prefs.fan_mode));
