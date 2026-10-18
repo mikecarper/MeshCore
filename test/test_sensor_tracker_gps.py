@@ -221,7 +221,9 @@ void coldClockAndTimeoutPosition(){
  for(int i=0;i<2;++i){now_ms+=1001;s.uart.fix();s.sampleProvider();assert(s.active);}
  now_ms+=1001;s.uart.fix();s.sampleProvider();
  s.service();assert(!s.active&&s.takeTrackerGpsPosition(lat,lon));
- assert(s.clock.getCurrentTime()==1790942400);
+ // The advancing RMC mock has reached the third second by validation.
+ const uint32_t synced_epoch=1790942403;
+ assert(s.clock.getCurrentTime()==synced_epoch);
  // A consumed old success edge still cannot satisfy a new acquisition.
  assert(s.provider.consumeTimeSyncApplied());
  assert(s.beginTrackerGpsAcquisition());s.uart.fix();s.sampleProvider();
@@ -229,7 +231,7 @@ void coldClockAndTimeoutPosition(){
  const uint32_t started=now_ms;
  // Retained parser validity without fresh input is not a fresh time sample.
  for(int i=0;i<4;++i){now_ms+=1001;s.sampleProvider();assert(s.active);}
- assert(s.clock.getCurrentTime()==1790942400);
+ assert(s.clock.getCurrentTime()==synced_epoch);
  now_ms=started+120000;assert(s.active);
  assert(s.takeTrackerGpsPosition(lat,lon)&&!s.active); // finalize before sensor loop
  assert(!s.takeTrackerGpsPosition(lat,lon));
