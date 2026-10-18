@@ -176,12 +176,15 @@ template<typename T,typename=void> struct HasReceiveRead : std::false_type {};
 template<typename T> struct HasReceiveRead<T,std::void_t<decltype(&T::readMorseRssi)>> : std::true_type {};
 template<typename T,typename=void> struct HasReceiveBandwidth : std::false_type {};
 template<typename T> struct HasReceiveBandwidth<T,std::void_t<decltype(&T::morseReceiverBandwidthKHz)>> : std::true_type {};
+template<typename T,typename=void> struct HasReceiveService : std::false_type {};
+template<typename T> struct HasReceiveService<T,std::void_t<decltype(&T::serviceMorseRx)>> : std::true_type {};
 int main() {
   static_assert(MESH_ENABLE_MORSE_RX==EXPECTED_RX,"STM32 RX opt-in must be explicit");
   static_assert(HasCapturePointer<STMReceive>::value==bool(EXPECTED_RX),"disabled RX must exclude capture metadata");
   static_assert(HasCaptureAllocator<STMReceive>::value==bool(EXPECTED_RX),"disabled RX must exclude allocation machinery");
   static_assert(HasCaptureOwner<STMReceive>::value==bool(EXPECTED_RX),"disabled RX must exclude ownership state");
   static_assert(HasCaptureReadErrors<STMReceive>::value==bool(EXPECTED_RX),"disabled RX must exclude read-error state");
+  static_assert(HasReceiveService<STMReceive>::value==bool(EXPECTED_RX),"disabled RX must exclude its service implementation");
 #if MESH_ENABLE_MORSE_RX || !defined(STM32_PLATFORM)
   constexpr bool expected_native_hooks=true;
 #else
@@ -203,7 +206,6 @@ int main() {
   assert(!w.supportsMorseRx());
   assert(w.startMorseRx(902.1f,25,60000)==mesh::MorseRxResult::Unsupported);
   assert(!w.chip.standby_calls && !w.board.awake);
-  assert(!w.serviceMorseRx());
   assert(w.stopMorseRx()==mesh::MorseRxResult::Unsupported);
   mesh::MorseRxDiagnostics stats;
   assert(!w.morseRxDiagnostics(stats) && !w.morseCaptureGeneration() && !w.morseCaptureLength());

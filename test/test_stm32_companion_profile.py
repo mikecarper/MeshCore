@@ -21,6 +21,7 @@ class STM32CompanionProfileTest(unittest.TestCase):
     variant = "rak3x72"
     target = "RAK_3x72_companion_radio_usb"
     base = "rak3x72"
+    extra_timer_targets = ()
 
     def setUp(self):
         self.config = configparser.ConfigParser(
@@ -28,12 +29,16 @@ class STM32CompanionProfileTest(unittest.TestCase):
         self.config.read(ROOT / "variants" / self.variant / "platformio.ini")
         self.companion = self.config["env:" + self.target]
 
-    def test_unused_timer_wrappers_are_removed_only_from_headless_companion(self):
+    def test_unused_timer_wrappers_are_removed_only_from_approved_headless_roles(self):
         for flag in ("RADIOLIB_TONE_UNSUPPORTED", "HAL_TIM_MODULE_ONLY"):
             self.assertRegex(self.companion["build_flags"], r"-D\s+" + flag + r"\b")
             for section in self.config.sections():
                 if section != self.companion.name:
-                    self.assertNotIn(flag, self.config[section].get("build_flags", ""))
+                    flags = self.config[section].get("build_flags", "")
+                    if section in self.extra_timer_targets:
+                        self.assertRegex(flags, r"-D\s+" + flag + r"\b")
+                    else:
+                        self.assertNotIn(flag, flags)
 
     def test_flash_and_filesystem_boundaries_do_not_move(self):
         self.assertNotIn("board_upload.maximum_size", self.companion)
@@ -93,6 +98,7 @@ class WioSTM32CompanionProfileTest(STM32CompanionProfileTest):
     variant = "wio-e5-mini"
     target = "wio-e5-mini_companion_radio_usb"
     base = "lora_e5_mini"
+    extra_timer_targets = ("env:wio-e5-mini_repeater",)
 
     def test_headless_button_controls_are_retained(self):
         self.assertRegex(self.companion["build_flags"],

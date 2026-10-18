@@ -136,6 +136,31 @@ jobs:
               --radio-preset usa-cascade-fixed --profile cascade --require-ota
           done
 
+  stm32-mini-repeater-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Build Environment
+        uses: ./.github/actions/setup-build-environment
+      - name: Verify constrained Mini Repeater feature boundaries
+        run: |
+          python3 -B test/test_stm32_mini_repeater_profile.py -v
+          python3 -B test/test_mini_repeater_logging.py -v
+          python3 -B test/test_management_feature_gate.py -v
+          python3 -B test/test_carrier_wave.py -v
+          python3 -B test/test_radio_profile_cli.py -v
+          python3 -B test/test_ed25519_compact_scalar.py -v
+          python3 -B test/test_ed25519_compact_field.py -v
+          python3 -B test/test_ed25519_compact.py -v
+      - name: Qualify cable-only Mini Repeater with unchanged flash and RAM gates
+        env:
+          DISABLE_DEBUG: '0'
+        run: |
+          set -euo pipefail
+          bash build.sh build-firmware wio-e5-mini_repeater \
+            --firmware-version v1.18.0.1-halo-keymind-cascade-dev \
+            --radio-preset usa-cascade-fixed --profile cascade --allow-no-ota
+
   bootloader-version:
     runs-on: ubuntu-latest
     steps:

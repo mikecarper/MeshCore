@@ -9,6 +9,7 @@ from test_radio_receive_contract import method
 ROOT = Path(__file__).resolve().parents[1]
 HARNESS = r'''
 #include <Arduino.h>
+#include <helpers/CarrierTools.h>
 #include <helpers/CarrierWaveCLI.h>
 #include <cassert>
 #include <helpers/radiolib/RadioInterruptEvents.h>
@@ -175,7 +176,7 @@ struct RadioLibWrapper : mesh::Radio {
   bool stopCarrierWave();
   bool serviceCarrierWave();
   bool serviceMorseTx();
-  bool serviceMorseRx();
+  @RX_SERVICE_DECLARATION@
   bool supportsMorseTx() const override;
   mesh::MorseTxResult startMorseTx(float,uint8_t,const char*) override;
   mesh::MorseTxResult stopMorseTx() override;
@@ -476,11 +477,15 @@ def production_harness():
         if signature in ('mesh::MorseRxResult RadioLibWrapper::startMorseRx(',
                           'mesh::MorseRxResult RadioLibWrapper::stopMorseRx(',
                           'size_t RadioLibWrapper::readMorseCapture(',
-                          'void RadioLibWrapper::clearMorseCapture('):
+                          'void RadioLibWrapper::clearMorseCapture(',
+                          'bool RadioLibWrapper::serviceMorseRx('):
             return '#if MESH_ENABLE_MORSE_RX\n'+method(source,signature)+'\n#endif'
         return method(source,signature)
     code = HARNESS.replace('@METHODS@', '\n'.join(extract_transition(s) for s in signatures))
     header = (ROOT/'src/helpers/radiolib/RadioLibWrappers.h').read_text()
+    service_start = header.rfind('#if MESH_ENABLE_MORSE_RX\n',0,header.index('  bool serviceMorseRx();'))
+    service_end = header.index('\n#endif',service_start) + len('\n#endif')
+    code = code.replace('@RX_SERVICE_DECLARATION@',header[service_start:service_end])
     fields_start = header.rfind('#if MESH_ENABLE_MORSE_RX',0,header.index('mesh::MorseRx* _morse_rx'))
     fields_end = header.index('  // End Morse RX state.',fields_start)
     code = code.replace('@MORSE_RX_FIELDS@',header[fields_start:fields_end])

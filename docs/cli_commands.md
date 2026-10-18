@@ -23,8 +23,10 @@ See [carrier-wave RF checks](carrier_wave.md) for `cw on [seconds]`,
 For keyed Morse TX, use `morse send TEST DE N0CALL` and `morse stop`.
 Defaults are **902.100 MHz and 25 WPM**; `set morse.freq <MHz>` and
 `set morse.wpm <1–60>` save separate frequency/speed settings.
-Small-flash STM32 production builds retain Morse TX but do not include Morse
+Small-flash STM32 Companion builds retain Morse TX but do not include Morse
 RX by default; listen/read/stats/clear return an unsupported-RX error there.
+The constrained `wio-e5-mini_repeater` omits Morse TX/RX and CW tools entirely;
+normal packet TX/RX and radio2 remain available.
 `get morse` shows status. See [TX-only Morse messages](carrier_wave.md#tx-only-morse-messages)
 for supported characters, limits, overlap checks and the temporary pause in
 packet reception. Nothing transmits automatically.
@@ -1422,6 +1424,11 @@ only `get mqtt.enabled`. WiFi modem power saving is a separate setting.
 ### Begin capture of rx log to node storage
 
 **Search terms:** save logs, record received packets, RX logging, stored packet log.
+
+The constrained `wio-e5-mini_repeater` omits node-storage packet logging:
+`log start`, `log stop`, `log erase` and `log` are unavailable. Live
+USB/MQTT packet logging, `set usb.logging on|off` and statistics remain.
+Existing saved log files are not automatically deleted.
 
 **Usage:** `log start`
 

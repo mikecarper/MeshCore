@@ -1,5 +1,8 @@
 #include "RadioProfileCLI.h"
+#include "CarrierTools.h"
+#if MESH_ENABLE_CARRIER_TOOLS
 #include "CarrierWaveCLI.h"
+#endif
 #include "RadioProfileCommandUtils.h"
 #include "FilePresence.h"
 #include "radiolib/RXPowerSaving.h"
@@ -694,7 +697,9 @@ bool RadioProfileCLI::handle(const char* command, char* reply, size_t capacity, 
 #if defined(MESH_HIL_TX_FREQ_MHZ)
   if (handleHilTxFrequencyCommand(command, reply, capacity)) return true;
 #endif
+#if MESH_ENABLE_CARRIER_TOOLS
   if (handleCarrierWaveCommand(radio_, command, reply, capacity)) return true;
+#endif
   const char* text = command;
   enum { Get, Set, Delete } verb = Get;
   if (!strncmp(text, "get ", 4)) text += 4;

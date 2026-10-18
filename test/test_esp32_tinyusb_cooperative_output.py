@@ -8,6 +8,8 @@ import subprocess
 import tempfile
 import unittest
 
+from cpp_source import body
+
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -23,6 +25,7 @@ HARNESS = r'''
 #include <vector>
 #include <cstdint>
 #include <helpers/FileRead.h>
+#include <helpers/PacketFileLoggingConfig.h>
 @USB_CONFIG@
 #define MESH_ESP32_USB_CONSOLE_COOPERATIVE 1
 #define MESH_USB_CONSOLE_COOPERATIVE 1
@@ -397,6 +400,23 @@ RECENT_TEST = r'''
 
 
 class CooperativeOutputTest(unittest.TestCase):
+    def role_methods(self, text, role):
+        dump_start = text.index("void MyMesh::dumpLogFile()")
+        guard = "#if MESH_ENABLE_PACKET_FILE_LOGGING\n"
+        if text[:dump_start].endswith(guard):
+            dump_start -= len(guard)
+        dump_end = text.index("\n#if MESH_USB_CONSOLE_COOPERATIVE\nbool MyMesh::hasPendingSerialOutput", dump_start)
+        methods = text[dump_start:dump_end] + "\n" + "\n".join(body(text, signature) for signature in (
+            "bool MyMesh::hasPendingSerialOutput()", "void MyMesh::cancelPendingSerialOutput()",
+            "void MyMesh::servicePendingSerialOutput()"))
+        if role == "simple_repeater":
+            format_start = text.index("static void formatLocalSnrX4(")
+            format_end = text.index("\nvoid MyMesh::formatRecentRepeatersReply", format_start)
+            recent_start = text.index("void MyMesh::printRecentRepeatersSerial()")
+            recent_end = text.index("\nbool MyMesh::setRecentRepeater(", recent_start)
+            methods = text[format_start:format_end] + "\n" + text[recent_start:recent_end] + "\n" + methods
+        return methods
+
     def test_usb_acl_commands_route_to_the_cooperative_pump(self):
         for role in ("simple_repeater", "simple_room_server"):
             with self.subTest(role=role):
@@ -415,17 +435,7 @@ class CooperativeOutputTest(unittest.TestCase):
                 for config in ("MESH_ESP32_TINYUSB_NONBLOCKING", "MESH_ESP32_HWCDC_SESSION_GUARD")):
             with self.subTest(role=role, transport=config), tempfile.TemporaryDirectory() as temporary:
                 text = (ROOT / f"examples/{role}/MyMesh.cpp").read_text()
-                dump_start = text.index("void MyMesh::dumpLogFile()")
-                dump_end = text.index("\n#if MESH_USB_CONSOLE_COOPERATIVE\nbool MyMesh::hasPendingSerialOutput", dump_start)
-                pump_start = text.index("bool MyMesh::hasPendingSerialOutput()", dump_end)
-                pump_end = text.index("\n#endif", pump_start)
-                methods = text[dump_start:dump_end] + "\n" + text[pump_start:pump_end]
-                if role == "simple_repeater":
-                    format_start = text.index("static void formatLocalSnrX4(")
-                    format_end = text.index("\nvoid MyMesh::formatRecentRepeatersReply", format_start)
-                    recent_start = text.index("void MyMesh::printRecentRepeatersSerial()")
-                    recent_end = text.index("\nbool MyMesh::setRecentRepeater(", recent_start)
-                    methods = text[format_start:format_end] + "\n" + text[recent_start:recent_end] + "\n" + methods
+                methods = self.role_methods(text, role)
                 program = HARNESS.replace("@METHODS@", methods).replace(
                     "@RECENT_TEST@", RECENT_TEST if role == "simple_repeater" else ""
                 ).replace("@USB_CONFIG@", f"#define {config} 1")
@@ -440,6 +450,59 @@ class CooperativeOutputTest(unittest.TestCase):
                     [str(executable)], text=True, capture_output=True, timeout=30,
                 )
                 self.assertEqual(run.returncode, 0, run.stdout + run.stderr)
+
+    def test_file_off_control_preserves_shared_acl_and_recent_output(self):
+        compiler = shutil.which("g++") or shutil.which("clang++")
+        self.assertIsNotNone(compiler, "A host C++ compiler is required")
+        text = (ROOT / "examples/simple_repeater/MyMesh.cpp").read_text()
+        program = HARNESS[:HARNESS.index("int main() {")].replace(
+            "@METHODS@", self.role_methods(text, "simple_repeater")).replace(
+            "@USB_CONFIG@", "#define MESH_ESP32_TINYUSB_NONBLOCKING 1")
+        program += r'''
+int main() {
+  setupFile("must not be read\n");
+  MyMesh radio;
+  radio.dumpLogFile();
+  require(!radio.hasPendingSerialOutput() && console.output.empty(), "file-off dump is active");
+  require(fs.data->reads == 0, "file-off dump read persistent storage");
+  std::string expected = "ACL:\r\n";
+  for (int i = 0; i < 32; ++i) {
+    FakeAcl::Client client;
+    std::fill(std::begin(client.id.pub_key), std::end(client.id.pub_key), i);
+    radio.acl.clients.push_back(client);
+    char key[PUB_KEY_SIZE * 2 + 1], line[80];
+    mesh::Utils::toHex(key, client.id.pub_key, PUB_KEY_SIZE);
+    snprintf(line, sizeof(line), "%02X %s\n", client.permissions, key);
+    expected += line;
+  }
+  radio.printAclSerial();
+  require(radio.hasPendingSerialOutput(), "file-off ACL was disabled");
+  console.capacity = 0;
+  radio.servicePendingSerialOutput();
+  require(console.output.empty(), "file-off ACL ignored backpressure");
+  console.short_limit = 3;
+  drain(radio, 73);
+  require(console.output == expected, "file-off ACL lost retained suffix");
+  require(fs.data->reads == 0, "shared ACL output read persistent log");
+  radio.printAclSerial();
+  radio.servicePendingSerialOutput();
+  radio.cancelPendingSerialOutput();
+  require(!radio.hasPendingSerialOutput() && radio.serial_log_pending_size == 0,
+          "file-off cancellation retained ACL suffix");
+  @RECENT_TEST@
+  std::cout << "file-off shared output checks passed\n";
+}
+'''
+        program = program.replace("@RECENT_TEST@", RECENT_TEST)
+        with tempfile.TemporaryDirectory(prefix="mini-file-off-output-") as directory:
+            executable = Path(directory) / "pump"
+            build = subprocess.run(
+                [compiler, "-std=c++17", "-O0", "-DMESH_ENABLE_PACKET_FILE_LOGGING=0",
+                 "-I", str(ROOT / "src"), "-x", "c++", "-", "-o", str(executable)],
+                input=program, text=True, capture_output=True, timeout=60)
+            self.assertEqual(build.returncode, 0, build.stdout + build.stderr)
+            run = subprocess.run([str(executable)], text=True, capture_output=True, timeout=30)
+            self.assertEqual(run.returncode, 0, run.stdout + run.stderr)
 
 
 if __name__ == "__main__":

@@ -128,7 +128,7 @@ int main(void) {
                             str(harness), str(ED25519 / "sc.c"), "-o", str(executable)], check=True)
             subprocess.run([str(executable)], check=True)
 
-    def test_only_size_constrained_stm32_companions_enable_compact_scalars(self):
+    def test_only_approved_size_constrained_stm32_profiles_enable_compact_scalars(self):
         profiles = []
         for ini in (ROOT / "variants").glob("*/platformio.ini"):
             section = ""
@@ -142,6 +142,7 @@ int main(void) {
             ("tiny_relay", "[env:Tiny_Relay_companion_radio_usb]"),
             ("wio-e5-dev", "[env:wio-e5_companion_radio_usb]"),
             ("wio-e5-mini", "[env:wio-e5-mini_companion_radio_usb]"),
+            ("wio-e5-mini", "[env:wio-e5-mini_repeater]"),
         ])
 
 

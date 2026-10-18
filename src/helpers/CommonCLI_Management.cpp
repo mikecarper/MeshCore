@@ -1,10 +1,12 @@
+#include "ManagementFeatureConfig.h"
 #include "CommonCLI.h"
+#include <new>
+#if MESH_ENABLE_MANAGEMENT_REPORTING
 #include "ManagementReporter.h"
 #include "FileRead.h"
 #include "FilePresence.h"
 #include "PersistentStoreFormat.h"
 #include "HilStartupTrace.h"
-#include <new>
 #include <stdlib.h>
 #if defined(NRF52_PLATFORM) || defined(STM32_PLATFORM)
 #include "AtomicFileWriter.h"
@@ -258,19 +260,23 @@ static bool resolveDataScope(DataRouteState& route, TransportKey& scope,
   return true;
 }
 } // namespace mesh
+#endif
 
 void CommonCLI::beginManagement(mesh::Mesh& mesh, FILESYSTEM* fs) {
   _management_mesh = &mesh; _management_fs = fs;
 #if MESH_ENABLE_TX_BEACONS
   beginBeacons();
 #endif
+#if MESH_ENABLE_MANAGEMENT_REPORTING
   _management_last_ms = millis(); _management_uptime_ms = _management_last_ms;
+#endif
 #if MESH_ENABLE_FLEET_CONTROL
   if (_callbacks->supportsFleetControl()
       && (fs->exists("/fleet_channel") || fs->exists("/fleet_channel.bak"))) {
     _fleet_channel = new (std::nothrow) mesh::FleetChannel(fs, _callbacks, _region_map);
   }
 #endif
+#if MESH_ENABLE_MANAGEMENT_REPORTING
   if (!_data_route) {
     mesh::hilStartupTrace("management_route_begin");
     _data_route = new (std::nothrow) mesh::DataRouteState;
@@ -289,6 +295,7 @@ void CommonCLI::beginManagement(mesh::Mesh& mesh, FILESYSTEM* fs) {
     mesh::hilStartupTrace("management_reporter_ready");
   }
   mesh::hilStartupTrace("management_probe_ready");
+#endif
 }
 
 #if MESH_ENABLE_FLEET_CONTROL
@@ -310,6 +317,7 @@ bool CommonCLI::handleFleetCommand(const char* command, char* reply) {
 }
 #endif
 
+#if MESH_ENABLE_MANAGEMENT_REPORTING
 void CommonCLI::loopManagement() {
   const uint32_t now = millis();
   _management_uptime_ms += uint32_t(now - _management_last_ms); _management_last_ms = now;
@@ -456,3 +464,47 @@ bool CommonCLI::handleManagementCommand(char* command, char* reply) {
   if (!_management->command(command, reply, 160)) strcpy(reply, "ERR: unknown management setting");
   return true;
 }
+#else
+void CommonCLI::loopManagement() { }
+
+bool CommonCLI::getDataTxPath(const uint8_t*& path, uint8_t& path_len) const {
+  path = nullptr; path_len = OUT_PATH_UNKNOWN;
+  return false;
+}
+
+bool CommonCLI::resolveDataTxScope(TransportKey&, char* name,
+                                   size_t name_size, bool* ambiguous) const {
+  if (name && name_size) name[0] = 0;
+  if (ambiguous) *ambiguous = false;
+  return false;
+}
+
+bool CommonCLI::adoptLegacyDataTxPath(const uint8_t*, uint8_t) {
+  return false;
+}
+
+bool CommonCLI::setDataTxPath(const char*, char* reply, size_t reply_size) {
+  snprintf(reply, reply_size, "Err - data.tx unavailable");
+  return false;
+}
+
+bool CommonCLI::handleDataTxCommand(char* command, char* reply) {
+  if (strncmp(command, "get data.tx", 11) && strncmp(command, "set data.tx", 11)) return false;
+  if (command[11] && command[11] != ' ' && command[11] != '.') return false;
+  strcpy(reply, "Err - data.tx unavailable");
+  return true;
+}
+
+bool CommonCLI::handleManagementCommand(char* command, char* reply) {
+  if (handleDataTxCommand(command, reply)) return true;
+  if (strcmp(command, "get mgmt") && strncmp(command, "get mgmt.", 9)
+      && strncmp(command, "set mgmt.", 9)) return false;
+  if (!strncmp(command, "set mgmt.password ", 18)) {
+    // Retain recognized-password hygiene without pulling in report crypto.
+    volatile char* value = command + 18;
+    while (*value) *value++ = 0;
+  }
+  strcpy(reply, "ERR: management unavailable");
+  return true;
+}
+#endif

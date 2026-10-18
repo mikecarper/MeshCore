@@ -4,8 +4,12 @@
 #include "CustomSTM32WLx.h"
 #include "RadioLibWrappers.h"
 #include "SX126xReset.h"
+#if MESH_ENABLE_CARRIER_TOOLS
 #include "SX126xMorseRamp.h"
+#endif
+#if MESH_ENABLE_MORSE_RX
 #include "SX126xMorseReceiver.h"
+#endif
 #include <math.h>
 
 class CustomSTM32WLxWrapper : public RadioLibWrapper {
@@ -17,7 +21,9 @@ protected:
 public:
   ~CustomSTM32WLxWrapper() { unregisterInterruptAction(); }
   CustomSTM32WLxWrapper(CustomSTM32WLx& radio, mesh::MainBoard& board) : RadioLibWrapper(radio, board) { }
+#if MESH_ENABLE_CARRIER_TOOLS
   bool supportsMorseTx() const override { return true; }
+#endif
 #if MESH_ENABLE_MESHTEXT_WIRE
   bool supportsMeshtext() const override { return true; }
 #endif
@@ -54,6 +60,7 @@ protected:
 #if MESH_ENABLE_MORSE_RX
   float readMorseRssi() override { return static_cast<CustomSTM32WLx*>(_radio)->getMorseRssi(); }
 #endif
+#if MESH_ENABLE_CARRIER_TOOLS
   int16_t prepareMorseCarrier(float frequency_mhz) override {
     const int16_t status = RadioLibWrapper::prepareMorseCarrier(frequency_mhz);
     return status == RADIOLIB_ERR_NONE
@@ -62,6 +69,8 @@ protected:
   int16_t leaveMorseCarrier() override {
     return leaveSX126xMorseCarrier(static_cast<CustomSTM32WLx*>(_radio));
   }
+#endif
+#if MESH_ENABLE_CARRIER_TOOLS || MESH_ENABLE_MORSE_RX
   bool restoreCarrierWaveModem() override {
 #if MESH_ENABLE_MORSE_RX
     if (_morse_rx_fsk_mode) {
@@ -70,9 +79,14 @@ protected:
       return restored;
     }
 #endif
+#if MESH_ENABLE_CARRIER_TOOLS
     return restoreSX126xPacketRamp(static_cast<CustomSTM32WLx*>(_radio)) == RADIOLIB_ERR_NONE
         && RadioLibWrapper::restoreCarrierWaveModem();
+#else
+    return RadioLibWrapper::restoreCarrierWaveModem();
+#endif
   }
+#endif
   bool applyParams(float freq, float bw, uint8_t sf, uint8_t cr) override {
     return ((CustomSTM32WLx *)_radio)->setFrequency(freq) == RADIOLIB_ERR_NONE
         && ((CustomSTM32WLx *)_radio)->setSpreadingFactor(sf) == RADIOLIB_ERR_NONE

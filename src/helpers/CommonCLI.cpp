@@ -1,4 +1,6 @@
 #include <Arduino.h>
+#include "CarrierTools.h"
+#include "PacketFileLoggingConfig.h"
 #include "CommonCLI.h"
 #include "PrefsSaveReplyGuard.h"
 #include "UsbLoggingWatchdog.h"
@@ -6,7 +8,9 @@
 #include "HilStartupTrace.h"
 #include <helpers/ui/DisplayPowerSettings.h>
 #include <helpers/BatteryChargeCLI.h>
+#if MESH_ENABLE_CARRIER_TOOLS || MESH_ENABLE_MORSE_RX
 #include <helpers/MorseCLI.h>
+#endif
 #include <helpers/MorseLoopPolicy.h>
 #if defined(RAK_4631)
 #include <helpers/PeripheralModePrefs.h>
@@ -780,7 +784,9 @@ static void formatSnrDbX4Short(char* dest, size_t dest_len, int16_t snr_x4) {
 void CommonCLI::loadPrefs(FILESYSTEM* fs) {
   mesh::hilStartupTrace("prefs_profiles_begin");
   _radio_profiles.begin(fs, _callbacks->getProfileRadio(), _rtc, true);
+#if MESH_ENABLE_CARRIER_TOOLS || MESH_ENABLE_MORSE_RX
   mesh::loadMorseSettings(fs);
+#endif
   mesh::hilStartupTrace("prefs_profiles_ready");
   _prefs->primary_radio_preamble = _radio_profiles.primaryPreamble();
 #if !defined(WITH_MQTT_BRIDGE) && (defined(ESP32_PLATFORM) || defined(RP2040_PLATFORM))
@@ -2973,9 +2979,11 @@ void CommonCLI::handleCommand(uint32_t sender_timestamp, char* command, char* re
                                        _callbacks->wirelessCommandSource(sender_timestamp))) return;
     // Infrastructure callers can already have reflected a three-byte CLI
     // request prefix into the same 160-byte reply. Reserve it for bulk pages.
+#if MESH_ENABLE_CARRIER_TOOLS || MESH_ENABLE_MORSE_RX
     if (mesh::handleMorseReplyCommand(_morse_reply, _callbacks->getProfileRadio(),
                                       command, reply, 160 - 3, millis())) return;
     if (mesh::handleMorseCommand(_callbacks->getProfileRadio(), command, reply, 160 - 3)) return;
+#endif
     if (_radio_profiles.handle(command, reply, 160, sender_timestamp != 0)) return;
 #if defined(ENABLE_OTA)
     const auto* ota_context = mesh::ota::ota_context_if_active();
@@ -3583,6 +3591,7 @@ void CommonCLI::handleCommand(uint32_t sender_timestamp, char* command, char* re
               _board->getShutdownReasonString(_board->getShutdownReason()));
       sprintf(reply + strlen(reply), "\r\nLast boot voltage: %u mV", _board->getBootVoltage());
 #endif
+#if MESH_ENABLE_PACKET_FILE_LOGGING
     } else if (memcmp(command, "log start", 9) == 0) {
       _callbacks->setLoggingOn(true);
       strcpy(reply, "   logging on");
@@ -3595,6 +3604,7 @@ void CommonCLI::handleCommand(uint32_t sender_timestamp, char* command, char* re
     } else if (sender_timestamp == 0 && memcmp(command, "log", 3) == 0) {
       _callbacks->dumpLogFile();
       strcpy(reply, "   EOF");
+#endif
     } else if (sender_timestamp == 0 && memcmp(command, "stats-packets", 13) == 0 && (command[13] == 0 || command[13] == ' ')) {
       _callbacks->formatPacketStatsReply(reply);
     } else if (sender_timestamp == 0 && memcmp(command, "stats-radio-diag", 16) == 0 && (command[16] == 0 || command[16] == ' ')) {

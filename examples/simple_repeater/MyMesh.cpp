@@ -942,6 +942,7 @@ mesh::Packet *MyMesh::createSelfAdvert() {
   return createAdvert(self_id, app_data, app_data_len);
 }
 
+#if MESH_ENABLE_PACKET_FILE_LOGGING
 File MyMesh::openAppend(const char *fname) {
 #if defined(NRF52_PLATFORM) || defined(STM32_PLATFORM)
   return _fs->open(fname, FILE_O_WRITE);
@@ -951,6 +952,7 @@ File MyMesh::openAppend(const char *fname) {
   return _fs->open(fname, "a", true);
 #endif
 }
+#endif
 
 static uint8_t max_loop_minimal[] =  { 0, /* 1-byte */  4, /* 2-byte */  2, /* 3-byte */  1 };
 static uint8_t max_loop_moderate[] = { 0, /* 1-byte */  2, /* 2-byte */  1, /* 3-byte */  1 };
@@ -1229,6 +1231,7 @@ void MyMesh::logRx(mesh::Packet *pkt, int len, float score) {
   }
 #endif
 
+#if MESH_ENABLE_PACKET_FILE_LOGGING
   if (_logging) {
     File f = openAppend(PACKET_LOG_FILE);
     if (f) {
@@ -1246,6 +1249,7 @@ void MyMesh::logRx(mesh::Packet *pkt, int len, float score) {
       f.close();
     }
   }
+#endif
 }
 
 void MyMesh::logTx(mesh::Packet *pkt, int len) {
@@ -1285,6 +1289,7 @@ void MyMesh::logTx(mesh::Packet *pkt, int len) {
   }
 #endif
 
+#if MESH_ENABLE_PACKET_FILE_LOGGING
   if (_logging) {
     File f = openAppend(PACKET_LOG_FILE);
     if (f) {
@@ -1301,6 +1306,7 @@ void MyMesh::logTx(mesh::Packet *pkt, int len) {
       f.close();
     }
   }
+#endif
 }
 
 void MyMesh::logTxFail(mesh::Packet *pkt, int len) {
@@ -1316,6 +1322,7 @@ void MyMesh::logTxFail(mesh::Packet *pkt, int len) {
   }
 #endif
 
+#if MESH_ENABLE_PACKET_FILE_LOGGING
   if (_logging) {
     File f = openAppend(PACKET_LOG_FILE);
     if (f) {
@@ -1325,6 +1332,7 @@ void MyMesh::logTxFail(mesh::Packet *pkt, int len) {
       f.close();
     }
   }
+#endif
 }
 
 int MyMesh::calcRxDelay(float score, uint32_t air_time) const {
@@ -1692,6 +1700,7 @@ void MyMesh::onDirectRetryEvent(const char* event, const mesh::Packet* packet, u
                      (uint32_t)log_cr,
                      (uint32_t)log_preamble_len);
 #endif
+#if MESH_ENABLE_PACKET_FILE_LOGGING
   if (_logging) {
     File f = openAppend(PACKET_LOG_FILE);
     if (f) {
@@ -1708,6 +1717,7 @@ void MyMesh::onDirectRetryEvent(const char* event, const mesh::Packet* packet, u
       f.close();
     }
   }
+#endif
 }
 
 void MyMesh::onDirectRetryFailed(const uint8_t* next_hop_hash, uint8_t next_hop_hash_len) {
@@ -2279,6 +2289,7 @@ void MyMesh::onFloodRetryEvent(const char* event, const mesh::Packet* packet, ui
   if (packet == NULL) {
     MESH_DEBUG_PRINTLN("flood retry %s (retry=%u, elapsed_ms=%lu, packet=released)",
                        event, (unsigned int)retry_attempt, (unsigned long)delay_millis);
+#if MESH_ENABLE_PACKET_FILE_LOGGING
     if (_logging) {
       File f = openAppend(PACKET_LOG_FILE);
       if (f) {
@@ -2288,6 +2299,7 @@ void MyMesh::onFloodRetryEvent(const char* event, const mesh::Packet* packet, ui
         f.close();
       }
     }
+#endif
     return;
   }
 
@@ -2327,6 +2339,7 @@ void MyMesh::onFloodRetryEvent(const char* event, const mesh::Packet* packet, ui
                      (uint32_t)log_cr,
                      (uint32_t)log_preamble_len);
 
+#if MESH_ENABLE_PACKET_FILE_LOGGING
   if (_logging) {
     File f = openAppend(PACKET_LOG_FILE);
     if (f) {
@@ -2347,6 +2360,7 @@ void MyMesh::onFloodRetryEvent(const char* event, const mesh::Packet* packet, ui
       f.close();
     }
   }
+#endif
 
 }
 
@@ -5370,6 +5384,7 @@ void MyMesh::updateFloodAdvertTimer() {
   }
 }
 
+#if MESH_ENABLE_PACKET_FILE_LOGGING
 void MyMesh::dumpLogFile() {
 #if defined(WITH_WEBCONFIG) || defined(ETHERNET_ENABLED)
   if (_command_output) {
@@ -5401,6 +5416,9 @@ void MyMesh::dumpLogFile() {
   }
 #endif
 }
+#else
+void MyMesh::dumpLogFile() { }
+#endif
 
 void MyMesh::printAclSerial() {
 #if MESH_USB_CONSOLE_COOPERATIVE
@@ -5428,16 +5446,22 @@ void MyMesh::printAclSerial() {
 
 #if MESH_USB_CONSOLE_COOPERATIVE
 bool MyMesh::hasPendingSerialOutput() const {
-  return serial_log_active || serial_log_eof_pending || serial_recent_next >= 0
+  return
+#if MESH_ENABLE_PACKET_FILE_LOGGING
+      serial_log_active || serial_log_eof_pending ||
+#endif
+      serial_recent_next >= 0
       || serial_acl_next >= 0;
 }
 
 void MyMesh::cancelPendingSerialOutput() {
+#if MESH_ENABLE_PACKET_FILE_LOGGING
   if (serial_log_active) serial_log_dump.close();
   serial_log_active = false;
   serial_log_eof_pending = false;
   serial_log_skip_line = false;
   serial_log_remaining = 0;
+#endif
   serial_log_pending_size = 0;
   serial_acl_next = -1;
   serial_acl_count = 0;
@@ -5553,6 +5577,7 @@ void MyMesh::servicePendingSerialOutput() {
     }
     return;
   }
+#if MESH_ENABLE_PACKET_FILE_LOGGING
   if (!serial_log_active) {
     // CommonCLI's synchronous EOF is suppressed until the queued dump ends.
     static const char eof[] = "  ->    EOF\r\n";
@@ -5619,6 +5644,7 @@ void MyMesh::servicePendingSerialOutput() {
     serial_log_dump.close();
     serial_log_active = false;
   }
+#endif
 }
 #endif
 
@@ -12304,7 +12330,7 @@ void MyMesh::handleCommand(uint32_t sender_timestamp, ClientInfo* sender, char *
 #if defined(WITH_WEBCONFIG) || defined(ETHERNET_ENABLED)
   if (_command_output && _local_cli_output.owns(*_command_output)) reply[0] = 0;
 #endif
-#if MESH_USB_CONSOLE_COOPERATIVE
+#if MESH_USB_CONSOLE_COOPERATIVE && MESH_ENABLE_PACKET_FILE_LOGGING
   if (sender_timestamp == 0 && serial_log_eof_pending
       && strcmp(reply, "   EOF") == 0) reply[0] = 0;
 #endif
@@ -12772,7 +12798,7 @@ void MyMesh::handleCommand(uint32_t sender_timestamp, ClientInfo* sender, char *
 #if defined(WITH_WEBCONFIG) || defined(ETHERNET_ENABLED)
     if (_command_output && _local_cli_output.owns(*_command_output)) reply[0] = 0;
 #endif
-#if MESH_USB_CONSOLE_COOPERATIVE
+#if MESH_USB_CONSOLE_COOPERATIVE && MESH_ENABLE_PACKET_FILE_LOGGING
     if (sender_timestamp == 0 && serial_log_eof_pending
         && strcmp(reply, "   EOF") == 0) reply[0] = 0;
 #endif

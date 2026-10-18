@@ -1,6 +1,7 @@
 #pragma once
 
 #include "NoiseFloorEstimator.h"
+#include "../CarrierTools.h"
 
 #include <Mesh.h>
 #include <RadioLib.h>
@@ -139,16 +140,26 @@ protected:
 #endif
   void cacheBeaconRestoreParams();
 #endif
+#if MESH_ENABLE_CARRIER_TOOLS || MESH_ENABLE_MORSE_RX
   bool _cw_active = false;
   bool _cw_stopping = false;
   bool _cw_board_tx = false;
   uint8_t _cw_profile = 0, _cw_restore_profile = 0;
   uint32_t _cw_until = 0, _cw_retry_at = 0, _cw_generation = 0;
+#else
+  static constexpr bool _cw_active = false;
+#endif
+#if MESH_ENABLE_CARRIER_TOOLS
   mesh::MorseTx _morse;
   bool _morse_owned = false;
   float _morse_frequency = mesh::MorseTx::DefaultFrequencyMHz;
   uint8_t _morse_wpm = mesh::MorseTx::DefaultWpm;
+#else
+  static constexpr bool _morse_owned = false;
+#endif
+#if MESH_ENABLE_CARRIER_TOOLS || MESH_ENABLE_MORSE_RX
   uint32_t _morse_generation[2] = {};
+#endif
   // Allocate the bounded capture only on explicit RX admission. Permanently
   // reserving 4096 characters would break small nRF52 Companion RAM budgets.
 #if MESH_ENABLE_MORSE_RX
@@ -167,10 +178,16 @@ protected:
   bool _morse_rx_fsk_mode = false;
 #endif
   // End Morse RX state.
+#if MESH_ENABLE_CARRIER_TOOLS || MESH_ENABLE_MORSE_RX
   bool stopCarrierWave();
   bool serviceCarrierWave();
+#endif
+#if MESH_ENABLE_CARRIER_TOOLS
   bool serviceMorseTx();
+#endif
+#if MESH_ENABLE_MORSE_RX
   bool serviceMorseRx();
+#endif
   mesh::RadioParamApplyResult tuneProfile(uint8_t profile);
   void serviceProfileScan();
 
@@ -297,10 +314,15 @@ protected:
   virtual bool checkBeaconOutputPower(float frequency_mhz, int8_t dbm) const;
 #endif
   virtual bool applyRxBoostedGainMode(bool) { return false; }
+#if MESH_ENABLE_CARRIER_TOOLS || !defined(STM32_PLATFORM)
   virtual int16_t enterCarrierWave() { return _radio->transmitDirect(); }
+#endif
+#if MESH_ENABLE_CARRIER_TOOLS || MESH_ENABLE_MORSE_RX || !defined(STM32_PLATFORM)
   virtual bool validateMorseFrequency(float frequency_mhz) const {
     return isfinite(frequency_mhz) && frequency_mhz >= 150.0f && frequency_mhz <= 960.0f;
   }
+#endif
+#if MESH_ENABLE_CARRIER_TOOLS || !defined(STM32_PLATFORM)
   // Configure the oscillator/modem once, before the first mark. Subsequent
   // marks only re-enter direct TX; in particular SX127x must not rebuild FSK
   // between dots. The cached LoRa tuple is deliberately left untouched.
@@ -312,6 +334,7 @@ protected:
   }
   virtual int16_t enterMorseCarrier() { return _radio->transmitDirect(); }
   virtual int16_t leaveMorseCarrier() { return _radio->standby(); }
+#endif
 #if MESH_ENABLE_MORSE_RX || !defined(STM32_PLATFORM)
   // Compact integrated-STM builds cannot receive Morse. Do not pin unused
   // native RX thunks and vtable slots in their already full application slot.
@@ -330,9 +353,11 @@ protected:
 #endif
   // Native-CW radios keep their modem. Reapply cached power in case a meter
   // sweep failed halfway through; SX127x also rebuilds its LoRa configuration.
+#if MESH_ENABLE_CARRIER_TOOLS || MESH_ENABLE_MORSE_RX || !defined(STM32_PLATFORM)
   virtual bool restoreCarrierWaveModem() {
     return !_dbm_valid || applyCachedTxPower(_cur_dbm) == RADIOLIB_ERR_NONE;
   }
+#endif
   // Dual-profile scanning already suspends RXPS. Supported radios can also
   // retain their oscillator across the intervening standby/reconfigure steps.
   // Called only at the safe scan-mode entry/exit boundary, not during a packet.
@@ -383,10 +408,13 @@ protected:
 
 public:
   void begin() override;
+#if MESH_ENABLE_CARRIER_TOOLS || MESH_ENABLE_MORSE_RX
   mesh::RadioParamApplyResult setCarrierWave(uint8_t profile, uint32_t duration_ms) override;
   bool isCarrierWaveActive() const override { return _cw_active; }
   uint8_t carrierWaveProfile() const override { return _cw_profile; }
   uint32_t carrierWaveRemainingMillis() const override;
+#endif
+#if MESH_ENABLE_CARRIER_TOOLS
   bool supportsMorseTx() const override;
   mesh::MorseTxResult startMorseTx(float frequency_mhz, uint8_t wpm, const char* text) override;
   mesh::MorseTxResult stopMorseTx() override;
@@ -394,6 +422,7 @@ public:
   float morseTxFrequency() const override { return _morse_frequency; }
   uint8_t morseTxWpm() const override { return _morse_wpm; }
   uint32_t morseTxRemainingMillis() const override { return _morse.remainingMillis(millis()); }
+#endif
 #if MESH_ENABLE_MORSE_RX
   bool supportsMorseRx() const override { return false; }
   mesh::MorseRxResult startMorseRx(float frequency_mhz, uint8_t wpm, uint32_t duration_ms) override;

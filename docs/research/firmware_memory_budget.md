@@ -742,3 +742,53 @@ this experiment. No hardware was flashed, no failing image was published,
 and existing build outputs were not overwritten. Production compiler pins,
 features and capacity checks remain unchanged; the private source/tests,
 configs, verbose logs and linker maps were retained for further work.
+
+### Mini Repeater production recipe after file-logging approval
+
+After approval to also omit persistent packet-file logging, the three gates
+were adopted only for `wio-e5-mini_repeater`:
+`MESH_ENABLE_CARRIER_TOOLS=0`,
+`MESH_ENABLE_MANAGEMENT_REPORTING=0` and
+`MESH_ENABLE_PACKET_FILE_LOGGING=0`. All three default to 1 for other
+boards/roles. No compact numeric GET handler was adopted.
+
+The production recipe retains the existing GCC 14.2 package pin, adds the
+equivalent compact SHA-512/scalar/field implementations and unused Arduino
+timer-wrapper trims, and applies the five measured compiler flags to both
+compilation and the final LTO driver. The target-specific link hook is inert
+for other environments. Existing flash and runtime-RAM checks remain active.
+
+Canonical `build.sh build-firmware` links at release-version length
+(`v1.18.0.1-halo-keymind-cascade-dev`, Cascade, USA preset,
+`DISABLE_DEBUG=0`) pass:
+
+| Canonical target | Linked flash extent | App limit | Flash headroom | Runtime RAM available / required |
+| --- | ---: | ---: | ---: | ---: |
+| Wio-E5 Mini Repeater | 245,376 | 245,760 | 384 | 44,560 / 32,288 |
+| Wio-E5 Mini USB Companion regression control | 229,096 | 229,376 | 280 | 24,256 / 17,408 |
+
+These are conservative complete flash extents, not PlatformIO's selected
+section sums. The Repeater still reserves its original 16 KiB filesystem,
+50 neighbours, radio2, authenticated administration, host-service bridge and
+runtime-controlled live USB packet logging for an external MQTT bridge.
+The Companion keeps its 32 KiB filesystem and existing features. GCC 15 is
+not required and no toolchain upgrade was adopted.
+
+The omitted file feature is only node-local `/packet_log` capture and
+`log start|stop|erase` / local `log` dumping. Live raw RX/TX framing, USB
+logging controls, statistics, watchdogs and bridge callbacks remain. Old
+saved log files are left untouched rather than automatically erased.
+Management-disabled routing fails closed and retains shared initialization
+needed by independently enabled Fleet/beacon features.
+
+Focused coverage now runs in CI alongside an exact cable-only Mini Repeater
+build at release-version length. It covers the feature gates, default-on
+behavior, raw logging and backpressure under all eight flag combinations,
+shared cooperative serial output, crypto equivalence, CLI permissions and
+Morse/radio recovery. Production-source and host-test review found no blocker.
+
+Both flash margins are narrow: future changes must re-link, not assume these
+images fit. These results qualify linked capacity and host behavior, not
+physical USB/RF/MQTT integration, board boot/sleep or a sustained-load soak.
+The Mini Repeater remains cable-only (`--allow-no-ota`); no hardware was
+flashed, no release was published and existing outputs were not overwritten.

@@ -251,6 +251,7 @@ bool RadioLibWrapper::setTxPower(int8_t dbm) {
 #if MESH_ENABLE_TX_BEACONS
   if (_beacon_owned) return false;
 #endif
+#if MESH_ENABLE_CARRIER_TOOLS || MESH_ENABLE_MORSE_RX
   // A CW power-meter sweep may re-key the carrier. During Morse that would
   // turn an inter-symbol gap into RF and corrupt the text, so keep the whole
   // message exclusive (including cleanup retries).
@@ -259,6 +260,7 @@ bool RadioLibWrapper::setTxPower(int8_t dbm) {
       || _morse_rx_owned
 #endif
       ) && _cw_active) return false;
+#if MESH_ENABLE_CARRIER_TOOLS
   if (_cw_active) {
     if (_cw_stopping) return false;
 #if defined(MESH_HIL_TX_FREQ_MHZ)
@@ -280,6 +282,10 @@ bool RadioLibWrapper::setTxPower(int8_t dbm) {
     _dbm_valid = true;
     return true;
   }
+#else
+  if (_cw_active) return false;
+#endif
+#endif
   const uint8_t resume_rx = beginReconfigure();
   if (resume_rx > 1) return false;
 
@@ -1344,6 +1350,7 @@ void RadioLibWrapper::checkReceiveMode(uint32_t now) {
   recoverRadio(_rx_mode_failures >= 3);
 }
 
+#if MESH_ENABLE_CARRIER_TOOLS || MESH_ENABLE_MORSE_RX
 uint32_t RadioLibWrapper::carrierWaveRemainingMillis() const {
   if (!_cw_active || _cw_stopping) return 0;
   if (_morse_owned) return morseTxRemainingMillis();
@@ -1356,6 +1363,7 @@ uint32_t RadioLibWrapper::carrierWaveRemainingMillis() const {
 
 mesh::RadioParamApplyResult RadioLibWrapper::setCarrierWave(uint8_t profile, uint32_t duration_ms) {
   using Result = mesh::RadioParamApplyResult;
+#if MESH_ENABLE_CARRIER_TOOLS
   // The shared emergency stop also covers chips exposing Morse without the
   // older profile-CW CLI capability.
   if (!duration_ms && (_morse_owned
@@ -1418,8 +1426,16 @@ mesh::RadioParamApplyResult RadioLibWrapper::setCarrierWave(uint8_t profile, uin
   }
   _cw_until = static_cast<uint32_t>(millis()) + duration_ms;
   return Result::APPLIED;
+#else
+  (void)profile;
+  // Keep the shared emergency stop available to an independently enabled RX.
+  return !duration_ms && _morse_rx_owned
+      ? (stopCarrierWave() ? Result::APPLIED : Result::FAILED) : Result::FAILED;
+#endif
 }
+#endif
 
+#if MESH_ENABLE_CARRIER_TOOLS
 bool RadioLibWrapper::supportsMorseTx() const {
   return supportsCarrierWave();
 }
@@ -1532,6 +1548,7 @@ bool RadioLibWrapper::serviceMorseTx() {
   }
   return true;
 }
+#endif
 
 #if MESH_ENABLE_MORSE_RX
 bool RadioLibWrapper::canAllocateMorseReceiver() const {
@@ -1619,7 +1636,10 @@ mesh::MorseRxResult RadioLibWrapper::startMorseRx(float frequency_mhz,
   }
   _radio->clearPacketReceivedAction();
   _cw_active = _morse_rx_owned = true;
-  _morse_owned = _cw_stopping = false;
+#if MESH_ENABLE_CARRIER_TOOLS
+  _morse_owned = false;
+#endif
+  _cw_stopping = false;
   _cw_profile = _active_profile;
   _morse_generation[0] = _profiles.generation[0];
   _morse_generation[1] = _profiles.generation[1];
@@ -1685,10 +1705,8 @@ void RadioLibWrapper::clearMorseCapture() {
 }
 #endif
 
+#if MESH_ENABLE_MORSE_RX
 bool RadioLibWrapper::serviceMorseRx() {
-#if !MESH_ENABLE_MORSE_RX
-  return false;
-#else
   if (!_morse_rx_owned || !_cw_active) return false;
   const uint32_t now = millis();
   if (_cw_stopping) {
@@ -1714,11 +1732,14 @@ bool RadioLibWrapper::serviceMorseRx() {
     }
   }
   return true;
-#endif
 }
+#endif
 
+#if MESH_ENABLE_CARRIER_TOOLS || MESH_ENABLE_MORSE_RX
 bool RadioLibWrapper::stopCarrierWave() {
+#if MESH_ENABLE_CARRIER_TOOLS
   _morse.stop();
+#endif
 #if MESH_ENABLE_MORSE_RX
   if (_morse_rx_owned && _morse_rx) _morse_rx->stop(static_cast<uint32_t>(millis()));
 #endif
@@ -1770,7 +1791,9 @@ bool RadioLibWrapper::stopCarrierWave() {
     _cw_retry_at = static_cast<uint32_t>(millis()) + 100;
     return false;
   }
+#if MESH_ENABLE_CARRIER_TOOLS
   _morse_owned = false;
+#endif
 #if MESH_ENABLE_MORSE_RX
   _morse_rx_owned = false;
 #endif
@@ -1782,6 +1805,7 @@ bool RadioLibWrapper::serviceCarrierWave() {
 #if MESH_ENABLE_MORSE_RX
   if (serviceMorseRx()) return true;
 #endif
+#if MESH_ENABLE_CARRIER_TOOLS
   if (serviceMorseTx()) return true;
   if (_cw_active) {
 #if defined(MESH_HIL_TX_FREQ_MHZ)
@@ -1799,15 +1823,19 @@ bool RadioLibWrapper::serviceCarrierWave() {
     }
     return true;
   }
+#endif
   return false;
 }
+#endif
 
 void RadioLibWrapper::loop() {
 #if MESH_ENABLE_TX_BEACONS
   if (_beacon_owned) return;
 #endif
   syncProfileClock(_profiles.enabled());
+#if MESH_ENABLE_CARRIER_TOOLS || MESH_ENABLE_MORSE_RX
   if (serviceCarrierWave()) return;
+#endif
   if (_profiles.enabled()) {
     const unsigned long now = millis();
     checkReceiveMode(static_cast<uint32_t>(now));

@@ -3498,6 +3498,16 @@ declare_build_capability_contract() {
 
   declare_full_logging_application_contract "$env_name"
   record_build_capability "profile.${BUILD_PROFILE_FOR_TARGET}"
+  if [ "$env_name" = wio-e5-mini_repeater ]; then
+    # This exact fixed-capacity recipe intentionally omits these three
+    # optional services. Keep the packaged contract explicit about its cuts.
+    record_build_reduction \
+      "radio.carrier_tools omitted to preserve the Mini Repeater app boundary"
+    record_build_reduction \
+      "management.reporting and data.tx omitted to preserve the Mini Repeater app boundary"
+    record_build_reduction \
+      "logging.file omitted; live USB/MQTT packet logging retained"
+  fi
   pio_env_name=$(get_pio_build_env "$env_name")
   if is_qspi_hardware_qualification_target "$env_name"; then
     record_build_capability "hardware.qualification.pending"

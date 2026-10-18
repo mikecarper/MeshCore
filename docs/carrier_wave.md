@@ -4,6 +4,10 @@
 
 # Carrier-wave RF checks
 
+The constrained `wio-e5-mini_repeater` omits Morse and CW tools to fit its
+existing application region. Its packet radio and radio2 are unchanged.
+Other boards keep their existing carrier-tool support.
+
 ## TX-only Morse messages
 
 Morse TX mode keys an unmodulated carrier into dots and dashes. It does not send

@@ -3,6 +3,7 @@
 #include <Arduino.h>
 #include <new>
 #include <Mesh.h>
+#include <helpers/PacketFileLoggingConfig.h>
 #include <helpers/PowerSavingDiagnostics.h>
 #if defined(ENABLE_OTA)
   #include <helpers/ota/OtaContext.h>
@@ -1142,10 +1143,19 @@ public:
   void updateAdvertTimer() override;
   void updateFloodAdvertTimer() override;
 
-  void setLoggingOn(bool enable) override { _logging = enable; }
+  void setLoggingOn(bool enable) override {
+#if MESH_ENABLE_PACKET_FILE_LOGGING
+    _logging = enable;
+#else
+    (void)enable;
+    _logging = false;
+#endif
+  }
 
   void eraseLogFile() override {
+#if MESH_ENABLE_PACKET_FILE_LOGGING
     _fs->remove(PACKET_LOG_FILE);
+#endif
   }
 
   void dumpLogFile() override;

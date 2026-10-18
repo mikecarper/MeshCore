@@ -1,3 +1,5 @@
+#include "ManagementFeatureConfig.h"
+#if MESH_ENABLE_MANAGEMENT_REPORTING
 #include "ManagementReporter.h"
 #include "CommonCLI.h"
 #include "FileRead.h"
@@ -441,3 +443,4 @@ bool ManagementReporter::command(char* command, char* reply, size_t size) {
   snprintf(reply, size, "OK"); return true;
 }
 }
+#endif
