@@ -759,7 +759,8 @@ Optionally set a WPA2 password for the setup AP at build time with
   LAN the node was attached to.
 - **LAN**: requires the admin password (same one used for remote CLI admin).
   Sessions use a cookie with a sliding idle expiry (default 20 minutes); five
-  failed logins trigger a 30-second lockout.
+  failed logins from one address lock that address for 30 seconds. Failed
+  logins from all addresses together are capped at six, then one per 6 seconds.
 
 > **Security note:** the open setup AP transports WiFi/MQTT credentials over
 > plain HTTP. Provision on a trusted, non-public frequency/location, set

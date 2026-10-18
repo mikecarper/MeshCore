@@ -4,6 +4,7 @@
 #include <map>
 #include <string>
 #include <ArduinoJson.h>
+#include <helpers/WebConfigLoginThrottle.h>
 struct String : std::string {
   using std::string::string;
   String(std::string value) : std::string(std::move(value)) {}
@@ -21,7 +22,7 @@ struct Callback {
 };
 struct WCLock { explicit WCLock(int) {} };
 struct WiFiMock { int softAPIP() const { return 4; } } WiFi;
-struct Client { int local_ip=4; int localIP() const { return local_ip; } };
+struct Client { int local_ip=4; int localIP() const { return local_ip; } uint32_t getRemoteAddress() const { return 0; } };
 struct Header { String cookies; const String& value() const { return cookies; } };
 struct AsyncWebServerResponse {
   int status; std::map<std::string, std::string> headers;
@@ -44,8 +45,8 @@ struct WebConfigServer {
   int _mode=MODE_SETUP, _mux=0;
   char _wifi_ssid[33]="SavedNet", _session_token[33] = {};
   bool _initial_setup=false, config_accepted=false;
-  uint32_t _last_activity=0, _session_last_seen=0, _login_lock_until=0;
-  int _login_fails=0; Callback callback; Callback* _cb=&callback;
+  uint32_t _last_activity=0, _session_last_seen=0;
+  WebConfigLoginThrottle::Tracker _login_throttle; Callback callback; Callback* _cb=&callback;
   WebConfigServer() { strcpy(callback.node.admin_password, "existing-secret"); }
   unsigned network_activity = 0;
   void noteNetworkActivity() { ++network_activity; }
