@@ -2381,9 +2381,11 @@
 <p>This campaign is in progress. It is not release approval. Results below bind
 specific images and physical devices; successful compilation and older bench
 results do not qualify unexecuted hardware cases.</p>
-<p>At the 09:22 UTC checkpoint, the V4 Full logging-on trial had failed and its USB
-endpoint remained absent. Recovery and restoration of subsequent temporary
-settings were still in progress. The staged MQTT/WSS soak had not launched.</p>
+<p>At the 09:46 UTC recovery checkpoint, the V4 Full logging-on trial remained
+failed/unqualified and USB was still absent after a verified guarded warm
+restart. BLE verified that the three restored temporary flags persisted.
+The new owned diagnostic bond remains; authoritative original-data restoration
+and USB recovery remain open. The staged MQTT/WSS soak has not launched.</p>
 <h2 id="firmware-and-preservation">Firmware and preservation</h2>
 <p>The initial eight-image Full matrix built successfully from clean source
 <code>652289ee823bbed22918fe584f9d49ccb2ec230f</code>, with release-length version
@@ -2504,9 +2506,12 @@ the original data readback and those returned settings, not every unexposed
 preference or battery-backed cold boot. At that restoration checkpoint, the Full
 runtime had WiFi off, an unset SSID, MQTT enabled but not running, and unavailable
 ESP-NOW; temporary test changes require their own restoration. Later native-console
-tests enabled power saving and USB logging and disabled MQTT. Those temporary flags remained
-<strong>unrestored</strong> at 09:22 UTC, pending recovery of the missing USB endpoint.
-The earlier NVS/SPIFFS readback PASS does not establish the current settings.</p>
+tests enabled power saving and USB logging and disabled MQTT. Those flags were
+unrestored at 09:22 UTC, then passed identity-bound BLE restoration and readback
+at 09:41:23: power saving off, USB logging off and MQTT on, with WiFi off and
+MQTT not running. The diagnostic created a new owned BLE bond. Complete original
+NVS/SPIFFS restoration has not been repeated after that bond; the earlier
+partition/readback PASS does not establish current byte-identical saved state.</p>
 <h2 id="executed-companion-checks">Executed Companion checks</h2>
 <table>
 <thead>
@@ -2793,17 +2798,60 @@ absent at 09:22.</p>
 the old path. That cleanup error masked the primary trial failure, which cannot
 be reconstructed from the old safe report. No post-idle reply, reopen check or
 qualified idle interval was obtained. USB recovery was still in progress at
-the checkpoint; no firmware, reset or physical-fault cause was proven.
+the 09:22 checkpoint; no firmware, reset or physical-fault cause was proven.
 The passed Room logging-on case does not qualify this Full image.</p>
 <p>A subsequent identity-guarded, reset-only request to the exact parent hub's
 port 2 returned success. Port status changed from <code>0x101</code> to <code>0x103</code> after two
 seconds, with zero change bits: connected, powered and then enabled. The target
 still did not enumerate; the sibling T096 was unchanged. No hub power change or
-broader reset followed. A physical V4 RESET was requested from the operator;
-recovery, temporary-setting restoration and the unstarted WSS soak remain
-pending that action and verified device return.
+broader hub reset followed. A physical V4 RESET was requested from the operator.
 ModemManager was restored to active at 09:24:34 UTC; all four checked host
-services were active. This does not establish device return or settings recovery.</p>
+services were active at that checkpoint.</p>
+<p>The first read-only BLE diagnostic passed exact board, complete ec9ebc09 version
+and public-key checks. At approximately 09:35 UTC, core uptime advanced from
+3959 to 3961 seconds with zero error flags, versus the pre-idle 2076 seconds.
+This establishes continued MCU uptime through the USB disappearance rather than
+an MCU reset in that interval; it does not establish a working USB connection.</p>
+<p>The live USB watchdog reported Auto, stage 2, two recovery attempts and zero
+reboots. Its persisted last event was re-enumeration, sequence 2, uptime 2532
+seconds, reason <code>0x08</code> (<code>CLIENT_INACTIVE</code>). Its RTC epoch is advisory and does
+not date this incident reliably. Offline extraction of the exact original
+SPIFFS active namespace found no <code>usb_wdg</code>, <code>usb_wdg.bak</code> or <code>usb_wdg.tmp</code> files.
+The journal therefore was not imported by the original-data restoration.
+Policy stage is volatile and starts at zero, so the evidence establishes two
+current-boot USB recovery attempts. These are requested actions, not proof of
+successful repair or proof that they caused the observed kernel errors. The
+later sticky TX-stall observation is separate from the event's earlier reason.</p>
+<p>Source tracing confirms actual single-TTY ASCII <code>stats-core</code> renews the
+900-second logging-client lease; framed USB/BLE stats and CLI getters do not.
+Natural expiry after the fresh pre-idle ASCII poll cannot explain a fault
+starting roughly 97 seconds later. A bus-reset/session-generation change,
+observed host/reader loss or logging-off can clear that lease earlier. No
+pre-failure evidence selects one of these paths. This is watchdog-progress
+evidence, without a firmware or physical-fault cause assignment.</p>
+<p>BLE flag-restoration trial 01 passed at 09:41:23 UTC. Each of the three original
+flag values was acknowledged and read back immediately and again at the end;
+WiFi off and MQTT not running also matched. Uptime advanced from 4325 to 4333
+seconds with zero error flags, and owned BLE cleanup passed. This restores those
+flags, not the whole saved-state image or the new diagnostic bond.</p>
+<p>Guarded warm-restart trial 01 then passed exact identity and original-flag gates,
+durably recorded intent, sent the shipping <code>0x13</code> reboot request and observed
+disconnect. Pre-request uptime was 4556 seconds with zero error flags; owned
+BLE cleanup passed. USB was still absent at 09:45:07 and the kernel had no new
+entries.</p>
+<p>The post-restart read-only trial 01 passed exact identity with uptime 34→36
+seconds and zero core error flags, proving the deliberate warm reboot. It did
+not pair or create another bond. Persisted power saving off, logging off, MQTT
+on, WiFi off and MQTT not running all matched, and every owned cleanup check
+passed. The last watchdog journal was unchanged: re-enumeration, reason <code>0x08</code>,
+uptime 2532 seconds and sequence 2 refer to the previous boot, not a new event.</p>
+<p>By 09:48 UTC all four checked host services, including ModemManager, were active;
+USB was still absent. No additional software or hub recovery is planned. The
+operator was asked to unplug and reconnect only the V4 USB cable; physical
+reconnection and verified USB recovery remain pending. Battery-backed USB
+reconnection will not establish cold boot. The new diagnostic BLE bond is retained;
+authoritative original-data restoration and complete saved-state comparison
+await USB return. Full logging-on remains failed/unqualified and WSS is unstarted.</p>
 <p>For Full, <code>tools/hil/official_console_acceptance.py</code> uses explicit
 <code>--terminal-mode companion</code>. It sends the shipping terminal-start control
 through the unmodified official module on each open and confirms terminal-stop
@@ -2848,9 +2896,12 @@ both that run and the preceding 7a5a7993 run completed with all jobs green.
 The native-console cleanup follow-up preserves the primary JS/transport
 failure separately from browser/TTY cleanup failures, reports missing or
 replaced endpoints, and cannot qualify a cleanup failure. The native-console
-and Linux TTY suites passed 35 offline checks. Its new CI result was pending at
-the authoring checkpoint; the completed runs do not qualify these follow-up
-changes or rerun the failed hardware case.
+and Linux TTY suites passed 35 offline checks. The follow-up workflow at
+<code>76220d5d7</code> was in progress
+(<a href="https://github.com/mikecarper/MeshCore/actions/runs/39115389840">run 39115389840</a>)
+at 09:46 UTC: ten of eleven jobs were green and only the host test job remained
+running. The earlier completed runs do not qualify those changes or rerun the
+failed hardware case.
 Documentation route/link checks also passed in the CI-pinned renderer environment.</p>
 <h2 id="remaining-release-gates">Remaining release gates</h2>
 <ul>
@@ -2863,9 +2914,12 @@ Documentation route/link checks also passed in the CI-pinned renderer environmen
   V4 OLED has one runtime slot despite six saved configurations. Commit
   ec9ebc091 exposes the existing read-only diagnostic counter on Full. The
   recovery-guarded soak is staged and pinned but <strong>not launched</strong>.</li>
-<li>Recover the V4 USB endpoint, restore and verify its temporary power/logging/MQTT
-  flags, and diagnose/retest the failed Full logging-on idle case. Retain the
-  Full logging-off PASS and the two Room logging-mode passes as separate results.</li>
+<li>Recover the V4 USB endpoint, repeat authoritative original-data restoration
+  and complete saved-state readbacks, and diagnose the failed Full logging-on
+  idle case before another attempt. The three temporary flags passed BLE
+  restoration and warm-reboot persistence checks; the new owned bond remains
+  outside the earlier original-partition restoration. Retain the Full
+  logging-off PASS and the two Room logging-mode passes as separate results.</li>
 <li>Complete two-source recovery-AP throttle checks beyond the passed existing-admin
   authentication and browser cases. Execute migration credentials and both source
   OTA slots, actual browser upload, interruption/recovery, privileged replay
