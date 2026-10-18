@@ -46,6 +46,7 @@
 #include <WiFi.h>
 #include <Preferences.h>
 #include <ArduinoJson.h>
+#include <memory>
 #include <helpers/RoomWebJson.h>
 #include <helpers/RoomMailWeb.h>
 #endif
@@ -579,7 +580,11 @@ void MyMesh::processRoomWebBoard(const char* operation, JsonObjectConst input,
     json.reset();
     json.raw("{\"error\":"); json.string(message); json.raw("}"); json.finish();
   };
-  mesh::RoomBoardIndex board;
+  // Metadata remains live through filesystem calls. Keep it off the 8 KiB
+  // loop task stack and fail before storage access if scratch allocation fails.
+  std::unique_ptr<mesh::RoomBoardIndex> scratch(new (std::nothrow) mesh::RoomBoardIndex);
+  if (!scratch) { error("insufficient memory; information board retained"); return; }
+  mesh::RoomBoardIndex& board = *scratch;
   if (!mesh::loadRoomBoard(_fs, board)) { error("information board storage unavailable"); return; }
   if (strcmp(operation, "board.index") == 0) {
     if (!input["revision"].is<uint32_t>() || !input["cursor"].is<uint8_t>()) { error("invalid board cursor"); return; }
@@ -602,25 +607,49 @@ void MyMesh::processRoomWebBoard(const char* operation, JsonObjectConst input,
     json.raw("],\"next\":"); json.number(next < board.count ? next : 255);
     json.raw("}"); json.finish(); return;
   }
+  if (strcmp(operation, "board.read") == 0) {
+    processRoomWebBoardRead(input, board, json); return;
+  }
+  processRoomWebBoardWrite(operation, input, board, json);
+}
+
+void MyMesh::processRoomWebBoardRead(JsonObjectConst input, const mesh::RoomBoardIndex& board,
+                                     mesh::RoomJsonWriter& json) {
+  auto error = [&json](const char* message) {
+    json.reset();
+    json.raw("{\"error\":"); json.string(message); json.raw("}"); json.finish();
+  };
   if (!input["id"].is<uint8_t>() || !input["version"].is<uint32_t>()) { error("invalid article identity/version"); return; }
   const uint8_t id = input["id"].as<uint8_t>();
   const uint32_t version = input["version"].as<uint32_t>();
   const mesh::RoomBoardArticle* article = nullptr;
   for (uint8_t i = 0; i < board.count; ++i) if (board.articles[i].id == id) article = &board.articles[i];
-  if (strcmp(operation, "board.read") == 0) {
-    if (!input["offset"].is<uint16_t>()) { error("invalid article offset"); return; }
-    const uint16_t offset = input["offset"].as<uint16_t>();
-    uint8_t chunk[mesh::ROOM_BOARD_READ_MAX_CHUNK];
-    size_t length = 0;
-    const auto result = mesh::readRoomBoardArticle(_fs, id, version, offset, chunk, sizeof(chunk), length);
-    if (result != mesh::RoomBoardResult::Success || !article) { error("article changed or unavailable; reload index"); return; }
-    char encoded[4 * ((sizeof(chunk) + 2) / 3) + 1]; mesh::roomEncodeBase64(chunk, length, encoded);
-    json.raw("{\"version\":"); json.number(version);
-    json.raw(",\"offset\":"); json.number(offset);
-    json.raw(",\"next\":"); json.number(uint32_t(offset) + length);
-    json.raw(",\"total\":"); json.number(article->body_length);
-    json.raw(",\"data64\":"); json.string(encoded); json.raw("}"); json.finish(); return;
-  }
+  if (!input["offset"].is<uint16_t>()) { error("invalid article offset"); return; }
+  const uint16_t offset = input["offset"].as<uint16_t>();
+  uint8_t chunk[mesh::ROOM_BOARD_READ_MAX_CHUNK];
+  size_t length = 0;
+  const auto result = mesh::readRoomBoardArticle(_fs, id, version, offset, chunk, sizeof(chunk), length);
+  if (result != mesh::RoomBoardResult::Success || !article) { error("article changed or unavailable; reload index"); return; }
+  char encoded[4 * ((sizeof(chunk) + 2) / 3) + 1]; mesh::roomEncodeBase64(chunk, length, encoded);
+  json.raw("{\"version\":"); json.number(version);
+  json.raw(",\"offset\":"); json.number(offset);
+  json.raw(",\"next\":"); json.number(uint32_t(offset) + length);
+  json.raw(",\"total\":"); json.number(article->body_length);
+  json.raw(",\"data64\":"); json.string(encoded); json.raw("}"); json.finish();
+}
+
+void MyMesh::processRoomWebBoardWrite(const char* operation, JsonObjectConst input,
+                                      const mesh::RoomBoardIndex& board,
+                                      mesh::RoomJsonWriter& json) {
+  auto error = [&json](const char* message) {
+    json.reset();
+    json.raw("{\"error\":"); json.string(message); json.raw("}"); json.finish();
+  };
+  if (!input["id"].is<uint8_t>() || !input["version"].is<uint32_t>()) { error("invalid article identity/version"); return; }
+  const uint8_t id = input["id"].as<uint8_t>();
+  const uint32_t version = input["version"].as<uint32_t>();
+  const mesh::RoomBoardArticle* article = nullptr;
+  for (uint8_t i = 0; i < board.count; ++i) if (board.articles[i].id == id) article = &board.articles[i];
   mesh::RoomBoardResult result;
   if (strcmp(operation, "board.delete") == 0) {
     if (version == 0) { error("deletion requires the current article version"); return; }

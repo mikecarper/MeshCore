@@ -367,6 +367,11 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks,
                           mesh::RoomJsonWriter& json) __attribute__((noinline));
   void processRoomWebBoard(const char* operation, JsonObjectConst input,
                           mesh::RoomJsonWriter& json) __attribute__((noinline));
+  void processRoomWebBoardRead(JsonObjectConst input, const mesh::RoomBoardIndex& board,
+                              mesh::RoomJsonWriter& json) __attribute__((noinline));
+  void processRoomWebBoardWrite(const char* operation, JsonObjectConst input,
+                               const mesh::RoomBoardIndex& board,
+                               mesh::RoomJsonWriter& json) __attribute__((noinline));
   bool _unconfigured_setup_espnow_suspended = false;
   void suspendUnconfiguredSetupBridges();
   bool startWebConfigImpl(bool force_ap, char* reply, bool automatic_setup);

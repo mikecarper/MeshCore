@@ -1,6 +1,7 @@
 #include "filesystem.h"
 #include <cstdlib>
 #include <new>
+#include <memory>
 #include <array>
 #include <ArduinoJson.h>
 static bool deny_json_allocation = false;
@@ -24,6 +25,11 @@ static void* trackedRealloc(void* ptr, size_t size) {
 #undef free
 #undef realloc
 #include <helpers/RoomBoardStore.h>
+static bool deny_board_scratch_allocation = false;
+void* operator new(size_t size, const std::nothrow_t&) noexcept {
+  if (deny_board_scratch_allocation) return nullptr;
+  try { return ::operator new(size); } catch (const std::bad_alloc&) { return nullptr; }
+}
 #include <helpers/RoomMailWeb.h>
 #include <helpers/RoomHistoryStore.h>
 #include <helpers/RoomAccessPolicy.h>
@@ -172,6 +178,10 @@ struct MyMesh {
                          mesh::RoomJsonWriter&) __attribute__((noinline));
   void processRoomWebAdmin(const char*, JsonObjectConst, mesh::RoomJsonWriter&) __attribute__((noinline));
   void processRoomWebBoard(const char*, JsonObjectConst, mesh::RoomJsonWriter&) __attribute__((noinline));
+  void processRoomWebBoardRead(JsonObjectConst, const mesh::RoomBoardIndex&,
+                               mesh::RoomJsonWriter&) __attribute__((noinline));
+  void processRoomWebBoardWrite(const char*, JsonObjectConst, const mesh::RoomBoardIndex&,
+                                mesh::RoomJsonWriter&) __attribute__((noinline));
   void processRoomRequest(const uint8_t*, uint32_t, char*, char*, size_t);
   void serviceRoomQuotas();
   bool storePost(const mesh::Identity&, const char*);
@@ -1031,6 +1041,25 @@ int main() {
     assert(result(m, request("board.delete", "admin-secret", ",\"boot\":71,\"id\":1,\"version\":2"), 35)["ok"] == true);
     assert(result(m, saveRequest(1, 0, "Reused", "new"), 36)["ok"] == true);
     error(m, request("board.read", "", ",\"id\":1,\"version\":2,\"offset\":0"), 37, "article changed"); ++scenarios;
+  }
+  {
+    MyMesh m; enable(m);
+    assert(result(m, saveRequest(1, 0, "Retained", std::string(2048, 's')), 1)["ok"] == true);
+    std::map<std::string, std::vector<uint8_t>> before;
+    for (const auto& file : m.storage.files) before[file.first] = *file.second;
+    m.storage.trace.clear();
+    deny_board_scratch_allocation = true;
+    error(m, request("board.index", "", ",\"revision\":0,\"cursor\":0"), 2, "insufficient memory");
+    error(m, request("board.read", "", ",\"id\":1,\"version\":1,\"offset\":0"), 3, "insufficient memory");
+    error(m, saveRequest(1, 1, "Changed", "new"), 4, "insufficient memory");
+    error(m, request("board.delete", "admin-secret", ",\"boot\":71,\"id\":1,\"version\":1"), 5, "insufficient memory");
+    deny_board_scratch_allocation = false;
+    assert(m.storage.trace.empty() && m.storage.files.size() == before.size());
+    for (const auto& file : m.storage.files) assert(*file.second == before.at(file.first));
+    const auto page = result(m, request("board.index", "", ",\"revision\":0,\"cursor\":0"), 6);
+    assert(page["revision"] == 1 && page["articles"][0]["length"] == 2048);
+    assert(result(m, request("board.read", "", ",\"id\":1,\"version\":1,\"offset\":0"), 7)["total"] == 2048);
+    ++scenarios;
   }
   {
     MyMesh m; enable(m); uint32_t sequence = 1;

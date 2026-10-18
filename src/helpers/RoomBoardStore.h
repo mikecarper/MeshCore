@@ -42,6 +42,13 @@ static constexpr size_t STREAM_CHUNK = 64;
 static const uint8_t INDEX_MAGIC[4] = {'R', 'B', 'I', 1};
 static const uint8_t ARTICLE_MAGIC[4] = {'R', 'B', 'A', 1};
 
+// Every field is an integer or character array. Clear the destination itself:
+// assigning a value-initialized index can put a second whole index on the
+// embedded caller's stack while filesystem recovery is still active.
+inline void clearIndex(RoomBoardIndex& index) {
+  memset(static_cast<void*>(&index), 0, sizeof(index));
+}
+
 inline uint32_t crc(uint32_t value, const uint8_t* data, size_t length) {
   while (length-- != 0) {
     value ^= *data++;
@@ -206,7 +213,7 @@ bool readIndex(Filesystem* fs, const char* path, RoomBoardIndex& staged,
     for (size_t i = 9; i < sizeof(header); ++i) valid = valid && header[i] == 0;
   }
   uint32_t checksum = valid ? crc(UINT32_C(0xffffffff), header, sizeof(header)) : 0;
-  staged = RoomBoardIndex{};
+  clearIndex(staged);
   if (valid) { staged.revision = get32(header + 4); staged.count = header[8]; }
   for (uint8_t i = 0; valid && i < staged.count; ++i) {
     uint8_t bytes[ENTRY_SIZE];
@@ -252,7 +259,7 @@ bool recover(Filesystem* fs, RoomBoardIndex& staged, bool require_cleanup) {
   if (present) {
     if (!readIndex(fs, ROOM_BOARD_BACKUP_PATH, staged)
         || !fs->rename(ROOM_BOARD_BACKUP_PATH, ROOM_BOARD_PRIMARY_PATH)) return false;
-  } else staged = RoomBoardIndex{};
+  } else clearIndex(staged);
   const bool temp_removed = removeArtifact(fs, ROOM_BOARD_TEMP_PATH);
   return !require_cleanup || temp_removed;
 }
@@ -295,10 +302,14 @@ RoomBoardResult commitIndex(Filesystem* fs, const RoomBoardIndex& next) {
 
 template <typename Filesystem>
 bool loadRoomBoard(Filesystem* fs, RoomBoardIndex& index) {
-  RoomBoardIndex staged;
-  index = RoomBoardIndex{};
-  if (!room_board_detail::recover(fs, staged, false)) return false;
-  index = staged; return true;
+  room_board_detail::clearIndex(index);
+  if (!room_board_detail::recover(fs, index, false)) {
+    // A corrupt body or a late I/O failure may follow valid metadata. Never
+    // return that partially populated index to a caller on failure.
+    room_board_detail::clearIndex(index);
+    return false;
+  }
+  return true;
 }
 
 // Main-loop single writer. The reader is called as reader(offset, buffer,

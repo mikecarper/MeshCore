@@ -95,7 +95,15 @@ static void checksum(std::vector<uint8_t>& image) {
 static void preserveUnavailable(MemoryFS& fs) {
   const auto before = snapshot(fs); const auto directories = fs.directories;
   Index index; index.count = 7; index.revision = 99;
+  for (auto& article : index.articles) {
+    article.id = 7; article.bank = 1; article.body_length = 2000; article.version = 98;
+    memset(article.title, 'x', sizeof(article.title));
+  }
   assert(!load(fs, index) && index.count == 0 && index.revision == 0);
+  for (const auto& article : index.articles) {
+    assert(article.id == 0 && article.bank == 0 && article.body_length == 0 && article.version == 0);
+    for (char value : article.title) assert(value == 0);
+  }
   assert(save(fs, 1, "Changed", NEW_BODY) == Result::Unavailable);
   assert(erase(fs, 1) == Result::Unavailable);
   uint8_t out[128]; size_t count = 99;

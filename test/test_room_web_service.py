@@ -31,6 +31,7 @@ class RoomWebServiceTest(unittest.TestCase):
             "bool MyMesh::handleRoomWebCommand(", "static const char* roomWebString(",
             "bool MyMesh::processRoomWebMail(", "void MyMesh::processRoomWebAdmin(",
             "void MyMesh::processRoomWebBoard(",
+            "void MyMesh::processRoomWebBoardRead(", "void MyMesh::processRoomWebBoardWrite(",
             "void MyMesh::processRoomRequest(", "void MyMesh::serviceRoomQuotas(",
             "bool MyMesh::storePost(", "bool MyMesh::snapshotRoomHistory(",
             "bool MyMesh::executeClientPathCommand(", "bool MyMesh::setRoomClientPath(",
@@ -111,7 +112,8 @@ class RoomWebServiceTest(unittest.TestCase):
             usage = "\n".join(path.read_text() for path in work.glob("*.su"))
             frames = {}
             for method, budget in (("processRoomRequest", 1024), ("processRoomWebAdmin", 1536),
-                                   ("processRoomWebBoard", 2048), ("processRoomWebMail", 3072)):
+                                   ("processRoomWebBoard", 384), ("processRoomWebBoardRead", 1152),
+                                   ("processRoomWebBoardWrite", 1536), ("processRoomWebMail", 3072)):
                 sizes = re.findall(r"(?:void|bool) MyMesh::" + method
                                    + r"\([^\t\n]*\)\s*\t(\d+)\t[^\n]*", usage)
                 self.assertEqual(len(sizes), 1, "missing or ambiguous stack frame: " + method)
