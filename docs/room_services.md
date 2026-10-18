@@ -224,6 +224,16 @@ appear in Access Control alongside administrators. Automatic guest-password
 read/write sessions remain transient; password-created administrators remain
 retained. The existing permission byte is unchanged.
 
+Guest-password logins do not allocate new durable login replay records, so
+guest churn cannot fill the bounded replay store. Any existing record from a
+previous privileged role still applies and is advanced. After reboot or
+transient client eviction, an identity without such a record can have captured
+guest login and message traffic accepted again. Assign an explicit read/write
+role with `setperm <key> 2` when durable login replay protection is required.
+Room-post deduplication and per-sender post replay timestamps remain in RAM:
+captured old posts can also be accepted after a legitimate newer login restores
+a lost session.
+
 ACL updates use the existing delayed settings save. Allow at least five seconds
 after `setperm` before removing power so the assignment reaches storage.
 
