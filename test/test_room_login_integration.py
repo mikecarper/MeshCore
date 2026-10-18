@@ -383,7 +383,8 @@ static void authorizationCases() {
     assert(mesh.acl.authorizations == (c.accepted ? 1U : 0U));
     assert(mesh.acl.allocations == (c.accepted ? 1U : 0U));
     assert(mesh.acl.storage.reads == (c.accepted ? 1U : 0U));
-    assert(mesh.acl.storage.writes == (c.accepted && c.role != PERM_ACL_GUEST ? 1U : 0U));
+    // Only the admin credential allocates a durable record for a new identity.
+    assert(mesh.acl.storage.writes == (c.accepted && c.role == PERM_ACL_ADMIN ? 1U : 0U));
     if (c.accepted) {
       assert(mesh.acl.client.permissions == c.role);
       checkReply(mesh, c.role);
@@ -436,7 +437,10 @@ static void preservedRoles() {
         login(mesh, password);
         assert(mesh.acl.client.permissions == permissions);
         assert(mesh.acl.client.permissions_are_explicit == reader);
-        assert(mesh.acl.authorized_role == (permissions & PERM_ACL_ROLE_MASK));
+        // A transient (guest-password) writer uses the public reader's replay policy.
+        const uint8_t role = permissions & PERM_ACL_ROLE_MASK;
+        assert(mesh.acl.authorized_role
+               == (role == PERM_ACL_READ_WRITE && !reader ? PERM_ACL_GUEST : role));
         assert(mesh.acl.allocations == 0 && mesh.acl.client.last_timestamp == 100);
         checkReply(mesh, permissions);
         // Repeat the exact accepted packet with a different public password.

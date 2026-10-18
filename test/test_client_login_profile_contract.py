@@ -9,7 +9,9 @@ ROOT = Path(__file__).resolve().parents[1]
 PROFILES = (
     (ROOT / "examples/simple_repeater/MyMesh.cpp", 4, "perms"),
     (ROOT / "examples/simple_sensor/SensorMesh.cpp", 4, "role_permissions"),
-    (ROOT / "examples/simple_room_server/MyMesh.cpp", 8, "perm"),
+    # A guest-password Read/Write session uses the low-trust replay policy.
+    (ROOT / "examples/simple_room_server/MyMesh.cpp", 8,
+     "guest_password_session ? PERM_ACL_GUEST : perm"),
 )
 
 

@@ -1775,8 +1775,16 @@ void MyMesh::onAnonDataRecv(mesh::Packet *packet, const uint8_t *secret, const m
     const bool client_existed = existing_client != NULL;
     const uint32_t previous_timestamp =
         client_existed ? existing_client->last_timestamp : 0;
+    // The guest password is shared and often published, so its Read/Write
+    // session (and the transient ACL cache of one) is replayed like a public
+    // reader: an existing tombstone still applies, but no new durable record
+    // is allocated. Otherwise guest churn fills the bounded store, which fails
+    // closed for every new administrator and assigned identity.
+    const bool guest_password_session = perm == PERM_ACL_READ_WRITE
+        && (existing_client == NULL || !existing_client->permissions_are_explicit);
     if (!acl.authorizeLoginTimestamp(
-            sender.pub_key, sender_timestamp, previous_timestamp, perm)) {
+            sender.pub_key, sender_timestamp, previous_timestamp,
+            guest_password_session ? PERM_ACL_GUEST : perm)) {
       MESH_DEBUG_PRINTLN(
           "Login rejected: replayed timestamp or replay state unavailable");
       return;
