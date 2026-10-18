@@ -284,10 +284,21 @@ Use `--board xiao-s3-wio` with the recipe above. Its Wi-Fi bridge is a
 legacy-slot application image; its Full image keeps the old repeater's exact
 LoRa OTA target ID. Upload `wifi-bridge.bin` from the ZIP through the legacy
 node's existing Wi-Fi browser updater.
-Then join `MeshCore-Migrate` (password `meshcore-migrate`) and wait for
-**Expanded layout ready**. Upload `full-application.bin` at `/update`.
+Then join `MeshCore-Migrate` and wait for **Expanded layout ready**. Its Wi-Fi
+password is the admin password saved on the old node, so only someone who can
+already administer the node can join and upload firmware. Upload
+`full-application.bin` at `/update`.
 Do not upload an `-merged.bin`: merged images include
 bootloader and table offsets for cable flashing, not browser OTA.
+
+WPA2 needs a password of at least 8 printable ASCII characters. If the saved
+admin password is shorter, uses other characters, or was never saved (the node
+still runs on its built-in default), the bridge falls back to
+`meshcore-migrate`. That password is published here, so anyone nearby could
+then join and upload firmware. Before uploading the bridge, set an admin
+password of 8 to 15 characters with `password <new password>`. A LoRa
+first-stage bridge does not carry saved settings into the expanded layout, so
+its Wi-Fi recovery page after the table change normally uses the fallback.
 
 `xiao_s3_partition_legacy_seed` is a disposable-hardware test image only. It
 models the legacy table and an identity file; it is not a deployable repeater.

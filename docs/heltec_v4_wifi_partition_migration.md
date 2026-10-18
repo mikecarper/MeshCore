@@ -19,9 +19,10 @@ python3 -B scripts/build_esp32_partition_migration.py \
 
 The ZIP contains the Wi-Fi bridge, LoRa bridge, and exact-target Full image.
 Upload its `wifi-bridge.bin` through the
-legacy browser Wi-Fi updater. Rejoin `MeshCore-Migrate` with password
-`meshcore-migrate`; when it reports **Expanded layout ready**, upload the
-ZIP's `full-application.bin` at `/update`.
+legacy browser Wi-Fi updater. Rejoin `MeshCore-Migrate` using the node's saved
+admin password as the Wi-Fi password (see the shared guide for the published
+fallback); when it reports **Expanded layout ready**, upload the ZIP's
+`full-application.bin` at `/update`.
 
 Do not use an `-merged.bin` in either browser uploader. Merged images contain
 bootloader and table offsets for cable flashing. The bridge preserves the
