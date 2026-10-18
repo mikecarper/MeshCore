@@ -190,6 +190,9 @@ struct WebConfigServer {
   }
   void probeBoardCommands() { _board_cmds_probed = true; }
   void serviceTerminal(uint32_t) {}
+  // This fixture exercises Room HTTP on LAN/OFF only. Setup-AP rekeying is
+  // executed with the real service in test_webconfig_password_sessions.py.
+  void serviceSetupPassword(uint32_t) { assert(_mode != MODE_SETUP); }
   void serviceRoom(uint32_t);
   void tick(uint32_t);
   void requestStop();
