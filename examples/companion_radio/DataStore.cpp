@@ -1123,9 +1123,6 @@ bool DataStore::loadPrefsInt(const char *filename,
     loaded_prefs.lost_reply = 0;
     loaded_prefs.tx_media = mesh::RADIO_TX_AUTO;
     loaded_prefs.tx_ssh = mesh::RADIO_TX_AUTO;
-    // Images predating byte 225 inherit the caller's valid timezone default.
-    loaded_prefs.tz_offset_legacy = mesh::companion::timezone::valid(_prefs.tz_offset)
-        ? static_cast<int8_t>(_prefs.tz_offset) : 0;
 #if defined(RAK_4631)
     loaded_prefs.peripherals_shared = 0;
 #endif
@@ -1488,10 +1485,13 @@ bool DataStore::savePrefs(const CompanionNodePrefs& _prefs, double node_lat, dou
         used = sizeof(image) + 1;
         break;
       }
-      memcpy(image + used, prefValue(field, _prefs, node_lat, node_lon, pad, &legacy_tz_offset),
+      memcpy(image + used, prefValue(field, _prefs, node_lat, node_lon, pad),
           field.length);
       used += field.length;
     }
+    // STM32 stages the frozen prefix: patch its published integer hour once,
+    // rather than selecting an alternate source for every table entry.
+    image[225] = static_cast<uint8_t>(legacy_tz_offset);
     bool success = used == sizeof(image)
         && file.write(image, sizeof(image)) == sizeof(image);
 #elif defined(NRF52_PLATFORM) && defined(__GNUC__)
@@ -1663,7 +1663,9 @@ bool DataStore::savePrefs(const CompanionNodePrefs& _prefs, double node_lat, dou
         _prefs.tx_media, _prefs.tx_ssh);
     success = success
         && file.write(traffic_footer, sizeof(traffic_footer)) == sizeof(traffic_footer);
-    if (mesh::companion::timezone::fractional(_prefs.tz_offset)) {
+    // Range was checked before opening the transaction. Reuse its integer
+    // fallback instead of validating and converting the same float again.
+    if (_prefs.tz_offset != legacy_tz_offset) {
       uint8_t timezone_footer[mesh::companion::timezone::FooterSize];
       mesh::companion::timezone::encodeFooter(timezone_footer, _prefs.tz_offset);
       success = success

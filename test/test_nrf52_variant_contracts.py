@@ -34,6 +34,30 @@ def hex_define(source: str, name: str) -> int:
 
 
 class Nrf52VariantContractsTest(unittest.TestCase):
+    def test_ikoka_handheld_companion_size_matches_its_linked_flash(self) -> None:
+        recipe = (ROOT / "variants/ikoka_handheld_nrf/platformio.ini").read_text()
+        sections = re.findall(r"^\[(env:ikoka_handheld[^\]]*companion_radio_(?:usb|ble))\]$",
+                              recipe, re.MULTILINE)
+        self.assertEqual(len(sections), 4)
+        for name in sections:
+            with self.subTest(target=name):
+                section = ini_section(recipe, name)
+                linker = re.search(r"^board_build\.ldscript\s*=\s*(\S+)$",
+                                   section, re.MULTILINE)
+                size = re.search(r"^board_upload\.maximum_size\s*=\s*(\d+)$",
+                                 section, re.MULTILINE)
+                self.assertIsNotNone(linker)
+                self.assertIsNotNone(size)
+                flash = re.search(
+                    r"FLASH\s*\(rx\)\s*:\s*ORIGIN\s*=\s*(0x[0-9A-Fa-f]+),"
+                    r"\s*LENGTH\s*=\s*(0x[0-9A-Fa-f]+)\s*-\s*(0x[0-9A-Fa-f]+)",
+                    (ROOT / linker.group(1)).read_text())
+                self.assertIsNotNone(flash)
+                origin, end, length_origin = (int(value, 16) for value in flash.groups())
+                self.assertEqual(origin, length_origin)
+                self.assertEqual(end, 0xD4000)
+                self.assertEqual(int(size.group(1)), end - origin)
+
     def test_rak3401_w25q16_handoff_keeps_rak13302_and_gps_isolated(self) -> None:
         shared = (ROOT / "platformio.ini").read_text()
         recipe = (ROOT / "variants/rak3401/platformio.ini").read_text()

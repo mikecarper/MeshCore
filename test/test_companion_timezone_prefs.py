@@ -1,7 +1,9 @@
 """Keep fractional Companion timezones outside the published binary prefix."""
 import binascii
+import math
 import os
 from pathlib import Path
+import random
 import struct
 import subprocess
 import tempfile
@@ -270,6 +272,11 @@ int main() {
     CompanionNodePrefs defaults; double lat = 1, lon = 2;
     assert(old.loadPrefsInt("/new_prefs", defaults, lat, lon));
     assert(defaults.tz_offset == 0);
+    // A missing optional timezone must preserve an exact caller default,
+    // including fractional precision introduced after this old image.
+    defaults.tz_offset = 5.75f;
+    assert(old.loadPrefsInt("/new_prefs", defaults, lat, lon));
+    assert(defaults.tz_offset == 5.75f);
   }
   for (const FractionVector& vector : FRACTIONS) {
     DataStore store; store.fs.files["/new_prefs"] = legacyImage();
@@ -364,6 +371,86 @@ int main() {
 
 
 class CompanionTimezonePrefsTests(unittest.TestCase):
+    def test_ieee_validation_and_footer_under_size_and_math_modes(self):
+        # Expected validity comes from Python's decoded binary32 values, not
+        # the production bit thresholds or a compiler's fast-math comparisons.
+        bits = {
+            0, 0x80000000, 1, 0x80000001, 0x007fffff, 0x807fffff,
+            0x00800000, 0x80800000, 0x7f7fffff, 0xff7fffff,
+            0x7f800000, 0xff800000, 0x7f800001, 0xff800001,
+            0x7fc00000, 0xffc00000, 0x7fffffff, 0xffffffff,
+        }
+        for hours in (-14.0, -12.0, 12.0, 14.0, -3.75, 5.75):
+            center = struct.unpack("<I", struct.pack("<f", hours))[0]
+            bits.update((center - 1, center, center + 1))
+        generator = random.Random(0x545a4631)
+        bits.update(generator.getrandbits(32) for _ in range(1024))
+        rows = []
+        for raw in sorted(bits):
+            hours = struct.unpack("<f", struct.pack("<I", raw))[0]
+            valid = math.isfinite(hours) and -12.0 <= hours <= 14.0
+            # Use the original bits directly: unpacking/repacking a signaling
+            # NaN through Python could otherwise quiet its payload.
+            footer = checked_footer(b"TZF\x01" + struct.pack("<I", raw))
+            rows.append("{" + f"0x{raw:08x}u,{str(valid).lower()}," + cpp_bytes(footer) + "}")
+        code = r'''
+#include <cassert>
+#include <cstdio>
+#include <cstdint>
+#include <cstring>
+#include <helpers/CompanionTimezonePrefs.h>
+struct Case { uint32_t bits; bool valid; uint8_t footer[10]; };
+static const Case CASES[] = {
+@CASES@
+};
+int main() {
+  unsigned valid_cases = 0, invalid_cases = 0;
+  for (const Case& test : CASES) {
+    float hours;
+    memcpy(&hours, &test.bits, 4);
+    assert(mesh::companion::timezone::valid(hours) == test.valid);
+    const uint32_t sentinel = 0x40b80000u; // exactly 5.75
+    float decoded;
+    memcpy(&decoded, &sentinel, 4);
+    if (test.valid) {
+      ++valid_cases;
+      uint8_t footer[10];
+      mesh::companion::timezone::encodeFooter(footer, hours);
+      assert(!memcmp(footer, test.footer, sizeof(footer)));
+      assert(mesh::companion::timezone::decodeFooter(footer, sizeof(footer), decoded));
+      uint32_t restored;
+      memcpy(&restored, &decoded, 4);
+      assert(restored == test.bits); // includes negative zero and subnormals
+    } else {
+      ++invalid_cases;
+      // A correct header/checksum cannot admit NaN, infinity or bad range,
+      // even when floating-point comparisons are compiled with fast-math.
+      assert(!mesh::companion::timezone::decodeFooter(test.footer, 10, decoded));
+      uint32_t unchanged;
+      memcpy(&unchanged, &decoded, 4);
+      assert(unchanged == sentinel);
+    }
+  }
+  assert(valid_cases > 400 && invalid_cases > 400);
+  puts("PASS: independent IEEE validity and exact timezone footer bits/CRC");
+}
+'''.replace("@CASES@", ",\n".join(rows))
+        with tempfile.TemporaryDirectory(prefix="meshcore-timezone-ieee-") as directory:
+            work = Path(directory)
+            cpp = work / "test.cpp"
+            cpp.write_text(code)
+            for mode, flags in (("size", []), ("fast-math", ["-ffast-math"]),
+                                ("portable-endian", ["-U__BYTE_ORDER__"])):
+                with self.subTest(mode=mode):
+                    binary = work / "test"
+                    built = subprocess.run([os.environ.get("CXX", "g++"), "-std=c++17", "-Os",
+                        *flags, "-I", str(ROOT / "src"), str(cpp), "-o", str(binary)],
+                        capture_output=True, text=True, timeout=60)
+                    self.assertEqual(built.returncode, 0, built.stdout + built.stderr)
+                    ran = subprocess.run([str(binary)], capture_output=True, text=True, timeout=20)
+                    self.assertEqual(ran.returncode, 0, ran.stdout + ran.stderr)
+                    self.assertIn("PASS: independent IEEE validity", ran.stdout)
+
     def test_literal_legacy_fractional_persistence_and_cli(self):
         source = (ROOT / "examples/companion_radio/DataStore.cpp").read_text()
         mesh = (ROOT / "examples/companion_radio/MyMesh.cpp").read_text()

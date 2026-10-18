@@ -26,7 +26,7 @@ an update is downloaded.
 
 ## Supported repeater families
 
-QSPI staging is enabled only for explicitly matched repeater-role environments
+QSPI staging is enabled for explicitly matched repeater-role environments
 (and RS232 bridge variants that directly inherit one of those repeater targets)
 on these currently matched families:
 
@@ -59,8 +59,13 @@ T-Echo target.
 Companion builds are intentionally excluded. Some companion targets use the
 same external QSPI as a LittleFS message/data store, where raw OTA staging
 would corrupt the filesystem; other companions simply do not assign that chip
-to OTA. Room-server, sensor, and KISS roles are unchanged. Raw QSPI OTA is
-scoped to the explicitly matched repeater-derived environments.
+to OTA. Dedicated `*_room_server_lora_ota` environments also enable raw QSPI
+staging with their own exact role identity and matched bootloader layout.
+For Ikoka, these cover the Handheld E22-30 and Nano/Stick 22, 30, and 33 dBm
+variants. The legacy `*_room_server` environments retain their internal-flash
+layout and a different OTA target identity; use the matching wired installation
+and bootloader migration procedure before switching to a QSPI Room image.
+Sensor and KISS roles do not gain QSPI staging from these recipes.
 
 ### RAK15001 placement and module conflicts
 

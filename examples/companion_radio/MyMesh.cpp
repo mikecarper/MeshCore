@@ -11008,7 +11008,7 @@ bool MyMesh::handleCommand(const char* command, uint32_t sender_timestamp,
       if (savePrefs()) strcpy(reply, "OK");
       else {
         _prefs.tz_offset = previous;
-        strcpy(reply, "Error: timezone could not be saved");
+        strcpy(reply, "Error: setting could not be saved");
       }
     }
     return true;
