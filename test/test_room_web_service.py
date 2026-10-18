@@ -68,6 +68,8 @@ class RoomWebServiceTest(unittest.TestCase):
             (work / "post.inc").write_text(extract_braced(header, "struct PostInfo {") + ";")
             web_user = extract_braced(header, "struct RoomWebUser {")
             (work / "web_user.inc").write_text(web_user + " room_web_users[8] = {};")
+            (work / "password_limit.inc").write_text(extract_braced(
+                header, "struct RoomWebPasswordLimit {") + " room_web_password_limit;")
             binary = work / "service"
             built = subprocess.run([compiler, "-std=c++17", "-Wall", "-Wextra", "-Werror",
                                     "-Wno-misleading-indentation", *sanitizers, "-DESP32_PLATFORM=1",
@@ -80,7 +82,7 @@ class RoomWebServiceTest(unittest.TestCase):
             checked = subprocess.run([str(binary)], capture_output=True, text=True, timeout=60)
             self.assertEqual(checked.returncode, 0, checked.stdout + checked.stderr)
             self.assertIn("actual room web service", checked.stdout)
-            for group in ("ADMIN_AUTH", "ADMIN_ROUTES", "ADMIN_CATCHUP", "ADMIN_USERS",
+            for group in ("ADMIN_AUTH", "PASSWORD_LIMIT", "ADMIN_ROUTES", "ADMIN_CATCHUP", "ADMIN_USERS",
                           "ADMIN_SETTINGS", "ADMIN_INVALID", "MAIL_AUTH", "MAIL_DELIVERY",
                           "MAIL_ADMIN", "MAIL_PAGING", "MAIL_STORAGE", "MAIL_GLOBAL"):
                 self.assertRegex(checked.stdout, r"(?m)^" + group + ":")

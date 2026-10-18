@@ -349,6 +349,14 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks,
     uint32_t last_seen = 0, last_sequence = 0;
     uint16_t posts = 0, polls = 0;
   } room_web_users[8] = {};
+  // Wrong room-browser passwords, shared by every browser token: when the
+  // current thirty-second window began, how many distinct ones failed in it,
+  // and digests of the last four. RAM only; a reboot starts afresh.
+  struct RoomWebPasswordLimit {
+    uint32_t window = 0;
+    uint8_t failures = 0, recent_next = 0;
+    uint8_t recent[4][8] = {};
+  } room_web_password_limit;
   bool handleRoomWebCommand(const char* command, char* reply);
   bool _unconfigured_setup_espnow_suspended = false;
   void suspendUnconfiguredSetupBridges();
