@@ -5412,6 +5412,11 @@ void CommonCLI::handleSetCmd(uint32_t sender_timestamp, char* command, char* rep
 #else
     strcpy(reply, "Error: extra.sf requires an LR2021 radio");
 #endif
+#if defined(STATION_G3_ESP32)
+  } else if (_board->handleCommand(command, sender_timestamp, reply)) {
+    // Board-specific settings come after the shared validation/ownership gates.
+    if (_prefs->isDirty()) savePrefs();
+#endif
   } else {
     strcpy(reply, "unknown config");
   }
@@ -5941,6 +5946,10 @@ void CommonCLI::handleGetCmd(uint32_t sender_timestamp, char* command, char* rep
     }
 #else
     strcpy(reply, "Error: extra.sf requires an LR2021 radio");
+#endif
+#if defined(STATION_G3_ESP32)
+  } else if (_board->handleCommand(command, sender_timestamp, reply)) {
+    // A board getter must not persist unrelated pending preferences.
 #endif
   } else {
     mesh::cli::formatUnknownSetting(reply, 160, config);

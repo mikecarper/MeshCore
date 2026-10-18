@@ -430,6 +430,7 @@ jobs:
           python3 -B test/test_companion_ota_config.py -v
           python3 -B test/test_ota_identity_policy.py -v
           python3 -B test/test_companion_radio_gain_restore.py -v
+          python3 -B test/test_room_sensor_radio_restore.py -v
           python3 -B test/test_common_radio_persistence.py -v
           python3 -B test/test_common_cli_save_results.py -v
           python3 -B test/test_common_prefs_uncertain_reply.py -v
@@ -789,6 +790,8 @@ jobs:
       - name: Verify Full logging compiler flags and packaged capabilities
         run: |
           python3 -B test/test_station_g3_radio_pins.py -v
+          python3 -B test/test_station_g3_cli_dispatch.py -v
+          python3 -B test/test_station_g3_fem_control.py -v
           python3 -B test/test_station_g3_slot_settings.py -v
           python3 -B test/test_station_g3_slot_detection.py -v
           python3 -B test/test_station_g3_boot_recovery.py -v

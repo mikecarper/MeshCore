@@ -99,6 +99,58 @@ three-attempt limit fail the delayed-startup regressions. These results prove
 the software tolerance gap; they do not prove it caused the user's hardware
 failure. No transmit or TCXO-setting override was introduced.
 
+## Physical socket commands in the normal infrastructure CLI
+
+The follow-up audit also found that Repeater, Room, and Sensor infrastructure
+commands consumed all `get` and `set` requests in the shared CLI. Their final
+board-command hook was reached only for other verbs. Consequently, the G3's
+normal `get radio.slot` and `set radio.slot ...` commands never reached the
+board implementation. The separate pre-radio USB recovery console and KISS
+binary commands called the board directly and were unaffected.
+
+Unknown shared getters and setters now reach the board-command hook before
+returning an unknown-setting reply. Shared commands, including the guarded FEM
+setters, retain priority. Socket changes still save only the next-boot selection;
+they never switch the running radio or reboot behind the operator's back.
+
+## Receive-gain changes during transmission
+
+The follow-up comparison from `eb00b5370` found another G3-specific runtime
+defect. G2 firmware leaves the external amplifier controls alone. G3's
+`setLNAEnable()` reapplied receive mode unconditionally, so even repeating
+`set radio.fem.rxgain on` during an active transmission enabled the LNA before
+the transmit-completion hook. This was reachable through both the normal
+infrastructure CLI and Companion gain setters.
+
+The G3 FEM now tracks startup/sleep, receive, and transmit mode. A gain setter
+updates the requested receive preference while preserving the transmit bypass;
+the requested state is applied when receive mode resumes. Startup and terminal
+sleep also keep the LNA disabled until an explicit receive transition. PA-level
+changes retain their existing policy of applying at the start of the next
+transmission. The inactive socket's LNA is left disabled.
+
+The unconditional receive-mode call came from the runtime FEM preference
+implementation in
+[`7509e51e3d`](https://github.com/meshcore-dev/MeshCore/commit/7509e51e3d36010dccc81554a47df9b90b6915e4),
+Kevin Le, 2026-08-12. This finding concerns mode handling; the PA/LNA pin
+assignments and polarities match the manufacturer documentation.
+
+## Complete saved-radio restoration in Room and Sensor roles
+
+The same comparison found a shared role issue that can affect G3, G2, and other
+boards. Room and Sensor could clear their saved-radio retry flag after accepting
+the frequency/modulation tuple even when the subsequent saved TX-power command
+was rejected. Room also ignored rejection of its saved internal RX-gain command.
+An incoming packet or BUSY response during runtime restoration could therefore
+leave only part of the saved configuration applied.
+
+Their saved-radio helper now reports success only after every applicable
+setting has been accepted. Rejection keeps the existing retry/backoff active,
+including restoration after a temporary radio setting expires. No preference
+layout, default setting, or Sensor RX-gain feature is added by this fix. This
+shared issue alone does not explain why G2 firmware works better on the user's
+G3.
+
 ## Saved FEM and socket settings
 
 G3 firmware actively drives its LNA and PA-level GPIOs. G2 firmware does not,
@@ -168,6 +220,13 @@ QIO override must fail that check.
 | Combined socket detection/settings, boot recovery, radio pins, KISS slot and GPIO-hold suites | PASS, 36 test methods, including the 6 detection methods above |
 | Ordinary Repeater, legacy `_r2` Repeater and KISS firmware builds | PASS; all bootloader and application image headers verified as DIO |
 | Canonical Full Companion package | PASS; 24 linked capability checks, internal RAM and application-slot checks passed; bootloader/application and merged-image headers verified as DIO |
+| Follow-up G3 gain-mode tests through production CLI/Companion setters and GPIO helpers | PASS, 2 test methods; both sockets, failed saves and old-setter negative control |
+| Follow-up Room/Sensor saved-radio startup and runtime restoration | PASS, 4 test methods; actual wrapper rejection, retry/backoff and temporary-radio expiry paths |
+| Follow-up normal infrastructure socket-command routing | PASS, 7 test methods; real board/NVS dispatch, shared guards and old-dispatch negative controls |
+| Combined follow-up native regression batch | PASS, 30 test methods with sanitizer coverage |
+| Follow-up Repeater, Room, Sensor and ESP32-C6 Room firmware builds | PASS, all 4 environments |
+| Follow-up canonical Full Companion package | PASS; 24 linked capability checks, internal RAM and application-slot checks passed |
+| Follow-up hosted documentation link checks | PASS, 7 test methods |
 | Physical G3 boot and RF receive/transmit | Not performed for this change |
 
 No successful physical G3 boot, RF receive/transmit trial, or reproduction of

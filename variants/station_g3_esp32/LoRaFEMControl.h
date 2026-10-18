@@ -15,8 +15,10 @@ public:
   bool isPAGainEnabled() const { return pa_gain_enabled; }
 
 private:
+  enum class Mode : unsigned char { Sleep, Receive, Transmit };
   void applyPAGain();
 
+  Mode _mode = Mode::Sleep;
   bool lna_enabled = true;
   bool pa_gain_enabled = false;
 };

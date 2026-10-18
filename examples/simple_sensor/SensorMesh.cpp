@@ -1294,9 +1294,6 @@ void SensorMesh::begin(FILESYSTEM* fs) {
   }
 
   saved_radio_apply_pending = !applySavedRadioParams();
-  if (!saved_radio_apply_pending) {
-    radio_driver.setTxPower(_prefs.tx_power_dbm);
-  }
   const bool fem_gain_changed = board.canControlLoRaFemLna()
       && board.isLoRaFemLnaEnabled() != (_prefs.radio_fem_rxgain != 0);
   if (board.setLoRaFemLnaEnabled(_prefs.radio_fem_rxgain) && fem_gain_changed) {
@@ -1328,6 +1325,8 @@ void SensorMesh::begin(FILESYSTEM* fs) {
 }
 
 bool SensorMesh::applySavedRadioParams() {
+  // A busy radio can accept the tuple before deferring TX power. Recovery
+  // is complete only after both saved settings have been accepted.
   uint32_t timings[2] = {_prefs.rx_ps_rx_us, _prefs.rx_ps_sleep_us};
   const uint32_t* applied_timings = _prefs.rx_powersaving_enabled
       && radio_driver.supportsRxPowerSaving() ? timings : NULL;
@@ -1337,7 +1336,7 @@ bool SensorMesh::applySavedRadioParams() {
     return false;
   }
   active_cr = _prefs.cr;
-  return true;
+  return radio_driver.setTxPower(_prefs.tx_power_dbm);
 }
 
 bool SensorMesh::formatFileSystem() {
@@ -1534,9 +1533,6 @@ void SensorMesh::loop() {
     MESH_DEBUG_PRINTLN("Temp radio params expired before apply");
   } else if (revert_radio_due && !hasOutbound() && radio_apply_ready) {
     if (applySavedRadioParams()) {
-      if (saved_radio_apply_pending) {
-        radio_driver.setTxPower(_prefs.tx_power_dbm);
-      }
       set_radio_at = revert_radio_at = 0;
       temp_radio_applied = false;
       saved_radio_apply_pending = false;
@@ -1579,7 +1575,6 @@ void SensorMesh::loop() {
   if (saved_radio_apply_pending && !temp_radio_applied && !hasOutbound()
       && radio_apply_ready && !radio_apply_failed) {
     if (applySavedRadioParams()) {
-      radio_driver.setTxPower(_prefs.tx_power_dbm);
       saved_radio_apply_pending = false;
       radio_apply_retry_at = 0;
       radio_apply_failures = 0;

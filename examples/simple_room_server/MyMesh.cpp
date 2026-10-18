@@ -2668,10 +2668,6 @@ void MyMesh::begin(FILESYSTEM *fs) {
   }
 
   saved_radio_apply_pending = !applySavedRadioParams();
-  if (!saved_radio_apply_pending) {
-    radio_driver.setTxPower(_prefs.tx_power_dbm);
-    radio_driver.setRxBoostedGainMode(_prefs.rx_boosted_gain);
-  }
   const bool fem_gain_changed = board.canControlLoRaFemLna()
       && board.isLoRaFemLnaEnabled() != (_prefs.radio_fem_rxgain != 0);
   if (board.setLoRaFemLnaEnabled(_prefs.radio_fem_rxgain) && fem_gain_changed) {
@@ -2787,6 +2783,10 @@ void MyMesh::begin(FILESYSTEM *fs) {
 }
 
 bool MyMesh::applySavedRadioParams() {
+  // Each setter can defer while the radio is busy. Keep recovery pending
+  // until the complete saved configuration has been accepted.
+  if (radio_driver.supportsRxBoostedGainMode()
+      && !radio_driver.setRxBoostedGainMode(_prefs.rx_boosted_gain)) return false;
   uint32_t timings[2] = {_prefs.rx_ps_rx_us, _prefs.rx_ps_sleep_us};
   const uint32_t* applied_timings = _prefs.rx_powersaving_enabled
       && radio_driver.supportsRxPowerSaving() ? timings : NULL;
@@ -2796,7 +2796,7 @@ bool MyMesh::applySavedRadioParams() {
     return false;
   }
   active_cr = _prefs.cr;
-  return true;
+  return radio_driver.setTxPower(_prefs.tx_power_dbm);
 }
 
 bool MyMesh::sendFloodScoped(const TransportKey& scope, mesh::Packet* pkt,
@@ -4025,10 +4025,6 @@ void MyMesh::loop() {
     MESH_DEBUG_PRINTLN("Temp radio params expired before apply");
   } else if (revert_radio_due && !hasOutbound() && radio_apply_ready) {
     if (applySavedRadioParams()) {
-      if (saved_radio_apply_pending) {
-        radio_driver.setTxPower(_prefs.tx_power_dbm);
-        radio_driver.setRxBoostedGainMode(_prefs.rx_boosted_gain);
-      }
       set_radio_at = revert_radio_at = 0;
       temp_radio_applied = false;
       saved_radio_apply_pending = false;
@@ -4071,8 +4067,6 @@ void MyMesh::loop() {
   if (saved_radio_apply_pending && !temp_radio_applied && !hasOutbound()
       && radio_apply_ready && !radio_apply_failed) {
     if (applySavedRadioParams()) {
-      radio_driver.setTxPower(_prefs.tx_power_dbm);
-      radio_driver.setRxBoostedGainMode(_prefs.rx_boosted_gain);
       saved_radio_apply_pending = false;
       radio_apply_retry_at = 0;
       radio_apply_failures = 0;

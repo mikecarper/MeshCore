@@ -6,6 +6,7 @@
 #include "StationG3RadioSlot.h"
 
 void LoRaFEMControl::init() {
+  _mode = Mode::Sleep;
 #ifdef P_PA1_EN
   mesh::esp32::releaseOutputAfterDeepSleep((gpio_num_t)P_PA1_EN,
       pa_gain_enabled ? P_PA1_EN_ACTIVE : !P_PA1_EN_ACTIVE);
@@ -19,6 +20,7 @@ void LoRaFEMControl::init() {
 }
 
 void LoRaFEMControl::setSleepModeEnable() {
+  _mode = Mode::Sleep;
 #ifdef P_PA1_EN
   // PA PL1 low/open selects the lower of the two hardware-jumper-selected levels.
   digitalWrite(P_PA1_EN, !P_PA1_EN_ACTIVE);
@@ -26,11 +28,13 @@ void LoRaFEMControl::setSleepModeEnable() {
 #ifdef P_PRIMARY_LNA_EN
   // LNA P/S are active LOW. Bypass/disable the receive amplifier on shutdown,
   // rather than retaining the same enabled state used during normal receive.
-  digitalWrite(station_g3::activePins().lna, !P_PRIMARY_LNA_EN_ACTIVE);
+  for (uint8_t slot = 1; slot <= 2; ++slot)
+    digitalWrite(station_g3::pinsForSlot(slot).lna, !P_PRIMARY_LNA_EN_ACTIVE);
 #endif
 }
 
 void LoRaFEMControl::setTxModeEnable() {
+  _mode = Mode::Transmit;
   // Latch the requested PA level here, before the SX1262 starts driving the PA. PA PL1
   // retargets the PA's DC-DC rail, so moving it mid-transmit collapses the supply while
   // the PA is still driven at full input power.
@@ -41,6 +45,7 @@ void LoRaFEMControl::setTxModeEnable() {
 }
 
 void LoRaFEMControl::setRxModeEnable() {
+  _mode = Mode::Receive;
 #ifdef P_PRIMARY_LNA_EN
   digitalWrite(station_g3::activePins().lna,
       lna_enabled ? P_PRIMARY_LNA_EN_ACTIVE : !P_PRIMARY_LNA_EN_ACTIVE);
@@ -49,7 +54,8 @@ void LoRaFEMControl::setRxModeEnable() {
 
 void LoRaFEMControl::setLNAEnable(bool enabled) {
   lna_enabled = enabled;
-  setRxModeEnable();
+  // Preserve TX bypass and shutdown while accepting the next RX preference.
+  if (_mode == Mode::Receive) setRxModeEnable();
 }
 
 void LoRaFEMControl::setPAGainEnable(bool enabled) {
