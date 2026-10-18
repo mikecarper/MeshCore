@@ -2434,6 +2434,10 @@
 
 <h1 id="management-reports-mgr1mgr2">Management reports (MGR1/MGR2)</h1>
 <p>Available on repeater (including observer), room-server and sensor firmware.
+Exception: the constrained <code>wio-e5-mini_repeater</code> omits management reporting
+and shared <code>data.tx</code> routing to fit its existing application region. Normal
+authenticated administration, statistics, live USB/MQTT logging and the
+host-service bridge remain available.
 Companions/terminal-chat nodes and KISS modems do not originate these reports.
 Off by default. A management password and explicit enable are both required.
 No radio settings, existing preferences layout, or OTA authorization policy is
