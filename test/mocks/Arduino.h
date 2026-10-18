@@ -34,6 +34,9 @@ inline void delay(uint32_t ms) {
   g_mock_millis += ms;
 }
 
+// Suites with busy-waiting production methods supply advancing mock time.
+void yield();
+
 inline char* ltoa(long value, char* dest, int base) {
   if (base == 10) {
     std::snprintf(dest, 16, "%ld", value);

@@ -62,28 +62,47 @@ public:
 NMEA = r'''
 #pragma once
 #include <Arduino.h>
+#include <ctime>
 class MicroNMEA {
  bool valid=false;
+ uint32_t last_ms=now_ms;
+ uint64_t elapsed_ms=0;
+ mutable char sentence[100]={};
+ std::tm utc()const{
+  const std::time_t epoch=1790942400U+elapsed_ms/1000;
+  return *std::gmtime(&epoch);
+ }
 public:
  inline static unsigned clears=0;
  MicroNMEA(char*,size_t){}
  void clear(){++clears;valid=false;}
- bool process(char c){if(c=='\n'){valid=true;return true;}return false;}
+ bool process(char c){
+  if(c!='\n')return false;
+  elapsed_ms+=static_cast<uint32_t>(now_ms-last_ms);last_ms=now_ms;
+  valid=true;return true;
+ }
  static bool testChecksum(const char*){return true;}
  static void sendSentence(Stream&,const char*){}
- const char* getSentence()const{return "$GPRMC,120000.00,A,4807.038,N,01131.000,E,0.0,0.0,021026,,,A*00";}
+ const char* getSentence()const{
+  const std::tm value=utc();
+  std::snprintf(sentence,sizeof(sentence),
+   "$GPRMC,%02d%02d%02d.00,A,4807.038,N,01131.000,E,0.0,0.0,%02d%02d%02d,,,A*00",
+   value.tm_hour,value.tm_min,value.tm_sec,value.tm_mday,value.tm_mon+1,
+   (value.tm_year+1900)%100);
+  return sentence;
+ }
  const char* getMessageID()const{return "RMC";}
  bool isValid()const{return valid;}
  long getLatitude()const{return 47610000;}
  long getLongitude()const{return -122330000;}
  bool getAltitude(long& value)const{value=125000;return valid;}
  long getNumSatellites()const{return valid?8:0;}
- uint16_t getYear()const{return valid?2026:0;}
- uint8_t getMonth()const{return valid?10:0;}
- uint8_t getDay()const{return valid?2:0;}
- uint8_t getHour()const{return 12;}
- uint8_t getMinute()const{return 0;}
- uint8_t getSecond()const{return 0;}
+ uint16_t getYear()const{return valid?utc().tm_year+1900:0;}
+ uint8_t getMonth()const{return valid?utc().tm_mon+1:0;}
+ uint8_t getDay()const{return valid?utc().tm_mday:0;}
+ uint8_t getHour()const{return utc().tm_hour;}
+ uint8_t getMinute()const{return utc().tm_min;}
+ uint8_t getSecond()const{return utc().tm_sec;}
 };
 '''
 
@@ -91,9 +110,20 @@ RTC = r'''
 #pragma once
 #include <cstdint>
 class DateTime {
+ uint16_t year;
+ uint8_t month,day,hour,minute,second;
+ static bool leap(uint16_t value){return value%4==0&&(value%100!=0||value%400==0);}
 public:
- DateTime(uint16_t,uint8_t,uint8_t,uint8_t,uint8_t,uint8_t){}
- uint32_t unixtime()const{return 1790942400U;}
+ DateTime(uint16_t y,uint8_t m,uint8_t d,uint8_t h,uint8_t n,uint8_t s)
+  :year(y),month(m),day(d),hour(h),minute(n),second(s){}
+ uint32_t unixtime()const{
+  uint32_t days=0;
+  for(uint16_t value=1970;value<year;++value)days+=leap(value)?366:365;
+  const uint8_t lengths[]={31,28,31,30,31,30,31,31,30,31,30,31};
+  for(uint8_t value=1;value<month;++value)
+   days+=lengths[value-1]+(value==2&&leap(year)?1:0);
+  return (days+day-1)*86400U+hour*3600U+minute*60U+second;
+ }
 };
 '''
 

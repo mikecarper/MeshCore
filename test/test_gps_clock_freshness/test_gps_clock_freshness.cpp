@@ -80,6 +80,13 @@ std::string pair(const std::string& time,
   return gga(time) + rmc(time, date);
 }
 
+std::string noonPlus(unsigned seconds) {
+  char time[16] = {};
+  std::snprintf(time, sizeof(time), "%02u%02u%02u.00",
+                12 + seconds / 3600, seconds / 60 % 60, seconds % 60);
+  return time;
+}
+
 class GpsRig {
   bool _first = true;
   uint32_t _last_check = 0;
@@ -184,11 +191,46 @@ TEST(GpsClockFreshness, FiveSecondReceiverRetainsProgressThroughEmptyWindows) {
   EXPECT_EQ(NOON_2026_10_17 + 10, rig.rtc.writes.back().after);
 }
 
-TEST(GpsClockFreshness, SeparateCompleteObservationsMayShareUtcResolution) {
+TEST(GpsClockFreshness, RepeatedUtcSecondsCannotValidateAStoppedReceiver) {
   GpsRig rig;
-  for (unsigned i = 0; i < 3; ++i) rig.window(pair("120000.00"));
+  for (unsigned i = 0; i < 6; ++i) rig.window(pair("120000.00"));
+  EXPECT_TRUE(rig.rtc.writes.empty());
+  EXPECT_TRUE(rig.gps.waitingTimeSync());
+  EXPECT_EQ(0U, rig.gps.getTimeSyncGeneration());
+}
+
+TEST(GpsClockFreshness, RmcOnlyClockDoesNotRequireGgaSatelliteCount) {
+  GpsRig rig;
+  for (unsigned second = 0; second < 3; ++second) {
+    rig.window(rmc(noonPlus(second)));
+    EXPECT_EQ(0, rig.gps.satellitesCount());
+    if (second < 2) {
+      EXPECT_TRUE(rig.rtc.writes.empty());
+    }
+  }
   ASSERT_EQ(1U, rig.rtc.writes.size());
-  EXPECT_EQ(NOON_2026_10_17, rig.rtc.writes.back().after);
+  EXPECT_EQ(NOON_2026_10_17 + 2, rig.rtc.writes.back().after);
+  EXPECT_EQ(1U, rig.gps.getTimeSyncGeneration());
+}
+
+TEST(GpsClockFreshness, StartupOutlierRestartsAgreementBeforeApplyingClock) {
+  for (unsigned outlier : {0U, 1U, 2U}) {
+    SCOPED_TRACE(outlier);
+    GpsRig rig;
+    for (unsigned second = 0; second < 3; ++second) {
+      rig.window(pair(noonPlus(second), second == outlier ? "171027" : "171026"));
+      EXPECT_TRUE(rig.rtc.writes.empty());
+      EXPECT_EQ(0U, rig.gps.getTimeSyncGeneration());
+    }
+    // Every outlier position leaves fewer than three agreeing samples. A
+    // complete new run must recover without ever writing the outlier's year.
+    for (unsigned second = 3; second <= 5; ++second) {
+      rig.window(pair(noonPlus(second)));
+      EXPECT_EQ(second >= outlier + 3 ? 1U : 0U, rig.rtc.writes.size());
+    }
+    ASSERT_EQ(1U, rig.rtc.writes.size());
+    EXPECT_EQ(NOON_2026_10_17 + outlier + 3, rig.rtc.writes.back().after);
+  }
 }
 
 TEST(GpsClockFreshness, MultipleQueuedRmcSentencesCountOnlyOneValidation) {
@@ -241,6 +283,23 @@ TEST(GpsClockFreshness, CandidateCannotSurviveThirtyMinuteLoopPause) {
   rig.window(pair("123004.00"));
   ASSERT_EQ(2U, rig.rtc.writes.size());
   EXPECT_EQ(NOON_2026_10_17 + 1804, rig.rtc.writes.back().after);
+}
+
+TEST(GpsClockFreshness, ExpiredCandidateCannotReappearAfterAFullMillisCycle) {
+  GpsRig rig;
+  rig.acquire();
+  ASSERT_EQ(1U, rig.rtc.writes.size());
+  rig.receiveWithoutCheck(pair("120003.00"));
+  const uint32_t observed_at = millis();
+  // Three forward steps below INT32_MAX model one complete uint32 millis
+  // cycle, without billions of polling calls. The first poll expires and
+  // consumes the old candidate while making periodic synchronization due.
+  rig.checkAt(observed_at + 0x70000000UL);
+  rig.checkAt(observed_at + 0xe0000000UL);
+  rig.checkAt(observed_at + 1001UL);
+  EXPECT_EQ(1U, rig.rtc.writes.size());
+  EXPECT_EQ(1U, rig.gps.getTimeSyncGeneration());
+  EXPECT_TRUE(rig.gps.waitingTimeSync());
 }
 
 TEST(GpsClockFreshness, CandidateAgeAllowsTwoSecondsButNotAnOlderObservation) {
@@ -322,6 +381,22 @@ TEST(GpsClockFreshness, TrackerRequiresFreshObservationsInConsecutiveWindows) {
   EXPECT_EQ(NOON_2026_10_17 + 5, rig.rtc.writes.back().after);
 }
 
+TEST(GpsClockFreshness, TrackerRepeatedEpochBreaksConsecutiveValidation) {
+  GpsRig rig;
+  rig.gps.beginFreshTimeSync();
+  rig.window(pair("120000.00"));
+  rig.window(pair("120001.00"));
+  // A checksum-valid repeat is not an advancing clock observation, even when
+  // its UART arrival is recent. Tracker acquisition must restart its run.
+  rig.window(pair("120001.00"));
+  rig.window(pair("120003.00"));
+  rig.window(pair("120004.00"));
+  EXPECT_TRUE(rig.rtc.writes.empty());
+  rig.window(pair("120005.00"));
+  ASSERT_EQ(1U, rig.rtc.writes.size());
+  EXPECT_EQ(NOON_2026_10_17 + 5, rig.rtc.writes.back().after);
+}
+
 TEST(GpsClockFreshness, ManualSyncResetsCountAndUnconsumedCandidate) {
   GpsRig rig;
   rig.window(pair("120000.00"));
@@ -383,7 +458,7 @@ TEST(GpsClockFreshness, WarmValidationHistorySaturatesInsteadOfWrapping) {
   rig.acquire();
   ASSERT_EQ(1U, rig.rtc.writes.size());
   // Three initial observations plus 253 more would wrap an unsaturated byte.
-  for (unsigned i = 0; i < 253; ++i) rig.window(pair("120003.00"));
+  for (unsigned i = 0; i < 253; ++i) rig.window(pair(noonPlus(3 + i)));
   rig.idleUntilPeriodicDue();
   EXPECT_EQ(1U, rig.rtc.writes.size());
   rig.window(pair("123003.00"));
