@@ -7146,6 +7146,11 @@ the station IP when connected to WiFi; otherwise it raises the <code>MeshCore-OT
 access point. The reply gives the URL to open and tells you which network to
 use. <code>start ota ap</code> always selects the access point, including when OTA is
 already running on a LAN address. This is useful with client-isolated networks.</p>
+<p>The runtime browser uploader uses HTTP Basic authentication: username <code>admin</code>,
+password the node's saved admin password. The OTA hotspot reuses that password
+for WPA2 when it is 8–15 printable ASCII characters; otherwise it is open and
+the HTTP login still applies. Temporary partition migration and recovery apps
+retain their documented access policy.</p>
 <p>Starting OTA automatically stops WebConfig and reports <code>WebConfig stopped</code> in
 the reply. The existing LAN connection stays up; a setup hotspot is replaced
 by <code>MeshCore-OTA</code>. WebConfig's delayed HTTP cleanup cannot stop OTA's WiFi.
@@ -7191,14 +7196,17 @@ off while a temporary WebConfig session is currently active at that URL.</p>
 It serves the shared WiFi, radio, flood, loop, and status page and reports its
 URL. MQTT builds also show the MQTT tab and wizard step; non-MQTT builds remove
 them entirely. Sign in with the node's admin password. If the node has no saved
-WiFi SSID, the command starts the open <code>MeshCore-Setup-XXXX</code> captive AP at
+WiFi SSID, the command starts the <code>MeshCore-Setup-XXXX</code> captive AP at
 <a href="http://192.168.4.1/">http://192.168.4.1/</a> instead.</p>
 <p>If a saved WiFi network is unavailable and the node falls back to its setup
 AP, sign in with the existing admin password before changing settings. Joining
-that AP does not grant permission to replace the password. First-time setup
-without a saved SSID keeps its AP provisioning flow. Images deliberately
-configured without an admin password, including passwordless Companions,
-retain their local no-password policy; use them only on a trusted network.</p>
+that AP does not grant permission to replace the password. The hotspot uses
+the same admin password for WPA2 when it is 8–15 printable ASCII characters.
+Other valid admin passwords leave the hotspot open and require the HTTP admin
+login. Protected first-time setup without a saved SSID keeps its provisioning
+flow. ESP32 WiFi Companions also have a saved admin password, initially
+<code>password</code>. Deliberately passwordless images retain their local no-password
+policy; use them only on a trusted network.</p>
 <p><code>start webconfig ap</code> forces captive-AP mode. It will not interrupt an active
 MQTT bridge, so run <code>set mqtt.enabled off</code> first. Use <code>stop webconfig</code> to
 close either mode for the current boot. (<code>stop webconfig</code> does not change a
@@ -7221,8 +7229,8 @@ paused, rather than starting services from saved intent alone.</p>
 <p>Every ESP32 build with WebConfig supports the browser command terminal,
 including WiFi Companion and Full Companion. Companions use their complete
 USB/TCP terminal on the trusted LAN, including contact import, chat, recipient
-selection, and delayed replies. Repeater and Room Server use their local CLI
-after admin authentication.</p>
+selection, and delayed replies. ESP32 roles require their WebConfig admin
+login before browser terminal access; the HTTP login does not protect TCP.</p>
 <p>To add a Companion contact, run <code>import meshcore://&lt;full-contact-card-data&gt;</code>,
 then <code>list</code> to confirm it appears. Get the complete card with <code>card</code> on the
 other Companion. A public key alone is insufficient. See the
@@ -7232,9 +7240,10 @@ for <code>to</code>, <code>send</code>, <code>login</code>, and <code>cmd</code>
 the <strong>CLI</strong> tab.
 <code>get wifi.cli</code> reports <code>off</code>, <code>on, waiting for WiFi client</code>, or <code>on, active</code>.
 The saved setting becomes active only in station/LAN mode while the WiFi client
-is connected. It is deliberately unavailable on the open setup access point.
+is connected. It is deliberately unavailable on the setup access point.
 The tab displays each reply in the browser, including local diagnostics,
-<code>get password</code>, private-key and WiFi/MQTT credential reads, and <code>erase</code>.
+infrastructure <code>get password</code>, private-key and WiFi/MQTT credential reads, and
+<code>erase</code>. ESP32 Companion's <code>get password</code> reports status without the secret.
 Infrastructure <code>get acl</code> and raw <code>log</code> stream to the requesting browser, with
 backpressure for slow clients. These maintenance commands retain their LoRa
 restrictions. <code>set freq</code> works both here and through authorized LoRa CLI.
@@ -9012,13 +9021,29 @@ Older Companion firmware is not a safe transport for this backup flow.</p>
 - <code>get password</code>
 - <code>password &lt;new_password&gt;</code></p>
 <p><strong>Parameters:</strong>
-- <code>new_password</code>: New admin password</p>
+- <code>new_password</code>: New admin password (on ESP32, 1–15 UTF-8 bytes without CR or LF)</p>
 <p><strong>Set by build flag:</strong> <code>ADMIN_PASSWORD</code></p>
 <p><strong>Default:</strong> <code>password</code></p>
 <p><code>get password</code> returns the current admin password only on a local connection:
 USB, Ethernet, or the authenticated LAN browser CLI. It is rejected over LoRa.
-Companion has no local admin password and reports that explicitly, including
-through binary command <code>0x42</code>; this command does not report the Bluetooth PIN.</p>
+ESP32 WiFi Companion instead reports management-password status without revealing
+the secret. Its password is stored in NVS, survives a filesystem erase, and
+defaults to <code>password</code>. Other Companion builds retain their existing no-admin
+response. This command does not report the Bluetooth PIN.</p>
+<p>On ESP32, empty and overlong new passwords are rejected rather than truncated.
+Leading spaces are part of the password. For ESP32 setup WiFi protection, choose 8–15
+printable ASCII characters; other accepted passwords use an open hotspot with
+an HTTP admin login. WebConfig and runtime browser OTA share this admin
+credential (OTA's HTTP Basic username is <code>admin</code>).</p>
+<p>A confirmed password change invalidates existing browser sessions. The page
+that submitted it keeps a save receipt, tries the new password once, and reads
+the same result again after login; it does not resend commands. If another
+setting fails, the result remains visible and reboot is withheld. An
+unconfirmed password save keeps the previous runtime password active, but the
+saved state after reboot may differ; the error reports this uncertainty.</p>
+<p>Trusted TCP consoles and delegated remote CLI remain administrative paths and
+can change this password. The HTTP credential does not protect those ports or
+replace radio ACL permissions.</p>
 <p><strong>Note:</strong> The password setter replies with confirmation.</p>
 <p><strong>Note:</strong> Any node using this password will be added to the admin ACL list.</p>
 <hr />

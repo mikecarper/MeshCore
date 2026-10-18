@@ -3159,6 +3159,8 @@ the WebConfig <strong>WiFi</strong> card, or use the Full Companion text termina
 get wifi.status
 get wifi.powersave
 get webui
+get password
+password my-admin-pass
 set wifi.ssid MyNetwork
 set wifi.pwd my-password
 set wifi.powersave min
@@ -3169,8 +3171,18 @@ stop webconfig
 <p>ESP32 WiFi Companions with WebConfig, including Full Companion, expose a
 <strong>CLI</strong> tab at the node's LAN address. It defaults to on; use <code>get wifi.cli</code>,
 <code>set wifi.cli on</code>, or <code>set wifi.cli off</code>. Older builds that report the browser
-terminal as unavailable need a firmware update. The open setup AP does not
+terminal as unavailable need a firmware update. The setup AP does not
 expose this tab.</p>
+<p>ESP32 WebConfig and runtime browser OTA share the saved node admin password,
+initially <code>password</code>; the OTA HTTP Basic username is <code>admin</code>. <code>get password</code>
+reports status without revealing it. The password is stored in NVS and survives
+a filesystem erase. New values must be 1–15 UTF-8 bytes without CR or LF. Use
+8–15 printable ASCII characters to protect setup WiFi with the same password;
+otherwise the hotspot is open and requires an HTTP admin login. The display's
+WiFi join QR uses the hotspot's current credential. After a successful change,
+the submitting page keeps its save result and tries the new login once; other
+browser sessions must sign in again. An unconfirmed save keeps the previous
+runtime password active, but the saved state after reboot may differ.</p>
 <p>The browser accepts Companion configuration commands, including <code>get powersaving</code>,
 <code>set usb.logging on|off</code>, WiFi controls, and MQTT settings. <code>set mqtt.enabled on|off</code> controls MQTT
 without erasing broker settings; <code>get mqtt.enabled</code>, <code>get mqtt.running</code>, and
@@ -3474,8 +3486,12 @@ Rotating MAC policies still rotate and reopen first pairing when they do;
 stealth remains enabled. Repeating <code>on</code> keeps an existing bond. Toggle <code>off</code>,
 then <code>on</code>, then reboot to reset first pairing. All flag changes need reboot.
 The node still sends directed or allowlisted BLE packets; it is not radio silent.</p>
-<p>ESP32 ports 5000, 5001, 5002, and WebConfig have no independent login layer.
-Expose them only on a trusted LAN or temporary setup network. See
+<p>ESP32 TCP ports 5000, 5001, and 5002 remain trusted-network services. The HTTP
+admin login protects WebConfig and runtime browser OTA, and does not protect
+these ports or delegated remote CLI. Administrative console access can change
+the admin password. Expose TCP services only on a trusted LAN or temporary
+setup network. Temporary migration/recovery apps retain their documented
+access policy. See
 <a href="../WiFi/">WiFi setup</a> for credential setup and reconnect behavior.</p>
 <h2 id="usb-binary-and-text-terminal-modes">USB Binary and text terminal modes</h2>
 <p>Full Companion USB starts in the ASCII terminal after boot or an observable USB

@@ -4038,9 +4038,16 @@ example, <code>A7|get radio.rxgain</code>); the reply preserves that prefix.</p>
 <code>stats-core</code>, <code>stats-radio</code>, <code>stats-radio-diag</code>, <code>stats-packets</code>, <code>erase</code>,
 and <code>get prv.key</code> (when private key export is enabled).
 WiFi/MQTT builds accept <code>get wifi.pwd</code>, <code>get mqttN.password</code>, and
-<code>get mqttN.token</code>. <code>get password</code> reports that Companion has no admin password;
-infrastructure roles return their own admin password on a local CLI connection.
-These privileges do not apply to CLI commands relayed over LoRa.
+<code>get mqttN.token</code>. On ESP32 WiFi Companion, <code>get password</code> reports whether the
+management password is available without revealing it. <code>password &lt;new-password&gt;</code>
+changes the saved password shared by setup WiFi, WebConfig and browser OTA.
+Other Companion builds report that they have no admin password; infrastructure
+roles return their own admin password on a local CLI connection.
+These direct-client maintenance and secret-read privileges do not apply to
+CLI commands relayed over LoRa.
+Existing trusted Companion transports and contacts explicitly granted remote
+CLI access retain their command privileges. The browser login does not add a
+password handshake to those transports.
 ESP32 WiFi Companion builds expose the official app's <code>get/set wifi.enabled</code>,
 <code>get/set wifi.ssid</code>, and <code>get/set wifi.pwd</code> controls. Credentials use the shared
 WiFi store, and enablement is saved in node preferences. WiFi/BLE builds apply

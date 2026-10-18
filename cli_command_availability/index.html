@@ -2819,7 +2819,11 @@ over the normal binary USB, BLE, or TCP connection:</p>
 </tr>
 <tr>
 <td><code>get password</code></td>
-<td>Reports that Companion has no admin password; infrastructure returns its password locally</td>
+<td>ESP32 WiFi Companion reports management-password status without revealing it; other Companions report no admin password; infrastructure returns its password locally</td>
+</tr>
+<tr>
+<td><code>password &lt;new-password&gt;</code></td>
+<td>ESP32 WiFi Companion and infrastructure: change the saved admin password; ESP32 setup WiFi, WebConfig and browser OTA reuse it</td>
 </tr>
 <tr>
 <td><a href="../companion_lost_reply/"><code>get/set lost.reply</code></a></td>
