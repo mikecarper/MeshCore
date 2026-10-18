@@ -55,7 +55,8 @@ class RS232MQTTRuntimeTests(unittest.TestCase):
         for name in ("logRx", "logTx"):
             start = implementation.index("void MyMesh::" + name + "(")
             start = implementation.index("#ifdef WITH_MQTT_BRIDGE\n", start)
-            end = implementation.index("  if (_logging)", start)
+            # Keep the complete bridge guards, stopping before file logging's guard.
+            end = implementation.index("#if MESH_ENABLE_PACKET_FILE_LOGGING\n", start)
             routing[name] = implementation[start:end]
         service_start = implementation.index("#if defined(WITH_MQTT_BRIDGE)\n  // MQTT owns TLS",
                                              implementation.index("MyMesh::servicePostMeshLoop()"))
@@ -163,7 +164,9 @@ class RS232MQTTRuntimeTests(unittest.TestCase):
         route = {}
         for name in ("logRx", "logTx"):
             start = implementation.index("#ifdef WITH_MQTT_BRIDGE\n", implementation.index("void MyMesh::" + name + "("))
-            route[name] = implementation[start:implementation.index("  if (_logging)", start)]
+            # Keep the complete bridge guards, stopping before file logging's guard.
+            end = implementation.index("#if MESH_ENABLE_PACKET_FILE_LOGGING\n", start)
+            route[name] = implementation[start:end]
         ota_start = cli.index('    } else if (memcmp(command, "start ota", 9)')
         defaults_start = implementation.index("// bridge defaults")
         substitutions = {

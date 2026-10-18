@@ -222,7 +222,8 @@ class RS232RuntimeTests(unittest.TestCase):
         for name in ("logRx", "logTx"):
             start = implementation.index("void MyMesh::" + name + "(")
             start = implementation.index("#ifdef WITH_MQTT_BRIDGE\n", start)
-            end = implementation.index("  if (_logging)", start)
+            # Keep the complete bridge guards, stopping before file logging's guard.
+            end = implementation.index("#if MESH_ENABLE_PACKET_FILE_LOGGING\n", start)
             routing[name] = implementation[start:end]
         loop_start = implementation.index("#if defined(WITH_ESPNOW_BRIDGE)",
                                           implementation.index("MyMesh::servicePostMeshLoop()"))
