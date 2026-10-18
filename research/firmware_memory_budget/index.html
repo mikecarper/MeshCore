@@ -2361,6 +2361,17 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#mini-repeater-approved-cut-experiment-2026-10-18-utc" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Mini Repeater approved-cut experiment, 2026-10-18 UTC
+      
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -3192,6 +3203,157 @@ firmware LTO image. It does not qualify signature verification, boot,
 interrupts, MMIO, radio, USB, flash/filesystem drivers, sleep, concurrent
 traffic, physical timing or cryptographic side channels. A passing standalone
 harness does not make any overflowing full-firmware image usable.</p>
+<h3 id="mini-repeater-approved-cut-experiment-2026-10-18-utc">Mini Repeater approved-cut experiment, 2026-10-18 UTC</h3>
+<p>The follow-up used an isolated source worktree at <code>9b616f4d1</code>, with the
+same fixed timestamps, release recipe, real GCC 15 executable, compact
+additions and five-flag bundle described above. Only Morse/CW tools and
+automated management reporting were approved feature cuts. No experimental
+firmware source/configuration changes were adopted in the production branch.</p>
+<p>Each comparison retained live USB packet logging for MQTT
+(<code>MESH_PACKET_LOGGING=1</code>, compact and merged USB logging), persistent
+<code>/packet_log</code> logging, the host-service bridge, normal authenticated CLI,
+50 neighbours, radio2 and the 16 KiB filesystem. The existing cable-only
+limitation was unchanged. The management cut also omits its shared
+<code>data.tx</code> routing implementation, not ordinary request/reply statistics.
+The Morse/CW cut removes carrier tools and their timer/state/direct-carrier
+hooks; Morse RX was already disabled for this target.</p>
+<p>These are conservative linked flash extents from the final <code>.data</code> load
+address plus its size, measured from flash base <code>0x08000000</code>, rather than
+PlatformIO's smaller sum of selected section sizes:</p>
+<table>
+<thead>
+<tr>
+<th>Private GCC 15 recipe</th>
+<th style="text-align: right;">Linked extent</th>
+<th style="text-align: right;">App overflow</th>
+<th style="text-align: right;">Saving from control</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Compact/tuned control, all existing features</td>
+<td style="text-align: right;">264,228</td>
+<td style="text-align: right;">18,468</td>
+<td style="text-align: right;">0</td>
+</tr>
+<tr>
+<td>Morse/CW tools off</td>
+<td style="text-align: right;">256,832</td>
+<td style="text-align: right;">11,072</td>
+<td style="text-align: right;">7,396</td>
+</tr>
+<tr>
+<td>Management reporting off</td>
+<td style="text-align: right;">254,280</td>
+<td style="text-align: right;">8,520</td>
+<td style="text-align: right;">9,948</td>
+</tr>
+<tr>
+<td>Both approved cuts</td>
+<td style="text-align: right;">246,908</td>
+<td style="text-align: right;">1,148</td>
+<td style="text-align: right;">17,320</td>
+</tr>
+<tr>
+<td>Both cuts and shared numeric GET handlers</td>
+<td style="text-align: right;">246,748</td>
+<td style="text-align: right;">988</td>
+<td style="text-align: right;">17,480</td>
+</tr>
+</tbody>
+</table>
+<p>The two-cut result reproduced in fresh control builds. The proposed GET
+helper groups 27 simple scalar keys using typed member pointers and
+NUL-separated key lists; SET handlers, capability/Observer checks,
+matching rules, replies and persisted layouts are unchanged. It defaults
+off in the prototype and was not adopted merely for its 160-byte saving.</p>
+<p>Further full-source tuning did not close the remaining gap:</p>
+<table>
+<thead>
+<tr>
+<th>Additional option</th>
+<th style="text-align: right;">Without GET helper: overflow</th>
+<th style="text-align: right;">With GET helper: overflow</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>None</td>
+<td style="text-align: right;">1,148</td>
+<td style="text-align: right;">988</td>
+</tr>
+<tr>
+<td><code>-mword-relocations</code></td>
+<td style="text-align: right;">1,148</td>
+<td style="text-align: right;">988</td>
+</tr>
+<tr>
+<td><code>-fno-ipa-sra</code></td>
+<td style="text-align: right;">1,844</td>
+<td style="text-align: right;">Not tested</td>
+</tr>
+<tr>
+<td><code>-fno-tree-pre</code></td>
+<td style="text-align: right;">1,148</td>
+<td style="text-align: right;">Not tested</td>
+</tr>
+<tr>
+<td><code>-fno-ipa-ra</code></td>
+<td style="text-align: right;">1,772</td>
+<td style="text-align: right;">Not tested</td>
+</tr>
+<tr>
+<td><code>-fno-tree-sink</code></td>
+<td style="text-align: right;">1,348</td>
+<td style="text-align: right;">Not tested</td>
+</tr>
+<tr>
+<td><code>-fno-ipa-pta</code></td>
+<td style="text-align: right;">Not tested</td>
+<td style="text-align: right;">2,640</td>
+</tr>
+<tr>
+<td><code>-fno-ipa-cp</code></td>
+<td style="text-align: right;">Not tested</td>
+<td style="text-align: right;">1,744</td>
+</tr>
+<tr>
+<td><code>-fno-tree-forwprop</code></td>
+<td style="text-align: right;">Not tested</td>
+<td style="text-align: right;">1,404</td>
+</tr>
+<tr>
+<td><code>-fno-split-wide-types</code></td>
+<td style="text-align: right;">Not tested</td>
+<td style="text-align: right;">3,244</td>
+</tr>
+</tbody>
+</table>
+<p>Separate, unapproved diagnostic controls establish the tradeoffs but are
+not candidates: additionally removing the host-service bridge leaves
+1,620 bytes free on GCC 15 and 1,240 on GCC 14; additionally removing only
+persistent packet-file logging instead leaves 828 and 384 bytes free,
+respectively. Both controls keep live USB/MQTT packet logging enabled.
+Neither extra feature cut was adopted.</p>
+<p>Focused host tests exercised the actual raw RX/TX logging emitters and
+packet codec, exact line framing, maximum packets, short/non-draining
+serial writes, drop recovery, persistent logging callbacks and failed-TX
+handling across all eight carrier/management/file-logging combinations.
+Disabled-management tests verify fail-closed routing, password erasure,
+no management filesystem access and retained shared Fleet/beacon context.
+The full legacy/compact GET-body oracle passes 80,406 comparisons plus
+fallback checks under ASan/UBSan, including distinct fields, NaN/Inf,
+limits, whitespace and capability cases; four negative controls fail as
+expected. All ten CLI contract tests pass. Independent source/evidence
+review found no blocker, and <code>git diff --check</code> passes.</p>
+<p>These tests use host boundary stand-ins; they do not establish physical
+USB/MQTT broker integration, ARM runtime behaviour, board startup, radio
+timing, sleep or sustained load. No approved configuration fits yet, so
+there is no approved runtime-RAM pass or usable Mini Repeater image from
+this experiment. No hardware was flashed, no failing image was published,
+and existing build outputs were not overwritten. Production compiler pins,
+features and capacity checks remain unchanged; the private source/tests,
+configs, verbose logs and linker maps were retained for further work.</p>
 
 
 
