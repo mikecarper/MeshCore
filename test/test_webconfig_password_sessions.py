@@ -100,6 +100,45 @@ class WebConfigPasswordSessionsTest(unittest.TestCase):
         self.assertNotEqual(old, fixture)
         self.compile_run(old, expect_rejection=True, includes=self.receipt_json_include())
 
+    def command_fixture(self):
+        source = (ROOT / "src/helpers/esp32/WebConfigServer.cpp").read_text()
+        methods = "\n".join(extract_braced(source, signature) for signature in (
+            "static bool fixedTimeEquals(", "static inline bool wcCliEchoesSecret(",
+            "static inline bool wcIsDeferredReboot(", "static const char* wcCliUnavailable(",
+            "static bool isAllowedSetKey(", "static bool isSecretKey(",
+            "void WebConfigServer::clearSessionLocked(",
+            "void WebConfigServer::beginBatchAuthorizationLocked(",
+            "void WebConfigServer::cancelStaleBatchLocked(",
+            "void WebConfigServer::handleCliPost("))
+        drain = extract_braced(source, "void WebConfigServer::drainBatch(")
+        # Run actual command dispatch, masking, and committed-generation hook.
+        # Subsequent WiFi/reboot handoff is covered by its dedicated fixtures.
+        methods += "\n" + drain[:drain.index("  if (_standalone_wifi_dirty)")] + "\n}\n"
+        config = extract_braced(source, "void WebConfigServer::handleConfigPost(")
+        config_loop = extract_braced(config[config.index("  int count = 0;"):], "  for (JsonPair kv : set)")
+        cli = (ROOT / "src/helpers/CommonCLI.cpp").read_text()
+        start = cli.index('    } else if (memcmp(command, "password ", 9) == 0) {')
+        end = cli.index('    } else if (memcmp(command, "clear stats",', start)
+        setter = cli[start:end].replace('} else if (', 'if (', 1) + '\n    }\n'
+        companion = (ROOT / "examples/companion_radio/MyMesh.cpp").read_text()
+        start = companion.index('bool MyMesh::handleLocalControlCommand(')
+        end = companion.index('  if (mesh::powerdiag::handleCommand(', start)
+        companion = companion[start:end] + '  return false;\n}\n'
+        return (ROOT / "test/fixtures/webconfig_password_command.cpp").read_text().replace(
+            "@METHODS@", methods).replace("@CONFIG_LOOP@", config_loop).replace(
+            "@SETTER@", setter).replace("@COMPANION@", companion)
+
+    def test_actual_parser_drain_and_role_setters_preserve_password_bytes(self):
+        self.compile_run(self.command_fixture(), includes=self.receipt_json_include())
+
+    def test_old_cli_suffix_trimming_fails_executable_regression(self):
+        fixture = self.command_fixture()
+        old = fixture.replace('    if (wcCliEchoesSecret(e.cmd)) {',
+            "    while (pos > 0 && (e.cmd[pos - 1] == ' ' || e.cmd[pos - 1] == '\\t')) --pos;\n"
+            "    e.cmd[pos] = 0;\n    if (wcCliEchoesSecret(e.cmd)) {", 1)
+        self.assertNotEqual(old, fixture)
+        self.compile_run(old, expect_rejection=True, includes=self.receipt_json_include())
+
 
 if __name__ == "__main__":
     unittest.main()

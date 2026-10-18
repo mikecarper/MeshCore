@@ -187,6 +187,7 @@ int main() {
   ESP32Board board; char reply[160];
   assert(board.startOTAUpdate("fixture", reply, true));
   assert(strstr(reply, "(admin password)") && WiFi.connected);
+  assert(strstr(reply, "Login: admin / node admin password"));
   assert(WiFi.live_config.ap.authmode == WIFI_AUTH_WPA2_PSK);
   assert(!strcmp(reinterpret_cast<char*>(WiFi.live_config.ap.password), "password"));
   const unsigned starts = WiFi.starts;

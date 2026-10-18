@@ -317,7 +317,9 @@ static void portalTask(void* arg) {
             if (!mesh::wifi::startManagementAccessPoint(impl->ap_name, false)) break;
             impl->ap_password_generation = current.generation;
             impl->rekey_generation = 0;
-            mesh::usbLoggingPort().println("Setup WiFi updated; reconnect using the admin password");
+            mesh::usbLoggingPort().println(apPasswordEligible(current.password)
+                ? "Setup WiFi updated; reconnect using the admin password"
+                : "Setup WiFi updated; join the open network, then sign in as admin with the node admin password");
           }
         }
       }

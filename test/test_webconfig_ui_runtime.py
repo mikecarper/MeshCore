@@ -1120,6 +1120,182 @@ window.addEventListener("load",function(){
                     self.assertIn('data-test-withheld="true"', dom)
                     self.assertIn('data-test-error-detail="true"', dom)
 
+    def test_typed_and_pasted_cli_password_preserves_argument_bytes_for_reauth(self):
+        for entry in ("typed", "whole_paste", "partial_single", "partial_block"):
+            with self.subTest(entry=entry):
+                status, config = self.setup_values()
+                status.update(mode="lan", cli=True, terminal_stream=False)
+                prelude = r'''<script>
+(function(){
+  var entry=%s,status=%s,config=%s,submitted=null,posts=0,logins=0,polls=0,authorized=true;
+  var expected=entry==="typed"?["password  typed  "]:entry==="whole_paste"?["PaSsWoRd  pasted  ","get name"]
+    :entry==="partial_single"?["password suffix  "]:["password suffix  ","get name"];
+  var exactCommands=false,exactLogin=false,exactContext=false;
+  function response(value,code){code=code||200;return Promise.resolve({ok:code<400,status:code,json:function(){return Promise.resolve(value)}})}
+  window.fetch=function(path,options){
+    if(path==="/api/status")return response(status);
+    if(path==="/api/config")return response(config);
+    if(path==="/api/cli"&&options&&options.method==="POST"){
+      posts++;submitted=JSON.parse(options.body);authorized=false;
+      exactCommands=JSON.stringify(submitted.cmds)===JSON.stringify(expected);
+      exactContext=cliPasswordContext(submitted.cmds).password===expected[0].slice(9);
+      return response({state:"pending",reqid:submitted.reqid},202);
+    }
+    if(path.indexOf("/api/cli/result?")===0){
+      polls++;
+      if(path.indexOf("reqid="+submitted.reqid)<0)throw new Error("lost request id");
+      return response({state:"done",reqid:submitted.reqid,all_ok:true,reauth_required:!authorized,
+        results:submitted.cmds.map(function(){return{ok:true,reply:"OK"}})});
+    }
+    if(path==="/api/login"){
+      logins++;exactLogin=JSON.parse(options.body).password===expected[0].slice(9);
+      authorized=exactLogin;return response(exactLogin?{ok:true}:{error:"wrong password"},exactLogin?200:401);
+    }
+    return response({},404);
+  };
+  window.addEventListener("load",function(){
+    setTimeout(function(){
+      var input=document.getElementById("term-in");
+      if(entry!=="typed"){
+        input.value=entry==="whole_paste"?"":"password ";
+        var event=new Event("paste",{bubbles:true,cancelable:true});
+        Object.defineProperty(event,"clipboardData",{value:{getData:function(){return entry==="whole_paste"
+          ?"  > PaSsWoRd  pasted  \r\n  get name  \t\r\n # comment\r\n"
+          :entry==="partial_single"?"suffix  \n":"suffix  \nget name"}}});
+        input.dispatchEvent(event);
+        if(entry==="partial_single")input.dispatchEvent(new KeyboardEvent("keydown",{key:"Enter",bubbles:true,cancelable:true}));
+      }else{
+        input.value="  password  typed  ";
+        input.dispatchEvent(new KeyboardEvent("keydown",{key:"Enter",bubbles:true,cancelable:true}));
+      }
+      var go=document.querySelector(".term-cfm .go");if(go)go.click();
+    },120);
+    setTimeout(function(){
+      var body=document.body;
+      body.setAttribute("data-test-posts",posts);body.setAttribute("data-test-logins",logins);body.setAttribute("data-test-polls",polls);
+      body.setAttribute("data-test-exact-commands",exactCommands);body.setAttribute("data-test-exact-context",exactContext);
+      body.setAttribute("data-test-exact-login",exactLogin);body.setAttribute("data-test-busy",cli.busy);
+      body.setAttribute("data-test-login-visible",!document.getElementById("v-login").classList.contains("hide"));
+      body.setAttribute("data-test-normal-trim",cliCommandLine("  get name  \t")==="get name");
+      body.setAttribute("data-test-empty-password",cliParse("  PASSWORD   \n")[0]==="PASSWORD   ");
+      body.setAttribute("data-test-mixedcase-risk",cliRisks(["PaSsWoRd secret  "]).length===1);
+      body.setAttribute("data-test-password-seen",cli.pwd===true);
+    },600);
+  });
+})();
+</script>''' % (json.dumps(entry), json.dumps(status), json.dumps(config))
+                dom = self.run_page(prelude, virtual_time=900)
+                for attr, expected in (("posts", "1"), ("logins", "1"), ("polls", "2"),
+                                       ("exact-commands", "true"), ("exact-context", "true"),
+                                       ("exact-login", "true"), ("busy", "false"),
+                                       ("login-visible", "false"), ("normal-trim", "true"),
+                                       ("empty-password", "true"), ("mixedcase-risk", "true"),
+                                       ("password-seen", "true")):
+                    self.assertIn(f'data-test-{attr}="{expected}"', dom)
+
+    def test_setup_security_banner_and_live_password_preview(self):
+        banners = {
+            "admin_password": "Setup WiFi uses this node's admin password.",
+            "open_admin_login": "Setup WiFi is open; web configuration and firmware uploads still require this node's admin password.",
+            "open_no_password": "Setup WiFi is open. This build has no admin password configured.",
+            "unavailable": "Setup WiFi security is unavailable.",
+            "missing": "Setup WiFi security is unavailable.",
+            "pending": "Setup WiFi restart pending. Reconnect after the hotspot restarts to check its security.",
+            "lan": "Setup WiFi uses this node's admin password.",
+        }
+        for security, banner in banners.items():
+            with self.subTest(security=security):
+                status, config = self.setup_values()
+                status.update(mode="lan" if security == "lan" else "setup")
+                if security != "missing":
+                    status["ap_security"] = "admin_password" if security in ("lan", "pending") else security
+                status["ap_restart_pending"] = security == "pending"
+                vectors = ["abcdefgh", "a" * 15, "a" * 7, "a" * 16,
+                           "é" * 4, "abc\x1fdefg", "~~~~~~~~", " " * 8, "abcd\x7fefg", ""]
+                prelude = r'''<script>
+(function(){
+  var status=%s,config=%s,values=%s;
+  window.fetch=function(path){var value=path==="/api/status"?status:path==="/api/config"?config:{};return Promise.resolve({ok:true,status:200,json:function(){return Promise.resolve(value)}})};
+  window.addEventListener("load",function(){setTimeout(function(){
+    var body=document.body,input=document.querySelector('#v-wizard [data-k="password"]');
+    var previews=values.map(function(value){
+      input.value=value;input.dispatchEvent(new Event("input",{bubbles:true}));
+      var hints=Array.prototype.slice.call(document.querySelectorAll("[data-admin-ap-hint]"));
+      var hidden=hints.every(function(h){return h.classList.contains("hide")});
+      return hidden?"hidden":hints.every(function(h){return h.textContent==="Setup WiFi will use this password."})?"protected":hints.every(function(h){return h.textContent==="WiFi will be open; web configuration and firmware uploads still require this password."})?"open":"wrong";
+    });
+    body.setAttribute("data-test-banner",document.getElementById("setup-security").textContent);
+    body.setAttribute("data-test-banner-hidden",document.getElementById("setup-security").classList.contains("hide"));
+    body.setAttribute("data-test-previews",previews.join(","));
+    body.setAttribute("data-test-login-default",document.querySelector("#v-login code").textContent);
+  },200)});
+})();
+</script>''' % (json.dumps(status), json.dumps(config), json.dumps(vectors))
+                dom = self.run_page(prelude, virtual_time=500)
+                self.assertIn('data-test-banner="%s"' % banner, dom)
+                self.assertIn('data-test-banner-hidden="%s"' % str(security == "lan").lower(), dom)
+                self.assertIn('data-test-previews="%s"' % (
+                    ",".join(["hidden"] * 10) if security == "lan" else
+                    "protected,protected,open,open,open,open,protected,protected,open,hidden"), dom)
+                self.assertIn('data-test-login-default="password"', dom)
+
+    def test_setup_password_receipt_reconnect_guidance_matches_new_ap_policy(self):
+        for password, protected, legacy in (("new-admin", True, False), ("éééé", False, False),
+                                            ("éééé", False, True)):
+            with self.subTest(protected=protected, legacy=legacy):
+                status, config = self.setup_values()
+                status.update(mode="setup", ap_security="admin_password")
+                prelude = r'''<script>
+(function(){
+  var status=%s,config=%s,password=%s,legacy=%s,submitted=null,authSeen=null,posts=0,logins=0,polls=0,authorized=true;
+  function response(value,code){code=code||200;return Promise.resolve({ok:code<400,status:code,json:function(){return Promise.resolve(value)}})}
+  window.fetch=function(path,options){
+    if(path==="/api/status")return response(status);
+    if(path==="/api/config"&&options&&options.method==="POST"){
+      posts++;submitted=JSON.parse(options.body);authorized=false;return response({state:"pending",reqid:submitted.reqid},202);
+    }
+    if(path.indexOf("/api/config/result?")===0){
+      polls++;if(legacy&&!authorized)return response({error:"auth"},401);
+      return response({state:"done",reqid:submitted.reqid,all_ok:true,reauth_required:!authorized,results:[{key:"password",reply:"OK"}]});
+    }
+    if(path==="/api/login"){
+      logins++;authorized=JSON.parse(options.body).password===password;return response(authorized?{ok:true}:{error:"wrong password"},authorized?200:401);
+    }
+    if(path==="/api/config")return response(config);
+    if(path.indexOf("/api/scan")===0)return response({state:"done",networks:[]});
+    return response({},404);
+  };
+  window.addEventListener("load",function(){
+    setTimeout(function(){
+      var realReauth=reauthenticateOnce;reauthenticateOnce=function(auth,note,resume,keepView){authSeen=auth;return realReauth(auth,note,resume,keepView)};
+      st.dirty.password=password;saveChanges();
+    },120);
+    setTimeout(function(){
+      var body=document.body;
+      body.setAttribute("data-test-posts",posts);body.setAttribute("data-test-logins",logins);body.setAttribute("data-test-polls",polls);
+      body.setAttribute("data-test-pending-banner",document.getElementById("setup-security").textContent);
+      body.setAttribute("data-test-note",document.getElementById("login-note").textContent);
+      body.setAttribute("data-test-ram-secret-cleared",!!authSeen&&authSeen.password==="");
+      body.setAttribute("data-test-ap-protected",authSeen&&authSeen.apProtected);
+    },500);
+  });
+})();
+</script>''' % (json.dumps(status), json.dumps(config), json.dumps(password), json.dumps(legacy))
+                dom = self.run_page(prelude, virtual_time=800)
+                for attr, expected in (("posts", "1"), ("logins", "1"), ("polls", "2"),
+                                       ("ram-secret-cleared", "true"), ("ap-protected", str(protected).lower())):
+                    self.assertIn(f'data-test-{attr}="{expected}"', dom)
+                reconnect = ("Rejoin it with the new admin password." if protected else
+                             "Join it without a WiFi password, then sign in with the new admin password.")
+                initial_note = ("Settings were sent. Sign in to read the saved result." if legacy else
+                                "Settings saved. The admin password changed.")
+                self.assertIn('data-test-note="%s The setup WiFi may restart. %s"' %
+                              (initial_note, reconnect), dom)
+                target = ("rejoin with the new admin password." if protected else
+                          "join without a WiFi password; web configuration and firmware uploads still require the new admin password.")
+                self.assertIn('data-test-pending-banner="Setup WiFi restart pending. '
+                              'After it restarts, %s"' % target, dom)
+
     def test_admin_password_validation_counts_utf8_bytes(self):
         status, config = self.setup_values()
         status.update(mode="lan")

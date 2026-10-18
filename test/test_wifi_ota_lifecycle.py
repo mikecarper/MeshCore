@@ -417,8 +417,8 @@ class WifiOtaLifecycleTests(unittest.TestCase):
     def assert_healthy_ota(self, scenario, url, ap_starts):
         observation = self.observations[scenario]
         self.assertTrue(observation["first_started"] and observation["started"])
-        network = "Join WiFi MeshCore-OTA (OPEN compatibility; HTTP admin login)" if url == "192.168.4.1" else "Use same WiFi/LAN"
-        self.assertEqual(observation["reply"], f"Started: http://{url}/update - WiFi on; {network}")
+        network = "Join WiFi MeshCore-OTA (OPEN compatibility)" if url == "192.168.4.1" else "Use same WiFi/LAN"
+        self.assertEqual(observation["reply"], f"Started: http://{url}/update; {network}; Login: admin / node admin password")
         self.assertEqual(observation["server_count"], 1)
         self.assertEqual(observation["server_begin_calls"], 1)
         self.assertEqual(observation["ap_start_calls"], ap_starts)

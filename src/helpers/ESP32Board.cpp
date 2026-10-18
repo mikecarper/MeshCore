@@ -244,8 +244,11 @@ class LightweightOTAServer {
         static const char throttled[] = "too many failed logins; wait 30 seconds";
         sendResponse(client, 429, "Too Many Requests", "text/plain", throttled, sizeof(throttled) - 1);
       } else {
-        client.print("HTTP/1.1 401 Unauthorized\r\nWWW-Authenticate: Basic realm=\"MeshCore admin\", charset=\"UTF-8\"\r\n"
-                     "Content-Length: 0\r\nConnection: close\r\nCache-Control: no-store\r\n\r\n");
+        static const char login_help[] = "Sign in with username admin and this node's admin password.";
+        client.printf("HTTP/1.1 401 Unauthorized\r\nWWW-Authenticate: Basic realm=\"MeshCore (username: admin)\", charset=\"UTF-8\"\r\n"
+                      "Content-Type: text/plain; charset=utf-8\r\nContent-Length: %u\r\n"
+                      "Connection: close\r\nCache-Control: no-store\r\n\r\n%s",
+                      static_cast<unsigned>(sizeof(login_help) - 1), login_help);
       }
       return;
     }
@@ -375,11 +378,11 @@ bool ESP32Board::startOTAUpdate(const char* id, char reply[], bool force_ap) {
   const char* network = !use_ap ? "Use same WiFi/LAN"
       : mesh::esp32::managementPassword::apPasswordEligible(credential.password)
           ? "Join WiFi MeshCore-OTA (admin password)"
-          : "Join WiFi MeshCore-OTA (OPEN compatibility; HTTP admin login)";
+          : "Join WiFi MeshCore-OTA (OPEN compatibility)";
   if (LIGHTWEIGHT_OTA_PORT == 80) {
-    snprintf(reply, 160, "Started: http://%s/update - WiFi on; %s", ip.toString().c_str(), network);
+    snprintf(reply, 160, "Started: http://%s/update; %s; Login: admin / node admin password", ip.toString().c_str(), network);
   } else {
-    snprintf(reply, 160, "Started: http://%s:%u/update - WiFi on; %s", ip.toString().c_str(),
+    snprintf(reply, 160, "Started: http://%s:%u/update; %s; Login: admin / node admin password", ip.toString().c_str(),
              static_cast<unsigned>(LIGHTWEIGHT_OTA_PORT), network);
   }
   MESH_DEBUG_PRINTLN("startOTAUpdate: %s", reply);
@@ -478,8 +481,8 @@ bool ESP32Board::startOTAUpdate(const char* id, char reply[], bool force_ap) {
   const char* network = !use_ap ? "Use same WiFi/LAN"
       : mesh::esp32::managementPassword::apPasswordEligible(credential.password)
           ? "Join WiFi MeshCore-OTA (admin password)"
-          : "Join WiFi MeshCore-OTA (OPEN compatibility; HTTP admin login)";
-  snprintf(reply, 160, "Started: http://%s/update - WiFi on; %s", ip.toString().c_str(), network);
+          : "Join WiFi MeshCore-OTA (OPEN compatibility)";
+  snprintf(reply, 160, "Started: http://%s/update; %s; Login: admin / node admin password", ip.toString().c_str(), network);
   MESH_DEBUG_PRINTLN("startOTAUpdate: %s", reply);
 
   // Select the requested network even when the HTTP listener already exists.

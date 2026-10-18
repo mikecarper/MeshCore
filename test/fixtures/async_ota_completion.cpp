@@ -206,7 +206,8 @@ int main() {
     Request absent; get(&absent); assert(absent.code == 401);
     assert(absent.queued_response->headers.size() == 2);
     assert(absent.queued_response->headers[0].first == "WWW-Authenticate"
-        && absent.queued_response->headers[0].second == "Basic realm=\"MeshCore admin\", charset=\"UTF-8\"");
+        && absent.queued_response->headers[0].second == "Basic realm=\"MeshCore (username: admin)\", charset=\"UTF-8\"");
+    assert(absent.body == "Sign in with username admin and this node's admin password.");
     assert(absent.queued_response->headers[1].first == "Cache-Control"
         && absent.queued_response->headers[1].second == "no-store");
     Request wrong; authorize(wrong, "Basic wrong"); get(&wrong); assert(wrong.code == 401);

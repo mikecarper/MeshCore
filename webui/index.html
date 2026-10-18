@@ -226,13 +226,14 @@ body.tab-cli{padding-bottom:0}
           aria-label="Open console">&gt;_</button>
 </header>
 <main>
+<div id="setup-security" class="note hide" role="status"></div>
 <div id="login-note" class="note hide" role="status"></div>
 
 <!-- ============ LOGIN ============ -->
 <section id="v-login" class="hide">
   <div class="card">
     <h2>Admin login</h2>
-    <p style="font-size:13.5px;color:var(--mut);margin-bottom:12px">Enter this node's admin password.</p>
+    <p style="font-size:13.5px;color:var(--mut);margin-bottom:12px">Use this node's admin password. Standard builds start with <code>password</code>; keep using yours if you've already changed it.</p>
     <form id="login-form">
       <div class="f"><label for="login-pwd">Password</label>
         <input type="password" id="login-pwd" autocomplete="current-password" autofocus></div>
@@ -291,7 +292,8 @@ body.tab-cli{padding-bottom:0}
       <p style="font-size:13.5px;color:var(--mut);margin-bottom:12px">One admin password for this node's configuration page, firmware uploads, and protected setup WiFi.</p>
       <div class="f"><label>New password</label>
         <input type="password" data-k="password" maxlength="15" autocomplete="new-password">
-        <div class="hint">Maximum 15 UTF-8 bytes. Use 8-15 printable ASCII characters to also protect the setup WiFi.</div></div>
+        <div class="hint">Maximum 15 UTF-8 bytes. Use 8-15 printable ASCII characters to also protect the setup WiFi.</div>
+        <div class="hint hide" data-admin-ap-hint></div></div>
       <div class="f"><label>Confirm password</label>
         <input type="password" data-cfm="password" maxlength="15" autocomplete="new-password"></div>
     </div>
@@ -378,7 +380,8 @@ body.tab-cli{padding-bottom:0}
       <h2>Admin password</h2>
       <div class="note">Used for this node's configuration page and firmware uploads. Leave blank to keep the current password. Maximum 15 UTF-8 bytes. Use 8-15 printable ASCII characters to also protect the setup WiFi with this password.</div>
       <div class="f"><label>New password</label>
-        <input type="password" data-k="password" maxlength="15" autocomplete="new-password"></div>
+        <input type="password" data-k="password" maxlength="15" autocomplete="new-password">
+        <div class="hint hide" data-admin-ap-hint></div></div>
       <div class="f"><label>Confirm password</label>
         <input type="password" data-cfm="password" maxlength="15" autocomplete="new-password"></div>
     </div>
@@ -664,6 +667,31 @@ function toggleWiFiPassword(btn){
   btn.setAttribute("aria-label",(show?"Hide":"Show")+" WiFi password");
   input.focus();
 }
+function adminApEligible(password){return /^[\x20-\x7e]{8,15}$/.test(password)}
+function updateSetupSecurity(){
+  var setup=st.mode==="setup",banner=$("#setup-security");
+  banner.classList.toggle("hide",!setup);
+  banner.textContent=st.apRestartPending?(st.apPendingProtected===true
+      ?"Setup WiFi restart pending. After it restarts, rejoin with the new admin password."
+      :st.apPendingProtected===false
+        ?"Setup WiFi restart pending. After it restarts, join without a WiFi password; web configuration and firmware uploads still require the new admin password."
+        :"Setup WiFi restart pending. Reconnect after the hotspot restarts to check its security.")
+    :st.apSecurity==="admin_password"?"Setup WiFi uses this node's admin password."
+    :st.apSecurity==="open_admin_login"?"Setup WiFi is open; web configuration and firmware uploads still require this node's admin password."
+    :st.apSecurity==="open_no_password"?"Setup WiFi is open. This build has no admin password configured."
+    :"Setup WiFi security is unavailable.";
+  var candidate=st.dirty.password||"";
+  $$("[data-admin-ap-hint]").forEach(function(el){
+    el.classList.toggle("hide",!setup||!candidate);
+    el.textContent=adminApEligible(candidate)?"Setup WiFi will use this password."
+      :"WiFi will be open; web configuration and firmware uploads still require this password.";
+  });
+}
+function setupPasswordPending(auth){
+  if(st.mode==="setup"&&auth&&auth.apProtected!==undefined){
+    st.apRestartPending=true;st.apPendingProtected=auth.apProtected;updateSetupSecurity();
+  }
+}
 // build.sh embeds base[.build][-observer][-channel]-hash, e.g.
 // v1.16.0.5-observer-beta-dev-a1b2c3d. What identifies a build to a person is
 // the base, the published build number and the channel -- the -observer variant
@@ -758,6 +786,8 @@ function boot(){
     // (active_slots: 2 without PSRAM, 5 with). Fall back to the runtime array
     // size for older firmware that doesn't report it.
     st.mode=s.mode;st.authed=s.auth;st.hasMqtt=!!s.mqtt;st.hasCli=!!s.cli;
+    st.apSecurity=s.ap_security||"unavailable";st.apRestartPending=!!s.ap_restart_pending;
+    delete st.apPendingProtected;updateSetupSecurity();
     st.streamTerminal=!!s.terminal_stream;st.terminalMax=s.terminal_max_command||541;
     $("#term-disconnect").classList.toggle("hide",!st.streamTerminal);
     st.wifiPsk64=!!s.wifi_psk64;
@@ -831,6 +861,12 @@ function doLogout(){post("/api/logout",{}).then(function(){++loginEpoch;loginRes
 function reauthenticateOnce(auth,note,resume,keepView){
   var view=auth&&auth.view||($("#v-wizard").classList.contains("hide")?"#v-app":"#v-wizard");
   var epoch=++loginEpoch,password=auth&&!auth.attempted?auth.password:"";
+  if(auth&&auth.receiptSeen)setupPasswordPending(auth);
+  if(st.mode==="setup"&&auth&&auth.apProtected!==undefined&&!keepView){
+    note+=" The setup WiFi may restart. "+(auth.apProtected
+      ?"Rejoin it with the new admin password."
+      :"Join it without a WiFi password, then sign in with the new admin password.");
+  }
   if(auth){auth.attempted=true;auth.password="";auth.view=view;auth.restored=false}
   st.authed=false;clearInterval(st.statsTimer);st.statsTimer=0;
   $("#login-note").textContent=note;$("#login-note").classList.remove("hide");
@@ -843,7 +879,7 @@ function reauthenticateOnce(auth,note,resume,keepView){
   loginRequest(password).then(function(x){
     if(epoch!==loginEpoch)return;
     btn.disabled=false;
-    if(x.s===200){st.authed=true;loginResume=null;restored()}
+    if(x.s===200){setupPasswordPending(auth);st.authed=true;loginResume=null;restored()}
     else $("#login-err").textContent=x.j.error||"Sign in with the current admin password";
   }).catch(function(){if(epoch===loginEpoch){btn.disabled=false;$("#login-err").textContent="Couldn't sign in automatically. Enter the current admin password."}});
   password="";
@@ -854,6 +890,7 @@ function forgetSubmittedPassword(submitted){
   if(st.dirty.password===password)delete st.dirty.password;
   $$('[data-k="password"],[data-cfm="password"]').forEach(function(el){if(el.value===password)el.value=""});
   delete submitted.password;
+  updateSetupSecurity();
 }
 
 /* ---------- config load / bind ---------- */
@@ -1033,6 +1070,7 @@ function loadConfig(loadCapture){
     // any values the operator changed meanwhile against the newly loaded
     // baseline instead of silently replacing their selection or typing.
     restoreConfigLoadEdits(loadCapture);
+    updateSetupSecurity();
     updateSaveBar();
     return true;
   });
@@ -1070,6 +1108,7 @@ document.addEventListener("input",function(ev){
     // keep duplicate fields (wizard vs app share keys) in sync
     $$('[data-k="'+el.dataset.k+'"]').forEach(function(o){if(o!==el)setEl(o,elVal(el))});
     markDirty(el.dataset.k,elVal(el),el);
+    if(el.dataset.k==="password")updateSetupSecurity();
   }else if(el.dataset.cfm){
     $$('[data-cfm="'+el.dataset.cfm+'"]').forEach(function(o){if(o!==el)o.value=el.value});
   }else if(el.dataset.rg){
@@ -1287,6 +1326,7 @@ function saveChanges(extra,cb){
   if(Object.keys(setmap).length===0&&!body.reboot){toast("Nothing to save");return}
   var reqid=mkReqId();body.reqid=reqid;
   var auth={password:setmap.password||"",attempted:false,view:$("#v-wizard").classList.contains("hide")?"#v-app":"#v-wizard"};
+  if(auth.password)auth.apProtected=adminApEligible(auth.password);
   $("#save-btn").disabled=true;
   post("/api/config",body).then(function(){pollResult(cb,0,0,true,reqid,setmap,auth)})
   .catch(function(e){
@@ -1369,7 +1409,6 @@ function pollResult(cb,errs,idles,acked,reqid,submitted,auth){
       if(auth.restored){if(!r.reboot||failed)loadConfigSoft();return true}
       var note=failed?"The admin password changed, but some settings were rejected. The node will not reboot."
         :r.reboot?"Settings saved. The node is rebooting.":"Settings saved. The admin password changed.";
-      if(st.mode==="setup"&&!r.reboot)note+=" The setup WiFi may restart. Rejoin it with the new admin password if prompted.";
       reauthenticateOnce(auth,note,function(){pollResult(cb,0,0,true,reqid,submitted,auth)},!!r.reboot&&!failed);
       return true;
     }
@@ -1426,6 +1465,7 @@ function loadConfigSoft(){ // re-sync origin values without clobbering result ch
     for(var i=1;i<=st.nslots;i++){refreshSlotFields($("#app-slots"),i);refreshSlotFields($("#wz-slots"),i)}
     syncPacketFilters();
     afHint();
+    updateSetupSecurity();
     updateSaveBar();
   }).catch(function(){});
 }
@@ -2472,22 +2512,29 @@ $("#term-in").addEventListener("paste",function(ev){
   var text=cb.getData("text")||"";
   if(!/[\r\n]/.test(text))return;
   ev.preventDefault();
-  var cmds=cliParse(text);
   // Whatever was already typed joins the first pasted line verbatim -- trimming
   // it would eat the space in a half-typed "set " and silently fuse the words.
   var carry=this.value;
-  if(carry.trim()&&cmds.length){cmds[0]=carry+cmds[0];this.value=""}
+  if(carry.trim())text=carry+text;
+  var cmds=cliParse(text);
+  if(carry.trim()&&cmds.length)this.value="";
   if(!cmds.length){cliEcho("sys","Nothing to run -- that paste held no commands.");return}
   if(cmds.length===1){this.value=cmds[0];cliSug();return}
   cliHideSug();
   cliConfirm(cmds);
 });
+function cliCommandLine(raw){
+  var line=raw.replace(/^\s+/,"");
+  // Password arguments are byte-significant, including their trailing spaces.
+  return /^password /i.test(line)?line:line.trim();
+}
 function cliParse(text){
   var out=[];
   text.split(/\r\n|\r|\n/).forEach(function(raw){
-    var l=raw.trim();
+    var l=raw.replace(/^\s+/,"");
     if(!l||l.charAt(0)==="#")return;                 // blanks and comments
     l=l.replace(/^(?:[>$]|meshcore\s*[>$#])\s+/,""); // tolerate a pasted transcript
+    l=cliCommandLine(l);
     if(l)out.push(l);
   });
   return out;
@@ -2510,7 +2557,7 @@ var CLI_RISK=[
   [/^set espnow\.channel\s/,"changes the shared ESP-NOW/WiFi channel after reboot -- every ESP-NOW peer and the router must match"],
   [/^set radio\s/,"changes radio parameters -- a wrong value takes this node off the air"],
   [/^set freq\s/,"changes the frequency -- a wrong value takes this node off the air"],
-  [/^password\s/,"changes the admin password"],
+  [/^password\s/i,"changes the admin password"],
   [/^set prv\.key\s/,"replaces this node's identity"]
 ];
 function cliRisks(cmds){
@@ -2582,7 +2629,7 @@ function cliConfirm(cmds){
    stream back, so a long sequence fills the window as it executes. */
 function cliSubmit(){
   if(cli.busy)return;
-  var inp=$("#term-in"),line=inp.value.trim();
+  var inp=$("#term-in"),line=cliCommandLine(inp.value);
   cliHideSug();
   if(!line)return;
   cliPush(line);inp.value="";
@@ -2621,7 +2668,9 @@ function cliRun(cmds){
 function cliPasswordContext(cmds){
   var password="";
   cmds.forEach(function(c){if(/^password /i.test(c))password=c.slice(9)});
-  return{password:password,attempted:false,required:false,view:"#v-app",output:[]};
+  var auth={password:password,attempted:false,required:false,view:"#v-app",output:[]};
+  if(password)auth.apProtected=adminApEligible(password);
+  return auth;
 }
 
 // Stream replies for every role. Companion sessions also own recipient/login
@@ -2754,7 +2803,9 @@ function cliPoll(reqid,cmds,from,status,errs,idles,auth){
       // `ok` is advisory; the node's own convention is authoritative, and only
       // failure has a fixed shape there ("Err"/"ERR:"/"Error:").
       var ok=(x.ok!=null)?x.ok:!/^\s*err/i.test(x.reply||"");
-      if(!auth.attempted&&ok&&/^password /i.test(cmds[from+i]||""))auth.password=cmds[from+i].slice(9);
+      if(!auth.attempted&&ok&&/^password /i.test(cmds[from+i]||"")){
+        auth.password=cmds[from+i].slice(9);auth.apProtected=adminApEligible(auth.password);
+      }
       // Getters answer "> value" -- that leading marker is the serial console's
       // way of setting a value apart, and here it collides with the prompt glyph
       // that means "you typed this". Drop it; the colour already says "reply".
@@ -2789,8 +2840,8 @@ function cliAfter(cmds,r,auth){
   auth=auth||cliPasswordContext(cmds);
   var touched=false;
   cmds.forEach(function(c){
-    if(/^password\s/.test(c))cli.pwd=true;
-    if(/^(set|password)\s/.test(c))touched=true;
+    if(/^password\s/i.test(c))cli.pwd=true;
+    if(/^set\s/.test(c)||/^password\s/i.test(c))touched=true;
   });
   // Same prefix dispatch as the risk list: `poweroff now` powers off too.
   var reauth=r&&r.reauth_required&&!(auth&&auth.restored);

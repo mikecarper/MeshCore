@@ -275,7 +275,14 @@ static const char* wcCliUnavailable(const char* cmd, bool streamed = false) {
 // are served to the client over the open setup AP. The config path overwrites it
 // by key; a CLI entry has no key, so match on the command itself.
 static inline bool wcCliEchoesSecret(const char* cmd) {
-  return strncmp(cmd, "password ", 9) == 0;
+  static const char verb[] = "password ";
+  if (!cmd) return false;
+  for (size_t i = 0; i < sizeof(verb) - 1; ++i) {
+    char c = cmd[i];
+    if (c >= 'A' && c <= 'Z') c = static_cast<char>(c - 'A' + 'a');
+    if (c != verb[i]) return false;
+  }
+  return true;
 }
 
 // CLI requests require LAN mode and authentication. Explicit getters have
@@ -3048,12 +3055,13 @@ void WebConfigServer::handleCliPost(AsyncWebServerRequest* req) {
       req->send(413, "application/json", out);
       return;
     }
-    // Strip CR/LF so one entry cannot smuggle a second command past the
-    // operator's confirmation, and skip whatever is left blank.
+    // Keep ordinary command normalization compatible, but a password is an
+    // exact value: preserve its suffix and reject line breaks, never strip them.
     BatchEntry& e = _batch[count];
     int pos = 0;
+    bool line_break = false;
     for (const char* p = raw; *p; p++) {
-      if (*p == '\r' || *p == '\n') continue;
+      if (*p == '\r' || *p == '\n') { line_break = true; continue; }
       if (pos == 0 && (*p == ' ' || *p == '\t')) continue;   // leading space
       if (pos >= (int)sizeof(e.cmd) - 1) {
         req->send(400, "application/json", "{\"error\":\"command too long\"}");
@@ -3061,8 +3069,17 @@ void WebConfigServer::handleCliPost(AsyncWebServerRequest* req) {
       }
       e.cmd[pos++] = *p;
     }
-    while (pos > 0 && (e.cmd[pos - 1] == ' ' || e.cmd[pos - 1] == '\t')) pos--;
     e.cmd[pos] = 0;
+    if (wcCliEchoesSecret(e.cmd)) {
+      if (line_break) {
+        req->send(400, "application/json", "{\"error\":\"admin password must not contain line breaks\"}");
+        return;
+      }
+      mesh::cli::normalizeCommandVerb(e.cmd);
+    } else {
+      while (pos > 0 && (e.cmd[pos - 1] == ' ' || e.cmd[pos - 1] == '\t')) pos--;
+      e.cmd[pos] = 0;
+    }
     if (pos == 0) continue;
     // Reject before anything runs, so a sequence never half-applies and then
     // stops on a command that was never going to work here.
@@ -3077,7 +3094,7 @@ void WebConfigServer::handleCliPost(AsyncWebServerRequest* req) {
     }
     e.key[0] = 0;                       // CLI entries have no config key
     if (wcIsDeferredReboot(e.cmd)) defer_reboot = true;
-    if (strncmp(e.cmd, "password ", 9) == 0) seq_sets_pwd = true;
+    if (wcCliEchoesSecret(e.cmd)) seq_sets_pwd = true;
     if (strncmp(e.cmd, "set wifi.ssid ", 14) == 0) seq_sets_ssid = true;
     count++;
   }

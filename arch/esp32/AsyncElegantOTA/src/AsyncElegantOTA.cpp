@@ -36,8 +36,8 @@ bool AsyncElegantOtaClass::authenticateRequest(AsyncWebServerRequest* request,
         else if (result == mesh::esp32::managementPassword::AuthResult::Throttled)
             request->send(429, "text/plain", "too many failed logins; wait 30 seconds");
         else {
-            AsyncWebServerResponse* response = request->beginResponse(401, "text/plain", "admin password required");
-            response->addHeader("WWW-Authenticate", "Basic realm=\"MeshCore admin\", charset=\"UTF-8\"");
+            AsyncWebServerResponse* response = request->beginResponse(401, "text/plain", "Sign in with username admin and this node's admin password.");
+            response->addHeader("WWW-Authenticate", "Basic realm=\"MeshCore (username: admin)\", charset=\"UTF-8\"");
             response->addHeader("Cache-Control", "no-store");
             request->send(response);
         }

@@ -251,11 +251,13 @@ int main() {
         + "/update";
     assert(strncmp(reply.text, url.c_str(), url.size()) == 0);
     assert(strstr(reply.text, instruction));
+    assert(strstr(reply.text, "Login: admin / node admin password"));
     if (ap || !WiFi.connected) {
       assert(WiFi.ap_protocol == 7);
       assert(WiFi.ap_channel == (constrain_espnow_channel ? 6 : 1));
     }
-    assert(strlen(reply.text) < 160 && reply.guard == 0x12345678);
+    assert(strlen(reply.text) + strlen("; WebConfig stopped") < 160
+        && reply.guard == 0x12345678);
   };
   // Normal start reports the actual LAN address and does not disconnect it.
   start(false, "10.20.30.40", "same WiFi/LAN");

@@ -76,7 +76,10 @@ int main() {
   for (const char* path : {"/", "/update", "/log"}) {
     const auto absent = request("GET", path, "");
     assert(absent.find("401 Unauthorized") != std::string::npos
-        && absent.find("WWW-Authenticate: Basic realm=\"MeshCore admin\", charset=\"UTF-8\"") != std::string::npos);
+        && absent.find("WWW-Authenticate: Basic realm=\"MeshCore (username: admin)\", charset=\"UTF-8\"") != std::string::npos);
+    const std::string help = "Sign in with username admin and this node's admin password.";
+    assert(absent.find("Content-Length: " + std::to_string(help.size()) + "\r\n") != std::string::npos);
+    assert(absent.substr(absent.find("\r\n\r\n") + 4) == help);
     assert(request("GET", path, "Authorization: Basic wrong\r\n").find("401 Unauthorized") != std::string::npos);
     assert(request("GET", path, good).find("200 OK") != std::string::npos);
   }
