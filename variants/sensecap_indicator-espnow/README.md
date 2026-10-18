@@ -18,12 +18,15 @@ preserves the previously saved numeric radio tuple; erase/install the LoRa
 merged image when the compiled fresh defaults must replace it.
 
 The Indicator preserves the existing 160x160 UI coordinate system. Ordinary
-images use a 320x320, 4-bit internal canvas scaled 1.5x onto the 480x480 panel.
-Full Companion images first request a native 480x480 canvas, then normally
-shrink to 320x320 only for the tight ESP-NOW + BLE combination before Bluetooth
-starts. The canvas stays out of PSRAM to avoid contention with RGB scanout. The
-screen blanks after five minutes on USB power; the hardware button or a touch
-wakes it without selecting anything.
+images and LoRa Full Companion images use a 320x320, 4-bit internal canvas
+scaled 1.5x onto the 480x480 panel. LoRa Full retains this profile in both
+WiFi and BLE modes to leave internal RAM for alerts and held messages while
+preserving 350 contacts, 512 queued frames and all Full transports. ESP-NOW
+Full first requests a native 480x480 canvas, then normally shrinks to 320x320
+for its BLE combination before Bluetooth starts. The canvas stays out of
+PSRAM to avoid contention with RGB scanout. The screen blanks after five
+minutes on USB power; the hardware button or a touch wakes it without
+selecting anything.
 
 ## Touch navigation
 
@@ -216,7 +219,7 @@ action or BLE-status block. Long IP addresses retain a smaller bounded row
 instead of clipping.
 
 The Indicator WiFi setup/status page uses a fixed physical scale on both the
-native and 320x320 emergency canvases. Its content begins below the shared
+native 480x480 and scaled 320x320 canvases. Its content begins below the shared
 status bar and eight page dots. The page only reads connection state; it never
 starts or stops WebConfig, WiFi, ESP-NOW, or LoRa. Other display layouts retain
 their existing setup overlay.
@@ -226,16 +229,17 @@ selecting BLE leaves the primary ESP-NOW WiFi radio and its fixed channel
 running; it disables only infrastructure WiFi. Rendering follows the memory
 cost of each combination:
 
-- LoRa + WiFi: targets a native 480x480 canvas.
-- LoRa + BLE: targets a native 480x480 canvas.
+- LoRa + WiFi: fixed 320x320 canvas scaled 1.5x to the panel.
+- LoRa + BLE: fixed 320x320 canvas scaled 1.5x to the panel.
 - ESP-NOW + infrastructure WiFi: targets a native 480x480 canvas.
 - ESP-NOW + BLE: 320x320 canvas scaled 1.5x to the panel.
 
-If the early native allocation or a later profile retry cannot obtain a
-contiguous DMA-capable block, any mode requesting 480x480 keeps or restores the
-320x320 emergency canvas instead of disabling the display. The startup log
-reports the canvas actually retained; an emergency fallback does not change the
-saved Companion transport or stop the primary LoRa/ESP-NOW radio.
+If the early native allocation or a later ESP-NOW profile retry cannot obtain
+a contiguous DMA-capable block, it keeps or restores the 320x320 emergency
+canvas instead of disabling the display. The ESP-NOW startup log reports the
+canvas actually retained; an emergency fallback does not change the saved
+Companion transport or stop the primary ESP-NOW radio. LoRa Full uses its
+fixed 320x320 profile directly rather than attempting the native allocation.
 
 If a Companion client does not supply device time over USB or WiFi, this build
 starts evaluating LoRa time after two minutes. It requires three independent,

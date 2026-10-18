@@ -68,13 +68,16 @@ def assert_port_idle(path):
     if not inspector:
         return
     try:
-        result = subprocess.run([inspector, "--", os.path.realpath(path)],
+        # Some Pi fuser implementations reject "--" with status 1, which is
+        # also their normal no-owner status. The resolved absolute path cannot
+        # be interpreted as an option, so no separator is needed.
+        result = subprocess.run([inspector, os.path.realpath(path)],
                                 capture_output=True, text=True, timeout=3)
     except (OSError, subprocess.TimeoutExpired) as error:
         raise RuntimeError("Cannot safely inspect serial-port ownership") from error
     if result.returncode == 0:
         raise RuntimeError("Selected serial port is already in use; finish the flasher/client first")
-    if result.returncode != 1:
+    if result.returncode != 1 or result.stdout or result.stderr:
         raise RuntimeError("Cannot safely inspect serial-port ownership (fuser error)")
 
 

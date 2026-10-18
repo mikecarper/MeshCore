@@ -20,6 +20,8 @@ import ethernet_primary_probe as primary
 
 class PortOwnershipTests(unittest.TestCase):
     def run_inspector(self, result):
+        result.stdout = ""
+        result.stderr = ""
         return patch.object(session.subprocess, "run", return_value=result)
 
     def test_existing_owner_refuses_without_killing_anything(self):
@@ -28,7 +30,7 @@ class PortOwnershipTests(unittest.TestCase):
                 self.run_inspector(SimpleNamespace(returncode=0)) as run:
             with self.assertRaisesRegex(RuntimeError, "already in use"):
                 session.assert_port_idle("/dev/ttyUSB0")
-        self.assertEqual(run.call_args.args[0][:2], ["/usr/bin/fuser", "--"])
+        self.assertEqual(run.call_args.args[0], ["/usr/bin/fuser", "/dev/ttyUSB0"])
         self.assertNotIn("-k", run.call_args.args[0])
 
     def test_idle_port_is_allowed(self):

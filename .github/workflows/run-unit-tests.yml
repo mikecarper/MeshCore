@@ -358,6 +358,7 @@ jobs:
           python3 -B test/test_mqtt_diagnostics.py -v
           python3 -B test/test_mqtt_advert_verify.py -v
           python3 -B test/test_mqtt_publish_ack.py -v
+          python3 -B test/test_companion_mqtt_diagnostics.py -v
           python3 -B test/test_wifi_network_power_policy.py -v
           python3 -B test/test_mqtt_wifi_network_power.py -v
           python3 -B test/test_companion_wifi_network_power.py -v
@@ -625,7 +626,14 @@ jobs:
         run: |
           python3 -B test/test_cpp_source.py -v
           python3 -B test/test_official_web_console.py -v
+          python3 -B test/test_official_console_acceptance.py -v
           python3 -B test/test_hil_linux_web_serial.py -v
+          python3 -B tools/hil/test_serial_session.py -v
+          python3 -B test/test_companion_release_acceptance.py -v
+          python3 -B test/test_mcfirmware_bench_backup.py -v
+          python3 -B test/test_mcfirmware_bench_app_flash.py -v
+          python3 -B test/test_mcfirmware_bench_data_restore.py -v
+          python3 -B tools/hil/test_room_webconfig_acceptance.py -v
           python3 -B test/test_hil_slowfi_guard.py -v
 
       - name: Verify official setup GUI initial time command deadline

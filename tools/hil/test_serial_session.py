@@ -1,11 +1,50 @@
-"""Verify the shared serial opener keeps optional SDK dependencies optional."""
+"""Verify serial ownership checks and optional SDK dependency isolation."""
 from pathlib import Path
 import ast
 import hashlib
+import importlib.util
 import subprocess
 import sys
 from tempfile import TemporaryDirectory
 import unittest
+from unittest.mock import patch
+
+
+class SerialPortOwnershipTests(unittest.TestCase):
+    def setUp(self):
+        spec = importlib.util.spec_from_file_location(
+            "serial_ownership_test", Path(__file__).with_name("serial_session.py"))
+        self.session = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(self.session)
+
+    def inspect(self, result):
+        with patch.object(self.session.sys, "platform", "linux"), \
+                patch.object(self.session.shutil, "which", return_value="/usr/bin/fuser"), \
+                patch.object(self.session.os.path, "realpath", return_value="/dev/ttyACM7"), \
+                patch.object(self.session.subprocess, "run", return_value=result) as run:
+            self.session.assert_port_idle("/dev/serial/by-id/exact-device")
+        return run
+
+    def test_quiet_no_owner_uses_absolute_path_without_unsupported_separator(self):
+        run = self.inspect(subprocess.CompletedProcess([], 1, stdout="", stderr=""))
+        run.assert_called_once_with(["/usr/bin/fuser", "/dev/ttyACM7"],
+                                    capture_output=True, text=True, timeout=3)
+
+    def test_pi_usage_error_is_not_mistaken_for_an_idle_port(self):
+        result = subprocess.CompletedProcess([], 1, stdout="",
+                                             stderr="Usage: fuser [-a|-s] [-4|-6] [-SIGNAL] NAME...\n")
+        with self.assertRaisesRegex(RuntimeError, "fuser error"):
+            self.inspect(result)
+
+    def test_other_output_with_no_owner_status_refuses(self):
+        for stdout, stderr in (("1234\n", ""), ("", "permission denied\n"), ("\n", "")):
+            with self.subTest(stdout=stdout, stderr=stderr), \
+                    self.assertRaisesRegex(RuntimeError, "fuser error"):
+                self.inspect(subprocess.CompletedProcess([], 1, stdout=stdout, stderr=stderr))
+
+    def test_existing_owner_still_refuses(self):
+        with self.assertRaisesRegex(RuntimeError, "already in use"):
+            self.inspect(subprocess.CompletedProcess([], 0, stdout="1234\n", stderr="/dev/ttyACM7:"))
 
 
 class SerialSessionImportTests(unittest.TestCase):
