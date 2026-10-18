@@ -2684,7 +2684,7 @@ nRF52840, free RAM, or pins named QSPI is not enough. Both halves must use the
 exact flash wiring, and <code>ota self</code> must confirm the store and bootloader before
 an update is downloaded.</p>
 <h2 id="supported-repeater-families">Supported repeater families</h2>
-<p>QSPI staging is enabled only for explicitly matched repeater-role environments
+<p>QSPI staging is enabled for explicitly matched repeater-role environments
 (and RS232 bridge variants that directly inherit one of those repeater targets)
 on these currently matched families:</p>
 <ul>
@@ -2715,8 +2715,13 @@ T-Echo target.</p>
 <p>Companion builds are intentionally excluded. Some companion targets use the
 same external QSPI as a LittleFS message/data store, where raw OTA staging
 would corrupt the filesystem; other companions simply do not assign that chip
-to OTA. Room-server, sensor, and KISS roles are unchanged. Raw QSPI OTA is
-scoped to the explicitly matched repeater-derived environments.</p>
+to OTA. Dedicated <code>*_room_server_lora_ota</code> environments also enable raw QSPI
+staging with their own exact role identity and matched bootloader layout.
+For Ikoka, these cover the Handheld E22-30 and Nano/Stick 22, 30, and 33 dBm
+variants. The legacy <code>*_room_server</code> environments retain their internal-flash
+layout and a different OTA target identity; use the matching wired installation
+and bootloader migration procedure before switching to a QSPI Room image.
+Sensor and KISS roles do not gain QSPI staging from these recipes.</p>
 <h3 id="rak15001-placement-and-module-conflicts">RAK15001 placement and module conflicts</h3>
 <p><a href="https://docs.rakwireless.com/product-categories/wisblock/rak15001/datasheet/">RAK15001</a>
 is a 2 MiB GD25Q16C <strong>standard SPI</strong> module, not a quad-I/O flash. The dedicated
