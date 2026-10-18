@@ -128,7 +128,7 @@ int main(void) {
                             str(harness), str(ED25519 / "sc.c"), "-o", str(executable)], check=True)
             subprocess.run([str(executable)], check=True)
 
-    def test_only_stm32_companion_profiles_enable_compact_scalars(self):
+    def test_only_size_constrained_stm32_companions_enable_compact_scalars(self):
         profiles = []
         for ini in (ROOT / "variants").glob("*/platformio.ini"):
             section = ""
@@ -139,6 +139,7 @@ int main(void) {
                     profiles.append((ini.parent.name, section))
         self.assertEqual(sorted(profiles), [
             ("rak3x72", "[env:RAK_3x72_companion_radio_usb]"),
+            ("wio-e5-dev", "[env:wio-e5_companion_radio_usb]"),
             ("wio-e5-mini", "[env:wio-e5-mini_companion_radio_usb]"),
         ])
 

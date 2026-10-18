@@ -56,8 +56,22 @@ class STM32CompanionProfileTest(unittest.TestCase):
         self.assertEqual(self.companion["build_unflags"].split(), ["-Os"])
 
     def test_size_profile_uses_equivalent_fixed_loop_field_products(self):
-        self.assertRegex(self.companion["build_flags"],
-                         r"-D\s+ED25519_COMPACT_FIELD=1\b")
+        for definition in ("SHA512", "SCALAR", "FIELD"):
+            self.assertRegex(self.companion["build_flags"],
+                             r"-D\s+ED25519_COMPACT_" + definition + r"=1\b")
+
+
+class WioDevSTM32CompanionProfileTest(STM32CompanionProfileTest):
+    variant = "wio-e5-dev"
+    target = "wio-e5_companion_radio_usb"
+    base = "lora_e5"
+
+    def test_uart_pins_and_adc_monitor_are_retained(self):
+        flags = self.config[self.base]["build_flags"]
+        self.assertRegex(flags, r"-D\s+PIN_SERIAL_RX=PB7\b")
+        self.assertRegex(flags, r"-D\s+PIN_SERIAL_TX=PB6\b")
+        header = (ROOT / "variants" / self.variant / "target.h").read_text()
+        self.assertIn("analogRead(PIN_A3)", header)
 
 
 class WioSTM32CompanionProfileTest(STM32CompanionProfileTest):
