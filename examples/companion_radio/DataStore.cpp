@@ -2111,12 +2111,15 @@ void DataStore::clearContactLoadFailure() {
 #if !defined(NRF52_PLATFORM)
 // Validate a complete image before retiring its alternative. Legacy contacts
 // have no file CRC; retain their existing record/route repair semantics.
-static bool readableContactFile(FILESYSTEM* fs, const char* path) {
+// partial_tail instead requires whole records followed by part of one.
+static bool readableContactFile(FILESYSTEM* fs, const char* path,
+                                bool partial_tail = false) {
   File file = mesh::openFileRead(fs, path);
-  bool valid = file && !file.isDirectory()
-      && file.size() % mesh::storage::CONTACT_RECORD_SIZE == 0;
+  bool valid = file && !file.isDirectory();
+  const size_t tail = valid ? file.size() % mesh::storage::CONTACT_RECORD_SIZE : 0;
+  valid = valid && (partial_tail ? tail != 0 && file.size() > tail : tail == 0);
   uint8_t record[mesh::storage::CONTACT_RECORD_SIZE];
-  size_t remaining = valid ? file.size() : 0;
+  size_t remaining = valid ? file.size() - tail : 0;
   while (valid && remaining != 0) {
     valid = file.read(record, sizeof(record)) == sizeof(record);
     remaining -= sizeof(record);
@@ -2154,6 +2157,17 @@ const char* DataStore::selectContactFile(bool& present) {
     }
   }
   if (failed) {
+    // Older firmware rewrote this file in place; a reset or full volume
+    // during that save leaves part of a record after whole ones. Keep those
+    // records while no backup exists for this incomplete image to retire.
+    bool backup = false;
+#if defined(ESP32_PLATFORM) || defined(RP2040_PLATFORM)
+    if (!companionPathPresence(fs, "/contacts3.bak", backup)) backup = true;
+#endif
+    if (!backup && readableContactFile(fs, "/contacts3", true)) {
+      present = true;
+      return "/contacts3";
+    }
     queueContactRecovery(true);
     return nullptr;
   }
@@ -2500,17 +2514,6 @@ void DataStore::loadContacts(DataStoreHost* host) {
   if (file) {
     bool full = false;
     uint16_t record_index = 0;
-#if !defined(NRF52_PLATFORM)
-    if (file.size() % mesh::storage::CONTACT_RECORD_SIZE != 0) {
-#if MESH_CONTACT_CACHE
-      _cache_load_incomplete = true;
-#else
-      _uncached_contact_load_incomplete = true;
-#endif
-      file.close();
-      return;
-    }
-#endif
 #if defined(NRF52_PLATFORM)
     _legacy_contact_count =
         mesh::storage::legacyContactCountForSize(legacy_size);
@@ -2519,6 +2522,7 @@ void DataStore::loadContacts(DataStoreHost* host) {
 #endif
     while (!full
 #if !defined(NRF52_PLATFORM)
+           // A partial trailing record admitted by selectContactFile() stays unread.
            && record_index < file.size() / mesh::storage::CONTACT_RECORD_SIZE
 #endif
 #if defined(NRF52_PLATFORM)
