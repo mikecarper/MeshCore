@@ -1,4 +1,5 @@
 """Offline owned-CDP startup regressions; never open a browser or serial port."""
+from contextlib import contextmanager
 import importlib.util
 import io
 import json
@@ -258,6 +259,132 @@ class OwnedCleanupTests(unittest.TestCase):
             self.assertTrue(report["mock_owned_resources_unwound"])
             self.assertEqual(output.stat().st_mode & 0o777, 0o600)
         self.assertIs(signal.getsignal(signal.SIGTERM), previous)
+
+
+class PrimaryFailureCleanupTests(unittest.TestCase):
+    def main_with(self, execute):
+        with tempfile.TemporaryDirectory() as directory:
+            work = Path(directory)
+            work.chmod(0o700)
+            output = work / "result.json"
+            stdout = io.StringIO()
+            with patch.object(acceptance, "execute", side_effect=execute), \
+                    patch("sys.stdout", new=stdout):
+                status = acceptance.main(["--serial", "exact", "--expected-board", "board",
+                    "--expected-version", "version", "--logging", "on", "--console-source", "/unused",
+                    "--artifact-manifest", "/unused", "--output", str(output),
+                    "--work-dir", str(work), "--execute"])
+            self.assertEqual(output.stat().st_mode & 0o777, 0o600)
+            return status, json.loads(output.read_text()), stdout.getvalue()
+
+    @staticmethod
+    @contextmanager
+    def disappeared_tty(_port):
+        try:
+            yield {"vmin_during_test": 1, "vtime_during_test": 0}
+        finally:
+            raise FileNotFoundError("private missing /dev/ttyACM-secret")
+
+    def test_idle_disconnect_survives_missing_tty_cleanup_and_main_report(self):
+        original = acceptance.NativeConsoleJavaScriptError({"exception": {
+            "className": "Error", "description": "Error: console_disconnected_while_idle\nprivate stack"}})
+
+        def disconnected(_args, report):
+            report["phase"] = "uninterrupted_idle"
+            with acceptance.recorded_linux_web_serial("/dev/inert", report):
+                raise original
+
+        with patch.object(acceptance, "prepared_linux_web_serial", self.disappeared_tty):
+            status, report, stdout = self.main_with(disconnected)
+        self.assertEqual(status, 1)
+        self.assertFalse(report["ok"])
+        self.assertEqual(report["error_type"], "NativeConsoleJavaScriptError")
+        self.assertEqual(report["error"], "native_console_javascript_failed:console_disconnected_while_idle")
+        self.assertEqual(report["primary_failure"]["phase"], "uninterrupted_idle")
+        self.assertEqual(report["TTY_cleanup_failure"]["class"], "FileNotFoundError")
+        self.assertIn("message_sha256", report["TTY_cleanup_failure"])
+        self.assertEqual(report["TTY_cleanup_endpoint"], "missing")
+        self.assertFalse(report["original_TTY_restored"])
+        self.assertNotIn("private", json.dumps(report) + stdout)
+
+    def test_cleanup_failure_after_successful_body_cannot_pass(self):
+        def completed(_args, report):
+            report["phase"] = "complete"
+            with acceptance.recorded_linux_web_serial("/dev/inert", report):
+                report["native_streams_closed"] = True
+
+        with patch.object(acceptance, "prepared_linux_web_serial", self.disappeared_tty):
+            status, report, _stdout = self.main_with(completed)
+        self.assertEqual(status, 1)
+        self.assertFalse(report["ok"])
+        self.assertEqual(report["error_type"], "FileNotFoundError")
+        self.assertNotIn("primary_failure", report)
+        self.assertFalse(report["original_TTY_restored"])
+
+    def test_browser_and_tty_cleanup_failures_cannot_replace_original_transport_error(self):
+        original = TimeoutError("private original transport deadline")
+        report = {"phase": "uninterrupted_idle"}
+
+        def browser_cleanup():
+            raise OSError("private browser cleanup error")
+
+        with patch.object(acceptance, "prepared_linux_web_serial", self.disappeared_tty), \
+                self.assertRaises(TimeoutError) as caught:
+            with acceptance.recorded_linux_web_serial("/dev/inert", report):
+                with acceptance.preserving_cleanup_failure(report, "browser_cleanup_failure", browser_cleanup):
+                    raise original
+        self.assertIs(caught.exception, original)
+        self.assertEqual(report["primary_failure"]["class"], "TimeoutError")
+        self.assertEqual(report["browser_cleanup_failure"]["class"], "OSError")
+        self.assertEqual(report["TTY_cleanup_failure"]["class"], "FileNotFoundError")
+        self.assertNotIn("private", json.dumps(report))
+
+    def test_replaced_tty_is_not_modified_or_reported_as_restored(self):
+        # Real Linux pseudoterminals exercise the unchanged identity guard;
+        # no physical serial device or browser is opened.
+        import os
+        import pty
+        import termios
+        import linux_web_serial as tty_helper
+        master, slave = pty.openpty()
+        other_master, other_slave = pty.openpty()
+        try:
+            path, other_path = os.ttyname(slave), os.ttyname(other_slave)
+            attributes = termios.tcgetattr(other_slave)
+            attributes[6][termios.VTIME] = b"\x07"
+            termios.tcsetattr(other_slave, termios.TCSANOW, attributes)
+            original_other = termios.tcgetattr(other_slave)
+            original_open = tty_helper._open_tty
+            calls = []
+
+            def replaced_open(selected):
+                calls.append(selected)
+                return original_open(selected if len(calls) == 1 else other_path)
+
+            report = {"phase": "complete"}
+            with patch.object(tty_helper, "_open_tty", side_effect=replaced_open), \
+                    self.assertRaisesRegex(RuntimeError, "endpoint changed"):
+                with acceptance.recorded_linux_web_serial(path, report):
+                    pass
+            self.assertEqual(termios.tcgetattr(other_slave), original_other)
+            self.assertEqual(report["TTY_cleanup_endpoint"], "identity_changed")
+            self.assertFalse(report["original_TTY_restored"])
+            self.assertEqual(report["TTY_cleanup_failure"]["class"], "RuntimeError")
+            self.assertNotIn("primary_failure", report)
+        finally:
+            for fd in (master, slave, other_master, other_slave):
+                os.close(fd)
+
+    def test_unknown_runtime_error_text_is_hashed_in_final_report(self):
+        def failed(_args, _report):
+            raise RuntimeError("private password from an external dependency")
+
+        status, report, stdout = self.main_with(failed)
+        self.assertEqual(status, 1)
+        self.assertFalse(report["ok"])
+        self.assertEqual(report["error"], "hardware_acceptance_interrupted_or_failed")
+        self.assertIn("message_sha256", report["failure"])
+        self.assertNotIn("private", json.dumps(report) + stdout)
 
 
 class SafeJavaScriptFailureTests(unittest.TestCase):

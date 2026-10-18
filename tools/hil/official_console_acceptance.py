@@ -180,6 +180,87 @@ class NativeConsoleTerminated(KeyboardInterrupt):
     """Unwind the owned resources and report a normal SIGTERM interruption."""
 
 
+NATIVE_ERROR_CODES = frozenset({
+    "CDP_browser_does_not_match_owned_profile", "CDP_request_failed", "CDP_request_deadline",
+    "USB_endpoint_changed_before_browser", "USB_identity_or_ownership_changed_after_cleanup",
+    "USB_vendor_product_ID_required", "complete_CRLF_reply_required",
+    "exact_USB_serial_requires_one_primary_interface", "existing_private_work_directory_required",
+    "firmware_command_rejected", "logging_mode_changed", "logging_mode_must_be_preconfigured",
+    "native_stream_cleanup_failed", "official_console_source_pin_mismatch",
+    "official_module_did_not_load", "owned_Chromium_exited_before_ready",
+    "owned_Chromium_startup_deadline", "owned_browser_requires_one_initial_blank_page",
+    "reopen_reset_or_uptime_regression", "runtime_board_mismatch",
+    "runtime_identity_changed_on_reopen", "runtime_version_mismatch",
+    "selected_serial_port_must_be_unowned", "uninterrupted_no_transmit_idle_required",
+    "uptime_delta_indicates_reset_or_stall", "usb_logging_reply_format_unrecognized",
+    "work_directory_must_be_private_and_owned",
+})
+NATIVE_ERROR_CLASSES = frozenset({
+    "RuntimeError", "OSError", "FileNotFoundError", "PermissionError", "TimeoutError",
+    "ConnectionError", "ConnectionResetError", "BrokenPipeError", "ValueError",
+    "KeyboardInterrupt", "NativeConsoleTerminated", "NativeConsoleJavaScriptError",
+})
+
+
+def safe_native_failure(error, phase):
+    """Keep controlled codes; hash arbitrary transport, TTY and exception text."""
+    name = type(error).__name__
+    safe = {"class": name if name in NATIVE_ERROR_CLASSES else "unrecognized",
+            "phase": phase, "code": "hardware_acceptance_interrupted_or_failed"}
+    if isinstance(error, NativeConsoleJavaScriptError):
+        safe["code"] = "native_console_javascript_failed:" + error.safe_details["code"]
+        safe["javascript_exception"] = error.safe_details
+    elif type(error) is RuntimeError and str(error) in NATIVE_ERROR_CODES:
+        safe["code"] = str(error)
+    else:
+        safe["message_sha256"] = hashlib.sha256(
+            str(error).encode("utf-8", errors="replace")).hexdigest()
+    return safe
+
+
+@contextmanager
+def preserving_cleanup_failure(report, label, cleanup):
+    """A cleanup failure must not replace the failed native trial's evidence."""
+    primary = None
+    try:
+        yield
+    except BaseException as error:
+        primary = error
+        report.setdefault("primary_failure", safe_native_failure(error, report.get("phase")))
+        raise
+    finally:
+        try:
+            cleanup()
+        except BaseException as error:
+            report[label] = safe_native_failure(error, report.get("phase"))
+            if primary is None:
+                raise
+
+
+@contextmanager
+def recorded_linux_web_serial(port, report):
+    manager = prepared_linux_web_serial(port)
+    tty = manager.__enter__()
+    report["original_TTY_restored"] = False
+
+    def restore():
+        try:
+            # This helper's exit only restores termios; the primary trial
+            # exception is handled by the surrounding cleanup boundary.
+            manager.__exit__(None, None, None)
+        except FileNotFoundError:
+            report["TTY_cleanup_endpoint"] = "missing"
+            raise
+        except RuntimeError as error:
+            if str(error) == "TTY endpoint changed; original attributes were not applied":
+                report["TTY_cleanup_endpoint"] = "identity_changed"
+            raise
+        report["original_TTY_restored"] = True
+
+    with preserving_cleanup_failure(report, "TTY_cleanup_failure", restore):
+        yield tty
+
+
 @contextmanager
 def cleanup_on_sigterm():
     previous = signal.getsignal(signal.SIGTERM)
@@ -419,9 +500,10 @@ def execute(args, report):
     browser = page = None
     browser_log = (work / "chromium-private.log").open("xb")
     try:
-        with prepared_linux_web_serial(device.device) as tty:
+        with recorded_linux_web_serial(device.device, report) as tty:
             report["TTY_preflight"] = tty
-            try:
+            with preserving_cleanup_failure(report, "browser_cleanup_failure",
+                    lambda: close_owned_browser(page, browser, report)):
                 # Re-enumerate the exact UID and ownership after TTY preparation.
                 require(select_device(args.serial).device == device.device, "USB_endpoint_changed_before_browser")
                 browser = subprocess.Popen([str(args.chromium), "--headless=new", "--no-sandbox",
@@ -495,9 +577,6 @@ def execute(args, report):
                               setup_writes=page.evaluate("hil.setup_writes"))
                 report["native_streams_closed"] = True
                 report["phase"] = "complete"
-            finally:
-                close_owned_browser(page, browser, report)
-        report["original_TTY_restored"] = True
         require(select_device(args.serial).device == device.device, "USB_identity_or_ownership_changed_after_cleanup")
         require(not (report.get("browser_stream_cleanup_error") or report.get("browser_socket_cleanup_error")),
                 "native_stream_cleanup_failed")
@@ -556,8 +635,10 @@ def main(argv=None):
         status = 0
     except BaseException as error:
         # Preserve only controlled errors, never arbitrary native console output.
-        report["error_type"] = type(error).__name__
-        report["error"] = str(error) if isinstance(error, RuntimeError) else "hardware_acceptance_interrupted_or_failed"
+        failure = safe_native_failure(error, report.get("phase"))
+        report["failure"] = failure
+        report["error_type"] = failure["class"]
+        report["error"] = failure["code"]
         if isinstance(error, NativeConsoleJavaScriptError):
             report["javascript_exception"] = error.safe_details
         if isinstance(error, NativeConsoleTerminated):
