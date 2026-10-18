@@ -411,6 +411,7 @@ jobs:
           python3 -B test/test_companion_identity_cli.py -v
           python3 -B test/test_companion_packet_stream.py -v
           python3 -B test/test_companion_uncached_storage.py -v
+          python3 -B test/test_companion_contact_partial_tail.py -v
           python3 -B test/test_companion_channel_storage.py -v
           python3 -B test/test_nrf52_extrafs_contract.py -v
           python3 -B test/test_companion_ota_config.py -v

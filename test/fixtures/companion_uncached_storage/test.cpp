@@ -321,7 +321,8 @@ static void contact_checks() {
     filesystem.files["/contacts3"] = original;
     if (fault == 0) filesystem.fail_open = "/contacts3";
     if (fault == 1) filesystem.max_read = 16;
-    if (fault == 2) filesystem.files["/contacts3"].pop_back();
+    // No whole record; whole records before a partial one load instead.
+    if (fault == 2) filesystem.files["/contacts3"].resize(mesh::storage::CONTACT_RECORD_SIZE - 1);
     DataStore rebooted;
     Host loaded;
     if (fault == 3) loaded.capacity = 1;
@@ -355,7 +356,7 @@ static void recovery_checks() {
   for (unsigned fault = 0; fault < 3; ++fault) {
     filesystem = FakeFilesystem();
     filesystem.files["/contacts3"] = original;
-    filesystem.files["/contacts3"].pop_back();
+    filesystem.files["/contacts3"].resize(mesh::storage::CONTACT_RECORD_SIZE - 1);
     filesystem.files[identity_path] = std::vector<uint8_t>(96, 7);
     filesystem.files["/channels2"] = {3, 4, 5};
     filesystem.files["/prefs"] = {6, 7};
