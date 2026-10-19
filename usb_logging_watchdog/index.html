@@ -2424,6 +2424,13 @@ with statistics or exposing arbitrary CLI/configuration commands. Queries and
 configuration still use primary CDC (<code>*-if00</code>), whose stats queries do not
 prove a logging reader. Existing single-port bridges needing identity/CLI
 replies still require separate control-port support.</p>
+<p>The default nRF52 framework logger follows the same runtime USB logging and
+debug settings. Bluefruit flash-event diagnostics use the selected bounded
+logging stream, including dedicated CDC on Full Companion, so saving contacts
+does not insert ASCII into the primary Companion protocol. A disconnected or
+full logging endpoint drops diagnostic output without falling back to the
+control port. Explicit framework UART and RTT logger selections keep their
+existing destinations.</p>
 <h2 id="recovery-timing-and-safety">Recovery timing and safety</h2>
 <p>For a physical host/reader outage, or pending TX with no real completion,
 software USB recovery is requested after five minutes. Re-enumeration follows
