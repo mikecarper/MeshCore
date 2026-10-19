@@ -34,6 +34,13 @@ uint8_t configuredBatteryPercent(uint16_t mv) {
 #if !defined(NRF52_PLATFORM)
 #include <helpers/RegulatorPlatform.cpp>
 #endif
+#if defined(NRF52_PLATFORM)
+// Compile the production writer implementation, including independent CRC32C
+// validation and the public-file verification after an attempted rename.
+#define ATOMIC_FILE_WRITER_IMPLEMENTATION
+#include <helpers/AtomicFileWriter.h>
+#undef ATOMIC_FILE_WRITER_IMPLEMENTATION
+#endif
 #include <helpers/RegulatorSettings.cpp>
 using namespace mesh::power;
 static void retainedClear() {
@@ -157,12 +164,19 @@ int main(int argc,char** argv) {
       command("set mcu.regulator ldo");const auto old=fs.files["/regulator_v1"];
       if(failure==0)fs.fail_write=true;
       if(failure==1)fs.fail_open=true;
+#if defined(NRF52_PLATFORM)
+      if(failure==2)fs.fail_rename_from="/regulator_v1.tmp";
+      if(failure==3)fs.fail_read_path="/regulator_v1.tmp";
+      if(failure==4)fs.corrupt_write=true;
+#else
       if(failure==2)fs.fail_rename_from="/regulator_v1";
       if(failure==3)fs.fail_rename_from="/regulator_v1.tmp";
       if(failure==4) {fs.fail_rename_from="/regulator_v1.tmp";fs.fail_restore=true;}
+#endif
       assert(command("set radio.regulator ldo").find("save failed")!=std::string::npos);
       assert(requestedRegulatorMode(false)==RegulatorMode::Default);
-      fs.fail_write=fs.fail_open=fs.fail_restore=false;fs.fail_rename_from.clear();
+      fs.fail_write=fs.fail_open=fs.fail_restore=fs.corrupt_write=false;
+      fs.fail_rename_from.clear();fs.fail_read_path.clear();
       fresh(board,radio,fs,ResetKind::Cold,true);
       assert(requestedRegulatorMode(true)==RegulatorMode::Ldo);
       assert(requestedRegulatorMode(false)==RegulatorMode::Default);
@@ -222,7 +236,7 @@ int main(int argc,char** argv) {
     assert(beginRegulatorSettings(board,radio,nullptr));radio.initialize();
     assert(command("set radio.regulator ldo").find("save failed")!=std::string::npos);
     assert(requestedRegulatorMode(false)==RegulatorMode::Default);
-    assert(radio.active==RegulatorMode::Dcdc);
+    assert(radio.active==RegulatorMode::Dcdc && fs.files.empty());
   } else if(test=="failed_radio") {
     fresh(board,radio,fs,ResetKind::Cold,true);
     for(unsigned n=1;n<=3;++n) {

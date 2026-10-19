@@ -21,3 +21,4 @@ bool regulatorRecoveryAvailable();
 }}
 
 extern "C" void meshRegulatorCleanReset();
+extern "C" void meshRegulatorResumeRecovery();

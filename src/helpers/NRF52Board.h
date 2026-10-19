@@ -37,7 +37,8 @@ protected:
   uint8_t startup_reason;
   char *ota_name;
   bool cpu_dcdc_supported = false;
-  mesh::power::RegulatorMode cpu_regulator_mode = mesh::power::RegulatorMode::Ldo;
+  mesh::power::RegulatorMode cpu_regulator_mode = mesh::power::RegulatorMode::Default;
+  bool watchdog_disable_reset_pending = false;
 
 #ifdef NRF52_POWER_MANAGEMENT
   void pwrmgtInit() { initPowerMgr(); }

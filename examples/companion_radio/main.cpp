@@ -3604,7 +3604,7 @@ void setup() {
   FILESYSTEM* regulator_prefs_fs = store.getPrimaryFS();
 #if defined(NRF52_PLATFORM)
   if (!mesh::storage::internalPrimaryFilesystemReady(primary_fs_boot)
-      && !store.isVolatilePrimaryFS()) regulator_prefs_fs = nullptr;
+      || store.isVolatilePrimaryFS()) regulator_prefs_fs = nullptr;
 #endif
   if (!mesh::power::beginRegulatorSettings(board, radio_driver, regulator_prefs_fs)) {
     MESH_DEBUG_PRINTLN("Regulator selection could not be applied");

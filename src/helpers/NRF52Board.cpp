@@ -33,6 +33,7 @@ static bool ota_ble_started = false;
 // Intentional reboot paths share the recovery policy's clean-reset marker.
 // Keep this optional for standalone board/library builds without the policy.
 extern "C" void meshRegulatorCleanReset() __attribute__((weak));
+extern "C" void meshRegulatorResumeRecovery() __attribute__((weak));
 
 namespace {
 volatile mesh::power::RecoveryRecord regulator_recovery_record
@@ -313,9 +314,15 @@ void NRF52Board::feedWatchdog(bool enabled) {
   // setting is turned off, deliberately stop reloading it; the resulting
   // watchdog reset is the only software-only way to return it to the stopped
   // state. On that next boot the disabled preference prevents it starting.
-  if (!enabled) return;
-
   const bool running = NRF_WDT->RUNSTATUS != 0;
+  if (!enabled) {
+    if (running && !watchdog_disable_reset_pending) {
+      watchdog_disable_reset_pending = true;
+      if (meshRegulatorCleanReset) meshRegulatorCleanReset();
+    }
+    return;
+  }
+
   if (!running) {
     // Keep running during CPU sleep: the flash-driver failure this protects
     // against sleeps in sd_app_evt_wait(). Pause while halted so breakpoints
@@ -329,6 +336,12 @@ void NRF52Board::feedWatchdog(bool enabled) {
   }
 
   reloadWatchdogChannels();
+  if (watchdog_disable_reset_pending) {
+    watchdog_disable_reset_pending = false;
+    // Cancel a planned watchdog-off reset with fresh recovery state. Feed
+    // first so the callback's battery sampling cannot race an imminent expiry.
+    if (meshRegulatorResumeRecovery) meshRegulatorResumeRecovery();
+  }
 #else
   (void)enabled;
 #endif

@@ -29,18 +29,24 @@ struct File {
   size_t read(uint8_t*,size_t);
   size_t write(const uint8_t*,size_t);
   void close() {}
+  void flush() {}
+  bool isDirectory() const { return false; }
 };
 struct MockFS {
   std::map<std::string,std::vector<uint8_t>> files;
-  bool fail_open=false,fail_write=false,fail_restore=false;
-  std::string fail_rename_from;
+  bool fail_open=false,fail_write=false,fail_restore=false,corrupt_write=false;
+  std::string fail_rename_from,fail_read_path;
   unsigned writes=0,renames=0;
   bool exists(const char* name) const { return files.count(name); }
   bool remove(const char* name) { return files.erase(name)!=0; }
   bool rename(const char* from,const char* to) {
     ++renames;
     if(fail_rename_from==from || (fail_restore && std::string(from)=="/regulator_v1.bak"))return false;
-    if(!files.count(from)||files.count(to))return false;
+    if(!files.count(from))return false;
+#if !defined(NRF52_PLATFORM)
+    if(files.count(to))return false;
+#endif
+    // Adafruit LittleFS atomically replaces an existing destination.
     files[to]=files[from];files.erase(from);return true;
   }
   File open(const char* name,const char* mode,bool=false) {
@@ -54,14 +60,16 @@ inline bool File::open(const char* key,int flags) {
 }
 inline size_t File::size() const { return valid ? fs->files[name].size() : 0; }
 inline size_t File::read(uint8_t* bytes,size_t length) {
-  if(!valid)return 0;
+  if(!valid || fs->fail_read_path==name)return 0;
   const auto& data=fs->files[name];length=std::min(length,data.size()-cursor);
   memcpy(bytes,data.data()+cursor,length);cursor+=length;return length;
 }
 inline size_t File::write(const uint8_t* bytes,size_t length) {
   if(!valid)return 0;
   ++fs->writes;if(fs->fail_write)length/=2;
-  auto& data=fs->files[name];data.insert(data.end(),bytes,bytes+length);return length;
+  auto& data=fs->files[name];data.insert(data.end(),bytes,bytes+length);
+  if(fs->corrupt_write && !data.empty())data.back()^=1;
+  return length;
 }
 #define FILESYSTEM MockFS
 #define FILE_O_READ 0
@@ -222,6 +230,11 @@ class RegulatorSettingsTests(unittest.TestCase):
                 self.assertEqual(setup.count(hook),1)
                 self.assertLess(setup.index('board.begin()'),setup.index(hook))
                 self.assertLess(setup.index(hook),setup.index('radio_init()'))
+                self.assertIn('beginRegulatorSettings(board, radio_driver, regulator_prefs_fs)',setup)
+                if role == 'companion_radio':
+                    self.assertIn('store.isVolatilePrimaryFS()',setup)
+                else:
+                    self.assertIn('if (volatile_primary_fs) regulator_prefs_fs = nullptr',setup)
                 if role == 'simple_repeater':
                     self.assertEqual(loop.count('serviceCommandInterfaces()'),1)
                     loop = method(source,'serviceCommandInterfaces() {')

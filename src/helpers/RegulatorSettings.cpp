@@ -3,6 +3,9 @@
 #include "NRF52VoltageRules.h"
 #include "NRF52VoltagePolicy.h"
 #include "PersistentStoreFormat.h"
+#if defined(NRF52_PLATFORM)
+#include "AtomicFileWriter.h"
+#endif
 #include <Arduino.h>
 #include <Dispatcher.h>
 #include <stdio.h>
@@ -51,6 +54,22 @@ bool readFile(const char* name, uint8_t (&data)[12]) {
 }
 bool save(RegulatorMode mcu, RegulatorMode radio, uint8_t fallback) {
   if (!settings_fs) return false;
+#if defined(NRF52_PLATFORM)
+  uint8_t data[12], checked[12];
+  encode(mcu, radio, fallback, data);
+  // The shared LittleFS writer already stages, flushes, checks size/CRC32C,
+  // atomically publishes and verifies the public file. Reuse it rather than
+  // linking a second replacement transaction into flash-constrained targets.
+  mesh::AtomicFileWriter file(settings_fs, path);
+  if (!file || file.write(data, sizeof(data)) != sizeof(data) || !file.commit()) return false;
+  // Retain the format validation and exact-byte comparison as well as the
+  // writer's independent transaction checksum. Legacy .bak files remain
+  // readable at boot and are retired only after this verified publication.
+  if (!readFile(path, checked) || memcmp(data, checked, sizeof(data)) != 0) return false;
+  settings_fs->remove(backup);
+  saved_fallback = fallback;
+  return true;
+#else
   settings_fs->remove(temporary);
   if (settings_fs->exists(temporary)) return false;
 #if defined(NRF52_PLATFORM) || defined(STM32_PLATFORM)
@@ -78,6 +97,7 @@ bool save(RegulatorMode mcu, RegulatorMode radio, uint8_t fallback) {
   settings_fs->remove(backup);
   saved_fallback = fallback;
   return true;
+#endif
 }
 
 uint8_t readBatteryPercent(bool& valid) {
@@ -256,9 +276,25 @@ void markRegulatorCleanReset() {
   }
 }
 
+void resumeRegulatorRecovery() {
+  if (!initialized) return;
+  bool valid = false;
+  const uint8_t percent = readBatteryPercent(valid);
+  const uint32_t now = millis();
+  const uint8_t active_dcdc =
+      (activeRegulatorMode(true) == RegulatorMode::Dcdc ? RECOVERY_MCU : 0)
+      | (activeRegulatorMode(false) == RegulatorMode::Dcdc ? RECOVERY_RADIO : 0);
+  recovery().arm(active_dcdc, now, percent, valid);
+  last_service = last_battery = now;
+}
+
 }} // namespace mesh::power
 
 extern "C" void meshRegulatorCleanReset() {
   // Intentional resets can happen before the settings/filesystem is ready.
   mesh::power::markRegulatorCleanReset();
+}
+
+extern "C" void meshRegulatorResumeRecovery() {
+  mesh::power::resumeRegulatorRecovery();
 }

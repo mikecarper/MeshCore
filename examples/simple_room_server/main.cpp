@@ -138,7 +138,11 @@ void setup() {
 #else
   #error "need to define filesystem"
 #endif
-  if (!mesh::power::beginRegulatorSettings(board, radio_driver, fs)) {
+  FILESYSTEM* regulator_prefs_fs = fs;
+#if defined(NRF52_PLATFORM)
+  if (volatile_primary_fs) regulator_prefs_fs = nullptr;
+#endif
+  if (!mesh::power::beginRegulatorSettings(board, radio_driver, regulator_prefs_fs)) {
     MESH_DEBUG_PRINTLN("Regulator selection could not be applied");
   }
 #ifdef DISPLAY_CLASS

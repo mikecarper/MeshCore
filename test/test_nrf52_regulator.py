@@ -28,6 +28,128 @@ def run_native(source):
 
 
 class Nrf52RegulatorTests(unittest.TestCase):
+    def test_watchdog_off_marks_once_and_cancellation_rearms_after_reload(self):
+        source = BOARD.read_text()
+        methods = "\n".join(body(source, signature) for signature in (
+            "void NRF52Board::feedWatchdog(bool enabled)",
+            "void NRF52Board::serviceWatchdog()",
+        ))
+        reload = body(source, "static void reloadWatchdogChannels()")
+        fixture = r'''
+#include <cassert>
+#include <cstdint>
+#include "helpers/RegulatorRecovery.h"
+using namespace mesh::power;
+constexpr uint32_t WDT_RR_RR_Reload = 0x6e524635;
+constexpr unsigned WDT_CONFIG_SLEEP_Run = 1, WDT_CONFIG_SLEEP_Pos = 0;
+constexpr unsigned WDT_CONFIG_HALT_Pause = 0, WDT_CONFIG_HALT_Pos = 1;
+constexpr unsigned WDT_RREN_RR0_Msk = 1;
+static unsigned reloads, clean_marks, resumes;
+static uint32_t now = 1000;
+static uint8_t fresh_percent = 75;
+struct ReloadRegister {
+  uint32_t value = 0;
+  void operator=(uint32_t next) { assert(next == WDT_RR_RR_Reload); value = next; ++reloads; }
+};
+struct Watchdog {
+  uint32_t RUNSTATUS = 0, RREN = 0, CONFIG = 0, CRV = 0, TASKS_START = 0;
+  ReloadRegister RR[8];
+} watchdog;
+#define NRF_WDT (&watchdog)
+static volatile RecoveryRecord retained{};
+static RecoveryPolicy policy(retained);
+static void (*meshRegulatorCleanReset)();
+static void (*meshRegulatorResumeRecovery)();
+void markClean() { ++clean_marks; policy.markCleanReset(); }
+void resumeRecovery() {
+  // The callback can sample the ADC only after the nearly-expired hardware
+  // watchdog has been reloaded. Both bootloader-owned enabled channels matter.
+  assert(watchdog.RR[0].value == WDT_RR_RR_Reload);
+  assert(watchdog.RR[3].value == WDT_RR_RR_Reload);
+  ++resumes;
+  policy.arm(RECOVERY_DOMAINS, now, fresh_percent, true);
+}
+struct NRF52Board {
+  bool watchdog_disable_reset_pending = false;
+  void feedWatchdog(bool);
+  void serviceWatchdog();
+};
+#if NRF52_WATCHDOG_TIMEOUT_SECONDS > 0
+@RELOAD@
+#endif
+@METHODS@
+int main() {
+  constexpr bool callbacks = @CALLBACKS@;
+  meshRegulatorCleanReset = callbacks ? markClean : nullptr;
+  meshRegulatorResumeRecovery = callbacks ? resumeRecovery : nullptr;
+  policy.begin(ResetKind::Cold, 0);
+  policy.arm(RECOVERY_DOMAINS, 1, 75, true);
+  for (unsigned crash = 0; crash < 2; ++crash) {
+    policy.begin(ResetKind::Crash, 0);
+    policy.arm(RECOVERY_DOMAINS, 1, 75, true);
+  }
+  assert(policy.crashCount(RECOVERY_MCU) == 2);
+  NRF52Board board;
+  board.feedWatchdog(false);
+  board.feedWatchdog(false);
+  assert(clean_marks == 0 && resumes == 0 && reloads == 0);
+  assert(policy.crashCount(RECOVERY_MCU) == 2); // Never-started WDT is neutral.
+  board.feedWatchdog(true);
+#if NRF52_WATCHDOG_TIMEOUT_SECONDS == 0
+  watchdog.RUNSTATUS = 1;
+  board.feedWatchdog(false);
+  board.feedWatchdog(true);
+  board.serviceWatchdog();
+  assert(clean_marks == 0 && resumes == 0 && reloads == 0);
+  assert(policy.crashCount(RECOVERY_MCU) == 2);
+  return 0;
+#else
+  assert(watchdog.TASKS_START == 1 && watchdog.RREN == 1);
+  assert(watchdog.CRV == NRF52_WATCHDOG_TIMEOUT_SECONDS * 32768UL);
+  assert(reloads == 1 && clean_marks == 0 && resumes == 0);
+  assert(policy.crashCount(RECOVERY_MCU) == 2); // Normal feeding keeps streak.
+  watchdog.RUNSTATUS = 1;
+  watchdog.RREN = 9; // A bootloader can leave more than RR0 enabled.
+  const unsigned before_off = reloads;
+  board.feedWatchdog(false);
+  board.feedWatchdog(false);
+  assert(reloads == before_off && clean_marks == unsigned(callbacks));
+  assert(board.watchdog_disable_reset_pending);
+  if (callbacks) {
+    RecoveryPolicy planned_reset(retained);
+    planned_reset.begin(ResetKind::Crash, 0);
+    assert(planned_reset.crashCount(RECOVERY_MCU) == 0 && planned_reset.fallbackMask() == 0);
+  }
+  // Keep the existing explicit service hook: it feeds already-running WDT
+  // channels without starting one or changing a deliberate-off transition.
+  board.serviceWatchdog();
+  assert(reloads == before_off + 2 && resumes == 0);
+  watchdog.RR[0].value = watchdog.RR[3].value = 0;
+  board.feedWatchdog(true);
+  assert(!board.watchdog_disable_reset_pending);
+  assert(reloads == before_off + 4 && resumes == unsigned(callbacks));
+  board.feedWatchdog(true);
+  assert(clean_marks == unsigned(callbacks) && resumes == unsigned(callbacks));
+  if (callbacks) {
+    RecoveryPolicy real_crash(retained);
+    real_crash.begin(ResetKind::Crash, 0);
+    assert(real_crash.crashCount(RECOVERY_MCU) == 1);
+    assert(real_crash.crashCount(RECOVERY_RADIO) == 1 && real_crash.fallbackMask() == 0);
+  }
+  // A subsequent real off transition is marked once again.
+  board.feedWatchdog(false);
+  board.feedWatchdog(false);
+  assert(clean_marks == 2 * unsigned(callbacks));
+  assert(resumes == unsigned(callbacks));
+#endif
+}
+'''.replace("@RELOAD@", reload).replace("@METHODS@", methods)
+        for timeout in (0, 60):
+            for callbacks in (False, True):
+                with self.subTest(timeout=timeout, callbacks=callbacks):
+                    run_native(("#define NRF52_WATCHDOG_TIMEOUT_SECONDS %d\n" % timeout)
+                               + fixture.replace("@CALLBACKS@", str(callbacks).lower()))
+
     def test_saved_cpu_mode_uses_checked_sdk_and_rejects_unsupported_boards(self):
         source = BOARD.read_text()
         methods = "\n".join(body(source, signature) for signature in (
@@ -36,6 +158,8 @@ class Nrf52RegulatorTests(unittest.TestCase):
             "mesh::power::RegulatorMode NRF52Board::activeMcuRegulatorMode() const",
             "bool NRF52Board::applyMcuRegulator(mesh::power::RegulatorMode mode)",
         ))
+        initial_mode = (ROOT / "src/helpers/NRF52Board.h").read_text().split(
+            "cpu_regulator_mode = ", 1)[1].split(";", 1)[0]
         run_native(r'''
 #include <cassert>
 #include <cstdint>
@@ -62,7 +186,7 @@ uint32_t sd_power_dcdc_mode_set(uint8_t mode) {
 }
 struct NRF52Board {
   bool cpu_dcdc_supported = false;
-  RegulatorMode cpu_regulator_mode = RegulatorMode::Ldo;
+  RegulatorMode cpu_regulator_mode = @INITIAL_MODE@;
   uint8_t mcuRegulatorModes() const;
   RegulatorMode defaultMcuRegulatorMode() const;
   RegulatorMode activeMcuRegulatorMode() const;
@@ -81,7 +205,13 @@ int main() {
   board.cpu_dcdc_supported = true;
   assert(board.mcuRegulatorModes() == 3);
   assert(board.defaultMcuRegulatorMode() == RegulatorMode::Dcdc);
+  assert(board.activeMcuRegulatorMode() == RegulatorMode::Default);
   assert(!board.applyMcuRegulator(static_cast<RegulatorMode>(255)));
+  softdevice = 1;
+  setter_result = 4;
+  assert(!board.applyMcuRegulator(RegulatorMode::Ldo));
+  assert(board.activeMcuRegulatorMode() == RegulatorMode::Default);
+  setter_calls = 0;
   for (softdevice = 0; softdevice < 2; ++softdevice) {
     power.DCDCEN = 77;
     query_result = 5;
@@ -104,7 +234,7 @@ int main() {
     setter_calls = 0;
   }
 }
-'''.replace("@METHODS@", methods))
+'''.replace("@METHODS@", methods).replace("@INITIAL_MODE@", initial_mode))
 
     def test_reset_classifier_excludes_wakes_and_intentional_resets(self):
         method = body(BOARD.read_text(), "ResetKind platformResetKind()")
