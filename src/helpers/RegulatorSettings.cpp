@@ -17,10 +17,7 @@
 // nRF52 plus an external radio. Do not retain the unreachable persistence and
 // recovery machinery on these flash-constrained targets. Match this exact
 // driver: an STM32 target with a different radio keeps the ordinary path.
-#define MESH_REGULATOR_FIXED_RADIO_CustomSTM32WLx 1
-#define MESH_REGULATOR_FIXED_RADIO_I(type) MESH_REGULATOR_FIXED_RADIO_##type
-#define MESH_REGULATOR_FIXED_RADIO(type) MESH_REGULATOR_FIXED_RADIO_I(type)
-#if defined(STM32_PLATFORM) && MESH_REGULATOR_FIXED_RADIO(RADIO_CLASS)
+#if MESH_REGULATOR_FIXED_SUPPLY
 namespace mesh { namespace power {
 bool beginRegulatorSettings(MainBoard&, Radio&, FILESYSTEM*) { return true; }
 void serviceRegulatorSettings() {}
@@ -320,9 +317,6 @@ void resumeRegulatorRecovery() {
 
 }} // namespace mesh::power
 #endif
-#undef MESH_REGULATOR_FIXED_RADIO
-#undef MESH_REGULATOR_FIXED_RADIO_I
-#undef MESH_REGULATOR_FIXED_RADIO_CustomSTM32WLx
 
 extern "C" void meshRegulatorCleanReset() {
   // Intentional resets can happen before the settings/filesystem is ready.

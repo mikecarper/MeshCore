@@ -146,12 +146,12 @@ public:
   virtual void onBeforeTransmit() { }
   virtual void onAfterTransmit() { }
   virtual void reboot() = 0;
-  virtual uint8_t mcuRegulatorModes() const { return 0; }
-  virtual power::RegulatorMode defaultMcuRegulatorMode() const {
+  MESH_REGULATOR_VIRTUAL uint8_t mcuRegulatorModes() const { return 0; }
+  MESH_REGULATOR_VIRTUAL power::RegulatorMode defaultMcuRegulatorMode() const {
     return power::RegulatorMode::Default;
   }
-  virtual bool applyMcuRegulator(power::RegulatorMode) { return false; }
-  virtual power::RegulatorMode activeMcuRegulatorMode() const {
+  MESH_REGULATOR_VIRTUAL bool applyMcuRegulator(power::RegulatorMode) { return false; }
+  MESH_REGULATOR_VIRTUAL power::RegulatorMode activeMcuRegulatorMode() const {
     return power::RegulatorMode::Default;
   }
   // Reboot into a UF2-capable bootloader when the platform supports the

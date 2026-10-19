@@ -276,5 +276,49 @@ class RegulatorSettingsTests(unittest.TestCase):
         self.assertNotIn('beginRegulatorSettings(',other)
 
 
+class RegulatorAPIDispatchTests(unittest.TestCase):
+    def compile_api(self, flags, fixed, require_virtual=False):
+        compiler = os.environ.get('CXX') or shutil.which('g++') or shutil.which('clang++')
+        if not compiler:
+            self.skipTest('native C++ compiler unavailable')
+        with tempfile.TemporaryDirectory(prefix='mesh-regulator-api-') as directory:
+            folder = Path(directory)
+            (folder/'Stream.h').write_text('#pragma once\nclass Stream {};\n')
+            binary = folder/'test'
+            command = [compiler,'-std=c++17','-O2','-Wall','-Wextra','-Werror',
+                '-Wno-unused-parameter','-Wno-reorder',*SANITIZER_FLAGS,*flags,
+                f'-DEXPECT_FIXED_REGULATOR_API={int(fixed)}',
+                '-I',str(folder),'-I',str(ROOT/'src'),
+                str(ROOT/'test/fixtures/regulator_api_dispatch.cpp'),'-o',str(binary)]
+            if require_virtual:
+                command.append('-DREQUIRE_VIRTUAL_REGULATOR_API=1')
+            result = subprocess.run(command,text=True,capture_output=True,timeout=45)
+            if require_virtual and fixed:
+                self.assertNotEqual(result.returncode,0)
+                for method in ('mcuRegulatorModes','defaultMcuRegulatorMode',
+                        'applyMcuRegulator','activeMcuRegulatorMode','regulatorModes',
+                        'defaultRegulatorMode','configureBootRegulator','activeRegulatorMode'):
+                    self.assertIn(method,result.stderr)
+            else:
+                self.assertEqual(result.returncode,0,result.stdout+result.stderr)
+                result = subprocess.run([str(binary)],text=True,capture_output=True,timeout=10)
+                self.assertEqual(result.returncode,0,result.stdout+result.stderr)
+
+    def test_actual_fixed_stm32wl_base_defaults_are_not_overridden(self):
+        self.compile_api(['-DSTM32_PLATFORM=1','-DRADIO_CLASS=CustomSTM32WLx'],True)
+
+    def test_all_eight_fixed_stm32wl_regulator_methods_reject_override_annotations(self):
+        self.compile_api(['-DSTM32_PLATFORM=1','-DRADIO_CLASS=CustomSTM32WLx'],True,True)
+
+    def test_other_platforms_and_future_stm32_radios_keep_all_eight_virtual_methods(self):
+        for flags in ([],['-DESP32=1','-DRADIO_CLASS=CustomSTM32WLx'],
+                ['-DNRF52_PLATFORM=1','-DRADIO_CLASS=CustomSX1262'],
+                ['-DRP2040_PLATFORM=1','-DRADIO_CLASS=CustomSX1262'],
+                ['-DSTM32_PLATFORM=1','-DRADIO_CLASS=CustomSX1262'],
+                ['-DSTM32_PLATFORM=1']):
+            with self.subTest(flags=flags):
+                self.compile_api(flags,False,True)
+
+
 if __name__ == '__main__':
     unittest.main()

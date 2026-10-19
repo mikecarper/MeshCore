@@ -37,12 +37,12 @@ public:
 */
 class Radio {
 public:
-  virtual uint8_t regulatorModes() const { return 0; }
-  virtual power::RegulatorMode defaultRegulatorMode() const { return power::RegulatorMode::Default; }
+  MESH_REGULATOR_VIRTUAL uint8_t regulatorModes() const { return 0; }
+  MESH_REGULATOR_VIRTUAL power::RegulatorMode defaultRegulatorMode() const { return power::RegulatorMode::Default; }
   // Cache a selection before the first hardware initialization. Save later
   // choices for the next reboot; never change a live RX/TX regulator here.
-  virtual bool configureBootRegulator(power::RegulatorMode) { return false; }
-  virtual power::RegulatorMode activeRegulatorMode() const { return power::RegulatorMode::Default; }
+  MESH_REGULATOR_VIRTUAL bool configureBootRegulator(power::RegulatorMode) { return false; }
+  MESH_REGULATOR_VIRTUAL power::RegulatorMode activeRegulatorMode() const { return power::RegulatorMode::Default; }
   static constexpr uint32_t CarrierWaveDefaultMillis = 10000;
   static constexpr uint32_t CarrierWaveMaxMillis = 60000;
   virtual bool supportsCarrierWave() const { return false; }
