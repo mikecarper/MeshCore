@@ -173,6 +173,11 @@ cycles. It stays in LDO until a user explicitly selects a mode again, with no
 automatic return to DC-DC. Crash bookkeeping stays in retained RAM rather than
 writing flash at every heartbeat.
 
+During timed Morse TX/RX, periodic battery sampling and failed-save retries
+wait until timing ends. Recovery heartbeats continue, and a deferred sample
+keeps its original timestamp, so it can become too stale to qualify a crash.
+Overdue sampling and retries resume on the next eligible service tick.
+
 Battery eligibility follows the board's battery measurement and configured
 percentage curve. USB supply voltage alone does not establish that a physical
 battery is at 50%; validate battery-only starts and the board's absent-battery
@@ -193,6 +198,10 @@ three and low/unknown-battery resets do not, and that an explicit setter restore
 the requested choice. Also check current consumption and voltage during TX;
 native recovery tests and successful firmware builds do not establish these
 physical results.
+
+The [regulator qualification record](test-results/regulator_recovery_2026-10-18.md)
+binds the compiled packages, software checks and Mercerwood bench results to
+their tested source revisions and lists the remaining physical checks.
 
 ### Existing board defaults
 
