@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "generated_at": "2026-10-19T23:10:06.433624+00:00",
+  "generated_at": "2026-10-19T23:53:34.741074+00:00",
   "source_commit": "4e4f27a25a720c52ca0f5381b5e5834d75532cc6",
   "expected_version": "v1.18.0.1-halo-keymind-cascade-dev-4e4f27a2",
   "campaign_complete": false,
@@ -8,12 +8,13 @@
   "inventory": {
     "expected_radios": 13,
     "usb_radios_observed": 12,
-    "scope": "Distinct USB identities seen during the selected 10-second read-only window; not a stable-port count.",
+    "scope": "Historical distinct USB identities during the selected 10-second read-only window, before the later Tag recovery; not a stable-port or current fleet count.",
     "counts_consistent": true,
     "missing_keys": [
       "tag"
     ],
-    "observation_seconds": 10
+    "observation_seconds": 10,
+    "historical": true
   },
   "compile": {
     "passed_targets": 13,
@@ -24,8 +25,8 @@
   },
   "companion_checks": {
     "expected_boards": 11,
-    "usb_passed": 9,
-    "ble_passed": 8
+    "usb_passed": 10,
+    "ble_passed": 9
   },
   "batch_state": "failed",
   "v3_ble_trials": {
@@ -133,14 +134,17 @@
         "status": "passed",
         "profiles_passed": 1
       },
-      "presence": "not_enumerated",
-      "flash": "not_enumerated",
-      "usb": "not_enumerated",
-      "ble": "not_enumerated",
-      "rf": "not_enumerated",
-      "runtime": "unknown",
-      "bootloader": "not_enumerated",
-      "notes": []
+      "presence": "usb_enumerated",
+      "flash": "passed",
+      "usb": "passed",
+      "ble": "passed",
+      "rf": "passed",
+      "runtime": "passed",
+      "bootloader": "baseline_verified",
+      "notes": [
+        "Recovered later through an application-only BLE transfer, then matched the original USB serial and installed exact C2 plus normal Full firmware over USB. Full USB, three-session BLE and two-way RAK RF qualification passed. Earlier non-enumeration remains in tag_followup history."
+      ],
+      "rf_links_tested": 1
     },
     {
       "key": "pocket",
@@ -196,7 +200,7 @@
       "runtime": "unknown",
       "bootloader": "baseline_verified",
       "notes": [],
-      "rf_links_tested": 6
+      "rf_links_tested": 7
     },
     {
       "key": "v3",
@@ -320,8 +324,8 @@
   "bootloader": {
     "baseline_source_commit": "c2f6fa455302167ea547ffe1e065a037762512d5",
     "required_profiles": 8,
-    "baseline_profiles_verified": 7,
-    "scope": "Earlier source-qualified C2 install proof only; not a fresh bootloader revalidation by this application campaign."
+    "baseline_profiles_verified": 8,
+    "scope": "Source-qualified C2 installation evidence, including the later Tag recovery; separate from application qualification and not an installed-flash CRC readback."
   },
   "measured_ble_refresh": {
     "contacts": 92,
@@ -333,12 +337,10 @@
     "documentation": "https://mikecarper.github.io/MeshCore/test-results/companion_ble_refresh_2026-10-19/"
   },
   "unresolved": [
-    "Some expected radios were not enumerated in the selected USB inventory; this does not establish physical absence.",
     "T1000-E BLE remains unresolved until a completed current-source test passes.",
     "Heltec V4.3 had earlier USB/BLE passes, but later RF setup repeatedly rejected non-ASCII data before channels, leases or datagrams. Current transport behavior remains unresolved; RF qualification is pending.",
     "Seeed XIAO ESP32-S3 had earlier USB/BLE passes, but later RF setup repeatedly rejected non-ASCII data before channels, leases or datagrams. Current transport behavior remains unresolved; RF qualification is pending.",
-    "XIAO nRF52 application transfer succeeded, but stable normal runtime and its USB/BLE/RF qualification remain unresolved.",
-    "RAK WisMesh Tag is not USB-enumerated; its normal application and C2 bootloader campaign remain pending."
+    "XIAO nRF52 application transfer succeeded, but stable normal runtime and its USB/BLE/RF qualification remain unresolved."
   ],
   "input_evidence": {
     "batch": {
@@ -388,6 +390,10 @@
     "v3_usb": {
       "read_state": "available",
       "current_source_version": true
+    },
+    "tag_followup": {
+      "read_state": "available",
+      "current_source_version": true
     }
   },
   "partial": true,
@@ -421,6 +427,11 @@
       {
         "hub": "rak",
         "spoke": "v3",
+        "status": "passed"
+      },
+      {
+        "hub": "rak",
+        "spoke": "tag",
         "status": "passed"
       }
     ],
@@ -541,10 +552,19 @@
         "two_way_delivery_and_cleanup_verified": false,
         "non_ascii_setup_abort": true,
         "cleanup_review_required": false
+      },
+      {
+        "input": "tag_followup",
+        "hub": "rak",
+        "spoke": "tag",
+        "outcome": "passed",
+        "two_way_delivery_and_cleanup_verified": true,
+        "non_ascii_setup_abort": false,
+        "cleanup_review_required": false
       }
     ],
-    "passed_links": 6,
-    "boards_with_rf_pass": 7,
+    "passed_links": 7,
+    "boards_with_rf_pass": 8,
     "hardware_cleanup_review_required": false
   },
   "method_scope": "USB qualification used 100 persistent query cycles and 10 reopen checks, owned-contact CRUD and warm reboot, plus RX-only radio2 overlap-warning and three-decimal frequency-suggestion trials. BLE passes required three 30-second sessions. RF passes required exact two-way zero-hop DEV datagrams and owned-channel/radio-lease cleanup; they do not qualify text delivery, range, cold boot, phone interoperability or every firmware feature.",
@@ -569,5 +589,124 @@
     "guarded_classification_handshake_completed_cleanly": true,
     "classification_counts_as_rf_qualification": false,
     "rf_non_ascii_setup_aborts": 4
+  },
+  "tag_followup": {
+    "state": "passed",
+    "source_commit": "4e4f27a25a720c52ca0f5381b5e5834d75532cc6",
+    "expected_version": "v1.18.0.1-halo-keymind-cascade-dev-4e4f27a2",
+    "key": "tag",
+    "target": "RAK_WisMesh_Tag_companion_radio_full",
+    "prior_published_state": {
+      "generated_at": "2026-10-19T23:10:06.433624+00:00",
+      "presence": "not_enumerated",
+      "flash": "not_enumerated",
+      "usb": "not_enumerated",
+      "ble": "not_enumerated",
+      "rf": "not_enumerated",
+      "runtime": "unknown",
+      "bootloader": "not_enumerated"
+    },
+    "recovery_history": [
+      {
+        "phase": "earlier_campaign_usb_observation",
+        "status": "not_enumerated",
+        "scope": "Retained historical observation; physical absence was not established."
+      },
+      {
+        "phase": "application_only_legacy_ble_recovery",
+        "status": "accepted",
+        "correlation_mode": "baseline_absent_then_operator_ble_entry",
+        "bootloader_written": false,
+        "softdevice_written": false,
+        "original_usb_identity_verified_by_this_phase": false,
+        "ficr_identity_verified": false,
+        "normal_runtime_verified_by_this_phase": false
+      },
+      {
+        "phase": "subsequent_normal_usb_readback",
+        "status": "passed",
+        "original_usb_serial_verified": true,
+        "normal_full_version_verified": true,
+        "core_error_flags": 0
+      },
+      {
+        "phase": "identity_bound_c2_and_normal_full_usb_install",
+        "status": "passed",
+        "finished_at": "2026-10-19T23:48:32.092896+00:00",
+        "bootloader_dfu_returncode": 0,
+        "application_dfu_returncode": 0
+      }
+    ],
+    "bootloader": {
+      "source_commit": "c2f6fa455302167ea547ffe1e065a037762512d5",
+      "profile": "wismesh_tag",
+      "status": "baseline_verified",
+      "public_uf2_version": "TEST_0x02040BFF",
+      "post_dfu_public_version_verified": true,
+      "package_manifest_crc32": "DE20EBCB",
+      "package_manifest_crc_scope": "Validated package manifest; not a measured installed-flash CRC.",
+      "installed_manifest_crc_measured": false,
+      "package_sha256": "235dad51e559ace1b7b8ab38ceb4bc26d66e1bcaf69bdfc7fb213649b4fe4bb4"
+    },
+    "usb": {
+      "status": "passed",
+      "finished_at": "2026-10-19T23:49:34.180745+00:00",
+      "persistent_cycles_completed": 100,
+      "reopens_completed": 10,
+      "ports_opened": 18,
+      "ports_closed": 18,
+      "invalid_length_candidates": 0,
+      "discarded_prefix_bytes": 0,
+      "owned_contact_cleanup_verified": true,
+      "owned_contact_survived_warm_reboot": true,
+      "warm_reboot_verified": true,
+      "reboot_requests_sent": 1,
+      "channel_state_unchanged": true,
+      "radio2_warning_and_suggestion_trials_passed": true,
+      "radio2_owned_lease_and_settings_restored": true,
+      "final_core_error_flags": 0,
+      "transport_scope": "Stable binary sessions; ASCII-to-binary setup and deliberate reboot transitions are recorded separately."
+    },
+    "ble": {
+      "status": "passed",
+      "finished_at": "2026-10-19T23:51:58.121728+00:00",
+      "sessions_completed": 3,
+      "hold_seconds_requested": 30,
+      "all_sessions_passed": true,
+      "all_session_core_error_flags_zero": true,
+      "all_sessions_disconnected": true,
+      "final_target_disconnected": true,
+      "usb_public_key_matches": true,
+      "full_version_matches": true,
+      "discovery_bound_to_usb_advertisement": true,
+      "adapter_reset": false,
+      "broad_bond_changes": false,
+      "target_bonds_removed": false
+    },
+    "rf": {
+      "status": "passed",
+      "finished_at": "2026-10-19T23:52:26.052501+00:00",
+      "hub": "rak",
+      "spoke": "tag",
+      "directions_verified": 2,
+      "send_commands": 2,
+      "zero_hop_direct_route_verified": true,
+      "exact_source_destination_nonce_payload_verified": true,
+      "owned_channels_cleared": true,
+      "radio_leases_restored": true,
+      "final_core_error_flags_zero": true,
+      "cleanup_errors": 0,
+      "scope": "One zero-hop DEV datagram each direction; not text, range or cold-boot testing."
+    },
+    "inventory_scope": "Later identity-bound Tag-only observation; the earlier 10-second fleet inventory is retained and no new fleet count is claimed.",
+    "evidence_sha256": {
+      "application_ble_recovery": "f93f20999661a2cd540448118bc48c416b1089f6486039a0b9068120e0c4d927",
+      "normal_runtime_after_ble": "cd9a6ae183086d998189065f9d1e2a23e09b71d89ba63f192c9155ec9398f4fa",
+      "c2_usb_install": "5803a02ab35dd7ba792bc79280dd706867ac4316681f3adb5568fdad854188f0",
+      "usb_qualification": "8cb48c3f08080bb3a846b078f7220b99ed471024d25de1a6d4cf6ed037893c80",
+      "ble_qualification": "937bc63f0907f5e704bf64a7848165857749f30320f0eed230e38493bc5e5d4c",
+      "rf_qualification": "3274c226b981202c0cfc4c4bbd5fc66bac73d4645d46fe2e91f6b0aac5334b4b"
+    },
+    "finished_at": "2026-10-19T23:52:26.672651+00:00"
   }
 }
