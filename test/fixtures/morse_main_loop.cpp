@@ -20,6 +20,12 @@ uint32_t millis() { return 100000; }
 void delay(unsigned) { ++delays; }
 bool usbLoggingRecoverySafe() { return true; }
 namespace mesh {
+namespace power {
+// Regulator persistence/recovery has separate executable tests. Keep its
+// lifecycle boundary visible while this fixture exercises actual role loops.
+static unsigned regulator_services=0;
+void serviceRegulatorSettings() { ++regulator_services; }
+}
 void serviceUsbLoggingPort() { ++usb_services; }
 void serviceUsbTerminalPort() { ++usb_services; }
 bool isUsbLoggingEnabled() { return false; }
@@ -259,4 +265,7 @@ int main() {
   the_mesh.dual_radio=false;
   loop();
   assert(board.profile_preparations==profile_preparations+1 && board.sleeps==profile_sleeps+1);
+#if !ROLE_REPEATER
+  assert(mesh::power::regulator_services==board.calls);
+#endif
 }

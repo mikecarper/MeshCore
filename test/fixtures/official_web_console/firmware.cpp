@@ -24,6 +24,10 @@ struct Stream {
   }
 } console;
 namespace mesh {
+namespace power {
+// The command-pump fixture isolates USB/CLI timing from regulator storage.
+void serviceRegulatorSettings() {}
+}
 void serviceUsbLoggingPort() {}
 void serviceUsbTerminalPort() {}
 bool takeUsbTerminalSessionReset() { return false; }

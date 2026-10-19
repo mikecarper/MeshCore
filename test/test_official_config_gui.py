@@ -96,6 +96,10 @@ MockSerial Serial;
     pump = body((ROOT / "examples/simple_repeater/main.cpp").read_text(),
                 "static void __attribute__((noinline)) serviceCommandInterfaces()")
     return source + r'''
+namespace mesh { namespace power {
+// The command-pump fixture isolates USB/CLI timing from regulator storage.
+void serviceRegulatorSettings() {}
+}}
 struct MyMesh {
   void handleUsbCommand(const char*, char* reply) { strcpy(reply, "Unknown"); }
   void cancelPendingSerialOutput() {}
