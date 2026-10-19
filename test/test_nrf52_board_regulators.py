@@ -23,6 +23,7 @@ VERIFIED_BOARDS = (
     ('ikoka_nano_nrf/IkokaNanoNRFBoard.cpp', 'IkokaNanoNRFBoard', False),
     ('ikoka_stick_nrf/IkokaStickNRFBoard.cpp', 'IkokaStickNRFBoard', False),
     ('minewsemi_me25ls01/MinewsemiME25LS01Board.cpp', 'MinewsemiME25LS01Board', False),
+    ('nano_g2_ultra/nano-g2.cpp', 'NanoG2Ultra', False),
 )
 
 HARNESS = r'''
@@ -42,6 +43,7 @@ constexpr int INPUT = 0, OUTPUT = 1, INPUT_PULLUP = 2, LOW = 0, HIGH = 1;
 constexpr int PIN_VBAT_READ = 5, WB_IO2 = 34, SX126X_POWER_EN = 37;
 constexpr int PIN_VBAT = 5, VBAT_ENABLE = 14, PIN_BAT_CTL = 15, LED_PIN = 28;
 constexpr int PIN_GPS_EN = 10, PIN_GPS_RESET = 11, PIN_GPS_STANDBY = 12;
+constexpr int PIN_BUTTON1 = 38, EXT_NOTIFY_OUT = 4, GPS_EN = PIN_GPS_STANDBY;
 constexpr int PIN_SENSOR_EN = 13, PIN_BUZZER = 16;
 constexpr int PIN_BUZZER_VOLTAGE_MULTIPLIER_1 = 17, PIN_BUZZER_VOLTAGE_MULTIPLIER_2 = 18;
 constexpr int LED_STATE_ON = 1, PIN_GPS_EN_ACTIVE = 1, PIN_SENSOR_EN_ACTIVE = 1;
@@ -149,6 +151,68 @@ class Nrf52BoardRegulatorTests(unittest.TestCase):
                 self.assertNotIn('RAK4631_COMPANION_FORCE_LDO', section['build_flags'])
         self.assertEqual(config['env:RAK_4631_companion_radio_full']['extends'],
                          'env:RAK_4631_companion_radio_usb')
+
+    def test_nano_header_approves_dcdc_and_preserves_virtual_base_identity(self):
+        # The extracted startup harness supplies its own board declaration.
+        # Compile the real Nano declaration too: approving the initializer
+        # without inheriting the DC/DC board must not silently pass coverage.
+        with tempfile.TemporaryDirectory(prefix='meshcore-nano-regulator-') as tmp:
+            folder = Path(tmp)
+            (folder / 'helpers').mkdir()
+            (folder / 'WVariant.h').write_text('#include <cstdint>\n', encoding='ascii')
+            (folder / 'Arduino.h').write_text(r'''
+#pragma once
+#include <cstdint>
+constexpr int LOW = 0, NRF_GPIO_PIN_NOPULL = 0, NRF_GPIO_PIN_SENSE_LOW = 0;
+inline void digitalWrite(int, int) {}
+inline int digitalPinToInterrupt(int pin) { return pin; }
+inline void nrf_gpio_cfg_sense_input(int, int, int) {}
+''', encoding='ascii')
+            (folder / 'MeshCore.h').write_text('', encoding='ascii')
+            (folder / 'helpers/NRF52Board.h').write_text(r'''
+#pragma once
+#include <cstdint>
+class NRF52Board {
+public:
+  const char* ota_name;
+  explicit NRF52Board(const char* name) : ota_name(name) {}
+  virtual void begin() {}
+  virtual uint16_t getBattMilliVolts() = 0;
+  virtual const char* getManufacturerName() const = 0;
+  virtual void shutdownPeripherals() {}
+};
+// Match the production virtual base and lack of a default NRF52Board ctor.
+class NRF52BoardDCDC : virtual public NRF52Board {
+public:
+  NRF52BoardDCDC() {}
+  void begin() override {}
+};
+''', encoding='ascii')
+            cpp, binary = folder / 'test.cpp', folder / 'test'
+            cpp.write_text(r'''
+#include "nano-g2.h"
+#include <cassert>
+#include <cstring>
+#include <type_traits>
+static_assert(std::is_base_of<NRF52BoardDCDC, NanoG2Ultra>::value,
+              "Nano must expose the circuit-approved regulator modes");
+void NanoG2Ultra::begin() {}
+uint16_t NanoG2Ultra::getBattMilliVolts() { return 0; }
+int main() {
+  NanoG2Ultra board;
+  assert(std::strcmp(board.ota_name, "NANO_G2_OTA") == 0);
+  assert(std::strcmp(board.getManufacturerName(), "Nano G2 Ultra") == 0);
+  assert(static_cast<NRF52Board*>(&board) ==
+         static_cast<NRF52Board*>(static_cast<NRF52BoardDCDC*>(&board)));
+}
+''', encoding='ascii')
+            built = subprocess.run([
+                os.environ.get('CXX', 'c++'), '-std=c++17', '-I', tmp,
+                '-I', str(ROOT / 'variants/nano_g2_ultra'), str(cpp), '-o', str(binary)],
+                capture_output=True, text=True, timeout=60)
+            self.assertEqual(built.returncode, 0, built.stdout + built.stderr)
+            result = subprocess.run([str(binary)], capture_output=True, text=True, timeout=10)
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
 
 if __name__ == '__main__':
