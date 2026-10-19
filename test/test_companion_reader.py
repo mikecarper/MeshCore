@@ -46,6 +46,69 @@ class CompanionReaderTest(unittest.TestCase):
                 actual.extend(part.decode("ascii") for part in plain[:-1].split(b"\0"))
             self.assertEqual(actual, list(self.expected_verses.values()))
 
+    def test_arm_reader_decode_frames_fit_existing_loop_stack(self):
+        # Use the actual Cortex-M4 compiler when installed. This does not
+        # invoke PlatformIO or reserve decode buffers in ordinary commands.
+        tool = shutil.which("arm-none-eabi-g++")
+        if not tool:
+            candidate = Path.home() / ".platformio/packages/toolchain-gccarmnoneeabi/bin/arm-none-eabi-g++"
+            if candidate.is_file():
+                tool = str(candidate)
+        if not tool:
+            self.skipTest("ARM compiler unavailable; firmware stack qualification remains required")
+        cc = str(Path(tool).with_name("arm-none-eabi-gcc"))
+        with tempfile.TemporaryDirectory(prefix="mesh-reader-arm-stack-") as directory:
+            directory = Path(directory)
+            (directory / "Arduino.h").write_text(
+                "#pragma once\n#include <stdint.h>\n#include <stddef.h>\n#include <stdio.h>\n#include <string.h>\n"
+                "class Stream { public: virtual size_t write(const uint8_t*,size_t);size_t print(const char*); };\n")
+            flags = ["-mcpu=cortex-m4", "-mthumb", "-Oz", "-fno-inline-small-functions",
+                     "-fstack-usage", "-DNRF52_PLATFORM=1", "-DCOMPANION_RADIO_FULL=1",
+                     "-DENABLE_USB_INTERFACE=1", "-I" + str(directory),
+                     "-I" + str(ROOT / "src"), "-I" + str(FIXTURE)]
+            self.run_checked([tool, "-std=gnu++17", "-fno-exceptions", "-fno-rtti", *flags,
+                "-c", str(ROOT / "src/helpers/CompanionReader.cpp"), "-o", str(directory / "reader.o")])
+            self.run_checked([cc, "-std=gnu11", *flags, "-c",
+                str(ROOT / "src/helpers/ota/OtaTinf.c"), "-o", str(directory / "tinf.o")])
+
+            def frames(name):
+                result = {}
+                for line in (directory / (name + ".su")).read_text().splitlines():
+                    function, count, kind = line.rsplit("\t", 2)
+                    self.assertEqual(kind, "static", line)
+                    result[function] = int(count)
+                return result
+
+            def frame(rows, signature):
+                found = [count for function, count in rows.items() if signature in function and " [with " not in function]
+                self.assertEqual(len(found), 1, signature)
+                return found[0]
+
+            reader, decoder = frames("reader"), frames("tinf")
+            # Summing all helper frames overbounds mutually exclusive branches
+            # (tree building and block decoding), including their leaf calls.
+            decoder_bytes = sum(count for name, count in decoder.items()
+                if not name.endswith(":tinf_init") and not name.endswith(":tinf_uncompress"))
+            lookup = frame(reader, "mesh::readReaderVerse(")
+            terminal = (frame(reader, "mesh::handleReaderCommand(")
+                + frame(reader, "::printReplyPage(") + frame(reader, "::replyVerse(")
+                + lookup + decoder_bytes)
+            loop_bytes, caller_reserve = 8192, 1536
+            self.assertLessEqual(terminal + caller_reserve, loop_bytes)
+            ui_max = 0
+            for small_font in (0, 1):
+                name = "screen" + str(small_font)
+                self.run_checked([tool, "-std=gnu++17", "-fno-exceptions", "-fno-rtti", *flags,
+                    f"-DUI_SMALL_MESSAGE_FONT={small_font}", "-DUI_BUTTON_READER_HINT=1",
+                    "-DUI_READER_TOUCH_BAR=0", "-c", str(FIXTURE / "test_reader_screen.cpp"),
+                    "-o", str(directory / (name + ".o"))])
+                ui = frame(frames(name), "ReaderScreen::process(") + lookup + decoder_bytes
+                ui_max = max(ui_max, ui)
+                self.assertLessEqual(ui + caller_reserve, loop_bytes)
+            self.assertEqual(packer.BLOCK_SIZE, 4096)
+            print(f"ARM Reader local stack: terminal {terminal}, screen {ui_max}; "
+                  f"caller reserve {caller_reserve}, loop {loop_bytes} bytes")
+
     def test_ascii_typography_preserves_words_case_and_pinned_source(self):
         original = copy.deepcopy(self.document)
         sample = '\u201creader\u2019s\u00a0Word\u201d\u2014\u2018Test\u2019\u2013Yes!'
@@ -62,12 +125,12 @@ class CompanionReaderTest(unittest.TestCase):
     def test_ascii_data_size(self):
         packed, blocks = packer.pack(self.document)
         self.assertEqual(sum(block[2] for block in blocks), 96568)
-        self.assertEqual(len(blocks), 49)
-        self.assertEqual(len(packed) + 12 * len(blocks), 42775)
+        self.assertEqual(len(blocks), 24)
+        self.assertEqual(len(packed) + 12 * len(blocks), 38654)
 
     def test_invalid_sources_are_rejected(self):
         for bad_text in ("", "leading\ncommand", "bad\x1b[2J", "bad\0text",
-                         "bad\u202eRTL", " too much space", "a" * 2048,
+                         "bad\u202eRTL", " too much space", "a" * packer.BLOCK_SIZE,
                          "caf\u00e9", "unmapped\u2026punctuation", "bad\U0001f600text"):
             document = copy.deepcopy(self.document)
             document["verses"]["1:1"] = bad_text
@@ -191,6 +254,7 @@ int main() {
 struct Radio { bool active = false; };
 namespace mesh {
 bool morseTimingActive(const Radio* radio) { return radio && radio->active; }
+namespace power { bool handleRegulatorCommand(const char*,char*,size_t) { return false; } }
 }
 @PREDICATE@
 struct MyMesh {
@@ -220,7 +284,7 @@ int main() {
   assert(!mesh.handleCommand("get reader 3:16", 123, out.reply));
   assert(!mesh.handleCommand("AA|get reader 3:16", 123, out.reply));
   assert(!mesh.handleCommand("get name", 0, out.reply));
-  // Block synchronous 2 KiB decompression before it can stall Morse sampling,
+  // Block synchronous 4 KiB decompression before it can stall Morse sampling,
   // including tagged bounded replies. Ordinary readers resume unchanged.
   mesh.radio.active = true;
   assert(mesh.handleCommand("E5|get reader 21:17 2", 0, out.reply));

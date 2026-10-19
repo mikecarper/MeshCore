@@ -86,7 +86,7 @@ replacement and `.bak` fallback for interrupted saves. It does not change the
 radio-preference layout, contacts, channels, or keys. A malformed bookmark
 falls back to the previous valid record or the first reference; no filesystem is formatted.
 The reader allocates only a small cursor object on first use, reusing the
-same flash corpus and on-demand 2 KiB decode scratch as the terminal.
+same flash corpus and on-demand 4 KiB decode scratch as the terminal.
 
 ## Source and reproduction
 
@@ -131,21 +131,16 @@ terminators, versus 98,911 bytes for the pinned UTF-8 source):
 | Block limit | Blocks | DEFLATE bytes | Index bytes | Total flash data | Savings |
 | --- | ---: | ---: | ---: | ---: | ---: |
 | 1 KiB | 101 | 47,133 | 1,212 | 48,345 | 49.94% |
-| **2 KiB** | **49** | **42,187** | **588** | **42,775** | **55.70%** |
-| 4 KiB | 24 | 38,366 | 288 | 38,654 | 59.97% |
+| 2 KiB | 49 | 42,187 | 588 | 42,775 | 55.70% |
+| **4 KiB** | **24** | **38,366** | **288** | **38,654** | **59.97%** |
 
 Savings in the table are relative to uncompressed ASCII. Google Zopfli 0.4.3
-uses 15 optimization iterations to write standards-compliant raw DEFLATE, so
-the existing firmware decoder and RAM use do not change. At the chosen 2 KiB
-limit, the Zopfli asset is **2,097 bytes (4.67%)** smaller than the prior
-44,872-byte UTF-8 level-9 DEFLATE data and index; that result includes the
-existing ASCII typography conversion. No 6-bit packing is used.
-
-The chosen 2 KiB limit saves 5,570 flash bytes over 1 KiB for another 1 KiB
-of temporary decode storage. Going to 4 KiB saves only another 4,121 flash
-bytes and doubles that buffer. The 2 KiB choice leaves more stack headroom
-for nRF52's existing BLE/USB/radio calls. These figures include block-index
-padding but exclude the small command code, attribution strings and decoder.
+uses 15 optimization iterations to write standards-compliant raw DEFLATE.
+The chosen 4 KiB limit saves **4,121 flash bytes** over the previous 2 KiB
+packing, including indexes, and uses another 2 KiB of temporary decode stack.
+All 879 references, wording, canonical source digest, navigation and terminal
+behavior are retained. No 6-bit packing is used. These figures include
+block-index padding but exclude command code, attribution and the decoder.
 
 Compression runs on the computer. Firmware reuses the existing bounds-checked
 C `tinf` decoder and expands one independent raw-DEFLATE block per lookup.
@@ -154,22 +149,19 @@ inside the decoded block avoids a large per-verse index. Text/indexes remain
 in memory-mapped flash on ESP32 and nRF52. There is no permanent text buffer,
 cache, or additional compression library. The terminal needs no heap allocation;
 the screen reader's small cursor object is described above. The temporary
-2 KiB output buffer is **in addition to** the decoder's trees and call stack.
+4 KiB output buffer is **in addition to** the decoder's trees and call stack.
 
-A Cortex-M4 GCC 14.2 `-Os -fstack-usage` build of the RAK3401 Full Companion
-reports a 2,088-byte frame for verse output, a 16-byte command dispatcher,
-and about 1,720 bytes for the nested decoder calls. Including the terminal
-and main-loop frames, the decode path is approximately **4.3 KiB**, before
-framework/task and interrupt overhead; the nRF52 loop task has an 8 KiB stack.
-Before the navigation-hint addition, the small-font reader's decode/draw
-function had a 2,480-byte frame on RAK3401
-and a 2,496-byte frame on V4. Its nested decode path is approximately 4.3 KiB
-on RAK3401 and 4.7 KiB on V4, including the main-loop/UI frames but before
-framework/task and interrupt overhead. The ESP32-S3 V4 terminal's corresponding
-decode path is approximately 4.6 KiB.
-This is a compiler-derived estimate, not a hardware stack high-water reading.
-Ordinary non-reader commands never enter the decode-buffer function. Its object
-file has zero `.data`/`.bss`; the screen reader adds only its small UI state.
+The native Reader suite also cross-compiles the production Reader and C
+`tinf` decoder with Cortex-M4 GCC 14.2 and `-fstack-usage`. With 4 KiB blocks,
+the terminal decode frames use at most 6,304 bytes including the bounded
+page wrapper; the adaptive-font/button Reader screen's local decode path is
+6,432 bytes. The check reserves another 1,536 bytes for outer callers within
+the unchanged 8 KiB nRF52 loop stack. This is a compiler-derived bound on
+these paths, not a physical stack high-water measurement. Decoder frames are
+counted in addition to output scratch; ordinary commands never reserve it.
+The terminal retains only its existing cursor between calls, with no heap
+buffer or text cache. Linked firmware and physical stack checks remain
+separate from this native source-level bound.
 
 Tests compare all 879 decoded verses and terminal responses with an independently
 ASCII-normalized copy of the pinned plaintext source, check references across

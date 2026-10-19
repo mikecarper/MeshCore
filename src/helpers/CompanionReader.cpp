@@ -143,7 +143,7 @@ void formatVerseReply(Selection selection, uint8_t page, const char* text,
   memcpy(reply + prefix_len + text_len, next_command, suffix_len + 1);
 }
 
-// Only a recognized Reader request enters this 2 KiB decode frame. Normal
+// Only a recognized Reader request enters this 4 KiB decode frame. Normal
 // framed commands must not reserve it, including with link-time optimization.
 __attribute__((noinline)) void replyVerse(Selection selection, uint8_t page,
                                         char* reply, size_t capacity) {

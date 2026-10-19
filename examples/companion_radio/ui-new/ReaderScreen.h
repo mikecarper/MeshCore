@@ -7,7 +7,7 @@
 #endif
 
 // Included by UITask.cpp after the task and MyMesh declarations. Only a small
-// cursor/checkpoint object persists; the 2 KiB decode buffer is on demand.
+// cursor/checkpoint object persists; the 4 KiB decode buffer is on demand.
 class ReaderScreen : public UIScreen {
   UITask* _task;
   DisplayDriver* _display;

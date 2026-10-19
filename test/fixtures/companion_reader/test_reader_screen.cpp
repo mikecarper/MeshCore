@@ -442,7 +442,7 @@ int main(int argc, char** argv) {
       record[i] ^= 1; assert(!decodeBookmark(record, decoded)); record[i] ^= 1;
     }
   }
-  for (Position p : {pos(0), pos(879), pos(1, 2048)}) {
+  for (Position p : {pos(0), pos(879), pos(1, kBlockSize)}) {
     encodeBookmark(p, record); assert(!decodeBookmark(record, saved));
   }
 

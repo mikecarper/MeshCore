@@ -11520,7 +11520,7 @@ void MyMesh::loop() {
 #endif
   servicePendingSerialReply();
 #if COMPANION_FEATURE_READER
-  // Every verse chunk reinflates its 2 KiB flash block. Retain the cursor but
+  // Every verse chunk reinflates its 4 KiB flash block. Retain the cursor but
   // defer that optional decode/output work until envelope timing is finished.
   if (!mesh::morseTimingActive(_radio)) mesh::serviceReaderCommand();
 #endif

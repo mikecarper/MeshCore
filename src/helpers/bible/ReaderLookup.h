@@ -6,7 +6,7 @@
 
 namespace mesh { namespace bible {
 
-static constexpr size_t kBlockSize = 2048;
+static constexpr size_t kBlockSize = 4096;
 static constexpr uint16_t kVerseCount = 879;
 static constexpr uint8_t kChapterVerses[] = {
   51, 25, 36, 54, 47, 71, 53, 59, 41, 42, 57,

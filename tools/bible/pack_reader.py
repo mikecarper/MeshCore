@@ -13,7 +13,7 @@ from zopfli_compress import ZOPFLI_VERSION, raw_deflate_compress  # noqa: E402
 
 SOURCE = Path(__file__).with_name("reader-web.json")
 HEADER = ROOT / "src/helpers/bible/ReaderData.generated.h"
-BLOCK_SIZE = 2048
+BLOCK_SIZE = 4096
 ASCII_TYPOGRAPHY = str.maketrans({
     "\u00a0": " ", "\u2013": "-", "\u2014": "-",
     "\u2018": "'", "\u2019": "'", "\u201c": '"', "\u201d": '"',
