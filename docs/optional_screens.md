@@ -34,6 +34,10 @@ recipe has no verified panel readback connection. Detection is not enabled for
 that wiring. A touchscreen acknowledgement alone does not establish that the
 LCD responds. The V4 R8 TFT and older V4 TFT pin mappings are distinct.
 
+Full Wireless Tracker repeaters retain the board's 50-neighbor capacity, as
+the V1.1 and V2 Full profiles already do. This preserves RAM for the screen,
+GPS, MQTT and update services; the RAM admission limits remain unchanged.
+
 The R8 readback route is documented in Heltec's
 [Expansion Kit V2.03 schematic](https://resource.heltec.cn/download/WiFi_LoRa_32_Expansion_Kit-V2/schematic/Expansion_board_V2.03.pdf).
 Tracker V1 wiring is documented in the
@@ -75,7 +79,7 @@ the picker can advertise detection.
 | Check | Result |
 | --- | --- |
 | Native detection, rendering, power and headless regressions | PASS, 31 test methods, including 12 new detection methods with sanitizers and negative controls |
-| Recipe, release-proof, controls and offline-picker regressions | PASS, 41 test methods |
+| Recipe, release-proof, controls and offline-picker regressions | PASS, 42 test methods |
 | Resolved PlatformIO configuration | PASS, 31 optional-screen environments across the three hardware families; integral-screen recipes excluded |
 | Picker JavaScript regressions | PASS, 4 suites |
 | Complete build-profile selection suite | PASS |

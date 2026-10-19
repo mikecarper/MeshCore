@@ -3061,6 +3061,7 @@ requires_dram_limited_neighbors() {
   # 8 KiB static reserve at 254 neighbors. Use their board-declared 50-entry
   # tables when the OTA manager is included.
   case "${1,,}" in
+    heltec_wireless_tracker_repeater_observer_mqtt|\
     heltec_tracker_v1_1_repeater_observer_mqtt|\
     heltec_tracker_v2_repeater_observer_mqtt)
       # The non-PSRAM Tracker's color framebuffer, MQTT/TLS and OTA leave

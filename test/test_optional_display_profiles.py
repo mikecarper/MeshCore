@@ -26,6 +26,26 @@ def manifest(spec, target):
 
 
 class OptionalDisplayProfilesTest(unittest.TestCase):
+    def test_all_tracker_full_repeaters_keep_the_measured_safe_neighbor_capacity(self):
+        script = r'''
+set -euo pipefail
+source "$1/build_legacy.sh"
+ESP32_FULL_BUILD=1
+for target in Heltec_Wireless_Tracker_repeater_observer_mqtt heltec_tracker_v1_1_repeater_observer_mqtt heltec_tracker_v2_repeater_observer_mqtt; do
+  PLATFORMIO_BUILD_FLAGS=""
+  PLATFORMIO_BUILD_UNFLAGS=""
+  BUILD_REDUCTIONS=()
+  apply_repeater_neighbor_capacity "$target"
+  [[ "$PLATFORMIO_BUILD_FLAGS" == *"-DMAX_NEIGHBOURS=50"* ]]
+  [[ " ${BUILD_REDUCTIONS[*]} " == *"mesh.neighbors limited to 50"* ]]
+done
+ESP32_FULL_BUILD=0
+! requires_dram_limited_neighbors Heltec_Wireless_Tracker_repeater_observer_mqtt
+'''
+        result = subprocess.run(["bash", "-c", script, "optional-screen-capacity", str(ROOT)],
+                                cwd=ROOT, capture_output=True, text=True, check=False)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
     def test_optional_hardware_defaults_and_integral_screens_are_separate(self):
         recipes = Recipes()
         for spec, target in zip(displays.SPECS, TARGETS):
