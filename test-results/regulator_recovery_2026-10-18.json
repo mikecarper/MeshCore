@@ -1,0 +1,2172 @@
+{
+  "schema_version": 2,
+  "qualification_date": "2026-10-18",
+  "complete": true,
+  "source": "3881345992629fc6255259076c9751db7f7971ef",
+  "firmware_version_base": "v1.18.0.1-halo-keymind-cascade-dev",
+  "embedded_source_suffix": "38813459",
+  "platformio_single_process": true,
+  "builds": [
+    {
+      "requested_target": "RAK_4631_companion_radio_full",
+      "status": "pass",
+      "exit_code": 0,
+      "packages": [
+        {
+          "packaged_target": "RAK_4631_companion_radio_full",
+          "pio_environment": "RAK_4631_companion_radio_full",
+          "build_profile": "full",
+          "profile": "full",
+          "reductions": [
+            "nRF52 Full: 256 offline frames normally; 128 while mOTA borrows queue storage"
+          ],
+          "capabilities_verified": true,
+          "capabilities": [
+            "profile.full",
+            "companion.meshtext.channel_text",
+            "ota.update.bluetooth",
+            "companion.temp_radio",
+            "companion.ota_cli",
+            "companion.usb",
+            "companion.bluetooth",
+            "companion.usb_logging",
+            "companion.usb_mota_source",
+            "companion.mota_sender",
+            "companion.dedicated_usb_logging",
+            "companion.ble_mota_source",
+            "logging.usb.packets",
+            "logging.usb.control"
+          ],
+          "memory_admission_passed": true,
+          "available_internal_bytes": 79092,
+          "required_heap_bytes": 74576,
+          "ram_admission_margin_bytes": 4516,
+          "elf_sha256": "b36217a787289b73ccade4ad344d2ea12969a4213a43fb013dbec915bef1608c",
+          "memory_manifest": "RAK_4631_companion_radio_full-v1.18.0.1-halo-keymind-cascade-dev-38813459.memory.json",
+          "memory_manifest_sha256": "42e4b1d32059031d2e36956564dc422726bcd4d7d266eda3c652758213287d41",
+          "bound_file_hashes_verified": true,
+          "files": {
+            "RAK_4631_companion_radio_full-v1.18.0.1-halo-keymind-cascade-dev-38813459.uf2": "ac7858266ee4fd40580952229d0f9c8476eda32114f1197ec9755c7f6cb82475",
+            "RAK_4631_companion_radio_full-v1.18.0.1-halo-keymind-cascade-dev-38813459.zip": "be1412e09cb0fbca787a64e593db34a32bb2d5b4ea2e4ee2aba7fa6e431caef1",
+            "RAK_4631_companion_radio_full-v1.18.0.1-halo-keymind-cascade-dev-38813459.capabilities.json": "c79d9b559a4867aff0799d39fc67ae0d0171b17287f313f4662c084f1156c1a2",
+            "RAK_4631_companion_radio_full-v1.18.0.1-halo-keymind-cascade-dev-38813459.meshtext-license.txt": "ba558609720fbff1481e236462eea2f9e08a73c1f3c2fd486ea4d9e1d0a6d58f"
+          },
+          "application_container": "RAK_4631_companion_radio_full-v1.18.0.1-halo-keymind-cascade-dev-38813459.zip",
+          "application_kind": "nRF52 application DFU ZIP",
+          "application_bytes": 712600,
+          "application_sha256": "39babcaf8228384705d10f38cd9b3ae838f5417462249be2f2d7a6bf727577da",
+          "embedded_versions": [
+            "v1.18.0.1-halo-keymind-cascade-dev-38813459"
+          ],
+          "source_suffix_found_in_application": true,
+          "container_application_comparison": [
+            {
+              "file": "RAK_4631_companion_radio_full-v1.18.0.1-halo-keymind-cascade-dev-38813459.uf2",
+              "kind": "uf2",
+              "application_matches": true,
+              "start": "0x26000",
+              "end": "0xd4000",
+              "blocks": 2784,
+              "padding_bytes": 104
+            }
+          ],
+          "application_limit_bytes": 712704,
+          "flash_margin_bytes": 104
+        }
+      ]
+    },
+    {
+      "requested_target": "heltec_v4_3_companion_radio_full_femoff",
+      "status": "pass",
+      "exit_code": 0,
+      "packages": [
+        {
+          "packaged_target": "heltec_v4_3_companion_radio_full_femoff",
+          "pio_environment": "heltec_v4_3_companion_radio_full_femoff",
+          "build_profile": "full",
+          "profile": "full",
+          "reductions": [],
+          "capabilities_verified": true,
+          "capabilities": [
+            "profile.full",
+            "companion.meshtext.channel_text",
+            "companion.temp_radio",
+            "companion.ota_cli",
+            "companion.usb",
+            "companion.bluetooth",
+            "companion.usb_logging",
+            "companion.usb_mota_source",
+            "companion.mota_sender",
+            "companion.network_terminal",
+            "companion.wifi_ota_seeder",
+            "web.webconfig",
+            "web.unconfigured_setup_cutoff",
+            "companion.direct_mqtt",
+            "logging.usb.packets",
+            "logging.usb.control",
+            "companion.app_wifi.get_enabled",
+            "companion.app_wifi.set_enabled",
+            "companion.app_wifi.get_ssid",
+            "companion.app_wifi.set_ssid",
+            "companion.app_wifi.get_password",
+            "companion.app_wifi.set_password",
+            "companion.app_wifi.get_status",
+            "companion.app_wifi.get_ip",
+            "ota.update.wifi"
+          ],
+          "memory_admission_passed": true,
+          "available_internal_bytes": 228768,
+          "required_heap_bytes": 194336,
+          "ram_admission_margin_bytes": 34432,
+          "elf_sha256": "4cceb85fca9ac56ef27a53670668bd9bbe04e07e4a19f95f918e60959dd81a21",
+          "memory_manifest": "heltec_v4_3_companion_radio_full_femoff-v1.18.0.1-halo-keymind-cascade-dev-38813459.memory.json",
+          "memory_manifest_sha256": "b7465c6a8b301f035eff87f0a0b074ac66a9fc50416358457bbb442789155500",
+          "bound_file_hashes_verified": true,
+          "files": {
+            "heltec_v4_3_companion_radio_full_femoff-v1.18.0.1-halo-keymind-cascade-dev-38813459.bin": "af0e8cc40a2a27ff5f826887cd82823e6d080f2adb6091c681df2c9280a87d77",
+            "heltec_v4_3_companion_radio_full_femoff-v1.18.0.1-halo-keymind-cascade-dev-38813459-merged.bin": "f3a25e4d8bfbe67f45ec6979eb55bc6ea486e90a83d1c871689f26c59ac4605b",
+            "heltec_v4_3_companion_radio_full_femoff-v1.18.0.1-halo-keymind-cascade-dev-38813459.capabilities.json": "a41ec191d9e62215340d50b509e1270e34f02bb7627ce8b3a666b1c816d3dbe2",
+            "heltec_v4_3_companion_radio_full_femoff-v1.18.0.1-halo-keymind-cascade-dev-38813459.meshtext-license.txt": "ba558609720fbff1481e236462eea2f9e08a73c1f3c2fd486ea4d9e1d0a6d58f"
+          },
+          "application_container": "heltec_v4_3_companion_radio_full_femoff-v1.18.0.1-halo-keymind-cascade-dev-38813459.bin",
+          "application_kind": "application BIN",
+          "application_bytes": 2559064,
+          "application_sha256": "af0e8cc40a2a27ff5f826887cd82823e6d080f2adb6091c681df2c9280a87d77",
+          "embedded_versions": [
+            "v1.18.0.1-halo-keymind-cascade-dev-38813459"
+          ],
+          "source_suffix_found_in_application": true,
+          "container_application_comparison": [
+            {
+              "file": "heltec_v4_3_companion_radio_full_femoff-v1.18.0.1-halo-keymind-cascade-dev-38813459-merged.bin",
+              "kind": "merged_bin",
+              "application_matches": true,
+              "application_file_offset": "0x10000"
+            }
+          ],
+          "application_limit_bytes": 6553600,
+          "flash_margin_bytes": 3994536
+        }
+      ]
+    },
+    {
+      "requested_target": "PicoW_companion_radio",
+      "status": "pass",
+      "exit_code": 0,
+      "packages": [
+        {
+          "packaged_target": "PicoW_companion_radio",
+          "pio_environment": "PicoW_companion_radio",
+          "build_profile": "auto",
+          "profile": "auto",
+          "reductions": [],
+          "capabilities_verified": true,
+          "capabilities": [
+            "profile.auto",
+            "companion.picow.combined"
+          ],
+          "memory_admission_passed": true,
+          "available_internal_bytes": 75840,
+          "required_heap_bytes": 17408,
+          "ram_admission_margin_bytes": 58432,
+          "elf_sha256": "bb0063bb8cb58f91dadc113f55f6ccd7bd0baff7734bd493997fac5478c9cde2",
+          "memory_manifest": "PicoW_companion_radio-v1.18.0.1-halo-keymind-cascade-dev-38813459.memory.json",
+          "memory_manifest_sha256": "524fdab7fadae2d15d448d0fcd47efd815cb608a244e24949dfb33dc69fffd15",
+          "bound_file_hashes_verified": true,
+          "files": {
+            "PicoW_companion_radio-v1.18.0.1-halo-keymind-cascade-dev-38813459.bin": "23fc6982cec8cf85f8bde6affec3d8ea0882c81f10298838a905b4854934d0bb",
+            "PicoW_companion_radio-v1.18.0.1-halo-keymind-cascade-dev-38813459.uf2": "d2e62f7c7bf07afba609860a09a38d18409e8eb274a70f0a48858bce13837544",
+            "PicoW_companion_radio-v1.18.0.1-halo-keymind-cascade-dev-38813459.capabilities.json": "09206b5b2589417429a6fa08ab625f73b433f1c1f565dc09d078c6f8715abd38",
+            "PicoW_companion_radio-v1.18.0.1-halo-keymind-cascade-dev-38813459.meshtext-license.txt": "ba558609720fbff1481e236462eea2f9e08a73c1f3c2fd486ea4d9e1d0a6d58f"
+          },
+          "application_container": "PicoW_companion_radio-v1.18.0.1-halo-keymind-cascade-dev-38813459.bin",
+          "application_kind": "application BIN",
+          "application_bytes": 911148,
+          "application_sha256": "23fc6982cec8cf85f8bde6affec3d8ea0882c81f10298838a905b4854934d0bb",
+          "embedded_versions": [
+            "v1.18.0.1-halo-keymind-cascade-dev-38813459"
+          ],
+          "source_suffix_found_in_application": true,
+          "container_application_comparison": [
+            {
+              "file": "PicoW_companion_radio-v1.18.0.1-halo-keymind-cascade-dev-38813459.uf2",
+              "kind": "uf2",
+              "application_matches": true,
+              "start": "0x10000000",
+              "end": "0x100de800",
+              "blocks": 3560,
+              "padding_bytes": 212
+            }
+          ],
+          "application_limit_bytes": 1568768,
+          "flash_margin_bytes": 657620
+        }
+      ]
+    },
+    {
+      "requested_target": "muzi_base_duo_companion_radio_full",
+      "status": "pass",
+      "exit_code": 0,
+      "packages": [
+        {
+          "packaged_target": "muzi_base_duo_companion_radio_full",
+          "pio_environment": "muzi_base_duo_companion_radio_usb",
+          "build_profile": "full",
+          "profile": "full",
+          "reductions": [
+            "nRF52 Full: 256 offline frames normally; 128 while mOTA borrows queue storage"
+          ],
+          "capabilities_verified": true,
+          "capabilities": [
+            "profile.full",
+            "ota.update.bluetooth",
+            "companion.temp_radio",
+            "companion.ota_cli",
+            "companion.usb",
+            "companion.bluetooth",
+            "companion.usb_logging",
+            "companion.usb_mota_source",
+            "companion.mota_sender",
+            "companion.dedicated_usb_logging",
+            "companion.ble_mota_source",
+            "logging.usb.packets",
+            "logging.usb.control",
+            "display.autodetect"
+          ],
+          "memory_admission_passed": true,
+          "available_internal_bytes": 89712,
+          "required_heap_bytes": 57152,
+          "ram_admission_margin_bytes": 32560,
+          "elf_sha256": "04047683b2c4ec577cc443e2da92b4364343d5f39221485b9a75f0b8c4043e75",
+          "memory_manifest": "muzi_base_duo_companion_radio_full-v1.18.0.1-halo-keymind-cascade-dev-38813459.memory.json",
+          "memory_manifest_sha256": "1454bb0afd0c1aa3a64c204f4e9387820dfac776c685a27e73fb470f681fe746",
+          "bound_file_hashes_verified": true,
+          "files": {
+            "muzi_base_duo_companion_radio_full-v1.18.0.1-halo-keymind-cascade-dev-38813459.uf2": "bf9a538c3c9e26c2a02c0fa3cf40619f5d5235c017f3df541c7bcc48db4d1f45",
+            "muzi_base_duo_companion_radio_full-v1.18.0.1-halo-keymind-cascade-dev-38813459.zip": "b6e82ed03608d919dbbb34f2c71051c6d004381fba394788f00721972facb83d",
+            "muzi_base_duo_companion_radio_full-v1.18.0.1-halo-keymind-cascade-dev-38813459.capabilities.json": "52d5a62e5bab71248c48bce24e55f368cf41432bd76d84f4a09be9556ebabcbd",
+            "muzi_base_duo_companion_radio_full-v1.18.0.1-halo-keymind-cascade-dev-38813459.meshtext-license.txt": "ba558609720fbff1481e236462eea2f9e08a73c1f3c2fd486ea4d9e1d0a6d58f"
+          },
+          "application_container": "muzi_base_duo_companion_radio_full-v1.18.0.1-halo-keymind-cascade-dev-38813459.zip",
+          "application_kind": "nRF52 application DFU ZIP",
+          "application_bytes": 571940,
+          "application_sha256": "1d9773c16872da6141a2f899ffc66578d1fa7606377d7b3d31d7d1cf2a0b3a6a",
+          "embedded_versions": [
+            "v1.18.0.1-halo-keymind-cascade-dev-38813459"
+          ],
+          "source_suffix_found_in_application": true,
+          "container_application_comparison": [
+            {
+              "file": "muzi_base_duo_companion_radio_full-v1.18.0.1-halo-keymind-cascade-dev-38813459.uf2",
+              "kind": "uf2",
+              "application_matches": true,
+              "start": "0x26000",
+              "end": "0xb1b00",
+              "blocks": 2235,
+              "padding_bytes": 220
+            }
+          ],
+          "application_limit_bytes": 712704,
+          "flash_margin_bytes": 140764
+        }
+      ]
+    },
+    {
+      "requested_target": "wio_wm1110_repeater",
+      "status": "pass",
+      "exit_code": 0,
+      "packages": [
+        {
+          "packaged_target": "wio_wm1110_repeater_lora_ota_no_external_sensors-full-ota",
+          "pio_environment": "wio_wm1110_repeater",
+          "build_profile": "auto",
+          "profile": "full sensors",
+          "reductions": [],
+          "capabilities_verified": true,
+          "capabilities": [
+            "profile.auto",
+            "sensor.profile.full",
+            "ota.update.bluetooth",
+            "ota.update.lora",
+            "cli.retry_preset",
+            "telemetry.history",
+            "ota.cli"
+          ],
+          "memory_admission_passed": true,
+          "available_internal_bytes": 152536,
+          "required_heap_bytes": 65280,
+          "ram_admission_margin_bytes": 87256,
+          "elf_sha256": "8d780e03afc93590a7b3d170cd08b5a3f509d6cef7b61c44216c49a6bf633ebc",
+          "memory_manifest": "wio_wm1110_repeater_lora_ota_no_external_sensors-full-ota-v1.18.0.1-halo-keymind-cascade-dev-38813459.memory.json",
+          "memory_manifest_sha256": "69a4ee060394c0e64ae37e98b753c7551226df1a914cf85764897e340d72cb7f",
+          "bound_file_hashes_verified": true,
+          "files": {
+            "wio_wm1110_repeater_lora_ota_no_external_sensors-full-ota-v1.18.0.1-halo-keymind-cascade-dev-38813459.uf2": "14af90b6c2cf5ba55e688abe0bc9c8e160a05ec88c979a729706357ac34bcc29",
+            "wio_wm1110_repeater_lora_ota_no_external_sensors-full-ota-v1.18.0.1-halo-keymind-cascade-dev-38813459.zip": "8ecc551c27fdc2eb9977edb0c1823ca16b00ee5b8b237355a07eacba80b6117a",
+            "wio_wm1110_repeater_lora_ota_no_external_sensors-full-ota-v1.18.0.1-halo-keymind-cascade-dev-38813459.capabilities.json": "e786e95f80c0a036ef9bbbbe93fc2f8e29fa6aa2db34cd2d85c6bf06377e4408",
+            "wio_wm1110_repeater_lora_ota_no_external_sensors-full-ota-v1.18.0.1-halo-keymind-cascade-dev-38813459.meshtext-license.txt": "ba558609720fbff1481e236462eea2f9e08a73c1f3c2fd486ea4d9e1d0a6d58f"
+          },
+          "application_container": "wio_wm1110_repeater_lora_ota_no_external_sensors-full-ota-v1.18.0.1-halo-keymind-cascade-dev-38813459.zip",
+          "application_kind": "nRF52 application DFU ZIP",
+          "application_bytes": 521908,
+          "application_sha256": "588f8e6c2c707d9ad157ec3953f9d045a77ee26db867997bb1345daa30796490",
+          "embedded_versions": [
+            "v1.18.0.1-halo-keymind-cascade-dev-38813459"
+          ],
+          "source_suffix_found_in_application": true,
+          "container_application_comparison": [
+            {
+              "file": "wio_wm1110_repeater_lora_ota_no_external_sensors-full-ota-v1.18.0.1-halo-keymind-cascade-dev-38813459.uf2",
+              "kind": "uf2",
+              "application_matches": true,
+              "start": "0x27000",
+              "end": "0xa6700",
+              "blocks": 2039,
+              "padding_bytes": 76
+            }
+          ],
+          "application_limit_bytes": 811008,
+          "flash_margin_bytes": 289100
+        },
+        {
+          "packaged_target": "wio_wm1110_repeater_lora_ota_no_external_sensors-reduced-ota",
+          "pio_environment": "wio_wm1110_repeater",
+          "build_profile": "auto",
+          "profile": "reduced sensors",
+          "reductions": [
+            "selected optional environmental/ranging drivers omitted; generic I2C and exact-target board peripherals remain unchanged"
+          ],
+          "capabilities_verified": true,
+          "capabilities": [
+            "profile.auto",
+            "sensor.profile.reduced",
+            "ota.update.bluetooth",
+            "ota.update.lora",
+            "cli.retry_preset",
+            "telemetry.history",
+            "ota.cli"
+          ],
+          "memory_admission_passed": true,
+          "available_internal_bytes": 154184,
+          "required_heap_bytes": 65280,
+          "ram_admission_margin_bytes": 88904,
+          "elf_sha256": "40af9aa232daa741dd43b700db74a0b46605a96418353f4cfcc673262ac50b80",
+          "memory_manifest": "wio_wm1110_repeater_lora_ota_no_external_sensors-reduced-ota-v1.18.0.1-halo-keymind-cascade-dev-38813459.memory.json",
+          "memory_manifest_sha256": "45aade3397d065f70706237d2c4eca5242941221cd978331225638b5e48221ab",
+          "bound_file_hashes_verified": true,
+          "files": {
+            "wio_wm1110_repeater_lora_ota_no_external_sensors-reduced-ota-v1.18.0.1-halo-keymind-cascade-dev-38813459.uf2": "9d2ed984983c919dea068a5ee87bff56b0d32913f40538f72956ca6126c1f986",
+            "wio_wm1110_repeater_lora_ota_no_external_sensors-reduced-ota-v1.18.0.1-halo-keymind-cascade-dev-38813459.zip": "3a686857c375817341388918f872b5a43279f36760daab51ae3b89f01d44b7c7",
+            "wio_wm1110_repeater_lora_ota_no_external_sensors-reduced-ota-v1.18.0.1-halo-keymind-cascade-dev-38813459.capabilities.json": "4851bc1d1c223710f2f2ac6facb6a4f5949767060f056588d75c2cc219806985",
+            "wio_wm1110_repeater_lora_ota_no_external_sensors-reduced-ota-v1.18.0.1-halo-keymind-cascade-dev-38813459.meshtext-license.txt": "ba558609720fbff1481e236462eea2f9e08a73c1f3c2fd486ea4d9e1d0a6d58f"
+          },
+          "application_container": "wio_wm1110_repeater_lora_ota_no_external_sensors-reduced-ota-v1.18.0.1-halo-keymind-cascade-dev-38813459.zip",
+          "application_kind": "nRF52 application DFU ZIP",
+          "application_bytes": 492120,
+          "application_sha256": "731bb26bcf44b949ab6dcd6466d4b84194630863e03b2165ea46760fac41118d",
+          "embedded_versions": [
+            "v1.18.0.1-halo-keymind-cascade-dev-38813459"
+          ],
+          "source_suffix_found_in_application": true,
+          "container_application_comparison": [
+            {
+              "file": "wio_wm1110_repeater_lora_ota_no_external_sensors-reduced-ota-v1.18.0.1-halo-keymind-cascade-dev-38813459.uf2",
+              "kind": "uf2",
+              "application_matches": true,
+              "start": "0x27000",
+              "end": "0x9f300",
+              "blocks": 1923,
+              "padding_bytes": 168
+            }
+          ],
+          "application_limit_bytes": 811008,
+          "flash_margin_bytes": 318888
+        }
+      ]
+    },
+    {
+      "requested_target": "meshnology_w12_sensor",
+      "status": "pass",
+      "exit_code": 0,
+      "packages": [
+        {
+          "packaged_target": "meshnology_w12_sensor",
+          "pio_environment": "meshnology_w12_sensor",
+          "build_profile": "full",
+          "profile": "full",
+          "reductions": [],
+          "capabilities_verified": true,
+          "capabilities": [
+            "profile.full",
+            "release.full.same_partition_successor",
+            "ota.update.wifi",
+            "ota.update.lora",
+            "ota.cli",
+            "logging.usb.packets",
+            "logging.usb.control"
+          ],
+          "memory_admission_passed": true,
+          "available_internal_bytes": 271736,
+          "required_heap_bytes": 144448,
+          "ram_admission_margin_bytes": 127288,
+          "elf_sha256": "347d48435b0f3b1ded57eae733f5f2b7637ad7784a5a290d5c9347fba584d456",
+          "memory_manifest": "meshnology_w12_sensor-full-ota-v1.18.0.1-halo-keymind-cascade-dev-38813459.memory.json",
+          "memory_manifest_sha256": "611d1442da38616ee1e1cf988fc84925aa368069bf53b91b1f7fdf82312e381f",
+          "bound_file_hashes_verified": true,
+          "files": {
+            "meshnology_w12_sensor-full-ota-v1.18.0.1-halo-keymind-cascade-dev-38813459.bin": "ba348f2791d4ca3d98b8bd79f0baaad69ef8adbed6dbcb4d288fd425ed420a1e",
+            "meshnology_w12_sensor-full-ota-v1.18.0.1-halo-keymind-cascade-dev-38813459-merged.bin": "3e2248886588fb749414530a130117239c18d1b5186a7627d5cced3108012444",
+            "meshnology_w12_sensor-full-ota-v1.18.0.1-halo-keymind-cascade-dev-38813459.capabilities.json": "fd7b8ed2967ede920d91b1a5eb4c2e18e8284032ee373d280b3e124c31be7510",
+            "meshnology_w12_sensor-full-ota-v1.18.0.1-halo-keymind-cascade-dev-38813459.meshtext-license.txt": "ba558609720fbff1481e236462eea2f9e08a73c1f3c2fd486ea4d9e1d0a6d58f"
+          },
+          "application_container": "meshnology_w12_sensor-full-ota-v1.18.0.1-halo-keymind-cascade-dev-38813459.bin",
+          "application_kind": "application BIN",
+          "application_bytes": 1597944,
+          "application_sha256": "ba348f2791d4ca3d98b8bd79f0baaad69ef8adbed6dbcb4d288fd425ed420a1e",
+          "embedded_versions": [
+            "v1.18.0.1-halo-keymind-cascade-dev-38813459"
+          ],
+          "source_suffix_found_in_application": true,
+          "container_application_comparison": [
+            {
+              "file": "meshnology_w12_sensor-full-ota-v1.18.0.1-halo-keymind-cascade-dev-38813459-merged.bin",
+              "kind": "merged_bin",
+              "application_matches": true,
+              "application_file_offset": "0x10000"
+            }
+          ],
+          "application_limit_bytes": 6553600,
+          "flash_margin_bytes": 4955656
+        }
+      ]
+    },
+    {
+      "requested_target": "LilyGo_Tlora_C6_room_server_",
+      "status": "pass",
+      "exit_code": 0,
+      "packages": [
+        {
+          "packaged_target": "LilyGo_Tlora_C6_room_server_lora_ota_no_external_sensors",
+          "pio_environment": "LilyGo_Tlora_C6_room_server_",
+          "build_profile": "standard",
+          "profile": "reduced",
+          "reductions": [
+            "web.webconfig omitted to preserve the legacy portable ESP32 app slot",
+            "selected optional environmental/ranging drivers omitted; generic I2C and exact-target board peripherals remain unchanged"
+          ],
+          "capabilities_verified": true,
+          "capabilities": [
+            "web.lightweight_browser_ota",
+            "profile.standard",
+            "ota.update.lora",
+            "cli.retry_preset",
+            "telemetry.history",
+            "ota.cli",
+            "ota.update.wifi"
+          ],
+          "memory_admission_passed": true,
+          "available_internal_bytes": 317888,
+          "required_heap_bytes": 89152,
+          "ram_admission_margin_bytes": 228736,
+          "elf_sha256": "2e463491921833527fd487e47e31bab982784c35f8e18ce7bb997634f71773ed",
+          "memory_manifest": "LilyGo_Tlora_C6_room_server_lora_ota_no_external_sensors-reduced-ota-v1.18.0.1-halo-keymind-cascade-dev-38813459.memory.json",
+          "memory_manifest_sha256": "cc67e8c5b0a10edcfbdac92b5ef5cb1dd9ee60b99be441399608e337f902b7fc",
+          "bound_file_hashes_verified": true,
+          "files": {
+            "LilyGo_Tlora_C6_room_server_lora_ota_no_external_sensors-reduced-ota-v1.18.0.1-halo-keymind-cascade-dev-38813459.bin": "d654c84d85ca6d13fb1272e05838d46406894fc14dfa96babaa24e4ab2e53a93",
+            "LilyGo_Tlora_C6_room_server_lora_ota_no_external_sensors-reduced-ota-v1.18.0.1-halo-keymind-cascade-dev-38813459-merged.bin": "0cbc1a4324c390f4e326dd4344518e071b95046b2050cb3aeaf15bc247145344",
+            "LilyGo_Tlora_C6_room_server_lora_ota_no_external_sensors-reduced-ota-v1.18.0.1-halo-keymind-cascade-dev-38813459.capabilities.json": "9c71bd7775e55b9acd29b1dfa5e01409604a39f400db595b233c062c5dfde1ae",
+            "LilyGo_Tlora_C6_room_server_lora_ota_no_external_sensors-reduced-ota-v1.18.0.1-halo-keymind-cascade-dev-38813459.meshtext-license.txt": "ba558609720fbff1481e236462eea2f9e08a73c1f3c2fd486ea4d9e1d0a6d58f"
+          },
+          "application_container": "LilyGo_Tlora_C6_room_server_lora_ota_no_external_sensors-reduced-ota-v1.18.0.1-halo-keymind-cascade-dev-38813459.bin",
+          "application_kind": "application BIN",
+          "application_bytes": 1584776,
+          "application_sha256": "d654c84d85ca6d13fb1272e05838d46406894fc14dfa96babaa24e4ab2e53a93",
+          "embedded_versions": [
+            "v1.18.0.1-halo-keymind-cascade-dev-38813459"
+          ],
+          "source_suffix_found_in_application": true,
+          "container_application_comparison": [
+            {
+              "file": "LilyGo_Tlora_C6_room_server_lora_ota_no_external_sensors-reduced-ota-v1.18.0.1-halo-keymind-cascade-dev-38813459-merged.bin",
+              "kind": "merged_bin",
+              "application_matches": true,
+              "application_file_offset": "0x10000"
+            }
+          ],
+          "application_limit_bytes": 1966080,
+          "flash_margin_bytes": 381304
+        }
+      ]
+    },
+    {
+      "requested_target": "wio-e5-mini_repeater",
+      "status": "pass",
+      "exit_code": 0,
+      "packages": [
+        {
+          "packaged_target": "wio-e5-mini_repeater",
+          "pio_environment": "wio-e5-mini_repeater",
+          "build_profile": "auto",
+          "profile": "auto",
+          "reductions": [
+            "mesh.neighbors limited to 50 by measured RAM/flash capacity",
+            "radio.carrier_tools omitted to preserve the Mini Repeater app boundary",
+            "management.reporting and data.tx omitted to preserve the Mini Repeater app boundary",
+            "logging.file omitted; live USB/MQTT packet logging retained"
+          ],
+          "capabilities_verified": true,
+          "capabilities": [
+            "profile.auto",
+            "cli.retry_preset"
+          ],
+          "memory_admission_passed": true,
+          "available_internal_bytes": 44528,
+          "required_heap_bytes": 32288,
+          "ram_admission_margin_bytes": 12240,
+          "elf_sha256": "e41a6ccbe9fb3f1b9defbe456f07b50b67a6bfd2224b6c3853257a0b070a2abd",
+          "memory_manifest": "wio-e5-mini_repeater-v1.18.0.1-halo-keymind-cascade-dev-38813459.memory.json",
+          "memory_manifest_sha256": "b36c8dd781566ba66833f8a94f06b5c6b9a92d64262d8c912e329d5508ddf20e",
+          "bound_file_hashes_verified": true,
+          "files": {
+            "wio-e5-mini_repeater-v1.18.0.1-halo-keymind-cascade-dev-38813459.bin": "c7297a2fadd9de471c26b734221f215eef9dd9120b015ae5aabfaf54ce6641a4",
+            "wio-e5-mini_repeater-v1.18.0.1-halo-keymind-cascade-dev-38813459.hex": "c517486a2e20c052b7ede86c4b5320a48e5171a5117b81067f0f138fde579f49",
+            "wio-e5-mini_repeater-v1.18.0.1-halo-keymind-cascade-dev-38813459.capabilities.json": "dded174a9bb89e3b7571d62c903743481f4e3e885fc4adb8a9604f85d1fe8e27"
+          },
+          "application_container": "wio-e5-mini_repeater-v1.18.0.1-halo-keymind-cascade-dev-38813459.bin",
+          "application_kind": "application BIN",
+          "application_bytes": 245652,
+          "application_sha256": "c7297a2fadd9de471c26b734221f215eef9dd9120b015ae5aabfaf54ce6641a4",
+          "embedded_versions": [
+            "v1.18.0.1-halo-keymind-cascade-dev-38813459"
+          ],
+          "source_suffix_found_in_application": true,
+          "container_application_comparison": [],
+          "application_limit_bytes": 245760,
+          "flash_margin_bytes": 108
+        }
+      ]
+    },
+    {
+      "requested_target": "RAK_4631_kiss_modem",
+      "status": "pass",
+      "exit_code": 0,
+      "packages": [
+        {
+          "packaged_target": "RAK_4631_kiss_modem",
+          "pio_environment": "RAK_4631_kiss_modem",
+          "build_profile": "auto",
+          "profile": "auto",
+          "reductions": [],
+          "capabilities_verified": true,
+          "capabilities": [
+            "profile.auto"
+          ],
+          "memory_admission_passed": true,
+          "available_internal_bytes": 210876,
+          "required_heap_bytes": 37888,
+          "ram_admission_margin_bytes": 172988,
+          "elf_sha256": "091e41dc4264ea49234a415233e75c14a7f906b5ff5e3c9b1abc8a92f1ce68fe",
+          "memory_manifest": "RAK_4631_kiss_modem-v1.18.0.1-halo-keymind-cascade-dev-38813459.memory.json",
+          "memory_manifest_sha256": "6668f2bc3948bddb7693caa2f4080dadbd7f4d8d2c192132ed853869172d15c0",
+          "bound_file_hashes_verified": true,
+          "files": {
+            "RAK_4631_kiss_modem-v1.18.0.1-halo-keymind-cascade-dev-38813459.uf2": "0cc7d38343894bebc657b77e945fcc935cfa9bb92fd8c864e555116e8033e118",
+            "RAK_4631_kiss_modem-v1.18.0.1-halo-keymind-cascade-dev-38813459.zip": "5f98708b29f193ef1cc837527f4d4f2f49e57c1d671d8b8f5bfb0dc8b15405b4",
+            "RAK_4631_kiss_modem-v1.18.0.1-halo-keymind-cascade-dev-38813459.capabilities.json": "5344989eceecd71262469823f61b66fc9c4c5cba9316b652a7b416b518e8727c"
+          },
+          "application_container": "RAK_4631_kiss_modem-v1.18.0.1-halo-keymind-cascade-dev-38813459.zip",
+          "application_kind": "nRF52 application DFU ZIP",
+          "application_bytes": 278656,
+          "application_sha256": "ae7537531dd8d787bc07d32444b7f90944a88daa255e7afbb2fce54f13943932",
+          "embedded_versions": [],
+          "source_suffix_found_in_application": false,
+          "container_application_comparison": [
+            {
+              "file": "RAK_4631_kiss_modem-v1.18.0.1-halo-keymind-cascade-dev-38813459.uf2",
+              "kind": "uf2",
+              "application_matches": true,
+              "start": "0x26000",
+              "end": "0x6a100",
+              "blocks": 1089,
+              "padding_bytes": 128
+            }
+          ],
+          "application_limit_bytes": 815104,
+          "flash_margin_bytes": 536448
+        }
+      ]
+    },
+    {
+      "requested_target": "Xiao_nrf52_companion_radio_full",
+      "status": "pass",
+      "exit_code": 0,
+      "packages": [
+        {
+          "packaged_target": "Xiao_nrf52_companion_radio_full",
+          "pio_environment": "Xiao_nrf52_companion_radio_usb",
+          "build_profile": "full",
+          "profile": "full",
+          "reductions": [
+            "nRF52 Full: 256 offline frames normally; 128 while mOTA borrows queue storage"
+          ],
+          "capabilities_verified": true,
+          "capabilities": [
+            "profile.full",
+            "ota.update.bluetooth",
+            "companion.temp_radio",
+            "companion.ota_cli",
+            "companion.usb",
+            "companion.bluetooth",
+            "companion.usb_logging",
+            "companion.usb_mota_source",
+            "companion.mota_sender",
+            "companion.dedicated_usb_logging",
+            "companion.ble_mota_source",
+            "logging.usb.packets",
+            "logging.usb.control"
+          ],
+          "memory_admission_passed": true,
+          "available_internal_bytes": 88808,
+          "required_heap_bytes": 44864,
+          "ram_admission_margin_bytes": 43944,
+          "elf_sha256": "09f6e71de80b90b7698b8f76709e8a8ae9bd69e6f5a100a9c30a286827c0899a",
+          "memory_manifest": "Xiao_nrf52_companion_radio_full-v1.18.0.1-halo-keymind-cascade-dev-38813459.memory.json",
+          "memory_manifest_sha256": "c22884c5706b47c69765734a6173c51cd8d811d3a2544cb6a995128cf0d9e0a4",
+          "bound_file_hashes_verified": true,
+          "files": {
+            "Xiao_nrf52_companion_radio_full-v1.18.0.1-halo-keymind-cascade-dev-38813459.uf2": "cf4e4b5655f12d5f4d8b6720c932eb4e7cbce0b4d2fd57ac8062bff1608cfb67",
+            "Xiao_nrf52_companion_radio_full-v1.18.0.1-halo-keymind-cascade-dev-38813459.zip": "ba1153918f4dd7f481365175088a2bb154f2620e1485f1d6b6a93514781bee30",
+            "Xiao_nrf52_companion_radio_full-v1.18.0.1-halo-keymind-cascade-dev-38813459.capabilities.json": "caf8e56f76227a3d786610d355baad403739c0eb517c2571f799cf2138fc9502",
+            "Xiao_nrf52_companion_radio_full-v1.18.0.1-halo-keymind-cascade-dev-38813459.meshtext-license.txt": "ba558609720fbff1481e236462eea2f9e08a73c1f3c2fd486ea4d9e1d0a6d58f"
+          },
+          "application_container": "Xiao_nrf52_companion_radio_full-v1.18.0.1-halo-keymind-cascade-dev-38813459.zip",
+          "application_kind": "nRF52 application DFU ZIP",
+          "application_bytes": 583772,
+          "application_sha256": "540f935740b3c29312016f9d624ce0e86590cb87b2323716c5df81f575a8f7fd",
+          "embedded_versions": [
+            "v1.18.0.1-halo-keymind-cascade-dev-38813459"
+          ],
+          "source_suffix_found_in_application": true,
+          "container_application_comparison": [
+            {
+              "file": "Xiao_nrf52_companion_radio_full-v1.18.0.1-halo-keymind-cascade-dev-38813459.uf2",
+              "kind": "uf2",
+              "application_matches": true,
+              "start": "0x27000",
+              "end": "0xb5900",
+              "blocks": 2281,
+              "padding_bytes": 164
+            }
+          ],
+          "application_limit_bytes": 708608,
+          "flash_margin_bytes": 124836
+        }
+      ]
+    },
+    {
+      "requested_target": "Heltec_t114_companion_radio_full",
+      "status": "pass",
+      "exit_code": 0,
+      "packages": [
+        {
+          "packaged_target": "Heltec_t114_companion_radio_full",
+          "pio_environment": "Heltec_t114_companion_radio_usb",
+          "build_profile": "full",
+          "profile": "full",
+          "reductions": [
+            "nRF52 Full: 256 offline frames normally; 128 while mOTA borrows queue storage"
+          ],
+          "capabilities_verified": true,
+          "capabilities": [
+            "profile.full",
+            "ota.update.bluetooth",
+            "companion.temp_radio",
+            "companion.ota_cli",
+            "companion.usb",
+            "companion.bluetooth",
+            "companion.usb_logging",
+            "companion.usb_mota_source",
+            "companion.mota_sender",
+            "companion.dedicated_usb_logging",
+            "companion.ble_mota_source",
+            "logging.usb.packets",
+            "logging.usb.control",
+            "display.autodetect"
+          ],
+          "memory_admission_passed": true,
+          "available_internal_bytes": 84376,
+          "required_heap_bytes": 61696,
+          "ram_admission_margin_bytes": 22680,
+          "elf_sha256": "d17e573450b750cafb83258d8151c485c6a315fd55e47486ee6ce677fa07e07f",
+          "memory_manifest": "Heltec_t114_companion_radio_full-v1.18.0.1-halo-keymind-cascade-dev-38813459.memory.json",
+          "memory_manifest_sha256": "aaa024e200e77d9494f910776d106700c83cfa81f02100335098a13f46d78a59",
+          "bound_file_hashes_verified": true,
+          "files": {
+            "Heltec_t114_companion_radio_full-v1.18.0.1-halo-keymind-cascade-dev-38813459.uf2": "176c4482326d6ea0f451a2a97ed940fab62d632a7ac139c923a1ae2a831d68c2",
+            "Heltec_t114_companion_radio_full-v1.18.0.1-halo-keymind-cascade-dev-38813459.zip": "427b52c3162f591c7dcd67337584dad39ad349e3db7b584412d4e799e867158c",
+            "Heltec_t114_companion_radio_full-v1.18.0.1-halo-keymind-cascade-dev-38813459.capabilities.json": "4196ec40e11390bd09b9ca3d3f53050822c1f58f6c5b0a1376377234057dab34",
+            "Heltec_t114_companion_radio_full-v1.18.0.1-halo-keymind-cascade-dev-38813459.meshtext-license.txt": "ba558609720fbff1481e236462eea2f9e08a73c1f3c2fd486ea4d9e1d0a6d58f"
+          },
+          "application_container": "Heltec_t114_companion_radio_full-v1.18.0.1-halo-keymind-cascade-dev-38813459.zip",
+          "application_kind": "nRF52 application DFU ZIP",
+          "application_bytes": 633672,
+          "application_sha256": "c6459844b69ed8d30fa1ae8d5c11f68b9ceec340177ffa12ffcaf35d74b7924d",
+          "embedded_versions": [
+            "v1.18.0.1-halo-keymind-cascade-dev-38813459"
+          ],
+          "source_suffix_found_in_application": true,
+          "container_application_comparison": [
+            {
+              "file": "Heltec_t114_companion_radio_full-v1.18.0.1-halo-keymind-cascade-dev-38813459.uf2",
+              "kind": "uf2",
+              "application_matches": true,
+              "start": "0x26000",
+              "end": "0xc0c00",
+              "blocks": 2476,
+              "padding_bytes": 184
+            }
+          ],
+          "application_limit_bytes": 712704,
+          "flash_margin_bytes": 79032
+        }
+      ]
+    }
+  ],
+  "ci_full_nrf_smoke_targets": [
+    "RAK_4631_companion_radio_full",
+    "Xiao_nrf52_companion_radio_full",
+    "Heltec_t114_companion_radio_full"
+  ],
+  "native_and_browser_checks": [
+    {
+      "check": "Pure recovery policy",
+      "status": "pass",
+      "methods": 1,
+      "scenarios": 16,
+      "coverage": "Three crashes; domain independence; >=50% boundary; stale/invalid samples; CRC/corruption; clean reset; healthy interval; sticky fallback."
+    },
+    {
+      "check": "Settings integration and actual API dispatch",
+      "status": "pass",
+      "methods": 21,
+      "coverage": "Real settings implementation with ESP32/RP2040/nRF52 filesystems; deferred application; failed writes/rename/corruption; absent/volatile storage; capacity guards; exact STM32WL unsupported path and future external-radio guard controls. Actual MainBoard/Radio headers test all eight virtual APIs across six ordinary configurations and prove the fixed STM32WL branch ignores shadows/rejects override annotations.",
+      "source": "14b9caa9e5b3fac59c0f02383406a90dbbb01629",
+      "unchanged_at_source": "a2b2a8616fb117c8c877e59a1b8c4fef2fe64ad8"
+    },
+    {
+      "check": "Radio regulator selection",
+      "status": "pass",
+      "methods": 6,
+      "coverage": "SX1262, LR1110, LR1121 and LR2021 boot choices, supported circuits, initialization failure, repeated LoRa/GFSK initialization."
+    },
+    {
+      "check": "nRF52 CPU/reset/watchdog integration",
+      "status": "pass",
+      "methods": 5,
+      "coverage": "Checked SoftDevice API; actual versus requested mode; early reset capture; clean planned watchdog expiry and cancellation/rearm."
+    },
+    {
+      "check": "nRF52 linker retention reservation",
+      "status": "pass",
+      "methods": 16,
+      "coverage": "All eight application linker scripts; 64-byte NOLOAD reservation; deliberate overflow rejection; unchanged clock and OTA authentication ranges."
+    },
+    {
+      "check": "nRF52 BLE DFU handoff",
+      "status": "pass",
+      "methods": 11,
+      "coverage": "Clean callback only after successful final handoff checks; actual ARM/Unicorn path; aborted handoffs remain armed."
+    },
+    {
+      "check": "WebConfig regulator controls",
+      "status": "pass",
+      "methods": 4,
+      "coverage": "One native JSON/authenticated-save/forced-reboot method and three Chromium methods; supported choices, clearing fallback and failed-save behavior."
+    },
+    {
+      "check": "Reader packing/lookup/UI",
+      "status": "pass",
+      "methods": 15,
+      "coverage": "All 879 references and canonical ASCII bytes; terminal pages; screen layouts/fonts/navigation; bookmarks; backpressure and Morse guards."
+    },
+    {
+      "check": "STM32 Companion profiles and exact ADC equivalence",
+      "status": "pass",
+      "methods": 21,
+      "source": "9594f76968ace649028b568ee18e83754807f0d9",
+      "unchanged_at_source": "a2b2a8616fb117c8c877e59a1b8c4fef2fe64ad8",
+      "coverage": "Contacts/channels/interfaces and deployed filesystem boundaries retained; all 32,761 eight-sample ADC sums match the former floating-point millivolt result."
+    },
+    {
+      "check": "Fleet and adjacent extraction fixtures",
+      "status": "pass",
+      "methods": 65,
+      "suites": 9,
+      "source": "a2b2a8616fb117c8c877e59a1b8c4fef2fe64ad8",
+      "coverage": "Full real-codec fleet44 with sanitizers, local/remote access4, primary radio persistence1, lost reply1, CommonCLI save3, uncertain save1, G3 dispatch7, Mini logging2 and fleet role wiring2."
+    }
+  ],
+  "adjacent_suites": [
+    {
+      "suite": "test_cli_settings_contract",
+      "status": "pass"
+    },
+    {
+      "suite": "test_cli_error_bounds",
+      "status": "pass"
+    },
+    {
+      "suite": "test_common_cli_argument_bounds",
+      "status": "pass"
+    },
+    {
+      "suite": "test_companion_prefs_transactions",
+      "status": "pass"
+    },
+    {
+      "suite": "test_companion_headless_buttons",
+      "status": "pass"
+    },
+    {
+      "suite": "test_station_g3_cli_dispatch",
+      "status": "pass"
+    }
+  ],
+  "build_profile_selection_suite": {
+    "status": "pass",
+    "evidence": "test_build_profiles: OK"
+  },
+  "linked_rak_checks": {
+    "crypto": {
+      "passed": true,
+      "elf_sha256": "b36217a787289b73ccade4ad344d2ea12969a4213a43fb013dbec915bef1608c",
+      "base_table_bytes": 960,
+      "reader_data_bytes": 38366,
+      "vectors": [
+        {
+          "rfc8032_vector": 1,
+          "keypair_stack_bytes": 1152,
+          "sign_stack_bytes": 1928
+        },
+        {
+          "rfc8032_vector": 2,
+          "keypair_stack_bytes": 1152,
+          "sign_stack_bytes": 1928
+        }
+      ],
+      "zero_initialized_path_cache_bytes": 5780,
+      "stack_limit_bytes": 2048,
+      "scope": "Crypto function frames only; excludes caller/ISR/task stacks and physical timing."
+    },
+    "workspace": {
+      "passed": true,
+      "elf_sha256": "b36217a787289b73ccade4ad344d2ea12969a4213a43fb013dbec915bef1608c",
+      "queue_lifetimes": 4,
+      "workspace_address": "0x20021b6c",
+      "protected_sd_auth_range": [
+        "0x20006008",
+        "0x20006050"
+      ],
+      "scope": "Linked ARM empty-queue OTA acquisition/release; no hardware qualification."
+    },
+    "reader": {
+      "passed": true,
+      "elf_sha256": "b36217a787289b73ccade4ad344d2ea12969a4213a43fb013dbec915bef1608c",
+      "reply_symbol": "_ZN4mesh12_GLOBAL__N_110replyVerseENS0_9SelectionEhPcj",
+      "references": 879,
+      "calls": 1091,
+      "canonical_bytes_checked": 95689,
+      "all_pages": true,
+      "canonical_source_sha256": "916bf9d1feae0ad410d69f61e6c5f328ac6acba10651d751b5bb29719732c49e",
+      "maximum_reply_verse_stack_bytes": 6016,
+      "maximum_stack_reference": "1:1",
+      "caller_reserve_bytes": 1536,
+      "loop_stack_bytes": 8192,
+      "total_arm_instructions": 379674263,
+      "scope": "Actual linked replyVerse instructions and callees; excludes firmware caller/ISR/task and physical high-water.",
+      "fully_reconstructed_reference_count": 879
+    },
+    "reader_negative_controls": {
+      "original_elf_sha256": "b36217a787289b73ccade4ad344d2ea12969a4213a43fb013dbec915bef1608c",
+      "negative_controls": [
+        {
+          "control": "valid-deflate-wrong-word",
+          "rejected": true,
+          "expected_error": "Canonical linked text mismatch",
+          "stderr": "FAILED: Canonical linked text mismatch for 1:1 page 1",
+          "mutated_elf_sha256": "bfb3ae31bf0b3ffdb9cf16797f89965f9bd595f51bf741481b6073be7dd10344"
+        },
+        {
+          "control": "balanced-8192-byte-frame",
+          "rejected": true,
+          "expected_error": "Reader frames exceed 8 KiB",
+          "stderr": "FAILED: Reader frames exceed 8 KiB with caller reserve: 9984",
+          "mutated_elf_sha256": "2295d2bf4652820d9dc24d9d59a5dfb2a794deec9a2339ab595be6398f8de676"
+        }
+      ],
+      "scope": "Disposable /tmp ELF copies only; never flashed or published."
+    }
+  },
+  "reader_packing": {
+    "block_size_bytes_before": 2048,
+    "block_size_bytes_after": 4096,
+    "compressed_bytes_before": 42187,
+    "index_bytes_before": 588,
+    "compressed_bytes_after": 38366,
+    "index_bytes_after": 288,
+    "flash_bytes_saved": 4121,
+    "references": 879,
+    "ascii_text_bytes": 95689,
+    "encoded_bytes_including_null_terminators": 96568,
+    "canonical_source_sha256": "916bf9d1feae0ad410d69f61e6c5f328ac6acba10651d751b5bb29719732c49e",
+    "text_or_features_removed": false,
+    "source_compiled_arm_stack_bytes": {
+      "terminal_with_decoder": 6264,
+      "screen_with_decoder": 6400,
+      "caller_reserve": 1536,
+      "existing_loop_stack": 8192
+    },
+    "source_compiled_stack_scope": "Compiler frame bounds; not physical high-water or ISR/SoftDevice whole-firmware proof."
+  },
+  "earlier_iteration": {
+    "source": "ef2edc52005f6bc64880911e9d08d7f782a0ddfb",
+    "version": "v1.18.0.1-regulators",
+    "passed_targets": [
+      "RAK_4631_companion_radio_full",
+      "heltec_v4_3_companion_radio_full_femoff",
+      "PicoW_companion_radio",
+      "muzi_base_duo_companion_radio_full",
+      "wio_wm1110_repeater",
+      "meshnology_w12_sensor",
+      "LilyGo_Tlora_C6_room_server_"
+    ],
+    "failed_target": "wio-e5-mini_repeater",
+    "flash_overflow_bytes": 1908,
+    "resolution_commit": "7e3359c1a",
+    "resolution": "Exact STM32+integrated STM32WLx guard excludes unreachable persistence/recovery while preserving unsupported replies; final-source rebuild status is recorded separately."
+  },
+  "hardware": {
+    "all_ten_validated_intentional_reboots_zero_crashes": true,
+    "artifacts": {
+      "private_export_full_zip_sha256": "ae4ac37073ddbc2b4c8238bbec267503731c4d599fdd7cf6f03d5c583292064c",
+      "restored_original_zip_sha256": "64940ae543491831a20da2176e50e44a1519917bd42c4615601ddc0c7bf82364",
+      "shipping_full_zip_sha256": "be1412e09cb0fbca787a64e593db34a32bb2d5b4ea2e4ee2aba7fa6e431caef1"
+    },
+    "automatic_reverse_switch": false,
+    "battery_at_observed_crash_counts": [
+      {
+        "count": 0,
+        "millivolts": 4260,
+        "percent": 100,
+        "valid": true
+      },
+      {
+        "count": 1,
+        "millivolts": 4284,
+        "percent": 100,
+        "valid": true
+      },
+      {
+        "count": 2,
+        "millivolts": 4275,
+        "percent": 100,
+        "valid": true
+      },
+      {
+        "count": 3,
+        "millivolts": 4253,
+        "percent": 100,
+        "valid": true
+      }
+    ],
+    "bench_power": "USB connected; ADC-derived percentage; physical battery presence unverified.",
+    "board": "RAK4631",
+    "crash_boot_adc_millivolts_max": 4284,
+    "crash_boot_adc_millivolts_min": 4253,
+    "crash_boot_estimated_percent_max": 100,
+    "crash_boot_estimated_percent_min": 100,
+    "events": [
+      {
+        "step": "10-flash-private-cleanup",
+        "success": true,
+        "utc": "2026-10-19T05:31:11Z"
+      },
+      {
+        "step": "11-cleanup",
+        "success": true,
+        "utc": "2026-10-19T05:31:13Z"
+      },
+      {
+        "step": "12-flash-original-restore",
+        "success": true,
+        "utc": "2026-10-19T05:32:48Z"
+      },
+      {
+        "step": "13-original-restored",
+        "success": true,
+        "utc": "2026-10-19T05:32:50Z"
+      }
+    ],
+    "fallback_after_third_crash": "MCU LDO and radio LDO; sticky for both domains",
+    "five_minute_healthy_streak_cleared": true,
+    "guarded_pause": {
+      "phase": "initial shipping Full manual attempt",
+      "reason": "Conservative unowned-port proof failed during reenumeration",
+      "response": "No owner stopped and no extra DFU; fresh guards proved both endpoints unowned before same pinned manual phase resumed",
+      "resume_successful": true
+    },
+    "limits": [
+      "No battery-only cold-start or undervoltage hardware trial",
+      "No current measurement or test mesh message sent",
+      "Other boards and reset classes have software/build coverage, not this physical qualification"
+    ],
+    "manual_mode_matrices": {
+      "private-manual": [
+        {
+          "case": "manual-0-ldo-ldo",
+          "domains": {
+            "mcu": {
+              "active": "ldo",
+              "crashes": 0,
+              "fallback": "off",
+              "selected": "ldo"
+            },
+            "radio": {
+              "active": "ldo",
+              "crashes": 0,
+              "fallback": "off",
+              "selected": "ldo"
+            }
+          }
+        },
+        {
+          "case": "manual-1-dcdc-ldo",
+          "domains": {
+            "mcu": {
+              "active": "dcdc",
+              "crashes": 0,
+              "fallback": "off",
+              "selected": "dcdc"
+            },
+            "radio": {
+              "active": "ldo",
+              "crashes": 0,
+              "fallback": "off",
+              "selected": "ldo"
+            }
+          }
+        },
+        {
+          "case": "manual-2-ldo-dcdc",
+          "domains": {
+            "mcu": {
+              "active": "ldo",
+              "crashes": 0,
+              "fallback": "off",
+              "selected": "ldo"
+            },
+            "radio": {
+              "active": "dcdc",
+              "crashes": 0,
+              "fallback": "off",
+              "selected": "dcdc"
+            }
+          }
+        },
+        {
+          "case": "manual-3-dcdc-dcdc",
+          "domains": {
+            "mcu": {
+              "active": "dcdc",
+              "crashes": 0,
+              "fallback": "off",
+              "selected": "dcdc"
+            },
+            "radio": {
+              "active": "dcdc",
+              "crashes": 0,
+              "fallback": "off",
+              "selected": "dcdc"
+            }
+          }
+        },
+        {
+          "case": "manual-4-auto-auto",
+          "domains": {
+            "mcu": {
+              "active": "dcdc",
+              "crashes": 0,
+              "fallback": "off",
+              "selected": "auto"
+            },
+            "radio": {
+              "active": "dcdc",
+              "crashes": 0,
+              "fallback": "off",
+              "selected": "auto"
+            }
+          }
+        }
+      ],
+      "shipping-full-manual": [
+        {
+          "case": "manual-0-ldo-ldo",
+          "domains": {
+            "mcu": {
+              "active": "ldo",
+              "crashes": 0,
+              "fallback": "off",
+              "selected": "ldo"
+            },
+            "radio": {
+              "active": "ldo",
+              "crashes": 0,
+              "fallback": "off",
+              "selected": "ldo"
+            }
+          }
+        },
+        {
+          "case": "manual-1-dcdc-ldo",
+          "domains": {
+            "mcu": {
+              "active": "dcdc",
+              "crashes": 0,
+              "fallback": "off",
+              "selected": "dcdc"
+            },
+            "radio": {
+              "active": "ldo",
+              "crashes": 0,
+              "fallback": "off",
+              "selected": "ldo"
+            }
+          }
+        },
+        {
+          "case": "manual-2-ldo-dcdc",
+          "domains": {
+            "mcu": {
+              "active": "ldo",
+              "crashes": 0,
+              "fallback": "off",
+              "selected": "ldo"
+            },
+            "radio": {
+              "active": "dcdc",
+              "crashes": 0,
+              "fallback": "off",
+              "selected": "dcdc"
+            }
+          }
+        },
+        {
+          "case": "manual-3-dcdc-dcdc",
+          "domains": {
+            "mcu": {
+              "active": "dcdc",
+              "crashes": 0,
+              "fallback": "off",
+              "selected": "dcdc"
+            },
+            "radio": {
+              "active": "dcdc",
+              "crashes": 0,
+              "fallback": "off",
+              "selected": "dcdc"
+            }
+          }
+        },
+        {
+          "case": "manual-4-auto-auto",
+          "domains": {
+            "mcu": {
+              "active": "dcdc",
+              "crashes": 0,
+              "fallback": "off",
+              "selected": "auto"
+            },
+            "radio": {
+              "active": "dcdc",
+              "crashes": 0,
+              "fallback": "off",
+              "selected": "auto"
+            }
+          }
+        }
+      ]
+    },
+    "method": "Identity-bound application-only DFU; private Full transport with Reader omitted and explicitly armed UDF fault per crash boot; shipping Full Reader checked separately.",
+    "observed_crash_counts": [
+      0,
+      1,
+      2,
+      3
+    ],
+    "observed_usb_restart_transitions": 3,
+    "original_restored": {
+      "channel_slots": 40,
+      "contact_count": 0,
+      "full_version": "v1.18.0.1-halo-keymind-cascade-dev-652289ee (Build: 18-Oct-2026)",
+      "power_usb_preferences_match": true,
+      "semantic_state_matches_original": true
+    },
+    "postflight": {
+      "indicator_coprocessor_present": true,
+      "mctomqtt_active": true,
+      "modemmanager_active": true,
+      "no_owner_stopped": true,
+      "no_service_power_or_swd_actions": true,
+      "protected_gateway_present": true,
+      "selected_target_interface_count": 2,
+      "selected_target_interfaces_unowned": true,
+      "utc": "2026-10-19T05:34:50.415168+00:00"
+    },
+    "prior_trial_reg1_initial_absence": "inferred from new-path/source/session provenance, not directly observed",
+    "private_identity_and_preferences_file_fingerprints_unchanged": true,
+    "shipping_full_preserved_fallback_after_application_update": true,
+    "shipping_full_reader": {
+      "actual_query_count": 4,
+      "complete_canonical_ascii_reassembly": true,
+      "references": [
+        "1:1",
+        "21:17"
+      ],
+      "same_usb_instance": true,
+      "stats_after": {
+        "error_flags": 0,
+        "outbound_queue_length": 0,
+        "uptime_seconds": 36
+      },
+      "stats_before": {
+        "error_flags": 0,
+        "outbound_queue_length": 0,
+        "uptime_seconds": 36
+      },
+      "pinned_source_file_sha256": "a82c485e9b6d43de1c8ec16043b35e057ceb8dcf52d4ffee1355c90a530463a9"
+    },
+    "source_commit": "3881345992629fc6255259076c9751db7f7971ef",
+    "stable_fallback_uptime_increase_seconds": 314,
+    "success": true,
+    "trial_regulator_paths_absent_before_manual_and_after_cleanup": true,
+    "status": "pass_scoped",
+    "independent_audit": {
+      "schema_version": 1,
+      "qualification_complete": true,
+      "tested_source_commit": "3881345992629fc6255259076c9751db7f7971ef",
+      "artifact_sha256": {
+        "private": "ae4ac37073ddbc2b4c8238bbec267503731c4d599fdd7cf6f03d5c583292064c",
+        "full": "be1412e09cb0fbca787a64e593db34a32bb2d5b4ea2e4ee2aba7fa6e431caef1",
+        "restore": "64940ae543491831a20da2176e50e44a1519917bd42c4615601ddc0c7bf82364",
+        "host_v6": "00374bfe16106b83fb78466e2c1bc95cfed54e8a239724a4cbeadb2f15461ed5",
+        "orchestrator_v8": "9c0681166b9420c23adad487ce71c7dc7e588e33cf2a7fd4fdb12c4299fbe2f5"
+      },
+      "independent_checks": {
+        "all_three_firmware_artifact_hashes_match_pins_and_files": true,
+        "host_v6_hash_matches_pin": true,
+        "orchestrator_v8_hash_matches_pin": true,
+        "original_preflight_preserved": true,
+        "fresh_v2_pretrial_verified": true,
+        "private_manual_five_cases_verified": true,
+        "shipping_manual_resumed_five_cases_verified": true,
+        "private_actual_fault_sequence_verified": true,
+        "five_healthy_minutes_sticky_ldo_counts_clear_verified": true,
+        "shipping_update_retains_sticky_ldo": true,
+        "shipping_reader_verified": true,
+        "cleanup_and_direct_absence_verified": true,
+        "exact_original_firmware_and_data_restored": true,
+        "initial_absence_provenance_bounded_correctly": true,
+        "partial_failure_retained_and_final_resume_complete": true,
+        "all_read_evidence_json_files_private": true
+      },
+      "audit_method": {
+        "read_only_files": true,
+        "hardware_or_serial_io_performed_by_auditor": false,
+        "platformio_invoked_by_auditor": false,
+        "unique_private_json_files_read": 68,
+        "private_state_hashes_or_payloads_published": false
+      },
+      "manual_modes": {
+        "private_full_without_reader_completed_cases": 5,
+        "unmodified_shipping_full_completed_cases": 5,
+        "total_validated_completed_cases": 10,
+        "all_requested_and_post_reboot_active_modes_match": true,
+        "intentional_reboots_have_zero_counts_and_no_fallback": true,
+        "usb_instance_and_uptime_transitions_verified": true,
+        "pending_active_unchanged_enforced_by_pinned_driver": true,
+        "raw_pre_reboot_pending_getters_saved_separately": false,
+        "resumed_shipping_phase_selected_explicitly": true,
+        "partial_original_shipping_attempt_retained": true,
+        "partial_original_shipping_attempt_excluded_from_case_count": true,
+        "unowned_port_guard_stopped_partial_attempt": true
+      },
+      "recovery": {
+        "private_full_without_reader_actual_fault_injection": true,
+        "unmodified_shipping_full_actual_fault_injection": false,
+        "observed_counts": [
+          0,
+          1,
+          2,
+          3
+        ],
+        "explicit_fault_arms": 3,
+        "usb_and_uptime_reset_transitions": 3,
+        "valid_voltage_estimated_battery_at_least_half_at_every_stage": true,
+        "both_domains_dcdc_before_third_fault": true,
+        "both_domains_ldo_with_sticky_fallback_after_third_fault": true,
+        "healthy_interval_at_least_seconds": 300,
+        "both_domains_still_ldo_after_healthy_interval": true,
+        "healthy_counts_cleared_to_zero": true,
+        "shipping_application_update_preserves_sticky_ldo": true
+      },
+      "shipping_reader": {
+        "canonical_references_checked": 2,
+        "responses_checked": 4,
+        "short_reference_pages": 1,
+        "continuation_reference_pages": 3,
+        "canonical_text_bytes_per_reference": [
+          79,
+          290
+        ],
+        "all_pages_match_independent_canonical_source": true,
+        "ascii_headers_continuations_and_reply_bounds_valid": true,
+        "same_usb_instance_enforced": true,
+        "uptime_non_decreasing": true,
+        "no_new_core_error_bits": true,
+        "private_instrumentation_required": false
+      },
+      "preservation": {
+        "physical_identity_and_self_info_preserved": true,
+        "contacts_preserved": true,
+        "logical_channel_entries_preserved": 40,
+        "captured_preferences_preserved": 8,
+        "channel_name_padding_ignored_beyond_first_nul": true,
+        "final_complete_device_info_matches_original": true,
+        "final_full_firmware_version_matches_original": true,
+        "final_original_firmware_artifact_hash_verified": true,
+        "cleanup_directly_proves_all_three_trial_files_absent": true,
+        "cleanup_original_identity_preferences_fingerprints_match": true
+      },
+      "initial_absence_provenance": {
+        "initial_pre_session_absence_directly_captured": false,
+        "initial_absence_inferred": true,
+        "prior_owned_trial_record_exported_bytes": 12,
+        "prior_owned_trial_export_guard_verified": true,
+        "prior_saved_observation_resolves": true,
+        "prior_trial_ownership_attribution_present": true,
+        "prior_trial_cleanup_success": true,
+        "prior_trial_cleanup_direct_absence": true,
+        "prior_trial_identity_preferences_preserved": true,
+        "fresh_v2_absence_directly_proven": true,
+        "final_cleanup_absence_directly_proven": true
+      },
+      "coverage_limits": {
+        "physical_battery_presence_confirmed": false,
+        "battery_only_cold_start_tested": false,
+        "electrical_current_or_supply_load_measured": false,
+        "other_boards_hardware_qualified": false,
+        "unmodified_shipping_full_fault_injection_tested": false,
+        "wifi_ble_or_rf_range_acceptance_tested": false,
+        "raw_pending_getters_persisted": false
+      }
+    },
+    "sanitized_report_sha256": "72496b13a511fb2a2849987f945b8d7735cd8d7e2d298dc46b77a656d9dc99b8",
+    "private_diagnostic_artifacts_removed_from_normal_build_discovery": true,
+    "remaining_physical_checks": [
+      "Battery-only cold starts and absent-battery/sub-50-percent ADC characterization",
+      "Matched current consumption in both modes and supply voltage during RF TX",
+      "Sleep/wake and BLE/WiFi under load on applicable hardware families",
+      "Recovery on other supported boards and reset-retention implementations",
+      "Unmodified shipping Full fault/load qualification beyond the private diagnostic scope",
+      "Physical Morse edge timing with the later periodic-task deferral under load"
+    ]
+  },
+  "limitations": [
+    "Battery percentage is derived from measured voltage and the configured/default curve; it does not independently prove physical battery presence.",
+    "The 60-second sample limit is evaluated against the last recorded heartbeat, not wall-clock time after a hard hang.",
+    "Only known crash reset causes count; ESP32 brownouts are excluded.",
+    "MCU selection covers approved nRF52 REG1 circuits, not REG0, external PMICs or ESP32/RP2040 CPU rails.",
+    "Current integrated STM32WL targets keep their existing shared MCU/radio supply configuration; manual selection and automatic recovery are unsupported there.",
+    "RAM admission is a linked capacity model, not a physical heap/stack high-water measurement.",
+    "Native and emulated execution do not establish current consumption, battery-only cold starts, TX supply stability or physical recovery on other boards.",
+    "No regulator capability marker or firmware-picker control was added; supported controls are CLI and ESP32 WebConfig.",
+    "A private Full diagnostic with Reader omitted can qualify tested common regulator paths, but it is not the unmodified shipping Full image and does not establish shipping Full/BLE fault/load acceptance."
+  ],
+  "workflow_status": {
+    "url": "https://github.com/mikecarper/MeshCore/actions/runs/39202695205",
+    "head_source": "a2b2a8616fb117c8c877e59a1b8c4fef2fe64ad8",
+    "status_at_record": "completed",
+    "conclusion": "failure",
+    "successful_jobs": 11,
+    "failed_jobs": 1,
+    "successful_workflow_claimed": false,
+    "failure": "The main test job lacked regulator lifecycle adapters in extracted Morse role-loop fixtures; downstream console/setup-GUI fixtures needed the same dependency.",
+    "local_correction_commit": "a08d7f07abfab8447bb4adeb2384f0e34a3bab91",
+    "local_correction_validation": "24 suites / 121 tests passed; firmware source unchanged by fixture correction.",
+    "prior_388_findings": "Small STM32 Companion flash overflow and missing extracted fleet-command mock were fixed by the separately recorded compatibility and fixture commits.",
+    "new_workflow": {
+      "url": "https://github.com/mikecarper/MeshCore/actions/runs/39205923096",
+      "head_source": "5083c236b7f19390b52f9b59a44f44a735fcb685",
+      "status_at_record": "in_progress",
+      "conclusion": "",
+      "checked_at_utc": "2026-10-19T05:49:00.850166+00:00",
+      "jobs": [
+        {
+          "name": "nrf52-companion-smoke",
+          "status": "in_progress",
+          "conclusion": ""
+        },
+        {
+          "name": "test",
+          "status": "in_progress",
+          "conclusion": ""
+        },
+        {
+          "name": "bootloader-version",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "nrf52-sensor-smoke",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "esp32-sensor-smoke",
+          "status": "in_progress",
+          "conclusion": ""
+        },
+        {
+          "name": "esp32-ethernet-companion-smoke",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "stm32-companion-smoke",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "optional-display-smoke",
+          "status": "in_progress",
+          "conclusion": ""
+        },
+        {
+          "name": "stm32-mini-repeater-smoke",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "cross-platform-smoke",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "hosted-doc-links",
+          "status": "completed",
+          "conclusion": "success"
+        },
+        {
+          "name": "management-reports",
+          "status": "completed",
+          "conclusion": "success"
+        }
+      ],
+      "successful_workflow_claimed": false
+    }
+  },
+  "baseline_source": "3881345992629fc6255259076c9751db7f7971ef",
+  "latest_production_source": "5083c236b7f19390b52f9b59a44f44a735fcb685",
+  "source_scope": "Baseline builds/linked RAK checks and physical campaign are bound to 388134599. Five STM32 builds and compatibility checks are bound to a2b2a8616. Header/settings token equivalence compares only those two revisions. Fixture-only a08d7f07a and later production Morse deferral 5083c236b have separate checks below; earlier target packages were not all rebuilt at the later source.",
+  "local_software_qualification_complete": true,
+  "qualified_source_groups": [
+    {
+      "source": "3881345992629fc6255259076c9751db7f7971ef",
+      "requested_targets": 11,
+      "packages": 12,
+      "scope": "Baseline package matrix and linked RAK ELF checks."
+    },
+    {
+      "source": "a2b2a8616fb117c8c877e59a1b8c4fef2fe64ad8",
+      "requested_targets": 5,
+      "packages": 5,
+      "scope": "Four exact STM32 USB Companion CI target/flag sets and the cable-only Mini Repeater rebuild. No wireless OTA qualification."
+    },
+    {
+      "source": "5083c236b7f19390b52f9b59a44f44a735fcb685",
+      "requested_targets": 1,
+      "packages": 1,
+      "scope": "Later Morse periodic-work correction; RAK4631 Full package and native regression checks. Physical campaign retains baseline source."
+    }
+  ],
+  "stm32_compatibility": {
+    "baseline_source": "3881345992629fc6255259076c9751db7f7971ef",
+    "qualification_source": "a2b2a8616fb117c8c877e59a1b8c4fef2fe64ad8",
+    "baseline_prior_eleven_builds_rebuilt_here": false,
+    "new_stm32_targets_count": 5,
+    "new_stm32_targets": [
+      {
+        "target": "RAK_3x72_companion_radio_usb",
+        "build_profile": "auto",
+        "source": "a2b2a8616fb117c8c877e59a1b8c4fef2fe64ad8",
+        "version": "v1.18.0.1-halo-keymind-cascade-dev-a2b2a861",
+        "app_bytes": 229284,
+        "pio_summed_flash_section_bytes": 228932,
+        "binary_layout_padding_bytes": 352,
+        "flash_capacity_bytes": 229376,
+        "flash_margin_bytes": 92,
+        "filesystem_reserved_bytes": 32768,
+        "static_ram_used_bytes": 40256,
+        "static_ram_capacity_bytes": 65536,
+        "runtime_internal_available_bytes": 24256,
+        "runtime_required_bytes": 17408,
+        "runtime_margin_bytes": 6848,
+        "app_sha256": "613708364b7dc01bcde3e009a6ed1e3b80fb66d453d70628723c6d55947637f1",
+        "hex_sha256": "6d476c362ffdd4408802a350ec4da9be548e643360641e8464956ef0d5c0f113",
+        "elf_sha256": "823a7bd359767b23196439b2b41b7e3d9255962df90a93d022fdf1c8c66520f0",
+        "all_memory_bound_hashes_match": true,
+        "hex_bin_bytes_match": true,
+        "elf_flash_load_bytes_match": true,
+        "private_hil_markers_absent": true,
+        "compiled_capabilities": [
+          "profile.auto"
+        ],
+        "wireless_self_update_verified": false,
+        "scope": "Compile, package consistency and linked memory budgets only; not hardware, power or wireless self-update qualification."
+      },
+      {
+        "target": "wio-e5-mini_companion_radio_usb",
+        "build_profile": "auto",
+        "source": "a2b2a8616fb117c8c877e59a1b8c4fef2fe64ad8",
+        "version": "v1.18.0.1-halo-keymind-cascade-dev-a2b2a861",
+        "app_bytes": 229356,
+        "pio_summed_flash_section_bytes": 229004,
+        "binary_layout_padding_bytes": 352,
+        "flash_capacity_bytes": 229376,
+        "flash_margin_bytes": 20,
+        "filesystem_reserved_bytes": 32768,
+        "static_ram_used_bytes": 40288,
+        "static_ram_capacity_bytes": 65536,
+        "runtime_internal_available_bytes": 24224,
+        "runtime_required_bytes": 17408,
+        "runtime_margin_bytes": 6816,
+        "app_sha256": "e1aab0f4e12fdaf7887eaf0dc5dd867d64c7363f0e9afa2cc0f3cd2109a07639",
+        "hex_sha256": "2b8d1c15e8f6e4479a31217abb1b9f35ffbf68b070a3cb68e8e9f87ab85a2af5",
+        "elf_sha256": "de1c6ff74f7c2212c8c75dffd261bce125a908d3d2681bf60a905bfc414f72a3",
+        "all_memory_bound_hashes_match": true,
+        "hex_bin_bytes_match": true,
+        "elf_flash_load_bytes_match": true,
+        "private_hil_markers_absent": true,
+        "compiled_capabilities": [
+          "profile.auto"
+        ],
+        "wireless_self_update_verified": false,
+        "scope": "Compile, package consistency and linked memory budgets only; not hardware, power or wireless self-update qualification."
+      },
+      {
+        "target": "wio-e5_companion_radio_usb",
+        "build_profile": "auto",
+        "source": "a2b2a8616fb117c8c877e59a1b8c4fef2fe64ad8",
+        "version": "v1.18.0.1-halo-keymind-cascade-dev-a2b2a861",
+        "app_bytes": 229204,
+        "pio_summed_flash_section_bytes": 228852,
+        "binary_layout_padding_bytes": 352,
+        "flash_capacity_bytes": 229376,
+        "flash_margin_bytes": 172,
+        "filesystem_reserved_bytes": 32768,
+        "static_ram_used_bytes": 40248,
+        "static_ram_capacity_bytes": 65536,
+        "runtime_internal_available_bytes": 24264,
+        "runtime_required_bytes": 17408,
+        "runtime_margin_bytes": 6856,
+        "app_sha256": "e797ca7e77b1c295b27d472cdb8736ca9b25aa88b268391778e2b4128436aa49",
+        "hex_sha256": "a728eaeb1fae7cc5e8c8c4922a683bf3fba954f14c8e29c10ae9ae02b8ba7b62",
+        "elf_sha256": "7d319f76575fe12d29b35f5a92145c4fc251fcc9852d723c9173b723bf880fbb",
+        "all_memory_bound_hashes_match": true,
+        "hex_bin_bytes_match": true,
+        "elf_flash_load_bytes_match": true,
+        "private_hil_markers_absent": true,
+        "compiled_capabilities": [
+          "profile.auto"
+        ],
+        "wireless_self_update_verified": false,
+        "scope": "Compile, package consistency and linked memory budgets only; not hardware, power or wireless self-update qualification."
+      },
+      {
+        "target": "Tiny_Relay_companion_radio_usb",
+        "build_profile": "auto",
+        "source": "a2b2a8616fb117c8c877e59a1b8c4fef2fe64ad8",
+        "version": "v1.18.0.1-halo-keymind-cascade-dev-a2b2a861",
+        "app_bytes": 229200,
+        "pio_summed_flash_section_bytes": 228848,
+        "binary_layout_padding_bytes": 352,
+        "flash_capacity_bytes": 229376,
+        "flash_margin_bytes": 176,
+        "filesystem_reserved_bytes": 32768,
+        "static_ram_used_bytes": 40256,
+        "static_ram_capacity_bytes": 65536,
+        "runtime_internal_available_bytes": 24256,
+        "runtime_required_bytes": 17408,
+        "runtime_margin_bytes": 6848,
+        "app_sha256": "5882f6965730c08449339141ea4a03259ec7358ae482d7188728fe5ee221f3e7",
+        "hex_sha256": "b9928eea629efc940cf04b0198aa71173532d206af2f4cec90ae6cc7e0089587",
+        "elf_sha256": "4e1d2bf151b8f088a4ad7076fe98479ccc5545ad94971c394de3ca4d6b9d7bba",
+        "all_memory_bound_hashes_match": true,
+        "hex_bin_bytes_match": true,
+        "elf_flash_load_bytes_match": true,
+        "private_hil_markers_absent": true,
+        "compiled_capabilities": [
+          "profile.auto"
+        ],
+        "wireless_self_update_verified": false,
+        "scope": "Compile, package consistency and linked memory budgets only; not hardware, power or wireless self-update qualification."
+      },
+      {
+        "target": "wio-e5-mini_repeater",
+        "build_profile": "auto",
+        "source": "a2b2a8616fb117c8c877e59a1b8c4fef2fe64ad8",
+        "version": "v1.18.0.1-halo-keymind-cascade-dev-a2b2a861",
+        "app_bytes": 245280,
+        "pio_summed_flash_section_bytes": 244928,
+        "binary_layout_padding_bytes": 352,
+        "flash_capacity_bytes": 245760,
+        "flash_margin_bytes": 480,
+        "filesystem_reserved_bytes": 16384,
+        "static_ram_used_bytes": 19976,
+        "static_ram_capacity_bytes": 65536,
+        "runtime_internal_available_bytes": 44528,
+        "runtime_required_bytes": 32288,
+        "runtime_margin_bytes": 12240,
+        "app_sha256": "80f462312e8db3667c80259b811cacd9757438d8cb322968026f26b07bc62e2d",
+        "hex_sha256": "2d69a7b9bfb75c1f174afaad11b4674ffdac3b301a6982ef8854e0850d3e7cd2",
+        "elf_sha256": "830890883d08eb5b724c25dd0670ec80f9410b611084c3f90358988ca62073f2",
+        "all_memory_bound_hashes_match": true,
+        "hex_bin_bytes_match": true,
+        "elf_flash_load_bytes_match": true,
+        "private_hil_markers_absent": true,
+        "compiled_capabilities": [
+          "profile.auto",
+          "cli.retry_preset"
+        ],
+        "wireless_self_update_verified": false,
+        "scope": "Compile, package consistency and linked memory budgets only; not hardware, power or wireless self-update qualification."
+      }
+    ],
+    "header_dispatch_equivalence": {
+      "baseline_source": "3881345992629fc6255259076c9751db7f7971ef",
+      "candidate_source": "a2b2a8616fb117c8c877e59a1b8c4fef2fe64ad8",
+      "candidate_worktree_changed_files": [],
+      "compared_production_headers": [
+        "src/MeshCore.h",
+        "src/Dispatcher.h",
+        "src/helpers/RegulatorMode.h"
+      ],
+      "normalization": "C++ preprocessor -E -P with the actual three production headers; tokenize output while preserving string/character literals, discarding only inter-token whitespace. Unchanged dependencies use current repository files.",
+      "results": [
+        {
+          "configuration": "generic",
+          "production_header_tokens_identical": true,
+          "token_count": 132866,
+          "token_sha256": "61747801f982125da2897a9b7faf7942fd67ca648965058f8bbdd72f40aa1826"
+        },
+        {
+          "configuration": "esp32_fixed_radio_name",
+          "production_header_tokens_identical": true,
+          "token_count": 132866,
+          "token_sha256": "61747801f982125da2897a9b7faf7942fd67ca648965058f8bbdd72f40aa1826"
+        },
+        {
+          "configuration": "nrf52",
+          "production_header_tokens_identical": true,
+          "token_count": 133111,
+          "token_sha256": "e802e1d0276fc2dcc1f0d4a2fad024d3debd82fc9d0dee1f13304fe499142429"
+        },
+        {
+          "configuration": "rp2040",
+          "production_header_tokens_identical": true,
+          "token_count": 133117,
+          "token_sha256": "aa0e3348eddecc6ede4634f75d773a89d5290d9f187cc491e0c7fc679331cd1d"
+        },
+        {
+          "configuration": "stm32_future_external",
+          "production_header_tokens_identical": true,
+          "token_count": 132869,
+          "token_sha256": "382f5e98ef9830af09157eb1ce30ce89be56f486e6b090fe42a5fcf67f10d095"
+        },
+        {
+          "configuration": "stm32_driver_unspecified",
+          "production_header_tokens_identical": true,
+          "token_count": 132869,
+          "token_sha256": "382f5e98ef9830af09157eb1ce30ce89be56f486e6b090fe42a5fcf67f10d095"
+        }
+      ],
+      "preprocessing_environment": "Host g++ -E -P; Arduino macro not defined. Actual production headers use a minimal Stream adapter; Settings uses established native filesystem/board/radio adapters. This is a conditional-source/API equivalence proof, not a fresh whole-firmware build for the other platforms."
+    },
+    "settings_implementation_equivalence": {
+      "baseline_source": "3881345992629fc6255259076c9751db7f7971ef",
+      "candidate_source": "a2b2a8616fb117c8c877e59a1b8c4fef2fe64ad8",
+      "candidate_worktree_changed_files": [],
+      "scope": "The complete production RegulatorSettings.cpp preprocessed with existing native filesystem/board/radio declarations. Every ordinary implementation body, callback, constant and conditional path remains identical outside the fixed-STM32WL branch.",
+      "results": [
+        {
+          "configuration": "generic",
+          "settings_preprocessed_tokens_identical": true,
+          "token_count": 208179,
+          "token_sha256": "93c1cb6bd20e442b20bc79b2ecc5b2453acac12a202fccbfe036079654a19a3a"
+        },
+        {
+          "configuration": "esp32_fixed_radio_name",
+          "settings_preprocessed_tokens_identical": true,
+          "token_count": 208179,
+          "token_sha256": "93c1cb6bd20e442b20bc79b2ecc5b2453acac12a202fccbfe036079654a19a3a"
+        },
+        {
+          "configuration": "nrf52",
+          "settings_preprocessed_tokens_identical": true,
+          "token_count": 208362,
+          "token_sha256": "b934cf12ed9592b9d2c9007173c6481d3ffdc3c18437c1de601854bb1659bf99"
+        },
+        {
+          "configuration": "rp2040",
+          "settings_preprocessed_tokens_identical": true,
+          "token_count": 208177,
+          "token_sha256": "99d41591d9cb2150f8162473e0035cb448166856c82f18c037d748011cfad959"
+        },
+        {
+          "configuration": "stm32_future_external",
+          "settings_preprocessed_tokens_identical": true,
+          "token_count": 208179,
+          "token_sha256": "259d2835f58e8476ea63b4b0fba21b3546904236a5ae35e57c3c522928787b96"
+        },
+        {
+          "configuration": "stm32_driver_unspecified",
+          "settings_preprocessed_tokens_identical": true,
+          "token_count": 208179,
+          "token_sha256": "259d2835f58e8476ea63b4b0fba21b3546904236a5ae35e57c3c522928787b96"
+        }
+      ],
+      "preprocessing_environment": "Host g++ -E -P; Arduino macro not defined. Actual production headers use a minimal Stream adapter; Settings uses established native filesystem/board/radio adapters. This is a conditional-source/API equivalence proof, not a fresh whole-firmware build for the other platforms."
+    },
+    "targeted_fixture_tests": {
+      "source": "a2b2a8616fb117c8c877e59a1b8c4fef2fe64ad8",
+      "suite_count": 9,
+      "test_count": 65,
+      "fleet_sanitizers_enabled": true,
+      "suites": [
+        {
+          "suite": "companion_fleet_control",
+          "tests": 44,
+          "passed": true,
+          "log_sha256": "8352859475f0e99d8a69f1a952390ef39e821675322eae55b9dbf3834fa93940"
+        },
+        {
+          "suite": "local_cli_access",
+          "tests": 4,
+          "passed": true,
+          "log_sha256": "2cf79d007d2015b9346b2474af02fdfdd4a4623ed8da6b741a1784877d31a9ac"
+        },
+        {
+          "suite": "companion_primary_radio_persistence",
+          "tests": 1,
+          "passed": true,
+          "log_sha256": "a40637b1c38b05c900b8b56a46bfb48d8843d29e642f79813f4ff9d2b1b169dc"
+        },
+        {
+          "suite": "companion_lost_reply",
+          "tests": 1,
+          "passed": true,
+          "log_sha256": "a49cfc574ac34ae122d3c4345b473300ff999994d3ec4f07f79f4be5030d5234"
+        },
+        {
+          "suite": "common_cli_save_results",
+          "tests": 3,
+          "passed": true,
+          "log_sha256": "25a692774a71a38d6e4559f87905e6c86b254ca7e30edc6b48e2a688ae4e213c"
+        },
+        {
+          "suite": "common_prefs_uncertain_reply",
+          "tests": 1,
+          "passed": true,
+          "log_sha256": "cbce2515f7a995ba49d21651fe96e941bb4414600c263b56126affab467842d8"
+        },
+        {
+          "suite": "station_g3_cli_dispatch",
+          "tests": 7,
+          "passed": true,
+          "log_sha256": "1608d9e23c376c92efd0d21c77bbfa4513e015cbad5d8b8d212be0bbd19066ed"
+        },
+        {
+          "suite": "mini_repeater_logging",
+          "tests": 2,
+          "passed": true,
+          "log_sha256": "997eac0457f528ffc896d82bd08a4e5666d8e1cc924d6d58cc43a5603789f231"
+        },
+        {
+          "suite": "fleet_role_wiring",
+          "tests": 2,
+          "passed": true,
+          "log_sha256": "f6a25455f6d4d7dac65feba283bb3d48f485400efec68dd68138d9ab7a89877c"
+        }
+      ],
+      "scan_result": "No remaining missing regulator stub in compiled MyMesh/CommonCLI extraction fixtures. Narrow branch-only or source-contract fixtures need no new dependency."
+    },
+    "guard_commit": "14b9caa9e5b3fac59c0f02383406a90dbbb01629",
+    "fixed_point_adc_commit": "9594f76968ace649028b568ee18e83754807f0d9",
+    "fixture_only_commit": "a2b2a8616fb117c8c877e59a1b8c4fef2fe64ad8",
+    "behavior": "Only exact STM32_PLATFORM + CustomSTM32WLx omits eight unsupported regulator virtual slots and defers selector commands to the existing ordinary CLI error path. Future STM32 external radios and all other platforms retain the original virtual APIs and generic implementation.",
+    "adc_equivalence": {
+      "all_valid_sums": 32761,
+      "samples": 8,
+      "adc_bits": 12,
+      "scale_numerator": 8650,
+      "scale_denominator": 32768,
+      "maximum_product": 283374000,
+      "uint32_product_safe": true,
+      "unchanged_samples_calibration_truncation": true
+    },
+    "filesystem_boundaries_unchanged": true,
+    "mini_repeater_preflight": "The initial new Mini attempt rejected --require-ota because this target is cable-only. The successful retry omitted that flag. This was a preflight rejection, not a compiler failure or a wireless OTA pass.",
+    "prior_candidate_failure": {
+      "source": "9594f76968ace649028b568ee18e83754807f0d9",
+      "target": "RAK_3x72_companion_radio_usb",
+      "flash_overflow_bytes": 84,
+      "qualified": false
+    }
+  },
+  "post_campaign_morse_correction": {
+    "source": "5083c236b7f19390b52f9b59a44f44a735fcb685",
+    "behavior": "Only periodic ADC sampling and failed-fallback flash retries defer while keyed Morse TX/RX is active. Active-domain tracking and recovery heartbeats continue. Deferred timestamps stay unchanged; overdue work resumes on the next eligible one-second service tick. Unkeyed CW is not deferred.",
+    "settings_api_methods": 23,
+    "settings_api_sanitizers": [
+      "address",
+      "undefined"
+    ],
+    "settings_api_passed": true,
+    "settings_log_sha256": "132b58a79785b58cbd7dae3d5787a7b3019c33ab2de935418dbb89a1de1b74e8",
+    "negative_control": {
+      "mutation": "Morse IO guard disabled in disposable source copy",
+      "expected_failing_platform_subtests": 10,
+      "rejected": true,
+      "production_files_mutated": false
+    },
+    "fixture_validation": {
+      "commit": "a08d7f07abfab8447bb4adeb2384f0e34a3bab91",
+      "production_source_unchanged_since": "a2b2a8616fb117c8c877e59a1b8c4fef2fe64ad8",
+      "suites": [
+        {
+          "suite": "test_morse_rx",
+          "exit_code": 0,
+          "test_count": 17,
+          "log_sha256": "88af58ae84025760dd5c888eb94e3cd3c3cb1bec549d7272845ccd9b354debf8"
+        },
+        {
+          "suite": "test_official_web_console",
+          "exit_code": 0,
+          "test_count": 8,
+          "seconds": 5.4,
+          "log_sha256": "d1e05e98ca7ff13bea02731efea4c79c2bed4855af97b5685dae56a40c5c0b10"
+        },
+        {
+          "suite": "test_official_console_acceptance",
+          "exit_code": 0,
+          "test_count": 25,
+          "seconds": 0.3,
+          "log_sha256": "82926239ce4d8a56ea13c269672e559be48d351c251cda95c4caea855a3ce7e3"
+        },
+        {
+          "suite": "test_official_config_gui",
+          "exit_code": 0,
+          "test_count": 11,
+          "seconds": 21.7,
+          "log_sha256": "a7254068b1974701e0c807e97a5aae18db35b97d3a34196be21dba22d366c751"
+        },
+        {
+          "suite": "test_morse_cli",
+          "exit_code": 0,
+          "test_count": 6,
+          "seconds": 5.9,
+          "log_sha256": "2e357275baa7712b8b6e8068113d9b2950e8d59806cd7e6cf97984ce30040e33"
+        },
+        {
+          "suite": "test_morse_auth",
+          "exit_code": 0,
+          "test_count": 1,
+          "seconds": 0.2,
+          "log_sha256": "030fb6cfb68ae36b04606bdc1563f16d4e5ab78a8b2fe9eb7c557ab5fcb34512"
+        },
+        {
+          "suite": "test_morse_reply_handoff",
+          "exit_code": 0,
+          "test_count": 5,
+          "seconds": 4.4,
+          "log_sha256": "a7ab477a00ed7823ecdb8b670f08bbbf2865ee805d958a13a16b59d6657b9f79"
+        },
+        {
+          "suite": "test_morse_loop_policy",
+          "exit_code": 0,
+          "test_count": 5,
+          "seconds": 0.9,
+          "log_sha256": "e0af209becc943cd60e19a6514084014aff259e0395864d8fa8fe463a12f1fb5"
+        },
+        {
+          "suite": "test_morse_terminal_input",
+          "exit_code": 0,
+          "test_count": 1,
+          "seconds": 1.6,
+          "log_sha256": "45e9e30aec247e1b3d60d270dfd6b68e1ed4a4dee45b5df267cc47fa9c2c90cd"
+        },
+        {
+          "suite": "test_radio_profile_cli",
+          "exit_code": 0,
+          "test_count": 1,
+          "seconds": 3.3,
+          "log_sha256": "20cb54c481127b6971c9573536ad96d27426224046cbcae0b75e0eeaf2412f5c"
+        },
+        {
+          "suite": "test_radio_profile_spiffs_missing",
+          "exit_code": 0,
+          "test_count": 5,
+          "seconds": 1.6,
+          "log_sha256": "aeb14ec4f9549021e9c759c5c468804b57cae685f34d1987d9ad2fe5d2868fdb"
+        },
+        {
+          "suite": "test_radio_reply_mutation",
+          "exit_code": 0,
+          "test_count": 3,
+          "seconds": 11.4,
+          "log_sha256": "2890da02e7dc91968766149440bf4a54a765294d57e50ad35ec9b64ceea44fef"
+        },
+        {
+          "suite": "test_radio_profile_scan",
+          "exit_code": 0,
+          "test_count": 2,
+          "seconds": 0.3,
+          "log_sha256": "8bb0107aa88d7a5bd7db93e1cca2d162513dd134633afd675227398fa623473d"
+        },
+        {
+          "suite": "test_radio_profile_runtime_recommendation",
+          "exit_code": 0,
+          "test_count": 2,
+          "seconds": 0.5,
+          "log_sha256": "3af78a7464a97d2430087d61565ef9bc60efacdc2ed66103ab3959275e160593"
+        },
+        {
+          "suite": "test_radio_profile_idle_dispatcher",
+          "exit_code": 0,
+          "test_count": 1,
+          "seconds": 0.2,
+          "log_sha256": "25e9da77dbcc93aa08abea93dc3bf2ef70d94d357c7570646c91817ce64400df"
+        },
+        {
+          "suite": "test_radio_rxps_rejection",
+          "exit_code": 0,
+          "test_count": 8,
+          "seconds": 3.7,
+          "log_sha256": "8a377c9c763776e5856ff1990e37d39bcf83b2203395b07a78eee1b3d26a0981"
+        },
+        {
+          "suite": "test_repeater_radio_timing_integration",
+          "exit_code": 0,
+          "test_count": 3,
+          "seconds": 0.4,
+          "log_sha256": "493de32652a024eb1703ff617fbacdaed3e0370580ee2ef005907fc00a3ca5d3"
+        },
+        {
+          "suite": "test_temp_radio_reply_delivery_contract",
+          "exit_code": 0,
+          "test_count": 2,
+          "seconds": 0.0,
+          "log_sha256": "8804e3a93bac42e0a5eeb2241133507b86d2f982990d4b6de2c365343b583fde"
+        },
+        {
+          "suite": "test_reply_tx_integration",
+          "exit_code": 0,
+          "test_count": 3,
+          "seconds": 1.7,
+          "log_sha256": "5ddc89e48ae218eba03e5358b7718d3645b47855a42d032126b640aa0fd96143"
+        },
+        {
+          "suite": "test_ota_apply_delivery",
+          "exit_code": 0,
+          "test_count": 1,
+          "seconds": 0.1,
+          "log_sha256": "ee2d17a487e739d8b266adaf8370bcf7d1c5a980e4a84ffdfcf136c3ae6c8512"
+        },
+        {
+          "suite": "test_ota_install_preflight",
+          "exit_code": 0,
+          "test_count": 1,
+          "seconds": 0.8,
+          "log_sha256": "89b1f969e2c50cc29c258fe49122aa483176c11de5693f1781abc4963e14a3d4"
+        },
+        {
+          "suite": "test_ota_apply_reentry",
+          "exit_code": 0,
+          "test_count": 4,
+          "seconds": 4.9,
+          "log_sha256": "5b69aa96f9a506fffa13d968b8bb673a89c4c05d737270ff88e01eceefd56801"
+        },
+        {
+          "suite": "test_ota_dev_reboot_guard",
+          "exit_code": 0,
+          "test_count": 3,
+          "seconds": 0.0,
+          "log_sha256": "c58647909d910c96ba2693edf2f791a89ee39eba7c365b1de438680a81ff0aef"
+        },
+        {
+          "suite": "test_ota_dev_resume",
+          "exit_code": 0,
+          "test_count": 3,
+          "seconds": 21.6,
+          "log_sha256": "e15a770c99806afecd1779b8c0a376b973875ba84dfc4bcaec8498719b2df28c"
+        }
+      ],
+      "suite_count": 24,
+      "test_count": 121,
+      "failed_suites": 0
+    },
+    "full_rak_rebuild": {
+      "passed": true,
+      "source": "5083c236b7f19390b52f9b59a44f44a735fcb685",
+      "target": "RAK_4631_companion_radio_full",
+      "version": "v1.18.0.1-halo-keymind-cascade-dev-5083c236",
+      "app_bytes": 712616,
+      "app_flash_capacity": 712704,
+      "app_flash_margin": 88,
+      "elf_sha256": "662c9ae2c848931c2eb298a35feba1da4788b9535333d4f514024435b42073b3",
+      "app_sha256": "70926cea8c30d2a5b7f239b596e7761669edcb8eda352f37832c8bb8f17bd8b7",
+      "zip_sha256": "2782b489117c6be54252ee4196a815f4d7f7661a5e23736c56be307c43f48560",
+      "uf2_sha256": "6528403261b40abe71e6b0447ab7b6b37f566bb6d94a08bee3ffc84b67ef7a1d",
+      "memory_manifest_sha256": "29018873165d46facf88340c36bf33fbbc954a88f2a0de9b1232ecbd0650fbea",
+      "capabilities_manifest_sha256": "41e329b2f8152c218ac6d43da28cc13bacde17cc9359cd6a5e2c228c8947100b",
+      "all_bound_hashes_match": true,
+      "elf_flash_load_segments_match_application": 2,
+      "elf_flash_load_bytes_compared": 712536,
+      "uf2_matches_application": true,
+      "uf2_blocks": 2784,
+      "private_hil_markers_absent": true,
+      "full_capabilities_unchanged": true,
+      "full_capabilities": [
+        "profile.full",
+        "companion.meshtext.channel_text",
+        "ota.update.bluetooth",
+        "companion.temp_radio",
+        "companion.ota_cli",
+        "companion.usb",
+        "companion.bluetooth",
+        "companion.usb_logging",
+        "companion.usb_mota_source",
+        "companion.mota_sender",
+        "companion.dedicated_usb_logging",
+        "companion.ble_mota_source",
+        "logging.usb.packets",
+        "logging.usb.control"
+      ],
+      "heap_available_bytes": 79092,
+      "heap_required_bytes": 74576,
+      "heap_margin": 4516,
+      "physical_tested": false
+    },
+    "physical_scope": "The completed physical campaign remains bound to 388134599; the later Morse deferral is not a new physical fault or Morse timing qualification.",
+    "linked_checks": {
+      "crypto": {
+        "passed": true,
+        "elf_sha256": "662c9ae2c848931c2eb298a35feba1da4788b9535333d4f514024435b42073b3",
+        "base_table_bytes": 960,
+        "reader_data_bytes": 38366,
+        "vectors": [
+          {
+            "rfc8032_vector": 1,
+            "keypair_stack_bytes": 1152,
+            "sign_stack_bytes": 1928
+          },
+          {
+            "rfc8032_vector": 2,
+            "keypair_stack_bytes": 1152,
+            "sign_stack_bytes": 1928
+          }
+        ],
+        "zero_initialized_path_cache_bytes": 5780,
+        "stack_limit_bytes": 2048,
+        "scope": "Crypto function frames only; excludes caller/ISR/task stacks and physical timing."
+      },
+      "workspace": {
+        "passed": true,
+        "elf_sha256": "662c9ae2c848931c2eb298a35feba1da4788b9535333d4f514024435b42073b3",
+        "queue_lifetimes": 4,
+        "workspace_address": "0x20021b6c",
+        "protected_sd_auth_range": [
+          "0x20006008",
+          "0x20006050"
+        ],
+        "scope": "Linked ARM empty-queue OTA acquisition/release; no hardware qualification."
+      },
+      "reader": {
+        "passed": true,
+        "elf_sha256": "662c9ae2c848931c2eb298a35feba1da4788b9535333d4f514024435b42073b3",
+        "reply_symbol": "_ZN4mesh12_GLOBAL__N_110replyVerseENS0_9SelectionEhPcj",
+        "references": 879,
+        "calls": 1091,
+        "canonical_bytes_checked": 95689,
+        "all_pages": true,
+        "canonical_source_sha256": "916bf9d1feae0ad410d69f61e6c5f328ac6acba10651d751b5bb29719732c49e",
+        "maximum_reply_verse_stack_bytes": 6016,
+        "maximum_stack_reference": "1:1",
+        "caller_reserve_bytes": 1536,
+        "loop_stack_bytes": 8192,
+        "total_arm_instructions": 379674263,
+        "scope": "Actual linked replyVerse instructions and callees; excludes firmware caller/ISR/task and physical high-water.",
+        "fully_reconstructed_reference_count": 879
+      }
+    },
+    "independent_package_audit": {
+      "passed": true,
+      "source": "5083c236b7f19390b52f9b59a44f44a735fcb685",
+      "version": "v1.18.0.1-halo-keymind-cascade-dev-5083c236",
+      "target": "RAK_4631_companion_radio_full",
+      "app_bytes": 712616,
+      "app_sha256": "70926cea8c30d2a5b7f239b596e7761669edcb8eda352f37832c8bb8f17bd8b7",
+      "elf_sha256": "662c9ae2c848931c2eb298a35feba1da4788b9535333d4f514024435b42073b3",
+      "zip_sha256": "2782b489117c6be54252ee4196a815f4d7f7661a5e23736c56be307c43f48560",
+      "uf2_sha256": "6528403261b40abe71e6b0447ab7b6b37f566bb6d94a08bee3ffc84b67ef7a1d",
+      "flash_margin_bytes": 88,
+      "ram_admission_margin_bytes": 4516,
+      "bound_hashes_verified": true,
+      "elf_flash_load_segments": [
+        {
+          "physical_address": "0x26000",
+          "bytes": 710876
+        },
+        {
+          "physical_address": "0xd38dc",
+          "bytes": 1660
+        }
+      ],
+      "post_link_layout_and_endf_bytes": 80,
+      "endf_body_hash_valid": true,
+      "uf2_blocks": 2784,
+      "uf2_padding_bytes": 88,
+      "all_full_capabilities_unchanged": true,
+      "actual_capability_checks": [
+        "companion.meshtext.channel_text",
+        "ota.update.bluetooth",
+        "companion.temp_radio",
+        "companion.ota_cli",
+        "companion.usb",
+        "companion.bluetooth",
+        "companion.usb_logging",
+        "companion.usb_mota_source",
+        "companion.mota_sender",
+        "companion.dedicated_usb_logging",
+        "companion.ble_mota_source",
+        "logging.usb.packets",
+        "logging.usb.control"
+      ],
+      "reader_data_bytes": 38366,
+      "private_fault_instrumentation_absent": true,
+      "scope": "Independent read-only package/ELF consistency checks. No physical qualification or linked execution asserted."
+    }
+  },
+  "qualification_scope": "Completed local software/package checks and scoped physical RAK4631 qualification at the separately recorded source revisions. Hosted workflow success, other-board physical acceptance, electrical measurements and latest-source physical Morse/fault qualification are not claimed."
+}

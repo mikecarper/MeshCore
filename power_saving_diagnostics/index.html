@@ -2529,6 +2529,10 @@ starts a new one. The saved LDO fallback survives normal resets and power
 cycles. It stays in LDO until a user explicitly selects a mode again, with no
 automatic return to DC-DC. Crash bookkeeping stays in retained RAM rather than
 writing flash at every heartbeat.</p>
+<p>During timed Morse TX/RX, periodic battery sampling and failed-save retries
+wait until timing ends. Recovery heartbeats continue, and a deferred sample
+keeps its original timestamp, so it can become too stale to qualify a crash.
+Overdue sampling and retries resume on the next eligible service tick.</p>
 <p>Battery eligibility follows the board's battery measurement and configured
 percentage curve. USB supply voltage alone does not establish that a physical
 battery is at 50%; validate battery-only starts and the board's absent-battery
@@ -2547,6 +2551,9 @@ three and low/unknown-battery resets do not, and that an explicit setter restore
 the requested choice. Also check current consumption and voltage during TX;
 native recovery tests and successful firmware builds do not establish these
 physical results.</p>
+<p>The <a href="../test-results/regulator_recovery_2026-10-18/">regulator qualification record</a>
+binds the compiled packages, software checks and Mercerwood bench results to
+their tested source revisions and lists the remaining physical checks.</p>
 <h3 id="existing-board-defaults">Existing board defaults</h3>
 <p>RAK4631 Companion shares the nRF52840 REG1 regulator path with the other
 RAK4631 roles. <code>auto</code> preserves its DC-DC default; the former Companion-only
