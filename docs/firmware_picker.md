@@ -356,6 +356,9 @@ verified canonical image can therefore replace the matching SuperIO or
 non-shell recommendation. These accessory choices do not change the radio
 hardware selection. See [optional screens](optional_screens.md).
 
+The [variant consolidation validation](test-results/firmware_variant_consolidation.md)
+records the qualified package hashes, controls checks and pending hardware tests.
+
 Ordinary non-OTA roles also use one artifact for normal operation and USB
 logging. On ESP32 1.17.1.5, run `set powersaving off` before `set usb.logging on`.
 Select the saved mode with `set usb.logging off|on`; no `-logging-`

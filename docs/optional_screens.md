@@ -41,6 +41,10 @@ and `270`, including portrait/landscape dashboard changes without reflashing.
 The stock R8 expansion board has no accelerometer for automatic orientation.
 See the [rotation commands](cli_commands.md#set-display-rotation).
 
+The [variant consolidation validation](test-results/firmware_variant_consolidation.md)
+records the ten qualified packages, software checks and remaining physical tests
+for R8 rotation, Muzi SuperIO and T-Echo Lite detection.
+
 Full Wireless Tracker repeaters retain the board's 50-neighbor capacity, as
 the V1.1 and V2 Full profiles already do. This preserves RAM for the screen,
 GPS, MQTT and update services; the RAM admission limits remain unchanged.

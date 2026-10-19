@@ -1,0 +1,260 @@
+{
+  "complete": true,
+  "profiles": [
+    {
+      "application_bytes": 902956,
+      "application_sha256": "246b07c54f5c76c9b6d1f8fc30ad4de34d74ae182a3e06822a14bd3b1293371e",
+      "available_internal_bytes": 75948,
+      "embedded_version": "v1.18.0.1-variants-b31d942b",
+      "files": {
+        "PicoW_companion_radio-v1.18.0.1-variants-b31d942b.bin": "246b07c54f5c76c9b6d1f8fc30ad4de34d74ae182a3e06822a14bd3b1293371e",
+        "PicoW_companion_radio-v1.18.0.1-variants-b31d942b.uf2": "71bb65c155bbaeeef069e9d6c5d89bfd0bfd19a918a46b8750b20ceea11f08d2"
+      },
+      "logical_target": "PicoW_companion_radio",
+      "markers": {
+        "companion.picow.combined": "meshcore.capability.companion.picow.combined.v1"
+      },
+      "ram_margin_bytes": 58540,
+      "required_heap_bytes": 17408,
+      "target": "PicoW_companion_radio",
+      "uf2_end": "0x100dc800",
+      "uf2_start": "0x10000000"
+    },
+    {
+      "application_bytes": 2287528,
+      "application_sha256": "19170cc8866b7bab7a66162513cb27e263275d71296e39cd7cdf6205c62dd148",
+      "available_internal_bytes": 231424,
+      "embedded_version": "v1.18.0.1-variants-b31d942b",
+      "files": {
+        "heltec_v4_r8_tft_companion_radio_full-v1.18.0.1-variants-b31d942b-merged.bin": "e41321b5bfe352cd06c383aa5d078dbdfa486466e1d2e581d7a56ebb98fd7cbb",
+        "heltec_v4_r8_tft_companion_radio_full-v1.18.0.1-variants-b31d942b.bin": "19170cc8866b7bab7a66162513cb27e263275d71296e39cd7cdf6205c62dd148"
+      },
+      "hardware": "heltec_v4_r8_tft",
+      "logical_target": "heltec_v4_r8_tft_companion_radio_full",
+      "markers": {
+        "display.autodetect": "meshcore.capability.display.autodetect.heltec_r8.v1",
+        "display.rotation.runtime": "meshcore.capability.display.rotation.heltec_r8.v1"
+      },
+      "ota_target": "0x0",
+      "ram_margin_bytes": 66528,
+      "required_heap_bytes": 164896,
+      "target": "heltec_v4_r8_tft_companion_radio_full"
+    },
+    {
+      "application_bytes": 2297368,
+      "application_sha256": "0837183ff0835e8c4c9d7893ae7cada540a6ed40f1e0c692c7dfc47e1ed611f1",
+      "available_internal_bytes": 202120,
+      "embedded_version": "v1.18.0.1-variants-observer-b31d942b",
+      "files": {
+        "heltec_v4_r8_tft_repeater_observer_mqtt-full-usb-wifi-ota-v1.18.0.1-variants-b31d942b-merged.bin": "c36b2b75fb6bfb1899c76986ce290d27357e1a2efe0c096341d0feecc7afc268",
+        "heltec_v4_r8_tft_repeater_observer_mqtt-full-usb-wifi-ota-v1.18.0.1-variants-b31d942b.bin": "0837183ff0835e8c4c9d7893ae7cada540a6ed40f1e0c692c7dfc47e1ed611f1"
+      },
+      "hardware": "heltec_v4_r8_tft",
+      "logical_target": "heltec_v4_r8_tft_repeater_observer_mqtt",
+      "markers": {
+        "display.autodetect": "meshcore.capability.display.autodetect.heltec_r8.v1",
+        "display.rotation.runtime": "meshcore.capability.display.rotation.heltec_r8.v1"
+      },
+      "ota_target": "0xdd39457b",
+      "ram_margin_bytes": 5736,
+      "required_heap_bytes": 196384,
+      "target": "heltec_v4_r8_tft_repeater"
+    },
+    {
+      "application_bytes": 2302648,
+      "application_sha256": "28ffdb3bd325ae4d9d4f513007de833bb9aeaf2543399aca2dd57e5ff8bff26f",
+      "available_internal_bytes": 197656,
+      "embedded_version": "v1.18.0.1-variants-observer-b31d942b",
+      "files": {
+        "heltec_v4_r8_tft_room_server_observer_mqtt-full-usb-wifi-ota-v1.18.0.1-variants-b31d942b-merged.bin": "9d0a42c13fa53153301e5c96c4825ba7bca08851787a112c96bfedc5b6fbfd08",
+        "heltec_v4_r8_tft_room_server_observer_mqtt-full-usb-wifi-ota-v1.18.0.1-variants-b31d942b.bin": "28ffdb3bd325ae4d9d4f513007de833bb9aeaf2543399aca2dd57e5ff8bff26f"
+      },
+      "hardware": "heltec_v4_r8_tft",
+      "logical_target": "heltec_v4_r8_tft_room_server_observer_mqtt",
+      "markers": {
+        "display.autodetect": "meshcore.capability.display.autodetect.heltec_r8.v1",
+        "display.rotation.runtime": "meshcore.capability.display.rotation.heltec_r8.v1"
+      },
+      "ota_target": "0x1d1c0d92",
+      "ram_margin_bytes": 7784,
+      "required_heap_bytes": 189872,
+      "target": "heltec_v4_r8_tft_room_server"
+    },
+    {
+      "application_bytes": 1590952,
+      "application_sha256": "064c4c98d2b6c20d366c2c5fc2a63dce2b6590dd6c70e9b112a1f17984bd3844",
+      "available_internal_bytes": 273872,
+      "embedded_version": "v1.18.0.1-variants-b31d942b",
+      "files": {
+        "heltec_v4_r8_tft_sensor-full-ota-v1.18.0.1-variants-b31d942b-merged.bin": "c8e154a76fe7a2960c18a6ddd3b34ea877c74f7e0936b48b6b2fa99a1a431bc0",
+        "heltec_v4_r8_tft_sensor-full-ota-v1.18.0.1-variants-b31d942b.bin": "064c4c98d2b6c20d366c2c5fc2a63dce2b6590dd6c70e9b112a1f17984bd3844"
+      },
+      "hardware": "heltec_v4_r8_tft",
+      "logical_target": "heltec_v4_r8_tft_sensor",
+      "markers": {
+        "display.autodetect": "meshcore.capability.display.autodetect.heltec_r8.v1",
+        "display.rotation.runtime": "meshcore.capability.display.rotation.heltec_r8.v1"
+      },
+      "ota_target": "0x5fc52bcb",
+      "ram_margin_bytes": 131472,
+      "required_heap_bytes": 142400,
+      "target": "heltec_v4_r8_tft_sensor"
+    },
+    {
+      "application_bytes": 2283496,
+      "application_sha256": "73ec156914e8f1302f42fddba02478951c3d0fd7a03cdb0d2ecff310bad02543",
+      "available_internal_bytes": 204336,
+      "embedded_version": "v1.18.0.1-variants-observer-b31d942b",
+      "files": {
+        "heltec_v4_repeater_observer_mqtt-full-usb-wifi-ota-v1.18.0.1-variants-b31d942b-merged.bin": "f4cce7eec6b06f0346cb904ec03f5728e023248eca226b946f536a93a86800e6",
+        "heltec_v4_repeater_observer_mqtt-full-usb-wifi-ota-v1.18.0.1-variants-b31d942b.bin": "73ec156914e8f1302f42fddba02478951c3d0fd7a03cdb0d2ecff310bad02543"
+      },
+      "hardware": "heltec_v4",
+      "logical_target": "heltec_v4_repeater_observer_mqtt",
+      "markers": {
+        "hardware.heltec_v4.oled_kit": "meshcore.capability.hardware.heltec_v4.oled_kit.v1"
+      },
+      "ota_target": "0xab74db9e",
+      "ram_margin_bytes": 5904,
+      "required_heap_bytes": 198432,
+      "target": "heltec_v4_repeater"
+    },
+    {
+      "application_bytes": 2281768,
+      "application_sha256": "85c2dcaa00e8b1fad223454328f855fc25b42498f335752bdd7850b19f27cb6e",
+      "available_internal_bytes": 233072,
+      "embedded_version": "v1.18.0.1-variants-b31d942b",
+      "files": {
+        "heltec_v4_tft_companion_radio_full_femon-v1.18.0.1-variants-b31d942b-merged.bin": "94ad5d1481a36714dbe7e39da15c8128b5c423ff3abcc8da4b25eb441329a088",
+        "heltec_v4_tft_companion_radio_full_femon-v1.18.0.1-variants-b31d942b.bin": "85c2dcaa00e8b1fad223454328f855fc25b42498f335752bdd7850b19f27cb6e"
+      },
+      "hardware": "heltec_v4_tft",
+      "logical_target": "heltec_v4_tft_companion_radio_full_femon",
+      "markers": {
+        "hardware.heltec_v4.tft_kit": "meshcore.capability.hardware.heltec_v4.tft_kit.v1"
+      },
+      "ota_target": "0x0",
+      "ram_margin_bytes": 68176,
+      "required_heap_bytes": 164896,
+      "target": "heltec_v4_tft_companion_radio_full_femon"
+    },
+    {
+      "application_bytes": 580640,
+      "application_sha256": "0d9fbe41f3eda4c1639ef0af36eff35d4f83779c7749c6aaf1bb89eab2daec16",
+      "available_internal_bytes": 89856,
+      "embedded_version": "v1.18.0.1-variants-b31d942b",
+      "files": {
+        "muzi_base_uno_companion_radio_full-v1.18.0.1-variants-b31d942b.uf2": "0860679f11b6c5d765a3075e6d45f685a35d88de299a16faa43659f7ff9c50f9",
+        "muzi_base_uno_companion_radio_full-v1.18.0.1-variants-b31d942b.zip": "5c649ab442a34b4e08f3cdbe57577132f279dc85c790517f7759915003729bb3"
+      },
+      "hardware": "muzi_base_uno",
+      "logical_target": "muzi_base_uno_companion_radio_full",
+      "markers": {
+        "display.autodetect": "meshcore.capability.display.autodetect.muzi_superio.v1"
+      },
+      "ota_target": "0x0",
+      "ram_margin_bytes": 32704,
+      "required_heap_bytes": 57152,
+      "target": "muzi_base_uno_companion_radio_full",
+      "uf2_end": "0xb3d00",
+      "uf2_start": "0x26000"
+    },
+    {
+      "application_bytes": 571792,
+      "application_sha256": "d5970c20227fe1b0de5ebe32abb31612609cec404e0fd818f49967a1906cd6fe",
+      "available_internal_bytes": 89936,
+      "embedded_version": "v1.18.0.1-variants-b31d942b",
+      "files": {
+        "muzi_base_duo_companion_radio_full-v1.18.0.1-variants-b31d942b.uf2": "ae9c52c008691e00e3790b39cbde8b58b8040dfc09b4e69fe1a71394276be126",
+        "muzi_base_duo_companion_radio_full-v1.18.0.1-variants-b31d942b.zip": "f4fa59ef3f403f609cef8dda521442d3363bd43ebbef3d11cea9cc3a8e79a7c5"
+      },
+      "hardware": "muzi_base_duo",
+      "logical_target": "muzi_base_duo_companion_radio_full",
+      "markers": {
+        "display.autodetect": "meshcore.capability.display.autodetect.muzi_superio.v1"
+      },
+      "ota_target": "0x0",
+      "ram_margin_bytes": 32784,
+      "required_heap_bytes": 57152,
+      "target": "muzi_base_duo_companion_radio_full",
+      "uf2_end": "0xb1a00",
+      "uf2_start": "0x26000"
+    },
+    {
+      "application_bytes": 595896,
+      "application_sha256": "91495097a5249ae422381642f9add59d881e8d5a25bb38886d461053cd78a7c8",
+      "available_internal_bytes": 81984,
+      "embedded_version": "v1.18.0.1-variants-b31d942b",
+      "files": {
+        "LilyGo_T-Echo-Lite_companion_radio_full-v1.18.0.1-variants-b31d942b.uf2": "ab7782e28dcb5db35b0eff64cd45a217c9c5546ba078874b4a3f0fc1f1a31eed",
+        "LilyGo_T-Echo-Lite_companion_radio_full-v1.18.0.1-variants-b31d942b.zip": "8338d5a1efa4c00118922e5039a66a2e5684f6bf9d25ded5986dfa5cf507e20a"
+      },
+      "hardware": "LilyGo_T-Echo-Lite",
+      "logical_target": "LilyGo_T-Echo-Lite_companion_radio_full",
+      "markers": {
+        "display.autodetect": "meshcore.capability.display.autodetect.techo_lite.v1"
+      },
+      "ota_target": "0x0",
+      "ram_margin_bytes": 28928,
+      "required_heap_bytes": 53056,
+      "target": "LilyGo_T-Echo-Lite_companion_radio_full",
+      "uf2_end": "0xb7800",
+      "uf2_start": "0x26000"
+    }
+  ],
+  "schema_version": 1,
+  "scope": "Local packaged-firmware qualification and actual-package picker replay; physical hardware tests pending.",
+  "source": "b31d942b231360386fdfb92d0561f36095fdf011",
+  "validation": {
+    "native_suites": {
+      "test_heltec_r8_display_rotation.py": {
+        "methods": 4,
+        "passed": true,
+        "seconds": 4.502
+      },
+      "test_muzi_accessory_detection.py": {
+        "methods": 3,
+        "passed": true,
+        "seconds": 1.324
+      },
+      "test_techo_lite_display_detection.py": {
+        "methods": 4,
+        "passed": true,
+        "seconds": 3.115
+      }
+    },
+    "packages_verified": 10,
+    "physical_tests_performed": false,
+    "picker_browser": {
+      "checks": [
+        "default-and-advanced:default-full",
+        "default-and-advanced:advanced-default",
+        "default-and-advanced:advanced-reduced",
+        "default-and-advanced:select-reduced",
+        "default-and-advanced:reduced-download",
+        "default-and-advanced:uncheck-returns-full",
+        "default-and-advanced:reset-full",
+        "explicit-reduced-url:url-auto-advanced",
+        "explicit-reduced-url:url-reduced-selected",
+        "explicit-reduced-url:url-reduced-download",
+        "explicit-reduced-url:url-no-unavailable",
+        "old-metadata:old-two-configurations",
+        "old-metadata:old-both-choices",
+        "old-metadata:old-not-hidden"
+      ],
+      "passed": true
+    },
+    "picker_qualified_profiles": 10,
+    "webconfig_browser": {
+      "methods": 25,
+      "passed": true,
+      "seconds": 10.37
+    },
+    "webconfig_source": {
+      "methods": 13,
+      "passed": true,
+      "seconds": 0.009
+    }
+  },
+  "version": "v1.18.0.1-variants"
+}
