@@ -581,6 +581,13 @@ Documentation route/link checks also passed in the CI-pinned renderer environmen
   authentication and browser cases. Execute migration credentials and both source
   OTA slots, actual browser upload, interruption/recovery, privileged replay
   persistence and transient guest churn.
+- Retain the [19 October XIAO S3 WIO password results](esp32_management_password_2026-10-19.md):
+  AP/password transitions, session rotation, the production browser password
+  form, warm-reboot and post-OTA persistence, and a real authenticated raw WiFi
+  upload passed at `036fb477`. Alternate-slot image readback and exact original
+  flash/runtime state plus host networking restoration also passed. This scoped
+  Full Companion result leaves the broader authentication and browser OTA
+  gates above open.
 - Execute contact-storage fault cases, LoRa full/delta OTA and SD recovery.
 - Complete Indicator external WiFi/BLE endpoint, font, NTP and visible-rendering
   checks beyond the passed LoRa mode/boot-state cycle. Resolve the ESP-NOW Full

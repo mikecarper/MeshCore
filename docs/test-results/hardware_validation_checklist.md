@@ -191,6 +191,15 @@ The [2026-10-05 V4/XIAO checkpoint](hardware_validation_esp32_web_console_ota_20
 records reproduced browser OTA failures, fixes, physical results, and remaining
 USB qualification limits. It is not a release approval.
 
+The [19 October XIAO S3 WIO password campaign](esp32_management_password_2026-10-19.md)
+records Full Companion AP/password transitions, HTTP session rotation,
+production browser password saves, warm-reboot persistence and a real
+authenticated raw WiFi upload at `036fb477`. Post-OTA password persistence,
+alternate-slot image readback, original device state and host networking all
+passed. This scoped result does not close the browser-upload gate below,
+two-source recovery-AP throttling, migration checks, or other board/role
+qualification.
+
 Host tests cannot prove USB enumeration, WiFi discovery, or an HTTP upload on
 the physical board. Before qualifying an ESP32 release, record the following
 on each available hardware family. Mark unavailable hardware as untested; a
