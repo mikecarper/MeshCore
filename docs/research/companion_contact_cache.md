@@ -214,9 +214,28 @@ partition table. Subsequent WiFi updates must fit the new slots. An
 application-only update from the ordinary single-slot Full layout cannot
 change that layout or enable WiFi OTA.
 
+## Shared contact index storage
+
+Companion and terminal-chat builds share compact contact indexes in
+`BaseChatMesh`. Tables with at most 65,535 total slots use 16-bit sort and
+matching-result entries; larger configurations retain the original `int` type.
+Contact limits, PSRAM allocation fallback and saved/wire formats are unchanged.
+
+On the existing 32-bit platforms, a static 350-contact table saves 764 bytes
+from these arrays; a static 100-contact table saves 264 bytes. A 350-contact
+PSRAM configuration saves 96 internal bytes and 716 PSRAM bytes. Cached nRF52
+records also shrink from 96 to 92 bytes by moving runtime storage bookkeeping
+into an alignment gap. The matched RAK4631 Full build saves 2,200 static RAM
+bytes in total. These figures do not describe infrastructure ACL tables.
+
+See the [2026-10-19 qualification report](../test-results/contact_memory_2026-10-19.md)
+for source-bound builds, tests and remaining board-specific memory limits.
+
 ## Regression checks
 
 ```sh
+python3 -B test/test_contact_indices.py
+python3 -B test/test_companion_contact_lifetime.py
 python3 -B test/test_contact_cache.py
 python3 -B test/test_companion_uncached_storage.py
 python3 -B test/test_companion_contact_partial_tail.py

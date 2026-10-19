@@ -864,8 +864,21 @@ class MotaSource {
 };
 ```
 
-To serve an external mota the node reads its manifest-minus-leaves + `leaves[]` into RAM (<=4 KiB for <=1024
-blocks) and streams payload blocks from the source on demand; proofs are generated from the read leaves.
+Legacy source paths retain the manifest-minus-leaves and four bytes per source
+block, bounded by `OTA_PROOFGEN_SCRATCH`, then stream payload blocks on demand.
+Non-PSRAM ESP32 Full instead retains roots of 32-leaf groups and rereads the
+selected group. Its complete workspace is bounded to 1,536 bytes while retaining
+4,096 blocks and byte-identical proofs. Partial groups use the same odd-node
+promotion as the full tree. Receive pipelines, capture, serving and wire formats
+remain unchanged; larger custom leaf limits retain the legacy path.
+
+With `OTA_BOUNDED_SOURCE_PROOFS=1`, optional `read_quantum()` and
+`read_metadata()` methods bound each metadata step. `SerialMotaSource` uses the
+current negotiated single-response capacity and rejects a chunk that no longer
+fits after a capacity change. Proof preparation yields between chunks, and
+queued jobs retain their buffers across radio backpressure. See the
+[V3 Full qualification](test-results/heltec_v3_full_memory_2026-10-19.md) for
+allocation bounds and regression coverage.
 
 ### 10.2 The `mota-seeder` transport (`MotaSeederProto.h`)
 

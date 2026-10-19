@@ -231,7 +231,12 @@ rate-window counters nor struct padding can make different rules share a slot.
 OTA leaf capacity remains controlled by `OTA_PROOFGEN_SCRATCH`, independently
 of output-buffer size. The maximum source buffers are 4 KiB plus one block on
 ordinary nRF52, 8 KiB plus one block with SD storage, and 16 KiB plus one block
-on ESP32. Generic folder sources need no output allocation for raw DATA or
+on legacy ESP32 paths. Non-PSRAM ESP32 Full uses grouped source proofs instead:
+the complete workspace is bounded to 1,536 bytes, while retaining the same
+4,096-block source limit. The check still adds one output block and allocation
+metadata; safety reserves and stacks are unchanged. PSRAM and other platforms
+retain the legacy policy. Explicit larger custom leaf limits also keep the
+legacy implementation. Generic folder sources need no output allocation for raw DATA or
 proofs; own-image raw serving retains its caller-owned compatibility buffer.
 Its nRF52 allowance remains in the budget even when the device encoder is off.
 Queued DATA, PROOF and MANIFEST responses pin their buffers through radio
@@ -812,3 +817,46 @@ images fit. These results qualify linked capacity and host behavior, not
 physical USB/RF/MQTT integration, board boot/sleep or a sustained-load soak.
 The Mini Repeater remains cable-only (`--allow-no-ota`); no hardware was
 flashed, no release was published and existing outputs were not overwritten.
+
+### Shared contact RAM and RAK4631 Full recheck, 2026-10-19 UTC
+
+Companion and `simple_secure_chat` contact sort/match indexes now use `uint16_t`
+when the complete table has at most 65,535 slots; larger configurations retain
+`int`. Static 350-contact targets save 764 internal bytes; PSRAM targets save
+96 internal and 716 external bytes; static 100-contact targets save 264 internal
+bytes. Cached nRF52 record placement also saves four bytes per runtime contact.
+Capacities, serialization, queues, stacks, features and fallback behavior remain.
+
+At `aed4c22e5`, matched against `31e693ec2`, RAK4631 Full saves 2,200 static RAM
+bytes and 488 actual DFU application bytes. Its application is 712,112 of 712,704
+bytes (592 free); modeled RAM admission margin rises from 4,516 to 6,716. CRC
+sharing and Reader packing preserve formats/text; Full features and existing SD
+support remain enabled. These are linked/build capacities, not running-heap or
+physical storage measurements.
+
+Five final-source canonical packages pass across nRF52, ESP32 PSRAM, RP2040 and
+STM32. RAK3x72 USB has four actual BIN bytes free, requiring unchanged hard gates.
+At that revision, V3 Full fails RAM admission on both baseline and final source; its
+100-contact wrapper gains 264 bytes, reducing the deficit from 21,288 to 21,024.
+The direct 350-contact V3 terminal default build passes separately; it is not a
+canonical Full or release-version/preset package. No hardware was flashed.
+See the [qualification report](../test-results/contact_memory_2026-10-19.md) and
+its source-bound artifacts, software coverage and limits.
+
+### Heltec V3 Full bounded-source repair, 2026-10-19 UTC
+
+At `eb9259f2a`, canonical V3 Full passes with 189,616 internal bytes available
+against 183,584 required: 6,032 bytes of modeled margin. The pinned NimBLE
+adapter preserves 15 saved phones and 30 CCCDs. Existing Bluedroid pairings need
+one-time re-pairing. Its 100 contacts, 40 channels, 256 offline frames, MQTT slot,
+Full features and stack sizes remain unchanged.
+
+Grouped source proofs retain the same 4,096-block capacity with a lazy workspace
+of 1,004 bytes, statically bounded to 1,536. The guard replaces only the old
+16,384-byte leaf allocation with this bound; the output block, metadata,
+transient margin and all other allowances remain additive. Legacy/PSRAM paths
+and larger custom leaf limits retain the existing policy.
+
+The clean V3 package and constrained RAK regressions pass; physical V3 testing
+still awaits USB attachment. See the [V3 qualification report](../test-results/heltec_v3_full_memory_2026-10-19.md)
+for artifact hashes, tests, upgrade behavior and hardware limits.

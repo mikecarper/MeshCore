@@ -1,0 +1,414 @@
+{
+  "schema_version": 1,
+  "date_utc": "2026-10-19",
+  "source_commit": "aed4c22e51201f0ee3586e26e1007194a74b015d",
+  "baseline_source_commit": "31e693ec209109a930dcf8aeef89dacbe9116a63",
+  "hardware_flashed": false,
+  "release_published": false,
+  "platformio_single_process": true,
+  "final_matrix_complete": true,
+  "all_final_matrix_targets_passed": false,
+  "packages": [
+    {
+      "requested_target": "RAK_4631_companion_radio_full",
+      "passed": true,
+      "exit_code": 0,
+      "packaged_target": "RAK_4631_companion_radio_full",
+      "build_profile": "full",
+      "pio_environment": "RAK_4631_companion_radio_full",
+      "elf_sha256": "f002455df52a9cdf4278461685eaee3082cc14752f741428f6dfe2dcdc2bb2a7",
+      "all_memory_bound_file_hashes_match": true,
+      "memory_manifest_sha256": "073bd0eca6c9b233fcb09080991850b61806fddea3a0af31c52b0feb8bed9762",
+      "files": {
+        "RAK_4631_companion_radio_full-v1.18.0.1-halo-keymind-cascade-dev-aed4c22e.uf2": "31d92e0c48378932ec1465bd5542ca696dcf133a9f6555fd9d513691e1fafec0",
+        "RAK_4631_companion_radio_full-v1.18.0.1-halo-keymind-cascade-dev-aed4c22e.zip": "d99d904430de75dd5e507a530267d933b8f0bda762afe86cdb150209f4df4499",
+        "RAK_4631_companion_radio_full-v1.18.0.1-halo-keymind-cascade-dev-aed4c22e.capabilities.json": "d74ca93392bad5ab7cdbe8e07d24a905dbb570cbea76063ad8d9ab34be9cc788",
+        "RAK_4631_companion_radio_full-v1.18.0.1-halo-keymind-cascade-dev-aed4c22e.meshtext-license.txt": "ba558609720fbff1481e236462eea2f9e08a73c1f3c2fd486ea4d9e1d0a6d58f"
+      },
+      "capabilities": [
+        "profile.full",
+        "companion.meshtext.channel_text",
+        "ota.update.bluetooth",
+        "companion.temp_radio",
+        "companion.ota_cli",
+        "companion.usb",
+        "companion.bluetooth",
+        "companion.usb_logging",
+        "companion.usb_mota_source",
+        "companion.mota_sender",
+        "companion.dedicated_usb_logging",
+        "companion.ble_mota_source",
+        "logging.usb.packets",
+        "logging.usb.control"
+      ],
+      "capability_verification_count": 13,
+      "capability_verification_passed": true,
+      "ordinary_static_ram_bytes": 154084,
+      "static_sections": {
+        ".data": 1660,
+        ".bss": 152424
+      },
+      "static_sections_scope": "ELF .data plus ordinary .bss only; excludes separately named/reserved arenas; null when these exact sections are absent",
+      "available_internal_bytes": 81292,
+      "required_heap_bytes": 74576,
+      "ram_admission_margin_bytes": 6716,
+      "sd_fat_volume_and_files_reserve_bytes": 2048,
+      "application_bytes": 712112,
+      "application_sha256": "c2080afe8874c71eb9a5d1fb253fec06463cac8a774fc776ff46453abf2da420",
+      "application_source": "DFU application BIN extracted from ZIP",
+      "uf2_matches_DFU_application": true,
+      "uf2_blocks": 2782,
+      "initialized_ELF_flash_load_bytes_match": true,
+      "initialized_ELF_flash_load_bytes_compared": 712032,
+      "application_capacity_bytes": 712704,
+      "application_margin_bytes": 592
+    },
+    {
+      "requested_target": "RAK_3401_companion_radio_usb",
+      "passed": true,
+      "exit_code": 0,
+      "packaged_target": "RAK_3401_companion_radio_usb",
+      "build_profile": "auto",
+      "pio_environment": "RAK_3401_companion_radio_usb",
+      "elf_sha256": "0d4a8c90601fc50b4c44f6ee3f315cc2bdfb5b5365cec2efed9d09d54189b9e2",
+      "all_memory_bound_file_hashes_match": true,
+      "memory_manifest_sha256": "e22c31d59175cc10c4ecb4f8d04430a859d4e32b450d8f1cd50480f012fd690d",
+      "files": {
+        "RAK_3401_companion_radio_usb-v1.18.0.1-halo-keymind-cascade-dev-aed4c22e.uf2": "94469781e5550ff41469a5bf80f6f4dba5fc5d2aa2f9f3e073834b06137ef3d0",
+        "RAK_3401_companion_radio_usb-v1.18.0.1-halo-keymind-cascade-dev-aed4c22e.zip": "0709ee56d7f35ac1c9cfa8e8c997b5e2ebd5990c37d044de0e41c6e638f29587",
+        "RAK_3401_companion_radio_usb-v1.18.0.1-halo-keymind-cascade-dev-aed4c22e.capabilities.json": "088d17a9b1de74a851c5d17807a95a27cb4622e24fa05751ff0ef753b21f5ba7",
+        "RAK_3401_companion_radio_usb-v1.18.0.1-halo-keymind-cascade-dev-aed4c22e.meshtext-license.txt": "ba558609720fbff1481e236462eea2f9e08a73c1f3c2fd486ea4d9e1d0a6d58f"
+      },
+      "capabilities": [
+        "profile.auto",
+        "ota.update.bluetooth"
+      ],
+      "capability_verification_count": 1,
+      "capability_verification_passed": true,
+      "ordinary_static_ram_bytes": 136564,
+      "static_sections": {
+        ".data": 1536,
+        ".bss": 135028
+      },
+      "static_sections_scope": "ELF .data plus ordinary .bss only; excludes separately named/reserved arenas; null when these exact sections are absent",
+      "available_internal_bytes": 98812,
+      "required_heap_bytes": 47872,
+      "ram_admission_margin_bytes": 50940,
+      "sd_fat_volume_and_files_reserve_bytes": 0,
+      "application_bytes": 523864,
+      "application_sha256": "a7fa19297c0a9a7f34162fbf666c2a9275794e1ff15b68aa0159817fae7a3bc2",
+      "application_source": "DFU application BIN extracted from ZIP",
+      "uf2_matches_DFU_application": true,
+      "uf2_blocks": 2047,
+      "initialized_ELF_flash_load_bytes_match": true,
+      "initialized_ELF_flash_load_bytes_compared": 523864
+    },
+    {
+      "requested_target": "Heltec_v3_companion_radio_full",
+      "passed": false,
+      "exit_code": 1
+    },
+    {
+      "requested_target": "heltec_v4_2_v4_3_companion_radio_full_femon",
+      "passed": true,
+      "exit_code": 0,
+      "packaged_target": "heltec_v4_2_v4_3_companion_radio_full_femon",
+      "build_profile": "full",
+      "pio_environment": "heltec_v4_2_v4_3_companion_radio_full_femon",
+      "elf_sha256": "2c50274bdc350696299819962592032fab540e63f583f2909baf227f875e8219",
+      "all_memory_bound_file_hashes_match": true,
+      "memory_manifest_sha256": "6bdcb095bed1fd784169d3986df1ff4212e84ec94bc69c032a0d2581fc79591f",
+      "files": {
+        "heltec_v4_2_v4_3_companion_radio_full_femon-v1.18.0.1-halo-keymind-cascade-dev-aed4c22e.bin": "ba264695b5093c643f726d970ef7cbfb29207f86454de8f924220276d0d26d70",
+        "heltec_v4_2_v4_3_companion_radio_full_femon-v1.18.0.1-halo-keymind-cascade-dev-aed4c22e-merged.bin": "f433d9275edb0b0ef470a2866f82ef948a87b7e328f2098f1e06876e8ef6641c",
+        "heltec_v4_2_v4_3_companion_radio_full_femon-v1.18.0.1-halo-keymind-cascade-dev-aed4c22e.capabilities.json": "08dcf0def4a66ebe628df3635cc2eb4f6e1eeea2b78abe550d1533e4601e2a26",
+        "heltec_v4_2_v4_3_companion_radio_full_femon-v1.18.0.1-halo-keymind-cascade-dev-aed4c22e.meshtext-license.txt": "ba558609720fbff1481e236462eea2f9e08a73c1f3c2fd486ea4d9e1d0a6d58f"
+      },
+      "capabilities": [
+        "profile.full",
+        "companion.meshtext.channel_text",
+        "companion.temp_radio",
+        "companion.ota_cli",
+        "companion.usb",
+        "companion.bluetooth",
+        "companion.usb_logging",
+        "companion.usb_mota_source",
+        "companion.mota_sender",
+        "companion.network_terminal",
+        "companion.wifi_ota_seeder",
+        "web.webconfig",
+        "web.unconfigured_setup_cutoff",
+        "companion.direct_mqtt",
+        "logging.usb.packets",
+        "logging.usb.control",
+        "companion.app_wifi.get_enabled",
+        "companion.app_wifi.set_enabled",
+        "companion.app_wifi.get_ssid",
+        "companion.app_wifi.set_ssid",
+        "companion.app_wifi.get_password",
+        "companion.app_wifi.set_password",
+        "companion.app_wifi.get_status",
+        "companion.app_wifi.get_ip",
+        "ota.update.wifi"
+      ],
+      "capability_verification_count": 24,
+      "capability_verification_passed": true,
+      "ordinary_static_ram_bytes": null,
+      "static_sections": {},
+      "static_sections_scope": "ELF .data plus ordinary .bss only; excludes separately named/reserved arenas; null when these exact sections are absent",
+      "available_internal_bytes": 228872,
+      "required_heap_bytes": 194336,
+      "ram_admission_margin_bytes": 34536,
+      "sd_fat_volume_and_files_reserve_bytes": 0,
+      "application_bytes": 2558856,
+      "application_sha256": "ba264695b5093c643f726d970ef7cbfb29207f86454de8f924220276d0d26d70",
+      "application_source": "application BIN"
+    },
+    {
+      "requested_target": "Xiao_rp2040_companion_radio_usb",
+      "passed": true,
+      "exit_code": 0,
+      "packaged_target": "Xiao_rp2040_companion_radio_usb",
+      "build_profile": "auto",
+      "pio_environment": "Xiao_rp2040_companion_radio_usb",
+      "elf_sha256": "832133d6070f4b1b86ac6a9cbd691b5004025e19f7d853ca0cab2d0755284def",
+      "all_memory_bound_file_hashes_match": true,
+      "memory_manifest_sha256": "ecd592a61157de92ceb547984baf34f7a55f1fb8b218e6fece487f4ee4897f08",
+      "files": {
+        "Xiao_rp2040_companion_radio_usb-v1.18.0.1-halo-keymind-cascade-dev-aed4c22e.bin": "757ccb5adb387dab0fccca1793ed70e0713c8ff13e5801763c8a9250f102d806",
+        "Xiao_rp2040_companion_radio_usb-v1.18.0.1-halo-keymind-cascade-dev-aed4c22e.uf2": "8d9386975f8725f2f7bbe6fb1e9a5f81dff84134c710272e95759bd7872ac56e",
+        "Xiao_rp2040_companion_radio_usb-v1.18.0.1-halo-keymind-cascade-dev-aed4c22e.capabilities.json": "f182d520112f6667afdb45eb64197aa025df44b567dac8e370c6892de2858b34",
+        "Xiao_rp2040_companion_radio_usb-v1.18.0.1-halo-keymind-cascade-dev-aed4c22e.meshtext-license.txt": "ba558609720fbff1481e236462eea2f9e08a73c1f3c2fd486ea4d9e1d0a6d58f"
+      },
+      "capabilities": [
+        "profile.auto"
+      ],
+      "capability_verification_count": 0,
+      "capability_verification_passed": true,
+      "ordinary_static_ram_bytes": 100168,
+      "static_sections": {
+        ".data": 5372,
+        ".bss": 94796
+      },
+      "static_sections_scope": "ELF .data plus ordinary .bss only; excludes separately named/reserved arenas; null when these exact sections are absent",
+      "available_internal_bytes": 161748,
+      "required_heap_bytes": 17408,
+      "ram_admission_margin_bytes": 144340,
+      "sd_fat_volume_and_files_reserve_bytes": 0,
+      "application_bytes": 472204,
+      "application_sha256": "757ccb5adb387dab0fccca1793ed70e0713c8ff13e5801763c8a9250f102d806",
+      "application_source": "application BIN"
+    },
+    {
+      "requested_target": "RAK_3x72_companion_radio_usb",
+      "passed": true,
+      "exit_code": 0,
+      "packaged_target": "RAK_3x72_companion_radio_usb",
+      "build_profile": "auto",
+      "pio_environment": "RAK_3x72_companion_radio_usb",
+      "elf_sha256": "257b0e46be99095b1e9425bdb581b4639e5ee4f126b524ac997c4ffe123865ac",
+      "all_memory_bound_file_hashes_match": true,
+      "memory_manifest_sha256": "19c042cf40b21a068dc83a7e3177c2068167379d2f9f9c1a1a431734491de0a3",
+      "files": {
+        "RAK_3x72_companion_radio_usb-v1.18.0.1-halo-keymind-cascade-dev-aed4c22e.bin": "3b45baa64a7a5a6bbcce18dc17db70c46afa4321e7fd4369fa47b45d53fa73d0",
+        "RAK_3x72_companion_radio_usb-v1.18.0.1-halo-keymind-cascade-dev-aed4c22e.hex": "bb8198b4e06fe0133e70db53eafc33bfe2acfcafabd26b75ddec76c214b0a861",
+        "RAK_3x72_companion_radio_usb-v1.18.0.1-halo-keymind-cascade-dev-aed4c22e.capabilities.json": "5df1c74616a9fbcf4253dc5294c2367551b1f78ae19e391e7238aaa4e633edcc"
+      },
+      "capabilities": [
+        "profile.auto"
+      ],
+      "capability_verification_count": 0,
+      "capability_verification_passed": true,
+      "ordinary_static_ram_bytes": 39992,
+      "static_sections": {
+        ".data": 424,
+        ".bss": 39568
+      },
+      "static_sections_scope": "ELF .data plus ordinary .bss only; excludes separately named/reserved arenas; null when these exact sections are absent",
+      "available_internal_bytes": 24520,
+      "required_heap_bytes": 17408,
+      "ram_admission_margin_bytes": 7112,
+      "sd_fat_volume_and_files_reserve_bytes": 0,
+      "application_bytes": 229372,
+      "application_sha256": "3b45baa64a7a5a6bbcce18dc17db70c46afa4321e7fd4369fa47b45d53fa73d0",
+      "application_source": "application BIN",
+      "application_capacity_bytes": 229376,
+      "application_margin_bytes": 4
+    }
+  ],
+  "linked_checks": {
+    "crypto": {
+      "passed": true,
+      "elf_sha256": "f002455df52a9cdf4278461685eaee3082cc14752f741428f6dfe2dcdc2bb2a7",
+      "base_table_bytes": 960,
+      "reader_data_bytes": 38293,
+      "vectors": [
+        {
+          "rfc8032_vector": 1,
+          "keypair_stack_bytes": 1152,
+          "sign_stack_bytes": 1928
+        },
+        {
+          "rfc8032_vector": 2,
+          "keypair_stack_bytes": 1152,
+          "sign_stack_bytes": 1928
+        }
+      ],
+      "zero_initialized_path_cache_bytes": 5780,
+      "stack_limit_bytes": 2048,
+      "scope": "Crypto function frames only; excludes caller/ISR/task stacks and physical timing.",
+      "evidence_json_sha256": "8ba582cd89bd4d182d5f9e03c70aeeddfee337b401987debcf3f481ec7c59d4e"
+    },
+    "workspace": {
+      "passed": true,
+      "elf_sha256": "f002455df52a9cdf4278461685eaee3082cc14752f741428f6dfe2dcdc2bb2a7",
+      "queue_lifetimes": 4,
+      "workspace_address": "0x200212d4",
+      "protected_sd_auth_range": [
+        "0x20006008",
+        "0x20006050"
+      ],
+      "scope": "Linked ARM empty-queue OTA acquisition/release; no hardware qualification.",
+      "evidence_json_sha256": "658e56af82decc3648a99ef432f547577faeb7139f2bd34e74d6744fb0d8a21d"
+    },
+    "reader": {
+      "passed": true,
+      "elf_sha256": "f002455df52a9cdf4278461685eaee3082cc14752f741428f6dfe2dcdc2bb2a7",
+      "references_fully_reconstructed": 879,
+      "calls": 1091,
+      "canonical_bytes_checked": 95689,
+      "maximum_reply_verse_stack_bytes": 6016,
+      "caller_reserve_bytes": 1536,
+      "loop_stack_bytes": 8192,
+      "total_arm_instructions": 380103543,
+      "checker_sha256": "02d0eb4a553c9588c698ca5013c269fae16f863d864b1cac521a18fba065f1be",
+      "canonical_source_sha256": "916bf9d1feae0ad410d69f61e6c5f328ac6acba10651d751b5bb29719732c49e",
+      "partition_count": 4,
+      "disjoint_reference_coverage_verified": true,
+      "all_pages": true,
+      "evidence_json_sha256": "740aa99a7a514862f6e597efe56ebca47580416dae28db48016ca333d21d2fe8"
+    }
+  },
+  "adjacent_native_checks": {
+    "Reader_tests": 16,
+    "Beacon_tests": 19,
+    "radio_profile_matrix_scenarios": 32,
+    "Morse_tests": 7,
+    "persistent_format_tests": 16
+  },
+  "canonical_V3_Full_failure": {
+    "stage": "runtime RAM admission",
+    "available_internal_bytes": 177408,
+    "required_heap_bytes": 198432,
+    "shortfall_bytes": 21024,
+    "largest_internal_region_bytes": 144640,
+    "matched_baseline_control": "verified preexisting RAM admission failure",
+    "baseline_source_commit": "31e693ec209109a930dcf8aeef89dacbe9116a63",
+    "baseline_available_internal_bytes": 177144,
+    "baseline_required_heap_bytes": 198432,
+    "baseline_shortfall_bytes": 21288,
+    "available_improvement_bytes": 264,
+    "profile_contact_capacity": 100,
+    "final_failed_ELF_hash": null,
+    "failed_ELF_evidence_scope": "final failed ELF was cleaned by later build; current failure is log-bound only",
+    "direct_terminal_control": "PASS; direct default build, not a canonical Full package",
+    "baseline_build_log_sha256": "f5f95ec53b9e472cdd5d46f5ec45d61de68e5eace3c2ead53dec7209e5d0f7c8",
+    "final_build_log_sha256": "732580a8d70c65b73023aec736a95e961da2451fc7ac9a38efeba9a091027dc4"
+  },
+  "focused_contact_checks": {
+    "unittest_methods_passed": 26,
+    "method_breakdown": {
+      "cache_and_persistence_harness": 3,
+      "persistence_contract": 11,
+      "stream_contract": 7,
+      "index_and_layout": 2,
+      "lifetime_matrix": 1,
+      "uncached_storage_RP2040_STM32": 2
+    },
+    "ASan_UBSan_runtime_configurations": 24,
+    "runtime_configuration_breakdown": {
+      "cache": 3,
+      "index": 11,
+      "lifetime": 8,
+      "uncached": 2
+    },
+    "actual_ContactInfo_compile_only_layouts": 8,
+    "lifetime_assertions": 284,
+    "contact_sources_unchanged_since": "b0f14161506e2a5f6acfbb4b0b1723e7bd7689c3",
+    "evidence_scope": "completed tool transcript; no standalone contact log retained"
+  },
+  "limits": [
+    "Software/build/linked-ARM qualification only; no board flashed",
+    "RAM admission and static section totals are not running free heap or physical high-water",
+    "Physical SD/storage, contact/client behavior, PSRAM pressure, power and radio operation untested"
+  ],
+  "historical_failures": [
+    "Intermediate b0f141615 small STM32 build failed size admission; retained separately from final-source matrix",
+    "Legacy Heltec_v3_companion_radio_ble has identical five WiFiSetupPortal/WiFiOtaSeeder unresolved symbols on matched baseline and intermediate revision",
+    "Initial V4 invocation rejected unsupported --full-exact argument before target compilation"
+  ],
+  "baseline_RAK4631_Full": {
+    "packaged_target": "RAK_4631_companion_radio_full",
+    "build_profile": "full",
+    "pio_environment": "RAK_4631_companion_radio_full",
+    "elf_sha256": "4623af75c924a830415c0a5fd186569b4bbff35a9ce1084438eafe145282058e",
+    "all_memory_bound_file_hashes_match": true,
+    "memory_manifest_sha256": "fc1dad5cab6a7deae4ea4042b26dc20231d82710e627fa6e33aef7efecf36c41",
+    "files": {
+      "RAK_4631_companion_radio_full-v1.18.0.1-halo-keymind-cascade-dev-31e693ec.uf2": "6039f7fe532f121100c1734c9f292ec5f7d7c3ead50b06e7e283fe93569f3fff",
+      "RAK_4631_companion_radio_full-v1.18.0.1-halo-keymind-cascade-dev-31e693ec.zip": "ef641d49dc91db61f0a49912f191f6d81c2887a69950fa66a612f81b31f0e142",
+      "RAK_4631_companion_radio_full-v1.18.0.1-halo-keymind-cascade-dev-31e693ec.capabilities.json": "91711e0da1a8f3ba4b99c24749c1ac78f0862534f436233ff32c867ccbeb9cc9",
+      "RAK_4631_companion_radio_full-v1.18.0.1-halo-keymind-cascade-dev-31e693ec.meshtext-license.txt": "ba558609720fbff1481e236462eea2f9e08a73c1f3c2fd486ea4d9e1d0a6d58f"
+    },
+    "capabilities": [
+      "profile.full",
+      "companion.meshtext.channel_text",
+      "ota.update.bluetooth",
+      "companion.temp_radio",
+      "companion.ota_cli",
+      "companion.usb",
+      "companion.bluetooth",
+      "companion.usb_logging",
+      "companion.usb_mota_source",
+      "companion.mota_sender",
+      "companion.dedicated_usb_logging",
+      "companion.ble_mota_source",
+      "logging.usb.packets",
+      "logging.usb.control"
+    ],
+    "capability_verification_count": 13,
+    "capability_verification_passed": true,
+    "ordinary_static_ram_bytes": 156284,
+    "static_sections": {
+      ".data": 1660,
+      ".bss": 154624
+    },
+    "static_sections_scope": "ELF .data plus ordinary .bss only; excludes separately named/reserved arenas; null when these exact sections are absent",
+    "available_internal_bytes": 79092,
+    "required_heap_bytes": 74576,
+    "ram_admission_margin_bytes": 4516,
+    "sd_fat_volume_and_files_reserve_bytes": 2048,
+    "application_bytes": 712600,
+    "application_sha256": "520cf40ec5ada891d3fe8081b23546ce777c712383f0479292bb8fac0017d4d7",
+    "application_source": "DFU application BIN extracted from ZIP",
+    "uf2_matches_DFU_application": true,
+    "uf2_blocks": 2784,
+    "initialized_ELF_flash_load_bytes_match": true,
+    "initialized_ELF_flash_load_bytes_compared": 712520,
+    "application_capacity_bytes": 712704,
+    "application_margin_bytes": 104
+  },
+  "direct_terminal_build": {
+    "target": "Heltec_v3_terminal_chat",
+    "source_commit": "aed4c22e51201f0ee3586e26e1007194a74b015d",
+    "passed": true,
+    "scope": "direct PlatformIO default environment; not a firmware-picker Full or version/preset-qualified release package",
+    "contact_capacity": 350,
+    "elf_sha256": "1a193ae1bee829d0bf7d140310b8487d2a4671f0c85715d16cfb764850e06cb6",
+    "memory_manifest_sha256": "a74079788410d8cdf11e686b62f8aee80537a9743cd0590bf4caf069ab7d038d",
+    "available_internal_bytes": 263800,
+    "required_heap_bytes": 77856,
+    "ram_admission_margin_bytes": 185944,
+    "build_log_sha256": "31d410458e6e6cd87bce96019e1ce655ab698eeb5e5d720987461c7be07f3fdf"
+  }
+}

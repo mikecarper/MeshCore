@@ -60,6 +60,8 @@ Completed validation reports, experiments, and test guides are collected here. O
 
 ## Build, storage, memory, and checklists
 
+- [Shared contact RAM savings and RAK4631 Full qualification, 2026-10-19](contact_memory_2026-10-19.md)
+- [Heltec V3 Full memory qualification, 2026-10-19](heltec_v3_full_memory_2026-10-19.md)
 - [Personal room mailbox checks](room_mailboxes.md)
 - [Stock nRF52 bootloader version audit](bootloader_version_stock_audit.md)
 - [CLI setting dispatch audit](cli_settings_audit.md)

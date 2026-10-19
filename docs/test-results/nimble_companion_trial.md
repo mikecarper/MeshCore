@@ -4,6 +4,12 @@
 
 # ESP32-S3 NimBLE Full Companion trial
 
+Canonical Heltec V3 Full now uses the same pinned NimBLE backend, preserving
+its existing 15 saved phones and both notification subscriptions per phone.
+Its [Full memory qualification](heltec_v3_full_memory_2026-10-19.md) is separate
+from the optional trials below. Switching from Bluedroid requires forgetting
+the old phone pairing and pairing again; stored bonds are not migrated.
+
 These optional builds use NimBLE-Arduino 2.5.1 with the existing ESP32 Arduino
 2.0.17 toolchain. They are hardware qualification builds, outside the normal
 release matrix and firmware picker.
