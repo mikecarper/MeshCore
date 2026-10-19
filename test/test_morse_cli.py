@@ -11,6 +11,37 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class MorseCLITests(unittest.TestCase):
+    def test_settings_codec_matches_independent_images_and_unaligned_input(self):
+        cases = []
+        for frequency in (100000, 0x020304, 902321, 1000000):
+            for speed in (1, 25, 60):
+                prefix = b"MC\x01" + bytes([speed]) + frequency.to_bytes(4, "little")
+                golden = prefix + (zlib.crc32(prefix) ^ 0xffffffff).to_bytes(4, "little")
+                cases.append("{%d,%d,{%s}}" % (
+                    frequency, speed, ",".join(str(byte) for byte in golden)))
+        code = r'''
+#include <helpers/MorseSettings.h>
+#include <cassert>
+struct Case { uint32_t frequency; uint8_t speed; uint8_t expected[12]; };
+int main() {
+  const Case cases[] = {@CASES@};
+  for (const auto& item : cases) {
+    mesh::MorseSettings prefs;
+    prefs.frequency_khz = item.frequency; prefs.wpm = item.speed;
+    uint8_t encoded[mesh::MorseSettingsImageSize];
+    mesh::encodeMorseSettings(prefs, encoded);
+    assert(memcmp(encoded, item.expected, sizeof(encoded)) == 0);
+    alignas(4) uint8_t unaligned[13];
+    memcpy(unaligned + 1, item.expected, sizeof(item.expected));
+    mesh::MorseSettings decoded;
+    assert(mesh::decodeMorseSettings(unaligned + 1, sizeof(item.expected), decoded));
+    assert(decoded.frequency_khz == item.frequency && decoded.wpm == item.speed);
+  }
+}
+'''.replace("@CASES@", ",".join(cases))
+        fs_mock = (ROOT / "test/fixtures/radio_profiles/mocks/helpers/IdentityStore.h").read_text(encoding="ascii")
+        compile_run(self, code, headers={"helpers/IdentityStore.h": fs_mock})
+
     def test_exact_shared_handler_strict_arguments_bounded_replies_and_rollback(self):
         code = (ROOT / "test/fixtures/morse_cli.cpp").read_text(encoding="ascii")
         fs_mock = (ROOT / "test/fixtures/radio_profiles/mocks/helpers/IdentityStore.h").read_text(encoding="ascii")

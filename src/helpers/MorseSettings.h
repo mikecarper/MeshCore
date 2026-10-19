@@ -34,26 +34,21 @@ inline uint32_t morseSettingsCRC(const uint8_t* data, size_t size) {
 inline void encodeMorseSettings(const MorseSettings& prefs,
                                 uint8_t (&image)[MorseSettingsImageSize]) {
   image[0] = 'M'; image[1] = 'C'; image[2] = 1; image[3] = prefs.wpm;
-  for (unsigned i = 0; i < 4; ++i)
-    image[4 + i] = uint8_t(prefs.frequency_khz >> (i * 8));
+  storage::writeLE32(image + 4, prefs.frequency_khz);
   const uint32_t crc = morseSettingsCRC(image, 8);
-  for (unsigned i = 0; i < 4; ++i) image[8 + i] = uint8_t(crc >> (i * 8));
+  storage::writeLE32(image + 8, crc);
 }
 
 inline bool decodeMorseSettings(const uint8_t* image, size_t size,
                                 MorseSettings& prefs) {
   if (!image || size != MorseSettingsImageSize || image[0] != 'M'
       || image[1] != 'C' || image[2] != 1) return false;
-  uint32_t frequency = 0, crc = 0;
-  for (unsigned i = 0; i < 4; ++i) {
-    frequency |= uint32_t(image[4 + i]) << (i * 8);
-    crc |= uint32_t(image[8 + i]) << (i * 8);
-  }
+  const uint32_t crc = morseSettingsCRC(image, 8);
+  if (crc != storage::readLE32(image + 8)) return false;
   MorseSettings candidate;
-  candidate.frequency_khz = frequency;
+  candidate.frequency_khz = storage::readLE32(image + 4);
   candidate.wpm = image[3];
-  if (crc != morseSettingsCRC(image, 8) || !validMorseSettings(candidate))
-    return false;
+  if (!validMorseSettings(candidate)) return false;
   prefs = candidate;
   return true;
 }

@@ -131,8 +131,8 @@ inline void writeLE32(uint8_t* dest, uint32_t value) {
 inline uint32_t updateCRC32(uint32_t crc, const uint8_t* data, size_t len) {
   while (len-- > 0) {
     crc ^= *data++;
-    for (uint8_t bit = 0; bit < 8; bit++) {
-      crc = (crc >> 1) ^ ((crc & 1) ? 0xEDB88320UL : 0);
+    for (unsigned bit = 0; bit < 8; bit++) {
+      crc = (crc >> 1) ^ (0xEDB88320UL & (0U - (crc & 1U)));
     }
   }
   return crc;

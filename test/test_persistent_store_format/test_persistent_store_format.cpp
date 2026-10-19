@@ -36,6 +36,33 @@ TEST(PersistentStoreFormat, CRCDetectsPayloadChanges) {
   EXPECT_EQ(split, expected);
 }
 
+TEST(PersistentStoreFormat, CRCMatchesIndependentVectorsAndEverySplit) {
+  EXPECT_EQ(updateCRC32(0xFFFFFFFFUL, nullptr, 0), 0xFFFFFFFFUL);
+  EXPECT_EQ(updateCRC32(0x12345678UL, nullptr, 0), 0x12345678UL);
+  const uint8_t check[] = "123456789";
+  EXPECT_EQ(updateCRC32(0xFFFFFFFFUL, check, sizeof(check) - 1),
+            0x340BC6D9UL);
+
+  uint8_t payload[256];
+  for (unsigned i = 0; i < sizeof(payload); ++i) payload[i] = uint8_t(i);
+  // Independent Python zlib vectors, converted to the store's no-final-xor
+  // convention: zlib.crc32(payload, seed ^ 0xffffffff) ^ 0xffffffff.
+  const struct { uint32_t seed, expected; } vectors[] = {
+      {0xFFFFFFFFUL, 0xD6FA738CUL},
+      {0x00000000UL, 0x2493092BUL},
+      {0x12345678UL, 0x8906DCD5UL},
+  };
+  for (const auto& vector : vectors) {
+    EXPECT_EQ(updateCRC32(vector.seed, payload, sizeof(payload)),
+              vector.expected);
+    for (size_t split = 0; split <= sizeof(payload); ++split) {
+      uint32_t crc = updateCRC32(vector.seed, payload, split);
+      crc = updateCRC32(crc, payload + split, sizeof(payload) - split);
+      EXPECT_EQ(crc, vector.expected);
+    }
+  }
+}
+
 TEST(PersistentStoreFormat, OccupancyCanBeDerivedFromCrcProtectedRecords) {
   uint8_t empty[CONTACT_RECORD_SIZE] = {};
   EXPECT_FALSE(contactRecordHasData(empty));
