@@ -246,7 +246,10 @@ class HeltecR8DisplayDetectionTest(unittest.TestCase):
                              "Adafruit_GFX.h": "#pragma once\n",
                              "Adafruit_ST7789.h": PANEL, "main.cpp": MAIN}.items():
             (directory / name).write_text(source)
-        binary = directory / "probe"
+        if "-DLILYGO_TDECK" in flags:
+            from test_tdeck_display_cooperation import extend_legacy_stubs
+            extend_legacy_stubs(directory)
+        binary = directory / ("probe.exe" if os.name == "nt" else "probe")
         sanitizer = (["-fsanitize=address,undefined", "-fno-sanitize-recover=all", "-fno-pie", "-no-pie"]
                      if sys.platform.startswith("linux") else [])
         compiled = subprocess.run([

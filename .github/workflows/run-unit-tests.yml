@@ -969,6 +969,7 @@ jobs:
           python3 -B test/test_wireless_tracker_display_detection.py -v
           python3 -B test/test_heltec_r8_display_detection.py -v
           python3 -B test/test_heltec_r8_display_rotation.py -v
+          python3 -B test/test_tdeck_display_cooperation.py -v
           python3 -B test/test_muzi_accessory_detection.py -v
           python3 -B test/test_techo_lite_display_detection.py -v
           python3 -B test/test_companion_headless_buttons.py -v
