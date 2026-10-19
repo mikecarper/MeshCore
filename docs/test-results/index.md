@@ -24,6 +24,8 @@ Completed validation reports, experiments, and test guides are collected here. O
 - [Shared radio/radio2 chirp timing and preamble warnings](radio_chirp_math_validation.md)
 - [Automatic dwell policy: 4.6 chirps on both profiles](radio_dwell_policy_validation.md)
 - [SX1262 profile-switch validation](radio_profile_switch_validation.md)
+- [T-Deck radio2 scheduling during display redraw](tdeck_radio2_display.md)
+- [T-Deck retune command, priority and SPI experiments](tdeck_radio2_retune_experiments.md)
 - [Dual-profile receive validation](radio_profiles_validation.md)
 - [Radio receive calibration and recovery](radio_receive_calibration.md)
 - [Separated radios, normal XIAO RX gain, and unchanged-modulation timing](separated_radio_modulation_cache_validation.md)

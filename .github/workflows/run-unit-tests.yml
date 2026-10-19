@@ -611,7 +611,7 @@ jobs:
         run: >-
           python3 -B -m unittest -v
           test_sx1262_profile_switch test_sx1262_batched_modulation test_sx1262_protocol_batching
-          test_sx1262_modem_cache
+          test_sx1262_modem_cache test_esp32_retune_priority test_tdeck_spi_clock_timing
           test_radio_chirp_math
 
       - name: Verify radio lab collectors and compiled experiment contracts
