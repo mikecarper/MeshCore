@@ -825,6 +825,7 @@ jobs:
           python3 -B test/test_t114_release_profiles.py -v
           python3 -B test/test_optional_display_profiles.py -v
           python3 -B test/test_consolidated_profiles.py -v
+          python3 -B test/test_rp2040_application_capabilities.py -v
 
       - name: Verify Full logging compiler flags and packaged capabilities
         run: |

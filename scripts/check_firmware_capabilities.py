@@ -11,6 +11,7 @@ import sys
 import struct
 import zipfile
 import zlib
+from rp2040_application import read_application as read_rp2040_application
 from package_meshtext_license import (CAPABILITY as MESHTEXT_CAPABILITY,
     meshtext_evidence, notice_bytes as meshtext_notice_bytes,
     notice_record as meshtext_notice_record)
@@ -81,6 +82,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--firmware-bin", type=Path)
     parser.add_argument("--partitions", type=Path)
     parser.add_argument("--dfu-package", type=Path)
+    parser.add_argument("--uf2-package", type=Path)
     parser.add_argument(
         "--expect",
         action="append",
@@ -96,7 +98,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--expect-application", action="append", default=[],
         metavar="CAPABILITY=TEXT",
-        help="Require TEXT in the packaged firmware.bin or DFU application, not ELF metadata.",
+        help="Require TEXT in the packaged BIN, DFU application, or verified RP2040 UF2 application, not ELF metadata.",
     )
     return parser.parse_args()
 
@@ -124,6 +126,10 @@ def linked_gzip_assets(image):
 
 
 def read_application(args):
+    if args.platform == "RP2040_PLATFORM" or args.uf2_package is not None:
+        if args.platform != "RP2040_PLATFORM" or args.uf2_package is None or args.firmware_bin is None:
+            raise ValueError("RP2040 application checks require both --uf2-package and --firmware-bin")
+        return read_rp2040_application(args.uf2_package, args.firmware_bin)
     if args.firmware_bin is not None:
         return args.firmware_bin.read_bytes()
     if args.dfu_package is not None:

@@ -4665,6 +4665,9 @@ write_build_capability_manifest() {
                    --partitions "${build_output_dir}/partitions.bin")
   elif [ "$env_platform" = "NRF52_PLATFORM" ]; then
     checker_args+=(--dfu-package "${build_output_dir}/firmware.zip")
+  elif [ "$env_platform" = "RP2040_PLATFORM" ]; then
+    checker_args+=(--firmware-bin "${build_output_dir}/firmware.bin"
+                   --uf2-package "${build_output_dir}/firmware.uf2")
   fi
 
   for item in "${BUILD_CAPABILITIES[@]}"; do
