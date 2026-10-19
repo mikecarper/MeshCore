@@ -2,6 +2,7 @@
 
 #include <stddef.h>
 #include <stdint.h>
+#include "PersistentStoreFormat.h"
 
 namespace mesh { namespace power {
 
@@ -143,14 +144,11 @@ class RecoveryPolicy {
   static uint32_t elapsed(uint32_t now, uint32_t then) { return now - then; }
 
   static uint32_t checksum(const RecoveryRecord& record) {
-    uint32_t crc = 0xffffffff;
-    const uint8_t* bytes = reinterpret_cast<const uint8_t*>(&record);
-    for (size_t i = 0; i < offsetof(RecoveryRecord, crc); ++i) {
-      crc ^= bytes[i];
-      for (uint8_t bit = 0; bit < 8; ++bit)
-        crc = (crc >> 1) ^ (0xedb88320u & (0u - (crc & 1u)));
-    }
-    return ~crc;
+    // Retained records use the same IEEE polynomial as persistent storage,
+    // with a final complement. Reuse its already-linked implementation while
+    // preserving the record layout and checksum across firmware updates.
+    return ~storage::updateCRC32(0xffffffffUL,
+        reinterpret_cast<const uint8_t*>(&record), offsetof(RecoveryRecord, crc));
   }
 
   static bool isValid(const RecoveryRecord& record) {

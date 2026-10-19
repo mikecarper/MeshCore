@@ -212,6 +212,24 @@ int main(int argc, char** argv) {
     // A sample apparently newer than the last heartbeat is conservative until
     // that heartbeat catches up; subtraction cannot turn it into a fresh age.
     { RecoveryPolicy p(r); p.begin(ResetKind::Crash, 0); assertCounts(p, 0, 0); }
+  } else if (scenario == 16) {
+    // Frozen retained record with two MCU crashes and one radio crash. Its CRC
+    // and the fresh-record CRC below were independently calculated by zlib.
+    const uint8_t legacy[] = {
+      0x52, 0x47, 0x50, 0x52, 0x01, 0x00, 0x20, 0x00,
+      0xbc, 0xcc, 0x5b, 0x07, 0x15, 0xcd, 0x5b, 0x07,
+      0x0c, 0xcd, 0x5b, 0x07, 0x03, 0x00, 0x02, 0x01,
+      0x4b, 0x05, 0x00, 0x00, 0x6b, 0x64, 0x72, 0xa2,
+    };
+    static_assert(sizeof(legacy) == sizeof(r), "frozen retained format");
+    std::memcpy(&r, legacy, sizeof(r));
+    { RecoveryPolicy p(r); p.begin(ResetKind::Crash, 0);
+      assertCounts(p, 3, 2, RECOVERY_MCU); }
+    // Losing the final complement, seed or payload extent must fail this
+    // compatibility check even if newly written records remain self-consistent.
+    std::memset(&r, 0, sizeof(r));
+    initial(r, RECOVERY_DOMAINS, 75, true, 123456789);
+    assert(r.crc == 0x1d384636u);
   } else assert(false);
   std::cout << "PASS: regulator recovery " << scenario << '\n';
 }
@@ -256,6 +274,7 @@ class RegulatorRecoveryTests(unittest.TestCase):
             "a boot is disarmed until the actual modes are selected",
             "saved and retained fallback masks merge",
             "future sample is ineligible until heartbeat catches up",
+            "retained CRC remains compatible with independently encoded records",
         )
         for number, scenario in enumerate(scenarios):
             with self.subTest(scenario=scenario):

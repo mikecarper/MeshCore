@@ -19,7 +19,7 @@ jobs:
       - name: Qualify RAK4631 Full Companion with linked Meshtext support
         run: >-
           bash build.sh build-firmware RAK_4631_companion_radio_full
-          --firmware-version v1.17.1.10-halo-keymind-cascade-dev
+          --firmware-version v1.18.0.1-halo-keymind-cascade-dev
           --radio-preset usa-cascade-fixed --profile cascade --require-ota
 
       - name: Verify linked Companion crypto, retained Reader and ARM stack use
@@ -33,7 +33,7 @@ jobs:
         # This configuration has no Meshtext/Ethernet application callbacks.
         run: >-
           bash build.sh build-firmware Xiao_nrf52_companion_radio_full
-          --firmware-version v1.17.1.10-halo-keymind-cascade-dev
+          --firmware-version v1.18.0.1-halo-keymind-cascade-dev
           --radio-preset usa-cascade-fixed --profile cascade --require-ota
 
       - name: Qualify unified T114 Full Companion with automatic screen detection

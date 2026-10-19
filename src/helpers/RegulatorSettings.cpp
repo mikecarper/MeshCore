@@ -300,12 +300,10 @@ bool handleRegulatorCommand(const char* command, char* reply, size_t capacity) {
 }
 
 void markRegulatorCleanReset() {
-  if (initialized) recovery().markCleanReset();
-  else {
-    RecoveryPolicy policy(platformRecoveryRecord());
-    policy.begin(ResetKind::Intentional, 0);
-    policy.markCleanReset();
-  }
+  // Early resets still initialize the retained record, using the same policy
+  // object as normal startup instead of constructing another on the stack.
+  if (!initialized) recovery().begin(ResetKind::Intentional, 0);
+  recovery().markCleanReset();
 }
 
 void resumeRegulatorRecovery() {

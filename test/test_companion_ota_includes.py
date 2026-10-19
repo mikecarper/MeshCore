@@ -25,6 +25,7 @@ class CompanionOtaIncludeTest(unittest.TestCase):
         with tempfile.TemporaryDirectory(prefix="meshcore-companion-includes-") as temp:
             directory = Path(temp)
             for header in (
+                "helpers/RegulatorSettings.h",
                 "helpers/ui/StartupScreen.h", "helpers/ui/DisplayPowerSettings.h",
                 "helpers/UsbLoggingWatchdog.h", "helpers/UsbLoggingClientActivity.h",
                 "Mesh.h", "helpers/BluetoothMac.h", "CompanionBluetooth.h",
