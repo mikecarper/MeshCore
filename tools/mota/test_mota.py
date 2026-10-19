@@ -589,7 +589,7 @@ def test_full_companion_wireless_startup_and_psram_contacts_are_resilient():
     )
     assert "CONTACT_PSRAM_FALLBACK_REGULAR_SLOTS" in contacts_header
     assert "ContactInfo* contacts" in contacts_header
-    assert "int* sort_array" in contacts_header
+    assert "ContactIndex* sort_array" in contacts_header
     assert "heap_caps_calloc" in contacts_source
     assert "MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT" in contacts_source
     assert "contact_capacity = requested_capacity" in contacts_source
