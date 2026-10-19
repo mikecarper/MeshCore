@@ -4008,8 +4008,20 @@ class MotaSource {
                                       uint8_t* buf, uint16_t cap, uint16_t* len); // optional raw RFC 1951
 };
 </code></pre>
-<p>To serve an external mota the node reads its manifest-minus-leaves + <code>leaves[]</code> into RAM (&lt;=4 KiB for &lt;=1024
-blocks) and streams payload blocks from the source on demand; proofs are generated from the read leaves.</p>
+<p>Legacy source paths retain the manifest-minus-leaves and four bytes per source
+block, bounded by <code>OTA_PROOFGEN_SCRATCH</code>, then stream payload blocks on demand.
+Non-PSRAM ESP32 Full instead retains roots of 32-leaf groups and rereads the
+selected group. Its complete workspace is bounded to 1,536 bytes while retaining
+4,096 blocks and byte-identical proofs. Partial groups use the same odd-node
+promotion as the full tree. Receive pipelines, capture, serving and wire formats
+remain unchanged; larger custom leaf limits retain the legacy path.</p>
+<p>With <code>OTA_BOUNDED_SOURCE_PROOFS=1</code>, optional <code>read_quantum()</code> and
+<code>read_metadata()</code> methods bound each metadata step. <code>SerialMotaSource</code> uses the
+current negotiated single-response capacity and rejects a chunk that no longer
+fits after a capacity change. Proof preparation yields between chunks, and
+queued jobs retain their buffers across radio backpressure. See the
+<a href="../test-results/heltec_v3_full_memory_2026-10-19/">V3 Full qualification</a> for
+allocation bounds and regression coverage.</p>
 <h3 id="102-the-mota-seeder-transport-motaseederprotoh">10.2 The <code>mota-seeder</code> transport (<code>MotaSeederProto.h</code>)</h3>
 <p>A <code>MotaSource</code> is fed by a host that serves a folder over the device's <strong>USB serial</strong> (the same console the
 CLI uses - no extra hardware), on an ESP32 WiFi companion or FULL ESP32 role over <strong>WiFi (TCP)</strong>, or on an
