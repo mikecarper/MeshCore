@@ -263,6 +263,11 @@ startup/shutdown and USB/DFU identity are unchanged. The schematic title block
 does not identify a PCB revision; battery-only starts, current draw and radio
 load on actual hardware remain physical acceptance checks.
 
+The [Nano validation record](test-results/nano_g2_regulator_2026-10-18.json)
+binds the issue/circuit review, native checks and six passing build selections
+to source `c6ccbb5ab`: BLE/USB/Full Companion, Repeater, Room Server and KISS.
+No Nano hardware was flashed during these checks.
+
 ThinkNode M3/M4/M6 and generic ProMicro remain unchanged pending exact circuit
 or physical-board confirmation; their DC/DC inheritance alone is not evidence.
 ThinkNode M1/M8 and Keepteen LT1 retain their plain `NRF52Board`
