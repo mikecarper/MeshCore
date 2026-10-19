@@ -545,6 +545,10 @@
          <lastmod>2026-10-19</lastmod>
     </url>
     <url>
+         <loc>https://mikecarper.github.io/MeshCore/test-results/companion_ble_refresh_2026-10-19/</loc>
+         <lastmod>2026-10-19</lastmod>
+    </url>
+    <url>
          <loc>https://mikecarper.github.io/MeshCore/test-results/companion_contact_cache_results/</loc>
          <lastmod>2026-10-19</lastmod>
     </url>
@@ -618,6 +622,10 @@
     </url>
     <url>
          <loc>https://mikecarper.github.io/MeshCore/test-results/hardware_validation_mercerwood_1_18_0_1_2026-10-18/</loc>
+         <lastmod>2026-10-19</lastmod>
+    </url>
+    <url>
+         <loc>https://mikecarper.github.io/MeshCore/test-results/hardware_validation_mercerwood_1_18_0_1_2026-10-19/</loc>
          <lastmod>2026-10-19</lastmod>
     </url>
     <url>

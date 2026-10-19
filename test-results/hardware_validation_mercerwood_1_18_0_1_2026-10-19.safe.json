@@ -1,0 +1,573 @@
+{
+  "schema": 1,
+  "generated_at": "2026-10-19T23:10:06.433624+00:00",
+  "source_commit": "4e4f27a25a720c52ca0f5381b5e5834d75532cc6",
+  "expected_version": "v1.18.0.1-halo-keymind-cascade-dev-4e4f27a2",
+  "campaign_complete": false,
+  "scope": "Normal Full application installation/runtime plus observed Companion USB/BLE/RF checks; compile results do not imply hardware passes.",
+  "inventory": {
+    "expected_radios": 13,
+    "usb_radios_observed": 12,
+    "scope": "Distinct USB identities seen during the selected 10-second read-only window; not a stable-port count.",
+    "counts_consistent": true,
+    "missing_keys": [
+      "tag"
+    ],
+    "observation_seconds": 10
+  },
+  "compile": {
+    "passed_targets": 13,
+    "expected_targets": 13,
+    "passed_profiles": 15,
+    "expected_profiles": 15,
+    "reduced_ota_profiles_compile_only": 2
+  },
+  "companion_checks": {
+    "expected_boards": 11,
+    "usb_passed": 9,
+    "ble_passed": 8
+  },
+  "batch_state": "failed",
+  "v3_ble_trials": {
+    "first_scan_seconds": 15,
+    "later_scan_seconds": 25,
+    "first_trial": "failed",
+    "later_trial": "passed"
+  },
+  "t1000_ble_trials": {
+    "batch_trial": "failed",
+    "later_retry": "failed"
+  },
+  "supplemental_state": "failed",
+  "supplemental_trials": {
+    "tag": {
+      "flash": {
+        "batch_trial": "unknown",
+        "standalone_trial": "unknown"
+      },
+      "usb": {
+        "batch_trial": "unknown",
+        "standalone_trial": "unknown"
+      },
+      "ble": {
+        "batch_trial": "unknown",
+        "standalone_trial": "unknown"
+      }
+    },
+    "xiao_nrf": {
+      "flash": {
+        "batch_trial": "unknown",
+        "standalone_trial": "failed"
+      },
+      "usb": {
+        "batch_trial": "unknown",
+        "standalone_trial": "unknown"
+      },
+      "ble": {
+        "batch_trial": "unknown",
+        "standalone_trial": "unknown"
+      }
+    }
+  },
+  "boards": [
+    {
+      "key": "v43",
+      "board": "Heltec V4.3",
+      "role": "companion",
+      "compile": {
+        "status": "passed",
+        "profiles_passed": 1
+      },
+      "presence": "usb_enumerated",
+      "flash": "passed",
+      "usb": "passed",
+      "ble": "passed",
+      "rf": "unknown",
+      "runtime": "unknown",
+      "bootloader": "not_applicable",
+      "notes": []
+    },
+    {
+      "key": "rak3401",
+      "board": "RAK 3401",
+      "role": "repeater",
+      "compile": {
+        "status": "passed",
+        "profiles_passed": 2
+      },
+      "presence": "usb_enumerated",
+      "flash": "passed",
+      "usb": "runtime_only_passed",
+      "ble": "not_applicable",
+      "rf": "not_applicable",
+      "runtime": "passed",
+      "bootloader": "baseline_verified",
+      "notes": [
+        "Full OTA application/runtime scope only; Reduced OTA is compile-only. Companion USB/BLE/RF campaign does not apply."
+      ],
+      "gateway_service_bound": true
+    },
+    {
+      "key": "tdeck",
+      "board": "LilyGo T-Deck",
+      "role": "companion",
+      "compile": {
+        "status": "passed",
+        "profiles_passed": 1
+      },
+      "presence": "usb_enumerated",
+      "flash": "passed",
+      "usb": "passed",
+      "ble": "passed",
+      "rf": "passed",
+      "runtime": "unknown",
+      "bootloader": "not_applicable",
+      "notes": [],
+      "rf_links_tested": 1
+    },
+    {
+      "key": "tag",
+      "board": "RAK WisMesh Tag",
+      "role": "companion",
+      "compile": {
+        "status": "passed",
+        "profiles_passed": 1
+      },
+      "presence": "not_enumerated",
+      "flash": "not_enumerated",
+      "usb": "not_enumerated",
+      "ble": "not_enumerated",
+      "rf": "not_enumerated",
+      "runtime": "unknown",
+      "bootloader": "not_enumerated",
+      "notes": []
+    },
+    {
+      "key": "pocket",
+      "board": "Heltec MeshPocket",
+      "role": "companion",
+      "compile": {
+        "status": "passed",
+        "profiles_passed": 1
+      },
+      "presence": "usb_enumerated",
+      "flash": "passed",
+      "usb": "passed",
+      "ble": "passed",
+      "rf": "passed",
+      "runtime": "unknown",
+      "bootloader": "baseline_verified",
+      "notes": [
+        "MeshPocket previously reported error flag 8. Receive silence is a hypothesis, not a confirmed radio fault. A controlled warm reboot with flushed command delivery returned clean core flags, and its later two-way RAK RF test passed. The earlier unconfirmed reboot attempt and incomplete RF setup remain part of the history."
+      ],
+      "rf_links_tested": 1
+    },
+    {
+      "key": "indicator",
+      "board": "SenseCAP Indicator",
+      "role": "companion",
+      "compile": {
+        "status": "passed",
+        "profiles_passed": 1
+      },
+      "presence": "usb_enumerated",
+      "flash": "passed",
+      "usb": "passed",
+      "ble": "passed",
+      "rf": "passed",
+      "runtime": "unknown",
+      "bootloader": "not_applicable",
+      "notes": [],
+      "rf_links_tested": 1
+    },
+    {
+      "key": "rak",
+      "board": "RAK 4631",
+      "role": "companion",
+      "compile": {
+        "status": "passed",
+        "profiles_passed": 1
+      },
+      "presence": "usb_enumerated",
+      "flash": "passed",
+      "usb": "passed",
+      "ble": "passed",
+      "rf": "passed",
+      "runtime": "unknown",
+      "bootloader": "baseline_verified",
+      "notes": [],
+      "rf_links_tested": 6
+    },
+    {
+      "key": "v3",
+      "board": "Heltec V3",
+      "role": "companion",
+      "compile": {
+        "status": "passed",
+        "profiles_passed": 1
+      },
+      "presence": "usb_enumerated",
+      "flash": "runtime_verified",
+      "usb": "passed",
+      "ble": "passed",
+      "rf": "passed",
+      "runtime": "unknown",
+      "bootloader": "not_applicable",
+      "notes": [
+        "The fresh USB campaign proves normal HEAD runtime; a separate flash-operation report is not an input here.",
+        "Earlier 15-second BLE discovery trial failed; retained separately from the later 25-second scan trial."
+      ],
+      "rf_links_tested": 1
+    },
+    {
+      "key": "xiao",
+      "board": "Seeed XIAO ESP32-S3",
+      "role": "companion",
+      "compile": {
+        "status": "passed",
+        "profiles_passed": 1
+      },
+      "presence": "usb_enumerated",
+      "flash": "passed",
+      "usb": "passed",
+      "ble": "passed",
+      "rf": "unknown",
+      "runtime": "unknown",
+      "bootloader": "not_applicable",
+      "notes": []
+    },
+    {
+      "key": "xiao_nrf",
+      "board": "Seeed XIAO nRF52",
+      "role": "companion",
+      "compile": {
+        "status": "passed",
+        "profiles_passed": 1
+      },
+      "presence": "usb_enumerated",
+      "flash": "failed",
+      "usb": "unknown",
+      "ble": "unknown",
+      "rf": "unknown",
+      "runtime": "unqualified",
+      "bootloader": "baseline_verified",
+      "notes": [
+        "The normal HEAD application transfer succeeded, but normal HEAD runtime was not verified within the required 75-second window. Runtime qualification remains incomplete. Bootloader baseline evidence is reported separately.",
+        "Explicit later standalone trials are separate from the retained original batch outcomes."
+      ],
+      "application_transfer": "passed",
+      "recovery_note_code": "application_transfer_succeeded_runtime_unqualified"
+    },
+    {
+      "key": "t096",
+      "board": "Heltec T096",
+      "role": "companion",
+      "compile": {
+        "status": "passed",
+        "profiles_passed": 1
+      },
+      "presence": "usb_enumerated",
+      "flash": "passed",
+      "usb": "passed",
+      "ble": "passed",
+      "rf": "passed",
+      "runtime": "unknown",
+      "bootloader": "baseline_verified",
+      "notes": [],
+      "rf_links_tested": 1
+    },
+    {
+      "key": "t1000",
+      "board": "Seeed T1000-E",
+      "role": "companion",
+      "compile": {
+        "status": "passed",
+        "profiles_passed": 1
+      },
+      "presence": "usb_enumerated",
+      "flash": "passed",
+      "usb": "passed",
+      "ble": "failed",
+      "rf": "passed",
+      "runtime": "unknown",
+      "bootloader": "baseline_verified",
+      "notes": [
+        "Initial batch BLE failure retained separately from any explicit later retry.",
+        "The T1000-E retry discovered the USB-bound advertisement, but pairing failed with a D-Bus error before any completed sessions. The NUS public key was not verified. Its initial batch discovery failure remains retained; BLE qualification is unresolved."
+      ],
+      "rf_links_tested": 1
+    },
+    {
+      "key": "tower",
+      "board": "Heltec MeshTower SD",
+      "role": "repeater",
+      "compile": {
+        "status": "passed",
+        "profiles_passed": 2
+      },
+      "presence": "usb_enumerated",
+      "flash": "passed",
+      "usb": "runtime_only_passed",
+      "ble": "not_applicable",
+      "rf": "not_applicable",
+      "runtime": "passed",
+      "bootloader": "baseline_verified",
+      "notes": [
+        "Full OTA application/runtime scope only; Reduced OTA is compile-only. Companion USB/BLE/RF campaign does not apply."
+      ]
+    }
+  ],
+  "bootloader": {
+    "baseline_source_commit": "c2f6fa455302167ea547ffe1e065a037762512d5",
+    "required_profiles": 8,
+    "baseline_profiles_verified": 7,
+    "scope": "Earlier source-qualified C2 install proof only; not a fresh bootloader revalidation by this application campaign."
+  },
+  "measured_ble_refresh": {
+    "contacts": 92,
+    "candidate_median_seconds": 3.347882,
+    "candidate_protocol_kbit_s": 32.56,
+    "baseline_median_seconds": 6.191396,
+    "baseline_protocol_kbit_s": 17.606,
+    "measurement_scope": "One V3 and Linux central; five exact complete streams plus 46-contact incremental stream.",
+    "documentation": "https://mikecarper.github.io/MeshCore/test-results/companion_ble_refresh_2026-10-19/"
+  },
+  "unresolved": [
+    "Some expected radios were not enumerated in the selected USB inventory; this does not establish physical absence.",
+    "T1000-E BLE remains unresolved until a completed current-source test passes.",
+    "Heltec V4.3 had earlier USB/BLE passes, but later RF setup repeatedly rejected non-ASCII data before channels, leases or datagrams. Current transport behavior remains unresolved; RF qualification is pending.",
+    "Seeed XIAO ESP32-S3 had earlier USB/BLE passes, but later RF setup repeatedly rejected non-ASCII data before channels, leases or datagrams. Current transport behavior remains unresolved; RF qualification is pending.",
+    "XIAO nRF52 application transfer succeeded, but stable normal runtime and its USB/BLE/RF qualification remain unresolved.",
+    "RAK WisMesh Tag is not USB-enumerated; its normal application and C2 bootloader campaign remain pending."
+  ],
+  "input_evidence": {
+    "batch": {
+      "read_state": "available",
+      "current_source_version": true
+    },
+    "bootloader": {
+      "read_state": "available",
+      "current_source_version": false
+    },
+    "build": {
+      "read_state": "available",
+      "current_source_version": true
+    },
+    "inventory": {
+      "read_state": "available",
+      "current_source_version": true
+    },
+    "repeaters": {
+      "read_state": "available",
+      "current_source_version": true
+    },
+    "rf_batch": {
+      "read_state": "available",
+      "current_source_version": true
+    },
+    "rf_v3": {
+      "read_state": "missing",
+      "current_source_version": false
+    },
+    "supplemental": {
+      "read_state": "available",
+      "current_source_version": true
+    },
+    "t1000_ble_retry": {
+      "read_state": "available",
+      "current_source_version": true
+    },
+    "v3_ble_discovery_miss": {
+      "read_state": "available",
+      "current_source_version": true
+    },
+    "v3_ble_pass": {
+      "read_state": "available",
+      "current_source_version": true
+    },
+    "v3_usb": {
+      "read_state": "available",
+      "current_source_version": true
+    }
+  },
+  "partial": true,
+  "rf_campaign_trials": {
+    "pairs": [
+      {
+        "hub": "rak",
+        "spoke": "indicator",
+        "status": "passed"
+      },
+      {
+        "hub": "rak",
+        "spoke": "pocket",
+        "status": "passed"
+      },
+      {
+        "hub": "rak",
+        "spoke": "t096",
+        "status": "passed"
+      },
+      {
+        "hub": "rak",
+        "spoke": "t1000",
+        "status": "passed"
+      },
+      {
+        "hub": "rak",
+        "spoke": "tdeck",
+        "status": "passed"
+      },
+      {
+        "hub": "rak",
+        "spoke": "v3",
+        "status": "passed"
+      }
+    ],
+    "attempts": [
+      {
+        "input": "initial",
+        "hub": "rak",
+        "spoke": "t1000",
+        "outcome": "passed",
+        "two_way_delivery_and_cleanup_verified": true,
+        "non_ascii_setup_abort": false,
+        "cleanup_review_required": false
+      },
+      {
+        "input": "initial",
+        "hub": "rak",
+        "spoke": "t096",
+        "outcome": "passed",
+        "two_way_delivery_and_cleanup_verified": true,
+        "non_ascii_setup_abort": false,
+        "cleanup_review_required": false
+      },
+      {
+        "input": "initial",
+        "hub": "rak",
+        "spoke": "pocket",
+        "outcome": "setup_incomplete",
+        "two_way_delivery_and_cleanup_verified": false,
+        "non_ascii_setup_abort": false,
+        "cleanup_review_required": false
+      },
+      {
+        "input": "remaining",
+        "hub": "rak",
+        "spoke": "pocket",
+        "outcome": "passed",
+        "two_way_delivery_and_cleanup_verified": true,
+        "non_ascii_setup_abort": false,
+        "cleanup_review_required": false
+      },
+      {
+        "input": "remaining",
+        "hub": "rak",
+        "spoke": "v3",
+        "outcome": "passed",
+        "two_way_delivery_and_cleanup_verified": true,
+        "non_ascii_setup_abort": false,
+        "cleanup_review_required": false
+      },
+      {
+        "input": "remaining",
+        "hub": "rak",
+        "spoke": "v43",
+        "outcome": "setup_incomplete",
+        "two_way_delivery_and_cleanup_verified": false,
+        "non_ascii_setup_abort": true,
+        "cleanup_review_required": false
+      },
+      {
+        "input": "v43_reopen",
+        "hub": "rak",
+        "spoke": "v43",
+        "outcome": "setup_incomplete",
+        "two_way_delivery_and_cleanup_verified": false,
+        "non_ascii_setup_abort": true,
+        "cleanup_review_required": false
+      },
+      {
+        "input": "independent",
+        "hub": "rak",
+        "spoke": "tdeck",
+        "outcome": "passed",
+        "two_way_delivery_and_cleanup_verified": true,
+        "non_ascii_setup_abort": false,
+        "cleanup_review_required": false
+      },
+      {
+        "input": "independent",
+        "hub": "rak",
+        "spoke": "xiao",
+        "outcome": "setup_incomplete",
+        "two_way_delivery_and_cleanup_verified": false,
+        "non_ascii_setup_abort": true,
+        "cleanup_review_required": false
+      },
+      {
+        "input": "indicator",
+        "hub": "rak",
+        "spoke": "indicator",
+        "outcome": "passed",
+        "two_way_delivery_and_cleanup_verified": true,
+        "non_ascii_setup_abort": false,
+        "cleanup_review_required": false
+      },
+      {
+        "input": "v43_recheck",
+        "hub": "rak",
+        "spoke": "v43",
+        "outcome": "setup_incomplete",
+        "two_way_delivery_and_cleanup_verified": false,
+        "non_ascii_setup_abort": true,
+        "cleanup_review_required": false
+      },
+      {
+        "input": "v43_final",
+        "hub": "v43",
+        "spoke": "rak",
+        "outcome": "setup_incomplete",
+        "two_way_delivery_and_cleanup_verified": false,
+        "non_ascii_setup_abort": true,
+        "cleanup_review_required": false
+      },
+      {
+        "input": "xiao_esp_final",
+        "hub": "xiao",
+        "spoke": "rak",
+        "outcome": "setup_incomplete",
+        "two_way_delivery_and_cleanup_verified": false,
+        "non_ascii_setup_abort": true,
+        "cleanup_review_required": false
+      }
+    ],
+    "passed_links": 6,
+    "boards_with_rf_pass": 7,
+    "hardware_cleanup_review_required": false
+  },
+  "method_scope": "USB qualification used 100 persistent query cycles and 10 reopen checks, owned-contact CRUD and warm reboot, plus RX-only radio2 overlap-warning and three-decimal frequency-suggestion trials. BLE passes required three 30-second sessions. RF passes required exact two-way zero-hop DEV datagrams and owned-channel/radio-lease cleanup; they do not qualify text delivery, range, cold boot, phone interoperability or every firmware feature.",
+  "final_gateway_service_bound_verified": true,
+  "pocket_observation": {
+    "controlled_warm_reboot_and_clean_core_verified": true,
+    "prior_error_flags": 8,
+    "receive_silence_explanation_is_hypothesis": true,
+    "prior_unconfirmed_attempt_retained": true
+  },
+  "t1000_retry_observation": {
+    "usb_bound_discovery_then_pair_dbus_error_before_sessions": true,
+    "pairing_phase_supported_by_selected_trace_detail": true,
+    "recognized_pairing_reason": "page_timeout",
+    "nus_public_key_verified": false,
+    "original_retry_report_sha256": "622ad084fc5b5f7edb03e02b2db3a86daddee33a082c854e9b20ab2a8997eaa3",
+    "selected_pairing_detail_sha256": "f4f9b85507145dbe4d6410f4dd455b113866e32f94e3ab45f7ef67e1eb0121b3"
+  },
+  "v43_diagnostic_history": {
+    "standalone_usb_setup_diagnosis_failed": true,
+    "diagnosis_has_source_only_not_version_qualification": true,
+    "guarded_classification_handshake_completed_cleanly": true,
+    "classification_counts_as_rf_qualification": false,
+    "rf_non_ascii_setup_aborts": 4
+  }
+}
