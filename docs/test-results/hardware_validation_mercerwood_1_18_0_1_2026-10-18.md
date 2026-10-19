@@ -101,7 +101,7 @@ without extending the earlier cold-boot or unexposed-runtime qualification.
 | RAK4631 | Full 652289ee | PASS: 100/10 | PASS | PASS | PASS: two 10-second sessions |
 | T096 | Full FEM-on 652289ee | PASS: 100/10 | PASS | PASS | PASS: two 10-second sessions |
 | MeshPocket | Full 652289ee | PASS: 100/10 | PASS | PASS | PASS: two 10-second sessions |
-| T1000-E | Full 652289ee | PASS: 100/10 | PASS | PASS | FAIL/unqualified: four shipping attempts |
+| T1000-E | Full 652289ee | PASS: 100/10 | PASS | PASS | FAIL/unqualified: four initial attempts; see 19 October follow-up below |
 | Xiao S3 WIO | Full 652289ee | PASS: 100/10 | Not attempted: 350 occupied contacts | Not tested | Not tested |
 | SenseCAP Indicator | LoRa Full 652289ee | Identity/readback and USB WiFi/BLE mode cycle PASS | Not tested | Not tested | Not tested |
 
@@ -186,6 +186,64 @@ GPS was enabled for a bounded 180-second local-only T1000-E telemetry window.
 No location appeared. The exact GPS switch was restored, sync cadence was
 unchanged, and packet TX counters did not advance. Outdoor acquisition,
 fresh-fix age, stale/no-fix behavior and sleep current remain unqualified.
+
+### T1000-E BLE follow-up, 2026-10-19 UTC
+
+The unchanged Full `652289ee` application passed a fresh five-second bonded
+session at 07:00 UTC and three consecutive 30-second held/reconnect sessions
+at 07:04–07:07 UTC. Each session checked the board, complete firmware version,
+USB-associated public identity, five read-only getters and advancing uptime.
+The existing bond remained, host cleanup completed, and a subsequent USB
+snapshot reported zero core error flags. The earlier timeout was not reproduced.
+
+Source review separately found a use-after-free in the pinned Bluefruit
+dispatcher: disconnect handling deleted its `BLEConnection`, then role routing
+read `getRole()` through the freed pointer. Commit
+`dc17f507dd0657cfd37dfe73e7634d6b81166f64` caches the role before deletion and
+refreshes it when a CONNECTED event allocates a replacement connection.
+The production-source ASan/UBSan regression reproduces the original memory
+error and passes the corrected peripheral and central paths, callback ordering,
+handle replacement and repeated reconnects. All 36 nRF52 BLE host tests passed.
+This removes the disconnect dispatcher's memory-safety defect; it does not
+establish the cause of the earlier on-air supervision timeout.
+
+The shipping Full T1000-E and RAK4631 targets built successfully at that commit,
+including their capability and runtime-RAM gates. The T1000-E application DFU
+ZIP SHA256 is
+`aa02aadad102201b30489efc80a044f98af3b9303630b4832ee21c65c3a93b40`;
+its exact ELF SHA256 is
+`6076d25e4c4ecadea8552c1bb56a97865b3369c1062d4a040e90d33368f9d214`.
+The candidate booted through identity-bound application-only DFU and passed
+three 30-second held/reconnect application sessions at 07:13–07:15 UTC, with
+the same identity, getter and uptime checks. Before and after the BLE trial,
+USB snapshots matched the pre-flash public identity, complete contact record,
+all 40 channels and returned `SELF_INFO`/`DEVICE_INFO` settings, excluding only
+the independently verified build/version metadata. Core error flags were zero.
+The existing bond remained and owned probe/capture processes closed.
+
+These successful application sessions include connection retries; they are
+not evidence of uniformly reliable connection establishment. The baseline
+capture contains six `0x3e` disconnects before encryption, and the candidate
+contains two, each about 154–179 ms after a connection-complete event.
+All three completed sessions in each trial encrypted successfully. Baseline
+sessions two and three, and candidate session one, ended with `0x22` about
+1.97 seconds after an explicit host HCI Disconnect request. No `0x22` occurred
+during the completed getter/hold traffic; the other completed sessions ended
+with `0x16`. Both captures recorded zero drops and no remaining target handle.
+Neither held trial reproduced the earlier `0x08` supervision timeout. Longer
+soak, phone-specific testing, establishment retries and host-requested
+disconnect completion remain open; these captures do not assign their cause
+to the peripheral or host controller.
+
+The exact original `652289ee` application ZIP was restored through
+application-only DFU. A fresh five-second bonded session also passed after
+restoration. USB snapshots before and after that session matched the original
+complete version, all `SELF_INFO`/`DEVICE_INFO` bytes, full contact record and
+all 40 channels, including the active PIN; core error flags were zero. BlueZ remained paired,
+bonded and disconnected, and the Bluetooth service remained active. No pairing
+or preference setters were used; DFU transferred only the application. Raw HCI
+and snapshots remain private; these comparisons do not inspect every unexposed
+preference.
 
 ## MeshTower V2 SD
 
@@ -501,8 +559,12 @@ Documentation route/link checks also passed in the CI-pinned renderer environmen
 
 ## Remaining release gates
 
-- Resolve and retest T1000-E BLE; retain repeated populated-board stress as a
-  regression gate for subsequent Room candidates.
+- Investigate remaining T1000-E connection establishment retries and `0x22`
+  completion after host-requested disconnects; the 19 October follow-up fixes
+  disconnect memory safety and passes bounded application sessions, without
+  closing BLE reliability qualification or explaining the earlier `0x08`.
+  Retain repeated populated-board stress as a regression gate for subsequent
+  Room candidates.
 - Retain actual LoRa receive evidence alongside the Room HTTP results; the
   quiet-radio watchdog flag is not a successful-RX or recovery-outcome counter.
 - Diagnose shipping Morse noise rejection on a controlled RF setup.
