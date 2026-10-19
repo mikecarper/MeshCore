@@ -52,9 +52,25 @@ does not require a single guessed factory ID.
 | Companion headless buttons and related navigation, reader, pairing, startup and deadline suites | PASS, 55 methods, including native headless fault regression and 4 input/reader configurations |
 | Picker and release-selection regressions | PASS, 78 Python methods and 3 Node suites; old assets, scoped previews, newest-role defaults and unavailable legacy choices covered |
 | Display allocation accounting and firmware RAM gates | PASS, 46 methods, including production allocation tracking across 3 panel sizes and buffer configurations |
-| T114 firmware and package checks | Pending |
+| T114 firmware and package checks | PASS, all 8 published profiles; UF2/DFU application bytes, hashes, version, hardware/OTA identity, flash limits, display capability and RAM admission checked |
 | Hosted documentation links | PASS, 7 methods |
 | Physical T114 with and without a screen | Not performed |
+
+The [T114 1.18.0.1 preview1](https://github.com/mikecarper/MeshCore/releases/tag/heltec-t114-v1.18.0.1.preview1)
+packages firmware source
+[`794f5f7b8c508b708ee8fc7db7bff066aa3d1a0a`](https://github.com/mikecarper/MeshCore/commit/794f5f7b8c508b708ee8fc7db7bff066aa3d1a0a).
+Its seven display-capable profiles contain the verified automatic-detection
+marker; the eighth is the headless KISS utility. The published qualification
+report records each profile's flash range, retained update identity and RAM
+allowance. Repeater Full has the smallest RAM margin at 10,200 bytes after
+the display allocation and normal transient margin.
+KISS has no embedded EndF version or update identity; its package provenance,
+UF2/DFU application equality, flash bounds, hashes and RAM gate are checked.
+
+The release-bound picker check offers those eight profiles under the single
+canonical T114 hardware choice, with seven automatic-display profiles and
+one headless KISS profile. It preserves all 111 other hardware profiles from
+the current main release and retains historical T114 files as exact downloads.
 
 Native tests simulate controller replies and GPIO state; they do not establish
 physical detection reliability. Before calling the hardware qualified, test

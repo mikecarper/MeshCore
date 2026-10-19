@@ -10,6 +10,11 @@ the optional stock 1.14-inch screen. There is no separate screen selection.
 For Companion, use the Full image for USB and Bluetooth support together.
 The KISS modem role remains headless.
 
+The picker currently supplies [1.18.0.1 preview1](https://github.com/mikecarper/MeshCore/releases/tag/heltec-t114-v1.18.0.1.preview1)
+for T114. Automatic screen detection is the default for future T114 builds.
+The preview includes Full Companion and Full/Reduced optional-sensor profiles
+for Repeater, Room Server and Sensor, plus the headless KISS utility.
+
 At startup, the firmware checks whether the screen responds before starting
 the display. The backlight stays off during the check. If no screen responds,
 the display stays powered off and the node continues without a screen.
