@@ -66,6 +66,28 @@ jobs:
       - name: Compile optional RAK15002 SD archive (no hardware qualification)
         run: pio run -e RAK_4631_repeater_rak15002_sd_seeder_only
 
+  optional-display-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Build Environment
+        uses: ./.github/actions/setup-build-environment
+      - name: Qualify RC32 Full Companion with optional T108 detection
+        run: >-
+          bash build.sh build-firmware heltec_rc32_companion_radio_full
+          --firmware-version v1.18.0.1-halo-keymind-cascade-dev
+          --radio-preset usa-cascade-fixed --profile cascade --require-ota
+      - name: Qualify Wireless Tracker V1 with optional screen detection
+        run: >-
+          bash build.sh build-firmware Heltec_Wireless_Tracker_repeater
+          --firmware-version v1.18.0.1-halo-keymind-cascade-dev
+          --radio-preset usa-cascade-fixed --profile cascade --require-ota
+      - name: Qualify V4 R8 TFT Full Companion with optional screen detection
+        run: >-
+          bash build.sh build-firmware heltec_v4_r8_tft_companion_radio_full
+          --firmware-version v1.18.0.1-halo-keymind-cascade-dev
+          --radio-preset usa-cascade-fixed --profile cascade --require-ota
+
   esp32-sensor-smoke:
     runs-on: ubuntu-latest
     steps:
@@ -798,7 +820,9 @@ jobs:
           python3 -B test/test_firmware_picker_package.py
           node test/test_firmware_picker.js
           node test/test_t114_picker.js
+          node test/test_optional_display_picker.js
           python3 -B test/test_t114_release_profiles.py -v
+          python3 -B test/test_optional_display_profiles.py -v
 
       - name: Verify Full logging compiler flags and packaged capabilities
         run: |
@@ -933,6 +957,9 @@ jobs:
           python3 -B test/test_rgb_led_rollover.py -v
           python3 -B test/test_display_power.py
           python3 -B test/test_t114_display_detection.py -v
+          python3 -B test/test_rc32_display_detection.py -v
+          python3 -B test/test_wireless_tracker_display_detection.py -v
+          python3 -B test/test_heltec_r8_display_detection.py -v
           python3 -B test/test_companion_headless_buttons.py -v
           python3 -B test/test_st7735_display_wake_profile.py -v
           python3 -B test/test_legacy_ui_version_bounds.py -v

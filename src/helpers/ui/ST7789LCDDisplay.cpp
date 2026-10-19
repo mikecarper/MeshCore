@@ -5,6 +5,13 @@
   #define PIN_TFT_MISO -1
 #endif
 
+#ifdef MESHCORE_HELTEC_R8_TFT_DETECTION
+#include "HeltecR8DisplayProbe.h"
+extern const char meshcore_capability_display_autodetect_heltec_r8[];
+const char meshcore_capability_display_autodetect_heltec_r8[] =
+    "meshcore.capability.display.autodetect.heltec_r8.v1";
+#endif
+
 #ifndef DISPLAY_ROTATION
   #define DISPLAY_ROTATION 3
 #endif
@@ -22,7 +29,15 @@ uint8_t ST7789LCDDisplay::effectiveRotation() const {
 void ST7789LCDDisplay::setFlipped(bool flipped) {
   if (_flipped == flipped) return;
   _flipped = flipped;
-  if (_panel_ready) display.setRotation(effectiveRotation());
+  if (_panel_ready) {
+#ifdef MESHCORE_HELTEC_R8_TFT_DETECTION
+    if (!_isOn) {
+      _rotation_pending = true;
+      return;
+    }
+#endif
+    display.setRotation(effectiveRotation());
+  }
 }
 
 bool ST7789LCDDisplay::i2c_probe(TwoWire& wire, uint8_t addr) {
@@ -41,6 +56,10 @@ ColorVal UIColor::popup_txt = mesh::ui::color_theme::TEXT;
 ColorVal UIColor::corp_blue = mesh::ui::color_theme::ACCENT;
 
 bool ST7789LCDDisplay::begin() {
+#ifdef MESHCORE_HELTEC_R8_TFT_DETECTION
+  if (_probe_complete && !_present) return false;
+  if (!_probe_complete) mesh::ui::heltec_r8::backlightOff();
+#endif
   if (!_isOn) {
   #ifdef HELTEC_V4_R8_TFT
     // turnOff() leaves this panel configured and powered - its reset line is
@@ -50,6 +69,14 @@ bool ST7789LCDDisplay::begin() {
     // and stalling the UI loop for ~500 ms of reset delays.
     if (_panel_ready) {
       if (_peripher_power) _peripher_power->claim();
+#ifdef MESHCORE_HELTEC_R8_TFT_DETECTION
+      // A preference may change while the backlight is off. Apply only that
+      // deferred change; ordinary wakes remain free of SPI/reset work.
+      if (_rotation_pending) {
+        display.setRotation(effectiveRotation());
+        _rotation_pending = false;
+      }
+#endif
       if (PIN_TFT_LEDA_CTL != -1) {
         digitalWrite(PIN_TFT_LEDA_CTL, PIN_TFT_LEDA_CTL_ACTIVE);
       }
@@ -65,6 +92,21 @@ bool ST7789LCDDisplay::begin() {
     #endif
     }
 
+#ifdef MESHCORE_HELTEC_R8_TFT_DETECTION
+    if (!_probe_complete) {
+      const volatile char* capability = meshcore_capability_display_autodetect_heltec_r8;
+      (void)*capability;  // Keep the marker bound to the executed probe path.
+      _probe_complete = true;
+      _present = mesh::ui::heltec_r8::probe();
+      if (!_present) {
+        // Release exactly this display's claim. VEXT also powers the radio
+        // and other peripherals; never turn the shared rail off directly.
+        if (_peripher_power) _peripher_power->release();
+        return false;
+      }
+    }
+#endif
+
     if (PIN_TFT_LEDA_CTL != -1) {
       pinMode(PIN_TFT_LEDA_CTL, OUTPUT);
     #ifdef HELTEC_V4_R8_TFT
@@ -78,6 +120,18 @@ bool ST7789LCDDisplay::begin() {
     #if defined(LILYGO_TDECK) || defined(HELTEC_LORA_V4_TFT) || defined(HELTEC_V4_R8_TFT)
       displaySPI.begin(PIN_TFT_SCL, PIN_TFT_MISO, PIN_TFT_SDA, PIN_TFT_CS);
     #endif
+#ifdef MESHCORE_HELTEC_R8_TFT_DETECTION
+    // Arduino-ESP32 2.x begin() returns void, so inspect its public bus handle
+    // before handing an unavailable SPI peripheral to the panel library.
+    if (!displaySPI.bus()) {
+      displaySPI.end();
+      _present = false;  // Latch failure just like an absent LCD.
+      mesh::ui::heltec_r8::backlightOff();
+      mesh::ui::heltec_r8::releaseBus();
+      if (_peripher_power) _peripher_power->release();
+      return false;
+    }
+#endif
 
     display.init(DISPLAY_WIDTH, DISPLAY_HEIGHT);
     display.setRotation(effectiveRotation());
@@ -137,10 +191,16 @@ void ST7789LCDDisplay::turnOff() {
 }
 
 void ST7789LCDDisplay::clear() {
+#ifdef MESHCORE_HELTEC_R8_TFT_DETECTION
+  if (!_isOn) return;
+#endif
   display.fillScreen(ST77XX_BLACK);
 }
 
 void ST7789LCDDisplay::startFrame(ColorVal bkg) {
+#ifdef MESHCORE_HELTEC_R8_TFT_DETECTION
+  if (!_isOn) return;
+#endif
   display.fillScreen(bkg);
   display.setTextColor(_color = UIColor::primary_txt);
   display.setTextSize(1);
@@ -148,35 +208,59 @@ void ST7789LCDDisplay::startFrame(ColorVal bkg) {
 }
 
 void ST7789LCDDisplay::setTextSize(int sz) {
+#ifdef MESHCORE_HELTEC_R8_TFT_DETECTION
+  if (!_isOn) return;
+#endif
   display.setTextSize(sz > 0 ? sz : 1);
 }
 
 void ST7789LCDDisplay::setColor(ColorVal c) {
+#ifdef MESHCORE_HELTEC_R8_TFT_DETECTION
+  if (!_isOn) return;
+#endif
   display.setTextColor(_color = c);
 }
 
 void ST7789LCDDisplay::setCursor(int x, int y) {
+#ifdef MESHCORE_HELTEC_R8_TFT_DETECTION
+  if (!_isOn) return;
+#endif
   display.setCursor(x, y);
 }
 
 void ST7789LCDDisplay::print(const char* str) {
+#ifdef MESHCORE_HELTEC_R8_TFT_DETECTION
+  if (!_isOn) return;
+#endif
   display.print(str);
 }
 
 void ST7789LCDDisplay::fillRect(int x, int y, int w, int h) {
+#ifdef MESHCORE_HELTEC_R8_TFT_DETECTION
+  if (!_isOn) return;
+#endif
   display.fillRect(x, y, w, h, _color);
 }
 
 void ST7789LCDDisplay::drawRect(int x, int y, int w, int h) {
+#ifdef MESHCORE_HELTEC_R8_TFT_DETECTION
+  if (!_isOn) return;
+#endif
   display.drawRect(x, y, w, h, _color);
 }
 
 void ST7789LCDDisplay::drawXbm(int x, int y, const uint8_t* bits, int w, int h) {
+#ifdef MESHCORE_HELTEC_R8_TFT_DETECTION
+  if (!_isOn) return;
+#endif
   // The common UI bitmaps are MSB-first, as expected by drawBitmap.
   display.drawBitmap(x, y, bits, w, h, _color);
 }
 
 uint16_t ST7789LCDDisplay::getTextWidth(const char* str) {
+#ifdef MESHCORE_HELTEC_R8_TFT_DETECTION
+  if (!_isOn) return 0;
+#endif
   int16_t x1, y1;
   uint16_t w, h;
   display.getTextBounds(str, 0, 0, &x1, &y1, &w, &h);

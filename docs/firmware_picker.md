@@ -579,6 +579,9 @@ partition signature.
 
 ## Maintaining the runtime directions
 
+See [optional screens](optional_screens.md) for manufacturer-confirmed screen
+options, automatic detection support, and integral-screen exclusions.
+
 The online picker and downloadable HTML use the same command renderer.
 Hardware-specific controls are enabled only when `_data/firmware_controls.json`
 matches the selected release family and exact target. If that metadata is

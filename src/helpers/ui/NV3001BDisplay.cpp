@@ -51,6 +51,13 @@
   #define DISPLAY_ROTATION 0
 #endif
 
+#if defined(HELTEC_RC32) && defined(RC32_DISPLAY_AUTODETECT) && RC32_DISPLAY_AUTODETECT
+#include "RC32DisplayProbe.h"
+extern const char meshcore_capability_display_autodetect_rc32[];
+const char meshcore_capability_display_autodetect_rc32[] =
+    "meshcore.capability.display.autodetect.rc32.v1";
+#endif
+
 #define NV3001B_SWRESET 0x01
 #define NV3001B_SLPOUT  0x11
 #define NV3001B_DISPON  0x29
@@ -364,8 +371,23 @@ void NV3001BDisplay::drawChar(int x, int y, char ch) {
 bool NV3001BDisplay::begin() {
   if (is_on) return true;
 
+#if defined(HELTEC_RC32) && defined(RC32_DISPLAY_AUTODETECT) && RC32_DISPLAY_AUTODETECT
+  if (probe_complete && !panel_present) return false;
+#endif
   if (periph_power) periph_power->claim();
 
+#if defined(HELTEC_RC32) && defined(RC32_DISPLAY_AUTODETECT) && RC32_DISPLAY_AUTODETECT
+  if (!probe_complete) {
+    const volatile char* capability = meshcore_capability_display_autodetect_rc32;
+    (void)*capability;  // Retain proof in the executed optional-screen path.
+    probe_complete = true;
+    panel_present = mesh::ui::rc32::probe();
+    if (!panel_present) {
+      if (periph_power) periph_power->release();
+      return false;
+    }
+  }
+#endif
   setupOptionalOutput(PIN_TFT_EN, PIN_TFT_EN_ACTIVE);
   setupOptionalOutput(PIN_TFT_BL, !PIN_TFT_BL_ACTIVE);
   pinMode(PIN_TFT_CS, OUTPUT);
@@ -374,7 +396,17 @@ bool NV3001BDisplay::begin() {
   digitalWrite(PIN_TFT_DC, HIGH);
   delay(20);
 
+#if defined(HELTEC_RC32) && defined(RC32_DISPLAY_AUTODETECT) && RC32_DISPLAY_AUTODETECT
+  if (!spi.begin(PIN_TFT_SCL, PIN_TFT_MISO, PIN_TFT_SDA, PIN_TFT_CS)) {
+    panel_present = false;
+    spi.end();
+    mesh::ui::rc32::powerOff();
+    if (periph_power) periph_power->release();
+    return false;
+  }
+#else
   spi.begin(PIN_TFT_SCL, PIN_TFT_MISO, PIN_TFT_SDA, PIN_TFT_CS);
+#endif
   if (PIN_TFT_RST >= 0) {
     pinMode(PIN_TFT_RST, OUTPUT);
     digitalWrite(PIN_TFT_RST, HIGH);
@@ -398,6 +430,9 @@ bool NV3001BDisplay::begin() {
 }
 
 void NV3001BDisplay::turnOn() {
+#if defined(HELTEC_RC32) && defined(RC32_DISPLAY_AUTODETECT) && RC32_DISPLAY_AUTODETECT
+  if (!panel_present) return;
+#endif
   begin();
 }
 
@@ -405,7 +440,12 @@ void NV3001BDisplay::turnOff() {
   if (!is_on) return;
 
   writeOptionalPin(PIN_TFT_BL, !PIN_TFT_BL_ACTIVE);
+#if defined(HELTEC_RC32) && defined(RC32_DISPLAY_AUTODETECT) && RC32_DISPLAY_AUTODETECT
+  spi.end();
+  mesh::ui::rc32::powerOff();
+#else
   writeOptionalPin(PIN_TFT_EN, !PIN_TFT_EN_ACTIVE);
+#endif
   is_on = false;
   if (periph_power) periph_power->release();
 }

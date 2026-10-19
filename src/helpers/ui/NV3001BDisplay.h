@@ -28,6 +28,10 @@ class NV3001BDisplay : public DisplayDriver {
   SPIClass spi;
   RefCountedDigitalPin* periph_power;
   bool is_on = false;
+#if defined(HELTEC_RC32) && defined(RC32_DISPLAY_AUTODETECT) && RC32_DISPLAY_AUTODETECT
+  bool probe_complete = false;
+  bool panel_present = false;
+#endif
   uint16_t color = 0xffff;
   uint8_t text_size = 1;
   int cursor_x = 0;

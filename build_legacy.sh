@@ -3551,6 +3551,14 @@ declare_build_capability_contract() {
     fi
   fi
 
+  if [ "$env_platform" = "ESP32_PLATFORM" ] && ! is_kiss_modem_target "$env_name"; then
+    local optional_display_marker
+    if [ -n "$PIO_CONFIG_JSON" ] \
+        && optional_display_marker=$(python3 scripts/optional_display_profiles.py "$pio_env_name" <<<"$PIO_CONFIG_JSON"); then
+      record_application_expectation "display.autodetect" "$optional_display_marker"
+    fi
+  fi
+
   if [ "$env_platform" = "NRF52_PLATFORM" ] && ! is_kiss_modem_target "$env_name"; then
     if is_t114_display_autodetect_build "$pio_env_name"; then
       record_application_expectation "display.autodetect" \

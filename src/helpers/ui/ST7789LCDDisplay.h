@@ -11,6 +11,11 @@
   #define DISPLAY_ROTATION 3
 #endif
 
+#if defined(HELTEC_V4_R8_TFT) && defined(HELTEC_TFT_DISPLAY_AUTODETECT) \
+    && HELTEC_TFT_DISPLAY_AUTODETECT == 1
+  #define MESHCORE_HELTEC_R8_TFT_DETECTION 1
+#endif
+
 class ST7789LCDDisplay : public DisplayDriver {
   #if defined(LILYGO_TDECK) || defined(HELTEC_LORA_V4_TFT) || defined(HELTEC_V4_R8_TFT)
     SPIClass displaySPI;
@@ -18,6 +23,11 @@ class ST7789LCDDisplay : public DisplayDriver {
   Adafruit_ST7789 display;
   bool _isOn;
   bool _panel_ready = false;   // panel has been configured at least once
+#ifdef MESHCORE_HELTEC_R8_TFT_DETECTION
+  bool _probe_complete = false;
+  bool _present = false;
+  bool _rotation_pending = false;
+#endif
   bool _flipped = false;
   uint16_t _color;
   RefCountedDigitalPin* _peripher_power;

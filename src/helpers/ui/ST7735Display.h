@@ -5,11 +5,23 @@
 #include <SPI.h>
 #include <helpers/RefCountedDigitalPin.h>
 
+// The optional-display hardware is Tracker V1/V1.1. Other boards using this
+// renderer (including Tracker V2, T096 and T1) keep their existing behavior.
+#if defined(WIRELESS_TRACKER_DISPLAY_AUTODETECT) && WIRELESS_TRACKER_DISPLAY_AUTODETECT \
+    && (defined(HELTEC_LORA_V3) || defined(HELTEC_TRACKER_V1_1)) \
+    && !defined(HELTEC_TRACKER_V2) && !defined(HELTEC_T096) && !defined(HELTEC_T1)
+  #define MESHCORE_TRACKER_DISPLAY_AUTODETECT 1
+#endif
+
 class ST7735Display : public DisplayDriver {
   // One UI coordinate is one pixel on every 160x80 ST7735 panel.
   static constexpr int kLogicalWidth = 160, kLogicalHeight = 80;
   bool _isOn;
   RefCountedDigitalPin* _peripher_power;
+#ifdef MESHCORE_TRACKER_DISPLAY_AUTODETECT
+  bool _probeComplete = false;
+  bool _present = false;
+#endif
 
   bool i2c_probe(TwoWire& wire, uint8_t addr);
 public:

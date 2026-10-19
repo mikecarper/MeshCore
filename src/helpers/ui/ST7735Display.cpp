@@ -5,6 +5,11 @@
 #endif
 #include <TFT_eSPI.h>
 
+#ifdef MESHCORE_TRACKER_DISPLAY_AUTODETECT
+extern const char meshcore_capability_display_autodetect_tracker[] =
+    "meshcore.capability.display.autodetect.tracker.v1";
+#endif
+
 // Most ST7735 recipes keep the original RGB565 canvas. RAM-constrained
 // targets can retain the complete UI in RGB332 and expand only one scanline
 // while sending it to the panel; the panel still receives RGB565 pixels.
@@ -448,6 +453,10 @@ bool ST7735Display::i2c_probe(TwoWire& wire, uint8_t addr) {
   #define PIN_TFT_LEDA_CTL_ACTIVE  HIGH
 #endif
 
+#ifdef MESHCORE_TRACKER_DISPLAY_AUTODETECT
+  #include "WirelessTrackerDisplayProbe.h"
+#endif
+
 // Dark colors reduce panel current on the PowerSaving builds.
 ColorVal UIColor::window_bkg = ST77XX_BLACK;
 ColorVal UIColor::title_bkg = ST77XX_BLACK;
@@ -460,11 +469,34 @@ ColorVal UIColor::popup_txt = ST77XX_WHITE;
 ColorVal UIColor::corp_blue = ST77XX_BLUE;
 
 bool ST7735Display::begin() {
+#ifdef MESHCORE_TRACKER_DISPLAY_AUTODETECT
+  bool probePowerClaimed = false;
+  if (!_probeComplete) {
+    if (_peripher_power) {
+      _peripher_power->claim();
+      probePowerClaimed = true;
+    }
+    delay(100);
+    const volatile char* capability = meshcore_capability_display_autodetect_tracker;
+    (void)*capability;
+    _probeComplete = true;
+    _present = mesh::ui::wireless_tracker::probe();
+    if (!_present) {
+      if (probePowerClaimed) _peripher_power->release();
+      return false;
+    }
+  }
+  if (!_present) return false;
+#endif
   if (!sprite) {
     // alloc offscreen canvas
     sprite = new TFT_eSprite(&lcd);
     if (!sprite) {
       mesh::usbLoggingPort().println("ST7735Display: failed to alloc canvas");
+#ifdef MESHCORE_TRACKER_DISPLAY_AUTODETECT
+      mesh::ui::wireless_tracker::parkAbsentPanel();
+      if (probePowerClaimed) _peripher_power->release();
+#endif
       return false;
     }
     sprite->setColorDepth(ST7735_BUFFER_COLOR_DEPTH);
@@ -473,16 +505,29 @@ bool ST7735Display::begin() {
           "ST7735Display: failed to alloc canvas pixels");
       delete sprite;
       sprite = NULL;
+#ifdef MESHCORE_TRACKER_DISPLAY_AUTODETECT
+      mesh::ui::wireless_tracker::parkAbsentPanel();
+      if (probePowerClaimed) _peripher_power->release();
+#endif
       return false;
     }
     sprite->fillScreen(ST77XX_BLACK);
     sprite->setTextColor(curr_color = ST77XX_WHITE);
   }
 
-  if (!spriteReady()) return false;
+  if (!spriteReady()) {
+#ifdef MESHCORE_TRACKER_DISPLAY_AUTODETECT
+    if (probePowerClaimed) _peripher_power->release();
+#endif
+    return false;
+  }
 
   if (!_isOn) {
+#ifdef MESHCORE_TRACKER_DISPLAY_AUTODETECT
+    if (_peripher_power && !probePowerClaimed) _peripher_power->claim();
+#else
     if (_peripher_power) _peripher_power->claim();
+#endif
 
     delay(100); // allow the peripheral rail to stabilize
     pinMode(PIN_TFT_RST, OUTPUT);
