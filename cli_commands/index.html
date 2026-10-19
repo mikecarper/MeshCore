@@ -2118,6 +2118,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#set-display-rotation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Set display rotation
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#set-mqtt-observer-display-flip" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -5070,6 +5081,17 @@
     <span class="md-ellipsis">
       
         Set Companion inbox behavior
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#set-display-rotation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Set display rotation
       
     </span>
   </a>
@@ -8127,6 +8149,30 @@ the preview being read; history stays accessible by button or touch. The home
 screen identifies connected USB and Bluetooth clients (or both), and TCP,
 Ethernet, or serial clients where supported. Actual BLE pairing prompts retain
 priority over connection status.</p>
+<h2 id="set-display-rotation">Set display rotation</h2>
+<p>Supported Companion displays and new Heltec V4 R8 TFT Repeater, Room Server,
+and Sensor images accept a saved rotation:</p>
+<pre><code class="language-text">get display.rotation
+set display.rotation 0
+set display.rotation 90
+set display.rotation 180
+set display.rotation 270
+</code></pre>
+<p><code>0</code> restores the board's compiled orientation. On the R8 TFT, the other values
+turn clockwise from that default. A quarter turn changes between portrait and
+landscape, and the observer dashboard adapts to the new screen dimensions.
+The change applies without rebooting. Changing rotation while the display is
+off leaves it off; the next wake applies the pending panel rotation without
+resetting the shared touch controller. WebConfig offers the same choices under
+<strong>Display → Rotation</strong> when the running image supports rotation.</p>
+<p>The stock <a href="https://heltec.org/project/v4-r8-ex/">R8 Expansion Kit V2</a> does not
+include an accelerometer. Its GNSS and touch controllers do not measure the
+screen's physical orientation, so this firmware offers manual rotation rather
+than an automatic orientation option. Automatic orientation would require a
+supported motion sensor and its mounting orientation.</p>
+<p>Companion saves this in its existing node preferences. Infrastructure roles
+use a separate checked settings file, leaving existing node/MQTT layouts
+compatible. Old published images retain their original supported commands.</p>
 <h2 id="set-mqtt-observer-display-flip">Set MQTT observer display flip</h2>
 <p>Supported observer displays, including the R8 OLED and ST7789 panels, can also
 be turned 180 degrees relative to their compiled orientation:</p>
@@ -8135,9 +8181,9 @@ set display.flip off
 set display.flip on
 </code></pre>
 <p><code>0</code> and <code>1</code> are accepted aliases for <code>off</code> and <code>on</code>. This is intentionally
-different from Full Companion <code>display.rotation</code>: observer <code>display.flip</code> is a
-relative 180-degree mounting choice and cannot switch between portrait and
-landscape. The value is harmless on an observer display driver that does not
+different from <code>display.rotation</code>: observer <code>display.flip</code> is an additional
+relative 180-degree mounting choice. Use <code>display.rotation</code> to switch between
+portrait and landscape on new R8 TFT images. The value is harmless on an observer display driver that does not
 support flipping.</p>
 <p>Flip survives reboot and firmware updates that preserve the filesystem;
 erasing flash restores the <code>off</code> default. The boot log reports the saved
@@ -12143,7 +12189,7 @@ is active.</p>
       
         <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
       
-        <script src="../_javascript/firmware_picker.js?v=20261016-onboard-qspi-2"></script>
+        <script src="../_javascript/firmware_picker.js?v=20261018-variant-consolidation-1"></script>
       
         <script src="../_javascript/telemetry_decoder.js?v=20261007-hosted-form"></script>
       
