@@ -31,8 +31,14 @@
 #define MC_SX1262_FAST_IQ_CACHE 0
 #endif
 
-#if (MC_SX1262_FAST_FS || MC_SX1262_FAST_PACKET_CACHE || MC_SX1262_FAST_IQ_CACHE) && !MC_SX1262_FAST_PROFILE_SWITCH
-#error "SX1262 SetFs/packet reuse requires the owned fast profile-switch path"
+#ifndef MC_SX1262_FAST_MODEM_CACHE
+// Reuse the LoRa modem confirmation only inside an acknowledged owned RX hop.
+// Keep this board-qualified optimization off until its hardware comparison.
+#define MC_SX1262_FAST_MODEM_CACHE 0
+#endif
+
+#if (MC_SX1262_FAST_FS || MC_SX1262_FAST_PACKET_CACHE || MC_SX1262_FAST_IQ_CACHE || MC_SX1262_FAST_MODEM_CACHE) && !MC_SX1262_FAST_PROFILE_SWITCH
+#error "SX1262 SetFs/packet/modem reuse requires the owned fast profile-switch path"
 #endif
 
 #ifndef SX126X_TX_BUSY_TIMEOUT_MS
@@ -69,6 +75,27 @@ class CustomSX1262 : public SX1262 {
       _coldStandby = true;
       _tcxoWakePending = false;
     }
+    // These public initializers can change packet type before returning an
+    // error. Revoke ownership before entering RadioLib, rather than waiting
+    // for a later standby/reset to happen. Preserve the inherited float APIs.
+    using SX1262::beginFSK;
+    using SX1262::beginLRFHSS;
+    int16_t begin(const ConfigLoRa_t& config) override {
+      invalidateMorseModemCache();
+      return SX1262::begin(config);
+    }
+    int16_t beginFSK(const ConfigFSK_t& config) override {
+      invalidateMorseModemCache();
+      return SX1262::beginFSK(config);
+    }
+    int16_t beginLRFHSS(const ConfigLRFHSS_t& config) override {
+      invalidateMorseModemCache();
+      return SX1262::beginLRFHSS(config);
+    }
+    int16_t setModem(ModemType_t modem) override {
+      invalidateMorseModemCache();
+      return SX1262::setModem(modem);
+    }
     int16_t setMorseFastRssi() {
       return setSX126xMorseRssiWindow(this);
     }
@@ -93,8 +120,10 @@ class CustomSX1262 : public SX1262 {
     bool hilUseFsOnRetune = false;
     bool hilSkipUnchangedPacket = false;
     bool hilSkipUnchangedIq = false;
+    bool hilSkipConfirmedModemQuery = false;
     float hilFrequencyMHz() const { return freqMHz; }
     uint32_t hilFsEntries = 0, hilPacketSkips = 0, hilIqWorkaroundSkips = 0;
+    uint32_t hilModemQuerySkips = 0;
 #endif
 
     int16_t restoreTcxoAfterSleep() {
@@ -263,8 +292,25 @@ class CustomSX1262 : public SX1262 {
       if (index == sizeof(bandwidths) / sizeof(bandwidths[0])) {
         return RADIOLIB_ERR_INVALID_BANDWIDTH;
       }
-      if (getPacketType() != RADIOLIB_SX126X_PACKET_TYPE_LORA) {
-        _profileSwitch.invalidateModulation();
+      bool queryModem = true;
+#if MC_SX1262_FAST_MODEM_CACHE || defined(MC_SX1262_HIL)
+      bool reuseModem = MC_SX1262_FAST_MODEM_CACHE != 0;
+#ifdef MC_SX1262_HIL
+      reuseModem = hilSkipConfirmedModemQuery;
+#endif
+      // rxValid is established only after full RX setup confirms LoRa, or by
+      // resuming that same owned context. A successful owned standby, warm
+      // oscillator and continuous RX are required. TX/CAD staging, ordinary
+      // standby, sleep, reset, duty cycling and command errors revoke it.
+      // A caller using base-qualified GODMODE/raw SPI to change packet type
+      // must revoke ownership first, just as for the packet/IQ caches.
+      queryModem = !reuseModem || !_profileSwitch.canResumeFast();
+#ifdef MC_SX1262_HIL
+      if (!queryModem) ++hilModemQuerySkips;
+#endif
+#endif
+      if (queryModem && getPacketType() != RADIOLIB_SX126X_PACKET_TYPE_LORA) {
+        _profileSwitch.invalidate();
         return RADIOLIB_ERR_WRONG_MODEM;
       }
 

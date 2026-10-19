@@ -138,10 +138,10 @@ class RadioRegulatorTests(unittest.TestCase):
             initialize = method(source, 'bool std_init(')
             init_call = 'std_init() ? 0 : -1'
         else:
-            initialize = method(source, 'int16_t begin(')
+            initialize = method(source, 'int16_t begin(float')
             init_call = 'begin()'
         if chip == 'SX1262':
-            morse = method(source, 'int16_t beginFSK(')
+            morse = method(source, 'int16_t beginFSK(float')
             morse_call = 'beginFSK()'
         else:
             morse = method(source, 'int16_t beginMorseReceive(')

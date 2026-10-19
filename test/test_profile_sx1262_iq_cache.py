@@ -7,27 +7,31 @@ import tempfile
 import unittest
 
 from test_radio_receive_contract import method
+import test_sx1262_modem_cache as modem_cache
 
 
 ROOT = Path(__file__).resolve().parents[1]
 
 
 class ProfileIqCacheTest(unittest.TestCase):
-    def test_only_qualified_indicator_recipe_opts_in(self):
+    def test_only_qualified_recipes_opt_in(self):
         opt_ins = []
         for recipe in (ROOT / "variants").glob("*/platformio.ini"):
             if re.search(r"^\s*-D\s+MC_SX1262_FAST_IQ_CACHE=1\s*$",
                          recipe.read_text(), re.MULTILINE):
                 opt_ins.append(recipe.relative_to(ROOT).as_posix())
-        self.assertEqual(opt_ins, ["variants/sensecap_indicator-espnow/platformio.ini"])
+        self.assertCountEqual(opt_ins, ["variants/sensecap_indicator-espnow/platformio.ini",
+                                       "variants/lilygo_tdeck/platformio.ini"])
 
     def compile_run(self, source):
         with tempfile.TemporaryDirectory() as folder:
-            cpp, binary = Path(folder) / "test.cpp", Path(folder) / "test"
+            cpp = Path(folder) / "test.cpp"
+            binary = Path(folder) / ("test.exe" if os.name == "nt" else "test")
             cpp.write_text(source, encoding="ascii")
+            sanitizers = [] if os.name == "nt" else [
+                "-fsanitize=address,undefined", "-fno-omit-frame-pointer", "-no-pie"]
             built = subprocess.run([os.environ.get("CXX", "g++"), "-std=c++17",
-                "-Wall", "-Wextra", "-fsanitize=address,undefined",
-                "-fno-omit-frame-pointer", "-no-pie", str(cpp), "-o", str(binary)],
+                "-Wall", "-Wextra", *sanitizers, str(cpp), "-o", str(binary)],
                 capture_output=True, text=True)
             self.assertEqual(built.returncode, 0, built.stderr)
             ran = subprocess.run([str(binary)], capture_output=True, text=True)
@@ -243,8 +247,11 @@ int main() {
     def test_unqualified_boards_keep_the_original_live_modem_query_and_iq_path(self):
         source = (ROOT / "src/helpers/radiolib/CustomSX1262.h").read_text()
         self.assertIn("#define MC_SX1262_FAST_IQ_CACHE 0", source)
-        modulation = method(source, "int16_t setLoRaModulationParams(")
-        self.assertIn("if (getPacketType() != RADIOLIB_SX126X_PACKET_TYPE_LORA)", modulation)
+        self.assertIn("#define MC_SX1262_FAST_MODEM_CACHE 0", source)
+        # Execute the shared production-method fixture: default-off builds must
+        # query the modem, while opted-in/HIL reuse must retain all ownership,
+        # initialization and failure gates. Do not depend on an if's spelling.
+        modem_cache.ModemCacheTests.test_confirmed_modem_requires_owned_warm_rx_and_survives_no_failure(self)
         helper = method(source, "int16_t writeProfilePacketParams(")
         self.assertIn("return getMod()->SPIwriteStream(RADIOLIB_SX126X_CMD_SET_PACKET_PARAMS,", helper)
 
