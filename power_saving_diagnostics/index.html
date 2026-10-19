@@ -2613,6 +2613,10 @@ external LDO, PMIC output, or radio regulator.</p>
 <td>Minew ME25LS01</td>
 <td><a href="https://store.minewsemi.com/wp-content/uploads/2024/03/ME25LS01_LR1110_Datasheet_K_EN.pdf">Manufacturer datasheet</a>, electrical schematic page 9: MCU DCC through ML2/ML3 to DEC4_6 and MC15/MC16.</td>
 </tr>
+<tr>
+<td>Nano G2 Ultra</td>
+<td><a href="https://wiki.uniteng.com/meshtastic/nano_g2_ultra/nanog2ultra_19_jun_2023.pdf">Manufacturer schematic published as the 19 June 2023 design</a>, NRF52840 sheet: DCC through L13 (10 uH) and L12 (15 nH) to DEC4, with C41/C42. These components are not marked DNM.</td>
+</tr>
 </tbody>
 </table>
 <p>The startup tests execute each real <code>begin()</code> with SoftDevice off/on and power
@@ -2620,9 +2624,24 @@ management compiled out/in. Normal startup defers the selected mode until the
 saved settings and recovery state can be read, while retaining one common board
 initialization. The board class still defines the circuit-supported default;
 the settings layer applies it before display/radio startup.</p>
+<p>Nano G2 Ultra was deliberately excluded from upstream
+<a href="https://github.com/meshcore-dev/MeshCore/pull/1246">PR #1246</a> because its LC
+circuit had not yet been confirmed. That discussion asks for circuit
+confirmation or testing; it does not identify a Nano-specific DC-DC failure.
+The published schematic supplies that circuit evidence. Nano now approves the
+REG1 DC-DC default through the shared board initializer, retaining saved LDO
+selection and crash fallback in the main firmware roles. KISS applies the
+board default directly. REG0, GPIO assignments, ADC conversion, peripheral
+startup/shutdown and USB/DFU identity are unchanged. The schematic title block
+does not identify a PCB revision; battery-only starts, current draw and radio
+load on actual hardware remain physical acceptance checks.</p>
+<p>The <a href="../test-results/nano_g2_regulator_2026-10-18.json">Nano validation record</a>
+binds the issue/circuit review, native checks and six passing build selections
+to source <code>c6ccbb5ab</code>: BLE/USB/Full Companion, Repeater, Room Server and KISS.
+No Nano hardware was flashed during these checks.</p>
 <p>ThinkNode M3/M4/M6 and generic ProMicro remain unchanged pending exact circuit
 or physical-board confirmation; their DC/DC inheritance alone is not evidence.
-Nano G2 Ultra, ThinkNode M1/M8 and Keepteen LT1 retain their plain <code>NRF52Board</code>
+ThinkNode M1/M8 and Keepteen LT1 retain their plain <code>NRF52Board</code>
 initializers for the same reason. The MeshTracker X1's LR2021 regulator likewise
 remains unchanged. Do not turn on a switching regulator without its required
 inductor/capacitor network. The MCU and LoRa regulator choices are independent.</p>

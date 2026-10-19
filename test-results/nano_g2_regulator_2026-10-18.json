@@ -1,0 +1,204 @@
+{
+  "source": "c6ccbb5ab870aeb38d0043fa3f887d6473ac30c8",
+  "platformio_single_process": true,
+  "raw_role_builds": [
+    {
+      "target": "Nano_G2_Ultra_companion_radio_ble",
+      "source": "c6ccbb5ab870aeb38d0043fa3f887d6473ac30c8",
+      "passed": true,
+      "app_bytes": 406520,
+      "flash_capacity": 712704,
+      "flash_margin": 306184,
+      "ram_margin": 47420,
+      "hashes": {
+        "firmware.zip": "cc0a18b90a57a386fdde258fc19f2ef8f46b61f2d49eadecec87838e9932b95d",
+        "firmware.elf": "b05751b0997cbe61aace5f291961b85221e5531727d85f54618879e207cbe5f4",
+        "firmware.memory.json": "c02bff3956178d69638e3a940209a73912b3a1784ab70a1a7e70219aef4f1234",
+        "firmware.hex": "3acb4035231af75ce0a7fd37fd15bffc1fd87ce944b3fb701080b54d124a8799"
+      },
+      "application_sha256": "b95d56750e2cad94a0555a62f09f89431dd169c36491bdcdb721164fceece3ec",
+      "scope": "Compile/link and RAM admission; not physical acceptance or a published release package."
+    },
+    {
+      "target": "Nano_G2_Ultra_companion_radio_usb",
+      "source": "c6ccbb5ab870aeb38d0043fa3f887d6473ac30c8",
+      "passed": true,
+      "app_bytes": 413892,
+      "flash_capacity": 712704,
+      "flash_margin": 298812,
+      "ram_margin": 56272,
+      "hashes": {
+        "firmware.zip": "b98df1c99992e6b73478f4e7acbb42f80afbd677ea27123e56812e2cfa1bee2c",
+        "firmware.elf": "1228d684ce1916664f17b953a633ecfe9b54c1a0bf61293112da642ea0b8efc0",
+        "firmware.memory.json": "13682395baaf70feb523ad46bf398fbe7be11975ee9fbd55b419a0d9820db6cd",
+        "firmware.hex": "b3439428369760ebc035df60eb40442583ad09688dfabdefbee3d51446d637d8"
+      },
+      "application_sha256": "9c9a3a2c0ccea005fa8677cdf72ca3a5a5b82ad4be0cf472d4e5d2502ac135e4",
+      "scope": "Compile/link and RAM admission; not physical acceptance or a published release package."
+    },
+    {
+      "target": "Nano_G2_Ultra_repeater",
+      "source": "c6ccbb5ab870aeb38d0043fa3f887d6473ac30c8",
+      "passed": true,
+      "app_bytes": 524408,
+      "flash_capacity": 815104,
+      "flash_margin": 290696,
+      "ram_margin": 82216,
+      "hashes": {
+        "firmware.zip": "722c35da154ce3f7ea40293650ef9401f989ea583c70e18d721c272dedd1bcff",
+        "firmware.elf": "22ca8716bc2ee55501acd42543dd947115d95d4531c33f7b82fa4308a7102047",
+        "firmware.memory.json": "3ddd5d47bc6fb6463fb9bd3c6e5ab4dadc3f1653e868ffce6575fa82f53cbec8",
+        "firmware.hex": "13a82ed56afa7e0d10cd63c2380dcde89d5c66bcbb951dc1e65a3937429dac7c"
+      },
+      "application_sha256": "6906156c08ccc5939e6e43873b62738f835ea66f94f909191dcd2fcab558084b",
+      "scope": "Compile/link and RAM admission; not physical acceptance or a published release package."
+    },
+    {
+      "target": "Nano_G2_Ultra_room_server",
+      "source": "c6ccbb5ab870aeb38d0043fa3f887d6473ac30c8",
+      "passed": true,
+      "app_bytes": 419680,
+      "flash_capacity": 815104,
+      "flash_margin": 395424,
+      "ram_margin": 124520,
+      "hashes": {
+        "firmware.zip": "5c7557814a674b964af668f74dd8f2bd2391c0a6464800dcdabf31cd92603f77",
+        "firmware.elf": "e166f54fd82bfa4c6401000b14a344571eb6096d76ffa4d61552cbb278357276",
+        "firmware.memory.json": "0dd9ae2c9523f9c772738918a6643ce10c4d4888d69dc6d50683c77dfca376f5",
+        "firmware.hex": "fea174c84c7edb5255be87e2cdf23bd3caff3045e64f34c3f2e2e2366fec30a5"
+      },
+      "application_sha256": "007decc275d7938a11b6a11b7c0da7082ad39c6038440c8cbb83faaa1cae91c1",
+      "scope": "Compile/link and RAM admission; not physical acceptance or a published release package."
+    },
+    {
+      "target": "Nano_G2_Ultra_kiss_modem",
+      "source": "c6ccbb5ab870aeb38d0043fa3f887d6473ac30c8",
+      "passed": true,
+      "app_bytes": 193384,
+      "flash_capacity": 815104,
+      "flash_margin": 621720,
+      "ram_margin": 176968,
+      "hashes": {
+        "firmware.zip": "5662eb143f834dfe48edf82c93ef76eaea27f87bf8292e85970ece1480b7550c",
+        "firmware.elf": "ce20345162adec8ed09b9932aebbcf91120e671d7c1c5db7c8c3ae24c6ae90c0",
+        "firmware.memory.json": "15b73e5cef55ec3ae37d2757e42ce039d0929a83c6b875f2bc67485b96fc7c9b",
+        "firmware.hex": "17b8d78c9b0c7aba606cb8e098bb1127dbed090201505ea66aca219b9c724ee6"
+      },
+      "application_sha256": "3752e410d3c872dd3630f8ebeae93c8a91ebf127fbf45197155a4e02b84cf7f2",
+      "scope": "Compile/link and RAM admission; not physical acceptance or a published release package."
+    }
+  ],
+  "log_sha256": "bf7e885e5cda27106b6dc446dfbd62bf5e6108162955aa9acbaa0974bccf2747",
+  "full_companion": {
+    "target": "Nano_G2_Ultra_companion_radio_full",
+    "source": "c6ccbb5ab870aeb38d0043fa3f887d6473ac30c8",
+    "passed": true,
+    "version": "v1.18.0.1-halo-keymind-cascade-dev-c6ccbb5a",
+    "build_profile": "full",
+    "app_bytes": 579948,
+    "flash_capacity": 712704,
+    "flash_margin": 132756,
+    "ram_margin": 30136,
+    "capabilities": [
+      "profile.full",
+      "ota.update.bluetooth",
+      "companion.temp_radio",
+      "companion.ota_cli",
+      "companion.usb",
+      "companion.bluetooth",
+      "companion.usb_logging",
+      "companion.usb_mota_source",
+      "companion.mota_sender",
+      "companion.dedicated_usb_logging",
+      "companion.ble_mota_source",
+      "logging.usb.packets",
+      "logging.usb.control"
+    ],
+    "bound_hashes_match": true,
+    "uf2_matches_application": true,
+    "elf_flash_load_bytes_match": 579868,
+    "private_regulator_fault_markers_absent": true,
+    "elf_sha256": "fbc3f93361333148e5ba112580cf1ad7dd4f2a9a45bf937f6877a9914b4fe11d",
+    "zip_sha256": "905b5321f3f6b281f4c356fd7c6969009517b56ec6070c163cb7b78b4af1cb59",
+    "uf2_sha256": "b8298094a0e92ca6eae2e21a6a1c776bbd9559917f3073c32c41d38b8f18283f",
+    "application_sha256": "4009ce9269941ce22e20e7cb41ebc922e07ac8ab8fe3130f12e14034caa7998b",
+    "memory_manifest_sha256": "fdc97b8fd3cb9b716c6145472fe393f8fc4f8ab9d676a0351f360cacb9273daf",
+    "files": {
+      "Nano_G2_Ultra_companion_radio_full-v1.18.0.1-halo-keymind-cascade-dev-c6ccbb5a.uf2": "b8298094a0e92ca6eae2e21a6a1c776bbd9559917f3073c32c41d38b8f18283f",
+      "Nano_G2_Ultra_companion_radio_full-v1.18.0.1-halo-keymind-cascade-dev-c6ccbb5a.zip": "905b5321f3f6b281f4c356fd7c6969009517b56ec6070c163cb7b78b4af1cb59",
+      "Nano_G2_Ultra_companion_radio_full-v1.18.0.1-halo-keymind-cascade-dev-c6ccbb5a.capabilities.json": "0b8c8b3ee24d514913b5b6c703f9a0eef6cbc9e1c43d525d0242c1a95bcda9d1",
+      "Nano_G2_Ultra_companion_radio_full-v1.18.0.1-halo-keymind-cascade-dev-c6ccbb5a.meshtext-license.txt": "ba558609720fbff1481e236462eea2f9e08a73c1f3c2fd486ea4d9e1d0a6d58f"
+    }
+  },
+  "schema_version": 1,
+  "qualification_date": "2026-10-18",
+  "software_qualification_complete": true,
+  "physical_qualification_complete": false,
+  "change": "NanoG2Ultra inherits NRF52BoardDCDC and calls its deferred initializer. Auto now selects REG1 DC-DC; main roles retain saved LDO selection and sticky crash fallback. KISS applies the board default directly.",
+  "unchanged": [
+    "REG0 configuration",
+    "OTA name and USB/DFU metadata",
+    "GPIO assignments",
+    "ADC conversion",
+    "peripheral startup/shutdown and timing",
+    "filesystem and linker layouts"
+  ],
+  "github_review": {
+    "reviewed_open_and_closed": true,
+    "repositories": [
+      "meshcore-dev/MeshCore",
+      "mikecarper/MeshCore",
+      "meshtastic/firmware",
+      "manufacturer-owned public repositories"
+    ],
+    "reason_for_prior_exclusion": "Upstream PR1246 left Nano unchanged pending confirmation or testing of its external LC circuit.",
+    "nano_specific_dcdc_failure_reason_found_in_reviewed_results": false,
+    "scope": "Bounded issue/PR/comment and local history review; not a claim that no report exists anywhere.",
+    "primary_rationale_url": "https://github.com/meshcore-dev/MeshCore/pull/1246",
+    "confirmation_request_url": "https://github.com/meshcore-dev/MeshCore/pull/1246#issuecomment-3677644695",
+    "other_reviewed_references": [
+      "https://github.com/meshcore-dev/MeshCore/pull/1201",
+      "https://github.com/meshcore-dev/MeshCore/pull/298",
+      "https://github.com/meshcore-dev/MeshCore/pull/2426",
+      "https://github.com/meshtastic/firmware/pull/2660",
+      "https://github.com/meshtastic/firmware/issues/5839"
+    ],
+    "filesystem_issue_caveat": "Meshtastic5839 includes a Nano node-database/filesystem corruption report but provides no regulator-mode connection."
+  },
+  "circuit_evidence": {
+    "url": "https://wiki.uniteng.com/meshtastic/nano_g2_ultra/nanog2ultra_19_jun_2023.pdf",
+    "source_file_sha256": "c078241d8dfe9199316d6248b9befbb8b085f24dc1bd6ed558d851cbe6987865",
+    "page": 4,
+    "published_design": "19 June 2023 filename; schematic sheet title date 9 March 2023; PCB revision field unspecified",
+    "reg1_network": "DCC through L13 10uH and L12 15nH to DEC4, with C41/C42; those parts are not marked DNM",
+    "physical_components_or_unknown_revisions_verified": false
+  },
+  "native_checks": {
+    "board_suite_methods": 4,
+    "board_suite_passed": true,
+    "nano_startup_matrix": "SoftDevice off/on and power management off/on; single base initialization with no eager DC-DC hardware writes during peripheral setup",
+    "actual_nano_header_constructor_identity_passed": true,
+    "negative_controls_rejected": [
+      "Plain NRF52Board inheritance",
+      "Missing explicit virtual-base OTA-name initialization"
+    ],
+    "board_suite_evidence": "Execution results independently witnessed by reviewing agent; no persistent log retained.",
+    "settings_api_methods": 23,
+    "settings_api_passed": true,
+    "settings_api_sanitizers": [
+      "address",
+      "undefined"
+    ],
+    "settings_log_sha256": "7ebffe39712ab087cd5a84a7c121bab74a69430b4d85169bd516ebaa4aa85fd7",
+    "hosted_doc_link_methods": 7,
+    "hosted_doc_links_passed": true
+  },
+  "hardware_flashed": false,
+  "release_published": false,
+  "remaining_physical_checks": [
+    "Battery-only cold starts on Nano hardware",
+    "Measured current consumption in each MCU mode",
+    "BLE and radio load including TX voltage stability",
+    "Saved mode and recovery qualification on an actual Nano board"
+  ]
+}
