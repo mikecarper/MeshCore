@@ -10,6 +10,8 @@ Patch a private build copy; never edit PlatformIO's shared framework cache.
 With the pinned GCC 14/LTO toolchain, the optimized Bluefruit.begin() fails
 on the RAK4631 repeater: S140 rejects a valid single-peripheral role request
 with NRF_ERROR_RESOURCES. The unoptimized method starts DFU successfully.
+Cache the dispatch role before a disconnect deletes its BLEConnection. The
+remaining peripheral/central routing must not dereference that freed object.
 """
 
 from pathlib import Path
@@ -49,6 +51,32 @@ FIXED_BEGIN = (
     'AdafruitBluefruit::begin(uint8_t prph_count, uint8_t central_count)'
 )
 
+DISCONNECT_PATCHES = (
+    (
+        "  BLEConnection* conn = this->Connection(conn_hdl);\n\n"
+        '  LOG_LV2("BLE",',
+        "  BLEConnection* conn = this->Connection(conn_hdl);\n"
+        "  // Keep role routing valid after disconnect deletes the connection.\n"
+        "  uint8_t conn_role = conn ? conn->getRole() : BLE_GAP_ROLE_INVALID;\n\n"
+        '  LOG_LV2("BLE",',
+    ),
+    (
+        "      conn = _connection[conn_hdl];\n\n"
+        "      // Invoke connect callback\n",
+        "      conn = _connection[conn_hdl];\n"
+        "      conn_role = conn->getRole();\n\n"
+        "      // Invoke connect callback\n",
+    ),
+    (
+        "  if ( (conn == NULL) || (conn->getRole() == BLE_GAP_ROLE_PERIPH) )\n",
+        "  if ( (conn_role == BLE_GAP_ROLE_INVALID) || (conn_role == BLE_GAP_ROLE_PERIPH) )\n",
+    ),
+    (
+        "  if ( (conn == NULL) || (conn->getRole() == BLE_GAP_ROLE_CENTRAL) )\n",
+        "  if ( (conn_role == BLE_GAP_ROLE_INVALID) || (conn_role == BLE_GAP_ROLE_CENTRAL) )\n",
+    ),
+)
+
 
 def patched_source(source):
     source = source.replace("\r\n", "\n")
@@ -76,6 +104,7 @@ def patched_connection_source(source):
 
 def patched_bluefruit_source(source):
     source = source.replace("\r\n", "\n")
+    source = patched_disconnect_source(source)
     if FIXED_BEGIN in source and OLD_BEGIN not in source:
         return source
     if source.count(OLD_BEGIN) != 1:
@@ -83,6 +112,21 @@ def patched_bluefruit_source(source):
             "nRF52 BLE startup fix: unrecognized framework source; review before building"
         )
     return source.replace(OLD_BEGIN, FIXED_BEGIN)
+
+
+def patched_disconnect_source(source):
+    source = source.replace("\r\n", "\n")
+    counts = [(source.count(old), source.count(fixed))
+              for old, fixed in DISCONNECT_PATCHES]
+    if all(old == 0 and fixed == 1 for old, fixed in counts):
+        return source
+    if not all(old == 1 and fixed == 0 for old, fixed in counts):
+        raise RuntimeError(
+            "nRF52 BLE disconnect fix: unrecognized framework dispatcher; review before building"
+        )
+    for old, fixed in DISCONNECT_PATCHES:
+        source = source.replace(old, fixed)
+    return source
 
 
 def patched_trace_source(source):

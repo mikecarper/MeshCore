@@ -779,6 +779,7 @@ jobs:
           pio pkg install --global --tool 'platformio/toolchain-gccarmnoneeabi@1.140201.0'
           python3 -B test/test_nrf52_svc_compat.py -v
           python3 -B test/test_nrf52_ble_cccd_fix.py -v
+          python3 -B test/test_nrf52_ble_disconnect.py -v
           pip install unicorn==2.1.4
           python3 -B test/test_nrf52_ble_dfu_fix.py -v
 

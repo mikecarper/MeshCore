@@ -55,8 +55,9 @@ class Nrf52BleCccdFixTest(unittest.TestCase):
         self.assertNotIn("mesh_nrf52_service_cccd_save", app)
 
     def test_bluefruit_begin_uses_private_unoptimized_copy(self):
+        dispatcher = (ROOT / "test/fixtures/nrf52_ble_disconnect/bluefruit_dispatch.cpp").read_text()
         patched = module.patched_bluefruit_source(
-            "before\n" + module.OLD_BEGIN + "\nafter\n"
+            "before\n" + module.OLD_BEGIN + "\nafter\n" + dispatcher
         )
         self.assertEqual(patched.count(module.FIXED_BEGIN), 1)
         self.assertEqual(module.patched_bluefruit_source(patched), patched)
