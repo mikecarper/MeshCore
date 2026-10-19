@@ -84,7 +84,16 @@ the picker can advertise detection.
 | Picker JavaScript regressions | PASS, 4 suites |
 | Complete build-profile selection suite | PASS |
 | Hosted documentation links | PASS, 7 test methods |
-| Packaged ESP32 firmware smoke builds | Pending |
+| Packaged ESP32 firmware smoke builds | PASS, RC32 Full Companion, Tracker V1 Full Repeater/MQTT, Tracker V1.1 Full Repeater/MQTT, and V4 R8 TFT Full Companion |
+
+The qualified smoke packages use firmware source
+[`8268befbd`](https://github.com/mikecarper/MeshCore/commit/8268befbdcdc3572b42f99ac0dee2a19ae20f02f).
+All four uploadable applications contain their board-specific detection marker
+and matching firmware/source version. Their bound package hashes and generated
+picker controls pass verification. RAM headroom after the complete modeled
+allocation and transient margin is 68,672 bytes for RC32, 1,942 for Tracker V1,
+4,054 for Tracker V1.1, and 66,528 for V4 R8 TFT. These are build-time admission
+results, not measurements of physical runtime load.
 
 Physical verification on RC32, Tracker V1 and V4 R8 with and without their
 manufacturer-supported screen has not been performed. Hardware qualification
