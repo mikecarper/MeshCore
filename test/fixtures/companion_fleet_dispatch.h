@@ -6,6 +6,7 @@
 #include <cassert>
 #include <cstddef>
 #include <cstdint>
+#include "regulator_cli_stub.h"
 
 // These narrower dispatch fixtures retain the complete production fleet branch
 // but have no channel peripheral. The separate companion fleet suite compiles

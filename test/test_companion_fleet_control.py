@@ -27,6 +27,7 @@ HARNESS = r'''
 #include <string>
 #include <vector>
 #include <helpers/FleetCommand.h>
+#include "regulator_cli_stub.h"
 #include <helpers/CompanionFrameLimits.h>
 #include <openssl/evp.h>
 
@@ -1286,7 +1287,7 @@ class CompanionFleetControlTests(unittest.TestCase):
             compiler, "-std=c++17", "-Wall", "-Wextra", "-Werror",
             "-Wno-unused-parameter", "-O2", *sanitizer_flags,
             "-fstack-usage", "-isystem", str(ROOT / "test/mocks"),
-            "-I", str(ROOT / "src"), str(fixture),
+            "-I", str(ROOT / "src"), "-I", str(ROOT / "test/fixtures"), str(fixture),
             str(ROOT / "src/helpers/FleetCommand.cpp"), "-lcrypto", "-o", str(cls.binary),
         ], capture_output=True, text=True, timeout=60)
         if result.returncode:
@@ -1353,6 +1354,7 @@ class CompanionFleetControlTests(unittest.TestCase):
             self.compiler, "-std=c++17", "-Wall", "-Wextra", "-Werror",
             "-Wno-unused-parameter", "-DSTM32_PLATFORM=1", "-O2", *self.sanitizer_flags,
             "-isystem", str(ROOT / "test/mocks"), "-I", str(ROOT / "src"),
+            "-I", str(ROOT / "test/fixtures"),
             str(self.fixture), str(ROOT / "src/helpers/FleetCommand.cpp"),
             "-lcrypto", "-o", str(binary),
         ], capture_output=True, text=True, timeout=60)
@@ -1449,6 +1451,7 @@ class CompanionFleetControlTests(unittest.TestCase):
 #include <cstdio>
 #include <cstring>
 #include <helpers/FleetCommand.h>
+#include "regulator_cli_stub.h"
 static_assert(MESH_ENABLE_FLEET_CONTROL == 0, "compact profile must disable fleet");
 // No channels, clock, signing identity, codec definitions or sendGroupData.
 class MyMesh {
@@ -1474,7 +1477,8 @@ int main() {
                 built = subprocess.run([
                     self.compiler, "-std=c++17", "-Wall", "-Wextra", "-Werror",
                     "-Wno-unused-parameter", "-isystem", str(ROOT / "test/mocks"),
-                    "-I", str(ROOT / "src"), *flags, str(source), "-o", str(executable),
+                    "-I", str(ROOT / "src"), "-I", str(ROOT / "test/fixtures"),
+                    *flags, str(source), "-o", str(executable),
                 ], capture_output=True, text=True, timeout=60)
                 self.assertEqual(built.returncode, 0, built.stdout + built.stderr)
                 result = subprocess.run([str(executable)], capture_output=True,
