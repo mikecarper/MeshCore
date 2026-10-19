@@ -28,14 +28,10 @@ int main() {
        "set mcu.regulator ldo", "set mcu.regulator auto", "get radio.regulator",
        "set radio.regulator dcdc", "set radio.regulator ldo", "set radio.regulator auto"}) {
     char reply[80];
-    assert(handleRegulatorCommand(command, reply, sizeof(reply)));
-    assert(std::string(reply) == std::string("Error: ")
-        + (strstr(command, "mcu.") ? "MCU" : "radio") + " regulator selection unsupported");
     for (size_t capacity = 0; capacity <= sizeof(reply); ++capacity) {
       memset(reply, 0xa5, sizeof(reply));
-      assert(handleRegulatorCommand(command, reply, capacity));
-      if (capacity) assert(memchr(reply, 0, capacity));
-      for (size_t i = capacity; i < sizeof(reply); ++i) assert(uint8_t(reply[i]) == 0xa5);
+      assert(!handleRegulatorCommand(command, reply, capacity));
+      for (size_t i = 0; i < sizeof(reply); ++i) assert(uint8_t(reply[i]) == 0xa5);
     }
   }
   for (const char* command : {"get mcu.regulatorx", "set radio.regulators ldo", "get name", "help"}) {

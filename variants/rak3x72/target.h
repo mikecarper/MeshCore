@@ -29,7 +29,10 @@ public:
         for (int i=0; i<8;i++) {
             raw += analogRead(PIN_VBAT_READ);
         }
-        return ((double)raw) * ADC_MULTIPLIER / 8 / 4096;
+        // The eight 12-bit samples sum to at most 32760. This is the exact
+        // previous 8650 / 32768 scale and truncation without double helpers;
+        // the largest product (283374000) fits in uint32_t.
+        return (uint16_t)((raw * 8650UL) >> 15);
     }
 
     void setGpio(uint32_t values) override {

@@ -176,7 +176,7 @@ class RegulatorSettingsTests(unittest.TestCase):
             raise AssertionError(result.stdout+result.stderr)
         cls.stm32_fixed = binary
 
-    def test_fixed_stm32wl_driver_rejects_selection_without_hardware_or_storage_work(self):
+    def test_fixed_stm32wl_driver_defers_to_ordinary_cli_without_hardware_or_storage_work(self):
         result = subprocess.run([str(self.stm32_fixed)], text=True,capture_output=True,timeout=10)
         self.assertEqual(result.returncode,0,result.stdout+result.stderr)
 

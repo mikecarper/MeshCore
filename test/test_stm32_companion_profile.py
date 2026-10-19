@@ -10,9 +10,12 @@ from pathlib import Path
 import re
 import shlex
 import subprocess
+import tempfile
 import textwrap
 import unittest
 
+from cpp_source import body
+from test_serial_wifi_sessions import SANITIZER_FLAGS
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -125,6 +128,52 @@ class STM32CompanionCICoverageTest(unittest.TestCase):
         self.assertNotIn(" &", script)
         command = textwrap.dedent(job[1].rsplit("        run: |\n", 1)[1])
         subprocess.run(["bash", "-n"], input=command, text=True, check=True)
+
+
+class RAK3x72BatteryScaleTest(unittest.TestCase):
+    def test_all_eight_sample_adc_sums_keep_exact_previous_voltage_and_sampling(self):
+        header = (ROOT / "variants/rak3x72/target.h").read_text()
+        scale = re.search(r"^#define\s+ADC_MULTIPLIER\s+(.+)$", header, re.MULTILINE)[1]
+        sample = body(header, "uint16_t getBattMilliVolts() override").replace(" override", "")
+        source = r'''
+#include <cassert>
+#include <cstdint>
+#include <limits>
+#define PIN_VBAT_READ 7
+#define ADC_MULTIPLIER @SCALE@
+static unsigned reads, resolutions;
+static uint32_t remaining;
+void analogReadResolution(int bits) { assert(bits == 12 && reads == 0); ++resolutions; }
+int analogRead(int pin) {
+  assert(pin == PIN_VBAT_READ && resolutions == 1 && reads < 8);
+  ++reads;
+  const uint32_t value = remaining > 4095 ? 4095 : remaining;
+  remaining -= value;
+  return value;
+}
+class Board { public: @BODY@ };
+static_assert(ADC_MULTIPLIER == 8650, "revisit the fixed-point scale if calibration changes");
+static_assert(uint64_t(8) * 4095 * 8650 <= std::numeric_limits<uint32_t>::max(),
+              "battery accumulation product must not overflow");
+int main() {
+  Board board;
+  for (uint32_t sum = 0; sum <= 8 * 4095; ++sum) {
+    reads = resolutions = 0;
+    remaining = sum;
+    const uint16_t previous = ((double)sum) * ADC_MULTIPLIER / 8 / 4096;
+    assert(board.getBattMilliVolts() == previous);
+    assert(reads == 8 && resolutions == 1 && remaining == 0);
+  }
+}
+'''.replace("@SCALE@", scale).replace("@BODY@", sample)
+        with tempfile.TemporaryDirectory(prefix="mesh-rak3x72-battery-") as directory:
+            root = Path(directory)
+            cpp = root / "battery.cpp"
+            cpp.write_text(source)
+            binary = root / "battery"
+            subprocess.run(["g++", "-std=c++17", "-Wall", "-Wextra", "-Werror",
+                            *SANITIZER_FLAGS, str(cpp), "-o", str(binary)], check=True)
+            subprocess.run([str(binary)], check=True)
 
 
 if __name__ == "__main__":

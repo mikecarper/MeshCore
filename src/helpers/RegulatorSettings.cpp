@@ -33,18 +33,10 @@ RegulatorMode activeRegulatorMode(bool) { return RegulatorMode::Default; }
 const char* activeRegulatorModeName(bool) { return "unknown"; }
 bool regulatorFallbackActive(bool) { return false; }
 bool regulatorRecoveryAvailable() { return false; }
-bool handleRegulatorCommand(const char* command, char* reply, size_t capacity) {
-  if (strncmp(command, "get ", 4) != 0 && strncmp(command, "set ", 4) != 0) return false;
-  const char* key = command + 4;
-  bool mcu;
-  size_t length;
-  if (strncmp(key, "mcu.regulator", 13) == 0) { mcu = true; length = 13; }
-  else if (strncmp(key, "radio.regulator", 15) == 0) { mcu = false; length = 15; }
-  else return false;
-  if (key[length] != 0 && key[length] != ' ') return false;
-  snprintf(reply, capacity, "Error: %s regulator selection unsupported", mcu ? "MCU" : "radio");
-  return true;
-}
+// No regulator command exists on this driver. Let the ordinary CLI dispatch
+// report its existing unknown-command/setting error, avoiding a second parser
+// and error formatter solely for a capability that these targets lack.
+bool handleRegulatorCommand(const char*, char*, size_t) { return false; }
 void markRegulatorCleanReset() {}
 void resumeRegulatorRecovery() {}
 }} // namespace mesh::power
