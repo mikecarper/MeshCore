@@ -742,6 +742,22 @@
       }));
   }
 
+  function optionalAutoDisplayProfile(profile) {
+    const controls = profile && profile.controls;
+    const target = String(profile && profile.target || "").toLowerCase();
+    const controller = /^heltec_rc32_(?!without_display_)/.test(target) ? "nv3001b"
+      : /^heltec_(?:wireless_tracker|tracker_v1_1)_/.test(target) ? "st7735"
+      : /^heltec_v4_r8_tft_/.test(target) ? "st7789" : "";
+    return Boolean(controller && controls && controls.platform === "ESP32_PLATFORM" &&
+      controls.display === true && controls.displayAuto === true && controls.displayController === controller &&
+      /^[0-9a-f]{40}$/.test(controls.displaySource || "") &&
+      (!profile.controlsSource || controls.displaySource === profile.controlsSource) &&
+      Array.isArray(profile.files) && profile.files.length > 0 && profile.files.every(function (file) {
+        const hash = String(file.name || "").match(/-([0-9a-f]{8,40})(?:-merged)?\.(?:bin|hex|uf2|zip)$/i);
+        return hash && controls.displaySource.startsWith(hash[1].toLowerCase());
+      }));
+  }
+
   function omitT114DisplayDuplicates(profiles) {
     const families = new Map();
     function role(profile) { return profile.role || parseTargetProfile(profile.target).role; }
@@ -783,6 +799,9 @@
     }
     if (String(value).toLowerCase() === "heltec_t114" && matches.length > 0 &&
         matches.every(t114AutoDisplayProfile)) return "Heltec T114 (automatic screen detection)";
+    if (field === "hardware" && matches.length > 0 && matches.every(optionalAutoDisplayProfile)) {
+      return (family ? humanizeHardwareVariant(value, family) : humanizeHardware(value)) + " (automatic screen detection)";
+    }
     return field === "hardware" && family
       ? humanizeHardwareVariant(value, family) : humanizeHardware(value);
   }
@@ -1758,6 +1777,9 @@
     if (t114AutoDisplayProfile(profile)) {
       notes.push("One T114 image detects the supported ST7789 screen at startup and also runs without a screen.");
       notes.push("Switching from an older without_display image requires a local USB update; do not use a different target's LoRa OTA package. Keep your existing identity and settings; no erase is required.");
+    }
+    if (optionalAutoDisplayProfile(profile)) {
+      notes.push("This image detects the manufacturer's optional screen at startup and also runs without that screen. Power the board off before attaching or removing the display.");
     }
     if (identity.hardware === "Station_G3_ESP32" && stationG3SharedSlotProfile(profile)) {
       notes.push("Automatically selects physical radio slot 1 or 2. Use this same image for either slot.");
@@ -2884,6 +2906,7 @@
       omitLegacyObserverCompatibilityProfiles,
     omitStationG3SlotDuplicates: omitStationG3SlotDuplicates,
     t114AutoDisplayProfile: t114AutoDisplayProfile,
+    optionalAutoDisplayProfile: optionalAutoDisplayProfile,
     omitT114DisplayDuplicates: omitT114DisplayDuplicates,
     omitTransportsReplacedByDualCdcFull:
       omitTransportsReplacedByFull,
