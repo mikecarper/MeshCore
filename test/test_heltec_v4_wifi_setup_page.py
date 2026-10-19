@@ -286,6 +286,7 @@ int main() {
 #include <cassert>
 #define UI_WIFI_SETUP_HOME_PAGE 1
 #include <cstdint>
+#include <cstddef>
 unsigned long now = 4000;
 unsigned long millis() { return now; }
 struct Screen {};
@@ -303,6 +304,7 @@ struct UITask {
   Screen* msg_preview;
   unsigned long ui_started_at = 0;
   bool _startup_complete = false;
+  Screen* _display = nullptr;
   char handleLongPress(char c);
 };
 ''' + ui[start:end] + r'''
@@ -310,6 +312,7 @@ int main() {
   HomeScreen home;
   Screen reader;
   UITask task{&reader, &home, &reader};
+  task._display = &home;
   assert(task.handleLongPress('E') == 'E');
   assert(the_mesh.rescue_calls == 0);
   task.curr = &home;
