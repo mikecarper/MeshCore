@@ -35,7 +35,7 @@
 #define PIN_VBAT_READ            (0 + 2)
 #define REAL_VBAT_MV_PER_LSB     (VBAT_DIVIDER_COMP * VBAT_MV_PER_LSB)
 
-class NanoG2Ultra : public NRF52Board {
+class NanoG2Ultra : public NRF52BoardDCDC {
 public:
   NanoG2Ultra() : NRF52Board("NANO_G2_OTA") {}
   void begin();

@@ -7,7 +7,7 @@
 
 void NanoG2Ultra::begin()
 {
-  NRF52Board::begin();
+  NRF52BoardDCDC::begin();
 
   // set user button
   pinMode(PIN_BUTTON1, INPUT);

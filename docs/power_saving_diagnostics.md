@@ -243,6 +243,7 @@ external LDO, PMIC output, or radio regulator.
 | LilyGO T-Echo | [T-Echo schematic](https://raw.githubusercontent.com/Xinyuan-LilyGO/T-Echo/main/schematic/T-Echo_Schematic.pdf), REG1 DC/DC network and explicit DC/DC-enabled design note. |
 | Ikoka Handheld, Nano and Stick nRF52 | [XIAO nRF52840 circuit](https://files.seeedstudio.com/wiki/XIAO-BLE/Seeed_Studio_XIAO_nRF52840_PDF.pdf), DCC L1 and DEC4 capacitors. The designers identify XIAO as the MCU for [Handheld](https://github.com/ndoo/ikoka-handheld-meshtastic-device), [Nano](https://ndoo.sg/projects:amateur_radio:meshtastic:diy_devices:ikoka_nano) and [Stick](https://github.com/ndoo/ikoka-stick-meshtastic-device). |
 | Minew ME25LS01 | [Manufacturer datasheet](https://store.minewsemi.com/wp-content/uploads/2024/03/ME25LS01_LR1110_Datasheet_K_EN.pdf), electrical schematic page 9: MCU DCC through ML2/ML3 to DEC4_6 and MC15/MC16. |
+| Nano G2 Ultra | [Manufacturer schematic published as the 19 June 2023 design](https://wiki.uniteng.com/meshtastic/nano_g2_ultra/nanog2ultra_19_jun_2023.pdf), NRF52840 sheet: DCC through L13 (10 uH) and L12 (15 nH) to DEC4, with C41/C42. These components are not marked DNM. |
 
 The startup tests execute each real `begin()` with SoftDevice off/on and power
 management compiled out/in. Normal startup defers the selected mode until the
@@ -250,9 +251,21 @@ saved settings and recovery state can be read, while retaining one common board
 initialization. The board class still defines the circuit-supported default;
 the settings layer applies it before display/radio startup.
 
+Nano G2 Ultra was deliberately excluded from upstream
+[PR #1246](https://github.com/meshcore-dev/MeshCore/pull/1246) because its LC
+circuit had not yet been confirmed. That discussion asks for circuit
+confirmation or testing; it does not identify a Nano-specific DC-DC failure.
+The published schematic supplies that circuit evidence. Nano now approves the
+REG1 DC-DC default through the shared board initializer, retaining saved LDO
+selection and crash fallback in the main firmware roles. KISS applies the
+board default directly. REG0, GPIO assignments, ADC conversion, peripheral
+startup/shutdown and USB/DFU identity are unchanged. The schematic title block
+does not identify a PCB revision; battery-only starts, current draw and radio
+load on actual hardware remain physical acceptance checks.
+
 ThinkNode M3/M4/M6 and generic ProMicro remain unchanged pending exact circuit
 or physical-board confirmation; their DC/DC inheritance alone is not evidence.
-Nano G2 Ultra, ThinkNode M1/M8 and Keepteen LT1 retain their plain `NRF52Board`
+ThinkNode M1/M8 and Keepteen LT1 retain their plain `NRF52Board`
 initializers for the same reason. The MeshTracker X1's LR2021 regulator likewise
 remains unchanged. Do not turn on a switching regulator without its required
 inductor/capacitor network. The MCU and LoRa regulator choices are independent.
