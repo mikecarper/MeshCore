@@ -269,6 +269,59 @@ int main(int argc,char** argv) {
     fresh(board,radio,fs,ResetKind::Cold,true);advance(1000);fresh(board,radio,fs,ResetKind::Crash);counts(1,1);
     for(unsigned n=0;n<301;++n)advance(1000);
     fresh(board,radio,fs,ResetKind::Crash);counts(1,1);
+  } else if(test=="morse_battery") {
+    for(bool receive:{false,true}) {
+      fs=MockFS();fresh(board,radio,fs,ResetKind::Cold,true);
+      radio.morse_tx=!receive;radio.morse_rx=receive;
+      const auto measured=last_battery;
+      const unsigned reads=board.reads;
+      advance(30000);
+      assert(mock_now==measured+30000 && board.reads==reads);
+      assert(last_battery==measured);
+      assert(platformRecoveryRecord().heartbeatAt==mock_now);
+      assert(platformRecoveryRecord().activeDcdcMask==RECOVERY_DOMAINS);
+      radio.active=RegulatorMode::Ldo;
+      advance(1000);
+      assert(platformRecoveryRecord().activeDcdcMask==RECOVERY_MCU);
+      radio.active=RegulatorMode::Dcdc;
+      advance(30000);
+      assert(mock_now==measured+61000 && board.reads==reads);
+      assert(last_battery==measured);
+      assert(platformRecoveryRecord().heartbeatAt==mock_now);
+      assert(platformRecoveryRecord().activeDcdcMask==RECOVERY_DOMAINS);
+      fresh(board,radio,fs,ResetKind::Crash);counts(0,0);
+
+      radio.morse_tx=!receive;radio.morse_rx=receive;
+      const unsigned resumed_reads=board.reads;
+      advance(30000);
+      radio.morse_tx=radio.morse_rx=false;
+      // An unkeyed carrier does not defer optional work.
+      radio.carrier_wave=true;
+      const uint32_t before=mock_now;
+      advance(1000);
+      assert(mock_now==before+1010 && board.reads==resumed_reads+3);
+      assert(last_battery==mock_now);
+    }
+  } else if(test=="morse_save") {
+    for(bool receive:{false,true}) {
+      fs=MockFS();fresh(board,radio,fs,ResetKind::Cold,true);
+      for(unsigned n=1;n<=2;++n){advance(1000);fresh(board,radio,fs,ResetKind::Crash);counts(n,n);}
+      fs.fail_write=true;advance(1000);fresh(board,radio,fs,ResetKind::Crash);
+      assert(!fallback_saved);
+      const auto measured=last_battery,save_deadline=last_save;
+      const unsigned reads=board.reads,writes=fs.writes;
+      fs.fail_write=false;radio.morse_tx=!receive;radio.morse_rx=receive;
+      advance(30000);
+      assert(mock_now==measured+30000 && board.reads==reads && fs.writes==writes);
+      assert(last_battery==measured && last_save==save_deadline && !fallback_saved);
+      assert(platformRecoveryRecord().heartbeatAt==mock_now);
+      radio.morse_tx=radio.morse_rx=false;
+      advance(1000);
+      assert(board.reads==reads+3 && fs.writes>writes && fallback_saved);
+      assert(last_battery==mock_now && last_save==mock_now-10);
+      fresh(board,radio,fs,ResetKind::Cold,true);
+      assert(board.active==RegulatorMode::Ldo && radio.active==RegulatorMode::Ldo);
+    }
   } else if(test=="retry") {
     fresh(board,radio,fs,ResetKind::Cold,true);
     for(unsigned n=1;n<=2;++n){advance(1000);fresh(board,radio,fs,ResetKind::Crash);counts(n,n);}

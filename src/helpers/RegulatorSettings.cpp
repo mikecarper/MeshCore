@@ -38,6 +38,7 @@ void markRegulatorCleanReset() {}
 void resumeRegulatorRecovery() {}
 }} // namespace mesh::power
 #else
+#include "MorseLoopPolicy.h"
 namespace mesh { namespace power {
 namespace {
 MainBoard* main_board = nullptr;
@@ -231,14 +232,18 @@ void serviceRegulatorSettings() {
       (activeRegulatorMode(true) == RegulatorMode::Dcdc ? RECOVERY_MCU : 0)
       | (activeRegulatorMode(false) == RegulatorMode::Dcdc ? RECOVERY_RADIO : 0);
   recovery().updateActiveDomains(active_dcdc);
-  if (uint32_t(now - last_battery) >= 30000) {
+  // ADC sampling deliberately spaces three readings, and persistence can
+  // block on flash. Keep both out of keyed Morse TX/RX timing; heartbeats
+  // remain live without refreshing a deferred sample or retry deadline.
+  const bool defer_io = mesh::morseTimingActive(main_radio);
+  if (!defer_io && uint32_t(now - last_battery) >= 30000) {
     bool valid = false;
     const uint8_t percent = readBatteryPercent(valid);
     last_battery = millis();
     recovery().updateBattery(last_battery, percent, valid);
   }
   recovery().heartbeat(millis());
-  if (!fallback_saved && uint32_t(now - last_save) >= 30000) {
+  if (!defer_io && !fallback_saved && uint32_t(now - last_save) >= 30000) {
     last_save = now;
     fallback_saved = save(requested[0], requested[1], recovery().fallbackMask());
   }

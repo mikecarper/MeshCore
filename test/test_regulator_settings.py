@@ -86,7 +86,7 @@ struct MainBoard {
   uint8_t modes=3;power::RegulatorMode default_mode=power::RegulatorMode::Dcdc;
   power::RegulatorMode active=power::RegulatorMode::Default;
   unsigned applies=0;bool dcdc_applied=false;uint16_t mv=3600;
-  std::vector<uint16_t> samples;unsigned sample_index=0;
+  std::vector<uint16_t> samples;unsigned sample_index=0,reads=0;
   uint8_t mcuRegulatorModes() const { return modes; }
   power::RegulatorMode defaultMcuRegulatorMode() const { return default_mode; }
   power::RegulatorMode activeMcuRegulatorMode() const { return active; }
@@ -96,6 +96,7 @@ struct MainBoard {
     dcdc_applied|=active==power::RegulatorMode::Dcdc;return true;
   }
   uint16_t getBattMilliVolts() {
+    ++reads;
     return samples.empty()?mv:samples[sample_index++%samples.size()];
   }
   void resetHardware() { active=power::RegulatorMode::Default;sample_index=0; }
@@ -104,6 +105,10 @@ struct Radio {
   uint8_t modes=3;power::RegulatorMode default_mode=power::RegulatorMode::Dcdc;
   power::RegulatorMode active=power::RegulatorMode::Default,boot=power::RegulatorMode::Default;
   unsigned configures=0,inits=0;bool locked=false,dcdc_applied=false;
+  bool morse_tx=false,morse_rx=false,carrier_wave=false;
+  bool isMorseTxActive() const { return morse_tx; }
+  bool isMorseRxActive() const { return morse_rx; }
+  bool isCarrierWaveActive() const { return carrier_wave; }
   uint8_t regulatorModes() const { return modes; }
   power::RegulatorMode defaultRegulatorMode() const { return default_mode; }
   power::RegulatorMode activeRegulatorMode() const { return active; }
@@ -115,7 +120,10 @@ struct Radio {
     ++inits;locked=true;active=boot==power::RegulatorMode::Default?default_mode:boot;
     dcdc_applied|=active==power::RegulatorMode::Dcdc;
   }
-  void resetHardware() { active=boot=power::RegulatorMode::Default;locked=false; }
+  void resetHardware() {
+    active=boot=power::RegulatorMode::Default;locked=false;
+    morse_tx=morse_rx=carrier_wave=false;
+  }
 };
 }
 '''
@@ -238,6 +246,12 @@ class RegulatorSettingsTests(unittest.TestCase):
 
     def test_failed_fallback_save_retries_and_then_survives_power_loss(self):
         self.scenario('retry')
+
+    def test_morse_defers_battery_io_without_refreshing_stale_samples_or_stopping_heartbeats(self):
+        self.scenario('morse_battery')
+
+    def test_morse_defers_flash_retry_and_resumes_overdue_io_after_timing_ends(self):
+        self.scenario('morse_save')
 
     def test_missing_primary_store_rejects_persistence_without_live_mode_changes(self):
         self.scenario('no_store')
