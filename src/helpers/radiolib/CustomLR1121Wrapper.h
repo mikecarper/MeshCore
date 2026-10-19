@@ -8,6 +8,16 @@ class CustomLR1121Wrapper : public RadioLibWrapper {
   using DeepInitCallback = bool (*)();
   DeepInitCallback _deep_init = nullptr;
 public:
+  uint8_t regulatorModes() const override { return static_cast<CustomLR1121*>(_radio)->regulatorModes(); }
+  mesh::power::RegulatorMode defaultRegulatorMode() const override {
+    return static_cast<CustomLR1121*>(_radio)->defaultRegulatorMode();
+  }
+  bool configureBootRegulator(mesh::power::RegulatorMode mode) override {
+    return static_cast<CustomLR1121*>(_radio)->configureBootRegulator(mode);
+  }
+  mesh::power::RegulatorMode activeRegulatorMode() const override {
+    return static_cast<CustomLR1121*>(_radio)->activeRegulatorMode();
+  }
   ~CustomLR1121Wrapper() { unregisterInterruptAction(); }
   CustomLR1121Wrapper(CustomLR1121& radio, mesh::MainBoard& board) : RadioLibWrapper(radio, board) { }
   bool supportsMorseTx() const override { return true; }

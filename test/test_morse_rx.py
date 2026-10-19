@@ -6,6 +6,7 @@ from test_morse_tx import compile_run, portable_radio_header
 from test_carrier_wave import production_harness
 from test_radio_receive_contract import method
 from morse_rx_floor_step_experiment import legacy_estimator
+from radio_regulator_harness import regulator_members
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -302,6 +303,8 @@ int main() {
         for chip in ("LR1110", "LR1121", "LR2021", "SX1276"):
             source = (ROOT / f"src/helpers/radiolib/Custom{chip}.h").read_text(encoding="utf-8")
             code = code.replace(f"@{chip}@", method(source, "int16_t beginMorseReceive("))
+            if chip != "SX1276":
+                code = code.replace(f"@{chip}_REGULATOR@", regulator_members(source))
             if chip == "LR2021":
                 code = code.replace("@LR2021_RESTORE@", method(source, "int16_t restoreRfSwitchTable("))
         sx1262 = (ROOT / "src/helpers/radiolib/CustomSX1262.h").read_text(encoding="utf-8")

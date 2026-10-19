@@ -37,6 +37,16 @@ protected:
   }
 
 public:
+  uint8_t regulatorModes() const override { return static_cast<CustomSX1262*>(_radio)->regulatorModes(); }
+  mesh::power::RegulatorMode defaultRegulatorMode() const override {
+    return static_cast<CustomSX1262*>(_radio)->defaultRegulatorMode();
+  }
+  bool configureBootRegulator(mesh::power::RegulatorMode mode) override {
+    return static_cast<CustomSX1262*>(_radio)->configureBootRegulator(mode);
+  }
+  mesh::power::RegulatorMode activeRegulatorMode() const override {
+    return static_cast<CustomSX1262*>(_radio)->activeRegulatorMode();
+  }
   ~CustomSX1262Wrapper() { unregisterInterruptAction(); }
   CustomSX1262Wrapper(CustomSX1262& radio, mesh::MainBoard& board) : RadioLibWrapper(radio, board) { }
   bool supportsCarrierWave() const override { return true; }

@@ -13,6 +13,16 @@ class CustomLR1110Wrapper : public RadioLibWrapper {
   DeepInitCallback _deep_init;
 
 public:
+  uint8_t regulatorModes() const override { return static_cast<CustomLR1110*>(_radio)->regulatorModes(); }
+  mesh::power::RegulatorMode defaultRegulatorMode() const override {
+    return static_cast<CustomLR1110*>(_radio)->defaultRegulatorMode();
+  }
+  bool configureBootRegulator(mesh::power::RegulatorMode mode) override {
+    return static_cast<CustomLR1110*>(_radio)->configureBootRegulator(mode);
+  }
+  mesh::power::RegulatorMode activeRegulatorMode() const override {
+    return static_cast<CustomLR1110*>(_radio)->activeRegulatorMode();
+  }
   ~CustomLR1110Wrapper() { unregisterInterruptAction(); }
   CustomLR1110Wrapper(CustomLR1110& radio, mesh::MainBoard& board)
       : RadioLibWrapper(radio, board), _deep_init(NULL) { }

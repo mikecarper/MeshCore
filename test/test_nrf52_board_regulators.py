@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run real board startup methods against counted nRF52 regulator SDK calls."""
+"""Board startup approves DC/DC hardware and defers activation to saved policy."""
 import configparser
 import os
 from pathlib import Path
@@ -58,25 +58,28 @@ void sd_power_dcdc_mode_set(int mode) {
   assert(base_calls == 1 && softdevice && mode == NRF_POWER_DCDC_ENABLE);
   ++sdk_calls;
 }
-void requireDcdc() {
+void requireDeferredDcdc() {
   assert(base_calls == 1);
-  assert(softdevice ? sdk_calls == 1 : power.DCDCEN == 1);
+  assert(sdk_calls == 0 && power.DCDCEN == 0);
 }
-void pinMode(int, int) { requireDcdc(); }
-void digitalWrite(int, int) { requireDcdc(); }
+void pinMode(int, int) { requireDeferredDcdc(); }
+void digitalWrite(int, int) { requireDeferredDcdc(); }
 void delay(unsigned) {}
-void meshSolarStart() { requireDcdc(); }
+void meshSolarStart() { requireDeferredDcdc(); }
 struct Bus {
-  void setPins(int, int) { requireDcdc(); }
-  void begin() { requireDcdc(); }
+  void setPins(int, int) { requireDeferredDcdc(); }
+  void begin() { requireDeferredDcdc(); }
 } Wire;
-struct Uart { void begin(unsigned) { requireDcdc(); } } Serial;
+struct Uart { void begin(unsigned) { requireDeferredDcdc(); } } Serial;
 struct Peripheral {
-  void begin() { requireDcdc(); }
-  void init() { requireDcdc(); }
+  void begin() { requireDeferredDcdc(); }
+  void init() { requireDeferredDcdc(); }
 };
 struct Config {} power_config;
-struct NRF52Board { void begin() { ++base_calls; } };
+struct NRF52Board {
+  bool cpu_dcdc_supported = false;
+  void begin() { ++base_calls; }
+};
 struct NRF52BoardDCDC : NRF52Board { void begin(); };
 struct @BOARD@ : NRF52BoardDCDC {
   Peripheral periph_power, loRaFEMControl;
@@ -84,7 +87,7 @@ struct @BOARD@ : NRF52BoardDCDC {
   void begin();
   void checkBootVoltage(const Config*) {
     ++voltage_checks;
-    requireDcdc();
+    requireDeferredDcdc();
   }
 };
 @METHODS@
@@ -94,8 +97,8 @@ int main() {
     @BOARD@ board;
     board.begin();
     assert(base_calls == 1 && voltage_checks == @VOLTAGE_CHECKS@);
-    assert(sdk_calls == softdevice);
-    assert(power.DCDCEN == (softdevice ? 0U : 1U));
+    assert(board.cpu_dcdc_supported);
+    assert(sdk_calls == 0 && power.DCDCEN == 0);
   }
 }
 '''
@@ -122,14 +125,14 @@ class Nrf52BoardRegulatorTests(unittest.TestCase):
             result = subprocess.run([str(binary)], capture_output=True, text=True, timeout=10)
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
-    def test_rak4631_startup_uses_dcdc_before_voltage_check(self):
-        # Cover boot before BLE starts and an already-active SoftDevice. Also
-        # prove an obsolete downstream flag cannot silently force LDO again.
+    def test_rak4631_defers_dcdc_until_saved_policy_is_loaded(self):
+        # Board startup must not force either saved mode before policy loads,
+        # regardless of SoftDevice state or obsolete downstream flags.
         for flags in ((), ('-DRAK4631_COMPANION_FORCE_LDO=1',)):
             with self.subTest(flags=flags):
                 self.run_startup('variants/rak4631/RAK4631Board.cpp', 'RAK4631Board', flags)
 
-    def test_verified_boards_initialize_dcdc_before_peripherals(self):
+    def test_verified_boards_defer_dcdc_until_peripherals_and_policy_are_ready(self):
         for filename, board, has_voltage_check in VERIFIED_BOARDS:
             for power_management in (False, True):
                 with self.subTest(board=board, power_management=power_management):

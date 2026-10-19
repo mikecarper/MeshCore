@@ -307,9 +307,10 @@ class Nrf52InternalBootloaderSelectorTest(unittest.TestCase):
 
 class Nrf52HybridLinkerContractTest(unittest.TestCase):
     def test_real_linker_markers_do_not_confuse_late_data_with_reservation(self):
-        compiler, linker, nm = (shutil.which(name) for name in ("cc", "ld", "nm"))
-        if not all((compiler, linker, nm)):
-            self.skipTest("native cc, ld and nm are required for linker fixtures")
+        compiler, linker, nm, readelf = (
+            shutil.which(name) for name in ("cc", "ld", "nm", "readelf"))
+        if not all((compiler, linker, nm, readelf)):
+            self.skipTest("native cc, ld, nm and readelf are required for linker fixtures")
         # A large framework registration prefix moves .data beyond the auth
         # ABI even in an unreserved map. Only the explicit region markers can
         # distinguish it from a genuinely reserved receiver layout.
@@ -318,6 +319,8 @@ class Nrf52HybridLinkerContractTest(unittest.TestCase):
 .long 0
 .section .persistent_data,"aw"
 .long 0
+.section .regulator_recovery,"aw"
+.space 64
 .section .svc_data,"aw"
 .space 128
 .section .fs_data,"aw"
@@ -329,14 +332,27 @@ class Nrf52HybridLinkerContractTest(unittest.TestCase):
 SECTIONS {
   .data : { __data_start__ = .; *(.data) } > RAM
 }
+__HeapBase = __data_start__ + SIZEOF(.data);
+__HeapLimit = ORIGIN(RAM) + LENGTH(RAM);
 """
         with tempfile.TemporaryDirectory(prefix="meshcore-sd-auth-linker-") as directory:
             work = Path(directory)
             (work / "fixture.S").write_text(assembly, encoding="ascii")
             (work / "nrf52_common.ld").write_text(common, encoding="ascii")
+            (work / "boards").mkdir()
+            shutil.copyfile(ROOT / "boards/nrf52_heap_reserve.ld",
+                            work / "boards/nrf52_heap_reserve.ld")
             subprocess.run([compiler, "-c", str(work / "fixture.S"), "-o", str(work / "fixture.o")],
                            check=True, capture_output=True, text=True, timeout=30)
-            for suffix in ("v6", "v7", "v6_sd_ota", "v6_mota64", "v7_mota64"):
+            (work / "overflow.S").write_text(
+                assembly.replace('.section .regulator_recovery,"aw"\n.space 64',
+                                 '.section .regulator_recovery,"aw"\n.space 65'),
+                encoding="ascii")
+            subprocess.run([compiler, "-c", str(work / "overflow.S"),
+                            "-o", str(work / "overflow.o")],
+                           check=True, capture_output=True, text=True, timeout=30)
+            for suffix in ("v6", "v7", "v6_extrafs", "v7_extrafs",
+                           "v7_xiao_bootloader_ota", "v6_sd_ota", "v6_mota64", "v7_mota64"):
                 with self.subTest(suffix=suffix):
                     source = (ROOT / "boards" / f"nrf52840_s140_{suffix}.ld").read_text()
                     # Native tools suffice: omit only the ARM C library group;
@@ -349,13 +365,25 @@ SECTIONS {
                     output = subprocess.check_output([nm, str(work / "fixture.elf")], text=True)
                     symbols = {name: int(value, 16) for value, _kind, name in
                                (line.split() for line in output.splitlines())}
-                    self.assertGreaterEqual(symbols["__data_start__"], 0x20006050)
-                    if suffix in ("v6", "v7"):
+                    self.assertGreaterEqual(symbols["__data_start__"], 0x20006090)
+                    self.assertEqual(symbols["__regulator_recovery_start__"], 0x20006050)
+                    self.assertEqual(symbols["__regulator_recovery_end__"], 0x20006090)
+                    section_info = subprocess.check_output(
+                        [readelf, "-SW", str(work / "fixture.elf")],
+                        text=True)
+                    self.assertRegex(section_info,
+                                     r"\.regulator_recovery\s+NOBITS\s+0*20006050\s+\S+\s+0*40\s")
+                    if suffix in ("v6", "v7", "v6_extrafs", "v7_extrafs", "v7_xiao_bootloader_ota"):
                         self.assertNotIn("__mota_sd_auth_start__", symbols)
                         self.assertNotIn("__mota_sd_auth_end__", symbols)
                     else:
                         self.assertEqual(symbols["__mota_sd_auth_start__"], 0x20006008)
                         self.assertEqual(symbols["__mota_sd_auth_end__"], 0x20006050)
+                    overflow = subprocess.run(
+                        [linker, "-T", "fixture.ld", "overflow.o", "-o", "overflow.elf"],
+                        cwd=work, text=True, capture_output=True, timeout=30)
+                    self.assertNotEqual(overflow.returncode, 0,
+                                        "65-byte recovery record must fail the production link")
 
     def test_sd_authorization_has_explicit_reserved_boundaries(self):
         for suffix in ("v6_sd_ota", "v6_mota64", "v7_mota64"):
@@ -363,13 +391,14 @@ SECTIONS {
                 path = ROOT / "boards" / f"nrf52840_s140_{suffix}.ld"
                 regions = memory_regions(path)
                 source = path.read_text(encoding="utf-8")
-                self.assertEqual(regions["RAM"][0], 0x20006050)
+                self.assertEqual(regions["RAM"][0], 0x20006090)
+                self.assertEqual(regions["REGULATOR_RECOVERY_RAM"], (0x20006050, 64))
                 self.assertEqual(regions["PERSISTENT_RAM"], (0x20006000, 80))
                 self.assertIn("__mota_sd_auth_start__ = ", source)
                 self.assertIn("__mota_sd_auth_end__ = ", source)
                 self.assertIn("ASSERT(ORIGIN(RAM) >= __mota_sd_auth_end__,", source)
                 if suffix == "v6_sd_ota":
-                    self.assertEqual(regions["RAM"][1], 0x20040000 - 0x20006050)
+                    self.assertEqual(regions["RAM"][1], 0x20040000 - 0x20006090)
                     self.assertIn("ASSERT(__mota_sd_auth_start__ == 0x20006008,", source)
                     self.assertIn("ASSERT(__mota_sd_auth_end__ == 0x20006050,", source)
                 else:
@@ -398,13 +427,15 @@ SECTIONS {
                 self.assertEqual(hybrid["FLASH"], (flash_start, 0xED000 - flash_start))
                 self.assertEqual(hybrid["PERSISTENT_RAM"], (0x20006000, 8 + auth_len))
                 self.assertEqual(auth_start, 0x20006000 + 8)
-                self.assertEqual(hybrid["RAM"][0], auth_start + auth_len)
+                self.assertEqual(hybrid["REGULATOR_RECOVERY_RAM"], (auth_start + auth_len, 64))
+                self.assertEqual(normal["REGULATOR_RECOVERY_RAM"], hybrid["REGULATOR_RECOVERY_RAM"])
+                self.assertEqual(hybrid["RAM"][0], auth_start + auth_len + 64)
                 self.assertEqual(hybrid["RAM"][0] + hybrid["RAM"][1], arena_start)
                 self.assertEqual(hybrid["MOTA_RAM"], (arena_start, arena_len))
                 self.assertEqual(arena_start + arena_len, 0x20040000)
                 self.assertEqual(
                     normal["RAM"][1] - hybrid["RAM"][1],
-                    arena_len + auth_len,
+                    arena_len,
                 )
 
     def test_linkers_export_and_assert_every_fixed_handoff_boundary(self):
@@ -416,7 +447,8 @@ SECTIONS {
             "ASSERT(__mota_hybrid_handoff_start__ == 0x20006008,",
             "ASSERT(__mota_hybrid_handoff_end__ == 0x20006050,",
             "ASSERT(__mota_hybrid_handoff_end__ - __mota_hybrid_handoff_start__ == 72,",
-            "ASSERT(ORIGIN(RAM) == __mota_hybrid_handoff_end__,",
+            "ASSERT(ORIGIN(REGULATOR_RECOVERY_RAM) == __mota_hybrid_handoff_end__,",
+            "ASSERT(ORIGIN(RAM) == __regulator_recovery_end__,",
             "ASSERT(ORIGIN(RAM) + LENGTH(RAM) == ORIGIN(MOTA_RAM),",
             "ASSERT(ORIGIN(MOTA_RAM) + LENGTH(MOTA_RAM) == 0x20040000,",
             ".mota_ram (NOLOAD)",

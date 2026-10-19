@@ -1,6 +1,7 @@
 #pragma once
 
 #include <RadioLib.h>
+#include "RadioRegulatorState.h"
 #include "MeshCore.h"
 #include "LR2021Band.h"
 #include "../MorseRx.h"
@@ -21,6 +22,13 @@
 #endif
 
 class CustomLR2021 : public LR2021 {
+#if LR2021_USE_DCDC
+  mesh::power::RadioRegulatorState _regulator{mesh::power::REGULATOR_DCDC | mesh::power::REGULATOR_LDO,
+      mesh::power::RegulatorMode::Dcdc};
+#else
+  // An LDO-only layout must not enable SIMO without its external inductor.
+  mesh::power::RadioRegulatorState _regulator{mesh::power::REGULATOR_LDO, mesh::power::RegulatorMode::Ldo};
+#endif
   uint32_t _preambleMillis = 66;
   uint32_t _maxPayloadMillis = 3934;
   uint32_t _activityAt = 0;
@@ -130,6 +138,11 @@ class CustomLR2021 : public LR2021 {
   public:
     CustomLR2021(Module *mod) : LR2021(mod) { irqDioNum = LR2021_IRQ_DIO; }
 
+    uint8_t regulatorModes() const { return _regulator.modes(); }
+    mesh::power::RegulatorMode defaultRegulatorMode() const { return _regulator.defaultMode(); }
+    bool configureBootRegulator(mesh::power::RegulatorMode mode) { return _regulator.configureBoot(mode); }
+    mesh::power::RegulatorMode activeRegulatorMode() const { return _regulator.activeMode(); }
+
 #if LR2021_TX_PREARM_MS > 0
     using LR2021::standby;
     int16_t standby() override {
@@ -164,13 +177,16 @@ class CustomLR2021 : public LR2021 {
     }
 
     int16_t beginMorseReceive(float frequency_mhz) {
+      const auto regulator = _regulator.beginInitialization();
       const uint8_t gain = mesh::lr2021::isHighBand(frequency_mhz) ? gainModeHf : gainModeLf;
       int16_t status = LR2021::beginGFSK(frequency_mhz,
           mesh::MorseRx::ReceiverBitRateKbps, 0.6f, 4.8f, 2, 16, tcxoVoltage);
-      // Native modem initialization resets the regulator to LDO. Verified
-      // SIMO boards must restore DC/DC before admitting RX after any reset.
+      // Native initialization resets to LDO. SIMO is allowed only on verified
+      // layouts; an explicit LDO choice on those boards is checked as well.
+      if (status == RADIOLIB_ERR_NONE && regulator == mesh::power::RegulatorMode::Dcdc)
+        status = setRegulatorDCDC();
     #if LR2021_USE_DCDC
-      if (status == RADIOLIB_ERR_NONE) status = setRegulatorDCDC();
+      else if (status == RADIOLIB_ERR_NONE) status = setRegulatorLDO();
     #endif
       if (status == RADIOLIB_ERR_NONE) status = restoreRfSwitchTable();
       if (status == RADIOLIB_ERR_NONE) status = LR2021::setRxBoostedGainMode(gain);
@@ -183,10 +199,11 @@ class CustomLR2021 : public LR2021 {
         status = LR2021::setCRC(0);
       }
       // launchMode() retains this chip's band-aware RX RF switch selection.
-      return status;
+      return _regulator.finishInitialization(status);
     }
 
     bool std_init(SPIClass* spi = NULL) {
+      const auto regulator = _regulator.beginInitialization();
   #ifdef LR2021_TCXO_VOLTAGE
       const float tcxo = LR2021_TCXO_VOLTAGE;
   #else
@@ -220,15 +237,16 @@ class CustomLR2021 : public LR2021 {
       if (status != RADIOLIB_ERR_NONE) {
         mesh::usbLoggingPort().print("ERROR: radio init failed: ");
         mesh::usbLoggingPort().println(status);
+        _regulator.finishInitialization(status);
         return false;  // fail
       }
 
+      // Also reached when restoring LoRa after Morse RX or hard recovery.
+      if (regulator == mesh::power::RegulatorMode::Dcdc) status = setRegulatorDCDC();
     #if LR2021_USE_DCDC
-      // Also reached by radioDeepInit() when restoring LoRa after Morse RX.
-      // Check this before later setters can overwrite a regulator error.
-      status = setRegulatorDCDC();
-      if (status != RADIOLIB_ERR_NONE) return false;
+      else status = setRegulatorLDO();
     #endif
+      if (_regulator.finishInitialization(status) != RADIOLIB_ERR_NONE) return false;
 
       status = setCRC(2);
       if (status != RADIOLIB_ERR_NONE) return false;

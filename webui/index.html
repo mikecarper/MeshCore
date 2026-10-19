@@ -429,6 +429,19 @@ body.tab-cli{padding-bottom:0}
         <span class="tgl"><input type="checkbox" data-k="radio.fem.rxgain"><u></u></span></div>
       <div class="sw" data-cap="8192"><span><b>Device power saving</b><i>Reduce device and GPS idle power</i></span>
         <span class="tgl"><input type="checkbox" data-k="powersaving"><u></u></span></div>
+      <div class="hide" id="regulator-settings">
+        <h2>Power regulators</h2>
+        <div class="note">Auto follows the board default. Changes are saved and restart the node. Selecting a mode clears that regulator's automatic fallback.</div>
+        <div class="f hide" id="mcu-regulator-setting"><label>Processor regulator</label>
+          <select data-k="mcu.regulator" disabled><option value="auto">Auto (board default)</option><option value="dcdc">DC-DC</option><option value="ldo">LDO</option></select>
+          <div class="hint" id="mcu-regulator-status"></div>
+          <button class="btn sec hide" type="button" id="mcu-regulator-clear" onclick="resetRegulatorFallback('mcu')">Clear fallback on restart</button></div>
+        <div class="f hide" id="radio-regulator-setting"><label>LoRa radio regulator</label>
+          <select data-k="radio.regulator" disabled><option value="auto">Auto (board default)</option><option value="dcdc">DC-DC</option><option value="ldo">LDO</option></select>
+          <div class="hint" id="radio-regulator-status"></div>
+          <button class="btn sec hide" type="button" id="radio-regulator-clear" onclick="resetRegulatorFallback('radio')">Clear fallback on restart</button></div>
+        <div class="hint" id="regulator-recovery-status"></div>
+      </div>
       <div data-cap="4096" id="rxps-wrap">
         <div class="sw"><span><b>RX power saving</b><i>Duty-cycle the LoRa receiver; off keeps continuous receive</i></span>
           <span class="tgl"><input type="checkbox" data-rxps="enabled"><u></u></span></div>
@@ -910,6 +923,8 @@ function cfgVal(k){ // map a `set` key to its current value string, from st.cfg
     case"radio.fem.rxgain":return r.fem_rxgain?"on":"off";
     case"radio.rxps":return rxpsCfgValue(r);
     case"powersaving":return r.powersaving?"on":"off";
+    case"mcu.regulator":return ((c.regulators||{}).mcu||{}).requested||"auto";
+    case"radio.regulator":return ((c.regulators||{}).radio||{}).requested||"auto";
     case"display.mode":return (st.cfg.display||{}).mode||"button";
     case"display.rotation":return String((st.cfg.display||{}).rotation||0);
     case"display.timeout":return String((st.cfg.display||{}).timeout||15);
@@ -1044,6 +1059,33 @@ function radioCombo(){
   var p={};$$("[data-rg]").forEach(function(el){p[el.dataset.rg]=el.value});
   return p.freq+","+p.bw+","+p.sf+","+p.cr;
 }
+function syncRegulators(c){
+  var regulators=c.regulators||{},supported=false;
+  ["mcu","radio"].forEach(function(domain){
+    var entry=regulators[domain]||{},modes=Number(entry.modes)||0;
+    var select=$('[data-k="'+domain+'.regulator"]');
+    $("#"+domain+"-regulator-setting").classList.toggle("hide",!modes);
+    select.disabled=!modes;supported=supported||!!modes;
+    Array.prototype.forEach.call(select.options,function(option){
+      var available=option.value==="auto"||(option.value==="dcdc"&&(modes&1))||(option.value==="ldo"&&(modes&2));
+      option.hidden=!available;option.disabled=!available;
+    });
+    var active=entry.active==="dcdc"?"DC-DC":entry.active==="ldo"?"LDO":"unknown";
+    $("#"+domain+"-regulator-status").textContent="Active: "+active+". Automatic fallback: "+(entry.fallback?"on (LDO)":"off")+".";
+    $("#"+domain+"-regulator-clear").classList.toggle("hide",!modes||!entry.fallback);
+  });
+  $("#regulator-settings").classList.toggle("hide",!supported);
+  $("#regulator-recovery-status").textContent=regulators.recovery
+    ?"Recovery switches a DC-DC regulator to LDO after three consecutive crashes with a fresh battery reading of at least 50%. It keeps LDO until you select a mode again."
+    :"Automatic crash recovery is unavailable on this platform.";
+}
+function resetRegulatorFallback(domain){
+  var key=domain+".regulator",select=$('[data-k="'+key+'"]');
+  if(!select||select.disabled)return;
+  // Re-send even an unchanged selection so a learned fallback can be cleared
+  // through the normal authenticated save/result/reboot flow.
+  st.dirty[key]=select.value;select.classList.add("dirty");updateSaveBar();
+}
 function loadConfig(loadCapture){
   var epoch=++st.configEpoch;
   if(loadCapture)loadCapture.loadEpoch=epoch;
@@ -1053,6 +1095,7 @@ function loadConfig(loadCapture){
     if(epoch!==st.configEpoch)return false;
     st.cfg=c;st.orig={};st.dirty={};st.skipRadio=false;st.skipMqtt=false;
     st.wifiPasswordAutoCleared=false;
+    syncRegulators(c);
     if(st.hasMqtt){buildSlots("#app-slots");buildSlots("#wz-slots")}
     $$("[data-k]").forEach(function(el){
       var k=el.dataset.k,v=cfgVal(k);
@@ -1327,7 +1370,7 @@ function saveChanges(extra,cb){
   // Applying new station credentials necessarily drops this page. Reboot
   // after a successful batch so the bridge joins with the complete SSID and
   // password together instead of reconnecting between the two writes.
-  if((extra&&extra.reboot)||("wifi.ssid" in setmap)||("wifi.pwd" in setmap)||("espnow.channel" in setmap)||("bluetooth.mac" in setmap)||("bluetooth.stealth" in setmap))body.reboot=true;
+  if((extra&&extra.reboot)||("wifi.ssid" in setmap)||("wifi.pwd" in setmap)||("espnow.channel" in setmap)||("bluetooth.mac" in setmap)||("bluetooth.stealth" in setmap)||("mcu.regulator" in setmap)||("radio.regulator" in setmap))body.reboot=true;
   if(Object.keys(setmap).length===0&&!body.reboot){toast("Nothing to save");return}
   var reqid=mkReqId();body.reqid=reqid;
   var auth={password:setmap.password||"",attempted:false,view:$("#v-wizard").classList.contains("hide")?"#v-app":"#v-wizard"};
@@ -1365,7 +1408,7 @@ function saveChanges(extra,cb){
   });
 }
 function appSave(){
-  var rebootChanged=("wifi.ssid" in st.dirty)||("wifi.pwd" in st.dirty)||("espnow.channel" in st.dirty)||("bluetooth.mac" in st.dirty)||("bluetooth.stealth" in st.dirty);
+  var rebootChanged=("wifi.ssid" in st.dirty)||("wifi.pwd" in st.dirty)||("espnow.channel" in st.dirty)||("bluetooth.mac" in st.dirty)||("bluetooth.stealth" in st.dirty)||("mcu.regulator" in st.dirty)||("radio.regulator" in st.dirty);
   var pwdErr=adminPwdError(rebootChanged);
   if(pwdErr){
     $('#tabs button[data-t="radio"]').click();
@@ -1423,12 +1466,15 @@ function pollResult(cb,errs,idles,acked,reqid,submitted,auth){
       st.dirty={};
       var bluetoothAddressChanged=submitted&&("bluetooth.mac" in submitted);
       var bluetoothStealthChanged=submitted&&("bluetooth.stealth" in submitted);
+      var regulatorChanged=submitted&&(("mcu.regulator" in submitted)||("radio.regulator" in submitted));
       showReboot(r.wifi_ip
         ? "The node joined the selected WiFi. This page and address stay visible while it reboots. Reconnect your phone or laptop to that network, then open the address."
         : bluetoothAddressChanged
           ? "The node is restarting with its new Bluetooth address. Forget its old Bluetooth entry, scan again, and pair with the new identity."
           : bluetoothStealthChanged
             ? "The node is restarting with the saved stealth flag. Its address policy is unchanged. When enabling stealth, pair once; afterward reconnect using the saved device."
+          : regulatorChanged
+            ? "The node is restarting to apply the saved power regulator mode. This page will try to reconnect automatically."
           : "The node is restarting with the saved WiFi settings. Reconnect to that network and open the node at its router-assigned address.",
         false,bluetoothAddressChanged?"Bluetooth address saved [OK] - rebooting":bluetoothStealthChanged?"Bluetooth stealth saved [OK] - rebooting":"Settings saved [OK] - rebooting",r.wifi_ip,rebootSeconds(r));
       reauthAfterReceipt();
@@ -1451,6 +1497,7 @@ function pollResult(cb,errs,idles,acked,reqid,submitted,auth){
 function loadConfigSoft(){ // re-sync origin values without clobbering result chips
   api("/api/config").then(function(c){
     st.cfg=c;
+    syncRegulators(c);
     $$("[data-k]").forEach(function(el){
       var k=el.dataset.k,stored=cfgVal(k);
       st.orig[k]=stored;
@@ -2069,6 +2116,8 @@ var CLI_KEYS=[
   ["webui","WiFi settings website",0,"on|off"],
   ["usb.logging","USB logging",0,"on|off"],
   ["powersaving","Device power saving",0,"on|off"],
+  ["mcu.regulator","Processor regulator (supported boards; reboot required)",0,"auto|dcdc|ldo"],
+  ["radio.regulator","LoRa regulator (supported boards; reboot required)",0,"auto|dcdc|ldo"],
   ["gps","GPS power",0,"on|off"],
   ["logging.output","USB and MQTT output selection",0,"off|usb|wifi|both"],
   ["mqtt.enabled","MQTT master switch (keeps broker settings)",0,"on|off"],
@@ -2229,6 +2278,8 @@ var CLI_COMPANION_KEYS=[
   ["radio.fem.txgain","Front-end module TX gain",0,"on|off"],
   ["radio.rxps","Configured RX power saving",0,"on|off"],
   ["powersaving","Device power saving",0,"on|off"],
+  ["mcu.regulator","Processor regulator (supported boards; reboot required)",0,"auto|dcdc|ldo"],
+  ["radio.regulator","LoRa regulator (supported boards; reboot required)",0,"auto|dcdc|ldo"],
   ["usb.logging","USB packet logging (logging-enabled builds)",0,"on|off"],
   ["display.rotation","Display rotation (0 restores the board default)",0,"0|90|180|270"],
   ["bluetooth.name","Bluetooth name",0],

@@ -92,6 +92,7 @@ bool loadPrimaryRadio(mesh::RadioProfileParams& profile) {
 
 void startLoRaReceiver() {
   board.begin();
+  board.applyMcuRegulator(mesh::power::RegulatorMode::Default);
   if (!radio_init()) {
     Serial.println("Partition Expander: radio init failed; Wi-Fi recovery remains available");
     return;

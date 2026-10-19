@@ -11,6 +11,7 @@ import shutil
 import subprocess
 import tempfile
 import unittest
+from radio_regulator_harness import regulator_members
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -34,6 +35,7 @@ HARNESS = r'''
 #include <string>
 #include <vector>
 #include <helpers/radiolib/LR2021Band.h>
+#include <helpers/radiolib/RadioRegulatorState.h>
 @POLICY@
 #define LR2021_TX_BUSY_TIMEOUT_MS 4UL
 #define LR2021_USE_DCDC 0
@@ -195,6 +197,7 @@ public:
   int16_t begin(float,float,uint8_t,uint8_t,uint8_t,int8_t,uint16_t,float) {
     std::fill(masks,masks+7,0);applyMode(MODE_STBY);return 0;
   }
+  int16_t setRegulatorDCDC() { assert(false); return -1; }
   int16_t setCRC(uint8_t) { return 0; }
   int16_t explicitHeader() { return 0; }
   int16_t clearRxFifo() { return 0; }
@@ -203,6 +206,7 @@ public:
   }
 };
 class CustomLR2021:public LR2021 {
+  @REGULATOR@
 public:
   using LR2021::LR2021;
   uint32_t _rf_switch_pins[Module::RFSWITCH_MAX_PINS]={};
@@ -369,7 +373,7 @@ class LR2021TxPrearmTest(unittest.TestCase):
         cls.binaries = {}
         driver = (ROOT / "src/helpers/radiolib/CustomLR2021.h").read_text()
         board = (ROOT / "variants/meshnology_w12/target.cpp").read_text()
-        source = HARNESS
+        source = HARNESS.replace("@REGULATOR@", regulator_members(driver))
         for marker, signature in {
             "@MASK@": "int16_t setTxStandbyMask(",
             "@PREPARE@": "int16_t prepareTxRfSwitch(",

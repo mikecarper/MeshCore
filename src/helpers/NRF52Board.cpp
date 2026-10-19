@@ -9,6 +9,7 @@
 #include <target.h>
 #include "UserGpioPinPolicy.h"
 #include "PowerSavingDiagnostics.h"
+#include "Nrf52RegulatorPlatform.h"
 
 #include <bluefruit.h>
 #include "ble_gap.h"
@@ -28,6 +29,87 @@ static BLEDfu bledfu;
 static uint16_t ota_conn_handle = BLE_CONN_HANDLE_INVALID;
 static bool ota_active = false;
 static bool ota_ble_started = false;
+
+// Intentional reboot paths share the recovery policy's clean-reset marker.
+// Keep this optional for standalone board/library builds without the policy.
+extern "C" void meshRegulatorCleanReset() __attribute__((weak));
+
+namespace {
+volatile mesh::power::RecoveryRecord regulator_recovery_record
+    __attribute__((section(".regulator_recovery"), used, aligned(4)));
+static_assert(sizeof(mesh::power::RecoveryRecord) <= 64,
+              "nRF52 regulator recovery exceeds retained allocation");
+uint32_t regulator_reset_reason = 0;
+uint8_t regulator_shutdown_reason = 0;
+}
+
+extern "C" {
+extern uint8_t __regulator_recovery_start__[] __attribute__((weak));
+extern uint8_t __regulator_recovery_end__[] __attribute__((weak));
+}
+
+// Capture before the core's SystemInit constructor applies reset errata and
+// before power management clears GPREGRET2. This also runs on boards without
+// NRF52_POWER_MANAGEMENT; the recovery policy never writes either GPREGRET.
+static void __attribute__((constructor(101))) nrf52_regulator_reset_capture() {
+  regulator_reset_reason = NRF_POWER->RESETREAS;
+  regulator_shutdown_reason = NRF_POWER->GPREGRET2;
+}
+
+namespace mesh { namespace power {
+volatile RecoveryRecord& platformRecoveryRecord() {
+  return regulator_recovery_record;
+}
+
+bool platformRecoverySupported() {
+  return reinterpret_cast<uintptr_t>(__regulator_recovery_start__) == 0x20006050UL
+      && reinterpret_cast<uintptr_t>(__regulator_recovery_end__) == 0x20006090UL
+      && reinterpret_cast<uintptr_t>(&regulator_recovery_record) == 0x20006050UL;
+}
+
+ResetKind platformResetKind() {
+  // RESETREAS is sticky. Boards without power management otherwise retain
+  // wake bits forever and could hide a later real watchdog failure.
+  static bool acknowledged = false;
+  if (!acknowledged) {
+    uint8_t sd_enabled = 0;
+    if (mesh_nrf52::softdeviceIsEnabled(sd_enabled) != NRF_SUCCESS)
+      return ResetKind::Unknown;
+    if (sd_enabled) {
+      if (sd_power_reset_reason_clr(0xFFFFFFFFUL) != NRF_SUCCESS)
+        return ResetKind::Unknown;
+    } else {
+      NRF_POWER->RESETREAS = 0xFFFFFFFFUL;
+    }
+    acknowledged = true;
+  }
+  // A deliberate SYSTEMOFF, reset-pin press, or debugger event never counts
+  // against DCDC, even if another latched reason bit is also present.
+  if (regulator_shutdown_reason == 0x4C  // low voltage
+      || regulator_shutdown_reason == 0x55  // user shutdown
+      || regulator_shutdown_reason == 0x42)  // boot protection
+    return ResetKind::Intentional;
+  const uint32_t reason = regulator_reset_reason;
+  if (reason & POWER_RESETREAS_RESETPIN_Msk) return ResetKind::Intentional;
+#ifdef POWER_RESETREAS_DIF_Msk
+  if (reason & POWER_RESETREAS_DIF_Msk) return ResetKind::Intentional;
+#endif
+  uint32_t wakes = 0;
+#ifdef POWER_RESETREAS_OFF_Msk
+  wakes |= POWER_RESETREAS_OFF_Msk;
+#endif
+#ifdef POWER_RESETREAS_LPCOMP_Msk
+  wakes |= POWER_RESETREAS_LPCOMP_Msk;
+#endif
+#ifdef POWER_RESETREAS_VBUS_Msk
+  wakes |= POWER_RESETREAS_VBUS_Msk;
+#endif
+  if (reason & wakes) return ResetKind::Wake;
+  if (reason & (POWER_RESETREAS_DOG_Msk | POWER_RESETREAS_LOCKUP_Msk
+                | POWER_RESETREAS_SREQ_Msk)) return ResetKind::Crash;
+  return reason == 0 ? ResetKind::Cold : ResetKind::Unknown;
+}
+}} // namespace mesh::power
 
 // A normal internal-flash operation completes in milliseconds. One minute is
 // deliberately generous for other legitimate application work while still
@@ -113,7 +195,7 @@ bool NRF52Board::rebootToUf2Bootloader() {
     NRF_POWER->GPREGRET = DFU_MAGIC_UF2_RESET;
   }
 
-  NVIC_SystemReset();
+  reboot();
   return true;
 }
 
@@ -138,6 +220,46 @@ void NRF52Board::begin() {
     // CC310 TRNG is higher quality and environment-independent vs radio RSSI noise.
     nRFCrypto.begin();
   #endif
+}
+
+void NRF52Board::reboot() {
+  if (meshRegulatorCleanReset) meshRegulatorCleanReset();
+  NVIC_SystemReset();
+}
+
+uint8_t NRF52Board::mcuRegulatorModes() const {
+  return cpu_dcdc_supported
+      ? mesh::power::REGULATOR_DCDC | mesh::power::REGULATOR_LDO : 0;
+}
+
+mesh::power::RegulatorMode NRF52Board::defaultMcuRegulatorMode() const {
+  return cpu_dcdc_supported ? mesh::power::RegulatorMode::Dcdc
+                            : mesh::power::RegulatorMode::Default;
+}
+
+mesh::power::RegulatorMode NRF52Board::activeMcuRegulatorMode() const {
+  return cpu_dcdc_supported ? cpu_regulator_mode
+                            : mesh::power::RegulatorMode::Default;
+}
+
+bool NRF52Board::applyMcuRegulator(mesh::power::RegulatorMode mode) {
+  using mesh::power::RegulatorMode;
+  if (!cpu_dcdc_supported) return false;
+  if (mode == RegulatorMode::Default) mode = defaultMcuRegulatorMode();
+  if (mode != RegulatorMode::Dcdc && mode != RegulatorMode::Ldo) return false;
+
+  uint8_t sd_enabled = 0;
+  if (mesh_nrf52::softdeviceIsEnabled(sd_enabled) != NRF_SUCCESS) return false;
+  const bool dcdc = mode == RegulatorMode::Dcdc;
+  if (sd_enabled) {
+    if (sd_power_dcdc_mode_set(dcdc ? NRF_POWER_DCDC_ENABLE
+                                  : NRF_POWER_DCDC_DISABLE) != NRF_SUCCESS)
+      return false;
+  } else {
+    NRF_POWER->DCDCEN = dcdc ? 1 : 0;
+  }
+  cpu_regulator_mode = mode;
+  return true;
 }
 
 void NRF52Board::loop() {
@@ -454,15 +576,10 @@ void NRF52Board::armVbusWake() {
 
 void NRF52BoardDCDC::begin() {
   NRF52Board::begin();
-
-  // Enable DC/DC converter for improved power efficiency
-  uint8_t sd_enabled = 0;
-  mesh_nrf52::softdeviceIsEnabled(sd_enabled);
-  if (sd_enabled) {
-    sd_power_dcdc_mode_set(NRF_POWER_DCDC_ENABLE);
-  } else {
-    NRF_POWER->DCDCEN = 1;
-  }
+  // Only boards which explicitly call this method approve the external LC
+  // circuitry. The common startup hook applies saved choices after the
+  // board's battery ADC and filesystem are ready; do not enable DCDC here.
+  cpu_dcdc_supported = true;
 }
 
 bool NRF52Board::isExternalPowered() {

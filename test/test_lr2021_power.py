@@ -10,6 +10,7 @@ import shutil
 import subprocess
 import tempfile
 import unittest
+from radio_regulator_harness import regulator_members
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -32,6 +33,7 @@ HARNESS = r'''
 #include <vector>
 #include <algorithm>
 #include <helpers/radiolib/LR2021Band.h>
+#include <helpers/radiolib/RadioRegulatorState.h>
 @POLICY@
 constexpr bool ExpectDcdc = @EXPECT_DCDC@;
 static_assert((LR2021_USE_DCDC != 0)==ExpectDcdc,"unexpected board regulator default");
@@ -103,6 +105,9 @@ class LR2021 {
   int16_t setRegulatorDCDC() {
     ++regulator_calls;const int16_t result=step(2);if(!result)regulator_on=true;return result;
   }
+  int16_t setRegulatorLDO() {
+    ++regulator_calls;const int16_t result=step(2);if(!result)regulator_on=false;return result;
+  }
   int16_t setCRC(uint8_t value) { assert(value==0 || value==2);return step(3); }
   int16_t explicitHeader() { return step(4); }
   int16_t setRxBoostedGainMode(uint8_t value) { gain=value;return step(5); }
@@ -117,6 +122,7 @@ class LR2021 {
   int16_t setSyncWord(uint8_t*,size_t length) { assert(length==0);return step(8); }
 };
 class CustomLR2021:public LR2021 {
+  @REGULATOR@
   uint32_t _rf_switch_pins[Module::RFSWITCH_MAX_PINS]={};
   const Module::RfSwitchMode_t* _rf_switch_table=nullptr;
   @ROUTING@
@@ -154,6 +160,27 @@ static void routed(const CustomLR2021& radio) {
   assert(radio.pulls[0]==1 && radio.pulls[1]==0);
 }
 int main() {
+  using mesh::power::RegulatorMode;
+  Module selection_module;
+  CustomLR2021 selected(&selection_module);configure(selected);
+  assert(selected.activeRegulatorMode()==RegulatorMode::Default && selected.calls.empty());
+  assert(!selected.configureBootRegulator(static_cast<RegulatorMode>(3)));
+  assert(selected.configureBootRegulator(RegulatorMode::Dcdc)==ExpectDcdc);
+  assert(selected.configureBootRegulator(RegulatorMode::Ldo));
+  assert(selected.calls.empty()); // selecting never touches SPI
+  assert(selected.std_init() && !selected.regulator_on);
+  assert(selected.activeRegulatorMode()==RegulatorMode::Ldo);
+  assert(!selected.configureBootRegulator(RegulatorMode::Default));
+  assert(selected.beginMorseReceive(2440.0f)==0 && !selected.regulator_on);
+  assert(selected.activeRegulatorMode()==RegulatorMode::Ldo);
+  assert(selected.std_init() && !selected.regulator_on); // recovery stays LDO
+  selected.fail=ExpectDcdc?2:1;
+  assert(!selected.std_init());
+  assert(selected.activeRegulatorMode()==RegulatorMode::Default);
+  assert(!selected.configureBootRegulator(RegulatorMode::Dcdc));
+  selected.fail=0;
+  assert(selected.std_init() && !selected.regulator_on);
+  assert(selected.activeRegulatorMode()==RegulatorMode::Ldo);
   // Only verified/opted-in layouts reapply DC/DC after a native reset.
   Module module;CustomLR2021 radio(&module);configure(radio);SPIClass spi;
   assert(radio.std_init(&spi) && spi.started && radio.regulator_on==ExpectDcdc);
@@ -225,6 +252,7 @@ class LR2021PowerTest(unittest.TestCase):
         self.assertIsNotNone(policy, "LR2021 board policy must remain explicit and default-safe")
         for marker, body in {
             "@POLICY@": policy.group(0),
+            "@REGULATOR@": regulator_members(driver),
             "@EXPECT_DCDC@": "true" if "-DLR2021_USE_DCDC=1" in flags else "false",
             "@ROUTING@": method(driver, "int16_t restoreRfSwitchTable("),
             "@TABLE@": method(driver, "void setRfSwitchTable("),

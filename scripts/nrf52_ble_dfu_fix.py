@@ -12,7 +12,8 @@ from pathlib import Path
 
 OLD_HELPER = 'extern "C" void bootloader_util_app_start(uint32_t start_addr);\n'
 HELPER_NAME = "mesh_nrf52_dfu_jump"
-HELPER = r'''// Keep all stack operations inside this assembly-only transition. In particular,
+CLEAN_RESET_DECLARATION = 'extern "C" void meshRegulatorCleanReset() __attribute__((weak));\n'
+HELPER = CLEAN_RESET_DECLARATION + r'''// Keep all stack operations inside this assembly-only transition. In particular,
 // the callback must return neither through its PSP frame nor through a C helper
 // after CONTROL selects MSP. Preserve handler-mode entry supported by BLEDfu.
 extern "C" __attribute__((naked, noinline, noreturn, used))
@@ -80,6 +81,9 @@ OLD_JUMP = '''      __set_CONTROL(0); // switch to MSP, required if using FreeRT
 '''
 JUMP = '''      // The vector-table SVC above must complete before the helper masks
       // interrupts. B1 and the retained peer record preserve legacy DFU entry.
+      // Only a committed handoff is intentional: rejected/aborted DFU remains
+      // covered by crash recovery while the application continues running.
+      if (meshRegulatorCleanReset) meshRegulatorCleanReset();
       mesh_nrf52_dfu_jump(NRF_UICR->NRFFW[0]);
 '''
 

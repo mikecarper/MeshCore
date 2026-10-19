@@ -1,3 +1,4 @@
+#include <helpers/RegulatorSettings.h>
 #include <Arduino.h>   // needed for PlatformIO
 #include <Mesh.h>
 #include <helpers/IdentityGeneration.h>
@@ -137,6 +138,9 @@ void setup() {
 #else
   #error "need to define filesystem"
 #endif
+  if (!mesh::power::beginRegulatorSettings(board, radio_driver, fs)) {
+    MESH_DEBUG_PRINTLN("Regulator selection could not be applied");
+  }
 #ifdef DISPLAY_CLASS
   mesh::ui::loadDisplayPowerSettings(fs, false);
   mesh::ui::StartupScreen startup_screen;
@@ -390,6 +394,7 @@ void loop() {
   if (display_ready) ui_task.loop();
 #endif
   rtc_clock.tick();
+  mesh::power::serviceRegulatorSettings();
   board.loop();
   if (mesh::serviceUsbLoggingWatchdog(usbLoggingRecoverySafe)) board.reboot();
 #if MESH_USB_CONSOLE_COOPERATIVE

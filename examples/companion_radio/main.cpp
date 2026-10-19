@@ -1,3 +1,4 @@
+#include <helpers/RegulatorSettings.h>
 #include <Arduino.h>   // needed for PlatformIO
 #include <helpers/ui/StartupScreen.h>
 #include <helpers/ui/DisplayPowerSettings.h>
@@ -3600,6 +3601,16 @@ void setup() {
 #endif
 
 
+  FILESYSTEM* regulator_prefs_fs = store.getPrimaryFS();
+#if defined(NRF52_PLATFORM)
+  if (!mesh::storage::internalPrimaryFilesystemReady(primary_fs_boot)
+      && !store.isVolatilePrimaryFS()) regulator_prefs_fs = nullptr;
+#endif
+  if (!mesh::power::beginRegulatorSettings(board, radio_driver, regulator_prefs_fs)) {
+    MESH_DEBUG_PRINTLN("Regulator selection could not be applied");
+  }
+
+
 #ifdef DISPLAY_CLASS
   // Load only the display policy before radio and secondary-storage startup.
   FILESYSTEM* display_prefs_fs = store.getPrimaryFS();
@@ -4205,6 +4216,7 @@ void loop() {
   if (!morse_timing) companionPairingUiHilProbe();
 #endif
   rtc_clock.tick();
+  mesh::power::serviceRegulatorSettings();
   board.loop();
   if (mesh::serviceUsbLoggingWatchdog(usbLoggingRecoverySafe)) board.reboot();
 #ifdef TBEAM_1W

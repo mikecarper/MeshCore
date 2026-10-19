@@ -1,3 +1,4 @@
+#include <helpers/RegulatorSettings.h>
 #include <Arduino.h>
 #include "CarrierTools.h"
 #include "PacketFileLoggingConfig.h"
@@ -2978,6 +2979,7 @@ void CommonCLI::handleCommand(uint32_t sender_timestamp, char* command, char* re
 #if MESH_BATTERY_CHARGE_CONTROL
     if (mesh::power::handleBatteryChargeCommand(*_board, command, reply, 160)) return;
 #endif
+    if (mesh::power::handleRegulatorCommand(command, reply, 157)) return;
     if (mesh::handleUsbLoggingWatchdogCommand(command, reply, 160)) return;
     if (mesh::powerdiag::handleCommand(command, reply, 157, millis())) return;
     if (handleManagementCommand(command, reply)) return;

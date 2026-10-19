@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Execute T096 startup and the real DC/DC initializer with counted SDK I/O."""
+"""T096 board startup must defer DC/DC until saved regulator policy is loaded."""
 from pathlib import Path
 import os
 import subprocess
@@ -12,7 +12,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class T096RegulatorTests(unittest.TestCase):
-    def test_startup_selects_dcdc_before_voltage_check_with_or_without_softdevice(self):
+    def test_startup_defers_dcdc_until_after_battery_hardware_is_ready(self):
         methods = body((ROOT / 'src/helpers/NRF52Board.cpp').read_text(),
                        'void NRF52BoardDCDC::begin()')
         methods += body((ROOT / 'variants/heltec_t096/T096Board.cpp').read_text(),
@@ -42,14 +42,17 @@ void delay(unsigned) {}
 struct Bus { void setPins(int, int) {} void begin() {} } Wire;
 struct Peripheral { void begin() {} void init() {} };
 struct Config {} power_config;
-struct NRF52Board { void begin() { ++base_calls; } };
+struct NRF52Board {
+  bool cpu_dcdc_supported = false;
+  void begin() { ++base_calls; }
+};
 struct NRF52BoardDCDC : NRF52Board { void begin(); };
 struct T096Board : NRF52BoardDCDC {
   Peripheral periph_power, loRaFEMControl;
   void begin();
   void checkBootVoltage(const Config*) {
     ++voltage_checks;
-    assert(softdevice ? sdk_calls == 1 : power.DCDCEN == 1);
+    assert(sdk_calls == 0 && power.DCDCEN == 0);
   }
 };
 @METHODS@
@@ -59,8 +62,8 @@ int main() {
     T096Board board;
     board.begin();
     assert(base_calls == 1 && voltage_checks == 1);
-    assert(sdk_calls == softdevice);
-    assert(power.DCDCEN == (softdevice ? 0U : 1U));
+    assert(board.cpu_dcdc_supported);
+    assert(sdk_calls == 0 && power.DCDCEN == 0);
   }
 }
 '''

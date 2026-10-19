@@ -13,6 +13,7 @@ static_assert(sizeof(WEBCONFIG_AP_PREFIX) <= 28,
 #include <ArduinoJson.h>
 #include <helpers/ui/DisplayPowerSettings.h>
 #include <helpers/ui/DisplayBuildFlags.h>
+#include <helpers/RegulatorSettings.h>
 #include <Preferences.h>
 #include <esp_wifi.h>
 #include <esp_arduino_version.h>
@@ -2331,11 +2332,23 @@ void WebConfigServer::handleLogout(AsyncWebServerRequest* req) {
   req->send(res);
 }
 
+static void webConfigRegulatorsSnapshot(JsonObject regulators) {
+  regulators["recovery"] = mesh::power::regulatorRecoveryAvailable();
+  for (uint8_t domain = 0; domain < 2; ++domain) {
+    const bool mcu = domain == 0;
+    JsonObject entry = regulators.createNestedObject(mcu ? "mcu" : "radio");
+    entry["modes"] = mesh::power::configuredRegulatorModes(mcu);
+    entry["requested"] = mesh::power::regulatorModeName(mesh::power::requestedRegulatorMode(mcu));
+    entry["active"] = mesh::power::activeRegulatorModeName(mcu);
+    entry["fallback"] = mesh::power::regulatorFallbackActive(mcu);
+  }
+}
+
 void WebConfigServer::handleConfigGet(AsyncWebServerRequest* req) {
   if (_mode == MODE_OFF) { req->send(503); return; }
   if (!checkAuth(req)) { req->send(401, "application/json", "{\"error\":\"auth\"}"); return; }
 
-  DynamicJsonDocument doc(6144);
+  DynamicJsonDocument doc(6656);
   {
     WCLock lock(_mux);
     NodeSnapshot node = {};
@@ -2400,6 +2413,7 @@ void WebConfigServer::handleConfigGet(AsyncWebServerRequest* req) {
 #if defined(MESH_PRIMARY_ESPNOW) && MESH_PRIMARY_ESPNOW
     wifi["espnow_channel"] = mesh::wifi::loadConfiguredEspNowChannel();
 #endif
+    webConfigRegulatorsSnapshot(doc.createNestedObject("regulators"));
 
 #ifdef WITH_MQTT_BRIDGE
     MQTTPrefs* obs = static_cast<MQTTPrefs*>(_mqtt_prefs);

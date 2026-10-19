@@ -15,7 +15,7 @@ SANITIZERS = ["-fsanitize=address,undefined", "-fno-sanitize-recover=all", "-fno
 def portable_radio_header():
     """Use the exact Radio interface without unrelated packet/crypto mocks."""
     dispatcher = (ROOT / "src/Dispatcher.h").read_text(encoding="utf-8")
-    return ("#pragma once\n#include <RadioProfiles.h>\n#include <helpers/MorseTx.h>\n#include <helpers/MorseRx.h>\nnamespace mesh {\n"
+    return ("#pragma once\n#include <RadioProfiles.h>\n#include <helpers/MorseTx.h>\n#include <helpers/MorseRx.h>\n#include <helpers/RegulatorMode.h>\nnamespace mesh {\n"
             + method(dispatcher, "enum class RadioParamApplyResult") + ";\n"
             + method(dispatcher, "class Radio {") + ";\n}\n")
 

@@ -21,6 +21,7 @@ static const char* const WC_ALLOWED_SET_KEYS[] = {
   "name", "bluetooth.name", "bluetooth.mac", "bluetooth.stealth", "lost.reply",
   "lat", "lon", "radio", "tx", "af", "rxdelay", "txdelay",
   "cad", "radio.rxgain", "radio.fem.rxgain", "radio.fem.txgain", "radio.rxps", "powersaving",
+  "mcu.regulator", "radio.regulator",
   "repeat",
   "display.mode", "display.timeout", "display.usb.mode", "display.usb.timeout",
   "display.inbox", "display.rotation",
@@ -70,7 +71,9 @@ static inline bool wcSetKeyRequiresReboot(const char* key) {
   return key != NULL
       && (wcIsEspNowChannelKey(key)
           || strcmp(key, "bluetooth.mac") == 0
-          || strcmp(key, "bluetooth.stealth") == 0);
+          || strcmp(key, "bluetooth.stealth") == 0
+          || strcmp(key, "mcu.regulator") == 0
+          || strcmp(key, "radio.regulator") == 0);
 }
 
 // The admin password maps to the top-level `password` command, not a setter, so

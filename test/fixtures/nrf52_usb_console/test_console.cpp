@@ -14,6 +14,7 @@ MockNrfUsbd mock_usbd;
 static bool mounted = true, dtr = true, dfu = false;
 static bool attached = true, armed_in = false;
 static unsigned detaches = 0, attaches = 0;
+static unsigned clean_reboots = 0;
 static uint32_t baud = 115200;
 static std::string fifo, host;
 static std::function<void()> during_write;
@@ -47,7 +48,11 @@ uint32_t tud_cdc_n_write(uint8_t n, const void* data, uint32_t size) {
 uint32_t tud_cdc_n_write_flush(uint8_t n) { assert(n == 0); return 0; }
 uint32_t tud_cdc_n_write_clear(uint8_t n) { assert(n == 0); fifo.clear(); return 0; }
 void tud_cdc_get_line_coding(cdc_line_coding_t* coding) { coding->bit_rate = baud; }
-void TinyUSB_Port_EnterDFU() { dfu = true; }
+extern "C" void meshRegulatorCleanReset() { ++clean_reboots; }
+void TinyUSB_Port_EnterDFU() {
+  assert(clean_reboots == 1); // Mark the actual reset before entering the core.
+  dfu = true;
+}
 
 static void service() {
   mesh::serviceUsbLoggingPort();
@@ -169,8 +174,14 @@ int main() {
   drain();
   assert(host.empty()); // old armed packet cannot leak into a new handle
 
-  baud = 1200; dtr = false;
+  assert(clean_reboots == 0); // Normal host closes/reconnects remain armed.
+  baud = 1200;
+  tud_cdc_line_coding_cb(0, nullptr);
+  tud_cdc_line_state_cb(0, true, false);
+  tud_cdc_line_state_cb(1, false, false);
+  assert(clean_reboots == 0 && !dfu); // Neither coding nor CDC1 requests DFU.
+  dtr = false;
   tud_cdc_line_state_cb(0, false, false);
-  assert(dfu); // Existing bootloader entry is preserved.
+  assert(dfu && clean_reboots == 1); // Existing bootloader entry is preserved.
   puts("native nRF52 console transport passed");
 }

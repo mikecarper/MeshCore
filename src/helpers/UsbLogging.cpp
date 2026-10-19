@@ -35,6 +35,9 @@
 #if defined(NRF52_PLATFORM) && defined(USE_TINYUSB)
   #include <Adafruit_TinyUSB.h>
 #endif
+#if defined(NRF52_PLATFORM)
+  extern "C" void meshRegulatorCleanReset() __attribute__((weak));
+#endif
 #if MESH_ESP32_HWCDC_SESSION_GUARD
   #include "UsbAsciiBinarySwitch.h"
 #endif
@@ -1907,6 +1910,7 @@ extern "C" void meshTinyUsbCdcLineStateChanged(uint8_t instance, bool dtr,
     cdc_line_coding_t coding;
     tud_cdc_get_line_coding(&coding);
     if (coding.bit_rate == 1200) {
+      if (meshRegulatorCleanReset) meshRegulatorCleanReset();
       TinyUSB_Port_EnterDFU();
     }
   } else if (instance == 0) {

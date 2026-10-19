@@ -1,3 +1,4 @@
+#include <helpers/RegulatorSettings.h>
 #include "SensorMesh.h"
 #include <math.h>
 #include <helpers/IdentityGeneration.h>
@@ -162,6 +163,9 @@ void setup() {
 #else
   #error "need to define filesystem"
 #endif
+  if (!mesh::power::beginRegulatorSettings(board, radio_driver, fs)) {
+    MESH_DEBUG_PRINTLN("Regulator selection could not be applied");
+  }
 #ifdef DISPLAY_CLASS
   mesh::ui::loadDisplayPowerSettings(fs, false);
   mesh::ui::StartupScreen startup_screen;
@@ -351,6 +355,7 @@ void loop() {
     command[0] = 0;  // reset command buffer
   }
 
+  mesh::power::serviceRegulatorSettings();
   board.loop();   // let the board feed its watchdog, run periodic housekeeping
 
   the_mesh.loop();

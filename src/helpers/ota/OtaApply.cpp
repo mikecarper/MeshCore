@@ -18,6 +18,7 @@
     #include "OtaSelf.h"              // SelfFwInfo / ota_self_firmware (running-image base_hash gate)
   #endif
 #elif defined(NRF52_PLATFORM)
+  extern "C" void meshRegulatorCleanReset() __attribute__((weak));
   #include "OtaVerify.h"
   #include "OtaSelf.h"
   #include "OtaFlashLayout_nrf52.h"
@@ -498,6 +499,7 @@ static bool ota_nrf52_clear_reset_reasons() {
 }
 
 void ota_reboot_to_apply() {                   // public: set the apply magic + reset (does not return)
+  if (meshRegulatorCleanReset) meshRegulatorCleanReset();
   uint8_t stage_handoff = GPREGRET2_OTA_STAGE_LEGACY;
 #if defined(OTA_RAK_AUTO_STORE) || defined(OTA_TOWER_AUTO_STORE)
   if (g_nrf52_apply_store) {
@@ -546,6 +548,7 @@ void ota_reboot_to_apply() {                   // public: set the apply magic + 
 }
 
 void ota_reboot_to_bootloader_update() {
+  if (meshRegulatorCleanReset) meshRegulatorCleanReset();
   uint8_t source = GPREGRET2_OTA_STAGE_QSPI;
 #if defined(OTA_INTERNAL_BOOTLOADER_UPDATE)
   source = GPREGRET2_OTA_STAGE_EXPANDED;

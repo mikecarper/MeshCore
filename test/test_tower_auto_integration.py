@@ -222,6 +222,7 @@ int main() {
 '''
 
 HANDOFF_SETUP = r'''
+extern "C" void meshRegulatorCleanReset() __attribute__((weak));
 #include <cassert>
 #include <cstdint>
 #define OTA_TOWER_AUTO_STORE 1

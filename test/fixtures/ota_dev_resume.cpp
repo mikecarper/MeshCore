@@ -1,3 +1,4 @@
+extern "C" void meshRegulatorCleanReset() __attribute__((weak));
 #include <algorithm>
 #include <cstdint>
 #include <cstdio>

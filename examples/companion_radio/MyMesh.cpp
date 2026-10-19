@@ -1,3 +1,4 @@
+#include <helpers/RegulatorSettings.h>
 #include <helpers/ui/DisplayPowerSettings.h>
 #include <helpers/BatteryChargeCLI.h>
 #include <helpers/MorseCLI.h>
@@ -8222,6 +8223,7 @@ bool MyMesh::handleExtraFsHilCommand(const char* command, char* reply,
   if (strcmp(action, "unsafe-reset CONFIRM") == 0) {
     // Intentionally bypass all persistence hooks so HIL can prove that a
     // mutation was already committed before an event-driven sleep.
+    meshRegulatorCleanReset();  // Retained marker only; no persistence flush.
     NVIC_SystemReset();
     while (true) {}
   }
@@ -10719,6 +10721,8 @@ bool MyMesh::handleCommand(const char* command, uint32_t sender_timestamp,
     command += 3;
     while (*command == ' ' || *command == '\t') command++;
   }
+
+  if (mesh::power::handleRegulatorCommand(command, reply, reply_capacity)) return true;
 
 #if COMPANION_FEATURE_READER
   if (sender_timestamp == 0 && mesh::morseTimingActive(_radio)

@@ -1,3 +1,4 @@
+#include <helpers/RegulatorSettings.h>
 #include <Arduino.h>   // needed for PlatformIO
 #include <Mesh.h>
 #include <helpers/IdentityGeneration.h>
@@ -203,6 +204,9 @@ void setup() {
 #else
   #error "need to define filesystem"
 #endif
+  if (!mesh::power::beginRegulatorSettings(board, radio_driver, fs)) {
+    MESH_DEBUG_PRINTLN("Regulator selection could not be applied");
+  }
   mesh::hilStartupTrace("fs_ready");
 #ifdef DISPLAY_CLASS
   mesh::hilStartupTrace("display_begin");
@@ -538,6 +542,7 @@ static void __attribute__((noinline)) serviceCommandInterfaces() {
     command[0] = 0;  // reset command buffer
   }
 
+  mesh::power::serviceRegulatorSettings();
   board.loop();   // let the board feed its watchdog, run periodic housekeeping
 
 #ifdef ETHERNET_ENABLED

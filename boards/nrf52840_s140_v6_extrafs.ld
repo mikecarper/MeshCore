@@ -10,6 +10,9 @@ MEMORY
   /* To keep data in RAM across resets */
   PERSISTENT_RAM (rwx) : ORIGIN = 0x20006000, LENGTH = 8
 
+  /* Separate reset-retained state; clock and OTA handoff ABIs stay fixed. */
+  REGULATOR_RECOVERY_RAM (rwx) : ORIGIN = 0x20006050, LENGTH = 64
+
   /* SRAM required by Softdevice depend on
    * - Attribute Table Size (Number of Services and Characteristics)
    * - Vendor UUID count
@@ -17,7 +20,7 @@ MEMORY
    * - Concurrent connection peripheral + central + secure links
    * - Event Len, HVN queue, Write CMD queue
    */ 
-  RAM (rwx) :  ORIGIN = 0x20006000 + 8, LENGTH = 0x20040000 - 0x20006000 - 8
+  RAM (rwx) :  ORIGIN = 0x20006090, LENGTH = 0x20040000 - 0x20006090
 }
 
 SECTIONS
@@ -29,6 +32,21 @@ SECTIONS
     KEEP(*(.persistent_data))
     . = ALIGN(4);
   } > PERSISTENT_RAM
+
+  .regulator_recovery (NOLOAD) :
+  {
+    __regulator_recovery_start__ = .;
+    KEEP(*(.regulator_recovery))
+    . = ORIGIN(REGULATOR_RECOVERY_RAM) + LENGTH(REGULATOR_RECOVERY_RAM);
+    __regulator_recovery_end__ = .;
+  } > REGULATOR_RECOVERY_RAM
+
+  ASSERT(__regulator_recovery_start__ == 0x20006050,
+         "regulator recovery start must remain fixed")
+  ASSERT(__regulator_recovery_end__ == 0x20006090,
+         "regulator recovery reservation must remain exactly 64 bytes")
+  ASSERT(ORIGIN(RAM) == __regulator_recovery_end__,
+         "application RAM must start after regulator recovery")
 
   . = ALIGN(4);
   .svc_data :

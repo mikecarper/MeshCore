@@ -137,12 +137,68 @@ measurements on the physical core/module combination.
 
 ## Board regulator initialization
 
-RAK4631 Companion uses the same nRF52840 REG1 DC/DC initialization as the other
-RAK4631 roles. The former Companion-only force-LDO flag has been removed. This
-does not change REG0, the SX1262 regulator, storage layout, or boot-voltage
-protection. The shared initializer uses the SoftDevice API when BLE's stack is
-already active and the hardware register otherwise; Companion starts the board
-before it starts Bluetooth.
+### User-selectable regulators and crash recovery
+
+`mcu.regulator` and `radio.regulator` independently select `auto`, `dcdc` or
+`ldo` where the board supports those modes. `auto` preserves its existing board
+default. The choice is saved and takes effect after `reboot`; the two getters
+show requested/active mode, fallback, crash count and recovery availability.
+An explicit setter clears the corresponding fallback and streak, even when the
+same value is saved again. See the [CLI commands](cli_commands.md#select-mcu-and-lora-regulator-modes).
+
+Processor selection applies to the existing, circuit-supported nRF52 REG1
+DC-DC path. It does not select REG0, change an external PMIC, or expose an
+ESP32/RP2040 CPU regulator control. Radio controls apply to the supported
+SX1262, LR1110/LR1121 and Meshnology W12 LR2021 implementations. DC-DC is offered
+only when that board's regulator circuit is supported. LDO-only boards reject
+`dcdc`; unverified LR2021 switching circuits keep their existing mode.
+
+Automatic recovery uses reset-retained RAM on supported platforms. A domain
+must have been armed in DC-DC mode before the crash, with a valid last battery
+sample of at least **50%**, no more than **60 seconds** old at its last
+heartbeat. The **third consecutive qualifying crash** selects LDO before that
+domain starts again and saves the fallback. MCU and radio streaks are separate;
+if both were using DC-DC during the same qualifying failures, both can fall
+back. This is a recovery action, not proof that a regulator caused the crashes.
+
+Low/unknown battery, stale samples, cold starts, intentional reboots, sleep
+wakes and unclassified resets break a streak. Corrupt retained state cannot
+add a crash. **Five healthy minutes** clear the running streak; a later crash
+starts a new one. The saved LDO fallback survives normal resets and power
+cycles. It stays in LDO until a user explicitly selects a mode again, with no
+automatic return to DC-DC. Crash bookkeeping stays in retained RAM rather than
+writing flash at every heartbeat.
+
+Battery eligibility follows the board's battery measurement and configured
+percentage curve. USB supply voltage alone does not establish that a physical
+battery is at 50%; validate battery-only starts and the board's absent-battery
+reading when qualifying recovery. Boards without a trustworthy battery reading
+should report it invalid. A getter reporting recovery unavailable still permits
+supported manual mode selection.
+
+ESP32 WebConfig exposes supported controls under **Radio → Advanced → Power
+regulators**, showing active mode and fallback status. Unsupported domains and
+DC-DC options are hidden. Saving reboots only after the authenticated save
+completes successfully. **Clear fallback on restart** lets a user retry the
+current saved mode without first choosing a different one.
+
+For hardware qualification, compare both modes with battery-only cold starts,
+normal reboots, sleep/wake, BLE/WiFi and radio TX/RX under load. Confirm that
+three injected qualifying watchdog/fault resets select LDO, that fewer than
+three and low/unknown-battery resets do not, and that an explicit setter restores
+the requested choice. Also check current consumption and voltage during TX;
+native recovery tests and successful firmware builds do not establish these
+physical results.
+
+### Existing board defaults
+
+RAK4631 Companion shares the nRF52840 REG1 regulator path with the other
+RAK4631 roles. `auto` preserves its DC-DC default; the former Companion-only
+force-LDO flag has been removed. Saved mode selection is deferred until board
+ADC and primary filesystem initialization are complete, before display, radio
+and wireless startup. This retains boot-voltage protection and keeps REG0 and
+storage layout unchanged. The shared initializer uses the SoftDevice API when
+BLE's stack is already active and the hardware register otherwise.
 
 [RAK documents DC/DC support](https://docs.rakwireless.com/product-categories/wisduo/rak4630-module/quickstart/)
 for the module. The related upstream [battery-startup report #1878](https://github.com/meshcore-dev/MeshCore/issues/1878)
@@ -152,8 +208,8 @@ DC/DC failure. [PR #1914](https://github.com/meshcore-dev/MeshCore/pull/1914)
 also changes boot-voltage/wakeup handling and is not proof that every failure
 in that thread has the same cause.
 
-Host startup tests cover both SoftDevice states and regulator selection before
-the boot-voltage check. Firmware compilation is not hardware qualification:
+Host startup tests cover both SoftDevice states and deferred regulator selection
+with boot-voltage protection preserved. Firmware compilation is not hardware qualification:
 compare battery-only cold starts, low-voltage recovery, BLE operation and
 settings writes/reboots on the actual board/baseboard revisions before a fleet
 rollout. USB power can mask the reported startup symptoms. A current meter is
@@ -176,9 +232,10 @@ external LDO, PMIC output, or radio regulator.
 | Minew ME25LS01 | [Manufacturer datasheet](https://store.minewsemi.com/wp-content/uploads/2024/03/ME25LS01_LR1110_Datasheet_K_EN.pdf), electrical schematic page 9: MCU DCC through ML2/ML3 to DEC4_6 and MC15/MC16. |
 
 The startup tests execute each real `begin()` with SoftDevice off/on and power
-management compiled out/in. They require DC/DC before peripheral initialization
-and before any enabled boot-voltage check, while retaining one common board
-initialization. The previous bypass fails these tests.
+management compiled out/in. Normal startup defers the selected mode until the
+saved settings and recovery state can be read, while retaining one common board
+initialization. The board class still defines the circuit-supported default;
+the settings layer applies it before display/radio startup.
 
 ThinkNode M3/M4/M6 and generic ProMicro remain unchanged pending exact circuit
 or physical-board confirmation; their DC/DC inheritance alone is not evidence.

@@ -42,6 +42,7 @@ class RakSdReceiverTest(unittest.TestCase):
             "void ota_reboot_to_apply() {                   // public:",
         ))
         run_cpp(r'''
+extern "C" void meshRegulatorCleanReset() __attribute__((weak));
 #include <cassert>
 #include <cstring>
 #include "src/helpers/ota/OtaBlInfo.h"
@@ -127,6 +128,7 @@ int main() {
         end = cli.index("#elif defined(OTA_QSPI_STORE)", error)
         gate = cli[cli.index("\n", start) + 1:end]
         run_cpp(r'''
+extern "C" void meshRegulatorCleanReset() __attribute__((weak));
 #include <cassert>
 #include <cstdio>
 #include <cstring>
@@ -169,6 +171,7 @@ int main() {
         self.assertNotIn("ota_acquire_context", body)
         self.assertNotIn("ota_ctx()", body)
         run_cpp(r'''
+extern "C" void meshRegulatorCleanReset() __attribute__((weak));
 #include <cassert>
 #include <cstdarg>
 #include <cstdio>
@@ -216,6 +219,7 @@ int main() {
         # Full Companion uses the separate stable SD archive, not an adaptive
         # receiver. Compile the same production status block in both roles.
         run_cpp(r'''
+extern "C" void meshRegulatorCleanReset() __attribute__((weak));
 #include <cassert>
 #include <cstdarg>
 #include <cstdio>
@@ -304,6 +308,7 @@ int main() {
 
     def test_exact_supplement_preserves_legacy_application_and_update_views(self):
         run_cpp(r'''
+extern "C" void meshRegulatorCleanReset() __attribute__((weak));
 #include <cassert>
 #include <cstring>
 #include <initializer_list>

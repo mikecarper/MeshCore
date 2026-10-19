@@ -5,6 +5,7 @@ import subprocess
 import tempfile
 import unittest
 from test_radio_receive_contract import method
+from radio_regulator_harness import regulator_members
 
 ROOT = Path(__file__).resolve().parents[1]
 HARNESS = r'''
@@ -447,7 +448,7 @@ class ProfileScanTest(unittest.TestCase):
             (Path(folder)/'Arduino.h').write_text('#pragma once\n#include <cstdint>\n#include <cmath>\n')
             cpp.write_text(HARNESS.replace('@METHODS@',methods))
             result=subprocess.run([os.environ.get('CXX','g++'),'-std=c++17','-Wall','-Wextra',
-                '-I',folder,'-I',str(ROOT/'src'),str(cpp),'-o',str(exe)],capture_output=True,text=True)
+                '-I',folder,'-I',str(ROOT/'src'),'-I',str(ROOT/'src'),str(cpp),'-o',str(exe)],capture_output=True,text=True)
             self.assertEqual(result.returncode,0,result.stderr)
             result=subprocess.run([str(exe)],capture_output=True,text=True)
             self.assertEqual(result.returncode,0,result.stderr)
@@ -458,6 +459,8 @@ class ProfileScanTest(unittest.TestCase):
         harness=r'''
 #include <cassert>
 #include <cstdint>
+#include <helpers/radiolib/RadioRegulatorState.h>
+#define MESH_DEBUG_PRINTLN(...) ((void)0)
 #define RADIOLIB_SX126X_SYNC_WORD_PRIVATE 0x12
 #define RADIOLIB_ERR_NONE 0
 struct SX1262 {
@@ -470,6 +473,7 @@ struct SX1262 {
   }
 };
 struct CustomSX1262: SX1262 {
+  @REGULATOR@
   bool _coldStandby=false;
   bool _tcxoWakePending=true;
   struct { bool invalidated=false; void invalidate() { invalidated=true; } } _profileSwitch;
@@ -496,9 +500,9 @@ int main() {
 '''
         with tempfile.TemporaryDirectory() as folder:
             cpp=Path(folder)/'test.cpp'; exe=Path(folder)/'test.exe'
-            cpp.write_text('#include <initializer_list>\n'+harness.replace('@BEGIN@',begin))
+            cpp.write_text('#include <initializer_list>\n'+harness.replace('@BEGIN@',begin).replace('@REGULATOR@',regulator_members(source)))
             result=subprocess.run([os.environ.get('CXX','g++'),'-std=c++17','-Wall','-Wextra',
-                str(cpp),'-o',str(exe)],capture_output=True,text=True)
+                '-I',str(ROOT/'src'),str(cpp),'-o',str(exe)],capture_output=True,text=True)
             self.assertEqual(result.returncode,0,result.stderr)
             result=subprocess.run([str(exe)],capture_output=True,text=True)
             self.assertEqual(result.returncode,0,result.stderr)

@@ -77,7 +77,70 @@ class DfuSourcePatchTest(unittest.TestCase):
         self.assertLess(fixed.index("SCB_ICSR_PENDSVCLR_Msk"),
                         fixed.index("sd_softdevice_vector_table_base_set"))
         self.assertLess(fixed.index("sd_softdevice_vector_table_base_set"),
+                        fixed.index("if (meshRegulatorCleanReset)"))
+        self.assertLess(fixed.index("if (meshRegulatorCleanReset)"),
                         fixed.index("mesh_nrf52_dfu_jump(NRF_UICR"))
+
+    def test_only_a_successful_dfu_handoff_marks_clean_with_optional_policy(self):
+        compiler = shutil.which("c++") or shutil.which("g++")
+        if not compiler:
+            self.skipTest("host C++ compiler required for DFU clean-reset regression")
+        code = r'''
+#include <cassert>
+#include <cstdint>
+@DECLARATION@
+static unsigned clean_marks, jumps, vector_calls;
+static bool reject_vector;
+struct Uicr { uint32_t NRFFW[1] = {0xF4000}; } uicr;
+#define NRF_UICR (&uicr)
+#define VERIFY_STATUS(expression, result) do { if ((expression) != 0) return result; } while (0)
+uint32_t sd_softdevice_vector_table_base_set(uint32_t address) {
+  assert(address == 0xF4000);
+  ++vector_calls;
+  return reject_vector ? 1 : 0;
+}
+void mesh_nrf52_dfu_jump(uint32_t address) {
+  assert(address == 0xF4000);
+  assert(clean_marks == EXPECTED_MARKS);
+  ++jumps;
+}
+void attemptDfu(bool requested) {
+  if (!requested) return; // Advertising or an aborted update is not a reboot.
+  VERIFY_STATUS(sd_softdevice_vector_table_base_set(NRF_UICR->NRFFW[0]), );
+@JUMP@
+}
+#if WITH_POLICY
+extern "C" void meshRegulatorCleanReset() {
+  assert(jumps == 0 && vector_calls == 2 && !reject_vector);
+  ++clean_marks;
+}
+#endif
+int main() {
+  attemptDfu(false);
+  assert(clean_marks == 0 && vector_calls == 0 && jumps == 0);
+  reject_vector = true;
+  attemptDfu(true);
+  assert(clean_marks == 0 && vector_calls == 1 && jumps == 0);
+  reject_vector = false;
+  attemptDfu(true);
+  assert(clean_marks == EXPECTED_MARKS && vector_calls == 2 && jumps == 1);
+}
+'''.replace("@DECLARATION@", patch.CLEAN_RESET_DECLARATION).replace("@JUMP@", patch.JUMP)
+        with tempfile.TemporaryDirectory(prefix="meshcore-dfu-clean-reset-") as directory:
+            cpp = Path(directory) / "fixture.cpp"
+            cpp.write_text(code)
+            for policy in (False, True):
+                with self.subTest(policy=policy):
+                    binary = Path(directory) / f"test-{int(policy)}"
+                    built = subprocess.run([
+                        compiler, "-std=c++17", "-Wall", "-Wextra", "-Werror",
+                        f"-DWITH_POLICY={int(policy)}", f"-DEXPECTED_MARKS={int(policy)}",
+                        str(cpp), "-o", str(binary),
+                    ], capture_output=True, text=True, timeout=30)
+                    self.assertEqual(built.returncode, 0, built.stdout + built.stderr)
+                    tested = subprocess.run([str(binary)], capture_output=True,
+                                            text=True, timeout=10)
+                    self.assertEqual(tested.returncode, 0, tested.stdout + tested.stderr)
 
     def test_unknown_or_partially_patched_framework_fails_closed(self):
         for original in ("unrecognized framework", self.fixture().replace(

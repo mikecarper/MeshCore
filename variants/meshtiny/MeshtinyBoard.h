@@ -32,7 +32,7 @@ public:
 
   const char *getManufacturerName() const override { return "Meshtiny"; }
 
-  void reboot() override { NVIC_SystemReset(); }
+  void reboot() override { NRF52Board::reboot(); }
 
   void shutdownPeripherals() override {
     NRF52Board::shutdownPeripherals();

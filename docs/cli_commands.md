@@ -1537,6 +1537,45 @@ capacity. Remote use follows the existing administrator-command permissions.
 
 ### Radio
 
+#### Select MCU and LoRa regulator modes
+
+```text
+get mcu.regulator
+set mcu.regulator auto|dcdc|ldo
+get radio.regulator
+set radio.regulator auto|dcdc|ldo
+reboot
+```
+
+These are independent controls. `auto` follows the board's existing default;
+`dcdc` requests its switching regulator and `ldo` requests its linear regulator.
+Settings are saved for the next reboot. The getter reports the saved choice,
+active mode, automatic fallback, crash streak and whether recovery is available.
+Setting a mode again, including the same value, clears that regulator's learned
+fallback and crash streak. The other regulator keeps its settings.
+
+Choices depend on the board's verified circuit. MCU selection is available on
+nRF52 boards that already initialize their supported REG1 DC-DC regulator; it
+does not control REG0, an external PMIC, or ESP32/RP2040 processor regulators.
+Radio selection covers supported SX1262, LR1110/LR1121 and Meshnology W12 LR2021
+implementations. A board with only verified LDO support rejects `dcdc`.
+Unverified LR2021 switching-regulator circuits retain their existing mode.
+
+On platforms with retained crash recovery, three consecutive qualifying crashes
+while a domain is using DC-DC select LDO for that domain on the next boot.
+Each crash requires a valid last battery sample of at least 50%, no more than
+60 seconds old at the last heartbeat. Low/unknown battery readings, stale
+samples, ordinary reboots, sleep wakes and unknown reset causes break the
+streak. Five minutes of healthy operation also clears the streak; a later crash
+starts a new one. LDO fallback stays selected until a mode is explicitly set
+again; recovery never switches back to DC-DC automatically.
+
+ESP32 WebConfig shows **Power regulators** under **Radio → Advanced** when
+supported, with separate processor/radio choices and active/fallback status.
+Only supported options are offered. **Clear fallback on restart** reapplies the
+current choice through the normal save flow. Saving either control restarts the
+node after the save succeeds. See [regulator recovery and hardware checks](power_saving_diagnostics.md#user-selectable-regulators-and-crash-recovery).
+
 #### View or change this node's radio parameters
 **Usage:**
 - `get radio`

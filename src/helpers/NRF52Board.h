@@ -3,6 +3,7 @@
 #include <Arduino.h>
 #include <MeshCore.h>
 #include <helpers/KeyValueStore.h>
+#include <helpers/RegulatorMode.h>
 
 #if defined(NRF52_PLATFORM)
 
@@ -35,6 +36,8 @@ class NRF52Board : public mesh::MainBoard {
 protected:
   uint8_t startup_reason;
   char *ota_name;
+  bool cpu_dcdc_supported = false;
+  mesh::power::RegulatorMode cpu_regulator_mode = mesh::power::RegulatorMode::Ldo;
 
 #ifdef NRF52_POWER_MANAGEMENT
   void pwrmgtInit() { initPowerMgr(); }
@@ -65,7 +68,11 @@ public:
   void serviceWatchdog() override;
   virtual uint8_t getStartupReason() const override { return startup_reason; }
   virtual float getMCUTemperature() override;
-  virtual void reboot() override { NVIC_SystemReset(); }
+  void reboot() override;
+  uint8_t mcuRegulatorModes() const override;
+  mesh::power::RegulatorMode defaultMcuRegulatorMode() const override;
+  bool applyMcuRegulator(mesh::power::RegulatorMode mode) override;
+  mesh::power::RegulatorMode activeMcuRegulatorMode() const override;
   bool rebootToUf2Bootloader() override;
   virtual void shutdownPeripherals();
   virtual void powerOff() override;

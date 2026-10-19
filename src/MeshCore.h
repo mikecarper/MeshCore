@@ -5,6 +5,7 @@
 #include <math.h>
 #include "helpers/UsbLogging.h"
 #include "helpers/BatteryChargeSupport.h"
+#include "helpers/RegulatorMode.h"
 #include "helpers/PowerSavingDiagnostics.h"
 #if defined(ARDUINO) && (defined(RP2040_PLATFORM) || defined(STM32_PLATFORM))
 #include <Arduino.h>
@@ -145,6 +146,14 @@ public:
   virtual void onBeforeTransmit() { }
   virtual void onAfterTransmit() { }
   virtual void reboot() = 0;
+  virtual uint8_t mcuRegulatorModes() const { return 0; }
+  virtual power::RegulatorMode defaultMcuRegulatorMode() const {
+    return power::RegulatorMode::Default;
+  }
+  virtual bool applyMcuRegulator(power::RegulatorMode) { return false; }
+  virtual power::RegulatorMode activeMcuRegulatorMode() const {
+    return power::RegulatorMode::Default;
+  }
   // Reboot into a UF2-capable bootloader when the platform supports the
   // retained reset request. Returns false only when unsupported or rejected;
   // a successful implementation resets and does not return.

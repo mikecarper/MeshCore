@@ -1,6 +1,7 @@
 #pragma once
 
 #include <RadioLib.h>
+#include "RadioRegulatorState.h"
 #include "MeshCore.h"
 #include "RXPowerSaving.h"
 #include "LR1110RxRecovery.h"
@@ -19,6 +20,9 @@
 #endif
 
 class CustomLR1110 : public LR1110 {
+  // Existing LR11xx recipes already require the fitted DC/DC network.
+  mesh::power::RadioRegulatorState _regulator{mesh::power::REGULATOR_DCDC | mesh::power::REGULATOR_LDO,
+      mesh::power::RegulatorMode::Dcdc};
   uint32_t _preambleMillis = 66;
   uint32_t _maxPayloadMillis = 3934;
   uint32_t _activityAt = 0;
@@ -33,6 +37,11 @@ class CustomLR1110 : public LR1110 {
   public:
     CustomLR1110(Module *mod) : LR1110(mod) { }
 
+    uint8_t regulatorModes() const { return _regulator.modes(); }
+    mesh::power::RegulatorMode defaultRegulatorMode() const { return _regulator.defaultMode(); }
+    bool configureBootRegulator(mesh::power::RegulatorMode mode) { return _regulator.configureBoot(mode); }
+    mesh::power::RegulatorMode activeRegulatorMode() const { return _regulator.activeMode(); }
+
     void setRfSwitchTable(const uint32_t (&pins)[Module::RFSWITCH_MAX_PINS],
                           const Module::RfSwitchMode_t table[]) {
       _morse_rf_switch.capture(this->mod, pins, table);
@@ -40,12 +49,14 @@ class CustomLR1110 : public LR1110 {
     }
 
     int16_t beginMorseReceive(float frequency_mhz) {
+      const auto regulator = _regulator.beginInitialization();
       _profileSwitch.invalidate();
       _profilePacketDirty = false;
       int16_t status = LR1110::beginGFSK(frequency_mhz,
           mesh::MorseRx::ReceiverBitRateKbps, 0.6f, 4.8f, 2, 16, tcxoVoltage);
       if (status == RADIOLIB_ERR_NONE) status = applyMeshCoreTcxoDelay();
-      if (status == RADIOLIB_ERR_NONE) status = setRegulatorDCDC();
+      if (status == RADIOLIB_ERR_NONE) status = regulator == mesh::power::RegulatorMode::Ldo
+          ? setRegulatorLDO() : setRegulatorDCDC();
       if (status == RADIOLIB_ERR_NONE) status = _morse_rf_switch.restore(
           [this](uint8_t enable, const uint8_t* modes) {
             return setDioAsRfSwitch(enable, modes[0], modes[1], modes[2],
@@ -60,7 +71,7 @@ class CustomLR1110 : public LR1110 {
       }
       // Infinite continuous RX samples envelope power independently of the
       // FSK packet detector; no direct-data pin or TX/PA activation is used.
-      return status;
+      return _regulator.finishInitialization(status);
     }
 
     void setProfileSwitchOptimization(bool enabled) {
@@ -233,14 +244,16 @@ class CustomLR1110 : public LR1110 {
     int16_t begin(float freq = 434.0, float bw = 125.0, uint8_t sf = 9, uint8_t cr = 7,
                   uint8_t syncWord = RADIOLIB_LR11X0_LORA_SYNC_WORD_PRIVATE, int8_t power = 10,
                   uint16_t preambleLength = 8, float tcxoVoltage = 1.6) {
+      const auto regulator = _regulator.beginInitialization();
       _profileSwitch.invalidate();
       _profilePacketDirty = false;
       int16_t state = LR1110::begin(freq, bw, sf, cr, syncWord, power, preambleLength,
                                     tcxoVoltage);
       if (state == RADIOLIB_ERR_NONE) state = applyMeshCoreTcxoDelay();
-      // RadioLib begin() defaults to LDO; use the LR1110 DC/DC regulator.
-      if (state == RADIOLIB_ERR_NONE) state = setRegulatorDCDC();
-      return state;
+      // Native begin() resets to LDO; restore the boot choice on every reset.
+      if (state == RADIOLIB_ERR_NONE) state = regulator == mesh::power::RegulatorMode::Ldo
+          ? setRegulatorLDO() : setRegulatorDCDC();
+      return _regulator.finishInitialization(state);
     }
 
     int16_t applyMeshCoreTcxoDelay() {

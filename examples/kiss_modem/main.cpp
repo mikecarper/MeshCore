@@ -180,6 +180,7 @@ void setup() {
 #endif
   KISS_BOOT_STAGE("board.before");
   board.begin();
+  board.applyMcuRegulator(mesh::power::RegulatorMode::Default);
   KISS_BOOT_STAGE("board.after");
 
 #if defined(ESP32)

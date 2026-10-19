@@ -5,6 +5,7 @@
 #include <cstring>
 #include <vector>
 #include <helpers/radiolib/LR2021Band.h>
+#include <helpers/radiolib/RadioRegulatorState.h>
 #define RADIOLIB_ERR_NONE 0
 #define RADIOLIB_ERR_UNKNOWN -16
 #define RADIOLIB_NC 0xffffffffU
@@ -74,6 +75,7 @@ struct Native {
   }
   int16_t applyMeshCoreTcxoDelay() { return call(2); }
   int16_t setRegulatorDCDC() { return call(3); }
+  int16_t setRegulatorLDO() { return call(3); }
   int16_t setDioAsRfSwitch(uint8_t mask,uint8_t a,uint8_t b,uint8_t c,uint8_t d,uint8_t e,uint8_t f,uint8_t g) {
     enable=mask; const uint8_t values[]={a,b,c,d,e,f,g}; memcpy(modes,values,sizeof(modes));
     return call(4);
@@ -112,17 +114,20 @@ using LR1110=Native; using LR1121=Native;
 struct LR2021 : Native { enum { MODE_RX=3,MODE_RX_HF=6,MODE_END_OF_TABLE=0 }; };
 using SX1276=Native;
 struct LR1110Probe : LR1110 {
+  @LR1110_REGULATOR@
   struct State { unsigned invalidations=0; void invalidate() { ++invalidations; } } _profileSwitch;
   bool _profilePacketDirty=true,_rx_boosted=true;
   LR11x0MorseRfSwitch _morse_rf_switch;
   @LR1110@
 };
 struct LR1121Probe : LR1121 {
+  @LR1121_REGULATOR@
   bool _rx_boosted=true;
   LR11x0MorseRfSwitch _morse_rf_switch;
   @LR1121@
 };
 struct LR2021Probe : LR2021 {
+  @LR2021_REGULATOR@
   uint8_t gainModeLf=1,gainModeHf=3;
   uint32_t _rf_switch_pins[Module::RFSWITCH_MAX_PINS]={0x80,0x81,RADIOLIB_NC};
   const Module::RfSwitchMode_t* _rf_switch_table=nullptr;

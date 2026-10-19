@@ -1,3 +1,4 @@
+extern "C" void meshRegulatorCleanReset() __attribute__((weak));
 
 #include <helpers/ota/MotaContainer.h>
 #include <helpers/ota/OtaByteIO.h>

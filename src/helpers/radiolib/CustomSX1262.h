@@ -1,6 +1,7 @@
 #pragma once
 
 #include <RadioLib.h>
+#include "RadioRegulatorState.h"
 #include <math.h>
 #include "MeshCore.h"
 #include "RXPowerSaving.h"
@@ -39,6 +40,12 @@
 #endif
 
 class CustomSX1262 : public SX1262 {
+#if defined(SX126X_USE_REGULATOR_LDO) && SX126X_USE_REGULATOR_LDO
+  mesh::power::RadioRegulatorState _regulator{mesh::power::REGULATOR_LDO, mesh::power::RegulatorMode::Ldo};
+#else
+  mesh::power::RadioRegulatorState _regulator{mesh::power::REGULATOR_DCDC | mesh::power::REGULATOR_LDO,
+      mesh::power::RegulatorMode::Dcdc};
+#endif
   uint32_t _preambleMillis = 66;
   uint32_t _maxPayloadMillis = 3934;
   uint32_t _activityAt = 0;
@@ -52,6 +59,11 @@ class CustomSX1262 : public SX1262 {
 
   public:
     CustomSX1262(Module *mod) : SX1262(mod) { }
+
+    uint8_t regulatorModes() const { return _regulator.modes(); }
+    mesh::power::RegulatorMode defaultRegulatorMode() const { return _regulator.defaultMode(); }
+    bool configureBootRegulator(mesh::power::RegulatorMode mode) { return _regulator.configureBoot(mode); }
+    mesh::power::RegulatorMode activeRegulatorMode() const { return _regulator.activeMode(); }
     void invalidateMorseModemCache() {
       _profileSwitch.invalidate();
       _coldStandby = true;
@@ -296,6 +308,10 @@ class CustomSX1262 : public SX1262 {
                   uint8_t syncWord = RADIOLIB_SX126X_SYNC_WORD_PRIVATE, int8_t power = 10,
                   uint16_t preambleLength = 8, float tcxoVoltage = 1.6,
                   bool useRegulatorLDO = false) {
+      useRegulatorLDO = _regulator.beginInitialization(useRegulatorLDO
+          ? mesh::power::RegulatorMode::Ldo : mesh::power::RegulatorMode::Dcdc)
+          == mesh::power::RegulatorMode::Ldo;
+      MESH_DEBUG_PRINTLN("SX1262 regulator requested: %s", useRegulatorLDO ? "LDO" : "DC-DC");
       _profileSwitch.invalidate();
       // A held dual-profile oscillator must not be selected during reset or
       // setup, before DIO3/TCXO configuration has been restored. Restore the
@@ -309,7 +325,20 @@ class CustomSX1262 : public SX1262 {
                                     tcxoVoltage, useRegulatorLDO);
       if (state == RADIOLIB_ERR_NONE) state = applyMeshCoreTcxoDelay();
       standbyXOSC = savedStandbyXosc;
-      return state;
+      return _regulator.finishInitialization(state);
+    }
+
+    // The GFSK reset used by Morse must retain the same boot choice and must
+    // invalidate reported active state when native initialization fails.
+    int16_t beginFSK(float freq = 434.0, float br = 4.8, float freqDev = 5.0,
+                     float rxBw = 156.2, int8_t power = 10, uint16_t preambleLength = 16,
+                     float tcxoVoltage = 1.6, bool useRegulatorLDO = false) override {
+      useRegulatorLDO = _regulator.beginInitialization(useRegulatorLDO
+          ? mesh::power::RegulatorMode::Ldo : mesh::power::RegulatorMode::Dcdc)
+          == mesh::power::RegulatorMode::Ldo;
+      const int16_t status = SX1262::beginFSK(freq, br, freqDev, rxBw, power,
+          preambleLength, tcxoVoltage, useRegulatorLDO);
+      return _regulator.finishInitialization(status);
     }
 
     // Read tcxoVoltage back from the chip object rather than from the argument:
@@ -378,8 +407,6 @@ class CustomSX1262 : public SX1262 {
   #else
       constexpr bool useRegulatorLDO = false;
   #endif
-
-      MESH_DEBUG_PRINTLN("SX1262 regulator requested: %s", useRegulatorLDO ? "LDO" : "DC-DC");
 
   #if defined(STATION_G3_ESP32)
       // Reinitialization/watchdog recovery must keep the boot-selected slot;

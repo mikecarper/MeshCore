@@ -748,6 +748,7 @@ void setup() {
 #endif
 
   board.begin();
+  board.applyMcuRegulator(mesh::power::RegulatorMode::Default);
 
 #ifdef HAS_EXTERNAL_WATCHDOG
   external_watchdog.begin();

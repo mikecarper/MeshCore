@@ -10,8 +10,11 @@ MEMORY
   /* 8-byte retained clock state followed by the 72-byte MOTASDA2 authorization record. */
   PERSISTENT_RAM (rwx) : ORIGIN = 0x20006000, LENGTH = 80
 
+  /* Separate reset-retained state; clock and OTA handoff ABIs stay fixed. */
+  REGULATOR_RECOVERY_RAM (rwx) : ORIGIN = 0x20006050, LENGTH = 64
+
   /* SRAM required by SoftDevice depends on configured BLE resources. */
-  RAM (rwx) : ORIGIN = 0x20006000 + 80, LENGTH = 0x20040000 - 0x20006000 - 80
+  RAM (rwx) : ORIGIN = 0x20006090, LENGTH = 0x20040000 - 0x20006090
 }
 
 SECTIONS
@@ -23,6 +26,21 @@ SECTIONS
     KEEP(*(.persistent_data))
     . = ALIGN(4);
   } > PERSISTENT_RAM
+
+  .regulator_recovery (NOLOAD) :
+  {
+    __regulator_recovery_start__ = .;
+    KEEP(*(.regulator_recovery))
+    . = ORIGIN(REGULATOR_RECOVERY_RAM) + LENGTH(REGULATOR_RECOVERY_RAM);
+    __regulator_recovery_end__ = .;
+  } > REGULATOR_RECOVERY_RAM
+
+  ASSERT(__regulator_recovery_start__ == 0x20006050,
+         "regulator recovery start must remain fixed")
+  ASSERT(__regulator_recovery_end__ == 0x20006090,
+         "regulator recovery reservation must remain exactly 64 bytes")
+  ASSERT(ORIGIN(RAM) == __regulator_recovery_end__,
+         "application RAM must start after regulator recovery")
 
   __mota_sd_auth_start__ = ADDR(.persistent) + SIZEOF(.persistent);
   __mota_sd_auth_end__ = ORIGIN(PERSISTENT_RAM) + LENGTH(PERSISTENT_RAM);
