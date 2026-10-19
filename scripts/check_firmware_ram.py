@@ -300,11 +300,24 @@ def requirements(platform, defines, target):
     if "ENABLE_OTA" in defines:
         # These are lazy on every platform. Freeing static arrays increases
         # linked heap capacity but cannot erase their active-operation cost.
-        # Leaves are sized to the selected source, up to the unchanged limit;
-        # output holds only one block. They can overlap self-serving/fetching.
+        # Legacy sources cache every leaf. Qualified sources instead retain a
+        # bounded grouped-proof workspace (including getter fragments), with
+        # sizeof enforced by the production SourceMerkleProof assertion.
+        # Both paths can overlap self-serving/fetching and one output block.
         leaf_limit = integer(defines, "OTA_PROOFGEN_SCRATCH",
                              16384 if platform == "ESP32_PLATFORM" else
                              8192 if "OTA_SD_STORE" in defines else 4096)
+        bounded_default = (platform == "ESP32_PLATFORM"
+                           and "COMPANION_RADIO_FULL" in defines
+                           and "BOARD_HAS_PSRAM" not in defines
+                           and 4 <= leaf_limit <= 16384)
+        bounded = integer(defines, "OTA_BOUNDED_SOURCE_PROOFS", int(bounded_default))
+        if bounded not in (0, 1):
+            raise ValueError("OTA_BOUNDED_SOURCE_PROOFS must be 0 or 1")
+        if bounded:
+            if not 4 <= leaf_limit <= 16384:
+                raise ValueError("bounded source proofs require a 4..16384-byte leaf limit")
+            leaf_limit = 1536
         block_size = integer(defines, "OTA_MAX_BLOCK", 2048)
         parts["ota_generic_source_buffers"] = leaf_limit + block_size + 32
     # Match OtaDeflateConfig.h's compile eligibility and build-role override.

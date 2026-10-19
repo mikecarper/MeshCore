@@ -10,7 +10,11 @@ ROOT = Path(__file__).resolve().parents[1]
 
 class NimbleCompanionTests(unittest.TestCase):
     def test_identity_security_and_data_path_under_sanitizers(self):
-        self.run_adapter()
+        self.run_adapter("-DCONFIG_BT_NIMBLE_MAX_CONNECTIONS=1",
+                         "-DCONFIG_BT_NIMBLE_MAX_BONDS=15",
+                         "-DCONFIG_BT_NIMBLE_MAX_CCCDS=30",
+                         "-DCONFIG_BT_NIMBLE_ROLE_CENTRAL_DISABLED=1",
+                         "-DCONFIG_BT_NIMBLE_ROLE_OBSERVER_DISABLED=1")
 
     def test_lab15_interval_real_adapter_under_sanitizers(self):
         self.run_adapter("-DMESH_HIL_BLE_BENCH=1", "-DMESH_HIL_BLE_INTERVAL_MS=15")

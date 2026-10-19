@@ -3,6 +3,7 @@
 #include <stdint.h>
 #include <stddef.h>
 #include "OtaFormat.h"
+#include "OtaMemoryPolicy.h"
 
 // Transport-agnostic "folder of firmware" abstraction (docs/ota_protocol.md Section 9). A node can RELAY
 // `.mota` images it does not hold in flash - a user drops several `.mota` (different architectures) into
@@ -56,6 +57,17 @@ public:
   // exactly `len` bytes were produced. May block on the transport (serial round-trip); implementations
   // should keep active-transfer reads prompt because requested OTA traffic is primary traffic.
   virtual bool    read(uint8_t idx, uint32_t off, uint8_t* buf, uint32_t len) = 0;
+#if OTA_BOUNDED_SOURCE_PROOFS
+  // Maximum bytes for one cooperative metadata step. Framed transports expose
+  // their negotiated single-response capacity so proof work never batches
+  // several timeout-bearing transactions into one mesh-loop pass.
+  virtual uint16_t read_quantum() const { return 128; }
+  // A framed source must reject a chunk that no longer fits after a negotiated
+  // capacity change, rather than silently splitting it into several requests.
+  virtual bool read_metadata(uint8_t idx, uint32_t off, uint8_t* buf, uint32_t len) {
+    return read(idx, off, buf, len);
+  }
+#endif
   // Optional transport-only raw-DEFLATE representation of one logical payload block. Implementations which
   // can generate/cache it off-device return a stream strictly smaller than the raw block. The default keeps
   // every existing source source-compatible and makes OtaManager fall back to raw 171-byte DATA.

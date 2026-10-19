@@ -24,6 +24,10 @@ public:
   uint8_t count() override;
   bool    describe(uint8_t idx, MotaDesc& out) override;
   bool    read(uint8_t idx, uint32_t off, uint8_t* buf, uint32_t len) override;
+#if OTA_BOUNDED_SOURCE_PROOFS
+  uint16_t read_quantum() const override { return responsePayloadCapacity(); }
+  bool read_metadata(uint8_t idx, uint32_t off, uint8_t* buf, uint32_t len) override;
+#endif
   bool    read_deflated_block(uint8_t idx, uint16_t block, uint8_t* buf,
                               uint16_t cap, uint16_t* len) override;
 

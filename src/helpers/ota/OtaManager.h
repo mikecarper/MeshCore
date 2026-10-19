@@ -12,6 +12,9 @@
 #include "MotaContainer.h"
 #include "OtaSource.h"
 #include "MerkleTree.h"
+#if OTA_BOUNDED_SOURCE_PROOFS
+#include "SourceMerkleProof.h"
+#endif
 
 // Transport-agnostic OTA session engine (docs/ota_protocol.md Section 5/Section 8). It SERVES a complete `.mota`
 // (answering GET_MANIFEST / REQ) and/or FETCHES one into an OtaStore (verifying every block against
@@ -751,8 +754,17 @@ private:
   // capacity limit. Device-encoder output needs at most one logical block;
   // host-encoded output uses _serve_block. Cold buffers stay pinned until
   // queued egress drains, then return to the heap at idle.
+#if OTA_BOUNDED_SOURCE_PROOFS
+  using BoundedSourceProof = SourceMerkleProof<OTA_PROOFGEN_SCRATCH / 4, OTA_LEAVES_FRAG>;
+  static_assert(OTA_PROOFGEN_SCRATCH >= 4 && OTA_PROOFGEN_SCRATCH <= 16384 &&
+                sizeof(BoundedSourceProof) <= 1536,
+                "Update the bounded source workspace RAM budget in check_firmware_ram.py");
+  BoundedSourceProof* _source_proofs = nullptr;
+  uint32_t _src_leaves_off = 0;
+#else
   uint8_t*    _src_leaves = nullptr;
   uint32_t    _src_leaves_capacity = 0;
+#endif
   uint8_t*    _scratch = nullptr;
   uint32_t    _source_buffer_used_at = 0;
 
@@ -900,7 +912,11 @@ private:
   bool       _diffing = false;                 // leaves are in; diffing the seed a batch per tick
   uint32_t   _diff_idx = 0;                    // next block index to diff against the seed
 
+#if OTA_BOUNDED_SOURCE_PROOFS
+  BoundedSourceProof* ensureSourceProofs();
+#else
   uint8_t* ensureSourceLeaves(uint32_t bytes);
+#endif
   uint8_t* ensureScratch();
   void releaseColdBuffers();
   void releaseIdleColdBuffers();

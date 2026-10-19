@@ -628,6 +628,44 @@ int main() {
                 }, "RAK_4631_sensor")
                 self.assertEqual(policy["components"]["ethernet_or_external_ota_workspaces"], expected)
 
+    def test_bounded_source_proofs_reserve_real_workspace_without_cutting_other_allowances(self):
+        for platform in ("ESP32_PLATFORM", "NRF52_PLATFORM", "RP2040_PLATFORM", "STM32_PLATFORM"):
+            for full in (False, True):
+                for psram in (False, True):
+                    flags = {"ENABLE_OTA": 1, "WIFI_SSID": "test", "BLE_PIN_CODE": 123456,
+                             "WITH_MQTT_BRIDGE": 1}
+                    if full:
+                        flags["COMPANION_RADIO_FULL"] = 1
+                    if psram:
+                        flags["BOARD_HAS_PSRAM"] = 1
+                    with self.subTest(platform=platform, full=full, psram=psram):
+                        legacy = ram.requirements(platform, {**flags, "OTA_BOUNDED_SOURCE_PROOFS": 0},
+                                                  "board_companion_radio_full")
+                        selected = ram.requirements(platform, flags, "board_companion_radio_full")
+                        expected = 1536 if platform == "ESP32_PLATFORM" and full and not psram else (
+                            16384 if platform == "ESP32_PLATFORM" else 4096)
+                        self.assertEqual(selected["components"]["ota_generic_source_buffers"],
+                                         expected + 2048 + 32)
+                        for name, amount in legacy["components"].items():
+                            if name != "ota_generic_source_buffers":
+                                self.assertEqual(selected["components"][name], amount)
+        for custom in (0, 3, 32768):
+            flags = {"ENABLE_OTA": 1, "COMPANION_RADIO_FULL": 1, "OTA_PROOFGEN_SCRATCH": custom}
+            extended = ram.requirements("ESP32_PLATFORM", flags, "board_companion_radio_full")
+            self.assertEqual(extended["components"]["ota_generic_source_buffers"], custom + 2048 + 32)
+            with self.assertRaises(ValueError):
+                ram.requirements("ESP32_PLATFORM", {**flags, "OTA_BOUNDED_SOURCE_PROOFS": 1},
+                                 "board_companion_radio_full")
+        odd_limit = ram.requirements("ESP32_PLATFORM", {
+            "ENABLE_OTA": 1, "COMPANION_RADIO_FULL": 1, "OTA_PROOFGEN_SCRATCH": 16383,
+        }, "board_companion_radio_full")
+        self.assertEqual(odd_limit["components"]["ota_generic_source_buffers"], 1536 + 2048 + 32)
+        for invalid in (-1, 2, "invalid"):
+            with self.subTest(invalid=invalid), self.assertRaises(ValueError):
+                ram.requirements("ESP32_PLATFORM", {
+                    "ENABLE_OTA": 1, "OTA_BOUNDED_SOURCE_PROOFS": invalid,
+                }, "board_companion_radio_full")
+
     def test_compact_tables_keep_capacity_and_reserve_active_ota_allocations(self):
         for platform, leaf_limit in (("NRF52_PLATFORM", 4096), ("ESP32_PLATFORM", 16384),
                                      ("RP2040_PLATFORM", 4096), ("STM32_PLATFORM", 4096)):

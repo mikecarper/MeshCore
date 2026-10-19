@@ -209,6 +209,16 @@ uint16_t SerialMotaSource::responsePayloadCapacity() const {
   return (uint16_t)(frame - 5u);
 }
 
+#if OTA_BOUNDED_SOURCE_PROOFS
+bool SerialMotaSource::read_metadata(uint8_t idx, uint32_t off, uint8_t* buf, uint32_t len) {
+  if (!buf || !len || len > responsePayloadCapacity() || len > UINT32_MAX - off) return false;
+  uint8_t args[7];
+  args[0] = idx; wr_u32le(args + 1, off);
+  args[5] = (uint8_t)len; args[6] = (uint8_t)(len >> 8);
+  return txn(MS_OP_READ, args, sizeof(args), buf, len);
+}
+#endif
+
 bool SerialMotaSource::read(uint8_t idx, uint32_t off, uint8_t* buf, uint32_t len) {
   if (!buf && len != 0) return false;
   if (len > UINT32_MAX - off) return false;

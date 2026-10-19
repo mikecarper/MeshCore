@@ -885,6 +885,7 @@ jobs:
           python3 -B test/test_sh1106_memory.py -v
           python3 -B test/test_recent_repeater_storage.py -v
           python3 -B test/test_ota_cold_buffers.py -v
+          python3 -B test/test_ota_source_proofs.py -v
           python3 -B test/test_neighbor_scope_storage.py
           python3 -B test/test_ed25519_compact.py
           python3 -B test/test_cascade_release_package.py

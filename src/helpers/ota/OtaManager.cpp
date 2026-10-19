@@ -6,6 +6,9 @@
 #include "OtaDebug.h"
 #include <string.h>
 #include <stdlib.h>   // malloc/free for the (transient) leaf-diff buffer
+#if OTA_BOUNDED_SOURCE_PROOFS
+#include <new>
+#endif
 
 namespace mesh {
 namespace ota {
@@ -28,7 +31,12 @@ void OtaManager::invalidateDirectTransport() {
 OtaManager::~OtaManager() {
   free(_catalog_heap);
   free(_leaves_buf);
+#if OTA_BOUNDED_SOURCE_PROOFS
+  if (_source_proofs) _source_proofs->~BoundedSourceProof();
+  free(_source_proofs);
+#else
   free(_src_leaves);
+#endif
   free(_scratch);
 }
 
@@ -89,6 +97,15 @@ void OtaManager::releaseSmallCatalog() {
   _catalog_heap = nullptr;
 }
 
+#if OTA_BOUNDED_SOURCE_PROOFS
+OtaManager::BoundedSourceProof* OtaManager::ensureSourceProofs() {
+  if (!_source_proofs) {
+    void* memory = malloc(sizeof(BoundedSourceProof));
+    if (memory) _source_proofs = new (memory) BoundedSourceProof;
+  }
+  return _source_proofs;
+}
+#else
 uint8_t* OtaManager::ensureSourceLeaves(uint32_t bytes) {
   if (!bytes || bytes > OTA_PROOFGEN_SCRATCH) return nullptr;
   if (_src_leaves_capacity < bytes) {
@@ -102,6 +119,7 @@ uint8_t* OtaManager::ensureSourceLeaves(uint32_t bytes) {
   }
   return _src_leaves;
 }
+#endif
 
 uint8_t* OtaManager::ensureScratch() {
   if (!_scratch) {
@@ -125,15 +143,27 @@ void OtaManager::releaseColdBuffers() {
   _serve_block_loaded = false;
   _serve_wire_block = nullptr;
   _serve_wire_len = 0;
+#if OTA_BOUNDED_SOURCE_PROOFS
+  if (_source_proofs) _source_proofs->~BoundedSourceProof();
+  free(_source_proofs);
+  _source_proofs = nullptr;
+#else
   free(_src_leaves);
   _src_leaves = nullptr;
   _src_leaves_capacity = 0;
+#endif
   free(_scratch);
   _scratch = nullptr;
 }
 
 void OtaManager::releaseIdleColdBuffers() {
-  if ((_src_leaves || _scratch) &&
+  if ((
+#if OTA_BOUNDED_SOURCE_PROOFS
+       _source_proofs ||
+#else
+       _src_leaves ||
+#endif
+       _scratch) &&
       (uint32_t)(_now_ms - _source_buffer_used_at) >= OTA_SOURCE_BUFFER_IDLE_MS) {
     releaseColdBuffers();
   }
@@ -359,10 +389,9 @@ OtaManager::ServeView* OtaManager::resolve(const uint8_t* mid) {
   return loadSource(_serve[i]) ? &_srcv : nullptr;
 }
 
-// Load an external mota into the on-demand _srcv: read its manifest-minus-leaves + leaves[] from the
-// source into RAM, parse, and wire a payload reader that streams blocks from the source on REQ. (The
-// payload itself is NOT held in RAM - only the small head and the leaves, bounded by the configured
-// proof-generation scratch size.)
+// Load an external source's fixed manifest and wire its payload reader. Legacy
+// builds also cache leaves here; bounded builds acquire proof metadata through
+// cooperative egress steps, without delaying request admission on a full table.
 bool OtaManager::loadSource(const ServeEntry& e) {
   const MotaDesc& d = e.desc;
   if (d.leaves_off < 8) return false;
@@ -373,18 +402,25 @@ bool OtaManager::loadSource(const ServeEntry& e) {
   // Both images share these buffers. Even a failed read can overwrite part of
   // the old manifest/leaves, so its cached MID must stop resolving immediately.
   _srcv.valid = false;
+#if !OTA_BOUNDED_SOURCE_PROOFS
   uint8_t* src_leaves = ensureSourceLeaves(d.block_count * 4u);
   if (!src_leaves) return false;
+#endif
   _source_buffer_used_at = _now_ms;
   bool ok = e.src->read(e.src_idx, 8, _src_manifest, mfl);
   if (!ok || !mota_parse_manifest(_src_manifest, mfl, _srcv.m)) return false;
   if (_srcv.m.block_size() == 0 || _srcv.m.block_size() > OTA_MAX_BLOCK) return false;
   if (memcmp(_srcv.m.merkle_root, d.mid, 4) != 0) return false;       // descriptor/bytes disagree
   if (_srcv.m.block_count != d.block_count) return false;
+  _srcv.m.manifest_start = _src_manifest;
+#if OTA_BOUNDED_SOURCE_PROOFS
+  _srcv.m.leaves = nullptr;
+  _src_leaves_off = d.leaves_off;
+#else
   ok = e.src->read(e.src_idx, d.leaves_off, src_leaves, d.block_count * 4);
   if (!ok) return false;
-  _srcv.m.manifest_start = _src_manifest;
   _srcv.m.leaves   = src_leaves;
+#endif
   _srcv.m.payload  = nullptr;
   _srcv.mfl = mfl;
   _srcv_rdctx.src = e.src; _srcv_rdctx.idx = e.src_idx;
@@ -529,7 +565,11 @@ bool OtaManager::handleGetLeaves(const uint8_t* m, uint16_t n) {
   GetLeavesMsg gl;
   if (!decode_get_leaves(m, n, gl) || gl.want_mask == 0) return false;
   ServeView* v = resolve(gl.manifest_id);
-  if (!v || !v->m.leaves || v->m.block_count == 0 ||
+  if (!v || (!v->m.leaves
+#if OTA_BOUNDED_SOURCE_PROOFS
+             && v != &_srcv
+#endif
+            ) || v->m.block_count == 0 ||
       v->m.block_count > OTA_DIFF_MAX_BLOCKS) return false;
   const uint32_t total = (v->m.block_count * 4 + OTA_LEAVES_FRAG - 1) / OTA_LEAVES_FRAG;
   if (total == 0 || total > OTA_LEAVES_MAXFRAG) return false;
@@ -660,7 +700,11 @@ bool OtaManager::serviceManifestEgress(OtaReplyRouteValid route_valid, void* rou
   const uint32_t mfl = job.leaves ? v->m.block_count * 4u : v->mfl;
   const uint16_t fragment_size = job.leaves ? OTA_LEAVES_FRAG : OTA_MF_FRAG;
   const uint32_t total = (mfl + fragment_size - 1u) / fragment_size;
-  if ((job.leaves && (!v->m.leaves || total > OTA_LEAVES_MAXFRAG)) || total > 16u) {
+  if ((job.leaves && ((!v->m.leaves
+#if OTA_BOUNDED_SOURCE_PROOFS
+                       && v != &_srcv
+#endif
+                      ) || total > OTA_LEAVES_MAXFRAG)) || total > 16u) {
     popManifestJob();
     return true;
   }
@@ -689,7 +733,19 @@ bool OtaManager::serviceManifestEgress(OtaReplyRouteValid route_valid, void* rou
     LeavesMsg message;
     memcpy(message.manifest_id, v->m.merkle_root, 4);
     message.frag_idx = fragment; message.frag_total = ftotal;
-    message.bytes = v->m.leaves + off; message.len = (uint16_t)len;
+    message.bytes = v->m.leaves ? v->m.leaves + off : nullptr;
+#if OTA_BOUNDED_SOURCE_PROOFS
+    if (!message.bytes) {
+      BoundedSourceProof* workspace = ensureSourceProofs();
+      if (!workspace) { popManifestJob(); return true; }
+      _source_buffer_used_at = _now_ms;
+      const auto step = workspace->fragment(_srcv_rdctx.src, _srcv_rdctx.idx,
+          _src_leaves_off + off, (uint16_t)len, message.bytes);
+      if (step == BoundedSourceProof::Step::Pending) return true;
+      if (step == BoundedSourceProof::Step::Failed) { popManifestJob(); return true; }
+    }
+#endif
+    message.len = (uint16_t)len;
     wire_len = encode_leaves(wire, sizeof(wire), message);
   } else {
     ManifestMsg message;
@@ -699,6 +755,9 @@ bool OtaManager::serviceManifestEgress(OtaReplyRouteValid route_valid, void* rou
     wire_len = encode_manifest(wire, sizeof(wire), message);
   }
   if (emit(wire, wire_len, false, &job.route)) {
+#if OTA_BOUNDED_SOURCE_PROOFS
+    if (job.leaves && _source_proofs) _source_proofs->releaseFragment();
+#endif
     OTA_DBG("OTA: %s tx frag=%u/%u len=%u\n", job.leaves ? "LEAVES" : "MANIFEST",
             (unsigned)fragment, (unsigned)ftotal, (unsigned)len);
     const uint16_t bit = (uint16_t)(1u << fragment);
@@ -908,10 +967,25 @@ void OtaManager::serviceEgress(OtaReplyRouteValid route_valid, void* route_ctx) 
   }
 
   if (job.pending_mask != 0) {
+    const bool was_loaded = _serve_block_loaded;
     if (!_serve_block_loaded && !loadActiveServeBlock()) {
       popServeJob();
       return;
     }
+#if OTA_BOUNDED_SOURCE_PROOFS
+    // Warm proof metadata while DATA waits behind radio backpressure. Never
+    // combine this new read with the existing payload load in the same pass.
+    if (was_loaded && v == &_srcv) {
+      BoundedSourceProof* workspace = ensureSourceProofs();
+      if (!workspace || !workspace->bind(_srcv_rdctx.src, _srcv_rdctx.idx,
+          _src_leaves_off, v->m.block_count, v->m.merkle_root) ||
+          workspace->prepare() == BoundedSourceProof::Step::Failed) {
+        popServeJob(); return;
+      }
+    }
+#else
+    (void)was_loaded;
+#endif
     const uint16_t fragment_data = job.route.direct ? OTA_DIRECT_FRAG_DATA :
         (job.wire_v2 ? OTA_FRAG_DATA_V2 : OTA_FRAG_DATA);
     const uint16_t valid_mask = frag_full_mask(
@@ -974,7 +1048,21 @@ void OtaManager::serviceEgress(OtaReplyRouteValid route_valid, void* route_ctx) 
       && (int32_t)(_now_ms - job.proof_ready_at) < 0) return;
 
   uint8_t proof[32 * 4];
-  uint8_t np = merkle_gen_proof(v->m.leaves, v->m.block_count, job.block, v->scratch, proof);
+  uint8_t np = 0;
+#if OTA_BOUNDED_SOURCE_PROOFS
+  if (v == &_srcv) {
+    BoundedSourceProof* workspace = ensureSourceProofs();
+    if (!workspace || !workspace->bind(_srcv_rdctx.src, _srcv_rdctx.idx,
+        _src_leaves_off, v->m.block_count, v->m.merkle_root)) { popServeJob(); return; }
+    _source_buffer_used_at = _now_ms;
+    const auto step = workspace->proof(job.block, proof, np);
+    if (step == BoundedSourceProof::Step::Pending) return;
+    if (step == BoundedSourceProof::Step::Failed) { popServeJob(); return; }
+  } else
+#endif
+  {
+    np = merkle_gen_proof(v->m.leaves, v->m.block_count, job.block, v->scratch, proof);
+  }
   ProofMsg pm;
   memcpy(pm.manifest_id, job.mid, 4);
   pm.block_idx = job.block;
