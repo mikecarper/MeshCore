@@ -28,11 +28,18 @@ add detection to an older download.
 | iKoka Stick and Handheld | The designer documents an [optional Stick OLED](https://github.com/ndoo/ikoka-stick-meshtastic-device#oled-display-optional) and [optional Handheld OLED](https://github.com/ndoo/ikoka-handheld-meshtastic-device#oled-display-optional). | Existing display-capable images already check presence. Handheld Companion supports the screen; currently headless infrastructure recipes remain headless. |
 | Original LilyGo T-Beam | [LilyGo](https://lilygo.cc/products/t-beam-v1-1-esp32-lora-module) offers soldered/non-soldered OLED configurations. | Existing display-capable SSD1306 images already check presence. |
 | XIAO ESP32-S3 with Wio-SX1262 | [Seeed](https://wiki.seeedstudio.com/wio_sx1262_with_xiao_esp32s3_kit/#recommended-accessories) lists the expansion board as an accessory for adding screens and sensors. | Existing display-capable Companion images already check presence. |
+| Muzi Base Uno/Duo with SuperIO | [SuperIO](https://muzi.works/products/super-io) adds the OLED, GPS, buttons and buzzer to the matching Base radio. | New Companion images probe the SH1107 display, leave its 12 V supply off when absent, and discover GPS independently. Uno and Duo retain their different radio drivers. |
+| LilyGo T-Echo Lite core/display assembly | [LilyGo](https://lilygo.cc/en-us/products/t-echo-lite) documents the split core/base design. | New Companion images check SSD1681 status readback before e-paper initialization and continue headless when the panel does not respond. The old non-shell target names remain compatibility recipes. |
 
 The older V4 TFT expansion configuration is also optional, but its current
 recipe has no verified panel readback connection. Detection is not enabled for
 that wiring. A touchscreen acknowledgement alone does not establish that the
 LCD responds. The V4 R8 TFT and older V4 TFT pin mappings are distinct.
+
+New R8 TFT images support saved `display.rotation` values of `0`, `90`, `180`
+and `270`, including portrait/landscape dashboard changes without reflashing.
+The stock R8 expansion board has no accelerometer for automatic orientation.
+See the [rotation commands](cli_commands.md#set-display-rotation).
 
 Full Wireless Tracker repeaters retain the board's 50-neighbor capacity, as
 the V1.1 and V2 Full profiles already do. This preserves RAM for the screen,

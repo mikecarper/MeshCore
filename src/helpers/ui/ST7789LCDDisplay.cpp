@@ -5,6 +5,11 @@
   #define PIN_TFT_MISO -1
 #endif
 
+#ifdef MESHCORE_HELTEC_R8_RUNTIME_ROTATION
+extern const char meshcore_capability_display_rotation_heltec_r8[] =
+    "meshcore.capability.display.rotation.heltec_r8.v1";
+#endif
+
 #ifdef MESHCORE_HELTEC_R8_TFT_DETECTION
 #include "HeltecR8DisplayProbe.h"
 extern const char meshcore_capability_display_autodetect_heltec_r8[];
@@ -19,25 +24,52 @@ const char meshcore_capability_display_autodetect_heltec_r8[] =
 #define DISPLAY_WIDTH 240
 #define DISPLAY_HEIGHT 320
 
-// The compiled orientation, optionally turned 180 degrees by `display.flip`.
-// Adding 2 keeps portrait portrait and landscape landscape, so the viewport
-// geometry below never has to change with it.
+// display.flip remains an additive 180-degree mounting adjustment, independent
+// of the selected orientation. Other boards keep their compiled orientation.
 uint8_t ST7789LCDDisplay::effectiveRotation() const {
+#ifdef MESHCORE_HELTEC_R8_RUNTIME_ROTATION
+  return (uint8_t)((_base_rotation + (_flipped ? 2 : 0)) & 3);
+#else
   return (uint8_t)((DISPLAY_ROTATION + (_flipped ? 2 : 0)) & 3);
+#endif
+}
+
+void ST7789LCDDisplay::applyRotation() {
+#ifdef HELTEC_V4_R8_TFT
+  const auto rotation = effectiveRotation();
+  // Layout follows saved intent immediately, including before initialization
+  // and while the backlight is off. Defer all panel traffic until awake.
+  setDimensions((rotation & 1) ? 320 : 240, (rotation & 1) ? 240 : 320);
+  if (!_panel_ready) return;
+  if (!_isOn) {
+    _rotation_pending = true;
+    return;
+  }
+#endif
+  if (_panel_ready) display.setRotation(effectiveRotation());
+}
+
+bool ST7789LCDDisplay::setRotationDegrees(uint16_t degrees) {
+#ifdef MESHCORE_HELTEC_R8_RUNTIME_ROTATION
+  const volatile char* capability = meshcore_capability_display_rotation_heltec_r8;
+  (void)*capability;
+  if (degrees > 270 || degrees % 90 != 0) return false;
+  const uint8_t rotation = (DISPLAY_ROTATION + degrees / 90) & 3;
+  if (_base_rotation != rotation) {
+    _base_rotation = rotation;
+    applyRotation();
+  }
+  return true;
+#else
+  (void)degrees;
+  return false;
+#endif
 }
 
 void ST7789LCDDisplay::setFlipped(bool flipped) {
   if (_flipped == flipped) return;
   _flipped = flipped;
-  if (_panel_ready) {
-#ifdef MESHCORE_HELTEC_R8_TFT_DETECTION
-    if (!_isOn) {
-      _rotation_pending = true;
-      return;
-    }
-#endif
-    display.setRotation(effectiveRotation());
-  }
+  applyRotation();
 }
 
 bool ST7789LCDDisplay::i2c_probe(TwoWire& wire, uint8_t addr) {
@@ -69,14 +101,12 @@ bool ST7789LCDDisplay::begin() {
     // and stalling the UI loop for ~500 ms of reset delays.
     if (_panel_ready) {
       if (_peripher_power) _peripher_power->claim();
-#ifdef MESHCORE_HELTEC_R8_TFT_DETECTION
       // A preference may change while the backlight is off. Apply only that
       // deferred change; ordinary wakes remain free of SPI/reset work.
       if (_rotation_pending) {
         display.setRotation(effectiveRotation());
         _rotation_pending = false;
       }
-#endif
       if (PIN_TFT_LEDA_CTL != -1) {
         digitalWrite(PIN_TFT_LEDA_CTL, PIN_TFT_LEDA_CTL_ACTIVE);
       }
@@ -136,6 +166,9 @@ bool ST7789LCDDisplay::begin() {
     display.init(DISPLAY_WIDTH, DISPLAY_HEIGHT);
     display.setRotation(effectiveRotation());
     setDimensions(display.width(), display.height());
+#ifdef HELTEC_V4_R8_TFT
+    _rotation_pending = false;
+#endif
 
     display.setSPISpeed(40e6);
 

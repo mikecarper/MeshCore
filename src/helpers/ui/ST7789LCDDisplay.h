@@ -16,6 +16,11 @@
   #define MESHCORE_HELTEC_R8_TFT_DETECTION 1
 #endif
 
+#if defined(HELTEC_V4_R8_TFT) && defined(HELTEC_TFT_RUNTIME_ROTATION) \
+    && HELTEC_TFT_RUNTIME_ROTATION == 1
+  #define MESHCORE_HELTEC_R8_RUNTIME_ROTATION 1
+#endif
+
 class ST7789LCDDisplay : public DisplayDriver {
   #if defined(LILYGO_TDECK) || defined(HELTEC_LORA_V4_TFT) || defined(HELTEC_V4_R8_TFT)
     SPIClass displaySPI;
@@ -26,6 +31,11 @@ class ST7789LCDDisplay : public DisplayDriver {
 #ifdef MESHCORE_HELTEC_R8_TFT_DETECTION
   bool _probe_complete = false;
   bool _present = false;
+#endif
+#ifdef HELTEC_V4_R8_TFT
+#ifdef MESHCORE_HELTEC_R8_RUNTIME_ROTATION
+  uint8_t _base_rotation = DISPLAY_ROTATION & 3;
+#endif
   bool _rotation_pending = false;
 #endif
   bool _flipped = false;
@@ -36,6 +46,7 @@ class ST7789LCDDisplay : public DisplayDriver {
   static constexpr int kHeight = (DISPLAY_ROTATION & 1) ? 240 : 320;
 
   uint8_t effectiveRotation() const;
+  void applyRotation();
   bool i2c_probe(TwoWire& wire, uint8_t addr);
 public:
 #ifdef USE_PIN_TFT
@@ -64,6 +75,10 @@ public:
   bool begin();
 
   bool isOn() override { return _isOn; }
+#ifdef MESHCORE_HELTEC_R8_RUNTIME_ROTATION
+  bool supportsRotation() const override { return true; }
+#endif
+  bool setRotationDegrees(uint16_t degrees) override;
   void turnOn() override;
   void turnOff() override;
   void clear() override;

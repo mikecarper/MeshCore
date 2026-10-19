@@ -2369,6 +2369,10 @@ void WebConfigServer::handleConfigGet(AsyncWebServerRequest* req) {
     screen["usb_mode"] = mesh::ui::displayModeName(display_prefs.usb.mode);
     screen["usb_timeout"] = display_prefs.usb.seconds;
     screen["pairing"] = mesh::ui::displayPairingSupported();
+    screen["rotation_supported"] = node.display_rotation_supported;
+    if (node.display_rotation_supported) {
+      screen["rotation"] = node.display_rotation_degrees;
+    }
 #endif
     radio["repeat"] = (bool)node.repeat;
     radio["flood_max"] = node.flood_max;

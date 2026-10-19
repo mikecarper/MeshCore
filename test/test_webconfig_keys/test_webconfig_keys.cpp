@@ -15,6 +15,7 @@ TEST(WebConfigKeys, AllowsKnownScalarKeys) {
   EXPECT_TRUE(wcIsAllowedSetKey("radio.rxps"));
   EXPECT_TRUE(wcIsAllowedSetKey("powersaving"));
   EXPECT_TRUE(wcIsAllowedSetKey("repeat"));
+  EXPECT_TRUE(wcIsAllowedSetKey("display.rotation"));
   EXPECT_TRUE(wcIsAllowedSetKey("radio.fem.rxgain"));  // Board::handleCommand(), not CommonCLI
   EXPECT_TRUE(wcIsAllowedSetKey("radio.fem.txgain"));
   EXPECT_TRUE(wcIsAllowedSetKey("wifi.ssid"));
@@ -39,6 +40,7 @@ TEST(WebConfigKeys, RejectsDangerousOrUnknownKeys) {
   EXPECT_FALSE(wcIsAllowedSetKey("password"));
   EXPECT_FALSE(wcIsAllowedSetKey("reboot"));
   EXPECT_FALSE(wcIsAllowedSetKey("bogus"));
+  EXPECT_FALSE(wcIsAllowedSetKey("display.rotation.extra"));
   EXPECT_FALSE(wcIsAllowedSetKey("bluetooth.stealth.extra"));
   EXPECT_FALSE(wcIsAllowedSetKey("mqtt1.bogus"));   // unknown slot field
   EXPECT_FALSE(wcIsAllowedSetKey(""));

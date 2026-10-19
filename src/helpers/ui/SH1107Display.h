@@ -14,10 +14,20 @@
 #define DISPLAY_ADDRESS 0x3c
 #endif
 
+#if defined(MUZI_BASE) && defined(MUZI_BASE_ACCESSORY_AUTODETECT) \
+    && MUZI_BASE_ACCESSORY_AUTODETECT == 1
+  #define MESHCORE_MUZI_ACCESSORY_DETECTION 1
+#endif
+
 class SH1107Display : public DisplayDriver
 {
   Adafruit_SH1107 display;
   bool _isOn;
+#ifdef MESHCORE_MUZI_ACCESSORY_DETECTION
+  bool _probe_complete = false;
+  bool _present = false;
+  bool _panel_ready = false;
+#endif
   uint8_t _color;
 
   bool i2c_probe(TwoWire &wire, uint8_t addr);

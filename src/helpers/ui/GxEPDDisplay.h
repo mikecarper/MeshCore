@@ -26,6 +26,11 @@
   #define DISPLAY_ROTATION 3
 #endif
 
+#if defined(LILYGO_TECHO_LITE) && defined(TECHO_LITE_DISPLAY_AUTODETECT) \
+    && TECHO_LITE_DISPLAY_AUTODETECT == 1
+  #define MESHCORE_TECHO_LITE_DISPLAY_DETECTION 1
+#endif
+
 class GxEPDDisplay : public DisplayDriver {
 
 #if defined(EINK_DISPLAY_MODEL)
@@ -44,6 +49,10 @@ class GxEPDDisplay : public DisplayDriver {
   int _line_height = 22;
   bool _init = false;
   bool _isOn = false;
+#ifdef MESHCORE_TECHO_LITE_DISPLAY_DETECTION
+  bool _probe_complete = false;
+  bool _present = false;
+#endif
   uint16_t _curr_color;
   CRC32 display_crc;
   int last_display_crc_value = 0;

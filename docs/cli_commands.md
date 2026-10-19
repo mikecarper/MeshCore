@@ -1212,6 +1212,37 @@ screen identifies connected USB and Bluetooth clients (or both), and TCP,
 Ethernet, or serial clients where supported. Actual BLE pairing prompts retain
 priority over connection status.
 
+## Set display rotation
+
+Supported Companion displays and new Heltec V4 R8 TFT Repeater, Room Server,
+and Sensor images accept a saved rotation:
+
+```text
+get display.rotation
+set display.rotation 0
+set display.rotation 90
+set display.rotation 180
+set display.rotation 270
+```
+
+`0` restores the board's compiled orientation. On the R8 TFT, the other values
+turn clockwise from that default. A quarter turn changes between portrait and
+landscape, and the observer dashboard adapts to the new screen dimensions.
+The change applies without rebooting. Changing rotation while the display is
+off leaves it off; the next wake applies the pending panel rotation without
+resetting the shared touch controller. WebConfig offers the same choices under
+**Display → Rotation** when the running image supports rotation.
+
+The stock [R8 Expansion Kit V2](https://heltec.org/project/v4-r8-ex/) does not
+include an accelerometer. Its GNSS and touch controllers do not measure the
+screen's physical orientation, so this firmware offers manual rotation rather
+than an automatic orientation option. Automatic orientation would require a
+supported motion sensor and its mounting orientation.
+
+Companion saves this in its existing node preferences. Infrastructure roles
+use a separate checked settings file, leaving existing node/MQTT layouts
+compatible. Old published images retain their original supported commands.
+
 ## Set MQTT observer display flip
 
 Supported observer displays, including the R8 OLED and ST7789 panels, can also
@@ -1224,9 +1255,9 @@ set display.flip on
 ```
 
 `0` and `1` are accepted aliases for `off` and `on`. This is intentionally
-different from Full Companion `display.rotation`: observer `display.flip` is a
-relative 180-degree mounting choice and cannot switch between portrait and
-landscape. The value is harmless on an observer display driver that does not
+different from `display.rotation`: observer `display.flip` is an additional
+relative 180-degree mounting choice. Use `display.rotation` to switch between
+portrait and landscape on new R8 TFT images. The value is harmless on an observer display driver that does not
 support flipping.
 
 Flip survives reboot and firmware updates that preserve the filesystem;

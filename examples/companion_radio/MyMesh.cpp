@@ -5095,6 +5095,8 @@ static bool wcCopyValue(char* dest, size_t dest_size, const char* value) {
 
 void MyMesh::getNodeSnapshot(WebConfigServer::NodeSnapshot& s) {
   memset(&s, 0, sizeof(s));
+  s.display_rotation_supported = _ui != NULL && _ui->supportsDisplayRotation();
+  s.display_rotation_degrees = _prefs.display_rotation_degrees;
 #if defined(ESP32_PLATFORM) && defined(WIFI_SSID)
   if (_management_password_ready) {
     wcCopyValue(s.admin_password, sizeof(s.admin_password), _management_password);

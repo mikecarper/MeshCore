@@ -13,6 +13,7 @@ from package_esp32_partition_migration import BOARDS
 from package_cascade_release import nrf52_sensor_profile
 from station_g3_profiles import runtime_metadata as station_g3_metadata
 from optional_display_profiles import runtime_metadata as display_metadata
+from consolidated_profiles import runtime_metadata as consolidation_metadata
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -164,6 +165,7 @@ def generate(stage, config):
             controls.update(runtime_metadata(manifest, controls['mqtt'], plan['source']))
             controls.update(station_g3_metadata(manifest, defines, plan['source']))
             controls.update(display_metadata(manifest, defines, plan['source'], env.get('board')))
+            controls.update(consolidation_metadata(manifest, env, plan['source']))
             if manifest.get('ota_update_requirements'):
                 controls['updateRequirements'] = manifest['ota_update_requirements']
             note = capacity_note(manifest.get('reductions', []), defines)

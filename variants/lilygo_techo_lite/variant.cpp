@@ -30,8 +30,8 @@ void initVariant() {
   // pinMode(PIN_TXCO, OUTPUT);
   // digitalWrite(PIN_TXCO, HIGH);
 
-  pinMode(DISP_POWER, OUTPUT);
-  digitalWrite(DISP_POWER, LOW);
+  digitalWrite(DISP_BS1, LOW);
+  pinMode(DISP_BS1, OUTPUT);  // SSD1681 interface selection, not panel power.
 
   // shutdown gps
   pinMode(GPS_EN, OUTPUT);

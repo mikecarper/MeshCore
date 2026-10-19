@@ -821,8 +821,10 @@ jobs:
           node test/test_firmware_picker.js
           node test/test_t114_picker.js
           node test/test_optional_display_picker.js
+          node test/test_consolidated_picker.js
           python3 -B test/test_t114_release_profiles.py -v
           python3 -B test/test_optional_display_profiles.py -v
+          python3 -B test/test_consolidated_profiles.py -v
 
       - name: Verify Full logging compiler flags and packaged capabilities
         run: |
@@ -960,6 +962,9 @@ jobs:
           python3 -B test/test_rc32_display_detection.py -v
           python3 -B test/test_wireless_tracker_display_detection.py -v
           python3 -B test/test_heltec_r8_display_detection.py -v
+          python3 -B test/test_heltec_r8_display_rotation.py -v
+          python3 -B test/test_muzi_accessory_detection.py -v
+          python3 -B test/test_techo_lite_display_detection.py -v
           python3 -B test/test_companion_headless_buttons.py -v
           python3 -B test/test_st7735_display_wake_profile.py -v
           python3 -B test/test_legacy_ui_version_bounds.py -v

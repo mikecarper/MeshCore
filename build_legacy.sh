@@ -3517,6 +3517,15 @@ declare_build_capability_contract() {
       && is_esp32_canonical_full_release_target "$env_name"; then
     pio_env_name=$(get_exact_identity_full_pio_env "$env_name")
   fi
+  local consolidation_contract capability marker
+  consolidation_contract=""
+  if [ -n "$PIO_CONFIG_JSON" ]; then
+    consolidation_contract=$(python3 scripts/consolidated_profiles.py expectations "$pio_env_name" <<<"$PIO_CONFIG_JSON") || return 1
+  fi
+  while IFS='=' read -r capability marker; do
+    [ -n "$capability" ] || continue
+    record_application_expectation "$capability" "$marker"
+  done <<<"$consolidation_contract"
   if is_repeater_role_target "$env_name" \
       && { pio_env_option_contains "$env_name" build_flags "WITH_RS232_BRIDGE=" \
            || pio_env_option_contains "$pio_env_name" build_flags "WITH_RS232_BRIDGE="; }; then
@@ -3552,7 +3561,8 @@ declare_build_capability_contract() {
     fi
   fi
 
-  if [ "$env_platform" = "ESP32_PLATFORM" ] && ! is_kiss_modem_target "$env_name"; then
+  if { [ "$env_platform" = "ESP32_PLATFORM" ] || [ "$env_platform" = "NRF52_PLATFORM" ]; } \
+      && ! is_kiss_modem_target "$env_name"; then
     local optional_display_marker
     if [ -n "$PIO_CONFIG_JSON" ] \
         && optional_display_marker=$(python3 scripts/optional_display_profiles.py "$pio_env_name" <<<"$PIO_CONFIG_JSON"); then
@@ -5813,6 +5823,9 @@ is_runtime_setting_alias_target() {
   if get_t114_display_replacement "$1" >/dev/null; then
     return 0
   fi
+  if get_consolidated_hardware_replacement "$1" >/dev/null; then
+    return 0
+  fi
   if is_legacy_companion_power_saving_target "$1" \
       || is_legacy_companion_femoff_target "$1" \
       || is_legacy_radio_gain_profile_target "$1" \
@@ -5825,6 +5838,23 @@ is_runtime_setting_alias_target() {
       ;;
   esac
   return 1
+}
+
+get_consolidated_hardware_replacement() {
+  # Configuration proves the new implementation is selected before omitting
+  # an ordinary build. Packaging independently requires its executed marker.
+  # Explicit builds still retain the requested historical OTA identity.
+  case "${1,,}" in
+    picow_companion_radio_usb|picow_companion_radio_ble|picow_companion_radio_wifi|\
+    heltec_v4_expansionkit_repeater|heltec_v4_expansionkit_repeater_observer_mqtt|heltec_v4_expansionkit_room_server_observer_mqtt|\
+    heltec_v4_r8_tft_portrait_repeater_observer_mqtt|heltec_v4_r8_tft_portrait_room_server_observer_mqtt|\
+    heltec_v4_expansionkit_tft_companion_radio_*|heltec_v4_3_expansionkit_tft_companion_radio_*|\
+    muzi_base_duo_superio_companion_radio_*|muzi_base_uno_superio_companion_radio_*|lilygo_t-echo-lite_non_shell_companion_radio_*|\
+    heltec_rc32_without_display_*) ;;
+    *) return 1 ;;
+  esac
+  [ -n "$PIO_CONFIG_JSON" ] || return 1
+  python3 scripts/consolidated_profiles.py replacement "$1" <<<"$PIO_CONFIG_JSON"
 }
 
 is_t114_display_autodetect_build() {

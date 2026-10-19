@@ -57,6 +57,8 @@ class NativeDisplaysTest(unittest.TestCase):
                     if cls == "ST7789LCDDisplay":
                         source += f"void {cls}::setFlipped(bool) {{}}\n"
                     names = ["setTextSize", "setColor", "setCursor", "print", "fillRect", "drawRect", "drawXbm", "getTextWidth"]
+                    if cls == "ST7789LCDDisplay":
+                        names += ["setRotationDegrees"]
                     if cls == "ST7789Display":
                         names += ["printWordWrap"]
                     source += "\n".join(method(driver, cls, name) for name in names)

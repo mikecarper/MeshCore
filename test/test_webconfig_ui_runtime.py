@@ -122,7 +122,7 @@ class WebConfigUiRuntimeTest(unittest.TestCase):
                                  ("config-after", "1"), ("password-cleared", "true")):
             self.assertIn('data-test-recovery-%s="%s"' % (attribute, value), dom)
 
-    def test_four_display_controls_and_pairing_capability(self):
+    def test_display_power_controls_and_pairing_capability(self):
         status, config = self.setup_values()
         config["display"] = {
             "mode": "button", "timeout": 23,
@@ -143,6 +143,8 @@ window.addEventListener("load",function(){
     body.setAttribute("data-test-usb-timeout",card.querySelector('[data-k="display.usb.timeout"]').value);
     body.setAttribute("data-test-usb-disabled",card.querySelector('[data-k="display.usb.timeout"]').disabled);
     body.setAttribute("data-test-pairing-disabled",card.querySelector('option[value="pairing"]').disabled);
+    body.setAttribute("data-test-rotation-hidden",document.getElementById("display-rotation-setting").classList.contains("hide"));
+    body.setAttribute("data-test-rotation-disabled",card.querySelector('[data-k="display.rotation"]').disabled);
     var mode=card.querySelector('[data-k="display.mode"]');
     mode.value="off";mode.dispatchEvent(new Event("input",{bubbles:true}));
     body.setAttribute("data-test-battery-disabled",card.querySelector('[data-k="display.timeout"]').disabled);
@@ -152,12 +154,44 @@ window.addEventListener("load",function(){
 </script>''' % (json.dumps(status), json.dumps(config))
         dom = self.run_page(prelude)
         for attribute, value in (
-            ("display-visible", "true"), ("display-count", "4"),
+            ("display-visible", "true"), ("display-count", "5"),
             ("battery-timeout", "23"), ("usb-timeout", "55"),
             ("usb-disabled", "true"), ("pairing-disabled", "true"),
+            ("rotation-hidden", "true"), ("rotation-disabled", "true"),
             ("battery-disabled", "true"), ("dirty-display", "off"),
         ):
             self.assertIn('data-test-%s="%s"' % (attribute, value), dom)
+
+    def test_supported_rotation_loads_saved_value_and_can_be_changed(self):
+        status, config = self.setup_values()
+        config["display"] = {
+            "mode": "button", "timeout": 15, "usb_mode": "on",
+            "usb_timeout": 15, "pairing": False,
+            "rotation_supported": True, "rotation": 270,
+        }
+        prelude = r'''<script>
+window.fetch=function(path){
+  var value=path==="/api/status"?%s:%s;
+  return Promise.resolve({ok:true,status:200,json:function(){return Promise.resolve(value)}});
+};
+window.addEventListener("load",function(){
+  setTimeout(function(){enterApp()},50);
+  setTimeout(function(){
+    var select=document.querySelector('[data-k="display.rotation"]'),body=document.body;
+    body.setAttribute("data-test-rotation-visible",!document.getElementById("display-rotation-setting").classList.contains("hide"));
+    body.setAttribute("data-test-rotation-enabled",!select.disabled);
+    body.setAttribute("data-test-rotation-loaded",select.value);
+    body.setAttribute("data-test-rotation-values",Array.from(select.options).map(function(o){return o.value}).join(","));
+    select.value="90";select.dispatchEvent(new Event("input",{bubbles:true}));
+    body.setAttribute("data-test-rotation-dirty",st.dirty["display.rotation"]);
+  },650);
+});
+</script>''' % (json.dumps(status), json.dumps(config))
+        dom = self.run_page(prelude)
+        for attribute, value in (("visible", "true"), ("enabled", "true"),
+                                 ("loaded", "270"), ("values", "0,90,180,270"),
+                                 ("dirty", "90")):
+            self.assertIn('data-test-rotation-%s="%s"' % (attribute, value), dom)
 
     def setup_values(self):
         sys.path.insert(0, str(ROOT / "scripts"))

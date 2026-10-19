@@ -78,10 +78,25 @@ static const uint8_t meshcore_logo [] PROGMEM = {
     0xe3, 0xe3, 0x8f, 0xff, 0x1f, 0xfc, 0x3c, 0x0e, 0x1f, 0xf8, 0xff, 0xf8, 0x70, 0x3c, 0x7f, 0xf8, 
 };
 
+#if defined(HELTEC_V4_R8_TFT) && defined(HELTEC_TFT_RUNTIME_ROTATION) && HELTEC_TFT_RUNTIME_ROTATION == 1
+#include <helpers/ui/DisplayRotationSettings.h>
+
+void UITask::applyDisplayRotation() {
+  if (_display == nullptr || !_display->supportsRotation()) return;
+  const uint16_t degrees = mesh::ui::displayRotationDegrees();
+  if (degrees == _rotation_seen || !_display->setRotationDegrees(degrees)) return;
+  _rotation_seen = degrees;
+  _last_refresh = uint32_t(millis()) - 1000u;
+}
+#endif
+
 void UITask::begin(NodePrefs* node_prefs, const char* build_date, const char* firmware_version) {
   _prevBtnState = HIGH;
   _node_prefs = node_prefs;
   resetRadioProfileDisplayPage();
+#if defined(HELTEC_V4_R8_TFT) && defined(HELTEC_TFT_RUNTIME_ROTATION) && HELTEC_TFT_RUNTIME_ROTATION == 1
+  applyDisplayRotation();
+#endif
   _display->servicePower(board.isExternalPowered() || board.isUsbHostConnected());
 #if defined(PIN_USER_BTN) && defined(DISPLAY_CLASS) \
     && defined(MOMENTARY_BUTTON_WAKE_FROM_SLEEP) \
@@ -211,6 +226,9 @@ void UITask::renderCurrScreen() {
 }
 
 void UITask::loop() {
+#if defined(HELTEC_V4_R8_TFT) && defined(HELTEC_TFT_RUNTIME_ROTATION) && HELTEC_TFT_RUNTIME_ROTATION == 1
+  applyDisplayRotation();
+#endif
   // This UI's splash is relative to boot, not to begin(). Retire it once.
   if (!_startup_complete && millis() >= BOOT_SCREEN_MILLIS) {
     _startup_complete = true;

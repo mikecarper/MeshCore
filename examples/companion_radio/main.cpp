@@ -3928,6 +3928,14 @@ void setup() {
 
 // add usb interface
 #if defined(RP2040_PLATFORM) && defined(ENABLE_WIFI_INTERFACE)
+#if defined(PICOW_COMBINED_COMPANION) && PICOW_COMBINED_COMPANION == 1 \
+    && defined(ENABLE_USB_INTERFACE) && defined(PIO_FRAMEWORK_ARDUINO_ENABLE_BLUETOOTH)
+  // Bind consolidation metadata to the actual combined transport setup path.
+  static const char combined_capability[] =
+      "meshcore.capability.companion.picow.combined.v1";
+  const volatile char* combined_marker = combined_capability;
+  (void)*combined_marker;
+#endif
   wifi_interface.setSessionChangedCallback([](void*) {
     the_mesh.cancelSerialResponseStream(&wifi_interface);
     the_mesh.cancelSerialOperationsForRoute(&wifi_interface);

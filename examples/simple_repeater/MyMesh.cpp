@@ -1,4 +1,8 @@
 #include "MyMesh.h"
+#if defined(HELTEC_V4_R8_TFT) && defined(HELTEC_TFT_RUNTIME_ROTATION) \
+    && HELTEC_TFT_RUNTIME_ROTATION == 1
+#include <helpers/ui/DisplayRotationSettings.h>
+#endif
 #if defined(ESP32_PLATFORM)
 #include <helpers/esp32/BootFileSystem.h>
 #include <helpers/WiFiNetworkPowerPolicy.h>
@@ -11112,6 +11116,11 @@ void MyMesh::clearStats() {
 #ifdef WITH_WEBCONFIG
 void MyMesh::getNodeSnapshot(WebConfigServer::NodeSnapshot& s) {
   memset(&s, 0, sizeof(s));
+#if defined(HELTEC_V4_R8_TFT) && defined(HELTEC_TFT_RUNTIME_ROTATION) \
+    && HELTEC_TFT_RUNTIME_ROTATION == 1
+  s.display_rotation_supported = true;
+  s.display_rotation_degrees = mesh::ui::displayRotationDegrees();
+#endif
   StrHelper::strncpy(s.name, _prefs.node_name, sizeof(s.name));
   StrHelper::strncpy(s.admin_password, _prefs.password, sizeof(s.admin_password));
   s.lat = _prefs.node_lat;

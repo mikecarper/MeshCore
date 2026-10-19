@@ -288,6 +288,24 @@ static inline bool millisReached(unsigned long now, unsigned long deadline) {
   return (int32_t)((uint32_t)now - (uint32_t)deadline) >= 0;
 }
 
+#if defined(HELTEC_V4_R8_TFT) && defined(HELTEC_TFT_RUNTIME_ROTATION) && HELTEC_TFT_RUNTIME_ROTATION == 1
+#include <helpers/ui/DisplayRotationSettings.h>
+
+void UITask::applyDisplayRotation() {
+  if (_display == nullptr || !_display->supportsRotation()) return;
+  const uint16_t degrees = mesh::ui::displayRotationDegrees();
+  if (degrees == _rotation_seen || !_display->setRotationDegrees(degrees)) return;
+  _rotation_seen = degrees;
+#ifdef DISPLAY_REDRAW_ON_CHANGE
+  _frame_valid = false;
+#endif
+#ifdef DISPLAY_ACTIVITY_DASHBOARD
+  _rows_valid = false;
+#endif
+  _next_refresh = millis();
+}
+#endif
+
 // Applies `display.flip` when it changes, forcing a complete repaint because
 // the panel's existing contents are now the wrong way up.
 void UITask::applyDisplayFlip() {
@@ -337,6 +355,9 @@ void UITask::begin(NodePrefs* node_prefs, const char* build_date, const char* fi
   resetRadioProfileDisplayPage();
 #ifdef DISPLAY_ACTIVITY_DASHBOARD
   ObserverDashboard::applyDarkPalette();   // retunes UIColor for this target only
+#endif
+#if defined(HELTEC_V4_R8_TFT) && defined(HELTEC_TFT_RUNTIME_ROTATION) && HELTEC_TFT_RUNTIME_ROTATION == 1
+  applyDisplayRotation();
 #endif
   _display->servicePower(board.isExternalPowered() || board.isUsbHostConnected());
   applyDisplayFlip();
@@ -804,7 +825,7 @@ void UITask::renderDashboard() {
     memset(&snap, 0, sizeof(snap));
   }
 
-  const ObserverDashboard::Layout& layout = ObserverDashboard::activeLayout();
+  const ObserverDashboard::Layout& layout = ObserverDashboard::activeLayout(*_display);
   ObserverDashboard::drawFull(*_display, layout, ctx, snap);
   ObserverDashboard::allRowSignatures(layout, ctx, snap, _row_signatures);
   _rows_valid = true;
@@ -821,7 +842,7 @@ void UITask::updateActivityRows() {
 
   RadioActivitySnapshot snap;
   _activity->snapshot(millis(), &snap);
-  ObserverDashboard::drawChangedRows(*_display, ObserverDashboard::activeLayout(), ctx, snap,
+  ObserverDashboard::drawChangedRows(*_display, ObserverDashboard::activeLayout(*_display), ctx, snap,
                                      _row_signatures);
 }
 #endif
@@ -846,6 +867,9 @@ void UITask::toggleDisplay(const char* source) {
 #endif
 
 void UITask::loop() {
+#if defined(HELTEC_V4_R8_TFT) && defined(HELTEC_TFT_RUNTIME_ROTATION) && HELTEC_TFT_RUNTIME_ROTATION == 1
+  applyDisplayRotation();
+#endif
   // Observe expiry outside display/Morse/input gates; startup is one-shot.
   if (!_startup_complete && (uint32_t)(millis() - _started_at) >= BOOT_SCREEN_MILLIS) {
     _startup_complete = true;

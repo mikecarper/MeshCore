@@ -402,6 +402,7 @@ body.tab-cli{padding-bottom:0}
     </div>
     <div class="card hide" id="display-settings">
       <h2>Display</h2>
+      <div class="f hide" id="display-rotation-setting"><label>Rotation</label><select data-k="display.rotation"><option value="0">Board default</option><option value="90">90 degrees</option><option value="180">180 degrees</option><option value="270">270 degrees</option></select></div>
       <div class="row">
         <div class="f"><label>On battery</label><select data-k="display.mode"><option value="off">Off</option><option value="on">On</option><option value="button">Button</option><option value="pairing">Pairing only</option><option value="button-pairing">Button + pairing</option><option value="automatic">Automatic</option></select></div>
         <div class="f"><label>Timeout (seconds)</label><input type="number" data-k="display.timeout" min="1" max="3600" step="1"></div>
@@ -910,6 +911,7 @@ function cfgVal(k){ // map a `set` key to its current value string, from st.cfg
     case"radio.rxps":return rxpsCfgValue(r);
     case"powersaving":return r.powersaving?"on":"off";
     case"display.mode":return (st.cfg.display||{}).mode||"button";
+    case"display.rotation":return String((st.cfg.display||{}).rotation||0);
     case"display.timeout":return String((st.cfg.display||{}).timeout||15);
     case"display.usb.mode":return (st.cfg.display||{}).usb_mode||"button";
     case"display.usb.timeout":return String((st.cfg.display||{}).usb_timeout||15);
@@ -1060,6 +1062,9 @@ function loadConfig(loadCapture){
     $$("[data-cfm]").forEach(function(el){el.value=""});
     $$("[data-rg]").forEach(function(el){el.value=String(c.radio[el.dataset.rg]);el.classList.remove("dirty")});
     $("#display-settings").classList.toggle("hide",!c.display);
+    var rotationSupported=!!(c.display&&c.display.rotation_supported);
+    $("#display-rotation-setting").classList.toggle("hide",!rotationSupported);
+    $('[data-k="display.rotation"]').disabled=!rotationSupported;
     $$('#display-settings option[value="pairing"],#display-settings option[value="button-pairing"]').forEach(function(el){el.hidden=!(c.display&&c.display.pairing);el.disabled=el.hidden});
     syncDisplayTimeouts();
     loadRxps(c.radio);
@@ -2013,6 +2018,7 @@ var CLI_VERBS=[
    mode: 0 = get and set, 1 = get only, 2 = set only
    values: enum offered as value completions after `set <key> ` */
 var CLI_KEYS=[
+  ["display.rotation","Display rotation on supported hardware (0 restores the board default)",0,"0|90|180|270"],
   ["display.inbox","Companion inbox behavior",0,"history|pending|unread"],
   ["display.mode","Display on battery",0,"off|on|button|pairing|button-pairing|automatic"],
   ["display.timeout","Battery display timeout in seconds (1-3600)",0],

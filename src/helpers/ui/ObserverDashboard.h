@@ -118,6 +118,12 @@ inline const Layout& activeLayout() {
   return layout;
 }
 
+inline const Layout& activeLayout(const DisplayDriver& display) {
+  static const Layout portrait = portraitLayout();
+  static const Layout landscape = landscapeLayout();
+  return display.width() < display.height() ? portrait : landscape;
+}
+
 // ------------------------------------------------------------- formatting ---
 // Every value is formatted from integers. Arguments are widened explicitly so
 // the same code is correct on a 32-bit target and on a 64-bit host.

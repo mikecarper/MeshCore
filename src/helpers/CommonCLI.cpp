@@ -7,6 +7,10 @@
 #include "PowerSavingDiagnostics.h"
 #include "HilStartupTrace.h"
 #include <helpers/ui/DisplayPowerSettings.h>
+#if defined(HELTEC_V4_R8_TFT) && defined(HELTEC_TFT_RUNTIME_ROTATION) \
+    && HELTEC_TFT_RUNTIME_ROTATION == 1
+#include <helpers/ui/DisplayRotationSettings.h>
+#endif
 #include <helpers/BatteryChargeCLI.h>
 #if MESH_ENABLE_CARRIER_TOOLS || MESH_ENABLE_MORSE_RX
 #include <helpers/MorseCLI.h>
@@ -802,6 +806,10 @@ void CommonCLI::loadPrefs(FILESYSTEM* fs) {
 #endif
   mesh::hilStartupTrace("prefs_display_begin");
   const bool display_settings_loaded = mesh::ui::loadDisplayPowerSettings(fs, false);
+#if defined(HELTEC_V4_R8_TFT) && defined(HELTEC_TFT_RUNTIME_ROTATION) \
+    && HELTEC_TFT_RUNTIME_ROTATION == 1
+  mesh::ui::loadDisplayRotationSettings(fs);
+#endif
   mesh::hilStartupTrace("prefs_display_ready");
   (void)display_settings_loaded;
   bool is_fresh_install = false;
@@ -3006,6 +3014,10 @@ void CommonCLI::handleCommand(uint32_t sender_timestamp, char* command, char* re
       return;
     }
     if (mesh::ui::handleDisplayPowerCommand(command, reply, 160)) return;
+#if defined(HELTEC_V4_R8_TFT) && defined(HELTEC_TFT_RUNTIME_ROTATION) \
+    && HELTEC_TFT_RUNTIME_ROTATION == 1
+    if (mesh::ui::handleDisplayRotationCommand(command, reply, 160, true)) return;
+#endif
 
     // Observer-only top-level commands (ota check/update, tls.bundletest, alert test)
     // live in CommonCLI_Observer.cpp.

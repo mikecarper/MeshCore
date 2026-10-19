@@ -26,6 +26,39 @@ def manifest(spec, target):
 
 
 class OptionalDisplayProfilesTest(unittest.TestCase):
+    def test_nrf52_accessories_require_the_exact_radio_panel_and_packaged_marker(self):
+        recipes = Recipes()
+        for target in ("muzi_base_duo_companion_radio_ble", "muzi_base_uno_companion_radio_ble",
+                       "LilyGo_T-Echo-Lite_companion_radio_ble"):
+            flags = defines(recipes.value("env:" + target, "build_flags"))
+            board = recipes.value("env:" + target, "board")
+            spec = displays.spec_for_defines(flags, board)
+            self.assertIsNotNone(spec)
+            row = {**manifest(spec, target), "platform": "NRF52_PLATFORM"}
+            result = displays.runtime_metadata(row, flags, SOURCE, board)
+            self.assertEqual(result, dict(displayAuto=True, displayController=spec["controller"], displaySource=SOURCE))
+            for change in ({spec["flag"]: "0"}, {spec["guard"]: "0"},
+                           {"DISPLAY_CLASS": "NullDisplayDriver"},
+                           {key: "unrelated" for key in spec.get("defines", {})}):
+                with self.subTest(target=target, change=change), self.assertRaises(ValueError):
+                    displays.runtime_metadata(row, {**flags, **change}, SOURCE, board)
+            for change in ({"platform": "ESP32_PLATFORM"}, {"verification": []},
+                           {"target": target.replace("duo", "uno") if "duo" in target else "other_companion_radio_ble"}):
+                with self.subTest(target=target, change=change), self.assertRaises(ValueError):
+                    displays.runtime_metadata({**row, **change}, flags, SOURCE, board)
+            self.assertEqual(displays.runtime_metadata({**row, "capabilities": []}, flags, SOURCE, board), {})
+
+    def test_lite_explicit_compatibility_roles_keep_their_own_display_proof(self):
+        recipes = Recipes()
+        for role in ("repeater", "room_server"):
+            target = "LilyGo_T-Echo-Lite_" + role + "_lora_ota"
+            flags = defines(recipes.value("env:" + target, "build_flags"))
+            board = recipes.value("env:" + target, "board")
+            spec = displays.spec_for_defines(flags, board)
+            legacy = target + "_no_external_sensors"
+            row = {**manifest(spec, legacy), "platform": "NRF52_PLATFORM"}
+            self.assertTrue(displays.runtime_metadata(row, flags, SOURCE, board)["displayAuto"])
+
     def test_all_tracker_full_repeaters_keep_the_measured_safe_neighbor_capacity(self):
         script = r'''
 set -euo pipefail

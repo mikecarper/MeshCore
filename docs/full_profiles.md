@@ -148,6 +148,12 @@ environmental/ranging drivers while retaining generic I2C and supported board
 peripherals. Reduced RAK3401/RAK4631 recipes also retain their supported
 INA219/INA226/INA260/INA3221 voltage/current drivers.
 
+The picker recommends Full when both profiles are qualified from the same
+source. Reduced remains available through its Advanced sensor option and
+explicit shared links, with both downloads and their update identities
+retained. An absent sensor does not require a Reduced image; supported sensor
+discovery already handles missing peripherals.
+
 Both profiles retain their exact board/role OTA identity and storage layout.
 Choose the matching storage variant and meet its staging/bootloader
 requirements. These profiles are LoRa OTA receivers; nRF52 Full Companion

@@ -9,7 +9,7 @@
     <div class="firmware-picker-feedback firmware-picker-wide" data-role="filter-feedback" hidden>
       <div aria-live="polite" aria-atomic="true">
         <strong data-role="filter-count"></strong>
-        <p data-role="filter-note"></p>
+      <p data-role="filter-note"></p>
       </div>
       <a data-role="view-results" hidden>View files</a>
     </div>
@@ -159,6 +159,11 @@ Once the exact board and role are selected, the picker skips logging,
 connection, and profile choices that all select the same firmware. Logging
 settings move into **Restore your settings after flashing** beneath the files.
 Choices that select different images remain visible.
+For qualified nRF52 sensor pairs, Full is the normal recommendation. Open
+**Advanced: sensor compatibility → Show Reduced sensor images** to select a Reduced image for
+an existing update route or its smaller optional-driver set. Shared links
+that explicitly select Reduced retain that selection. Both downloads remain
+available; this changes the recommendation, not their OTA identities.
 The optional chip-family filter (ESP32, nRF52, RP2040, or STM32) can narrow the
 hardware list first. You can skip it: picking hardware fills it in automatically.
 Chip family and hardware are the only dropdowns. All remaining choices use
@@ -329,6 +334,27 @@ combined and single-transport names are explicit-build compatibility aliases.
 SSD1306 Full Companion builds use `set display.rotation 90|180|270`; `0`
 restores the board default, so a separate rotated release image is not
 recommended.
+
+New Heltec V4 R8 TFT images also support saved rotation in Companion,
+Repeater, Room Server and Sensor roles. The observer dashboard follows the
+selected portrait or landscape orientation. Once the canonical image proves
+this capability, the picker replaces separate portrait recommendations with
+runtime rotation controls. The stock R8 kit has no accelerometer, so automatic
+orientation is not offered. See [display rotation](cli_commands.md#set-display-rotation).
+
+Other new canonical images can replace redundant hardware or transport choices:
+the Heltec V4 OLED covers its matching OLED expansion kit, Pico W Companion
+combines USB/Bluetooth/WiFi, and RC32 detects its optional T108 display. The
+picker requires verified capabilities from the actual downloadable application
+before replacing an older recommendation. Existing downloads remain available
+through the advanced filename search; changing target names still requires
+the matching local migration rather than a cross-target LoRa update.
+
+Muzi Base Companion also includes the optional SuperIO accessory for its exact
+Uno or Duo radio, and T-Echo Lite Companion detects its e-paper panel. A new
+verified canonical image can therefore replace the matching SuperIO or
+non-shell recommendation. These accessory choices do not change the radio
+hardware selection. See [optional screens](optional_screens.md).
 
 Ordinary non-OTA roles also use one artifact for normal operation and USB
 logging. On ESP32 1.17.1.5, run `set powersaving off` before `set usb.logging on`.

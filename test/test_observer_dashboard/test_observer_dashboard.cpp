@@ -75,6 +75,23 @@ bool insideRect(const MockDisplay::Op& op, int x, int y, int w, int h) {
 
 } // namespace
 
+TEST(ObserverDashboardLayout, LiveViewportSelectsPortraitAndLandscape) {
+  class RotatingViewport : public MockDisplay {
+  public:
+    RotatingViewport() : MockDisplay(LANDSCAPE) {}
+    void resize(int width, int height) { setDimensions(width, height); }
+  } display;
+  for (unsigned turn = 0; turn < 12; ++turn) {
+    const bool portrait = (turn & 1) != 0;
+    display.resize(portrait ? 240 : 320, portrait ? 320 : 240);
+    const auto& layout = activeLayout(display);
+    EXPECT_EQ(layout.right_x, portrait ? 232 : 310);
+    EXPECT_EQ(layout.graph_h, portrait ? 92 : 50);
+    EXPECT_LT(layout.status_y + layout.text_h, display.height());
+    EXPECT_LT(layout.right_x, display.width());
+  }
+}
+
 // ------------------------------------------------------------- formatting ---
 
 TEST(ObserverDashboardFormat, CompactCountsStayShortAtEveryMagnitude) {

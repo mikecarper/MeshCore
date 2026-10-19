@@ -23,7 +23,7 @@ static const char* const WC_ALLOWED_SET_KEYS[] = {
   "cad", "radio.rxgain", "radio.fem.rxgain", "radio.fem.txgain", "radio.rxps", "powersaving",
   "repeat",
   "display.mode", "display.timeout", "display.usb.mode", "display.usb.timeout",
-  "display.inbox",
+  "display.inbox", "display.rotation",
   "advert.interval", "flood.advert.interval",
   "flood.max", "flood.max.advert", "flood.max.unscoped", "loop.detect",
   // MQTTPrefs (WiFi / MQTT / misc observer)

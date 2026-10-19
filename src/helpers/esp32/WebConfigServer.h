@@ -130,6 +130,8 @@ public:
     uint32_t rx_ps_rx_us;
     uint32_t rx_ps_sleep_us;
     uint8_t power_saving;
+    bool display_rotation_supported;
+    uint16_t display_rotation_degrees;
     bool mqtt_enabled;
     uint8_t repeat;
     uint16_t advert_interval;

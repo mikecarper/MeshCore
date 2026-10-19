@@ -136,7 +136,8 @@ extern const int SCK;
 #define DISP_DC                 _PINNUM(0, 21)
 #define DISP_RST                _PINNUM(0, 28)
 #define DISP_BUSY               _PINNUM(0, 3)
-#define DISP_POWER              _PINNUM(1, 12)
+#define DISP_BS1                _PINNUM(1, 12)  // LOW = SSD1681 4-wire SPI; not a power switch
+#define DISP_POWER              DISP_BS1       // Legacy name kept for GPIO reservation compatibility
 // #define DISP_BACKLIGHT          (0)         // Display has no backlight, 0 maps to 0xff on this device which is NRFX_SPIM_PIN_NOT_USED
 
 #define PIN_DISPLAY_CS          DISP_CS

@@ -103,7 +103,9 @@ public:
     return _display != NULL && _display->supportsRotation();
   }
   bool setDisplayRotationDegrees(uint16_t degrees) override {
-    return _display != NULL && _display->setRotationDegrees(degrees);
+    if (_display == NULL || !_display->setRotationDegrees(degrees)) return false;
+    _next_refresh = millis();
+    return true;
   }
   bool isButtonPressed() const;
   void servicePairingState() override;

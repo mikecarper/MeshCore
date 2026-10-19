@@ -13,6 +13,10 @@ class UITask {
   uint32_t _radio_profile_page_started_at = 0;
   bool _dual_radio_enabled_seen = false;
   bool _startup_complete = false;
+#if defined(HELTEC_V4_R8_TFT) && defined(HELTEC_TFT_RUNTIME_ROTATION) && HELTEC_TFT_RUNTIME_ROTATION == 1
+  uint16_t _rotation_seen = 0xFFFF;
+  void applyDisplayRotation();
+#endif
 
   void resetRadioProfileDisplayPage();
   bool showingSecondaryRadioProfilePage();

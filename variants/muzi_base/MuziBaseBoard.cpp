@@ -36,7 +36,11 @@ void MuziBaseBoard::begin() {
   digitalWrite(PIN_GPS_EN, LOW);
   // 12V rail is only needed for the superIO display
   pinMode(SCREEN_12V_ENABLE, OUTPUT);
-#ifdef MUZI_BASE_SUPERIO
+#if defined(MUZI_BASE_ACCESSORY_AUTODETECT) && MUZI_BASE_ACCESSORY_AUTODETECT
+  // A bare Base must not run the optional OLED's boost converter. The
+  // display driver owns the bounded probe and powers it down on absence.
+  digitalWrite(SCREEN_12V_ENABLE, LOW);
+#elif defined(MUZI_BASE_SUPERIO)
   digitalWrite(SCREEN_12V_ENABLE, HIGH); // Enable 12V power for SH1107 display
   delay(250);
 #else
