@@ -153,6 +153,10 @@ SX1262, LR1110/LR1121 and Meshnology W12 LR2021 implementations. DC-DC is offere
 only when that board's regulator circuit is supported. LDO-only boards reject
 `dcdc`; unverified LR2021 switching circuits keep their existing mode.
 
+Integrated STM32WL targets retain their existing supply configuration. Their
+MCU and radio share the regulator, so independent selections need a coordinated
+implementation and board circuit verification before they can be offered.
+
 Automatic recovery uses reset-retained RAM on supported platforms. A domain
 must have been armed in DC-DC mode before the crash, with a valid last battery
 sample of at least **50%**, no more than **60 seconds** old at its last
