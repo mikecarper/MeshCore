@@ -8,6 +8,22 @@
 
 using namespace mesh::bible;
 
+template <typename Offset>
+static void checkOffsetWidth(uint32_t offset) {
+  static const uint8_t stored[] = {0x01, 0x02, 0x00, 0xfd, 0xff, 'x', 0x00};
+  std::vector<uint8_t> data(offset + sizeof(stored));
+  memcpy(data.data() + offset, stored, sizeof(stored));
+  const BlockIndexT<Offset> index = {static_cast<Offset>(offset), sizeof(stored), 2, 0};
+  CorpusT<Offset> corpus = {"test", "test", data.data(), uint32_t(data.size()), &index, 1, kVerseCount};
+  char scratch[kBlockSize];
+  const char* text;
+  assert(lookup(corpus, {1, 1}, scratch, sizeof(scratch), text) == LookupResult::Found);
+  assert(strcmp(text, "x") == 0);
+  corpus.data_size--;
+  assert(lookup(corpus, {1, 1}, scratch, sizeof(scratch), text) == LookupResult::Corrupt);
+  assert(text == nullptr);
+}
+
 static void drain(Stream& output) {
   unsigned calls = 0;
   while (mesh::readerCommandActive()) {
@@ -70,6 +86,10 @@ static void checkSelection(unsigned chapter, unsigned first, unsigned last, bool
 }
 
 int main(int argc, char**) {
+  static_assert(sizeof(BlockIndexT<uint16_t>) == 8, "halfword index alignment");
+  static_assert(sizeof(BlockIndexT<uint32_t>) == 12, "wide index alignment");
+  checkOffsetWidth<uint16_t>(UINT16_MAX);
+  checkOffsetWidth<uint32_t>(uint32_t(UINT16_MAX) + 1);
   Reference ref = {};
   for (const char* cmd : {"get reader 3:16", " GET\treader 3:16 \t", "get reader 03:16"}) {
     assert(parse(cmd, ref) == ParseResult::Valid && ref.chapter == 3 && ref.verse == 16);
@@ -87,7 +107,7 @@ int main(int argc, char**) {
     assert(!mesh::handleReaderCommand(cmd, output) && output.text.empty());
   }
   assert(parse(nullptr, ref) == ParseResult::NoMatch);
-  const Corpus& corpus = generated::readerCorpus;
+  const auto& corpus = generated::readerCorpus;
   struct Guarded { uint32_t pre; char scratch[kBlockSize]; uint32_t post; } buf = {};
   buf.pre = 0x11223344; buf.post = 0xaabbccdd;
   unsigned count = 0;
@@ -189,7 +209,7 @@ int main(int argc, char**) {
   const char* text;
   assert(lookup(corpus, {22, 1}, buf.scratch, kBlockSize, text) == LookupResult::Invalid);
   assert(lookup(corpus, {1, 1}, buf.scratch, kBlockSize - 1, text) == LookupResult::Corrupt);
-  Corpus bad = corpus;
+  auto bad = corpus;
   bad.data_size = 0;
   assert(lookup(bad, {1, 1}, buf.scratch, kBlockSize, text) == LookupResult::Corrupt);
   bad = corpus; bad.block_count = 0;
@@ -200,7 +220,7 @@ int main(int argc, char**) {
   // One-byte stored DEFLATE block: distinguish an absent verse marker from
   // damaged text without a terminator, and never return an unsafe pointer.
   uint8_t stored[] = {0x01, 0x01, 0x00, 0xfe, 0xff, 0x00};
-  const BlockIndex stored_index = {0, sizeof(stored), 1, 0};
+  const generated::ReaderBlockIndex stored_index = {0, sizeof(stored), 1, 0};
   bad = corpus; bad.data = stored; bad.data_size = sizeof(stored);
   bad.blocks = &stored_index; bad.block_count = 1;
   assert(lookup(bad, {1, 1}, buf.scratch, kBlockSize, text) == LookupResult::Missing);
@@ -209,7 +229,7 @@ int main(int argc, char**) {
   assert(lookup(bad, {1, 1}, buf.scratch, kBlockSize, text) == LookupResult::Corrupt);
   assert(text == nullptr);
   assert(lookup(bad, {1, 2}, buf.scratch, kBlockSize, text) == LookupResult::Corrupt);
-  std::vector<BlockIndex> blocks(corpus.blocks, corpus.blocks + corpus.block_count);
+  std::vector<generated::ReaderBlockIndex> blocks(corpus.blocks, corpus.blocks + corpus.block_count);
   bad = corpus; bad.blocks = blocks.data();
   for (int mutation = 0; mutation != 5; ++mutation) {
     blocks[0] = corpus.blocks[0];
@@ -217,7 +237,7 @@ int main(int argc, char**) {
       case 0: blocks[0].plain = kBlockSize + 1; break;
       case 1: blocks[0].packed--; break;
       case 2: blocks[0].packed++; break; // Trailing bytes are rejected.
-      case 3: blocks[0].offset = UINT32_MAX; break;
+      case 3: blocks[0].offset = static_cast<decltype(blocks[0].offset)>(-1); break;
       case 4: blocks[0].first_verse = 1; break;
     }
     assert(lookup(bad, {1, 1}, buf.scratch, kBlockSize, text) == LookupResult::Corrupt);

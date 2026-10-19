@@ -8,6 +8,7 @@ import shutil
 import subprocess
 import tempfile
 import unittest
+from unittest.mock import patch
 import zlib
 
 from test_message_navigation import PAIRING_PREAMBLE as PREAMBLE
@@ -126,7 +127,23 @@ class CompanionReaderTest(unittest.TestCase):
         packed, blocks = packer.pack(self.document)
         self.assertEqual(sum(block[2] for block in blocks), 96568)
         self.assertEqual(len(blocks), 24)
-        self.assertEqual(len(packed) + 12 * len(blocks), 38654)
+        self.assertEqual(len(packed), 38293)
+        self.assertEqual(packer.block_index_layout(blocks), ("uint16_t", 8))
+        self.assertEqual(len(packed) + 8 * len(blocks), 38485)
+
+    def test_index_offsets_widen_before_any_block_start_can_truncate(self):
+        self.assertEqual(packer.block_index_layout([(65535, 7, 2, 0)]), ("uint16_t", 8))
+        self.assertEqual(packer.block_index_layout([(65536, 7, 2, 0)]), ("uint32_t", 12))
+        self.assertEqual(packer.block_index_layout([(0xFFFFFFFF, 7, 2, 0)]), ("uint32_t", 12))
+        for offset in (-1, 0x100000000):
+            with self.assertRaises(ValueError):
+                packer.block_index_layout([(offset, 7, 2, 0)])
+        with patch.object(packer, "pack", return_value=(b"", [(65536, 7, 2, 0)])):
+            header = packer.render(self.document)
+        self.assertIn("using ReaderBlockIndex = BlockIndexT<uint32_t>;", header)
+        self.assertIn("using ReaderCorpus = CorpusT<uint32_t>;", header)
+        self.assertIn("sizeof(ReaderBlockIndex) == 12", header)
+        self.assertIn("{65536, 7, 2, 0}", header)
 
     def test_invalid_sources_are_rejected(self):
         for bad_text in ("", "leading\ncommand", "bad\x1b[2J", "bad\0text",

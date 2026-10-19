@@ -130,17 +130,27 @@ terminators, versus 98,911 bytes for the pinned UTF-8 source):
 
 | Block limit | Blocks | DEFLATE bytes | Index bytes | Total flash data | Savings |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| 1 KiB | 101 | 47,133 | 1,212 | 48,345 | 49.94% |
-| 2 KiB | 49 | 42,187 | 588 | 42,775 | 55.70% |
-| **4 KiB** | **24** | **38,366** | **288** | **38,654** | **59.97%** |
+| 1 KiB | 101 | 46,945 | 808 | 47,753 | 50.55% |
+| 2 KiB | 49 | 42,074 | 392 | 42,466 | 56.02% |
+| **4 KiB** | **24** | **38,293** | **192** | **38,485** | **60.15%** |
 
 Savings in the table are relative to uncompressed ASCII. Google Zopfli 0.4.3
-uses 15 optimization iterations to write standards-compliant raw DEFLATE.
-The chosen 4 KiB limit saves **4,121 flash bytes** over the previous 2 KiB
-packing, including indexes, and uses another 2 KiB of temporary decode stack.
+uses 1,000 host optimization iterations to write standards-compliant raw DEFLATE.
+The chosen 4 KiB limit saves **3,981 flash bytes** versus 2 KiB packing at the
+same compression effort, including indexes, and uses another 2 KiB of temporary
+decode stack. The decode block size and stack do not increase in this revision.
 All 879 references, wording, canonical source digest, navigation and terminal
 behavior are retained. No 6-bit packing is used. These figures include
 block-index padding but exclude command code, attribution and the decoder.
+
+The generated index uses aligned 16-bit block offsets while every block start
+fits that range, and selects the original 32-bit representation automatically
+for larger corpora. The lookup is specialized at compile time, with no runtime
+format branch or packed/unaligned fields. The current 24 indexes use eight
+bytes each instead of twelve, saving 96 bytes. Higher compression saves another
+73 bytes versus the previous 15-iteration 4 KiB data, for **169 fewer data bytes**
+with the same plaintext, decoder and scratch capacity. Tests decode real blocks
+at offsets 65,535 and 65,536 to cover both representations and their bounds.
 
 Compression runs on the computer. Firmware reuses the existing bounds-checked
 C `tinf` decoder and expands one independent raw-DEFLATE block per lookup.
@@ -153,9 +163,9 @@ the screen reader's small cursor object is described above. The temporary
 
 The native Reader suite also cross-compiles the production Reader and C
 `tinf` decoder with Cortex-M4 GCC 14.2 and `-fstack-usage`. With 4 KiB blocks,
-the terminal decode frames use at most 6,304 bytes including the bounded
+the terminal decode frames use at most 6,264 bytes including the bounded
 page wrapper; the adaptive-font/button Reader screen's local decode path is
-6,432 bytes. The check reserves another 1,536 bytes for outer callers within
+6,400 bytes. The check reserves another 1,536 bytes for outer callers within
 the unchanged 8 KiB nRF52 loop stack. This is a compiler-derived bound on
 these paths, not a physical stack high-water measurement. Decoder frames are
 counted in addition to output scratch; ordinary commands never reserve it.

@@ -15,21 +15,25 @@ static constexpr uint8_t kChapterVerses[] = {
 
 struct Reference { uint8_t chapter; uint8_t verse; };
 enum class ParseResult { NoMatch, Invalid, Valid };
-struct BlockIndex {
-  uint32_t offset;
+template <typename Offset> struct BlockIndexT {
+  Offset offset;
   uint16_t packed;
   uint16_t plain;
   uint16_t first_verse;
 };
-struct Corpus {
+template <typename Offset> struct CorpusT {
   const char* translation;
   const char* attribution;
   const uint8_t* data;
   uint32_t data_size;
-  const BlockIndex* blocks;
+  const BlockIndexT<Offset>* blocks;
   uint16_t block_count;
   uint16_t verse_count;
 };
+// Keep the original general-purpose types available. Generated corpora select
+// a narrower offset only when every block start fits, without a runtime branch.
+using BlockIndex = BlockIndexT<uint32_t>;
+using Corpus = CorpusT<uint32_t>;
 enum class LookupResult { Found, Missing, Invalid, Corrupt };
 
 inline bool space(char c) { return c == ' ' || c == '\t'; }
@@ -84,7 +88,8 @@ inline ParseResult parse(const char* command, Reference& ref) {
 
 // One independently compressed block is decoded on demand. Const tables/data
 // stay in memory-mapped flash on both target families; there is no heap/cache.
-inline LookupResult lookup(const Corpus& corpus, Reference ref,
+template <typename Offset>
+inline LookupResult lookup(const CorpusT<Offset>& corpus, Reference ref,
                            char* scratch, size_t capacity, const char*& text) {
   text = nullptr;
   uint16_t index;
@@ -97,7 +102,7 @@ inline LookupResult lookup(const Corpus& corpus, Reference ref,
   unsigned block_index = 0;
   while (block_index + 1 < corpus.block_count &&
          corpus.blocks[block_index + 1].first_verse <= index) ++block_index;
-  const BlockIndex block = corpus.blocks[block_index];
+  const BlockIndexT<Offset> block = corpus.blocks[block_index];
   if (block.plain == 0 || block.plain > kBlockSize || block.packed == 0 ||
       block.offset > corpus.data_size || block.packed > corpus.data_size - block.offset ||
       block.first_verse > index) return LookupResult::Corrupt;

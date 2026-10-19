@@ -3,6 +3,7 @@
 #include <stdint.h>
 #include <stddef.h>
 #include <string.h>
+#include "PersistentStoreFormat.h"
 
 namespace mesh {
 
@@ -95,13 +96,7 @@ class ContactPathPool : public ContactPathStorage {
   bool _flushing = false;
 
   static uint32_t checksum(const uint8_t path[64]) {
-    uint32_t crc = 0xffffffff;
-    for (size_t i = 0; i < 64; ++i) {
-      crc ^= path[i];
-      for (unsigned bit = 0; bit < 8; ++bit)
-        crc = (crc >> 1) ^ ((crc & 1) ? 0xedb88320UL : 0);
-    }
-    return crc;
+    return storage::updateCRC32(0xffffffffUL, path, 64);
   }
 
   Slot* slot(uint16_t h) {

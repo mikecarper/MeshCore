@@ -2,6 +2,7 @@
 
 #include <helpers/IdentityStore.h>
 #include <helpers/MorseTx.h>
+#include <helpers/PersistentStoreFormat.h>
 #include <stddef.h>
 #include <stdint.h>
 
@@ -27,13 +28,7 @@ inline bool validMorseSettings(const MorseSettings& prefs) {
 }
 
 inline uint32_t morseSettingsCRC(const uint8_t* data, size_t size) {
-  uint32_t crc = 0xffffffffUL;
-  while (size--) {
-    crc ^= *data++;
-    for (uint8_t bit = 0; bit < 8; ++bit)
-      crc = (crc >> 1) ^ ((crc & 1U) ? 0xedb88320UL : 0);
-  }
-  return crc;
+  return storage::updateCRC32(0xffffffffUL, data, size);
 }
 
 inline void encodeMorseSettings(const MorseSettings& prefs,

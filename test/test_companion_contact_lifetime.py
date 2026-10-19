@@ -101,7 +101,9 @@ class CompanionContactLifetimeTests(unittest.TestCase):
             work = Path(directory)
             (work / "production_constants.inc").write_text(constants, encoding="ascii")
             (work / "production_types.inc").write_text(
-                "namespace mesh {\n" + extract_braced((ROOT / "src/Mesh.h").read_text(), "class GroupChannel")
+                base_header[base_header.index("#if MAX_CONTACTS + MAX_ANON_CONTACTS <= 65535"):
+                            base_header.index("#ifndef MAX_CONNECTIONS")]
+                + "namespace mesh {\n" + extract_braced((ROOT / "src/Mesh.h").read_text(), "class GroupChannel")
                 + ";\n}\n" + extract_braced((ROOT / "src/helpers/ChannelDetails.h").read_text(), "struct ChannelDetails")
                 + ";\n" + extract_braced(base_header, "struct ConnectionInfo") + ";\n", encoding="ascii")
             (work / "production_entry.inc").write_text(

@@ -47,6 +47,14 @@ public:
 
 #define MAX_ANON_CONTACTS  8
 
+// These arrays hold contact-table positions, never negative sentinels. Keep
+// wider indices for configurations whose complete table exceeds 16 bits.
+#if MAX_CONTACTS + MAX_ANON_CONTACTS <= 65535
+using ContactIndex = uint16_t;
+#else
+using ContactIndex = int;
+#endif
+
 #ifndef MAX_CONNECTIONS
   #define MAX_CONNECTIONS  16
 #endif
@@ -77,16 +85,16 @@ class BaseChatMesh : public mesh::Mesh {
   };
   ContactInfo* contacts;
   ContactInfo contacts_fallback[CONTACT_PSRAM_FALLBACK_TOTAL_SLOTS];
-  int* sort_array;
-  int sort_array_fallback[CONTACT_PSRAM_FALLBACK_TOTAL_SLOTS];
+  ContactIndex* sort_array;
+  ContactIndex sort_array_fallback[CONTACT_PSRAM_FALLBACK_TOTAL_SLOTS];
   int contact_capacity;
 #else
   ContactInfo contacts[MAX_CONTACTS+MAX_ANON_CONTACTS];
-  int sort_array[MAX_CONTACTS+MAX_ANON_CONTACTS];
+  ContactIndex sort_array[MAX_CONTACTS+MAX_ANON_CONTACTS];
 #endif
   int num_contacts = 0;
   uint32_t contact_table_revision;
-  int matching_peer_indexes[MAX_SEARCH_RESULTS];
+  ContactIndex matching_peer_indexes[MAX_SEARCH_RESULTS];
   unsigned long txt_send_timeout;
 #ifdef MAX_GROUP_CHANNELS
   ChannelDetails channels[MAX_GROUP_CHANNELS];

@@ -54,13 +54,13 @@ class MorseCLITests(unittest.TestCase):
                     "const char* path, bool& present) { if (!fs || fs->fail_presence) return false; "
                     "present = fs->exists(path); return true; } }\n")
         transaction = (ROOT / "src/helpers/ContactFileTransaction.h").read_text(encoding="ascii").replace(
-            '#include "IdentityStore.h"', '#include <helpers/IdentityStore.h>')
+            '#include "IdentityStore.h"', '#include <helpers/IdentityStore.h>').replace(
+            '#include "PersistentStoreFormat.h"', '#include <helpers/PersistentStoreFormat.h>')
         headers = {
             "helpers/IdentityStore.h": fs_mock,
             "FilePresence.h": presence,
             "AtomicFileWriter.h": (ROOT / "src/helpers/AtomicFileWriter.h").read_text(encoding="ascii"),
             "ContactFileTransaction.h": transaction,
-            "PersistentStoreFormat.h": (ROOT / "src/helpers/PersistentStoreFormat.h").read_text(encoding="ascii"),
         }
         prefix = b"MC\x01\x19" + (902100).to_bytes(4, "little")
         golden = prefix + (zlib.crc32(prefix) ^ 0xffffffff).to_bytes(4, "little")

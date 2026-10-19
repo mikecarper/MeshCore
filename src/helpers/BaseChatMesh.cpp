@@ -38,8 +38,8 @@ bool BaseChatMesh::initializeContactStorage() {
   ContactInfo* expanded_contacts = static_cast<ContactInfo*>(
       heap_caps_calloc(requested_capacity, sizeof(ContactInfo),
                        MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
-  int* expanded_sort_array = static_cast<int*>(
-      heap_caps_calloc(requested_capacity, sizeof(int),
+  ContactIndex* expanded_sort_array = static_cast<ContactIndex*>(
+      heap_caps_calloc(requested_capacity, sizeof(ContactIndex),
                        MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
   if (expanded_contacts == NULL || expanded_sort_array == NULL) {
     if (expanded_contacts != NULL) heap_caps_free(expanded_contacts);
@@ -1056,8 +1056,8 @@ void BaseChatMesh::resetPathTo(ContactInfo& recipient) {
 static ContactInfo* table;  // pass via global :-(
 
 static int cmp_contact_list_order(const void *a, const void *b) {
-  int a_idx = *((int *)a);
-  int b_idx = *((int *)b);
+  int a_idx = *static_cast<const ContactIndex*>(a);
+  int b_idx = *static_cast<const ContactIndex*>(b);
   return mesh::compareContactListOrder(
       table[a_idx].flags, table[a_idx].last_advert_timestamp,
       table[b_idx].flags, table[b_idx].last_advert_timestamp);

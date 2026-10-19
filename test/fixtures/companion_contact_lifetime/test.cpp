@@ -92,9 +92,9 @@ class BaseChatMesh {
 public:
 #if defined(ESP32_PLATFORM) && defined(BOARD_HAS_PSRAM)
   ContactInfo contacts_fallback[MAX_ANON_CONTACTS + 16];
-  int sort_array_fallback[MAX_ANON_CONTACTS + 16] = {};
+  ContactIndex sort_array_fallback[MAX_ANON_CONTACTS + 16] = {};
   ContactInfo* contacts = contacts_fallback;
-  int* sort_array = sort_array_fallback;
+  ContactIndex* sort_array = sort_array_fallback;
   int contact_capacity = MAX_ANON_CONTACTS + 16;
 #else
   ContactInfo contacts[MAX_ANON_CONTACTS + MAX_CONTACTS];

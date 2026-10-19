@@ -5,6 +5,7 @@
 #include <Mesh.h>
 #include <helpers/FilePresence.h>
 #include <helpers/MeshtextChat.h>
+#include <helpers/PersistentStoreFormat.h>
 #include <helpers/UTF8Helpers.h>
 #include <Arduino.h>
 #include <ctype.h>
@@ -27,14 +28,7 @@ const char* const IdPath = "/beacon_ids";
 const char* const IdBackup = "/beacon_ids.bak";
 const char* const IdTemp = "/beacon_ids.tmp";
 
-uint32_t crcUpdate(uint32_t crc, const uint8_t* bytes, size_t size) {
-  while (size--) {
-    crc ^= *bytes++;
-    for (unsigned i = 0; i < 8; ++i)
-      crc = (crc >> 1) ^ ((crc & 1) ? 0xedb88320U : 0);
-  }
-  return crc;
-}
+using storage::updateCRC32;
 void put32(uint8_t* bytes, uint32_t value) {
   for (unsigned i = 0; i < 4; ++i) bytes[i] = uint8_t(value >> (8 * i));
 }
@@ -230,14 +224,14 @@ BeaconManager::ReadResult BeaconManager::readConfig(
   if (header[4] != 1) { file.close(); return ReadResult::Future; }
   if (file.size() != ConfigSize || header[5] != SlotCount || header[6] > 1
       || !validInterval(header[7])) { file.close(); return ReadResult::Invalid; }
-  uint32_t crc = crcUpdate(0xffffffffU, header, HeaderSize);
+  uint32_t crc = updateCRC32(0xffffffffU, header, HeaderSize);
   bool valid = true;
   for (unsigned i = 0; i < SlotCount; ++i) {
     uint8_t bytes[RecordSize];
     if (file.read(bytes, sizeof(bytes)) != int(sizeof(bytes))) {
       file.close(); return ReadResult::Unreadable;
     }
-    crc = crcUpdate(crc, bytes, sizeof(bytes));
+    crc = updateCRC32(crc, bytes, sizeof(bytes));
     BeaconSlot slot;
     // Disk validity is independent of the current board's radio capabilities.
     // Preserve unsupported slots so an upgrade can still query/repair them.
@@ -269,7 +263,7 @@ BeaconManager::ReadResult BeaconManager::readIds(const char* path, uint32_t& las
   if (memcmp(bytes, "BCI!", 4)) return ReadResult::Invalid;
   if (bytes[4] != 1) return ReadResult::Future;
   if (bytes[5] || bytes[6] || bytes[7]
-      || get32(bytes + 12) != crcUpdate(0xffffffffU, bytes, 12)) return ReadResult::Invalid;
+      || get32(bytes + 12) != updateCRC32(0xffffffffU, bytes, 12)) return ReadResult::Invalid;
   last = get32(bytes + 8);
   return ReadResult::Valid;
 }
@@ -313,14 +307,14 @@ bool BeaconManager::saveConfig(unsigned changed_slot, const BeaconSlot* changed,
   if (!openWrite(fs_, ConfigTemp, file)) return false;
   uint8_t header[HeaderSize] = {'B', 'C', 'N', '!', 1, SlotCount,
                                 uint8_t(initialized), hours};
-  uint32_t crc = crcUpdate(0xffffffffU, header, sizeof(header));
+  uint32_t crc = updateCRC32(0xffffffffU, header, sizeof(header));
   bool ok = file.write(header, sizeof(header)) == sizeof(header);
   for (unsigned i = 0; i < SlotCount && ok; ++i) {
     BeaconSlot empty;
     const BeaconSlot& slot = clear_all ? empty
         : (changed && changed_slot == i ? *changed : (slots_ ? slots_[i] : empty));
     uint8_t bytes[RecordSize]; encodeSlot(slot, bytes);
-    crc = crcUpdate(crc, bytes, sizeof(bytes));
+    crc = updateCRC32(crc, bytes, sizeof(bytes));
     ok = file.write(bytes, sizeof(bytes)) == sizeof(bytes);
   }
   uint8_t trailer[4]; put32(trailer, crc);
@@ -340,7 +334,7 @@ bool BeaconManager::saveIds(uint32_t last) {
   File file = makeFile(fs_);
   if (!openWrite(fs_, IdTemp, file)) { ids_hold_ = true; return false; }
   uint8_t bytes[IdSize] = {'B', 'C', 'I', '!', 1, 0, 0, 0};
-  put32(bytes + 8, last); put32(bytes + 12, crcUpdate(0xffffffffU, bytes, 12));
+  put32(bytes + 8, last); put32(bytes + 12, updateCRC32(0xffffffffU, bytes, 12));
   bool ok = file.write(bytes, sizeof(bytes)) == sizeof(bytes);
   file.flush(); file.close();
   uint32_t verified = 0;

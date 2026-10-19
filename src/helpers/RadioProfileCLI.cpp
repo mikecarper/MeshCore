@@ -5,6 +5,7 @@
 #endif
 #include "RadioProfileCommandUtils.h"
 #include "FilePresence.h"
+#include "PersistentStoreFormat.h"
 #include "radiolib/RXPowerSaving.h"
 #include "radiolib/HilTxFrequencyGuard.h"
 #include <Arduino.h>
@@ -21,12 +22,7 @@ const char* const TempPath = "/radio_profiles.tmp";
 // acknowledgement leaves the previous saved radio untouched.
 const char* const ReplyPath = "/radio_profiles.reply";
 uint32_t checksum(const uint8_t* p, size_t n) {
-  uint32_t crc = 0xffffffffU;
-  while (n--) {
-    crc ^= *p++;
-    for (int i = 0; i < 8; ++i) crc = (crc >> 1) ^ ((crc & 1) ? 0xedb88320U : 0);
-  }
-  return crc;
+  return storage::updateCRC32(0xffffffffU, p, n);
 }
 const char* modeName(RadioProfileMode m) {
   return m == RadioProfileMode::RxTx ? "rxtx" : m == RadioProfileMode::Rx ? "rx" : "off";

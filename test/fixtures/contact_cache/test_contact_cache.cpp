@@ -500,7 +500,7 @@ static void raw_read_recheck_preserves_old_and_new_unread_page_scopes() {
 
 static void routes_survive_eviction_and_full_sync() {
   Fixture f;
-  assert(sizeof(ContactInfo) <= 100); // all 350 records retain compact handles
+  assert(sizeof(ContactInfo) <= 92); // no per-contact padding tax across all 350 cached records
   const unsigned reads = SPIFFS.reads;
   f.check(0, route(0));
   assert(SPIFFS.reads == reads + 1);

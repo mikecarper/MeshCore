@@ -26,17 +26,17 @@ struct ContactInfo {
 #else
   uint8_t out_path[MAX_PATH_SIZE];
 #endif
+  // Runtime-only position in the paged companion contact store.  It is not
+  // part of the on-disk record; the record's page/slot supplies it on load.
+  // Mutable keeps persistence bookkeeping out of contact protocol semantics.
+  // Beside the cached path handle, it fills the alignment gap before timestamps.
+#if defined(NRF52_PLATFORM)
+  mutable uint16_t storage_slot = mesh::storage::CONTACT_SLOT_NONE;
+#endif
   uint32_t last_advert_timestamp = 0;   // by THEIR clock
   uint32_t lastmod = 0;  // by OUR clock
   int32_t gps_lat = 0, gps_lon = 0;    // 6 dec places
   uint32_t sync_since = 0;
-
-  // Runtime-only position in the paged companion contact store.  It is not
-  // part of the on-disk record; the record's page/slot supplies it on load.
-  // Mutable keeps persistence bookkeeping out of contact protocol semantics.
-#if defined(NRF52_PLATFORM)
-  mutable uint16_t storage_slot = mesh::storage::CONTACT_SLOT_NONE;
-#endif
 
   ContactInfo() : shared_secret_valid(false), tx_radio(mesh::RADIO_TX_AUTO) {}
 
