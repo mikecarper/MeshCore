@@ -1,0 +1,3392 @@
+{
+  "board": "LilyGo T-Deck",
+  "chip": "ESP32-S3 revision 0.2",
+  "flash_bytes": 16777216,
+  "psram_bytes": 8388608,
+  "source_base": "22cdb701461d4b8ca3af4e87f80d3e6c07ce40cf",
+  "source_files_sha256": {
+    "src/helpers/ui/ST7789LCDDisplay.cpp": "fbee61494e84ef1c3747599832d1a94f11dff6f9616aa63a7123d8d5604a867e",
+    "src/helpers/ui/ST7789LCDDisplay.h": "f5d0d3316c956f930ce77571c68d18da4ff3bfbfb5e872ed9473d698556724ee",
+    "variants/lilygo_tdeck/target.cpp": "8e770a8b27875fce03240ff5a814ecab5bff05cc63a891f733b5bd83f8024c29",
+    "tools/hil/tdeck_display_switch.cpp": "df486ca32c2a5b0ae756fe558b4f24cda69908c6ba8e4481891aee9810ecccb3",
+    "tools/hil/tdeck_display_switch.ini": "1307f0e24ab46cfed56bc5ee37e1ecf2ec9eafb30f5c28586e322edd1313bfb0"
+  },
+  "harness_application_readback_sha256": "03157444ba39def63c4d7707e492e2d809b027515c6af56c578f9198e821cd48",
+  "harness_application_bytes": 392384,
+  "bootloader_flash_mode": "DIO; an initial manual QIO boot-header override failed before application startup and was corrected before all measurements",
+  "receive_only": true,
+  "reports": [
+    {
+      "recorded_utc": "2026-10-19T05:12:06.476069+00:00",
+      "seconds_per_run": 5,
+      "requested_fps": 20,
+      "repeats": 3,
+      "receive_only": true,
+      "results": [
+        {
+          "result": 1,
+          "bench": "tdeck-display-radio2-v1",
+          "display_mode": 0,
+          "spi_mhz": 2,
+          "bulk": false,
+          "seconds": 5,
+          "requested_fps": 20,
+          "elapsed_us": 5000007,
+          "frames": 0,
+          "switches": 313,
+          "switch_failures": 0,
+          "hook_hops": 313,
+          "failed_retunes": 0,
+          "optimized_rx_resumes": 313,
+          "received_packets": 0,
+          "chip_errors_before": 0,
+          "chip_errors_after": 0,
+          "busy_timeout": false,
+          "rx_mode": 1,
+          "cache_correct": true,
+          "floor_calibration_pending": false,
+          "nominal_visit_us": [
+            9421,
+            21535
+          ],
+          "service_gap": {
+            "n": 126260,
+            "min_us": 30,
+            "mean_us": 39.601,
+            "max_us": 582,
+            "p95_upper_us": 50,
+            "p99_upper_us": 50
+          },
+          "service_duration": {
+            "n": 126261,
+            "min_us": 21,
+            "mean_us": 30.377,
+            "max_us": 571,
+            "p95_upper_us": 50,
+            "p99_upper_us": 50
+          },
+          "frame": {
+            "n": 0,
+            "min_us": 0,
+            "mean_us": 0.0,
+            "max_us": 0,
+            "p95_upper_us": 0,
+            "p99_upper_us": 0
+          },
+          "directions": [
+            {
+              "profile": 0,
+              "retune_to": {
+                "n": 156,
+                "min_us": 494,
+                "mean_us": 505.718,
+                "max_us": 521,
+                "p95_upper_us": 750,
+                "p99_upper_us": 750
+              },
+              "visit_before_departure": {
+                "n": 157,
+                "min_us": 9430,
+                "mean_us": 9442.108,
+                "max_us": 9456,
+                "p95_upper_us": 10000,
+                "p99_upper_us": 10000
+              },
+              "deadline_lateness": {
+                "n": 157,
+                "min_us": 9,
+                "mean_us": 21.108,
+                "max_us": 35,
+                "p95_upper_us": 50,
+                "p99_upper_us": 50
+              }
+            },
+            {
+              "profile": 1,
+              "retune_to": {
+                "n": 157,
+                "min_us": 479,
+                "mean_us": 490.191,
+                "max_us": 515,
+                "p95_upper_us": 750,
+                "p99_upper_us": 750
+              },
+              "visit_before_departure": {
+                "n": 156,
+                "min_us": 21541,
+                "mean_us": 21556.91,
+                "max_us": 21586,
+                "p95_upper_us": 40000,
+                "p99_upper_us": 40000
+              },
+              "deadline_lateness": {
+                "n": 156,
+                "min_us": 6,
+                "mean_us": 21.91,
+                "max_us": 51,
+                "p95_upper_us": 50,
+                "p99_upper_us": 50
+              }
+            }
+          ],
+          "free_heap_bytes": 359576,
+          "free_psram_bytes": 8224063,
+          "loop_stack_min_free_bytes": 3372,
+          "repeat": 1
+        },
+        {
+          "result": 2,
+          "bench": "tdeck-display-radio2-v1",
+          "display_mode": 1,
+          "spi_mhz": 2,
+          "bulk": false,
+          "seconds": 5,
+          "requested_fps": 20,
+          "elapsed_us": 5071718,
+          "frames": 68,
+          "switches": 68,
+          "switch_failures": 0,
+          "hook_hops": 68,
+          "failed_retunes": 0,
+          "optimized_rx_resumes": 68,
+          "received_packets": 0,
+          "chip_errors_before": 0,
+          "chip_errors_after": 0,
+          "busy_timeout": false,
+          "rx_mode": 1,
+          "cache_correct": true,
+          "floor_calibration_pending": true,
+          "nominal_visit_us": [
+            9421,
+            21547
+          ],
+          "service_gap": {
+            "n": 67,
+            "min_us": 73301,
+            "mean_us": 74585.119,
+            "max_us": 76074,
+            "p95_upper_us": 80000,
+            "p99_upper_us": 80000
+          },
+          "service_duration": {
+            "n": 68,
+            "min_us": 929,
+            "mean_us": 955.426,
+            "max_us": 980,
+            "p95_upper_us": 1000,
+            "p99_upper_us": 1000
+          },
+          "frame": {
+            "n": 68,
+            "min_us": 72308,
+            "mean_us": 73606.412,
+            "max_us": 75113,
+            "p95_upper_us": 80000,
+            "p99_upper_us": 80000
+          },
+          "directions": [
+            {
+              "profile": 0,
+              "retune_to": {
+                "n": 34,
+                "min_us": 602,
+                "mean_us": 612.824,
+                "max_us": 629,
+                "p95_upper_us": 750,
+                "p99_upper_us": 750
+              },
+              "visit_before_departure": {
+                "n": 34,
+                "min_us": 72659,
+                "mean_us": 74034.471,
+                "max_us": 77613,
+                "p95_upper_us": 80000,
+                "p99_upper_us": 80000
+              },
+              "deadline_lateness": {
+                "n": 34,
+                "min_us": 63238,
+                "mean_us": 64613.471,
+                "max_us": 68192,
+                "p95_upper_us": 80000,
+                "p99_upper_us": 80000
+              }
+            },
+            {
+              "profile": 1,
+              "retune_to": {
+                "n": 34,
+                "min_us": 594,
+                "mean_us": 603.647,
+                "max_us": 617,
+                "p95_upper_us": 750,
+                "p99_upper_us": 750
+              },
+              "visit_before_departure": {
+                "n": 34,
+                "min_us": 72725,
+                "mean_us": 74014.206,
+                "max_us": 75489,
+                "p95_upper_us": 80000,
+                "p99_upper_us": 80000
+              },
+              "deadline_lateness": {
+                "n": 34,
+                "min_us": 51178,
+                "mean_us": 52467.206,
+                "max_us": 53942,
+                "p95_upper_us": 80000,
+                "p99_upper_us": 80000
+              }
+            }
+          ],
+          "free_heap_bytes": 359576,
+          "free_psram_bytes": 8224063,
+          "loop_stack_min_free_bytes": 3372,
+          "repeat": 1
+        },
+        {
+          "result": 3,
+          "bench": "tdeck-display-radio2-v1",
+          "display_mode": 2,
+          "spi_mhz": 2,
+          "bulk": false,
+          "seconds": 5,
+          "requested_fps": 20,
+          "elapsed_us": 5006983,
+          "frames": 88,
+          "switches": 306,
+          "switch_failures": 0,
+          "hook_hops": 306,
+          "failed_retunes": 0,
+          "optimized_rx_resumes": 306,
+          "received_packets": 0,
+          "chip_errors_before": 0,
+          "chip_errors_after": 0,
+          "busy_timeout": false,
+          "rx_mode": 1,
+          "cache_correct": true,
+          "floor_calibration_pending": false,
+          "nominal_visit_us": [
+            9421,
+            21567
+          ],
+          "service_gap": {
+            "n": 9604,
+            "min_us": 28,
+            "mean_us": 521.338,
+            "max_us": 1343,
+            "p95_upper_us": 750,
+            "p99_upper_us": 1500
+          },
+          "service_duration": {
+            "n": 9605,
+            "min_us": 21,
+            "mean_us": 53.538,
+            "max_us": 764,
+            "p95_upper_us": 100,
+            "p99_upper_us": 750
+          },
+          "frame": {
+            "n": 88,
+            "min_us": 55882,
+            "mean_us": 56849.17,
+            "max_us": 57672,
+            "p95_upper_us": 80000,
+            "p99_upper_us": 80000
+          },
+          "directions": [
+            {
+              "profile": 0,
+              "retune_to": {
+                "n": 153,
+                "min_us": 552,
+                "mean_us": 601.464,
+                "max_us": 668,
+                "p95_upper_us": 750,
+                "p99_upper_us": 750
+              },
+              "visit_before_departure": {
+                "n": 153,
+                "min_us": 9442,
+                "mean_us": 9726.739,
+                "max_us": 10019,
+                "p95_upper_us": 10000,
+                "p99_upper_us": 20000
+              },
+              "deadline_lateness": {
+                "n": 153,
+                "min_us": 21,
+                "mean_us": 305.739,
+                "max_us": 598,
+                "p95_upper_us": 750,
+                "p99_upper_us": 750
+              }
+            },
+            {
+              "profile": 1,
+              "retune_to": {
+                "n": 153,
+                "min_us": 516,
+                "mean_us": 560.529,
+                "max_us": 649,
+                "p95_upper_us": 750,
+                "p99_upper_us": 750
+              },
+              "visit_before_departure": {
+                "n": 153,
+                "min_us": 21584,
+                "mean_us": 21885.399,
+                "max_us": 22188,
+                "p95_upper_us": 40000,
+                "p99_upper_us": 40000
+              },
+              "deadline_lateness": {
+                "n": 153,
+                "min_us": 17,
+                "mean_us": 318.399,
+                "max_us": 621,
+                "p95_upper_us": 750,
+                "p99_upper_us": 750
+              }
+            }
+          ],
+          "free_heap_bytes": 359576,
+          "free_psram_bytes": 8224063,
+          "loop_stack_min_free_bytes": 3340,
+          "repeat": 1
+        },
+        {
+          "result": 4,
+          "bench": "tdeck-display-radio2-v1",
+          "display_mode": 0,
+          "spi_mhz": 8,
+          "bulk": true,
+          "seconds": 5,
+          "requested_fps": 20,
+          "elapsed_us": 5000022,
+          "frames": 0,
+          "switches": 309,
+          "switch_failures": 0,
+          "hook_hops": 309,
+          "failed_retunes": 0,
+          "optimized_rx_resumes": 309,
+          "received_packets": 0,
+          "chip_errors_before": 0,
+          "chip_errors_after": 0,
+          "busy_timeout": false,
+          "rx_mode": 1,
+          "cache_correct": true,
+          "floor_calibration_pending": false,
+          "nominal_visit_us": [
+            9421,
+            22075
+          ],
+          "service_gap": {
+            "n": 127157,
+            "min_us": 30,
+            "mean_us": 39.321,
+            "max_us": 467,
+            "p95_upper_us": 50,
+            "p99_upper_us": 50
+          },
+          "service_duration": {
+            "n": 127158,
+            "min_us": 21,
+            "mean_us": 30.096,
+            "max_us": 457,
+            "p95_upper_us": 50,
+            "p99_upper_us": 50
+          },
+          "frame": {
+            "n": 0,
+            "min_us": 0,
+            "mean_us": 0.0,
+            "max_us": 0,
+            "p95_upper_us": 0,
+            "p99_upper_us": 0
+          },
+          "directions": [
+            {
+              "profile": 0,
+              "retune_to": {
+                "n": 154,
+                "min_us": 392,
+                "mean_us": 398.974,
+                "max_us": 409,
+                "p95_upper_us": 500,
+                "p99_upper_us": 500
+              },
+              "visit_before_departure": {
+                "n": 155,
+                "min_us": 9426,
+                "mean_us": 9442.297,
+                "max_us": 9457,
+                "p95_upper_us": 10000,
+                "p99_upper_us": 10000
+              },
+              "deadline_lateness": {
+                "n": 155,
+                "min_us": 5,
+                "mean_us": 21.297,
+                "max_us": 36,
+                "p95_upper_us": 50,
+                "p99_upper_us": 50
+              }
+            },
+            {
+              "profile": 1,
+              "retune_to": {
+                "n": 155,
+                "min_us": 369,
+                "mean_us": 377.129,
+                "max_us": 392,
+                "p95_upper_us": 500,
+                "p99_upper_us": 500
+              },
+              "visit_before_departure": {
+                "n": 154,
+                "min_us": 22080,
+                "mean_us": 22100.5,
+                "max_us": 22122,
+                "p95_upper_us": 40000,
+                "p99_upper_us": 40000
+              },
+              "deadline_lateness": {
+                "n": 154,
+                "min_us": 5,
+                "mean_us": 25.5,
+                "max_us": 47,
+                "p95_upper_us": 50,
+                "p99_upper_us": 50
+              }
+            }
+          ],
+          "free_heap_bytes": 359576,
+          "free_psram_bytes": 8224063,
+          "loop_stack_min_free_bytes": 3340,
+          "repeat": 1
+        },
+        {
+          "result": 5,
+          "bench": "tdeck-display-radio2-v1",
+          "display_mode": 1,
+          "spi_mhz": 8,
+          "bulk": true,
+          "seconds": 5,
+          "requested_fps": 20,
+          "elapsed_us": 5061867,
+          "frames": 68,
+          "switches": 68,
+          "switch_failures": 0,
+          "hook_hops": 68,
+          "failed_retunes": 0,
+          "optimized_rx_resumes": 68,
+          "received_packets": 0,
+          "chip_errors_before": 0,
+          "chip_errors_after": 0,
+          "busy_timeout": false,
+          "rx_mode": 1,
+          "cache_correct": true,
+          "floor_calibration_pending": true,
+          "nominal_visit_us": [
+            9421,
+            22057
+          ],
+          "service_gap": {
+            "n": 67,
+            "min_us": 73159,
+            "mean_us": 74440.373,
+            "max_us": 75950,
+            "p95_upper_us": 80000,
+            "p99_upper_us": 80000
+          },
+          "service_duration": {
+            "n": 68,
+            "min_us": 772,
+            "mean_us": 799.765,
+            "max_us": 876,
+            "p95_upper_us": 1000,
+            "p99_upper_us": 1000
+          },
+          "frame": {
+            "n": 68,
+            "min_us": 72323,
+            "mean_us": 73618.75,
+            "max_us": 75142,
+            "p95_upper_us": 80000,
+            "p99_upper_us": 80000
+          },
+          "directions": [
+            {
+              "profile": 0,
+              "retune_to": {
+                "n": 34,
+                "min_us": 500,
+                "mean_us": 511.353,
+                "max_us": 528,
+                "p95_upper_us": 750,
+                "p99_upper_us": 750
+              },
+              "visit_before_departure": {
+                "n": 34,
+                "min_us": 72623,
+                "mean_us": 73941.412,
+                "max_us": 76089,
+                "p95_upper_us": 80000,
+                "p99_upper_us": 80000
+              },
+              "deadline_lateness": {
+                "n": 34,
+                "min_us": 63202,
+                "mean_us": 64520.412,
+                "max_us": 66668,
+                "p95_upper_us": 80000,
+                "p99_upper_us": 80000
+              }
+            },
+            {
+              "profile": 1,
+              "retune_to": {
+                "n": 34,
+                "min_us": 492,
+                "mean_us": 498.971,
+                "max_us": 513,
+                "p95_upper_us": 750,
+                "p99_upper_us": 750
+              },
+              "visit_before_departure": {
+                "n": 34,
+                "min_us": 72693,
+                "mean_us": 73982.647,
+                "max_us": 75463,
+                "p95_upper_us": 80000,
+                "p99_upper_us": 80000
+              },
+              "deadline_lateness": {
+                "n": 34,
+                "min_us": 50636,
+                "mean_us": 51925.647,
+                "max_us": 53406,
+                "p95_upper_us": 80000,
+                "p99_upper_us": 80000
+              }
+            }
+          ],
+          "free_heap_bytes": 359576,
+          "free_psram_bytes": 8224063,
+          "loop_stack_min_free_bytes": 3340,
+          "repeat": 1
+        },
+        {
+          "result": 6,
+          "bench": "tdeck-display-radio2-v1",
+          "display_mode": 2,
+          "spi_mhz": 8,
+          "bulk": true,
+          "seconds": 5,
+          "requested_fps": 20,
+          "elapsed_us": 5017671,
+          "frames": 89,
+          "switches": 304,
+          "switch_failures": 0,
+          "hook_hops": 304,
+          "failed_retunes": 0,
+          "optimized_rx_resumes": 304,
+          "received_packets": 0,
+          "chip_errors_before": 0,
+          "chip_errors_after": 0,
+          "busy_timeout": false,
+          "rx_mode": 1,
+          "cache_correct": true,
+          "floor_calibration_pending": false,
+          "nominal_visit_us": [
+            9421,
+            22051
+          ],
+          "service_gap": {
+            "n": 9715,
+            "min_us": 29,
+            "mean_us": 516.482,
+            "max_us": 1235,
+            "p95_upper_us": 750,
+            "p99_upper_us": 1500
+          },
+          "service_duration": {
+            "n": 9716,
+            "min_us": 21,
+            "mean_us": 48.87,
+            "max_us": 678,
+            "p95_upper_us": 100,
+            "p99_upper_us": 750
+          },
+          "frame": {
+            "n": 89,
+            "min_us": 55525,
+            "mean_us": 56329.236,
+            "max_us": 57004,
+            "p95_upper_us": 80000,
+            "p99_upper_us": 80000
+          },
+          "directions": [
+            {
+              "profile": 0,
+              "retune_to": {
+                "n": 152,
+                "min_us": 433,
+                "mean_us": 488.947,
+                "max_us": 572,
+                "p95_upper_us": 750,
+                "p99_upper_us": 750
+              },
+              "visit_before_departure": {
+                "n": 152,
+                "min_us": 9439,
+                "mean_us": 9715.013,
+                "max_us": 10002,
+                "p95_upper_us": 10000,
+                "p99_upper_us": 10000
+              },
+              "deadline_lateness": {
+                "n": 152,
+                "min_us": 18,
+                "mean_us": 294.013,
+                "max_us": 581,
+                "p95_upper_us": 750,
+                "p99_upper_us": 750
+              }
+            },
+            {
+              "profile": 1,
+              "retune_to": {
+                "n": 152,
+                "min_us": 401,
+                "mean_us": 446.27,
+                "max_us": 549,
+                "p95_upper_us": 750,
+                "p99_upper_us": 750
+              },
+              "visit_before_departure": {
+                "n": 152,
+                "min_us": 22066,
+                "mean_us": 22357.046,
+                "max_us": 22693,
+                "p95_upper_us": 40000,
+                "p99_upper_us": 40000
+              },
+              "deadline_lateness": {
+                "n": 152,
+                "min_us": 15,
+                "mean_us": 292.757,
+                "max_us": 608,
+                "p95_upper_us": 750,
+                "p99_upper_us": 750
+              }
+            }
+          ],
+          "free_heap_bytes": 359576,
+          "free_psram_bytes": 8224063,
+          "loop_stack_min_free_bytes": 3340,
+          "repeat": 1
+        },
+        {
+          "result": 7,
+          "bench": "tdeck-display-radio2-v1",
+          "display_mode": 1,
+          "spi_mhz": 2,
+          "bulk": false,
+          "seconds": 5,
+          "requested_fps": 20,
+          "elapsed_us": 5071395,
+          "frames": 68,
+          "switches": 68,
+          "switch_failures": 0,
+          "hook_hops": 68,
+          "failed_retunes": 0,
+          "optimized_rx_resumes": 68,
+          "received_packets": 0,
+          "chip_errors_before": 0,
+          "chip_errors_after": 0,
+          "busy_timeout": false,
+          "rx_mode": 1,
+          "cache_correct": true,
+          "floor_calibration_pending": true,
+          "nominal_visit_us": [
+            9421,
+            21559
+          ],
+          "service_gap": {
+            "n": 67,
+            "min_us": 73290,
+            "mean_us": 74580.567,
+            "max_us": 76089,
+            "p95_upper_us": 80000,
+            "p99_upper_us": 80000
+          },
+          "service_duration": {
+            "n": 68,
+            "min_us": 924,
+            "mean_us": 954.574,
+            "max_us": 984,
+            "p95_upper_us": 1000,
+            "p99_upper_us": 1000
+          },
+          "frame": {
+            "n": 68,
+            "min_us": 72298,
+            "mean_us": 73602.368,
+            "max_us": 75131,
+            "p95_upper_us": 80000,
+            "p99_upper_us": 80000
+          },
+          "directions": [
+            {
+              "profile": 0,
+              "retune_to": {
+                "n": 34,
+                "min_us": 602,
+                "mean_us": 614.529,
+                "max_us": 627,
+                "p95_upper_us": 750,
+                "p99_upper_us": 750
+              },
+              "visit_before_departure": {
+                "n": 34,
+                "min_us": 72636,
+                "mean_us": 74013.853,
+                "max_us": 77530,
+                "p95_upper_us": 80000,
+                "p99_upper_us": 80000
+              },
+              "deadline_lateness": {
+                "n": 34,
+                "min_us": 63215,
+                "mean_us": 64592.853,
+                "max_us": 68109,
+                "p95_upper_us": 80000,
+                "p99_upper_us": 80000
+              }
+            },
+            {
+              "profile": 1,
+              "retune_to": {
+                "n": 34,
+                "min_us": 600,
+                "mean_us": 610.382,
+                "max_us": 627,
+                "p95_upper_us": 750,
+                "p99_upper_us": 750
+              },
+              "visit_before_departure": {
+                "n": 34,
+                "min_us": 72727,
+                "mean_us": 74013.294,
+                "max_us": 75500,
+                "p95_upper_us": 80000,
+                "p99_upper_us": 80000
+              },
+              "deadline_lateness": {
+                "n": 34,
+                "min_us": 51168,
+                "mean_us": 52454.294,
+                "max_us": 53941,
+                "p95_upper_us": 80000,
+                "p99_upper_us": 80000
+              }
+            }
+          ],
+          "free_heap_bytes": 359576,
+          "free_psram_bytes": 8224063,
+          "loop_stack_min_free_bytes": 3340,
+          "repeat": 2
+        },
+        {
+          "result": 8,
+          "bench": "tdeck-display-radio2-v1",
+          "display_mode": 2,
+          "spi_mhz": 2,
+          "bulk": false,
+          "seconds": 5,
+          "requested_fps": 20,
+          "elapsed_us": 5007064,
+          "frames": 88,
+          "switches": 306,
+          "switch_failures": 0,
+          "hook_hops": 306,
+          "failed_retunes": 0,
+          "optimized_rx_resumes": 306,
+          "received_packets": 0,
+          "chip_errors_before": 0,
+          "chip_errors_after": 0,
+          "busy_timeout": false,
+          "rx_mode": 1,
+          "cache_correct": true,
+          "floor_calibration_pending": false,
+          "nominal_visit_us": [
+            9421,
+            21549
+          ],
+          "service_gap": {
+            "n": 9600,
+            "min_us": 27,
+            "mean_us": 521.564,
+            "max_us": 1341,
+            "p95_upper_us": 750,
+            "p99_upper_us": 1500
+          },
+          "service_duration": {
+            "n": 9601,
+            "min_us": 21,
+            "mean_us": 53.552,
+            "max_us": 755,
+            "p95_upper_us": 100,
+            "p99_upper_us": 750
+          },
+          "frame": {
+            "n": 88,
+            "min_us": 55796,
+            "mean_us": 56849.716,
+            "max_us": 57749,
+            "p95_upper_us": 80000,
+            "p99_upper_us": 80000
+          },
+          "directions": [
+            {
+              "profile": 0,
+              "retune_to": {
+                "n": 153,
+                "min_us": 553,
+                "mean_us": 602.503,
+                "max_us": 668,
+                "p95_upper_us": 750,
+                "p99_upper_us": 750
+              },
+              "visit_before_departure": {
+                "n": 153,
+                "min_us": 9439,
+                "mean_us": 9714.699,
+                "max_us": 10005,
+                "p95_upper_us": 10000,
+                "p99_upper_us": 10000
+              },
+              "deadline_lateness": {
+                "n": 153,
+                "min_us": 18,
+                "mean_us": 293.699,
+                "max_us": 584,
+                "p95_upper_us": 750,
+                "p99_upper_us": 750
+              }
+            },
+            {
+              "profile": 1,
+              "retune_to": {
+                "n": 153,
+                "min_us": 517,
+                "mean_us": 559.327,
+                "max_us": 653,
+                "p95_upper_us": 750,
+                "p99_upper_us": 750
+              },
+              "visit_before_departure": {
+                "n": 153,
+                "min_us": 21569,
+                "mean_us": 21864.758,
+                "max_us": 22212,
+                "p95_upper_us": 40000,
+                "p99_upper_us": 40000
+              },
+              "deadline_lateness": {
+                "n": 153,
+                "min_us": 20,
+                "mean_us": 315.758,
+                "max_us": 663,
+                "p95_upper_us": 750,
+                "p99_upper_us": 750
+              }
+            }
+          ],
+          "free_heap_bytes": 359576,
+          "free_psram_bytes": 8224063,
+          "loop_stack_min_free_bytes": 3340,
+          "repeat": 2
+        },
+        {
+          "result": 9,
+          "bench": "tdeck-display-radio2-v1",
+          "display_mode": 0,
+          "spi_mhz": 2,
+          "bulk": false,
+          "seconds": 5,
+          "requested_fps": 20,
+          "elapsed_us": 5000015,
+          "frames": 0,
+          "switches": 313,
+          "switch_failures": 0,
+          "hook_hops": 313,
+          "failed_retunes": 0,
+          "optimized_rx_resumes": 313,
+          "received_packets": 0,
+          "chip_errors_before": 0,
+          "chip_errors_after": 0,
+          "busy_timeout": false,
+          "rx_mode": 1,
+          "cache_correct": true,
+          "floor_calibration_pending": false,
+          "nominal_visit_us": [
+            9421,
+            21535
+          ],
+          "service_gap": {
+            "n": 126301,
+            "min_us": 30,
+            "mean_us": 39.588,
+            "max_us": 584,
+            "p95_upper_us": 50,
+            "p99_upper_us": 50
+          },
+          "service_duration": {
+            "n": 126302,
+            "min_us": 21,
+            "mean_us": 30.365,
+            "max_us": 573,
+            "p95_upper_us": 50,
+            "p99_upper_us": 50
+          },
+          "frame": {
+            "n": 0,
+            "min_us": 0,
+            "mean_us": 0.0,
+            "max_us": 0,
+            "p95_upper_us": 0,
+            "p99_upper_us": 0
+          },
+          "directions": [
+            {
+              "profile": 0,
+              "retune_to": {
+                "n": 156,
+                "min_us": 497,
+                "mean_us": 508.769,
+                "max_us": 525,
+                "p95_upper_us": 750,
+                "p99_upper_us": 750
+              },
+              "visit_before_departure": {
+                "n": 157,
+                "min_us": 9429,
+                "mean_us": 9441.057,
+                "max_us": 9456,
+                "p95_upper_us": 10000,
+                "p99_upper_us": 10000
+              },
+              "deadline_lateness": {
+                "n": 157,
+                "min_us": 8,
+                "mean_us": 20.057,
+                "max_us": 35,
+                "p95_upper_us": 50,
+                "p99_upper_us": 50
+              }
+            },
+            {
+              "profile": 1,
+              "retune_to": {
+                "n": 157,
+                "min_us": 471,
+                "mean_us": 485.096,
+                "max_us": 504,
+                "p95_upper_us": 500,
+                "p99_upper_us": 500
+              },
+              "visit_before_departure": {
+                "n": 156,
+                "min_us": 21539,
+                "mean_us": 21569.167,
+                "max_us": 21587,
+                "p95_upper_us": 40000,
+                "p99_upper_us": 40000
+              },
+              "deadline_lateness": {
+                "n": 156,
+                "min_us": 4,
+                "mean_us": 34.167,
+                "max_us": 52,
+                "p95_upper_us": 50,
+                "p99_upper_us": 100
+              }
+            }
+          ],
+          "free_heap_bytes": 359576,
+          "free_psram_bytes": 8224063,
+          "loop_stack_min_free_bytes": 3340,
+          "repeat": 2
+        },
+        {
+          "result": 10,
+          "bench": "tdeck-display-radio2-v1",
+          "display_mode": 1,
+          "spi_mhz": 8,
+          "bulk": true,
+          "seconds": 5,
+          "requested_fps": 20,
+          "elapsed_us": 5060652,
+          "frames": 68,
+          "switches": 67,
+          "switch_failures": 0,
+          "hook_hops": 67,
+          "failed_retunes": 0,
+          "optimized_rx_resumes": 67,
+          "received_packets": 0,
+          "chip_errors_before": 0,
+          "chip_errors_after": 0,
+          "busy_timeout": false,
+          "rx_mode": 1,
+          "cache_correct": true,
+          "floor_calibration_pending": true,
+          "nominal_visit_us": [
+            9421,
+            22075
+          ],
+          "service_gap": {
+            "n": 67,
+            "min_us": 73105,
+            "mean_us": 74422.612,
+            "max_us": 75998,
+            "p95_upper_us": 80000,
+            "p99_upper_us": 80000
+          },
+          "service_duration": {
+            "n": 68,
+            "min_us": 301,
+            "mean_us": 784.691,
+            "max_us": 825,
+            "p95_upper_us": 1000,
+            "p99_upper_us": 1000
+          },
+          "frame": {
+            "n": 68,
+            "min_us": 72322,
+            "mean_us": 73614.721,
+            "max_us": 75162,
+            "p95_upper_us": 80000,
+            "p99_upper_us": 80000
+          },
+          "directions": [
+            {
+              "profile": 0,
+              "retune_to": {
+                "n": 33,
+                "min_us": 486,
+                "mean_us": 500.303,
+                "max_us": 516,
+                "p95_upper_us": 750,
+                "p99_upper_us": 750
+              },
+              "visit_before_departure": {
+                "n": 34,
+                "min_us": 72616,
+                "mean_us": 73996.618,
+                "max_us": 76212,
+                "p95_upper_us": 80000,
+                "p99_upper_us": 80000
+              },
+              "deadline_lateness": {
+                "n": 34,
+                "min_us": 63195,
+                "mean_us": 64575.618,
+                "max_us": 66791,
+                "p95_upper_us": 80000,
+                "p99_upper_us": 80000
+              }
+            },
+            {
+              "profile": 1,
+              "retune_to": {
+                "n": 34,
+                "min_us": 483,
+                "mean_us": 497.206,
+                "max_us": 515,
+                "p95_upper_us": 750,
+                "p99_upper_us": 750
+              },
+              "visit_before_departure": {
+                "n": 33,
+                "min_us": 72656,
+                "mean_us": 76162.091,
+                "max_us": 146132,
+                "p95_upper_us": 80000,
+                "p99_upper_us": 160000
+              },
+              "deadline_lateness": {
+                "n": 33,
+                "min_us": 50581,
+                "mean_us": 54087.091,
+                "max_us": 124057,
+                "p95_upper_us": 80000,
+                "p99_upper_us": 160000
+              }
+            }
+          ],
+          "free_heap_bytes": 359576,
+          "free_psram_bytes": 8224063,
+          "loop_stack_min_free_bytes": 3340,
+          "repeat": 2
+        },
+        {
+          "result": 11,
+          "bench": "tdeck-display-radio2-v1",
+          "display_mode": 2,
+          "spi_mhz": 8,
+          "bulk": true,
+          "seconds": 5,
+          "requested_fps": 20,
+          "elapsed_us": 5017172,
+          "frames": 89,
+          "switches": 304,
+          "switch_failures": 0,
+          "hook_hops": 304,
+          "failed_retunes": 0,
+          "optimized_rx_resumes": 304,
+          "received_packets": 0,
+          "chip_errors_before": 0,
+          "chip_errors_after": 0,
+          "busy_timeout": false,
+          "rx_mode": 1,
+          "cache_correct": true,
+          "floor_calibration_pending": false,
+          "nominal_visit_us": [
+            9421,
+            22031
+          ],
+          "service_gap": {
+            "n": 9711,
+            "min_us": 28,
+            "mean_us": 516.643,
+            "max_us": 1227,
+            "p95_upper_us": 750,
+            "p99_upper_us": 1500
+          },
+          "service_duration": {
+            "n": 9712,
+            "min_us": 21,
+            "mean_us": 48.885,
+            "max_us": 676,
+            "p95_upper_us": 100,
+            "p99_upper_us": 750
+          },
+          "frame": {
+            "n": 89,
+            "min_us": 55599,
+            "mean_us": 56324.865,
+            "max_us": 57065,
+            "p95_upper_us": 80000,
+            "p99_upper_us": 80000
+          },
+          "directions": [
+            {
+              "profile": 0,
+              "retune_to": {
+                "n": 152,
+                "min_us": 434,
+                "mean_us": 489.296,
+                "max_us": 581,
+                "p95_upper_us": 750,
+                "p99_upper_us": 750
+              },
+              "visit_before_departure": {
+                "n": 152,
+                "min_us": 9441,
+                "mean_us": 9725.467,
+                "max_us": 10022,
+                "p95_upper_us": 10000,
+                "p99_upper_us": 20000
+              },
+              "deadline_lateness": {
+                "n": 152,
+                "min_us": 20,
+                "mean_us": 304.467,
+                "max_us": 601,
+                "p95_upper_us": 750,
+                "p99_upper_us": 750
+              }
+            },
+            {
+              "profile": 1,
+              "retune_to": {
+                "n": 152,
+                "min_us": 406,
+                "mean_us": 446.967,
+                "max_us": 551,
+                "p95_upper_us": 750,
+                "p99_upper_us": 750
+              },
+              "visit_before_departure": {
+                "n": 152,
+                "min_us": 22046,
+                "mean_us": 22346.428,
+                "max_us": 22639,
+                "p95_upper_us": 40000,
+                "p99_upper_us": 40000
+              },
+              "deadline_lateness": {
+                "n": 152,
+                "min_us": 15,
+                "mean_us": 313.375,
+                "max_us": 600,
+                "p95_upper_us": 750,
+                "p99_upper_us": 750
+              }
+            }
+          ],
+          "free_heap_bytes": 359576,
+          "free_psram_bytes": 8224063,
+          "loop_stack_min_free_bytes": 3340,
+          "repeat": 2
+        },
+        {
+          "result": 12,
+          "bench": "tdeck-display-radio2-v1",
+          "display_mode": 0,
+          "spi_mhz": 8,
+          "bulk": true,
+          "seconds": 5,
+          "requested_fps": 20,
+          "elapsed_us": 5000027,
+          "frames": 0,
+          "switches": 309,
+          "switch_failures": 0,
+          "hook_hops": 309,
+          "failed_retunes": 0,
+          "optimized_rx_resumes": 309,
+          "received_packets": 0,
+          "chip_errors_before": 0,
+          "chip_errors_after": 0,
+          "busy_timeout": false,
+          "rx_mode": 1,
+          "cache_correct": true,
+          "floor_calibration_pending": false,
+          "nominal_visit_us": [
+            9421,
+            22051
+          ],
+          "service_gap": {
+            "n": 127207,
+            "min_us": 30,
+            "mean_us": 39.306,
+            "max_us": 467,
+            "p95_upper_us": 50,
+            "p99_upper_us": 50
+          },
+          "service_duration": {
+            "n": 127208,
+            "min_us": 21,
+            "mean_us": 30.082,
+            "max_us": 456,
+            "p95_upper_us": 50,
+            "p99_upper_us": 50
+          },
+          "frame": {
+            "n": 0,
+            "min_us": 0,
+            "mean_us": 0.0,
+            "max_us": 0,
+            "p95_upper_us": 0,
+            "p99_upper_us": 0
+          },
+          "directions": [
+            {
+              "profile": 0,
+              "retune_to": {
+                "n": 154,
+                "min_us": 390,
+                "mean_us": 398.305,
+                "max_us": 408,
+                "p95_upper_us": 500,
+                "p99_upper_us": 500
+              },
+              "visit_before_departure": {
+                "n": 155,
+                "min_us": 9428,
+                "mean_us": 9440.29,
+                "max_us": 9456,
+                "p95_upper_us": 10000,
+                "p99_upper_us": 10000
+              },
+              "deadline_lateness": {
+                "n": 155,
+                "min_us": 7,
+                "mean_us": 19.29,
+                "max_us": 35,
+                "p95_upper_us": 50,
+                "p99_upper_us": 50
+              }
+            },
+            {
+              "profile": 1,
+              "retune_to": {
+                "n": 155,
+                "min_us": 365,
+                "mean_us": 373.4,
+                "max_us": 390,
+                "p95_upper_us": 500,
+                "p99_upper_us": 500
+              },
+              "visit_before_departure": {
+                "n": 154,
+                "min_us": 22058,
+                "mean_us": 22075.104,
+                "max_us": 22096,
+                "p95_upper_us": 40000,
+                "p99_upper_us": 40000
+              },
+              "deadline_lateness": {
+                "n": 154,
+                "min_us": 7,
+                "mean_us": 24.104,
+                "max_us": 45,
+                "p95_upper_us": 50,
+                "p99_upper_us": 50
+              }
+            }
+          ],
+          "free_heap_bytes": 359576,
+          "free_psram_bytes": 8224063,
+          "loop_stack_min_free_bytes": 3340,
+          "repeat": 2
+        },
+        {
+          "result": 13,
+          "bench": "tdeck-display-radio2-v1",
+          "display_mode": 2,
+          "spi_mhz": 2,
+          "bulk": false,
+          "seconds": 5,
+          "requested_fps": 20,
+          "elapsed_us": 5007655,
+          "frames": 88,
+          "switches": 306,
+          "switch_failures": 0,
+          "hook_hops": 306,
+          "failed_retunes": 0,
+          "optimized_rx_resumes": 306,
+          "received_packets": 0,
+          "chip_errors_before": 0,
+          "chip_errors_after": 0,
+          "busy_timeout": false,
+          "rx_mode": 1,
+          "cache_correct": true,
+          "floor_calibration_pending": false,
+          "nominal_visit_us": [
+            9421,
+            21565
+          ],
+          "service_gap": {
+            "n": 9600,
+            "min_us": 27,
+            "mean_us": 521.625,
+            "max_us": 1335,
+            "p95_upper_us": 750,
+            "p99_upper_us": 1500
+          },
+          "service_duration": {
+            "n": 9601,
+            "min_us": 21,
+            "mean_us": 53.645,
+            "max_us": 775,
+            "p95_upper_us": 100,
+            "p99_upper_us": 750
+          },
+          "frame": {
+            "n": 88,
+            "min_us": 55974,
+            "mean_us": 56856.614,
+            "max_us": 57653,
+            "p95_upper_us": 80000,
+            "p99_upper_us": 80000
+          },
+          "directions": [
+            {
+              "profile": 0,
+              "retune_to": {
+                "n": 153,
+                "min_us": 553,
+                "mean_us": 602.425,
+                "max_us": 667,
+                "p95_upper_us": 750,
+                "p99_upper_us": 750
+              },
+              "visit_before_departure": {
+                "n": 153,
+                "min_us": 9440,
+                "mean_us": 9724.412,
+                "max_us": 10057,
+                "p95_upper_us": 10000,
+                "p99_upper_us": 10000
+              },
+              "deadline_lateness": {
+                "n": 153,
+                "min_us": 19,
+                "mean_us": 303.412,
+                "max_us": 636,
+                "p95_upper_us": 750,
+                "p99_upper_us": 750
+              }
+            },
+            {
+              "profile": 1,
+              "retune_to": {
+                "n": 153,
+                "min_us": 521,
+                "mean_us": 560.039,
+                "max_us": 650,
+                "p95_upper_us": 750,
+                "p99_upper_us": 750
+              },
+              "visit_before_departure": {
+                "n": 153,
+                "min_us": 21588,
+                "mean_us": 21861.614,
+                "max_us": 22171,
+                "p95_upper_us": 40000,
+                "p99_upper_us": 40000
+              },
+              "deadline_lateness": {
+                "n": 153,
+                "min_us": 23,
+                "mean_us": 296.614,
+                "max_us": 606,
+                "p95_upper_us": 750,
+                "p99_upper_us": 750
+              }
+            }
+          ],
+          "free_heap_bytes": 359576,
+          "free_psram_bytes": 8224063,
+          "loop_stack_min_free_bytes": 3340,
+          "repeat": 3
+        },
+        {
+          "result": 14,
+          "bench": "tdeck-display-radio2-v1",
+          "display_mode": 0,
+          "spi_mhz": 2,
+          "bulk": false,
+          "seconds": 5,
+          "requested_fps": 20,
+          "elapsed_us": 5000009,
+          "frames": 0,
+          "switches": 313,
+          "switch_failures": 0,
+          "hook_hops": 313,
+          "failed_retunes": 0,
+          "optimized_rx_resumes": 313,
+          "received_packets": 0,
+          "chip_errors_before": 0,
+          "chip_errors_after": 0,
+          "busy_timeout": false,
+          "rx_mode": 1,
+          "cache_correct": true,
+          "floor_calibration_pending": false,
+          "nominal_visit_us": [
+            9421,
+            21533
+          ],
+          "service_gap": {
+            "n": 126299,
+            "min_us": 30,
+            "mean_us": 39.588,
+            "max_us": 582,
+            "p95_upper_us": 50,
+            "p99_upper_us": 50
+          },
+          "service_duration": {
+            "n": 126300,
+            "min_us": 21,
+            "mean_us": 30.364,
+            "max_us": 572,
+            "p95_upper_us": 50,
+            "p99_upper_us": 50
+          },
+          "frame": {
+            "n": 0,
+            "min_us": 0,
+            "mean_us": 0.0,
+            "max_us": 0,
+            "p95_upper_us": 0,
+            "p99_upper_us": 0
+          },
+          "directions": [
+            {
+              "profile": 0,
+              "retune_to": {
+                "n": 156,
+                "min_us": 494,
+                "mean_us": 506.506,
+                "max_us": 524,
+                "p95_upper_us": 750,
+                "p99_upper_us": 750
+              },
+              "visit_before_departure": {
+                "n": 157,
+                "min_us": 9430,
+                "mean_us": 9443.0,
+                "max_us": 9452,
+                "p95_upper_us": 10000,
+                "p99_upper_us": 10000
+              },
+              "deadline_lateness": {
+                "n": 157,
+                "min_us": 9,
+                "mean_us": 22.0,
+                "max_us": 31,
+                "p95_upper_us": 50,
+                "p99_upper_us": 50
+              }
+            },
+            {
+              "profile": 1,
+              "retune_to": {
+                "n": 157,
+                "min_us": 474,
+                "mean_us": 484.803,
+                "max_us": 508,
+                "p95_upper_us": 500,
+                "p99_upper_us": 500
+              },
+              "visit_before_departure": {
+                "n": 156,
+                "min_us": 21538,
+                "mean_us": 21555.154,
+                "max_us": 21585,
+                "p95_upper_us": 40000,
+                "p99_upper_us": 40000
+              },
+              "deadline_lateness": {
+                "n": 156,
+                "min_us": 5,
+                "mean_us": 22.154,
+                "max_us": 52,
+                "p95_upper_us": 50,
+                "p99_upper_us": 100
+              }
+            }
+          ],
+          "free_heap_bytes": 359576,
+          "free_psram_bytes": 8224063,
+          "loop_stack_min_free_bytes": 3340,
+          "repeat": 3
+        },
+        {
+          "result": 15,
+          "bench": "tdeck-display-radio2-v1",
+          "display_mode": 1,
+          "spi_mhz": 2,
+          "bulk": false,
+          "seconds": 5,
+          "requested_fps": 20,
+          "elapsed_us": 5071575,
+          "frames": 68,
+          "switches": 68,
+          "switch_failures": 0,
+          "hook_hops": 68,
+          "failed_retunes": 0,
+          "optimized_rx_resumes": 68,
+          "received_packets": 0,
+          "chip_errors_before": 0,
+          "chip_errors_after": 0,
+          "busy_timeout": false,
+          "rx_mode": 1,
+          "cache_correct": true,
+          "floor_calibration_pending": true,
+          "nominal_visit_us": [
+            9421,
+            21551
+          ],
+          "service_gap": {
+            "n": 67,
+            "min_us": 73293,
+            "mean_us": 74582.94,
+            "max_us": 76077,
+            "p95_upper_us": 80000,
+            "p99_upper_us": 80000
+          },
+          "service_duration": {
+            "n": 68,
+            "min_us": 926,
+            "mean_us": 957.882,
+            "max_us": 986,
+            "p95_upper_us": 1000,
+            "p99_upper_us": 1000
+          },
+          "frame": {
+            "n": 68,
+            "min_us": 72308,
+            "mean_us": 73601.691,
+            "max_us": 75114,
+            "p95_upper_us": 80000,
+            "p99_upper_us": 80000
+          },
+          "directions": [
+            {
+              "profile": 0,
+              "retune_to": {
+                "n": 34,
+                "min_us": 606,
+                "mean_us": 615.824,
+                "max_us": 625,
+                "p95_upper_us": 750,
+                "p99_upper_us": 750
+              },
+              "visit_before_departure": {
+                "n": 34,
+                "min_us": 72660,
+                "mean_us": 74013.882,
+                "max_us": 77075,
+                "p95_upper_us": 80000,
+                "p99_upper_us": 80000
+              },
+              "deadline_lateness": {
+                "n": 34,
+                "min_us": 63239,
+                "mean_us": 64592.882,
+                "max_us": 67654,
+                "p95_upper_us": 80000,
+                "p99_upper_us": 80000
+              }
+            },
+            {
+              "profile": 1,
+              "retune_to": {
+                "n": 34,
+                "min_us": 591,
+                "mean_us": 603.529,
+                "max_us": 617,
+                "p95_upper_us": 750,
+                "p99_upper_us": 750
+              },
+              "visit_before_departure": {
+                "n": 34,
+                "min_us": 72726,
+                "mean_us": 74011.412,
+                "max_us": 75490,
+                "p95_upper_us": 80000,
+                "p99_upper_us": 80000
+              },
+              "deadline_lateness": {
+                "n": 34,
+                "min_us": 51175,
+                "mean_us": 52460.412,
+                "max_us": 53939,
+                "p95_upper_us": 80000,
+                "p99_upper_us": 80000
+              }
+            }
+          ],
+          "free_heap_bytes": 359576,
+          "free_psram_bytes": 8224063,
+          "loop_stack_min_free_bytes": 3340,
+          "repeat": 3
+        },
+        {
+          "result": 16,
+          "bench": "tdeck-display-radio2-v1",
+          "display_mode": 2,
+          "spi_mhz": 8,
+          "bulk": true,
+          "seconds": 5,
+          "requested_fps": 20,
+          "elapsed_us": 5017459,
+          "frames": 89,
+          "switches": 304,
+          "switch_failures": 0,
+          "hook_hops": 304,
+          "failed_retunes": 0,
+          "optimized_rx_resumes": 304,
+          "received_packets": 0,
+          "chip_errors_before": 0,
+          "chip_errors_after": 0,
+          "busy_timeout": false,
+          "rx_mode": 1,
+          "cache_correct": true,
+          "floor_calibration_pending": false,
+          "nominal_visit_us": [
+            9421,
+            22079
+          ],
+          "service_gap": {
+            "n": 9711,
+            "min_us": 27,
+            "mean_us": 516.673,
+            "max_us": 1237,
+            "p95_upper_us": 750,
+            "p99_upper_us": 1500
+          },
+          "service_duration": {
+            "n": 9712,
+            "min_us": 21,
+            "mean_us": 48.886,
+            "max_us": 657,
+            "p95_upper_us": 100,
+            "p99_upper_us": 750
+          },
+          "frame": {
+            "n": 89,
+            "min_us": 55506,
+            "mean_us": 56327.82,
+            "max_us": 57050,
+            "p95_upper_us": 80000,
+            "p99_upper_us": 80000
+          },
+          "directions": [
+            {
+              "profile": 0,
+              "retune_to": {
+                "n": 152,
+                "min_us": 432,
+                "mean_us": 488.316,
+                "max_us": 557,
+                "p95_upper_us": 750,
+                "p99_upper_us": 750
+              },
+              "visit_before_departure": {
+                "n": 152,
+                "min_us": 9446,
+                "mean_us": 9726.895,
+                "max_us": 9993,
+                "p95_upper_us": 10000,
+                "p99_upper_us": 10000
+              },
+              "deadline_lateness": {
+                "n": 152,
+                "min_us": 25,
+                "mean_us": 305.895,
+                "max_us": 572,
+                "p95_upper_us": 750,
+                "p99_upper_us": 750
+              }
+            },
+            {
+              "profile": 1,
+              "retune_to": {
+                "n": 152,
+                "min_us": 401,
+                "mean_us": 447.276,
+                "max_us": 543,
+                "p95_upper_us": 750,
+                "p99_upper_us": 750
+              },
+              "visit_before_departure": {
+                "n": 152,
+                "min_us": 22096,
+                "mean_us": 22400.329,
+                "max_us": 22685,
+                "p95_upper_us": 40000,
+                "p99_upper_us": 40000
+              },
+              "deadline_lateness": {
+                "n": 152,
+                "min_us": 17,
+                "mean_us": 320.171,
+                "max_us": 606,
+                "p95_upper_us": 750,
+                "p99_upper_us": 750
+              }
+            }
+          ],
+          "free_heap_bytes": 359576,
+          "free_psram_bytes": 8224063,
+          "loop_stack_min_free_bytes": 3340,
+          "repeat": 3
+        },
+        {
+          "result": 17,
+          "bench": "tdeck-display-radio2-v1",
+          "display_mode": 0,
+          "spi_mhz": 8,
+          "bulk": true,
+          "seconds": 5,
+          "requested_fps": 20,
+          "elapsed_us": 5000008,
+          "frames": 0,
+          "switches": 309,
+          "switch_failures": 0,
+          "hook_hops": 309,
+          "failed_retunes": 0,
+          "optimized_rx_resumes": 309,
+          "received_packets": 0,
+          "chip_errors_before": 0,
+          "chip_errors_after": 0,
+          "busy_timeout": false,
+          "rx_mode": 1,
+          "cache_correct": true,
+          "floor_calibration_pending": false,
+          "nominal_visit_us": [
+            9421,
+            22051
+          ],
+          "service_gap": {
+            "n": 127162,
+            "min_us": 30,
+            "mean_us": 39.32,
+            "max_us": 474,
+            "p95_upper_us": 50,
+            "p99_upper_us": 50
+          },
+          "service_duration": {
+            "n": 127163,
+            "min_us": 21,
+            "mean_us": 30.093,
+            "max_us": 463,
+            "p95_upper_us": 50,
+            "p99_upper_us": 50
+          },
+          "frame": {
+            "n": 0,
+            "min_us": 0,
+            "mean_us": 0.0,
+            "max_us": 0,
+            "p95_upper_us": 0,
+            "p99_upper_us": 0
+          },
+          "directions": [
+            {
+              "profile": 0,
+              "retune_to": {
+                "n": 154,
+                "min_us": 390,
+                "mean_us": 398.649,
+                "max_us": 416,
+                "p95_upper_us": 500,
+                "p99_upper_us": 500
+              },
+              "visit_before_departure": {
+                "n": 155,
+                "min_us": 9426,
+                "mean_us": 9439.323,
+                "max_us": 9455,
+                "p95_upper_us": 10000,
+                "p99_upper_us": 10000
+              },
+              "deadline_lateness": {
+                "n": 155,
+                "min_us": 5,
+                "mean_us": 18.323,
+                "max_us": 34,
+                "p95_upper_us": 50,
+                "p99_upper_us": 50
+              }
+            },
+            {
+              "profile": 1,
+              "retune_to": {
+                "n": 155,
+                "min_us": 369,
+                "mean_us": 375.6,
+                "max_us": 390,
+                "p95_upper_us": 500,
+                "p99_upper_us": 500
+              },
+              "visit_before_departure": {
+                "n": 154,
+                "min_us": 22065,
+                "mean_us": 22078.708,
+                "max_us": 22091,
+                "p95_upper_us": 40000,
+                "p99_upper_us": 40000
+              },
+              "deadline_lateness": {
+                "n": 154,
+                "min_us": 14,
+                "mean_us": 27.708,
+                "max_us": 40,
+                "p95_upper_us": 50,
+                "p99_upper_us": 50
+              }
+            }
+          ],
+          "free_heap_bytes": 359576,
+          "free_psram_bytes": 8224063,
+          "loop_stack_min_free_bytes": 3340,
+          "repeat": 3
+        },
+        {
+          "result": 18,
+          "bench": "tdeck-display-radio2-v1",
+          "display_mode": 1,
+          "spi_mhz": 8,
+          "bulk": true,
+          "seconds": 5,
+          "requested_fps": 20,
+          "elapsed_us": 5061805,
+          "frames": 68,
+          "switches": 68,
+          "switch_failures": 0,
+          "hook_hops": 68,
+          "failed_retunes": 0,
+          "optimized_rx_resumes": 68,
+          "received_packets": 0,
+          "chip_errors_before": 0,
+          "chip_errors_after": 0,
+          "busy_timeout": false,
+          "rx_mode": 1,
+          "cache_correct": true,
+          "floor_calibration_pending": true,
+          "nominal_visit_us": [
+            9421,
+            22065
+          ],
+          "service_gap": {
+            "n": 67,
+            "min_us": 73156,
+            "mean_us": 74439.701,
+            "max_us": 75943,
+            "p95_upper_us": 80000,
+            "p99_upper_us": 80000
+          },
+          "service_duration": {
+            "n": 68,
+            "min_us": 770,
+            "mean_us": 797.809,
+            "max_us": 851,
+            "p95_upper_us": 1000,
+            "p99_upper_us": 1000
+          },
+          "frame": {
+            "n": 68,
+            "min_us": 72319,
+            "mean_us": 73619.206,
+            "max_us": 75139,
+            "p95_upper_us": 80000,
+            "p99_upper_us": 80000
+          },
+          "directions": [
+            {
+              "profile": 0,
+              "retune_to": {
+                "n": 34,
+                "min_us": 503,
+                "mean_us": 513.029,
+                "max_us": 520,
+                "p95_upper_us": 750,
+                "p99_upper_us": 750
+              },
+              "visit_before_departure": {
+                "n": 34,
+                "min_us": 72629,
+                "mean_us": 73929.559,
+                "max_us": 75633,
+                "p95_upper_us": 80000,
+                "p99_upper_us": 80000
+              },
+              "deadline_lateness": {
+                "n": 34,
+                "min_us": 63208,
+                "mean_us": 64508.559,
+                "max_us": 66212,
+                "p95_upper_us": 80000,
+                "p99_upper_us": 80000
+              }
+            },
+            {
+              "profile": 1,
+              "retune_to": {
+                "n": 34,
+                "min_us": 489,
+                "mean_us": 496.882,
+                "max_us": 508,
+                "p95_upper_us": 750,
+                "p99_upper_us": 750
+              },
+              "visit_before_departure": {
+                "n": 34,
+                "min_us": 72681,
+                "mean_us": 73979.794,
+                "max_us": 75457,
+                "p95_upper_us": 80000,
+                "p99_upper_us": 80000
+              },
+              "deadline_lateness": {
+                "n": 34,
+                "min_us": 50616,
+                "mean_us": 51914.794,
+                "max_us": 53392,
+                "p95_upper_us": 80000,
+                "p99_upper_us": 80000
+              }
+            }
+          ],
+          "free_heap_bytes": 359576,
+          "free_psram_bytes": 8224063,
+          "loop_stack_min_free_bytes": 3340,
+          "repeat": 3
+        }
+      ],
+      "firmware": {
+        "bench": "tdeck-display-radio2-v1",
+        "ready": true,
+        "autonomous_tx": false,
+        "psram_bytes": 8386247,
+        "free_psram_bytes": 8224063,
+        "free_heap_bytes": 359576,
+        "buffered": true,
+        "width": 320,
+        "height": 240,
+        "command": "run <display:0=none,1=direct,2=buffered> <SPI MHz:2,8> <bulk:0,1> <seconds:1..10> <fps:1..30> <seq>"
+      }
+    },
+    {
+      "recorded_utc": "2026-10-19T05:14:00.889395+00:00",
+      "seconds_per_run": 4,
+      "requested_fps": 1,
+      "repeats": 2,
+      "receive_only": true,
+      "results": [
+        {
+          "result": 1,
+          "bench": "tdeck-display-radio2-v1",
+          "display_mode": 0,
+          "spi_mhz": 2,
+          "bulk": false,
+          "seconds": 4,
+          "requested_fps": 1,
+          "elapsed_us": 4000415,
+          "frames": 0,
+          "switches": 250,
+          "switch_failures": 0,
+          "hook_hops": 250,
+          "failed_retunes": 0,
+          "optimized_rx_resumes": 250,
+          "received_packets": 0,
+          "chip_errors_before": 0,
+          "chip_errors_after": 0,
+          "busy_timeout": false,
+          "rx_mode": 1,
+          "cache_correct": true,
+          "floor_calibration_pending": false,
+          "nominal_visit_us": [
+            9421,
+            21573
+          ],
+          "service_gap": {
+            "n": 100041,
+            "min_us": 30,
+            "mean_us": 39.982,
+            "max_us": 578,
+            "p95_upper_us": 50,
+            "p99_upper_us": 50
+          },
+          "service_duration": {
+            "n": 100042,
+            "min_us": 21,
+            "mean_us": 30.757,
+            "max_us": 566,
+            "p95_upper_us": 50,
+            "p99_upper_us": 50
+          },
+          "frame": {
+            "n": 0,
+            "min_us": 0,
+            "mean_us": 0.0,
+            "max_us": 0,
+            "p95_upper_us": 0,
+            "p99_upper_us": 0
+          },
+          "directions": [
+            {
+              "profile": 0,
+              "retune_to": {
+                "n": 125,
+                "min_us": 498,
+                "mean_us": 506.64,
+                "max_us": 517,
+                "p95_upper_us": 750,
+                "p99_upper_us": 750
+              },
+              "visit_before_departure": {
+                "n": 125,
+                "min_us": 9429,
+                "mean_us": 9440.12,
+                "max_us": 9454,
+                "p95_upper_us": 10000,
+                "p99_upper_us": 10000
+              },
+              "deadline_lateness": {
+                "n": 125,
+                "min_us": 8,
+                "mean_us": 19.12,
+                "max_us": 33,
+                "p95_upper_us": 50,
+                "p99_upper_us": 50
+              }
+            },
+            {
+              "profile": 1,
+              "retune_to": {
+                "n": 125,
+                "min_us": 468,
+                "mean_us": 484.304,
+                "max_us": 499,
+                "p95_upper_us": 500,
+                "p99_upper_us": 500
+              },
+              "visit_before_departure": {
+                "n": 125,
+                "min_us": 21579,
+                "mean_us": 21603.336,
+                "max_us": 21623,
+                "p95_upper_us": 40000,
+                "p99_upper_us": 40000
+              },
+              "deadline_lateness": {
+                "n": 125,
+                "min_us": 6,
+                "mean_us": 30.336,
+                "max_us": 50,
+                "p95_upper_us": 50,
+                "p99_upper_us": 50
+              }
+            }
+          ],
+          "free_heap_bytes": 359576,
+          "free_psram_bytes": 8224063,
+          "loop_stack_min_free_bytes": 3340,
+          "repeat": 1
+        },
+        {
+          "result": 2,
+          "bench": "tdeck-display-radio2-v1",
+          "display_mode": 1,
+          "spi_mhz": 2,
+          "bulk": false,
+          "seconds": 4,
+          "requested_fps": 1,
+          "elapsed_us": 4000002,
+          "frames": 4,
+          "switches": 233,
+          "switch_failures": 0,
+          "hook_hops": 233,
+          "failed_retunes": 0,
+          "optimized_rx_resumes": 233,
+          "received_packets": 0,
+          "chip_errors_before": 0,
+          "chip_errors_after": 0,
+          "busy_timeout": false,
+          "rx_mode": 1,
+          "cache_correct": true,
+          "floor_calibration_pending": false,
+          "nominal_visit_us": [
+            9421,
+            21545
+          ],
+          "service_gap": {
+            "n": 92511,
+            "min_us": 30,
+            "mean_us": 43.238,
+            "max_us": 73366,
+            "p95_upper_us": 50,
+            "p99_upper_us": 50
+          },
+          "service_duration": {
+            "n": 92512,
+            "min_us": 21,
+            "mean_us": 30.854,
+            "max_us": 971,
+            "p95_upper_us": 50,
+            "p99_upper_us": 50
+          },
+          "frame": {
+            "n": 4,
+            "min_us": 72416,
+            "mean_us": 72684.0,
+            "max_us": 72902,
+            "p95_upper_us": 80000,
+            "p99_upper_us": 80000
+          },
+          "directions": [
+            {
+              "profile": 0,
+              "retune_to": {
+                "n": 116,
+                "min_us": 493,
+                "mean_us": 512.534,
+                "max_us": 631,
+                "p95_upper_us": 750,
+                "p99_upper_us": 750
+              },
+              "visit_before_departure": {
+                "n": 117,
+                "min_us": 9430,
+                "mean_us": 10026.308,
+                "max_us": 77615,
+                "p95_upper_us": 10000,
+                "p99_upper_us": 10000
+              },
+              "deadline_lateness": {
+                "n": 117,
+                "min_us": 9,
+                "mean_us": 605.308,
+                "max_us": 68194,
+                "p95_upper_us": 50,
+                "p99_upper_us": 50
+              }
+            },
+            {
+              "profile": 1,
+              "retune_to": {
+                "n": 117,
+                "min_us": 477,
+                "mean_us": 492.137,
+                "max_us": 618,
+                "p95_upper_us": 750,
+                "p99_upper_us": 750
+              },
+              "visit_before_departure": {
+                "n": 116,
+                "min_us": 21549,
+                "mean_us": 23860.302,
+                "max_us": 92820,
+                "p95_upper_us": 40000,
+                "p99_upper_us": 160000
+              },
+              "deadline_lateness": {
+                "n": 116,
+                "min_us": 4,
+                "mean_us": 2315.302,
+                "max_us": 71275,
+                "p95_upper_us": 50,
+                "p99_upper_us": 80000
+              }
+            }
+          ],
+          "free_heap_bytes": 359576,
+          "free_psram_bytes": 8224063,
+          "loop_stack_min_free_bytes": 3340,
+          "repeat": 1
+        },
+        {
+          "result": 3,
+          "bench": "tdeck-display-radio2-v1",
+          "display_mode": 2,
+          "spi_mhz": 2,
+          "bulk": false,
+          "seconds": 4,
+          "requested_fps": 1,
+          "elapsed_us": 4000001,
+          "frames": 4,
+          "switches": 250,
+          "switch_failures": 0,
+          "hook_hops": 250,
+          "failed_retunes": 0,
+          "optimized_rx_resumes": 250,
+          "received_packets": 0,
+          "chip_errors_before": 0,
+          "chip_errors_after": 0,
+          "busy_timeout": false,
+          "rx_mode": 1,
+          "cache_correct": true,
+          "floor_calibration_pending": false,
+          "nominal_visit_us": [
+            9421,
+            21555
+          ],
+          "service_gap": {
+            "n": 94848,
+            "min_us": 29,
+            "mean_us": 42.172,
+            "max_us": 1305,
+            "p95_upper_us": 50,
+            "p99_upper_us": 50
+          },
+          "service_duration": {
+            "n": 94849,
+            "min_us": 21,
+            "mean_us": 30.832,
+            "max_us": 747,
+            "p95_upper_us": 50,
+            "p99_upper_us": 50
+          },
+          "frame": {
+            "n": 4,
+            "min_us": 56417,
+            "mean_us": 56635.0,
+            "max_us": 57150,
+            "p95_upper_us": 80000,
+            "p99_upper_us": 80000
+          },
+          "directions": [
+            {
+              "profile": 0,
+              "retune_to": {
+                "n": 125,
+                "min_us": 500,
+                "mean_us": 519.168,
+                "max_us": 667,
+                "p95_upper_us": 750,
+                "p99_upper_us": 750
+              },
+              "visit_before_departure": {
+                "n": 125,
+                "min_us": 9428,
+                "mean_us": 9464.568,
+                "max_us": 10079,
+                "p95_upper_us": 10000,
+                "p99_upper_us": 10000
+              },
+              "deadline_lateness": {
+                "n": 125,
+                "min_us": 7,
+                "mean_us": 43.568,
+                "max_us": 658,
+                "p95_upper_us": 100,
+                "p99_upper_us": 500
+              }
+            },
+            {
+              "profile": 1,
+              "retune_to": {
+                "n": 125,
+                "min_us": 473,
+                "mean_us": 495.664,
+                "max_us": 649,
+                "p95_upper_us": 750,
+                "p99_upper_us": 750
+              },
+              "visit_before_departure": {
+                "n": 125,
+                "min_us": 21561,
+                "mean_us": 21597.808,
+                "max_us": 21933,
+                "p95_upper_us": 40000,
+                "p99_upper_us": 40000
+              },
+              "deadline_lateness": {
+                "n": 125,
+                "min_us": 6,
+                "mean_us": 42.808,
+                "max_us": 378,
+                "p95_upper_us": 50,
+                "p99_upper_us": 500
+              }
+            }
+          ],
+          "free_heap_bytes": 359576,
+          "free_psram_bytes": 8224063,
+          "loop_stack_min_free_bytes": 3340,
+          "repeat": 1
+        },
+        {
+          "result": 4,
+          "bench": "tdeck-display-radio2-v1",
+          "display_mode": 0,
+          "spi_mhz": 8,
+          "bulk": true,
+          "seconds": 4,
+          "requested_fps": 1,
+          "elapsed_us": 4000015,
+          "frames": 0,
+          "switches": 247,
+          "switch_failures": 0,
+          "hook_hops": 247,
+          "failed_retunes": 0,
+          "optimized_rx_resumes": 247,
+          "received_packets": 0,
+          "chip_errors_before": 0,
+          "chip_errors_after": 0,
+          "busy_timeout": false,
+          "rx_mode": 1,
+          "cache_correct": true,
+          "floor_calibration_pending": false,
+          "nominal_visit_us": [
+            9421,
+            22089
+          ],
+          "service_gap": {
+            "n": 100786,
+            "min_us": 30,
+            "mean_us": 39.688,
+            "max_us": 473,
+            "p95_upper_us": 50,
+            "p99_upper_us": 50
+          },
+          "service_duration": {
+            "n": 100787,
+            "min_us": 21,
+            "mean_us": 30.463,
+            "max_us": 463,
+            "p95_upper_us": 50,
+            "p99_upper_us": 50
+          },
+          "frame": {
+            "n": 0,
+            "min_us": 0,
+            "mean_us": 0.0,
+            "max_us": 0,
+            "p95_upper_us": 0,
+            "p99_upper_us": 0
+          },
+          "directions": [
+            {
+              "profile": 0,
+              "retune_to": {
+                "n": 123,
+                "min_us": 390,
+                "mean_us": 397.496,
+                "max_us": 409,
+                "p95_upper_us": 500,
+                "p99_upper_us": 500
+              },
+              "visit_before_departure": {
+                "n": 124,
+                "min_us": 9427,
+                "mean_us": 9440.379,
+                "max_us": 9458,
+                "p95_upper_us": 10000,
+                "p99_upper_us": 10000
+              },
+              "deadline_lateness": {
+                "n": 124,
+                "min_us": 6,
+                "mean_us": 19.379,
+                "max_us": 37,
+                "p95_upper_us": 50,
+                "p99_upper_us": 50
+              }
+            },
+            {
+              "profile": 1,
+              "retune_to": {
+                "n": 124,
+                "min_us": 370,
+                "mean_us": 376.371,
+                "max_us": 396,
+                "p95_upper_us": 500,
+                "p99_upper_us": 500
+              },
+              "visit_before_departure": {
+                "n": 123,
+                "min_us": 22095,
+                "mean_us": 22115.309,
+                "max_us": 22135,
+                "p95_upper_us": 40000,
+                "p99_upper_us": 40000
+              },
+              "deadline_lateness": {
+                "n": 123,
+                "min_us": 6,
+                "mean_us": 26.309,
+                "max_us": 46,
+                "p95_upper_us": 50,
+                "p99_upper_us": 50
+              }
+            }
+          ],
+          "free_heap_bytes": 359576,
+          "free_psram_bytes": 8224063,
+          "loop_stack_min_free_bytes": 3340,
+          "repeat": 1
+        },
+        {
+          "result": 5,
+          "bench": "tdeck-display-radio2-v1",
+          "display_mode": 1,
+          "spi_mhz": 8,
+          "bulk": true,
+          "seconds": 4,
+          "requested_fps": 1,
+          "elapsed_us": 4000004,
+          "frames": 4,
+          "switches": 233,
+          "switch_failures": 0,
+          "hook_hops": 233,
+          "failed_retunes": 0,
+          "optimized_rx_resumes": 233,
+          "received_packets": 0,
+          "chip_errors_before": 0,
+          "chip_errors_after": 0,
+          "busy_timeout": false,
+          "rx_mode": 1,
+          "cache_correct": true,
+          "floor_calibration_pending": false,
+          "nominal_visit_us": [
+            9421,
+            22079
+          ],
+          "service_gap": {
+            "n": 93321,
+            "min_us": 30,
+            "mean_us": 42.862,
+            "max_us": 73227,
+            "p95_upper_us": 50,
+            "p99_upper_us": 50
+          },
+          "service_duration": {
+            "n": 93322,
+            "min_us": 21,
+            "mean_us": 30.508,
+            "max_us": 812,
+            "p95_upper_us": 50,
+            "p99_upper_us": 50
+          },
+          "frame": {
+            "n": 4,
+            "min_us": 72419,
+            "mean_us": 72692.0,
+            "max_us": 72925,
+            "p95_upper_us": 80000,
+            "p99_upper_us": 80000
+          },
+          "directions": [
+            {
+              "profile": 0,
+              "retune_to": {
+                "n": 116,
+                "min_us": 383,
+                "mean_us": 402.56,
+                "max_us": 519,
+                "p95_upper_us": 500,
+                "p99_upper_us": 750
+              },
+              "visit_before_departure": {
+                "n": 117,
+                "min_us": 9426,
+                "mean_us": 10003.573,
+                "max_us": 75449,
+                "p95_upper_us": 10000,
+                "p99_upper_us": 10000
+              },
+              "deadline_lateness": {
+                "n": 117,
+                "min_us": 5,
+                "mean_us": 582.573,
+                "max_us": 66028,
+                "p95_upper_us": 50,
+                "p99_upper_us": 50
+              }
+            },
+            {
+              "profile": 1,
+              "retune_to": {
+                "n": 117,
+                "min_us": 365,
+                "mean_us": 380.462,
+                "max_us": 520,
+                "p95_upper_us": 500,
+                "p99_upper_us": 500
+              },
+              "visit_before_departure": {
+                "n": 116,
+                "min_us": 22084,
+                "mean_us": 24157.5,
+                "max_us": 84706,
+                "p95_upper_us": 40000,
+                "p99_upper_us": 160000
+              },
+              "deadline_lateness": {
+                "n": 116,
+                "min_us": 5,
+                "mean_us": 2078.5,
+                "max_us": 62627,
+                "p95_upper_us": 50,
+                "p99_upper_us": 80000
+              }
+            }
+          ],
+          "free_heap_bytes": 359576,
+          "free_psram_bytes": 8224063,
+          "loop_stack_min_free_bytes": 3340,
+          "repeat": 1
+        },
+        {
+          "result": 6,
+          "bench": "tdeck-display-radio2-v1",
+          "display_mode": 2,
+          "spi_mhz": 8,
+          "bulk": true,
+          "seconds": 4,
+          "requested_fps": 1,
+          "elapsed_us": 4000010,
+          "frames": 4,
+          "switches": 248,
+          "switch_failures": 0,
+          "hook_hops": 248,
+          "failed_retunes": 0,
+          "optimized_rx_resumes": 248,
+          "received_packets": 0,
+          "chip_errors_before": 0,
+          "chip_errors_after": 0,
+          "busy_timeout": false,
+          "rx_mode": 1,
+          "cache_correct": true,
+          "floor_calibration_pending": false,
+          "nominal_visit_us": [
+            9421,
+            22023
+          ],
+          "service_gap": {
+            "n": 95527,
+            "min_us": 29,
+            "mean_us": 41.873,
+            "max_us": 1182,
+            "p95_upper_us": 50,
+            "p99_upper_us": 50
+          },
+          "service_duration": {
+            "n": 95528,
+            "min_us": 21,
+            "mean_us": 30.547,
+            "max_us": 653,
+            "p95_upper_us": 50,
+            "p99_upper_us": 50
+          },
+          "frame": {
+            "n": 4,
+            "min_us": 56443,
+            "mean_us": 56567.5,
+            "max_us": 56649,
+            "p95_upper_us": 80000,
+            "p99_upper_us": 80000
+          },
+          "directions": [
+            {
+              "profile": 0,
+              "retune_to": {
+                "n": 124,
+                "min_us": 392,
+                "mean_us": 406.766,
+                "max_us": 558,
+                "p95_upper_us": 500,
+                "p99_upper_us": 750
+              },
+              "visit_before_departure": {
+                "n": 124,
+                "min_us": 9424,
+                "mean_us": 9459.935,
+                "max_us": 9806,
+                "p95_upper_us": 10000,
+                "p99_upper_us": 10000
+              },
+              "deadline_lateness": {
+                "n": 124,
+                "min_us": 3,
+                "mean_us": 38.935,
+                "max_us": 385,
+                "p95_upper_us": 200,
+                "p99_upper_us": 500
+              }
+            },
+            {
+              "profile": 1,
+              "retune_to": {
+                "n": 124,
+                "min_us": 368,
+                "mean_us": 381.976,
+                "max_us": 537,
+                "p95_upper_us": 500,
+                "p99_upper_us": 500
+              },
+              "visit_before_departure": {
+                "n": 124,
+                "min_us": 22028,
+                "mean_us": 22058.823,
+                "max_us": 22554,
+                "p95_upper_us": 40000,
+                "p99_upper_us": 40000
+              },
+              "deadline_lateness": {
+                "n": 124,
+                "min_us": 5,
+                "mean_us": 35.823,
+                "max_us": 531,
+                "p95_upper_us": 100,
+                "p99_upper_us": 750
+              }
+            }
+          ],
+          "free_heap_bytes": 359576,
+          "free_psram_bytes": 8224063,
+          "loop_stack_min_free_bytes": 3340,
+          "repeat": 1
+        },
+        {
+          "result": 7,
+          "bench": "tdeck-display-radio2-v1",
+          "display_mode": 1,
+          "spi_mhz": 2,
+          "bulk": false,
+          "seconds": 4,
+          "requested_fps": 1,
+          "elapsed_us": 4000007,
+          "frames": 4,
+          "switches": 233,
+          "switch_failures": 0,
+          "hook_hops": 233,
+          "failed_retunes": 0,
+          "optimized_rx_resumes": 233,
+          "received_packets": 0,
+          "chip_errors_before": 0,
+          "chip_errors_after": 0,
+          "busy_timeout": false,
+          "rx_mode": 1,
+          "cache_correct": true,
+          "floor_calibration_pending": false,
+          "nominal_visit_us": [
+            9421,
+            21561
+          ],
+          "service_gap": {
+            "n": 92451,
+            "min_us": 30,
+            "mean_us": 43.266,
+            "max_us": 73383,
+            "p95_upper_us": 50,
+            "p99_upper_us": 50
+          },
+          "service_duration": {
+            "n": 92452,
+            "min_us": 21,
+            "mean_us": 30.882,
+            "max_us": 960,
+            "p95_upper_us": 50,
+            "p99_upper_us": 50
+          },
+          "frame": {
+            "n": 4,
+            "min_us": 72400,
+            "mean_us": 72681.25,
+            "max_us": 72901,
+            "p95_upper_us": 80000,
+            "p99_upper_us": 80000
+          },
+          "directions": [
+            {
+              "profile": 0,
+              "retune_to": {
+                "n": 117,
+                "min_us": 489,
+                "mean_us": 509.47,
+                "max_us": 632,
+                "p95_upper_us": 750,
+                "p99_upper_us": 750
+              },
+              "visit_before_departure": {
+                "n": 116,
+                "min_us": 9429,
+                "mean_us": 11822.276,
+                "max_us": 80474,
+                "p95_upper_us": 10000,
+                "p99_upper_us": 160000
+              },
+              "deadline_lateness": {
+                "n": 116,
+                "min_us": 8,
+                "mean_us": 2401.276,
+                "max_us": 71053,
+                "p95_upper_us": 50,
+                "p99_upper_us": 80000
+              }
+            },
+            {
+              "profile": 1,
+              "retune_to": {
+                "n": 116,
+                "min_us": 474,
+                "mean_us": 493.784,
+                "max_us": 606,
+                "p95_upper_us": 750,
+                "p99_upper_us": 750
+              },
+              "visit_before_departure": {
+                "n": 117,
+                "min_us": 21570,
+                "mean_us": 22039.333,
+                "max_us": 74350,
+                "p95_upper_us": 40000,
+                "p99_upper_us": 40000
+              },
+              "deadline_lateness": {
+                "n": 117,
+                "min_us": 9,
+                "mean_us": 478.333,
+                "max_us": 52789,
+                "p95_upper_us": 50,
+                "p99_upper_us": 50
+              }
+            }
+          ],
+          "free_heap_bytes": 359576,
+          "free_psram_bytes": 8224063,
+          "loop_stack_min_free_bytes": 3340,
+          "repeat": 2
+        },
+        {
+          "result": 8,
+          "bench": "tdeck-display-radio2-v1",
+          "display_mode": 2,
+          "spi_mhz": 2,
+          "bulk": false,
+          "seconds": 4,
+          "requested_fps": 1,
+          "elapsed_us": 4000015,
+          "frames": 4,
+          "switches": 250,
+          "switch_failures": 0,
+          "hook_hops": 250,
+          "failed_retunes": 0,
+          "optimized_rx_resumes": 250,
+          "received_packets": 0,
+          "chip_errors_before": 0,
+          "chip_errors_after": 0,
+          "busy_timeout": false,
+          "rx_mode": 1,
+          "cache_correct": true,
+          "floor_calibration_pending": false,
+          "nominal_visit_us": [
+            9421,
+            21537
+          ],
+          "service_gap": {
+            "n": 94860,
+            "min_us": 29,
+            "mean_us": 42.167,
+            "max_us": 1312,
+            "p95_upper_us": 50,
+            "p99_upper_us": 50
+          },
+          "service_duration": {
+            "n": 94861,
+            "min_us": 21,
+            "mean_us": 30.828,
+            "max_us": 749,
+            "p95_upper_us": 50,
+            "p99_upper_us": 50
+          },
+          "frame": {
+            "n": 4,
+            "min_us": 56437,
+            "mean_us": 56650.75,
+            "max_us": 57102,
+            "p95_upper_us": 80000,
+            "p99_upper_us": 80000
+          },
+          "directions": [
+            {
+              "profile": 0,
+              "retune_to": {
+                "n": 125,
+                "min_us": 497,
+                "mean_us": 517.08,
+                "max_us": 666,
+                "p95_upper_us": 750,
+                "p99_upper_us": 750
+              },
+              "visit_before_departure": {
+                "n": 125,
+                "min_us": 9425,
+                "mean_us": 9464.472,
+                "max_us": 9939,
+                "p95_upper_us": 10000,
+                "p99_upper_us": 10000
+              },
+              "deadline_lateness": {
+                "n": 125,
+                "min_us": 4,
+                "mean_us": 43.472,
+                "max_us": 518,
+                "p95_upper_us": 200,
+                "p99_upper_us": 500
+              }
+            },
+            {
+              "profile": 1,
+              "retune_to": {
+                "n": 125,
+                "min_us": 473,
+                "mean_us": 493.376,
+                "max_us": 647,
+                "p95_upper_us": 750,
+                "p99_upper_us": 750
+              },
+              "visit_before_departure": {
+                "n": 125,
+                "min_us": 21543,
+                "mean_us": 21577.472,
+                "max_us": 22053,
+                "p95_upper_us": 40000,
+                "p99_upper_us": 40000
+              },
+              "deadline_lateness": {
+                "n": 125,
+                "min_us": 6,
+                "mean_us": 40.472,
+                "max_us": 516,
+                "p95_upper_us": 100,
+                "p99_upper_us": 500
+              }
+            }
+          ],
+          "free_heap_bytes": 359576,
+          "free_psram_bytes": 8224063,
+          "loop_stack_min_free_bytes": 3340,
+          "repeat": 2
+        },
+        {
+          "result": 9,
+          "bench": "tdeck-display-radio2-v1",
+          "display_mode": 0,
+          "spi_mhz": 2,
+          "bulk": false,
+          "seconds": 4,
+          "requested_fps": 1,
+          "elapsed_us": 4000012,
+          "frames": 0,
+          "switches": 250,
+          "switch_failures": 0,
+          "hook_hops": 250,
+          "failed_retunes": 0,
+          "optimized_rx_resumes": 250,
+          "received_packets": 0,
+          "chip_errors_before": 0,
+          "chip_errors_after": 0,
+          "busy_timeout": false,
+          "rx_mode": 1,
+          "cache_correct": true,
+          "floor_calibration_pending": false,
+          "nominal_visit_us": [
+            9421,
+            21553
+          ],
+          "service_gap": {
+            "n": 100016,
+            "min_us": 30,
+            "mean_us": 39.993,
+            "max_us": 589,
+            "p95_upper_us": 50,
+            "p99_upper_us": 50
+          },
+          "service_duration": {
+            "n": 100017,
+            "min_us": 21,
+            "mean_us": 30.767,
+            "max_us": 579,
+            "p95_upper_us": 50,
+            "p99_upper_us": 50
+          },
+          "frame": {
+            "n": 0,
+            "min_us": 0,
+            "mean_us": 0.0,
+            "max_us": 0,
+            "p95_upper_us": 0,
+            "p99_upper_us": 0
+          },
+          "directions": [
+            {
+              "profile": 0,
+              "retune_to": {
+                "n": 125,
+                "min_us": 495,
+                "mean_us": 509.12,
+                "max_us": 522,
+                "p95_upper_us": 750,
+                "p99_upper_us": 750
+              },
+              "visit_before_departure": {
+                "n": 125,
+                "min_us": 9427,
+                "mean_us": 9439.992,
+                "max_us": 9457,
+                "p95_upper_us": 10000,
+                "p99_upper_us": 10000
+              },
+              "deadline_lateness": {
+                "n": 125,
+                "min_us": 6,
+                "mean_us": 18.992,
+                "max_us": 36,
+                "p95_upper_us": 50,
+                "p99_upper_us": 50
+              }
+            },
+            {
+              "profile": 1,
+              "retune_to": {
+                "n": 125,
+                "min_us": 475,
+                "mean_us": 488.248,
+                "max_us": 511,
+                "p95_upper_us": 500,
+                "p99_upper_us": 500
+              },
+              "visit_before_departure": {
+                "n": 125,
+                "min_us": 21564,
+                "mean_us": 21583.536,
+                "max_us": 21599,
+                "p95_upper_us": 40000,
+                "p99_upper_us": 40000
+              },
+              "deadline_lateness": {
+                "n": 125,
+                "min_us": 11,
+                "mean_us": 30.536,
+                "max_us": 46,
+                "p95_upper_us": 50,
+                "p99_upper_us": 50
+              }
+            }
+          ],
+          "free_heap_bytes": 359576,
+          "free_psram_bytes": 8224063,
+          "loop_stack_min_free_bytes": 3340,
+          "repeat": 2
+        },
+        {
+          "result": 10,
+          "bench": "tdeck-display-radio2-v1",
+          "display_mode": 1,
+          "spi_mhz": 8,
+          "bulk": true,
+          "seconds": 4,
+          "requested_fps": 1,
+          "elapsed_us": 4000030,
+          "frames": 4,
+          "switches": 233,
+          "switch_failures": 0,
+          "hook_hops": 233,
+          "failed_retunes": 0,
+          "optimized_rx_resumes": 233,
+          "received_packets": 0,
+          "chip_errors_before": 0,
+          "chip_errors_after": 0,
+          "busy_timeout": false,
+          "rx_mode": 1,
+          "cache_correct": true,
+          "floor_calibration_pending": false,
+          "nominal_visit_us": [
+            9421,
+            22075
+          ],
+          "service_gap": {
+            "n": 93324,
+            "min_us": 30,
+            "mean_us": 42.861,
+            "max_us": 73215,
+            "p95_upper_us": 50,
+            "p99_upper_us": 50
+          },
+          "service_duration": {
+            "n": 93325,
+            "min_us": 21,
+            "mean_us": 30.51,
+            "max_us": 818,
+            "p95_upper_us": 50,
+            "p99_upper_us": 50
+          },
+          "frame": {
+            "n": 4,
+            "min_us": 72410,
+            "mean_us": 72692.25,
+            "max_us": 72916,
+            "p95_upper_us": 80000,
+            "p99_upper_us": 80000
+          },
+          "directions": [
+            {
+              "profile": 0,
+              "retune_to": {
+                "n": 116,
+                "min_us": 385,
+                "mean_us": 402.836,
+                "max_us": 518,
+                "p95_upper_us": 500,
+                "p99_upper_us": 750
+              },
+              "visit_before_departure": {
+                "n": 117,
+                "min_us": 9426,
+                "mean_us": 10012.342,
+                "max_us": 76240,
+                "p95_upper_us": 10000,
+                "p99_upper_us": 10000
+              },
+              "deadline_lateness": {
+                "n": 117,
+                "min_us": 5,
+                "mean_us": 591.342,
+                "max_us": 66819,
+                "p95_upper_us": 50,
+                "p99_upper_us": 50
+              }
+            },
+            {
+              "profile": 1,
+              "retune_to": {
+                "n": 117,
+                "min_us": 365,
+                "mean_us": 379.803,
+                "max_us": 512,
+                "p95_upper_us": 500,
+                "p99_upper_us": 500
+              },
+              "visit_before_departure": {
+                "n": 116,
+                "min_us": 22082,
+                "mean_us": 24156.19,
+                "max_us": 84864,
+                "p95_upper_us": 40000,
+                "p99_upper_us": 160000
+              },
+              "deadline_lateness": {
+                "n": 116,
+                "min_us": 7,
+                "mean_us": 2081.19,
+                "max_us": 62789,
+                "p95_upper_us": 50,
+                "p99_upper_us": 80000
+              }
+            }
+          ],
+          "free_heap_bytes": 359576,
+          "free_psram_bytes": 8224063,
+          "loop_stack_min_free_bytes": 3340,
+          "repeat": 2
+        },
+        {
+          "result": 11,
+          "bench": "tdeck-display-radio2-v1",
+          "display_mode": 2,
+          "spi_mhz": 8,
+          "bulk": true,
+          "seconds": 4,
+          "requested_fps": 1,
+          "elapsed_us": 4000024,
+          "frames": 4,
+          "switches": 248,
+          "switch_failures": 0,
+          "hook_hops": 248,
+          "failed_retunes": 0,
+          "optimized_rx_resumes": 248,
+          "received_packets": 0,
+          "chip_errors_before": 0,
+          "chip_errors_after": 0,
+          "busy_timeout": false,
+          "rx_mode": 1,
+          "cache_correct": true,
+          "floor_calibration_pending": false,
+          "nominal_visit_us": [
+            9421,
+            22039
+          ],
+          "service_gap": {
+            "n": 95523,
+            "min_us": 29,
+            "mean_us": 41.875,
+            "max_us": 1251,
+            "p95_upper_us": 50,
+            "p99_upper_us": 50
+          },
+          "service_duration": {
+            "n": 95524,
+            "min_us": 21,
+            "mean_us": 30.549,
+            "max_us": 638,
+            "p95_upper_us": 50,
+            "p99_upper_us": 50
+          },
+          "frame": {
+            "n": 4,
+            "min_us": 56178,
+            "mean_us": 56467.5,
+            "max_us": 56648,
+            "p95_upper_us": 80000,
+            "p99_upper_us": 80000
+          },
+          "directions": [
+            {
+              "profile": 0,
+              "retune_to": {
+                "n": 124,
+                "min_us": 390,
+                "mean_us": 406.944,
+                "max_us": 559,
+                "p95_upper_us": 500,
+                "p99_upper_us": 750
+              },
+              "visit_before_departure": {
+                "n": 124,
+                "min_us": 9425,
+                "mean_us": 9462.653,
+                "max_us": 9991,
+                "p95_upper_us": 10000,
+                "p99_upper_us": 10000
+              },
+              "deadline_lateness": {
+                "n": 124,
+                "min_us": 4,
+                "mean_us": 41.653,
+                "max_us": 570,
+                "p95_upper_us": 100,
+                "p99_upper_us": 500
+              }
+            },
+            {
+              "profile": 1,
+              "retune_to": {
+                "n": 124,
+                "min_us": 369,
+                "mean_us": 382.71,
+                "max_us": 540,
+                "p95_upper_us": 500,
+                "p99_upper_us": 500
+              },
+              "visit_before_departure": {
+                "n": 124,
+                "min_us": 22044,
+                "mean_us": 22079.185,
+                "max_us": 22616,
+                "p95_upper_us": 40000,
+                "p99_upper_us": 40000
+              },
+              "deadline_lateness": {
+                "n": 124,
+                "min_us": 5,
+                "mean_us": 40.185,
+                "max_us": 577,
+                "p95_upper_us": 100,
+                "p99_upper_us": 500
+              }
+            }
+          ],
+          "free_heap_bytes": 359576,
+          "free_psram_bytes": 8224063,
+          "loop_stack_min_free_bytes": 3340,
+          "repeat": 2
+        },
+        {
+          "result": 12,
+          "bench": "tdeck-display-radio2-v1",
+          "display_mode": 0,
+          "spi_mhz": 8,
+          "bulk": true,
+          "seconds": 4,
+          "requested_fps": 1,
+          "elapsed_us": 4000034,
+          "frames": 0,
+          "switches": 247,
+          "switch_failures": 0,
+          "hook_hops": 247,
+          "failed_retunes": 0,
+          "optimized_rx_resumes": 247,
+          "received_packets": 0,
+          "chip_errors_before": 0,
+          "chip_errors_after": 0,
+          "busy_timeout": false,
+          "rx_mode": 1,
+          "cache_correct": true,
+          "floor_calibration_pending": false,
+          "nominal_visit_us": [
+            9421,
+            22051
+          ],
+          "service_gap": {
+            "n": 100779,
+            "min_us": 30,
+            "mean_us": 39.691,
+            "max_us": 469,
+            "p95_upper_us": 50,
+            "p99_upper_us": 50
+          },
+          "service_duration": {
+            "n": 100780,
+            "min_us": 21,
+            "mean_us": 30.465,
+            "max_us": 459,
+            "p95_upper_us": 50,
+            "p99_upper_us": 50
+          },
+          "frame": {
+            "n": 0,
+            "min_us": 0,
+            "mean_us": 0.0,
+            "max_us": 0,
+            "p95_upper_us": 0,
+            "p99_upper_us": 0
+          },
+          "directions": [
+            {
+              "profile": 0,
+              "retune_to": {
+                "n": 123,
+                "min_us": 389,
+                "mean_us": 397.13,
+                "max_us": 412,
+                "p95_upper_us": 500,
+                "p99_upper_us": 500
+              },
+              "visit_before_departure": {
+                "n": 124,
+                "min_us": 9426,
+                "mean_us": 9440.919,
+                "max_us": 9457,
+                "p95_upper_us": 10000,
+                "p99_upper_us": 10000
+              },
+              "deadline_lateness": {
+                "n": 124,
+                "min_us": 5,
+                "mean_us": 19.919,
+                "max_us": 36,
+                "p95_upper_us": 50,
+                "p99_upper_us": 50
+              }
+            },
+            {
+              "profile": 1,
+              "retune_to": {
+                "n": 124,
+                "min_us": 371,
+                "mean_us": 378.976,
+                "max_us": 392,
+                "p95_upper_us": 500,
+                "p99_upper_us": 500
+              },
+              "visit_before_departure": {
+                "n": 123,
+                "min_us": 22059,
+                "mean_us": 22078.545,
+                "max_us": 22094,
+                "p95_upper_us": 40000,
+                "p99_upper_us": 40000
+              },
+              "deadline_lateness": {
+                "n": 123,
+                "min_us": 8,
+                "mean_us": 27.545,
+                "max_us": 43,
+                "p95_upper_us": 50,
+                "p99_upper_us": 50
+              }
+            }
+          ],
+          "free_heap_bytes": 359576,
+          "free_psram_bytes": 8224063,
+          "loop_stack_min_free_bytes": 3340,
+          "repeat": 2
+        }
+      ],
+      "firmware": {
+        "bench": "tdeck-display-radio2-v1",
+        "ready": true,
+        "autonomous_tx": false,
+        "psram_bytes": 8386247,
+        "free_psram_bytes": 8224063,
+        "free_heap_bytes": 359576,
+        "buffered": false,
+        "width": 320,
+        "height": 240,
+        "command": "run <display:0=none,1=direct,2=buffered> <SPI MHz:2,8> <bulk:0,1> <seconds:1..10> <fps:1..30> <seq>"
+      }
+    }
+  ]
+}
