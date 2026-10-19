@@ -11,6 +11,44 @@
 #include <stdio.h>
 #include <string.h>
 
+// Current STM32WL boards expose neither MCU nor radio regulator selection.
+// Their radio and MCU share a supply, so adding that support requires a
+// coordinated implementation rather than the independent controls used by
+// nRF52 plus an external radio. Do not retain the unreachable persistence and
+// recovery machinery on these flash-constrained targets. Match this exact
+// driver: an STM32 target with a different radio keeps the ordinary path.
+#define MESH_REGULATOR_FIXED_RADIO_CustomSTM32WLx 1
+#define MESH_REGULATOR_FIXED_RADIO_I(type) MESH_REGULATOR_FIXED_RADIO_##type
+#define MESH_REGULATOR_FIXED_RADIO(type) MESH_REGULATOR_FIXED_RADIO_I(type)
+#if defined(STM32_PLATFORM) && MESH_REGULATOR_FIXED_RADIO(RADIO_CLASS)
+namespace mesh { namespace power {
+bool beginRegulatorSettings(MainBoard&, Radio&, FILESYSTEM*) { return true; }
+void serviceRegulatorSettings() {}
+const char* regulatorModeName(RegulatorMode mode) {
+  return mode == RegulatorMode::Dcdc ? "dcdc" : mode == RegulatorMode::Ldo ? "ldo" : "auto";
+}
+uint8_t configuredRegulatorModes(bool) { return 0; }
+RegulatorMode requestedRegulatorMode(bool) { return RegulatorMode::Default; }
+RegulatorMode activeRegulatorMode(bool) { return RegulatorMode::Default; }
+const char* activeRegulatorModeName(bool) { return "unknown"; }
+bool regulatorFallbackActive(bool) { return false; }
+bool regulatorRecoveryAvailable() { return false; }
+bool handleRegulatorCommand(const char* command, char* reply, size_t capacity) {
+  if (strncmp(command, "get ", 4) != 0 && strncmp(command, "set ", 4) != 0) return false;
+  const char* key = command + 4;
+  bool mcu;
+  size_t length;
+  if (strncmp(key, "mcu.regulator", 13) == 0) { mcu = true; length = 13; }
+  else if (strncmp(key, "radio.regulator", 15) == 0) { mcu = false; length = 15; }
+  else return false;
+  if (key[length] != 0 && key[length] != ' ') return false;
+  snprintf(reply, capacity, "Error: %s regulator selection unsupported", mcu ? "MCU" : "radio");
+  return true;
+}
+void markRegulatorCleanReset() {}
+void resumeRegulatorRecovery() {}
+}} // namespace mesh::power
+#else
 namespace mesh { namespace power {
 namespace {
 MainBoard* main_board = nullptr;
@@ -289,6 +327,10 @@ void resumeRegulatorRecovery() {
 }
 
 }} // namespace mesh::power
+#endif
+#undef MESH_REGULATOR_FIXED_RADIO
+#undef MESH_REGULATOR_FIXED_RADIO_I
+#undef MESH_REGULATOR_FIXED_RADIO_CustomSTM32WLx
 
 extern "C" void meshRegulatorCleanReset() {
   // Intentional resets can happen before the settings/filesystem is ready.

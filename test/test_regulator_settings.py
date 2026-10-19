@@ -153,6 +153,8 @@ class RegulatorSettingsTests(unittest.TestCase):
             path.write_text(content)
         cls.binaries = {}
         for platform, flags in {'esp32': ['-DESP32=1'],
+                'esp32_fixed_radio_name': ['-DESP32=1','-DRADIO_CLASS=CustomSTM32WLx'],
+                'stm32_future_external_radio': ['-DSTM32_PLATFORM=1','-DRADIO_CLASS=CustomSX1262'],
                 'rp2040': ['-DRP2040_PLATFORM=1'],
                 'nrf52': ['-DNRF52_PLATFORM=1','-DNRF52_POWER_MANAGEMENT=1'],
                 'no_retention': ['-DESP32=1','-DSOC_RTC_SLOW_MEM_SUPPORTED=0']}.items():
@@ -164,6 +166,34 @@ class RegulatorSettingsTests(unittest.TestCase):
             if result.returncode:
                 raise AssertionError(result.stdout+result.stderr)
             cls.binaries[platform] = binary
+        binary = folder / 'stm32_fixed'
+        result = subprocess.run([compiler, '-std=c++17','-Wall','-Wextra','-Werror',
+            *SANITIZER_FLAGS,'-DSTM32_PLATFORM=1','-DRADIO_CLASS=CustomSTM32WLx',
+            '-I',str(folder),'-I',str(ROOT/'src'),
+            str(ROOT/'test/fixtures/regulator_settings_stm32_fixed.cpp'),'-o',str(binary)],
+            text=True,capture_output=True,timeout=45)
+        if result.returncode:
+            raise AssertionError(result.stdout+result.stderr)
+        cls.stm32_fixed = binary
+
+    def test_fixed_stm32wl_driver_rejects_selection_without_hardware_or_storage_work(self):
+        result = subprocess.run([str(self.stm32_fixed)], text=True,capture_output=True,timeout=10)
+        self.assertEqual(result.returncode,0,result.stdout+result.stderr)
+
+    def test_fixed_stm32wl_guard_must_be_revisited_if_current_classes_gain_selection(self):
+        # These are the classes excluded by the exact platform/driver guard.
+        # A future implementation must remove or narrow that guard as it adds
+        # coordinated shared-supply support, rather than silently hiding it.
+        paths = [ROOT/'src/helpers/stm32/STM32Board.h',
+            ROOT/'src/helpers/radiolib/CustomSTM32WLx.h',
+            ROOT/'src/helpers/radiolib/CustomSTM32WLxWrapper.h']
+        for variant in (ROOT/'variants').glob('*/platformio.ini'):
+            if 'extends = stm32_base' in variant.read_text():
+                paths.extend(variant.parent.glob('*.h'))
+                paths.extend(variant.parent.glob('*.cpp'))
+        for path in paths:
+            with self.subTest(path=path.relative_to(ROOT)):
+                self.assertNotRegex(path.read_text(), r'\b(?:mcuRegulatorModes|regulatorModes)\s*\(')
 
     def scenario(self, scenario):
         for platform, binary in self.binaries.items():

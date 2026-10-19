@@ -31,7 +31,7 @@ uint8_t configuredBatteryPercent(uint16_t mv) {
 }
 }}
 #endif
-#if !defined(NRF52_PLATFORM)
+#if !defined(NRF52_PLATFORM) && !defined(STM32_PLATFORM)
 #include <helpers/RegulatorPlatform.cpp>
 #endif
 #if defined(NRF52_PLATFORM)
