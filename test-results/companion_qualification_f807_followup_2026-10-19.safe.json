@@ -261,6 +261,1789 @@
     }
   ],
   "diagnostics": {
+    "active_usb_firmware_isolation": {
+      "counts_as_companion_qualification": false,
+      "excluded_host_workflows": [
+        {
+          "companion_or_echo_pass_claimed": false,
+          "evidence": "usb-active-fix-20261020/priority2-before/summary.safe.json",
+          "failure_type": "BleakCharacteristicNotFoundError",
+          "trial": "priority2-before"
+        },
+        {
+          "companion_or_echo_pass_claimed": false,
+          "evidence": "usb-active-fix-20261020/irq-v2/baseline-timing-off/summary.safe.json",
+          "failure_type": "BleakDBusError",
+          "scope": "D-Bus workflow failure; not a clean BLE comparison. No BlueZ segfault cause is inferred.",
+          "trial": "irq-v2/baseline-timing-off"
+        }
+      ],
+      "full_clock_prototype": {
+        "base_source_commit": "72a74c784c38af72518bec7517e691ce9abccaa3",
+        "ble_evidence": "usb-active-fix-20261020/full-clock-ble-1/ble/summary.safe.json",
+        "evidence": "usb-active-fix-20261020/full-clock-ble-1/summary.safe.json",
+        "failure_type": "GateError",
+        "harness_passed": false,
+        "production_firmware_acceptance": false,
+        "retained_as_production_fix": false,
+        "runtime_version_expected": "v1.18.0.1-usbclock-probe-72a74c78",
+        "sessions_completed": 0,
+        "sessions_requested": 3,
+        "source_modified": true
+      },
+      "hfclk_claim": {
+        "continuous_uptime": true,
+        "evidence": "usb-active-fix-20261020/irq-v2/clock-claimed/summary.safe.json",
+        "failure_type": "BleakGATTProtocolError",
+        "harness_passed": false,
+        "nonce_echoes_verified": 10,
+        "public_gatt_identity_verified": true,
+        "runtime_build": "T1000-USBIRQ-v2",
+        "test_source_sha256": "6499553cf06b3f13af00162407e6c9beb5656a21783d15cd85d783ed5fb0a4ad"
+      },
+      "mcu_ldo": {
+        "ble_evidence": "usb-active-fix-20261020/mcu-ldo-1/active-usb-ble/ble/summary.safe.json",
+        "evidence": "usb-active-fix-20261020/mcu-ldo-1/summary.safe.json",
+        "failure_type": "GateError",
+        "harness_passed": false,
+        "identity_matched": true,
+        "ldo_mode_verified": true,
+        "mcu_auto_dcdc_restored": true,
+        "restored_core_error_flags": 0,
+        "runtime_version": "v1.18.0.1-halo-keymind-cascade-dev-42f7df08 (Build: 20-Oct-2026)",
+        "sessions_completed": 0,
+        "sessions_requested": 3
+      },
+      "minimal_usb_irq": {
+        "diagnostic_only": true,
+        "interpretation": "Priority 2/6/2 did not restore echo reliability. Rates are upper bounds on counts including probe traffic, not valid interrupt-duration measurements.",
+        "interrupt_duration_validation_claimed": false,
+        "trials": [
+          {
+            "continuous_uptime": true,
+            "evidence": "usb-active-fix-20261020/priority2-corrected-before/summary.safe.json",
+            "failure_type": "TimeoutError",
+            "harness_passed": false,
+            "hci_disconnect_reason_counts": {
+              "0x22": 1,
+              "0x3E": 2
+            },
+            "hci_evidence": "usb-active-fix-20261020/priority2-corrected-before/hci-analysis.safe.json",
+            "irq_count_delta": 45,
+            "irq_rate_hz_upper_bound_with_probe_traffic": 0.865784,
+            "nonce_echoes_verified": 0,
+            "priority_readback_after": 2,
+            "priority_readback_before": 2,
+            "requested_priority": 2,
+            "runtime_build": "T1000-USBIRQ-v1"
+          },
+          {
+            "continuous_uptime": true,
+            "evidence": "usb-active-fix-20261020/priority6/summary.safe.json",
+            "failure_type": "TimeoutError",
+            "harness_passed": false,
+            "hci_disconnect_reason_counts": {
+              "0x08": 1,
+              "0x3E": 1
+            },
+            "hci_evidence": "usb-active-fix-20261020/priority6/hci-analysis.safe.json",
+            "irq_count_delta": 45,
+            "irq_rate_hz_upper_bound_with_probe_traffic": 0.743703,
+            "nonce_echoes_verified": 0,
+            "priority_readback_after": 6,
+            "priority_readback_before": 6,
+            "requested_priority": 6,
+            "runtime_build": "T1000-USBIRQ-v1"
+          },
+          {
+            "continuous_uptime": true,
+            "evidence": "usb-active-fix-20261020/priority2-after/summary.safe.json",
+            "failure_type": "TimeoutError",
+            "harness_passed": false,
+            "hci_disconnect_reason_counts": {},
+            "hci_evidence": "usb-active-fix-20261020/priority2-after/hci-analysis.safe.json",
+            "irq_count_delta": 45,
+            "irq_rate_hz_upper_bound_with_probe_traffic": 0.727932,
+            "nonce_echoes_verified": 0,
+            "priority_readback_after": 2,
+            "priority_readback_before": 2,
+            "requested_priority": 2,
+            "runtime_build": "T1000-USBIRQ-v1"
+          }
+        ]
+      },
+      "native_nordic_sdk": {
+        "active_suspend_active": {
+          "nordic-active-1": {
+            "build": "SDK171-T1000-v1",
+            "continuous_uptime": true,
+            "evidence": "usb-active-fix-20261020/nordic-active-1/summary.safe.json",
+            "failure_type": "BleakError",
+            "harness_passed": false,
+            "hci_disconnect_reason_counts": {
+              "0x08": 1
+            },
+            "hci_evidence": "usb-active-fix-20261020/nordic-active-1/hci-analysis.safe.json",
+            "nonce_echoes_verified": 0,
+            "peripheral_disconnect_reason_after": 0,
+            "sessions_completed": 0,
+            "sessions_requested": 1,
+            "target_advertising_event_blocks": 2,
+            "test_source_sha256": "ec0a9c4351a5e29b997a841f9fe3350c23764af0114dabde2a292c5b6dc6dd43",
+            "usb_policy_states_observed": [
+              "on"
+            ],
+            "usb_runtime_states_observed": [
+              "active"
+            ]
+          },
+          "nordic-active-after-suspend": {
+            "build": "SDK171-T1000-v1",
+            "continuous_uptime": true,
+            "evidence": "usb-active-fix-20261020/nordic-active-after-suspend/summary.safe.json",
+            "failure_type": "TimeoutError",
+            "harness_passed": false,
+            "hci_disconnect_reason_counts": {
+              "0x08": 3,
+              "0x3E": 4
+            },
+            "hci_evidence": "usb-active-fix-20261020/nordic-active-after-suspend/hci-analysis.safe.json",
+            "nonce_echoes_verified": 0,
+            "peripheral_disconnect_reason_after": 8,
+            "sessions_completed": 0,
+            "sessions_requested": 1,
+            "target_advertising_event_blocks": 8,
+            "test_source_sha256": "ec0a9c4351a5e29b997a841f9fe3350c23764af0114dabde2a292c5b6dc6dd43",
+            "usb_policy_states_observed": [
+              "on"
+            ],
+            "usb_runtime_states_observed": [
+              "active"
+            ]
+          },
+          "nordic-suspended-1": {
+            "build": "SDK171-T1000-v1",
+            "continuous_uptime": true,
+            "evidence": "usb-active-fix-20261020/nordic-suspended-1/summary.safe.json",
+            "harness_passed": true,
+            "hci_disconnect_reason_counts": {
+              "0x16": 3
+            },
+            "hci_evidence": "usb-active-fix-20261020/nordic-suspended-1/hci-analysis.safe.json",
+            "nonce_echoes_verified": 90,
+            "peripheral_disconnect_reason_after": 19,
+            "public_gatt_identity_verified": true,
+            "sessions_completed": 3,
+            "sessions_requested": 3,
+            "target_advertising_event_blocks": 9,
+            "test_source_sha256": "ec0a9c4351a5e29b997a841f9fe3350c23764af0114dabde2a292c5b6dc6dd43",
+            "usb_policy_states_observed": [
+              "auto"
+            ],
+            "usb_runtime_states_observed": [
+              "suspended"
+            ]
+          }
+        },
+        "interpretation": "The completed v11 same-image/policy comparison at actual 15 ms reproduced strict lifecycle FAIL/PASS/FAIL for active USB with serial queries, suspended USB and active USB without application serial I/O. All phases completed 90 echoes, but only suspension had three clean links. Earlier v9/v10 fast-interval 90-echo campaigns also retained initial-establishment/teardown failures. No reliable simultaneous-active-USB production fix or secure Companion qualification is demonstrated.",
+        "parameter_probes": {
+          "nordic-ch37-active": {
+            "advertising_channel_readback": 37,
+            "build": "SDK171-T1000-v2",
+            "continuous_uptime": true,
+            "evidence": "usb-active-fix-20261020/nordic-ch37-active/summary.safe.json",
+            "failure_type": "TimeoutError",
+            "harness_passed": false,
+            "hci_disconnect_reason_counts": {
+              "0x08": 6,
+              "0x3E": 3
+            },
+            "hci_evidence": "usb-active-fix-20261020/nordic-ch37-active/hci-analysis.safe.json",
+            "nonce_echoes_verified": 0,
+            "peripheral_disconnect_reason_after": 8,
+            "sessions_completed": 0,
+            "sessions_requested": 1,
+            "target_advertising_event_blocks": 11,
+            "test_source_sha256": "5fb340b0e3b6283718d550a94cf6908f58a6fbfac01669e34f188187eebc568d",
+            "usb_policy_states_observed": [
+              "on"
+            ],
+            "usb_runtime_states_observed": [
+              "active"
+            ]
+          },
+          "nordic-ch38-active": {
+            "advertising_channel_readback": 38,
+            "build": "SDK171-T1000-v2",
+            "continuous_uptime": true,
+            "evidence": "usb-active-fix-20261020/nordic-ch38-active/summary.safe.json",
+            "failure_type": "BleakError",
+            "harness_passed": false,
+            "hci_disconnect_reason_counts": {
+              "0x08": 1,
+              "0x3E": 1
+            },
+            "hci_evidence": "usb-active-fix-20261020/nordic-ch38-active/hci-analysis.safe.json",
+            "nonce_echoes_verified": 0,
+            "peripheral_disconnect_reason_after": 8,
+            "sessions_completed": 0,
+            "sessions_requested": 1,
+            "target_advertising_event_blocks": 3,
+            "test_source_sha256": "5fb340b0e3b6283718d550a94cf6908f58a6fbfac01669e34f188187eebc568d",
+            "usb_policy_states_observed": [
+              "on"
+            ],
+            "usb_runtime_states_observed": [
+              "active"
+            ]
+          },
+          "nordic-ch39-active": {
+            "advertising_channel_readback": 39,
+            "build": "SDK171-T1000-v2",
+            "continuous_uptime": true,
+            "evidence": "usb-active-fix-20261020/nordic-ch39-active/summary.safe.json",
+            "failure_type": "TimeoutError",
+            "harness_passed": false,
+            "hci_disconnect_reason_counts": {
+              "0x3E": 8
+            },
+            "hci_evidence": "usb-active-fix-20261020/nordic-ch39-active/hci-analysis.safe.json",
+            "nonce_echoes_verified": 0,
+            "peripheral_disconnect_reason_after": 8,
+            "sessions_completed": 0,
+            "sessions_requested": 1,
+            "target_advertising_event_blocks": 9,
+            "test_source_sha256": "5fb340b0e3b6283718d550a94cf6908f58a6fbfac01669e34f188187eebc568d",
+            "usb_policy_states_observed": [
+              "on"
+            ],
+            "usb_runtime_states_observed": [
+              "active"
+            ]
+          },
+          "nordic-fast-v9-all-repeat": {
+            "advertising_channel_readback": 0,
+            "build": "SDK171-T1000-v9",
+            "connected_link_parameter_readbacks": [
+              [
+                6,
+                6,
+                0,
+                400
+              ],
+              [
+                6,
+                6,
+                0,
+                400
+              ],
+              [
+                6,
+                6,
+                0,
+                400
+              ]
+            ],
+            "continuous_uptime": true,
+            "echo_rtt_ms_range": [
+              18.95,
+              835.024
+            ],
+            "echo_timeout_seconds": 10,
+            "evidence": "usb-active-fix-20261020/nordic-fast-v9-all-repeat/summary.safe.json",
+            "harness_passed": true,
+            "hci_capture_and_target_peer_binding_verified": true,
+            "hci_disconnect_reason_counts": {
+              "0x16": 1,
+              "0x22": 2,
+              "0x3E": 2
+            },
+            "hci_evidence": "usb-active-fix-20261020/report-stage-20261020/nordic-fast-v9-all-repeat/hci-analysis.safe.json",
+            "hci_initial_connection_intervals_ms": [
+              7.5,
+              7.5,
+              7.5,
+              7.5,
+              7.5
+            ],
+            "hci_successful_update_intervals_ms": [
+              7.5,
+              7.5,
+              7.5
+            ],
+            "idle_mode_readback": "sleep",
+            "interpretation": "Three 30-echo harness sessions completed with actual 7.5 ms intervals, but HCI records two LL Response Timeout disconnects 0x22, two failed-establishment attempts 0x3E and only one local-host close 0x16. Payload completion is not three clean-link passes. Independent lifecycle audit places the 0x22 completion after an explicit host Disconnect command; the capture does not establish payload-time link failure.",
+            "lfclk_source_readback": 1,
+            "link_policy_readback": "fast",
+            "nonce_echoes_verified": 90,
+            "peripheral_disconnect_reason_after": 19,
+            "power_mode_readback": "lowpwr",
+            "public_gatt_identity_verified": true,
+            "regulator_readback": "dcdc",
+            "sessions_completed": 3,
+            "sessions_requested": 3,
+            "test_source_sha256": "83be8cf20e5c50349125d19b1485187140de9e38e4068a956418d7cf93f6f70f",
+            "tx_dbm_accepted": 8,
+            "usb_concurrent_telemetry": {
+              "configured_before_and_after": true,
+              "connected_actual_7_5ms_query_groups": [
+                {
+                  "response_gap_range_seconds": [
+                    0.972,
+                    1.059
+                  ],
+                  "response_span_seconds": 42.548,
+                  "responses": 44
+                },
+                {
+                  "response_gap_range_seconds": [
+                    0.972,
+                    1.041
+                  ],
+                  "response_span_seconds": 39.653,
+                  "responses": 41
+                },
+                {
+                  "response_gap_range_seconds": [
+                    0.972,
+                    1.075
+                  ],
+                  "response_span_seconds": 40.539,
+                  "responses": 42
+                }
+              ],
+              "device_number_unchanged": true,
+              "link_query_responses": 167,
+              "link_replies_reporting_ble_connected": 127,
+              "link_replies_reporting_connected_actual_7_5ms": 127,
+              "rssi_query_responses": 167,
+              "rssi_replies_reporting_ble_connected": 128,
+              "scope": "Returned USB rssi/link command-response telemetry. Counts are query responses, not USB packets. Response-completion timestamps establish repeated overlap with reported active BLE; this is not Full Companion USB qualification.",
+              "total_telemetry_query_responses": 334,
+              "usb_runtime_state_samples": 158,
+              "usbd_lowpower_before_and_after": [
+                0,
+                0
+              ]
+            },
+            "usb_policy_states_observed": [
+              "on"
+            ],
+            "usb_runtime_states_observed": [
+              "active"
+            ]
+          },
+          "nordic-fast-v9-sleep": {
+            "advertising_channel_readback": 37,
+            "build": "SDK171-T1000-v9",
+            "connected_link_parameter_readbacks": [
+              [
+                6,
+                6,
+                0,
+                400
+              ]
+            ],
+            "continuous_uptime": true,
+            "echo_rtt_ms_range": [
+              25.751,
+              746.206
+            ],
+            "echo_timeout_seconds": 10,
+            "evidence": "usb-active-fix-20261020/nordic-fast-v9-sleep/summary.safe.json",
+            "harness_passed": true,
+            "hci_capture_and_target_peer_binding_verified": true,
+            "hci_disconnect_reason_counts": {
+              "0x16": 1
+            },
+            "hci_evidence": "usb-active-fix-20261020/nordic-fast-v9-sleep/hci-analysis.safe.json",
+            "hci_initial_connection_intervals_ms": [
+              75.0
+            ],
+            "hci_successful_update_intervals_ms": [
+              7.5
+            ],
+            "idle_mode_readback": "sleep",
+            "interpretation": "One 30-echo diagnostic session completed after actual interval changed from 75 ms to 7.5 ms; HCI closed locally with 0x16. Concurrent USB queries remained functional. This is a diagnostic candidate, not production acceptance.",
+            "lfclk_source_readback": 1,
+            "link_policy_readback": "fast",
+            "nonce_echoes_verified": 30,
+            "peripheral_disconnect_reason_after": 19,
+            "power_mode_readback": "lowpwr",
+            "public_gatt_identity_verified": true,
+            "regulator_readback": "dcdc",
+            "sessions_completed": 1,
+            "sessions_requested": 1,
+            "test_source_sha256": "83be8cf20e5c50349125d19b1485187140de9e38e4068a956418d7cf93f6f70f",
+            "tx_dbm_accepted": 8,
+            "usb_concurrent_telemetry": {
+              "configured_before_and_after": true,
+              "connected_actual_7_5ms_query_groups": [
+                {
+                  "response_gap_range_seconds": [
+                    0.972,
+                    1.074
+                  ],
+                  "response_span_seconds": 39.576,
+                  "responses": 41
+                }
+              ],
+              "device_number_unchanged": true,
+              "link_query_responses": 98,
+              "link_replies_reporting_ble_connected": 56,
+              "link_replies_reporting_connected_actual_7_5ms": 41,
+              "rssi_query_responses": 98,
+              "rssi_replies_reporting_ble_connected": 56,
+              "scope": "Returned USB rssi/link command-response telemetry. Counts are query responses, not USB packets. Response-completion timestamps establish repeated overlap with reported active BLE; this is not Full Companion USB qualification.",
+              "total_telemetry_query_responses": 196,
+              "usb_runtime_state_samples": 93,
+              "usbd_lowpower_before_and_after": [
+                0,
+                0
+              ]
+            },
+            "usb_policy_states_observed": [
+              "on"
+            ],
+            "usb_runtime_states_observed": [
+              "active"
+            ]
+          },
+          "nordic-fast-v9-slow-control": {
+            "advertising_channel_readback": 0,
+            "build": "SDK171-T1000-v9",
+            "continuous_uptime": true,
+            "counter_scope": "Controller connection-complete events and peripheral SDK counters are separate observations. Their differences are preserved without assigning a cause.",
+            "echo_timeout_seconds": 10,
+            "evidence": "usb-active-fix-20261020/nordic-fast-v9-slow-control/summary.safe.json",
+            "failure_type": "BleakError",
+            "harness_passed": false,
+            "hci_disconnect_reason_counts": {
+              "0x08": 1,
+              "0x3e": 4
+            },
+            "hci_evidence": "usb-active-fix-20261020/report-stage-20261020/nordic-fast-v9-slow-control/hci-analysis.safe.json",
+            "hci_initial_connection_intervals_ms": [
+              7.5,
+              7.5,
+              7.5,
+              7.5,
+              7.5
+            ],
+            "hci_successful_update_intervals_ms": [
+              75.0
+            ],
+            "idle_mode_readback": "sleep",
+            "interpretation": "Same v9 image observed a successful update from cached initial 7.5 ms to actual 75 ms before the service-discovery workflow failed, with zero echoes. HCI records four 0x3E and one 0x08, while the final peripheral readback still reports connected with SDK delta 1/0. No cause is assigned to that difference.",
+            "lfclk_source_readback": 1,
+            "link_policy_readback": "timeout",
+            "nonce_echoes_verified": 0,
+            "peripheral_ble_connected_after": true,
+            "peripheral_disconnect_reason_after": 19,
+            "power_mode_readback": "lowpwr",
+            "regulator_readback": "dcdc",
+            "sdk_connection_counter_delta": 1,
+            "sdk_disconnect_counter_delta": 0,
+            "sessions_completed": 0,
+            "sessions_requested": 1,
+            "strict_classifier_sha256": "f114ec60a11acd28d439d024db0df13f243dbecb5f018791b198a7e0309d6d11",
+            "strict_hci_lifecycle": {
+              "clean": false,
+              "disconnect_reasons": [
+                "0x3e",
+                "0x3e",
+                "0x3e",
+                "0x3e",
+                "0x08"
+              ],
+              "expected_sessions": 1,
+              "failed_establishments": 4,
+              "successful_connection_events": 5
+            },
+            "strict_lifecycle_passed": false,
+            "summary_reported_passed": false,
+            "test_source_sha256": "3295d7767b462f4de1c8965afc1fe542e451608638665d7f34eb01db2c68218b",
+            "tx_dbm_accepted": 8,
+            "usb_configured_before_and_after": true,
+            "usb_policy_states_observed": [
+              "on"
+            ],
+            "usb_runtime_state_samples": 28,
+            "usb_runtime_states_observed": [
+              "active"
+            ],
+            "usbd_lowpower_before_and_after": [
+              0,
+              0
+            ]
+          },
+          "nordic-fast-v9-tx0-recovery": {
+            "advertising_channel_readback": 0,
+            "build": "SDK171-T1000-v9",
+            "connected_link_parameter_readbacks": [
+              [
+                6,
+                6,
+                0,
+                400
+              ],
+              [
+                6,
+                6,
+                0,
+                400
+              ],
+              [
+                6,
+                6,
+                0,
+                400
+              ]
+            ],
+            "continuous_uptime": true,
+            "counter_scope": "Controller connection-complete events and peripheral SDK counters are separate observations. Their differences are preserved without assigning a cause.",
+            "data_exchange_completed": true,
+            "echo_rtt_ms_range": [
+              26.025,
+              1391.168
+            ],
+            "echo_timeout_seconds": 10,
+            "evidence": "usb-active-fix-20261020/nordic-fast-v9-tx0-recovery/summary.safe.json",
+            "harness_passed": true,
+            "hci_disconnect_reason_counts": {
+              "0x08": 1,
+              "0x16": 1,
+              "0x22": 2,
+              "0x3e": 8
+            },
+            "hci_evidence": "usb-active-fix-20261020/report-stage-20261020/nordic-fast-v9-tx0-recovery/hci-analysis.safe.json",
+            "hci_initial_connection_intervals_ms": [
+              75.0,
+              75.0,
+              75.0,
+              75.0,
+              75.0,
+              7.5,
+              7.5,
+              7.5,
+              7.5,
+              7.5,
+              7.5,
+              7.5
+            ],
+            "hci_successful_update_intervals_ms": [
+              7.5,
+              7.5,
+              7.5
+            ],
+            "idle_mode_readback": "sleep",
+            "interpretation": "At TX 0 dBm the legacy harness completed three sessions and 90 echoes, but strict lifecycle failed: eight initial-establishment failures, one 0x08, two 0x22 and one local-host close. HCI recorded twelve connection-complete events versus SDK connection/disconnect deltas 5/5.",
+            "lfclk_source_readback": 1,
+            "link_policy_readback": "fast",
+            "nonce_echoes_verified": 90,
+            "peripheral_ble_connected_after": false,
+            "peripheral_disconnect_reason_after": 19,
+            "power_mode_readback": "lowpwr",
+            "public_gatt_identity_verified": true,
+            "regulator_readback": "dcdc",
+            "sdk_connection_counter_delta": 5,
+            "sdk_disconnect_counter_delta": 5,
+            "sessions_completed": 3,
+            "sessions_requested": 3,
+            "strict_classifier_sha256": "f114ec60a11acd28d439d024db0df13f243dbecb5f018791b198a7e0309d6d11",
+            "strict_hci_lifecycle": {
+              "clean": false,
+              "disconnect_reasons": [
+                "0x08",
+                "0x3e",
+                "0x3e",
+                "0x3e",
+                "0x16",
+                "0x3e",
+                "0x22",
+                "0x3e",
+                "0x3e",
+                "0x3e",
+                "0x3e",
+                "0x22"
+              ],
+              "expected_sessions": 3,
+              "failed_establishments": 8,
+              "successful_connection_events": 12
+            },
+            "strict_lifecycle_evidence": "usb-active-fix-20261020/nordic-fast-v9-tx0-recovery/strict-lifecycle.safe.json",
+            "strict_lifecycle_passed": false,
+            "summary_pass_semantics": "Legacy session/payload harness without the later strict HCI lifecycle gate.",
+            "summary_reported_passed": true,
+            "test_source_sha256": "3295d7767b462f4de1c8965afc1fe542e451608638665d7f34eb01db2c68218b",
+            "tx_dbm_accepted": 0,
+            "usb_configured_before_and_after": true,
+            "usb_policy_states_observed": [
+              "on"
+            ],
+            "usb_runtime_state_samples": 184,
+            "usb_runtime_states_observed": [
+              "active"
+            ],
+            "usbd_lowpower_before_and_after": [
+              0,
+              0
+            ]
+          },
+          "nordic-final-baseline": {
+            "advertising_channel_readback": 37,
+            "build": "SDK171-T1000-v7",
+            "continuous_uptime": true,
+            "evidence": "usb-active-fix-20261020/nordic-final-baseline/summary.safe.json",
+            "failure_type": "TimeoutError",
+            "harness_passed": false,
+            "hci_disconnect_reason_counts": {
+              "0x3E": 1
+            },
+            "hci_evidence": "usb-active-fix-20261020/nordic-final-baseline/hci-analysis.safe.json",
+            "lfclk_source_readback": 1,
+            "link_policy_readback": "default",
+            "nonce_echoes_verified": 0,
+            "peripheral_disconnect_reason_after": 19,
+            "power_mode_readback": "lowpwr",
+            "regulator_readback": "ldo",
+            "sessions_completed": 0,
+            "sessions_requested": 1,
+            "target_advertising_event_blocks": 4,
+            "test_source_sha256": "8da3db41018bb3e00fb3ff4d39ef3fcdfa47d348dde525fc54afb11c88b461eb",
+            "tx_dbm_accepted": 0,
+            "usb_policy_states_observed": [
+              "on"
+            ],
+            "usb_runtime_states_observed": [
+              "active"
+            ]
+          },
+          "nordic-final-tx8-dcdc": {
+            "advertising_channel_readback": 37,
+            "build": "SDK171-T1000-v7",
+            "continuous_uptime": true,
+            "echo_rtt_ms_range": [
+              199.386,
+              3199.118
+            ],
+            "evidence": "usb-active-fix-20261020/nordic-final-tx8-dcdc/summary.safe.json",
+            "harness_passed": true,
+            "hci_disconnect_reason_counts": {
+              "0x16": 1
+            },
+            "hci_evidence": "usb-active-fix-20261020/nordic-final-tx8-dcdc/hci-analysis.safe.json",
+            "interpretation": "One 30-echo diagnostic session passed with HCI local-host disconnect 0x16; repeatability was not demonstrated.",
+            "lfclk_source_readback": 1,
+            "link_policy_readback": "default",
+            "nonce_echoes_verified": 30,
+            "peripheral_disconnect_reason_after": 19,
+            "power_mode_readback": "lowpwr",
+            "public_gatt_identity_verified": true,
+            "regulator_readback": "dcdc",
+            "sessions_completed": 1,
+            "sessions_requested": 1,
+            "target_advertising_event_blocks": 2,
+            "test_source_sha256": "8da3db41018bb3e00fb3ff4d39ef3fcdfa47d348dde525fc54afb11c88b461eb",
+            "tx_dbm_accepted": 8,
+            "usb_policy_states_observed": [
+              "on"
+            ],
+            "usb_runtime_states_observed": [
+              "active"
+            ]
+          },
+          "nordic-final-tx8-dcdc-repeat": {
+            "advertising_channel_readback": 37,
+            "build": "SDK171-T1000-v7",
+            "continuous_uptime": true,
+            "echo_rtt_ms_range": [
+              1022.542,
+              1350.563
+            ],
+            "evidence": "usb-active-fix-20261020/nordic-final-tx8-dcdc-repeat/summary.safe.json",
+            "failure_type": "TimeoutError",
+            "harness_passed": false,
+            "hci_disconnect_reason_counts": {},
+            "hci_evidence": "usb-active-fix-20261020/nordic-final-tx8-dcdc-repeat/hci-analysis.safe.json",
+            "interpretation": "Failed after two echoes; no HCI disconnect was captured, so link loss is not inferred from the harness timeout alone.",
+            "lfclk_source_readback": 1,
+            "link_policy_readback": "default",
+            "nonce_echoes_verified": 2,
+            "peripheral_disconnect_reason_after": 19,
+            "power_mode_readback": "lowpwr",
+            "public_gatt_identity_verified": true,
+            "regulator_readback": "dcdc",
+            "sessions_completed": 0,
+            "sessions_requested": 2,
+            "target_advertising_event_blocks": 2,
+            "test_source_sha256": "8da3db41018bb3e00fb3ff4d39ef3fcdfa47d348dde525fc54afb11c88b461eb",
+            "tx_dbm_accepted": 8,
+            "usb_policy_states_observed": [
+              "on"
+            ],
+            "usb_runtime_states_observed": [
+              "active"
+            ]
+          },
+          "nordic-final-tx8-dcdc-slow": {
+            "advertising_channel_readback": 37,
+            "build": "SDK171-T1000-v7",
+            "continuous_uptime": true,
+            "echo_rtt_ms_range": [
+              273.94,
+              2454.515
+            ],
+            "echo_timeout_seconds": 10,
+            "evidence": "usb-active-fix-20261020/nordic-final-tx8-dcdc-slow/summary.safe.json",
+            "failure_type": "TimeoutError",
+            "harness_passed": false,
+            "hci_disconnect_reason_counts": {
+              "0x08": 1
+            },
+            "hci_evidence": "usb-active-fix-20261020/nordic-final-tx8-dcdc-slow/hci-analysis.safe.json",
+            "interpretation": "Failed after nine echoes despite a ten-second echo deadline; HCI and peripheral both recorded connection timeout 0x08.",
+            "lfclk_source_readback": 1,
+            "link_policy_readback": "default",
+            "nonce_echoes_verified": 9,
+            "peripheral_disconnect_reason_after": 8,
+            "power_mode_readback": "lowpwr",
+            "public_gatt_identity_verified": true,
+            "regulator_readback": "dcdc",
+            "sessions_completed": 0,
+            "sessions_requested": 1,
+            "target_advertising_event_blocks": 2,
+            "test_source_sha256": "6a7c4b8af71462afa2cfba5fcff9dbb6aad620f6a19abb185f6146c75fa71330",
+            "tx_dbm_accepted": 8,
+            "usb_policy_states_observed": [
+              "on"
+            ],
+            "usb_runtime_states_observed": [
+              "active"
+            ]
+          },
+          "nordic-final-tx8-ldo": {
+            "advertising_channel_readback": 37,
+            "build": "SDK171-T1000-v7",
+            "continuous_uptime": true,
+            "evidence": "usb-active-fix-20261020/nordic-final-tx8-ldo/summary.safe.json",
+            "failure_type": "TimeoutError",
+            "harness_passed": false,
+            "hci_disconnect_reason_counts": {},
+            "hci_evidence": "usb-active-fix-20261020/nordic-final-tx8-ldo/hci-analysis.safe.json",
+            "lfclk_source_readback": 1,
+            "link_policy_readback": "default",
+            "nonce_echoes_verified": 0,
+            "peripheral_disconnect_reason_after": 19,
+            "power_mode_readback": "lowpwr",
+            "regulator_readback": "ldo",
+            "sessions_completed": 0,
+            "sessions_requested": 1,
+            "target_advertising_event_blocks": 2,
+            "test_source_sha256": "8da3db41018bb3e00fb3ff4d39ef3fcdfa47d348dde525fc54afb11c88b461eb",
+            "tx_dbm_accepted": 8,
+            "usb_policy_states_observed": [
+              "on"
+            ],
+            "usb_runtime_states_observed": [
+              "active"
+            ]
+          },
+          "nordic-gatt-v10-quiet-fast": {
+            "advertising_channel_readback": 0,
+            "ble_disconnected_after": true,
+            "build": "SDK171-T1000-v10",
+            "connected_link_parameter_readbacks": [
+              [
+                6,
+                6,
+                0,
+                400
+              ],
+              [
+                6,
+                6,
+                0,
+                400
+              ],
+              [
+                6,
+                6,
+                0,
+                400
+              ]
+            ],
+            "continuous_uptime": true,
+            "counter_scope": "Controller connection-complete events and peripheral SDK counters are separate observations. Their differences are preserved without assigning a cause.",
+            "data_exchange_passed": true,
+            "echo_rtt_ms_range": [
+              18.1,
+              703.337
+            ],
+            "echo_timeout_seconds": 10,
+            "evidence": "usb-active-fix-20261020/nordic-gatt-v10-quiet-fast/summary.safe.json",
+            "gatt_initiation_enabled": false,
+            "gatt_initiation_mode_readback": "quiet",
+            "harness_passed": false,
+            "hci_disconnect_reason_counts": {
+              "0x16": 1,
+              "0x22": 2,
+              "0x3e": 5
+            },
+            "hci_evidence": "usb-active-fix-20261020/report-stage-20261020/nordic-gatt-v10-quiet-fast/hci-analysis.safe.json",
+            "hci_initial_connection_intervals_ms": [
+              7.5,
+              7.5,
+              7.5,
+              7.5,
+              7.5,
+              7.5,
+              7.5,
+              7.5
+            ],
+            "hci_successful_update_intervals_ms": [
+              7.5,
+              7.5,
+              7.5
+            ],
+            "idle_mode_readback": "sleep",
+            "interpretation": "Quiet GATT initiation completed three payload sessions and 90 echoes, but the new strict lifecycle gate correctly kept passed=false: five failed initial establishments, two 0x22 and one local-host close. HCI recorded eight connection-complete events versus SDK deltas 3/3. This does not demonstrate a reliable fix.",
+            "lfclk_source_readback": 1,
+            "link_policy_readback": "fast",
+            "nonce_echoes_verified": 90,
+            "peripheral_ble_connected_after": false,
+            "peripheral_disconnect_reason_after": 19,
+            "power_mode_readback": "lowpwr",
+            "public_gatt_identity_verified": true,
+            "regulator_readback": "dcdc",
+            "sdk_connection_counter_delta": 3,
+            "sdk_disconnect_counter_delta": 3,
+            "sessions_completed": 3,
+            "sessions_requested": 3,
+            "strict_classifier_sha256": "f114ec60a11acd28d439d024db0df13f243dbecb5f018791b198a7e0309d6d11",
+            "strict_hci_lifecycle": {
+              "clean": false,
+              "disconnect_reasons": [
+                "0x3e",
+                "0x3e",
+                "0x3e",
+                "0x3e",
+                "0x3e",
+                "0x16",
+                "0x22",
+                "0x22"
+              ],
+              "expected_sessions": 3,
+              "failed_establishments": 5,
+              "successful_connection_events": 8
+            },
+            "strict_lifecycle_passed": false,
+            "summary_reported_passed": false,
+            "test_source_sha256": "3475015df74fd6eda803786c6471d90044dd25dff78ff310698d6f9132cd652d",
+            "tx_dbm_accepted": 8,
+            "usb_configured_before_and_after": true,
+            "usb_policy_states_observed": [
+              "on"
+            ],
+            "usb_runtime_state_samples": 135,
+            "usb_runtime_states_observed": [
+              "active"
+            ],
+            "usbd_lowpower_before_and_after": [
+              0,
+              0
+            ]
+          },
+          "nordic-idle-v8-busy": {
+            "advertising_channel_readback": 37,
+            "build": "SDK171-T1000-v8",
+            "continuous_uptime": true,
+            "echo_rtt_ms_range": [
+              273.715,
+              4024.253
+            ],
+            "echo_timeout_seconds": 10,
+            "evidence": "usb-active-fix-20261020/nordic-idle-v8-busy/summary.safe.json",
+            "harness_passed": true,
+            "hci_disconnect_reason_counts": {
+              "0x16": 1
+            },
+            "hci_evidence": "usb-active-fix-20261020/nordic-idle-v8-busy/hci-analysis.safe.json",
+            "idle_mode_readback": "busy",
+            "interpretation": "One 30-echo diagnostic session passed with HCI local-host disconnect 0x16; a busy-idle repeat failed, so this is not a reliable fix.",
+            "lfclk_source_readback": 1,
+            "link_policy_readback": "default",
+            "nonce_echoes_verified": 30,
+            "peripheral_disconnect_reason_after": 19,
+            "power_mode_readback": "lowpwr",
+            "public_gatt_identity_verified": true,
+            "regulator_readback": "dcdc",
+            "sessions_completed": 1,
+            "sessions_requested": 1,
+            "target_advertising_event_blocks": 2,
+            "test_source_sha256": "1b39adc696bc38e6cd9681154da21e46d4927ed10153de0bdec97e6312ad2b88",
+            "tx_dbm_accepted": 8,
+            "usb_policy_states_observed": [
+              "on"
+            ],
+            "usb_runtime_states_observed": [
+              "active"
+            ]
+          },
+          "nordic-idle-v8-busy-repeat": {
+            "advertising_channel_readback": 37,
+            "build": "SDK171-T1000-v8",
+            "continuous_uptime": true,
+            "echo_rtt_ms_range": [
+              273.579,
+              2073.409
+            ],
+            "echo_timeout_seconds": 10,
+            "evidence": "usb-active-fix-20261020/nordic-idle-v8-busy-repeat/summary.safe.json",
+            "failure_type": "TimeoutError",
+            "harness_passed": false,
+            "hci_disconnect_reason_counts": {
+              "0x08": 1
+            },
+            "hci_evidence": "usb-active-fix-20261020/nordic-idle-v8-busy-repeat/hci-analysis.safe.json",
+            "idle_mode_readback": "busy",
+            "interpretation": "Failed after twelve echoes despite a ten-second echo deadline; HCI and peripheral both recorded connection timeout 0x08.",
+            "lfclk_source_readback": 1,
+            "link_policy_readback": "default",
+            "nonce_echoes_verified": 12,
+            "peripheral_disconnect_reason_after": 8,
+            "power_mode_readback": "lowpwr",
+            "public_gatt_identity_verified": true,
+            "regulator_readback": "dcdc",
+            "sessions_completed": 0,
+            "sessions_requested": 1,
+            "target_advertising_event_blocks": 3,
+            "test_source_sha256": "1b39adc696bc38e6cd9681154da21e46d4927ed10153de0bdec97e6312ad2b88",
+            "tx_dbm_accepted": 8,
+            "usb_policy_states_observed": [
+              "on"
+            ],
+            "usb_runtime_states_observed": [
+              "active"
+            ]
+          },
+          "nordic-idle-v8-sleep": {
+            "advertising_channel_readback": 37,
+            "build": "SDK171-T1000-v8",
+            "continuous_uptime": true,
+            "echo_timeout_seconds": 10,
+            "evidence": "usb-active-fix-20261020/nordic-idle-v8-sleep/summary.safe.json",
+            "failure_type": "BleakError",
+            "harness_passed": false,
+            "hci_disconnect_reason_counts": {
+              "0x08": 1
+            },
+            "hci_evidence": "usb-active-fix-20261020/nordic-idle-v8-sleep/hci-analysis.safe.json",
+            "idle_mode_readback": "sleep",
+            "interpretation": "Sleep-idle diagnostic completed zero echoes; the host observed connection timeout 0x08 before a passing session.",
+            "lfclk_source_readback": 1,
+            "link_policy_readback": "default",
+            "nonce_echoes_verified": 0,
+            "peripheral_disconnect_reason_after": 0,
+            "power_mode_readback": "lowpwr",
+            "regulator_readback": "dcdc",
+            "sessions_completed": 0,
+            "sessions_requested": 1,
+            "target_advertising_event_blocks": 3,
+            "test_source_sha256": "1b39adc696bc38e6cd9681154da21e46d4927ed10153de0bdec97e6312ad2b88",
+            "tx_dbm_accepted": 8,
+            "usb_policy_states_observed": [
+              "on"
+            ],
+            "usb_runtime_states_observed": [
+              "active"
+            ]
+          },
+          "nordic-link-default-after-phy": {
+            "advertising_channel_readback": 37,
+            "build": "SDK171-T1000-v6",
+            "continuous_uptime": true,
+            "evidence": "usb-active-fix-20261020/nordic-link-default-after-phy/summary.safe.json",
+            "failure_type": "TimeoutError",
+            "harness_passed": false,
+            "hci_disconnect_reason_counts": {
+              "0x3E": 2
+            },
+            "hci_evidence": "usb-active-fix-20261020/nordic-link-default-after-phy/hci-analysis.safe.json",
+            "lfclk_source_readback": 1,
+            "link_policy_readback": "default",
+            "nonce_echoes_verified": 0,
+            "peripheral_disconnect_reason_after": 19,
+            "power_mode_readback": "lowpwr",
+            "sessions_completed": 0,
+            "sessions_requested": 1,
+            "target_advertising_event_blocks": 4,
+            "test_source_sha256": "ad8a1379375aa50ccdc50ab7a8055d168d2f51940222d8fdd3035d660c4e5172",
+            "usb_policy_states_observed": [
+              "on"
+            ],
+            "usb_runtime_states_observed": [
+              "active"
+            ]
+          },
+          "nordic-link-default-long-connect": {
+            "advertising_channel_readback": 37,
+            "build": "SDK171-T1000-v6",
+            "continuous_uptime": true,
+            "echo_rtt_ms_range": [
+              127.409,
+              1999.11
+            ],
+            "evidence": "usb-active-fix-20261020/nordic-link-default-long-connect/summary.safe.json",
+            "harness_passed": true,
+            "hci_disconnect_reason_counts": {
+              "0x22": 1,
+              "0x3E": 2
+            },
+            "hci_evidence": "usb-active-fix-20261020/nordic-link-default-long-connect/hci-analysis.safe.json",
+            "interpretation": "Thirty echoes completed and harness reported passed, but matching HCI recorded LL Response Timeout 0x22; not a clean-link or reliable-fix acceptance. Independent lifecycle audit places the 0x22 completion after an explicit host Disconnect command; the capture does not establish payload-time link failure.",
+            "lfclk_source_readback": 1,
+            "link_policy_readback": "default",
+            "nonce_echoes_verified": 30,
+            "peripheral_disconnect_reason_after": 19,
+            "power_mode_readback": "lowpwr",
+            "public_gatt_identity_verified": true,
+            "sessions_completed": 1,
+            "sessions_requested": 1,
+            "target_advertising_event_blocks": 5,
+            "test_source_sha256": "8da3db41018bb3e00fb3ff4d39ef3fcdfa47d348dde525fc54afb11c88b461eb",
+            "usb_policy_states_observed": [
+              "on"
+            ],
+            "usb_runtime_states_observed": [
+              "active"
+            ]
+          },
+          "nordic-link-phy1m-ch37": {
+            "advertising_channel_readback": 37,
+            "build": "SDK171-T1000-v6",
+            "continuous_uptime": true,
+            "evidence": "usb-active-fix-20261020/nordic-link-phy1m-ch37/summary.safe.json",
+            "harness_passed": true,
+            "hci_disconnect_reason_counts": {
+              "0x22": 1
+            },
+            "hci_evidence": "usb-active-fix-20261020/nordic-link-phy1m-ch37/hci-analysis.safe.json",
+            "interpretation": "Thirty echoes completed and harness reported passed, but matching HCI recorded LL Response Timeout 0x22; not a clean-link or reliable-fix acceptance. Independent lifecycle audit places the 0x22 completion after an explicit host Disconnect command; the capture does not establish payload-time link failure.",
+            "lfclk_source_readback": 1,
+            "link_policy_readback": "phy1m",
+            "nonce_echoes_verified": 30,
+            "peripheral_disconnect_reason_after": 19,
+            "power_mode_readback": "lowpwr",
+            "public_gatt_identity_verified": true,
+            "sessions_completed": 1,
+            "sessions_requested": 1,
+            "target_advertising_event_blocks": 2,
+            "test_source_sha256": "ad8a1379375aa50ccdc50ab7a8055d168d2f51940222d8fdd3035d660c4e5172",
+            "usb_policy_states_observed": [
+              "on"
+            ],
+            "usb_runtime_states_observed": [
+              "active"
+            ]
+          },
+          "nordic-link-phy1m-repeat3": {
+            "advertising_channel_readback": 37,
+            "build": "SDK171-T1000-v6",
+            "continuous_uptime": true,
+            "evidence": "usb-active-fix-20261020/nordic-link-phy1m-repeat3/summary.safe.json",
+            "failure_type": "OSError",
+            "harness_passed": false,
+            "hci_disconnect_reason_counts": {
+              "0x16": 1
+            },
+            "hci_evidence": "usb-active-fix-20261020/nordic-link-phy1m-repeat3/hci-analysis.safe.json",
+            "lfclk_source_readback": 1,
+            "link_policy_readback": "phy1m",
+            "nonce_echoes_verified": 0,
+            "peripheral_disconnect_reason_after": 19,
+            "power_mode_readback": "lowpwr",
+            "sessions_completed": 0,
+            "sessions_requested": 3,
+            "target_advertising_event_blocks": 2,
+            "test_source_sha256": "ad8a1379375aa50ccdc50ab7a8055d168d2f51940222d8fdd3035d660c4e5172",
+            "usb_policy_states_observed": [
+              "on"
+            ],
+            "usb_runtime_states_observed": [
+              "active"
+            ]
+          },
+          "nordic-link-shortpdu-ch37": {
+            "advertising_channel_readback": 37,
+            "build": "SDK171-T1000-v6",
+            "continuous_uptime": true,
+            "evidence": "usb-active-fix-20261020/nordic-link-shortpdu-ch37/summary.safe.json",
+            "failure_type": "OSError",
+            "harness_passed": false,
+            "hci_disconnect_reason_counts": {},
+            "hci_evidence": "usb-active-fix-20261020/nordic-link-shortpdu-ch37/hci-analysis.safe.json",
+            "lfclk_source_readback": 1,
+            "link_policy_readback": "shortpdu",
+            "nonce_echoes_verified": 0,
+            "peripheral_disconnect_reason_after": 19,
+            "power_mode_readback": "lowpwr",
+            "sessions_completed": 0,
+            "sessions_requested": 1,
+            "target_advertising_event_blocks": 3,
+            "test_source_sha256": "ad8a1379375aa50ccdc50ab7a8055d168d2f51940222d8fdd3035d660c4e5172",
+            "usb_policy_states_observed": [
+              "on"
+            ],
+            "usb_runtime_states_observed": [
+              "active"
+            ]
+          },
+          "nordic-link-timeout": {
+            "advertising_channel_readback": 0,
+            "build": "SDK171-T1000-v6",
+            "continuous_uptime": true,
+            "evidence": "usb-active-fix-20261020/nordic-link-timeout/summary.safe.json",
+            "failure_type": "TimeoutError",
+            "harness_passed": false,
+            "hci_disconnect_reason_counts": {},
+            "hci_evidence": "usb-active-fix-20261020/nordic-link-timeout/hci-analysis.safe.json",
+            "lfclk_source_readback": 1,
+            "link_policy_readback": "timeout",
+            "nonce_echoes_verified": 0,
+            "peripheral_disconnect_reason_after": 0,
+            "power_mode_readback": "lowpwr",
+            "sessions_completed": 0,
+            "sessions_requested": 1,
+            "target_advertising_event_blocks": 1,
+            "test_source_sha256": "ad8a1379375aa50ccdc50ab7a8055d168d2f51940222d8fdd3035d660c4e5172",
+            "usb_policy_states_observed": [
+              "on"
+            ],
+            "usb_runtime_states_observed": [
+              "active"
+            ]
+          },
+          "nordic-link-timeout-ch37": {
+            "advertising_channel_readback": 37,
+            "build": "SDK171-T1000-v6",
+            "continuous_uptime": true,
+            "evidence": "usb-active-fix-20261020/nordic-link-timeout-ch37/summary.safe.json",
+            "failure_type": "BleakError",
+            "harness_passed": false,
+            "hci_disconnect_reason_counts": {
+              "0x08": 3,
+              "0x3E": 2
+            },
+            "hci_evidence": "usb-active-fix-20261020/nordic-link-timeout-ch37/hci-analysis.safe.json",
+            "lfclk_source_readback": 1,
+            "link_policy_readback": "timeout",
+            "nonce_echoes_verified": 0,
+            "peripheral_disconnect_reason_after": 8,
+            "power_mode_readback": "lowpwr",
+            "sessions_completed": 0,
+            "sessions_requested": 1,
+            "target_advertising_event_blocks": 6,
+            "test_source_sha256": "ad8a1379375aa50ccdc50ab7a8055d168d2f51940222d8fdd3035d660c4e5172",
+            "usb_policy_states_observed": [
+              "on"
+            ],
+            "usb_runtime_states_observed": [
+              "active"
+            ]
+          },
+          "nordic-phone-v11-active": {
+            "application_usb_serial_probes_during_ble": true,
+            "ble_disconnected_after": true,
+            "build": "SDK171-T1000-v11",
+            "connected_link_parameter_readbacks": [
+              [
+                12,
+                12,
+                0,
+                400
+              ],
+              [
+                12,
+                12,
+                0,
+                400
+              ],
+              [
+                12,
+                12,
+                0,
+                400
+              ]
+            ],
+            "continuous_uptime": true,
+            "data_exchange_passed": true,
+            "echo_rtt_ms": {
+              "maximum": 1144.149,
+              "median": 452.834,
+              "minimum": 60.423
+            },
+            "echo_timeout_seconds": 10,
+            "evidence": "usb-active-fix-20261020/nordic-phone-v11-active/summary.safe.json",
+            "exact_archived_harness_digest_verified": true,
+            "harness_passed": false,
+            "hci_capture_and_target_peer_binding_verified": true,
+            "hci_connection_observations": [
+              {
+                "current_interval_ms": 15.0,
+                "disconnect_reason": "0x16",
+                "initial_interval_ms": 7.5,
+                "nonce_notifications": 30,
+                "updates_ms": [
+                  15.0
+                ]
+              },
+              {
+                "current_interval_ms": 15.0,
+                "disconnect_reason": "0x3E",
+                "initial_interval_ms": 15.0,
+                "nonce_notifications": 0,
+                "updates_ms": []
+              },
+              {
+                "current_interval_ms": 15.0,
+                "disconnect_reason": "0x22",
+                "initial_interval_ms": 15.0,
+                "nonce_notifications": 30,
+                "updates_ms": [
+                  15.0
+                ]
+              },
+              {
+                "current_interval_ms": 15.0,
+                "disconnect_reason": "0x3E",
+                "initial_interval_ms": 15.0,
+                "nonce_notifications": 0,
+                "updates_ms": []
+              },
+              {
+                "current_interval_ms": 15.0,
+                "disconnect_reason": "0x22",
+                "initial_interval_ms": 15.0,
+                "nonce_notifications": 30,
+                "updates_ms": [
+                  15.0
+                ]
+              }
+            ],
+            "hci_disconnect_reason_counts": {
+              "0x16": 1,
+              "0x22": 2,
+              "0x3e": 2
+            },
+            "hci_evidence": "usb-active-fix-20261020/report-stage-20261020/nordic-phone-v11-active/hci-analysis.safe.json",
+            "hci_initial_connection_intervals_ms": [
+              7.5,
+              15.0,
+              15.0,
+              15.0,
+              15.0
+            ],
+            "hci_nonce_notifications_at_actual_15ms": 90,
+            "hci_successful_update_intervals_ms": [
+              15.0,
+              15.0,
+              15.0
+            ],
+            "idle_mode_readback_after": "sleep",
+            "interpretation": "Active USB with concurrent serial telemetry completed 90 echoes at actual 15 ms, but strict lifecycle failed: two initial-establishment failures, two 0x22 and one local-host close; median RTT 452.834 ms.",
+            "nonce_echoes_verified": 90,
+            "peripheral_ble_connected_after": false,
+            "peripheral_disconnect_reason_after": 19,
+            "public_gatt_identity_verified": true,
+            "regulator_readback_after": "dcdc",
+            "sdk_connection_counter_delta": 3,
+            "sdk_disconnect_counter_delta": 3,
+            "sessions_completed": 3,
+            "sessions_requested": 3,
+            "strict_classifier_sha256": "f114ec60a11acd28d439d024db0df13f243dbecb5f018791b198a7e0309d6d11",
+            "strict_hci_lifecycle": {
+              "clean": false,
+              "disconnect_reasons": [
+                "0x16",
+                "0x3e",
+                "0x22",
+                "0x3e",
+                "0x22"
+              ],
+              "expected_sessions": 3,
+              "failed_establishments": 2,
+              "successful_connection_events": 5
+            },
+            "strict_lifecycle_passed": false,
+            "test_source_sha256": "19703941d5b4584ad1386fb0718370953303b45db5e9cf93a97db2a809d81587",
+            "tx_dbm_readback_after": 8,
+            "usb_configured_before_and_after": true,
+            "usb_link_replies_reporting_connected_actual_15ms": 154,
+            "usb_policy_states_observed": [
+              "on"
+            ],
+            "usb_runtime_state_samples": 163,
+            "usb_runtime_states_observed": [
+              "active"
+            ],
+            "usb_telemetry_link_replies": 172,
+            "usb_telemetry_rssi_replies": 172
+          },
+          "nordic-phone-v11-active-idle": {
+            "application_usb_serial_probes_during_ble": false,
+            "ble_disconnected_after": true,
+            "build": "SDK171-T1000-v11",
+            "continuous_uptime": true,
+            "data_exchange_passed": true,
+            "echo_rtt_ms": {
+              "maximum": 2102.945,
+              "median": 393.998,
+              "minimum": 76.559
+            },
+            "echo_timeout_seconds": 3,
+            "evidence": "usb-active-fix-20261020/nordic-phone-v11-active-idle/summary.safe.json",
+            "exact_archived_harness_digest_verified": true,
+            "harness_passed": false,
+            "hci_capture_and_target_peer_binding_verified": true,
+            "hci_connection_observations": [
+              {
+                "current_interval_ms": 15.0,
+                "disconnect_reason": "0x3E",
+                "initial_interval_ms": 15.0,
+                "nonce_notifications": 0,
+                "updates_ms": []
+              },
+              {
+                "current_interval_ms": 15.0,
+                "disconnect_reason": "0x3E",
+                "initial_interval_ms": 15.0,
+                "nonce_notifications": 0,
+                "updates_ms": []
+              },
+              {
+                "current_interval_ms": 15.0,
+                "disconnect_reason": "0x22",
+                "initial_interval_ms": 15.0,
+                "nonce_notifications": 30,
+                "updates_ms": [
+                  15.0
+                ]
+              },
+              {
+                "current_interval_ms": 15.0,
+                "disconnect_reason": "0x16",
+                "initial_interval_ms": 15.0,
+                "nonce_notifications": 30,
+                "updates_ms": [
+                  15.0
+                ]
+              },
+              {
+                "current_interval_ms": 15.0,
+                "disconnect_reason": "0x16",
+                "initial_interval_ms": 15.0,
+                "nonce_notifications": 30,
+                "updates_ms": [
+                  15.0
+                ]
+              }
+            ],
+            "hci_disconnect_reason_counts": {
+              "0x16": 2,
+              "0x22": 1,
+              "0x3e": 2
+            },
+            "hci_evidence": "usb-active-fix-20261020/report-stage-20261020/nordic-phone-v11-active-idle/hci-analysis.safe.json",
+            "hci_initial_connection_intervals_ms": [
+              15.0,
+              15.0,
+              15.0,
+              15.0,
+              15.0
+            ],
+            "hci_nonce_notifications_at_actual_15ms": 90,
+            "hci_successful_update_intervals_ms": [
+              15.0,
+              15.0,
+              15.0
+            ],
+            "idle_mode_readback_after": "sleep",
+            "interpretation": "Same phone-interval policy with no application USB serial I/O during BLE still completed 90 echoes but failed strict lifecycle: two initial-establishment failures, one 0x22 and two local-host closes. This does not imply an electrically quiet USB bus.",
+            "no_application_usb_serial_io_during_ble_verified_from_exact_harness": true,
+            "nonce_echoes_verified": 90,
+            "peripheral_ble_connected_after": false,
+            "peripheral_disconnect_reason_after": 19,
+            "public_gatt_identity_verified": true,
+            "regulator_readback_after": "dcdc",
+            "sdk_connection_counter_delta": 3,
+            "sdk_disconnect_counter_delta": 3,
+            "sessions_completed": 3,
+            "sessions_requested": 3,
+            "strict_classifier_sha256": "f114ec60a11acd28d439d024db0df13f243dbecb5f018791b198a7e0309d6d11",
+            "strict_hci_lifecycle": {
+              "clean": false,
+              "disconnect_reasons": [
+                "0x3e",
+                "0x3e",
+                "0x22",
+                "0x16",
+                "0x16"
+              ],
+              "expected_sessions": 3,
+              "failed_establishments": 2,
+              "successful_connection_events": 5
+            },
+            "strict_lifecycle_passed": false,
+            "test_source_sha256": "19703941d5b4584ad1386fb0718370953303b45db5e9cf93a97db2a809d81587",
+            "tx_dbm_readback_after": 8,
+            "usb_configured_before_and_after": true,
+            "usb_link_replies_reporting_connected_actual_15ms": 0,
+            "usb_policy_states_observed": [
+              "on"
+            ],
+            "usb_runtime_state_samples": 244,
+            "usb_runtime_states_observed": [
+              "active"
+            ],
+            "usb_telemetry_link_replies": 0,
+            "usb_telemetry_rssi_replies": 0
+          },
+          "nordic-phone-v11-suspended": {
+            "application_usb_serial_probes_during_ble": false,
+            "ble_disconnected_after": true,
+            "build": "SDK171-T1000-v11",
+            "continuous_uptime": true,
+            "data_exchange_passed": true,
+            "echo_rtt_ms": {
+              "maximum": 48.692,
+              "median": 33.671,
+              "minimum": 28.247
+            },
+            "echo_timeout_seconds": 3,
+            "evidence": "usb-active-fix-20261020/nordic-phone-v11-suspended/summary.safe.json",
+            "exact_archived_harness_digest_verified": true,
+            "harness_passed": true,
+            "hci_capture_and_target_peer_binding_verified": true,
+            "hci_connection_observations": [
+              {
+                "current_interval_ms": 15.0,
+                "disconnect_reason": "0x16",
+                "initial_interval_ms": 15.0,
+                "nonce_notifications": 30,
+                "updates_ms": [
+                  15.0
+                ]
+              },
+              {
+                "current_interval_ms": 15.0,
+                "disconnect_reason": "0x16",
+                "initial_interval_ms": 15.0,
+                "nonce_notifications": 30,
+                "updates_ms": [
+                  15.0
+                ]
+              },
+              {
+                "current_interval_ms": 15.0,
+                "disconnect_reason": "0x16",
+                "initial_interval_ms": 15.0,
+                "nonce_notifications": 30,
+                "updates_ms": [
+                  15.0
+                ]
+              }
+            ],
+            "hci_disconnect_reason_counts": {
+              "0x16": 3
+            },
+            "hci_evidence": "usb-active-fix-20261020/report-stage-20261020/nordic-phone-v11-suspended/hci-analysis.safe.json",
+            "hci_initial_connection_intervals_ms": [
+              15.0,
+              15.0,
+              15.0
+            ],
+            "hci_nonce_notifications_at_actual_15ms": 90,
+            "hci_successful_update_intervals_ms": [
+              15.0,
+              15.0,
+              15.0
+            ],
+            "idle_mode_readback_after": "sleep",
+            "interpretation": "With the same runtime build and phone-interval configuration, observed USB runtime suspension produced three clean diagnostic links and 90 echoes, with median RTT 33.671 ms. This adds no secure Companion qualification or simultaneous-active-USB pass.",
+            "nonce_echoes_verified": 90,
+            "original_power_policy_restored": true,
+            "peripheral_ble_connected_after": false,
+            "peripheral_disconnect_reason_after": 19,
+            "public_gatt_identity_verified": true,
+            "regulator_readback_after": "dcdc",
+            "sdk_connection_counter_delta": 3,
+            "sdk_disconnect_counter_delta": 3,
+            "sessions_completed": 3,
+            "sessions_requested": 3,
+            "strict_classifier_sha256": "f114ec60a11acd28d439d024db0df13f243dbecb5f018791b198a7e0309d6d11",
+            "strict_hci_lifecycle": {
+              "clean": true,
+              "disconnect_reasons": [
+                "0x16",
+                "0x16",
+                "0x16"
+              ],
+              "expected_sessions": 3,
+              "failed_establishments": 0,
+              "successful_connection_events": 3
+            },
+            "strict_lifecycle_passed": true,
+            "test_source_sha256": "19703941d5b4584ad1386fb0718370953303b45db5e9cf93a97db2a809d81587",
+            "tx_dbm_readback_after": 8,
+            "usb_configured_before_and_after": true,
+            "usb_link_replies_reporting_connected_actual_15ms": 0,
+            "usb_policy_states_observed": [
+              "auto"
+            ],
+            "usb_runtime_state_samples": 108,
+            "usb_runtime_states_observed": [
+              "suspended"
+            ],
+            "usb_telemetry_link_replies": 0,
+            "usb_telemetry_rssi_replies": 0
+          },
+          "nordic-power-constlat": {
+            "advertising_channel_readback": 0,
+            "build": "SDK171-T1000-v3",
+            "continuous_uptime": true,
+            "evidence": "usb-active-fix-20261020/nordic-power-constlat/summary.safe.json",
+            "failure_type": "BleakError",
+            "harness_passed": false,
+            "hci_disconnect_reason_counts": {
+              "0x08": 1
+            },
+            "hci_evidence": "usb-active-fix-20261020/nordic-power-constlat/hci-analysis.safe.json",
+            "nonce_echoes_verified": 0,
+            "peripheral_disconnect_reason_after": 8,
+            "power_mode_readback": "constlat",
+            "sessions_completed": 0,
+            "sessions_requested": 1,
+            "target_advertising_event_blocks": 3,
+            "test_source_sha256": "4000c5b797366e4ee95c8f9345108ceda81fd07768d72ff92e4fab6c1552f346",
+            "usb_policy_states_observed": [
+              "on"
+            ],
+            "usb_runtime_states_observed": [
+              "active"
+            ]
+          },
+          "nordic-power-default": {
+            "advertising_channel_readback": 0,
+            "build": "SDK171-T1000-v3",
+            "continuous_uptime": true,
+            "evidence": "usb-active-fix-20261020/nordic-power-default/summary.safe.json",
+            "failure_type": "BleakError",
+            "harness_passed": false,
+            "hci_disconnect_reason_counts": {
+              "0x08": 4,
+              "0x3E": 2
+            },
+            "hci_evidence": "usb-active-fix-20261020/nordic-power-default/hci-analysis.safe.json",
+            "nonce_echoes_verified": 0,
+            "peripheral_disconnect_reason_after": 8,
+            "power_mode_readback": "default",
+            "sessions_completed": 0,
+            "sessions_requested": 1,
+            "target_advertising_event_blocks": 7,
+            "test_source_sha256": "4000c5b797366e4ee95c8f9345108ceda81fd07768d72ff92e4fab6c1552f346",
+            "usb_policy_states_observed": [
+              "on"
+            ],
+            "usb_runtime_states_observed": [
+              "active"
+            ]
+          },
+          "nordic-rc500-active": {
+            "advertising_channel_readback": 0,
+            "build": "SDK171-T1000-v4",
+            "continuous_uptime": true,
+            "evidence": "usb-active-fix-20261020/nordic-rc500-active/summary.safe.json",
+            "failure_type": "BleakError",
+            "harness_passed": false,
+            "hci_disconnect_reason_counts": {
+              "0x08": 3,
+              "0x3E": 2
+            },
+            "hci_evidence": "usb-active-fix-20261020/nordic-rc500-active/hci-analysis.safe.json",
+            "lfclk_source_readback": 0,
+            "nonce_echoes_verified": 0,
+            "peripheral_disconnect_reason_after": 8,
+            "power_mode_readback": "lowpwr",
+            "sessions_completed": 0,
+            "sessions_requested": 1,
+            "target_advertising_event_blocks": 6,
+            "test_source_sha256": "296d9e2cb41a5dc897faab3181dba4c0b2758741bbdd319162a5afc5f159159d",
+            "usb_policy_states_observed": [
+              "on"
+            ],
+            "usb_runtime_states_observed": [
+              "active"
+            ]
+          },
+          "nordic-synth-active": {
+            "advertising_channel_readback": 0,
+            "build": "SDK171-T1000-v5",
+            "continuous_uptime": true,
+            "evidence": "usb-active-fix-20261020/nordic-synth-active/summary.safe.json",
+            "failure_type": "BleakError",
+            "harness_passed": false,
+            "hci_disconnect_reason_counts": {
+              "0x08": 2,
+              "0x3E": 1
+            },
+            "hci_evidence": "usb-active-fix-20261020/nordic-synth-active/hci-analysis.safe.json",
+            "lfclk_source_readback": 2,
+            "nonce_echoes_verified": 0,
+            "peripheral_disconnect_reason_after": 8,
+            "power_mode_readback": "lowpwr",
+            "sessions_completed": 0,
+            "sessions_requested": 1,
+            "target_advertising_event_blocks": 5,
+            "test_source_sha256": "296d9e2cb41a5dc897faab3181dba4c0b2758741bbdd319162a5afc5f159159d",
+            "usb_policy_states_observed": [
+              "on"
+            ],
+            "usb_runtime_states_observed": [
+              "active"
+            ]
+          }
+        },
+        "reproducibility": {
+          "exact_harness_snapshots": [
+            {
+              "evidence": "usb-active-fix-20261020/report-stage-20261020/harness-snapshots/test_nordic-v9-83be8cf2.py",
+              "exact_recorded_digest_match": true,
+              "executed_during_recovery": false,
+              "sha256": "83be8cf20e5c50349125d19b1485187140de9e38e4068a956418d7cf93f6f70f"
+            },
+            {
+              "evidence": "usb-active-fix-20261020/report-stage-20261020/harness-snapshots/test_nordic-slow-3295d776.py",
+              "exact_recorded_digest_match": true,
+              "executed_during_recovery": false,
+              "sha256": "3295d7767b462f4de1c8965afc1fe542e451608638665d7f34eb01db2c68218b"
+            },
+            {
+              "evidence": "usb-active-fix-20261020/report-stage-20261020/harness-snapshots/test_nordic-phone-19703941.py",
+              "exact_recorded_digest_match": true,
+              "executed_during_archiving": false,
+              "sha256": "19703941d5b4584ad1386fb0718370953303b45db5e9cf93a97db2a809d81587"
+            }
+          ],
+          "reconstruction_evidence": "usb-active-fix-20261020/report-stage-20261020/harness-snapshots/reconstruction.safe.json",
+          "strict_classifier": {
+            "evidence": "usb-active-fix-20261020/report-stage-20261020/harness-snapshots/hci_lifecycle-f114ec60.py",
+            "scope": "Pure offline classification of locked exact-peer captures; requires expected connection count and only clean local/remote-user disconnect reasons, with no failed establishments.",
+            "sha256": "f114ec60a11acd28d439d024db0df13f243dbecb5f018791b198a7e0309d6d11"
+          }
+        },
+        "scope": "SDK 17.1 / S140 7.3.0 public DIS/NUS nonce-echo diagnostics; no secure Companion acceptance is claimed. Build identifiers and test-source digests remain bound to each trial.",
+        "v11_active_suspend_active_comparison": {
+          "actual_echo_interval_ms_verified_by_hci": 15.0,
+          "configuration_evidence": [
+            "usb-active-fix-20261020/phone-v11-suspend-config.safe.json",
+            "usb-active-fix-20261020/phone-v11-active-idle-config.safe.json"
+          ],
+          "configuration_preserved_before_after": true,
+          "cpu_idle": "sleep",
+          "firmware_changes_requested_between_phases": false,
+          "harness_evidence": "usb-active-fix-20261020/report-stage-20261020/harness-snapshots/test_nordic-phone-19703941.py",
+          "interpretation": "Same-image/policy active-suspended-active comparison strengthens active USB as the discriminator. Failure persisted without application USB serial I/O; USB application payload traffic alone is not required to reproduce it. This does not isolate an electrical, RF, peripheral or host implementation cause, and is not a production fix.",
+          "median_echo_rtt_ms": [
+            452.834,
+            33.671,
+            393.998
+          ],
+          "monotonic_uptime_across_phases": true,
+          "no_reset_observed": true,
+          "power_mode": "lowpwr",
+          "preferred_phone_parameters_interval_units_latency_timeout_units": [
+            12,
+            12,
+            0,
+            400
+          ],
+          "regulator": "dcdc",
+          "runtime_build": "SDK171-T1000-v11",
+          "same_usb_device_number_across_phases": true,
+          "strict_lifecycle_results": [
+            false,
+            true,
+            false
+          ],
+          "test_source_sha256": "19703941d5b4584ad1386fb0718370953303b45db5e9cf93a97db2a809d81587",
+          "trial_order": [
+            "nordic-phone-v11-active",
+            "nordic-phone-v11-suspended",
+            "nordic-phone-v11-active-idle"
+          ],
+          "tx_dbm": 8
+        },
+        "v9_lifecycle_audit": {
+          "hci_evidence": "usb-active-fix-20261020/report-stage-20261020/lifecycle-v9/hci-analysis.safe.json",
+          "interpretation": "A redundant-update guard is a reasonable isolation control. These captures establish correlation with teardown completion delays; they do not reveal the exact air-side LL procedure or prove that the earlier same-parameter request caused 0x22."
+        }
+      },
+      "normal_full_restoration": {
+        "additional_usb_reopens": 2,
+        "application_only": true,
+        "artifact_evidence": "usb-active-fix-20261020/full-head-artifact.safe.json",
+        "artifact_sha256": "ba092c8e29b5b752a3d1667a0980910d4bec5815dfd0f07277b2ba3b8ce4e25a",
+        "ble_qualification_status": "not_requalified_active_usb_unresolved",
+        "bootloader_or_softdevice_changed": false,
+        "consolidated_evidence": "usb-active-fix-20261020/final-restoration.safe.json",
+        "core_error_flags": 0,
+        "discarded_prefix_bytes": 0,
+        "evidence": "usb-active-fix-20261020/flash-nordic-normal-head-final/summary.safe.json",
+        "full_usb_campaign_repeated": false,
+        "gateway_active": true,
+        "historical_full42_qualification_source_commit": "42f7df082fc4c7362ecd5c18c8644ab25b51b9e9",
+        "historical_qualification_reference": "previous_normal_full_qualification",
+        "identity_unchanged_through_smoke": true,
+        "invalid_length_candidates": 0,
+        "mcu_crash_counter": 0,
+        "mcu_regulator": "auto",
+        "mcu_regulator_active": "dcdc",
+        "new_ble_qualification_claimed": false,
+        "new_rf_qualification_claimed": false,
+        "ports_closed": 3,
+        "ports_opened": 3,
+        "prototype": false,
+        "public_identity_unchanged": true,
+        "request_frames_sent": 19,
+        "response_frames_received": 19,
+        "rf_qualification_status": "not_requalified",
+        "runtime_verified": true,
+        "runtime_version": "v1.18.0.1-halo-keymind-cascade-dev-72a74c78 (Build: 20-Oct-2026)",
+        "scope": "Application restoration and finite USB runtime smoke only. Transition-time probe failures remain recorded separately. Historical Full42 qualification stays source-bound; no new BLE, RF, full USB campaign or complete-feature qualification at Full72 is claimed.",
+        "source_commit": "72a74c784c38af72518bec7517e691ce9abccaa3",
+        "source_modified": false,
+        "status": "passed_usb_runtime_smoke_only",
+        "transfer_returncode": 0,
+        "transition_probe_failure_type_counts": {
+          "AssertionError": 85
+        },
+        "uptime_monotonic_after_restoration": true,
+        "usb_reopen_evidence": "usb-active-fix-20261020/normal-head-final-reopens.safe.json"
+      },
+      "production_firmware_fix_demonstrated": false,
+      "scope": "Completed current-turn safe reports only. Payload completion, strict controller lifecycle and peripheral SDK counters are separate observations. V11 controlled active/suspended/active results are measured. Unmodified normal Full72 is restored and verified by USB runtime smoke only; historical Full42 qualification remains source-bound.",
+      "secure_companion_sessions_added": 0,
+      "simultaneous_active_usb_ble_qualified": false,
+      "status": "diagnostic_only_no_reliable_fix",
+      "timing_off_retry": {
+        "evidence": "usb-active-fix-20261020/irq-v2/baseline-timing-off-retry/summary.safe.json",
+        "failure_type": "BleakError",
+        "harness_passed": false,
+        "nonce_echoes_verified": 0,
+        "runtime_build": "T1000-USBIRQ-v2"
+      }
+    },
     "bluez_unpaired_name_cache": {
       "ble_pass_claimed": false,
       "bond_info_file_present": false,
@@ -4420,9 +6203,411 @@
     "upstream-reference/artifact.json": {
       "kind": "diagnostic_artifact_provenance",
       "sha256": "23120c40b9a53cdcf0ce2f04fa5e6354e1f0110d7b91b83681e147b493929763"
+    },
+    "usb-active-fix-20261020/final-restoration.safe.json": {
+      "kind": "sanitized_final_normal_full_restoration",
+      "sha256": "4a3699f73ad2ade3c8ebc61080940644b790893fff9eee25c5e7a4e87fd57761"
+    },
+    "usb-active-fix-20261020/flash-nordic-normal-head-final/summary.safe.json": {
+      "kind": "sanitized_normal_full_application_restoration",
+      "sha256": "dda45c11635701f93193f3ec4cbf14dc3732b9feafb488d1d90c369ba4d3a6f0"
+    },
+    "usb-active-fix-20261020/full-clock-ble-1/ble/summary.safe.json": {
+      "kind": "sanitized_t1000_active_usb_diagnostic_summary",
+      "sha256": "a4a035bb2c0242c5519c8158f4293dc2e466b50f1d3ac6a0c326b72cbb4ac488"
+    },
+    "usb-active-fix-20261020/full-clock-ble-1/summary.safe.json": {
+      "kind": "sanitized_t1000_active_usb_diagnostic_summary",
+      "sha256": "458c31138d618762475cc85730562c46697fd735f64c824b9decf25c49b4c9c6"
+    },
+    "usb-active-fix-20261020/full-head-artifact.safe.json": {
+      "kind": "normal_full_artifact_provenance",
+      "sha256": "ab34935f1b20395158a8989c433905ba246856be728bc15ca83d14e70c58cd5d"
+    },
+    "usb-active-fix-20261020/irq-v2/baseline-timing-off-retry/summary.safe.json": {
+      "kind": "sanitized_t1000_active_usb_diagnostic_summary",
+      "sha256": "b6fbe3d7916ff288888f2e15546052ff63ec84c197482a25b752fb4f1b3e1ff2"
+    },
+    "usb-active-fix-20261020/irq-v2/baseline-timing-off/summary.safe.json": {
+      "kind": "sanitized_t1000_active_usb_diagnostic_summary",
+      "sha256": "373db9b832a9ab7a572c2d6b495fcf9f7060196c90d178e335ad711749d6e0a4"
+    },
+    "usb-active-fix-20261020/irq-v2/clock-claimed/summary.safe.json": {
+      "kind": "sanitized_t1000_active_usb_diagnostic_summary",
+      "sha256": "1069e6781ffb6e5b72f0ec96b707e6c6a572562e045d3e01059a5f46fca13503"
+    },
+    "usb-active-fix-20261020/mcu-ldo-1/active-usb-ble/ble/summary.safe.json": {
+      "kind": "sanitized_t1000_active_usb_diagnostic_summary",
+      "sha256": "c1a9bff4d0145bac0e7f5fd1b4f0e91c1ccf0e48dbd3b199d082d8486083bcb9"
+    },
+    "usb-active-fix-20261020/mcu-ldo-1/summary.safe.json": {
+      "kind": "sanitized_t1000_active_usb_diagnostic_summary",
+      "sha256": "2e797a82944eba61775c314c5df8c11b2416692f45b6658321741d055e51d627"
+    },
+    "usb-active-fix-20261020/nordic-active-1/hci-analysis.safe.json": {
+      "kind": "sanitized_hci_analysis",
+      "sha256": "94547d51cefc221cf18233a4078761d6cd9c5fcc814c6559713c1d678b5826fa"
+    },
+    "usb-active-fix-20261020/nordic-active-1/summary.safe.json": {
+      "kind": "sanitized_t1000_active_usb_diagnostic_summary",
+      "sha256": "9ee4554873dd40a68d43e7592b7d446b189c27e722adb554952ca507b53a3436"
+    },
+    "usb-active-fix-20261020/nordic-active-after-suspend/hci-analysis.safe.json": {
+      "kind": "sanitized_hci_analysis",
+      "sha256": "2d07a3c78e7631716372094df4514ba9b54061d8eb8eb560eb82b4c561e969cc"
+    },
+    "usb-active-fix-20261020/nordic-active-after-suspend/summary.safe.json": {
+      "kind": "sanitized_t1000_active_usb_diagnostic_summary",
+      "sha256": "16ddaa684bfc0c75b72421457298762f881029e6548c3fe870329058b9aba44e"
+    },
+    "usb-active-fix-20261020/nordic-ch37-active/hci-analysis.safe.json": {
+      "kind": "sanitized_hci_analysis",
+      "sha256": "382e93511ee216fb76cd2e52696d204154771944bb3c24b02ac1efede446326c"
+    },
+    "usb-active-fix-20261020/nordic-ch37-active/summary.safe.json": {
+      "kind": "sanitized_t1000_active_usb_diagnostic_summary",
+      "sha256": "afd8ffb9cef288e984b8d7ff30f504b293fa6a95a28cf49a3ee7d4ae1753023e"
+    },
+    "usb-active-fix-20261020/nordic-ch38-active/hci-analysis.safe.json": {
+      "kind": "sanitized_hci_analysis",
+      "sha256": "630bd243defcc9bb7a3b5abaa6d7778f0f0f606029273f4200cf0f81b858d81c"
+    },
+    "usb-active-fix-20261020/nordic-ch38-active/summary.safe.json": {
+      "kind": "sanitized_t1000_active_usb_diagnostic_summary",
+      "sha256": "4508adafedaf40e7a65b08d7d8fb145143871dd65118011d01f5a60e85b4889c"
+    },
+    "usb-active-fix-20261020/nordic-ch39-active/hci-analysis.safe.json": {
+      "kind": "sanitized_hci_analysis",
+      "sha256": "deaa37cb5375002f184423a1be33d3480d5e69182195b074189334b5c2603334"
+    },
+    "usb-active-fix-20261020/nordic-ch39-active/summary.safe.json": {
+      "kind": "sanitized_t1000_active_usb_diagnostic_summary",
+      "sha256": "0e5714dc92d8287e194f3959033a9ab392034c3975f68711079f7437488e1ca1"
+    },
+    "usb-active-fix-20261020/nordic-fast-v9-all-repeat/summary.safe.json": {
+      "kind": "sanitized_t1000_active_usb_diagnostic_summary",
+      "sha256": "6226334afac3322b95046c4be4e9ab4bfe5bbc9c6f14828b54c25c84a40b0061"
+    },
+    "usb-active-fix-20261020/nordic-fast-v9-sleep/hci-analysis.safe.json": {
+      "kind": "sanitized_hci_analysis",
+      "sha256": "83ec7f90155f35d98f5e118effdf55999611eb351c9240e7d52dde235afff405"
+    },
+    "usb-active-fix-20261020/nordic-fast-v9-sleep/summary.safe.json": {
+      "kind": "sanitized_t1000_active_usb_diagnostic_summary",
+      "sha256": "1f46b119ea6383f9a5d9c1cf511341a1ed30ef5028911f695ee293536b87ad03"
+    },
+    "usb-active-fix-20261020/nordic-fast-v9-slow-control/summary.safe.json": {
+      "kind": "sanitized_t1000_active_usb_diagnostic_summary",
+      "sha256": "54a0362a584a7b990c5b31629c3e47189d7839b441d0c67a5ef7f0dcbe0e0d92"
+    },
+    "usb-active-fix-20261020/nordic-fast-v9-tx0-recovery/strict-lifecycle.safe.json": {
+      "kind": "sanitized_strict_hci_lifecycle_result",
+      "sha256": "429cd5181e454da94f657448714e0d30379f7d1f02c7c6779ae74933a09dfee8"
+    },
+    "usb-active-fix-20261020/nordic-fast-v9-tx0-recovery/summary.safe.json": {
+      "kind": "sanitized_t1000_active_usb_diagnostic_summary",
+      "sha256": "11007239f1346edcc268cc6366790045c0398d8e3239ea12a23b1b4b1ca9daa8"
+    },
+    "usb-active-fix-20261020/nordic-final-baseline/hci-analysis.safe.json": {
+      "kind": "sanitized_hci_analysis",
+      "sha256": "08254108a0f3a9ff18438e523af261e846deafc6642fecfe63fdbec15c78693d"
+    },
+    "usb-active-fix-20261020/nordic-final-baseline/summary.safe.json": {
+      "kind": "sanitized_t1000_active_usb_diagnostic_summary",
+      "sha256": "d5bd843c6c6b0026ba18f2b8535cbee7bd2d4a09933f7698bb4e3cc08c13f19e"
+    },
+    "usb-active-fix-20261020/nordic-final-tx8-dcdc-repeat/hci-analysis.safe.json": {
+      "kind": "sanitized_hci_analysis",
+      "sha256": "73b73af9e30bbb1dfb46f23f9cfeb32ab93a0331adc40bb9fbc693da4a56b14c"
+    },
+    "usb-active-fix-20261020/nordic-final-tx8-dcdc-repeat/summary.safe.json": {
+      "kind": "sanitized_t1000_active_usb_diagnostic_summary",
+      "sha256": "d478086a65660c3bf43107b6b5cd343669632b77662e2962c4abf8b29e76977c"
+    },
+    "usb-active-fix-20261020/nordic-final-tx8-dcdc-slow/hci-analysis.safe.json": {
+      "kind": "sanitized_hci_analysis",
+      "sha256": "6f015c8992286516808c85c8800a3ad9c2bbdd60a7f084cb7eef9a8e6ea2e63d"
+    },
+    "usb-active-fix-20261020/nordic-final-tx8-dcdc-slow/summary.safe.json": {
+      "kind": "sanitized_t1000_active_usb_diagnostic_summary",
+      "sha256": "4dd608f3b24cc3f0f60d8afa3b19d0203f6fa3dddb38b92a9b4ff908edbdb005"
+    },
+    "usb-active-fix-20261020/nordic-final-tx8-dcdc/hci-analysis.safe.json": {
+      "kind": "sanitized_hci_analysis",
+      "sha256": "38f254dd889aee0258bb1a66c959dfce767e63eeb77bd196383c3a6302a7ed05"
+    },
+    "usb-active-fix-20261020/nordic-final-tx8-dcdc/summary.safe.json": {
+      "kind": "sanitized_t1000_active_usb_diagnostic_summary",
+      "sha256": "e9c724f5ef04e47f19b910cd9a6dfe23fb5af2f8982b76dc0bad4b8357c6646f"
+    },
+    "usb-active-fix-20261020/nordic-final-tx8-ldo/hci-analysis.safe.json": {
+      "kind": "sanitized_hci_analysis",
+      "sha256": "f5346f28b511cbc384e6a44269e6f852e38cfeddf3e1d08f81bc2bb3cfb7ec48"
+    },
+    "usb-active-fix-20261020/nordic-final-tx8-ldo/summary.safe.json": {
+      "kind": "sanitized_t1000_active_usb_diagnostic_summary",
+      "sha256": "b1e46ebd7d894bc8913a199136a19317f3659e9250cd88c5cad0646efc5645a4"
+    },
+    "usb-active-fix-20261020/nordic-gatt-v10-quiet-fast/summary.safe.json": {
+      "kind": "sanitized_t1000_active_usb_diagnostic_summary",
+      "sha256": "e86848d49fba79d99753b69d9e51462a8ad17392fe38d9df490859658fa3d877"
+    },
+    "usb-active-fix-20261020/nordic-idle-v8-busy-repeat/hci-analysis.safe.json": {
+      "kind": "sanitized_hci_analysis",
+      "sha256": "dd0af7572c2969db22a8e40daaacc4316c1f7b859b1d499c1add139df1f14d75"
+    },
+    "usb-active-fix-20261020/nordic-idle-v8-busy-repeat/summary.safe.json": {
+      "kind": "sanitized_t1000_active_usb_diagnostic_summary",
+      "sha256": "fb691e4a8d44376219971455b525fc8881e4af10190c73019b6b93366d3f13a9"
+    },
+    "usb-active-fix-20261020/nordic-idle-v8-busy/hci-analysis.safe.json": {
+      "kind": "sanitized_hci_analysis",
+      "sha256": "1a33cce3321048380135fdb9d97291a004569d377cbccb8f3155edb54ef62e6a"
+    },
+    "usb-active-fix-20261020/nordic-idle-v8-busy/summary.safe.json": {
+      "kind": "sanitized_t1000_active_usb_diagnostic_summary",
+      "sha256": "a389bc6ec45c7e7e984474acdf6b519af68940f8a807ee0dae7c87433d520f3e"
+    },
+    "usb-active-fix-20261020/nordic-idle-v8-sleep/hci-analysis.safe.json": {
+      "kind": "sanitized_hci_analysis",
+      "sha256": "366c6b5948e06b4390870e493bc3ea35de819168060bb95687088123febfaebc"
+    },
+    "usb-active-fix-20261020/nordic-idle-v8-sleep/summary.safe.json": {
+      "kind": "sanitized_t1000_active_usb_diagnostic_summary",
+      "sha256": "94d026d1103452131cb108580f103e5e3e0fe2baf12cd29113dbb443d90d5d56"
+    },
+    "usb-active-fix-20261020/nordic-link-default-after-phy/hci-analysis.safe.json": {
+      "kind": "sanitized_hci_analysis",
+      "sha256": "fb224d340026cd0b8939c747a89d0ff5bcf922dedee386a135fe3adae3bd2932"
+    },
+    "usb-active-fix-20261020/nordic-link-default-after-phy/summary.safe.json": {
+      "kind": "sanitized_t1000_active_usb_diagnostic_summary",
+      "sha256": "e42119f2afc3b15a401801b8a115807966aa8b9dad9ce82742111bed689198d2"
+    },
+    "usb-active-fix-20261020/nordic-link-default-long-connect/hci-analysis.safe.json": {
+      "kind": "sanitized_hci_analysis",
+      "sha256": "427a1331a8d831109e5af08832e7a39753a9e0006b328ebcd65427e32023958a"
+    },
+    "usb-active-fix-20261020/nordic-link-default-long-connect/summary.safe.json": {
+      "kind": "sanitized_t1000_active_usb_diagnostic_summary",
+      "sha256": "a187a1407b7bb0bbeeb70f3d954d3af28c43ea2136e96f6847222dae0e92f7e8"
+    },
+    "usb-active-fix-20261020/nordic-link-phy1m-ch37/hci-analysis.safe.json": {
+      "kind": "sanitized_hci_analysis",
+      "sha256": "60b36ffae5e873290355d36c6a2aa55b78e104210b9e643abbd718393ff7d87b"
+    },
+    "usb-active-fix-20261020/nordic-link-phy1m-ch37/summary.safe.json": {
+      "kind": "sanitized_t1000_active_usb_diagnostic_summary",
+      "sha256": "17bedcc8eebd58c80ceec9fa924539e8088ae54472b16e01ef6264d6150324b8"
+    },
+    "usb-active-fix-20261020/nordic-link-phy1m-repeat3/hci-analysis.safe.json": {
+      "kind": "sanitized_hci_analysis",
+      "sha256": "a845dcfc90f3de64a24f29785288fddc8e340310eaa4623c22bf6aa736f97065"
+    },
+    "usb-active-fix-20261020/nordic-link-phy1m-repeat3/summary.safe.json": {
+      "kind": "sanitized_t1000_active_usb_diagnostic_summary",
+      "sha256": "e06bb7ac48725e24bcdcce868f6a61619df93e045f40e52f63b49b47f6e14dfe"
+    },
+    "usb-active-fix-20261020/nordic-link-shortpdu-ch37/hci-analysis.safe.json": {
+      "kind": "sanitized_hci_analysis",
+      "sha256": "eabd2da50bd24271508b45f7f6d34dcd933a7a838deb33e948e75dffc0d87e7b"
+    },
+    "usb-active-fix-20261020/nordic-link-shortpdu-ch37/summary.safe.json": {
+      "kind": "sanitized_t1000_active_usb_diagnostic_summary",
+      "sha256": "bef33ac6a9c087d30990df0607dc85adba66dc151c3ff4e514fd264713a30193"
+    },
+    "usb-active-fix-20261020/nordic-link-timeout-ch37/hci-analysis.safe.json": {
+      "kind": "sanitized_hci_analysis",
+      "sha256": "6fadc2ebf5d4a8d6747e383a121bf48b5cfe1c5313e36af1c81db89edb00bc03"
+    },
+    "usb-active-fix-20261020/nordic-link-timeout-ch37/summary.safe.json": {
+      "kind": "sanitized_t1000_active_usb_diagnostic_summary",
+      "sha256": "3aea229ceac946b5296f970a559d88213cb4a3c452474288bc38c2367e739d92"
+    },
+    "usb-active-fix-20261020/nordic-link-timeout/hci-analysis.safe.json": {
+      "kind": "sanitized_hci_analysis",
+      "sha256": "d6498f45fda30c164072c40c691ed42981cc88c9c42c6ce64b18d1b8ea7572d8"
+    },
+    "usb-active-fix-20261020/nordic-link-timeout/summary.safe.json": {
+      "kind": "sanitized_t1000_active_usb_diagnostic_summary",
+      "sha256": "f005113d2f4bdcfd3f14999a7fa39e114a3f352ad2165a3c55516d5d3458ada5"
+    },
+    "usb-active-fix-20261020/nordic-phone-v11-active-idle/summary.safe.json": {
+      "kind": "sanitized_t1000_active_usb_diagnostic_summary",
+      "sha256": "1442fddc1782a8393d70b07ac865ba53f6a41e7264775bf577c90254e6c1a21b"
+    },
+    "usb-active-fix-20261020/nordic-phone-v11-active/summary.safe.json": {
+      "kind": "sanitized_t1000_active_usb_diagnostic_summary",
+      "sha256": "d4bbc347d9103ebca4d3dcba97ed183aa81d1876c41b53f5d6078170cb5a1f43"
+    },
+    "usb-active-fix-20261020/nordic-phone-v11-suspended/summary.safe.json": {
+      "kind": "sanitized_t1000_active_usb_diagnostic_summary",
+      "sha256": "b2da05e981546a4be8c518b84c96758260aa87f5cb51c55d549a6c7f0721d6eb"
+    },
+    "usb-active-fix-20261020/nordic-power-constlat/hci-analysis.safe.json": {
+      "kind": "sanitized_hci_analysis",
+      "sha256": "3a60fd0d735bf03de710d49a2abf415cb959329a935290192990868b7432e43a"
+    },
+    "usb-active-fix-20261020/nordic-power-constlat/summary.safe.json": {
+      "kind": "sanitized_t1000_active_usb_diagnostic_summary",
+      "sha256": "c27fe8e2ebeb8251a378dadf20d1b9994d49a49faaa36c83d85204647bf24b95"
+    },
+    "usb-active-fix-20261020/nordic-power-default/hci-analysis.safe.json": {
+      "kind": "sanitized_hci_analysis",
+      "sha256": "f8c5e5e354b91b39bc077939b24c2e8714977543e182cfba0e5d8abd2f5d7cc8"
+    },
+    "usb-active-fix-20261020/nordic-power-default/summary.safe.json": {
+      "kind": "sanitized_t1000_active_usb_diagnostic_summary",
+      "sha256": "a7bb4e3e5f27e275f918f9a3cff44255289ee6df5a1098e4ec2cf97b97cb2f4f"
+    },
+    "usb-active-fix-20261020/nordic-rc500-active/hci-analysis.safe.json": {
+      "kind": "sanitized_hci_analysis",
+      "sha256": "33b6c03fff81b811865e9c4675df9172f3b8f01296d2aefa38a449da4881f4b6"
+    },
+    "usb-active-fix-20261020/nordic-rc500-active/summary.safe.json": {
+      "kind": "sanitized_t1000_active_usb_diagnostic_summary",
+      "sha256": "1a7a3fc2f19d91f8bea18e7c656d682cd78a1466401f278d0cc92206fa838946"
+    },
+    "usb-active-fix-20261020/nordic-suspended-1/hci-analysis.safe.json": {
+      "kind": "sanitized_hci_analysis",
+      "sha256": "3a7285777acac2280314a209785e00f420bd2ffd50bca183a5cf3b6ed2aec43e"
+    },
+    "usb-active-fix-20261020/nordic-suspended-1/summary.safe.json": {
+      "kind": "sanitized_t1000_active_usb_diagnostic_summary",
+      "sha256": "053a17cfd2bb05680deb78c1e575b2ed9f710b631639356e3b97b5807be8d9aa"
+    },
+    "usb-active-fix-20261020/nordic-synth-active/hci-analysis.safe.json": {
+      "kind": "sanitized_hci_analysis",
+      "sha256": "62679329a9b50d0d6243b1cf4d51f3971710552eb594a170479e99993d79d928"
+    },
+    "usb-active-fix-20261020/nordic-synth-active/summary.safe.json": {
+      "kind": "sanitized_t1000_active_usb_diagnostic_summary",
+      "sha256": "7b34d96f803a65184670678cd055abecbc2020192c4f23eb86d0ef6720fe741e"
+    },
+    "usb-active-fix-20261020/normal-head-final-reopens.safe.json": {
+      "kind": "sanitized_normal_full_post_restoration_usb_smoke",
+      "sha256": "a4ad7422cc4cc41c49ff90d20b2e66a3316cc6ab221b77bd56b6331356c95e1a"
+    },
+    "usb-active-fix-20261020/phone-v11-active-idle-config.safe.json": {
+      "kind": "sanitized_native_sdk_v11_configuration_comparison",
+      "sha256": "5d3f58b8a1cbab38abeefa9aa30033e3b2776431162fbfac820b60c3f2ab8bcf"
+    },
+    "usb-active-fix-20261020/phone-v11-suspend-config.safe.json": {
+      "kind": "sanitized_native_sdk_v11_configuration_comparison",
+      "sha256": "387a2f1b0a16fdaa2ac04822ed0ebb3989a0fb06ece4918ed3e888970bd1c608"
+    },
+    "usb-active-fix-20261020/priority2-after/hci-analysis.safe.json": {
+      "kind": "sanitized_hci_analysis",
+      "sha256": "ce51a50c9af1c5b7a6b0035b5d240bcd940f7e5cd6310d777b15641d6d2b186a"
+    },
+    "usb-active-fix-20261020/priority2-after/summary.safe.json": {
+      "kind": "sanitized_t1000_active_usb_diagnostic_summary",
+      "sha256": "2d54f8323e43bc6f6064236462e06ce0eab7961b554435f65185d7e80701518a"
+    },
+    "usb-active-fix-20261020/priority2-before/summary.safe.json": {
+      "kind": "sanitized_t1000_active_usb_diagnostic_summary",
+      "sha256": "f221df5799a102f8aecb614a00ff788fadc971bfcc6385d8127f0a40d4939dc9"
+    },
+    "usb-active-fix-20261020/priority2-corrected-before/hci-analysis.safe.json": {
+      "kind": "sanitized_hci_analysis",
+      "sha256": "adc354ea5a0cf4e76bfe4e44d45f8209371a35b9042063b160c57adbfe680b7b"
+    },
+    "usb-active-fix-20261020/priority2-corrected-before/summary.safe.json": {
+      "kind": "sanitized_t1000_active_usb_diagnostic_summary",
+      "sha256": "bd047ba1923b7145750176369474c2bfe57447b061b3ce7ab53e0d827eecac41"
+    },
+    "usb-active-fix-20261020/priority6/hci-analysis.safe.json": {
+      "kind": "sanitized_hci_analysis",
+      "sha256": "ee1d46e5263ec6285448225fdcd7aec0dd5fb5d62140b4b9a2165d70e0fef013"
+    },
+    "usb-active-fix-20261020/priority6/summary.safe.json": {
+      "kind": "sanitized_t1000_active_usb_diagnostic_summary",
+      "sha256": "27c5efd6e61ed44af6b0dee58c33c1bba2a77760267159c8444992b641bf0d49"
+    },
+    "usb-active-fix-20261020/report-stage-20261020/harness-snapshots/hci_lifecycle-f114ec60.py": {
+      "kind": "strict_hci_lifecycle_classifier_source",
+      "sha256": "f114ec60a11acd28d439d024db0df13f243dbecb5f018791b198a7e0309d6d11"
+    },
+    "usb-active-fix-20261020/report-stage-20261020/harness-snapshots/reconstruction.safe.json": {
+      "kind": "exact_harness_reconstruction_record",
+      "sha256": "17605823b383b4b1e291632dd7a1dd37a634202704ac4726304f9ecb699bc5b6"
+    },
+    "usb-active-fix-20261020/report-stage-20261020/harness-snapshots/test_nordic-phone-19703941.py": {
+      "kind": "exact_archived_diagnostic_harness_source",
+      "sha256": "19703941d5b4584ad1386fb0718370953303b45db5e9cf93a97db2a809d81587"
+    },
+    "usb-active-fix-20261020/report-stage-20261020/harness-snapshots/test_nordic-slow-3295d776.py": {
+      "kind": "exact_recovered_diagnostic_harness_source",
+      "sha256": "3295d7767b462f4de1c8965afc1fe542e451608638665d7f34eb01db2c68218b"
+    },
+    "usb-active-fix-20261020/report-stage-20261020/harness-snapshots/test_nordic-v9-83be8cf2.py": {
+      "kind": "exact_recovered_diagnostic_harness_source",
+      "sha256": "83be8cf20e5c50349125d19b1485187140de9e38e4068a956418d7cf93f6f70f"
+    },
+    "usb-active-fix-20261020/report-stage-20261020/lifecycle-v9/hci-analysis.safe.json": {
+      "kind": "sanitized_hci_lifecycle_audit",
+      "sha256": "6463daa3abc40edd5937328ffc5b3c17e79f7659b261ee35594a1f04b979b08a"
+    },
+    "usb-active-fix-20261020/report-stage-20261020/nordic-fast-v9-all-repeat/hci-analysis.safe.json": {
+      "kind": "sanitized_hci_analysis",
+      "sha256": "760f8f527b2c6c94286a5e2e3fc449429186694e917d86f2d881649206af53c9"
+    },
+    "usb-active-fix-20261020/report-stage-20261020/nordic-fast-v9-slow-control/hci-analysis.safe.json": {
+      "kind": "sanitized_hci_analysis",
+      "sha256": "1016fd9d2f9fa50d82e82e24bca8e50e48469060866e6d77bb8be18fe2e97459"
+    },
+    "usb-active-fix-20261020/report-stage-20261020/nordic-fast-v9-tx0-recovery/hci-analysis.safe.json": {
+      "kind": "sanitized_hci_analysis",
+      "sha256": "393cb35c48b2cd543b3ba766f24b1e8e139a8a3b13690fb3c14fb5cc9b5996e9"
+    },
+    "usb-active-fix-20261020/report-stage-20261020/nordic-gatt-v10-quiet-fast/hci-analysis.safe.json": {
+      "kind": "sanitized_hci_analysis",
+      "sha256": "cd79bc7ee45373a876f3c776656e5ae07f22815b4df756bc871157cd4f041a84"
+    },
+    "usb-active-fix-20261020/report-stage-20261020/nordic-phone-v11-active-idle/hci-analysis.safe.json": {
+      "kind": "sanitized_hci_analysis",
+      "sha256": "12c86a23f0360f5de5faf726af4254a92aa90843844380516ffa69fb15d813d9"
+    },
+    "usb-active-fix-20261020/report-stage-20261020/nordic-phone-v11-active/hci-analysis.safe.json": {
+      "kind": "sanitized_hci_analysis",
+      "sha256": "a114ce9a35a030cfa72059871ab8d495dd6575fc5991d98df59add42b5b978b4"
+    },
+    "usb-active-fix-20261020/report-stage-20261020/nordic-phone-v11-suspended/hci-analysis.safe.json": {
+      "kind": "sanitized_hci_analysis",
+      "sha256": "7a1e0595f9e89162b623e6bc474125ea2b60d36e8112e444c53c3acfe8c788ec"
     }
   },
   "final_normal_head": {
+    "application_zip_sha256": "ba092c8e29b5b752a3d1667a0980910d4bec5815dfd0f07277b2ba3b8ce4e25a",
+    "ble_qualification_status": "not_requalified_active_usb_unresolved",
+    "core_error_flags": 0,
+    "gateway_active": true,
+    "historical_qualification_reference": "previous_normal_full_qualification",
+    "installation_status": "installed_successfully",
+    "mcu_regulator": "> auto; active dcdc; fallback off; crashes 0; recovery on",
+    "public_identity_unchanged": true,
+    "reopen_evidence": "usb-active-fix-20261020/normal-head-final-reopens.safe.json",
+    "request_frames_sent": 19,
+    "response_frames_received": 19,
+    "rf_qualification_status": "not_requalified",
+    "runtime_evidence": "usb-active-fix-20261020/flash-nordic-normal-head-final/summary.safe.json",
+    "runtime_smoke_status": "passed",
+    "scope": "USB runtime restoration smoke only; no new BLE, RF or full feature qualification.",
+    "source_commit": "72a74c784c38af72518bec7517e691ce9abccaa3",
+    "stable_discarded_prefix_bytes": 0,
+    "stable_invalid_length_candidates": 0,
+    "usb_ports_closed": 3,
+    "usb_ports_opened": 3,
+    "version": "v1.18.0.1-halo-keymind-cascade-dev-72a74c78 (Build: 20-Oct-2026)"
+  },
+  "generated_at": "2026-10-20T04:31:16.913541+00:00",
+  "measured_source_commits": {
+    "rak": "f80751354ffc530461e87109ced4f575d3950a52",
+    "t1000": "42f7df082fc4c7362ecd5c18c8644ab25b51b9e9",
+    "t1000_restoration": "72a74c784c38af72518bec7517e691ce9abccaa3"
+  },
+  "overall": "failed_incomplete",
+  "previous_normal_full_qualification": {
     "application_zip_sha256": "7fac141e40183ada315f70b296583eaf854fd819c76fbd896a1f0f2e4a405e5b",
     "battery_only_ble": {
       "all_sessions_disconnected": true,
@@ -4489,12 +6674,6 @@
       "status": "passed"
     }
   },
-  "generated_at": "2026-10-20T04:31:16.913541+00:00",
-  "measured_source_commits": {
-    "rak": "f80751354ffc530461e87109ced4f575d3950a52",
-    "t1000": "42f7df082fc4c7362ecd5c18c8644ab25b51b9e9"
-  },
-  "overall": "failed_incomplete",
   "prior_f807_selected_board_results": [
     {
       "axes": {
@@ -4608,25 +6787,28 @@
     "Temporary per-device autosuspend passed three sequential USB/BLE handoffs; simultaneous active-USB/BLE and a persistent workaround remain unqualified.",
     "Cold boot, battery-only restart and phone interoperability remain untested; unplugging alone does not prove a restart.",
     "XIAO nRF52 normal runtime recovery remains failed.",
-    "RF at 42f7df08, full feature coverage and 13-radio fleet qualification are not established."
+    "RF at 42f7df08/72a74c78, full feature coverage and 13-radio fleet qualification are not established."
   ],
   "report_status": "failed_incomplete",
-  "schema_version": 1,
+  "schema_version": 2,
   "scope": {
     "all_three_axes_passed": 1,
     "battery_only_secure_sessions_completed": 7,
     "cold_boot_tested": false,
+    "current_full_usb_restoration_smoke_passed": true,
     "external_wall_power_secure_sessions_completed": 3,
     "fleet_13_qualified": false,
     "fleet_inventory_refreshed": false,
     "independent_observer_acceptance_complete": false,
+    "native_sdk_diagnostics_add_secure_companion_sessions": 0,
     "phone_interoperability_qualified": false,
     "physical_battery_only_ble_tested": true,
     "repeaters_qualified": false,
     "required_axis_failed": 1,
     "selected_companions_requalified": 2,
+    "simultaneous_active_usb_ble_qualified": false,
     "suspended_usb_secure_sessions_completed": 6,
     "usb_autoresume_ble_handoffs_passed": 3
   },
-  "updated_at": "2026-10-20T07:37:31.858584+00:00"
+  "updated_at": "2026-10-20T10:18:29.371907+00:00"
 }

@@ -2283,7 +2283,7 @@
 
 <h1 id="mercerwood-companion-diagnosis-follow-up-2026-10-19">Mercerwood Companion diagnosis follow-up, 2026-10-19</h1>
 <p>Overall status: <strong>FAIL, incomplete</strong>. Across the selected measured sources, <strong>1/2 Companions PASS, 1 FAIL</strong>. RAK 4631 passed USB, BLE and two-way LoRa at f807. T1000-E passed normal Full USB and BLE on battery, wall power and suspended Pi USB, but active Pi USB reproduced its BLE failure. It remains <strong>FAIL</strong> pending resolution of that operating condition. XIAO nRF52 remains a carried-forward failure.</p>
-<p>Both selected boards first returned to Full <code>f80751354ffc530461e87109ced4f575d3950a52</code>. T1000 subsequently received normal Full <code>42f7df082fc4c7362ecd5c18c8644ab25b51b9e9</code>, version <code>v1.18.0.1-halo-keymind-cascade-dev-42f7df08</code>, after the corrected bootloader. Its ZIP SHA-256 is <code>7fac141e40183ada315f70b296583eaf854fd819c76fbd896a1f0f2e4a405e5b</code>. Checks ran on October 20 UTC across October 19-20 local time.</p>
+<p>Both selected boards first returned to Full <code>f80751354ffc530461e87109ced4f575d3950a52</code>. T1000 subsequently received normal Full <code>42f7df082fc4c7362ecd5c18c8644ab25b51b9e9</code>, version <code>v1.18.0.1-halo-keymind-cascade-dev-42f7df08</code>, after the corrected bootloader. Its ZIP SHA-256 is <code>7fac141e40183ada315f70b296583eaf854fd819c76fbd896a1f0f2e4a405e5b</code>. Checks ran on October 20 UTC across October 19-20 local time. Normal Full <code>72a74c784c38af72518bec7517e691ce9abccaa3</code> is now restored, with unchanged identity, zero core errors and MCU auto/DCDC. Its restoration smoke passed three USB opens/closes and 19 responses with clean framing. This is not new BLE, RF or full feature qualification; the earlier Full 42 results retain their original source binding.</p>
 <table>
 <thead>
 <tr>
@@ -2432,6 +2432,138 @@
 <p>The original USB policy and idle delay were restored and verified, and the gateway remained active. This comparison makes active USB operation a stronger discriminator than charging alone or the individual hub socket. It does not distinguish USB software/peripheral behavior from electrical or RF effects of active signalling, and no waveform or supply-voltage measurement was made. Firmware remains unchanged.</p>
 <p>Three subsequent handoff cycles temporarily allowed this device to autosuspend after two seconds idle. Each serial open woke USB and passed seven read-only queries. After serial close, Linux reported USB suspended, and a normal-name, saved-bond 30-second Companion session passed with the same identity/version, MTU 247 and clean core flags. All three cycles passed. Together with the direct suspend trial, six secure sessions passed with USB suspended.</p>
 <p>The original active USB policy was restored again. A final seven-query USB readback passed, with uptime 5,259 seconds, Bluetooth on, unchanged identity/firmware and zero core errors. No persistent host configuration was installed. Automatic idle suspend is a tested candidate workaround for sequential USB/BLE use; it does not qualify simultaneous active-USB/BLE operation or establish a production firmware fix. A second computer with USB data active is the next comparison needed to separate the Pi/hub path from behavior common to the T1000's USB connection.</p>
+<p>Further firmware isolation did not establish a reliable simultaneous active-USB/BLE fix. All native SDK runs below are public DIS/NUS nonce-echo diagnostics, not secure Companion qualification; they add zero qualified secure sessions. Results remain bound to their runtime builds and safe evidence digests.</p>
+<table>
+<thead>
+<tr>
+<th>Probe</th>
+<th>Source or build</th>
+<th>Completed observation</th>
+<th>Assessment</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>MCU LDO, active USB</td>
+<td>Normal Full 42f7df08</td>
+<td>Zero of three BLE sessions; MCU auto/DCDC restored, same identity and clean core flags</td>
+<td>FAIL</td>
+</tr>
+<tr>
+<td>Minimal USB IRQ 2/6/2</td>
+<td>T1000-USBIRQ-v1</td>
+<td>Zero echoes in each corrected trial; IRQ count-rate upper bounds 0.866/0.744/0.728 Hz including probe traffic</td>
+<td>No reliable fix; interrupt durations not validated</td>
+</tr>
+<tr>
+<td>Explicit HFCLK claim</td>
+<td>T1000-USBIRQ-v2</td>
+<td>Ten echoes, then GATT protocol failure</td>
+<td>FAIL</td>
+</tr>
+<tr>
+<td>Modified Full clock prototype</td>
+<td>Base 72a74c78</td>
+<td>Zero of three Companion sessions; current-advertisement identity gate failed</td>
+<td>FAIL; not retained as a production fix</td>
+</tr>
+<tr>
+<td>Active USB / suspended USB / active USB</td>
+<td>Native SDK v1</td>
+<td>Zero echoes / three sessions with 90 nonce echoes / zero echoes</td>
+<td>Only suspended phase PASS</td>
+</tr>
+<tr>
+<td>Advertising channels 37/38/39</td>
+<td>Native SDK v2</td>
+<td>Target discovered on each channel; zero echoes in every trial</td>
+<td>No reliable fix</td>
+</tr>
+<tr>
+<td>Default/constant-latency power; LF RC/SYNTH</td>
+<td>Native SDK v3/v4/v5</td>
+<td>Zero echoes in all four trials</td>
+<td>No reliable fix</td>
+</tr>
+<tr>
+<td>PHY and link policies</td>
+<td>Native SDK v6</td>
+<td>Two isolated 30-echo harness passes, including an explicit 1M PHY request and default policy with longer connect allowance; both matching HCI traces recorded LL Response Timeout 0x22. Repeat and other policy trials failed</td>
+<td>No clean, repeatable fix</td>
+</tr>
+<tr>
+<td>TX +8 dBm and regulator selection</td>
+<td>Native SDK v7</td>
+<td>Baseline and TX8/LDO: zero echoes. TX8/DCDC: one 30-echo PASS with clean HCI local-host close, then repeat FAIL after two echoes; ten-second echo-deadline retry FAIL after nine echoes with HCI/peripheral timeout 0x08</td>
+<td>Intermittent success; not a solution</td>
+</tr>
+<tr>
+<td>CPU sleep versus busy idle</td>
+<td>Native SDK v8</td>
+<td>Sleep: zero echoes and HCI timeout 0x08. Busy: one 30-echo PASS with HCI local-host close; busy repeat: FAIL after twelve echoes with HCI/peripheral timeout 0x08 despite a ten-second echo deadline</td>
+<td>Intermittent success; not a reliable fix</td>
+</tr>
+<tr>
+<td>Short actual connection interval, TX8/DCDC/sleep idle</td>
+<td>Native SDK v9</td>
+<td>Channel37: 30 echoes and clean local close after update to 7.5 ms. All advertising channels: three sessions/90 echoes at actual 7.5 ms, but HCI recorded two teardown completions 0x22 about four seconds after host Disconnect commands, two failed-establishment attempts 0x3E and one local close. USB queries remained functional</td>
+<td>Diagnostic candidate; not three clean reconnect passes</td>
+</tr>
+<tr>
+<td>Same-image slow-interval control</td>
+<td>Native SDK v9</td>
+<td>Actual interval updated to 75 ms before service-discovery failure; zero echoes. HCI: four initial failures 0x3E and one 0x08; final SDK readback still connected</td>
+<td>FAIL; controller/SDK observations retained separately</td>
+</tr>
+<tr>
+<td>TX 0 dBm recovery with fast interval</td>
+<td>Native SDK v9</td>
+<td>Three payload sessions/90 echoes, but strict lifecycle: eight initial failures 0x3E, one 0x08, two 0x22 and one local close</td>
+<td>Strict lifecycle FAIL</td>
+</tr>
+<tr>
+<td>Quiet GATT initiation with fast interval</td>
+<td>Native SDK v10</td>
+<td>Three payload sessions/90 echoes; data_exchange_passed=true, passed=false. Strict lifecycle: five initial failures 0x3E, two 0x22 and one local close</td>
+<td>Strict lifecycle FAIL; no reliable fix</td>
+</tr>
+</tbody>
+</table>
+<p>A final native SDK v11 active/suspended/active comparison retained the same image and RAM phone-interval policy [12,12,0,400] (15 ms, zero latency, four-second supervision), TX +8 dBm, MCU REG1 DCDC, sleep idle and low-power mode, with advancing uptime and no reset observed. HCI verified actual 15 ms operation for all 270 nonce notifications. This is a connection-interval diagnostic, not phone interoperability testing.</p>
+<table>
+<thead>
+<tr>
+<th>V11 USB condition</th>
+<th>Nonce echoes</th>
+<th>Strict HCI lifecycle</th>
+<th>Median echo RTT</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Active, with application USB serial queries</td>
+<td>90 across three payload sessions</td>
+<td>FAIL: two initial failures 0x3E, two 0x22, one local close 0x16</td>
+<td>452.8 ms</td>
+</tr>
+<tr>
+<td>Runtime suspended, same image/policy</td>
+<td>90 across three sessions</td>
+<td>PASS: three clean local closes 0x16</td>
+<td>33.7 ms</td>
+</tr>
+<tr>
+<td>Active, no application USB serial I/O during BLE</td>
+<td>90 across three payload sessions</td>
+<td>FAIL: two initial failures 0x3E, one 0x22, two local closes 0x16</td>
+<td>394.0 ms</td>
+</tr>
+</tbody>
+</table>
+<p>The active phase recorded 344 USB telemetry query replies, including 154 link replies reporting BLE connected at actual 15 ms. The suspended and active-idle phases performed no application USB serial I/O during BLE; configuration readbacks bracketed those trials. Active-idle failure strengthens active USB as the discriminator even without application serial payloads. It does not establish an electrical, RF, peripheral or host implementation cause. The exact harness source 19703941... is preserved and digest-matched for all three runs.</p>
+<p>Across the v9 runs, 168 USB link-query replies explicitly reported BLE connected at actual parameters [6,6,0,400] (7.5 ms interval, zero latency, four-second supervision): 41 replies over 39.576 seconds in the first run and 127 across the three repeat-session windows. The complete runs recorded 196 and 334 USB rssi/link query replies respectively, including discovery and disconnect periods. Linux samples reported active USB throughout, with configuration retained before and after. These are concurrent diagnostic command-response checks, not Full USB or secure Companion acceptance. The 0x22 events occurred after explicit host Disconnect commands; payload completion and clean teardown remain separate results. The same-image slow control subsequently observed actual 75 ms before failing with zero echoes; production verification remains pending.</p>
+<p>Controller and SDK counters remain distinct. TX0 recorded twelve controller connection-complete events versus SDK connection/disconnect deltas 5/5; quiet v10 recorded eight versus SDK deltas 3/3. No cause is assigned to those differences. The exact original v9 and slow-control harness snapshots were recovered with matching SHA-256 values 83be8cf2... and 3295d776..., and retained as reproducibility evidence. The completed v11 comparison is reported above.</p>
+<p>The two-echo repeat ended in a harness timeout without a captured HCI disconnect, so that failure alone does not prove link loss. The separate nine-echo trial did record link timeout despite its longer deadline. Early missing-characteristic and D-Bus failures remain host-workflow evidence and are excluded from clean BLE comparisons. T1000 remains <strong>FAIL</strong> for simultaneous active USB and reliable BLE. Normal Full 72a74c78 was subsequently restored from unmodified source using application-only ZIP SHA-256 ba092c8e29b5b752a3d1667a0980910d4bec5815dfd0f07277b2ba3b8ce4e25a. Restoration and two additional USB opens returned 19 responses across three ports, all closed, with unchanged identity, advancing post-restoration uptime, zero framing rejects/core errors and MCU auto/DCDC with zero recorded crashes. The gateway remained active. These are restoration and USB runtime smoke results; historical Full 42 qualification remains source-bound, and BLE/RF were not requalified at Full 72.</p>
 <p>Cold boot, battery-only restart, complete phone/feature testing and fleet qualification remain untested. Unplugging USB alone does not prove a restart. <a href="../companion_qualification_f807_followup_2026-10-19.safe.json">Safe JSON</a> retains source bindings, workflow distinctions and evidence digests without device secrets or raw addresses.</p>
 
 
