@@ -2145,11 +2145,11 @@
       section("Companion tempradio2: transmit on both", [
         { label: "Transmit on both", commands: ["set radio2.cross on"],
           text: "After setting tempradio2 to rxtx, run this to send new messages on both radio and tempradio2. rxtx enables transmission on the second profile; cross on enables copying between the two profiles." },
-        { label: "Default isolation", commands: ["set radio2.cross auto"],
-          text: "Keep ordinary local messages on radio and local LoRa OTA traffic on tempradio2. With auto, a permanent and a temporary profile remain isolated." },
+        { label: "Default isolation", commands: ["set radio2.cross off"],
+          text: "Keep ordinary local messages on radio and local LoRa OTA traffic on tempradio2. Off disables copying between profiles, including two permanent profiles." },
         { label: "Check", commands: ["get tempradio2", "get radio2.cross", "get radio2.status"],
           text: "Confirm tempradio2 is active in rxtx mode. TX=a,b reports primary and secondary transmit counts." },
-      ], "radio2.cross is saved and stays set after tempradio2 expires or the node reboots. Turning it on also allows OTA traffic to cross profiles. RX-only mode still prevents transmission on the second profile. Use Default isolation to restore auto when needed.");
+      ], "radio2.cross is saved and stays set after tempradio2 expires or the node reboots. Turning it on also allows OTA traffic to cross profiles. RX-only mode still prevents transmission on the second profile. Use Default isolation to restore off when needed.");
     }
     if (full || infrastructure) {
       toggle("Device power saving", "set powersaving", "get powersaving",

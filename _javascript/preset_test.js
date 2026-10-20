@@ -431,8 +431,8 @@
       primaryCancel:
         "get tempradioat\ndel tempradioat all",
       companionCancelBefore:
-        "get tempradioat2\ndel tempradioat2 all\nset radio2.cross auto",
-      companionCancelDuring: "set tempradio2 off\nset radio2.cross auto",
+        "get tempradioat2\ndel tempradioat2 all\nset radio2.cross off",
+      companionCancelDuring: "set tempradio2 off\nset radio2.cross off",
       companionLeaveIn30:
         "set radio2.cross on\ndel tempradioat2 all\nset tempradio2 " +
         tuple + ",rxtx,30",
