@@ -1,0 +1,3045 @@
+{
+  "schema": 1,
+  "report_date": "2026-10-20",
+  "status": "PASS",
+  "scope": {
+    "boards": 13,
+    "companions": 11,
+    "repeaters": 2,
+    "active_boards": 12,
+    "active_companions": 10,
+    "active_repeaters": 2,
+    "operator_excluded_boards": 1
+  },
+  "counts": {
+    "complete": 12,
+    "failed": 0,
+    "incomplete": 0,
+    "operator_excluded": 1
+  },
+  "build": {
+    "source_commit": "08650f644b680a5dfaacb95142e3cef8529da9d2",
+    "status": "PASS",
+    "target_count": 13,
+    "manifest_sha256": "1dbf13ae8a3419f2c8e12d0432c37fa990d5bcfbb5649ab4d1d4ed4cec21a468"
+  },
+  "ci": {
+    "repository_head": "190064f4b5fa97e75dcfca7876568b757ba43b31",
+    "conclusion": "success",
+    "passed_jobs": 12,
+    "total_jobs": 12,
+    "url": "https://github.com/mikecarper/MeshCore/actions/runs/39493222360",
+    "firmware_changed_by_test_head": false
+  },
+  "source_assurance": {
+    "sha256": "577aee5162c7553f58bf13b550560da50bbf73860ab37febe3674a5ae73c01aa",
+    "retained_measurements_relabelled": false,
+    "binary_hash_equality_claimed": false
+  },
+  "boards": [
+    {
+      "id": "v43",
+      "name": "Heltec V4.3, FEM off",
+      "role": "companion",
+      "target": "heltec_v4_3_companion_radio_full_femoff",
+      "status": "PASS",
+      "installed_application": {
+        "source_commit": "08650f644b680a5dfaacb95142e3cef8529da9d2",
+        "artifact_sha256": "5132784d737535c768ebc0d288cd0b0380c2342a0464d4d016c68b75eebe6b48",
+        "version": "v1.18.0.1-halo-keymind-cascade-dev-08650f64",
+        "verified_at": "2026-10-20T20:39:09.054621+00:00"
+      },
+      "axes": {
+        "application": {
+          "status": "PASS",
+          "tested_source_commit": "08650f644b680a5dfaacb95142e3cef8529da9d2",
+          "tested_artifact_sha256": "5132784d737535c768ebc0d288cd0b0380c2342a0464d4d016c68b75eebe6b48",
+          "measured_started_at": "2026-10-20T20:36:07.583948+00:00",
+          "measured_finished_at": "2026-10-20T20:39:09.054621+00:00",
+          "evidence": [
+            {
+              "kind": "application_install",
+              "report_sha256": "10a010981229623fd62f7db055ab67e14ebce4d24c8da6e6aa05f7f7ba48f7c8"
+            }
+          ],
+          "retained": false,
+          "source_assurance_sha256": null,
+          "conditions": [],
+          "metrics": {}
+        },
+        "ble": {
+          "status": "PASS",
+          "tested_source_commit": "08650f644b680a5dfaacb95142e3cef8529da9d2",
+          "tested_artifact_sha256": "5132784d737535c768ebc0d288cd0b0380c2342a0464d4d016c68b75eebe6b48",
+          "measured_started_at": "2026-10-20T20:40:16.300990+00:00",
+          "measured_finished_at": "2026-10-20T20:43:23.629346+00:00",
+          "evidence": [
+            {
+              "kind": "secure_ble",
+              "report_sha256": "c4b0103c647c784ad8e9b0c65425d02ad0b4554def062d5fdd679ebc91dd85ab"
+            },
+            {
+              "kind": "secure_ble",
+              "report_sha256": "7b43549032f59e7e374e3a7bee87deca01f0400519f549868efdad9708e7b177"
+            }
+          ],
+          "retained": false,
+          "source_assurance_sha256": null,
+          "conditions": [],
+          "metrics": {
+            "sessions": 3,
+            "hold_seconds": [
+              30.273,
+              30.274,
+              30.274
+            ],
+            "native_connections": 3,
+            "disconnect_reasons": [
+              "0x16",
+              "0x16",
+              "0x16"
+            ]
+          }
+        },
+        "bootloader": {
+          "status": "NOT_APPLICABLE",
+          "tested_source_commit": null,
+          "tested_artifact_sha256": null,
+          "measured_started_at": null,
+          "measured_finished_at": null,
+          "evidence": [],
+          "retained": false,
+          "source_assurance_sha256": null,
+          "conditions": [],
+          "metrics": {}
+        },
+        "build": {
+          "status": "PASS",
+          "tested_source_commit": "08650f644b680a5dfaacb95142e3cef8529da9d2",
+          "tested_artifact_sha256": "5132784d737535c768ebc0d288cd0b0380c2342a0464d4d016c68b75eebe6b48",
+          "measured_started_at": "2026-10-20T19:34:32.198423+00:00",
+          "measured_finished_at": "2026-10-20T19:35:18.601920+00:00",
+          "evidence": [
+            {
+              "kind": "build_result",
+              "report_sha256": "1dbf13ae8a3419f2c8e12d0432c37fa990d5bcfbb5649ab4d1d4ed4cec21a468"
+            }
+          ],
+          "retained": false,
+          "source_assurance_sha256": null,
+          "conditions": [],
+          "metrics": {}
+        },
+        "contact_sync": {
+          "status": "PASS",
+          "tested_source_commit": "08650f644b680a5dfaacb95142e3cef8529da9d2",
+          "tested_artifact_sha256": "5132784d737535c768ebc0d288cd0b0380c2342a0464d4d016c68b75eebe6b48",
+          "measured_started_at": "2026-10-20T21:01:20.504900+00:00",
+          "measured_finished_at": "2026-10-20T21:03:12.229523+00:00",
+          "evidence": [
+            {
+              "kind": "contact_trial",
+              "report_sha256": "ab50eaca89685b78e146d01fee16972aa2afd17c2cd95c6f961e7da629052373"
+            }
+          ],
+          "retained": false,
+          "source_assurance_sha256": null,
+          "conditions": [],
+          "metrics": {
+            "full_owned_records": 64,
+            "incremental_owned_records": 32,
+            "owned_deleted": 64,
+            "owned_remaining": 0,
+            "unrelated_preserved": true
+          }
+        },
+        "service_handoff": {
+          "status": "NOT_APPLICABLE",
+          "tested_source_commit": null,
+          "tested_artifact_sha256": null,
+          "measured_started_at": null,
+          "measured_finished_at": null,
+          "evidence": [],
+          "retained": false,
+          "source_assurance_sha256": null,
+          "conditions": [],
+          "metrics": {}
+        },
+        "rf": {
+          "status": "PASS",
+          "tested_source_commit": "abf7ba5d5c3958580d52d6954d816c08a035a552",
+          "tested_artifact_sha256": "42d8e830759bfa55ee8185fd202aea3d5634675e041eefab1d38e1a2a2b093c8",
+          "measured_started_at": "2026-10-20T16:14:34.594486+00:00",
+          "measured_finished_at": "2026-10-20T16:14:58.853910+00:00",
+          "evidence": [
+            {
+              "kind": "two_way_rf",
+              "report_sha256": "3ca7bae7f68e4af0c4e141600776ccb9428d269cb597d90fd63d6cb2e2aa10cb"
+            }
+          ],
+          "retained": true,
+          "source_assurance_sha256": "577aee5162c7553f58bf13b550560da50bbf73860ab37febe3674a5ae73c01aa",
+          "conditions": [
+            "retained_source_scope"
+          ],
+          "metrics": {}
+        },
+        "sd": {
+          "status": "NOT_APPLICABLE",
+          "tested_source_commit": null,
+          "tested_artifact_sha256": null,
+          "measured_started_at": null,
+          "measured_finished_at": null,
+          "evidence": [],
+          "retained": false,
+          "source_assurance_sha256": null,
+          "conditions": [],
+          "metrics": {}
+        },
+        "usb": {
+          "status": "PASS",
+          "tested_source_commit": "08650f644b680a5dfaacb95142e3cef8529da9d2",
+          "tested_artifact_sha256": "5132784d737535c768ebc0d288cd0b0380c2342a0464d4d016c68b75eebe6b48",
+          "measured_started_at": "2026-10-20T20:39:17.407046+00:00",
+          "measured_finished_at": "2026-10-20T20:40:14.525087+00:00",
+          "evidence": [
+            {
+              "kind": "usb_benchmark",
+              "report_sha256": "9c358ee41c957a64c3af1367194fd620200853387915ca5644ebd68e3f0b3b04"
+            },
+            {
+              "kind": "usb_benchmark",
+              "report_sha256": "7b43549032f59e7e374e3a7bee87deca01f0400519f549868efdad9708e7b177"
+            }
+          ],
+          "retained": false,
+          "source_assurance_sha256": null,
+          "conditions": [
+            "normal_usb"
+          ],
+          "metrics": {
+            "query_cycles": 100,
+            "reopens": 10
+          }
+        },
+        "physical_usb_priority": {
+          "status": "NOT_APPLICABLE",
+          "tested_source_commit": null,
+          "tested_artifact_sha256": null,
+          "measured_started_at": null,
+          "measured_finished_at": null,
+          "evidence": [],
+          "retained": false,
+          "source_assurance_sha256": null,
+          "conditions": [],
+          "metrics": {}
+        }
+      },
+      "active": true,
+      "operator_excluded": false,
+      "exclusion_reason": null,
+      "current_state_verified": true,
+      "historical_measurement": null
+    },
+    {
+      "id": "rak",
+      "name": "RAK 4631",
+      "role": "companion",
+      "target": "RAK_4631_companion_radio_full",
+      "status": "PASS",
+      "installed_application": {
+        "source_commit": "08650f644b680a5dfaacb95142e3cef8529da9d2",
+        "artifact_sha256": "e392d2a1fe9b599a1641221f7f84325d968c48885afe00c56e77540dfb265b8a",
+        "version": "v1.18.0.1-halo-keymind-cascade-dev-08650f64",
+        "verified_at": "2026-10-20T19:51:10.150058+00:00"
+      },
+      "axes": {
+        "application": {
+          "status": "PASS",
+          "tested_source_commit": "08650f644b680a5dfaacb95142e3cef8529da9d2",
+          "tested_artifact_sha256": "e392d2a1fe9b599a1641221f7f84325d968c48885afe00c56e77540dfb265b8a",
+          "measured_started_at": "2026-10-20T19:50:01.244829+00:00",
+          "measured_finished_at": "2026-10-20T19:51:10.150058+00:00",
+          "evidence": [
+            {
+              "kind": "application_install",
+              "report_sha256": "024e8f3695f86cc6987ced2d511d134fb76e1b27a219eb8bd5c61401e32d8e83"
+            }
+          ],
+          "retained": false,
+          "source_assurance_sha256": null,
+          "conditions": [
+            "application_only_transfer"
+          ],
+          "metrics": {}
+        },
+        "ble": {
+          "status": "PASS",
+          "tested_source_commit": "08650f644b680a5dfaacb95142e3cef8529da9d2",
+          "tested_artifact_sha256": "e392d2a1fe9b599a1641221f7f84325d968c48885afe00c56e77540dfb265b8a",
+          "measured_started_at": "2026-10-20T19:59:14.432577+00:00",
+          "measured_finished_at": "2026-10-20T20:01:24.753530+00:00",
+          "evidence": [
+            {
+              "kind": "secure_ble",
+              "report_sha256": "43b4492e440611111f60ba5ddec9c9893a3372178247821caae6bca0e31d6e43"
+            },
+            {
+              "kind": "secure_ble",
+              "report_sha256": "af176591b71c3f5b05e1c302f556113c707c06ba3041b8622c90dc6e32cbbbc4"
+            }
+          ],
+          "retained": false,
+          "source_assurance_sha256": null,
+          "conditions": [],
+          "metrics": {
+            "sessions": 3,
+            "hold_seconds": [
+              30.21,
+              30.179,
+              30.21
+            ],
+            "native_connections": 3,
+            "disconnect_reasons": [
+              "0x16",
+              "0x16",
+              "0x16"
+            ]
+          }
+        },
+        "bootloader": {
+          "status": "PASS",
+          "tested_source_commit": "88d39510140ce6894cf8e74b93cbd28d7387fa21",
+          "tested_artifact_sha256": "0b9ffa94210ff84a2fd89b51f825c8c5b7987620d35b2a9558abac7af5ec5829",
+          "measured_started_at": "2026-10-20T15:39:26.164619+00:00",
+          "measured_finished_at": "2026-10-20T15:42:23.107478+00:00",
+          "evidence": [
+            {
+              "kind": "bootloader_transfer",
+              "report_sha256": "05856af103e0fae00b6f121dcb480aadf69015e5a45b3ad3c496d5ed4db85d07"
+            },
+            {
+              "kind": "application_install",
+              "report_sha256": "024e8f3695f86cc6987ced2d511d134fb76e1b27a219eb8bd5c61401e32d8e83"
+            }
+          ],
+          "retained": true,
+          "source_assurance_sha256": null,
+          "conditions": [
+            "retained_installed_bootloader_baseline"
+          ],
+          "metrics": {}
+        },
+        "build": {
+          "status": "PASS",
+          "tested_source_commit": "08650f644b680a5dfaacb95142e3cef8529da9d2",
+          "tested_artifact_sha256": "e392d2a1fe9b599a1641221f7f84325d968c48885afe00c56e77540dfb265b8a",
+          "measured_started_at": "2026-10-20T19:33:32.226481+00:00",
+          "measured_finished_at": "2026-10-20T19:34:04.254110+00:00",
+          "evidence": [
+            {
+              "kind": "build_result",
+              "report_sha256": "1dbf13ae8a3419f2c8e12d0432c37fa990d5bcfbb5649ab4d1d4ed4cec21a468"
+            }
+          ],
+          "retained": false,
+          "source_assurance_sha256": null,
+          "conditions": [],
+          "metrics": {}
+        },
+        "contact_sync": {
+          "status": "PASS",
+          "tested_source_commit": "08650f644b680a5dfaacb95142e3cef8529da9d2",
+          "tested_artifact_sha256": "e392d2a1fe9b599a1641221f7f84325d968c48885afe00c56e77540dfb265b8a",
+          "measured_started_at": "2026-10-20T20:02:35.177094+00:00",
+          "measured_finished_at": "2026-10-20T20:03:47.609436+00:00",
+          "evidence": [
+            {
+              "kind": "contact_trial",
+              "report_sha256": "e3d6d37666e84f5f640470aa18d4b59a1bda48ac34e47bf84f205e6131a03349"
+            }
+          ],
+          "retained": false,
+          "source_assurance_sha256": null,
+          "conditions": [],
+          "metrics": {
+            "full_owned_records": 64,
+            "incremental_owned_records": 32,
+            "owned_deleted": 64,
+            "owned_remaining": 0,
+            "unrelated_preserved": true
+          }
+        },
+        "service_handoff": {
+          "status": "NOT_APPLICABLE",
+          "tested_source_commit": null,
+          "tested_artifact_sha256": null,
+          "measured_started_at": null,
+          "measured_finished_at": null,
+          "evidence": [],
+          "retained": false,
+          "source_assurance_sha256": null,
+          "conditions": [],
+          "metrics": {}
+        },
+        "rf": {
+          "status": "PASS",
+          "tested_source_commit": "08650f644b680a5dfaacb95142e3cef8529da9d2",
+          "tested_artifact_sha256": "e392d2a1fe9b599a1641221f7f84325d968c48885afe00c56e77540dfb265b8a",
+          "measured_started_at": "2026-10-20T23:07:48.622761+00:00",
+          "measured_finished_at": "2026-10-20T23:08:07.420682+00:00",
+          "evidence": [
+            {
+              "kind": "two_way_rf",
+              "report_sha256": "2433f3e6fb11f69627098b1ca5c05e851eccafe6e57d804f8109ad1e289378bd"
+            }
+          ],
+          "retained": false,
+          "source_assurance_sha256": null,
+          "conditions": [],
+          "metrics": {}
+        },
+        "sd": {
+          "status": "NOT_APPLICABLE",
+          "tested_source_commit": null,
+          "tested_artifact_sha256": null,
+          "measured_started_at": null,
+          "measured_finished_at": null,
+          "evidence": [],
+          "retained": false,
+          "source_assurance_sha256": null,
+          "conditions": [],
+          "metrics": {}
+        },
+        "usb": {
+          "status": "PASS",
+          "tested_source_commit": "08650f644b680a5dfaacb95142e3cef8529da9d2",
+          "tested_artifact_sha256": "e392d2a1fe9b599a1641221f7f84325d968c48885afe00c56e77540dfb265b8a",
+          "measured_started_at": "2026-10-20T19:58:26.725980+00:00",
+          "measured_finished_at": "2026-10-20T19:59:13.090644+00:00",
+          "evidence": [
+            {
+              "kind": "usb_benchmark",
+              "report_sha256": "5aa0e663e9d8afd1539d2842fab810df8d91c8049353d61b39f7eda10bf1e664"
+            },
+            {
+              "kind": "usb_benchmark",
+              "report_sha256": "af176591b71c3f5b05e1c302f556113c707c06ba3041b8622c90dc6e32cbbbc4"
+            }
+          ],
+          "retained": false,
+          "source_assurance_sha256": null,
+          "conditions": [
+            "normal_usb"
+          ],
+          "metrics": {
+            "query_cycles": 100,
+            "reopens": 10
+          }
+        },
+        "physical_usb_priority": {
+          "status": "NOT_APPLICABLE",
+          "tested_source_commit": null,
+          "tested_artifact_sha256": null,
+          "measured_started_at": null,
+          "measured_finished_at": null,
+          "evidence": [],
+          "retained": false,
+          "source_assurance_sha256": null,
+          "conditions": [],
+          "metrics": {}
+        }
+      },
+      "active": true,
+      "operator_excluded": false,
+      "exclusion_reason": null,
+      "current_state_verified": true,
+      "historical_measurement": null
+    },
+    {
+      "id": "xiao_nrf",
+      "name": "Seeed XIAO nRF52",
+      "role": "companion",
+      "target": "Xiao_nrf52_companion_radio_full",
+      "status": "PASS",
+      "installed_application": {
+        "source_commit": "08650f644b680a5dfaacb95142e3cef8529da9d2",
+        "artifact_sha256": "e10ad9657c1e2f887bbf10670cbfa2d1b548557d5f5b4d1607f3a3e23f273c12",
+        "version": "v1.18.0.1-halo-keymind-cascade-dev-08650f64",
+        "verified_at": "2026-10-20T20:05:39.587393+00:00"
+      },
+      "axes": {
+        "application": {
+          "status": "PASS",
+          "tested_source_commit": "08650f644b680a5dfaacb95142e3cef8529da9d2",
+          "tested_artifact_sha256": "e10ad9657c1e2f887bbf10670cbfa2d1b548557d5f5b4d1607f3a3e23f273c12",
+          "measured_started_at": "2026-10-20T20:04:41.290966+00:00",
+          "measured_finished_at": "2026-10-20T20:05:39.587393+00:00",
+          "evidence": [
+            {
+              "kind": "application_install",
+              "report_sha256": "5169774e85fe8744401ad3e312b6f6fac88ade420e773c3a666bdb0802eb3f7c"
+            }
+          ],
+          "retained": false,
+          "source_assurance_sha256": null,
+          "conditions": [
+            "application_only_transfer"
+          ],
+          "metrics": {}
+        },
+        "ble": {
+          "status": "PASS",
+          "tested_source_commit": "08650f644b680a5dfaacb95142e3cef8529da9d2",
+          "tested_artifact_sha256": "e10ad9657c1e2f887bbf10670cbfa2d1b548557d5f5b4d1607f3a3e23f273c12",
+          "measured_started_at": "2026-10-20T20:06:57.650382+00:00",
+          "measured_finished_at": "2026-10-20T20:09:07.688431+00:00",
+          "evidence": [
+            {
+              "kind": "secure_ble",
+              "report_sha256": "c160fda3539ba397960a4c8b5f5337b50d253acc57eea30764d53cd5aacc56dc"
+            },
+            {
+              "kind": "secure_ble",
+              "report_sha256": "d01ff5a9725f54de9677476473bedeb7b5996837c72f3f07b36d444ef870527b"
+            }
+          ],
+          "retained": false,
+          "source_assurance_sha256": null,
+          "conditions": [],
+          "metrics": {
+            "sessions": 3,
+            "hold_seconds": [
+              30.211,
+              30.33,
+              30.299
+            ],
+            "native_connections": 3,
+            "disconnect_reasons": [
+              "0x16",
+              "0x16",
+              "0x16"
+            ]
+          }
+        },
+        "bootloader": {
+          "status": "PASS",
+          "tested_source_commit": "88d39510140ce6894cf8e74b93cbd28d7387fa21",
+          "tested_artifact_sha256": "088a33c23642ad9fdd47b02d260ea576691eaa5af7e9b6c122eb68a2e6ca67ae",
+          "measured_started_at": "2026-10-20T16:17:47.675264+00:00",
+          "measured_finished_at": "2026-10-20T16:20:27.382424+00:00",
+          "evidence": [
+            {
+              "kind": "bootloader_transfer",
+              "report_sha256": "4e256b63551f89d922c5e10aac2e6ee38a758c8f8ca3db2f4e87e537ffe1549d"
+            },
+            {
+              "kind": "application_install",
+              "report_sha256": "5169774e85fe8744401ad3e312b6f6fac88ade420e773c3a666bdb0802eb3f7c"
+            }
+          ],
+          "retained": true,
+          "source_assurance_sha256": null,
+          "conditions": [
+            "retained_installed_bootloader_baseline"
+          ],
+          "metrics": {}
+        },
+        "build": {
+          "status": "PASS",
+          "tested_source_commit": "08650f644b680a5dfaacb95142e3cef8529da9d2",
+          "tested_artifact_sha256": "e10ad9657c1e2f887bbf10670cbfa2d1b548557d5f5b4d1607f3a3e23f273c12",
+          "measured_started_at": "2026-10-20T19:34:04.516982+00:00",
+          "measured_finished_at": "2026-10-20T19:34:31.934225+00:00",
+          "evidence": [
+            {
+              "kind": "build_result",
+              "report_sha256": "1dbf13ae8a3419f2c8e12d0432c37fa990d5bcfbb5649ab4d1d4ed4cec21a468"
+            }
+          ],
+          "retained": false,
+          "source_assurance_sha256": null,
+          "conditions": [],
+          "metrics": {}
+        },
+        "contact_sync": {
+          "status": "PASS",
+          "tested_source_commit": "08650f644b680a5dfaacb95142e3cef8529da9d2",
+          "tested_artifact_sha256": "e10ad9657c1e2f887bbf10670cbfa2d1b548557d5f5b4d1607f3a3e23f273c12",
+          "measured_started_at": "2026-10-20T20:09:20.856115+00:00",
+          "measured_finished_at": "2026-10-20T20:10:30.679841+00:00",
+          "evidence": [
+            {
+              "kind": "contact_trial",
+              "report_sha256": "d8488f14648636efec012fa72760c2988830c658b5a3fb96170f7f32ac4537b3"
+            }
+          ],
+          "retained": false,
+          "source_assurance_sha256": null,
+          "conditions": [],
+          "metrics": {
+            "full_owned_records": 64,
+            "incremental_owned_records": 32,
+            "owned_deleted": 64,
+            "owned_remaining": 0,
+            "unrelated_preserved": true
+          }
+        },
+        "service_handoff": {
+          "status": "NOT_APPLICABLE",
+          "tested_source_commit": null,
+          "tested_artifact_sha256": null,
+          "measured_started_at": null,
+          "measured_finished_at": null,
+          "evidence": [],
+          "retained": false,
+          "source_assurance_sha256": null,
+          "conditions": [],
+          "metrics": {}
+        },
+        "rf": {
+          "status": "PASS",
+          "tested_source_commit": "08650f644b680a5dfaacb95142e3cef8529da9d2",
+          "tested_artifact_sha256": "e10ad9657c1e2f887bbf10670cbfa2d1b548557d5f5b4d1607f3a3e23f273c12",
+          "measured_started_at": "2026-10-20T20:10:44.048166+00:00",
+          "measured_finished_at": "2026-10-20T20:10:58.830050+00:00",
+          "evidence": [
+            {
+              "kind": "two_way_rf",
+              "report_sha256": "99c638ebfbc2f064bdf30258d4adfa9e52795860075417467c5b4e933b367644"
+            }
+          ],
+          "retained": false,
+          "source_assurance_sha256": null,
+          "conditions": [],
+          "metrics": {}
+        },
+        "sd": {
+          "status": "NOT_APPLICABLE",
+          "tested_source_commit": null,
+          "tested_artifact_sha256": null,
+          "measured_started_at": null,
+          "measured_finished_at": null,
+          "evidence": [],
+          "retained": false,
+          "source_assurance_sha256": null,
+          "conditions": [],
+          "metrics": {}
+        },
+        "usb": {
+          "status": "PASS",
+          "tested_source_commit": "08650f644b680a5dfaacb95142e3cef8529da9d2",
+          "tested_artifact_sha256": "e10ad9657c1e2f887bbf10670cbfa2d1b548557d5f5b4d1607f3a3e23f273c12",
+          "measured_started_at": "2026-10-20T20:06:11.107752+00:00",
+          "measured_finished_at": "2026-10-20T20:06:56.428936+00:00",
+          "evidence": [
+            {
+              "kind": "usb_benchmark",
+              "report_sha256": "9b3459aad133190f6fce0a2692fe8b79bb5f8e78c9537bf6963b59e50c741ad5"
+            },
+            {
+              "kind": "usb_benchmark",
+              "report_sha256": "d01ff5a9725f54de9677476473bedeb7b5996837c72f3f07b36d444ef870527b"
+            }
+          ],
+          "retained": false,
+          "source_assurance_sha256": null,
+          "conditions": [
+            "normal_usb"
+          ],
+          "metrics": {
+            "query_cycles": 100,
+            "reopens": 10
+          }
+        },
+        "physical_usb_priority": {
+          "status": "NOT_APPLICABLE",
+          "tested_source_commit": null,
+          "tested_artifact_sha256": null,
+          "measured_started_at": null,
+          "measured_finished_at": null,
+          "evidence": [],
+          "retained": false,
+          "source_assurance_sha256": null,
+          "conditions": [],
+          "metrics": {}
+        }
+      },
+      "active": true,
+      "operator_excluded": false,
+      "exclusion_reason": null,
+      "current_state_verified": true,
+      "historical_measurement": null
+    },
+    {
+      "id": "t1000",
+      "name": "Seeed T1000-E",
+      "role": "companion",
+      "target": "t1000e_companion_radio_full",
+      "status": "PASS",
+      "installed_application": {
+        "source_commit": "08650f644b680a5dfaacb95142e3cef8529da9d2",
+        "artifact_sha256": "116606a04925c58d0c7986ae539ff928535cc0a994f610d1ac8ba0bf58aa5aea",
+        "version": "v1.18.0.1-halo-keymind-cascade-dev-08650f64",
+        "verified_at": "2026-10-20T19:46:08.366629+00:00"
+      },
+      "axes": {
+        "application": {
+          "status": "PASS",
+          "tested_source_commit": "08650f644b680a5dfaacb95142e3cef8529da9d2",
+          "tested_artifact_sha256": "116606a04925c58d0c7986ae539ff928535cc0a994f610d1ac8ba0bf58aa5aea",
+          "measured_started_at": "2026-10-20T19:45:09.453732+00:00",
+          "measured_finished_at": "2026-10-20T19:46:08.366629+00:00",
+          "evidence": [
+            {
+              "kind": "application_install",
+              "report_sha256": "c5c6830c1dbbf518152b6ef7cec8766cb18a4dc404352a932978d596d4c8447c"
+            }
+          ],
+          "retained": false,
+          "source_assurance_sha256": null,
+          "conditions": [
+            "application_only_transfer"
+          ],
+          "metrics": {}
+        },
+        "ble": {
+          "status": "PASS",
+          "tested_source_commit": "08650f644b680a5dfaacb95142e3cef8529da9d2",
+          "tested_artifact_sha256": "116606a04925c58d0c7986ae539ff928535cc0a994f610d1ac8ba0bf58aa5aea",
+          "measured_started_at": "2026-10-20T20:51:14.064536+00:00",
+          "measured_finished_at": "2026-10-20T20:53:32.911627+00:00",
+          "evidence": [
+            {
+              "kind": "secure_ble",
+              "report_sha256": "1ec25c1aa0085e3d635aea5d6c6c9a7098753e930c5589ba784f3801c5041976"
+            }
+          ],
+          "retained": false,
+          "source_assurance_sha256": null,
+          "conditions": [
+            "usb_absent_battery"
+          ],
+          "metrics": {
+            "sessions": 3,
+            "hold_seconds": [
+              30.239,
+              30.214,
+              30.3
+            ],
+            "native_connections": 3,
+            "disconnect_reasons": [
+              "0x16",
+              "0x16",
+              "0x16"
+            ]
+          }
+        },
+        "bootloader": {
+          "status": "PASS",
+          "tested_source_commit": "88d39510140ce6894cf8e74b93cbd28d7387fa21",
+          "tested_artifact_sha256": "7512864450b22faf6ad7070ca3054754d9588b4f52cb6b9e8ad00d1f66580ee9",
+          "measured_started_at": "2026-10-20T16:00:17.894911+00:00",
+          "measured_finished_at": "2026-10-20T16:02:20.568667+00:00",
+          "evidence": [
+            {
+              "kind": "bootloader_transfer",
+              "report_sha256": "fce5db36cc7987db3c5677a02e5ccbd7a2b08315e75c4d38bf71851173f35941"
+            },
+            {
+              "kind": "application_install",
+              "report_sha256": "c5c6830c1dbbf518152b6ef7cec8766cb18a4dc404352a932978d596d4c8447c"
+            }
+          ],
+          "retained": true,
+          "source_assurance_sha256": null,
+          "conditions": [
+            "retained_installed_bootloader_baseline"
+          ],
+          "metrics": {}
+        },
+        "build": {
+          "status": "PASS",
+          "tested_source_commit": "08650f644b680a5dfaacb95142e3cef8529da9d2",
+          "tested_artifact_sha256": "116606a04925c58d0c7986ae539ff928535cc0a994f610d1ac8ba0bf58aa5aea",
+          "measured_started_at": "2026-10-20T19:33:06.973813+00:00",
+          "measured_finished_at": "2026-10-20T19:33:31.918696+00:00",
+          "evidence": [
+            {
+              "kind": "build_result",
+              "report_sha256": "1dbf13ae8a3419f2c8e12d0432c37fa990d5bcfbb5649ab4d1d4ed4cec21a468"
+            }
+          ],
+          "retained": false,
+          "source_assurance_sha256": null,
+          "conditions": [],
+          "metrics": {}
+        },
+        "contact_sync": {
+          "status": "PASS",
+          "tested_source_commit": "08650f644b680a5dfaacb95142e3cef8529da9d2",
+          "tested_artifact_sha256": "116606a04925c58d0c7986ae539ff928535cc0a994f610d1ac8ba0bf58aa5aea",
+          "measured_started_at": "2026-10-20T19:49:25.610055+00:00",
+          "measured_finished_at": "2026-10-20T19:57:28.345027+00:00",
+          "evidence": [
+            {
+              "kind": "contact_trial",
+              "report_sha256": "8bbca1077113f6a9c298478a5f904135e0f98e148a217e7b7abc866518f164e0"
+            }
+          ],
+          "retained": false,
+          "source_assurance_sha256": null,
+          "conditions": [],
+          "metrics": {
+            "full_owned_records": 64,
+            "incremental_owned_records": 32,
+            "owned_deleted": 64,
+            "owned_remaining": 0,
+            "unrelated_preserved": true
+          }
+        },
+        "service_handoff": {
+          "status": "NOT_APPLICABLE",
+          "tested_source_commit": null,
+          "tested_artifact_sha256": null,
+          "measured_started_at": null,
+          "measured_finished_at": null,
+          "evidence": [],
+          "retained": false,
+          "source_assurance_sha256": null,
+          "conditions": [],
+          "metrics": {}
+        },
+        "rf": {
+          "status": "PASS",
+          "tested_source_commit": "08650f644b680a5dfaacb95142e3cef8529da9d2",
+          "tested_artifact_sha256": "116606a04925c58d0c7986ae539ff928535cc0a994f610d1ac8ba0bf58aa5aea",
+          "measured_started_at": "2026-10-20T20:18:05.515389+00:00",
+          "measured_finished_at": "2026-10-20T20:18:23.309925+00:00",
+          "evidence": [
+            {
+              "kind": "two_way_rf",
+              "report_sha256": "0abae6829a1184dba99f590bca837ff204f555d1e1a1606cc0933d2655fd5843"
+            }
+          ],
+          "retained": false,
+          "source_assurance_sha256": null,
+          "conditions": [],
+          "metrics": {}
+        },
+        "sd": {
+          "status": "NOT_APPLICABLE",
+          "tested_source_commit": null,
+          "tested_artifact_sha256": null,
+          "measured_started_at": null,
+          "measured_finished_at": null,
+          "evidence": [],
+          "retained": false,
+          "source_assurance_sha256": null,
+          "conditions": [],
+          "metrics": {}
+        },
+        "usb": {
+          "status": "PASS",
+          "tested_source_commit": "08650f644b680a5dfaacb95142e3cef8529da9d2",
+          "tested_artifact_sha256": "116606a04925c58d0c7986ae539ff928535cc0a994f610d1ac8ba0bf58aa5aea",
+          "measured_started_at": "2026-10-20T19:46:51.012113+00:00",
+          "measured_finished_at": "2026-10-20T19:47:38.813505+00:00",
+          "evidence": [
+            {
+              "kind": "usb_benchmark",
+              "report_sha256": "9907dea1eae7619e523dba8beede2fcec1f07380bace5bb866ebbd67b6f5db00"
+            },
+            {
+              "kind": "usb_benchmark",
+              "report_sha256": "a3ca39e37ae93950cad81213514b8c635df060f511436b86550ff93088db8262"
+            }
+          ],
+          "retained": false,
+          "source_assurance_sha256": null,
+          "conditions": [
+            "normal_usb"
+          ],
+          "metrics": {
+            "query_cycles": 100,
+            "reopens": 10
+          }
+        },
+        "physical_usb_priority": {
+          "status": "PASS",
+          "tested_source_commit": "08650f644b680a5dfaacb95142e3cef8529da9d2",
+          "tested_artifact_sha256": "116606a04925c58d0c7986ae539ff928535cc0a994f610d1ac8ba0bf58aa5aea",
+          "measured_started_at": "2026-10-20T19:48:54.508476+00:00",
+          "measured_finished_at": "2026-10-20T20:53:32.911627+00:00",
+          "evidence": [
+            {
+              "kind": "physical_usb_priority",
+              "report_sha256": "6ded46b55cfd0ba4cd663384fb9e4d7dc8f0442b7a4f51190e5a6ae04dbfe001"
+            }
+          ],
+          "retained": false,
+          "source_assurance_sha256": null,
+          "conditions": [
+            "usb_data_host_priority"
+          ],
+          "metrics": {
+            "physical_phases": 11
+          }
+        }
+      },
+      "active": true,
+      "operator_excluded": false,
+      "exclusion_reason": null,
+      "current_state_verified": true,
+      "historical_measurement": null
+    },
+    {
+      "id": "v3",
+      "name": "Heltec V3",
+      "role": "companion",
+      "target": "Heltec_v3_companion_radio_full",
+      "status": "PASS",
+      "installed_application": {
+        "source_commit": "08650f644b680a5dfaacb95142e3cef8529da9d2",
+        "artifact_sha256": "e3bfc6e858e753ab3bd65df4cbcba31e382ab8fae0e47ef4133040ab4f3536bc",
+        "version": "v1.18.0.1-halo-keymind-cascade-dev-08650f64",
+        "verified_at": "2026-10-20T21:37:08.760815+00:00"
+      },
+      "axes": {
+        "application": {
+          "status": "PASS",
+          "tested_source_commit": "08650f644b680a5dfaacb95142e3cef8529da9d2",
+          "tested_artifact_sha256": "e3bfc6e858e753ab3bd65df4cbcba31e382ab8fae0e47ef4133040ab4f3536bc",
+          "measured_started_at": "2026-10-20T21:33:36.814738+00:00",
+          "measured_finished_at": "2026-10-20T21:37:08.760815+00:00",
+          "evidence": [
+            {
+              "kind": "application_install",
+              "report_sha256": "cb4bdb42884b17d3491f5926677b98dc9b13d5813c351ccbca2df41c47032c97"
+            }
+          ],
+          "retained": false,
+          "source_assurance_sha256": null,
+          "conditions": [],
+          "metrics": {}
+        },
+        "ble": {
+          "status": "PASS",
+          "tested_source_commit": "abf7ba5d5c3958580d52d6954d816c08a035a552",
+          "tested_artifact_sha256": "844363e091041a1314d4af0bb8929827fed35f281f7b4f1a984ae55fa3a68a46",
+          "measured_started_at": "2026-10-20T15:26:42.582988+00:00",
+          "measured_finished_at": "2026-10-20T15:29:47.616610+00:00",
+          "evidence": [
+            {
+              "kind": "secure_ble",
+              "report_sha256": "f767c8dc6301b37a815df8911392c27d368a479c1a191e36164ec9f95a4ddc91"
+            }
+          ],
+          "retained": true,
+          "source_assurance_sha256": "577aee5162c7553f58bf13b550560da50bbf73860ab37febe3674a5ae73c01aa",
+          "conditions": [
+            "retained_source_scope"
+          ],
+          "metrics": {
+            "sessions": 3,
+            "hold_seconds": [
+              30.18,
+              30.21,
+              30.18
+            ]
+          }
+        },
+        "bootloader": {
+          "status": "NOT_APPLICABLE",
+          "tested_source_commit": null,
+          "tested_artifact_sha256": null,
+          "measured_started_at": null,
+          "measured_finished_at": null,
+          "evidence": [],
+          "retained": false,
+          "source_assurance_sha256": null,
+          "conditions": [],
+          "metrics": {}
+        },
+        "build": {
+          "status": "PASS",
+          "tested_source_commit": "08650f644b680a5dfaacb95142e3cef8529da9d2",
+          "tested_artifact_sha256": "e3bfc6e858e753ab3bd65df4cbcba31e382ab8fae0e47ef4133040ab4f3536bc",
+          "measured_started_at": "2026-10-20T19:35:18.870215+00:00",
+          "measured_finished_at": "2026-10-20T19:36:00.963697+00:00",
+          "evidence": [
+            {
+              "kind": "build_result",
+              "report_sha256": "1dbf13ae8a3419f2c8e12d0432c37fa990d5bcfbb5649ab4d1d4ed4cec21a468"
+            }
+          ],
+          "retained": false,
+          "source_assurance_sha256": null,
+          "conditions": [],
+          "metrics": {}
+        },
+        "contact_sync": {
+          "status": "PASS",
+          "tested_source_commit": "08650f644b680a5dfaacb95142e3cef8529da9d2",
+          "tested_artifact_sha256": "e3bfc6e858e753ab3bd65df4cbcba31e382ab8fae0e47ef4133040ab4f3536bc",
+          "measured_started_at": "2026-10-20T21:39:34.352835+00:00",
+          "measured_finished_at": "2026-10-20T21:43:00.125344+00:00",
+          "evidence": [
+            {
+              "kind": "contact_trial",
+              "report_sha256": "6e7270c8a1a7130cf785d5e17a3092f2eedda8f6ad3126bf3db0318a0945280e"
+            }
+          ],
+          "retained": false,
+          "source_assurance_sha256": null,
+          "conditions": [],
+          "metrics": {
+            "full_owned_records": 64,
+            "incremental_owned_records": 32,
+            "owned_deleted": 64,
+            "owned_remaining": 0,
+            "unrelated_preserved": true
+          }
+        },
+        "service_handoff": {
+          "status": "NOT_APPLICABLE",
+          "tested_source_commit": null,
+          "tested_artifact_sha256": null,
+          "measured_started_at": null,
+          "measured_finished_at": null,
+          "evidence": [],
+          "retained": false,
+          "source_assurance_sha256": null,
+          "conditions": [],
+          "metrics": {}
+        },
+        "rf": {
+          "status": "PASS",
+          "tested_source_commit": "abf7ba5d5c3958580d52d6954d816c08a035a552",
+          "tested_artifact_sha256": "844363e091041a1314d4af0bb8929827fed35f281f7b4f1a984ae55fa3a68a46",
+          "measured_started_at": "2026-10-20T15:58:35.179812+00:00",
+          "measured_finished_at": "2026-10-20T15:58:54.085740+00:00",
+          "evidence": [
+            {
+              "kind": "two_way_rf",
+              "report_sha256": "65a2c5a7832c4b924ee4508d58977c74f17b9f11ad5bdd9c1c977acd3f74c974"
+            }
+          ],
+          "retained": true,
+          "source_assurance_sha256": "577aee5162c7553f58bf13b550560da50bbf73860ab37febe3674a5ae73c01aa",
+          "conditions": [
+            "retained_source_scope"
+          ],
+          "metrics": {}
+        },
+        "sd": {
+          "status": "NOT_APPLICABLE",
+          "tested_source_commit": null,
+          "tested_artifact_sha256": null,
+          "measured_started_at": null,
+          "measured_finished_at": null,
+          "evidence": [],
+          "retained": false,
+          "source_assurance_sha256": null,
+          "conditions": [],
+          "metrics": {}
+        },
+        "usb": {
+          "status": "PASS",
+          "tested_source_commit": "abf7ba5d5c3958580d52d6954d816c08a035a552",
+          "tested_artifact_sha256": "844363e091041a1314d4af0bb8929827fed35f281f7b4f1a984ae55fa3a68a46",
+          "measured_started_at": "2026-10-20T15:24:26.788033+00:00",
+          "measured_finished_at": "2026-10-20T15:25:23.067996+00:00",
+          "evidence": [
+            {
+              "kind": "usb_benchmark",
+              "report_sha256": "2695d872a6c7fb6c66f048986355f75589364f823454a2d4f8c0641415367a1b"
+            }
+          ],
+          "retained": true,
+          "source_assurance_sha256": "577aee5162c7553f58bf13b550560da50bbf73860ab37febe3674a5ae73c01aa",
+          "conditions": [
+            "normal_usb",
+            "retained_source_scope"
+          ],
+          "metrics": {
+            "query_cycles": 100,
+            "reopens": 10
+          }
+        },
+        "physical_usb_priority": {
+          "status": "NOT_APPLICABLE",
+          "tested_source_commit": null,
+          "tested_artifact_sha256": null,
+          "measured_started_at": null,
+          "measured_finished_at": null,
+          "evidence": [],
+          "retained": false,
+          "source_assurance_sha256": null,
+          "conditions": [],
+          "metrics": {}
+        },
+        "current_identity": {
+          "status": "PASS",
+          "tested_source_commit": "08650f644b680a5dfaacb95142e3cef8529da9d2",
+          "tested_artifact_sha256": "e3bfc6e858e753ab3bd65df4cbcba31e382ab8fae0e47ef4133040ab4f3536bc",
+          "measured_started_at": "2026-10-20T21:37:23.731928+00:00",
+          "measured_finished_at": "2026-10-20T21:37:35.789057+00:00",
+          "evidence": [
+            {
+              "kind": "current_readonly_identity",
+              "report_sha256": "7b4761ed2b3f4be45d0bd7831d98d2ff20c64d0474542f31df286286be570a20"
+            }
+          ],
+          "retained": false,
+          "source_assurance_sha256": null,
+          "conditions": [
+            "current_readonly_identity"
+          ],
+          "metrics": {}
+        }
+      },
+      "active": true,
+      "operator_excluded": false,
+      "exclusion_reason": null,
+      "current_state_verified": true,
+      "historical_measurement": null
+    },
+    {
+      "id": "tag",
+      "name": "RAK WisMesh Tag",
+      "role": "companion",
+      "target": "RAK_WisMesh_Tag_companion_radio_full",
+      "status": "PASS",
+      "installed_application": {
+        "source_commit": "08650f644b680a5dfaacb95142e3cef8529da9d2",
+        "artifact_sha256": "9cfc55af68048787ca0f3eee6a77c9eff59319ca5418b30530a51b633077f776",
+        "version": "v1.18.0.1-halo-keymind-cascade-dev-08650f64",
+        "verified_at": "2026-10-20T21:45:52.731659+00:00"
+      },
+      "axes": {
+        "application": {
+          "status": "PASS",
+          "tested_source_commit": "08650f644b680a5dfaacb95142e3cef8529da9d2",
+          "tested_artifact_sha256": "9cfc55af68048787ca0f3eee6a77c9eff59319ca5418b30530a51b633077f776",
+          "measured_started_at": "2026-10-20T21:44:49.597706+00:00",
+          "measured_finished_at": "2026-10-20T21:45:52.731659+00:00",
+          "evidence": [
+            {
+              "kind": "application_install",
+              "report_sha256": "d1f18e83df21fead360487bc074c50d2f6024a6937242d87e9729d5488f3421d"
+            }
+          ],
+          "retained": false,
+          "source_assurance_sha256": null,
+          "conditions": [
+            "application_only_transfer"
+          ],
+          "metrics": {}
+        },
+        "ble": {
+          "status": "PASS",
+          "tested_source_commit": "abf7ba5d5c3958580d52d6954d816c08a035a552",
+          "tested_artifact_sha256": "f994a7184601a8f3ddf3b0f19faa1ffec149ce9ae25abb774ac256d9337e37c1",
+          "measured_started_at": "2026-10-20T15:52:21.785198+00:00",
+          "measured_finished_at": "2026-10-20T15:54:31.721172+00:00",
+          "evidence": [
+            {
+              "kind": "secure_ble",
+              "report_sha256": "29f386fab1af94ed64d49d7d7e5d48df376e98b7952f38a9c208b791abccb78f"
+            }
+          ],
+          "retained": true,
+          "source_assurance_sha256": "577aee5162c7553f58bf13b550560da50bbf73860ab37febe3674a5ae73c01aa",
+          "conditions": [
+            "retained_source_scope"
+          ],
+          "metrics": {
+            "sessions": 3,
+            "hold_seconds": [
+              30.239,
+              30.239,
+              30.238
+            ]
+          }
+        },
+        "bootloader": {
+          "status": "PASS",
+          "tested_source_commit": "88d39510140ce6894cf8e74b93cbd28d7387fa21",
+          "tested_artifact_sha256": "5e3881e9d048ac3dc0088d69a2291b843912dfbf1d14e4a587ea5364704ba3bb",
+          "measured_started_at": "2026-10-20T15:47:58.794949+00:00",
+          "measured_finished_at": "2026-10-20T15:50:54.516358+00:00",
+          "evidence": [
+            {
+              "kind": "bootloader_transfer",
+              "report_sha256": "b8bc2982c8bc7126df004584a6dfb763e70d1ea17f245b829367fd3b80ca79e9"
+            },
+            {
+              "kind": "application_install",
+              "report_sha256": "d1f18e83df21fead360487bc074c50d2f6024a6937242d87e9729d5488f3421d"
+            }
+          ],
+          "retained": true,
+          "source_assurance_sha256": null,
+          "conditions": [
+            "retained_installed_bootloader_baseline"
+          ],
+          "metrics": {}
+        },
+        "build": {
+          "status": "PASS",
+          "tested_source_commit": "08650f644b680a5dfaacb95142e3cef8529da9d2",
+          "tested_artifact_sha256": "9cfc55af68048787ca0f3eee6a77c9eff59319ca5418b30530a51b633077f776",
+          "measured_started_at": "2026-10-20T19:38:11.961820+00:00",
+          "measured_finished_at": "2026-10-20T19:38:40.070216+00:00",
+          "evidence": [
+            {
+              "kind": "build_result",
+              "report_sha256": "1dbf13ae8a3419f2c8e12d0432c37fa990d5bcfbb5649ab4d1d4ed4cec21a468"
+            }
+          ],
+          "retained": false,
+          "source_assurance_sha256": null,
+          "conditions": [],
+          "metrics": {}
+        },
+        "contact_sync": {
+          "status": "PASS",
+          "tested_source_commit": "08650f644b680a5dfaacb95142e3cef8529da9d2",
+          "tested_artifact_sha256": "9cfc55af68048787ca0f3eee6a77c9eff59319ca5418b30530a51b633077f776",
+          "measured_started_at": "2026-10-20T21:47:11.304880+00:00",
+          "measured_finished_at": "2026-10-20T21:49:58.830542+00:00",
+          "evidence": [
+            {
+              "kind": "contact_trial",
+              "report_sha256": "ebdd311a5ce6033ac53852808369aa75a454b21ce2430dc67495dd1d5226cd2b"
+            }
+          ],
+          "retained": false,
+          "source_assurance_sha256": null,
+          "conditions": [],
+          "metrics": {
+            "full_owned_records": 64,
+            "incremental_owned_records": 32,
+            "owned_deleted": 64,
+            "owned_remaining": 0,
+            "unrelated_preserved": true
+          }
+        },
+        "service_handoff": {
+          "status": "NOT_APPLICABLE",
+          "tested_source_commit": null,
+          "tested_artifact_sha256": null,
+          "measured_started_at": null,
+          "measured_finished_at": null,
+          "evidence": [],
+          "retained": false,
+          "source_assurance_sha256": null,
+          "conditions": [],
+          "metrics": {}
+        },
+        "rf": {
+          "status": "PASS",
+          "tested_source_commit": "abf7ba5d5c3958580d52d6954d816c08a035a552",
+          "tested_artifact_sha256": "f994a7184601a8f3ddf3b0f19faa1ffec149ce9ae25abb774ac256d9337e37c1",
+          "measured_started_at": "2026-10-20T15:58:54.781453+00:00",
+          "measured_finished_at": "2026-10-20T15:59:11.574444+00:00",
+          "evidence": [
+            {
+              "kind": "two_way_rf",
+              "report_sha256": "65a2c5a7832c4b924ee4508d58977c74f17b9f11ad5bdd9c1c977acd3f74c974"
+            }
+          ],
+          "retained": true,
+          "source_assurance_sha256": "577aee5162c7553f58bf13b550560da50bbf73860ab37febe3674a5ae73c01aa",
+          "conditions": [
+            "retained_source_scope"
+          ],
+          "metrics": {}
+        },
+        "sd": {
+          "status": "NOT_APPLICABLE",
+          "tested_source_commit": null,
+          "tested_artifact_sha256": null,
+          "measured_started_at": null,
+          "measured_finished_at": null,
+          "evidence": [],
+          "retained": false,
+          "source_assurance_sha256": null,
+          "conditions": [],
+          "metrics": {}
+        },
+        "usb": {
+          "status": "PASS",
+          "tested_source_commit": "abf7ba5d5c3958580d52d6954d816c08a035a552",
+          "tested_artifact_sha256": "f994a7184601a8f3ddf3b0f19faa1ffec149ce9ae25abb774ac256d9337e37c1",
+          "measured_started_at": "2026-10-20T15:50:55.410033+00:00",
+          "measured_finished_at": "2026-10-20T15:52:20.473874+00:00",
+          "evidence": [
+            {
+              "kind": "usb_benchmark",
+              "report_sha256": "928261d469e068f46ce3e27e95ed37ec90871f2cbd7b3422a16ec36ea365223b"
+            }
+          ],
+          "retained": true,
+          "source_assurance_sha256": "577aee5162c7553f58bf13b550560da50bbf73860ab37febe3674a5ae73c01aa",
+          "conditions": [
+            "normal_usb",
+            "retained_source_scope"
+          ],
+          "metrics": {
+            "query_cycles": 100,
+            "reopens": 10
+          }
+        },
+        "physical_usb_priority": {
+          "status": "NOT_APPLICABLE",
+          "tested_source_commit": null,
+          "tested_artifact_sha256": null,
+          "measured_started_at": null,
+          "measured_finished_at": null,
+          "evidence": [],
+          "retained": false,
+          "source_assurance_sha256": null,
+          "conditions": [],
+          "metrics": {}
+        },
+        "current_identity": {
+          "status": "PASS",
+          "tested_source_commit": "08650f644b680a5dfaacb95142e3cef8529da9d2",
+          "tested_artifact_sha256": "9cfc55af68048787ca0f3eee6a77c9eff59319ca5418b30530a51b633077f776",
+          "measured_started_at": "2026-10-20T21:46:25.072924+00:00",
+          "measured_finished_at": "2026-10-20T21:46:38.784442+00:00",
+          "evidence": [
+            {
+              "kind": "current_readonly_identity",
+              "report_sha256": "15892360f16babe52a151ef439a0d4b510a136a5db44d9568d726697926f6953"
+            }
+          ],
+          "retained": false,
+          "source_assurance_sha256": null,
+          "conditions": [
+            "current_readonly_identity"
+          ],
+          "metrics": {}
+        }
+      },
+      "active": true,
+      "operator_excluded": false,
+      "exclusion_reason": null,
+      "current_state_verified": true,
+      "historical_measurement": null
+    },
+    {
+      "id": "t096",
+      "name": "Heltec T096, FEM on",
+      "role": "companion",
+      "target": "Heltec_t096_companion_radio_full_femon",
+      "status": "PASS",
+      "installed_application": {
+        "source_commit": "08650f644b680a5dfaacb95142e3cef8529da9d2",
+        "artifact_sha256": "72512db2c22401ff363521d98c9137bc8bd64cafb44115d9b2fb2a805377a0b6",
+        "version": "v1.18.0.1-halo-keymind-cascade-dev-08650f64",
+        "verified_at": "2026-10-20T21:53:43.596246+00:00"
+      },
+      "axes": {
+        "application": {
+          "status": "PASS",
+          "tested_source_commit": "08650f644b680a5dfaacb95142e3cef8529da9d2",
+          "tested_artifact_sha256": "72512db2c22401ff363521d98c9137bc8bd64cafb44115d9b2fb2a805377a0b6",
+          "measured_started_at": "2026-10-20T21:52:40.155674+00:00",
+          "measured_finished_at": "2026-10-20T21:53:43.596246+00:00",
+          "evidence": [
+            {
+              "kind": "application_install",
+              "report_sha256": "b299eeb6c2b003ad30b4b9191a2fb65fbfc3c4fea4f57e6b22cda2ab57bf26e8"
+            }
+          ],
+          "retained": false,
+          "source_assurance_sha256": null,
+          "conditions": [
+            "application_only_transfer"
+          ],
+          "metrics": {}
+        },
+        "ble": {
+          "status": "PASS",
+          "tested_source_commit": "abf7ba5d5c3958580d52d6954d816c08a035a552",
+          "tested_artifact_sha256": "22bb268b9a4a0ab6a470ed49f63ca1a52a86f40b99e5b240cba84aef13d9f1d2",
+          "measured_started_at": "2026-10-20T17:08:43.307280+00:00",
+          "measured_finished_at": "2026-10-20T17:10:53.637086+00:00",
+          "evidence": [
+            {
+              "kind": "secure_ble",
+              "report_sha256": "8329e1374d2d245067107e5f7bb0fc2bc43bbc5210b9b362772e55114c1880aa"
+            }
+          ],
+          "retained": true,
+          "source_assurance_sha256": "577aee5162c7553f58bf13b550560da50bbf73860ab37febe3674a5ae73c01aa",
+          "conditions": [
+            "retained_source_scope"
+          ],
+          "metrics": {
+            "sessions": 3,
+            "hold_seconds": [
+              30.239,
+              30.18,
+              30.27
+            ]
+          }
+        },
+        "bootloader": {
+          "status": "PASS",
+          "tested_source_commit": "88d39510140ce6894cf8e74b93cbd28d7387fa21",
+          "tested_artifact_sha256": "674b4f316370cda2b8afe9b9b59efafa8a034ea8b7204159334d51b0fa885d25",
+          "measured_started_at": "2026-10-20T16:53:23.165411+00:00",
+          "measured_finished_at": "2026-10-20T16:54:52.892238+00:00",
+          "evidence": [
+            {
+              "kind": "bootloader_transfer",
+              "report_sha256": "3ee6c1e357ef16585fd9d93febef4c16095df78970a8087477de14d58cc9bdf9"
+            },
+            {
+              "kind": "application_install",
+              "report_sha256": "b299eeb6c2b003ad30b4b9191a2fb65fbfc3c4fea4f57e6b22cda2ab57bf26e8"
+            }
+          ],
+          "retained": true,
+          "source_assurance_sha256": null,
+          "conditions": [
+            "retained_installed_bootloader_baseline"
+          ],
+          "metrics": {}
+        },
+        "build": {
+          "status": "PASS",
+          "tested_source_commit": "08650f644b680a5dfaacb95142e3cef8529da9d2",
+          "tested_artifact_sha256": "72512db2c22401ff363521d98c9137bc8bd64cafb44115d9b2fb2a805377a0b6",
+          "measured_started_at": "2026-10-20T19:38:40.336104+00:00",
+          "measured_finished_at": "2026-10-20T19:39:09.401705+00:00",
+          "evidence": [
+            {
+              "kind": "build_result",
+              "report_sha256": "1dbf13ae8a3419f2c8e12d0432c37fa990d5bcfbb5649ab4d1d4ed4cec21a468"
+            }
+          ],
+          "retained": false,
+          "source_assurance_sha256": null,
+          "conditions": [],
+          "metrics": {}
+        },
+        "contact_sync": {
+          "status": "PASS",
+          "tested_source_commit": "08650f644b680a5dfaacb95142e3cef8529da9d2",
+          "tested_artifact_sha256": "72512db2c22401ff363521d98c9137bc8bd64cafb44115d9b2fb2a805377a0b6",
+          "measured_started_at": "2026-10-20T21:55:25.049994+00:00",
+          "measured_finished_at": "2026-10-20T21:58:22.922537+00:00",
+          "evidence": [
+            {
+              "kind": "contact_trial",
+              "report_sha256": "531233c738f9b2bdc140ceee0d73ea2854c656bb2010a768dedc760536922eac"
+            }
+          ],
+          "retained": false,
+          "source_assurance_sha256": null,
+          "conditions": [],
+          "metrics": {
+            "full_owned_records": 64,
+            "incremental_owned_records": 32,
+            "owned_deleted": 64,
+            "owned_remaining": 0,
+            "unrelated_preserved": true
+          }
+        },
+        "service_handoff": {
+          "status": "NOT_APPLICABLE",
+          "tested_source_commit": null,
+          "tested_artifact_sha256": null,
+          "measured_started_at": null,
+          "measured_finished_at": null,
+          "evidence": [],
+          "retained": false,
+          "source_assurance_sha256": null,
+          "conditions": [],
+          "metrics": {}
+        },
+        "rf": {
+          "status": "PASS",
+          "tested_source_commit": "abf7ba5d5c3958580d52d6954d816c08a035a552",
+          "tested_artifact_sha256": "22bb268b9a4a0ab6a470ed49f63ca1a52a86f40b99e5b240cba84aef13d9f1d2",
+          "measured_started_at": "2026-10-20T17:36:53.267053+00:00",
+          "measured_finished_at": "2026-10-20T17:37:10.151087+00:00",
+          "evidence": [
+            {
+              "kind": "two_way_rf",
+              "report_sha256": "495847688ebebfc06ca0935ae29bdc9cd45e993443ec324ca5a5587b99d1bad3"
+            }
+          ],
+          "retained": true,
+          "source_assurance_sha256": "577aee5162c7553f58bf13b550560da50bbf73860ab37febe3674a5ae73c01aa",
+          "conditions": [
+            "retained_source_scope"
+          ],
+          "metrics": {}
+        },
+        "sd": {
+          "status": "NOT_APPLICABLE",
+          "tested_source_commit": null,
+          "tested_artifact_sha256": null,
+          "measured_started_at": null,
+          "measured_finished_at": null,
+          "evidence": [],
+          "retained": false,
+          "source_assurance_sha256": null,
+          "conditions": [],
+          "metrics": {}
+        },
+        "usb": {
+          "status": "PASS",
+          "tested_source_commit": "abf7ba5d5c3958580d52d6954d816c08a035a552",
+          "tested_artifact_sha256": "22bb268b9a4a0ab6a470ed49f63ca1a52a86f40b99e5b240cba84aef13d9f1d2",
+          "measured_started_at": "2026-10-20T17:07:54.465299+00:00",
+          "measured_finished_at": "2026-10-20T17:08:42.066679+00:00",
+          "evidence": [
+            {
+              "kind": "usb_benchmark",
+              "report_sha256": "8a005080f4c5bc297bc23a0e1777cf39f37f449e3034cb6a3c9c2e7d0f987fa5"
+            }
+          ],
+          "retained": true,
+          "source_assurance_sha256": "577aee5162c7553f58bf13b550560da50bbf73860ab37febe3674a5ae73c01aa",
+          "conditions": [
+            "normal_usb",
+            "retained_source_scope"
+          ],
+          "metrics": {
+            "query_cycles": 100,
+            "reopens": 10
+          }
+        },
+        "physical_usb_priority": {
+          "status": "NOT_APPLICABLE",
+          "tested_source_commit": null,
+          "tested_artifact_sha256": null,
+          "measured_started_at": null,
+          "measured_finished_at": null,
+          "evidence": [],
+          "retained": false,
+          "source_assurance_sha256": null,
+          "conditions": [],
+          "metrics": {}
+        },
+        "current_identity": {
+          "status": "PASS",
+          "tested_source_commit": "08650f644b680a5dfaacb95142e3cef8529da9d2",
+          "tested_artifact_sha256": "72512db2c22401ff363521d98c9137bc8bd64cafb44115d9b2fb2a805377a0b6",
+          "measured_started_at": "2026-10-20T21:54:34.463438+00:00",
+          "measured_finished_at": "2026-10-20T21:54:49.640840+00:00",
+          "evidence": [
+            {
+              "kind": "current_readonly_identity",
+              "report_sha256": "fe5b9dde0f8da3d9b8d081bc3b0baa86a09994bf8580e7b14b131028a96aaa16"
+            }
+          ],
+          "retained": false,
+          "source_assurance_sha256": null,
+          "conditions": [
+            "current_readonly_identity"
+          ],
+          "metrics": {}
+        }
+      },
+      "active": true,
+      "operator_excluded": false,
+      "exclusion_reason": null,
+      "current_state_verified": true,
+      "historical_measurement": null
+    },
+    {
+      "id": "pocket",
+      "name": "Heltec MeshPocket",
+      "role": "companion",
+      "target": "Mesh_pocket_companion_radio_full",
+      "status": "OPERATOR_EXCLUDED",
+      "installed_application": {
+        "source_commit": null,
+        "artifact_sha256": null,
+        "version": null,
+        "verified_at": null
+      },
+      "axes": {},
+      "active": false,
+      "operator_excluded": true,
+      "exclusion_reason": "operator_bootloader_work",
+      "current_state_verified": false,
+      "historical_measurement": {
+        "kind": "historical_measured_qualification",
+        "status": "PASS",
+        "as_of": "2026-10-20T22:28:32.919894+00:00",
+        "current_state_claimed": false,
+        "acceptance_report_sha256": "3874f7fa51fe74146dc6dba5ca8f81cc00227b09c585db08ad8d4f25d242e122",
+        "installed_application": {
+          "source_commit": "08650f644b680a5dfaacb95142e3cef8529da9d2",
+          "artifact_sha256": "def27ce6ab6cdeb0407ddc09feceed74b0adc397c967856b623d2f70368788a2",
+          "version": "v1.18.0.1-halo-keymind-cascade-dev-08650f64",
+          "verified_at": "2026-10-20T22:23:15.883162+00:00"
+        },
+        "axes": {
+          "application": {
+            "status": "PASS",
+            "tested_source_commit": "08650f644b680a5dfaacb95142e3cef8529da9d2",
+            "tested_artifact_sha256": "def27ce6ab6cdeb0407ddc09feceed74b0adc397c967856b623d2f70368788a2",
+            "measured_started_at": "2026-10-20T22:22:10.698319+00:00",
+            "measured_finished_at": "2026-10-20T22:23:15.883162+00:00",
+            "evidence": [
+              {
+                "kind": "application_install",
+                "report_sha256": "a9dc9ba71a6d951f8f2bbfd11866497f4615441d7270538d9ac6ea58f62eba01"
+              }
+            ],
+            "retained": false,
+            "source_assurance_sha256": null,
+            "conditions": [
+              "application_only_transfer"
+            ],
+            "metrics": {}
+          },
+          "ble": {
+            "status": "PASS",
+            "tested_source_commit": "abf7ba5d5c3958580d52d6954d816c08a035a552",
+            "tested_artifact_sha256": "95f324ed566c0e546319c06ded6c61672a451e92db62a2ae2492a9d38cb2cb35",
+            "measured_started_at": "2026-10-20T17:18:13.805464+00:00",
+            "measured_finished_at": "2026-10-20T17:20:23.671698+00:00",
+            "evidence": [
+              {
+                "kind": "secure_ble",
+                "report_sha256": "a666aeca583d4f369b3f563ea857b636c389d4eb21e01865add629cd2bc283a7"
+              }
+            ],
+            "retained": true,
+            "source_assurance_sha256": "577aee5162c7553f58bf13b550560da50bbf73860ab37febe3674a5ae73c01aa",
+            "conditions": [
+              "retained_source_scope"
+            ],
+            "metrics": {
+              "sessions": 3,
+              "hold_seconds": [
+                30.27,
+                30.3,
+                30.271
+              ]
+            }
+          },
+          "bootloader": {
+            "status": "PASS",
+            "tested_source_commit": "88d39510140ce6894cf8e74b93cbd28d7387fa21",
+            "tested_artifact_sha256": "b82159e99515e8b4ade5d85e0549a5706708d3c792a85af7d07f7ff067edb11e",
+            "measured_started_at": "2026-10-20T17:15:28.998781+00:00",
+            "measured_finished_at": "2026-10-20T17:17:00.992436+00:00",
+            "evidence": [
+              {
+                "kind": "bootloader_transfer",
+                "report_sha256": "919b9ddd4a6d6909abec6059a222a1158ccfb09e8a1a12886a48f069b2793c63"
+              },
+              {
+                "kind": "application_install",
+                "report_sha256": "a9dc9ba71a6d951f8f2bbfd11866497f4615441d7270538d9ac6ea58f62eba01"
+              }
+            ],
+            "retained": true,
+            "source_assurance_sha256": null,
+            "conditions": [
+              "retained_installed_bootloader_baseline"
+            ],
+            "metrics": {}
+          },
+          "build": {
+            "status": "PASS",
+            "tested_source_commit": "08650f644b680a5dfaacb95142e3cef8529da9d2",
+            "tested_artifact_sha256": "def27ce6ab6cdeb0407ddc09feceed74b0adc397c967856b623d2f70368788a2",
+            "measured_started_at": "2026-10-20T19:39:09.668534+00:00",
+            "measured_finished_at": "2026-10-20T19:39:37.406820+00:00",
+            "evidence": [
+              {
+                "kind": "build_result",
+                "report_sha256": "1dbf13ae8a3419f2c8e12d0432c37fa990d5bcfbb5649ab4d1d4ed4cec21a468"
+              }
+            ],
+            "retained": false,
+            "source_assurance_sha256": null,
+            "conditions": [],
+            "metrics": {}
+          },
+          "contact_sync": {
+            "status": "PASS",
+            "tested_source_commit": "08650f644b680a5dfaacb95142e3cef8529da9d2",
+            "tested_artifact_sha256": "def27ce6ab6cdeb0407ddc09feceed74b0adc397c967856b623d2f70368788a2",
+            "measured_started_at": "2026-10-20T22:25:25.771618+00:00",
+            "measured_finished_at": "2026-10-20T22:28:32.919894+00:00",
+            "evidence": [
+              {
+                "kind": "contact_trial",
+                "report_sha256": "fae89c9129a7a4b74f13b6c46a353e7dbad89a144bfb28e22dda65a74f090e06"
+              }
+            ],
+            "retained": false,
+            "source_assurance_sha256": null,
+            "conditions": [],
+            "metrics": {
+              "full_owned_records": 64,
+              "incremental_owned_records": 32,
+              "owned_deleted": 64,
+              "owned_remaining": 0,
+              "unrelated_preserved": true
+            }
+          },
+          "rf": {
+            "status": "PASS",
+            "tested_source_commit": "abf7ba5d5c3958580d52d6954d816c08a035a552",
+            "tested_artifact_sha256": "95f324ed566c0e546319c06ded6c61672a451e92db62a2ae2492a9d38cb2cb35",
+            "measured_started_at": "2026-10-20T17:37:10.821352+00:00",
+            "measured_finished_at": "2026-10-20T17:37:28.280342+00:00",
+            "evidence": [
+              {
+                "kind": "two_way_rf",
+                "report_sha256": "495847688ebebfc06ca0935ae29bdc9cd45e993443ec324ca5a5587b99d1bad3"
+              }
+            ],
+            "retained": true,
+            "source_assurance_sha256": "577aee5162c7553f58bf13b550560da50bbf73860ab37febe3674a5ae73c01aa",
+            "conditions": [
+              "retained_source_scope"
+            ],
+            "metrics": {}
+          },
+          "usb": {
+            "status": "PASS",
+            "tested_source_commit": "abf7ba5d5c3958580d52d6954d816c08a035a552",
+            "tested_artifact_sha256": "95f324ed566c0e546319c06ded6c61672a451e92db62a2ae2492a9d38cb2cb35",
+            "measured_started_at": "2026-10-20T17:17:17.981989+00:00",
+            "measured_finished_at": "2026-10-20T17:18:12.543692+00:00",
+            "evidence": [
+              {
+                "kind": "usb_benchmark",
+                "report_sha256": "37700699667e91bf799a5cfcdf6b74897412ed550eff0bba7c60abfacb5dad29"
+              }
+            ],
+            "retained": true,
+            "source_assurance_sha256": "577aee5162c7553f58bf13b550560da50bbf73860ab37febe3674a5ae73c01aa",
+            "conditions": [
+              "normal_usb",
+              "retained_source_scope"
+            ],
+            "metrics": {
+              "query_cycles": 100,
+              "reopens": 10
+            }
+          },
+          "current_identity": {
+            "status": "PASS",
+            "tested_source_commit": "08650f644b680a5dfaacb95142e3cef8529da9d2",
+            "tested_artifact_sha256": "def27ce6ab6cdeb0407ddc09feceed74b0adc397c967856b623d2f70368788a2",
+            "measured_started_at": "2026-10-20T22:24:30.497006+00:00",
+            "measured_finished_at": "2026-10-20T22:24:47.205085+00:00",
+            "evidence": [
+              {
+                "kind": "current_readonly_identity",
+                "report_sha256": "b4031855450086ddfe5f926cca85a80587d15b30acea9fef7023a3fe89e4e6e5"
+              }
+            ],
+            "retained": false,
+            "source_assurance_sha256": null,
+            "conditions": [
+              "current_readonly_identity"
+            ],
+            "metrics": {}
+          }
+        }
+      }
+    },
+    {
+      "id": "tdeck",
+      "name": "LilyGo T-Deck",
+      "role": "companion",
+      "target": "LilyGo_TDeck_companion_radio_full",
+      "status": "PASS",
+      "installed_application": {
+        "source_commit": "08650f644b680a5dfaacb95142e3cef8529da9d2",
+        "artifact_sha256": "ba4bbab8f822919b60ca52673d3bb5ee49cacddf2d219ca3f2dbfda3e891659f",
+        "version": "v1.18.0.1-halo-keymind-cascade-dev-08650f64",
+        "verified_at": "2026-10-20T21:08:43.032982+00:00"
+      },
+      "axes": {
+        "application": {
+          "status": "PASS",
+          "tested_source_commit": "08650f644b680a5dfaacb95142e3cef8529da9d2",
+          "tested_artifact_sha256": "ba4bbab8f822919b60ca52673d3bb5ee49cacddf2d219ca3f2dbfda3e891659f",
+          "measured_started_at": "2026-10-20T21:06:09.354774+00:00",
+          "measured_finished_at": "2026-10-20T21:08:43.032982+00:00",
+          "evidence": [
+            {
+              "kind": "application_install",
+              "report_sha256": "4abf5e0f835bd55e7c8474e6aca1e9caec3540ab8ae6879905ae11299a384556"
+            }
+          ],
+          "retained": false,
+          "source_assurance_sha256": null,
+          "conditions": [],
+          "metrics": {}
+        },
+        "ble": {
+          "status": "PASS",
+          "tested_source_commit": "08650f644b680a5dfaacb95142e3cef8529da9d2",
+          "tested_artifact_sha256": "ba4bbab8f822919b60ca52673d3bb5ee49cacddf2d219ca3f2dbfda3e891659f",
+          "measured_started_at": "2026-10-20T22:06:31.046791+00:00",
+          "measured_finished_at": "2026-10-20T22:08:43.621803+00:00",
+          "evidence": [
+            {
+              "kind": "secure_ble",
+              "report_sha256": "03b9d75c66b28ec000b6d2b8257b3474dafae78898df5bed5b630d30ff912236"
+            },
+            {
+              "kind": "secure_ble",
+              "report_sha256": "c7d10bb9588a6cde764ab302730bb16d2d33f1ba19c9f987631f3f2cb4d91a7b"
+            }
+          ],
+          "retained": false,
+          "source_assurance_sha256": null,
+          "conditions": [
+            "usb_connected_wifi_quiet_boundaries"
+          ],
+          "metrics": {
+            "sessions": 3,
+            "hold_seconds": [
+              30.274,
+              30.273,
+              30.274
+            ],
+            "native_connections": 3,
+            "disconnect_reasons": [
+              "0x16",
+              "0x16",
+              "0x16"
+            ]
+          }
+        },
+        "bootloader": {
+          "status": "NOT_APPLICABLE",
+          "tested_source_commit": null,
+          "tested_artifact_sha256": null,
+          "measured_started_at": null,
+          "measured_finished_at": null,
+          "evidence": [],
+          "retained": false,
+          "source_assurance_sha256": null,
+          "conditions": [],
+          "metrics": {}
+        },
+        "build": {
+          "status": "PASS",
+          "tested_source_commit": "08650f644b680a5dfaacb95142e3cef8529da9d2",
+          "tested_artifact_sha256": "ba4bbab8f822919b60ca52673d3bb5ee49cacddf2d219ca3f2dbfda3e891659f",
+          "measured_started_at": "2026-10-20T19:36:01.225565+00:00",
+          "measured_finished_at": "2026-10-20T19:36:43.031124+00:00",
+          "evidence": [
+            {
+              "kind": "build_result",
+              "report_sha256": "1dbf13ae8a3419f2c8e12d0432c37fa990d5bcfbb5649ab4d1d4ed4cec21a468"
+            }
+          ],
+          "retained": false,
+          "source_assurance_sha256": null,
+          "conditions": [],
+          "metrics": {}
+        },
+        "contact_sync": {
+          "status": "PASS",
+          "tested_source_commit": "08650f644b680a5dfaacb95142e3cef8529da9d2",
+          "tested_artifact_sha256": "ba4bbab8f822919b60ca52673d3bb5ee49cacddf2d219ca3f2dbfda3e891659f",
+          "measured_started_at": "2026-10-20T22:50:27.762607+00:00",
+          "measured_finished_at": "2026-10-20T22:56:25.303683+00:00",
+          "evidence": [
+            {
+              "kind": "contact_trial",
+              "report_sha256": "9b8367cec986b43bc7ec5442bd7d1615c8dfb9476bae097d7c21f46e22d0a7b8"
+            }
+          ],
+          "retained": false,
+          "source_assurance_sha256": null,
+          "conditions": [
+            "usb_connected_wifi_restored_normal"
+          ],
+          "metrics": {
+            "full_owned_records": 64,
+            "incremental_owned_records": 32,
+            "owned_deleted": 64,
+            "owned_remaining": 0,
+            "unrelated_preserved": true
+          }
+        },
+        "service_handoff": {
+          "status": "NOT_APPLICABLE",
+          "tested_source_commit": null,
+          "tested_artifact_sha256": null,
+          "measured_started_at": null,
+          "measured_finished_at": null,
+          "evidence": [],
+          "retained": false,
+          "source_assurance_sha256": null,
+          "conditions": [],
+          "metrics": {}
+        },
+        "rf": {
+          "status": "PASS",
+          "tested_source_commit": "08650f644b680a5dfaacb95142e3cef8529da9d2",
+          "tested_artifact_sha256": "ba4bbab8f822919b60ca52673d3bb5ee49cacddf2d219ca3f2dbfda3e891659f",
+          "measured_started_at": "2026-10-20T23:05:13.058177+00:00",
+          "measured_finished_at": "2026-10-20T23:05:37.986536+00:00",
+          "evidence": [
+            {
+              "kind": "two_way_rf",
+              "report_sha256": "a8fb7121b47834c3efbb0fc210dc7ec632e8dd581cc3ac704f437169c1020030"
+            }
+          ],
+          "retained": false,
+          "source_assurance_sha256": null,
+          "conditions": [],
+          "metrics": {}
+        },
+        "sd": {
+          "status": "NOT_APPLICABLE",
+          "tested_source_commit": null,
+          "tested_artifact_sha256": null,
+          "measured_started_at": null,
+          "measured_finished_at": null,
+          "evidence": [],
+          "retained": false,
+          "source_assurance_sha256": null,
+          "conditions": [],
+          "metrics": {}
+        },
+        "usb": {
+          "status": "PASS",
+          "tested_source_commit": "08650f644b680a5dfaacb95142e3cef8529da9d2",
+          "tested_artifact_sha256": "ba4bbab8f822919b60ca52673d3bb5ee49cacddf2d219ca3f2dbfda3e891659f",
+          "measured_started_at": "2026-10-20T21:08:54.820544+00:00",
+          "measured_finished_at": "2026-10-20T21:09:48.431180+00:00",
+          "evidence": [
+            {
+              "kind": "usb_benchmark",
+              "report_sha256": "b43c9bc1c3e7ac56845c3254e9bfe3cdaae74ff69582450101f9ea2b1821f23c"
+            },
+            {
+              "kind": "usb_benchmark",
+              "report_sha256": "6b206158ae5a5cdc5789d67274c49494c5d425a7721705a9f1bba3e249b77d29"
+            }
+          ],
+          "retained": false,
+          "source_assurance_sha256": null,
+          "conditions": [
+            "normal_usb"
+          ],
+          "metrics": {
+            "query_cycles": 100,
+            "reopens": 10
+          }
+        },
+        "physical_usb_priority": {
+          "status": "NOT_APPLICABLE",
+          "tested_source_commit": null,
+          "tested_artifact_sha256": null,
+          "measured_started_at": null,
+          "measured_finished_at": null,
+          "evidence": [],
+          "retained": false,
+          "source_assurance_sha256": null,
+          "conditions": [],
+          "metrics": {}
+        },
+        "current_identity": {
+          "status": "PASS",
+          "tested_source_commit": "08650f644b680a5dfaacb95142e3cef8529da9d2",
+          "tested_artifact_sha256": "ba4bbab8f822919b60ca52673d3bb5ee49cacddf2d219ca3f2dbfda3e891659f",
+          "measured_started_at": "2026-10-20T22:04:28.176547+00:00",
+          "measured_finished_at": "2026-10-20T22:04:44.634339+00:00",
+          "evidence": [
+            {
+              "kind": "current_readonly_identity",
+              "report_sha256": "4a68d713f094842207eb424af68baff9f59b81351a6dcd6f643baf8121eaca50"
+            }
+          ],
+          "retained": false,
+          "source_assurance_sha256": null,
+          "conditions": [
+            "current_readonly_identity"
+          ],
+          "metrics": {}
+        }
+      },
+      "active": true,
+      "operator_excluded": false,
+      "exclusion_reason": null,
+      "current_state_verified": true,
+      "historical_measurement": null
+    },
+    {
+      "id": "xiao",
+      "name": "Seeed XIAO ESP32-S3",
+      "role": "companion",
+      "target": "Xiao_S3_WIO_companion_radio_full",
+      "status": "PASS",
+      "installed_application": {
+        "source_commit": "08650f644b680a5dfaacb95142e3cef8529da9d2",
+        "artifact_sha256": "f3f49f9278feb22c0474ae5deda810a9801b274160ab52ed02b7c04ce4416d49",
+        "version": "v1.18.0.1-halo-keymind-cascade-dev-08650f64",
+        "verified_at": "2026-10-20T21:25:36.939606+00:00"
+      },
+      "axes": {
+        "application": {
+          "status": "PASS",
+          "tested_source_commit": "08650f644b680a5dfaacb95142e3cef8529da9d2",
+          "tested_artifact_sha256": "f3f49f9278feb22c0474ae5deda810a9801b274160ab52ed02b7c04ce4416d49",
+          "measured_started_at": "2026-10-20T21:23:06.512966+00:00",
+          "measured_finished_at": "2026-10-20T21:25:36.939606+00:00",
+          "evidence": [
+            {
+              "kind": "application_install",
+              "report_sha256": "1839b0f3d71c213b307f09c3a05926510bf05da47a74a3e70acc42bb9ac4895c"
+            }
+          ],
+          "retained": false,
+          "source_assurance_sha256": null,
+          "conditions": [],
+          "metrics": {}
+        },
+        "ble": {
+          "status": "PASS",
+          "tested_source_commit": "08650f644b680a5dfaacb95142e3cef8529da9d2",
+          "tested_artifact_sha256": "f3f49f9278feb22c0474ae5deda810a9801b274160ab52ed02b7c04ce4416d49",
+          "measured_started_at": "2026-10-20T22:11:24.287466+00:00",
+          "measured_finished_at": "2026-10-20T22:13:36.647871+00:00",
+          "evidence": [
+            {
+              "kind": "secure_ble",
+              "report_sha256": "e4d09a9830eac6c1754413e1a00fa8ec62a76fbdd55a6bc91dbda736d3571c54"
+            },
+            {
+              "kind": "secure_ble",
+              "report_sha256": "bc633e881c554ad956952e07b70d249f826bd54ead6a533fc20cf1e74c22d445"
+            }
+          ],
+          "retained": false,
+          "source_assurance_sha256": null,
+          "conditions": [
+            "usb_connected_wifi_quiet_boundaries"
+          ],
+          "metrics": {
+            "sessions": 3,
+            "hold_seconds": [
+              30.324,
+              30.274,
+              30.274
+            ],
+            "native_connections": 3,
+            "disconnect_reasons": [
+              "0x16",
+              "0x16",
+              "0x16"
+            ]
+          }
+        },
+        "bootloader": {
+          "status": "NOT_APPLICABLE",
+          "tested_source_commit": null,
+          "tested_artifact_sha256": null,
+          "measured_started_at": null,
+          "measured_finished_at": null,
+          "evidence": [],
+          "retained": false,
+          "source_assurance_sha256": null,
+          "conditions": [],
+          "metrics": {}
+        },
+        "build": {
+          "status": "PASS",
+          "tested_source_commit": "08650f644b680a5dfaacb95142e3cef8529da9d2",
+          "tested_artifact_sha256": "f3f49f9278feb22c0474ae5deda810a9801b274160ab52ed02b7c04ce4416d49",
+          "measured_started_at": "2026-10-20T19:36:43.295919+00:00",
+          "measured_finished_at": "2026-10-20T19:37:24.943544+00:00",
+          "evidence": [
+            {
+              "kind": "build_result",
+              "report_sha256": "1dbf13ae8a3419f2c8e12d0432c37fa990d5bcfbb5649ab4d1d4ed4cec21a468"
+            }
+          ],
+          "retained": false,
+          "source_assurance_sha256": null,
+          "conditions": [],
+          "metrics": {}
+        },
+        "contact_sync": {
+          "status": "PASS",
+          "tested_source_commit": "08650f644b680a5dfaacb95142e3cef8529da9d2",
+          "tested_artifact_sha256": "f3f49f9278feb22c0474ae5deda810a9801b274160ab52ed02b7c04ce4416d49",
+          "measured_started_at": "2026-10-20T22:58:42.683949+00:00",
+          "measured_finished_at": "2026-10-20T23:02:29.974033+00:00",
+          "evidence": [
+            {
+              "kind": "contact_trial",
+              "report_sha256": "dd8cd48b606a70352dc51cd6c5e50c78ef167c38a7a98d34835ee315552e0944"
+            }
+          ],
+          "retained": false,
+          "source_assurance_sha256": null,
+          "conditions": [
+            "usb_connected_wifi_restored_normal"
+          ],
+          "metrics": {
+            "full_owned_records": 64,
+            "incremental_owned_records": 32,
+            "owned_deleted": 64,
+            "owned_remaining": 0,
+            "unrelated_preserved": true
+          }
+        },
+        "service_handoff": {
+          "status": "NOT_APPLICABLE",
+          "tested_source_commit": null,
+          "tested_artifact_sha256": null,
+          "measured_started_at": null,
+          "measured_finished_at": null,
+          "evidence": [],
+          "retained": false,
+          "source_assurance_sha256": null,
+          "conditions": [],
+          "metrics": {}
+        },
+        "rf": {
+          "status": "PASS",
+          "tested_source_commit": "08650f644b680a5dfaacb95142e3cef8529da9d2",
+          "tested_artifact_sha256": "f3f49f9278feb22c0474ae5deda810a9801b274160ab52ed02b7c04ce4416d49",
+          "measured_started_at": "2026-10-20T23:07:48.622761+00:00",
+          "measured_finished_at": "2026-10-20T23:08:07.420682+00:00",
+          "evidence": [
+            {
+              "kind": "two_way_rf",
+              "report_sha256": "2433f3e6fb11f69627098b1ca5c05e851eccafe6e57d804f8109ad1e289378bd"
+            }
+          ],
+          "retained": false,
+          "source_assurance_sha256": null,
+          "conditions": [],
+          "metrics": {}
+        },
+        "sd": {
+          "status": "NOT_APPLICABLE",
+          "tested_source_commit": null,
+          "tested_artifact_sha256": null,
+          "measured_started_at": null,
+          "measured_finished_at": null,
+          "evidence": [],
+          "retained": false,
+          "source_assurance_sha256": null,
+          "conditions": [],
+          "metrics": {}
+        },
+        "usb": {
+          "status": "PASS",
+          "tested_source_commit": "08650f644b680a5dfaacb95142e3cef8529da9d2",
+          "tested_artifact_sha256": "f3f49f9278feb22c0474ae5deda810a9801b274160ab52ed02b7c04ce4416d49",
+          "measured_started_at": "2026-10-20T21:25:48.651433+00:00",
+          "measured_finished_at": "2026-10-20T21:26:37.655621+00:00",
+          "evidence": [
+            {
+              "kind": "usb_benchmark",
+              "report_sha256": "9933174320bd79fe6eb2311d84d97504c5a0402f06d8b3802fa6a7e72acf696f"
+            },
+            {
+              "kind": "usb_benchmark",
+              "report_sha256": "2d4e5c466e1fe98fed3c6a9c0166daaaceb64789b07382afa9d2e788efda14d0"
+            }
+          ],
+          "retained": false,
+          "source_assurance_sha256": null,
+          "conditions": [
+            "normal_usb"
+          ],
+          "metrics": {
+            "query_cycles": 100,
+            "reopens": 10
+          }
+        },
+        "physical_usb_priority": {
+          "status": "NOT_APPLICABLE",
+          "tested_source_commit": null,
+          "tested_artifact_sha256": null,
+          "measured_started_at": null,
+          "measured_finished_at": null,
+          "evidence": [],
+          "retained": false,
+          "source_assurance_sha256": null,
+          "conditions": [],
+          "metrics": {}
+        }
+      },
+      "active": true,
+      "operator_excluded": false,
+      "exclusion_reason": null,
+      "current_state_verified": true,
+      "historical_measurement": null
+    },
+    {
+      "id": "indicator",
+      "name": "SenseCAP Indicator",
+      "role": "companion",
+      "target": "SenseCapIndicator-LoRa_companion_radio_full",
+      "status": "PASS",
+      "installed_application": {
+        "source_commit": "08650f644b680a5dfaacb95142e3cef8529da9d2",
+        "artifact_sha256": "2deaf536392c2de9867d5558df81e1f8d64579a60f816b05476cdeb1e91f336f",
+        "version": "v1.18.0.1-halo-keymind-cascade-dev-08650f64",
+        "verified_at": "2026-10-20T22:38:18.310765+00:00"
+      },
+      "axes": {
+        "application": {
+          "status": "PASS",
+          "tested_source_commit": "08650f644b680a5dfaacb95142e3cef8529da9d2",
+          "tested_artifact_sha256": "2deaf536392c2de9867d5558df81e1f8d64579a60f816b05476cdeb1e91f336f",
+          "measured_started_at": "2026-10-20T22:33:19.913494+00:00",
+          "measured_finished_at": "2026-10-20T22:38:18.310765+00:00",
+          "evidence": [
+            {
+              "kind": "application_install",
+              "report_sha256": "62509a87d24d863eeceb27b0c2ee066efdef2124626e3ba929ced0325f8818b1"
+            }
+          ],
+          "retained": false,
+          "source_assurance_sha256": null,
+          "conditions": [],
+          "metrics": {}
+        },
+        "ble": {
+          "status": "PASS",
+          "tested_source_commit": "08650f644b680a5dfaacb95142e3cef8529da9d2",
+          "tested_artifact_sha256": "2deaf536392c2de9867d5558df81e1f8d64579a60f816b05476cdeb1e91f336f",
+          "measured_started_at": "2026-10-20T22:40:02.605652+00:00",
+          "measured_finished_at": "2026-10-20T22:43:09.624637+00:00",
+          "evidence": [
+            {
+              "kind": "secure_ble",
+              "report_sha256": "704b81e518ea14752dc8c53a59d723a73b8c48ea7a02ad6424633471cceef1a1"
+            },
+            {
+              "kind": "secure_ble",
+              "report_sha256": "d60b9d677d60b597d56f87cc22fea43bfea6ec9db61bbc320fe2ab329727dc2b"
+            }
+          ],
+          "retained": false,
+          "source_assurance_sha256": null,
+          "conditions": [],
+          "metrics": {
+            "sessions": 3,
+            "hold_seconds": [
+              30.275,
+              30.273,
+              30.275
+            ],
+            "native_connections": 3,
+            "disconnect_reasons": [
+              "0x16",
+              "0x16",
+              "0x16"
+            ]
+          }
+        },
+        "bootloader": {
+          "status": "NOT_APPLICABLE",
+          "tested_source_commit": null,
+          "tested_artifact_sha256": null,
+          "measured_started_at": null,
+          "measured_finished_at": null,
+          "evidence": [],
+          "retained": false,
+          "source_assurance_sha256": null,
+          "conditions": [],
+          "metrics": {}
+        },
+        "build": {
+          "status": "PASS",
+          "tested_source_commit": "08650f644b680a5dfaacb95142e3cef8529da9d2",
+          "tested_artifact_sha256": "2deaf536392c2de9867d5558df81e1f8d64579a60f816b05476cdeb1e91f336f",
+          "measured_started_at": "2026-10-20T19:37:25.207400+00:00",
+          "measured_finished_at": "2026-10-20T19:38:11.700119+00:00",
+          "evidence": [
+            {
+              "kind": "build_result",
+              "report_sha256": "1dbf13ae8a3419f2c8e12d0432c37fa990d5bcfbb5649ab4d1d4ed4cec21a468"
+            }
+          ],
+          "retained": false,
+          "source_assurance_sha256": null,
+          "conditions": [],
+          "metrics": {}
+        },
+        "contact_sync": {
+          "status": "PASS",
+          "tested_source_commit": "08650f644b680a5dfaacb95142e3cef8529da9d2",
+          "tested_artifact_sha256": "2deaf536392c2de9867d5558df81e1f8d64579a60f816b05476cdeb1e91f336f",
+          "measured_started_at": "2026-10-20T22:43:39.705620+00:00",
+          "measured_finished_at": "2026-10-20T22:45:38.184745+00:00",
+          "evidence": [
+            {
+              "kind": "contact_trial",
+              "report_sha256": "f49d1481eaa204afa5e2776d1dcfaf622328c2cb14703e12dbe17a42904b92fa"
+            }
+          ],
+          "retained": false,
+          "source_assurance_sha256": null,
+          "conditions": [],
+          "metrics": {
+            "full_owned_records": 64,
+            "incremental_owned_records": 32,
+            "owned_deleted": 64,
+            "owned_remaining": 0,
+            "unrelated_preserved": true
+          }
+        },
+        "service_handoff": {
+          "status": "NOT_APPLICABLE",
+          "tested_source_commit": null,
+          "tested_artifact_sha256": null,
+          "measured_started_at": null,
+          "measured_finished_at": null,
+          "evidence": [],
+          "retained": false,
+          "source_assurance_sha256": null,
+          "conditions": [],
+          "metrics": {}
+        },
+        "rf": {
+          "status": "PASS",
+          "tested_source_commit": "08650f644b680a5dfaacb95142e3cef8529da9d2",
+          "tested_artifact_sha256": "2deaf536392c2de9867d5558df81e1f8d64579a60f816b05476cdeb1e91f336f",
+          "measured_started_at": "2026-10-20T22:46:15.419834+00:00",
+          "measured_finished_at": "2026-10-20T22:46:34.301606+00:00",
+          "evidence": [
+            {
+              "kind": "two_way_rf",
+              "report_sha256": "3d1e943a8d4bf52e1bd4d45a6dba08f6b858c7669784a9aa4439dcd56c41c5db"
+            }
+          ],
+          "retained": false,
+          "source_assurance_sha256": null,
+          "conditions": [],
+          "metrics": {}
+        },
+        "sd": {
+          "status": "NOT_APPLICABLE",
+          "tested_source_commit": null,
+          "tested_artifact_sha256": null,
+          "measured_started_at": null,
+          "measured_finished_at": null,
+          "evidence": [],
+          "retained": false,
+          "source_assurance_sha256": null,
+          "conditions": [],
+          "metrics": {}
+        },
+        "usb": {
+          "status": "PASS",
+          "tested_source_commit": "08650f644b680a5dfaacb95142e3cef8529da9d2",
+          "tested_artifact_sha256": "2deaf536392c2de9867d5558df81e1f8d64579a60f816b05476cdeb1e91f336f",
+          "measured_started_at": "2026-10-20T22:38:35.260983+00:00",
+          "measured_finished_at": "2026-10-20T22:40:00.669380+00:00",
+          "evidence": [
+            {
+              "kind": "usb_benchmark",
+              "report_sha256": "a81711d1106ac5f6a52619be72a605ba52082832ed3a60cb470f5a9b040133be"
+            },
+            {
+              "kind": "usb_benchmark",
+              "report_sha256": "d60b9d677d60b597d56f87cc22fea43bfea6ec9db61bbc320fe2ab329727dc2b"
+            }
+          ],
+          "retained": false,
+          "source_assurance_sha256": null,
+          "conditions": [
+            "normal_usb"
+          ],
+          "metrics": {
+            "query_cycles": 100,
+            "reopens": 10
+          }
+        },
+        "physical_usb_priority": {
+          "status": "NOT_APPLICABLE",
+          "tested_source_commit": null,
+          "tested_artifact_sha256": null,
+          "measured_started_at": null,
+          "measured_finished_at": null,
+          "evidence": [],
+          "retained": false,
+          "source_assurance_sha256": null,
+          "conditions": [],
+          "metrics": {}
+        }
+      },
+      "active": true,
+      "operator_excluded": false,
+      "exclusion_reason": null,
+      "current_state_verified": true,
+      "historical_measurement": null
+    },
+    {
+      "id": "tower",
+      "name": "Heltec MeshTower V2 SD",
+      "role": "repeater",
+      "target": "Heltec_tower_v2_sdcard_repeater_lora_ota_no_external_sensors",
+      "status": "PASS",
+      "installed_application": {
+        "source_commit": "c46defaefd642973cbbdb473815d56b5b261cb2e",
+        "artifact_sha256": "9e83fba667077354f3dabde1bb9b589b3a4606b8f46c18977b88a1815c92380c",
+        "version": "v1.18.0.1-halo-keymind-cascade-dev-c46defae",
+        "verified_at": "2026-10-20T19:04:29.789238+00:00"
+      },
+      "axes": {
+        "application": {
+          "status": "PASS",
+          "tested_source_commit": "c46defaefd642973cbbdb473815d56b5b261cb2e",
+          "tested_artifact_sha256": "9e83fba667077354f3dabde1bb9b589b3a4606b8f46c18977b88a1815c92380c",
+          "measured_started_at": "2026-10-20T19:03:32.306403+00:00",
+          "measured_finished_at": "2026-10-20T19:04:29.789238+00:00",
+          "evidence": [
+            {
+              "kind": "application_install",
+              "report_sha256": "bcf947d53e02c332690af3302636e22e1961d0fbbbb9742d9c83787b827add43"
+            }
+          ],
+          "retained": true,
+          "source_assurance_sha256": "577aee5162c7553f58bf13b550560da50bbf73860ab37febe3674a5ae73c01aa",
+          "conditions": [
+            "retained_source_scope"
+          ],
+          "metrics": {}
+        },
+        "ble": {
+          "status": "NOT_APPLICABLE",
+          "tested_source_commit": null,
+          "tested_artifact_sha256": null,
+          "measured_started_at": null,
+          "measured_finished_at": null,
+          "evidence": [],
+          "retained": false,
+          "source_assurance_sha256": null,
+          "conditions": [],
+          "metrics": {}
+        },
+        "bootloader": {
+          "status": "PASS",
+          "tested_source_commit": "88d39510140ce6894cf8e74b93cbd28d7387fa21",
+          "tested_artifact_sha256": "089a04c1fc7ea0fdb13479bdaac4fc88fb1547e890f2db50f2ca9b61ef15b133",
+          "measured_started_at": "2026-10-20T18:27:10.892619+00:00",
+          "measured_finished_at": "2026-10-20T18:28:34.675654+00:00",
+          "evidence": [
+            {
+              "kind": "bootloader_transfer",
+              "report_sha256": "a5765425b45124986062bdcb180e2dd95978c1917792c785bb4319dd746dd67b"
+            },
+            {
+              "kind": "application_install",
+              "report_sha256": "22c05ab052e6e4447c9969202100a3411b38414958a6c73bbca9b9c4185a60b6"
+            }
+          ],
+          "retained": true,
+          "source_assurance_sha256": null,
+          "conditions": [
+            "retained_installed_bootloader_baseline"
+          ],
+          "metrics": {}
+        },
+        "build": {
+          "status": "PASS",
+          "tested_source_commit": "08650f644b680a5dfaacb95142e3cef8529da9d2",
+          "tested_artifact_sha256": "89596236cae90cc430db6253d3947c4b68487551eae08ebcb6e77967396082a9",
+          "measured_started_at": "2026-10-20T19:39:37.669062+00:00",
+          "measured_finished_at": "2026-10-20T19:40:26.294284+00:00",
+          "evidence": [
+            {
+              "kind": "build_result",
+              "report_sha256": "1dbf13ae8a3419f2c8e12d0432c37fa990d5bcfbb5649ab4d1d4ed4cec21a468"
+            }
+          ],
+          "retained": false,
+          "source_assurance_sha256": null,
+          "conditions": [],
+          "metrics": {}
+        },
+        "contact_sync": {
+          "status": "NOT_APPLICABLE",
+          "tested_source_commit": null,
+          "tested_artifact_sha256": null,
+          "measured_started_at": null,
+          "measured_finished_at": null,
+          "evidence": [],
+          "retained": false,
+          "source_assurance_sha256": null,
+          "conditions": [],
+          "metrics": {}
+        },
+        "service_handoff": {
+          "status": "NOT_APPLICABLE",
+          "tested_source_commit": null,
+          "tested_artifact_sha256": null,
+          "measured_started_at": null,
+          "measured_finished_at": null,
+          "evidence": [],
+          "retained": false,
+          "source_assurance_sha256": null,
+          "conditions": [],
+          "metrics": {}
+        },
+        "rf": {
+          "status": "PASS",
+          "tested_source_commit": "c46defaefd642973cbbdb473815d56b5b261cb2e",
+          "tested_artifact_sha256": "9e83fba667077354f3dabde1bb9b589b3a4606b8f46c18977b88a1815c92380c",
+          "measured_started_at": "2026-10-20T22:18:15.350813+00:00",
+          "measured_finished_at": "2026-10-20T22:19:05.550526+00:00",
+          "evidence": [
+            {
+              "kind": "repeater_checks",
+              "report_sha256": "22c05ab052e6e4447c9969202100a3411b38414958a6c73bbca9b9c4185a60b6"
+            }
+          ],
+          "retained": false,
+          "source_assurance_sha256": null,
+          "conditions": [],
+          "metrics": {
+            "rf_rounds": 3
+          }
+        },
+        "sd": {
+          "status": "PASS",
+          "tested_source_commit": "c46defaefd642973cbbdb473815d56b5b261cb2e",
+          "tested_artifact_sha256": "9e83fba667077354f3dabde1bb9b589b3a4606b8f46c18977b88a1815c92380c",
+          "measured_started_at": "2026-10-20T22:18:15.350813+00:00",
+          "measured_finished_at": "2026-10-20T22:19:05.550526+00:00",
+          "evidence": [
+            {
+              "kind": "sd_readback",
+              "report_sha256": "22c05ab052e6e4447c9969202100a3411b38414958a6c73bbca9b9c4185a60b6"
+            }
+          ],
+          "retained": false,
+          "source_assurance_sha256": null,
+          "conditions": [
+            "read_only_sd_metadata"
+          ],
+          "metrics": {}
+        },
+        "usb": {
+          "status": "PASS",
+          "tested_source_commit": "c46defaefd642973cbbdb473815d56b5b261cb2e",
+          "tested_artifact_sha256": "9e83fba667077354f3dabde1bb9b589b3a4606b8f46c18977b88a1815c92380c",
+          "measured_started_at": "2026-10-20T22:18:15.350813+00:00",
+          "measured_finished_at": "2026-10-20T22:19:05.550526+00:00",
+          "evidence": [
+            {
+              "kind": "repeater_checks",
+              "report_sha256": "22c05ab052e6e4447c9969202100a3411b38414958a6c73bbca9b9c4185a60b6"
+            }
+          ],
+          "retained": false,
+          "source_assurance_sha256": null,
+          "conditions": [],
+          "metrics": {
+            "query_cycles": 10,
+            "reopens": 3,
+            "warm_requests": 1
+          }
+        },
+        "physical_usb_priority": {
+          "status": "NOT_APPLICABLE",
+          "tested_source_commit": null,
+          "tested_artifact_sha256": null,
+          "measured_started_at": null,
+          "measured_finished_at": null,
+          "evidence": [],
+          "retained": false,
+          "source_assurance_sha256": null,
+          "conditions": [],
+          "metrics": {}
+        }
+      },
+      "active": true,
+      "operator_excluded": false,
+      "exclusion_reason": null,
+      "current_state_verified": true,
+      "historical_measurement": null
+    },
+    {
+      "id": "rak3401",
+      "name": "RAK 3401 MQTT gateway",
+      "role": "repeater",
+      "target": "RAK_3401_repeater_lora_ota_no_external_sensors",
+      "status": "PASS",
+      "installed_application": {
+        "source_commit": "c46defaefd642973cbbdb473815d56b5b261cb2e",
+        "artifact_sha256": "ec471aea35ef108e3ab76bad5bc83c95c514d07a101b313fbe8c1776b85b8d25",
+        "version": "v1.18.0.1-halo-keymind-cascade-dev-c46defae",
+        "verified_at": "2026-10-20T19:16:40.613698+00:00"
+      },
+      "axes": {
+        "application": {
+          "status": "PASS",
+          "tested_source_commit": "c46defaefd642973cbbdb473815d56b5b261cb2e",
+          "tested_artifact_sha256": "ec471aea35ef108e3ab76bad5bc83c95c514d07a101b313fbe8c1776b85b8d25",
+          "measured_started_at": "2026-10-20T19:15:38.319286+00:00",
+          "measured_finished_at": "2026-10-20T19:16:40.613698+00:00",
+          "evidence": [
+            {
+              "kind": "application_install",
+              "report_sha256": "2cb91838d9182c7264e5310be56606b840e2517b3f1ac253628723d332e8bef0"
+            }
+          ],
+          "retained": true,
+          "source_assurance_sha256": "577aee5162c7553f58bf13b550560da50bbf73860ab37febe3674a5ae73c01aa",
+          "conditions": [
+            "retained_source_scope"
+          ],
+          "metrics": {}
+        },
+        "ble": {
+          "status": "NOT_APPLICABLE",
+          "tested_source_commit": null,
+          "tested_artifact_sha256": null,
+          "measured_started_at": null,
+          "measured_finished_at": null,
+          "evidence": [],
+          "retained": false,
+          "source_assurance_sha256": null,
+          "conditions": [],
+          "metrics": {}
+        },
+        "bootloader": {
+          "status": "PASS",
+          "tested_source_commit": "88d39510140ce6894cf8e74b93cbd28d7387fa21",
+          "tested_artifact_sha256": "472385b066ee2cc87a54786e2ebc2f8156e5c00de294f2293898d14abb721675",
+          "measured_started_at": "2026-10-20T18:34:47.833263+00:00",
+          "measured_finished_at": "2026-10-20T18:36:16.560893+00:00",
+          "evidence": [
+            {
+              "kind": "bootloader_transfer",
+              "report_sha256": "38540c1723335cef0a43262d1f260d28d4ab182e0fc3376c06d64b5a2bdbe6d2"
+            },
+            {
+              "kind": "application_install",
+              "report_sha256": "954f93b354eb4b499bd064ef581ccdff4010ed63dfd39969abf812508ff6e4e0"
+            }
+          ],
+          "retained": true,
+          "source_assurance_sha256": null,
+          "conditions": [
+            "retained_installed_bootloader_baseline"
+          ],
+          "metrics": {}
+        },
+        "build": {
+          "status": "PASS",
+          "tested_source_commit": "08650f644b680a5dfaacb95142e3cef8529da9d2",
+          "tested_artifact_sha256": "ae85184d3a4d5943a7dcd9b93ddd1015ba67115b562b004b99e6e0d2dc34dd62",
+          "measured_started_at": "2026-10-20T19:40:26.558758+00:00",
+          "measured_finished_at": "2026-10-20T19:41:18.960648+00:00",
+          "evidence": [
+            {
+              "kind": "build_result",
+              "report_sha256": "1dbf13ae8a3419f2c8e12d0432c37fa990d5bcfbb5649ab4d1d4ed4cec21a468"
+            }
+          ],
+          "retained": false,
+          "source_assurance_sha256": null,
+          "conditions": [],
+          "metrics": {}
+        },
+        "contact_sync": {
+          "status": "NOT_APPLICABLE",
+          "tested_source_commit": null,
+          "tested_artifact_sha256": null,
+          "measured_started_at": null,
+          "measured_finished_at": null,
+          "evidence": [],
+          "retained": false,
+          "source_assurance_sha256": null,
+          "conditions": [],
+          "metrics": {}
+        },
+        "service_handoff": {
+          "status": "PASS",
+          "tested_source_commit": "c46defaefd642973cbbdb473815d56b5b261cb2e",
+          "tested_artifact_sha256": "ec471aea35ef108e3ab76bad5bc83c95c514d07a101b313fbe8c1776b85b8d25",
+          "measured_started_at": "2026-10-20T22:47:41.913179+00:00",
+          "measured_finished_at": "2026-10-20T22:48:27.001665+00:00",
+          "evidence": [
+            {
+              "kind": "service_handoff",
+              "report_sha256": "954f93b354eb4b499bd064ef581ccdff4010ed63dfd39969abf812508ff6e4e0"
+            }
+          ],
+          "retained": false,
+          "source_assurance_sha256": null,
+          "conditions": [
+            "controlled_gateway_maintenance"
+          ],
+          "metrics": {}
+        },
+        "rf": {
+          "status": "PASS",
+          "tested_source_commit": "c46defaefd642973cbbdb473815d56b5b261cb2e",
+          "tested_artifact_sha256": "ec471aea35ef108e3ab76bad5bc83c95c514d07a101b313fbe8c1776b85b8d25",
+          "measured_started_at": "2026-10-20T22:47:58.638970+00:00",
+          "measured_finished_at": "2026-10-20T22:48:11.478841+00:00",
+          "evidence": [
+            {
+              "kind": "repeater_checks",
+              "report_sha256": "560f5396ebe133c0e31b03c3acb8016d08b4ad1cd198d4de7a1bad8b4fc56479"
+            },
+            {
+              "kind": "repeater_checks",
+              "report_sha256": "954f93b354eb4b499bd064ef581ccdff4010ed63dfd39969abf812508ff6e4e0"
+            }
+          ],
+          "retained": false,
+          "source_assurance_sha256": null,
+          "conditions": [],
+          "metrics": {
+            "rf_rounds": 3
+          },
+          "measurement_components": [
+            {
+              "kind": "nonce_bound_rf_rounds",
+              "tested_source_commit": "c46defaefd642973cbbdb473815d56b5b261cb2e",
+              "tested_artifact_sha256": "ec471aea35ef108e3ab76bad5bc83c95c514d07a101b313fbe8c1776b85b8d25",
+              "measured_started_at": "2026-10-20T22:47:58.638970+00:00",
+              "measured_finished_at": "2026-10-20T22:48:11.478841+00:00",
+              "report_sha256": "560f5396ebe133c0e31b03c3acb8016d08b4ad1cd198d4de7a1bad8b4fc56479",
+              "retained": false
+            }
+          ]
+        },
+        "sd": {
+          "status": "NOT_APPLICABLE",
+          "tested_source_commit": null,
+          "tested_artifact_sha256": null,
+          "measured_started_at": null,
+          "measured_finished_at": null,
+          "evidence": [],
+          "retained": false,
+          "source_assurance_sha256": null,
+          "conditions": [],
+          "metrics": {}
+        },
+        "usb": {
+          "status": "PASS",
+          "tested_source_commit": "c46defaefd642973cbbdb473815d56b5b261cb2e",
+          "tested_artifact_sha256": "ec471aea35ef108e3ab76bad5bc83c95c514d07a101b313fbe8c1776b85b8d25",
+          "measured_started_at": "2026-10-20T19:16:42.049706+00:00",
+          "measured_finished_at": "2026-10-20T22:47:58.317854+00:00",
+          "evidence": [
+            {
+              "kind": "repeater_checks",
+              "report_sha256": "560f5396ebe133c0e31b03c3acb8016d08b4ad1cd198d4de7a1bad8b4fc56479"
+            },
+            {
+              "kind": "repeater_checks",
+              "report_sha256": "954f93b354eb4b499bd064ef581ccdff4010ed63dfd39969abf812508ff6e4e0"
+            },
+            {
+              "kind": "repeater_checks",
+              "report_sha256": "b9ba41d49c4fbf21d713f708bcb03ac5974112da43a967d37f8be1c2f6145ee3"
+            }
+          ],
+          "retained": false,
+          "source_assurance_sha256": null,
+          "conditions": [],
+          "metrics": {
+            "query_cycles": 10,
+            "reopens": 3,
+            "warm_requests": 1
+          },
+          "measurement_components": [
+            {
+              "kind": "query_reopen_baseline",
+              "tested_source_commit": "c46defaefd642973cbbdb473815d56b5b261cb2e",
+              "tested_artifact_sha256": "ec471aea35ef108e3ab76bad5bc83c95c514d07a101b313fbe8c1776b85b8d25",
+              "measured_started_at": "2026-10-20T19:16:42.049706+00:00",
+              "measured_finished_at": "2026-10-20T19:16:52.340495+00:00",
+              "report_sha256": "b9ba41d49c4fbf21d713f708bcb03ac5974112da43a967d37f8be1c2f6145ee3",
+              "retained": true
+            },
+            {
+              "kind": "held_warm_restart",
+              "tested_source_commit": "c46defaefd642973cbbdb473815d56b5b261cb2e",
+              "tested_artifact_sha256": "ec471aea35ef108e3ab76bad5bc83c95c514d07a101b313fbe8c1776b85b8d25",
+              "measured_started_at": "2026-10-20T22:47:52.930624+00:00",
+              "measured_finished_at": "2026-10-20T22:47:58.317854+00:00",
+              "report_sha256": "560f5396ebe133c0e31b03c3acb8016d08b4ad1cd198d4de7a1bad8b4fc56479",
+              "retained": false
+            }
+          ]
+        },
+        "physical_usb_priority": {
+          "status": "NOT_APPLICABLE",
+          "tested_source_commit": null,
+          "tested_artifact_sha256": null,
+          "measured_started_at": null,
+          "measured_finished_at": null,
+          "evidence": [],
+          "retained": false,
+          "source_assurance_sha256": null,
+          "conditions": [],
+          "metrics": {}
+        }
+      },
+      "active": true,
+      "operator_excluded": false,
+      "exclusion_reason": null,
+      "current_state_verified": true,
+      "historical_measurement": null
+    }
+  ],
+  "history": [
+    {
+      "board_id": "xiao_nrf",
+      "status": "FAIL",
+      "event": "unaligned_qspi_failure",
+      "report_sha256": "4e256b63551f89d922c5e10aac2e6ee38a758c8f8ca3db2f4e87e537ffe1549d",
+      "occurred_at": "2026-10-20T16:20:27.382424+00:00",
+      "requested_application_source_commit": "abf7ba5d5c3958580d52d6954d816c08a035a552",
+      "observed_runtime_source_commit": null,
+      "observed_runtime_artifact_sha256": null
+    },
+    {
+      "board_id": "xiao_nrf",
+      "status": "FAIL",
+      "event": "strict_hci_extra_0x3e",
+      "report_sha256": "6b2a93faba833adafbde5101c2d14ce9906b400d56f9fac10d837722a04d8805",
+      "occurred_at": "2026-10-20T17:51:01.128589+00:00",
+      "requested_application_source_commit": null,
+      "observed_runtime_source_commit": "714cfc4546ac43c220d06abff9adb128f58d16dd",
+      "observed_runtime_artifact_sha256": null
+    },
+    {
+      "board_id": "xiao_nrf",
+      "status": "PASS",
+      "event": "later_explicit_clean_ble",
+      "report_sha256": "4db03776caee661f9198d27ca89b1030c1eba41e4c992b1f6e9ccda05dc36188",
+      "occurred_at": "2026-10-20T17:54:07.195125+00:00",
+      "requested_application_source_commit": null,
+      "observed_runtime_source_commit": "714cfc4546ac43c220d06abff9adb128f58d16dd",
+      "observed_runtime_artifact_sha256": null
+    },
+    {
+      "board_id": "rak3401",
+      "status": "FAIL",
+      "event": "warm_restart_not_observed_responsive",
+      "report_sha256": "b9ba41d49c4fbf21d713f708bcb03ac5974112da43a967d37f8be1c2f6145ee3",
+      "occurred_at": "2026-10-20T19:19:54.507376+00:00",
+      "requested_application_source_commit": null,
+      "observed_runtime_source_commit": "c46defaefd642973cbbdb473815d56b5b261cb2e",
+      "observed_runtime_artifact_sha256": "ec471aea35ef108e3ab76bad5bc83c95c514d07a101b313fbe8c1776b85b8d25"
+    },
+    {
+      "board_id": "t1000",
+      "status": "FAIL",
+      "event": "strict_hci_extra_0x3e",
+      "report_sha256": "28437cc61c06c247fad86242e53dd0b394b1f4ab8b8f5c88daab229ba174360a",
+      "occurred_at": "2026-10-20T20:35:29.939943+00:00",
+      "requested_application_source_commit": null,
+      "observed_runtime_source_commit": "08650f644b680a5dfaacb95142e3cef8529da9d2",
+      "observed_runtime_artifact_sha256": "116606a04925c58d0c7986ae539ff928535cc0a994f610d1ac8ba0bf58aa5aea"
+    },
+    {
+      "board_id": "v43",
+      "status": "FAIL",
+      "event": "preowned_contact_setup_refusal",
+      "report_sha256": "bb128420ddc2ceabaa82bd7c4000bbc9c5e41662bab3dac14ca4dfb1819ea503",
+      "occurred_at": "2026-10-20T20:43:43.208956+00:00",
+      "requested_application_source_commit": null,
+      "observed_runtime_source_commit": "08650f644b680a5dfaacb95142e3cef8529da9d2",
+      "observed_runtime_artifact_sha256": "5132784d737535c768ebc0d288cd0b0380c2342a0464d4d016c68b75eebe6b48"
+    },
+    {
+      "board_id": "t1000",
+      "status": "PASS",
+      "event": "later_explicit_clean_ble",
+      "report_sha256": "1ec25c1aa0085e3d635aea5d6c6c9a7098753e930c5589ba784f3801c5041976",
+      "occurred_at": "2026-10-20T20:53:32.911627+00:00",
+      "requested_application_source_commit": null,
+      "observed_runtime_source_commit": "08650f644b680a5dfaacb95142e3cef8529da9d2",
+      "observed_runtime_artifact_sha256": "116606a04925c58d0c7986ae539ff928535cc0a994f610d1ac8ba0bf58aa5aea"
+    },
+    {
+      "board_id": "v43",
+      "status": "PASS",
+      "event": "later_exact_contact_cleanup",
+      "report_sha256": "ab50eaca89685b78e146d01fee16972aa2afd17c2cd95c6f961e7da629052373",
+      "occurred_at": "2026-10-20T21:03:12.229523+00:00",
+      "requested_application_source_commit": null,
+      "observed_runtime_source_commit": "08650f644b680a5dfaacb95142e3cef8529da9d2",
+      "observed_runtime_artifact_sha256": "5132784d737535c768ebc0d288cd0b0380c2342a0464d4d016c68b75eebe6b48"
+    },
+    {
+      "board_id": "tower",
+      "status": "FAIL",
+      "event": "zero_write_preparation_refusal",
+      "report_sha256": "4f19bbd931e002072848965092ecfd47b876ea4cea9215fd1163bab0e174b7b4",
+      "occurred_at": "2026-10-20T21:03:38.447754+00:00",
+      "requested_application_source_commit": null,
+      "observed_runtime_source_commit": "c46defaefd642973cbbdb473815d56b5b261cb2e",
+      "observed_runtime_artifact_sha256": "9e83fba667077354f3dabde1bb9b589b3a4606b8f46c18977b88a1815c92380c"
+    },
+    {
+      "board_id": "tdeck",
+      "status": "FAIL",
+      "event": "strict_hci_extra_0x3e",
+      "report_sha256": "6b206158ae5a5cdc5789d67274c49494c5d425a7721705a9f1bba3e249b77d29",
+      "occurred_at": "2026-10-20T21:13:03.172125+00:00",
+      "requested_application_source_commit": null,
+      "observed_runtime_source_commit": "08650f644b680a5dfaacb95142e3cef8529da9d2",
+      "observed_runtime_artifact_sha256": "ba4bbab8f822919b60ca52673d3bb5ee49cacddf2d219ca3f2dbfda3e891659f"
+    },
+    {
+      "board_id": "tdeck",
+      "status": "FAIL",
+      "event": "strict_hci_extra_0x3e",
+      "report_sha256": "762f908ccc1c4ad28847550dfea13b9f6cf3bede6702850c621e79b28570b4b7",
+      "occurred_at": "2026-10-20T21:18:02.143376+00:00",
+      "requested_application_source_commit": null,
+      "observed_runtime_source_commit": "08650f644b680a5dfaacb95142e3cef8529da9d2",
+      "observed_runtime_artifact_sha256": "ba4bbab8f822919b60ca52673d3bb5ee49cacddf2d219ca3f2dbfda3e891659f"
+    },
+    {
+      "board_id": "xiao",
+      "status": "FAIL",
+      "event": "strict_hci_extra_0x3e",
+      "report_sha256": "2d4e5c466e1fe98fed3c6a9c0166daaaceb64789b07382afa9d2e788efda14d0",
+      "occurred_at": "2026-10-20T21:29:53.303412+00:00",
+      "requested_application_source_commit": null,
+      "observed_runtime_source_commit": "08650f644b680a5dfaacb95142e3cef8529da9d2",
+      "observed_runtime_artifact_sha256": "f3f49f9278feb22c0474ae5deda810a9801b274160ab52ed02b7c04ce4416d49"
+    },
+    {
+      "board_id": "pocket",
+      "status": "FAIL",
+      "event": "pre_dfu_core_flags_refusal",
+      "report_sha256": "976023cb50ccf46e9e9f7d17e064f5f54708d52e1083fea7fa2dae110471e808",
+      "occurred_at": "2026-10-20T22:02:12.065890+00:00",
+      "requested_application_source_commit": "08650f644b680a5dfaacb95142e3cef8529da9d2",
+      "observed_runtime_source_commit": "c46defaefd642973cbbdb473815d56b5b261cb2e",
+      "observed_runtime_artifact_sha256": null
+    },
+    {
+      "board_id": "pocket",
+      "status": "FAIL",
+      "event": "zero_write_preparation_refusal",
+      "report_sha256": "e31f04c6707e8719d7253ace1b9e50cf90d060c9756954c6f7e7ea7fb9550dac",
+      "occurred_at": "2026-10-20T22:04:07.990615+00:00",
+      "requested_application_source_commit": null,
+      "observed_runtime_source_commit": "c46defaefd642973cbbdb473815d56b5b261cb2e",
+      "observed_runtime_artifact_sha256": null
+    },
+    {
+      "board_id": "tdeck",
+      "status": "PASS",
+      "event": "later_explicit_clean_ble",
+      "report_sha256": "c7d10bb9588a6cde764ab302730bb16d2d33f1ba19c9f987631f3f2cb4d91a7b",
+      "occurred_at": "2026-10-20T22:08:50.167474+00:00",
+      "requested_application_source_commit": null,
+      "observed_runtime_source_commit": "08650f644b680a5dfaacb95142e3cef8529da9d2",
+      "observed_runtime_artifact_sha256": "ba4bbab8f822919b60ca52673d3bb5ee49cacddf2d219ca3f2dbfda3e891659f"
+    },
+    {
+      "board_id": "tdeck",
+      "status": "FAIL",
+      "event": "wifi_restore_verification_failure",
+      "report_sha256": "82942a3f514c2f44471a449b8ab61e5c8618be5b249762218235d066f6b19009",
+      "occurred_at": "2026-10-20T22:09:11.239551+00:00",
+      "requested_application_source_commit": null,
+      "observed_runtime_source_commit": "08650f644b680a5dfaacb95142e3cef8529da9d2",
+      "observed_runtime_artifact_sha256": "ba4bbab8f822919b60ca52673d3bb5ee49cacddf2d219ca3f2dbfda3e891659f"
+    },
+    {
+      "board_id": "tdeck",
+      "status": "PASS",
+      "event": "posthoc_verified_network_handback",
+      "report_sha256": "ee5be1952487dd3b6691c52ebdedd569e00e880498afc46e77bc0e6fdff33129",
+      "occurred_at": "2026-10-20T22:10:39.464929+00:00",
+      "requested_application_source_commit": null,
+      "observed_runtime_source_commit": null,
+      "observed_runtime_artifact_sha256": null
+    },
+    {
+      "board_id": "xiao",
+      "status": "PASS",
+      "event": "later_explicit_clean_ble",
+      "report_sha256": "bc633e881c554ad956952e07b70d249f826bd54ead6a533fc20cf1e74c22d445",
+      "occurred_at": "2026-10-20T22:13:43.057260+00:00",
+      "requested_application_source_commit": null,
+      "observed_runtime_source_commit": "08650f644b680a5dfaacb95142e3cef8529da9d2",
+      "observed_runtime_artifact_sha256": "f3f49f9278feb22c0474ae5deda810a9801b274160ab52ed02b7c04ce4416d49"
+    },
+    {
+      "board_id": "pocket",
+      "status": "PASS",
+      "event": "one_warm_preparation",
+      "report_sha256": "f8d8876d3deb6dd0815d9b14f629e80667460c51ce54ee5cb1215685417f673d",
+      "occurred_at": "2026-10-20T22:15:48.099374+00:00",
+      "requested_application_source_commit": null,
+      "observed_runtime_source_commit": "c46defaefd642973cbbdb473815d56b5b261cb2e",
+      "observed_runtime_artifact_sha256": null
+    },
+    {
+      "board_id": "tower",
+      "status": "PASS",
+      "event": "one_warm_preparation",
+      "report_sha256": "a1c1d8b845ba1eddaf1b2099b3c01c2bb2d188cb02634cb89b450e8ed89f67f5",
+      "occurred_at": "2026-10-20T22:17:43.778049+00:00",
+      "requested_application_source_commit": null,
+      "observed_runtime_source_commit": "c46defaefd642973cbbdb473815d56b5b261cb2e",
+      "observed_runtime_artifact_sha256": "9e83fba667077354f3dabde1bb9b589b3a4606b8f46c18977b88a1815c92380c"
+    },
+    {
+      "board_id": "rak3401",
+      "status": "FAIL",
+      "event": "cad_timeout_observation",
+      "report_sha256": "da7152bb9e7515687e7dd5ccc3057dcae5389eaa925d1f3ea3feb2fa02a939b5",
+      "occurred_at": "2026-10-20T22:32:10.561737+00:00",
+      "requested_application_source_commit": null,
+      "observed_runtime_source_commit": "c46defaefd642973cbbdb473815d56b5b261cb2e",
+      "observed_runtime_artifact_sha256": "ec471aea35ef108e3ab76bad5bc83c95c514d07a101b313fbe8c1776b85b8d25"
+    },
+    {
+      "board_id": "rak3401",
+      "status": "PASS",
+      "event": "one_warm_preparation",
+      "report_sha256": "b36e4314036f8232ee9b3c69c257e2600ce05d4a26ac520492e84ac3493565a8",
+      "occurred_at": "2026-10-20T22:47:29.933745+00:00",
+      "requested_application_source_commit": null,
+      "observed_runtime_source_commit": "c46defaefd642973cbbdb473815d56b5b261cb2e",
+      "observed_runtime_artifact_sha256": "ec471aea35ef108e3ab76bad5bc83c95c514d07a101b313fbe8c1776b85b8d25"
+    }
+  ],
+  "limits": [
+    "finite_bench_only",
+    "no_range_claim",
+    "no_phone_interoperability_claim",
+    "no_long_duration_reliability_claim",
+    "no_all_feature_combinations_claim",
+    "no_wifi_root_cause_claim",
+    "wifi_observed_at_boundaries",
+    "tdeck_boot_and_pin_state_confounder",
+    "sd_metadata_not_media_integrity",
+    "t1000_usb_priority_not_simultaneous_active_usb_ble",
+    "operator_excluded_pocket_current_state_unverified",
+    "no_future_pocket_testing"
+  ]
+}
