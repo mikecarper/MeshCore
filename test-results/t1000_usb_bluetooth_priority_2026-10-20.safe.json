@@ -1,0 +1,107 @@
+{
+  "schema": 1,
+  "source_commit": "ac0daf3cef31a13163d469c1fd538c06708fe05a",
+  "installed_version": "v1.18.0.1-halo-keymind-cascade-dev-ac0daf3c (Build: 20-Oct-2026)",
+  "application_zip_sha256": "64e09ff2eb8b5e3228f656c7ea99b000c053736b8a020b7eab1429b4d00ab43f",
+  "capabilities_sha256": "c49a92cb5626f7c871c50de1debb74cca2a482d04949443c2e7d489d03c1d018",
+  "source_modified": false,
+  "policy_scope": "T1000-E Bluetooth and Full Companions only; enumerated USB host priority",
+  "simultaneous_usb_ble_qualified": false,
+  "full_feature_qualified": false,
+  "installation": {
+    "passed": true,
+    "application_only": true,
+    "bootloader_or_softdevice_changed": false,
+    "public_identity_unchanged": true
+  },
+  "usb_priority": {
+    "source_commit": "ac0daf3cef31a13163d469c1fd538c06708fe05a",
+    "artifact_sha256": "64e09ff2eb8b5e3228f656c7ea99b000c053736b8a020b7eab1429b4d00ab43f",
+    "usb_replies": [
+      {
+        "command": "get bluetooth",
+        "reply": "bluetooth off (USB data connected)"
+      },
+      {
+        "command": "set bluetooth on",
+        "reply": "OK - Bluetooth on (saved); paused while USB data is connected"
+      },
+      {
+        "command": "get bluetooth",
+        "reply": "bluetooth off (USB data connected)"
+      },
+      {
+        "command": "set bluetooth off",
+        "reply": "OK - Bluetooth already off (saved)"
+      },
+      {
+        "command": "get bluetooth",
+        "reply": "bluetooth off (USB data connected)"
+      },
+      {
+        "command": "set bluetooth on",
+        "reply": "OK - Bluetooth on (saved); paused while USB data is connected"
+      },
+      {
+        "command": "get bluetooth",
+        "reply": "bluetooth off (USB data connected)"
+      }
+    ],
+    "serial_closed_during_scan": true,
+    "scan": {
+      "seconds": 20,
+      "target_events": 0,
+      "all_events": 100
+    },
+    "transport": {
+      "ports_opened": 1,
+      "ports_closed": 1,
+      "request_frames_sent": 14,
+      "response_frames_received": 15,
+      "request_bytes_sent": 280,
+      "response_payload_bytes": 713,
+      "discarded_prefix_bytes": 0,
+      "invalid_length_candidates": 0,
+      "ignored_push_frames": 1
+    },
+    "after": {
+      "version": "v1.18.0.1-halo-keymind-cascade-dev-ac0daf3c (Build: 20-Oct-2026)",
+      "core": {
+        "battery_mv": 4195,
+        "uptime_seconds": 84,
+        "error_flags": 0,
+        "outbound_queue_length": 0
+      },
+      "mcu_regulator": "> auto; active dcdc; fallback off; crashes 0; recovery on",
+      "public_identity_sha256": "8fc05b145d174bfbebe27978ed580c49bee90b3c1e2d3678108bfc30c38980d9",
+      "transport": {
+        "ports_opened": 1,
+        "ports_closed": 1,
+        "request_frames_sent": 5,
+        "response_frames_received": 5,
+        "request_bytes_sent": 77,
+        "response_payload_bytes": 288,
+        "discarded_prefix_bytes": 0,
+        "invalid_length_candidates": 0,
+        "ignored_push_frames": 0
+      }
+    },
+    "passed": true
+  },
+  "remaining_hardware_checks": [
+    "physical_unplug_ble_recovery",
+    "usb_insertion_during_connected_ble",
+    "charge_only",
+    "cold_boot"
+  ],
+  "evidence_sha256": {
+    "usb-priority-usb.safe.json": "a369e9e3f586b3d63d9ea2601594a8ae7566efd3d2cbfd124e7e0ba9b936975c",
+    "usb-priority-install.safe.json": "5c434448f7a926eca903c22a561b296c176c5e69d472d99ee7c70341a3a64930",
+    "usb-priority-head-build.private.log": "e6fbcee54674eaed9a307d931d34cd51fe4926fb90ec8350a3330efe5bb9db22",
+    "usb-priority-ble-build.private.log": "688f406e7bfcf481768dc477232e7c1580333a80afd98afa3866d8bdfa9e5fb5"
+  },
+  "privacy": {
+    "raw_usb_or_ble_addresses": false,
+    "device_secrets_or_payloads": false
+  }
+}
