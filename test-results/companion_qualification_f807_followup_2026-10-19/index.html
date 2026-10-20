@@ -2282,7 +2282,7 @@
 <!-- meshcore-hosted-doc-link:end -->
 
 <h1 id="mercerwood-companion-diagnosis-follow-up-2026-10-19">Mercerwood Companion diagnosis follow-up, 2026-10-19</h1>
-<p>Overall status: <strong>FAIL, incomplete</strong>. Across the selected measured sources, <strong>1/2 Companions PASS, 1 FAIL</strong>. RAK 4631 passed USB, BLE and two-way LoRa at f807. T1000-E passed normal Full USB and BLE on battery and wall power, but connecting to Pi USB reproduced its BLE failure. It remains <strong>FAIL</strong> pending resolution of that operating condition. XIAO nRF52 remains a carried-forward failure.</p>
+<p>Overall status: <strong>FAIL, incomplete</strong>. Across the selected measured sources, <strong>1/2 Companions PASS, 1 FAIL</strong>. RAK 4631 passed USB, BLE and two-way LoRa at f807. T1000-E passed normal Full USB and BLE on battery, wall power and suspended Pi USB, but active Pi USB reproduced its BLE failure. It remains <strong>FAIL</strong> pending resolution of that operating condition. XIAO nRF52 remains a carried-forward failure.</p>
 <p>Both selected boards first returned to Full <code>f80751354ffc530461e87109ced4f575d3950a52</code>. T1000 subsequently received normal Full <code>42f7df082fc4c7362ecd5c18c8644ab25b51b9e9</code>, version <code>v1.18.0.1-halo-keymind-cascade-dev-42f7df08</code>, after the corrected bootloader. Its ZIP SHA-256 is <code>7fac141e40183ada315f70b296583eaf854fd819c76fbd896a1f0f2e4a405e5b</code>. Checks ran on October 20 UTC across October 19-20 local time.</p>
 <table>
 <thead>
@@ -2308,7 +2308,7 @@
 <td>Seeed T1000-E</td>
 <td>42f7df08</td>
 <td>PASS</td>
-<td>battery/wall power PASS; Pi USB FAIL</td>
+<td>battery/wall power/suspended USB PASS; active Pi USB FAIL</td>
 <td>not requalified; f807 passed</td>
 <td>FAIL</td>
 </tr>
@@ -2405,7 +2405,33 @@
 <p>The user then connected the same cable to wall power only. Three further 30-second sessions passed normal name discovery, saved-bond encryption, the same Companion identity/version/getters and clean disconnects. Pi USB remained absent throughout. Charging from that supply alone did not reproduce the failure. Supply voltage was not instrument-measured.</p>
 <p>The battery/Pi USB/battery/wall-power sequence associates the failure with the Pi/hub connection; it does not identify cable/ground/RF effects, USB software activity or a particular faulty component. Position and cable attachment were requested but not independently measured. The MQTT gateway remained active before and after the comparison trials.</p>
 <p>On the next Pi reconnection, a guarded <a href="https://docs.kernel.org/usb/authorization.html">Linux USB device authorization</a> test deconfigured only the exact T1000, then restored its configuration. The physical cable remained connected as requested; no hub or port-power command was sent. Before and after deauthorization, 25-second scans captured no target advertisement. While deauthorized, the Pi captured three target advertising event blocks and briefly encrypted a link, but it ended with <code>0x08</code> before any Companion session completed. This did not restore stable BLE. Deconfiguration does not physically disconnect USB or establish that bus signalling and the peripheral USB block have stopped.</p>
-<p>USB authorization returned to its original state. The first USB runtime read failed before opening a port because the recreated device node was not yet accessible to the normal user; this failed workflow is retained separately from the BLE results. After normal user access returned without a permission change, a separate readback passed on unchanged Full firmware with the same public identity, Bluetooth on, zero core errors and uptime 3,987 seconds. The gateway remained active. A different powered-hub port comparison is the next pending check.</p>
+<p>USB authorization returned to its original state. The first USB runtime read failed before opening a port because the recreated device node was not yet accessible to the normal user; this failed workflow is retained separately from the BLE results. After normal user access returned without a permission change, a separate readback passed on unchanged Full firmware with the same public identity, Bluetooth on, zero core errors and uptime 3,987 seconds. The gateway remained active.</p>
+<p>The user moved the T1000 to another powered-hub port. The Pi verified the same USB serial identity at a different physical USB path, continuously present during both BLE trials. Normal 25-second discovery captured zero target advertisements among 358 advertising event blocks. A 90-second address-based scan captured zero among 580 and timed out before a connection attempt. Moving ports did not restore BLE. A read-only USB check between these trials passed seven queries with the same firmware/identity, Bluetooth enabled, zero core errors and uptime 4,635 seconds.</p>
+<p>A guarded <a href="https://docs.kernel.org/driver-api/usb/power-management.html">per-device USB runtime suspend</a> comparison then changed only this T1000's idle policy. Linux reported the device suspended while its hub port remained active with port power-off prohibited. Authorization, configuration and device number stayed unchanged. No serial port was opened during either BLE phase, and no firmware, bond or reset change was requested.</p>
+<table>
+<thead>
+<tr>
+<th>USB runtime state</th>
+<th>BLE observation</th>
+<th>Result</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Suspended, cable still connected as requested</td>
+<td>Three normal-name, saved-bond sessions; same Full identity/version/getters, MTU 247, advancing uptime and clean core flags; three encrypted links and clean local disconnects</td>
+<td>3/3 thirty-second Companion sessions PASS</td>
+</tr>
+<tr>
+<td>Resumed to original active policy</td>
+<td>Three target advertising event blocks; two controller attempts, one ending with <code>0x3E</code>, the other briefly encrypted before <code>0x08</code></td>
+<td>Zero completed Companion sessions</td>
+</tr>
+</tbody>
+</table>
+<p>The original USB policy and idle delay were restored and verified, and the gateway remained active. This comparison makes active USB operation a stronger discriminator than charging alone or the individual hub socket. It does not distinguish USB software/peripheral behavior from electrical or RF effects of active signalling, and no waveform or supply-voltage measurement was made. Firmware remains unchanged.</p>
+<p>Three subsequent handoff cycles temporarily allowed this device to autosuspend after two seconds idle. Each serial open woke USB and passed seven read-only queries. After serial close, Linux reported USB suspended, and a normal-name, saved-bond 30-second Companion session passed with the same identity/version, MTU 247 and clean core flags. All three cycles passed. Together with the direct suspend trial, six secure sessions passed with USB suspended.</p>
+<p>The original active USB policy was restored again. A final seven-query USB readback passed, with uptime 5,259 seconds, Bluetooth on, unchanged identity/firmware and zero core errors. No persistent host configuration was installed. Automatic idle suspend is a tested candidate workaround for sequential USB/BLE use; it does not qualify simultaneous active-USB/BLE operation or establish a production firmware fix. A second computer with USB data active is the next comparison needed to separate the Pi/hub path from behavior common to the T1000's USB connection.</p>
 <p>Cold boot, battery-only restart, complete phone/feature testing and fleet qualification remain untested. Unplugging USB alone does not prove a restart. <a href="../companion_qualification_f807_followup_2026-10-19.safe.json">Safe JSON</a> retains source bindings, workflow distinctions and evidence digests without device secrets or raw addresses.</p>
 
 
