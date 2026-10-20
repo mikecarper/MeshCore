@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "generated_at": "2026-10-19T23:53:34.741074+00:00",
+  "generated_at": "2026-10-20T00:49:38.368042+00:00",
   "source_commit": "4e4f27a25a720c52ca0f5381b5e5834d75532cc6",
   "expected_version": "v1.18.0.1-halo-keymind-cascade-dev-4e4f27a2",
   "campaign_complete": false,
@@ -27,6 +27,60 @@
     "expected_boards": 11,
     "usb_passed": 10,
     "ble_passed": 9
+  },
+  "xiao_recovery_followup": {
+    "date_pdt": "2026-10-19",
+    "normal_runtime_qualified": false,
+    "diagnostic_application_installed": false,
+    "fresh_bootloader_source_reverified": false,
+    "runtime_cdc_intervals_ms": [
+      27.1,
+      122.3,
+      124.2,
+      141.7,
+      31.7,
+      116.2,
+      135.4,
+      151.2
+    ],
+    "software_entry": {
+      "open_attempts": 1,
+      "open_result_unknown": true,
+      "dtr_low_attempts": 0,
+      "exact_dfu_observed": false,
+      "post_attempt_dfu_watch_seconds": 45,
+      "application_dfu_invocations": 0,
+      "hardware_cleanup_review_required": false
+    },
+    "port_change": {
+      "user_confirmed": true,
+      "inventory_seconds": 20,
+      "separate_sysfs_watch_seconds": 180,
+      "original_xiao_identity_observed": false,
+      "descriptor_or_address_error": -71,
+      "other_usb_identities_in_separate_snapshot": 12,
+      "pi_throttled_mask": "0x0",
+      "scope": "Separate connection observations, not a new fleet qualification or proof of hub voltage.",
+      "root_cause_proven": false
+    },
+    "ble_fallback_scan": {
+      "seconds": 25,
+      "xiao_dfu_advertisements": 0,
+      "gatt_connections": 0,
+      "writes": 0
+    },
+    "source_hardening": {
+      "source_commit": "40b6ef8fe28548f5e2a6e4227d55d0abfa3f3e01",
+      "version": "v1.18.0.1-halo-keymind-cascade-dev-40b6ef8f",
+      "focused_host_tests_passed": 8,
+      "full_build_passed": true,
+      "legacy_ble_build_passed": true,
+      "full_capabilities_verified": true,
+      "full_package_staged_on_pi": true,
+      "application_installed": false,
+      "usb_root_cause_verified": false
+    },
+    "next_requirement": "Stable enumeration of the original device before another firmware transfer."
   },
   "batch_state": "failed",
   "v3_ble_trials": {
