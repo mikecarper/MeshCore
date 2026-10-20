@@ -55,11 +55,61 @@
     {
       "axes": {
         "ble": {
+          "battery_only": {
+            "all_sessions_disconnected": true,
+            "bonded_reconnect_sessions_completed": 6,
+            "core_error_flags": 0,
+            "evidence": "t1000-battery-reconnect-1-ble.safe.json",
+            "firmware_changed": false,
+            "fresh_pin_pairing_completed": true,
+            "full_version_matches": true,
+            "normal_name_discovery_passed": true,
+            "reconnect_hold_seconds_requested": [
+              60,
+              60,
+              60,
+              30,
+              30,
+              30
+            ],
+            "recovered_after_usb_unplug": true,
+            "recovery_evidence": "t1000-battery-return-1-ble.safe.json",
+            "status": "passed",
+            "total_secure_sessions_completed": 7,
+            "uptime_monotonic": true,
+            "usb_absent_throughout": true,
+            "usb_public_identity_matches": true
+          },
           "connection_failure_inferred": false,
           "evidence": "t1000-42f7df08-ble.safe.json",
+          "external_wall_power": {
+            "all_sessions_disconnected": true,
+            "encrypted_hci_links": 3,
+            "evidence": "t1000-external-power-1-ble.safe.json",
+            "firmware_changed": false,
+            "full_version_matches": true,
+            "hold_seconds_per_session": 30,
+            "name_discovery_passed": true,
+            "sessions_completed": 3,
+            "status": "passed",
+            "usb_public_identity_matches": true
+          },
           "failure_stage": "current_advertisement_identity_gate",
           "failure_type": "GateError",
           "finished_at": "2026-10-20T04:33:52.224067+00:00",
+          "qualification_limit": "Battery-only BLE passed; USB-connected BLE failures remain unresolved. Overall status remains failed until those operating-condition failures are resolved.",
+          "retained_usb_connected_failure": {
+            "connection_failure_inferred": false,
+            "evidence": "t1000-42f7df08-ble.safe.json",
+            "failure_stage": "current_advertisement_identity_gate",
+            "failure_type": "GateError",
+            "finished_at": "2026-10-20T04:33:52.224067+00:00",
+            "scan_seconds": 25,
+            "sessions_completed": 0,
+            "sessions_requested": 3,
+            "source_commit": "42f7df082fc4c7362ecd5c18c8644ab25b51b9e9",
+            "status": "failed"
+          },
           "scan_seconds": 25,
           "sessions_completed": 0,
           "sessions_requested": 3,
@@ -602,6 +652,321 @@
       "zip_sha256": "79e53c2ce13521ccda5db3621a68f79728d2f241c3a8345e4107b7ae6b5a374d",
       "zip_uf2_application_bytes_identical": true
     },
+    "physical_battery_only_ble": {
+      "cold_boot_tested": false,
+      "conclusion": "Normal Full firmware passed fresh PIN pairing and three bonded reconnects on battery. Reconnecting USB reproduced discovery and connection failures with the same saved bond and firmware. This identifies an operating-condition association, not a specific hardware, power or USB-software root cause.",
+      "firmware_or_preferences_changed": false,
+      "first_secure_pairing": {
+        "disconnect_reason": "0x16 local host",
+        "encrypted_hci_link_verified": true,
+        "first_current_advertisement_after_scan_s": 10.485304326,
+        "hci_evidence": "t1000-full-battery-hci.safe.json",
+        "optional_timeout_helper": {
+          "failure_stage": "exact_live_handle_guard",
+          "failure_type": "AssertionError",
+          "four_second_update_applied": false,
+          "four_second_update_sent": false,
+          "natural_initial_timeout_ms": 420,
+          "natural_negotiated_timeout_ms": 2000,
+          "outcome": "aborted_before_command"
+        },
+        "pair_request_after_first_advertisement_ms": 41.416327,
+        "power": {
+          "ble": {
+            "bond_created_by_campaign": true,
+            "failure_type": null,
+            "passed": true,
+            "sessions_completed": 1
+          },
+          "client_returncode": 0,
+          "diagnostic_only": true,
+          "firmware_changed": false,
+          "hci_sha256": "722f0a8c7218793445b7dab0ba41084b4d274c738fb36aa9103a32117bee6383",
+          "usb_absent_after": true,
+          "usb_absent_before": true,
+          "usb_absent_throughout": true,
+          "usb_snapshot_sha256": "f551de6b7211131835b8a324e2badf8fff40d5672b2b3cb3e198b096deb056ca",
+          "user_confirmed_unplugged": true
+        },
+        "qualification": {
+          "adapter_reset": false,
+          "after_verified_erase_requested": false,
+          "bond_created_by_campaign": true,
+          "broad_bond_changes": false,
+          "cold_boot_tested": false,
+          "configured_address_policy": "factory",
+          "default_agent_changed": false,
+          "diagnostic_explicit_address": true,
+          "discovery_bound_to_usb_advertisement": true,
+          "expected_version": "v1.18.0.1-halo-keymind-cascade-dev-42f7df08",
+          "final_target_disconnected": true,
+          "finished_at": "2026-10-20T06:44:17.683682+00:00",
+          "firmware_or_preferences_set": false,
+          "full_version_matches": true,
+          "hold_seconds_requested": 30.0,
+          "key": "t1000",
+          "normal_name_discovery_qualification": false,
+          "passed": true,
+          "preexisting_bond": false,
+          "preexisting_connected": false,
+          "radio_tx_commands_sent": false,
+          "schema": 1,
+          "sessions": [
+            {
+              "bonded": true,
+              "disconnected_after_session": true,
+              "final_core_stats": {
+                "battery_mv": 4176,
+                "error_flags": 0,
+                "outbound_queue_length": 0,
+                "uptime_seconds": 2116
+              },
+              "full_version_matches": true,
+              "getters_verified": [
+                "ver",
+                "get public.key",
+                "get name",
+                "get bluetooth.mac",
+                "get bluetooth.stealth",
+                "get bluetooth.name",
+                "get bluetooth"
+              ],
+              "hold_elapsed_s": 30.24,
+              "initial_core_stats": {
+                "battery_mv": 4182,
+                "error_flags": 0,
+                "outbound_queue_length": 0,
+                "uptime_seconds": 2085
+              },
+              "mtu": 247,
+              "nus_service_and_characteristics_verified": true,
+              "pair_needed": true,
+              "passed": true,
+              "services_resolved": true,
+              "session": 1,
+              "started_at": "2026-10-20T06:43:41.300928+00:00",
+              "usb_device_info_matches": true,
+              "usb_name_matches": true,
+              "usb_public_key_matches": true
+            }
+          ],
+          "sessions_completed": 1,
+          "sessions_requested": 1,
+          "source_commit": "42f7df082fc4c7362ecd5c18c8644ab25b51b9e9",
+          "stale_bond_recovery_allowed": false,
+          "stale_target_bond_removed": false,
+          "started_at": "2026-10-20T06:43:30.507909+00:00",
+          "status": "passed",
+          "supported": true,
+          "target": "t1000e_companion_radio_full",
+          "uptime_monotonic": true,
+          "usb_public_identity_sha256": "8fc05b145d174bfbebe27978ed580c49bee90b3c1e2d3678108bfc30c38980d9",
+          "usb_public_key_matches": true,
+          "verified_erase_evidence": null,
+          "verified_erase_target_bond_removed": false,
+          "verified_install_evidence": null,
+          "verified_install_repair_requested": false,
+          "verified_install_target_bond_removed": false,
+          "warm_reboot_tested": false
+        }
+      },
+      "normal_name_discovery_and_reconnect": {
+        "connection_timeout_disconnects": 0,
+        "encrypted_hci_links_verified": 3,
+        "forced_connection_parameter_changes": false,
+        "hci_evidence": "t1000-battery-reconnect-1-hci.safe.json",
+        "local_host_disconnects_verified": 3,
+        "observed_interval_ms": 30,
+        "observed_peripheral_latency": 4,
+        "observed_supervision_timeout_ms": 2000,
+        "power": {
+          "ble": {
+            "bond_created_by_campaign": false,
+            "failure": null,
+            "failure_type": null,
+            "passed": true,
+            "preexisting_bond": true,
+            "sessions_completed": 3
+          },
+          "client_returncode": 0,
+          "cold_boot_tested": false,
+          "connection_parameter_experiment": false,
+          "explicit_address_argument": false,
+          "finished_at": "2026-10-20T06:52:08.614880+00:00",
+          "firmware_changed": false,
+          "gateway_active_after": true,
+          "gateway_active_before": true,
+          "hci_sha256": "7d5e1c609f1729bc0c32f39f6f48ffe0fd9f11ec00313e2fea914453e206dcc2",
+          "hold_seconds_requested": 60,
+          "name_discovery_required": true,
+          "physical_distance_confirmed": false,
+          "qualifier_sha256": "2ba82f8923c068878785b0f32bbb2285157dd61076907cf3874f43eeb33ed64b",
+          "sessions_requested": 3,
+          "started_at": "2026-10-20T06:48:27.579739+00:00",
+          "usb_absent_after": true,
+          "usb_absent_before": true,
+          "usb_absent_throughout": true,
+          "usb_snapshot_sha256": "f551de6b7211131835b8a324e2badf8fff40d5672b2b3cb3e198b096deb056ca",
+          "user_confirmed_unplugged": true
+        },
+        "qualification": {
+          "adapter_reset": false,
+          "after_verified_erase_requested": false,
+          "bond_created_by_campaign": false,
+          "broad_bond_changes": false,
+          "cold_boot_tested": false,
+          "configured_address_policy": "factory",
+          "default_agent_changed": false,
+          "discovery_bound_to_usb_advertisement": true,
+          "expected_version": "v1.18.0.1-halo-keymind-cascade-dev-42f7df08",
+          "final_target_disconnected": true,
+          "finished_at": "2026-10-20T06:52:07.685526+00:00",
+          "firmware_or_preferences_set": false,
+          "full_version_matches": true,
+          "hold_seconds_requested": 60.0,
+          "key": "t1000",
+          "passed": true,
+          "preexisting_bond": true,
+          "preexisting_connected": false,
+          "radio_tx_commands_sent": false,
+          "schema": 1,
+          "sessions": [
+            {
+              "bonded": true,
+              "disconnected_after_session": true,
+              "final_core_stats": {
+                "battery_mv": 4176,
+                "error_flags": 0,
+                "outbound_queue_length": 0,
+                "uptime_seconds": 2456
+              },
+              "full_version_matches": true,
+              "getters_verified": [
+                "ver",
+                "get public.key",
+                "get name",
+                "get bluetooth.mac",
+                "get bluetooth.stealth",
+                "get bluetooth.name",
+                "get bluetooth"
+              ],
+              "hold_elapsed_s": 60.238,
+              "initial_core_stats": {
+                "battery_mv": 4170,
+                "error_flags": 0,
+                "outbound_queue_length": 0,
+                "uptime_seconds": 2396
+              },
+              "mtu": 247,
+              "nus_service_and_characteristics_verified": true,
+              "pair_needed": false,
+              "passed": true,
+              "services_resolved": true,
+              "session": 1,
+              "started_at": "2026-10-20T06:48:53.584402+00:00",
+              "usb_device_info_matches": true,
+              "usb_name_matches": true,
+              "usb_public_key_matches": true
+            },
+            {
+              "bonded": true,
+              "disconnected_after_session": true,
+              "final_core_stats": {
+                "battery_mv": 4182,
+                "error_flags": 0,
+                "outbound_queue_length": 0,
+                "uptime_seconds": 2521
+              },
+              "full_version_matches": true,
+              "getters_verified": [
+                "ver",
+                "get public.key",
+                "get name",
+                "get bluetooth.mac",
+                "get bluetooth.stealth",
+                "get bluetooth.name",
+                "get bluetooth"
+              ],
+              "hold_elapsed_s": 60.239,
+              "initial_core_stats": {
+                "battery_mv": 4183,
+                "error_flags": 0,
+                "outbound_queue_length": 0,
+                "uptime_seconds": 2461
+              },
+              "mtu": 247,
+              "nus_service_and_characteristics_verified": true,
+              "pair_needed": false,
+              "passed": true,
+              "services_resolved": true,
+              "session": 2,
+              "started_at": "2026-10-20T06:49:58.713673+00:00",
+              "usb_device_info_matches": true,
+              "usb_name_matches": true,
+              "usb_public_key_matches": true
+            },
+            {
+              "bonded": true,
+              "disconnected_after_session": true,
+              "final_core_stats": {
+                "battery_mv": 4183,
+                "error_flags": 0,
+                "outbound_queue_length": 0,
+                "uptime_seconds": 2586
+              },
+              "full_version_matches": true,
+              "getters_verified": [
+                "ver",
+                "get public.key",
+                "get name",
+                "get bluetooth.mac",
+                "get bluetooth.stealth",
+                "get bluetooth.name",
+                "get bluetooth"
+              ],
+              "hold_elapsed_s": 60.238,
+              "initial_core_stats": {
+                "battery_mv": 4180,
+                "error_flags": 0,
+                "outbound_queue_length": 0,
+                "uptime_seconds": 2526
+              },
+              "mtu": 247,
+              "nus_service_and_characteristics_verified": true,
+              "pair_needed": false,
+              "passed": true,
+              "services_resolved": true,
+              "session": 3,
+              "started_at": "2026-10-20T06:51:03.628033+00:00",
+              "usb_device_info_matches": true,
+              "usb_name_matches": true,
+              "usb_public_key_matches": true
+            }
+          ],
+          "sessions_completed": 3,
+          "sessions_requested": 3,
+          "source_commit": "42f7df082fc4c7362ecd5c18c8644ab25b51b9e9",
+          "stale_bond_recovery_allowed": false,
+          "stale_target_bond_removed": false,
+          "started_at": "2026-10-20T06:48:28.280952+00:00",
+          "status": "passed",
+          "supported": true,
+          "target": "t1000e_companion_radio_full",
+          "uptime_monotonic": true,
+          "usb_public_identity_sha256": "8fc05b145d174bfbebe27978ed580c49bee90b3c1e2d3678108bfc30c38980d9",
+          "usb_public_key_matches": true,
+          "verified_erase_evidence": null,
+          "verified_erase_target_bond_removed": false,
+          "verified_install_evidence": null,
+          "verified_install_repair_requested": false,
+          "verified_install_target_bond_removed": false,
+          "warm_reboot_tested": false
+        }
+      },
+      "physical_distance_confirmed": false,
+      "source_commit": "42f7df082fc4c7362ecd5c18c8644ab25b51b9e9",
+      "user_confirmed_magnetic_usb_unplugged": true
+    },
     "post_reported_reset": {
       "active_scan": {
         "advertising_hci_event_blocks": 643,
@@ -686,6 +1051,1377 @@
       "random_ble_returncode": 1,
       "random_ble_sessions": 0,
       "random_usb_warm_reboot_passed": true
+    },
+    "usb_configuration_comparison": {
+      "conclusion": "No stable Companion session before, during or after USB deauthorization. The deauthorized trial briefly encrypted, then timed out. Configuration removal is not physical USB disconnection and does not eliminate USB bus signalling or prove the peripheral USB block stopped. Exact USB authorization was restored; after host device-node permissions settled, a separate normal-user runtime read verified unchanged Full firmware, public identity and advancing uptime.",
+      "deauthorized_completed_companion_sessions": 0,
+      "deauthorized_disconnect_reason": "0x08 connection timeout",
+      "deauthorized_encryption_successes": 1,
+      "firmware_changed": false,
+      "gateway_active_after": true,
+      "host_bond_removed": false,
+      "hub_or_port_power_command_sent": false,
+      "independent_runtime_retry": {
+        "bluetooth_enabled": true,
+        "bluetooth_stealth_reply": "> off",
+        "core_stats": {
+          "battery_mv": 4195,
+          "error_flags": 0,
+          "outbound_queue_length": 0,
+          "uptime_seconds": 3987
+        },
+        "factory_mac_policy": true,
+        "finished_at": "2026-10-20T07:15:26.382356+00:00",
+        "firmware_or_preferences_changed": false,
+        "full_version": "v1.18.0.1-halo-keymind-cascade-dev-42f7df08 (Build: 20-Oct-2026)",
+        "only_runtime_getters": true,
+        "passed": true,
+        "public_identity_sha256": "8fc05b145d174bfbebe27978ed580c49bee90b3c1e2d3678108bfc30c38980d9",
+        "reset_requested": false,
+        "started_at": "2026-10-20T07:15:25.820549+00:00",
+        "transport": {
+          "discarded_prefix_bytes": 0,
+          "ignored_push_frames": 0,
+          "invalid_length_candidates": 0,
+          "ports_closed": 1,
+          "ports_opened": 1,
+          "request_bytes_sent": 125,
+          "request_frames_sent": 7,
+          "response_frames_received": 7,
+          "response_payload_bytes": 283
+        },
+        "uptime_not_decreased_since_battery": true,
+        "usb_identity_matches": true
+      },
+      "initial_runtime_readback": {
+        "failure_type": "PermissionError",
+        "later_read_write_access_available_without_permission_mutation": true,
+        "passed": false,
+        "ports_opened": 0,
+        "runtime_failure_inferred": false,
+        "workflow_returncode": 1
+      },
+      "lease_events": [
+        {
+          "event": "verified_original",
+          "monotonic": 13115.50733195,
+          "state": {
+            "authorized": 1,
+            "configuration": "1",
+            "device_number": 50,
+            "power_control": "on",
+            "runtime_status": "active"
+          }
+        },
+        {
+          "event": "device_deauthorized",
+          "hub_or_port_power_changed": false,
+          "monotonic": 13115.515515069,
+          "state": {
+            "authorized": 0,
+            "configuration": "",
+            "device_number": 50,
+            "power_control": "on",
+            "runtime_status": "active"
+          }
+        },
+        {
+          "event": "device_authorization_restored",
+          "monotonic": 13161.942086772,
+          "state": {
+            "authorized": 1,
+            "configuration": "1",
+            "device_number": 50,
+            "power_control": "on",
+            "runtime_status": "active"
+          }
+        }
+      ],
+      "method": "Exact-device Linux USB authorization 1 -> 0 -> 1",
+      "method_documentation": "https://docs.kernel.org/usb/authorization.html",
+      "phases": {
+        "configured_after": {
+          "authorization_required": 1,
+          "ble": {
+            "failure": "Need exactly one current advertisement matching USB name/address",
+            "failure_type": "GateError",
+            "passed": false,
+            "sessions_completed": 0
+          },
+          "client_returncode": 1,
+          "explicit_address": false,
+          "gateway_active_after": true,
+          "gateway_active_before": true,
+          "hci_evidence": "t1000-usb-authorization-configured_after-hci.safe.json",
+          "hci_sha256": "77c1941729d93f5587b42cb83d6baf0f65bd90a95d3e258028429787a0ea05a4",
+          "hold_seconds_requested": 30,
+          "name_discovery_required": true,
+          "required_state_verified_throughout": true,
+          "sessions_requested": 1,
+          "target_advertising_event_blocks": 0
+        },
+        "configured_before": {
+          "authorization_required": 1,
+          "ble": {
+            "failure": "Need exactly one current advertisement matching USB name/address",
+            "failure_type": "GateError",
+            "passed": false,
+            "sessions_completed": 0
+          },
+          "client_returncode": 1,
+          "explicit_address": false,
+          "gateway_active_after": true,
+          "gateway_active_before": true,
+          "hci_evidence": "t1000-usb-authorization-configured_before-hci.safe.json",
+          "hci_sha256": "383f92299d44ef926ac266db155fd427ed072ad70e58317a819c7050922ec5a9",
+          "hold_seconds_requested": 30,
+          "name_discovery_required": true,
+          "required_state_verified_throughout": true,
+          "sessions_requested": 1,
+          "target_advertising_event_blocks": 0
+        },
+        "deauthorized": {
+          "authorization_required": 0,
+          "ble": {
+            "failure": null,
+            "failure_type": "BleakError",
+            "passed": false,
+            "sessions_completed": 0
+          },
+          "client_returncode": 1,
+          "explicit_address": false,
+          "gateway_active_after": true,
+          "gateway_active_before": true,
+          "hci_evidence": "t1000-usb-authorization-deauthorized-hci.safe.json",
+          "hci_sha256": "24dcad446689730982cd96e9c029422d49020fb830a24015fb37fd588cc4a54a",
+          "hold_seconds_requested": 30,
+          "name_discovery_required": true,
+          "required_state_verified_throughout": true,
+          "sessions_requested": 3,
+          "target_advertising_event_blocks": 3
+        }
+      },
+      "physical_cable_remained_connected_requested": true,
+      "physical_voltage_not_measured": true,
+      "usb_authorization_restored": true
+    },
+    "usb_reconnection_comparison": {
+      "battery_return_with_cable_attached": {
+        "ble": {
+          "adapter_reset": false,
+          "after_verified_erase_requested": false,
+          "bond_created_by_campaign": false,
+          "broad_bond_changes": false,
+          "cold_boot_tested": false,
+          "configured_address_policy": "factory",
+          "default_agent_changed": false,
+          "discovery_bound_to_usb_advertisement": true,
+          "expected_version": "v1.18.0.1-halo-keymind-cascade-dev-42f7df08",
+          "final_target_disconnected": true,
+          "finished_at": "2026-10-20T07:00:52.713248+00:00",
+          "firmware_or_preferences_set": false,
+          "full_version_matches": true,
+          "hold_seconds_requested": 30.0,
+          "key": "t1000",
+          "passed": true,
+          "preexisting_bond": true,
+          "preexisting_connected": false,
+          "radio_tx_commands_sent": false,
+          "schema": 1,
+          "sessions": [
+            {
+              "bonded": true,
+              "disconnected_after_session": true,
+              "final_core_stats": {
+                "battery_mv": 4180,
+                "error_flags": 0,
+                "outbound_queue_length": 0,
+                "uptime_seconds": 3041
+              },
+              "full_version_matches": true,
+              "getters_verified": [
+                "ver",
+                "get public.key",
+                "get name",
+                "get bluetooth.mac",
+                "get bluetooth.stealth",
+                "get bluetooth.name",
+                "get bluetooth"
+              ],
+              "hold_elapsed_s": 30.329,
+              "initial_core_stats": {
+                "battery_mv": 4183,
+                "error_flags": 0,
+                "outbound_queue_length": 0,
+                "uptime_seconds": 3011
+              },
+              "mtu": 247,
+              "nus_service_and_characteristics_verified": true,
+              "pair_needed": false,
+              "passed": true,
+              "services_resolved": true,
+              "session": 1,
+              "started_at": "2026-10-20T06:59:08.488928+00:00",
+              "usb_device_info_matches": true,
+              "usb_name_matches": true,
+              "usb_public_key_matches": true
+            },
+            {
+              "bonded": true,
+              "disconnected_after_session": true,
+              "final_core_stats": {
+                "battery_mv": 4174,
+                "error_flags": 0,
+                "outbound_queue_length": 0,
+                "uptime_seconds": 3076
+              },
+              "full_version_matches": true,
+              "getters_verified": [
+                "ver",
+                "get public.key",
+                "get name",
+                "get bluetooth.mac",
+                "get bluetooth.stealth",
+                "get bluetooth.name",
+                "get bluetooth"
+              ],
+              "hold_elapsed_s": 30.179,
+              "initial_core_stats": {
+                "battery_mv": 4182,
+                "error_flags": 0,
+                "outbound_queue_length": 0,
+                "uptime_seconds": 3046
+              },
+              "mtu": 247,
+              "nus_service_and_characteristics_verified": true,
+              "pair_needed": false,
+              "passed": true,
+              "services_resolved": true,
+              "session": 2,
+              "started_at": "2026-10-20T06:59:43.719231+00:00",
+              "usb_device_info_matches": true,
+              "usb_name_matches": true,
+              "usb_public_key_matches": true
+            },
+            {
+              "bonded": true,
+              "disconnected_after_session": true,
+              "final_core_stats": {
+                "battery_mv": 4182,
+                "error_flags": 0,
+                "outbound_queue_length": 0,
+                "uptime_seconds": 3111
+              },
+              "full_version_matches": true,
+              "getters_verified": [
+                "ver",
+                "get public.key",
+                "get name",
+                "get bluetooth.mac",
+                "get bluetooth.stealth",
+                "get bluetooth.name",
+                "get bluetooth"
+              ],
+              "hold_elapsed_s": 30.179,
+              "initial_core_stats": {
+                "battery_mv": 4182,
+                "error_flags": 0,
+                "outbound_queue_length": 0,
+                "uptime_seconds": 3081
+              },
+              "mtu": 247,
+              "nus_service_and_characteristics_verified": true,
+              "pair_needed": false,
+              "passed": true,
+              "services_resolved": true,
+              "session": 3,
+              "started_at": "2026-10-20T07:00:18.692371+00:00",
+              "usb_device_info_matches": true,
+              "usb_name_matches": true,
+              "usb_public_key_matches": true
+            }
+          ],
+          "sessions_completed": 3,
+          "sessions_requested": 3,
+          "source_commit": "42f7df082fc4c7362ecd5c18c8644ab25b51b9e9",
+          "stale_bond_recovery_allowed": false,
+          "stale_target_bond_removed": false,
+          "started_at": "2026-10-20T06:58:43.176725+00:00",
+          "status": "passed",
+          "supported": true,
+          "target": "t1000e_companion_radio_full",
+          "uptime_monotonic": true,
+          "usb_public_identity_sha256": "8fc05b145d174bfbebe27978ed580c49bee90b3c1e2d3678108bfc30c38980d9",
+          "usb_public_key_matches": true,
+          "verified_erase_evidence": null,
+          "verified_erase_target_bond_removed": false,
+          "verified_install_evidence": null,
+          "verified_install_repair_requested": false,
+          "verified_install_target_bond_removed": false,
+          "warm_reboot_tested": false
+        },
+        "hci": {
+          "att_event_counts": {
+            "Error Response (0x01) len 4": 3,
+            "Exchange MTU Request (0x02) len 2": 3,
+            "Exchange MTU Response (0x03) len 2": 3,
+            "Handle Value Notification (0x1b) len 11": 3,
+            "Handle Value Notification (0x1b) len 13": 6,
+            "Handle Value Notification (0x1b) len 16": 3,
+            "Handle Value Notification (0x1b) len 174": 1,
+            "Handle Value Notification (0x1b) len 175": 2,
+            "Handle Value Notification (0x1b) len 18": 3,
+            "Handle Value Notification (0x1b) len 3": 1,
+            "Handle Value Notification (0x1b) len 33": 6,
+            "Handle Value Notification (0x1b) len 45": 1,
+            "Handle Value Notification (0x1b) len 50": 3,
+            "Handle Value Notification (0x1b) len 55": 1,
+            "Handle Value Notification (0x1b) len 56": 1,
+            "Handle Value Notification (0x1b) len 57": 2,
+            "Handle Value Notification (0x1b) len 60": 1,
+            "Handle Value Notification (0x1b) len 61": 2,
+            "Handle Value Notification (0x1b) len 62": 2,
+            "Handle Value Notification (0x1b) len 63": 4,
+            "Handle Value Notification (0x1b) len 67": 1,
+            "Handle Value Notification (0x1b) len 68": 3,
+            "Handle Value Notification (0x1b) len 70": 8,
+            "Handle Value Notification (0x1b) len 72": 4,
+            "Handle Value Notification (0x1b) len 74": 2,
+            "Handle Value Notification (0x1b) len 76": 2,
+            "Handle Value Notification (0x1b) len 84": 3,
+            "Handle Value Notification (0x1b) len 85": 1,
+            "Handle Value Notification (0x1b) len 86": 1,
+            "Handle Value Notification (0x1b) len 88": 4,
+            "Handle Value Notification (0x1b) len 90": 1,
+            "Handle Value Notification (0x1b) len 93": 2,
+            "Handle Value Notification (0x1b) len 98": 1,
+            "Handle Value Notification (0x1b) len 99": 2,
+            "Read By Group Type Request (0x10) len 6": 6,
+            "Read By Group Type Response (0x11) len 13": 3,
+            "Read By Group Type Response (0x11) len 61": 3,
+            "Read By Type Request (0x08) len 6": 3,
+            "Read Request (0x0a) len 2": 6,
+            "Read Response (0x0b) len 17": 3,
+            "Read Response (0x0b) len 2": 3,
+            "Write Request (0x12) len 14": 3,
+            "Write Request (0x12) len 19": 3,
+            "Write Request (0x12) len 20": 3,
+            "Write Request (0x12) len 23": 6,
+            "Write Request (0x12) len 24": 3,
+            "Write Request (0x12) len 27": 3,
+            "Write Request (0x12) len 32": 3,
+            "Write Request (0x12) len 4": 15,
+            "Write Request (0x12) len 9": 6,
+            "Write Response (0x13) len 0": 45
+          },
+          "connection_events": [
+            {
+              "fields": [
+                "Status: Success (0x00)",
+                "Handle: 64",
+                "Connection interval: 30.00 msec (0x0018)",
+                "Connection latency: 4 (0x0004)",
+                "Supervision timeout: 2000 msec (0x00c8)"
+              ],
+              "kind": "> HCI Event: LE Meta Event (0x3e) plen 19                        #557 26.809396"
+            },
+            {
+              "fields": [
+                "Status: Success (0x00)",
+                "Handle: 64",
+                "Encryption: Enabled with AES-CCM (0x01)"
+              ],
+              "kind": "> HCI Event: Encryption Change (0x08) plen 4                     #563 27.118626"
+            },
+            {
+              "fields": [
+                "Handle: 64",
+                "Min connection interval: 15.00 msec (0x000c)",
+                "Max connection interval: 30.00 msec (0x0018)",
+                "Connection latency: 4 (0x0004)",
+                "Supervision timeout: 2000 msec (0x00c8)"
+              ],
+              "kind": "< HCI Command: LE Connection Update (0x08|0x0013) plen 14        #569 27.149458"
+            },
+            {
+              "fields": [
+                "Status: Success (0x00)"
+              ],
+              "kind": "> HCI Event: Command Status (0x0f) plen 4                        #570 27.150666"
+            },
+            {
+              "fields": [
+                "Status: Success (0x00)",
+                "Handle: 64",
+                "Connection interval: 30.00 msec (0x0018)",
+                "Connection latency: 4 (0x0004)",
+                "Supervision timeout: 2000 msec (0x00c8)"
+              ],
+              "kind": "> HCI Event: LE Meta Event (0x3e) plen 10                        #584 27.493768"
+            },
+            {
+              "fields": [
+                "Status: Success (0x00)",
+                "Handle: 64",
+                "Reason: Connection Terminated By Local Host (0x16)"
+              ],
+              "kind": "> HCI Event: Disconnect Complete (0x05) plen 4                   #745 60.703635"
+            },
+            {
+              "fields": [
+                "Status: Success (0x00)",
+                "Handle: 64",
+                "Connection interval: 30.00 msec (0x0018)",
+                "Connection latency: 4 (0x0004)",
+                "Supervision timeout: 2000 msec (0x00c8)"
+              ],
+              "kind": "> HCI Event: LE Meta Event (0x3e) plen 19                        #755 61.759559"
+            },
+            {
+              "fields": [
+                "Status: Success (0x00)",
+                "Handle: 64",
+                "Encryption: Enabled with AES-CCM (0x01)"
+              ],
+              "kind": "> HCI Event: Encryption Change (0x08) plen 4                     #761 62.081922"
+            },
+            {
+              "fields": [
+                "Handle: 64",
+                "Min connection interval: 15.00 msec (0x000c)",
+                "Max connection interval: 30.00 msec (0x0018)",
+                "Connection latency: 4 (0x0004)",
+                "Supervision timeout: 2000 msec (0x00c8)"
+              ],
+              "kind": "< HCI Command: LE Connection Update (0x08|0x0013) plen 14        #767 62.112759"
+            },
+            {
+              "fields": [
+                "Status: Success (0x00)"
+              ],
+              "kind": "> HCI Event: Command Status (0x0f) plen 4                        #768 62.113970"
+            },
+            {
+              "fields": [
+                "Status: Success (0x00)",
+                "Handle: 64",
+                "Connection interval: 30.00 msec (0x0018)",
+                "Connection latency: 4 (0x0004)",
+                "Supervision timeout: 2000 msec (0x00c8)"
+              ],
+              "kind": "> HCI Event: LE Meta Event (0x3e) plen 10                        #782 62.460834"
+            },
+            {
+              "fields": [
+                "Status: Success (0x00)",
+                "Handle: 64",
+                "Reason: Connection Terminated By Local Host (0x16)"
+              ],
+              "kind": "> HCI Event: Disconnect Complete (0x05) plen 4                   #874 95.670897"
+            },
+            {
+              "fields": [
+                "Status: Success (0x00)",
+                "Handle: 64",
+                "Connection interval: 30.00 msec (0x0018)",
+                "Connection latency: 4 (0x0004)",
+                "Supervision timeout: 2000 msec (0x00c8)"
+              ],
+              "kind": "> HCI Event: LE Meta Event (0x3e) plen 19                        #885 96.769899"
+            },
+            {
+              "fields": [
+                "Status: Success (0x00)",
+                "Handle: 64",
+                "Encryption: Enabled with AES-CCM (0x01)"
+              ],
+              "kind": "> HCI Event: Encryption Change (0x08) plen 4                     #891 97.096007"
+            },
+            {
+              "fields": [
+                "Handle: 64",
+                "Min connection interval: 15.00 msec (0x000c)",
+                "Max connection interval: 30.00 msec (0x0018)",
+                "Connection latency: 4 (0x0004)",
+                "Supervision timeout: 2000 msec (0x00c8)"
+              ],
+              "kind": "< HCI Command: LE Connection Update (0x08|0x0013) plen 14        #897 97.126841"
+            },
+            {
+              "fields": [
+                "Status: Success (0x00)"
+              ],
+              "kind": "> HCI Event: Command Status (0x0f) plen 4                        #898 97.128061"
+            },
+            {
+              "fields": [
+                "Status: Success (0x00)",
+                "Handle: 64",
+                "Connection interval: 30.00 msec (0x0018)",
+                "Connection latency: 4 (0x0004)",
+                "Supervision timeout: 2000 msec (0x00c8)"
+              ],
+              "kind": "> HCI Event: LE Meta Event (0x3e) plen 10                        #912 97.484914"
+            },
+            {
+              "fields": [
+                "Status: Success (0x00)",
+                "Handle: 64",
+                "Reason: Connection Terminated By Local Host (0x16)"
+              ],
+              "kind": "> HCI Event: Disconnect Complete (0x05) plen 4                 #1034 130.695161"
+            }
+          ],
+          "exact_target_connection_observed": true,
+          "hci_sha256": "82cc0d420185f5df016b3875fdaa27b6da851bb4e1beabb4d81abf3cdbeb4551",
+          "security_keys_or_payloads_published": false,
+          "smp_event_counts": {},
+          "target_advertising_event_blocks": 29,
+          "target_name_scan_response_blocks": 13,
+          "total_advertising_event_blocks": 527,
+          "unexpected_addresses_published": false
+        },
+        "power": {
+          "ble": {
+            "bond_created_by_campaign": false,
+            "failure": null,
+            "failure_type": null,
+            "passed": true,
+            "preexisting_bond": true,
+            "sessions_completed": 3
+          },
+          "client_returncode": 0,
+          "cold_boot_tested": false,
+          "connection_parameter_experiment": false,
+          "explicit_address_argument": false,
+          "finished_at": "2026-10-20T07:00:53.139099+00:00",
+          "firmware_changed": false,
+          "gateway_active_after": true,
+          "gateway_active_before": true,
+          "hci_sha256": "82cc0d420185f5df016b3875fdaa27b6da851bb4e1beabb4d81abf3cdbeb4551",
+          "hold_seconds_requested": 30,
+          "hub_end_unplug_requested": true,
+          "magnetic_end_left_attached_requested": true,
+          "name_discovery_required": true,
+          "physical_distance_confirmed": false,
+          "qualifier_sha256": "2ba82f8923c068878785b0f32bbb2285157dd61076907cf3874f43eeb33ed64b",
+          "sessions_requested": 3,
+          "started_at": "2026-10-20T06:58:42.475734+00:00",
+          "uptime_not_decreased_since_usb_comparison": true,
+          "usb_absent_after": true,
+          "usb_absent_before": true,
+          "usb_absent_throughout": true,
+          "usb_snapshot_sha256": "f551de6b7211131835b8a324e2badf8fff40d5672b2b3cb3e198b096deb056ca",
+          "user_confirmed_unplugged": true
+        }
+      },
+      "battery_return_with_cable_attached_test": "passed",
+      "conclusion": "USB reconnection reproduced BLE failure despite the already verified bond and normal two-second supervision parameters. A read-only USB check after both BLE trials verified unchanged firmware/identity, advancing uptime, Bluetooth on, stealth off and zero core errors. Specific cause remains unproven. After unplugging only the hub end as requested, three 30-second name-discovered, encrypted Companion sessions passed again with the same bond and advancing uptime. The magnetic end was requested to remain attached; cable placement was not independently observed.",
+      "controller_attempts_during_one_bluez_connect": 9,
+      "disconnect_reasons": {
+        "connection_timeout_0x08": 2,
+        "initial_establishment_0x3e": 7
+      },
+      "encryption_successes": 0,
+      "firmware_changed": false,
+      "host_bond_removed": false,
+      "immediate_verified_address_connection": {
+        "ble": {
+          "adapter_reset": false,
+          "after_verified_erase_requested": false,
+          "bond_created_by_campaign": false,
+          "broad_bond_changes": false,
+          "cold_boot_tested": false,
+          "configured_address_policy": "factory",
+          "default_agent_changed": false,
+          "diagnostic_explicit_address": true,
+          "discovery_bound_to_usb_advertisement": true,
+          "expected_version": "v1.18.0.1-halo-keymind-cascade-dev-42f7df08",
+          "failure_detail_in_private_log": true,
+          "failure_type": "TimeoutError",
+          "finished_at": "2026-10-20T06:56:17.040220+00:00",
+          "firmware_or_preferences_set": false,
+          "hold_seconds_requested": 30.0,
+          "key": "t1000",
+          "normal_name_discovery_qualification": false,
+          "passed": false,
+          "preexisting_bond": true,
+          "preexisting_connected": false,
+          "radio_tx_commands_sent": false,
+          "schema": 1,
+          "sessions": [],
+          "sessions_completed": 0,
+          "sessions_requested": 1,
+          "source_commit": "42f7df082fc4c7362ecd5c18c8644ab25b51b9e9",
+          "stale_bond_recovery_allowed": false,
+          "stale_target_bond_removed": false,
+          "started_at": "2026-10-20T06:54:42.645163+00:00",
+          "status": "failed",
+          "supported": true,
+          "target": "t1000e_companion_radio_full",
+          "usb_public_identity_sha256": "8fc05b145d174bfbebe27978ed580c49bee90b3c1e2d3678108bfc30c38980d9",
+          "verified_erase_evidence": null,
+          "verified_erase_target_bond_removed": false,
+          "verified_install_evidence": null,
+          "verified_install_repair_requested": false,
+          "verified_install_target_bond_removed": false,
+          "warm_reboot_tested": false
+        },
+        "hci": {
+          "att_event_counts": {},
+          "connection_events": [
+            {
+              "fields": [
+                "Status: Success (0x00)",
+                "Handle: 64",
+                "Connection interval: 30.00 msec (0x0018)",
+                "Connection latency: 4 (0x0004)",
+                "Supervision timeout: 2000 msec (0x00c8)"
+              ],
+              "kind": "> HCI Event: LE Meta Event (0x3e) plen 19                        #627 68.566597"
+            },
+            {
+              "fields": [
+                "Status: Success (0x00)",
+                "Handle: 64",
+                "Reason: Connection Failed to be Established (0x3e)"
+              ],
+              "kind": "> HCI Event: Disconnect Complete (0x05) plen 4                   #631 68.743040"
+            },
+            {
+              "fields": [
+                "Status: Success (0x00)",
+                "Handle: 64",
+                "Connection interval: 30.00 msec (0x0018)",
+                "Connection latency: 4 (0x0004)",
+                "Supervision timeout: 2000 msec (0x00c8)"
+              ],
+              "kind": "> HCI Event: LE Meta Event (0x3e) plen 19                        #658 69.825806"
+            },
+            {
+              "fields": [
+                "Status: Success (0x00)",
+                "Handle: 64",
+                "Reason: Connection Failed to be Established (0x3e)"
+              ],
+              "kind": "> HCI Event: Disconnect Complete (0x05) plen 4                   #662 70.003038"
+            },
+            {
+              "fields": [
+                "Status: Success (0x00)",
+                "Handle: 64",
+                "Connection interval: 30.00 msec (0x0018)",
+                "Connection latency: 4 (0x0004)",
+                "Supervision timeout: 2000 msec (0x00c8)"
+              ],
+              "kind": "> HCI Event: LE Meta Event (0x3e) plen 19                        #690 75.830274"
+            },
+            {
+              "fields": [
+                "Status: Success (0x00)",
+                "Handle: 64",
+                "Reason: Connection Failed to be Established (0x3e)"
+              ],
+              "kind": "> HCI Event: Disconnect Complete (0x05) plen 4                   #694 75.993056"
+            },
+            {
+              "fields": [
+                "Status: Success (0x00)",
+                "Handle: 64",
+                "Connection interval: 30.00 msec (0x0018)",
+                "Connection latency: 4 (0x0004)",
+                "Supervision timeout: 2000 msec (0x00c8)"
+              ],
+              "kind": "> HCI Event: LE Meta Event (0x3e) plen 19                        #719 77.099556"
+            },
+            {
+              "fields": [
+                "Status: Success (0x00)",
+                "Handle: 64",
+                "Reason: Connection Timeout (0x08)"
+              ],
+              "kind": "> HCI Event: Disconnect Complete (0x05) plen 4                   #723 81.064263"
+            },
+            {
+              "fields": [
+                "Status: Success (0x00)",
+                "Handle: 64",
+                "Connection interval: 30.00 msec (0x0018)",
+                "Connection latency: 4 (0x0004)",
+                "Supervision timeout: 2000 msec (0x00c8)"
+              ],
+              "kind": "> HCI Event: LE Meta Event (0x3e) plen 19                        #752 84.387021"
+            },
+            {
+              "fields": [
+                "Status: Success (0x00)",
+                "Handle: 64",
+                "Reason: Connection Failed to be Established (0x3e)"
+              ],
+              "kind": "> HCI Event: Disconnect Complete (0x05) plen 4                   #756 84.559264"
+            },
+            {
+              "fields": [
+                "Status: Success (0x00)",
+                "Handle: 64",
+                "Connection interval: 30.00 msec (0x0018)",
+                "Connection latency: 4 (0x0004)",
+                "Supervision timeout: 2000 msec (0x00c8)"
+              ],
+              "kind": "> HCI Event: LE Meta Event (0x3e) plen 19                        #780 85.164511"
+            },
+            {
+              "fields": [
+                "Status: Success (0x00)",
+                "Handle: 64",
+                "Reason: Connection Failed to be Established (0x3e)"
+              ],
+              "kind": "> HCI Event: Disconnect Complete (0x05) plen 4                   #784 85.328449"
+            },
+            {
+              "fields": [
+                "Status: Success (0x00)",
+                "Handle: 64",
+                "Connection interval: 30.00 msec (0x0018)",
+                "Connection latency: 4 (0x0004)",
+                "Supervision timeout: 2000 msec (0x00c8)"
+              ],
+              "kind": "> HCI Event: LE Meta Event (0x3e) plen 19                        #810 87.250749"
+            },
+            {
+              "fields": [
+                "Status: Success (0x00)",
+                "Handle: 64",
+                "Reason: Connection Failed to be Established (0x3e)"
+              ],
+              "kind": "> HCI Event: Disconnect Complete (0x05) plen 4                   #814 87.421163"
+            },
+            {
+              "fields": [
+                "Status: Success (0x00)",
+                "Handle: 64",
+                "Connection interval: 30.00 msec (0x0018)",
+                "Connection latency: 4 (0x0004)",
+                "Supervision timeout: 2000 msec (0x00c8)"
+              ],
+              "kind": "> HCI Event: LE Meta Event (0x3e) plen 19                        #839 87.803852"
+            },
+            {
+              "fields": [
+                "Status: Connection Timeout (0x08)",
+                "Handle: 64",
+                "Encryption: Disabled (0x00)"
+              ],
+              "kind": "> HCI Event: Encryption Change (0x08) plen 4                     #845 91.871131"
+            },
+            {
+              "fields": [
+                "Status: Success (0x00)",
+                "Handle: 64",
+                "Reason: Connection Timeout (0x08)"
+              ],
+              "kind": "> HCI Event: Disconnect Complete (0x05) plen 4                   #847 91.871647"
+            },
+            {
+              "fields": [
+                "Status: Success (0x00)",
+                "Handle: 64",
+                "Connection interval: 30.00 msec (0x0018)",
+                "Connection latency: 4 (0x0004)",
+                "Supervision timeout: 2000 msec (0x00c8)"
+              ],
+              "kind": "> HCI Event: LE Meta Event (0x3e) plen 19                        #874 94.483165"
+            },
+            {
+              "fields": [
+                "Status: Success (0x00)",
+                "Handle: 64",
+                "Reason: Connection Failed to be Established (0x3e)"
+              ],
+              "kind": "> HCI Event: Disconnect Complete (0x05) plen 4                   #878 94.650411"
+            }
+          ],
+          "exact_target_connection_observed": true,
+          "hci_sha256": "a37cff8f900d34e7590b69cc4ed4055dce708012a109b50304f5567669ea38a4",
+          "security_keys_or_payloads_published": false,
+          "smp_event_counts": {},
+          "target_advertising_event_blocks": 10,
+          "target_name_scan_response_blocks": 0,
+          "total_advertising_event_blocks": 711,
+          "unexpected_addresses_published": false
+        },
+        "power": {
+          "ble": {
+            "bond_created_by_campaign": false,
+            "failure": null,
+            "failure_type": "TimeoutError",
+            "passed": false,
+            "preexisting_bond": true,
+            "sessions_completed": 0
+          },
+          "client_returncode": 1,
+          "cold_boot_tested": false,
+          "connection_parameter_experiment": false,
+          "explicit_address_argument": true,
+          "finished_at": "2026-10-20T06:56:18.008094+00:00",
+          "firmware_changed": false,
+          "gateway_active_after": true,
+          "gateway_active_before": true,
+          "hci_sha256": "a37cff8f900d34e7590b69cc4ed4055dce708012a109b50304f5567669ea38a4",
+          "hold_seconds_requested": 30,
+          "name_discovery_required": false,
+          "physical_distance_confirmed": false,
+          "qualifier_sha256": "e16f0a79b436a3eeb1827d5b533b4348d93f7a416b660dae0e452da27db54539",
+          "sessions_requested": 1,
+          "started_at": "2026-10-20T06:54:41.934037+00:00",
+          "usb_present_after": true,
+          "usb_present_before": true,
+          "usb_present_throughout": true,
+          "usb_serial_port_opened": false,
+          "usb_snapshot_sha256": "f551de6b7211131835b8a324e2badf8fff40d5672b2b3cb3e198b096deb056ca",
+          "user_confirmed_reconnected": true
+        }
+      },
+      "normal_name_discovery": {
+        "ble": {
+          "adapter_reset": false,
+          "after_verified_erase_requested": false,
+          "bond_created_by_campaign": false,
+          "broad_bond_changes": false,
+          "cold_boot_tested": false,
+          "default_agent_changed": false,
+          "expected_version": "v1.18.0.1-halo-keymind-cascade-dev-42f7df08",
+          "failure": "Need exactly one current advertisement matching USB name/address",
+          "failure_detail_in_private_log": true,
+          "failure_type": "GateError",
+          "finished_at": "2026-10-20T06:53:52.155975+00:00",
+          "firmware_or_preferences_set": false,
+          "hold_seconds_requested": 60.0,
+          "key": "t1000",
+          "passed": false,
+          "radio_tx_commands_sent": false,
+          "schema": 1,
+          "sessions": [],
+          "sessions_completed": 0,
+          "sessions_requested": 3,
+          "source_commit": "42f7df082fc4c7362ecd5c18c8644ab25b51b9e9",
+          "stale_bond_recovery_allowed": false,
+          "stale_target_bond_removed": false,
+          "started_at": "2026-10-20T06:53:26.853987+00:00",
+          "status": "failed",
+          "supported": true,
+          "target": "t1000e_companion_radio_full",
+          "usb_public_identity_sha256": "8fc05b145d174bfbebe27978ed580c49bee90b3c1e2d3678108bfc30c38980d9",
+          "verified_erase_evidence": null,
+          "verified_erase_target_bond_removed": false,
+          "verified_install_evidence": null,
+          "verified_install_repair_requested": false,
+          "verified_install_target_bond_removed": false,
+          "warm_reboot_tested": false
+        },
+        "hci": {
+          "att_event_counts": {},
+          "connection_events": [],
+          "exact_target_connection_observed": false,
+          "hci_sha256": "c91b91c55c1ee531e6371708279b8bf603a51336559639dffc263e4e3518443a",
+          "security_keys_or_payloads_published": false,
+          "smp_event_counts": {},
+          "target_advertising_event_blocks": 0,
+          "target_name_scan_response_blocks": 0,
+          "total_advertising_event_blocks": 202,
+          "unexpected_addresses_published": false
+        },
+        "power": {
+          "ble": {
+            "bond_created_by_campaign": false,
+            "failure": "Need exactly one current advertisement matching USB name/address",
+            "failure_type": "GateError",
+            "passed": false,
+            "preexisting_bond": null,
+            "sessions_completed": 0
+          },
+          "client_returncode": 1,
+          "cold_boot_tested": false,
+          "connection_parameter_experiment": false,
+          "explicit_address_argument": false,
+          "finished_at": "2026-10-20T06:53:52.694748+00:00",
+          "firmware_changed": false,
+          "gateway_active_after": true,
+          "gateway_active_before": true,
+          "hci_sha256": "c91b91c55c1ee531e6371708279b8bf603a51336559639dffc263e4e3518443a",
+          "hold_seconds_requested": 60,
+          "name_discovery_required": true,
+          "physical_distance_confirmed": false,
+          "qualifier_sha256": "2ba82f8923c068878785b0f32bbb2285157dd61076907cf3874f43eeb33ed64b",
+          "sessions_requested": 3,
+          "started_at": "2026-10-20T06:53:26.144586+00:00",
+          "usb_present_after": true,
+          "usb_present_before": true,
+          "usb_present_throughout": true,
+          "usb_serial_port_opened": false,
+          "usb_snapshot_sha256": "f551de6b7211131835b8a324e2badf8fff40d5672b2b3cb3e198b096deb056ca",
+          "user_confirmed_reconnected": true
+        }
+      },
+      "position_not_independently_measured": true,
+      "post_ble_exact_usb_runtime": {
+        "bluetooth_enabled": true,
+        "bluetooth_stealth_reply": "> off",
+        "core_stats": {
+          "battery_mv": 4195,
+          "error_flags": 0,
+          "outbound_queue_length": 0,
+          "uptime_seconds": 2903
+        },
+        "factory_mac_policy": true,
+        "finished_at": "2026-10-20T06:57:22.423237+00:00",
+        "firmware_or_preferences_changed": false,
+        "full_version": "v1.18.0.1-halo-keymind-cascade-dev-42f7df08 (Build: 20-Oct-2026)",
+        "only_runtime_getters": true,
+        "passed": true,
+        "public_identity_sha256": "8fc05b145d174bfbebe27978ed580c49bee90b3c1e2d3678108bfc30c38980d9",
+        "reset_requested": false,
+        "started_at": "2026-10-20T06:57:21.864267+00:00",
+        "transport": {
+          "discarded_prefix_bytes": 0,
+          "ignored_push_frames": 0,
+          "invalid_length_candidates": 0,
+          "ports_closed": 1,
+          "ports_opened": 1,
+          "request_bytes_sent": 125,
+          "request_frames_sent": 7,
+          "response_frames_received": 7,
+          "response_payload_bytes": 283
+        },
+        "uptime_not_decreased_since_battery": true,
+        "usb_identity_matches": true
+      },
+      "reset_requested": false,
+      "timeout_experiment": false,
+      "unchanged_position_requested": true,
+      "usb_reconnection_user_confirmed": true,
+      "usb_serial_opened_during_ble_trials": false
+    },
+    "wall_power_only_comparison": {
+      "conclusion": "All three 30-second normal-name, saved-bond Companion sessions passed on the user's wall power supply without Pi USB enumeration. Charging from this supply alone did not reproduce the failure. The Pi/hub path and USB software/configuration remain to be distinguished.",
+      "encrypted_links_verified": 3,
+      "local_host_disconnects_verified": 3,
+      "measured_supply_voltage": false,
+      "trial": {
+        "ble": {
+          "adapter_reset": false,
+          "after_verified_erase_requested": false,
+          "bond_created_by_campaign": false,
+          "broad_bond_changes": false,
+          "cold_boot_tested": false,
+          "configured_address_policy": "factory",
+          "default_agent_changed": false,
+          "discovery_bound_to_usb_advertisement": true,
+          "expected_version": "v1.18.0.1-halo-keymind-cascade-dev-42f7df08",
+          "final_target_disconnected": true,
+          "finished_at": "2026-10-20T07:04:54.615120+00:00",
+          "firmware_or_preferences_set": false,
+          "full_version_matches": true,
+          "hold_seconds_requested": 30.0,
+          "key": "t1000",
+          "passed": true,
+          "preexisting_bond": true,
+          "preexisting_connected": false,
+          "radio_tx_commands_sent": false,
+          "schema": 1,
+          "sessions": [
+            {
+              "bonded": true,
+              "disconnected_after_session": true,
+              "final_core_stats": {
+                "battery_mv": 4185,
+                "error_flags": 0,
+                "outbound_queue_length": 0,
+                "uptime_seconds": 3282
+              },
+              "full_version_matches": true,
+              "getters_verified": [
+                "ver",
+                "get public.key",
+                "get name",
+                "get bluetooth.mac",
+                "get bluetooth.stealth",
+                "get bluetooth.name",
+                "get bluetooth"
+              ],
+              "hold_elapsed_s": 30.299,
+              "initial_core_stats": {
+                "battery_mv": 4183,
+                "error_flags": 0,
+                "outbound_queue_length": 0,
+                "uptime_seconds": 3252
+              },
+              "mtu": 247,
+              "nus_service_and_characteristics_verified": true,
+              "pair_needed": false,
+              "passed": true,
+              "services_resolved": true,
+              "session": 1,
+              "started_at": "2026-10-20T07:03:09.327626+00:00",
+              "usb_device_info_matches": true,
+              "usb_name_matches": true,
+              "usb_public_key_matches": true
+            },
+            {
+              "bonded": true,
+              "disconnected_after_session": true,
+              "final_core_stats": {
+                "battery_mv": 4180,
+                "error_flags": 0,
+                "outbound_queue_length": 0,
+                "uptime_seconds": 3318
+              },
+              "full_version_matches": true,
+              "getters_verified": [
+                "ver",
+                "get public.key",
+                "get name",
+                "get bluetooth.mac",
+                "get bluetooth.stealth",
+                "get bluetooth.name",
+                "get bluetooth"
+              ],
+              "hold_elapsed_s": 30.21,
+              "initial_core_stats": {
+                "battery_mv": 4186,
+                "error_flags": 0,
+                "outbound_queue_length": 0,
+                "uptime_seconds": 3288
+              },
+              "mtu": 247,
+              "nus_service_and_characteristics_verified": true,
+              "pair_needed": false,
+              "passed": true,
+              "services_resolved": true,
+              "session": 2,
+              "started_at": "2026-10-20T07:03:45.720302+00:00",
+              "usb_device_info_matches": true,
+              "usb_name_matches": true,
+              "usb_public_key_matches": true
+            },
+            {
+              "bonded": true,
+              "disconnected_after_session": true,
+              "final_core_stats": {
+                "battery_mv": 4195,
+                "error_flags": 0,
+                "outbound_queue_length": 0,
+                "uptime_seconds": 3353
+              },
+              "full_version_matches": true,
+              "getters_verified": [
+                "ver",
+                "get public.key",
+                "get name",
+                "get bluetooth.mac",
+                "get bluetooth.stealth",
+                "get bluetooth.name",
+                "get bluetooth"
+              ],
+              "hold_elapsed_s": 30.3,
+              "initial_core_stats": {
+                "battery_mv": 4192,
+                "error_flags": 0,
+                "outbound_queue_length": 0,
+                "uptime_seconds": 3323
+              },
+              "mtu": 247,
+              "nus_service_and_characteristics_verified": true,
+              "pair_needed": false,
+              "passed": true,
+              "services_resolved": true,
+              "session": 3,
+              "started_at": "2026-10-20T07:04:20.732806+00:00",
+              "usb_device_info_matches": true,
+              "usb_name_matches": true,
+              "usb_public_key_matches": true
+            }
+          ],
+          "sessions_completed": 3,
+          "sessions_requested": 3,
+          "source_commit": "42f7df082fc4c7362ecd5c18c8644ab25b51b9e9",
+          "stale_bond_recovery_allowed": false,
+          "stale_target_bond_removed": false,
+          "started_at": "2026-10-20T07:02:44.022379+00:00",
+          "status": "passed",
+          "supported": true,
+          "target": "t1000e_companion_radio_full",
+          "uptime_monotonic": true,
+          "usb_public_identity_sha256": "8fc05b145d174bfbebe27978ed580c49bee90b3c1e2d3678108bfc30c38980d9",
+          "usb_public_key_matches": true,
+          "verified_erase_evidence": null,
+          "verified_erase_target_bond_removed": false,
+          "verified_install_evidence": null,
+          "verified_install_repair_requested": false,
+          "verified_install_target_bond_removed": false,
+          "warm_reboot_tested": false
+        },
+        "hci": {
+          "att_event_counts": {
+            "Error Response (0x01) len 4": 3,
+            "Exchange MTU Request (0x02) len 2": 3,
+            "Exchange MTU Response (0x03) len 2": 3,
+            "Handle Value Notification (0x1b) len 11": 3,
+            "Handle Value Notification (0x1b) len 13": 6,
+            "Handle Value Notification (0x1b) len 16": 3,
+            "Handle Value Notification (0x1b) len 160": 1,
+            "Handle Value Notification (0x1b) len 17": 1,
+            "Handle Value Notification (0x1b) len 18": 5,
+            "Handle Value Notification (0x1b) len 3": 2,
+            "Handle Value Notification (0x1b) len 33": 6,
+            "Handle Value Notification (0x1b) len 38": 2,
+            "Handle Value Notification (0x1b) len 39": 2,
+            "Handle Value Notification (0x1b) len 42": 1,
+            "Handle Value Notification (0x1b) len 43": 1,
+            "Handle Value Notification (0x1b) len 45": 1,
+            "Handle Value Notification (0x1b) len 46": 2,
+            "Handle Value Notification (0x1b) len 50": 3,
+            "Handle Value Notification (0x1b) len 52": 1,
+            "Handle Value Notification (0x1b) len 53": 2,
+            "Handle Value Notification (0x1b) len 54": 1,
+            "Handle Value Notification (0x1b) len 56": 1,
+            "Handle Value Notification (0x1b) len 58": 2,
+            "Handle Value Notification (0x1b) len 62": 1,
+            "Handle Value Notification (0x1b) len 63": 2,
+            "Handle Value Notification (0x1b) len 64": 2,
+            "Handle Value Notification (0x1b) len 65": 3,
+            "Handle Value Notification (0x1b) len 68": 3,
+            "Handle Value Notification (0x1b) len 70": 6,
+            "Handle Value Notification (0x1b) len 72": 3,
+            "Handle Value Notification (0x1b) len 73": 2,
+            "Handle Value Notification (0x1b) len 75": 1,
+            "Handle Value Notification (0x1b) len 76": 4,
+            "Handle Value Notification (0x1b) len 77": 1,
+            "Handle Value Notification (0x1b) len 78": 2,
+            "Handle Value Notification (0x1b) len 84": 3,
+            "Handle Value Notification (0x1b) len 90": 1,
+            "Read By Group Type Request (0x10) len 6": 6,
+            "Read By Group Type Response (0x11) len 13": 3,
+            "Read By Group Type Response (0x11) len 61": 3,
+            "Read By Type Request (0x08) len 6": 3,
+            "Read Request (0x0a) len 2": 6,
+            "Read Response (0x0b) len 17": 3,
+            "Read Response (0x0b) len 2": 3,
+            "Write Request (0x12) len 14": 3,
+            "Write Request (0x12) len 19": 3,
+            "Write Request (0x12) len 20": 3,
+            "Write Request (0x12) len 23": 6,
+            "Write Request (0x12) len 24": 3,
+            "Write Request (0x12) len 27": 3,
+            "Write Request (0x12) len 32": 3,
+            "Write Request (0x12) len 4": 15,
+            "Write Request (0x12) len 9": 6,
+            "Write Response (0x13) len 0": 45
+          },
+          "connection_events": [
+            {
+              "fields": [
+                "Status: Success (0x00)",
+                "Handle: 64",
+                "Connection interval: 30.00 msec (0x0018)",
+                "Connection latency: 4 (0x0004)",
+                "Supervision timeout: 2000 msec (0x00c8)"
+              ],
+              "kind": "> HCI Event: LE Meta Event (0x3e) plen 19                        #176 26.955241"
+            },
+            {
+              "fields": [
+                "Status: Success (0x00)",
+                "Handle: 64",
+                "Encryption: Enabled with AES-CCM (0x01)"
+              ],
+              "kind": "> HCI Event: Encryption Change (0x08) plen 4                     #182 27.286459"
+            },
+            {
+              "fields": [
+                "Handle: 64",
+                "Min connection interval: 15.00 msec (0x000c)",
+                "Max connection interval: 30.00 msec (0x0018)",
+                "Connection latency: 4 (0x0004)",
+                "Supervision timeout: 2000 msec (0x00c8)"
+              ],
+              "kind": "< HCI Command: LE Connection Update (0x08|0x0013) plen 14        #188 27.318106"
+            },
+            {
+              "fields": [
+                "Status: Success (0x00)"
+              ],
+              "kind": "> HCI Event: Command Status (0x0f) plen 4                        #189 27.319264"
+            },
+            {
+              "fields": [
+                "Status: Success (0x00)",
+                "Handle: 64",
+                "Connection interval: 30.00 msec (0x0018)",
+                "Connection latency: 4 (0x0004)",
+                "Supervision timeout: 2000 msec (0x00c8)"
+              ],
+              "kind": "> HCI Event: LE Meta Event (0x3e) plen 10                        #203 27.655335"
+            },
+            {
+              "fields": [
+                "Status: Success (0x00)",
+                "Handle: 64",
+                "Reason: Connection Terminated By Local Host (0x16)"
+              ],
+              "kind": "> HCI Event: Disconnect Complete (0x05) plen 4                   #339 61.704902"
+            },
+            {
+              "fields": [
+                "Status: Success (0x00)",
+                "Handle: 64",
+                "Connection interval: 30.00 msec (0x0018)",
+                "Connection latency: 4 (0x0004)",
+                "Supervision timeout: 2000 msec (0x00c8)"
+              ],
+              "kind": "> HCI Event: LE Meta Event (0x3e) plen 19                        #351 62.781994"
+            },
+            {
+              "fields": [
+                "Status: Success (0x00)",
+                "Handle: 64",
+                "Encryption: Enabled with AES-CCM (0x01)"
+              ],
+              "kind": "> HCI Event: Encryption Change (0x08) plen 4                     #357 63.111841"
+            },
+            {
+              "fields": [
+                "Handle: 64",
+                "Min connection interval: 15.00 msec (0x000c)",
+                "Max connection interval: 30.00 msec (0x0018)",
+                "Connection latency: 4 (0x0004)",
+                "Supervision timeout: 2000 msec (0x00c8)"
+              ],
+              "kind": "< HCI Command: LE Connection Update (0x08|0x0013) plen 14        #363 63.142703"
+            },
+            {
+              "fields": [
+                "Status: Success (0x00)"
+              ],
+              "kind": "> HCI Event: Command Status (0x0f) plen 4                        #364 63.143864"
+            },
+            {
+              "fields": [
+                "Status: Success (0x00)",
+                "Handle: 64",
+                "Connection interval: 30.00 msec (0x0018)",
+                "Connection latency: 4 (0x0004)",
+                "Supervision timeout: 2000 msec (0x00c8)"
+              ],
+              "kind": "> HCI Event: LE Meta Event (0x3e) plen 10                        #378 63.478237"
+            },
+            {
+              "fields": [
+                "Status: Success (0x00)",
+                "Handle: 64",
+                "Reason: Connection Terminated By Local Host (0x16)"
+              ],
+              "kind": "> HCI Event: Disconnect Complete (0x05) plen 4                   #481 96.718155"
+            },
+            {
+              "fields": [
+                "Status: Success (0x00)",
+                "Handle: 64",
+                "Connection interval: 30.00 msec (0x0018)",
+                "Connection latency: 4 (0x0004)",
+                "Supervision timeout: 2000 msec (0x00c8)"
+              ],
+              "kind": "> HCI Event: LE Meta Event (0x3e) plen 19                        #493 97.790284"
+            },
+            {
+              "fields": [
+                "Status: Success (0x00)",
+                "Handle: 64",
+                "Encryption: Enabled with AES-CCM (0x01)"
+              ],
+              "kind": "> HCI Event: Encryption Change (0x08) plen 4                     #499 98.112652"
+            },
+            {
+              "fields": [
+                "Handle: 64",
+                "Min connection interval: 15.00 msec (0x000c)",
+                "Max connection interval: 30.00 msec (0x0018)",
+                "Connection latency: 4 (0x0004)",
+                "Supervision timeout: 2000 msec (0x00c8)"
+              ],
+              "kind": "< HCI Command: LE Connection Update (0x08|0x0013) plen 14        #505 98.144279"
+            },
+            {
+              "fields": [
+                "Status: Success (0x00)"
+              ],
+              "kind": "> HCI Event: Command Status (0x0f) plen 4                        #506 98.145427"
+            },
+            {
+              "fields": [
+                "Status: Success (0x00)",
+                "Handle: 64",
+                "Connection interval: 30.00 msec (0x0018)",
+                "Connection latency: 4 (0x0004)",
+                "Supervision timeout: 2000 msec (0x00c8)"
+              ],
+              "kind": "> HCI Event: LE Meta Event (0x3e) plen 10                        #520 98.492789"
+            },
+            {
+              "fields": [
+                "Status: Success (0x00)",
+                "Handle: 64",
+                "Reason: Connection Terminated By Local Host (0x16)"
+              ],
+              "kind": "> HCI Event: Disconnect Complete (0x05) plen 4                  #639 131.583854"
+            }
+          ],
+          "exact_target_connection_observed": true,
+          "hci_sha256": "53f0634f7e159f6b4ffd764c1e805e4bbeb33528ac8ad54aa66be6b8c210dbf5",
+          "security_keys_or_payloads_published": false,
+          "smp_event_counts": {},
+          "target_advertising_event_blocks": 9,
+          "target_name_scan_response_blocks": 2,
+          "total_advertising_event_blocks": 149,
+          "unexpected_addresses_published": false
+        },
+        "power": {
+          "ble": {
+            "bond_created_by_campaign": false,
+            "failure": null,
+            "failure_type": null,
+            "passed": true,
+            "preexisting_bond": true,
+            "sessions_completed": 3
+          },
+          "client_returncode": 0,
+          "cold_boot_tested": false,
+          "connection_parameter_experiment": false,
+          "explicit_address_argument": false,
+          "external_power_source_description": "wall_power_only_user_confirmed",
+          "external_voltage_not_instrument_measured": true,
+          "finished_at": "2026-10-20T07:04:55.953401+00:00",
+          "firmware_changed": false,
+          "gateway_active_after": true,
+          "gateway_active_before": true,
+          "hci_sha256": "53f0634f7e159f6b4ffd764c1e805e4bbeb33528ac8ad54aa66be6b8c210dbf5",
+          "hold_seconds_requested": 30,
+          "hub_end_unplug_requested": true,
+          "magnetic_end_left_attached_requested": true,
+          "name_discovery_required": true,
+          "physical_distance_confirmed": false,
+          "qualifier_sha256": "2ba82f8923c068878785b0f32bbb2285157dd61076907cf3874f43eeb33ed64b",
+          "sessions_requested": 3,
+          "started_at": "2026-10-20T07:02:43.311690+00:00",
+          "uptime_not_decreased_since_usb_comparison": true,
+          "usb_absent_after": true,
+          "usb_absent_before": true,
+          "usb_absent_throughout": true,
+          "usb_snapshot_sha256": "f551de6b7211131835b8a324e2badf8fff40d5672b2b3cb3e198b096deb056ca",
+          "user_confirmed_external_power": true
+        }
+      },
+      "user_reported_source": "wall power only"
     }
   },
   "evidence": {
@@ -838,9 +2574,57 @@
       "kind": "sanitized_post_reported_reset_diagnostic_or_qualification",
       "sha256": "82d79b293e11713c893911c209034b70098bdac976a129dc157d9f1bcba8dce6"
     },
+    "t1000-battery-reconnect-1-ble.safe.json": {
+      "kind": "sanitized_battery_only_ble_evidence",
+      "sha256": "0d4005e744d325b9ca4a82292bdbd569260dcc11cf4e899ad1ecd6e2f955059f"
+    },
+    "t1000-battery-reconnect-1-hci.safe.json": {
+      "kind": "sanitized_battery_only_ble_evidence",
+      "sha256": "0a97e7870f10b14762ce628af069dc63594f6e08779f0a152837472776112925"
+    },
+    "t1000-battery-reconnect-1-power.safe.json": {
+      "kind": "sanitized_battery_only_ble_evidence",
+      "sha256": "e8d450950c19656ddeaffbffa48b4b0671f2711fb0a99aa5d1bcbbee24ead24c"
+    },
+    "t1000-battery-return-1-ble.safe.json": {
+      "kind": "sanitized_battery_recovery_ble_evidence",
+      "sha256": "8a838815f8f2665cacf9c640efc0cdfd603966d5226426e551d4f08b6e714471"
+    },
+    "t1000-battery-return-1-hci.safe.json": {
+      "kind": "sanitized_battery_recovery_ble_evidence",
+      "sha256": "90ca4499687898b54b66ede12c7a65ce55134d5040317aecc1001d761a533690"
+    },
+    "t1000-battery-return-1-power.safe.json": {
+      "kind": "sanitized_battery_recovery_ble_evidence",
+      "sha256": "38ecbf587853ab1721e1dc38392148f0ba284a072b84d977e0d02f25f8218d3b"
+    },
     "t1000-ble.safe.json": {
       "kind": "sanitized_qualification_summary",
       "sha256": "128cabd382c517e750a5b125397539d09613bdb530378fdb5748013e3c243df3"
+    },
+    "t1000-external-power-1-ble.safe.json": {
+      "kind": "sanitized_external_power_ble_evidence",
+      "sha256": "368457201ebc5eac237c69cf19157571583406cc49b5afae595e61bb719d3e42"
+    },
+    "t1000-external-power-1-hci.safe.json": {
+      "kind": "sanitized_external_power_ble_evidence",
+      "sha256": "c9bd48d91f03a0b3d97f39be9995aa69e8fdbcef282a4549e805a6461f469b5d"
+    },
+    "t1000-external-power-1-power.safe.json": {
+      "kind": "sanitized_external_power_ble_evidence",
+      "sha256": "23592ce82b443e5f4a10a1a6a66fcf8ebc5a8f3654a210f2c20dad078c14e1e2"
+    },
+    "t1000-full-battery-ble.safe.json": {
+      "kind": "sanitized_battery_only_ble_evidence",
+      "sha256": "4462381ac7700a0a62c123e5a7186cfdb329a2960ca12c5fcd84d0f99ba3f7da"
+    },
+    "t1000-full-battery-hci.safe.json": {
+      "kind": "sanitized_battery_only_ble_evidence",
+      "sha256": "debe091b6bcda26a673384e9fd28ea0f97204525fabbe5d68f48570c7cd622e6"
+    },
+    "t1000-full-battery-power.safe.json": {
+      "kind": "sanitized_battery_only_ble_evidence",
+      "sha256": "2485bf15df23a85b802e3418817c8051889be8d11337301fe35689df69196676"
     },
     "t1000-pi-followup.safe.json": {
       "kind": "sanitized_qualification_summary",
@@ -854,6 +2638,54 @@
       "kind": "sanitized_post_reported_reset_diagnostic_or_qualification",
       "sha256": "9368e2ca9a70d7e102d06a63f3453ac8c5f7664dc39005ac35c330dabe87a75d"
     },
+    "t1000-usb-address-1-ble.safe.json": {
+      "kind": "sanitized_usb_reconnection_ble_evidence",
+      "sha256": "66ab834945f03fdc647b17ad53fcefe09cd88d84e88f84b5db875977fda23063"
+    },
+    "t1000-usb-address-1-hci.safe.json": {
+      "kind": "sanitized_usb_reconnection_ble_evidence",
+      "sha256": "81af20ab039e944eb27b3d89aaf853875ece092484c981b8032a5ed5acbb0f22"
+    },
+    "t1000-usb-address-1-power.safe.json": {
+      "kind": "sanitized_usb_reconnection_ble_evidence",
+      "sha256": "7ab9f87b66cc8aa746fa2aafd0e9342fd6084a6be315c83a44b531d3081b7096"
+    },
+    "t1000-usb-authorization-configured_after-hci.safe.json": {
+      "kind": "sanitized_usb_authorization_hci_evidence",
+      "sha256": "b3ce5ceb3d51d77a5b1c5bd7bd31c22c7655669dbf493bd877329a796d55a6b5"
+    },
+    "t1000-usb-authorization-configured_before-hci.safe.json": {
+      "kind": "sanitized_usb_authorization_hci_evidence",
+      "sha256": "0b4220e16cfc0b36a5a89627d0e40aeffe6400aaf64ade5a23cd3c2ae76d61a6"
+    },
+    "t1000-usb-authorization-deauthorized-hci.safe.json": {
+      "kind": "sanitized_usb_authorization_hci_evidence",
+      "sha256": "2e02ea82a5ed981b37270e8b23cafe0e042c08beae166bcfe32a51eb0062c9e3"
+    },
+    "t1000-usb-authorization-runtime-retry.safe.json": {
+      "kind": "sanitized_usb_configuration_and_restoration_evidence",
+      "sha256": "a41d83b07268694703a690ee0466cc3f932f73785689cbf0c5ba8126c0ed8bbb"
+    },
+    "t1000-usb-authorization.safe.json": {
+      "kind": "sanitized_usb_configuration_and_restoration_evidence",
+      "sha256": "25af0c955deb57480e375338d5d83d7705e63d63574e1fe463feff0d224d75e1"
+    },
+    "t1000-usb-comparison-runtime.safe.json": {
+      "kind": "sanitized_exact_device_runtime_readback",
+      "sha256": "fbdeb4ade3a724eaf967f22f653173d4d7bbbc7bfef7cec4faad3c690916d8be"
+    },
+    "t1000-usb-reconnect-1-ble.safe.json": {
+      "kind": "sanitized_usb_reconnection_ble_evidence",
+      "sha256": "2f2a597441751a92b874da453377216c4081e8f1e398ca9305528b40cd407af3"
+    },
+    "t1000-usb-reconnect-1-hci.safe.json": {
+      "kind": "sanitized_usb_reconnection_ble_evidence",
+      "sha256": "79d2c6660c27848488e5cc8507ccf7d820c26677bd93be0e4e4dac7f7296d72b"
+    },
+    "t1000-usb-reconnect-1-power.safe.json": {
+      "kind": "sanitized_usb_reconnection_ble_evidence",
+      "sha256": "f3807cb2a56a87f7b3db8812c351cf399b97c668169aca9bf61e945877731af2"
+    },
     "t1000-usb.safe.json": {
       "kind": "sanitized_qualification_summary",
       "sha256": "0811e3bdee08a4004ecf9f64a07ebb3a52faa44c60ad4632f8d21d35b5e1dab6"
@@ -865,6 +2697,31 @@
   },
   "final_normal_head": {
     "application_zip_sha256": "7fac141e40183ada315f70b296583eaf854fd819c76fbd896a1f0f2e4a405e5b",
+    "battery_only_ble": {
+      "all_sessions_disconnected": true,
+      "bonded_reconnect_sessions_completed": 6,
+      "core_error_flags": 0,
+      "evidence": "t1000-battery-reconnect-1-ble.safe.json",
+      "firmware_changed": false,
+      "fresh_pin_pairing_completed": true,
+      "full_version_matches": true,
+      "normal_name_discovery_passed": true,
+      "reconnect_hold_seconds_requested": [
+        60,
+        60,
+        60,
+        30,
+        30,
+        30
+      ],
+      "recovered_after_usb_unplug": true,
+      "recovery_evidence": "t1000-battery-return-1-ble.safe.json",
+      "status": "passed",
+      "total_secure_sessions_completed": 7,
+      "uptime_monotonic": true,
+      "usb_absent_throughout": true,
+      "usb_public_identity_matches": true
+    },
     "ble_evidence": "t1000-42f7df08-ble.safe.json",
     "ble_qualification_status": "failed",
     "ble_sessions_completed": 0,
@@ -874,6 +2731,18 @@
       "physical_battery_test_confirmed": false,
       "sessions_completed": 0,
       "status": "failed"
+    },
+    "external_wall_power_ble": {
+      "all_sessions_disconnected": true,
+      "encrypted_hci_links": 3,
+      "evidence": "t1000-external-power-1-ble.safe.json",
+      "firmware_changed": false,
+      "full_version_matches": true,
+      "hold_seconds_per_session": 30,
+      "name_discovery_passed": true,
+      "sessions_completed": 3,
+      "status": "passed",
+      "usb_public_identity_matches": true
     },
     "installation_status": "installed_successfully",
     "post_corrected_bootloader": true,
@@ -996,24 +2865,27 @@
     "usb_serials_included": false
   },
   "remaining_work": [
-    "T1000 normal BLE qualification remains failed.",
-    "Physical battery-only restart/observation and cold-boot testing remain pending; USB-powered long scans do not qualify them.",
+    "Resolve T1000 USB-connected BLE failures, now reproduced after battery success.",
+    "Test a different powered-hub port and distinguish the Pi/hub electrical path from low-level USB activity; wall power alone passed and deauthorization did not restore a stable link.",
+    "Cold boot, battery-only restart and phone interoperability remain untested; unplugging alone does not prove a restart.",
     "XIAO nRF52 normal runtime recovery remains failed.",
-    "RF at42f7df08, phone interoperability, full feature and13-radio fleet qualification are not established."
+    "RF at 42f7df08, full feature coverage and 13-radio fleet qualification are not established."
   ],
   "report_status": "failed_incomplete",
   "schema_version": 1,
   "scope": {
     "all_three_axes_passed": 1,
+    "battery_only_secure_sessions_completed": 7,
     "cold_boot_tested": false,
+    "external_wall_power_secure_sessions_completed": 3,
     "fleet_13_qualified": false,
     "fleet_inventory_refreshed": false,
     "independent_observer_acceptance_complete": false,
     "phone_interoperability_qualified": false,
-    "physical_battery_only_ble_tested": false,
+    "physical_battery_only_ble_tested": true,
     "repeaters_qualified": false,
     "required_axis_failed": 1,
     "selected_companions_requalified": 2
   },
-  "updated_at": "2026-10-20T06:18:27.709770+00:00"
+  "updated_at": "2026-10-20T07:20:41.159055+00:00"
 }

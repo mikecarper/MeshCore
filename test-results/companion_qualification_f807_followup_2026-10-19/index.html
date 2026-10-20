@@ -2282,8 +2282,8 @@
 <!-- meshcore-hosted-doc-link:end -->
 
 <h1 id="mercerwood-companion-diagnosis-follow-up-2026-10-19">Mercerwood Companion diagnosis follow-up, 2026-10-19</h1>
-<p>Overall status: <strong>FAIL, incomplete</strong>. Across the selected measured sources, <strong>1/2 Companions PASS, 1 FAIL</strong>. RAK 4631 passed USB, BLE and two-way LoRa at f807. T1000-E passed latest normal Full USB but remains <strong>FAIL</strong> because BLE has not qualified. XIAO nRF52 remains a carried-forward failure.</p>
-<p>Both selected boards first returned to Full <code>f80751354ffc530461e87109ced4f575d3950a52</code>. T1000 subsequently received normal Full <code>42f7df082fc4c7362ecd5c18c8644ab25b51b9e9</code>, version <code>v1.18.0.1-halo-keymind-cascade-dev-42f7df08</code>, after the corrected bootloader. Its ZIP SHA-256 is <code>7fac141e40183ada315f70b296583eaf854fd819c76fbd896a1f0f2e4a405e5b</code>. Checks ran on October 20 UTC during the October 19 local campaign.</p>
+<p>Overall status: <strong>FAIL, incomplete</strong>. Across the selected measured sources, <strong>1/2 Companions PASS, 1 FAIL</strong>. RAK 4631 passed USB, BLE and two-way LoRa at f807. T1000-E passed normal Full USB and BLE on battery and wall power, but connecting to Pi USB reproduced its BLE failure. It remains <strong>FAIL</strong> pending resolution of that operating condition. XIAO nRF52 remains a carried-forward failure.</p>
+<p>Both selected boards first returned to Full <code>f80751354ffc530461e87109ced4f575d3950a52</code>. T1000 subsequently received normal Full <code>42f7df082fc4c7362ecd5c18c8644ab25b51b9e9</code>, version <code>v1.18.0.1-halo-keymind-cascade-dev-42f7df08</code>, after the corrected bootloader. Its ZIP SHA-256 is <code>7fac141e40183ada315f70b296583eaf854fd819c76fbd896a1f0f2e4a405e5b</code>. Checks ran on October 20 UTC across October 19-20 local time.</p>
 <table>
 <thead>
 <tr>
@@ -2308,7 +2308,7 @@
 <td>Seeed T1000-E</td>
 <td>42f7df08</td>
 <td>PASS</td>
-<td>FAIL</td>
+<td>battery/wall power PASS; Pi USB FAIL</td>
 <td>not requalified; f807 passed</td>
 <td>FAIL</td>
 </tr>
@@ -2373,7 +2373,40 @@
 </table>
 <p>The controller reported the configured 48.75 ms interval, zero latency and four-second initial timeout for both central trials. A central connected callback does not prove T1000 receipt of its connection request; the failed initial exchange does not test pairing on an established four-second link. The Pi's earlier attempt to extend a live connection saw no target advertisement in 90 seconds, so no update was applied. A host-only HCI-filter padding error was corrected before that valid trial and remains recorded separately.</p>
 <p>These results make it less likely that the Companion workload or the external low-frequency crystal alone explains the failure. They do not distinguish common framework/SoftDevice behavior, the high-frequency radio clock, power or RF hardware. Both minimal images were removed. Normal T1000 Full <code>42f7df08</code> was restored and passed 15 USB query cycles/two reopens with the same public identity. The test RAK returned to its exact normal Full f807 image and passed 15 USB query cycles/two reopens and one 10-second secure BLE Companion session with the same identity. The four-second comparison had T1000 USB present before and after; it was not a battery-only test.</p>
-<p>Cold boot, physical battery-only BLE, complete phone/feature testing and fleet qualification remain untested. Longer USB-powered scans are not battery tests. <a href="../companion_qualification_f807_followup_2026-10-19.safe.json">Safe JSON</a> retains source bindings, workflow distinctions and evidence digests without device secrets or raw addresses.</p>
+<p>Physical battery-only testing subsequently passed on the unchanged normal Full image. The user confirmed unplugging USB, and the Pi verified the exact T1000 USB identity remained absent throughout each run. The first run completed fresh PIN pairing, authenticated bonding, encryption and a 30-second Companion session. Three subsequent one-minute sessions passed normal discovery by name and saved-bond reconnects. All four verified the same USB-bound identity, complete firmware version and Companion getters, negotiated MTU 247, advanced uptime with zero core error flags, and disconnected cleanly. The optional four-second timeout helper aborted at its live-handle guard before sending any command; it did not cause this success. The first connection negotiated normally from 420 ms to two-second supervision, and the reconnects used two-second supervision.</p>
+<p>The user then reconnected USB after being asked to keep the radio in place without resetting it. The exact runtime endpoint remained present throughout both comparison trials, which opened no USB serial port, changed no firmware/preferences and retained the same bond.</p>
+<table>
+<thead>
+<tr>
+<th>USB-connected comparison</th>
+<th>Observation</th>
+<th>Result</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Normal name discovery, 25 seconds</td>
+<td>Zero target advertisements among 202 advertising event blocks</td>
+<td>Zero Companion sessions</td>
+</tr>
+<tr>
+<td>Immediate connection by independently verified address</td>
+<td>Ten target advertising event blocks, no target name scan response; one BlueZ Connect operation produced nine controller attempts, seven ending with <code>0x3E</code> and two with <code>0x08</code>; no successful encryption</td>
+<td>Zero Companion sessions</td>
+</tr>
+<tr>
+<td>Read-only USB check after BLE trials</td>
+<td>Same normal Full version and public identity, uptime 2,903 seconds without a decrease from the battery test, Bluetooth on, stealth off and zero core error flags</td>
+<td>Runtime check PASS</td>
+</tr>
+</tbody>
+</table>
+<p>The USB comparison used the same normal two-second supervision parameters that worked on battery. After the user unplugged the hub end, with instructions to leave the magnetic end attached and the radio in place, three further 30-second sessions passed normal name discovery, encryption and Companion queries. Uptime advanced from the USB check, all sessions disconnected cleanly, and the Pi verified USB absence throughout. That makes seven successful battery sessions in total, with no firmware change, reset request or bond removal during this comparison.</p>
+<p>The user then connected the same cable to wall power only. Three further 30-second sessions passed normal name discovery, saved-bond encryption, the same Companion identity/version/getters and clean disconnects. Pi USB remained absent throughout. Charging from that supply alone did not reproduce the failure. Supply voltage was not instrument-measured.</p>
+<p>The battery/Pi USB/battery/wall-power sequence associates the failure with the Pi/hub connection; it does not identify cable/ground/RF effects, USB software activity or a particular faulty component. Position and cable attachment were requested but not independently measured. The MQTT gateway remained active before and after the comparison trials.</p>
+<p>On the next Pi reconnection, a guarded <a href="https://docs.kernel.org/usb/authorization.html">Linux USB device authorization</a> test deconfigured only the exact T1000, then restored its configuration. The physical cable remained connected as requested; no hub or port-power command was sent. Before and after deauthorization, 25-second scans captured no target advertisement. While deauthorized, the Pi captured three target advertising event blocks and briefly encrypted a link, but it ended with <code>0x08</code> before any Companion session completed. This did not restore stable BLE. Deconfiguration does not physically disconnect USB or establish that bus signalling and the peripheral USB block have stopped.</p>
+<p>USB authorization returned to its original state. The first USB runtime read failed before opening a port because the recreated device node was not yet accessible to the normal user; this failed workflow is retained separately from the BLE results. After normal user access returned without a permission change, a separate readback passed on unchanged Full firmware with the same public identity, Bluetooth on, zero core errors and uptime 3,987 seconds. The gateway remained active. A different powered-hub port comparison is the next pending check.</p>
+<p>Cold boot, battery-only restart, complete phone/feature testing and fleet qualification remain untested. Unplugging USB alone does not prove a restart. <a href="../companion_qualification_f807_followup_2026-10-19.safe.json">Safe JSON</a> retains source bindings, workflow distinctions and evidence digests without device secrets or raw addresses.</p>
 
 
 
