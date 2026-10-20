@@ -209,6 +209,61 @@
       "root_cause_proven": false,
       "stale_name": "T1000-BLE-PROBE"
     },
+    "independent_central_comparison": {
+      "application_zip_sha256": "51c9daccaa344666f84ebe868ef0806cda34d29b824c6a852f75a39aa69951f3",
+      "cleanup_confirmed": true,
+      "control": {
+        "board": "Heltec T096",
+        "clean": true,
+        "expected_gap_name_matched": true,
+        "normal_usb_and_pi_ble_passed": true,
+        "nus_metadata_read": true,
+        "public_att_comparison_passed": true,
+        "security_events": 0,
+        "source_commit": "4e4f27a25a720c52ca0f5381b5e5834d75532cc6"
+      },
+      "counts_as_companion_qualification": false,
+      "diagnostic_only": true,
+      "initial_scan_timeout_10ms": 3000,
+      "initial_v4_scan_unit_error_fixed_before_trials": true,
+      "interpretation": "Two central implementations failed before usable T1000 ATT. Component, bootloader cause and hardware defect remain unproven.",
+      "nordic_initial_exchange_reference": "https://devzone.nordicsemi.com/f/nordic-q-a/96512/ble_gap_evt_connected-followed-by-ble_gap_evt_disconnected-with-0x3e-reason",
+      "normal_full_restore": {
+        "ble_passed": true,
+        "ble_sessions_completed": 1,
+        "normal_full_restored_verified": true,
+        "normal_full_source_commit": "f80751354ffc530461e87109ced4f575d3950a52",
+        "same_usb_public_identity": true,
+        "usb_passed": true
+      },
+      "observer_target": "RAK4631",
+      "t1000": {
+        "central_connected_event_proves_peer_received_connect_ind": false,
+        "final": {
+          "attempts": 1,
+          "clean": 1,
+          "connected_events": 1,
+          "disconnect_reason": 62,
+          "disconnected_events": 1,
+          "last_rssi": -63,
+          "late_connections": 0,
+          "nus_rx": 0,
+          "nus_service": 0,
+          "nus_tx": 0,
+          "observed_wall_seconds": 7.489,
+          "outcome": "connection_ended_without_gatt",
+          "public_read_succeeded": 0,
+          "security_events": 0,
+          "target_adv": 1,
+          "target_scan_rsp": 0
+        },
+        "public_att_comparison_passed": false,
+        "source_commit": "42f7df082fc4c7362ecd5c18c8644ab25b51b9e9",
+        "target_scan_response_absence_inferred": false
+      },
+      "version": "Diagnostic v1.18.0.1-rak-independent-central-v4.1; NOT Companion qualification",
+      "watchdog_and_uptime_monotonic": true
+    },
     "minimal_lfrc_probe": {
       "clock": "LFRC",
       "crystal_defect_proven": false,
@@ -239,6 +294,44 @@
       "zip_sha256": "79e53c2ce13521ccda5db3621a68f79728d2f241c3a8345e4107b7ae6b5a374d",
       "zip_uf2_application_bytes_identical": true
     },
+    "post_reported_reset": {
+      "active_scan": {
+        "advertising_hci_event_blocks": 643,
+        "scope": "post-reported-reset Pi90s capture; USB was present at preflight",
+        "target_advertising_event_blocks": 0,
+        "target_event_types": [],
+        "target_scan_response_blocks": 0
+      },
+      "battery_only_verified": false,
+      "ble_sessions_completed": 0,
+      "cold_boot_verified": false,
+      "direct_service_discovery": {
+        "cold_battery_only_test_claimed": false,
+        "diagnostic_only": true,
+        "firmware_or_settings_changed": false,
+        "gatt_returncode": 1,
+        "nus_uuid_in_response": false,
+        "operation": "read-only primary service discovery at independently observed exact random address"
+      },
+      "passive_scan": {
+        "advertising_hci_event_blocks": 3375,
+        "firmware_or_preferences_changed": false,
+        "returncode": 124,
+        "scan_disable_command_seen": true,
+        "scope": "diagnostic raw passive30s after reported reset; USB present",
+        "target_advertising_event_blocks": 1,
+        "target_scan_response_blocks": 0
+      },
+      "source_commit": "42f7df082fc4c7362ecd5c18c8644ab25b51b9e9",
+      "usb": {
+        "core_error_flags": 0,
+        "persistent_query_cycles": 15,
+        "reopens": 2,
+        "status": "passed"
+      },
+      "usb_present_at_preflight": true,
+      "user_reported_reset": true
+    },
     "softdevice_readback": {
       "exact_package_bytes_match_reported_by_coordinator": true,
       "expected_binary_sha256": "fbd42f29af8f95309e7aaef9f60994e4749526c3e0c08cb30a8bf44bbda78663",
@@ -260,6 +353,31 @@
       "usb_core_error_flags": 0,
       "usb_stealth_off": true,
       "usb_uptime_seconds": 1266
+    },
+    "temporary_saved_random_address": {
+      "diagnostic_only": true,
+      "factory_restore_verified": true,
+      "firmware_changed": false,
+      "hci_counts": {
+        "all_connection_event_statuses": [],
+        "failure": null,
+        "failure_type": "TimeoutError",
+        "session_summaries": [],
+        "target_advertising_event_blocks": 2,
+        "target_event_types": [
+          "Connectable undirected - ADV_IND (0x00)",
+          "Connectable undirected - ADV_IND (0x00)"
+        ],
+        "target_scan_response_blocks": 0
+      },
+      "host_bonds_deleted": false,
+      "interpretation": "Changing the saved address did not produce a usable BLE session. Factory addressing restored; no host bonds removed.",
+      "original_policy": "factory default",
+      "random_ble_failure": null,
+      "random_ble_passed": false,
+      "random_ble_returncode": 1,
+      "random_ble_sessions": 0,
+      "random_usb_warm_reboot_passed": true
     }
   },
   "evidence": {
@@ -284,13 +402,33 @@
       "kind": "sanitized_post_bootloader_evidence",
       "sha256": "45720bfb7125a41de4577751778f44d3cb17cba629660fdfa837595b710469f3"
     },
+    "independent-central-v4_1.safe.json": {
+      "kind": "sanitized_post_reported_reset_diagnostic_or_qualification",
+      "sha256": "380f92a3101309d0083dd90d0e10d9934b37d98944d665a8477fc4d3c364e544"
+    },
     "lfrc-probe/artifact.json": {
       "kind": "diagnostic_artifact_provenance",
       "sha256": "168db359b82d62a82ae66b278175fc9477a844fa0f3eeea3c4321ac8da48a067"
     },
+    "rak-after-central-restore-ble.safe.json": {
+      "kind": "sanitized_post_reported_reset_diagnostic_or_qualification",
+      "sha256": "d5efded6baf28220b6d29e243e08716ed47d57ba578f0fec415739de622c86ce"
+    },
+    "rak-after-central-restore-usb.safe.json": {
+      "kind": "sanitized_post_reported_reset_diagnostic_or_qualification",
+      "sha256": "c5b9d2964d4430092c1a7d1a3f19cf29717bc15327012296fb5344bb0f453d3a"
+    },
+    "rak-after-central-restore.safe.json": {
+      "kind": "sanitized_post_reported_reset_diagnostic_or_qualification",
+      "sha256": "365207cbe6479cda0b00c68485bb89c63f59c71b13871f36bb8b9200be9c1288"
+    },
     "rak-ble.safe.json": {
       "kind": "sanitized_qualification_summary",
       "sha256": "8afe8acf3ff97238b428115e140f0d2ea4c51c86cb9df319f62406b83edc7beb"
+    },
+    "rak-current-pi-control-ble.safe.json": {
+      "kind": "sanitized_post_reported_reset_diagnostic_or_qualification",
+      "sha256": "d528ded7bcb158c1811030e37436ff6928cd90cbe178c219a6077e132a663adc"
     },
     "rak-usb.safe.json": {
       "kind": "sanitized_qualification_summary",
@@ -299,6 +437,14 @@
     "rf.safe.json": {
       "kind": "sanitized_qualification_summary",
       "sha256": "8c7a50bfd5916e02f6384ad449351e1a72d40c46aac8b4c9b97f2f19f75ba161"
+    },
+    "t096-current-pi-control-ble.safe.json": {
+      "kind": "sanitized_post_reported_reset_diagnostic_or_qualification",
+      "sha256": "8a324a5c77702d128c584d49ed4417dc72c7014b29a2029d1589668f62828e1c"
+    },
+    "t096-current-pi-control-usb.safe.json": {
+      "kind": "sanitized_post_reported_reset_diagnostic_or_qualification",
+      "sha256": "0b5bb79a215022e7f945d7629e110768fbf2acb962694a145e13ea1d18bf26de"
     },
     "t1000-42f7df08-address-ble.safe.json": {
       "kind": "sanitized_current_head_qualification_summary",
@@ -320,6 +466,26 @@
       "kind": "sanitized_post_bootloader_evidence",
       "sha256": "8e74de0e231a2996c650f93d5d309feda24d56b416f10277c311234196582f8a"
     },
+    "t1000-after-user-reset-active-hci.safe.json": {
+      "kind": "sanitized_post_reported_reset_diagnostic_or_qualification",
+      "sha256": "347df08a8f6cca4b98d585eae49efe4f4256ba2774ac1423d63360056a538638"
+    },
+    "t1000-after-user-reset-ble.safe.json": {
+      "kind": "sanitized_post_reported_reset_diagnostic_or_qualification",
+      "sha256": "803a7a8e13063807ef53ac99de5e1613cfc1c9f01e3c2ab5d694fec560dcc64e"
+    },
+    "t1000-after-user-reset-direct.safe.json": {
+      "kind": "sanitized_post_reported_reset_diagnostic_or_qualification",
+      "sha256": "1744a03c8bf890e1fa3e9ab51db5f670e24cc395d7e938a7f351dc2d9dbdb1ac"
+    },
+    "t1000-after-user-reset-passive.safe.json": {
+      "kind": "sanitized_post_reported_reset_diagnostic_or_qualification",
+      "sha256": "cc6661f8b0ae86b5a2a380c10b373450c00c343667a04e4e8b303eee7df93ed5"
+    },
+    "t1000-after-user-reset-usb.safe.json": {
+      "kind": "sanitized_post_reported_reset_diagnostic_or_qualification",
+      "sha256": "82d79b293e11713c893911c209034b70098bdac976a129dc157d9f1bcba8dce6"
+    },
     "t1000-ble.safe.json": {
       "kind": "sanitized_qualification_summary",
       "sha256": "128cabd382c517e750a5b125397539d09613bdb530378fdb5748013e3c243df3"
@@ -327,6 +493,14 @@
     "t1000-pi-followup.safe.json": {
       "kind": "sanitized_qualification_summary",
       "sha256": "3d8d8c9cf9f40d2dee1a7a45a10348254ccab3fa60518509062c02ada72090b0"
+    },
+    "t1000-temporary-address-hci.safe.json": {
+      "kind": "sanitized_post_reported_reset_diagnostic_or_qualification",
+      "sha256": "656bfe69333c9c39a1c3715aa3f36161e5213b7d20ca5d03af5860baf8e3fe5a"
+    },
+    "t1000-temporary-address.safe.json": {
+      "kind": "sanitized_post_reported_reset_diagnostic_or_qualification",
+      "sha256": "9368e2ca9a70d7e102d06a63f3453ac8c5f7664dc39005ac35c330dabe87a75d"
     },
     "t1000-usb.safe.json": {
       "kind": "sanitized_qualification_summary",
@@ -489,5 +663,5 @@
     "required_axis_failed": 1,
     "selected_companions_requalified": 2
   },
-  "updated_at": "2026-10-20T04:35:34.121146+00:00"
+  "updated_at": "2026-10-20T05:22:57.701632+00:00"
 }
