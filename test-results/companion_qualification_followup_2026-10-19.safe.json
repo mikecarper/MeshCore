@@ -1,0 +1,673 @@
+{
+  "baseline_closure": {
+    "all_three_axes_passed": 9,
+    "ble_passed": 9,
+    "companions_expected": 11,
+    "prior_histories_retained": true,
+    "remaining_failed": [
+      "t1000",
+      "xiao_nrf"
+    ],
+    "rf_boards_passed": 10,
+    "rf_links_passed": 9,
+    "source_commit": "4e4f27a25a720c52ca0f5381b5e5834d75532cc6",
+    "usb_passed": 10
+  },
+  "baseline_source_commit": "4e4f27a25a720c52ca0f5381b5e5834d75532cc6",
+  "boards": [
+    {
+      "axes": {
+        "ble": {
+          "disconnected_after_sessions": true,
+          "evidence": "head_ble_v43_after_repair",
+          "full_version_matches": true,
+          "hold_seconds": 30,
+          "prior_failed_evidence": "head_ble_v43_first_failed",
+          "sessions": 3,
+          "source_commit": "51538f0379076111c14d50b29618c5792e0490dc",
+          "status": "passed",
+          "target_only_host_bond_repair_evidence": "head_bond_repair_v43",
+          "usb_public_identity_matches": true
+        },
+        "rf": {
+          "directions_verified": 2,
+          "evidence": "head_rf_v43_xiao_t1000",
+          "hub": "rak",
+          "owned_channels_cleared": true,
+          "radio_leases_restored": true,
+          "source_commit": "51538f0379076111c14d50b29618c5792e0490dc",
+          "status": "passed"
+        },
+        "usb": {
+          "core_error_flags": 0,
+          "evidence": "head_usb_v43",
+          "owned_contact_cleanup_verified": true,
+          "persistent_queries": 100,
+          "ports_closed": 18,
+          "ports_opened": 18,
+          "radio2_checks_passed": true,
+          "reopens": 10,
+          "source_commit": "51538f0379076111c14d50b29618c5792e0490dc",
+          "stable_discarded_prefix_bytes": 0,
+          "stable_invalid_length_candidates": 0,
+          "status": "passed",
+          "transport_scope": "Stable binary sessions; ASCII-to-binary setup and deliberate reboot transitions are recorded separately.",
+          "warm_reboot_verified": true
+        }
+      },
+      "board": "Heltec V4.3",
+      "key": "v43",
+      "overall_status": "passed",
+      "qualification_source_commit": "51538f0379076111c14d50b29618c5792e0490dc",
+      "runtime_source_verified": true
+    },
+    {
+      "axes": {
+        "ble": {
+          "evidence": "published_baseline",
+          "source_commit": "4e4f27a25a720c52ca0f5381b5e5834d75532cc6",
+          "status": "passed"
+        },
+        "rf": {
+          "evidence": "published_baseline",
+          "source_commit": "4e4f27a25a720c52ca0f5381b5e5834d75532cc6",
+          "status": "passed"
+        },
+        "usb": {
+          "evidence": "published_baseline",
+          "source_commit": "4e4f27a25a720c52ca0f5381b5e5834d75532cc6",
+          "status": "passed"
+        }
+      },
+      "board": "LilyGo T-Deck",
+      "key": "tdeck",
+      "overall_status": "passed",
+      "qualification_source_commit": "4e4f27a25a720c52ca0f5381b5e5834d75532cc6",
+      "runtime_source_verified": true
+    },
+    {
+      "axes": {
+        "ble": {
+          "evidence": "published_baseline",
+          "source_commit": "4e4f27a25a720c52ca0f5381b5e5834d75532cc6",
+          "status": "passed"
+        },
+        "rf": {
+          "evidence": "published_baseline",
+          "source_commit": "4e4f27a25a720c52ca0f5381b5e5834d75532cc6",
+          "status": "passed"
+        },
+        "usb": {
+          "evidence": "published_baseline",
+          "source_commit": "4e4f27a25a720c52ca0f5381b5e5834d75532cc6",
+          "status": "passed"
+        }
+      },
+      "board": "RAK WisMesh Tag",
+      "key": "tag",
+      "overall_status": "passed",
+      "qualification_source_commit": "4e4f27a25a720c52ca0f5381b5e5834d75532cc6",
+      "runtime_source_verified": true
+    },
+    {
+      "axes": {
+        "ble": {
+          "evidence": "published_baseline",
+          "source_commit": "4e4f27a25a720c52ca0f5381b5e5834d75532cc6",
+          "status": "passed"
+        },
+        "rf": {
+          "evidence": "published_baseline",
+          "source_commit": "4e4f27a25a720c52ca0f5381b5e5834d75532cc6",
+          "status": "passed"
+        },
+        "usb": {
+          "evidence": "published_baseline",
+          "source_commit": "4e4f27a25a720c52ca0f5381b5e5834d75532cc6",
+          "status": "passed"
+        }
+      },
+      "board": "Heltec MeshPocket",
+      "key": "pocket",
+      "overall_status": "passed",
+      "qualification_source_commit": "4e4f27a25a720c52ca0f5381b5e5834d75532cc6",
+      "runtime_source_verified": true
+    },
+    {
+      "axes": {
+        "ble": {
+          "evidence": "published_baseline",
+          "source_commit": "4e4f27a25a720c52ca0f5381b5e5834d75532cc6",
+          "status": "passed"
+        },
+        "rf": {
+          "evidence": "published_baseline",
+          "source_commit": "4e4f27a25a720c52ca0f5381b5e5834d75532cc6",
+          "status": "passed"
+        },
+        "usb": {
+          "evidence": "published_baseline",
+          "source_commit": "4e4f27a25a720c52ca0f5381b5e5834d75532cc6",
+          "status": "passed"
+        }
+      },
+      "board": "SenseCAP Indicator",
+      "key": "indicator",
+      "overall_status": "passed",
+      "qualification_source_commit": "4e4f27a25a720c52ca0f5381b5e5834d75532cc6",
+      "runtime_source_verified": true
+    },
+    {
+      "axes": {
+        "ble": {
+          "disconnected_after_sessions": true,
+          "evidence": "head_ble_rak",
+          "full_version_matches": true,
+          "hold_seconds": 30,
+          "sessions": 3,
+          "source_commit": "51538f0379076111c14d50b29618c5792e0490dc",
+          "status": "passed",
+          "usb_public_identity_matches": true
+        },
+        "rf": {
+          "directions_verified_per_link": 2,
+          "evidence": "head_rf_v43_xiao_t1000",
+          "hub": "rak",
+          "links_passed": 3,
+          "owned_channels_cleared": true,
+          "radio_leases_restored": true,
+          "source_commit": "51538f0379076111c14d50b29618c5792e0490dc",
+          "status": "passed"
+        },
+        "usb": {
+          "core_error_flags": 0,
+          "evidence": "head_usb_rak",
+          "owned_contact_cleanup_verified": true,
+          "persistent_queries": 100,
+          "ports_closed": 18,
+          "ports_opened": 18,
+          "radio2_checks_passed": true,
+          "reopens": 10,
+          "source_commit": "51538f0379076111c14d50b29618c5792e0490dc",
+          "stable_discarded_prefix_bytes": 0,
+          "stable_invalid_length_candidates": 0,
+          "status": "passed",
+          "transport_scope": "Stable binary sessions; ASCII-to-binary setup and deliberate reboot transitions are recorded separately.",
+          "warm_reboot_verified": true
+        }
+      },
+      "board": "RAK 4631",
+      "key": "rak",
+      "overall_status": "passed",
+      "qualification_source_commit": "51538f0379076111c14d50b29618c5792e0490dc",
+      "runtime_source_verified": true
+    },
+    {
+      "axes": {
+        "ble": {
+          "evidence": "published_baseline",
+          "source_commit": "4e4f27a25a720c52ca0f5381b5e5834d75532cc6",
+          "status": "passed"
+        },
+        "rf": {
+          "evidence": "published_baseline",
+          "source_commit": "4e4f27a25a720c52ca0f5381b5e5834d75532cc6",
+          "status": "passed"
+        },
+        "usb": {
+          "evidence": "published_baseline",
+          "source_commit": "4e4f27a25a720c52ca0f5381b5e5834d75532cc6",
+          "status": "passed"
+        }
+      },
+      "board": "Heltec V3",
+      "key": "v3",
+      "overall_status": "passed",
+      "qualification_source_commit": "4e4f27a25a720c52ca0f5381b5e5834d75532cc6",
+      "runtime_source_verified": true
+    },
+    {
+      "axes": {
+        "ble": {
+          "disconnected_after_sessions": true,
+          "evidence": "head_ble_xiao_after_repair",
+          "full_version_matches": true,
+          "hold_seconds": 30,
+          "prior_failed_evidence": "head_ble_xiao_first_failed",
+          "sessions": 3,
+          "source_commit": "51538f0379076111c14d50b29618c5792e0490dc",
+          "status": "passed",
+          "target_only_host_bond_repair_evidence": "head_bond_repair_xiao",
+          "usb_public_identity_matches": true
+        },
+        "rf": {
+          "directions_verified": 2,
+          "evidence": "head_rf_v43_xiao_t1000",
+          "hub": "rak",
+          "owned_channels_cleared": true,
+          "radio_leases_restored": true,
+          "source_commit": "51538f0379076111c14d50b29618c5792e0490dc",
+          "status": "passed"
+        },
+        "usb": {
+          "core_error_flags": 0,
+          "evidence": "head_usb_xiao",
+          "owned_contact_cleanup_verified": true,
+          "persistent_queries": 100,
+          "ports_closed": 18,
+          "ports_opened": 18,
+          "radio2_checks_passed": true,
+          "reopens": 10,
+          "source_commit": "51538f0379076111c14d50b29618c5792e0490dc",
+          "stable_discarded_prefix_bytes": 0,
+          "stable_invalid_length_candidates": 0,
+          "status": "passed",
+          "transport_scope": "Stable binary sessions; ASCII-to-binary setup and deliberate reboot transitions are recorded separately.",
+          "warm_reboot_verified": true
+        }
+      },
+      "board": "Seeed XIAO ESP32-S3",
+      "key": "xiao",
+      "overall_status": "passed",
+      "qualification_source_commit": "51538f0379076111c14d50b29618c5792e0490dc",
+      "runtime_source_verified": true
+    },
+    {
+      "axes": {
+        "ble": {
+          "required": true,
+          "status": "not_runnable"
+        },
+        "rf": {
+          "required": true,
+          "status": "not_runnable"
+        },
+        "usb": {
+          "attempted_source_commit": "4e4f27a25a720c52ca0f5381b5e5834d75532cc6",
+          "current_identity_verified": false,
+          "evidence": "xiao_nrf_passive_enumeration",
+          "failure_stage": "before_configuration",
+          "status": "failed"
+        }
+      },
+      "board": "Seeed XIAO nRF52",
+      "key": "xiao_nrf",
+      "overall_status": "failed",
+      "qualification_source_commit": "4e4f27a25a720c52ca0f5381b5e5834d75532cc6",
+      "runtime_source_verified": false
+    },
+    {
+      "axes": {
+        "ble": {
+          "evidence": "published_baseline",
+          "source_commit": "4e4f27a25a720c52ca0f5381b5e5834d75532cc6",
+          "status": "passed"
+        },
+        "rf": {
+          "evidence": "published_baseline",
+          "source_commit": "4e4f27a25a720c52ca0f5381b5e5834d75532cc6",
+          "status": "passed"
+        },
+        "usb": {
+          "evidence": "published_baseline",
+          "source_commit": "4e4f27a25a720c52ca0f5381b5e5834d75532cc6",
+          "status": "passed"
+        }
+      },
+      "board": "Heltec T096",
+      "key": "t096",
+      "overall_status": "passed",
+      "qualification_source_commit": "4e4f27a25a720c52ca0f5381b5e5834d75532cc6",
+      "runtime_source_verified": true
+    },
+    {
+      "axes": {
+        "ble": {
+          "evidence": "t1000_ble_head_first",
+          "failure_stage": "discovery",
+          "sessions_completed": 0,
+          "source_commit": "51538f0379076111c14d50b29618c5792e0490dc",
+          "status": "failed"
+        },
+        "rf": {
+          "directions_verified": 2,
+          "evidence": "head_rf_v43_xiao_t1000",
+          "hub": "rak",
+          "owned_channels_cleared": true,
+          "radio_leases_restored": true,
+          "source_commit": "51538f0379076111c14d50b29618c5792e0490dc",
+          "status": "passed"
+        },
+        "usb": {
+          "core_error_flags": 0,
+          "evidence": "head_usb_t1000",
+          "owned_contact_cleanup_verified": true,
+          "persistent_queries": 100,
+          "ports_closed": 18,
+          "ports_opened": 18,
+          "radio2_checks_passed": true,
+          "reopens": 10,
+          "source_commit": "51538f0379076111c14d50b29618c5792e0490dc",
+          "stable_discarded_prefix_bytes": 0,
+          "stable_invalid_length_candidates": 0,
+          "status": "passed",
+          "transport_scope": "Stable binary sessions; ASCII-to-binary setup and deliberate reboot transitions are recorded separately.",
+          "warm_reboot_verified": true
+        }
+      },
+      "board": "Seeed T1000-E",
+      "key": "t1000",
+      "overall_status": "failed",
+      "qualification_source_commit": "51538f0379076111c14d50b29618c5792e0490dc",
+      "runtime_source_verified": true
+    }
+  ],
+  "bootloader": {
+    "application_results_separate": true,
+    "evidence": [
+      "published_baseline",
+      "c2_installation_baseline"
+    ],
+    "installation_baseline_qualified": 8,
+    "installed_flash_manifest_crc_readback_claimed": false,
+    "required_installation_profiles": 8,
+    "scope": "Eight source-qualified installation baselines from the prior published report, including the later Tag recovery; the separate observed baseline supplies the earlier T1000 verification timestamp. Application results remain separate.",
+    "source_commit": "c2f6fa455302167ea547ffe1e065a037762512d5"
+  },
+  "campaign_complete": false,
+  "current_mixed_source_assessment": {
+    "failed": 2,
+    "failed_keys": [
+      "t1000",
+      "xiao_nrf"
+    ],
+    "passed": 9,
+    "required": 11
+  },
+  "evidence": {
+    "baseline_rf_setup": {
+      "sha256": "9418561ecc39be413ec0ed8fe9b5403921911d2c8fe6e574321a33ff93334920"
+    },
+    "baseline_rf_strict_failed": {
+      "sha256": "893d8624e88e64e903874a2e560673394dbbd8a18446b69959b8d1b9de1cd672"
+    },
+    "baseline_rf_v43_xiao": {
+      "sha256": "2d84a04a674e49df7d7030a923646dfe7bd2e9bc3efd102e821ab93ee25977b7"
+    },
+    "c2_installation_baseline": {
+      "sha256": "9f44bda992aed468de1d8735cae8378db1406498c57cf249b28b38c510322697"
+    },
+    "final_runtime_readback": {
+      "artifact": "final-state.safe.json",
+      "scope": "Final read-only normal HEAD T1000 state and unchanged gateway binding",
+      "sha256": "13c06006d7c7d04f5adaa038c8680c75ac5d68fc3a62158905d6a6f2dc2468b7"
+    },
+    "head_ble_rak": {
+      "sha256": "c0896139f211ba483b61e75361966a0db210b26dd3db3c611141a63a643d7a00"
+    },
+    "head_ble_v43_after_repair": {
+      "sha256": "6939e4593e47be9af79ec8ecfbdf1f455a72abd7ef6f304576b79840b0a90067"
+    },
+    "head_ble_v43_first_failed": {
+      "sha256": "a9fd4b398a3348175065a3dd84bc2826e6a3ef48e37f3516f285301f975c6f93"
+    },
+    "head_ble_xiao_after_repair": {
+      "sha256": "1553f6750e27fe922e2cf7d9d19928aed7c6da884fa754a8fbc5bb9326d7b5f5"
+    },
+    "head_ble_xiao_first_failed": {
+      "sha256": "742923baab01298adbfb5e5387d0aa5c32927ed21af1f0b05c8ce702efd4521b"
+    },
+    "head_bond_repair_v43": {
+      "sha256": "4037e3ac0c7554257021b06b50e585f307a22add1981fd37f17fa7d5d19190a6"
+    },
+    "head_bond_repair_xiao": {
+      "sha256": "b4fb586ca0f718add25e054f1108557f94d0e0231bfe9142344e8cecd21dc3f3"
+    },
+    "head_flash_rak": {
+      "sha256": "7e0abc451b77f005f691da6e0a8593530719ae1d1d6b47c920f72ab22cf2565a"
+    },
+    "head_flash_rak_log": {
+      "sha256": "948d10d7d7a468883ddc3a7782c2c3083e4171ea77a1d9e48a2fb6152d963009"
+    },
+    "head_flash_v43": {
+      "sha256": "a40b7e9f19439c20d47337c5a8fe088fdc12d2e59d4ebe061765978bd2cb3a31"
+    },
+    "head_flash_v43_log": {
+      "sha256": "5f9212b62d57227c1327a149d0a895c51b05729b3ffc0a7add602290a2e9e600"
+    },
+    "head_flash_xiao": {
+      "sha256": "21bd6954aa6d9cb40999b82c93b34efd19088936562e0087b7999903e0559191"
+    },
+    "head_flash_xiao_log": {
+      "sha256": "d260e34d14a3da5b60cd5d7dd2d5b80f9d6bce9ce5ea7a3d38763c6c7ee85fd5"
+    },
+    "head_rf_v43_xiao_t1000": {
+      "sha256": "3ffef3027f4dee349c92b2e74595356f0badb44e6c7f0e3d5252fc5aeb9a9a7d"
+    },
+    "head_usb_rak": {
+      "sha256": "313f9b7311a7b7ad6a8060e746ce202d6cc84480374d509059ec40c32dc3b0c2"
+    },
+    "head_usb_t1000": {
+      "sha256": "10c03222f27dfe2d7b35b43874c46c636aca04eff87448a7de74b0a79bc44729"
+    },
+    "head_usb_v43": {
+      "sha256": "efeb34c40745aa3afebf0d5d7a878ea5d61ef5b755c51e1897263d73f81ddc3d"
+    },
+    "head_usb_xiao": {
+      "sha256": "2cf822f97a9a3e61f31065d3e6c5eb36b8fde3f6be1cda1e39ed7c8449ec567f"
+    },
+    "published_baseline": {
+      "sha256": "c56af23383a66dc3e4046f854a96de8dc412c8efcfab83bd099ae4c7fa3c3a6b"
+    },
+    "t1000_ble_head_after_toggle": {
+      "sha256": "821c1db7743163c10d84da2b195a298279d0a58b4096eb526c1ca29d13a6133f"
+    },
+    "t1000_ble_head_first": {
+      "sha256": "38f066670c9e759666ec4c46d3b79c5bdef0d76c8f039d5fe9b2cb2b356aa9fe"
+    },
+    "t1000_ble_head_trace": {
+      "sha256": "ab6e457a060c58234dcedf156927f746c9c971afb5513283046e53a39c87bb31"
+    },
+    "t1000_ble_old_reference_now": {
+      "sha256": "fa17c0f9c151925e11ad96a0fd05bf8b6d6ffe74a9cddf3bf8f8a8242d5f2ff9"
+    },
+    "t1000_final_normal_flash": {
+      "sha256": "4893e52af51487ce024cb455b3a5dfd0515c60913abc40f24a1016466311b2c1"
+    },
+    "t1000_final_policy_usb_peer": {
+      "sha256": "2df026d65a52a1f85f3f93e4e64063059fcbea9361cda0ec9764ef01b9c37fd8"
+    },
+    "t1000_historical_secured_trace": {
+      "sha256": "cd1f238ab21f3943421625739ec06792db4a8f10f6e3373601b364be9cc7fa33"
+    },
+    "t1000_historical_secured_trace_summary": {
+      "sha256": "bb3edffb55a402e85238589890b8c77d991d1dc47795bc9f7a7560c3291742e6"
+    },
+    "t1000_old_reference_usb_peer": {
+      "sha256": "59d55f6671cacfab0a02c0d069aad4ccdd4dcd0de308d585f29d4295fd2fb126"
+    },
+    "t1000_regulator_trial": {
+      "sha256": "0a7cd1349f9d9613e4970bf4b00bec3f5494ab2d25869f1c5fd8d3970b6e0f32"
+    },
+    "t1000_trace_after": {
+      "sha256": "c51c507e0040a74686ae826b85b028dc707dff795f22fbaf996a947440cf1d9c"
+    },
+    "t1000_trace_before": {
+      "sha256": "07fc5ea0044f597bdb0ee2cb8f63bd7384843e3208aa8584baab1abb6d85c716"
+    },
+    "xiao_nrf_passive_enumeration": {
+      "sha256": "4fccd5915e5b000ad137ffda11f81b3646e7da597fd7237556c2b82584fdc12e"
+    }
+  },
+  "final_runtime_readback": {
+    "checked_at": "2026-10-20T02:13:35.176524+00:00",
+    "gateway": {
+      "owner_belongs_to_service": true,
+      "same_original_primary_USB_identity": true,
+      "serial_port_opened_by_this_check": false,
+      "service_active": true
+    },
+    "original_xiao_nrf_USB_identity_present": false,
+    "source_commit": "51538f0379076111c14d50b29618c5792e0490dc",
+    "t1000": {
+      "bluetooth": "bluetooth on",
+      "core": {
+        "battery_mv": 4189,
+        "error_flags": 0,
+        "outbound_queue_length": 0,
+        "uptime_seconds": 978
+      },
+      "mcu_regulator": "auto; active dcdc; fallback off; crashes 0; recovery on",
+      "normal_full_version": "v1.18.0.1-halo-keymind-cascade-dev-51538f03 (Build: 20-Oct-2026)",
+      "radio_regulator": "auto; active dcdc; fallback off; crashes 0; recovery on",
+      "transport": {
+        "discarded_prefix_bytes": 0,
+        "ignored_push_frames": 0,
+        "invalid_length_candidates": 0,
+        "ports_closed": 1,
+        "ports_opened": 1,
+        "request_bytes_sent": 123,
+        "request_frames_sent": 7,
+        "response_frames_received": 7,
+        "response_payload_bytes": 365
+      }
+    }
+  },
+  "fleet_requalified_at_head": false,
+  "generated_at": "2026-10-20T02:13:36.624306+00:00",
+  "head_flash_workflow_history": {
+    "rak": {
+      "command_returncode": 1,
+      "later_normal_runtime_usb": "passed",
+      "original_report_passed": false,
+      "runtime_evidence": "head_usb_rak"
+    },
+    "v43": {
+      "command_returncode": 1,
+      "failure_stage": "native_USB_reset_wait",
+      "image_hash_verification_logged": true,
+      "later_normal_runtime_usb": "passed",
+      "original_report_passed": false,
+      "runtime_evidence": "head_usb_v43"
+    },
+    "xiao": {
+      "command_returncode": 1,
+      "failure_stage": "native_USB_reset_wait",
+      "image_hash_verification_logged": true,
+      "later_normal_runtime_usb": "passed",
+      "original_report_passed": false,
+      "runtime_evidence": "head_usb_xiao"
+    }
+  },
+  "history": {
+    "initial_setup_failures_retained": true,
+    "pocket_watchdog_history_retained": true,
+    "prior_report": "hardware_validation_mercerwood_1_18_0_1_2026-10-19.safe.json",
+    "prior_report_retained": true,
+    "tag_recovery_history_retained": true,
+    "v3_initial_scan_failure_retained": true
+  },
+  "method_scope": {
+    "ble": "Three 30-second sessions matching USB public identity, board and full version, clean core flags and final disconnect.",
+    "excluded": [
+      "fresh_13_radio_inventory",
+      "phone_interoperability",
+      "cold_boot",
+      "RF_range",
+      "every_feature"
+    ],
+    "rf": "One exact zero-hop DEV datagram each direction with RAK hub, physical packet-counter advancement and owned-channel/radio-lease cleanup; does not qualify text or range.",
+    "transition_drain": "One bounded same-open pre-handshake STOP drain only; strict SELF_INFO authority, stable framing and tail checks retained.",
+    "usb": "100 persistent query cycles and 10 reopen checks, owned-contact CRUD/cleanup, verified warm reboot and RX-only radio2 warning/frequency suggestion checks."
+  },
+  "partial": true,
+  "publication_state": "final",
+  "report_date": "2026-10-19 PDT",
+  "schema": "companion-followup-v1",
+  "scope": "11 Companion radios; selected normal HEAD refresh plus explicitly source-bound retained baseline evidence. Repeater qualification and fresh fleet inventory are outside this follow-up.",
+  "selected_head_assessment": {
+    "all_three_axes_passed": 3,
+    "ble_passed": 3,
+    "failed": 1,
+    "failed_keys": [
+      "t1000"
+    ],
+    "rf_boards_passed": 4,
+    "rf_links_passed": 3,
+    "selected_companions": 4,
+    "source_commit": "51538f0379076111c14d50b29618c5792e0490dc",
+    "usb_passed": 4
+  },
+  "selected_head_expected_version": "v1.18.0.1-halo-keymind-cascade-dev-51538f03",
+  "selected_head_source_commit": "51538f0379076111c14d50b29618c5792e0490dc",
+  "status": "failed",
+  "status_policy": "A flashed board with any required axis that is nonworking or cannot be run is failed. A later passing trial can resolve current status without deleting its earlier failures.",
+  "subsequent_branch_changes": {
+    "commits": [
+      "aa9f8f9b0",
+      "e704efad1",
+      "4f86c6fac",
+      "811b2d723"
+    ],
+    "hardware_qualified_by_this_campaign": false,
+    "measured_sources_unchanged": true,
+    "observed_branch_head": "811b2d7232aff86fd13075cee9ff6ac6471d2b6c"
+  },
+  "t1000": {
+    "ble_status": "failed",
+    "c2_installation_verified_at": "2026-10-19T19:20:57.679433+00:00",
+    "current_old_reference_ble": "failed_no_matching_advertisement",
+    "diagnostic_images_count_as_normal_qualification": false,
+    "direct_link_probe": "not_attempted_no_cached_device_or_ConnectDevice_API",
+    "direct_link_probe_counts_as_failed_connection": false,
+    "historical_secured_old_reference_trace": {
+      "c2_installation_verification_precedes_trace": true,
+      "captured_at": "2026-10-19T20:04:22.739997+00:00",
+      "connects": 1,
+      "counts_as_full_ble_qualification": false,
+      "evidence": "t1000_historical_secured_trace",
+      "secured_connections": 1,
+      "source_commit": "cdacf670786aa8d6cb601b14d64bd17a1988ed41",
+      "summary_evidence": "t1000_historical_secured_trace_summary"
+    },
+    "mcu_active": "dcdc",
+    "mcu_policy": "auto",
+    "normal_HEAD_restored": true,
+    "normal_restoration_evidence": "t1000_final_normal_flash",
+    "old_reference_source_commit": "cdacf670786aa8d6cb601b14d64bd17a1988ed41",
+    "older_pairing_Page_Timeout_history_retained": true,
+    "original_regulator_policy_restored": true,
+    "overall_status": "failed",
+    "post_old_reference_usb_evidence": "t1000_final_policy_usb_peer",
+    "radio_active": "dcdc",
+    "radio_policy": "auto",
+    "regulator_cause_proven": false,
+    "regulator_trial_evidence": "t1000_regulator_trial"
+  },
+  "unit_workflow": {
+    "jobs_passed": 12,
+    "scope": "Coordinator-confirmed GitHub workflow result; distinct from hardware qualification.",
+    "source_commit": "51538f0379076111c14d50b29618c5792e0490dc",
+    "status": "passed",
+    "url": "https://github.com/mikecarper/MeshCore/actions/runs/39350014767"
+  },
+  "xiao_nrf": {
+    "agent_firmware_writes_during_capture": 0,
+    "agent_serial_opens_during_capture": 0,
+    "automatic_kernel_recovery_requests": {
+      "port_power_off": 2,
+      "port_power_on": 2,
+      "port_resets": 35
+    },
+    "ble_status": "not_runnable",
+    "candidate_identity_verified": false,
+    "normal_runtime_qualified": false,
+    "overall_status": "failed",
+    "passive_enumeration_evidence": "xiao_nrf_passive_enumeration",
+    "rf_status": "not_runnable",
+    "root_cause_verified": false,
+    "source_hardening_40b_installed": false,
+    "trace_installed": false,
+    "usb_status": "failed"
+  }
+}

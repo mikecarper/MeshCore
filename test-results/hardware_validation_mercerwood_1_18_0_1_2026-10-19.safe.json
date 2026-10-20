@@ -762,5 +762,10 @@
       "rf_qualification": "3274c226b981202c0cfc4c4bbd5fc66bac73d4645d46fe2e91f6b0aac5334b4b"
     },
     "finished_at": "2026-10-19T23:52:26.672651+00:00"
+  },
+  "latest_companion_followup": {
+    "report": "companion_qualification_followup_2026-10-19.md",
+    "results": "companion_qualification_followup_2026-10-19.safe.json",
+    "original_snapshot_retained": true
   }
 }
