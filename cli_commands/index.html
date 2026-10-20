@@ -2435,6 +2435,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#turn-indicator-leds-on-or-off" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Turn indicator LEDs on or off
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#turn-wifi-esp-now-or-all-24-ghz-services-on-or-off" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -5409,6 +5420,17 @@
     <span class="md-ellipsis">
       
         View or change this node's name
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#turn-indicator-leds-on-or-off" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Turn indicator LEDs on or off
       
     </span>
   </a>
@@ -8846,6 +8868,27 @@ the verified pin assignments, startup fixes, and saved amplifier settings.</p>
 <p><strong>Default:</strong> Varies by board</p>
 <p><strong>Note:</strong> Advertised names can use up to 23 bytes when location is included and 31 bytes otherwise. Emoji and Unicode characters may take more than one byte. Names that exceed the available advert space are truncated at a valid UTF-8 code point boundary.</p>
 <hr />
+<h4 id="turn-indicator-leds-on-or-off">Turn indicator LEDs on or off</h4>
+<pre><code class="language-text">get leds
+set leds off
+set leds on
+</code></pre>
+<p>Available in Companion, repeater, room-server, and sensor firmware. The setting
+is saved across reboots and defaults to <code>on</code>. <code>off</code> suppresses software-controlled
+transmit, Bluetooth, status, and notification LEDs. <code>on</code> restores their normal
+behavior; it does not leave every LED lit. A build with <code>DISABLE_BLE_LED</code> keeps
+the Bluetooth indicator disabled.</p>
+<p>Supported outputs include ordinary and inverted GPIO LEDs, addressable RGB LEDs,
+and board-controlled expander LEDs on nRF52, ESP32, RP2040, and STM32 boards.
+Screen backlights and manually controlled torches keep their own controls.
+Power and charging LEDs wired directly to a charger cannot be switched off by
+firmware. Bootloader and early startup indicators may still appear before the
+saved setting is loaded.</p>
+<p>This extends the SenseCAP Solar LED switch from
+<a href="https://github.com/meshcore-dev/MeshCore/pull/3605">upstream PR #3605</a>.
+With LEDs enabled, RAK-family Companions blink their Bluetooth LED while
+advertising and leave it off once connected, following
+<a href="https://github.com/meshcore-dev/MeshCore/pull/2694">upstream PR #2694</a>.</p>
 <h4 id="turn-wifi-esp-now-or-all-24-ghz-services-on-or-off">Turn WiFi, ESP-NOW, or all 2.4 GHz services on or off</h4>
 <pre><code class="language-text">get wifi
 set wifi off
