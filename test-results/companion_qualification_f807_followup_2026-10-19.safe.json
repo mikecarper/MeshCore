@@ -279,6 +279,83 @@
       "stealth_unchanged_off": true,
       "uptime_monotonic": true
     },
+    "four_second_initial_timeout_comparison": {
+      "battery_only_test": false,
+      "central_artifact_sha256": "32d9b9713349e84132af3b95c63c12cf95dbb7e91f11438fe557a2a4e9fff7d0",
+      "central_version": "Diagnostic v1.18.0.1-rak-independent-central-v4.2; NOT Companion qualification",
+      "cleanup_confirmed": true,
+      "configured_initial_supervision_timeout_ms": 4000,
+      "control": {
+        "attempts": 1,
+        "clean": 1,
+        "connected_events": 1,
+        "disconnect_reason": 22,
+        "disconnected_events": 1,
+        "last_rssi": -64,
+        "nus_rx": 1,
+        "nus_service": 1,
+        "nus_tx": 1,
+        "observed_interval_units": 39,
+        "observed_timeout_ms": 4000,
+        "observed_wall_seconds": 2.071,
+        "outcome": "nus_metadata_discovered",
+        "public_read_succeeded": 1,
+        "security_events": 0,
+        "uptime_ms": 58085,
+        "wdt_feeds": 28741
+      },
+      "control_passed": true,
+      "counts_as_companion_qualification": false,
+      "diagnostic_only": true,
+      "interval_ms": 48.75,
+      "latency": 0,
+      "limitation": "Central connection events report locally selected parameters; they do not prove T1000 receipt of CONNECT_IND. The T1000 failed initial establishment (0x3E), so this does not measure pairing on an established four-second link.",
+      "normal_rak_restored_and_verified": {
+        "ble_passed": true,
+        "ble_returncode": 0,
+        "ble_sessions_completed": 1,
+        "normal_full_restored": true,
+        "same_public_identity": true,
+        "usb_passed": true
+      },
+      "pi_live_update_attempt": {
+        "hci": {
+          "connection_events": [],
+          "diagnostic_name_event_blocks": 0,
+          "hci_sha256": "5928d98ac1479edc96b589b6f7e3f35ec3e7de69005e602854d491347062da81",
+          "target_advertising_event_blocks": 0,
+          "total_advertising_event_blocks": 552
+        },
+        "initial_host_setup_failure": "Linux HCI filter padding corrected before the valid trial; no connection update was issued by the failed setup.",
+        "live_timeout_update_applied": false,
+        "scan_seconds": 90,
+        "status": "inconclusive_no_connection",
+        "target_advertisements": 0
+      },
+      "t1000": {
+        "attempts": 1,
+        "clean": 1,
+        "connected_events": 1,
+        "disconnect_reason": 62,
+        "disconnected_events": 1,
+        "last_rssi": -62,
+        "nus_rx": 0,
+        "nus_service": 0,
+        "nus_tx": 0,
+        "observed_interval_units": 39,
+        "observed_timeout_ms": 4000,
+        "observed_wall_seconds": 3.223,
+        "outcome": "connection_ended_without_gatt",
+        "public_read_succeeded": 0,
+        "security_events": 0,
+        "uptime_ms": 61360,
+        "wdt_feeds": 29900
+      },
+      "target_normal_full_source": "42f7df082fc4c7362ecd5c18c8644ab25b51b9e9",
+      "target_passed": false,
+      "target_usb_present_after": true,
+      "target_usb_present_before": true
+    },
     "independent_central_comparison": {
       "application_zip_sha256": "51c9daccaa344666f84ebe868ef0806cda34d29b824c6a852f75a39aa69951f3",
       "cleanup_confirmed": true,
@@ -333,6 +410,167 @@
       },
       "version": "Diagnostic v1.18.0.1-rak-independent-central-v4.1; NOT Companion qualification",
       "watchdog_and_uptime_monotonic": true
+    },
+    "minimal_ble_isolation_v2": {
+      "application_only_serial_dfu": true,
+      "bootloader_and_softdevice_unchanged": true,
+      "common_dependencies_retained": [
+        "board variant",
+        "Arduino framework",
+        "SoftDevice",
+        "bootloader"
+      ],
+      "conclusion": "Neither minimal application produced a usable BLE link. Stable watchdog feeding removes the earlier LFRC reset confound. This does not isolate common framework/SoftDevice, the high-frequency RF clock, power or RF hardware.",
+      "counts_as_companion_qualification": false,
+      "diagnostic_only": true,
+      "full_ble_qualification_status": "FAIL",
+      "full_firmware_restored": true,
+      "full_usb_queries": 15,
+      "full_usb_reopens": 2,
+      "host_bonds_removed": false,
+      "minimal_application_excludes": [
+        "LoRa processing",
+        "GNSS driver",
+        "sensor processing"
+      ],
+      "pairing_requested": false,
+      "public_nus_echo_test": true,
+      "same_public_identity": true,
+      "source_context": "56b4d72e6bad7c2fc62b47bc10cfb4092f4b31d7",
+      "trials": {
+        "lfrc": {
+          "after": {
+            "advertising_cached": 1,
+            "advertising_started": 1,
+            "clock": "LFRC",
+            "clock_accuracy_ppm": 250,
+            "connected": 0,
+            "connections": 0,
+            "diagnostic_only": true,
+            "disconnects": 0,
+            "hfclkstat": 65537,
+            "last_reason": 0,
+            "lfclkstat": 65536,
+            "reset_reason": 4,
+            "rx_bytes": 0,
+            "security_events": 0,
+            "service_ok": 1,
+            "stack_ok": 1,
+            "tx_bytes": 0,
+            "uptime_ms": 85398,
+            "version": "T1000-ISO2-LFRC-56b4d72e",
+            "watchdog_feeds": 87328,
+            "watchdog_running": 1
+          },
+          "artifact_sha256": "8839b879816992e7b090b361925083cdc70a0c8a8520a35edfe59017ae09ba03",
+          "before": {
+            "advertising_cached": 1,
+            "advertising_started": 1,
+            "clock": "LFRC",
+            "clock_accuracy_ppm": 250,
+            "connected": 0,
+            "connections": 0,
+            "diagnostic_only": true,
+            "disconnects": 0,
+            "hfclkstat": 65537,
+            "last_reason": 0,
+            "lfclkstat": 65536,
+            "reset_reason": 4,
+            "rx_bytes": 0,
+            "security_events": 0,
+            "service_ok": 1,
+            "stack_ok": 1,
+            "tx_bytes": 0,
+            "uptime_ms": 26189,
+            "version": "T1000-ISO2-LFRC-56b4d72e",
+            "watchdog_feeds": 26698,
+            "watchdog_running": 1
+          },
+          "clock_accuracy_ppm": 250,
+          "clock_status_register": 65536,
+          "continuous_uptime": true,
+          "echo_successes": 0,
+          "failure_type": "TimeoutError",
+          "first_target_ad_seconds": 42.138393506000284,
+          "hci": {
+            "connection_events": [],
+            "diagnostic_name_event_blocks": 0,
+            "hci_sha256": "a53844d4c997745ac90158c82c6dcf18259e36d360610a6dd282ea6c39144afd",
+            "target_advertising_event_blocks": 1,
+            "total_advertising_event_blocks": 284
+          },
+          "passed": false,
+          "public_gatt_identity_verified": false,
+          "runtime_version": "T1000-ISO2-LFRC-56b4d72e",
+          "watchdog_feeds_advanced": true
+        },
+        "lfxo": {
+          "after": {
+            "advertising_cached": 1,
+            "advertising_started": 1,
+            "clock": "LFXO",
+            "clock_accuracy_ppm": 20,
+            "connected": 0,
+            "connections": 0,
+            "diagnostic_only": true,
+            "disconnects": 0,
+            "hfclkstat": 65537,
+            "last_reason": 0,
+            "lfclkstat": 65537,
+            "reset_reason": 4,
+            "rx_bytes": 0,
+            "security_events": 0,
+            "service_ok": 1,
+            "stack_ok": 1,
+            "tx_bytes": 0,
+            "uptime_ms": 83906,
+            "version": "T1000-ISO2-LFXO-56b4d72e",
+            "watchdog_feeds": 85496,
+            "watchdog_running": 1
+          },
+          "artifact_sha256": "eab29dbbb1718b3f3b79bf7bf81a3f36983ce4ebc3610fe5e3a4f03ebc1c838b",
+          "before": {
+            "advertising_cached": 1,
+            "advertising_started": 1,
+            "clock": "LFXO",
+            "clock_accuracy_ppm": 20,
+            "connected": 0,
+            "connections": 0,
+            "diagnostic_only": true,
+            "disconnects": 0,
+            "hfclkstat": 65537,
+            "last_reason": 0,
+            "lfclkstat": 65537,
+            "reset_reason": 4,
+            "rx_bytes": 0,
+            "security_events": 0,
+            "service_ok": 1,
+            "stack_ok": 1,
+            "tx_bytes": 0,
+            "uptime_ms": 21691,
+            "version": "T1000-ISO2-LFXO-56b4d72e",
+            "watchdog_feeds": 21788,
+            "watchdog_running": 1
+          },
+          "clock_accuracy_ppm": 20,
+          "clock_status_register": 65537,
+          "continuous_uptime": true,
+          "echo_successes": 0,
+          "failure_type": "TimeoutError",
+          "first_target_ad_seconds": null,
+          "hci": {
+            "connection_events": [],
+            "diagnostic_name_event_blocks": 0,
+            "hci_sha256": "107fc3df932619f66feba8f7cda894cf54d020be610fddaf80e3d0b0bacda355",
+            "target_advertising_event_blocks": 0,
+            "total_advertising_event_blocks": 375
+          },
+          "passed": false,
+          "public_gatt_identity_verified": false,
+          "runtime_version": "T1000-ISO2-LFXO-56b4d72e",
+          "watchdog_feeds_advanced": true
+        }
+      }
     },
     "minimal_lfrc_probe": {
       "clock": "LFRC",
@@ -451,6 +689,50 @@
     }
   },
   "evidence": {
+    "ble-isolation-v2/four-second-comparison.safe.json": {
+      "kind": "sanitized_minimal_application_or_connection_timeout_diagnostic",
+      "sha256": "99a267021fdaf0ba0528e6eb5c2b6339a6ddd6c93afe051a6c3f690095878511"
+    },
+    "ble-isolation-v2/full-restore-usb.safe.json": {
+      "kind": "sanitized_minimal_application_or_connection_timeout_diagnostic",
+      "sha256": "14de89a4f72120e80784765374f46a24f077a6d51daa4740d2cc2eb3b0c8e112"
+    },
+    "ble-isolation-v2/full-restore.safe.json": {
+      "kind": "sanitized_minimal_application_or_connection_timeout_diagnostic",
+      "sha256": "efd28f82633b9c17a148786a26bff2892cf4787296a474f372732d6798ff1e3d"
+    },
+    "ble-isolation-v2/full-timeout-hci.safe.json": {
+      "kind": "sanitized_minimal_application_or_connection_timeout_diagnostic",
+      "sha256": "9d3bc934eecdaabbc9c377164cb09789af4a2e28f9b15e81ad4c986682dd9c7a"
+    },
+    "ble-isolation-v2/full-timeout.safe.json": {
+      "kind": "sanitized_minimal_application_or_connection_timeout_diagnostic",
+      "sha256": "910c2d5d58e954e46d7ace1c43dd3fa18169dc6bb805f27afe0cd9f973ef29a0"
+    },
+    "ble-isolation-v2/lfrc-hci.safe.json": {
+      "kind": "sanitized_minimal_application_or_connection_timeout_diagnostic",
+      "sha256": "553ff0cdfa9f2fa21ebfca88a1c6c53c3897c14fa29947f4212350be041d627f"
+    },
+    "ble-isolation-v2/lfrc.safe.json": {
+      "kind": "sanitized_minimal_application_or_connection_timeout_diagnostic",
+      "sha256": "7303f9c97df200f3f4d3af3fd731fecfcad5bd6db3501e9ba22bb3403630e333"
+    },
+    "ble-isolation-v2/lfxo-hci.safe.json": {
+      "kind": "sanitized_minimal_application_or_connection_timeout_diagnostic",
+      "sha256": "70ff66ff3f3b1d60f4ffc3fce0c4900cfb30a71461a4cda64b3a87c066275e75"
+    },
+    "ble-isolation-v2/lfxo.safe.json": {
+      "kind": "sanitized_minimal_application_or_connection_timeout_diagnostic",
+      "sha256": "27724b733fb258fcf64f6a7de1083301335b89bf0cacb6013ed691107cee96cd"
+    },
+    "ble-isolation-v2/pre-minimal-usb.safe.json": {
+      "kind": "sanitized_minimal_application_or_connection_timeout_diagnostic",
+      "sha256": "6f364c7481a7773540ab29543d0859f7d13d80147b51332869c596c3bd900c48"
+    },
+    "ble-isolation-v2/rak-restored.safe.json": {
+      "kind": "sanitized_minimal_application_or_connection_timeout_diagnostic",
+      "sha256": "8805a29a724b130285289ad6bacdf594abdd7e331a4a58a17b1214986a8ba58b"
+    },
     "bootloader_host_test_source": {
       "kind": "source",
       "sha256": "15c3858b45f58dba68b06bc5fe44de9d517d943a31e9a9d80cc02276e2bcabdb",
@@ -733,5 +1015,5 @@
     "required_axis_failed": 1,
     "selected_companions_requalified": 2
   },
-  "updated_at": "2026-10-20T05:38:22.759815+00:00"
+  "updated_at": "2026-10-20T06:18:27.709770+00:00"
 }

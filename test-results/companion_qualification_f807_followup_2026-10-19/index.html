@@ -2339,6 +2339,40 @@
 <p>Fresh normal RAK and T096 USB/BLE controls passed on the Pi. An independent RAK nRF52 central diagnostic, version <code>v4.1</code>, then passed a single public ATT/NUS metadata comparison against the USB-bound T096. It read the expected public GAP name, recorded no security activity, and disconnected cleanly. The unchanged T1000 Full image then supplied a current primary advertisement at -63 dBm, but its one attempted connection ended with <code>0x3E</code> before any NUS metadata or public read succeeded. The observer's uptime and watchdog counters advanced, with no late connections or security events; scanning and connections stopped cleanly. A central connected event does not prove the peer received its connection request; <a href="https://devzone.nordicsemi.com/f/nordic-q-a/96512/ble_gap_evt_connected-followed-by-ble_gap_evt_disconnected-with-0x3e-reason">Nordic describes this initial-exchange failure</a>.</p>
 <p>This comparison strengthens a T1000-specific link finding across two central implementations. It does not identify a faulty component or establish a bootloader cause. That comparison did not reach pairing or password exchange. The temporary central is not Companion qualification. Its initial v4 scan-unit error was corrected before either trial; live v4.1 status verified a 3,000-unit, 30-second scan configuration. The RAK was restored to the exact normal Full f807 ZIP and passed fresh 15-query/two-reopen USB and one 10-second BLE session with the same public identity. T1000 remains <strong>FAIL</strong>. Its pin assignments match <a href="https://wiki.seeedstudio.com/t1000_e_intro/">Seeed's T1000-E hardware list</a>; no further pin change is justified by this evidence.</p>
 <p>A later controlled Bluetooth off/on test kept USB management open and had the Pi client scanning before enable. Unlike the earlier fixed-duration discovery, this client attempted pairing 49 ms after its first current target advertisement, which arrived 84.331 seconds after the on request. This time the trace proves bidirectional SMP and ATT exchanges and a passkey request. The supplied PIN matched the active USB-reported PIN and the user's expected PIN. The link then ended with HCI Connection Timeout <code>0x08</code>; BlueZ reported Authentication Canceled. No completed bond or Companion session, explicit PIN rejection, or stable-link pass is established. The parent evidence exporter subsequently failed to parse a traceback as JSON; that workflow failure remains recorded, separate from the independently analyzed radio trace. A further exact-address ATT connection was requested while Bluetooth was off, with its kernel scan already pending before enable. It failed initial establishment with <code>0x3E</code> and read no NUS service. Bluetooth was restored on, with the same factory-address policy, stealth off, monotonic uptime and clean core flags. Firmware and host bonds were unchanged. These tests refine the failure to an unstable link that can sometimes reach pairing; T1000 remains <strong>FAIL</strong>.</p>
+<p>A subsequent application-only isolation test installed two small public-NUS echo diagnostics built against source context <code>56b4d72e6</code>. They omit Companion, LoRa, GNSS-driver and sensor processing, retain the board/framework/SoftDevice/bootloader, and feed every active watchdog channel. Both builds passed memory/vector/package checks and exact-device serial DFU/runtime verification.</p>
+<table>
+<thead>
+<tr>
+<th>Diagnostic</th>
+<th>Observation</th>
+<th>Result</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Minimal external LF crystal, 20 ppm</td>
+<td>No target advertisement in 60 seconds; uptime advanced 62.215 seconds with watchdog feeds advancing</td>
+<td>No connection or echo</td>
+</tr>
+<tr>
+<td>Same minimal app, internal LF RC, 250 ppm</td>
+<td>One target advertisement after 42.138 seconds at -60 dBm; connection attempt timed out; uptime advanced 59.209 seconds with watchdog feeds advancing</td>
+<td>No connection or echo</td>
+</tr>
+<tr>
+<td>Normal Full with four-second initial supervision timeout from RAK central v4.2</td>
+<td>Current target advertisement at -62 dBm; initial connection establishment failed with <code>0x3E</code> before public GATT reads or security activity</td>
+<td>FAIL</td>
+</tr>
+<tr>
+<td>T096 control with the same central parameters</td>
+<td>Public NUS service/characteristics and expected GAP name read successfully</td>
+<td>Diagnostic control PASS</td>
+</tr>
+</tbody>
+</table>
+<p>The controller reported the configured 48.75 ms interval, zero latency and four-second initial timeout for both central trials. A central connected callback does not prove T1000 receipt of its connection request; the failed initial exchange does not test pairing on an established four-second link. The Pi's earlier attempt to extend a live connection saw no target advertisement in 90 seconds, so no update was applied. A host-only HCI-filter padding error was corrected before that valid trial and remains recorded separately.</p>
+<p>These results make it less likely that the Companion workload or the external low-frequency crystal alone explains the failure. They do not distinguish common framework/SoftDevice behavior, the high-frequency radio clock, power or RF hardware. Both minimal images were removed. Normal T1000 Full <code>42f7df08</code> was restored and passed 15 USB query cycles/two reopens with the same public identity. The test RAK returned to its exact normal Full f807 image and passed 15 USB query cycles/two reopens and one 10-second secure BLE Companion session with the same identity. The four-second comparison had T1000 USB present before and after; it was not a battery-only test.</p>
 <p>Cold boot, physical battery-only BLE, complete phone/feature testing and fleet qualification remain untested. Longer USB-powered scans are not battery tests. <a href="../companion_qualification_f807_followup_2026-10-19.safe.json">Safe JSON</a> retains source bindings, workflow distinctions and evidence digests without device secrets or raw addresses.</p>
 
 
