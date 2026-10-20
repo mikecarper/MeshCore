@@ -209,6 +209,76 @@
       "root_cause_proven": false,
       "stale_name": "T1000-BLE-PROBE"
     },
+    "controlled_bluetooth_restart_and_immediate_connection": {
+      "active_usb_pin_matches_user_expected_pin": true,
+      "cold_or_battery_only_test_claimed": false,
+      "connection_requested_before_on": {
+        "controller_initiation_before_enable_claimed": false,
+        "counts_as_companion_qualification": false,
+        "gatt_returncode": 1,
+        "hci_disconnect_reason": 62,
+        "hci_disconnect_reason_name": "Connection Failed to be Established",
+        "host_request_queued_and_kernel_scan_pending_before_enable": true,
+        "nus_primary_service_found": false
+      },
+      "core_error_flags": 0,
+      "evidence": {
+        "toggle-btmon.private.log": {
+          "kind": "private_hci_capture_digest_only",
+          "sha256": "af72f9f0191d9de549c1c84c5dec02865075bcc348ed3772ce2f7493177c931d"
+        },
+        "toggle-direct-att-btmon.private.log": {
+          "kind": "private_hci_capture_digest_only",
+          "sha256": "4b91abd3fb08496c476067a91674c91db5d66344467a82ff79e46aed469503de"
+        },
+        "toggle-direct-att.safe.json": {
+          "kind": "sanitized_workflow_or_ble_summary",
+          "sha256": "d6b3a156ccfc11ccb28c171d6d551a61d8457c199a1665d351f844ccdc92fcd8"
+        },
+        "toggle-immediate-ble.safe.json": {
+          "kind": "sanitized_workflow_or_ble_summary",
+          "sha256": "4445d4e0d07794d94728bbded99d2288438fe7010a3411dd9328f0f50e5dbf26"
+        },
+        "toggle-immediate.safe.json": {
+          "kind": "sanitized_workflow_or_ble_summary",
+          "sha256": "70988b3322825fd5fa50aa14fb29d9b1304186bd9a64335d6ab5f1c6c3430276"
+        }
+      },
+      "excluded_host_setup_attempts": [
+        "A getter-format assertion stopped before any toggle.",
+        "A BlueZ cached target object was absent; no direct attempt was armed.",
+        "A direct ATT request was stopped while waiting for an overly strict controller-initiation gate."
+      ],
+      "factory_address_policy_unchanged": true,
+      "final_bluetooth_on_verified": true,
+      "firmware_changed": false,
+      "firmware_flash_performed": false,
+      "host_bonds_removed": false,
+      "immediate_after_advertisement": {
+        "authenticated_bond_completed": false,
+        "bluez_error": "Authentication Canceled",
+        "capture_started_before_toggle": true,
+        "client_scanner_ready_before_on": true,
+        "companion_sessions_completed": 0,
+        "explicit_wrong_pin_rejection_observed": false,
+        "first_advertisement_to_pair_request_ms": 49.296,
+        "hci_disconnect_reason": 8,
+        "hci_disconnect_reason_name": "Connection Timeout",
+        "initial_supervision_timeout_ms": 420,
+        "last_peer_acl_is_not_last_ll_packet_proof": true,
+        "off_readback_confirmed": true,
+        "on_to_first_observed_advertisement_seconds": 84.330799,
+        "parent_exporter_error": "JSONDecodeError: Expecting value: line 1 column 1 (char 0)",
+        "parent_exporter_failed": true,
+        "parent_workflow_pass_claimed": false,
+        "passkey_request_observed": true,
+        "peer_smp_and_att_responses_observed": true
+      },
+      "interpretation": "Intermittent bidirectional link reaches pairing, then times out; no stable Companion BLE pass or explicit PIN rejection.",
+      "source_commit": "42f7df082fc4c7362ecd5c18c8644ab25b51b9e9",
+      "stealth_unchanged_off": true,
+      "uptime_monotonic": true
+    },
     "independent_central_comparison": {
       "application_zip_sha256": "51c9daccaa344666f84ebe868ef0806cda34d29b824c6a852f75a39aa69951f3",
       "cleanup_confirmed": true,
@@ -663,5 +733,5 @@
     "required_axis_failed": 1,
     "selected_companions_requalified": 2
   },
-  "updated_at": "2026-10-20T05:22:57.701632+00:00"
+  "updated_at": "2026-10-20T05:38:22.759815+00:00"
 }
