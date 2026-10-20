@@ -1,0 +1,493 @@
+{
+  "baseline_source_commit": "f80751354ffc530461e87109ced4f575d3950a52",
+  "baseline_version": "v1.18.0.1-halo-keymind-cascade-dev-f8075135",
+  "boards": [
+    {
+      "axes": {
+        "ble": {
+          "all_sessions_disconnected": true,
+          "evidence": "rak-ble.safe.json",
+          "finished_at": "2026-10-20T03:57:37.611821+00:00",
+          "full_version_matches": true,
+          "hold_seconds_requested": 30.0,
+          "nus_services_verified": true,
+          "sessions_completed": 3,
+          "sessions_requested": 3,
+          "status": "passed",
+          "uptime_monotonic": true,
+          "usb_public_identity_matches": true
+        },
+        "rf": {
+          "directions_verified": 2,
+          "evidence": "rf.safe.json",
+          "exact_dev_datagrams": true,
+          "owned_channels_cleared": true,
+          "peer": "t1000",
+          "radio_leases_restored": true,
+          "scope": "Zero-hop DATA_TYPE_DEV datagrams; not text, range or RF calibration.",
+          "status": "passed"
+        },
+        "usb": {
+          "core_error_flags": 0,
+          "evidence": "rak-usb.safe.json",
+          "finished_at": "2026-10-20T03:50:24.438315+00:00",
+          "full_runtime_version": "v1.18.0.1-halo-keymind-cascade-dev-f8075135 (Build: 20-Oct-2026)",
+          "owned_contact_crud_passed": true,
+          "owned_contact_removed_and_reopen_verified": true,
+          "persistent_query_cycles": 100,
+          "ports_closed": 18,
+          "ports_opened": 18,
+          "radio2_passed": true,
+          "reopens": 10,
+          "stable_discarded_prefix_bytes": 0,
+          "stable_invalid_length_candidates": 0,
+          "status": "passed",
+          "transport_scope": "Stable binary sessions; ASCII setup and deliberate reboot recovery recorded separately.",
+          "warm_reboot_verified": true
+        }
+      },
+      "key": "rak",
+      "name": "RAK 4631",
+      "normal_full_restored_and_runtime_verified": true,
+      "overall": "passed",
+      "source_commit": "f80751354ffc530461e87109ced4f575d3950a52"
+    },
+    {
+      "axes": {
+        "ble": {
+          "connection_failure_inferred": false,
+          "evidence": "t1000-42f7df08-ble.safe.json",
+          "failure_stage": "current_advertisement_identity_gate",
+          "failure_type": "GateError",
+          "finished_at": "2026-10-20T04:33:52.224067+00:00",
+          "scan_seconds": 25,
+          "sessions_completed": 0,
+          "sessions_requested": 3,
+          "source_commit": "42f7df082fc4c7362ecd5c18c8644ab25b51b9e9",
+          "status": "failed"
+        },
+        "rf": {
+          "current_source_rf_pass_claimed": false,
+          "retained_prior_result": {
+            "directions_verified": 2,
+            "evidence": "rf.safe.json",
+            "owned_channels_cleared": true,
+            "radio_leases_restored": true,
+            "source_commit": "f80751354ffc530461e87109ced4f575d3950a52",
+            "status": "passed"
+          },
+          "source_commit": "42f7df082fc4c7362ecd5c18c8644ab25b51b9e9",
+          "status": "not_requalified"
+        },
+        "usb": {
+          "core_error_flags": 0,
+          "evidence": "t1000-42f7df08-usb.safe.json",
+          "finished_at": "2026-10-20T04:32:30.130040+00:00",
+          "full_runtime_version": "v1.18.0.1-halo-keymind-cascade-dev-42f7df08 (Build: 20-Oct-2026)",
+          "owned_contact_crud_passed": true,
+          "owned_contact_removed_and_reopen_verified": true,
+          "persistent_query_cycles": 100,
+          "ports_closed": 18,
+          "ports_opened": 18,
+          "radio2_passed": true,
+          "reopens": 10,
+          "source_commit": "42f7df082fc4c7362ecd5c18c8644ab25b51b9e9",
+          "stable_discarded_prefix_bytes": 0,
+          "stable_invalid_length_candidates": 0,
+          "status": "passed",
+          "transport_scope": "Stable binary sessions; ASCII setup and deliberate reboot recovery recorded separately.",
+          "warm_reboot_verified": true
+        }
+      },
+      "key": "t1000",
+      "name": "Seeed T1000-E",
+      "normal_full_restored_and_runtime_verified": true,
+      "overall": "failed",
+      "source_commit": "42f7df082fc4c7362ecd5c18c8644ab25b51b9e9"
+    }
+  ],
+  "bootloader_correction": {
+    "application_ble_cause_proven": false,
+    "bootloader_install_workflow": {
+      "combined_dfu_transfer_returncode": 0,
+      "failure_stage": "post_transfer_missing_msc_disk",
+      "installer_returncode": 1,
+      "later_exact_bound_public_info_verification": "passed",
+      "original_failure_preserved": true,
+      "status": "failed"
+    },
+    "candidate_pr": "https://github.com/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/pull/1",
+    "code_endf_guard_proves_filesystem_preservation": false,
+    "combined_serial_staging_rounded_end": "0x57000",
+    "combined_zip_sha256": "8db09e6b7f253b1e54aae754220f0d1053d369c07bff299a26b384233de6e234",
+    "defect": "T1000-E active-high P0.06 configured pull-up/active-low; RESET P0.18 treated as second user control.",
+    "delivery_used": "Reviewed exact-device combined SD+BL USB installer, then separate exact same Fullf807 app-only restoration.",
+    "existing_dfu_entry_checks_passed": 13,
+    "f807_restore_rounded_end": "0xB9000",
+    "final_head_ble_fix_demonstrated": false,
+    "final_normal_head_installed": "42f7df082fc4c7362ecd5c18c8644ab25b51b9e9",
+    "hardware_fix_claimed": false,
+    "host_actual_function_tests_passed": 11,
+    "installation_status": "public_candidate_version_verified_after_combined_transfer",
+    "installed_complete_image_readback_verified": false,
+    "installed_manifest_crc_verified": false,
+    "internal_extrafs_start": "0xD4000",
+    "legacy_uf2_scratch_overlaps_internal_extrafs": true,
+    "manifest_crc32": "6BA4D206",
+    "manifest_crc_scope": "Offline package CRC only; installed CRC was not exposed.",
+    "packed_test_version": "0x02040C01",
+    "post_install_rf_requalified": false,
+    "post_install_same_f807_ble": {
+      "ble_fix_demonstrated": false,
+      "discovery_seconds": 90,
+      "evidence": "t1000-after-button-bootloader-ble.safe.json",
+      "explicit_address_targeted": true,
+      "failure_stage": "current_advertisement_identity_gate",
+      "failure_type": "GateError",
+      "finished_at": "2026-10-20T04:29:48.854863+00:00",
+      "sessions_completed": 0,
+      "status": "failed"
+    },
+    "post_install_same_f807_usb": {
+      "evidence": "t1000-after-button-bootloader-usb.safe.json",
+      "final_core_error_flags": 0,
+      "finished_at": "2026-10-20T04:27:56.032934+00:00",
+      "full_100_cycle_10_reopen_campaign_repeated": false,
+      "full_runtime_version": "v1.18.0.1-halo-keymind-cascade-dev-f8075135 (Build: 20-Oct-2026)",
+      "persistent_query_cycles": 15,
+      "ports_closed": 5,
+      "ports_opened": 5,
+      "reopens": 2,
+      "same_public_identity_as_before": true,
+      "stable_discarded_prefix_bytes": 0,
+      "stable_invalid_length_candidates": 0,
+      "status": "passed"
+    },
+    "public_info": {
+      "board_id": "nRF52840-T1000-E-v1",
+      "exact_image_version_verified": true,
+      "info_sha256": "de7c21cbd600b54e9fed7ed483cfe38fba36206814487c2ac73ddeed81d08753",
+      "model": "Seeed T1000-E for Meshtastic",
+      "reader": "identity-bound read-only public FAT16 INFO_UF2",
+      "version": "TEST_0x02040C01"
+    },
+    "released_version_claimed": false,
+    "remote_ble_only_bootloader_entry_planned": false,
+    "required_cross_builds_passed": [
+      "t1000_e",
+      "heltec_t096",
+      "heltec_t114"
+    ],
+    "separate_same_f807_app_restore_workflow": {
+      "adapter_returncode": 0,
+      "fresh_runtime_verified_separately": true,
+      "programming_returncode": 0,
+      "status": "passed"
+    },
+    "source_commit": "c0c421184a3cf1ca66b40b055101f20b8c587e26",
+    "upstream_correction_url": "https://github.com/meshtastic/Adafruit_nRF52_Bootloader_OTAFIX/commit/0f415c3ee26816ad52a7587b3d6cdd30547987ec"
+  },
+  "campaign_local_date": "2026-10-19",
+  "carried_forward_failures": [
+    {
+      "ble": "not_qualified",
+      "key": "xiao_nrf",
+      "name": "Seeed XIAO nRF52",
+      "new_pass_claimed": false,
+      "reason": "Prior normal USB/runtime failure retained; no new passing recovery in this follow-up.",
+      "rf": "not_qualified",
+      "status": "failed"
+    }
+  ],
+  "diagnostics": {
+    "bluez_unpaired_name_cache": {
+      "ble_pass_claimed": false,
+      "bond_info_file_present": false,
+      "duplicate_address_proven": false,
+      "limit": "Cached name can affect name filtering without current scan-response evidence; current RF payload and USB-bound GATT identity remain distinct.",
+      "normal_full_version_and_configured_name_verified_over_usb": true,
+      "root_cause_proven": false,
+      "stale_name": "T1000-BLE-PROBE"
+    },
+    "minimal_lfrc_probe": {
+      "clock": "LFRC",
+      "crystal_defect_proven": false,
+      "diagnostic_only": true,
+      "evidence": "lfrc-probe/artifact.json",
+      "full_acceptance": false,
+      "production_clock_change_justified": false,
+      "sdk_rc_config": {
+        "accuracy": 0,
+        "rc_ctiv": 16,
+        "rc_temp_ctiv": 2,
+        "source": 0
+      },
+      "zip_sha256": "b5bf563e72608f637694a65a3efdfc61dfdf4b3d9dcf47285bd3cb153a116eb6"
+    },
+    "official_upstream_reference": {
+      "app_base": "0x27000",
+      "application_only": true,
+      "bootloader_and_softdevice_independently_varied": false,
+      "bounded_pi_target_advertisement_found": false,
+      "counts_as_full_qualification": false,
+      "evidence": "upstream-reference/artifact.json",
+      "normal_full_f807_restored_afterward": true,
+      "phone_observation_qualified": false,
+      "release": "meshcore-dev/MeshCore companion-v1.18.0",
+      "softdevice_fwid": "0x0123",
+      "source_url": "https://github.com/meshcore-dev/MeshCore/releases/tag/companion-v1.18.0",
+      "zip_sha256": "79e53c2ce13521ccda5db3621a68f79728d2f241c3a8345e4107b7ae6b5a374d",
+      "zip_uf2_application_bytes_identical": true
+    },
+    "softdevice_readback": {
+      "exact_package_bytes_match_reported_by_coordinator": true,
+      "expected_binary_sha256": "fbd42f29af8f95309e7aaef9f60994e4749526c3e0c08cb30a8bf44bbda78663",
+      "family": "S140",
+      "fwid": "0x0123",
+      "manufacturer_package_has_identical_softdevice": true,
+      "readback_crc32": "733639BD",
+      "rf_operation_proven_by_image_crc": false,
+      "version": "7.3.0"
+    },
+    "t1000_later_address_targeted_pi_followup": {
+      "bounded_observation_seconds": 90,
+      "evidence": "t1000-pi-followup.safe.json",
+      "finished_at": "2026-10-20T04:21:28.920775+00:00",
+      "normal_firmware_qualified_by_this_followup": false,
+      "sessions_completed": 0,
+      "status": "failed",
+      "usb_bluetooth_enabled": true,
+      "usb_core_error_flags": 0,
+      "usb_stealth_off": true,
+      "usb_uptime_seconds": 1266
+    }
+  },
+  "evidence": {
+    "bootloader_host_test_source": {
+      "kind": "source",
+      "sha256": "15c3858b45f58dba68b06bc5fe44de9d517d943a31e9a9d80cc02276e2bcabdb",
+      "source_commit": "c0c421184a3cf1ca66b40b055101f20b8c587e26"
+    },
+    "build-t096-final.log": {
+      "kind": "cross_build_and_package_log",
+      "sha256": "dc88bf27ed50f6e594687d6543f0e2721295e7484c89fdd6a2f9dbb26130940a"
+    },
+    "build-t1000-final.log": {
+      "kind": "cross_build_and_package_log",
+      "sha256": "3ca818fad79107234f4de72ab8e1302528e33b5262b11b2dd1737e60eeeab8d6"
+    },
+    "build-t114-final.log": {
+      "kind": "cross_build_and_package_log",
+      "sha256": "8ca9432ff8b8eab043aff83b49705bc05f61db4e6fb73e1e79eb728dc79c04e4"
+    },
+    "candidate-public-info.safe.json": {
+      "kind": "sanitized_post_bootloader_evidence",
+      "sha256": "45720bfb7125a41de4577751778f44d3cb17cba629660fdfa837595b710469f3"
+    },
+    "lfrc-probe/artifact.json": {
+      "kind": "diagnostic_artifact_provenance",
+      "sha256": "168db359b82d62a82ae66b278175fc9477a844fa0f3eeea3c4321ac8da48a067"
+    },
+    "rak-ble.safe.json": {
+      "kind": "sanitized_qualification_summary",
+      "sha256": "8afe8acf3ff97238b428115e140f0d2ea4c51c86cb9df319f62406b83edc7beb"
+    },
+    "rak-usb.safe.json": {
+      "kind": "sanitized_qualification_summary",
+      "sha256": "4423a497f9efb6f7db577a0454e28083103c3552cdadd721db6f1b33fd0b7436"
+    },
+    "rf.safe.json": {
+      "kind": "sanitized_qualification_summary",
+      "sha256": "8c7a50bfd5916e02f6384ad449351e1a72d40c46aac8b4c9b97f2f19f75ba161"
+    },
+    "t1000-42f7df08-address-ble.safe.json": {
+      "kind": "sanitized_current_head_qualification_summary",
+      "sha256": "5f79f2c78b02db08c9b33d9cfca7fd93300d3b68dc24d02c2bda023c5db54b5b"
+    },
+    "t1000-42f7df08-ble.safe.json": {
+      "kind": "sanitized_qualification_summary",
+      "sha256": "5046e90293d797097b8598023c3f2a154674b52c0a5259f0cbea18c0ba627b59"
+    },
+    "t1000-42f7df08-usb.safe.json": {
+      "kind": "sanitized_qualification_summary",
+      "sha256": "d6bf10ff6fb4a54d38f40c601cf5b682c360a0372de8900ef356937ffda5be59"
+    },
+    "t1000-after-button-bootloader-ble.safe.json": {
+      "kind": "sanitized_post_bootloader_evidence",
+      "sha256": "dc290023671b164a1a82a1c63c89a5058a17e58e6e2d77d243120e0fab5e7392"
+    },
+    "t1000-after-button-bootloader-usb.safe.json": {
+      "kind": "sanitized_post_bootloader_evidence",
+      "sha256": "8e74de0e231a2996c650f93d5d309feda24d56b416f10277c311234196582f8a"
+    },
+    "t1000-ble.safe.json": {
+      "kind": "sanitized_qualification_summary",
+      "sha256": "128cabd382c517e750a5b125397539d09613bdb530378fdb5748013e3c243df3"
+    },
+    "t1000-pi-followup.safe.json": {
+      "kind": "sanitized_qualification_summary",
+      "sha256": "3d8d8c9cf9f40d2dee1a7a45a10348254ccab3fa60518509062c02ada72090b0"
+    },
+    "t1000-usb.safe.json": {
+      "kind": "sanitized_qualification_summary",
+      "sha256": "0811e3bdee08a4004ecf9f64a07ebb3a52faa44c60ad4632f8d21d35b5e1dab6"
+    },
+    "upstream-reference/artifact.json": {
+      "kind": "diagnostic_artifact_provenance",
+      "sha256": "23120c40b9a53cdcf0ce2f04fa5e6354e1f0110d7b91b83681e147b493929763"
+    }
+  },
+  "final_normal_head": {
+    "application_zip_sha256": "7fac141e40183ada315f70b296583eaf854fd819c76fbd896a1f0f2e4a405e5b",
+    "ble_evidence": "t1000-42f7df08-ble.safe.json",
+    "ble_qualification_status": "failed",
+    "ble_sessions_completed": 0,
+    "explicit_address_followup": {
+      "discovery_seconds": 90,
+      "evidence": "t1000-42f7df08-address-ble.safe.json",
+      "physical_battery_test_confirmed": false,
+      "sessions_completed": 0,
+      "status": "failed"
+    },
+    "installation_status": "installed_successfully",
+    "post_corrected_bootloader": true,
+    "rf_qualification_status": "not_requalified",
+    "source_commit": "42f7df082fc4c7362ecd5c18c8644ab25b51b9e9",
+    "usb_evidence": "t1000-42f7df08-usb.safe.json",
+    "usb_qualification_status": "passed"
+  },
+  "generated_at": "2026-10-20T04:31:16.913541+00:00",
+  "measured_source_commits": {
+    "rak": "f80751354ffc530461e87109ced4f575d3950a52",
+    "t1000": "42f7df082fc4c7362ecd5c18c8644ab25b51b9e9"
+  },
+  "overall": "failed_incomplete",
+  "prior_f807_selected_board_results": [
+    {
+      "axes": {
+        "ble": {
+          "all_sessions_disconnected": true,
+          "evidence": "rak-ble.safe.json",
+          "finished_at": "2026-10-20T03:57:37.611821+00:00",
+          "full_version_matches": true,
+          "hold_seconds_requested": 30.0,
+          "nus_services_verified": true,
+          "sessions_completed": 3,
+          "sessions_requested": 3,
+          "status": "passed",
+          "uptime_monotonic": true,
+          "usb_public_identity_matches": true
+        },
+        "rf": {
+          "directions_verified": 2,
+          "evidence": "rf.safe.json",
+          "exact_dev_datagrams": true,
+          "owned_channels_cleared": true,
+          "peer": "t1000",
+          "radio_leases_restored": true,
+          "scope": "Zero-hop DATA_TYPE_DEV datagrams; not text, range or RF calibration.",
+          "status": "passed"
+        },
+        "usb": {
+          "core_error_flags": 0,
+          "evidence": "rak-usb.safe.json",
+          "finished_at": "2026-10-20T03:50:24.438315+00:00",
+          "full_runtime_version": "v1.18.0.1-halo-keymind-cascade-dev-f8075135 (Build: 20-Oct-2026)",
+          "owned_contact_crud_passed": true,
+          "owned_contact_removed_and_reopen_verified": true,
+          "persistent_query_cycles": 100,
+          "ports_closed": 18,
+          "ports_opened": 18,
+          "radio2_passed": true,
+          "reopens": 10,
+          "stable_discarded_prefix_bytes": 0,
+          "stable_invalid_length_candidates": 0,
+          "status": "passed",
+          "transport_scope": "Stable binary sessions; ASCII setup and deliberate reboot recovery recorded separately.",
+          "warm_reboot_verified": true
+        }
+      },
+      "key": "rak",
+      "name": "RAK 4631",
+      "normal_full_restored_and_runtime_verified": true,
+      "overall": "passed",
+      "source_commit": "f80751354ffc530461e87109ced4f575d3950a52"
+    },
+    {
+      "axes": {
+        "ble": {
+          "connection_failure_inferred": false,
+          "evidence": "t1000-ble.safe.json",
+          "failure_stage": "current_advertisement_identity_gate",
+          "failure_type": "GateError",
+          "finished_at": "2026-10-20T03:53:17.589165+00:00",
+          "hold_seconds_requested": 30.0,
+          "sessions_completed": 0,
+          "sessions_requested": 3,
+          "status": "failed"
+        },
+        "rf": {
+          "directions_verified": 2,
+          "evidence": "rf.safe.json",
+          "exact_dev_datagrams": true,
+          "owned_channels_cleared": true,
+          "peer": "rak",
+          "radio_leases_restored": true,
+          "scope": "Zero-hop DATA_TYPE_DEV datagrams; not text, range or RF calibration.",
+          "status": "passed"
+        },
+        "usb": {
+          "core_error_flags": 0,
+          "evidence": "t1000-usb.safe.json",
+          "finished_at": "2026-10-20T03:49:08.548576+00:00",
+          "full_runtime_version": "v1.18.0.1-halo-keymind-cascade-dev-f8075135 (Build: 20-Oct-2026)",
+          "owned_contact_crud_passed": true,
+          "owned_contact_removed_and_reopen_verified": true,
+          "persistent_query_cycles": 100,
+          "ports_closed": 18,
+          "ports_opened": 18,
+          "radio2_passed": true,
+          "reopens": 10,
+          "stable_discarded_prefix_bytes": 0,
+          "stable_invalid_length_candidates": 0,
+          "status": "passed",
+          "transport_scope": "Stable binary sessions; ASCII setup and deliberate reboot recovery recorded separately.",
+          "warm_reboot_verified": true
+        }
+      },
+      "key": "t1000",
+      "name": "Seeed T1000-E",
+      "normal_full_restored_and_runtime_verified": true,
+      "overall": "failed",
+      "source_commit": "f80751354ffc530461e87109ced4f575d3950a52"
+    }
+  ],
+  "privacy": {
+    "bluetooth_addresses_included": false,
+    "passkeys_included": false,
+    "raw_contact_or_channel_records_included": false,
+    "raw_private_keys_included": false,
+    "usb_serials_included": false
+  },
+  "remaining_work": [
+    "T1000 normal BLE qualification remains failed.",
+    "Physical battery-only restart/observation and cold-boot testing remain pending; USB-powered long scans do not qualify them.",
+    "XIAO nRF52 normal runtime recovery remains failed.",
+    "RF at42f7df08, phone interoperability, full feature and13-radio fleet qualification are not established."
+  ],
+  "report_status": "failed_incomplete",
+  "schema_version": 1,
+  "scope": {
+    "all_three_axes_passed": 1,
+    "cold_boot_tested": false,
+    "fleet_13_qualified": false,
+    "fleet_inventory_refreshed": false,
+    "independent_observer_acceptance_complete": false,
+    "phone_interoperability_qualified": false,
+    "physical_battery_only_ble_tested": false,
+    "repeaters_qualified": false,
+    "required_axis_failed": 1,
+    "selected_companions_requalified": 2
+  },
+  "updated_at": "2026-10-20T04:35:34.121146+00:00"
+}
