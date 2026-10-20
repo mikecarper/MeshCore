@@ -2835,6 +2835,13 @@ Plain <code>off</code> requires another active management connection;
 See <a href="../cli_commands/#turn-bluetooth-on-or-off-companion">Bluetooth controls</a>
 for reply draining and boot-transport restrictions. Ethernet controls remain
 specific to the board's recipe; there is no universal Ethernet-off command.</p>
+<p><strong>T1000-E Companion:</strong> USB data takes priority over Bluetooth. Once a computer
+enumerates USB, the firmware stops Bluetooth advertising and disconnects any
+Bluetooth client, even if no serial application is open. Bluetooth resumes
+500 ms after USB disconnects, unless it was switched off manually. Battery
+power and a charge-only wall supply leave Bluetooth available. The saved
+Bluetooth setting, pairing PIN and bonds are preserved. <code>get bluetooth</code>
+reports the USB pause; <code>set bluetooth on</code> saves the choice for after unplugging.</p>
 <p><strong>SenseCAP Indicator Full only:</strong> <code>set companion.transport wifi</code> followed by
 <code>reboot</code> selects WiFi; <code>set companion.transport ble</code> followed by <code>reboot</code>
 selects Bluetooth. Check <code>get companion.transport</code>. USB remains available.

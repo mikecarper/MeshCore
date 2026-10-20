@@ -3461,6 +3461,11 @@ physical display use <code>123456</code>. Use <code>set pin 654321</code> in the
 a fixed pairing PIN, then <code>reboot</code> to activate it. <code>set pin 0</code> restores the
 default/generated PIN policy. A PIN saved through the Companion protocol also
 takes effect after reboot. See the <a href="../cli_commands/#set-the-bluetooth-pairing-pin-companion">PIN command reference</a>.</p>
+<p>On T1000-E, a USB data host automatically pauses Bluetooth, including an
+existing phone connection. Unplug USB to resume Bluetooth after 500 ms; a
+saved off setting stays off. A wall charger without a USB data host does not
+pause Bluetooth. See the <a href="../role_feature_switches/">T1000-E transport policy</a>
+for status and saved-setting behavior.</p>
 <p>The Bluetooth device name is independently configurable. In the text terminal,
 use <code>get bluetooth.name</code> and <code>set bluetooth.name &lt;name&gt;</code>; use
 <code>set bluetooth.name default</code> to restore <code>MeshCore-&lt;node name&gt;</code>. The WebConfig
