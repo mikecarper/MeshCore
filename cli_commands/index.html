@@ -2435,6 +2435,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#turn-companion-sound-and-vibration-on-or-off" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Turn Companion sound and vibration on or off
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#turn-indicator-leds-on-or-off" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -5420,6 +5431,17 @@
     <span class="md-ellipsis">
       
         View or change this node's name
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#turn-companion-sound-and-vibration-on-or-off" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Turn Companion sound and vibration on or off
       
     </span>
   </a>
@@ -8868,6 +8890,20 @@ the verified pin assignments, startup fixes, and saved amplifier settings.</p>
 <p><strong>Default:</strong> Varies by board</p>
 <p><strong>Note:</strong> Advertised names can use up to 23 bytes when location is included and 31 bytes otherwise. Emoji and Unicode characters may take more than one byte. Names that exceed the available advert space are truncated at a valid UTF-8 code point boundary.</p>
 <hr />
+<h4 id="turn-companion-sound-and-vibration-on-or-off">Turn Companion sound and vibration on or off</h4>
+<p><code>get buzzer</code> and <code>set buzzer on|off</code> control the Companion's buzzer. Devices
+with a vibration motor also support <code>get vibration</code> and <code>set vibration on|off</code>.
+Changes take effect immediately, are saved across reboots, and produce no
+confirmation tone. Muting an output stops an alert already playing.</p>
+<p>Fresh settings default to <strong>sound off</strong> and <strong>vibration on</strong>. Existing saved
+choices are retained. The same preferences are used by the device buttons and
+UI. Unsupported hardware reports an error.</p>
+<p>These are the device mute controls. Programmable <code>notify.sound</code> and
+<code>notify.vibration</code> rules also respect them; an enabled rule cannot bypass a
+muted output. The notification output masks still select which alert outputs
+a rule may use. Explicit button mute/unmute confirmations retain their existing
+behavior.</p>
+<p>Adapted from <a href="https://github.com/meshcore-dev/MeshCore/pull/3603">upstream PR #3603</a>.</p>
 <h4 id="turn-indicator-leds-on-or-off">Turn indicator LEDs on or off</h4>
 <pre><code class="language-text">get leds
 set leds off
