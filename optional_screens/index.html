@@ -2370,7 +2370,7 @@ add detection to an older download.</p>
 <tr>
 <td>RAK WisBlock</td>
 <td>The <a href="https://downloads.rakwireless.com/Meshtastic/Quick%20Start%20Guide_WisMesh%20RAK4631%20Starter%20Kit.pdf">RAK4631 kit guide</a> labels the RAK1921 OLED optional.</td>
-<td>Existing display-capable SSD1306 images already check presence.</td>
+<td>Display-capable RAK4631 and RAK3401 images check presence and detect SSD1306 or SH1106 controllers. New images also provide a saved controller choice; see below.</td>
 </tr>
 <tr>
 <td>iKoka Stick and Handheld</td>
@@ -2403,6 +2403,15 @@ add detection to an older download.</p>
 recipe has no verified panel readback connection. Detection is not enabled for
 that wiring. A touchscreen acknowledgement alone does not establish that the
 LCD responds. The V4 R8 TFT and older V4 TFT pin mappings are distinct.</p>
+<p>RAK4631 and RAK3401 images with OLED controller detection support
+<code>set display.controller auto</code>, <code>ssd1306</code> or <code>sh1106</code> in all display-enabled
+roles. Keep <code>auto</code> for normal use; choose the panel's controller explicitly if
+detection gives shifted or wrapped pixels. The choice is saved and applies
+after restarting the node. <code>get display.controller</code> shows the configured and
+active choices and any pending restart. With no saved choice, automatic
+detection or an existing build-time override supplies the default; saved
+<code>auto</code> takes precedence over that override. Normal controller selection does
+not require custom firmware. See the <a href="../cli_commands/#select-rak-oled-controller">controller commands</a>.</p>
 <p>New R8 TFT images support saved <code>display.rotation</code> values of <code>0</code>, <code>90</code>, <code>180</code>
 and <code>270</code>, including portrait/landscape dashboard changes without reflashing.
 The stock R8 expansion board has no accelerometer for automatic orientation.

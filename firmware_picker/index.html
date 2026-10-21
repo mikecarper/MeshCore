@@ -2921,6 +2921,10 @@ combined and single-transport names are explicit-build compatibility aliases.
 SSD1306 Full Companion builds use <code>set display.rotation 90|180|270</code>; <code>0</code>
 restores the board default, so a separate rotated release image is not
 recommended.</p>
+<p>New display-capable RAK4631 and RAK3401 images with OLED controller detection
+also offer saved <code>display.controller</code> choices: <code>auto</code>, <code>ssd1306</code> or <code>sh1106</code>.
+This applies after restart and avoids a custom image when a panel needs an
+explicit controller. See <a href="../cli_commands/#select-rak-oled-controller">controller selection</a>.</p>
 <p>New Heltec V4 R8 TFT images also support saved rotation in Companion,
 Repeater, Room Server and Sensor roles. The observer dashboard follows the
 selected portrait or landscape orientation. Once the canonical image proves

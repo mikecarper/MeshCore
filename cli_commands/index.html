@@ -2085,6 +2085,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#select-rak-oled-controller" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Select RAK OLED controller
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#show-touchscreen-touch-areas" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -5088,6 +5099,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#select-rak-oled-controller" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Select RAK OLED controller
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#show-touchscreen-touch-areas" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -8047,14 +8069,30 @@ set display.rotation 270
 </code></pre>
 <p>The values are clockwise degrees. <code>0</code> clears the override and restores the
 board's compiled default. Unsupported display drivers return an error.</p>
-<p>RAK4631 and RAK3401 images detect SSD1306 or SH1106 OLED controllers when
-initializing the screen. This lets the same RAK4631 image serve WisMesh Pocket
-v2 and v3. Both retain rotation support and use one 1 KiB framebuffer.</p>
+<h2 id="select-rak-oled-controller">Select RAK OLED controller</h2>
+<p>Display-capable RAK4631 and RAK3401 images with OLED controller detection
+support a saved selection in Companion, Repeater, Room Server and Sensor roles:</p>
+<pre><code class="language-text">get display.controller
+set display.controller auto
+set display.controller ssd1306
+set display.controller sh1106
+</code></pre>
+<p>Choose <code>auto</code> for normal use. If a panel is shifted, wraps at its edge or is
+otherwise incorrectly detected, select its controller explicitly and restart
+the node. Changes are saved immediately and apply after restart; the current
+screen keeps its active controller until then. <code>get display.controller</code>
+reports the configured choice, active choice and whether a restart is
+needed. A custom firmware build is not needed to change this choice.</p>
+<p>Automatic detection lets the same RAK4631 image serve WisMesh Pocket v2 and
+v3. Both controllers retain rotation support and use one 1 KiB framebuffer.</p>
 <p>Detection checks the configured <code>DISPLAY_ADDRESS</code> (default <code>0x3C</code>). Only
 repeated SH1106 status readings select that controller; ambiguous responses
-keep SSD1306, preserving compatibility with older RAK1921 panels. For panels
-that cannot identify themselves, build with <code>OLED_CONTROLLER_OVERRIDE=1</code>
-(SSD1306) or <code>=2</code> (SH1106); <code>=0</code> restores automatic detection.</p>
+keep SSD1306, preserving compatibility with older RAK1921 panels. With no
+saved choice, the default is automatic detection unless the build sets
+<code>OLED_CONTROLLER_OVERRIDE=1</code> (SSD1306) or <code>=2</code> (SH1106). This build-time
+override remains a fallback for existing custom builds. Any saved selection
+takes precedence, including <code>auto</code>, which restores detection even when that
+fallback forces a controller.</p>
 <p>See <a href="https://github.com/meshcore-dev/MeshCore/issues/3296">the Pocket v3 issue</a>
 and <a href="https://github.com/meshtastic/firmware/pull/11265">the RAK1921 detection caveat</a>.</p>
 <hr />
