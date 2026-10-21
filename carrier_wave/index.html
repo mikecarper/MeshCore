@@ -2507,6 +2507,10 @@ band plan and listen first.</p>
 power envelope into text. This is a separate manual session, not another
 MeshCore packet channel or an authenticated sender. Nothing decoded is
 automatically transmitted, relayed or inserted into a channel/DM inbox.</p>
+<p>Reception requires a saved timing hint of <strong>15-60 WPM</strong>. The default remains
+25 WPM. Slower speeds of 1-14 WPM remain available for transmission; listening
+rejects them with a receive-specific error instead of silently changing the
+saved setting. Set <code>morse.wpm</code> to at least 15 before listening.</p>
 <table>
 <thead>
 <tr>
@@ -2558,6 +2562,14 @@ automatically transmitted, relayed or inserted into a channel/DM inbox.</p>
 radio at least one second after listening begins. Start with matching WPM on
 the sender and receiver. Noise, fading, interference and timing mismatch can
 produce errors; decoded text has no sender identity or integrity check.</p>
+<p>Automatic detection retains sustained noise peaks learned during the quiet
+interval, after initial receiver settling. It keeps that quiet envelope across
+marks and gaps rather than dropping the threshold back toward the average
+noise level. There is no fixed per-board RSSI cutoff. A stable quiet floor
+retains the six-dB acquisition margin; a noisier environment requires a signal
+above its learned excursions. The envelope relaxes gradually when conditions
+become quieter. Stop and start listening to run the initial learning interval
+again in a new environment.</p>
 <p>The receiver uses a continuous native FSK receive filter and live received
 signal strength (RSSI) to follow the carrier's on/off envelope. It does not
 transmit or require a packet preamble, sync word, CRC or direct-data pin:</p>
