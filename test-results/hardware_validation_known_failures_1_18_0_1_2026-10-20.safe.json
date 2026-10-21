@@ -1,0 +1,256 @@
+{
+  "schema": 1,
+  "report_date": "2026-10-20",
+  "campaign_dates_utc": [
+    "2026-10-20",
+    "2026-10-21"
+  ],
+  "status": "V4_USB_PASS_MORSE_LIMITATION_ACCEPTED_CI_PENDING",
+  "release_approval": false,
+  "source_commit": "0b207a1ec3a32eb0a8ad6b8643db211de4921cd4",
+  "scope": {
+    "current_v4_differs_from_18_october_board": true,
+    "nrf52_hold_released_by_operator": true,
+    "new_nrf52_final_source_hardware_qualification_claimed": false,
+    "mesh_pocket_future_testing_excluded": true,
+    "existing_fleet_closures_reopened": false,
+    "device_identifiers_and_host_addresses_omitted": true
+  },
+  "builds": [
+    {
+      "target": "RAK_4631_companion_radio_full",
+      "source_commit": "0b207a1ec3a32eb0a8ad6b8643db211de4921cd4",
+      "status": "PASS",
+      "application_bytes": 712432,
+      "application_limit_bytes": 712704,
+      "free_bytes": 272,
+      "feature_capability_count": 13,
+      "profile_full_marker": true,
+      "ina260_library_version": "1.5.4",
+      "mlx90614_library_version": "2.1.7",
+      "artifact_filename": "RAK_4631_companion_radio_full-v1.18.0.1-halo-keymind-cascade-dev-0b207a1e.zip",
+      "artifact_sha256": "3126f6eae26a640985bfaeed68fbc2c65f6f99857b326d6d086a35aec8b30f13",
+      "artifact_bytes": 713315
+    },
+    {
+      "target": "Heltec_t096_companion_radio_full_femon",
+      "source_commit": "0b207a1ec3a32eb0a8ad6b8643db211de4921cd4",
+      "status": "PASS",
+      "artifact_filename": "Heltec_t096_companion_radio_full_femon-v1.18.0.1-halo-keymind-cascade-dev-0b207a1e.zip",
+      "artifact_sha256": "95bcc8c2ba4456a646b21928589c50e17ebd26f8bd866dd01e6862c55ed4d85f",
+      "artifact_bytes": 646782
+    },
+    {
+      "target": "heltec_v4_3_companion_radio_full_femoff",
+      "source_commit": "0b207a1ec3a32eb0a8ad6b8643db211de4921cd4",
+      "status": "PASS",
+      "application_bytes": 2559496,
+      "artifact_sha256": "04eed20ee0f964fef2a5a0f74f4aafe4b11e0a71b011ff757efc96c03a2cfb14",
+      "instrumentation_hil": false,
+      "artifact_filename": "heltec_v4_3_companion_radio_full_femoff-v1.18.0.1-halo-keymind-cascade-dev-0b207a1e.bin",
+      "artifact_bytes": 2559496
+    }
+  ],
+  "host_checks": {
+    "morse": {
+      "source_commit": "0b207a1ec3a32eb0a8ad6b8643db211de4921cd4",
+      "status": "PASS",
+      "methods": 111,
+      "elapsed_seconds": 58.472,
+      "log_sha256": "90935b6e37090a425931c98b528d7f56cbd1c9639ca5181db59ec6158e48d27e"
+    },
+    "targeted_usb": {
+      "source_commit": "7278eacb9131d613da719fee814fefcdad3adf23",
+      "included_in_final_source": true,
+      "status": "PASS",
+      "methods": 45,
+      "included_hwcdc_tx_backport_suite_methods": 12,
+      "backport_suite_includes_actual_isr_scenarios": true
+    },
+    "radio_profile": {
+      "source_commit": "fc72943f3bbdcb2d587a39441c82a461d5df68e4",
+      "status": "PASS",
+      "methods": 17,
+      "unchanged_after_run": true,
+      "rerun_for_final_source": false
+    }
+  },
+  "ci": {
+    "run_id": 39523154379,
+    "url": "https://github.com/mikecarper/MeshCore/actions/runs/39523154379",
+    "status": "PENDING",
+    "non_main_jobs_reported_green": 11,
+    "main_host_job": "PENDING",
+    "completed_workflow_pass_claimed": false
+  },
+  "v4_native_console": {
+    "historical_logging_on_case2": {
+      "source_commit": "4773ac4219666d0f5b4c2bff5eb72aa053014662",
+      "status": "TRANSPORT_PASS_WATCHDOG_NOT_QUALIFIED",
+      "observed_idle_started_utc": "2026-10-21T00:13:03.667Z",
+      "idle_seconds": 600.1086,
+      "idle_command_writes": 0,
+      "first_post_idle_reply_ms": 124,
+      "reopened_reply_ms": 21.8,
+      "uptime_seconds": [
+        378,
+        979,
+        981
+      ],
+      "core_error_flags": 0,
+      "watchdog_recoveries_before": 0,
+      "watchdog_recoveries_after": 2,
+      "last_watchdog_reason": "0x08",
+      "last_watchdog_reason_meaning": "client_inactivity",
+      "identity_settings_binary_handback_cleanup": "PASS",
+      "native_safe_evidence_sha256": "8f5f9e9060ab1643575caf121bd1ee0cf703cecf0e02548f5b9c6c7f85701adf",
+      "earlier_browser_startup_failure_preserved": true
+    },
+    "presence_fix": {
+      "source_commit": "7278eacb9131d613da719fee814fefcdad3adf23",
+      "included_in_final_source": true,
+      "continuous_presence_loss_debounce_ms": 100,
+      "host_backed_physical_reader_recognized": true,
+      "bus_reset_stall_and_true_unplug_recovery_preserved": true,
+      "both_historical_events_conclusively_attributed": false
+    },
+    "ordinary_shipping_restore": {
+      "source_commit": "0b207a1ec3a32eb0a8ad6b8643db211de4921cd4",
+      "status": "PASS",
+      "finished_utc": "2026-10-21T01:21:32.396048Z",
+      "application_only": true,
+      "application_bytes": 2559496,
+      "artifact_and_readback_sha256": "04eed20ee0f964fef2a5a0f74f4aafe4b11e0a71b011ff757efc96c03a2cfb14",
+      "whole_application_readback_match": true,
+      "partition_table_unchanged": true,
+      "otadata_unchanged": true,
+      "runtime_source_identity_and_binary_handback": "PASS",
+      "raw_diagnostic_marker_absent": true,
+      "core_error_flags": 0,
+      "summary_sha256": "ee6a5fa3dbbf8c902e2b2f418831730ef6d91ca42d314dba5b3dd67ef59a1203"
+    },
+    "final_logging_on_case3": {
+      "source_commit": "0b207a1ec3a32eb0a8ad6b8643db211de4921cd4",
+      "status": "PASS",
+      "required_idle_seconds": 600,
+      "required_unchanged_recovery_and_boot_counters": true,
+      "measured_idle_seconds": 600.0913000000119,
+      "recovery_counters": {
+        "before": 2,
+        "after": 2
+      },
+      "boot_counters": {
+        "before": 0,
+        "after": 0
+      },
+      "identity_uptime_settings_and_binary_handback": "PASS",
+      "safe_evidence_sha256": "75f6bfa7738269d4574f63d6efa6a6795282dd7b6ba6f2694a1eaa5e1f0097ac",
+      "idle_command_writes": 0,
+      "summary_sha256": "f674b83d34a64e5a5ae94411303f42ad7448b3c4a1d31a9723b8086e6e66dc48",
+      "first_post_idle_reply_ms": 105.30000001192093,
+      "reopened_reply_ms": 20.5,
+      "uptime_seconds": [
+        172,
+        773,
+        775
+      ],
+      "core_error_flags": 0,
+      "original_preferences_restored": true,
+      "original_tty_restored": true,
+      "native_streams_and_owned_browser_closed": true,
+      "finished_utc": "2026-10-21T01:34:33.510254+00:00"
+    }
+  },
+  "shipping_morse": {
+    "automatic_detection": true,
+    "hil_threshold_overrides": false,
+    "baseline_quiet_30_seconds": {
+      "source_commit": "08650f644b680a5dfaacb95142e3cef8529da9d2",
+      "status": "FAIL",
+      "rak_false_characters": 3,
+      "t096_false_characters": 1
+    },
+    "adaptive_quiet_30_seconds": {
+      "source_commit": "4773ac4219666d0f5b4c2bff5eb72aa053014662",
+      "rak_status": "PASS_CONTROL_ONLY",
+      "rak_false_characters": 0,
+      "t096_status": "UNQUALIFIED_CONTENDED",
+      "t096_retained_characters": 6,
+      "t096_first_command_timeout": true,
+      "t096_detector_failure_attributed": false
+    },
+    "esp32_one_way_campaign": {
+      "transmitter_source_commit": "08650f644b680a5dfaacb95142e3cef8529da9d2",
+      "receiver_source_commit": "4773ac4219666d0f5b4c2bff5eb72aa053014662",
+      "status": "FAIL",
+      "quiet_control_first": true,
+      "quiet_seconds": 300.82076147598855,
+      "quiet_false_characters": 26,
+      "messages": 3,
+      "rates_wpm": [
+        25,
+        60
+      ],
+      "repeats": 2,
+      "exact_message_passes": 4,
+      "exact_message_failures": 8,
+      "substitutes_for_original_two_way_24_trial_matrix": false,
+      "both_preferences_restored": true,
+      "both_strict_binary_handbacks": "PASS",
+      "wrapper_errors": [],
+      "summary_sha256": "40b5d555c177d81ea11a1fa71e73dafb0e015ee4e25d146a82bf986873bc3405"
+    },
+    "operator_acceptance": {
+      "scope": "current_false_letters_limitation",
+      "accepted": true,
+      "further_detector_gate_work_stopped": true,
+      "mandatory_additional_morse_experiments": false,
+      "complete_message_accuracy_acceptance_or_qualification_inferred": false,
+      "failed_measurements_relabelled": false
+    },
+    "final_source_settings": {
+      "receive_minimum_configured_wpm": 15,
+      "default_wpm": 25,
+      "transmit_1_through_14_wpm_available": true,
+      "hand_timing_tolerance_retained": true,
+      "absolute_physical_speed_cutoff_claimed": false
+    },
+    "separate_raw_diagnostics": {
+      "source_commit": "0b207a1ec3a32eb0a8ad6b8643db211de4921cd4",
+      "instrumentation_hil": true,
+      "production_rf_settings": true,
+      "automatic_squelch": true,
+      "capture_integrity": "PASS",
+      "both_preferences_restored": "PASS",
+      "both_strict_binary_handbacks": "PASS",
+      "ordinary_shipping_image_restored": true,
+      "shipping_accuracy_qualification": false,
+      "further_analysis_stopped_at_operator_request": true,
+      "completed_capture_summary_sha256": "b1d06e6ed98273e29da28601f9a65b273a40d0f295e400f93fc99d12c90c9687"
+    }
+  },
+  "external_nrf52_bootloader_deployment": {
+    "evidence_basis": "operator_report_and_independently_read_deployment_record",
+    "status": "COMPLETE_WITH_KNOWN_LIMITATIONS",
+    "source_commit": "b07255d4cdc601f1313e4cbe020caad3b5544821",
+    "test_bootloader_version": "TEST_0x02040B7E",
+    "latest_stable_release_claimed": false,
+    "live_info_and_original_application_handoffs": 8,
+    "gateway_service_handback": "PASS",
+    "published_or_pushed_by_deployment": false,
+    "scheduled_concurrent_control": {
+      "status": "FAIL",
+      "epipe_errors": 1,
+      "successful_requests": 31
+    },
+    "unique_bulk_halt_clear_cycles_passed": 11,
+    "rak_secondary_data_preservation": "UNCERTAIN_AFTER_EARLIER_MANUAL_SCRATCH_OVERLAP",
+    "rak_identity_and_seven_settings_match": true,
+    "rak_complete_immediately_pre_scratch_contact_channel_baseline_available": false,
+    "final_source_application_qualification_claimed": false,
+    "installed_safe_record_sha256": "297cdfa58fb7d0420694422b680ee25de7d267aa81436911389ea9a766c3110a"
+  },
+  "pending": [
+    "current_ci_completion_and_final_release_artifact_matrix_binding"
+  ]
+}

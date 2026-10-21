@@ -2261,6 +2261,17 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
+  <a href="#known-failure-follow-up-2026-10-2021-utc" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Known-failure follow-up, 2026-10-20/21 UTC
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#mercerwood-candidate-campaign-2026-10-18-utc" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2519,6 +2530,31 @@ and runtime switches, use <a href="../../role_feature_switches/">feature switche
 when its log identifies the physical device, firmware artifact, artifact hash,
 command result, and cold/warm boot outcome. Do not infer success from a tool's
 exit code when the tool has a documented false-success mode.</p>
+<h2 id="known-failure-follow-up-2026-10-2021-utc">Known-failure follow-up, 2026-10-20/21 UTC</h2>
+<p>The <a href="../hardware_validation_known_failures_1_18_0_1_2026-10-20/">follow-up report</a>
+binds builds, host tests and hardware observations to their actual sources.
+It preserves the earlier failures and the accepted fleet results.</p>
+<ul>
+<li>[x] <strong>Current V4 Full logging-on idle/reopen:</strong> shipping source <code>0b207a1ec</code>
+  passed case 3: 600.0913 seconds, zero idle writes, 105.3/20.5 ms post-idle
+  reply/reopen, continuous uptime and zero core errors. Watchdog recoveries
+  stayed 2 -&gt; 2 and boot count 0 -&gt; 0. Original settings, strict binary
+  handback, TTY/browser/stream cleanup passed. Complete application readback
+  matched the shipping image; partition table/OTA metadata were unchanged.</li>
+<li>[x] <strong>Morse receive setting floor:</strong> configured reception now requires at
+  least 15 WPM, with default 25; TX at 1-14 WPM remains available. The operator
+  accepts false letters for now. Earlier quiet/message failures remain recorded;
+  complete-message accuracy and an absolute physical speed cutoff are not
+  inferred from setting validation.</li>
+</ul>
+<p>The independent eight-board nRF52 test-bootloader deployment and original-app
+handoffs are complete with documented USB concurrency and RAK secondary-data
+preservation limits. This is separate from final-source Companion qualification.
+The nRF52 testing hold is released; MeshPocket remains excluded.</p>
+<p>The current V4 differs from the physical board in the 18 October failure below.
+Its follow-up cannot establish that earlier USB disappearance's cause or erase
+the failed historical measurement. Remaining release gates keep their latest
+documented status.</p>
 <h2 id="mercerwood-candidate-campaign-2026-10-18-utc">Mercerwood candidate campaign, 2026-10-18 UTC</h2>
 <p>The <a href="../hardware_validation_mercerwood_1_18_0_1_2026-10-18/">current hardware campaign</a>
 records actual candidate flashes, identity-bound USB/BLE and warm-contact
