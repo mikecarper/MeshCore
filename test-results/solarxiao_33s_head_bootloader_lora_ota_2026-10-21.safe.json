@@ -1,0 +1,223 @@
+{
+  "date": "2026-10-21",
+  "passed": true,
+  "board": "SolarXiao 33S",
+  "carrier": "SolarXaio MPPT 12V LiFePO4",
+  "application_source_commit": "efad0076816f7ba2293c68f56f8db18ac17344b9",
+  "bootloader_source_commit": "b07255d4cdc601f1313e4cbe020caad3b5544821",
+  "firmware_version": "v1.18.0.1-halo-keymind-cascade-dev-efad0076 (Build: 21-Oct-2026)",
+  "application_image_sha256": "1a182b5338f7655b4fe057436768b84069c00aa151971c96d6c2b6f7c98e8524",
+  "application_package": "solarxiao_33S_repeater-full-ota-v1.18.0.1-halo-keymind-cascade-dev-efad0076.zip",
+  "application_package_sha256": "3149777742be172986634cb8ce40011c8f940812b29f3fb92decab2b8bab0c74",
+  "bootloader": {
+    "head_bootloader": true,
+    "bootloader_version": "02040B7E",
+    "runtime_bootloader_version": "OTAFIX2.4.11-preview.126",
+    "manifest_crc32": "76EBABBF",
+    "whole_flash_erase": false,
+    "identity_and_settings_preserved": true,
+    "qspi_ota_ready": true
+  },
+  "lora_ota": {
+    "manifest_id": "55E532FA",
+    "package_kind": "full",
+    "blocks": 283,
+    "bytes": 578752,
+    "expected_body": "6280E8156DB1042F",
+    "firmware_transport": "LoRa",
+    "target_control_transport": "USB CLI",
+    "target_firmware_bytes_written_over_USB": 0,
+    "receiver_rxps_disabled_for_transfer": true,
+    "last_status": "OTA | this fw C9137AAA (564K) hw=solarxiao_33S | target:3CAF966E | maxblk:2048 | bl:QSPI blrc:00 | download: ready to install 283/283 (100%) id=55E532FA 439s |",
+    "source_block_reads": [
+      283,
+      283,
+      2806
+    ],
+    "verified_full_download": true,
+    "installed_body_verified": true,
+    "identity_and_settings_preserved": true,
+    "target_normal_radio_restored": true,
+    "receiver_rxps_restored": true,
+    "source_normal_radio_restored": true,
+    "source_configuration_preserved": true,
+    "initial_cleanup_errors": [
+      "source: Source window remains active"
+    ],
+    "cleanup_verified_after_deferred_apply": true
+  },
+  "ota_radio": {
+    "frequency_mhz": 909.5,
+    "bandwidth_khz": 500,
+    "spreading_factor": 7,
+    "coding_rate_denominator": 5,
+    "preamble_symbols": 32
+  },
+  "source_firmware": "Companion v1.18.0.1-halo-keymind-cascade-dev-2bd4cb4d (protocol 14, build 21-Oct-2026)",
+  "acceptance": {
+    "usb_query_cycles": 10,
+    "usb_reopens": 3,
+    "warm_restart_verified": true,
+    "tx_and_repeat_persisted": true,
+    "trace_rounds_passed": 3,
+    "rounds": [
+      {
+        "index": 1,
+        "passed": true,
+        "host_send_commands": 1,
+        "nonce_sha256": "58e7cf1679df0070041db1ff8d65af1f063599c08c3cb1809c38e75c348bfd1f",
+        "elapsed_seconds": 0.498,
+        "firmware_estimate_millis": 2692,
+        "repeater_packet_delta": {
+          "recv": 1,
+          "sent": 1,
+          "direct_rx": 1,
+          "direct_tx": 1,
+          "recv_errors": 0
+        },
+        "hub_packet_delta": {
+          "received": 1,
+          "sent": 1,
+          "sent_flood": 0,
+          "sent_direct": 1,
+          "received_flood": 0,
+          "received_direct": 1,
+          "receive_errors": 0
+        },
+        "ignored_unowned_pushes": 1,
+        "exact_nonce_verified": true,
+        "exact_repeater_prefix_route_verified": true,
+        "route_bytes": 4,
+        "route_hops": 1,
+        "flags": 2,
+        "repeater_inbound_snr_db": 12.0,
+        "hub_return_snr_db": 12.25,
+        "reply_sha256": "3932d34b75ca42a49059593401b91482e4b5af20e2b63185f49e51708029f718"
+      },
+      {
+        "index": 2,
+        "passed": true,
+        "host_send_commands": 1,
+        "nonce_sha256": "f5cb8d2dfcdb68974eb086244e6ce2511b8479038979623e2fba071545fd1c9f",
+        "elapsed_seconds": 0.555,
+        "firmware_estimate_millis": 2692,
+        "repeater_packet_delta": {
+          "recv": 1,
+          "sent": 1,
+          "direct_rx": 1,
+          "direct_tx": 1,
+          "recv_errors": 0
+        },
+        "hub_packet_delta": {
+          "received": 1,
+          "sent": 1,
+          "sent_flood": 0,
+          "sent_direct": 1,
+          "received_flood": 0,
+          "received_direct": 1,
+          "receive_errors": 0
+        },
+        "ignored_unowned_pushes": 1,
+        "exact_nonce_verified": true,
+        "exact_repeater_prefix_route_verified": true,
+        "route_bytes": 4,
+        "route_hops": 1,
+        "flags": 2,
+        "repeater_inbound_snr_db": 13.0,
+        "hub_return_snr_db": 12.0,
+        "reply_sha256": "fe0721c9f674607bf31798b65ea0fbb0ca4f1c8adc6286dae56162e0362e7afa"
+      },
+      {
+        "index": 3,
+        "passed": true,
+        "host_send_commands": 1,
+        "nonce_sha256": "074d5d0c918bba537a0f78aef8ee2472de1d1e3922cfdcf1b61423a16d2d8cf0",
+        "elapsed_seconds": 0.536,
+        "firmware_estimate_millis": 2692,
+        "repeater_packet_delta": {
+          "recv": 1,
+          "sent": 1,
+          "direct_rx": 1,
+          "direct_tx": 1,
+          "recv_errors": 0
+        },
+        "hub_packet_delta": {
+          "received": 1,
+          "sent": 1,
+          "sent_flood": 0,
+          "sent_direct": 1,
+          "received_flood": 0,
+          "received_direct": 1,
+          "receive_errors": 0
+        },
+        "ignored_unowned_pushes": 1,
+        "exact_nonce_verified": true,
+        "exact_repeater_prefix_route_verified": true,
+        "route_bytes": 4,
+        "route_hops": 1,
+        "flags": 2,
+        "repeater_inbound_snr_db": 11.0,
+        "hub_return_snr_db": 11.75,
+        "reply_sha256": "c9ca8d2495d48b4a312e93d065e0112c99f323eee1a1a289c6bc4f9aa920cfa4"
+      }
+    ],
+    "final_core": {
+      "battery_mv": 4159,
+      "uptime_secs": 16,
+      "errors": 0,
+      "queue_len": 1
+    },
+    "final_packets": {
+      "recv": 5,
+      "sent": 4,
+      "flood_tx": 1,
+      "direct_tx": 3,
+      "flood_rx": 2,
+      "direct_rx": 3,
+      "recv_errors": 0
+    },
+    "partner_settings_preserved": true,
+    "endpoints_closed": true,
+    "transport": {
+      "ports_opened": 1,
+      "ports_closed": 1,
+      "request_frames_sent": 25,
+      "response_frames_received": 32,
+      "request_bytes_sent": 281,
+      "response_payload_bytes": 861,
+      "discarded_prefix_bytes": 0,
+      "invalid_length_candidates": 0,
+      "ignored_push_frames": 1
+    }
+  },
+  "final": {
+    "ver": "v1.18.0.1-halo-keymind-cascade-dev-efad0076 (Build: 21-Oct-2026)",
+    "board": "SolarXiao 33S",
+    "get role": "repeater",
+    "get tx": "-6",
+    "get repeat": "on",
+    "get radio": "910.5250244,62.5,7,5",
+    "get tempradio": "off",
+    "get radio.rxps.config": "on,level=8,preamble=16,rx=39657,sleep=15975",
+    "ota self": "self body=578696 image=578752 base_hash=6280E8156DB1042F | maxblk:2048 | QSPI store:2048K | bootloader: QSPI apply OK (abi=3 codecs=0x5)",
+    "ota status": "OTA | this fw 6280E815 (565K) hw=solarxiao_33S | target:3CAF966E | maxblk:2048 | bl:QSPI blrc:00 | no download | serving:off (0) | keys:0 | env:solarxiao_33S_r",
+    "ota bootloader status": "BL board=28860044 target=28860044 name=XIAO_DFU crc=76EBABBF abi=3 caps=0E | staged:none mid=- hash=-",
+    "stats-core": "{\"battery_mv\":4185,\"uptime_secs\":48,\"errors\":0,\"queue_len\":0}",
+    "stats-packets": "{\"recv\":16,\"sent\":7,\"flood_tx\":3,\"direct_tx\":4,\"flood_rx\":13,\"direct_rx\":3,\"recv_errors\":0}"
+  },
+  "cleanup": {
+    "source_configuration_preserved": true,
+    "contact_cleanup": {
+      "passed": true,
+      "created_contact_removed": true,
+      "original_contacts_preserved": true,
+      "remaining_count": 4,
+      "finished_at": 1792603957.3646097
+    },
+    "source_tunnel_closed": true
+  },
+  "scope": {
+    "fully_remote_scheduled_temporary_channel_activation_qualified": false,
+    "ota_with_target_receive_power_saving_enabled_qualified": false
+  }
+}

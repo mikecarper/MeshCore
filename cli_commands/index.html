@@ -2578,6 +2578,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#enable-or-disable-repeater-guest-logins" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Enable or disable repeater guest logins
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#view-or-change-this-nodes-guest-password" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -3111,6 +3122,17 @@
     <span class="md-ellipsis">
       
         View the current ACL
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#view-repeater-guest-sessions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        View repeater guest sessions
       
     </span>
   </a>
@@ -5592,6 +5614,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#enable-or-disable-repeater-guest-logins" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Enable or disable repeater guest logins
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#view-or-change-this-nodes-guest-password" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -6125,6 +6158,17 @@
     <span class="md-ellipsis">
       
         View the current ACL
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#view-repeater-guest-sessions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        View repeater guest sessions
       
     </span>
   </a>
@@ -9288,6 +9332,30 @@ replace radio ACL permissions.</p>
 <p><strong>Note:</strong> The password setter replies with confirmation.</p>
 <p><strong>Note:</strong> Any node using this password will be added to the admin ACL list.</p>
 <hr />
+<h4 id="enable-or-disable-repeater-guest-logins">Enable or disable repeater guest logins</h4>
+<p><strong>Availability:</strong> Repeater firmware. Local administrative consoles and authenticated
+remote admins can use these commands.</p>
+<pre><code class="language-text">get guest
+set guest on
+set guest off
+</code></pre>
+<p><strong>Default:</strong> <code>off</code>, including when upgrading from firmware without this setting.
+The choice is saved and takes effect without a reboot. <code>set guest off</code> also
+removes existing guest sessions immediately. Turning it back on requires guests
+to log in again; admin and assigned ACL access are unaffected.</p>
+<p>When enabled, guests must supply the configured <code>guest.password</code>. Its default is
+blank, so enabling guests without setting a password permits passwordless guest
+access. A guest can read repeater status and basic telemetry but cannot run
+administrative commands. This setting does not disable ordinary packet forwarding
+or public discovery queries.</p>
+<p>For example:</p>
+<pre><code class="language-text">set guest.password a-private-code
+set guest on
+get guests
+set guest off
+</code></pre>
+<p>Room-server login settings are unchanged.</p>
+<hr />
 <h4 id="view-or-change-this-nodes-guest-password">View or change this node's guest password</h4>
 <p><strong>Usage:</strong>
 - <code>get guest.password</code>
@@ -9296,6 +9364,9 @@ replace radio ACL permissions.</p>
 - <code>password</code>: Guest password</p>
 <p><strong>Set by build flag:</strong> <code>ROOM_PASSWORD</code> (Room Server only)</p>
 <p><strong>Default:</strong> <code>&lt;blank&gt;</code></p>
+<p>Repeater guest logins must also be enabled with <code>set guest on</code>. Changing this
+password takes effect immediately; use <code>set guest off</code> to remove existing guest
+sessions. Setting the password to <code>off</code> makes it the literal password <code>off</code>.</p>
 <hr />
 <h4 id="view-or-change-this-nodes-owner-info">View or change this node's owner info</h4>
 <p><strong>Usage:</strong>
@@ -11017,6 +11088,23 @@ ACL, so entries can move between pages if permissions or clients change.</p>
 or via Companion binary command <code>0x42</code> where the role supports the command.
 The listing contains public keys and permissions, not passwords or shared
 secrets, and does not change the ACL.</p>
+<hr />
+<h4 id="view-repeater-guest-sessions">View repeater guest sessions</h4>
+<p><strong>Usage:</strong></p>
+<ul>
+<li><code>get guests</code> - first page</li>
+<li><code>get guests &lt;page&gt;</code> - a numbered page, starting at 1</li>
+</ul>
+<p>Available on repeaters through local administrative consoles or an authenticated
+remote admin session. Delegated region/filter managers and guest clients cannot
+read this list.</p>
+<p>Each page starts with <code>Guests &lt;page&gt;/&lt;pages&gt; (&lt;total&gt;)</code> and shows one guest's full
+public key followed by <code>last=&lt;UTC epoch seconds&gt;</code>. An empty list returns
+<code>Guests: empty</code>. A <code>last=0</code> value can occur before the node's clock is set.</p>
+<p>These are live RAM entries, separate from the persistent ACL shown by <code>get acl</code>.
+They indicate an accepted session, not whether the guest is currently online.
+Entries can move between pages as clients change. A reboot or <code>set guest off</code>
+clears them.</p>
 <hr />
 <h4 id="recover-a-repeaters-future-dated-replay-timestamp">Recover a repeater's future-dated replay timestamp</h4>
 <p>This is an explicit recovery operation after correcting a bad clock, not a

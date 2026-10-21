@@ -2615,6 +2615,10 @@ the corresponding feature:</p>
 <td><code>get acl</code>, <code>log</code></td>
 <td>Infrastructure ACL or captured packet log; these stores do not exist on Companion</td>
 </tr>
+<tr>
+<td><code>get guest</code>, <code>set guest on</code>, <code>set guest off</code>, <code>get guests [page]</code></td>
+<td>Repeater guest-login control and current guest sessions</td>
+</tr>
 </tbody>
 </table>
 <p>The command text is the same for direct connections. A binary Companion app
@@ -3083,6 +3087,17 @@ LOGIN -&gt; Hilltop Repeater accepted (ACL permissions 0x03, server v13)
 cmd ver
 cmd get radio
 </code></pre>
+<p>Repeater guest logins default to off. An admin can use <code>cmd set guest on</code> to
+enable them or <code>cmd set guest off</code> to disable them and remove current guest
+sessions immediately. These settings are saved and need no reboot. When enabled,
+the configured <code>guest.password</code> applies; its blank default permits passwordless
+guest access. Admin and assigned ACL access are unaffected. Room-server login
+settings are unchanged.</p>
+<p>Use <code>cmd get guests</code> or <code>cmd get guests 2</code> from an admin session to inspect the
+repeater's guest entries. Each page shows one full public key and its last
+activity time in UTC epoch seconds. Guests are held in RAM, so this is a list of
+accepted sessions rather than proof that a device is currently reachable. They
+are cleared by a reboot or <code>set guest off</code> and remain separate from <code>get acl</code>.</p>
 <p>The exact commands and permissions depend on the target firmware. <code>cmd</code> does
 not run a command on the local Companion; it sends the text over LoRa to the
 selected node.</p>

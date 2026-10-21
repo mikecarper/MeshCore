@@ -2913,6 +2913,14 @@ Reboot or changing enrollment discards the partial transfers.</p>
 <td><code>get radio2.cross</code>, <code>set radio2.cross &lt;auto|on|off&gt;</code></td>
 </tr>
 <tr>
+<td>Repeater guest login</td>
+<td><code>get guest</code>, <code>set guest on|off</code></td>
+</tr>
+<tr>
+<td>Repeater guest sessions</td>
+<td><code>get guests [page]</code></td>
+</tr>
+<tr>
 <td>Filter rules</td>
 <td><code>get/set/del flood.filter[.n]</code>, <code>flood.rule[.n]</code></td>
 </tr>
@@ -2941,6 +2949,9 @@ Reboot or changing enrollment discards the partial transfers.</p>
 <p>Each role still checks whether it supports the requested setting. Immediate
 primary radio changes, identity export, passwords, ACL edits, filesystem operations, firmware
 installation, reboot, and unrestricted CLI are outside fleet capability.</p>
+<p>Repeater guest login defaults to off. <code>set guest off</code> saves that choice and
+clears existing guest sessions immediately. Enabling it uses the existing
+guest password; this switch does not change any password or assigned ACL role.</p>
 <p><code>set radio2 mediamesh</code> saves 911.150 MHz, 250 kHz, SF7, CR 4/5, <code>rxtx</code>,
 with automatic scan-aware preamble. <code>mediamesh-range</code> uses 125 kHz instead.
 These presets preserve the primary profile and crossing policy; new
