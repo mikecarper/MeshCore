@@ -1,0 +1,211 @@
+{
+  "schema": 1,
+  "report_date": "2026-10-21",
+  "status": "PASS",
+  "scope": "Requested V4 MQTT setup and Bellevue Station G2 Full Repeater installation; source-bound finite runtime checks, preserving saved configuration.",
+  "v4": {
+    "schema": 1,
+    "status": "PASS",
+    "device": "Heltec V4.3 OLED",
+    "firmware_source": "2bd4cb4d119ce4d588b91a3aa9cfda507e188c13",
+    "firmware_reflashed": false,
+    "saved_configuration": {
+      "wifi_enabled": true,
+      "mqtt_enabled": true,
+      "slot1_preset": "analyzer-us",
+      "transport": "WSS with existing device-signed JWT authentication",
+      "region_iata": "SEA",
+      "report_interval_minutes": 5,
+      "wifi_password_changed": false,
+      "admin_password_changed": false,
+      "other_saved_broker_slots_changed": false,
+      "radio_settings_changed": false
+    },
+    "measurements": {
+      "connected_with_broker_PUBACK": true,
+      "setup_pub_ack": 2,
+      "stability_started_at": "2026-10-21T15:49:59.562699+00:00",
+      "stability_finished_at": "2026-10-21T15:52:16.929845+00:00",
+      "stability_elapsed_seconds": 137.367146,
+      "pub_ack_before": 3,
+      "pub_ack_after": 5,
+      "uptime_before": 29881,
+      "uptime_after": 30017,
+      "all_core_errors_zero": true,
+      "all_core_queues_zero": true,
+      "all_mqtt_outboxes_zero": true,
+      "all_mqtt_drops_zero": true,
+      "DMA_free_bytes": [
+        [
+          50064,
+          49140
+        ],
+        [
+          50064,
+          49140
+        ],
+        [
+          50056,
+          49140
+        ],
+        [
+          50060,
+          49140
+        ],
+        [
+          50056,
+          49140
+        ],
+        [
+          50064,
+          49140
+        ]
+      ],
+      "final_reconnect_after_restoring_5min_interval_pub_ack": 1
+    },
+    "limits": [
+      "Broker acknowledgments confirm accepted publications; independent subscriber payload receipt was not measured",
+      "The held observation is finite, not a long-duration soak",
+      "Slot2 analyzer-eu remains saved; its connectivity is not claimed"
+    ],
+    "evidence_sha256": {
+      "v4-initial.private.json": "799ce0686dfaf31e9b5d3a0b5452782307cca1dd4bd166f5a96f4cc117ae3ac0",
+      "v4-config-before.private.json": "beb2e22068855f6bb191ceed9040552a4958c942c81017ac97f7b2821b1c2b04",
+      "v4-mqtt-setup.private.json": "435d3d64c912cee42055cede3f57898713f442683af9de9c47a5a94af165e3de",
+      "v4-mqtt-observe.private.json": "03512b2b5a53fce3049e4d05814b31e722628d2f0f328079f63c03f14eee3390",
+      "v4-mqtt-finish.private.json": "59ac5a0b47733de6fae4031d15e4af347ec4ab5941369d9b672d0d28653d4a48",
+      "v4-final-handoff.private.json": "178a1ce9daa2aa9b4c2f518b19270ac2834609f358de7fefcf23b1e8c00238ca"
+    }
+  },
+  "g2": {
+    "status": "PASS",
+    "board": "Station G2",
+    "target": "Station_G2_repeater_observer_mqtt",
+    "source_commit": "a926341f53f25895c1b827e7a9ded3fe3948707e",
+    "runtime_version": "v1.18.0.1-halo-keymind-cascade-dev-observer-a926341f",
+    "body_hash": "4233FACEB6C44EAE",
+    "target_id": "DBB6A855",
+    "application_sha256": "459f2e1de20460b54ac00cd545dfe11490b13081072c3aed47b1398dd276dcf5",
+    "application_bytes": 2118264,
+    "build": {
+      "passed": true,
+      "profile": "full",
+      "available_internal_bytes": 200432,
+      "required_heap_bytes": 192656,
+      "required_contiguous_bytes": 21184,
+      "verified_capabilities": [
+        "bridge.espnow",
+        "profile.full",
+        "release.full.same_partition_successor",
+        "ota.update.wifi",
+        "ota.update.lora",
+        "cli.retry_preset",
+        "telemetry.history",
+        "ota.cli",
+        "web.webconfig",
+        "logging.usb.packets",
+        "logging.usb.control",
+        "logging.usb.output"
+      ],
+      "physical_OTA_install_tested_this_task": false
+    },
+    "installation": {
+      "method": "USB active-application-slot update via identity-bound real flasher session",
+      "application_address": 6619136,
+      "slot_size": 6553600,
+      "flash_bytes": 16777216,
+      "CRC_valid_active_OTA_selection": true,
+      "full_application_readback_verified": true,
+      "partition_table_unchanged_during_write": true,
+      "OTA_metadata_unchanged_during_write": true,
+      "NVS_hashes_unchanged_during_write": true,
+      "whole_flash_erased": false,
+      "full_flash_backup_created": false,
+      "finished_before_runtime_check": "2026-10-21T16:13:57.046009+00:00"
+    },
+    "handback": {
+      "repeater_role_verified": true,
+      "repeat_on": true,
+      "repeating_setting_changed": false,
+      "persisted_public_identity_preserved": true,
+      "saved_settings_preserved": [
+        "radio",
+        "TX power",
+        "name",
+        "WiFi SSID",
+        "MQTT region",
+        "MQTT slot1 preset",
+        "MQTT enabled",
+        "power saving"
+      ],
+      "radio_MHz": 910.5250244,
+      "bandwidth_kHz": 62.5,
+      "SF": 7,
+      "CR": 5,
+      "TX_dBm": 19,
+      "gateway_service": "mctomqtt.service",
+      "gateway_active_and_owns_exact_USB_radio": true,
+      "finished_at": "2026-10-21T16:16:16.796932+00:00",
+      "core": {
+        "battery_mv": 0,
+        "uptime_secs": 149,
+        "errors": 0,
+        "queue_len": 0
+      },
+      "local_packet_counters": {
+        "recv": 84,
+        "sent": 18,
+        "flood_tx": 17,
+        "direct_tx": 1,
+        "flood_rx": 84,
+        "direct_rx": 0,
+        "recv_errors": 53
+      }
+    },
+    "history": {
+      "preinstall_version": "v1.17.1.9-halo-keymind-cascade-dev-observer-88c85108 (Build: 07-Oct-2026)",
+      "preinstall_core": {
+        "battery_mv": 0,
+        "uptime_secs": 514679,
+        "errors": 2,
+        "queue_len": 0
+      },
+      "initial_postboot_core": {
+        "battery_mv": 0,
+        "uptime_secs": 13,
+        "errors": 0,
+        "queue_len": 1
+      },
+      "initial_gate": "First updater required an immediately empty queue and stopped handback when one in-flight packet was present; core errors were zero.",
+      "followup": "Same installed firmware, exact role/identity/body check and bounded queue settling; final core errors and queue zero; original service restored. No second flash."
+    },
+    "evidence_sha256": {
+      "g2-repeater-mode.private.json": "33bd01887f37976ae57625cc38bed19f4d1b67ceefb138d48a923d6540448007",
+      "g2-update.private.json": "d5fdd68a7c4b69490e044bb13382aecff6bfac165533667f60a872279c1cb422",
+      "esptool5-toolchain.safe.json": "b1aa669f926122c685da2bd3b913ce5293b3b032766509abebe5a2a5817a4d0a",
+      "g2-preflight-maintenance.private.json": "bc64ad47f4f91d083586ea60ea5bf8cce9752eaa64a42aa15127595f9fa19ad7",
+      "g2-post-update-runtime.private.json": "cadcd09599d017796f6cc40cb806c28b6d876020ebdabab16cfce1521bda9a83",
+      "g2-initial.private.json": "58ff2cb0cd0cf1c265a443f6e8998512e2dee09f6309465583514ae70134b934",
+      "g2-app-only.5PDUMy/otadata-before.bin": "062f79dd9748aef0e56afddd5db3112af00549478e9d478e38137d5f3232f3a3",
+      "g2-app-only.5PDUMy/readback-validation.log": "4a23e7cd0007c14ffa1315243d874da297c8f5d07f4691084a77b5f532020a68",
+      "g2-app-only.5PDUMy/inputs.json": "c465b370c19591754661313afd5c175c9c5a951071101517561051083a027bb9",
+      "g2-app-only.5PDUMy/chip-id.log": "4fbc18754870b54011aa466f2d745f41cdf8a3abe625ad21c61267c97891f085",
+      "g2-app-only.5PDUMy/otadata-after.bin": "062f79dd9748aef0e56afddd5db3112af00549478e9d478e38137d5f3232f3a3",
+      "g2-app-only.5PDUMy/table-after.bin": "9af3af2b74e944337ba85f2b0027ee80df160579a1ab746ba0f95853f618cd60",
+      "g2-app-only.5PDUMy/flash-id.log": "7081b077e1d870cac28a1f27a1718d7cc478d77d16c71aaef09bde9925dabaf7",
+      "g2-app-only.5PDUMy/finish.log": "bf1313b4bcf482b65afac381e7023e6ce4deb2a1fcbb139a434166053ee7d898",
+      "g2-app-only.5PDUMy/receipt.safe.json": "18ff87dc1063d858b273084d398feb1ac0fe003ee0fe9a30073e9573347a024b",
+      "g2-app-only.5PDUMy/protected-after-hashes.json": "0d26cc446d400d03279716e6724cb265fd27cbb78031c35dfe9a5a4b14a08c79",
+      "g2-app-only.5PDUMy/write.log": "d9cd5efaa91bafbf271380ab0eac5124f27393e482fe87596fdf21b3734560b3",
+      "g2-app-only.5PDUMy/protected-hashes.json": "73679b17f25c18d20608835e8a689ab4e2d536f32d8888cb1ff3ab368166c264",
+      "g2-app-only.5PDUMy/table-before.bin": "9af3af2b74e944337ba85f2b0027ee80df160579a1ab746ba0f95853f618cd60"
+    },
+    "limits": [
+      "Local radio counters establish observed activity, not independent peer delivery or RF range",
+      "No physical WiFi/LoRa OTA installation, long-duration load or power measurements in this task",
+      "Protected NVS/table/OTA hashes refer to the flash-write interval; saved logical settings and identity were separately compared after boot"
+    ]
+  },
+  "firmware_source_changed_in_this_task": false,
+  "other_boards_or_gateway_services_changed": false
+}
