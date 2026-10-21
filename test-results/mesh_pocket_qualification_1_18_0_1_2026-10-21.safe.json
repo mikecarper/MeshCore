@@ -1,0 +1,217 @@
+{
+  "schema": 1,
+  "report_date": "2026-10-21",
+  "status": "PASS",
+  "scope": "Fresh automated Full Companion USB/BLE/contact-persistence/direct-LoRa qualification after the user lifted MeshPocket bootloader-work exclusion. Screen, cold-power, range, phone interoperability and physical wireless DFU are not claimed.",
+  "board": "Heltec MeshPocket",
+  "target": "Mesh_pocket_companion_radio_full",
+  "source_commit": "21a0f318da26bdb1fa5257471c3d7a68a0684337",
+  "version": "v1.18.0.1-halo-keymind-cascade-dev-21a0f318 (Build: 21-Oct-2026)",
+  "application_sha256": "7841c4e7e8bbb8695ba0e796fa811efa41112367641c2790f22cc9085ba00da6",
+  "body_hash": "54411895235BE9C4",
+  "firmware_modified_in_this_task": false,
+  "bootloader": {
+    "action": "preserved_by_application_only_DFU",
+    "bootloader_or_softdevice_components_transferred": false,
+    "current_exact_version": null,
+    "version_query": "get bootloader.ver is unsupported by the measured Full Companion",
+    "independent_bootloader_image_assumed": false
+  },
+  "axes": {
+    "build": {
+      "status": "PASS",
+      "memory_available_internal_bytes": 85352,
+      "memory_required_heap_bytes": 53056,
+      "memory_required_contiguous_bytes": 8192
+    },
+    "application_install": {
+      "status": "PASS",
+      "method": "identity_bound_USB_serial_application_only_DFU",
+      "application_return_verified_by_exact_version_and_EndF_body": true,
+      "backups_created": false,
+      "full_flash_erased": false
+    },
+    "usb": {
+      "status": "PASS",
+      "started_at": "2026-10-21T15:13:55.339146+00:00",
+      "finished_at": "2026-10-21T15:14:50.564843+00:00",
+      "query_cycles": 100,
+      "reopens": 10,
+      "owned_crud": true,
+      "owned_record_survives_verified_warm_reboot": true,
+      "warm_reboot_requests": 1,
+      "stable_binary_transport": {
+        "discarded_prefix_bytes": 0,
+        "ignored_push_frames": 0,
+        "invalid_length_candidates": 0,
+        "ports_closed": 18,
+        "ports_opened": 18,
+        "request_bytes_sent": 5419,
+        "request_frames_sent": 662,
+        "response_frames_received": 667,
+        "response_payload_bytes": 24927
+      },
+      "channel_state_unchanged": true,
+      "initial_contacts": 1,
+      "final_contacts": 1
+    },
+    "ble": {
+      "status": "PASS",
+      "started_at": "2026-10-21T15:14:58.890522+00:00",
+      "finished_at": "2026-10-21T15:17:17.349636+00:00",
+      "sessions": 3,
+      "hold_seconds": [
+        30.269,
+        30.271,
+        30.271
+      ],
+      "preexisting_bond": true,
+      "target_bond_deleted": false,
+      "usb_identity_and_version_verified": true,
+      "USB_data_cable_remained_connected": true,
+      "hci_lifecycle": {
+        "capture_ended_before_timeout": true,
+        "classification_complete": true,
+        "clean": true,
+        "ignored_foreign_connection_events": 0,
+        "lifecycle_parse_errors": 0,
+        "minimum_required_sessions": 3,
+        "target_command_failures": 0,
+        "target_disconnect_reasons": [
+          "0x16",
+          "0x16",
+          "0x16"
+        ],
+        "target_disconnect_statuses": [
+          "0x00",
+          "0x00",
+          "0x00"
+        ],
+        "target_establishment_0x3e_disconnects": 0,
+        "target_failed_establishments": 0,
+        "target_ll_response_timeout_0x22_disconnects": 0,
+        "target_open_handles_at_end": 0,
+        "target_pending_attempts_at_end": 0,
+        "target_successful_connection_events": 3,
+        "target_timeout_0x08_disconnects": 0,
+        "unattributed_controller_events": 0
+      }
+    },
+    "contact_refresh": {
+      "status": "PASS",
+      "started_at": "2026-10-21T15:17:31.314046+00:00",
+      "finished_at": "2026-10-21T15:18:41.651834+00:00",
+      "owned_full_records": 64,
+      "full_total_records": 65,
+      "full_request_to_end_seconds": 2.491665,
+      "owned_incremental_records": 32,
+      "incremental_total_records": 33,
+      "incremental_request_to_end_seconds": 1.305048,
+      "owned_deleted": 64,
+      "owned_remaining": 0,
+      "unrelated_records_preserved": true,
+      "existing_bond_and_clean_HCI_verified": true,
+      "persist_allowance_seconds": 7,
+      "cold_persistence_claimed": false
+    },
+    "lora": {
+      "status": "PASS",
+      "started_at": "2026-10-21T15:21:14.086947+00:00",
+      "finished_at": "2026-10-21T15:22:40.088960+00:00",
+      "rounds": 3,
+      "directions_per_round": 2,
+      "exact_direct_nonce_datagrams_received": 6,
+      "send_commands": 6,
+      "temporary_frequency_MHz": 910.525,
+      "bandwidth_kHz": 62.5,
+      "spreading_factor": 7,
+      "coding_rate": 5,
+      "preamble": 32,
+      "mixed_source_pair": true,
+      "partner": {
+        "expected_version": "v1.18.0.1-halo-keymind-cascade-dev-ebb59d48",
+        "source_commit": "ebb59d48292de4a573250cf4c6a2ed7cf5f7ef69",
+        "target": "Xiao_S3_WIO_companion_radio_full"
+      },
+      "partner_body_hash": "4EEB12667E5E554B",
+      "owned_channels_removed": true,
+      "original_radio_TX_settings_and_routes_restored": true,
+      "final_handback_passed": true,
+      "ports_unowned_after_close": true,
+      "final_core": {
+        "battery_mv": 4130,
+        "error_flags": 0,
+        "outbound_queue_length": 0,
+        "uptime_seconds": 480
+      }
+    },
+    "screen": {
+      "status": "NOT_OBSERVED",
+      "operator_check_requested": true
+    },
+    "wifi": {
+      "status": "NOT_APPLICABLE",
+      "reason": "No native WiFi radio on this nRF52840 board"
+    },
+    "wireless_OTA": {
+      "status": "NOT_MEASURED",
+      "build_verified_bluetooth_DFU_capability": true,
+      "USB_DFU_measured": true,
+      "LoRa_role": "source-only; local install disabled"
+    }
+  },
+  "evidence_sha256": {
+    "initial-inventory.private.json": "faf876cf4835a7b6711595b9f3258f90de785a8edf1251c5856910523576971a",
+    "bootloader-before.private.json": "185291ff70854e38cf94c0c61e06de522f46789597b0bb6523282e6381fe4678",
+    "install.safe.json": "0c57088884a6ea50c28dc3a9cd3c07f81164f115075b99cff0f3d35a4aa7bccf",
+    "install-retry.safe.json": "3b83c7097203bbaf42862b0e1c44fc5131d83f1b6cf626c3d76e0d2cefb6508d",
+    "post-install-runtime.private.json": "a46998359e606591e1c3e4f2ac7e859445f5aa77a73d66e9c76598cdaf81e220",
+    "build-verified.safe.json": "da2b471f951052ba69ddd13e935d7f127717f2f45f134bc41b01e7f289f9a70c",
+    "usb/summary.safe.json": "58a52ce6d4c42450fa812ed09b3c44d229a21b8b3bc3188e1ef1647feda9451d",
+    "usb-setup.safe.json": "ec43c8098837506110e9fec0248c2a3d85565b85165502def264fd2301e7020c",
+    "ble/summary.safe.json": "5d4aef872afbac18a214074e063cbed1d10f6489a1540866675433e01e14b13a",
+    "contacts/summary.safe.json": "7bdd680e899ca0ba633b0f8b346c4485928ebc86b581f52bb991254f6da6c94a",
+    "contacts/sync/summary.safe.json": "4b8e2f0eb919c3f452812f721dabe9a62d5e58df2af9472494563950900bff45",
+    "contacts/cleanup/summary.safe.json": "6f3e136bef3e3bad9fcedf85feecbb207286bcdc5ec5cc4030be3950a8715623",
+    "rf/summary.safe.json": "e0d9e93f834e1758aaa7b59d1c5915883ec0f656146249e1269e5dad91af6f60"
+  },
+  "drivers": {
+    "campaign_sha256": "863706b02cf88eb13c5e1ea0f1018663b6c3ecf16989c5cc24f490c1bdb404f0",
+    "rf_driver_sha256": "83ed1d30e1c25371709d39c48e3a4bb4a9a44e659093ab4cd75737b639cb5880",
+    "reviewed_harness_manifest_sha256": "580f758c2a70333205b3eaa41e4f45b6a7c85058477c959bc885b04c215cfcab"
+  },
+  "history": {
+    "preinstall_source": "08650f644b680a5dfaacb95142e3cef8529da9d2",
+    "preinstall_core_error_flags": 8,
+    "postinstall_measured_core_error_flags": 0,
+    "causal_firmware_fix_claimed": false,
+    "first_updater_attempt": "Failed before touch/programming due to omitted hardened-helper startup globals; preserved separately",
+    "successful_install_flasher_sha256": "4da05ba37c2cb8b4a7e455a4aa3ee24f6d8020912d71874c38afd099e98e75b2"
+  },
+  "test_tool_fix": {
+    "files": [
+      "tools/hil/mercer_nrf_app_flash.sh",
+      "test/test_mercer_nrf_app_flash.py"
+    ],
+    "description": "Definitions-only adapter validates and privately stages pinned bundled USB helpers; local-only resolution without sourcing flasher startup",
+    "focused_adapter_tests_passed": 14,
+    "application_zip_verifier_tests_passed": 5,
+    "hardware_retest_after_test_tool_only_change": false
+  },
+  "fleet_scope": {
+    "pocket_exclusion_lifted_by_user": true,
+    "newly_measured_boards": 1,
+    "previously_accepted_boards": 12,
+    "previous_measurements_repeated": false,
+    "all_thirteen_same_source_claimed": false,
+    "gateway_service_touched": false
+  },
+  "limits": [
+    "Finite bench operation, not RF range or long-duration reliability",
+    "Screen and physical button rendering await operator observation",
+    "No physical cold-power or battery-current measurement",
+    "No physical Bluetooth DFU or LoRa firmware-source transfer in this task",
+    "Exact installed bootloader revision is unavailable through this Companion getter",
+    "Other boards retain their own source-bound reports"
+  ]
+}
