@@ -2655,6 +2655,7 @@ Companion signs with its own identity. No publisher private key is copied to a
 repeater, and no app protocol change is required.</p>
 <p>Examples use private channel index <code>3</code>:</p>
 <pre><code class="language-text">fleet send 3 get radio2
+fleet send 3 set radio2 mediamesh
 fleet send 3 set tempradio2 910.5,500,8,5,rxtx,120
 fleet send 3 set radio2.cross auto
 fleet send 3 set flood.rule.4 type=grp_txt hops=6+ drop
@@ -2885,7 +2886,7 @@ Reboot or changing enrollment discards the partial transfers.</p>
 <tbody>
 <tr>
 <td>Saved second profile</td>
-<td><code>get radio2</code>, <code>set radio2 &lt;tuple|off&gt;</code></td>
+<td><code>get radio2</code>, <code>set radio2 &lt;tuple|mediamesh|mediamesh-range|off&gt;</code></td>
 </tr>
 <tr>
 <td>Temporary second profile</td>
@@ -2940,6 +2941,10 @@ Reboot or changing enrollment discards the partial transfers.</p>
 <p>Each role still checks whether it supports the requested setting. Immediate
 primary radio changes, identity export, passwords, ACL edits, filesystem operations, firmware
 installation, reboot, and unrestricted CLI are outside fleet capability.</p>
+<p><code>set radio2 mediamesh</code> saves 911.150 MHz, 250 kHz, SF7, CR 4/5, <code>rxtx</code>,
+with automatic scan-aware preamble. <code>mediamesh-range</code> uses 125 kHz instead.
+These presets preserve the primary profile and crossing policy; new
+configurations default to radio2 off and <code>radio2.cross off</code>.</p>
 <h2 id="schedule-radio-changes-and-set-clocks">Schedule radio changes and set clocks</h2>
 <p>Use the normal schedule syntax, with UTC epoch seconds or <code>+N</code> whole minutes.
 Primary schedules are supported by repeaters; a role without a primary scheduler

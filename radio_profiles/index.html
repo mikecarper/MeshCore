@@ -1299,6 +1299,34 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="Quick setup">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#mediamesh-presets" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        MediaMesh presets
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#channel-spacing" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Channel spacing
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -2568,6 +2596,34 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="Quick setup">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#mediamesh-presets" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        MediaMesh presets
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#channel-spacing" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Channel spacing
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -2836,6 +2892,8 @@
 <p><code>radio2</code> lets one LoRa transceiver alternate between two frequencies or modulation
 settings. It is useful for listening to two networks, or keeping your usual
 channel available during a LoRa firmware update.</p>
+<p>The second profile and <code>radio2.cross</code> both default to <code>off</code>. Saved settings
+survive firmware updates; selecting a profile does not change the crossing policy.</p>
 <p>There are <strong>at most two active profiles</strong>. <code>tempradio</code> temporarily replaces
 <code>radio</code>; <code>tempradio2</code> temporarily replaces <code>radio2</code>. These are time-shared receive
 windows, not simultaneous receivers. Receiving or transmitting a packet on one
@@ -2854,6 +2912,29 @@ get radio2.status
 </code></pre>
 <p>The tuple is <strong>frequency in MHz, bandwidth in kHz, spreading factor, coding-rate
 denominator, mode, optional preamble in symbols</strong>. <code>5</code> means coding rate 4/5.</p>
+<h3 id="mediamesh-presets">MediaMesh presets</h3>
+<p>Enable the saved MediaMesh profile with one command:</p>
+<pre><code class="language-text">set radio2 mediamesh
+</code></pre>
+<p>This sets <strong>911.150 MHz, 250 kHz, SF7, CR 4/5, <code>rxtx</code>, automatic preamble</strong>.
+For the same profile at <strong>125 kHz</strong>, use:</p>
+<pre><code class="language-text">set radio2 mediamesh-range
+</code></pre>
+<p>The RF settings match the presets documented by
+<a href="https://github.com/jade-on-mesh/meshcore-open-tak/blob/main/documentation/media-mesh.md">MeshCore Open TAK</a>
+and <a href="https://github.com/jade-on-mesh/wadamesh-tak/blob/main/MEDIAMESH.md">Wadamesh TAK</a>.
+Nodes exchanging media need matching radio settings.</p>
+<p>Both leave the primary profile and <code>radio2.cross</code> unchanged. The center is
+625 kHz above a 910.525 MHz primary. Automatic preamble remains scan-aware;
+neither preset fixes it at 32 symbols. See <a href="#preamble">preamble</a> for the
+switching measurement and recommendations.</p>
+<p>On Companions, the default <code>tx.media auto</code> sends recognized binary photo/voice
+traffic only on an active <code>rxtx</code> MeshCore second profile, including <code>tempradio2</code>.
+Apps do not need to set <code>tx.media</code>. Ordinary traffic keeps its existing route.
+If the second profile cannot transmit MeshCore, media uses the normal
+channel/global route; <code>set tx.media radio2</code> instead requires radio2 with no
+primary fallback. See <a href="#companion-media-and-ssh-tx-routing">application TX routing</a>.</p>
+<h3 id="channel-spacing">Channel spacing</h3>
 <p>When setting a saved, temporary or scheduled second profile, the response warns
 if its occupied bandwidth overlaps the primary channel or comes within <strong>6 kHz
 of either edge</strong>. This check uses both channel bandwidths, regardless of SF or
@@ -2900,6 +2981,7 @@ the suggested frequency only when it also suits the network and local band plan.
 </table>
 <p>For transmission on both permanent profiles:</p>
 <pre><code class="language-text">set radio2 910.5,500,8,5,rxtx
+set radio2.cross on
 </code></pre>
 <p>The same encoded message is queued separately for each allowed transmit profile.
 Each has its own direct/flood retry slots and channel-busy backoff. A forwarding
@@ -3115,16 +3197,25 @@ set tx.ssh radio
 </code></pre>
 <p>Both accept <code>auto|radio|radio2|both|off</code> and default to <code>auto</code>. An explicit
 application route overrides the channel's TX choice for that datagram only;
-<code>auto</code> preserves the channel/global behavior. <code>radio2</code> never falls back to
-<code>radio</code>, and must be an enabled <code>rxtx</code> <strong>MeshCore</strong> profile. <code>both</code> uses the
+<code>tx.media auto</code> chooses only radio2 whenever its active profile permits
+<code>rxtx</code> <strong>MeshCore</strong> transmission, including an active <code>tempradio2</code>. This
+overrides the channel/global route for recognized media even when an app
+has never configured <code>tx.media</code>. Otherwise, media uses the normal channel/global
+route. <code>tx.ssh auto</code> always preserves that normal route.</p>
+<p>The explicit <code>radio2</code> choice never falls back to <code>radio</code>, and requires an enabled
+<code>rxtx</code> <strong>MeshCore</strong> profile. <code>both</code> uses the
 profiles available for MeshCore transmission. <code>off</code> blocks transmission, not
 reception. Getters show the saved choice and current <code>active=</code> mask; <code>auto</code>
-shows <code>active=channel/global</code>, because the effective route depends on the
+shows <code>active=radio2</code> while media automatically selects radio2, and
+<code>active=channel/global</code> otherwise, because the effective route then depends on the
 destination channel (or global rules for raw data). Settings
 survive reboot; a failed save returns an error and keeps the previous choice.
 Already queued packets retain their original route.</p>
 <p><code>tx.media</code> recognizes Open TAK photo/voice channel data type <code>0x5643</code>, raw
 clip packets <code>0x56</code>/<code>0x57</code>, and well-formed binary fetch requests <code>0x72</code>.
+This covers <code>CMD_SEND_CHANNEL_DATA</code> and <code>CMD_SEND_RAW_DATA</code>, plus visible
+raw media in <code>CMD_SEND_RAW_PACKET</code>. Fully encoded encrypted group packets
+submitted through <code>CMD_SEND_RAW_PACKET</code> retain their existing route.
 Text announcements (<code>VE3:</code>, <code>VM1:</code>, <code>VI1:</code>), text fetch requests (<code>VR3:</code>),
 ordinary chat, contact ACKs, adverts, OTA, and unrelated raw data keep their
 normal routing. The format is defined in
@@ -3142,9 +3233,11 @@ tunnel apps remain unchanged and are <strong>not</strong> affected by <code>tx.s
 adopt the contract. Other channel data types do not acquire an SSH route
 merely because their contents start with <code>SSH</code>. Raw packets still require
 a direct path, including zero-hop; this does not enable raw flooding.</p>
-<p>For a media-only side channel, configure <code>radio2</code>/<code>tempradio2</code> in <code>rxtx</code>,
-set <code>radio2.cross off</code>, then set <code>tx.media radio2</code>. Ordinary text can stay on
-the primary profile without routing every raw application onto radio2.</p>
+<p>For a media-only side channel, use <code>set radio2 mediamesh</code> with the default
+<code>radio2.cross off</code> and <code>tx.media auto</code>. Ordinary text can stay on the primary
+profile without routing every raw application onto radio2. Choose
+<code>set tx.media radio2</code> if media must fail rather than use the primary when
+radio2 is off, RX-only, or owned by another protocol.</p>
 <h2 id="esp32-companion-ethernet-over-lora-kiss">ESP32 Companion Ethernet over LoRa (KISS)</h2>
 <p>ESP32 <strong>Full Companion</strong> builds with a supported SX1262/SX1276 modem can
 carry raw Ethernet on radio2 while the primary profile stays MeshCore. This
@@ -3671,6 +3764,7 @@ always isolated, including with <code>radio2.cross on</code>.</p>
 setting is preserved across firmware updates and reboots.</p>
 <p>These are the global rules used by Companion targets set to <code>auto</code>; an explicit
 contact/channel choice above overrides crossing for its own outbound packets.
+Recognized media uses the separate <code>tx.media auto</code> selection described above.
 Ordinary crossing respects <code>rx</code>. The infrastructure-only <code>tx.reply ... force</code>
 override above permits locally generated replies on that profile.
 With crossing allowed, a packet received there may still be forwarded on the
