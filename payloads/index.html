@@ -4031,7 +4031,7 @@ signature, so any channel-key holder can choose any sender name.</p>
 <tr>
 <td>flags</td>
 <td>1</td>
-<td>0x8 (upper 4 bits), prefix_only (lowest bit)</td>
+<td>0x8 (upper 4 bits), prefix_only (bit 0), request radio2 profile (bit 1)</td>
 </tr>
 <tr>
 <td>type_filter</td>
@@ -4082,6 +4082,9 @@ signature, so any channel-key holder can choose any sender name.</p>
 </tr>
 </tbody>
 </table>
+<p>Repeaters append an optional <a href="../radio_profiles/#discover-the-local-radio2-profile">radio2 profile trailer</a>
+when request bit 1 is set. Without that bit, the response is unchanged. Legacy
+responders omit the trailer even when requested.</p>
 <h2 id="trace">Trace</h2>
 <p>Trace packets use direct routing. Their normal direct-path header is empty;
 instead, the intended route follows a fixed nine-byte trace header in the

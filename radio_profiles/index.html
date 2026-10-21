@@ -1314,6 +1314,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#discover-the-local-radio2-profile" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Discover the local radio2 profile
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#channel-spacing" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2611,6 +2622,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#discover-the-local-radio2-profile" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Discover the local radio2 profile
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#channel-spacing" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2934,6 +2956,70 @@ Apps do not need to set <code>tx.media</code>. Ordinary traffic keeps its existi
 If the second profile cannot transmit MeshCore, media uses the normal
 channel/global route; <code>set tx.media radio2</code> instead requires radio2 with no
 primary fallback. See <a href="#companion-media-and-ssh-tx-routing">application TX routing</a>.</p>
+<h3 id="discover-the-local-radio2-profile">Discover the local radio2 profile</h3>
+<p>Clients can request a repeater's current MeshCore radio2 profile through public,
+zero-hop discovery. Set bit 1 (<code>0x02</code>) of the <code>DISCOVER_REQ</code> flags byte: <code>0x82</code>
+for the full public key, or <code>0x83</code> with the prefix-only bit also set. The type
+filter, tag and optional <code>since</code> fields keep their existing meanings. Omit
+<code>since</code> or send zero when requesting current settings; radio changes do not
+update the discovery timestamp.</p>
+<p>The requested <code>DISCOVER_RESP</code> appends this version-1 trailer immediately after
+the public key, at payload offset 38 (full key) or 14 (8-byte prefix):</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Bytes</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>version</td>
+<td>1</td>
+<td><code>1</code></td>
+</tr>
+<tr>
+<td>flags</td>
+<td>1</td>
+<td>Bit 0: configured; bits 1–2: mode (<code>0</code> off, <code>1</code> rx, <code>2</code> rxtx); bit 3: temporary; other bits zero</td>
+</tr>
+<tr>
+<td>frequency</td>
+<td>4</td>
+<td>Little-endian unsigned integer, MHz × 1000, rounded</td>
+</tr>
+<tr>
+<td>bandwidth</td>
+<td>4</td>
+<td>Little-endian unsigned integer, kHz × 1000, rounded</td>
+</tr>
+<tr>
+<td>SF</td>
+<td>1</td>
+<td>Spreading factor</td>
+</tr>
+<tr>
+<td>CR</td>
+<td>1</td>
+<td>Coding-rate denominator (<code>5</code> means 4/5)</td>
+</tr>
+</tbody>
+</table>
+<p>For example, the MediaMesh preset reports frequency <code>911150</code>, bandwidth
+<code>250000</code>, SF <code>7</code>, CR <code>5</code> and flags <code>0x05</code>. An active <code>tempradio2</code> reports its
+current settings with bit 3 set. Clients use automatic preamble; the trailer
+does not carry a preamble value.</p>
+<p>When radio2 is off, unsupported, or using a foreign protocol, the trailer is
+only <code>[1][0]</code>. Full responses are therefore 50 bytes with a profile or 40 bytes
+without one; prefix-only responses are 26 or 16 bytes. Without the request bit,
+responses remain 38 or 14 bytes. A legacy responder's missing trailer means
+unsupported, not disabled. Clients should ignore unknown versions and
+incomplete trailers.</p>
+<p>Replies remain on the main radio with zero hops and share the existing limit
+of four replies per two minutes. Existing visibility controls still apply.
+Discovery is public and unauthenticated. See <a href="../payloads/#control-data">control data</a>
+for the base packet fields.</p>
 <h3 id="channel-spacing">Channel spacing</h3>
 <p>When setting a saved, temporary or scheduled second profile, the response warns
 if its occupied bandwidth overlaps the primary channel or comes within <strong>6 kHz
