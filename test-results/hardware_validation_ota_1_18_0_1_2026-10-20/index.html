@@ -2452,7 +2452,7 @@ The gateway service and UART were closed during the capture.</p>
 <p>The watchdog's Auto policy still retained a previously confirmed reader and
 an initial recovery stage after the serial client closed. The shared awake
 hint treated that waiting policy as work requiring the CPU to remain awake.
-A focused nRF52 fix and a new physical measurement are in progress. Logging,
+A focused nRF52 fix and physical retest are recorded below. Logging,
 watchdog settings and the failed result have not been disabled or cleared to
 obtain a sleep pass. CPU debug enable was already set and stayed unchanged;
 the explicit firmware sleep veto is recorded independently of that limit.
@@ -2460,6 +2460,36 @@ Subsequent authenticated LoRa reads returned the exact same latest body and
 boot uptime, with zero core errors and both receive/transmit counters
 advancing by three. Radio communication remained functional after the failed
 idle measurement; this is not a CPU-sleep pass.</p>
+<p>Commit <a href="https://github.com/mikecarper/MeshCore/commit/bd4524318">bd4524318</a>
+allows the nRF52 interrupt wait while USB watchdog policy timers run. Actual
+transport recovery still vetoes sleep; logging, Auto/On mode and the existing
+recovery/reset deadlines remain enabled. Other platforms retain their prior
+sleep guard. The regression failed with the old predicate and passed with the
+fix across the four role guards. All 31 relevant regression methods passed.
+Blame places the earlier shared awake predicate in <code>3add4695cc</code> and
+<code>18f7edcf82</code>; it is present in the older <code>8b5660b0</code> image as well as <code>2bd4cb4d</code>.
+The rebuilt image passed physical confirmation below.</p>
+<p>The fixed RAK3401 image was installed using another application-only LoRa
+delta: 20/20 blocks in 71 seconds. The install reply was lost, so the install
+command was not replayed. Exact on-air postboot body <code>15B81DD21FB8A906</code> and
+the full <code>dev-bd452431</code> version proved the outcome after 30 seconds. Normal
+radio restoration passed. Independent USB diagnostics afterward verified the
+same image, unchanged saved preferences and zero core errors.</p>
+<p>The fixed CPU retest PASSED. A 90.013-second nonhalting MEM-AP capture recorded
+7989 states, including 6275 sleeping states: about <strong>78.6% weighted sampled
+time asleep</strong>. There was no halt, lockup, step or reset during the capture.
+Existing CPU debug enable stayed unchanged. This measures sampled CPU state,
+not electrical current or exact sleep residency. The surrounding firmware
+diagnostic window recorded 163516 sleep-wait calls and returns, zero errors,
+zero pending-recovery vetoes and zero time blocked by <code>usb.recovery</code>.
+Logging, CPU power saving, the system watchdog and the Auto USB logging
+watchdog remained enabled. The capture occurred before the existing recovery
+deadline; waiting for the watchdog to expire did not produce the pass.</p>
+<p>After the capture, authenticated LoRa reads proved the same installed body
+and boot, zero core errors and advancing receive/transmit counters (+4/+3).
+The original diagnostic-enable setting was restored, and the original
+gateway service resumed with its unchanged configuration and exact serial
+port ownership verified. The additional diagnostic leases were released.</p>
 <h2 id="rak4631-and-xiao-nrf52-full-qspi-lora-updates">RAK4631 and XIAO nRF52 full QSPI LoRa updates</h2>
 <p>The RAK4631 downloaded all 325/325 blocks in 375 seconds. Its install response
 explicitly verified a full image on QSPI, and the post-apply probe found the
@@ -2627,13 +2657,14 @@ identified as the cause of that rejection.</p>
 <h2 id="limits-and-completion">Limits and completion</h2>
 <p>The MeshTower signed full-image LoRa case and final source cleanup remain
 pending. The live cold-idle RAK preflight check is complete. Newly requested
-two-frequency ESP-NOW bridged one-hop OTA testing and latest RAK3401 CPU
-testing also remain pending. Receiver update setup, progress, installation
+two-frequency ESP-NOW bridged one-hop OTA testing remains pending. Latest
+RAK3401 CPU sleep, post-idle LoRa and gateway restoration passed. Receiver
+update setup, progress, installation
 and post-install verification in the new radio campaign must use LoRa;
 receiver USB commands cannot substitute for failed radio communication.
 The RAK3401's current-image pause snapshot recorded historical channel-busy
 bitmask <code>0x02</code>; it was retained without clearing statistics or claiming a
-CPU-sleep result. The first-command USB bootstrap observation,
+CPU-sleep result from that historical snapshot. The first-command USB bootstrap observation,
 Tower SF5 preflight failure, later full-image self-proof failures and separate
 USB open failure remain unresolved. The Tower signed delta, RAK4631 and XIAO
 nRF52 full QSPI LoRa updates and their later postchecks are complete; the
