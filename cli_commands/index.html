@@ -10026,7 +10026,7 @@ setting.</p>
 <tbody>
 <tr>
 <td><code>radio</code></td>
-<td>Ordinary LoRa flood forwarding. This is the default when <code>mode=</code> is omitted.</td>
+<td>Ordinary LoRa forwarding; flood-only unless <code>route=direct</code> or <code>route=any</code> is selected. This is the default mode.</td>
 </tr>
 <tr>
 <td><code>bridge</code></td>
@@ -10089,6 +10089,9 @@ removed. The fixed-size STM32WL FPF6 build cannot match authenticated channels.<
 - <code>set flood.channel.scope.&lt;n&gt; &lt;channel|txt:*|login:*|other:*&gt; &lt;region|scope=name&gt; [path=blacklist|path=bucket:1-6] [tx=slow]</code>
 - <code>del flood.channel.scope.&lt;n&gt;</code>
 - <code>del flood.channel.scope all</code></p>
+<p><code>fs</code> is the short family name for all these commands. Short options are
+<code>p=bl</code> (<code>path=blacklist</code>), <code>p=b1</code> through <code>p=b6</code> (<code>path=bucket:1</code> through
+<code>path=bucket:6</code>), and <code>tx=s</code>/<code>tx=f</code> (<code>tx=slow</code>/<code>tx=fast</code>).</p>
 <p><strong>Parameters:</strong>
 - <code>n</code>: Slot number within the table compiled for the target. Roomy ESP32 builds
   provide <code>1-255</code>; classic ESP32 repeaters and nRF52/other
@@ -10269,6 +10272,8 @@ available for tables shared with <code>flood.filter path=blacklist</code> rules.
 - <code>set flood.channel.scope.require.&lt;n&gt; &lt;public|#channel|128/256-bit-key&gt;</code>
 - <code>del flood.channel.scope.require.&lt;n&gt;</code>
 - <code>del flood.channel.scope.require all</code></p>
+<p><code>fsr</code> is the short family name, with the same arguments and region/scope-manager
+permissions.</p>
 <p><strong>Default:</strong> Empty; normal global region enforcement remains active.</p>
 <p>Once this table contains a row, received flood <code>GRP_TXT</code> and <code>GRP_DATA</code>
 packets use selective region enforcement. A packet authenticating against a
@@ -10324,6 +10329,9 @@ worked moderation examples, see <a href="../flood_filtering/">Flood Filtering an
 <li><code>del flood.filter.&lt;n&gt;</code></li>
 <li><code>del flood.filter all</code></li>
 </ul>
+<p>Generalized rows also accept <code>sender=</code>, <code>text=</code>, <code>len=</code>, <code>route=</code>, <code>prob=</code>,
+<code>enabled=</code>, and anchored <code>path=</code> chains. These use the same table and ordering;
+see the parameters and short forms below.</p>
 <p>The extended table is available on repeaters with the rule engine enabled and
 on FULL-profile ESP32 room servers. A FULL room server exposes
 <code>fr</code>, <code>flood.rule</code>, and <code>flood.filter</code>, has 31 slots, and requires an administrator
@@ -10373,7 +10381,35 @@ compile this table.</p>
   relayed login/admin traffic, but not direct packets or local delivery.</li>
 <li><code>prefix=&lt;ID[,ID...]&gt;</code>: Optional ordered source-path prefix of one to three
   pbyte IDs. IDs must all be 2, 4, or 6 hex characters, matching a packet's
-  1-, 2-, or 3-byte pbyte width. <code>path=&lt;prefix&gt;</code> is an alias.</li>
+  1-, 2-, or 3-byte pbyte width. <code>p=</code> is the short form.</li>
+<li><code>path=[^]ID&gt;ID...[$]</code> or <code>pa=...</code>: Ordered chain of up to four IDs, matched
+  anywhere in a flood path. <code>^</code> anchors the earliest relay and <code>$</code> the most
+  recent; both require exactly the chain. Commas may replace <code>&gt;</code>.
+  Each ID must use the packet's complete hash width. Direct paths and TRACE
+  SNR bytes never match. <code>path=blacklist</code> remains the separate unordered table.</li>
+<li><code>sender=&lt;pattern&gt;</code> (<code>n=</code>), <code>text=&lt;pattern&gt;</code> (<code>x=</code>): Case-sensitive patterns
+  on the decrypted sender name and message body. Require an explicit
+  authenticated channel (<code>public</code>, <code>#name</code>, or key); <code>channel=*</code> and raw hashes
+  are insufficient. These match only plain group text. Patterns search
+  anywhere unless anchored with <code>^</code>/<code>$</code>, and support <code>.</code>, classes such as
+  <code>[A-Z]</code> or <code>[^0-9]</code>, <code>*</code>, <code>+</code>, <code>?</code>, groups, <code>|</code>, and escaped literals.
+  Use <code>[0-9]</code> for digits and quote values containing spaces. The maximum is
+  63 bytes per pattern. Matching uses complete fields, removes AES zero
+  padding, and shares a 131,072-operation work budget across one rule
+  evaluation. Exhaustion rejects the packet; it cannot grant an allow,
+  rewrite, or retry action.
+  A message without <code>:</code> has no sender field but can match a text rule.</li>
+<li><code>len=N|N+|N-M</code> (<code>l=</code>): Inclusive range of payload bytes, excluding route/path
+  metadata. Ciphertext padding counts toward payload length.</li>
+<li><code>route=flood|direct|any</code> (<code>rt=f|d|a</code>): Select route classes. Omitted radio
+  rules retain flood-only behavior. Direct/any rows support drop, rate, and
+  stop/allow; scope/region, retry, and TX timing require flood-only radio rules.</li>
+<li><code>prob=1-100</code> (<code>pr=</code>): Apply the row to approximately this percentage of
+  otherwise-matching packets. Omitted means <code>100</code>; a failed roll leaves later
+  rows eligible. It is a sampling rule, not a forwarding quota.</li>
+<li><code>enabled=on|off</code> (<code>e=1|0</code>): Keep a row while enabling or disabling it. To
+  change only this state, use <code>set fr.&lt;n&gt; e=off</code> or <code>set fr.&lt;n&gt; e=on</code>; its
+  conditions and actions stay saved.</li>
 <li><code>in=any|none|scoped|allowed|unknown|scope:&lt;name&gt;|region:&lt;name&gt;</code>: Optional
   condition on the original incoming scope, before any rule rewrites it.
   <code>none</code> is an unscoped flood. <code>scope:name</code> is the exact public
@@ -10409,7 +10445,9 @@ compile this table.</p>
   If the same row uses <code>region=</code> and that configured region is missing, denied,
   wildcard, or has no usable transport key, both the rewrite and its <code>stop</code>
   are inert so lower-order safety rows still run. A direct <code>scope=</code> target does
-  not depend on region configuration.</li>
+  not depend on region configuration.
+  <code>allow</code>, <code>forward</code>, and <code>a</code> are aliases for <code>stop</code>; they do not override
+  earlier drops, normal forwarding gates, or separate moderation rules.</li>
 <li><code>suspend=tempradio</code>: Optional. Skip this row while either <code>tempradio</code> or
   <code>tempradio2</code> is active, including scheduled temporary sessions.</li>
 <li><code>require=region</code>: Legacy alias for <code>in=allowed</code>. Apply the row only if the
@@ -10522,11 +10560,11 @@ compile this table.</p>
 </tr>
 </tbody>
 </table>
-<p><strong>Route scope:</strong> <code>mode=radio</code> rules are evaluated only for the two flood route values:
+<p><strong>Route scope:</strong> <code>mode=radio</code> defaults to the two flood route values:
 <code>ROUTE_TYPE_TRANSPORT_FLOOD</code> (<code>0x00</code>, flood plus transport codes) and
 <code>ROUTE_TYPE_FLOOD</code> (<code>0x01</code>, unscoped flood). Direct routes <code>0x02</code> and <code>0x03</code>
-are unaffected by radio rules. Bridge/cross rules also cover direct routes at
-their respective transport boundaries.</p>
+require an explicit <code>route=direct</code> or <code>route=any</code> on a radio row. Bridge/cross
+rules cover both route classes by default at their transport boundaries.</p>
 <p><strong>Behavior:</strong> Match fields within one row are ANDed. Radio rows are matched
 against the same immutable receive-time packet, before any rule changes its
 scope. Bridge/cross rows match the packet at their admission boundary; a TX
@@ -10571,7 +10609,10 @@ preempted, and CAD and airtime-budget limits still apply.</p>
 data and can be changed over serial or authenticated remote CLI without an OTA
 or reboot. <code>flood.rule</code> and <code>flood.filter</code> address the same table on extended
 builds; FPF6 files are migrated in memory and the next save writes FPF7.
-FPF1-FPF5 files are rejected and filtering fails open. FPF7 stores canonical
+New sender/text, length, route, probability, enabled-state, or extended-path
+fields use FPF8 instead. Old firmware without FPF8 support cannot load that
+table; remove the new fields before downgrading and keep a copy of the rules.
+FPF1-FPF5 files are rejected and filtering fails open. FPF7/FPF8 store canonical
 region names rather than transient numeric region
 IDs. Removing, reordering, or reusing a region ID therefore cannot silently
 retarget a rule. If a saved input or target region name is absent, that input
@@ -10581,11 +10622,10 @@ While either <code>tempradio</code> or <code>tempradio2</code> is active, only r
 mode; normal payload types can also use the temporary channel. Other rows
 remain in force, and suspended rows resume after both temporary sessions end.
 A malformed persisted table fails open (no general rules are applied).</p>
-<p>Within one receive evaluation, rows that use the same channel key share one
-authentication result. The cache is discarded after that packet and stores
-neither plaintext nor passwords; different keys are authenticated separately.
-Raw <code>hash:XX</code> rows skip this authentication and compare only the one visible
-byte.</p>
+<p>Within one receive evaluation, rows using the same channel key share the
+initial authentication verdict; content patterns also decrypt into temporary
+scratch for matching. The cache and plaintext are discarded after the packet.
+Raw <code>hash:XX</code> rows skip authentication and compare only the visible byte.</p>
 <p><strong>Per-channel retry examples:</strong></p>
 <pre><code class="language-text"># Use bridge-bucket retry only for authenticated Public and #hamradio traffic.
 set flood.retry.bridge on
@@ -10656,6 +10696,17 @@ get fr.3
 short setter; <code>get fr</code> lists the table. Unnumbered <code>set fr ...</code> reuses an
 identical row or adds one to the first empty slot. <code>del fr.N</code> and <code>del fr all</code>
 have the same behavior as their long forms.</p>
+<p>Content, exceptions, and state changes use that same setter:</p>
+<pre><code class="language-text">set fr grp_txt c=#local x=&quot;^BEACON&quot; d
+set fr grp_txt c=#local n=&quot;^Alice$&quot; pri=200 a
+set fr grp_txt c=#local d
+set fr.4 e=off
+set fr.4 e=on
+</code></pre>
+<p>The Alice rule stops lower-order general drops; separate moderation and hard
+forwarding gates still apply. Sender names remain unverified display text.
+Saved older prefix rules keep their start-anchored semantics; when retyping an
+old <code>path=A1,B2</code>, use <code>prefix=A1,B2</code> or <code>pa=^A1&gt;B2</code>.</p>
 <table>
 <thead>
 <tr>
@@ -10681,6 +10732,26 @@ have the same behavior as their long forms.</p>
 <td><code>c=...</code>, <code>p=...</code></td>
 </tr>
 <tr>
+<td><code>path=[^]ID&gt;ID...[$]</code></td>
+<td><code>pa=...</code></td>
+</tr>
+<tr>
+<td><code>sender=...</code>, <code>text=...</code></td>
+<td><code>n=...</code>, <code>x=...</code></td>
+</tr>
+<tr>
+<td><code>len=N/N+/N-M</code></td>
+<td><code>l=...</code></td>
+</tr>
+<tr>
+<td><code>route=flood/direct/any</code></td>
+<td><code>rt=f/d/a</code></td>
+</tr>
+<tr>
+<td><code>prob=N</code>, <code>enabled=on/off</code></td>
+<td><code>pr=N</code>, <code>e=1/0</code></td>
+</tr>
+<tr>
 <td><code>hashbytes=any/1/2/2+/3</code></td>
 <td><code>pb=*/1/2/2+/3</code> (choose one value)</td>
 </tr>
@@ -10701,6 +10772,10 @@ have the same behavior as their long forms.</p>
 <td><code>d</code>, <code>s</code>, <code>r</code></td>
 </tr>
 <tr>
+<td><code>allow</code>, <code>forward</code></td>
+<td><code>a</code> (same action as <code>stop</code>)</td>
+</tr>
+<tr>
 <td><code>scope=name</code>, <code>region=name</code></td>
 <td><code>s=name</code>, <code>r=name</code></td>
 </tr>
@@ -10715,8 +10790,46 @@ have the same behavior as their long forms.</p>
 </tbody>
 </table>
 <p>All existing validation and permissions apply. <code>m=cb</code>, <code>m=b,c</code>, and <code>m=c,b</code>
-also mean bridge and crossover. Short aliases for <code>flood.channel.scope</code>,
-<code>flood.moderation</code>, and blacklist management are not added.</p>
+also mean bridge and crossover.</p>
+<table>
+<thead>
+<tr>
+<th>Full family</th>
+<th>Short family</th>
+<th>Commands</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>flood.moderation</code></td>
+<td><code>fm</code></td>
+<td><code>get</code>, <code>set</code>, <code>del</code></td>
+</tr>
+<tr>
+<td><code>flood.channel.scope</code></td>
+<td><code>fs</code></td>
+<td><code>get</code>, <code>set</code>, <code>del</code></td>
+</tr>
+<tr>
+<td><code>flood.channel.scope.require</code></td>
+<td><code>fsr</code></td>
+<td><code>get</code>, <code>set</code>, <code>del</code></td>
+</tr>
+<tr>
+<td><code>flood.filter.blacklist</code></td>
+<td><code>fb</code></td>
+<td><code>get</code>, <code>set</code>, <code>del</code></td>
+</tr>
+<tr>
+<td><code>flood.advert</code></td>
+<td><code>fa</code></td>
+<td><code>get</code>, <code>clear</code></td>
+</tr>
+</tbody>
+</table>
+<p>Slot arguments, output, validation, and permissions are shared with the full
+family names. For example, <code>get fa key 1</code> inspects the full advert key and
+<code>clear fa all</code> clears advert history.</p>
 <p>The numbered long getters use this complete short setter when descriptive
 fields would exceed a reply. Defaults are omitted and specific payload types
 are printed numerically. If it still cannot fit, the reply is
@@ -10728,7 +10841,7 @@ matching rule. Unknown or ambiguous references are rejected. See the
 <a href="../flood_filtering/#shorthand-for-copying-rules">shorthand guide</a> for examples.</p>
 <p>On generalized repeaters, filter rows, scope-rewrite rows, the shared
 blacklist, and <code>flood.channel.data</code> compatibility state are committed in one
-atomic FPF7 image. Compact FPF6 profiles retain separate files. Replacing or deleting
+atomic FPF7/FPF8 image. Compact FPF6 profiles retain separate files. Replacing or deleting
 the blacklist does not delete rows containing <code>path=blacklist</code>; such rows
 remain dormant while the list is empty. Path hashes are truncated routing
 identifiers, not authenticated identities, so this is a forwarding signal
@@ -10783,7 +10896,10 @@ FPF7 forward rows; hard gates and the rewrite/moderation phases still apply.</p>
 <code>MESH_ENABLE_FLOOD_RULE_ENGINE=0</code> and retain the compact, persistent FPF6
 <code>flood.filter</code> and blacklist commands. They still filter floods, but do not
 expose the <code>flood.rule</code> alias or its extended channel, prefix, input-scope,
-region-action, or rate fields. No partition size changes are required.</p>
+region-action, or rate fields, nor sender/text patterns, length, route,
+probability, enabled-state, or anchored chains. Their compiled legacy
+families still accept the <code>fm</code>/<code>fs</code>/<code>fsr</code>/<code>fb</code>/<code>fa</code> aliases; <code>fm</code> requires
+moderation support in that build. No partition size changes are required.</p>
 <hr />
 <h4 id="moderate-flood-group-text-by-channel-sender-and-source-path">Moderate flood group text by channel, sender, and source path</h4>
 <p><strong>Usage:</strong>
@@ -10793,6 +10909,9 @@ region-action, or rate fields. No partition size changes are required.</p>
 - <code>set flood.moderation.&lt;n&gt; &lt;channel&gt; &lt;sender&gt; &lt;action&gt; [action...]</code>
 - <code>del flood.moderation.&lt;n&gt;</code>
 - <code>del flood.moderation all</code></p>
+<p><code>fm</code> is the short family name. Options can use <code>d</code> (<code>drop</code>), <code>q=N</code>
+(<code>rate=N/min</code>), <code>h=N</code> (<code>hops=N</code>), and <code>p=...</code> (<code>path=...</code>). The short rate
+also accepts <code>q=N/min</code> or <code>q=N/m</code>; duplicate rate/drop options remain invalid.</p>
 <p><strong>Parameters:</strong>
 - <code>n</code>: Moderation slot from <code>1</code> to <code>16</code>.
 - <code>channel</code>:
@@ -10812,6 +10931,11 @@ region-action, or rate fields. No partition size changes are required.</p>
 <p>At least one of <code>drop</code>, <code>rate=X/min</code>, or <code>hops=N</code> is required. Rate and hop
 limits can be combined. Rate counters are local to this repeater and rule, use a
 60-second window beginning with the first matching message, and reset on reboot.</p>
+<p>Configured exact names are limited to 31 bytes. A wildcard <code>*</code> with a hop
+restriction also matches longer valid sender names. The FGM1 storage format
+is unchanged; saves use staging, readback, and backup recovery. A save reported
+as unconfirmed may already have published, so rebooted settings can differ
+from the restored live table.</p>
 <p><strong>Decode and identity behavior:</strong> Moderation applies only to flood
 <code>PAYLOAD_TYPE_GRP_TXT</code>. The repeater first checks the packet's channel-hash byte,
 then validates and decrypts with the configured key. It extracts the text before
@@ -10829,6 +10953,7 @@ retransmission is denied. There are no moderation rules by default.</p>
 <pre><code class="language-text">set flood.moderation public &quot;Noisy User&quot; rate=5/min
 set flood.moderation #local bot drop path=A1B2C3,D4E5F6
 set flood.moderation.3 00112233445566778899AABBCCDDEEFF alice rate=10/min hops=4 path=71CE82
+set fm public &quot;Noisy User&quot; q=5
 get flood.moderation
 get flood.moderation.3
 del flood.moderation.3
@@ -10851,13 +10976,18 @@ del flood.moderation.3
 non-secret operational/filter status commands and can change the forwarding
 controls <code>repeat</code>, <code>loop.detect</code>, <code>flood.max*</code>, <code>flood.channel.data*</code>,
 <code>flood.filter*</code>, <code>flood.rule*</code>, <code>fr[.N]</code>, and
-<code>flood.moderation*</code>. It cannot read
+<code>flood.moderation*</code>, including the <code>fm</code>, <code>fb</code>, and <code>fa</code> aliases. It cannot read
 guest, WiFi, MQTT, bridge, or other credentials, and it cannot change regions,
 ACL entries, radio settings, or other admin configuration. Permission <code>4</code>
-is limited to region commands, <code>flood.channel.scope*</code>, and the same non-secret
+is limited to region commands, <code>flood.channel.scope*</code> (including <code>fs</code> and
+<code>fsr</code>), and the same non-secret
 status allowlist.
 Both delegated manager roles are protected from least-recently-active ACL
 eviction like administrators.</p>
+<p>The same filter aliases work inside enrolled
+<a href="../fleet_management/">signed fleet commands</a>, including quoted sender/text
+patterns. Fleet signature, expiry, replay, and command-size checks still apply;
+ordinary channel text cannot authorize a change.</p>
 <p><strong>Note:</strong> Removes the entry when <code>permissions</code> is omitted</p>
 <hr />
 <h4 id="view-the-current-acl">View the current ACL</h4>
