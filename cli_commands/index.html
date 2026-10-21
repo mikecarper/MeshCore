@@ -3140,6 +3140,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#view-repeater-login-attempts" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        View repeater login attempts
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#recover-a-repeaters-future-dated-replay-timestamp" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -6169,6 +6180,17 @@
     <span class="md-ellipsis">
       
         View repeater guest sessions
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#view-repeater-login-attempts" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        View repeater login attempts
       
     </span>
   </a>
@@ -11105,6 +11127,36 @@ public key followed by <code>last=&lt;UTC epoch seconds&gt;</code>. An empty lis
 They indicate an accepted session, not whether the guest is currently online.
 Entries can move between pages as clients change. A reboot or <code>set guest off</code>
 clears them.</p>
+<hr />
+<h4 id="view-repeater-login-attempts">View repeater login attempts</h4>
+<p><strong>Usage:</strong></p>
+<ul>
+<li><code>get logins</code> - first page</li>
+<li><code>get logins &lt;page&gt;</code> - a numbered page, starting at 1</li>
+</ul>
+<p>Available on repeaters through local administrative consoles, an authenticated
+remote admin session, or enrolled <a href="../fleet_management/">signed fleet commands</a>.
+Guests and delegated region/filter managers cannot read this list.</p>
+<p>The repeater keeps the 16 most recently attempted public keys in RAM, with the
+newest attempt first. Each row shows only the first <strong>12 hexadecimal characters</strong>
+of the key, the latest attempt's UTC epoch time, its result, and an attempt count.
+There are up to two rows per page. Attempts for the same full key update its
+existing row and count; the oldest key is replaced when the list is full.
+The count stops at 4,294,967,295. Two different keys can share
+the displayed prefix; their records and counts remain separate.</p>
+<pre><code class="language-text">Logins 1/1 (2)
+ABCDEF123456 n=3 last=1792600000 accepted
+123456ABCDEF n=1 last=1792599900 guests-disabled
+</code></pre>
+<p>Results are <code>accepted</code>, <code>wrong-password</code>, <code>guests-disabled</code>, <code>replay/state</code>, and
+<code>acl-unavailable</code>. An accepted login can be an admin, an assigned ACL client,
+or a guest. This history records
+actual login requests after packet authentication; anonymous owner, region, and
+clock requests, incomplete requests, and packets that fail authentication do not
+appear. Passwords and shared secrets are never recorded.</p>
+<p>This is recent attempt history, not a list of online users or a complete audit
+log. Pages can change as attempts arrive. A reboot clears it; <code>set guest off</code>
+does not. A zero timestamp means the clock was not set when the attempt arrived.</p>
 <hr />
 <h4 id="recover-a-repeaters-future-dated-replay-timestamp">Recover a repeater's future-dated replay timestamp</h4>
 <p>This is an explicit recovery operation after correcting a bad clock, not a

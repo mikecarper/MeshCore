@@ -2921,6 +2921,10 @@ Reboot or changing enrollment discards the partial transfers.</p>
 <td><code>get guests [page]</code></td>
 </tr>
 <tr>
+<td>Repeater login attempts</td>
+<td><code>get logins [page]</code></td>
+</tr>
+<tr>
 <td>Filter rules</td>
 <td><code>get/set/del flood.filter[.n]</code>, <code>flood.rule[.n]</code></td>
 </tr>
@@ -2952,6 +2956,15 @@ installation, reboot, and unrestricted CLI are outside fleet capability.</p>
 <p>Repeater guest login defaults to off. <code>set guest off</code> saves that choice and
 clears existing guest sessions immediately. Enabling it uses the existing
 guest password; this switch does not change any password or assigned ACL role.</p>
+<p><code>get logins [page]</code> returns recent repeater login attempts, two per page, showing
+only 12-character public-key prefixes, latest UTC epoch times, results, and
+attempt counts. The 16 most recently attempted full keys are kept in RAM;
+repeated attempts update the existing key's record. Results distinguish accepted
+logins, wrong passwords, disabled guests, replay/state rejection, and unavailable
+ACL capacity. The history clears on reboot and survives <code>set guest off</code>.
+It contains no passwords or shared secrets and is not an online-user list.
+Anonymous owner, region, and clock requests and packets that fail authentication
+are excluded. Ordinary channel messages cannot read this list.</p>
 <p><code>set radio2 mediamesh</code> saves 911.150 MHz, 250 kHz, SF7, CR 4/5, <code>rxtx</code>,
 with automatic scan-aware preamble. <code>mediamesh-range</code> uses 125 kHz instead.
 These presets preserve the primary profile and crossing policy; new

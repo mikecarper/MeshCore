@@ -2619,6 +2619,10 @@ the corresponding feature:</p>
 <td><code>get guest</code>, <code>set guest on</code>, <code>set guest off</code>, <code>get guests [page]</code></td>
 <td>Repeater guest-login control and current guest sessions</td>
 </tr>
+<tr>
+<td><code>get logins [page]</code></td>
+<td>Recent repeater login attempts, with 12-character public-key prefixes</td>
+</tr>
 </tbody>
 </table>
 <p>The command text is the same for direct connections. A binary Companion app
@@ -3098,6 +3102,18 @@ repeater's guest entries. Each page shows one full public key and its last
 activity time in UTC epoch seconds. Guests are held in RAM, so this is a list of
 accepted sessions rather than proof that a device is currently reachable. They
 are cleared by a reboot or <code>set guest off</code> and remain separate from <code>get acl</code>.</p>
+<p>Use <code>cmd get logins</code> or <code>cmd get logins 2</code> from an admin session to inspect recent
+login attempts. The repeater retains up to 16 distinct public keys in RAM, newest
+attempt first, with up to two rows per page. Each row shows a 12-character hex
+key prefix, the latest UTC epoch time, result, and attempt count. Repeated
+attempts update the same full key's row; different keys sharing a displayed
+prefix remain separate records.</p>
+<p>Results distinguish accepted logins, wrong passwords, disabled guests,
+replay/state rejection, and unavailable ACL capacity. Only authenticated,
+complete login requests are recorded; anonymous owner, region, or clock requests
+are excluded. Passwords and shared secrets are never stored. This bounded
+history clears on reboot, survives <code>set guest off</code>, and does not show who is
+currently online. A zero timestamp means the node's clock was unset.</p>
 <p>The exact commands and permissions depend on the target firmware. <code>cmd</code> does
 not run a command on the local Companion; it sends the text over LoRa to the
 selected node.</p>
