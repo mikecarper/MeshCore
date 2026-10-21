@@ -2294,6 +2294,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#two-frequency-esp-now-bridged-one-hop-lora-update" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Two-frequency ESP-NOW bridged one-hop LoRa update
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#findings-and-fixes" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2309,6 +2320,17 @@
     <span class="md-ellipsis">
       
         MeshTower signed SD updates and remaining failures
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#final-source-restoration-and-handback" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Final source restoration and handback
       
     </span>
   </a>
@@ -2356,16 +2378,21 @@
 <!-- meshcore-hosted-doc-link:end -->
 
 <h1 id="ota-hardware-qualification-20-21-october-2026-utc">OTA hardware qualification, 20-21 October 2026 UTC</h1>
-<p>Status: IN PROGRESS. Results below describe completed measurements only.
+<p>Status: COMPLETED for the listed OTA cases. Earlier failures and unresolved
+observations remain recorded below; this is not a claim that every board or
+transport has passed all release qualification.
 The operator authorized erasing these test nodes without backups. MeshPocket
-remains excluded. No bootloader or SoftDevice payload is part of this campaign.</p>
-<p>Completed hardware OTA results use artifacts pinned to
+remains excluded. No nRF52 bootloader or SoftDevice payload is part of this
+campaign. Temporary ESP32 bridge role changes use the board's merged image,
+including its ESP32 bootloader and partitions, under the authorized erase.</p>
+<p>The initial hardware OTA results use artifacts pinned to
 <code>8b5660b00b88d8abaae094859bc1232f7ce886fd</code>.
 That commit changes documentation only relative to firmware source
 <code>0b207a1ec3a32eb0a8ad6b8643db211de4921cd4</code>. Separate OTA-check version strings
 produce distinct image hashes for controlled update tests. The common numeric
 version is <code>0x01120001</code>; same-version updates are explicitly authorized for
-these tests. They are not claimed as numeric version upgrades.</p>
+these tests. They are not claimed as numeric version upgrades.
+Later source, CPU-sleep and one-hop results identify their own commits below.</p>
 <table>
 <thead>
 <tr>
@@ -2382,8 +2409,8 @@ these tests. They are not claimed as numeric version upgrades.</p>
 </tr>
 <tr>
 <td>RAK4631 unified repeater</td>
-<td>Bluetooth application DFU; QSPI full LoRa OTA</td>
-<td>Transfers and eventual postchecks PASS; initial USB version response remains under investigation</td>
+<td>Bluetooth application DFU; QSPI full LoRa OTA; two-frequency bridged one-hop LoRa delta</td>
+<td>Transfers and eventual postchecks PASS, including one-hop installation; initial USB version response remains under investigation</td>
 </tr>
 <tr>
 <td>Seeed XIAO nRF52 repeater</td>
@@ -2398,7 +2425,7 @@ these tests. They are not claimed as numeric version upgrades.</p>
 <tr>
 <td>MeshTower SD repeater</td>
 <td>Signed SD-backed LoRa delta and full update</td>
-<td>Delta transfer, signature verification and postboot checks PASS; full update pending</td>
+<td>PASS: signed SD delta and full-image transfer, installation and LoRa postboot checks</td>
 </tr>
 </tbody>
 </table>
@@ -2517,6 +2544,52 @@ unresolved startup or CLI bootstrap observation is under investigation; it
 is not treated as missing command support or a first-attempt pass. The
 successful image, role, settings and core checks above describe the later
 independent verification.</p>
+<h2 id="two-frequency-esp-now-bridged-one-hop-lora-update">Two-frequency ESP-NOW bridged one-hop LoRa update</h2>
+<p>The physical one-hop test PASSED. The V4 source ran <code>2bd4cb4d1</code> and the
+RAK4631 received an application-only delta to <code>bd4524318</code>. Its setup,
+discovery, download, progress checks, install command, postboot proof and
+settings restoration all used LoRa. The receiving RAK's USB and Bluetooth
+interfaces were never opened for this case.</p>
+<p>The measured path was V4 at 909.5 MHz to a V3 bridge, ESP-NOW to a XIAO
+ESP32 bridge, then LoRa at 908.5 MHz to the RAK4631. Both LoRa segments used
+500 kHz bandwidth, SF7 and CR5. The two bridges copied received packets before
+appending their own hop, with one-hop limits. Disabling the far bridge's
+ESP-NOW link made the target's full-key query time out; re-enabling and
+verifying the same configuration restored that query. This counterfactual
+confirms that the two-frequency bridge was required.</p>
+<p>The ordinary file-data session populated the source catalog and its automatic
+discovery burst. No separate announcement command or control channel was
+used. The first asynchronous catalog query requested discovery; the next
+query found the intended manifest. Download completed <strong>62/62 blocks</strong>.
+The one install command received an on-air acknowledgement verifying the
+unsigned QSPI delta. Subsequent normal-channel LoRa reads proved exact
+installed body <code>D2073EC88FF4E459</code>, the full <code>dev-bd452431</code> version and zero
+core errors. Original target policies, receive power saving, output path and
+the source's saved contact path were restored. The package SHA256 is
+<code>f0a7319570394e23f06c9a901838be3cbaf5ae520d2743607828977e5fa3a0e9</code>.</p>
+<p>A passive source USB capture wrote zero bytes to the radio and recorded
+47 matching update requests with one hop through the measured near bridge.
+This is source-side packet evidence, not an independent RF capture of the
+whole chain. The separate frequencies, bridge counterfactual and on-air
+install/postboot proofs establish the complete case. The integrated private
+receipt SHA256 is
+<code>c6d6b2e2d3aefec128303b0ef5e2d8a0be52c38f03bc17ecf3032f4118489cc6</code>.</p>
+<p>Preparation failures remain recorded separately: a historical channel-busy
+flag prompted one documented LoRa restart, and several bridge receive-power
+configuration attempts returned a generic busy/unsupported rejection before
+a fresh configuration check and acknowledged attempt succeeded. No cause
+for those rejections or the historical busy flag is claimed fixed.</p>
+<p>Both temporary ESP32 bridges were returned to Full Companion images built
+from <code>ebb59d482</code>. Exact runtime bodies were <code>E297CF6E342C8332</code> (V3) and
+<code>4EEB12667E5E554B</code> (XIAO ESP32), with matching Binary/CLI identity and zero
+core errors. The V3's first postflash Binary handshake timed out; a later
+independent read passed without a reset or another flash. Its role reply
+required a narrow correction to the bench parser's nested prompt handling.
+The XIAO's positive-readiness check also rejected a valid prompt-prefixed
+acknowledgement before sending any Binary request. After correcting that
+check, its first Binary handshake and complete CLI checks passed without
+another flash, reset or settings change. Original failed workflow receipts
+remain retained. These bench corrections are not claimed as firmware fixes.</p>
 <h2 id="findings-and-fixes">Findings and fixes</h2>
 <p>An authenticated nRF52 application handoff does not preserve a custom
 peripheral Bluetooth address. The retained bond belongs to the central peer;
@@ -2575,8 +2648,9 @@ retries lost remote clock reads within the existing bounded operation budget.
 Validation passed 671 tests, including nine new clock-read regressions; one
 optional PyPI integration test was skipped. Canonical Full and Reduced
 RAK4631 and RAK3401 pairs, plus Full V3 and XIAO S3 WIO images, built
-successfully from this commit. These newly built images have not yet been
-flashed; their build success does not replace the earlier hardware results.</p>
+successfully from this commit. The ESP32 images were subsequently installed
+as the temporary one-hop bridges. Build success alone does not qualify an
+update or replace the earlier hardware results.</p>
 <p>Repeater Bluetooth provides an update service; Companion terminal/sync
 functionality is not claimed for repeater builds. The RAK4631 reports a 2 MiB
 W25Q16 QSPI device and completed its full QSPI LoRa update as recorded above.
@@ -2603,8 +2677,8 @@ any upload; the corrected continuation did not replay the start command.</p>
 timed out. After disabling that setting under a restoration intent, a fresh
 advert was received. This sequence records an observation; it does not
 establish a receive-power-saving firmware defect. Source receive power
-saving remains off under the owned restoration intent while the remaining
-LoRa cases run; final source restoration is pending.</p>
+saving stayed off under the owned restoration intent while the remaining
+LoRa cases ran. Exact final source restoration is recorded below.</p>
 <h2 id="meshtower-signed-sd-updates-and-remaining-failures">MeshTower signed SD updates and remaining failures</h2>
 <p>Before the MeshTower OTA cases, its unchanged earlier application had a
 latched core error bitmask <code>0x02</code> while still receiving. This bit records a
@@ -2634,8 +2708,8 @@ clock-read retry fix above addresses the host's handling of lost reads.
 A second full-image attempt at SF7 and 500 kHz bandwidth passed the full-key
 and status proofs, but all three <code>ota self</code> proof attempts failed. Safe
 temporary-lease expiry and return to the normal radio were verified. No
-firmware was transferred in either full-image attempt; full apply and
-postchecks remain pending.</p>
+firmware was transferred in either of those full-image attempts; full apply
+and postchecks were still pending at that point.</p>
 <p>A local USB snapshot afterward confirmed body <code>F1909AD4C46915FD</code>, 1133 seconds
 uptime, core error bitmask <code>0x02</code> and an empty queue. Radio diagnostics
 reported RSSI -60 dBm, SNR 11.25 dB and noise -103 dBm. These values do not
@@ -2658,21 +2732,123 @@ shows that this response also covers a busy or failed reconfiguration. A
 fresh identity/settings check followed by one new, acknowledged restoration
 attempt proved the original configuration. No particular runtime guard is
 identified as the cause of that rejection.</p>
+<p>A later signed-full retry used the ordinary production file-data session and
+source catalog readiness, with every receiver command on LoRa. Its first
+attempt stopped before new data because an old failed receive session
+required an explicit replacement choice. The one-minute temporary-channel
+cleanup command lost its acknowledgement. The updater then proved identity
+on the temporary channel and restored the source, but did not prove that the
+receiver had returned to its normal channel. The next attempt could not
+reach the receiver on the normal channel. These are failed workflow records.</p>
+<p>A bounded, LoRa-only recovery found the exact Tower still running body
+<code>F1909AD4C46915FD</code> on the temporary channel. One command restored its normal
+radio; its acknowledgement was lost and the command was not replayed.
+Subsequent authenticated normal-channel reads proved the full identity,
+unchanged body, inactive temporary mode, normal radio and 0 dBm TX. No target
+USB, Bluetooth, reset or flash operation was used. A historical core bitmask
+<code>0x06</code> was retained: channel-busy timeout and radio outside receive for over
+eight seconds. It is a bitmask, not a count of six errors. The recovery receipt
+SHA256 is
+<code>bc44880091e0024966fb6b2d9fd77b21556a9899e9c9995cf772dc14ae1bd57e</code>.</p>
+<p>After that recovery, a fresh ordinary updater attempt passed its temporary
+channel rehearsal and natural return, explicitly replaced only the old failed
+receive session, and downloaded the signed full image <strong>279/279 blocks in
+831 seconds</strong>. The install acknowledgement verified a trusted signer and a
+full image on SD. Normal-channel LoRa postboot reads proved body
+<code>718365A6E08823C7</code>, bootloader apply OK and the full <code>dev-ebb59d48</code> version.
+The first matching body response arrived during the 60-second postboot probe.
+A lost optional statistics reply required a bounded getter retry. The
+570682-byte package SHA256 is
+<code>4f92525f7500ad74b7f1895a62c4626a02a049b1a3978906ae8eea8617393bde</code>.
+The production runner exited successfully; its private result SHA256 is
+<code>de1bb4c4fa7af7fe627c00d96c94d1f7244141556c29271754379ad8f7fd7ca9</code>.
+All receiver setup, download, install and postboot commands used LoRa; its USB
+and Bluetooth interfaces were never opened for this attempt. The source was
+fed through its ordinary file-data session, with no extra announcement or
+separate receiver control channel.</p>
+<p>An independent, authenticated LoRa postcheck then verified the new full body
+and version, repeater role, normal radio/TX, inactive temporary mode, zero
+core error bitmask and an empty transmit queue. It removed only the owned
+fourth test signing key and verified that the original three key prefixes
+remained in their original order. The CLI exposes prefixes, so this is not
+an independent full-byte readback of those three keys. The postcheck repeated
+the identity, radio and core checks after removal and closed its controller.
+Lost getter/status replies used bounded read-only retries; all failed attempts
+remain recorded. Its private summary SHA256 is
+<code>02964ab9a2f511f96055ef6c99c59d32bb091d21dbf5c61dbe9de5ac00555659</code>.</p>
+<p>The passive source-only capture recorded 405398 bytes and wrote zero USB
+bytes. Its SHA256 is
+<code>6558971dea7e9cdc221e3e196d34f5ae00427300932c766e3fb7798d3332d194</code>.
+The capture was stopped and its serial port closed before the source's
+original logging-off setting was restored and verified. This capture is
+source-side evidence; the receiver's installed-image and runtime proofs
+above came from LoRa.</p>
+<p>The host cleanup defect is separate from the radio transfer: temporary-channel
+identity alone cannot establish that a lost relative-lease command executed.
+Cleanup must retain its recovery obligation until a full-key proof and
+inactive temporary mode are observed on the normal channel. The same
+requirement applies independently to controlled relay participants.</p>
+<p>Commit <a href="https://github.com/mikecarper/MeshCore/commit/c5c67f8f7">c5c67f8f7</a>
+fixes that host ownership defect. It persists a private recovery record for
+each full-key-bound target and controlled relay before arming, records a
+one-shot shortening attempt before sending, and requires each participant's
+full identity plus inactive temporary mode on the normal channel before
+retiring its obligation. A shared Full Companion source must also report its
+actual temporary mode inactive; its saved Binary radio settings alone are
+insufficient. Lost relative-lease acknowledgements are not replayed. Unresolved
+records survive interruption without passwords, and manual read-only recovery
+is documented in the <a href="../../lora_ota_automation/">LoRa OTA automation guide</a>.
+The regression cases cover delivered and undelivered lost acknowledgements,
+independent relay failures, mismatched keys, active temporary profiles,
+interruptions, existing recovery records, resolved-password redaction and the
+explicit no-install staging path. These are host changes; accepted unchanged
+firmware was not flashed again to validate them.</p>
+<h2 id="final-source-restoration-and-handback">Final source restoration and handback</h2>
+<p>After all transfers and the Tower signing-key cleanup, two fresh USB cleanup
+attempts received an explicit <code>Error: radio busy; retry</code> while restoring the
+source's original RXPS setting. Both attempts stopped and retained their raw
+failed records. This firmware rejects that command before updating or saving
+RXPS preferences; a missing or ambiguous reply would not permit the same
+continuation. Fresh read-only diagnostics showed normal receive operation,
+zero core errors, an empty queue and RXPS still off. They did not identify
+which radio reconfiguration guard rejected those particular commands.</p>
+<p>A bounded continuation used the production updater's varying retry cadence
+for this exact explicit busy response, opening a fresh console after each
+rejection. Its second attempt received the exact positive acknowledgement
+and exact original configuration readback: on, level 8, preamble 16,
+39657 microseconds receive and 15975 microseconds sleep. It did not retry a
+lost or malformed acknowledgement, reset the radio or change firmware.
+The continuation receipt SHA256 is
+<code>4253c91dbf2eca91e7b2716367e27e95a7dd1b952008b9ef6bb036fd673d3c62</code>.</p>
+<p>A separate final cleanup skipped the already restored RXPS setting, restored
+all five original saved flags, and verified normal radio/TX, idle detached OTA
+file service, original hop settings and strict USB Binary handback. It disabled
+the test WiFi runtime before restoring MQTT. The completed private summary
+SHA256 is
+<code>1c07fc8301f883eb3a33201924ca77ce4d2d02573b9a27a785f84547a06a8165</code>.
+The hash-bound completed receipt retired the host's RXPS restoration intent.
+Owned test tunnels, target leases and the cold-idle hold were closed; the
+root hardware session had no remaining FLOCK descriptors before it exited.
+The already restored RAK3401 gateway service was left running.</p>
 <h2 id="limits-and-completion">Limits and completion</h2>
-<p>The MeshTower signed full-image LoRa case and final source cleanup remain
-pending. The live cold-idle RAK preflight check is complete. Newly requested
-two-frequency ESP-NOW bridged one-hop OTA testing remains pending. Latest
-RAK3401 CPU sleep, post-idle LoRa and gateway restoration passed. Receiver
-update setup, progress, installation
-and post-install verification in the new radio campaign must use LoRa;
-receiver USB commands cannot substitute for failed radio communication.
-The RAK3401's current-image pause snapshot recorded historical channel-busy
-bitmask <code>0x02</code>; it was retained without clearing statistics or claiming a
-CPU-sleep result from that historical snapshot. The first-command USB bootstrap observation,
-Tower SF5 preflight failure, later full-image self-proof failures and separate
-USB open failure remain unresolved. The Tower signed delta, RAK4631 and XIAO
-nRF52 full QSPI LoRa updates and their later postchecks are complete; the
-RAK3401 gateway handback is complete for the earlier pinned image.
+<p>The listed physical OTA cases and their restoration are complete: V4 WiFi,
+RAK3401 internal delta, RAK4631 and XIAO nRF52 external QSPI full images,
+Tower signed SD delta/full, and the two-frequency ESP-NOW bridged one-hop
+update. Latest RAK3401 CPU sleep, post-idle LoRa and gateway handback passed.
+Each case records its exact firmware commit and body; these results do not
+qualify all 13 radios against every later commit.</p>
+<p>Receiver setup, progress, installation and post-install verification in the
+new radio campaign used LoRa. Receiver USB commands did not substitute for
+failed radio communication. Earlier local-control diagnostics remain
+explicitly identified. The RAK3401's pre-fix historical channel-busy bitmask
+<code>0x02</code> was retained without clearing statistics or claiming a sleep result
+from that snapshot.</p>
+<p>The first-command USB bootstrap observation, Tower SF5 preflight failure,
+earlier full-image self-proof failures, separate USB open failure and
+historical radio-busy flags remain unexplained. Later full-image transfer and
+postchecks passed under the stated conditions; this does not establish their
+underlying causes. Source restoration's explicit busy replies were handled
+with bounded retries; no radio guard defect is claimed fixed by that action.
 Private raw responses, keys, PINs and device identities stay outside the repo.
 Earlier accepted Companion tests are not repeated without a relevant change.</p>
 
