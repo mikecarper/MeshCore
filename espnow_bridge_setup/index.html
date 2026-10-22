@@ -1455,6 +1455,45 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="4. Check the link">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#test-the-24-ghz-path-without-lora-forwarding" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Test the 2.4 GHz path without LoRa forwarding
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#locate-a-mesh-forwarding-failure" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Locate a mesh forwarding failure
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#optional-short-usb-debug-capture" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Optional short USB debug capture
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -2434,6 +2473,45 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="4. Check the link">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#test-the-24-ghz-path-without-lora-forwarding" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Test the 2.4 GHz path without LoRa forwarding
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#locate-a-mesh-forwarding-failure" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Locate a mesh forwarding failure
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#optional-short-usb-debug-capture" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Optional short USB debug capture
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -2618,16 +2696,22 @@ LoRa repeater, see <a href="../WiFi/#wifi-companion-setup">raw ESP-NOW compatibi
 <p>Run on both boards:</p>
 <pre><code class="language-text">get espnow.enabled
 get espnow.running
+get espnow.status
 get bridge.channel
 get bridge.format
-get bridge.secret
 get bridge.source
 get bridge.delay
 get repeat
 get radio
 </code></pre>
-<p>Expected: enabled and running <code>on</code>, matching channel/format/secret, source
-<code>tx</code>, delay <code>500</code>, repeat <code>on</code>, and the intended LoRa settings on each side.</p>
+<p>For the example above, expect enabled and running <code>on</code>, matching channel and
+format, source <code>tx</code>, delay <code>500</code>, repeat <code>on</code>, and the intended LoRa settings
+on each side. An existing <code>bridge.source rx</code> setup is also valid; diagnose
+the selected source rather than changing it just to match this example.
+Compare the shared secret privately; omit <code>get bridge.secret</code> from logs you
+share. <code>get espnow.status</code> distinguishes the configured channel from the actual
+2.4 GHz channel. Its <code>last</code> error stage/code is historical and may remain after
+recovery. A running bridge is not proof that the other board received anything.</p>
 <p>Send a message from a Companion on network A to one on network B, then reply
 from B to A. Check both directions; configuration readback alone does not test
 delivery.</p>
@@ -2640,6 +2724,82 @@ delivery.</p>
   and secret; confirm each board's LoRa settings were applied with a reboot,
   and check the networks' forwarding and scope rules.</li>
 </ul>
+<p>If those saved settings already match, use the bounded test below before
+changing them again.</p>
+<h3 id="test-the-24-ghz-path-without-lora-forwarding">Test the 2.4 GHz path without LoRa forwarding</h3>
+<p>Updated ESP-NOW bridge firmware includes runtime diagnostics in the ordinary
+image. No <code>BRIDGE_DEBUG</code> build flag or continuous USB logging is needed. Use
+the USB console so a WiFi change cannot disconnect your diagnostic session.</p>
+<p>On both boards, start a fresh observation window:</p>
+<pre><code class="language-text">espnow resetstats
+get espnow.status
+get espnow.stats test
+</code></pre>
+<p>On A, send one probe:</p>
+<pre><code class="language-text">espnow test A1B2C3D4
+</code></pre>
+<p><code>OK - test queued id=A1B2C3D4; confirm on peer</code> means queued locally. On B, run
+<code>get espnow.stats test</code>: <code>rx</code> must increase and <code>rxid</code> must be <code>A1B2C3D4</code>.
+Then send <code>espnow test B1C2D3E4</code> on B and confirm that ID on A. The two
+commands are two one-way tests; there is no
+automatic reply or retry. Sender completion alone does not prove peer receipt.
+The optional ID is exactly eight hexadecimal digits, without <code>0x</code>; omitting
+it uses the current uptime in milliseconds as a correlation ID.</p>
+<p>These small, unencrypted CRC-checked probes test transport reachability only.
+They do not validate packet-format compatibility or the wrapped shared secret,
+authenticate the peer or prove MeshCore packet delivery. They are never
+injected into the mesh or forwarded
+onto LoRa. Older firmware ignores them and cannot report the received ID;
+use an updated peer for confirmation. Sending a probe and resetting
+statistics require a local connection; neither changes saved preferences.</p>
+<h3 id="locate-a-mesh-forwarding-failure">Locate a mesh forwarding failure</h3>
+<p>If both probe directions work, send one fresh identifiable message from a
+Companion on A's LoRa network and read these pages on both bridge boards:</p>
+<pre><code class="language-text">get espnow.stats
+get espnow.stats rx
+get espnow.stats tx
+get espnow.stats drops
+</code></pre>
+<p>Repeat in the opposite direction with a new message. Counters accumulate until
+<code>espnow resetstats</code> or reboot and survive an ESP-NOW stop/start. Inspect changes
+across the one message, rather than assuming old totals describe the current
+attempt.
+Stopping or restarting clears pending queue work without classifying delivery;
+the TX drop counter records local rejection/final-failure decisions, not every
+undelivered packet.</p>
+<ul>
+<li><strong>No source-side bridge TX request:</strong> check the configured source.
+  <code>bridge.source rx</code> exports LoRa receptions; confirm the board heard the
+  fresh message. <code>bridge.source tx</code> exports LoRa transmissions; confirm it
+  forwards the message with repeat on and the intended routing, scope and
+  flood-filter settings. Either source is valid.</li>
+<li><strong>TX requested but not sent:</strong> the TX/drops pages separate queued traffic,
+  filtering, duplicates, size/queue drops and SDK start/completion failures.
+  Check the configured/live 2.4 GHz channel and last error stage/code.</li>
+<li><strong>Peer sees frames but accepts no MeshCore packet:</strong> inspect RX rejection
+  counters, format and the privately compared wrapped secret. A successful
+  diagnostic probe does not rule out a packet-format or secret mismatch.</li>
+<li><strong>Peer admits the packet but no LoRa delivery follows:</strong> admission means
+  queued for normal mesh processing, not a completed LoRa transmission. Check
+  repeat, scope, filters, duplicate suppression and the destination network.</li>
+</ul>
+<p>An absent counter change narrows a stage; these checks do not assume a cause
+for a particular pair of boards.</p>
+<p>If both bridge boards also hear the same message directly on LoRa, normal
+duplicate suppression can discard its later bridged copy. That alone does
+not show a broken ESP-NOW link. This is a possibility to check with the
+counters, not an established cause of a reported delivery failure.</p>
+<h3 id="optional-short-usb-debug-capture">Optional short USB debug capture</h3>
+<p>For a brief observation window, run <code>get usb.logging</code> and <code>get usb.debug</code>
+and record both original settings. Enable both gates with <code>set usb.logging on</code>
+and <code>set usb.debug on</code>. The bridge emits bounded <code>ESPNOW:</code> status/counter
+updates from its main loop, at most once per second when diagnostic state
+changes. No <code>BRIDGE_DEBUG</code> build flag is required, and WiFi callbacks do not
+print to USB. Send the two probes or one fresh message, then restore both
+original settings. The CLI counter pages and probes do not require either
+logging gate. Use the counter pages for exact values; a busy USB console can
+skip a debug update. Do not include secrets or WiFi credentials in a shared
+capture.</p>
 <p>A running bridge keeps the device awake, even with device power saving enabled.
 ESP-NOW shares the WiFi radio: use the connected WiFi network's channel when
 WiFi is active. Browser OTA pauses ESP-NOW on ordinary non-MQTT repeaters,

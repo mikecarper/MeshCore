@@ -3737,6 +3737,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#diagnose-the-esp-now-bridge" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Diagnose the ESP-NOW bridge
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#view-or-change-the-bridge-enabled-flag" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -6777,6 +6788,17 @@
     <span class="md-ellipsis">
       
         View the compiled bridge type
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#diagnose-the-esp-now-bridge" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Diagnose the ESP-NOW bridge
       
     </span>
   </a>
@@ -12113,6 +12135,120 @@ still overrides the first-boot default after an update.</p>
 <a href="../espnow_bridge_setup/">ESP-NOW bridge setup guide</a>.</p>
 <h4 id="view-the-compiled-bridge-type">View the compiled bridge type</h4>
 <p><strong>Usage:</strong> <code>get bridge.type</code></p>
+<hr />
+<h4 id="diagnose-the-esp-now-bridge">Diagnose the ESP-NOW bridge</h4>
+<p>Available when the optional ESP-NOW bridge is compiled in. These are runtime
+diagnostics; no <code>BRIDGE_DEBUG</code> build flag is required.</p>
+<p><strong>Read-only commands:</strong></p>
+<pre><code class="language-text">get espnow.status
+get espnow.stats
+get espnow.stats rx
+get espnow.stats tx
+get espnow.stats drops
+get espnow.stats test
+</code></pre>
+<p>Status reports local state (<code>off</code>, <code>teardown-error</code>, <code>driver-error</code>,
+<code>channel-mismatch</code> or <code>ready</code>), then these compact fields:</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ch</code></td>
+<td>Configured/actual 2.4 GHz channel; actual <code>0</code> means unavailable.</td>
+</tr>
+<tr>
+<td><code>fmt</code>, <code>src</code></td>
+<td>Packet format and configured LoRa packet source (<code>rx</code> or <code>tx</code>).</td>
+</tr>
+<tr>
+<td><code>wifi</code></td>
+<td>Shared WiFi enable setting, not proof of WiFi association.</td>
+</tr>
+<tr>
+<td><code>mode</code>, <code>ps</code>, <code>proto</code></td>
+<td>WiFi SDK mode and power-save integers, and protocol bitmask in hexadecimal. An unavailable mode or power-save query returns <code>-1</code>.</td>
+</tr>
+<tr>
+<td><code>q</code></td>
+<td>Current receive/transmit queue depths.</td>
+</tr>
+<tr>
+<td><code>last</code></td>
+<td>Last recorded SDK error stage/code, which may remain after recovery.</td>
+</tr>
+</tbody>
+</table>
+<p><code>espnow.running on</code> means the local bridge initialized; it does not prove a
+peer is reachable. The statistics pages use these keys:</p>
+<table>
+<thead>
+<tr>
+<th>Page</th>
+<th>Keys and meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Default</td>
+<td><code>rx</code>: received callback frames; <code>mesh</code>: inbound MeshCore packets queued; <code>tx</code>: outbound MeshCore packets queued; <code>sent</code>: successful frame callbacks.</td>
+</tr>
+<tr>
+<td><code>rx</code></td>
+<td><code>frames</code>: received callback frames; <code>decoded</code>: parsed MeshCore packets; <code>mesh</code>: queued for mesh processing; <code>crc</code>: checksum failures; <code>bad</code>: malformed frames; <code>parse</code>: packet parse failures.</td>
+</tr>
+<tr>
+<td><code>tx</code></td>
+<td><code>req</code>: mesh TX requests; <code>queued</code>: mesh packets queued; <code>start</code>: SDK-accepted frames; <code>ok</code>: successful frame callbacks; <code>err</code>: SDK start failures; <code>cbfail</code>: failed frame callbacks; <code>timeout</code>: callback timeouts.</td>
+</tr>
+<tr>
+<td><code>drops</code></td>
+<td><code>rxq</code>: RX queue drops; <code>foreign</code>: foreign-group packets; <code>filter</code>/<code>dupe</code>: inbound filter/duplicate drops; <code>txq</code>: recorded local mesh TX rejection/final-failure decisions; <code>txfilter</code>/<code>txdupe</code>: outbound filter/duplicate drops; <code>big</code>: oversize TX drops.</td>
+</tr>
+<tr>
+<td><code>test</code></td>
+<td><code>queued</code>, <code>start</code>, <code>ok</code>, <code>fail</code>, <code>timeout</code>: probe TX stages; <code>rx</code>, <code>bad</code>: valid/invalid probes received; <code>txid</code>, <code>rxid</code>: last queued/received IDs in hexadecimal.</td>
+</tr>
+</tbody>
+</table>
+<p>Mesh admission means queued for normal processing, not confirmed LoRa
+forwarding or end-to-end delivery. Packet and frame counters have different
+units: fragmentation can produce several frames for one mesh packet. Counters
+survive bridge stop/start; reboot or the explicit reset starts a new window.
+Stopping or restarting the bridge clears pending queue work without classifying
+its delivery. These counters are not a complete end-to-end delivery ledger.</p>
+<p><strong>Local-only actions:</strong></p>
+<pre><code class="language-text">espnow test
+espnow test A1B2C3D4
+espnow resetstats
+</code></pre>
+<p>The optional test ID is exactly eight hexadecimal digits, case-insensitive,
+without <code>0x</code>, spaces or trailing arguments. Omitting it uses uptime in
+milliseconds. The reply <code>OK - test queued id=...; confirm on peer</code> confirms
+local queueing only. Read the other updated board's <code>get espnow.stats test</code>
+and match <code>rxid</code>, with an increased <code>rx</code>, to establish one-way probe receipt. Send a
+different ID from the other board to test the reverse direction.</p>
+<p>A probe is unencrypted, CRC-checked transport diagnostic data, not a MeshCore
+packet or a security token. It does not verify packet-format compatibility or
+<code>bridge.secret</code>, authenticate the peer or establish normal packet delivery.
+There is no automatic echo,
+retry or LoRa forwarding; older firmware ignores it. Resetting statistics
+does not restart the bridge or write preferences. Test/reset commands are
+rejected over LoRa; use a local console. Every reply fits the bounded CLI
+frame, and diagnostics do not print from WiFi callbacks.</p>
+<p>For a short USB debug capture, record both <code>get usb.logging</code> and
+<code>get usb.debug</code>, then enable both <code>set usb.logging on</code> and <code>set usb.debug on</code>.
+Run the test and restore both original settings. The ordinary image emits
+bounded <code>ESPNOW:</code> updates from its main loop at most once per second when
+diagnostic state changes, even with <code>BRIDGE_DEBUG=0</code>. Updates can be skipped
+when USB is busy; read the counter pages for exact values. The CLI counter
+pages and probes do not require either logging gate.</p>
+<p>See the <a href="../espnow_bridge_setup/#test-the-24-ghz-path-without-lora-forwarding">two-board diagnostic flow</a>.
+Do not include <code>get bridge.secret</code> or WiFi credentials in shared debug logs.</p>
 <hr />
 <h4 id="view-or-change-the-bridge-enabled-flag">View or change the bridge enabled flag</h4>
 <p><strong>Search terms:</strong> enable bridge, disable bridge, serial bridge, RS232 bridge.</p>
