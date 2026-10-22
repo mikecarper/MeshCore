@@ -1,0 +1,1765 @@
+{
+  "all_controlled_comparisons_valid_reported": true,
+  "cases": [
+    {
+      "application_delivery_pass_reported": true,
+      "application_receipt_comparison_complete": true,
+      "case_complete_reported": true,
+      "collector_errors": [],
+      "controlled_comparison_valid_reported": true,
+      "evidence_errors": [],
+      "fixed_witness_classification_counts_tx_confirmed": {
+        "all_applicable_received": 40
+      },
+      "fixed_witness_comparison_present": true,
+      "fixed_witness_conditional_comparisons": [
+        {
+          "classification": "all_applicable_received",
+          "ordinal": 0,
+          "profile": "primary",
+          "scanners_missing": [],
+          "scanners_received": [
+            "v3",
+            "v4",
+            "t096"
+          ],
+          "sequence": 0,
+          "tx_confirmed": true,
+          "witness": "witness_primary",
+          "witness_received": true
+        },
+        {
+          "classification": "all_applicable_received",
+          "ordinal": 1,
+          "profile": "secondary",
+          "scanners_missing": [],
+          "scanners_received": [
+            "v3",
+            "v4",
+            "t096"
+          ],
+          "sequence": 0,
+          "tx_confirmed": true,
+          "witness": "witness_secondary",
+          "witness_received": true
+        },
+        {
+          "classification": "all_applicable_received",
+          "ordinal": 2,
+          "profile": "secondary",
+          "scanners_missing": [],
+          "scanners_received": [
+            "v3",
+            "v4",
+            "t096"
+          ],
+          "sequence": 1,
+          "tx_confirmed": true,
+          "witness": "witness_secondary",
+          "witness_received": true
+        },
+        {
+          "classification": "all_applicable_received",
+          "ordinal": 3,
+          "profile": "primary",
+          "scanners_missing": [],
+          "scanners_received": [
+            "v3",
+            "v4",
+            "t096"
+          ],
+          "sequence": 1,
+          "tx_confirmed": true,
+          "witness": "witness_primary",
+          "witness_received": true
+        },
+        {
+          "classification": "all_applicable_received",
+          "ordinal": 4,
+          "profile": "secondary",
+          "scanners_missing": [],
+          "scanners_received": [
+            "v3",
+            "v4",
+            "t096"
+          ],
+          "sequence": 2,
+          "tx_confirmed": true,
+          "witness": "witness_secondary",
+          "witness_received": true
+        },
+        {
+          "classification": "all_applicable_received",
+          "ordinal": 5,
+          "profile": "primary",
+          "scanners_missing": [],
+          "scanners_received": [
+            "v3",
+            "v4",
+            "t096"
+          ],
+          "sequence": 2,
+          "tx_confirmed": true,
+          "witness": "witness_primary",
+          "witness_received": true
+        },
+        {
+          "classification": "all_applicable_received",
+          "ordinal": 6,
+          "profile": "secondary",
+          "scanners_missing": [],
+          "scanners_received": [
+            "v3",
+            "v4",
+            "t096"
+          ],
+          "sequence": 3,
+          "tx_confirmed": true,
+          "witness": "witness_secondary",
+          "witness_received": true
+        },
+        {
+          "classification": "all_applicable_received",
+          "ordinal": 7,
+          "profile": "primary",
+          "scanners_missing": [],
+          "scanners_received": [
+            "v3",
+            "v4",
+            "t096"
+          ],
+          "sequence": 3,
+          "tx_confirmed": true,
+          "witness": "witness_primary",
+          "witness_received": true
+        },
+        {
+          "classification": "all_applicable_received",
+          "ordinal": 8,
+          "profile": "secondary",
+          "scanners_missing": [],
+          "scanners_received": [
+            "v3",
+            "v4",
+            "t096"
+          ],
+          "sequence": 4,
+          "tx_confirmed": true,
+          "witness": "witness_secondary",
+          "witness_received": true
+        },
+        {
+          "classification": "all_applicable_received",
+          "ordinal": 9,
+          "profile": "primary",
+          "scanners_missing": [],
+          "scanners_received": [
+            "v3",
+            "v4",
+            "t096"
+          ],
+          "sequence": 4,
+          "tx_confirmed": true,
+          "witness": "witness_primary",
+          "witness_received": true
+        },
+        {
+          "classification": "all_applicable_received",
+          "ordinal": 10,
+          "profile": "secondary",
+          "scanners_missing": [],
+          "scanners_received": [
+            "v3",
+            "v4",
+            "t096"
+          ],
+          "sequence": 5,
+          "tx_confirmed": true,
+          "witness": "witness_secondary",
+          "witness_received": true
+        },
+        {
+          "classification": "all_applicable_received",
+          "ordinal": 11,
+          "profile": "primary",
+          "scanners_missing": [],
+          "scanners_received": [
+            "v3",
+            "v4",
+            "t096"
+          ],
+          "sequence": 5,
+          "tx_confirmed": true,
+          "witness": "witness_primary",
+          "witness_received": true
+        },
+        {
+          "classification": "all_applicable_received",
+          "ordinal": 12,
+          "profile": "secondary",
+          "scanners_missing": [],
+          "scanners_received": [
+            "v3",
+            "v4",
+            "t096"
+          ],
+          "sequence": 6,
+          "tx_confirmed": true,
+          "witness": "witness_secondary",
+          "witness_received": true
+        },
+        {
+          "classification": "all_applicable_received",
+          "ordinal": 13,
+          "profile": "primary",
+          "scanners_missing": [],
+          "scanners_received": [
+            "v3",
+            "v4",
+            "t096"
+          ],
+          "sequence": 6,
+          "tx_confirmed": true,
+          "witness": "witness_primary",
+          "witness_received": true
+        },
+        {
+          "classification": "all_applicable_received",
+          "ordinal": 14,
+          "profile": "primary",
+          "scanners_missing": [],
+          "scanners_received": [
+            "v3",
+            "v4",
+            "t096"
+          ],
+          "sequence": 7,
+          "tx_confirmed": true,
+          "witness": "witness_primary",
+          "witness_received": true
+        },
+        {
+          "classification": "all_applicable_received",
+          "ordinal": 15,
+          "profile": "secondary",
+          "scanners_missing": [],
+          "scanners_received": [
+            "v3",
+            "v4",
+            "t096"
+          ],
+          "sequence": 7,
+          "tx_confirmed": true,
+          "witness": "witness_secondary",
+          "witness_received": true
+        },
+        {
+          "classification": "all_applicable_received",
+          "ordinal": 16,
+          "profile": "secondary",
+          "scanners_missing": [],
+          "scanners_received": [
+            "v3",
+            "v4",
+            "t096"
+          ],
+          "sequence": 8,
+          "tx_confirmed": true,
+          "witness": "witness_secondary",
+          "witness_received": true
+        },
+        {
+          "classification": "all_applicable_received",
+          "ordinal": 17,
+          "profile": "primary",
+          "scanners_missing": [],
+          "scanners_received": [
+            "v3",
+            "v4",
+            "t096"
+          ],
+          "sequence": 8,
+          "tx_confirmed": true,
+          "witness": "witness_primary",
+          "witness_received": true
+        },
+        {
+          "classification": "all_applicable_received",
+          "ordinal": 18,
+          "profile": "secondary",
+          "scanners_missing": [],
+          "scanners_received": [
+            "v3",
+            "v4",
+            "t096"
+          ],
+          "sequence": 9,
+          "tx_confirmed": true,
+          "witness": "witness_secondary",
+          "witness_received": true
+        },
+        {
+          "classification": "all_applicable_received",
+          "ordinal": 19,
+          "profile": "primary",
+          "scanners_missing": [],
+          "scanners_received": [
+            "v3",
+            "v4",
+            "t096"
+          ],
+          "sequence": 9,
+          "tx_confirmed": true,
+          "witness": "witness_primary",
+          "witness_received": true
+        },
+        {
+          "classification": "all_applicable_received",
+          "ordinal": 20,
+          "profile": "primary",
+          "scanners_missing": [],
+          "scanners_received": [
+            "v3",
+            "v4",
+            "t096"
+          ],
+          "sequence": 10,
+          "tx_confirmed": true,
+          "witness": "witness_primary",
+          "witness_received": true
+        },
+        {
+          "classification": "all_applicable_received",
+          "ordinal": 21,
+          "profile": "secondary",
+          "scanners_missing": [],
+          "scanners_received": [
+            "v3",
+            "v4",
+            "t096"
+          ],
+          "sequence": 10,
+          "tx_confirmed": true,
+          "witness": "witness_secondary",
+          "witness_received": true
+        },
+        {
+          "classification": "all_applicable_received",
+          "ordinal": 22,
+          "profile": "primary",
+          "scanners_missing": [],
+          "scanners_received": [
+            "v3",
+            "v4",
+            "t096"
+          ],
+          "sequence": 11,
+          "tx_confirmed": true,
+          "witness": "witness_primary",
+          "witness_received": true
+        },
+        {
+          "classification": "all_applicable_received",
+          "ordinal": 23,
+          "profile": "secondary",
+          "scanners_missing": [],
+          "scanners_received": [
+            "v3",
+            "v4",
+            "t096"
+          ],
+          "sequence": 11,
+          "tx_confirmed": true,
+          "witness": "witness_secondary",
+          "witness_received": true
+        },
+        {
+          "classification": "all_applicable_received",
+          "ordinal": 24,
+          "profile": "secondary",
+          "scanners_missing": [],
+          "scanners_received": [
+            "v3",
+            "v4",
+            "t096"
+          ],
+          "sequence": 12,
+          "tx_confirmed": true,
+          "witness": "witness_secondary",
+          "witness_received": true
+        },
+        {
+          "classification": "all_applicable_received",
+          "ordinal": 25,
+          "profile": "primary",
+          "scanners_missing": [],
+          "scanners_received": [
+            "v3",
+            "v4",
+            "t096"
+          ],
+          "sequence": 12,
+          "tx_confirmed": true,
+          "witness": "witness_primary",
+          "witness_received": true
+        },
+        {
+          "classification": "all_applicable_received",
+          "ordinal": 26,
+          "profile": "secondary",
+          "scanners_missing": [],
+          "scanners_received": [
+            "v3",
+            "v4",
+            "t096"
+          ],
+          "sequence": 13,
+          "tx_confirmed": true,
+          "witness": "witness_secondary",
+          "witness_received": true
+        },
+        {
+          "classification": "all_applicable_received",
+          "ordinal": 27,
+          "profile": "primary",
+          "scanners_missing": [],
+          "scanners_received": [
+            "v3",
+            "v4",
+            "t096"
+          ],
+          "sequence": 13,
+          "tx_confirmed": true,
+          "witness": "witness_primary",
+          "witness_received": true
+        },
+        {
+          "classification": "all_applicable_received",
+          "ordinal": 28,
+          "profile": "primary",
+          "scanners_missing": [],
+          "scanners_received": [
+            "v3",
+            "v4",
+            "t096"
+          ],
+          "sequence": 14,
+          "tx_confirmed": true,
+          "witness": "witness_primary",
+          "witness_received": true
+        },
+        {
+          "classification": "all_applicable_received",
+          "ordinal": 29,
+          "profile": "secondary",
+          "scanners_missing": [],
+          "scanners_received": [
+            "v3",
+            "v4",
+            "t096"
+          ],
+          "sequence": 14,
+          "tx_confirmed": true,
+          "witness": "witness_secondary",
+          "witness_received": true
+        },
+        {
+          "classification": "all_applicable_received",
+          "ordinal": 30,
+          "profile": "secondary",
+          "scanners_missing": [],
+          "scanners_received": [
+            "v3",
+            "v4",
+            "t096"
+          ],
+          "sequence": 15,
+          "tx_confirmed": true,
+          "witness": "witness_secondary",
+          "witness_received": true
+        },
+        {
+          "classification": "all_applicable_received",
+          "ordinal": 31,
+          "profile": "primary",
+          "scanners_missing": [],
+          "scanners_received": [
+            "v3",
+            "v4",
+            "t096"
+          ],
+          "sequence": 15,
+          "tx_confirmed": true,
+          "witness": "witness_primary",
+          "witness_received": true
+        },
+        {
+          "classification": "all_applicable_received",
+          "ordinal": 32,
+          "profile": "primary",
+          "scanners_missing": [],
+          "scanners_received": [
+            "v3",
+            "v4",
+            "t096"
+          ],
+          "sequence": 16,
+          "tx_confirmed": true,
+          "witness": "witness_primary",
+          "witness_received": true
+        },
+        {
+          "classification": "all_applicable_received",
+          "ordinal": 33,
+          "profile": "secondary",
+          "scanners_missing": [],
+          "scanners_received": [
+            "v3",
+            "v4",
+            "t096"
+          ],
+          "sequence": 16,
+          "tx_confirmed": true,
+          "witness": "witness_secondary",
+          "witness_received": true
+        },
+        {
+          "classification": "all_applicable_received",
+          "ordinal": 34,
+          "profile": "secondary",
+          "scanners_missing": [],
+          "scanners_received": [
+            "v3",
+            "v4",
+            "t096"
+          ],
+          "sequence": 17,
+          "tx_confirmed": true,
+          "witness": "witness_secondary",
+          "witness_received": true
+        },
+        {
+          "classification": "all_applicable_received",
+          "ordinal": 35,
+          "profile": "primary",
+          "scanners_missing": [],
+          "scanners_received": [
+            "v3",
+            "v4",
+            "t096"
+          ],
+          "sequence": 17,
+          "tx_confirmed": true,
+          "witness": "witness_primary",
+          "witness_received": true
+        },
+        {
+          "classification": "all_applicable_received",
+          "ordinal": 36,
+          "profile": "primary",
+          "scanners_missing": [],
+          "scanners_received": [
+            "v3",
+            "v4",
+            "t096"
+          ],
+          "sequence": 18,
+          "tx_confirmed": true,
+          "witness": "witness_primary",
+          "witness_received": true
+        },
+        {
+          "classification": "all_applicable_received",
+          "ordinal": 37,
+          "profile": "secondary",
+          "scanners_missing": [],
+          "scanners_received": [
+            "v3",
+            "v4",
+            "t096"
+          ],
+          "sequence": 18,
+          "tx_confirmed": true,
+          "witness": "witness_secondary",
+          "witness_received": true
+        },
+        {
+          "classification": "all_applicable_received",
+          "ordinal": 38,
+          "profile": "secondary",
+          "scanners_missing": [],
+          "scanners_received": [
+            "v3",
+            "v4",
+            "t096"
+          ],
+          "sequence": 19,
+          "tx_confirmed": true,
+          "witness": "witness_secondary",
+          "witness_received": true
+        },
+        {
+          "classification": "all_applicable_received",
+          "ordinal": 39,
+          "profile": "primary",
+          "scanners_missing": [],
+          "scanners_received": [
+            "v3",
+            "v4",
+            "t096"
+          ],
+          "sequence": 19,
+          "tx_confirmed": true,
+          "witness": "witness_primary",
+          "witness_received": true
+        }
+      ],
+      "local_accepted_count": 40,
+      "masks": [
+        {
+          "not_applicable": [
+            "witness_secondary"
+          ],
+          "ordinal": 0,
+          "profile": "primary",
+          "received_by": [
+            "v3",
+            "v4",
+            "t096",
+            "witness_primary"
+          ],
+          "sequence": 0,
+          "tx_confirmed": true
+        },
+        {
+          "not_applicable": [
+            "witness_primary"
+          ],
+          "ordinal": 1,
+          "profile": "secondary",
+          "received_by": [
+            "v3",
+            "v4",
+            "t096",
+            "witness_secondary"
+          ],
+          "sequence": 0,
+          "tx_confirmed": true
+        },
+        {
+          "not_applicable": [
+            "witness_primary"
+          ],
+          "ordinal": 2,
+          "profile": "secondary",
+          "received_by": [
+            "v3",
+            "v4",
+            "t096",
+            "witness_secondary"
+          ],
+          "sequence": 1,
+          "tx_confirmed": true
+        },
+        {
+          "not_applicable": [
+            "witness_secondary"
+          ],
+          "ordinal": 3,
+          "profile": "primary",
+          "received_by": [
+            "v3",
+            "v4",
+            "t096",
+            "witness_primary"
+          ],
+          "sequence": 1,
+          "tx_confirmed": true
+        },
+        {
+          "not_applicable": [
+            "witness_primary"
+          ],
+          "ordinal": 4,
+          "profile": "secondary",
+          "received_by": [
+            "v3",
+            "v4",
+            "t096",
+            "witness_secondary"
+          ],
+          "sequence": 2,
+          "tx_confirmed": true
+        },
+        {
+          "not_applicable": [
+            "witness_secondary"
+          ],
+          "ordinal": 5,
+          "profile": "primary",
+          "received_by": [
+            "v3",
+            "v4",
+            "t096",
+            "witness_primary"
+          ],
+          "sequence": 2,
+          "tx_confirmed": true
+        },
+        {
+          "not_applicable": [
+            "witness_primary"
+          ],
+          "ordinal": 6,
+          "profile": "secondary",
+          "received_by": [
+            "v3",
+            "v4",
+            "t096",
+            "witness_secondary"
+          ],
+          "sequence": 3,
+          "tx_confirmed": true
+        },
+        {
+          "not_applicable": [
+            "witness_secondary"
+          ],
+          "ordinal": 7,
+          "profile": "primary",
+          "received_by": [
+            "v3",
+            "v4",
+            "t096",
+            "witness_primary"
+          ],
+          "sequence": 3,
+          "tx_confirmed": true
+        },
+        {
+          "not_applicable": [
+            "witness_primary"
+          ],
+          "ordinal": 8,
+          "profile": "secondary",
+          "received_by": [
+            "v3",
+            "v4",
+            "t096",
+            "witness_secondary"
+          ],
+          "sequence": 4,
+          "tx_confirmed": true
+        },
+        {
+          "not_applicable": [
+            "witness_secondary"
+          ],
+          "ordinal": 9,
+          "profile": "primary",
+          "received_by": [
+            "v3",
+            "v4",
+            "t096",
+            "witness_primary"
+          ],
+          "sequence": 4,
+          "tx_confirmed": true
+        },
+        {
+          "not_applicable": [
+            "witness_primary"
+          ],
+          "ordinal": 10,
+          "profile": "secondary",
+          "received_by": [
+            "v3",
+            "v4",
+            "t096",
+            "witness_secondary"
+          ],
+          "sequence": 5,
+          "tx_confirmed": true
+        },
+        {
+          "not_applicable": [
+            "witness_secondary"
+          ],
+          "ordinal": 11,
+          "profile": "primary",
+          "received_by": [
+            "v3",
+            "v4",
+            "t096",
+            "witness_primary"
+          ],
+          "sequence": 5,
+          "tx_confirmed": true
+        },
+        {
+          "not_applicable": [
+            "witness_primary"
+          ],
+          "ordinal": 12,
+          "profile": "secondary",
+          "received_by": [
+            "v3",
+            "v4",
+            "t096",
+            "witness_secondary"
+          ],
+          "sequence": 6,
+          "tx_confirmed": true
+        },
+        {
+          "not_applicable": [
+            "witness_secondary"
+          ],
+          "ordinal": 13,
+          "profile": "primary",
+          "received_by": [
+            "v3",
+            "v4",
+            "t096",
+            "witness_primary"
+          ],
+          "sequence": 6,
+          "tx_confirmed": true
+        },
+        {
+          "not_applicable": [
+            "witness_secondary"
+          ],
+          "ordinal": 14,
+          "profile": "primary",
+          "received_by": [
+            "v3",
+            "v4",
+            "t096",
+            "witness_primary"
+          ],
+          "sequence": 7,
+          "tx_confirmed": true
+        },
+        {
+          "not_applicable": [
+            "witness_primary"
+          ],
+          "ordinal": 15,
+          "profile": "secondary",
+          "received_by": [
+            "v3",
+            "v4",
+            "t096",
+            "witness_secondary"
+          ],
+          "sequence": 7,
+          "tx_confirmed": true
+        },
+        {
+          "not_applicable": [
+            "witness_primary"
+          ],
+          "ordinal": 16,
+          "profile": "secondary",
+          "received_by": [
+            "v3",
+            "v4",
+            "t096",
+            "witness_secondary"
+          ],
+          "sequence": 8,
+          "tx_confirmed": true
+        },
+        {
+          "not_applicable": [
+            "witness_secondary"
+          ],
+          "ordinal": 17,
+          "profile": "primary",
+          "received_by": [
+            "v3",
+            "v4",
+            "t096",
+            "witness_primary"
+          ],
+          "sequence": 8,
+          "tx_confirmed": true
+        },
+        {
+          "not_applicable": [
+            "witness_primary"
+          ],
+          "ordinal": 18,
+          "profile": "secondary",
+          "received_by": [
+            "v3",
+            "v4",
+            "t096",
+            "witness_secondary"
+          ],
+          "sequence": 9,
+          "tx_confirmed": true
+        },
+        {
+          "not_applicable": [
+            "witness_secondary"
+          ],
+          "ordinal": 19,
+          "profile": "primary",
+          "received_by": [
+            "v3",
+            "v4",
+            "t096",
+            "witness_primary"
+          ],
+          "sequence": 9,
+          "tx_confirmed": true
+        },
+        {
+          "not_applicable": [
+            "witness_secondary"
+          ],
+          "ordinal": 20,
+          "profile": "primary",
+          "received_by": [
+            "v3",
+            "v4",
+            "t096",
+            "witness_primary"
+          ],
+          "sequence": 10,
+          "tx_confirmed": true
+        },
+        {
+          "not_applicable": [
+            "witness_primary"
+          ],
+          "ordinal": 21,
+          "profile": "secondary",
+          "received_by": [
+            "v3",
+            "v4",
+            "t096",
+            "witness_secondary"
+          ],
+          "sequence": 10,
+          "tx_confirmed": true
+        },
+        {
+          "not_applicable": [
+            "witness_secondary"
+          ],
+          "ordinal": 22,
+          "profile": "primary",
+          "received_by": [
+            "v3",
+            "v4",
+            "t096",
+            "witness_primary"
+          ],
+          "sequence": 11,
+          "tx_confirmed": true
+        },
+        {
+          "not_applicable": [
+            "witness_primary"
+          ],
+          "ordinal": 23,
+          "profile": "secondary",
+          "received_by": [
+            "v3",
+            "v4",
+            "t096",
+            "witness_secondary"
+          ],
+          "sequence": 11,
+          "tx_confirmed": true
+        },
+        {
+          "not_applicable": [
+            "witness_primary"
+          ],
+          "ordinal": 24,
+          "profile": "secondary",
+          "received_by": [
+            "v3",
+            "v4",
+            "t096",
+            "witness_secondary"
+          ],
+          "sequence": 12,
+          "tx_confirmed": true
+        },
+        {
+          "not_applicable": [
+            "witness_secondary"
+          ],
+          "ordinal": 25,
+          "profile": "primary",
+          "received_by": [
+            "v3",
+            "v4",
+            "t096",
+            "witness_primary"
+          ],
+          "sequence": 12,
+          "tx_confirmed": true
+        },
+        {
+          "not_applicable": [
+            "witness_primary"
+          ],
+          "ordinal": 26,
+          "profile": "secondary",
+          "received_by": [
+            "v3",
+            "v4",
+            "t096",
+            "witness_secondary"
+          ],
+          "sequence": 13,
+          "tx_confirmed": true
+        },
+        {
+          "not_applicable": [
+            "witness_secondary"
+          ],
+          "ordinal": 27,
+          "profile": "primary",
+          "received_by": [
+            "v3",
+            "v4",
+            "t096",
+            "witness_primary"
+          ],
+          "sequence": 13,
+          "tx_confirmed": true
+        },
+        {
+          "not_applicable": [
+            "witness_secondary"
+          ],
+          "ordinal": 28,
+          "profile": "primary",
+          "received_by": [
+            "v3",
+            "v4",
+            "t096",
+            "witness_primary"
+          ],
+          "sequence": 14,
+          "tx_confirmed": true
+        },
+        {
+          "not_applicable": [
+            "witness_primary"
+          ],
+          "ordinal": 29,
+          "profile": "secondary",
+          "received_by": [
+            "v3",
+            "v4",
+            "t096",
+            "witness_secondary"
+          ],
+          "sequence": 14,
+          "tx_confirmed": true
+        },
+        {
+          "not_applicable": [
+            "witness_primary"
+          ],
+          "ordinal": 30,
+          "profile": "secondary",
+          "received_by": [
+            "v3",
+            "v4",
+            "t096",
+            "witness_secondary"
+          ],
+          "sequence": 15,
+          "tx_confirmed": true
+        },
+        {
+          "not_applicable": [
+            "witness_secondary"
+          ],
+          "ordinal": 31,
+          "profile": "primary",
+          "received_by": [
+            "v3",
+            "v4",
+            "t096",
+            "witness_primary"
+          ],
+          "sequence": 15,
+          "tx_confirmed": true
+        },
+        {
+          "not_applicable": [
+            "witness_secondary"
+          ],
+          "ordinal": 32,
+          "profile": "primary",
+          "received_by": [
+            "v3",
+            "v4",
+            "t096",
+            "witness_primary"
+          ],
+          "sequence": 16,
+          "tx_confirmed": true
+        },
+        {
+          "not_applicable": [
+            "witness_primary"
+          ],
+          "ordinal": 33,
+          "profile": "secondary",
+          "received_by": [
+            "v3",
+            "v4",
+            "t096",
+            "witness_secondary"
+          ],
+          "sequence": 16,
+          "tx_confirmed": true
+        },
+        {
+          "not_applicable": [
+            "witness_primary"
+          ],
+          "ordinal": 34,
+          "profile": "secondary",
+          "received_by": [
+            "v3",
+            "v4",
+            "t096",
+            "witness_secondary"
+          ],
+          "sequence": 17,
+          "tx_confirmed": true
+        },
+        {
+          "not_applicable": [
+            "witness_secondary"
+          ],
+          "ordinal": 35,
+          "profile": "primary",
+          "received_by": [
+            "v3",
+            "v4",
+            "t096",
+            "witness_primary"
+          ],
+          "sequence": 17,
+          "tx_confirmed": true
+        },
+        {
+          "not_applicable": [
+            "witness_secondary"
+          ],
+          "ordinal": 36,
+          "profile": "primary",
+          "received_by": [
+            "v3",
+            "v4",
+            "t096",
+            "witness_primary"
+          ],
+          "sequence": 18,
+          "tx_confirmed": true
+        },
+        {
+          "not_applicable": [
+            "witness_primary"
+          ],
+          "ordinal": 37,
+          "profile": "secondary",
+          "received_by": [
+            "v3",
+            "v4",
+            "t096",
+            "witness_secondary"
+          ],
+          "sequence": 18,
+          "tx_confirmed": true
+        },
+        {
+          "not_applicable": [
+            "witness_primary"
+          ],
+          "ordinal": 38,
+          "profile": "secondary",
+          "received_by": [
+            "v3",
+            "v4",
+            "t096",
+            "witness_secondary"
+          ],
+          "sequence": 19,
+          "tx_confirmed": true
+        },
+        {
+          "not_applicable": [
+            "witness_secondary"
+          ],
+          "ordinal": 39,
+          "profile": "primary",
+          "received_by": [
+            "v3",
+            "v4",
+            "t096",
+            "witness_primary"
+          ],
+          "sequence": 19,
+          "tx_confirmed": true
+        }
+      ],
+      "planned_packet_count": 40,
+      "preamble_symbols": 32,
+      "receivers": {
+        "t096": {
+          "after_health": {
+            "error_flags": 0,
+            "uptime_seconds": 49884
+          },
+          "before_health": {
+            "error_flags": 0,
+            "uptime_seconds": 49727
+          },
+          "collection_complete": true,
+          "duplicate_frame_count": 0,
+          "frame_count": 40,
+          "frame_data_available": true,
+          "packet_delta": {
+            "receive_errors": 0,
+            "sent": 0,
+            "sent_direct": 0,
+            "sent_flood": 0
+          },
+          "profiles": {
+            "primary": {
+              "applicable": true,
+              "missing_ordinals_after_complete_drain": [],
+              "not_observed_tx_confirmed_ordinals": [],
+              "planned_expected_count": 20,
+              "received_ordinals": [
+                0,
+                3,
+                5,
+                7,
+                9,
+                11,
+                13,
+                14,
+                17,
+                19,
+                20,
+                22,
+                25,
+                27,
+                28,
+                31,
+                32,
+                35,
+                36,
+                39
+              ],
+              "received_unique_count": 20,
+              "tx_confirmed_expected_count": 20
+            },
+            "secondary": {
+              "applicable": true,
+              "missing_ordinals_after_complete_drain": [],
+              "not_observed_tx_confirmed_ordinals": [],
+              "planned_expected_count": 20,
+              "received_ordinals": [
+                1,
+                2,
+                4,
+                6,
+                8,
+                10,
+                12,
+                15,
+                16,
+                18,
+                21,
+                23,
+                24,
+                26,
+                29,
+                30,
+                33,
+                34,
+                37,
+                38
+              ],
+              "received_unique_count": 20,
+              "tx_confirmed_expected_count": 20
+            }
+          },
+          "received_unique_count": 40,
+          "record_present": true,
+          "reported_duplicate_count": 0,
+          "unexpected_profile_ordinals": []
+        },
+        "v3": {
+          "after_health": {
+            "error_flags": 0,
+            "uptime_seconds": 18961
+          },
+          "before_health": {
+            "error_flags": 0,
+            "uptime_seconds": 18793
+          },
+          "collection_complete": true,
+          "duplicate_frame_count": 0,
+          "frame_count": 40,
+          "frame_data_available": true,
+          "packet_delta": {
+            "receive_errors": 0,
+            "sent": 0,
+            "sent_direct": 0,
+            "sent_flood": 0
+          },
+          "profiles": {
+            "primary": {
+              "applicable": true,
+              "missing_ordinals_after_complete_drain": [],
+              "not_observed_tx_confirmed_ordinals": [],
+              "planned_expected_count": 20,
+              "received_ordinals": [
+                0,
+                3,
+                5,
+                7,
+                9,
+                11,
+                13,
+                14,
+                17,
+                19,
+                20,
+                22,
+                25,
+                27,
+                28,
+                31,
+                32,
+                35,
+                36,
+                39
+              ],
+              "received_unique_count": 20,
+              "tx_confirmed_expected_count": 20
+            },
+            "secondary": {
+              "applicable": true,
+              "missing_ordinals_after_complete_drain": [],
+              "not_observed_tx_confirmed_ordinals": [],
+              "planned_expected_count": 20,
+              "received_ordinals": [
+                1,
+                2,
+                4,
+                6,
+                8,
+                10,
+                12,
+                15,
+                16,
+                18,
+                21,
+                23,
+                24,
+                26,
+                29,
+                30,
+                33,
+                34,
+                37,
+                38
+              ],
+              "received_unique_count": 20,
+              "tx_confirmed_expected_count": 20
+            }
+          },
+          "received_unique_count": 40,
+          "record_present": true,
+          "reported_duplicate_count": 0,
+          "unexpected_profile_ordinals": []
+        },
+        "v4": {
+          "after_health": {
+            "error_flags": 0,
+            "uptime_seconds": 18655
+          },
+          "before_health": {
+            "error_flags": 0,
+            "uptime_seconds": 18492
+          },
+          "collection_complete": true,
+          "duplicate_frame_count": 0,
+          "frame_count": 40,
+          "frame_data_available": true,
+          "packet_delta": {
+            "receive_errors": 0,
+            "sent": 0,
+            "sent_direct": 0,
+            "sent_flood": 0
+          },
+          "profiles": {
+            "primary": {
+              "applicable": true,
+              "missing_ordinals_after_complete_drain": [],
+              "not_observed_tx_confirmed_ordinals": [],
+              "planned_expected_count": 20,
+              "received_ordinals": [
+                0,
+                3,
+                5,
+                7,
+                9,
+                11,
+                13,
+                14,
+                17,
+                19,
+                20,
+                22,
+                25,
+                27,
+                28,
+                31,
+                32,
+                35,
+                36,
+                39
+              ],
+              "received_unique_count": 20,
+              "tx_confirmed_expected_count": 20
+            },
+            "secondary": {
+              "applicable": true,
+              "missing_ordinals_after_complete_drain": [],
+              "not_observed_tx_confirmed_ordinals": [],
+              "planned_expected_count": 20,
+              "received_ordinals": [
+                1,
+                2,
+                4,
+                6,
+                8,
+                10,
+                12,
+                15,
+                16,
+                18,
+                21,
+                23,
+                24,
+                26,
+                29,
+                30,
+                33,
+                34,
+                37,
+                38
+              ],
+              "received_unique_count": 20,
+              "tx_confirmed_expected_count": 20
+            }
+          },
+          "received_unique_count": 40,
+          "record_present": true,
+          "reported_duplicate_count": 0,
+          "unexpected_profile_ordinals": []
+        },
+        "witness_primary": {
+          "after_health": {
+            "error_flags": 0,
+            "uptime_seconds": 146358
+          },
+          "before_health": {
+            "error_flags": 0,
+            "uptime_seconds": 146202
+          },
+          "collection_complete": true,
+          "duplicate_frame_count": 0,
+          "frame_count": 20,
+          "frame_data_available": true,
+          "packet_delta": {
+            "receive_errors": 0,
+            "sent": 0,
+            "sent_direct": 0,
+            "sent_flood": 0
+          },
+          "profiles": {
+            "primary": {
+              "applicable": true,
+              "missing_ordinals_after_complete_drain": [],
+              "not_observed_tx_confirmed_ordinals": [],
+              "planned_expected_count": 20,
+              "received_ordinals": [
+                0,
+                3,
+                5,
+                7,
+                9,
+                11,
+                13,
+                14,
+                17,
+                19,
+                20,
+                22,
+                25,
+                27,
+                28,
+                31,
+                32,
+                35,
+                36,
+                39
+              ],
+              "received_unique_count": 20,
+              "tx_confirmed_expected_count": 20
+            },
+            "secondary": {
+              "applicable": false,
+              "missing_ordinals_after_complete_drain": [],
+              "not_observed_tx_confirmed_ordinals": [],
+              "planned_expected_count": 0,
+              "received_ordinals": [],
+              "received_unique_count": 0,
+              "tx_confirmed_expected_count": 0
+            }
+          },
+          "received_unique_count": 20,
+          "record_present": true,
+          "reported_duplicate_count": 0,
+          "unexpected_profile_ordinals": []
+        },
+        "witness_secondary": {
+          "after_health": {
+            "error_flags": 0,
+            "uptime_seconds": 49892
+          },
+          "before_health": {
+            "error_flags": 0,
+            "uptime_seconds": 49738
+          },
+          "collection_complete": true,
+          "duplicate_frame_count": 0,
+          "frame_count": 20,
+          "frame_data_available": true,
+          "packet_delta": {
+            "receive_errors": 0,
+            "sent": 0,
+            "sent_direct": 0,
+            "sent_flood": 0
+          },
+          "profiles": {
+            "primary": {
+              "applicable": false,
+              "missing_ordinals_after_complete_drain": [],
+              "not_observed_tx_confirmed_ordinals": [],
+              "planned_expected_count": 0,
+              "received_ordinals": [],
+              "received_unique_count": 0,
+              "tx_confirmed_expected_count": 0
+            },
+            "secondary": {
+              "applicable": true,
+              "missing_ordinals_after_complete_drain": [],
+              "not_observed_tx_confirmed_ordinals": [],
+              "planned_expected_count": 20,
+              "received_ordinals": [
+                1,
+                2,
+                4,
+                6,
+                8,
+                10,
+                12,
+                15,
+                16,
+                18,
+                21,
+                23,
+                24,
+                26,
+                29,
+                30,
+                33,
+                34,
+                37,
+                38
+              ],
+              "received_unique_count": 20,
+              "tx_confirmed_expected_count": 20
+            }
+          },
+          "received_unique_count": 20,
+          "record_present": true,
+          "reported_duplicate_count": 0,
+          "unexpected_profile_ordinals": []
+        }
+      },
+      "sender_packet_delta": {
+        "receive_errors": 0,
+        "sent": 40,
+        "sent_direct": 40,
+        "sent_flood": 0
+      },
+      "tx_confirmed_count": 40
+    }
+  ],
+  "cleanup": {
+    "peer": {
+      "restoration_errors": [],
+      "restoration_passed": true,
+      "session_errors": [],
+      "session_finalization_passed": true
+    },
+    "t096": {
+      "restoration_errors": [],
+      "restoration_passed": true,
+      "session_errors": [],
+      "session_finalization_passed": true
+    },
+    "v3": {
+      "restoration_errors": [],
+      "restoration_passed": true,
+      "session_errors": [],
+      "session_finalization_passed": true
+    },
+    "v4": {
+      "restoration_errors": [],
+      "restoration_passed": true,
+      "session_errors": [],
+      "session_finalization_passed": true
+    },
+    "witness_primary": {
+      "restoration_errors": [],
+      "restoration_passed": true,
+      "session_errors": [],
+      "session_finalization_passed": true
+    },
+    "witness_secondary": {
+      "restoration_errors": [],
+      "restoration_passed": true,
+      "session_errors": [],
+      "session_finalization_passed": true
+    }
+  },
+  "effective_profile_tuples_hz": {
+    "primary": [
+      915000000,
+      62500,
+      7,
+      5
+    ],
+    "secondary": [
+      916000000,
+      62500,
+      7,
+      5
+    ]
+  },
+  "errors": [],
+  "experiment_complete_reported": true,
+  "exporter_sha256": "09eb2fc468598354156e48dbcdd03a252c4581b7761d3d37c4f088420429da8b",
+  "firmware_writes_reported": 0,
+  "input_sha256": {
+    "campaign_report": "46ef6da2dabe8ba48f7acb8e8b5aec2370c8b41397787ac78020e044d50c918e",
+    "frequency_change_receipt": "c523274d78c9dd3aa7511cb91ef0330866684f7f12bfc54d94967787f0d22257"
+  },
+  "interpretation": "Receipt counts, complete drains, controlled validity and cleanup are separate. Unsent packets are not RF losses. Opposite-frequency witnesses are not applicable. Shared misses do not establish a cause. Missing evidence remains null; no hardware claims are inferred.",
+  "migration": {
+    "errors": [],
+    "explicit_primary_preamble_symbols": 32,
+    "nodes": {
+      "peer": {
+        "explicit_saved_preamble32_acknowledged": true,
+        "physical_apply_acknowledged": true,
+        "record_present": true,
+        "reported_passed": true,
+        "saved_primary915_readback": true
+      },
+      "t096": {
+        "explicit_saved_preamble32_acknowledged": true,
+        "physical_apply_acknowledged": true,
+        "record_present": true,
+        "reported_passed": true,
+        "saved_primary915_readback": true
+      },
+      "v3": {
+        "explicit_saved_preamble32_acknowledged": true,
+        "physical_apply_acknowledged": true,
+        "record_present": true,
+        "reported_passed": true,
+        "saved_primary915_readback": true
+      },
+      "v4": {
+        "explicit_saved_preamble32_acknowledged": true,
+        "physical_apply_acknowledged": true,
+        "record_present": true,
+        "reported_passed": true,
+        "saved_primary915_readback": true
+      },
+      "witness_primary": {
+        "explicit_saved_preamble32_acknowledged": true,
+        "physical_apply_acknowledged": true,
+        "record_present": true,
+        "reported_passed": true,
+        "saved_primary915_readback": true
+      },
+      "witness_secondary": {
+        "explicit_saved_preamble32_acknowledged": true,
+        "physical_apply_acknowledged": true,
+        "record_present": true,
+        "reported_passed": true,
+        "saved_primary915_readback": true
+      }
+    },
+    "previous_saved_preamble_intent": "not proven by earlier effective preamble status",
+    "reported_passed": true,
+    "rf_datagrams_requested": 0,
+    "saved_primary_frequency_mhz": 915.0
+  },
+  "migration_evidence_origin": "preceding saved915 explicitP32 migration",
+  "mixed_receiver_source": true,
+  "packet_retries_reported": 0,
+  "planned_case_count": 1,
+  "planned_packets_per_preamble": 40,
+  "planned_preambles": [
+    32
+  ],
+  "planned_total_packets": 40,
+  "reported_artifact_sha256": {
+    "authority_sha256": "b92b45bfff5d67d72d3b5d322bbd95c1145218be556e28314931a09b53a8bec2",
+    "baseline_sha256": "bb6685fa03182395e7a697d4b7b843c023b59d7f12feebe074f2c7de76d26f78",
+    "controller_sha256": "187ab7de2464d1496ddee5235899d115270953e4ae38beaa1b0e1791823b0bb1",
+    "protocol_core_sha256": "6920179844efe720542368d2ea257d94c18c8c49c063efb18a60ccf6b8204b31"
+  },
+  "schema": 1,
+  "scope": "Five simultaneous receivers, one-shot RF packets, private details excluded",
+  "source_versions": {
+    "peer": "v1.18.0.1-halo-keymind-cascade-dev-ebb59d48",
+    "t096": "v1.18.0.1-halo-keymind-cascade-dev-4773ac42",
+    "v3": "v1.18.0.1-halo-keymind-cascade-dev-9b70827d",
+    "v4": "v1.18.0.1-halo-keymind-cascade-dev-9b70827d",
+    "witness_primary": "v1.18.0.1-halo-keymind-cascade-dev-08650f64",
+    "witness_secondary": "v1.18.0.1-halo-keymind-cascade-dev-08650f64"
+  },
+  "tx_counts_are_recorded_evidence_only": true,
+  "user_stop": {
+    "active_case_interrupted": null,
+    "before_preamble": null,
+    "present": false
+  }
+}
