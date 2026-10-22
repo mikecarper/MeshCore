@@ -2294,6 +2294,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#esp32-processor-speed-and-temporary-test-controls" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ESP32 processor speed and temporary test controls
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#noise-floor-sampling-and-sleep" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2473,6 +2484,75 @@ light sleep.</p>
 <p>The <a href="../test-results/esp32_ble_radio2_sleep_2026-10-21/">ESP32 Bluetooth and radio2 qualification report</a>
 records the tested firmware, saved-pairing checks, SDK wait measurements and
 packet-test failures. SDK wait time is not a current measurement.</p>
+<h2 id="esp32-processor-speed-and-temporary-test-controls">ESP32 processor speed and temporary test controls</h2>
+<p>The WebConfig <strong>Processor speed</strong> selector and <code>set cpu.freq auto|80|160|240</code>
+save the processor clock choice. <code>get cpu.freq</code> reports the choice, actual MHz
+and supported values. The board rejects unsupported clocks. Auto retains the
+existing policy: Companion normally selects 80 MHz with device power saving
+on and its configured nominal speed with it off. Other roles retain their
+nominal speed in Auto. A fixed speed stays fixed when power saving changes.
+The selection applies immediately; a failed apply or save reports an error and
+attempts to restore the previous selection. Returning to Auto clears the saved
+override. Existing preferences load as Auto.</p>
+<p>Local USB/Bluetooth console commands provide temporary controls for controlled
+radio2 experiments. They are held in RAM and reset at reboot:</p>
+<table>
+<thead>
+<tr>
+<th>Command</th>
+<th>Values</th>
+<th>Default</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>set powersaving.test sleep VALUE</code></td>
+<td><code>on</code>, <code>off</code></td>
+<td><code>on</code></td>
+</tr>
+<tr>
+<td><code>set powersaving.test slice_ms VALUE</code></td>
+<td>2–20 ms</td>
+<td>10 ms</td>
+</tr>
+<tr>
+<td><code>set powersaving.test guard_ms VALUE</code></td>
+<td>0–20 ms</td>
+<td>4 ms</td>
+</tr>
+<tr>
+<td><code>set powersaving.test min_ms VALUE</code></td>
+<td>1–10 ms</td>
+<td>2 ms</td>
+</tr>
+<tr>
+<td><code>set powersaving.test settle_ms VALUE</code></td>
+<td><code>auto</code>, 1–50 ms</td>
+<td><code>auto</code></td>
+</tr>
+<tr>
+<td><code>set powersaving.test uart_quiet VALUE</code></td>
+<td>5–300 seconds, <code>off</code></td>
+<td>inactive</td>
+</tr>
+</tbody>
+</table>
+<p><code>get powersaving.test</code> shows the current controls; <code>set powersaving.test reset</code>
+restores their defaults. Sleep on permits existing power-saving decisions; the
+saved device power-saving setting and every normal transport, interrupt and
+radio deadline guard still apply. Settle changes only when profile sleep is
+allowed, leaving radio calibration timing unchanged.</p>
+<p>UART quiet is available only for an ordinary hardware UART console, such as
+the V3's external USB bridge. After draining its acknowledgement, it stops the
+UART driver and automatically restores the console at 115200 baud after the
+chosen interval. USB logging and OTA must be off. Native USB boards reject
+this command. A reboot also restores the console.</p>
+<p>To separate clock speed from CPU sleep, hold the clock at 80 or 160 MHz and
+compare sleep off/on at the same RF settings. Use matching transmitter and
+receiver preambles, unique packets without retries, and diagnostic counters
+that prove SDK sleep occurred. Keep every failed packet in the result. These
+controls are experimental tools; a reported SDK wait is not a current reading
+or proof of a loss-free radio link.</p>
 <h2 id="noise-floor-sampling-and-sleep">Noise-floor sampling and sleep</h2>
 <p>Startup still collects a complete baseline promptly: 64 accepted samples,
 at least 50 ms apart, after the radio frontend has settled. Collection keeps
