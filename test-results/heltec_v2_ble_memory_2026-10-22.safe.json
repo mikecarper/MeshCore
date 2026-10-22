@@ -1,0 +1,58 @@
+{
+  "source_commit": "1d4016f483caaddebde4c923f7eea3dee27ac3ea",
+  "source_clean": true,
+  "canonical_target": "Heltec_v2_companion_radio_ble",
+  "runtime_profile": "cascade",
+  "build_profile": "auto",
+  "radio_preset": "usa-cascadia",
+  "version": "v1.18.0.1-halo-keymind-cascade-dev-1d4016f4",
+  "passed": true,
+  "static_used": 112140,
+  "static_limit": 124580,
+  "static_free": 12440,
+  "static_required_reserve": 8192,
+  "static_margin": 4248,
+  "static_saved": 10824,
+  "runtime_available": 181400,
+  "runtime_required": 141104,
+  "runtime_margin": 40296,
+  "cache_reader_allowance": 6144,
+  "partitions_unchanged": true,
+  "capabilities_verified": true,
+  "reductions": [],
+  "host_test_methods_passed": 74,
+  "hardware_tested": false,
+  "preserved": {
+    "contacts": 160,
+    "channels": 8,
+    "offline_frames": 128,
+    "bluetooth_host": "Bluedroid",
+    "existing_bonds": "unchanged storage and host",
+    "contact_record_bytes": 152
+  },
+  "artifact_sha256": {
+    "Heltec_v2_companion_radio_ble.partsig": "a743a4253cddb196524eca11ec4ca63235f8116ed4e5db0363a75842bd7a41b7",
+    "Heltec_v2_companion_radio_ble-ota-v1.18.0.1-halo-keymind-cascade-dev-1d4016f4.memory.json": "ba9a300ac2ea16855817f3fafa2527cd4e36868b95d3cb9d6af28423e34c64eb",
+    "Heltec_v2_companion_radio_ble-ota-v1.18.0.1-halo-keymind-cascade-dev-1d4016f4.bin": "09d01ea046e80d6b480e15b00c3cfeef0587a638447c6b6234a8d645c7b1dc48",
+    "Heltec_v2_companion_radio_ble-ota-v1.18.0.1-halo-keymind-cascade-dev-1d4016f4-merged.bin": "4ba76ada54a961cd58bf998160349d3e3be4898d27d515a6068148410f2442ad",
+    "Heltec_v2_companion_radio_ble-ota-v1.18.0.1-halo-keymind-cascade-dev-1d4016f4.capabilities.json": "7e306f4a70e02975c86d4623c84f5e80d8f6c753a4bd3b4fa0d227e37257ed2c",
+    "Heltec_v2_companion_radio_ble-ota-v1.18.0.1-halo-keymind-cascade-dev-1d4016f4.meshtext-license.txt": "c37d0a453a2491514bac33ed835c1877f207390f134ae439a97b06b004e236d2"
+  },
+  "linked_artifacts_sha256": {
+    "firmware.elf": "e211590b2bfae32fad0cf5cd5a6040a318b838ca3ff515eef58bf1187716058e",
+    "partitions.bin": "1d9cca96de0fe07ad7fc0648b9878ddecd9ce565e38b589ad20fea698ed4c80c",
+    "firmware.map": "f24a4f1252ea9a144bf76e4cad42964b5fda39e2155cdfcf8c7a3e099b7bfb8c"
+  },
+  "schema": 1,
+  "scope": "Clean V2 BLE canonical build and host validation; no hardware qualification",
+  "baseline": {
+    "source_commit": "76437c6bf8b9e6589b150f265f41bac829e1584f",
+    "source_clean": true,
+    "passed": false,
+    "static_dram_used": 122964,
+    "static_dram_limit": 124580,
+    "static_dram_free": 1616,
+    "static_dram_required_reserve": 8192,
+    "static_dram_short_by": 6576
+  }
+}

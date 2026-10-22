@@ -2553,12 +2553,15 @@ The same-size V4 build of
 <a href="https://github.com/mikecarper/MeshCore/commit/f8b5b8301e55e97058342f293b13b559c8f9144b"><code>f8b5b8301</code></a>
 adds only the channel-response padding fix described below. Bluetooth, radio,
 sleep-policy and role code are unchanged between those last two revisions.</p>
-<p>Classic Heltec V2 BLE remains below its required 8,192-byte internal RAM
-reserve. Historical checks left 2,552 bytes free on the baseline and 1,224 bytes
+<p>At this checkpoint, Classic Heltec V2 BLE was below its required 8,192-byte
+static DRAM reserve. Historical checks left 2,552 bytes free on the baseline and 1,224 bytes
 on the initial sleep candidate. Removing an unnecessary WiFi-driver reference
 recovered 1,208 bytes, raising the later candidate to 2,432: 120 below baseline
 and 5,760 short of the reserve. Final cache/padding revisions were not
-remeasured on V2. The gate was retained; this target remains unqualified.</p>
+remeasured on V2. The gate was retained. The later
+<a href="../heltec_v2_ble_memory_2026-10-22/">22 October V2 cache repair</a> closes the RAM
+build failure with 12,440 static bytes free and unchanged capacities; physical
+V2 operation was not measured by that repair.</p>
 <h2 id="physical-v4-observations">Physical V4 observations</h2>
 <p>The test board is a Heltec V4.3 OLED using its matching FEM-off Full Companion
 image. The first candidate reports source suffix <code>278c9ffb</code>; its published
@@ -3200,8 +3203,8 @@ Full overlap restoration is verified. The ordinary run's original cleanup
 failure is retained, with its separate automatic-permission recovery verified.
 No nRF52 board, hub power or other firmware was changed in this task.</p>
 <p>The Bluetooth hardware checks pass. SDK light-sleep calls are observed without
-SDK errors. Strict sleeping two-frequency packet qualification remains open,
-and Classic V2 still fails its existing RAM reserve gate. These results do not
+SDK errors. Strict sleeping two-frequency packet qualification remains open.
+The later V2 cache repair passes its existing RAM reserve gate. These results do not
 qualify every ESP32 board or the full thirteen-radio fleet, and do not measure
 electrical power savings. Unchanged Bluetooth and quiet-wait checks were not
 repeated for padding, version, documentation or fixture-only changes.</p>
