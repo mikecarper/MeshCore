@@ -1397,6 +1397,34 @@
   
   
     <li class="md-nav__item">
+      <a href="../udp_bridge_setup/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Udp bridge setup
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../WiFi/" class="md-nav__link">
         
   
@@ -3752,6 +3780,17 @@
   
     <nav class="md-nav" aria-label="Bridge (When bridge support is compiled in)">
       <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#wifi-udp-bridge" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        WiFi UDP bridge
+      
+    </span>
+  </a>
+  
+</li>
         
           <li class="md-nav__item">
   <a href="#view-the-compiled-bridge-type" class="md-nav__link">
@@ -6821,6 +6860,17 @@
   
     <nav class="md-nav" aria-label="Bridge (When bridge support is compiled in)">
       <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#wifi-udp-bridge" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        WiFi UDP bridge
+      
+    </span>
+  </a>
+  
+</li>
         
           <li class="md-nav__item">
   <a href="#view-the-compiled-bridge-type" class="md-nav__link">
@@ -12183,7 +12233,60 @@ still overrides the first-boot default after an update.</p>
 <h3 id="bridge-when-bridge-support-is-compiled-in">Bridge (When bridge support is compiled in)</h3>
 <p>For a two-repeater setup and diagnostic flow, see the
 <a href="../espnow_bridge_setup/">ESP-NOW bridge setup guide</a> or
-<a href="../rs232_bridge_setup/">RS-232/UART bridge guide</a>.</p>
+<a href="../rs232_bridge_setup/">RS-232/UART bridge guide</a>. For an existing WiFi network,
+see the <a href="../udp_bridge_setup/">eight-peer UDP bridge guide</a>.</p>
+<h4 id="wifi-udp-bridge">WiFi UDP bridge</h4>
+<p>Available on supported ESP32 repeater images with <code>WITH_UDP_BRIDGE</code>. UDP starts
+off on new/upgraded installs. It requires an existing station WiFi connection,
+and pauses during AP/AP+STA operation, disconnection, browser OTA and ownership
+transitions. It does not start a network or require an MQTT broker.</p>
+<pre><code class="language-text">get udp.enabled
+set udp.enabled on
+set udp.enabled off
+get udp.port
+set udp.port 4404
+get udp.peer.1
+set udp.peer.1 192.168.1.51:4404
+set udp.peer.1 off
+get udp.status
+get udp.stats
+get udp.stats rx
+get udp.stats tx
+get udp.stats drops
+get udp.stats test
+</code></pre>
+<p>Peer slots are <code>udp.peer.1</code> through <code>udp.peer.8</code>. Each destination is one
+numeric unicast IPv4 address plus a port <code>1..65535</code>. The listening port defaults
+to <code>4404</code>. Multicast, loopback, unspecified/broadcast and duplicate endpoints
+are rejected. Both boards must list each other's listening address/port.
+Reserve DHCP addresses so the stored destinations remain valid.</p>
+<p>The transport reuses <code>bridge.secret</code> for authenticated sessions and packet
+integrity; no additional password is introduced. UDP payloads are not
+encrypted. Counter/status output does not reveal the secret. Config writes
+use the existing authenticated CLI policy and a separate checked preferences
+file; a successful save reports intent rather than reachability.</p>
+<p>Local-only diagnostic actions:</p>
+<pre><code class="language-text">udp test 1
+udp test 1 A1B2C3D4
+udp resetstats
+</code></pre>
+<p>The peer number is <code>1..8</code>; the optional ID is exactly eight hexadecimal digits
+without <code>0x</code>. A queued/sent probe is not a delivery acknowledgement. On the
+destination, check <code>get udp.stats test</code> for an increased <code>rx</code> and matching
+<code>rxid</code>, then reverse the test. An authenticated peer session must be ready.
+The status <code>ready</code> count records established sessions, not current liveness;
+use a fresh received probe to confirm reachability. Incoming UDP enters the
+local LoRa mesh and is not relayed to other UDP peers.
+Probes do not echo, retry, allocate mesh packets or transmit on LoRa. Resetting
+statistics does not write preferences or restart the bridge.</p>
+<p>Both <code>set usb.logging on</code> and <code>set usb.debug on</code> enable bounded runtime USB
+summaries without requiring a special debug build. Restore both previous
+settings after capture. CLI pages/probes work with logging disabled.</p>
+<p>WiFi client isolation and firewall rules must allow peer-to-peer UDP; the
+firmware cannot bypass an isolating guest network. Isolation is an optional
+network policy, not an intrinsic WiFi restriction. See the
+<a href="../udp_bridge_setup/">setup and troubleshooting guide</a>.</p>
+<hr />
 <h4 id="view-the-compiled-bridge-type">View the compiled bridge type</h4>
 <p><strong>Usage:</strong> <code>get bridge.type</code></p>
 <hr />

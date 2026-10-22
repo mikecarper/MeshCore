@@ -437,6 +437,10 @@
          <lastmod>2026-10-22</lastmod>
     </url>
     <url>
+         <loc>https://mikecarper.github.io/MeshCore/udp_bridge_setup/</loc>
+         <lastmod>2026-10-22</lastmod>
+    </url>
+    <url>
          <loc>https://mikecarper.github.io/MeshCore/upgrading_1.17.1.8_to_1.17.1.9/</loc>
          <lastmod>2026-10-22</lastmod>
     </url>
@@ -890,6 +894,10 @@
     </url>
     <url>
          <loc>https://mikecarper.github.io/MeshCore/test-results/tdeck_radio2_retune_experiments/</loc>
+         <lastmod>2026-10-22</lastmod>
+    </url>
+    <url>
+         <loc>https://mikecarper.github.io/MeshCore/test-results/udp_bridge_2026-10-22/</loc>
          <lastmod>2026-10-22</lastmod>
     </url>
     <url>

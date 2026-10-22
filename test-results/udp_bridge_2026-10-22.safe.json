@@ -1,0 +1,100 @@
+{
+  "schema_version": 1,
+  "date": "2026-10-22",
+  "source_commit": "f4a9a05f7574d7a0cabd16749bc7a4c5f8b18ad9",
+  "source_clean_at_build": true,
+  "firmware_version": "v1.18.0.1-halo-keymind-cascade-dev-f4a9a05f",
+  "runtime_profile": "cascade",
+  "radio_preset": "usa-cascade-fixed",
+  "scope": "Host and build/package validation only. No hardware flashed or contacted. No physical UDP, LoRa or OTA operation was performed.",
+  "physical_validation_performed": false,
+  "builds": [
+    {
+      "requested_target": "Heltec_v3_repeater",
+      "environment": "Heltec_v3_repeater_observer_mqtt",
+      "build_profile": "full",
+      "capability_verification_passed": true,
+      "feature_reductions": [],
+      "capabilities_sha256": "6c954ddafd0d5ee4d36132690768ce46a496d732724469aa8d645dc49fca8956",
+      "build_recipe_sha256": "0243c8212027f3e917ad7dcb2f0a816baf98d7c5078a7b009698870caa5cf3a8",
+      "memory": {
+        "passed": true,
+        "available_internal_bytes": 209392,
+        "largest_internal_region_bytes": 176624,
+        "required_heap_bytes": 209040,
+        "required_contiguous_bytes": 21184,
+        "scope": "Linked capacity before runtime allocation; physical boot/load/soak validation remains required."
+      },
+      "artifacts": [
+        {
+          "file": "Heltec_v3_repeater_observer_mqtt-full-usb-wifi-ota-v1.18.0.1-halo-keymind-cascade-dev-f4a9a05f-merged.bin",
+          "bytes": 2351832,
+          "sha256": "66fb35aa36fe5e1132c6e7af18fc30ed7bddf253e687b4b6fd77314cc0328571"
+        },
+        {
+          "file": "Heltec_v3_repeater_observer_mqtt-full-usb-wifi-ota-v1.18.0.1-halo-keymind-cascade-dev-f4a9a05f.bin",
+          "bytes": 2286296,
+          "sha256": "edf4b5ec0a19193b993d060a7b0091404dad20e5aed6a3c0499df6bcbe782bdd"
+        }
+      ]
+    },
+    {
+      "requested_target": "heltec_v4_repeater",
+      "environment": "heltec_v4_repeater_observer_mqtt",
+      "build_profile": "full",
+      "capability_verification_passed": true,
+      "feature_reductions": [],
+      "capabilities_sha256": "175c10f43a3ca20aca3b0dacc8efe958fa9e20a0a2859ca15dcc9c588ea91964",
+      "build_recipe_sha256": "5c45f84cc75c5c95fd541ee426bd7d486057726fc7abbfcf4e551bbb79d2e1ef",
+      "memory": {
+        "passed": true,
+        "available_internal_bytes": 202496,
+        "largest_internal_region_bytes": 169728,
+        "required_heap_bytes": 197776,
+        "required_contiguous_bytes": 21184,
+        "scope": "Linked capacity before runtime allocation; physical boot/load/soak validation remains required."
+      },
+      "artifacts": [
+        {
+          "file": "heltec_v4_repeater_observer_mqtt-full-usb-wifi-ota-v1.18.0.1-halo-keymind-cascade-dev-f4a9a05f-merged.bin",
+          "bytes": 2393368,
+          "sha256": "cb4e7bbf483b41c038af2fbe5aa072b75d88fe76acf27b352e2d51262129b921"
+        },
+        {
+          "file": "heltec_v4_repeater_observer_mqtt-full-usb-wifi-ota-v1.18.0.1-halo-keymind-cascade-dev-f4a9a05f.bin",
+          "bytes": 2327832,
+          "sha256": "be1128f7b0687964a93afd496bcad2f7a3a30d95d9b9393ea079284b9959603d"
+        }
+      ]
+    },
+    {
+      "requested_target": "heltec_v4_r8_tft_repeater",
+      "environment": "heltec_v4_r8_tft_repeater_observer_mqtt",
+      "build_profile": "full",
+      "capability_verification_passed": true,
+      "feature_reductions": [],
+      "capabilities_sha256": "4c8562503bc0b5f359f8c0eb49365cac2136d3713ab30803015333a844bbe6f7",
+      "build_recipe_sha256": "d4fa8acc970de47faa0812d3e19f297af21f1cdeff32c2426b76bca63e197801",
+      "memory": {
+        "passed": true,
+        "available_internal_bytes": 200264,
+        "largest_internal_region_bytes": 167496,
+        "required_heap_bytes": 195728,
+        "required_contiguous_bytes": 21184,
+        "scope": "Linked capacity before runtime allocation; physical boot/load/soak validation remains required."
+      },
+      "artifacts": [
+        {
+          "file": "heltec_v4_r8_tft_repeater_observer_mqtt-full-usb-wifi-ota-v1.18.0.1-halo-keymind-cascade-dev-f4a9a05f-merged.bin",
+          "bytes": 2407368,
+          "sha256": "915df5f10c27da036a8c97052d360ce42dcbee3c51c654c1cab57b19039b7513"
+        },
+        {
+          "file": "heltec_v4_r8_tft_repeater_observer_mqtt-full-usb-wifi-ota-v1.18.0.1-halo-keymind-cascade-dev-f4a9a05f.bin",
+          "bytes": 2341832,
+          "sha256": "0ad127295e5ec0b810d69627a8d2b6aadc9ef6b8db54fd0d4d5ca7b09d867144"
+        }
+      ]
+    }
+  ]
+}
