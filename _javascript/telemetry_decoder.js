@@ -5,9 +5,16 @@
   const TYPE_VOLTAGE = 0x12;
   const TYPE_GPS = 0x13;
   const TYPE_EXTERNAL_VOLTAGE = 0x14;
+  const TYPE_NOISE = 0x15;
+  const TYPE_NOISE_SECONDARY = 0x16;
   const BINARY_TEMPERATURE_MAGIC = "TTB1";
   const BINARY_VOLTAGE_MAGIC = "TVB1";
   const BINARY_EXTERNAL_VOLTAGE_MAGIC = "IVB1";
+  const BINARY_NOISE_MAGIC = "N1B1";
+  const BINARY_NOISE_SECONDARY_MAGIC = "N2B1";
+  const NOISE_BITS = 5;
+  const NOISE_CLI_MAX_SAMPLES = 176;
+  const NOISE_BINARY_MAX_SAMPLES = 255;
   const BINARY_HEADER_SIZE = 19;
   const BINARY_MAX_SAMPLES = 165;
   const BINARY_EXTERNAL_HEADER_SIZE = 20;
@@ -25,6 +32,8 @@
     <button type="button" data-telemetry-example="packetVoltage">Voltage packet</button>
     <button type="button" data-telemetry-example="packetExternalVoltage">I2C voltage packet</button>
     <button type="button" data-telemetry-example="externalVoltage">I2C voltage CLI page</button>
+    <button type="button" data-telemetry-example="packetNoise">Radio1 noise packet</button>
+    <button type="button" data-telemetry-example="noiseSecondary">Radio2 noise CLI page</button>
   </div>
 
   <label for="telemetry-reply-input">Raw packet or payload hex</label>
@@ -60,6 +69,7 @@
       <button type="button" data-role="download">Download CSV</button>
     </div>
     <dl class="telemetry-summary" data-role="summary"></dl>
+    <div class="telemetry-noise-chart" data-role="chart" hidden></div>
     <div class="telemetry-warnings" data-role="warnings" hidden>
       <strong>Decode notes</strong>
       <ul data-role="warning-list"></ul>
@@ -86,6 +96,16 @@
       command: "send telemetry.tx now",
       reply:
         "3E00495642311122334455667788800092651E00020800000004019026927109C427107FFF",
+    }),
+    packetNoise: Object.freeze({
+      label: "Analyzer radio1 noise-floor packet",
+      command: "send telemetry.tx now",
+      reply: "3E004E3142311122334455667788800092650F00080044CB77DF",
+    }),
+    noiseSecondary: Object.freeze({
+      label: "Radio2 noise-floor CLI page",
+      command: "get telemetry.noise2",
+      reply: "> FoAAkmUPCABEy3ff",
     }),
     temperature: Object.freeze({
       label: "Temperature example",
@@ -120,6 +140,15 @@
     }
   }
 
+  function stripBase64ReplyPrefix(line) {
+    return line.trim().replace(/^[^|\r\n]{2}\|\s*/, "").replace(/^>\s*/, "");
+  }
+
+  function isBase64ReplyLine(line) {
+    return /^(?:[^|\r\n]{2}\||>)/.test(line)
+      && /^[A-Za-z0-9+/]+={0,2}$/.test(stripBase64ReplyPrefix(line));
+  }
+
   function extractBase64(input) {
     if (typeof input !== "string" || input.trim() === "") {
       throw new TelemetryDecodeError("Paste a telemetry reply or Base64 payload first.");
@@ -133,15 +162,16 @@
     const replyLine = text
       .split(/\r?\n/)
       .map((line) => line.trim())
-      .find((line) => /^>\s*[A-Za-z0-9+/]+={0,2}$/.test(line));
+      .find(isBase64ReplyLine);
 
     if (replyLine) {
-      text = replyLine.replace(/^>\s*/, "");
+      text = stripBase64ReplyPrefix(replyLine);
     } else {
       text = text
         .replace(/^```(?:text)?\s*/i, "")
         .replace(/```\s*$/, "")
         .trim()
+        .replace(/^[^|\r\n]{2}\|\s*/, "")
         .replace(/^>\s*/, "")
         .replace(/\s+/g, "");
     }
@@ -164,8 +194,8 @@
     const replies = input
       .split(/\r?\n/)
       .map((line) => line.trim())
-      .filter((line) => /^>\s*[A-Za-z0-9+/]+={0,2}$/.test(line))
-      .map((line) => line.replace(/^>\s*/, ""));
+      .filter(isBase64ReplyLine)
+      .map(stripBase64ReplyPrefix);
     return replies.length === 0 ? [extractBase64(input)] : replies;
   }
 
@@ -202,6 +232,19 @@
       value += String.fromCharCode(bytes[offset + index]);
     }
     return value;
+  }
+
+  function noiseProfile(type) {
+    if (type === TYPE_NOISE || type === BINARY_NOISE_MAGIC) return 1;
+    if (type === TYPE_NOISE_SECONDARY || type === BINARY_NOISE_SECONDARY_MAGIC) return 2;
+    return null;
+  }
+
+  function binaryMagicSupported(magic) {
+    return magic === BINARY_TEMPERATURE_MAGIC
+      || magic === BINARY_VOLTAGE_MAGIC
+      || magic === BINARY_EXTERNAL_VOLTAGE_MAGIC
+      || noiseProfile(magic) !== null;
   }
 
   function extractHexBytes(input) {
@@ -246,9 +289,7 @@
       if (firstValid === null) firstValid = bytes;
       for (let offset = 0; offset <= bytes.length - 4; offset += 1) {
         const magic = asciiAt(bytes, offset, 4);
-        if (magic === BINARY_TEMPERATURE_MAGIC
-            || magic === BINARY_VOLTAGE_MAGIC
-            || magic === BINARY_EXTERNAL_VOLTAGE_MAGIC) {
+        if (binaryMagicSupported(magic)) {
           return bytes;
         }
       }
@@ -256,7 +297,7 @@
 
     if (firstValid) {
       throw new TelemetryDecodeError(
-        "Hex was found, but it does not contain TTB1, TVB1, or IVB1 telemetry."
+        "Hex was found, but it does not contain TTB1, TVB1, IVB1, N1B1, or N2B1 telemetry."
       );
     }
     throw new TelemetryDecodeError(
@@ -360,9 +401,10 @@
   function decodeBinarySnapshot(bytes, offset) {
     const magic = asciiAt(bytes, offset, 4);
     const externalVoltage = magic === BINARY_EXTERNAL_VOLTAGE_MAGIC;
+    const profile = noiseProfile(magic);
     const headerSize = externalVoltage
       ? BINARY_EXTERNAL_HEADER_SIZE : BINARY_HEADER_SIZE;
-    const maximumSamples = externalVoltage
+    const maximumSamples = profile ? NOISE_BINARY_MAX_SAMPLES : externalVoltage
       ? BINARY_EXTERNAL_MAX_SAMPLES : BINARY_MAX_SAMPLES;
     if (bytes.length - offset < headerSize) {
       throw new TelemetryDecodeError("The binary telemetry header is incomplete.");
@@ -377,7 +419,7 @@
     if (intervalMinutes === 0) {
       throw new TelemetryDecodeError("Binary telemetry sample interval cannot be zero.");
     }
-    const dataLength = externalVoltage
+    const dataLength = profile ? Math.ceil(count * NOISE_BITS / 8) : externalVoltage
       ? Math.ceil((count * EXTERNAL_VOLTAGE_BITS) / 8) : count;
     const payloadLength = headerSize + dataLength;
     if (bytes.length - offset < payloadLength) {
@@ -400,6 +442,13 @@
       packet: decodePacketEnvelope(bytes, offset),
       channel: externalVoltage ? bytes[offset + 18] : null,
     };
+    if (profile) {
+      assertLength(bytes, offset + payloadLength, "Noise-floor");
+      if (offset > 0 && (!header.packet || !header.packet.isRawCustom)) {
+        throw new TelemetryDecodeError("Noise-floor telemetry must be a payload or a complete RAW_CUSTOM packet.");
+      }
+      return decodeNoise(bytes, header, offset + headerSize, NOISE_BINARY_MAX_SAMPLES);
+    }
     const rows = [];
     for (let index = 0; index < count; index += 1) {
       const rawCode = externalVoltage
@@ -484,9 +533,7 @@
     let lastError = null;
     for (let offset = 0; offset <= bytes.length - 4; offset += 1) {
       const magic = asciiAt(bytes, offset, 4);
-      if (magic !== BINARY_TEMPERATURE_MAGIC
-          && magic !== BINARY_VOLTAGE_MAGIC
-          && magic !== BINARY_EXTERNAL_VOLTAGE_MAGIC) continue;
+      if (!binaryMagicSupported(magic)) continue;
       try {
         decodedCandidates.push(decodeBinarySnapshot(bytes, offset));
       } catch (error) {
@@ -614,6 +661,45 @@
       channel,
       kind: "external-voltage",
       label: `I²C voltage channel ${channel}`,
+      rows,
+      warnings: [],
+    };
+  }
+
+  function decodeNoise(bytes, header, dataOffset = 7,
+                       maximumSamples = NOISE_CLI_MAX_SAMPLES) {
+    if (header.intervalMinutes !== 15) {
+      throw new TelemetryDecodeError("Noise-floor telemetry requires a 15-minute sample interval.");
+    }
+    if (header.count < 1 || header.count > maximumSamples) {
+      throw new TelemetryDecodeError(
+        `Noise-floor sample count must be between 1 and ${maximumSamples}.`
+      );
+    }
+    const dataBytes = Math.ceil(header.count * NOISE_BITS / 8);
+    assertLength(bytes, dataOffset + dataBytes, "Noise-floor");
+    const paddingBits = dataBytes * 8 - header.count * NOISE_BITS;
+    if (paddingBits && (bytes[bytes.length - 1] & ((1 << paddingBits) - 1))) {
+      throw new TelemetryDecodeError("Noise-floor padding bits must be zero.");
+    }
+    const profile = noiseProfile(header.typeCode);
+    const rows = [];
+    for (let index = 0; index < header.count; index += 1) {
+      const rawCode = readPackedBits(bytes, dataOffset, index * NOISE_BITS, NOISE_BITS);
+      rows.push({
+        index,
+        epoch: sampleEpoch(header, index),
+        status: rawCode === 30 ? "MAX" : rawCode === 31 ? "Missing" : "Value",
+        rawCode,
+        noiseDbm: rawCode >= 30 ? null
+          : rawCode <= 2 ? -120 + rawCode : -118 + (rawCode - 2) * 2,
+      });
+    }
+    return {
+      ...header,
+      profile,
+      kind: "noise",
+      label: `Radio${profile} noise floor`,
       rows,
       warnings: [],
     };
@@ -754,9 +840,11 @@
       decoded = decodeGps(bytes, header);
     } else if (header.typeCode === TYPE_EXTERNAL_VOLTAGE) {
       decoded = decodeExternalVoltage(bytes, header);
+    } else if (noiseProfile(header.typeCode)) {
+      decoded = decodeNoise(bytes, header);
     } else {
       throw new TelemetryDecodeError(
-        `Unsupported telemetry type 0x${header.typeCode.toString(16).padStart(2, "0")}; expected 0x11, 0x12, 0x13, or 0x14.`
+        `Unsupported telemetry type 0x${header.typeCode.toString(16).padStart(2, "0")}; expected 0x11 through 0x16.`
       );
     }
     decoded.encoded = encoded;
@@ -769,11 +857,12 @@
     decodedItems.slice(1).forEach((item) => {
       const sameSource = (item.sourceId || null) === (first.sourceId || null);
       const sameChannel = (item.channel || null) === (first.channel || null);
+      const sameProfile = (item.profile || null) === (first.profile || null);
       if (item.kind !== first.kind || item.typeCode !== first.typeCode
           || item.intervalMinutes !== first.intervalMinutes
-          || !sameSource || !sameChannel) {
+          || !sameSource || !sameChannel || !sameProfile) {
         throw new TelemetryDecodeError(
-          "Multiple telemetry replies must use the same type, source, channel, and interval."
+          "Multiple telemetry replies must use the same type, source, channel, and interval, including the radio profile."
         );
       }
     });
@@ -812,7 +901,7 @@
   function decodeTelemetry(input) {
     const rawLines = typeof input === "string"
       ? input.split(/\r?\n/).filter(
-        (line) => /54544231|54564231|49564231/i.test(line)
+        (line) => /54544231|54564231|49564231|4e314231|4e324231/i.test(line)
       )
       : [];
     if (rawLines.length > 1) {
@@ -829,7 +918,7 @@
         .replace(/^['"]|['",;]$/g, "")
       : "";
     if ((/^[0-9a-f]+$/i.test(compactHex) && compactHex.length % 2 === 0)
-        || /54544231|54564231|49564231/i.test(String(input))) {
+        || /54544231|54564231|49564231|4e314231|4e324231/i.test(String(input))) {
       return decodeRawTelemetryHex(input);
     }
     return mergeDecodedTelemetry(
@@ -856,6 +945,23 @@
     const localZone =
       (Intl.DateTimeFormat().resolvedOptions() || {}).timeZone || "browser local";
     const timestampHeader = localTime ? `Timestamp (${localZone})` : "Timestamp (UTC)";
+
+    if (decoded.kind === "noise") {
+      return {
+        headers: ["#", timestampHeader, "Status", decoded.label, "Raw code"],
+        csvHeaders: ["sample", localTime ? `timestamp (${localZone})` : "timestamp_utc",
+                     "radio_profile", "status", "noise_floor_dbm", "raw_code"],
+        rows: decoded.rows.map((row) => ({
+          muted: row.status === "Missing",
+          values: [row.index + 1, timestampText(row.epoch, localTime), row.status,
+                   row.status === "MAX" ? ">-64 dBm"
+                     : row.noiseDbm === null ? "—" : `${row.noiseDbm} dBm`, row.rawCode],
+          csvValues: [row.index + 1, timestampText(row.epoch, localTime), decoded.profile,
+                      row.status.toLowerCase(), row.noiseDbm === null ? "" : row.noiseDbm,
+                      row.rawCode],
+        })),
+      };
+    }
 
     if (decoded.kind === "temperature") {
       return {
@@ -977,6 +1083,9 @@
     if (decoded.channel) {
       items.splice(1, 0, ["LPP channel", String(decoded.channel)]);
     }
+    if (decoded.profile) {
+      items.splice(1, 0, ["Radio profile", `radio${decoded.profile}`]);
+    }
     if (decoded.sourceId) {
       items.splice(1, 0, ["Source ID", decoded.sourceId]);
       items.push([
@@ -1014,9 +1123,78 @@
   }
 
   function modelToCsv(model) {
-    return [model.headers, ...model.rows.map((row) => row.values)]
+    return [model.csvHeaders || model.headers,
+            ...model.rows.map((row) => row.csvValues || row.values)]
       .map((row) => row.map(csvCell).join(","))
       .join("\r\n");
+  }
+
+  function noiseChartModel(decoded) {
+    if (decoded.kind !== "noise") return null;
+    const first = decoded.rows[0].epoch;
+    const last = decoded.rows[decoded.rows.length - 1].epoch;
+    const span = Math.max(900, last - first);
+    const segments = [];
+    let segment = [];
+    let previousEpoch = null;
+    decoded.rows.forEach((row) => {
+      if (row.noiseDbm === null || (previousEpoch !== null && row.epoch - previousEpoch !== 900)) {
+        if (segment.length) segments.push(segment);
+        segment = [];
+      }
+      if (row.noiseDbm !== null) {
+        segment.push({
+          x: 50 + (row.epoch - first) * 570 / span,
+          y: 150 - (row.noiseDbm + 120) * 130 / 56,
+          label: `${timestampText(row.epoch, false)}: ${row.noiseDbm} dBm`,
+        });
+      }
+      previousEpoch = row.epoch;
+    });
+    if (segment.length) segments.push(segment);
+    return {
+      segments,
+      description: `${decoded.label}. Numeric readings only; MAX and missing samples leave gaps.`,
+    };
+  }
+
+  function renderNoiseChart(container, decoded) {
+    container.replaceChildren();
+    const model = noiseChartModel(decoded);
+    container.hidden = model === null;
+    if (!model) return;
+    const svgElement = (tag, attributes = {}) => {
+      const node = document.createElementNS("http://www.w3.org/2000/svg", tag);
+      Object.entries(attributes).forEach(([name, value]) => node.setAttribute(name, String(value)));
+      return node;
+    };
+    const svg = svgElement("svg", { viewBox: "0 0 640 175", role: "img",
+                                   "aria-label": model.description });
+    for (const [value, y] of [[-64, 20], [-92, 85], [-120, 150]]) {
+      svg.appendChild(svgElement("line", { x1: 50, x2: 620, y1: y, y2: y,
+                                         class: "telemetry-chart-grid" }));
+      const label = svgElement("text", { x: 42, y: y + 4, "text-anchor": "end" });
+      label.textContent = `${value}`;
+      svg.appendChild(label);
+    }
+    model.segments.forEach((segment) => {
+      svg.appendChild(svgElement("polyline", {
+        points: segment.map((point) => `${point.x},${point.y}`).join(" "),
+        class: "telemetry-chart-line",
+      }));
+      segment.forEach((point) => {
+        const dot = svgElement("circle", { cx: point.x, cy: point.y, r: 2,
+                                          class: "telemetry-chart-point" });
+        const title = svgElement("title");
+        title.textContent = point.label;
+        dot.appendChild(title);
+        svg.appendChild(dot);
+      });
+    });
+    container.appendChild(svg);
+    const caption = document.createElement("p");
+    caption.textContent = "Noise floor (dBm), oldest to newest. MAX (>−64 dBm) and missing samples leave gaps.";
+    container.appendChild(caption);
   }
 
   function appendCell(row, tagName, value) {
@@ -1041,6 +1219,7 @@
     const results = root.querySelector("[data-role='results']");
     const resultTitle = root.querySelector("[data-role='result-title']");
     const summary = root.querySelector("[data-role='summary']");
+    const chart = root.querySelector("[data-role='chart']");
     const warningBox = root.querySelector("[data-role='warnings']");
     const warningList = root.querySelector("[data-role='warning-list']");
     const table = root.querySelector("[data-role='table']");
@@ -1068,6 +1247,7 @@
       const useLocalTime = localTime.checked;
       const model = tableModel(current, useLocalTime);
       resultTitle.textContent = `${current.label} telemetry`;
+      renderNoiseChart(chart, current);
 
       summary.replaceChildren();
       summaryItems(current, useLocalTime).forEach(([term, description]) => {
@@ -1150,7 +1330,8 @@
       link.href = url;
       const sourcePart = current.sourceId ? `${current.sourceId.toLowerCase()}-` : "";
       const channelPart = current.channel ? `-ch${current.channel}` : "";
-      link.download = `meshcore-telemetry-${sourcePart}${current.kind}${channelPart}.csv`;
+      const profilePart = current.profile ? `-radio${current.profile}` : "";
+      link.download = `meshcore-telemetry-${sourcePart}${current.kind}${channelPart}${profilePart}.csv`;
       document.body.appendChild(link);
       link.click();
       link.remove();
@@ -1175,6 +1356,7 @@
     mergeDecodedTelemetry,
     tableModel,
     modelToCsv,
+    noiseChartModel,
   });
 
   global.MeshCoreTelemetryDecoder = api;

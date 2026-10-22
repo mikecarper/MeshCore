@@ -58,7 +58,7 @@
     
       <link rel="stylesheet" href="../_stylesheets/firmware_picker.css?v=20261013-pick-first-1">
     
-      <link rel="stylesheet" href="../_stylesheets/telemetry_decoder.css">
+      <link rel="stylesheet" href="../_stylesheets/telemetry_decoder.css?v=20261022-noise-history">
     
       <link rel="stylesheet" href="../_stylesheets/management_decoder.css">
     
@@ -7836,6 +7836,10 @@ days). Each detected INA219, INA226, INA260, or INA3221 voltage channel retains
 default; repeaters request a seven-day default at startup. Builds without a GPS
 provider omit the GPS history commands to conserve flash. All history and any
 runtime retention change are held in RAM and reset after a reboot.</p>
+<p>Radio noise-floor history is recorded separately every 15 minutes, retaining
+768 positions (eight rolling days) per profile. It uses idle RSSI calibration
+estimates rather than received-packet RSSI. Main-radio and radio2 history are
+kept separate; failed measurements retain a Missing position in the timeline.</p>
 <p>The feature is omitted from flash-constrained STM32 repeater and room images.</p>
 <p><strong>Usage:</strong></p>
 <ul>
@@ -7843,6 +7847,8 @@ runtime retention change are held in RAM and reset after a reboot.</p>
 <li><code>get telemetry.volt [page]</code></li>
 <li><code>get telemetry.volt.i2c [channel [page]]</code></li>
 <li><code>get telemetry.gps [page]</code></li>
+<li><code>get telemetry.noise [page]</code></li>
+<li><code>get telemetry.noise2 [page]</code></li>
 <li><code>set telemetry.gps &lt;days&gt;</code></li>
 <li><code>get telemetry.tx</code></li>
 <li><code>set telemetry.tx &lt;off|direct|path&gt;</code></li>
@@ -7859,7 +7865,9 @@ runtime retention change are held in RAM and reset after a reboot.</p>
 <li><code>page</code>: Page <code>1</code> is always newest. Temperature and voltage pages each hold
   24 hours and accept <code>1</code>-<code>7</code>. GPS pages each hold 12 hours and accept <code>1</code>
   through twice the current GPS retention in days. Omitting the page selects
-  page <code>1</code>.</li>
+  page <code>1</code>. Noise pages contain up to 176 quarter-hour positions (44 hours)
+  and accept only pages already collected, up to <code>1</code>-<code>5</code>. Use <code>telemetry.noise</code>
+  for the main profile and <code>telemetry.noise2</code> for radio2.</li>
 <li><code>channel</code>: Cayenne LPP channel assigned to an external voltage monitor.
   <code>get telemetry.volt.i2c</code> lists channels that have at least one non-zero
   sample. Supplying a channel returns 48 points (24 hours) per page; pages
@@ -7888,10 +7896,21 @@ both roles. Collection uses the MCU temperature, battery voltage, external I2C
 voltage monitors, and an already-valid onboard GPS fix. It does not wake GPS,
 so an off, sleeping, or unfixed GPS produces a missing location sample without
 changing its power-saving schedule.</p>
+<p>Noise history combines three fresh estimates collected roughly five minutes
+apart in each UTC-aligned quarter-hour. If any is at or below <code>-100 dBm</code>, use
+the minimum. Otherwise, if any is at or above <code>-80 dBm</code>, use the maximum.
+Otherwise, average all three. Thus a bucket containing both low and high
+values uses the minimum. Minimums round down, maximums round up, and averages
+round to the nearest encoded step. Incomplete buckets are Missing. A busy
+channel can prevent a fresh estimate; old calibration results are not reused
+as fresh measurements.</p>
 <p>External voltage history allocates 360 bytes for each detected monitor channel
 (1,080 bytes for all three INA3221 inputs). The allocation reserves all
 detected inputs so a sensor connected later can start recording, but all-zero
 inputs are omitted from command replies and LoRa transmission.</p>
+<p>Packed noise history uses 480 bytes per retained profile, plus its collection
+state. It does not add a 15-minute transmission schedule. USB and administrator
+LoRa CLI return the same Base64 format in the existing reply buffer.</p>
 <p>Replies contain <code>&gt;</code> followed by standard padded Base64. After decoding, all
 multi-byte integers are little-endian. Packed fields are written most
 significant bit first, oldest sample first.</p>
@@ -7907,7 +7926,8 @@ shared path and enables the default <code>2d</code> schedule; new configuration 
 An automatic run waits until 165 half-hour positions are
 available, then sends one maximum-size temperature packet, one maximum-size
 battery-voltage packet, and up to three <code>IVB1</code> packets for every populated I2C
-voltage channel. GPS is never included in this raw transmission. The history
+voltage channel, plus the collected noise-floor snapshots. GPS is never included
+in this raw transmission. The history
 remains boot-local, so the first scheduled run after a reboot needs about 82.5
 hours to fill. On the default two-day interval, each 82.5-hour temperature or
 battery packet overlaps its predecessor by 34.5 hours. Packets are paced two
@@ -7915,13 +7935,18 @@ seconds apart. A queue failure is retried after 30 minutes only for the packet
 that did not queue; successfully queued packets are not duplicated.</p>
 <p><code>send telemetry.tx now</code> is an administrator-only test action. It queues
 temperature and battery-voltage snapshots plus the available I2C voltage
-chunks over the configured path. It uses all currently available base
+chunks over the configured path. It also queues one main-radio <code>N1B1</code> packet
+once a noise bucket has completed and one <code>N2B1</code> packet when radio2 is enabled
+and has a completed bucket. Missing positions are included; an all-Missing
+history is still sent. It uses all currently available base
 positions up to 165 and all available I2C positions up to 192 per populated
-channel. It works while the schedule is off and does not move the next
+channel, plus the latest 255 positions per noise profile (63 hours 45 minutes).
+It works while the schedule is off and does not move the next
 scheduled send time. RAW_CUSTOM direct packets do not enter the normal
 encrypted direct-message retry mechanism.</p>
-<p>Full snapshots are 184-byte RAW_CUSTOM payloads. Manual tests can be shorter
-while history fills. Both formats are binary, not Base64 and not encrypted:</p>
+<p>Full temperature and battery snapshots are 184-byte RAW_CUSTOM payloads.
+Manual tests can be shorter while history fills. Both formats are binary,
+not Base64 and not encrypted:</p>
 <table>
 <thead>
 <tr>
@@ -7960,6 +7985,13 @@ while history fills. Both formats are binary, not Base64 and not encrypted:</p>
 for above <code>+77 C</code>. Codes <code>3</code> through <code>130</code> represent exact whole degrees from
 <code>-50 C</code> through <code>+77 C</code>; decode them as <code>code - 53</code>. Voltage codes use the
 same encoding as the paged voltage payload documented below.</p>
+<p>Noise snapshots reuse this 19-byte telemetry header. Their magic is <code>N1B1</code>
+for the main radio or <code>N2B1</code> for radio2; the interval is <code>15</code>, the count is
+<code>1</code>-<code>255</code>, and data begins at byte <code>19</code>. Samples are packed 5-bit codes,
+oldest first and most significant bit first, with zero padding in the last
+byte. The payload is <code>19 + ceil(count * 5 / 8)</code> bytes: 179 bytes for 255
+positions. No GPS coordinates are included in a noise packet. Noise packets
+are additional RAW_CUSTOM telemetry snapshots, not a new MeshCore packet type.</p>
 <p>External voltage snapshots use a separate packed layout. A full four-day
 channel takes three 140-byte <code>IVB1</code> payloads of 64 points each:</p>
 <table>
@@ -8119,6 +8151,76 @@ for above <code>4.40 V</code>. Codes <code>2</code>-<code>254</code> represent <
 </tbody>
 </table>
 <p>The codes have the same <code>0.02 V</code> through <code>655.34 V</code> meaning as <code>IVB1</code>.</p>
+<p>Noise-floor payload (<code>0x15</code> main radio, <code>0x16</code> radio2; up to 117 bytes):</p>
+<table>
+<thead>
+<tr>
+<th>Bytes</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>0</code></td>
+<td>Format/type <code>0x15</code> or <code>0x16</code></td>
+</tr>
+<tr>
+<td><code>1</code>-<code>4</code></td>
+<td>First sample UTC epoch, unsigned 32-bit</td>
+</tr>
+<tr>
+<td><code>5</code></td>
+<td>Sample interval in minutes (<code>15</code>)</td>
+</tr>
+<tr>
+<td><code>6</code></td>
+<td>Sample count (<code>1</code>-<code>176</code>)</td>
+</tr>
+<tr>
+<td><code>7</code> onward</td>
+<td>Oldest-to-newest packed 5-bit noise-floor codes</td>
+</tr>
+</tbody>
+</table>
+<p>The same codes are used by <code>N1B1</code> and <code>N2B1</code>:</p>
+<table>
+<thead>
+<tr>
+<th>Code</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>0</code></td>
+<td><code>-120 dBm</code> (also clamps lower values)</td>
+</tr>
+<tr>
+<td><code>1</code></td>
+<td><code>-119 dBm</code></td>
+</tr>
+<tr>
+<td><code>2</code>-<code>29</code></td>
+<td><code>-118</code> through <code>-64 dBm</code>, in 2 dB steps</td>
+</tr>
+<tr>
+<td><code>30</code></td>
+<td>MAX: above <code>-64 dBm</code></td>
+</tr>
+<tr>
+<td><code>31</code></td>
+<td>Missing: fewer than three fresh, valid estimates</td>
+</tr>
+</tbody>
+</table>
+<p>The last byte's unused low bits are zero. A full page encodes as 156 Base64
+characters, plus the existing <code>&gt;</code> reply prefix. The decoder keeps radio1 and
+radio2 separate and rejects wrong lengths, intervals, or padding. MAX is a
+status, not an invented numeric <code>-62 dBm</code> reading.</p>
+<p>When a Companion CLI command includes its three-character correlation prefix
+(for example <code>01|</code>), noise replies retain that prefix and omit the <code>&gt;</code> prompt.
+A full <code>01|Base64</code> response then fits in 160 bytes including its terminating
+NUL. The decoder accepts either reply style.</p>
 <p>GPS payload (<code>0x13</code>, 101 bytes):</p>
 <table>
 <thead>
@@ -13082,7 +13184,7 @@ is active.</p>
       
         <script src="../_javascript/firmware_picker.js?v=20261018-variant-consolidation-1"></script>
       
-        <script src="../_javascript/telemetry_decoder.js?v=20261007-hosted-form"></script>
+        <script src="../_javascript/telemetry_decoder.js?v=20261022-noise-history"></script>
       
         <script src="../_javascript/management_decoder.js"></script>
       

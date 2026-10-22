@@ -184,6 +184,38 @@
   border-radius: 0.4rem;
 }
 
+.telemetry-noise-chart {
+  margin: 1rem 0;
+  color: var(--md-default-fg-color);
+}
+
+.telemetry-noise-chart svg {
+  display: block;
+  width: 100%;
+  max-height: 18rem;
+  font: 12px sans-serif;
+  fill: currentColor;
+}
+
+.telemetry-noise-chart p {
+  margin: 0.2rem 0;
+  font-size: 0.78rem;
+}
+
+.telemetry-chart-grid {
+  stroke: var(--telemetry-border);
+}
+
+.telemetry-chart-line {
+  fill: none;
+  stroke: var(--md-primary-fg-color);
+  stroke-width: 2;
+}
+
+.telemetry-chart-point {
+  fill: var(--md-primary-fg-color);
+}
+
 .telemetry-tool .telemetry-table {
   display: table;
   width: 100%;
