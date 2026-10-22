@@ -2470,6 +2470,9 @@ existing sleep guards. This change does not sleep an ESP32 through a live
 Bluetooth or WiFi connection. Such connections require SDK-managed modem and
 automatic sleep; lowering CPU frequency or yielding alone is not proof of
 light sleep.</p>
+<p>The <a href="../test-results/esp32_ble_radio2_sleep_2026-10-21/">ESP32 Bluetooth and radio2 qualification report</a>
+records the tested firmware, saved-pairing checks, SDK wait measurements and
+packet-test failures. SDK wait time is not a current measurement.</p>
 <h2 id="noise-floor-sampling-and-sleep">Noise-floor sampling and sleep</h2>
 <p>Startup still collects a complete baseline promptly: 64 accepted samples,
 at least 50 ms apart, after the radio frontend has settled. Collection keeps
