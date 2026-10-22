@@ -2349,6 +2349,45 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#sdk-logging-repair-and-v4-scanning-controls" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        SDK logging repair and V4 scanning controls
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#fixed-tuple-controls-and-receive-path-defect" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Fixed-tuple controls and receive-path defect
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Fixed-tuple controls and receive-path defect">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#receive-activity-across-rx-restarts" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Receive activity across RX restarts
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#final-handback-and-limits" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2393,9 +2432,9 @@
 reversibly stopping the Bluetooth host/controller, and allowing bounded MCU
 light-sleep during a settled secondary-radio receive visit. This report
 separates host/build coverage, SDK wait measurements and physical packet tests.</p>
-<p>Bluetooth transitions and quiet-window SDK wait checks pass. Three strict RF trials with
+<p>Bluetooth transitions and quiet-window SDK wait checks pass. Three earlier strict RF trials with
 power saving on and
-matched preambles received five of six packets, including the trial after the IRQ fix. They remain
+matched preambles received five of six packets, including the trial after the first IRQ fix. They remain
 failures; radio2 is not fully qualified.</p>
 <p>The first V3 CPU-clock sweep stopped during setup, before any of its
 20-packet-per-frequency cases transmitted. Switching Bluetooth off exposed a
@@ -2817,16 +2856,140 @@ does not establish that WiFi deinitialization timed out. The raw SDK log
 bypassed disabled USB logging and broke strict Binary Companion framing.
 All three attempts restored checked settings/channels and verified a fresh
 MQTT PUBACK increase. The latest immutable diagnostic receipt is
-<code>v4-7d0709bf-suffix-completed.private.json</code>. A fix is underway; these setup
-failures supply no new V4 packet-delivery or firmware-fix qualification.</p>
+<code>v4-7d0709bf-suffix-completed.private.json</code>. These setup failures supply no
+new V4 packet-delivery evidence.</p>
+<h2 id="sdk-logging-repair-and-v4-scanning-controls">SDK logging repair and V4 scanning controls</h2>
+<p>The SDK logging fix in <code>d73599bc6</code> shipped in
+<a href="https://github.com/mikecarper/MeshCore/commit/3fd9b392c8d216e2d5dd592587085c1a71fa738c"><code>3fd9b392</code></a>.
+It prevents raw SDK logs from bypassing the disabled USB-logging policy and
+corrupting the shared Binary Companion stream. All 101 USB host tests pass.
+The V4 application is 2,558,856 bytes, with SHA-256
+<code>ddfd4f40a97da40bdeda2c00fb18ebc2d4d365590d4bc63496a425d16975906d</code>.
+Its installation passed full readback and checked configuration preservation.</p>
+<p>Two new scanning cases completed on this V4 image, with 20 new nonces per
+profile, matched 32-symbol preambles and 2 dBm peer TX:</p>
+<table>
+<thead>
+<tr>
+<th>CPU</th>
+<th>Manual CPU sleep</th>
+<th>Primary received</th>
+<th>Secondary received</th>
+<th>SDK calls/returns</th>
+<th>SDK calls in wholly contained RF-time buckets</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>80 MHz</td>
+<td>Off</td>
+<td>19/20</td>
+<td>18/20</td>
+<td>0/0</td>
+<td>0</td>
+</tr>
+<tr>
+<td>80 MHz</td>
+<td>On</td>
+<td>19/20</td>
+<td>15/20</td>
+<td>4,121/4,121</td>
+<td>3,511</td>
+</tr>
+</tbody>
+</table>
+<p>Both strict delivery checks failed. All 80 sends reached TX_DONE once, with
+zero retries or duplicate deliveries. SDK errors, short returns and pending
+waits were zero. The awake losses establish that CPU sleep is not required for
+this symptom; these samples do not identify the cause of individual misses.</p>
+<p>The user redirected testing toward the scanner. The 160 MHz On case was
+intentionally stopped during its USB host-loss grace period, before any RF
+transmission; 160 MHz Off was not entered. This is not a completed four-case
+comparison. The interrupt receipt remains recorded in
+<code>v4-3fd9b392-user-steered-completed.private.json</code> (SHA-256
+<code>e102200af7e2503bb0362e65afad0d947d5c3aeb220425a589d0588032530c52</code>).
+Full restoration and a fresh MQTT PUBACK increase passed after that stop.</p>
+<h2 id="fixed-tuple-controls-and-receive-path-defect">Fixed-tuple controls and receive-path defect</h2>
+<p>Two fixed-tuple controls on the same <code>3fd9b392</code> image each received <strong>20/20</strong>
+unique packets with radio2 explicitly off. The primary physical radio was
+temporarily tuned first to 910.525 MHz / BW62.5 / SF7 / CR5, then separately to
+916 MHz / BW125 / SF9 / CR5. Both runs used 80 MHz, manual CPU sleep off, saved
+power-saving intent on, RX power saving off, 32-symbol preambles and 2 dBm peer
+TX. The target's USB data was absent after the same 121-second host-loss grace.
+Each run retained the original seeded 40-slot cadence, leaving the opposite
+profile's 20 slots silent. SDK calls, duplicate deliveries and RF retries were
+zero. The immutable control report remains failed because the peer's original
+22 dBm setting was not restored within three bounded busy-response attempts;
+MQTT recovery passed. A separate recovery then restored 22 dBm and verified
+full peer settings, credential hashes and channel semantics without another
+RF transmission. The original failure is retained in
+<code>fixed-tuples-v4-3fd9b392-completed.private.json</code>; successful recovery is in
+<code>peer-tx22-restoration-verified.private.json</code>.</p>
+<p>These finite controls narrow the investigation toward scanning or overlapping
+traffic. Radio2 time-shares one transceiver: a valid primary reception can
+occupy it throughout a secondary packet's preamble. The idle-scan timing model
+does not guarantee zero loss under simultaneous traffic. The controls do not
+distinguish that limitation from a receive-path defect for a particular nonce.</p>
+<p>A separate host regression executing the real receive functions with
+ASan/UBSan proved a stale-IRQ defect. Servicing a packet through its asserted
+physical DIO could leave a late software event. Subsequent empty RX_DONE probes
+could then restart continuous RX over a newer packet's preamble or valid
+header. The narrow ESP32 SX126x continuous-RX guard in
+<a href="https://github.com/mikecarper/MeshCore/commit/a5293fa50b2d957077c5fdcb9378b6e88370d9d5"><code>a5293fa50</code></a>
+preserves that new reception while retaining normal activity timeouts.
+All 15 interrupt-recovery, five receive-contract and six RX-retry tests pass.
+The V4 build passes all 24 capability markers and its memory gate at 2,558,936
+application bytes. Its application SHA-256 is
+<code>cc16e44ccd24e64724a2bd17f59f684117e411077e4c0a7d04611be328b7ccfc</code>.
+The application-only installation passed complete readback, with the partition
+table, OTA metadata and checked configuration preserved. The immutable receipt
+is <code>flash-v4-a5293fa5-completed.private.json</code> (SHA-256
+<code>ef61cf8dfc77f8907d621f7f0493949ff6888b017c277eefb309247ccf88b278</code>).</p>
+<p>One new awake 80 MHz scanning run then sent 20 unique packets per profile on
+this changed image, with manual CPU sleep off and the same matched preambles,
+TX power and USB host-loss grace. The V4 received <strong>19/20 primary and 20/20
+secondary packets</strong>. All 40 sends reached TX_DONE once, with zero retries or
+duplicate deliveries. SDK calls, returns and all time buckets were zero; core
+error flags remained clear. The missing primary nonce keeps the strict RF
+result failed. Full restoration passed, including a fresh MQTT PUBACK increase.
+The immutable receipt is <code>v4-a5293fa5-awake-completed.private.json</code> (SHA-256
+<code>466bdf0bb08f10665007d156e1ec37c074e1c576e6ac5fc401bcd449179ee774</code>).</p>
+<p>The stale-IRQ regression proves a receive-path bug and the new guard repairs
+that case. This physical sample does not establish which historical misses
+encountered it or show that all scanning losses are fixed. A controlled
+two-transmitter overlap diagnostic is pending; no result or cause is claimed
+for that experiment here.</p>
+<h3 id="receive-activity-across-rx-restarts">Receive activity across RX restarts</h3>
+<p>A further host regression executing the production receive methods exposed a
+separate scan hazard. Reading a completed packet and successfully rearming RX
+cleared the hardware IRQs but retained the previous packet's <code>_activityAt</code> and
+<code>_headerSeen</code> latches. At the next due scan, the detector could mistake the new
+packet's preamble without a header for the old packet's consumed header. It
+reported idle before processing that preamble, permitting a retune over the
+new packet. The regression reproduces that sequence and shows that resetting
+the latches on successful RX entry protects the next preamble.</p>
+<p>The change resets those existing fields only after successful receive
+starts in <code>CustomSX1262</code>, <code>CustomSX1268</code>, <code>CustomLLCC68</code>, <code>CustomSTM32WLx</code>,
+<code>CustomLR1110</code> and <code>CustomLR1121</code>. It covers normal starts and, where supported,
+fast resumes and duty-cycle entry. Failed starts retain their prior state;
+the change adds no fields and leaves existing activity timeouts and
+receive/retune guards unchanged.
+Independent source review passed. Five new regression methods cover 24
+ASan/UBSan variants, including reset-removal controls that reproduce the
+retune over a new packet for all six handlers. All 19 affected host-fixture
+tests and 26 interrupt-recovery, receive-contract and receive-retry checks
+pass. The new suite runs in the required unit-test workflow. Physical RF
+validation remains pending; this proof does not attribute historical missing
+nonces or establish a complete RF pass. The installed versions and packet
+counts above remain unchanged.</p>
 <h2 id="final-handback-and-limits">Final handback and limits</h2>
-<p>Both V3 and V4 now run <code>7d0709bf0</code>. Its original radio, RX power-saving, Bluetooth,
-WiFi, MQTT, logging, diagnostics and USB-watchdog settings were restored and
-checked against the frozen baseline, including credential digests. Radio2 is
-<code>off (automatic allowed)</code>, preserving its original automatic permission.
-Bluetooth is on. WiFi reconnected and MQTT resumed with a verified fresh
-broker PUBACK increase.
-The peer's original 22 dBm power and logical channel state were restored.
+<p>V3 currently runs <code>7d0709bf0</code>; V4 runs <code>a5293fa50</code>, and the peer remains on
+<code>ebb59d48</code>. The completed V3 campaign and V4 scanning controls, including the
+new awake run, restored their checked radio, RX power-saving,
+Bluetooth, WiFi, MQTT, logging, diagnostics and USB-watchdog settings, including
+credential digests, original radio2 automatic permission and peer power/channel
+state. Fresh MQTT PUBACK increases verified recovery. The fixed-tuple cleanup
+power failure is retained, with the later peer recovery verified separately.
 No nRF52 board, hub power or other firmware was changed in this task.</p>
 <p>The Bluetooth hardware checks pass. SDK light-sleep calls are observed without
 SDK errors. Strict sleeping two-frequency packet qualification remains open,
