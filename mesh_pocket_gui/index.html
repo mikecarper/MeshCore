@@ -2329,6 +2329,11 @@ light/dark theme, return-to-board delay, full refresh interval and map zoom.
 They use a separate checked, atomically replaced record in primary storage.
 Existing node, channel and contact formats are unchanged. Timezone comes from
 the existing node preferences.</p>
+<p>Changing pages or map zoom uses a full clean refresh to clear the previous
+image. Updates within the same page keep the faster partial refresh.</p>
+<p>The idle screen-off timer defaults to 15 minutes on battery and USB. Existing
+saved timeouts are retained; set <code>display.timeout</code> and <code>display.usb.timeout</code> to
+<code>900</code> to use 15 minutes. The return-to-board delay is a separate setting.</p>
 <p>The map centres on this node's location, or the first contact with a location.
 With no locations it shows a world overview. Contacts appear as dots, with
 nearby names at closer zooms. The view spans 20,000 km down to 5 km vertically;
