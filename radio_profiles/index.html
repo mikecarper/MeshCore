@@ -3870,8 +3870,14 @@ retries, or short visits. All normal USB, logging, bridge, OTA, queue and role
 sleep guards still apply. An nRF52 periodic interrupt bounds each wait to
 about 0.977 ms; admission reserves another 0.488 ms before the visit deadline
 and is rechecked immediately before sleeping. If that wake source is not
-available, scanning keeps polling. Other MCU families retain polling until
-their timing is validated.</p>
+available, scanning keeps polling.</p>
+<p>ESP32 also permits MCU idle during settled long visits. It requires radio GPIO
+wake and physically stopped WiFi/Bluetooth drivers. Its timer slices are at
+most 10 ms, reserve 4 ms before the visit deadline, and require at least 2 ms
+usable time. Absolute deadlines are checked again after wake-source setup;
+expired visits, pending interrupts or setup failures retain polling. USB,
+logging, active wireless services and the other role guards remain blockers.
+Other MCU families retain polling until their timing is validated.</p>
 <p>The integer admission gate requires at least 49 RTC2 ticks (about 1.495 ms)
 remaining after the work checks. A configured visit must also cover the loop
 work before that point. Eligibility is therefore per visit, not an SF/BW

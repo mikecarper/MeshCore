@@ -2283,6 +2283,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#esp32-bluetooth-off-and-cpu-sleep" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ESP32 Bluetooth off and CPU sleep
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#noise-floor-sampling-and-sleep" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2423,8 +2434,10 @@ after off starts a fresh window. Collection defaults off at every boot.</p>
 </ul>
 <p><code>radio2</code> means the scanner cannot safely idle right now: for example, a short
 remaining visit, calibration, pending reception or an unvalidated platform.
-On nRF52, settled long visits can idle the MCU with power saving enabled;
-the RF receiver stays on. See <a href="../radio_profiles/#mcu-power-saving-while-scanning">radio profiles</a>.</p>
+On nRF52 and ESP32, settled long visits can idle the MCU with power saving
+enabled; the RF receiver stays on. ESP32 requires working radio GPIO wake and
+physically stopped WiFi/Bluetooth drivers. Short visits and active transports
+retain polling. See <a href="../radio_profiles/#mcu-power-saving-while-scanning">radio profiles</a>.</p>
 <p>The role reports the first actual short-circuit blocker. It does not query
 otherwise skipped hardware just to populate an exhaustive list. Board guards
 may add reasons. Per-reason durations therefore are observed guard time, not
@@ -2445,6 +2458,18 @@ most 256 bytes of collector state. Each wait-call interval must be shorter
 than the 32-bit <code>micros()</code> wrap (about 71 minutes); the normal wait paths here
 are much shorter. Keep gaps between policy observations below the <code>millis()</code>
 wrap (about 49 days).</p>
+<h2 id="esp32-bluetooth-off-and-cpu-sleep">ESP32 Bluetooth off and CPU sleep</h2>
+<p>Switching Bluetooth off now completes a reversible host/controller shutdown,
+including when Bluetooth was saved off at startup. Existing pairings, address,
+name and PIN are retained when it is switched back on. A pending disconnect or
+failed teardown keeps the CPU awake rather than treating stopped advertising
+as a stopped controller. <code>get bluetooth</code> reports a pending change until that
+transition finishes.</p>
+<p>USB host sessions, logging, active WiFi/ESP-NOW, OTA and serial work keep their
+existing sleep guards. This change does not sleep an ESP32 through a live
+Bluetooth or WiFi connection. Such connections require SDK-managed modem and
+automatic sleep; lowering CPU frequency or yielding alone is not proof of
+light sleep.</p>
 <h2 id="noise-floor-sampling-and-sleep">Noise-floor sampling and sleep</h2>
 <p>Startup still collects a complete baseline promptly: 64 accepted samples,
 at least 50 ms apart, after the radio frontend has settled. Collection keeps
