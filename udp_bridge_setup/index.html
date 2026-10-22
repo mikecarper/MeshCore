@@ -2521,6 +2521,12 @@ the wrong device. No Internet port forwarding or public exposure is required.</p
 WiFi network using the normal <a href="../WiFi/">WiFi settings</a>. Read <code>get wifi.status</code>
 on each board to find its local address once connected. The commands below use
 example addresses; substitute the actual reserved addresses.</p>
+<p>For a LoRa-capable SenseCAP Indicator, use the Full
+<code>SenseCapIndicator-LoRa_repeater</code> target on the original 8 MiB/OPI-PSRAM board.
+The distinct <code>SenseCapIndicator-LoRa-N16R2_repeater</code> target is for 16 MiB/QSPI
+PSRAM hardware. Both retain the LoRa expander and display; their PSRAM modes
+are selected before app startup and the images are not interchangeable.
+The Indicator Companion and primary-ESP-NOW images do not provide this bridge.</p>
 <p>Both boards use the existing <code>bridge.secret</code> as their shared authentication
 secret. Set the same strong secret on both before enabling the transport. Do
 not paste it into shared diagnostic captures. The transport authenticates
