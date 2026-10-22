@@ -2333,13 +2333,18 @@ the main loop. Bluetooth on rebuilds the service without releasing controller
 memory permanently or clearing successful bonds. Address, name, PIN and saved
 stealth policy remain intact. Pending or failed teardown prevents CPU sleep.
 The Bluedroid characteristics have deterministic TX/RX registration order;
-heap fragmentation must not change a paired client's cached handles.</p>
+heap fragmentation must not change a paired client's cached handles. On SDKs
+using automatic Service Changed handling, a small asynchronous service change
+requests client rediscovery after authentication. A local SDK completion is
+not treated as proof that the client refreshed its cache. Only actual use of
+the current notification and receive handles permits skipping this request on
+a later connection from the same peer within that host session.</p>
 <p>Companion, Repeater, Room Server and Sensor can idle during an eligible
 radio2 visit. The decision requires a settled, validated receive profile,
 working radio GPIO wake, no pending reception and physically stopped wireless
 drivers. An absolute scanner deadline is checked again at sleep entry. The
-sleep slice is at most 10 ms, ends at least 4 ms before the visit deadline and
-requires at least 2 ms of useful time. Calibration, repair, ownership, queue,
+timer budget is at most 10 ms, reserves a 4 ms early-wake scheduling guard and
+requires at least 2 ms remaining. Calibration, repair, ownership, queue,
 network, USB and role deadlines retain their existing guards. The receiver
 stays on. This does not enable sleep through an active Bluetooth/WiFi link.</p>
 <h2 id="host-tests-and-builds">Host tests and builds</h2>
@@ -2349,13 +2354,20 @@ pending interrupts, failed wake setup and SDK errors. The BLE adapter tests
 exercise actual production code with ASan/UBSan, ownership differences,
 partial initialization/teardown failures and repeated off/on cycles. Existing
 nRF52 event/profile tests also pass; nRF52 hardware was not touched.</p>
-<p>Full V4.3 FEM-off Companion, V3 Companion, V4 Repeater, Room and Sensor builds
+<p>The initial sleep/teardown implementation, before the cache fix, has Full
+V4.3 FEM-off Companion, V3 Companion, V4 Repeater, Room and Sensor builds that
 pass their capability and memory gates. ESP32-C6 BLE (Arduino 3.1.3), the
 NimBLE-Arduino V4 trial and RC32 Full (Arduino 3.3.11) also compile. RC32
 exposed SDK service ownership and array-deletion defects; a version/hash-bound
 build-local repair fixes those sources without editing a shared SDK install.</p>
+<p>The cache fix is published in
+<a href="https://github.com/mikecarper/MeshCore/commit/1087643ae867b9a8746f00b3ff43d574b59e2457"><code>1087643ae</code></a>.
+Its V4.3 FEM-off Full and RC32 Full builds pass all 24 capability markers and
+their application size gates: 2,551,592 and 2,152,840 bytes respectively, each
+within a 6,553,600-byte application slot. The other earlier builds do not
+constitute a full build matrix of this later source revision.</p>
 <p>Classic Heltec V2 BLE remains below its required 8,192-byte internal RAM
-reserve. The baseline has 2,552 bytes free and the candidate has 2,432 bytes
+reserve. The baseline has 2,552 bytes free and the initial candidate has 2,432 bytes
 free, a 120-byte regression against an existing failure. Removing an
 unnecessary WiFi-driver reference recovered 1,208 bytes. The gate was retained;
 this target is not reported as passing.</p>
@@ -2382,9 +2394,14 @@ as proof that firmware handles remain stable or an existing cache migrates.</p>
 <p>Encrypted nonce tests on both frequencies have not yet passed. Earlier
 six-packet attempts completed physical transmissions but did not deliver all
 expected nonces. An awake control then stopped before transmitting when the
-peer rejected a TX-power setting. These failures remain separate from the
-successful SDK wait window; that window does not qualify end-to-end radio2
-delivery. The peer is an ESP32 XIAO S3 WIO, independently identified over USB.</p>
+peer rejected a TX-power setting. A separate control with bounded configuration
+admission completed both physical transmissions at verified 2 dBm, but received
+zero matching nonces and zero direct packets. V4 profile RX counters advanced
+by 22 on the primary and zero on the secondary. USB remained active with zero
+SDK sleep calls: CPU sleep alone does not explain the RF failure. These
+failures remain separate from the successful SDK wait window; that window
+does not qualify end-to-end radio2 delivery. The peer is an ESP32 XIAO S3 WIO,
+independently identified over USB. No failed packet was resent automatically.</p>
 <p>Private artifacts, receipts and traces are retained under
 <code>/home/mesh/hwtest/esp32-ble-radio2-sleep-cd4ea053-20261021/</code>.
 See <a href="../../power_saving_diagnostics/">power-saving diagnostics</a> for the controls
