@@ -2431,6 +2431,12 @@ does not insert ASCII into the primary Companion protocol. A disconnected or
 full logging endpoint drops diagnostic output without falling back to the
 control port. Explicit framework UART and RTT logger selections keep their
 existing destinations.</p>
+<p>On ESP32 USB-Serial/JTAG builds, ESP-IDF diagnostics also follow both
+<code>usb.logging</code> and <code>usb.debug</code>. Driver tasks submit bounded text; the USB owner
+emits it through the same session and writer guards as functional output.
+Logging-off, host changes and congestion discard pending diagnostics instead
+of falling back to the raw SDK console. Fragmented diagnostics from concurrent
+SDK tasks remain best effort. UART and native TinyUSB routes are unchanged.</p>
 <h2 id="recovery-timing-and-safety">Recovery timing and safety</h2>
 <p>For a physical host/reader outage, or pending TX with no real completion,
 software USB recovery is requested after five minutes. Re-enumeration follows
