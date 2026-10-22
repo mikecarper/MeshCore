@@ -148,7 +148,6 @@
     "repositories": [
       "meshcore-dev/MeshCore",
       "mikecarper/MeshCore",
-      "meshtastic/firmware",
       "manufacturer-owned public repositories"
     ],
     "reason_for_prior_exclusion": "Upstream PR1246 left Nano unchanged pending confirmation or testing of its external LC circuit.",
@@ -159,11 +158,8 @@
     "other_reviewed_references": [
       "https://github.com/meshcore-dev/MeshCore/pull/1201",
       "https://github.com/meshcore-dev/MeshCore/pull/298",
-      "https://github.com/meshcore-dev/MeshCore/pull/2426",
-      "https://github.com/meshtastic/firmware/pull/2660",
-      "https://github.com/meshtastic/firmware/issues/5839"
-    ],
-    "filesystem_issue_caveat": "Meshtastic5839 includes a Nano node-database/filesystem corruption report but provides no regulator-mode connection."
+      "https://github.com/meshcore-dev/MeshCore/pull/2426"
+    ]
   },
   "circuit_evidence": {
     "url": "https://wiki.uniteng.com/meshtastic/nano_g2_ultra/nanog2ultra_19_jun_2023.pdf",

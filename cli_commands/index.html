@@ -7115,6 +7115,9 @@
 <!-- meshcore-hosted-doc-link:end -->
 
 <h1 id="cli-commands">CLI Commands</h1>
+<p>For SolarXiao Base/Advanced/MPPT automatic detection, manual overrides, live
+battery/MCU readings and charger controls, see <a href="../solarxiao_power/">SolarXiao carrier profiles</a>
+(<code>get solar</code>, <code>get solar readings</code>, <code>set solar.board auto</code>, <code>get mppt</code>, <code>set mppt</code>).</p>
 <p>See <a href="../radio_profiles/">two LoRa profiles</a> for <code>radio2</code>, <code>tempradio2</code>, scheduling,
 RX-only mode, cross-transmission policy, and optional radio preambles.</p>
 <p>For a saved MediaMesh second profile, use <code>set radio2 mediamesh</code>
@@ -8167,8 +8170,7 @@ saved choice, the default is automatic detection unless the build sets
 override remains a fallback for existing custom builds. Any saved selection
 takes precedence, including <code>auto</code>, which restores detection even when that
 fallback forces a controller.</p>
-<p>See <a href="https://github.com/meshcore-dev/MeshCore/issues/3296">the Pocket v3 issue</a>
-and <a href="https://github.com/meshtastic/firmware/pull/11265">the RAK1921 detection caveat</a>.</p>
+<p>See <a href="https://github.com/meshcore-dev/MeshCore/issues/3296">the Pocket v3 issue</a>.</p>
 <hr />
 <h2 id="show-touchscreen-touch-areas">Show touchscreen touch areas</h2>
 <p>All touchscreen Companion builds using the shared touch UI support temporary

@@ -1,0 +1,2796 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Documentation for the open source MeshCore firmware">
+      
+      
+      
+        <link rel="canonical" href="https://mikecarper.github.io/MeshCore/solarxiao_power/">
+      
+      
+      
+      
+        
+      
+      
+      <link rel="icon" href="../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>Solarxiao power - MeshCore Docs</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.ec1eaa64.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../_stylesheets/notification_builder.css?v=20261006-channel9">
+    
+      <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+    
+      <link rel="stylesheet" href="../_stylesheets/extra.css">
+    
+      <link rel="stylesheet" href="../_stylesheets/firmware_picker.css?v=20261013-pick-first-1">
+    
+      <link rel="stylesheet" href="../_stylesheets/telemetry_decoder.css">
+    
+      <link rel="stylesheet" href="../_stylesheets/management_decoder.css">
+    
+      <link rel="stylesheet" href="../_stylesheets/filter_tool.css">
+    
+      <link rel="stylesheet" href="../_stylesheets/preset_test.css?v=20260923-2">
+    
+      <link rel="stylesheet" href="../_stylesheets/esp32_partition_catalog.css?v=20261001-1">
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    <body dir="ltr">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#solarxiao-carrier-profiles-mppt-and-battery-controls" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="MeshCore Docs" class="md-header__button md-logo" aria-label="MeshCore Docs" data-md-component="logo">
+      
+  <img src="../_assets/meshcore.svg" alt="logo">
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            MeshCore Docs
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Solarxiao power
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/mikecarper/MeshCore/" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    mikecarper/MeshCore
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="MeshCore Docs" class="md-nav__button md-logo" aria-label="MeshCore Docs" data-md-component="logo">
+      
+  <img src="../_assets/meshcore.svg" alt="logo">
+
+    </a>
+    MeshCore Docs
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/mikecarper/MeshCore/" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    mikecarper/MeshCore
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Firmware and tools
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Firmware and tools
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../firmware_picker/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Firmware picker
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../notifications/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Notifications
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../preset_test/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Preset test
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../filter_tool/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Filter tool
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../telemetry_decoder/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Telemetry decoder
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../management_decoder/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Management decoder
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Documentation
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Documentation
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_1" >
+        
+          
+          <label class="md-nav__link" for="__nav_3_1" id="__nav_3_1_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting started and features
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_1_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_1">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Getting started and features
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../faq/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Faq
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../full_profiles/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Full profiles
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../role_feature_switches/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Role feature switches
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../full_companion_features/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Full companion features
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../companion_radio_full/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Companion radio full
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../full_companion_usb_switcher/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Full companion usb switcher
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../companion_offline_queue/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Companion offline queue
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../halo_keymind_settings/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Halo keymind settings
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_3_2" id="__nav_3_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Firmware updates and partitions
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Firmware updates and partitions
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../upgrading_1.17.1.8_to_1.17.1.9/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Upgrading 1.17.1.8 to 1.17.1.9
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ota_user_guide/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Ota user guide
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ota_easy/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Ota easy
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../lora_ota_automation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Lora ota automation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ota_nrf52_bootloader_update/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Ota nrf52 bootloader update
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ota_nrf52_qspi/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Ota nrf52 qspi
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ota_meshtower_v2_sdcard/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Ota meshtower v2 sdcard
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../esp32_partition_catalog/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Esp32 partition catalog
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../esp32_wifi_partition_migration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Esp32 wifi partition migration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../heltec_v4_wifi_partition_migration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Heltec v4 wifi partition migration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../host_cli_service/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Host cli service
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3_3" id="__nav_3_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Radio, networking, and power
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Radio, networking, and power
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../radio_profiles/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Radio profiles
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../fleet_management/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Private fleet management
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../room_services/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Room services
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../carrier_wave/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Carrier wave
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../espnow_bridge_setup/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Espnow bridge setup
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../WiFi/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    WiFi
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../flood_filtering/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Flood filtering
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../gps_tracking/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Gps tracking
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../companion_lost_reply/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Companion lost reply
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../sensor_tracker/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Sensor tracker
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../nrf52_power_management/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Nrf52 power management
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_3_4" id="__nav_3_4_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CLI and protocol reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    CLI and protocol reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../cli_commands/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Cli commands
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../cli_build_matrix/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Cli build matrix
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../cli_command_availability/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Cli command availability
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../terminal_chat_cli/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Terminal chat cli
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../companion_protocol/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Companion protocol
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../kiss_modem_protocol/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Kiss modem protocol
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../packet_format/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Packet format
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../payloads/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Payloads
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ota_protocol/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Ota protocol
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../management_reports/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Management reports
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../stats_binary_frames/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Stats binary frames
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../number_allocations/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Number allocations
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../qr_codes/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Qr codes
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../docs/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Docs
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../research/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Research
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Releases
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Releases
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5_1" >
+        
+          
+          <label class="md-nav__link" for="__nav_5_1" id="__nav_5_1_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Current release
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_5_1_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5_1">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Current release
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../releases/1.17.1.9/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    1.17.1.9 USA Cascade
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../releases/1.17.1.8/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    1.17.1.8 USA Cascade
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../test-results/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Test Results
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../old-releases/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Old Releases
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#automatic-detection-and-manual-overrides" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Automatic detection and manual overrides
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#mppt-carrier-commands" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        MPPT carrier commands
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#identity-and-readings" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Identity and readings
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#settings-on-the-4s-fst-carrier" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Settings on the 4S FST carrier
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#saving-and-actions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Saving and actions
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#conversion-defaults-and-carrier-revisions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Conversion defaults and carrier revisions
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#telemetry-channels" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Telemetry channels
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+    <a href="https://github.com/mikecarper/MeshCore/edit/keymindCascade/docs/solarxiao_power.md" title="Edit this page" class="md-content__button md-icon" rel="edit">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M10 20H6V4h7v5h5v3.1l2-2V8l-6-6H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h4zm10.2-7c.1 0 .3.1.4.2l1.3 1.3c.2.2.2.6 0 .8l-1 1-2.1-2.1 1-1c.1-.1.2-.2.4-.2m0 3.9L14.1 23H12v-2.1l6.1-6.1z"/></svg>
+    </a>
+  
+  
+
+
+<!-- meshcore-hosted-doc-link:start -->
+<p class="meshcore-hosted-doc-link"><a href="https://mikecarper.github.io/MeshCore/solarxiao_power/">View this page on MeshCore Docs</a>.</p>
+<!-- meshcore-hosted-doc-link:end -->
+
+<h1 id="solarxiao-carrier-profiles-mppt-and-battery-controls">SolarXiao carrier profiles, MPPT and battery controls</h1>
+<p>SolarXiao Repeater and QSPI OTA Room Server firmware support the CN3791 Base,
+older BQ24650 Advanced and LTC4162/INA260 MPPT carriers in Full and Reduced builds.
+Use USB CLI or the
+authenticated administrator CLI over LoRa. Ship mode and
+saved-policy reset require local USB. Commands do not change RF settings.</p>
+<h2 id="automatic-detection-and-manual-overrides">Automatic detection and manual overrides</h2>
+<p>There are three power profiles: <code>auto</code>, <code>basic</code> and <code>mppt</code>. Base and Advanced
+share <code>basic</code> because their onboard power telemetry and software controls are
+the same; their different analog charger designs require no different driver.
+The default is <code>auto</code> when no carrier selection has been saved. Saved MPPT
+selections remain manual overrides, and saved Base/Advanced selections load as
+<code>basic</code>. Use <code>set solar.board auto</code> to enable detection on such an installation.
+The firmware environment, hardware/OTA identity and flash layout are unchanged.</p>
+<pre><code>get solar.board
+set solar.board auto
+get solar
+get solar capabilities
+get solar readings
+get solar history
+</code></pre>
+<p>Auto mode checks the INA260 manufacturer's ID (<code>0xfe = 0x5449</code>) and device ID
+(<code>0xff &amp; 0xfff0 = 0x2270</code>) at carrier address <code>0x40</code>. An address ACK alone is not
+enough: another device such as INA219 can share that address. Detection only
+reads identity registers; it does not configure/reset either chip. The first
+probe occurs in the loop after initialization, then retries every five seconds
+until a valid identity is found. A positive result identifies MPPT for these
+carrier designs and is retained until reboot or a new board selection.
+Temporary communication loss does not relabel a previously detected MPPT.</p>
+<p>Without a verified INA260, auto reports <code>self-only</code> and keeps retrying. It does
+not claim to distinguish Base from Advanced: neither has a digital identity,
+and missing responses can also mean an MPPT power/bus fault. Charger access,
+saved-override replay and native carrier telemetry stay blocked until a valid
+INA260 identity is found. XIAO self readings remain available throughout.
+The MPPT carrier's INA260 was previously read with USB power only; detection
+does not require the LTC4162 charger to respond at SOLAR/VIN.</p>
+<p>Manual settings are available when the physical carrier is known:</p>
+<table>
+<thead>
+<tr>
+<th>Setting</th>
+<th>Behavior</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>set solar.board auto</code></td>
+<td>Verify INA260 before enabling MPPT; otherwise self-only, retrying.</td>
+</tr>
+<tr>
+<td><code>set solar.board basic</code></td>
+<td>Base/Advanced self battery voltage and MCU temperature; no native I2C access.</td>
+</tr>
+<tr>
+<td><code>set solar.board mppt</code></td>
+<td>Enable native access without requiring INA260 detection; existing charger write identity checks still apply.</td>
+</tr>
+</tbody>
+</table>
+<p>Legacy <code>base</code> and <code>advanced</code> command values are compatibility aliases for
+<code>basic</code>; they are not separate modes. Readbacks and help use the three canonical
+names. Existing Base/Advanced records load as <code>basic</code> without being rewritten;
+new Basic saves use the original Advanced record value, preserving the same
+self-only behavior across upgrades.</p>
+<p>For Base or Advanced, <code>basic</code> reports the common hardware capabilities and live
+XIAO battery ADC and processor temperature. It does not claim which analog
+charger is fitted.
+The existing self telemetry stays on channel 1, with voltage and temperature as
+different LPP types. It adds no invented charger flags, current, watts, battery
+NTC temperature or panel measurements. <code>get solar battery</code> aliases the self
+readings; the MCU temperature is not a battery or charger temperature.
+If a node already reports battery voltage and MCU temperature on channel 1,
+this profile adds no further physical measurements. It adds carrier detection,
+manual overrides and capability reporting; the voltage/temperature history commands
+also already exist in builds that include telemetry history.</p>
+<p>The <a href="https://github.com/wehooper4/Meshtastic-Hardware/blob/main/XaioSeries/SolarXaio/Base/Standard/Schematic_SolarXaio_Base_2025-10-23.pdf">2025 Base Standard schematic</a>
+uses a CN3791 analog charger with no digital interface or INA monitor. Battery
+voltage reaches the XIAO BAT input. Charge status drives an LED, and the other
+charger signals are not connected to XIAO measurement/control inputs. Base
+therefore needs no extra telemetry driver: only self battery voltage and MCU
+temperature are available, just like Advanced. Base Lite publishes a README
+but no schematic, so its exact connections are not independently qualified here.</p>
+<p>The <a href="https://github.com/wehooper4/Meshtastic-Hardware/blob/main/XaioSeries/SolarXaio/Advanced/Standard/Schematic_SolarXaio_ADV_2025-10-23.pdf">2025 Advanced schematic</a>
+has no INA monitor or digital charger interface. Charger status pins drive LEDs,
+NTC goes only to the charger, and current/voltage/MPP setpoints use hardware
+resistors, switches and a solder jumper. An OTA update cannot measure those
+signals or change those setpoints without additional hardware connections.</p>
+<p>Manual Basic mode suppresses native LTC4162/INA260 polling, register reads/writes,
+replay and native measurements on channels 2..13. <code>get mppt</code>, <code>set mppt ...</code> and
+<code>mppt ...</code> explain that Basic Base/Advanced layouts have no digital charger interface.
+Pending auto mode only probes INA260 identity; it does not access the charger.
+The generic sensor scanner still reserves native addresses 0x40 and 0x68, so it
+cannot bypass that policy. Optional external sensor channels still start at 14.
+Historical samples retained from a previous carrier selection describe the old
+samples, not current sensor availability.</p>
+<p>Voltage history reserves native channel IDs 2..5 at boot, even while Auto is
+pending or Basic is selected. This is schema allocation, not chip access or a
+measurement. It lets later detection, charger input power or a manual mode
+change supply valid samples without restarting or clearing unrelated history.
+Inactive readings remain missing, and empty channels do not appear in populated
+history results. Native and optional I2C voltage history use the existing
+<code>get telemetry.volt.i2c &lt;channel&gt; [1-4]</code> reader: four days of 30-minute RAM samples.</p>
+<p>Where telemetry history is included, <code>get solar history</code> points to the existing
+<code>get telemetry.volt [1-7]</code> and <code>get telemetry.temp [1-7]</code> commands: 30-minute
+samples, seven days in RAM. History starts filling after boot and resets at
+reboot. Voltage trends can help assess a remote installation, but are not a
+measurement of solar power, charge current or charge state. Radio/status and
+history-transfer commands remain the existing role commands.</p>
+<p>The selection is stored separately in an eight-byte, versioned checked record
+at <code>/solar_board</code>, using atomic publication and full public readback. A corrupt,
+unreadable or unconfirmed selection blocks native access and replay. Self ADC
+and MCU readings remain available. An explicit successful <code>set solar.board</code>
+recovers selection. With an unavailable filesystem, the selection cannot be
+saved and native access remains blocked.</p>
+<p>When auto verifies MPPT or a manual MPPT selection re-enables native access,
+the firmware reloads any retained <code>/solar_power</code> charger overrides. Changing the
+carrier does not erase those overrides, change RF/PA settings, modify battery
+protection, or write charger defaults. The INA260 identity verifies the monitor;
+LTC4162 chemistry and cell-count checks still independently guard charger writes.</p>
+<p>Radio target and role selection remain separate from the power profile:</p>
+<table>
+<thead>
+<tr>
+<th>Fitted module</th>
+<th>Repeater</th>
+<th>Room Server</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>E22 M30S</td>
+<td><code>solarxiao_30S_repeater</code></td>
+<td><code>solarxiao_30S_room_server_lora_ota</code></td>
+</tr>
+<tr>
+<td>E22 M33S</td>
+<td><code>solarxiao_33S_repeater</code></td>
+<td><code>solarxiao_33S_room_server_lora_ota</code></td>
+</tr>
+</tbody>
+</table>
+<p>All three power profiles work in these role builds. Room uses its existing
+onboard-QSPI OTA target, identity and application layout, with the matching
+board/storage-aware OTAFIX bootloader. The older plain <code>*_room_server</code> targets
+remain separate compatibility/recovery recipes; this native interface is
+qualified on the QSPI OTA Room targets. No legacy identity is remapped.</p>
+<p>The
+published Base Standard schematic specifies M30S; the pictured 2W Advanced
+uses M33S. Charger detection cannot identify the PA variant or select its TX
+power limits.</p>
+<p>A remotely deployed node must first receive compatible firmware before these
+commands can be used. Deployment still requires its installed target and
+bootloader compatibility to be checked when it is reachable.</p>
+<p>See the <a href="../test-results/solarxiao_room_2026-10-21/">Room Server and late-detection history validation</a>
+and <a href="../test-results/solarxiao_basic_2026-10-21/">three-profile validation</a>.
+This adds no measurements beyond existing self voltage/MCU temperature and has
+not been installed on the remote Advanced board.</p>
+<h2 id="mppt-carrier-commands">MPPT carrier commands</h2>
+<p>Start with:</p>
+<pre><code>get mppt
+get mppt battery
+get mppt power
+get mppt alerts
+get mppt saved
+get mppt fields 0
+</code></pre>
+<p><code>fields</code> returns three names per page with <code>rw</code>, <code>ro</code> or <code>locked</code>. Increment the
+page to enumerate the register interface. <code>get mppt &lt;field&gt;</code> returns units and
+the raw register. <code>get mppt raw 0x43</code> reads a documented register; arbitrary
+register writes are not exposed. <code>nan</code> in a summary means unavailable, not zero.</p>
+<h2 id="identity-and-readings">Identity and readings</h2>
+<p>The carrier bus uses SDA P0.09 and SCL P0.10. INA260 at <code>0x40</code> must match its TI
+manufacturer and device IDs. Its signed current, voltage and power readings do
+not require charger input power. The driver does not reset/configure INA260.
+LTC4162 at <code>0x68</code> uses little-endian SMBus words. Access normally requires power
+at SOLAR/VIN; USB alone can leave the charger unavailable.</p>
+<p><code>get mppt info</code> reports the chemistry/profile code, live cell count, last observed
+nonzero cell count, MPPT, JEITA, charger state and telemetry validity. The actual
+bench board identified as FST (chemistry code 6); this distinguishes it from
+FAD, FFS, Li-ion and SLA variants. The ID does not uniquely identify the M suffix
+or package/temperature grade. Cell count comes from hardware straps; zero means
+unknown while the charger is inactive. Software cannot change chemistry/cells.</p>
+<p>Readings cover battery/input/output voltage, signed battery/input current,
+charger die and modeled NTC temperature, battery series resistance, charge/CV/
+absorb timers, JEITA region, actual DAC settings, system/status bits and all three
+alert banks. A retained ADC bank is not presented as live while telemetry is off.
+Battery ADC voltage/resistance need a currently valid cell count. Questionable
+resistance and an open/disconnected NTC return unavailable in the summaries.</p>
+<h2 id="settings-on-the-4s-fst-carrier">Settings on the 4S FST carrier</h2>
+<p>Use <code>set mppt &lt;field&gt; &lt;value&gt;</code>. Booleans accept <code>on</code> or <code>off</code> only.</p>
+<table>
+<thead>
+<tr>
+<th>Fields</th>
+<th>Behavior</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>mppt.enabled</code></td>
+<td>Enable automatic solar maximum power tracking.</td>
+</tr>
+<tr>
+<td><code>charge.enabled</code></td>
+<td>Suspend/resume charging; does not disconnect the battery or system output.</td>
+</tr>
+<tr>
+<td><code>telemetry.force</code>, <code>telemetry.fast</code></td>
+<td>Force the charger ADC on, or use fast telemetry. These affect power consumption.</td>
+</tr>
+<tr>
+<td><code>input.limit_ma</code></td>
+<td>Input current limit; rounds down to the hardware step, never above the request; maximum request 3200 mA.</td>
+</tr>
+<tr>
+<td><code>input.minimum_mv</code></td>
+<td>Manual input-voltage floor; MPPT must be off. Rounds up in 140.625 mV steps, maximum request 35000 mV.</td>
+</tr>
+<tr>
+<td><code>jeita.enabled</code></td>
+<td>Select the fixed multi-region JEITA profile or basic temperature-qualified manual targets.</td>
+</tr>
+<tr>
+<td><code>charge.current_ma</code>, <code>charge.cell_mv</code></td>
+<td>Manual targets require JEITA off. Current rounds down in resistor-dependent steps, up to 3200 mA. This 4S board interface limits voltage requests to 3412.5..3600 mV/cell in 12.5 mV steps.</td>
+</tr>
+<tr>
+<td><code>thermal.start_c</code>, <code>thermal.end_c</code></td>
+<td>Die thermal regulation thresholds, -40..125 C; start must remain below end.</td>
+</tr>
+<tr>
+<td><code>termination.enabled</code>, <code>termination.current_ma</code></td>
+<td>C/x termination switch and nonnegative current threshold.</td>
+</tr>
+<tr>
+<td><code>termination.cv_seconds</code>, <code>termination.total_minutes</code></td>
+<td>16-bit safety timers; zero disables the corresponding timer.</td>
+</tr>
+<tr>
+<td><code>alert.*</code></td>
+<td>Voltage/current/die/NTC/resistance thresholds and enabled alert masks; use field names/units from <code>fields</code>.</td>
+</tr>
+</tbody>
+</table>
+<p>FST locks the six JEITA thresholds, regional current/voltage values, recharge
+threshold and absorb voltage/time. These remain readable. Manual target
+registers are continuously overwritten by JEITA when JEITA is on; read actual
+<code>dac.*</code> fields to see the active regulation targets. Basic temperature-qualified
+charging still uses the fixed outer temperature limits when JEITA is off.</p>
+<p>All configuration writes require a fresh FST identity and a live cell count of
+4 or unknown. Other variants remain readable but cannot receive this board's
+saved settings. Every setting uses a masked register update and verifies
+readback before success. Unrelated bits are preserved; one-shot BSR is not
+replayed by configuration writes. A failed write/save attempts to restore the
+previous field and reports whether rollback was verified.</p>
+<h2 id="saving-and-actions">Saving and actions</h2>
+<p>Successful settings save an explicit override in a versioned, CRC-protected
+<code>/solar_power</code> record, using atomic file replacement plus public-file readback.
+The board reapplies only saved overrides after restart or charger power loss,
+with a five-second retry interval. It does not write default settings on first
+boot. JEITA-owned targets are not repeatedly written while JEITA is enabled.
+A failed/corrupt settings file blocks configuration saves and automatic replay.</p>
+<ul>
+<li><code>mppt reload</code>: reload saved policy and retry applying it.</li>
+<li><code>mppt forget</code>: remove saved register overrides; keep calibration and live chip settings.</li>
+<li><code>mppt reset</code>: local USB only; reset saved policy/calibration to reference values,
+  including recovery from a corrupt record. Live charger registers are unchanged.</li>
+<li><code>mppt bsr run</code>: request one battery-resistance measurement; not saved.</li>
+<li><code>mppt ship arm</code> / <code>mppt ship disarm</code>: local USB only; not saved. Arming takes
+  effect when VIN drops below approximately 1 V and can remove system power.</li>
+<li><code>mppt alerts clear limits|states|status &lt;mask&gt;</code>: clear selected latched alerts
+  using write-zero-to-clear semantics; unselected/new alerts are preserved.</li>
+</ul>
+<p>These actions acknowledge the request, not completion of charging, resistance
+measurement or entry into ship mode. Read the corresponding status afterward.</p>
+<p>See the <a href="../test-results/solarxiao_power_2026-10-21/">bench acceptance report</a>
+for exact firmware identity, measured readouts and test limits.</p>
+<h2 id="conversion-defaults-and-carrier-revisions">Conversion defaults and carrier revisions</h2>
+<p>The supplied <a href="https://github.com/wehooper4/Meshtastic-Hardware/blob/main/XaioSeries/SolarXaio/MPPT/Standard/Schematic_SolarXaio_MPPT_2025-10-23.pdf">Standard schematic</a>
+shows R5/RSNSI and R14/RSNSB at 10 milliohms, a 10 kohm NTC bias and a 10 kohm
+NTC. It shows an L42M single-cell charger, so it does not independently confirm
+component values on this 12 V FSTM revision. Defaults use those resistor values
+and the LTC4162 reference thermistor beta of 3490 K. Readings identify the model
+as <code>reference</code> until the corresponding calibration values are explicitly set.</p>
+<p>Calibration settings, saved without changing hardware target registers:</p>
+<pre><code>get mppt cal.rsnsb_mohm
+get mppt cal.rsnsi_mohm
+get mppt cal.ntc_bias_ohm
+get mppt cal.ntc_r25_ohm
+get mppt cal.ntc_beta
+</code></pre>
+<p>Set these with the same <code>set mppt</code> syntax after confirming actual components.
+Allowed sense resistance is 0.1..1000 milliohms, NTC/bias resistance 100..1000000
+ohms, beta 1000..10000 K. The simple beta temperature model assumes an unpadded
+NTC divider. It does not model series/parallel thermistor dilution networks.
+Changing calibration changes units/conversions, not already saved register codes.
+INA260 uses its integrated shunt and does not use these sense-resistor values.</p>
+<h2 id="telemetry-channels">Telemetry channels</h2>
+<p>The following carrier channels apply to MPPT mode. Advanced mode reports the
+existing self voltage/MCU temperature on channel 1 and omits native channels.</p>
+<p>Carrier telemetry requires the environmental telemetry permission. Channel 1
+remains the XIAO internal ADC; it is separate from the 4S carrier battery and its
+existing startup/low-voltage policy is unchanged.</p>
+<table>
+<thead>
+<tr>
+<th>Channel</th>
+<th>Values</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>2</td>
+<td>INA260 battery voltage, signed current, power</td>
+</tr>
+<tr>
+<td>3</td>
+<td>LTC4162 input voltage, signed current, computed nonnegative input power</td>
+</tr>
+<tr>
+<td>4</td>
+<td>Charger system output voltage</td>
+</tr>
+<tr>
+<td>5</td>
+<td>Charger battery ADC voltage and signed current</td>
+</tr>
+<tr>
+<td>6, 7</td>
+<td>Die temperature, modeled NTC temperature</td>
+</tr>
+<tr>
+<td>8, 9, 10</td>
+<td>Generic sensor integers: charger state, charge status, system bits</td>
+</tr>
+<tr>
+<td>11, 12, 13</td>
+<td>Generic sensor integers: limit, state and status alert masks</td>
+</tr>
+<tr>
+<td>14 onward</td>
+<td>Optional environmental sensors, in discovery order</td>
+</tr>
+</tbody>
+</table>
+<p>Unavailable values are omitted. Voltage history reserves channels 2..5 and
+marks unavailable samples invalid. The generic sensor scanner cannot claim
+carrier addresses <code>0x40</code>/<code>0x68</code>; this prevents an INA219 driver from configuring
+the INA260 and keeps carrier channels stable across profiles and power states.
+No state-of-charge percentage or coulomb counting is inferred from voltage.</p>
+<p>References: <a href="https://github.com/wehooper4/Meshtastic-Hardware/tree/main/XaioSeries/SolarXaio">SolarXaio hardware</a>,
+<a href="https://www.analog.com/media/en/technical-documentation/data-sheets/ltc4162-f.pdf">LTC4162-F Rev A</a>,
+<a href="https://www.ti.com/lit/ds/symlink/ina260.pdf">INA260</a>.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["content.action.edit", "content.code.copy", "search.highlight", "search.suggest"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+        <script src="../_javascript/hosted_doc_links.js?v=20261007-1"></script>
+      
+        <script src="../_javascript/notification_builder.js?v=20261006-channel9"></script>
+      
+        <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+      
+        <script src="../_javascript/firmware_picker.js?v=20261018-variant-consolidation-1"></script>
+      
+        <script src="../_javascript/telemetry_decoder.js?v=20261007-hosted-form"></script>
+      
+        <script src="../_javascript/management_decoder.js"></script>
+      
+        <script src="../_javascript/filter_tool.js?v=20261002-hashbytes-2plus"></script>
+      
+        <script src="../_javascript/preset_test.js?v=20260923-2"></script>
+      
+        <script src="../_javascript/esp32_partition_catalog.js?v=20261001-1"></script>
+      
+    
+  </body>
+</html>

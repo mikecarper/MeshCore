@@ -2545,16 +2545,6 @@ firmware cannot preserve a custom TinyUSB product name.
 <td>Pinned HWCDC initialization restores the official S3 hardware PHY route and detaches the former OTG connection first. Initialization fixtures seed retained RTC state; the controlled physical G2 OTA transition below also passed.</td>
 </tr>
 <tr>
-<td><a href="https://github.com/meshtastic/firmware/issues/10955">Meshtastic #10955</a></td>
-<td>Tracker V2 watchdog reboot after a serial reader closes; raw log writes block while the USB bus remains alive. Reproduced on Arduino 2.x and 3.x.</td>
-<td>Applies to the same hardware/backend combination. Our bounded writer and diagnostic admission prevent waiting for a host to drain output; synthetic negative controls exercise unsafe raw writes.</td>
-</tr>
-<tr>
-<td><a href="https://github.com/meshtastic/firmware/issues/10975">Meshtastic #10975</a></td>
-<td>Tracker V2 binary synchronization corrupted by interleaved diagnostics and abandoned short-write suffixes.</td>
-<td>Companion/KISS tests retain suffixes across short writes; KISS disables diagnostics before board initialization.</td>
-</tr>
-<tr>
 <td><a href="https://github.com/espressif/arduino-esp32/issues/12782">Arduino-ESP32 #12782</a></td>
 <td>Open report of HWCDC failing to reconnect after about two minutes idle on C3/C6/C61/S3, latest master / IDF 5.5.4.</td>
 <td>Reported SDK differs from our pinned Arduino 2.0.17 / IDF 4.4. Synthetic tests cover idle lease expiry and reply admission, not physical enumeration on that SDK.</td>
@@ -2568,11 +2558,6 @@ firmware cannot preserve a custom TinyUSB product name.
 <td><a href="https://github.com/espressif/esp-idf/issues/13287">ESP-IDF #13287</a></td>
 <td>S3 may remain in ROM after upload when download mode was entered with physical BOOT/RESET.</td>
 <td>Our older esptool does not offer the newer <code>watchdog-reset</code> option. Press RESET after a manual BOOT-mode upload if the application does not start.</td>
-</tr>
-<tr>
-<td><a href="https://github.com/meshtastic/firmware/issues/4206">Meshtastic #4206</a></td>
-<td>Station G2 native USB fails to resume around light sleep.</td>
-<td>Keep USB active while a host is present. Espressif documents USB Serial/JTAG sleep limitations; a port disappearing during sleep does not establish a firmware crash.</td>
 </tr>
 </tbody>
 </table>

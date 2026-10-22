@@ -1,0 +1,1144 @@
+{
+  "passed": true,
+  "source_commit": "ea8176ddc6b2caa7e52f8dcba46178f69f6cbbea",
+  "installed_profile": "Full",
+  "application": {
+    "name": "solarxiao_33S_repeater-full-ota-v1.18.0.1-halo-keymind-cascade-dev-ea8176dd.zip",
+    "sha256": "2bf0615b3ac0c6ae0c02dcf9272795c671d9c2acbc2ac3ed8868ca398b72d133",
+    "application_sha256": "d6068baf837c0348ea841a04a2412bd4724a93022f2d8b750af15ca1fb4fbe76",
+    "application_bytes": 595040,
+    "body_hash": "5A46FDAABF34C62D",
+    "expected_version": "v1.18.0.1-halo-keymind-cascade-dev-ea8176dd",
+    "source_commit": "ea8176ddc6b2caa7e52f8dcba46178f69f6cbbea",
+    "native_marker": true
+  },
+  "builds": {
+    "full": {
+      "package": {
+        "name": "solarxiao_33S_repeater-full-ota-v1.18.0.1-halo-keymind-cascade-dev-ea8176dd.zip",
+        "sha256": "2bf0615b3ac0c6ae0c02dcf9272795c671d9c2acbc2ac3ed8868ca398b72d133",
+        "application_sha256": "d6068baf837c0348ea841a04a2412bd4724a93022f2d8b750af15ca1fb4fbe76",
+        "application_bytes": 595040,
+        "body_hash": "5A46FDAABF34C62D",
+        "expected_version": "v1.18.0.1-halo-keymind-cascade-dev-ea8176dd",
+        "source_commit": "ea8176ddc6b2caa7e52f8dcba46178f69f6cbbea",
+        "native_marker": true
+      },
+      "memory_passed": true,
+      "available_internal_bytes": 150608,
+      "required_heap_bytes": 76960,
+      "capability_verification": [
+        {
+          "capability": "bridge.rs232",
+          "evidence": "_ZN11RS232Bridge5beginEv",
+          "present": true,
+          "source": "linked image"
+        },
+        {
+          "capability": "ota.update.bluetooth",
+          "evidence": "_ZN6BLEDfu5beginEv",
+          "present": true,
+          "source": "linked image"
+        },
+        {
+          "capability": "ota.update.lora",
+          "evidence": "invalid in-place patch geometry",
+          "present": true,
+          "source": "linked image"
+        },
+        {
+          "capability": "cli.retry_preset",
+          "evidence": "retry.preset",
+          "present": true,
+          "source": "linked image"
+        },
+        {
+          "capability": "telemetry.history",
+          "evidence": "telemetry.volt.i2c",
+          "present": true,
+          "source": "linked image"
+        },
+        {
+          "capability": "ota.cli",
+          "evidence": "OTA: status",
+          "present": true,
+          "source": "linked image"
+        },
+        {
+          "capability": "logging.usb.packets",
+          "evidence": "%s: %s, len=%d (type=%d, route=%s, payload_len=%d)",
+          "present": true,
+          "source": "packaged application"
+        },
+        {
+          "capability": "logging.usb.control",
+          "evidence": "OK - USB logging %s (saved)",
+          "present": true,
+          "source": "packaged application"
+        },
+        {
+          "capability": "bridge.rs232.merged",
+          "evidence": "Error: use set rs232.enabled on|off",
+          "present": true,
+          "source": "packaged application"
+        }
+      ]
+    },
+    "reduced": {
+      "package": {
+        "name": "solarxiao_33S_repeater-reduced-ota-v1.18.0.1-halo-keymind-cascade-dev-ea8176dd.zip",
+        "sha256": "0733d63b461779766697863209534e94de15756b7adf427edeb258391bd51200",
+        "application_sha256": "1352790a6416eea3026f015d9eb1752b271995fe4bbc3c116a64f206a55f8371",
+        "application_bytes": 565044,
+        "body_hash": "BFE947A584A7F267",
+        "expected_version": "v1.18.0.1-halo-keymind-cascade-dev-ea8176dd",
+        "source_commit": "ea8176ddc6b2caa7e52f8dcba46178f69f6cbbea",
+        "native_marker": true
+      },
+      "memory_passed": true,
+      "available_internal_bytes": 152256,
+      "required_heap_bytes": 76960,
+      "capability_verification": [
+        {
+          "capability": "bridge.rs232",
+          "evidence": "_ZN11RS232Bridge5beginEv",
+          "present": true,
+          "source": "linked image"
+        },
+        {
+          "capability": "ota.update.bluetooth",
+          "evidence": "_ZN6BLEDfu5beginEv",
+          "present": true,
+          "source": "linked image"
+        },
+        {
+          "capability": "ota.update.lora",
+          "evidence": "invalid in-place patch geometry",
+          "present": true,
+          "source": "linked image"
+        },
+        {
+          "capability": "cli.retry_preset",
+          "evidence": "retry.preset",
+          "present": true,
+          "source": "linked image"
+        },
+        {
+          "capability": "telemetry.history",
+          "evidence": "telemetry.volt.i2c",
+          "present": true,
+          "source": "linked image"
+        },
+        {
+          "capability": "ota.cli",
+          "evidence": "OTA: status",
+          "present": true,
+          "source": "linked image"
+        },
+        {
+          "capability": "logging.usb.packets",
+          "evidence": "%s: %s, len=%d (type=%d, route=%s, payload_len=%d)",
+          "present": true,
+          "source": "packaged application"
+        },
+        {
+          "capability": "logging.usb.control",
+          "evidence": "OK - USB logging %s (saved)",
+          "present": true,
+          "source": "packaged application"
+        },
+        {
+          "capability": "bridge.rs232.merged",
+          "evidence": "Error: use set rs232.enabled on|off",
+          "present": true,
+          "source": "packaged application"
+        }
+      ]
+    }
+  },
+  "bench_setup": "13.2 V on SOLAR/VIN; BAT disconnected; USB connected during powered USB tests",
+  "sense_resistor_defaults_mohm": {
+    "battery": 10,
+    "input": 10,
+    "source": "Standard single-cell L42M reference schematic; exact 12 V FSTM revision not independently confirmed"
+  },
+  "ntc_model": {
+    "bias_ohm": 10000,
+    "r25_ohm": 10000,
+    "beta_K": 3490,
+    "source": "reference"
+  },
+  "host_tests": {
+    "native_test_methods": 3,
+    "core_fault_injection_scenarios": 8,
+    "native_and_generic_telemetry_modes": true,
+    "real_atomic_store_and_wire_boundary": true,
+    "xiao_gpio_tests": 6,
+    "asan_ubsan": true
+  },
+  "hardware": {
+    "passed": true,
+    "started_at": 1792622121.6967626,
+    "body_hash": "5A46FDAABF34C62D",
+    "bench_setup": "13.2 V on SOLAR/VIN; BAT disconnected; USB connected",
+    "fields": {
+      "alert.battery_low_mv": "alert.battery_low_mv=0 mV raw=0000",
+      "alert.battery_high_mv": "alert.battery_high_mv=0 mV raw=0000",
+      "alert.input_low_mv": "alert.input_low_mv=0 mV raw=0000",
+      "alert.input_high_mv": "alert.input_high_mv=0 mV raw=0000",
+      "alert.output_low_mv": "alert.output_low_mv=0 mV raw=0000",
+      "alert.output_high_mv": "alert.output_high_mv=0 mV raw=0000",
+      "alert.input_high_raw": "alert.input_high_raw=0 ADC raw=0000",
+      "alert.input_high_ma": "alert.input_high_ma=0 mA raw=0000",
+      "alert.battery_low_ma": "alert.battery_low_ma=0 mA raw=0000",
+      "alert.die_high_c": "alert.die_high_c=-264.4 C raw=0000",
+      "alert.resistance_raw": "alert.resistance_raw=0 ADC raw=0000",
+      "alert.ntc_high_raw": "alert.ntc_high_raw=0 ADC raw=0000",
+      "alert.ntc_low_raw": "alert.ntc_low_raw=0 ADC raw=0000",
+      "alert.limits_mask": "alert.limits_mask=0 mask raw=0000",
+      "alert.states_mask": "alert.states_mask=0 mask raw=0000",
+      "alert.status_mask": "alert.status_mask=0 mask raw=0000",
+      "thermal.start_c": "thermal.start_c=120.3855 C raw=45E9",
+      "thermal.end_c": "thermal.end_c=125.395 C raw=46D2",
+      "charge.enabled": "charge.enabled=on raw=0002",
+      "telemetry.fast": "telemetry.fast=off raw=0002",
+      "telemetry.force": "telemetry.force=off raw=0002",
+      "mppt.enabled": "mppt.enabled=on raw=0002",
+      "input.limit_ma": "input.limit_ma=3200 mA raw=003F",
+      "input.minimum_mv": "input.minimum_mv=4500 mV raw=001F",
+      "charge.current_code": "charge.current_code=31 code raw=001F",
+      "charge.current_ma": "charge.current_ma=3200 mA raw=001F",
+      "charge.cell_mv": "charge.cell_mv=3600 mV/cell raw=000F",
+      "termination.current_ma": "termination.current_ma=320.1744 mA raw=0888",
+      "termination.cv_seconds": "termination.cv_seconds=3600 s raw=0E10",
+      "termination.total_minutes": "termination.total_minutes=0 min raw=0000",
+      "jeita.t1_raw": "jeita.t1_raw=16117 ADC raw=3EF5 locked",
+      "jeita.t2_raw": "jeita.t2_raw=14113 ADC raw=3721 locked",
+      "jeita.t3_raw": "jeita.t3_raw=7970 ADC raw=1F22 locked",
+      "jeita.t4_raw": "jeita.t4_raw=7112 ADC raw=1BC8 locked",
+      "jeita.t5_raw": "jeita.t5_raw=6325 ADC raw=18B5 locked",
+      "jeita.t6_raw": "jeita.t6_raw=4970 ADC raw=136A locked",
+      "jeita.voltages_65": "jeita.voltages_65=103 packed raw=0067 locked",
+      "jeita.voltages_432": "jeita.voltages_432=7663 packed raw=1DEF locked",
+      "jeita.currents_65": "jeita.currents_65=495 packed raw=01EF locked",
+      "jeita.currents_432": "jeita.currents_432=32751 packed raw=7FEF locked",
+      "termination.enabled": "termination.enabled=off raw=0001",
+      "jeita.enabled": "jeita.enabled=on raw=0001",
+      "absorb.delta_code": "absorb.delta_code=0 code raw=0000 locked",
+      "absorb.seconds": "absorb.seconds=0 s raw=0000 locked",
+      "recharge.mv": "recharge.mv=13409.51 mV raw=4410 locked",
+      "timer.charge_minutes": "timer.charge_minutes=0 min raw=0000",
+      "timer.cv_seconds": "timer.cv_seconds=0 s raw=0000",
+      "timer.absorb_seconds": "timer.absorb_seconds=0 s raw=0000",
+      "state": "state=1 mask raw=0001",
+      "status": "status=0 mask raw=0000",
+      "alerts.limits": "alerts.limits=0 mask raw=0000",
+      "alerts.states": "alerts.states=0 mask raw=0000",
+      "alerts.status": "alerts.status=0 mask raw=0000",
+      "system": "system=103 mask raw=0067",
+      "battery.mv": "battery.mv=2.3088 mV raw=0003",
+      "input.mv": "input.mv=13292.59 mV raw=1F7D",
+      "output.mv": "output.mv=13281.85 mV raw=1F63",
+      "battery.ma": "battery.ma=-0.5864 mA raw=FFFC",
+      "input.current_raw": "input.current_raw=19 ADC raw=0013",
+      "input.ma": "input.ma=2.6388 mA raw=0012",
+      "die.c": "die.c=27.957 C raw=351E",
+      "ntc.raw": "ntc.raw=10284 ADC raw=282C",
+      "battery.resistance_ohm": "battery.resistance_ohm=0 ohm raw=0000",
+      "jeita.region": "jeita.region=3 region raw=0003",
+      "chemistry": "chemistry=6 code raw=46B4",
+      "cells": "cells=4 cells raw=46B4",
+      "dac.charge_code": "dac.charge_code=0 code raw=0000",
+      "dac.charge_ma": "dac.charge_ma=100 mA raw=0000",
+      "dac.cell_mv": "dac.cell_mv=3600 mV/cell raw=000F",
+      "dac.input_ma": "dac.input_ma=3200 mA raw=003F",
+      "battery.filtered_mv": "battery.filtered_mv=0.7696 mV raw=0001",
+      "resistance.current_ma": "resistance.current_ma=0 mA raw=0000",
+      "telemetry.valid": "telemetry.valid=on raw=0001",
+      "resistance.questionable": "resistance.questionable=off raw=0001",
+      "dac.input_mv": "dac.input_mv=36000 mV raw=00FF"
+    },
+    "tests": [
+      {
+        "command": "set mppt cells 3",
+        "reply": "Err - cells is read-only (hardware/state)"
+      },
+      {
+        "command": "set mppt chemistry 4",
+        "reply": "Err - chemistry is read-only (hardware/state)"
+      },
+      {
+        "command": "set mppt jeita.t1_raw 123",
+        "reply": "Err - jeita.t1_raw is locked by FST charging profile"
+      },
+      {
+        "command": "set mppt recharge.mv 13000",
+        "reply": "Err - recharge.mv is locked by FST charging profile"
+      },
+      {
+        "command": "set mppt absorb.seconds 500",
+        "reply": "Err - absorb.seconds is locked by FST charging profile"
+      },
+      {
+        "command": "set mppt input.limit_ma 3201",
+        "reply": "Err - invalid value/range or cell count unknown; input.limit_ma (mA)"
+      },
+      {
+        "command": "set mppt thermal.end_c -40",
+        "reply": "Err - thermal.start_c must be below thermal.end_c"
+      },
+      {
+        "command": "set mppt charge.current_ma 1000",
+        "reply": "Err - disable jeita.enabled before setting manual charge targets"
+      },
+      {
+        "command": "set mppt input.minimum_mv 14000",
+        "reply": "Err - disable mppt.enabled before setting manual input.minimum_mv"
+      },
+      {
+        "command": "set mppt state 0",
+        "reply": "Err - state is read-only (hardware/state)"
+      },
+      {
+        "command": "set mppt telemetry.force on",
+        "reply": "OK - telemetry.force=1  saved, readback verified"
+      },
+      {
+        "command": "set mppt telemetry.fast on",
+        "reply": "OK - telemetry.fast=1  saved, readback verified"
+      },
+      {
+        "command": "set mppt input.limit_ma 1200",
+        "reply": "OK - input.limit_ma=1200 mA saved, readback verified"
+      },
+      {
+        "command": "set mppt mppt.enabled off",
+        "reply": "OK - mppt.enabled=0  saved, readback verified"
+      },
+      {
+        "command": "set mppt input.minimum_mv 13000",
+        "reply": "OK - input.minimum_mv=13078.1 mV saved, readback verified"
+      },
+      {
+        "command": "set mppt charge.enabled off",
+        "reply": "OK - charge.enabled=0  saved, readback verified"
+      },
+      {
+        "command": "set mppt jeita.enabled off",
+        "reply": "OK - jeita.enabled=0  saved, readback verified"
+      },
+      {
+        "command": "set mppt charge.current_ma 1000",
+        "reply": "OK - charge.current_ma=1000 mA saved, readback verified"
+      },
+      {
+        "command": "set mppt charge.cell_mv 3500",
+        "reply": "OK - charge.cell_mv=3500 mV/cell saved, readback verified"
+      },
+      {
+        "command": "set mppt termination.current_ma 200",
+        "reply": "OK - termination.current_ma=199.962 mA saved, readback verified"
+      },
+      {
+        "command": "set mppt termination.cv_seconds 1800",
+        "reply": "OK - termination.cv_seconds=1800 s saved, readback verified"
+      },
+      {
+        "command": "set mppt termination.total_minutes 240",
+        "reply": "OK - termination.total_minutes=240 min saved, readback verified"
+      },
+      {
+        "command": "set mppt cal.rsnsb_mohm 10",
+        "reply": "OK - cal.rsnsb_mohm=10 saved; register targets unchanged"
+      },
+      {
+        "command": "set mppt charge.current_ma 3200",
+        "reply": "OK - charge.current_ma=3200 mA saved, readback verified"
+      },
+      {
+        "command": "set mppt charge.cell_mv 3600",
+        "reply": "OK - charge.cell_mv=3600 mV/cell saved, readback verified"
+      },
+      {
+        "command": "set mppt termination.current_ma 320.1744",
+        "reply": "OK - termination.current_ma=320.174 mA saved, readback verified"
+      },
+      {
+        "command": "set mppt termination.cv_seconds 3600",
+        "reply": "OK - termination.cv_seconds=3600 s saved, readback verified"
+      },
+      {
+        "command": "set mppt termination.total_minutes 0",
+        "reply": "OK - termination.total_minutes=0 min saved, readback verified"
+      },
+      {
+        "command": "set mppt input.limit_ma 3200",
+        "reply": "OK - input.limit_ma=3200 mA saved, readback verified"
+      },
+      {
+        "command": "set mppt mppt.enabled off",
+        "reply": "OK - mppt.enabled=0  saved, readback verified"
+      },
+      {
+        "command": "set mppt input.minimum_mv 4500",
+        "reply": "OK - input.minimum_mv=4500 mV saved, readback verified"
+      },
+      {
+        "command": "set mppt jeita.enabled on",
+        "reply": "OK - jeita.enabled=1  saved, readback verified"
+      },
+      {
+        "command": "set mppt telemetry.fast off",
+        "reply": "OK - telemetry.fast=0  saved, readback verified"
+      },
+      {
+        "command": "set mppt telemetry.force off",
+        "reply": "OK - telemetry.force=0  saved, readback verified"
+      },
+      {
+        "command": "set mppt mppt.enabled on",
+        "reply": "OK - mppt.enabled=1  saved, readback verified"
+      },
+      {
+        "command": "set mppt charge.enabled on",
+        "reply": "OK - charge.enabled=1  saved, readback verified"
+      },
+      {
+        "command": "mppt reset",
+        "reply": "OK - saved policy/calibration reset; live charger unchanged"
+      }
+    ],
+    "cleanup_verified": true,
+    "before_registers": {
+      "0x14": "0x2",
+      "0x15": "0x3f",
+      "0x16": "0x1f",
+      "0x1a": "0x1f",
+      "0x1b": "0xf",
+      "0x1c": "0x888",
+      "0x1d": "0xe10",
+      "0x1e": "0x0",
+      "0x29": "0x1",
+      "0x10": "0x45e9",
+      "0x11": "0x46d2",
+      "0xd": "0x0",
+      "0xe": "0x0",
+      "0xf": "0x0"
+    },
+    "rejected_writes_unchanged": true,
+    "during": {
+      "get mppt": "LTC4162-FST chem=6 cells=4 last=4 MPPT=off JEITA=off state=suspended ADC=on saved=ok",
+      "get mppt battery": "INA260 0.0187V -0.00125A 0.000W; charger=0.0031V -0.00044A NTC=28.03C model=reference",
+      "get mppt power": "ADC=on VIN=13.2909V IIN=+0.00440A VOUT=13.2802V die=28.00C NTC=28.04C BSR=0.00000ohm",
+      "get mppt saved": "storage=ok overrides=9 apply=verified rsnsb=10mOhm rsnsi=10mOhm cal_user=01"
+    },
+    "test_registers": {
+      "0x14": "0x2c",
+      "0x15": "0x17",
+      "0x16": "0x5c",
+      "0x1a": "0x9",
+      "0x1b": "0x7",
+      "0x1c": "0x554",
+      "0x1d": "0x708",
+      "0x1e": "0xf0",
+      "0x29": "0x0",
+      "0x10": "0x45e9",
+      "0x11": "0x46d2",
+      "0xd": "0x0",
+      "0xe": "0x0",
+      "0xf": "0x0"
+    },
+    "warm_restart_verified": true,
+    "saved_after_restart": "storage=ok overrides=9 apply=verified rsnsb=10mOhm rsnsi=10mOhm cal_user=01",
+    "calibration_after_restart": "cal.rsnsb_mohm=10 source=user",
+    "final_power": {
+      "get mppt": "LTC4162-FST chem=6 cells=4 last=4 MPPT=on JEITA=on state=battery_short ADC=on saved=ok",
+      "get mppt battery": "INA260 1.7425V +0.00000A 0.000W; charger=1.7362V -0.00308A NTC=28.15C model=reference",
+      "get mppt power": "ADC=on VIN=13.2909V IIN=+0.00205A VOUT=13.2802V die=28.15C NTC=28.15C BSR=0.00000ohm",
+      "get mppt saved": "storage=ok overrides=0 apply=verified rsnsb=10mOhm rsnsi=10mOhm cal_user=00",
+      "get telemetry.volt.i2c": "channels=2,3,4,5 samples=1 retention=4d step=0.02V max=655.34V"
+    },
+    "finished_at": 1792622171.9355447
+  },
+  "repeater": {
+    "passed": true,
+    "started_at": 1792622413.8980575,
+    "source_commit": "ea8176ddc6b2caa7e52f8dcba46178f69f6cbbea",
+    "application_body_hash": "5A46FDAABF34C62D",
+    "rounds": [
+      {
+        "index": 1,
+        "passed": true,
+        "host_send_commands": 1,
+        "nonce_sha256": "4783521c4acabee7d2252d74702038eb5da0df4ea134cd53a777b7b86ebcf512",
+        "elapsed_seconds": 0.496,
+        "firmware_estimate_millis": 2692,
+        "repeater_packet_delta": {
+          "recv": 1,
+          "sent": 1,
+          "direct_rx": 1,
+          "direct_tx": 1,
+          "recv_errors": 0
+        },
+        "hub_packet_delta": {
+          "received": 1,
+          "sent": 1,
+          "sent_flood": 0,
+          "sent_direct": 1,
+          "received_flood": 0,
+          "received_direct": 1,
+          "receive_errors": 0
+        },
+        "ignored_unowned_pushes": 1,
+        "exact_nonce_verified": true,
+        "exact_repeater_prefix_route_verified": true,
+        "route_bytes": 4,
+        "route_hops": 1,
+        "flags": 2,
+        "repeater_inbound_snr_db": 12.0,
+        "hub_return_snr_db": 12.5,
+        "reply_sha256": "f56d2d204770cbae7f20ae79045d1270d0868558eb63b5349a97c6e1e9382b88"
+      },
+      {
+        "index": 2,
+        "passed": true,
+        "host_send_commands": 1,
+        "nonce_sha256": "1f98725a8ee72453f6ea9f8eb8904cc95c47f0e928a4344b6800c484f206f2d1",
+        "elapsed_seconds": 0.575,
+        "firmware_estimate_millis": 2692,
+        "repeater_packet_delta": {
+          "recv": 1,
+          "sent": 1,
+          "direct_rx": 1,
+          "direct_tx": 1,
+          "recv_errors": 0
+        },
+        "hub_packet_delta": {
+          "received": 1,
+          "sent": 1,
+          "sent_flood": 0,
+          "sent_direct": 1,
+          "received_flood": 0,
+          "received_direct": 1,
+          "receive_errors": 0
+        },
+        "ignored_unowned_pushes": 1,
+        "exact_nonce_verified": true,
+        "exact_repeater_prefix_route_verified": true,
+        "route_bytes": 4,
+        "route_hops": 1,
+        "flags": 2,
+        "repeater_inbound_snr_db": 11.5,
+        "hub_return_snr_db": 12.25,
+        "reply_sha256": "81a55b48ee86f0c7af1e57c75306f7612f9869071656968281c2a4bbcc18e635"
+      },
+      {
+        "index": 3,
+        "passed": true,
+        "host_send_commands": 1,
+        "nonce_sha256": "98f18f38825f084eaab05c5e5004017f2e29a862823c07fb244f43c7545c6642",
+        "elapsed_seconds": 0.641,
+        "firmware_estimate_millis": 2692,
+        "repeater_packet_delta": {
+          "recv": 1,
+          "sent": 1,
+          "direct_rx": 1,
+          "direct_tx": 1,
+          "recv_errors": 0
+        },
+        "hub_packet_delta": {
+          "received": 1,
+          "sent": 1,
+          "sent_flood": 0,
+          "sent_direct": 1,
+          "received_flood": 0,
+          "received_direct": 1,
+          "receive_errors": 0
+        },
+        "ignored_unowned_pushes": 1,
+        "exact_nonce_verified": true,
+        "exact_repeater_prefix_route_verified": true,
+        "route_bytes": 4,
+        "route_hops": 1,
+        "flags": 2,
+        "repeater_inbound_snr_db": 11.5,
+        "hub_return_snr_db": 12.5,
+        "reply_sha256": "779c32b91235bb794d6f6f4335ecba18e5a92a4f803bc8e775635219e41e100e"
+      }
+    ],
+    "temporary_radio_leases_used": false,
+    "persistent_peer_settings_changed": false,
+    "final_core": {
+      "battery_mv": 4159,
+      "uptime_secs": 272,
+      "errors": 0,
+      "queue_len": 0
+    },
+    "final_packets": {
+      "recv": 190,
+      "sent": 35,
+      "flood_tx": 28,
+      "direct_tx": 7,
+      "flood_rx": 123,
+      "direct_rx": 67,
+      "recv_errors": 2
+    },
+    "radio": "910.5250244,62.5,7,5",
+    "tx_power_dbm": -6,
+    "repeat": "on",
+    "rx_power_saving": "on,level=8,preamble=16,rx=39657,sleep=15975",
+    "bootloader_manifest_crc": "76EBABBF",
+    "voltage_history": "channels=2,3,4,5 samples=2 retention=4d step=0.02V max=655.34V",
+    "trace_rounds_passed": 3,
+    "endpoints_closed": true,
+    "partner_settings_preserved": true,
+    "transport": {
+      "ports_opened": 1,
+      "ports_closed": 1,
+      "request_frames_sent": 26,
+      "response_frames_received": 36,
+      "request_bytes_sent": 305,
+      "response_payload_bytes": 1077,
+      "discarded_prefix_bytes": 0,
+      "invalid_length_candidates": 0,
+      "ignored_push_frames": 4
+    },
+    "finished_at": 1792622423.1562824
+  },
+  "charger_lora_full_channels_verified": true,
+  "charging_with_battery_tested": false,
+  "resistor_and_ntc_calibration_under_load_tested": false,
+  "new_application_full_lora_ota_transfer_tested": false,
+  "head_bootloader_preserved": {
+    "revision": "b07255d4cdc601f1313e4cbe020caad3b5544821",
+    "manifest_crc": "76EBABBF"
+  },
+  "initial_recovered_failure": "First installation found charger unavailable with bench supply off; verified previous application restored before VIN was switched on and the final image installed.",
+  "scope_adjustment": "Native controls are enabled only for SolarXiao repeaters. Exploratory Room Server build exceeded flash/UF2 limits and is not qualified.",
+  "lora_offline": {
+    "started_at": 1792622529.2668817,
+    "samples": [
+      {
+        "at": 1792622564.584421,
+        "response": [
+          {
+            "name": "SolarXiao 33S Repeater",
+            "pubkey_pre": "60619bf70b4b3805",
+            "lpp": [
+              {
+                "channel": 1,
+                "type": "voltage",
+                "value": 3.79
+              },
+              {
+                "channel": 2,
+                "type": "voltage",
+                "value": 0.1
+              },
+              {
+                "channel": 2,
+                "type": "current",
+                "value": -0.001
+              },
+              {
+                "channel": 2,
+                "type": "power",
+                "value": 0.0
+              },
+              {
+                "channel": 1,
+                "type": "temperature",
+                "value": 27.0
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "at": 1792622568.8714468,
+        "response": [
+          {
+            "name": "SolarXiao 33S Repeater",
+            "pubkey_pre": "60619bf70b4b3805",
+            "lpp": [
+              {
+                "channel": 1,
+                "type": "voltage",
+                "value": 4.18
+              },
+              {
+                "channel": 2,
+                "type": "voltage",
+                "value": 0.1
+              },
+              {
+                "channel": 2,
+                "type": "current",
+                "value": -0.002
+              },
+              {
+                "channel": 2,
+                "type": "power",
+                "value": 0.0
+              },
+              {
+                "channel": 1,
+                "type": "temperature",
+                "value": 27.2
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "at": 1792622573.272457,
+        "response": [
+          {
+            "name": "SolarXiao 33S Repeater",
+            "pubkey_pre": "60619bf70b4b3805",
+            "lpp": [
+              {
+                "channel": 1,
+                "type": "voltage",
+                "value": 3.79
+              },
+              {
+                "channel": 2,
+                "type": "voltage",
+                "value": 0.09
+              },
+              {
+                "channel": 2,
+                "type": "current",
+                "value": -0.001
+              },
+              {
+                "channel": 2,
+                "type": "power",
+                "value": 0.0
+              },
+              {
+                "channel": 1,
+                "type": "temperature",
+                "value": 27.2
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "configuration_writes": 0,
+    "body_hash": "5A46FDAABF34C62D",
+    "temporary_contact_creation_requested": true,
+    "remote_version": "v1.18.0.1-halo-keymind-cascade-dev-ea8176dd (Build: 21-Oct-2026)",
+    "remote_cli": [
+      {
+        "command": "get mppt",
+        "reply": "N0|> LTC4162=unavailable INA260=online; power SOLAR/VIN for charger access"
+      },
+      {
+        "command": "get mppt battery",
+        "reply": "N1|> INA260 0.1013V -0.00125A 0.000W; charger=nanV +nanA NTC=nanC model=reference"
+      },
+      {
+        "command": "get mppt saved",
+        "reply": "N2|> storage=ok overrides=0 apply=pending rsnsb=10mOhm rsnsi=10mOhm cal_user=00"
+      }
+    ],
+    "telemetry_received": true,
+    "mode": "INA260 plus charger status; VIN unavailable during this run",
+    "temporary_contact_removed": true,
+    "temporary_forward_closed": true,
+    "cleanup_errors": [],
+    "finished_at": 1792622574.23897
+  },
+  "lora_powered": {
+    "started_at": 1792622849.6739688,
+    "samples": [
+      {
+        "at": 1792622862.7484872,
+        "response": [
+          {
+            "name": "SolarXiao 33S Repeater",
+            "pubkey_pre": "60619bf70b4b3805",
+            "lpp": [
+              {
+                "channel": 1,
+                "type": "voltage",
+                "value": 4.15
+              },
+              {
+                "channel": 2,
+                "type": "voltage",
+                "value": 0.01
+              },
+              {
+                "channel": 2,
+                "type": "current",
+                "value": 0.0
+              },
+              {
+                "channel": 2,
+                "type": "power",
+                "value": 0.0
+              },
+              {
+                "channel": 3,
+                "type": "voltage",
+                "value": 13.29
+              },
+              {
+                "channel": 3,
+                "type": "current",
+                "value": 0.001
+              },
+              {
+                "channel": 3,
+                "type": "power",
+                "value": 0.0
+              },
+              {
+                "channel": 4,
+                "type": "voltage",
+                "value": 13.28
+              },
+              {
+                "channel": 5,
+                "type": "voltage",
+                "value": 0.0
+              },
+              {
+                "channel": 5,
+                "type": "current",
+                "value": 0.0
+              },
+              {
+                "channel": 6,
+                "type": "temperature",
+                "value": 25.4
+              },
+              {
+                "channel": 7,
+                "type": "temperature",
+                "value": 24.9
+              },
+              {
+                "channel": 8,
+                "type": "generic sensor",
+                "value": 1.0
+              },
+              {
+                "channel": 9,
+                "type": "generic sensor",
+                "value": 0.0
+              },
+              {
+                "channel": 10,
+                "type": "generic sensor",
+                "value": 103.0
+              },
+              {
+                "channel": 11,
+                "type": "generic sensor",
+                "value": 0.0
+              },
+              {
+                "channel": 12,
+                "type": "generic sensor",
+                "value": 0.0
+              },
+              {
+                "channel": 13,
+                "type": "generic sensor",
+                "value": 0.0
+              },
+              {
+                "channel": 1,
+                "type": "temperature",
+                "value": 27.2
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "at": 1792622876.7922087,
+        "response": [
+          {
+            "name": "SolarXiao 33S Repeater",
+            "pubkey_pre": "60619bf70b4b3805",
+            "lpp": [
+              {
+                "channel": 1,
+                "type": "voltage",
+                "value": 4.19
+              },
+              {
+                "channel": 2,
+                "type": "voltage",
+                "value": 0.0
+              },
+              {
+                "channel": 2,
+                "type": "current",
+                "value": -0.001
+              },
+              {
+                "channel": 2,
+                "type": "power",
+                "value": 0.0
+              },
+              {
+                "channel": 3,
+                "type": "voltage",
+                "value": 13.29
+              },
+              {
+                "channel": 3,
+                "type": "current",
+                "value": 0.002
+              },
+              {
+                "channel": 3,
+                "type": "power",
+                "value": 0.0
+              },
+              {
+                "channel": 4,
+                "type": "voltage",
+                "value": 13.27
+              },
+              {
+                "channel": 5,
+                "type": "voltage",
+                "value": 0.0
+              },
+              {
+                "channel": 5,
+                "type": "current",
+                "value": 0.0
+              },
+              {
+                "channel": 6,
+                "type": "temperature",
+                "value": 25.5
+              },
+              {
+                "channel": 7,
+                "type": "temperature",
+                "value": 24.9
+              },
+              {
+                "channel": 8,
+                "type": "generic sensor",
+                "value": 1.0
+              },
+              {
+                "channel": 9,
+                "type": "generic sensor",
+                "value": 0.0
+              },
+              {
+                "channel": 10,
+                "type": "generic sensor",
+                "value": 103.0
+              },
+              {
+                "channel": 11,
+                "type": "generic sensor",
+                "value": 0.0
+              },
+              {
+                "channel": 12,
+                "type": "generic sensor",
+                "value": 0.0
+              },
+              {
+                "channel": 13,
+                "type": "generic sensor",
+                "value": 0.0
+              },
+              {
+                "channel": 1,
+                "type": "temperature",
+                "value": 27.7
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "at": 1792622881.0947735,
+        "response": [
+          {
+            "name": "SolarXiao 33S Repeater",
+            "pubkey_pre": "60619bf70b4b3805",
+            "lpp": [
+              {
+                "channel": 1,
+                "type": "voltage",
+                "value": 3.79
+              },
+              {
+                "channel": 2,
+                "type": "voltage",
+                "value": 0.0
+              },
+              {
+                "channel": 2,
+                "type": "current",
+                "value": 0.001
+              },
+              {
+                "channel": 2,
+                "type": "power",
+                "value": 0.0
+              },
+              {
+                "channel": 3,
+                "type": "voltage",
+                "value": 13.29
+              },
+              {
+                "channel": 3,
+                "type": "current",
+                "value": 0.001
+              },
+              {
+                "channel": 3,
+                "type": "power",
+                "value": 0.0
+              },
+              {
+                "channel": 4,
+                "type": "voltage",
+                "value": 13.28
+              },
+              {
+                "channel": 5,
+                "type": "voltage",
+                "value": 0.0
+              },
+              {
+                "channel": 5,
+                "type": "current",
+                "value": 0.0
+              },
+              {
+                "channel": 6,
+                "type": "temperature",
+                "value": 25.5
+              },
+              {
+                "channel": 7,
+                "type": "temperature",
+                "value": 24.9
+              },
+              {
+                "channel": 8,
+                "type": "generic sensor",
+                "value": 1.0
+              },
+              {
+                "channel": 9,
+                "type": "generic sensor",
+                "value": 0.0
+              },
+              {
+                "channel": 10,
+                "type": "generic sensor",
+                "value": 103.0
+              },
+              {
+                "channel": 11,
+                "type": "generic sensor",
+                "value": 0.0
+              },
+              {
+                "channel": 12,
+                "type": "generic sensor",
+                "value": 0.0
+              },
+              {
+                "channel": 13,
+                "type": "generic sensor",
+                "value": 0.0
+              },
+              {
+                "channel": 1,
+                "type": "temperature",
+                "value": 27.7
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "configuration_writes": 0,
+    "body_hash": "5A46FDAABF34C62D",
+    "temporary_contact_creation_requested": true,
+    "remote_version": "v1.18.0.1-halo-keymind-cascade-dev-ea8176dd (Build: 21-Oct-2026)",
+    "missed_replies": [
+      {
+        "sample": 2,
+        "attempt": 1,
+        "response": [
+          {
+            "error": "Getting data"
+          }
+        ]
+      },
+      {
+        "sample": 2,
+        "attempt": 2,
+        "response": [
+          {
+            "error": "Getting data"
+          }
+        ]
+      }
+    ],
+    "telemetry_received": true,
+    "temporary_contact_removed": true,
+    "temporary_forward_closed": true,
+    "cleanup_errors": [],
+    "finished_at": 1792622881.88418,
+    "remote_cli": [
+      {
+        "command": "get mppt",
+        "reply": "N0|> LTC4162-FST chem=6 cells=4 last=4 MPPT=on JEITA=on state=battery_short ADC=on saved=ok"
+      },
+      {
+        "command": "get mppt battery",
+        "reply": "N1|> INA260 0.0137V +0.00125A 0.000W; charger=0.0031V -0.00059A NTC=24.76C model=reference"
+      },
+      {
+        "command": "get mppt saved",
+        "reply": "N2|> storage=ok overrides=0 apply=verified rsnsb=10mOhm rsnsi=10mOhm cal_user=00"
+      }
+    ],
+    "remote_cli_session_note": "Powered CLI checks passed; that earlier session missed its first telemetry reply and cleaned up; the subsequent bounded-retry run received all three full telemetry replies."
+  },
+  "final_state": {
+    "ver": "v1.18.0.1-halo-keymind-cascade-dev-ea8176dd (Build: 21-Oct-2026)",
+    "get public.key": "60619BF70B4B38058A30F27000F0A1721930592378506253444DDDA508A9A8D7",
+    "get tx": "-6",
+    "get repeat": "on",
+    "get radio": "910.5250244,62.5,7,5",
+    "get radio.rxps.config": "on,level=8,preamble=16,rx=39657,sleep=15975",
+    "get bridge.enabled": "off",
+    "get bridge.running": "off",
+    "get rs232.running": "off",
+    "ota self": "self body=594984 image=595040 base_hash=5A46FDAABF34C62D | maxblk:2048 | QSPI store:2048K | bootloader: QSPI apply OK (abi=3 codecs=0x5)",
+    "ota bootloader status": "BL board=28860044 target=28860044 name=XIAO_DFU crc=76EBABBF abi=3 caps=0E | staged:none mid=- hash=-",
+    "stats-core": "{\"battery_mv\":4168,\"uptime_secs\":774,\"errors\":0,\"queue_len\":0}",
+    "stats-packets": "{\"recv\":486,\"sent\":118,\"flood_tx\":93,\"direct_tx\":25,\"flood_rx\":395,\"direct_rx\":91,\"recv_errors\":17}",
+    "get mppt": "LTC4162-FST chem=6 cells=4 last=4 MPPT=on JEITA=on state=battery_short ADC=on saved=ok",
+    "get mppt power": "ADC=on VIN=13.2926V IIN=+0.00293A VOUT=13.2802V die=25.51C NTC=25.06C BSR=0.00000ohm",
+    "get mppt saved": "storage=ok overrides=0 apply=verified rsnsb=10mOhm rsnsi=10mOhm cal_user=00"
+  },
+  "final_core_errors": 0,
+  "final_receive_error_counter": 17,
+  "final_identity_and_settings_preserved": true,
+  "all_temporary_contacts_and_forwarding_closed": true
+}

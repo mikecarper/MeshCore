@@ -1,0 +1,74 @@
+{
+  "passed": true,
+  "scope": "host and build validation only; no device deployment or new hardware measurements",
+  "source_commit": "de1bb0f2e6a37b02f1a9f0995ea539c818c3abe9",
+  "target": "solarxiao_33S_repeater",
+  "version": "v1.18.0.1-halo-keymind-cascade-dev-de1bb0f2",
+  "new_physical_measurements": [],
+  "installed_on_sea_sherwood": false,
+  "tests": {
+    "solarxiao_carrier": 11,
+    "solarxiao_power": 3,
+    "xiao_battery_safety": 6,
+    "native_sanitizers": [
+      "ASan",
+      "UBSan"
+    ]
+  },
+  "builds": {
+    "full": {
+      "package": "solarxiao_33S_repeater-full-ota-v1.18.0.1-halo-keymind-cascade-dev-de1bb0f2.zip",
+      "package_sha256": "90cf046d798897623fbc29edca8b401f4821fd1ef8678fedc675ffb50b387277",
+      "application_bytes": 597816,
+      "application_sha256": "7267fe420457c75cc4089f2709bc05683a2f73300275f8b086d8d061a5576f9a",
+      "body_bytes": 597760,
+      "body_hash": "C5339ADF076AEC89",
+      "ota_target": "0x3caf966e",
+      "hardware_id": "solarxiao_33S",
+      "firmware_markers": {
+        "native_power": true,
+        "explicit_carrier_selector": true,
+        "advanced_analog_charger": true,
+        "live_self_readings": true,
+        "history_guidance": true,
+        "unsupported_measurements": true
+      },
+      "memory_passed": true,
+      "available_internal_bytes": 150584,
+      "required_heap_bytes": 76960,
+      "capabilities_verified": true,
+      "update_methods": [
+        "bluetooth",
+        "lora"
+      ],
+      "uf2_sha256": "f9579f2baa72bed4e01cb452946a8c80e3cf75e48b83ab3e4f2b5dff0874137e"
+    },
+    "reduced": {
+      "package": "solarxiao_33S_repeater-reduced-ota-v1.18.0.1-halo-keymind-cascade-dev-de1bb0f2.zip",
+      "package_sha256": "9eafcb7f88bd9683b064fe6bd79a6fe7ac75430b9ec06209743c2f2b66c99af6",
+      "application_bytes": 567756,
+      "application_sha256": "b314bf2a940f0dbe9dde23fcaacc44b20470cd10ffe98de0e5a9fc24dad7d709",
+      "body_bytes": 567700,
+      "body_hash": "68D86AA255060031",
+      "ota_target": "0x3caf966e",
+      "hardware_id": "solarxiao_33S",
+      "firmware_markers": {
+        "native_power": true,
+        "explicit_carrier_selector": true,
+        "advanced_analog_charger": true,
+        "live_self_readings": true,
+        "history_guidance": true,
+        "unsupported_measurements": true
+      },
+      "memory_passed": true,
+      "available_internal_bytes": 152232,
+      "required_heap_bytes": 76960,
+      "capabilities_verified": true,
+      "update_methods": [
+        "bluetooth",
+        "lora"
+      ],
+      "uf2_sha256": "282f87c85935030ad03432d17f4201ed903d54d310dfd14981df9fb0ac35be00"
+    }
+  }
+}

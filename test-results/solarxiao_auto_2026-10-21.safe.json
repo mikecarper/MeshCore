@@ -1,0 +1,163 @@
+{
+  "passed": true,
+  "scope": "build and host validation only; no hardware flashing, OTA transfer, electrical or radio tests",
+  "source_commit": "5c44324330a4b3a2e79059dbfa5e086d4cfc1e08",
+  "version": "v1.18.0.1-halo-keymind-cascade-dev-5c443243",
+  "default_selection": "auto when no saved selection exists",
+  "detection": {
+    "address": "0x40",
+    "manufacturer_register": "0xfe",
+    "manufacturer_id": "0x5449",
+    "device_register": "0xff",
+    "device_mask": "0xfff0",
+    "device_id": "0x2270",
+    "retry_ms": 5000,
+    "positive_identity_latched_until": "reboot or selection change",
+    "unverified_result": "self-only; Base vs Advanced unknown",
+    "detection_configuration_writes": 0
+  },
+  "manual_overrides": [
+    "auto",
+    "base",
+    "advanced",
+    "mppt"
+  ],
+  "legacy_manual_records_preserved": true,
+  "base_and_advanced_new_measurements": [],
+  "installed_on_any_device": false,
+  "tests": {
+    "carrier": 19,
+    "existing_native_power": 3,
+    "xiao_battery_safety": 6,
+    "total": 28,
+    "native_sanitizers": [
+      "ASan",
+      "UBSan"
+    ],
+    "native-tests.log_sha256": "5cea7fe67245b4c13cf9d14d0d603c9209217d0fb8f0392c94d7727a3978bd71",
+    "xiao-startup-tests.log_sha256": "aeb690eba78ed4f1376ccdbbfb9ecc7e531f3ae1488e5793e87d300f6a11f2f0"
+  },
+  "build_environment": {
+    "initial_30s_dependency_install": "failed with local disk quota exceeded before compilation; retained log",
+    "retry": "reused the identical inherited 33S dependency cache; Full and Reduced passed",
+    "platformio_concurrency": 1
+  },
+  "builds": {
+    "solarxiao_33S_repeater": {
+      "full": {
+        "package": "solarxiao_33S_repeater-full-ota-v1.18.0.1-halo-keymind-cascade-dev-5c443243.zip",
+        "package_sha256": "ac8908c732c0e19571ff482842095e99405cd0c0bf6c235c1b269c7a0b13013b",
+        "application_bytes": 599132,
+        "application_sha256": "ff075c9f3cca5e98becdc27fe5a15d2fbe8a1458b70c72c7cbf9b0f9d1814325",
+        "body_bytes": 599076,
+        "body_hash": "7AB98467B6E3A468",
+        "ota_target": "0x3caf966e",
+        "hardware_id": "solarxiao_33S",
+        "firmware_markers": {
+          "native_power": true,
+          "auto_identity_verified": true,
+          "auto_unverified_self_only": true,
+          "base_analog_charger": true,
+          "advanced_analog_charger": true,
+          "live_self_readings": true,
+          "history_guidance": true
+        },
+        "memory_passed": true,
+        "available_internal_bytes": 150576,
+        "required_heap_bytes": 76960,
+        "capabilities_verified": true,
+        "update_methods": [
+          "bluetooth",
+          "lora"
+        ],
+        "uf2_sha256": "8ba8286eb2be7f2538802ddacc99e1eefd898721938dff0becbbc85ce3796ea5"
+      },
+      "reduced": {
+        "package": "solarxiao_33S_repeater-reduced-ota-v1.18.0.1-halo-keymind-cascade-dev-5c443243.zip",
+        "package_sha256": "60bebaaa24a5abab94bfa26f3d826ba2a7e619b552dcdd060db247b692370abf",
+        "application_bytes": 569136,
+        "application_sha256": "03281ca3816d68ed45474a6dc7fa15db9eac764e7c036109019c0c81e687a494",
+        "body_bytes": 569080,
+        "body_hash": "217075127849EE7C",
+        "ota_target": "0x3caf966e",
+        "hardware_id": "solarxiao_33S",
+        "firmware_markers": {
+          "native_power": true,
+          "auto_identity_verified": true,
+          "auto_unverified_self_only": true,
+          "base_analog_charger": true,
+          "advanced_analog_charger": true,
+          "live_self_readings": true,
+          "history_guidance": true
+        },
+        "memory_passed": true,
+        "available_internal_bytes": 152224,
+        "required_heap_bytes": 76960,
+        "capabilities_verified": true,
+        "update_methods": [
+          "bluetooth",
+          "lora"
+        ],
+        "uf2_sha256": "d2cbb00a0dac8bf846f80af4f27e13100c86b23e35a64ac88a82d8f55f90f642"
+      }
+    },
+    "solarxiao_30S_repeater": {
+      "full": {
+        "package": "solarxiao_30S_repeater-full-ota-v1.18.0.1-halo-keymind-cascade-dev-5c443243.zip",
+        "package_sha256": "cad2a95577d4e594340587ceed621994457e6de1325f1c29efc780ea0e86bb1d",
+        "application_bytes": 599132,
+        "application_sha256": "d24f914c0a211d616b7419e2b8f03c6ec65158f26719ddff70cae544904521d1",
+        "body_bytes": 599076,
+        "body_hash": "0C386CB1FC49608C",
+        "ota_target": "0xb38ebf22",
+        "hardware_id": "solarxiao_30S",
+        "firmware_markers": {
+          "native_power": true,
+          "auto_identity_verified": true,
+          "auto_unverified_self_only": true,
+          "base_analog_charger": true,
+          "advanced_analog_charger": true,
+          "live_self_readings": true,
+          "history_guidance": true
+        },
+        "memory_passed": true,
+        "available_internal_bytes": 150576,
+        "required_heap_bytes": 76960,
+        "capabilities_verified": true,
+        "update_methods": [
+          "bluetooth",
+          "lora"
+        ],
+        "uf2_sha256": "69ef67c581b1c913d5506d6a9a6ae4d6a97a37335a00cc0cf5ad46333981aaa1"
+      },
+      "reduced": {
+        "package": "solarxiao_30S_repeater-reduced-ota-v1.18.0.1-halo-keymind-cascade-dev-5c443243.zip",
+        "package_sha256": "240bbe83fffb0a1f3480a361b8533ccc1cfc31f768a318791ac3d81e33f7f4cc",
+        "application_bytes": 569136,
+        "application_sha256": "3ba61daf9e536e636a4aed9afff3566e99852d9ce57c7f963666824cef0d3ea8",
+        "body_bytes": 569080,
+        "body_hash": "ACBB1554247BB0B5",
+        "ota_target": "0xb38ebf22",
+        "hardware_id": "solarxiao_30S",
+        "firmware_markers": {
+          "native_power": true,
+          "auto_identity_verified": true,
+          "auto_unverified_self_only": true,
+          "base_analog_charger": true,
+          "advanced_analog_charger": true,
+          "live_self_readings": true,
+          "history_guidance": true
+        },
+        "memory_passed": true,
+        "available_internal_bytes": 152224,
+        "required_heap_bytes": 76960,
+        "capabilities_verified": true,
+        "update_methods": [
+          "bluetooth",
+          "lora"
+        ],
+        "uf2_sha256": "3fb621c06960203ca1227a05f128e483033e79a52b144db0374c5c63a1d8c22c"
+      }
+    }
+  }
+}

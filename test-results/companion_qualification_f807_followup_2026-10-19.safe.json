@@ -246,7 +246,7 @@
       "status": "passed"
     },
     "source_commit": "c0c421184a3cf1ca66b40b055101f20b8c587e26",
-    "upstream_correction_url": "https://github.com/meshtastic/Adafruit_nRF52_Bootloader_OTAFIX/commit/0f415c3ee26816ad52a7587b3d6cdd30547987ec"
+    "upstream_correction_url": "https://github.com/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/commit/0f415c3ee26816ad52a7587b3d6cdd30547987ec"
   },
   "campaign_local_date": "2026-10-19",
   "carried_forward_failures": [

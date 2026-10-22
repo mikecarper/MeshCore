@@ -1,0 +1,256 @@
+{
+  "schema_version": 1,
+  "passed": true,
+  "date_utc": "2026-10-21",
+  "hardware": {
+    "carrier": "SolarXaio MPPT 12V LiFePO4",
+    "target": "solarxiao_33S_repeater",
+    "mcu": "Seeed XIAO nRF52840",
+    "radio": "Ebyte E22-900M33S",
+    "charger_sku_user_reported": "LTC4162-FSTM"
+  },
+  "firmware": {
+    "name": "solarxiao_33S_repeater-full-ota-v1.18.0.1-halo-keymind-cascade-dev-a947f936.zip",
+    "sha256": "dbe7248d3e9be11affc6e5a572f7dfba6230eda5f98d4e6e7cd98c67bc26afef",
+    "body_hash": "E6E4E0E7CA5DB232",
+    "application_sha256": "0ba24397e11c0c30b0e3213ea597c536c4bc075c25fae44fc39fa43ce0e5626b",
+    "application_bytes": 579792,
+    "source_commit": "a947f936ecd279b7b3c97b4d832c4efc9a8a696b",
+    "expected_version": "v1.18.0.1-halo-keymind-cascade-dev-a947f936"
+  },
+  "monitor": {
+    "model": "INA260",
+    "i2c_address": "0x40",
+    "manufacturer_id": "5449",
+    "device_id": "2270",
+    "sda_variant_pin": 30,
+    "scl_variant_pin": 31,
+    "sda_nrf_pin": "P0.09",
+    "scl_nrf_pin": "P0.10"
+  },
+  "fix": {
+    "carrier_i2c_pin_override": true,
+    "carrier_ina260_address_override": true,
+    "ina260_identity_checked_before_ina219": true,
+    "generic_ina260_default_address_unchanged": "0x41"
+  },
+  "bench_reference": {
+    "battery_cell_count_user_reported": 4,
+    "bat_supply_setpoint_v_user_reported": 13.2,
+    "setup_requested": "USB connected; bench supply to BAT; solar disconnected",
+    "voltage_accuracy_calibration_performed": false
+  },
+  "lora_telemetry": {
+    "passed": true,
+    "samples": [
+      {
+        "at_utc": "2026-10-21T21:31:12.704548+00:00",
+        "channel": 2,
+        "voltage_v": 13.26,
+        "current_a": -0.011,
+        "reported_power_w": 0.0
+      },
+      {
+        "at_utc": "2026-10-21T21:31:17.620520+00:00",
+        "channel": 2,
+        "voltage_v": 13.26,
+        "current_a": -0.008,
+        "reported_power_w": 0.0
+      },
+      {
+        "at_utc": "2026-10-21T21:31:21.414120+00:00",
+        "channel": 2,
+        "voltage_v": 13.26,
+        "current_a": -0.008,
+        "reported_power_w": 0.0
+      }
+    ],
+    "temporary_contact_removed": true,
+    "temporary_forward_closed": true,
+    "cleanup_errors": []
+  },
+  "installation": {
+    "method": "USB serial application-only DFU",
+    "warm_restart_verified": true,
+    "identity_and_saved_settings_preserved": true,
+    "bootloader_manifest_crc": "76EBABBF",
+    "bootloader_changed": false,
+    "bootloader_source_commit": "b07255d4cdc601f1313e4cbe020caad3b5544821",
+    "voltage_history_after_restart": "channels=2 samples=1 retention=4d step=0.02V max=655.34V"
+  },
+  "repeater_acceptance": {
+    "passed": true,
+    "started_at": 1792618396.9636362,
+    "source_commit": "a947f936ecd279b7b3c97b4d832c4efc9a8a696b",
+    "application_body_hash": "E6E4E0E7CA5DB232",
+    "rounds": [
+      {
+        "index": 1,
+        "passed": true,
+        "host_send_commands": 1,
+        "nonce_sha256": "0637d7942ac61015940db9f0ee6b5382c69551e4a35b9301bc7122ee63217f52",
+        "elapsed_seconds": 0.581,
+        "firmware_estimate_millis": 2692,
+        "repeater_packet_delta": {
+          "recv": 1,
+          "sent": 1,
+          "direct_rx": 1,
+          "direct_tx": 1,
+          "recv_errors": 0
+        },
+        "hub_packet_delta": {
+          "received": 1,
+          "sent": 1,
+          "sent_flood": 0,
+          "sent_direct": 1,
+          "received_flood": 0,
+          "received_direct": 1,
+          "receive_errors": 0
+        },
+        "ignored_unowned_pushes": 1,
+        "exact_nonce_verified": true,
+        "exact_repeater_prefix_route_verified": true,
+        "route_bytes": 4,
+        "route_hops": 1,
+        "flags": 2,
+        "repeater_inbound_snr_db": 11.25,
+        "hub_return_snr_db": 12.25,
+        "reply_sha256": "32c6ae2b63caa113768712b5f0eb9731e7fabafa35a3cd3d1cc448a259d9ab35"
+      },
+      {
+        "index": 2,
+        "passed": true,
+        "host_send_commands": 1,
+        "nonce_sha256": "f7adacb94ac085dd8f3806baaa99b79480d0927ae19e7f7073c0f0fc697e38a6",
+        "elapsed_seconds": 0.458,
+        "firmware_estimate_millis": 2692,
+        "repeater_packet_delta": {
+          "recv": 1,
+          "sent": 1,
+          "direct_rx": 1,
+          "direct_tx": 1,
+          "recv_errors": 0
+        },
+        "hub_packet_delta": {
+          "received": 1,
+          "sent": 1,
+          "sent_flood": 0,
+          "sent_direct": 1,
+          "received_flood": 0,
+          "received_direct": 1,
+          "receive_errors": 0
+        },
+        "ignored_unowned_pushes": 1,
+        "exact_nonce_verified": true,
+        "exact_repeater_prefix_route_verified": true,
+        "route_bytes": 4,
+        "route_hops": 1,
+        "flags": 2,
+        "repeater_inbound_snr_db": 12.0,
+        "hub_return_snr_db": 12.25,
+        "reply_sha256": "b31c56b34d084c1fd32492a9b262c24d984f7b26be190889e108ac67053420dc"
+      },
+      {
+        "index": 3,
+        "passed": true,
+        "host_send_commands": 1,
+        "nonce_sha256": "a742537fad1d089d5283abeb98975c556882c9ac90bb280927b39d8d67397c94",
+        "elapsed_seconds": 0.55,
+        "firmware_estimate_millis": 2692,
+        "repeater_packet_delta": {
+          "recv": 1,
+          "sent": 1,
+          "direct_rx": 1,
+          "direct_tx": 1,
+          "recv_errors": 0
+        },
+        "hub_packet_delta": {
+          "received": 1,
+          "sent": 1,
+          "sent_flood": 0,
+          "sent_direct": 1,
+          "received_flood": 0,
+          "received_direct": 1,
+          "receive_errors": 0
+        },
+        "ignored_unowned_pushes": 1,
+        "exact_nonce_verified": true,
+        "exact_repeater_prefix_route_verified": true,
+        "route_bytes": 4,
+        "route_hops": 1,
+        "flags": 2,
+        "repeater_inbound_snr_db": 11.5,
+        "hub_return_snr_db": 12.5,
+        "reply_sha256": "6d3baa57a8d9a85b4c4e8850531f8a34c0aef6bd1948d935c9b8bc683175dff9"
+      }
+    ],
+    "temporary_radio_leases_used": false,
+    "persistent_peer_settings_changed": false,
+    "final_core": {
+      "battery_mv": 3772,
+      "uptime_secs": 264,
+      "errors": 0,
+      "queue_len": 0
+    },
+    "final_packets": {
+      "recv": 135,
+      "sent": 38,
+      "flood_tx": 27,
+      "direct_tx": 11,
+      "flood_rx": 123,
+      "direct_rx": 11,
+      "recv_errors": 7
+    },
+    "radio": "910.5250244,62.5,7,5",
+    "tx_power_dbm": -6,
+    "repeat": "on",
+    "rx_power_saving": "on,level=8,preamble=16,rx=39657,sleep=15975",
+    "bootloader_manifest_crc": "76EBABBF",
+    "voltage_history": "channels=2 samples=2 retention=4d step=0.02V max=655.34V",
+    "trace_rounds_passed": 3,
+    "endpoints_closed": true,
+    "partner_settings_preserved": true,
+    "transport": {
+      "ports_opened": 1,
+      "ports_closed": 1,
+      "request_frames_sent": 26,
+      "response_frames_received": 32,
+      "request_bytes_sent": 305,
+      "response_payload_bytes": 856,
+      "discarded_prefix_bytes": 0,
+      "invalid_length_candidates": 0,
+      "ignored_push_frames": 0
+    },
+    "finished_at": 1792618405.1829977
+  },
+  "build_checks": {
+    "full": {
+      "passed": true,
+      "capability_markers_verified": 9,
+      "memory_and_nrf52_dfu_checks_passed": true
+    },
+    "reduced": {
+      "passed": true,
+      "capability_markers_verified": 9,
+      "memory_and_nrf52_dfu_checks_passed": true
+    }
+  },
+  "host_tests": {
+    "suite": "test/test_xiao_battery_safety.py",
+    "tests_passed": 6,
+    "real_board_source_compiled": true,
+    "asan_ubsan": true,
+    "carrier_pin_override_and_unsafe_gpio_negative_controls": true
+  },
+  "charger_configuration_register_writes": 0,
+  "qualification_notes": [
+    "The three USB-only raw INA260 reads were about 0.11125 V before the user applied the BAT supply.",
+    "An additional UART-pin diagnostic probe timed out; the exact original application and saved settings were restored before installing this fix.",
+    "The first trace run passed all three owned RF traces but its cleanup assertion compared the entire live radio2.status response. The final passing run compares saved radio, TX and temporary-radio values exactly and verifies radio2 remains off.",
+    "The final cumulative receive-error counter is 7; each of the three owned trace rounds added zero receive errors. Final core error flags are zero.",
+    "Channel 1 is the XIAO internal ADC reading; the carrier INA260 is channel 2 in this setup.",
+    "Reported INA260 power was 0 W during these signed near-zero-current samples; this is the sensor telemetry field, not an independent power or charger-performance measurement.",
+    "This fixed application was installed over USB. The earlier full LoRa OTA transfer was qualified on application efad0076 and is documented separately.",
+    "Hardware acceptance covers this SolarXiao 33S Full build and this carrier; the Reduced package was build-checked only."
+  ]
+}

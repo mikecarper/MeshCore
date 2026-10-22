@@ -1,0 +1,246 @@
+{
+  "passed": true,
+  "scope": "build and host validation only; no device flashing, physical Room/RF/I2C, boot or OTA transfer test",
+  "source_commit": "1d2fb6a1b471f2984a5a4133854cad4b52150337",
+  "version": "v1.18.0.1-halo-keymind-cascade-dev-1d2fb6a1",
+  "canonical_power_modes": [
+    "auto",
+    "basic",
+    "mppt"
+  ],
+  "room_targets": [
+    "solarxiao_30S_room_server_lora_ota",
+    "solarxiao_33S_room_server_lora_ota"
+  ],
+  "legacy_plain_room_targets_unchanged": true,
+  "history_fix": {
+    "reserved_native_channels": [
+      2,
+      3,
+      4,
+      5
+    ],
+    "reservation_performs_io": false,
+    "inactive_samples": "missing; empty channels omitted from populated results",
+    "history_allocation": "four channels at boot; total native+optional capped at16",
+    "bytes_per_channel": 360,
+    "worst_heap_allowance": 5792,
+    "supports_late_auto_and_vin": true,
+    "applies_to_repeater": true
+  },
+  "tests": {
+    "solarxiao": 30,
+    "carrier": 19,
+    "power": 3,
+    "room_integration": 5,
+    "room_memory": 3,
+    "xiao_startup": 6,
+    "official_room_app_compatibility": 2,
+    "persistent_room_history_integration": 1,
+    "persistent_history_platforms": 5,
+    "existing_ram_suite": 49,
+    "build_profiles_shell": "PASS",
+    "nrf52_ota_profiles_shell": "PASS",
+    "native_sanitizers": [
+      "ASan",
+      "UBSan"
+    ],
+    "solarxiao-tests.log_sha256": "29b79c2cda6ee59f752401e716ea9e4b2b1c3212ed1690b4e814915c70113198",
+    "xiao-startup-tests.log_sha256": "2714596830f7425bc12cf877f91d1b3f5f0f6e60f2faad5af761f3403bedd7ac",
+    "room-protocol-tests.log_sha256": "89040f336b2c44aef4e2a1d32a3278effb305bcde513cc0a388547fe81e772d5",
+    "room-persistent-history-tests.log_sha256": "5968336e710ac71e51dc96dacb2e243545d096034de983fe7ab8b8c9f5d575f0",
+    "test_build_profiles.sh.log_sha256": "297880cdf3a2b37e6c3240e94077ef0eb1b0f8d67d886d06e3bb42584cdb06bd",
+    "test_nrf52_ota_profiles.sh.log_sha256": "3cfe9e3674feed4052d8df18baf6fa4ef225bcae34a7bce24f85a2be03a7bef3"
+  },
+  "platformio_concurrency": 1,
+  "installed_on_any_device": false,
+  "new_base_advanced_measurements": [],
+  "builds": {
+    "solarxiao_33S_room_server_lora_ota": {
+      "full": {
+        "package": "solarxiao_33S_room_server_lora_ota-full-ota-v1.18.0.1-halo-keymind-cascade-dev-1d2fb6a1.zip",
+        "package_sha256": "8cb814dd309bc219894d873b8c2876a5d89d639798545353b3e8a2107ff78823",
+        "application_bytes": 524424,
+        "application_sha256": "dcca135c14e973d997f7823509303c2c41174ba402ef36d5b961c41f5bd6366a",
+        "body_bytes": 524368,
+        "body_hash": "761289FD9CEFE79B",
+        "ota_target": "0xa8cb8e8b",
+        "hardware_id": "solarxiao_33S",
+        "firmware_markers": {
+          "native_power": true,
+          "three_modes": true,
+          "auto_identity": true,
+          "basic_capabilities": true,
+          "self_readings": true,
+          "history_guidance": true,
+          "room_history_clear": true,
+          "room_persistent_history": true,
+          "room_board": true
+        },
+        "memory_passed": true,
+        "available_internal_bytes": 156352,
+        "required_heap_bytes": 65280,
+        "native_history_allowance": 5792,
+        "capabilities_verified": true,
+        "update_methods": [
+          "bluetooth",
+          "lora"
+        ],
+        "uf2_sha256": "35f021464c6b47c1ebcd3784549c9c446ca554b63eb219de53cffa144b3b75ba"
+      },
+      "reduced": {
+        "package": "solarxiao_33S_room_server_lora_ota-reduced-ota-v1.18.0.1-halo-keymind-cascade-dev-1d2fb6a1.zip",
+        "package_sha256": "23bb4c11f19fc6a5a595722eadb1b521d0845b6f6746580b3fd33b27b07f483a",
+        "application_bytes": 494888,
+        "application_sha256": "75d89c506ed10d4f7080c638a73daa174ce7706ccaa71c17e2d60cff34417c06",
+        "body_bytes": 494832,
+        "body_hash": "9CA04F37C960797A",
+        "ota_target": "0xa8cb8e8b",
+        "hardware_id": "solarxiao_33S",
+        "firmware_markers": {
+          "native_power": true,
+          "three_modes": true,
+          "auto_identity": true,
+          "basic_capabilities": true,
+          "self_readings": true,
+          "history_guidance": true,
+          "room_history_clear": true,
+          "room_persistent_history": true,
+          "room_board": true
+        },
+        "memory_passed": true,
+        "available_internal_bytes": 157984,
+        "required_heap_bytes": 65280,
+        "native_history_allowance": 5792,
+        "capabilities_verified": true,
+        "update_methods": [
+          "bluetooth",
+          "lora"
+        ],
+        "uf2_sha256": "37a13725b2928282d6d11b51d4505fff3bb1cf09362df2a71c8b6a7f8a9fa1c3"
+      }
+    },
+    "solarxiao_30S_room_server_lora_ota": {
+      "full": {
+        "package": "solarxiao_30S_room_server_lora_ota-full-ota-v1.18.0.1-halo-keymind-cascade-dev-1d2fb6a1.zip",
+        "package_sha256": "57008c4e92a0eeffffbcd0eaa03c2341ee5cc558c5de1c5b002a1fd0c60df1a6",
+        "application_bytes": 524424,
+        "application_sha256": "d5c7de1a8a9092ab4881584c9906db9785416a371c27f502542e13e2da36f97c",
+        "body_bytes": 524368,
+        "body_hash": "AB4F7D7F85872201",
+        "ota_target": "0x5bb567cd",
+        "hardware_id": "solarxiao_30S",
+        "firmware_markers": {
+          "native_power": true,
+          "three_modes": true,
+          "auto_identity": true,
+          "basic_capabilities": true,
+          "self_readings": true,
+          "history_guidance": true,
+          "room_history_clear": true,
+          "room_persistent_history": true,
+          "room_board": true
+        },
+        "memory_passed": true,
+        "available_internal_bytes": 156352,
+        "required_heap_bytes": 65280,
+        "native_history_allowance": 5792,
+        "capabilities_verified": true,
+        "update_methods": [
+          "bluetooth",
+          "lora"
+        ],
+        "uf2_sha256": "7d06c5d18712cdf3b4e166dd7a8ecca72a6dcbc3f6d7d8e7d2a5d90fdfa3b5a0"
+      },
+      "reduced": {
+        "package": "solarxiao_30S_room_server_lora_ota-reduced-ota-v1.18.0.1-halo-keymind-cascade-dev-1d2fb6a1.zip",
+        "package_sha256": "f427af2c139ccf0a41d9c92b6fb310164bb240002669db45f863149ea91a8b1b",
+        "application_bytes": 494888,
+        "application_sha256": "a5c2028204d0ad3ea66b6332141d8bf9ad4f57653629b58905f4704ef7f91f67",
+        "body_bytes": 494832,
+        "body_hash": "FBD9FAA560F5D0CE",
+        "ota_target": "0x5bb567cd",
+        "hardware_id": "solarxiao_30S",
+        "firmware_markers": {
+          "native_power": true,
+          "three_modes": true,
+          "auto_identity": true,
+          "basic_capabilities": true,
+          "self_readings": true,
+          "history_guidance": true,
+          "room_history_clear": true,
+          "room_persistent_history": true,
+          "room_board": true
+        },
+        "memory_passed": true,
+        "available_internal_bytes": 157984,
+        "required_heap_bytes": 65280,
+        "native_history_allowance": 5792,
+        "capabilities_verified": true,
+        "update_methods": [
+          "bluetooth",
+          "lora"
+        ],
+        "uf2_sha256": "ef9a335c117cecda409eee97c10c5b6212bd81c06236d3105f3cf796782591ed"
+      }
+    },
+    "solarxiao_33S_repeater": {
+      "full": {
+        "package": "solarxiao_33S_repeater-full-ota-v1.18.0.1-halo-keymind-cascade-dev-1d2fb6a1.zip",
+        "package_sha256": "c38de466ce4924b5ac20f30901c9280a1e554c5bdf26ba90750b5ac2f6804ba9",
+        "application_bytes": 598824,
+        "application_sha256": "373367a895e5b7071f34db3f41c8a42f1cefb88383eb4e901570a3db2332317b",
+        "body_bytes": 598768,
+        "body_hash": "DEB7475A4B4B0BBC",
+        "ota_target": "0x3caf966e",
+        "hardware_id": "solarxiao_33S",
+        "firmware_markers": {
+          "native_power": true,
+          "three_modes": true,
+          "auto_identity": true,
+          "basic_capabilities": true,
+          "self_readings": true,
+          "history_guidance": true
+        },
+        "memory_passed": true,
+        "available_internal_bytes": 150576,
+        "required_heap_bytes": 82752,
+        "native_history_allowance": 5792,
+        "capabilities_verified": true,
+        "update_methods": [
+          "bluetooth",
+          "lora"
+        ],
+        "uf2_sha256": "c816217a7053ec5554c240ad04952e34a60fd4b5ee0e06a3834e296615e41d3c"
+      },
+      "reduced": {
+        "package": "solarxiao_33S_repeater-reduced-ota-v1.18.0.1-halo-keymind-cascade-dev-1d2fb6a1.zip",
+        "package_sha256": "edf8d3ef2cb77005efd34acf532e16fa1b059794f97a91943de45fba5289f9f4",
+        "application_bytes": 568828,
+        "application_sha256": "857da5d5ae041e5450251e9c707c4a71740fc0548e3e54a114656426855770b6",
+        "body_bytes": 568772,
+        "body_hash": "8CDBFB5FA2615124",
+        "ota_target": "0x3caf966e",
+        "hardware_id": "solarxiao_33S",
+        "firmware_markers": {
+          "native_power": true,
+          "three_modes": true,
+          "auto_identity": true,
+          "basic_capabilities": true,
+          "self_readings": true,
+          "history_guidance": true
+        },
+        "memory_passed": true,
+        "available_internal_bytes": 152224,
+        "required_heap_bytes": 82752,
+        "native_history_allowance": 5792,
+        "capabilities_verified": true,
+        "update_methods": [
+          "bluetooth",
+          "lora"
+        ],
+        "uf2_sha256": "9382fb0dc3852f46f321a807937535e218637a951731f5a634eae74d5c9cc1b5"
+      }
+    }
+  }
+}
