@@ -2501,6 +2501,13 @@ SoftAP or AP+STA operation, WiFi disconnection, browser OTA, and incompatible
 WiFi ownership transitions, then resumes when station operation is available.
 Opening a captive configuration access point does not create a UDP bridge
 network. USB/LoRa CLI access remains useful for inspecting a paused bridge.</p>
+<p>With saved WiFi credentials, enabling UDP requests a connection to that
+network. The web page can share the same station connection. An unused
+automatic recovery AP returns to station mode when UDP needs the network;
+connected setup clients and unfinished browser/OTA work keep their link.
+An explicitly requested <code>start webconfig ap</code> stays active until released.
+Use <code>stop webconfig</code> when finished with that AP, then check <code>get udp.status</code>.
+Switching WiFi back on does not enable UDP if you saved <code>udp.enabled off</code>.</p>
 <h2 id="router-client-isolation">Router client isolation</h2>
 <p>Client isolation is an optional access-point or guest-network policy, not a
 requirement of WiFi. When enabled it can prevent two wireless devices from
