@@ -2463,6 +2463,13 @@ error-message literal as evidence that the merged command handler survived
 linking. That handler retains its original literal. The capability check is
 unchanged. Both Full and Reduced T114 Repeater release-wrapper builds then
 passed all eight capability checks and their flash, RAM and DFU gates.</p>
+<p>The next run passed all twelve other jobs and reached a stale release-inventory
+assertion in the main test job. The two SenseCAP Indicator LoRa repeater recipes
+added by <code>3236164d2</code> legitimately preserve their N8/N16 partition layouts. The
+fixture now expects 151 targets and explicitly checks both additions; all
+partition-migration exclusions remain. The corrected selection suite, nRF52 OTA
+profile suite and XIAO combined-layout suite pass locally. No firmware source
+changed for this inventory correction.</p>
 <p>Calibration coverage includes three command/scaling tests, three store tests
 (including four platform backends), 19 battery-forwarding tests and four power
 policy compatibility tests. The actual nRF52 policy/store integration checks
@@ -2488,7 +2495,12 @@ host-service bridge, 50 neighbours and existing 16 KiB filesystem. They do not
 add feature cuts or change flash and RAM qualification gates.</p>
 <h2 id="host-regression-results">Host regression results</h2>
 <p>Passed checks:</p>
-<p>The complete native PlatformIO suite also passed all 1,897 test cases.</p>
+<p>The complete native PlatformIO suite also passed all 1,897 test cases.
+The remaining 502 host scripts passed after fixture repairs, along with the
+required firmware-memory/ARM checks, both required Room browser suites, voice
+and G726 sanitizer variants, notification JavaScript checks and paired nRF52
+logging checks. These results cover the steps beyond the stale inventory
+assertion without repeating unchanged firmware builds locally.</p>
 <table>
 <thead>
 <tr>
