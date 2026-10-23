@@ -8022,6 +8022,16 @@ hours to fill. On the default two-day interval, each 82.5-hour temperature or
 battery packet overlaps its predecessor by 34.5 hours. Packets are paced two
 seconds apart. A queue failure is retried after 30 minutes only for the packet
 that did not queue; successfully queued packets are not duplicated.</p>
+<p><code>get telemetry.tx</code> includes the source ID, path, and age of this node's last
+completed telemetry transmission:</p>
+<pre><code class="language-text">&gt; on 2d id=0123456789ABCDEF i2c=0 last=30m p=direct
+</code></pre>
+<p><code>last</code> uses seconds, minutes, or hours (<code>30s</code>, <code>30m</code>, <code>2h</code>; two days is <code>48h</code>).
+It counts completed sends and retries of this node's <code>TTB1</code>, <code>TVB1</code>, <code>IVB1</code>,
+<code>N1B1</code>, or <code>N2B1</code> packets, including manual sends while the schedule is off.
+Queue acceptance and relayed telemetry do not update it, and it does not confirm
+observer receipt. It shows <code>last=never</code> until the first completed send after a
+reboot. The age uses uptime, so clock corrections do not affect it.</p>
 <p><code>send telemetry.tx now</code> is an administrator-only test action. It queues
 temperature and battery-voltage snapshots plus the available I2C voltage
 chunks over the configured path. It also queues one main-radio <code>N1B1</code> packet

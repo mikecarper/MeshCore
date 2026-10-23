@@ -2682,6 +2682,13 @@ packet for that profile once it has a completed bucket. Each holds the latest
 can be Missing; failed measurements do not silently shorten the timeline.
 The existing automatic transmission cadence is unchanged. Recording a new
 noise-floor position every 15 minutes does not transmit a packet every 15 minutes.</p>
+<p>Use <code>get telemetry.tx</code> to see the source ID, path, and <code>last=30s</code>, <code>last=30m</code>,
+or <code>last=2h</code> for the age of this node's latest completed telemetry transmission.
+The age includes completed retries and manual sends while the schedule is off,
+but excludes queue acceptance and relayed packets; it does not confirm observer
+receipt. It shows <code>last=never</code> until the first completed send after each reboot.
+The age uses uptime rather than the clock, and durations of a day or more remain
+in hours, such as <code>last=48h</code>.</p>
 <p>Schedule changes are saved transactionally; a failed write does not truncate
 the previous preferences. A legacy route must be successfully migrated into
 <code>data.tx</code> before its schedule can run. Corrupt, unreadable, or ambiguously
