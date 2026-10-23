@@ -2667,6 +2667,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#calibrate-the-battery-reading-against-a-meter" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Calibrate the battery reading against a meter
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#fine-tune-the-battery-reading" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -5762,6 +5773,17 @@
     <span class="md-ellipsis">
       
         View or change this node's owner info
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#calibrate-the-battery-reading-against-a-meter" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Calibrate the battery reading against a meter
       
     </span>
   </a>
@@ -9674,6 +9696,40 @@ sessions. Setting the password to <code>off</code> makes it the literal password
 <p><strong>Note:</strong> <code>|</code> characters are translated to newlines</p>
 <p><strong>Note:</strong> Requires firmware 1.12+</p>
 <hr />
+<h4 id="calibrate-the-battery-reading-against-a-meter">Calibrate the battery reading against a meter</h4>
+<p><strong>Availability:</strong> Repeater, Room Server, Sensor, Companion and Terminal Chat
+firmware on boards with a supported battery ADC. Use an administrative CLI
+connection; infrastructure roles also accept authenticated remote commands.</p>
+<pre><code class="language-text">battery calibrate 4.18
+get adc.multiplier
+battery calibrate reset
+</code></pre>
+<p>Measure the battery voltage with a voltmeter and enter that reading in volts.
+The firmware calculates <code>new multiplier = current multiplier * meter voltage /
+reported voltage</code>, applies it and saves it for restart. A reference is required;
+the command does not assume a chemistry or a 4.2 V full battery. Enter the voltage
+of the battery input the board actually measures, including pack voltage where
+that input supports a pack. For example, <code>battery calibrate 13.2</code> supplies a
+13.200 V reference; it does not change the board's measurement range.</p>
+<p>Calibration supports the ESP32, nRF52, RP2040 and STM32 boards with implemented
+battery-voltage ADC conversions, including the Wio Tracker L2's external ADS1115.
+An unsupported board or unavailable/saturated reading returns an error. Digital
+PMU/fuel-gauge and battery-module readings retain their hardware scaling; boards
+without a battery-voltage input cannot be calibrated through this command.</p>
+<p>The meter reference must be within 50% of the reported voltage. Newly supported
+ADCs accept a relative multiplier from <code>0.500</code> to <code>1.500</code>, where <code>1.000</code> retains
+their original conversion. Existing board-specific absolute multipliers and
+saved values keep their established meaning. The five legacy absolute drivers
+are Heltec V4, V4 R8, RC32, Meshnology W12 and ProMicro.</p>
+<p><code>battery calibrate reset</code> restores and saves the board's default conversion.
+<code>set adc.multiplier 0</code> also resets it. A successful numeric calibration reply shows the effective
+multiplier, including any rounding by the board. A failed save reports an error
+and attempts to restore the previous runtime setting.</p>
+<p>Calibration corrects voltage reporting and the battery percentages/protection
+that use that reading. On nRF52 boards with voltage policy it also applies to
+the boot reading and running cutoff. It does not adjust charger hardware or
+create a current measurement. This is a single-point scale correction, not an
+ADC offset or nonlinear calibration.</p>
 <h4 id="fine-tune-the-battery-reading">Fine-tune the battery reading</h4>
 <p><strong>Usage:</strong>
 - <code>get adc.multiplier</code>
@@ -9681,13 +9737,16 @@ sessions. Setting the password to <code>off</code> makes it the literal password
 <p><strong>Parameters:</strong>
 - <code>value</code>: ADC multiplier (0.0-10.0)</p>
 <p><strong>Default:</strong> <code>0.0</code> (value defined by board)</p>
-<p><strong>Note:</strong> On nRF52 boards with power management and a boot-voltage setting,
+<p><strong>Note:</strong> On newly supported ADC boards this is a relative <code>0.500</code>-<code>1.500</code>
+correction, with <code>0</code> restoring the default. Existing absolute-multiplier boards
+retain their coefficient units and accept <code>0</code> or a positive value up to <code>10</code>.
+On nRF52 boards with power management and a boot-voltage setting,
 this is a saved <em>relative</em> calibration: <code>1.000</code> keeps the board conversion,
 <code>1.050</code> raises all reported battery millivolts by 5%, and <code>0</code> resets to
 <code>1.000</code>. The allowed range is <code>0.500</code>-<code>1.500</code>. This affects boot protection,
 running cutoff, telemetry, battery alerts, and percentage. Calibrate against a
-voltmeter before enabling a low cutoff. Other boards retain their existing
-board-specific multiplier behavior, or return unsupported.</p>
+voltmeter before enabling a low cutoff. Boards without a supported ADC return
+unsupported.</p>
 <hr />
 <h4 id="send-a-repeater-flood-text">Send a repeater flood text</h4>
 <p><strong>Usage:</strong>
