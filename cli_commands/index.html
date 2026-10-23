@@ -1257,6 +1257,34 @@
   
   
     <li class="md-nav__item">
+      <a href="../radio_presets/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Radio Presets
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../fleet_management/" class="md-nav__link">
         
   
@@ -2843,10 +2871,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#view-or-set-the-reboot-interval-repeater-and-room-server" class="md-nav__link">
+  <a href="#view-or-set-the-reboot-interval-repeater-room-server-and-sensor" class="md-nav__link">
     <span class="md-ellipsis">
       
-        View or set the reboot interval (Repeater and room server)
+        View or set the reboot interval (Repeater, Room Server and Sensor)
       
     </span>
   </a>
@@ -5967,10 +5995,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#view-or-set-the-reboot-interval-repeater-and-room-server" class="md-nav__link">
+  <a href="#view-or-set-the-reboot-interval-repeater-room-server-and-sensor" class="md-nav__link">
     <span class="md-ellipsis">
       
-        View or set the reboot interval (Repeater and room server)
+        View or set the reboot interval (Repeater, Room Server and Sensor)
       
     </span>
   </a>
@@ -9288,6 +9316,7 @@ Station G2/G3 targets default to <code>off</code>.</p>
 <p><strong>Usage:</strong>
 - <code>get radio.rxps</code>
 - <code>get radio.rxps.config</code>
+- <code>get radio.rxps.status</code>
 - <code>get radio.rxps.rfrx_disabled</code>
 - <code>get rxps.wd</code>
 - <code>set radio.rxps.rfrx_disabled &lt;state&gt;</code>
@@ -9318,6 +9347,15 @@ Station G2/G3 targets default to <code>off</code>.</p>
 - <code>get radio.rxps.config</code> adds the persisted level and preamble assumption to
   the on/off and timing values. Deployment tools use it to restore a
   level-based preference without converting it to fixed manual timings.
+- <code>get radio.rxps.status</code> reports the saved <code>desired</code> state, actual <code>effective</code>
+  state (<code>armed</code> or <code>continuous</code>), hardware support, last driver error (<code>err</code>),
+  arm failures (<code>fail</code>), level, preamble and requested RX/sleep
+  periods in microseconds. Levels <code>9</code> and <code>10</code> carry <code>(!)</code> to mark experimental
+  settings. It includes <code>catch</code> for armed, level-based settings and
+  <code>erx</code>/<code>eslp</code> when the driver clamps the periods and the reply has room.
+  Three consecutive failed arm attempts trigger continuous receive as a
+  fallback. Unsupported radios stay in continuous receive. Saved preferences
+  remain intact.
 - <code>radio.rxps.rfrx_disabled</code> is a runtime-only diagnostic setting and resets to <code>off</code> after reboot.
 - Its default <code>off</code> state keeps the host-controlled SX1262 receive path enabled during RX duty-cycle mode. Setting it to <code>on</code> reproduces the old missing-RF_RX behavior and can significantly reduce receive sensitivity, making remote commands harder to receive.
 - <code>radio.rxps.rfrx_disabled</code> is supported only on SX1262 targets with a host-controlled RX enable pin.
@@ -10204,6 +10242,9 @@ The G3 button also wakes the device for at least two minutes. See the
 <a href="../old-releases/1.17.1.5/#g3-usb-disappearance-with-power-saving-enabled">G3 release note</a>
 for verification steps and the distinction between the fix and the published
 binaries.</p>
+<p>ESP32 builds with button wake stay awake for at least 30 seconds after a press;
+the G3 retains its longer two-minute hold. Repeaters wait five minutes after
+startup before allowing sleep.</p>
 <p>Companion firmware defaults this setting to <code>on</code>. Full Companion accepts the command from its local USB terminal and exposes the same setting in WebConfig. On ESP32 with processor speed set to Auto, it normally selects 80 MHz, enables idle yielding, and enables the configured GPS duty cycle. While a second radio profile is active, Auto holds the highest supported CPU speed for faster switching; SenseCAP Indicator retains its existing policy. Explicit processor speeds remain selected. USB and each active wireless transport remain available; SenseCAP Indicator Full keeps only its selected BLE or infrastructure-WiFi secondary transport active. <code>set powersaving off</code> restores the board's normal CPU clock and disables the GPS duty cycle. This device setting is separate from LoRa RXPS (<code>radio.rxps</code>) and WiFi modem power save (<code>wifi.powersave</code>). Infrastructure uses the same commands; its hardware and active-service sleep guards determine when the node can sleep.</p>
 <h4 id="diagnose-what-prevents-power-saving">Diagnose what prevents power saving</h4>
 <p>Companion, Repeater, Room Server and Sensor provide on-demand diagnostics:</p>
@@ -10281,7 +10322,7 @@ LR2021 layouts retain their existing regulator behavior unless their recipe
 explicitly enables <code>LR2021_USE_DCDC</code> after confirming the required inductor;
 the X1 is not opted in without that hardware confirmation.</p>
 <hr />
-<h4 id="view-or-set-the-reboot-interval-repeater-and-room-server">View or set the reboot interval (Repeater and room server)</h4>
+<h4 id="view-or-set-the-reboot-interval-repeater-room-server-and-sensor">View or set the reboot interval (Repeater, Room Server and Sensor)</h4>
 <p><strong>Usage:</strong>
 - <code>get reboot.interval</code>
 - <code>set reboot.interval &lt;hours&gt;</code></p>
