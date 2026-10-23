@@ -2560,9 +2560,14 @@ bytes; RAM passes at 43,920 available against 32,288 required. Four replay
 integration and eight Mini-profile tests passed. Other platforms select their
 unchanged messages.</p>
 <p>The updated <a href="https://github.com/mikecarper/MeshCore/actions/runs/39909897061">CI run</a>
-was still running when this report was prepared. These targeted checks do not
-claim a new all-board campaign, RS232 cable traffic, physical OTA installation,
-maximum-load operation or a long RF soak.</p>
+passed all 12 firmware and support jobs, including both new RAK build pairs.
+The main test job exposed an outdated trace-timing extraction fixture: it
+omitted the dispatcher's new queue helpers. The fixture now extracts those
+production methods and supplies their state dependencies; all five test
+methods and ten normal/mutation invocations pass with ASan/UBSan. This
+fixture-only correction requires no repeated firmware or hardware checks.
+These targeted checks do not claim a new all-board campaign, RS232 cable
+traffic, physical OTA installation, maximum-load operation or a long RF soak.</p>
 
 
 
@@ -2623,7 +2628,7 @@ maximum-load operation or a long RF soak.</p>
       
         <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
       
-        <script src="../../_javascript/firmware_picker.js?v=20261018-variant-consolidation-1"></script>
+        <script src="../../_javascript/firmware_picker.js?v=20261023-reduced-sensors-default"></script>
       
         <script src="../../_javascript/telemetry_decoder.js?v=20261022-noise-history"></script>
       

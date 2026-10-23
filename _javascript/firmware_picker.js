@@ -2470,7 +2470,7 @@
     let bootloaderCatalog = null;
     let bootloaderNotice = "Loading the latest bootloader downloads...";
     const filters = {};
-    let showReducedSensors = false;
+    let showReducedSensors = true;
     const sensorOptions = createElement("details");
     sensorOptions.className = "firmware-picker-chip-family firmware-picker-wide";
     sensorOptions.hidden = true;
@@ -2478,6 +2478,7 @@
     const sensorLabel = createElement("label");
     const sensorToggle = createElement("input");
     sensorToggle.type = "checkbox";
+    sensorToggle.checked = showReducedSensors;
     sensorLabel.appendChild(sensorToggle);
     sensorLabel.appendChild(document.createTextNode(" Show Reduced sensor images"));
     sensorOptions.appendChild(sensorLabel);
@@ -2941,7 +2942,7 @@
       event.preventDefault();
       if (!catalog.profiles.length) return;
       automaticChipFamily = false;
-      showReducedSensors = false;
+      showReducedSensors = true;
       sensorOptions.open = false;
       if (linkStatus) linkStatus.textContent = "";
       FACET_FIELDS.forEach(function (field) {
