@@ -1,0 +1,140 @@
+{
+  "schema_version": 1,
+  "source": "4c0f2acf64f4059077477d024756819d914befd7",
+  "settings": {
+    "saved": true,
+    "load_before_radio_initialization": true,
+    "supported_features_default_on": true,
+    "features": [
+      "warm",
+      "fs",
+      "packet",
+      "iq",
+      "modem",
+      "batch",
+      "buffer"
+    ],
+    "spi_mhz_choices": [
+      0,
+      2,
+      4,
+      8,
+      16
+    ],
+    "spi_zero_means": "board default",
+    "unsupported_controls_rejected": true,
+    "radio_busy_or_failed_save_preserves_policy": true,
+    "remote_LoRa_mutations_rejected": true,
+    "timing_test_restarts_after_change": true
+  },
+  "hardware": {
+    "board": "RAK3401",
+    "role": "Full repeater",
+    "source": "4c0f2acf64f4059077477d024756819d914befd7",
+    "passed": true,
+    "independent_cases": 19,
+    "software_reboot_persistence_cases": 2,
+    "physical_SPI_register_checks": 22,
+    "physical_SPI_mhz": [
+      2,
+      4,
+      8
+    ],
+    "core_errors_after": 0,
+    "new_radio_watchdog_attempts": 0,
+    "settings_restored": true,
+    "gateway_service_restored": true,
+    "application_only_update": true,
+    "bootloader_written": false,
+    "radio2_switching_liveness_passed": true,
+    "intentional_test_RF_packets": 0,
+    "packet_delivery_qualification": false,
+    "BLE_qualification": false,
+    "CPU_sleep_qualification": false,
+    "private_evidence_sha256": "4760f9c0789f21a01fbdbabf4eebb088a5a0898f7cedc74a6718a6966ce0c8cb"
+  },
+  "builds": [
+    {
+      "target": "RAK_3401_repeater_unified_lora_ota-full-ota",
+      "source": "4c0f2acf64f4059077477d024756819d914befd7",
+      "application_bytes": 635852,
+      "application_limit_bytes": 815104,
+      "flash_margin_bytes": 179252,
+      "application_sha256": "84a9ec062c74086b0c0d423199d96e884e436083ad0357ffaed4fe2c65fd77c2",
+      "runtime_ram_available_bytes": 78292,
+      "runtime_ram_required_bytes": 74176,
+      "memory_passed": true,
+      "capabilities_passed": true
+    },
+    {
+      "target": "RAK_3401_repeater_unified_lora_ota-reduced-ota",
+      "source": "4c0f2acf64f4059077477d024756819d914befd7",
+      "application_bytes": 583532,
+      "application_limit_bytes": 815104,
+      "flash_margin_bytes": 231572,
+      "application_sha256": "56b28440999b9ce3296919908a4b20c9f169ab18f21558e35b7b91d112f54260",
+      "runtime_ram_available_bytes": 81280,
+      "runtime_ram_required_bytes": 74176,
+      "memory_passed": true,
+      "capabilities_passed": true
+    },
+    {
+      "target": "RAK_4631_companion_radio_full",
+      "source": "4c0f2acf64f4059077477d024756819d914befd7",
+      "application_bytes": 711400,
+      "application_limit_bytes": 712704,
+      "flash_margin_bytes": 1304,
+      "application_sha256": "34b61b5a6083e7a47b377188be8db182a5e52db0208f43eba63668e13f5677cb",
+      "runtime_ram_available_bytes": 81140,
+      "runtime_ram_required_bytes": 72528,
+      "memory_passed": true,
+      "capabilities_passed": true
+    },
+    {
+      "target": "t1000e_companion_radio_ble-ota",
+      "source": "4c0f2acf64f4059077477d024756819d914befd7",
+      "application_bytes": 474580,
+      "application_limit_bytes": 708608,
+      "flash_margin_bytes": 234028,
+      "application_sha256": "4129724bc2300bed9784724495f965a2e152223f0a56a2369e2bae8eb19cd261",
+      "runtime_ram_available_bytes": 79524,
+      "runtime_ram_required_bytes": 44864,
+      "memory_passed": true,
+      "capabilities_passed": true
+    },
+    {
+      "target": "heltec_v4_2_v4_3_companion_radio_full_femon",
+      "source": "4c0f2acf64f4059077477d024756819d914befd7",
+      "application_bytes": 2564968,
+      "application_limit_bytes": 6553600,
+      "flash_margin_bytes": 3988632,
+      "application_sha256": "23a1f54745f27c7be30ca748ee68c2289dd0f74fe4afcef4acc6d4781cb35693",
+      "runtime_ram_available_bytes": 227768,
+      "runtime_ram_required_bytes": 194336,
+      "memory_passed": true,
+      "capabilities_passed": true
+    }
+  ],
+  "reader": {
+    "verse_count": 879,
+    "all_verses_unchanged": true,
+    "scratch_bytes": 4096,
+    "new_static_data_bytes": 33399,
+    "old_static_data_bytes": 38485,
+    "static_data_savings_bytes": 5086,
+    "terminal_ARM_local_stack_bytes": 6264,
+    "screen_ARM_local_stack_bytes": 6424,
+    "additional_caller_reserve_bytes": 1536,
+    "loop_stack_bytes": 8192,
+    "heap_added": false
+  },
+  "validation": [
+    "Saved CLI and five-role early startup fixtures",
+    "Driver feature masks and ordinary modulation fallback",
+    "SPI clock/buffer HAL fixtures and board construction contracts",
+    "Busy/RX-failure/save-failure transaction tests with sanitizers",
+    "Reader corpus, corruption and ARM stack fixtures",
+    "Merged Meshtext and beacon dispatcher regressions",
+    "Radio scan, rollback, timing, Ethernet, diagnostics and regulator regressions"
+  ]
+}

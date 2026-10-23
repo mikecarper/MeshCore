@@ -2353,6 +2353,17 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
+  <a href="#tune-and-save-radio-switching-acceleration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Tune and save radio switching acceleration
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#select-mcu-and-lora-regulator-modes" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -5464,6 +5475,17 @@
   
     <nav class="md-nav" aria-label="Radio">
       <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#tune-and-save-radio-switching-acceleration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Tune and save radio switching acceleration
+      
+    </span>
+  </a>
+  
+</li>
         
           <li class="md-nav__item">
   <a href="#select-mcu-and-lora-regulator-modes" class="md-nav__link">
@@ -8888,6 +8910,59 @@ capacity. Remote use follows the existing administrator-command permissions.</p>
 <hr />
 <h2 id="configuration">Configuration</h2>
 <h3 id="radio">Radio</h3>
+<h4 id="tune-and-save-radio-switching-acceleration">Tune and save radio switching acceleration</h4>
+<p>Use local USB or BLE to change these settings on supported SX1262 and LR1110
+radios. Supported acceleration features default to on, including on boards
+awaiting hardware qualification. <code>get radio.fast.caps</code> lists the options the
+current radio and SPI bus actually support.</p>
+<table>
+<thead>
+<tr>
+<th>Command</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>get radio.fast</code></td>
+<td>Read feature selections, actual SPI clock and any pending saved policy</td>
+</tr>
+<tr>
+<td><code>get radio.fast.caps</code></td>
+<td>List supported feature names and SPI MHz values</td>
+</tr>
+<tr>
+<td><code>get radio.fast.&lt;feature&gt;</code></td>
+<td>Read an individual feature</td>
+</tr>
+<tr>
+<td><code>set radio.fast.&lt;feature&gt; on\|off</code></td>
+<td>Save one feature selection: <code>warm</code>, <code>fs</code>, <code>packet</code>, <code>iq</code>, <code>modem</code>, <code>batch</code>, or <code>buffer</code></td>
+</tr>
+<tr>
+<td><code>get radio.fast.spi</code></td>
+<td>Read the selected MHz and actual clock in Hz</td>
+</tr>
+<tr>
+<td><code>set radio.fast.spi 0\|2\|4\|8\|16</code></td>
+<td>Save a supported SPI MHz choice; <code>0</code> restores the board default</td>
+</tr>
+<tr>
+<td><code>set radio.fast off</code></td>
+<td>Disable supported acceleration features and use 2 MHz where available</td>
+</tr>
+<tr>
+<td><code>set radio.fast on</code></td>
+<td>Enable supported features and restore the board default SPI clock</td>
+</tr>
+</tbody>
+</table>
+<p>The change applies safely without reboot and survives firmware updates. A busy
+radio or failed apply/save leaves the previous policy in use. Remote LoRa
+mutations and unsupported choices are rejected. Both radio profiles share the
+settings. Changing them restarts the switching timing test; inspect
+<code>get radio2.timing</code> after it completes. See <a href="../radio_profiles/#saved-switching-controls">saved switching controls</a>
+for what each feature does, hardware limits, and default/fallback behavior.</p>
 <h4 id="select-mcu-and-lora-regulator-modes">Select MCU and LoRa regulator modes</h4>
 <pre><code class="language-text">get mcu.regulator
 set mcu.regulator auto|dcdc|ldo

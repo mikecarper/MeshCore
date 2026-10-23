@@ -1563,6 +1563,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#saved-switching-controls" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Saved switching controls
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#power-saving-and-diagnostics" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2927,6 +2938,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#saved-switching-controls" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Saved switching controls
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#power-saving-and-diagnostics" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -4166,6 +4188,97 @@ and schedules.</p>
 <p>This ends temporary second-profile activity, cancels its temporary schedules and
 restores saved <code>radio2</code>. If the saved second profile is off, this returns to one
 profile. Packets/retries bound to an expired or changed session are discarded.</p>
+<h2 id="saved-switching-controls">Saved switching controls</h2>
+<p>Supported SX1262 and LR1110 radios expose separate saved controls for their
+switching optimizations. Available acceleration features start enabled,
+including on supported boards that have not had a hardware timing test. The
+board's SPI default remains its selected default clock. Availability depends on
+the radio, board bus, and compiled feature support; inspect the device first:</p>
+<pre><code class="language-text">get radio.fast
+get radio.fast.caps
+</code></pre>
+<p><code>get radio.fast</code> reports the selected SPI MHz, its actual clock in Hz, and each
+feature as <code>on</code>, <code>off</code>, or <code>na</code> when unsupported. <code>get radio.fast.caps</code> lists
+supported feature names and accepted SPI values (<code>spi=na</code> without clock
+control). Settings affect the one
+physical radio and both profiles. They are shared by the same CLI roles as
+<code>radio2</code>, including Full Companion, and survive reboot and firmware updates.</p>
+<table>
+<thead>
+<tr>
+<th>Control</th>
+<th>Values</th>
+<th>Effect when enabled</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>radio.fast.warm</code></td>
+<td><code>on</code>, <code>off</code></td>
+<td>Retain owned continuous-RX state between profile changes</td>
+</tr>
+<tr>
+<td><code>radio.fast.fs</code></td>
+<td><code>on</code>, <code>off</code></td>
+<td>Use the synthesizer/FS shortcut for an eligible retune</td>
+</tr>
+<tr>
+<td><code>radio.fast.packet</code></td>
+<td><code>on</code>, <code>off</code></td>
+<td>Reuse acknowledged unchanged receive-packet parameters</td>
+</tr>
+<tr>
+<td><code>radio.fast.iq</code></td>
+<td><code>on</code>, <code>off</code></td>
+<td>Reuse the unchanged SX1262 IQ workaround state</td>
+</tr>
+<tr>
+<td><code>radio.fast.modem</code></td>
+<td><code>on</code>, <code>off</code></td>
+<td>Reuse confirmed unchanged modem state/queries</td>
+</tr>
+<tr>
+<td><code>radio.fast.batch</code></td>
+<td><code>on</code>, <code>off</code></td>
+<td>Apply SF, bandwidth and coding rate together</td>
+</tr>
+<tr>
+<td><code>radio.fast.buffer</code></td>
+<td><code>on</code>, <code>off</code></td>
+<td>Transfer SPI command bytes in a buffer where supported</td>
+</tr>
+<tr>
+<td><code>radio.fast.spi</code></td>
+<td><code>0</code>, <code>2</code>, <code>4</code>, <code>8</code>, <code>16</code> where supported</td>
+<td>Select the radio SPI clock in MHz; <code>0</code> restores the board default</td>
+</tr>
+</tbody>
+</table>
+<p>For example, compare buffered transfers or a lower clock independently:</p>
+<pre><code class="language-text">set radio.fast.buffer off
+set radio.fast.spi 4
+get radio2.timing
+set radio.fast.spi 0
+set radio.fast.buffer on
+</code></pre>
+<p><code>0</code> preserves board-specific defaults, including clocks that are not whole MHz.
+An unsupported feature or clock is rejected. A feature saved as <code>on</code> only runs
+when its normal ownership and safety checks allow it; disabling <code>warm</code> also
+prevents its dependent RX shortcuts from being used. Buffered transfer support
+is separate from clock support. Some nRF52 buses support an 8 MHz byte path
+while reporting <code>buffer=na</code>.</p>
+<p>For a broad comparison, <code>set radio.fast off</code> disables all supported acceleration
+features and selects 2 MHz where available. <code>set radio.fast on</code> enables all
+supported features and restores the board's default clock. These commands do
+not change the chosen SPI controller or the pins and do not adjust CPU clock,
+RX power saving, channel settings, or whether <code>radio2</code> is enabled.</p>
+<p>Changes require local USB or BLE access. A busy radio rejects a change without
+saving it. An accepted change restarts receive safely and verifies it before
+saving; a receive or storage failure restores the prior policy. Switching
+measurements restart after a policy change, so check <code>get radio2.timing</code> again
+after its timing test completes. Packet and error history remains available.
+If a saved policy cannot be applied during boot, its application retries at
+most once per second; the aggregate getter reports <code>pending saved policy</code>.</p>
 <h2 id="power-saving-and-diagnostics">Power saving and diagnostics</h2>
 <p>Dual mode suspends RX power saving and MCU idle sleep so receive visits can run
 promptly. The saved RX power-saving setting returns when profile 2 is off.
@@ -4202,8 +4315,8 @@ calculation remain synchronized; frequency, preamble, packet guards, and RX
 restart are unchanged. A later <a href="../test-results/radio_profile_switch_validation/#expanded-screening-redundant-rx-setup-and-spi-v5">HIL-only screening</a>
 tested redundant standby/IRQ/buffer/packet setup and SPI transfer changes.
 Its fastest candidate measured 0.535 ms mean on XIAO but 8.203 ms on the
-Indicator, whose radio GPIOs go through an I2C expander. The validated production
-implementation now opts XIAO S3 WIO and Indicator LoRa into buffered 8 MHz SPI
+Indicator, whose radio GPIOs go through an I2C expander. That production stage
+opted XIAO S3 WIO and Indicator LoRa into buffered 8 MHz SPI
 and a guarded fast-RX state machine. The <code>heltec_v4_kiss_modem</code> and
 <code>Station_G3_ESP32_kiss_modem</code> targets use the same guarded path only for KISS
 dual-profile scanning; their normal board roles keep their established
@@ -4216,7 +4329,8 @@ retune. Preamble/packet parameters (including the IQ workaround), stale-IRQ
 clearing, RX commands and BUSY waits remain. TX, CAD, sleep, reset, RXPS and
 failed commands revoke reuse; failed RX startup rolls back the profile.
 Sleep entry uses standby and wake restores the existing TCXO voltage/delay.
-Other variants do not opt in to faster SPI or the fast-RX state machine.
+At that stage other variants retained their earlier SPI and RX policies. The
+current saved controls and supported defaults are described above.
 Within a valid owned fast-RX retune, identical acknowledged SF/BW/CR/LDRO
 settings now reuse the previous modulation command: frequency-only hops omit
 <code>SetModulationParams</code> (0x8B). A changed effective LDRO value also forces a write,
