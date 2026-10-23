@@ -1,0 +1,649 @@
+{
+  "schema": 1,
+  "date": "2026-10-23",
+  "status": "partial",
+  "scope": "Finite opt-in nRF52 buffered-SPI campaign and completed Companion diagnostics checks; remaining RF/speed/driver-recovery failures explicit",
+  "maximum_switch_goal_us": 500,
+  "performance_goal_passed": false,
+  "all_boards_or_release_qualified": false,
+  "production_fast_default_promoted": false,
+  "cpu_sleep_qualified": false,
+  "electrical_power_measured": false,
+  "profiles": {
+    "primary": {
+      "frequency_mhz": 917,
+      "bandwidth_khz": 62.5,
+      "sf": 7,
+      "cr": 5,
+      "preamble": 32
+    },
+    "secondary": {
+      "frequency_mhz": 918,
+      "bandwidth_khz": 500,
+      "sf": 5,
+      "cr": 5,
+      "preamble": 200
+    }
+  },
+  "original_installed_timing": [
+    {
+      "board": "Seeed XIAO nRF52",
+      "role": "repeater",
+      "source": "8b5660b00b88d8abaae094859bc1232f7ce886fd",
+      "sample_window_seconds": 20,
+      "sampled_maximum_us": 916,
+      "provisional_guarded_budget_us": 1008,
+      "directional_self_test_samples": [
+        4,
+        4
+      ],
+      "timing_self_test_still_pending": true,
+      "core_flags_before": 0,
+      "core_flags_after": 0,
+      "new_switch_errors": 0,
+      "cleanup_passed": true,
+      "report_sha256": "ea8c237cc4a0a45a8a5d40956b0a1bfaddd29262216b1d7913bd654ffa398a0a"
+    },
+    {
+      "board": "RAK4631",
+      "role": "repeater",
+      "source": "adb11e7b41f2d3c561bc6aba4ebf6c92a45623bd",
+      "sample_window_seconds": 20,
+      "sampled_maximum_us": 916,
+      "provisional_guarded_budget_us": 1008,
+      "directional_self_test_samples": [
+        4,
+        4
+      ],
+      "timing_self_test_still_pending": true,
+      "core_flags_before": 8,
+      "core_flags_after": 8,
+      "new_switch_errors": 0,
+      "cleanup_passed": true,
+      "report_sha256": "4e4d6153cff78713919ab7ce1bbe5c27922d7f1c4c57e34d65983db31147cf9e"
+    },
+    {
+      "board": "RAK WisMesh Tag",
+      "role": "full_companion",
+      "source": "08650f644b680a5dfaacb95142e3cef8529da9d2",
+      "sample_window_seconds": 20,
+      "sampled_maximum_us": 947,
+      "provisional_guarded_budget_us": 1042,
+      "directional_self_test_samples": [
+        4,
+        4
+      ],
+      "timing_self_test_still_pending": true,
+      "core_flags_before": 8,
+      "core_flags_after": 8,
+      "new_switch_errors": 0,
+      "cleanup_passed": true,
+      "report_sha256": "41c7cd4d2f083a8fc6e69949a449d58ee54616456b3faa31697f08a0c7828a0d"
+    },
+    {
+      "board": "Heltec T096",
+      "role": "full_companion",
+      "source": "4773ac4219666d0f5b4c2bff5eb72aa053014662",
+      "sample_window_seconds": 20,
+      "sampled_maximum_us": 947,
+      "provisional_guarded_budget_us": 1042,
+      "directional_self_test_samples": [
+        4,
+        4
+      ],
+      "timing_self_test_still_pending": true,
+      "core_flags_before": 8,
+      "core_flags_after": 8,
+      "new_switch_errors": 0,
+      "cleanup_passed": true,
+      "report_sha256": "8216ae44390b07af6f3df296fe555b3996ded6eda1592c61048df3dfd2604c31"
+    },
+    {
+      "board": "Heltec MeshTower V2 SD",
+      "role": "full_repeater_no_external_sensors",
+      "source": "ebb59d48292de4a573250cf4c6a2ed7cf5f7ef69",
+      "sample_window_seconds": 20,
+      "sampled_maximum_us": 947,
+      "provisional_guarded_budget_us": 1042,
+      "directional_self_test_samples": [
+        4,
+        4
+      ],
+      "timing_self_test_still_pending": true,
+      "core_flags_before": 2,
+      "core_flags_after": 2,
+      "new_switch_errors": 0,
+      "cleanup_passed": true,
+      "report_sha256": "9bdc2fe932920738bfbec05310ddf12a3feca6a03de10827c68a1d53e25b7414"
+    }
+  ],
+  "candidate_timing": [
+    {
+      "board": "Seeed XIAO nRF52",
+      "role": "repeater",
+      "source": "1b9fcf2af5a3191549baf69757aa158f836bf624",
+      "sample_window_seconds": 20,
+      "sampled_maximum_us": 855,
+      "provisional_guarded_budget_us": 941,
+      "directional_self_test_samples": [
+        4,
+        4
+      ],
+      "timing_self_test_still_pending": true,
+      "core_flags_before": 0,
+      "core_flags_after": 0,
+      "new_switch_errors": 0,
+      "cleanup_passed": true,
+      "report_sha256": "140d8507a3d4744970af338414cc212013efa2de64e0da784ee83b42e320156c",
+      "spi_controller": "SPIM3",
+      "spi_hz": 2000000,
+      "buffered": false,
+      "performance_goal_passed": false
+    },
+    {
+      "board": "Seeed XIAO nRF52",
+      "role": "repeater",
+      "source": "1b9fcf2af5a3191549baf69757aa158f836bf624",
+      "sample_window_seconds": 20,
+      "sampled_maximum_us": 550,
+      "provisional_guarded_budget_us": 605,
+      "directional_self_test_samples": [
+        4,
+        4
+      ],
+      "timing_self_test_still_pending": true,
+      "core_flags_before": 0,
+      "core_flags_after": 0,
+      "new_switch_errors": 0,
+      "cleanup_passed": true,
+      "report_sha256": "9a505a9b4c7eee409c30663a1bdd1c836e894cda5b4761321684e9e731724295",
+      "spi_controller": "SPIM2",
+      "spi_hz": 8000000,
+      "buffered": true,
+      "performance_goal_passed": false
+    },
+    {
+      "board": "RAK WisMesh Tag",
+      "role": "full_companion",
+      "source": "61a536c686ad2436132668bc18f0f8e5b0b04383",
+      "sample_window_seconds": 20,
+      "sampled_maximum_us": 580,
+      "provisional_guarded_budget_us": 638,
+      "directional_self_test_samples": [
+        4,
+        4
+      ],
+      "timing_self_test_still_pending": true,
+      "core_flags_before": 0,
+      "core_flags_after": 0,
+      "new_switch_errors": 0,
+      "cleanup_passed": true,
+      "report_sha256": "fef7432785adcb14e8f36c99c2b3754ad305c2818454bd778deee021cbfe6384",
+      "spi_controller": "SPIM1",
+      "spi_hz": 8000000,
+      "buffered": true,
+      "performance_goal_passed": false
+    },
+    {
+      "board": "Heltec MeshTower V2 SD",
+      "role": "full_repeater_no_external_sensors",
+      "source": "61a536c686ad2436132668bc18f0f8e5b0b04383",
+      "sample_window_seconds": 20,
+      "sampled_maximum_us": 550,
+      "provisional_guarded_budget_us": 605,
+      "directional_self_test_samples": [
+        4,
+        4
+      ],
+      "timing_self_test_still_pending": true,
+      "core_flags_before": 0,
+      "core_flags_after": 0,
+      "new_switch_errors": 0,
+      "cleanup_passed": true,
+      "report_sha256": "486eb2b5dd6705ddd292ac9e36556da7315b288e6ba1819f5dca3be5e678746c",
+      "spi_controller": "SPIM1",
+      "spi_hz": 8000000,
+      "buffered": true,
+      "performance_goal_passed": false
+    }
+  ],
+  "comparison_limits": {
+    "xiao_same_source_transport_comparison": true,
+    "tag_and_tower_old_vs_candidate_sources_differ": true,
+    "short_window_budgets_are_provisional": true,
+    "longer_rf_budgets_larger_than_short_window": true
+  },
+  "witnessed_rf": [
+    {
+      "board": "Seeed XIAO nRF52",
+      "role": "repeater",
+      "source": "1b9fcf2af5a3191549baf69757aa158f836bf624",
+      "delivery_qualification_passed": false,
+      "test_packets_sent": 200,
+      "test_packet_retries": 0,
+      "primary_received": 99,
+      "primary_sent": 100,
+      "secondary_received": 100,
+      "secondary_sent": 100,
+      "fixed_primary_witness_received": 100,
+      "fixed_secondary_witness_received": 100,
+      "duplicates": 0,
+      "wrong_profile_receipts": 0,
+      "collector_drops": 0,
+      "collector_errors": 0,
+      "new_dut_receive_errors": 0,
+      "dut_core_flags_before": 0,
+      "dut_core_flags_after": 0,
+      "reboot_observed": false,
+      "guarded_budget_before_us": 673,
+      "guarded_budget_after_us": 673,
+      "settings_restoration_passed": true,
+      "gateway_service_restored": true,
+      "offline_audit_passed": false,
+      "performance_goal_passed": false,
+      "all_goals_passed": false,
+      "report_sha256": "e5c4fe9ab79ce3500918e7fdb41cb57d33ac2015826d3eca18facbbca0d2849a",
+      "audit_sha256": "cc97d1e00359935fad64033d65ba05de9ac60d165b60624fb815f87465af01f4",
+      "dut_rxps_watchdog_attempts_before": "soft=0,hard=0",
+      "dut_rxps_watchdog_attempts_after": "soft=0,hard=0"
+    },
+    {
+      "board": "Heltec MeshTower V2 SD",
+      "role": "full_repeater_no_external_sensors",
+      "source": "61a536c686ad2436132668bc18f0f8e5b0b04383",
+      "delivery_qualification_passed": true,
+      "test_packets_sent": 200,
+      "test_packet_retries": 0,
+      "primary_received": 100,
+      "primary_sent": 100,
+      "secondary_received": 100,
+      "secondary_sent": 100,
+      "fixed_primary_witness_received": 100,
+      "fixed_secondary_witness_received": 100,
+      "duplicates": 0,
+      "wrong_profile_receipts": 0,
+      "collector_drops": 0,
+      "collector_errors": 0,
+      "new_dut_receive_errors": 0,
+      "dut_core_flags_before": 0,
+      "dut_core_flags_after": 0,
+      "reboot_observed": false,
+      "guarded_budget_before_us": 673,
+      "guarded_budget_after_us": 673,
+      "settings_restoration_passed": true,
+      "gateway_service_restored": true,
+      "offline_audit_passed": true,
+      "performance_goal_passed": false,
+      "all_goals_passed": false,
+      "report_sha256": "c4ddcde41f2ace60fe6de32896e370af11f422ca8a0d6ab5bb10f2b78f152cad",
+      "audit_sha256": "81873da8b01cb05c11a913639aef2943262cfd5587dfe8580d5b7e5028ff06e5",
+      "dut_rxps_watchdog_attempts_before": "soft=0,hard=0",
+      "dut_rxps_watchdog_attempts_after": "soft=0,hard=0"
+    },
+    {
+      "board": "RAK WisMesh Tag",
+      "role": "full_companion",
+      "source": "807343de8d77adc4f61dbb260bdb499c04fa0211",
+      "delivery_qualification_passed": true,
+      "test_packets_sent": 200,
+      "test_packet_retries": 0,
+      "primary_received": 100,
+      "primary_sent": 100,
+      "secondary_received": 100,
+      "secondary_sent": 100,
+      "fixed_primary_witness_received": 100,
+      "fixed_secondary_witness_received": 100,
+      "duplicates": 0,
+      "wrong_profile_receipts": 0,
+      "collector_drops": 0,
+      "collector_errors": 0,
+      "new_dut_receive_errors": 0,
+      "dut_core_flags_before": 0,
+      "dut_core_flags_after": 0,
+      "reboot_observed": false,
+      "guarded_budget_before_us": 638,
+      "guarded_budget_after_us": 638,
+      "settings_restoration_passed": true,
+      "gateway_service_restored": true,
+      "offline_audit_passed": true,
+      "performance_goal_passed": false,
+      "all_goals_passed": false,
+      "report_sha256": "148ca58743d585020533ae91b3cc256bb168ca84d6e769f80efc1067542223d3",
+      "audit_sha256": "7601809a852bee159c437378c9e5a8f8b7ce64ea9f5054effd87d4997d23c038",
+      "dut_rxps_watchdog_attempts_before": "soft=1,hard=0",
+      "dut_rxps_watchdog_attempts_after": "soft=1,hard=0"
+    }
+  ],
+  "ble": [
+    {
+      "board": "RAK WisMesh Tag",
+      "role": "full_companion",
+      "source": "61a536c686ad2436132668bc18f0f8e5b0b04383",
+      "passed": true,
+      "sessions_completed": 3,
+      "hold_seconds_per_session": 30,
+      "mtu": [
+        247,
+        247,
+        247
+      ],
+      "dual_profile_switching_continued": true,
+      "new_core_flags": 0,
+      "cleanup_passed": true,
+      "scope": "Original identity/version/Bluetooth getters at61a checkpoint; final807 results recorded separately",
+      "report_sha256": "bf0adea9ce7b068ca29aeee1fdd625731b5357d84eca1f7793cdcaf39f73c5b2",
+      "child_report_sha256": "c750d69b0cf0ffe8d90e204789792ee55352895857bc37898910973ec0d5c223"
+    },
+    {
+      "board": "Seeed XIAO nRF52",
+      "role": "full_companion",
+      "source": "807343de8d77adc4f61dbb260bdb499c04fa0211",
+      "passed": true,
+      "sessions_completed": 3,
+      "hold_seconds_per_session": 30,
+      "mtu": [
+        247,
+        247,
+        247
+      ],
+      "diagnostic_getters_verified_per_session": 10,
+      "original_identity_version_and_bluetooth_getters_retained": true,
+      "dual_profile_switching_continued": true,
+      "new_core_flags": 0,
+      "cleanup_passed": true,
+      "historical_usb_rxps_watchdog_attempts": "soft=1,hard=0",
+      "current_before_rxps_watchdog_attempts": "soft=3,hard=0",
+      "same_current_counter_baseline_through_arming_ble_and_cleanup": true,
+      "pretrial_attempt_increase_cause_established": false,
+      "no_cpu_reset_inferred_from_recovery_attempt_counters": true,
+      "report_sha256": "bc9d4ac76b642791b8be0930e949daf4db06dea24bd25f94feafddef81cf1d21",
+      "child_report_sha256": "3efbb1342e5f49bc04e25ee7dee05be548697bdc7dd750f50dbca3c53b4ac87d"
+    },
+    {
+      "board": "RAK WisMesh Tag",
+      "role": "full_companion",
+      "source": "807343de8d77adc4f61dbb260bdb499c04fa0211",
+      "passed": true,
+      "sessions_completed": 3,
+      "hold_seconds_per_session": 30,
+      "mtu": [
+        247,
+        247,
+        247
+      ],
+      "diagnostic_getters_verified_per_session": 10,
+      "original_identity_version_and_bluetooth_getters_retained": true,
+      "dual_profile_switching_continued": true,
+      "new_core_flags": 0,
+      "cleanup_passed": true,
+      "historical_usb_rxps_watchdog_attempts": "soft=0,hard=0",
+      "current_before_rxps_watchdog_attempts": "soft=1,hard=0",
+      "same_current_counter_baseline_through_arming_ble_and_cleanup": true,
+      "pretrial_attempt_increase_cause_established": false,
+      "no_cpu_reset_inferred_from_recovery_attempt_counters": true,
+      "report_sha256": "fdc85363f2728368c21003faffbd4e39db8bae993e950a024761d40f781d7b05",
+      "child_report_sha256": "f9efb9cdfd5a86f9e4752f00ae3d3b5a58df7a67ca32b4218d26b6752a1df657"
+    }
+  ],
+  "sd_compatibility": {
+    "board": "Heltec MeshTower V2 SD",
+    "role": "full_repeater_no_external_sensors",
+    "source": "61a536c686ad2436132668bc18f0f8e5b0b04383",
+    "passed": true,
+    "physical_marker_bytes_written": 4,
+    "file_and_card_sync_acknowledged": true,
+    "directory_path_and_size_verified": true,
+    "dual_profile_switch_counter_advanced": true,
+    "original_cache_policy_and_radio_leases_restored": true,
+    "marker_byte_content_readback_qualified": false,
+    "full_sd_payload_io_qualified": false,
+    "report_sha256": "6568b15f71e7e10afa92bab51b8385334a8e533230f68e8d69b870dd63a1af61"
+  },
+  "final_diagnostics": {
+    "source": "807343de8d77adc4f61dbb260bdb499c04fa0211",
+    "xiao_full_companion": {
+      "application_install_passed": true,
+      "fallback_used": false,
+      "body_hash": "7EC2F4BF2A80CFC1",
+      "application_bytes": 581508,
+      "rxen_single_profile_and_radio2_suspended_policy_tested": true,
+      "new_diagnostics_getters_tested": true,
+      "clear_stats_nonzero_hardware_observation": false,
+      "clear_stats_nonzero_native_coverage": true,
+      "ble_new_getters_status": "passed",
+      "transition_report_sha256": "6812a0d75b69dff68a0e9ee0d17f91a0b9b5b07d2e0f4e6b87ad8dceec7ac672",
+      "usb_cli_passed": true,
+      "usb_cli_cleanup_passed": true,
+      "usb_cli_report_sha256": "c6915df1c455f1ca5816a795f4011be0c753b8e76030f6cca4256059aa05f7a0",
+      "rxps_watchdog_history": {
+        "soft": 1,
+        "hard": 0,
+        "same_values_in_three_usb_reads": true,
+        "history_cleared": false,
+        "historical_usb_soft": 1,
+        "current_before_ble_soft": 3,
+        "current_before_ble_hard": 0,
+        "exact_current_baseline_unchanged_through_ble": true,
+        "pretrial_increase_cause_established": false,
+        "new_attempts_during_usb_check": 0
+      }
+    },
+    "tag_full_companion": {
+      "install_status": "passed",
+      "usb_cli_status": "passed",
+      "ble_new_getters_status": "passed",
+      "witnessed_rf_status": "passed",
+      "fallback_used": false,
+      "body_hash": "6115C6802E1AFC50",
+      "install_report_sha256": "f03016b6c8ba5ca44e6361d2126d31ecc6141bb5da26e2db6ad332759365b333",
+      "usb_cli_report_sha256": "eea2da1a4d7e2f71611f2d989320051066143d391133785262ff421950185c55",
+      "rxen_negative_capability_verified": true,
+      "clear_stats_nonzero_hardware_observation": false,
+      "clear_stats_nonzero_native_coverage": true,
+      "rxps_watchdog_attempts_rf_before": "soft=1,hard=0",
+      "rxps_watchdog_attempts_rf_after": "soft=1,hard=0"
+    },
+    "tower_full_repeater_sd": {
+      "install_status": "passed",
+      "shared_sd_command_hardware_status": "passed",
+      "fallback_used": false,
+      "body_hash": "E5324C388E987A8E",
+      "install_report_sha256": "6e065a89fd5d55a5acd89ae6d3ec6ad207a9d2fe44e536358519cc163760d638"
+    },
+    "xiao_repeater_restore": {
+      "status": "passed",
+      "source": "807343de8d77adc4f61dbb260bdb499c04fa0211",
+      "body_hash": "83C09F44589332D6",
+      "application_only": true,
+      "fallback_used": false,
+      "two_identity_bound_postchecks_passed": true,
+      "original_repeater_settings_preserved": true,
+      "saved_primary_frequency_mhz": 917,
+      "gateway_untouched": true,
+      "report_sha256": "b9f60585fcab74d4055693a56d1fdab8a28890ef4b2af325a5c9fe578068e8c8"
+    }
+  },
+  "linked_artifacts": [
+    {
+      "label": "xiao_repeater_matched2",
+      "target": "Xiao_nrf52_repeater-full-ota",
+      "source": "1b9fcf2af5a3191549baf69757aa158f836bf624",
+      "elf_sha256": "6f222f9ba99448edf8f347f5dba835b57a0e6bbf01e9554f70f8fcc0e238dd77",
+      "memory_capacity_gate_passed": true,
+      "spi_controller": "SPIM3"
+    },
+    {
+      "label": "xiao_repeater_fast8",
+      "target": "Xiao_nrf52_repeater-full-ota",
+      "source": "1b9fcf2af5a3191549baf69757aa158f836bf624",
+      "elf_sha256": "f65f85e389ff8af8fc30a9be1bf430334e569ee5456b0b16e6dab348557015e8",
+      "memory_capacity_gate_passed": true,
+      "spi_controller": "SPIM2"
+    },
+    {
+      "label": "tag_companion_fast8",
+      "target": "RAK_WisMesh_Tag_companion_radio_full",
+      "source": "61a536c686ad2436132668bc18f0f8e5b0b04383",
+      "elf_sha256": "94bdf7385b7a3da18f3ac7f1656eec0c638f2417b9d8ca2d974bc683184b3e09",
+      "memory_capacity_gate_passed": true,
+      "spi_controller": "SPIM1"
+    },
+    {
+      "label": "tower_repeater_fast8",
+      "target": "Heltec_tower_v2_sdcard_repeater_lora_ota_no_external_sensors-full-ota",
+      "source": "61a536c686ad2436132668bc18f0f8e5b0b04383",
+      "elf_sha256": "e38bfdb5059e3227d5685cdc0e114121045439f9263ea4ed473686c5947d74fb",
+      "memory_capacity_gate_passed": true,
+      "spi_controller": "SPIM1"
+    },
+    {
+      "label": "final_xiao_companion",
+      "target": "Xiao_nrf52_companion_radio_full",
+      "source": "807343de8d77adc4f61dbb260bdb499c04fa0211",
+      "elf_sha256": "3324de701d8159bbf626e08ea1adfc91634db6191ace4d0898fc76e513884cb4",
+      "memory_capacity_gate_passed": true,
+      "spi_controller": "SPIM2"
+    },
+    {
+      "label": "final_xiao_repeater",
+      "target": "Xiao_nrf52_repeater-full-ota",
+      "source": "807343de8d77adc4f61dbb260bdb499c04fa0211",
+      "elf_sha256": "2266a1d669e96c70f8e5dd695613a6eb621f80c3422d17da37801d62cb970786",
+      "memory_capacity_gate_passed": true,
+      "spi_controller": "SPIM2"
+    },
+    {
+      "label": "final_tag_companion",
+      "target": "RAK_WisMesh_Tag_companion_radio_full",
+      "source": "807343de8d77adc4f61dbb260bdb499c04fa0211",
+      "elf_sha256": "be9c73e78b073b8942a0aa84b25dd08c49d6e6cf30fb606c0e18f12988d11a12",
+      "memory_capacity_gate_passed": true,
+      "spi_controller": "SPIM1"
+    },
+    {
+      "label": "final_tower_repeater",
+      "target": "Heltec_tower_v2_sdcard_repeater_lora_ota_no_external_sensors-full-ota",
+      "source": "807343de8d77adc4f61dbb260bdb499c04fa0211",
+      "elf_sha256": "785ee10d5c6fd67a728fd3126c8daf03b435b0dfe2d383582d4aaa48d605bab0",
+      "memory_capacity_gate_passed": true,
+      "spi_controller": "SPIM1"
+    }
+  ],
+  "build_limitations": [
+    {
+      "target": "RAK_4631_companion_radio_full",
+      "source": "807343de8d77adc4f61dbb260bdb499c04fa0211",
+      "status": "failed",
+      "flash_overflow_bytes": 524,
+      "followup_status": "resolved_by_exact_full_build",
+      "followup_flash_overflow_bytes": 168,
+      "packed_help_native_byte_equivalence_passed": true,
+      "packed_help_canonical_compile_failures": [
+        "Producer initially compiled as C++11",
+        "Early middleware gate missed the environment Full flag"
+      ],
+      "corrected_isolated_source_build_status": "passed",
+      "initial_failure_scope": "linker text region only; not complete OTA application size",
+      "resolved_source": "0cdf6f9aa651278858f859ac72e2367a09c96f20",
+      "resolved_application_bytes": 712684,
+      "application_limit_bytes": 712704,
+      "application_margin_bytes": 20,
+      "memory_capacity_passed": true
+    }
+  ],
+  "not_new_fast_qualified": [
+    {
+      "board": "RAK4631",
+      "transport_retained": "2MHz byte transfers",
+      "reason": "Peripheral controller ownership requires a separate safe mapping"
+    },
+    {
+      "board": "Heltec T096",
+      "transport_retained": "2MHz byte transfers",
+      "reason": "Existing display/controller ownership requires a separate safe mapping"
+    }
+  ],
+  "excluded_or_unqualified": [
+    "MeshPocket excluded from physical testing",
+    "SenseCAP Indicator excluded",
+    "No all 13 radios qualification claim",
+    "No CPU-sleep or current measurement",
+    "XIAO scanner RF missing packet unresolved",
+    "500 us maximum goal unmet",
+    "Unexplained pretrial radio-driver recovery attempts on XIAO and Tag"
+  ],
+  "final_sd_compatibility": {
+    "board": "Heltec MeshTower V2 SD",
+    "role": "full_repeater_no_external_sensors",
+    "source": "807343de8d77adc4f61dbb260bdb499c04fa0211",
+    "passed": true,
+    "physical_marker_bytes_written": 4,
+    "file_and_card_sync_acknowledged": true,
+    "directory_path_and_size_verified": true,
+    "dual_profile_switch_counter_advanced": true,
+    "original_cache_policy_and_radio_leases_restored": true,
+    "marker_byte_content_readback_qualified": false,
+    "full_sd_payload_io_qualified": false,
+    "report_sha256": "64c0bb02bc9cb7f4882299940ce5bbb9321c06de18f87158deada8eeb55b2a8e",
+    "body_hash": "E5324C388E987A8E",
+    "shared_sd_readonly_getters_passed": true,
+    "shared_sd_readonly_getters": [
+      "get sdcard",
+      "get sdcard *",
+      "get sdcard format",
+      "get sdcard erase",
+      "get sdcard free"
+    ]
+  },
+  "build_validations": [
+    {
+      "target": "RAK_4631_companion_radio_full",
+      "source": "0cdf6f9aa651278858f859ac72e2367a09c96f20",
+      "passed": true,
+      "elf_sha256": "1c6e6f8089e1bdea20aba7eb11823c0900fd435630b500801ee15b6d5e0d0be3",
+      "application_bytes": 712684,
+      "application_limit_bytes": 712704,
+      "application_margin_bytes": 20,
+      "available_internal_bytes": 81220,
+      "required_heap_bytes": 72528,
+      "full_companion": true,
+      "features_or_contact_channel_limits_removed": false,
+      "storage_layout_changed": false,
+      "decoded_help_bytes": 4222,
+      "packed_help_bytes": 2159,
+      "exact_legacy_help_preserved": true,
+      "raw_help_absent_from_elf": true,
+      "decoder_history_bytes": 2048,
+      "decoder_chunk_bytes": 64,
+      "decoder_heap_allocation": false,
+      "memory_report_sha256": "602186647d1f257dc8cd08f4dc5c37772d1a10b03ffe85e607153b7a31302fb2",
+      "help_proof_sha256": "af07b666ef0d7906468cd01507d2f72ce8681b5c75b77d6b56525e23fa76ff97",
+      "hardware_flashed": false
+    },
+    {
+      "target": "RAK_4631_companion_radio_full",
+      "source": "86ef1e890cda179cde298db3a448de51d8d74944",
+      "passed": true,
+      "elf_sha256": "70d576d25caf9ff6b3191e50829d5fd396fd192c58f5bf36d14a5589c7724711",
+      "application_bytes": 712684,
+      "application_limit_bytes": 712704,
+      "application_margin_bytes": 20,
+      "available_internal_bytes": 81220,
+      "required_heap_bytes": 72528,
+      "full_companion": true,
+      "features_or_contact_channel_limits_removed": false,
+      "storage_layout_changed": false,
+      "decoded_help_bytes": 4222,
+      "packed_help_bytes": 2159,
+      "exact_legacy_help_preserved": true,
+      "raw_help_absent_from_elf": true,
+      "decoder_history_bytes": 2048,
+      "decoder_chunk_bytes": 64,
+      "decoder_heap_allocation": false,
+      "memory_report_sha256": "0097de9bd287aafe87feb61abdd60c74caf5fb79ceb60bad5ecb107186504b67",
+      "help_proof_sha256": "9ae10a6652cdf61dfe03b40318fa4af976c23570fd7b23c43c9f0a0b0f54c618",
+      "hardware_flashed": false,
+      "merged_remote_head": "fd47fe0b1"
+    }
+  ]
+}

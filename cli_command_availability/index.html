@@ -2858,6 +2858,30 @@ over the normal binary USB, BLE, or TCP connection:</p>
 <td>Local terminal and binary command <code>0x42</code></td>
 </tr>
 <tr>
+<td><a href="../companion_radio_diagnostics/"><code>clear stats</code>, <code>get rxps.wd</code>, <code>get cad</code></a></td>
+<td>Companion terminal and command <code>0x42</code>; clearing statistics also clears sticky packet error flags</td>
+</tr>
+<tr>
+<td><a href="../companion_radio_diagnostics/"><code>get/set radio.rxps.rfrx_disabled</code></a></td>
+<td>Supported radio with an RXEN pin; applies for this boot and preserves radio ownership</td>
+</tr>
+<tr>
+<td><a href="../companion_power_diagnostics/"><code>power</code>, <code>get pwrmgt.support</code>, <code>get pwrmgt.source</code>, <code>get pwrmgt.bootmv</code></a></td>
+<td>Board power capabilities determine available readings</td>
+</tr>
+<tr>
+<td><a href="../companion_power_diagnostics/"><code>get system.watchdog</code></a></td>
+<td>Actual nRF52 hardware status; Companion does not provide a saved on/off setter</td>
+</tr>
+<tr>
+<td><a href="../cli_commands/#view-the-bootloader-version-nrf52-only"><code>get bootloader.ver</code></a></td>
+<td>nRF52 Companion terminal and command <code>0x42</code>; unidentifiable metadata returns <code>unknown</code></td>
+</tr>
+<tr>
+<td><a href="../test-results/companion_cli_parity_2026-10-23/#shared-sd-commands"><code>get/set sdcard</code></a></td>
+<td>nRF52 builds with SD OTA storage; maintenance retains OTA and Ethernet ownership guards</td>
+</tr>
+<tr>
 <td><code>erase</code></td>
 <td>Local terminal and binary command <code>0x42</code>; reboot after erasing stored settings</td>
 </tr>

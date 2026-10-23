@@ -61,7 +61,15 @@
          <lastmod>2026-10-23</lastmod>
     </url>
     <url>
+         <loc>https://mikecarper.github.io/MeshCore/companion_power_diagnostics/</loc>
+         <lastmod>2026-10-23</lastmod>
+    </url>
+    <url>
          <loc>https://mikecarper.github.io/MeshCore/companion_protocol/</loc>
+         <lastmod>2026-10-23</lastmod>
+    </url>
+    <url>
+         <loc>https://mikecarper.github.io/MeshCore/companion_radio_diagnostics/</loc>
          <lastmod>2026-10-23</lastmod>
     </url>
     <url>
@@ -569,6 +577,10 @@
          <lastmod>2026-10-23</lastmod>
     </url>
     <url>
+         <loc>https://mikecarper.github.io/MeshCore/test-results/companion_cli_parity_2026-10-23/</loc>
+         <lastmod>2026-10-23</lastmod>
+    </url>
+    <url>
          <loc>https://mikecarper.github.io/MeshCore/test-results/companion_contact_cache_results/</loc>
          <lastmod>2026-10-23</lastmod>
     </url>
@@ -738,6 +750,10 @@
     </url>
     <url>
          <loc>https://mikecarper.github.io/MeshCore/test-results/nrf52_companion_storage_recovery/</loc>
+         <lastmod>2026-10-23</lastmod>
+    </url>
+    <url>
+         <loc>https://mikecarper.github.io/MeshCore/test-results/other_board_radio2_fast_switch_2026-10-23/</loc>
          <lastmod>2026-10-23</lastmod>
     </url>
     <url>

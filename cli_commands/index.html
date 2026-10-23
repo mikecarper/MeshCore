@@ -9893,6 +9893,10 @@ before relying on automatic forwarding limits.</p>
 - Enabling takes effect without a reboot.
 - The nRF52 hardware cannot stop a watchdog after it has started. Disabling is persisted immediately, then the current firmware stops feeding it so the board performs one watchdog restart within 60 seconds. It remains off after that restart.
 - This setting is nRF52-only. The SoftDevice flash deadlock does not apply to ESP32, whose existing watchdog behavior is unchanged.</p>
+<p>Companion supports the getter and reports the actual hardware running state.
+Its application always feeds the watchdog and has no saved on/off policy;
+<code>set system.watchdog ...</code> therefore reports that control is unavailable. The
+persistent on/off behavior above applies to infrastructure firmware.</p>
 <hr />
 <h4 id="estimate-and-correct-infrastructure-node-time-after-startup">Estimate and correct infrastructure-node time after startup</h4>
 <p><strong>Usage:</strong>
@@ -13263,9 +13267,14 @@ off at boot and is deliberately controlled only for the current boot:</p>
 <pre><code class="language-text">get eth
 set eth on
 set eth off
-get sdcard [free]
+get sdcard free
 ota cache [on|off]
 </code></pre>
+<p>SD-capable nRF52 Companion builds also share the infrastructure SD commands:
+<code>get sdcard ls [page]</code>, <code>get sdcard dir [page]</code>, maintenance history, and
+<code>set sdcard format|erase [--force]</code>. Bare <code>get sdcard</code> reports maintenance
+history; use <code>get sdcard free</code> for capacity. See the
+<a href="../test-results/companion_cli_parity_2026-10-23/#shared-sd-commands">SD command details and ownership guards</a>.</p>
 <p>Before <code>set eth on</code>, remove the SD card and finish/cancel any active OTA
 capture, transfer, serving, or host-folder work. The command rejects an
 inserted card or a busy archive instead of taking the shared bus. Turn
