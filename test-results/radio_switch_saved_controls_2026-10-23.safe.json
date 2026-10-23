@@ -41,7 +41,7 @@
       8
     ],
     "core_errors_after": 0,
-    "new_radio_watchdog_attempts": 0,
+    "new_rxps_watchdog_attempts": 0,
     "settings_restored": true,
     "gateway_service_restored": true,
     "application_only_update": true,
@@ -126,7 +126,24 @@
     "screen_ARM_local_stack_bytes": 6424,
     "additional_caller_reserve_bytes": 1536,
     "loop_stack_bytes": 8192,
-    "heap_added": false
+    "heap_added": false,
+    "linked_ARM_check": {
+      "elf_sha256": "c594d742c3031e4c444e790ed45bd2cd3d3ceb03c2a89c70b76121390d72dc1b",
+      "references": 879,
+      "calls": 885,
+      "canonical_bytes_checked": 82624,
+      "fully_reconstructed_references": [
+        "21:17",
+        "6:22",
+        "8:44"
+      ],
+      "maximum_reply_verse_stack_bytes": 6016,
+      "caller_reserve_bytes": 1536,
+      "loop_stack_bytes": 8192,
+      "total_arm_instructions": 448036466,
+      "scope": "Actual linked replyVerse instructions and callees; excludes firmware caller/ISR/task and physical high-water.",
+      "passed": true
+    }
   },
   "validation": [
     "Saved CLI and five-role early startup fixtures",
