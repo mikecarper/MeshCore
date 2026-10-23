@@ -2711,6 +2711,28 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#pause-forwarding-when-the-battery-is-low" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Pause forwarding when the battery is low
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#set-the-battery-percentage-voltage-range" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Set the battery percentage voltage range
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#enable-or-disable-the-rx-inactivity-watchdog-repeater-only" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -5784,6 +5806,28 @@
     <span class="md-ellipsis">
       
         View or change battery alert thresholds
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#pause-forwarding-when-the-battery-is-low" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Pause forwarding when the battery is low
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#set-the-battery-percentage-voltage-range" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Set the battery percentage voltage range
       
     </span>
   </a>
@@ -9685,6 +9729,81 @@ board-specific multiplier behavior, or return unsupported.</p>
 - <code>battery.alert.low</code>: <code>20</code>
 - <code>battery.alert.critical</code>: <code>10</code></p>
 <p><strong>Note:</strong> The low threshold must be greater than the critical threshold. Alerts at or below the critical threshold use <code>CRITICAL BATTERY</code> in the message; both severities use the same 12-hour resend cooldown.</p>
+<hr />
+<h4 id="pause-forwarding-when-the-battery-is-low">Pause forwarding when the battery is low</h4>
+<p><strong>Search terms:</strong> low battery repeating, battery flood cutoff, save battery,
+automatic repeat off.</p>
+<p>Repeater, Room Server, and Sensor firmware can automatically pause forwarding
+below a configured battery percentage. Both controls default to <code>off</code>, including
+when upgrading. They are independent of battery alerts.</p>
+<p><strong>Usage:</strong></p>
+<ul>
+<li><code>get repeat.battery</code></li>
+<li><code>set repeat.battery &lt;off|on|1-100&gt;</code></li>
+<li><code>get flood.battery</code></li>
+<li><code>set flood.battery &lt;off|on|1-100&gt;</code></li>
+<li><code>get battery.forward</code></li>
+</ul>
+<p><code>set repeat.battery on</code> enables the saved repeat threshold, initially <strong>10%</strong>.
+<code>set flood.battery on</code> enables the saved flood threshold, initially <strong>20%</strong>.
+A number both enables the control and sets its threshold. <code>off</code> disables it
+while retaining that threshold for the next <code>on</code>. Changes are saved and take
+effect without a reboot.</p>
+<p>Below the repeat threshold, the node stops LoRa retransmissions of received
+traffic. Below the flood threshold, it stops LoRa retransmissions of received
+flood traffic but may still
+relay routed traffic if repeating is otherwise allowed. Neither control stops
+the node's own transmissions or replies to administration requests. The saved
+manual repeat flag, flood limits, and forwarding rules remain unchanged; a
+battery recovery does not override a manual restriction.</p>
+<p>Received packets entering from a bridge are subject to the same LoRa transmit
+limits. Exporting radio reception to WiFi, ESP-NOW, or RS232 is unchanged.</p>
+<p>Forwarding resumes automatically after the measured percentage reaches two
+percentage points above the applicable threshold, capped at 100%. With the
+initial thresholds, flood forwarding pauses below 20% and resumes at 22%; all
+relay forwarding pauses below 10% and resumes at 12%. This recovery margin
+avoids repeatedly switching forwarding on and off near a threshold.</p>
+<p>Battery voltage is sampled every 30 seconds while either control is enabled,
+and immediately when its configuration changes. <code>get battery.forward</code> reports
+the voltage, estimated percentage, whether the reading is valid, and which
+battery controls are currently suppressing forwarding. A missing or invalid
+reading does not suppress forwarding: accepted readings are 2000-20000 mV.
+Voltage alone does not establish that a battery is physically connected.</p>
+<p>To enable both default thresholds:</p>
+<pre><code class="language-text">set repeat.battery on
+set flood.battery on
+get battery.forward
+</code></pre>
+<p>To choose different thresholds and later disable the feature:</p>
+<pre><code class="language-text">set repeat.battery 15
+set flood.battery 25
+set repeat.battery off
+set flood.battery off
+</code></pre>
+<h4 id="set-the-battery-percentage-voltage-range">Set the battery percentage voltage range</h4>
+<p>The forwarding thresholds use a voltage-derived percentage. On infrastructure
+builds without the nRF52 voltage policy, the saved range is adjustable with:</p>
+<pre><code class="language-text">get battery.empty
+get battery.full
+set battery.empty 3000
+set battery.full 4200
+</code></pre>
+<p>Values are millivolts, from 2000 to 20000, with full at least 100 mV above empty.
+The default range comes from the board's compiled battery endpoints, normally
+3000 mV for 0% and 4200 mV for 100%; boards with a two-cell pack retain their
+compiled pack range. The percentage is interpolated between those endpoints
+and limited to 0-100%. These settings describe the battery
+range; they do not calibrate the voltage measurement or alter a charger.</p>
+<p>Supported nRF52 power-management builds use their existing saved
+<code>battery.profile</code>, <code>battery.empty</code>, and <code>battery.full</code> values instead. Their
+endpoint range remains 2000-4200 mV, with at least 100 mV between endpoints.
+See <a href="#configure-nrf52-battery-protection">nRF52 battery protection</a> for profiles
+and their separate boot-lock and cutoff effects. <code>set adc.multiplier</code> adjusts
+voltage calibration on boards that support it; see
+<a href="#fine-tune-the-battery-reading">battery reading calibration</a>.</p>
+<p>Percentage remains an estimate: a voltage reading under transmit load may
+differ from an idle reading. Check the reported voltage against a voltmeter
+before relying on automatic forwarding limits.</p>
 <hr />
 <h4 id="enable-or-disable-the-rx-inactivity-watchdog-repeater-only">Enable or disable the RX inactivity watchdog (Repeater Only)</h4>
 <p><strong>Usage:</strong>
