@@ -1,0 +1,434 @@
+{
+  "schema": 1,
+  "date": "2026-10-23",
+  "test": "RAK3401 radio2 SF5 BW500 preamble384 physical receive test",
+  "passed": false,
+  "complete": true,
+  "delivery_passed": false,
+  "firmware_writes": 0,
+  "packet_retries": 0,
+  "physical_packet_bytes": 94,
+  "application_payload_bytes": 92,
+  "frequency_profiles": {
+    "primary": {
+      "frequency_mhz": 917,
+      "bandwidth_khz": 62.5,
+      "sf": 7,
+      "cr": 5,
+      "preamble_symbols": 32
+    },
+    "secondary": {
+      "frequency_mhz": 918,
+      "bandwidth_khz": 500,
+      "sf": 5,
+      "cr": 5,
+      "preamble_symbols": 384
+    }
+  },
+  "sender_power_dbm": 2,
+  "traffic_pattern": "20 batches of10; ten batches/profile; seeded pair order; no per-packet interleaving claim",
+  "transmissions": 200,
+  "rf_duration_seconds": 201.56887236999864,
+  "gap_seconds": {
+    "minimum": 0.5018097600004694,
+    "maximum": 3.4158496399995784
+  },
+  "evidence": {
+    "private_report_sha256": "a6f39391895ca1ec4c163b446c83e43cb2ca84f1098a7f22efddd67eebe88dd2",
+    "controller_sha256": "a172870af04a36c0186f8d9289ca52f0c2bc416da26fc54decc553d940045299",
+    "debugger_log_sha256": "13545ca7ab5ac3b3934760c5452aff2919f42ef52916f1002c028b473774b12e"
+  },
+  "nodes": {
+    "rak": {
+      "board": "RAK 3401",
+      "firmware_version": "v1.18.0.1-halo-keymind-cascade-dev-adb11e7b (Build: 23-Oct-2026)",
+      "power_and_logging": {
+        "get powersaving": "on",
+        "get radio.rxps.config": "off,level=0,preamble=0,rx=65625,sleep=60000",
+        "get usb.logging": "on"
+      },
+      "core_before": {
+        "battery_mv": 4248,
+        "uptime_secs": 5423,
+        "errors": 8,
+        "queue_len": 0
+      },
+      "core_after": {
+        "battery_mv": 4182,
+        "uptime_secs": 5630,
+        "errors": 8,
+        "queue_len": 0
+      },
+      "packet_deltas": {
+        "sent": 0,
+        "sent_direct": 0,
+        "sent_flood": 0,
+        "recv": 197,
+        "recv_errors": 0
+      },
+      "rf_packet_counters_before": {
+        "sent": 24,
+        "sent_direct": 1,
+        "sent_flood": 23,
+        "recv": 73,
+        "recv_errors": 0
+      },
+      "rf_packet_counters_after": {
+        "sent": 24,
+        "sent_direct": 1,
+        "sent_flood": 23,
+        "recv": 270,
+        "recv_errors": 0
+      },
+      "configured": {
+        "get tempradio": "917.000,62.500,7,5,32",
+        "get tempradio2": "918.000,500.000,5,5,rx,384; 0d0h13m (13 min) left; WARN recommended preamble: radio2=200; switch=1176us",
+        "get radio2.status": "rx; RX=35,38 TX=24,0 switches=18181 errors=0 max=3906us preamble=32,384; test=4/4,4/4 ready budget=1176us; WARN recommended preamble: radio2=200",
+        "get radio2.scan": "slow=radio; listen_us=9421,20995; preamble=32,384; WARN recommended preamble: radio2=200; switch=1176us",
+        "get radio2.timing": "chirps=4.60,328.05; need=32,200; switch=1176us; loop=0us; test=4/4,4/4 ready; WARN recommended preamble: radio2=200"
+      },
+      "radio_diagnostics_before_configuration": "state=1(RX), recv=61, sent=12, errors=0, err_flags=8, outbound=no, last_rx=147s ago",
+      "radio_diagnostics_after": "state=1(RX), recv=270, sent=24, errors=0, err_flags=8, outbound=no, last_rx=5s ago",
+      "watchdog_before": "soft=0,hard=0",
+      "watchdog_after": "soft=0,hard=0",
+      "restoration_passed": true,
+      "restored_live_radio2_status": "off; RX=132,138 TX=24,0 switches=35454 errors=0 max=3906us preamble=32,32",
+      "collection": {
+        "expected": 200,
+        "received": 197,
+        "missing_ordinals": [
+          51,
+          93,
+          139
+        ],
+        "duplicates": 0,
+        "wrong_profile_ordinals": [],
+        "drops": [],
+        "errors": [],
+        "framing": {
+          "ports_opened": 0,
+          "ports_closed": 0,
+          "request_frames_sent": 0,
+          "response_frames_received": 0,
+          "request_bytes_sent": 0,
+          "response_payload_bytes": 0,
+          "discarded_prefix_bytes": 0,
+          "invalid_length_candidates": 0,
+          "ignored_push_frames": 0
+        }
+      },
+      "profile_results": {
+        "primary": {
+          "expected": 100,
+          "received": 97,
+          "missing_ordinals": [
+            51,
+            93,
+            139
+          ]
+        },
+        "secondary": {
+          "expected": 100,
+          "received": 100,
+          "missing_ordinals": []
+        }
+      }
+    },
+    "sender": {
+      "board": "RAK WisMesh Tag",
+      "firmware_version": "v1.18.0.1-halo-keymind-cascade-dev-08650f64 (Build: 20-Oct-2026)",
+      "power_and_logging": {
+        "get powersaving": "on",
+        "get radio.rxps.config": "on,level=8,preamble=16,rx=39657,sleep=15975",
+        "get usb.logging": "usb.logging off; port: dedicated USB CDC 1, interface 02 (Linux: *-if02; tty/COM name is host-assigned)"
+      },
+      "core_before": {
+        "battery_mv": 4121,
+        "uptime_secs": 11971,
+        "errors": 8,
+        "queue_len": 0
+      },
+      "core_after": {
+        "battery_mv": 4122,
+        "uptime_secs": 12177,
+        "errors": 8,
+        "queue_len": 0
+      },
+      "packet_deltas": {
+        "sent": 200,
+        "sent_direct": 200,
+        "sent_flood": 0,
+        "recv": 0,
+        "recv_errors": 0
+      },
+      "rf_packet_counters_before": {
+        "sent": 73,
+        "sent_direct": 62,
+        "sent_flood": 11,
+        "recv": 43,
+        "recv_errors": 4
+      },
+      "rf_packet_counters_after": {
+        "sent": 273,
+        "sent_direct": 262,
+        "sent_flood": 11,
+        "recv": 43,
+        "recv_errors": 4
+      },
+      "configured": {
+        "get tempradio": "TempRadio active: 917.000,62.50,7,5 780s left,preamble=32",
+        "get tempradio2": "off",
+        "get radio2.status": "off; RX=42,0 TX=73,0 switches=0 errors=0 max=0us preamble=32,32",
+        "get radio2.scan": "off",
+        "get radio2.timing": "off"
+      },
+      "radio_diagnostics_before_configuration": "state=1(RX), recv=27, sent=69, errors=4, err_flags=8, outbound=no, last_rx=254s ago",
+      "radio_diagnostics_after": "state=1(RX), recv=43, sent=273, errors=4, err_flags=8, outbound=no, last_rx=263s ago",
+      "watchdog_before": "Unknown command",
+      "watchdog_after": "Unknown command",
+      "restoration_passed": true,
+      "restored_live_radio2_status": "off; RX=42,0 TX=273,0 switches=0 errors=0 max=0us preamble=32,32"
+    },
+    "primary": {
+      "board": "Seeed Tracker T1000-E",
+      "firmware_version": "v1.18.0.1-halo-keymind-cascade-dev-08650f64 (Build: 20-Oct-2026)",
+      "power_and_logging": {
+        "get powersaving": "off",
+        "get radio.rxps.config": "off,level=3,preamble=16,rx=44079,sleep=5732",
+        "get usb.logging": "usb.logging off; port: primary USB serial port (tty/COM name is host-assigned)"
+      },
+      "core_before": {
+        "battery_mv": 4185,
+        "uptime_secs": 12406,
+        "errors": 0,
+        "queue_len": 0
+      },
+      "core_after": {
+        "battery_mv": 4193,
+        "uptime_secs": 12613,
+        "errors": 0,
+        "queue_len": 0
+      },
+      "packet_deltas": {
+        "sent": 0,
+        "sent_direct": 0,
+        "sent_flood": 0,
+        "recv": 100,
+        "recv_errors": 0
+      },
+      "rf_packet_counters_before": {
+        "sent": 8,
+        "sent_direct": 0,
+        "sent_flood": 8,
+        "recv": 6070,
+        "recv_errors": 290
+      },
+      "rf_packet_counters_after": {
+        "sent": 8,
+        "sent_direct": 0,
+        "sent_flood": 8,
+        "recv": 6170,
+        "recv_errors": 290
+      },
+      "configured": {
+        "get tempradio": "TempRadio active: 917.000,62.50,7,5 781s left,preamble=32",
+        "get tempradio2": "off",
+        "get radio2.status": "off; RX=6060,0 TX=8,0 switches=0 errors=0 max=0us preamble=32,32",
+        "get radio2.scan": "off",
+        "get radio2.timing": "off"
+      },
+      "radio_diagnostics_before_configuration": "state=1(RX), recv=6055, sent=4, errors=290, err_flags=0, outbound=no, last_rx=8s ago",
+      "radio_diagnostics_after": "state=1(RX), recv=6170, sent=8, errors=290, err_flags=0, outbound=no, last_rx=13s ago",
+      "watchdog_before": "Unknown command",
+      "watchdog_after": "Unknown command",
+      "restoration_passed": true,
+      "restored_live_radio2_status": "off; RX=6160,0 TX=8,0 switches=0 errors=0 max=0us preamble=32,32",
+      "collection": {
+        "expected": 100,
+        "received": 100,
+        "missing_ordinals": [],
+        "duplicates": 0,
+        "wrong_profile_ordinals": [],
+        "drops": [],
+        "errors": [],
+        "framing": {
+          "ports_opened": 0,
+          "ports_closed": 0,
+          "request_frames_sent": 0,
+          "response_frames_received": 328,
+          "request_bytes_sent": 0,
+          "response_payload_bytes": 24176,
+          "discarded_prefix_bytes": 0,
+          "invalid_length_candidates": 0,
+          "ignored_push_frames": 0
+        }
+      },
+      "profile_results": {
+        "primary": {
+          "expected": 100,
+          "received": 100,
+          "missing_ordinals": []
+        }
+      }
+    },
+    "secondary": {
+      "board": "Heltec T096",
+      "firmware_version": "v1.18.0.1-halo-keymind-cascade-dev-4773ac42 (Build: 20-Oct-2026)",
+      "power_and_logging": {
+        "get powersaving": "on",
+        "get radio.rxps.config": "on,level=8,preamble=16,rx=39657,sleep=15975",
+        "get usb.logging": "usb.logging off; port: dedicated USB CDC 1, interface 02 (Linux: *-if02; tty/COM name is host-assigned)"
+      },
+      "core_before": {
+        "battery_mv": 4184,
+        "uptime_secs": 13046,
+        "errors": 8,
+        "queue_len": 0
+      },
+      "core_after": {
+        "battery_mv": 4191,
+        "uptime_secs": 13253,
+        "errors": 8,
+        "queue_len": 0
+      },
+      "packet_deltas": {
+        "sent": 0,
+        "sent_direct": 0,
+        "sent_flood": 0,
+        "recv": 100,
+        "recv_errors": 0
+      },
+      "rf_packet_counters_before": {
+        "sent": 8,
+        "sent_direct": 0,
+        "sent_flood": 8,
+        "recv": 31,
+        "recv_errors": 111
+      },
+      "rf_packet_counters_after": {
+        "sent": 8,
+        "sent_direct": 0,
+        "sent_flood": 8,
+        "recv": 131,
+        "recv_errors": 111
+      },
+      "configured": {
+        "get tempradio": "TempRadio active: 918.000,500.00,5,5 782s left,preamble=384",
+        "get tempradio2": "off",
+        "get radio2.status": "off; RX=30,0 TX=8,0 switches=0 errors=0 max=0us preamble=384,32",
+        "get radio2.scan": "off",
+        "get radio2.timing": "off"
+      },
+      "radio_diagnostics_before_configuration": "state=1(RX), recv=31, sent=4, errors=111, err_flags=8, outbound=no, last_rx=149s ago",
+      "radio_diagnostics_after": "state=1(RX), recv=131, sent=8, errors=111, err_flags=8, outbound=no, last_rx=5s ago",
+      "watchdog_before": "Unknown command",
+      "watchdog_after": "Unknown command",
+      "restoration_passed": true,
+      "restored_live_radio2_status": "off; RX=130,0 TX=8,0 switches=0 errors=0 max=0us preamble=32,32",
+      "collection": {
+        "expected": 100,
+        "received": 100,
+        "missing_ordinals": [],
+        "duplicates": 0,
+        "wrong_profile_ordinals": [],
+        "drops": [],
+        "errors": [],
+        "framing": {
+          "ports_opened": 0,
+          "ports_closed": 0,
+          "request_frames_sent": 0,
+          "response_frames_received": 313,
+          "request_bytes_sent": 0,
+          "response_payload_bytes": 23986,
+          "discarded_prefix_bytes": 0,
+          "invalid_length_candidates": 0,
+          "ignored_push_frames": 0
+        }
+      },
+      "profile_results": {
+        "secondary": {
+          "expected": 100,
+          "received": 100,
+          "missing_ordinals": []
+        }
+      }
+    }
+  },
+  "debugger": {
+    "schema": 1,
+    "log_sha256": "13545ca7ab5ac3b3934760c5452aff2919f42ef52916f1002c028b473774b12e",
+    "parser_sha256": "0b4ed3ff71291954012424d493b8550b19c3da0f0e5b97f55e5f78d57d4fb76f",
+    "config_sha256": "1feb1f14a80cc0e9f1ad403d4c67d73866eea8c548c8df4c3c93b66b0be8ee6f",
+    "duration_ms": 300000,
+    "maximum_elapsed_ms": 300500,
+    "minimum_sample_count": 20000,
+    "sampled_cpu_integrity_passed": true,
+    "sampled_cpu_integrity_failures": [],
+    "physical_RF_delivery_qualified_by_this_parser": false,
+    "cpu_sampling": {
+      "passed": false,
+      "failures": [
+        "insufficient_sleeping_observations"
+      ],
+      "sample_count": 27118,
+      "counts": {
+        "C_DEBUGEN": 0,
+        "C_HALT": 0,
+        "C_STEP": 0,
+        "C_MASKINTS": 0,
+        "S_HALT": 0,
+        "S_SLEEP": 8,
+        "S_LOCKUP": 0,
+        "S_RESET_ST": 0
+      },
+      "elapsed_ms": 300008,
+      "observed_ms": 300004.0,
+      "weighted_sleep_ms": 92.0,
+      "weighted_sleep_fraction": 0.00030666257783229555,
+      "unweighted_sleep_fraction": 0.00029500700641640237,
+      "max_gap_ms": 18.0,
+      "max_read_ms": 3,
+      "baseline_debug_ctrl_hex": "0000",
+      "baseline_C_DEBUGEN": false,
+      "initial_sticky_reset": false,
+      "final_DHCSR": "01010000",
+      "openocd_version": [
+        "Open On-Chip Debugger 0.12.0+dev-snapshot (2025-07-16-14:15)"
+      ],
+      "qualification": "sampled CPU sleep observations, not exact residency or electrical current",
+      "firmware_identity_must_be_bound_separately": true,
+      "exact_hardware_identity_matched_before_and_after": true
+    },
+    "offline_analysis_of_physical_capture": true,
+    "cpu_sleep_qualified": false,
+    "cpu_sleep_scope": "Active USB logging inhibits repeater CPU sleep; this is an RF/debug-integrity capture."
+  },
+  "cleanup_passed": true,
+  "gateway_restored": true,
+  "errors": [],
+  "independent_audit": {
+    "audit_passed": false,
+    "failures": [
+      "missing_packets_rak"
+    ],
+    "cautions": [],
+    "same_packet_witness_discrepancies": {
+      "primary": [
+        "P022",
+        "P044",
+        "P070"
+      ],
+      "secondary": []
+    },
+    "auditor_sha256": "3333440a28445932beef62adab177301a492cb1306fb87e9a7080cb350422669"
+  },
+  "earlier_incomplete_attempt": {
+    "transmissions": 50,
+    "primary_transmissions": 20,
+    "secondary_transmissions": 30,
+    "reason": "Sender was still pending after the controller fixed 2.1-second retune wait.",
+    "included_in_final_counts": false,
+    "settings_and_gateway_restored": true,
+    "controller_only_repair": "Poll for exact active tuple and preamble before any next transmission."
+  }
+}
