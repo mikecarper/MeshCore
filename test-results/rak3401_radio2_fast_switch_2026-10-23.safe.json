@@ -1,0 +1,183 @@
+{
+  "schema": 1,
+  "date": "2026-10-23",
+  "board": "RAK3401 with external SX1262",
+  "role": "repeater",
+  "status": "partial",
+  "maximum_switch_goal_us": 500,
+  "performance_goal_passed": false,
+  "production_source": "1b97c089a735ebe5ddb2f39937c685994f85850e",
+  "production": {
+    "spi_controller": "SPI1/SPIM2",
+    "spi_hz": 8000000,
+    "buffered_transfers": true,
+    "iq_modem_cache": true,
+    "experimental_priority_guard": false,
+    "experimental_usb_irq_guard": false,
+    "global_spim3_anomaly198_workaround": false,
+    "hil_symbols_present": false
+  },
+  "profiles": {
+    "primary": {
+      "frequency_mhz": 917,
+      "bandwidth_khz": 62.5,
+      "sf": 7,
+      "cr": 5,
+      "preamble": 32
+    },
+    "secondary": {
+      "frequency_mhz": 918,
+      "bandwidth_khz": 500,
+      "sf": 5,
+      "cr": 5,
+      "preamble": 200
+    }
+  },
+  "timing_checkpoints": [
+    {
+      "source": "adb11e7b",
+      "sampled_maximum_us": 1069,
+      "guarded_budget_us": 1176
+    },
+    {
+      "source": "99979655",
+      "sampled_maximum_us": 855,
+      "guarded_budget_us": 941
+    },
+    {
+      "source": "258b37df",
+      "sampled_maximum_us": 702,
+      "guarded_budget_us": 773
+    },
+    {
+      "source": "b8b7880a",
+      "sampled_maximum_us": 550,
+      "guarded_budget_us": 605
+    },
+    {
+      "source": "1b97c089a",
+      "sampled_maximum_us": 611,
+      "guarded_budget_us": 673,
+      "scope": "longer normal production RF campaign"
+    }
+  ],
+  "spi16_read_probe": {
+    "softdevice_enabled": false,
+    "reads_per_phase": 16,
+    "phase_hz": [
+      8000000,
+      16000000,
+      8000000
+    ],
+    "correct_packet_types_by_rxdelay": {
+      "2": [
+        16,
+        4,
+        16
+      ],
+      "1": [
+        16,
+        3,
+        16
+      ],
+      "0": [
+        16,
+        2,
+        16
+      ]
+    },
+    "radio_writes_or_resets_between_phases": false,
+    "qualified": false
+  },
+  "combined_irq_experiment": {
+    "source": "aa480ae79e46bf63e10927de0327df0271b89505",
+    "abi": 2,
+    "enabled_in_production": false,
+    "successful_switches_per_direction": [
+      591,
+      591
+    ],
+    "busy_admissions_per_direction": [
+      0,
+      12
+    ],
+    "failed_switches_per_direction": [
+      0,
+      0
+    ],
+    "worst_forward_us": 659.109375,
+    "worst_forward_observed_irq_or_scheduler_calls": 0,
+    "observed_sources": [
+      "rtc1",
+      "gpiote",
+      "uart0",
+      "uart1",
+      "power_clock",
+      "usb",
+      "scheduler",
+      "twim0_spim0"
+    ],
+    "cause_established": false,
+    "systick_enabled_after_stop": false,
+    "systick_interrupt_enabled_after_stop": false
+  },
+  "witnessed_rf": {
+    "status": "failed",
+    "qualification_passed": false,
+    "source": "1b97c089a735ebe5ddb2f39937c685994f85850e",
+    "test_packets_sent": 200,
+    "test_packet_retries": 0,
+    "scanner": {
+      "primary_received": 96,
+      "primary_sent": 100,
+      "secondary_received": 99,
+      "secondary_sent": 100
+    },
+    "fixed_primary_witness": {
+      "received": 100,
+      "sent": 100
+    },
+    "fixed_secondary_witness": {
+      "received": 100,
+      "sent": 100
+    },
+    "duplicates": 0,
+    "wrong_profile_receipts": 0,
+    "collector_drops": 0,
+    "new_core_error_flags": 0,
+    "new_receive_errors": 1,
+    "watchdog_recoveries": 0,
+    "switch_command_errors": 0,
+    "guarded_budget_before_rf_us": 673,
+    "guarded_budget_after_rf_us": 673,
+    "selected_preambles": [
+      32,
+      200
+    ],
+    "settled_recommended_preambles": [
+      32,
+      192
+    ],
+    "cpu_capture": {
+      "duration_ms": 300004,
+      "samples": 27134,
+      "integrity_passed": true,
+      "maximum_gap_ms": 17.0,
+      "halt_debug_reset_lockup_observed": false,
+      "sleep_qualified": false
+    },
+    "gateway_restored": true,
+    "sender_cleanup_initially_failed": true,
+    "sender_cleanup_continuation_passed": true,
+    "original_failed_receipt_preserved": true,
+    "report_sha256": "cb7bd8c44a9e26cb131c2c4f123cd323163d7504f7f4cbfd3ed63f0fb5d87b89",
+    "swd_log_sha256": "e78301c78fda379e6f4b11f6095c4b969e4a7a1e81e25a1d34147f0c99b08e5d",
+    "cleanup_continuation_sha256": "b1929df2d2c6bc31b966773aa357f63778647c8ee67718a88204cbb031a3666d"
+  },
+  "scope_limits": [
+    "No all-board or release qualification",
+    "No MeshPocket physical testing",
+    "Indicator excluded",
+    "New unqualified nRF SPIM3 constructor rollout restored to prior defaults"
+  ]
+}

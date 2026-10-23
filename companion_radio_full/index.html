@@ -3294,9 +3294,11 @@ after reboot.</p>
 turns it on once when upgrading an older Companion preference file, including
 one written by the short-lived default-off regression. After that one-time
 migration, an explicit <code>set powersaving off</code> selection remains persistent.</p>
-<p>On ESP32, enabling it lowers the CPU clock to 80 MHz, enables idle yielding,
-and enables the configured GPS duty cycle. Disabling it restores the normal CPU
-clock and keeps GPS awake. Active Full Companion transports remain available in
+<p>On ESP32, enabling it normally selects 80 MHz when processor speed is Auto,
+enables idle yielding, and enables the configured GPS duty cycle. Auto holds
+the highest supported CPU speed while a second radio profile is active, except
+on SenseCAP Indicator. An explicit processor speed stays selected. Disabling
+device power saving restores the normal Auto CPU policy and keeps GPS awake. Active Full Companion transports remain available in
 both states; on the SenseCAP Indicator this means USB plus the selected BLE or
 infrastructure-WiFi secondary transport. WiFi modem sleep stays enabled when
 BLE and the ESP32 WiFi radio are active together because coexistence requires

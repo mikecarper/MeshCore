@@ -2543,9 +2543,10 @@ roughly 2 ms practical idle-budget consideration is separate from retune
 time. An unplugged-USB, SWD-only sleep experiment would be a separate test.</p>
 <p>Source inspection found concrete speed candidates, without changing this
 baseline: RAK currently uses the default 2 MHz byte-at-a-time SPI path,
-although a buffered nRF52 HAL exists; the retune path also performs modem
-queries during setup and maximum-airtime calculation. Their individual costs
-were not measured by this capture. Faster switching and any receiver repair
+although a buffered nRF52 HAL exists; the retune path also queries the modem
+during setup and repeats the IQ workaround. Its custom airtime override already
+uses cached parameters and does not issue a second modem query. Their individual
+costs were not measured by this capture. Faster switching and any receiver repair
 need fresh source-bound RF validation before a qualification claim.</p>
 <h2 id="controller-correction-and-restoration">Controller correction and restoration</h2>
 <p>An earlier, separate attempt stopped after 50 transmissions because its
@@ -2560,6 +2561,9 @@ were removed, RAK live radio2 status returned to off, original TX power and
 USB logging were restored, and the gateway service reacquired its radio with
 its configuration unchanged. The independent offline audit reproduced the
 three missing primary packets and reported no measurement confounds.</p>
+<p>See the <a href="../rak3401_radio2_fast_switch_2026-10-23/">fast-switch follow-up</a>
+for buffered SPI measurements, the 16 MHz readback failure and subsequent
+qualification results.</p>
 
 
 
