@@ -2682,11 +2682,11 @@ shows <code>fault=prefs</code>, and manual sends return an error instead of ackn
 work that cannot run. Such a storage fault must be repaired before settings
 can be changed; the firmware does not overwrite an unmigrated legacy file.</p>
 <h2 id="find-telemetry-packets">Find telemetry packets</h2>
-<p><a href="https://analyzer.cascadiamesh.org/#/packets?timeWindow=10080&amp;filter=type%20%3D%3D%20RAW_CUSTOM%20%26%26%20age%20%3C%207d%20%26%26%20%28payload.raw%20starts_with%20%2254544231%22%20%7C%7C%20payload.raw%20starts_with%20%2254564231%22%20%7C%7C%20payload.raw%20starts_with%20%2249564231%22%20%7C%7C%20payload.raw%20starts_with%20%224E314231%22%20%7C%7C%20payload.raw%20starts_with%20%224E324231%22%29">Open the seven-day telemetry view in CascadiaMesh Analyzer</a>.
+<p><a href="https://analyzer.cascadiamesh.org/#/packets?timeWindow=2880&amp;filter=type%20%3D%3D%20RAW_CUSTOM%20%26%26%20age%20%3C%202d%20%26%26%20%28payload.raw%20starts_with%20%2254544231%22%20%7C%7C%20payload.raw%20starts_with%20%2254564231%22%20%7C%7C%20payload.raw%20starts_with%20%2249564231%22%20%7C%7C%20payload.raw%20starts_with%20%224E314231%22%20%7C%7C%20payload.raw%20starts_with%20%224E324231%22%29">Open the two-day telemetry view in CascadiaMesh Analyzer</a>.
 The link selects RAW_CUSTOM packets whose data starts with
 any of the five telemetry prefixes below. To use the filter box directly, paste
 this as one line:</p>
-<pre><code class="language-text">type == RAW_CUSTOM &amp;&amp; age &lt; 7d &amp;&amp; (payload.raw starts_with &quot;54544231&quot; || payload.raw starts_with &quot;54564231&quot; || payload.raw starts_with &quot;49564231&quot; || payload.raw starts_with &quot;4E314231&quot; || payload.raw starts_with &quot;4E324231&quot;)
+<pre><code class="language-text">type == RAW_CUSTOM &amp;&amp; age &lt; 2d &amp;&amp; (payload.raw starts_with &quot;54544231&quot; || payload.raw starts_with &quot;54564231&quot; || payload.raw starts_with &quot;49564231&quot; || payload.raw starts_with &quot;4E314231&quot; || payload.raw starts_with &quot;4E324231&quot;)
 </code></pre>
 <table>
 <thead>
@@ -2726,12 +2726,12 @@ this as one line:</p>
 </table>
 <p><code>&amp;&amp;</code> requires every condition; <code>||</code> accepts any listed prefix.
 <code>payload.raw</code> starts at the application data, after the routing bytes.</p>
-<p>The URL uses <code>timeWindow=10080</code> (seven days in minutes). The explicit
-<code>age &lt; 7d</code> condition preserves that cutoff when refreshing, since the analyzer's
+<p>The URL uses <code>timeWindow=2880</code> (two days in minutes). The explicit
+<code>age &lt; 2d</code> condition preserves that cutoff when refreshing, since the analyzer's
 time dropdown only offers fixed windows up to 24 hours. Packet retention and
 loading limits still apply: the current server returns at most 10,000 packets,
-and mobile clients load at most 1,000, so a busy network may show less than a
-full week.</p>
+and mobile clients load at most 1,000, so a busy network may show less than
+two days.</p>
 <h2 id="decode-a-packet">Decode a packet</h2>
 <p>If you are reading this on GitHub, <a href="https://mikecarper.github.io/MeshCore/telemetry_decoder/#decode-a-packet">open the working decoder on the documentation
 website</a>
