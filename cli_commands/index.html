@@ -8031,8 +8031,15 @@ history is still sent. It uses all currently available base
 positions up to 165 and all available I2C positions up to 192 per populated
 channel, plus the latest 255 positions per noise profile (63 hours 45 minutes).
 It works while the schedule is off and does not move the next
-scheduled send time. RAW_CUSTOM direct packets do not enter the normal
-encrypted direct-message retry mechanism.</p>
+scheduled send time.</p>
+<p>With a non-empty hop path, <code>TTB1</code>, <code>TVB1</code>, <code>IVB1</code>, <code>N1B1</code>, and <code>N2B1</code> telemetry
+use the existing direct-message echo retries. They follow <code>direct.retry</code>,
+<code>direct.retry.count</code>, <code>direct.retry.heard</code>, and the direct-retry coding-rate
+policy. A matching downstream forwarding echo stops retries. The default
+zero-hop <code>direct</code> route has no forwarding echo and does not use these retries.
+Updated relays can retry their own forwarding hop; stock relays remain compatible
+and their forwarded packets can provide the echo. The packet format is unchanged:
+there is no new ACK or confirmation that the final observer received the data.</p>
 <p>Full temperature and battery snapshots are 184-byte RAW_CUSTOM payloads.
 Manual tests can be shorter while history fills. Both formats are binary,
 not Base64 and not encrypted:</p>
@@ -11946,7 +11953,10 @@ region save
 - Useful for global networks with specific regional rules</p>
 <hr />
 <h3 id="direct-retry">Direct Retry</h3>
-<p>Direct retry resends direct-routed packets when the downstream echo is not heard. It applies to direct messages, ACK packets, multipart packets carrying ACK payloads, and TRACE packets.</p>
+<p>Direct retry resends direct-routed packets when the downstream echo is not heard.
+It applies to direct messages, ACK packets, multipart packets carrying ACK
+payloads, TRACE packets, and recognized RAW_CUSTOM telemetry (<code>TTB1</code>, <code>TVB1</code>,
+<code>IVB1</code>, <code>N1B1</code>, <code>N2B1</code>) with a non-empty hop path.</p>
 <p>The shared state, count, base, and step controls work on repeater, room-server,
 and sensor firmware. Recent-repeater/SNR controls are repeater-only because the
 other roles do not keep the repeater reachability table they require.</p>
@@ -12275,8 +12285,8 @@ set flood.retry.bucket 2 none
 - <code>count</code>: Maximum retry attempts after the original send, from <code>1</code> to <code>15</code>.</p>
 <p><strong>Default:</strong> <code>15</code> with the <code>rooftop</code> preset</p>
 <p><strong>Note:</strong> This setting limits retries for eligible direct-routed packets such as
-traces, requests, responses, and ACKs. Direct-routed <strong>text messages (type 2)</strong>
-are an exception: they allow <strong>up to 21 retries after the original send</strong>,
+traces, requests, responses, ACKs, and recognized telemetry. Direct-routed
+<strong>text messages (type 2)</strong> are an exception: they allow <strong>up to 21 retries after the original send</strong>,
 regardless of <code>direct.retry.count</code> or the repeater short-path cap. For example,
 <code>set direct.retry.count 1</code> limits eligible non-text packets to one retry, but
 does not reduce the text-message limit.</p>
