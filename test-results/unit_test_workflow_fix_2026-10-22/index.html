@@ -2420,8 +2420,8 @@ DISABLE_DEBUG=0 bash build.sh build-firmware wio-e5-mini_repeater \
 <p>The exact Mini release-wrapper build passed with 245,376 of 245,760 application
 bytes used, leaving 384 bytes. Its runtime-memory gate also passed: 43,920 bytes
 available against 32,288 bytes required. The application boundary and existing
-16 KiB filesystem are unchanged. The complete GitHub workflow result remains
-pending.</p>
+16 KiB filesystem are unchanged. The complete board matrix is tracked in the
+<a href="https://github.com/mikecarper/MeshCore/actions/workflows/run-unit-tests.yml">unit-test workflow</a>.</p>
 <h2 id="rak4631-full-companion-changes">RAK4631 Full Companion changes</h2>
 <p>The exact Full Companion release-wrapper build passed with 707,504 application
 bytes before its EndF trailer. The stamped UF2 application occupies 707,584 of
@@ -2443,7 +2443,10 @@ also avoids formatting a CLI command only to parse it again.</p>
 2,048-byte gate. These figures exclude caller, ISR and task stacks. Linked OTA
 workspace checks passed four acquisition/release lifetimes without touching
 the protected SD authentication range. Neither check is hardware qualification.
-The linked Reader reference run remains pending.</p>
+The linked Reader check passed all 879 references (885 calls), comparing
+82,624 canonical bytes. Its maximum function-frame stack was 6,016 bytes;
+the check also reserves 1,536 caller bytes within the 8,192-byte loop stack.
+This excludes ISR/task stack and physical high-water measurements.</p>
 <p>Beacon frequency and bandwidth parsing now shares the radio CLI's plain
 decimal parser. This removes the general-purpose <code>strtof</code>/<code>strtod</code> conversion
 code from the Full image and recovered 5,732 bytes in the final comparison.
@@ -2452,7 +2455,14 @@ radio limits still reject invalid frequencies and bandwidths. Scientific and
 hexadecimal numeric syntax is rejected, matching the ordinary radio CLI grammar.
 NaN, infinity, whitespace and trailing junk are rejected as well.</p>
 <p>Constant CLI error replies share their existing bounded formatter and prefix.
-Their user-visible text, reply capacities and termination are retained.</p>
+The existing command replies retain their text, capacities and termination;
+new calibration replies use shorter wording while retaining the reading,
+effective multiplier and persistence result.</p>
+<p>The first rerun exposed an RS-232 packaging check that requires one complete
+error-message literal as evidence that the merged command handler survived
+linking. That handler retains its original literal. The capability check is
+unchanged. Both Full and Reduced T114 Repeater release-wrapper builds then
+passed all eight capability checks and their flash, RAM and DFU gates.</p>
 <p>Calibration coverage includes three command/scaling tests, three store tests
 (including four platform backends), 19 battery-forwarding tests and four power
 policy compatibility tests. The actual nRF52 policy/store integration checks
@@ -2478,6 +2488,7 @@ host-service bridge, 50 neighbours and existing 16 KiB filesystem. They do not
 add feature cuts or change flash and RAM qualification gates.</p>
 <h2 id="host-regression-results">Host regression results</h2>
 <p>Passed checks:</p>
+<p>The complete native PlatformIO suite also passed all 1,897 test cases.</p>
 <table>
 <thead>
 <tr>
