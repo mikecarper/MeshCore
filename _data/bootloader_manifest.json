@@ -1,9 +1,9 @@
 {
   "schemaVersion": 1,
   "repository": "mikecarper/Adafruit_nRF52_Bootloader_OTAFIX",
-  "tag": "v0.11.0-OTAFIX2.4.11",
-  "version": "2.4.11",
-  "releaseUrl": "https://github.com/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/releases/tag/v0.11.0-OTAFIX2.4.11",
+  "tag": "v0.11.0-OTAFIX2.4.12",
+  "version": "2.4.12",
+  "releaseUrl": "https://github.com/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/releases/tag/v0.11.0-OTAFIX2.4.12",
   "prerelease": false,
   "profiles": [
     {
@@ -18,22 +18,22 @@
       "storage": "internal",
       "files": {
         "uf2": {
-          "name": "update-gat562_bootloader-v0.11.0-OTAFIX2.4.11_mbr.uf2",
-          "url": "https://github.com/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/releases/download/v0.11.0-OTAFIX2.4.11/update-gat562_bootloader-v0.11.0-OTAFIX2.4.11_mbr.uf2",
-          "size": 84992,
-          "sha256": "2e3c5292abd9f87380e63926a01dc0cb437002d33acff8de2919d9cd79273927"
+          "name": "update-gat562_bootloader-v0.11.0-OTAFIX2.4.12_mbr.uf2",
+          "url": "https://github.com/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/releases/download/v0.11.0-OTAFIX2.4.12/update-gat562_bootloader-v0.11.0-OTAFIX2.4.12_mbr.uf2",
+          "size": 83968,
+          "sha256": "6ca09f6c4debdae97b67f3ea50293f6e803d999a4a7a04870ae55777e17bf21d"
         },
         "zip": {
-          "name": "gat562_bootloader-v0.11.0-OTAFIX2.4.11_s140_6.1.1.zip",
-          "url": "https://github.com/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/releases/download/v0.11.0-OTAFIX2.4.11/gat562_bootloader-v0.11.0-OTAFIX2.4.11_s140_6.1.1.zip",
+          "name": "gat562_bootloader-v0.11.0-OTAFIX2.4.12_s140_6.1.1.zip",
+          "url": "https://github.com/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/releases/download/v0.11.0-OTAFIX2.4.12/gat562_bootloader-v0.11.0-OTAFIX2.4.12_s140_6.1.1.zip",
           "size": 192834,
-          "sha256": "35bbb66831af4c1aaba1ae139f2c7d149a1b281c28aff3dac31a78f67ac026b0"
+          "sha256": "86490cbca323a8b81fc8490f9a43fd06db4c776bac6aa0bda91ee807cf801c60"
         },
         "hex": {
-          "name": "gat562_bootloader-v0.11.0-OTAFIX2.4.11_s140_6.1.1.hex",
-          "url": "https://github.com/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/releases/download/v0.11.0-OTAFIX2.4.11/gat562_bootloader-v0.11.0-OTAFIX2.4.11_s140_6.1.1.hex",
-          "size": 530716,
-          "sha256": "8df22a6951916f0eee1910cf8d449eb32fa712799ad12713045e06f93e355f82"
+          "name": "gat562_bootloader-v0.11.0-OTAFIX2.4.12_s140_6.1.1.hex",
+          "url": "https://github.com/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/releases/download/v0.11.0-OTAFIX2.4.12/gat562_bootloader-v0.11.0-OTAFIX2.4.12_s140_6.1.1.hex",
+          "size": 529264,
+          "sha256": "0b6bb52d2eac5edb6aa9f303ff9526a45002ecfffc559f05b10f34eec3c676a4"
         }
       }
     },
@@ -47,22 +47,22 @@
       "storage": "internal",
       "files": {
         "uf2": {
-          "name": "update-heltec_mesh_pocket_bootloader-v0.11.0-OTAFIX2.4.11_mbr.uf2",
-          "url": "https://github.com/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/releases/download/v0.11.0-OTAFIX2.4.11/update-heltec_mesh_pocket_bootloader-v0.11.0-OTAFIX2.4.11_mbr.uf2",
-          "size": 84480,
-          "sha256": "3087bdd540db6a6399120a23012dc9d1e45ca9b72938abd49c389319f1a027db"
+          "name": "update-heltec_mesh_pocket_bootloader-v0.11.0-OTAFIX2.4.12_mbr.uf2",
+          "url": "https://github.com/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/releases/download/v0.11.0-OTAFIX2.4.12/update-heltec_mesh_pocket_bootloader-v0.11.0-OTAFIX2.4.12_mbr.uf2",
+          "size": 83456,
+          "sha256": "dff59d9dc609700b2d05d1e1a625eba42ffa878882bce17296c4753442d92489"
         },
         "zip": {
-          "name": "heltec_mesh_pocket_bootloader-v0.11.0-OTAFIX2.4.11_s140_6.1.1.zip",
-          "url": "https://github.com/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/releases/download/v0.11.0-OTAFIX2.4.11/heltec_mesh_pocket_bootloader-v0.11.0-OTAFIX2.4.11_s140_6.1.1.zip",
+          "name": "heltec_mesh_pocket_bootloader-v0.11.0-OTAFIX2.4.12_s140_6.1.1.zip",
+          "url": "https://github.com/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/releases/download/v0.11.0-OTAFIX2.4.12/heltec_mesh_pocket_bootloader-v0.11.0-OTAFIX2.4.12_s140_6.1.1.zip",
           "size": 192834,
-          "sha256": "7251ed15ce18dba03151b676d7401f50a043a61370e6eb7230daddfa9248dda4"
+          "sha256": "65f4a62e02027f7852a04dcdd7624f6be467ca3fc4073157201043fb7ceebc51"
         },
         "hex": {
-          "name": "heltec_mesh_pocket_bootloader-v0.11.0-OTAFIX2.4.11_s140_6.1.1.hex",
-          "url": "https://github.com/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/releases/download/v0.11.0-OTAFIX2.4.11/heltec_mesh_pocket_bootloader-v0.11.0-OTAFIX2.4.11_s140_6.1.1.hex",
-          "size": 530112,
-          "sha256": "f0b836e53af97d5445236ef89adb8443e5c8a4691e71488ff930cca2b3a57d90"
+          "name": "heltec_mesh_pocket_bootloader-v0.11.0-OTAFIX2.4.12_s140_6.1.1.hex",
+          "url": "https://github.com/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/releases/download/v0.11.0-OTAFIX2.4.12/heltec_mesh_pocket_bootloader-v0.11.0-OTAFIX2.4.12_s140_6.1.1.hex",
+          "size": 528704,
+          "sha256": "648c736cf28454a241028f1546fa19e33aa87ff5d3d6346700eb93bd92a45624"
         }
       }
     },
@@ -76,22 +76,22 @@
       "storage": "sd",
       "files": {
         "uf2": {
-          "name": "update-heltec_mesh_tower_v2_sdcard_bootloader-v0.11.0-OTAFIX2.4.11_mbr.uf2",
-          "url": "https://github.com/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/releases/download/v0.11.0-OTAFIX2.4.11/update-heltec_mesh_tower_v2_sdcard_bootloader-v0.11.0-OTAFIX2.4.11_mbr.uf2",
-          "size": 88064,
-          "sha256": "26e8cc90bdf3a138bd8f5471f17c04cbeaddf5dfb01bf62601917f7d0c8fa825"
+          "name": "update-heltec_mesh_tower_v2_sdcard_bootloader-v0.11.0-OTAFIX2.4.12_mbr.uf2",
+          "url": "https://github.com/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/releases/download/v0.11.0-OTAFIX2.4.12/update-heltec_mesh_tower_v2_sdcard_bootloader-v0.11.0-OTAFIX2.4.12_mbr.uf2",
+          "size": 87552,
+          "sha256": "a82eca7a1287de26c0938c97039ac6349816aa585c57f199ddbcb5f8c77b751d"
         },
         "zip": {
-          "name": "heltec_mesh_tower_v2_sdcard_bootloader-v0.11.0-OTAFIX2.4.11_s140_6.1.1.zip",
-          "url": "https://github.com/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/releases/download/v0.11.0-OTAFIX2.4.11/heltec_mesh_tower_v2_sdcard_bootloader-v0.11.0-OTAFIX2.4.11_s140_6.1.1.zip",
-          "size": 192833,
-          "sha256": "ac5fdfa777ba583cc9e62e7cd1fef3cf0a3b97da5b221a332380b2209d31b79c"
+          "name": "heltec_mesh_tower_v2_sdcard_bootloader-v0.11.0-OTAFIX2.4.12_s140_6.1.1.zip",
+          "url": "https://github.com/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/releases/download/v0.11.0-OTAFIX2.4.12/heltec_mesh_tower_v2_sdcard_bootloader-v0.11.0-OTAFIX2.4.12_s140_6.1.1.zip",
+          "size": 192834,
+          "sha256": "1b8beb90f26fb331e89a3f7ad4d07df130126fcef558031755490172dd94f6ea"
         },
         "hex": {
-          "name": "heltec_mesh_tower_v2_sdcard_bootloader-v0.11.0-OTAFIX2.4.11_s140_6.1.1.hex",
-          "url": "https://github.com/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/releases/download/v0.11.0-OTAFIX2.4.11/heltec_mesh_tower_v2_sdcard_bootloader-v0.11.0-OTAFIX2.4.11_s140_6.1.1.hex",
-          "size": 535746,
-          "sha256": "5980d8f96a3b9dbb55bbf488cbeacdcae1c6f59ff78c2766254c8b95c5e6beab"
+          "name": "heltec_mesh_tower_v2_sdcard_bootloader-v0.11.0-OTAFIX2.4.12_s140_6.1.1.hex",
+          "url": "https://github.com/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/releases/download/v0.11.0-OTAFIX2.4.12/heltec_mesh_tower_v2_sdcard_bootloader-v0.11.0-OTAFIX2.4.12_s140_6.1.1.hex",
+          "size": 534562,
+          "sha256": "3e177b262d8378a2f4153e8b3e23a0a202626f5a5114e35e2bc162a21f8dd1b0"
         }
       }
     },
@@ -105,22 +105,22 @@
       "storage": "internal",
       "files": {
         "uf2": {
-          "name": "update-heltec_t096_bootloader-v0.11.0-OTAFIX2.4.11_mbr.uf2",
-          "url": "https://github.com/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/releases/download/v0.11.0-OTAFIX2.4.11/update-heltec_t096_bootloader-v0.11.0-OTAFIX2.4.11_mbr.uf2",
-          "size": 87552,
-          "sha256": "a7db3f390ab8934a33ccc1f60ac0acf1b5200f58fc6c037e233a178d5d416da8"
+          "name": "update-heltec_t096_bootloader-v0.11.0-OTAFIX2.4.12_mbr.uf2",
+          "url": "https://github.com/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/releases/download/v0.11.0-OTAFIX2.4.12/update-heltec_t096_bootloader-v0.11.0-OTAFIX2.4.12_mbr.uf2",
+          "size": 86528,
+          "sha256": "dc39e0361b3e572a7f546695cb44156c6a051ed7783872890dc97dbc608be609"
         },
         "zip": {
-          "name": "heltec_t096_bootloader-v0.11.0-OTAFIX2.4.11_s140_6.1.1.zip",
-          "url": "https://github.com/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/releases/download/v0.11.0-OTAFIX2.4.11/heltec_t096_bootloader-v0.11.0-OTAFIX2.4.11_s140_6.1.1.zip",
-          "size": 192834,
-          "sha256": "4c2f1adfa28ad8a4a856c7c720ad1dbcb8cf13fcdc381152761bd72fadba227c"
+          "name": "heltec_t096_bootloader-v0.11.0-OTAFIX2.4.12_s140_6.1.1.zip",
+          "url": "https://github.com/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/releases/download/v0.11.0-OTAFIX2.4.12/heltec_t096_bootloader-v0.11.0-OTAFIX2.4.12_s140_6.1.1.zip",
+          "size": 192833,
+          "sha256": "5d7121eb3fc9b429b0bfc03a46cd39c49cea99a523ef252fca76fbe83ae9c083"
         },
         "hex": {
-          "name": "heltec_t096_bootloader-v0.11.0-OTAFIX2.4.11_s140_6.1.1.hex",
-          "url": "https://github.com/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/releases/download/v0.11.0-OTAFIX2.4.11/heltec_t096_bootloader-v0.11.0-OTAFIX2.4.11_s140_6.1.1.hex",
-          "size": 534470,
-          "sha256": "878071c4e7bc16a9ec664773d34eadb7be6846e8791bcc87270ba5e41b463e2b"
+          "name": "heltec_t096_bootloader-v0.11.0-OTAFIX2.4.12_s140_6.1.1.hex",
+          "url": "https://github.com/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/releases/download/v0.11.0-OTAFIX2.4.12/heltec_t096_bootloader-v0.11.0-OTAFIX2.4.12_s140_6.1.1.hex",
+          "size": 533016,
+          "sha256": "5b51abde8a8ed62264f2a87c2ffdf1b9b9087c64b039da1f33cf64b28e363735"
         }
       }
     },
@@ -134,22 +134,22 @@
       "storage": "internal",
       "files": {
         "uf2": {
-          "name": "update-heltec_t1_bootloader-v0.11.0-OTAFIX2.4.11_mbr.uf2",
-          "url": "https://github.com/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/releases/download/v0.11.0-OTAFIX2.4.11/update-heltec_t1_bootloader-v0.11.0-OTAFIX2.4.11_mbr.uf2",
-          "size": 87552,
-          "sha256": "3a053de7ba28e63756cd52d0e5632ce07bd244eeb271720f1178e71178680d77"
+          "name": "update-heltec_t1_bootloader-v0.11.0-OTAFIX2.4.12_mbr.uf2",
+          "url": "https://github.com/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/releases/download/v0.11.0-OTAFIX2.4.12/update-heltec_t1_bootloader-v0.11.0-OTAFIX2.4.12_mbr.uf2",
+          "size": 86528,
+          "sha256": "3d78354c72a22382b9c28a3aa1046b751667c34b00f1e16993f3f2ba33e12d3e"
         },
         "zip": {
-          "name": "heltec_t1_bootloader-v0.11.0-OTAFIX2.4.11_s140_6.1.1.zip",
-          "url": "https://github.com/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/releases/download/v0.11.0-OTAFIX2.4.11/heltec_t1_bootloader-v0.11.0-OTAFIX2.4.11_s140_6.1.1.zip",
-          "size": 192834,
-          "sha256": "b7144a4493a23902b07e31435f8c3758afe0b5d87f777236705865f51bb00ecb"
+          "name": "heltec_t1_bootloader-v0.11.0-OTAFIX2.4.12_s140_6.1.1.zip",
+          "url": "https://github.com/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/releases/download/v0.11.0-OTAFIX2.4.12/heltec_t1_bootloader-v0.11.0-OTAFIX2.4.12_s140_6.1.1.zip",
+          "size": 192833,
+          "sha256": "ae6904dac781d1bea7fe0547abab3e95ea116114d3c57645084ef6ca91bbc444"
         },
         "hex": {
-          "name": "heltec_t1_bootloader-v0.11.0-OTAFIX2.4.11_s140_6.1.1.hex",
-          "url": "https://github.com/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/releases/download/v0.11.0-OTAFIX2.4.11/heltec_t1_bootloader-v0.11.0-OTAFIX2.4.11_s140_6.1.1.hex",
-          "size": 534508,
-          "sha256": "8ba4ddc312f2246e5ace749e5734934ab5537c4ef60354a34658eebfa4d50449"
+          "name": "heltec_t1_bootloader-v0.11.0-OTAFIX2.4.12_s140_6.1.1.hex",
+          "url": "https://github.com/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/releases/download/v0.11.0-OTAFIX2.4.12/heltec_t1_bootloader-v0.11.0-OTAFIX2.4.12_s140_6.1.1.hex",
+          "size": 533054,
+          "sha256": "157d3180eeac0992878cabdc8e46fdc0fab1061d7687c9a6d9530bb26b41e04b"
         }
       }
     },
@@ -164,22 +164,22 @@
       "storage": "internal",
       "files": {
         "uf2": {
-          "name": "update-heltec_t114_bootloader-v0.11.0-OTAFIX2.4.11_mbr.uf2",
-          "url": "https://github.com/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/releases/download/v0.11.0-OTAFIX2.4.11/update-heltec_t114_bootloader-v0.11.0-OTAFIX2.4.11_mbr.uf2",
-          "size": 88064,
-          "sha256": "d8307134c4f63a9a91d86937abe25863722ff61f822524fc027847c6137282cc"
+          "name": "update-heltec_t114_bootloader-v0.11.0-OTAFIX2.4.12_mbr.uf2",
+          "url": "https://github.com/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/releases/download/v0.11.0-OTAFIX2.4.12/update-heltec_t114_bootloader-v0.11.0-OTAFIX2.4.12_mbr.uf2",
+          "size": 87040,
+          "sha256": "2bbbd2bcb0264e2558fa8b393faba250f35eb5fb4df2785a94857519a50a436b"
         },
         "zip": {
-          "name": "heltec_t114_bootloader-v0.11.0-OTAFIX2.4.11_s140_6.1.1.zip",
-          "url": "https://github.com/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/releases/download/v0.11.0-OTAFIX2.4.11/heltec_t114_bootloader-v0.11.0-OTAFIX2.4.11_s140_6.1.1.zip",
+          "name": "heltec_t114_bootloader-v0.11.0-OTAFIX2.4.12_s140_6.1.1.zip",
+          "url": "https://github.com/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/releases/download/v0.11.0-OTAFIX2.4.12/heltec_t114_bootloader-v0.11.0-OTAFIX2.4.12_s140_6.1.1.zip",
           "size": 192834,
-          "sha256": "a473faf32cf3e4dc13c5d8340e7ffebd04741be3e37f8c2cb98b2c176e01a777"
+          "sha256": "138c69fe816c794f1effde6ddcee768dae4aa0e3bfeff90e3635ac3a182a3f0a"
         },
         "hex": {
-          "name": "heltec_t114_bootloader-v0.11.0-OTAFIX2.4.11_s140_6.1.1.hex",
-          "url": "https://github.com/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/releases/download/v0.11.0-OTAFIX2.4.11/heltec_t114_bootloader-v0.11.0-OTAFIX2.4.11_s140_6.1.1.hex",
-          "size": 535380,
-          "sha256": "5afa51d860b54dc820d94f67efb8f7f449b0a4f461bbc176ccbd27a9730bc4e9"
+          "name": "heltec_t114_bootloader-v0.11.0-OTAFIX2.4.12_s140_6.1.1.hex",
+          "url": "https://github.com/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/releases/download/v0.11.0-OTAFIX2.4.12/heltec_t114_bootloader-v0.11.0-OTAFIX2.4.12_s140_6.1.1.hex",
+          "size": 534148,
+          "sha256": "da5c7968f6c2c90f9c578acb95f04700f59b1a7e9365d2b045c5ee3dd9c16425"
         }
       }
     },
@@ -193,22 +193,22 @@
       "storage": "internal",
       "files": {
         "uf2": {
-          "name": "update-keepteen_lt1_bootloader-v0.11.0-OTAFIX2.4.11_mbr.uf2",
-          "url": "https://github.com/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/releases/download/v0.11.0-OTAFIX2.4.11/update-keepteen_lt1_bootloader-v0.11.0-OTAFIX2.4.11_mbr.uf2",
-          "size": 84480,
-          "sha256": "c2ad478f12cd3176f5ea4442726fdaebb6071218564a97b7c90cf52ed214f369"
+          "name": "update-keepteen_lt1_bootloader-v0.11.0-OTAFIX2.4.12_mbr.uf2",
+          "url": "https://github.com/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/releases/download/v0.11.0-OTAFIX2.4.12/update-keepteen_lt1_bootloader-v0.11.0-OTAFIX2.4.12_mbr.uf2",
+          "size": 83456,
+          "sha256": "15ffb2c260fc1e07bb06b5718ee571ea125e82653fbecd882459ab09c42b87e1"
         },
         "zip": {
-          "name": "keepteen_lt1_bootloader-v0.11.0-OTAFIX2.4.11_s140_6.1.1.zip",
-          "url": "https://github.com/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/releases/download/v0.11.0-OTAFIX2.4.11/keepteen_lt1_bootloader-v0.11.0-OTAFIX2.4.11_s140_6.1.1.zip",
+          "name": "keepteen_lt1_bootloader-v0.11.0-OTAFIX2.4.12_s140_6.1.1.zip",
+          "url": "https://github.com/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/releases/download/v0.11.0-OTAFIX2.4.12/keepteen_lt1_bootloader-v0.11.0-OTAFIX2.4.12_s140_6.1.1.zip",
           "size": 192834,
-          "sha256": "f7a21a21afad7ecbf0e29f65e243b103f4b423fe575734fa4f00db56947f7c64"
+          "sha256": "4d1f29efaf156e388262a1a603ea72e4ee98ff7547e26b71cb0a93ad732864b2"
         },
         "hex": {
-          "name": "keepteen_lt1_bootloader-v0.11.0-OTAFIX2.4.11_s140_6.1.1.hex",
-          "url": "https://github.com/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/releases/download/v0.11.0-OTAFIX2.4.11/keepteen_lt1_bootloader-v0.11.0-OTAFIX2.4.11_s140_6.1.1.hex",
-          "size": 530034,
-          "sha256": "dbad71f1975f26c4f42e3057d2e6de82201fa9488e39556070ad68fa650204fe"
+          "name": "keepteen_lt1_bootloader-v0.11.0-OTAFIX2.4.12_s140_6.1.1.hex",
+          "url": "https://github.com/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/releases/download/v0.11.0-OTAFIX2.4.12/keepteen_lt1_bootloader-v0.11.0-OTAFIX2.4.12_s140_6.1.1.hex",
+          "size": 528626,
+          "sha256": "95e5854b86a028d4252a42d6819664fcfd7fedc20917318b06663cf19000f982"
         }
       }
     },
@@ -222,22 +222,22 @@
       "storage": "qspi",
       "files": {
         "uf2": {
-          "name": "update-lilygo_techo_bootloader-v0.11.0-OTAFIX2.4.11_mbr.uf2",
-          "url": "https://github.com/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/releases/download/v0.11.0-OTAFIX2.4.11/update-lilygo_techo_bootloader-v0.11.0-OTAFIX2.4.11_mbr.uf2",
-          "size": 86528,
-          "sha256": "9a3cd2a73f91f9f1ca01f44ba56c4b1ad2317511e766533ed61c361aca6e37fa"
+          "name": "update-lilygo_techo_bootloader-v0.11.0-OTAFIX2.4.12_mbr.uf2",
+          "url": "https://github.com/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/releases/download/v0.11.0-OTAFIX2.4.12/update-lilygo_techo_bootloader-v0.11.0-OTAFIX2.4.12_mbr.uf2",
+          "size": 85504,
+          "sha256": "aff3b36baea7567bfc8fc83580ede11d27d9e450b6b4c8b0cd039e66eaa2fa5d"
         },
         "zip": {
-          "name": "lilygo_techo_bootloader-v0.11.0-OTAFIX2.4.11_s140_6.1.1.zip",
-          "url": "https://github.com/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/releases/download/v0.11.0-OTAFIX2.4.11/lilygo_techo_bootloader-v0.11.0-OTAFIX2.4.11_s140_6.1.1.zip",
+          "name": "lilygo_techo_bootloader-v0.11.0-OTAFIX2.4.12_s140_6.1.1.zip",
+          "url": "https://github.com/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/releases/download/v0.11.0-OTAFIX2.4.12/lilygo_techo_bootloader-v0.11.0-OTAFIX2.4.12_s140_6.1.1.zip",
           "size": 192834,
-          "sha256": "a7cbdf2c911542222c0d12eb5fb2ab9bdf2263495b591d1a946860b324bf4731"
+          "sha256": "55d935ce7fb4d7c3944f93b38240f311255d6a0c8560b0783d7d0121e72098ac"
         },
         "hex": {
-          "name": "lilygo_techo_bootloader-v0.11.0-OTAFIX2.4.11_s140_6.1.1.hex",
-          "url": "https://github.com/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/releases/download/v0.11.0-OTAFIX2.4.11/lilygo_techo_bootloader-v0.11.0-OTAFIX2.4.11_s140_6.1.1.hex",
-          "size": 532930,
-          "sha256": "5c8f10b9b1217f36b8ff6f0dac957f108ca4125bc5e737dd827c08c01a5e556f"
+          "name": "lilygo_techo_bootloader-v0.11.0-OTAFIX2.4.12_s140_6.1.1.hex",
+          "url": "https://github.com/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/releases/download/v0.11.0-OTAFIX2.4.12/lilygo_techo_bootloader-v0.11.0-OTAFIX2.4.12_s140_6.1.1.hex",
+          "size": 531654,
+          "sha256": "ba5428bbdf61b9bfd0cf0697d5175cfd995b7ff272725a895e8b4a7866756ffc"
         }
       }
     },
@@ -252,22 +252,22 @@
       "storage": "qspi",
       "files": {
         "uf2": {
-          "name": "update-lilygo_techo_lite_bootloader-v0.11.0-OTAFIX2.4.11_mbr.uf2",
-          "url": "https://github.com/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/releases/download/v0.11.0-OTAFIX2.4.11/update-lilygo_techo_lite_bootloader-v0.11.0-OTAFIX2.4.11_mbr.uf2",
-          "size": 87040,
-          "sha256": "5ee193ed3ac342502efb03adc3aa214eb56198f22975fe5dfcf4d5743d4788d0"
+          "name": "update-lilygo_techo_lite_bootloader-v0.11.0-OTAFIX2.4.12_mbr.uf2",
+          "url": "https://github.com/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/releases/download/v0.11.0-OTAFIX2.4.12/update-lilygo_techo_lite_bootloader-v0.11.0-OTAFIX2.4.12_mbr.uf2",
+          "size": 86016,
+          "sha256": "8e7636a43b9eeb8561a51eb161732e0ee20b0e6a051bd9d12e87387aa4605758"
         },
         "zip": {
-          "name": "lilygo_techo_lite_bootloader-v0.11.0-OTAFIX2.4.11_s140_6.1.1.zip",
-          "url": "https://github.com/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/releases/download/v0.11.0-OTAFIX2.4.11/lilygo_techo_lite_bootloader-v0.11.0-OTAFIX2.4.11_s140_6.1.1.zip",
+          "name": "lilygo_techo_lite_bootloader-v0.11.0-OTAFIX2.4.12_s140_6.1.1.zip",
+          "url": "https://github.com/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/releases/download/v0.11.0-OTAFIX2.4.12/lilygo_techo_lite_bootloader-v0.11.0-OTAFIX2.4.12_s140_6.1.1.zip",
           "size": 192834,
-          "sha256": "2ed15158b2b015a445c3d91ad616c8550e3b6ed59de2ca54832de4cb8d5ce10d"
+          "sha256": "cde601f61d858116ff591488e1856db747a77cdc8e3c3025e588cb79463ac440"
         },
         "hex": {
-          "name": "lilygo_techo_lite_bootloader-v0.11.0-OTAFIX2.4.11_s140_6.1.1.hex",
-          "url": "https://github.com/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/releases/download/v0.11.0-OTAFIX2.4.11/lilygo_techo_lite_bootloader-v0.11.0-OTAFIX2.4.11_s140_6.1.1.hex",
-          "size": 533526,
-          "sha256": "d3531513bc550431caf9893dd88a8324f83f401b7b1700bbee6cd6c8a2724983"
+          "name": "lilygo_techo_lite_bootloader-v0.11.0-OTAFIX2.4.12_s140_6.1.1.hex",
+          "url": "https://github.com/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/releases/download/v0.11.0-OTAFIX2.4.12/lilygo_techo_lite_bootloader-v0.11.0-OTAFIX2.4.12_s140_6.1.1.hex",
+          "size": 532250,
+          "sha256": "557c21225400f078964b061f90827563baa42ae0be3494699af50ffd98bd646b"
         }
       }
     },
@@ -281,22 +281,22 @@
       "storage": "internal",
       "files": {
         "uf2": {
-          "name": "update-minewsemi_mx25le01_bootloader-v0.11.0-OTAFIX2.4.11_mbr.uf2",
-          "url": "https://github.com/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/releases/download/v0.11.0-OTAFIX2.4.11/update-minewsemi_mx25le01_bootloader-v0.11.0-OTAFIX2.4.11_mbr.uf2",
-          "size": 84480,
-          "sha256": "c5858e6ed516af22202a2c9b1c155764ae25adaf55a42941d9665df77d44fad7"
+          "name": "update-minewsemi_mx25le01_bootloader-v0.11.0-OTAFIX2.4.12_mbr.uf2",
+          "url": "https://github.com/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/releases/download/v0.11.0-OTAFIX2.4.12/update-minewsemi_mx25le01_bootloader-v0.11.0-OTAFIX2.4.12_mbr.uf2",
+          "size": 83456,
+          "sha256": "8461d1fac82a70ccb02591964bf107fb7925f50408351f3550eea110a69a26f8"
         },
         "zip": {
-          "name": "minewsemi_mx25le01_bootloader-v0.11.0-OTAFIX2.4.11_s140_7.3.0.zip",
-          "url": "https://github.com/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/releases/download/v0.11.0-OTAFIX2.4.11/minewsemi_mx25le01_bootloader-v0.11.0-OTAFIX2.4.11_s140_7.3.0.zip",
+          "name": "minewsemi_mx25le01_bootloader-v0.11.0-OTAFIX2.4.12_s140_7.3.0.zip",
+          "url": "https://github.com/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/releases/download/v0.11.0-OTAFIX2.4.12/minewsemi_mx25le01_bootloader-v0.11.0-OTAFIX2.4.12_s140_7.3.0.zip",
           "size": 194546,
-          "sha256": "322b8c8e9caaca660bd2ed68f1d19f5cd38575ea7def6f262e652e2a872f7f2d"
+          "sha256": "4d7ca3a59358cfdfbddbaac2d5f7f99dae346469dfbcc9ed6dad56ca72646552"
         },
         "hex": {
-          "name": "minewsemi_mx25le01_bootloader-v0.11.0-OTAFIX2.4.11_s140_7.3.0.hex",
-          "url": "https://github.com/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/releases/download/v0.11.0-OTAFIX2.4.11/minewsemi_mx25le01_bootloader-v0.11.0-OTAFIX2.4.11_s140_7.3.0.hex",
-          "size": 535084,
-          "sha256": "9de94798b5c25018ee9a5494b776bd5469f5c743d0fa9cbb82dfc7dda115fbbf"
+          "name": "minewsemi_mx25le01_bootloader-v0.11.0-OTAFIX2.4.12_s140_7.3.0.hex",
+          "url": "https://github.com/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/releases/download/v0.11.0-OTAFIX2.4.12/minewsemi_mx25le01_bootloader-v0.11.0-OTAFIX2.4.12_s140_7.3.0.hex",
+          "size": 533676,
+          "sha256": "ecbfc02399767fe7d8b4a227eed75aafcca92bb3d04ba3122cb7307b6a81fa8a"
         }
       }
     },
@@ -310,22 +310,22 @@
       "storage": "qspi",
       "files": {
         "uf2": {
-          "name": "update-pca10056_bootloader-v0.11.0-OTAFIX2.4.11_mbr.uf2",
-          "url": "https://github.com/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/releases/download/v0.11.0-OTAFIX2.4.11/update-pca10056_bootloader-v0.11.0-OTAFIX2.4.11_mbr.uf2",
-          "size": 86528,
-          "sha256": "78ab8f3f8ea44d60c13d6fd34088451b1bd26745757deed44826c15c7ee70ea8"
+          "name": "update-pca10056_bootloader-v0.11.0-OTAFIX2.4.12_mbr.uf2",
+          "url": "https://github.com/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/releases/download/v0.11.0-OTAFIX2.4.12/update-pca10056_bootloader-v0.11.0-OTAFIX2.4.12_mbr.uf2",
+          "size": 85504,
+          "sha256": "2d6328dc284f1b852eab7b66236f7dfc30dbaeecc375968d0ff38a5cfed26b75"
         },
         "zip": {
-          "name": "pca10056_bootloader-v0.11.0-OTAFIX2.4.11_s140_6.1.1.zip",
-          "url": "https://github.com/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/releases/download/v0.11.0-OTAFIX2.4.11/pca10056_bootloader-v0.11.0-OTAFIX2.4.11_s140_6.1.1.zip",
+          "name": "pca10056_bootloader-v0.11.0-OTAFIX2.4.12_s140_6.1.1.zip",
+          "url": "https://github.com/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/releases/download/v0.11.0-OTAFIX2.4.12/pca10056_bootloader-v0.11.0-OTAFIX2.4.12_s140_6.1.1.zip",
           "size": 192834,
-          "sha256": "d5d01a01f98850b3282cf7f443fa13e642a42617d7267cee22739880fbcf2ff9"
+          "sha256": "b77d8b93eb831727f7676b368703110f2d487a02e9c5ec3ce6449a9351aca0c0"
         },
         "hex": {
-          "name": "pca10056_bootloader-v0.11.0-OTAFIX2.4.11_s140_6.1.1.hex",
-          "url": "https://github.com/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/releases/download/v0.11.0-OTAFIX2.4.11/pca10056_bootloader-v0.11.0-OTAFIX2.4.11_s140_6.1.1.hex",
-          "size": 533020,
-          "sha256": "51ceaa88711ca24a8430bb6f35766df729245cbe2858336dad3082751c692fc2"
+          "name": "pca10056_bootloader-v0.11.0-OTAFIX2.4.12_s140_6.1.1.hex",
+          "url": "https://github.com/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/releases/download/v0.11.0-OTAFIX2.4.12/pca10056_bootloader-v0.11.0-OTAFIX2.4.12_s140_6.1.1.hex",
+          "size": 531744,
+          "sha256": "b36872f56bfa85b47d6469ff5f248e4e1f514e53004b0b73348b48cd0cd09e29"
         }
       }
     },
@@ -339,22 +339,22 @@
       "storage": "internal",
       "files": {
         "uf2": {
-          "name": "update-promicro_nrf52840_bootloader-v0.11.0-OTAFIX2.4.11_mbr.uf2",
-          "url": "https://github.com/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/releases/download/v0.11.0-OTAFIX2.4.11/update-promicro_nrf52840_bootloader-v0.11.0-OTAFIX2.4.11_mbr.uf2",
-          "size": 84480,
-          "sha256": "b849203d30a56b5243f8d92e308c6cd9a1eb3b35459072204f9f044d74dbad09"
+          "name": "update-promicro_nrf52840_bootloader-v0.11.0-OTAFIX2.4.12_mbr.uf2",
+          "url": "https://github.com/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/releases/download/v0.11.0-OTAFIX2.4.12/update-promicro_nrf52840_bootloader-v0.11.0-OTAFIX2.4.12_mbr.uf2",
+          "size": 83456,
+          "sha256": "de2abb8be577085432b7156c7ae29d02d080f1a24c110b5a91a0655991546a50"
         },
         "zip": {
-          "name": "promicro_nrf52840_bootloader-v0.11.0-OTAFIX2.4.11_s140_6.1.1.zip",
-          "url": "https://github.com/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/releases/download/v0.11.0-OTAFIX2.4.11/promicro_nrf52840_bootloader-v0.11.0-OTAFIX2.4.11_s140_6.1.1.zip",
+          "name": "promicro_nrf52840_bootloader-v0.11.0-OTAFIX2.4.12_s140_6.1.1.zip",
+          "url": "https://github.com/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/releases/download/v0.11.0-OTAFIX2.4.12/promicro_nrf52840_bootloader-v0.11.0-OTAFIX2.4.12_s140_6.1.1.zip",
           "size": 192834,
-          "sha256": "3b2ef682cc2641626b4db3d8bfe821cd86dd701f38c7c0c055864d78da0fbb88"
+          "sha256": "03bcaee48da4717afb34a4eda2f1161e694b7a974189988c142969ff042e39bb"
         },
         "hex": {
-          "name": "promicro_nrf52840_bootloader-v0.11.0-OTAFIX2.4.11_s140_6.1.1.hex",
-          "url": "https://github.com/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/releases/download/v0.11.0-OTAFIX2.4.11/promicro_nrf52840_bootloader-v0.11.0-OTAFIX2.4.11_s140_6.1.1.hex",
-          "size": 530426,
-          "sha256": "bcfda096684f5da9f00c36a0baef81a0b4655424f594cc29953c27ca9051263f"
+          "name": "promicro_nrf52840_bootloader-v0.11.0-OTAFIX2.4.12_s140_6.1.1.hex",
+          "url": "https://github.com/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/releases/download/v0.11.0-OTAFIX2.4.12/promicro_nrf52840_bootloader-v0.11.0-OTAFIX2.4.12_s140_6.1.1.hex",
+          "size": 529018,
+          "sha256": "02afe1640563b44ef9a3ce40f92d5346be436cd27a349a5a0f0da64f77b1d03c"
         }
       }
     },
@@ -368,22 +368,22 @@
       "storage": "qspi",
       "files": {
         "uf2": {
-          "name": "update-sensecap_solar_p1_bootloader-v0.11.0-OTAFIX2.4.11_mbr.uf2",
-          "url": "https://github.com/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/releases/download/v0.11.0-OTAFIX2.4.11/update-sensecap_solar_p1_bootloader-v0.11.0-OTAFIX2.4.11_mbr.uf2",
-          "size": 86016,
-          "sha256": "ca98f27f0289189d0b9b600c5a5a82acad14a56ed4ee4922c6c17fe1d669aadf"
+          "name": "update-sensecap_solar_p1_bootloader-v0.11.0-OTAFIX2.4.12_mbr.uf2",
+          "url": "https://github.com/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/releases/download/v0.11.0-OTAFIX2.4.12/update-sensecap_solar_p1_bootloader-v0.11.0-OTAFIX2.4.12_mbr.uf2",
+          "size": 85504,
+          "sha256": "84c378bd47d06e4cdf964b959c3629329221faac4765b6a5edb22191373e9a03"
         },
         "zip": {
-          "name": "sensecap_solar_p1_bootloader-v0.11.0-OTAFIX2.4.11_s140_7.3.0.zip",
-          "url": "https://github.com/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/releases/download/v0.11.0-OTAFIX2.4.11/sensecap_solar_p1_bootloader-v0.11.0-OTAFIX2.4.11_s140_7.3.0.zip",
+          "name": "sensecap_solar_p1_bootloader-v0.11.0-OTAFIX2.4.12_s140_7.3.0.zip",
+          "url": "https://github.com/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/releases/download/v0.11.0-OTAFIX2.4.12/sensecap_solar_p1_bootloader-v0.11.0-OTAFIX2.4.12_s140_7.3.0.zip",
           "size": 194546,
-          "sha256": "2ed90c5624a3cdb9852fb22da42f02c2d55d93e74e19978068570c1edce90ee8"
+          "sha256": "694fca8e68fb695ac1a5ef701baf26e8d52a7eb188f886496dcb6bc8b6fdc7cb"
         },
         "hex": {
-          "name": "sensecap_solar_p1_bootloader-v0.11.0-OTAFIX2.4.11_s140_7.3.0.hex",
-          "url": "https://github.com/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/releases/download/v0.11.0-OTAFIX2.4.11/sensecap_solar_p1_bootloader-v0.11.0-OTAFIX2.4.11_s140_7.3.0.hex",
-          "size": 537380,
-          "sha256": "6a0ada53219f67dd1a99da32d1257acff5fa617db26a9c3931dfa69e64bfca96"
+          "name": "sensecap_solar_p1_bootloader-v0.11.0-OTAFIX2.4.12_s140_7.3.0.hex",
+          "url": "https://github.com/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/releases/download/v0.11.0-OTAFIX2.4.12/sensecap_solar_p1_bootloader-v0.11.0-OTAFIX2.4.12_s140_7.3.0.hex",
+          "size": 536148,
+          "sha256": "9b949347259a97da32f893de16af9ecba55563092c37ece2684f00a53a4dfc5c"
         }
       }
     },
@@ -397,22 +397,22 @@
       "storage": "internal",
       "files": {
         "uf2": {
-          "name": "update-t1000_e_bootloader-v0.11.0-OTAFIX2.4.11_mbr.uf2",
-          "url": "https://github.com/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/releases/download/v0.11.0-OTAFIX2.4.11/update-t1000_e_bootloader-v0.11.0-OTAFIX2.4.11_mbr.uf2",
-          "size": 84480,
-          "sha256": "56a66098af73f8ef71d7709fb2e4803f0822b146310882cfccd9cd67dc7e6f8a"
+          "name": "update-t1000_e_bootloader-v0.11.0-OTAFIX2.4.12_mbr.uf2",
+          "url": "https://github.com/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/releases/download/v0.11.0-OTAFIX2.4.12/update-t1000_e_bootloader-v0.11.0-OTAFIX2.4.12_mbr.uf2",
+          "size": 83456,
+          "sha256": "0299f9bdad4f54c07e514661d4286192ce906e5a4de748cf92557a2085d5a75c"
         },
         "zip": {
-          "name": "t1000_e_bootloader-v0.11.0-OTAFIX2.4.11_s140_7.3.0.zip",
-          "url": "https://github.com/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/releases/download/v0.11.0-OTAFIX2.4.11/t1000_e_bootloader-v0.11.0-OTAFIX2.4.11_s140_7.3.0.zip",
+          "name": "t1000_e_bootloader-v0.11.0-OTAFIX2.4.12_s140_7.3.0.zip",
+          "url": "https://github.com/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/releases/download/v0.11.0-OTAFIX2.4.12/t1000_e_bootloader-v0.11.0-OTAFIX2.4.12_s140_7.3.0.zip",
           "size": 194546,
-          "sha256": "25e4f5af918ee1db913eb66f867f601578267ca5ebd8d4ebe7f6a43e193992e0"
+          "sha256": "35b2d7a3a45a2223da48c30a66f187ade82f63439457c8680a1732ad5dbbfc73"
         },
         "hex": {
-          "name": "t1000_e_bootloader-v0.11.0-OTAFIX2.4.11_s140_7.3.0.hex",
-          "url": "https://github.com/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/releases/download/v0.11.0-OTAFIX2.4.11/t1000_e_bootloader-v0.11.0-OTAFIX2.4.11_s140_7.3.0.hex",
-          "size": 534936,
-          "sha256": "9d75645dcf05a3f026ae2e798294dfbdb256288853fa18a8fc3d81a36df2079f"
+          "name": "t1000_e_bootloader-v0.11.0-OTAFIX2.4.12_s140_7.3.0.hex",
+          "url": "https://github.com/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/releases/download/v0.11.0-OTAFIX2.4.12/t1000_e_bootloader-v0.11.0-OTAFIX2.4.12_s140_7.3.0.hex",
+          "size": 533704,
+          "sha256": "7cdbd271ac4c0001da0e6fb345f8c4f75e96b5b85abefad077623afa2848430d"
         }
       }
     },
@@ -426,22 +426,22 @@
       "storage": "qspi",
       "files": {
         "uf2": {
-          "name": "update-thinknode_m1_bootloader-v0.11.0-OTAFIX2.4.11_mbr.uf2",
-          "url": "https://github.com/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/releases/download/v0.11.0-OTAFIX2.4.11/update-thinknode_m1_bootloader-v0.11.0-OTAFIX2.4.11_mbr.uf2",
-          "size": 86016,
-          "sha256": "e9285e60f5789380f5aa7c61773e3d4d5dc61054688ec4e83830d3ea118f89d3"
+          "name": "update-thinknode_m1_bootloader-v0.11.0-OTAFIX2.4.12_mbr.uf2",
+          "url": "https://github.com/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/releases/download/v0.11.0-OTAFIX2.4.12/update-thinknode_m1_bootloader-v0.11.0-OTAFIX2.4.12_mbr.uf2",
+          "size": 85504,
+          "sha256": "5f82e0b1f9b8dc4fd512213f8c6276210f4faab2f2e1c8572bdd525e059962aa"
         },
         "zip": {
-          "name": "thinknode_m1_bootloader-v0.11.0-OTAFIX2.4.11_s140_6.1.1.zip",
-          "url": "https://github.com/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/releases/download/v0.11.0-OTAFIX2.4.11/thinknode_m1_bootloader-v0.11.0-OTAFIX2.4.11_s140_6.1.1.zip",
-          "size": 192833,
-          "sha256": "3cac3e8f3b73a4e46e99fd11502954dd82e416274f413019d79265d8bca4e4b0"
+          "name": "thinknode_m1_bootloader-v0.11.0-OTAFIX2.4.12_s140_6.1.1.zip",
+          "url": "https://github.com/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/releases/download/v0.11.0-OTAFIX2.4.12/thinknode_m1_bootloader-v0.11.0-OTAFIX2.4.12_s140_6.1.1.zip",
+          "size": 192834,
+          "sha256": "39758d00c22b010f64fb7c757ac0a600cce5fb2cfb7024879eda5e6ca2a5ed7d"
         },
         "hex": {
-          "name": "thinknode_m1_bootloader-v0.11.0-OTAFIX2.4.11_s140_6.1.1.hex",
-          "url": "https://github.com/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/releases/download/v0.11.0-OTAFIX2.4.11/thinknode_m1_bootloader-v0.11.0-OTAFIX2.4.11_s140_6.1.1.hex",
-          "size": 532658,
-          "sha256": "2c42f4334ac94e05cce770fe9570b9442f5d37c54fb3c42d3e9f3caf2d5f36d1"
+          "name": "thinknode_m1_bootloader-v0.11.0-OTAFIX2.4.12_s140_6.1.1.hex",
+          "url": "https://github.com/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/releases/download/v0.11.0-OTAFIX2.4.12/thinknode_m1_bootloader-v0.11.0-OTAFIX2.4.12_s140_6.1.1.hex",
+          "size": 531426,
+          "sha256": "1580b819ccb8a918686e264d5d434694a53fb2e195bb03feea4dafeeac9b6396"
         }
       }
     },
@@ -455,22 +455,22 @@
       "storage": "internal",
       "files": {
         "uf2": {
-          "name": "update-thinknode_m3_bootloader-v0.11.0-OTAFIX2.4.11_mbr.uf2",
-          "url": "https://github.com/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/releases/download/v0.11.0-OTAFIX2.4.11/update-thinknode_m3_bootloader-v0.11.0-OTAFIX2.4.11_mbr.uf2",
-          "size": 84480,
-          "sha256": "babdc56164774911c53c4c0384ff12a110b07a5afc4998ee2ada021808a15a28"
+          "name": "update-thinknode_m3_bootloader-v0.11.0-OTAFIX2.4.12_mbr.uf2",
+          "url": "https://github.com/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/releases/download/v0.11.0-OTAFIX2.4.12/update-thinknode_m3_bootloader-v0.11.0-OTAFIX2.4.12_mbr.uf2",
+          "size": 83456,
+          "sha256": "ab4d4e7da60da78383950ecdd8932635468937eb90354040b0ed1fd8430c0f49"
         },
         "zip": {
-          "name": "thinknode_m3_bootloader-v0.11.0-OTAFIX2.4.11_s140_6.1.1.zip",
-          "url": "https://github.com/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/releases/download/v0.11.0-OTAFIX2.4.11/thinknode_m3_bootloader-v0.11.0-OTAFIX2.4.11_s140_6.1.1.zip",
+          "name": "thinknode_m3_bootloader-v0.11.0-OTAFIX2.4.12_s140_6.1.1.zip",
+          "url": "https://github.com/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/releases/download/v0.11.0-OTAFIX2.4.12/thinknode_m3_bootloader-v0.11.0-OTAFIX2.4.12_s140_6.1.1.zip",
           "size": 192834,
-          "sha256": "d5997d7c3cd0917b5fc0302a50eb0543897b5009371e5400c728901002d8ef04"
+          "sha256": "26b86db8840e1de3f309a20ccc7e18fedd820dc645c5c85669bd9e0d1c029cb6"
         },
         "hex": {
-          "name": "thinknode_m3_bootloader-v0.11.0-OTAFIX2.4.11_s140_6.1.1.hex",
-          "url": "https://github.com/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/releases/download/v0.11.0-OTAFIX2.4.11/thinknode_m3_bootloader-v0.11.0-OTAFIX2.4.11_s140_6.1.1.hex",
-          "size": 530140,
-          "sha256": "25fe01c8b9e2b73d9b8723e538dbeda48e136142884bb1769a527b4c183359db"
+          "name": "thinknode_m3_bootloader-v0.11.0-OTAFIX2.4.12_s140_6.1.1.hex",
+          "url": "https://github.com/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/releases/download/v0.11.0-OTAFIX2.4.12/thinknode_m3_bootloader-v0.11.0-OTAFIX2.4.12_s140_6.1.1.hex",
+          "size": 528688,
+          "sha256": "07494cbb9c596b9dd1303d02600bdf31b50586e1a0f191401e9220dc81990752"
         }
       }
     },
@@ -484,22 +484,22 @@
       "storage": "qspi",
       "files": {
         "uf2": {
-          "name": "update-thinknode_m6_bootloader-v0.11.0-OTAFIX2.4.11_mbr.uf2",
-          "url": "https://github.com/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/releases/download/v0.11.0-OTAFIX2.4.11/update-thinknode_m6_bootloader-v0.11.0-OTAFIX2.4.11_mbr.uf2",
-          "size": 86016,
-          "sha256": "c177e30bebd37a5a495780ebe472eaa49e50294f96cfb836568bce03dfc69d32"
+          "name": "update-thinknode_m6_bootloader-v0.11.0-OTAFIX2.4.12_mbr.uf2",
+          "url": "https://github.com/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/releases/download/v0.11.0-OTAFIX2.4.12/update-thinknode_m6_bootloader-v0.11.0-OTAFIX2.4.12_mbr.uf2",
+          "size": 85504,
+          "sha256": "de82c05cbd77100b23ae5d9c917eea46eaf4cd4115ede9557046377dc580172b"
         },
         "zip": {
-          "name": "thinknode_m6_bootloader-v0.11.0-OTAFIX2.4.11_s140_6.1.1.zip",
-          "url": "https://github.com/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/releases/download/v0.11.0-OTAFIX2.4.11/thinknode_m6_bootloader-v0.11.0-OTAFIX2.4.11_s140_6.1.1.zip",
+          "name": "thinknode_m6_bootloader-v0.11.0-OTAFIX2.4.12_s140_6.1.1.zip",
+          "url": "https://github.com/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/releases/download/v0.11.0-OTAFIX2.4.12/thinknode_m6_bootloader-v0.11.0-OTAFIX2.4.12_s140_6.1.1.zip",
           "size": 192834,
-          "sha256": "4615d333486d6638fe7b10f0ed82b2bb4ba25424bf11b1662a35f117d6f4060a"
+          "sha256": "950475dcbf3e4985b6754737527261489d83614246f1a6ecd91f2148b135a4dc"
         },
         "hex": {
-          "name": "thinknode_m6_bootloader-v0.11.0-OTAFIX2.4.11_s140_6.1.1.hex",
-          "url": "https://github.com/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/releases/download/v0.11.0-OTAFIX2.4.11/thinknode_m6_bootloader-v0.11.0-OTAFIX2.4.11_s140_6.1.1.hex",
-          "size": 532746,
-          "sha256": "5a6c937a222d2434a59b63eb7369a392f018404dbfc71913a27c48c64042fbec"
+          "name": "thinknode_m6_bootloader-v0.11.0-OTAFIX2.4.12_s140_6.1.1.hex",
+          "url": "https://github.com/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/releases/download/v0.11.0-OTAFIX2.4.12/thinknode_m6_bootloader-v0.11.0-OTAFIX2.4.12_s140_6.1.1.hex",
+          "size": 531470,
+          "sha256": "3a070a5f817cc369e75eb354120aba5ad5f409a8b1a03b1f42bed277b9e3815b"
         }
       }
     },
@@ -515,22 +515,22 @@
       "storage": "qspi",
       "files": {
         "uf2": {
-          "name": "update-wio_tracker_l1_bootloader-v0.11.0-OTAFIX2.4.11_mbr.uf2",
-          "url": "https://github.com/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/releases/download/v0.11.0-OTAFIX2.4.11/update-wio_tracker_l1_bootloader-v0.11.0-OTAFIX2.4.11_mbr.uf2",
-          "size": 86016,
-          "sha256": "94270e321b602086b9b00a3a80d5f9cec07d16bd095efc252f2d6ddf4086adb9"
+          "name": "update-wio_tracker_l1_bootloader-v0.11.0-OTAFIX2.4.12_mbr.uf2",
+          "url": "https://github.com/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/releases/download/v0.11.0-OTAFIX2.4.12/update-wio_tracker_l1_bootloader-v0.11.0-OTAFIX2.4.12_mbr.uf2",
+          "size": 84992,
+          "sha256": "2c8aac42365f6ae1d0a137531fd7ef8f28f872ff046be3c2fced015b26ab7945"
         },
         "zip": {
-          "name": "wio_tracker_l1_bootloader-v0.11.0-OTAFIX2.4.11_s140_7.3.0.zip",
-          "url": "https://github.com/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/releases/download/v0.11.0-OTAFIX2.4.11/wio_tracker_l1_bootloader-v0.11.0-OTAFIX2.4.11_s140_7.3.0.zip",
-          "size": 194545,
-          "sha256": "1d6436b2c4c434f5f5a0cb8646c97a3087afaf43cc79403da78ed85b36ea0313"
+          "name": "wio_tracker_l1_bootloader-v0.11.0-OTAFIX2.4.12_s140_7.3.0.zip",
+          "url": "https://github.com/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/releases/download/v0.11.0-OTAFIX2.4.12/wio_tracker_l1_bootloader-v0.11.0-OTAFIX2.4.12_s140_7.3.0.zip",
+          "size": 194546,
+          "sha256": "aceae36b3b4c8fa2fa72be9a0d68d63bed53398a17ace6736e932b99b6d85b58"
         },
         "hex": {
-          "name": "wio_tracker_l1_bootloader-v0.11.0-OTAFIX2.4.11_s140_7.3.0.hex",
-          "url": "https://github.com/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/releases/download/v0.11.0-OTAFIX2.4.11/wio_tracker_l1_bootloader-v0.11.0-OTAFIX2.4.11_s140_7.3.0.hex",
-          "size": 537290,
-          "sha256": "4513b435762d69db75fc233a099d21a02efe6481d75f38dd37a64aa5da5116a6"
+          "name": "wio_tracker_l1_bootloader-v0.11.0-OTAFIX2.4.12_s140_7.3.0.hex",
+          "url": "https://github.com/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/releases/download/v0.11.0-OTAFIX2.4.12/wio_tracker_l1_bootloader-v0.11.0-OTAFIX2.4.12_s140_7.3.0.hex",
+          "size": 536014,
+          "sha256": "c46e132f4022c0bce1786867057ae61bc79db78f1fea629eb8478ee439c67f8f"
         }
       }
     },
@@ -544,22 +544,22 @@
       "storage": "adaptive",
       "files": {
         "uf2": {
-          "name": "update-wiscore_rak3401_auto_bootloader-v0.11.0-OTAFIX2.4.11_mbr.uf2",
-          "url": "https://github.com/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/releases/download/v0.11.0-OTAFIX2.4.11/update-wiscore_rak3401_auto_bootloader-v0.11.0-OTAFIX2.4.11_mbr.uf2",
-          "size": 88064,
-          "sha256": "e26087a540b235b5968d7e5fee7e9c8f6dcff8480ad7ea922792e88307335b67"
+          "name": "update-wiscore_rak3401_auto_bootloader-v0.11.0-OTAFIX2.4.12_mbr.uf2",
+          "url": "https://github.com/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/releases/download/v0.11.0-OTAFIX2.4.12/update-wiscore_rak3401_auto_bootloader-v0.11.0-OTAFIX2.4.12_mbr.uf2",
+          "size": 87040,
+          "sha256": "18bb4839df8bffa87003b80b9c256b7103ac5aff4e7fa391e5ae48de1b05ee94"
         },
         "zip": {
-          "name": "wiscore_rak3401_auto_bootloader-v0.11.0-OTAFIX2.4.11_s140_6.1.1.zip",
-          "url": "https://github.com/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/releases/download/v0.11.0-OTAFIX2.4.11/wiscore_rak3401_auto_bootloader-v0.11.0-OTAFIX2.4.11_s140_6.1.1.zip",
+          "name": "wiscore_rak3401_auto_bootloader-v0.11.0-OTAFIX2.4.12_s140_6.1.1.zip",
+          "url": "https://github.com/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/releases/download/v0.11.0-OTAFIX2.4.12/wiscore_rak3401_auto_bootloader-v0.11.0-OTAFIX2.4.12_s140_6.1.1.zip",
           "size": 192834,
-          "sha256": "4971a54970011c2df80ece58d917817de0d157e3fcb1a8490d1fa1f65e279db7"
+          "sha256": "5b2d27a7ffb3efcdd2b3e7435f7d79f5c5088817d024de3d952d7ea3a27002c9"
         },
         "hex": {
-          "name": "wiscore_rak3401_auto_bootloader-v0.11.0-OTAFIX2.4.11_s140_6.1.1.hex",
-          "url": "https://github.com/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/releases/download/v0.11.0-OTAFIX2.4.11/wiscore_rak3401_auto_bootloader-v0.11.0-OTAFIX2.4.11_s140_6.1.1.hex",
-          "size": 535384,
-          "sha256": "2d8a773b4f94a9e2e6fc13923101ca6e66384330489014cb5e4c3968dc941a21"
+          "name": "wiscore_rak3401_auto_bootloader-v0.11.0-OTAFIX2.4.12_s140_6.1.1.hex",
+          "url": "https://github.com/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/releases/download/v0.11.0-OTAFIX2.4.12/wiscore_rak3401_auto_bootloader-v0.11.0-OTAFIX2.4.12_s140_6.1.1.hex",
+          "size": 533976,
+          "sha256": "46eb2e9b0b5cdd61c2384953df937934cf41b35d4915e14fb657725a5ed4aa5c"
         }
       }
     },
@@ -574,22 +574,22 @@
       "storage": "adaptive",
       "files": {
         "uf2": {
-          "name": "update-wiscore_rak4631_auto_bootloader-v0.11.0-OTAFIX2.4.11_mbr.uf2",
-          "url": "https://github.com/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/releases/download/v0.11.0-OTAFIX2.4.11/update-wiscore_rak4631_auto_bootloader-v0.11.0-OTAFIX2.4.11_mbr.uf2",
+          "name": "update-wiscore_rak4631_auto_bootloader-v0.11.0-OTAFIX2.4.12_mbr.uf2",
+          "url": "https://github.com/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/releases/download/v0.11.0-OTAFIX2.4.12/update-wiscore_rak4631_auto_bootloader-v0.11.0-OTAFIX2.4.12_mbr.uf2",
           "size": 88064,
-          "sha256": "40bb22fcfb90aae335a8bb6bb6e876f3407d87407ead8ee3908bb0ba0b2541a7"
+          "sha256": "a267c699219a74de9fcb55093c7f7979e7fad515ddc07ec386705d7f80313883"
         },
         "zip": {
-          "name": "wiscore_rak4631_auto_bootloader-v0.11.0-OTAFIX2.4.11_s140_6.1.1.zip",
-          "url": "https://github.com/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/releases/download/v0.11.0-OTAFIX2.4.11/wiscore_rak4631_auto_bootloader-v0.11.0-OTAFIX2.4.11_s140_6.1.1.zip",
-          "size": 192833,
-          "sha256": "d3c12363a620083f18e828e724e0af67a2b141b21dc4768d0707cfaadc32b98d"
+          "name": "wiscore_rak4631_auto_bootloader-v0.11.0-OTAFIX2.4.12_s140_6.1.1.zip",
+          "url": "https://github.com/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/releases/download/v0.11.0-OTAFIX2.4.12/wiscore_rak4631_auto_bootloader-v0.11.0-OTAFIX2.4.12_s140_6.1.1.zip",
+          "size": 192834,
+          "sha256": "0a7d556cbe68f9698c20ce3e892d1f39a6fc08f1cfb178df7128b340f9f8dc35"
         },
         "hex": {
-          "name": "wiscore_rak4631_auto_bootloader-v0.11.0-OTAFIX2.4.11_s140_6.1.1.hex",
-          "url": "https://github.com/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/releases/download/v0.11.0-OTAFIX2.4.11/wiscore_rak4631_auto_bootloader-v0.11.0-OTAFIX2.4.11_s140_6.1.1.hex",
-          "size": 535780,
-          "sha256": "963cb6e47179551ce975b54502fb8dbe62a9601ba7432cbf8b23cf4c86f2a6ef"
+          "name": "wiscore_rak4631_auto_bootloader-v0.11.0-OTAFIX2.4.12_s140_6.1.1.hex",
+          "url": "https://github.com/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/releases/download/v0.11.0-OTAFIX2.4.12/wiscore_rak4631_auto_bootloader-v0.11.0-OTAFIX2.4.12_s140_6.1.1.hex",
+          "size": 535644,
+          "sha256": "48bc983c66ff5f0fd764f3e5f64576a8ddfb3b260ba0d562f3c8f4072ba99c1d"
         }
       }
     },
@@ -603,22 +603,22 @@
       "storage": "internal",
       "files": {
         "uf2": {
-          "name": "update-wismesh_tag_bootloader-v0.11.0-OTAFIX2.4.11_mbr.uf2",
-          "url": "https://github.com/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/releases/download/v0.11.0-OTAFIX2.4.11/update-wismesh_tag_bootloader-v0.11.0-OTAFIX2.4.11_mbr.uf2",
-          "size": 84992,
-          "sha256": "0d45f1d73fdcea41bf647347096b33919ae69ce957a06d6ff0e48be8767f1081"
+          "name": "update-wismesh_tag_bootloader-v0.11.0-OTAFIX2.4.12_mbr.uf2",
+          "url": "https://github.com/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/releases/download/v0.11.0-OTAFIX2.4.12/update-wismesh_tag_bootloader-v0.11.0-OTAFIX2.4.12_mbr.uf2",
+          "size": 83968,
+          "sha256": "eae9e3887877d0e45c60bf56ce06911592484dfdd2826b034651e1b42d118ac1"
         },
         "zip": {
-          "name": "wismesh_tag_bootloader-v0.11.0-OTAFIX2.4.11_s140_6.1.1.zip",
-          "url": "https://github.com/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/releases/download/v0.11.0-OTAFIX2.4.11/wismesh_tag_bootloader-v0.11.0-OTAFIX2.4.11_s140_6.1.1.zip",
+          "name": "wismesh_tag_bootloader-v0.11.0-OTAFIX2.4.12_s140_6.1.1.zip",
+          "url": "https://github.com/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/releases/download/v0.11.0-OTAFIX2.4.12/wismesh_tag_bootloader-v0.11.0-OTAFIX2.4.12_s140_6.1.1.zip",
           "size": 192834,
-          "sha256": "716520cce6e46b7b2d84272a8a5a29d1c38344dfef7455d974969b700527fda3"
+          "sha256": "48e07eaac9926f0d9d569f484d35f07eca857dd76d2b688da2fe7e2bb69ed71d"
         },
         "hex": {
-          "name": "wismesh_tag_bootloader-v0.11.0-OTAFIX2.4.11_s140_6.1.1.hex",
-          "url": "https://github.com/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/releases/download/v0.11.0-OTAFIX2.4.11/wismesh_tag_bootloader-v0.11.0-OTAFIX2.4.11_s140_6.1.1.hex",
-          "size": 530862,
-          "sha256": "d7503e65e4f37d028c58650bd31236ca493cff5dae1700e00baa8bbe2dbdca2a"
+          "name": "wismesh_tag_bootloader-v0.11.0-OTAFIX2.4.12_s140_6.1.1.hex",
+          "url": "https://github.com/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/releases/download/v0.11.0-OTAFIX2.4.12/wismesh_tag_bootloader-v0.11.0-OTAFIX2.4.12_s140_6.1.1.hex",
+          "size": 529542,
+          "sha256": "b42c3ba9c9f759bb3a88b5fa4bccb0752d9f54e19d4c473183a844a1ce5c96d5"
         }
       }
     },
@@ -642,22 +642,22 @@
       "storage": "qspi",
       "files": {
         "uf2": {
-          "name": "update-xiao_nrf52840_ble_bootloader-v0.11.0-OTAFIX2.4.11_mbr.uf2",
-          "url": "https://github.com/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/releases/download/v0.11.0-OTAFIX2.4.11/update-xiao_nrf52840_ble_bootloader-v0.11.0-OTAFIX2.4.11_mbr.uf2",
-          "size": 86016,
-          "sha256": "1c6f18a21e0a6992f0ec2cb8f48e79ada5ccd7111b5b53f73b679c4dad10a9f5"
+          "name": "update-xiao_nrf52840_ble_bootloader-v0.11.0-OTAFIX2.4.12_mbr.uf2",
+          "url": "https://github.com/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/releases/download/v0.11.0-OTAFIX2.4.12/update-xiao_nrf52840_ble_bootloader-v0.11.0-OTAFIX2.4.12_mbr.uf2",
+          "size": 84992,
+          "sha256": "1755dd8ab6c38f571807131e1d2e27a087dbbab9341145a742b1db651eec9c08"
         },
         "zip": {
-          "name": "xiao_nrf52840_ble_bootloader-v0.11.0-OTAFIX2.4.11_s140_7.3.0.zip",
-          "url": "https://github.com/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/releases/download/v0.11.0-OTAFIX2.4.11/xiao_nrf52840_ble_bootloader-v0.11.0-OTAFIX2.4.11_s140_7.3.0.zip",
+          "name": "xiao_nrf52840_ble_bootloader-v0.11.0-OTAFIX2.4.12_s140_7.3.0.zip",
+          "url": "https://github.com/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/releases/download/v0.11.0-OTAFIX2.4.12/xiao_nrf52840_ble_bootloader-v0.11.0-OTAFIX2.4.12_s140_7.3.0.zip",
           "size": 194546,
-          "sha256": "f0bb4832a96a625d18edb272fdc6ae2bc82ca291731f3edcd178c1c22bbe322d"
+          "sha256": "2f943dbac7dd22a7c63712eb138cc8f9078a20f6975079793124f10f1c246d87"
         },
         "hex": {
-          "name": "xiao_nrf52840_ble_bootloader-v0.11.0-OTAFIX2.4.11_s140_7.3.0.hex",
-          "url": "https://github.com/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/releases/download/v0.11.0-OTAFIX2.4.11/xiao_nrf52840_ble_bootloader-v0.11.0-OTAFIX2.4.11_s140_7.3.0.hex",
-          "size": 537328,
-          "sha256": "dbef733404fe15e06e0d6ffa006f34094a53a19fc62314cc28764afe3deb5154"
+          "name": "xiao_nrf52840_ble_bootloader-v0.11.0-OTAFIX2.4.12_s140_7.3.0.hex",
+          "url": "https://github.com/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/releases/download/v0.11.0-OTAFIX2.4.12/xiao_nrf52840_ble_bootloader-v0.11.0-OTAFIX2.4.12_s140_7.3.0.hex",
+          "size": 536052,
+          "sha256": "43d6aa9322105559908551516c5a9f29ccf6f86f7c2391e0e8dfb23b4a32d280"
         }
       }
     },
@@ -671,22 +671,22 @@
       "storage": "qspi",
       "files": {
         "uf2": {
-          "name": "update-xiao_nrf52840_ble_sense_bootloader-v0.11.0-OTAFIX2.4.11_mbr.uf2",
-          "url": "https://github.com/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/releases/download/v0.11.0-OTAFIX2.4.11/update-xiao_nrf52840_ble_sense_bootloader-v0.11.0-OTAFIX2.4.11_mbr.uf2",
-          "size": 86016,
-          "sha256": "3a412b6eb12199b68cc3651082f0fb9f16ea1398c75537138d96068776e7084a"
+          "name": "update-xiao_nrf52840_ble_sense_bootloader-v0.11.0-OTAFIX2.4.12_mbr.uf2",
+          "url": "https://github.com/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/releases/download/v0.11.0-OTAFIX2.4.12/update-xiao_nrf52840_ble_sense_bootloader-v0.11.0-OTAFIX2.4.12_mbr.uf2",
+          "size": 85504,
+          "sha256": "9c4f7135bcfdf9af1c40679bbee5fed4ee53dd9d569844bc48b7db1e3eb38c09"
         },
         "zip": {
-          "name": "xiao_nrf52840_ble_sense_bootloader-v0.11.0-OTAFIX2.4.11_s140_7.3.0.zip",
-          "url": "https://github.com/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/releases/download/v0.11.0-OTAFIX2.4.11/xiao_nrf52840_ble_sense_bootloader-v0.11.0-OTAFIX2.4.11_s140_7.3.0.zip",
+          "name": "xiao_nrf52840_ble_sense_bootloader-v0.11.0-OTAFIX2.4.12_s140_7.3.0.zip",
+          "url": "https://github.com/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/releases/download/v0.11.0-OTAFIX2.4.12/xiao_nrf52840_ble_sense_bootloader-v0.11.0-OTAFIX2.4.12_s140_7.3.0.zip",
           "size": 194546,
-          "sha256": "954a5ee6b0d008e6918d91f0de5af7c80cf170c42ea9f8dc0957e9698a90f5c5"
+          "sha256": "3be6849bb5e66dc39ffc55c8c5206f2bada5c1b27e8b1e357337272eaa7ee29e"
         },
         "hex": {
-          "name": "xiao_nrf52840_ble_sense_bootloader-v0.11.0-OTAFIX2.4.11_s140_7.3.0.hex",
-          "url": "https://github.com/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/releases/download/v0.11.0-OTAFIX2.4.11/xiao_nrf52840_ble_sense_bootloader-v0.11.0-OTAFIX2.4.11_s140_7.3.0.hex",
-          "size": 537362,
-          "sha256": "07ccd6e07d9eebb6ce077302a393df2edb59c3106b93202a627f755c3980d53d"
+          "name": "xiao_nrf52840_ble_sense_bootloader-v0.11.0-OTAFIX2.4.12_s140_7.3.0.hex",
+          "url": "https://github.com/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/releases/download/v0.11.0-OTAFIX2.4.12/xiao_nrf52840_ble_sense_bootloader-v0.11.0-OTAFIX2.4.12_s140_7.3.0.hex",
+          "size": 536086,
+          "sha256": "0ce9559cebbe1e0164169948f5bdd5e976316060cb72d8cb23a13de38de839b8"
         }
       }
     }
@@ -698,7 +698,22 @@
       "meshcoreHardware": [
         "Heltec_tower_v2"
       ],
-      "reason": "Retired from normal releases in favor of the combined SD/internal profile. Existing internal-only bootloaders require a one-time local installation of the normal combined image via USB/BLE DFU or SWD; do not use a cross-profile LoRa update."
+      "reason": "Retired from normal releases in favor of the combined SD/internal profile. Existing internal-only bootloaders require a one-time local installation of the normal combined image via USB/BLE DFU or SWD; do not use a cross-profile LoRa update.",
+      "qualification": {
+        "status": "retired",
+        "sourceBoard": "heltec_mesh_tower_v2",
+        "storage": "internal",
+        "factoryIdentity": "verified",
+        "hardwareQualified": false,
+        "replacementProfile": "heltec_mesh_tower_v2_sdcard",
+        "localMigrationOnly": true,
+        "blockers": [
+          "Installed internal-only identity requires local migration, not cross-profile LoRa self-update."
+        ],
+        "evidence": [
+          "https://github.com/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/releases/tag/v0.11.0-OTAFIX2.4.11"
+        ]
+      }
     },
     {
       "id": "gat562_mesh_watch13",
@@ -706,7 +721,20 @@
       "meshcoreHardware": [
         "GAT562_Mesh_Watch13"
       ],
-      "reason": "The watch routes a GAT562 bootloader LED output to its vibration motor and has onboard flash. It needs a watch-specific profile."
+      "reason": "A watch-specific QSPI source port avoids driving the vibration motor as an LED. It awaits physical power, DFU and update qualification; no verified download is available.",
+      "qualification": {
+        "status": "source-pending",
+        "sourceBoard": "gat562_mesh_watch13",
+        "storage": "qspi",
+        "factoryIdentity": "verified",
+        "hardwareQualified": false,
+        "blockers": [
+          "Physical button, motor-off, flash and power-loss update qualification."
+        ],
+        "evidence": [
+          "https://github.com/gat-iot/GAT562-family/blob/main/GAT562%20Mesh%20Watch13%20V1.0%20SCH.pdf"
+        ]
+      }
     },
     {
       "id": "heltec_mesh_solar",
@@ -714,7 +742,24 @@
       "meshcoreHardware": [
         "Heltec_mesh_solar"
       ],
-      "reason": "Mesh Solar has different LED and peripheral pins from the supported Heltec boards. It needs its own profile."
+      "reason": "A guarded internal-staging Solar source port avoids conflicting LED/QSPI/rail definitions, preserves the real factory identity and services the author-confirmed watchdog. Carrier-revision power/reset and long DFU/update watchdog behavior still require hardware qualification. No verified download is available.",
+      "qualification": {
+        "status": "source-pending",
+        "sourceBoard": "heltec_mesh_solar",
+        "storage": "internal",
+        "factoryIdentity": "verified",
+        "hardwareQualified": false,
+        "blockers": [
+          "Carrier revision, factory entry, power/reset and long DFU/apply watchdog waveform qualification.",
+          "Matching internal-staging S140 6.1.1 exact-base delta and signed self-update failure/power-loss qualification.",
+          "External staging remains unsupported: actual flash/rail routing conflicts with BSP BMS/indicator definitions."
+        ],
+        "evidence": [
+          "https://resource.heltec.cn/download/MeshSolar/Pin_map/MeshSolar_pinmap.jpg",
+          "https://github.com/meshtastic/firmware/pull/9337",
+          "https://github.com/HelTecAutomation/Heltec_nRF52/pull/8"
+        ]
+      }
     },
     {
       "id": "lilygo_t_impulse_plus",
@@ -722,7 +767,20 @@
       "meshcoreHardware": [
         "LilyGo_T_Impulse_Plus"
       ],
-      "reason": "T-Impulse Plus has different flash data pins and LED wiring from T-Echo Lite. It needs its own profile."
+      "reason": "A dedicated QSPI source port preserves T-Impulse Plus flash wiring, rail and controls. Physical flash, power, DFU and update qualification is still required; no verified download is available.",
+      "qualification": {
+        "status": "source-pending",
+        "sourceBoard": "lilygo_t_impulse_plus",
+        "storage": "qspi",
+        "factoryIdentity": "verified",
+        "hardwareQualified": false,
+        "blockers": [
+          "Physical flash-rail, button, USB/BLE and power-loss update qualification."
+        ],
+        "evidence": [
+          "https://github.com/Xinyuan-LilyGO/T-Impulse-Plus"
+        ]
+      }
     },
     {
       "id": "lilygo_techo_card",
@@ -730,7 +788,20 @@
       "meshcoreHardware": [
         "LilyGo_T-Echo_Card"
       ],
-      "reason": "T-Echo Card has its own NFC configuration, buttons and LED hardware. It needs a Card-specific profile."
+      "reason": "A Card-specific QSPI source port preserves its NFC configuration, flash rail and controls. Physical flash, USB/BLE and update qualification is still required; no verified download is available.",
+      "qualification": {
+        "status": "source-pending",
+        "sourceBoard": "lilygo_techo_card",
+        "storage": "qspi",
+        "factoryIdentity": "verified",
+        "hardwareQualified": false,
+        "blockers": [
+          "Physical NFC, flash-rail, button, USB/BLE and power-loss update qualification."
+        ],
+        "evidence": [
+          "https://github.com/Xinyuan-LilyGO/T-Echo-Card"
+        ]
+      }
     },
     {
       "id": "meshtiny",
@@ -738,7 +809,22 @@
       "meshcoreHardware": [
         "Meshtiny"
       ],
-      "reason": "Meshtiny has its own factory bootloader identity and controls. A dedicated Meshtiny profile has not been qualified."
+      "reason": "A dedicated Meshtiny QSPI source port preserves factory identity and real side/top controls. Physical flash, power, DFU and update qualification remains pending; no verified download is available.",
+      "qualification": {
+        "status": "source-pending",
+        "sourceBoard": "meshtiny",
+        "storage": "qspi",
+        "factoryIdentity": "verified",
+        "hardwareQualified": false,
+        "blockers": [
+          "Physical side/top-button entry, flash and power-loss update qualification.",
+          "Matching application must use external raw staging; application flash macros cannot be inferred from the bootloader."
+        ],
+        "evidence": [
+          "https://shop.mtoolstec.com/bootloader-update-on-meshtiny.html",
+          "https://dl.mtoolstec.com/meshtiny/bootloader.uf2"
+        ]
+      }
     },
     {
       "id": "meshtracker_x1",
@@ -746,7 +832,25 @@
       "meshcoreHardware": [
         "MeshTracker_X1"
       ],
-      "reason": "MeshTracker X1 has different flash wiring, power control and button polarity from Wio Tracker L1. It needs its own profile."
+      "reason": "A dedicated internal-staging S140-v7 qualification source port preserves factory USB identity and the active-high button without driving unverified flash or peripheral rails. Cold USB/reset/power behavior and matching internal-staging application updates still need hardware testing. No verified download is available.",
+      "qualification": {
+        "status": "source-pending",
+        "sourceBoard": "meshtracker_x1",
+        "storage": "internal",
+        "factoryIdentity": "verified",
+        "hardwareQualified": false,
+        "blockers": [
+          "Cold USB, button-plus-USB, BLE, timeout and power-controller behavior during lengthy updates.",
+          "Matching internal-staging S140 7.3.0 application, exact-base delta and signed exact-profile self-update qualification.",
+          "External full-image staging remains unsupported until flash-rail/reset behavior is corroborated."
+        ],
+        "evidence": [
+          "https://wiki.seeedstudio.com/sensecap_meshtracker_x1_meshcore/",
+          "https://files.seeedstudio.com/wiki/SenseCAP/Meshcore/MeshTrackerX1/Bootloader.zip",
+          "https://github.com/meshcore-dev/MeshCore/pull/3112",
+          "https://github.com/meshcore-dev/MeshCore/pull/3139"
+        ]
+      }
     },
     {
       "id": "muzi_base",
@@ -757,7 +861,20 @@
         "muzi_base_uno",
         "muzi_base_uno_superIO"
       ],
-      "reason": "These four variants share Muzi Base hardware, which needs its own bootloader identity, LED polarity and flash configuration."
+      "reason": "A Muzi Base QSPI source port covers the four carrier variants with the real factory identity, LED polarity and flash pins. Physical DFU, flash and update qualification remains pending; no verified download is available.",
+      "qualification": {
+        "status": "source-pending",
+        "sourceBoard": "muzi_base",
+        "storage": "qspi",
+        "factoryIdentity": "verified",
+        "hardwareQualified": false,
+        "blockers": [
+          "Physical carrier-variant, flash, USB/BLE and power-loss update qualification."
+        ],
+        "evidence": [
+          "https://github.com/muzi-works/Adafruit_nRF52_Bootloader/tree/master/src/boards/muzi_base"
+        ]
+      }
     },
     {
       "id": "nano_g2_ultra",
@@ -765,7 +882,21 @@
       "meshcoreHardware": [
         "Nano_G2_Ultra"
       ],
-      "reason": "Nano G2 Ultra has its own flash and button wiring. It needs a dedicated profile."
+      "reason": "A dedicated Nano G2 Ultra QSPI source port preserves designer-confirmed flash/buttons and factory USB identity. Physical single-button DFU, flash and update qualification is pending; no verified download is available.",
+      "qualification": {
+        "status": "source-pending",
+        "sourceBoard": "nano_g2_ultra",
+        "storage": "qspi",
+        "factoryIdentity": "verified",
+        "hardwareQualified": false,
+        "blockers": [
+          "Physical single-button USB/BLE entry, flash and power-loss update qualification."
+        ],
+        "evidence": [
+          "https://wiki.bqvoy.com/meshtastic/nano_g2_ultra/nanog2ultra_19_jun_2023.pdf",
+          "https://wiki.bqvoy.com/meshtastic/nano_g2_ultra/nano_g2_nrf52840_bootloader-0.6.4_s140_6.1.1.hex.zip"
+        ]
+      }
     },
     {
       "id": "thinknode_m4",
@@ -773,7 +904,24 @@
       "meshcoreHardware": [
         "ThinkNode_M4"
       ],
-      "reason": "ThinkNode M4 has different LED, button and power-control pins from the supported ThinkNodes. It needs its own profile."
+      "reason": "M4 has a bespoke PCB and manufacturer-specified 2 MB external flash, but verified flash routing, factory bootloader identity and safe power/reset behavior are missing. An M3 profile or guessed internal-only definition is unsafe.",
+      "qualification": {
+        "status": "source-blocked",
+        "sourceBoard": null,
+        "storage": "unknown",
+        "factoryIdentity": "unverified",
+        "hardwareQualified": false,
+        "blockers": [
+          "Factory USB descriptor, INFO_UF2 board identity and bootloader installation route.",
+          "Actual 2 MB external-flash pin routing.",
+          "Safe power/reset/rail behavior."
+        ],
+        "evidence": [
+          "https://github.com/meshcore-dev/MeshCore/pull/3463",
+          "https://github.com/meshtastic/firmware/pull/8754",
+          "https://static-cdn.elecrow.com/wiki/ThinkNode-M4_Power_Bank_LoRa_Device_with_Meshtastic_Function_Powered_By_nRF52840.html"
+        ]
+      }
     },
     {
       "id": "thinknode_m8",
@@ -781,7 +929,23 @@
       "meshcoreHardware": [
         "ThinkNode_M8"
       ],
-      "reason": "A dedicated M8 bootloader is awaiting factory USB identification and hardware testing. No verified download is available."
+      "reason": "A V0.3 QSPI compile-only source port exists, but its factory USB identity and disputed power pin are unresolved. Its zero USB identity is an invalid compiler fixture, not a flashable image. No verified download is available.",
+      "qualification": {
+        "status": "source-pending",
+        "sourceBoard": "thinknode_m8",
+        "storage": "qspi",
+        "factoryIdentity": "unverified",
+        "hardwareQualified": false,
+        "blockers": [
+          "Factory USB descriptor and INFO_UF2 board identity; replace invalid zero identity before any hardware use.",
+          "Resolve P0.13 power-enable versus I2C rail and production hardware revision.",
+          "Physical power/entry, flash and interrupted update qualification."
+        ],
+        "evidence": [
+          "https://github.com/meshcore-dev/MeshCore/pull/3180",
+          "https://github.com/meshtastic/firmware/pull/11226"
+        ]
+      }
     },
     {
       "id": "wio_wm1110",
@@ -789,14 +953,35 @@
       "meshcoreHardware": [
         "wio_wm1110"
       ],
-      "reason": "This firmware targets the Wio WM1110 Dev Kit (SDK carrier), whose LEDs and controls differ from Wio Tracker 1110 and XIAO. Its bootloader identity and installation route still need qualification."
+      "reason": "This target is the Wio WM1110 Dev Kit (SDK carrier), not Tracker 1110 or XIAO. Official installation is J-Link/SWD and its connector is CH340C USB-UART, not proven native-USB UF2. The official blank application starts at address zero, not an identified Adafruit factory bootloader layout. Exact bootloader/SoftDevice identity, UART recovery and NFC configuration still need verification.",
+      "qualification": {
+        "status": "source-blocked",
+        "sourceBoard": null,
+        "storage": "unknown",
+        "factoryIdentity": "unverified",
+        "hardwareQualified": false,
+        "blockers": [
+          "Exact bootloader/SoftDevice identity and layout; confirmed J-Link/SWD installation alone does not establish factory UF2 identity.",
+          "Safe Dev Kit UART transport/entry, recovery protocol and NFC configuration (CH340C UART0 TX P0.08/RX P0.06).",
+          "Native USB reachability is unproven; do not treat CH340C USB-UART as UF2."
+        ],
+        "evidence": [
+          "https://wiki.seeedstudio.com/Get_Started_with_Wio-WM1110_Dev_Kit/",
+          "https://github.com/Seeed-Studio/Seeed_Wio_WM1110_Dev_Board/blob/e34742993932c97731f513ffa3028d284b163d31/pca10056/blank/ses_blinky/wm1110_dev_kit_pca10056.emProject",
+          "https://wiki.seeedstudio.com/Wio-WM1110_Dev_Kit/Introduction/",
+          "https://github.com/meshcore-dev/MeshCore/pull/982"
+        ]
+      }
     }
   ],
-  "profileSourceOverrides": {
-    "heltec_mesh_tower_v2_sdcard": {
-      "source_tag": "0.11.0-OTAFIX2.4.11",
-      "source_commit": "39177b9bbaa894352141734350d6ef2fab18dc4f",
-      "workflow_run": 37072081200
-    }
+  "coverage": {
+    "releasedProfiles": 23,
+    "releasedHardware": 40,
+    "pendingProfiles": 9,
+    "pendingHardware": 12,
+    "blockedProfiles": 2,
+    "blockedHardware": 2,
+    "retiredProfiles": 1,
+    "retiredHardware": 1
   }
 }
