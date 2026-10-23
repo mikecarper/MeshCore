@@ -2361,6 +2361,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#other-board-families" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Other board families
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#fresh-witnessed-rf-test" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2587,6 +2598,72 @@ not every board, firmware role or final-source image. The raw
 application limit both at the baseline and after the changes; that
 pre-existing overflow remains a separate build limitation. No all-builds or
 all-boards release qualification is claimed here.</p>
+<h2 id="other-board-families">Other board families</h2>
+<p>This is a source inventory, not a claim that every connected test node has
+been reflashed or physically qualified with these changes.</p>
+<table>
+<thead>
+<tr>
+<th>Family</th>
+<th>Current code defaults</th>
+<th>Remaining gap</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>ESP32 SX1262, including V3/V4/R8, T-Deck and Station G2/G3</td>
+<td>Buffered SPI and shared fast RX caches across 36 target directories</td>
+<td>Board-specific hardware validation; RC32 retains its 4 MHz explicit bus and 2 MHz fallback, T-Deck retains 8.888888 MHz</td>
+</tr>
+<tr>
+<td>RP2040 SX1262: RAK11310, Pico W, Waveshare LoRa, XIAO RP2040</td>
+<td>Buffered 8 MHz and shared fast RX caches</td>
+<td>Broader physical validation</td>
+</tr>
+<tr>
+<td>Other nRF52 SX1262 targets, including RAK4631/Tag, XIAO nRF52, T114/T096, ikoka and Nano G2</td>
+<td>Shared fast RX caches; prior 2 MHz byte transfers retained in the 32-source constructor inventory</td>
+<td>BLE-compatible buffered SPI and board/role bus ownership</td>
+</tr>
+<tr>
+<td>LR1110: T1000-E, ThinkNode M3, Wio WM1110, Minew ME25LS01; ESP32 ThinkNode M7/M9</td>
+<td>Existing buffered 16 MHz and separate LR1110 fast RX state</td>
+<td>Physical qualification varies; ThinkNode M4 still retains its prior 2 MHz transport</td>
+</tr>
+<tr>
+<td>SX1276: Heltec V2, T-Beam SX1276, T-LoRa V2.1, T3S3 SX1276, GEPRC Linkflow 900</td>
+<td>Prior byte-transfer path and separate SX1276 driver</td>
+<td>Buffered transfers and chip-specific profile-switch work</td>
+</tr>
+<tr>
+<td>LR1121: Waveshare ESP32-S3 and nRF52 Muzi Duo</td>
+<td>Prior byte-transfer path and separate LR1121 driver</td>
+<td>Chip-specific transfer/profile-switch work</td>
+</tr>
+<tr>
+<td>SX1268 options: Generic E22, MeshAdventurer, Tenstar C3</td>
+<td>Buffered SPI already present</td>
+<td>Separate SX1268 driver does not inherit the SX1262 fast RX caches</td>
+</tr>
+<tr>
+<td>STM32WL integrated radio; LR2021 on Meshnology W12 and SenseCAP MeshTracker X1</td>
+<td>Separate internal-radio or radio/FEM drivers</td>
+<td>Driver-specific speed work</td>
+</tr>
+</tbody>
+</table>
+<p>Most held nRF52 radio buses use SPIM3. Its anomaly-198 register workaround
+<a href="https://devzone.nordicsemi.com/f/nordic-q-a/68556/enabling-workaround-for-anomaly-198-crashes-softdevice/281285">conflicts with an enabled SoftDevice</a>.
+Moving to SPIM2 also needs an ownership
+audit: RAK4631 SD recipes reserve it for the RAK15002, while several display
+boards already use SPI1/SPIM2. Single-interface counts alone do not prove that
+the controller is free. Indicator remains excluded, and MeshPocket remains
+outside physical testing.</p>
+<p>The inventory exposed one stale LR1110 test that still required the restored
+ThinkNode M4 buffered constructor. Its expectation now preserves both the
+shared fast RX state and the intentionally conservative M4 transport. The
+LR1110 and actual nRF52/RP2040 constructor suites passed all 11 focused tests;
+this correction changes no firmware behavior.</p>
 <h2 id="fresh-witnessed-rf-test">Fresh witnessed RF test</h2>
 <p>The normal production image from <code>1b97c089a</code> was installed and its running
 body hash matched the retained Full ELF/package. Two fixed receivers witnessed
