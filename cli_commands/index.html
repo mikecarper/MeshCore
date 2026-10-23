@@ -7319,9 +7319,10 @@ Chat remains plain text. A separate GPS-free NodeInfo is sent after the first
 successful chat transmission per used channel/identity per boot; the explicit
 command can also request one. Automatic metadata waits for a 250 ms gap after
 the latest successful MT transmission; explicit requests bypass that gap.
-MT heard-repeat retries use the Companion's
-<code>flood.retry.count</code>, with the metadata cap and <code>flood.retry.advert</code> gate for
-NodeInfo.</p>
+MT messages default to 15 total attempts (the first send plus up to 14 retries)
+unless a matching repeat is heard. The Companion's <code>flood.retry.count</code> can lower
+that budget; <code>0</code> or <code>mt.hops 0</code> sends once. NodeInfo keeps its metadata cap and
+<code>flood.retry.advert</code> gate. Scheduled beacons remain fire and forget.</p>
 <p>See <a href="../carrier_wave/">carrier-wave RF checks</a> for <code>cw on [seconds]</code>,
 <code>cw2 on [seconds]</code>, and stopping a carrier with <code>off</code>.</p>
 <p>For keyed Morse TX, use <code>morse send TEST DE N0CALL</code> and <code>morse stop</code>.
@@ -12047,7 +12048,8 @@ ineligible even with <code>flood.retry.advert on</code>.</p>
 section apply to infrastructure roles. Companion does not expose repeater
 bridge or prefix retry filters.</p>
 <p>On builds with <a href="../radio_profiles/#heard-repeat-retries">Meshtext channel chat</a>,
-<code>flood.retry.count</code> also limits retries of the node's own MT channel text.
+<code>flood.retry.count</code> also limits retries of the node's own MT channel text,
+with a cap of 15 total attempts (the original plus 14 retries).
 Retries reuse the original encoded packet and stop after hearing a matching
 forwarded copy with a lower remaining hop limit. This is not a recipient ACK
 or a delivery guarantee. NodeInfo permits at most one additional transmission,
@@ -12056,7 +12058,8 @@ minute beyond its airtime-based delay. These settings never enable relaying of
 received MT traffic or apply MeshCore prefix/bridge rules to MT packets.
 <code>set mt.hops 0</code> disables heard-repeat retries, without suppressing the original
 chat or its first-use NodeInfo. <code>get mt.retry</code> reports retry/heard/exhausted
-counters, pending work and the configured count without changing settings.</p>
+counters, pending work and the configured count without changing settings.
+Scheduled beacons always send once per occurrence.</p>
 <p><strong>Search terms:</strong> flood tx retries, flood retry attempts, flood retransmissions, broadcast retries.</p>
 <p><strong>Usage:</strong>
 - <code>get flood.retry.count</code>

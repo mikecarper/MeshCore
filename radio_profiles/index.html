@@ -3793,9 +3793,11 @@ The compatible protocol's fixed short preamble also does not provide the scan-aw
 preamble described below. Do not treat this as continuous coverage of both
 networks or guaranteed message delivery.</p>
 <h4 id="heard-repeat-retries">Heard-repeat retries</h4>
-<p>MT channel chat uses the Companion's saved <code>flood.retry.count</code> budget: <code>0</code>
-disables retries, and <code>1</code>–<code>15</code> allows that many extra transmissions after the
-initial send. Locally originated MT traffic is hop zero for the
+<p>MT channel messages default to <strong>15 total attempts</strong> without a heard repeat:
+the initial send and up to 14 retries. They use the Companion's saved
+<code>flood.retry.count</code>, capped at 14 extra transmissions for MT text. Lower saved
+counts retain their extra-retry meaning; <code>0</code> disables retries. MeshCore's retry
+count meaning is unchanged. Locally originated MT traffic is hop zero for the
 <code>flood.retry.path</code> gate, so a gate of <code>0</code> still permits it; the group-data gate
 does not apply to channel text. <code>mt.hops 0</code> disables heard-repeat retries
 because peers cannot forward a packet with no remaining hop budget; the
@@ -3805,9 +3807,8 @@ packet ID, allowing peers to recognize duplicates. They use conservative,
 airtime-based flood spacing and the normal CAD and airtime limits rather than
 transmitting continuously.</p>
 <p><code>get mt.retry</code> is read-only diagnostics: it reports retry transmissions,
-matching heard repeats, exhausted retry sequences, pending work and the
-configured retry count. Use <code>set flood.retry.count</code>, not this getter, to change
-the budget.</p>
+matching heard repeats, exhausted retry sequences, pending work and the shared
+configured retry <code>count</code>. Use <code>set flood.retry.count</code> to change the budget.</p>
 <p>A matching over-air copy with a lower remaining hop limit cancels the retry
 sequence. Merely receiving another message, an unchanged-hop copy or a packet
 with the same ID but different payload does not. A heard repeat indicates a
