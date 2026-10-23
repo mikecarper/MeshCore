@@ -4189,9 +4189,11 @@ and schedules.</p>
 restores saved <code>radio2</code>. If the saved second profile is off, this returns to one
 profile. Packets/retries bound to an expired or changed session are discarded.</p>
 <h2 id="saved-switching-controls">Saved switching controls</h2>
-<p>Supported SX1262 and LR1110 radios expose separate saved controls for their
-switching optimizations. Available acceleration features start enabled,
-including on supported boards that have not had a hardware timing test. The
+<p>Supported radio HALs expose saved SPI clock controls and, where available,
+separate controls for switching optimizations. SPI clock choices can be
+available even when no other acceleration feature is supported. Available
+acceleration features start enabled, including on supported boards that have
+not had a hardware timing test. The
 board's SPI default remains its selected default clock. Availability depends on
 the radio, board bus, and compiled feature support; inspect the device first:</p>
 <pre><code class="language-text">get radio.fast
@@ -4251,8 +4253,8 @@ does not support the tuning features.</p>
 </tr>
 <tr>
 <td><code>radio.fast.spi</code></td>
-<td><code>0</code>, <code>2</code>, <code>4</code>, <code>8</code>, <code>16</code> where supported</td>
-<td>Select the radio SPI clock in MHz; <code>0</code> restores the board default</td>
+<td><code>0</code>, <code>2</code>, <code>4</code>, <code>8</code>, <code>9</code>, <code>16</code> where supported</td>
+<td>Select the radio SPI clock; <code>0</code> restores the board default</td>
 </tr>
 </tbody>
 </table>
@@ -4263,8 +4265,15 @@ get radio2.timing
 set radio.fast.spi 0
 set radio.fast.buffer on
 </code></pre>
+<p>The integer <code>9</code> selects 8.889 MHz (8,888,888 Hz); the rounded <code>9 MHz</code> label does
+not request 9,000,000 Hz. ESP32 buses expose this choice when their tunable
+radio HAL and clock limit support it. Check <code>get radio.fast.caps</code> on the device
+and read the actual Hz with <code>get radio.fast.spi</code>. The current ESP32-C6 core
+cannot select this clock, so ESP32-C6 does not offer <code>9</code>. Current nRF52,
+RP2040, and STM32 radio buses also do not offer this choice.</p>
 <p><code>0</code> preserves board-specific defaults, including clocks that are not whole MHz.
-An unsupported feature or clock is rejected. A feature saved as <code>on</code> only runs
+Adding the <code>9</code> choice does not change those defaults. An unsupported feature or
+clock is rejected. A feature saved as <code>on</code> only runs
 when its normal ownership and safety checks allow it; disabling <code>warm</code> also
 prevents its dependent RX shortcuts from being used. Buffered transfer support
 is separate from clock support. Some nRF52 buses support an 8 MHz byte path

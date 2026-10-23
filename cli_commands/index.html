@@ -8911,9 +8911,10 @@ capacity. Remote use follows the existing administrator-command permissions.</p>
 <h2 id="configuration">Configuration</h2>
 <h3 id="radio">Radio</h3>
 <h4 id="tune-and-save-radio-switching-acceleration">Tune and save radio switching acceleration</h4>
-<p>Use local USB or BLE to change these settings on supported SX1262 and LR1110
-radios. Supported acceleration features default to on, including on boards
-awaiting hardware qualification. <code>get radio.fast.caps</code> lists the options the
+<p>Use local USB or BLE to change these settings on supported radio HALs.
+SPI clock choices can be available even when the radio exposes no other
+acceleration features. Supported acceleration features default to on,
+including on boards awaiting hardware qualification. <code>get radio.fast.caps</code> lists the options the
 current radio and SPI bus actually support.</p>
 <table>
 <thead>
@@ -8944,8 +8945,8 @@ current radio and SPI bus actually support.</p>
 <td>Read the selected MHz and actual clock in Hz</td>
 </tr>
 <tr>
-<td><code>set radio.fast.spi 0\|2\|4\|8\|16</code></td>
-<td>Save a supported SPI MHz choice; <code>0</code> restores the board default</td>
+<td><code>set radio.fast.spi 0\|2\|4\|8\|9\|16</code></td>
+<td>Save a supported SPI clock choice; <code>0</code> restores the board default</td>
 </tr>
 <tr>
 <td><code>set radio.fast off</code></td>
@@ -8957,6 +8958,12 @@ current radio and SPI bus actually support.</p>
 </tr>
 </tbody>
 </table>
+<p>The integer <code>9</code> is a rounded label for 8.889 MHz (8,888,888 Hz), rather than
+9,000,000 Hz. It is available on ESP32 buses with a tunable radio HAL and a
+clock limit high enough to support it; check <code>get radio.fast.caps</code>. The current
+ESP32-C6 core cannot select this clock, so ESP32-C6 does not offer <code>9</code>. Current
+nRF52, RP2040, and STM32 radio buses also do not offer this choice. The getter
+shows the actual clock in Hz. Existing board defaults are unchanged.</p>
 <p>The change applies safely without reboot and survives firmware updates. A busy
 radio or failed apply/save leaves the previous policy in use. Remote LoRa
 mutations and unsupported choices are rejected. Both radio profiles share the
