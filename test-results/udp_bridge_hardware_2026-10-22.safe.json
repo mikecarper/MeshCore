@@ -1,0 +1,2446 @@
+{
+  "schema_version": 1,
+  "date": "2026-10-22",
+  "scope": "Five physical ESP32 repeaters and four controlled Pi UDP endpoints; software reboot, not cold power cycle.",
+  "passed": true,
+  "builds": [
+    {
+      "board": "v3",
+      "environment": "Heltec_v3_repeater_observer_mqtt",
+      "source_commit": "36d9735e5539656a31b648eff32cae6b99576500",
+      "build_profile": "full",
+      "verified": true,
+      "reductions": [],
+      "recipe_sha256": "17730e571ba0cecf77d07a47ad57cbd3eec56af7a0733aac80f43b476129f317",
+      "memory": {
+        "passed": true,
+        "available_internal_bytes": 209392,
+        "required_heap_bytes": 209040,
+        "largest_internal_region_bytes": 176624,
+        "required_contiguous_bytes": 21184
+      },
+      "artifacts": [
+        {
+          "file": "Heltec_v3_repeater_observer_mqtt-full-usb-wifi-ota-v1.18.0.1-halo-keymind-cascade-dev-36d9735e-merged.bin",
+          "bytes": 2352424,
+          "sha256": "422f62604e1270e303947b7b955dff72d78825f29f550dfd942f8142935251f8"
+        },
+        {
+          "file": "Heltec_v3_repeater_observer_mqtt-full-usb-wifi-ota-v1.18.0.1-halo-keymind-cascade-dev-36d9735e.bin",
+          "bytes": 2286888,
+          "sha256": "eabecb54365a5ceef07c4f439862e1c3f240a563f62d83caa3ba0ce5e5a58148"
+        }
+      ],
+      "model": "Heltec V3",
+      "modeled_margin_bytes": 352
+    },
+    {
+      "board": "v43",
+      "environment": "heltec_v4_repeater_observer_mqtt",
+      "source_commit": "36d9735e5539656a31b648eff32cae6b99576500",
+      "build_profile": "full",
+      "verified": true,
+      "reductions": [],
+      "recipe_sha256": "d8aace346f244b7e1d62a4577bf086724de15f1f900b4489dfacc9ab03c95afe",
+      "memory": {
+        "passed": true,
+        "available_internal_bytes": 202496,
+        "required_heap_bytes": 197776,
+        "largest_internal_region_bytes": 169728,
+        "required_contiguous_bytes": 21184
+      },
+      "artifacts": [
+        {
+          "file": "heltec_v4_repeater_observer_mqtt-full-usb-wifi-ota-v1.18.0.1-halo-keymind-cascade-dev-36d9735e-merged.bin",
+          "bytes": 2393928,
+          "sha256": "40ddca3cddde17c75fb918d95ce19ab142112753994d82a9a43ceac1a0d7ac97"
+        },
+        {
+          "file": "heltec_v4_repeater_observer_mqtt-full-usb-wifi-ota-v1.18.0.1-halo-keymind-cascade-dev-36d9735e.bin",
+          "bytes": 2328392,
+          "sha256": "e953b2a7f402a6c658d73e3e1d61825b699a02390f78e9891f715ea4f24c4d1e"
+        }
+      ],
+      "model": "Heltec V4.3 OLED",
+      "modeled_margin_bytes": 4720
+    },
+    {
+      "board": "tdeck",
+      "environment": "LilyGo_TDeck_repeater",
+      "source_commit": "36d9735e5539656a31b648eff32cae6b99576500",
+      "build_profile": "full",
+      "verified": true,
+      "reductions": [],
+      "recipe_sha256": "9844a9554e9c03e08cf784441305671b649479394949f6ad5cf106d93f1e3b7d",
+      "memory": {
+        "passed": true,
+        "available_internal_bytes": 224784,
+        "required_heap_bytes": 171152,
+        "largest_internal_region_bytes": 192016,
+        "required_contiguous_bytes": 21184
+      },
+      "artifacts": [
+        {
+          "file": "LilyGo_TDeck_repeater-full-logging-ota-v1.18.0.1-halo-keymind-cascade-dev-36d9735e-merged.bin",
+          "bytes": 1993992,
+          "sha256": "5ae67eb4686da0599a43b6d0c275b198209e27cd39fa79f1a0f7c3de996d23f4"
+        },
+        {
+          "file": "LilyGo_TDeck_repeater-full-logging-ota-v1.18.0.1-halo-keymind-cascade-dev-36d9735e.bin",
+          "bytes": 1928456,
+          "sha256": "073167a218be022a69f203ba7dfd11c8eb8ca7ebd54b26e69a506c44d0b083cd"
+        }
+      ],
+      "model": "LilyGo T-Deck",
+      "modeled_margin_bytes": 53632
+    },
+    {
+      "board": "xiao",
+      "environment": "Xiao_S3_WIO_repeater_observer_mqtt",
+      "source_commit": "36d9735e5539656a31b648eff32cae6b99576500",
+      "build_profile": "full",
+      "verified": true,
+      "reductions": [],
+      "recipe_sha256": "5460c5e478a813bf50564de5a9558c1b03919100dacd8a8c9838393c004c1e27",
+      "memory": {
+        "passed": true,
+        "available_internal_bytes": 203640,
+        "required_heap_bytes": 193680,
+        "largest_internal_region_bytes": 170872,
+        "required_contiguous_bytes": 21184
+      },
+      "artifacts": [
+        {
+          "file": "Xiao_S3_WIO_repeater_observer_mqtt-full-usb-wifi-ota-v1.18.0.1-halo-keymind-cascade-dev-36d9735e-merged.bin",
+          "bytes": 2303544,
+          "sha256": "0df60e111b180af8ed3fd27de1abbc53947fef23677ffb113373df7c3cde0297"
+        },
+        {
+          "file": "Xiao_S3_WIO_repeater_observer_mqtt-full-usb-wifi-ota-v1.18.0.1-halo-keymind-cascade-dev-36d9735e.bin",
+          "bytes": 2238008,
+          "sha256": "a32e2513be8a4469347204a55844cf42b4704cd52d766f1042c252e1f43a8318"
+        }
+      ],
+      "model": "Seeed XIAO ESP32-S3 WIO",
+      "modeled_margin_bytes": 9960
+    },
+    {
+      "board": "indicator",
+      "environment": "SenseCapIndicator-LoRa_repeater",
+      "source_commit": "36d9735e5539656a31b648eff32cae6b99576500",
+      "build_profile": "full",
+      "verified": true,
+      "reductions": [],
+      "recipe_sha256": "f73e36d04fca3ec79f71383e77e82c18e296b02c2d3fb21dc456101ec8a5e281",
+      "memory": {
+        "passed": true,
+        "available_internal_bytes": 225280,
+        "required_heap_bytes": 223376,
+        "largest_internal_region_bytes": 192512,
+        "required_contiguous_bytes": 52224
+      },
+      "artifacts": [
+        {
+          "file": "SenseCapIndicator-LoRa_repeater-full-logging-ota-v1.18.0.1-halo-keymind-cascade-dev-36d9735e-merged.bin",
+          "bytes": 2044280,
+          "sha256": "5d682c841db68a669369f766122b86d073cd81dd58846ce0c79b39ea50627dc6"
+        },
+        {
+          "file": "SenseCapIndicator-LoRa_repeater-full-logging-ota-v1.18.0.1-halo-keymind-cascade-dev-36d9735e.bin",
+          "bytes": 1978744,
+          "sha256": "5730fd5fe8137057df19f302606985a3f7206c9612b2dca9ff5309e92642ab88"
+        }
+      ],
+      "model": "SenseCAP Indicator LoRa N8R8",
+      "modeled_margin_bytes": 1904
+    }
+  ],
+  "phases": {
+    "matrix": {
+      "attempted": 300,
+      "received": 300,
+      "completed_directions": 60,
+      "security_cases": 20,
+      "wifi_recovery_boards": 5,
+      "startup_readiness": [
+        {
+          "board": "indicator",
+          "elapsed_seconds": 0.901,
+          "polls": 1,
+          "ready": true
+        },
+        {
+          "board": "tdeck",
+          "elapsed_seconds": 0.869,
+          "polls": 1,
+          "ready": true
+        },
+        {
+          "board": "v3",
+          "elapsed_seconds": 0.981,
+          "polls": 1,
+          "ready": true
+        },
+        {
+          "board": "v43",
+          "elapsed_seconds": 0.893,
+          "polls": 1,
+          "ready": true
+        },
+        {
+          "board": "xiao",
+          "elapsed_seconds": 0.9,
+          "polls": 1,
+          "ready": true
+        }
+      ],
+      "evidence": {
+        "complete": true,
+        "continuity": {
+          "indicator": {
+            "elapsed_lower_bound_seconds": 1043.147,
+            "initial_error_bits": 0,
+            "new_error_bits": 0,
+            "new_idle_radio_bit": false,
+            "new_unexpected_error_bits": 0,
+            "observed_error_bits": 0,
+            "passed": true,
+            "previous_elapsed_lower_bound_seconds": 19.911,
+            "previous_uptime_delta_seconds": 21,
+            "queue_len": 0,
+            "queue_max": 0,
+            "removed_error_bits": 0,
+            "samples": 23,
+            "stage": "end",
+            "uptime_continuous": true,
+            "uptime_delta_seconds": 1044,
+            "uptime_tolerance_seconds": 2.0
+          },
+          "tdeck": {
+            "elapsed_lower_bound_seconds": 1043.125,
+            "initial_error_bits": 0,
+            "new_error_bits": 0,
+            "new_idle_radio_bit": false,
+            "new_unexpected_error_bits": 0,
+            "observed_error_bits": 0,
+            "passed": true,
+            "previous_elapsed_lower_bound_seconds": 19.861,
+            "previous_uptime_delta_seconds": 21,
+            "queue_len": 0,
+            "queue_max": 0,
+            "removed_error_bits": 0,
+            "samples": 23,
+            "stage": "end",
+            "uptime_continuous": true,
+            "uptime_delta_seconds": 1044,
+            "uptime_tolerance_seconds": 2.0
+          },
+          "v3": {
+            "elapsed_lower_bound_seconds": 1043.044,
+            "initial_error_bits": 8,
+            "new_error_bits": 0,
+            "new_idle_radio_bit": false,
+            "new_unexpected_error_bits": 0,
+            "observed_error_bits": 8,
+            "passed": true,
+            "previous_elapsed_lower_bound_seconds": 19.788,
+            "previous_uptime_delta_seconds": 21,
+            "queue_len": 0,
+            "queue_max": 0,
+            "removed_error_bits": 0,
+            "samples": 23,
+            "stage": "end",
+            "uptime_continuous": true,
+            "uptime_delta_seconds": 1044,
+            "uptime_tolerance_seconds": 2.0
+          },
+          "v43": {
+            "elapsed_lower_bound_seconds": 1043.109,
+            "initial_error_bits": 8,
+            "new_error_bits": 0,
+            "new_idle_radio_bit": false,
+            "new_unexpected_error_bits": 0,
+            "observed_error_bits": 8,
+            "passed": true,
+            "previous_elapsed_lower_bound_seconds": 19.888,
+            "previous_uptime_delta_seconds": 21,
+            "queue_len": 0,
+            "queue_max": 0,
+            "removed_error_bits": 0,
+            "samples": 23,
+            "stage": "end",
+            "uptime_continuous": true,
+            "uptime_delta_seconds": 1044,
+            "uptime_tolerance_seconds": 2.0
+          },
+          "xiao": {
+            "elapsed_lower_bound_seconds": 1043.121,
+            "initial_error_bits": 8,
+            "new_error_bits": 0,
+            "new_idle_radio_bit": false,
+            "new_unexpected_error_bits": 0,
+            "observed_error_bits": 8,
+            "passed": true,
+            "previous_elapsed_lower_bound_seconds": 19.901,
+            "previous_uptime_delta_seconds": 21,
+            "queue_len": 0,
+            "queue_max": 0,
+            "removed_error_bits": 0,
+            "samples": 23,
+            "stage": "end",
+            "uptime_continuous": true,
+            "uptime_delta_seconds": 1044,
+            "uptime_tolerance_seconds": 2.0
+          }
+        },
+        "controller_sha256": "fd50bc8c49a6e12c06472a7570e9550a46a4481a3bd360825244cc3a44b6455e",
+        "directions": [
+          {
+            "attempted": 5,
+            "complete": true,
+            "destination": "tdeck",
+            "kind": "board_to_board",
+            "received": 5,
+            "source": "indicator"
+          },
+          {
+            "attempted": 5,
+            "complete": true,
+            "destination": "v3",
+            "kind": "board_to_board",
+            "received": 5,
+            "source": "indicator"
+          },
+          {
+            "attempted": 5,
+            "complete": true,
+            "destination": "v43",
+            "kind": "board_to_board",
+            "received": 5,
+            "source": "indicator"
+          },
+          {
+            "attempted": 5,
+            "complete": true,
+            "destination": "xiao",
+            "kind": "board_to_board",
+            "received": 5,
+            "source": "indicator"
+          },
+          {
+            "attempted": 5,
+            "complete": true,
+            "destination": "pi-endpoint-1",
+            "kind": "board_to_pi",
+            "received": 5,
+            "source": "indicator"
+          },
+          {
+            "attempted": 5,
+            "complete": true,
+            "destination": "pi-endpoint-2",
+            "kind": "board_to_pi",
+            "received": 5,
+            "source": "indicator"
+          },
+          {
+            "attempted": 5,
+            "complete": true,
+            "destination": "pi-endpoint-3",
+            "kind": "board_to_pi",
+            "received": 5,
+            "source": "indicator"
+          },
+          {
+            "attempted": 5,
+            "complete": true,
+            "destination": "pi-endpoint-4",
+            "kind": "board_to_pi",
+            "received": 5,
+            "source": "indicator"
+          },
+          {
+            "attempted": 5,
+            "complete": true,
+            "destination": "indicator",
+            "kind": "board_to_board",
+            "received": 5,
+            "source": "tdeck"
+          },
+          {
+            "attempted": 5,
+            "complete": true,
+            "destination": "v3",
+            "kind": "board_to_board",
+            "received": 5,
+            "source": "tdeck"
+          },
+          {
+            "attempted": 5,
+            "complete": true,
+            "destination": "v43",
+            "kind": "board_to_board",
+            "received": 5,
+            "source": "tdeck"
+          },
+          {
+            "attempted": 5,
+            "complete": true,
+            "destination": "xiao",
+            "kind": "board_to_board",
+            "received": 5,
+            "source": "tdeck"
+          },
+          {
+            "attempted": 5,
+            "complete": true,
+            "destination": "pi-endpoint-1",
+            "kind": "board_to_pi",
+            "received": 5,
+            "source": "tdeck"
+          },
+          {
+            "attempted": 5,
+            "complete": true,
+            "destination": "pi-endpoint-2",
+            "kind": "board_to_pi",
+            "received": 5,
+            "source": "tdeck"
+          },
+          {
+            "attempted": 5,
+            "complete": true,
+            "destination": "pi-endpoint-3",
+            "kind": "board_to_pi",
+            "received": 5,
+            "source": "tdeck"
+          },
+          {
+            "attempted": 5,
+            "complete": true,
+            "destination": "pi-endpoint-4",
+            "kind": "board_to_pi",
+            "received": 5,
+            "source": "tdeck"
+          },
+          {
+            "attempted": 5,
+            "complete": true,
+            "destination": "indicator",
+            "kind": "board_to_board",
+            "received": 5,
+            "source": "v3"
+          },
+          {
+            "attempted": 5,
+            "complete": true,
+            "destination": "tdeck",
+            "kind": "board_to_board",
+            "received": 5,
+            "source": "v3"
+          },
+          {
+            "attempted": 5,
+            "complete": true,
+            "destination": "v43",
+            "kind": "board_to_board",
+            "received": 5,
+            "source": "v3"
+          },
+          {
+            "attempted": 5,
+            "complete": true,
+            "destination": "xiao",
+            "kind": "board_to_board",
+            "received": 5,
+            "source": "v3"
+          },
+          {
+            "attempted": 5,
+            "complete": true,
+            "destination": "pi-endpoint-1",
+            "kind": "board_to_pi",
+            "received": 5,
+            "source": "v3"
+          },
+          {
+            "attempted": 5,
+            "complete": true,
+            "destination": "pi-endpoint-2",
+            "kind": "board_to_pi",
+            "received": 5,
+            "source": "v3"
+          },
+          {
+            "attempted": 5,
+            "complete": true,
+            "destination": "pi-endpoint-3",
+            "kind": "board_to_pi",
+            "received": 5,
+            "source": "v3"
+          },
+          {
+            "attempted": 5,
+            "complete": true,
+            "destination": "pi-endpoint-4",
+            "kind": "board_to_pi",
+            "received": 5,
+            "source": "v3"
+          },
+          {
+            "attempted": 5,
+            "complete": true,
+            "destination": "indicator",
+            "kind": "board_to_board",
+            "received": 5,
+            "source": "v43"
+          },
+          {
+            "attempted": 5,
+            "complete": true,
+            "destination": "tdeck",
+            "kind": "board_to_board",
+            "received": 5,
+            "source": "v43"
+          },
+          {
+            "attempted": 5,
+            "complete": true,
+            "destination": "v3",
+            "kind": "board_to_board",
+            "received": 5,
+            "source": "v43"
+          },
+          {
+            "attempted": 5,
+            "complete": true,
+            "destination": "xiao",
+            "kind": "board_to_board",
+            "received": 5,
+            "source": "v43"
+          },
+          {
+            "attempted": 5,
+            "complete": true,
+            "destination": "pi-endpoint-1",
+            "kind": "board_to_pi",
+            "received": 5,
+            "source": "v43"
+          },
+          {
+            "attempted": 5,
+            "complete": true,
+            "destination": "pi-endpoint-2",
+            "kind": "board_to_pi",
+            "received": 5,
+            "source": "v43"
+          },
+          {
+            "attempted": 5,
+            "complete": true,
+            "destination": "pi-endpoint-3",
+            "kind": "board_to_pi",
+            "received": 5,
+            "source": "v43"
+          },
+          {
+            "attempted": 5,
+            "complete": true,
+            "destination": "pi-endpoint-4",
+            "kind": "board_to_pi",
+            "received": 5,
+            "source": "v43"
+          },
+          {
+            "attempted": 5,
+            "complete": true,
+            "destination": "indicator",
+            "kind": "board_to_board",
+            "received": 5,
+            "source": "xiao"
+          },
+          {
+            "attempted": 5,
+            "complete": true,
+            "destination": "tdeck",
+            "kind": "board_to_board",
+            "received": 5,
+            "source": "xiao"
+          },
+          {
+            "attempted": 5,
+            "complete": true,
+            "destination": "v3",
+            "kind": "board_to_board",
+            "received": 5,
+            "source": "xiao"
+          },
+          {
+            "attempted": 5,
+            "complete": true,
+            "destination": "v43",
+            "kind": "board_to_board",
+            "received": 5,
+            "source": "xiao"
+          },
+          {
+            "attempted": 5,
+            "complete": true,
+            "destination": "pi-endpoint-1",
+            "kind": "board_to_pi",
+            "received": 5,
+            "source": "xiao"
+          },
+          {
+            "attempted": 5,
+            "complete": true,
+            "destination": "pi-endpoint-2",
+            "kind": "board_to_pi",
+            "received": 5,
+            "source": "xiao"
+          },
+          {
+            "attempted": 5,
+            "complete": true,
+            "destination": "pi-endpoint-3",
+            "kind": "board_to_pi",
+            "received": 5,
+            "source": "xiao"
+          },
+          {
+            "attempted": 5,
+            "complete": true,
+            "destination": "pi-endpoint-4",
+            "kind": "board_to_pi",
+            "received": 5,
+            "source": "xiao"
+          },
+          {
+            "attempted": 5,
+            "complete": true,
+            "destination": "indicator",
+            "kind": "pi_to_board",
+            "received": 5,
+            "source": "pi-endpoint-1"
+          },
+          {
+            "attempted": 5,
+            "complete": true,
+            "destination": "indicator",
+            "kind": "pi_to_board",
+            "received": 5,
+            "source": "pi-endpoint-2"
+          },
+          {
+            "attempted": 5,
+            "complete": true,
+            "destination": "indicator",
+            "kind": "pi_to_board",
+            "received": 5,
+            "source": "pi-endpoint-3"
+          },
+          {
+            "attempted": 5,
+            "complete": true,
+            "destination": "indicator",
+            "kind": "pi_to_board",
+            "received": 5,
+            "source": "pi-endpoint-4"
+          },
+          {
+            "attempted": 5,
+            "complete": true,
+            "destination": "tdeck",
+            "kind": "pi_to_board",
+            "received": 5,
+            "source": "pi-endpoint-1"
+          },
+          {
+            "attempted": 5,
+            "complete": true,
+            "destination": "tdeck",
+            "kind": "pi_to_board",
+            "received": 5,
+            "source": "pi-endpoint-2"
+          },
+          {
+            "attempted": 5,
+            "complete": true,
+            "destination": "tdeck",
+            "kind": "pi_to_board",
+            "received": 5,
+            "source": "pi-endpoint-3"
+          },
+          {
+            "attempted": 5,
+            "complete": true,
+            "destination": "tdeck",
+            "kind": "pi_to_board",
+            "received": 5,
+            "source": "pi-endpoint-4"
+          },
+          {
+            "attempted": 5,
+            "complete": true,
+            "destination": "v3",
+            "kind": "pi_to_board",
+            "received": 5,
+            "source": "pi-endpoint-1"
+          },
+          {
+            "attempted": 5,
+            "complete": true,
+            "destination": "v3",
+            "kind": "pi_to_board",
+            "received": 5,
+            "source": "pi-endpoint-2"
+          },
+          {
+            "attempted": 5,
+            "complete": true,
+            "destination": "v3",
+            "kind": "pi_to_board",
+            "received": 5,
+            "source": "pi-endpoint-3"
+          },
+          {
+            "attempted": 5,
+            "complete": true,
+            "destination": "v3",
+            "kind": "pi_to_board",
+            "received": 5,
+            "source": "pi-endpoint-4"
+          },
+          {
+            "attempted": 5,
+            "complete": true,
+            "destination": "v43",
+            "kind": "pi_to_board",
+            "received": 5,
+            "source": "pi-endpoint-1"
+          },
+          {
+            "attempted": 5,
+            "complete": true,
+            "destination": "v43",
+            "kind": "pi_to_board",
+            "received": 5,
+            "source": "pi-endpoint-2"
+          },
+          {
+            "attempted": 5,
+            "complete": true,
+            "destination": "v43",
+            "kind": "pi_to_board",
+            "received": 5,
+            "source": "pi-endpoint-3"
+          },
+          {
+            "attempted": 5,
+            "complete": true,
+            "destination": "v43",
+            "kind": "pi_to_board",
+            "received": 5,
+            "source": "pi-endpoint-4"
+          },
+          {
+            "attempted": 5,
+            "complete": true,
+            "destination": "xiao",
+            "kind": "pi_to_board",
+            "received": 5,
+            "source": "pi-endpoint-1"
+          },
+          {
+            "attempted": 5,
+            "complete": true,
+            "destination": "xiao",
+            "kind": "pi_to_board",
+            "received": 5,
+            "source": "pi-endpoint-2"
+          },
+          {
+            "attempted": 5,
+            "complete": true,
+            "destination": "xiao",
+            "kind": "pi_to_board",
+            "received": 5,
+            "source": "pi-endpoint-3"
+          },
+          {
+            "attempted": 5,
+            "complete": true,
+            "destination": "xiao",
+            "kind": "pi_to_board",
+            "received": 5,
+            "source": "pi-endpoint-4"
+          }
+        ],
+        "elapsed_seconds": 1048.343,
+        "errors": [],
+        "fixture_left_running": true,
+        "intentional_rf_send_requests": 0,
+        "passed": true,
+        "peers_per_board": 8,
+        "phases": {
+          "eight_peer_configuration": "PASS",
+          "security_rejections": "PASS",
+          "sixty_directed_probe_links": "PASS",
+          "wifi_and_manual_off_recovery": "PASS"
+        },
+        "physical_boards": 5,
+        "probes_per_direction": 5,
+        "recovery": [
+          {
+            "board": "indicator",
+            "manual_udp_off_respected": true,
+            "wifi_reconnect": true
+          },
+          {
+            "board": "tdeck",
+            "manual_udp_off_respected": true,
+            "wifi_reconnect": true
+          },
+          {
+            "board": "v3",
+            "manual_udp_off_respected": true,
+            "wifi_reconnect": true
+          },
+          {
+            "board": "v43",
+            "manual_udp_off_respected": true,
+            "wifi_reconnect": true
+          },
+          {
+            "board": "xiao",
+            "manual_udp_off_respected": true,
+            "wifi_reconnect": true
+          }
+        ],
+        "retransmissions": 0,
+        "schema_version": 1,
+        "scope": "UDP transport acceptance; physical LoRa not tested",
+        "security": [
+          {
+            "board": "indicator",
+            "expected_drop_increment": 1,
+            "operation": "replay",
+            "passed": true,
+            "receiver_unchanged": true
+          },
+          {
+            "board": "indicator",
+            "expected_drop_increment": 1,
+            "operation": "bad-auth",
+            "passed": true,
+            "receiver_unchanged": true
+          },
+          {
+            "board": "indicator",
+            "expected_drop_increment": 1,
+            "operation": "unknown-endpoint",
+            "passed": true,
+            "receiver_unchanged": true
+          },
+          {
+            "board": "indicator",
+            "expected_drop_increment": 1,
+            "operation": "malformed",
+            "passed": true,
+            "receiver_unchanged": true
+          },
+          {
+            "board": "tdeck",
+            "expected_drop_increment": 1,
+            "operation": "replay",
+            "passed": true,
+            "receiver_unchanged": true
+          },
+          {
+            "board": "tdeck",
+            "expected_drop_increment": 1,
+            "operation": "bad-auth",
+            "passed": true,
+            "receiver_unchanged": true
+          },
+          {
+            "board": "tdeck",
+            "expected_drop_increment": 1,
+            "operation": "unknown-endpoint",
+            "passed": true,
+            "receiver_unchanged": true
+          },
+          {
+            "board": "tdeck",
+            "expected_drop_increment": 1,
+            "operation": "malformed",
+            "passed": true,
+            "receiver_unchanged": true
+          },
+          {
+            "board": "v3",
+            "expected_drop_increment": 1,
+            "operation": "replay",
+            "passed": true,
+            "receiver_unchanged": true
+          },
+          {
+            "board": "v3",
+            "expected_drop_increment": 1,
+            "operation": "bad-auth",
+            "passed": true,
+            "receiver_unchanged": true
+          },
+          {
+            "board": "v3",
+            "expected_drop_increment": 1,
+            "operation": "unknown-endpoint",
+            "passed": true,
+            "receiver_unchanged": true
+          },
+          {
+            "board": "v3",
+            "expected_drop_increment": 1,
+            "operation": "malformed",
+            "passed": true,
+            "receiver_unchanged": true
+          },
+          {
+            "board": "v43",
+            "expected_drop_increment": 1,
+            "operation": "replay",
+            "passed": true,
+            "receiver_unchanged": true
+          },
+          {
+            "board": "v43",
+            "expected_drop_increment": 1,
+            "operation": "bad-auth",
+            "passed": true,
+            "receiver_unchanged": true
+          },
+          {
+            "board": "v43",
+            "expected_drop_increment": 1,
+            "operation": "unknown-endpoint",
+            "passed": true,
+            "receiver_unchanged": true
+          },
+          {
+            "board": "v43",
+            "expected_drop_increment": 1,
+            "operation": "malformed",
+            "passed": true,
+            "receiver_unchanged": true
+          },
+          {
+            "board": "xiao",
+            "expected_drop_increment": 1,
+            "operation": "replay",
+            "passed": true,
+            "receiver_unchanged": true
+          },
+          {
+            "board": "xiao",
+            "expected_drop_increment": 1,
+            "operation": "bad-auth",
+            "passed": true,
+            "receiver_unchanged": true
+          },
+          {
+            "board": "xiao",
+            "expected_drop_increment": 1,
+            "operation": "unknown-endpoint",
+            "passed": true,
+            "receiver_unchanged": true
+          },
+          {
+            "board": "xiao",
+            "expected_drop_increment": 1,
+            "operation": "malformed",
+            "passed": true,
+            "receiver_unchanged": true
+          }
+        ],
+        "simulated_udp_endpoints": 4,
+        "source_hint": "36d9735e",
+        "startup_readiness": [
+          {
+            "board": "indicator",
+            "elapsed_seconds": 0.901,
+            "polls": 1,
+            "ready": true
+          },
+          {
+            "board": "tdeck",
+            "elapsed_seconds": 0.869,
+            "polls": 1,
+            "ready": true
+          },
+          {
+            "board": "v3",
+            "elapsed_seconds": 0.981,
+            "polls": 1,
+            "ready": true
+          },
+          {
+            "board": "v43",
+            "elapsed_seconds": 0.893,
+            "polls": 1,
+            "ready": true
+          },
+          {
+            "board": "xiao",
+            "elapsed_seconds": 0.9,
+            "polls": 1,
+            "ready": true
+          }
+        ]
+      }
+    },
+    "software_reboot": {
+      "boards": {
+        "indicator": {
+          "after_error_bits": 0,
+          "after_memory": {
+            "free": 112968,
+            "internal_free": 112968,
+            "internal_largest": 102388,
+            "largest": 102388,
+            "minimum": 112128,
+            "psram_free": 7861807,
+            "psram_total": 8388607,
+            "queue": 0
+          },
+          "before_error_bits": 0,
+          "before_memory": {
+            "free": 104152,
+            "internal_free": 104152,
+            "internal_largest": 94196,
+            "largest": 94196,
+            "minimum": 100044,
+            "psram_free": 7851999,
+            "psram_total": 8388607,
+            "queue": 0
+          },
+          "eight_sessions": true,
+          "final_error_bits": 0,
+          "final_memory": {
+            "free": 112968,
+            "internal_free": 112968,
+            "internal_largest": 102388,
+            "largest": 102388,
+            "minimum": 111940,
+            "psram_free": 7861807,
+            "psram_total": 8388607,
+            "queue": 0
+          },
+          "persistence": {
+            "exact_model_unchanged": true,
+            "exact_version_unchanged": true,
+            "identity_unchanged": true,
+            "peers_unchanged": true,
+            "secret_unchanged": true,
+            "udp_enabled": true,
+            "udp_port": true
+          },
+          "post_reboot_continuity": {
+            "elapsed_lower_bound_seconds": 85.64990016999946,
+            "passed": true,
+            "uptime_delta_seconds": 87,
+            "uptime_tolerance_seconds": 2
+          },
+          "prior_idle_radio_bit": false,
+          "probes_received": 4,
+          "probes_requested": 4,
+          "reboot_requests": 1,
+          "restart_observed": true
+        },
+        "tdeck": {
+          "after_error_bits": 0,
+          "after_memory": {
+            "free": 157776,
+            "internal_free": 157776,
+            "internal_largest": 147444,
+            "largest": 147444,
+            "minimum": 156528,
+            "psram_free": 8168759,
+            "psram_total": 8388607,
+            "queue": 0
+          },
+          "before_error_bits": 0,
+          "before_memory": {
+            "free": 149248,
+            "internal_free": 149248,
+            "internal_largest": 139252,
+            "largest": 139252,
+            "minimum": 148336,
+            "psram_free": 8158911,
+            "psram_total": 8388607,
+            "queue": 0
+          },
+          "eight_sessions": true,
+          "final_error_bits": 0,
+          "final_memory": {
+            "free": 157776,
+            "internal_free": 157776,
+            "internal_largest": 147444,
+            "largest": 147444,
+            "minimum": 156528,
+            "psram_free": 8168759,
+            "psram_total": 8388607,
+            "queue": 0
+          },
+          "persistence": {
+            "exact_model_unchanged": true,
+            "exact_version_unchanged": true,
+            "identity_unchanged": true,
+            "peers_unchanged": true,
+            "secret_unchanged": true,
+            "udp_enabled": true,
+            "udp_port": true
+          },
+          "post_reboot_continuity": {
+            "elapsed_lower_bound_seconds": 75.63794651500211,
+            "passed": true,
+            "uptime_delta_seconds": 76,
+            "uptime_tolerance_seconds": 2
+          },
+          "prior_idle_radio_bit": false,
+          "probes_received": 4,
+          "probes_requested": 4,
+          "reboot_requests": 1,
+          "restart_observed": true
+        },
+        "v3": {
+          "after_error_bits": 0,
+          "after_memory": {
+            "free": 81356,
+            "internal_free": 81356,
+            "internal_largest": 69620,
+            "largest": 69620,
+            "minimum": 74452,
+            "psram_free": 0,
+            "psram_total": 0,
+            "queue": 0
+          },
+          "before_error_bits": 8,
+          "before_memory": {
+            "free": 53576,
+            "internal_free": 53576,
+            "internal_largest": 40948,
+            "largest": 40948,
+            "minimum": 39480,
+            "psram_free": 0,
+            "psram_total": 0,
+            "queue": 0
+          },
+          "eight_sessions": true,
+          "final_error_bits": 0,
+          "final_memory": {
+            "free": 81356,
+            "internal_free": 81356,
+            "internal_largest": 69620,
+            "largest": 69620,
+            "minimum": 72804,
+            "psram_free": 0,
+            "psram_total": 0,
+            "queue": 0
+          },
+          "persistence": {
+            "exact_model_unchanged": true,
+            "exact_version_unchanged": true,
+            "identity_unchanged": true,
+            "peers_unchanged": true,
+            "secret_unchanged": true,
+            "udp_enabled": true,
+            "udp_port": true
+          },
+          "post_reboot_continuity": {
+            "elapsed_lower_bound_seconds": 64.80674711999745,
+            "passed": true,
+            "uptime_delta_seconds": 66,
+            "uptime_tolerance_seconds": 2
+          },
+          "prior_idle_radio_bit": true,
+          "probes_received": 4,
+          "probes_requested": 4,
+          "reboot_requests": 1,
+          "restart_observed": true
+        },
+        "v43": {
+          "after_error_bits": 0,
+          "after_memory": {
+            "free": 83480,
+            "internal_free": 83480,
+            "internal_largest": 73716,
+            "largest": 73716,
+            "minimum": 79748,
+            "psram_free": 2079483,
+            "psram_total": 2097151,
+            "queue": 0
+          },
+          "before_error_bits": 8,
+          "before_memory": {
+            "free": 74556,
+            "internal_free": 74556,
+            "internal_largest": 63476,
+            "largest": 63476,
+            "minimum": 69564,
+            "psram_free": 2064927,
+            "psram_total": 2097151,
+            "queue": 0
+          },
+          "eight_sessions": true,
+          "final_error_bits": 0,
+          "final_memory": {
+            "free": 83480,
+            "internal_free": 83480,
+            "internal_largest": 73716,
+            "largest": 73716,
+            "minimum": 79748,
+            "psram_free": 2079483,
+            "psram_total": 2097151,
+            "queue": 0
+          },
+          "persistence": {
+            "exact_model_unchanged": true,
+            "exact_version_unchanged": true,
+            "identity_unchanged": true,
+            "peers_unchanged": true,
+            "secret_unchanged": true,
+            "udp_enabled": true,
+            "udp_port": true
+          },
+          "post_reboot_continuity": {
+            "elapsed_lower_bound_seconds": 40.57294412999909,
+            "passed": true,
+            "uptime_delta_seconds": 41,
+            "uptime_tolerance_seconds": 2
+          },
+          "prior_idle_radio_bit": true,
+          "probes_received": 4,
+          "probes_requested": 4,
+          "reboot_requests": 1,
+          "restart_observed": true
+        },
+        "xiao": {
+          "after_error_bits": 0,
+          "after_memory": {
+            "free": 138808,
+            "internal_free": 138808,
+            "internal_largest": 126964,
+            "largest": 126964,
+            "minimum": 133976,
+            "psram_free": 8322307,
+            "psram_total": 8388607,
+            "queue": 0
+          },
+          "before_error_bits": 8,
+          "before_memory": {
+            "free": 129876,
+            "internal_free": 129876,
+            "internal_largest": 114676,
+            "largest": 114676,
+            "minimum": 121432,
+            "psram_free": 8307783,
+            "psram_total": 8388607,
+            "queue": 0
+          },
+          "eight_sessions": true,
+          "final_error_bits": 0,
+          "final_memory": {
+            "free": 138812,
+            "internal_free": 138812,
+            "internal_largest": 126964,
+            "largest": 126964,
+            "minimum": 133976,
+            "psram_free": 8322307,
+            "psram_total": 8388607,
+            "queue": 0
+          },
+          "persistence": {
+            "exact_model_unchanged": true,
+            "exact_version_unchanged": true,
+            "identity_unchanged": true,
+            "peers_unchanged": true,
+            "secret_unchanged": true,
+            "udp_enabled": true,
+            "udp_port": true
+          },
+          "post_reboot_continuity": {
+            "elapsed_lower_bound_seconds": 31.472894644000917,
+            "passed": true,
+            "uptime_delta_seconds": 32,
+            "uptime_tolerance_seconds": 2
+          },
+          "prior_idle_radio_bit": true,
+          "probes_received": 4,
+          "probes_requested": 4,
+          "reboot_requests": 1,
+          "restart_observed": true
+        }
+      },
+      "cold_power_cycles": 0,
+      "errors": [],
+      "fixture_restarts": 0,
+      "fresh_allowed_error_bits": 2,
+      "intentional_rf_send_requests": 0,
+      "probe_receipts": 20,
+      "probe_requests": 20,
+      "probe_retries": 0,
+      "schema_version": 1,
+      "scope": "Software reboot/persistence; no cold power-cycle qualification",
+      "software_reboot_requests": 5,
+      "stats_clears": 0,
+      "status": "passed"
+    },
+    "physical_lora_fanout": {
+      "positive_attempts": 25,
+      "negative_attempts": 5,
+      "campaign_counts": {
+        "run05": [
+          10,
+          2
+        ],
+        "run07": [
+          15,
+          3
+        ]
+      },
+      "preserved_campaigns": {
+        "run05": {
+          "status": "failed",
+          "covered_ingresses": [
+            "indicator",
+            "tdeck"
+          ],
+          "completed_requests": 12,
+          "private_receipt": {
+            "sha256": "6b1858d5539747024d1cbc7b65610d0a577062fc7ca8300b8d24782b299797f9",
+            "bytes": 1325172
+          },
+          "safe_receipt": {
+            "sha256": "31b98ce4bd26825e371fd5fd386113692d0d55e92da34a8f7bb3926265916afe",
+            "bytes": 5595
+          },
+          "fixture_restarts": 1,
+          "fixture_run_id": "d43e26b9b2739e602c8296dcc09d7b2a847a0574a478bc0b786c00d4db1f1d0f",
+          "errors": [
+            {
+              "phase": "measurement",
+              "error_type": "RuntimeError"
+            }
+          ]
+        },
+        "run07": {
+          "status": "passed",
+          "covered_ingresses": [
+            "v3",
+            "v43",
+            "xiao"
+          ],
+          "completed_requests": 18,
+          "private_receipt": {
+            "sha256": "46174c668fcfdc07ca03e8c2ed0d2fc4aa0ac09b259d664300ca95bf90218f90",
+            "bytes": 1941247
+          },
+          "safe_receipt": {
+            "sha256": "c6dd421a9cf375136ac8034bcd58b2640fa7d7c4fd3c8cbf2d49d1f84012a165",
+            "bytes": 8046
+          },
+          "fixture_restarts": 2,
+          "fixture_run_id": "360c43c9d7d18df8e07ca9165e40bf7333e2e5b14152a47255d3d2d7f115da1f",
+          "errors": []
+        }
+      },
+      "evidence": {
+        "schema_version": 1,
+        "scope": "Physical LoRa fanout across preserved run05 and scoped resume07",
+        "firmware_sources": {
+          "indicator": "v1.18.0.1-halo-keymind-cascade-dev-36d9735e (Build: 22-Oct-2026)",
+          "tdeck": "v1.18.0.1-halo-keymind-cascade-dev-36d9735e (Build: 22-Oct-2026)",
+          "v3": "v1.18.0.1-halo-keymind-cascade-dev-observer-36d9735e (Build: 22-Oct-2026)",
+          "v43": "v1.18.0.1-halo-keymind-cascade-dev-observer-36d9735e (Build: 22-Oct-2026)",
+          "xiao": "v1.18.0.1-halo-keymind-cascade-dev-observer-36d9735e (Build: 22-Oct-2026)"
+        },
+        "physical_repeaters": 5,
+        "simulated_ip_peers": 4,
+        "frequency_mhz": [
+          917,
+          918
+        ],
+        "sf": 7,
+        "bandwidth_khz": 62.5,
+        "cr": 5,
+        "preamble": 32,
+        "tx_dbm": 2,
+        "packets_per_ingress": 5,
+        "application_retries": 0,
+        "host_udp_mesh_injections": 0,
+        "status": "passed",
+        "results": [
+          {
+            "ingress": "indicator",
+            "egress": "tdeck",
+            "positive": false,
+            "accepted_once": true,
+            "passed": true,
+            "exact_application_receipt": false,
+            "source_tx_once": true,
+            "pi_endpoint_receipts": 0,
+            "pi_payloads_identical": false,
+            "physical_peer_receipts": 0,
+            "physical_egress_once": false,
+            "no_udp_transit": false,
+            "campaign": "run05"
+          },
+          {
+            "ingress": "indicator",
+            "egress": "tdeck",
+            "positive": true,
+            "accepted_once": true,
+            "passed": true,
+            "exact_application_receipt": true,
+            "source_tx_once": true,
+            "pi_endpoint_receipts": 4,
+            "pi_payloads_identical": true,
+            "physical_peer_receipts": 4,
+            "physical_egress_once": true,
+            "no_udp_transit": true,
+            "campaign": "run05"
+          },
+          {
+            "ingress": "indicator",
+            "egress": "tdeck",
+            "positive": true,
+            "accepted_once": true,
+            "passed": true,
+            "exact_application_receipt": true,
+            "source_tx_once": true,
+            "pi_endpoint_receipts": 4,
+            "pi_payloads_identical": true,
+            "physical_peer_receipts": 4,
+            "physical_egress_once": true,
+            "no_udp_transit": true,
+            "campaign": "run05"
+          },
+          {
+            "ingress": "indicator",
+            "egress": "tdeck",
+            "positive": true,
+            "accepted_once": true,
+            "passed": true,
+            "exact_application_receipt": true,
+            "source_tx_once": true,
+            "pi_endpoint_receipts": 4,
+            "pi_payloads_identical": true,
+            "physical_peer_receipts": 4,
+            "physical_egress_once": true,
+            "no_udp_transit": true,
+            "campaign": "run05"
+          },
+          {
+            "ingress": "indicator",
+            "egress": "tdeck",
+            "positive": true,
+            "accepted_once": true,
+            "passed": true,
+            "exact_application_receipt": true,
+            "source_tx_once": true,
+            "pi_endpoint_receipts": 4,
+            "pi_payloads_identical": true,
+            "physical_peer_receipts": 4,
+            "physical_egress_once": true,
+            "no_udp_transit": true,
+            "campaign": "run05"
+          },
+          {
+            "ingress": "indicator",
+            "egress": "tdeck",
+            "positive": true,
+            "accepted_once": true,
+            "passed": true,
+            "exact_application_receipt": true,
+            "source_tx_once": true,
+            "pi_endpoint_receipts": 4,
+            "pi_payloads_identical": true,
+            "physical_peer_receipts": 4,
+            "physical_egress_once": true,
+            "no_udp_transit": true,
+            "campaign": "run05"
+          },
+          {
+            "ingress": "tdeck",
+            "egress": "v3",
+            "positive": false,
+            "accepted_once": true,
+            "passed": true,
+            "exact_application_receipt": false,
+            "source_tx_once": true,
+            "pi_endpoint_receipts": 0,
+            "pi_payloads_identical": false,
+            "physical_peer_receipts": 0,
+            "physical_egress_once": false,
+            "no_udp_transit": false,
+            "campaign": "run05"
+          },
+          {
+            "ingress": "tdeck",
+            "egress": "v3",
+            "positive": true,
+            "accepted_once": true,
+            "passed": true,
+            "exact_application_receipt": true,
+            "source_tx_once": true,
+            "pi_endpoint_receipts": 4,
+            "pi_payloads_identical": true,
+            "physical_peer_receipts": 4,
+            "physical_egress_once": true,
+            "no_udp_transit": true,
+            "campaign": "run05"
+          },
+          {
+            "ingress": "tdeck",
+            "egress": "v3",
+            "positive": true,
+            "accepted_once": true,
+            "passed": true,
+            "exact_application_receipt": true,
+            "source_tx_once": true,
+            "pi_endpoint_receipts": 4,
+            "pi_payloads_identical": true,
+            "physical_peer_receipts": 4,
+            "physical_egress_once": true,
+            "no_udp_transit": true,
+            "campaign": "run05"
+          },
+          {
+            "ingress": "tdeck",
+            "egress": "v3",
+            "positive": true,
+            "accepted_once": true,
+            "passed": true,
+            "exact_application_receipt": true,
+            "source_tx_once": true,
+            "pi_endpoint_receipts": 4,
+            "pi_payloads_identical": true,
+            "physical_peer_receipts": 4,
+            "physical_egress_once": true,
+            "no_udp_transit": true,
+            "campaign": "run05"
+          },
+          {
+            "ingress": "tdeck",
+            "egress": "v3",
+            "positive": true,
+            "accepted_once": true,
+            "passed": true,
+            "exact_application_receipt": true,
+            "source_tx_once": true,
+            "pi_endpoint_receipts": 4,
+            "pi_payloads_identical": true,
+            "physical_peer_receipts": 4,
+            "physical_egress_once": true,
+            "no_udp_transit": true,
+            "campaign": "run05"
+          },
+          {
+            "ingress": "tdeck",
+            "egress": "v3",
+            "positive": true,
+            "accepted_once": true,
+            "passed": true,
+            "exact_application_receipt": true,
+            "source_tx_once": true,
+            "pi_endpoint_receipts": 4,
+            "pi_payloads_identical": true,
+            "physical_peer_receipts": 4,
+            "physical_egress_once": true,
+            "no_udp_transit": true,
+            "campaign": "run05"
+          },
+          {
+            "ingress": "v3",
+            "egress": "v43",
+            "positive": false,
+            "accepted_once": true,
+            "passed": true,
+            "exact_application_receipt": false,
+            "source_tx_once": true,
+            "pi_endpoint_receipts": 0,
+            "pi_payloads_identical": false,
+            "physical_peer_receipts": 0,
+            "physical_egress_once": false,
+            "no_udp_transit": false,
+            "campaign": "run07"
+          },
+          {
+            "ingress": "v3",
+            "egress": "v43",
+            "positive": true,
+            "accepted_once": true,
+            "passed": true,
+            "exact_application_receipt": true,
+            "source_tx_once": true,
+            "pi_endpoint_receipts": 4,
+            "pi_payloads_identical": true,
+            "physical_peer_receipts": 4,
+            "physical_egress_once": true,
+            "no_udp_transit": true,
+            "campaign": "run07"
+          },
+          {
+            "ingress": "v3",
+            "egress": "v43",
+            "positive": true,
+            "accepted_once": true,
+            "passed": true,
+            "exact_application_receipt": true,
+            "source_tx_once": true,
+            "pi_endpoint_receipts": 4,
+            "pi_payloads_identical": true,
+            "physical_peer_receipts": 4,
+            "physical_egress_once": true,
+            "no_udp_transit": true,
+            "campaign": "run07"
+          },
+          {
+            "ingress": "v3",
+            "egress": "v43",
+            "positive": true,
+            "accepted_once": true,
+            "passed": true,
+            "exact_application_receipt": true,
+            "source_tx_once": true,
+            "pi_endpoint_receipts": 4,
+            "pi_payloads_identical": true,
+            "physical_peer_receipts": 4,
+            "physical_egress_once": true,
+            "no_udp_transit": true,
+            "campaign": "run07"
+          },
+          {
+            "ingress": "v3",
+            "egress": "v43",
+            "positive": true,
+            "accepted_once": true,
+            "passed": true,
+            "exact_application_receipt": true,
+            "source_tx_once": true,
+            "pi_endpoint_receipts": 4,
+            "pi_payloads_identical": true,
+            "physical_peer_receipts": 4,
+            "physical_egress_once": true,
+            "no_udp_transit": true,
+            "campaign": "run07"
+          },
+          {
+            "ingress": "v3",
+            "egress": "v43",
+            "positive": true,
+            "accepted_once": true,
+            "passed": true,
+            "exact_application_receipt": true,
+            "source_tx_once": true,
+            "pi_endpoint_receipts": 4,
+            "pi_payloads_identical": true,
+            "physical_peer_receipts": 4,
+            "physical_egress_once": true,
+            "no_udp_transit": true,
+            "campaign": "run07"
+          },
+          {
+            "ingress": "v43",
+            "egress": "xiao",
+            "positive": false,
+            "accepted_once": true,
+            "passed": true,
+            "exact_application_receipt": false,
+            "source_tx_once": true,
+            "pi_endpoint_receipts": 0,
+            "pi_payloads_identical": false,
+            "physical_peer_receipts": 0,
+            "physical_egress_once": false,
+            "no_udp_transit": false,
+            "campaign": "run07"
+          },
+          {
+            "ingress": "v43",
+            "egress": "xiao",
+            "positive": true,
+            "accepted_once": true,
+            "passed": true,
+            "exact_application_receipt": true,
+            "source_tx_once": true,
+            "pi_endpoint_receipts": 4,
+            "pi_payloads_identical": true,
+            "physical_peer_receipts": 4,
+            "physical_egress_once": true,
+            "no_udp_transit": true,
+            "campaign": "run07"
+          },
+          {
+            "ingress": "v43",
+            "egress": "xiao",
+            "positive": true,
+            "accepted_once": true,
+            "passed": true,
+            "exact_application_receipt": true,
+            "source_tx_once": true,
+            "pi_endpoint_receipts": 4,
+            "pi_payloads_identical": true,
+            "physical_peer_receipts": 4,
+            "physical_egress_once": true,
+            "no_udp_transit": true,
+            "campaign": "run07"
+          },
+          {
+            "ingress": "v43",
+            "egress": "xiao",
+            "positive": true,
+            "accepted_once": true,
+            "passed": true,
+            "exact_application_receipt": true,
+            "source_tx_once": true,
+            "pi_endpoint_receipts": 4,
+            "pi_payloads_identical": true,
+            "physical_peer_receipts": 4,
+            "physical_egress_once": true,
+            "no_udp_transit": true,
+            "campaign": "run07"
+          },
+          {
+            "ingress": "v43",
+            "egress": "xiao",
+            "positive": true,
+            "accepted_once": true,
+            "passed": true,
+            "exact_application_receipt": true,
+            "source_tx_once": true,
+            "pi_endpoint_receipts": 4,
+            "pi_payloads_identical": true,
+            "physical_peer_receipts": 4,
+            "physical_egress_once": true,
+            "no_udp_transit": true,
+            "campaign": "run07"
+          },
+          {
+            "ingress": "v43",
+            "egress": "xiao",
+            "positive": true,
+            "accepted_once": true,
+            "passed": true,
+            "exact_application_receipt": true,
+            "source_tx_once": true,
+            "pi_endpoint_receipts": 4,
+            "pi_payloads_identical": true,
+            "physical_peer_receipts": 4,
+            "physical_egress_once": true,
+            "no_udp_transit": true,
+            "campaign": "run07"
+          },
+          {
+            "ingress": "xiao",
+            "egress": "indicator",
+            "positive": false,
+            "accepted_once": true,
+            "passed": true,
+            "exact_application_receipt": false,
+            "source_tx_once": true,
+            "pi_endpoint_receipts": 0,
+            "pi_payloads_identical": false,
+            "physical_peer_receipts": 0,
+            "physical_egress_once": false,
+            "no_udp_transit": false,
+            "campaign": "run07"
+          },
+          {
+            "ingress": "xiao",
+            "egress": "indicator",
+            "positive": true,
+            "accepted_once": true,
+            "passed": true,
+            "exact_application_receipt": true,
+            "source_tx_once": true,
+            "pi_endpoint_receipts": 4,
+            "pi_payloads_identical": true,
+            "physical_peer_receipts": 4,
+            "physical_egress_once": true,
+            "no_udp_transit": true,
+            "campaign": "run07"
+          },
+          {
+            "ingress": "xiao",
+            "egress": "indicator",
+            "positive": true,
+            "accepted_once": true,
+            "passed": true,
+            "exact_application_receipt": true,
+            "source_tx_once": true,
+            "pi_endpoint_receipts": 4,
+            "pi_payloads_identical": true,
+            "physical_peer_receipts": 4,
+            "physical_egress_once": true,
+            "no_udp_transit": true,
+            "campaign": "run07"
+          },
+          {
+            "ingress": "xiao",
+            "egress": "indicator",
+            "positive": true,
+            "accepted_once": true,
+            "passed": true,
+            "exact_application_receipt": true,
+            "source_tx_once": true,
+            "pi_endpoint_receipts": 4,
+            "pi_payloads_identical": true,
+            "physical_peer_receipts": 4,
+            "physical_egress_once": true,
+            "no_udp_transit": true,
+            "campaign": "run07"
+          },
+          {
+            "ingress": "xiao",
+            "egress": "indicator",
+            "positive": true,
+            "accepted_once": true,
+            "passed": true,
+            "exact_application_receipt": true,
+            "source_tx_once": true,
+            "pi_endpoint_receipts": 4,
+            "pi_payloads_identical": true,
+            "physical_peer_receipts": 4,
+            "physical_egress_once": true,
+            "no_udp_transit": true,
+            "campaign": "run07"
+          },
+          {
+            "ingress": "xiao",
+            "egress": "indicator",
+            "positive": true,
+            "accepted_once": true,
+            "passed": true,
+            "exact_application_receipt": true,
+            "source_tx_once": true,
+            "pi_endpoint_receipts": 4,
+            "pi_payloads_identical": true,
+            "physical_peer_receipts": 4,
+            "physical_egress_once": true,
+            "no_udp_transit": true,
+            "campaign": "run07"
+          }
+        ],
+        "cleanup_passed": true,
+        "allowed_core_error_bits": 2,
+        "errors": [],
+        "source_commit": "36d9735e5539656a31b648eff32cae6b99576500",
+        "campaigns": {
+          "run05": {
+            "status": "failed",
+            "covered_ingresses": [
+              "indicator",
+              "tdeck"
+            ],
+            "completed_requests": 12,
+            "private_receipt": {
+              "sha256": "6b1858d5539747024d1cbc7b65610d0a577062fc7ca8300b8d24782b299797f9",
+              "bytes": 1325172
+            },
+            "safe_receipt": {
+              "sha256": "31b98ce4bd26825e371fd5fd386113692d0d55e92da34a8f7bb3926265916afe",
+              "bytes": 5595
+            },
+            "fixture_restarts": 1,
+            "fixture_run_id": "d43e26b9b2739e602c8296dcc09d7b2a847a0574a478bc0b786c00d4db1f1d0f",
+            "errors": [
+              {
+                "phase": "measurement",
+                "error_type": "RuntimeError"
+              }
+            ]
+          },
+          "run07": {
+            "status": "passed",
+            "covered_ingresses": [
+              "v3",
+              "v43",
+              "xiao"
+            ],
+            "completed_requests": 18,
+            "private_receipt": {
+              "sha256": "46174c668fcfdc07ca03e8c2ed0d2fc4aa0ac09b259d664300ca95bf90218f90",
+              "bytes": 1941247
+            },
+            "safe_receipt": {
+              "sha256": "c6dd421a9cf375136ac8034bcd58b2640fa7d7c4fd3c8cbf2d49d1f84012a165",
+              "bytes": 8046
+            },
+            "fixture_restarts": 2,
+            "fixture_run_id": "360c43c9d7d18df8e07ca9165e40bf7333e2e5b14152a47255d3d2d7f115da1f",
+            "errors": []
+          }
+        },
+        "first_failure_preserved": true,
+        "scoped_resume": true,
+        "no_retested_ingresses": true,
+        "original_rxps_authority": "first-successful-getter-run05",
+        "watchdog_continuity": {
+          "historical_soft_recovery_baselines_retained": true,
+          "packet_receive_errors_unchanged": true,
+          "all_resume_trial_flags_unchanged": true,
+          "all_resume_trial_soft_hard_unchanged": true,
+          "new_trial_error_bits": 0,
+          "soft_recoveries_during_trials": 0,
+          "hard_recoveries_during_trials": 0
+        },
+        "fixture_restarts": 2
+      }
+    },
+    "raw_rf_audit": {
+      "schema_version": 1,
+      "scope": "Independent raw RF counters, application bytes and timing across disjoint scopes",
+      "source_commit": "36d9735e5539656a31b648eff32cae6b99576500",
+      "passed": true,
+      "positive_requests": 25,
+      "negative_controls": 5,
+      "single_send_requests": 30,
+      "exact_lora_receipts": 25,
+      "physical_udp_copies": 100,
+      "pi_endpoint_copies": 100,
+      "udp_transit_packets": 0,
+      "application_retries": 0,
+      "role_settling": [
+        {
+          "ingress": "indicator",
+          "minimum_wait_seconds": 65.0001328750077,
+          "stable_seconds": 2.0705384659959236,
+          "quiet_snapshots": 2
+        },
+        {
+          "ingress": "tdeck",
+          "minimum_wait_seconds": 65.00010506200488,
+          "stable_seconds": 2.2657938479969744,
+          "quiet_snapshots": 2
+        },
+        {
+          "ingress": "v3",
+          "minimum_wait_seconds": 65.00013379300071,
+          "stable_seconds": 2.078923206005129,
+          "quiet_snapshots": 2
+        },
+        {
+          "ingress": "v43",
+          "minimum_wait_seconds": 65.0001329069928,
+          "stable_seconds": 2.3168783959990833,
+          "quiet_snapshots": 2
+        },
+        {
+          "ingress": "xiao",
+          "minimum_wait_seconds": 65.00013687300088,
+          "stable_seconds": 2.522801838000305,
+          "quiet_snapshots": 2
+        }
+      ],
+      "input_receipts": {
+        "fanout05_private": {
+          "sha256": "6b1858d5539747024d1cbc7b65610d0a577062fc7ca8300b8d24782b299797f9",
+          "bytes": 1325172
+        },
+        "fanout07_private": {
+          "sha256": "46174c668fcfdc07ca03e8c2ed0d2fc4aa0ac09b259d664300ca95bf90218f90",
+          "bytes": 1941247
+        },
+        "fanout05_serial": {
+          "sha256": "95cc4f0756968fe4d33dc29a3a50831fd7724ef5d4378f9002a73d39919944e9",
+          "bytes": 1036239
+        },
+        "fanout07_serial": {
+          "sha256": "6d5c5e9a4ef003a6d205c19e636c3089064b48598c285715bb6d14852688f000",
+          "bytes": 1445807
+        },
+        "fixture04_events": {
+          "sha256": "14c440b4b35120c4c057ddb6cd599c0f413184556bad3a7b78b9d7d0ad8c2e5b",
+          "bytes": 7271639
+        },
+        "fixture_events": {
+          "sha256": "c90d867dca0012b4939b37a7a961bcb8a494a16b72a3d89b6bcdde0fb117700d",
+          "bytes": 4825552
+        }
+      }
+    },
+    "final_cleanup": {
+      "schema_version": 1,
+      "scope": "Final bench cleanup after completed physical RF fanout",
+      "source_commit": "36d9735e5539656a31b648eff32cae6b99576500",
+      "passed": true,
+      "boards": {
+        "indicator": {
+          "identity_unchanged": true,
+          "radio_unchanged": true,
+          "original_rxps_restored": true,
+          "cpu_power_policy_unchanged": true,
+          "cpu_clock_configuration_setters": 0,
+          "wifi_and_secret_unchanged": true,
+          "udp_off": true,
+          "peer_slots_cleared": 8,
+          "repeat_off": true,
+          "bridge_source_tx": true,
+          "logging_off": true,
+          "webconfig_inactive": true,
+          "before_memory": {
+            "free": 106644,
+            "minimum": 101672,
+            "largest": 90100,
+            "queue": 0,
+            "internal_free": 106644,
+            "internal_largest": 90100,
+            "psram_free": 7861659,
+            "psram_total": 8388607
+          },
+          "after_memory": {
+            "free": 132036,
+            "minimum": 101672,
+            "largest": 94196,
+            "queue": 0,
+            "internal_free": 132036,
+            "internal_largest": 94196,
+            "psram_free": 7876775,
+            "psram_total": 8388607
+          }
+        },
+        "tdeck": {
+          "identity_unchanged": true,
+          "radio_unchanged": true,
+          "original_rxps_restored": true,
+          "cpu_power_policy_unchanged": true,
+          "cpu_clock_configuration_setters": 0,
+          "wifi_and_secret_unchanged": true,
+          "udp_off": true,
+          "peer_slots_cleared": 8,
+          "repeat_off": true,
+          "bridge_source_tx": true,
+          "logging_off": true,
+          "webconfig_inactive": true,
+          "before_memory": {
+            "free": 151584,
+            "minimum": 145812,
+            "largest": 131060,
+            "queue": 0,
+            "internal_free": 151584,
+            "internal_largest": 131060,
+            "psram_free": 8168547,
+            "psram_total": 8388607
+          },
+          "after_memory": {
+            "free": 176996,
+            "minimum": 145812,
+            "largest": 139252,
+            "queue": 0,
+            "internal_free": 176996,
+            "internal_largest": 139252,
+            "psram_free": 8183671,
+            "psram_total": 8388607
+          }
+        },
+        "v3": {
+          "identity_unchanged": true,
+          "radio_unchanged": true,
+          "original_rxps_restored": true,
+          "cpu_power_policy_unchanged": true,
+          "cpu_clock_configuration_setters": 0,
+          "wifi_and_secret_unchanged": true,
+          "udp_off": true,
+          "peer_slots_cleared": 8,
+          "repeat_off": true,
+          "bridge_source_tx": true,
+          "logging_off": true,
+          "webconfig_inactive": true,
+          "before_memory": {
+            "free": 74400,
+            "minimum": 42652,
+            "largest": 65524,
+            "queue": 0,
+            "internal_free": 74400,
+            "internal_largest": 65524,
+            "psram_free": 0,
+            "psram_total": 0
+          },
+          "after_memory": {
+            "free": 114800,
+            "minimum": 42652,
+            "largest": 65524,
+            "queue": 0,
+            "internal_free": 114800,
+            "internal_largest": 65524,
+            "psram_free": 0,
+            "psram_total": 0
+          }
+        },
+        "v43": {
+          "identity_unchanged": true,
+          "radio_unchanged": true,
+          "original_rxps_restored": true,
+          "cpu_power_policy_unchanged": true,
+          "cpu_clock_configuration_setters": 0,
+          "wifi_and_secret_unchanged": true,
+          "udp_off": true,
+          "peer_slots_cleared": 8,
+          "repeat_off": true,
+          "bridge_source_tx": true,
+          "logging_off": true,
+          "webconfig_inactive": true,
+          "before_memory": {
+            "free": 81164,
+            "minimum": 76028,
+            "largest": 65524,
+            "queue": 0,
+            "internal_free": 81164,
+            "internal_largest": 65524,
+            "psram_free": 2074919,
+            "psram_total": 2097151
+          },
+          "after_memory": {
+            "free": 106528,
+            "minimum": 76028,
+            "largest": 69620,
+            "queue": 0,
+            "internal_free": 106528,
+            "internal_largest": 69620,
+            "psram_free": 2089887,
+            "psram_total": 2097151
+          }
+        },
+        "xiao": {
+          "identity_unchanged": true,
+          "radio_unchanged": true,
+          "original_rxps_restored": true,
+          "cpu_power_policy_unchanged": true,
+          "cpu_clock_configuration_setters": 0,
+          "wifi_and_secret_unchanged": true,
+          "udp_off": true,
+          "peer_slots_cleared": 8,
+          "repeat_off": true,
+          "bridge_source_tx": true,
+          "logging_off": true,
+          "webconfig_inactive": true,
+          "before_memory": {
+            "free": 136464,
+            "minimum": 131304,
+            "largest": 122868,
+            "queue": 0,
+            "internal_free": 136464,
+            "internal_largest": 122868,
+            "psram_free": 8317927,
+            "psram_total": 8388607
+          },
+          "after_memory": {
+            "free": 161844,
+            "minimum": 131304,
+            "largest": 126964,
+            "queue": 0,
+            "internal_free": 161844,
+            "internal_largest": 126964,
+            "psram_free": 8332899,
+            "psram_total": 8388607
+          }
+        }
+      },
+      "fixture": {
+        "fixture_restarts": 2,
+        "stop_requests": 1,
+        "controlled_stop": true,
+        "all_stop_commands": 2,
+        "owned_run_bound": true,
+        "prior_fixture_controlled_stop": true
+      },
+      "operations": {
+        "flash_operations": 0,
+        "erases": 0,
+        "reboots": 0,
+        "stats_clears": 0,
+        "intentional_data_sends": 0,
+        "nrf52_sessions": 0
+      },
+      "input_receipts": {
+        "cleanup_private": {
+          "sha256": "67c9bc571f6e311b75a88dc29196469d3129ae5115841b841aa8023f4e4d5839",
+          "bytes": 316577
+        },
+        "cleanup_safe": {
+          "sha256": "40faf96bc7c93011e4225e8e6a7f1427c78e37114fa3c67215131ea20db9bbb1",
+          "bytes": 4606
+        },
+        "fanout_private": {
+          "sha256": "280aac668523d600c4426205aa568ef0baf12eed8f49238af6b1c8ae9fa56c9a",
+          "bytes": 1743057
+        },
+        "reboot_private": {
+          "sha256": "14a2f809ad24372840baa5004b226503e727a59ea375f30006bc460055269a36",
+          "bytes": 31933
+        },
+        "fanout_safe": {
+          "sha256": "60cf4f52f582591209926ded9784df05d32b9c06449586a28648ed084975053f",
+          "bytes": 15031
+        },
+        "reboot_safe": {
+          "sha256": "d3d2920b041263231dfccec10dfa5b28e76aab558e94116c3cdb28852a2625ef",
+          "bytes": 8072
+        },
+        "fanout05_private": {
+          "sha256": "6b1858d5539747024d1cbc7b65610d0a577062fc7ca8300b8d24782b299797f9",
+          "bytes": 1325172
+        },
+        "fanout05_safe": {
+          "sha256": "31b98ce4bd26825e371fd5fd386113692d0d55e92da34a8f7bb3926265916afe",
+          "bytes": 5595
+        },
+        "fanout07_private": {
+          "sha256": "46174c668fcfdc07ca03e8c2ed0d2fc4aa0ac09b259d664300ca95bf90218f90",
+          "bytes": 1941247
+        },
+        "fanout07_safe": {
+          "sha256": "c6dd421a9cf375136ac8034bcd58b2640fa7d7c4fd3c8cbf2d49d1f84012a165",
+          "bytes": 8046
+        },
+        "matrix_safe": {
+          "sha256": "0fefdc8c90537fd59b472cb6125026033e0b1209a2edb6f14c4c881244d65f55",
+          "bytes": 18062
+        },
+        "matrix_config": {
+          "sha256": "b91ff3b7cc3678fb3a7d8fe2e6683adeac609ab440ae4ae0a1e52f2aab8f451f",
+          "bytes": 492
+        },
+        "matrix_controller": {
+          "sha256": "c76030c289439845ff1c652f73128d9ed51ed2a6f3127662c7fa138fc74c5350",
+          "bytes": 1147670
+        },
+        "matrix_status": {
+          "sha256": "37a2d95a3a406f3f775bab5a360d148e47882d99b1af1d7123793a557b76c5c5",
+          "bytes": 4561
+        },
+        "matrix_events": {
+          "sha256": "df92e9bbeb52650d8be733c87e1075cf80d0d91eaef5965ec07691f116da03a4",
+          "bytes": 4404902
+        },
+        "fixture_config": {
+          "sha256": "b91ff3b7cc3678fb3a7d8fe2e6683adeac609ab440ae4ae0a1e52f2aab8f451f",
+          "bytes": 492
+        },
+        "fixture_controller": {
+          "sha256": "bdb81f868d5fb9afcc9435387fca10ce58608db75d9ab95bdb87cfdacbaa3bde",
+          "bytes": 1029
+        },
+        "fixture_launch": {
+          "sha256": "d404cbb3cccd108986ae26c64607e078cd59145dc4286de5e212ba73038907e5",
+          "bytes": 3761
+        },
+        "fixture_status": {
+          "sha256": "328c2d4307d043b010f8eb40efa9c3ca837e7fdf121948876e97ad75ef5e47af",
+          "bytes": 4580
+        },
+        "fixture_events": {
+          "sha256": "c90d867dca0012b4939b37a7a961bcb8a494a16b72a3d89b6bcdde0fb117700d",
+          "bytes": 4825552
+        },
+        "fixture_control": {
+          "sha256": "163c4b86f3afa4e4deafeeffdf171d9615b6df4692959ccecd0a9b24a8342978",
+          "bytes": 55
+        },
+        "fixture04_config": {
+          "sha256": "b91ff3b7cc3678fb3a7d8fe2e6683adeac609ab440ae4ae0a1e52f2aab8f451f",
+          "bytes": 492
+        },
+        "fixture04_controller": {
+          "sha256": "ad14352ac78174e05612b9006c54835a7b115b8d987393eebed1c3aa357c0f2d",
+          "bytes": 854
+        },
+        "fixture04_launch": {
+          "sha256": "a2044981513bc9122a18e20d405527fb60cdc1f1f61321f4e5559a70ce8f8f95",
+          "bytes": 10212
+        },
+        "fixture04_status": {
+          "sha256": "32c4b86653b2681a1a4ffb47d0bdb4da4f9b2a1d616cf8dff35acb8c0f5d7c46",
+          "bytes": 4572
+        },
+        "fixture04_events": {
+          "sha256": "14c440b4b35120c4c057ddb6cd599c0f413184556bad3a7b78b9d7d0ad8c2e5b",
+          "bytes": 7271639
+        },
+        "fixture04_control": {
+          "sha256": "f2d74fd917480b509471a41712189c518774f3fc6a51aae8841b3b10d739eef7",
+          "bytes": 54
+        },
+        "fixture_script": {
+          "sha256": "b771acb8398181e97940e2aa28f519b7e910251b14adf28313be27b16997a701",
+          "bytes": 21111
+        },
+        "cleanup_journal": {
+          "sha256": "38129c1740afb2bbc77a61b88440c6d4e27aac4e373be299729931ab9e3316b7",
+          "bytes": 324107
+        },
+        "cleanup_serial": {
+          "sha256": "8ac8a2a2f20efb9f7e9f4aaa61bf055bd00c0c5dbde139d99e0b41ab5191cfe8",
+          "bytes": 320706
+        }
+      }
+    }
+  },
+  "input_receipts": {
+    "builds": {
+      "sha256": "ed2c6ea174ab1c70f513b2efc124e51c2562d1d9c859666082baa761705c4f1d",
+      "bytes": 5607
+    },
+    "matrix": {
+      "sha256": "0fefdc8c90537fd59b472cb6125026033e0b1209a2edb6f14c4c881244d65f55",
+      "bytes": 18062
+    },
+    "software_reboot": {
+      "sha256": "d3d2920b041263231dfccec10dfa5b28e76aab558e94116c3cdb28852a2625ef",
+      "bytes": 8072
+    },
+    "physical_lora_fanout": {
+      "sha256": "60cf4f52f582591209926ded9784df05d32b9c06449586a28648ed084975053f",
+      "bytes": 15031
+    },
+    "raw_rf_audit": {
+      "sha256": "3f198199c88432259004b3adac498ea0a013de6b19ea883e87b66ca5be0d7ce0",
+      "bytes": 2105
+    },
+    "final_cleanup_audit": {
+      "sha256": "3903dfa3538d9426fd227f78ed83d1b8f3fc2a0ca4ead064e58f0af28a65c6a2",
+      "bytes": 9372
+    }
+  },
+  "private_evidence_hashes": {
+    "cleanup_private": {
+      "sha256": "67c9bc571f6e311b75a88dc29196469d3129ae5115841b841aa8023f4e4d5839",
+      "bytes": 316577
+    },
+    "cleanup_safe": {
+      "sha256": "40faf96bc7c93011e4225e8e6a7f1427c78e37114fa3c67215131ea20db9bbb1",
+      "bytes": 4606
+    },
+    "cleanup_journal": {
+      "sha256": "38129c1740afb2bbc77a61b88440c6d4e27aac4e373be299729931ab9e3316b7",
+      "bytes": 324107
+    },
+    "cleanup_serial": {
+      "sha256": "8ac8a2a2f20efb9f7e9f4aaa61bf055bd00c0c5dbde139d99e0b41ab5191cfe8",
+      "bytes": 320706
+    },
+    "fanout_private": {
+      "sha256": "280aac668523d600c4426205aa568ef0baf12eed8f49238af6b1c8ae9fa56c9a",
+      "bytes": 1743057
+    },
+    "fanout_safe": {
+      "sha256": "60cf4f52f582591209926ded9784df05d32b9c06449586a28648ed084975053f",
+      "bytes": 15031
+    },
+    "fanout05_private": {
+      "sha256": "6b1858d5539747024d1cbc7b65610d0a577062fc7ca8300b8d24782b299797f9",
+      "bytes": 1325172
+    },
+    "fanout05_safe": {
+      "sha256": "31b98ce4bd26825e371fd5fd386113692d0d55e92da34a8f7bb3926265916afe",
+      "bytes": 5595
+    },
+    "fanout07_private": {
+      "sha256": "46174c668fcfdc07ca03e8c2ed0d2fc4aa0ac09b259d664300ca95bf90218f90",
+      "bytes": 1941247
+    },
+    "fanout07_safe": {
+      "sha256": "c6dd421a9cf375136ac8034bcd58b2640fa7d7c4fd3c8cbf2d49d1f84012a165",
+      "bytes": 8046
+    },
+    "fanout05_serial": {
+      "sha256": "95cc4f0756968fe4d33dc29a3a50831fd7724ef5d4378f9002a73d39919944e9",
+      "bytes": 1036239
+    },
+    "fanout07_serial": {
+      "sha256": "6d5c5e9a4ef003a6d205c19e636c3089064b48598c285715bb6d14852688f000",
+      "bytes": 1445807
+    },
+    "matrix_safe": {
+      "sha256": "0fefdc8c90537fd59b472cb6125026033e0b1209a2edb6f14c4c881244d65f55",
+      "bytes": 18062
+    },
+    "matrix_config": {
+      "sha256": "b91ff3b7cc3678fb3a7d8fe2e6683adeac609ab440ae4ae0a1e52f2aab8f451f",
+      "bytes": 492
+    },
+    "matrix_controller": {
+      "sha256": "c76030c289439845ff1c652f73128d9ed51ed2a6f3127662c7fa138fc74c5350",
+      "bytes": 1147670
+    },
+    "matrix_status": {
+      "sha256": "37a2d95a3a406f3f775bab5a360d148e47882d99b1af1d7123793a557b76c5c5",
+      "bytes": 4561
+    },
+    "matrix_events": {
+      "sha256": "df92e9bbeb52650d8be733c87e1075cf80d0d91eaef5965ec07691f116da03a4",
+      "bytes": 4404902
+    },
+    "fixture_script": {
+      "sha256": "b771acb8398181e97940e2aa28f519b7e910251b14adf28313be27b16997a701",
+      "bytes": 21111
+    },
+    "reboot_private": {
+      "sha256": "14a2f809ad24372840baa5004b226503e727a59ea375f30006bc460055269a36",
+      "bytes": 31933
+    },
+    "reboot_safe": {
+      "sha256": "d3d2920b041263231dfccec10dfa5b28e76aab558e94116c3cdb28852a2625ef",
+      "bytes": 8072
+    },
+    "fixture_config": {
+      "sha256": "b91ff3b7cc3678fb3a7d8fe2e6683adeac609ab440ae4ae0a1e52f2aab8f451f",
+      "bytes": 492
+    },
+    "fixture_controller": {
+      "sha256": "bdb81f868d5fb9afcc9435387fca10ce58608db75d9ab95bdb87cfdacbaa3bde",
+      "bytes": 1029
+    },
+    "fixture_launch": {
+      "sha256": "d404cbb3cccd108986ae26c64607e078cd59145dc4286de5e212ba73038907e5",
+      "bytes": 3761
+    },
+    "fixture_status": {
+      "sha256": "328c2d4307d043b010f8eb40efa9c3ca837e7fdf121948876e97ad75ef5e47af",
+      "bytes": 4580
+    },
+    "fixture_events": {
+      "sha256": "c90d867dca0012b4939b37a7a961bcb8a494a16b72a3d89b6bcdde0fb117700d",
+      "bytes": 4825552
+    },
+    "fixture_control": {
+      "sha256": "163c4b86f3afa4e4deafeeffdf171d9615b6df4692959ccecd0a9b24a8342978",
+      "bytes": 55
+    },
+    "fixture04_config": {
+      "sha256": "b91ff3b7cc3678fb3a7d8fe2e6683adeac609ab440ae4ae0a1e52f2aab8f451f",
+      "bytes": 492
+    },
+    "fixture04_controller": {
+      "sha256": "ad14352ac78174e05612b9006c54835a7b115b8d987393eebed1c3aa357c0f2d",
+      "bytes": 854
+    },
+    "fixture04_launch": {
+      "sha256": "a2044981513bc9122a18e20d405527fb60cdc1f1f61321f4e5559a70ce8f8f95",
+      "bytes": 10212
+    },
+    "fixture04_status": {
+      "sha256": "32c4b86653b2681a1a4ffb47d0bdb4da4f9b2a1d616cf8dff35acb8c0f5d7c46",
+      "bytes": 4572
+    },
+    "fixture04_events": {
+      "sha256": "14c440b4b35120c4c057ddb6cd599c0f413184556bad3a7b78b9d7d0ad8c2e5b",
+      "bytes": 7271639
+    },
+    "fixture04_control": {
+      "sha256": "f2d74fd917480b509471a41712189c518774f3fc6a51aae8841b3b10d739eef7",
+      "bytes": 54
+    }
+  },
+  "publication_helper_sha256": "14798c27a3636625a76e2f59d49b307b769a1368942f1649be0a524e411c1c5d"
+}

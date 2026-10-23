@@ -1,0 +1,401 @@
+{
+  "schema_version": 1,
+  "scope": "Opaque receipt hashes for preserved attempts and final evidence; separate archives retain earlier failures.",
+  "cases": [
+    {
+      "case_id": "baseline-matrix01",
+      "status": "failed",
+      "counts": null,
+      "source_commit": null,
+      "receipt": {
+        "sha256": "2ff6405ba18eada054e76c4ad9b0af4c6fa924e3c2026d9d9de7eb69fdd8b0fa",
+        "bytes": 17318
+      }
+    },
+    {
+      "case_id": "rf02",
+      "status": "failed",
+      "counts": {
+        "result_rows": 0,
+        "passing_rows": 0,
+        "positive_rows": 0,
+        "negative_rows": 0
+      },
+      "source_commit": null,
+      "receipt": {
+        "sha256": "e58e68ccd6c54c7df96a1d434bc9d21090ee3f632f1f96d26324b0dc63987a17",
+        "bytes": 585
+      }
+    },
+    {
+      "case_id": "rf03",
+      "status": "failed",
+      "counts": {
+        "result_rows": 0,
+        "passing_rows": 0,
+        "positive_rows": 0,
+        "negative_rows": 0
+      },
+      "source_commit": "36d9735e5539656a31b648eff32cae6b99576500",
+      "receipt": {
+        "sha256": "7635a3f7b1ad1fefec7f59b15bbb083183b3d6b4ae1a19287fd05bac0e2c2d57",
+        "bytes": 1491
+      }
+    },
+    {
+      "case_id": "recovery03-01",
+      "status": "failed",
+      "counts": null,
+      "source_commit": "36d9735e5539656a31b648eff32cae6b99576500",
+      "receipt": {
+        "sha256": "572a37a98b4245919c971af3ce17748fda7da2d5fd4ca7a93bd59094d719b0c3",
+        "bytes": 2468
+      }
+    },
+    {
+      "case_id": "recovery03-02",
+      "status": "passed",
+      "counts": null,
+      "source_commit": "36d9735e5539656a31b648eff32cae6b99576500",
+      "receipt": {
+        "sha256": "f9d54ad2fc642f268e7dac1cdc22d62ec2bcc47633b8e819b65655e0e333c9b5",
+        "bytes": 2370
+      }
+    },
+    {
+      "case_id": "rf-setup01",
+      "status": "setup_complete",
+      "counts": null,
+      "source_commit": "36d9735e5539656a31b648eff32cae6b99576500",
+      "receipt": {
+        "sha256": "47ed75dc7c0bb9572ec37ccb0895ac3ef8baa0dedd082e979230264cc0d5616f",
+        "bytes": 8271
+      }
+    },
+    {
+      "case_id": "rf-setup03",
+      "status": "setup_complete",
+      "counts": null,
+      "source_commit": "36d9735e5539656a31b648eff32cae6b99576500",
+      "receipt": {
+        "sha256": "9748e5954eb9f6bc4f7a7bbb7e30f1d56846acaf99ff81c692037706fbabd46a",
+        "bytes": 8269
+      }
+    },
+    {
+      "case_id": "rf-setup04",
+      "status": "setup_failed",
+      "counts": null,
+      "source_commit": "36d9735e5539656a31b648eff32cae6b99576500",
+      "receipt": {
+        "sha256": "7ca7128885ca05ceda7281f9e23748642c7e6cc51aaa7985e78e59c48c9df975",
+        "bytes": 8354
+      }
+    },
+    {
+      "case_id": "witness-setup02",
+      "status": "passed",
+      "counts": null,
+      "source_commit": null,
+      "receipt": {
+        "sha256": "e61d0ecacd3a5551761beddaa9d81fe79209a4834f4d8e7842bcd0193623ba7e",
+        "bytes": 1029
+      }
+    },
+    {
+      "case_id": "witness-setup03",
+      "status": "passed",
+      "counts": null,
+      "source_commit": null,
+      "receipt": {
+        "sha256": "360e935fbb76930e865ba7b124710a2e029117af77ecb443e62fc5080171f372",
+        "bytes": 1029
+      }
+    },
+    {
+      "case_id": "witness-setup04",
+      "status": "passed",
+      "counts": null,
+      "source_commit": null,
+      "receipt": {
+        "sha256": "5c2171f9c96f3baa54a0733c4496620dfd6f25459c410facd48fb606f64178ef",
+        "bytes": 1029
+      }
+    },
+    {
+      "case_id": "rf04",
+      "status": "failed",
+      "counts": {
+        "result_rows": 1,
+        "passing_rows": 0,
+        "positive_rows": 0,
+        "negative_rows": 1
+      },
+      "source_commit": "36d9735e5539656a31b648eff32cae6b99576500",
+      "receipt": {
+        "sha256": "1d629b65ff275307e5f1c251851757935ac8b0897959d8706fed289889d0b3d2",
+        "bytes": 1409
+      }
+    },
+    {
+      "case_id": "rxps-restore01",
+      "status": "failed",
+      "counts": null,
+      "source_commit": "36d9735e5539656a31b648eff32cae6b99576500",
+      "receipt": {
+        "sha256": "976f0b1be6bf29817bc23ce6cd75824d1a94e18357e18c6386f8d35a45335f43",
+        "bytes": 2016
+      }
+    },
+    {
+      "case_id": "rxps-restore02",
+      "status": "passed",
+      "counts": null,
+      "source_commit": "36d9735e5539656a31b648eff32cae6b99576500",
+      "receipt": {
+        "sha256": "f65355ca9b72cc703d344a2e657e7d6c66acb3313742b61227ee68edf0b580b3",
+        "bytes": 1933
+      }
+    },
+    {
+      "case_id": "rxps-restore03",
+      "status": "failed",
+      "counts": null,
+      "source_commit": "36d9735e5539656a31b648eff32cae6b99576500",
+      "receipt": {
+        "sha256": "976f0b1be6bf29817bc23ce6cd75824d1a94e18357e18c6386f8d35a45335f43",
+        "bytes": 2016
+      }
+    },
+    {
+      "case_id": "rf05",
+      "status": "failed",
+      "counts": {
+        "result_rows": 12,
+        "passing_rows": 12,
+        "positive_rows": 10,
+        "negative_rows": 2
+      },
+      "source_commit": "36d9735e5539656a31b648eff32cae6b99576500",
+      "receipt": {
+        "sha256": "31b98ce4bd26825e371fd5fd386113692d0d55e92da34a8f7bb3926265916afe",
+        "bytes": 5595
+      }
+    },
+    {
+      "case_id": "rf06",
+      "status": "failed",
+      "counts": {
+        "result_rows": 0,
+        "passing_rows": 0,
+        "positive_rows": 0,
+        "negative_rows": 0
+      },
+      "source_commit": "36d9735e5539656a31b648eff32cae6b99576500",
+      "receipt": {
+        "sha256": "81ac160be7164cab08f235fd51e54962b9e5df6b69395d9b1570de3db2a37d7a",
+        "bytes": 1299
+      }
+    },
+    {
+      "case_id": "rf07",
+      "status": "passed",
+      "counts": {
+        "result_rows": 18,
+        "passing_rows": 18,
+        "positive_rows": 15,
+        "negative_rows": 3
+      },
+      "source_commit": "36d9735e5539656a31b648eff32cae6b99576500",
+      "receipt": {
+        "sha256": "c6dd421a9cf375136ac8034bcd58b2640fa7d7c4fd3c8cbf2d49d1f84012a165",
+        "bytes": 8046
+      }
+    },
+    {
+      "case_id": "fixture04-setup",
+      "status": "setup_complete",
+      "counts": null,
+      "source_commit": "36d9735e5539656a31b648eff32cae6b99576500",
+      "receipt": {
+        "sha256": "8c060e7eaf29cd2f2d3cb36ef8deee8f8fef2c5931e478b7583a24b4087f7dd3",
+        "bytes": 511
+      }
+    },
+    {
+      "case_id": "fixture05-setup",
+      "status": "setup_complete",
+      "counts": null,
+      "source_commit": "36d9735e5539656a31b648eff32cae6b99576500",
+      "receipt": {
+        "sha256": "9ac8ba8b90dc7f2fa6761148baa01e04863f62a8a44f02d22e0e7a42d23fbc6f",
+        "bytes": 548
+      }
+    },
+    {
+      "case_id": "final-matrix02",
+      "status": "passed",
+      "counts": null,
+      "source_commit": "36d9735e5539656a31b648eff32cae6b99576500",
+      "receipt": {
+        "sha256": "0fefdc8c90537fd59b472cb6125026033e0b1209a2edb6f14c4c881244d65f55",
+        "bytes": 18062
+      }
+    },
+    {
+      "case_id": "qualified-software-reboot02",
+      "status": "passed",
+      "counts": null,
+      "source_commit": null,
+      "receipt": {
+        "sha256": "d3d2920b041263231dfccec10dfa5b28e76aab558e94116c3cdb28852a2625ef",
+        "bytes": 8072
+      }
+    },
+    {
+      "case_id": "combined-rf05-07",
+      "status": "passed",
+      "counts": {
+        "result_rows": 30,
+        "passing_rows": 30,
+        "positive_rows": 25,
+        "negative_rows": 5
+      },
+      "source_commit": "36d9735e5539656a31b648eff32cae6b99576500",
+      "receipt": {
+        "sha256": "60cf4f52f582591209926ded9784df05d32b9c06449586a28648ed084975053f",
+        "bytes": 15031
+      }
+    },
+    {
+      "case_id": "final-cleanup07",
+      "status": "passed",
+      "counts": null,
+      "source_commit": "36d9735e5539656a31b648eff32cae6b99576500",
+      "receipt": {
+        "sha256": "40faf96bc7c93011e4225e8e6a7f1427c78e37114fa3c67215131ea20db9bbb1",
+        "bytes": 4606
+      }
+    },
+    {
+      "case_id": "independent-raw-rf-audit",
+      "status": "passed",
+      "counts": null,
+      "source_commit": "36d9735e5539656a31b648eff32cae6b99576500",
+      "receipt": {
+        "sha256": "3f198199c88432259004b3adac498ea0a013de6b19ea883e87b66ca5be0d7ce0",
+        "bytes": 2105
+      }
+    },
+    {
+      "case_id": "independent-cleanup-audit",
+      "status": "passed",
+      "counts": null,
+      "source_commit": "36d9735e5539656a31b648eff32cae6b99576500",
+      "receipt": {
+        "sha256": "3903dfa3538d9426fd227f78ed83d1b8f3fc2a0ca4ead064e58f0af28a65c6a2",
+        "bytes": 9372
+      }
+    },
+    {
+      "case_id": "baseline-matrix01-archive",
+      "status": "preserved_archive",
+      "counts": null,
+      "source_commit": null,
+      "receipt": {
+        "sha256": "c29951baf0963b38f2689c41dbc85257b68c5713403e2f02faf1b92d2c3c8b69",
+        "bytes": 3891200
+      }
+    },
+    {
+      "case_id": "blocked-rf02-archive",
+      "status": "preserved_archive",
+      "counts": null,
+      "source_commit": null,
+      "receipt": {
+        "sha256": "398878df341f8aba7ea8ffefdb469a69382f2454b4a5a3bd55270aacf0f8405d",
+        "bytes": 20480
+      }
+    },
+    {
+      "case_id": "host-fault-rf03-archive",
+      "status": "preserved_archive",
+      "counts": null,
+      "source_commit": null,
+      "receipt": {
+        "sha256": "2cb4a09c0bc835080f90a0943ae1a370e9e1a1eca3ed7fa65d431414e45842fb",
+        "bytes": 133120
+      }
+    },
+    {
+      "case_id": "rf04-archive",
+      "status": "preserved_archive",
+      "counts": null,
+      "source_commit": null,
+      "receipt": {
+        "sha256": "cb90750f060c5fb017b50bdeece5c4086f9f8e411ae0f680d9356b64a63f56e3",
+        "bytes": 624640
+      }
+    },
+    {
+      "case_id": "rxps-restore01-archive",
+      "status": "preserved_archive",
+      "counts": null,
+      "source_commit": null,
+      "receipt": {
+        "sha256": "e3e00af6b01009d34b860b632016960cb1e2c26c7b67455884e44375ffa875b9",
+        "bytes": 389120
+      }
+    },
+    {
+      "case_id": "rf05-archive",
+      "status": "preserved_archive",
+      "counts": null,
+      "source_commit": null,
+      "receipt": {
+        "sha256": "538911603ff25457c1bd67aaa2b901f9fcf64ebd77b5b520e7134943c5b3ab6e",
+        "bytes": 2662400
+      }
+    },
+    {
+      "case_id": "rf06-archive",
+      "status": "preserved_archive",
+      "counts": null,
+      "source_commit": null,
+      "receipt": {
+        "sha256": "c3351b1af36040e1bbd3f4894b093c336194e6a6dd261d41dfa11f78573d8823",
+        "bytes": 399360
+      }
+    },
+    {
+      "case_id": "fixture05-setup-archive",
+      "status": "preserved_archive",
+      "counts": null,
+      "source_commit": null,
+      "receipt": {
+        "sha256": "3229b11c0dc0e3187da021466d6a7a9fad544a59def0383b16f274a3a50f1cb1",
+        "bytes": 7741440
+      }
+    },
+    {
+      "case_id": "original-fixture-terminal-archive",
+      "status": "preserved_archive",
+      "counts": null,
+      "source_commit": null,
+      "receipt": {
+        "sha256": "7b18b360255462b29faac6ab25c2413c04e6929c9a2cdb3c9e5b43df4db0977a",
+        "bytes": 5918720
+      }
+    },
+    {
+      "case_id": "final-evidence-archive",
+      "status": "preserved_archive",
+      "counts": null,
+      "source_commit": null,
+      "receipt": {
+        "sha256": "22adb7f49b6c1650248f63acf9f6f9a70971e5c7b3c3e17400c4b28803eb4206",
+        "bytes": 18503680
+      }
+    }
+  ]
+}
