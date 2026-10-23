@@ -1,0 +1,349 @@
+{
+  "schema": 1,
+  "status": "targeted_checks_passed",
+  "firmware_source": "adb11e7b41f2d3c561bc6aba4ebf6c92a45623bd",
+  "mini_only_followup": "302e441e2b0baae4d87bf6c1c87785c762944c7a",
+  "builds": [
+    {
+      "artifact": "RAK_4631_repeater_lora_ota_no_external_sensors-full-ota-v1.18.0.1-halo-keymind-cascade-dev-adb11e7b.zip",
+      "zip_sha256": "06c8e8df88f35deed3785dde37674ee5973a91cdba95e6f32c108f2df2a579a7",
+      "available_internal_bytes": 81676,
+      "required_heap_bytes": 81088,
+      "margin_bytes": 588,
+      "required_contiguous_bytes": 19168,
+      "capabilities": [
+        "profile.auto",
+        "sensor.profile.full",
+        "bridge.rs232",
+        "ota.update.bluetooth",
+        "ota.update.lora",
+        "cli.retry_preset",
+        "telemetry.history",
+        "ota.cli",
+        "sensor.gps",
+        "sensor.ina219",
+        "sensor.ina226",
+        "sensor.ina260",
+        "sensor.ina3221",
+        "logging.usb.packets",
+        "logging.usb.control",
+        "bridge.rs232.merged"
+      ],
+      "passed": true
+    },
+    {
+      "artifact": "RAK_4631_repeater_lora_ota_no_external_sensors-reduced-ota-v1.18.0.1-halo-keymind-cascade-dev-adb11e7b.zip",
+      "zip_sha256": "84221bbb430e47028ea47dc11e9ac7ac2f62568d2ea134e7325b7ff54943bc03",
+      "available_internal_bytes": 84680,
+      "required_heap_bytes": 81088,
+      "margin_bytes": 3592,
+      "required_contiguous_bytes": 19168,
+      "capabilities": [
+        "profile.auto",
+        "sensor.profile.reduced",
+        "bridge.rs232",
+        "ota.update.bluetooth",
+        "ota.update.lora",
+        "cli.retry_preset",
+        "telemetry.history",
+        "ota.cli",
+        "sensor.gps",
+        "sensor.ina219",
+        "sensor.ina226",
+        "sensor.ina260",
+        "sensor.ina3221",
+        "logging.usb.packets",
+        "logging.usb.control",
+        "bridge.rs232.merged"
+      ],
+      "passed": true
+    },
+    {
+      "artifact": "RAK_3401_room_server_lora_ota_no_external_sensors-full-ota-v1.18.0.1-halo-keymind-cascade-dev-adb11e7b.zip",
+      "zip_sha256": "0f5cb79b19f2e9bebb05e6c7ce68cce7cad0e8093b45c3ec910e476c6f102908",
+      "available_internal_bytes": 153940,
+      "required_heap_bytes": 58416,
+      "margin_bytes": 95524,
+      "required_contiguous_bytes": 10256,
+      "capabilities": [
+        "profile.auto",
+        "sensor.profile.full",
+        "ota.update.bluetooth",
+        "ota.update.lora",
+        "cli.retry_preset",
+        "telemetry.history",
+        "ota.cli",
+        "sensor.gps",
+        "sensor.ina219",
+        "sensor.ina226",
+        "sensor.ina260",
+        "sensor.ina3221",
+        "logging.usb.packets",
+        "logging.usb.control"
+      ],
+      "passed": true
+    },
+    {
+      "artifact": "RAK_3401_room_server_lora_ota_no_external_sensors-reduced-ota-v1.18.0.1-halo-keymind-cascade-dev-adb11e7b.zip",
+      "zip_sha256": "00fb2075cd4ac74d5b5a121dcf63c7fdcd91743405ab14727daa67fe95e4942a",
+      "available_internal_bytes": 156928,
+      "required_heap_bytes": 58416,
+      "margin_bytes": 98512,
+      "required_contiguous_bytes": 10256,
+      "capabilities": [
+        "profile.auto",
+        "sensor.profile.reduced",
+        "ota.update.bluetooth",
+        "ota.update.lora",
+        "cli.retry_preset",
+        "telemetry.history",
+        "ota.cli",
+        "sensor.gps",
+        "sensor.ina219",
+        "sensor.ina226",
+        "sensor.ina260",
+        "sensor.ina3221",
+        "logging.usb.packets",
+        "logging.usb.control"
+      ],
+      "passed": true
+    },
+    {
+      "artifact": "RAK_3401_repeater_unified_lora_ota-full-ota-v1.18.0.1-halo-keymind-cascade-dev-adb11e7b.zip",
+      "zip_sha256": "de9e8a316a6d5806698892622521dba8430c874d4507391c62ccc90e0fc29914",
+      "available_internal_bytes": 78364,
+      "required_heap_bytes": 74176,
+      "margin_bytes": 4188,
+      "required_contiguous_bytes": 14304,
+      "capabilities": [
+        "profile.auto",
+        "sensor.profile.full",
+        "ota.update.bluetooth",
+        "ota.update.lora",
+        "cli.retry_preset",
+        "telemetry.history",
+        "ota.cli",
+        "sensor.gps",
+        "sensor.ina219",
+        "sensor.ina226",
+        "sensor.ina260",
+        "sensor.ina3221",
+        "logging.usb.packets",
+        "logging.usb.control"
+      ],
+      "passed": true
+    },
+    {
+      "artifact": "RAK_3401_repeater_unified_lora_ota-reduced-ota-v1.18.0.1-halo-keymind-cascade-dev-adb11e7b.zip",
+      "zip_sha256": "7d5cbe203e9115d7d3a82289b16730d67f39531a5c9d12630cea5890c464d71c",
+      "available_internal_bytes": 81368,
+      "required_heap_bytes": 74176,
+      "margin_bytes": 7192,
+      "required_contiguous_bytes": 14304,
+      "capabilities": [
+        "profile.auto",
+        "sensor.profile.reduced",
+        "ota.update.bluetooth",
+        "ota.update.lora",
+        "cli.retry_preset",
+        "telemetry.history",
+        "ota.cli",
+        "sensor.gps",
+        "sensor.ina219",
+        "sensor.ina226",
+        "sensor.ina260",
+        "sensor.ina3221",
+        "logging.usb.packets",
+        "logging.usb.control"
+      ],
+      "passed": true
+    }
+  ],
+  "rf": {
+    "rak4631_reduced": {
+      "passed": true,
+      "rounds_passed": 3,
+      "expected_rounds": 3,
+      "radio": {
+        "frequency_mhz": 917,
+        "bw_khz": 62.5,
+        "sf": 7,
+        "cr": 5,
+        "preamble": 32,
+        "temporary_lease_minutes": 2,
+        "target_tx_dbm": 2,
+        "witness_tx_dbm": 22
+      },
+      "core_before": {
+        "battery_mv": 4239,
+        "uptime_secs": 8,
+        "errors": 0,
+        "queue_len": 1
+      },
+      "core_after": {
+        "battery_mv": 4266,
+        "uptime_secs": 16,
+        "errors": 0,
+        "queue_len": 0
+      },
+      "receipt_sha256": "f15a342bdc1897a74f5c5106027d45f1436ddfe4a767e34cb4d5dcb6fa3937bd",
+      "application": {
+        "target": "RAK_4631_repeater_lora_ota_no_external_sensors",
+        "version": "v1.18.0.1-halo-keymind-cascade-dev-adb11e7b",
+        "application_sha256": "489d3bae98d7bda2c3f2b600d5bd79116685bc0a2ceb41c0d25fc7d0d3f0233d",
+        "body_hash": "427AFAF40AF4904C",
+        "zip_sha256": "84221bbb430e47028ea47dc11e9ac7ac2f62568d2ea134e7325b7ff54943bc03",
+        "runtime_role": "repeater",
+        "powersaving": "on"
+      }
+    },
+    "rak4631_full": {
+      "passed": true,
+      "rounds_passed": 3,
+      "expected_rounds": 3,
+      "radio": {
+        "frequency_mhz": 917,
+        "bw_khz": 62.5,
+        "sf": 7,
+        "cr": 5,
+        "preamble": 32,
+        "temporary_lease_minutes": 2,
+        "target_tx_dbm": 2,
+        "witness_tx_dbm": 22
+      },
+      "core_before": {
+        "battery_mv": 4283,
+        "uptime_secs": 8,
+        "errors": 0,
+        "queue_len": 1
+      },
+      "core_after": {
+        "battery_mv": 4236,
+        "uptime_secs": 16,
+        "errors": 0,
+        "queue_len": 0
+      },
+      "receipt_sha256": "f38a76152bacb4a267b916383912806f4055908ba763d0dc747b6c9398e3a739",
+      "application": {
+        "target": "RAK_4631_repeater_lora_ota_no_external_sensors",
+        "version": "v1.18.0.1-halo-keymind-cascade-dev-adb11e7b",
+        "application_sha256": "518fb91c1c053183e20e2927e278ba287718f355fd4de34a8488e84b338d6f31",
+        "body_hash": "D511EA44AFEACBA4",
+        "zip_sha256": "06c8e8df88f35deed3785dde37674ee5973a91cdba95e6f32c108f2df2a579a7",
+        "runtime_role": "repeater",
+        "powersaving": "on"
+      }
+    },
+    "rak3401_room_full": {
+      "passed": true,
+      "rounds_passed": 3,
+      "expected_rounds": 3,
+      "radio": {
+        "frequency_mhz": 917,
+        "bw_khz": 62.5,
+        "sf": 7,
+        "cr": 5,
+        "preamble": 32,
+        "temporary_lease_minutes": 2,
+        "target_tx_dbm": 2,
+        "witness_tx_dbm": 22
+      },
+      "core_before": {
+        "battery_mv": 4247,
+        "uptime_secs": 8,
+        "errors": 0,
+        "queue_len": 1
+      },
+      "core_after": {
+        "battery_mv": 4215,
+        "uptime_secs": 13,
+        "errors": 0,
+        "queue_len": 0
+      },
+      "receipt_sha256": "39edf68662db0080eec1013b31d2e17c8db0f701809d7899c05ba162267f0dd5",
+      "application": {
+        "target": "RAK_3401_room_server_lora_ota_no_external_sensors",
+        "version": "v1.18.0.1-halo-keymind-cascade-dev-adb11e7b",
+        "application_sha256": "31418a1a7d76bab0ee9b21b81dbdeaa8eb2123be1defeb0a4a3b95f6e664fac7",
+        "body_hash": "99642F2A9CB51F73",
+        "zip_sha256": "0f5cb79b19f2e9bebb05e6c7ce68cce7cad0e8093b45c3ec910e476c6f102908",
+        "runtime_role": "room_server",
+        "powersaving": "on"
+      }
+    }
+  },
+  "room_sleep": {
+    "passed": true,
+    "cpu_sleep_passed": true,
+    "weighted_sleep_fraction": 0.7930892728181768,
+    "sampling": {
+      "passed": true,
+      "failures": [],
+      "sample_count": 8035,
+      "counts": {
+        "C_DEBUGEN": 0,
+        "C_HALT": 0,
+        "C_STEP": 0,
+        "C_MASKINTS": 0,
+        "S_HALT": 0,
+        "S_SLEEP": 6374,
+        "S_LOCKUP": 0,
+        "S_RESET_ST": 0
+      },
+      "elapsed_ms": 90009,
+      "observed_ms": 90005.0,
+      "weighted_sleep_ms": 71382.0,
+      "weighted_sleep_fraction": 0.7930892728181768,
+      "unweighted_sleep_fraction": 0.7932794026135657,
+      "max_gap_ms": 16.0,
+      "max_read_ms": 3,
+      "baseline_debug_ctrl_hex": "0000",
+      "baseline_C_DEBUGEN": false,
+      "initial_sticky_reset": true,
+      "final_DHCSR": "01050000",
+      "openocd_version": [
+        "Open On-Chip Debugger 0.12.0+dev-snapshot (2025-07-16-14:15)"
+      ],
+      "qualification": "sampled CPU sleep observations, not exact residency or electrical current",
+      "firmware_identity_must_be_bound_separately": true
+    },
+    "core_before": {
+      "battery_mv": 4184,
+      "uptime_secs": 14,
+      "errors": 0,
+      "queue_len": 0
+    },
+    "core_after": {
+      "battery_mv": 4190,
+      "uptime_secs": 110,
+      "errors": 0,
+      "queue_len": 0
+    },
+    "ps_after": "on",
+    "capture_sha256": "0bd8925efa1115c6df88347c9a75b0570dd7e9ec1772a16c36b0e9f1896d476a",
+    "diagnostic_boolean_restored": true
+  },
+  "first_room_preparation": {
+    "stopped_before_cpu_capture": true,
+    "failure": "USB getter rejected: ota bootloader status",
+    "gateway_restored": true
+  },
+  "final_handback": {
+    "service_restored": true,
+    "core": {
+      "battery_mv": 4250,
+      "uptime_secs": 9,
+      "errors": 0,
+      "queue_len": 1
+    },
+    "version": "v1.18.0.1-halo-keymind-cascade-dev-adb11e7b (Build: 23-Oct-2026)",
+    "role": "repeater",
+    "radio": "917.0,62.5,7,5",
+    "powersaving": "on"
+  },
+  "mini": {
+    "application_bytes": 245696,
+    "application_limit_bytes": 245760,
+    "passed": true
+  }
+}
