@@ -23,7 +23,7 @@
     
     
       
-        <title>Full Companion Meshtext defaults, 2026-10-23 - MeshCore Docs</title>
+        <title>2026 10 23 meshtext full defaults - MeshCore Docs</title>
       
     
     
@@ -117,7 +117,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              Full Companion Meshtext defaults, 2026-10-23
+              2026 10 23 meshtext full defaults
             
           </span>
         </div>
@@ -1258,7 +1258,7 @@
   <span class="md-ellipsis">
     
   
-    Radio Presets
+    Radio presets
   
 
     
@@ -2353,6 +2353,23 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="Physical interoperability">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#post-campaign-device-state" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Post-campaign device state
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -2363,6 +2380,23 @@
       
     </span>
   </a>
+  
+    <nav class="md-nav" aria-label="Build and memory checks">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#ci-follow-up" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        CI follow-up
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
   
 </li>
       
@@ -2390,6 +2424,10 @@
   
   
 
+
+<!-- meshcore-hosted-doc-link:start -->
+<p class="meshcore-hosted-doc-link"><a href="https://mikecarper.github.io/MeshCore/test-results/2026-10-23-meshtext-full-defaults/">View this page on MeshCore Docs</a>.</p>
+<!-- meshcore-hosted-doc-link:end -->
 
 <h1 id="full-companion-meshtext-defaults-2026-10-23">Full Companion Meshtext defaults, 2026-10-23</h1>
 <p>The T1000-E image originally installed on MercerWoodMesh did not expose
@@ -2450,6 +2488,16 @@ measurement and are not counted as successful deliveries. Dual-profile RX
 remains time-shared; these checks do not promise lossless simultaneous reception.</p>
 <p>Private raw evidence and identity-bound flashing logs are retained under
 <code>/home/mesh/hwtest/mt-longfast-20261023</code> and the matching Pi directory.</p>
+<h3 id="post-campaign-device-state">Post-campaign device state</h3>
+<p>The T1000-E and V4 were subsequently installed with pushed source <code>5aac9570b</code>.
+Both answered their identity/settings checks and exchanged Meshtext messages
+in both directions. V4 retains <code>mt.rebroadcast on</code>.</p>
+<p>Restoring the stock XIAO S3 WIO witness remains unfinished. Its original USB
+serial identity still enumerates, but CDC control requests fail with protocol
+error 71 and the stock serial API does not complete configuration. Software
+ROM-entry requests have not produced a verified ROM connection; no restore
+write was attempted without one. This is a recovery failure and is not counted
+as a qualified final MeshCore installation.</p>
 <h2 id="build-and-memory-checks">Build and memory checks</h2>
 <p>The T1000-E, V4.3 Full and Heltec V2 Full images passed linking, executable
 Meshtext capability checks and memory/flash budgets. At merged source
@@ -2467,6 +2515,51 @@ packaging and override contracts, real-crypto protocol interoperability,
 224/128 queue ownership and wraparound, compact-message ACK/dedup/FIFO/retry
 behavior, and ESP-NOW initialization/fragmentation under sanitizers. CI now
 builds T1000-E and SX1276 Full plus constrained C3/C6/Tracker Full images.</p>
+<h3 id="ci-follow-up">CI follow-up</h3>
+<p>The incoming CI baseline also failed the Tracker and Station G3 Full MQTT RAM
+checks. Their ESP-NOW TX queues retained both encoded frames and a complete
+packet used only for clearing an unsent duplicate-cache admission. Each slot
+now keeps the full encoded frames and an immutable hash/cache-domain token.
+All six slots, both fragments, retry paths and diagnostic behavior remain.
+The linked Tracker object shrank by 1632 bytes; RAM reserves were unchanged.</p>
+<table>
+<thead>
+<tr>
+<th>Build</th>
+<th style="text-align: right;">Internal bytes available</th>
+<th style="text-align: right;">Required</th>
+<th>Result</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Wireless Tracker Full MQTT</td>
+<td style="text-align: right;">224608</td>
+<td style="text-align: right;">223410</td>
+<td>Pass</td>
+</tr>
+<tr>
+<td>Station G3 r2 Full MQTT, exact identity</td>
+<td style="text-align: right;">196744</td>
+<td style="text-align: right;">195760</td>
+<td>Pass</td>
+</tr>
+<tr>
+<td>W12 LR2021 Full Companion</td>
+<td style="text-align: right;">224944</td>
+<td style="text-align: right;">169760</td>
+<td>Pass</td>
+</tr>
+</tbody>
+</table>
+<p>Native tests cover ordinary/ACK cache separation, TRACE keys, caller packet
+reuse, six-slot overflow, full fragment draining, failed admission retries,
+restart/timeout cleanup, and preserving admissions after a send has started.
+Stale preference and radio-diagnostics test fixtures were also brought up to
+the production APIs, and the hosted documentation links were repaired.</p>
+<p>The separate STM32 RAK3x72 USB Companion flash overflow was already present
+before this change (772 bytes in both baseline and feature CI). It remains
+unresolved; passing the builds above does not mean the entire workflow passes.</p>
 <p>LLCC68 still cannot use SF11 at BW250. Its manufacturer modulation limits
 exclude LongFast; enabling software cannot add that hardware mode.</p>
 
