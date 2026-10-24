@@ -1097,6 +1097,23 @@
         profile.loggingModes = modes.slice();
       }
     }
+    // T-LoRa has two distinct Full images because its UART bridge and MQTT
+    // client cannot fit together. USB/off logging must not collapse them into
+    // one firmware-profile button. Qualify the split against the exact files.
+    if (source && sourceMatches && source === profile.controlsSource &&
+        controls.platform === "ESP32_PLATFORM" && controls.espnowBridge === true) {
+      const loggingKey = Array.isArray(modes) ? modes.join(",") : "";
+      if (/^LilyGo_TLora_V2_1_1_6_repeater-full-(?:logging|usb-wifi)$/i.test(profile.target) &&
+          controls.loggingControl === "usb.logging" && loggingKey === "none,usb" && controls.mqtt === false &&
+          controls.rs232Merged === true && controls.rs232Source === source &&
+          releaseBoundControl(profile, "rs232")) {
+        profile.variant = "rs232-bridge";
+      } else if (/^LilyGo_TLora_V2_1_1_6_repeater_observer_mqtt_?-full-usb-wifi$/i.test(profile.target) &&
+                 controls.loggingControl === "logging.output" && loggingKey === "none,usb,wifi,both" &&
+                 controls.mqtt === true && controls.rs232 === false) {
+        profile.variant = "mqtt-observer";
+      }
+    }
     if (typeof controls.dedicatedUsbLogging === "boolean") {
       profile.dedicatedUsbLogging = controls.dedicatedUsbLogging;
     }
@@ -1794,6 +1811,8 @@
 
   function humanizeVariant(value, hardware) {
     if (!value || value === "default") return "Default";
+    if (value === "rs232-bridge") return "RS-232 bridge";
+    if (value === "mqtt-observer") return "Wi-Fi MQTT observer";
     const tokenLabels = {
       ps: "Power save",
       rx: "RX",
