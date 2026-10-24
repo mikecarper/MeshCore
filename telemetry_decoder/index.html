@@ -2703,6 +2703,8 @@ full 192-point/four-day channel takes three packets. Channels whose retained
 history is entirely zero are treated as disconnected and are not sent. The
 command requires at least one collected base sample and works even when the
 automatic schedule is off.</p>
+<p>Packets in manual and scheduled batches are queued 90 seconds apart. Channel
+activity and airtime limits can delay actual transmission further.</p>
 <p>It also queues a <code>N1B1</code> noise-floor packet once the main radio has completed a
 15-minute history bucket. With radio2 enabled, it queues a separate <code>N2B1</code>
 packet for that profile once it has a completed bucket. Each holds the latest

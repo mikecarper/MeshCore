@@ -8047,7 +8047,7 @@ voltage channel, plus the collected noise-floor snapshots. GPS is never included
 in this raw transmission. The history
 remains boot-local, so the first scheduled run after a reboot needs about 82.5
 hours to fill. On the default two-day interval, each 82.5-hour temperature or
-battery packet overlaps its predecessor by 34.5 hours. Packets are paced two
+battery packet overlaps its predecessor by 34.5 hours. Packets are queued 90
 seconds apart. A queue failure is retried after 30 minutes only for the packet
 that did not queue; successfully queued packets are not duplicated.</p>
 <p><code>get telemetry.tx</code> includes the source ID, path, and age of this node's last
