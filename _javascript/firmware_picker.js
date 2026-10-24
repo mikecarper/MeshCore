@@ -1048,6 +1048,17 @@
         profile.variant = variantWithoutSensorMarker(profile.variant);
       }
     }
+    const embedded = controls.embeddedBootloader;
+    if (profile.sensorProfile && ["repeater", "room"].includes(profile.role) &&
+        sensorSourceMatches && controls.embeddedBootloaderSource === sensorSource &&
+        embedded && /^\d+(?:\.\d+){2}$/.test(embedded.release || "") &&
+        embedded.automatic_delay_seconds === 70 && embedded.image_bytes === 40960 &&
+        embedded.activation === "ota bootloader update" &&
+        /^[0-9a-f]{64}$/.test(embedded.candidate_sha256 || "") &&
+        /^[0-9a-f]{64}$/.test(embedded.asset_sha256 || "") &&
+        profile.target.endsWith("-with-bootloader-" + embedded.release + "-" + profile.sensorProfile)) {
+      profile.embeddedBootloader = embedded;
+    }
   }
 
   function variantWithoutSensorMarker(value) {
@@ -1385,8 +1396,15 @@
   function firmwareProfileLabel(profile) {
     if (profile.sensorProfile) {
       const label = (profile.sensorProfile === "full" ? "Full supported sensors" : "Reduced sensors") + " + LoRa OTA";
-      const variant = variantWithoutSensorMarker(profile.variant);
-      return label + (variant !== "default" ? " - " + humanizeVariant(variant, profile.hardware) : "");
+      let variant = variantWithoutSensorMarker(profile.variant);
+      const embedded = profile.embeddedBootloader;
+      if (embedded) {
+        variant = variant.replace(new RegExp("(?:^|-)with-bootloader-" +
+          escapeRegExp(embedded.release.replace(/\./g, "-")) + "(?=-|$)"), "")
+          .replace(/^-+|-+$/g, "") || "default";
+      }
+      return label + (variant !== "default" ? " - " + humanizeVariant(variant, profile.hardware) : "") +
+        (embedded ? " + OTAFIX " + embedded.release + " bootloader included" : "");
     }
     const parts = [];
     if (profile.feature === "full") parts.push("Full");
@@ -2007,6 +2025,12 @@
       ],
     };
     const extra = [];
+    if (profile.embeddedBootloader) {
+      const embedded = profile.embeddedBootloader;
+      extra.push("This application includes the exact-board OTAFIX " + embedded.release +
+        " bootloader. Leave it running for at least " + embedded.automatic_delay_seconds +
+        " seconds after startup. It checks once when radio and OTA activity are idle, updates a recognized compatible older bootloader, and skips a matching current or newer version. Recovery and unrecognized bootloaders require the documented local migration route. After any reboot, check get bootloader.ver.");
+    }
     if (isExpandedEsp32Infrastructure(profile) && kind === "bin") {
       extra.push(
         "If the node still has a smaller layout, first flash the matching merged image over USB or use the linked exact board/role migration ZIP, when available. Follow its README to check the installed OTA target and source layout before starting. Never send this app-only image across a partition change."
