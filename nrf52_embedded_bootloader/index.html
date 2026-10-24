@@ -2465,15 +2465,17 @@ P1 image, not a recovery image.</p>
    remote admin CLI:</li>
 </ol>
 <p><code>text
-   ota bootloader embedded status
-   ota bootloader embedded audit
-   ota bootloader embedded install HASH16</code></p>
-<p>Replace <code>HASH16</code> with the image confirmation shown by <code>status</code>. Save the audit
-   before installation. The acknowledgment means armed; replacement waits for
-   the reply and queued/in-flight radio transmissions to drain.
-3. After reboot, check <code>get bootloader.ver</code> and repeat the audit. Confirm 2.4.12
-   and compare the application, filesystem, settings and SoftDevice hashes.
-   Check status before repeating a command whose reply was lost.</p>
+   ota bootloader update</code></p>
+<p>The command checks the installed bootloader and skips the update if a valid,
+   matching bootloader is already 2.4.12 or newer. Repeating the command while
+   it is armed is harmless. An <code>armed</code> reply means the update is queued until
+   the CLI reply and queued/in-flight radio transmissions drain.
+3. After reboot, check <code>get bootloader.ver</code>. Optional diagnostics are
+   <code>ota bootloader embedded status</code> and <code>ota bootloader embedded audit</code>; save an
+   audit before installation to compare the application, filesystem, settings
+   and SoftDevice hashes afterward. The older
+   <code>ota bootloader embedded install HASH16</code> command remains available with the
+   confirmation shown by <code>status</code>.</p>
 <p>The bridge validates the live application, candidate hash, installed identity,
 chip/layout, MBR addresses, watchdog and flash protection before copying. A
 protected region is refused; the bridge does not unlock it. Existing staged
