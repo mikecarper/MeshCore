@@ -2861,7 +2861,7 @@
           actions.appendChild(link);
         });
         content.appendChild(actions);
-        content.appendChild(createElement("p", "UF2 updates an existing compatible bootloader. The DFU ZIP includes SoftDevice and bootloader; HEX is for SWD installation or recovery. Application firmware files do not install a bootloader. Follow the release's migration instructions if your installed identity needs a recovery bridge."));
+        content.appendChild(createElement("p", "UF2 updates an existing compatible bootloader. The DFU ZIP includes SoftDevice and bootloader; HEX is for SWD installation or recovery. Ordinary application firmware preserves the installed bootloader. Separate with-bootloader firmware checks its embedded exact-board update after startup. Follow the release's migration instructions if your installed identity needs a recovery bridge."));
       } else if (bootloaderCatalog) {
         const unavailable = unavailableBootloaderForHardware(bootloaderCatalog, hardware, chip);
         content.appendChild(createElement("p", unavailable ?
