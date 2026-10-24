@@ -2673,6 +2673,8 @@ repeater's public key. Match that 16-character hex value against the public-key
 prefix recorded for your repeaters. It comes from the telemetry payload itself,
 so it is available even when only the payload was copied.</p>
 <h2 id="send-raw-telemetry-packets">Send raw telemetry packets</h2>
+<p>These transmission commands and packet-type selections are repeater-only.
+Room servers provide local history and CLI reads without transmission batches.</p>
 <p>From an administrator CLI session, first configure a direct route to the MQTT
 observer that will receive and upload the raw packets. Use <code>direct</code> when the
 observer is a zero-hop neighbor:</p>
@@ -2696,22 +2698,74 @@ fresh install; to explicitly keep the route manual-only before sending:</p>
 <pre><code class="language-text">set telemetry.tx schedule off
 send telemetry.tx now
 </code></pre>
-<p>The <code>send telemetry.tx now</code> command queues one <code>TTB1</code> temperature packet, one
-<code>TVB1</code> battery-voltage packet, and <code>IVB1</code> chunks for every connected I2C voltage
-channel. <code>TTB1</code> and <code>TVB1</code> carry up to 165 samples. Each <code>IVB1</code> carries 64, so a
-full 192-point/four-day channel takes three packets. Channels whose retained
-history is entirely zero are treated as disconnected and are not sent. The
-command requires at least one collected base sample and works even when the
-automatic schedule is off.</p>
+<p>Choose which packet types to send with these saved settings:</p>
+<table>
+<thead>
+<tr>
+<th>Setting</th>
+<th>Data</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>telemetry.tx.temp</code></td>
+<td>Temperature (<code>TTB1</code>)</td>
+</tr>
+<tr>
+<td><code>telemetry.tx.volt</code></td>
+<td>Battery voltage (<code>TVB1</code>)</td>
+</tr>
+<tr>
+<td><code>telemetry.tx.volt.i2c</code></td>
+<td>External I2C voltage (<code>IVB1</code>), all channels</td>
+</tr>
+<tr>
+<td><code>telemetry.tx.noise</code></td>
+<td>Main-radio noise floor (<code>N1B1</code>)</td>
+</tr>
+<tr>
+<td><code>telemetry.tx.noise2</code></td>
+<td>Radio2 noise floor (<code>N2B1</code>)</td>
+</tr>
+</tbody>
+</table>
+<p>All five default to <code>on</code>. Read one with <code>get telemetry.tx.temp</code>, change it
+with <code>set telemetry.tx.temp &lt;on|off&gt;</code>, or inspect all five with
+<code>get telemetry.tx.types</code>. <code>set telemetry.tx.types on|off</code> changes all five.
+The choices apply to manual and scheduled sends. They do not enable the master
+schedule or stop history collection and CLI reads. GPS is never included in
+these packets.</p>
+<p>For example, send only battery voltage:</p>
+<pre><code class="language-text">set telemetry.tx.types off
+set telemetry.tx.volt on
+send telemetry.tx now
+</code></pre>
+<p>With all types off, a manual send returns
+<code>Err - no telemetry packet types enabled</code>. If the selected types have no data
+available, it returns <code>Err - no enabled telemetry data available</code>.</p>
+<p>With all types selected, <code>send telemetry.tx now</code> queues one <code>TTB1</code> temperature
+packet, one <code>TVB1</code> battery-voltage packet, and <code>IVB1</code> chunks for every connected
+I2C voltage channel. <code>TTB1</code> and <code>TVB1</code> carry up to 165 samples. Each <code>IVB1</code>
+carries 64, so a full 192-point/four-day channel takes three packets. Channels
+whose retained history is entirely zero are treated as disconnected and are
+not sent. The
+command works even when the automatic schedule is off. Selected I2C or noise
+data can be sent without a collected temperature or battery sample.</p>
 <p>Packets in manual and scheduled batches are queued 90 seconds apart. Channel
-activity and airtime limits can delay actual transmission further.</p>
-<p>It also queues a <code>N1B1</code> noise-floor packet once the main radio has completed a
-15-minute history bucket. With radio2 enabled, it queues a separate <code>N2B1</code>
-packet for that profile once it has a completed bucket. Each holds the latest
-255 positions: up to 63 hours 45 minutes at 15-minute resolution. A position
-can be Missing; failed measurements do not silently shorten the timeline.
-The existing automatic transmission cadence is unchanged. Recording a new
-noise-floor position every 15 minutes does not transmit a packet every 15 minutes.</p>
+activity and airtime limits can delay actual transmission further. Turning a
+type off cancels only its batch work that has not yet been queued; packets
+already queued can still transmit. Remaining work keeps the same pacing.
+Turning a type on includes it in the next batch.</p>
+<p>When selected, it also queues a <code>N1B1</code> noise-floor packet once the main radio
+has completed a 15-minute history bucket. With radio2 enabled and <code>noise2</code>
+selected, it queues a separate <code>N2B1</code> packet once that profile has a completed
+bucket. Each holds the latest 255 positions: up to 63 hours 45 minutes at
+15-minute resolution. A position can be Missing; failed measurements do not
+silently shorten the timeline.
+The automatic transmission cadence and startup wait for 165 half-hour base
+positions (about 82.5 hours) are unchanged, including when only noise or I2C
+transmission is selected. Recording a new noise-floor position every 15 minutes
+does not transmit a packet every 15 minutes.</p>
 <p>Use <code>get telemetry.tx</code> to see the source ID, path, and <code>last=30s</code>, <code>last=30m</code>,
 or <code>last=2h</code> for the age of this node's latest completed telemetry transmission.
 The age includes completed retries and manual sends while the schedule is off,
