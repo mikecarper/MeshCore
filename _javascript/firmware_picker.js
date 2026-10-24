@@ -494,8 +494,24 @@
       .replace(/^-+|-+$/g, "") || "default";
   }
 
+  function targetPublicationParts(target) {
+    let base = String(target || "");
+    const sensorSuffix = (base.match(/-(?:full|reduced)(?:-ota)?$/i) || [""])[0];
+    if (sensorSuffix) base = base.slice(0, -sensorSuffix.length);
+    const bootloaderSuffix = (base.match(/-with-bootloader-\d+(?:\.\d+){2}$/i) || [""])[0];
+    if (bootloaderSuffix) base = base.slice(0, -bootloaderSuffix.length);
+    return { base: base, sensorSuffix: sensorSuffix, bootloaderSuffix: bootloaderSuffix };
+  }
+
+  function targetWithoutBootloader(target) {
+    const publication = targetPublicationParts(target);
+    return publication.base + publication.sensorSuffix;
+  }
+
   function parseTargetProfile(target) {
-    const parts = roleParts(target);
+    const publication = targetPublicationParts(target);
+    const parentTarget = publication.base + publication.sensorSuffix;
+    const parts = roleParts(parentTarget);
     const sourceHardware = parts.hardware || target;
     const lowerTarget = target.toLowerCase();
     const lowerTail = parts.tail.toLowerCase();
@@ -530,10 +546,10 @@
         ? "lora-source"
         : "";
     let variant = variantForProfile(parts.role, parts.tail);
-    if (/^RAK_(?:3401|4631)_repeater_unified_lora_ota(?:-(?:full|reduced)(?:-ota)?)?$/i.test(target)) {
+    if (/^RAK_(?:3401|4631)_repeater_unified_lora_ota(?:-(?:full|reduced)(?:-ota)?)?$/i.test(parentTarget)) {
       variant = "default";
     }
-    if (/^RAK_4631_repeater_ethernet(?:-(?:full|reduced)(?:-ota)?)?$/i.test(target)) {
+    if (/^RAK_4631_repeater_ethernet(?:-(?:full|reduced)(?:-ota)?)?$/i.test(parentTarget)) {
       // The RAK13800 Ethernet image is a real hardware choice, separate from
       // adaptive storage. Label it consistently for both sensor policies.
       variant = "ethernet";
@@ -542,6 +558,10 @@
       variant = variant === "default"
         ? "rx-boosted"
         : variant + "-rx-boosted";
+    }
+    if (publication.bootloaderSuffix) {
+      variant = (variant === "default" ? "" : variant + "-") +
+        publication.bootloaderSuffix.slice(1).replace(/\./g, "-").toLowerCase();
     }
 
     return {
@@ -608,7 +628,44 @@
     return hardware + "\n" + String(profile && profile.variant || "default");
   }
 
-  function omitTransportsReplacedByFull(profiles) {
+  function matchingPublicationReplacement(profile, candidate) {
+    if (!candidate) return false;
+    const original = targetPublicationParts(profile.target);
+    const successor = targetPublicationParts(candidate.target);
+    if (original.sensorSuffix.toLowerCase() !== successor.sensorSuffix.toLowerCase() ||
+        original.bootloaderSuffix.toLowerCase() !== successor.bootloaderSuffix.toLowerCase()) return false;
+    if (!original.bootloaderSuffix) return true;
+
+    // An ordinary image or a different bootloader cannot retire an embedded
+    // download. Wait until both exact assets have release-bound controls and
+    // prove the same bootloader image, hardware and sensor policy.
+    const embedded = profile.embeddedBootloader;
+    const replacement = candidate.embeddedBootloader;
+    const controls = profile.controls;
+    const replacementControls = candidate.controls;
+    return Boolean(embedded && replacement && controls && replacementControls &&
+      profile.hardware === candidate.hardware && profile.role === candidate.role &&
+      profile.releaseFamily === candidate.releaseFamily &&
+      profile.sensorProfile === candidate.sensorProfile &&
+      /^[0-9a-f]{40}$/i.test(controls.sensorProfileSource || "") &&
+      controls.sensorProfileSource === replacementControls.sensorProfileSource &&
+      controls.embeddedBootloaderSource === controls.sensorProfileSource &&
+      replacementControls.embeddedBootloaderSource === replacementControls.sensorProfileSource &&
+      ["release", "profile", "candidate_sha256", "asset_sha256", "manifest_sha256"].every(function (key) {
+        return typeof embedded[key] === "string" && embedded[key].length > 0 &&
+          (!key.endsWith("_sha256") || /^[0-9a-f]{64}$/i.test(embedded[key])) &&
+          embedded[key] === replacement[key];
+      }));
+  }
+
+  function adaptiveRakStorageProfile(profile) {
+    const controls = profile && profile.controls;
+    const lora = controls && controls.updateRequirements && controls.updateRequirements.lora;
+    return Boolean(controls && controls.platform === "NRF52_PLATFORM" && lora &&
+      lora.storage === "adaptive_internal_or_external_qspi");
+  }
+
+  function omitTransportsReplacedByFull(profiles, embeddedOnly) {
     const fullKeys = new Set((profiles || []).filter(function (profile) {
       return isFullCompanion(profile);
     }).map(replacementKey));
@@ -624,8 +681,8 @@
             profile.mode === "usb-ble");
       }
     ).map(replacementKey));
-    const targets = new Set((profiles || []).map(function (profile) {
-      return String(profile.target || "").toLowerCase();
+    const targets = new Map((profiles || []).map(function (profile) {
+      return [String(profile.target || "").toLowerCase(), profile];
     }));
     const mergedRs232Targets = {
       heltec_t096_repeater_bridge_rs232: "heltec_t096_repeater",
@@ -656,6 +713,9 @@
     };
 
     return (profiles || []).filter(function (profile) {
+      const target = String(profile.target || "").toLowerCase();
+      const publication = targetPublicationParts(target);
+      if (embeddedOnly && !publication.bootloaderSuffix) return true;
       const key = replacementKey(profile);
       const replacedAttachedTransport = profile.role === "companion" &&
         (profile.mode === "usb" || profile.mode === "ble" ||
@@ -666,10 +726,8 @@
         combinedUsbBleKeys.has(key);
       const replacedTerminal = profile.role === "terminal" &&
         terminalReplacementKeys.has(key);
-      const target = String(profile.target || "").toLowerCase();
-      const sensorSuffix = (target.match(/-(?:full|reduced)$/) || [""])[0];
-      const baseTarget = sensorSuffix ? target.slice(0, -sensorSuffix.length) : target;
-      const rs232Replacement = mergedRs232Targets[baseTarget];
+      const suffix = publication.bootloaderSuffix + publication.sensorSuffix;
+      const rs232Replacement = mergedRs232Targets[publication.base];
       // Recommendations prefer the combined UART2 image on RAK4631. Exact
       // Serial1 files remain in raw rows for existing GPS-free installations;
       // this preference does not migrate their wiring or OTA identity.
@@ -677,7 +735,12 @@
       // missing Reduced image, or an older unsuffixed compatibility image.
       const replacedRs232 = Boolean(rs232Replacement &&
         [].concat(rs232Replacement).some(function (replacement) {
-          return targets.has(replacement + sensorSuffix);
+          const candidate = targets.get(replacement + suffix);
+          if (!matchingPublicationReplacement(profile, candidate)) return false;
+          return !publication.bootloaderSuffix ||
+            /^rak_4631_repeater_/.test(target) && candidate.controls.rs232Merged === true &&
+            candidate.controls.rs232Source === candidate.controls.sensorProfileSource &&
+            releaseBoundControl(candidate, "rs232") && adaptiveRakStorageProfile(candidate);
         }));
       return !(replacedAttachedTransport && fullKeys.has(key)) &&
         !replacedByUsbBle && !replacedTerminal && !replacedRs232;
@@ -877,14 +940,21 @@
     });
   }
 
-  function omitRakStorageProfilesWhenUnified(profiles) {
-    const targets = new Set((profiles || []).map(function (profile) {
-      return String(profile && profile.target || "").toLowerCase();
+  function omitRakStorageProfilesWhenUnified(profiles, embeddedOnly) {
+    const targets = new Map((profiles || []).map(function (profile) {
+      return [String(profile && profile.target || "").toLowerCase(), profile];
     }));
     return (profiles || []).filter(function (profile) {
       const target = String(profile && profile.target || "").toLowerCase();
-      const match = /^rak_(3401|4631)_repeater_(?:lora_ota_no_external_sensors|w25q16_lora_ota|rak15001_slot_c_lora_ota|rak13302_w25q16_lora_ota)(-(?:full|reduced))?$/.exec(target);
-      return !match || !targets.has("rak_" + match[1] + "_repeater_unified_lora_ota" + (match[2] || ""));
+      const publication = targetPublicationParts(target);
+      if (embeddedOnly && !publication.bootloaderSuffix) return true;
+      const match = /^rak_(3401|4631)_repeater_(?:lora_ota_no_external_sensors|w25q16_lora_ota|rak15001_slot_c_lora_ota|rak13302_w25q16_lora_ota)$/.exec(publication.base);
+      if (!match) return true;
+      const candidate = targets.get("rak_" + match[1] + "_repeater_unified_lora_ota" +
+        publication.bootloaderSuffix + publication.sensorSuffix);
+      if (!matchingPublicationReplacement(profile, candidate)) return true;
+      return Boolean(publication.bootloaderSuffix &&
+        !adaptiveRakStorageProfile(candidate));
     });
   }
 
@@ -1280,6 +1350,11 @@
       }
     });
 
+    // Embedded compatibility images can be consolidated only after their
+    // metadata proves the exact replacement; raw rows retain every download.
+    const qualifiedProfiles = omitRakStorageProfilesWhenUnified(
+      omitTransportsReplacedByFull(profiles, true), true
+    );
     return {
       releaseSet: releaseSet,
       rows: firmwareRows.filter(function (file) {
@@ -1289,7 +1364,7 @@
       }),
       // Recommendation filters retain original files and target identities in
       // the raw catalog, including when a qualified successor replaces them.
-      profiles: omitConsolidatedProfiles(omitT114DisplayDuplicates(omitReplacedQspiProfiles(omitStationG3SlotDuplicates(profiles)))),
+      profiles: omitConsolidatedProfiles(omitT114DisplayDuplicates(omitReplacedQspiProfiles(omitStationG3SlotDuplicates(qualifiedProfiles)))),
     };
   }
 
@@ -1652,6 +1727,19 @@
     if (requested.hardware === "PicoW" && requested.variant === "radio" && profiles.some(combinedPicoCompanion)) {
       requested.variant = "default";
     }
+    // Preserve links to the same embedded image after correcting its label.
+    // A former generic Ethernet link is unambiguous only with Ethernet mode.
+    if (/^RAK_(?:3401|4631)$/.test(requested.hardware || "") && requested.role === "repeater") {
+      const variant = /^unified-with-bootloader-\d+-\d+-\d+$/.test(requested.variant || "")
+        ? requested.variant.replace(/^unified-/, "")
+        : requested.hardware === "RAK_4631" && requested.mode === "ethernet" &&
+          /^with-bootloader-\d+-\d+-\d+$/.test(requested.variant || "")
+          ? "ethernet-" + requested.variant : "";
+      if (variant && profiles.some(function (profile) {
+        return profile.embeddedBootloader &&
+          profileMatchesFacets(profile, Object.assign({}, requested, { variant: variant }));
+      })) requested.variant = variant;
+    }
     if (!profiles.some(function (profile) {
       return String(profile.hardware).toLowerCase() === "heltec_t114_without_display" &&
         (!requested.role || profile.role === requested.role);
@@ -1898,7 +1986,7 @@
     // Match the exact result, not its broad hardware-family filter. A TFT,
     // legacy UART or different role must not inherit another image's claims.
     if (identity.hardware !== profile.hardware || identity.role !== profile.role) return [];
-    const target = profile.target;
+    const target = targetWithoutBootloader(profile.target);
     const info = profile.controls || {};
     const notes = [];
     if (combinedPicoCompanion(profile)) {
@@ -2218,9 +2306,10 @@
     if (profile.role === "repeater") toggle("Repeat mesh traffic", "set repeat", "get repeat");
     if (info.rs232 && infrastructure) {
       const mode = chosen.mode;
-      const uartNote = /^RAK_4631_repeater_unified_lora_ota-(?:full|reduced)$/i.test(profile.target) && profile.sensorProfile
+      const parentTarget = targetWithoutBootloader(profile.target);
+      const uartNote = /^RAK_4631_repeater_unified_lora_ota-(?:full|reduced)$/i.test(parentTarget) && profile.sensorProfile
         ? "Unified RAK4631 uses UART2 for the RS-232 bridge; select it with set bridge.uart 2 while the bridge is stopped. GPS safety guards reserve UART1 even when no GPS was detected. Use UART2 for new installations. Legacy Serial1 downloads remain available by exact filename for existing GPS-free wiring."
-        : /^RAK_4631_repeater_bridge_rs232_serial1(?:_lora_ota_no_external_sensors)?-(?:full|reduced)$/i.test(profile.target)
+        : /^RAK_4631_repeater_bridge_rs232_serial1(?:_lora_ota_no_external_sensors)?-(?:full|reduced)$/i.test(parentTarget)
           ? "This GPS-free Serial1 image uses UART1. Do not fit a powered UART GPS or header-connected W25 flash on the same UART1 pins. Use the unified UART2 image when those pins are occupied."
         : "Use the UART and pin map for this exact board. Canonical GPS-enabled RAK4631 uses UART2; select it with set bridge.uart 2 while the bridge is stopped. UART1 needs a compatible GPS-free image.";
       // MQTT images keep the historical bridge.enabled ESP-NOW alias.
