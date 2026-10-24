@@ -2409,9 +2409,11 @@
 <h1 id="embedded-nrf52-bootloader-update">Embedded nRF52 bootloader update</h1>
 <p>An opt-in Repeater or Room Server build can carry its application firmware and
 the exact board's <a href="https://github.com/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/releases/tag/v0.11.0-OTAFIX2.4.12">OTAFIX 2.4.12 bootloader</a>
-in one application image. Install that application first, then activate the
-bootloader replacement with an authenticated admin command. Booting the image
-does not flash the bootloader automatically.</p>
+in one application image. After installing that application, it checks the
+bootloader once at 70 seconds after startup and updates it when needed. The
+check waits for idle radio and OTA activity, and skips a valid matching
+bootloader at the same or newer version. Ordinary firmware has no automatic
+bootloader update.</p>
 <p>This follows the internal-flash bridge in
 <a href="https://github.com/MeshEnvy/meshcore-firmware/pull/2">MeshEnvy firmware PR #2</a>.
 The replacement stays inside the running application's verified image until
@@ -2461,8 +2463,10 @@ P1 image, not a recovery image.</p>
    updater. An internal-only legacy receiver needs a delta from its exact
    installed application; this image does not give a stock bootloader its first
    LoRa update capability.</li>
-<li>After the new application is running, use the local CLI or authenticated
-   remote admin CLI:</li>
+<li>Leave the new application running for at least 70 seconds. It checks once
+   when radio and OTA activity are idle, then waits for the usual 1.5-second
+   grace and persistence checks before replacement and reboot. To start sooner,
+   use the local CLI or authenticated remote admin CLI:</li>
 </ol>
 <p><code>text
    ota bootloader update</code></p>
@@ -2476,6 +2480,19 @@ P1 image, not a recovery image.</p>
    and SoftDevice hashes afterward. The older
    <code>ota bootloader embedded install HASH16</code> command remains available with the
    confirmation shown by <code>status</code>.</p>
+<p>The automatic check runs once per boot. A manual attempt also consumes that
+boot's check, so a cancelled or failed attempt needs another explicit command.
+An update failure or a retained attempt guard suppresses another automatic
+attempt after a warm reboot, preventing a repeated reboot loop; the CLI can
+still retry. The
+guard is saved before the automatic version/hash check and retained through
+the bootloader copy, so an unexpected reset during either step also stops
+automatic retries. The guard also remains after a successful replacement;
+the next boot stays up and reports its installed version. A completed no-op
+clears its temporary guard. This protects
+against repeated update attempts; it cannot repair a bootloader that fails
+before the application starts. Status shows <code>auto=70s after boot</code> while waiting,
+<code>auto=checked</code> afterward, or <code>auto=blocked</code> when the reboot guard prevents it.</p>
 <p>The bridge validates the live application, candidate hash, installed identity,
 chip/layout, MBR addresses, watchdog and flash protection before copying. A
 protected region is refused; the bridge does not unlock it. Existing staged
