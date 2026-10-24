@@ -2973,7 +2973,11 @@
       const chip = catalog.profiles.some(function (profile) {
         return profile.hardware === hardware && profile.chipFamily === "nrf52";
       }) ? "nrf52" : "";
-      panel.hidden = chip !== "nrf52";
+      const matches = matchingProfiles();
+      const bootloaderIncluded = matches.length > 0 && matches.every(function (profile) {
+        return Boolean(profile.embeddedBootloader);
+      });
+      panel.hidden = chip !== "nrf52" || bootloaderIncluded;
       if (panel.hidden) return;
       const title = panel.querySelector('[data-role="bootloader-title"]');
       const content = panel.querySelector('[data-role="bootloader-content"]');
