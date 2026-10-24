@@ -4626,6 +4626,8 @@ An advert announces a node and its public information to the network.</p>
 <h3 id="33-q-what-is-the-password-to-administer-a-repeater-or-a-room-server">3.3. Q: What is the password to administer a repeater or a room server?</h3>
 <p><strong>A:</strong> The default admin password to a repeater and room server is <code>password</code>. Use the following command to change the admin password:</p>
 <p><code>password {new-password}</code></p>
+<p>Repeaters and rooms send <code>CHANGE YOUR PASSWORD</code> to admins on login while the
+admin password still matches the firmware default.</p>
 <h3 id="34-q-what-is-the-password-to-join-a-room-server">3.4. Q: What is the password to join a room server?</h3>
 <p><strong>A:</strong> The default guest password to a room server is <code>hello</code>. Use the following command to change the guest password:</p>
 <p><code>set guest.password {guest-password}</code></p>
