@@ -1993,6 +1993,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#enable-or-disable-discovery-responses" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Enable or disable discovery responses
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#discover-neighbor-scopes-mqtt-observer-neighbors-feature" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -5145,6 +5156,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#enable-or-disable-discovery-responses" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Enable or disable discovery responses
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#discover-neighbor-scopes-mqtt-observer-neighbors-feature" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -7900,6 +7922,52 @@ action. Newly heard zero-hop adverts can populate the table again.</p>
 MQTT, standard, logging, OTA, unified FULL, and FULL logging-fallback artifacts. It does not
 require MQTT or PSRAM.</p>
 <hr />
+<h3 id="enable-or-disable-discovery-responses">Enable or disable discovery responses</h3>
+<p><strong>Availability:</strong> Repeater firmware in newer source builds. These switches are
+not included in the existing published <strong>1.18.0.1</strong> binaries. They do not require
+MQTT or PSRAM and are not Companion, Room Server, or Sensor settings.</p>
+<pre><code class="language-text">get discovery.node.responses
+set discovery.node.responses on
+set discovery.node.responses off
+get discovery.region.responses
+set discovery.region.responses on
+set discovery.region.responses off
+</code></pre>
+<table>
+<thead>
+<tr>
+<th>Setting</th>
+<th>Default</th>
+<th>What <code>off</code> does</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>discovery.node.responses</code></td>
+<td><code>on</code></td>
+<td>Stops replies to normal zero-hop node-discovery requests.</td>
+</tr>
+<tr>
+<td><code>discovery.region.responses</code></td>
+<td><code>on</code></td>
+<td>Stops replies to anonymous region/scope queries, even while adverts remain enabled.</td>
+</tr>
+</tbody>
+</table>
+<p>The two choices are independent. They apply immediately after a successful
+save and survive reboot; no reboot is needed. Fresh installations and upgrades
+without saved choices keep both on, preserving the previous behavior. Use a
+local console or authenticated administrator CLI to change them.</p>
+<p>Enabling node responses still honors the existing hidden-node rule: when both
+<code>advert.interval</code> and <code>flood.advert.interval</code> are <code>0</code>, the repeater does not
+answer normal discovery requests. Enabling a response switch also retains the
+normal request-validation and rate limits.</p>
+<p>These switches do not stop the node's own adverts, outgoing
+<code>discover.neighbors</code> or <code>discover.scopes</code> commands, or automatic
+<a href="#view-or-change-periodic-neighbors-publishing-mqtt-observer-neighbors-feature">MQTT neighbor discovery</a>.
+They do not restrict an authorized administrator's <code>region</code> CLI commands.
+Use <code>set mqtt.neighbors off</code> to stop the periodic outgoing MQTT discovery pass.</p>
+<hr />
 <h3 id="discover-neighbor-scopes-mqtt-observer-neighbors-feature">Discover neighbor scopes (MQTT observer, neighbors feature)</h3>
 <p>Refreshes the zero-hop neighbor table, then queries each neighbor for its region
 scopes and publishes the assembled table to the MQTT <code>neighbors</code> topic once.</p>
@@ -7909,6 +7977,9 @@ scopes and publishes the assembled table to the MQTT <code>neighbors</code> topi
 (all PSRAM boards, plus non-PSRAM boards built with <code>MQTT_NEIGHBORS_WITHOUT_PSRAM</code>).
 Elsewhere it replies <code>Err - neighbors not enabled in this build</code>. If a
 <code>discover.neighbors</code> refresh is already in flight, the scope pass is queued behind it.</p>
+<p>This is an outgoing query. A repeater's separate
+<a href="#enable-or-disable-discovery-responses">discovery response switches</a> control
+whether that repeater answers other nodes' requests.</p>
 <hr />
 <h2 id="statistics">Statistics</h2>
 <h3 id="list-rate-limited-flood-adverts">List Rate-Limited Flood Adverts</h3>
@@ -13248,6 +13319,11 @@ loop - no restart required; enabling it triggers a discovery on the next pass.
 While enabled, <code>get mqtt.status</code> gains a trailing <code>nbr: &lt;next&gt;/&lt;last&gt;</code> field
 (time to next publish, and how the last publish went).</p>
 </blockquote>
+<p>This setting controls this node's outgoing periodic discovery and MQTT
+publication. It does not control replies to requests from other nodes. Newer
+repeater source builds have separate
+<a href="#enable-or-disable-discovery-responses">node and region response switches</a>,
+both defaulting to on; those switches are not in the published 1.18.0.1 images.</p>
 <hr />
 <h4 id="view-or-change-the-neighbors-publish-interval-mqtt-observer-neighbors-feature">View or change the neighbors publish interval (MQTT observer, neighbors feature)</h4>
 <p><strong>Usage:</strong>
