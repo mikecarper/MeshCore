@@ -4096,6 +4096,11 @@ catalog; bytes <code>0x2C</code>-<code>0x31</code> are parked and <code>0x35</co
 </table>
 <p>The sections below detail the most common frames. Refer to the source named
 above for command bodies that are not expanded here.</p>
+<p>Radio changes (<code>0x0B</code>, <code>0x0C</code>) can wait briefly for a safe radio window before
+replying. TX power waits up to three seconds when reception or transmission is
+busy. Its OK response confirms both hardware acceptance and a saved setting;
+timeout or disconnect discards a waiting power change. Successful settings
+commands are saved independently, so an error does not undo earlier commands.</p>
 <h3 id="private-text-when-only-the-sender-knows-the-recipient">Private text when only the sender knows the recipient</h3>
 <p>Clients continue to send an ordinary <code>CMD_SEND_TXT_MSG</code> (<code>0x02</code>) with
 <code>TXT_TYPE_PLAIN</code>; no client protocol change is needed. For a chat contact
