@@ -3123,6 +3123,10 @@
 <!-- meshcore-hosted-doc-link:end -->
 
 <h1 id="meshcore-ota-mota-container-lora-protocol">MeshCore OTA - <code>.mota</code> container &amp; LoRa protocol</h1>
+<p>This reference covers <strong><a href="../releases/1.18.0.1/">firmware 1.18.0.1</a></strong> and the
+matched <a href="../ota_nrf52_bootloader_update/">OTAFIX 2.4.12 bootloaders</a>. Firmware,
+bootloader and container-format versions are independent: application packages
+remain format 2; signed standalone bootloader packages use format 3.</p>
 <p>This is the <strong>single source of truth</strong> for MeshCore's over-the-air firmware update system ("mOTA"). It is
 written for developers who want to implement an interoperable peer (server, fetcher, relay, or host tool)
 in another codebase or project. Everything below is implemented in this repository and covered by host,
@@ -3136,7 +3140,7 @@ document is the technical/wire specification.</p>
 <p><strong>Design goals</strong></p>
 <ul>
 <li>Distribute firmware over LoRa as a <strong>self-verifying, resumable, single-source block transfer</strong> that
-  survives reboots and never auto-applies without explicit consent.</li>
+  survives reboots and installs manually or under an explicitly enabled trusted-update policy.</li>
 <li><strong>Trustless mesh relay:</strong> repeaters may forward packets while the source alone serves firmware data;
   integrity is content-addressed
   against a signed merkle root, so a relay need not be trusted and never needs the signing keys.</li>
@@ -3200,7 +3204,7 @@ document is the technical/wire specification.</p>
 </tr>
 <tr>
 <td>Host tooling</td>
-<td><a href="https://github.com/vk496/motatool"><code>motatool</code></a> (standalone Rust CLI: build/verify/inspect/serve); <code>tools/mota/</code> (Python reference lib <code>motalib.py</code> + build/test glue)</td>
+<td><a href="https://github.com/mikecarper/motatool"><code>motatool</code></a> (supported Rust CLI: build/verify/inspect/serve; <a href="../lora_ota_automation/">pinned setup</a>); <code>tools/mota/</code> (Python reference lib <code>motalib.py</code> + build/test glue)</td>
 </tr>
 </tbody>
 </table>
@@ -4139,7 +4143,7 @@ allocation bounds and regression coverage.</p>
 CLI uses - no extra hardware), on an ESP32 WiFi companion or FULL ESP32 role over <strong>WiFi (TCP)</strong>, or on an
 nRF52 Full Companion over an encrypted <strong>BLE GATT</strong> service. The
 host is the
-standalone Rust tool <a href="https://github.com/vk496/motatool"><code>motatool</code></a> (<code>motatool serve --serial &lt;port&gt;</code> /
+standalone Rust tool <a href="https://github.com/mikecarper/motatool"><code>motatool</code></a> (<code>motatool serve --serial &lt;port&gt;</code> /
 <code>--tcp &lt;host[:port]&gt;</code>, which also builds + verifies + inspects <code>.mota</code>). The device only emits request frames <em>while
 actively serving a fetch</em>, and reads the reply synchronously, so over the shared USB console binary frames
 coexist with the text CLI/logs (resync on magic + checksum). Little-endian, XOR-checksummed:</p>

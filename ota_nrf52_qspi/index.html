@@ -1080,6 +1080,28 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
+  <a href="#existing-dedicated-rak-layouts" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Existing dedicated RAK layouts
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#other-boards-and-roles" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Other boards and roles
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#rak15001-placement-and-module-conflicts" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1185,10 +1207,10 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#future-receiver-loader-prerequisite-and-update-flow" class="md-nav__link">
+  <a href="#receiver-bootloader-prerequisite-and-update-flow" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Future receiver loader prerequisite and update flow
+        Receiver bootloader prerequisite and update flow
       
     </span>
   </a>
@@ -2601,6 +2623,28 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
+  <a href="#existing-dedicated-rak-layouts" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Existing dedicated RAK layouts
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#other-boards-and-roles" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Other boards and roles
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#rak15001-placement-and-module-conflicts" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2706,10 +2750,10 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#future-receiver-loader-prerequisite-and-update-flow" class="md-nav__link">
+  <a href="#receiver-bootloader-prerequisite-and-update-flow" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Future receiver loader prerequisite and update flow
+        Receiver bootloader prerequisite and update flow
       
     </span>
   </a>
@@ -2779,13 +2823,13 @@
 <!-- meshcore-hosted-doc-link:end -->
 
 <h1 id="nrf52-repeater-lora-ota-with-external-qspi">nRF52 repeater LoRa OTA with external QSPI</h1>
-<p>For <strong>1.17.1.5</strong>, use the exact board/storage profile from
-<a href="https://github.com/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/releases/tag/0.11.0-OTAFIX2.4.6">OTAFIX 2.4.6</a>
-for nRF52 OTAFIX installations. New internal-flash hybrid receivers require
-its 64 KiB retained-RAM handoff; QSPI and microSD targets require their own
-matching bootloader profiles. Earlier preview versions mentioned below
-describe compatibility/migration history, not the current recommended download.
-Full Companion is a MOTA source and normally updates itself over USB.</p>
+<p>For <strong>MeshCore 1.18.0.1</strong>, use the <a href="../firmware_picker/">firmware picker</a> to
+select the exact application and its matching
+<a href="https://github.com/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/releases/tag/v0.11.0-OTAFIX2.4.12">OTAFIX 2.4.12 bootloader</a>.
+The <a href="../ota_user_guide/">update guide</a> covers the release downloads and transfer
+steps. Older profiles below describe existing installations and migration
+requirements. Full Companion can serve mOTA files; it normally updates itself
+over USB.</p>
 <p>Selected nRF52840 repeater builds use their dedicated external QSPI NOR flash as
 a raw LoRa OTA staging device. This removes the internal-flash staging conflict:
 the complete <code>.mota</code> stays off-chip, and the bootloader can use the entire
@@ -2807,6 +2851,15 @@ on these currently matched families:</p>
 <li>Elecrow ThinkNode M1 and M6</li>
 <li>Seeed Wio Tracker L1</li>
 <li>Seeed SenseCAP Solar Node P1</li>
+</ul>
+<h3 id="existing-dedicated-rak-layouts">Existing dedicated RAK layouts</h3>
+<p>Current RAK installations use the board-specific adaptive OTAFIX 2.4.12 image
+and the matching firmware from the picker. The dedicated application and
+bootloader pairs below describe older storage identities. They are not separate
+normal OTAFIX 2.4.12 downloads. Moving one to the adaptive profile requires the
+matching local identity migration; do not substitute a current bootloader into
+an older pairing.</p>
+<ul>
 <li>RAK4631 with a RAK15001 in WisBlock sensor slot C, using the dedicated
   <code>RAK_4631_repeater_rak15001_slot_c_lora_ota</code> application and matching
   <code>wiscore_rak4631_board_rak15001_slot_c</code> OTAFIX bootloader</li>
@@ -2816,6 +2869,7 @@ on these currently matched families:</p>
   breakout on RAK19007, using
   <code>RAK_3401_repeater_rak13302_w25q16_lora_ota</code></li>
 </ul>
+<h3 id="other-boards-and-roles">Other boards and roles</h3>
 <p>Heltec T114 is intentionally not in this list. Its public V1, V2.0, and V2.1
 schematics show U9 (MX25R1635F) as an optional QSPI footprint, so standard T114
 application and bootloader targets do not assume that external NOR is populated.</p>
@@ -2958,7 +3012,7 @@ core:</p>
 <p>The physical flash wiring is identical, but the two application and
 bootloader pairs are not interchangeable.</p>
 <h3 id="header-only-w25q16-wiring-for-the-unified-rak-images">Header-only W25Q16 wiring for the unified RAK images</h3>
-<p>The unified RAK repeater images and matching OTAFIX 2.4.10 compatible bootloaders
+<p>The unified RAK repeater images and matching OTAFIX 2.4.12 adaptive bootloaders
 also support a W25Q16 through the RAK19007 2.54 mm headers. This arrangement
 does not need an IO-connector interposer or underside SPI solder points:</p>
 <table>
@@ -3011,22 +3065,23 @@ and shared sensor/radio power rail. Do not substitute <code>SCL</code> for flash
 use <code>SWCLK</code>, which is the debug clock. The older dedicated W25Q16 images above
 expect the WisBlock SPI connector wiring and do not use this header mapping.</p>
 <h2 id="one-time-prerequisite">One-time prerequisite</h2>
-<p>Install a QSPI-capable OTAFIX 2.4.1 preview.9 or newer bootloader for the exact
-board from the
-<a href="https://github.com/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/releases">OTAFIX releases</a>
-before using LoRa OTA. The release notes must explicitly list that board's QSPI
-mode. Also install the SoftDevice version expected by that target. The
-application refuses the install handoff when the bootloader does not advertise
+<p>For a new 1.18.0.1 installation, install the exact normal OTAFIX 2.4.12 profile
+shown by the <a href="../firmware_picker/">firmware picker</a>, with its required
+SoftDevice. QSPI support first appeared in earlier previews; a version number
+alone does not confirm the flash wiring or storage capability. The application
+refuses the install handoff when the bootloader does not advertise matching
 QSPI support.</p>
-<p>For the external W25Q16 option, install the corresponding bootloader once
-before installing its MeshCore application: <code>wiscore_rak4631_w25q16</code>
+<p>For an existing dedicated W25Q16 application, its original matched loader is
+<code>wiscore_rak4631_w25q16</code>
 (<code>DEVICE_NAME=4631_W25Q16_DFU</code>) for RAK4631, or
 <code>wiscore_rak3401_rak13302_w25q16</code> (<code>DEVICE_NAME=3401_W25Q16_DFU</code>) for RAK3401
-plus RAK13302. Use only a release that explicitly names that exact pairing. Do
-not substitute the RAK15001 bootloader or swap the two W25Q16 bootloaders
-merely because the base-board wiring is the same.</p>
-<p>For the first migration from the ordinary <code>wiscore_rak4631_board</code> bootloader to
-<code>wiscore_rak4631_board_rak15001_slot_c</code>, use Nordic serial DFU or a compatible
+plus RAK13302. Those names identify the historical pairing, not new normal
+2.4.12 downloads. Use the release's exact recovery bridge and a local migration
+when moving to the current adaptive firmware/bootloader pair. Do not substitute
+the RAK15001 bootloader or swap the two dedicated W25Q16 bootloaders merely
+because the base-board wiring is the same.</p>
+<p>For a historical first migration from the ordinary <code>wiscore_rak4631_board</code>
+bootloader to <code>wiscore_rak4631_board_rak15001_slot_c</code>, use Nordic serial DFU or a compatible
 BLE DFU client with the exact slot-C OTAFIX <strong>combined bootloader + SoftDevice
 DFU package</strong> (or use SWD), then reinstall the slot-C MeshCore application. The
 release filename has this form:</p>
@@ -3139,8 +3194,9 @@ same explicit operator safety model; see
 <p>This is not part of normal automation. Bootloader catalog rows are labelled
 <code>bootloader</code>; even a capable node never autofetches or autoinstalls them, and
 ordinary <code>ota install</code> rejects them in every application backend. The
-<code>tools/lora_ota</code> deployment runner also refuses v3 packages. Fetch and arm one
-only with the explicit flow:</p>
+<code>tools/lora_ota</code> deployment runner accepts a verified v3 package only with
+<code>--no-install</code>; it transfers and verifies the package, then leaves activation
+to the explicit command below:</p>
 <pre><code class="language-text">ota ls
 ota pull &lt;MID8&gt; flash
 # wait for ota status to report the same bootloader download as ready
@@ -3278,26 +3334,26 @@ smaller FAT-only SdFat types to fit the RAK4631 flash budget and reduce its
 RAM use; an exFAT card is not a supported STORE volume. This restriction does
 not change the historical CACHE-only RAK15002 seeder or MeshTower SD profiles,
 which retain their existing <code>SdFs</code>/<code>FsFile</code> (FAT/exFAT) behavior.</p>
-<h3 id="future-receiver-loader-prerequisite-and-update-flow">Future receiver loader prerequisite and update flow</h3>
-<p>The matching <code>wiscore_rak4631_auto</code> <strong>all-in-one OTAFIX bootloader</strong> is only a
-local candidate today: it is not released and has not been hardware-qualified.
-Do not provision it as an SD-apply upgrade. Until a released, qualified loader
-explicitly advertises the supplemental authenticated RAK15002-SD
-<em>application</em> capability, the receiver fails SD application apply closed and
-continues to use its qualified internal/NOR path when no card is selected.</p>
-<p>Once such a loader is released, it must preserve the deployed internal/NOR
-capabilities while adding the separate SD application handoff record. A stock,
-older, or otherwise ordinary RAK4631 OTAFIX bootloader must refuse the SD
-handoff. Its first migration will need to be performed locally over USB/BLE DFU
-or SWD; it must not be bootstrapped from the SD card or with a LoRa bootloader
-package.</p>
+<h3 id="receiver-bootloader-prerequisite-and-update-flow">Receiver bootloader prerequisite and update flow</h3>
+<p>The normal OTAFIX 2.4.12 <code>wiscore_rak4631_auto</code> image includes the authenticated
+RAK15002 SD application handoff while preserving internal/NOR support. It is
+published, but <strong>physical RAK15002 card, interruption and power-cut
+qualification is still pending</strong>. Check the release's qualification limits
+before using this storage path.</p>
+<p>The receiver requires the supplemental <code>MOTASDRA</code> application capability;
+neither the <code>auto</code> filename nor a version string is sufficient. A stock or
+older loader without that record refuses SD apply. Install the exact normal
+profile locally, or update an already compatible installation through the
+<a href="../ota_nrf52_bootloader_update/">signed bootloader path</a>. Historical
+<code>4631_AUTO_DFU</code> and dedicated external-storage identities require their matching
+local recovery bridge before moving to the normal <code>4631_DFU</code> image. The first
+SD-capable loader cannot be bootstrapped from the SD card.</p>
 <p>The supplemental capability is application-only: an SD card never authorizes
 a bootloader update. Existing qualified internal bootloader-update behavior is
 separate and still applies only to its exact package and loader identity. The
 Full Companion's archive/source feature never installs firmware locally, so it
 does not need this SD-apply bootloader capability.</p>
-<p>Only after that future matching loader is released, installed locally, and
-qualified may a receiver use the normal explicit application flow:</p>
+<p>With the matching capability confirmed, the explicit application flow is:</p>
 <pre><code class="language-text">ota status
 ota ls
 ota pull &lt;MID8&gt; flash
@@ -3307,7 +3363,7 @@ ota install
 <p><code>ota cache</code> manages the card-backed archive/source (<code>ota cache off</code> stops new
 captures; retained files can still seed). <code>ota storage</code> and <code>ota self</code> report
 the selected backend and loader state, but they intentionally do not force a
-removable-media probe at startup. After the future loader is present, a
+removable-media probe at startup. With the matching loader present, a
 card-backed receiver reports <code>SD store</code> and <code>authenticated SD apply OK</code>; before
 then, a missing supplemental capability, unsigned application, incompatible
 media, or a busy store fails before reboot/approval.</p>

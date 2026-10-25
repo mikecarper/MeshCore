@@ -2845,6 +2845,10 @@
 <!-- meshcore-hosted-doc-link:end -->
 
 <h1 id="full-companion">Full Companion</h1>
+<p>For <strong><a href="../releases/1.18.0.1/">1.18.0.1 USA Cascade</a></strong>, download the exact
+Full Companion from the <a href="../firmware_picker/">firmware picker</a>. To use it as
+a source for updating repeaters, room servers or sensors, follow the
+<a href="../lora_ota_automation/">LoRa OTA automation guide</a>.</p>
 <p>Configure message alerts with the <a href="../notifications/">Companion notification builder</a>.
 It generates CLI rules for contacts, rooms and channels, previews patterns, and
 can apply/test them over USB. Trusted contacts and rooms can send <code>!notify</code>
@@ -3192,15 +3196,18 @@ continuous even though the reported coexistence setting is <code>min</code>.</p>
 </code></pre>
 <p>Build by using one exact listed name:</p>
 <pre><code class="language-bash">bash build.sh build-firmware heltec_v4_r8_companion_radio_full \
-  --firmware-version v1.17.0
+  --firmware-version v1.18.0.1-halo-keymind-cascade-dev \
+  --radio-preset usa-cascade-fixed --profile cascade
 
 bash build.sh build-firmware RAK_4631_companion_radio_full \
-  --firmware-version v1.17.0
+  --firmware-version v1.18.0.1-halo-keymind-cascade-dev \
+  --radio-preset usa-cascade-fixed --profile cascade
 </code></pre>
 <p>To build every canonical full Companion target, select the corresponding
 interactive menu item or run:</p>
 <pre><code class="language-bash">bash build.sh build-full-companion-firmwares \
-  --firmware-version v1.17.0
+  --firmware-version v1.18.0.1-halo-keymind-cascade-dev \
+  --radio-preset usa-cascade-fixed --profile cascade
 </code></pre>
 <p>Canonical Companion bulk builds also omit legacy <code>_ps</code> and <code>_femoff</code> aliases.
 Power saving and controllable FEM receive gain are persisted runtime settings;

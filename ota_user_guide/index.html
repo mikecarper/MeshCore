@@ -1034,13 +1034,30 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#updating-an-nrf52-bootloader-advanced-explicit-only" class="md-nav__link">
+  <a href="#updating-an-nrf52-bootloader" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Updating an nRF52 bootloader (advanced, explicit only)
+        Updating an nRF52 bootloader
       
     </span>
   </a>
+  
+    <nav class="md-nav" aria-label="Updating an nRF52 bootloader">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#install-a-separately-downloaded-bootloader-package" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Install a separately downloaded bootloader package
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
   
 </li>
         
@@ -2738,13 +2755,30 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#updating-an-nrf52-bootloader-advanced-explicit-only" class="md-nav__link">
+  <a href="#updating-an-nrf52-bootloader" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Updating an nRF52 bootloader (advanced, explicit only)
+        Updating an nRF52 bootloader
       
     </span>
   </a>
+  
+    <nav class="md-nav" aria-label="Updating an nRF52 bootloader">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#install-a-separately-downloaded-bootloader-package" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Install a separately downloaded bootloader package
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
   
 </li>
         
@@ -3020,8 +3054,8 @@ ota ls 2                 # page 2 when more than two updates are available
 each with a temporary <strong>number</strong>, a stable eight-hex <strong>manifest ID</strong>, its version, whether it's a full image
 or a small delta, how many nodes have it, and how recently it was seen. For example:</p>
 <pre><code>Updates 1/1 (2 src; refreshing):
- 1) 838B8169 v1.2.3 delta [same target] 3n 5s
- 2) BF0AB0C4 v1.2.0 full [unsupported] 1n 12s
+ 1) 838B8169 v1.18.0.1 delta [same target] 3n 5s
+ 2) BF0AB0C4 v1.18.0.1 full [unsupported] 1n 12s
 </code></pre>
 <p>Each row shows the version, full-vs-delta, <strong>whether it fits your node</strong>, how many nodes have it, and how
 long ago it was seen. The fit marker:</p>
@@ -3115,17 +3149,24 @@ the bootloader. A signed image whose signer is not in the device allowlist is re
 can auto-install only when that policy is enabled and the signed version is strictly newer than the running
 hash-valid EndF version. Manual <code>ota install</code> remains the deliberate equal-version/rollback override.</p>
 <p>After it reboots, run <code>ota status</code> to confirm the new version.</p>
-<h3 id="updating-an-nrf52-bootloader-advanced-explicit-only">Updating an nRF52 bootloader (advanced, explicit only)</h3>
-<p>This is available on specially marked no-external-flash nRF52840 lean
-repeater/bridge builds, on the legacy XIAO nRF52840/Sense raw-QSPI builds, and
-on the exact <code>Heltec_tower_v2_sdcard_repeater_lora_ota_no_external_sensors</code>
-microSD build,
-after a one-time exact-board ABI-3 OTAFIX installation over USB/BLE DFU or
-SWD. It is not the normal firmware update path. Check support first:</p>
+<h3 id="updating-an-nrf52-bootloader">Updating an nRF52 bootloader</h3>
+<p>For 1.18.0.1, the picker offers <strong>with bootloader</strong> Repeater and Room Server
+images carrying the matched OTAFIX 2.4.12 update. These check the installed
+bootloader after 70 seconds and update a supported older normal bootloader.
+Recovery and unrecognized bootloaders are excluded. See the
+<a href="../nrf52_embedded_bootloader/">embedded bootloader guide</a> for the starting
+requirements, one-check-per-firmware behavior, and reboot-loop protection.</p>
+<p>The separate signed <code>.mota</code> bootloader workflow below is manual. It does not
+use application autofetch or autoinstall settings.</p>
+<h4 id="install-a-separately-downloaded-bootloader-package">Install a separately downloaded bootloader package</h4>
+<p>This requires a supported nRF52 application and an exact-board ABI-3 OTAFIX
+bootloader provisioned locally first. See the
+<a href="../ota_nrf52_bootloader_update/">supported bootloader-update profiles</a> for
+internal, QSPI and MeshTower V2 microSD requirements. Check support first:</p>
 <pre><code class="language-text">ota bootloader
 </code></pre>
 <p>The reply must show a CRC-valid installed identity plus ABI 3 and the exact
-storage/boot-update capability bits for that build (<code>0x09</code> for MeshTower V2
+storage/boot-update capability bits for that build (for example, <code>0x09</code> for MeshTower V2
 microSD, <code>0x0A</code> for the shared internal store, or <code>0x0E</code> for XIAO raw QSPI). A bootloader package appears as
 <code>bootloader</code> in <code>ota ls</code>. It is never downloaded or installed automatically,
 even if both OTA automation settings are enabled. Use its stable ID explicitly:</p>
@@ -3135,7 +3176,8 @@ ota bootloader
 ota bootloader install &lt;MID8&gt; &lt;HASH16&gt;
 </code></pre>
 <p>Copy both confirmation values exactly from the second <code>ota bootloader</code> reply.
-Ordinary <code>ota install</code> deliberately refuses this package. The privileged
+For an image carrying its own bootloader, <code>ota bootloader update</code> instead
+selects that embedded update. Ordinary <code>ota install</code> refuses the standalone package. The privileged
 command requires an exact 40 KiB candidate payload in the fixed 41,330-byte
 container, a valid exact embedded identity/CRC and vector table, continued
 boot-update support, required <code>BLM2</code>/<code>SOFT</code> continuity metadata at canonical
@@ -3327,10 +3369,12 @@ folder of firmware files to the mesh - without storing them itself. Useful for s
 remote area.</p>
 <ol>
 <li>Put the firmware files (<code>.mota</code> files - see below) in a folder on the computer.</li>
-<li>Install the helper tool once - the standalone <code>motatool</code> CLI (<a href="https://github.com/vk496/motatool">https://github.com/vk496/motatool</a>) -
+<li>Install the supported <a href="https://github.com/mikecarper/motatool"><code>motatool</code> fork</a> once
+   (Rust 1.86 or newer and a native linker are required) -
    then point it at your node and the folder - over the node's <strong>USB serial</strong>, over <strong>WiFi</strong> if it is
    an ESP32 WiFi companion or FULL ESP32 node, or over encrypted <strong>Bluetooth</strong> if it is an nRF52 Full Companion:
-   <code>git clone https://github.com/vk496/motatool &amp;&amp; cargo install --path ./motatool
+   <code>cargo install --git https://github.com/mikecarper/motatool \
+     --rev 8c38369e7d35ad50cf74261869676d52dd24adf7 --locked
    # over USB serial:
    motatool serve --dir ./my_firmware/ --serial /dev/ttyACM0 -v
    # ...or over WiFi: the seeder is on dedicated TCP port 5001:
@@ -3340,7 +3384,7 @@ remote area.</p>
      --device MeshCore-MyCompanion --dir ./my_firmware/</code>
    It answers the node's requests; your node then advertises those updates to neighbours, who can
    <code>ota get</code> them like any other. (A WiFi node prints its IP + seeder port to the serial log on connect.
-   Details: <a href="https://github.com/vk496/motatool">https://github.com/vk496/motatool</a>.)</li>
+   Details: <a href="../lora_ota_automation/">scripted setup and tool checks</a>.)</li>
 </ol>
 <p>Check the device's attach reply or run <code>ota folder</code>: <code>host=X/Y</code> means the firmware is advertising <code>X</code> of
 the <code>Y</code> valid entries reported by the host. Serve registries are deliberately RAM-bounded on smaller builds,
@@ -3408,9 +3452,16 @@ receiving a full image.</p>
 <p>OTA distributes <strong><code>.mota</code></strong> files - a packaged, verifiable firmware image (full image or a small "delta"
 that only contains what changed). You get them by:</p>
 <ul>
-<li><strong>Downloading a build.</strong> This fork publishes a rolling <strong><code>dev-latest</code></strong> release on GitHub with the
-  current firmware for many boards, each accompanied by a <code>.full.mota</code> and a tiny <code>.delta.mota</code>. Grab the
-  one for your board to test.</li>
+<li><strong>Downloading 1.18.0.1.</strong> Use the <a href="../firmware_picker/">firmware picker</a> to
+  select the exact board, role, sensor profile and storage layout. The
+  <a href="../releases/1.18.0.1/#choose-a-download">release notes</a> link all release parts.
+  Give the selected application ZIP to the <a href="../lora_ota_automation/">scripted updater</a>,
+  or serve a verified <code>.mota</code> already built for that receiver. If the download
+  is an app-only <code>.bin</code>, first <a href="../ota_easy/#esp32-package-a-full-firmware-image">package it</a>
+  as a <code>.mota</code>, or put it in a ZIP for the script. ESP32 <code>-merged.bin</code> files are for USB
+  installation, not LoRa OTA. Internal-only nRF52 receivers need an in-place
+  delta built against their exact running firmware; a ready delta is not
+  available for every installed version.</li>
 <li><strong>Building your own</strong> with the <code>mota</code> packaging tool - see <a href="https://github.com/mikecarper/MeshCore/blob/keymindCascade/tools/mota/README.md">tools/mota/README.md</a>
   (this is for people distributing updates, not everyday operators).</li>
 </ul>
@@ -3556,7 +3607,7 @@ IO-connector interposer; the easy J10/J11/J12 headers do not expose them. The
 flash consumes no WisBlock slot, so a supported GPS can remain in slot A.</p>
 <p>The unified RAK repeater images additionally support a header-only W25Q16
 layout, using J10 <code>TX1</code>/<code>RX1</code> and J11 <code>IO1</code>/<code>AIN1</code>. This layout needs the
-matching compatible OTAFIX 2.4.10 bootloader and gives up UART1 GPS/PPS; I2C
+matching compatible OTAFIX 2.4.12 bootloader and gives up UART1 GPS/PPS; I2C
 sensors remain available. See the <a href="../ota_nrf52_qspi/#header-only-w25q16-wiring-for-the-unified-rak-images">pin table</a>.</p>
 <p>Older full-sensor <code>RAK_4631_repeater</code> images exceeded the safe internal
 in-place update limit. Their smaller sibling,
@@ -3570,11 +3621,13 @@ and stage full images or deltas off-chip.</p>
 <code>RAK_4631_repeater_w25q16_lora_ota</code> on RAK4631 or
 <code>RAK_3401_repeater_rak13302_w25q16_lora_ota</code> on RAK3401 + RAK13302. They retain
 the full sensor/GPS recipe and require exactly a 2 MiB <code>EF4015</code> W25Q16 plus the
-bootloader for that same core/radio/flash combination. Install
-<code>wiscore_rak4631_w25q16</code> for RAK4631 or
-<code>wiscore_rak3401_rak13302_w25q16</code> for RAK3401 + RAK13302 as a one-time
-prerequisite. The physical wiring is shared, but the two firmware identities
-are deliberately different and cannot be substituted for one another.</p>
+bootloader for that same core/radio/flash combination. Older installations used
+the dedicated <code>wiscore_rak4631_w25q16</code> or <code>wiscore_rak3401_rak13302_w25q16</code>
+bootloader. Current OTAFIX 2.4.12 uses the corresponding <code>wiscore_rak4631_auto</code>
+or <code>wiscore_rak3401_auto</code> profile. Follow the
+<a href="../ota_nrf52_qspi/#one-time-prerequisite">QSPI installation and identity-migration instructions</a>
+when changing profiles. The shared wiring does not make the two firmware
+identities interchangeable.</p>
 
 
 
