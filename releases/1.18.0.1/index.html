@@ -2600,6 +2600,76 @@ controls. Changes below are relative to <strong>1.17.1.9</strong>.</p>
 <li>XIAO nRF52 external-flash startup, storage alignment and Bluetooth handling.</li>
 <li>V4 USB logging idle/reopen failures and ESP32 Bluetooth/power-saving recovery.</li>
 </ul>
+<p><a id="extra-features"></a></p>
+<details>
+<summary><strong>Features beyond mainline MeshCore</strong></summary>
+
+<p>Included in 1.18.0.1 compared with <a href="https://github.com/meshcore-dev/MeshCore/releases/tag/companion-v1.18.0">mainline MeshCore 1.18.0</a>, checked 24 October 2026. This includes earlier Cascade additions and extensions to existing mainline features. Availability depends on the board and firmware role; some features require compatible clients or default off.</p>
+
+<ul>
+<li><a href="https://mikecarper.github.io/MeshCore/full_companion_features/">Full Companion images</a> combine supported USB, Bluetooth and network connections in one image.</li>
+<li><a href="https://mikecarper.github.io/MeshCore/full_companion_features/#open-the-text-terminal">USB console/app switching</a> between a text terminal and the Companion protocol without reflashing.</li>
+<li><a href="https://mikecarper.github.io/MeshCore/full_profiles/#nrf52-full-and-reduced-supported-sensors">Full/Reduced sensor choices</a> with LoRa updates on supported nRF52 infrastructure builds.</li>
+<li><a href="https://mikecarper.github.io/MeshCore/radio_profiles/">Two LoRa profiles</a> with per-contact/channel and application transmission choices, plus optional crossover.</li>
+<li><a href="https://mikecarper.github.io/MeshCore/radio_profiles/#schedule-the-second-profile">Scheduled radio changes</a> and temporary profiles that automatically return to normal.</li>
+<li><a href="https://mikecarper.github.io/MeshCore/radio_profiles/#saved-switching-controls">Radio switching controls</a> with saved speed settings, overlap warnings and preamble advice.</li>
+<li><a href="https://mikecarper.github.io/MeshCore/radio_profiles/#meshtext-channel-chat">Meshtext chat</a> on compatible Meshtastic text channels, with optional text rebroadcasting.</li>
+<li><a href="https://mikecarper.github.io/MeshCore/tx_beacons/">Scheduled text beacons</a> for MeshCore Public and supported Meshtext public channels.</li>
+<li><a href="https://mikecarper.github.io/MeshCore/flood_filtering/">Advanced forwarding rules</a> by sender, channel, content, path and packet type.</li>
+<li><a href="https://mikecarper.github.io/MeshCore/flood_filtering/#automatic-flood-advert-limits">Automatic advert-abuse limits</a> to reduce excessive forwarded advertisements.</li>
+<li><a href="https://mikecarper.github.io/MeshCore/halo_keymind_settings/#direct-retry-settings">Smarter retries</a> with configurable flood retries, heard-repeat cancellation and adaptive direct retries.</li>
+<li><a href="https://mikecarper.github.io/MeshCore/fleet_management/">Private fleet management</a> with signed commands for selected nodes, regions or geographic areas.</li>
+<li><a href="https://mikecarper.github.io/MeshCore/halo_keymind_settings/#direct-path-overrides">Additional route tools</a> including saved return routes, alternate paths and extended tracing controls.</li>
+<li><a href="https://mikecarper.github.io/MeshCore/companion_protocol/#private-text-when-only-the-sender-knows-the-recipient">Private-message introductions</a> when only the sender knows the recipient, using compatible Companion firmware.</li>
+<li><a href="https://mikecarper.github.io/MeshCore/companion_offline_queue/">Larger offline inboxes</a> on supported boards, up to 512 pending frames in RAM.</li>
+<li><a href="https://mikecarper.github.io/MeshCore/notifications/">Custom notification rules</a> for contacts, rooms and channels using sound, vibration, LEDs or supported outputs.</li>
+<li><a href="https://mikecarper.github.io/MeshCore/cli_commands/#control-an-exposed-gpio">Timed GPIO controls</a> for explicitly exposed, supported hardware outputs.</li>
+<li><a href="https://mikecarper.github.io/MeshCore/cli_commands/#view-or-change-bluetooth-stealth-ble-companion">Bluetooth privacy controls</a> including saved address choices and paired-client stealth.</li>
+<li><a href="https://mikecarper.github.io/MeshCore/companion_radio_full/#nrf52-bluetooth-reconnect-qualification">Bluetooth reconnect and refresh recovery</a> to help paired clients reconnect and complete contact sync on supported boards.</li>
+<li><a href="https://mikecarper.github.io/MeshCore/terminal_chat_cli/#companion-wifi-browser-terminal">Browser and TCP command terminals</a> for supported Full Companions, alongside USB.</li>
+<li><a href="https://mikecarper.github.io/MeshCore/host_cli_service/">USB host-service access over LoRa</a> for authenticated requests to an attached host service.</li>
+<li><a href="https://mikecarper.github.io/MeshCore/WiFi/#mqtt-observer-setup">Integrated MQTT observation</a> with multiple broker settings and runtime controls on supported ESP32 builds.</li>
+<li><a href="https://github.com/mikecarper/MeshCore/blob/03214a16df2bd09d3272dfb001d2d322c6740f60/MQTT_SNMP.md">SNMP monitoring</a> for radio, MQTT, memory and network status on supported ESP32 Observer builds.</li>
+<li><a href="https://mikecarper.github.io/MeshCore/WiFi/">Shared ESP32 admin password</a> for device setup, browser administration and WiFi firmware uploads.</li>
+<li><a href="https://mikecarper.github.io/MeshCore/full_profiles/#esp32-infrastructure-enable-the-compiled-services">Combined bridge controls</a> for supported MQTT, ESP-NOW and RS232 services in one image.</li>
+<li><a href="https://mikecarper.github.io/MeshCore/espnow_bridge_setup/">Bridge diagnostics</a> with status, counters and link tests for ESP-NOW and RS232. <a href="https://mikecarper.github.io/MeshCore/rs232_bridge_setup/">RS232 guide</a>.</li>
+<li><a href="https://mikecarper.github.io/MeshCore/udp_bridge_setup/">WiFi UDP repeater bridge</a> for up to eight peers on an existing WiFi network.</li>
+<li><a href="https://mikecarper.github.io/MeshCore/radio_profiles/#esp32-companion-ethernet-over-lora-kiss">Host Ethernet over LoRa</a> on supported ESP32 Full Companions; host software supplies TCP or SSH.</li>
+<li><a href="https://mikecarper.github.io/MeshCore/ota_user_guide/">LoRa firmware updates</a> with resumable transfers, smaller delta updates and update sharing.</li>
+<li><a href="https://mikecarper.github.io/MeshCore/nrf52_embedded_bootloader/">Bundled nRF52 bootloader updates</a> matched to the exact board on supported Repeater and Room images.</li>
+<li><a href="https://mikecarper.github.io/MeshCore/ota_nrf52_bootloader_update/">Signed bootloader updates over LoRa</a> on supported bootloaders and storage layouts.</li>
+<li><a href="https://mikecarper.github.io/MeshCore/esp32_wifi_partition_migration/">ESP32 partition migration packages</a> for supported update routes that need larger application slots.</li>
+<li><a href="https://mikecarper.github.io/MeshCore/room_services/#personal-mailboxes">Room mailboxes</a> with delivery receipts and support for sleeping clients.</li>
+<li><a href="https://mikecarper.github.io/MeshCore/room_services/">Saved room chat and information boards</a> plus topics, per-user limits and additional moderation.</li>
+<li><a href="https://mikecarper.github.io/MeshCore/room_services/#local-wi-fi-chat-on-esp32">Local WiFi room chat</a> and browser administration on supported ESP32 Room Servers.</li>
+<li><a href="https://mikecarper.github.io/MeshCore/telemetry_decoder/">Retained telemetry history</a> for temperature, battery/external voltage, GPS and radio noise.</li>
+<li><a href="https://mikecarper.github.io/MeshCore/cli_commands/#read-repeater-telemetry-history">Selectable telemetry reports</a> for temperature, battery, external voltage and each radio profile&#x27;s noise.</li>
+<li><a href="https://mikecarper.github.io/MeshCore/management_reports/">Management reports</a> with firmware/bootloader versions, update support, uptime and historical readings.</li>
+<li><a href="https://mikecarper.github.io/MeshCore/cli_commands/#estimate-and-correct-infrastructure-node-time-after-startup">Mesh-based clock correction</a> using agreement from fresh network observations.</li>
+<li><a href="https://mikecarper.github.io/MeshCore/role_feature_switches/#infrastructure-power-saving-and-bridges">Expanded power-saving controls</a> for the processor, LoRa receiver, WiFi and GPS, with sleep diagnostics.</li>
+<li><a href="https://mikecarper.github.io/MeshCore/power_saving_diagnostics/#esp32-processor-speed-and-temporary-test-controls">Processor speed selection</a> on supported ESP32 boards.</li>
+<li><a href="https://mikecarper.github.io/MeshCore/power_saving_diagnostics/#user-selectable-regulators-and-crash-recovery">Saved DC-DC/LDO selections</a> with fallback after qualifying repeated crashes.</li>
+<li><a href="https://mikecarper.github.io/MeshCore/cli_commands/#pause-forwarding-when-the-battery-is-low">Low-battery forwarding limits</a> and configurable battery alerts.</li>
+<li><a href="https://mikecarper.github.io/MeshCore/cli_commands/#calibrate-the-battery-reading-against-a-meter">Battery calibration and profiles</a> plus supported low-voltage and charger-voltage controls.</li>
+<li><a href="https://mikecarper.github.io/MeshCore/solarxiao_power/">SolarXiao carrier detection</a> and MPPT controls on compatible carriers.</li>
+<li><a href="https://mikecarper.github.io/MeshCore/cli_commands/#set-companion-inbox-behavior">On-device message history</a> with saved inbox views on supported displays; messages remain in RAM.</li>
+<li><a href="https://mikecarper.github.io/MeshCore/mesh_pocket_gui/">MeshPocket message board and offline map</a> with channel history, coastlines and contact locations.</li>
+<li><a href="https://github.com/mikecarper/MeshCore/blob/03214a16df2bd09d3272dfb001d2d322c6740f60/tools/bible/README.md">Offline reader</a> with saved bookmarks and a limited Bible selection.</li>
+<li><a href="https://mikecarper.github.io/MeshCore/cli_commands/#set-display-modes-and-timeouts">Separate display power settings</a> for battery and external power, including timeouts.</li>
+<li><a href="https://mikecarper.github.io/MeshCore/cli_commands/#select-rak-oled-controller">RAK OLED controller selection</a> with automatic SSD1306/SH1106 detection and a saved override.</li>
+<li><a href="https://mikecarper.github.io/MeshCore/companion_radio_full/#screenless-nrf52-spoken-button-confirmations">Spoken button confirmations</a> on supported screenless nRF52 Full Companions.</li>
+<li><a href="https://mikecarper.github.io/MeshCore/companion_radio_full/#rak4631-full-companion-optional-rak15002-archive-and-rak13800-ethernet">Optional RAK4631 SD update archive</a> for serving peer updates; hardware qualification is incomplete.</li>
+<li><a href="https://mikecarper.github.io/MeshCore/optional_screens/">Automatic optional-screen detection</a> and saved display rotation on supported boards.</li>
+<li><a href="https://mikecarper.github.io/MeshCore/carrier_wave/">Morse and carrier tools</a> for manual Morse transmission, receive capture and timed RF tests; decoding can produce false letters.</li>
+<li><a href="https://mikecarper.github.io/MeshCore/usb_logging_watchdog/">USB logging recovery</a> with configurable recovery behavior and saved fault diagnostics.</li>
+<li><a href="https://mikecarper.github.io/MeshCore/sensor_tracker/">Experimental tracker mode</a> with scheduled GPS check-ins and faster reporting when marked lost.</li>
+<li><a href="https://mikecarper.github.io/MeshCore/companion_lost_reply/">Owner lost-status replies</a> for compatible Companions asking whether they are lost.</li>
+<li><a href="https://mikecarper.github.io/MeshCore/#tools">Browser setup tools</a> for notification rules, forwarding filters, telemetry decoding and radio-test presets.</li>
+</ul>
+
+<p>Includes integrations from <a href="https://github.com/agessaman/MeshCore/tree/observer-firmware-dev">Observer</a> and <a href="https://github.com/IoTThinks/MeshCore/tree/PowerSaving-v17">IoTThinks PowerSaving</a>. See each linked guide for setup and limitations.</p>
+</details>
+
 <h2 id="choose-a-download">Choose a download</h2>
 <p>Use the <strong><a href="../../firmware_picker/">firmware picker</a></strong> to match your exact board
 and role. The GitHub pages below contain the <strong>same version</strong>, split to fit
