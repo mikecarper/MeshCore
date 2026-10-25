@@ -7772,9 +7772,10 @@ as <code>none</code>, <code>min</code>, or <code>max</code>. Fresh Cascade-profi
 target-default builds use <code>none</code>. A saved setting takes precedence after an
 upgrade.</p>
 <p>The WiFi <code>set</code> commands work on MQTT observers and on FULL standalone
-ESP32 repeater/room-server builds. On a standalone build, changing the SSID or
-password stops an active WebConfig session; run <code>start webconfig</code> again to use
-the new credentials. <code>set wifi.pwd</code> with no value selects an open network.
+ESP32 repeater/room-server builds. Changing the SSID or password automatically
+restarts an active WebConfig session after its requests drain and reconnects
+enabled MQTT with the latest saved credentials. An explicit WebUI or WiFi off
+command cancels pending starts. <code>set wifi.pwd</code> with no value selects an open network.
 Standalone WiFi also accepts an exact 64-character hexadecimal WPA/WPA2 PSK;
 ordinary passphrases remain limited to 63 characters. Other 64-character values
 and all longer values are rejected. MQTT observer WiFi passwords retain their
@@ -9251,7 +9252,12 @@ node after the save succeeds. See <a href="../power_saving_diagnostics/#user-sel
 <p><code>get radio</code> returns exactly four comma-separated fields for compatibility with
 existing Companion apps. On dual-radio builds, use <code>get radio2</code> and
 <code>get radio.timing</code> for profile and timing diagnostics.</p>
-<p><strong>Note:</strong> Requires reboot to apply. If RXPS is enabled and the saved minimum
+<p><strong>Note:</strong> Companion USB, BLE and WebConfig changes apply automatically when
+the radio is free. A busy radio keeps the saved target across disconnects.
+Infrastructure retains its reboot-to-apply behavior. Companion LoRa CLI waits
+for the exact reply copies to drain before applying; active TempRadio leases
+reject this permanent change.
+If RXPS is enabled and the saved minimum
 level/preamble cannot safely cover the new radio timing, the command reply
 reports the effective level and preamble, or <code>RXPS continuous-fast</code> when no
 level through 10 is safe. Slower settings recalculate from the saved RXPS
@@ -9485,7 +9491,9 @@ preamble. LoRa OTA treats v1.17.1.5 as that capability boundary.</p>
 <p><strong>Parameters:</strong>
 - <code>frequency</code>: Frequency in MHz</p>
 <p><strong>Default:</strong> <code>869.618</code></p>
-<p><strong>Note:</strong> Requires reboot to apply</p>
+<p><strong>Note:</strong> Companion local changes apply automatically when the radio is free.
+Infrastructure requires a reboot to apply. Companion LoRa CLI applies after
+its exact reply copies drain; an active TempRadio lease rejects the change.</p>
 <p><strong>Connections:</strong> USB, browser/TCP/Ethernet CLI, Companion binary command
 <code>0x42</code> (USB/BLE/TCP), and authorized LoRa CLI. <code>set freq</code> saves the frequency;
 bandwidth, spreading factor, and coding rate stay as configured. Infrastructure
@@ -9502,7 +9510,9 @@ roles also clamp transmit power to the board's limit for that frequency. Like
 <p><strong>Default:</strong> Target-specific. Most SX1262 and LR1110 targets default to <code>on</code>;
 Station G2/G3 targets default to <code>off</code>.</p>
 <p><strong>Notes:</strong>
-- The saved setting is applied immediately and persists across reboots.
+- The saved setting is applied when the radio is free and persists across reboots.
+  A busy radio keeps the change pending and applies it automatically; do not
+  repeat the command. Unsupported hardware and failed saves remain errors.
 - Periodic AGC resets restore the saved runtime setting; they do not replace it
   with the target's compile-time default.
 - Existing installations retain their previously saved value after an upgrade.</p>
@@ -9576,7 +9586,9 @@ Station G2/G3 targets default to <code>off</code>.</p>
   Radio-change replies and the Full Companion terminal status report any
   effective level/preamble adjustment. Effective preamble 64 or 128 appears
   only when the active tuple's physical wire preamble has that length.
-- The selected mode is applied immediately, persisted, and restored after reboot.</p>
+- The selected mode is persisted and applied when the radio is free. Busy
+  requests apply automatically without another command and survive reboot.
+  The runtime-only RXEN diagnostic also waits for a safe gap but is not saved.</p>
 <hr />
 <h4 id="view-or-change-the-lora-fem-receive-path-gain-state-on-supported-boards">View or change the LoRa FEM receive-path gain state on supported boards</h4>
 <p><strong>Usage:</strong>

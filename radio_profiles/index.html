@@ -4348,13 +4348,18 @@ features and selects 2 MHz where available. <code>set radio.fast on</code> enabl
 supported features and restores the board's default clock. These commands do
 not change the chosen SPI controller or the pins and do not adjust CPU clock,
 RX power saving, channel settings, or whether <code>radio2</code> is enabled.</p>
-<p>Changes require local USB or BLE access. A busy radio rejects a change without
-saving it. An accepted change restarts receive safely and verifies it before
+<p>Changes require local USB or BLE access. Valid changes made while the radio
+is busy are saved once and applied automatically at a safe gap, including
+between queued transmissions. Separate feature changes compose with the latest
+accepted policy. <code>OK - saved; pending</code> means no repeat command is needed.
+Unsupported settings and storage failures remain errors.</p>
+<p>An immediately applied change restarts receive safely and verifies it before
 saving; a receive or storage failure restores the prior policy. Switching
 measurements restart after a policy change, so check <code>get radio2.timing</code> again
 after its timing test completes. Packet and error history remains available.
-If a saved policy cannot be applied during boot, its application retries at
-most once per second; the aggregate getter reports <code>pending saved policy</code>.</p>
+The aggregate getter reports <code>pending saved policy</code> until the saved target is
+applied. Hardware failures retry with a delay; a temporary radio owner retains
+control until it finishes.</p>
 <h2 id="power-saving-and-diagnostics">Power saving and diagnostics</h2>
 <p>Dual mode suspends RX power saving and MCU idle sleep so receive visits can run
 promptly. The saved RX power-saving setting returns when profile 2 is off.
