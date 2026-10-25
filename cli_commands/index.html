@@ -8746,6 +8746,38 @@ saved settings. The WebConfig <strong>Display</strong> card exposes the same con
 </table>
 <p>Modes are <code>off</code>, <code>on</code>, <code>button</code>, <code>pairing</code>, <code>button-pairing</code>, and <code>automatic</code>.
 Pairing modes are available only on builds supporting BLE pairing.</p>
+<p>Color displays also support saved night-mode controls in the CLI and WebConfig:</p>
+<table>
+<thead>
+<tr>
+<th>Setting</th>
+<th>CLI</th>
+<th>Default</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Night mode</td>
+<td><code>get/set display.night auto\|on\|off</code></td>
+<td><code>auto</code></td>
+</tr>
+<tr>
+<td>Minutes after sunset</td>
+<td><code>get/set display.night.delay -180..180</code></td>
+<td><code>60</code></td>
+</tr>
+</tbody>
+</table>
+<p>Night mode uses red and black only. <code>auto</code> starts after sunset plus the selected delay and ends at sunrise. Negative
+delays start before sunset. Automatic mode requires a valid clock and location;
+use <code>on</code> or <code>off</code> to choose manually. Monochrome and headless boards do not
+support these controls.</p>
+<p>The device's cached GPS fix takes priority. Without GPS, it averages the latest
+16 distinct neighbors with coordinates heard directly over LoRa in the last
+12 hours. Relayed, bridged and imported locations do not count. With no usable
+position, automatic mode keeps normal colors. The small integer approximation
+uses UTC and longitude, so it needs neither a time zone nor daylight-saving
+configuration. Screen brightness and screen-off timers still work normally.</p>
 <p>All display-equipped Companion builds show the screen at boot in the default
 <code>button</code> or <code>button-pairing</code> mode, on battery or USB power. It stays on for the
 selected profile's timeout (15 minutes on e-paper, 15 seconds elsewhere).
