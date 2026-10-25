@@ -3345,8 +3345,8 @@ the active-mode constraints in the exception above: LoRa + WiFi accepts all
 three values, ESP-NOW + WiFi accepts <code>none|min</code>, LoRa + BLE accepts <code>min|max</code>
 for the inactive WiFi setting, and ESP-NOW + BLE requires <code>min</code>. Fresh Cascade
 builds select <code>min</code>, and an existing valid saved selection takes precedence.</p>
-<p>On radios with RX duty-cycle support, WebConfig and the text terminal also
-expose the persisted RXPS setting:</p>
+<p>On radios with RX duty-cycle support, the app's device console, WebConfig,
+and the text terminal expose the persisted RXPS setting:</p>
 <pre><code class="language-text">get radio.rxps
 set radio.rxps off
 set radio.rxps on
@@ -3356,6 +3356,10 @@ set radio.rxps 65625 60000
 <p>Fresh Cascade-profile Full Companion builds start with RXPS on at level 8 and
 a 16-symbol preamble. Changing it takes effect immediately and remains selected
 after reboot.</p>
+<p>Older Companion images may reply <code>unknown command</code> to <code>set radio.rxps</code> in the
+app console. Use the USB text terminal or WebConfig on those images, or update
+the firmware. Radio 2 suspends RXPS while it is active; the saved RXPS setting
+still applies when Radio 2 is disabled.</p>
 <p>Companion firmware defaults device power saving to on. Version 1.17.1.2 also
 turns it on once when upgrading an older Companion preference file, including
 one written by the short-lived default-off regression. After that one-time
