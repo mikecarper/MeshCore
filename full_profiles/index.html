@@ -2626,13 +2626,13 @@ repeater.</p>
 </tr>
 <tr>
 <td>ESP32 Full Repeater or Room Server</td>
-<td>Standalone operation, supported USB/WiFi services, and the qualified MQTT, ESP-NOW, or RS-232 combination</td>
-<td>Not every image contains all three bridges. Read its capabilities and check the compiled controls.</td>
+<td>Standalone operation, supported USB/WiFi services, and qualified MQTT, ESP-NOW or RS-232 services; supported Repeaters also include WiFi UDP</td>
+<td>Not every image contains all listed services. UDP is repeater-only. Read its capabilities and check the compiled controls.</td>
 </tr>
 <tr>
 <td>ESP32 Full Sensor</td>
 <td>Sensor operation, supported CLI/logging, and qualified WiFi firmware-update and TCP 5001 seeding services</td>
-<td>Current Sensor profiles do not gain the repeater's MQTT/ESP-NOW/RS-232 bridges.</td>
+<td>Current Sensor profiles do not gain the repeater's MQTT/ESP-NOW/RS-232/UDP bridges.</td>
 </tr>
 <tr>
 <td>nRF52 Full supported sensors or Reduced sensors</td>
@@ -2681,7 +2681,8 @@ observed traffic to brokers; it does not subscribe to broker messages or
 inject them into LoRa. RS-232 uses the board's configured UART and pins.</p>
 <p>Check <code>get bridge.type</code> on bridge-capable images. Depending on the recipe,
 it can report combinations such as <code>mqtt+espnow</code>, <code>rs232+espnow</code>, or
-<code>mqtt+rs232+espnow</code>. Use only the controls compiled into your image:</p>
+<code>mqtt+rs232+espnow</code>. UDP-capable images append <code>+udp</code>. Use only the
+controls compiled into your image:</p>
 <table>
 <thead>
 <tr>
@@ -2705,6 +2706,11 @@ it can report combinations such as <code>mqtt+espnow</code>, <code>rs232+espnow<
 <td>RS-232</td>
 <td><code>set rs232.enabled on</code> / <code>off</code></td>
 <td><code>get rs232.running</code></td>
+</tr>
+<tr>
+<td>WiFi UDP (Repeater only)</td>
+<td><code>set udp.enabled on</code> / <code>off</code></td>
+<td><code>get udp.enabled</code>, <code>get udp.status</code></td>
 </tr>
 <tr>
 <td>USB packet logs</td>
@@ -2738,6 +2744,10 @@ selects those two outputs together; it does not change LoRa repeating.</p>
 run together, the ESP-NOW channel must match the access point's fixed WiFi
 channel. ESP-NOW alone needs no WiFi credentials. Follow the
 <a href="../espnow_bridge_setup/">two-board setup</a> for the complete commands.</p>
+<p>WiFi UDP is included on supported ESP32 Full Repeaters and defaults off.
+It connects up to eight peers on an existing WiFi network in station mode;
+it pauses in AP mode and during OTA. Follow the <a href="../udp_bridge_setup/">UDP setup guide</a>
+and use <code>get udp.status</code> to check operation.</p>
 <p>For RS-232, stop the UART bridge before changing its configuration:</p>
 <pre><code class="language-text">set rs232.enabled off
 get bridge.uart
