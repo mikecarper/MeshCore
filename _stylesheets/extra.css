@@ -14,3 +14,8 @@
 .md-typeset a {
     text-decoration: underline;
 }
+
+/* Keep the feature summary visible below the fixed navigation after a jump. */
+#extra-features {
+    scroll-margin-top: 6rem;
+}
