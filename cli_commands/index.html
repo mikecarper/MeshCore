@@ -7661,7 +7661,10 @@ folder transport.</p>
 again after future reboots; <code>set webui off</code> closes it and disables that boot
 start. <code>get webui</code> reports the saved on/off state plus whether the portal is
 inactive, joining WiFi, serving a setup AP, or serving a LAN URL. The default is
-<code>off</code> on repeater and room-server builds. On display-equipped repeaters, an
+<code>off</code> on repeater and room-server builds. An unconfigured MQTT node can open
+first-time setup while no WebUI choice has been saved. An explicit
+<code>set webui off</code> prevents that AP from returning after reboot and pausing
+ESP-NOW. On display-equipped repeaters, an
 otherwise-unused triple click toggles the same saved setting.
 Consequently, <code>&gt; off, http://192.168.1.130/</code> means the saved boot setting is
 off while a temporary WebConfig session is currently active at that URL.</p>
@@ -7687,9 +7690,10 @@ saved <code>webui on</code>.)
 LAN mode otherwise remains active until reboot. On expanded FULL builds, an
 unconfigured automatic setup AP receives one absolute 30-minute window per
 boot, then powers WiFi off even if a client remains attached; rebooting starts
-a new automatic window. An administrator can explicitly run <code>start webconfig</code>
-again without rebooting. Once an SSID is saved, the cutoff no longer applies
-and the selected WiFi/MQTT mode keeps reconnecting. Other setup sessions retain
+a new automatic window unless <code>webui off</code> is saved. An administrator can
+explicitly run <code>start webconfig</code> again without rebooting. Once an SSID is saved,
+the cutoff no longer applies and the selected WiFi/MQTT mode keeps reconnecting.
+Other setup sessions retain
 their profile's idle timeout.</p>
 <p>Full Repeater and Room Server suspend unconfigured network bridges during
 automatic first-boot setup. Automatic ESP-NOW retries remain suspended after the AP

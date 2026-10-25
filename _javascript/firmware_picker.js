@@ -2175,7 +2175,7 @@
         "Use get logging.output and set logging.output off|usb|wifi|both to choose the saved output mode. Avoid both when two consumers publish the same packets to one broker."
       );
       extra.push(
-        "With no saved SSID, the setup AP stays available for 30 minutes after each boot, then Wi-Fi powers off automatically until reboot or an explicit start webconfig command. A configured Wi-Fi mode keeps reconnecting instead."
+        "With no saved SSID, automatic setup offers a 30-minute AP window per boot. Use set webui off to disable automatic setup after reboot. An explicit start webconfig command can reopen it. A configured Wi-Fi mode keeps reconnecting instead."
       );
     } else if (profile.logging === "usb-runtime") {
       if (!isFullCompanion(profile)) {
