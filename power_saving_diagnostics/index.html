@@ -2892,20 +2892,34 @@ initializers for the same reason. The MeshTracker X1's LR2021 regulator likewise
 remains unchanged. Do not turn on a switching regulator without its required
 inductor/capacitor network. The MCU and LoRa regulator choices are independent.</p>
 <h2 id="meshnology-w12-transmit-preparation">Meshnology W12 transmit preparation</h2>
-<p>The W12 adopts the GC1109 TX preparation from
-<a href="https://github.com/meshcore-dev/MeshCore/pull/3579">upstream PR #3579</a>, but keeps
-the PA shut down in ordinary standby rather than permanently selecting TX mode.
-Before sub-GHz packet or Morse CW transmission, it temporarily enables the LF
-PA in standby, waits 1 ms, starts TX, then restores the normal standby mask.
-The TX mask stays unchanged during that restoration. Failure paths restore all
-affected DIOs and request radio recovery if the PA state cannot be confirmed.
-The 2.4 GHz path and other LR2021 boards do not use this LF prearm policy.</p>
-<p>LF/HF FEM rail changes now settle for 1 ms instead of 100 ms. Packet-wake deep
-sleep retains only the selected FEM rail; terminal shutdown retains both rails
-off. This is separate from the W12's existing circuit-verified DC/DC setting.</p>
-<p>Native fault-injection tests cover the mask transitions and power retention;
-RF envelope and battery-current measurements on a physical W12 are still needed
-to validate the TX improvement and quantify power use.</p>
+<p>The W12 uses the RF-switch table from
+<a href="https://github.com/meshcore-dev/MeshCore/pull/3579">upstream PR #3579</a>, head
+<code>7457cff43c22697119e06ad7d192a37de0990403</code>. Low-band standby keeps GC1109 CTX,
+CPS and CSD high; LF receive keeps CTX low and CPS/CSD high. This replaces the earlier
+1 ms temporary prearm as the fix for the weak opening of a transmitted packet.
+The PR author reported a roughly 36 ms power step before the table change and
+no idle-current increase in their power-saving setup. Those measurements are
+upstream evidence, not measurements of this fork.</p>
+<p>The 1 ms pre-TX settle guard and TX failure recovery remain. With the warm
+W12 table they do not rewrite the standby masks or remove its retained bias.
+Other LR2021 tables can still opt into temporary prearming with full cleanup.
+The upstream table needs one adaptation for this fork's exclusive FEM rails.
+The <a href="https://www.geochipinc.com/uploads/23940615_1756826539.pdf">GC1109 datasheet</a>
+requires controls not to exceed VBAT. Before changing supplies, firmware
+checks a cold standby with all control outputs low; after the selected supply
+settles for 1 ms it restores warm standby only for LF. High-band standby and
+2.4 GHz RX/TX keep the GC1109 controls low. A failed routing change is retried
+on the next request, including one for the same band.</p>
+<p>Packet-wake deep sleep retains only the selected FEM rail. Terminal shutdown
+checks cold controls after stopping the radio, then retains both rails off.
+If that final SPI check fails, the transceiver is held in reset before its FEM
+supplies are removed. Boot asserts reset before dropping retained FEM rails,
+including after an MCU-only reset, and releases it after selecting the initial
+supply. Hard recovery pulses reset before checked routing so a prior SPI fault
+cannot prevent recovery. The W12's existing circuit-verified DC/DC setting is independent of this routing.</p>
+<p>Native fault-injection tests cover the actual W12 table, temporary-mask
+cleanup on a cold-standby table, and power retention. RF envelope and battery
+current measurements on this fork's physical W12 remain hardware checks.</p>
 
 
 
