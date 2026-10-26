@@ -2551,6 +2551,12 @@ protected region is refused; the bridge does not unlock it. Existing staged
 their separate signed-package behavior. See
 <a href="../ota_nrf52_bootloader_update/">bootloader updates over LoRa</a> for that path.</p>
 <h2 id="qualification">Qualification</h2>
+<p>The <a href="../test-results/tower_249_embedded_bootloader_2026-10-26/">Tower SD 2.4.9 hardware test</a>
+reproduced <code>last=9</code> with unchanged application, settings, filesystem and
+SoftDevice audit hashes. That loader protects flash before starting the
+application, so the embedded bridge refuses it. Its missing normal version
+record also causes the automatic check to report <code>unrecognized</code>. The separate
+signed SD update installed 2.4.12 successfully, reporting <code>blup:C8</code>.</p>
 <p>The source PR documents one successful RAK4631 migration with unchanged
 application, filesystem, settings and SoftDevice hashes. Its later guards have
 host checks, but the recorded hardware run predates the final PR build.
