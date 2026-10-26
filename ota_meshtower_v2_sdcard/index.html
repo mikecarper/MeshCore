@@ -2836,6 +2836,13 @@ ota bootloader install &lt;MID8&gt; &lt;HASH16&gt;
 <code>ota install</code> rejects this package, and the bootloader command rejects an
 application package. Keep the SD card inserted through the reboot. A later
 <code>ota status</code> value of <code>blup:C8</code> reports a successful bootloader replacement.</p>
+<p>The SD-backed OTAFIX <strong>2.4.3</strong> profile already supports this path. A
+<a href="../test-results/tower_bootloader_243_to_2412_2026-10-26/">hardware test</a>
+upgraded its CRC <code>D48D45A9</code> directly to official 2.4.12, CRC <code>59326292</code>,
+while running application <code>4d5ccbdd</code>. All 40 blocks arrived over LoRa in
+159 seconds, and the application hash stayed unchanged. That exact older
+application does not need updating first; the trusted signer and matching
+SD bootloader package are still required.</p>
 <p>After reboot, <code>ota bootloader</code> displays the installed board identity, CRC and
 capabilities. Its <code>mid</code> and <code>hash</code> fields describe a <strong>currently staged download</strong>,
 not the installed bootloader, so <code>staged:none mid=- hash=-</code> is not an install
