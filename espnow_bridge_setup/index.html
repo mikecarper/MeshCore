@@ -2697,7 +2697,6 @@ for the first board and <code>Bridge-B</code> for the second, or choose your own
 <pre><code class="language-text">set espnow.enabled off
 set name Bridge-A
 set radio &lt;freq&gt;,&lt;bw&gt;,&lt;sf&gt;,&lt;cr&gt;
-reboot
 </code></pre>
 <p>Do not type the angle-bracket placeholders literally.</p>
 <table>
@@ -2730,8 +2729,9 @@ reboot
 </tr>
 </tbody>
 </table>
-<p><strong><code>set radio</code> requires a reboot to apply.</strong> After reconnecting, <code>get radio</code>
-shows the saved settings. Use permanent radio settings for this setup;
+<p><strong><code>set radio</code> saves immediately and switches after two seconds, once the radio
+is free and the reply has drained.</strong> No reboot is needed. <code>get radio</code> shows the
+saved settings; the device screen shows the applied settings. Use permanent radio settings for this setup;
 <code>tempradio</code> sessions expire.</p>
 <h2 id="3-configure-the-esp-now-link-on-both-boards">3. Configure the ESP-NOW link on both boards</h2>
 <p>Run this block on <strong>both</strong> boards. Replace <code>YourSharedKey</code> with the same

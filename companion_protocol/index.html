@@ -4179,7 +4179,8 @@ the same binary CLI command over BLE or USB when TCP is unreachable. Listener
 startup failures recover automatically without resetting a healthy client or
 the WiFi connection; see <a href="../cli_commands/#browser-configuration-portal-esp32-repeater-and-room-server">the CLI diagnostics</a>.
 <code>set freq &lt;MHz&gt;</code> works through command <code>0x42</code> and authorized LoRa CLI, like
-<code>set radio</code>; it saves the frequency and requires reboot to apply. See
+<code>set radio</code>; it saves the frequency and applies automatically when the radio is
+free. LoRa CLI waits for its reply to drain before switching. See
 <a href="../terminal_chat_cli/#local-maintenance-commands">local maintenance commands</a>
 for role differences and the text-terminal equivalents.</p>
 <p>Full Companion clients can send <code>version</code> through this command to receive the

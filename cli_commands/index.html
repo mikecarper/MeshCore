@@ -9257,7 +9257,10 @@ existing Companion apps. On dual-radio builds, use <code>get radio2</code> and
 <code>get radio.timing</code> for profile and timing diagnostics.</p>
 <p><strong>Note:</strong> Companion USB, BLE and WebConfig changes apply automatically when
 the radio is free. A busy radio keeps the saved target across disconnects.
-Infrastructure retains its reboot-to-apply behavior. Companion LoRa CLI waits
+Infrastructure saves immediately, waits two seconds, then applies when the radio
+is free and its reply has drained. No reboot is needed; a permanent change ends
+pending or active TempRadio sessions. The device screen shows the applied radio
+settings during the wait. Companion LoRa CLI waits
 for the exact reply copies to drain before applying; active TempRadio leases
 reject this permanent change.
 If RXPS is enabled and the saved minimum
@@ -9495,7 +9498,9 @@ preamble. LoRa OTA treats v1.17.1.5 as that capability boundary.</p>
 - <code>frequency</code>: Frequency in MHz</p>
 <p><strong>Default:</strong> <code>869.618</code></p>
 <p><strong>Note:</strong> Companion local changes apply automatically when the radio is free.
-Infrastructure requires a reboot to apply. Companion LoRa CLI applies after
+Infrastructure saves immediately and switches after two seconds, once the radio
+is free and its reply has drained. No reboot is needed. This ends pending or
+active TempRadio sessions. Companion LoRa CLI applies after
 its exact reply copies drain; an active TempRadio lease rejects the change.</p>
 <p><strong>Connections:</strong> USB, browser/TCP/Ethernet CLI, Companion binary command
 <code>0x42</code> (USB/BLE/TCP), and authorized LoRa CLI. <code>set freq</code> saves the frequency;

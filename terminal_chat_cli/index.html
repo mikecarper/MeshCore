@@ -2745,8 +2745,10 @@ followed by the reply text. For example, payload <code>42 67 65 74 20 70 61 73 7
 BLE and TCP use their existing Companion transport framing.</p>
 <p><code>set freq &lt;MHz&gt;</code> is available on these local connections and through authorized
 LoRa administration, just like <code>set radio</code>. It saves the frequency without
-changing bandwidth, spreading factor, or coding rate and requires a reboot to
-apply. Infrastructure roles also apply the board's transmit-power limit.</p>
+changing bandwidth, spreading factor, or coding rate. Infrastructure waits two
+seconds and for the radio reply to drain before applying; Companion applies
+automatically when the radio is free. No reboot is needed. Infrastructure roles
+also apply the board's transmit-power limit.</p>
 <p>Commands relayed to another node using <code>cmd</code> travel over LoRa and retain the
 remote restrictions on local-only maintenance and secret reads. These local
 permissions do not add an ACL or packet-log store to Companion. Use <code>list</code> or
@@ -2864,7 +2866,9 @@ source, supported build profiles and memory costs.</p>
 <pre><code>set freq {frequency}
 </code></pre>
 <p>Set the saved LoRa frequency. Example: <code>set freq 915.8</code>. Available over local
-connections and authorized LoRa CLI; reboot to apply.</p>
+connections and authorized LoRa CLI. Infrastructure switches after two seconds
+and the reply has drained; Companion applies automatically when the radio is
+free. No reboot is needed.</p>
 <pre><code>set tx {tx-power-dbm}
 </code></pre>
 <p>Sets LoRa-chip transmit power in dBm. The firmware rejects values outside the
