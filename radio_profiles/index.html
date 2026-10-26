@@ -3237,6 +3237,13 @@ reply path require local USB for these immediate secondary-profile changes.</p>
 <p>Temporary periods and schedules live in RAM and disappear on reboot. Waiting
 for a reply does not extend a temporary lease. Timer expiry also uses monotonic
 time, so setting the clock backwards cannot extend a temporary session.</p>
+<p>On infrastructure roles, <code>get tempradio</code> shows the live temporary RF tuple,
+or <code>pending</code> when a session is waiting to start and none is running. A queued
+replacement or future schedule does not hide the current live tuple. The
+accepted command includes the initial two-second application delay.
+On LR2021 boards such as W12, saved extra-SF detectors pause when incompatible
+with the temporary tuple and return when normal radio settings are restored.
+Compatible extra-SF detectors remain active.</p>
 <h2 id="repeater-room-server-and-sensor-replies">Repeater, room-server, and sensor replies</h2>
 <p>These roles default to <strong><code>tx.reply both</code></strong> for CLI replies to authenticated
 admins only. Those replies are queued on <code>radio</code> and on an active <code>radio2</code>

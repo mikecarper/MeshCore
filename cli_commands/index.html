@@ -9296,6 +9296,8 @@ settings use a safe effective power without replacing the saved preference.</p>
 <h4 id="change-the-radio-parameters-for-a-set-duration">Change the radio parameters for a set duration</h4>
 <p><strong>Usage:</strong> 
 - <code>tempradio &lt;freq&gt;,&lt;bw&gt;,&lt;sf&gt;,&lt;cr&gt;,&lt;timeout_mins&gt;</code>
+- <code>set tempradio &lt;freq&gt;,&lt;bw&gt;,&lt;sf&gt;,&lt;cr&gt;,&lt;timeout_mins&gt;</code> (alias)
+- <code>get tempradio</code>
 - <code>normalradio</code></p>
 <p><strong>Parameters:</strong>
 - <code>freq</code>: Frequency in MHz (150-2500)
@@ -9305,6 +9307,14 @@ settings use a safe effective power without replacing the saved preference.</p>
 - <code>timeout_mins</code>: Duration in minutes (must be &gt; 0)</p>
 <p><strong>Notes:</strong>
 - <code>tempradio</code> is not saved to preferences and clears on reboot.
+- Application starts after two seconds and waits for the radio/reply handoff.
+  <code>get tempradio</code> shows the live temporary RF tuple when active, <code>pending</code> while
+  waiting to start, and <code>off</code> when neither applies. A pending replacement keeps
+  showing the old live tuple until the switch. <code>get tempradioat all</code> lists
+  primary scheduled entries.
+- On LR2021 boards such as W12, extra-SF receive detectors that conflict with
+  the temporary SF/bandwidth pause for that session. Their saved settings return
+  with the normal radio tuple. Compatible detectors keep working.
 - On repeaters, remote <code>tempradio</code> and <code>normalradio</code> wait for their exact reply
   copies to finish, with at least one transmitted. This also covers the <code>set</code>
   alias, case-insensitive verbs, and client correlation prefixes. Failed replies
@@ -9314,9 +9324,9 @@ settings use a safe effective power without replacing the saved preference.</p>
   current channel. Permanent <code>radioat</code> entries are not removed.
 - On repeaters, the reply includes total minutes plus <code>NdNhNm</code> (days, hours,
   minutes) and the watchdog policy for that session. For example:</p>
-<pre><code class="language-text">OK - temp params for 1440 mins (1d0h0m); rx.watchdog=12hours
-OK - temp params for 3075 mins (2d3h15m); rx.watchdog=12hours
-OK - temp params for 180 mins (0d3h0m); rx.watchdog=off (temp&lt;12hours)
+<pre><code class="language-text">OK - temp params for 1440 mins (1d0h0m); applying in 2s; rx.watchdog=12hours
+OK - temp params for 3075 mins (2d3h15m); applying in 2s; rx.watchdog=12hours
+OK - temp params for 180 mins (0d3h0m); applying in 2s; rx.watchdog=off (temp&lt;12hours)
 </code></pre>
 <p>Repeater timing overrides apply only while a temporary window is running:</p>
 <table>
