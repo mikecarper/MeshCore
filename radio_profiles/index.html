@@ -3185,7 +3185,7 @@ the suggested frequency only when it also suits the network and local band plan.
 <tr>
 <td><code>rx</code></td>
 <td>Yes</td>
-<td>Only infrastructure replies explicitly configured with <code>tx.reply ... force</code></td>
+<td>Only admin CLI replies explicitly configured with <code>tx.reply ... force</code></td>
 </tr>
 <tr>
 <td><code>rxtx</code> (also <code>rx&amp;tx</code>)</td>
@@ -3213,8 +3213,8 @@ drop packets.</p>
 get tempradio2
 </code></pre>
 <p>This enables the second profile for 120 minutes (2 hours). Locally generated
-LoRa OTA requests use the temporary second profile. Infrastructure OTA responses
-follow <code>tx.reply</code> below (both TX-capable profiles by default). Ordinary local traffic stays
+LoRa OTA requests use the temporary second profile. OTA responses retain the
+request's profile and follow <code>radio2.cross</code>. Ordinary local traffic stays
 on the primary profile by default. Use an OTA-capable build and the usual OTA
 setup on every participating node; a temporary profile does not add OTA support
 to firmware built without it.</p>
@@ -3238,13 +3238,15 @@ reply path require local USB for these immediate secondary-profile changes.</p>
 for a reply does not extend a temporary lease. Timer expiry also uses monotonic
 time, so setting the clock backwards cannot extend a temporary session.</p>
 <h2 id="repeater-room-server-and-sensor-replies">Repeater, room-server, and sensor replies</h2>
-<p>These roles default to <strong><code>tx.reply both</code></strong>: locally generated replies are queued
-on <code>radio</code> and on an active <code>radio2</code> that permits TX. This includes replies to
-remote CLI/login/telemetry requests, ACKs, returned paths, delayed GPIO command
-completion, room subscription posts, and locally served LoRa OTA catalog,
-manifest, data, proof, and leaves responses. Each copy has its own retry state.
-Forwarded packets, periodic adverts, sensor pushes, and OTA requests continue
-to use the normal crossing rules.</p>
+<p>These roles default to <strong><code>tx.reply both</code></strong> for CLI replies to authenticated
+admins only. Those replies are queued on <code>radio</code> and on an active <code>radio2</code>
+that permits TX. This includes cached CLI results and delayed admin GPIO
+command completion. Each copy has its own retry state.</p>
+<p>Login replies, ACKs, returned paths, status/telemetry responses, room posts,
+LoRa OTA traffic, signed fleet acknowledgements, and non-admin CLI replies
+follow the normal <code>radio2.cross</code> rules. A telemetry command entered through
+the admin CLI still produces an admin CLI reply; an app telemetry request does
+not. Region/filter-manager roles do not receive the admin override.</p>
 <pre><code class="language-text">get tx.reply
 set tx.reply both
 set tx.reply both force
@@ -3255,7 +3257,7 @@ set tx.reply auto
 <thead>
 <tr>
 <th>Choice</th>
-<th>Replies transmit on</th>
+<th>Admin CLI replies transmit on</th>
 </tr>
 </thead>
 <tbody>
@@ -3277,7 +3279,7 @@ set tx.reply auto
 </tr>
 <tr>
 <td><code>off</code></td>
-<td>Neither profile. This also suppresses remote CLI replies and ACKs.</td>
+<td>Neither profile. Suppresses admin CLI replies only.</td>
 </tr>
 </tbody>
 </table>
@@ -3289,14 +3291,13 @@ there. Existing crossover packet filters still apply to the extra copy.</p>
 <p>The explicit choices override <code>radio2.cross</code>, including <code>off</code> and mixed
 permanent/temporary profiles. <code>radio</code> means the active primary profile,
 including <code>tempradio</code>; <code>radio2</code> also includes an active <code>tempradio2</code>.
-For example, an OTA source can retain its normal channel while allowing OTA
-and management responses on a temporary receive profile:</p>
+For example, a repeater can retain its normal channel while allowing admin CLI
+responses on a temporary receive profile:</p>
 <pre><code class="language-text">set tempradio2 910.5,500,8,5,rx,120
 set tx.reply both force
 </code></pre>
-<p>The source must have OTA support and an active temporary-radio session as
-usual. A node fetching an update still needs <code>rxtx</code> for its OTA requests.
-Forcing replies does not change OTA's receive gates, scan timing, or preambles.</p>
+<p>This override does not allow OTA responses on a receive-only profile. Use
+<code>rxtx</code> for a profile that needs to exchange OTA requests and data.</p>
 <p>This setting survives reboot; older saved profiles adopt <code>both</code> without force.
 The getter reports when the chosen second profile cannot transmit. Already
 queued replies retain their choice; disabling/changing a profile invalidates
@@ -3304,9 +3305,7 @@ stale queued packets. A parameterized repeater <code>tempradio</code> command wa
 both admitted reply copies to drain before changing the primary settings;
 at least one must transmit successfully. Those tracked replies omit alternate
 paths and transport retries so no late success copy can outlive the handoff.
-Queue capacity and the shared transceiver's airtime budget still limit delivery.
-OTA data/proof admission counts both copies against its queue credit and
-reserves receive capacity before allowing the response.</p>
+Queue capacity and the shared transceiver's airtime budget still limit delivery.</p>
 <p>Companions use the per-contact/channel choices below; <code>tx.reply</code> is an
 infrastructure setting.</p>
 <h2 id="companion-messages-on-both-profiles">Companion messages on both profiles</h2>
@@ -3996,13 +3995,13 @@ setting is preserved across firmware updates and reboots.</p>
 contact/channel choice above overrides crossing for its own outbound packets.
 Recognized media uses the separate <code>tx.media auto</code> selection described above.
 Ordinary crossing respects <code>rx</code>. The infrastructure-only <code>tx.reply ... force</code>
-override above permits locally generated replies on that profile.
+override above permits authenticated admin CLI replies on that profile.
 With crossing allowed, a packet received there may still be forwarded on the
 primary profile. Existing routing, forwarding and packet-filter settings apply.
 An RX-only <code>tempradio2</code> also blocks locally generated OTA requests under
 <code>auto</code> or <code>off</code>; they do not fall back to the normal primary channel. Use <code>rxtx</code>
-for a fetching node that needs to exchange requests and data. Infrastructure
-OTA responses follow <code>tx.reply</code> independently of this crossing table.</p>
+for a fetching node that needs to exchange requests and data. OTA responses
+also follow this crossing table; <code>tx.reply</code> does not apply to them.</p>
 <h2 id="mcu-power-saving-while-scanning">MCU power saving while scanning</h2>
 <p>On nRF52, <code>set powersaving on</code> also permits interrupt-driven MCU idle during a
 settled <code>radio2</code> or <code>tempradio2</code> listening visit. The RF receiver stays on.

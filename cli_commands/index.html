@@ -8646,12 +8646,15 @@ set tx.reply radio
 set tx.reply auto
 </code></pre>
 <p>Persistent choices: <code>auto</code>, <code>radio</code>, <code>radio2</code>, <code>both</code> (default), and <code>off</code>.
-Explicit choices override <code>radio2.cross</code> for local replies, including CLI,
-ACKs, telemetry, room subscription posts, and served LoRa OTA responses.
-Append <code>force</code> to <code>both</code> or <code>radio2</code> to permit reply TX on an active RX-only
+Explicit choices override <code>radio2.cross</code> only for CLI replies to authenticated
+admins, including cached results and delayed admin GPIO command completion.
+Login replies, ACKs, app telemetry/status responses, returned paths, room posts,
+LoRa OTA, signed fleet acknowledgements, and non-admin CLI replies follow normal
+crossing rules. Region/filter-manager roles do not get the admin override.
+Append <code>force</code> to <code>both</code> or <code>radio2</code> to permit admin CLI reply TX on an active RX-only
 second profile. It never enables a disabled profile or ordinary forwarding.
-Omitting <code>force</code> removes that override. <code>off</code> suppresses remote replies too.</p>
-<p>See <a href="../radio_profiles/#repeater-room-server-and-sensor-replies">reply routing and OTA examples</a>
+Omitting <code>force</code> removes that override. <code>off</code> suppresses admin CLI replies only.</p>
+<p>See <a href="../radio_profiles/#repeater-room-server-and-sensor-replies">admin CLI reply routing</a>
 for temporary profiles, receive-only exceptions, and queued reply handling.</p>
 <h2 id="set-companion-display-rotation">Set Companion display rotation</h2>
 <p>SSD1306 Full Companion builds support a persisted runtime orientation:</p>
