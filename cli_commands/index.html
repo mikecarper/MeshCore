@@ -2480,6 +2480,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#lr2021-frequency-measurement-and-crystal-calibration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        LR2021 frequency measurement and crystal calibration
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#view-or-change-this-nodes-rx-boosted-gain-mode-sx12xx-and-lr1110-v1141" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -5647,6 +5658,17 @@
     <span class="md-ellipsis">
       
         View or change this node's frequency
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#lr2021-frequency-measurement-and-crystal-calibration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        LR2021 frequency measurement and crystal calibration
       
     </span>
   </a>
@@ -9561,11 +9583,51 @@ Infrastructure saves immediately and switches after two seconds, once the radio
 is free and its reply has drained. No reboot is needed. This ends pending or
 active TempRadio sessions. Companion LoRa CLI applies after
 its exact reply copies drain; an active TempRadio lease rejects the change.</p>
+<p>On LR2021 radios, repeated unfinished preamble/header activity cannot block an
+accepted primary or TempRadio change indefinitely. The driver allows one maximum
+packet airtime plus a margin, capped at 30 seconds, before stopping an unfinished
+reception at the next apply attempt. Completed packets, active transmission,
+chip BUSY and exclusive radio tools retain priority. Normal radio2 scanning and
+CAD do not use this exception.</p>
+<p>If an LR2021 change remains pending, <code>get radio.apply</code> reports its admission or
+failure stage and native error code. Its frequency field is the driver's last
+accepted setting, not a measurement of the transmitted carrier.</p>
 <p><strong>Connections:</strong> USB, browser/TCP/Ethernet CLI, Companion binary command
 <code>0x42</code> (USB/BLE/TCP), and authorized LoRa CLI. <code>set freq</code> saves the frequency;
 bandwidth, spreading factor, and coding rate stay as configured. Infrastructure
 roles also clamp transmit power to the board's limit for that frequency. Like
 <code>set radio</code>, it requires permission to configure the destination node.</p>
+<hr />
+<h4 id="lr2021-frequency-measurement-and-crystal-calibration">LR2021 frequency measurement and crystal calibration</h4>
+<p>Available on LR2021 builds, including Meshnology W12:</p>
+<pre><code class="language-text">get radio.freqerror
+get radio.xtrim
+set radio.xtrim &lt;0-47&gt;[,&lt;0-47&gt;]
+set radio.xtrim default
+</code></pre>
+<p><code>get radio.freqerror</code> reports the last successfully received LoRa packet's
+frequency offset in Hz, its configured frequency and sample age. It reports
+<code>unavailable</code> before a valid measurement. Failed reads and CRC errors keep the
+previous sample and its age. This is the difference between two radios; it does
+not establish which radio needs calibration.</p>
+<p><code>radio.xtrim</code> adjusts the LR2021 crystal's two load-capacitor codes. A single
+number sets both codes; two numbers set XTA and XTB separately. Lower codes
+generally raise frequency; each code is a capacitor step, not a fixed Hz offset.
+Use a known reference to choose values. TCXO boards reject this setting.</p>
+<p>The default leaves the chip's original trim unchanged; no shared calibration
+value is imposed on boards. An explicit selection is saved first and waits two
+seconds so its acknowledgement can leave with the previous calibration. It then
+applies without a reboot when the radio is free, and is restored after resets
+and temporary modem changes. A busy radio retries automatically for 30 seconds
+after that handoff, including one final admission attempt. If protected radio
+work still prevents the change, the
+request fails and restores the previous saved selection; <code>get radio.xtrim</code>
+shows it. A reported radio recovery failure still needs diagnosis.
+<code>set radio.xtrim default</code> removes the override and resets/reinitializes the radio
+to restore its original trim. Node identity and other settings remain saved.</p>
+<p>These controls are available through local CLI and authorized LoRa CLI. They do
+not change the configured channel frequency shown by <code>get radio</code> or <code>get freq</code>.
+The <a href="https://github.com/Lora-net/usp/blob/main/smtc_rac_lib/radio_drivers/lr20xx_driver/inc/lr20xx_system.h">Semtech LR20xx driver documents the capacitor range and step size</a>.</p>
 <hr />
 <h4 id="view-or-change-this-nodes-rx-boosted-gain-mode-sx12xx-and-lr1110-v1141">View or change this node's rx boosted gain mode (SX12xx and LR1110, v1.14.1+)</h4>
 <p><strong>Search terms:</strong> RX boost, receive gain, receiver sensitivity, boosted reception.</p>
