@@ -822,8 +822,20 @@
       releaseBoundControl(profile, "combinedCompanion"));
   }
 
+  function unifiedV4DisplayProfile(profile) {
+    return Boolean(profile && profile.hardware === "heltec_v4" &&
+      profile.controls && profile.controls.platform === "ESP32_PLATFORM" &&
+      profile.controls.display === true && releaseBoundControl(profile, "unifiedV4Display"));
+  }
+
   function consolidationSuccessor(profile, candidate) {
     if (!profile || !candidate || profile.role !== candidate.role) return false;
+    if (/^heltec_v4(?:_3)?(?:_expansionkit)?(?:_tft)?$/.test(profile.hardware) &&
+        profile.hardware !== "heltec_v4" && unifiedV4DisplayProfile(candidate)) {
+      return candidate.feature === profile.feature && candidate.ota === profile.ota &&
+        (!profile.sensorProfile || profile.sensorProfile === candidate.sensorProfile) &&
+        (profile.role !== "companion" || isFullCompanion(candidate));
+    }
     if (/^PicoW_companion_radio_(usb|ble|wifi)$/.test(profile.target)) {
       return combinedPicoCompanion(candidate);
     }
@@ -1725,6 +1737,10 @@
       requested[field] = params.get(field) || "";
     });
     [
+      ...["heltec_v4_3", "heltec_v4_tft", "heltec_v4_3_tft", "heltec_v4_expansionkit",
+        "heltec_v4_expansionkit_tft", "heltec_v4_3_expansionkit_tft"].map(function (hardware) {
+        return [hardware, "heltec_v4", unifiedV4DisplayProfile];
+      }),
       ["heltec_rc32_without_display", "heltec_rc32", function (profile) { return optionalAutoDisplayProfile(profile); }],
       ["heltec_v4_expansionkit", "heltec_v4", function (profile) { return ["repeater", "room"].includes(profile.role) && releaseBoundControl(profile, "oledExpansionCompatible"); }],
       ["heltec_v4_r8_tft_portrait", "heltec_v4_r8_tft", function (profile) { return ["repeater", "room"].includes(profile.role) && releaseBoundControl(profile, "displayRotation"); }],
@@ -2010,6 +2026,10 @@
     const notes = [];
     if (combinedPicoCompanion(profile)) {
       notes.push("This Companion image includes USB, Bluetooth LE and WiFi together. Separate transport firmware is unnecessary; this image does not add a wireless firmware updater.");
+    }
+    if (unifiedV4DisplayProfile(profile)) {
+      notes.push("One ordinary Heltec V4 image supports V4.2/V4.3 with OLED, the stock touch TFT kit, or no screen. The saved display.type setting selects auto, oled, tft or off; board reports the detected revision and active display. R8 uses its separate hardware image.");
+      notes.push("When changing from a legacy TFT or expansion-kit target, use a local USB installation or a supported WiFi application update. Their LoRa OTA target IDs remain distinct; never force a different target's LoRa OTA package.");
     }
     if (releaseBoundControl(profile, "oledExpansionCompatible")) {
       notes.push("The same OLED firmware supports the base Heltec V4 and its OLED expansion kit. Existing expansion-kit OTA identities still require their exact historical update or a local USB migration.");
@@ -2375,6 +2395,9 @@
     if (infrastructure && (info.updateMethods || []).includes("bluetooth")) section("Bluetooth firmware update", [
       { label: "Start DFU", commands: ["start ota"], text: "Use the exact board's application DFU ZIP with the matching Bluetooth-capable bootloader." },
     ]);
+    if (unifiedV4DisplayProfile(profile)) section("Display type", ["auto", "oled", "tft", "off"].map(function (type) {
+      return {label: type === "auto" ? "Automatic" : type === "off" ? "Screen off" : type.toUpperCase(), commands: ["set display.type " + type]};
+    }), "Saved choice applies immediately. Check with get display.type and board. Automatic mode continues without a screen if no supported display is detected.");
     if ((full || releaseBoundControl(profile, "displayRotation")) && info.display) section("Display rotation", [0, 90, 180, 270].map(function (angle) {
       return { label: angle === 0 ? "Board default" : angle + " degrees", commands: ["set display.rotation " + angle] };
     }), "Use on supported displays; 0 restores the board default. Check with get display.rotation.");

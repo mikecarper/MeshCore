@@ -2202,6 +2202,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#select-the-original-heltec-v4-display" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Select the original Heltec V4 display
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#set-display-modes-and-timeouts" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -5358,6 +5369,17 @@
     <span class="md-ellipsis">
       
         Show touchscreen touch areas
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#select-the-original-heltec-v4-display" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Select the original Heltec V4 display
       
     </span>
   </a>
@@ -8710,6 +8732,33 @@ USB, BLE, or TCP connection. Non-touchscreen, missing-display, and legacy UI
 builds report <code>Error: touchscreen diagnostics unsupported</code>. No Indicator-only
 build flag is needed.</p>
 <hr />
+<h2 id="select-the-original-heltec-v4-display">Select the original Heltec V4 display</h2>
+<p>New unified original-V4 images support V4.2/V4.3 OLED, the original TFT
+touchscreen expansion kit, and operation without a screen. This feature is
+not present in the older 1.17.1.1 or 1.17.1.5 images. V4 R8 remains a separate
+hardware target.</p>
+<pre><code class="language-text">get display.type
+set display.type auto
+set display.type oled
+set display.type tft
+set display.type off
+board
+</code></pre>
+<p>The default <code>auto</code> requires an OLED I2C response or a stable identity from the
+stock TFT assembly's touch controller. No OLED response alone is not evidence
+of a TFT. When neither responds, the node runs without a screen and <code>board</code>
+reports <code>none detected</code>. Touch identification establishes the stock assembly,
+not LCD health. A damaged or nonstandard panel can require an override.</p>
+<p><code>oled</code> explicitly selects and checks the OLED driver. <code>tft</code> explicitly selects
+the TFT driver and reports <code>TFT (forced)</code> rather than claiming detection.
+<code>off</code> disables display initialization and reports <code>off</code>, distinct from
+<code>none detected</code>. Selections apply immediately and survive reboot in the checked
+<code>/display_type</code> file. A failed save leaves the live selection unchanged.</p>
+<p><code>board</code> combines the detected radio front end with the live display status,
+for example <code>Heltec V4.3 OLED</code>, <code>Heltec V4.2 TFT</code>, or <code>Heltec V4.3 off</code>.
+The radio front end identifies the V4.2/V4.3 hardware generation; it is not a
+read of a PCB revision register. Use <code>display.mode</code> below for normal screen
+sleep/wake policy without changing the selected hardware driver.</p>
 <h2 id="set-display-modes-and-timeouts">Set display modes and timeouts</h2>
 <p>Companion message sound, vibration, LED, screen and GPIO rules have separate
 CLI controls. See the <a href="../notifications/">notification builder and CLI reference</a>,
