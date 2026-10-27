@@ -7534,6 +7534,10 @@ RX-only mode, cross-transmission policy, and optional radio preambles.</p>
 (911.150 MHz, 250 kHz, SF7, CR 4/5, <code>rxtx</code>, automatic preamble), or
 <code>set radio2 mediamesh-range</code> for 125 kHz. These leave the primary profile
 and crossing policy unchanged. Both radio2 and <code>radio2.cross</code> default to <code>off</code>.
+On repeaters, room servers and sensors, either preset also saves an allowed
+<code>#mediamesh</code> forwarding region. <code>set radio2 off</code> or <code>set radio2 auto</code> disables
+that permission while retaining the region entry. Default/home regions,
+wildcard permissions and outgoing app scopes stay unchanged.
 See <a href="../radio_profiles/#mediamesh-presets">MediaMesh presets</a>.</p>
 <p>For supported Full Companions, see <a href="../radio_profiles/#meshtext-channel-chat">Meshtext channel chat</a>
 for <code>mt-</code> channels and the explicit <code>send mt.nodeinfo &lt;channel slot&gt;</code> command.
