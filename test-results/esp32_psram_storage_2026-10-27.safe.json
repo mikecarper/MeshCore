@@ -1,0 +1,1635 @@
+{
+  "schema_version": 1,
+  "baseline_commit": "74c03cb30f76551d8eedbe2b78ec98345c514d09",
+  "physical_validation_performed": false,
+  "maximum_runtime_load_qualified": false,
+  "websocket_payload_bytes_per_initialized_client": 2050,
+  "websocket_payload_bytes_for_five_initialized_clients": 10250,
+  "psram_repeater_table_policy": "ESP32-S3 + BOARD_HAS_PSRAM + qualified repeater; deferred begin; existing RTC/IRAM backends retained",
+  "tests": {
+    "ram_policy_methods_passed": 65,
+    "scope_advert_capacity_rtc_iram_methods_passed": 23,
+    "ws_methods_passed": 3,
+    "ws_scenarios_passed": 32,
+    "ws_platform_configurations": 7,
+    "native_storage_transport_sanitizers": "ASan/UBSan",
+    "pio_execution": "single process; RAM config hook ran separately from builds"
+  },
+  "matched_builds": {
+    "heltec_v4_repeater": {
+      "baseline": {
+        "memory": {
+          "schema_version": 1,
+          "target": "heltec_v4_repeater",
+          "platform": "ESP32_PLATFORM",
+          "mcu": "esp32s3",
+          "elf_sha256": "26a554d320b8d14d67d1eab59c74f6c83b286b2ff8b73f64deeccf261b1a39a5",
+          "passed": true,
+          "available_internal_bytes": 203456,
+          "largest_internal_region_bytes": 170688,
+          "required_heap_bytes": 201904,
+          "required_contiguous_bytes": 19168,
+          "components": {
+            "display_i2c_spi_and_probe": 4096,
+            "core_tasks_usb_filesystems": 24576,
+            "wireless_stacks": 49152,
+            "mqtt_startup_allowance": 24576,
+            "udp_bridge_and_socket": 5120,
+            "ota_source_scratch": 8192,
+            "browser_terminal_session": 2048,
+            "neighbor_history": 18448,
+            "host_kiss_codec": 2048,
+            "radio_packet_pool": 10240,
+            "client_table": 9104,
+            "flood_filter_table": 19168,
+            "ota_generic_source_buffers": 3616,
+            "ota_encoder_workspace": 1040,
+            "display_pixels_and_driver": 2048,
+            "screen_objects_and_history": 2048,
+            "allocation_and_transient_margin": 16384
+          },
+          "display": "HeltecV4Display",
+          "full_companion": false,
+          "mqtt": {
+            "budget_scope": "startup minimum with runtime connection admission",
+            "startup_allowance_bytes": 24576,
+            "startup_active_slot_allowance": 2,
+            "runtime_slot_count": 6,
+            "maximum_active_slots": 5,
+            "maximum_active_slots_without_psram": 2,
+            "worker_stack_bytes": 8192,
+            "client_task_stack_bytes": 6144,
+            "client_task_priority": 5,
+            "client_rx_tx_buffer_bytes": 1792,
+            "maximum_slot_stack_buffer_allowance_bytes": 48384,
+            "cold_start_allocation_allowance_bytes": 16384,
+            "cold_start_dma_admission_free_bytes": 32768,
+            "cold_start_dma_admission_contiguous_bytes": 8192,
+            "additional_broker_cold_start_dma_admission_contiguous_bytes": 20480,
+            "restart_allocation_allowance_bytes": 8192,
+            "restart_dma_admission_free_bytes": 24576,
+            "restart_dma_admission_contiguous_bytes": 8192,
+            "additional_broker_restart_dma_admission_contiguous_bytes": 12288,
+            "dma_admission_free_bytes": 16384,
+            "dma_admission_contiguous_bytes": 4096,
+            "publish_contiguous_bytes": 4096,
+            "publish_contiguous_without_psram_bytes": 8000,
+            "publish_contiguous_with_psram_bytes": 4096,
+            "tls_psram_admission_contiguous_bytes": 16000,
+            "additional_broker_cold_start_tls_psram_admission_contiguous_bytes": 32384,
+            "additional_broker_restart_tls_psram_admission_contiguous_bytes": 24192,
+            "additional_broker_tls_psram_admission_contiguous_bytes": 16000,
+            "tls_internal_admission_free_bytes": 61440,
+            "tls_record_allocation_bytes": 17408,
+            "additional_broker_cold_start_tls_internal_admission_contiguous_bytes": 41792,
+            "additional_broker_restart_tls_internal_admission_contiguous_bytes": 33600,
+            "tls_internal_admission_contiguous_bytes": 17408,
+            "additional_broker_tls_internal_admission_contiguous_bytes": 25408,
+            "maximum_runtime_load_qualified": false,
+            "physical_validation_performed": false,
+            "limitations": "Maximum TLS/WSS/outbox workload is not covered by the startup allowance; runtime free DMA heap and fragmentation must satisfy connection admission; additional brokers reserve publication headroom beside startup allocations."
+          },
+          "regions": [
+            {
+              "start": 1070333008,
+              "end": 1070503696
+            },
+            {
+              "start": 1070530560,
+              "end": 1070563328
+            }
+          ],
+          "scope": "Linked capacity before runtime allocation; physical boot/load/soak validation remains required.",
+          "artifact_target": "heltec_v4_repeater",
+          "pio_environment": "heltec_v4_repeater_observer_mqtt",
+          "files": {
+            "heltec_v4_repeater-full-usb-wifi-ota-v1.18.0.2-psram-test-74c03cb3.bin": "785fe1fc26492aff14c10dadf27f52ce104bf50e5f5f6ab0595a4812530a5de8",
+            "heltec_v4_repeater-full-usb-wifi-ota-v1.18.0.2-psram-test-74c03cb3-merged.bin": "efa39aa3bd0a17aa5885f81dc6b7a37522be7dca6a6275e501c81b0e2b0516ee",
+            "heltec_v4_repeater-full-usb-wifi-ota-v1.18.0.2-psram-test-74c03cb3.capabilities.json": "75a95825edb208e5b2f600ad65798da382e3e59d4c237965b767afb0d730319e",
+            "heltec_v4_repeater-full-usb-wifi-ota-v1.18.0.2-psram-test-74c03cb3.meshtext-license.txt": "c37d0a453a2491514bac33ed835c1877f207390f134ae439a97b06b004e236d2"
+          }
+        },
+        "capabilities": {
+          "artifact_target": "heltec_v4_repeater",
+          "build_profile": "full",
+          "build_recipe": {
+            "schema_version": 1,
+            "sha256": "f435455067a794665ec3cf09a1277c7b30526fc5ed53376512ff9ecbafb17750"
+          },
+          "capabilities": [
+            "bridge.espnow",
+            "bridge.udp",
+            "profile.full",
+            "release.full.same_partition_successor",
+            "radio2.kiss.host",
+            "radio2.kiss.usb",
+            "radio2.kiss.tcp",
+            "ota.update.wifi",
+            "ota.update.lora",
+            "cli.retry_preset",
+            "telemetry.history",
+            "ota.cli",
+            "web.webconfig",
+            "logging.usb.packets",
+            "logging.usb.control",
+            "logging.usb.output",
+            "display.heltec_v4.unified",
+            "bridge.udp.configuration"
+          ],
+          "ota_update_evidence": "firmware fits both OTA application slots; otadata present",
+          "ota_update_methods": [
+            "wifi",
+            "lora"
+          ],
+          "ota_update_verified": true,
+          "platform": "ESP32_PLATFORM",
+          "platformio_env": "heltec_v4_repeater_observer_mqtt",
+          "reductions": [],
+          "schema_version": 2,
+          "target": "heltec_v4_repeater",
+          "third_party_notices": [
+            {
+              "component": "espp-meshtext",
+              "file": "heltec_v4_repeater-full-usb-wifi-ota-v1.18.0.2-psram-test-74c03cb3.meshtext-license.txt",
+              "license": "MIT",
+              "sha256": "c37d0a453a2491514bac33ed835c1877f207390f134ae439a97b06b004e236d2"
+            }
+          ],
+          "verification": [
+            {
+              "capability": "radio2.kiss.host",
+              "evidence": "_ZN4mesh8hostkiss5Codec4feedEh; _ZN4mesh8hostkiss5Codec11queueOutputEhPKhj; _ZN4mesh10Dispatcher22queueForeignRadioFrameEPKhjhjNS_20RadioProfileProtocolE",
+              "present": true,
+              "source": "linked ELF symbols"
+            },
+            {
+              "capability": "radio2.kiss.usb",
+              "evidence": "Error: use set kiss on|off; Error: use set kiss.transport usb|tcp; USB: send KISS FEND to start",
+              "present": true,
+              "source": "packaged application"
+            },
+            {
+              "capability": "radio2.kiss.tcp",
+              "evidence": "station TCP 5004",
+              "present": true,
+              "source": "packaged application"
+            },
+            {
+              "capability": "bridge.espnow",
+              "evidence": "_ZN12ESPNowBridge5beginEv",
+              "present": true,
+              "source": "linked image"
+            },
+            {
+              "capability": "bridge.udp",
+              "evidence": "_ZN9UDPBridge5beginEv",
+              "present": true,
+              "source": "linked image"
+            },
+            {
+              "capability": "ota.update.wifi",
+              "evidence": "Started: http://%s/update",
+              "present": true,
+              "source": "linked image"
+            },
+            {
+              "capability": "ota.update.lora",
+              "evidence": "image_hash MISMATCH after decode",
+              "present": true,
+              "source": "linked image"
+            },
+            {
+              "capability": "cli.retry_preset",
+              "evidence": "retry.preset",
+              "present": true,
+              "source": "linked image"
+            },
+            {
+              "capability": "telemetry.history",
+              "evidence": "telemetry.volt.i2c",
+              "present": true,
+              "source": "linked image"
+            },
+            {
+              "capability": "ota.cli",
+              "evidence": "OTA: status",
+              "present": true,
+              "source": "linked image"
+            },
+            {
+              "capability": "web.webconfig",
+              "evidence": "start webconfig",
+              "present": true,
+              "source": "linked image"
+            },
+            {
+              "capability": "logging.usb.packets",
+              "evidence": "%s: %s, len=%d (type=%d, route=%s, payload_len=%d)",
+              "present": true,
+              "source": "packaged application"
+            },
+            {
+              "capability": "logging.usb.control",
+              "evidence": "OK - USB logging %s (saved)",
+              "present": true,
+              "source": "packaged application"
+            },
+            {
+              "capability": "logging.usb.output",
+              "evidence": "OK - logging.output %s (saved)",
+              "present": true,
+              "source": "packaged application"
+            },
+            {
+              "capability": "display.heltec_v4.unified",
+              "evidence": "meshcore.capability.display.heltec_v4.unified.v1",
+              "present": true,
+              "source": "packaged application"
+            },
+            {
+              "capability": "bridge.udp.configuration",
+              "evidence": "udp.enabled",
+              "present": true,
+              "source": "packaged application"
+            }
+          ],
+          "verified": true
+        },
+        "application_bytes": 2158824,
+        "application_slot_bytes": 6553600
+      },
+      "final": {
+        "memory": {
+          "schema_version": 1,
+          "target": "heltec_v4_repeater",
+          "platform": "ESP32_PLATFORM",
+          "mcu": "esp32s3",
+          "elf_sha256": "f03df26d6ed65237095dbd0513323b19291eaa172ea52b62c5f324d5a1101943",
+          "passed": true,
+          "available_internal_bytes": 240248,
+          "largest_internal_region_bytes": 207480,
+          "required_heap_bytes": 238732,
+          "required_contiguous_bytes": 19168,
+          "components": {
+            "display_i2c_spi_and_probe": 4096,
+            "core_tasks_usb_filesystems": 24576,
+            "wireless_stacks": 49152,
+            "mqtt_startup_allowance": 24576,
+            "udp_bridge_and_socket": 5120,
+            "ota_source_scratch": 8192,
+            "browser_terminal_session": 2048,
+            "neighbor_history": 18448,
+            "host_kiss_codec": 2048,
+            "radio_packet_pool": 10240,
+            "client_table": 9104,
+            "flood_filter_table": 19168,
+            "repeater_scope_storage_fallback": 18892,
+            "repeater_advert_storage_fallback": 17936,
+            "ota_generic_source_buffers": 3616,
+            "ota_encoder_workspace": 1040,
+            "display_pixels_and_driver": 2048,
+            "screen_objects_and_history": 2048,
+            "allocation_and_transient_margin": 16384
+          },
+          "display": "HeltecV4Display",
+          "full_companion": false,
+          "mqtt": {
+            "budget_scope": "startup minimum with runtime connection admission",
+            "startup_allowance_bytes": 24576,
+            "startup_active_slot_allowance": 2,
+            "runtime_slot_count": 6,
+            "maximum_active_slots": 5,
+            "maximum_active_slots_without_psram": 2,
+            "worker_stack_bytes": 8192,
+            "client_task_stack_bytes": 6144,
+            "client_task_priority": 5,
+            "client_rx_tx_buffer_bytes": 1792,
+            "maximum_slot_stack_buffer_allowance_bytes": 48384,
+            "cold_start_allocation_allowance_bytes": 16384,
+            "cold_start_dma_admission_free_bytes": 32768,
+            "cold_start_dma_admission_contiguous_bytes": 8192,
+            "additional_broker_cold_start_dma_admission_contiguous_bytes": 20480,
+            "restart_allocation_allowance_bytes": 8192,
+            "restart_dma_admission_free_bytes": 24576,
+            "restart_dma_admission_contiguous_bytes": 8192,
+            "additional_broker_restart_dma_admission_contiguous_bytes": 12288,
+            "dma_admission_free_bytes": 16384,
+            "dma_admission_contiguous_bytes": 4096,
+            "publish_contiguous_bytes": 4096,
+            "publish_contiguous_without_psram_bytes": 8000,
+            "publish_contiguous_with_psram_bytes": 4096,
+            "tls_psram_admission_contiguous_bytes": 16000,
+            "additional_broker_cold_start_tls_psram_admission_contiguous_bytes": 32384,
+            "additional_broker_restart_tls_psram_admission_contiguous_bytes": 24192,
+            "additional_broker_tls_psram_admission_contiguous_bytes": 16000,
+            "tls_internal_admission_free_bytes": 61440,
+            "tls_record_allocation_bytes": 17408,
+            "additional_broker_cold_start_tls_internal_admission_contiguous_bytes": 41792,
+            "additional_broker_restart_tls_internal_admission_contiguous_bytes": 33600,
+            "tls_internal_admission_contiguous_bytes": 17408,
+            "additional_broker_tls_internal_admission_contiguous_bytes": 25408,
+            "maximum_runtime_load_qualified": false,
+            "physical_validation_performed": false,
+            "limitations": "Maximum TLS/WSS/outbox workload is not covered by the startup allowance; runtime free DMA heap and fragmentation must satisfy connection admission; additional brokers reserve publication headroom beside startup allocations."
+          },
+          "regions": [
+            {
+              "start": 1070296216,
+              "end": 1070503696
+            },
+            {
+              "start": 1070530560,
+              "end": 1070563328
+            }
+          ],
+          "scope": "Linked capacity before runtime allocation; physical boot/load/soak validation remains required.",
+          "artifact_target": "heltec_v4_repeater",
+          "pio_environment": "heltec_v4_repeater_observer_mqtt",
+          "files": {
+            "heltec_v4_repeater-full-usb-wifi-ota-v1.18.0.2-psram-test-74c03cb3.bin": "2262c682c4e1bafe1703a26cd97f3cf5aa18d5f0ebeb15ad8b352552f83cc128",
+            "heltec_v4_repeater-full-usb-wifi-ota-v1.18.0.2-psram-test-74c03cb3-merged.bin": "e2fad3e879b28d32dcb8983cf2c024dd2455475dedde125a461d2acbf09a61b8",
+            "heltec_v4_repeater-full-usb-wifi-ota-v1.18.0.2-psram-test-74c03cb3.capabilities.json": "b365e7b7864f49ab2888690b2b5d7e044a42d25450d2f3e1ff1ca1200e2b46da",
+            "heltec_v4_repeater-full-usb-wifi-ota-v1.18.0.2-psram-test-74c03cb3.meshtext-license.txt": "c37d0a453a2491514bac33ed835c1877f207390f134ae439a97b06b004e236d2"
+          }
+        },
+        "capabilities": {
+          "artifact_target": "heltec_v4_repeater",
+          "build_profile": "full",
+          "build_recipe": {
+            "schema_version": 1,
+            "sha256": "b9db24a63c5eac6316114b8a05e3c09c3f9f0d01d9e2e29648b9ba5c57a96d64"
+          },
+          "capabilities": [
+            "bridge.espnow",
+            "bridge.udp",
+            "profile.full",
+            "release.full.same_partition_successor",
+            "radio2.kiss.host",
+            "radio2.kiss.usb",
+            "radio2.kiss.tcp",
+            "ota.update.wifi",
+            "ota.update.lora",
+            "cli.retry_preset",
+            "telemetry.history",
+            "ota.cli",
+            "web.webconfig",
+            "logging.usb.packets",
+            "logging.usb.control",
+            "logging.usb.output",
+            "display.heltec_v4.unified",
+            "bridge.udp.configuration"
+          ],
+          "ota_update_evidence": "firmware fits both OTA application slots; otadata present",
+          "ota_update_methods": [
+            "wifi",
+            "lora"
+          ],
+          "ota_update_verified": true,
+          "platform": "ESP32_PLATFORM",
+          "platformio_env": "heltec_v4_repeater_observer_mqtt",
+          "reductions": [],
+          "schema_version": 2,
+          "target": "heltec_v4_repeater",
+          "third_party_notices": [
+            {
+              "component": "espp-meshtext",
+              "file": "heltec_v4_repeater-full-usb-wifi-ota-v1.18.0.2-psram-test-74c03cb3.meshtext-license.txt",
+              "license": "MIT",
+              "sha256": "c37d0a453a2491514bac33ed835c1877f207390f134ae439a97b06b004e236d2"
+            }
+          ],
+          "verification": [
+            {
+              "capability": "radio2.kiss.host",
+              "evidence": "_ZN4mesh8hostkiss5Codec4feedEh; _ZN4mesh8hostkiss5Codec11queueOutputEhPKhj; _ZN4mesh10Dispatcher22queueForeignRadioFrameEPKhjhjNS_20RadioProfileProtocolE",
+              "present": true,
+              "source": "linked ELF symbols"
+            },
+            {
+              "capability": "radio2.kiss.usb",
+              "evidence": "Error: use set kiss on|off; Error: use set kiss.transport usb|tcp; USB: send KISS FEND to start",
+              "present": true,
+              "source": "packaged application"
+            },
+            {
+              "capability": "radio2.kiss.tcp",
+              "evidence": "station TCP 5004",
+              "present": true,
+              "source": "packaged application"
+            },
+            {
+              "capability": "bridge.espnow",
+              "evidence": "_ZN12ESPNowBridge5beginEv",
+              "present": true,
+              "source": "linked image"
+            },
+            {
+              "capability": "bridge.udp",
+              "evidence": "_ZN9UDPBridge5beginEv",
+              "present": true,
+              "source": "linked image"
+            },
+            {
+              "capability": "ota.update.wifi",
+              "evidence": "Started: http://%s/update",
+              "present": true,
+              "source": "linked image"
+            },
+            {
+              "capability": "ota.update.lora",
+              "evidence": "image_hash MISMATCH after decode",
+              "present": true,
+              "source": "linked image"
+            },
+            {
+              "capability": "cli.retry_preset",
+              "evidence": "retry.preset",
+              "present": true,
+              "source": "linked image"
+            },
+            {
+              "capability": "telemetry.history",
+              "evidence": "telemetry.volt.i2c",
+              "present": true,
+              "source": "linked image"
+            },
+            {
+              "capability": "ota.cli",
+              "evidence": "OTA: status",
+              "present": true,
+              "source": "linked image"
+            },
+            {
+              "capability": "web.webconfig",
+              "evidence": "start webconfig",
+              "present": true,
+              "source": "linked image"
+            },
+            {
+              "capability": "logging.usb.packets",
+              "evidence": "%s: %s, len=%d (type=%d, route=%s, payload_len=%d)",
+              "present": true,
+              "source": "packaged application"
+            },
+            {
+              "capability": "logging.usb.control",
+              "evidence": "OK - USB logging %s (saved)",
+              "present": true,
+              "source": "packaged application"
+            },
+            {
+              "capability": "logging.usb.output",
+              "evidence": "OK - logging.output %s (saved)",
+              "present": true,
+              "source": "packaged application"
+            },
+            {
+              "capability": "display.heltec_v4.unified",
+              "evidence": "meshcore.capability.display.heltec_v4.unified.v1",
+              "present": true,
+              "source": "packaged application"
+            },
+            {
+              "capability": "bridge.udp.configuration",
+              "evidence": "udp.enabled",
+              "present": true,
+              "source": "packaged application"
+            }
+          ],
+          "verified": true
+        },
+        "application_bytes": 2158216,
+        "application_slot_bytes": 6553600
+      },
+      "linked_internal_bytes_freed": 36792
+    },
+    "LilyGo_TDeck_repeater": {
+      "baseline": {
+        "memory": {
+          "schema_version": 1,
+          "target": "LilyGo_TDeck_repeater",
+          "platform": "ESP32_PLATFORM",
+          "mcu": "esp32s3",
+          "elf_sha256": "7a81e26e7ca6db8241ded72c7f25c171cfddf867dcf04018b17bec2841314fc8",
+          "passed": true,
+          "available_internal_bytes": 223960,
+          "largest_internal_region_bytes": 191192,
+          "required_heap_bytes": 171184,
+          "required_contiguous_bytes": 19168,
+          "components": {
+            "core_tasks_usb_filesystems": 24576,
+            "wireless_stacks": 49152,
+            "udp_bridge_and_socket": 5120,
+            "ota_source_scratch": 8192,
+            "browser_terminal_session": 2048,
+            "neighbor_history": 18448,
+            "host_kiss_codec": 2048,
+            "radio_packet_pool": 10240,
+            "client_table": 9104,
+            "flood_filter_table": 19168,
+            "ota_generic_source_buffers": 3616,
+            "ota_encoder_workspace": 1040,
+            "display_pixels_and_driver": 0,
+            "screen_objects_and_history": 2048,
+            "allocation_and_transient_margin": 16384
+          },
+          "display": "ST7789LCDDisplay",
+          "full_companion": false,
+          "regions": [
+            {
+              "start": 1070312504,
+              "end": 1070503696
+            },
+            {
+              "start": 1070530560,
+              "end": 1070563328
+            }
+          ],
+          "scope": "Linked capacity before runtime allocation; physical boot/load/soak validation remains required.",
+          "artifact_target": "LilyGo_TDeck_repeater",
+          "pio_environment": "LilyGo_TDeck_repeater",
+          "files": {
+            "LilyGo_TDeck_repeater-full-logging-ota-v1.18.0.2-psram-test-74c03cb3.bin": "58645d4a0221c47aced270ebd2d36334e5eff5f47f5443cea3eec552d72a6d48",
+            "LilyGo_TDeck_repeater-full-logging-ota-v1.18.0.2-psram-test-74c03cb3-merged.bin": "1af4afdf12e53e194515a6193f6080701515e644365dc829f075597c562f7b1f",
+            "LilyGo_TDeck_repeater-full-logging-ota-v1.18.0.2-psram-test-74c03cb3.capabilities.json": "6e2aa96cfc2baa32aedc22a48b34fa37392a6acbea79ec77433dbe4a965dfb02",
+            "LilyGo_TDeck_repeater-full-logging-ota-v1.18.0.2-psram-test-74c03cb3.meshtext-license.txt": "c37d0a453a2491514bac33ed835c1877f207390f134ae439a97b06b004e236d2"
+          }
+        },
+        "capabilities": {
+          "artifact_target": "LilyGo_TDeck_repeater",
+          "build_profile": "full",
+          "build_recipe": {
+            "schema_version": 1,
+            "sha256": "a0fdec3a295e5d8a1e55aa25f7a6461c0c7d944b026d4b94c6e2d399711f9ede"
+          },
+          "capabilities": [
+            "bridge.espnow",
+            "bridge.udp",
+            "profile.full",
+            "release.full.same_partition_successor",
+            "radio2.kiss.host",
+            "radio2.kiss.usb",
+            "radio2.kiss.tcp",
+            "ota.update.wifi",
+            "ota.update.lora",
+            "cli.retry_preset",
+            "telemetry.history",
+            "ota.cli",
+            "web.webconfig",
+            "logging.usb.packets",
+            "logging.usb.control",
+            "bridge.udp.configuration"
+          ],
+          "ota_update_evidence": "firmware fits both OTA application slots; otadata present",
+          "ota_update_methods": [
+            "wifi",
+            "lora"
+          ],
+          "ota_update_verified": true,
+          "platform": "ESP32_PLATFORM",
+          "platformio_env": "LilyGo_TDeck_repeater",
+          "reductions": [],
+          "schema_version": 2,
+          "target": "LilyGo_TDeck_repeater",
+          "third_party_notices": [
+            {
+              "component": "espp-meshtext",
+              "file": "LilyGo_TDeck_repeater-full-logging-ota-v1.18.0.2-psram-test-74c03cb3.meshtext-license.txt",
+              "license": "MIT",
+              "sha256": "c37d0a453a2491514bac33ed835c1877f207390f134ae439a97b06b004e236d2"
+            }
+          ],
+          "verification": [
+            {
+              "capability": "radio2.kiss.host",
+              "evidence": "_ZN4mesh8hostkiss5Codec4feedEh; _ZN4mesh8hostkiss5Codec11queueOutputEhPKhj; _ZN4mesh10Dispatcher22queueForeignRadioFrameEPKhjhjNS_20RadioProfileProtocolE",
+              "present": true,
+              "source": "linked ELF symbols"
+            },
+            {
+              "capability": "radio2.kiss.usb",
+              "evidence": "Error: use set kiss on|off; Error: use set kiss.transport usb|tcp; USB: send KISS FEND to start",
+              "present": true,
+              "source": "packaged application"
+            },
+            {
+              "capability": "radio2.kiss.tcp",
+              "evidence": "station TCP 5004",
+              "present": true,
+              "source": "packaged application"
+            },
+            {
+              "capability": "bridge.espnow",
+              "evidence": "_ZN12ESPNowBridge5beginEv",
+              "present": true,
+              "source": "linked image"
+            },
+            {
+              "capability": "bridge.udp",
+              "evidence": "_ZN9UDPBridge5beginEv",
+              "present": true,
+              "source": "linked image"
+            },
+            {
+              "capability": "ota.update.wifi",
+              "evidence": "Started: http://%s/update",
+              "present": true,
+              "source": "linked image"
+            },
+            {
+              "capability": "ota.update.lora",
+              "evidence": "image_hash MISMATCH after decode",
+              "present": true,
+              "source": "linked image"
+            },
+            {
+              "capability": "cli.retry_preset",
+              "evidence": "retry.preset",
+              "present": true,
+              "source": "linked image"
+            },
+            {
+              "capability": "telemetry.history",
+              "evidence": "telemetry.volt.i2c",
+              "present": true,
+              "source": "linked image"
+            },
+            {
+              "capability": "ota.cli",
+              "evidence": "OTA: status",
+              "present": true,
+              "source": "linked image"
+            },
+            {
+              "capability": "web.webconfig",
+              "evidence": "start webconfig",
+              "present": true,
+              "source": "linked image"
+            },
+            {
+              "capability": "logging.usb.packets",
+              "evidence": "%s: %s, len=%d (type=%d, route=%s, payload_len=%d)",
+              "present": true,
+              "source": "packaged application"
+            },
+            {
+              "capability": "logging.usb.control",
+              "evidence": "OK - USB logging %s (saved)",
+              "present": true,
+              "source": "packaged application"
+            },
+            {
+              "capability": "bridge.udp.configuration",
+              "evidence": "udp.enabled",
+              "present": true,
+              "source": "packaged application"
+            }
+          ],
+          "verified": true
+        },
+        "application_bytes": 1749000,
+        "application_slot_bytes": 6553600
+      },
+      "final": {
+        "memory": {
+          "schema_version": 1,
+          "target": "LilyGo_TDeck_repeater",
+          "platform": "ESP32_PLATFORM",
+          "mcu": "esp32s3",
+          "elf_sha256": "1b380ad615448e5b24992a4f78cb1e59a123e271bd6ac6ef0b8203579e620068",
+          "passed": true,
+          "available_internal_bytes": 260752,
+          "largest_internal_region_bytes": 227984,
+          "required_heap_bytes": 208012,
+          "required_contiguous_bytes": 19168,
+          "components": {
+            "core_tasks_usb_filesystems": 24576,
+            "wireless_stacks": 49152,
+            "udp_bridge_and_socket": 5120,
+            "ota_source_scratch": 8192,
+            "browser_terminal_session": 2048,
+            "neighbor_history": 18448,
+            "host_kiss_codec": 2048,
+            "radio_packet_pool": 10240,
+            "client_table": 9104,
+            "flood_filter_table": 19168,
+            "repeater_scope_storage_fallback": 18892,
+            "repeater_advert_storage_fallback": 17936,
+            "ota_generic_source_buffers": 3616,
+            "ota_encoder_workspace": 1040,
+            "display_pixels_and_driver": 0,
+            "screen_objects_and_history": 2048,
+            "allocation_and_transient_margin": 16384
+          },
+          "display": "ST7789LCDDisplay",
+          "full_companion": false,
+          "regions": [
+            {
+              "start": 1070275712,
+              "end": 1070503696
+            },
+            {
+              "start": 1070530560,
+              "end": 1070563328
+            }
+          ],
+          "scope": "Linked capacity before runtime allocation; physical boot/load/soak validation remains required.",
+          "artifact_target": "LilyGo_TDeck_repeater",
+          "pio_environment": "LilyGo_TDeck_repeater",
+          "files": {
+            "LilyGo_TDeck_repeater-full-logging-ota-v1.18.0.2-psram-test-74c03cb3.bin": "aacc9f578fc6e6185061f4939e4f6f58c3f7553c0de3b87c8e95b4f231a9f845",
+            "LilyGo_TDeck_repeater-full-logging-ota-v1.18.0.2-psram-test-74c03cb3-merged.bin": "5741fb5c0f9b744f2895a3db5e207d873c172192ccc6ab473d3a7f5da4d88d4d",
+            "LilyGo_TDeck_repeater-full-logging-ota-v1.18.0.2-psram-test-74c03cb3.capabilities.json": "f1628e243c28a4619597f6236a6b1ea593885e581c4949a9cbac084aecf6f891",
+            "LilyGo_TDeck_repeater-full-logging-ota-v1.18.0.2-psram-test-74c03cb3.meshtext-license.txt": "c37d0a453a2491514bac33ed835c1877f207390f134ae439a97b06b004e236d2"
+          }
+        },
+        "capabilities": {
+          "artifact_target": "LilyGo_TDeck_repeater",
+          "build_profile": "full",
+          "build_recipe": {
+            "schema_version": 1,
+            "sha256": "4637703ef279754b9752767c3d6cdc1c00ae852c9c2c2cf34b85f42a3d24b028"
+          },
+          "capabilities": [
+            "bridge.espnow",
+            "bridge.udp",
+            "profile.full",
+            "release.full.same_partition_successor",
+            "radio2.kiss.host",
+            "radio2.kiss.usb",
+            "radio2.kiss.tcp",
+            "ota.update.wifi",
+            "ota.update.lora",
+            "cli.retry_preset",
+            "telemetry.history",
+            "ota.cli",
+            "web.webconfig",
+            "logging.usb.packets",
+            "logging.usb.control",
+            "bridge.udp.configuration"
+          ],
+          "ota_update_evidence": "firmware fits both OTA application slots; otadata present",
+          "ota_update_methods": [
+            "wifi",
+            "lora"
+          ],
+          "ota_update_verified": true,
+          "platform": "ESP32_PLATFORM",
+          "platformio_env": "LilyGo_TDeck_repeater",
+          "reductions": [],
+          "schema_version": 2,
+          "target": "LilyGo_TDeck_repeater",
+          "third_party_notices": [
+            {
+              "component": "espp-meshtext",
+              "file": "LilyGo_TDeck_repeater-full-logging-ota-v1.18.0.2-psram-test-74c03cb3.meshtext-license.txt",
+              "license": "MIT",
+              "sha256": "c37d0a453a2491514bac33ed835c1877f207390f134ae439a97b06b004e236d2"
+            }
+          ],
+          "verification": [
+            {
+              "capability": "radio2.kiss.host",
+              "evidence": "_ZN4mesh8hostkiss5Codec4feedEh; _ZN4mesh8hostkiss5Codec11queueOutputEhPKhj; _ZN4mesh10Dispatcher22queueForeignRadioFrameEPKhjhjNS_20RadioProfileProtocolE",
+              "present": true,
+              "source": "linked ELF symbols"
+            },
+            {
+              "capability": "radio2.kiss.usb",
+              "evidence": "Error: use set kiss on|off; Error: use set kiss.transport usb|tcp; USB: send KISS FEND to start",
+              "present": true,
+              "source": "packaged application"
+            },
+            {
+              "capability": "radio2.kiss.tcp",
+              "evidence": "station TCP 5004",
+              "present": true,
+              "source": "packaged application"
+            },
+            {
+              "capability": "bridge.espnow",
+              "evidence": "_ZN12ESPNowBridge5beginEv",
+              "present": true,
+              "source": "linked image"
+            },
+            {
+              "capability": "bridge.udp",
+              "evidence": "_ZN9UDPBridge5beginEv",
+              "present": true,
+              "source": "linked image"
+            },
+            {
+              "capability": "ota.update.wifi",
+              "evidence": "Started: http://%s/update",
+              "present": true,
+              "source": "linked image"
+            },
+            {
+              "capability": "ota.update.lora",
+              "evidence": "image_hash MISMATCH after decode",
+              "present": true,
+              "source": "linked image"
+            },
+            {
+              "capability": "cli.retry_preset",
+              "evidence": "retry.preset",
+              "present": true,
+              "source": "linked image"
+            },
+            {
+              "capability": "telemetry.history",
+              "evidence": "telemetry.volt.i2c",
+              "present": true,
+              "source": "linked image"
+            },
+            {
+              "capability": "ota.cli",
+              "evidence": "OTA: status",
+              "present": true,
+              "source": "linked image"
+            },
+            {
+              "capability": "web.webconfig",
+              "evidence": "start webconfig",
+              "present": true,
+              "source": "linked image"
+            },
+            {
+              "capability": "logging.usb.packets",
+              "evidence": "%s: %s, len=%d (type=%d, route=%s, payload_len=%d)",
+              "present": true,
+              "source": "packaged application"
+            },
+            {
+              "capability": "logging.usb.control",
+              "evidence": "OK - USB logging %s (saved)",
+              "present": true,
+              "source": "packaged application"
+            },
+            {
+              "capability": "bridge.udp.configuration",
+              "evidence": "udp.enabled",
+              "present": true,
+              "source": "packaged application"
+            }
+          ],
+          "verified": true
+        },
+        "application_bytes": 1747624,
+        "application_slot_bytes": 6553600
+      },
+      "linked_internal_bytes_freed": 36792
+    },
+    "Station_G2_full": {
+      "baseline": {
+        "memory": {
+          "schema_version": 1,
+          "target": "Station_G2_repeater",
+          "platform": "ESP32_PLATFORM",
+          "mcu": "esp32s3",
+          "elf_sha256": "e9ef328f902caeb6bb46e922c2d058f159fe8ef27775688f837bf4bf29a983e3",
+          "passed": true,
+          "available_internal_bytes": 200328,
+          "largest_internal_region_bytes": 167560,
+          "required_heap_bytes": 197808,
+          "required_contiguous_bytes": 19168,
+          "components": {
+            "core_tasks_usb_filesystems": 24576,
+            "wireless_stacks": 49152,
+            "mqtt_startup_allowance": 24576,
+            "udp_bridge_and_socket": 5120,
+            "ota_source_scratch": 8192,
+            "browser_terminal_session": 2048,
+            "neighbor_history": 18448,
+            "host_kiss_codec": 2048,
+            "radio_packet_pool": 10240,
+            "client_table": 9104,
+            "flood_filter_table": 19168,
+            "ota_generic_source_buffers": 3616,
+            "ota_encoder_workspace": 1040,
+            "display_pixels_and_driver": 2048,
+            "screen_objects_and_history": 2048,
+            "allocation_and_transient_margin": 16384
+          },
+          "display": "SH1106Display",
+          "full_companion": false,
+          "mqtt": {
+            "budget_scope": "startup minimum with runtime connection admission",
+            "startup_allowance_bytes": 24576,
+            "startup_active_slot_allowance": 2,
+            "runtime_slot_count": 6,
+            "maximum_active_slots": 5,
+            "maximum_active_slots_without_psram": 2,
+            "worker_stack_bytes": 8192,
+            "client_task_stack_bytes": 6144,
+            "client_task_priority": 5,
+            "client_rx_tx_buffer_bytes": 1792,
+            "maximum_slot_stack_buffer_allowance_bytes": 48384,
+            "cold_start_allocation_allowance_bytes": 16384,
+            "cold_start_dma_admission_free_bytes": 32768,
+            "cold_start_dma_admission_contiguous_bytes": 8192,
+            "additional_broker_cold_start_dma_admission_contiguous_bytes": 20480,
+            "restart_allocation_allowance_bytes": 8192,
+            "restart_dma_admission_free_bytes": 24576,
+            "restart_dma_admission_contiguous_bytes": 8192,
+            "additional_broker_restart_dma_admission_contiguous_bytes": 12288,
+            "dma_admission_free_bytes": 16384,
+            "dma_admission_contiguous_bytes": 4096,
+            "publish_contiguous_bytes": 4096,
+            "publish_contiguous_without_psram_bytes": 8000,
+            "publish_contiguous_with_psram_bytes": 4096,
+            "tls_psram_admission_contiguous_bytes": 16000,
+            "additional_broker_cold_start_tls_psram_admission_contiguous_bytes": 32384,
+            "additional_broker_restart_tls_psram_admission_contiguous_bytes": 24192,
+            "additional_broker_tls_psram_admission_contiguous_bytes": 16000,
+            "tls_internal_admission_free_bytes": 61440,
+            "tls_record_allocation_bytes": 17408,
+            "additional_broker_cold_start_tls_internal_admission_contiguous_bytes": 41792,
+            "additional_broker_restart_tls_internal_admission_contiguous_bytes": 33600,
+            "tls_internal_admission_contiguous_bytes": 17408,
+            "additional_broker_tls_internal_admission_contiguous_bytes": 25408,
+            "maximum_runtime_load_qualified": false,
+            "physical_validation_performed": false,
+            "limitations": "Maximum TLS/WSS/outbox workload is not covered by the startup allowance; runtime free DMA heap and fragmentation must satisfy connection admission; additional brokers reserve publication headroom beside startup allocations."
+          },
+          "regions": [
+            {
+              "start": 1070336136,
+              "end": 1070503696
+            },
+            {
+              "start": 1070530560,
+              "end": 1070563328
+            }
+          ],
+          "scope": "Linked capacity before runtime allocation; physical boot/load/soak validation remains required.",
+          "artifact_target": "Station_G2_repeater",
+          "pio_environment": "Station_G2_repeater_observer_mqtt",
+          "files": {
+            "Station_G2_repeater-full-usb-wifi-ota-v1.18.0.2-psram-test-74c03cb3.bin": "5c85a2296472ca98896f19c6f03896edcefb05940eabfc0ff371300ae7b48e5c",
+            "Station_G2_repeater-full-usb-wifi-ota-v1.18.0.2-psram-test-74c03cb3-merged.bin": "85db924b667bc5d6a68c13a71db3cc9383d60698e662822f42d40c30e67a9075",
+            "Station_G2_repeater-full-usb-wifi-ota-v1.18.0.2-psram-test-74c03cb3.capabilities.json": "9f6ad5ae8ad0f1f7867b4e6747802c9fd96c85a0381d5512b5d21faf4b373cf9",
+            "Station_G2_repeater-full-usb-wifi-ota-v1.18.0.2-psram-test-74c03cb3.meshtext-license.txt": "c37d0a453a2491514bac33ed835c1877f207390f134ae439a97b06b004e236d2"
+          }
+        },
+        "capabilities": {
+          "artifact_target": "Station_G2_repeater",
+          "build_profile": "full",
+          "build_recipe": {
+            "schema_version": 1,
+            "sha256": "097d01b27ee89898eba7aeafad8ec3aee1f2e28faabe2b615760230323aa9207"
+          },
+          "capabilities": [
+            "bridge.espnow",
+            "bridge.udp",
+            "profile.full",
+            "release.full.partition_migration_ota",
+            "radio2.kiss.host",
+            "radio2.kiss.usb",
+            "radio2.kiss.tcp",
+            "ota.update.wifi",
+            "ota.update.lora",
+            "cli.retry_preset",
+            "telemetry.history",
+            "ota.cli",
+            "web.webconfig",
+            "logging.usb.packets",
+            "logging.usb.control",
+            "logging.usb.output",
+            "bridge.udp.configuration"
+          ],
+          "ota_update_evidence": "firmware fits both OTA application slots; otadata present",
+          "ota_update_methods": [
+            "wifi",
+            "lora"
+          ],
+          "ota_update_verified": true,
+          "platform": "ESP32_PLATFORM",
+          "platformio_env": "Station_G2_repeater_observer_mqtt",
+          "reductions": [],
+          "schema_version": 2,
+          "target": "Station_G2_repeater",
+          "third_party_notices": [
+            {
+              "component": "espp-meshtext",
+              "file": "Station_G2_repeater-full-usb-wifi-ota-v1.18.0.2-psram-test-74c03cb3.meshtext-license.txt",
+              "license": "MIT",
+              "sha256": "c37d0a453a2491514bac33ed835c1877f207390f134ae439a97b06b004e236d2"
+            }
+          ],
+          "verification": [
+            {
+              "capability": "radio2.kiss.host",
+              "evidence": "_ZN4mesh8hostkiss5Codec4feedEh; _ZN4mesh8hostkiss5Codec11queueOutputEhPKhj; _ZN4mesh10Dispatcher22queueForeignRadioFrameEPKhjhjNS_20RadioProfileProtocolE",
+              "present": true,
+              "source": "linked ELF symbols"
+            },
+            {
+              "capability": "radio2.kiss.usb",
+              "evidence": "Error: use set kiss on|off; Error: use set kiss.transport usb|tcp; USB: send KISS FEND to start",
+              "present": true,
+              "source": "packaged application"
+            },
+            {
+              "capability": "radio2.kiss.tcp",
+              "evidence": "station TCP 5004",
+              "present": true,
+              "source": "packaged application"
+            },
+            {
+              "capability": "bridge.espnow",
+              "evidence": "_ZN12ESPNowBridge5beginEv",
+              "present": true,
+              "source": "linked image"
+            },
+            {
+              "capability": "bridge.udp",
+              "evidence": "_ZN9UDPBridge5beginEv",
+              "present": true,
+              "source": "linked image"
+            },
+            {
+              "capability": "ota.update.wifi",
+              "evidence": "Started: http://%s/update",
+              "present": true,
+              "source": "linked image"
+            },
+            {
+              "capability": "ota.update.lora",
+              "evidence": "image_hash MISMATCH after decode",
+              "present": true,
+              "source": "linked image"
+            },
+            {
+              "capability": "cli.retry_preset",
+              "evidence": "retry.preset",
+              "present": true,
+              "source": "linked image"
+            },
+            {
+              "capability": "telemetry.history",
+              "evidence": "telemetry.volt.i2c",
+              "present": true,
+              "source": "linked image"
+            },
+            {
+              "capability": "ota.cli",
+              "evidence": "OTA: status",
+              "present": true,
+              "source": "linked image"
+            },
+            {
+              "capability": "web.webconfig",
+              "evidence": "start webconfig",
+              "present": true,
+              "source": "linked image"
+            },
+            {
+              "capability": "logging.usb.packets",
+              "evidence": "%s: %s, len=%d (type=%d, route=%s, payload_len=%d)",
+              "present": true,
+              "source": "packaged application"
+            },
+            {
+              "capability": "logging.usb.control",
+              "evidence": "OK - USB logging %s (saved)",
+              "present": true,
+              "source": "packaged application"
+            },
+            {
+              "capability": "logging.usb.output",
+              "evidence": "OK - logging.output %s (saved)",
+              "present": true,
+              "source": "packaged application"
+            },
+            {
+              "capability": "bridge.udp.configuration",
+              "evidence": "udp.enabled",
+              "present": true,
+              "source": "packaged application"
+            }
+          ],
+          "verified": true
+        },
+        "application_bytes": 2125896,
+        "application_slot_bytes": 6553600
+      },
+      "final": {
+        "memory": {
+          "schema_version": 1,
+          "target": "Station_G2_repeater",
+          "platform": "ESP32_PLATFORM",
+          "mcu": "esp32s3",
+          "elf_sha256": "61910fcb243d37fa99771fe2c7cca5c3fb28e077abcb98e4f14b62215ab21460",
+          "passed": true,
+          "available_internal_bytes": 237120,
+          "largest_internal_region_bytes": 204352,
+          "required_heap_bytes": 234636,
+          "required_contiguous_bytes": 19168,
+          "components": {
+            "core_tasks_usb_filesystems": 24576,
+            "wireless_stacks": 49152,
+            "mqtt_startup_allowance": 24576,
+            "udp_bridge_and_socket": 5120,
+            "ota_source_scratch": 8192,
+            "browser_terminal_session": 2048,
+            "neighbor_history": 18448,
+            "host_kiss_codec": 2048,
+            "radio_packet_pool": 10240,
+            "client_table": 9104,
+            "flood_filter_table": 19168,
+            "repeater_scope_storage_fallback": 18892,
+            "repeater_advert_storage_fallback": 17936,
+            "ota_generic_source_buffers": 3616,
+            "ota_encoder_workspace": 1040,
+            "display_pixels_and_driver": 2048,
+            "screen_objects_and_history": 2048,
+            "allocation_and_transient_margin": 16384
+          },
+          "display": "SH1106Display",
+          "full_companion": false,
+          "mqtt": {
+            "budget_scope": "startup minimum with runtime connection admission",
+            "startup_allowance_bytes": 24576,
+            "startup_active_slot_allowance": 2,
+            "runtime_slot_count": 6,
+            "maximum_active_slots": 5,
+            "maximum_active_slots_without_psram": 2,
+            "worker_stack_bytes": 8192,
+            "client_task_stack_bytes": 6144,
+            "client_task_priority": 5,
+            "client_rx_tx_buffer_bytes": 1792,
+            "maximum_slot_stack_buffer_allowance_bytes": 48384,
+            "cold_start_allocation_allowance_bytes": 16384,
+            "cold_start_dma_admission_free_bytes": 32768,
+            "cold_start_dma_admission_contiguous_bytes": 8192,
+            "additional_broker_cold_start_dma_admission_contiguous_bytes": 20480,
+            "restart_allocation_allowance_bytes": 8192,
+            "restart_dma_admission_free_bytes": 24576,
+            "restart_dma_admission_contiguous_bytes": 8192,
+            "additional_broker_restart_dma_admission_contiguous_bytes": 12288,
+            "dma_admission_free_bytes": 16384,
+            "dma_admission_contiguous_bytes": 4096,
+            "publish_contiguous_bytes": 4096,
+            "publish_contiguous_without_psram_bytes": 8000,
+            "publish_contiguous_with_psram_bytes": 4096,
+            "tls_psram_admission_contiguous_bytes": 16000,
+            "additional_broker_cold_start_tls_psram_admission_contiguous_bytes": 32384,
+            "additional_broker_restart_tls_psram_admission_contiguous_bytes": 24192,
+            "additional_broker_tls_psram_admission_contiguous_bytes": 16000,
+            "tls_internal_admission_free_bytes": 61440,
+            "tls_record_allocation_bytes": 17408,
+            "additional_broker_cold_start_tls_internal_admission_contiguous_bytes": 41792,
+            "additional_broker_restart_tls_internal_admission_contiguous_bytes": 33600,
+            "tls_internal_admission_contiguous_bytes": 17408,
+            "additional_broker_tls_internal_admission_contiguous_bytes": 25408,
+            "maximum_runtime_load_qualified": false,
+            "physical_validation_performed": false,
+            "limitations": "Maximum TLS/WSS/outbox workload is not covered by the startup allowance; runtime free DMA heap and fragmentation must satisfy connection admission; additional brokers reserve publication headroom beside startup allocations."
+          },
+          "regions": [
+            {
+              "start": 1070299344,
+              "end": 1070503696
+            },
+            {
+              "start": 1070530560,
+              "end": 1070563328
+            }
+          ],
+          "scope": "Linked capacity before runtime allocation; physical boot/load/soak validation remains required.",
+          "artifact_target": "Station_G2_repeater",
+          "pio_environment": "Station_G2_repeater_observer_mqtt",
+          "files": {
+            "Station_G2_repeater-full-usb-wifi-ota-v1.18.0.2-psram-test-74c03cb3.bin": "181cd48ddcb3f59d6248dc8d0eb56d24e078cb1570d2c3849982e994944de2db",
+            "Station_G2_repeater-full-usb-wifi-ota-v1.18.0.2-psram-test-74c03cb3-merged.bin": "2333bffd21cfba9499af5e09693cb942056827a088cae8b1bb451824a7eee33a",
+            "Station_G2_repeater-full-usb-wifi-ota-v1.18.0.2-psram-test-74c03cb3.capabilities.json": "0d0947fa3b07da87f70b1935386e7d17d873906318e2abcd08192b2e3629a956",
+            "Station_G2_repeater-full-usb-wifi-ota-v1.18.0.2-psram-test-74c03cb3.meshtext-license.txt": "c37d0a453a2491514bac33ed835c1877f207390f134ae439a97b06b004e236d2"
+          }
+        },
+        "capabilities": {
+          "artifact_target": "Station_G2_repeater",
+          "build_profile": "full",
+          "build_recipe": {
+            "schema_version": 1,
+            "sha256": "fc24f56be0d6bca5ed94476d117ef22613bcbdde132356a70a88cc4c9a00b697"
+          },
+          "capabilities": [
+            "bridge.espnow",
+            "bridge.udp",
+            "profile.full",
+            "release.full.partition_migration_ota",
+            "radio2.kiss.host",
+            "radio2.kiss.usb",
+            "radio2.kiss.tcp",
+            "ota.update.wifi",
+            "ota.update.lora",
+            "cli.retry_preset",
+            "telemetry.history",
+            "ota.cli",
+            "web.webconfig",
+            "logging.usb.packets",
+            "logging.usb.control",
+            "logging.usb.output",
+            "bridge.udp.configuration"
+          ],
+          "ota_update_evidence": "firmware fits both OTA application slots; otadata present",
+          "ota_update_methods": [
+            "wifi",
+            "lora"
+          ],
+          "ota_update_verified": true,
+          "platform": "ESP32_PLATFORM",
+          "platformio_env": "Station_G2_repeater_observer_mqtt",
+          "reductions": [],
+          "schema_version": 2,
+          "target": "Station_G2_repeater",
+          "third_party_notices": [
+            {
+              "component": "espp-meshtext",
+              "file": "Station_G2_repeater-full-usb-wifi-ota-v1.18.0.2-psram-test-74c03cb3.meshtext-license.txt",
+              "license": "MIT",
+              "sha256": "c37d0a453a2491514bac33ed835c1877f207390f134ae439a97b06b004e236d2"
+            }
+          ],
+          "verification": [
+            {
+              "capability": "radio2.kiss.host",
+              "evidence": "_ZN4mesh8hostkiss5Codec4feedEh; _ZN4mesh8hostkiss5Codec11queueOutputEhPKhj; _ZN4mesh10Dispatcher22queueForeignRadioFrameEPKhjhjNS_20RadioProfileProtocolE",
+              "present": true,
+              "source": "linked ELF symbols"
+            },
+            {
+              "capability": "radio2.kiss.usb",
+              "evidence": "Error: use set kiss on|off; Error: use set kiss.transport usb|tcp; USB: send KISS FEND to start",
+              "present": true,
+              "source": "packaged application"
+            },
+            {
+              "capability": "radio2.kiss.tcp",
+              "evidence": "station TCP 5004",
+              "present": true,
+              "source": "packaged application"
+            },
+            {
+              "capability": "bridge.espnow",
+              "evidence": "_ZN12ESPNowBridge5beginEv",
+              "present": true,
+              "source": "linked image"
+            },
+            {
+              "capability": "bridge.udp",
+              "evidence": "_ZN9UDPBridge5beginEv",
+              "present": true,
+              "source": "linked image"
+            },
+            {
+              "capability": "ota.update.wifi",
+              "evidence": "Started: http://%s/update",
+              "present": true,
+              "source": "linked image"
+            },
+            {
+              "capability": "ota.update.lora",
+              "evidence": "image_hash MISMATCH after decode",
+              "present": true,
+              "source": "linked image"
+            },
+            {
+              "capability": "cli.retry_preset",
+              "evidence": "retry.preset",
+              "present": true,
+              "source": "linked image"
+            },
+            {
+              "capability": "telemetry.history",
+              "evidence": "telemetry.volt.i2c",
+              "present": true,
+              "source": "linked image"
+            },
+            {
+              "capability": "ota.cli",
+              "evidence": "OTA: status",
+              "present": true,
+              "source": "linked image"
+            },
+            {
+              "capability": "web.webconfig",
+              "evidence": "start webconfig",
+              "present": true,
+              "source": "linked image"
+            },
+            {
+              "capability": "logging.usb.packets",
+              "evidence": "%s: %s, len=%d (type=%d, route=%s, payload_len=%d)",
+              "present": true,
+              "source": "packaged application"
+            },
+            {
+              "capability": "logging.usb.control",
+              "evidence": "OK - USB logging %s (saved)",
+              "present": true,
+              "source": "packaged application"
+            },
+            {
+              "capability": "logging.usb.output",
+              "evidence": "OK - logging.output %s (saved)",
+              "present": true,
+              "source": "packaged application"
+            },
+            {
+              "capability": "bridge.udp.configuration",
+              "evidence": "udp.enabled",
+              "present": true,
+              "source": "packaged application"
+            }
+          ],
+          "verified": true
+        },
+        "application_bytes": 2125160,
+        "application_slot_bytes": 6553600
+      },
+      "linked_internal_bytes_freed": 36792
+    }
+  },
+  "existing_failures": {
+    "Station_G2_repeater": {
+      "baseline": {
+        "log_sha256": "62693f3b03281ef3d0531d08492854aaba0c9c482199a58779f17a7f06833459",
+        "linked_program_bytes": 1375509,
+        "application_slot_bytes": 1310720,
+        "result": "preexisting legacy flash-slot overflow"
+      },
+      "final": {
+        "log_sha256": "a12c2d92958176a080a1413fac999290636d2e8b053400ff3d990683f81b0f13",
+        "linked_program_bytes": 1374093,
+        "application_slot_bytes": 1310720,
+        "result": "preexisting legacy flash-slot overflow"
+      }
+    },
+    "Tbeam_SX1262_repeater_observer_mqtt": {
+      "baseline": {
+        "log_sha256": "ac25a522c11462e2bec8e198a477e378828c59f5aa207ea90abde87cd903e884",
+        "result": "compile and RAM admission passed; existing dual-slot OTA-fit check failed"
+      },
+      "final": {
+        "log_sha256": "1f1b2485a341b88a1b31e57c5acc199d4d17a59b6877cbb836410126d6dd53b3",
+        "result": "compile and RAM admission passed; existing dual-slot OTA-fit check failed"
+      }
+    }
+  },
+  "source_sha256": {
+    "src/helpers/RepeaterPsramStorage.h": "9286a1aea6f7fa6da30c1d0788717d82f2479edf45b35181d5d6bdb22c5b211b",
+    "src/helpers/FloodAdvertLimiter.h": "72dda9cafa0b5f599b4858829c5b9e9bf9439b97bcbeece92d20514a9acdf829",
+    "src/helpers/ESP32WsTransportFix.cpp": "1a946f2c6061118e55995b38387cfc2e3462d9bcb1576764989edd68cf99ab2c",
+    "examples/simple_repeater/MyMesh.h": "7b95cee5e9e148bbbf76aea8394b0a075047aac74064795fedb1256cb66c5712",
+    "examples/simple_repeater/MyMesh.cpp": "9c6fcd42f6e1ce17dec0209e83d7ae6ec71dbf4c9bdaae17c77924f396e70f77",
+    "scripts/check_firmware_ram.py": "833e842048fbe72463da547d52e1f8f291ea248142f2abf6735f596d3be601ed",
+    "test/test_firmware_ram.py": "1402904d4d4907a0743b6d09c3d0c72534efc14ff7f288c4c118b04cf454cb09",
+    "test/test_repeater_scope_psram.py": "c5974097405f89db5a529513a6c52d517de458c5acbd5fa0efe193fd2936ccf4",
+    "test/test_flood_advert_psram.py": "839d97c99215ba8c2e26b490398968049de668e386f4e1c3d4e8d2541d19fb5b",
+    "test/test_ws_transport_psram.py": "1a41b4efb069e604275c132eda286e5e2f34d3257f5d7ff3fd28f7e6fb653425"
+  },
+  "limitations": [
+    "No board flashed.",
+    "Linked capacity is not running free heap.",
+    "Physical startup, RF timing, persistence and broker-load qualification were not performed."
+  ],
+  "post_integration": {
+    "tested_commit": "6a5a04b1b881022f59f6489c67b62aed4629fea0",
+    "target": "Station_G2_repeater",
+    "memory": {
+      "schema_version": 1,
+      "target": "Station_G2_repeater",
+      "platform": "ESP32_PLATFORM",
+      "mcu": "esp32s3",
+      "elf_sha256": "fb5e4cfbf7fe68af87abbaa7ae06cfe43abedb8ff1450179020f34750f24e4f1",
+      "passed": true,
+      "available_internal_bytes": 237120,
+      "largest_internal_region_bytes": 204352,
+      "required_heap_bytes": 234636,
+      "required_contiguous_bytes": 19168,
+      "components": {
+        "core_tasks_usb_filesystems": 24576,
+        "wireless_stacks": 49152,
+        "mqtt_startup_allowance": 24576,
+        "udp_bridge_and_socket": 5120,
+        "ota_source_scratch": 8192,
+        "browser_terminal_session": 2048,
+        "neighbor_history": 18448,
+        "host_kiss_codec": 2048,
+        "radio_packet_pool": 10240,
+        "client_table": 9104,
+        "flood_filter_table": 19168,
+        "repeater_scope_storage_fallback": 18892,
+        "repeater_advert_storage_fallback": 17936,
+        "ota_generic_source_buffers": 3616,
+        "ota_encoder_workspace": 1040,
+        "display_pixels_and_driver": 2048,
+        "screen_objects_and_history": 2048,
+        "allocation_and_transient_margin": 16384
+      },
+      "display": "SH1106Display",
+      "full_companion": false,
+      "mqtt": {
+        "budget_scope": "startup minimum with runtime connection admission",
+        "startup_allowance_bytes": 24576,
+        "startup_active_slot_allowance": 2,
+        "runtime_slot_count": 6,
+        "maximum_active_slots": 5,
+        "maximum_active_slots_without_psram": 2,
+        "worker_stack_bytes": 8192,
+        "client_task_stack_bytes": 6144,
+        "client_task_priority": 5,
+        "client_rx_tx_buffer_bytes": 1792,
+        "maximum_slot_stack_buffer_allowance_bytes": 48384,
+        "cold_start_allocation_allowance_bytes": 16384,
+        "cold_start_dma_admission_free_bytes": 32768,
+        "cold_start_dma_admission_contiguous_bytes": 8192,
+        "additional_broker_cold_start_dma_admission_contiguous_bytes": 20480,
+        "restart_allocation_allowance_bytes": 8192,
+        "restart_dma_admission_free_bytes": 24576,
+        "restart_dma_admission_contiguous_bytes": 8192,
+        "additional_broker_restart_dma_admission_contiguous_bytes": 12288,
+        "dma_admission_free_bytes": 16384,
+        "dma_admission_contiguous_bytes": 4096,
+        "publish_contiguous_bytes": 4096,
+        "publish_contiguous_without_psram_bytes": 8000,
+        "publish_contiguous_with_psram_bytes": 4096,
+        "tls_psram_admission_contiguous_bytes": 16000,
+        "additional_broker_cold_start_tls_psram_admission_contiguous_bytes": 32384,
+        "additional_broker_restart_tls_psram_admission_contiguous_bytes": 24192,
+        "additional_broker_tls_psram_admission_contiguous_bytes": 16000,
+        "tls_internal_admission_free_bytes": 61440,
+        "tls_record_allocation_bytes": 17408,
+        "additional_broker_cold_start_tls_internal_admission_contiguous_bytes": 41792,
+        "additional_broker_restart_tls_internal_admission_contiguous_bytes": 33600,
+        "tls_internal_admission_contiguous_bytes": 17408,
+        "additional_broker_tls_internal_admission_contiguous_bytes": 25408,
+        "maximum_runtime_load_qualified": false,
+        "physical_validation_performed": false,
+        "limitations": "Maximum TLS/WSS/outbox workload is not covered by the startup allowance; runtime free DMA heap and fragmentation must satisfy connection admission; additional brokers reserve publication headroom beside startup allocations."
+      },
+      "regions": [
+        {
+          "start": 1070299344,
+          "end": 1070503696
+        },
+        {
+          "start": 1070530560,
+          "end": 1070563328
+        }
+      ],
+      "scope": "Linked capacity before runtime allocation; physical boot/load/soak validation remains required.",
+      "artifact_target": "Station_G2_repeater",
+      "pio_environment": "Station_G2_repeater_observer_mqtt",
+      "files": {
+        "Station_G2_repeater-full-usb-wifi-ota-v1.18.0.2-psram-test-6a5a04b1.bin": "d9233e7d7282a7f31f1cb23c8c807a59a84ad0fcdca31536b2e5aac8c9749566",
+        "Station_G2_repeater-full-usb-wifi-ota-v1.18.0.2-psram-test-6a5a04b1-merged.bin": "22a230d3267af891acc36f0b33c9e05a74b074390191c2c9a73789aaa7d5dd30",
+        "Station_G2_repeater-full-usb-wifi-ota-v1.18.0.2-psram-test-6a5a04b1.capabilities.json": "fe8e50e019a13549e74e4be6f60a5c351a723d92dbfa90496752413a954a7864",
+        "Station_G2_repeater-full-usb-wifi-ota-v1.18.0.2-psram-test-6a5a04b1.meshtext-license.txt": "c37d0a453a2491514bac33ed835c1877f207390f134ae439a97b06b004e236d2"
+      }
+    },
+    "capabilities": {
+      "artifact_target": "Station_G2_repeater",
+      "build_profile": "full",
+      "build_recipe": {
+        "schema_version": 1,
+        "sha256": "3f316af418f394d506a1af9ad4f5746d3ffaf91a4b240e9f0c6e2c5e4c5677f4"
+      },
+      "capabilities": [
+        "bridge.espnow",
+        "bridge.udp",
+        "profile.full",
+        "release.full.partition_migration_ota",
+        "radio2.kiss.host",
+        "radio2.kiss.usb",
+        "radio2.kiss.tcp",
+        "ota.update.wifi",
+        "ota.update.lora",
+        "cli.retry_preset",
+        "telemetry.history",
+        "ota.cli",
+        "web.webconfig",
+        "logging.usb.packets",
+        "logging.usb.control",
+        "logging.usb.output",
+        "bridge.udp.configuration"
+      ],
+      "ota_update_evidence": "firmware fits both OTA application slots; otadata present",
+      "ota_update_methods": [
+        "wifi",
+        "lora"
+      ],
+      "ota_update_verified": true,
+      "platform": "ESP32_PLATFORM",
+      "platformio_env": "Station_G2_repeater_observer_mqtt",
+      "reductions": [],
+      "schema_version": 2,
+      "target": "Station_G2_repeater",
+      "third_party_notices": [
+        {
+          "component": "espp-meshtext",
+          "file": "Station_G2_repeater-full-usb-wifi-ota-v1.18.0.2-psram-test-6a5a04b1.meshtext-license.txt",
+          "license": "MIT",
+          "sha256": "c37d0a453a2491514bac33ed835c1877f207390f134ae439a97b06b004e236d2"
+        }
+      ],
+      "verification": [
+        {
+          "capability": "radio2.kiss.host",
+          "evidence": "_ZN4mesh8hostkiss5Codec4feedEh; _ZN4mesh8hostkiss5Codec11queueOutputEhPKhj; _ZN4mesh10Dispatcher22queueForeignRadioFrameEPKhjhjNS_20RadioProfileProtocolE",
+          "present": true,
+          "source": "linked ELF symbols"
+        },
+        {
+          "capability": "radio2.kiss.usb",
+          "evidence": "Error: use set kiss on|off; Error: use set kiss.transport usb|tcp; USB: send KISS FEND to start",
+          "present": true,
+          "source": "packaged application"
+        },
+        {
+          "capability": "radio2.kiss.tcp",
+          "evidence": "station TCP 5004",
+          "present": true,
+          "source": "packaged application"
+        },
+        {
+          "capability": "bridge.espnow",
+          "evidence": "_ZN12ESPNowBridge5beginEv",
+          "present": true,
+          "source": "linked image"
+        },
+        {
+          "capability": "bridge.udp",
+          "evidence": "_ZN9UDPBridge5beginEv",
+          "present": true,
+          "source": "linked image"
+        },
+        {
+          "capability": "ota.update.wifi",
+          "evidence": "Started: http://%s/update",
+          "present": true,
+          "source": "linked image"
+        },
+        {
+          "capability": "ota.update.lora",
+          "evidence": "image_hash MISMATCH after decode",
+          "present": true,
+          "source": "linked image"
+        },
+        {
+          "capability": "cli.retry_preset",
+          "evidence": "retry.preset",
+          "present": true,
+          "source": "linked image"
+        },
+        {
+          "capability": "telemetry.history",
+          "evidence": "telemetry.volt.i2c",
+          "present": true,
+          "source": "linked image"
+        },
+        {
+          "capability": "ota.cli",
+          "evidence": "OTA: status",
+          "present": true,
+          "source": "linked image"
+        },
+        {
+          "capability": "web.webconfig",
+          "evidence": "start webconfig",
+          "present": true,
+          "source": "linked image"
+        },
+        {
+          "capability": "logging.usb.packets",
+          "evidence": "%s: %s, len=%d (type=%d, route=%s, payload_len=%d)",
+          "present": true,
+          "source": "packaged application"
+        },
+        {
+          "capability": "logging.usb.control",
+          "evidence": "OK - USB logging %s (saved)",
+          "present": true,
+          "source": "packaged application"
+        },
+        {
+          "capability": "logging.usb.output",
+          "evidence": "OK - logging.output %s (saved)",
+          "present": true,
+          "source": "packaged application"
+        },
+        {
+          "capability": "bridge.udp.configuration",
+          "evidence": "udp.enabled",
+          "present": true,
+          "source": "packaged application"
+        }
+      ],
+      "verified": true
+    },
+    "application_bytes": 2125736,
+    "note": "Combined with upstream Companion PIN and startup-screen changes; isolated PSRAM source hashes unchanged."
+  }
+}
