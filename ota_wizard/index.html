@@ -2683,7 +2683,10 @@ version 2 direct admin support. An older Full Companion may serve OTA files but 
 provide this guarded admin connection; the wizard will ask for a source
 firmware upgrade instead of proceeding with that connection.
 Check <code>get ota.direct</code> from its USB console for <code>v=2</code>. Update replies use a
-separate mailbox; ordinary queued messages and saved contact routes stay intact.</p>
+separate mailbox; the wizard does not consume ordinary queued messages or change
+saved contact routes. Some Full Companion boards borrow queue space for OTA and
+retain up to 128 unread messages during an update. If more are waiting, sync them
+with an app first; the wizard refuses to discard them to make room.</p>
 <p>For this wizard, use an ESP32 source instead of RAK4631 Full. The RAK image's
 current flash limit prevents adding the new direct admin helper. RAK4631
 Repeaters and Room Servers remain supported destinations.</p>
