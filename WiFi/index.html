@@ -3662,6 +3662,17 @@ admission and reconnect backoff; it does not reboot the node or cycle WiFi.
 See the <a href="../test-results/mqtt_tls_v4_regression/#long-running-mqtt-recovery">MQTT recovery regression</a>
 for the deadlines, test coverage and hardware limitations. Older preview images
 do not gain these changes until their firmware is updated.</p>
+<p>On PSRAM-capable boards, MQTT receive reassembly and WebConfig JSON workspaces
+prefer PSRAM, preserving internal memory for WiFi, task stacks and DMA. Packet,
+raw and status publishing use the same memory admission check. A failed status
+send retries only that broker every 30 seconds; successful brokers keep their
+normal status interval. Each slot has a stable, distinct client ID, including
+when two slots point at the same broker.</p>
+<p>Outbox diagnostics are cached by the network owner, so <code>get mqtt.stats</code> does
+not wait for an SDK mutex held by a network write. <code>rec:N/write</code> records a
+failed-write recovery; <code>no errors</code> describes the current connected session,
+and <code>first_disc</code> is the age of the first disconnect after boot. Neither is a
+claim that no earlier failure occurred.</p>
 <p>Common causes are:</p>
 <ul>
 <li>no saved SSID or a changed password;</li>
