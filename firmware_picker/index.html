@@ -3322,6 +3322,9 @@ available; do not install another board's bootloader to bypass this gate.</p>
 Reduced optional sensors</strong> on the same button. On RAK3401 and RAK4631 this
 compact profile uses internal storage without an external storage board. The
 reduction does not disable generic I2C or unrelated board-integrated peripherals.
+These reduced RAK profiles keep their own readable OTA target name and omit
+the all-board name catalog. Updates for other targets display numeric IDs;
+OTA compatibility checks and transfers are unchanged.
 Reduced RAK3401 and RAK4631 targets retain INA219/INA226/INA260/INA3221 as
 voltage/current entries in the optional sensor table. They are not the only I2C
 users: the SSD1306 OLED, supported autodiscovered RTCs, and RAK12500 GPS remain
