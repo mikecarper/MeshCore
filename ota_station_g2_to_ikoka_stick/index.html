@@ -1,0 +1,3096 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Documentation for the open source MeshCore firmware">
+      
+      
+      
+        <link rel="canonical" href="https://mikecarper.github.io/MeshCore/ota_station_g2_to_ikoka_stick/">
+      
+      
+        <link rel="prev" href="../lora_ota_automation/">
+      
+      
+        <link rel="next" href="../ota_nrf52_bootloader_update/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.8.0">
+    
+    
+      
+        <title>Ota station g2 to ikoka stick - MeshCore Docs</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.57a0d79d.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../_stylesheets/notification_builder.css?v=20261006-channel9">
+    
+      <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+    
+      <link rel="stylesheet" href="../_stylesheets/extra.css">
+    
+      <link rel="stylesheet" href="../_stylesheets/firmware_picker.css?v=20261013-pick-first-1">
+    
+      <link rel="stylesheet" href="../_stylesheets/telemetry_decoder.css?v=20261022-noise-history">
+    
+      <link rel="stylesheet" href="../_stylesheets/management_decoder.css">
+    
+      <link rel="stylesheet" href="../_stylesheets/filter_tool.css">
+    
+      <link rel="stylesheet" href="../_stylesheets/preset_test.css?v=20260923-2">
+    
+      <link rel="stylesheet" href="../_stylesheets/esp32_partition_catalog.css?v=20261001-1">
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    <body dir="ltr">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#lora-ota-example-station-g2-on-a-pi-to-an-ikoka-stick" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="MeshCore Docs" class="md-header__button md-logo" aria-label="MeshCore Docs" data-md-component="logo">
+      
+  <img src="../_assets/meshcore.svg" alt="logo">
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            MeshCore Docs
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Ota station g2 to ikoka stick
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/mikecarper/MeshCore/" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    mikecarper/MeshCore
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="MeshCore Docs" class="md-nav__button md-logo" aria-label="MeshCore Docs" data-md-component="logo">
+      
+  <img src="../_assets/meshcore.svg" alt="logo">
+
+    </a>
+    MeshCore Docs
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/mikecarper/MeshCore/" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    mikecarper/MeshCore
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Firmware and tools
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Firmware and tools
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../firmware_picker/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Firmware picker
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../notifications/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Notifications
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../preset_test/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Preset test
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../filter_tool/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Filter tool
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../telemetry_decoder/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Telemetry decoder
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../management_decoder/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Management decoder
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Documentation
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Documentation
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_1" >
+        
+          
+          <label class="md-nav__link" for="__nav_3_1" id="__nav_3_1_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting started and features
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_1_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_1">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Getting started and features
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../faq/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Faq
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../full_profiles/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Full profiles
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../role_feature_switches/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Role feature switches
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../full_companion_features/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Full companion features
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../companion_radio_full/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Companion radio full
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../full_companion_usb_switcher/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Full companion usb switcher
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../companion_offline_queue/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Companion offline queue
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../halo_keymind_settings/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Halo keymind settings
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_2" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_3_2" id="__nav_3_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Firmware updates and partitions
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_2_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_3_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Firmware updates and partitions
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../upgrading_1.17.1.8_to_1.17.1.9/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Upgrading 1.17.1.8 to 1.17.1.9
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ota_user_guide/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Ota user guide
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ota_easy/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Ota easy
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../lora_ota_automation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Lora ota automation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Ota station g2 to ikoka stick
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Ota station g2 to ikoka stick
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#1-check-the-ikoka-stick" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. Check the Ikoka Stick
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2-install-the-pi-tools" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. Install the Pi tools
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3-prepare-the-two-update-files" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. Prepare the two update files
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4-identify-the-station-g2s-usb-port" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. Identify the Station G2's USB port
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5-open-the-ota-windows-and-trust-the-bootloader-signer" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. Open the OTA windows and trust the bootloader signer
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#6-start-the-station-g2-seeder" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6. Start the Station G2 seeder
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#7-update-the-ikoka-stick-bootloader" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7. Update the Ikoka Stick bootloader
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#8-update-the-ikoka-stick-firmware" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        8. Update the Ikoka Stick firmware
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#9-stop-serving-and-restore-settings" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        9. Stop serving and restore settings
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#if-a-transfer-stops" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        If a transfer stops
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ota_nrf52_bootloader_update/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Ota nrf52 bootloader update
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ota_nrf52_qspi/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Ota nrf52 qspi
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ota_meshtower_v2_sdcard/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Ota meshtower v2 sdcard
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../esp32_partition_catalog/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Esp32 partition catalog
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../esp32_wifi_partition_migration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Esp32 wifi partition migration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../heltec_v4_wifi_partition_migration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Heltec v4 wifi partition migration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../host_cli_service/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Host cli service
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3_3" id="__nav_3_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Radio, networking, and power
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Radio, networking, and power
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../radio_profiles/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Radio profiles
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../radio_presets/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Radio presets
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../fleet_management/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Private fleet management
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../room_services/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Room services
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../carrier_wave/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Carrier wave
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../espnow_bridge_setup/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Espnow bridge setup
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../rs232_bridge_setup/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Rs232 bridge setup
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../udp_bridge_setup/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Udp bridge setup
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../WiFi/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    WiFi
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../flood_filtering/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Flood filtering
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../gps_tracking/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Gps tracking
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../companion_lost_reply/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Companion lost reply
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../sensor_tracker/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Sensor tracker
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../nrf52_power_management/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Nrf52 power management
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_3_4" id="__nav_3_4_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CLI and protocol reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    CLI and protocol reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../cli_commands/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Cli commands
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../cli_build_matrix/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Cli build matrix
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../cli_command_availability/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Cli command availability
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../terminal_chat_cli/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Terminal chat cli
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../companion_protocol/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Companion protocol
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../kiss_modem_protocol/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Kiss modem protocol
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../packet_format/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Packet format
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../payloads/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Payloads
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ota_protocol/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Ota protocol
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../management_reports/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Management reports
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../stats_binary_frames/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Stats binary frames
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../number_allocations/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Number allocations
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../qr_codes/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Qr codes
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../docs/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Docs
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../research/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Research
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Releases
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Releases
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../releases/1.18.0.1/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Current - 1.18.0.1 USA Cascade
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_5_2" id="__nav_5_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Previous releases
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_5_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Previous releases
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../releases/1.17.1.9/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    1.17.1.9 USA Cascade
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../releases/1.17.1.8/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    1.17.1.8 USA Cascade
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../old-releases/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Older releases
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../test-results/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Test Results
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#1-check-the-ikoka-stick" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. Check the Ikoka Stick
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2-install-the-pi-tools" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. Install the Pi tools
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3-prepare-the-two-update-files" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. Prepare the two update files
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4-identify-the-station-g2s-usb-port" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. Identify the Station G2's USB port
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5-open-the-ota-windows-and-trust-the-bootloader-signer" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. Open the OTA windows and trust the bootloader signer
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#6-start-the-station-g2-seeder" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6. Start the Station G2 seeder
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#7-update-the-ikoka-stick-bootloader" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7. Update the Ikoka Stick bootloader
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#8-update-the-ikoka-stick-firmware" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        8. Update the Ikoka Stick firmware
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#9-stop-serving-and-restore-settings" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        9. Stop serving and restore settings
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#if-a-transfer-stops" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        If a transfer stops
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+    <a href="https://github.com/mikecarper/MeshCore/edit/keymindCascade/docs/ota_station_g2_to_ikoka_stick.md" title="Edit this page" class="md-content__button md-icon" rel="edit">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M10 20H6V4h7v5h5v3.1l2-2V8l-6-6H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h4zm10.2-7c.1 0 .3.1.4.2l1.3 1.3c.2.2.2.6 0 .8l-1 1-2.1-2.1 1-1c.1-.1.2-.2.4-.2m0 3.9L14.1 23H12v-2.1l6.1-6.1z"/></svg>
+    </a>
+  
+  
+
+
+<!-- meshcore-hosted-doc-link:start -->
+<p class="meshcore-hosted-doc-link"><a href="https://mikecarper.github.io/MeshCore/ota_station_g2_to_ikoka_stick/">View this page on MeshCore Docs</a>.</p>
+<!-- meshcore-hosted-doc-link:end -->
+
+<h1 id="lora-ota-example-station-g2-on-a-pi-to-an-ikoka-stick">LoRa OTA example: Station G2 on a Pi to an Ikoka Stick</h1>
+<p>Update the Ikoka Stick's bootloader to <strong>OTAFIX 2.4.12</strong>, then install
+<strong>1.18.0.1 Full Repeater</strong> firmware. The Station G2 stays connected to the Pi
+by USB and serves the files. Use the app's authenticated Repeater Admin console for the Ikoka
+Stick, through your existing Companion.</p>
+<table>
+<thead>
+<tr>
+<th>Board</th>
+<th>Job</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Raspberry Pi</td>
+<td>Runs the file server</td>
+</tr>
+<tr>
+<td>Station G2 Repeater</td>
+<td>USB-connected LoRa seeder</td>
+</tr>
+<tr>
+<td>Ikoka Stick 33 dBm Repeater</td>
+<td>Receives and installs both updates</td>
+</tr>
+<tr>
+<td>Companion</td>
+<td>Keeps the app connected to the Ikoka Stick's admin console</td>
+</tr>
+</tbody>
+</table>
+<p>This example requires a <strong>direct LoRa link</strong> between the Station G2 and Ikoka
+Stick. It keeps their existing main-channel settings during a four-hour
+TempRadio window. The Companion stays on that same channel. Only the Station
+G2 needs a USB connection to the Pi. For a route through intermediate
+repeaters, every relay also needs an overlapping TempRadio window; see the
+<a href="../lora_ota_automation/">scripted update guide</a>.</p>
+<h2 id="1-check-the-ikoka-stick">1. Check the Ikoka Stick</h2>
+<p>Run these in <strong>Ikoka Stick — Repeater Admin</strong> and save the replies:</p>
+<pre><code class="language-text">ver
+get bootloader.ver
+ota self
+ota qspi
+ota bootloader status
+ota config
+ota key list
+get radio
+get radio.rxps.config
+</code></pre>
+<p>The example starts with these reported values:</p>
+<table>
+<thead>
+<tr>
+<th>Check</th>
+<th>Required value for this example</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Application hardware / target</td>
+<td><code>ikoka_stick_nrf_33dbm</code> / <code>E5331F02</code></td>
+</tr>
+<tr>
+<td>Installed bootloader</td>
+<td>OTAFIX 2.4.11</td>
+</tr>
+<tr>
+<td>Bootloader identity</td>
+<td>Board and target <code>28860044</code>, device <code>XIAO_DFU</code></td>
+</tr>
+<tr>
+<td>Bootloader support</td>
+<td><code>abi=3 caps=0E</code>, <code>QSPI apply OK</code>, <code>codecs=0x5</code></td>
+</tr>
+<tr>
+<td>Storage</td>
+<td><code>QSPI store:2048K</code>, working <code>ota qspi</code> probe</td>
+</tr>
+</tbody>
+</table>
+<p>These values support a remote bootloader upgrade. A stock bootloader or
+missing QSPI apply support needs the matching local installation first.
+The Stick uses its onboard flash; no additional storage is needed.</p>
+<p>If <code>get radio.rxps.config</code> is unavailable, record <code>get radio.rxps</code> instead.
+Keep each board's original RXPS and <code>ota config</code> replies for cleanup.</p>
+<h2 id="2-install-the-pi-tools">2. Install the Pi tools</h2>
+<p>On <strong>Raspberry Pi — terminal</strong>, install the host dependencies:</p>
+<pre><code class="language-bash">sudo apt update
+sudo apt install -y build-essential pkg-config libudev-dev libssl-dev curl unzip pipx python3-venv
+pipx ensurepath
+pipx install 'meshcore-cli&gt;=1.6.0'
+</code></pre>
+<p>Install stable <a href="https://rustup.rs/">Rust</a> if it is not already installed:</p>
+<pre><code class="language-bash">curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs -o /tmp/meshcore-rustup.sh
+sh /tmp/meshcore-rustup.sh -y --profile minimal
+</code></pre>
+<p>Open a new terminal so the Pi finds <code>meshcli</code> and Cargo. Check that both Rust
+and Cargo are <strong>1.86 or newer</strong>, then install the supported motatool revision:</p>
+<pre><code class="language-bash">rustc --version
+cargo --version
+cargo install --git https://github.com/mikecarper/motatool.git \
+  --rev 8c38369e7d35ad50cf74261869676d52dd24adf7 --locked --bin motatool
+meshcli -v
+motatool --version
+mkdir -p ~/ikoka-stick-ota/downloads ~/ikoka-stick-ota/inputs ~/ikoka-stick-ota/serve
+cd ~/ikoka-stick-ota
+</code></pre>
+<h2 id="3-prepare-the-two-update-files">3. Prepare the two update files</h2>
+<p>On <strong>Raspberry Pi — terminal</strong>, download the signed bootloader bundle:</p>
+<pre><code class="language-bash">BOOT_URL=https://github.com/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/releases/download/v0.11.0-OTAFIX2.4.12
+curl -fL &quot;$BOOT_URL/OTAFIX-2.4.12-bootloader-mota.zip&quot; -o downloads/bootloader-2.4.12.zip
+unzip -q downloads/bootloader-2.4.12.zip -d inputs/bootloader-2.4.12
+cp inputs/bootloader-2.4.12/mota/update-xiao_nrf52840_ble_bootloader-v0.11.0-OTAFIX2.4.12.mota serve/
+BOOT_MOTA=serve/update-xiao_nrf52840_ble_bootloader-v0.11.0-OTAFIX2.4.12.mota
+OTAFIX_PUBLIC_KEY=272564CC588D3D122285A15E6E2566D2ABE7177BB7EA1D1E41B23B29F0F85D2D
+BOOT_KEY_FILE=inputs/bootloader-2.4.12/OTAFIX_MOTA_SIGNING_PUBLIC_KEY.txt
+test &quot;$(tr -d '[:space:]' &lt; &quot;$BOOT_KEY_FILE&quot;)&quot; = &quot;$OTAFIX_PUBLIC_KEY&quot;
+motatool verify &quot;$BOOT_MOTA&quot; --pub &quot;$BOOT_KEY_FILE&quot;
+motatool inspect &quot;$BOOT_MOTA&quot;
+</code></pre>
+<p>The bootloader package must be signed, format 3, for <strong>XIAO nRF52840 BLE</strong> /
+<code>XIAO_DFU</code>, target <code>28860044</code>, version 2.4.12. The key comparison and package
+verification must both pass before continuing.</p>
+<p>Download the exact ordinary <strong>Ikoka Stick 33 dBm Full Repeater</strong> application
+DFU ZIP on <strong>Raspberry Pi — terminal</strong>:</p>
+<pre><code class="language-bash">APP_URL=https://github.com/mikecarper/MeshCore/releases/download/lora-ota-2-v1.18.0.1-halo-keymind-cascade-dev-03214a16
+curl -fL &quot;$APP_URL/ikoka_stick_nrf_33dbm_repeater-full-ota-v1.18.0.1-halo-keymind-cascade-dev-03214a16.zip&quot; \
+  -o downloads/ikoka-stick-33dbm-repeater.zip
+</code></pre>
+<p>For a later release, use the <a href="../firmware_picker/">firmware picker</a> to select
+the same board, Repeater role, Full profile, and application DFU ZIP.</p>
+<p>On <strong>Raspberry Pi — terminal</strong>, extract the application binary named by the
+DFU manifest and check its firmware identity trailer:</p>
+<pre><code class="language-bash">python3 - &lt;&lt;'PY'
+import hashlib, json, struct, zipfile
+from pathlib import Path
+with zipfile.ZipFile('downloads/ikoka-stick-33dbm-repeater.zip') as archive:
+    app = json.loads(archive.read('manifest.json'))['manifest']['application']
+    image = archive.read(app['bin_file'])
+trailer = image[-56:]
+assert len(trailer) == 56 and trailer[:4] == b'EndF', 'Missing EndF'
+assert struct.unpack_from('&lt;I', trailer, 4)[0] == len(image) - 56
+assert hashlib.sha256(image[:-56]).digest()[:8] == trailer[8:16], 'Body hash mismatch'
+assert struct.unpack_from('&lt;I', trailer, 20)[0] == 0xE5331F02, 'Wrong application target'
+assert trailer[24:].rstrip(b'\0') == b'ikoka_stick_nrf_33dbm', 'Wrong board'
+Path('inputs/ikoka-stick-33dbm-repeater.bin').write_bytes(image)
+print('Expected post-install base_hash:', trailer[8:16].hex().upper())
+PY
+</code></pre>
+<p>Save the printed <code>base_hash</code>. Stop if extraction or any identity check fails.
+Then make a full application package from that binary:</p>
+<pre><code class="language-bash">motatool build --fw inputs/ikoka-stick-33dbm-repeater.bin \
+  --out serve/ikoka-stick-33dbm-repeater.mota
+motatool verify serve/ikoka-stick-33dbm-repeater.mota
+motatool inspect serve/ikoka-stick-33dbm-repeater.mota
+</code></pre>
+<p>Check application target <code>E5331F02</code>, hardware <code>ikoka_stick_nrf_33dbm</code>, and the
+expected newer firmware version. Save its eight-character <code>merkle_root</code> as the application
+manifest ID. The package's <code>image_hash</code> covers the complete image; the
+post-install <code>base_hash</code> is the body hash printed above. A full QSPI
+application update needs no copy of the old firmware.
+This locally packaged application is unsigned and uses explicit manual
+installation; the separate bootloader package remains signed.</p>
+<h2 id="4-identify-the-station-g2s-usb-port">4. Identify the Station G2's USB port</h2>
+<p>On <strong>Raspberry Pi — terminal</strong>:</p>
+<pre><code class="language-bash">ls -l /dev/serial/by-id/
+</code></pre>
+<p>Select the Station G2's actual entry. Set <code>G2_PORT</code> to that complete path;
+<code>/dev/ttyUSB0</code> below is only an example:</p>
+<pre><code class="language-bash">G2_PORT=/dev/ttyUSB0
+meshcli -r -s &quot;$G2_PORT&quot; -b 115200 &quot;board&quot;
+meshcli -r -s &quot;$G2_PORT&quot; -b 115200 &quot;ver&quot;
+meshcli -r -s &quot;$G2_PORT&quot; -b 115200 &quot;ota status&quot;
+meshcli -r -s &quot;$G2_PORT&quot; -b 115200 &quot;get radio&quot;
+meshcli -r -s &quot;$G2_PORT&quot; -b 115200 &quot;get radio.rxps.config&quot;
+meshcli -r -s &quot;$G2_PORT&quot; -b 115200 &quot;ota config&quot;
+</code></pre>
+<p>Confirm that this is the Station G2 and that its firmware includes LoRa OTA.
+Save its radio, RXPS, and OTA settings. If access is denied, add your Pi login
+to <code>dialout</code> with <code>sudo usermod -aG dialout "$(id -un)"</code>, then log out and in.
+Close other programs using that USB port.</p>
+<h2 id="5-open-the-ota-windows-and-trust-the-bootloader-signer">5. Open the OTA windows and trust the bootloader signer</h2>
+<p>The commands below assume the Station G2, Ikoka Stick, and Companion already
+use <strong>910.525 MHz, BW 62.5 kHz, SF7, CR5</strong>. If yours differ, use their current
+shared tuple in every TempRadio command below. Preserve an explicit preamble
+if one is configured by adding it after the duration. This keeps admin access
+on the existing channel; TempRadio is still required to enable LoRa OTA.</p>
+<p>On <strong>Ikoka Stick — Repeater Admin</strong>:</p>
+<pre><code class="language-text">ota key add 272564CC588D3D122285A15E6E2566D2ABE7177BB7EA1D1E41B23B29F0F85D2D
+ota key list
+ota config autofetch off
+ota config autoinstall off
+ota config hops 0
+set radio.rxps off
+get radio.rxps
+tempradio 910.525,62.5,7,5,240
+get tempradio
+</code></pre>
+<p>On <strong>Raspberry Pi — Station G2 USB CLI</strong>:</p>
+<pre><code class="language-bash">meshcli -r -s &quot;$G2_PORT&quot; -b 115200 &quot;ota config autofetch off&quot;
+meshcli -r -s &quot;$G2_PORT&quot; -b 115200 &quot;ota config autoinstall off&quot;
+meshcli -r -s &quot;$G2_PORT&quot; -b 115200 &quot;ota config hops 0&quot;
+meshcli -r -s &quot;$G2_PORT&quot; -b 115200 &quot;set radio.rxps off&quot;
+meshcli -r -s &quot;$G2_PORT&quot; -b 115200 &quot;get radio.rxps&quot;
+meshcli -r -s &quot;$G2_PORT&quot; -b 115200 &quot;tempradio 910.525,62.5,7,5,240&quot;
+meshcli -r -s &quot;$G2_PORT&quot; -b 115200 &quot;get tempradio&quot;
+</code></pre>
+<p>Both receivers must report RXPS off and an active temporary tuple. Wait if
+<code>get tempradio</code> says <code>pending</code>; do not start serving while it says <code>off</code>.
+The <code>hops 0</code> setting is for this direct link. These configuration changes are
+saved; the TempRadio window is temporary.</p>
+<h2 id="6-start-the-station-g2-seeder">6. Start the Station G2 seeder</h2>
+<p>On <strong>Raspberry Pi — terminal</strong>, leave this running in the foreground:</p>
+<pre><code class="language-bash">motatool serve --dir ./serve --serial &quot;$G2_PORT&quot; --baud 115200 -v
+</code></pre>
+<p>It attaches the folder and the Station G2 advertises the two packages. Wait
+for a successful folder attachment/catalog count. While motatool owns USB,
+send later commands through <strong>Ikoka Stick — Repeater Admin</strong>. Keep the Pi and
+both repeaters powered through each transfer and installation.</p>
+<h2 id="7-update-the-ikoka-stick-bootloader">7. Update the Ikoka Stick bootloader</h2>
+<p>On <strong>Ikoka Stick — Repeater Admin</strong>:</p>
+<pre><code class="language-text">ota ls
+</code></pre>
+<p>Discovery is asynchronous. Wait a few seconds and repeat it. Select the
+<strong>bootloader</strong> row for XIAO target <code>28860044</code>, version 2.4.12. Copy its
+eight-character manifest ID into <code>BOOT_MID8</code> below; placeholders must be
+replaced with the actual values, without angle brackets:</p>
+<pre><code class="language-text">ota pull &lt;BOOT_MID8&gt; flash
+ota status
+</code></pre>
+<p>Check progress until it reports <strong>ready to install</strong>, then run:</p>
+<pre><code class="language-text">ota bootloader status
+</code></pre>
+<p>Confirm <code>staged:ready</code>. Copy that reply's exact <code>mid</code> and 16-character <code>hash</code>:</p>
+<pre><code class="language-text">ota bootloader install &lt;BOOT_MID8&gt; &lt;BOOT_HASH16&gt;
+</code></pre>
+<p>Wait for the reboot, reconnect in the app, and check:</p>
+<pre><code class="language-text">get bootloader.ver
+ota bootloader status
+ota status
+ver
+</code></pre>
+<p>Expect <strong>OTAFIX 2.4.12</strong>, the same <code>XIAO_DFU</code> identity, ABI 3 / capabilities
+<code>0E</code>, and <code>blup:C8</code>. The application version should still be the old version.</p>
+<h2 id="8-update-the-ikoka-stick-firmware">8. Update the Ikoka Stick firmware</h2>
+<p>The bootloader reboot cleared the Ikoka Stick's temporary window. On
+<strong>Ikoka Stick — Repeater Admin</strong>, reopen it before downloading firmware:</p>
+<pre><code class="language-text">get radio.rxps
+tempradio 910.525,62.5,7,5,240
+get tempradio
+</code></pre>
+<p>Wait until <code>get tempradio</code> shows the active tuple, repeating the query if it
+says <code>pending</code>. Then run:</p>
+<pre><code class="language-text">ota ls
+</code></pre>
+<p>Keep the Station G2 seeder running. Select the <strong>application, full</strong> row with
+target <code>E5331F02</code> and the version inspected in step 3. Use its stable manifest
+ID, not its list position or the bootloader ID:</p>
+<pre><code class="language-text">ota pull &lt;APP_MID8&gt; flash
+ota status
+</code></pre>
+<p>Repeat <code>ota status</code> until <strong>ready to install</strong>, then run:</p>
+<pre><code class="language-text">ota install
+</code></pre>
+<p>After the application reboots, reconnect and check:</p>
+<pre><code class="language-text">ver
+get bootloader.ver
+ota self
+ota status
+</code></pre>
+<p>Confirm the selected firmware version, bootloader <strong>2.4.12</strong>, working QSPI
+apply support, and the <code>base_hash</code> recorded from the application package.
+The Ikoka Stick has returned to its saved main radio settings.</p>
+<h2 id="9-stop-serving-and-restore-settings">9. Stop serving and restore settings</h2>
+<p>On <strong>Raspberry Pi — terminal</strong>, press <strong>Ctrl+C</strong> and wait for motatool to
+detach the folder and return to the shell. Then run:</p>
+<pre><code class="language-bash">meshcli -r -s &quot;$G2_PORT&quot; -b 115200 &quot;ota folder&quot;
+meshcli -r -s &quot;$G2_PORT&quot; -b 115200 &quot;normalradio&quot;
+meshcli -r -s &quot;$G2_PORT&quot; -b 115200 &quot;get tempradio&quot;
+</code></pre>
+<p>Confirm the host folder detached. Restore each board's original RXPS, hop
+limit, autofetch, and autoinstall
+settings from steps 1 and 4. For the example starting values, on <strong>Ikoka
+Stick — Repeater Admin</strong>:</p>
+<pre><code class="language-text">set radio.rxps level 8 preamble 16
+ota config hops 3
+ota config autofetch off
+ota config autoinstall off
+get radio.rxps.config
+ota config
+get tempradio
+</code></pre>
+<p>Use the Station G2's own recorded values through <code>meshcli -r</code> as in step 5.
+An original RXPS value of <code>off</code> stays off; for an automatic preamble (<code>0</code>),
+restore with <code>set radio.rxps level N</code>; fixed manual timings use
+<code>set radio.rxps RX_US SLEEP_US</code>. Retain the official signing key for future
+bootloader updates. Both boards should now report <code>get tempradio</code> as <code>off</code>.</p>
+<h2 id="if-a-transfer-stops">If a transfer stops</h2>
+<ul>
+<li><strong>No update rows:</strong> check the seeder attachment, matching radio settings,
+  direct reachability, and active TempRadio windows on both boards.</li>
+<li><strong>Four-hour window expired:</strong> stop motatool before reopening the G2 USB
+  CLI, renew both windows, restart the same seeder, and pull the same MID.
+  Keep the same package; current firmware can resume committed blocks.</li>
+<li><strong>Signature/key error:</strong> verify the signed package against its trusted
+  publisher key. Do not substitute an arbitrary key from an update row.</li>
+<li><strong>Download failed or wrong selection:</strong> inspect <code>ota status</code>; use
+  <code>ota cancel</code> to discard that download before selecting another package.</li>
+<li><strong>No completed install:</strong> keep the running firmware until the destination
+  reports a verified, ready package. See the
+  <a href="../ota_nrf52_bootloader_update/">bootloader guide</a> or
+  <a href="../ota_user_guide/">firmware guide</a> for the reported error.</li>
+</ul>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["content.action.edit", "content.code.copy", "search.highlight", "search.suggest"], "search": "../assets/javascripts/workers/search.a7633da7.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.c21346df.min.js"></script>
+      
+        <script src="../_javascript/release_features.js?v=20261024-1"></script>
+      
+        <script src="../_javascript/hosted_doc_links.js?v=20261007-1"></script>
+      
+        <script src="../_javascript/notification_builder.js?v=20261006-channel9"></script>
+      
+        <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+      
+        <script src="../_javascript/firmware_picker.js?v=20261024-included-bootloader"></script>
+      
+        <script src="../_javascript/telemetry_decoder.js?v=20261022-noise-history"></script>
+      
+        <script src="../_javascript/management_decoder.js"></script>
+      
+        <script src="../_javascript/filter_tool.js?v=20261002-hashbytes-2plus"></script>
+      
+        <script src="../_javascript/preset_test.js?v=20260923-2"></script>
+      
+        <script src="../_javascript/esp32_partition_catalog.js?v=20261001-1"></script>
+      
+    
+  </body>
+</html>
