@@ -3660,6 +3660,9 @@ physical display use <code>123456</code>. Use <code>set pin 654321</code> in the
 a fixed pairing PIN, then <code>reboot</code> to activate it. <code>set pin 0</code> restores the
 default/generated PIN policy. A PIN saved through the Companion protocol also
 takes effect after reboot. See the <a href="../cli_commands/#set-the-bluetooth-pairing-pin-companion">PIN command reference</a>.</p>
+<p>The app's Bluetooth settings show the saved custom PIN or Random choice as
+soon as it is saved. The pairing screen continues showing the active PIN
+until reboot, when the saved choice takes effect.</p>
 <p>On T1000-E, a USB data host automatically pauses Bluetooth, including an
 existing phone connection. Unplug USB to resume Bluetooth after 500 ms; a
 saved off setting stays off. A wall charger without a USB data host does not

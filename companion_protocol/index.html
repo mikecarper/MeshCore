@@ -5077,6 +5077,11 @@ Bytes 11+: Message Text (UTF-8)
 </tr>
 </tbody>
 </table>
+<p>In <code>RESP_CODE_DEVICE_INFO</code>, bytes 4–7 are the saved Bluetooth PIN setting
+as a little-endian <code>uint32</code>: <code>0</code> selects the default/random policy; a nonzero
+value is the saved custom PIN. After <code>CMD_SET_DEVICE_PIN</code> succeeds, querying
+device info returns that saved choice immediately. The active pairing PIN
+and the device's pairing screen change after reboot.</p>
 <h3 id="asynchronous-push-types">Asynchronous push types</h3>
 <table>
 <thead>
