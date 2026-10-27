@@ -8970,11 +8970,17 @@ and sensors do not gain this Companion-only normal-UI boot wake.</p>
 <p>On display-equipped Companions, repeaters, room servers, and sensors, a small
 <code>Starting...</code> screen appears as soon as the board, primary filesystem, and
 display are initialized, before radio initialization and serial-settle delays.
-If a new identity is needed, it changes to <code>Generating key</code> with an animated
-spinner during radio entropy collection. OLED/TFT updates are paced at 150 ms;
-e-paper uses a slower one-second cadence. Saved <code>off</code> and pairing-only modes
-still suppress this startup screen. The normal UI's boot timeout starts only
-when that UI is ready, so key generation does not consume it. Filesystem
+If a new identity is needed, it changes to <code>Generating key</code>. OLED/TFT screens
+show a spinner and elapsed seconds, updating at most twice a second; very
+small screens omit the elapsed time. E-paper adds dots from left to right,
+row by row, preserving the text and earlier dots. New dots are at least five
+seconds apart, slowing further when refreshes are expensive, and stop when
+the grid is full. These indicators show activity rather than a percentage.</p>
+<p>First-boot key generation and saving temporarily appear even in saved <code>off</code>
+or pairing-only modes. The selected mode resumes afterward without changing
+preferences. Normal startup with an existing key still respects those modes.
+The normal UI's boot timeout starts only when that UI is ready, so key
+generation does not consume it. Filesystem
 recovery and the display driver's own initialization can still delay the first
 visible frame; the firmware cannot draw before those operations finish.</p>
 <p>Startup shows <code>Loading identity</code> while reading a saved identity. <code>Generating key</code>
@@ -8989,7 +8995,8 @@ An actual phone pairing request wakes pairing-enabled display modes and keeps
 the banner visible until completion or its two-minute expiry. Bluetooth
 scanning alone is not a pairing request.</p>
 <ul>
-<li><code>off</code>: stays dark, including boot and pairing.</li>
+<li><code>off</code>: stays dark during normal boot and pairing; first-boot key generation
+  has the temporary exception described above.</li>
 <li><code>on</code>: stays on while the device is awake.</li>
 <li><code>button</code>: a physical button, keyboard/navigation input, or supported touch
   wakes the display and restarts the timeout.</li>
