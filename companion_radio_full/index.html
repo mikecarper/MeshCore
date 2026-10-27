@@ -3634,6 +3634,12 @@ seconds for whole-frame queue admission; a still-blocked <code>SENT</code> keeps
 earlier ten-second deadline. Duplicate callbacks cannot replace the retained
 result or extend these deadlines. Disconnect, cancellation, or expiry drops
 an unadmitted result. Queue admission is not proof of physical host receipt.</p>
+<p>A valid new app trace with a fresh tag/auth tuple replaces the previous trace
+on that same connection immediately. Until replacement, the longer radio
+timeout remains in effect so a late reply can still be returned. Other
+connections cannot cancel the current trace. Duplicate tuples, malformed
+paths and a full history leave it intact; late replies to a replaced trace
+are suppressed.</p>
 <p>Reflected request tags are matched against the complete peer public key.
 Recent request and trace history has eight slots each, reserved before radio
 transmission; live entries are never evicted to accept a newer request. A full
