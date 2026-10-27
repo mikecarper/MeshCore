@@ -2483,6 +2483,17 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#station-g3-follow-up-early-failures-and-network-suspension" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Station G3 follow-up: early failures and network suspension
+      
+    </span>
+  </a>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -2829,6 +2840,49 @@ measured with three live brokers or qualification of maximum simultaneous load.<
 <p>No new physical three-hour V4 soak or reporter-side retest has been performed
 as part of this repair. These tests establish the repaired recovery behavior,
 not the cause of the reporter's hardware failure or website-side availability.</p>
+<h2 id="station-g3-follow-up-early-failures-and-network-suspension">Station G3 follow-up: early failures and network suspension</h2>
+<p>A user supplied a failed-state console capture from <code>1.18.0.1</code> with five WSS
+presets configured. It shows all five slots disconnected and WiFi suspended
+with the 30-minute recovery schedule. The displayed uptime and first-disconnect
+ages place the first two failures roughly 28 and 89 seconds after boot, before
+the reported seven-to-eight-minute loss of reporting.</p>
+<p>The slot diagnostics record repeated completed transport recoveries and DNS
+lookup failures (<code>0x8001</code>). This establishes active recovery followed by the
+outage cooldown, rather than an indefinitely frozen worker in this capture.
+The DNS errors are the latest failures, not proof of the original disconnect
+cause. The stats also record 345 packet publication attempts skipped for
+memory pressure (<code>drops=0/345</code>), an empty SDK outbox and a growing bridge queue.
+These skips are attempts, including retries, rather than 345 distinct packets.
+Heap readings after clients were stopped do not establish their earlier
+connected-state headroom.</p>
+<p>Two source issues were identified:</p>
+<ul>
+<li>Connection admission could permit another SDK client below the contiguous
+  memory threshold required by packet publishing. When another slot is
+  connected, the shared admission policy now protects that publishing
+  threshold and accounts for allocations made during SDK startup or restart.
+  It defers additional connections under pressure. First-broker recovery has
+  a separate bootstrap bound, retaining a way to reconnect when all slots
+  have disconnected. Neither path lowers the publishing safety threshold or
+  erases slots; admission bounds do not guarantee future allocations.</li>
+<li>A new PUBACK followed by DISCONNECTED between worker passes was consumed
+  without crediting the successful delivery to the outage timer. The worker
+  now credits that reply once, even if the connection has since dropped.
+  CONNACK-only flapping and old acknowledgment counts cannot renew the timer.</li>
+</ul>
+<p>These repairs do not establish why the user's DNS resolution failed. Physical
+G3 reproduction and a reporter-side retest remain necessary before calling
+that reported failure resolved. The shared changes apply to all ESP32 roles
+that include this MQTT bridge.</p>
+<p>Validation passed: 85 MQTT Python host cases, four Companion MQTT host cases
+and 57 firmware RAM policy cases. The new disconnected-PUBACK regression
+fails with the old condition and passes with the fix, including timer wrap,
+disabled slots and one-time acknowledgment consumption. Admission tests use
+the captured 93,024-byte free DMA heap and 20,468-byte largest block: one
+stopped broker can attempt recovery, while an additional broker waits when
+another slot is connected. The Station G3 Full repeater compiled and passed
+capability, dual-OTA partition and linked RAM checks. These are host/build
+checks, not a physical five-broker G3 soak.</p>
 
 
 
