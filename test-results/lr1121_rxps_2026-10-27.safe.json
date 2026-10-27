@@ -1,0 +1,1219 @@
+{
+  "schema_version": 1,
+  "baseline_commit": "61b584f94653b420678f6a1451c3f4c284ce9fce",
+  "physical_validation_performed": false,
+  "rf_delivery_qualified": false,
+  "current_draw_measured": false,
+  "driver": {
+    "rtc_hz": 32768,
+    "period_bits": 24,
+    "tcxo_startup_us": 5000,
+    "transition_us": 6000,
+    "capture_symbols": 8,
+    "radio2_suspends_physical_rxps": true,
+    "existing_preferences_preserved": true
+  },
+  "host_tests": {
+    "test_lr1121_rxps": 3,
+    "test_radio_rx_activity_epoch": 7,
+    "test_radio_regulator_modes": 7,
+    "test_lr1121_power_merge": 3,
+    "test_rxps_runtime": 2,
+    "test_radio_rxps_rejection": 8,
+    "test_rxps_hardware_capability": 4,
+    "test_infrastructure_rxps_apply": 1,
+    "test_companion_rxps_getters": 5,
+    "test_companion_prefs_transactions": 1,
+    "test_radio_interrupt_recovery": 18,
+    "test_morse_tx": 4,
+    "test_radio_receive_contract": 5
+  },
+  "builds": {
+    "Waveshare_S3_LR1121_repeater": {
+      "command": "bash build.sh build-firmware Waveshare_S3_LR1121_repeater --full-exact --firmware-version v1.18.0.2-rxps-test --profile cascade --radio-preset usa-cascade-fixed --require-ota",
+      "packages": [
+        {
+          "memory": {
+            "schema_version": 1,
+            "target": "Waveshare_S3_LR1121_repeater",
+            "platform": "ESP32_PLATFORM",
+            "mcu": "esp32s3",
+            "elf_sha256": "511c0628ca8dbe5badc492c28df41fba6595e3215d535e170ff6326e60f21ce1",
+            "passed": true,
+            "available_internal_bytes": 243864,
+            "largest_internal_region_bytes": 211096,
+            "required_heap_bytes": 230540,
+            "required_contiguous_bytes": 19168,
+            "components": {
+              "core_tasks_usb_filesystems": 24576,
+              "wireless_stacks": 49152,
+              "mqtt_startup_allowance": 24576,
+              "udp_bridge_and_socket": 5120,
+              "ota_source_scratch": 8192,
+              "browser_terminal_session": 2048,
+              "neighbor_history": 18448,
+              "host_kiss_codec": 2048,
+              "radio_packet_pool": 10240,
+              "client_table": 9104,
+              "flood_filter_table": 19168,
+              "repeater_scope_storage_fallback": 18892,
+              "repeater_advert_storage_fallback": 17936,
+              "ota_generic_source_buffers": 3616,
+              "ota_encoder_workspace": 1040,
+              "allocation_and_transient_margin": 16384
+            },
+            "display": "",
+            "full_companion": false,
+            "mqtt": {
+              "budget_scope": "startup minimum with runtime connection admission",
+              "startup_allowance_bytes": 24576,
+              "startup_active_slot_allowance": 2,
+              "runtime_slot_count": 6,
+              "maximum_active_slots": 5,
+              "maximum_active_slots_without_psram": 2,
+              "worker_stack_bytes": 8192,
+              "client_task_stack_bytes": 6144,
+              "client_task_priority": 5,
+              "client_rx_tx_buffer_bytes": 1792,
+              "maximum_slot_stack_buffer_allowance_bytes": 48384,
+              "cold_start_allocation_allowance_bytes": 16384,
+              "cold_start_dma_admission_free_bytes": 32768,
+              "cold_start_dma_admission_contiguous_bytes": 8192,
+              "additional_broker_cold_start_dma_admission_contiguous_bytes": 20480,
+              "restart_allocation_allowance_bytes": 8192,
+              "restart_dma_admission_free_bytes": 24576,
+              "restart_dma_admission_contiguous_bytes": 8192,
+              "additional_broker_restart_dma_admission_contiguous_bytes": 12288,
+              "dma_admission_free_bytes": 16384,
+              "dma_admission_contiguous_bytes": 4096,
+              "publish_contiguous_bytes": 4096,
+              "publish_contiguous_without_psram_bytes": 8000,
+              "publish_contiguous_with_psram_bytes": 4096,
+              "tls_psram_admission_contiguous_bytes": 16000,
+              "additional_broker_cold_start_tls_psram_admission_contiguous_bytes": 32384,
+              "additional_broker_restart_tls_psram_admission_contiguous_bytes": 24192,
+              "additional_broker_tls_psram_admission_contiguous_bytes": 16000,
+              "tls_internal_admission_free_bytes": 61440,
+              "tls_record_allocation_bytes": 17408,
+              "additional_broker_cold_start_tls_internal_admission_contiguous_bytes": 41792,
+              "additional_broker_restart_tls_internal_admission_contiguous_bytes": 33600,
+              "tls_internal_admission_contiguous_bytes": 17408,
+              "additional_broker_tls_internal_admission_contiguous_bytes": 25408,
+              "maximum_runtime_load_qualified": false,
+              "physical_validation_performed": false,
+              "limitations": "Maximum TLS/WSS/outbox workload is not covered by the startup allowance; runtime free DMA heap and fragmentation must satisfy connection admission; additional brokers reserve publication headroom beside startup allocations."
+            },
+            "regions": [
+              {
+                "start": 1070292600,
+                "end": 1070503696
+              },
+              {
+                "start": 1070530560,
+                "end": 1070563328
+              }
+            ],
+            "scope": "Linked capacity before runtime allocation; physical boot/load/soak validation remains required.",
+            "artifact_target": "Waveshare_S3_LR1121_repeater",
+            "pio_environment": "Waveshare_S3_LR1121_repeater_observer_mqtt",
+            "files": {
+              "Waveshare_S3_LR1121_repeater-full-usb-wifi-ota-v1.18.0.2-rxps-test-61b584f9.bin": "b901b2e6f8eaaab079ebfb8e214478ff30cfbaffdfc567df7e12065682b09da6",
+              "Waveshare_S3_LR1121_repeater-full-usb-wifi-ota-v1.18.0.2-rxps-test-61b584f9-merged.bin": "24ee91319af692b593704f1efe1d903ad2ea72db5b3745d2ceee76628f60bb4e",
+              "Waveshare_S3_LR1121_repeater-full-usb-wifi-ota-v1.18.0.2-rxps-test-61b584f9.capabilities.json": "cc2df7cc946d8c95a0df4354cca28fdb24936806a930414c78beb12afe92d33c",
+              "Waveshare_S3_LR1121_repeater-full-usb-wifi-ota-v1.18.0.2-rxps-test-61b584f9.meshtext-license.txt": "c37d0a453a2491514bac33ed835c1877f207390f134ae439a97b06b004e236d2"
+            }
+          },
+          "capabilities": {
+            "artifact_target": "Waveshare_S3_LR1121_repeater",
+            "build_profile": "full",
+            "build_recipe": {
+              "schema_version": 1,
+              "sha256": "8a68bdc8aee796a915ccdfbb3bcd28e9979fc24453c60b6ca9c442f1fd95bcad"
+            },
+            "capabilities": [
+              "bridge.espnow",
+              "bridge.udp",
+              "profile.full",
+              "radio2.kiss.host",
+              "radio2.kiss.usb",
+              "radio2.kiss.tcp",
+              "ota.update.wifi",
+              "ota.update.lora",
+              "cli.retry_preset",
+              "telemetry.history",
+              "ota.cli",
+              "web.webconfig",
+              "logging.usb.packets",
+              "logging.usb.control",
+              "logging.usb.output",
+              "bridge.udp.configuration"
+            ],
+            "ota_update_evidence": "firmware fits both OTA application slots; otadata present",
+            "ota_update_methods": [
+              "wifi",
+              "lora"
+            ],
+            "ota_update_verified": true,
+            "platform": "ESP32_PLATFORM",
+            "platformio_env": "Waveshare_S3_LR1121_repeater_observer_mqtt",
+            "reductions": [],
+            "schema_version": 2,
+            "target": "Waveshare_S3_LR1121_repeater",
+            "third_party_notices": [
+              {
+                "component": "espp-meshtext",
+                "file": "Waveshare_S3_LR1121_repeater-full-usb-wifi-ota-v1.18.0.2-rxps-test-61b584f9.meshtext-license.txt",
+                "license": "MIT",
+                "sha256": "c37d0a453a2491514bac33ed835c1877f207390f134ae439a97b06b004e236d2"
+              }
+            ],
+            "verification": [
+              {
+                "capability": "radio2.kiss.host",
+                "evidence": "_ZN4mesh8hostkiss5Codec4feedEh; _ZN4mesh8hostkiss5Codec11queueOutputEhPKhj; _ZN4mesh10Dispatcher22queueForeignRadioFrameEPKhjhjNS_20RadioProfileProtocolE",
+                "present": true,
+                "source": "linked ELF symbols"
+              },
+              {
+                "capability": "radio2.kiss.usb",
+                "evidence": "Error: use set kiss on|off; Error: use set kiss.transport usb|tcp; USB: send KISS FEND to start",
+                "present": true,
+                "source": "packaged application"
+              },
+              {
+                "capability": "radio2.kiss.tcp",
+                "evidence": "station TCP 5004",
+                "present": true,
+                "source": "packaged application"
+              },
+              {
+                "capability": "bridge.espnow",
+                "evidence": "_ZN12ESPNowBridge5beginEv",
+                "present": true,
+                "source": "linked image"
+              },
+              {
+                "capability": "bridge.udp",
+                "evidence": "_ZN9UDPBridge5beginEv",
+                "present": true,
+                "source": "linked image"
+              },
+              {
+                "capability": "ota.update.wifi",
+                "evidence": "Started: http://%s/update",
+                "present": true,
+                "source": "linked image"
+              },
+              {
+                "capability": "ota.update.lora",
+                "evidence": "image_hash MISMATCH after decode",
+                "present": true,
+                "source": "linked image"
+              },
+              {
+                "capability": "cli.retry_preset",
+                "evidence": "retry.preset",
+                "present": true,
+                "source": "linked image"
+              },
+              {
+                "capability": "telemetry.history",
+                "evidence": "telemetry.volt.i2c",
+                "present": true,
+                "source": "linked image"
+              },
+              {
+                "capability": "ota.cli",
+                "evidence": "OTA: status",
+                "present": true,
+                "source": "linked image"
+              },
+              {
+                "capability": "web.webconfig",
+                "evidence": "start webconfig",
+                "present": true,
+                "source": "linked image"
+              },
+              {
+                "capability": "logging.usb.packets",
+                "evidence": "%s: %s, len=%d (type=%d, route=%s, payload_len=%d)",
+                "present": true,
+                "source": "packaged application"
+              },
+              {
+                "capability": "logging.usb.control",
+                "evidence": "OK - USB logging %s (saved)",
+                "present": true,
+                "source": "packaged application"
+              },
+              {
+                "capability": "logging.usb.output",
+                "evidence": "OK - logging.output %s (saved)",
+                "present": true,
+                "source": "packaged application"
+              },
+              {
+                "capability": "bridge.udp.configuration",
+                "evidence": "udp.enabled",
+                "present": true,
+                "source": "packaged application"
+              }
+            ],
+            "verified": true
+          }
+        }
+      ]
+    },
+    "Waveshare_S3_LR1121_companion_radio_full": {
+      "command": "bash build.sh build-firmware Waveshare_S3_LR1121_companion_radio_full --full --firmware-version v1.18.0.2-rxps-test --profile cascade --radio-preset usa-cascade-fixed --require-ota",
+      "packages": [
+        {
+          "memory": {
+            "schema_version": 1,
+            "target": "Waveshare_S3_LR1121_companion_radio_full",
+            "platform": "ESP32_PLATFORM",
+            "mcu": "esp32s3",
+            "elf_sha256": "bd28f4df7585f347ad769ebc453c4a188ef17d52237d1694448049a38dcce040",
+            "passed": true,
+            "available_internal_bytes": 230160,
+            "largest_internal_region_bytes": 197392,
+            "required_heap_bytes": 158752,
+            "required_contiguous_bytes": 18464,
+            "components": {
+              "core_tasks_usb_filesystems": 24576,
+              "wireless_stacks": 81920,
+              "ota_source_scratch": 8192,
+              "browser_terminal_session": 2048,
+              "host_kiss_codec": 2048,
+              "radio_packet_pool": 5120,
+              "ota_generic_source_buffers": 18464,
+              "allocation_and_transient_margin": 16384
+            },
+            "display": "",
+            "full_companion": true,
+            "regions": [
+              {
+                "start": 1070306304,
+                "end": 1070503696
+              },
+              {
+                "start": 1070530560,
+                "end": 1070563328
+              }
+            ],
+            "scope": "Linked capacity before runtime allocation; physical boot/load/soak validation remains required.",
+            "artifact_target": "Waveshare_S3_LR1121_companion_radio_full",
+            "pio_environment": "Waveshare_S3_LR1121_companion_radio_full",
+            "files": {
+              "Waveshare_S3_LR1121_companion_radio_full-v1.18.0.2-rxps-test-61b584f9.bin": "5417162e4cfa93782f1e385a32648c6fe475d9f2ec8878049f71f85fb32e3884",
+              "Waveshare_S3_LR1121_companion_radio_full-v1.18.0.2-rxps-test-61b584f9-merged.bin": "c74ef773e5cd6be0fbe793ad6131eee33e66389fa775c7c90f163b0f47a1dc6d",
+              "Waveshare_S3_LR1121_companion_radio_full-v1.18.0.2-rxps-test-61b584f9.capabilities.json": "48cf42e4ab646092fb9d94c1f06bbbbed139f6d840d0286883e217d00f6428ed",
+              "Waveshare_S3_LR1121_companion_radio_full-v1.18.0.2-rxps-test-61b584f9.meshtext-license.txt": "c37d0a453a2491514bac33ed835c1877f207390f134ae439a97b06b004e236d2"
+            }
+          },
+          "capabilities": {
+            "artifact_target": "Waveshare_S3_LR1121_companion_radio_full",
+            "build_profile": "full",
+            "build_recipe": {
+              "schema_version": 1,
+              "sha256": "168e8599d50026325651b2cd1f2c77b6cd018306454eee5b71035eb41acf4823"
+            },
+            "capabilities": [
+              "profile.full",
+              "companion.meshtext.channel_text",
+              "radio2.kiss.host",
+              "radio2.kiss.usb",
+              "radio2.kiss.tcp",
+              "companion.temp_radio",
+              "companion.ota_cli",
+              "companion.usb",
+              "companion.bluetooth",
+              "companion.usb_logging",
+              "companion.usb_mota_source",
+              "companion.mota_sender",
+              "companion.network_terminal",
+              "companion.wifi_ota_seeder",
+              "web.webconfig",
+              "web.unconfigured_setup_cutoff",
+              "logging.usb.packets",
+              "logging.usb.control",
+              "companion.app_wifi.get_enabled",
+              "companion.app_wifi.set_enabled",
+              "companion.app_wifi.get_ssid",
+              "companion.app_wifi.set_ssid",
+              "companion.app_wifi.get_password",
+              "companion.app_wifi.set_password",
+              "companion.app_wifi.get_status",
+              "companion.app_wifi.get_ip"
+            ],
+            "ota_update_evidence": "ESP32 OTA requires ota_0, ota_1, and otadata",
+            "ota_update_methods": [],
+            "ota_update_verified": false,
+            "platform": "ESP32_PLATFORM",
+            "platformio_env": "Waveshare_S3_LR1121_companion_radio_full",
+            "reductions": [],
+            "schema_version": 2,
+            "target": "Waveshare_S3_LR1121_companion_radio_full",
+            "third_party_notices": [
+              {
+                "component": "espp-meshtext",
+                "file": "Waveshare_S3_LR1121_companion_radio_full-v1.18.0.2-rxps-test-61b584f9.meshtext-license.txt",
+                "license": "MIT",
+                "sha256": "c37d0a453a2491514bac33ed835c1877f207390f134ae439a97b06b004e236d2"
+              }
+            ],
+            "verification": [
+              {
+                "capability": "companion.meshtext.channel_text",
+                "evidence": "_ZN4mesh2mt10encodeTextEjjhPKcPKhjS2_jPh; _ZN4mesh2mt10decodeTextEPKhjPKcS2_jjRNS0_11DecodedTextE; _ZN6MyMesh16sendMeshtextTextERK14ChannelDetailsPKcj; _ZN6MyMesh19onForeignRadioFrameEPKhjhjff; _ZN4mesh10Dispatcher22queueForeignRadioFrameEPKhjhjNS_20RadioProfileProtocolE",
+                "present": true,
+                "source": "linked ELF symbols"
+              },
+              {
+                "capability": "radio2.kiss.host",
+                "evidence": "_ZN4mesh8hostkiss5Codec4feedEh; _ZN4mesh8hostkiss5Codec11queueOutputEhPKhj; _ZN4mesh10Dispatcher22queueForeignRadioFrameEPKhjhjNS_20RadioProfileProtocolE",
+                "present": true,
+                "source": "linked ELF symbols"
+              },
+              {
+                "capability": "radio2.kiss.usb",
+                "evidence": "Error: use set kiss on|off; Error: use set kiss.transport usb|tcp; USB: send KISS FEND to start",
+                "present": true,
+                "source": "packaged application"
+              },
+              {
+                "capability": "radio2.kiss.tcp",
+                "evidence": "station TCP 5004",
+                "present": true,
+                "source": "packaged application"
+              },
+              {
+                "capability": "companion.temp_radio",
+                "evidence": "tempradio",
+                "present": true,
+                "source": "linked image"
+              },
+              {
+                "capability": "companion.ota_cli",
+                "evidence": "ota folder",
+                "present": true,
+                "source": "linked image"
+              },
+              {
+                "capability": "companion.usb",
+                "evidence": "+++MESHCORE-TERM-START",
+                "present": true,
+                "source": "linked image"
+              },
+              {
+                "capability": "companion.bluetooth",
+                "evidence": "Companion: starting Bluetooth",
+                "present": true,
+                "source": "linked image"
+              },
+              {
+                "capability": "companion.usb_logging",
+                "evidence": "get usb.logging",
+                "present": true,
+                "source": "linked image"
+              },
+              {
+                "capability": "companion.usb_mota_source",
+                "evidence": "ota folder on",
+                "present": true,
+                "source": "linked image"
+              },
+              {
+                "capability": "companion.mota_sender",
+                "evidence": "_ZN4mesh3ota16SerialMotaSource4read",
+                "present": true,
+                "source": "linked image"
+              },
+              {
+                "capability": "companion.network_terminal",
+                "evidence": "USB currently owns the Full Companion terminal",
+                "present": true,
+                "source": "linked image"
+              },
+              {
+                "capability": "companion.wifi_ota_seeder",
+                "evidence": "OTA seeder listening on :",
+                "present": true,
+                "source": "linked image"
+              },
+              {
+                "capability": "web.webconfig",
+                "evidence": "start webconfig",
+                "present": true,
+                "source": "linked image"
+              },
+              {
+                "capability": "web.unconfigured_setup_cutoff",
+                "evidence": "WiFi still unconfigured after",
+                "present": true,
+                "source": "linked image"
+              },
+              {
+                "capability": "logging.usb.packets",
+                "evidence": "%s: %s, len=%d (type=%d, route=%s, payload_len=%d)",
+                "present": true,
+                "source": "packaged application"
+              },
+              {
+                "capability": "logging.usb.control",
+                "evidence": "get usb.logging",
+                "present": true,
+                "source": "packaged application"
+              },
+              {
+                "capability": "companion.app_wifi.get_enabled",
+                "evidence": "get wifi.enabled",
+                "present": true,
+                "source": "packaged application"
+              },
+              {
+                "capability": "companion.app_wifi.set_enabled",
+                "evidence": "set wifi.enabled ",
+                "present": true,
+                "source": "packaged application"
+              },
+              {
+                "capability": "companion.app_wifi.get_ssid",
+                "evidence": "> (not set)",
+                "present": true,
+                "source": "packaged application"
+              },
+              {
+                "capability": "companion.app_wifi.set_ssid",
+                "evidence": "OK - WiFi SSID saved",
+                "present": true,
+                "source": "packaged application"
+              },
+              {
+                "capability": "companion.app_wifi.get_password",
+                "evidence": "get wifi.pwd",
+                "present": true,
+                "source": "packaged application"
+              },
+              {
+                "capability": "companion.app_wifi.set_password",
+                "evidence": "OK - WiFi password saved",
+                "present": true,
+                "source": "packaged application"
+              },
+              {
+                "capability": "companion.app_wifi.get_status",
+                "evidence": "wifi.status",
+                "present": true,
+                "source": "packaged application"
+              },
+              {
+                "capability": "companion.app_wifi.get_ip",
+                "evidence": "get wifi.ip",
+                "present": true,
+                "source": "packaged application"
+              },
+              {
+                "capability": "ota.update.wifi",
+                "evidence": "MeshCore firmware update",
+                "present": true,
+                "source": "linked gzip asset"
+              }
+            ],
+            "verified": true
+          }
+        }
+      ]
+    },
+    "muzi_base_duo_companion_radio_full": {
+      "command": "bash build.sh build-firmware muzi_base_duo_companion_radio_full --full --firmware-version v1.18.0.2-rxps-test --profile cascade --radio-preset usa-cascade-fixed --require-ota",
+      "packages": [
+        {
+          "memory": {
+            "schema_version": 1,
+            "target": "muzi_base_duo_companion_radio_full",
+            "platform": "NRF52_PLATFORM",
+            "mcu": "nrf52840",
+            "elf_sha256": "e6ae371e87f22eb842c5e381707b978bfed257777df17443ceee065b22cc82b1",
+            "passed": true,
+            "available_internal_bytes": 89292,
+            "largest_internal_region_bytes": 89292,
+            "required_heap_bytes": 59200,
+            "required_contiguous_bytes": 8192,
+            "components": {
+              "loop_and_callback_stacks": 11264,
+              "core_usb_filesystems_sensors": 12288,
+              "bluetooth_worker_stacks": 5920,
+              "host_kiss_codec": 2048,
+              "radio_packet_pool": 5120,
+              "ota_generic_source_buffers": 6176,
+              "display_pixels_and_driver": 4096,
+              "screen_objects_and_history": 8192,
+              "allocation_and_transient_margin": 4096
+            },
+            "display": "SH1107Display",
+            "full_companion": true,
+            "regions": [
+              {
+                "start": 537041716,
+                "end": 537131008
+              }
+            ],
+            "scope": "Linked capacity before runtime allocation; physical boot/load/soak validation remains required.",
+            "artifact_target": "muzi_base_duo_companion_radio_full",
+            "pio_environment": "muzi_base_duo_companion_radio_usb",
+            "files": {
+              "muzi_base_duo_companion_radio_full-v1.18.0.2-rxps-test-61b584f9.uf2": "e70e5d7910c029a46156cd763e06e1f1dd8fd41eb727311be4a7c719798a38e7",
+              "muzi_base_duo_companion_radio_full-v1.18.0.2-rxps-test-61b584f9.zip": "7222262b742abfb3ebaac7e4a3adc4f6a6abac92709861c430b45c2f85d15c18",
+              "muzi_base_duo_companion_radio_full-v1.18.0.2-rxps-test-61b584f9.capabilities.json": "d178043d8e2b07ce3aec6cf9916fb9a6818cee4e3ae216bf0b50a841f3cf8f3d",
+              "muzi_base_duo_companion_radio_full-v1.18.0.2-rxps-test-61b584f9.meshtext-license.txt": "c37d0a453a2491514bac33ed835c1877f207390f134ae439a97b06b004e236d2"
+            }
+          },
+          "capabilities": {
+            "artifact_target": "muzi_base_duo_companion_radio_full",
+            "build_profile": "full",
+            "build_recipe": {
+              "schema_version": 1,
+              "sha256": "1eaee0f29a7e50d2fb779e1f6b2553388b1d2d05c08948c6a9693cf8a03bb647"
+            },
+            "capabilities": [
+              "profile.full",
+              "companion.meshtext.channel_text",
+              "radio2.kiss.host",
+              "radio2.kiss.usb",
+              "ota.update.bluetooth",
+              "companion.temp_radio",
+              "companion.ota_cli",
+              "companion.usb",
+              "companion.bluetooth",
+              "companion.usb_logging",
+              "companion.usb_mota_source",
+              "companion.mota_sender",
+              "companion.dedicated_usb_logging",
+              "companion.ble_mota_source",
+              "logging.usb.packets",
+              "logging.usb.control",
+              "display.autodetect"
+            ],
+            "ota_update_evidence": "application DFU ZIP verified; matching BLE DFU bootloader required",
+            "ota_update_methods": [
+              "bluetooth"
+            ],
+            "ota_update_verified": true,
+            "platform": "NRF52_PLATFORM",
+            "platformio_env": "muzi_base_duo_companion_radio_usb",
+            "reductions": [
+              "nRF52 Full: 256 offline frames normally; 128 while mOTA borrows queue storage"
+            ],
+            "schema_version": 2,
+            "target": "muzi_base_duo_companion_radio_full",
+            "third_party_notices": [
+              {
+                "component": "espp-meshtext",
+                "file": "muzi_base_duo_companion_radio_full-v1.18.0.2-rxps-test-61b584f9.meshtext-license.txt",
+                "license": "MIT",
+                "sha256": "c37d0a453a2491514bac33ed835c1877f207390f134ae439a97b06b004e236d2"
+              }
+            ],
+            "verification": [
+              {
+                "capability": "companion.meshtext.channel_text",
+                "evidence": "_ZN4mesh2mt10encodeTextEmmhPKcPKhjS2_jPh; _ZN4mesh2mt10decodeTextEPKhjPKcS2_jmRNS0_11DecodedTextE.constprop.0; _ZN6MyMesh16sendMeshtextTextERK14ChannelDetailsPKcj.constprop.0; _ZN6MyMesh19onForeignRadioFrameEPKhjhmff; _ZN4mesh10Dispatcher22queueForeignRadioFrameEPKhjhmNS_20RadioProfileProtocolE.constprop.0",
+                "present": true,
+                "source": "linked ELF symbols"
+              },
+              {
+                "capability": "radio2.kiss.host",
+                "evidence": "_ZN4mesh8hostkiss5Codec4feedEh.isra.0; _ZN4mesh8hostkiss5Codec11queueOutputEhPKhj; _ZN4mesh10Dispatcher22queueForeignRadioFrameEPKhjhmNS_20RadioProfileProtocolE.constprop.0",
+                "present": true,
+                "source": "linked ELF symbols"
+              },
+              {
+                "capability": "radio2.kiss.usb",
+                "evidence": "Error: use set kiss on|off; Error: use set kiss.transport usb|tcp; USB: send KISS FEND to start",
+                "present": true,
+                "source": "packaged application"
+              },
+              {
+                "capability": "ota.update.bluetooth",
+                "evidence": "_ZN6BLEDfu5beginEv",
+                "present": true,
+                "source": "linked image"
+              },
+              {
+                "capability": "companion.temp_radio",
+                "evidence": "tempradio",
+                "present": true,
+                "source": "linked image"
+              },
+              {
+                "capability": "companion.ota_cli",
+                "evidence": "ota folder",
+                "present": true,
+                "source": "linked image"
+              },
+              {
+                "capability": "companion.usb",
+                "evidence": "+++MESHCORE-TERM-START",
+                "present": true,
+                "source": "linked image"
+              },
+              {
+                "capability": "companion.bluetooth",
+                "evidence": "Companion: starting Bluetooth",
+                "present": true,
+                "source": "linked image"
+              },
+              {
+                "capability": "companion.usb_logging",
+                "evidence": "get usb.logging",
+                "present": true,
+                "source": "linked image"
+              },
+              {
+                "capability": "companion.usb_mota_source",
+                "evidence": "ota folder on",
+                "present": true,
+                "source": "linked image"
+              },
+              {
+                "capability": "companion.mota_sender",
+                "evidence": "_ZN4mesh3ota16SerialMotaSource4read",
+                "present": true,
+                "source": "linked image"
+              },
+              {
+                "capability": "companion.dedicated_usb_logging",
+                "evidence": "get usb.logging",
+                "present": true,
+                "source": "linked image"
+              },
+              {
+                "capability": "companion.ble_mota_source",
+                "evidence": "Bluetooth mOTA source",
+                "present": true,
+                "source": "linked image"
+              },
+              {
+                "capability": "logging.usb.packets",
+                "evidence": "%s: %s, len=%d (type=%d, route=%s, payload_len=%d)",
+                "present": true,
+                "source": "packaged application"
+              },
+              {
+                "capability": "logging.usb.control",
+                "evidence": "get usb.logging",
+                "present": true,
+                "source": "packaged application"
+              },
+              {
+                "capability": "display.autodetect",
+                "evidence": "meshcore.capability.display.autodetect.muzi_superio.v1",
+                "present": true,
+                "source": "packaged application"
+              }
+            ],
+            "verified": true
+          }
+        }
+      ]
+    },
+    "muzi_base_duo_repeater_lora_ota": {
+      "command": "bash build.sh build-firmware muzi_base_duo_repeater_lora_ota --full --firmware-version v1.18.0.2-rxps-test --profile cascade --radio-preset usa-cascade-fixed --require-ota",
+      "packages": [
+        {
+          "memory": {
+            "schema_version": 1,
+            "target": "muzi_base_duo_repeater_lora_ota",
+            "platform": "NRF52_PLATFORM",
+            "mcu": "nrf52840",
+            "elf_sha256": "c8fb88ba8a4c65cb4ac851057c826691dbda8ba0e1e72b3dfb7e708f97f9fbf4",
+            "passed": true,
+            "available_internal_bytes": 152980,
+            "largest_internal_region_bytes": 152980,
+            "required_heap_bytes": 76992,
+            "required_contiguous_bytes": 19168,
+            "components": {
+              "loop_and_callback_stacks": 11264,
+              "core_usb_filesystems_sensors": 12288,
+              "host_kiss_codec": 2048,
+              "radio_packet_pool": 10240,
+              "client_table": 9104,
+              "flood_filter_table": 19168,
+              "ota_generic_source_buffers": 3616,
+              "ota_encoder_workspace": 1040,
+              "ota_self_source_scratch": 4128,
+              "allocation_and_transient_margin": 4096
+            },
+            "display": "",
+            "full_companion": false,
+            "regions": [
+              {
+                "start": 536978028,
+                "end": 537131008
+              }
+            ],
+            "scope": "Linked capacity before runtime allocation; physical boot/load/soak validation remains required.",
+            "artifact_target": "muzi_base_duo_repeater_lora_ota-full-ota",
+            "pio_environment": "muzi_base_duo_repeater_lora_ota",
+            "files": {
+              "muzi_base_duo_repeater_lora_ota-full-ota-v1.18.0.2-rxps-test-61b584f9.uf2": "762892a1ed2e3c1b4ef753307f58c81d6d53ffbfad9f8b57236354f75f6432ca",
+              "muzi_base_duo_repeater_lora_ota-full-ota-v1.18.0.2-rxps-test-61b584f9.zip": "bc1862ca556a1400afe0f15a30e8e661d804d5bb2bbe36c7a4822d5a310dcba3",
+              "muzi_base_duo_repeater_lora_ota-full-ota-v1.18.0.2-rxps-test-61b584f9.capabilities.json": "f9c38aac0d02d253c85623eaf947faad7de8060c7bf824949d00f1bf835b6378",
+              "muzi_base_duo_repeater_lora_ota-full-ota-v1.18.0.2-rxps-test-61b584f9.meshtext-license.txt": "c37d0a453a2491514bac33ed835c1877f207390f134ae439a97b06b004e236d2"
+            }
+          },
+          "capabilities": {
+            "artifact_target": "muzi_base_duo_repeater_lora_ota-full-ota",
+            "build_profile": "auto",
+            "build_recipe": {
+              "schema_version": 1,
+              "sha256": "79792e83936951dc2fa1ad03d98aa7c669313d574b749d8459ef554620889724"
+            },
+            "capabilities": [
+              "profile.auto",
+              "hardware.qualification.pending",
+              "sensor.profile.full",
+              "radio2.kiss.host",
+              "radio2.kiss.usb",
+              "ota.update.bluetooth",
+              "ota.update.lora",
+              "cli.retry_preset",
+              "telemetry.history",
+              "ota.cli"
+            ],
+            "ota_update_evidence": "application DFU ZIP verified; matching BLE DFU bootloader required; LoRa mOTA receiver/apply code and EndF storage layout verified: external_qspi; matching board/storage OTAFIX bootloader and compatible destination package required",
+            "ota_update_methods": [
+              "bluetooth",
+              "lora"
+            ],
+            "ota_update_requirements": {
+              "lora": {
+                "bootloader": "Matching board/storage OTAFIX bootloader",
+                "bootloader_release": "https://github.com/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/releases/tag/v0.11.0-OTAFIX2.4.11",
+                "notes": [
+                  "Use a destination-specific .mota package matching the board, target, and storage layout.",
+                  "An in-place delta requires the exact firmware currently running as its base.",
+                  "The package must fit the receiver's staging and apply workspace.",
+                  "Check the release's exact-board bootloader manifest; hardware-pending boards are not covered by the normal release.",
+                  "Artifact inspection verifies compiled support; it does not verify the bootloader installed on a physical device.",
+                  "Requires the matching external-storage hardware, wiring, and storage-aware OTAFIX bootloader."
+                ],
+                "package_types": [
+                  "full",
+                  "in_place_delta"
+                ],
+                "storage": "external_qspi"
+              }
+            },
+            "ota_update_verified": true,
+            "platform": "NRF52_PLATFORM",
+            "platformio_env": "muzi_base_duo_repeater_lora_ota",
+            "reductions": [],
+            "schema_version": 2,
+            "target": "muzi_base_duo_repeater_lora_ota",
+            "third_party_notices": [
+              {
+                "component": "espp-meshtext",
+                "file": "muzi_base_duo_repeater_lora_ota-full-ota-v1.18.0.2-rxps-test-61b584f9.meshtext-license.txt",
+                "license": "MIT",
+                "sha256": "c37d0a453a2491514bac33ed835c1877f207390f134ae439a97b06b004e236d2"
+              }
+            ],
+            "verification": [
+              {
+                "capability": "radio2.kiss.host",
+                "evidence": "_ZN4mesh8hostkiss5Codec4feedEh.isra.0; _ZN4mesh8hostkiss5Codec11queueOutputEhPKhj; _ZN4mesh10Dispatcher22queueForeignRadioFrameEPKhjhmNS_20RadioProfileProtocolE.constprop.0",
+                "present": true,
+                "source": "linked ELF symbols"
+              },
+              {
+                "capability": "radio2.kiss.usb",
+                "evidence": "Error: use set kiss on|off; Error: use set kiss.transport usb|tcp; USB: send KISS FEND to start",
+                "present": true,
+                "source": "packaged application"
+              },
+              {
+                "capability": "ota.update.bluetooth",
+                "evidence": "_ZN6BLEDfu5beginEv",
+                "present": true,
+                "source": "linked image"
+              },
+              {
+                "capability": "ota.update.lora",
+                "evidence": "invalid in-place patch geometry",
+                "present": true,
+                "source": "linked image"
+              },
+              {
+                "capability": "cli.retry_preset",
+                "evidence": "retry.preset",
+                "present": true,
+                "source": "linked image"
+              },
+              {
+                "capability": "telemetry.history",
+                "evidence": "telemetry.volt.i2c",
+                "present": true,
+                "source": "linked image"
+              },
+              {
+                "capability": "ota.cli",
+                "evidence": "OTA: status",
+                "present": true,
+                "source": "linked image"
+              }
+            ],
+            "verified": true
+          }
+        },
+        {
+          "memory": {
+            "schema_version": 1,
+            "target": "muzi_base_duo_repeater_lora_ota",
+            "platform": "NRF52_PLATFORM",
+            "mcu": "nrf52840",
+            "elf_sha256": "9455eb0c4fd06cd494377b07010aaf4f145e4d671644839c30ff0e70ef948daf",
+            "passed": true,
+            "available_internal_bytes": 153184,
+            "largest_internal_region_bytes": 153184,
+            "required_heap_bytes": 74944,
+            "required_contiguous_bytes": 19168,
+            "components": {
+              "loop_and_callback_stacks": 11264,
+              "core_usb_filesystems_sensors": 12288,
+              "radio_packet_pool": 10240,
+              "client_table": 9104,
+              "flood_filter_table": 19168,
+              "ota_generic_source_buffers": 3616,
+              "ota_encoder_workspace": 1040,
+              "ota_self_source_scratch": 4128,
+              "allocation_and_transient_margin": 4096
+            },
+            "display": "",
+            "full_companion": false,
+            "regions": [
+              {
+                "start": 536977824,
+                "end": 537131008
+              }
+            ],
+            "scope": "Linked capacity before runtime allocation; physical boot/load/soak validation remains required.",
+            "artifact_target": "muzi_base_duo_repeater_lora_ota-reduced-ota",
+            "pio_environment": "muzi_base_duo_repeater_lora_ota",
+            "files": {
+              "muzi_base_duo_repeater_lora_ota-reduced-ota-v1.18.0.2-rxps-test-61b584f9.uf2": "b920c27ba35f1b916c8d678a34c46f7884ec74d4d2f9ba087107137cb8f058fc",
+              "muzi_base_duo_repeater_lora_ota-reduced-ota-v1.18.0.2-rxps-test-61b584f9.zip": "06b0318b5374384c6667b004c4a1639b5a5a89f24d921fb3f1ca662c139b4f86",
+              "muzi_base_duo_repeater_lora_ota-reduced-ota-v1.18.0.2-rxps-test-61b584f9.capabilities.json": "744bcf4dc51960d22c7c50061e2478a46c27fe27e0e7d567f2e47af098c7eb11",
+              "muzi_base_duo_repeater_lora_ota-reduced-ota-v1.18.0.2-rxps-test-61b584f9.meshtext-license.txt": "c37d0a453a2491514bac33ed835c1877f207390f134ae439a97b06b004e236d2"
+            }
+          },
+          "capabilities": {
+            "artifact_target": "muzi_base_duo_repeater_lora_ota-reduced-ota",
+            "build_profile": "auto",
+            "build_recipe": {
+              "schema_version": 1,
+              "sha256": "7916972c3ae996b73108a3819fc54e407e5828b2179d410b2d015c3d953fa481"
+            },
+            "capabilities": [
+              "profile.auto",
+              "hardware.qualification.pending",
+              "sensor.profile.reduced",
+              "ota.update.bluetooth",
+              "ota.update.lora",
+              "cli.retry_preset",
+              "telemetry.history",
+              "ota.cli"
+            ],
+            "ota_update_evidence": "application DFU ZIP verified; matching BLE DFU bootloader required; LoRa mOTA receiver/apply code and EndF storage layout verified: external_qspi; matching board/storage OTAFIX bootloader and compatible destination package required",
+            "ota_update_methods": [
+              "bluetooth",
+              "lora"
+            ],
+            "ota_update_requirements": {
+              "lora": {
+                "bootloader": "Matching board/storage OTAFIX bootloader",
+                "bootloader_release": "https://github.com/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/releases/tag/v0.11.0-OTAFIX2.4.11",
+                "notes": [
+                  "Use a destination-specific .mota package matching the board, target, and storage layout.",
+                  "An in-place delta requires the exact firmware currently running as its base.",
+                  "The package must fit the receiver's staging and apply workspace.",
+                  "Check the release's exact-board bootloader manifest; hardware-pending boards are not covered by the normal release.",
+                  "Artifact inspection verifies compiled support; it does not verify the bootloader installed on a physical device.",
+                  "Requires the matching external-storage hardware, wiring, and storage-aware OTAFIX bootloader."
+                ],
+                "package_types": [
+                  "full",
+                  "in_place_delta"
+                ],
+                "storage": "external_qspi"
+              }
+            },
+            "ota_update_verified": true,
+            "platform": "NRF52_PLATFORM",
+            "platformio_env": "muzi_base_duo_repeater_lora_ota",
+            "reductions": [
+              "selected optional environmental/ranging drivers omitted; generic I2C and exact-target board peripherals remain unchanged"
+            ],
+            "schema_version": 2,
+            "target": "muzi_base_duo_repeater_lora_ota",
+            "third_party_notices": [
+              {
+                "component": "espp-meshtext",
+                "file": "muzi_base_duo_repeater_lora_ota-reduced-ota-v1.18.0.2-rxps-test-61b584f9.meshtext-license.txt",
+                "license": "MIT",
+                "sha256": "c37d0a453a2491514bac33ed835c1877f207390f134ae439a97b06b004e236d2"
+              }
+            ],
+            "verification": [
+              {
+                "capability": "ota.update.bluetooth",
+                "evidence": "_ZN6BLEDfu5beginEv",
+                "present": true,
+                "source": "linked image"
+              },
+              {
+                "capability": "ota.update.lora",
+                "evidence": "invalid in-place patch geometry",
+                "present": true,
+                "source": "linked image"
+              },
+              {
+                "capability": "cli.retry_preset",
+                "evidence": "retry.preset",
+                "present": true,
+                "source": "linked image"
+              },
+              {
+                "capability": "telemetry.history",
+                "evidence": "telemetry.volt.i2c",
+                "present": true,
+                "source": "linked image"
+              },
+              {
+                "capability": "ota.cli",
+                "evidence": "OTA: status",
+                "present": true,
+                "source": "linked image"
+              }
+            ],
+            "verified": true
+          }
+        }
+      ]
+    }
+  },
+  "source_sha256": {
+    "src/helpers/radiolib/CustomLR1121.h": "919a93f77d22f601fba17d9610c88efeb3b2907aeffe57b6d544a93ba60d1acc",
+    "src/helpers/radiolib/CustomLR1121Wrapper.h": "ecc707fb57ad8ca64b39a693158ef5238bffce3d9507228c86ab7ba06506754f",
+    "src/helpers/radiolib/RXPowerSaving.h": "8ad9dbf15bd269c99ab3204f0114137657f3fa9359a71cac16b16047f3ffabd5",
+    "variants/waveshare_esp32s3_lr1121/platformio.ini": "ad95e38381ffa06dbd7a3fe3a5a9ca23ab09621de541b449134739376e73fd96",
+    "variants/waveshare_esp32s3_lr1121/target.cpp": "56684bce8dc8f78d7432b83caafe92b0b14a71f6aec457a6e68109fab2693d5d",
+    "test/test_lr1121_rxps.py": "92f96cc80725ac07f91f07f583d4d919e6686909a488edc4179719100d6bd0f5",
+    "test/test_radio_rx_activity_epoch.py": "4507c27f20ffe630102ae0dc4fd136ab5d8be755a99e910b95728f7642b9851f"
+  },
+  "limitations": [
+    "No physical LR1121 bench node confirmed.",
+    "No radio flashed.",
+    "No RF packet-delivery or current-draw measurements.",
+    "No physical watchdog-reset qualification."
+  ],
+  "post_integration": {
+    "tested_commit": "b34a82acb3786beb598782b153c06ef90cec8b0d",
+    "integrated_remote_commit": "eab29a12c",
+    "reason": "Companion trace-handling changes arrived before push; RXPS source hashes still match the original five packages.",
+    "command": "bash build.sh build-firmware muzi_base_duo_companion_radio_full --full --firmware-version v1.18.0.2-rxps-test --profile cascade --radio-preset usa-cascade-fixed --require-ota",
+    "memory": {
+      "schema_version": 1,
+      "target": "muzi_base_duo_companion_radio_full",
+      "platform": "NRF52_PLATFORM",
+      "mcu": "nrf52840",
+      "elf_sha256": "01892156bd76d7236ef9f21d7e2ae85c4531af22ef0529e2797e59cb56e2a44d",
+      "passed": true,
+      "available_internal_bytes": 89292,
+      "largest_internal_region_bytes": 89292,
+      "required_heap_bytes": 59200,
+      "required_contiguous_bytes": 8192,
+      "components": {
+        "loop_and_callback_stacks": 11264,
+        "core_usb_filesystems_sensors": 12288,
+        "bluetooth_worker_stacks": 5920,
+        "host_kiss_codec": 2048,
+        "radio_packet_pool": 5120,
+        "ota_generic_source_buffers": 6176,
+        "display_pixels_and_driver": 4096,
+        "screen_objects_and_history": 8192,
+        "allocation_and_transient_margin": 4096
+      },
+      "display": "SH1107Display",
+      "full_companion": true,
+      "regions": [
+        {
+          "start": 537041716,
+          "end": 537131008
+        }
+      ],
+      "scope": "Linked capacity before runtime allocation; physical boot/load/soak validation remains required.",
+      "artifact_target": "muzi_base_duo_companion_radio_full",
+      "pio_environment": "muzi_base_duo_companion_radio_usb",
+      "files": {
+        "muzi_base_duo_companion_radio_full-v1.18.0.2-rxps-test-b34a82ac.uf2": "461aae0858df576523f30bb167c1a49c229be217c6afaf34ebb2ca70c826d9bc",
+        "muzi_base_duo_companion_radio_full-v1.18.0.2-rxps-test-b34a82ac.zip": "73dc2790486d087db40d3eb867bb544483d2b06c43d2f928c2bd22038b9f188a",
+        "muzi_base_duo_companion_radio_full-v1.18.0.2-rxps-test-b34a82ac.capabilities.json": "e7e88a9c82541f4898185f44560e3de2a09bd9e3dd4ad1154918531138cc859a",
+        "muzi_base_duo_companion_radio_full-v1.18.0.2-rxps-test-b34a82ac.meshtext-license.txt": "c37d0a453a2491514bac33ed835c1877f207390f134ae439a97b06b004e236d2"
+      }
+    },
+    "capabilities": {
+      "artifact_target": "muzi_base_duo_companion_radio_full",
+      "build_profile": "full",
+      "build_recipe": {
+        "schema_version": 1,
+        "sha256": "8070b07d158de0f3163a03b0485586d06e6212c8224a8ba9175eafb083c19fc1"
+      },
+      "capabilities": [
+        "profile.full",
+        "companion.meshtext.channel_text",
+        "radio2.kiss.host",
+        "radio2.kiss.usb",
+        "ota.update.bluetooth",
+        "companion.temp_radio",
+        "companion.ota_cli",
+        "companion.usb",
+        "companion.bluetooth",
+        "companion.usb_logging",
+        "companion.usb_mota_source",
+        "companion.mota_sender",
+        "companion.dedicated_usb_logging",
+        "companion.ble_mota_source",
+        "logging.usb.packets",
+        "logging.usb.control",
+        "display.autodetect"
+      ],
+      "ota_update_evidence": "application DFU ZIP verified; matching BLE DFU bootloader required",
+      "ota_update_methods": [
+        "bluetooth"
+      ],
+      "ota_update_verified": true,
+      "platform": "NRF52_PLATFORM",
+      "platformio_env": "muzi_base_duo_companion_radio_usb",
+      "reductions": [
+        "nRF52 Full: 256 offline frames normally; 128 while mOTA borrows queue storage"
+      ],
+      "schema_version": 2,
+      "target": "muzi_base_duo_companion_radio_full",
+      "third_party_notices": [
+        {
+          "component": "espp-meshtext",
+          "file": "muzi_base_duo_companion_radio_full-v1.18.0.2-rxps-test-b34a82ac.meshtext-license.txt",
+          "license": "MIT",
+          "sha256": "c37d0a453a2491514bac33ed835c1877f207390f134ae439a97b06b004e236d2"
+        }
+      ],
+      "verification": [
+        {
+          "capability": "companion.meshtext.channel_text",
+          "evidence": "_ZN4mesh2mt10encodeTextEmmhPKcPKhjS2_jPh; _ZN4mesh2mt10decodeTextEPKhjPKcS2_jmRNS0_11DecodedTextE.constprop.0; _ZN6MyMesh16sendMeshtextTextERK14ChannelDetailsPKcj.constprop.0; _ZN6MyMesh19onForeignRadioFrameEPKhjhmff; _ZN4mesh10Dispatcher22queueForeignRadioFrameEPKhjhmNS_20RadioProfileProtocolE.constprop.0",
+          "present": true,
+          "source": "linked ELF symbols"
+        },
+        {
+          "capability": "radio2.kiss.host",
+          "evidence": "_ZN4mesh8hostkiss5Codec4feedEh.isra.0; _ZN4mesh8hostkiss5Codec11queueOutputEhPKhj; _ZN4mesh10Dispatcher22queueForeignRadioFrameEPKhjhmNS_20RadioProfileProtocolE.constprop.0",
+          "present": true,
+          "source": "linked ELF symbols"
+        },
+        {
+          "capability": "radio2.kiss.usb",
+          "evidence": "Error: use set kiss on|off; Error: use set kiss.transport usb|tcp; USB: send KISS FEND to start",
+          "present": true,
+          "source": "packaged application"
+        },
+        {
+          "capability": "ota.update.bluetooth",
+          "evidence": "_ZN6BLEDfu5beginEv",
+          "present": true,
+          "source": "linked image"
+        },
+        {
+          "capability": "companion.temp_radio",
+          "evidence": "tempradio",
+          "present": true,
+          "source": "linked image"
+        },
+        {
+          "capability": "companion.ota_cli",
+          "evidence": "ota folder",
+          "present": true,
+          "source": "linked image"
+        },
+        {
+          "capability": "companion.usb",
+          "evidence": "+++MESHCORE-TERM-START",
+          "present": true,
+          "source": "linked image"
+        },
+        {
+          "capability": "companion.bluetooth",
+          "evidence": "Companion: starting Bluetooth",
+          "present": true,
+          "source": "linked image"
+        },
+        {
+          "capability": "companion.usb_logging",
+          "evidence": "get usb.logging",
+          "present": true,
+          "source": "linked image"
+        },
+        {
+          "capability": "companion.usb_mota_source",
+          "evidence": "ota folder on",
+          "present": true,
+          "source": "linked image"
+        },
+        {
+          "capability": "companion.mota_sender",
+          "evidence": "_ZN4mesh3ota16SerialMotaSource4read",
+          "present": true,
+          "source": "linked image"
+        },
+        {
+          "capability": "companion.dedicated_usb_logging",
+          "evidence": "get usb.logging",
+          "present": true,
+          "source": "linked image"
+        },
+        {
+          "capability": "companion.ble_mota_source",
+          "evidence": "Bluetooth mOTA source",
+          "present": true,
+          "source": "linked image"
+        },
+        {
+          "capability": "logging.usb.packets",
+          "evidence": "%s: %s, len=%d (type=%d, route=%s, payload_len=%d)",
+          "present": true,
+          "source": "packaged application"
+        },
+        {
+          "capability": "logging.usb.control",
+          "evidence": "get usb.logging",
+          "present": true,
+          "source": "packaged application"
+        },
+        {
+          "capability": "display.autodetect",
+          "evidence": "meshcore.capability.display.autodetect.muzi_superio.v1",
+          "present": true,
+          "source": "packaged application"
+        }
+      ],
+      "verified": true
+    },
+    "uf2": {
+      "start": "0x26000",
+      "end_exclusive": "0xB6B00",
+      "blocks": 2315,
+      "safe": true
+    }
+  }
+}
