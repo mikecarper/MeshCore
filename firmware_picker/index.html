@@ -3325,6 +3325,11 @@ reduction does not disable generic I2C or unrelated board-integrated peripherals
 These reduced RAK profiles keep their own readable OTA target name and omit
 the all-board name catalog. Updates for other targets display numeric IDs;
 OTA compatibility checks and transfers are unchanged.
+RAK3401/RAK4631 Repeater builds also use compact scalar arithmetic, shared CLI
+reply copies, and a smaller GPS version parser. Keys, packet formats, commands,
+responses and GPS support are preserved. Fast field arithmetic remains enabled
+to avoid the long crypto pause; see the
+<a href="../test-results/rak_compact_crypto_2026-10-27/">measured size and timing comparison</a>.
 Reduced RAK3401 and RAK4631 targets retain INA219/INA226/INA260/INA3221 as
 voltage/current entries in the optional sensor table. They are not the only I2C
 users: the SSD1306 OLED, supported autodiscovered RTCs, and RAK12500 GPS remain

@@ -1,0 +1,923 @@
+{
+  "schema_version": 1,
+  "date": "2026-10-27",
+  "base_commit": "308fec1162e77134d15206b819dd59e898ed910b",
+  "selected_policy": "Compact scalar arithmetic, ordinary fast field arithmetic, reviewed GPS parser, shared CLI reply-copy compiler policy. RAK3401/RAK4631 repeater roles only.",
+  "scope": "RAK3401 physical RAM-resident algorithm timing and production Full/Reduced build checks for both RAKs. This is not flash-resident application timing or live RF/OTA qualification.",
+  "selected_flash_images": {
+    "3401": {
+      "full": {
+        "flash_text_bytes": 622456,
+        "flash_data_bytes": 880,
+        "flash_bytes": 623336,
+        "bss_bytes": 234568,
+        "elf_sha256": "1e7764ba9d5b081fe1dde7cff5d6a67a067d38ab03549d2889eadace09706dd7",
+        "available_internal_bytes": 80212,
+        "conservative_required_heap_bytes": 75920,
+        "capabilities_manifest_sha256": "5d1dcea9e49241c94caf77632ae5e277794571ce8b079817027a24c8f228a5bf"
+      },
+      "reduced": {
+        "flash_text_bytes": 563184,
+        "flash_data_bytes": 880,
+        "flash_bytes": 564064,
+        "bss_bytes": 234568,
+        "elf_sha256": "4f7ea9df20e9fbbcab97fc1f98d67cbaaea9fd59d79111b4c01dcf83b4338330",
+        "available_internal_bytes": 82720,
+        "conservative_required_heap_bytes": 73872,
+        "capabilities_manifest_sha256": "9e9d02a55b1ace5be35a092ce51cb90509523183cfccfce6597c8e7d4a1eb4da"
+      },
+      "reduced_before": {
+        "flash_text_bytes": 574764,
+        "flash_data_bytes": 880,
+        "flash_bytes": 575644,
+        "bss_bytes": 234568,
+        "elf_sha256": "cc735f36b3976527b7a295fed78a43627c41e565b81ce54418ff1ecd22e712f2"
+      },
+      "reduced_saved_bytes": 11580
+    },
+    "4631": {
+      "full": {
+        "flash_text_bytes": 682064,
+        "flash_data_bytes": 884,
+        "flash_bytes": 682948,
+        "bss_bytes": 234564,
+        "elf_sha256": "a4b4fda84ca6cadb733de703e692f608691a5dcd3cf31e474ad0c3898105eef4",
+        "available_internal_bytes": 83180,
+        "conservative_required_heap_bytes": 83136,
+        "capabilities_manifest_sha256": "c1b05b741f6a822334d33083d51737435b2f7e72eea3633b24eda07fc43a6971"
+      },
+      "reduced": {
+        "flash_text_bytes": 614420,
+        "flash_data_bytes": 884,
+        "flash_bytes": 615304,
+        "bss_bytes": 234564,
+        "elf_sha256": "23fae794233d6df9d2c44cf490dba5ee1b4454f49d614a8291fd92e10e04eab1",
+        "available_internal_bytes": 85696,
+        "conservative_required_heap_bytes": 81088,
+        "capabilities_manifest_sha256": "4aa11fff367ddd1f7c70b103994dd50cad984158658eb361a5b411c2e8fcefde"
+      },
+      "reduced_before": {
+        "flash_text_bytes": 626000,
+        "flash_data_bytes": 884,
+        "flash_bytes": 626884,
+        "bss_bytes": 234564,
+        "elf_sha256": "560e9863598a122fe39bc85fa150d0ec4c96482cd00e74779d99c74fe1407bb9"
+      },
+      "reduced_saved_bytes": 11580
+    }
+  },
+  "hardware_timing": {
+    "baseline": {
+      "independent_outputs_checked": 10,
+      "elf_sha256": "05e2292b9cc1ea3273dc21c366d0244a8c8176a7d817f65308fc70db51b14d90",
+      "report_sha256": "e14a1135ddb7cc8f3800a6d75320b3aced6390ed09900b9a85179b832757f8e4",
+      "cpu_hz": 64000000,
+      "cpuid": "0x410fc241",
+      "clock_stat": "0x10001",
+      "watchdog": {
+        "running": 1,
+        "config": 1,
+        "timeout_s": 60.0
+      },
+      "measurement_overhead_cycles": [
+        20,
+        20,
+        20,
+        20,
+        20,
+        20,
+        20,
+        20,
+        20
+      ],
+      "measurements": {
+        "keypair": {
+          "cycles": [
+            3040814,
+            3040814,
+            3040814,
+            3040814,
+            3040814,
+            3040814,
+            3040814,
+            3040814,
+            3040814,
+            3040814,
+            3040814,
+            3040814,
+            3040814,
+            3040814,
+            3040814,
+            3040814,
+            3040814,
+            3040814
+          ],
+          "min_ms": 47.51271875,
+          "median_ms": 47.51271875,
+          "max_ms": 47.51271875
+        },
+        "sign_empty": {
+          "cycles": [
+            3119219,
+            3119219,
+            3119219,
+            3119219,
+            3119219,
+            3119219,
+            3119219,
+            3119219,
+            3119219,
+            3119219,
+            3119219,
+            3119219,
+            3119219,
+            3119219,
+            3119219,
+            3119219,
+            3119219,
+            3119219
+          ],
+          "min_ms": 48.737796875,
+          "median_ms": 48.737796875,
+          "max_ms": 48.737796875
+        },
+        "sign96": {
+          "cycles": [
+            3256753,
+            3256753,
+            3256753,
+            3256753,
+            3256753,
+            3256753,
+            3256753,
+            3256753,
+            3256753,
+            3256753,
+            3256753,
+            3256753,
+            3256753,
+            3256753,
+            3256753,
+            3256753,
+            3256753,
+            3256753
+          ],
+          "min_ms": 50.886765625,
+          "median_ms": 50.886765625,
+          "max_ms": 50.886765625
+        },
+        "sign256": {
+          "cycles": [
+            3391411,
+            3391411,
+            3391411,
+            3391411,
+            3391411,
+            3391411,
+            3391411,
+            3391411,
+            3391411,
+            3391411,
+            3391411,
+            3391411,
+            3391411,
+            3391411,
+            3391411,
+            3391411,
+            3391411,
+            3391411
+          ],
+          "min_ms": 52.990796875,
+          "median_ms": 52.990796875,
+          "max_ms": 52.990796875
+        },
+        "shared_secret": {
+          "cycles": [
+            2441426,
+            2441426,
+            2441426,
+            2441426,
+            2441426,
+            2441426,
+            2441426,
+            2441426,
+            2441426,
+            2441426,
+            2441426,
+            2441426,
+            2441426,
+            2441426,
+            2441426,
+            2441426,
+            2441426,
+            2441426
+          ],
+          "min_ms": 38.14728125,
+          "median_ms": 38.14728125,
+          "max_ms": 38.14728125
+        }
+      }
+    },
+    "compact": {
+      "independent_outputs_checked": 10,
+      "elf_sha256": "f637e1d5fda112ca1a8b19aa1cee6589d70db30de894ec28529c7a3dce8d16d3",
+      "report_sha256": "fa1ba95afd7a7d7d1b1047e82894ed0644608ddafc3ce9403949b62842721bd6",
+      "cpu_hz": 64000000,
+      "cpuid": "0x410fc241",
+      "clock_stat": "0x10001",
+      "watchdog": {
+        "running": 1,
+        "config": 1,
+        "timeout_s": 60.0
+      },
+      "measurement_overhead_cycles": [
+        20,
+        20,
+        20,
+        20,
+        20,
+        20,
+        20,
+        20,
+        20
+      ],
+      "measurements": {
+        "keypair": {
+          "cycles": [
+            19063260,
+            19063260,
+            19063260,
+            19063260,
+            19063260,
+            19063260,
+            19063260,
+            19063260,
+            19063260,
+            19063260,
+            19063260,
+            19063260,
+            19063260,
+            19063260,
+            19063260,
+            19063260,
+            19063260,
+            19063260
+          ],
+          "min_ms": 297.8634375,
+          "median_ms": 297.8634375,
+          "max_ms": 297.8634375
+        },
+        "sign_empty": {
+          "cycles": [
+            19166191,
+            19166191,
+            19166191,
+            19166191,
+            19166191,
+            19166191,
+            19166191,
+            19166191,
+            19166191,
+            19166191,
+            19166191,
+            19166191,
+            19166191,
+            19166191,
+            19166191,
+            19166191,
+            19166191,
+            19166191
+          ],
+          "min_ms": 299.471734375,
+          "median_ms": 299.471734375,
+          "max_ms": 299.471734375
+        },
+        "sign96": {
+          "cycles": [
+            19303725,
+            19303725,
+            19303725,
+            19303725,
+            19303725,
+            19303725,
+            19303725,
+            19303725,
+            19303725,
+            19303725,
+            19303725,
+            19303725,
+            19303725,
+            19303725,
+            19303725,
+            19303725,
+            19303725,
+            19303725
+          ],
+          "min_ms": 301.620703125,
+          "median_ms": 301.620703125,
+          "max_ms": 301.620703125
+        },
+        "sign256": {
+          "cycles": [
+            19438383,
+            19438383,
+            19438383,
+            19438383,
+            19438383,
+            19438383,
+            19438383,
+            19438383,
+            19438383,
+            19438383,
+            19438383,
+            19438383,
+            19438383,
+            19438383,
+            19438383,
+            19438383,
+            19438383,
+            19438383
+          ],
+          "min_ms": 303.724734375,
+          "median_ms": 303.724734375,
+          "max_ms": 303.724734375
+        },
+        "shared_secret": {
+          "cycles": [
+            17548456,
+            17548456,
+            17548456,
+            17548456,
+            17548456,
+            17548456,
+            17548456,
+            17548456,
+            17548456,
+            17548456,
+            17548456,
+            17548456,
+            17548456,
+            17548456,
+            17548456,
+            17548456,
+            17548456,
+            17548456
+          ],
+          "min_ms": 274.194625,
+          "median_ms": 274.194625,
+          "max_ms": 274.194625
+        }
+      }
+    },
+    "scalar_only": {
+      "independent_outputs_checked": 10,
+      "elf_sha256": "b4da043bc9e91fb4ddacce31e766d363e01dcfb861bff796c76d35391a1450d8",
+      "report_sha256": "ce660aa04cacfa7ef671c943611ac2ce7b56e53fe5e91a2012e5d03a33dbdde4",
+      "cpu_hz": 64000000,
+      "cpuid": "0x410fc241",
+      "clock_stat": "0x10001",
+      "watchdog": {
+        "running": 1,
+        "config": 1,
+        "timeout_s": 60.0
+      },
+      "measurement_overhead_cycles": [
+        20,
+        20,
+        20,
+        20,
+        20,
+        20,
+        20,
+        20,
+        20
+      ],
+      "measurements": {
+        "keypair": {
+          "cycles": [
+            3017258,
+            3017258,
+            3017258,
+            3017258,
+            3017258,
+            3017258,
+            3017258,
+            3017258,
+            3017258,
+            3017258,
+            3017258,
+            3017258,
+            3017258,
+            3017258,
+            3017258,
+            3017258,
+            3017258,
+            3017258
+          ],
+          "min_ms": 47.14465625,
+          "median_ms": 47.14465625,
+          "max_ms": 47.14465625
+        },
+        "sign_empty": {
+          "cycles": [
+            3120189,
+            3120189,
+            3120189,
+            3120189,
+            3120189,
+            3120189,
+            3120189,
+            3120189,
+            3120189,
+            3120189,
+            3120189,
+            3120189,
+            3120189,
+            3120189,
+            3120189,
+            3120189,
+            3120189,
+            3120189
+          ],
+          "min_ms": 48.752953125,
+          "median_ms": 48.752953125,
+          "max_ms": 48.752953125
+        },
+        "sign96": {
+          "cycles": [
+            3257723,
+            3257723,
+            3257723,
+            3257723,
+            3257723,
+            3257723,
+            3257723,
+            3257723,
+            3257723,
+            3257723,
+            3257723,
+            3257723,
+            3257723,
+            3257723,
+            3257723,
+            3257723,
+            3257723,
+            3257723
+          ],
+          "min_ms": 50.901921875,
+          "median_ms": 50.901921875,
+          "max_ms": 50.901921875
+        },
+        "sign256": {
+          "cycles": [
+            3392381,
+            3392381,
+            3392381,
+            3392381,
+            3392381,
+            3392381,
+            3392381,
+            3392381,
+            3392381,
+            3392381,
+            3392381,
+            3392381,
+            3392381,
+            3392381,
+            3392381,
+            3392381,
+            3392381,
+            3392381
+          ],
+          "min_ms": 53.005953125,
+          "median_ms": 53.005953125,
+          "max_ms": 53.005953125
+        },
+        "shared_secret": {
+          "cycles": [
+            2428881,
+            2428881,
+            2428881,
+            2428881,
+            2428881,
+            2428881,
+            2428881,
+            2428881,
+            2428881,
+            2428881,
+            2428881,
+            2428881,
+            2428881,
+            2428881,
+            2428881,
+            2428881,
+            2428881,
+            2428881
+          ],
+          "min_ms": 37.951265625,
+          "median_ms": 37.951265625,
+          "max_ms": 37.951265625
+        }
+      }
+    },
+    "comparison": {
+      "keypair": {
+        "added_ms": 250.35071874999997,
+        "ratio": 6.269130568328086
+      },
+      "sign_empty": {
+        "added_ms": 250.73393749999997,
+        "ratio": 6.144548042314438
+      },
+      "sign96": {
+        "added_ms": 250.73393749999997,
+        "ratio": 5.927291692062615
+      },
+      "sign256": {
+        "added_ms": 250.73393750000002,
+        "ratio": 5.731650631551293
+      },
+      "shared_secret": {
+        "added_ms": 236.04734374999998,
+        "ratio": 7.187789431258617
+      }
+    },
+    "scalar_only_comparison": {
+      "keypair": {
+        "added_ms": -0.3680625000000006
+      },
+      "sign_empty": {
+        "added_ms": 0.015156249999996874
+      },
+      "sign96": {
+        "added_ms": 0.015156249999996874
+      },
+      "sign256": {
+        "added_ms": 0.015156249999996874
+      },
+      "shared_secret": {
+        "added_ms": -0.19601562500000114
+      }
+    }
+  },
+  "hardware_method": {
+    "clock_hz": 64000000,
+    "code_and_constants": "SRAM",
+    "interrupts": "masked",
+    "per_operation_samples": 18,
+    "vectors": 2,
+    "warmups_per_vector_and_operation": 1,
+    "watchdog": "fed before each operation, outside the timed region; 60 second configured timeout",
+    "counter": "Cortex-M4 DWT CYCCNT",
+    "overhead": "20 cycles, included in the displayed timings",
+    "normal_application_flash_changed": false,
+    "bootloader_changed": false,
+    "existing_application_and_gateway_services_restored": true
+  },
+  "benchmark_sources": {
+    "tools/hil/nrf52_crypto_benchmark.c": "64f4d2f4d189e9d4b01a64b33f1f2d461a86bc7c276f4a514459325c7a022a23",
+    "tools/hil/nrf52_crypto_benchmark.ld": "c12f3aaabad0a81c788c5eb869d09e5ecd5de5b2982af5c034daf2140b688f17"
+  },
+  "compiler": "arm-none-eabi-gcc 14.2.1",
+  "benchmark_flags": [
+    "-std=c99",
+    "-Os",
+    "-flto",
+    "-mcpu=cortex-m4",
+    "-mthumb",
+    "-mfloat-abi=hard",
+    "-mfpu=fpv4-sp-d16",
+    "-ffunction-sections",
+    "-fdata-sections",
+    "-fno-strict-aliasing",
+    "-DED25519_NO_SEED=1",
+    "-DED25519_COMPACT_BASE=1",
+    "-DED25519_COMPACT_SHA512=1"
+  ],
+  "benchmark_modes": {
+    "baseline": {
+      "BENCH_COMPACT": 0,
+      "ED25519_COMPACT_SCALAR": 0,
+      "ED25519_COMPACT_FIELD": 0
+    },
+    "compact": {
+      "BENCH_COMPACT": 1,
+      "ED25519_COMPACT_SCALAR": 1,
+      "ED25519_COMPACT_FIELD": 1
+    },
+    "scalar_only": {
+      "BENCH_COMPACT": 2,
+      "ED25519_COMPACT_SCALAR": 2,
+      "ED25519_COMPACT_FIELD": 0,
+      "note": "Scalar flag 2 is true in the same preprocessor gate as the selected production value 1."
+    }
+  },
+  "rejected_field_candidate": {
+    "reason": "Adds about 251 ms to signing and 236 ms to shared-secret calculation; synchronous radio servicing can be delayed.",
+    "production_flash_images": {
+      "3401": {
+        "reduced_before": {
+          "flash_text_bytes": 574764,
+          "flash_data_bytes": 880,
+          "flash_bytes": 575644,
+          "bss_bytes": 234568,
+          "elf_sha256": "cc735f36b3976527b7a295fed78a43627c41e565b81ce54418ff1ecd22e712f2"
+        },
+        "reduced_after": {
+          "flash_text_bytes": 558800,
+          "flash_data_bytes": 880,
+          "flash_bytes": 559680,
+          "bss_bytes": 234568,
+          "elf_sha256": "4306af7914d4f2a21296d21537a6959e9d69bddb6c6f5ac24b007ce1bfaea34a"
+        },
+        "full_after": {
+          "flash_text_bytes": 618056,
+          "flash_data_bytes": 880,
+          "flash_bytes": 618936,
+          "bss_bytes": 234568,
+          "elf_sha256": "320cf1ef5a436c77781f69618fee4824cf52518d6756f216fdebc8a2e3b46b71"
+        },
+        "reduced_saved_bytes": 15964
+      },
+      "4631": {
+        "reduced_before": {
+          "flash_text_bytes": 626000,
+          "flash_data_bytes": 884,
+          "flash_bytes": 626884,
+          "bss_bytes": 234564,
+          "elf_sha256": "560e9863598a122fe39bc85fa150d0ec4c96482cd00e74779d99c74fe1407bb9"
+        },
+        "reduced_after": {
+          "flash_text_bytes": 610036,
+          "flash_data_bytes": 884,
+          "flash_bytes": 610920,
+          "bss_bytes": 234564,
+          "elf_sha256": "09355d3e839821ad3147be87199dd3cd608b3a1978cbd19234661f304d0a7e84"
+        },
+        "full_after": {
+          "flash_text_bytes": 677680,
+          "flash_data_bytes": 884,
+          "flash_bytes": 678564,
+          "bss_bytes": 234564,
+          "elf_sha256": "5f75a4b1b699279d0746aa8c041015665948c6bc3ba02a1d1c1e146c23b7aa10"
+        },
+        "reduced_saved_bytes": 15964
+      }
+    },
+    "additional_reduced_savings_bytes": 4384,
+    "prior_4631_incremental_savings_bytes": {
+      "compact_scalar_and_field": 14008,
+      "gps_version_parser": 1940,
+      "cli_reply_copy_compiler_policy": 16,
+      "total": 15964
+    }
+  },
+  "production_validation": {
+    "3401_full": {
+      "capability_markers": 14,
+      "passed": true
+    },
+    "3401_reduced": {
+      "capability_markers": 12,
+      "passed": true
+    },
+    "4631_full": {
+      "capability_markers": 16,
+      "passed": true
+    },
+    "4631_reduced": {
+      "capability_markers": 14,
+      "passed": true
+    },
+    "checks": [
+      "LoRa OTA required by production packaging",
+      "Conservative RAM budget",
+      "Compiled Bluetooth DFU handoff",
+      "Application-only UF2 address range"
+    ]
+  },
+  "linked_arm_checks": {
+    "3401": {
+      "passed": true,
+      "elf_sha256": "4f7ea9df20e9fbbcab97fc1f98d67cbaaea9fd59d79111b4c01dcf83b4338330",
+      "instruction_meter": "native",
+      "measurements": [
+        {
+          "operation": "sign",
+          "vector": 1,
+          "message_bytes": 0,
+          "stack_bytes": 3512,
+          "instructions": 1678474
+        },
+        {
+          "operation": "sign",
+          "vector": 1,
+          "message_bytes": 96,
+          "stack_bytes": 3512,
+          "instructions": 1706221
+        },
+        {
+          "operation": "sign",
+          "vector": 1,
+          "message_bytes": 256,
+          "stack_bytes": 3512,
+          "instructions": 1733968
+        },
+        {
+          "operation": "keypair",
+          "vector": 1,
+          "stack_bytes": 2808,
+          "instructions": 1645602
+        },
+        {
+          "operation": "shared_secret",
+          "vector": 1,
+          "stack_bytes": 768,
+          "instructions": 1290321
+        },
+        {
+          "operation": "sign",
+          "vector": 2,
+          "message_bytes": 1,
+          "stack_bytes": 3512,
+          "instructions": 1678524
+        },
+        {
+          "operation": "sign",
+          "vector": 2,
+          "message_bytes": 96,
+          "stack_bytes": 3512,
+          "instructions": 1706221
+        },
+        {
+          "operation": "sign",
+          "vector": 2,
+          "message_bytes": 256,
+          "stack_bytes": 3512,
+          "instructions": 1733968
+        },
+        {
+          "operation": "keypair",
+          "vector": 2,
+          "stack_bytes": 2808,
+          "instructions": 1645602
+        },
+        {
+          "operation": "shared_secret",
+          "vector": 2,
+          "stack_bytes": 768,
+          "instructions": 1289673
+        }
+      ],
+      "scope": "Actual linked ARM crypto frames/instruction counts only; excludes caller/ISR stacks and physical timing."
+    },
+    "4631": {
+      "passed": true,
+      "elf_sha256": "23fae794233d6df9d2c44cf490dba5ee1b4454f49d614a8291fd92e10e04eab1",
+      "instruction_meter": "native",
+      "measurements": [
+        {
+          "operation": "sign",
+          "vector": 1,
+          "message_bytes": 0,
+          "stack_bytes": 3512,
+          "instructions": 1678474
+        },
+        {
+          "operation": "sign",
+          "vector": 1,
+          "message_bytes": 96,
+          "stack_bytes": 3512,
+          "instructions": 1706221
+        },
+        {
+          "operation": "sign",
+          "vector": 1,
+          "message_bytes": 256,
+          "stack_bytes": 3512,
+          "instructions": 1733968
+        },
+        {
+          "operation": "keypair",
+          "vector": 1,
+          "stack_bytes": 2808,
+          "instructions": 1645602
+        },
+        {
+          "operation": "shared_secret",
+          "vector": 1,
+          "stack_bytes": 768,
+          "instructions": 1290321
+        },
+        {
+          "operation": "sign",
+          "vector": 2,
+          "message_bytes": 1,
+          "stack_bytes": 3512,
+          "instructions": 1678524
+        },
+        {
+          "operation": "sign",
+          "vector": 2,
+          "message_bytes": 96,
+          "stack_bytes": 3512,
+          "instructions": 1706221
+        },
+        {
+          "operation": "sign",
+          "vector": 2,
+          "message_bytes": 256,
+          "stack_bytes": 3512,
+          "instructions": 1733968
+        },
+        {
+          "operation": "keypair",
+          "vector": 2,
+          "stack_bytes": 2808,
+          "instructions": 1645602
+        },
+        {
+          "operation": "shared_secret",
+          "vector": 2,
+          "stack_bytes": 768,
+          "instructions": 1289673
+        }
+      ],
+      "scope": "Actual linked ARM crypto frames/instruction counts only; excludes caller/ISR stacks and physical timing."
+    }
+  },
+  "linked_arm_baseline_4631": {
+    "passed": true,
+    "elf_sha256": "2beff2f916231421287e0a774b6289df365336bfaa0d325a1521985b9001a18b",
+    "instruction_meter": "native",
+    "measurements": [
+      {
+        "operation": "sign",
+        "vector": 1,
+        "message_bytes": 0,
+        "stack_bytes": 3312,
+        "instructions": 1666244
+      },
+      {
+        "operation": "sign",
+        "vector": 1,
+        "message_bytes": 96,
+        "stack_bytes": 3312,
+        "instructions": 1693991
+      },
+      {
+        "operation": "sign",
+        "vector": 1,
+        "message_bytes": 256,
+        "stack_bytes": 3312,
+        "instructions": 1721738
+      },
+      {
+        "operation": "keypair",
+        "vector": 1,
+        "stack_bytes": 2808,
+        "instructions": 1645602
+      },
+      {
+        "operation": "shared_secret",
+        "vector": 1,
+        "stack_bytes": 768,
+        "instructions": 1290329
+      },
+      {
+        "operation": "sign",
+        "vector": 2,
+        "message_bytes": 1,
+        "stack_bytes": 3312,
+        "instructions": 1666294
+      },
+      {
+        "operation": "sign",
+        "vector": 2,
+        "message_bytes": 96,
+        "stack_bytes": 3312,
+        "instructions": 1693991
+      },
+      {
+        "operation": "sign",
+        "vector": 2,
+        "message_bytes": 256,
+        "stack_bytes": 3312,
+        "instructions": 1721738
+      },
+      {
+        "operation": "keypair",
+        "vector": 2,
+        "stack_bytes": 2808,
+        "instructions": 1645602
+      },
+      {
+        "operation": "shared_secret",
+        "vector": 2,
+        "stack_bytes": 768,
+        "instructions": 1289681
+      }
+    ],
+    "scope": "Actual linked ARM crypto frames/instruction counts only; excludes caller/ISR stacks and physical timing."
+  }
+}
