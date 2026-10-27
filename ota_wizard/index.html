@@ -2679,9 +2679,11 @@ need a second local radio or the phone app. Install a source firmware build
 containing <code>ota.peer</code> first; older Repeater firmware cannot manage the remote
 node through USB. Check with <code>ota.peer status</code> in its USB console.</p>
 <p>The Full Companion source also needs a current build containing the wizard's
-direct admin guard. An older Full Companion may serve OTA files but cannot
+version 2 direct admin support. An older Full Companion may serve OTA files but cannot
 provide this guarded admin connection; the wizard will ask for a source
-firmware upgrade instead of proceeding with that connection.</p>
+firmware upgrade instead of proceeding with that connection.
+Check <code>get ota.direct</code> from its USB console for <code>v=2</code>. Update replies use a
+separate mailbox; ordinary queued messages and saved contact routes stay intact.</p>
 <p>For this wizard, use an ESP32 source instead of RAK4631 Full. The RAK image's
 current flash limit prevents adding the new direct admin helper. RAK4631
 Repeaters and Room Servers remain supported destinations.</p>
@@ -2744,7 +2746,10 @@ before reporting success.</p>
 when a compatible builder and the <strong>exact running firmware</strong> are available
 and the package is smaller. A file with the same version label but a different
 body hash is not a usable base. Published bases are found through GitHub
-releases; a local base can be selected when the running image was custom.</p>
+releases; a local base can be selected when the running image was custom.
+Unsigned full <code>.mota</code> files can also supply the new image for a differential
+update. Signed packages retain their signatures; prepared bundles retain their
+chosen transfer format.</p>
 <p>On a computer, the differential builder can be prepared automatically with a
 compatible Rust toolchain. On a Pi without a builder, a full update is made by
 Python without compiling. The destination must support full updates, such as
@@ -2786,9 +2791,15 @@ and destination keys before restoring settings. A normal update also restores an
 session for the selected destination before proceeding.</p>
 <p>Keep the recovery record until restoration is complete. A lost install reply
 is followed by a running-image check; the wizard does not blindly repeat an
-install command. Temporary radio windows use the existing main-channel
+install command. A cancelled download is cleared only when its package ID
+matches this update. Automatic installation is restored only after installation
+or receive-slot clearance is confirmed; an uncertain result leaves it off and
+keeps the recovery record.</p>
+<p>Temporary radio windows use the existing main-channel
 settings. Existing temporary schedules block an update before settings are
-changed, including on older firmware.</p>
+changed, including on older firmware.
+The window covers both bootloader and firmware transfers, including reboot
+and setup time. Status checks normally run every ten seconds.</p>
 <p>The cache is normally <code>~/.cache/meshcore/ota</code> on Linux,
 <code>~/Library/Caches/MeshCore/ota</code> on macOS, or <code>%LOCALAPPDATA%\MeshCore\ota</code> on
 Windows. It contains firmware, public preparation records, selected board
