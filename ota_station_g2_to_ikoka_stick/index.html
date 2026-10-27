@@ -2867,6 +2867,72 @@ post-install <code>base_hash</code> is the body hash printed above. A full QSPI
 application update needs no copy of the old firmware.
 This locally packaged application is unsigned and uses explicit manual
 installation; the separate bootloader package remains signed.</p>
+<details id="differential-upgrade">
+<summary>Optional: differential firmware upgrade (smaller download)</summary>
+<p>A differential update sends a patch from the Ikoka Stick's exact running
+application to the new application. It can reduce LoRa transfer time. The
+bootloader update in step 7 still uses the signed full bootloader package.</p>
+<p>Prepare the new binary and full package above first. Use this option only
+when you also have the <strong>original application DFU ZIP for the firmware
+currently running on the Ikoka Stick</strong>. A matching version label or a rebuild
+of the same commit is not enough. If that original file is unavailable, use
+the full update above.</p>
+<p>On <strong>Ikoka Stick — Repeater Admin</strong>, get its current identity:</p>
+<pre><code class="language-text">ver
+ota self
+</code></pre>
+<p>Copy the original application DFU ZIP onto <strong>Raspberry Pi</strong> as
+<code>downloads/ikoka-stick-33dbm-repeater-running.zip</code>. In the Pi terminal, paste
+the 16-character <code>base_hash</code> from that fresh <code>ota self</code> reply when prompted:</p>
+<pre><code class="language-bash">read -r -p 'Current Ikoka Stick base_hash (16 hex characters): ' IKOKA_BASE_HASH
+export IKOKA_BASE_HASH
+python3 - &lt;&lt;'PY'
+import hashlib, json, os, re, struct, zipfile
+from pathlib import Path
+expected = os.environ['IKOKA_BASE_HASH'].strip().upper()
+assert re.fullmatch(r'[0-9A-F]{16}', expected), 'Invalid base_hash'
+with zipfile.ZipFile('downloads/ikoka-stick-33dbm-repeater-running.zip') as archive:
+    app = json.loads(archive.read('manifest.json'))['manifest']['application']
+    image = archive.read(app['bin_file'])
+trailer = image[-56:]
+assert len(trailer) == 56 and trailer[:4] == b'EndF', 'Missing EndF'
+assert struct.unpack_from('&lt;I', trailer, 4)[0] == len(image) - 56
+assert hashlib.sha256(image[:-56]).digest()[:8] == trailer[8:16], 'Body hash mismatch'
+assert struct.unpack_from('&lt;I', trailer, 20)[0] == 0xE5331F02, 'Wrong application target'
+assert trailer[24:].rstrip(b'\0') == b'ikoka_stick_nrf_33dbm', 'Wrong board'
+assert trailer[8:16].hex().upper() == expected, 'This is not the running firmware'
+Path('inputs/ikoka-stick-33dbm-repeater-running.bin').write_bytes(image)
+print('Exact running application confirmed:', expected)
+PY
+</code></pre>
+<p>Stop if any check fails. Then build and check the <strong>in-place</strong> nRF52 delta:</p>
+<pre><code class="language-bash">motatool build \
+  --base inputs/ikoka-stick-33dbm-repeater-running.bin \
+  --fw inputs/ikoka-stick-33dbm-repeater.bin \
+  --patch-type in-place \
+  --out inputs/ikoka-stick-33dbm-repeater-delta.mota
+motatool verify inputs/ikoka-stick-33dbm-repeater-delta.mota
+motatool inspect inputs/ikoka-stick-33dbm-repeater-delta.mota
+ls -lh serve/ikoka-stick-33dbm-repeater.mota inputs/ikoka-stick-33dbm-repeater-delta.mota
+</code></pre>
+<p>Check <code>codec_id</code> is <code>2 (detools-in-place)</code>, <code>base_hash</code> matches the live Ikoka
+Stick, target is <code>E5331F02</code>, and the new version/hardware match the full
+package. Let motatool derive the safe workspace from the firmware; do not
+override its memory or target checks. Compare package sizes and keep the full
+update if the delta is not smaller. <code>verify</code> checks the delta container's
+integrity; it does not prove that you selected the running base image.</p>
+<p>To serve the delta, replace the full application package in the serving
+folder <strong>before starting motatool</strong>:</p>
+<pre><code class="language-bash">cp inputs/ikoka-stick-33dbm-repeater-delta.mota serve/ikoka-stick-33dbm-repeater.mota
+</code></pre>
+<p>Continue with steps 4–9. In step 8, choose the <strong>application, delta</strong> row and
+use its own eight-character manifest ID with <code>ota pull &lt;APP_MID8&gt; flash</code>,
+then <code>ota install</code> when ready. The target's <code>base_hash</code> must still match
+immediately before that pull. Updating only the bootloader in step 7 leaves
+the running application unchanged, so it does not invalidate the delta base.
+After installation, check the same new firmware version and expected
+post-install body hash printed earlier in step 3.</p>
+</details>
 <h2 id="4-identify-the-station-g2s-usb-port">4. Identify the Station G2's USB port</h2>
 <p>On <strong>Raspberry Pi — terminal</strong>:</p>
 <pre><code class="language-bash">ls -l /dev/serial/by-id/
