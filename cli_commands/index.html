@@ -2186,6 +2186,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#full-firmware-raw-radio2-kiss-modem" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Full firmware raw radio2 KISS modem
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#set-repeater-room-server-and-sensor-reply-profiles" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -5364,6 +5375,17 @@
     <span class="md-ellipsis">
       
         ESP32 Full Companion Ethernet tunnel
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#full-firmware-raw-radio2-kiss-modem" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Full firmware raw radio2 KISS modem
       
     </span>
   </a>
@@ -8710,6 +8732,32 @@ Supported ESP32 Full SX1262/SX1276 builds expose trusted-LAN KISS-over-TCP on
 station port 5003. It does not add an SSH server, use <code>tx.ssh</code> tags, or bridge
 Ethernet into MeshCore. Conflicting radio2 owners are not overwritten.
 See <a href="../radio_profiles/#esp32-companion-ethernet-over-lora-kiss">Ethernet setup, host commands and limits</a>.</p>
+<h2 id="full-firmware-raw-radio2-kiss-modem">Full firmware raw radio2 KISS modem</h2>
+<pre><code class="language-text">get kiss
+set kiss.transport usb
+set kiss on
+set kiss off
+</code></pre>
+<p>Full ESP32 and nRF52 LoRa images can keep their normal MeshCore role on
+radio1 while a connected computer sends and receives raw packets on radio2.
+The setting is saved and defaults to <strong>off</strong>. First configure an explicit
+saved <code>radio2</code> tuple in <code>rxtx</code> mode. <code>get kiss</code> reports the transport, state,
+packet counters and any radio2 conflict. Setting changes require a local
+USB, BLE or network management connection.</p>
+<p>With USB selected, the normal CLI stays available until the computer sends
+a KISS frame delimiter (<code>0xC0</code>). That session then owns USB; functional text
+and debug logging are suppressed without changing their saved preferences.
+KISS RETURN (<code>C0 FF C0</code>) or a detected USB disconnect returns to the CLI.</p>
+<p>On ESP32, <code>set kiss.transport tcp</code> selects a separate KISS listener on the
+station WiFi address, port <strong>5004</strong>. It does not start WiFi or listen on the
+setup AP. One computer can connect at a time. This is an unauthenticated raw
+modem endpoint for a trusted LAN, like the existing Ethernet KISS service.</p>
+<p>KISS port 0 DATA maps only to radio2. Packets are 1-255 bytes, unchanged over
+the air, using the normal private LoRa sync word, explicit headers, CRC and
+normal IQ. The host must honor transmit pacing. This interface does not add
+RNode framing, fragmentation or Reticulum routing; those remain host tasks.
+See <a href="../kiss_modem_protocol/#full-firmware-host-kiss">Full host KISS framing and limits</a>
+for the wire protocol and session rules.</p>
 <h2 id="set-repeater-room-server-and-sensor-reply-profiles">Set repeater, room-server, and sensor reply profiles</h2>
 <pre><code class="language-text">get tx.reply
 set tx.reply both

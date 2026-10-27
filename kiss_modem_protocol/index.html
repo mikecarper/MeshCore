@@ -1914,6 +1914,34 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="Serial Configuration">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#full-firmware-host-kiss" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Full firmware host KISS
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#dedicated-modem-serial-configuration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Dedicated modem serial configuration
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -2862,6 +2890,34 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="Serial Configuration">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#full-firmware-host-kiss" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Full firmware host KISS
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#dedicated-modem-serial-configuration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Dedicated modem serial configuration
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -3286,6 +3342,91 @@
 time-shared LoRa profile. It is still one physical transceiver: the firmware
 fast-switches between <code>radio</code> and <code>radio2</code>; it does not create a second radio.</p>
 <h2 id="serial-configuration">Serial Configuration</h2>
+<h3 id="full-firmware-host-kiss">Full firmware host KISS</h3>
+<p>Full ESP32 and nRF52 LoRa firmware includes a separate, default-off raw
+radio2 host service. It preserves the device's normal Companion, Repeater,
+Room Server or Sensor role on radio1. It is enabled in the Full sensor/OTA
+profile on nRF52; reduced infrastructure images omit the service.</p>
+<p>Configure the desired saved radio2 RF tuple in <code>rxtx</code> mode, then use:</p>
+<pre><code class="language-text">set kiss.transport usb
+set kiss on
+get kiss
+</code></pre>
+<p>Both choices are saved. <code>set kiss off</code> stops the service and releases its
+runtime radio2 protocol lease without changing the saved radio2 tuple.
+Temporary radio settings and Meshtext/Ethernet radio2 owners block admission.
+The service never chooses a frequency, takes another service's radio2 lease,
+crosses raw packets onto radio1, or feeds them into MeshCore parsing/bridges.
+If the initial radio2 change is still pending, the connection waits and sends
+READY when radio2 becomes available; no reconnect is needed. DATA received
+while waiting is discarded, so hosts should wait for the initial READY.</p>
+<p>USB remains the normal CLI until an initial KISS FEND (<code>C0</code>). A delimiter
+inside an unfinished Companion frame or an active mOTA session keeps its
+original protocol ownership. During the raw
+session, USB Companion framing and text/debug output are parked. Send the
+standard KISS RETURN frame (<code>C0 FF C0</code>) to leave the session, then issue CLI
+commands normally. A detected USB disconnect/reset also ends the session.
+UART-to-USB adapters without a disconnect signal may require RETURN.
+If the radio2 settings change mid-session, USB stays quarantined until RETURN
+or disconnect, so leftover binary bytes cannot become CLI commands.
+For Espressif USB-Serial/JTAG (<code>303A:1001</code>), open the host port with DTR and
+RTS deasserted; those lines control boot/reset selection. Other USB CDC
+devices, including nRF52/TinyUSB, retain their normal DTR handling.</p>
+<p>ESP32 also supports <code>set kiss.transport tcp</code>. Enable station WiFi separately
+and connect to its address on TCP <strong>5004</strong>. The service accepts one client,
+does not bind the setup AP, and has no authentication. Use a trusted LAN.
+WiFi loss, RETURN, setting changes and invalidated radio2 generations close
+the connection and discard queued host work. A second client cannot displace
+an existing owner. USB remains available for management in TCP mode.</p>
+<p>The Full service uses standard KISS escaping and the following frames:</p>
+<table>
+<thead>
+<tr>
+<th>Type</th>
+<th>Direction</th>
+<th>Payload and meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>00</code></td>
+<td>Both</td>
+<td>Raw DATA, 1-255 bytes, exclusively radio2</td>
+</tr>
+<tr>
+<td><code>0F</code></td>
+<td>Device to host</td>
+<td><code>01</code>: READY, initially and after each completed TX</td>
+</tr>
+<tr>
+<td><code>06</code></td>
+<td>Device to host</td>
+<td><code>F8 01</code>: TX succeeded; <code>F8 00</code>: TX failed</td>
+</tr>
+<tr>
+<td><code>FF</code></td>
+<td>Host to device</td>
+<td>Empty payload: RETURN to CLI/close TCP</td>
+</tr>
+</tbody>
+</table>
+<p>Other ports and parameter/control commands are ignored. RF parameters are
+configured through the ordinary saved radio2 CLI, not RNode control commands.
+Wait for READY before sending the next packet. The device retains at most
+two queued host frames plus one in-flight transmission, uses bounded I/O,
+and preserves normal CAD, duty budget and MeshCore transmit fairness.
+<code>get kiss</code> includes RX/TX/failure/drop/malformed counters. A drop counter can
+include received packets that could not fit in the bounded host output queue.</p>
+<p>The raw RF payload has no additional header. It uses the ordinary private
+LoRa sync word (<code>0x12</code>, represented as <code>0x1424</code> by SX126x), explicit headers,
+CRC and normal IQ. Peers must match RF parameters, including preamble timing
+appropriate for the time-shared receiver. Only one physical radio is present.</p>
+<p>This is a generic host modem. Reticulum/RNode interoperability requires host
+adaptation for RNode's one-byte RF header, fragmentation/reassembly of larger
+packets and transmit pacing. The Full image runs no Reticulum router and
+imports no RNode firmware code. The separate dedicated KISS firmware below
+retains its original two-port interface and binary configuration extensions.</p>
+<h3 id="dedicated-modem-serial-configuration">Dedicated modem serial configuration</h3>
 <p>115200 baud, 8N1, no flow control.</p>
 <h2 id="frame-format">Frame Format</h2>
 <p>Standard KISS framing per the KA9Q/K3MC specification.</p>

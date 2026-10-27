@@ -3088,6 +3088,13 @@ devices reject LoRa profile commands. KISS is a raw host-controlled modem: it
 exposes equivalent RAM-only binary <code>SetRadio2</code>/<code>SetTempRadio2</code> commands and
 logical KISS Data ports, documented in <a href="../kiss_modem_protocol/">the KISS modem protocol</a>.
 It does not use the Mesh CLI's persistent profile file or Mesh retry queues.</p>
+<p>Full ESP32 and nRF52 LoRa images also offer an optional
+<a href="../kiss_modem_protocol/#full-firmware-host-kiss">raw host KISS service</a>.
+<code>set kiss on</code> enables it, default off, while radio1 retains its normal role.
+It borrows an explicitly configured saved <code>radio2</code> profile for the host's
+session. Meshtext, Ethernet and temporary radio2 owners cannot share that
+lease. This service is a raw modem; the connected computer handles its own
+network protocol and routing.</p>
 <h2 id="quick-setup">Quick setup</h2>
 <p>Keep the primary channel configured with <code>radio</code>, then add the second:</p>
 <pre><code class="language-text">set radio2 910.5,500,8,5,rx
