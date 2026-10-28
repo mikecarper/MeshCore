@@ -2526,6 +2526,10 @@ plus the ESP32 USB recovery fix in
 SolarXiao 33S, RAK3401 and Heltec V4.3 passed physical sleep, override, automatic
 wake and reboot-persistence trials. Current savings and operation with a real
 battery at 5% were not measured.</p>
+<p>The later <a href="../hardware_validation_mercerwood_1_18_0_2_2026-10-28/">1.18.0.2 bench campaign</a>
+found and fixed nRF52 USB reconnect starvation during automatic emergency
+sleep. Attached USB hosts now use CPU idle slices of at most 100 ms while
+LoRa stays asleep. The measurements below retain their original source.</p>
 <h2 id="behavior">Behavior</h2>
 <p>Supported infrastructure images enter automatic emergency mode at <strong>5% or
 less</strong>, and recover at <strong>7% or more</strong>, using a voltage-derived battery estimate
