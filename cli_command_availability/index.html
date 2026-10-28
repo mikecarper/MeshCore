@@ -3040,6 +3040,10 @@ over the normal binary USB, BLE, or TCP connection:</p>
 <td>Every Companion text terminal and command <code>0x42</code>; reports the running platform's storage layout</td>
 </tr>
 <tr>
+<td><a href="../cli_commands/#select-the-next-application-slot-esp32"><code>get/set boot.slot</code></a></td>
+<td>ESP32 Companion terminal, command <code>0x42</code>, and authorized LoRa CLI; select an installed <code>app0</code> or <code>app1</code> image for the next reboot</td>
+</tr>
+<tr>
 <td><a href="#memory"><code>memory</code></a></td>
 <td>ESP32 Full Companion text terminal and command <code>0x42</code></td>
 </tr>
@@ -4619,6 +4623,16 @@ should use command <code>0x42</code>. See <a href="../companion_protocol/">Compa
 <td>Diagnostics</td>
 <td><a href="../cli_commands/#show-the-storage-layout"><code>get storage.layout</code></a></td>
 <td>Detected flash size and live partition table</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>Operational</td>
+<td><a href="../cli_commands/#select-the-next-application-slot-esp32"><code>get/set boot.slot</code></a></td>
+<td>Installed ESP32 <code>app0</code>/<code>app1</code>; selected image starts after <code>reboot</code></td>
 <td>Yes</td>
 <td>Yes</td>
 <td>Yes</td>

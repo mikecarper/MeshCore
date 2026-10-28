@@ -1839,6 +1839,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#select-the-next-application-slot-esp32" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Select the next application slot (ESP32)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#enter-the-uf2-bootloader-nrf52-only" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -5079,6 +5090,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#select-the-next-application-slot-esp32" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Select the next application slot (ESP32)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#enter-the-uf2-bootloader-nrf52-only" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -7730,6 +7752,28 @@ command aliases are listed there explicitly.</p>
 - <code>poweroff</code>, or
 - <code>shutdown</code></p>
 <p><strong>Note:</strong> No reply is sent.</p>
+<hr />
+<h3 id="select-the-next-application-slot-esp32">Select the next application slot (ESP32)</h3>
+<p><strong>Usage:</strong></p>
+<pre><code class="language-text">get boot.slot
+set boot.slot app1
+get boot.slot
+reboot
+</code></pre>
+<p>Use <code>app0</code> or <code>app1</code> to select an installed application for the next reboot.
+This works through the ESP32 Repeater, Room Server, Sensor and Companion CLI
+with the usual administration permissions. Selection sends a reply and does
+not reboot automatically.</p>
+<p><code>get boot.slot</code> reports the running application, the next boot selection and
+each slot's capacity, or <code>missing</code>. A capacity does not mean the slot contains
+a valid image. Selection verifies the complete image through ESP-IDF and
+rejects missing, corrupt, rejected or unconfirmed applications. It does not
+create a second slot or install firmware.</p>
+<p>Finish or stop an active/staged OTA update before changing slots; stop the
+WiFi OTA server if it is running. Use firmware for the exact board and installed
+partition layout. Both applications share NVS and filesystem settings, and a
+later OTA update can overwrite the inactive application or change the next
+boot selection. Automatic rollback depends on the installed bootloader.</p>
 <hr />
 <h3 id="enter-the-uf2-bootloader-nrf52-only">Enter the UF2 bootloader (nRF52 only)</h3>
 <p><strong>Search terms:</strong> bootloader mode, USB firmware update, UF2 mode.</p>
