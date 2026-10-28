@@ -2336,6 +2336,17 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
+  <a href="#report-the-usb-connection-mode" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Report the USB connection mode
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#control-live-usb-logging" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -5530,6 +5541,17 @@
   
     <nav class="md-nav" aria-label="Logging">
       <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#report-the-usb-connection-mode" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Report the USB connection mode
+      
+    </span>
+  </a>
+  
+</li>
         
           <li class="md-nav__item">
   <a href="#control-live-usb-logging" class="md-nav__link">
@@ -9155,6 +9177,25 @@ OTA-only targets retain their target-specific logging policy.</p>
 <code>-full-usb-wifi-ota-</code> artifact combines USB packet logging, direct WiFi MQTT,
 LoRa OTA, and the expanded FULL feature set. A <code>-full-logging-ota-</code> artifact is
 emitted only when that hardware/role has no matching WiFi MQTT environment.</p>
+<h3 id="report-the-usb-connection-mode">Report the USB connection mode</h3>
+<p><code>get usb.mode</code> reports the primary serial backend compiled into the running
+application, checking its actual primary <code>Serial</code> type as well as the USB
+build flags. It is available on Repeaters, Room Servers, Sensors and Full
+Companions, including the Companion protocol-14 CLI command. It is read-only:
+no reset, settings write, logging toggle or packet-capture pause is performed.</p>
+<p>The exact reply is one of:</p>
+<ul>
+<li><code>usb.mode hardware-cdc-jtag</code>: ESP32 hardware USB Serial/JTAG, with CDC on boot.</li>
+<li><code>usb.mode tinyusb</code>: ESP32 TinyUSB CDC on boot, or nRF52 using TinyUSB.</li>
+<li><code>usb.mode uart</code>: ESP32 primary <code>Serial</code> is UART, not native USB CDC.</li>
+<li><code>usb.mode unknown</code>: this build does not provide a proven backend mapping.</li>
+</ul>
+<p>The result describes the application, not a connected adapter, host COM-port
+name, optional second logging interface or current ROM/DFU bootloader. There
+is no <code>set usb.mode</code>; changing the backend requires another firmware build.
+Older firmware may reject this command. A flasher should retain its manual
+connection option when the report is absent, unknown or conflicts with the
+selected USB device; it must not guess from the board name or shared USB ID.</p>
 <h3 id="control-live-usb-logging">Control live USB logging</h3>
 <p><strong>Search terms:</strong> serial logging, USB debug log, enable logging, disable logging, debug output.</p>
 <p><strong>Usage:</strong></p>
