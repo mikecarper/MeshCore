@@ -9204,6 +9204,23 @@ traffic. Verbose USB debug defaults to off for every role, including when
 loading older preferences without a debug field. Updates retain an existing
 saved <code>usb.logging</code> choice. Older binaries without the new <code>usb.debug</code>
 command retain their previous behavior until upgraded.</p>
+<p>On a shared USB console, an interactive text command pauses <code>RAW</code>, <code>RX</code>, and
+<code>TX</code> packet log lines for five minutes. Each command restarts the timer;
+logging then resumes automatically if its saved master is on. <code>get usb.logging</code>
+still reports that saved setting. <code>set usb.logging on</code> or
+<code>set logging.output usb|both</code> resumes packet logs immediately after a successful
+save. No reboot is needed.</p>
+<p>The routine <code>stats-core</code>, <code>stats-radio</code>, and <code>stats-packets</code> polls do not start
+or extend this pause. A separate logging USB port and explicit Companion
+<code>usb.logging stream</code> mode also keep logging. The pause leaves command replies,
+noise-floor sampling, saved history, LoRa telemetry, and direct WiFi MQTT
+running. A collector reading USB packet logs misses those log copies during
+the pause, including telemetry packets; this is not buffered capture.</p>
+<p><code>meshcoretomqtt</code> polls these three stats commands every 300 seconds and
+publishes <code>noise_floor</code> from the <code>stats-radio</code> reply in its MQTT status. These
+polls keep working during the pause. Its startup identity queries do trigger
+a five-minute packet-capture gap on a shared console, as do ordinary commands
+sent through its remote serial feature.</p>
 <p>For packet-only capture, use these separate text commands:</p>
 <pre><code class="language-text">set usb.debug off
 set usb.logging on
