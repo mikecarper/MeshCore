@@ -3139,6 +3139,17 @@ denominator, mode, optional preamble in symbols</strong>. <code>5</code> means c
 For the same profile at <strong>125 kHz</strong>, use:</p>
 <pre><code class="language-text">set radio2 mediamesh-range
 </code></pre>
+<p>On Companions, adding <code>#r2-mediamesh</code> in the app also saves the <code>mediamesh</code>
+profile; <code>#r2-mediamesh-range</code> selects <code>mediamesh-range</code>. Renaming another
+channel to either alias does the same. Names without <code>#</code> also work. No extra
+CLI command or forwarding-region setup is needed on a Companion.</p>
+<p>Re-saving the same preset alias, editing its key, or rebooting preserves any
+later manual radio2 changes, including <code>set radio2 off</code>. Removing the channel
+does not switch radio2 off. All <code>r2-</code> channels share one secondary profile, so
+the most recently added or renamed MediaMesh preset chooses its RF settings.
+Meshtext channels and an active foreign-protocol radio2 session cannot share
+this setup. The supplied channel name and key retain the normal alias rules
+<a href="#companion-channel-name-routing-aliases">below</a>.</p>
 <p>The RF settings match the presets documented by
 <a href="https://github.com/jade-on-mesh/meshcore-open-tak/blob/main/documentation/media-mesh.md">MeshCore Open TAK</a>
 and <a href="https://github.com/jade-on-mesh/wadamesh-tak/blob/main/MEDIAMESH.md">Wadamesh TAK</a>.
