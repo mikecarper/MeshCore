@@ -2894,6 +2894,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#operating-hours-and-daylight" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Operating hours and daylight
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#set-the-battery-percentage-voltage-range" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -6105,6 +6116,17 @@
     <span class="md-ellipsis">
       
         Emergency battery schedule
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#operating-hours-and-daylight" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Operating hours and daylight
       
     </span>
   </a>
@@ -10580,8 +10602,9 @@ low-voltage shutdown. Use it before maintenance that needs continuous uptime.
 LoRa commands must arrive during an awake window. Local serial commands remain
 available through maintenance wakes while the radio sleeps.</p>
 <p><code>get power.emergency</code> reports the mode, battery estimate, desired <code>window</code>,
-actual radio ownership, seconds until the next awake window, and remaining
-hold. With an implausible clock timestamp it reports <code>clock=uptime</code> and follows
+actual radio ownership, scheduled wake/check delay (<code>wake</code>), and remaining
+hold. Its window includes any enabled operating-hours or daylight filters.
+With an implausible clock timestamp it reports <code>clock=uptime</code> and follows
 the same 15/45-minute cycle from boot. Keep the clock set to UTC: a plausible
 timestamp alone does not prove it is synchronized. Queued
 future traffic does not keep a critically low node awake indefinitely.</p>
@@ -10589,6 +10612,51 @@ future traffic does not keep a critically low node awake indefinitely.</p>
 WiFi/ESP-NOW services are temporarily stopped and their previous live subset
 is restored when the node wakes. Companion builds and flash-constrained
 profiles that omit battery-forwarding controls do not add this feature.</p>
+<h4 id="operating-hours-and-daylight">Operating hours and daylight</h4>
+<p>The same supported infrastructure images can sleep outside daylight or a
+daily time window, even when emergency mode is inactive. Both filters default
+to <strong>off</strong> and are saved across reboots. If both are enabled, the node must be
+inside the time window <strong>and</strong> daylight. Active emergency mode further limits
+operation to the first 15 minutes of each UTC hour.</p>
+<p>For daylight-only operation, starting from the defaults:</p>
+<pre><code class="language-text">set power.daylight on
+get power.schedule
+</code></pre>
+<p>Daylight is calculated from the UTC clock and the node's saved <code>lat</code>/<code>lon</code>,
+falling back to a fresh cached GPS fix when the saved position is unset. For
+a fixed installation, saved coordinates keep the schedule independent of GPS
+freshness. This does not start GPS. Sunrise and sunset are approximate; cloud
+cover, panel output and charging status do not determine this schedule. Set
+the node's position and synchronize its UTC clock before relying on daylight
+control.</p>
+<p>For a daily operating window:</p>
+<pre><code class="language-text">set power.hours 08:00-18:00
+</code></pre>
+<p>The start is included and the end excluded. Overnight windows such as
+<code>22:00-06:00</code> work, and an end of <code>24:00</code> is accepted. Equal start/end times
+are rejected; use <code>set power.hours off</code> for unrestricted hours.
+Times use UTC by default. <code>set power.hours.offset -420</code>, for example, makes
+the window use UTC-7. The offset is minutes east of UTC, from -720 to +840;
+it is fixed and does not adjust for daylight saving time. It affects only the
+hour window, not the UTC clock, solar calculation or emergency hourly cycle.</p>
+<p>To combine daylight with the emergency hourly duty cycle:</p>
+<pre><code class="language-text">set power.daylight on
+set power.emergency on
+</code></pre>
+<p><code>get power.schedule</code> shows the combined policy. Its <code>check</code> value is the next
+candidate schedule decision; another filter may keep the node asleep afterward.
+The individual settings also have <code>get power.daylight</code>, <code>get power.hours</code> and
+<code>get power.hours.offset</code> readbacks. <code>set power.schedule off</code> disables both
+operating filters; it does not disable manual emergency mode or automatic
+low-battery protection.</p>
+<p>An unknown clock leaves the time-based filters open. A missing valid position
+leaves the daylight filter open; an independently configured hours filter
+still applies. Status reports the unavailable input rather than guessing.
+The existing emergency fallback to a boot-relative cycle remains in force.
+<code>set power.awake &lt;minutes&gt;</code> overrides all these schedules temporarily;
+hard low-voltage protection and existing active-operation sleep deferrals
+remain in force. These commands use the same USB/admin CLI and authorized
+management-command paths as <code>power.emergency</code>.</p>
 <h4 id="set-the-battery-percentage-voltage-range">Set the battery percentage voltage range</h4>
 <p>The forwarding thresholds use a voltage-derived percentage. On infrastructure
 builds without the nRF52 voltage policy, the saved range is adjustable with:</p>
