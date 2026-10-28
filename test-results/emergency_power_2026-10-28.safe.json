@@ -509,5 +509,281 @@
     "real_five_percent_battery_qualified": false,
     "continuous_45_minute_sleep_qualified": false,
     "bench_source_sha256": "2c4799cb239f9d092d5cf46c0366408aa95f766f786f56af4b913e07b636418f"
+  },
+  "integration_builds": [
+    {
+      "artifact_target": "RAK_4631_repeater_lora_ota_no_external_sensors-full-ota",
+      "pio_environment": "RAK_4631_repeater",
+      "source_commit": "8c2ddc9ac",
+      "passed": true,
+      "linked_flash_bytes": 687512,
+      "flash_limit_bytes": 815104,
+      "capability_checks": {
+        "passed": 16,
+        "total": 16
+      },
+      "ota_update_verified": true,
+      "memory": {
+        "passed": true,
+        "elf_sha256": "a5a590f54660ca2b0c57bcc8f5400659fe46b4f3dd379ad0b2ab924c63519512",
+        "available_internal_bytes": 83156,
+        "largest_internal_region_bytes": 83156,
+        "required_heap_bytes": 83136,
+        "required_contiguous_bytes": 19168
+      },
+      "memory_manifest_sha256": "a9f6ab28eeed7138b9f38f483c69db031491cfd91859ae05374acdff46bf1a45",
+      "capabilities_manifest_sha256": "46615a33db71a170d2be3a5c52274f7e1e2c5d256f681ca2d324d96a643b2e34",
+      "artifact_files": {
+        "RAK_4631_repeater_lora_ota_no_external_sensors-full-ota-v1.18.0.1-halo-keymind-cascade-dev-8c2ddc9a.uf2": {
+          "sha256": "81c4d857839f7b94ffa472a3a2ad6eee213e2cf45831bbd24fdb5e33c8afe16a",
+          "size_bytes": 1375232
+        },
+        "RAK_4631_repeater_lora_ota_no_external_sensors-full-ota-v1.18.0.1-halo-keymind-cascade-dev-8c2ddc9a.zip": {
+          "sha256": "8b1a3ba59a5ff684439f376e8169746e3aff19c081dfec763a20038dfc8a6241",
+          "size_bytes": 688395
+        }
+      }
+    },
+    {
+      "artifact_target": "RAK_4631_repeater_lora_ota_no_external_sensors-reduced-ota",
+      "pio_environment": "RAK_4631_repeater",
+      "source_commit": "8c2ddc9ac",
+      "passed": true,
+      "linked_flash_bytes": 620020,
+      "flash_limit_bytes": 815104,
+      "capability_checks": {
+        "passed": 14,
+        "total": 14
+      },
+      "ota_update_verified": true,
+      "memory": {
+        "passed": true,
+        "elf_sha256": "59c70ac3c4f22650d2c5a0739624e5e29a3a61b7abfda3614e4171a476c9f5c7",
+        "available_internal_bytes": 85696,
+        "largest_internal_region_bytes": 85696,
+        "required_heap_bytes": 81088,
+        "required_contiguous_bytes": 19168
+      },
+      "memory_manifest_sha256": "fa7b6eb7d08aa0a74641d3e691c407d7699c68689b40fe84a80bc78be579709e",
+      "capabilities_manifest_sha256": "c3804a710f03f5e7b3ac3404830de418e370ce813bd5279a9eb3350b056052f4",
+      "artifact_files": {
+        "RAK_4631_repeater_lora_ota_no_external_sensors-reduced-ota-v1.18.0.1-halo-keymind-cascade-dev-8c2ddc9a.uf2": {
+          "sha256": "dcfad8950921952ee9360e255f62762c79ecb536750eca8d297f7409af07895e",
+          "size_bytes": 1240576
+        },
+        "RAK_4631_repeater_lora_ota_no_external_sensors-reduced-ota-v1.18.0.1-halo-keymind-cascade-dev-8c2ddc9a.zip": {
+          "sha256": "0a3842418293cae5ea1281fb30a76c376737a258521ed9081d7229c6a5acaa32",
+          "size_bytes": 620903
+        }
+      }
+    },
+    {
+      "artifact_target": "wio-e5-mini_repeater",
+      "pio_environment": "wio-e5-mini_repeater",
+      "source_commit": "8c2ddc9ac",
+      "passed": true,
+      "linked_flash_bytes": 245260,
+      "flash_limit_bytes": 245760,
+      "capability_checks": {
+        "passed": 1,
+        "total": 1
+      },
+      "ota_update_verified": false,
+      "memory": {
+        "passed": true,
+        "elf_sha256": "bf433b151be10a89ca6a04bea98ba7692999743eee0406bc95a55436db120dd2",
+        "available_internal_bytes": 43880,
+        "largest_internal_region_bytes": 43880,
+        "required_heap_bytes": 32288,
+        "required_contiguous_bytes": 10240
+      },
+      "memory_manifest_sha256": "f4f244b033e1538445aee5c32de9381e393e63dd4f4c137a701bf17fcc15b8c2",
+      "capabilities_manifest_sha256": "8f65ac10ba9398904097eb525d179be5a8b9884fe140479eeba2e0e93f886044",
+      "artifact_files": {
+        "wio-e5-mini_repeater-v1.18.0.1-halo-keymind-cascade-dev-8c2ddc9a.bin": {
+          "sha256": "da39a4dd6028faa014541d8baae8b1079c9ff16384aeb8cb04b54ed375f494f1",
+          "size_bytes": 245608
+        },
+        "wio-e5-mini_repeater-v1.18.0.1-halo-keymind-cascade-dev-8c2ddc9a.hex": {
+          "sha256": "d6787f7c1435cb7f0d6a21acc5c115f135af534466745d4c4c16ae3d3dd5e457",
+          "size_bytes": 690891
+        }
+      }
+    },
+    {
+      "artifact_target": "RAK_4631_companion_radio_full",
+      "pio_environment": "RAK_4631_companion_radio_full",
+      "source_commit": "8c2ddc9ac",
+      "passed": true,
+      "linked_flash_bytes": 712092,
+      "flash_limit_bytes": 712704,
+      "capability_checks": {
+        "passed": 15,
+        "total": 15
+      },
+      "ota_update_verified": true,
+      "memory": {
+        "passed": true,
+        "elf_sha256": "a931669843dce4536a067f28705149da5190d086470c09e195c5576fa985afef",
+        "available_internal_bytes": 81284,
+        "largest_internal_region_bytes": 81284,
+        "required_heap_bytes": 74576,
+        "required_contiguous_bytes": 11008
+      },
+      "memory_manifest_sha256": "120a9b53156b581edd67ddc049c774e15a33e751c50990281ec3b8df425da6ab",
+      "capabilities_manifest_sha256": "520af68ff60e2e1c8dbfe6da1313f5e067094958fb966d4dd66d764615fb2b1d",
+      "artifact_files": {
+        "RAK_4631_companion_radio_full-v1.18.0.1-halo-keymind-cascade-dev-8c2ddc9a.uf2": {
+          "sha256": "4666c141fed3fa20ad92e57ab39fa839b34bb5db05385202e564220fe8c56bbd",
+          "size_bytes": 1424384
+        },
+        "RAK_4631_companion_radio_full-v1.18.0.1-halo-keymind-cascade-dev-8c2ddc9a.zip": {
+          "sha256": "951bb37464998e455c0a6032a3779fe072268babfc161fd04aee8fbcae39aa7e",
+          "size_bytes": 712975
+        }
+      }
+    },
+    {
+      "artifact_target": "RAK_3x72_companion_radio_usb",
+      "pio_environment": "RAK_3x72_companion_radio_usb",
+      "source_commit": "8c2ddc9ac",
+      "passed": true,
+      "linked_flash_bytes": 228924,
+      "flash_limit_bytes": 229376,
+      "capability_checks": {
+        "passed": 0,
+        "total": 0
+      },
+      "ota_update_verified": false,
+      "memory": {
+        "passed": true,
+        "elf_sha256": "6ced0f235f78bc90f178aabd2c31241d64df4bd86f131b6c6d37a4e213205ba1",
+        "available_internal_bytes": 24448,
+        "largest_internal_region_bytes": 24448,
+        "required_heap_bytes": 17408,
+        "required_contiguous_bytes": 5120
+      },
+      "memory_manifest_sha256": "7200af66aed34e13a123fc4a683a95f3bb74de40622c90c524af998a9a0135d9",
+      "capabilities_manifest_sha256": "8c602dc990fbfcea540a0a05d44747aa701bd61d08f92d0b12045b7f883ceff1",
+      "artifact_files": {
+        "RAK_3x72_companion_radio_usb-v1.18.0.1-halo-keymind-cascade-dev-8c2ddc9a.bin": {
+          "sha256": "411324849a06570bed4bc500c6b3c0ec977ef00870a02124194d1f79522b8565",
+          "size_bytes": 229276
+        },
+        "RAK_3x72_companion_radio_usb-v1.18.0.1-halo-keymind-cascade-dev-8c2ddc9a.hex": {
+          "sha256": "a9afd0bae4923669596cc58b21dce8d42687bd42c287482d7e1339e60a659308",
+          "size_bytes": 644946
+        }
+      }
+    },
+    {
+      "artifact_target": "wio-e5-mini_companion_radio_usb",
+      "pio_environment": "wio-e5-mini_companion_radio_usb",
+      "source_commit": "8c2ddc9ac",
+      "passed": true,
+      "linked_flash_bytes": 228816,
+      "flash_limit_bytes": 229376,
+      "capability_checks": {
+        "passed": 0,
+        "total": 0
+      },
+      "ota_update_verified": false,
+      "memory": {
+        "passed": true,
+        "elf_sha256": "2ddb4009fb776c09ce69da048655964b3a6e54e18f2f630f5af5f6d113b11b3e",
+        "available_internal_bytes": 24424,
+        "largest_internal_region_bytes": 24424,
+        "required_heap_bytes": 17408,
+        "required_contiguous_bytes": 5120
+      },
+      "memory_manifest_sha256": "0fecade0c4edc49f0263ec72c383ee7de0ca4a4e08950b2300e4b679776f1520",
+      "capabilities_manifest_sha256": "c993c9a05190aad3dfefdf5e6071d73b8bd804ff6d1aba6636008c6bcd4ad9dd",
+      "artifact_files": {
+        "wio-e5-mini_companion_radio_usb-v1.18.0.1-halo-keymind-cascade-dev-8c2ddc9a.bin": {
+          "sha256": "a7ab04710b8aa979fab7b61ab3e0fb2a6dc7d205189907c9f3609da412bf5f79",
+          "size_bytes": 229168
+        },
+        "wio-e5-mini_companion_radio_usb-v1.18.0.1-halo-keymind-cascade-dev-8c2ddc9a.hex": {
+          "sha256": "c0308378d6f69ae8de24176d3730b0465243f23a92d1ffca634e9503cb3d2b49",
+          "size_bytes": 644639
+        }
+      }
+    },
+    {
+      "artifact_target": "wio-e5_companion_radio_usb",
+      "pio_environment": "wio-e5_companion_radio_usb",
+      "source_commit": "8c2ddc9ac",
+      "passed": true,
+      "linked_flash_bytes": 228892,
+      "flash_limit_bytes": 229376,
+      "capability_checks": {
+        "passed": 0,
+        "total": 0
+      },
+      "ota_update_verified": false,
+      "memory": {
+        "passed": true,
+        "elf_sha256": "e0de0678e0d0f19207d56a617b60c89e036a9b0fac5c4927c1308869ab806646",
+        "available_internal_bytes": 24456,
+        "largest_internal_region_bytes": 24456,
+        "required_heap_bytes": 17408,
+        "required_contiguous_bytes": 5120
+      },
+      "memory_manifest_sha256": "9ee86224a19ff34c4cf93c1e9b69d93dd46f7787d67dbd8bc22d930a58e48961",
+      "capabilities_manifest_sha256": "0c546a1a946a3c331ddb32ee3df304a161fa51cdcb37e63b19184de8d38c4924",
+      "artifact_files": {
+        "wio-e5_companion_radio_usb-v1.18.0.1-halo-keymind-cascade-dev-8c2ddc9a.bin": {
+          "sha256": "cb984309506ec4ecb3a892208720c116679a9f3f5d8c72b662be78f52cf060cd",
+          "size_bytes": 229244
+        },
+        "wio-e5_companion_radio_usb-v1.18.0.1-halo-keymind-cascade-dev-8c2ddc9a.hex": {
+          "sha256": "19de565271061002d74651cb8de4d8d440ec54eb64aa3ccf127c60b5f8dec459",
+          "size_bytes": 644869
+        }
+      }
+    },
+    {
+      "artifact_target": "Tiny_Relay_companion_radio_usb",
+      "pio_environment": "Tiny_Relay_companion_radio_usb",
+      "source_commit": "8c2ddc9ac",
+      "passed": true,
+      "linked_flash_bytes": 228992,
+      "flash_limit_bytes": 229376,
+      "capability_checks": {
+        "passed": 0,
+        "total": 0
+      },
+      "ota_update_verified": false,
+      "memory": {
+        "passed": true,
+        "elf_sha256": "4289c0f88b4da7bc218288b4761006829b52babfaa80b740fe5e50f170e561c7",
+        "available_internal_bytes": 24448,
+        "largest_internal_region_bytes": 24448,
+        "required_heap_bytes": 17408,
+        "required_contiguous_bytes": 5120
+      },
+      "memory_manifest_sha256": "1bc96e6770725262a2db53de4963de6b3d308e552c2cb57cc37ba5fcec462fe1",
+      "capabilities_manifest_sha256": "9fa181658288ea207c14fdccd059c1020c0778518deafe664ead19eab8062de2",
+      "artifact_files": {
+        "Tiny_Relay_companion_radio_usb-v1.18.0.1-halo-keymind-cascade-dev-8c2ddc9a.bin": {
+          "sha256": "53d2b0ffe4f1ed89bb04e3dd35ca617d9a428f81465970076d06c9d00f8dceab",
+          "size_bytes": 229344
+        },
+        "Tiny_Relay_companion_radio_usb-v1.18.0.1-halo-keymind-cascade-dev-8c2ddc9a.hex": {
+          "sha256": "505741dec9122439f72a27ca1f6937ed1d2e6b653fb3eb364a2b8cb3f673f032",
+          "size_bytes": 645134
+        }
+      }
+    }
+  ],
+  "integration_scope": "Eight normal capacity-checked builds following concurrent USB-mode and MediaMesh changes. Only human CLI prose is shortened in constrained profiles; feature and filesystem scope, command syntax, structured values, protocol acknowledgements and destructive warnings remain. RAM-only timer/flag grouping removes padding without changing serialized layouts. Linked flash counts exclude packaging and alignment overhead; normal link/package checks passed.",
+  "additional_arm_checks": {
+    "source_commit": "8c2ddc9ac",
+    "elf_sha256": "a931669843dce4536a067f28705149da5190d086470c09e195c5576fa985afef",
+    "crypto_rfc8032_vectors_passed": 2,
+    "crypto_sign_frame_bytes": 1904,
+    "crypto_frame_limit_bytes": 2048,
+    "ota_workspace_lifetimes_passed": 4,
+    "scope": "Linked ARM execution, not physical timing or load qualification."
   }
 }

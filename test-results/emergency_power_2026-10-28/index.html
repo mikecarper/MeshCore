@@ -2448,6 +2448,23 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="Checks">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#integration-checks" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Integration checks
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -2610,6 +2627,71 @@ estimates, not measurements of peak runtime heap. PlatformIO ran sequentially.</
 <p>The <a href="../emergency_power_2026-10-28.safe.json">safe machine-readable report</a> records
 ELF, package and manifest hashes. Package hashes were independently compared
 with every corresponding memory-manifest entry.</p>
+<h3 id="integration-checks">Integration checks</h3>
+<p>Eight further normal builds at
+<a href="https://github.com/mikecarper/MeshCore/commit/8c2ddc9ac"><code>8c2ddc9ac</code></a>
+pass after the concurrent USB-mode and MediaMesh changes. Constrained profiles
+use shorter human validation replies and help descriptions; commands, returned
+values, protocol acknowledgements and destructive-operation warnings remain.
+Runtime timers and flags are grouped to remove alignment padding. Saved-record
+layouts, features and filesystem capacity are preserved.</p>
+<table>
+<thead>
+<tr>
+<th>Firmware</th>
+<th style="text-align: right;">Linked flash / limit, bytes</th>
+<th style="text-align: right;">Available / required RAM, bytes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>RAK4631 Repeater Full</td>
+<td style="text-align: right;">687,512 / 815,104</td>
+<td style="text-align: right;">83,156 / 83,136</td>
+</tr>
+<tr>
+<td>RAK4631 Repeater Reduced</td>
+<td style="text-align: right;">620,020 / 815,104</td>
+<td style="text-align: right;">85,696 / 81,088</td>
+</tr>
+<tr>
+<td>Wio E5 Mini Repeater</td>
+<td style="text-align: right;">245,260 / 245,760</td>
+<td style="text-align: right;">43,880 / 32,288</td>
+</tr>
+<tr>
+<td>RAK4631 Full Companion</td>
+<td style="text-align: right;">712,092 / 712,704</td>
+<td style="text-align: right;">81,284 / 74,576</td>
+</tr>
+<tr>
+<td>RAK3x72 USB Companion</td>
+<td style="text-align: right;">228,924 / 229,376</td>
+<td style="text-align: right;">24,448 / 17,408</td>
+</tr>
+<tr>
+<td>Wio E5 Mini USB Companion</td>
+<td style="text-align: right;">228,816 / 229,376</td>
+<td style="text-align: right;">24,424 / 17,408</td>
+</tr>
+<tr>
+<td>Wio E5 USB Companion</td>
+<td style="text-align: right;">228,892 / 229,376</td>
+<td style="text-align: right;">24,456 / 17,408</td>
+</tr>
+<tr>
+<td>TinyRelay USB Companion</td>
+<td style="text-align: right;">228,992 / 229,376</td>
+<td style="text-align: right;">24,448 / 17,408</td>
+</tr>
+</tbody>
+</table>
+<p>Linked flash counts exclude packaging and alignment overhead; normal linker
+and package checks also pass. The Mini retains its 16 KB filesystem. Native
+checks compare the reviewed reply substitutions and unchanged C++ control
+flow. The final RAK Companion ELF passes both RFC8032 vectors with a 1,904-byte
+signing frame under the 2,048-byte limit, plus four OTA workspace lifetime checks.
+These Companions do not gain the infrastructure emergency-sleep feature.</p>
 <h2 id="physical-trials">Physical trials</h2>
 <p>Each board entered manual radio sleep, woke for a real one-minute override,
 returned to sleep when it expired, and retained manual mode after reboot.
