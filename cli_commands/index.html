@@ -2347,6 +2347,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#report-optional-settings-support" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Report optional settings support
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#control-live-usb-logging" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -5569,6 +5580,17 @@
     <span class="md-ellipsis">
       
         Report the USB connection mode
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#report-optional-settings-support" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Report optional settings support
       
     </span>
   </a>
@@ -9244,6 +9266,95 @@ is no <code>set usb.mode</code>; changing the backend requires another firmware 
 Older firmware may reject this command. A flasher should retain its manual
 connection option when the report is absent, unknown or conflicts with the
 selected USB device; it must not guess from the board name or shared USB ID.</p>
+<h3 id="report-optional-settings-support">Report optional settings support</h3>
+<p><code>get config.cap</code> is a read-only, bounded settings-capability query shared by
+the infrastructure CLI and Companion CLI. It reports no setting values or
+secrets, saves nothing, and does not change radio or Bluetooth state. One
+reply lets backup tools distinguish an unavailable setting from a real
+getter failure without issuing unsupported requests for every board.</p>
+<p>The exact v1 reply format is:</p>
+<pre><code class="language-text">config.cap v1 get=XXXXXXXX set=XXXXXXXX fixed=XXXXXXXX na=XXXXXXXX
+</code></pre>
+<p>Each field is eight hexadecimal digits, using these stable bit assignments:</p>
+<table>
+<thead>
+<tr>
+<th>Bit</th>
+<th>Setting</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>0</td>
+<td><code>system.watchdog</code></td>
+</tr>
+<tr>
+<td>1</td>
+<td><code>radio.cad</code> scan/retry/max timings</td>
+</tr>
+<tr>
+<td>2</td>
+<td><code>radio.fem.rxgain</code></td>
+</tr>
+<tr>
+<td>3</td>
+<td><code>radio.fem.txgain</code></td>
+</tr>
+<tr>
+<td>4</td>
+<td><code>radio.rxps.rfrx_disabled</code></td>
+</tr>
+<tr>
+<td>5</td>
+<td><code>bluetooth</code></td>
+</tr>
+<tr>
+<td>6</td>
+<td><code>bluetooth.name</code></td>
+</tr>
+<tr>
+<td>7</td>
+<td><code>display.rotation</code></td>
+</tr>
+<tr>
+<td>8</td>
+<td><code>usb.logging.always</code></td>
+</tr>
+<tr>
+<td>9</td>
+<td><code>usb.logging</code></td>
+</tr>
+<tr>
+<td>10</td>
+<td><code>usb.debug</code></td>
+</tr>
+<tr>
+<td>11</td>
+<td><code>radio.preamble</code> saved primary preference</td>
+</tr>
+</tbody>
+</table>
+<p><code>get</code> means a genuine reader exists; <code>set</code> means an existing setting command
+can restore the value. For <code>radio.preamble</code>, restoration uses the fifth
+<code>set radio</code> field, not a separate <code>set radio.preamble</code> command. <code>fixed</code>
+means there is no user-configurable preference for that setting; a fixed
+diagnostic may also have a <code>get</code> bit. <code>na</code> means the setting does not apply
+to this board/build/role. <code>na</code> never overlaps another field, and <code>fixed</code>
+never overlaps <code>set</code>. All four bits clear means unknown, not a successful
+backup. Bits 12-31 are reserved and zero in v1. This limited manifest does
+not claim that all stored preferences are exportable.</p>
+<p>Infrastructure firmware has no mutable CAD scan/retry/max preferences, so
+bit 1 is <code>fixed</code> there; its existing <code>get cad</code> enable/busy diagnostic remains
+unchanged. Companion does store and export those timings through
+<code>get radio.cad</code>. Companion watchdog status is diagnostic only where the
+board can report it; it has no persisted Companion watchdog-control policy.
+Front-end gain, RX power-saving RF-switch, display rotation and Bluetooth
+support follow the actual board and role rather than the firmware filename.
+The always-on USB logging preference is not applicable to a separate
+dual-CDC logging interface.</p>
+<p>Older firmware may not implement this query. Clients must keep legacy
+per-setting reads and report unconfirmed/failed reads honestly instead of
+treating an absent or malformed capability response as not applicable.</p>
 <h3 id="control-live-usb-logging">Control live USB logging</h3>
 <p><strong>Search terms:</strong> serial logging, USB debug log, enable logging, disable logging, debug output.</p>
 <p><strong>Usage:</strong></p>
@@ -9549,7 +9660,8 @@ node after the save succeeds. See <a href="../power_saving_diagnostics/#user-sel
 <h4 id="view-or-change-this-nodes-radio-parameters">View or change this node's radio parameters</h4>
 <p><strong>Usage:</strong>
 - <code>get radio</code>
-- <code>set radio &lt;freq&gt;,&lt;bw&gt;,&lt;sf&gt;,&lt;cr&gt;</code></p>
+- <code>get radio.preamble</code>
+- <code>set radio &lt;freq&gt;,&lt;bw&gt;,&lt;sf&gt;,&lt;cr&gt;[,&lt;preamble|auto&gt;]</code></p>
 <p><strong>Parameters:</strong>
 - <code>freq</code>: Frequency in MHz
 - <code>bw</code>: Bandwidth in kHz. Most targets allow <code>7.8</code>, <code>10.4</code>, <code>15.6</code>, <code>20.8</code>, <code>31.25</code>, <code>41.7</code>, <code>62.5</code>, <code>125</code>, <code>250</code>, <code>500</code>. LR1110 targets allow <code>62.5</code>, <code>125</code>, <code>250</code>, <code>500</code>.
@@ -9560,6 +9672,11 @@ node after the save succeeds. See <a href="../power_saving_diagnostics/#user-sel
 <p><code>get radio</code> returns exactly four comma-separated fields for compatibility with
 existing Companion apps. On dual-radio builds, use <code>get radio2</code> and
 <code>get radio.timing</code> for profile and timing diagnostics.</p>
+<p><code>get radio.preamble</code> reads the <strong>saved primary</strong> preamble preference: <code>auto</code>
+or an explicit symbol count from <code>8</code> through <code>65528</code>. It does not report a
+temporary profile or replace <code>auto</code> with a computed recommendation. Backup
+tools can restore it using the optional fifth <code>set radio</code> field. Omitting
+that field retains the existing setter behavior: select <code>auto</code>.</p>
 <p><strong>Note:</strong> Companion USB, BLE and WebConfig changes apply automatically when
 the radio is free. A busy radio keeps the saved target across disconnects.
 Infrastructure saves immediately, waits two seconds, then applies when the radio
