@@ -2484,6 +2484,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#emergency-battery-schedule" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Emergency battery schedule
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#conversion-defaults-and-carrier-revisions" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2811,6 +2822,22 @@ A failed/corrupt settings file blocks configuration saves and automatic replay.<
 measurement or entry into ship mode. Read the corresponding status afterward.</p>
 <p>See the <a href="../test-results/solarxiao_power_2026-10-21/">bench acceptance report</a>
 for exact firmware identity, measured readouts and test limits.</p>
+<h2 id="emergency-battery-schedule">Emergency battery schedule</h2>
+<p>The <a href="../cli_commands/#emergency-battery-schedule">emergency schedule</a> keeps the
+radio and normal work awake for the first 15 minutes of each UTC hour, with
+timed sleep for the remaining 45 minutes. It starts automatically at 5% and
+recovers at 7%. Forwarding thresholds now default to 25% for floods and 15%
+for all relayed traffic; those forwarding gates remain opt-in.</p>
+<pre><code class="language-text">get power.emergency
+set power.emergency on
+set power.awake 30
+set power.emergency auto
+</code></pre>
+<p>The percentage follows the configured self battery voltage endpoints used by
+<code>battery.forward</code>. On MPPT carriers this is the XIAO ADC, not an estimate of
+the separate carrier battery's charge from INA260/LTC4162. Check the actual
+voltage source before relying on automatic entry. Manual mode and timed wake
+work independently of the charger. Hard low-voltage protection still applies.</p>
 <h2 id="conversion-defaults-and-carrier-revisions">Conversion defaults and carrier revisions</h2>
 <p>The supplied <a href="https://github.com/wehooper4/Meshtastic-Hardware/blob/main/XaioSeries/SolarXaio/MPPT/Standard/Schematic_SolarXaio_MPPT_2025-10-23.pdf">Standard schematic</a>
 shows R5/RSNSI and R14/RSNSB at 10 milliohms, a 10 kohm NTC bias and a 10 kohm

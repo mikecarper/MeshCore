@@ -2883,6 +2883,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#emergency-battery-schedule" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Emergency battery schedule
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#set-the-battery-percentage-voltage-range" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -6083,6 +6094,17 @@
     <span class="md-ellipsis">
       
         Pause forwarding when the battery is low
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#emergency-battery-schedule" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Emergency battery schedule
       
     </span>
   </a>
@@ -10458,8 +10480,8 @@ unsupported.</p>
 - <code>get battery.alert.critical</code>
 - <code>set battery.alert.critical &lt;0-99&gt;</code></p>
 <p><strong>Defaults:</strong>
-- <code>battery.alert.low</code>: <code>20</code>
-- <code>battery.alert.critical</code>: <code>10</code></p>
+- <code>battery.alert.low</code>: <code>25</code>
+- <code>battery.alert.critical</code>: <code>15</code></p>
 <p><strong>Note:</strong> The low threshold must be greater than the critical threshold. Alerts at or below the critical threshold use <code>CRITICAL BATTERY</code> in the message; both severities use the same 12-hour resend cooldown.</p>
 <hr />
 <h4 id="pause-forwarding-when-the-battery-is-low">Pause forwarding when the battery is low</h4>
@@ -10479,11 +10501,15 @@ readings remain available.</p>
 <li><code>set flood.battery &lt;off|on|1-100&gt;</code></li>
 <li><code>get battery.forward</code></li>
 </ul>
-<p><code>set repeat.battery on</code> enables the saved repeat threshold, initially <strong>10%</strong>.
-<code>set flood.battery on</code> enables the saved flood threshold, initially <strong>20%</strong>.
+<p><code>set repeat.battery on</code> enables the saved repeat threshold, initially <strong>15%</strong>.
+<code>set flood.battery on</code> enables the saved flood threshold, initially <strong>25%</strong>.
 A number both enables the control and sets its threshold. <code>off</code> disables it
 while retaining that threshold for the next <code>on</code>. Changes are saved and take
 effect without a reboot.</p>
+<p>An older forwarding record with exactly the former 10% repeat / 20% flood
+defaults adopts 15% / 25% on upgrade. Its enabled controls and voltage endpoints
+stay unchanged. Other saved thresholds are retained; newly selected custom
+10% / 20% settings also remain available.</p>
 <p>Below the repeat threshold, the node stops LoRa retransmissions of received
 traffic. Below the flood threshold, it stops LoRa retransmissions of received
 flood traffic but may still
@@ -10495,8 +10521,8 @@ battery recovery does not override a manual restriction.</p>
 limits. Exporting radio reception to WiFi, ESP-NOW, or RS232 is unchanged.</p>
 <p>Forwarding resumes automatically after the measured percentage reaches two
 percentage points above the applicable threshold, capped at 100%. With the
-initial thresholds, flood forwarding pauses below 20% and resumes at 22%; all
-relay forwarding pauses below 10% and resumes at 12%. This recovery margin
+initial thresholds, flood forwarding pauses below 25% and resumes at 27%; all
+relay forwarding pauses below 15% and resumes at 17%. This recovery margin
 avoids repeatedly switching forwarding on and off near a threshold.</p>
 <p>Battery voltage is sampled every 30 seconds while either control is enabled,
 and immediately when its configuration changes. <code>get battery.forward</code> reports
@@ -10510,11 +10536,47 @@ set flood.battery on
 get battery.forward
 </code></pre>
 <p>To choose different thresholds and later disable the feature:</p>
-<pre><code class="language-text">set repeat.battery 15
-set flood.battery 25
+<pre><code class="language-text">set repeat.battery 12
+set flood.battery 22
 set repeat.battery off
 set flood.battery off
 </code></pre>
+<h4 id="emergency-battery-schedule">Emergency battery schedule</h4>
+<p>Supported ESP32 and nRF52 Repeater, Room Server and Sensor images enter the
+final battery-saving stage at <strong>5% or less</strong>, independently of the optional
+forwarding gates. Automatic mode returns to normal at <strong>7% or more</strong>. An
+invalid battery reading cannot activate it, or falsely clear an existing low
+battery state. Percentage uses the same configured voltage endpoints as
+<code>battery.forward</code>; it does not prove that a physical battery is connected.</p>
+<p>In emergency mode, normal work runs during the first <strong>15 minutes of every
+UTC hour</strong> (<code>:00:00</code> through <code>:14:59</code>). For the remaining 45 minutes the LoRa
+radio sleeps and normal mesh, sensor and screen work is suspended. The CPU
+uses timed sleep with brief watchdog, clock, voltage-protection and command
+maintenance wakes. Active firmware updates and unfinished critical operations
+defer sleep. Existing hard low-voltage protection remains in force.</p>
+<pre><code class="language-text">get power.emergency
+set power.emergency on
+set power.awake 30
+set power.awake 0
+set power.emergency auto
+</code></pre>
+<p><code>on</code> saves manual emergency mode, including across reboots. <code>auto</code> restores
+battery-controlled entry and is the default. The initial transition allows
+five seconds for its reply. <code>power.awake</code> keeps the node up for the next given
+number of minutes (0 cancels; maximum 10080), even outside the hourly window.
+That override is held in RAM and ends on reboot; it never disables hard
+low-voltage shutdown. Use it before maintenance that needs continuous uptime.
+LoRa commands must arrive during an awake window. Local USB commands can wait
+up to one ten-second maintenance interval while the node is sleeping.</p>
+<p><code>get power.emergency</code> reports the mode, battery estimate, desired <code>window</code>,
+actual radio ownership, seconds until the next awake window, and remaining
+hold. With an unset clock it reports <code>clock=uptime</code> and follows the same
+15/45-minute cycle from boot until a valid UTC clock is available. Queued
+future traffic does not keep a critically low node awake indefinitely.</p>
+<p>This schedule uses resumable timed sleep, preserving identity and settings.
+WiFi/ESP-NOW services are temporarily stopped and their previous live subset
+is restored when the node wakes. Companion builds and flash-constrained
+profiles that omit battery-forwarding controls do not add this feature.</p>
 <h4 id="set-the-battery-percentage-voltage-range">Set the battery percentage voltage range</h4>
 <p>The forwarding thresholds use a voltage-derived percentage. On infrastructure
 builds without the nRF52 voltage policy, the saved range is adjustable with:</p>
