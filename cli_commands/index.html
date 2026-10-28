@@ -10553,7 +10553,10 @@ UTC hour</strong> (<code>:00:00</code> through <code>:14:59</code>). For the rem
 radio sleeps and normal mesh, sensor and screen work is suspended. The CPU
 uses timed sleep with brief watchdog, clock, voltage-protection and command
 maintenance wakes. Active firmware updates and unfinished critical operations
-defer sleep. Existing hard low-voltage protection remains in force.</p>
+defer sleep. Existing hard low-voltage protection remains in force.
+On ESP32, an active native USB connection uses short CPU idle waits to keep
+the console usable while the radio sleeps. Timed light sleep resumes after
+USB detaches and its disconnect grace expires.</p>
 <pre><code class="language-text">get power.emergency
 set power.emergency on
 set power.awake 30
@@ -10570,8 +10573,9 @@ LoRa commands must arrive during an awake window. Local USB commands can wait
 up to one ten-second maintenance interval while the node is sleeping.</p>
 <p><code>get power.emergency</code> reports the mode, battery estimate, desired <code>window</code>,
 actual radio ownership, seconds until the next awake window, and remaining
-hold. With an unset clock it reports <code>clock=uptime</code> and follows the same
-15/45-minute cycle from boot until a valid UTC clock is available. Queued
+hold. With an implausible clock timestamp it reports <code>clock=uptime</code> and follows
+the same 15/45-minute cycle from boot. Keep the clock set to UTC: a plausible
+timestamp alone does not prove it is synchronized. Queued
 future traffic does not keep a critically low node awake indefinitely.</p>
 <p>This schedule uses resumable timed sleep, preserving identity and settings.
 WiFi/ESP-NOW services are temporarily stopped and their previous live subset
