@@ -2584,6 +2584,8 @@ ACK alone cannot qualify Auto.</p>
 minutes after the last command. The three routine stats polls above keep
 their replies and renew the lease without starting or extending this pause.
 Dedicated logging ports and explicit Companion stream mode keep logging.
+On shared consoles, saved <code>set usb.logging.always on</code> also keeps packet logs
+running through commands; <code>off</code> restores pausing for subsequent commands.
 The pause does not disable measurements, LoRa telemetry, direct WiFi MQTT,
 or the saved logging master. USB packet collectors miss log copies during
 the pause. See <a href="../cli_commands/#control-live-usb-logging">live USB logging</a>.</p>

@@ -2926,6 +2926,8 @@ current source. Where <code>usb.logging</code> is available, <code>get/set usb.d
 selects debug intent without changing packet capture or adding a build variant.
 Debug defaults off for fresh and older preference images; effective output
 requires <code>usb.logging</code> and <code>usb.debug</code> on plus compiled diagnostic support.
+Shared USB consoles also provide saved <code>get/set usb.logging.always on|off</code>.
+It defaults off; turning it on keeps packet logs running through commands.
 See <a href="../cli_commands/#control-live-usb-logging">live USB logging</a> for transport
 restrictions and Full Companion RAW output.</p>
 <p>The firmware-configured INA3221 and RAK12500 addresses are both <code>0x42</code>; they

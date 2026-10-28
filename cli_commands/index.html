@@ -9163,6 +9163,9 @@ set usb.logging on
 set usb.logging off
 set usb.logging on reboot
 set usb.logging off reboot
+get usb.logging.always
+set usb.logging.always on
+set usb.logging.always off
 get usb.debug
 set usb.debug on
 set usb.debug off
@@ -9210,17 +9213,27 @@ logging then resumes automatically if its saved master is on. <code>get usb.logg
 still reports that saved setting. <code>set usb.logging on</code> or
 <code>set logging.output usb|both</code> resumes packet logs immediately after a successful
 save. No reboot is needed.</p>
+<p>To keep packet logs running through commands on a shared USB console, use
+<code>set usb.logging.always on</code>. This choice is saved, ends any active pause
+immediately, and survives reboot. <code>get usb.logging.always</code> checks the setting.
+<code>set usb.logging.always off</code> restores the default five-minute pause for
+subsequent commands. The logging master remains separate: this option does
+not enable logging while <code>usb.logging</code> is off. With continuous logging,
+packet lines can appear between command replies.</p>
 <p>The routine <code>stats-core</code>, <code>stats-radio</code>, and <code>stats-packets</code> polls do not start
 or extend this pause. A separate logging USB port and explicit Companion
 <code>usb.logging stream</code> mode also keep logging. The pause leaves command replies,
 noise-floor sampling, saved history, LoRa telemetry, and direct WiFi MQTT
 running. A collector reading USB packet logs misses those log copies during
-the pause, including telemetry packets; this is not buffered capture.</p>
+the pause, including telemetry packets; this is not buffered capture.
+The <code>usb.logging.always</code> setting is provided for shared consoles; nRF52 Full
+Companion already keeps its dedicated logging port or explicit stream running.</p>
 <p><code>meshcoretomqtt</code> polls these three stats commands every 300 seconds and
 publishes <code>noise_floor</code> from the <code>stats-radio</code> reply in its MQTT status. These
 polls keep working during the pause. Its startup identity queries do trigger
 a five-minute packet-capture gap on a shared console, as do ordinary commands
-sent through its remote serial feature.</p>
+sent through its remote serial feature. Enable <code>usb.logging.always</code> to keep
+packet capture running through these commands too.</p>
 <p>For packet-only capture, use these separate text commands:</p>
 <pre><code class="language-text">set usb.debug off
 set usb.logging on
