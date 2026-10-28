@@ -3175,6 +3175,11 @@ Apps do not need to set <code>tx.media</code>. Ordinary traffic keeps its existi
 If the second profile cannot transmit MeshCore, media uses the normal
 channel/global route; <code>set tx.media radio2</code> instead requires radio2 with no
 primary fallback. See <a href="#companion-media-and-ssh-tx-routing">application TX routing</a>.</p>
+<p>Infrastructure repeaters can separately mark packets arriving over ESP-NOW,
+UDP or RS-232 with <code>set bridge.ingress radio2</code>. Those packets forward only on
+the second MeshCore profile; they are dropped if it cannot transmit, without
+primary fallback. The default <code>bridge.ingress radio</code> preserves existing bridge
+behavior. See the <a href="../espnow_bridge_setup/#send-bridge-traffic-only-on-mediamesh">MediaMesh bridge example</a>.</p>
 <h3 id="discover-the-local-radio2-profile">Discover the local radio2 profile</h3>
 <p>Clients can request a repeater's current MeshCore radio2 profile through public,
 zero-hop discovery. Set bit 1 (<code>0x02</code>) of the <code>DISCOVER_REQ</code> flags byte: <code>0x82</code>

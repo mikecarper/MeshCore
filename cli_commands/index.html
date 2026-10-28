@@ -4097,6 +4097,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#select-the-radio-for-incoming-bridge-packets" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Select the radio for incoming bridge packets
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#view-or-change-the-mqtt-master-switch" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -7341,6 +7352,17 @@
     <span class="md-ellipsis">
       
         View or change the source of packets bridged to the external interface
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#select-the-radio-for-incoming-bridge-packets" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Select the radio for incoming bridge packets
       
     </span>
   </a>
@@ -13904,6 +13926,33 @@ updated active peer can still answer a valid incoming ping in passive mode.</p>
 <blockquote>
 <p><strong>Note:</strong> For MQTT, use <code>mqtt.rx</code> and <code>mqtt.tx</code> to control each direction independently. Both can be enabled together. Use <code>mqtt.enabled</code> as the MQTT master switch; <code>bridge.*</code> configures RS232 and ESP-NOW bridges.</p>
 </blockquote>
+<hr />
+<h4 id="select-the-radio-for-incoming-bridge-packets">Select the radio for incoming bridge packets</h4>
+<pre><code class="language-text">get bridge.ingress
+set bridge.ingress radio2
+set bridge.ingress radio
+</code></pre>
+<p>This receiver-side setting applies to incoming mesh packets from ESP-NOW, UDP
+and RS-232 bridges. It is saved immediately and needs no restart. Packets
+already queued retain their original route. <code>radio</code> is
+the default, preserving the existing primary-radio behavior and crossing rules.
+Existing senders and bridge wire formats remain compatible.
+An unreadable or corrupt saved selection blocks bridge input rather than
+silently restoring the primary; <code>get bridge.ingress</code> reports the fault.</p>
+<p><code>radio2</code> assigns incoming packets to the active MeshCore second profile and
+keeps their forwarding on that profile, even with <code>radio2.cross on</code>. If radio2
+is off, RX-only, owned by another protocol, or changed while a packet waits,
+the packet is dropped; it never falls back to the primary radio. Normal repeat,
+scope, duplicate and filter checks still apply. This setting selects every
+incoming packet on these bridges, not individual senders or payload types.
+The selection follows forwarded packets, retries and relayed ACKs. Locally
+generated adverts and admin replies keep their existing routing, including
+<code>tx.reply</code>; this is not a global transmit override.</p>
+<p>For a MediaMesh receiver feeding a repeater whose primary is USA 910.525 MHz,
+see the <a href="../espnow_bridge_setup/#send-bridge-traffic-only-on-mediamesh">MediaMesh bridge example</a>.
+<code>bridge.source</code> controls traffic leaving for the bridge and is independent of
+<code>bridge.ingress</code>. This does not add MQTT packet injection or change MQTT
+publication settings.</p>
 <hr />
 <h4 id="view-or-change-the-mqtt-master-switch">View or change the MQTT master switch</h4>
 <p><strong>Search terms:</strong> enable MQTT, disable MQTT, MQTT on, MQTT off, WiFi logging.</p>
