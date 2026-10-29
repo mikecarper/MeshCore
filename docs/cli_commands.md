@@ -2020,13 +2020,16 @@ minimum and return to it exactly when it is safe.
 - `freq`, `bw`, `sf`, `cr`: Same values and validation as `set radio`
 - `preamble`: Optional preamble length; omit for the default
 
-**Default:** On first boot slot 1 is saved as `Primary` with the current
-primary radio settings. Other slots are empty.
+**Default:** On first boot slot 1 is saved as `USA-Canada` (910.525 MHz, 62.5 kHz,
+SF7, CR5), the US/Canada standard, not a copy of the current radio. If the running
+radio differs, no slot shows `*` until you load one. A board that rejects those
+settings (for example a non-US band radio) leaves slot 1 empty. Other slots are empty.
+Builds can override the default with `RADIO_PRESET_DEFAULT_NAME`, `_FREQ`, `_BW`, `_SF` and `_CR`.
 
 `get preset` lists every slot by name, for example
-`1*Primary 2 Private 3 - 4 - 5 - (get preset N)`; `*` marks the slot that
+`1*USA-Canada 2 Private 3 - 4 - 5 - (get preset N)`; `*` marks the slot that
 matches the running radio settings and `-` marks an empty slot. `get preset <n>`
-shows one slot with its settings, for example `1*Primary 910.525,62.5,7,5`.
+shows one slot with its settings, for example `1*USA-Canada 910.525,62.5,7,5`.
 Presets are stored in `/presets` and survive reboots.
 
 `load preset <slot>` saves and applies that preset through the same path as

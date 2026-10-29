@@ -210,19 +210,39 @@ static void setup(RadioPresetCLI& c, Env& e) {
 
 int main() {
   char r[160];
-  { // seed_primary
-    Env e; RadioPresetCLI c; c.begin(hooks(e));
+  { // seed_us_canada_default
+    Env e; e.setCur(915.0f, 250.0f, 11, 5, 0);
+    RadioPresetCLI c; c.begin(hooks(e));
     CHECK(run(c, "get preset", r));
-    CHECK(has(r, "1*Primary 910.5250244,62.5,7,5"));
+    CHECK(has(r, "1 USA-Canada "));
+    CHECK(run(c, "get preset 1", r));
+    CHECK(has(r, "1 USA-Canada 910.5250244,62.5,7,5"));
+    CHECK(!has(r, "*"));
+    CHECK(c.activeSlot() == 0);
     CHECK(e.saves == 1 && e.haveStore);
-    CHECK(c.activeSlot() == 1);
     RadioPresetCLI d; d.begin(hooks(e));   // second boot loads, does not reseed
     CHECK(e.saves == 1 && d.table().get(1) != nullptr);
+  }
+  { // seed_marks_active_when_on_us
+    Env e;
+    RadioPresetCLI c; c.begin(hooks(e));
+    CHECK(run(c, "get preset 1", r));
+    CHECK(has(r, "1*USA-Canada 910.5250244,62.5,7,5"));
+    CHECK(c.activeSlot() == 1);
+    CHECK(e.saves == 1 && e.haveStore);
+  }
+  { // seed_skipped_when_rejected
+    Env e; e.setCur(433.0f, 125.0f, 9, 5, 0);
+    RadioPresetCLI::Hooks h = hooks(e);
+    h.accepts = [](void*, float f, float, uint8_t, uint8_t, uint16_t) { return f < 500.0f; };
+    RadioPresetCLI c; c.begin(h);
+    CHECK(c.table().get(1) == nullptr);
+    CHECK(e.saves == 0 && !e.haveStore);
   }
   { // seed_when_corrupt
     Env e; e.haveStore = true; e.store.assign(10, 0x55);
     RadioPresetCLI c; c.begin(hooks(e));
-    CHECK(c.table().get(1) != nullptr && std::strcmp(c.table().get(1)->name, "Primary") == 0);
+    CHECK(c.table().get(1) != nullptr && std::strcmp(c.table().get(1)->name, "USA-Canada") == 0);
     CHECK(e.saves == 1);
   }
   { // add_validates_like_set_radio
@@ -313,7 +333,7 @@ int main() {
     CHECK(run(c, "load preset 2", r)); CHECK(has(r, "Error: tempradio active"));
     e.tempRadio = false;
     CHECK(run(c, "load preset 4", r)); CHECK(has(r, "Error: preset 4 empty"));
-    CHECK(run(c, "load preset 1", r)); CHECK(has(r, "OK - already on Primary"));
+    CHECK(run(c, "load preset 1", r)); CHECK(has(r, "OK - already on USA-Canada"));
     CHECK(e.applied.empty() && e.saves == s && !c.pending());
     CHECK(run(c, "load preset 2", r)); CHECK(has(r, "OK"));
     s = e.saves;
@@ -430,6 +450,29 @@ class RadioPresetsTest(unittest.TestCase):
         self.build_and_run('table', TABLE_HARNESS, 'PASS table',
                            extra_sources=('src/helpers/TxtDataHelpers.cpp',))
 
+    def test_seed_override_defines(self):
+        harness = CLI_HARNESS.replace('int main() {', 'int main_unused_() {', 1) + r'''
+int main() {
+  char r[160];
+  Env e; e.setCur(915.0f, 250.0f, 11, 5, 0);
+  RadioPresetCLI c; c.begin(hooks(e));
+  CHECK(run(c, "get preset 1", r));
+  CHECK(has(r, "1 EU-Narrow 869.6"));
+  CHECK(c.table().get(1) && std::strcmp(c.table().get(1)->name, "EU-Narrow") == 0);
+  CHECK(near(c.table().get(1)->freq, 869.618f) && c.table().get(1)->sf == 8 && c.table().get(1)->cr == 8);
+  if (failures) return 1;
+  std::printf("PASS override\n");
+  return 0;
+}
+'''
+        self.PLATFORM_MACROS = self.PLATFORM_MACROS + (
+            '-DRADIO_PRESET_DEFAULT_NAME="EU-Narrow"',
+            '-DRADIO_PRESET_DEFAULT_FREQ=869.618f', '-DRADIO_PRESET_DEFAULT_BW=62.5f',
+            '-DRADIO_PRESET_DEFAULT_SF=8', '-DRADIO_PRESET_DEFAULT_CR=8')
+        self.build_and_run('cli_override', harness, 'PASS override',
+                           extra_sources=('src/helpers/TxtDataHelpers.cpp',
+                                          'src/helpers/RadioPresetCLI.cpp'))
+
     def test_preset_cli(self):
         self.build_and_run('cli', CLI_HARNESS, 'PASS cli',
                            extra_sources=('src/helpers/TxtDataHelpers.cpp',
@@ -460,13 +503,14 @@ def _function_body(text, signature):
 class RadioPresetWiringContractTest(unittest.TestCase):
     """Source contracts for the repeater integration (no firmware build here)."""
 
-    def assertRegex(self, text, pattern, msg=None):  # keep failures short: no file dumps
+    def assertSourceMatches(self, text, pattern, msg=None):  # keep failures short: no file dumps
         self.assertTrue(text is not None and re.search(pattern, text), msg or ('no match: ' + pattern))
 
     def test_dispatch_presets_before_profiles(self):
         cpp = _read('src/helpers/CommonCLI.cpp')
         body = _function_body(cpp, 'void CommonCLI::handleCommand(')
         self.assertIsNotNone(body)
+        assert body is not None
         presets = body.find('_radio_presets.handle(command, reply, 160, sender_timestamp != 0)')
         profiles = body.find('_radio_profiles.handle(')
         self.assertGreaterEqual(presets, 0, 'preset dispatch missing')
@@ -477,12 +521,13 @@ class RadioPresetWiringContractTest(unittest.TestCase):
         cpp = _read('src/helpers/CommonCLI.cpp')
         load = _function_body(cpp, 'void CommonCLI::loadPrefs(FILESYSTEM* fs)')
         self.assertIsNotNone(load)
+        assert load is not None
         begin = load.find('_radio_presets.begin(')
         self.assertGreaterEqual(begin, 0, 'begin() missing from loadPrefs')
         self.assertGreater(begin, load.find('_radio_profiles.stagePrimary('),
                            'begin() must run after prefs are loaded and staged')
         loop = _function_body(cpp, 'void CommonCLI::loop()')
-        self.assertRegex(loop, r'_radio_presets\.loop\(millis\(\)\)')
+        self.assertSourceMatches(loop, r'_radio_presets\.loop\(millis\(\)\)')
 
     def test_hooks_use_existing_radio_paths(self):
         cpp = _read('src/helpers/CommonCLI.cpp')
@@ -500,15 +545,15 @@ class RadioPresetWiringContractTest(unittest.TestCase):
             self.assertIsNotNone(body, signature + ' missing')
             self.assertTrue(re.search(pattern, body), signature + ' does not use ' + pattern)
         header = _read('src/helpers/CommonCLI.h')
-        self.assertRegex(header, r'mesh::RadioPresetCLI\s+_radio_presets\s*;')
-        self.assertRegex(header, r'mesh::RadioPresetCLI&\s*radioPresets\(\)')
+        self.assertSourceMatches(header, r'mesh::RadioPresetCLI\s+_radio_presets\s*;')
+        self.assertSourceMatches(header, r'mesh::RadioPresetCLI&\s*radioPresets\(\)')
 
     def test_preset_file_helpers(self):
         h = _read('src/helpers/RadioPresetFile.h')
         self.assertIn('"/presets"', h)
-        self.assertRegex(h, r'bool\s+loadRadioPresetFile\(FILESYSTEM\*\s*fs,\s*uint8_t\*\s*buf,'
+        self.assertSourceMatches(h, r'bool\s+loadRadioPresetFile\(FILESYSTEM\*\s*fs,\s*uint8_t\*\s*buf,'
                             r'\s*size_t\s+cap,\s*size_t&\s*len\)')
-        self.assertRegex(h, r'bool\s+saveRadioPresetFile\(FILESYSTEM\*\s*fs,\s*const uint8_t\*\s*buf,'
+        self.assertSourceMatches(h, r'bool\s+saveRadioPresetFile\(FILESYSTEM\*\s*fs,\s*const uint8_t\*\s*buf,'
                             r'\s*size_t\s+len\)')
         self.assertIn('AtomicFileWriter', h)
         self.assertIn('ContactFileTransaction', h)
@@ -538,22 +583,23 @@ class RadioPresetWiringContractTest(unittest.TestCase):
         cpp = _read('examples/simple_repeater/MyMesh.cpp')
         login = _function_body(cpp, 'uint8_t MyMesh::handleLoginReq(')
         self.assertIsNotNone(login)
-        self.assertRegex(login, r'login_full_admin\s*=\s*false\s*;',
+        self.assertSourceMatches(login, r'login_full_admin\s*=\s*false\s*;',
                          'flag must be cleared on every attempt')
-        self.assertRegex(login, r'login_full_admin\s*=\s*client->isAdmin\(\)\s*;\s*\n\s*return 13;')
-        self.assertRegex(
+        self.assertSourceMatches(login, r'login_full_admin\s*=\s*client->isAdmin\(\)\s*;\s*\n\s*return 13;')
+        self.assertSourceMatches(
             cpp,
             r'reply_len\s*=\s*handleLoginReq\([^;]*;\s*\n(?:\s*//[^\n]*\n)*\s*if\s*\(reply_len\s*>\s*4\s*'
             r'&&\s*reply_data\[4\]\s*==\s*RESP_SERVER_LOGIN_OK\s*&&\s*login_full_admin\)\s*\n?\s*'
             r'_cli\.radioPresets\(\)\.onAdminLogin\(\);')
         self.assertEqual(cpp.count('onAdminLogin()'), 1)
         header = _read('examples/simple_repeater/MyMesh.h')
-        self.assertRegex(header, r'bool\s+login_full_admin\s*=\s*false\s*;')
+        self.assertSourceMatches(header, r'bool\s+login_full_admin\s*=\s*false\s*;')
 
     def test_room_server_and_sensor_login_commit_for_strict_admin(self):
         room = _read('examples/simple_room_server/MyMesh.cpp')
         anon = _function_body(room, 'void MyMesh::onAnonDataRecv(')
         self.assertIsNotNone(anon)
+        assert anon is not None
         ok = anon.find('reply_data[4] = RESP_SERVER_LOGIN_OK;')
         commit = anon.find('if (client->isAdmin()) _cli.radioPresets().onAdminLogin();')
         self.assertGreaterEqual(ok, 0)
@@ -562,7 +608,7 @@ class RadioPresetWiringContractTest(unittest.TestCase):
         sensor = _read('examples/simple_sensor/SensorMesh.cpp')
         login = _function_body(sensor, 'uint8_t SensorMesh::handleLoginReq(')
         self.assertIsNotNone(login)
-        self.assertRegex(login, r'RESP_SERVER_LOGIN_OK[\s\S]*if \(client->isAdmin\(\)\) '
+        self.assertSourceMatches(login, r'RESP_SERVER_LOGIN_OK[\s\S]*if \(client->isAdmin\(\)\) '
                                 r'_cli\.radioPresets\(\)\.onAdminLogin\(\);\s*\n\s*return 13;')
         self.assertEqual(sensor.count('onAdminLogin()'), 1)
         docs = _read('docs/cli_commands.md')

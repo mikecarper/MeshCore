@@ -5,6 +5,23 @@
 
 #include <helpers/RadioPresets.h>
 
+// Slot 1 default on first use: the US/Canada standard. Override per build.
+#ifndef RADIO_PRESET_DEFAULT_NAME
+#define RADIO_PRESET_DEFAULT_NAME "USA-Canada"
+#endif
+#ifndef RADIO_PRESET_DEFAULT_FREQ
+#define RADIO_PRESET_DEFAULT_FREQ 910.525f
+#endif
+#ifndef RADIO_PRESET_DEFAULT_BW
+#define RADIO_PRESET_DEFAULT_BW 62.5f
+#endif
+#ifndef RADIO_PRESET_DEFAULT_SF
+#define RADIO_PRESET_DEFAULT_SF 7
+#endif
+#ifndef RADIO_PRESET_DEFAULT_CR
+#define RADIO_PRESET_DEFAULT_CR 5
+#endif
+
 // "get/add/load/del preset" command handler plus the revert state machine for
 // remote loads. A preset loaded over the air is provisional: the previous radio
 // settings come back after REVERT_SECS (or on reboot) unless a fresh admin login
@@ -26,7 +43,7 @@ class RadioPresetCLI {
   static constexpr uint32_t REVERT_SECS = 600;
   static constexpr uint32_t RETRY_SECS = 60;  // between failed revert attempts
 
-  void begin(const Hooks& hooks);                                     // load or seed slot 1; if pending -> revert now
+  void begin(const Hooks& hooks);                                     // load, or seed slot 1 with the US/Canada default; if pending -> revert now
   bool handle(const char* cmd, char* reply, size_t cap, bool remote);  // true if consumed
   bool loadSlot(uint8_t slot, char* reply, size_t cap);               // local load (Fn keys)
   void onAdminLogin();                                                // fresh full-admin login: commit pending
@@ -44,6 +61,7 @@ class RadioPresetCLI {
   bool have_last_ = false;
 
   bool save();
+  bool presetAcceptsDefault() const;
   bool presetOk(const RadioPreset& p) const;
   void clearPending();
   bool revertNow();

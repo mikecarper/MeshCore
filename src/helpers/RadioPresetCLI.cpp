@@ -74,6 +74,12 @@ bool RadioPresetCLI::revertNow() {
   return false;
 }
 
+bool RadioPresetCLI::presetAcceptsDefault() const {
+  return hooks_.accepts &&
+         hooks_.accepts(hooks_.ctx, RADIO_PRESET_DEFAULT_FREQ, RADIO_PRESET_DEFAULT_BW,
+                        RADIO_PRESET_DEFAULT_SF, RADIO_PRESET_DEFAULT_CR, 0);
+}
+
 void RadioPresetCLI::begin(const Hooks& hooks) {
   hooks_ = hooks;
   have_last_ = false;
@@ -95,10 +101,11 @@ void RadioPresetCLI::begin(const Hooks& hooks) {
   bool any = false;
   for (uint8_t s = 1; s <= RadioPresetTable::SLOTS; s++) any = any || table_.get(s) != nullptr;
   if (!any) {
-    RadioPreset cur;
-    memset(&cur, 0, sizeof(cur));
-    if (hooks_.current && hooks_.current(hooks_.ctx, cur) &&
-        table_.set(1, "Primary", cur.freq, cur.bw, cur.sf, cur.cr, cur.preamble)) {
+    // Slot 1 is the US/Canada standard, not a copy of the live radio. A board that
+    // rejects it (other band) keeps an empty table and nothing is written.
+    if (presetAcceptsDefault() &&
+        table_.set(1, RADIO_PRESET_DEFAULT_NAME, RADIO_PRESET_DEFAULT_FREQ, RADIO_PRESET_DEFAULT_BW,
+                   RADIO_PRESET_DEFAULT_SF, RADIO_PRESET_DEFAULT_CR, 0)) {
       dirty = true;
     }
   }
