@@ -62,6 +62,7 @@
 #endif
 #if defined(NRF52_PLATFORM) || defined(STM32_PLATFORM)
 #include "AtomicFileWriter.h"
+#include "RadioPresetFile.h"
 #elif defined(ESP32_PLATFORM) || defined(RP2040_PLATFORM)
 #include "ContactFileTransaction.h"
 #endif
@@ -236,6 +237,7 @@ void CommonCLI::loop() {
     servicePendingTxPower();
     servicePendingRxSettings();
     _radio_profiles.loop();
+    _radio_presets.loop(millis());
 #if MESH_ENABLE_HOST_KISS
     mesh::hostkiss::loop();
 #endif
@@ -273,6 +275,44 @@ bool CommonCLI::applyAndSavePrimaryRadioParams(float freq, float bw, uint8_t sf,
     strcpy(reply, "OK - applying in 2s");
   }
   return true;
+}
+
+bool CommonCLI::presetLoad(void* ctx, uint8_t* buf, size_t cap, size_t& len) {
+  return mesh::loadRadioPresetFile(static_cast<CommonCLI*>(ctx)->_presets_fs, buf, cap, len);
+}
+
+bool CommonCLI::presetSave(void* ctx, const uint8_t* buf, size_t len) {
+  return mesh::saveRadioPresetFile(static_cast<CommonCLI*>(ctx)->_presets_fs, buf, len);
+}
+
+bool CommonCLI::presetCurrent(void* ctx, mesh::RadioPreset& out) {
+  const NodePrefs* prefs = static_cast<CommonCLI*>(ctx)->_prefs;
+  out.freq = prefs->freq;
+  out.bw = prefs->bw;
+  out.sf = prefs->sf;
+  out.cr = prefs->cr;
+  out.preamble = prefs->primary_radio_preamble;
+  return true;
+}
+
+bool CommonCLI::presetAccepts(void* ctx, float freq, float bw, uint8_t sf, uint8_t cr,
+                              uint16_t preamble) {
+  return static_cast<CommonCLI*>(ctx)->acceptsPrimaryRadioParams(freq, bw, sf, cr, preamble);
+}
+
+// Same save+apply path as "set radio": the switch is deferred 2 s so the CLI
+// reply leaves on the old settings first.
+bool CommonCLI::presetApply(void* ctx, const mesh::RadioPreset& p, char* reply, size_t cap) {
+  char result[160];
+  result[0] = 0;
+  const bool ok = static_cast<CommonCLI*>(ctx)->applyAndSavePrimaryRadioParams(
+      p.freq, p.bw, p.sf, p.cr, p.preamble, result);
+  if (reply && cap) snprintf(reply, cap, "%s", result);
+  return ok;
+}
+
+bool CommonCLI::presetTempRadioActive(void* ctx) {
+  return static_cast<CommonCLI*>(ctx)->_callbacks->isTempRadioActive();
 }
 
 bool CommonCLI::primaryRadioApplyReady(bool reply_idle) {
@@ -1301,6 +1341,15 @@ void CommonCLI::loadPrefs(FILESYSTEM* fs) {
 #endif
   _radio_profiles.adoptPrimaryPreamble(_prefs->primary_radio_preamble);
   _radio_profiles.stagePrimary(_prefs->primary_radio_preamble, false);
+  // After prefs are final. A preset left pending by a reboot is reverted here
+  // through presetApply: that saves the previous tuple into _prefs, so the
+  // role's boot-time radio apply (which runs after loadPrefs) starts on it.
+  _presets_fs = fs;
+  const mesh::RadioPresetCLI::Hooks preset_hooks = {
+    this, presetLoad, presetSave, presetCurrent, presetAccepts, presetApply,
+    presetTempRadioActive
+  };
+  _radio_presets.begin(preset_hooks);
   mesh::hilStartupTrace("prefs_apply_ready");
 }
 
@@ -3605,6 +3654,8 @@ void CommonCLI::handleCommand(uint32_t sender_timestamp, char* command, char* re
                                       command, reply, 160 - 3, millis())) return;
     if (mesh::handleMorseCommand(_callbacks->getProfileRadio(), command, reply, 160 - 3)) return;
 #endif
+    // Remote (sender_timestamp != 0) loads are provisional until a fresh admin login.
+    if (_radio_presets.handle(command, reply, 160, sender_timestamp != 0)) return;
     if (_radio_profiles.handle(command, reply, 160, sender_timestamp != 0)) return;
 #if defined(ENABLE_OTA)
     const auto* ota_context = mesh::ota::ota_context_if_active();

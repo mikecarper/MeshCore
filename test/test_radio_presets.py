@@ -1,6 +1,7 @@
 """Host tests for the radio preset table, binary codec and list formatting."""
 from pathlib import Path
 import os
+import re
 import shutil
 import subprocess
 import tempfile
@@ -429,6 +430,113 @@ class RadioPresetsTest(unittest.TestCase):
         self.build_and_run('cli', CLI_HARNESS, 'PASS cli',
                            extra_sources=('src/helpers/TxtDataHelpers.cpp',
                                           'src/helpers/RadioPresetCLI.cpp'))
+
+
+def _read(rel):
+    return (ROOT / rel).read_text(encoding='utf-8', errors='replace')
+
+
+def _function_body(text, signature):
+    """Return the brace-balanced body that follows the first match of signature."""
+    start = text.find(signature)
+    if start < 0:
+        return None
+    brace = text.find('{', start)
+    depth = 0
+    for i in range(brace, len(text)):
+        if text[i] == '{':
+            depth += 1
+        elif text[i] == '}':
+            depth -= 1
+            if depth == 0:
+                return text[brace:i + 1]
+    return None
+
+
+class RadioPresetWiringContractTest(unittest.TestCase):
+    """Source contracts for the repeater integration (no firmware build here)."""
+
+    def assertRegex(self, text, pattern, msg=None):  # keep failures short: no file dumps
+        self.assertTrue(text is not None and re.search(pattern, text), msg or ('no match: ' + pattern))
+
+    def test_dispatch_presets_before_profiles(self):
+        cpp = _read('src/helpers/CommonCLI.cpp')
+        body = _function_body(cpp, 'void CommonCLI::handleCommand(')
+        self.assertIsNotNone(body)
+        presets = body.find('_radio_presets.handle(command, reply, 160, sender_timestamp != 0)')
+        profiles = body.find('_radio_profiles.handle(')
+        self.assertGreaterEqual(presets, 0, 'preset dispatch missing')
+        self.assertGreaterEqual(profiles, 0)
+        self.assertLess(presets, profiles, 'presets must be dispatched before profiles')
+
+    def test_begin_at_end_of_load_prefs_and_loop_serviced(self):
+        cpp = _read('src/helpers/CommonCLI.cpp')
+        load = _function_body(cpp, 'void CommonCLI::loadPrefs(FILESYSTEM* fs)')
+        self.assertIsNotNone(load)
+        begin = load.find('_radio_presets.begin(')
+        self.assertGreaterEqual(begin, 0, 'begin() missing from loadPrefs')
+        self.assertGreater(begin, load.find('_radio_profiles.stagePrimary('),
+                           'begin() must run after prefs are loaded and staged')
+        loop = _function_body(cpp, 'void CommonCLI::loop()')
+        self.assertRegex(loop, r'_radio_presets\.loop\(millis\(\)\)')
+
+    def test_hooks_use_existing_radio_paths(self):
+        cpp = _read('src/helpers/CommonCLI.cpp')
+        expect = {
+            'bool CommonCLI::presetAccepts(': r'acceptsPrimaryRadioParams\(freq, bw, sf, cr, preamble\)',
+            'bool CommonCLI::presetApply(':
+                r'applyAndSavePrimaryRadioParams\(\s*p\.freq, p\.bw, p\.sf, p\.cr, p\.preamble',
+            'bool CommonCLI::presetTempRadioActive(': r'_callbacks->isTempRadioActive\(\)',
+            'bool CommonCLI::presetLoad(': r'loadRadioPresetFile\(',
+            'bool CommonCLI::presetSave(': r'saveRadioPresetFile\(',
+            'bool CommonCLI::presetCurrent(': r'primary_radio_preamble',
+        }
+        for signature, pattern in expect.items():
+            body = _function_body(cpp, signature)
+            self.assertIsNotNone(body, signature + ' missing')
+            self.assertTrue(re.search(pattern, body), signature + ' does not use ' + pattern)
+        header = _read('src/helpers/CommonCLI.h')
+        self.assertRegex(header, r'mesh::RadioPresetCLI\s+_radio_presets\s*;')
+        self.assertRegex(header, r'mesh::RadioPresetCLI&\s*radioPresets\(\)')
+
+    def test_preset_file_helpers(self):
+        h = _read('src/helpers/RadioPresetFile.h')
+        self.assertIn('"/presets"', h)
+        self.assertRegex(h, r'bool\s+loadRadioPresetFile\(FILESYSTEM\*\s*fs,\s*uint8_t\*\s*buf,'
+                            r'\s*size_t\s+cap,\s*size_t&\s*len\)')
+        self.assertRegex(h, r'bool\s+saveRadioPresetFile\(FILESYSTEM\*\s*fs,\s*const uint8_t\*\s*buf,'
+                            r'\s*size_t\s+len\)')
+        self.assertIn('AtomicFileWriter', h)
+
+    def test_repeater_login_commits_only_for_full_admin(self):
+        cpp = _read('examples/simple_repeater/MyMesh.cpp')
+        login = _function_body(cpp, 'uint8_t MyMesh::handleLoginReq(')
+        self.assertIsNotNone(login)
+        self.assertRegex(login, r'login_full_admin\s*=\s*false\s*;',
+                         'flag must be cleared on every attempt')
+        self.assertRegex(login, r'login_full_admin\s*=\s*client->isAdmin\(\)\s*;\s*\n\s*return 13;')
+        self.assertRegex(
+            cpp,
+            r'reply_len\s*=\s*handleLoginReq\([^;]*;\s*\n(?:\s*//[^\n]*\n)*\s*if\s*\(reply_len\s*>\s*4\s*'
+            r'&&\s*reply_data\[4\]\s*==\s*RESP_SERVER_LOGIN_OK\s*&&\s*login_full_admin\)\s*\n?\s*'
+            r'_cli\.radioPresets\(\)\.onAdminLogin\(\);')
+        self.assertEqual(cpp.count('onAdminLogin()'), 1)
+        header = _read('examples/simple_repeater/MyMesh.h')
+        self.assertRegex(header, r'bool\s+login_full_admin\s*=\s*false\s*;')
+
+    def test_manager_roles_cannot_use_presets(self):
+        cpp = _read('examples/simple_repeater/MyMesh.cpp')
+        for name in ('static bool isRegionMgrAllowed(', 'static bool isFilterMgrAllowed('):
+            body = _function_body(cpp, name)
+            self.assertIsNotNone(body, name)
+            self.assertNotIn('preset', body, name)
+
+    def test_docs_list_preset_commands(self):
+        docs = _read('docs/cli_commands.md')
+        avail = _read('docs/cli_command_availability.md')
+        for cmd in ('get preset', 'add preset', 'load preset', 'del preset'):
+            self.assertTrue(cmd in docs, cmd + ' missing from cli_commands.md')
+            self.assertTrue(cmd in avail, cmd + ' missing from cli_command_availability.md')
 
 
 if __name__ == '__main__':

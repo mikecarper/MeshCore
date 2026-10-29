@@ -2004,6 +2004,51 @@ minimum and return to it exactly when it is safe.
 
 ---
 
+#### Save and switch named radio presets
+
+**Search terms:** radio preset, saved radio settings, switch frequency, private mesh.
+
+**Usage:**
+- `get preset [n]`
+- `add preset <name> <slot> <freq>,<bw>,<sf>,<cr>[,<preamble>]`
+- `load preset <slot>`
+- `del preset <slot>`
+
+**Parameters:**
+- `slot`: Preset slot (1-5)
+- `name`: 1-12 printable characters, no spaces or commas
+- `freq`, `bw`, `sf`, `cr`: Same values and validation as `set radio`
+- `preamble`: Optional preamble length; omit for the default
+
+**Default:** On first boot slot 1 is saved as `Primary` with the current
+primary radio settings. Other slots are empty.
+
+`get preset` lists every slot by name, for example
+`1*Primary 2 Private 3 - 4 - 5 - (get preset N)`; `*` marks the slot that
+matches the running radio settings and `-` marks an empty slot. `get preset <n>`
+shows one slot with its settings, for example `1*Primary 910.525,62.5,7,5`.
+Presets are stored in `/presets` and survive reboots.
+
+`load preset <slot>` saves and applies that preset through the same path as
+`set radio`: the change applies two seconds later, after the reply has been
+sent. Loading from the local serial terminal is permanent.
+
+**Remote loads revert unless confirmed.** A `load preset` sent over LoRa
+(including the ESP-NOW bridge) is provisional. The reply is
+`OK - loading <name> <settings>; log in again within 10 min to keep`. Log in
+again as administrator on the new settings within 10 minutes to keep them.
+Otherwise the node returns to its previous radio settings automatically. A
+reboot during that window also reverts. Region and filter managers cannot use
+preset commands, and their logins do not confirm a pending load. While a load is
+pending, `get preset` starts with `pending, reverts in <m>m;` and another
+remote load is refused. A remote load is also refused while a TempRadio session
+is active. If the revert itself fails, it retries every minute and at every
+boot. Login confirmation is wired on repeaters; on room servers and sensors a
+remote load always reverts after 10 minutes, so load from the local terminal
+there.
+
+---
+
 #### View or change this node's transmit power
 
 **Search terms:** tx power, transmit strength, radio output power, dBm.
