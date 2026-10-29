@@ -175,6 +175,38 @@ class WizardTests(unittest.TestCase):
         for file in self.cache.rglob('*.json'):
             self.assertNotIn('DoNotPersistThis', file.read_text())
 
+    def test_explicit_known_repeater_skips_discovery_but_still_inspects_authenticated_identity(self):
+        link = self.link()
+        link.discover.side_effect = AssertionError('unexpected discovery')
+        session = SimpleNamespace(inspect=mock.AsyncMock(return_value=destination()),
+                                  snapshot=mock.AsyncMock(), cleanup=mock.AsyncMock(return_value=[]),
+                                  journal=self.cache/'session.json')
+        with self.fake_transport(link), \
+                mock.patch.object(wizard, 'DirectSession', return_value=session), \
+                mock.patch.object(wizard, 'GitHubCatalog', side_effect=AssertionError('network')), \
+                mock.patch.dict(os.environ, {'MESHCORE_ADMIN_PASSWORD': ''}), \
+                redirect_stdout(io.StringIO()):
+            self.assertEqual(asyncio.run(wizard.run(self.run_options(
+                '--check', '--target-type', 'repeater'))), 0)
+            sys.modules['ota_wizard_repeater'].RepeaterTransport.assert_called_once_with(
+                '/dev/ttyUSB0', known_repeater=KEY)
+        link.discover.assert_not_awaited()
+        session.inspect.assert_awaited_once()
+        session.snapshot.assert_not_awaited()
+        link.close.assert_awaited_once()
+
+    def test_known_repeater_requires_full_key_and_repeater_source_before_opening_usb(self):
+        for extra, error in (([], 'requires --target'),
+                             (['--target', 'abcd'], 'complete destination public key'),
+                             (['--target', KEY, '--mode', 'companion'], 'USB repeater source')):
+            options = wizard.arguments(['--port', '/dev/ttyUSB0', '--mode', 'repeater',
+                                        '--target-type', 'repeater', '--cache', str(self.cache), *extra])
+            with self.subTest(extra=extra), self.fake_transport(self.link()), \
+                    mock.patch.object(wizard, 'DirectSession') as session, \
+                    self.assertRaisesRegex(ota.OtaError, error):
+                asyncio.run(wizard.run(options))
+            session.assert_not_called()
+
     def test_live_full_option_retains_supplied_signed_mota_for_sd_destination(self):
         from dataclasses import replace
         live = replace(destination(), sd_storage=True)

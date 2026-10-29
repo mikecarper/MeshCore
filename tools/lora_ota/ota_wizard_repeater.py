@@ -144,7 +144,7 @@ class StreamDecoder:
 class RepeaterTransport:
     def __init__(self, port, baud=115200, *, command_timeout=12,
                  remote_timeout=40, poll_seconds=.25, serial_factory=None,
-                 open_settle=.75):
+                 open_settle=.75, known_repeater: str | None = None):
         self.port, self.baud = port, baud
         self.command_timeout, self.remote_timeout = command_timeout, remote_timeout
         self.poll_seconds, self.open_settle = poll_seconds, open_settle
@@ -156,6 +156,7 @@ class RepeaterTransport:
         self._reader_failed = asyncio.Event()
         self._failure = None
         self._source_key = None
+        self._known_repeater = _key(known_repeater) if known_repeater is not None else None
         self._authenticated_key = None
         self._last_peer_use = 0
         self._clock_checked = False
@@ -195,6 +196,11 @@ class RepeaterTransport:
             status = await self.local_command("ota.peer status")
             if not re.fullmatch(r"OTApeer v=1 session=[01] busy=[01] peers=\d+", status):
                 raise RepeaterError("This repeater needs firmware with direct USB OTA administration (ota.peer)")
+            if self._known_repeater is not None:
+                capabilities = await self.local_command("ota.peer capabilities")
+                if capabilities != "OTApeer known_repeater=1":
+                    raise RepeaterError("Update the USB source firmware to use a known repeater key "
+                                        "without discovery (ota.peer login.repeater).")
             return self
         except BaseException:
             await self.close()
@@ -249,7 +255,7 @@ class RepeaterTransport:
     def _echo_matches(line: str, command: str) -> bool:
         if line.strip() == command.strip():
             return True
-        if command.startswith("ota.peer login "):
+        if command.startswith(("ota.peer login ", "ota.peer login.repeater ")):
             prefix = " ".join(command.split(" ", 3)[:3]) + " "
             return line.startswith(prefix) and bool(re.fullmatch(r"\*+", line[len(prefix):]))
         return False
@@ -349,6 +355,14 @@ class RepeaterTransport:
         return sorted(result, key=lambda item: item["rssi"], reverse=True)
 
     async def _login_locked(self, key, password):
+        if self._known_repeater is not None:
+            if key != self._known_repeater:
+                raise RepeaterError("The destination differs from the explicit known repeater key")
+            # The firmware sends a zero-hop repeater login, then requires admin
+            # permission and an authenticated proof of this complete public key.
+            await self._job(f"ota.peer login.repeater {key} {password}")
+            self._authenticated_key = key
+            return
         # Native login binds its packet layout to a freshly discovered board
         # role. A remembered/manual key must prove it is still directly heard.
         peers = await self._discover_locked()
@@ -359,6 +373,8 @@ class RepeaterTransport:
 
     async def remote_command(self, public_key, password, text):
         key = _key(public_key)
+        if self._known_repeater is not None and key != self._known_repeater:
+            raise RepeaterError("The destination differs from the explicit known repeater key")
         _one_line(text, 154)
         if (not isinstance(password, str) or len(password.encode("utf-8")) > 63
                 or any(ord(char) < 32 or ord(char) == 127 for char in password)):

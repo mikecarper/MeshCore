@@ -107,6 +107,8 @@ class FakeSerial:
         self.peer_type = 2
         self.peer_count = 1
         self.peer_key = TARGET
+        self.known_repeater_supported = True
+        self.login_error = None
         self.command_results = {"ver": "v1.18.0.1", "stats-core": "x" * 150}
 
     def open(self):
@@ -158,15 +160,19 @@ class FakeSerial:
             return len(data)
         command = data.decode().strip("\r\n")
         self.commands.append(command)
-        if command.startswith("ota.peer login "):
-            key, password = command[len("ota.peer login "):].split(" ", 1)
-            self.feed((f"ota.peer login {key} " + "*" * len(password.encode()) + "\r\n").encode())
+        login_prefix = next((prefix for prefix in ("ota.peer login ", "ota.peer login.repeater ")
+                             if command.startswith(prefix)), None)
+        if login_prefix:
+            key, password = command[len(login_prefix):].split(" ", 1)
+            self.feed((f"{login_prefix}{key} " + "*" * len(password.encode()) + "\r\n").encode())
         else:
             self.feed((command + "\r\n").encode())
         if command == "get public.key":
             self.answer("> " + SOURCE)
         elif command == "ota.peer status":
             self.answer(f"OTApeer v=1 session={int(self.authenticated)} busy=0 peers={self.peer_count}")
+        elif command == "ota.peer capabilities":
+            self.answer("OTApeer known_repeater=1" if self.known_repeater_supported else "Unknown command")
         elif command == "clock":
             now = self.clock or datetime.now(timezone.utc)
             self.answer(f"{now.hour:02}:{now.minute:02} - {now.day}/{now.month}/{now.year} UTC")
@@ -176,9 +182,12 @@ class FakeSerial:
             self.start_job("discovery complete")
         elif command == "ota.peer peers 0":
             self.answer(f"OTApeer peer=0 key={self.peer_key} type={self.peer_type} rssi=-61 snr=3")
-        elif command.startswith("ota.peer login "):
-            self.authenticated = True
-            self.start_job("authenticated")
+        elif login_prefix:
+            if self.login_error:
+                self.start_job(self.login_error, error=True)
+            else:
+                self.authenticated = True
+                self.start_job("authenticated")
         elif command.startswith("ota.peer cmd "):
             if self.reject_login_once:
                 self.reject_login_once = False
@@ -232,6 +241,61 @@ class RepeaterTransportTest(unittest.IsolatedAsyncioTestCase):
         self.serial.result_pending = 1
         peers = await self.link.discover()
         self.assertEqual(peers, [{"public_key": TARGET, "type": 2, "rssi": -61, "snr": 3}])
+
+    async def open_known_repeater(self):
+        supported, peer_count = self.serial.known_repeater_supported, self.serial.peer_count
+        await self.link.close()
+        self.serial = FakeSerial()
+        self.serial.known_repeater_supported, self.serial.peer_count = supported, peer_count
+        self.link = RepeaterTransport("fake", serial_factory=lambda **kwargs: self.serial,
+            open_settle=0, command_timeout=.5, remote_timeout=.8, poll_seconds=.001,
+            known_repeater=TARGET)
+        await self.link.open()
+
+    async def test_known_repeater_authenticates_without_discovery_and_accepts_empty_password(self):
+        self.serial.peer_count = 0
+        await self.open_known_repeater()
+        self.serial.commands.clear()
+        self.assertEqual(await self.link.remote_command(TARGET, "", "ver"), "v1.18.0.1")
+        self.assertIn(f"ota.peer login.repeater {TARGET} ", self.serial.commands)
+        self.assertFalse(any(command.startswith(("ota.peer discover", "ota.peer peers", "ota.peer login "))
+                             for command in self.serial.commands))
+        self.assertEqual(self.link._authenticated_key, TARGET)
+        before = len(self.serial.commands)
+        with self.assertRaisesRegex(RepeaterError, "explicit known repeater key"):
+            await self.link.remote_command("c" * 64, "", "ver")
+        self.assertEqual(len(self.serial.commands), before)
+
+    async def test_known_repeater_masks_password_and_does_not_fall_back_after_denial(self):
+        await self.open_known_repeater()
+        self.serial.commands.clear()
+        self.assertEqual(await self.link.remote_command(TARGET, "secret with spaces", "ver"), "v1.18.0.1")
+        self.assertIn(f"ota.peer login.repeater {TARGET} secret with spaces", self.serial.commands)
+        await self.link.reset_remote_session(TARGET)
+        self.serial.login_error = "admin login rejected"
+        before = len(self.serial.commands)
+        with self.assertRaisesRegex(RepeaterError, "admin login rejected"):
+            await self.link.remote_command(TARGET, "", "ota install")
+        self.assertIsNone(self.link._authenticated_key)
+        attempted = self.serial.commands[before:]
+        self.assertFalse(any(command.startswith(("ota.peer discover", "ota.peer login ", "ota.peer cmd "))
+                             for command in attempted))
+
+    async def test_known_repeater_requires_explicit_firmware_capability(self):
+        self.serial.known_repeater_supported = False
+        with self.assertRaisesRegex(RepeaterError, "Update the USB source firmware"):
+            await self.open_known_repeater()
+        self.assertFalse(self.serial.is_open)
+        self.assertFalse(any(command.startswith("ota.peer login.repeater") for command in self.serial.commands))
+
+    async def test_discovery_mode_still_accepts_older_source_firmware(self):
+        await self.link.close()
+        self.serial = FakeSerial()
+        self.serial.known_repeater_supported = False
+        await self.link.open()
+        self.assertEqual(await self.link.remote_command(TARGET, "", "ver"), "v1.18.0.1")
+        self.assertIn("ota.peer discover", self.serial.commands)
+        self.assertNotIn("ota.peer capabilities", self.serial.commands)
 
     async def test_password_echo_masking_and_full_multipart_result(self):
         reply = await self.link.remote_command(TARGET, "secret with spaces", "stats-core")

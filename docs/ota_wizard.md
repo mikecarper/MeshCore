@@ -37,15 +37,44 @@ with an app first; the wizard refuses to discard them to make room.
 
 The source and destination must already use the same main-channel settings
 and hear each other directly. The destination needs working LoRa OTA support
-and its admin password. A stock nRF52 bootloader may need a matching local
+and either its admin password or an admin ACL entry for the source radio.
+A stock nRF52 bootloader may need a matching local
 installation before it can accept remote updates.
 
-The wizard sends discovery, admin commands, and OTA traffic directly with no
+By default, the wizard sends discovery, admin commands, and OTA traffic directly with no
 relay hops. An older destination may put its first login reply in a flood
 envelope; the wizard accepts it only if it arrives with zero hops, establishes
 a direct return route, then requires a fresh direct identity check.
 
 Close other apps using the USB port before starting.
+
+### Use a known repeater key
+
+With a USB repeater source, `--target-type repeater` lets you authenticate a
+known destination without waiting for a discovery response. Supply its complete
+64-character public key with `--target`. The source must reply
+`OTApeer known_repeater=1` to `ota.peer capabilities`; update its firmware first if that
+capability is missing.
+
+For example, replace `PUBLIC_KEY` with the destination repeater's full key:
+
+```bash
+python3 tools/lora_ota/ota_wizard.py --mode repeater --port /dev/ttyACM0 \
+  --target PUBLIC_KEY --target-type repeater --check
+```
+
+The source still sends a zero-hop login and requires an authenticated admin
+reply and proof of the exact public key before reading settings or updating.
+It does not fall back to flooding or relays. Automatic discovery and Room
+Server connections keep their existing behavior. Use the same target-type
+option when recovering an interrupted update through this connection.
+
+If the destination already grants the source admin permission through its ACL,
+set `MESHCORE_ADMIN_PASSWORD` to an empty string for an unattended login. In Bash:
+
+```bash
+export MESHCORE_ADMIN_PASSWORD=''
+```
 
 ## Start
 
@@ -189,7 +218,8 @@ options remain available for scripts:
 | `--check` | Inspect without downloading or installing firmware |
 | `--port /dev/ttyUSB0` | Choose a port; Windows example: `--port COM5` |
 | `--mode repeater` or `--mode companion` | Select the source type |
-| `--target PUBLIC_KEY` | Choose the full destination key; direct discovery is still required |
+| `--target PUBLIC_KEY` | Choose the full destination key; direct discovery is required by default |
+| `--target-type repeater` | With a repeater source and full `--target`, authenticate a known repeater without discovery |
 | `--firmware FILE` | Use a local firmware image or prepared bundle |
 | `--base FILE` | Supply the exact running image for differential preparation |
 | `--full` | Force a full transfer where supported |

@@ -125,7 +125,8 @@ public:
   // Called before console echo, while the password is still arriving. Once
   // true the caller keeps masking until the complete line (even on overflow).
   static bool sensitiveInput(const char* text) {
-    return strncmp(text, "ota.peer login ", 15) == 0 && strchr(text + 15, ' ') != nullptr;
+    if (strncmp(text, "ota.peer login ", 15) == 0) return strchr(text + 15, ' ') != nullptr;
+    return strncmp(text, "ota.peer login.repeater ", 24) == 0 && strchr(text + 24, ' ') != nullptr;
   }
   static void clearInput(char* text, size_t capacity) { erase(text, capacity); }
   bool hasSession() const { return session_; }
@@ -164,6 +165,10 @@ public:
     tick(now);
     const char* args = command + 8;
     while (*args == ' ') ++args;
+    if (!strcmp(args, "capabilities")) {
+      strcpy(reply, "OTApeer known_repeater=1");
+      return;
+    }
     if (!strcmp(args, "status") || !*args) {
       snprintf(reply, capacity, "OTApeer v=1 session=%u busy=%u peers=%u", authenticated_, phase_ != Idle, peers_count_);
       return;
@@ -211,11 +216,16 @@ public:
       queued(reply, capacity);
       return;
     }
-    const bool login = !strncmp(args, "login ", 6);
+    // The explicit repeater form lets an operator use a complete known key
+    // when firmware does not implement discovery. It only chooses the login
+    // layout; ECDH, admin permission and the full-key proof still authenticate
+    // the peer. Ordinary login keeps discovery-based repeater/room selection.
+    const bool known_repeater = !strncmp(args, "login.repeater ", 15);
+    const bool login = known_repeater || !strncmp(args, "login ", 6);
     const bool cli = !strncmp(args, "cmd ", 4);
     if (login || cli) {
       Identity peer; const char* rest;
-      if (!parseKey(args + (login ? 6 : 4), peer, rest) || *rest != ' ') { strcpy(reply, "ERR peer key or arguments"); return; }
+      if (!parseKey(args + (known_repeater ? 15 : (login ? 6 : 4)), peer, rest) || *rest != ' ') { strcpy(reply, "ERR peer key or arguments"); return; }
       ++rest;
       if (peer.matches(mesh.self_id)) { strcpy(reply, "ERR peer cannot be this repeater"); return; }
       for (const char* p = rest; *p; ++p) if (static_cast<uint8_t>(*p) < 32 || *p == 127) { strcpy(reply, "ERR peer control character"); return; }
@@ -228,8 +238,8 @@ public:
             discovered = &peers_[i]; break;
           }
         }
-        if (!discovered) { strcpy(reply, "ERR peer needs fresh discovery"); return; }
-        const size_t password_offset = discovered->type == 3 ? 8 : 4;
+        if (!known_repeater && !discovered) { strcpy(reply, "ERR peer needs fresh discovery"); return; }
+        const size_t password_offset = !known_repeater && discovered->type == 3 ? 8 : 4;
         clearSession(); target_ = peer;
         mesh.self_id.calcSharedSecret(secret_, target_);
         uint8_t nonzero = 0;
@@ -255,7 +265,7 @@ public:
       queued(reply, capacity);
       return;
     }
-    strcpy(reply, "ERR use ota.peer status|discover|peers [n]|login KEY PASSWORD|cmd KEY COMMAND|result [off]|close");
+    strcpy(reply, "ERR use ota.peer status|capabilities|discover|peers [n]|login[.repeater] KEY PASSWORD|cmd KEY COMMAND|result [off]|close");
   }
 
   void onDiscovery(const Packet* packet, uint32_t now) {

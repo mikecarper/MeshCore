@@ -37,7 +37,10 @@ struct Identity {
 };
 struct LocalIdentity:Identity {
   bool invalid_peer=false;
-  void calcSharedSecret(uint8_t* dest,const Identity& id)const{for(int i=0;i<32;++i)dest[i]=invalid_peer?0:pub_key[i]^id.pub_key[i];}
+  void calcSharedSecret(uint8_t* dest,const Identity& id)const{
+    uint8_t nonzero=0;for(auto b:id.pub_key)nonzero|=b;
+    for(int i=0;i<32;++i)dest[i]=invalid_peer||!nonzero?0:pub_key[i]^id.pub_key[i];
+  }
 };
 struct Utils {
   static int digit(char c){return c>='0'&&c<='9'?c-'0':c>='A'&&c<='F'?c-'A'+10:c>='a'&&c<='f'?c-'a'+10:-1;}
@@ -137,11 +140,12 @@ static void discover(Client& c,mesh::Mesh& radio,uint32_t now,uint8_t type=2){
   memcpy(packet.payload+2,radio.sent.data()+2,4);memset(packet.payload+6,0x11,32);
   c.onDiscovery(&packet,now+1);c.tick(now+6000);
 }
-static void authenticate(Client& c,mesh::Mesh& radio,uint32_t now=100){
-  auto accepted=command(c,radio,"ota.peer login "+key+" s p ace ",now);
+static void authenticate(Client& c,mesh::Mesh& radio,uint32_t now=100,
+                         bool known_repeater=false,const std::string& password="s p ace "){
+  auto accepted=command(c,radio,std::string("ota.peer ")+(known_repeater?"login.repeater ":"login ")+key+" "+password,now);
   assert(accepted.find("state=pending")!=std::string::npos);
   assert(radio.type==PAYLOAD_TYPE_ANON_REQ);
-  assert(std::string(radio.sent.begin()+4,radio.sent.end())=="s p ace ");
+  assert(std::string(radio.sent.begin()+4,radio.sent.end())==password);
   assert(c.hasSession()&&c.matchesHash(reinterpret_cast<const uint8_t*>("\x11")));
   uint8_t login[13]{};uint32_t tag=20000;memcpy(login,&tag,4);login[7]=3;
   mesh::Packet packet;
@@ -178,6 +182,7 @@ int main(){
   role.dispatch(0,nullptr,gate_command,gate_reply,true);assert(!strcmp(gate_reply,"OTApeer v=1 session=0 busy=0 peers=0"));
   Client client;mesh::Mesh radio;mesh::Packet packet;
   assert(command(client,radio,"ota.peer status")=="OTApeer v=1 session=0 busy=0 peers=0");
+  assert(command(client,radio,"ota.peer capabilities")=="OTApeer known_repeater=1");
   assert(command(client,radio,"ota.peer cmd "+key+" ver")=="ERR peer login required");
   assert(command(client,radio,"ota.peer login "+key+" password")=="ERR peer needs fresh discovery");
   command(client,radio,"ota.peer discover");assert(radio.type==11&&radio.sent[0]==0x80&&radio.sent[1]==12);
@@ -260,6 +265,61 @@ int main(){
   integration.direct_ota_admin.onData(integration,&direct,PAYLOAD_TYPE_RESPONSE,accepted_login,sizeof(accepted_login),6012);
   integration.loop();assert(integration.type==PAYLOAD_TYPE_PATH);
   integration.pending=false;integration.loop();assert(integration.type==PAYLOAD_TYPE_TXT_MSG);
+
+  // Only an explicit repeater choice may bypass discovery. It still completes
+  // the same ECDH/admin/PATH/exact-key proof, including an empty ACL password.
+  Client known;mesh::Mesh known_radio;
+  authenticate(known,known_radio,100,true,"");
+  assert(command(known,known_radio,"ota.peer status",120)=="OTApeer v=1 session=1 busy=0 peers=0");
+  assert(command(known,known_radio,"ota.peer capabilities",120)=="OTApeer known_repeater=1");
+  command(known,known_radio,"ota.peer cmd "+key+" ota status",121);
+  assert(known_radio.type==PAYLOAD_TYPE_TXT_MSG);
+  Client undiscovered;mesh::Mesh unchecked;
+  assert(command(undiscovered,unchecked,"ota.peer login "+key+" ")=="ERR peer needs fresh discovery");
+  assert(unchecked.calls==0&&!undiscovered.hasSession());
+  assert(command(undiscovered,unchecked,"ota.peer login.repeaterx "+key+" password").find("ERR use ota.peer ")==0);
+  assert(command(undiscovered,unchecked,"ota.peer cmd "+key+" ver")=="ERR peer login required");
+  assert(unchecked.calls==0&&!undiscovered.hasSession());
+
+  // Full keys and the password separator are required, even for an empty
+  // password. Reject malformed/self/invalid ECDH keys before any RF queueing.
+  for(const auto& arguments:std::vector<std::string>{" password",std::string(62,'1')+" password",
+      std::string(64,'G')+" password",key+"1 password",key}){
+    assert(command(undiscovered,unchecked,"ota.peer login.repeater "+arguments)=="ERR peer key or arguments");
+    assert(unchecked.calls==0&&!undiscovered.hasSession());
+  }
+  assert(command(undiscovered,unchecked,"ota.peer login.repeater "+std::string(64,'5')+" ")=="ERR peer cannot be this repeater");
+  assert(command(undiscovered,unchecked,"ota.peer login.repeater "+std::string(64,'0')+" ")=="ERR peer invalid public key");
+  unchecked.self_id.invalid_peer=true;
+  assert(command(undiscovered,unchecked,"ota.peer login.repeater "+key+" ")=="ERR peer invalid public key");
+  assert(unchecked.calls==0&&!undiscovered.hasSession());
+
+  for(uint8_t permission:{0,1,2,4,5}){
+    Client nonadmin;mesh::Mesh r;
+    command(nonadmin,r,"ota.peer login.repeater "+key+" ",100);
+    uint8_t response[13]{};uint32_t timestamp=70000;memcpy(response,&timestamp,4);response[7]=permission;
+    nonadmin.onData(r,&direct,PAYLOAD_TYPE_RESPONSE,response,sizeof(response),101);
+    assert(!nonadmin.hasSession()&&r.calls==1);
+    assert(command(nonadmin,r,"ota.peer result",102).find("state=error")!=std::string::npos);
+    assert(command(nonadmin,r,"ota.peer cmd "+key+" ota install",103)=="ERR peer login required");
+  }
+  for(const std::string& proof:std::vector<std::string>{key.substr(0,16),key.substr(0,63)+"2"}){
+    Client mismatch;mesh::Mesh r;
+    command(mismatch,r,"ota.peer login.repeater "+key+" ",100);
+    uint8_t response[13]{};uint32_t timestamp=80000;memcpy(response,&timestamp,4);response[7]=3;
+    mismatch.onData(r,&direct,PAYLOAD_TYPE_RESPONSE,response,sizeof(response),101);
+    assert(command(mismatch,r,"ota.peer status",102).find("session=0 busy=1")!=std::string::npos);
+    r.pending=false;mismatch.service(r,103,true);
+    const std::string proof_prefix(r.sent.begin()+5,r.sent.begin()+8);
+    deliver(mismatch,r,direct,80001,proof_prefix+"> "+proof,104);
+    assert(!mismatch.hasSession());
+    assert(command(mismatch,r,"ota.peer result",105).find("state=error")!=std::string::npos);
+    assert(command(mismatch,r,"ota.peer cmd "+key+" ota install",106)=="ERR peer login required");
+  }
+  assert(Client::sensitiveInput(("ota.peer login.repeater "+key+" ").c_str()));
+  assert(!Client::sensitiveInput(("ota.peer login.repeater "+key).c_str()));
+  auto known_echo=echoInput("ota.peer login.repeater "+key+" secret that overflows the input buffer\r");
+  assert(known_echo.find("secret")==std::string::npos&&known_echo.find('*')!=std::string::npos);
 }
 '''
 

@@ -61,6 +61,8 @@ def arguments(argv=None):
     parser.add_argument("--port", help="USB port; selected automatically when only one radio is connected")
     parser.add_argument("--mode", choices=("auto", "repeater", "companion"), default="auto")
     parser.add_argument("--target", help="complete destination public key; otherwise discover nearby repeaters")
+    parser.add_argument("--target-type", choices=("repeater",),
+                        help="with --target and a repeater source, authenticate that known repeater directly without discovery")
     parser.add_argument("--firmware", type=Path, help="custom application DFU ZIP, BIN, HEX, full mOTA, or prepared OTA bundle")
     parser.add_argument("--base", type=Path, help="original running firmware, checked against the destination hash")
     parser.add_argument("--full", action="store_true", help="use a full update when the destination supports it")
@@ -582,24 +584,32 @@ def ensure_signature_support() -> None:
 
 
 async def run(args) -> int:
-    args.cache.mkdir(parents=True, exist_ok=True, mode=0o700)
     if args.target and not re.fullmatch(r"[0-9A-Fa-f]{64}", args.target):
         raise ota.OtaError("--target needs the complete destination public key.")
+    known_repeater = args.target if getattr(args, "target_type", None) == "repeater" else None
+    if getattr(args, "target_type", None) == "repeater" and not args.target:
+        raise ota.OtaError("--target-type repeater requires --target with the complete destination public key.")
+    args.cache.mkdir(parents=True, exist_ok=True, mode=0o700)
     remembered = remembered_choices(args.cache)
     port = choose_port(args.port, remembered)
     mode = args.mode if args.mode != "auto" else await asyncio.to_thread(detect_mode, port)
+    if known_repeater is not None and mode != "repeater":
+        raise ota.OtaError("--target-type repeater requires a USB repeater source (--mode repeater).")
     if mode == "companion":
         from ota_wizard_companion import CompanionTransport
         link = CompanionTransport(port)
     else:
         from ota_wizard_repeater import RepeaterTransport
-        link = RepeaterTransport(port)
+        link = (RepeaterTransport(port, known_repeater=known_repeater)
+                if known_repeater is not None else RepeaterTransport(port))
     print(f"Connecting to the USB {mode} on {port}…")
     await link.open()
     session = None
     try:
         key = args.target
-        if not args.recover:
+        if known_repeater is not None:
+            print("Authenticating the supplied repeater key directly without discovery…")
+        elif not args.recover:
             print("Looking for directly reachable repeaters and rooms…")
             nearby = await link.discover()
             if not nearby:
