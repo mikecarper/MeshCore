@@ -650,6 +650,8 @@ uint8_t SensorMesh::handleLoginReq(const mesh::Identity& sender, const uint8_t* 
   getRNG()->random(&reply_data[8], 4);   // random blob to help packet-hash uniqueness
   reply_data[12] = FIRMWARE_VER_LEVEL;
 
+  // A fresh strict-admin login keeps a remotely loaded radio preset.
+  if (client->isAdmin()) _cli.radioPresets().onAdminLogin();
   return 13;  // reply length
 }
 

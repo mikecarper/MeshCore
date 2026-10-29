@@ -1961,6 +1961,8 @@ void MyMesh::onAnonDataRecv(mesh::Packet *packet, const uint8_t *secret, const m
     reply_data[7] = client->permissions; // NEW
     getRNG()->random(&reply_data[8], 4);   // random blob to help packet-hash uniqueness
     reply_data[12] = FIRMWARE_VER_LEVEL;  // New field
+    // A fresh strict-admin login keeps a remotely loaded radio preset.
+    if (client->isAdmin()) _cli.radioPresets().onAdminLogin();
 
     next_push = futureMillis(PUSH_NOTIFY_DELAY_MILLIS); // delay next push, give RESPONSE packet time to arrive first
 

@@ -62,10 +62,10 @@
 #endif
 #if defined(NRF52_PLATFORM) || defined(STM32_PLATFORM)
 #include "AtomicFileWriter.h"
-#include "RadioPresetFile.h"
 #elif defined(ESP32_PLATFORM) || defined(RP2040_PLATFORM)
 #include "ContactFileTransaction.h"
 #endif
+#include "RadioPresetFile.h"
 #include <RTClib.h>
 #include <ctype.h>
 #include <Utils.h>

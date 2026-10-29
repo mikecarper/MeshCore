@@ -32,7 +32,7 @@ struct RadioPresetPending {
 
 class RadioPresetTable {
  public:
-  static constexpr uint8_t SLOTS = 5, NAME_MAX = 12;
+  static constexpr uint8_t SLOTS = 5, MAX_NAME_LEN = 12;
   static constexpr size_t ENCODED_MAX = 160;
 
   RadioPresetTable() { clearAll(); }
@@ -40,7 +40,7 @@ class RadioPresetTable {
   static bool validName(const char* name) {
     if (!name) return false;
     size_t n = strlen(name);
-    if (n == 0 || n > NAME_MAX) return false;
+    if (n == 0 || n > MAX_NAME_LEN) return false;
     for (size_t i = 0; i < n; i++) {
       unsigned char c = (unsigned char)name[i];
       if (c <= ' ' || c == ',' || c >= 0x7F) return false;
@@ -135,7 +135,7 @@ class RadioPresetTable {
  private:
   static constexpr uint8_t VERSION = 1;
   // Wire record: name (12, no terminator) + freq + bw + sf + cr + preamble.
-  static constexpr size_t RECORD_SIZE = NAME_MAX + 4 + 4 + 1 + 1 + 2;
+  static constexpr size_t RECORD_SIZE = MAX_NAME_LEN + 4 + 4 + 1 + 1 + 2;
   static constexpr size_t IMAGE_SIZE = 3 + SLOTS * RECORD_SIZE + 1 + 4 + RECORD_SIZE + 4;
   static_assert(IMAGE_SIZE <= ENCODED_MAX, "ENCODED_MAX too small for table + pending");
 
@@ -168,7 +168,7 @@ class RadioPresetTable {
   static size_t putRecord(uint8_t* p, const RadioPreset& r) {
     memset(p, 0, RECORD_SIZE);
     if (r.used) {
-      memcpy(p, r.name, NAME_MAX);
+      memcpy(p, r.name, MAX_NAME_LEN);
       putFloat(p + 12, r.freq);
       putFloat(p + 16, r.bw);
       p[20] = r.sf;
@@ -181,8 +181,8 @@ class RadioPresetTable {
   static void getRecord(const uint8_t* p, RadioPreset& r) {
     memset(&r, 0, sizeof(r));
     if (p[0] == 0) return;
-    memcpy(r.name, p, NAME_MAX);
-    r.name[NAME_MAX] = 0;
+    memcpy(r.name, p, MAX_NAME_LEN);
+    r.name[MAX_NAME_LEN] = 0;
     r.freq = getFloat(p + 12);
     r.bw = getFloat(p + 16);
     r.sf = p[20];

@@ -2043,9 +2043,7 @@ preset commands, and their logins do not confirm a pending load. While a load is
 pending, `get preset` starts with `pending, reverts in <m>m;` and another
 remote load is refused. A remote load is also refused while a TempRadio session
 is active. If the revert itself fails, it retries every minute and at every
-boot. Login confirmation is wired on repeaters; on room servers and sensors a
-remote load always reverts after 10 minutes, so load from the local terminal
-there.
+boot.
 
 ---
 

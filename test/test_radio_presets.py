@@ -399,6 +399,10 @@ int main() {
 
 
 class RadioPresetsTest(unittest.TestCase):
+    # ESP-IDF/newlib <limits.h> defines NAME_MAX as a macro. Predefine it on host
+    # so any identifier collision with a platform macro fails here too.
+    PLATFORM_MACROS = ('-DNAME_MAX=255',)
+
     def build_and_run(self, name, source, expected, extra_sources=()):
         compiler = shutil.which('g++') or shutil.which('clang++')
         if compiler is None:
@@ -412,7 +416,7 @@ class RadioPresetsTest(unittest.TestCase):
             binary = work / (name + ('.exe' if os.name == 'nt' else ''))
             built = subprocess.run([
                 compiler, '-std=c++17', '-O1', '-g', '-Wall', '-Wextra', '-Werror',
-                *sanitize,
+                *sanitize, *self.PLATFORM_MACROS,
                 '-I', str(ROOT / 'src'), '-I', str(ROOT / 'test'),
                 '-isystem', str(ROOT / 'test' / 'mocks'),  # Arduino.h mock; not -Werror clean
                 str(cpp), *[str(ROOT / s) for s in extra_sources], '-o', str(binary),
@@ -507,6 +511,28 @@ class RadioPresetWiringContractTest(unittest.TestCase):
         self.assertRegex(h, r'bool\s+saveRadioPresetFile\(FILESYSTEM\*\s*fs,\s*const uint8_t\*\s*buf,'
                             r'\s*size_t\s+len\)')
         self.assertIn('AtomicFileWriter', h)
+        self.assertIn('ContactFileTransaction', h)
+
+    def test_preset_file_include_is_not_platform_guarded(self):
+        # Every platform needs the helpers: the include must not sit inside a
+        # platform-specific #if/#elif/#else branch in CommonCLI.cpp.
+        stack = []
+        found = False
+        for line in _read('src/helpers/CommonCLI.cpp').splitlines():
+            t = line.strip()
+            if t.startswith('#if'):
+                stack.append(t)
+            elif t.startswith('#elif') and stack:
+                stack[-1] = stack[-1] + ' ' + t
+            elif t.startswith('#else') and stack:
+                stack[-1] = stack[-1] + ' #else'
+            elif t.startswith('#endif') and stack:
+                stack.pop()
+            elif t == '#include "RadioPresetFile.h"':
+                found = True
+                guarded = [c for c in stack if '_PLATFORM' in c]
+                self.assertEqual(guarded, [], 'RadioPresetFile.h include is platform-guarded')
+        self.assertTrue(found, 'CommonCLI.cpp must include RadioPresetFile.h')
 
     def test_repeater_login_commits_only_for_full_admin(self):
         cpp = _read('examples/simple_repeater/MyMesh.cpp')
@@ -523,6 +549,24 @@ class RadioPresetWiringContractTest(unittest.TestCase):
         self.assertEqual(cpp.count('onAdminLogin()'), 1)
         header = _read('examples/simple_repeater/MyMesh.h')
         self.assertRegex(header, r'bool\s+login_full_admin\s*=\s*false\s*;')
+
+    def test_room_server_and_sensor_login_commit_for_strict_admin(self):
+        room = _read('examples/simple_room_server/MyMesh.cpp')
+        anon = _function_body(room, 'void MyMesh::onAnonDataRecv(')
+        self.assertIsNotNone(anon)
+        ok = anon.find('reply_data[4] = RESP_SERVER_LOGIN_OK;')
+        commit = anon.find('if (client->isAdmin()) _cli.radioPresets().onAdminLogin();')
+        self.assertGreaterEqual(ok, 0)
+        self.assertGreater(commit, ok, 'room server must commit after a successful login')
+        self.assertEqual(room.count('onAdminLogin()'), 1)
+        sensor = _read('examples/simple_sensor/SensorMesh.cpp')
+        login = _function_body(sensor, 'uint8_t SensorMesh::handleLoginReq(')
+        self.assertIsNotNone(login)
+        self.assertRegex(login, r'RESP_SERVER_LOGIN_OK[\s\S]*if \(client->isAdmin\(\)\) '
+                                r'_cli\.radioPresets\(\)\.onAdminLogin\(\);\s*\n\s*return 13;')
+        self.assertEqual(sensor.count('onAdminLogin()'), 1)
+        docs = _read('docs/cli_commands.md')
+        self.assertNotIn('remote load always reverts', docs)
 
     def test_manager_roles_cannot_use_presets(self):
         cpp = _read('examples/simple_repeater/MyMesh.cpp')

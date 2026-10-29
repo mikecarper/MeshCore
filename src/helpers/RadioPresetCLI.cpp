@@ -143,7 +143,7 @@ bool RadioPresetCLI::handleGet(const char* args, char* reply, size_t cap) {
 
 // add preset <name> <slot> <freq,bw,sf,cr[,preamble]>, validated like "set radio".
 bool RadioPresetCLI::handleAdd(const char* args, char* reply, size_t cap) {
-  char name[RadioPresetTable::NAME_MAX + 2];
+  char name[RadioPresetTable::MAX_NAME_LEN + 2];
   const char* sp = strchr(args, ' ');
   if (!sp || (size_t)(sp - args) >= sizeof(name)) {
     cli::formatError(reply, cap, "usage: add preset <name> <slot> <freq,bw,sf,cr[,pre]>");
