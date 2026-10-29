@@ -134,6 +134,233 @@ int main() {
 }
 '''
 
+CLI_HARNESS = r'''
+#include <helpers/RadioPresetCLI.h>
+#include <cstdio>
+#include <cstring>
+#include <cmath>
+#include <vector>
+using namespace mesh;
+static int failures = 0;
+#define CHECK(c) do { if (!(c)) { std::printf("FAIL line %d: %s\n", __LINE__, #c); failures++; } } while (0)
+
+struct Env {
+  std::vector<uint8_t> store;
+  bool haveStore = false;
+  int saves = 0;
+  bool failSave = false;
+  bool failApply = false;
+  bool tempRadio = false;
+  RadioPreset cur;
+  std::vector<RadioPreset> applied;
+  Env() {
+    std::memset(&cur, 0, sizeof(cur));
+    setCur(910.525f, 62.5f, 7, 5, 0);
+  }
+  void setCur(float f, float bw, uint8_t sf, uint8_t cr, uint16_t pre) {
+    std::strcpy(cur.name, "cur"); cur.freq = f; cur.bw = bw; cur.sf = sf; cur.cr = cr; cur.preamble = pre; cur.used = true;
+  }
+};
+static Env* E(void* c) { return (Env*)c; }
+static bool hLoad(void* c, uint8_t* buf, size_t cap, size_t& len) {
+  Env* e = E(c);
+  if (!e->haveStore || e->store.size() > cap) return false;
+  std::memcpy(buf, e->store.data(), e->store.size());
+  len = e->store.size();
+  return true;
+}
+static bool hSave(void* c, const uint8_t* buf, size_t len) {
+  Env* e = E(c);
+  if (e->failSave) return false;
+  e->store.assign(buf, buf + len); e->haveStore = true; e->saves++;
+  return true;
+}
+static bool hCurrent(void* c, RadioPreset& out) { out = E(c)->cur; return true; }
+static bool hAccepts(void*, float f, float bw, uint8_t sf, uint8_t cr, uint16_t) {
+  return f > 400.0f && f < 1000.0f && bw > 0.0f && sf >= 5 && sf <= 12 && cr >= 5 && cr <= 8;
+}
+static bool hApply(void* c, const RadioPreset& p, char* reply, size_t cap) {
+  Env* e = E(c);
+  if (e->failApply) { std::snprintf(reply, cap, "Error: boom"); return false; }
+  e->applied.push_back(p);
+  e->cur = p;
+  return true;
+}
+static bool hTemp(void* c) { return E(c)->tempRadio; }
+static RadioPresetCLI::Hooks hooks(Env& e) {
+  RadioPresetCLI::Hooks h; h.ctx = &e; h.load = hLoad; h.save = hSave; h.current = hCurrent;
+  h.accepts = hAccepts; h.apply = hApply; h.tempRadioActive = hTemp;
+  return h;
+}
+static bool near(float a, float b) { return std::fabs(a - b) < 0.001f; }
+static bool has(const char* s, const char* sub) { return std::strstr(s, sub) != nullptr; }
+static bool run(RadioPresetCLI& c, const char* cmd, char* reply, bool remote = true) {
+  reply[0] = 0;
+  return c.handle(cmd, reply, 160, remote);
+}
+static void setup(RadioPresetCLI& c, Env& e) {
+  c.begin(hooks(e));
+  char r[160];
+  run(c, "add preset Private 2 915.0,62.5,7,5", r);
+}
+
+int main() {
+  char r[160];
+  { // seed_primary
+    Env e; RadioPresetCLI c; c.begin(hooks(e));
+    CHECK(run(c, "get preset", r));
+    CHECK(has(r, "1*Primary 910.5250244,62.5,7,5"));
+    CHECK(e.saves == 1 && e.haveStore);
+    CHECK(c.activeSlot() == 1);
+    RadioPresetCLI d; d.begin(hooks(e));   // second boot loads, does not reseed
+    CHECK(e.saves == 1 && d.table().get(1) != nullptr);
+  }
+  { // seed_when_corrupt
+    Env e; e.haveStore = true; e.store.assign(10, 0x55);
+    RadioPresetCLI c; c.begin(hooks(e));
+    CHECK(c.table().get(1) != nullptr && std::strcmp(c.table().get(1)->name, "Primary") == 0);
+    CHECK(e.saves == 1);
+  }
+  { // add_validates_like_set_radio
+    Env e; RadioPresetCLI c; c.begin(hooks(e));
+    CHECK(run(c, "add preset Private 2 915.0,62.5,7,5", r)); CHECK(has(r, "OK"));
+    CHECK(c.table().get(2) && near(c.table().get(2)->freq, 915.0f));
+    CHECK(run(c, "add preset Private 2 915.0,62.5,13,5", r)); CHECK(has(r, "Error"));
+    CHECK(c.table().get(2) && c.table().get(2)->sf == 7);
+    CHECK(run(c, "add preset bad name 2 915,62.5,7,5", r)); CHECK(has(r, "Error"));
+    CHECK(run(c, "add preset Ok 9 915,62.5,7,5", r)); CHECK(has(r, "Error"));
+    CHECK(run(c, "add preset Ok 3 915,62.5,7", r)); CHECK(has(r, "Error"));
+    CHECK(c.table().get(3) == nullptr);
+    CHECK(run(c, "add preset Pre 3 915,62.5,7,5,16", r)); CHECK(has(r, "OK"));
+    CHECK(c.table().get(3)->preamble == 16);
+    int s = e.saves; e.failSave = true;
+    CHECK(run(c, "add preset Nope 4 915,62.5,7,5", r)); CHECK(has(r, "Error"));
+    CHECK(c.table().get(4) == nullptr && e.saves == s);
+  }
+  { // local_load_applies_immediately
+    Env e; RadioPresetCLI c; setup(c, e);
+    CHECK(run(c, "load preset 2", r, false)); CHECK(has(r, "OK"));
+    CHECK(e.applied.size() == 1 && near(e.applied[0].freq, 915.0f));
+    CHECK(!c.pending());
+    CHECK(c.loadSlot(1, r, sizeof(r))); CHECK(e.applied.size() == 2 && near(e.applied[1].freq, 910.525f));
+  }
+  { // remote_load_then_commit
+    Env e; RadioPresetCLI c; setup(c, e); c.loop(1000);
+    CHECK(run(c, "load preset 2", r));
+    std::printf("DBG[%s]\n", r);
+    CHECK(has(r, "OK - loading Private 915.0,62.5,7,5; log in again within 10 min to keep"));
+    RadioPresetTable t; CHECK(t.decode(e.store.data(), e.store.size()));
+    CHECK(t.pending.active && t.pending.slot == 2 && near(t.pending.previous.freq, 910.525f));
+    CHECK(e.applied.size() == 1 && near(e.applied[0].freq, 915.0f) && c.pending());
+    c.onAdminLogin();
+    CHECK(!c.pending());
+    RadioPresetTable u; CHECK(u.decode(e.store.data(), e.store.size())); CHECK(!u.pending.active);
+    c.loop(1000 + 700000);
+    CHECK(e.applied.size() == 1);
+    int s = e.saves; c.onAdminLogin(); CHECK(e.saves == s);  // no pending: no-op
+  }
+  { // get_preset_shows_pending
+    Env e; RadioPresetCLI c; setup(c, e); c.loop(1000);
+    run(c, "load preset 2", r);
+    CHECK(run(c, "get preset", r));
+    CHECK(std::strncmp(r, "pending, reverts in 10m; ", 25) == 0);
+    CHECK(has(r, "2*Private"));
+    c.loop(1000 + 300000);
+    run(c, "get preset", r);
+    CHECK(std::strncmp(r, "pending, reverts in 5m; ", 24) == 0);
+    CHECK(std::strlen(r) < 160);
+  }
+  { // remote_load_reverts_on_timeout
+    Env e; RadioPresetCLI c; setup(c, e); c.loop(1000);
+    run(c, "load preset 2", r);
+    c.loop(1000 + 599000);
+    CHECK(e.applied.size() == 1 && c.pending());
+    c.loop(1000 + 600001);
+    CHECK(e.applied.size() == 2 && near(e.applied[1].freq, 910.525f) && !c.pending());
+    RadioPresetTable u; CHECK(u.decode(e.store.data(), e.store.size())); CHECK(!u.pending.active);
+    c.loop(1000 + 900000); CHECK(e.applied.size() == 2);
+  }
+  { // countdown_wraps_and_limits_flash_writes
+    Env e; RadioPresetCLI c; setup(c, e); c.loop(0xFFFFFF00u);
+    run(c, "load preset 2", r);
+    int s = e.saves;
+    uint32_t t = 0xFFFFFF00u;
+    for (int i = 0; i < 30; i++) { t += 1000; c.loop(t); }   // 30 s, crosses the wrap
+    CHECK(e.saves == s && c.pending());
+    t += 31000; c.loop(t);                                    // 61 s: minute 10 -> 9
+    CHECK(e.saves == s + 1);
+    RadioPresetTable u; CHECK(u.decode(e.store.data(), e.store.size()));
+    CHECK(u.pending.active && u.pending.remaining_secs == 540);
+    t += 538000; c.loop(t); CHECK(c.pending());
+    t += 2000; c.loop(t); CHECK(!c.pending() && e.applied.size() == 2);
+  }
+  { // pending_survives_reload
+    Env e; RadioPresetCLI c; setup(c, e); c.loop(1000);
+    run(c, "load preset 2", r);
+    size_t n = e.applied.size();
+    RadioPresetCLI d; d.begin(hooks(e));
+    CHECK(e.applied.size() == n + 1 && near(e.applied.back().freq, 910.525f) && !d.pending());
+    RadioPresetTable u; CHECK(u.decode(e.store.data(), e.store.size())); CHECK(!u.pending.active);
+  }
+  { // refusals
+    Env e; RadioPresetCLI c; setup(c, e);
+    e.tempRadio = true;
+    int s = e.saves;
+    CHECK(run(c, "load preset 2", r)); CHECK(has(r, "Error: tempradio active"));
+    e.tempRadio = false;
+    CHECK(run(c, "load preset 4", r)); CHECK(has(r, "Error: preset 4 empty"));
+    CHECK(run(c, "load preset 1", r)); CHECK(has(r, "OK - already on Primary"));
+    CHECK(e.applied.empty() && e.saves == s && !c.pending());
+    CHECK(run(c, "load preset 2", r)); CHECK(has(r, "OK"));
+    s = e.saves;
+    CHECK(run(c, "load preset 1", r)); CHECK(has(r, "Error: preset load pending"));
+    CHECK(e.applied.size() == 1 && e.saves == s);
+  }
+  { // failures_roll_back
+    Env e; RadioPresetCLI c; setup(c, e);
+    e.failSave = true;
+    CHECK(run(c, "load preset 2", r)); CHECK(has(r, "Error"));
+    CHECK(e.applied.empty() && !c.pending());
+    e.failSave = false; e.failApply = true;
+    CHECK(run(c, "load preset 2", r)); CHECK(has(r, "Error: boom"));
+    CHECK(!c.pending());
+    RadioPresetTable u; CHECK(u.decode(e.store.data(), e.store.size())); CHECK(!u.pending.active);
+  }
+  { // del_preset
+    Env e; RadioPresetCLI c; setup(c, e);
+    CHECK(run(c, "del preset 2", r)); CHECK(has(r, "OK"));
+    run(c, "get preset 2", r); CHECK(std::strcmp(r, "2 -") == 0);
+    CHECK(run(c, "del preset 7", r)); CHECK(has(r, "Error"));
+  }
+  { // begin_drops_invalid_slots
+    Env e;
+    RadioPresetTable t;
+    t.set(1, "Primary", 910.525f, 62.5f, 7, 5, 0);
+    t.set(2, "BadSf", 915.0f, 62.5f, 13, 5, 0);
+    t.set(3, "NanFreq", NAN, 62.5f, 7, 5, 0);
+    t.set(4, "Good", 868.0f, 125.0f, 8, 5, 0);
+    uint8_t buf[RadioPresetTable::ENCODED_MAX];
+    size_t n = t.encode(buf, sizeof(buf));
+    e.store.assign(buf, buf + n); e.haveStore = true;
+    RadioPresetCLI c; c.begin(hooks(e));
+    CHECK(c.table().get(1) && !c.table().get(2) && !c.table().get(3) && c.table().get(4));
+    RadioPresetTable u; CHECK(u.decode(e.store.data(), e.store.size()));
+    CHECK(!u.get(2) && !u.get(3));
+  }
+  { // unrelated_commands_pass_through
+    Env e; RadioPresetCLI c; setup(c, e);
+    CHECK(!run(c, "get radio", r));
+    CHECK(!run(c, "set radio 1,2,3,4", r));
+    CHECK(!run(c, "get retry.preset", r));
+    CHECK(!run(c, "get presets", r));
+    CHECK(!run(c, "ver", r));
+  }
+  if (failures) return 1;
+  std::printf("PASS cli\n");
+  return 0;
+}
+'''
+
 
 class RadioPresetsTest(unittest.TestCase):
     def build_and_run(self, name, source, expected, extra_sources=()):
@@ -162,6 +389,11 @@ class RadioPresetsTest(unittest.TestCase):
     def test_preset_table(self):
         self.build_and_run('table', TABLE_HARNESS, 'PASS table',
                            extra_sources=('src/helpers/TxtDataHelpers.cpp',))
+
+    def test_preset_cli(self):
+        self.build_and_run('cli', CLI_HARNESS, 'PASS cli',
+                           extra_sources=('src/helpers/TxtDataHelpers.cpp',
+                                          'src/helpers/RadioPresetCLI.cpp'))
 
 
 if __name__ == '__main__':
