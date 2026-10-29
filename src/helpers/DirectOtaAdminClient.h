@@ -29,6 +29,7 @@ private:
   uint8_t peers_count_ = 0;
   bool session_ = false, authenticated_ = false, error_ = false;
   uint32_t job_ = 0, deadline_ = 0, session_until_ = 0, discover_tag_ = 0;
+  uint32_t request_ms_ = REQUEST_MS;
   uint32_t last_peer_timestamp_ = 0;
   uint32_t proof_retry_at_ = 0;
   uint8_t proof_attempts_ = 0;
@@ -57,7 +58,7 @@ private:
     if (result_length_ > sizeof(result_)) result_length_ = sizeof(result_);
     memcpy(result_, text, result_length_);
   }
-  void begin(Phase phase, uint32_t now, uint32_t duration = REQUEST_MS) {
+  void begin(Phase phase, uint32_t now, uint32_t duration) {
     if (++job_ == 0) ++job_;
     phase_ = phase;
     deadline_ = now + duration;
@@ -65,6 +66,7 @@ private:
     erase(result_, sizeof(result_));
     result_length_ = 0;
   }
+  void begin(Phase phase, uint32_t now) { begin(phase, now, request_ms_); }
   void queued(char* reply, size_t capacity) const {
     snprintf(reply, capacity, "OTApeer job=%08lX state=pending", (unsigned long)job_);
   }
@@ -116,6 +118,7 @@ private:
 public:
   ~DirectOtaAdminClient() { clearSession(); erase(result_, sizeof(result_)); }
   void reset() {
+    // The USB owner's RAM-only timeout survives closing an admin session.
     clearSession(); erase(result_, sizeof(result_));
     result_length_ = 0; phase_ = Idle; error_ = false; peers_count_ = 0;
   }
@@ -171,6 +174,24 @@ public:
     }
     if (!strcmp(args, "status") || !*args) {
       snprintf(reply, capacity, "OTApeer v=1 session=%u busy=%u peers=%u", authenticated_, phase_ != Idle, peers_count_);
+      return;
+    }
+    if (!strncmp(args, "timeout", 7) && (args[7] == 0 || args[7] == ' ')) {
+      const char* value = args + 7;
+      while (*value == ' ') ++value;
+      if (*value) {
+        if (phase_ != Idle) { strcpy(reply, "ERR peer request pending"); return; }
+        uint32_t seconds = 0;
+        for (const char* p = value; *p; ++p) {
+          if (*p < '0' || *p > '9' || seconds > 30 || seconds * 10 + (*p - '0') > 300) {
+            strcpy(reply, "ERR peer timeout 5..300 seconds"); return;
+          }
+          seconds = seconds * 10 + (*p - '0');
+        }
+        if (seconds < 5) { strcpy(reply, "ERR peer timeout 5..300 seconds"); return; }
+        request_ms_ = seconds * 1000;
+      }
+      snprintf(reply, capacity, "OTApeer timeout=%lus", (unsigned long)(request_ms_ / 1000));
       return;
     }
     if (!strcmp(args, "close")) {
@@ -265,7 +286,7 @@ public:
       queued(reply, capacity);
       return;
     }
-    strcpy(reply, "ERR use ota.peer status|capabilities|discover|peers [n]|login[.repeater] KEY PASSWORD|cmd KEY COMMAND|result [off]|close");
+    strcpy(reply, "ERR use ota.peer status|capabilities|timeout [s]|discover|peers [n]|login[.repeater] KEY PASSWORD|cmd KEY COMMAND|result [off]|close");
   }
 
   void onDiscovery(const Packet* packet, uint32_t now) {

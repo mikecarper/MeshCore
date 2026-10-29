@@ -25,6 +25,11 @@ need a second local radio or the phone app. Install a source firmware build
 containing `ota.peer` first; older Repeater firmware cannot manage the remote
 node through USB. Check with `ota.peer status` in its USB console.
 
+For slow replies during manual USB administration, `ota.peer timeout 180`
+raises the source's request timeout from 30 to 180 seconds. This RAM-only setting
+survives closing the admin session and resets on reboot; keep the controller's
+timeout longer than the source's.
+
 The Full Companion source also needs a current build containing the wizard's
 version 2 direct admin support. An older Full Companion may serve OTA files but cannot
 provide this guarded admin connection; the wizard will ask for a source

@@ -174,7 +174,58 @@ static void authenticate(Client& c,mesh::Mesh& radio,uint32_t now=100,
   assert(command(c,radio,"ota.peer result",now+10).find("state=ok")!=std::string::npos);
   assert(!c.matchesHash(reinterpret_cast<const uint8_t*>("\x11"))); // do not steal ACL packets when idle
 }
+static void configurableTimeout(){
+  Client client;mesh::Mesh radio;mesh::Packet direct;
+  assert(command(client,radio,"ota.peer timeout")=="OTApeer timeout=30s");
+  assert(command(client,radio,"ota.peer timeout 5")=="OTApeer timeout=5s");
+  assert(command(client,radio,"ota.peer timeout 300")=="OTApeer timeout=300s");
+  assert(command(client,radio,"ota.peer timeout 180")=="OTApeer timeout=180s");
+  const int initial_calls=radio.calls;
+  for(const std::string& invalid:std::vector<std::string>{"0","4","301","-1","+30","30x","5 6","300 ",
+      "4294967295","999999999999999999999999999999"}){
+    assert(command(client,radio,"ota.peer timeout "+invalid)=="ERR peer timeout 5..300 seconds");
+    assert(command(client,radio,"ota.peer timeout")=="OTApeer timeout=180s");
+    assert(radio.calls==initial_calls);
+  }
+  authenticate(client,radio,100,true,"");
+  command(client,radio,"ota.peer cmd "+key+" ver",200);
+  std::string prefix(radio.sent.begin()+5,radio.sent.begin()+8);
+  assert(command(client,radio,"ota.peer timeout 30",201)=="ERR peer request pending");
+  assert(command(client,radio,"ota.peer timeout",202)=="OTApeer timeout=180s");
+  assert(command(client,radio,"ota.peer status",203)=="OTApeer v=1 session=1 busy=1 peers=0");
+  assert(command(client,radio,"ota.peer capabilities",204)=="OTApeer known_repeater=1");
+  const int queued=radio.calls;
+  // A matching authenticated CLI reply arriving after the legacy 30s deadline
+  // completes the original request, with no automatic command retransmission.
+  deliver(client,radio,direct,30000,prefix+"version",45000);
+  assert(command(client,radio,"ota.peer result",45001).find("state=ok")!=std::string::npos);
+  assert(radio.calls==queued);
+  command(client,radio,"ota.peer cmd "+key+" ver",50000);
+  prefix.assign(radio.sent.begin()+5,radio.sent.begin()+8);
+  const int once=radio.calls;
+  client.tick(229999);
+  assert(command(client,radio,"ota.peer result",229999).find("state=pending")!=std::string::npos);
+  client.tick(230001);
+  auto timed_out=command(client,radio,"ota.peer result",230002);
+  assert(timed_out.find("state=error")!=std::string::npos);
+  deliver(client,radio,direct,30001,prefix+"late version",230003);
+  assert(command(client,radio,"ota.peer result",230004)==timed_out);
+  assert(radio.calls==once);
+  command(client,radio,"ota.peer close",230005);
+  assert(command(client,radio,"ota.peer timeout",230006)=="OTApeer timeout=180s");
+  client.reset();
+  assert(command(client,radio,"ota.peer timeout",230007)=="OTApeer timeout=180s");
+  command(client,radio,"ota.peer discover",240000);
+  assert(command(client,radio,"ota.peer timeout 30",240001)=="ERR peer request pending");
+  assert(command(client,radio,"ota.peer result",245999).find("state=pending")!=std::string::npos);
+  assert(command(client,radio,"ota.peer result",246000).find("state=ok")!=std::string::npos);
+  assert(command(client,radio,"ota.peer timeout",246001)=="OTApeer timeout=180s");
+  assert(command(client,radio,"ota.peer timeout 30",246002)=="OTApeer timeout=30s");
+  Client rebooted;
+  assert(command(rebooted,radio,"ota.peer timeout",246003)=="OTApeer timeout=30s");
+}
 int main(){
+  configurableTimeout();
   UsbRole role;char gate_command[]="ota.peer status",gate_reply[160];
   role.dispatch(0,nullptr,gate_command,gate_reply,false);assert(!strcmp(gate_reply,"ERR ota.peer requires physical USB"));
   role.dispatch(1,nullptr,gate_command,gate_reply,true);assert(!strcmp(gate_reply,"ERR ota.peer requires physical USB"));
