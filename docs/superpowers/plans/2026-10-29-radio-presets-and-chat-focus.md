@@ -19,7 +19,7 @@
 - M5 is a live repeater: announce before opening its port (COM15; opening resets it and clears its RAM node table). Admin password via env `M5PW`, never in files.
 - Secrets never in source. Preset commands are admin-only remotely: do not add them to `isRegionMgrAllowed`/`isFilterMgrAllowed`.
 - Preset tuple = exactly what `set radio` accepts, parsed by `mesh::cli::parseRadioPreambleSuffix(input, 4, legacy, cap, preamble)` then `mesh::cli::parseRadioTupleStrict(legacy, f, bw, sf, cr)` (both inline in `src/helpers/CLICommandUtils.h`), then the role's `acceptsPrimary` check.
-- 5 slots, 1-based. Name: 1–12 printable ASCII chars, no spaces or commas. Slot 1 seeds as `Primary` from the live radio when no preset file exists.
+- 5 slots, 1-based. Name: 1–12 printable ASCII chars, no spaces or commas. Slot 1 seeds as `USA-Canada` `910.525,62.5,7,5` (US/CA standard; build-time overridable) when no preset file exists — owner decision 2026-10-29.
 - Remote revert window: 10 minutes. Remote CLI reply capacity is 160 bytes.
 - Tests: `python -m unittest test.test_radio_presets test.test_cardputer_chat -v` from the worktree root (WinLibs `g++` 16.2 on PATH).
 

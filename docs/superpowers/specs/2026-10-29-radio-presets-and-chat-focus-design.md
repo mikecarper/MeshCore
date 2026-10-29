@@ -72,9 +72,14 @@ it is free to do so — not required.
 
 ### Slot 1
 
-On first use (no preset file), slot 1 is filled automatically from the device's
-current primary radio, named `Primary`. After that it is an ordinary slot and
-`add preset` may overwrite it. (Designer's call, owner said "continue".)
+On first use (no preset file), slot 1 is the US/Canada standard (owner
+decided 2026-10-29: most users will be US-based): name `USA-Canada`, tuple
+`910.525,62.5,7,5` (the `USA/Canada` entry `build.sh` already defaults to).
+It does not copy the device's current radio; a device on other settings shows
+as custom until a slot is loaded. Fn+1 on a fresh Cardputer therefore selects
+the US/CA mesh. The default is overridable at build time (`-D` defines) for
+non-US builds. After first use slot 1 is an ordinary slot and `add preset` may
+overwrite it.
 
 ### Storage
 
