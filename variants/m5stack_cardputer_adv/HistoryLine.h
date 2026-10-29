@@ -217,7 +217,7 @@ inline bool decodeHistoryLine(const char *line, HistoryMessage &out) {
   out.own_id = 0;
   out.meta = MessageMeta();
   const char *text = line + 3;
-  if (*text == '{') {
+  if (!out.out && *text == '{') { // only received lines carry metadata
     const char *rest = history_line_detail::parseV2(text, out.meta);
     if (rest) {
       text = rest;

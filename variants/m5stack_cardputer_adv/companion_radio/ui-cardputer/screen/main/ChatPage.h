@@ -2,6 +2,7 @@
 
 #include "../CardputerScreen.h"
 #include "../MainScreen.h"
+#include "ChatFocus.h"
 #include "companion_radio/CardputerMesh.h"
 
 class ChatPage : public CardputerScreen {
@@ -17,9 +18,19 @@ private:
   int current_contact_idx = -1;
 
   ChatHistory chat_history;
-  int chat_history_offset = 0; // from bottom
+  int chat_history_offset = 0; // first drawn message, counted from the newest
+  ChatFocus focus;             // text box / message / message menu focus
 
   void sendChatMessage();
+  bool sendText(const char *text);
+  const HistoryMessage *messageAt(int from_newest) const;
+  size_t maxInputLength();
+  void setTextBox(const char *prefix, const char *text);
+  void onHistoryPushed();
+  void doMenuAction(ChatFocus::Action action, int msg_idx);
+  void buildInfo(const HistoryMessage &m, char *out, size_t cap);
+  void renderMenu(CardputerDisplay &lcd, int top, int bottom, bool own);
+  void renderInfo(CardputerDisplay &lcd, int top, const HistoryMessage &m);
 
 public:
   ChatPage(MainScreen *parent) : _p(parent) { chat_text_box.reserve(MAX_MESSAGE_LENGTH); };

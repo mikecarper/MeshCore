@@ -143,6 +143,15 @@ static void brace_text_stays_text() {
   std::printf("PASS brace_text_stays_text\n");
 }
 
+static void own_line_brace_prefix_stays_text() {
+  HistoryMessage d;
+  CHECK(decodeHistoryLine(">> {m1;1;2;3;4;5;1;C5} x", d));
+  CHECK(d.out && std::strcmp(d.text, "{m1;1;2;3;4;5;1;C5} x") == 0 && !d.meta.has);
+  CHECK(decodeHistoryLine(">> {m1;1;2;3;4;5;1;}", d));
+  CHECK(d.out && std::strcmp(d.text, "{m1;1;2;3;4;5;1;}") == 0 && !d.meta.has);
+  std::printf("PASS own_line_brace_prefix_stays_text\n");
+}
+
 static void tracker_counts_echoes() {
   OwnMessageTracker t;
   uint8_t h[MAX_HASH_SIZE] = {1, 2, 3, 4, 5, 6, 7, 8};
@@ -199,6 +208,7 @@ int main() {
   v2_roundtrip();
   legacy_lines_load();
   brace_text_stays_text();
+  own_line_brace_prefix_stays_text();
   tracker_counts_echoes();
   tracker_evicts_oldest();
   split_sender();
@@ -206,6 +216,204 @@ int main() {
 }
 '''
 
+
+FOCUS_HARNESS = r'''
+#include <companion_radio/ui-cardputer/screen/main/ChatFocus.h>
+#include <cstdio>
+static int failures = 0;
+#define CHECK(c) do { if (!(c)) { std::printf("FAIL line %d: %s\n", __LINE__, #c); failures++; } } while (0)
+using T = ChatFocus::Target;
+using A = ChatFocus::Action;
+using K = ChatFocus::Key;
+
+static ChatFocus onMessage(int msg) {
+  ChatFocus f;
+  f.target = T::Message;
+  f.msg = msg;
+  return f;
+}
+
+static ChatFocus inMenu(bool own) {
+  ChatFocus f = onMessage(2);
+  CHECK(f.press(K::Enter, true, 5, own) == A::OpenMenu);
+  return f;
+}
+
+static void up_from_empty_box_focuses_newest() {
+  ChatFocus f;
+  CHECK(f.target == T::TextBox && f.msg == -1);
+  CHECK(f.press(K::Up, true, 5, false) == A::None);
+  CHECK(f.target == T::Message && f.msg == 0);
+  // no messages: nothing to focus, Up does nothing
+  ChatFocus g;
+  CHECK(g.press(K::Up, true, 0, false) == A::None);
+  CHECK(g.target == T::TextBox);
+  // Up on a message moves to older ones and clamps at the oldest
+  CHECK(f.press(K::Up, true, 3, false) == A::None && f.msg == 1);
+  CHECK(f.press(K::Up, true, 3, false) == A::None && f.msg == 2);
+  CHECK(f.press(K::Up, true, 3, false) == A::None && f.msg == 2);
+  std::printf("PASS up_from_empty_box_focuses_newest\n");
+}
+
+static void up_with_text_types_semicolon() {
+  ChatFocus f;
+  CHECK(f.press(K::Up, false, 5, false) == A::TypeChar);
+  CHECK(f.target == T::TextBox && f.msg == -1);
+  std::printf("PASS up_with_text_types_semicolon\n");
+}
+
+static void fn_up_leaves_box_with_text() {
+  ChatFocus f;
+  CHECK(f.press(K::FnUp, false, 5, false) == A::None);
+  CHECK(f.target == T::Message && f.msg == 0);
+  ChatFocus g;
+  CHECK(g.press(K::FnUp, true, 5, false) == A::None);
+  CHECK(g.target == T::Message && g.msg == 0);
+  std::printf("PASS fn_up_leaves_box_with_text\n");
+}
+
+static void down_types_period() {
+  ChatFocus f;
+  CHECK(f.press(K::Down, true, 5, false) == A::TypeChar);
+  CHECK(f.press(K::Down, false, 5, false) == A::TypeChar);
+  CHECK(f.press(K::Char, true, 5, false) == A::TypeChar);
+  CHECK(f.target == T::TextBox);
+  std::printf("PASS down_types_period\n");
+}
+
+static void enter_in_box_sends() {
+  ChatFocus f;
+  CHECK(f.press(K::Enter, false, 5, false) == A::Send);
+  CHECK(f.target == T::TextBox);
+  std::printf("PASS enter_in_box_sends\n");
+}
+
+static void enter_on_message_opens_menu_never_sends() {
+  for (int own = 0; own < 2; own++) {
+    for (int empty = 0; empty < 2; empty++) {
+      ChatFocus f = onMessage(1);
+      A a = f.press(K::Enter, empty != 0, 5, own != 0);
+      CHECK(a == A::OpenMenu);
+      CHECK(a != A::Send);
+      CHECK(f.target == T::Menu && f.msg == 1 && f.menu_item == 0);
+    }
+  }
+  std::printf("PASS enter_on_message_opens_menu_never_sends\n");
+}
+
+static void char_on_message_ignored() {
+  ChatFocus f = onMessage(1);
+  CHECK(f.press(K::Char, false, 5, false) == A::None);
+  CHECK(f.press(K::Char, true, 5, true) == A::None);
+  CHECK(f.target == T::Message && f.msg == 1);
+  std::printf("PASS char_on_message_ignored\n");
+}
+
+static void down_from_newest_returns_to_box() {
+  ChatFocus f = onMessage(2);
+  CHECK(f.press(K::Down, false, 5, false) == A::None && f.msg == 1 && f.target == T::Message);
+  CHECK(f.press(K::Down, false, 5, false) == A::None && f.msg == 0 && f.target == T::Message);
+  CHECK(f.press(K::Down, false, 5, false) == A::None);
+  CHECK(f.target == T::TextBox && f.msg == -1);
+  std::printf("PASS down_from_newest_returns_to_box\n");
+}
+
+static void esc_on_message_returns_to_box() {
+  ChatFocus f = onMessage(3);
+  CHECK(f.press(K::Esc, true, 5, false) == A::None);
+  CHECK(f.target == T::TextBox && f.msg == -1);
+  std::printf("PASS esc_on_message_returns_to_box\n");
+}
+
+static void esc_in_box_leaves_chat() {
+  ChatFocus f;
+  CHECK(f.press(K::Esc, true, 5, false) == A::LeaveChat);
+  CHECK(f.press(K::Esc, false, 0, false) == A::LeaveChat);
+  std::printf("PASS esc_in_box_leaves_chat\n");
+}
+
+static void menu_hides_resend_for_received() {
+  // received: Reply(0) -> Info(1) -> Copy(3) -> Reply(0), never Resend(2)
+  ChatFocus f = inMenu(false);
+  CHECK(f.menu_item == 0);
+  CHECK(f.press(K::Down, true, 5, false) == A::None && f.menu_item == 1);
+  CHECK(f.press(K::Down, true, 5, false) == A::None && f.menu_item == 3);
+  CHECK(f.press(K::Down, true, 5, false) == A::None && f.menu_item == 0);
+  CHECK(f.press(K::Up, true, 5, false) == A::None && f.menu_item == 3);
+  CHECK(f.press(K::Up, true, 5, false) == A::None && f.menu_item == 1);
+  // own: all four, Resend reachable and acts, focus back on the message
+  ChatFocus g = inMenu(true);
+  CHECK(g.press(K::Down, true, 5, true) == A::None && g.menu_item == 1);
+  CHECK(g.press(K::Down, true, 5, true) == A::None && g.menu_item == 2);
+  CHECK(g.press(K::Enter, true, 5, true) == A::Resend);
+  CHECK(g.target == T::Message && g.msg == 2);
+  std::printf("PASS menu_hides_resend_for_received\n");
+}
+
+static void menu_reply_targets_box() {
+  ChatFocus f = inMenu(false);
+  CHECK(f.press(K::Enter, true, 5, false) == A::Reply);
+  CHECK(f.target == T::TextBox && f.msg == -1);
+  // Copy also moves to the text box
+  ChatFocus g = inMenu(true);
+  g.press(K::Up, true, 5, true); // wraps to Copy
+  CHECK(g.menu_item == 3);
+  CHECK(g.press(K::Enter, true, 5, true) == A::Copy);
+  CHECK(g.target == T::TextBox && g.msg == -1);
+  // Info keeps the menu owning the screen; Esc closes it back to the list
+  ChatFocus h = inMenu(false);
+  h.press(K::Down, true, 5, false);
+  CHECK(h.press(K::Enter, true, 5, false) == A::Info);
+  CHECK(h.target == T::Menu && h.info && h.msg == 2);
+  CHECK(h.press(K::Down, true, 5, false) == A::None && h.info && h.menu_item == 1);
+  CHECK(h.press(K::Esc, true, 5, false) == A::None);
+  CHECK(h.target == T::Menu && !h.info && h.menu_item == 1);
+  std::printf("PASS menu_reply_targets_box\n");
+}
+
+static void menu_esc_returns_to_message() {
+  ChatFocus f = inMenu(true);
+  CHECK(f.press(K::Char, true, 5, true) == A::None && f.target == T::Menu);
+  CHECK(f.press(K::Esc, true, 5, true) == A::None);
+  CHECK(f.target == T::Message && f.msg == 2);
+  std::printf("PASS menu_esc_returns_to_message\n");
+}
+
+static void focus_follows_new_messages() {
+  ChatFocus f = onMessage(1);
+  f.onMessageAdded(5);
+  CHECK(f.target == T::Message && f.msg == 2);
+  f.msg = 4;
+  f.onMessageAdded(5); // ring full: the focused (oldest) message dropped, clamp
+  CHECK(f.msg == 4);
+  ChatFocus g;
+  g.onMessageAdded(5); // text box focus is unaffected
+  CHECK(g.target == T::TextBox && g.msg == -1);
+  // focus on a message with an emptied history falls back to the box
+  ChatFocus h = onMessage(0);
+  CHECK(h.press(K::Up, true, 0, false) == A::None);
+  CHECK(h.target == T::TextBox && h.msg == -1);
+  std::printf("PASS focus_follows_new_messages\n");
+}
+
+int main() {
+  up_from_empty_box_focuses_newest();
+  up_with_text_types_semicolon();
+  fn_up_leaves_box_with_text();
+  down_types_period();
+  enter_in_box_sends();
+  enter_on_message_opens_menu_never_sends();
+  char_on_message_ignored();
+  down_from_newest_returns_to_box();
+  esc_on_message_returns_to_box();
+  esc_in_box_leaves_chat();
+  menu_hides_resend_for_received();
+  menu_reply_targets_box();
+  menu_esc_returns_to_message();
+  focus_follows_new_messages();
+  return failures ? 1 : 0;
+}
+'''
 
 class CardputerChatTest(unittest.TestCase):
     PLATFORM_MACROS = ('-DNAME_MAX=255',)
@@ -260,6 +468,54 @@ class CardputerChatTest(unittest.TestCase):
     def test_split_sender(self):
         self._history('split_sender')
 
+
+    def test_own_line_brace_prefix_stays_text(self):
+        self._history('own_line_brace_prefix_stays_text')
+
+    def _focus(self, name):
+        self.build_and_run('focus', FOCUS_HARNESS, 'PASS ' + name)
+
+    def test_up_from_empty_box_focuses_newest(self):
+        self._focus('up_from_empty_box_focuses_newest')
+
+    def test_up_with_text_types_semicolon(self):
+        self._focus('up_with_text_types_semicolon')
+
+    def test_fn_up_leaves_box_with_text(self):
+        self._focus('fn_up_leaves_box_with_text')
+
+    def test_down_types_period(self):
+        self._focus('down_types_period')
+
+    def test_enter_in_box_sends(self):
+        self._focus('enter_in_box_sends')
+
+    def test_enter_on_message_opens_menu_never_sends(self):
+        self._focus('enter_on_message_opens_menu_never_sends')
+
+    def test_char_on_message_ignored(self):
+        self._focus('char_on_message_ignored')
+
+    def test_down_from_newest_returns_to_box(self):
+        self._focus('down_from_newest_returns_to_box')
+
+    def test_esc_on_message_returns_to_box(self):
+        self._focus('esc_on_message_returns_to_box')
+
+    def test_esc_in_box_leaves_chat(self):
+        self._focus('esc_in_box_leaves_chat')
+
+    def test_menu_hides_resend_for_received(self):
+        self._focus('menu_hides_resend_for_received')
+
+    def test_menu_reply_targets_box(self):
+        self._focus('menu_reply_targets_box')
+
+    def test_menu_esc_returns_to_message(self):
+        self._focus('menu_esc_returns_to_message')
+
+    def test_focus_follows_new_messages(self):
+        self._focus('focus_follows_new_messages')
 
 if __name__ == '__main__':
     unittest.main()
