@@ -19,6 +19,27 @@ FIXTURE = ROOT / "test/fixtures/client_acl_spiffs"
 
 
 class ClientAclRoleTests(unittest.TestCase):
+    def test_emergency_sleep_is_scoped_to_supported_infrastructure(self):
+        definition = POLICY.EMERGENCY_DEFINITION
+        for role in ("simple_repeater", "simple_room_server", "simple_sensor"):
+            source = "+<helpers/*.cpp> +<../examples/" + role + "/*.cpp>"
+            for platform in ("NRF52_PLATFORM", "ESP32_PLATFORM"):
+                flags = "-D" + platform
+                self.assertEqual(POLICY.emergency_power_policy(source, flags), {definition: 1})
+                self.assertEqual(POLICY.emergency_power_policy(
+                    source, flags + " -DMESH_ENABLE_BATTERY_FORWARDING=0"), {})
+                self.assertEqual(POLICY.emergency_power_policy(
+                    source, flags + " -D" + definition + "=0"), {})
+            self.assertEqual(POLICY.emergency_power_policy(source, "-DSTM32_PLATFORM"), {})
+            self.assertEqual(POLICY.emergency_power_policy(
+                source + " +<../examples/companion_radio/*.cpp>", "-DNRF52_PLATFORM"), {})
+        for source in ("", "+<*>", "+<../examples/custom_role/*.cpp>",
+                       "+<../examples/companion_radio/*.cpp>",
+                       "+<../examples/simple_repeater/main.cpp>"):
+            self.assertEqual(POLICY.emergency_power_policy(source, "-DNRF52_PLATFORM"), {})
+        with self.assertRaises(ValueError):
+            POLICY.emergency_power_policy("", "-D" + definition + "=2")
+
     def test_complete_exclusive_companion_role_uses_one_global_definition(self):
         definition = POLICY.COMPANION_DEFINITION
         for role in ("+<../examples/companion_radio>",

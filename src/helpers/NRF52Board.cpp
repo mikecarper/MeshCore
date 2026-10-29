@@ -312,7 +312,7 @@ float NRF52Board::getAdcMultiplier() const {
   return mesh::MainBoard::getAdcMultiplier();
 }
 
-#if NRF52_WATCHDOG_TIMEOUT_SECONDS > 0
+#if NRF52_WATCHDOG_TIMEOUT_SECONDS > 0 || MESH_ENABLE_EMERGENCY_POWER
 static void reloadWatchdogChannels() {
   // Ordinarily only RR0 is enabled. If a bootloader left the watchdog running
   // with a different reload channel, service every enabled channel.
@@ -926,6 +926,36 @@ void NRF52Board::powerOff() {
     NRF_POWER->SYSTEMOFF = POWER_SYSTEMOFF_SYSTEMOFF_Enter;
   }
 }
+
+#if MESH_ENABLE_EMERGENCY_POWER
+bool NRF52Board::emergencySleepMilliseconds(uint32_t millisecs) {
+  // Blocking the sketch lets the existing RTOS idle/RTC machinery sleep the
+  // CPU. SYSTEMOFF cannot provide a timed wake on every supported nRF52 board.
+  if (millisecs == 0 || watchdog_disable_reset_pending || isRadioTestActive()
+      || __get_IPSR() != 0 || __get_PRIMASK() != 0 || __get_BASEPRI() != 0
+      || __get_FAULTMASK() != 0 || nrf_nvic_state.__cr_flag != 0
+      || xTaskGetSchedulerState() != taskSCHEDULER_RUNNING) return false;
+  if (millisecs > 10000UL) millisecs = 10000UL;
+  // An enumerated host needs several sketch passes for cooperative CDC
+  // session cleanup and reply draining. Keep those passes prompt while RF
+  // stays asleep; detached operation retains the longer maintenance slice.
+  if (isUsbHostConnected() && millisecs > 100UL) millisecs = 100UL;
+  if (NRF_WDT->RUNSTATUS != 0) {
+    // A bootloader may have left a shorter watchdog than this build's default.
+    // Half its actual timeout leaves room for scheduling and wake processing.
+    const uint32_t watchdog_budget_ms = (NRF_WDT->CRV / 32768UL) * 500UL;
+    if (watchdog_budget_ms == 0) return false;
+    if (millisecs > watchdog_budget_ms) millisecs = watchdog_budget_ms;
+  }
+  const TickType_t ticks = pdMS_TO_TICKS(millisecs);
+  if (ticks == 0) return false;
+  // Service inherited watchdogs even when this build does not start one.
+  if (NRF_WDT->RUNSTATUS != 0) reloadWatchdogChannels();
+  vTaskDelay(ticks);
+  if (NRF_WDT->RUNSTATUS != 0) reloadWatchdogChannels();
+  return true;
+}
+#endif
 
 void NRF52Board::enterDeepSleep(uint32_t secs) {
   if (secs == 0) {

@@ -29,6 +29,7 @@ inline uint32_t micros() { return millis() * 1000U; }
 #include <helpers/CarrierTools.h>
 #include <helpers/ManagementFeatureConfig.h>
 #include <helpers/PacketFileLoggingConfig.h>
+#include <helpers/RadioDirectionPolicy.h>
 #include <helpers/SerialPacketLog.h>
 #include "@PRODUCTION_UTILS@"
 #define MAX_ROUTE_HASH_BYTES @ROUTE_HASH_LIMIT@

@@ -548,6 +548,171 @@ static void mediaMeshPresets() {
   assert(!invalid.radio.p.enabled() && invalid.fs.files.empty());
 }
 
+#if !MESH_CLIENT_REPEATER_ONLY
+static void channelPresetTransaction() {
+  for (bool range : {false, true}) {
+    Fixture f;
+    assert(f.cli.savePrimaryPreamble(48));
+    f.cli.stagePrimary(48, false);
+    f.cmd("set radio2.cross on");
+    f.cmd("set radio2 910.5,500,8,5,rxtx,80"); f.advance(2000);
+    const auto primary = f.radio.p.primary;
+    const auto previous = f.radio.p.secondary;
+    const auto previous_image = f.fs.files["/radio_profiles"];
+    const uint32_t intent = f.cli.secondaryIntentGeneration();
+    assert(f.cli.stageChannelPreset(range ? "mediamesh-range" : "mediamesh"));
+    assert(f.cli.hasReplyMutation() && f.fs.exists("/radio_profiles.reply"));
+    assert(f.fs.files["/radio_profiles"] == previous_image);
+    assert(f.cli.savedSecondaryConfig().params == previous.params);
+    assert(f.radio.p.secondary.params == previous.params);
+    f.advance(100); // A staged channel save has no permission to publish yet.
+    assert(f.radio.p.secondary.params == previous.params);
+    assert(f.cli.secondaryIntentGeneration() == intent);
+    assert(f.cli.finishChannelPreset(true));
+    assert(!f.cli.hasReplyMutation() && !f.fs.exists("/radio_profiles.reply"));
+    assert(f.cli.secondaryIntentGeneration() == intent + 1);
+    const auto saved = f.cli.savedSecondaryConfig();
+    assert(saved.mode == mesh::RadioProfileMode::RxTx);
+    assert(fabsf(saved.params.freq - 911.150f) < 0.0001f);
+    assert(saved.params.bw == (range ? 125 : 250));
+    assert(saved.params.sf == 7 && saved.params.cr == 5 && !saved.params.preamble);
+    assert(saved.params.protocol == mesh::RadioProfileProtocol::MeshCore);
+    // The pair is durable before acknowledging the channel, while the radio
+    // retains the ordinary saved setter's two-second application delay.
+    Radio reboot; mesh::RadioProfileCLI restored;
+    restored.begin(&f.fs, &reboot, &f.clock);
+    assert(reboot.p.secondary.params == saved.params);
+    assert(reboot.p.secondary.mode == saved.mode);
+    assert(reboot.p.primary == primary && reboot.p.cross == mesh::RadioCrossMode::On);
+    f.advance(1999);
+    assert(f.radio.p.secondary.params == previous.params);
+    f.advance(1);
+    assert(f.radio.p.secondary.params == saved.params && f.radio.p.secondary.mode == saved.mode);
+    assert(f.radio.p.primary == primary && f.radio.p.cross == mesh::RadioCrossMode::On);
+    assert(!f.cli.finishChannelPreset(true) && !f.cli.finishChannelPreset(false));
+  }
+  {
+    Fixture f;
+    f.cmd("set radio2 off"); f.advance(2000);
+    const auto before = f.fs.files;
+    const uint32_t intent = f.cli.secondaryIntentGeneration();
+    assert(f.cli.stageChannelPreset("mediamesh"));
+    assert(f.cli.finishChannelPreset(false)); // The channel save failed.
+    assert(!f.cli.hasReplyMutation() && f.fs.files == before);
+    assert(f.cli.secondaryIntentGeneration() == intent);
+    f.advance(2000);
+    assert(!f.radio.p.enabled() && f.cli.savedSecondaryConfig().mode == mesh::RadioProfileMode::Off);
+    Radio reboot; mesh::RadioProfileCLI restored;
+    restored.begin(&f.fs, &reboot, &f.clock);
+    assert(!reboot.p.enabled());
+  }
+  for (int fail_rename : {1, 2}) {
+    Fixture f;
+    f.cmd("set radio2 910.5,500,8,5,rx,80"); f.advance(2000);
+    const auto before = f.fs.files;
+    const auto previous = f.radio.p.secondary;
+    const uint32_t intent = f.cli.secondaryIntentGeneration();
+    assert(f.cli.stageChannelPreset("mediamesh-range"));
+    f.fs.fail_rename = fail_rename;
+    assert(!f.cli.finishChannelPreset(true));
+    assert(f.cli.hasReplyMutation());
+    assert(f.radio.p.secondary.params == previous.params);
+    assert(f.cli.savedSecondaryConfig().params == previous.params);
+    assert(f.cli.secondaryIntentGeneration() == intent);
+    assert(f.cli.finishChannelPreset(false));
+    assert(f.fs.files == before && !f.cli.hasReplyMutation());
+    f.advance(2000);
+    assert(f.radio.p.secondary.params == previous.params);
+    Radio reboot; mesh::RadioProfileCLI restored;
+    restored.begin(&f.fs, &reboot, &f.clock);
+    assert(reboot.p.secondary.params == previous.params && reboot.p.secondary.mode == previous.mode);
+  }
+  {
+    Fixture f;
+    const char* invalid_names[] = {nullptr, "", "MediaMesh", "mediamesh-extra",
+                                    "mediamesh,32", "911.150,250,7,5,rxtx"};
+    for (const char* name : invalid_names) {
+      assert(!f.cli.stageChannelPreset(name));
+      assert(!f.cli.hasReplyMutation() && f.fs.files.empty());
+    }
+    f.radio.minimum_frequency = 912;
+    assert(!f.cli.stageChannelPreset("mediamesh"));
+    assert(!f.cli.hasReplyMutation() && f.fs.files.empty());
+    f.radio.minimum_frequency = 137;
+    f.fs.fail_write = true;
+    assert(!f.cli.stageChannelPreset("mediamesh"));
+    assert(!f.cli.hasReplyMutation() && !f.radio.p.enabled());
+    assert(!f.fs.exists("/radio_profiles"));
+  }
+  {
+    Fixture f;
+    mesh::RadioProfileCLI unsupported;
+    unsupported.begin(&f.fs, nullptr, &f.clock);
+    assert(!unsupported.stageChannelPreset("mediamesh"));
+    assert(!unsupported.finishChannelPreset(true) && f.fs.files.empty());
+  }
+  for (auto protocol : {mesh::RadioProfileProtocol::Meshtext,
+                        mesh::RadioProfileProtocol::Kiss, mesh::RadioProfileProtocol::Ethernet}) {
+    Fixture f;
+    mesh::RadioProfileConfig foreign;
+    foreign.mode = mesh::RadioProfileMode::RxTx;
+    foreign.params.freq = 911.5; foreign.params.bw = 250;
+    foreign.params.sf = 7; foreign.params.cr = 5; foreign.params.protocol = protocol;
+    f.radio.p.setSecondary(foreign, false);
+    assert(!f.cli.stageChannelPreset("mediamesh"));
+    assert(!f.cli.hasReplyMutation() && f.fs.files.empty());
+    assert(f.radio.p.secondary.params == foreign.params);
+  }
+#if MESH_ENABLE_MESHTEXT_CHAT || MESH_ENABLE_ETHERNET_TUNNEL || MESH_ENABLE_HOST_KISS
+  {
+    Fixture f;
+    mesh::RadioProfileConfig foreign;
+    foreign.mode = mesh::RadioProfileMode::RxTx;
+    foreign.params.freq = 911.5; foreign.params.bw = 250;
+    foreign.params.sf = 7; foreign.params.cr = 5;
+    foreign.params.protocol = mesh::RadioProfileProtocol::Meshtext;
+    assert(f.cli.requestAutoSecondary(foreign));
+    assert(!f.cli.stageChannelPreset("mediamesh"));
+    assert(f.cli.autoSecondaryActive() && f.fs.files.empty());
+    // A separately leased MeshCore tuple must also remain protected after
+    // an automatic owner observes an external generation change.
+    foreign.params.protocol = mesh::RadioProfileProtocol::MeshCore;
+    f.radio.p.setSecondary(foreign, false);
+    assert(!f.cli.stageChannelPreset("mediamesh"));
+    assert(!f.cli.hasReplyMutation() && f.fs.files.empty());
+    assert(f.radio.p.secondary.params == foreign.params);
+  }
+#endif
+  for (unsigned busy = 0; busy < 5; ++busy) {
+    Fixture f;
+    if (busy == 0) f.radio.p.primary_temporary = true;
+    else if (busy == 1) f.cmd("set tempradio2 910.5,500,8,5,rx,1,80");
+    else if (busy == 2) { f.cmd("set tempradio2 910.5,500,8,5,rx,1,80"); f.advance(2000); }
+    else if (busy == 3) f.cmd("set radioat2 910.5,500,8,5,rx,+1,80");
+    else f.cmd("set radio2 910.5,500,8,5,rx,80");
+    const auto before = f.fs.files;
+    assert(!f.cli.stageChannelPreset("mediamesh"));
+    assert(!f.cli.hasReplyMutation() && f.fs.files == before);
+  }
+  {
+    Fixture f;
+    f.cli.beginReplyCommand();
+    assert(!f.cli.stageChannelPreset("mediamesh"));
+    f.cmd("set radio2 mediamesh-range");
+    f.cli.endReplyCommand();
+    const auto before = f.fs.files;
+    const uint32_t generation = f.cli.replyMutationGeneration();
+    assert(!f.cli.stageChannelPreset("mediamesh"));
+    assert(!f.cli.stageChannelPreset("invalid"));
+    assert(f.cli.hasReplyMutation() && f.cli.replyMutationGeneration() == generation);
+    assert(f.fs.files == before); // Failed staging cannot cancel the remote ACK owner.
+    assert(f.cli.finishReplyMutation(true)); f.advance(1);
+    assert(!f.cli.hasReplyMutation() && f.radio.p.secondary.params.bw == 125);
+  }
+}
+
+#endif
+
 struct MediaScope {
   bool available = true, fail_save = false, enabled = false, durable = false;
   unsigned checks = 0, commits = 0;
@@ -731,6 +896,9 @@ int main(int argc, char** argv) {
     else if (!strcmp(argv[1], "relative_schedule")) relativeSchedules();
     else if (!strcmp(argv[1], "spectrum_overlap")) spectrumOverlap();
     else if (!strcmp(argv[1], "mediamesh")) mediaMeshPresets();
+#if !MESH_CLIENT_REPEATER_ONLY
+    else if (!strcmp(argv[1], "channel_preset")) channelPresetTransaction();
+#endif
     else if (!strcmp(argv[1], "media_scope")) mediaMeshScopeLifecycle();
     else return 2;
     return 0;

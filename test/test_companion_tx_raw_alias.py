@@ -63,6 +63,9 @@ public:
   bool setChannel(int, const ChannelDetails&);
 };
 class MyMesh : public BaseChatMesh, public DataStoreHost {""")
+    # The publication-only fixture aliases its simplified channel owner. This
+    # fixture supplies the real base accessors and must retain that base name.
+    code = replace_once(code, " using BaseChatMesh = MyMesh;\n", "")
     code = replace_once(code, " bool writable=true, writes_ok=true; unsigned writes=0;", """
  struct { bool enabled = false; } _ethernet_settings;
  bool writable=true, writes_ok=true; unsigned writes=0;""")

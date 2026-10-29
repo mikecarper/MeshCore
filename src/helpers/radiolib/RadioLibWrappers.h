@@ -5,6 +5,7 @@
 #include "NoiseFloorEstimator.h"
 #include "../TelemetryHistoryConfig.h"
 #include "../CarrierTools.h"
+#include "../RadioDirectionPolicy.h"
 
 #include <Mesh.h>
 #include <RadioLib.h>
@@ -47,6 +48,9 @@ protected:
   uint8_t state = 0;
   uint8_t _interrupt_slot = 0xff;
   bool _loop_event_pending = false;
+#if MESH_ENABLE_RADIO_DIRECTION
+  bool _direction_receive_disabled = false;
+#endif
   uint8_t _irq_probe_failures = 0;
   bool registerInterruptAction();
   void unregisterInterruptAction();
@@ -311,6 +315,7 @@ protected:
 
   void idle() override;
   void startRecv() override;
+  void serviceDirectionPolicy();
   void rxPsWatchdogCheck();
   void requestPeriodicNoiseFloorRefresh();
   void requestNoiseFloorRefresh();

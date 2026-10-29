@@ -163,7 +163,12 @@ class RadioProfileCLI {
   bool hasReplyMutation() const { return remote_mutation_ != RemoteMutation::None; }
   uint32_t replyMutationGeneration() const { return remote_generation_; }
   bool finishReplyMutation(bool delivered);
-  // Channel-derived RF settings are RAM-only and never replace explicit saved
+  // A channel join can stage a named preset before its channel save. Commit
+  // synchronously only after that save succeeds; cancellation leaves saved
+  // RF intent and the running modem unchanged.
+  bool stageChannelPreset(const char* name);
+  bool finishChannelPreset(bool commit);
+  // Passive RF borrowing is RAM-only and never replaces explicit saved
   // settings (including Off). Repeated identical requests do not retune.
   bool requestAutoSecondary(const RadioProfileConfig& config);
   void clearAutoSecondary();

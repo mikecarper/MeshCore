@@ -13,6 +13,7 @@ from test_serial_wifi_sessions import SANITIZER_FLAGS
 ROOT = Path(__file__).resolve().parents[1]
 
 HARNESS = r'''
+#include <helpers/CLIReplyText.h>
 #include <helpers/FloodGroupPlainText.h>
 #include <algorithm>
 #include <cassert>

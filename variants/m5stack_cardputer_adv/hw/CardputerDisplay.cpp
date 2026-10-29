@@ -6,13 +6,22 @@
 #include "globals.h"
 
 #include <MeshCore.h>
+#include <helpers/ui/ColorTheme.h>
 
-ColorVal UIColor::window_bkg = CardputerDisplay::PaletteColor::P_BLACK;
+ColorVal UIColor::window_bkg = CardputerDisplay::P_BLACK;
+ColorVal UIColor::title_bkg = CardputerDisplay::P_BLACK;
+ColorVal UIColor::title_txt = CardputerDisplay::P_WHITE;
+ColorVal UIColor::primary_txt = CardputerDisplay::P_WHITE;
+ColorVal UIColor::secondary_txt = CardputerDisplay::P_GRAY;
+ColorVal UIColor::warning_txt = CardputerDisplay::P_ORANGE;
+ColorVal UIColor::popup_bkg = CardputerDisplay::P_BLACK;
+ColorVal UIColor::popup_txt = CardputerDisplay::P_WHITE;
+ColorVal UIColor::corp_blue = CardputerDisplay::P_BLUE;
 
 int32_t emoji_draw_callback(lgfx::LGFXBase *gfx, int32_t x, int32_t y, uint32_t code, int32_t font_height) {
   int w = gfx->textWidth("O");
   int h = gfx->fontHeight();
-  gfx->drawRect(x, y + (h - w - w / 2), w, w, TFT_DARKGRAY);
+  gfx->drawRect(x, y + (h - w - w / 2), w, w, mesh::ui::color_theme::render(TFT_DARKGRAY));
   return w;
 }
 
@@ -99,7 +108,8 @@ bool CardputerDisplay::begin() {
   LCD.setColorDepth(16); // lower SPI bandwidth
   LCD.setBrightness(128);
 
-  LCD.setTextColor(TFT_WHITE, TFT_BLACK);
+  LCD.setTextColor(mesh::ui::color_theme::render(P_WHITE),
+                   mesh::ui::color_theme::background(P_BLACK));
   LCD.setEmojiCallback(emoji_draw_callback);
   setTextLevel(_textLevel);
   return true;
@@ -116,12 +126,13 @@ void CardputerDisplay::turnOff() {
 }
 
 void CardputerDisplay::clear() {
-  LCD.clear();
+  LCD.clear(mesh::ui::color_theme::background(P_BLACK));
 }
 
 void CardputerDisplay::startFrame(ColorVal bkg) {
   LCD.startWrite();
-  LCD.clear(P_BLACK);
+  LCD.clear(mesh::ui::color_theme::background(bkg));
+  setColor(P_WHITE);
 }
 
 void CardputerDisplay::endFrame() {
@@ -180,7 +191,7 @@ void CardputerDisplay::setTextSize(int sz) {
 }
 
 void CardputerDisplay::setColor(ColorVal c) {
-  _lastColor = c;
+  _lastColor = mesh::ui::color_theme::render(c);
   LCD.setColor(_lastColor);
   LCD.setTextColor(_lastColor);
 }

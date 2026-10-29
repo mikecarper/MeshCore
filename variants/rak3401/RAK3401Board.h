@@ -12,6 +12,10 @@
 #define WB_IO2 PIN_3V3_EN
 
 class RAK3401Board : public NRF52BoardDCDC {
+#if MESH_ENABLE_EMERGENCY_POWER
+  bool emergency_fem_suspended = false;
+  bool emergency_fem_was_enabled = false;
+#endif
 protected:
 #ifdef NRF52_POWER_MANAGEMENT
   void initiateShutdown(uint8_t reason) override;
@@ -22,6 +26,9 @@ public:
   void shutdownPeripherals() override;
   bool recoverRadio();
   void enableRadioFrontend();
+#if MESH_ENABLE_EMERGENCY_POWER
+  void setEmergencyRadioSleeping(bool sleeping) override;
+#endif
   bool supportsRadioHardReset() const override { return true; }
   bool resetRadio() override { return recoverRadio(); }
   bool finishRadioHardReset() override {

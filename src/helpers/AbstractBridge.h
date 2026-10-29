@@ -1,26 +1,51 @@
 #pragma once
 
 #include <Mesh.h>
+#include <helpers/BridgeIngressProfile.h>
 
 class AbstractBridge {
   using PacketFilter = bool (*)(void*, const mesh::Packet*);
   PacketFilter _packet_filter = nullptr;
   void* _packet_filter_context = nullptr;
   const mesh::RadioProfiles* _ingress_profiles = nullptr;
+  const mesh::bridge::IngressSource* _ingress_source = nullptr;
 
 protected:
-  // Bridges enter the local primary MeshCore network, not whichever tuple
-  // the physical scanner currently visits. Snapshot its generation at queue
-  // admission so a delayed frame cannot acquire a newer temporary lease.
+  // Source identity is borrowed only while the main loop admits one frame.
+  // The queued Packet retains the selected profile, not this stack pointer.
+  class IngressSourceScope {
+    AbstractBridge& owner;
+    const mesh::bridge::IngressSource* previous;
+  public:
+    IngressSourceScope(AbstractBridge& bridge, const mesh::bridge::IngressSource& source)
+        : owner(bridge), previous(bridge._ingress_source) { owner._ingress_source = &source; }
+    ~IngressSourceScope() { owner._ingress_source = previous; }
+    IngressSourceScope(const IngressSourceScope&) = delete;
+    IngressSourceScope& operator=(const IngressSourceScope&) = delete;
+  };
+
+  // The receiver selects a local MeshCore profile, independent of the wire
+  // format and the scanner's current tuple. Legacy bridges default to primary.
+  // Snapshot the generation so delayed frames cannot acquire a newer lease.
   bool preparePacketIngress(mesh::Packet* packet) const {
-    if (!packet || (_ingress_profiles
-        && _ingress_profiles->params(0).protocol != mesh::RadioProfileProtocol::MeshCore)) return false;
-    packet->radio_profile = packet->radio_origin = 0;
+    const auto route = mesh::bridge::ingressRoute(_ingress_source);
+    const auto target = route.profile;
+    if (!packet || target == mesh::bridge::IngressProfile::Blocked
+        || target == mesh::bridge::IngressProfile::Off) return false;
+    const uint8_t profile = target == mesh::bridge::IngressProfile::Radio2 ? 1 : 0;
+    if ((profile == 1 && (!_ingress_profiles || !_ingress_profiles->enabled()
+            || !_ingress_profiles->canTransmit(1)))
+        || (_ingress_profiles && _ingress_profiles->params(profile).protocol
+            != mesh::RadioProfileProtocol::MeshCore)) return false;
+    packet->radio_profile = packet->radio_origin = profile;
     packet->radio_generation = packet->radio_origin_generation =
-        _ingress_profiles ? _ingress_profiles->generation[0] : 0;
+        _ingress_profiles ? _ingress_profiles->generation[profile] : 0;
     packet->radio_bound = false;
     packet->radio_local = false;
-    packet->tx_radio = mesh::RADIO_TX_AUTO;
+    // Explicit secondary ingress stays secondary even if crossing is enabled.
+    // The default primary selector retains its historical crossing behavior.
+    packet->tx_radio = profile == 1 ? mesh::RADIO_TX_SECONDARY
+        : route.explicit_profile ? mesh::RADIO_TX_PRIMARY : mesh::RADIO_TX_AUTO;
     packet->radio_reply = packet->radio_reply_force = false;
     packet->forwarded = true;
     return true;

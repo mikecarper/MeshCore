@@ -3099,7 +3099,12 @@ void halt() {
       companion_bluetooth_start_failure[
           sizeof(companion_bluetooth_start_failure) - 1] = 0;
       mesh::usbLoggingPort().println(
-          "Companion: no interface slot available for Bluetooth; retrying");
+#if defined(RAK_4631)
+          "Bluetooth: no slot; retrying"
+#else
+          "Companion: no interface slot available for Bluetooth; retrying"
+#endif
+      );
       scheduleCompanionBluetoothRetry();
       return;
     }
@@ -3145,7 +3150,12 @@ void halt() {
       // Leave the interface unregistered so the UI cannot advertise a PIN
       // for it, and avoid consuming more heap every five seconds.
       mesh::usbLoggingPort().println(
-          "Companion: Bluetooth initialization failed; reboot required");
+#if defined(RAK_4631)
+          "Bluetooth init failed; reboot"
+#else
+          "Companion: Bluetooth initialization failed; reboot required"
+#endif
+      );
 #else
       mesh::usbLoggingPort().println(
           "Companion: Bluetooth initialization failed; retrying in 5 seconds");
@@ -3991,6 +4001,8 @@ void setup() {
   the_mesh.begin(
     #ifdef DISPLAY_CLASS
         disp != NULL
+    #elif CARDPUTER_ADV_UI
+        cardputer_disp != NULL
     #else
         false
     #endif

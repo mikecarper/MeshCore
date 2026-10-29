@@ -1,0 +1,789 @@
+{
+  "schema_version": 1,
+  "date": "2026-10-28",
+  "source_commit": "f4f9453248d351bd91be269ca0a58a6edb51882e",
+  "implementation_commits": [
+    "0c7dec9f1",
+    "f4f945324",
+    "5cbff1946",
+    "be6d636c7"
+  ],
+  "scope": "Native policy/runtime checks, selected production packaging, and three restored hardware trials; current draw and real low-battery entry remain unmeasured.",
+  "policy": {
+    "automatic_enter_percent_max": 5,
+    "automatic_release_percent_min": 7,
+    "sample_interval_ms": 30000,
+    "utc_awake_window_seconds": [
+      0,
+      900
+    ],
+    "hour_seconds": 3600,
+    "fallback_clock": "boot-relative monotonic uptime",
+    "reply_hold_ms": 5000,
+    "maximum_cpu_sleep_slice_ms": 10000,
+    "maximum_awake_override_minutes": 10080,
+    "default_mode": "auto",
+    "manual_mode_persisted": true,
+    "awake_override_persisted": false,
+    "hard_low_voltage_protection_preserved": true,
+    "platform_sleep": {
+      "nrf52": "Retained RTOS timed delay with idle sleep and watchdog service; no SYSTEMOFF/reboot.",
+      "esp32": "Timed light sleep when detached; native USB uses bounded RTOS idle waits and a reserved post-wake USB service interval."
+    },
+    "forwarding_defaults": {
+      "repeat_below_percent": 15,
+      "flood_below_percent": 25,
+      "v1_migration": "Only the exact legacy 10/20 pair migrates to 15/25; enabled bits/endpoints and other pairs are preserved.",
+      "v2_custom_10_20_preserved": true
+    },
+    "commands": [
+      "get power.emergency",
+      "set power.emergency on",
+      "set power.emergency auto",
+      "set power.awake <0..10080 minutes>"
+    ]
+  },
+  "native_tests": {
+    "status": "passed",
+    "total_test_methods": 85,
+    "suites": {
+      "test_emergency_power.py": 7,
+      "test_emergency_power_runtime.py": 13,
+      "test_emergency_sleep_backends.py": 3,
+      "test_emergency_power_ota.py": 1,
+      "test_battery_forwarding.py": 20,
+      "test_client_acl_role.py": 8,
+      "test_wireless_control.py": 4,
+      "test_logging_sleep_contract.py": 3,
+      "test_power_saving_deadlines.py": 3,
+      "test_emergency_power_bench.py": 14,
+      "test_esp32_cpu_clock_board.py": 9
+    },
+    "ota_role_test_compile_configurations": 3,
+    "qualification": "Native fakes validate state and call ordering; they do not measure physical current or battery state."
+  },
+  "builds": [
+    {
+      "artifact_target": "solarxiao_33S_repeater-full-ota",
+      "pio_environment": "solarxiao_33S_repeater",
+      "platform": "NRF52_PLATFORM",
+      "mcu": "nrf52840",
+      "passed": true,
+      "capability_checks": {
+        "passed": 11,
+        "total": 11
+      },
+      "ota_update_verified": true,
+      "memory": {
+        "passed": true,
+        "elf_sha256": "e70e0dc40d7b57b026ac79dc2bbaf5ceb1517e8ec2f92a0ae65acb71125a1634",
+        "available_internal_bytes": 151348,
+        "largest_internal_region_bytes": 151348,
+        "required_heap_bytes": 82784,
+        "required_contiguous_bytes": 19168
+      },
+      "memory_manifest_sha256": "5c9b97e0f5643fe4c48e446d373d78278fb3ce1446522f3166c1eb352a189bf4",
+      "capabilities_manifest_sha256": "f487331b66faaff19771d713468ff9b02f77a60cadf18d104527d3fa32332ab3",
+      "artifact_files": {
+        "solarxiao_33S_repeater-full-ota-v1.18.0.2-halo-keymind-cascade-dev-f4f94532.uf2": {
+          "sha256": "8baab7d62feed91eb7382f2e38304bcedabff15f92dfca889cde1d33c879359e",
+          "size_bytes": 1255424
+        },
+        "solarxiao_33S_repeater-full-ota-v1.18.0.2-halo-keymind-cascade-dev-f4f94532.zip": {
+          "sha256": "da62778bc5add51749deb9e36e5fbe781c9e277d404a3117ca655b0ab57cb6a0",
+          "size_bytes": 628363
+        }
+      }
+    },
+    {
+      "artifact_target": "solarxiao_33S_repeater-reduced-ota",
+      "pio_environment": "solarxiao_33S_repeater",
+      "platform": "NRF52_PLATFORM",
+      "mcu": "nrf52840",
+      "passed": true,
+      "capability_checks": {
+        "passed": 9,
+        "total": 9
+      },
+      "ota_update_verified": true,
+      "memory": {
+        "passed": true,
+        "elf_sha256": "b3568203b8550be591a0937355c4764bd3de5cdc7007be27cd2bf33a33ef8e83",
+        "available_internal_bytes": 152528,
+        "largest_internal_region_bytes": 152528,
+        "required_heap_bytes": 80736,
+        "required_contiguous_bytes": 19168
+      },
+      "memory_manifest_sha256": "b5cf910705fff6ad5333f65a9c7e282f9757ce53a1ad5d26385c70a9ff525ba5",
+      "capabilities_manifest_sha256": "f1148c7fbc1448bde7a6b244ac179f34c0cb47d366736eed7a1f94e3a1dbf07b",
+      "artifact_files": {
+        "solarxiao_33S_repeater-reduced-ota-v1.18.0.2-halo-keymind-cascade-dev-f4f94532.uf2": {
+          "sha256": "1f7dc7d181704b975f4ac598551ea8c8b6cebf89b301826bfb551821e33f37bd",
+          "size_bytes": 1181696
+        },
+        "solarxiao_33S_repeater-reduced-ota-v1.18.0.2-halo-keymind-cascade-dev-f4f94532.zip": {
+          "sha256": "fc8345308fee06c0059b8f0791ded9c04a8d3a5fdb9212fde64961fa32bb4e0d",
+          "size_bytes": 591611
+        }
+      }
+    },
+    {
+      "artifact_target": "RAK_3401_repeater_lora_ota_no_external_sensors-full-ota",
+      "pio_environment": "RAK_3401_repeater",
+      "platform": "NRF52_PLATFORM",
+      "mcu": "nrf52840",
+      "passed": true,
+      "capability_checks": {
+        "passed": 14,
+        "total": 14
+      },
+      "ota_update_verified": true,
+      "memory": {
+        "passed": true,
+        "elf_sha256": "8e4d72940ae57e8c4aaf4c1e14efdd42a26c9f1c717bef2dfae19ddc2217507b",
+        "available_internal_bytes": 80124,
+        "largest_internal_region_bytes": 80124,
+        "required_heap_bytes": 75920,
+        "required_contiguous_bytes": 19168
+      },
+      "memory_manifest_sha256": "fdc17070df586a0b8a5341c4934bb6697b9dfad5d12943383166211b0e442f23",
+      "capabilities_manifest_sha256": "fb661625a4851dfb53b889e524aec4ee4c604a4eff675f9513a47c65c32ea768",
+      "artifact_files": {
+        "RAK_3401_repeater_lora_ota_no_external_sensors-full-ota-v1.18.0.2-halo-keymind-cascade-dev-f4f94532.uf2": {
+          "sha256": "498fbfb12cb2abd0969456752bf39adbaa82134c53e63be3d6fa594be04cb593",
+          "size_bytes": 1255936
+        },
+        "RAK_3401_repeater_lora_ota_no_external_sensors-full-ota-v1.18.0.2-halo-keymind-cascade-dev-f4f94532.zip": {
+          "sha256": "3d979e38b38d1b4af77d68b21ca67b7a2d9cf3f2cf3ed4e35051b354dafb4807",
+          "size_bytes": 628603
+        }
+      }
+    },
+    {
+      "artifact_target": "RAK_3401_repeater_lora_ota_no_external_sensors-reduced-ota",
+      "pio_environment": "RAK_3401_repeater",
+      "platform": "NRF52_PLATFORM",
+      "mcu": "nrf52840",
+      "passed": true,
+      "capability_checks": {
+        "passed": 12,
+        "total": 12
+      },
+      "ota_update_verified": true,
+      "memory": {
+        "passed": true,
+        "elf_sha256": "d2862c5939afcd4401bbe8fdb31f980ee9a48e92f89b45e6e840bb3a990a5213",
+        "available_internal_bytes": 82648,
+        "largest_internal_region_bytes": 82648,
+        "required_heap_bytes": 73872,
+        "required_contiguous_bytes": 19168
+      },
+      "memory_manifest_sha256": "923ec558f2a9e4c236f543c0c31121bd601ffbaa753268d20ab52725daea37b1",
+      "capabilities_manifest_sha256": "4e4a91cba3cecab699ddcdb215d2b020f766fd1843d45e19244cd6dfa432ca1f",
+      "artifact_files": {
+        "RAK_3401_repeater_lora_ota_no_external_sensors-reduced-ota-v1.18.0.2-halo-keymind-cascade-dev-f4f94532.uf2": {
+          "sha256": "eac7a79110c130dfde00b771cd58dd2fd791c559b8b96df2f0369c99d8a6d742",
+          "size_bytes": 1137152
+        },
+        "RAK_3401_repeater_lora_ota_no_external_sensors-reduced-ota-v1.18.0.2-halo-keymind-cascade-dev-f4f94532.zip": {
+          "sha256": "81f5c2285a6407346cdcdcbf33c090ece3590ee1f497817aea07f5b1da098b1c",
+          "size_bytes": 569367
+        }
+      }
+    },
+    {
+      "artifact_target": "heltec_v4_repeater_observer_mqtt",
+      "pio_environment": "heltec_v4_repeater_observer_mqtt",
+      "platform": "ESP32_PLATFORM",
+      "mcu": "esp32s3",
+      "passed": true,
+      "capability_checks": {
+        "passed": 16,
+        "total": 16
+      },
+      "ota_update_verified": true,
+      "memory": {
+        "passed": true,
+        "elf_sha256": "fe7c84f61b24ed87b3451b9d7d62e5df38dd2382a7456f3b3b838901d064b13d",
+        "available_internal_bytes": 240112,
+        "largest_internal_region_bytes": 207344,
+        "required_heap_bytes": 238732,
+        "required_contiguous_bytes": 19168
+      },
+      "memory_manifest_sha256": "d8a38eceb3563314ac8659466d57e0ba225173fcbb89ed469d26f025c0e4a4eb",
+      "capabilities_manifest_sha256": "26c650a6e3086486a35fc7e6404f31d74e56930ab2497d36de5dff3b126f6956",
+      "artifact_files": {
+        "heltec_v4_repeater_observer_mqtt-full-usb-wifi-ota-v1.18.0.2-halo-keymind-cascade-dev-f4f94532.bin": {
+          "sha256": "e4814e3a0304be78ec26f3ec54514dced662c6a851b49508e37c2096f33b6e88",
+          "size_bytes": 2176680
+        },
+        "heltec_v4_repeater_observer_mqtt-full-usb-wifi-ota-v1.18.0.2-halo-keymind-cascade-dev-f4f94532-merged.bin": {
+          "sha256": "958f0aae6cb8d87b3fcd9fe04616988b5e48b7a6ec2a521252b06333ffce8cad",
+          "size_bytes": 2242216
+        }
+      }
+    },
+    {
+      "artifact_target": "solarxiao_33S_room_server_lora_ota-full-ota",
+      "pio_environment": "solarxiao_33S_room_server_lora_ota",
+      "platform": "NRF52_PLATFORM",
+      "mcu": "nrf52840",
+      "passed": true,
+      "capability_checks": {
+        "passed": 7,
+        "total": 7
+      },
+      "ota_update_verified": true,
+      "memory": {
+        "passed": true,
+        "elf_sha256": "e6d9ae0909d1bb9d34cd434e0fe50ce7752672cb5b9e4651e86580c6938a831f",
+        "available_internal_bytes": 157108,
+        "largest_internal_region_bytes": 157108,
+        "required_heap_bytes": 67328,
+        "required_contiguous_bytes": 10256
+      },
+      "memory_manifest_sha256": "398652d19d46ea3011404a91cd7cd9b4d5916ae26732f239f5054fee362d9b47",
+      "capabilities_manifest_sha256": "e6e68d818c297f2c3dd3732c94c92314ade500f10f4384fb13ffac132ebd4398",
+      "artifact_files": {
+        "solarxiao_33S_room_server_lora_ota-full-ota-v1.18.0.2-halo-keymind-cascade-dev-f4f94532.uf2": {
+          "sha256": "dda7c6d03e4a7a507ea174cde1a6e7ef478e783637b2cd5144d63c670c439780",
+          "size_bytes": 1095680
+        },
+        "solarxiao_33S_room_server_lora_ota-full-ota-v1.18.0.2-halo-keymind-cascade-dev-f4f94532.zip": {
+          "sha256": "f12af1af797d502963d23c34f44c3934d3791dee2c5f2e6ac910fa6ec102063a",
+          "size_bytes": 548491
+        }
+      }
+    },
+    {
+      "artifact_target": "solarxiao_33S_room_server_lora_ota-reduced-ota",
+      "pio_environment": "solarxiao_33S_room_server_lora_ota",
+      "platform": "NRF52_PLATFORM",
+      "mcu": "nrf52840",
+      "passed": true,
+      "capability_checks": {
+        "passed": 5,
+        "total": 5
+      },
+      "ota_update_verified": true,
+      "memory": {
+        "passed": true,
+        "elf_sha256": "05d808a0d74a76bc0e3b14d4d54b75e059e36193f366601605b3c78bece1cbc4",
+        "available_internal_bytes": 158264,
+        "largest_internal_region_bytes": 158264,
+        "required_heap_bytes": 65280,
+        "required_contiguous_bytes": 10256
+      },
+      "memory_manifest_sha256": "1b27404c085b6dc2b6363b4e6a47ef2cfc6afc11ee32c5f1a9bf6bf22a2bf884",
+      "capabilities_manifest_sha256": "b64e5229c28253c2df916dbe2ac1eba65076594ca640d0b51c10d58385920412",
+      "artifact_files": {
+        "solarxiao_33S_room_server_lora_ota-reduced-ota-v1.18.0.2-halo-keymind-cascade-dev-f4f94532.uf2": {
+          "sha256": "a56a7cfae82bb28f0579206a0c19d1f75e04ff366510a01c7fb978af0a045e11",
+          "size_bytes": 1022976
+        },
+        "solarxiao_33S_room_server_lora_ota-reduced-ota-v1.18.0.2-halo-keymind-cascade-dev-f4f94532.zip": {
+          "sha256": "b93ba11be67c9e74fb0dab4b21310fed65f47d856652a7b037b139f01cf22867",
+          "size_bytes": 512115
+        }
+      }
+    },
+    {
+      "artifact_target": "heltec_v4_sensor",
+      "pio_environment": "heltec_v4_sensor",
+      "platform": "ESP32_PLATFORM",
+      "mcu": "esp32s3",
+      "passed": true,
+      "capability_checks": {
+        "passed": 9,
+        "total": 9
+      },
+      "ota_update_verified": true,
+      "memory": {
+        "passed": true,
+        "elf_sha256": "f8956d176b5a15df8818f0955779934340d735b7f2f8a30044dd1ddb0d574ab5",
+        "available_internal_bytes": 271872,
+        "largest_internal_region_bytes": 239104,
+        "required_heap_bytes": 150592,
+        "required_contiguous_bytes": 18464
+      },
+      "memory_manifest_sha256": "fa55caceb0882d2db0c8fca5bf12ffa5b84289d6347da99521e132646b063069",
+      "capabilities_manifest_sha256": "1b713a6e1073731e76cc360563087cea10f9385d69aec3992bb166aaf1498f5c",
+      "artifact_files": {
+        "heltec_v4_sensor-full-ota-v1.18.0.2-halo-keymind-cascade-dev-f4f94532.bin": {
+          "sha256": "b16e69620277fa98079bcd9516a6f9d4254a04a07914dc8951d293c10dab3fb8",
+          "size_bytes": 1541288
+        },
+        "heltec_v4_sensor-full-ota-v1.18.0.2-halo-keymind-cascade-dev-f4f94532-merged.bin": {
+          "sha256": "3fe8fbe319cf6d2ba389f9fd088fdbee04d7195fafa3220d4c14a7bb87ab8a1e",
+          "size_bytes": 1606824
+        }
+      }
+    }
+  ],
+  "additional_builds": {
+    "heltec_v4_native_usb_fix": {
+      "source_commit": "be6d636c79413fbadf7f23a1fc97cd9f92b76ba6",
+      "artifact_target": "heltec_v4_repeater_observer_mqtt",
+      "pio_environment": "heltec_v4_repeater_observer_mqtt",
+      "platform": "ESP32_PLATFORM",
+      "mcu": "esp32s3",
+      "passed": true,
+      "capability_checks": {
+        "passed": 16,
+        "total": 16
+      },
+      "memory": {
+        "passed": true,
+        "elf_sha256": "4c74d111ae0c535a69657ba5807f5dcc2b2e5b4b9aabdaa371f6d3a3ddb33d42",
+        "available_internal_bytes": 240112,
+        "largest_internal_region_bytes": 207344,
+        "required_heap_bytes": 238732,
+        "required_contiguous_bytes": 19168
+      },
+      "memory_manifest_sha256": "d2663a83298dbd4daa12e675a8737e8948fc16b5cdda71a9ded57f3c528e9820",
+      "capabilities_manifest_sha256": "afb6fc8e8f883f2b03e436461aef3c4acedbeaddef7ba55b0b42215439566c62",
+      "artifact_files": {
+        "heltec_v4_repeater_observer_mqtt-full-usb-wifi-ota-v1.18.0.2-halo-keymind-cascade-dev-be6d636c.bin": {
+          "sha256": "145afa4085b37f9c2eec0e5ba39c1aad045c46dfd0c476bc2ed1977d1dd0213a",
+          "size_bytes": 2177160
+        },
+        "heltec_v4_repeater_observer_mqtt-full-usb-wifi-ota-v1.18.0.2-halo-keymind-cascade-dev-be6d636c-merged.bin": {
+          "sha256": "a78920426a9f7edff7620425cca813e76df8dde228022573c744823bbbbee065",
+          "size_bytes": 2242696
+        }
+      }
+    }
+  },
+  "physical_validation": {
+    "status": "passed_with_documented_limits",
+    "schema_version": 1,
+    "bench_profile": {
+      "frequency_mhz": 909.5,
+      "bandwidth_khz": 500,
+      "spreading_factor": 5,
+      "coding_rate": 5,
+      "configured_tx_dbm": -9
+    },
+    "boards": [
+      {
+        "board": "SolarXiao 33S",
+        "tested_version": "v1.18.0.2-halo-keymind-cascade-dev-f4f94532 (Build: 28-Oct-2026)",
+        "installed_version": "v1.18.0.2-halo-keymind-cascade-dev-f4f94532 (Build: 28-Oct-2026)",
+        "trial_passed": true,
+        "manual_radio_sleep_verified": true,
+        "independent_witness_board": "RAK3401",
+        "baseline_rf_advert_received": true,
+        "awake_lease": {
+          "requested_seconds": 60,
+          "real_time_expiry_verified": true,
+          "clock_not_accelerated_during_lease": true
+        },
+        "accelerated_hourly_wake_cycles": [
+          {
+            "no_target_usb_writes_seconds": 31.586,
+            "independent_raw_capture_before_status_query": true,
+            "expected_hour_boundary_timestamp": true,
+            "radio_awake_after_capture": true
+          },
+          {
+            "no_target_usb_writes_seconds": 31.587,
+            "independent_raw_capture_before_status_query": true,
+            "expected_hour_boundary_timestamp": true,
+            "radio_awake_after_capture": true
+          }
+        ],
+        "manual_mode_survived_reboot": true,
+        "cleanup_passed": true,
+        "final_state": {
+          "role": "Repeater",
+          "identity_equal": true,
+          "existing_settings_equal": true,
+          "present_clock_confirmed": true,
+          "emergency_cli_supported": true,
+          "emergency_mode": "auto",
+          "active": "off",
+          "radio": "awake",
+          "awake_hold_seconds": 0
+        }
+      },
+      {
+        "board": "RAK3401",
+        "tested_version": "v1.18.0.2-halo-keymind-cascade-dev-f4f94532 (Build: 28-Oct-2026)",
+        "installed_version": "v1.18.0.1-halo-keymind-cascade-dev-4c0f2acf (Build: 23-Oct-2026)",
+        "trial_passed": true,
+        "manual_radio_sleep_verified": true,
+        "independent_witness_board": "SolarXiao 33S",
+        "baseline_rf_advert_received": true,
+        "awake_lease": {
+          "requested_seconds": 60,
+          "real_time_expiry_verified": true,
+          "clock_not_accelerated_during_lease": true
+        },
+        "accelerated_hourly_wake_cycles": [
+          {
+            "no_target_usb_writes_seconds": 31.586,
+            "independent_raw_capture_before_status_query": true,
+            "expected_hour_boundary_timestamp": true,
+            "radio_awake_after_capture": true
+          },
+          {
+            "no_target_usb_writes_seconds": 31.583,
+            "independent_raw_capture_before_status_query": true,
+            "expected_hour_boundary_timestamp": true,
+            "radio_awake_after_capture": true
+          }
+        ],
+        "manual_mode_survived_reboot": true,
+        "cleanup_passed": true,
+        "final_state": {
+          "role": "Repeater",
+          "identity_equal": true,
+          "existing_settings_equal": true,
+          "present_clock_confirmed": true,
+          "emergency_cli_supported": false,
+          "auto_and_zero_awake_hold_confirmed_before_original_application_restore": true
+        },
+        "original_unified_application_restored": true
+      },
+      {
+        "board": "Heltec V4.3 OLED",
+        "tested_version": "v1.18.0.2-halo-keymind-cascade-dev-observer-be6d636c (Build: 28-Oct-2026)",
+        "installed_version": "Companion v1.18.0.2-kiss-test-ec4aba8a (protocol 14, build 27-Oct-2026)",
+        "trial_passed": true,
+        "manual_radio_sleep_verified": true,
+        "independent_witness_board": "RAK3401",
+        "baseline_rf_advert_received": true,
+        "awake_lease": {
+          "requested_seconds": 60,
+          "real_time_expiry_verified": true,
+          "clock_not_accelerated_during_lease": true
+        },
+        "accelerated_hourly_wake_cycles": [
+          {
+            "no_target_usb_writes_seconds": 21.73,
+            "independent_raw_capture_before_status_query": true,
+            "expected_hour_boundary_timestamp": true,
+            "radio_awake_after_capture": true
+          },
+          {
+            "no_target_usb_writes_seconds": 21.677,
+            "independent_raw_capture_before_status_query": true,
+            "expected_hour_boundary_timestamp": true,
+            "radio_awake_after_capture": true
+          }
+        ],
+        "manual_mode_survived_reboot": true,
+        "cleanup_passed": true,
+        "final_state": {
+          "role": "Full Companion",
+          "identity_equal": true,
+          "existing_settings_equal": true,
+          "present_clock_confirmed": true,
+          "emergency_cli_supported": false,
+          "auto_and_zero_awake_hold_confirmed_before_original_application_restore": true
+        },
+        "usb_console_usable_while_radio_asleep": true,
+        "usb_held_cpu_idle_fallback": true,
+        "wireless_runtime_subset_restored": true,
+        "original_application_and_data_readbacks_verified": true,
+        "earlier_usb_sleep_regression_reproduced_and_fixed": true
+      }
+    ],
+    "collector": {
+      "active": true,
+      "unit_configuration_equal": true,
+      "serial_owned_by_collector": true
+    },
+    "bench_native_regressions": {
+      "tests": 14,
+      "passed": true
+    },
+    "measurement_limits": [
+      "All physical emergency tests used manual entry while USB powered; the actual 5% battery trigger and charging hysteresis were not physically exercised.",
+      "No current draw or power-saving percentage was measured.",
+      "Hourly boundaries used accelerated isolated RTC values; this was not a real 45-minute sleep-duration test.",
+      "V4 used the USB-held CPU idle fallback while RF/wireless slept; detached USB light-sleep current was not measured.",
+      "Physical tests used Repeater firmware; Room and Sensor hooks were validated separately by native tests and builds."
+    ],
+    "current_draw_measured": false,
+    "real_five_percent_battery_qualified": false,
+    "continuous_45_minute_sleep_qualified": false,
+    "bench_source_sha256": "2c4799cb239f9d092d5cf46c0366408aa95f766f786f56af4b913e07b636418f"
+  },
+  "integration_builds": [
+    {
+      "artifact_target": "RAK_4631_repeater_lora_ota_no_external_sensors-full-ota",
+      "pio_environment": "RAK_4631_repeater",
+      "source_commit": "8c2ddc9ac",
+      "passed": true,
+      "linked_flash_bytes": 687512,
+      "flash_limit_bytes": 815104,
+      "capability_checks": {
+        "passed": 16,
+        "total": 16
+      },
+      "ota_update_verified": true,
+      "memory": {
+        "passed": true,
+        "elf_sha256": "a5a590f54660ca2b0c57bcc8f5400659fe46b4f3dd379ad0b2ab924c63519512",
+        "available_internal_bytes": 83156,
+        "largest_internal_region_bytes": 83156,
+        "required_heap_bytes": 83136,
+        "required_contiguous_bytes": 19168
+      },
+      "memory_manifest_sha256": "a9f6ab28eeed7138b9f38f483c69db031491cfd91859ae05374acdff46bf1a45",
+      "capabilities_manifest_sha256": "46615a33db71a170d2be3a5c52274f7e1e2c5d256f681ca2d324d96a643b2e34",
+      "artifact_files": {
+        "RAK_4631_repeater_lora_ota_no_external_sensors-full-ota-v1.18.0.1-halo-keymind-cascade-dev-8c2ddc9a.uf2": {
+          "sha256": "81c4d857839f7b94ffa472a3a2ad6eee213e2cf45831bbd24fdb5e33c8afe16a",
+          "size_bytes": 1375232
+        },
+        "RAK_4631_repeater_lora_ota_no_external_sensors-full-ota-v1.18.0.1-halo-keymind-cascade-dev-8c2ddc9a.zip": {
+          "sha256": "8b1a3ba59a5ff684439f376e8169746e3aff19c081dfec763a20038dfc8a6241",
+          "size_bytes": 688395
+        }
+      }
+    },
+    {
+      "artifact_target": "RAK_4631_repeater_lora_ota_no_external_sensors-reduced-ota",
+      "pio_environment": "RAK_4631_repeater",
+      "source_commit": "8c2ddc9ac",
+      "passed": true,
+      "linked_flash_bytes": 620020,
+      "flash_limit_bytes": 815104,
+      "capability_checks": {
+        "passed": 14,
+        "total": 14
+      },
+      "ota_update_verified": true,
+      "memory": {
+        "passed": true,
+        "elf_sha256": "59c70ac3c4f22650d2c5a0739624e5e29a3a61b7abfda3614e4171a476c9f5c7",
+        "available_internal_bytes": 85696,
+        "largest_internal_region_bytes": 85696,
+        "required_heap_bytes": 81088,
+        "required_contiguous_bytes": 19168
+      },
+      "memory_manifest_sha256": "fa7b6eb7d08aa0a74641d3e691c407d7699c68689b40fe84a80bc78be579709e",
+      "capabilities_manifest_sha256": "c3804a710f03f5e7b3ac3404830de418e370ce813bd5279a9eb3350b056052f4",
+      "artifact_files": {
+        "RAK_4631_repeater_lora_ota_no_external_sensors-reduced-ota-v1.18.0.1-halo-keymind-cascade-dev-8c2ddc9a.uf2": {
+          "sha256": "dcfad8950921952ee9360e255f62762c79ecb536750eca8d297f7409af07895e",
+          "size_bytes": 1240576
+        },
+        "RAK_4631_repeater_lora_ota_no_external_sensors-reduced-ota-v1.18.0.1-halo-keymind-cascade-dev-8c2ddc9a.zip": {
+          "sha256": "0a3842418293cae5ea1281fb30a76c376737a258521ed9081d7229c6a5acaa32",
+          "size_bytes": 620903
+        }
+      }
+    },
+    {
+      "artifact_target": "wio-e5-mini_repeater",
+      "pio_environment": "wio-e5-mini_repeater",
+      "source_commit": "8c2ddc9ac",
+      "passed": true,
+      "linked_flash_bytes": 245260,
+      "flash_limit_bytes": 245760,
+      "capability_checks": {
+        "passed": 1,
+        "total": 1
+      },
+      "ota_update_verified": false,
+      "memory": {
+        "passed": true,
+        "elf_sha256": "bf433b151be10a89ca6a04bea98ba7692999743eee0406bc95a55436db120dd2",
+        "available_internal_bytes": 43880,
+        "largest_internal_region_bytes": 43880,
+        "required_heap_bytes": 32288,
+        "required_contiguous_bytes": 10240
+      },
+      "memory_manifest_sha256": "f4f244b033e1538445aee5c32de9381e393e63dd4f4c137a701bf17fcc15b8c2",
+      "capabilities_manifest_sha256": "8f65ac10ba9398904097eb525d179be5a8b9884fe140479eeba2e0e93f886044",
+      "artifact_files": {
+        "wio-e5-mini_repeater-v1.18.0.1-halo-keymind-cascade-dev-8c2ddc9a.bin": {
+          "sha256": "da39a4dd6028faa014541d8baae8b1079c9ff16384aeb8cb04b54ed375f494f1",
+          "size_bytes": 245608
+        },
+        "wio-e5-mini_repeater-v1.18.0.1-halo-keymind-cascade-dev-8c2ddc9a.hex": {
+          "sha256": "d6787f7c1435cb7f0d6a21acc5c115f135af534466745d4c4c16ae3d3dd5e457",
+          "size_bytes": 690891
+        }
+      }
+    },
+    {
+      "artifact_target": "RAK_4631_companion_radio_full",
+      "pio_environment": "RAK_4631_companion_radio_full",
+      "source_commit": "8c2ddc9ac",
+      "passed": true,
+      "linked_flash_bytes": 712092,
+      "flash_limit_bytes": 712704,
+      "capability_checks": {
+        "passed": 15,
+        "total": 15
+      },
+      "ota_update_verified": true,
+      "memory": {
+        "passed": true,
+        "elf_sha256": "a931669843dce4536a067f28705149da5190d086470c09e195c5576fa985afef",
+        "available_internal_bytes": 81284,
+        "largest_internal_region_bytes": 81284,
+        "required_heap_bytes": 74576,
+        "required_contiguous_bytes": 11008
+      },
+      "memory_manifest_sha256": "120a9b53156b581edd67ddc049c774e15a33e751c50990281ec3b8df425da6ab",
+      "capabilities_manifest_sha256": "520af68ff60e2e1c8dbfe6da1313f5e067094958fb966d4dd66d764615fb2b1d",
+      "artifact_files": {
+        "RAK_4631_companion_radio_full-v1.18.0.1-halo-keymind-cascade-dev-8c2ddc9a.uf2": {
+          "sha256": "4666c141fed3fa20ad92e57ab39fa839b34bb5db05385202e564220fe8c56bbd",
+          "size_bytes": 1424384
+        },
+        "RAK_4631_companion_radio_full-v1.18.0.1-halo-keymind-cascade-dev-8c2ddc9a.zip": {
+          "sha256": "951bb37464998e455c0a6032a3779fe072268babfc161fd04aee8fbcae39aa7e",
+          "size_bytes": 712975
+        }
+      }
+    },
+    {
+      "artifact_target": "RAK_3x72_companion_radio_usb",
+      "pio_environment": "RAK_3x72_companion_radio_usb",
+      "source_commit": "8c2ddc9ac",
+      "passed": true,
+      "linked_flash_bytes": 228924,
+      "flash_limit_bytes": 229376,
+      "capability_checks": {
+        "passed": 0,
+        "total": 0
+      },
+      "ota_update_verified": false,
+      "memory": {
+        "passed": true,
+        "elf_sha256": "6ced0f235f78bc90f178aabd2c31241d64df4bd86f131b6c6d37a4e213205ba1",
+        "available_internal_bytes": 24448,
+        "largest_internal_region_bytes": 24448,
+        "required_heap_bytes": 17408,
+        "required_contiguous_bytes": 5120
+      },
+      "memory_manifest_sha256": "7200af66aed34e13a123fc4a683a95f3bb74de40622c90c524af998a9a0135d9",
+      "capabilities_manifest_sha256": "8c602dc990fbfcea540a0a05d44747aa701bd61d08f92d0b12045b7f883ceff1",
+      "artifact_files": {
+        "RAK_3x72_companion_radio_usb-v1.18.0.1-halo-keymind-cascade-dev-8c2ddc9a.bin": {
+          "sha256": "411324849a06570bed4bc500c6b3c0ec977ef00870a02124194d1f79522b8565",
+          "size_bytes": 229276
+        },
+        "RAK_3x72_companion_radio_usb-v1.18.0.1-halo-keymind-cascade-dev-8c2ddc9a.hex": {
+          "sha256": "a9afd0bae4923669596cc58b21dce8d42687bd42c287482d7e1339e60a659308",
+          "size_bytes": 644946
+        }
+      }
+    },
+    {
+      "artifact_target": "wio-e5-mini_companion_radio_usb",
+      "pio_environment": "wio-e5-mini_companion_radio_usb",
+      "source_commit": "8c2ddc9ac",
+      "passed": true,
+      "linked_flash_bytes": 228816,
+      "flash_limit_bytes": 229376,
+      "capability_checks": {
+        "passed": 0,
+        "total": 0
+      },
+      "ota_update_verified": false,
+      "memory": {
+        "passed": true,
+        "elf_sha256": "2ddb4009fb776c09ce69da048655964b3a6e54e18f2f630f5af5f6d113b11b3e",
+        "available_internal_bytes": 24424,
+        "largest_internal_region_bytes": 24424,
+        "required_heap_bytes": 17408,
+        "required_contiguous_bytes": 5120
+      },
+      "memory_manifest_sha256": "0fecade0c4edc49f0263ec72c383ee7de0ca4a4e08950b2300e4b679776f1520",
+      "capabilities_manifest_sha256": "c993c9a05190aad3dfefdf5e6071d73b8bd804ff6d1aba6636008c6bcd4ad9dd",
+      "artifact_files": {
+        "wio-e5-mini_companion_radio_usb-v1.18.0.1-halo-keymind-cascade-dev-8c2ddc9a.bin": {
+          "sha256": "a7ab04710b8aa979fab7b61ab3e0fb2a6dc7d205189907c9f3609da412bf5f79",
+          "size_bytes": 229168
+        },
+        "wio-e5-mini_companion_radio_usb-v1.18.0.1-halo-keymind-cascade-dev-8c2ddc9a.hex": {
+          "sha256": "c0308378d6f69ae8de24176d3730b0465243f23a92d1ffca634e9503cb3d2b49",
+          "size_bytes": 644639
+        }
+      }
+    },
+    {
+      "artifact_target": "wio-e5_companion_radio_usb",
+      "pio_environment": "wio-e5_companion_radio_usb",
+      "source_commit": "8c2ddc9ac",
+      "passed": true,
+      "linked_flash_bytes": 228892,
+      "flash_limit_bytes": 229376,
+      "capability_checks": {
+        "passed": 0,
+        "total": 0
+      },
+      "ota_update_verified": false,
+      "memory": {
+        "passed": true,
+        "elf_sha256": "e0de0678e0d0f19207d56a617b60c89e036a9b0fac5c4927c1308869ab806646",
+        "available_internal_bytes": 24456,
+        "largest_internal_region_bytes": 24456,
+        "required_heap_bytes": 17408,
+        "required_contiguous_bytes": 5120
+      },
+      "memory_manifest_sha256": "9ee86224a19ff34c4cf93c1e9b69d93dd46f7787d67dbd8bc22d930a58e48961",
+      "capabilities_manifest_sha256": "0c546a1a946a3c331ddb32ee3df304a161fa51cdcb37e63b19184de8d38c4924",
+      "artifact_files": {
+        "wio-e5_companion_radio_usb-v1.18.0.1-halo-keymind-cascade-dev-8c2ddc9a.bin": {
+          "sha256": "cb984309506ec4ecb3a892208720c116679a9f3f5d8c72b662be78f52cf060cd",
+          "size_bytes": 229244
+        },
+        "wio-e5_companion_radio_usb-v1.18.0.1-halo-keymind-cascade-dev-8c2ddc9a.hex": {
+          "sha256": "19de565271061002d74651cb8de4d8d440ec54eb64aa3ccf127c60b5f8dec459",
+          "size_bytes": 644869
+        }
+      }
+    },
+    {
+      "artifact_target": "Tiny_Relay_companion_radio_usb",
+      "pio_environment": "Tiny_Relay_companion_radio_usb",
+      "source_commit": "8c2ddc9ac",
+      "passed": true,
+      "linked_flash_bytes": 228992,
+      "flash_limit_bytes": 229376,
+      "capability_checks": {
+        "passed": 0,
+        "total": 0
+      },
+      "ota_update_verified": false,
+      "memory": {
+        "passed": true,
+        "elf_sha256": "4289c0f88b4da7bc218288b4761006829b52babfaa80b740fe5e50f170e561c7",
+        "available_internal_bytes": 24448,
+        "largest_internal_region_bytes": 24448,
+        "required_heap_bytes": 17408,
+        "required_contiguous_bytes": 5120
+      },
+      "memory_manifest_sha256": "1bc96e6770725262a2db53de4963de6b3d308e552c2cb57cc37ba5fcec462fe1",
+      "capabilities_manifest_sha256": "9fa181658288ea207c14fdccd059c1020c0778518deafe664ead19eab8062de2",
+      "artifact_files": {
+        "Tiny_Relay_companion_radio_usb-v1.18.0.1-halo-keymind-cascade-dev-8c2ddc9a.bin": {
+          "sha256": "53d2b0ffe4f1ed89bb04e3dd35ca617d9a428f81465970076d06c9d00f8dceab",
+          "size_bytes": 229344
+        },
+        "Tiny_Relay_companion_radio_usb-v1.18.0.1-halo-keymind-cascade-dev-8c2ddc9a.hex": {
+          "sha256": "505741dec9122439f72a27ca1f6937ed1d2e6b653fb3eb364a2b8cb3f673f032",
+          "size_bytes": 645134
+        }
+      }
+    }
+  ],
+  "integration_scope": "Eight normal capacity-checked builds following concurrent USB-mode and MediaMesh changes. Only human CLI prose is shortened in constrained profiles; feature and filesystem scope, command syntax, structured values, protocol acknowledgements and destructive warnings remain. RAM-only timer/flag grouping removes padding without changing serialized layouts. Linked flash counts exclude packaging and alignment overhead; normal link/package checks passed.",
+  "additional_arm_checks": {
+    "source_commit": "8c2ddc9ac",
+    "elf_sha256": "a931669843dce4536a067f28705149da5190d086470c09e195c5576fa985afef",
+    "crypto_rfc8032_vectors_passed": 2,
+    "crypto_sign_frame_bytes": 1904,
+    "crypto_frame_limit_bytes": 2048,
+    "ota_workspace_lifetimes_passed": 4,
+    "scope": "Linked ARM execution, not physical timing or load qualification."
+  }
+}

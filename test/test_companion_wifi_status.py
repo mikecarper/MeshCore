@@ -17,7 +17,9 @@ class CompanionWiFiStatusTest(unittest.TestCase):
         self.assertIn('strcmp(command, "get wifi.status") == 0', main)
         self.assertNotIn('"get wifi.status detail"', main)
         self.assertNotIn('"get wifi.compat"', main)
-        self.assertIn('get wifi.status (connection, saved/boot/live settings)', mesh)
+        self.assertIn('#include "CompanionHelp.inc"', mesh)
+        self.assertIn('get wifi.status (connection, saved/boot/live settings)',
+                      (ROOT / "examples/companion_radio/CompanionHelp.inc").read_text())
         self.assertIn('formatCompanionWiFiStatusSnapshot(reply, reply_size, snapshot);', main)
         local = mesh[mesh.index("bool MyMesh::handleLocalControlCommand("):]
         self.assertLess(local.index("handleCompanionWiFiCompatibilityCommand("),

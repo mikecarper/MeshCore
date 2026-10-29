@@ -33,7 +33,7 @@ enum class Stage : uint8_t {
   None, Policy, Channel, ChannelConflict, WiFiInit, WiFiStorage, WiFiMode,
   WiFiStart, WiFiProtocol, WiFiChannel, EspNowInit, RecvCallback, SendCallback,
   PeerAdd, PeerRate, PeerRemove, EspNowDeinit, TxStart, TxCallback, TxTimeout,
-  Secret, TestQueue
+  Secret, TestQueue, PeerConfig, WiFiPowerSave
 };
 
 inline const char* stageName(Stage stage) {
@@ -60,6 +60,8 @@ inline const char* stageName(Stage stage) {
     case Stage::TxTimeout: return "tx.timeout";
     case Stage::Secret: return "secret";
     case Stage::TestQueue: return "test.queue";
+    case Stage::PeerConfig: return "peer.config";
+    case Stage::WiFiPowerSave: return "wifi.ps";
   }
   return "unknown";
 }

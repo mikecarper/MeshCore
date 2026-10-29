@@ -9,6 +9,16 @@ fail() {
   exit 1
 }
 
+# These are the only current ESP32 Companion recipes without a qualified Full
+# replacement. Keep inventory assertions consistent without exempting boards.
+is_existing_cardputer_companion_recipe() {
+  case "$1" in
+    M5Stack_Cardputer_Adv_companion_radio_usb|M5Stack_Cardputer_Adv_companion_radio_ble)
+      return 0 ;;
+  esac
+  return 1
+}
+
 # Optional debug settings must remain usable by strict shell callers before
 # any PlatformIO flags have been initialized.
 (
@@ -529,9 +539,21 @@ init_project_context >/dev/null
     || fail "nRF52 menu depends on alias input order"
 )
 
-# Expanded partitions make Full the ordinary ESP32 node release. Legacy lean
-# names still address installed firmware and must remain directly buildable,
-# but cannot reappear in either the all-role or a role-specific release list.
+# Cardputer's existing UI recipes have not qualified a combined Full profile.
+# Keep both exact transport recipes available in its ordinary release lists.
+for cardputer_env in M5Stack_Cardputer_Adv_companion_radio_usb \
+    M5Stack_Cardputer_Adv_companion_radio_ble; do
+  [ "$(get_pio_build_env "$cardputer_env")" = "$cardputer_env" ] \
+    || fail "$cardputer_env lost its exact board recipe"
+  for resolver in resolve_all_firmwares resolve_companion_firmwares; do
+    grep -Fxq "$cardputer_env" <<<"$("$resolver")" \
+      || fail "$resolver omitted supported Cardputer recipe $cardputer_env"
+  done
+done
+
+# Expanded partitions make Full the ordinary qualified ESP32 node release.
+# Legacy lean names remain directly buildable but must not reappear beside
+# their qualified Full replacement in all-role or role-specific release lists.
 for resolver in resolve_all_firmwares resolve_repeater_firmwares \
     resolve_room_server_firmwares resolve_sensor_firmwares; do
   while IFS= read -r release_env; do
@@ -541,6 +563,9 @@ for resolver in resolve_all_firmwares resolve_repeater_firmwares \
     fi
     is_redundant_bulk_build_target "$release_env" \
       && fail "$resolver republishes utility or legacy alias $release_env"
+    if is_existing_cardputer_companion_recipe "$release_env"; then
+      continue
+    fi
     if is_kiss_modem_target "$release_env"; then
       if is_esp32_full_release_build_target "$release_env"; then
         fail "$release_env host modem was promoted into the node Full profile"
@@ -1296,7 +1321,8 @@ MQTT_BRIDGE_OVERRIDE=""
 
 while IFS= read -r env_name; do
   if [ "${PIO_ENV_PLATFORM_BY_NAME[$env_name]:-}" = ESP32_PLATFORM ] \
-      && ! is_companion_radio_full_target "$env_name"; then
+      && ! is_companion_radio_full_target "$env_name" \
+      && ! is_existing_cardputer_companion_recipe "$env_name"; then
     fail "canonical ESP32 Companion inventory still contains $env_name"
   fi
 done < <(resolve_companion_firmwares)

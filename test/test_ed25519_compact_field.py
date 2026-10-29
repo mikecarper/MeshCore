@@ -3,7 +3,10 @@
 import ctypes
 from pathlib import Path
 import random
+import shutil
+import struct
 import subprocess
+import sys
 import tempfile
 import unittest
 
@@ -69,6 +72,9 @@ class Ed25519CompactFieldTest(unittest.TestCase):
             library.fe_tobytes.restype = None
             library.fe_isnonzero.argtypes = [ctypes.POINTER(ctypes.c_int32)]
             library.fe_isnonzero.restype = ctypes.c_int
+            for name in ("fe_invert", "fe_pow22523"):
+                getattr(library, name).argtypes = [ctypes.POINTER(ctypes.c_int32)] * 2
+                getattr(library, name).restype = None
             cls.libraries.append(library)
 
     @classmethod
@@ -270,6 +276,138 @@ int main(void) {
                             "-DED25519_COMPACT_FIELD=1", "-I", str(ED25519),
                             str(harness), str(ED25519 / "fe.c"), "-o", str(executable)], check=True)
             subprocess.run([str(executable)], check=True)
+
+    def test_shared_powers_match_original_limbs_integer_oracle_and_aliases(self):
+        values = vectors(0x250255, 1500)
+        bounds = [110 * (1 << (26 - (i & 1))) // 100 for i in range(10)]
+        for index, value in enumerate(values):
+            value = [min(bound, max(-bound, limb)) for limb, bound in zip(value, bounds)]
+            for name, exponent in (("fe_invert", PRIME - 2), ("fe_pow22523", 2**252 - 3)):
+                reference = Field()
+                getattr(self.libraries[0], name)(reference, Field(*value))
+                expected = pow(integer(value), exponent, PRIME)
+                for alias in (False, True):
+                    data = Field(*value)
+                    output = data if alias else Field()
+                    getattr(self.libraries[1], name)(output, data)
+                    self.assertEqual(list(output), list(reference), (index, name, alias))
+                    self.assertEqual(integer(output), expected, (index, name, alias))
+                    self.check_bounds(output)
+
+    def test_shared_powers_under_address_and_undefined_sanitizers(self):
+        rows = []
+        for value in vectors(0xFA250, 32)[::29]:
+            bounds = [110 * (1 << (26 - (i & 1))) // 100 for i in range(10)]
+            value = [min(bound, max(-bound, limb)) for limb, bound in zip(value, bounds)]
+            outputs = []
+            for name in ("fe_invert", "fe_pow22523"):
+                output = Field()
+                getattr(self.libraries[0], name)(output, Field(*value))
+                outputs.append(list(output))
+            rows.append("{" + ",".join("{" + ",".join(map(str, item)) + "}"
+                                       for item in (value, *outputs)) + "}")
+        source = r'''
+#include <assert.h>
+#include <string.h>
+#include "fe.h"
+struct Vector { fe input, inverse, power; };
+static const struct Vector vectors[] = { @VECTORS@ };
+int main(void) {
+    for (unsigned int i = 0; i < sizeof(vectors) / sizeof(vectors[0]); ++i) {
+        const struct Vector *v = &vectors[i];
+        fe output;
+        fe_invert(output, v->input);
+        assert(memcmp(output, v->inverse, sizeof(fe)) == 0);
+        memcpy(output, v->input, sizeof(fe));
+        fe_invert(output, output);
+        assert(memcmp(output, v->inverse, sizeof(fe)) == 0);
+        fe_pow22523(output, v->input);
+        assert(memcmp(output, v->power, sizeof(fe)) == 0);
+        memcpy(output, v->input, sizeof(fe));
+        fe_pow22523(output, output);
+        assert(memcmp(output, v->power, sizeof(fe)) == 0);
+    }
+}
+'''.replace("@VECTORS@", ",\n".join(rows))
+        with tempfile.TemporaryDirectory() as directory:
+            harness = Path(directory) / "powers.c"
+            harness.write_text(source)
+            executable = Path(directory) / "powers"
+            subprocess.run(["cc", "-std=c99", "-O1", "-g", "-Wall", "-Wextra", "-Werror",
+                            "-fsanitize=address,undefined", "-fno-sanitize-recover=all", "-no-pie",
+                            "-DED25519_COMPACT_FIELD=1", "-I", str(ED25519),
+                            str(harness), str(ED25519 / "fe.c"), "-o", str(executable)], check=True)
+            subprocess.run([str(executable)], check=True)
+
+    def test_arm_shared_powers_match_oracle_aliases_and_stay_within_stack_budget(self):
+        compiler = shutil.which("arm-none-eabi-gcc")
+        if not compiler:
+            candidate = Path.home() / ".platformio/packages/toolchain-gccarmnoneeabi/bin/arm-none-eabi-gcc"
+            if candidate.exists():
+                compiler = str(candidate)
+        try:
+            from unicorn import Uc, UC_ARCH_ARM, UC_MODE_THUMB, UC_MODE_MCLASS, UC_HOOK_CODE
+            from unicorn import arm_const as arm
+        except ImportError:
+            self.skipTest("Unicorn is not installed in this host job")
+        if not compiler:
+            self.skipTest("ARM compiler is not installed in this host job")
+        sys.path.insert(0, str(ROOT / "scripts"))
+        from firmware_elf import FirmwareElf
+
+        with tempfile.TemporaryDirectory() as directory:
+            support = Path(directory) / "memory.c"
+            support.write_text('''#include <stddef.h>
+void *memset(void *dest, int value, size_t count) {
+    volatile unsigned char *p = dest;
+    for (size_t i = 0; i < count; ++i) p[i] = (unsigned char)value;
+    return dest;
+}
+''')
+            executable = Path(directory) / "powers.elf"
+            subprocess.run([compiler, "-std=c99", "-mcpu=cortex-m4", "-mthumb", "-Oz",
+                            "-fno-inline-small-functions", "-nostdlib", "-fno-builtin",
+                            "-DED25519_COMPACT_FIELD=1", "-I", str(ED25519),
+                            str(ED25519 / "fe.c"), str(support), "-lgcc",
+                            "-Wl,-Ttext=0x08000000,--entry=fe_invert", "-o", str(executable)], check=True)
+            elf = FirmwareElf(executable)
+            machine = Uc(UC_ARCH_ARM, UC_MODE_THUMB | UC_MODE_MCLASS)
+            machine.mem_map(0x08000000, 0x10000)
+            machine.mem_map(0x20000000, 0x10000)
+            for section in elf.sections:
+                if section[1] != 8 and section[2] & 2 and section[5]:
+                    machine.mem_write(section[3], elf.section_bytes(section))
+            stack_top, stop = 0x2000F000, 0x0800F000
+            machine.mem_write(stop, b"\x00\xbe")
+            state = {"min_sp": stack_top}
+
+            def instruction(current, _address, _size, _context):
+                state["min_sp"] = min(state["min_sp"], current.reg_read(arm.UC_ARM_REG_SP))
+
+            machine.hook_add(UC_HOOK_CODE, instruction)
+            for value in ([0] * 10, [1] + [0] * 9, [127, -19] * 5):
+                for name, exponent in (("fe_invert", PRIME - 2), ("fe_pow22523", 2**252 - 3)):
+                    reference = Field()
+                    getattr(self.libraries[0], name)(reference, Field(*value))
+                    for alias in (False, True):
+                        source, output = 0x20001000, 0x20001100
+                        if alias:
+                            output = source
+                        machine.mem_write(source, struct.pack("<10i", *value))
+                        machine.reg_write(arm.UC_ARM_REG_R0, output)
+                        machine.reg_write(arm.UC_ARM_REG_R1, source)
+                        machine.reg_write(arm.UC_ARM_REG_SP, stack_top)
+                        machine.reg_write(arm.UC_ARM_REG_LR, stop | 1)
+                        state["min_sp"] = stack_top
+                        machine.emu_start(elf.address(name) | 1, stop, timeout=10000000, count=10000000)
+                        self.assertEqual(machine.reg_read(arm.UC_ARM_REG_PC), stop)
+                        self.assertEqual(machine.reg_read(arm.UC_ARM_REG_SP), stack_top)
+                        actual = struct.unpack("<10i", machine.mem_read(output, 40))
+                        self.assertEqual(list(actual), list(reference), (name, alias))
+                        self.assertEqual(integer(actual), pow(integer(value), exponent, PRIME))
+                        # Function frames only, excluding firmware callers and
+                        # interrupts. The production 4 KiB stack gate remains.
+                        self.assertLessEqual(stack_top - state["min_sp"], 512, (name, alias))
 
     def test_compact_products_under_address_and_undefined_sanitizers(self):
         values = vectors(0xC0FE, 128)

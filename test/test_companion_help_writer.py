@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
-"""Execute actual help branches; preserve807 UI and bounded partial writes."""
+"""Execute actual help branches; preserve commands and bounded partial writes."""
 from pathlib import Path
 import hashlib
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -34,14 +35,39 @@ PROFILES = {
                  'MESH_PRIMARY_ESPNOW=1', 'BLE_PIN_CODE=123456', 'PIN_BUZZER',
                  'PIN_VIBRATION', *FEATURES],
 }
-# Generated from807's original literal groups, including its dynamic TERM-STOP
-# suffix. Non-RAK call hashes bind print/println order as well as all text bytes.
-GOLDEN = {'rak_full': {'text': '9a68ce5a10905a201c3bddeb19f4819ce03c6dcaff248cff9c140803b70b14a7', 'calls': '56ed09dee7d53881b2c9fcf3f4ec9b6223e1562ce63e110a065e46706702b53b'}, 'nrf_full': {'text': 'b114ac12ae2ea01b7c47609b72f7eafb616c1dbeb7fb796a95b1377465fd9105', 'calls': '4973a7f21887d07b129cce4ae4cc8145f3f35e664bae09be658957210440d52e'}, 'nrf_minimal': {'text': '15fa8f290cd8c75cfde2fd2ac1cb5b5151a6755c68448fb2793dde3f27669033', 'calls': '6063fd1a699f9c0b588252bd8ce5922e0ff31cec6bbd24522789284ab2a37644'}, 'esp_full': {'text': '1e3b6781c81b5603f7092108e5e309543c60cef8ff4d7cb41a891f67396f716f', 'calls': 'b6335df2bd05b9cab44a7933469b76c5b2611c4b81057436a959feaf3bfbaf60'}}
+# Complete text and print/println order, including the dynamic TERM-STOP suffix.
+GOLDEN = {
+    'rak_full': {'text': '482e6d1a78e676fe295c066e6dea9d33d16cf3d63788c4f225ca235451b9c5d0'},
+    'nrf_full': {'text': '97520f83770adbcd8bfe6f3f7c9b7b5f204b62d112aeeb9d9692ee35ba6c98a4',
+                 'calls': 'ddc85fafb3f655e589c045e2ee91fac95b3926624c4ac91b657a7de346e27098'},
+    'nrf_minimal': {'text': '633d0e5e67abed482f64ca2563011ba263f169e039e1d89190de06668f975395',
+                    'calls': 'd550ea873fb4408c2796b439736b205fea1ab985c3da58a06fb69cc557347ae5'},
+    'esp_full': {'text': 'ccfc453a97260b5efba38b3a01b1c738ec03dcd90e72d24ecd80bc2592154757',
+                 'calls': 'c46a0cd8d83af284eba9243806349938577d03a20ca56474a4abc5ab3e8d57f7'},
+    'stm32_wl_usb': {'text': 'e23a0514d2d52091196cd689b88c984db52642df8e9fd67a878c74a6312c520d'},
+}
+# Snapshots taken before shortening the English descriptions. These bind every
+# command, alias, argument and option independently of the wording around them.
+COMMAND_INVENTORY = {
+    'rak_full': '42159b2857691728524e247f8590cbcb3972724aedffeddc5e50bd8b105e64cb',
+    'nrf_full': '90321d86ecd2a04efff4c95aee0578935c84439786a9725383a21287808ec8f0',
+    'nrf_minimal': '420617a933aec1f81c90c9b78b0457e3509b6da62b649969b4ffa9b8418538c5',
+    'stm32_wl_usb': '36e6972aefe8fc2355d937c06ecae1656224618529c2f7a18f459008856476e7',
+    'esp_full': '8c952ccf44824bc2e473e1a560714cd27dc91365abb484d9411e779720df3350',
+}
 
-GOLDEN['stm32_wl_usb'] = {'text': '9e587ac9f287c8f8fe64fe5c899fe635b6de5d6cf436c4c43a27ffd4add42474'}
-
-FAST_HELP = (b'  get radio.fast / get radio.fast.caps (supported saved controls)\r\n'
+FAST_HELP = (b'  get radio.fast / get radio.fast.caps\r\n'
              b'  set radio.fast <on|off> / set radio.fast.spi <0|2|4|8|9|16>\r\n')
+
+
+def command_inventory(data):
+    commands = []
+    for line in data.decode().splitlines():
+        if not line.startswith('  ') or line.startswith(('    ', '  Join ', '  App ')):
+            continue
+        line = line.replace(' (alias: get ble)', ' / get ble')
+        commands.append(re.sub(r' \([^)]*\)', '', line))
+    return '\n'.join(commands).encode()
 
 HARNESS = r'''
 #include "CompanionHelpWriter.h"
@@ -222,6 +248,25 @@ class CompanionHelpWriterTests(unittest.TestCase):
                 self.assertEqual(result.returncode,0,result.stdout+result.stderr)
                 result = subprocess.run([str(work/'test')],capture_output=True)
                 self.assertEqual(result.returncode,0,result.stderr.decode(errors='replace'))
+                self.assertEqual(hashlib.sha256(command_inventory(result.stdout)).hexdigest(),
+                                 COMMAND_INVENTORY[name])
+                for command, detail in (
+                        (b'set beacon.interval', b'(default 24h)'),
+                        (b'set mt.rebroadcast', b'(default off)'),
+                        (b'set mt.hops', b'(default 7)'),
+                        (b'get eth / set eth', b'(default off; boot)'),
+                        (b'get/set usb.watchdog', b'(default auto)'),
+                        (b'get/set display.controller', b'(restart)'),
+                        (b'get/set display.touch', b'(boot)'),
+                        (b'set 2.4ghz', b'(boot)'),
+                        (b'radio.rxps.rfrx_disabled', b'(boot)'),
+                        (b'set wifi|espnow', b'(force: off)'),
+                        (b'set bluetooth <', b'(force: off)'),
+                        (b'repair extrafs', b'(erases ExtraFS)'),
+                        (b'scan extrafs erase', b'(USB; reboot; erases pages)')):
+                    for line in result.stdout.splitlines():
+                        if command in line:
+                            self.assertIn(detail, line)
                 self.assertEqual(result.stdout.count(FAST_HELP), 0 if name == 'stm32_wl_usb' else 1)
                 previous_help = result.stdout.replace(FAST_HELP, b'')
                 self.assertEqual(hashlib.sha256(previous_help).hexdigest(),GOLDEN[name]['text'])

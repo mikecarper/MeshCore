@@ -1,4 +1,5 @@
 #include "Dispatcher.h"
+#include "helpers/RadioDirectionPolicy.h"
 
 #if MESH_ENABLE_TX_BEACONS
 #include <new>
@@ -18,6 +19,7 @@ Dispatcher::~Dispatcher() { delete beacon_tx; }
 
 bool Dispatcher::queueBeaconRadioFrame(const uint8_t* bytes, size_t length,
     const RadioProfileParams& params, int8_t power) {
+  if (!radioDirection::radioTransmitAllowed()) return false;
   if (!bytes || !length || length > MAX_TRANS_UNIT || beacon_tx || outbound
       || !radio_available || _radio->isCarrierWaveActive()
       || _radio->isBeaconRadioOwned()
@@ -93,6 +95,10 @@ bool Dispatcher::serviceBeaconRadioFrame() {
 }
 
 bool Dispatcher::checkBeaconRadioSend() {
+  if (!radioDirection::radioTransmitAllowed()) {
+    if (beacon_tx) cancelBeaconRadioFrame();
+    return beacon_tx != nullptr;
+  }
   if (!beacon_tx || outbound || beacon_tx->phase != BeaconTransmit::Pending) return false;
   const uint32_t now = _ms->getMillis();
   if (int32_t(now - beacon_tx->prepare_expiry) >= 0) {

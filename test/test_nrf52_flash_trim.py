@@ -124,6 +124,80 @@ class Nrf52FlashTrimTest(unittest.TestCase):
         other = Node(ROOT / "test/fixtures/CommonCLI.cpp")
         self.assertIs(TRIM.compile_shared_cli_replies(env, other), other)
 
+    def test_companion_shared_replies_are_limited_to_the_qualified_rak_full_image(self):
+        defaults = dict(platform="nordicnrf52", mcu="nrf52840",
+                        env_name="RAK_4631_companion_radio_full",
+                        src_filter="+<../examples/companion_radio/*.cpp>")
+        self.assertTrue(TRIM.companion_shared_replies_policy(**defaults))
+        for changes in (dict(env_name="RAK_3401_companion_radio_full"),
+                        dict(env_name="RAK_4631_companion_radio_usb"),
+                        dict(env_name="custom_companion_radio_full"),
+                        dict(mcu="nrf52832"), dict(platform="ststm32"),
+                        dict(src_filter="+<../examples/simple_repeater>"),
+                        dict(src_filter="+<../examples/companion_radio> +<../examples/simple_sensor>"),
+                        dict(flags="-DMESH_CLI_SHARE_REPLIES=0"),
+                        dict(flags="-UMESH_CLI_SHARE_REPLIES"),
+                        dict(flags="-DMESH_CLI_SHARE_REPLY_COPIES=0"),
+                        dict(flags="-UMESH_CLI_SHARE_REPLY_COPIES"),
+                        dict(flags="-DMESH_NRF52_COMPANION_TRIM=0")):
+            with self.subTest(changes=changes):
+                self.assertFalse(TRIM.companion_shared_replies_policy(**(defaults | changes)))
+
+    @unittest.skipUnless(shutil.which("g++") and shutil.which("nm") and shutil.which("objdump"),
+                         "native GNU C++ and binutils required")
+    def test_shared_reply_copy_keeps_libc_bytes_return_and_one_out_of_line_lto_copy(self):
+        first = r'''
+#include <cstdio>
+#include <cstring>
+#include <helpers/CLIReplyCopy.h>
+extern char* other(char*, const char*);
+int main() {
+  const char* values[] = {"", "OK", "Error: saved; pending", "UTF8: \xc3\xa9"};
+  for (const char* value : values) {
+    char buffer[164];
+    memset(buffer, 0x5a, sizeof(buffer));
+    if (strcpy(buffer + 3, value) != buffer + 3) return 1;
+    if (strcmp(buffer + 3, value) || buffer[2] != 0x5a ||
+        buffer[4 + strlen(value)] != 0x5a) return 2;
+    memset(buffer, 0x5a, sizeof(buffer));
+    if (other(buffer + 3, value) != buffer + 3) return 3;
+    if (strcmp(buffer + 3, value) || buffer[2] != 0x5a ||
+        buffer[4 + strlen(value)] != 0x5a) return 4;
+  }
+  return 0;
+}
+'''
+        second = r'''
+#include <cstring>
+#include <helpers/CLIReplyCopy.h>
+char* other(char* destination, const char* source) { return strcpy(destination, source); }
+'''
+        with tempfile.TemporaryDirectory() as folder:
+            folder = Path(folder)
+            (folder / "first.cpp").write_text(first)
+            (folder / "second.cpp").write_text(second)
+            for enabled in (0, 1):
+                binary = folder / ("copies-" + str(enabled))
+                subprocess.run(["g++", "-std=c++11", "-Os", "-flto", "-Wall", "-Wextra", "-Werror",
+                    "-DMESH_CLI_SHARE_REPLY_COPIES=" + str(enabled), "-I" + str(ROOT / "src"),
+                    str(folder / "first.cpp"), str(folder / "second.cpp"),
+                    str(ROOT / "src/helpers/CLIReplyCopy.cpp"), "-o", str(binary)], check=True)
+                subprocess.run([str(binary)], check=True)
+                symbols = subprocess.check_output(["nm", "-C", "--defined-only", str(binary)], text=True)
+                copies = [line for line in symbols.splitlines() if "mesh::cli::copyReply(" in line]
+                self.assertEqual(len(copies), enabled)
+                if enabled:
+                    self.assertNotIn("clone", copies[0])
+                    assembly = subprocess.check_output(["objdump", "-d", "-C", str(binary)], text=True)
+                    self.assertRegex(assembly, r'(?:call|jmp)[^\n]*mesh::cli::copyReply\(')
+
+        for name in ("src/helpers/CommonCLI.cpp", "examples/companion_radio/MyMesh.cpp"):
+            text = (ROOT / name).read_text()
+            following = text.split("CLIReplyCopy.h", 1)[1]
+            self.assertNotRegex(following, r'\bstd::strcpy\b|(?<!\w)::strcpy\b')
+            self.assertFalse(any("#include" in line and "CompanionHelp.inc" not in line
+                                 for line in following.splitlines()))
+
     def test_local_names_do_not_change_companion_or_unqualified_roles(self):
         for options in (dict(name="RAK_4631_companion_radio_full"),
                         dict(role="custom"), dict(platform="espressif32", mcu="esp32")):
@@ -217,6 +291,34 @@ class Nrf52FlashTrimTest(unittest.TestCase):
         self.assertIn("-Wl,--wrap=CRYS_ECPKI_GetEcDomain", active["LINKFLAGS"])
         self.assertEqual(active["BUILT_SOURCES"][0][-1], "+<Cc310DomainTrim.c>")
         self.assertEqual(active["MIDDLEWARE"][0][1], "*Adafruit_VL53L0X*/*.cpp")
+
+        companion = BuildEnvironment(BUILD_FLAGS=list(base["BUILD_FLAGS"]),
+            SRC_FILTER=["+<../examples/companion_radio/*.cpp>"], CPPDEFINES=[],
+            PIOENV="RAK_4631_companion_radio_full")
+        TRIM.install(companion)
+        self.assertIn(("MESH_CLI_SHARE_REPLY_COPIES", 1), companion["CPPDEFINES"])
+        self.assertEqual(companion["BUILD_FLAGS"], base["BUILD_FLAGS"])
+
+        for name, flag in (("RAK_4631_companion_radio_usb", ""),
+                           ("Xiao_nrf52_companion_radio_full", ""),
+                           ("RAK_4631_companion_radio_full", "-DMESH_CLI_SHARE_REPLIES=0"),
+                           ("RAK_4631_companion_radio_full", "-DMESH_CLI_SHARE_REPLY_COPIES=0"),
+                           ("RAK_4631_companion_radio_full", "-UMESH_CLI_SHARE_REPLY_COPIES")):
+            with self.subTest(name=name, flag=flag):
+                unchanged = BuildEnvironment(BUILD_FLAGS=[flag] if flag else [],
+                    SRC_FILTER=["+<../examples/companion_radio/*.cpp>"], CPPDEFINES=[],
+                    PIOENV=name)
+                TRIM.install(unchanged)
+                callbacks = [callback for callback, _ in unchanged.get("MIDDLEWARE", [])]
+                self.assertNotIn(TRIM.compile_shared_cli_replies, callbacks)
+                self.assertNotIn(("MESH_CLI_SHARE_REPLY_COPIES", 1), unchanged["CPPDEFINES"])
+
+        explicit = BuildEnvironment(BUILD_FLAGS=["-DMESH_CLI_SHARE_REPLY_COPIES=1"],
+            SRC_FILTER=["+<../examples/companion_radio/*.cpp>"], CPPDEFINES=[],
+            PIOENV="RAK_4631_companion_radio_full")
+        TRIM.install(explicit)
+        self.assertNotIn(("MESH_CLI_SHARE_REPLY_COPIES", 1), explicit["CPPDEFINES"])
+        self.assertEqual(explicit["BUILD_FLAGS"], ["-DMESH_CLI_SHARE_REPLY_COPIES=1"])
 
     @unittest.skipUnless(shutil.which("cc"), "a native C compiler is required")
     def test_wrapped_domain_preserves_p256_and_rejects_unused_curves(self):

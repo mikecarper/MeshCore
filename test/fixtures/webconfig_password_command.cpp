@@ -10,8 +10,12 @@
 #define ESP32_PLATFORM
 #define ESP_PLATFORM
 #define WIFI_SSID ""
+struct HardwareSerial {};
+HardwareSerial Serial;
+#include <helpers/UsbMode.h>
 #include <helpers/esp32/ManagementPassword.h>
 #include <helpers/CLICommandUtils.h>
+#include <helpers/ConfigCapabilities.h>
 #include <helpers/WebConfigBatch.h>
 #include <helpers/WebConfigKeys.h>
 namespace password = mesh::esp32::managementPassword;
@@ -32,6 +36,23 @@ Debug& usbDebugPort() { static Debug value; return value; }
 struct StrHelper { static void strncpy(char* out, const char* in, size_t size) {
   ::strncpy(out, in, size); out[size - 1] = 0;
 }};
+// Preserve the full Companion command prefix without allowing password
+// handling to consult unrelated hardware capability or profile providers.
+struct Board {
+  bool getSystemWatchdogRunning(bool&) { assert(false); return false; }
+  bool canControlLoRaFemLna() { assert(false); return false; }
+  bool canControlLoRaFemPaGain() { assert(false); return false; }
+  bool isLoRaFemPaGainEnabled() { assert(false); return false; }
+} board;
+struct Radio {
+  bool supportsRxPowerSavingRfRxDisable() const { assert(false); return false; }
+} radio_driver;
+struct UI {
+  bool supportsDisplayRotation() { assert(false); return false; }
+};
+struct Profiles {
+  uint16_t primaryPreamble() const { assert(false); return 0; }
+};
 struct CommonCLI {
   struct Prefs { char password[16] = "original"; } prefs;
   Prefs* _prefs = &prefs;
@@ -41,6 +62,8 @@ struct CommonCLI {
   }
 };
 struct MyMesh {
+  Profiles _radio_profiles;
+  UI* _ui = nullptr;
   char _management_password[16] = "original";
   bool _management_password_ready = true;
   bool handleLocalControlCommand(const char*, char*, size_t);

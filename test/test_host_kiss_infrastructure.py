@@ -50,6 +50,7 @@ bool tryCompleteUsbTerminalSessionReset() { return true; }
 bool canAcceptUsbConsoleCommand() { return true; }
 Stream& usbConsolePort() { return console; }
 void noteUsbLoggingStatsCommand(const char*) {}
+void noteUsbConsoleCommand(const char*) {}
 namespace power { void serviceRegulatorSettings() {} }
 #if MESH_ENABLE_HOST_KISS
 namespace hostkiss {

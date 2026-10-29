@@ -1,3 +1,4 @@
+#include "CLIReplyText.h"
 #include "LedSettings.h"
 #include "CheckedSettingsFile.h"
 #include <MeshCore.h>
@@ -80,12 +81,12 @@ bool handleCommand(const char* command, char* reply, size_t capacity) {
   if (*value && *value != ' ' && *value != '\t') return false;
   const char* message;
   if (get) {
-    message = *value ? "Error: usage get leds" : enabled() ? "> on" : "> off";
+    message = *value ? MESH_CLI_REPLY_TEXT("Error: usage get leds", "Error: get leds") : enabled() ? "> on" : "> off";
   } else {
     while (*value == ' ' || *value == '\t') ++value;
     const bool on = strcmp(value, "on") == 0;
     if (!on && strcmp(value, "off") != 0) {
-      message = "Error: usage set leds on|off";
+      message = MESH_CLI_REPLY_TEXT("Error: usage set leds on|off", "Error: set leds on|off");
     } else if (!main_board || !saveSetting(on)) {
       message = "Error: LED setting save unconfirmed; reboot may differ";
     } else {

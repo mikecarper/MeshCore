@@ -116,7 +116,7 @@ protected:
    * @brief Common packet handling for received packets
    *
    * Implements the standard pattern used by all bridges:
-   * - Bind ingress to the current local primary-profile generation
+   * - Bind ingress to the selected local radio-profile generation
    * - Apply transport policy before queueing or marking a packet
    * - Deduplicate ordinary packets using _seen_packets.wasSeen()
    * - Leave resumable OTA retries to the mesh's timed retry/echo policy

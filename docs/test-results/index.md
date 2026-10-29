@@ -58,6 +58,7 @@ Completed validation reports, experiments, and test guides are collected here. O
 
 ## Companion, USB, BLE, and display
 
+- [Mercerwood 1.18.0.2 candidate checks, 2026-10-28](hardware_validation_mercerwood_1_18_0_2_2026-10-28.md)
 - [Mercerwood qualification: 12 active radios, 2026-10-20](hardware_validation_mercerwood_1_18_0_1_2026-10-20.md)
 - [Mercerwood Companion qualification follow-up, 2026-10-19](companion_qualification_followup_2026-10-19.md)
 - [ESP32 management password hardware check, 2026-10-19](esp32_management_password_2026-10-19.md)
@@ -77,6 +78,7 @@ Completed validation reports, experiments, and test guides are collected here. O
 
 ## Build, storage, memory, and checklists
 
+- [Emergency battery schedule: native and firmware build checks, 2026-10-28](emergency_power_2026-10-28.md)
 - [RAK4631 Full/Reduced RAM repair and RAK3401 Room Server radio/sleep qualification, 2026-10-22](rak_release_fixes_2026-10-22.md)
 - [Shared battery ADC calibration validation, 2026-10-22](battery_calibration_2026-10-22.md)
 - [Heltec V2 BLE RAM reserve repair, 2026-10-22](heltec_v2_ble_memory_2026-10-22.md)

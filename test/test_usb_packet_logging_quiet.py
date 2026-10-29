@@ -35,16 +35,20 @@ static void timerCases() {
  mesh::configureUsbLoggingPacketStream(false);g_mock_millis=0;
  assert(!mesh::isUsbPacketLoggingAlways());
  for(const char* ignored:std::initializer_list<const char*>{nullptr,""," \t\r\n","stats-core"," \tstats-radio\t ","stats-packets",
+     "get usb.mode", "GET usb.mode", "GeT usb.mode", "xy|get usb.mode", "xy|\t get usb.mode", " \txy|GeT usb.mode",
      "\x01" "get name","get\x7f","\xff" "get name","get name\n","stats-core\r","get\rname"}) {
    mesh::noteUsbConsoleCommand(ignored);assert(mesh::isUsbPacketLoggingAllowed());
  }
- for(const char* human:{"get name","stats-core extra","stats-radiox","stats-packets 1"}) {
+ for(const char* human:{"get name","stats-core extra","stats-radiox","stats-packets 1",
+     "get usb.mode ", "get usb.modex", "get usb.mode extra", "xy|get usb.mode extra",
+     "x|get usb.mode", "xyz|get usb.mode", "xy|set usb.mode tinyusb", "get USB.MODE"}) {
    mesh::noteUsbConsoleCommand(human);assert(!mesh::isUsbPacketLoggingAllowed());
    mesh::resumeUsbPacketLogging();
  }
  mesh::noteUsbConsoleCommand("get name");
  assert(mesh::isUsbLoggingEnabled()&&!mesh::isUsbPacketLoggingAllowed());
- g_mock_millis=299999;assert(!mesh::isUsbPacketLoggingAllowed());
+ g_mock_millis=299999;mesh::noteUsbConsoleCommand("xy|GET usb.mode");
+ assert(!mesh::isUsbPacketLoggingAllowed());
  ++g_mock_millis;assert(mesh::isUsbPacketLoggingAllowed());
  g_mock_millis+=0x80000000U;assert(mesh::isUsbPacketLoggingAllowed()); // Expiry latches.
  g_mock_millis=100;mesh::noteUsbConsoleCommand("get radio");

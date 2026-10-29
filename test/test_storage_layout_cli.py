@@ -147,7 +147,9 @@ int main() {
         help_body = companion[help_start:help_end]
         self.assertRegex(help_body, r"auto& \w+ = terminalOutput\(\);")
         # This line may share a bounded help chunk with adjacent commands.
-        self.assertIn('"  get storage.layout\\r\\n"', help_body)
+        self.assertIn('#include "CompanionHelp.inc"', help_body)
+        self.assertIn('"  get storage.layout\\r\\n"',
+                      (ROOT / "examples/companion_radio/CompanionHelp.inc").read_text())
 
         # ESP-IDF discovery and every platform-specific result live only in the
         # shared formatter; neither role owns a second copy.

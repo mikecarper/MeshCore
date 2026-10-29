@@ -81,6 +81,7 @@ nav:
           - room_services.md
           - carrier_wave.md
           - espnow_bridge_setup.md
+          - split_radio_repeater.md
           - rs232_bridge_setup.md
           - udp_bridge_setup.md
           - WiFi.md

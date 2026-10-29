@@ -54,12 +54,15 @@ class CommonCLIArgumentBoundsTests(unittest.TestCase):
         cls.work = tempfile.TemporaryDirectory(prefix="meshcore-cli-argument-bounds-")
         cls.binaries = {}
         for name, defines in (("default", []), ("larger", ["-DCOMMON_CLI_TMP_LEN=192"]),
+                              ("compact", ["-DMESH_CLI_COMPACT_REPLIES=1"]),
                               ("legacy", [])):
             generated = source
             if name == "legacy":
                 # Restore all three audited unchecked copies as a negative control.
+                error = (r'(?:"Error, argument too long"|MESH_CLI_REPLY_TEXT\('
+                         r'"Error, argument too long", "Error, arg too long"\))')
                 pattern = (r'if \(!copyCLIArgument\(tmp, sizeof\(tmp\), (&(?:command|config)\[\d+\])\)\) '
-                           r'\{\s*strcpy\(reply, "Error, argument too long"\);\s*return;\s*\}')
+                           r'\{\s*strcpy\(reply, ' + error + r'\);\s*return;\s*\}')
                 generated, count = re.subn(pattern, r"strcpy(tmp, \1);", generated)
                 assert count == 3, "review the negative controls after branch changes"
             directory = Path(cls.work.name)
@@ -86,7 +89,7 @@ class CommonCLIArgumentBoundsTests(unittest.TestCase):
                               env=dict(os.environ, ASAN_OPTIONS="detect_leaks=0:abort_on_error=0"))
 
     def test_production_boundaries_and_rejection_without_effects(self):
-        for variant in ("default", "larger"):
+        for variant in ("default", "larger", "compact"):
             with self.subTest(variant=variant):
                 result = self.run_case(variant, "production")
                 self.assertEqual(result.returncode, 0, result.stdout + result.stderr)

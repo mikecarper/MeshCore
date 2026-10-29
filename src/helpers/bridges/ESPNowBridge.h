@@ -125,6 +125,8 @@ private:
   uint32_t _tx_dropped_reported;
   uint32_t _tx_started_at = 0, _tx_retry_at = 0;
   bool _sdk_teardown_failed = false;
+  uint8_t _previous_wifi_sleep = 0;
+  bool _wifi_sleep_preference_owned = false;
   static constexpr uint32_t TX_CALLBACK_TIMEOUT_MS = 1000;
   static constexpr uint32_t TX_RETRY_DELAY_MS = 20;
   static constexpr uint8_t TX_MAX_START_RETRIES = 3;
@@ -135,6 +137,7 @@ private:
   // Snapshotted by begin() and immutable until end(), so callbacks and sends
   // never observe a partially applied preference change.
   uint8_t _active_format;
+  uint8_t _active_peer[6] = {255, 255, 255, 255, 255, 255};
   mesh::bridge::diag::Stats _stats;
   std::atomic<bool> _debug_dirty{true};
   uint32_t _debug_last_at = 0;

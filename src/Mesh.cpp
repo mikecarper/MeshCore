@@ -1607,6 +1607,7 @@ DispatcherAction Mesh::forwardMultipartDirect(Packet* pkt, uint32_t delay_millis
       _tables->markSeen(pkt);
       Packet tmp;
       tmp.header = pkt->header;
+      tmp.tx_radio = pkt->tx_radio;
       tmp.path_len = Packet::copyPath(tmp.path, pkt->path, pkt->path_len);
       tmp.payload_len = pkt->payload_len - 1;
       memcpy(tmp.payload, &pkt->payload[1], tmp.payload_len);
@@ -1625,6 +1626,7 @@ void Mesh::routeDirectRecvAcks(Packet* packet, uint32_t delay_millis) {
       if (a1) {
         a1->radio_reply = false;  // relayed ACK, not a local response
         a1->forwarded = true;
+        a1->tx_radio = packet->tx_radio;
         a1->path_len = Packet::copyPath(a1->path, packet->path, packet->path_len);
         a1->header &= ~PH_ROUTE_MASK;
         a1->header |= ROUTE_TYPE_DIRECT;
@@ -1639,6 +1641,7 @@ void Mesh::routeDirectRecvAcks(Packet* packet, uint32_t delay_millis) {
     if (a2) {
       a2->radio_reply = false;  // relayed ACK, not a local response
       a2->forwarded = true;
+      a2->tx_radio = packet->tx_radio;
       a2->path_len = Packet::copyPath(a2->path, packet->path, packet->path_len);
       a2->header &= ~PH_ROUTE_MASK;
       a2->header |= ROUTE_TYPE_DIRECT;

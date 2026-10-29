@@ -13,12 +13,17 @@
 #include <helpers/BeaconConfig.h>
 #include <helpers/RegulatorMode.h>
 #include <helpers/TelemetryHistoryConfig.h>
+#include <helpers/RadioDirectionPolicy.h>
 #ifndef RADIO_LIVENESS_SOFT_ONLY
   #include <helpers/RadioLivenessTracker.h>
 #endif
 #include <string.h>
 
 namespace mesh {
+
+#if MESH_ENABLE_EMERGENCY_POWER
+namespace power { class EmergencyPowerRuntime; }
+#endif
 
 enum class RadioParamApplyResult : uint8_t {
   APPLIED,
@@ -421,6 +426,9 @@ typedef uint32_t  DispatcherAction;
  *      and scheduling of outbound Packets.
 */
 class Dispatcher {
+#if MESH_ENABLE_EMERGENCY_POWER
+  friend class power::EmergencyPowerRuntime;
+#endif
   friend class FleetChannel;  // bounded deferred receiver and exact reply retirement
   enum class OutboundCancellation : uint8_t { None, Cancelled, Delivered };
   Packet* outbound;  // current outbound packet

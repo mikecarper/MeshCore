@@ -10,6 +10,7 @@ ROOT = Path(__file__).resolve().parents[1]
 HARNESS = r'''
 #include <Arduino.h>
 #include <helpers/CarrierTools.h>
+#include <helpers/RadioDirectionPolicy.h>
 #include <helpers/CarrierWaveCLI.h>
 #include <cassert>
 #include <helpers/radiolib/RadioInterruptEvents.h>

@@ -139,7 +139,7 @@ bool SettingsScreen::enterItemEdit(SettingsItem item) {
       return true;
 
     case SettingsItem::RadioPwr:
-      edit_u8 = _node_prefs->tx_power_dbm;
+      edit_tx_power = _node_prefs->tx_power_dbm;
       is_editing = true;
       return true;
 
@@ -179,103 +179,103 @@ void SettingsScreen::cancelItemEdit(SettingsItem item) {
   is_editing = false;
 }
 
+bool SettingsScreen::commitCommand(const char *command) {
+  char reply[160] = {};
+  if (the_mesh_cp.handleLocalCommand(command, reply) && strncmp(reply, "OK", 2) == 0) {
+    if (strstr(reply, "pending")) _task->showAlert(reply, 2000);
+    return true;
+  }
+  snprintf(edit_error, sizeof(edit_error), "%.*s", static_cast<int>(sizeof(edit_error) - 1),
+           reply[0] ? reply : "Setting could not be saved");
+  return false;
+}
+
+bool SettingsScreen::commitRadio(float freq, float bw, uint8_t sf, uint8_t cr) {
+  if (!validRadioParams(freq, bw, sf, cr)) return false;
+  char command[112];
+  snprintf(command, sizeof(command), "set radio %.6f,%.6f,%u,%u,%u", freq, bw, sf, cr,
+           the_mesh_cp.getPrimaryRadioPreamble());
+  if (!commitCommand(command)) return false;
+  _task->showAlert("Radio saved; applies when idle", 2000);
+  return true;
+}
+
 bool SettingsScreen::commitItemEdit(SettingsItem item) {
-
+  snprintf(edit_error, sizeof(edit_error), "Invalid value");
   switch (item) {
-    case SettingsItem::PublicInfoName:
-      strncpy(_node_prefs->node_name, edit_buffer.c_str(), sizeof(_node_prefs->node_name) - 1);
-      _node_prefs->node_name[sizeof(_node_prefs->node_name) - 1] = '\0';
-      the_mesh_cp.savePrefs();
-      return true;
+    case SettingsItem::PublicInfoName: {
+      char command[sizeof(_node_prefs->node_name) + 10];
+      if (edit_buffer.length() >= sizeof(_node_prefs->node_name)) return false;
+      snprintf(command, sizeof(command), "set name %s", edit_buffer.c_str());
+      return commitCommand(command);
+    }
 
-    case SettingsItem::MeshDefaultScope:
+    case SettingsItem::MeshDefaultScope: {
+      char previous_name[sizeof(_node_prefs->default_scope_name)];
+      uint8_t previous_key[sizeof(_node_prefs->default_scope_key)];
+      memcpy(previous_name, _node_prefs->default_scope_name, sizeof(previous_name));
+      memcpy(previous_key, _node_prefs->default_scope_key, sizeof(previous_key));
       memset(_node_prefs->default_scope_name, 0, sizeof(_node_prefs->default_scope_name));
       memset(_node_prefs->default_scope_key, 0, sizeof(_node_prefs->default_scope_key));
-
       if (edit_buffer.length() > 0) {
-        strncpy(_node_prefs->default_scope_name, edit_buffer.c_str(),
-                sizeof(_node_prefs->default_scope_name) - 1);
-        _node_prefs->default_scope_name[sizeof(_node_prefs->default_scope_name) - 1] = '\0';
-
+        strncpy(_node_prefs->default_scope_name, edit_buffer.c_str(), sizeof(_node_prefs->default_scope_name) - 1);
         const uint8_t prefix[] = "#";
-
         mesh::Utils::sha256(_node_prefs->default_scope_key, sizeof(_node_prefs->default_scope_key), prefix, 1,
                             reinterpret_cast<const uint8_t *>(_node_prefs->default_scope_name),
-                            edit_buffer.length());
+                            strlen(_node_prefs->default_scope_name));
       }
-
-      the_mesh_cp.savePrefs();
-      return true;
+      if (the_mesh_cp.savePrefs()) return true;
+      memcpy(_node_prefs->default_scope_name, previous_name, sizeof(previous_name));
+      memcpy(_node_prefs->default_scope_key, previous_key, sizeof(previous_key));
+      snprintf(edit_error, sizeof(edit_error), "Scope could not be saved");
+      return false;
+    }
 
     case SettingsItem::RadioSf:
-      if (!validRadioParams(_node_prefs->freq, _node_prefs->bw, edit_u8, _node_prefs->cr)) return false;
-      _node_prefs->sf = edit_u8;
-      the_mesh_cp.savePrefs();
-      restart_required = true;
-      return true;
-
+      return commitRadio(_node_prefs->freq, _node_prefs->bw, edit_u8, _node_prefs->cr);
     case SettingsItem::RadioCr:
-      if (!validRadioParams(_node_prefs->freq, _node_prefs->bw, _node_prefs->sf, edit_u8)) return false;
-      _node_prefs->cr = edit_u8;
-      the_mesh_cp.savePrefs();
-      restart_required = true;
-      return true;
-
-    case SettingsItem::RadioPwr:
-      if (!radio_driver.isTxPowerValid(static_cast<int8_t>(edit_u8))) return false;
-      _node_prefs->tx_power_dbm = edit_u8;
-      the_mesh_cp.savePrefs();
-      restart_required = true;
-      return true;
-
-    case SettingsItem::MeshPathSize:
+      return commitRadio(_node_prefs->freq, _node_prefs->bw, _node_prefs->sf, edit_u8);
+    case SettingsItem::RadioPwr: {
+      if (edit_tx_power < INT8_MIN || edit_tx_power > INT8_MAX
+          || !radio_driver.isTxPowerValid(static_cast<int8_t>(edit_tx_power))) return false;
+      char command[24];
+      snprintf(command, sizeof(command), "set tx %d", static_cast<int>(edit_tx_power));
+      return commitCommand(command);
+    }
+    case SettingsItem::MeshPathSize: {
+      if (edit_u8 < 1 || edit_u8 > 3) return false;
+      const uint8_t previous = _node_prefs->path_hash_mode;
       _node_prefs->path_hash_mode = edit_u8 - 1;
-      the_mesh_cp.savePrefs();
-      return true;
-
+      if (the_mesh_cp.savePrefs()) return true;
+      _node_prefs->path_hash_mode = previous;
+      snprintf(edit_error, sizeof(edit_error), "Path size could not be saved");
+      return false;
+    }
     case SettingsItem::RadioFreq: {
       float value;
-      if (inputParsePositiveFloat(value)
-          && validRadioParams(value, _node_prefs->bw, _node_prefs->sf, _node_prefs->cr)) {
-        _node_prefs->freq = value;
-        the_mesh_cp.savePrefs();
-        restart_required = true;
-        return true;
-      }
-      break;
+      return inputParsePositiveFloat(value)
+          && commitRadio(value, _node_prefs->bw, _node_prefs->sf, _node_prefs->cr);
     }
-
     case SettingsItem::RadioBw: {
       float value;
-      if (inputParsePositiveFloat(value)
-          && validRadioParams(_node_prefs->freq, value, _node_prefs->sf, _node_prefs->cr)) {
-        _node_prefs->bw = value;
-        the_mesh_cp.savePrefs();
-        restart_required = true;
-        return true;
-      }
-      break;
+      return inputParsePositiveFloat(value)
+          && commitRadio(_node_prefs->freq, value, _node_prefs->sf, _node_prefs->cr);
     }
-
-    case SettingsItem::DeviceBatteryCorrection:
-
-      if (edit_buffer.length() > 0) {
-        uint16_t real = edit_buffer.toInt();
-        uint16_t adc = _task->getBoard()->getBattMilliVolts();
-        if (adc != 0) {
-          _custom_prefs->battery_correction = (float)real / adc;
-          the_mesh_cp.savePrefs();
-          return true;
-        }
-      }
-
-      break;
-
+    case SettingsItem::DeviceBatteryCorrection: {
+      if (!edit_buffer.length()) return false;
+      const uint16_t real = edit_buffer.toInt();
+      const uint16_t adc = _task->getBoard()->getBattMilliVolts();
+      if (!real || !adc) return false;
+      const float correction = static_cast<float>(real) / adc;
+      if (!isfinite(correction) || correction < 0.5f || correction > 2.0f) return false;
+      _custom_prefs->battery_correction = correction;
+      if (the_mesh_cp.saveCustomPrefs()) return true;
+      snprintf(edit_error, sizeof(edit_error), "Battery correction could not be saved");
+      return false;
+    }
     default:
-      break;
+      return false;
   }
-
-  return false;
 }
 
 void SettingsScreen::handleEditInput(SettingsItem item, Keyboard::Event &e) {
@@ -296,10 +296,12 @@ void SettingsScreen::handleEditInput(SettingsItem item, Keyboard::Event &e) {
       break;
 
     case SettingsItem::RadioPwr:
-      if (e.key == Keyboard::ARROW_LEFT && edit_u8 > 1) {
-        edit_u8--;
-      } else if (e.key == Keyboard::ARROW_RIGHT && edit_u8 < LORA_TX_POWER) {
-        edit_u8++;
+      if (e.key == Keyboard::ARROW_LEFT && edit_tx_power > INT8_MIN
+          && radio_driver.isTxPowerValid(static_cast<int8_t>(edit_tx_power - 1))) {
+        --edit_tx_power;
+      } else if (e.key == Keyboard::ARROW_RIGHT && edit_tx_power < INT8_MAX
+          && radio_driver.isTxPowerValid(static_cast<int8_t>(edit_tx_power + 1))) {
+        ++edit_tx_power;
       }
       break;
     case SettingsItem::MeshPathSize:
@@ -388,13 +390,8 @@ int SettingsScreen::render(CardputerDisplay &display) {
   const int item_x = 5 + display.getTextWidth(">") + 6;
 
   display.setTextSize(1);
-  if (restart_required) {
-    display.setColor(CardputerDisplay::P_RED);
-    display.drawTextCentered(display.width() / 2, title_y, "Settings | Restart");
-  } else {
-    display.setColor(CardputerDisplay::P_GREEN);
-    display.drawTextCentered(display.width() / 2, title_y, "Settings");
-  }
+  display.setColor(CardputerDisplay::P_GREEN);
+  display.drawTextCentered(display.width() / 2, title_y, "Settings");
 
   int real_idx = 0;
   int list_page = menu_index / rows;
@@ -442,10 +439,14 @@ int SettingsScreen::render(CardputerDisplay &display) {
     switch (menu_index) {
       case SettingsItem::RadioSf:
       case SettingsItem::RadioCr:
-      case SettingsItem::RadioPwr:
       case SettingsItem::MeshPathSize:
         display.setTextSize(2);
         snprintf(buf, sizeof(buf), "- %d +", edit_u8);
+        display.drawTextCentered(display.width() / 2, value_y, buf);
+        break;
+      case SettingsItem::RadioPwr:
+        display.setTextSize(2);
+        snprintf(buf, sizeof(buf), "- %d +", static_cast<int>(edit_tx_power));
         display.drawTextCentered(display.width() / 2, value_y, buf);
         break;
       case SettingsItem::PublicInfoName:
@@ -471,7 +472,7 @@ bool SettingsScreen::handleInput(Keyboard::Event &e) {
   if (is_editing) {
     if (e.key == Keyboard::KEY_RETURN) {
       if (!commitItemEdit(static_cast<SettingsItem>(menu_index))) {
-        _task->showAlert("Invalid value", 1000);
+        _task->showAlert(edit_error, 2000);
       } else {
         is_editing = false;
       }

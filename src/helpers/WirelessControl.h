@@ -1,9 +1,12 @@
 #pragma once
 
+#include "CLIReplyText.h"
+
 #include <atomic>
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
+#include "EmergencyPowerConfig.h"
 
 namespace mesh {
 namespace wireless {
@@ -59,6 +62,10 @@ class Control {
   uint8_t scope_ = 0, target_ = 0, saved_ = 0;
   bool pending_ = false, started_ = false, force_ = false, independent_requester_ = false;
   bool saved_valid_ = false, master_off_ = false;
+#if MESH_ENABLE_EMERGENCY_POWER
+  bool emergency_suspended_ = false;
+  uint8_t emergency_enabled_ = 0, emergency_blocked_ = 0;
+#endif
   uint32_t due_ = 0;
   const char* error_ = nullptr;
 
@@ -73,6 +80,9 @@ public:
   }
   bool masterOff() const { return master_off_; }
   bool allowService(uint8_t service) {
+#if MESH_ENABLE_EMERGENCY_POWER
+    if (emergency_suspended_) return false;
+#endif
     if (master_off_ || pending_) return false;
     blocked_.store(blocked_.load() & ~service);
     return true;
@@ -81,6 +91,9 @@ public:
   // disabled 2.4 GHz for this boot. Leave the other services disabled. Do not
   // race a pending shutdown, which could otherwise turn OTA off afterwards.
   bool allowWiFiForOTA() {
+#if MESH_ENABLE_EMERGENCY_POWER
+    if (emergency_suspended_) return false;
+#endif
     if (pending_) return false;
     blocked_.store(blocked_.load() & ~WiFi);
     master_off_ = false;
@@ -90,13 +103,47 @@ public:
   }
   uint8_t enabled() const { return backend_ ? backend_->enabled() : 0; }
 
+#if MESH_ENABLE_EMERGENCY_POWER
+  // A scheduled battery sleep borrows the live services without changing the
+  // user's saved wireless policy or the ordinary off/on restore snapshot.
+  bool suspendForEmergency() {
+    if (!backend_) return true;
+    if (pending_) return false;
+    if (!emergency_suspended_) {
+      emergency_enabled_ = enabled();
+      emergency_blocked_ = blocked_.load();
+      emergency_suspended_ = true;
+      blocked_.store(emergency_blocked_ | All);
+    }
+    const uint8_t order[] = {WiFi, EspNow, Bluetooth};
+    for (uint8_t service : order) {
+      if ((emergency_enabled_ & service) && backend_->set(service, false) != Result::Done)
+        return false;
+    }
+    return enabled() == 0;
+  }
+
+  bool resumeAfterEmergency() {
+    if (!emergency_suspended_) return true;
+    const uint8_t order[] = {EspNow, WiFi, Bluetooth};
+    for (uint8_t service : order) {
+      if (!(emergency_enabled_ & service)) continue;
+      blocked_.store(blocked_.load() & ~service);
+      if (backend_->set(service, true) != Result::Done) return false;
+    }
+    blocked_.store(emergency_blocked_);
+    emergency_suspended_ = false;
+    return true;
+  }
+#endif
+
   bool handle(const char* text, char* reply, size_t size, uint32_t now, uint8_t requester) {
     const auto command = parse(text);
     if (command.action == Action::None || !reply || !size) return false;
     const uint8_t available = backend_ ? backend_->available() : 0;
     const char* name = command.scope == All ? "2.4ghz" : command.scope == EspNow ? "espnow" : "wifi";
     if (command.action == Action::Invalid) {
-      snprintf(reply, size, "Error: use set wifi/espnow on|off [force]; set 2.4ghz on [all|force]|off [force]");
+      snprintf(reply, size, MESH_CLI_REPLY_TEXT("Error: use set wifi/espnow on|off [force]; set 2.4ghz on [all|force]|off [force]", "Error: set wifi/espnow on|off [force]; set 2.4ghz on [all|force]|off [force]"));
       return true;
     }
     const uint8_t current = enabled();
@@ -106,8 +153,14 @@ public:
       else snprintf(reply, size, "wifi=%s, bluetooth=%s, espnow=%s%s%s", state(WiFi), state(Bluetooth), state(EspNow), pending_ ? " (pending)" : "", error_ ? error_ : "");
       return true;
     }
+#if MESH_ENABLE_EMERGENCY_POWER
+    if (emergency_suspended_) {
+      snprintf(reply, size, "Error: scheduled sleep; use set power.awake <minutes> first");
+      return true;
+    }
+#endif
     if (!(available & command.scope)) {
-      snprintf(reply, size, "Error: requested wireless service unavailable in this build/boot");
+      snprintf(reply, size, MESH_CLI_REPLY_TEXT("Error: requested wireless service unavailable in this build/boot", "Error: wireless service unavailable this build/boot"));
       return true;
     }
     const bool on = command.action == Action::On || command.action == Action::OnAll;
@@ -116,7 +169,7 @@ public:
       return true;
     }
     if (command.scope != All && on && master_off_) {
-      snprintf(reply, size, "Error: 2.4ghz is off; use set 2.4ghz on first");
+      snprintf(reply, size, MESH_CLI_REPLY_TEXT("Error: 2.4ghz is off; use set 2.4ghz on first", "Error: 2.4ghz off; set 2.4ghz on first"));
       return true;
     }
     const uint8_t scope = command.scope & available;

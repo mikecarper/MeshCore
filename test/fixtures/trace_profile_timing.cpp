@@ -7,6 +7,7 @@
 #include <vector>
 #include <Packet.h>
 #include <RadioProfiles.h>
+#include <helpers/RadioDirectionPolicy.h>
 #include <helpers/CompanionDelayedReplies.h>
 #include <helpers/TracePathHelpers.h>
 

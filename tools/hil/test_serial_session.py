@@ -3,6 +3,8 @@ from pathlib import Path
 import ast
 import hashlib
 import importlib.util
+import os
+import struct
 import subprocess
 import sys
 from tempfile import TemporaryDirectory
@@ -45,6 +47,153 @@ class SerialPortOwnershipTests(unittest.TestCase):
     def test_existing_owner_still_refuses(self):
         with self.assertRaisesRegex(RuntimeError, "already in use"):
             self.inspect(subprocess.CompletedProcess([], 0, stdout="1234\n", stderr="/dev/ttyACM7:"))
+
+
+@unittest.skipUnless(os.name == "posix", "POSIX modem-line control")
+class AtomicModemOpenTests(unittest.TestCase):
+    class Port:
+        dtr = rts = dsrdtr = rtscts = False
+
+        def __init__(self):
+            self.is_open = False
+            self.events = []
+            self.driver_dtr = self.driver_rts = True
+
+        def _update_dtr_state(self):
+            self.events.append("individual_dtr")
+            self.driver_dtr = self.dtr
+
+        def _update_rts_state(self):
+            self.events.append("individual_rts")
+            self.driver_rts = self.rts
+
+        def open(self):
+            self.events.append("open")
+            self.is_open = True
+            if not self.dsrdtr:
+                self._update_dtr_state()
+            if not self.rtscts:
+                self._update_rts_state()
+            self.events.append(("opened_levels", self.driver_dtr, self.driver_rts))
+
+        def close(self):
+            self.events.append("close")
+            self.is_open = False
+
+        def fileno(self):
+            return 77
+
+    def setUp(self):
+        spec = importlib.util.spec_from_file_location(
+            "atomic_serial_session", Path(__file__).with_name("serial_session.py"))
+        self.session = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(self.session)
+
+    def exercise(self, port, fail=None):
+        import fcntl
+        import termios
+
+        def get_attributes(fd):
+            self.assertEqual(fd, 77)
+            port.events.append("attributes")
+            if fail == "attributes":
+                raise OSError("attributes failed")
+            return [1, 2, termios.HUPCL | 0x4000, 4, 5, 6, [7]]
+
+        def set_attributes(fd, when, attributes):
+            self.assertEqual((fd, when), (77, termios.TCSANOW))
+            self.assertEqual(attributes, [1, 2, 0x4000, 4, 5, 6, [7]])
+            port.events.append("clear_hupcl")
+            if fail == "set_attributes":
+                raise OSError("set_attributes failed")
+
+        def clear_lines(fd, request, packed):
+            self.assertEqual((fd, request), (77, termios.TIOCMBIC))
+            self.assertEqual(struct.unpack("I", packed)[0], termios.TIOCM_DTR | termios.TIOCM_RTS)
+            port.events.append("joint_clear")
+            if fail == "ioctl":
+                raise OSError("ioctl failed")
+            port.driver_dtr = port.driver_rts = False
+
+        with patch.object(self.session.sys, "platform", "linux"), \
+                patch.object(termios, "tcgetattr", side_effect=get_attributes), \
+                patch.object(termios, "tcsetattr", side_effect=set_attributes), \
+                patch.object(fcntl, "ioctl", side_effect=clear_lines) as modem:
+            self.session.open_configured_session(port)
+        return modem
+
+    def test_joint_clear_has_no_intermediate_reset_or_boot_levels(self):
+        port = self.Port()
+        modem = self.exercise(port)
+        self.assertEqual(port.events, ["open", ("opened_levels", True, True),
+                                      "attributes", "clear_hupcl", "joint_clear"])
+        modem.assert_called_once()
+        self.assertFalse(port.driver_dtr or port.driver_rts)
+        self.assertFalse(port.dsrdtr or port.rtscts)
+        self.assertNotIn("_update_dtr_state", port.__dict__)
+        self.assertNotIn("_update_rts_state", port.__dict__)
+        port._update_dtr_state()
+        port._update_rts_state()
+        self.assertEqual(port.events[-2:], ["individual_dtr", "individual_rts"])
+
+    def test_prior_dtr_only_deferral_has_an_intermediate_boot_level(self):
+        port = self.Port()
+        port.dsrdtr = True
+        port.open()
+        self.assertEqual(port.events[-1], ("opened_levels", True, False))
+
+    def test_all_failure_stages_close_and_restore_instance_overrides(self):
+        for fail in ("open", "attributes", "set_attributes", "ioctl"):
+            with self.subTest(stage=fail):
+                port = self.Port()
+                original_dtr = lambda: port.events.append("original_dtr")
+                original_rts = lambda: port.events.append("original_rts")
+                port._update_dtr_state = original_dtr
+                port._update_rts_state = original_rts
+                if fail == "open":
+                    def failed_open():
+                        port.is_open = True
+                        raise OSError("open failed")
+                    port.open = failed_open
+                with self.assertRaisesRegex(OSError, fail + " failed"):
+                    self.exercise(port, fail)
+                self.assertFalse(port.is_open)
+                self.assertEqual(port.events[-1], "close")
+                self.assertIs(port._update_dtr_state, original_dtr)
+                self.assertIs(port._update_rts_state, original_rts)
+
+    def test_true_dtr_and_other_platforms_retain_their_existing_opener(self):
+        for platform, dtr in (("linux", True), ("win32", False), ("darwin", False)):
+            with self.subTest(platform=platform, dtr=dtr):
+                port = self.Port()
+                port.dtr = dtr
+                with patch.object(self.session.sys, "platform", platform), \
+                        patch.object(self.session, "_open_linux_inactive_modem_session") as atomic:
+                    self.session.open_configured_session(port)
+                atomic.assert_not_called()
+                self.assertTrue(port.is_open)
+                self.assertEqual(port.dtr, dtr)
+
+    def test_installed_pyserial_open_uses_the_deferred_methods(self):
+        try:
+            import serial.serialposix as backend
+        except ImportError:
+            self.skipTest("installed pySerial backend required")
+        port = self.Port()
+        port._port = port.portstr = "/dev/test-only"
+        port._dsrdtr = port._rtscts = False
+        port._reconfigure_port = lambda **kwargs: port.events.append("configure")
+        port._reset_input_buffer = lambda: port.events.append("reset_input")
+        port.open = lambda: backend.Serial.open(port)
+        with patch.object(backend.os, "open", return_value=77), \
+                patch.object(backend.os, "pipe", side_effect=[(80, 81), (82, 83)]), \
+                patch.object(backend.fcntl, "fcntl"):
+            self.exercise(port)
+        self.assertNotIn("individual_dtr", port.events)
+        self.assertNotIn("individual_rts", port.events)
+        self.assertTrue(port.is_open)
+        self.assertEqual(port.events, ["configure", "reset_input", "attributes",
+                                      "clear_hupcl", "joint_clear"])
 
 
 class SerialSessionImportTests(unittest.TestCase):

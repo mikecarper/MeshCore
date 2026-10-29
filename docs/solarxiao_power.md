@@ -246,6 +246,27 @@ measurement or entry into ship mode. Read the corresponding status afterward.
 See the [bench acceptance report](test-results/solarxiao_power_2026-10-21.md)
 for exact firmware identity, measured readouts and test limits.
 
+## Emergency battery schedule
+
+The [emergency schedule](cli_commands.md#emergency-battery-schedule) keeps the
+radio and normal work awake for the first 15 minutes of each UTC hour, with
+timed sleep for the remaining 45 minutes. It starts automatically at 5% and
+recovers at 7%. Forwarding thresholds now default to 25% for floods and 15%
+for all relayed traffic; those forwarding gates remain opt-in.
+
+```text
+get power.emergency
+set power.emergency on
+set power.awake 30
+set power.emergency auto
+```
+
+The percentage follows the configured self battery voltage endpoints used by
+`battery.forward`. On MPPT carriers this is the XIAO ADC, not an estimate of
+the separate carrier battery's charge from INA260/LTC4162. Check the actual
+voltage source before relying on automatic entry. Manual mode and timed wake
+work independently of the charger. Hard low-voltage protection still applies.
+
 ## Conversion defaults and carrier revisions
 
 The supplied [Standard schematic](https://github.com/wehooper4/Meshtastic-Hardware/blob/main/XaioSeries/SolarXaio/MPPT/Standard/Schematic_SolarXaio_MPPT_2025-10-23.pdf)

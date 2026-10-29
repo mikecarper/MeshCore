@@ -1,17 +1,34 @@
 #include <assert.h>
 #include <helpers/CLICommandUtils.h>
+#include <helpers/ConfigCapabilities.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <string.h>
 #include <string>
 #include <vector>
 #include "helpers/radiolib/RXPowerSaving.h"
+#include "usb_mode_console.h"
 
+// RXPS queries must not probe unrelated capability providers. Keep these
+// boundaries present so the entire preceding capability branch compiles.
+struct Board {
+  bool getSystemWatchdogRunning(bool&) { assert(false); return false; }
+  bool canControlLoRaFemLna() { assert(false); return false; }
+  bool canControlLoRaFemPaGain() { assert(false); return false; }
+  bool isLoRaFemPaGainEnabled() { assert(false); return false; }
+} board;
+struct UI {
+  bool supportsDisplayRotation() { assert(false); return false; }
+};
+struct Profiles {
+  uint16_t primaryPreamble() const { assert(false); return 0; }
+};
 struct Radio {
   bool supported = true;
   bool fallback = false;
   unsigned fallback_queries = 0;
   bool supportsRxPowerSaving() const { return supported; }
+  bool supportsRxPowerSavingRfRxDisable() const { assert(false); return false; }
   bool isRxPowerSavingContinuousFallback() { ++fallback_queries; return fallback; }
   // No mutating radio APIs exist in this fixture: a write cannot compile.
 } radio_driver;
@@ -41,6 +58,8 @@ struct Output {
 
 struct MyMesh {
   Prefs _prefs;
+  Profiles _radio_profiles;
+  UI* _ui = nullptr;
   bool temporary = false;
   uint8_t _temp_radio_sf = 5;
   float _temp_radio_bw = 500;

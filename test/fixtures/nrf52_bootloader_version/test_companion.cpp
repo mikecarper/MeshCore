@@ -9,6 +9,7 @@
 #include <helpers/CLICommandUtils.h>
 #include <helpers/CompanionFrameLimits.h>
 #include <helpers/CompanionHardwareCommandCompat.h>
+#include "../usb_mode_console.h"
 
 struct Board {
 #if defined(NRF52_PLATFORM)
@@ -31,7 +32,7 @@ struct Board {
 #endif
 };
 struct BaseSerialInterface { unsigned id; };
-struct Serial {
+struct SerialTransport {
   BaseSerialInterface usb{1}, ble{2};
   BaseSerialInterface* current = &usb;
   BaseSerialInterface* captured = nullptr;
@@ -62,8 +63,8 @@ struct Output {
 };
 struct MyMesh {
   Board board;
-  Serial serial;
-  Serial* _serial = &serial;
+  SerialTransport serial;
+  SerialTransport* _serial = &serial;
   Output output;
   char reply_buf[160] = {};
   uint8_t out_frame[MAX_FRAME_SIZE] = {};
@@ -142,6 +143,9 @@ static void dispatch(MyMesh& mesh, BaseSerialInterface* requester, bool nul) {
 }
 int main() {
   MyMesh mesh;
+  char usb_reply[160] = {};
+  assert(mesh.handleCommand("AB|get usb.mode", 0, usb_reply));
+  assert(std::string(usb_reply) == std::string("AB|usb.mode ") + mesh::usbModeName<decltype(Serial)>());
   bounds(mesh);
 #if defined(NRF52_PLATFORM)
   assert(mesh.board.reader_capacity == 128);

@@ -11,7 +11,7 @@ struct NodePrefs : ConfigSerializer {
   uint16_t bridge_delay = 500;
   uint8_t bridge_pkt_src = 1, bridge_channel = 1, bridge_format = 0;
   uint32_t bridge_baud = 115200;
-  uint8_t usb_logging_enabled = 0, usb_debug_enabled = 0;
+  uint8_t usb_logging_enabled = 0, usb_debug_enabled = 0, usb_logging_always = 0;
   uint8_t rs232_autosleep = 1;
   uint8_t rs232_heartbeat = 1;
   uint16_t rs232_idle_seconds = 300;

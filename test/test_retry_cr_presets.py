@@ -34,6 +34,7 @@ class RetryCrPresetsTest(unittest.TestCase):
 #include <cstdlib>
 #include <cstring>
 #include <vector>
+#include "src/helpers/CLIReplyText.h"
 #define constrain(x, low, high) ((x) < (low) ? (low) : (x) > (high) ? (high) : (x))
 struct NodePrefs {
   uint8_t retry_preset, direct_retry_attempts, direct_retry_enabled;
@@ -150,6 +151,7 @@ int main() {
             source.write_text(generated, encoding="ascii")
             binary = work / "retry-cr"
             result = subprocess.run([compiler, "-std=c++17", "-Wall", "-Wextra",
+                                     "-I", str(ROOT),
                                      str(source), "-o", str(binary)],
                                     capture_output=True, text=True, timeout=60)
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)

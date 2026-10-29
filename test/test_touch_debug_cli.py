@@ -164,7 +164,7 @@ int main() {
         self.assertIn('#include "CompanionHelp.inc"', help_body)
         self.assertIn('mesh::companion::writePackedCompanionHelp(output);', help_body)
         help_fragments = (ROOT / 'examples/companion_radio/CompanionHelp.inc').read_text()
-        self.assertIn('get/set display.touch <on|off> (this boot)\\r\\n', help_fragments)
+        self.assertIn('get/set display.touch <on|off> (boot)\\r\\n', help_fragments)
         packed_help = (ROOT / 'examples/companion_radio/CompanionHelpPacked.cpp').read_text()
         self.assertIn('#include "CompanionHelp.inc"', packed_help)
         # No persistent preference schema or write is involved.

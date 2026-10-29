@@ -66,23 +66,88 @@ mesh::DispatcherAction CardputerMesh::onRecvPacket(mesh::Packet *pkt) {
   return action;
 }
 
-void CardputerMesh::onChannelMessageRecv(const mesh::GroupChannel &channel, mesh::Packet *pkt,
-                                         uint32_t timestamp, const char *text) {
-  MyMesh::onChannelMessageRecv(channel, pkt, timestamp, text);
-  fillMessageMeta(last_rx_meta, timestamp, getRTCClock()->getCurrentTime(), pkt->isRouteFlood(), pkt->path_len,
-                  pkt->path, pkt->_snr, pkt->_rssi);
-  _store->storeMessage(channel.secret, text, false, true, &last_rx_meta);
-  _ui->onChannelMessageRecv(channel, text);
+// Capture the packet details of a received text; the shared Companion delivery
+// path (duplicate/retention checks) then calls onUi*Message() at most once.
+void CardputerMesh::captureRxMeta(const mesh::Packet *pkt, uint32_t sender_timestamp) {
+  fillMessageMeta(last_rx_meta, sender_timestamp, getRTCClock()->getCurrentTime(), pkt->isRouteFlood(),
+                  pkt->path_len, pkt->path, pkt->_snr, pkt->_rssi);
 }
 
 void CardputerMesh::onMessageRecv(const ContactInfo &from, mesh::Packet *pkt, uint32_t sender_timestamp,
                                   const char *text) {
+  captureRxMeta(pkt, sender_timestamp);
   MyMesh::onMessageRecv(from, pkt, sender_timestamp, text);
+  last_rx_meta = MessageMeta();
+}
 
-  fillMessageMeta(last_rx_meta, sender_timestamp, getRTCClock()->getCurrentTime(), pkt->isRouteFlood(),
-                  pkt->path_len, pkt->path, pkt->_snr, pkt->_rssi);
+bool CardputerMesh::onSignedMessageRecv(const ContactInfo &from, mesh::Packet *pkt, uint32_t sender_timestamp,
+                                        const uint8_t *sender_prefix, const char *text) {
+  captureRxMeta(pkt, sender_timestamp);
+  const bool ok = MyMesh::onSignedMessageRecv(from, pkt, sender_timestamp, sender_prefix, text);
+  last_rx_meta = MessageMeta();
+  return ok;
+}
+
+void CardputerMesh::onChannelMessageRecv(const mesh::GroupChannel &channel, mesh::Packet *pkt,
+                                         uint32_t timestamp, const char *text) {
+  captureRxMeta(pkt, timestamp);
+  MyMesh::onChannelMessageRecv(channel, pkt, timestamp, text);
+  last_rx_meta = MessageMeta();
+}
+
+bool CardputerMesh::channelHistoryId(const ChannelDetails &channel, uint8_t id[PUB_KEY_SIZE]) {
+  static const uint8_t domain[] = "Cardputer channel history v2";
+  const size_t name_length = strnlen(channel.name, sizeof(channel.name));
+  if (!name_length || name_length == sizeof(channel.name)) return false;
+  uint8_t identity[sizeof(domain) + 1 + sizeof(channel.name) + sizeof(channel.channel.secret)];
+  size_t used = 0;
+  memcpy(identity, domain, sizeof(domain)); used += sizeof(domain);
+  identity[used++] = static_cast<uint8_t>(name_length);
+  memcpy(identity + used, channel.name, name_length); used += name_length;
+  memcpy(identity + used, channel.channel.secret, sizeof(channel.channel.secret));
+  used += sizeof(channel.channel.secret);
+  mesh::Utils::sha256(id, PUB_KEY_SIZE, identity, used);
+  return true;
+}
+
+bool CardputerMesh::getChannelHistoryId(int channel_idx, uint8_t id[PUB_KEY_SIZE]) {
+  ChannelDetails channel;
+  return getChannel(channel_idx, channel) && channelHistoryId(channel, id);
+}
+
+void CardputerMesh::onUiChannelMessage(uint8_t channel_idx, const char *text) {
+  uint8_t id[PUB_KEY_SIZE];
+  if (!getChannelHistoryId(channel_idx, id)) return;
+  _store->storeMessage(id, text, false, true, &last_rx_meta);
+  _ui->onChannelMessageRecv(channel_idx, id, text);
+}
+
+void CardputerMesh::onUiContactMessage(const ContactInfo &from, const char *text) {
   _store->storeMessage(from.id.pub_key, text, false, false, &last_rx_meta);
   _ui->onContactMessageRecv(from, text);
+}
+
+// Own-message tracking hooks here: every accepted first send (keyboard, app,
+// terminal) reaches history through these callbacks, after the packet is queued.
+void CardputerMesh::onUiContactMessageSent(const ContactInfo &recipient, const char *text) {
+  // Only keyboard DMs have ACK/retry state here (last_msg); app DMs stay untracked.
+  last_own_id = ui_dm_sending ? own_tracker.add(nullptr, false, _ms->getMillis(), recipient.out_path_len) : 0;
+  _store->storeMessage(recipient.id.pub_key, text, true, false);
+  _ui->onContactMessageSent(recipient, text);
+}
+
+void CardputerMesh::onUiChannelMessageSent(uint8_t channel_idx, const char *text, size_t length) {
+  uint8_t id[PUB_KEY_SIZE];
+  if (!getChannelHistoryId(channel_idx, id)) return;
+  char stored_text[MAX_MESSAGE_LENGTH + 1];
+  const size_t stored_length = length < MAX_MESSAGE_LENGTH ? length : MAX_MESSAGE_LENGTH;
+  memcpy(stored_text, text, stored_length);
+  stored_text[stored_length] = 0;
+  // sendFloodScoped() tracked the group packet; Meshtext sends have no flood hash.
+  last_own_id = pending_channel_own_id;
+  pending_channel_own_id = 0;
+  _store->storeMessage(id, stored_text, true, true);
+  _ui->onChannelMessageSent(channel_idx, id, stored_text);
 }
 
 bool CardputerMesh::sendFloodScoped(const mesh::GroupChannel &channel, mesh::Packet *pkt,
@@ -99,25 +164,28 @@ bool CardputerMesh::sendFloodScoped(const mesh::GroupChannel &channel, mesh::Pac
   if (sent && is_group_text) {
     memcpy(last_message_hash, hash, sizeof(last_message_hash));
     last_message_heard_repeats = 0;
-    last_own_id = own_tracker.add(hash, true, _ms->getMillis());
+    pending_channel_own_id = own_tracker.add(hash, true, _ms->getMillis());
   }
   return sent;
 }
 
-bool CardputerMesh::sendGroupMessage(uint32_t timestamp, mesh::GroupChannel &channel, const char *sender_name,
-                                     const char *text, int text_len) {
-  last_own_id = 0; // set by sendFloodScoped() once the packet is queued
-  bool ok = MyMesh::sendGroupMessage(timestamp, channel, sender_name, text, text_len);
-  if (ok) {
-    _store->storeMessage(channel.secret, text, true, true);
-  }
-  return ok;
+bool CardputerMesh::sendChannelMessage(int channel_idx, uint32_t timestamp, const char *text, size_t length) {
+  return sendUiChannelMessage(channel_idx, timestamp, text, length);
 }
 
 int CardputerMesh::sendDirectMessage(const ContactInfo &recipient, uint32_t timestamp, const char *text) {
-  uint32_t est_timeout;
+  if (isMessageSending() || !text || !text[0]
+      || strnlen(text, MAX_MESSAGE_LENGTH + 1) > MAX_MESSAGE_LENGTH) return MSG_SEND_FAILED;
+  uint32_t est_timeout = 0, expected_ack = 0;
+  last_own_id = 0; // set by onUiContactMessageSent() once the packet is queued
+  ui_dm_sending = true;
+  const int rc = MyMesh::sendMessage(recipient, timestamp, 0, text, expected_ack, est_timeout);
+  ui_dm_sending = false;
+  if (rc == MSG_SEND_FAILED) return rc;
+  last_dm_own_id = last_own_id;
   bool flood = (recipient.out_path_len == OUT_PATH_UNKNOWN);
   last_msg.timestamp = timestamp;
+  last_msg.expected_ack = expected_ack;
   last_msg.recipient = recipient;
   strncpy(last_msg.text, text, sizeof(last_msg.text));
   last_msg.text[sizeof(last_msg.text) - 1] = 0;
@@ -126,18 +194,9 @@ int CardputerMesh::sendDirectMessage(const ContactInfo &recipient, uint32_t time
   last_msg.attempt = 1;
   last_msg.total_attempts = DIRECT_SEND_FLOOD_ATTEMPTS + (!flood ? DIRECT_SEND_ROUTE_ATTEMPTS : 0);
 
+  const uint32_t minimum_timeout = flood ? DIRECT_SEND_FLOOD_RESEND_RELAY : DIRECT_SEND_ROUTE_RESEND_RELAY;
+  resend_timeout = futureMillis(est_timeout > minimum_timeout ? est_timeout : minimum_timeout);
   _ui->onMessageSendAttempt(last_msg.attempt, last_msg.total_attempts, last_msg.state);
-
-  if (recipient.out_path_len == OUT_PATH_UNKNOWN) {
-    resend_timeout = futureMillis(DIRECT_SEND_FLOOD_RESEND_RELAY);
-  } else {
-    resend_timeout = futureMillis(DIRECT_SEND_ROUTE_RESEND_RELAY);
-  }
-
-  int rc = MyMesh::sendMessage(recipient, timestamp, 0, text, last_msg.expected_ack, est_timeout);
-  last_dm_own_id = rc != MSG_SEND_FAILED ? own_tracker.add(nullptr, false, _ms->getMillis(), recipient.out_path_len) : 0;
-  last_own_id = last_dm_own_id;
-  _store->storeMessage(recipient.id.pub_key, text, true, false);
   return rc;
 }
 
@@ -168,17 +227,20 @@ bool CardputerMesh::processAck(const uint8_t *data, ContactInfo *&peer) {
 
 void CardputerMesh::beginCustom() {
   _store->loadCustomPrefs(_custom_prefs);
+  _saved_custom_prefs = _custom_prefs;
 }
 
-void CardputerMesh::savePrefs() {
-  MyMesh::savePrefs();
-  _store->saveCustomPrefs(_custom_prefs);
+bool CardputerMesh::savePrefs() {
+  return MyMesh::savePrefs();
 }
 
-void CardputerMesh::setPowerSaving(bool enabled) {
-  getNodePrefs()->powersaving_enabled = enabled ? 1 : 0;
-  savePrefs();
-  sensors.setPowerSavingEnabled(enabled);
+bool CardputerMesh::saveCustomPrefs() {
+  if (!_store->saveCustomPrefs(_custom_prefs)) {
+    _custom_prefs = _saved_custom_prefs;
+    return false;
+  }
+  _saved_custom_prefs = _custom_prefs;
+  return true;
 }
 
 bool CardputerMesh::lastPingContact(ContactInfo &out) const {
@@ -271,34 +333,45 @@ void CardputerMesh::checkResend() {
     return;
   }
 
+  ContactInfo *ref = lookupContactByPubKey(last_msg.recipient.id.pub_key, PUB_KEY_SIZE);
+  if (!ref || last_msg.attempt >= last_msg.total_attempts) {
+    cancelResending();
+    return;
+  }
+
   if (last_msg.need_direct && last_msg.attempt >= DIRECT_SEND_ROUTE_ATTEMPTS) {
     last_msg.need_direct = false;
 
     MESH_DEBUG_PRINTLN("Resetting path");
-    ContactInfo *ref = the_mesh_cp.lookupContactByPubKey(last_msg.recipient.id.pub_key, CONTACT_LOOKUP_BYTES);
-    if (ref) {
-      ref->out_path_len = OUT_PATH_UNKNOWN;
+    const uint8_t previous_path_len = ref->out_path_len;
+    ref->out_path_len = OUT_PATH_UNKNOWN;
+    if (!queueUiContactWrite(*ref)) {
+      ref->out_path_len = previous_path_len;
+      cancelResending();
+      return;
     }
-    last_msg.recipient.out_path_len = OUT_PATH_UNKNOWN;
     own_tracker.setRoute(last_dm_own_id, OWN_ROUTE_FLOOD); // remaining retries flood
   }
+  last_msg.recipient = *ref;
+  if (!last_msg.need_direct) last_msg.recipient.out_path_len = OUT_PATH_UNKNOWN;
 
   if (last_msg.attempt < last_msg.total_attempts) {
-    uint32_t est_timeout;
-
-    _ui->onMessageSendAttempt(last_msg.attempt + 1, last_msg.total_attempts, last_msg.state);
-
-    if (last_msg.recipient.out_path_len == OUT_PATH_UNKNOWN) {
-      resend_timeout = futureMillis(DIRECT_SEND_FLOOD_RESEND_RELAY);
-    } else {
-      resend_timeout = futureMillis(DIRECT_SEND_ROUTE_RESEND_RELAY);
-    }
+    uint32_t est_timeout = 0, expected_ack = 0;
 
     // expected_ack is derived from the attempt number, so it must be refreshed on every resend
-    MyMesh::sendMessage(last_msg.recipient, last_msg.timestamp, last_msg.attempt, last_msg.text,
-                        last_msg.expected_ack, est_timeout);
+    const int rc = MyMesh::sendMessage(last_msg.recipient, last_msg.timestamp, last_msg.attempt, last_msg.text,
+                                      expected_ack, est_timeout);
+    if (rc == MSG_SEND_FAILED) {
+      cancelResending();
+      return;
+    }
+    last_msg.expected_ack = expected_ack;
+    const uint32_t minimum_timeout = last_msg.recipient.out_path_len == OUT_PATH_UNKNOWN
+        ? DIRECT_SEND_FLOOD_RESEND_RELAY : DIRECT_SEND_ROUTE_RESEND_RELAY;
+    resend_timeout = futureMillis(est_timeout > minimum_timeout ? est_timeout : minimum_timeout);
 
     last_msg.attempt++;
+    _ui->onMessageSendAttempt(last_msg.attempt, last_msg.total_attempts, last_msg.state);
   } else {
     last_msg.state = MESSAGE_FAILED;
     own_tracker.onFailed(last_dm_own_id);
@@ -318,6 +391,7 @@ void CardputerMesh::loop() {
 
 void CardputerMesh::cancelResending() {
   resend_timeout = 0;
+  last_msg.expected_ack = 0;
   if (last_msg.state == MESSAGE_SENDING) {
     last_msg.state = MESSAGE_FAILED;
     own_tracker.onFailed(last_dm_own_id);

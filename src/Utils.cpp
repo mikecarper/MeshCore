@@ -3,7 +3,7 @@
 #include <SHA256.h>
 
 #ifdef USE_CC310_HW_CRYPTO
-#include "helpers/NRF52Crypto.h"
+#include "helpers/NRF52CryptoScratch.h"
 #include "nrf_cc310/include/crys_hash.h"
 #include "nrf_cc310/include/crys_hmac.h"
 #include "nrf_cc310/include/ssi_aes.h"
@@ -92,23 +92,23 @@ int aesHardware(bool encrypting, const uint8_t* shared_secret, uint8_t* dest,
   mesh::CC310CryptoSession session;
   if (!session) return -1;
 
-  static SaSiAesUserContext_t ctx;
+  SaSiAesUserContext_t* ctx = mesh::cc310AesScratch(session);
   SaSiAesUserKeyData_t key_data = {
     const_cast<uint8_t*>(shared_secret), CIPHER_KEY_SIZE
   };
   SaSiError_t rc = SaSi_AesInit(
-      &ctx, encrypting ? SASI_AES_ENCRYPT : SASI_AES_DECRYPT,
+      ctx, encrypting ? SASI_AES_ENCRYPT : SASI_AES_DECRYPT,
       SASI_AES_MODE_ECB, SASI_AES_PADDING_NONE);
   const bool initialized = rc == SASI_OK;
   if (rc == SASI_OK) {
-    rc = SaSi_AesSetKey(&ctx, SASI_AES_USER_KEY, &key_data, sizeof(key_data));
+    rc = SaSi_AesSetKey(ctx, SASI_AES_USER_KEY, &key_data, sizeof(key_data));
   }
 
   uint8_t* dp = dest;
   const uint8_t* sp = src;
   int remaining = src_len;
   while (rc == SASI_OK && remaining >= CIPHER_BLOCK_SIZE) {
-    rc = SaSi_AesBlock(&ctx, const_cast<uint8_t*>(sp), CIPHER_BLOCK_SIZE, dp);
+    rc = SaSi_AesBlock(ctx, const_cast<uint8_t*>(sp), CIPHER_BLOCK_SIZE, dp);
     if (rc == SASI_OK) {
       dp += CIPHER_BLOCK_SIZE;
       sp += CIPHER_BLOCK_SIZE;
@@ -118,15 +118,15 @@ int aesHardware(bool encrypting, const uint8_t* shared_secret, uint8_t* dest,
   if (rc == SASI_OK && encrypting && remaining > 0) {
     uint8_t padded[CIPHER_BLOCK_SIZE] = {};
     memcpy(padded, sp, remaining);
-    rc = SaSi_AesBlock(&ctx, padded, CIPHER_BLOCK_SIZE, dp);
+    rc = SaSi_AesBlock(ctx, padded, CIPHER_BLOCK_SIZE, dp);
     if (rc == SASI_OK) dp += CIPHER_BLOCK_SIZE;
   }
 
   size_t final_size = 0;
   if (rc == SASI_OK) {
-    rc = SaSi_AesFinish(&ctx, 0, NULL, 0, NULL, &final_size);
+    rc = SaSi_AesFinish(ctx, 0, NULL, 0, NULL, &final_size);
   }
-  const SaSiError_t free_rc = initialized ? SaSi_AesFree(&ctx) : SASI_OK;
+  const SaSiError_t free_rc = initialized ? SaSi_AesFree(ctx) : SASI_OK;
   if (rc != SASI_OK || free_rc != SASI_OK) return -1;
   return static_cast<int>(dp - dest);
 }
@@ -136,12 +136,12 @@ bool hmacHardware(const uint8_t* shared_secret, uint8_t* dest,
   mesh::CC310CryptoSession session;
   if (!session) return false;
 
-  static CRYS_HASH_Result_t result;
+  CRYS_HASH_Result_t* result = mesh::cc310HmacScratch(session);
   const CRYSError_t rc = CRYS_HMAC(
       CRYS_HASH_SHA256_mode, const_cast<uint8_t*>(shared_secret), PUB_KEY_SIZE,
-      const_cast<uint8_t*>(src), static_cast<size_t>(src_len), result);
+      const_cast<uint8_t*>(src), static_cast<size_t>(src_len), *result);
   if (rc != CRYS_OK) return false;
-  memcpy(dest, result, CIPHER_MAC_SIZE);
+  memcpy(dest, *result, CIPHER_MAC_SIZE);
   return true;
 }
 

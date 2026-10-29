@@ -25,6 +25,7 @@ jobs:
       - name: Verify linked Companion crypto, retained Reader and ARM stack use
         run: |
           python3 -m pip install unicorn==2.1.4
+          python3 -B test/test_cc310_shared_scratch.py -v
           python3 -B scripts/check_nrf52_companion_crypto.py .pio/build/RAK_4631_companion_radio_full/firmware.elf
           python3 -B scripts/check_nrf52_companion_reader.py .pio/build/RAK_4631_companion_radio_full/firmware.elf
           python3 -B scripts/check_nrf52_companion_ota_workspace.py .pio/build/RAK_4631_companion_radio_full/firmware.elf
@@ -252,6 +253,7 @@ jobs:
       - name: Verify compact STM32 signature arithmetic
         run: |
           python3 -B test/test_stm32_companion_profile.py -v
+          python3 -B test/test_cli_reply_text.py -v
           python3 -B test/test_ed25519_compact_scalar.py -v
           python3 -B test/test_ed25519_compact_field.py -v
           python3 -B test/test_ed25519_compact.py -v
@@ -268,6 +270,11 @@ jobs:
               --firmware-version v1.18.0.1-halo-keymind-cascade-dev \
               --radio-preset usa-cascade-fixed --profile cascade --require-ota
           done
+
+      - name: Verify compact field arithmetic and stack on ARM
+        run: |
+          python3 -m pip install unicorn==2.1.4
+          python3 -B test/test_ed25519_compact_field.py Ed25519CompactFieldTest.test_arm_shared_powers_match_oracle_aliases_and_stay_within_stack_budget -v
 
   stm32-mini-repeater-smoke:
     runs-on: ubuntu-latest
@@ -400,7 +407,13 @@ jobs:
           python3 -B test/test_cardputer_board_policy.py -v
           python3 -B test/test_cardputer_layout.py -v
           python3 -B test/test_cardputer_ui.py -v
+          python3 -B test/test_cardputer_ui_lifecycle.py -v
           python3 -B test/test_cardputer_mesh_storage.py -v
+          python3 -B test/test_cardputer_messaging.py -v
+          python3 -B test/test_cardputer_channel_identity.py -v
+          python3 -B test/test_cardputer_delivery.py -v
+          python3 -B test/test_cardputer_gps.py -v
+          python3 -B test/test_cardputer_hardware.py -v
           python3 -B test/test_cardputer_runtime_memory.py -v
           python3 -B test/test_cardputer_license.py -v
           python3 -B test/test_protocol_parser_bounds.py -v
@@ -468,6 +481,9 @@ jobs:
           python3 -B test/test_clock_transit_profile_timing.py -v
           python3 -B test/test_bridge_recovery.py -v
           python3 -B test/test_bridge_ingress.py -v
+          python3 -B test/test_bridge_ingress_settings.py -v
+          python3 -B test/test_bridge_source_routes.py -v
+          python3 -B test/test_radio_direction_settings.py -v
 
       - name: Verify signed private fleet management
         run: |
@@ -589,6 +605,13 @@ jobs:
           python3 -B test/test_regulator_recovery.py -v
           python3 -B test/test_regulator_settings.py -v
           python3 -B test/test_battery_forwarding.py -v
+          python3 -B test/test_emergency_power.py -v
+          python3 -B test/test_solar_daylight.py -v
+          python3 -B test/test_power_schedule.py -v
+          python3 -B test/test_emergency_power_runtime.py -v
+          python3 -B test/test_emergency_power_ota.py -v
+          python3 -B test/test_emergency_power_bench.py -v
+          python3 -B test/test_emergency_sleep_backends.py -v
           python3 -B test/test_battery_calibration.py -v
           python3 -B test/test_battery_calibration_store.py -v
           python3 -B test/test_power_saving_diagnostics.py -v
@@ -599,6 +622,9 @@ jobs:
           python3 -B test/test_companion_rtc_terminal_input.py -v
           python3 -B test/test_esp32_cpu_clock.py -v
           python3 -B test/test_esp32_cpu_clock_board.py -v
+          python3 -B test/test_boot_slot_cli.py -v
+          python3 -B test/test_radio_direction_driver.py -v
+          python3 -B test/test_radio_direction_dispatcher.py -v
           python3 -B test/test_esp32_power_test_controls.py -v
           python3 -B test/test_esp32_uart_quiet_session.py -v
           python3 -B test/test_companion_rxps_getters.py -v
@@ -959,6 +985,7 @@ jobs:
           python3 -B test/test_companion_board_power_commands.py -v
           python3 -B test/test_companion_radio_diagnostics.py -v
           python3 -B test/test_companion_help_writer.py -v
+          python3 -B test/test_cli_reply_text.py -v
           python3 -B test/test_companion_help_build_policy.py -v
           python3 -B test/test_sdcard_cli_parity.py -v
           python3 -B test/test_esp32_buffered_radio_targets.py -v
@@ -1026,6 +1053,7 @@ jobs:
           python3 -B test/test_nrf52_svc_compat.py -v
           python3 -B test/test_nrf52_ble_cccd_fix.py -v
           python3 -B test/test_nrf52_ble_disconnect.py -v
+          python3 -B test/test_nrf52_ble_usb_lifecycle.py -v
           pip install unicorn==2.1.4
           python3 -B test/test_nrf52_ble_dfu_fix.py -v
 
@@ -1044,6 +1072,9 @@ jobs:
           python3 -B test/test_espnow_runtime.py -v
           python3 -B test/test_espnow_bridge_diagnostics.py -v
           python3 -B test/test_espnow_diagnostic_cli.py -v
+          python3 -B test/test_espnow_peer.py -v
+          python3 -B tools/hil/test_split_radio_probe.py -v
+          python3 -B tools/hil/test_split_radio_hardware_test.py -v
           python3 -B test/test_wifi_ota_lifecycle.py -v
 
       - name: Verify message reader buttons, touch targets, and footer layouts

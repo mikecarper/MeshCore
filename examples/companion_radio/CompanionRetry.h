@@ -1,5 +1,7 @@
 #pragma once
 
+#include <helpers/CLIReplyText.h>
+
 #include <cstdio>
 #include <cstring>
 #include <cstdint>
@@ -87,7 +89,7 @@ bool handleRetryCommand(CompanionNodePrefs& prefs, const char* command,
     prefs.flood_retry_max_path = old_path;
     prefs.flood_retry_group_max_path = old_group_path;
     prefs.flood_retry_advert_enabled = old_advert;
-    snprintf(reply, reply_size, "Error: retry setting could not be saved");
+    snprintf(reply, reply_size, MESH_CLI_REPLY_TEXT("Error: retry setting could not be saved", "Error: retry setting not saved"));
     return true;
   }
   if (old_count != 0 && prefs.flood_retry_attempts == 0) cancel_flood_retries();

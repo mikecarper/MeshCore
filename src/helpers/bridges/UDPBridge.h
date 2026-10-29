@@ -44,6 +44,7 @@ private:
   // stops until it drains. No packet allocation for probes or invalid frames.
   uint8_t _rx_payload[mesh::bridge::udp::MAX_PAYLOAD]{};
   uint16_t _rx_length = 0;
+  uint8_t _rx_peer = 0;
   struct Stats {
     uint32_t frames = 0, authenticated = 0, delivered = 0;
     uint32_t malformed = 0, authentication = 0, foreign = 0, replay = 0;

@@ -6,6 +6,7 @@
 #include "helpers/UsbLogging.h"
 #include "helpers/BatteryChargeSupport.h"
 #include "helpers/BatteryCalibration.h"
+#include "helpers/EmergencyPowerConfig.h"
 #include "helpers/RegulatorMode.h"
 #include "helpers/PowerSavingDiagnostics.h"
 #include "helpers/LedPolicy.h"
@@ -202,6 +203,18 @@ public:
     return false;
   }
   virtual void enterDeepSleep(uint32_t secs) { (void)secs; }
+#if MESH_ENABLE_EMERGENCY_POWER
+  // Resumable CPU sleep after the caller has suspended RF and drained owners.
+  // Capability describes the backend, not whether this attempt can sleep.
+  virtual bool supportsEmergencySleep() const { return false; }
+  virtual bool emergencySleepMilliseconds(uint32_t millisecs) {
+    (void)millisecs;
+    return false;
+  }
+  // Quiesce only board-specific RF controls after owned warm radio sleep;
+  // restore their prior state before the caller wakes the radio.
+  virtual void setEmergencyRadioSleeping(bool sleeping) { (void)sleeping; }
+#endif
   // Called by example setup() functions to signal that boot is complete.
   // Boards may override to stop a boot-indicator LED sequence or similar.
   // Default no-op: boards that don't care need not implement anything.

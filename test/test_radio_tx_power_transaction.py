@@ -11,6 +11,7 @@ ROOT = Path(__file__).resolve().parents[1]
 HARNESS = r'''
 #include <cassert>
 #include <cstdint>
+#include <helpers/RadioDirectionPolicy.h>
 #include <initializer_list>
 #define MESH_DEBUG_PRINTLN(...) ((void)0)
 #define RADIOLIB_ERR_NONE 0

@@ -20,6 +20,7 @@ MOCKS = r'''
 #include <helpers/bridges/RS232Heartbeat.h>
 #include <helpers/bridges/RS232BridgeDiagnostics.h>
 #include <helpers/bridges/ESPNowBridgeDiagnostics.h>
+#include <helpers/BridgeIngressProfile.h>
 #define MAX_TRANS_UNIT 255
 #define PAYLOAD_TYPE_OTA 0x0c
 using portMUX_TYPE=int;
@@ -29,15 +30,19 @@ struct esp_now_send_info_t {const uint8_t* des_addr;};
 constexpr int ESP_ERR_ESPNOW_NO_MEM=-77;
 constexpr int ESP_ERR_INVALID_STATE=-78,ESP_ERR_INVALID_ARG=-79;
 constexpr int ESP_ERR_TIMEOUT=-80;
-enum wifi_ps_type_t {WIFI_PS_NONE=0,WIFI_PS_MIN_MODEM=1};
-int esp_wifi_get_ps(wifi_ps_type_t* value){*value=WIFI_PS_NONE;return sdk_initialized?ESP_OK:-1;}
+int esp_wifi_get_ps(wifi_ps_type_t* value){*value=wifi_ps;return sdk_initialized?ESP_OK:-1;}
 int esp_wifi_get_protocol(int,uint8_t* value){*value=15;return sdk_initialized?ESP_OK:-1;}
+int esp_wifi_get_mac(int,uint8_t* value){
+ const uint8_t mac[]={2,16,32,48,64,80};memcpy(value,mac,sizeof(mac));return sdk_initialized?ESP_OK:-1;
+}
 uint32_t now_ms=100;
 uint32_t millis(){return now_ms;}
 int send_result=0,send_calls=0;
 std::vector<std::vector<uint8_t>> sent;
-int esp_now_send(const uint8_t*,const uint8_t* bytes,size_t len){
+std::vector<std::array<uint8_t,6>> sent_peers;
+int esp_now_send(const uint8_t* destination,const uint8_t* bytes,size_t len){
  assert(espnow_active);++send_calls;
+ std::array<uint8_t,6> address;memcpy(address.data(),destination,6);sent_peers.push_back(address);
  if(send_result!=ESP_OK)return send_result;
  sent.emplace_back(bytes,bytes+len);return ESP_OK;
 }
@@ -61,6 +66,7 @@ size_t nrf52DebugPrintf(const char* format,...){
 }
 struct RTCClock {};
 struct Packet {
+ mesh::bridge::IngressSource ingress_source;
  uint8_t data[MAX_TRANS_UNIT]={};uint16_t length=4;
  bool readFrom(const uint8_t* bytes,size_t len){
   if(len==0||len>sizeof(data)||bytes[0]==0xee)return false;
@@ -75,13 +81,14 @@ struct PacketManager {
  std::array<Packet,8> pool;std::array<bool,8> used{};
  bool exhausted=false;unsigned frees=0,allocs=0;
  std::vector<uint8_t> received;
+ std::vector<mesh::bridge::IngressSource> received_sources;
  Packet* allocNew(){
   if(exhausted)return nullptr;
   for(size_t i=0;i<used.size();++i)if(!used[i]){used[i]=true;++allocs;return &pool[i];}
   return nullptr;
  }
  void free(Packet* p){size_t i=p-pool.data();assert(i<used.size()&&used[i]);used[i]=false;++frees;}
- void queueInbound(Packet* p,uint32_t){received.push_back(p->data[0]);free(p);}
+ void queueInbound(Packet* p,uint32_t){received.push_back(p->data[0]);received_sources.push_back(p->ingress_source);free(p);}
 };
 }
 struct NodePrefs {
@@ -112,7 +119,16 @@ public:
  virtual void begin()=0;virtual void end()=0;virtual void loop()=0;
  virtual void sendPacket(mesh::Packet*)=0;virtual void onPacketReceived(mesh::Packet*)=0;
  bool allowsPacket(const mesh::Packet*)const{return allowed;}
- bool preparePacketIngress(mesh::Packet*)const{return true;}
+ bool preparePacketIngress(mesh::Packet* packet)const{
+   packet->ingress_source=ingress_source?*ingress_source:mesh::bridge::IngressSource();return true;
+ }
+ const mesh::bridge::IngressSource* ingress_source=nullptr;
+ struct IngressSourceScope {
+  BridgeBase& owner;const mesh::bridge::IngressSource* previous;
+  IngressSourceScope(BridgeBase& bridge,const mesh::bridge::IngressSource& source)
+   :owner(bridge),previous(bridge.ingress_source){owner.ingress_source=&source;}
+  ~IngressSourceScope(){owner.ingress_source=previous;}
+ };
  static uint16_t fletcher16(const uint8_t*,size_t);
  bool validateChecksum(const uint8_t*,size_t,uint16_t);
  void handleReceivedPacket(mesh::Packet*);
@@ -350,12 +366,15 @@ int main(){
  bridge.queueReceivedFrame(mac,p.data,p.length);mgr.exhausted=true;bridge.loop();
  assert(bridge._rx_count==1&&mgr.received.empty());
  mgr.exhausted=false;bridge.loop();assert((mgr.received==std::vector<uint8_t>{1}));
+ assert(mgr.received_sources.size()==1&&mgr.received_sources.back().kind==mesh::bridge::IngressSource::Kind::Mac);
+ assert(memcmp(mgr.received_sources.back().bytes,mac,6)==0&&bridge.ingress_source==nullptr);
  mesh::espnow::ESPNowRawFrames fragments;auto full=packet(2,255);
  assert(mesh::espnow::encodeEspNowRawFrames(full.data,full.length,fragments));
  bridge.queueReceivedFrame(mac,fragments.data[0],fragments.lengths[0]);bridge.loop();
  bridge.queueReceivedFrame(mac,fragments.data[1],fragments.lengths[1]);mgr.exhausted=true;
  bridge.loop();assert(bridge._rx_count==1&&mgr.received.size()==1);
  mgr.exhausted=false;bridge.loop();assert((mgr.received==std::vector<uint8_t>{1,2}));
+ assert(mgr.received_sources.size()==2&&memcmp(mgr.received_sources.back().bytes,mac,6)==0);
  auto blocked=packet(3);bridge.allowed=false;bridge.queueReceivedFrame(mac,blocked.data,blocked.length);
  bridge.loop();assert(mgr.received.size()==2);bridge.allowed=true;
  auto bad=packet(0xee);bridge.queueReceivedFrame(mac,bad.data,bad.length);bridge.loop();

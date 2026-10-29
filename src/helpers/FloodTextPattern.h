@@ -9,8 +9,8 @@ namespace flood {
 
 // Byte patterns: substring search by default, ^/$ anchors, ., escaped literals,
 // classes/ranges/[^...], groups, alternation, and *, +, ? repetition. Matching is
-// case-sensitive unless ASCII case folding is explicitly requested. No heap or
-// backtracking is used; one budget can be shared across every rule for a packet.
+// case-sensitive unless a leading (?i) or the caller requests ASCII folding.
+// No heap or backtracking; one budget can cover every rule for a packet.
 static constexpr size_t MAX_TEXT_PATTERN_LENGTH = 63;
 static constexpr uint32_t TEXT_PATTERN_WORK_BUDGET = 32768;
 
@@ -236,6 +236,18 @@ inline uint8_t fold(uint8_t byte) {
   return byte >= 'A' && byte <= 'Z' ? uint8_t(byte + ('a' - 'A')) : byte;
 }
 
+// The modifier stays in the saved pattern, so no rule-layout change is needed.
+// Count it toward the existing limit before removing it for the compiler.
+inline bool preparePattern(const char*& pattern, size_t& length, bool& ignoreCase) {
+  if (!pattern || length > MAX_TEXT_PATTERN_LENGTH) return false;
+  if (length >= 4 && memcmp(pattern, "(?i)", 4) == 0) {
+    pattern += 4;
+    length -= 4;
+    ignoreCase = true;
+  }
+  return true;
+}
+
 inline uint8_t classChar(const char* pattern, uint8_t& cursor) {
   uint8_t byte = uint8_t(pattern[cursor++]);
   if (byte == '\\') byte = uint8_t(pattern[cursor++]);
@@ -272,6 +284,8 @@ inline int classMatches(const char* pattern, uint8_t cursor, uint8_t byte, bool 
 } // namespace pattern_detail
 
 inline bool textPatternValid(const char* pattern, size_t patternLength) {
+  bool ignoreCase = false;
+  if (!pattern_detail::preparePattern(pattern, patternLength, ignoreCase)) return false;
   pattern_detail::State states[pattern_detail::MAX_STATES];
   uint8_t start;
   return pattern_detail::Compiler(pattern, patternLength, states).compile(start);
@@ -282,6 +296,7 @@ inline PatternMatchResult matchTextPattern(const char* pattern, size_t patternLe
                                           bool ignoreCase = false, uint32_t* remainingWork = nullptr) {
   using namespace pattern_detail;
   if (!text && textLength) return PatternMatchResult::Invalid;
+  if (!preparePattern(pattern, patternLength, ignoreCase)) return PatternMatchResult::Invalid;
   State states[MAX_STATES];
   uint8_t start;
   if (!Compiler(pattern, patternLength, states).compile(start)) return PatternMatchResult::Invalid;

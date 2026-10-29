@@ -2,6 +2,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <vector>
+#include <helpers/BridgeIngressProfile.h>
 #if defined(ARDUINO)
 #include <Stream.h>
 #include <cstdarg>
@@ -63,6 +64,7 @@ struct PacketManager {
   bool starved = false;
   unsigned allocations = 0, frees = 0;
   std::vector<std::vector<uint8_t>> received;
+  std::vector<mesh::bridge::IngressSource> received_sources;
   Packet* allocNew() {
     ++allocations;
     return starved ? nullptr : new Packet;
@@ -93,6 +95,14 @@ public:
   bool isRunning() const { return _initialized; }
   size_t seenCount() const { return _seen_packets.seen.size(); }
 protected:
+  const mesh::bridge::IngressSource* ingress_source = nullptr;
+  struct IngressSourceScope {
+    BridgeBase& owner;
+    const mesh::bridge::IngressSource* previous;
+    IngressSourceScope(BridgeBase& bridge, const mesh::bridge::IngressSource& source)
+      : owner(bridge), previous(bridge.ingress_source) { owner.ingress_source = &source; }
+    ~IngressSourceScope() { owner.ingress_source = previous; }
+  };
   enum class IngressResult : uint8_t { Stopped, Filtered, Duplicate, Queued };
   virtual void onIngressResult(IngressResult) {}
   bool _initialized = false;
@@ -120,6 +130,7 @@ protected:
     }
     if (packet->getPayloadType() != PAYLOAD_TYPE_OTA) _seen_packets.markSeen(packet);
     onIngressResult(IngressResult::Queued);
+    _mgr->received_sources.push_back(ingress_source ? *ingress_source : mesh::bridge::IngressSource());
     _mgr->received.push_back(packet->payload); _mgr->free(packet);
   }
 };

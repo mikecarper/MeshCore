@@ -3,6 +3,7 @@
 #include <stddef.h>
 #include <stdint.h>
 #include <string.h>
+#include <helpers/RadioProfilePresets.h>
 
 // Local labels, not part of a hashtag PSK. Keep the original app label/key.
 enum class CompanionChannelKind : uint8_t { MeshCore, Radio2, Meshtext, Invalid };
@@ -28,6 +29,14 @@ inline CompanionChannelAlias parseCompanionChannelAlias(const char* name) {
       && (tail[0] == 0 || tail[0] == '#' || strncmp(tail, "r2-", 3) == 0
           || strncmp(tail, "mt-", 3) == 0)) kind = CompanionChannelKind::Invalid;
   return {kind, hashtag, tail};
+}
+
+// Only exact named radio2 aliases request RF setup. Ordinary channels and
+// arbitrary r2 labels keep the operator's existing profile.
+inline const char* companionChannelRadio2Preset(const char* name) {
+  const auto alias = parseCompanionChannelAlias(name);
+  return alias.kind == CompanionChannelKind::Radio2
+      && mesh::cli::radio2PresetTuple(alias.tail) ? alias.tail : nullptr;
 }
 
 inline bool companionChannelCanonicalName(const char* name, char* out, size_t size) {

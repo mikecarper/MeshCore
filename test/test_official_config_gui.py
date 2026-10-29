@@ -191,6 +191,7 @@ def cli_source(*, lf_reply=False, reject_cr=False, platform="ESP32_PLATFORM",
     common = (ROOT / "src/helpers/CommonCLI.cpp").read_text()
     time_handler = body(common, 'if (memcmp(command, "time ", 5) == 0)')
     support = r'''
+#include <helpers/CLIReplyText.h>
 struct RTC { uint32_t utc=1715770351; uint32_t getCurrentTime(){return utc;}
   void setCurrentTime(uint32_t value){utc=value;} } rtc;
 struct ClockCallbacks { void onManualClockSet(){} } clock_callbacks;
@@ -225,7 +226,8 @@ class OfficialConfigGuiTests(unittest.TestCase):
 
     def run_contract(self, *, blocking=False, lf_reply=False, reject_cr=False,
                      extra_boot_ms=0, platform="ESP32_PLATFORM", raw_uart=False,
-                     preconnect_idle_ms=0, lose_raw_uart_guard=False):
+                     preconnect_idle_ms=0, lose_raw_uart_guard=False,
+                     compact_replies=False):
         with tempfile.TemporaryDirectory(prefix="official-config-gui-") as directory:
             work = Path(directory)
             gui = self.sources["src/gui.js"].read_text()
@@ -281,7 +283,8 @@ class OfficialConfigGuiTests(unittest.TestCase):
                              "-DCONFIG_TINYUSB_ENABLED=0"]
                 cli_sources = []
             command = [self.compiler, "-std=c++17", "-Wall", "-Wextra",
-                       *cli_flags, *sanitize, "-I", str(ROOT / "src"),
+                       *cli_flags, f"-DMESH_CLI_COMPACT_REPLIES={int(compact_replies)}",
+                       *sanitize, "-I", str(ROOT / "src"),
                        str(cli_cpp), *cli_sources, "-o", str(cli)]
             built = subprocess.run(command, text=True, capture_output=True, timeout=60)
             self.assertEqual(built.returncode, 0, built.stdout + built.stderr)
@@ -351,8 +354,11 @@ class OfficialConfigGuiTests(unittest.TestCase):
         # Use nRF52's compiled GPS guards, actual USB transport/callbacks and
         # production repeater CR command pump/time reply with DTR low. Add
         # setup's one-second settle; filesystem/radio timing is not invented.
-        result = self.run_contract(platform="NRF52_PLATFORM", extra_boot_ms=1000)
-        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        for compact in (False, True):
+            with self.subTest(compact_replies=compact):
+                result = self.run_contract(platform="NRF52_PLATFORM", extra_boot_ms=1000,
+                                           compact_replies=compact)
+                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
     def test_nrf52_old_blocking_gps_breaks_stock_gui_initial_time(self):
         # Reinsert the former five-second GPS wait without changing the

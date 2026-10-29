@@ -22,8 +22,14 @@ STUBS = r'''
 #define portMUX_INITIALIZER_UNLOCKED 0
 using portMUX_TYPE=int;
 using esp_err_t=int;
+constexpr int ESP_ERR_WIFI_NOT_INIT=-91;
 constexpr int ESP_OK=0,WIFI_IF_STA=0,WIFI_PROTOCOL_LR=8,WIFI_PHY_MODE_LR=1,WIFI_PHY_RATE_LORA_250K=2;
 enum wifi_mode_t {WIFI_OFF=0,WIFI_STA=1,WIFI_AP=2,WIFI_AP_STA=3};
+enum wifi_ps_type_t {WIFI_PS_NONE=0,WIFI_PS_MIN_MODEM=1,WIFI_PS_MAX_MODEM=2};
+int esp_wifi_set_ps(wifi_ps_type_t){return 0;}
+namespace mesh {namespace bridge {
+bool copyEspNowPeer(uint8_t* address){memset(address,255,6);return true;}
+}}
 enum esp_now_send_status_t {ESP_NOW_SEND_SUCCESS=0,ESP_NOW_SEND_FAIL=1};
 struct esp_now_send_info_t {};
 struct esp_now_recv_info_t {const uint8_t* src_addr;};
@@ -33,6 +39,9 @@ int failure=0,init_calls=0,deinit_calls=0,wake_refs=0,send_calls=0,power=0;
 bool sdk_active=false;uint32_t millis(){return 1234;}
 struct FakeWiFi {
  wifi_mode_t current=WIFI_OFF;bool autoreconnect=true;
+ wifi_ps_type_t cached_sleep=WIFI_PS_MIN_MODEM;
+ wifi_ps_type_t getSleep(){return cached_sleep;}
+ bool setSleep(wifi_ps_type_t value){if(value==cached_sleep)return false;cached_sleep=value;return true;}
  void persistent(bool){}
  wifi_mode_t getMode(){return current;}
  int channel(){return current==WIFI_OFF?0:6;}
@@ -188,7 +197,7 @@ class EspNowLifecycleTests(unittest.TestCase):
 
     def test_bridge_preserves_infrastructure_wifi(self):
         source=(ROOT/'src/helpers/bridges/ESPNowBridge.cpp').read_text()
-        methods=method(source,'static void stopBridgeWiFiIfUnused(')+'\n'
+        methods=method(source,'static bool stopBridgeWiFiIfUnused(')+'\n'+method(source,'static void stopBridgeWiFiAndReleaseSleepPreference(')+'\n'
         methods+='\n'.join(method(source,f'void ESPNowBridge::{name}(').replace('ESPNowBridge::','Bridge::')
                            for name in ('begin','end'))
         harness=STUBS.replace('assert(peer->channel==0)', 'assert(peer->channel==6)')+r'''
@@ -209,7 +218,7 @@ int esp_wifi_set_mode(int){return 0;}
 int esp_wifi_start(){++wifi_starts;return 0;}
 int esp_wifi_stop(){++wifi_stops;return 0;}
 int esp_wifi_deinit(){wifi_initialized=false;return 0;}
-int esp_wifi_get_mode(wifi_mode_t* mode){*mode=WIFI_STA;return wifi_initialized?0:-1;}
+int esp_wifi_get_mode(wifi_mode_t* mode){*mode=WIFI_STA;return wifi_initialized?0:ESP_ERR_WIFI_NOT_INIT;}
 int esp_wifi_get_channel(uint8_t* channel,wifi_second_chan_t*){*channel=wifi_channel;return 0;}
 int esp_wifi_set_channel(int channel,int){wifi_channel=channel;return 0;}
 int esp_now_del_peer(const uint8_t*){return 0;}
@@ -232,9 +241,11 @@ public:
  struct Prefs {int bridge_format=mesh::bridge::ESPNOW_FORMAT_RAW;uint8_t bridge_channel=6;} prefs;
  Prefs* _prefs=&prefs;bool _initialized=false;
  int _active_format=0,_rx_mux=0,_rx_head=0,_rx_tail=0,_rx_count=0,_rx_dropped=0,_rx_dropped_reported=0;
+ uint8_t _active_peer[6]={255,255,255,255,255,255};
  int _tx_mux=0,_tx_head=0,_tx_tail=0,_tx_count=0,_tx_waiting=0,_tx_callback_done=0;
  int _tx_callback_status=0,_tx_dropped=0,_tx_dropped_reported=0;
  uint32_t _tx_started_at=0,_tx_retry_at=0;bool _sdk_teardown_failed=false;
+ uint8_t _previous_wifi_sleep=0;bool _wifi_sleep_preference_owned=false;
  mesh::espnow::ESPNowRawReassembler _raw_reassembler;
  struct QueuedTransmit {bool started=false,diagnostic=false;int seen_key=0;};
  static constexpr int TX_QUEUE_DEPTH=2;
@@ -340,7 +351,7 @@ struct {
 
     def test_bridge_arduino_sdk_handoffs_and_partial_startup(self):
         source = (ROOT/'src/helpers/bridges/ESPNowBridge.cpp').read_text()
-        methods = method(source, 'static void stopBridgeWiFiIfUnused(') + '\n'
+        methods = method(source, 'static bool stopBridgeWiFiIfUnused(') + '\n' + method(source, 'static void stopBridgeWiFiAndReleaseSleepPreference(') + '\n'
         methods += '\n'.join(
             method(source, f'void ESPNowBridge::{name}(').replace('ESPNowBridge::', 'Bridge::')
             for name in ('begin', 'end')

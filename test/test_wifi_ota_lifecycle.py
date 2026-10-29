@@ -58,6 +58,8 @@ unsigned millis() { return clock_ms; }
 void delay(unsigned amount) { clock_ms += amount; }
 int esp_wifi_stop();
 int esp_wifi_deinit();
+using esp_err_t=int;
+constexpr int ESP_ERR_WIFI_NOT_INIT=-91;
 constexpr int ESP_OK = 0;
 constexpr int LISTEN = 10;
 
@@ -154,7 +156,7 @@ int esp_wifi_stop() {
 }
 int esp_wifi_deinit() { ++wifi_deinit_calls; sdk_initialized = false; return 0; }
 int esp_wifi_get_mode(wifi_mode_t* mode) {
-  if (!sdk_initialized) return -1;
+  if (!sdk_initialized) return ESP_ERR_WIFI_NOT_INIT;
   *mode = sdk_ap_active ? WIFI_AP : WIFI_STA;
   return ESP_OK;
 }
@@ -316,7 +318,7 @@ def production_harness():
         "#elif defined(ADMIN_PASSWORD) && !defined(DISABLE_WIFI_OTA)")
     start_ota = method(board_source[elegant:], "bool ESP32Board::startOTAUpdate(")
     enabled = method(infrastructure, "uint8_t enabled() const override")
-    cleanup = method(bridge, "static void stopBridgeWiFiIfUnused(")
+    cleanup = method(bridge, "static bool stopBridgeWiFiIfUnused(")
     ota_running = method(board_header, "bool isOTAUpdateRunning() const override")
     ap_policy = (ROOT / "src/helpers/esp32/WiFiAccessPointPolicy.h").read_text()
     return (STUBS.replace("@ENABLED@", enabled).replace("@CLEANUP@", cleanup)

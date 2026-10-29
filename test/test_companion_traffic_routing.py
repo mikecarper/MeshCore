@@ -142,6 +142,7 @@ int main() {
 
 
 METHOD_HARNESS = r'''
+#include <helpers/CLIReplyText.h>
 #include <cassert>
 #include <cstdio>
 #include <cstdint>

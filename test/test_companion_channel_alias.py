@@ -17,6 +17,8 @@ HASH_NAMES = (
     "#emergency", "#r2-emergency", "#mt-emergency",
     "#custom", "#r2-custom", "#mt-custom",
     "#EMERGENCY", "#Emergency", "emergency", "Emergency", "#emergency-test",
+    "#mediamesh", "#r2-mediamesh", "r2-mediamesh",
+    "#mediamesh-range", "#r2-mediamesh-range", "r2-mediamesh-range",
 )
 
 HARNESS = r'''
@@ -79,6 +81,28 @@ static void grammar() {
                            "r2-r2-room", "r2-mt-room", "mt-r2-room", "mt-mt-room",
                            "#r2-r2-room", "#r2-mt-room", "#mt-r2-room", "#mt-mt-room"}) {
     assert(parseCompanionChannelAlias(name).kind == CompanionChannelKind::Invalid);
+  }
+  for (const char* name : {"#r2-mediamesh", "r2-mediamesh",
+                           "#r2-mediamesh-range", "r2-mediamesh-range"}) {
+    const auto alias = parseCompanionChannelAlias(name);
+    assert(companionChannelRadio2Preset(name));
+    assert(!strcmp(companionChannelRadio2Preset(name), alias.tail));
+  }
+  for (const char* name : {"#mediamesh", "mediamesh", "#mt-mediamesh",
+                           "#r2-MediaMesh", "#r2-mediamesh-extra", "#r2-mediamesh,32",
+                           "#r2-mt-mediamesh", "#r2-", ""}) {
+    assert(!companionChannelRadio2Preset(name));
+  }
+  assert(!companionChannelRadio2Preset(nullptr));
+  for (const char* prefix : {"", "#", "r2-", "#r2-", "mt-", "#mt-", "r2-r2-", "#r2-mt-"}) {
+    for (const char* tail : {"", "r", "r2", "#", "mediamesh", "mediamesh-range",
+                             "MediaMesh", "mediamesh-extra", "mediamesh,32"}) {
+      char name[64]; snprintf(name, sizeof(name), "%s%s", prefix, tail);
+      const auto alias = parseCompanionChannelAlias(name);
+      const char* expected = alias.kind == CompanionChannelKind::Radio2
+          && mesh::cli::radio2PresetTuple(alias.tail) ? alias.tail : nullptr;
+      assert(companionChannelRadio2Preset(name) == expected);
+    }
   }
   puts("PASS grammar");
 }
@@ -390,7 +414,24 @@ struct Serial {
 '''
 
 COMMAND_MEMBERS = r'''
+  void handleSetChannelFrame(const uint8_t*);
   Serial serial; Serial* _serial = &serial;
+  struct ProfileSetup {
+    bool stage_ok = true, commit_ok = true, pending = false;
+    unsigned stages = 0, commits = 0, cancels = 0;
+    char requested[32] = {};
+    bool stageChannelPreset(const char* name) {
+      ++stages;
+      if (!stage_ok) return false;
+      strcpy(requested, name); pending = true; return true;
+    }
+    bool finishChannelPreset(bool commit) {
+      assert(pending);
+      if (commit) { ++commits; if (!commit_ok) return false; }
+      else ++cancels;
+      pending = false; return true;
+    }
+  } _radio_profiles;
   bool save_result = true, ok = false; int error = -1; unsigned save_calls = 0;
   bool saveChannels() { ++save_calls; return save_result; }
   void writeErrFrame(uint8_t code) { error = code; }
@@ -985,7 +1026,7 @@ class CompanionChannelAliasTest(unittest.TestCase):
             "@KEY_VECTORS@", key_vectors).replace("@METHODS@", methods).replace("@SAVE_GETTER@", save_getter)
         self.run_native_program(source_text, "runtime")
 
-    def test_production_binary_get_set_raw_keys_and_rollback(self):
+    def binary_channel_program(self, cases=None):
         companion = (ROOT / "examples/companion_radio/MyMesh.cpp").read_text(encoding="utf-8")
         header = (ROOT / "examples/companion_radio/MyMesh.h").read_text(encoding="utf-8")
         signatures = ("bool MyMesh::isAliasRadio2Defined(", "bool MyMesh::resolveChannelAlias(",
@@ -997,10 +1038,11 @@ class CompanionChannelAliasTest(unittest.TestCase):
             "if (cmd_frame[0] == CMD_SET_CHANNEL && len >= 2 + 32 + 32)",
             "if (cmd_frame[0] == CMD_SET_CHANNEL && len >= 2 + 32 + 16)",
         )
+        methods += "\n" + body(companion, "void MyMesh::handleSetChannelFrame(")
         branches = " else ".join(body(companion, signature) for signature in command_signatures)
         macros = ("CMD_GET_CHANNEL", "CMD_SET_CHANNEL", "RESP_CODE_CHANNEL_INFO",
                   "ERR_CODE_UNSUPPORTED_CMD", "ERR_CODE_NOT_FOUND", "ERR_CODE_FILE_IO_ERROR",
-                  "ERR_CODE_ILLEGAL_ARG")
+                  "ERR_CODE_ILLEGAL_ARG", "ERR_CODE_BAD_STATE")
         constants = "\n".join(re.search(r"^#define\s+" + name + r"\s+[^\r\n]+", companion,
                                         flags=re.MULTILINE).group(0) for name in macros)
         shared = HARNESS[:HARNESS.index("static void assertAlias(")]
@@ -1008,10 +1050,86 @@ class CompanionChannelAliasTest(unittest.TestCase):
         fixture = fixture.replace("class MyMesh :", COMMAND_STUBS + "\nclass MyMesh :")
         fixture = fixture.replace("@SAVE_GETTER@", save_getter + "\n" + COMMAND_MEMBERS)
         vectors, key_vectors = oracle_vectors()
-        source_text = (shared + constants + "\n" + fixture + COMMAND_HARNESS).replace(
+        commands = COMMAND_HARNESS if cases is None else (
+            COMMAND_HARNESS[:COMMAND_HARNESS.index("\nint main() {")] + cases)
+        source_text = (shared + constants + "\n" + fixture + commands).replace(
             "@VECTORS@", vectors).replace("@KEY_VECTORS@", key_vectors).replace(
             "@METHODS@", methods).replace("@COMMAND_BRANCHES@", branches)
-        self.run_native_program(source_text, "command")
+        return source_text
+
+    def test_production_binary_get_set_raw_keys_and_rollback(self):
+        self.run_native_program(self.binary_channel_program(), "command")
+
+    def test_mediamesh_joins_stage_setup_and_ack_only_after_both_saves(self):
+        cases = r'''
+int main() {
+  for (const char* name : {"#r2-mediamesh", "r2-mediamesh",
+                           "#r2-mediamesh-range", "r2-mediamesh-range"}) {
+    MyMesh node;
+    auto joined = channel(name);
+    applySet(node,0,joined);
+    assert(node.ok && node.error==-1 && node.save_calls==1);
+    expectRaw(node,0,joined);
+    expectGet(node,0,joined);
+    const char* preset=companionChannelRadio2Preset(name);
+    assert(node._radio_profiles.stages==1 && node._radio_profiles.commits==1);
+    assert(!node._radio_profiles.pending && !strcmp(node._radio_profiles.requested,preset));
+    // App replay, key edit and hashtag-only rename are not new preset choices.
+    applySet(node,0,joined);
+    for(unsigned i=0;i<16;++i)joined.channel.secret[i]=uint8_t(i+1);
+    applySet(node,0,joined);
+    strcpy(joined.name,name[0]=='#' ? name+1 : (strstr(name,"-range") ? "#r2-mediamesh-range":"#r2-mediamesh"));
+    applySet(node,0,joined);
+    assert(node.ok && node._radio_profiles.stages==1);
+    // A different newly joined preset selects radio2 even if another named
+    // channel remains in its slot; there is only one shared radio2 profile.
+    auto other=channel(strstr(name,"-range") ? "#r2-mediamesh":"#r2-mediamesh-range");
+    applySet(node,1,other);
+    assert(node.ok && node._radio_profiles.stages==2 && node._radio_profiles.commits==2);
+    assert(!strcmp(node._radio_profiles.requested,companionChannelRadio2Preset(other.name)));
+    ChannelDetails empty{};applySet(node,1,empty);
+    assert(node.ok && node._radio_profiles.stages==2); // removal is not radio2 Off
+    applySet(node,1,other);
+    assert(node.ok && node._radio_profiles.stages==3);
+  }
+  for(bool stage_fail:{false,true}) {
+    MyMesh node;const auto before=channel("#custom");assert(node.setChannel(0,before));
+    node._radio_profiles.stage_ok=!stage_fail;node.save_result=stage_fail;
+    applySet(node,0,channel("#r2-mediamesh"));
+    assert(!node.ok && node.error==(stage_fail ? ERR_CODE_BAD_STATE:ERR_CODE_FILE_IO_ERROR));
+    assert(node.save_calls==(stage_fail ? 0u:1u));expectRaw(node,0,before);
+    assert(!node._radio_profiles.pending && node._radio_profiles.commits==0);
+    assert(node._radio_profiles.cancels==(stage_fail ? 0u:1u));
+  }
+  {
+    MyMesh node;const auto before=channel("#custom");assert(node.setChannel(0,before));
+    node._radio_profiles.commit_ok=false;
+    applySet(node,0,channel("#r2-mediamesh-range"));
+    assert(!node.ok && node.error==ERR_CODE_FILE_IO_ERROR && node.save_calls==2);
+    expectRaw(node,0,before);assert(!node._radio_profiles.pending && node._radio_profiles.cancels==1);
+  }
+  {
+    // An mt- fallback label on a build without Meshtext must not be made
+    // unusable by silently enabling radio2 with another channel's join.
+    MyMesh node;const auto mt=channel("#mt-emergency");assert(node.setChannel(1,mt));
+    applySet(node,0,channel("#r2-mediamesh"));
+    assert(!node.ok && node.error==ERR_CODE_BAD_STATE);
+    assert(!node._radio_profiles.stages && !node.save_calls);expectRaw(node,1,mt);
+  }
+  {
+    MyMesh node;applySet(node,MAX_GROUP_CHANNELS,channel("#r2-mediamesh"));
+    assert(!node.ok && node.error==ERR_CODE_NOT_FOUND && !node._radio_profiles.stages);
+    for(const char* name:{"#mediamesh","#r2-custom","#r2-emergency"}) {
+      applySet(node,0,channel(name));assert(node.ok && !node._radio_profiles.stages);
+    }
+    // Disk loading has no RF side effect. An operator's later Off remains Off.
+    assert(node.setChannel(1,channel("#r2-mediamesh")));
+    assert(!node._radio_profiles.stages);
+  }
+  puts("PASS mediamesh-join");
+}
+'''
+        self.run_native_program(self.binary_channel_program(cases), "mediamesh-join")
 
     def test_production_binary_get_zero_pads_dirty_fixed_width_name(self):
         companion = (ROOT / "examples/companion_radio/MyMesh.cpp").read_text(encoding="utf-8")
@@ -1060,6 +1178,7 @@ class CompanionChannelAliasTest(unittest.TestCase):
                 "MyMesh::Frame& MyMesh::heldDMFrameAt(",
                 "void MyMesh::removeHeldOneKeyDM(",
             )) + "\n#endif\n"
+        methods += "\n" + body(companion, "void MyMesh::handleSetChannelFrame(")
         branches = " else ".join(body(companion, signature) for signature in (
             "if (cmd_frame[0] == CMD_GET_CHANNEL && len >= 2)",
             "if (cmd_frame[0] == CMD_SET_CHANNEL && len >= 2 + 32 + 32)",

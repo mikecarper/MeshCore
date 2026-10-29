@@ -32,6 +32,7 @@ struct DisplayPowerPrefs {
   DisplayInboxMode inbox = DisplayInboxMode::History;
   // Runtime role policy, not serialized with the user's display settings.
   bool wake_on_boot = false;
+  bool first_install_boot = false;
 };
 
 inline DisplayPowerPrefs& displayPowerPrefs() {
@@ -72,7 +73,9 @@ class DisplayPowerPolicy {
   DisplayPowerProfile _profile;
   bool _initialized = false, _usb = false, _connected = false, _pairing = false;
   bool _timed = false;
+  bool _first_install_active = false;
   uint32_t _deadline = 0;
+  uint32_t _first_install_deadline = 0;
 public:
   void update(const DisplayPowerPrefs& prefs, bool usb, bool connected,
               bool pairing, uint32_t now) {
@@ -88,19 +91,28 @@ public:
     if (reset) {
       _timed = false;
       _initialized = true;
-      // Companions show startup for the normal button timeout. Only the first
-      // initialization counts; changing profiles must not synthesize input.
-      if (startup && prefs.wake_on_boot && (_profile.mode == DisplayMode::Button
-          || _profile.mode == DisplayMode::ButtonPairing)) {
-        wake(DisplayWake::Button, now);
-      } else {
-        wake(DisplayWake::Boot, now);
+      if (startup && prefs.first_install_boot && _profile.mode != DisplayMode::Off) {
+        // Give a new installation time for setup after the normal UI is ready.
+        // This is independent of saved timeouts, app connections and USB power.
+        _first_install_active = true;
+        _first_install_deadline = now + 120000UL;
+      } else if (!_first_install_active) {
+        // Companions show startup for the normal button timeout. Only the first
+        // initialization counts; changing profiles must not synthesize input.
+        if (startup && prefs.wake_on_boot && (_profile.mode == DisplayMode::Button
+            || _profile.mode == DisplayMode::ButtonPairing)) {
+          wake(DisplayWake::Button, now);
+        } else {
+          wake(DisplayWake::Boot, now);
+        }
       }
     } else if (timeout_changed && _timed) {
       _deadline = now + uint32_t(_profile.seconds) * 1000;
     }
     if (just_connected && _profile.mode == DisplayMode::Automatic) _timed = false;
     if (_timed && int32_t(now - _deadline) >= 0) _timed = false;
+    if (_first_install_active && (_profile.mode == DisplayMode::Off
+        || int32_t(now - _first_install_deadline) >= 0)) _first_install_active = false;
   }
   bool wake(DisplayWake reason, uint32_t now) {
     if (!_initialized) return false;
@@ -119,10 +131,11 @@ public:
     _deadline = now + duration;
     return true;
   }
-  void dismiss() { _timed = false; }
+  void dismiss() { _timed = _first_install_active = false; }
   bool on() const {
     if (!_initialized || _profile.mode == DisplayMode::Off) return false;
     if (_profile.mode == DisplayMode::On) return true;
+    if (_first_install_active) return true;
     if (_pairing && (_profile.mode == DisplayMode::Automatic
         || displayModeSupportsPairing(_profile.mode))) return true;
     return _profile.mode != DisplayMode::Pairing && _timed;

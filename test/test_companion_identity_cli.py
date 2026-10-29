@@ -20,6 +20,8 @@ HARNESS = r'''
 #include <vector>
 #include <Identity.h>
 #include <helpers/CompanionPowerDiagnostics.h>
+#include <helpers/ConfigCapabilities.h>
+#include "usb_mode_console.h"
 
 // Keep the production diagnostics delegate in the command path. Identity
 // requests must not consult board power state or trigger a hardware query.
@@ -34,7 +36,19 @@ struct IdentityBoard {
  bool supportsPowerManagement(){assert(false);return false;}
  uint16_t getBootVoltage(){assert(false);return 0;}
  bool getSystemWatchdogRunning(bool&){assert(false);return false;}
+ bool canControlLoRaFemLna(){assert(false);return false;}
+ bool canControlLoRaFemPaGain(){assert(false);return false;}
+ bool isLoRaFemPaGainEnabled(){assert(false);return false;}
 } board;
+struct IdentityRadio {
+ bool supportsRxPowerSavingRfRxDisable(){assert(false);return false;}
+} radio_driver;
+struct IdentityUi {
+ bool supportsDisplayRotation(){assert(false);return false;}
+};
+struct IdentityProfiles {
+ uint16_t primaryPreamble() const {assert(false);return 0;}
+};
 
 namespace mesh {
 @HEX_CHARS@
@@ -51,6 +65,8 @@ public:
 };
 struct MyMesh {
  mesh::LocalIdentity self_id;
+ IdentityProfiles _radio_profiles;
+ IdentityUi* _ui = nullptr;
  unsigned fallback_calls=0;
  // Routing commands have their own production-method tests. This identity
  // harness exercises fall-through to the shared read-only key query.
@@ -190,6 +206,7 @@ class CompanionIdentityCliTests(unittest.TestCase):
                         '-fsanitize=address,undefined', '-fno-sanitize-recover=all',
                         '-fno-pie', '-no-pie', *['-D' + flag for flag in flags],
                         '-I', str(ROOT / 'src'), '-I', str(ROOT / 'test/mocks'),
+                        '-I', str(ROOT / 'test/fixtures'),
                         str(cpp), '-o', str(binary)], capture_output=True, text=True)
                     self.assertEqual(built.returncode, 0, built.stdout + built.stderr)
                     ran = subprocess.run([str(binary)], capture_output=True, text=True)

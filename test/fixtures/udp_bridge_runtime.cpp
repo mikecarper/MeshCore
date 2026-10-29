@@ -133,6 +133,12 @@ static void queues() {
   mesh::Packet packet; packet.payload = {1,0,3,4};
   a.bridge.sendPacket(&packet); a.bridge.sendPacket(&packet); run(a,b,5);
   assert(b.manager.received.size() == 1);
+  assert(b.manager.received_sources.size() == 1);
+  const auto first_source = b.manager.received_sources.front();
+  assert(first_source.kind == mesh::bridge::IngressSource::Kind::Udp);
+  assert(first_source.bytes[0] == 10 && first_source.bytes[1] == 11 &&
+         first_source.bytes[2] == 12 && first_source.bytes[3] == 1);
+  assert(first_source.bytes[4] == (4404 >> 8) && first_source.bytes[5] == (4404 & 255));
   assert(a.stats("tx").find("queued=1") != std::string::npos);
   // Same payload received through LoRa is deduplicated; received UDP packets
   // are marked locally and cannot re-export even for OTA.
@@ -145,6 +151,8 @@ static void queues() {
   const int reads = udp_test::receives; b.bridge.loop();
   assert(udp_test::receives == reads); // Held authenticated bytes own the RX slot.
   b.manager.starved = false; b.bridge.loop(); assert(b.manager.received.size() == 2);
+  assert(b.manager.received_sources.size() == 2);
+  assert(!memcmp(b.manager.received_sources.back().bytes, first_source.bytes, 6));
   // Failed UDP send is final, never automatically retried.
   packet.payload[3]++; a.bridge.sendPacket(&packet); udp_test::fail_send = true;
   a.bridge.loop(); const int sends = udp_test::sends; run(a,b,2);

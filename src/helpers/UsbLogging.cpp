@@ -1303,7 +1303,8 @@ void noteUsbConsoleCommand(const char* command) {
   if (command == nullptr || isUsbPacketLoggingAlways()
       || hasDedicatedUsbLoggingPort() || isUsbLoggingPacketStream()) return;
   while (*command == ' ' || *command == '\t' || *command == '\r' || *command == '\n') ++command;
-  if (*command == 0 || isUsbLoggingStatsCommand(command)) return;
+  if (*command == 0 || isUsbLoggingStatsCommand(command)
+      || isUsbModeDetectionCommand(command)) return;
   for (const unsigned char* p = reinterpret_cast<const unsigned char*>(command); *p; ++p) {
     if ((*p < 32 && *p != '\t') || *p >= 127) return;
   }

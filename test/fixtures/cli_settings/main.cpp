@@ -5,6 +5,8 @@
 #include <cstring>
 #include <initializer_list>
 #include <helpers/CLICommandUtils.h>
+#include <helpers/ConfigCapabilities.h>
+#include <helpers/RadioDirectionPolicy.h>
 #include <helpers/RadioProfileCommandUtils.h>
 // Persistence has its own production-parser tests with an in-memory FS.
 // This fixture isolates the actual CommonCLI setting branches and callbacks.
@@ -123,8 +125,9 @@ public:
   mesh::RadioParamApplyResult applyRxSetting(uint8_t);
   bool saveRxSetting(uint8_t, mesh::RadioParamApplyResult, char*);
   void restoreRxSetting(uint8_t, mesh::RadioParamApplyResult, uint8_t, uint32_t);
-  bool savePrimaryRadioParams(float freq, float bw, uint8_t sf, uint8_t cr, uint16_t) {
+  bool savePrimaryRadioParams(float freq, float bw, uint8_t sf, uint8_t cr, uint16_t preamble) {
     prefs.freq=freq; prefs.bw=bw; prefs.sf=sf; prefs.cr=cr;
+    prefs.primary_radio_preamble=preamble;
     prefs.tx_power_dbm=mesh::clampLoRaTxPower(prefs.tx_power_dbm,freq);
     callbacks.savePrefs(); return true;
   }
@@ -233,6 +236,21 @@ int main() {
     cli.call(sender,"set radio 916,125,13,6",reply);
     assert(!strncmp(reply,"Error",5) && !strstr(reply,"WARN"));
     assert(cli._radio_profiles.warning_calls==2);
+    // radio.preamble reads the saved preference; the writer remains the
+    // optional fifth set radio field. Exercise that actual parser route.
+    struct Preamble { const char* input; const char* reply; uint16_t value; };
+    for (const Preamble& row : {Preamble{"auto", "> auto", 0},
+          {"8", "> 8", 8}, {"32", "> 32", 32}, {"88", "> 88", 88},
+          {"65528", "> 65528", 65528}}) {
+      saves=cli.callbacks.saves;
+      snprintf(text,sizeof(text),"set radio 916,125,8,6,%s",row.input);
+      cli.call(sender,text,reply);
+      assert(!strncmp(reply,"OK",2) && cli.callbacks.saves==saves+1);
+      assert(cli.prefs.primary_radio_preamble==row.value);
+      cli.call(sender,"get radio.preamble",reply);
+      assert(!strcmp(reply,row.reply));
+      assert(cli.callbacks.saves==saves+1);
+    }
     saves=cli.callbacks.saves;
     cli.call(sender,"set extra.sf 9,10",reply);
 #if defined(USE_LR2021)

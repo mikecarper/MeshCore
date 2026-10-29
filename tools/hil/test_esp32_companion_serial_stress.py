@@ -237,11 +237,12 @@ class StressModesTest(unittest.TestCase):
             os.close(slave)
 
     def test_selected_control_lines_are_set_while_port_is_closed(self) -> None:
-        class Serial:
+        from test_profile_switch_host import SessionPort
+
+        class Serial(SessionPort):
             def __init__(self):
-                self.is_open = False
-                self.dsrdtr = False
                 self.events = []
+                super().__init__('test')
 
             def __setattr__(self, name, value):
                 if name in ("dtr", "rts"):
@@ -251,19 +252,25 @@ class StressModesTest(unittest.TestCase):
             def open(self):
                 assert self.rts is False
                 self.events.append(("open", self.dtr))
-                self.is_open = True
+                super().open()
 
         with mock.patch.dict(sys.modules, {"serial": types.SimpleNamespace(Serial=Serial)}):
             factory = hil._make_pyserial_factory()
             for dtr in (False, True):
                 with self.subTest(dtr=dtr):
                     port = factory(fast_config(dtr=dtr))
-                    self.assertIs(port.dtr, dtr)
-                    self.assertTrue(port.is_open)
-                    opened = port.events.index(("open", dtr))
-                    self.assertLess(port.events.index(("dtr", dtr)), opened)
-                    self.assertLess(port.events.index(("rts", False)), opened)
-                    self.assertFalse(port.dsrdtr)
+                    try:
+                        self.assertIs(port.dtr, dtr)
+                        self.assertTrue(port.is_open)
+                        opened = port.events.index(("open", dtr))
+                        self.assertLess(port.events.index(("dtr", dtr)), opened)
+                        self.assertLess(port.events.index(("rts", False)), opened)
+                        self.assertFalse(port.dsrdtr)
+                        if sys.platform.startswith('linux') and not dtr:
+                            self.assertEqual(port.modem_edges, [
+                                ('joint_clear', False, {'dtr': False, 'rts': False})])
+                    finally:
+                        port.close()
 
     def test_other_backend_keeps_manual_companion_lines_without_dsr_handoff(self) -> None:
         from test_profile_switch_host import SessionPort
@@ -291,7 +298,8 @@ class StressModesTest(unittest.TestCase):
             with self.subTest(phase=phase):
                 port = FailingSessionPort(phase)
                 with mock.patch.dict(sys.modules, {"serial": types.SimpleNamespace(Serial=lambda: port)}), mock.patch(
-                        "serial_session.os.name", "posix"):
+                        "serial_session.os.name", "posix"), mock.patch(
+                        "serial_session.sys.platform", "darwin"):
                     with self.assertRaisesRegex(RuntimeError, phase + " failed"):
                         hil._make_pyserial_factory()(fast_config())
                 self.assertFalse(port.is_open)

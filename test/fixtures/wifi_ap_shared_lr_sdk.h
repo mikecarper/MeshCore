@@ -29,6 +29,11 @@ constexpr int WIFI_PROTOCOL_11B=1,WIFI_PROTOCOL_11G=2,WIFI_PROTOCOL_11N=4,WIFI_P
 constexpr int WIFI_PHY_MODE_LR=1,WIFI_PHY_RATE_LORA_250K=2,WIFI_SCAN_RUNNING=-1;
 enum wl_status_t {WL_IDLE_STATUS,WL_CONNECTED,WL_NO_SSID_AVAIL,WL_CONNECT_FAILED,WL_DISCONNECTED};
 enum esp_now_send_status_t {ESP_NOW_SEND_SUCCESS=0,ESP_NOW_SEND_FAIL=1};
+enum wifi_ps_type_t {WIFI_PS_NONE=0,WIFI_PS_MIN_MODEM=1,WIFI_PS_MAX_MODEM=2};
+int esp_wifi_set_ps(wifi_ps_type_t){return ESP_OK;}
+namespace mesh {namespace bridge {
+bool copyEspNowPeer(uint8_t* address){memset(address,255,6);return true;}
+}}
 struct esp_now_send_info_t {};
 struct esp_now_recv_info_t {const uint8_t* src_addr;};
 struct esp_now_peer_info_t {uint8_t peer_addr[6];int channel,ifidx;bool encrypt;};
@@ -74,6 +79,9 @@ int esp_wifi_stop(){return ESP_OK;}
 int esp_wifi_deinit(){driver_initialized=false;return ESP_OK;}
 struct FakeWiFi {
  bool facade_started=true,autoreconnect=true;
+ wifi_ps_type_t cached_sleep=WIFI_PS_MIN_MODEM;
+ wifi_ps_type_t getSleep(){return cached_sleep;}
+ bool setSleep(wifi_ps_type_t value){if(value==cached_sleep)return false;cached_sleep=value;return true;}
  wl_status_t state=WL_DISCONNECTED;int join_channel=0,scan_channel=0;
  void persistent(bool){} // A late Arduino preference does not switch SDK storage.
  wifi_mode_t getMode(){return facade_started?sdk_mode:WIFI_OFF;}

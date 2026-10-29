@@ -349,6 +349,10 @@ public:
   virtual void shutdownPeripherals();
   virtual void powerOff() override;
   virtual void enterDeepSleep(uint32_t secs) override;
+#if MESH_ENABLE_EMERGENCY_POWER
+  bool supportsEmergencySleep() const override { return true; }
+  bool emergencySleepMilliseconds(uint32_t millisecs) override;
+#endif
 
   uint32_t getIRQGpio() override {
   #ifdef P_LORA_DIO_1

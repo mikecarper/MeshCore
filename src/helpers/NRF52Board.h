@@ -80,6 +80,10 @@ public:
   virtual void shutdownPeripherals();
   virtual void powerOff() override;
   virtual void enterDeepSleep(uint32_t secs) override;
+#if MESH_ENABLE_EMERGENCY_POWER
+  bool supportsEmergencySleep() const override { return true; }
+  bool emergencySleepMilliseconds(uint32_t millisecs) override;
+#endif
   virtual bool getBootloaderVersion(char* version, size_t max_len) override;
   virtual bool startOTAUpdate(const char *id, char reply[], bool force_ap = false) override;
   virtual bool stopOTAUpdate(char reply[]) override;

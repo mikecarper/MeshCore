@@ -24,6 +24,7 @@ HARNESS = r'''
 #include <initializer_list>
 #include "examples/simple_repeater/RateLimiter.h"
 #include "src/RadioProfiles.h"
+#include "src/helpers/RadioDirectionPolicy.h"
 #include "src/helpers/DiscoveryResponsePrefs.h"
 @CONSTANTS@
 #define MESH_DEBUG_PRINTLN(...) ((void)0)

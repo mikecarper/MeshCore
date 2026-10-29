@@ -565,17 +565,17 @@ static bool handleVoltagePolicyCommand(const char*, char* reply, size_t capacity
         self.exercise(r'''
   CLI cli;
   assert(validSettings(cli.settings));
-  assert(cli.settings.enabled == 0 && cli.settings.repeatBelow == 10
-      && cli.settings.floodBelow == 20 && cli.settings.emptyMv == 0 && cli.settings.fullMv == 0);
+  assert(cli.settings.enabled == 0 && cli.settings.repeatBelow == 15
+      && cli.settings.floodBelow == 25 && cli.settings.emptyMv == 0 && cli.settings.fullMv == 0);
   cli.state.update(1, 3000, 0, true, cli.settings);
   assert(cli.state.allows(false) && cli.state.allows(true));
-  assert(cli.run("get repeat.battery") && strcmp(cli.reply, "> off below=10%") == 0);
-  assert(cli.run("get flood.battery") && strcmp(cli.reply, "> off below=20%") == 0);
+  assert(cli.run("get repeat.battery") && strcmp(cli.reply, "> off below=15%") == 0);
+  assert(cli.run("get flood.battery") && strcmp(cli.reply, "> off below=25%") == 0);
   assert(cli.saveCalls == 0);
   for (unsigned threshold = 1; threshold <= 100; ++threshold) {
     const std::string command = "set repeat.battery " + std::to_string(threshold);
     cli.ok(command.c_str());
-    assert(cli.settings.repeatBelow == threshold && cli.settings.floodBelow == 20);
+    assert(cli.settings.repeatBelow == threshold && cli.settings.floodBelow == 25);
     assert(cli.settings.enabled == Repeat);
   }
   cli.ok("set repeat.battery 13");
@@ -683,21 +683,21 @@ static bool handleVoltagePolicyCommand(const char*, char* reply, size_t capacity
   Settings settings;
   settings.enabled = Repeat | Flood;
   State state;
-  state.update(1, 3240, 20, true, settings);
+  state.update(1, 3300, 25, true, settings);
   assert(state.allows(false) && state.allows(true));
-  state.update(2, 3228, 19, true, settings);
+  state.update(2, 3288, 24, true, settings);
   assert(state.allows(false) && !state.allows(true));
-  state.update(3, 3120, 10, true, settings);
+  state.update(3, 3180, 15, true, settings);
   assert(state.allows(false) && !state.allows(true));
-  state.update(4, 3108, 9, true, settings);
+  state.update(4, 3168, 14, true, settings);
   assert(!state.allows(false) && !state.allows(true));
-  state.update(5, 3132, 11, true, settings);
+  state.update(5, 3192, 16, true, settings);
   assert(!state.allows(false) && !state.allows(true));
-  state.update(6, 3144, 12, true, settings);
+  state.update(6, 3204, 17, true, settings);
   assert(state.allows(false) && !state.allows(true));
-  state.update(7, 3252, 21, true, settings);
+  state.update(7, 3312, 26, true, settings);
   assert(state.allows(false) && !state.allows(true));
-  state.update(8, 3264, 22, true, settings);
+  state.update(8, 3324, 27, true, settings);
   assert(state.allows(false) && state.allows(true));
 ''')
 
@@ -836,6 +836,64 @@ static bool handleVoltagePolicyCommand(const char*, char* reply, size_t capacity
   }
   encode(bytes, Settings{});
   assert(decode(bytes, RecordSize, actual) && same(actual, Settings{}));
+''')
+
+    def test_v1_default_pair_migrates_once_and_v2_custom_legacy_pair_is_preserved(self):
+        self.exercise(r'''
+  auto encodeVersion = [&](uint8_t* bytes, const Settings& settings, uint8_t version) {
+    encode(bytes, settings);
+    bytes[3] = version;
+    const uint16_t crc = checksum(bytes, 14);
+    bytes[14] = uint8_t(crc); bytes[15] = uint8_t(crc >> 8);
+  };
+  for (uint8_t enabled = 0; enabled <= (Repeat | Flood); ++enabled) {
+    Settings saved;
+    saved.enabled = enabled;
+    saved.emptyMv = 6000; saved.fullMv = 8400;
+    saved.repeatBelow = 10; saved.floodBelow = 20;
+    uint8_t bytes[RecordSize]; encodeVersion(bytes, saved, 1);
+    Settings loaded;
+    assert(decode(bytes, sizeof(bytes), loaded));
+    assert(loaded.repeatBelow == 15 && loaded.floodBelow == 25);
+    assert(loaded.enabled == enabled && loaded.emptyMv == 6000 && loaded.fullMv == 8400);
+    encode(bytes, saved);
+    assert(bytes[3] == 2 && decode(bytes, sizeof(bytes), loaded) && same(saved, loaded));
+    encodeVersion(bytes, saved, 1);
+    bytes[3] = 2; // Version is covered by the record checksum.
+    assert(!decode(bytes, sizeof(bytes), loaded));
+    for (uint8_t version : {uint8_t(0), uint8_t(3), uint8_t(255)}) {
+      encodeVersion(bytes, saved, version);
+      assert(!decode(bytes, sizeof(bytes), loaded) && same(loaded, Settings{}));
+    }
+  }
+  for (unsigned repeat = 1; repeat <= 100; ++repeat) {
+    for (unsigned flood = 1; flood <= 100; ++flood) {
+      Settings saved;
+      saved.enabled = Repeat | Flood;
+      saved.repeatBelow = uint8_t(repeat); saved.floodBelow = uint8_t(flood);
+      uint8_t bytes[RecordSize]; encodeVersion(bytes, saved, 1);
+      Settings loaded;
+      assert(decode(bytes, sizeof(bytes), loaded));
+      if (repeat == 10 && flood == 20) {
+        assert(loaded.repeatBelow == 15 && loaded.floodBelow == 25);
+      } else assert(same(saved, loaded));
+      encode(bytes, saved);
+      assert(decode(bytes, sizeof(bytes), loaded) && same(saved, loaded));
+    }
+  }
+  Settings custom;
+  custom.enabled = Repeat | Flood;
+  custom.repeatBelow = 10; custom.floodBelow = 20;
+  uint8_t bytes[RecordSize]; encode(bytes, custom);
+  Settings loaded;
+  assert(decode(bytes, sizeof(bytes), loaded) && same(custom, loaded));
+  State state;
+  state.update(0, 3240, 20, true, loaded);
+  assert(state.allows(false) && state.allows(true));
+  state.update(1, 3120, 10, true, loaded);
+  assert(state.allows(false) && !state.allows(true));
+  state.update(2, 3108, 9, true, loaded);
+  assert(!state.allows(false) && !state.allows(true));
 ''')
 
 

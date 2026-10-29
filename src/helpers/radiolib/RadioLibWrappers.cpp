@@ -237,6 +237,9 @@ bool RadioLibWrapper::claimRadioInterrupt() {
 }
 
 void RadioLibWrapper::begin() {
+#if MESH_ENABLE_RADIO_DIRECTION
+  _direction_receive_disabled = false;
+#endif
 #if MESH_RADIO_TRACE_ENABLED
   mesh::radiotrace::trace().context(_radio, _active_profile, _profile_generation);
 #endif
@@ -365,6 +368,10 @@ mesh::RadioParamApplyResult RadioLibWrapper::trySetTxPower(int8_t dbm) {
       ) && _cw_active) return Result::BUSY;
 #if MESH_ENABLE_CARRIER_TOOLS
   if (_cw_active) {
+    if (!mesh::radioDirection::radioTransmitAllowed()) {
+      stopCarrierWave();
+      return Result::FAILED;
+    }
     if (_cw_stopping) return Result::BUSY;
 #if defined(MESH_HIL_TX_FREQ_MHZ)
     if (!hilPacketTransmitAllowed() || _cw_profile != _active_profile
@@ -467,7 +474,13 @@ uint8_t RadioLibWrapper::beginReconfigure() {
     _rx_ps_armed = false;
     claimRadioInterrupt();
     state = STATE_IDLE;
-    return 1; // A repair must verify RX re-entry even if software was idle.
+    // A receive-capable repair verifies re-entry; TX-only repairs stop after
+    // restoring the modem, without opening an unsolicited receive window.
+#if MESH_ENABLE_RADIO_DIRECTION
+    return mesh::radioDirection::radioReceiveAllowed() ? 1 : 0;
+#else
+    return 1;
+#endif
   }
   // On SX126x/LR11xx duty-cycle RX, BUSY may remain asserted during the sleep
   // side of the cycle. Do not issue an IRQ/preamble query over SPI then; due
@@ -493,8 +506,13 @@ uint8_t RadioLibWrapper::beginReconfigure() {
 #if MESH_HIL_PROFILE_TIMING
   profile_timing.admissionComplete();
 #endif
-  const bool resume_rx = base_state == STATE_RX;
-  if (_rx_ps_armed || resume_rx) {
+  const bool was_rx = base_state == STATE_RX;
+  const bool resume_rx = was_rx
+#if MESH_ENABLE_RADIO_DIRECTION
+      && mesh::radioDirection::radioReceiveAllowed()
+#endif
+      ;
+  if (_rx_ps_armed || was_rx) {
     const int16_t standby_status =
 #if MESH_HIL_PROFILE_TIMING
         profile_timing.standbyResult(_radio->standby());
@@ -597,6 +615,9 @@ bool RadioLibWrapper::configureBootSwitchTuning(const mesh::RadioSwitchTuning& v
 #endif
 
 bool RadioLibWrapper::restoreAfterDeepInit() {
+#if MESH_ENABLE_RADIO_DIRECTION
+  _direction_receive_disabled = false;
+#endif
 #if MESH_ENABLE_TX_BEACONS
   if (_beacon_owned) cacheBeaconRestoreParams();
 #endif
@@ -1030,6 +1051,9 @@ void RadioLibWrapper::cacheBeaconRestoreParams() {
 mesh::RadioParamApplyResult RadioLibWrapper::prepareBeaconTransmit(
     const mesh::RadioProfileParams& p, int8_t power) {
   using Result = mesh::RadioParamApplyResult;
+#if MESH_ENABLE_RADIO_DIRECTION
+  if (!mesh::radioDirection::radioTransmitAllowed()) return Result::FAILED;
+#endif
   if (_beacon_owned || _cw_active || _profile_repair_required) return Result::BUSY;
 #if defined(MESH_HIL_TX_FREQ_MHZ)
   _hil_beacon_tx_frequency_mhz = 0;
@@ -1118,11 +1142,19 @@ mesh::RadioParamApplyResult RadioLibWrapper::restoreBeaconReceive() {
     _profile_repair_required = false; // Full normal tuple/protocol/power/IRQ restore succeeded.
     state = STATE_IDLE;
     startRecv();
-    restored = isInRecvMode();
+    restored = isInRecvMode()
+#if MESH_ENABLE_RADIO_DIRECTION
+        || !mesh::radioDirection::radioReceiveAllowed()
+#endif
+        ;
     if (!restored && restoreAfterDeepInit()) {
       state = STATE_IDLE;
       startRecv();
-      restored = isInRecvMode();
+      restored = isInRecvMode()
+#if MESH_ENABLE_RADIO_DIRECTION
+          || !mesh::radioDirection::radioReceiveAllowed()
+#endif
+          ;
     }
   }
   _beacon_restoring = false;
@@ -1143,6 +1175,9 @@ mesh::RadioParamApplyResult RadioLibWrapper::prepareTransmitProfile(uint8_t prof
 }
 
 mesh::RadioParamApplyResult RadioLibWrapper::prepareTransmitProfile(uint8_t profile, bool reply_rx_override) {
+#if MESH_ENABLE_RADIO_DIRECTION
+  if (!mesh::radioDirection::radioTransmitAllowed()) return mesh::RadioParamApplyResult::FAILED;
+#endif
 #if defined(MESH_HIL_TX_FREQ_MHZ)
   if (profile > 1 || !mesh::hilTransmitFrequencyAllowed(_profiles.params(profile).freq))
     return mesh::RadioParamApplyResult::FAILED;
@@ -1168,6 +1203,9 @@ mesh::RadioParamApplyResult RadioLibWrapper::tryRestoreCodingRate(uint8_t cr) {
 }
 
 void RadioLibWrapper::serviceProfileScan() {
+#if MESH_ENABLE_RADIO_DIRECTION
+  if (!mesh::radioDirection::radioReceiveAllowed()) return;
+#endif
 #if MESH_RADIO_TRACE_ENABLED
   if (mesh::radiotrace::trace().pending()) {
     mesh::radiotrace::trace().context(_radio, _active_profile, _profile_generation);
@@ -1549,6 +1587,9 @@ bool RadioLibWrapper::setTrackerSleep(bool sleeping) {
 
 void RadioLibWrapper::triggerNoiseFloorCalibrate(int threshold) {
   _threshold = threshold;
+#if MESH_ENABLE_RADIO_DIRECTION
+  if (!mesh::radioDirection::radioReceiveAllowed()) return;
+#endif
   // The Dispatcher calls this every two seconds. Repeatedly recalibrating a
   // dual-profile scanner would repeatedly lengthen its visits. Once both
   // baselines are valid, retain them until a real RF-path change—except for a
@@ -1894,6 +1935,9 @@ uint32_t RadioLibWrapper::carrierWaveRemainingMillis() const {
 
 mesh::RadioParamApplyResult RadioLibWrapper::setCarrierWave(uint8_t profile, uint32_t duration_ms) {
   using Result = mesh::RadioParamApplyResult;
+#if MESH_ENABLE_RADIO_DIRECTION
+  if (duration_ms && !mesh::radioDirection::radioTransmitAllowed()) return Result::FAILED;
+#endif
 #if MESH_ENABLE_CARRIER_TOOLS
   // The shared emergency stop also covers chips exposing Morse without the
   // older profile-CW CLI capability.
@@ -1974,6 +2018,9 @@ bool RadioLibWrapper::supportsMorseTx() const {
 mesh::MorseTxResult RadioLibWrapper::startMorseTx(float frequency_mhz,
                                                 uint8_t wpm, const char* text) {
   using Result = mesh::MorseTxResult;
+#if MESH_ENABLE_RADIO_DIRECTION
+  if (!mesh::radioDirection::radioTransmitAllowed()) return Result::Failed;
+#endif
   if (!supportsMorseTx()) return Result::Unsupported;
   if (_cw_active) return Result::Busy;
   const Result valid_text = mesh::MorseTx::validate(text, wpm);
@@ -2126,6 +2173,9 @@ bool RadioLibWrapper::canAllocateMorseReceiver() const {
 mesh::MorseRxResult RadioLibWrapper::startMorseRx(float frequency_mhz,
                                                 uint8_t wpm, uint32_t duration_ms) {
   using Result = mesh::MorseRxResult;
+#if MESH_ENABLE_RADIO_DIRECTION
+  if (!mesh::radioDirection::radioReceiveAllowed()) return Result::Failed;
+#endif
   if (!supportsMorseRx()) return Result::Unsupported;
   if (_cw_active) return Result::Busy;
   const Result valid = mesh::MorseRx::validate(wpm, duration_ms);
@@ -2316,8 +2366,16 @@ bool RadioLibWrapper::stopCarrierWave() {
   const bool tuned = tuneProfile(restore) == mesh::RadioParamApplyResult::APPLIED;
   recalibrateNoiseFloor();
   startRecv();
-  if (!isInRecvMode() && restoreAfterDeepInit()) startRecv();
-  if (!tuned || !isInRecvMode()) {
+  bool receive_ready = isInRecvMode()
+#if MESH_ENABLE_RADIO_DIRECTION
+      || !mesh::radioDirection::radioReceiveAllowed()
+#endif
+      ;
+  if (!receive_ready && restoreAfterDeepInit()) {
+    startRecv();
+    receive_ready = isInRecvMode();
+  }
+  if (!tuned || !receive_ready) {
     // A stopped carrier is not sufficient to hand ownership back if the
     // configured packet modem/profile could not be restored. Keep the guard
     // and watchdog wake veto until the bounded retry repairs reception.
@@ -2362,7 +2420,58 @@ bool RadioLibWrapper::serviceCarrierWave() {
 }
 #endif
 
+void RadioLibWrapper::serviceDirectionPolicy() {
+#if MESH_ENABLE_RADIO_DIRECTION
+  const bool receive = mesh::radioDirection::radioReceiveAllowed();
+#if MESH_ENABLE_CARRIER_TOOLS || MESH_ENABLE_MORSE_RX
+  if (_cw_active) {
+    bool receiver = false;
+#if MESH_ENABLE_MORSE_RX
+    receiver = _morse_rx_owned;
+#endif
+    if ((receiver && !receive)
+        || (!receiver && !mesh::radioDirection::radioTransmitAllowed())) stopCarrierWave();
+    if (_cw_active) return;
+  }
+#endif
+  if (receive) {
+    _direction_receive_disabled = false;
+    return;
+  }
+  if (state == STATE_TX_WAIT) return;
+#if MESH_ENABLE_TX_BEACONS
+  if (_beacon_owned) return;  // Its owner restores the saved tuple first.
+#endif
+  // A direction change deliberately retires any unread receive. No RX retry,
+  // scanner or calibration may reopen it. Ordinary TX/CAD stays available.
+  if (!_direction_receive_disabled || state != STATE_IDLE || _rx_ps_armed
+      || hasPendingRadioInterrupt()) {
+    if (_rx_ps_armed) stopReceiveDutyCycle();
+    if (_radio->standby() != RADIOLIB_ERR_NONE
+        || _radio->clearIrqFlags(UINT32_MAX) != RADIOLIB_ERR_NONE) return;
+    claimRadioInterrupt();
+    _irq_probe_failures = 0;
+    state = STATE_IDLE;
+    _direction_receive_disabled = true;
+  }
+  _rx_ps_armed = _rx_hold_continuous = false;
+  _rx_retry_pending = false;
+  _rx_retry_delay_ms = 0;
+  _nf_calib_active = _nf_refresh_requested = _nf_window_armed = false;
+  _wd_observe_until = 0;
+#endif
+}
+
 void RadioLibWrapper::loop() {
+#if MESH_ENABLE_RADIO_DIRECTION
+  serviceDirectionPolicy();
+  if (!mesh::radioDirection::radioReceiveAllowed()) {
+#if MESH_ENABLE_CARRIER_TOOLS || MESH_ENABLE_MORSE_RX
+    serviceCarrierWave();
+#endif
+    return;
+  }
+#endif
 #if MESH_RADIO_TRACE_ENABLED
   if (mesh::radiotrace::trace().pending()) {
     mesh::radiotrace::trace().context(_radio, _active_profile, _profile_generation);
@@ -2539,6 +2648,9 @@ void RadioLibWrapper::loop() {
 }
 
 void RadioLibWrapper::startRecv() {
+#if MESH_ENABLE_RADIO_DIRECTION
+  if (!mesh::radioDirection::radioReceiveAllowed()) return;
+#endif
 #if MESH_ENABLE_TX_BEACONS
   if (_beacon_owned && !_beacon_restoring) return;
 #endif
@@ -2678,6 +2790,9 @@ bool RadioLibWrapper::isInRecvMode() const {
 }
 
 bool RadioLibWrapper::getReceiveRetryDelay(uint32_t now, uint32_t& delay_ms) const {
+#if MESH_ENABLE_RADIO_DIRECTION
+  if (!mesh::radioDirection::radioReceiveAllowed()) return false;
+#endif
 #if MESH_ENABLE_TX_BEACONS
   if (_beacon_owned) return false;
 #endif
@@ -2695,6 +2810,9 @@ bool RadioLibWrapper::getReceiveRetryDelay(uint32_t now, uint32_t& delay_ms) con
 }
 
 bool RadioLibWrapper::getNoiseFloorWakeDelay(uint32_t now, uint32_t& delay_ms) const {
+#if MESH_ENABLE_RADIO_DIRECTION
+  if (!mesh::radioDirection::radioReceiveAllowed()) return false;
+#endif
 #if MESH_ENABLE_TX_BEACONS
   if (_beacon_owned) return false;
 #endif
@@ -2773,6 +2891,9 @@ RxPowerSavingStatus RadioLibWrapper::getRxPowerSavingStatus() const {
 }
 
 int RadioLibWrapper::recvRaw(uint8_t* bytes, int sz) {
+#if MESH_ENABLE_RADIO_DIRECTION
+  if (!mesh::radioDirection::radioReceiveAllowed()) return 0;
+#endif
 #if MESH_RADIO_TRACE_ENABLED
   auto& radio_trace = mesh::radiotrace::trace();
   uint16_t trace_rx = mesh::radiotrace::NoIndex;
@@ -2967,6 +3088,9 @@ bool RadioLibWrapper::hilPacketTransmitAllowed() const {
 #endif
 
 bool RadioLibWrapper::startSendRaw(const uint8_t* bytes, int len) {
+#if MESH_ENABLE_RADIO_DIRECTION
+  if (!mesh::radioDirection::radioTransmitAllowed()) return false;
+#endif
 #if defined(MESH_HIL_TX_FREQ_MHZ)
   if (!hilPacketTransmitAllowed()) {
     MESH_DEBUG_PRINTLN("HIL: packet TX blocked outside the proven allowed frequency");
@@ -3079,6 +3203,22 @@ int16_t RadioLibWrapper::performChannelScanWithTimeout(unsigned long timeout_ms)
 }
 
 bool RadioLibWrapper::isChannelActive() {
+#if MESH_ENABLE_RADIO_DIRECTION
+  if (!mesh::radioDirection::radioReceiveAllowed()) {
+    if (_cw_active || state == STATE_TX_WAIT || isChipBusy()) return true;
+    if (!_cad_enabled) return false;
+    const int16_t result = performChannelScan();
+    const bool stopped = _radio->standby() == RADIOLIB_ERR_NONE;
+    const bool cleared = _radio->clearIrqFlags(UINT32_MAX) == RADIOLIB_ERR_NONE;
+    claimRadioInterrupt();
+    state = STATE_IDLE;
+    if (result != RADIOLIB_CHANNEL_FREE || !stopped || !cleared) {
+      _board->n_cad_busy++;
+      return true;
+    }
+    return false;
+  }
+#endif
   if (_cw_active) return true;
   if (isPacketPendingOrReceiving() || state == STATE_TX_WAIT) return true;
   // int.thresh: RSSI-based interference detection (relative to noise floor).
@@ -3111,6 +3251,11 @@ bool RadioLibWrapper::isChannelActive() {
 }
 
 bool RadioLibWrapper::isReceivingPassive(int interference_margin_db) {
+#if MESH_ENABLE_RADIO_DIRECTION
+  // A TX-only node has no continuous-RX noise baseline or forwarding echoes.
+  // Use bounded CAD instead of waiting forever for either of those RX states.
+  if (!mesh::radioDirection::radioReceiveAllowed()) return isChannelActive();
+#endif
   if (_cw_active) return true;
   // RX duty-cycle radios hold BUSY high while asleep. Do not attempt an SPI
   // IRQ/RSSI read until the next listen window. Treat the unknown channel as

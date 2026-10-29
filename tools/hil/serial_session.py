@@ -81,7 +81,48 @@ def assert_port_idle(path):
         raise RuntimeError("Cannot safely inspect serial-port ownership (fuser error)")
 
 
+def _open_linux_inactive_modem_session(port):
+    # pySerial updates DTR and RTS separately during open. Releasing either
+    # first can drive EN or BOOT on an ESP32 auto-reset circuit. Keep both
+    # kernel-open levels together until one joint modem-line update can clear
+    # them. Do not enable flow control to suppress the individual updates.
+    import fcntl
+    import struct
+    import termios
+
+    missing = object()
+    saved = {}
+    for name in ("_update_dtr_state", "_update_rts_state"):
+        if not callable(getattr(port, name, None)):
+            raise RuntimeError("Linux serial backend cannot defer modem-line updates")
+        saved[name] = port.__dict__.get(name, missing)
+    try:
+        for name in saved:
+            setattr(port, name, lambda: None)
+        port.open()
+        descriptor = port.fileno()
+        attributes = termios.tcgetattr(descriptor)
+        attributes[2] &= ~termios.HUPCL
+        termios.tcsetattr(descriptor, termios.TCSANOW, attributes)
+        fcntl.ioctl(descriptor, termios.TIOCMBIC,
+                    struct.pack("I", termios.TIOCM_DTR | termios.TIOCM_RTS))
+    except BaseException:
+        port.close()
+        raise
+    finally:
+        for name, previous in saved.items():
+            if previous is missing:
+                delattr(port, name)
+            else:
+                setattr(port, name, previous)
+
+
 def open_configured_session(port):
+    if (sys.platform.startswith("linux") and os.name == "posix"
+            and not port.dtr and not port.rts
+            and not port.dsrdtr and not port.rtscts):
+        _open_linux_inactive_modem_session(port)
+        return
     # POSIX pySerial normally applies DTR before RTS when opening. Some
     # bridge drivers initially assert both lines; clearing DTR first pulses
     # ESP32 EN. Defer DTR until RTS is released. Windows configures both in

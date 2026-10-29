@@ -21,6 +21,7 @@ HARNESS = r'''
 #include <vector>
 #include <Packet.h>
 #include <RadioProfiles.h>
+#include <helpers/RadioDirectionPolicy.h>
 #include <helpers/UserGpio.h>
 #include <helpers/UserGpioReplyTracker.h>
 #include <helpers/TempRadioReplyBarrier.h>

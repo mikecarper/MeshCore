@@ -162,7 +162,23 @@ static void budgetExhaustion(){
   // than accidentally permitting a packet after a partial rule evaluation.
   assert(mesh.evaluateFloodPacketFilterMatches(&packet,true,nullptr,0)==(uint64_t(1)<<63));
 }
-int main(){parserAndRollback();allowAndDirect();budgetExhaustion();}
+static void caseInsensitiveSenders(){
+  MyMesh mesh;
+  set(mesh,R"(.1 grp_txt c=public n="(?i)^(Jeffery Epstein|Ghislaine Maxwell)$" d)");
+  assert(mesh.rows[0].drop_on_match);
+  mesh::Packet packet;packet.header=ROUTE_TYPE_FLOOD|(PAYLOAD_TYPE_GRP_TXT<<PH_TYPE_SHIFT);packet.payload_len=35;
+  for(const char* message:{"Jeffery Epstein: hello","jEfFeRy ePsTeIn: hello","GHISLAINE MAXWELL: hello"}){
+    plain(message);assert(mesh.evaluateFloodPacketFilterMatches(&packet,true,nullptr,0)==1);
+  }
+  for(const char* message:{"Jeffery Epstein Jr: hello","XGhislaine Maxwell: hello","Alice: Ghislaine Maxwell"}){
+    plain(message);assert(mesh.evaluateFloodPacketFilterMatches(&packet,true,nullptr,0)==0);
+  }
+  // Removing the opt-in modifier retains the original case-sensitive behavior.
+  set(mesh,R"(.1 grp_txt c=public n="^(Jeffery Epstein|Ghislaine Maxwell)$" d)");
+  plain("GHISLAINE MAXWELL: hello");assert(mesh.evaluateFloodPacketFilterMatches(&packet,true,nullptr,0)==0);
+  plain("Ghislaine Maxwell: hello");assert(mesh.evaluateFloodPacketFilterMatches(&packet,true,nullptr,0)==1);
+}
+int main(){parserAndRollback();allowAndDirect();budgetExhaustion();caseInsensitiveSenders();}
 '''
 
 

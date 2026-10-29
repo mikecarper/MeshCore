@@ -86,6 +86,7 @@ UNCHANGED_COUNTS = {
     ("heltec_v4_r8", "hwcdc"): 25,
     ("heltec_wifi_lora_32_V2", "classic_uart"): 9,
     ("meshnology_w12", "hwcdc"): 12,
+    ("m5stack-stamps3", "hwcdc"): 4,
     ("seeed_xiao_esp32c3", "hwcdc"): 7,
     ("seeed_xiao_esp32s3", "hwcdc"): 26,
     ("seeed_xiao_esp32s3_migrator", "hwcdc"): 1,
@@ -113,6 +114,7 @@ EXTERNAL_BOARD_DEFAULTS = {
     "esp32doit-devkit-v1": ("esp32", []),
     "esp32s3box": ("esp32s3", ["-DARDUINO_USB_MODE=1", "-DARDUINO_USB_CDC_ON_BOOT=1"]),
     "heltec_wifi_lora_32_V2": ("esp32", []),
+    "m5stack-stamps3": ("esp32s3", ["-DARDUINO_USB_MODE=1"]),
     "seeed_xiao_esp32c3": ("esp32c3", ["-DARDUINO_USB_MODE=1", "-DARDUINO_USB_CDC_ON_BOOT=1"]),
     "seeed_xiao_esp32s3": ("esp32s3", ["-DARDUINO_USB_MODE=1", "-DARDUINO_USB_CDC_ON_BOOT=1"]),
     "ttgo-lora32-v1": ("esp32", []),
@@ -285,7 +287,7 @@ class Esp32HwcdcRecipeTests(unittest.TestCase):
                 self.assertEqual(self.sdk["hwcdc_primary_enabled"](row["env"]),
                                  row["kind"] == "hwcdc")
                 self.assertFalse(self.sdk["native_primary_enabled"](row["env"]))
-        expected = Counter({"hwcdc": 338, "uart": 122, "classic_uart": 61})
+        expected = Counter({"hwcdc": 342, "uart": 122, "classic_uart": 61})
         expected.update(kind for _, _, kind in USB_PARTITION_BRIDGES.values())
         self.assertEqual(counts, expected)
 
@@ -356,6 +358,27 @@ class Esp32HwcdcRecipeTests(unittest.TestCase):
                                        build_unflags=["-DARDUINO_USB_MODE=1",
                                                       "-DARDUINO_USB_CDC_ON_BOOT=1"])
                 self.assertEqual(usb_values(env), {USB_MODE: "0", USB_CDC: "0"})
+                self.assertFalse(self.sdk["hwcdc_primary_enabled"](env))
+
+    def test_cardputer_roles_keep_native_usb_including_the_ble_companion(self):
+        names = {name for name in self.rows if name.startswith("M5Stack_Cardputer_Adv_")}
+        self.assertEqual(names, {
+            "M5Stack_Cardputer_Adv_repeater", "M5Stack_Cardputer_Adv_room_server",
+            "M5Stack_Cardputer_Adv_companion_radio_usb",
+            "M5Stack_Cardputer_Adv_companion_radio_ble",
+        })
+        for name in names:
+            with self.subTest(environment=name):
+                row = self.rows[name]
+                self.assertEqual((row["board"], row["mcu"], row["kind"]),
+                                 ("m5stack-stamps3", "esp32s3", "hwcdc"))
+                self.assertEqual(row["values"], {USB_MODE: "1", USB_CDC: "1"})
+                self.assertTrue(self.sdk["hwcdc_primary_enabled"](row["env"]))
+                self.assertFalse(self.sdk["native_primary_enabled"](row["env"]))
+                env = flag_environment(EXTERNAL_BOARD_DEFAULTS["m5stack-stamps3"][1],
+                                       self.config.get(f"env:{name}", "build_flags"),
+                                       ["-DARDUINO_USB_CDC_ON_BOOT=1"])
+                self.assertEqual(usb_values(env), {USB_MODE: "1", USB_CDC: "0"})
                 self.assertFalse(self.sdk["hwcdc_primary_enabled"](env))
 
     def test_uart_existing_hwcdc_and_newer_mcu_recipes_match_reviewed_transports(self):

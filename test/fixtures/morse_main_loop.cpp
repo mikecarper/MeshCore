@@ -34,6 +34,7 @@ bool isUsbLoggingWatchdogArmed() { return usb_watchdog_armed; }
 bool serviceUsbLoggingWatchdog(bool(*)()) { ++usb_services; return false; }
 Stream& usbConsolePort() { return console; }
 void noteUsbLoggingStatsCommand(const char*) { ++usb_services; }
+void noteUsbConsoleCommand(const char*) { ++usb_services; }
 namespace wireless {
 struct Control { void service(uint32_t) { ++transport_services; } bool pending() { return wireless_pending; } } controller;
 Control& control() { return controller; }

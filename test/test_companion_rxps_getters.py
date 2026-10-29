@@ -282,6 +282,7 @@ int main() {
                     built = subprocess.run([
                         compiler, "-std=c++17", "-Wall", "-Wextra", "-Werror", *sanitizers,
                         "-DCOMPANION_FEATURE_TEMP_RADIO=0", "-I", str(ROOT / "src"),
+                        "-I", str(ROOT / "test/fixtures"),
                         "-isystem", str(ROOT / "test/mocks"), str(cpp),
                         str(ROOT / "src/helpers/radiolib/RXPowerSaving.cpp"), "-o", str(binary),
                     ], capture_output=True, text=True, timeout=60)

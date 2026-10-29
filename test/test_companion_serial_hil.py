@@ -1,6 +1,7 @@
 """Exercise the shared local USB transport without opening a real device."""
 
 from collections import deque
+from contextlib import ExitStack
 from pathlib import Path
 import os
 import struct
@@ -41,7 +42,8 @@ class FakeSerial:
     def __init__(self, **options):
         self.options = options
         self.events = []
-        self._dtr, self._rts, self._dsrdtr = True, True, False
+        self._dtr, self._rts, self._dsrdtr, self._rtscts = True, True, False, False
+        self.driver_dtr, self.driver_rts = True, True
         self.port = None
         self.is_open = False
         self.chunks = deque()
@@ -57,11 +59,22 @@ class FakeSerial:
         def set(self, value):
             setattr(self, "_" + name, value)
             self.events.append((name, value))
+            if self.is_open and name in ("dtr", "rts"):
+                getattr(self, "_update_" + name + "_state")()
         return property(get, set)
 
     dtr = _line("dtr")
     rts = _line("rts")
     dsrdtr = _line("dsrdtr")
+    rtscts = _line("rtscts")
+
+    def _update_dtr_state(self):
+        self.driver_dtr = self.dtr
+        self.events.append(("driver_dtr", self.driver_dtr))
+
+    def _update_rts_state(self):
+        self.driver_rts = self.rts
+        self.events.append(("driver_rts", self.driver_rts))
 
     @property
     def in_waiting(self):
@@ -72,6 +85,16 @@ class FakeSerial:
         if self.fail_open:
             raise OSError("fixture open failure")
         self.is_open = True
+        # Match pySerial's independent open-time modem hooks. The Linux
+        # atomic opener must suppress both until the joint ioctl below.
+        if not self.dsrdtr:
+            self._update_dtr_state()
+        if not self.rtscts:
+            self._update_rts_state()
+        self.events.append(("opened_levels", self.driver_dtr, self.driver_rts))
+
+    def fileno(self):
+        return 77
 
     def close(self):
         self.events.append(("close",))
@@ -105,7 +128,30 @@ class CompanionSerialTests(unittest.TestCase):
         port = port or FakeSerial()
         module = ModuleType("serial")
         module.Serial = mock.Mock(return_value=port)
-        with mock.patch.dict(sys.modules, {"serial": module}):
+        with ExitStack() as stack:
+            stack.enter_context(mock.patch.dict(sys.modules, {"serial": module}))
+            if sys.platform.startswith("linux") and os.name == "posix":
+                import fcntl
+                import termios
+
+                def attributes(fd):
+                    self.assertEqual(fd, 77)
+                    return [0, 0, termios.HUPCL | 0x4000, 0, 0, 0, []]
+
+                def clear_hupcl(fd, when, values):
+                    self.assertEqual((fd, when), (77, termios.TCSANOW))
+                    self.assertEqual(values, [0, 0, 0x4000, 0, 0, 0, []])
+                    port.events.append(("clear_hupcl",))
+
+                def clear_lines(fd, request, packed):
+                    self.assertEqual((fd, request), (77, termios.TIOCMBIC))
+                    self.assertEqual(struct.unpack("I", packed)[0], termios.TIOCM_DTR | termios.TIOCM_RTS)
+                    port.driver_dtr = port.driver_rts = False
+                    port.events.append(("joint_clear",))
+
+                stack.enter_context(mock.patch.object(termios, "tcgetattr", side_effect=attributes))
+                stack.enter_context(mock.patch.object(termios, "tcsetattr", side_effect=clear_hupcl))
+                stack.enter_context(mock.patch.object(fcntl, "ioctl", side_effect=clear_lines))
             node = HIL.Companion("/dev/fake-local")
         self.assertEqual(module.Serial.call_args.kwargs,
                          {"port": None, "baudrate": 115200, "timeout": 0.05,
@@ -127,9 +173,16 @@ class CompanionSerialTests(unittest.TestCase):
         self.assertEqual(port.events[:2], [("dtr", False), ("rts", False)])
         opened = next(event for event in port.events if event[0] == "open")
         self.assertEqual(opened[1:3], (False, False))
-        if os.name == "posix":
+        if sys.platform.startswith("linux") and os.name == "posix":
+            self.assertFalse(opened[3])
+            self.assertIn(("opened_levels", True, True), port.events)
+            self.assertEqual(port.events[-2:], [("clear_hupcl",), ("joint_clear",)])
+            self.assertFalse(any(event[0] in ("driver_dtr", "driver_rts") for event in port.events))
+            self.assertNotIn("_update_dtr_state", port.__dict__)
+            self.assertNotIn("_update_rts_state", port.__dict__)
+        elif os.name == "posix":
             self.assertTrue(opened[3])
-            self.assertEqual(port.events[-3:], [("rts", False), ("dtr", False), ("dsrdtr", False)])
+        self.assertFalse(port.driver_dtr or port.driver_rts)
         self.assertFalse(port.dsrdtr)
         self.assertFalse(any(event in (("dtr", True), ("rts", True)) for event in port.events))
         node.close()
@@ -166,7 +219,8 @@ class CompanionSerialTests(unittest.TestCase):
                                  HIL.encode_host_frame(bytes((22, 14))),
                                  HIL.encode_host_frame(HIL.make_app_start_spec("Meshtext-Auto-HIL").payload)])
         stop = port.events.index(("write", writes[0]))
-        self.assertEqual(port.events[stop - 2:stop], [("rts", False), ("dtr", True)])
+        lines_before_stop = [event for event in port.events[:stop] if event[0] in ("dtr", "rts")]
+        self.assertEqual(lines_before_stop[-2:], [("rts", False), ("dtr", True)])
 
     def test_start_rejects_logging_owner_before_any_framed_request(self):
         node, port = self.connect()

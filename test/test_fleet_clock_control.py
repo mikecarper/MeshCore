@@ -22,6 +22,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 HARNESS = r'''
 #include <ctime>
+#include <helpers/CLIReplyText.h>
 
 // Date formatting is a host peripheral adapter; it never mutates the RTC.
 class DateTime {

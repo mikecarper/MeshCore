@@ -51,10 +51,12 @@ int ChannelsPage::render(CardputerDisplay &lcd) {
     }
 
     int unread_count = 0;
+    uint8_t history_id[PUB_KEY_SIZE];
+    if (!CardputerMesh::channelHistoryId(channel, history_id)) continue;
 
     for (int j = 0; j < _p->getUnread()->countChats(); j++) {
       const UnreadCounterItem *item = _p->getUnread()->get(j);
-      if (item && item->is_channel && memcmp(item->pkey, channel.channel.secret, CONTACT_LOOKUP_BYTES) == 0) {
+      if (item && item->is_channel && memcmp(item->pkey, history_id, sizeof(history_id)) == 0) {
         unread_count = item->count;
         break;
       }

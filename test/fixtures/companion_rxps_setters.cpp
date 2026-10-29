@@ -9,6 +9,7 @@
 #include <helpers/CLICommandUtils.h>
 #include <helpers/CompanionHardwareCommandCompat.h>
 #include <helpers/radiolib/RXPowerSaving.h>
+#include "usb_mode_console.h"
 
 namespace mesh {enum class RadioParamApplyResult {APPLIED,BUSY,FAILED};}
 struct Prefs {
@@ -40,7 +41,7 @@ struct Driver {
   }
 } radio_driver;
 struct BaseSerialInterface {};
-struct Serial {
+struct SerialTransport {
   BaseSerialInterface requester, other;
   BaseSerialInterface* current = &requester;
   BaseSerialInterface* reply_route = nullptr;
@@ -54,8 +55,8 @@ struct Serial {
 };
 struct MyMesh {
   Prefs _prefs, durable;
-  Serial serial;
-  Serial* _serial = &serial;
+  SerialTransport serial;
+  SerialTransport* _serial = &serial;
   bool _radio_available = true, storage_accepts = true, saved_radio_apply_pending = false;
   bool _primary_radio_blocked=false;
   unsigned saves = 0;

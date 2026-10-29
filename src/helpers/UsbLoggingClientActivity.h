@@ -11,6 +11,22 @@ namespace mesh {
 // not identify a particular application or prove MQTT/disk health.
 constexpr uint32_t USB_LOGGING_CLIENT_LEASE_MS = 15UL * 60UL * 1000UL;
 
+// Firmware detection is passive even before the role strips an optional
+// two-byte Companion request prefix or normalizes an uppercase GET verb.
+// Unlike stats polling, this query must not establish a logging-reader lease.
+inline bool isUsbModeDetectionCommand(const char* command) {
+  if (!command) return false;
+  while (*command == ' ' || *command == '\t') ++command;
+  if (command[0] && command[1] && command[2] == '|' && command[3]) {
+    command += 3;
+    while (*command == ' ' || *command == '\t') ++command;
+  }
+  return (command[0] == 'g' || command[0] == 'G')
+      && (command[1] == 'e' || command[1] == 'E')
+      && (command[2] == 't' || command[2] == 'T')
+      && strcmp(command + 3, " usb.mode") == 0;
+}
+
 inline bool isUsbLoggingStatsCommand(const char* command) {
   if (!command) return false;
   while (*command == ' ' || *command == '\t') ++command;

@@ -20,6 +20,11 @@
 #include <helpers/WirelessControl.h>
 #include <helpers/FleetCommand.h>
 #include <helpers/BatteryForwarding.h>
+#include <helpers/EmergencyPowerConfig.h>
+#include <helpers/EmergencyPowerPolicy.h>
+#if MESH_ENABLE_EMERGENCY_POWER
+#include <helpers/OperatingSchedule.h>
+#endif
 #if defined(NRF52_PLATFORM) && defined(OTA_SD_STORE)
 #include <helpers/SdCardCLI.h>
 #endif
@@ -92,8 +97,8 @@ static constexpr uint8_t DEFAULT_ADVERT_LOC_POLICY = ADVERT_LOC_PREFS;
 #define FLOOD_RETRY_ADVERT_DEFAULT        0
 #define FLOOD_RETRY_GROUP_MAX_PATH_DEFAULT 1
 
-#define BATTERY_ALERT_LOW_PERCENT_DEFAULT       20
-#define BATTERY_ALERT_CRITICAL_PERCENT_DEFAULT  10
+#define BATTERY_ALERT_LOW_PERCENT_DEFAULT       25
+#define BATTERY_ALERT_CRITICAL_PERCENT_DEFAULT  15
 
 #ifndef FLOOD_RETRY_PREFIX_SLOTS
   #define FLOOD_RETRY_PREFIX_SLOTS        8
@@ -739,6 +744,9 @@ public:
   virtual bool beginDeferredOtaUpdate() {
     return false;
   };
+#if defined(ESP32_PLATFORM)
+  virtual bool isDeferredOtaUpdatePending() const { return false; }
+#endif
 
   // Browser-based configuration portal. ESP32 infrastructure roles override
   // these; force_ap=true asks for the captive SoftAP even when WiFi is set.
@@ -940,6 +948,19 @@ class CommonCLI {
   void loopBatteryForwarding(bool = false) const {}
   bool handleBatteryForwardingCommand(const char*, char*) { return false; }
 #endif
+#if MESH_ENABLE_EMERGENCY_POWER
+  FILESYSTEM* _emergency_power_fs = nullptr;
+  mesh::emergencypower::State _emergency_power;
+  void loadEmergencyPower(FILESYSTEM* fs);
+  bool saveEmergencyPower(const mesh::emergencypower::Settings& settings);
+  void loopEmergencyPower();
+  bool handleEmergencyPowerCommand(const char* command, char* reply);
+  mesh::powerschedule::State _power_schedule;
+  void loadPowerSchedule(FILESYSTEM* fs);
+  bool savePowerSchedule(const mesh::powerschedule::Settings& settings);
+  bool handlePowerScheduleCommand(const char* command, char* reply);
+  uint32_t powerScheduleSleepMilliseconds(uint32_t epoch);
+#endif
   uint16_t batteryEmptyMv() const;
   uint16_t batteryFullMv() const;
 #if defined(WITH_ESPNOW_BRIDGE) \
@@ -958,7 +979,6 @@ class CommonCLI {
   SensorManager* _sensors;
   RegionMap* _region_map;
   uint32_t _media_regions_retry_ms = 0;
-  bool _media_regions_ready = false;
   static bool mediaMeshRegionStoreMissing(FILESYSTEM* fs);
   void recoverMediaMeshRegions();
   static bool updateMediaMeshScope(void* context, bool enable, bool commit);
@@ -979,6 +999,14 @@ class CommonCLI {
   bool _observer_save_result_known = false;
   bool _observer_save_succeeded = false;
 #endif
+  // Runtime flags share padding; persisted NodePrefs retains its own layout.
+  bool _media_regions_ready = false;
+#if MESH_ENABLE_EMERGENCY_POWER
+  bool _emergency_radio_sleeping = false;
+  // Share the filesystem, but a failed recovery blocks only that record.
+  uint8_t _power_settings_blocked = 0;
+#endif
+  uint8_t _rx_settings_pending = 0;
   bool _com_prefs_needs_upgrade = false;  // old-format legacy prefs detected; rewrite once after load
   bool _common_save_result_known = false;
   bool _common_save_succeeded = false;
@@ -994,7 +1022,6 @@ class CommonCLI {
     RxGain = 1, RxPowerSaving = 2, RxSideDetectors = 4, RxRfRx = 8,
     RxPendingMask = 15, RxRfRxDisabled = 128
   };
-  uint8_t _rx_settings_pending = 0;
   uint32_t _rx_settings_retry_at = 0;
   uint32_t _prefs_save_failures = 0;
   mesh::RadioProfileCLI _radio_profiles;
@@ -1053,6 +1080,7 @@ class CommonCLI {
 #endif
 #if defined(WITH_ESPNOW_BRIDGE)
   bool handleEspNowDiagnosticCommand(uint32_t sender_timestamp, const char* command, char* reply);
+  bool handleEspNowPeerCommand(const char* command, char* reply);
 #endif
 #if defined(WITH_UDP_BRIDGE)
   bool handleUDPBridgeCommand(uint32_t sender_timestamp, const char* command, char* reply);
@@ -1124,6 +1152,15 @@ public:
 #else
   bool batteryAllowsForward(bool) const { return true; }
   bool batteryAllowsTransmit(const mesh::Packet*) const { return true; }
+#endif
+#if MESH_ENABLE_EMERGENCY_POWER
+  uint32_t emergencySleepMilliseconds();
+  bool emergencyActive() const { return _emergency_power.active(); }
+  void setEmergencyRadioSleeping(bool sleeping) { _emergency_radio_sleeping = sleeping; }
+#else
+  uint32_t emergencySleepMilliseconds() { return 0; }
+  bool emergencyActive() const { return false; }
+  void setEmergencyRadioSleeping(bool) {}
 #endif
   uint8_t batteryPercent(uint16_t mv) const;
   bool hasActiveUserGpioTimer() const;

@@ -8,6 +8,9 @@
 #include "FileRead.h"
 #include "UserGpioPinPolicy.h"
 #include <helpers/esp32/ManagementPassword.h>
+#if MESH_ENABLE_EMERGENCY_POWER
+#include <esp_task_wdt.h>
+#endif
 
 namespace mesh {
 namespace esp32_clock {
@@ -1407,6 +1410,59 @@ void ESP32Board::shutdownPeripherals() {
 void ESP32Board::powerOff() {
   enterDeepSleep(0); // Do not wakeup
 }
+
+#if MESH_ENABLE_EMERGENCY_POWER
+bool ESP32Board::emergencySleepMilliseconds(uint32_t millisecs) {
+  if (millisecs == 0 || isRadioTestActive() || xPortInIsrContext()
+      || xTaskGetSchedulerState() != taskSCHEDULER_RUNNING) return false;
+  // Native USB loses its connection in light sleep, even without an open CDC
+  // reader. Retain the ordinary physical-host/loss-grace policy here too.
+  // RF remains suspended, but an attached host gets frequent command service.
+  const bool usb_held = isUsbSleepHeld();
+  if (!usb_held && !mesh::esp32::manualLightSleepReady()) return false;
+  if (millisecs > 10000UL) millisecs = 10000UL;
+  if (usb_held && millisecs > 100UL) millisecs = 100UL;
+  const esp_err_t watchdog_status = esp_task_wdt_status(nullptr);
+  const bool watched = watchdog_status == ESP_OK;
+  if (!watched && watchdog_status != ESP_ERR_NOT_FOUND
+      && watchdog_status != ESP_ERR_INVALID_STATE) return false;
+#if defined(CONFIG_ESP_TASK_WDT_TIMEOUT_S) && CONFIG_ESP_TASK_WDT_TIMEOUT_S > 0
+  if (watched && millisecs > uint32_t(CONFIG_ESP_TASK_WDT_TIMEOUT_S) * 500UL)
+    millisecs = uint32_t(CONFIG_ESP_TASK_WDT_TIMEOUT_S) * 500UL;
+#endif
+  const TickType_t usb_ticks = usb_held ? pdMS_TO_TICKS(millisecs) : 0;
+  if (usb_held && usb_ticks == 0) return false;
+  TickType_t usb_service_ticks = 0;
+#if MESH_ESP32_USB_CONSOLE_COOPERATIVE
+  if (!usb_held) {
+    // SOF/connection state is sampled by RTOS hooks. Reserve awake service
+    // time after a timer wake so a newly attached host can become visible
+    // before the next sleep attempt. Keep the whole wait within this budget.
+    const uint32_t service_ms = millisecs > 100UL ? 100UL : millisecs;
+    usb_service_ticks = pdMS_TO_TICKS(service_ms);
+    if (usb_service_ticks == 0) return false;
+    millisecs -= service_ms;
+  }
+#endif
+  if (watched && esp_task_wdt_reset() != ESP_OK) return false;
+  if (usb_held || millisecs == 0) {
+    // This also remains safe during asynchronous wireless teardown. Do not
+    // arm or clear wake sources while yielding with the USB peripheral live.
+    vTaskDelay(usb_held ? usb_ticks : usb_service_ticks);
+    return !watched || esp_task_wdt_reset() == ESP_OK;
+  }
+  if (esp_sleep_enable_timer_wakeup(uint64_t(millisecs) * 1000ULL) != ESP_OK)
+    return false;
+  // Add no radio/GPIO wake. Existing button sources remain untouched. The
+  // normal sleep path installs its own next timer; never leave ours armed.
+  const esp_err_t slept = esp_light_sleep_start();
+  const esp_err_t cleared = esp_sleep_disable_wakeup_source(ESP_SLEEP_WAKEUP_TIMER);
+  if (slept == ESP_OK && cleared == ESP_OK && usb_service_ticks != 0)
+    vTaskDelay(usb_service_ticks);
+  const bool watchdog_ok = !watched || esp_task_wdt_reset() == ESP_OK;
+  return slept == ESP_OK && cleared == ESP_OK && watchdog_ok;
+}
+#endif
 
 void ESP32Board::enterDeepSleep(uint32_t secs) {
   shutdownPeripherals();

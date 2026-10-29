@@ -34,6 +34,7 @@ bool takeUsbTerminalSessionReset() { return false; }
 bool tryCompleteUsbTerminalSessionReset() { return true; }
 bool canAcceptUsbConsoleCommand() { return true; }
 Stream& usbConsolePort() { return console; }
+void noteUsbConsoleCommand(const char*) {}
 void noteUsbLoggingStatsCommand(const char*) {}
 bool isUsbLoggingWatchdogArmed() { return false; }
 namespace wireless {

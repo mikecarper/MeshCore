@@ -15,6 +15,7 @@ ROOT = Path(__file__).resolve().parents[1]
 FIXTURE = ROOT / "test/fixtures/guest_login"
 
 HARNESS = r'''
+#include <helpers/CLIReplyText.h>
 #include <cassert>
 #include <cstdint>
 #include <cstdio>

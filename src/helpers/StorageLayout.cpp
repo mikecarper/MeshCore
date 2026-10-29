@@ -1,3 +1,4 @@
+#include "CLIReplyText.h"
 #include "StorageLayout.h"
 
 #if defined(ESP32_PLATFORM)
@@ -185,7 +186,7 @@ bool handleStorageLayoutGet(const char* config, MainBoard& board, char* reply,
   if (match == StorageLayoutGetMatch::NotMatched) return false;
   if (reply == nullptr || reply_size == 0) return true;
   if (match == StorageLayoutGetMatch::InvalidArguments) {
-    snprintf(reply, reply_size, "Error: use get storage.layout");
+    snprintf(reply, reply_size, MESH_CLI_REPLY_TEXT("Error: use get storage.layout", "Error: get storage.layout"));
   } else {
     formatStorageLayout(board, reply, reply_size);
   }

@@ -59,6 +59,19 @@ For the same profile at **125 kHz**, use:
 set radio2 mediamesh-range
 ```
 
+On Companions, adding `#r2-mediamesh` in the app also saves the `mediamesh`
+profile; `#r2-mediamesh-range` selects `mediamesh-range`. Renaming another
+channel to either alias does the same. Names without `#` also work. No extra
+CLI command or forwarding-region setup is needed on a Companion.
+
+Re-saving the same preset alias, editing its key, or rebooting preserves any
+later manual radio2 changes, including `set radio2 off`. Removing the channel
+does not switch radio2 off. All `r2-` channels share one secondary profile, so
+the most recently added or renamed MediaMesh preset chooses its RF settings.
+Meshtext channels and an active foreign-protocol radio2 session cannot share
+this setup. The supplied channel name and key retain the normal alias rules
+[below](#companion-channel-name-routing-aliases).
+
 The RF settings match the presets documented by
 [MeshCore Open TAK](https://github.com/jade-on-mesh/meshcore-open-tak/blob/main/documentation/media-mesh.md)
 and [Wadamesh TAK](https://github.com/jade-on-mesh/wadamesh-tak/blob/main/MEDIAMESH.md).
@@ -88,6 +101,12 @@ Apps do not need to set `tx.media`. Ordinary traffic keeps its existing route.
 If the second profile cannot transmit MeshCore, media uses the normal
 channel/global route; `set tx.media radio2` instead requires radio2 with no
 primary fallback. See [application TX routing](#companion-media-and-ssh-tx-routing).
+
+Infrastructure repeaters can separately mark packets arriving over ESP-NOW,
+UDP or RS-232 with `set bridge.ingress radio2`. Those packets forward only on
+the second MeshCore profile; they are dropped if it cannot transmit, without
+primary fallback. The default `bridge.ingress radio` preserves existing bridge
+behavior. See the [MediaMesh bridge example](espnow_bridge_setup.md#send-bridge-traffic-only-on-mediamesh).
 
 ### Discover the local radio2 profile
 

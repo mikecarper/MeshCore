@@ -1,10 +1,12 @@
-#include "NRF52Crypto.h"
+#include "NRF52CryptoScratch.h"
 
 #if defined(USE_CC310_HW_CRYPTO)
 
 #include <Adafruit_nRFCrypto.h>
 #include <Arduino.h>
+#include <new>
 #include <string.h>
+#include <type_traits>
 
 namespace {
 
@@ -17,6 +19,23 @@ enum CC310State : uint8_t {
 StaticSemaphore_t cc310_mutex_storage;
 SemaphoreHandle_t cc310_mutex = NULL;
 CC310State cc310_state = CC310_UNINITIALIZED;
+
+struct HmacScratch {
+  CRYS_HASH_Result_t result;
+};
+
+// The session mutex already excludes simultaneous SDK operations. Share their
+// scratch storage without adding to the loop stack or allocating from the heap.
+union CryptoScratch {
+  CRYS_ECEDW_TempBuff_t verification;
+  SaSiAesUserContext_t aes;
+  HmacScratch hmac;
+};
+static_assert(std::is_trivially_destructible<CryptoScratch>::value,
+              "CC310 scratch members must not require destruction");
+static_assert(sizeof(CryptoScratch) == sizeof(CRYS_ECEDW_TempBuff_t),
+              "Review CC310 scratch layout when SDK workspace sizes change");
+CryptoScratch crypto_scratch;
 
 SemaphoreHandle_t getCC310Mutex() {
   if (cc310_mutex == NULL) {
@@ -55,6 +74,22 @@ CC310CryptoSession::CC310CryptoSession()
 
 CC310CryptoSession::~CC310CryptoSession() {
   if (_locked) xSemaphoreGive(cc310_mutex);
+}
+
+CRYS_ECEDW_TempBuff_t* cc310VerificationScratch(const CC310CryptoSession& session) {
+  if (!session) return nullptr;
+  return ::new (static_cast<void*>(&crypto_scratch.verification)) CRYS_ECEDW_TempBuff_t{};
+}
+
+SaSiAesUserContext_t* cc310AesScratch(const CC310CryptoSession& session) {
+  if (!session) return nullptr;
+  return ::new (static_cast<void*>(&crypto_scratch.aes)) SaSiAesUserContext_t{};
+}
+
+CRYS_HASH_Result_t* cc310HmacScratch(const CC310CryptoSession& session) {
+  if (!session) return nullptr;
+  // Construct a single wrapper object, avoiding placement array-new cookies.
+  return &(::new (static_cast<void*>(&crypto_scratch.hmac)) HmacScratch{})->result;
 }
 
 bool initializeCC310Crypto() {

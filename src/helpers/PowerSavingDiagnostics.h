@@ -1,5 +1,7 @@
 #pragma once
 
+#include "CLIReplyText.h"
+
 #include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -315,17 +317,17 @@ inline bool handleCommand(const char* command, char* reply, size_t capacity,
     if (argument(tail, "on") || argument(tail, "off")) {
       const bool on = argument(tail, "on");
       setEnabled(on, now_ms);
-      snprintf(reply, capacity, "OK - power diagnostics %s (RAM only; sleep policy unchanged)",
+      snprintf(reply, capacity, MESH_CLI_REPLY_TEXT("OK - power diagnostics %s (RAM only; sleep policy unchanged)", "OK - power diag %s (RAM only; sleep policy unchanged)"),
           on ? "on" : "off");
-    } else snprintf(reply, capacity, "Error: use set powersaving.diag on|off");
+    } else snprintf(reply, capacity, MESH_CLI_REPLY_TEXT("Error: use set powersaving.diag on|off", "Error: set powersaving.diag on|off"));
     return true;
   }
   tail = suffix(command, "clear powersaving.diag");
   if (tail) {
     if (!*tail) {
       reset(now_ms);
-      snprintf(reply, capacity, "OK - power diagnostics cleared; sleep policy unchanged");
-    } else snprintf(reply, capacity, "Error: use clear powersaving.diag");
+      snprintf(reply, capacity, MESH_CLI_REPLY_TEXT("OK - power diagnostics cleared; sleep policy unchanged", "OK - power diag cleared; sleep policy unchanged"));
+    } else snprintf(reply, capacity, MESH_CLI_REPLY_TEXT("Error: use clear powersaving.diag", "Error: clear powersaving.diag"));
     return true;
   }
   tail = suffix(command, "get powersaving.diag");

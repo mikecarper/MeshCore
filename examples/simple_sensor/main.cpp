@@ -24,6 +24,7 @@
 #include <helpers/HostKiss.h>
 #include <helpers/MorseLoopPolicy.h>
 #include <helpers/PowerManagementUtils.h>
+#include <helpers/EmergencyPowerRuntime.h>
 #if defined(NRF52_PLATFORM) && MESH_ENABLE_SENSOR_TRACKER
 #include <utility/SoftwareTimer.h>
 static SoftwareTimer tracker_wake_timer;
@@ -307,6 +308,13 @@ void setup() {
 #endif
 
 #ifdef DISPLAY_CLASS
+#if defined(NRF52_PLATFORM)
+  mesh::ui::displayPowerPrefs().first_install_boot =
+      identity_load == IdentityLoadResult::Missing && !volatile_primary_fs;
+#else
+  mesh::ui::displayPowerPrefs().first_install_boot =
+      identity_load == IdentityLoadResult::Missing;
+#endif
 #if defined(HELTEC_V4_DISPLAY_UNIFIED) && HELTEC_V4_DISPLAY_UNIFIED
   // Initialize the UI dependency even when auto detection found no screen.
   // A later saved display.type change can enable it without restarting.
@@ -412,6 +420,18 @@ void loop() {
   mesh::power::serviceRegulatorSettings();
   board.loop();   // let the board feed its watchdog, run periodic housekeeping
 
+#if MESH_ENABLE_EMERGENCY_POWER
+  static mesh::power::EmergencyPowerRuntime emergency_power;
+#if defined(ESP32_PLATFORM)
+  board.servicePowerTestControls();
+#endif
+  rtc_clock.tick();
+#ifdef HAS_EXTERNAL_WATCHDOG
+  external_watchdog.loop();
+#endif
+  if (emergency_power.service(the_mesh, radio_driver, board,
+          the_mesh.getPowerCLI(), command[0], the_mesh.emergencyPowerBusy())) return;
+#endif
   the_mesh.loop();
   const bool morse_timing = mesh::morseTimingActive(&radio_driver);
 #if defined(USE_LR2021)
@@ -442,7 +462,9 @@ void loop() {
 #endif
 
 #if defined(ESP32_PLATFORM)
+#if !MESH_ENABLE_EMERGENCY_POWER
   board.servicePowerTestControls();
+#endif
   mesh::esp32::serviceCpuFrequencyPolicy(board, the_mesh.getNodePrefs()->cpu_freq_mhz,
       the_mesh.getNodePrefs()->powersaving_enabled != 0, millis(), false, the_mesh.isDualRadioActive());
 #endif

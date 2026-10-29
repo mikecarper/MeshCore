@@ -75,7 +75,7 @@ int ContactsPage::render(CardputerDisplay &lcd) {
 
     for (int j = 0; j < _p->getUnread()->countChats(); j++) {
       const UnreadCounterItem *item = _p->getUnread()->get(j);
-      if (item && !item->is_channel && memcmp(item->pkey, contact.id.pub_key, CONTACT_LOOKUP_BYTES) == 0) {
+      if (item && !item->is_channel && memcmp(item->pkey, contact.id.pub_key, PUB_KEY_SIZE) == 0) {
         unread_count = item->count;
         break;
       }
@@ -167,10 +167,18 @@ bool ContactsPage::handleInput(Keyboard::Event &e) {
       if (the_mesh_cp.getContactByIdx(real_idx, c)) {
         if (c.type == ADV_TYPE_CHAT) {
           // getContactByIdx does not return a reference
-          ContactInfo *ref = the_mesh_cp.lookupContactByPubKey(c.id.pub_key, CONTACT_LOOKUP_BYTES);
-          ref->out_path_len = OUT_PATH_UNKNOWN;
-          _p->getUiTask()->showAlert("Path cleared", 1000);
-          _p->refreshSelectedContact();
+          ContactInfo *ref = the_mesh_cp.lookupPersistentContactByPubKey(c.id.pub_key, PUB_KEY_SIZE);
+          if (ref) {
+            const uint8_t previous_path_len = ref->out_path_len;
+            ref->out_path_len = OUT_PATH_UNKNOWN;
+            if (the_mesh_cp.queueUiContactWrite(*ref)) {
+              _p->getUiTask()->showAlert("Path cleared", 1000);
+              _p->refreshSelectedContact();
+            } else {
+              ref->out_path_len = previous_path_len;
+              _p->getUiTask()->showAlert("Unable to save path", 2000);
+            }
+          }
         }
       }
     }

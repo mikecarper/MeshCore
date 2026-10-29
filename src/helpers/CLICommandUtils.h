@@ -1,5 +1,6 @@
 #pragma once
 
+#include "CLIReplyText.h"
 #include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>

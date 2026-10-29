@@ -22,6 +22,32 @@ OTHER_ROLES = ("simple_room_server", "simple_sensor", "companion_radio", "simple
                "kiss_modem", "partition_expander", "esp32_partition_migrator", "esp32_partition_legacy_seed")
 COMPANION_DEFINITION = "MESH_ROLE_COMPANION"
 COMPANION_SOURCES = ("../examples/companion_radio/main.cpp", "../examples/companion_radio/MyMesh.cpp")
+EMERGENCY_DEFINITION = "MESH_ENABLE_EMERGENCY_POWER"
+
+
+def emergency_power_policy(src_filter, flags=(), cppdefines=()):
+    """Enable scheduled battery sleep only on complete supported infrastructure roles."""
+    values = SOURCE_POLICY.flag_defines(flags, cppdefines)
+    if EMERGENCY_DEFINITION in values:
+        value = str(values[EMERGENCY_DEFINITION]).strip("\"'() ")
+        if value not in ("0", "1"):
+            raise ValueError(EMERGENCY_DEFINITION + " override must be 0 or 1")
+        return {}
+    if not any(name in values for name in ("ESP32_PLATFORM", "NRF52_PLATFORM")):
+        return {}
+    if str(values.get("MESH_ENABLE_BATTERY_FORWARDING", "1")).strip("\"'() ") == "0":
+        return {}
+    selected = SOURCE_POLICY.source_selected
+    text = src_filter if isinstance(src_filter, str) else " ".join(map(str, src_filter))
+    includes = re.findall(r"\+<\.\./examples/([^>]+)>", text.replace("\\", "/"))
+    for role, mesh_source in (("simple_repeater", "MyMesh.cpp"),
+                              ("simple_room_server", "MyMesh.cpp"),
+                              ("simple_sensor", "SensorMesh.cpp")):
+        if includes and all(path == role or path.startswith(role + "/") for path in includes) \
+                and all(selected(src_filter, "../examples/" + role + "/" + source)
+                        for source in ("main.cpp", mesh_source)):
+            return {EMERGENCY_DEFINITION: 1}
+    return {}
 
 
 def companion_role_policy(src_filter, flags=(), cppdefines=()):
@@ -83,6 +109,8 @@ def install(build_env):
                               build_env.get("CPPDEFINES", ()))
     definitions.update(companion_role_policy(src_filter, build_env.get("BUILD_FLAGS", ()),
                                             build_env.get("CPPDEFINES", ())))
+    definitions.update(emergency_power_policy(src_filter, build_env.get("BUILD_FLAGS", ()),
+                                             build_env.get("CPPDEFINES", ())))
     if definitions:
         build_env.AppendUnique(CPPDEFINES=list(definitions.items()))
 

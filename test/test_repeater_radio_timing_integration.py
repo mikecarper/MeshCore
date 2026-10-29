@@ -29,6 +29,7 @@ HARNESS = r'''
 #include <cstdio>
 #include <cstring>
 #include <initializer_list>
+#include <helpers/CLIReplyText.h>
 #include <helpers/RepeaterRadioTiming.h>
 #include <helpers/TempRadioLeaseDeadline.h>
 #define MESH_DEBUG_PRINTLN(...) ((void)0)

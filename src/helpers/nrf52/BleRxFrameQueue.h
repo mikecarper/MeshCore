@@ -58,6 +58,18 @@ public:
     }
   }
 
+  // Physical CONNECT is observed by the BLE worker before deferred lifecycle
+  // callbacks. A disable/re-enable invalidates that observation even if the
+  // SoftDevice still has the same numeric handle.
+#if defined(RAK_4631) && defined(__GNUC__)
+  // Share the guarded query across callbacks in the constrained RAK image.
+  __attribute__((noinline))
+#endif
+  bool hasConnection(uint16_t handle) const {
+    Guard guard;
+    return _enabled && handle != INVALID_HANDLE && _handle == handle;
+  }
+
   void disconnect(uint16_t handle) {
     Guard guard;
     if (_handle != handle) return;

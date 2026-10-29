@@ -231,6 +231,137 @@ void companionBootTests() {
     assert(!rollover.on());
   }
 }
+void firstInstallBootTests() {
+  // The first-install window begins when the UI takes ownership, even after
+  // long radio/key-generation startup, and has exact wrap-safe boundaries.
+  for (bool companion : {false, true}) for (bool usb : {false, true}) {
+    for (bool connected : {false, true}) for (unsigned mode = 0; mode <= 5; ++mode) {
+      for (uint32_t start : {0U, 800000U, UINT32_MAX - 500U}) {
+        DisplayPowerPrefs prefs;
+        prefs.wake_on_boot = companion;
+        prefs.first_install_boot = true;
+        prefs.battery = prefs.usb = {DisplayMode(mode), 900};
+        DisplayPowerPolicy policy;
+        policy.update(prefs, usb, connected, false, start);
+        assert(policy.on() == (mode != 0));
+        policy.update(prefs, usb, connected, false, start + 119999U);
+        assert(policy.on() == (mode != 0));
+        policy.update(prefs, usb, connected, false, start + 120000U);
+        assert(policy.on() == (mode == 1));
+        policy.update(prefs, usb, connected, false, start + 900000U);
+        assert(policy.on() == (mode == 1)); // Refreshes cannot restart it.
+        assert(prefs.battery.seconds == 900 && prefs.usb.seconds == 900);
+      }
+    }
+  }
+
+  DisplayPowerPrefs prefs;
+  prefs.wake_on_boot = true;
+  prefs.first_install_boot = true;
+  prefs.battery = {DisplayMode::Automatic, 27};
+  prefs.usb = {DisplayMode::ButtonPairing, 123};
+  const uint32_t start = 700000U;
+  DisplayPowerPolicy connected;
+  connected.update(prefs, false, false, false, start);
+  connected.update(prefs, false, true, false, start + 1000U);
+  assert(connected.on()); // An app cannot dismiss the first-install window.
+  connected.update(prefs, true, true, false, start + 30000U);
+  assert(connected.on());
+  connected.update(prefs, false, true, false, start + 119500U);
+  connected.update(prefs, false, true, false, start + 119999U);
+  assert(connected.on());
+  connected.update(prefs, false, true, false, start + 120000U);
+  assert(!connected.on()); // USB changes do not restart the window.
+  connected.update(prefs, false, false, false, start + 120001U);
+  assert(!connected.on());
+
+  // Ordinary input still uses the selected timeout. It cannot shorten the
+  // first window, and input near its end can keep the screen awake longer.
+  for (DisplayWake reason : {DisplayWake::Button, DisplayWake::Message}) {
+    DisplayPowerPolicy input;
+    input.update(prefs, false, false, false, start);
+    assert(input.wake(reason, start + 10000U));
+    input.update(prefs, false, false, false, start + 37000U);
+    assert(input.on());
+    assert(input.wake(reason, start + 110000U));
+    input.update(prefs, false, false, false, start + 120000U);
+    assert(input.on());
+    input.update(prefs, false, false, false, start + 136999U);
+    assert(input.on());
+    input.update(prefs, false, false, false, start + 137000U);
+    assert(!input.on());
+  }
+
+  DisplayPowerPolicy dismissed;
+  dismissed.update(prefs, false, false, false, start);
+  dismissed.dismiss();
+  dismissed.update(prefs, false, false, false, start + 1U);
+  assert(!dismissed.on());
+  dismissed.update(prefs, true, false, false, start + 2U);
+  assert(!dismissed.on());
+
+  DisplayPowerPolicy turned_off;
+  turned_off.update(prefs, false, false, false, start);
+  prefs.usb.mode = DisplayMode::Off;
+  turned_off.update(prefs, true, false, true, start + 1U);
+  assert(!turned_off.on());
+  prefs.battery.mode = DisplayMode::Button;
+  turned_off.update(prefs, false, false, false, start + 2U);
+  assert(!turned_off.on()); // Off cancels the first window permanently.
+  assert(turned_off.wake(DisplayWake::Button, start + 3U));
+  turned_off.update(prefs, false, false, false, start + 27003U);
+  assert(!turned_off.on());
+
+  DisplayPowerPolicy initialized;
+  prefs.first_install_boot = false;
+  initialized.update(prefs, false, false, false, start);
+  prefs.first_install_boot = true;
+  initialized.update(prefs, false, false, false, start + 27000U);
+  assert(!initialized.on()); // Only the first policy update can arm startup.
+}
+void firstInstallSettingsTests() {
+  for (bool ble : {false, true}) for (bool companion : {false, true}) {
+    FakeFS fs;
+    assert(!loadDisplayPowerSettings(&fs, ble, companion));
+    assert(!displayPowerPrefs().first_install_boot);
+    displayPowerPrefs().first_install_boot = true;
+    assert(displayPowerPrefs().battery.seconds == 15 && displayPowerPrefs().usb.seconds == 15);
+    DisplayPowerPolicy first;
+    first.update(displayPowerPrefs(), false, true, false, 500000U);
+    first.update(displayPowerPrefs(), false, true, false, 619999U);
+    assert(first.on());
+    first.update(displayPowerPrefs(), false, true, false, 620000U);
+    assert(!first.on());
+    assert(fs.files.empty()); // First-install display time writes no settings.
+
+    // A later boot is ordinary even while /display_prefs is still absent.
+    assert(!loadDisplayPowerSettings(&fs, ble, companion));
+    assert(!displayPowerPrefs().first_install_boot);
+    DisplayPowerPolicy next;
+    next.update(displayPowerPrefs(), false, false, false, 0);
+    assert(next.on() == companion);
+    next.update(displayPowerPrefs(), false, false, false, 15000U);
+    assert(!next.on());
+
+    displayPowerPrefs().first_install_boot = true;
+    char reply[160];
+    assert(handleDisplayPowerCommand("set display.timeout 27", reply, sizeof(reply)));
+    assert(std::string(reply) == "OK");
+    assert(displayPowerPrefs().first_install_boot);
+    const auto saved = fs.files.at("/display_prefs");
+    assert(saved.size() == 12 && saved[2] == 2 && saved[10] == 0);
+    assert(saved[4] == 27 && saved[5] == 0 && saved[7] == 15 && saved[8] == 0);
+    assert(loadDisplayPowerSettings(&fs, ble, companion));
+    assert(!displayPowerPrefs().first_install_boot); // Never serialized by CLI saves.
+    assert(displayPowerPrefs().battery.seconds == 27 && displayPowerPrefs().usb.seconds == 15);
+    assert(fs.files.at("/display_prefs") == saved);
+    DisplayPowerPolicy saved_boot;
+    saved_boot.update(displayPowerPrefs(), false, false, false, 0);
+    assert(saved_boot.on() == companion);
+    saved_boot.update(displayPowerPrefs(), false, false, false, 27000U);
+    assert(!saved_boot.on());
+  }
+}
 void companionSettingsTests() {
   for (bool ble : {false, true}) {
     FakeFS fs;
@@ -368,7 +499,8 @@ void commandTests() {
   run("get display.usb.timeout", "> 42");
 }
 int main() {
-  policyTests(); companionBootTests(); companionSettingsTests(); commandTests();
+  policyTests(); companionBootTests(); firstInstallBootTests();
+  firstInstallSettingsTests(); companionSettingsTests(); commandTests();
 }
 '''
 
@@ -445,12 +577,14 @@ int main() {
     displayPowerPrefs().battery = {DisplayMode::Off, 123};
     displayPowerPrefs().usb = {DisplayMode::On, 456};
     displayPowerPrefs().inbox = DisplayInboxMode::Unread;
+    displayPowerPrefs().first_install_boot = true;
     assert(!loadDisplayPowerSettings(&fs, pairing, wake));
     const auto& prefs = displayPowerPrefs();
     const auto mode = pairing ? DisplayMode::ButtonPairing : DisplayMode::Button;
     assert(prefs.battery.mode == mode && prefs.usb.mode == mode);
     assert(prefs.battery.seconds == 15 && prefs.usb.seconds == 15);
     assert(prefs.inbox == DisplayInboxMode::History && prefs.wake_on_boot == wake);
+    assert(!prefs.first_install_boot);
     assert(displayPairingSupported() == pairing);
     for (const char* key : {"display.mode", "display.timeout", "display.usb.mode",
                             "display.usb.timeout", "display.inbox"}) {
@@ -496,6 +630,20 @@ int main() {
     assert(!loadDisplayPowerSettings(&fs, ble, companion));
     const auto& prefs = displayPowerPrefs();
     assert(prefs.battery.seconds == 900 && prefs.usb.seconds == 900);
+    displayPowerPrefs().first_install_boot = true;
+    DisplayPowerPolicy first;
+    first.update(prefs, false, true, false, 500000U);
+    first.update(prefs, false, true, false, 619999U);
+    assert(first.on());
+    first.update(prefs, false, true, false, 620000U);
+    assert(!first.on()); // E-paper gets the same two-minute first startup.
+    assert(prefs.battery.seconds == 900 && prefs.usb.seconds == 900);
+    assert(first.wake(DisplayWake::Button, 620001U));
+    first.update(prefs, false, true, false, 1520000U);
+    assert(first.on());
+    first.update(prefs, false, true, false, 1520001U);
+    assert(!first.on()); // Later button wakes retain the 15-minute default.
+    displayPowerPrefs().first_install_boot = false;
     for (bool usb : {false, true}) {
       DisplayPowerPolicy policy;
       const uint32_t start = UINT32_MAX - 1000;

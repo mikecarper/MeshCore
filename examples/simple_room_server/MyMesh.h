@@ -3,6 +3,10 @@
 #include <Arduino.h>   // needed for PlatformIO
 #include <Mesh.h>
 #include <helpers/PowerSavingDiagnostics.h>
+#include <helpers/EmergencyOtaWork.h>
+#if MESH_ENABLE_EMERGENCY_POWER && defined(ENABLE_OTA)
+#include <helpers/ota/OtaContext.h>
+#endif
 #include "RoomServerFeatures.h"
 
 #if defined(NRF52_PLATFORM)
@@ -553,6 +557,18 @@ public:
   NodePrefs* getNodePrefs() {
     return &_prefs;
   }
+#if MESH_ENABLE_EMERGENCY_POWER
+  mesh::power::EmergencyOtaWork _emergency_ota_work;
+  CommonCLI& getPowerCLI() { return _cli; }
+  bool emergencyPowerBusy() const {
+#if defined(ENABLE_OTA)
+    if (_emergency_ota_work.busy(mesh::ota::ota_context_if_active(), millis())) return true;
+#endif
+    return hasPendingOtaApply() || _cli.hasPendingRadioSettings()
+        || _cli.hasActiveUserGpioTimer() || dirty_contacts_expiry != 0
+        || (saved_radio_apply_pending && !temp_radio_applied) || _ota_update_at != 0;
+  }
+#endif
 
 #ifdef DISPLAY_ACTIVITY_DASHBOARD
   RadioActivityWindow* getActivityWindow() { return &_activity; }
@@ -876,6 +892,7 @@ public:
 
 
   void configureBridgeFilter(AbstractBridge* active_bridge) {
+    active_bridge->setIngressProfiles(_radio->profiles());
 #if MESH_ENABLE_ROOM_FLOOD_RULE_ENGINE
     active_bridge->setPacketFilter([](void* context, const mesh::Packet* packet) {
       return static_cast<MyMesh*>(context)->allowTransportPacket(packet, 2);  // RULE_MODE_BRIDGE
@@ -1032,6 +1049,10 @@ public:
     _ota_update_channel = _prefs.ota_channel;
     return true;
   }
+
+#if defined(ESP32_PLATFORM)
+  bool isDeferredOtaUpdatePending() const override { return _ota_update_at != 0; }
+#endif
 
   int getQueueSize() override {
     return bridge ? bridge->getQueueSize() : 0;

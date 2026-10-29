@@ -69,6 +69,11 @@ See [CLI Availability by Firmware Build](cli_build_matrix.md) for the role and
 profile matrix. Commands depend on compiled features; some portable builds
 omit WebConfig while retaining the complete role CLI and compact WiFi updater.
 
+Small-flash Mini and STM32 Companion profiles, plus RAK4631 Full Companion,
+use shorter human-readable validation replies. Command syntax, returned
+values, protocol acknowledgements and destructive-operation warnings stay
+the same.
+
 See [CLI Command Availability Matrix](cli_command_availability.md) for the
 command-by-command nRF52 and ESP32 build tables.
 
@@ -137,6 +142,36 @@ command aliases are listed there explicitly.
 - `shutdown`
 
 **Note:** No reply is sent.
+
+---
+
+### Select the next application slot (ESP32)
+
+**Usage:**
+
+```text
+get boot.slot
+set boot.slot app1
+get boot.slot
+reboot
+```
+
+Use `app0` or `app1` to select an installed application for the next reboot.
+This works through the ESP32 Repeater, Room Server, Sensor and Companion CLI
+with the usual administration permissions. Selection sends a reply and does
+not reboot automatically.
+
+`get boot.slot` reports the running application, the next boot selection and
+each slot's capacity, or `missing`. A capacity does not mean the slot contains
+a valid image. Selection verifies the complete image through ESP-IDF and
+rejects missing, corrupt, rejected or unconfirmed applications. It does not
+create a second slot or install firmware.
+
+Finish or stop an active/staged OTA update before changing slots; stop the
+WiFi OTA server if it is running. Use firmware for the exact board and installed
+partition layout. Both applications share NVS and filesystem settings, and a
+later OTA update can overwrite the inactive application or change the next
+boot selection. Automatic rollback depends on the installed bootloader.
 
 ---
 
@@ -1420,7 +1455,17 @@ position, automatic mode keeps normal colors. The small integer approximation
 uses UTC and longitude, so it needs neither a time zone nor daylight-saving
 configuration. Screen brightness and screen-off timers still work normally.
 
-All display-equipped Companion builds show the screen at boot in the default
+On a new installation, display-equipped Companions, repeaters, room servers
+and sensors keep the normal UI visible for two minutes after it is ready.
+This applies only when a missing identity was created and saved to persistent
+storage. Firmware updates and later boots with an existing identity use the
+normal screen timings below, even if display settings were never saved.
+The setup window does not change saved timeouts; an app connection or USB
+power change does not restart or shorten it. Explicit `off` and manual screen
+dismissal still apply. Button input can extend the screen using its normal
+timeout.
+
+On later boots, all display-equipped Companion builds show the screen in the default
 `button` or `button-pairing` mode, on battery or USB power. It stays on for the
 selected profile's timeout (15 minutes on e-paper, 15 seconds elsewhere).
 Button input restarts that timer. This also applies to previously saved button modes. Saved `off` and
@@ -1630,6 +1675,83 @@ For other roles, use the separately named `-ota-` artifact when required. A
 `-full-usb-wifi-ota-` artifact combines USB packet logging, direct WiFi MQTT,
 LoRa OTA, and the expanded FULL feature set. A `-full-logging-ota-` artifact is
 emitted only when that hardware/role has no matching WiFi MQTT environment.
+
+### Report the USB connection mode
+
+`get usb.mode` reports the primary serial backend compiled into the running
+application, checking its actual primary `Serial` type as well as the USB
+build flags. It is available on Repeaters, Room Servers, Sensors and Full
+Companions, including the Companion protocol-14 CLI command. It is read-only:
+no reset, settings write, logging toggle or packet-capture pause is performed.
+
+The exact reply is one of:
+
+- `usb.mode hardware-cdc-jtag`: ESP32 hardware USB Serial/JTAG, with CDC on boot.
+- `usb.mode tinyusb`: ESP32 TinyUSB CDC on boot, or nRF52 using TinyUSB.
+- `usb.mode uart`: ESP32 primary `Serial` is UART, not native USB CDC.
+- `usb.mode unknown`: this build does not provide a proven backend mapping.
+
+The result describes the application, not a connected adapter, host COM-port
+name, optional second logging interface or current ROM/DFU bootloader. There
+is no `set usb.mode`; changing the backend requires another firmware build.
+Older firmware may reject this command. A flasher should retain its manual
+connection option when the report is absent, unknown or conflicts with the
+selected USB device; it must not guess from the board name or shared USB ID.
+
+### Report optional settings support
+
+`get config.cap` is a read-only, bounded settings-capability query shared by
+the infrastructure CLI and Companion CLI. It reports no setting values or
+secrets, saves nothing, and does not change radio or Bluetooth state. One
+reply lets backup tools distinguish an unavailable setting from a real
+getter failure without issuing unsupported requests for every board.
+
+The exact v1 reply format is:
+
+```text
+config.cap v1 get=XXXXXXXX set=XXXXXXXX fixed=XXXXXXXX na=XXXXXXXX
+```
+
+Each field is eight hexadecimal digits, using these stable bit assignments:
+
+| Bit | Setting |
+| --- | --- |
+| 0 | `system.watchdog` |
+| 1 | `radio.cad` scan/retry/max timings |
+| 2 | `radio.fem.rxgain` |
+| 3 | `radio.fem.txgain` |
+| 4 | `radio.rxps.rfrx_disabled` |
+| 5 | `bluetooth` |
+| 6 | `bluetooth.name` |
+| 7 | `display.rotation` |
+| 8 | `usb.logging.always` |
+| 9 | `usb.logging` |
+| 10 | `usb.debug` |
+| 11 | `radio.preamble` saved primary preference |
+
+`get` means a genuine reader exists; `set` means an existing setting command
+can restore the value. For `radio.preamble`, restoration uses the fifth
+`set radio` field, not a separate `set radio.preamble` command. `fixed`
+means there is no user-configurable preference for that setting; a fixed
+diagnostic may also have a `get` bit. `na` means the setting does not apply
+to this board/build/role. `na` never overlaps another field, and `fixed`
+never overlaps `set`. All four bits clear means unknown, not a successful
+backup. Bits 12-31 are reserved and zero in v1. This limited manifest does
+not claim that all stored preferences are exportable.
+
+Infrastructure firmware has no mutable CAD scan/retry/max preferences, so
+bit 1 is `fixed` there; its existing `get cad` enable/busy diagnostic remains
+unchanged. Companion does store and export those timings through
+`get radio.cad`. Companion watchdog status is diagnostic only where the
+board can report it; it has no persisted Companion watchdog-control policy.
+Front-end gain, RX power-saving RF-switch, display rotation and Bluetooth
+support follow the actual board and role rather than the firmware filename.
+The always-on USB logging preference is not applicable to a separate
+dual-CDC logging interface.
+
+Older firmware may not implement this query. Clients must keep legacy
+per-setting reads and report unconfirmed/failed reads honestly instead of
+treating an absent or malformed capability response as not applicable.
 
 ### Control live USB logging
 
@@ -1897,6 +2019,35 @@ capacity. Remote use follows the existing administrator-command permissions.
 
 ### Radio
 
+#### Select LoRa receive and transmit directions
+
+```text
+get radio.mode
+set radio.mode both
+set radio.mode rx
+set radio.mode tx
+set radio.mode off
+```
+
+Supported ESP32 infrastructure images save this setting across reboot. The
+default is `both`. `rx` permits LoRa reception and blocks all LoRa transmission,
+including forwarding, adverts and replies. `tx` accepts no LoRa packets while
+allowing bridge-fed and locally generated transmissions. Queued packets require a clear
+CAD result on the selected profile before sending and keep backing off while
+busy, without a timeout that bypasses CAD. `get cad` reports the effective
+mandatory check in TX-only mode, even if its saved preference is off. A clear
+check cannot guarantee collision-free delivery. `off` disables both packet directions. These
+choices apply to the primary and second LoRa profiles; they do not change the
+WiFi, ESP-NOW or serial bridge directions, or make an RX-only radio2 profile
+transmit-capable.
+
+Use USB or a direct WiFi CLI when changing direction. A receive-only node
+cannot send its LoRa command reply, and a transmit-only node cannot receive a
+LoRa command. Invalid or unreadable saved settings leave LoRa off rather than
+silently enabling transmission. A known malformed record can be replaced
+explicitly; uncertain storage requires a reboot before another save.
+See [two RX-only V4s feeding one TX-only V4](split_radio_repeater.md).
+
 #### Tune and save radio switching acceleration
 
 Use local USB or BLE to change these settings on supported radio HALs.
@@ -1972,7 +2123,8 @@ node after the save succeeds. See [regulator recovery and hardware checks](power
 #### View or change this node's radio parameters
 **Usage:**
 - `get radio`
-- `set radio <freq>,<bw>,<sf>,<cr>`
+- `get radio.preamble`
+- `set radio <freq>,<bw>,<sf>,<cr>[,<preamble|auto>]`
 
 **Parameters:**
 - `freq`: Frequency in MHz
@@ -1987,6 +2139,12 @@ node after the save succeeds. See [regulator recovery and hardware checks](power
 `get radio` returns exactly four comma-separated fields for compatibility with
 existing Companion apps. On dual-radio builds, use `get radio2` and
 `get radio.timing` for profile and timing diagnostics.
+
+`get radio.preamble` reads the **saved primary** preamble preference: `auto`
+or an explicit symbol count from `8` through `65528`. It does not report a
+temporary profile or replace `auto` with a computed recommendation. Backup
+tools can restore it using the optional fifth `set radio` field. Omitting
+that field retains the existing setter behavior: select `auto`.
 
 **Note:** Companion USB, BLE and WebConfig changes apply automatically when
 the radio is free. A busy radio keeps the saved target across disconnects.
@@ -3070,8 +3228,8 @@ send text.flood checking ridge link
 - `set battery.alert.critical <0-99>`
 
 **Defaults:**
-- `battery.alert.low`: `20`
-- `battery.alert.critical`: `10`
+- `battery.alert.low`: `25`
+- `battery.alert.critical`: `15`
 
 **Note:** The low threshold must be greater than the critical threshold. Alerts at or below the critical threshold use `CRITICAL BATTERY` in the message; both severities use the same 12-hour resend cooldown.
 
@@ -3098,11 +3256,16 @@ readings remain available.
 - `set flood.battery <off|on|1-100>`
 - `get battery.forward`
 
-`set repeat.battery on` enables the saved repeat threshold, initially **10%**.
-`set flood.battery on` enables the saved flood threshold, initially **20%**.
+`set repeat.battery on` enables the saved repeat threshold, initially **15%**.
+`set flood.battery on` enables the saved flood threshold, initially **25%**.
 A number both enables the control and sets its threshold. `off` disables it
 while retaining that threshold for the next `on`. Changes are saved and take
 effect without a reboot.
+
+An older forwarding record with exactly the former 10% repeat / 20% flood
+defaults adopts 15% / 25% on upgrade. Its enabled controls and voltage endpoints
+stay unchanged. Other saved thresholds are retained; newly selected custom
+10% / 20% settings also remain available.
 
 Below the repeat threshold, the node stops LoRa retransmissions of received
 traffic. Below the flood threshold, it stops LoRa retransmissions of received
@@ -3117,8 +3280,8 @@ limits. Exporting radio reception to WiFi, ESP-NOW, or RS232 is unchanged.
 
 Forwarding resumes automatically after the measured percentage reaches two
 percentage points above the applicable threshold, capped at 100%. With the
-initial thresholds, flood forwarding pauses below 20% and resumes at 22%; all
-relay forwarding pauses below 10% and resumes at 12%. This recovery margin
+initial thresholds, flood forwarding pauses below 25% and resumes at 27%; all
+relay forwarding pauses below 15% and resumes at 17%. This recovery margin
 avoids repeatedly switching forwarding on and off near a threshold.
 
 Battery voltage is sampled every 30 seconds while either control is enabled,
@@ -3139,11 +3302,124 @@ get battery.forward
 To choose different thresholds and later disable the feature:
 
 ```text
-set repeat.battery 15
-set flood.battery 25
+set repeat.battery 12
+set flood.battery 22
 set repeat.battery off
 set flood.battery off
 ```
+
+#### Emergency battery schedule
+
+Supported ESP32 and nRF52 Repeater, Room Server and Sensor images enter the
+final battery-saving stage at **5% or less**, independently of the optional
+forwarding gates. Automatic mode returns to normal at **7% or more**. An
+invalid battery reading cannot activate it, or falsely clear an existing low
+battery state. Percentage uses the same configured voltage endpoints as
+`battery.forward`; it does not prove that a physical battery is connected.
+
+In emergency mode, normal work runs during the first **15 minutes of every
+UTC hour** (`:00:00` through `:14:59`). For the remaining 45 minutes the LoRa
+radio sleeps and normal mesh, sensor and screen work is suspended. The CPU
+uses timed sleep with brief watchdog, clock, voltage-protection and command
+maintenance wakes. Active firmware updates and unfinished critical operations
+defer sleep. Existing hard low-voltage protection remains in force.
+On ESP32, an active native USB connection uses short CPU idle waits to keep
+the console usable while the radio sleeps. Timed light sleep resumes after
+USB detaches and its disconnect grace expires.
+On nRF52, an enumerated USB host limits each CPU idle slice to 100 ms so
+reconnects and replies can progress while LoRa remains asleep. Detached
+maintenance intervals remain up to ten seconds; command completion can need
+several passes through the main loop.
+
+```text
+get power.emergency
+set power.emergency on
+set power.awake 30
+set power.awake 0
+set power.emergency auto
+```
+
+`on` saves manual emergency mode, including across reboots. `auto` restores
+battery-controlled entry and is the default. The initial transition allows
+five seconds for its reply. `power.awake` keeps the node up for the next given
+number of minutes (0 cancels; maximum 10080), even outside the hourly window.
+That override is held in RAM and ends on reboot; it never disables hard
+low-voltage shutdown. Use it before maintenance that needs continuous uptime.
+LoRa commands must arrive during an awake window. Local serial commands remain
+available through maintenance wakes while the radio sleeps.
+
+`get power.emergency` reports the mode, battery estimate, desired `window`,
+actual radio ownership, scheduled wake/check delay (`wake`), and remaining
+hold. Its window includes any enabled operating-hours or daylight filters.
+With an implausible clock timestamp it reports `clock=uptime` and follows
+the same 15/45-minute cycle from boot. Keep the clock set to UTC: a plausible
+timestamp alone does not prove it is synchronized. Queued
+future traffic does not keep a critically low node awake indefinitely.
+
+This schedule uses resumable timed sleep, preserving identity and settings.
+WiFi/ESP-NOW services are temporarily stopped and their previous live subset
+is restored when the node wakes. Companion builds and flash-constrained
+profiles that omit battery-forwarding controls do not add this feature.
+
+#### Operating hours and daylight
+
+The same supported infrastructure images can sleep outside daylight or a
+daily time window, even when emergency mode is inactive. Both filters default
+to **off** and are saved across reboots. If both are enabled, the node must be
+inside the time window **and** daylight. Active emergency mode further limits
+operation to the first 15 minutes of each UTC hour.
+
+For daylight-only operation, starting from the defaults:
+
+```text
+set power.daylight on
+get power.schedule
+```
+
+Daylight is calculated from the UTC clock and the node's saved `lat`/`lon`,
+falling back to a fresh cached GPS fix when the saved position is unset. For
+a fixed installation, saved coordinates keep the schedule independent of GPS
+freshness. This does not start GPS. Sunrise and sunset are approximate; cloud
+cover, panel output and charging status do not determine this schedule. Set
+the node's position and synchronize its UTC clock before relying on daylight
+control.
+
+For a daily operating window:
+
+```text
+set power.hours 08:00-18:00
+```
+
+The start is included and the end excluded. Overnight windows such as
+`22:00-06:00` work, and an end of `24:00` is accepted. Equal start/end times
+are rejected; use `set power.hours off` for unrestricted hours.
+Times use UTC by default. `set power.hours.offset -420`, for example, makes
+the window use UTC-7. The offset is minutes east of UTC, from -720 to +840;
+it is fixed and does not adjust for daylight saving time. It affects only the
+hour window, not the UTC clock, solar calculation or emergency hourly cycle.
+
+To combine daylight with the emergency hourly duty cycle:
+
+```text
+set power.daylight on
+set power.emergency on
+```
+
+`get power.schedule` shows the combined policy. Its `check` value is the next
+candidate schedule decision; another filter may keep the node asleep afterward.
+The individual settings also have `get power.daylight`, `get power.hours` and
+`get power.hours.offset` readbacks. `set power.schedule off` disables both
+operating filters; it does not disable manual emergency mode or automatic
+low-battery protection.
+
+An unknown clock leaves the time-based filters open. A missing valid position
+leaves the daylight filter open; an independently configured hours filter
+still applies. Status reports the unavailable input rather than guessing.
+The existing emergency fallback to a boot-relative cycle remains in force.
+`set power.awake <minutes>` overrides all these schedules temporarily;
+hard low-voltage protection and existing active-operation sleep deferrals
+remain in force. These commands use the same USB/admin CLI and authorized
+management-command paths as `power.emergency`.
 
 #### Set the battery percentage voltage range
 
@@ -4453,15 +4729,17 @@ compile this table.
   recent; both require exactly the chain. Commas may replace `>`.
   Each ID must use the packet's complete hash width. Direct paths and TRACE
   SNR bytes never match. `path=blacklist` remains the separate unordered table.
-- `sender=<pattern>` (`n=`), `text=<pattern>` (`x=`): Case-sensitive patterns
-  on the decrypted sender name and message body. Require an explicit
+- `sender=<pattern>` (`n=`), `text=<pattern>` (`x=`): Patterns on the decrypted
+  sender name and message body. Matching is case-sensitive by default; a
+  leading `(?i)` ignores ASCII letter case in literals and character classes.
+  Non-ASCII bytes remain unchanged. Require an explicit
   authenticated channel (`public`, `#name`, or key); `channel=*` and raw hashes
   are insufficient. These match only plain group text. Patterns search
   anywhere unless anchored with `^`/`$`, and support `.`, classes such as
   `[A-Z]` or `[^0-9]`, `*`, `+`, `?`, groups, `|`, and escaped literals.
   Use `[0-9]` for digits and quote values containing spaces. The maximum is
-  63 bytes per pattern. Matching uses complete fields, removes AES zero
-  padding, and shares a 131,072-operation work budget across one rule
+  63 bytes per pattern, including `(?i)`. Matching uses complete fields, removes
+  AES zero padding, and shares a 131,072-operation work budget across one rule
   evaluation. Exhaustion rejects the packet; it cannot grant an allow,
   rewrite, or retry action.
   A message without `:` has no sender field but can match a text rule.
@@ -4724,6 +5002,7 @@ Content, exceptions, and state changes use that same setter:
 
 ```text
 set fr grp_txt c=#local x="^BEACON" d
+set fr grp_txt c=public n="(?i)^(Alice|Bob)$" d
 set fr grp_txt c=#local n="^Alice$" pri=200 a
 set fr grp_txt c=#local d
 set fr.4 e=off
@@ -6315,7 +6594,14 @@ get espnow.stats rx
 get espnow.stats tx
 get espnow.stats drops
 get espnow.stats test
+get espnow.peer
 ```
+
+`set espnow.peer AA:BB:CC:DD:EE:FF` saves a fixed unicast destination and
+restarts an enabled bridge. Unicast uses MAC acknowledgements and up to three
+retries after an explicit failed send, with unchanged bridge packet bytes.
+`set espnow.peer broadcast` restores the default broadcast destination.
+Successful MAC delivery does not confirm subsequent LoRa forwarding.
 
 Status reports local state (`off`, `teardown-error`, `driver-error`,
 `channel-mismatch` or `ready`), then these compact fields:
@@ -6599,6 +6885,66 @@ updated active peer can still answer a valid incoming ping in passive mode.
 **Default:** `tx`
 
 > **Note:** For MQTT, use `mqtt.rx` and `mqtt.tx` to control each direction independently. Both can be enabled together. Use `mqtt.enabled` as the MQTT master switch; `bridge.*` configures RS232 and ESP-NOW bridges.
+
+---
+
+#### Select the radio for incoming bridge packets
+
+```text
+get bridge.ingress
+set bridge.ingress radio2
+set bridge.ingress radio
+set bridge.ingress off
+```
+
+This receiver-side setting applies to incoming mesh packets from ESP-NOW, UDP
+and RS-232 bridges. It is saved immediately and needs no restart. Packets
+already queued retain their original route. `radio` is
+the default, preserving the existing primary-radio behavior and crossing rules.
+Existing senders and bridge wire formats remain compatible.
+An unreadable or corrupt saved selection blocks bridge input rather than
+silently restoring the primary; `get bridge.ingress` reports the fault.
+
+`radio2` assigns incoming packets to the active MeshCore second profile and
+keeps their forwarding on that profile, even with `radio2.cross on`. If radio2
+is off, RX-only, owned by another protocol, or changed while a packet waits,
+the packet is dropped; it never falls back to the primary radio. Normal repeat,
+scope, duplicate and filter checks still apply. A matching source route below
+overrides this default. `off` drops incoming packets without a matching route.
+The selection follows forwarded packets, retries and relayed ACKs. Locally
+generated adverts and admin replies keep their existing routing, including
+`tx.reply`; this is not a global transmit override.
+
+For a MediaMesh receiver feeding a repeater whose primary is USA 910.525 MHz,
+see the [MediaMesh bridge example](espnow_bridge_setup.md#send-bridge-traffic-only-on-mediamesh).
+`bridge.source` controls traffic leaving for the bridge and is independent of
+`bridge.ingress`. This does not add MQTT packet injection or change MQTT
+publication settings.
+
+#### Route incoming bridge packets by sender
+
+```text
+get bridge.route
+get bridge.route.1
+set bridge.route.1 mac:AA:BB:CC:DD:EE:10 radio2
+set bridge.route.2 udp:192.168.1.51:4404 radio
+del bridge.route.1
+clear bridge.routes
+```
+
+Slots `1..8` match an exact ESP-NOW station MAC (`mac:`) or UDP sender address
+and listening port (`udp:`). Each source can appear once. A matching rule
+selects only `radio`, only `radio2`, or drops that source with `off`, regardless
+of crossing settings. Unmatched packets use `bridge.ingress`; set that to
+`off` to accept only listed senders. `get bridge.route` reports the count and
+default; query each numbered slot for its saved rule. `get espnow.stats mac`
+reads the local station MAC once the ESP-NOW/WiFi driver is active.
+
+Rules are saved separately from the default and from legacy node preferences.
+Missing routes preserve existing behavior and bridge frames remain unchanged.
+New admissions use the saved route; queued packets retain their original
+profile and generation. Unavailable, RX-only or foreign-protocol targets drop
+the packet rather than falling back. See the [three-V4 example](split_radio_repeater.md).
 
 ---
 

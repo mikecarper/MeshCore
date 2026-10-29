@@ -88,6 +88,7 @@ def publication_fixture(work, missing_latch, skip_noop_save=False):
     methods = recovery + "\n" + route
     methods += "\n" + method(store, "void DataStore::loadChannels(")
     methods += "\n" + save + "\n" + method(store, "bool DataStore::hasIncompleteContactLoad(")
+    methods += "\n" + method(mesh, "void MyMesh::handleSetChannelFrame(")
     binary_start = mesh.index("  } else if (cmd_frame[0] == CMD_SET_CHANNEL && len >= 2 + 32 + 16) {")
     binary_end = mesh.index("  } else if (cmd_frame[0] == CMD_SIGN_START)", binary_start)
     methods += ("\nvoid MyMesh::applyChannelFrame(const uint8_t* cmd_frame, size_t len) {\n"
@@ -115,6 +116,13 @@ struct StrHelper {
 #endif
 """, 1)
     source = source.replace(" bool handleTxRoutingCommand(const char*,char*,size_t);", """
+ using BaseChatMesh = MyMesh;
+ // This publication fixture only mutates ordinary channels. RF preset
+ // behavior is exercised with the real CLI by the Meshtext fixture.
+ struct {
+   bool stageChannelPreset(const char*) { assert(false); return false; }
+   bool finishChannelPreset(bool) { assert(false); return false; }
+ } _radio_profiles;
  bool handleTxRoutingCommand(const char*,char*,size_t);
  int last_error = 0;
  bool binary_ack = false;
@@ -122,6 +130,7 @@ struct StrHelper {
  void writeOKFrame() { binary_ack = true; }
  void seedEmergencyChannelNotice(uint8_t, const ChannelDetails&) {}
  bool resolveChannelAlias(ChannelDetails&) const { return true; }
+ void handleSetChannelFrame(const uint8_t*);
  void applyChannelFrame(const uint8_t*, size_t);
 """, 1)
     source = source.replace("@RECOVERY_METHOD@", method(header, "  bool contactRecoveryPending() const"))

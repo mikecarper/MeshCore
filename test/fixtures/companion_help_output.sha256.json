@@ -30,12 +30,12 @@
         "MESH_ENABLE_LOST_REPLY=0"
       ],
       "output_bytes": [
-        4946,
-        4938
+        4491,
+        4483
       ],
       "output_sha256": [
-        "bb14e81de08d1e49d30fd23aac0b32bbbe89e233021c7772ed00ff439fa4e530",
-        "abb5cd540b09c9b8c7451e0a2c1ec4afbd06a3c51203e0c747f32aa8f9c2bdab"
+        "90da76bd3a33bb8ca4e3212475850f090bf7bc8372e5d2838603cca904fef03b",
+        "d1ef09f3f08a1f588e751531c1423456813ccfb9cbb723a5ca5171a73b062318"
       ]
     },
     "all-options-native0-lost1": {
@@ -68,12 +68,12 @@
         "MESH_ENABLE_LOST_REPLY=1"
       ],
       "output_bytes": [
-        4981,
-        4973
+        4526,
+        4518
       ],
       "output_sha256": [
-        "ff5e938adf128262f499720545073f775293cf867d7e78be46256ab3326e0ab7",
-        "93f43a333536b43ae308ab8dedcd929eec11b109901818aecfa66abad204b3cc"
+        "29dbb3af9b59fa6d207d296ea0bb3da839b5655417fb7c74d00ea6ad9bea90d9",
+        "7a578f8a4c43c962bcbfadaadd452b5ab8ff1c2e8db86ad403b5242773a8e4d2"
       ]
     },
     "all-options-native1-lost0": {
@@ -106,12 +106,12 @@
         "MESH_ENABLE_LOST_REPLY=0"
       ],
       "output_bytes": [
-        5031,
-        5023
+        4569,
+        4561
       ],
       "output_sha256": [
-        "65b1c10004b7f43587eba91698e6f0d281e811c22114b77401fc34248364d603",
-        "14d510af8083cbf03b7ac77af8bb51fca947a050a4953132e6239a3a5bf17ca7"
+        "9264906abd107d191dc3448be96ae74e8508bf662f28279f38a838049d2b8922",
+        "ec30fe0bcd47547aa7115ea0f111873c366a541f4c892cee2584331ca5c6c4bd"
       ]
     },
     "all-options-native1-lost1": {
@@ -144,12 +144,12 @@
         "MESH_ENABLE_LOST_REPLY=1"
       ],
       "output_bytes": [
-        5066,
-        5058
+        4604,
+        4596
       ],
       "output_sha256": [
-        "693e01f6ee384f9d3c96ef1e43148fdc3528a30dafd137515a3e77d1c900bf48",
-        "4437daf200af4bd6bb8ab651c0315ddd8743c7a880c07b8d9c82b3d5a9774dcb"
+        "752cdd07d45a7e02580794b6d1c6267b711622f366dbbbeee649a2e29d9ff614",
+        "59b7d18da893b30d2c60f6a7bc59679a6222d672cb58aa5b6d71bfcc23e0e7f3"
       ]
     },
     "full-native0-lost0": {
@@ -173,12 +173,12 @@
         "MESH_ENABLE_LOST_REPLY=0"
       ],
       "output_bytes": [
-        3603,
-        3595
+        3363,
+        3355
       ],
       "output_sha256": [
-        "8bfd3694e0bc33aa808895f6e4a76b082bb159c882b8d3937c14e51880dca78d",
-        "786c12671e62289d8468c43fdc3776f6e3299aa6e8d0006fd8ad5613840bd78c"
+        "4f8d3a26b611f3bb6f12f93ec3c81f728701a96762f9febdd60ac030ca8388e5",
+        "6214ce35ca15bcd6e11c1ba83ddb58f1ce42d0ad88eb047c655d639a4f9bc4f6"
       ]
     },
     "full-native0-lost1": {
@@ -202,12 +202,12 @@
         "MESH_ENABLE_LOST_REPLY=1"
       ],
       "output_bytes": [
-        3638,
-        3630
+        3398,
+        3390
       ],
       "output_sha256": [
-        "ae3b7cf29e9892a554d04ba5558ad89aa3ff94478a1bd434ed498b1435f8b0d0",
-        "17528343802f445c17dda60c803cc469aa0d8b9ce4c492fb64fd45cfabd5f56a"
+        "7d070794c5fd04f2e7cd366d1d2a871e199384fcaef93908c6aacf15cdbf4dea",
+        "0ac6e2df584259d55e3f27e80a16da04ae26bdf2f0480098139921dbe2745352"
       ]
     },
     "full-native1-lost0": {
@@ -231,12 +231,12 @@
         "MESH_ENABLE_LOST_REPLY=0"
       ],
       "output_bytes": [
-        3688,
-        3680
+        3441,
+        3433
       ],
       "output_sha256": [
-        "83b832f5de59fbfe04a49fb550245b8256a9dd924b50215f72e64b76b0e59cdf",
-        "52c5b5821c64d4100462d4ef08b8cef85b350150372e74abd3c2047836cb1954"
+        "3ff627f73f95d1ecbcae35057bde3c311075888a812f1f134d40a5338ba34a14",
+        "e40417cdf8b76e942d75649396cb805e16e7013a7043f446caa07ba5bbcf5b6f"
       ]
     },
     "full-native1-lost1": {
@@ -260,12 +260,12 @@
         "MESH_ENABLE_LOST_REPLY=1"
       ],
       "output_bytes": [
-        3723,
-        3715
+        3476,
+        3468
       ],
       "output_sha256": [
-        "525c50beeb01595634f469b38c265000f6ad6d6ad5443b4dad6d3e36db0b5a8e",
-        "dd4d7390ba42b655c8cc78b9da25048328c921c14eb8d2b4c3eccf343142d8ac"
+        "9fc5c27d49b1b71d6d93a28f83a4dab5806e4037bfe5eaa5901fee31f224386c",
+        "c0776838ce268bb5f0a0bf4f597e4668bff4540768a683c77abe80a0e7624d3b"
       ]
     },
     "minimal-native0-lost0": {
@@ -275,12 +275,12 @@
         "MESH_ENABLE_LOST_REPLY=0"
       ],
       "output_bytes": [
-        2046,
-        2038
+        1897,
+        1889
       ],
       "output_sha256": [
-        "5571a06d789dff50aebd53777095cc8f0f74e5fd4226ed399bd25050e9e5a02e",
-        "9328e546b561bc1d965f8036d73c862cfed9d5077111c0b5c8744822235740bb"
+        "fda1d107a7bba40a0211e22e04ea0102a5deb46d27fef9fae15d3b3302fe092e",
+        "b345253e4a2713f6a5f8afbaf29d8d3db79e374176cce53cb1335d3593a7a75b"
       ]
     },
     "minimal-native0-lost1": {
@@ -290,12 +290,12 @@
         "MESH_ENABLE_LOST_REPLY=1"
       ],
       "output_bytes": [
-        2081,
-        2073
+        1932,
+        1924
       ],
       "output_sha256": [
-        "9ee93b7a588ce48c647b9871dc7bec5c3f307c06c29a65cb6ff66a55060247b6",
-        "449353daa515ede8c6528782406b3f4a101d60bee46412aa934ea94e922ed5a5"
+        "d27fa5b890700841f77a815fdeabe6850cd6cc4bf6ea4066f71bd0bf59245c74",
+        "02d853b9b49358dadf412c165654accd9b7dfd5cdd37d469fea71db85fc5ad92"
       ]
     },
     "minimal-native1-lost0": {
@@ -305,12 +305,12 @@
         "MESH_ENABLE_LOST_REPLY=0"
       ],
       "output_bytes": [
-        2046,
-        2038
+        1897,
+        1889
       ],
       "output_sha256": [
-        "5571a06d789dff50aebd53777095cc8f0f74e5fd4226ed399bd25050e9e5a02e",
-        "9328e546b561bc1d965f8036d73c862cfed9d5077111c0b5c8744822235740bb"
+        "fda1d107a7bba40a0211e22e04ea0102a5deb46d27fef9fae15d3b3302fe092e",
+        "b345253e4a2713f6a5f8afbaf29d8d3db79e374176cce53cb1335d3593a7a75b"
       ]
     },
     "minimal-native1-lost1": {
@@ -320,12 +320,12 @@
         "MESH_ENABLE_LOST_REPLY=1"
       ],
       "output_bytes": [
-        2081,
-        2073
+        1932,
+        1924
       ],
       "output_sha256": [
-        "9ee93b7a588ce48c647b9871dc7bec5c3f307c06c29a65cb6ff66a55060247b6",
-        "449353daa515ede8c6528782406b3f4a101d60bee46412aa934ea94e922ed5a5"
+        "d27fa5b890700841f77a815fdeabe6850cd6cc4bf6ea4066f71bd0bf59245c74",
+        "02d853b9b49358dadf412c165654accd9b7dfd5cdd37d469fea71db85fc5ad92"
       ]
     },
     "qspi-native0-lost0": {
@@ -359,12 +359,12 @@
         "MESH_ENABLE_LOST_REPLY=0"
       ],
       "output_bytes": [
-        4806,
-        4798
+        4386,
+        4378
       ],
       "output_sha256": [
-        "4cc6eed0758a5f99006b17d3d6b4564665d86e4cd65f3b0365926a78f562356e",
-        "9d6cc39d8b397abd81543346fd88786517fb385a44abb317ac2cf1e7b2cbd8a9"
+        "21bd11864860334b87c27d24b36d513ae858dd1da4f1df6b8c5e25f822cc23c9",
+        "3086b361ed519ec91fb9f31ecb6d22f71180d8fb064bb2f6f51c151c1b4c4c35"
       ]
     },
     "qspi-native0-lost1": {
@@ -398,12 +398,12 @@
         "MESH_ENABLE_LOST_REPLY=1"
       ],
       "output_bytes": [
-        4841,
-        4833
+        4421,
+        4413
       ],
       "output_sha256": [
-        "3bfd0dc32ba035ea4254e72fe21fde8e18a0b26d6621eec6df4e077ddc1069b9",
-        "ff22590ebdb6ed569fff20b9680050b7ac746d76ccc87cac85034b8f49adc0c4"
+        "10fcc7eba146e50131f34487a8d118befc3b4f32024a8762adbe6772e04f9294",
+        "5529438f4b22e556d1d00bc8c4633923b089d49211e5fee0b9b2b533d5fb88ba"
       ]
     },
     "qspi-native1-lost0": {
@@ -437,12 +437,12 @@
         "MESH_ENABLE_LOST_REPLY=0"
       ],
       "output_bytes": [
-        4891,
-        4883
+        4464,
+        4456
       ],
       "output_sha256": [
-        "6dc1e3ab146948fa9c59c8eca47cd0ca3171281c161dc7fd66a3e17eb5d966b4",
-        "ddec9acf0156c143bbf40d8372002c6eadcdac355ebc567dbb18ec627bbc992c"
+        "1b2d35692f9e8bfaee60a1f60620d116860d605e339bdd7a58f183b6cd7503db",
+        "cc056e777ea8bd7ae0d4581595467b1835d9a5e91f3b341c588fa86245591459"
       ]
     },
     "qspi-native1-lost1": {
@@ -476,12 +476,12 @@
         "MESH_ENABLE_LOST_REPLY=1"
       ],
       "output_bytes": [
-        4926,
-        4918
+        4499,
+        4491
       ],
       "output_sha256": [
-        "5cb4b4679630e65a8a6739158fc31c8830b393cdf18a69a259f3e31f6e4c0a74",
-        "9883ae8a436098ac6c6d2edf03164d19a0f07624ddcec74b598e79243387060e"
+        "378af0b3efc64bbd65585772928d9e1a031afa10cedcf2409dcda40a48ac7e32",
+        "5653195e250d7588b5df16c99a795fcf78ca6999ef4b4cf8f88821db5cdd6b44"
       ]
     }
   },

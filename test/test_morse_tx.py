@@ -15,9 +15,13 @@ SANITIZERS = ["-fsanitize=address,undefined", "-fno-sanitize-recover=all", "-fno
 def portable_radio_header():
     """Use the exact Radio interface without unrelated packet/crypto mocks."""
     dispatcher = (ROOT / "src/Dispatcher.h").read_text(encoding="utf-8")
-    return ("#pragma once\n#include <RadioProfiles.h>\n#include <helpers/RadioSwitchTuning.h>\n#include <helpers/MorseTx.h>\n#include <helpers/MorseRx.h>\n#include <helpers/RegulatorMode.h>\n#include <helpers/TelemetryHistoryConfig.h>\nnamespace mesh {\n"
+    return ("#pragma once\n#include <RadioProfiles.h>\n#include <helpers/RadioDirectionPolicy.h>\n#include <helpers/RadioSwitchTuning.h>\n#include <helpers/MorseTx.h>\n#include <helpers/MorseRx.h>\n#include <helpers/RegulatorMode.h>\n#include <helpers/TelemetryHistoryConfig.h>\nnamespace mesh {\n"
             + method(dispatcher, "enum class RadioParamApplyResult") + ";\n"
-            + method(dispatcher, "class Radio {") + ";\n}\n")
+            + method(dispatcher, "class Radio {") + ";\n}\n"
+            # This portable interface has no settings backend. Model its
+            # ordinary default while retaining the real direction predicates.
+            + "#if MESH_ENABLE_RADIO_DIRECTION\nnamespace mesh { namespace radioDirection {\n"
+              "inline Mode mode() { return Mode::Both; }\n}}\n#endif\n")
 
 
 def compile_run(testcase, code, includes=(), flags=(), headers=None):

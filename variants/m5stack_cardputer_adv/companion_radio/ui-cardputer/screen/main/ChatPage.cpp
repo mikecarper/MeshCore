@@ -48,6 +48,8 @@ const HistoryMessage *ChatPage::messageAt(int from_newest) const {
 }
 
 int ChatPage::render(CardputerDisplay &lcd) {
+  refreshSelectedContact();
+  refreshSelectedChannel();
   char buf[64];
   const int row = display.getRowHeight();
   const int line_h = display.getFontLineHeight();  // advance used when print() wraps
@@ -376,30 +378,27 @@ bool ChatPage::sendText(const char *text) {
     return false;
   }
 
-  uint32_t ts = the_mesh_cp.getRTCClock()->getCurrentTime();
+  refreshSelectedContact();
+  refreshSelectedChannel();
+  uint32_t ts = the_mesh_cp.getRTCClock()->getCurrentTimeUnique();
   bool sent = false;
   bool is_channel = false;
 
+  // The mesh pushes accepted sends back through onContactMessageSent() /
+  // onChannelMessageSent(), which add the history line and own-message id.
   if (current_contact_idx != -1 && current_contact.type == ADV_TYPE_CHAT) { // direct msg
     sent = the_mesh_cp.sendDirectMessage(current_contact, ts, text) != MSG_SEND_FAILED;
   } else if (current_channel_idx != -1) { // channel msg
-    sent = the_mesh_cp.sendGroupMessage(ts, current_channel.channel, _p->getUiTask()->getNodeName(), text,
-                                        strlen(text));
+    sent = the_mesh_cp.sendChannelMessage(current_channel_idx, ts, text, strlen(text));
     is_channel = true;
-  }
-
-  if (!sent) {
+  } else {
     return false;
   }
 
-  HistoryMessage *msg = chat_history.push_ref();
-  msg->out = true;
-  msg->meta = MessageMeta();
-  msg->own_id = the_mesh_cp.lastOwnMessageId();
-  snprintf(msg->text, MAX_MESSAGE_LENGTH, "%s", text);
-
-  last_sent_message = text;
-  onHistoryPushed();
+  if (!sent) {
+    _p->getUiTask()->showAlert("Unable to send message", 2000);
+    return false;
+  }
   if (is_channel) {
     _p->getUiTask()->showAlert("Waiting for repeats...", 2000);
   }
@@ -546,6 +545,7 @@ void ChatPage::selectContact(const ContactInfo &contact, int idx) {
   the_mesh_cp.loadMessageHistory(contact.id.pub_key, false, chat_history);
   chat_history_offset = 0;
   focus = ChatFocus();
+  last_sent_message = "";
 
   const HistoryMessage *msg;
   for (size_t i = chat_history.count(); i > 0; i--) {
@@ -557,12 +557,14 @@ void ChatPage::selectContact(const ContactInfo &contact, int idx) {
 }
 
 void ChatPage::selectChannel(const ChannelDetails &channel, int idx) {
+  if (!CardputerMesh::channelHistoryId(channel, current_channel_history_id)) return;
   current_channel = channel;
   current_channel_idx = idx;
   current_contact_idx = -1;
-  the_mesh_cp.loadMessageHistory(channel.channel.secret, true, chat_history);
+  the_mesh_cp.loadMessageHistory(current_channel_history_id, true, chat_history);
   chat_history_offset = 0;
   focus = ChatFocus();
+  last_sent_message = "";
 
   const HistoryMessage *msg;
   for (size_t i = chat_history.count(); i > 0; i--) {
@@ -573,40 +575,92 @@ void ChatPage::selectChannel(const ChannelDetails &channel, int idx) {
   }
 }
 
-bool ChatPage::onChannelMessageRecv(const mesh::GroupChannel &channel, const char *text) {
-
+bool ChatPage::onChannelMessageRecv(uint8_t channel_idx, const uint8_t history_id[32], const char *text) {
+  (void)channel_idx; // Identical logical channels can occupy more than one slot.
   if (current_channel_idx != -1 &&
-      memcmp(channel.secret, current_channel.channel.secret, CONTACT_LOOKUP_BYTES) == 0) {
+      memcmp(history_id, current_channel_history_id, PUB_KEY_SIZE) == 0) {
     HistoryMessage *msg = chat_history.push_ref();
     msg->out = false;
     msg->meta = the_mesh_cp.lastReceivedMeta();
     msg->own_id = 0;
     snprintf(msg->text, MAX_MESSAGE_LENGTH, "%s", text);
     onHistoryPushed();
-    return true;
+    return _p->getUiTask()->isChatVisible();
   }
   return false;
 }
 
 bool ChatPage::onContactMessageRecv(const ContactInfo &contact, const char *text) {
   if (current_contact_idx != -1 &&
-      memcmp(contact.id.pub_key, current_contact.id.pub_key, CONTACT_LOOKUP_BYTES) == 0) {
+      memcmp(contact.id.pub_key, current_contact.id.pub_key, PUB_KEY_SIZE) == 0) {
     HistoryMessage *msg = chat_history.push_ref();
     msg->out = false;
     msg->meta = the_mesh_cp.lastReceivedMeta();
     msg->own_id = 0;
     snprintf(msg->text, MAX_MESSAGE_LENGTH, "%s", text);
     onHistoryPushed();
-    return true;
+    return _p->getUiTask()->isChatVisible();
   }
   return false;
 }
 
+void ChatPage::onChannelMessageSent(uint8_t channel_idx, const uint8_t history_id[32], const char *text) {
+  (void)channel_idx;
+  if (current_channel_idx == -1 || memcmp(history_id, current_channel_history_id, PUB_KEY_SIZE) != 0) return;
+  pushOwnMessage(text);
+}
+
+void ChatPage::onContactMessageSent(const ContactInfo &contact, const char *text) {
+  if (current_contact_idx == -1 || memcmp(contact.id.pub_key, current_contact.id.pub_key, PUB_KEY_SIZE) != 0) return;
+  pushOwnMessage(text);
+}
+
+void ChatPage::pushOwnMessage(const char *text) {
+  HistoryMessage *msg = chat_history.push_ref();
+  msg->out = true;
+  msg->meta = MessageMeta();
+  msg->own_id = the_mesh_cp.lastOwnMessageId(); // tracked by the mesh just before this callback
+  snprintf(msg->text, sizeof(msg->text), "%s", text);
+  last_sent_message = text;
+  onHistoryPushed();
+}
+
+void ChatPage::markRead(UnreadCounter &unread) const {
+  if (current_contact_idx != -1) unread.resetContact(current_contact.id.pub_key);
+  if (current_channel_idx != -1) unread.resetChannel(current_channel_history_id);
+}
+
 void ChatPage::refreshSelectedContact() {
   if (current_contact_idx != -1) {
-    ContactInfo c;
-    if (the_mesh_cp.getContactByIdx(current_contact_idx, c)) {
-      current_contact = c;
+    ContactInfo *contact = the_mesh_cp.lookupPersistentContactByPubKey(current_contact.id.pub_key, PUB_KEY_SIZE);
+    if (contact) {
+      current_contact = *contact;
+    } else {
+      current_contact_idx = -1;
+      current_contact = ContactInfo{};
+      chat_history.clear();
+      chat_history_offset = 0;
+      focus = ChatFocus();
+      last_sent_message = "";
     }
   }
+}
+
+bool ChatPage::refreshSelectedChannel() {
+  if (current_channel_idx == -1) return false;
+  ChannelDetails channel;
+  uint8_t history_id[PUB_KEY_SIZE];
+  if (!the_mesh_cp.getChannel(current_channel_idx, channel) || !channel.name[0]
+      || !CardputerMesh::channelHistoryId(channel, history_id)
+      || memcmp(history_id, current_channel_history_id, PUB_KEY_SIZE) != 0) {
+    current_channel_idx = -1;
+    current_channel = ChannelDetails{};
+    chat_history.clear();
+    chat_history_offset = 0;
+    focus = ChatFocus();
+    last_sent_message = "";
+    return false;
+  }
+  current_channel = channel;
+  return true;
 }

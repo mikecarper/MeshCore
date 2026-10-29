@@ -373,6 +373,7 @@ void fe_frombytes(fe h, const unsigned char *s) {
 
 #endif
 
+#if !defined(ED25519_COMPACT_FIELD) || !ED25519_COMPACT_FIELD
 void fe_invert(fe out, const fe z) {
     fe t0;
     fe t1;
@@ -458,6 +459,7 @@ void fe_invert(fe out, const fe z) {
 
     fe_mul(out, t1, t0);
 }
+#endif
 
 
 
@@ -897,6 +899,7 @@ void fe_neg(fe h, const fe f) {
 
 #endif
 
+#if !defined(ED25519_COMPACT_FIELD) || !ED25519_COMPACT_FIELD
 void fe_pow22523(fe out, const fe z) {
     fe t0;
     fe t1;
@@ -981,6 +984,7 @@ void fe_pow22523(fe out, const fe z) {
     fe_mul(out, t0, z);
     return;
 }
+#endif
 
 
 /*

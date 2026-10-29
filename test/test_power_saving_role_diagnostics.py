@@ -36,6 +36,13 @@ class PowerSavingRoleDiagnosticsTests(unittest.TestCase):
         self.execute(r'''
 #include <cassert>
 #include <cstdint>
+#include <helpers/RadioDirectionPolicy.h>
+#include <initializer_list>
+namespace mesh { namespace radioDirection {
+Mode current = Mode::Both;
+Mode mode() { return current; }
+}}
+namespace radioDirection = mesh::radioDirection;
 struct Radio {
   bool calibrating = false;
   bool isCalibratingNoiseFloor() const { return calibrating; }
@@ -70,12 +77,22 @@ int main() {
   SpacedRadio spaced;
   node._radio = &spaced;
   assert(node.getNextNoiseFloorWakeDelay(delay) && delay == 50 && spaced.reads == 1);
+  for (auto mode : {radioDirection::Mode::Tx, radioDirection::Mode::Off}) {
+    radioDirection::current = mode;
+    const auto clock_reads = clock.reads, radio_reads = spaced.reads;
+    delay = 73;
+    assert(!node.getNextNoiseFloorWakeDelay(delay) && delay == 73);
+    assert(clock.reads == clock_reads && spaced.reads == radio_reads);
+  }
+  radioDirection::current = radioDirection::Mode::Rx;
+  assert(node.getNextNoiseFloorWakeDelay(delay) && delay == 50 && spaced.reads == 2);
   node.radio_available = false;
   const auto before = clock.reads;
   assert(!node.getNextNoiseFloorWakeDelay(delay));
-  assert(clock.reads == before && spaced.reads == 1);
+  assert(clock.reads == before && spaced.reads == 2);
 }
-'''.replace('@DEFAULT@', conservative).replace('@FORWARDER@', forwarder))
+'''.replace('@DEFAULT@', conservative).replace('@FORWARDER@', forwarder),
+            defines=('MESH_ENABLE_RADIO_DIRECTION=1',))
 
     def test_actual_role_guards_preserve_short_circuit_and_ignore_charger_only(self):
         for role in ("simple_repeater", "simple_room_server", "simple_sensor"):

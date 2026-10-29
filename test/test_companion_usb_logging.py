@@ -504,7 +504,7 @@ int main(){
    assert(text.find("usb.debug")==std::string::npos);
 #endif
 #if MESH_USB_LOGGING_AVAILABLE && MESH_USB_CONSOLE_COOPERATIVE
-   assert(text.find("  get usb.watchdog.last\r\n  get/set usb.watchdog <off|on|auto> (saved; default auto)\r\n")!=std::string::npos);
+   assert(text.find("  get usb.watchdog.last\r\n  get/set usb.watchdog <off|on|auto> (default auto)\r\n")!=std::string::npos);
 #else
    assert(text.find("usb.watchdog")==std::string::npos);
 #endif

@@ -17,6 +17,8 @@ HARNESS = r'''
 #include <cstdint>
 #include <initializer_list>
 #include <helpers/AGCResetScheduler.h>
+#include <helpers/RadioDirectionPolicy.h>
+namespace radioDirection = mesh::radioDirection;
 #define MESH_ENABLE_FOREIGN_RADIO 1
 #define MESH_ENABLE_TX_BEACONS 1
 struct Profiles { bool active = false; bool enabled() const { return active; } };

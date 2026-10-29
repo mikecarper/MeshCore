@@ -201,6 +201,7 @@ void UDPBridge::receiveFrame(uint8_t peer, const uint8_t* data, size_t length) {
   // Copy verified bytes into one bounded holding slot before allocating from
   // the shared mesh pool. A full slot stops socket reads, preserving its owner.
   memcpy(_rx_payload, frame.payload, frame.length); _rx_length = frame.length;
+  _rx_peer = peer;
 }
 void UDPBridge::pumpReceive() {
   for (uint8_t count = 0; count < 2 && !_rx_length && _initialized; ++count) {
@@ -228,6 +229,9 @@ void UDPBridge::drainReceive() {
   const bool parsed = packet->readFrom(_rx_payload, static_cast<uint8_t>(_rx_length));
   _rx_length = 0;
   if (!parsed) { _mgr->free(packet); note(_stats.parse); return; }
+  const auto ingress_source = mesh::bridge::IngressSource::udp(
+      _active.peers[_rx_peer].ip, _active.peers[_rx_peer].port);
+  IngressSourceScope ingress_scope(*this, ingress_source);
   packet->udp_bridge_ingress = true;
   onPacketReceived(packet);
 }

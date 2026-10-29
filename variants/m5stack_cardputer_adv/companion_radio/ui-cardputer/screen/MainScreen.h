@@ -48,8 +48,10 @@ public:
   MainScreen(CardputerUITask *task, mesh::RTCClock *rtc, SensorManager *sensors, CompanionNodePrefs *node_prefs,
              CustomNodePrefs *custom_prefs);
   void messageRepeatsRecv(uint16_t count);
-  void onChannelMessageRecv(const mesh::GroupChannel &channel, const char *text);
+  void onChannelMessageRecv(uint8_t channel_idx, const uint8_t history_id[32], const char *text);
   void onContactMessageRecv(const ContactInfo &contact, const char *text);
+  void onChannelMessageSent(uint8_t channel_idx, const uint8_t history_id[32], const char *text);
+  void onContactMessageSent(const ContactInfo &contact, const char *text);
   void onMessageSendAttempt(uint8_t attempt, uint8_t total, MessageSendState state);
 
   void poll() override;

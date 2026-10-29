@@ -4,6 +4,9 @@
 
 # WiFi UDP bridge: up to eight IP peers
 
+For two receive-only V4s feeding one transmit-only V4, see
+[the split repeater setup](split_radio_repeater.md#wifi-udp-alternative).
+
 Supported ESP32 repeater images can bridge MeshCore packets directly over an
 existing WiFi network, without an MQTT broker. Each board has one UDP listening
 port and up to eight configured IPv4 address/port destinations. Eight is the
@@ -162,6 +165,14 @@ actual firmware. If sessions/probes work but mesh traffic does not, check
 `bridge.source`, filters, duplicate counters and each side's LoRa setup.
 `bridge.source rx` is valid; `tx` instead selects packets after LoRa forwarding
 decisions. These source/filter settings are shared with other compiled bridges.
+
+Incoming UDP mesh packets use `bridge.ingress radio` by default. To forward
+them only on an already configured MeshCore radio2, save
+`set bridge.ingress radio2` on the receiving board. Radio2 must permit TX;
+unavailable profiles cause drops, never a fallback to the primary. The sender,
+UDP framing, peer sessions and authentication stay unchanged. See the
+[MediaMesh example](espnow_bridge_setup.md#send-bridge-traffic-only-on-mediamesh)
+and [bridge-ingress reference](cli_commands.md#select-the-radio-for-incoming-bridge-packets).
 
 The peer list contains direct destinations for locally received/transmitted
 LoRa traffic. An incoming UDP packet enters the local LoRa mesh; it is not

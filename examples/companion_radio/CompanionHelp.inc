@@ -7,16 +7,16 @@
 MESH_COMPANION_HELP_BEGIN
     "Commands:\r\n"
     "  stats-core / stats-radio / stats-radio-diag / stats-packets\r\n"
-    "  get prv.key (if export enabled)\r\n"
+    "  get prv.key\r\n"
 #if defined(ESP32_PLATFORM) && defined(WIFI_SSID)
     "  password <new-password> (shared setup WiFi, WebConfig and WiFi OTA)\r\n"
     "  get password (management password status)\r\n"
 #else
-    "  get password (no admin password)\r\n"
+    "  get password\r\n"
 #endif
 MESH_COMPANION_HELP_END
 MESH_COMPANION_HELP_BEGIN
-    "  erase (settings and identity)\r\n"
+    "  erase (settings+identity)\r\n"
     "  board\r\n"
     "  version\r\n"
     "  get storage.layout\r\n"
@@ -31,24 +31,23 @@ MESH_COMPANION_HELP_END
 MESH_COMPANION_HELP_BEGIN
     "  get mt.status / get mt.region / get mt.slot / get mt.hops\r\n"
     "  get mt.node / get mt.shortname\r\n"
-    "  get mt.rebroadcast / set mt.rebroadcast <on|off> (saved; default off)\r\n"
-    "    Relay decoded channel text only; adds 5 packet airtimes before TX\r\n"
+    "  get mt.rebroadcast / set mt.rebroadcast <on|off> (default off)\r\n"
 MESH_COMPANION_HELP_END
 MESH_COMPANION_HELP_BEGIN
     "  set mt.region <auto|us|eu868|eu433|anz>\r\n"
     "  set mt.slot <0|1-based frequency slot>\r\n"
-    "  set mt.hops <0..7> (saved; default 7)\r\n"
-    "  set mt.node <!8hex|default> (saved; use a unique ID)\r\n"
+    "  set mt.hops <0..7> (default 7)\r\n"
+    "  set mt.node <!8hex|default>\r\n"
 MESH_COMPANION_HELP_END
 MESH_COMPANION_HELP_BEGIN
-    "  set mt.shortname <1..4 UTF-8 characters|default> (saved; NodeInfo uses 4 bytes)\r\n"
-    "  send mt.nodeinfo <channel slot> (GPS-free; also automatic after first chat)\r\n"
-    "  set mt.preset <longfast|shortturbo|...> (saved manual radio2)\r\n"
+    "  set mt.shortname <1..4 UTF-8 characters|default>\r\n"
+    "  send mt.nodeinfo <channel slot> (auto after first chat)\r\n"
+    "  set mt.preset <longfast|shortturbo|...>\r\n"
 MESH_COMPANION_HELP_END
 MESH_COMPANION_HELP_BEGIN
     "  set mt.channel <slot> <mt-name> <32/64 hex digits|AQ==>\r\n"
     "  get mt.channel <slot> / delete mt.channel <slot>\r\n"
-    "  Join #mt-longfast or #mt-shortturbo in the app for automatic radio2\r\n"
+    "  App #mt-longfast/#mt-shortturbo: radio2\r\n"
 MESH_COMPANION_HELP_END
 #endif
 #if defined(NRF52_PLATFORM) && defined(EXTRAFS) && !defined(QSPIFLASH)
@@ -58,12 +57,12 @@ MESH_COMPANION_HELP_END
 #endif
 #if COMPANION_FEATURE_READER
 MESH_COMPANION_HELP_BEGIN
-    "  get reader <chapter>[:<verse>[-<last>]] [page] (World English Bible, offline)\r\n"
+    "  get reader <chapter>[:<verse>[-<last>]] [page]\r\n"
 MESH_COMPANION_HELP_END
 #endif
 MESH_COMPANION_HELP_BEGIN
-    "  get/set tx.media auto|radio|radio2|both|off (binary media)\r\n"
-    "  get/set tx.ssh auto|radio|radio2|both|off (tagged tunnel data)\r\n"
+    "  get/set tx.media auto|radio|radio2|both|off\r\n"
+    "  get/set tx.ssh auto|radio|radio2|both|off\r\n"
 MESH_COMPANION_HELP_END
 #if MESH_ENABLE_ETHERNET_TUNNEL
 MESH_COMPANION_HELP_BEGIN
@@ -74,19 +73,19 @@ MESH_COMPANION_HELP_END
 #endif
 #if defined(OTA_RAK15002_SD_STORE) && defined(ETHERNET_USE_RAK13800)
 MESH_COMPANION_HELP_BEGIN
-    "  get eth / set eth on|off (physical RAK13800; default off, this boot)\r\n"
+    "  get eth / set eth on|off (default off; boot)\r\n"
 MESH_COMPANION_HELP_END
 #endif
 #if defined(NRF52_PLATFORM) && defined(OTA_SD_STORE)
 MESH_COMPANION_HELP_BEGIN
     "  get sdcard [free|ls|dir [page]|format|erase|*]\r\n"
     "  set sdcard format|erase [--force]\r\n"
-    "  ota cache [on|off] (SD archive)\r\n"
+    "  ota cache [on|off]\r\n"
 MESH_COMPANION_HELP_END
 #endif
 MESH_COMPANION_HELP_BEGIN
     "  power / get pwrmgt.support / get pwrmgt.source / get pwrmgt.bootmv\r\n"
-    "  get system.watchdog (hardware status)\r\n"
+    "  get system.watchdog\r\n"
     "  get bootloader.ver\r\n"
 MESH_COMPANION_HELP_END
 MESH_COMPANION_HELP_BEGIN
@@ -100,7 +99,7 @@ MESH_COMPANION_HELP_BEGIN
     "  get/set display.night.delay <-180..180> (minutes after sunset; default 60)\r\n"
 #endif
 #if defined(OLED_AUTO_DETECT) && OLED_AUTO_DETECT && defined(DISPLAY_CLASS)
-    "  get/set display.controller <auto|ssd1306|sh1106> (saved; restart to apply)\r\n"
+    "  get/set display.controller <auto|ssd1306|sh1106> (restart)\r\n"
 #endif
 #ifdef PIN_BUZZER
     "  get/set buzzer on|off\r\n"
@@ -116,26 +115,26 @@ MESH_COMPANION_HELP_BEGIN
     "  set notify.<output> <all|contact:key|room:key|channel:slot> <pattern>\r\n"
 MESH_COMPANION_HELP_END
 MESH_COMPANION_HELP_BEGIN
-    "  set notify.remote <contact:key|room:key> on|off (!notify, max 15s, no GPIO)\r\n"
+    "  set notify.remote <contact:key|room:key> on|off (!notify, <=15s, no GPIO)\r\n"
     "  notify.test <target> / notify.stop / notify.delete <target>\r\n"
 MESH_COMPANION_HELP_END
 #endif
 MESH_COMPANION_HELP_BEGIN
     "  get/set display.inbox <history|pending|unread>\r\n"
-    "  get/set display.touch <on|off> (this boot)\r\n"
+    "  get/set display.touch <on|off> (boot)\r\n"
     "  get public.key\r\n"
     "  set {name|lat|lon|freq|tx|af} {value}\r\n"
     "  get wifi|espnow|2.4ghz\r\n"
-    "  set wifi|espnow on|off [force] (force only with off)\r\n"
+    "  set wifi|espnow on|off [force] (force: off)\r\n"
 MESH_COMPANION_HELP_END
 MESH_COMPANION_HELP_BEGIN
-    "  set 2.4ghz on [all|force]|off [force] (this boot)\r\n"
+    "  set 2.4ghz on [all|force]|off [force] (boot)\r\n"
     "  get/set bluetooth.name <name|default>\r\n"
 MESH_COMPANION_HELP_END
 #if defined(BLE_PIN_CODE)
 MESH_COMPANION_HELP_BEGIN
-    "  get bluetooth (alias: get ble)\r\n"
-    "  set bluetooth <on|off> [force] (saved; force only with off)\r\n"
+    "  get bluetooth / get ble\r\n"
+    "  set bluetooth <on|off> [force] (force: off)\r\n"
     "  get bluetooth.mac\r\n"
     "  set bluetooth.mac <address|random|random-every-boot|random-after-connect|default>\r\n"
     "  get/set bluetooth.stealth on|off\r\n"
@@ -152,7 +151,7 @@ MESH_COMPANION_HELP_BEGIN
     "  get/set usb.debug <on|off>\r\n"
 #if MESH_USB_CONSOLE_COOPERATIVE
     "  get usb.watchdog.last\r\n"
-    "  get/set usb.watchdog <off|on|auto> (saved; default auto)\r\n"
+    "  get/set usb.watchdog <off|on|auto> (default auto)\r\n"
 #endif
 #endif
 MESH_COMPANION_HELP_END
@@ -236,7 +235,7 @@ MESH_COMPANION_HELP_END
 // Keep native USB producer writes within 256 bytes.
 #if !defined(MESH_RADIO_SWITCH_TUNING) || MESH_RADIO_SWITCH_TUNING
 MESH_COMPANION_HELP_BEGIN
-    "  get radio.fast / get radio.fast.caps (supported saved controls)\r\n"
+    "  get radio.fast / get radio.fast.caps\r\n"
     "  set radio.fast <on|off> / set radio.fast.spi <0|2|4|8|9|16>\r\n"
 MESH_COMPANION_HELP_END
 #endif
@@ -249,7 +248,7 @@ MESH_COMPANION_HELP_BEGIN
 MESH_COMPANION_HELP_END
 MESH_COMPANION_HELP_BEGIN
     "  get rxps.wd\r\n"
-    "  get/set radio.rxps.rfrx_disabled <on|off> (this boot)\r\n"
+    "  get/set radio.rxps.rfrx_disabled <on|off> (boot)\r\n"
     "  clear stats\r\n"
 MESH_COMPANION_HELP_END
 MESH_COMPANION_HELP_BEGIN
@@ -286,10 +285,10 @@ MESH_COMPANION_HELP_BEGIN
 MESH_COMPANION_HELP_END
 #if defined(NRF52_PLATFORM) && defined(EXTRAFS) && !defined(QSPIFLASH)
 MESH_COMPANION_HELP_BEGIN
-    "  repair extrafs (erases/rebuilds internal ExtraFS)\r\n"
+    "  repair extrafs (erases ExtraFS)\r\n"
 MESH_COMPANION_HELP_END
 MESH_COMPANION_HELP_BEGIN
-    "  scan extrafs erase (USB only; reboot for destructive page test)\r\n"
+    "  scan extrafs erase (USB; reboot; erases pages)\r\n"
 MESH_COMPANION_HELP_END
 #endif
 #if COMPANION_FEATURE_TEMP_RADIO || COMPANION_FEATURE_OTA_CLI

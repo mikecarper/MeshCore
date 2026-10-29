@@ -23,6 +23,7 @@ LINK_SIZE_FLAGS = (
     "-fno-reorder-functions",
     "-fno-tree-switch-conversion",
 )
+LINK_ONLY_SIZE_FLAGS = ("-flto-partition=one",)
 OPTIONAL_CUTS = (
     "MESH_ENABLE_CARRIER_TOOLS",
     "MESH_ENABLE_MANAGEMENT_REPORTING",
@@ -39,6 +40,15 @@ def read_config(path):
 
 
 class FakeEnvironment(dict):
+    def AddBuildMiddleware(self, callback, pattern):
+        self.middleware = getattr(self, "middleware", []) + [(callback, pattern)]
+
+    def subst(self, value):
+        return value.replace("$PROJECT_DIR", str(ROOT))
+
+    def Object(self, node, **flags):
+        return node, flags
+
     def Append(self, **values):
         for name, items in values.items():
             self.setdefault(name, []).extend(items)
@@ -111,6 +121,8 @@ class MiniRepeaterProfileTest(unittest.TestCase):
         tokens = shlex.split(self.flags)
         for flag in ("-Oz", "-flto", *LINK_SIZE_FLAGS):
             self.assertIn(flag, tokens)
+        for flag in LINK_ONLY_SIZE_FLAGS:
+            self.assertNotIn(flag, tokens)
         scripts = self.repeater["extra_scripts"].split()
         self.assertIn("${stm32_base.extra_scripts}", scripts)
         self.assertIn("post:scripts/stm32_mini_size.py", scripts)
@@ -123,9 +135,72 @@ class MiniRepeaterProfileTest(unittest.TestCase):
                     "env": environment,
                     "Import": lambda name: self.assertEqual(name, "env"),
                 })
-                expected = ["keep-existing-flag", *(LINK_SIZE_FLAGS if target == TARGET else ())]
+                expected = ["keep-existing-flag",
+                            *((LINK_SIZE_FLAGS + LINK_ONLY_SIZE_FLAGS) if target == TARGET else ())]
                 self.assertEqual(environment["LINKFLAGS"], expected)
                 self.assertEqual(set(environment), {"PIOENV", "LINKFLAGS"})
+                self.assertFalse(getattr(environment, "middleware", []))
+
+    def test_shared_reply_copy_policy_changes_only_the_exact_mini_cli_object(self):
+        class Node:
+            def __init__(self, path): self.path = path
+            def srcnode(self): return self
+            def get_abspath(self): return str(self.path)
+
+        environment = FakeEnvironment(PIOENV=TARGET, CCFLAGS=["-Oz", "-flto"])
+        runpy.run_path(str(ROOT / "scripts/stm32_mini_cli_replies.py"), init_globals={
+            "env": environment, "Import": lambda name: self.assertEqual(name, "env")})
+        callback, pattern = environment.middleware[0]
+        self.assertEqual(pattern, "*CommonCLI.cpp")
+        cli = Node(ROOT / "src/helpers/CommonCLI.cpp")
+        same, flags = callback(environment, cli)
+        self.assertIs(same, cli)
+        self.assertEqual(flags["CCFLAGS"], ["-Oz", "-flto", "-fno-builtin-strcpy"])
+        self.assertEqual(environment["CCFLAGS"], ["-Oz", "-flto"])
+        for path in ("test/fixtures/CommonCLI.cpp", "src/helpers/RadioProfileCLI.cpp",
+                     "src/helpers/UsbLogging.cpp"):
+            other = Node(ROOT / path)
+            self.assertIs(callback(environment, other), other)
+
+    def test_scons_script_context_without_file_still_installs_exact_cli_policy(self):
+        script = ROOT / "scripts/stm32_mini_cli_replies.py"
+        environment = FakeEnvironment(PIOENV=TARGET)
+        namespace = {"env": environment,
+                     "Import": lambda name: self.assertEqual(name, "env")}
+        exec(compile(script.read_text(), str(script), "exec"), namespace)
+        self.assertNotIn("__file__", namespace)
+        self.assertNotIn("LINKFLAGS", environment)
+        self.assertEqual(len(environment.middleware), 1)
+        self.assertEqual(environment.middleware[0][1], "*CommonCLI.cpp")
+
+    def test_middleware_is_registered_before_object_flags_are_captured(self):
+        environment = FakeEnvironment(PIOENV=TARGET, CCFLAGS=["-Oz", "-flto"])
+        scripts = self.repeater["extra_scripts"].split()
+        pre = "pre:scripts/stm32_mini_cli_replies.py"
+        post = "post:scripts/stm32_mini_size.py"
+        self.assertIn(pre, scripts)
+        self.assertIn(post, scripts)
+        self.assertNotIn(pre.replace("pre:", "post:"), scripts)
+
+        def run_script(entry):
+            runpy.run_path(str(ROOT / entry.split(":", 1)[1]), init_globals={
+                "env": environment, "Import": lambda name: self.assertEqual(name, "env")})
+
+        # PlatformIO constructs source objects before executing post scripts.
+        run_script(pre)
+        callback, _ = environment.middleware[0]
+        class Node:
+            def srcnode(self): return self
+            def get_abspath(self): return str(ROOT / "src/helpers/CommonCLI.cpp")
+        _, captured = callback(environment, Node())
+        run_script(post)
+        self.assertEqual(captured["CCFLAGS"], ["-Oz", "-flto", "-fno-builtin-strcpy"])
+        self.assertEqual(environment["CCFLAGS"], ["-Oz", "-flto"])
+        self.assertEqual(environment["LINKFLAGS"], list(LINK_SIZE_FLAGS + LINK_ONLY_SIZE_FLAGS))
+        for target in ("wio-e5-mini_sensor", "wio-e5-mini_companion_radio_usb", "wio-e5_repeater"):
+            environment = FakeEnvironment(PIOENV=target)
+            run_script(pre)
+            self.assertFalse(getattr(environment, "middleware", []))
 
     def test_capability_contract_declares_only_exact_mini_repeater_omissions(self):
         command = r'''

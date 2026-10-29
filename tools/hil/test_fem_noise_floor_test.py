@@ -107,7 +107,8 @@ class PayloadValidationTest(unittest.TestCase):
                     port = FailingSessionPort(phase)
                     transport = transport_type(fast_config(dtr="off", open_delay=0))
                     with mock.patch.object(serial, "Serial", return_value=port), mock.patch(
-                            "serial_session.os.name", "posix"):
+                            "serial_session.os.name", "posix"), mock.patch(
+                            "serial_session.sys.platform", "darwin"):
                         with self.assertRaisesRegex(RuntimeError, phase + " failed"):
                             transport.open()
                     self.assertIsNone(transport.port)

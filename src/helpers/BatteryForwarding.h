@@ -24,8 +24,8 @@ static constexpr size_t RecordSize = 16;
 
 struct Settings {
   uint8_t enabled = 0;
-  uint8_t repeatBelow = 10;
-  uint8_t floodBelow = 20;
+  uint8_t repeatBelow = 15;
+  uint8_t floodBelow = 25;
   // Zero keeps the board's compiled endpoints. nRF52 uses its voltage policy.
   uint16_t emptyMv = 0;
   uint16_t fullMv = 0;
@@ -54,7 +54,7 @@ inline uint16_t checksum(const uint8_t* data, size_t size) {
 
 inline void encode(uint8_t* out, const Settings& s) {
   memset(out, 0, RecordSize);
-  out[0] = 'B'; out[1] = 'F'; out[2] = 'R'; out[3] = 1;
+  out[0] = 'B'; out[1] = 'F'; out[2] = 'R'; out[3] = 2;
   out[4] = s.enabled; out[5] = s.repeatBelow; out[6] = s.floodBelow;
   out[8] = uint8_t(s.emptyMv); out[9] = uint8_t(s.emptyMv >> 8);
   out[10] = uint8_t(s.fullMv); out[11] = uint8_t(s.fullMv >> 8);
@@ -65,13 +65,18 @@ inline void encode(uint8_t* out, const Settings& s) {
 inline bool decode(const uint8_t* in, size_t size, Settings& s) {
   s = Settings{};
   if (!in || size != RecordSize || in[0] != 'B' || in[1] != 'F'
-      || in[2] != 'R' || in[3] != 1 || in[7] || in[12] || in[13]
+      || in[2] != 'R' || (in[3] != 1 && in[3] != 2) || in[7] || in[12] || in[13]
       || checksum(in, 14) != uint16_t(in[14] | (uint16_t(in[15]) << 8))) return false;
   Settings candidate;
   candidate.enabled = in[4]; candidate.repeatBelow = in[5]; candidate.floodBelow = in[6];
   candidate.emptyMv = uint16_t(in[8] | (uint16_t(in[9]) << 8));
   candidate.fullMv = uint16_t(in[10] | (uint16_t(in[11]) << 8));
   if (!validSettings(candidate)) return false;
+  // Upgrade the old default pair once; v2 preserves an explicit 10/20 choice.
+  if (in[3] == 1 && candidate.repeatBelow == 10 && candidate.floodBelow == 20) {
+    candidate.repeatBelow = 15;
+    candidate.floodBelow = 25;
+  }
   s = candidate;
   return true;
 }

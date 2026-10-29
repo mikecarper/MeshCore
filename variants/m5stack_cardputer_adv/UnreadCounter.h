@@ -6,7 +6,7 @@
 
 struct UnreadCounterItem {
   bool is_channel;
-  uint8_t pkey[CONTACT_LOOKUP_BYTES]; // todo: maybe replace to index, but what should we do if it gets deleted?
+  uint8_t pkey[32]; // Full contact public key or domain-separated channel ID.
   int count;
 };
 
@@ -15,7 +15,7 @@ class UnreadCounter {
 private:
   UnreadCounterItem _items[UNREAD_COUNTER_MAX_ITEMS];
   uint16_t _count = 0;
-  using LookupPkey = uint8_t[CONTACT_LOOKUP_BYTES];
+  using LookupPkey = uint8_t[32];
 
 public:
   UnreadCounter() {}
@@ -27,8 +27,8 @@ public:
     return &_items[index];
   }
 
-  inline const uint16_t countChats() const { return _count; }
-  const uint16_t countMessages() const {
+  inline uint16_t countChats() const { return _count; }
+  uint16_t countMessages() const {
     uint16_t total = 0;
     for (uint16_t i = 0; i < _count; i++) {
       total += _items[i].count;
@@ -38,7 +38,7 @@ public:
 
   bool add(bool is_channel, const LookupPkey pkey, int count) {
     for (uint16_t i = 0; i < _count; i++) {
-      if (_items[i].is_channel == is_channel && memcmp(_items[i].pkey, pkey, CONTACT_LOOKUP_BYTES) == 0) {
+      if (_items[i].is_channel == is_channel && memcmp(_items[i].pkey, pkey, sizeof(_items[i].pkey)) == 0) {
         _items[i].count += count;
         return true;
       }
@@ -47,7 +47,7 @@ public:
     if (_count < UNREAD_COUNTER_MAX_ITEMS) {
       _items[_count].is_channel = is_channel;
       _items[_count].count = count;
-      memcpy(_items[_count].pkey, pkey, CONTACT_LOOKUP_BYTES);
+      memcpy(_items[_count].pkey, pkey, sizeof(_items[_count].pkey));
       _count++;
       return true;
     }
@@ -56,14 +56,14 @@ public:
 
   void reset(bool is_channel, const LookupPkey pkey) {
     for (uint16_t i = 0; i < _count; i++) {
-      if (_items[i].is_channel == is_channel && memcmp(_items[i].pkey, pkey, CONTACT_LOOKUP_BYTES) == 0) {
+      if (_items[i].is_channel == is_channel && memcmp(_items[i].pkey, pkey, sizeof(_items[i].pkey)) == 0) {
         // Swap the target item with the last active item
         if (i < _count - 1) {
           _items[i] = _items[_count - 1];
         }
 
         _count--;
-        _items[_count] = { false, 0, 0 };
+        _items[_count] = {};
         return;
       }
     }

@@ -39,9 +39,9 @@ static size_t adapterOffset(const CompanionNodePrefs& prefs) {
   // The value helper does not copy the adapters or their inter-field padding.
   // Use the complete object's byte representation for bounded observation.
   const uintptr_t first = reinterpret_cast<uintptr_t>(&prefs);
-  const uintptr_t last = reinterpret_cast<uintptr_t>(&prefs.tx_ssh);
+  const uintptr_t last = reinterpret_cast<uintptr_t>(&prefs.usb_logging_always);
   assert(last >= first && last - first < sizeof(prefs));
-  return static_cast<size_t>(last - first) + sizeof(prefs.tx_ssh);
+  return static_cast<size_t>(last - first) + sizeof(prefs.usb_logging_always);
 }
 
 static std::vector<uint8_t> adapterBytes(const CompanionNodePrefs& prefs) {
@@ -95,9 +95,12 @@ int main() {
     CompanionNodePrefs saved;
     seedValues(saved, random);
     saved.bluetooth_enabled = static_cast<uint8_t>(trial);
+    saved.usb_logging_always = trial & 1;
     DataStore image_store;
     assert(image_store.savePrefs(saved, 47.125, -122.25));
     auto image = image_store.fs.files["/new_prefs"];
+    assert(image[36] == (saved.usb_logging_always ? 0xa1 : 0));
+    assert(image[37] == 0 && image[38] == 0 && image[39] == 0);
 #if defined(WIO_E5_MINI_HEADLESS_COMPANION_UI)
     assert(image[79] == saved.leds_quiet);
 #endif
@@ -202,6 +205,13 @@ class CompanionPrefsValuesTests(unittest.TestCase):
             '#if defined(WIO_E5_MINI_HEADLESS_COMPANION_UI)\n'
             '    readField(&loaded_prefs.leds_quiet, 1);\n'
             '#else\n' + reserved_byte + '\n#endif')
+        # The always-log opt-in uses the first byte of the existing reserved
+        # word at 36. Keep its one historical four-byte read and independent
+        # literal marker decoding, including all failed-read boundaries.
+        logging_word = '    readField(pad, 4);'
+        self.assertEqual(legacy.count(logging_word), 1)
+        legacy = legacy.replace(logging_word, logging_word + '\n'
+            '    loaded_prefs.usb_logging_always = success && pad[0] == 0xa1;')
         # Keep the frozen scalar prefix independent of the new GNU table.
         # The RAK-only checked tail was published later; add it explicitly
         # to this test-local reference without rewriting the frozen fixture.
@@ -236,7 +246,7 @@ class CompanionPrefsValuesTests(unittest.TestCase):
             r'^\s*(?:float|char|u?int(?:8|16|32)_t)\s+([A-Za-z_][A-Za-z_0-9]*)',
             prefix, re.M)
         self.assertEqual(declarations[0], 'airtime_factor')
-        self.assertEqual(declarations[-2:], ['tx_media', 'tx_ssh'])
+        self.assertEqual(declarations[-3:], ['tx_media', 'tx_ssh', 'usb_logging_always'])
         optional = {
             'fan_mode': 'TBEAM_1W', 'fan_lo': 'TBEAM_1W', 'fan_hi': 'TBEAM_1W',
             'wifi_ssid': 'defined(RP2040_PLATFORM) && defined(ENABLE_WIFI_INTERFACE)',

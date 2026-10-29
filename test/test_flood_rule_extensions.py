@@ -65,6 +65,8 @@ static void parsing() {
   assert(normal.payload_set && normal.min_payload == 0 && normal.max_payload == 60);
   assert(normal.route == AnyRoute && normal.probability == 25 && normal.disabled);
   assert(contentRequested(normal) && hasFields(normal));
+  const Fields folded = parse(R"(n="(?i)^(Jeffery Epstein|Ghislaine Maxwell)$" x="(?i)^weather: [A-Z]+$")");
+  assert(!strcmp(folded.sender, "(?i)^(Jeffery Epstein|Ghislaine Maxwell)$"));
   Fields empty{};
   assert(validFields(empty) && !hasFields(empty) && !contentRequested(empty));
   assert(sameFields(parse("prob=100"), empty));
@@ -73,7 +75,8 @@ static void parsing() {
   assert(!validFields(terminator));
   terminator = empty; memset(terminator.text, 'a', sizeof(terminator.text));
   assert(!validFields(terminator));
-  for (const char* token : {"sender=", "text=", "sender=[", "text=a**", "len=", "len=-1", "len=3-2",
+  for (const char* token : {"sender=", "text=", "sender=[", "text=a**", "sender=Alice(?i)", "text=(?i)(?i)rain",
+       "len=", "len=-1", "len=3-2",
        "len=185", "len=184-185", "len=1+2", "len=1+-2", "len=1-2+", "len=1--2", "len=99999999999999999999",
        "route=bad", "prob=0", "prob=101", "prob=-1", "prob=50%", "enabled=yes"}) {
     Fields row{}; uint8_t seen = 0; char reply[160] = {};
@@ -82,6 +85,12 @@ static void parsing() {
   const std::string oversized = "sender=" + std::string(64, 'a');
   uint8_t seen = 0; char reply[160] = {}; Fields row{};
   assert(parseToken(oversized.c_str(), row, seen, reply) == -1);
+  const std::string foldedMaximum = "sender=(?i)" + std::string(59, 'a');
+  seen = 0;
+  assert(parseToken(foldedMaximum.c_str(), row, seen, reply) == 1);
+  assert(strlen(row.sender) == 63);
+  seen = 0;
+  assert(parseToken((foldedMaximum + "a").c_str(), row, seen, reply) == -1);
   seen = 0;
   assert(parseToken("sender=Alice", row, seen, reply) == 1);
   assert(parseToken("n=Bob", row, seen, reply) == -1 && !strcmp(row.sender, "Alice"));
@@ -112,6 +121,8 @@ static void parsing() {
     }
     StringWriter writer; appendFields(writer, normal, abbreviated);
     assert(sameFields(normal, parse(writer.text.c_str())));
+    StringWriter foldedWriter; appendFields(foldedWriter, folded, abbreviated);
+    assert(sameFields(folded, parse(foldedWriter.text.c_str())));
   }
 }
 static void envelopesAndProbability() {
@@ -232,6 +243,12 @@ static void content() {
   assert(!matchesContent(row, &packet, key, 16, &work, false, &exhausted) && !exhausted);
   decrypt_ok = true;
   setPlain("alice: weather rain"); assert(!matchesContent(row, &packet, key, 16));
+  const Fields folded = parse(R"(n="(?i)^(Jeffery Epstein|Ghislaine Maxwell)$" x="(?i)^weather (sun|rain)$")");
+  setPlain("jEfFeRy ePsTeIn: WEATHER RAIN"); assert(matchesContent(folded, &packet, key, 16));
+  setPlain("GHISLAINE MAXWELL: weather Sun"); assert(matchesContent(folded, &packet, key, 16));
+  setPlain("Jeffery Epstein Jr: weather sun"); assert(!matchesContent(folded, &packet, key, 16));
+  Fields senderOnlyFold = folded; strcpy(senderOnlyFold.text, "^weather (sun|rain)$");
+  setPlain("GHISLAINE MAXWELL: WEATHER RAIN"); assert(!matchesContent(senderOnlyFold, &packet, key, 16));
   setPlain("Alice: dry"); assert(!matchesContent(row, &packet, key, 16));
   setPlain("weather rain"); assert(!matchesContent(row, &packet, key, 16));
   row.sender[0] = 0; assert(matchesContent(row, &packet, key, 16));
@@ -282,6 +299,18 @@ static void storage() {
     auto broken = [&calls, failure](const void*, size_t) { return calls++ != failure; };
     assert(!writeFields(broken, source));
   }
+  // Case folding is stored in the existing pattern bytes, with no new field
+  // or format. Both matching and CLI output must survive a reload.
+  source = parse(R"(n="(?i)^(Jeffery Epstein|Ghislaine Maxwell)$" x="(?i)^hello$")");
+  bytes.clear();
+  assert(writeFields(writer, source));
+  ByteReader foldedRead{bytes};
+  assert(readFields(foldedRead, loaded) && sameFields(source, loaded));
+  StringWriter restored; appendFields(restored, loaded, true);
+  assert(sameFields(source, parse(restored.text.c_str())));
+  const char* sample = "gHiSlAiNe mAxWeLl";
+  assert(mesh::flood::matchTextPattern(loaded.sender, strlen(loaded.sender),
+      reinterpret_cast<const uint8_t*>(sample), strlen(sample)) == mesh::flood::PatternMatchResult::Match);
 }
 int main() { parsing(); envelopesAndProbability(); paths(); content(); storage(); }
 '''

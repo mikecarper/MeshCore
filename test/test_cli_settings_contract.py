@@ -59,6 +59,7 @@ COMMON_QUERY_EXCEPTIONS = {
     'pwrmgt.bootreason': 'Boot/reset cause',
     'pwrmgt.source': 'Measured power source',
     'pwrmgt.support': 'Hardware power-management capabilities',
+    'radio.preamble': 'Saved primary preference; written as the fifth set radio field',
     'radio.rxps.config': 'Detailed view of set radio.rxps',
     'radio.rxps.status': 'Live radio status for set radio.rxps',
     'role': 'Build-selected firmware role',
@@ -274,6 +275,7 @@ namespace mesh { struct Utils {
             'public.key',                            # Read-only public identity
             'pwrmgt.bootreason', 'role',             # Boot/build facts
             'radio.apply',                           # Pending/applied radio diagnostics
+            'radio.preamble',                        # Written through the fifth set radio field
             'radio.rxps.config',                     # Detail view of radio.rxps
             'tx.status',                             # HIL-only applied-power verification
             'wifi.status', 'wifi.ip',                # Live WiFi link state
@@ -319,6 +321,7 @@ namespace mesh { struct Utils {
                     # omitted; board delegation has its own real G3 suite.
                     set_blocks = [extract_braced(setter, 'if (strncmp(config, "path.hash.mode", 14)')]
                     get_blocks = [extract_braced(getter, 'if (configKeyEquals(config, "path.hash.mode"))')]
+                    get_blocks.append(extract_braced(getter, 'if (strcmp(config, "radio.preamble") == 0)'))
                     set_blocks.append(extract_braced(setter, 'if (strcmp(config, "extra.sf") == 0 ||'))
                     get_blocks.append(extract_braced(getter, 'if (strcmp(config, "extra.sf") == 0)'))
                     for key in keys:

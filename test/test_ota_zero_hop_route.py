@@ -19,6 +19,7 @@ HARNESS = r'''
 #include <vector>
 #include <RadioProfiles.h>
 #include <Packet.h>
+#include <helpers/RadioDirectionPolicy.h>
 #include <helpers/ota/OtaManager.h>
 @CONSTANTS@
 namespace mesh {

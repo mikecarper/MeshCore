@@ -60,7 +60,7 @@ class CompanionMeshtextTest(unittest.TestCase):
                       "static bool isEmergencyNoticeChannelName(",
                       "void MyMesh::seedEmergencyChannelNotice(",
                       "void MyMesh::servicePendingChannelNotices(", "bool MyMesh::queueChannelText(",
-                      "bool MyMesh::saveAdvertName(")
+                      "bool MyMesh::saveAdvertName(", "void MyMesh::handleSetChannelFrame(")
         methods = "\n".join(body(source, signature) for signature in signatures)
         utils_source = (ROOT / "src/Utils.cpp").read_text(encoding="utf-8")
         # CLI keys use the production strict hexadecimal parser as well.
@@ -212,6 +212,9 @@ class CompanionMeshtextTest(unittest.TestCase):
 
     def test_binary_get_set_raw_psk_and_save_failure_rollback(self):
         self.run_case("commands")
+
+    def test_binary_mediamesh_presets_commit_delay_replay_and_failure_rollback(self):
+        self.run_case("channel-presets")
 
     def test_private_cli_provisioning_metadata_masking_and_transactional_delete(self):
         self.run_case("cli")

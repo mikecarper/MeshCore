@@ -8,6 +8,8 @@
 #include "target.h"
 #include "helpers.h"
 #include "CompanionBluetooth.h"
+#include <helpers/CompanionNotificationPolicy.h>
+#include <helpers/ui/BluetoothPairingUiPolicy.h>
 
 #include <helpers/RadioPresets.h>
 
@@ -15,7 +17,6 @@ void CardputerUITask::begin(DisplayDriver *display, SensorManager *sensors, Comp
                             CustomNodePrefs *custom_prefs) {
   _display = static_cast<CardputerDisplay *>(display);
   _sensors = sensors;
-  extendAutoOff();
 
   _node_prefs = node_prefs;
   _custom_prefs = custom_prefs;
@@ -23,7 +24,7 @@ void CardputerUITask::begin(DisplayDriver *display, SensorManager *sensors, Comp
   if (_display != NULL) {
     _display->setBrightness(_custom_prefs->brightness);
     _display->setTextLevel(_custom_prefs->text_level);
-    _display->turnOn();
+    serviceDisplayPower();
   }
   _top_btn.begin();
 
@@ -48,12 +49,19 @@ void CardputerUITask::dismissAlert() {
   scheduleRefresh();
 }
 
-bool CardputerUITask::isAlertActive() {
+bool CardputerUITask::isAlertActive() const {
   return millis() < alert_expiry;
 }
 
+bool CardputerUITask::isChatVisible() const {
+  return _display && _display->isOn() && current_screen == main_screen
+      && static_cast<MainScreen *>(main_screen)->getCurrentPage() == MainScreen::CHAT
+      && !isPairingPromptActive() && !isAlertActive();
+}
+
 void CardputerUITask::notify(UIEventType t) {
-  if (t == UIEventType::channelMessage || t == UIEventType::contactMessage) {
+  if ((_notification_outputs & mesh::notify::Sound) && !_message_notification_override
+      && (t == UIEventType::channelMessage || t == UIEventType::contactMessage)) {
     playSound(SoundType::NewMessage);
   }
 }
@@ -87,28 +95,110 @@ void CardputerUITask::msgRead(int msgcount) {
 void CardputerUITask::newMsg(uint8_t path_len, const char *from_name, const char *text, int msgcount,
                              int channel_idx, const char *channel_name, int queue_index) {
   unsynced_msg_count = msgcount;
+  const bool on_first_page = current_screen == main_screen
+      && static_cast<MainScreen *>(main_screen)->getCurrentPage() == MainScreen::FIRST;
+  const bool display_off = _display && !_display->isOn();
 
-  bool onFirstPage =
-      (current_screen == main_screen && ((MainScreen *)main_screen)->getCurrentPage() == MainScreen::FIRST);
-
-  bool display_off = (_display != NULL && !_display->isOn());
-
-  if (display_off || current_screen == new_message_screen || onFirstPage) {
-    ((NewMessageScreen *)new_message_screen)->newMessage(from_name, text);
+  // Keep a connected client's screen stable; managed notifications own wake.
+  const bool show_preview = (_notification_outputs & mesh::notify::Screen)
+      && !_message_notification_screen_override && !hasConnection() && !isPairingPromptActive();
+  if (show_preview && (display_off || current_screen == new_message_screen || on_first_page)) {
+    static_cast<NewMessageScreen *>(new_message_screen)->newMessage(from_name, text);
     setCurrScreen(new_message_screen);
   }
+  if (_display && shouldWakeDisplayForMessage()) {
+    _display->wake(mesh::ui::DisplayWake::Message);
+  }
+  scheduleRefresh();
+}
 
-  if (_display != NULL) {
-    if (!_display->isOn() && !hasConnection()) {
-      _display->turnOn();
-    }
-    extendAutoOff();
+uint8_t CardputerUITask::notificationCapabilities() const {
+  // The codec's fixed tones do not implement custom RTTTL notification rules.
+  return _display ? mesh::notify::Screen : 0;
+}
+
+void CardputerUITask::notificationScreen(int8_t mode) {
+  if (!_display) return;
+  _display->notificationPower(mode);
+  scheduleRefresh();
+}
+
+void CardputerUITask::serviceDisplayPower() {
+  if (!_display) return;
+  if (_display->servicePower(_board->isExternalPowered() || _board->isUsbHostConnected(),
+                             hasConnection(), isPairingPromptActive())) {
     scheduleRefresh();
+    if (!_display->isOn() && !_board->getSpeaker()->isBusy()) _board->getSpeaker()->sleep();
   }
 }
 
-void CardputerUITask::onChannelMessageRecv(const mesh::GroupChannel &channel, const char *text) {
-  ((MainScreen *)main_screen)->onChannelMessageRecv(channel, text);
+bool CardputerUITask::isPairingPromptActive() const {
+  return _display && mesh::ui::shouldDisplayBluetoothPairingPin(
+      isBluetoothEnabled(), hasBluetoothConnection(), the_mesh_cp.getBLEPin())
+      && mesh::ui::isBluetoothPairingPromptActive(isBluetoothEnabled(), hasBluetoothConnection(),
+          pairing_prompt_until, static_cast<uint32_t>(millis()));
+}
+
+void CardputerUITask::servicePairingState() {
+  const uint32_t now = static_cast<uint32_t>(millis());
+  if (_interfaceManager->takePairingRequest() && _display
+      && mesh::ui::shouldDisplayBluetoothPairingPin(
+          isBluetoothEnabled(), hasBluetoothConnection(), the_mesh_cp.getBLEPin())) {
+    pairing_prompt_until = now + 120000U;
+    if (pairing_prompt_until == 0) pairing_prompt_until = 1;
+    scheduleRefresh();
+  }
+  if (pairing_prompt_until != 0 && !isPairingPromptActive()) {
+    pairing_prompt_until = 0;
+    scheduleRefresh();
+  }
+  serviceDisplayPower();
+}
+
+bool CardputerUITask::handlePairingInput(const Keyboard::Event &event) {
+  if (!isPairingPromptActive()) return false;
+  if (event.key == Keyboard::KEY_ESC) {
+    pairing_prompt_until = 0;
+    serviceDisplayPower();
+    turnDisplayOn();
+  }
+  return true;
+}
+
+bool CardputerUITask::handleNotificationInput() {
+  if (!the_mesh_cp.notificationButton()) return false;
+  serviceDisplayPower();
+  scheduleRefresh();
+  return true;
+}
+
+void CardputerUITask::renderPairingPrompt() {
+  if (!_display || !_display->isOn() || !isPairingPromptActive()) return;
+  char pin[16];
+  snprintf(pin, sizeof(pin), "%06u", static_cast<unsigned>(the_mesh_cp.getBLEPin()));
+  _display->setColor(CardputerDisplay::P_BLACK);
+  _display->fillRect(0, 0, _display->width(), _display->height());
+  _display->setColor(CardputerDisplay::P_WHITE);
+  _display->setTextSize(1);
+  _display->drawTextCentered(_display->width() / 2, 22, "Bluetooth pairing PIN");
+  _display->setTextSize(2);
+  _display->drawTextCentered(_display->width() / 2, 52, pin);
+  _display->setTextSize(1);
+  _display->drawTextCentered(_display->width() / 2, 94, "Enter PIN on phone");
+}
+
+void CardputerUITask::onChannelMessageRecv(uint8_t channel_idx, const uint8_t history_id[32], const char *text) {
+  static_cast<MainScreen *>(main_screen)->onChannelMessageRecv(channel_idx, history_id, text);
+}
+
+void CardputerUITask::onChannelMessageSent(uint8_t channel_idx, const uint8_t history_id[32], const char *text) {
+  static_cast<MainScreen *>(main_screen)->onChannelMessageSent(channel_idx, history_id, text);
+  scheduleRefresh();
+}
+
+void CardputerUITask::onContactMessageSent(const ContactInfo &contact, const char *text) {
+  static_cast<MainScreen *>(main_screen)->onContactMessageSent(contact, text);
+  scheduleRefresh();
 }
 
 void CardputerUITask::onContactMessageRecv(const ContactInfo &contact, const char *text) {
@@ -116,8 +206,6 @@ void CardputerUITask::onContactMessageRecv(const ContactInfo &contact, const cha
 }
 
 void CardputerUITask::onMessageSendAttempt(uint8_t attempt, uint8_t total, MessageSendState state) {
-  extendAutoOff();
-
   if (current_screen == main_screen) {
     static_cast<MainScreen *>(main_screen)->onMessageSendAttempt(attempt, total, state);
   }
@@ -151,6 +239,10 @@ void CardputerUITask::setCurrScreen(CardputerScreen *c) {
   hardware-agnostic pre-shutdown activity should be done here
 */
 void CardputerUITask::shutdown(bool restart) {
+  if (!prepareForShutdown()) {
+    showAlert("Shutdown blocked: storage not ready", 2000);
+    return;
+  }
   if (restart) {
     _board->reboot();
   } else {
@@ -161,21 +253,31 @@ void CardputerUITask::shutdown(bool restart) {
 }
 
 void CardputerUITask::loop() {
+  servicePairingState();
   _board->getSpeaker()->processQueue();
+  if ((!_display || !_display->isOn()) && !_board->getSpeaker()->isBusy()) {
+    _board->getSpeaker()->sleep();
+  }
 
   CardputerKeyboard *kb = _board->getKeyboard();
   const Keyboard::Modifiers latched = kb->getModifiers();
   auto event = kb->poll();
 
+  ToolsScreen *tools = static_cast<ToolsScreen *>(tools_screen);
+  const bool power_off_input = tools && tools->handlePowerOffInput(event);
   if (event.changed && event.down) {
-    if (turnDisplayOn()) {
-      kb->setModifiers(latched);  // a wake-up press must not flip Shift/Fn
-    } else {
-      playSound(SoundType::Keyboard);
-      if (_keylock.filter(event)) {
-        // locked: only Fn+Q gets through
-      } else if (!handleShortcut(event) && current_screen) {
-        current_screen->handleInput(event);
+    if (handleNotificationInput()) {
+      kb->setModifiers(latched);  // dismissal must not also arm a shortcut
+    } else if (!power_off_input && !handlePairingInput(event)) {
+      if (turnDisplayOn()) {
+        kb->setModifiers(latched);  // a wake-up press must not flip Shift/Fn
+      } else {
+        playSound(SoundType::Keyboard);
+        if (_keylock.filter(event)) {
+          // locked: only Fn+Q gets through
+        } else if (!handleShortcut(event) && current_screen) {
+          current_screen->handleInput(event);
+        }
       }
     }
   }
@@ -186,9 +288,14 @@ void CardputerUITask::loop() {
   }
 
   if (_top_btn.check() == BUTTON_EVENT_CLICK) {
-    turnDisplayOn();
-    sendFloodAdvert();
+    if (!handleNotificationInput() && !isPairingPromptActive()
+        && !(tools && tools->isPowerOffPending())) {
+      turnDisplayOn();
+      sendFloodAdvert();
+    }
   }
+  // A received-message preview must not suspend an armed release/timeout.
+  if (tools && current_screen != tools_screen) tools->poll();
 
   if (current_screen) {
     current_screen->poll();
@@ -207,14 +314,9 @@ void CardputerUITask::loop() {
       } else {
         scheduleRefresh(delay_millis);
       }
+      renderPairingPrompt();
       _display->endFrame();
     }
-#if AUTO_OFF_MILLIS > 0
-    if (millis() > auto_off_time) {
-      _display->turnOff();
-      _board->getSpeaker()->sleep();
-    }
-#endif
   }
 
 #ifdef AUTO_SHUTDOWN_MILLIVOLTS
@@ -238,53 +340,35 @@ void CardputerUITask::loop() {
 }
 
 bool CardputerUITask::turnDisplayOn() {
-  if (_display != NULL) {
-    extendAutoOff();
-    scheduleRefresh();
-
-    if (!_display->isOn()) {
-      _display->turnOn();
-      return true;
-    }
-  }
-  return false;
+  if (!_display) return false;
+  const bool was_off = !_display->isOn();
+  _display->wake(mesh::ui::DisplayWake::Button);
+  scheduleRefresh();
+  return was_off;
 }
 
 bool CardputerUITask::getGPSState() {
-  if (_sensors != NULL) {
-    int num = _sensors->getNumSettings();
-    for (int i = 0; i < num; i++) {
-      if (strcmp(_sensors->getSettingName(i), "gps") == 0) {
-        return !strcmp(_sensors->getSettingValue(i), "1");
-      }
-    }
-  }
-  return false;
+  return _node_prefs && _node_prefs->gps_enabled != 0;
 }
 
-void CardputerUITask::toggleGPS() {
-  if (_sensors != NULL) {
-    int num = _sensors->getNumSettings();
-    for (int i = 0; i < num; i++) {
-      if (strcmp(_sensors->getSettingName(i), "gps") == 0) {
-        if (strcmp(_sensors->getSettingValue(i), "1") == 0) {
-          _sensors->setSettingValue("gps", "0");
-          _node_prefs->gps_enabled = 0;
-        } else {
-          _sensors->setSettingValue("gps", "1");
-          _node_prefs->gps_enabled = 1;
-        }
-        the_mesh_cp.savePrefs();
-        scheduleRefresh();
-        break;
-      }
-    }
+bool CardputerUITask::toggleGPS() {
+  if (!the_mesh_cp.setGpsEnabled(!getGPSState())) {
+    showAlert("GPS setting could not be saved", 2000);
+    return false;
   }
+  scheduleRefresh();
+  return true;
 }
 
-void CardputerUITask::toggleBuzzer() {
-  _node_prefs->buzzer_quiet = !_node_prefs->buzzer_quiet;
-  the_mesh_cp.savePrefs();
+bool CardputerUITask::toggleBuzzer() {
+  const uint8_t previous = _node_prefs->buzzer_quiet;
+  _node_prefs->buzzer_quiet = !previous;
+  if (!the_mesh_cp.savePrefs()) {
+    _node_prefs->buzzer_quiet = previous;
+    showAlert("Sound setting could not be saved", 2000);
+    return false;
+  }
+  return true;
 }
 
 void CardputerUITask::renderAlert() {
@@ -354,10 +438,14 @@ void CardputerUITask::toggleBluetooth() {
 }
 
 void CardputerUITask::cycleTextSize() {
-  uint8_t next = (_display->getTextLevel() + 1) % CardputerDisplay::TEXT_LEVEL_COUNT;
-  _display->setTextLevel(next);
-  _custom_prefs->text_level = next;
-  the_mesh_cp.savePrefs();
+  if (!_display) return;
+  _custom_prefs->text_level = (_display->getTextLevel() + 1) % CardputerDisplay::TEXT_LEVEL_COUNT;
+  if (!the_mesh_cp.saveCustomPrefs()) {
+    showAlert("Text size could not be saved", 2000);
+    return;
+  }
+  _display->setTextLevel(_custom_prefs->text_level);
+  scheduleRefresh();
 }
 
 void CardputerUITask::sendFloodAdvert() {
@@ -365,6 +453,7 @@ void CardputerUITask::sendFloodAdvert() {
 }
 
 void CardputerUITask::cycleBrightness() {
+  if (!_display) return;
   static const uint8_t levels[] = { 32, 96, 160, 255 };
   uint8_t next = levels[0];
   for (uint8_t level : levels) {
@@ -374,8 +463,11 @@ void CardputerUITask::cycleBrightness() {
     }
   }
   _custom_prefs->brightness = next;
+  if (!the_mesh_cp.saveCustomPrefs()) {
+    showAlert("Brightness could not be saved", 2000);
+    return;
+  }
   _display->setBrightness(next);
-  the_mesh_cp.savePrefs();
   char buf[24];
   snprintf(buf, sizeof(buf), "Brightness %d%%", next * 100 / 255);
   showAlert(buf, 1500);
@@ -461,19 +553,16 @@ bool CardputerUITask::handleShortcut(const Keyboard::Event &e) {
       sendFloodAdvert();
       return true;
     case Keyboard::KEY_G:  // GPS
-      toggleGPS();
-      showAlert(getGPSState() ? "GPS ON" : "GPS OFF", 1500);
+      if (toggleGPS()) showAlert(getGPSState() ? "GPS ON" : "GPS OFF", 1500);
       return true;
     case Keyboard::KEY_B:  // Bluetooth
       toggleBluetooth();
       return true;
     case Keyboard::KEY_M:  // Mute
-      toggleBuzzer();
-      showAlert(isBuzzerQuiet() ? "Sound OFF" : "Sound ON", 1500);
+      if (toggleBuzzer()) showAlert(isBuzzerQuiet() ? "Sound OFF" : "Sound ON", 1500);
       return true;
     case Keyboard::KEY_P:  // Power save
-      togglePowerSave();
-      showAlert(powerSaveEnabled() ? "Power save ON" : "Power save OFF", 1500);
+      if (togglePowerSave()) showAlert(powerSaveEnabled() ? "Power save ON" : "Power save OFF", 1500);
       return true;
     case Keyboard::KEY_L:  // Light
       cycleBrightness();
@@ -548,6 +637,12 @@ bool CardputerUITask::handleShortcut(const Keyboard::Event &e) {
   }
 }
 
-void CardputerUITask::togglePowerSave() {
-  the_mesh_cp.setPowerSaving(!_node_prefs->powersaving_enabled);
+bool CardputerUITask::togglePowerSave() {
+  char reply[160] = {};
+  const char *command = _node_prefs->powersaving_enabled ? "powersaving off" : "powersaving on";
+  if (!the_mesh_cp.handleLocalCommand(command, reply) || strncmp(reply, "OK", 2) != 0) {
+    showAlert(reply[0] ? reply : "Power save setting failed", 2000);
+    return false;
+  }
+  return true;
 }

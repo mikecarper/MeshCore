@@ -18,6 +18,13 @@ Mixed layouts means some releases have dual-slot OTA and others do not.
 These are historical factory-image minimums, not measurements of your device;
 use `get storage.layout` to check its actual installed layout.
 
+Use `get boot.slot` to see the running application, next boot selection and
+installed `app0`/`app1` capacities. Select an existing application with
+`set boot.slot app0` or `set boot.slot app1`, then run `reboot` to start it.
+The command validates the image and refuses a missing slot; it does not change
+the partition table. See [application slot selection](cli_commands.md#select-the-next-application-slot-esp32)
+for update conflicts and shared settings.
+
 <div class="partition-catalog" id="partition-catalog">
   <div class="partition-catalog-controls">
     <label for="partition-catalog-search">Board</label>

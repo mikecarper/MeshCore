@@ -106,7 +106,7 @@ static void exercise(const std::string& kind, size_t size, bool advanced, bool a
   const auto input = command(kind, args);
   cli.run(input.c_str(), reply.data());
   if (size >= COMMON_CLI_TMP_LEN) {
-    assert(strcmp(reply.data(), "Error, argument too long") == 0);
+    assert(strcmp(reply.data(), MESH_CLI_REPLY_TEXT("Error, argument too long", "Error, arg too long")) == 0);
     untouched(cli);
     for (char value : cli.tmp) assert(value == char(0x55));
   } else if (kind == "sensor" || kind == "gps") {
@@ -117,7 +117,7 @@ static void exercise(const std::string& kind, size_t size, bool advanced, bool a
   } else if (kind == "retry") {
     assert(cli.callbacks.support_calls == 1);
     assert(cli.saves == (advanced ? 1U : 0U));
-    assert(strcmp(reply.data(), advanced ? "OK" : "Error, use on or off on this role") == 0);
+    assert(strcmp(reply.data(), advanced ? "OK" : MESH_CLI_REPLY_TEXT("Error, use on or off on this role", "Error, on|off")) == 0);
     if (advanced) {
       assert(cli.prefs.direct_retry_cr_enabled == 1);
       assert(cli.prefs.direct_retry_cr4_snr_x4 == 0 && cli.prefs.direct_retry_cr5_snr_x4 == 0);

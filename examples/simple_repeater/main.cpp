@@ -5,6 +5,9 @@
 #include <helpers/sensors/SolarXiaoPower.h>
 #include <helpers/LedSettings.h>
 #include <Arduino.h>   // needed for PlatformIO
+#if defined(ESP32_PLATFORM)
+#include <helpers/RadioDirectionSettings.h>
+#endif
 #include <Mesh.h>
 #include <helpers/IdentityGeneration.h>
 #include <helpers/ui/StartupScreen.h>
@@ -20,6 +23,7 @@
 #include <helpers/HostKiss.h>
 #include <helpers/MorseLoopPolicy.h>
 #include <helpers/PowerManagementUtils.h>
+#include <helpers/EmergencyPowerRuntime.h>
 #include <helpers/HilStartupTrace.h>
 #if MESH_PACKET_LOGGING
   #include <helpers/SerialPacketLog.h>
@@ -223,6 +227,10 @@ void setup() {
 #else
   #error "need to define filesystem"
 #endif
+#if defined(ESP32_PLATFORM)
+  // Load direction before initializing the radio, including its first RX arm.
+  mesh::radioDirection::loadDirectionSettings(fs);
+#endif
   FILESYSTEM* regulator_prefs_fs = fs;
 #if defined(NRF52_PLATFORM)
   if (volatile_primary_fs) regulator_prefs_fs = nullptr;
@@ -421,6 +429,13 @@ void setup() {
 #endif
 
 #ifdef DISPLAY_CLASS
+#if defined(NRF52_PLATFORM)
+  mesh::ui::displayPowerPrefs().first_install_boot =
+      identity_load == IdentityLoadResult::Missing && !volatile_primary_fs;
+#else
+  mesh::ui::displayPowerPrefs().first_install_boot =
+      identity_load == IdentityLoadResult::Missing;
+#endif
 #if defined(HELTEC_V4_DISPLAY_UNIFIED) && HELTEC_V4_DISPLAY_UNIFIED
   // Initialize the UI dependency even when auto detection found no screen.
   // A later saved display.type change can enable it without restarting.
@@ -727,6 +742,23 @@ void loop() {
 #endif
   serviceCommandInterfaces();
 
+#if MESH_ENABLE_EMERGENCY_POWER
+  static mesh::power::EmergencyPowerRuntime emergency_power;
+#if defined(ESP32_PLATFORM)
+  board.servicePowerTestControls();
+#endif
+  rtc_clock.tick();
+#ifdef HAS_EXTERNAL_WATCHDOG
+  external_watchdog.loop();
+#endif
+  bool emergency_busy = command[0];
+#if MESH_USB_CONSOLE_COOPERATIVE
+  emergency_busy = emergency_busy || the_mesh.hasPendingSerialOutput();
+#endif
+  if (emergency_power.service(the_mesh, radio_driver, board,
+          the_mesh.getPowerCLI(), emergency_busy, the_mesh.emergencyPowerBusy())) return;
+#endif
+
 #if defined(PIN_USER_BTN) && defined(_SEEED_SENSECAP_SOLAR_H_) && !defined(DISPLAY_CLASS)
   // Hold the user button to power off the SenseCAP Solar repeater.
   int btnState = digitalRead(PIN_USER_BTN);
@@ -778,7 +810,9 @@ void loop() {
   // Report the guard that really stopped this iteration, without probing
   // later guards or changing their short-circuit hardware access.
 #if defined(ESP32_PLATFORM)
+#if !MESH_ENABLE_EMERGENCY_POWER
   board.servicePowerTestControls();
+#endif
   mesh::esp32::serviceCpuFrequencyPolicy(board, the_mesh.getNodePrefs()->cpu_freq_mhz,
       the_mesh.getNodePrefs()->powersaving_enabled != 0, millis(), false, the_mesh.isDualRadioActive());
 #endif

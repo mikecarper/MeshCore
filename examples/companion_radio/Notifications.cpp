@@ -1,3 +1,4 @@
+#include <helpers/CLIReplyText.h>
 #include "MyMesh.h"
 #include "target.h"
 #include "NotificationSettingsFile.h"
@@ -160,7 +161,7 @@ bool MyMesh::handleNotificationCommand(const char* command,char* reply,size_t si
 bool MyMesh::handleNotificationCommand(const char* command,char* reply,size_t size) {
   if(strncmp(command,"set notify.",11)&&strncmp(command,"get notify",10)
       &&strncmp(command,"notify.",7))return false;
-  snprintf(reply,size,"Error: programmable alerts unavailable on this compact STM32 build");
+  snprintf(reply,size,MESH_CLI_REPLY_TEXT("Error: programmable alerts unavailable on this compact STM32 build", "Error: programmable alerts unavailable on compact STM32"));
   return true;
 }
 #endif

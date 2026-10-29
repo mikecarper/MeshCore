@@ -27,8 +27,10 @@ HARNESS = r'''
 #include <string>
 #include <vector>
 #include <helpers/FleetCommand.h>
+#include <helpers/CLIReplyText.h>
 #include <helpers/TempRadioReplyBarrier.h>
 #include "regulator_cli_stub.h"
+#include "usb_mode_console.h"
 #include <helpers/CompanionFrameLimits.h>
 #include <helpers/HostKissCodec.h>
 #include <openssl/evp.h>
@@ -229,6 +231,7 @@ class MyMesh : public mesh::Mesh {
   bool sendFleetCommandData(GroupChannel&, const uint8_t*, size_t);
   void onRadioProfileCopyQueued(mesh::Packet*, const mesh::Packet*, uint8_t);
   bool handleCommand(const char* command, uint32_t sender_timestamp, char* reply);
+  bool handleLocalControlCommand(const char*, char*, size_t);
   void checkCLIRescueCmd();
   void enterCLIRescue();
   void resetUsbHostSessionInput();
@@ -364,6 +367,10 @@ static void compactBroadcast(MyMesh& node, const char* command) {
 
 int main(int argc, char** argv) {
   assert(argc == 2);
+  MyMesh usb_probe;
+  char usb_reply[160] = {};
+  assert(usb_probe.handleCommand("AB|get usb.mode", 0, usb_reply));
+  assert(std::string(usb_reply) == "AB|usb.mode unknown" && usb_probe.queued == 0);
   const std::string scenario = argv[1];
   MyMesh node; char reply[160] = {};
   if (scenario == "local_boundary") {
@@ -1294,7 +1301,16 @@ class CompanionFleetControlTests(unittest.TestCase):
         fleet_end = function.index("  if (mesh::handleMorseReplyCommand", fleet_start)
         # Keep the actual compile guard as well as its complete branch so
         # compact profiles prove that none of the fleet dependencies survive.
-        cls.production = prefix + function[fleet_start:fleet_end] + "\n  return false;\n}\n"
+        # The local-control route follows the fleet/radio branches. Retain
+        # its real dispatcher and USB-mode prefix without the other local
+        # command families' unrelated board/filesystem dependencies.
+        local_dispatch = "  if (handleLocalControlCommand(command, reply, reply_capacity)) return true;"
+        assert function.count(local_dispatch) == 1
+        local = body(source, "bool MyMesh::handleLocalControlCommand(")
+        cls.local_control = local[:local.index("#if defined(ESP32_PLATFORM) && defined(WIFI_SSID)")]
+        cls.local_control += "\n  return false;\n}\n"
+        cls.production = (prefix + function[fleet_start:fleet_end] + local_dispatch
+                          + "\n  return false;\n}\n")
         cls.work = tempfile.TemporaryDirectory(prefix="meshcore-fleet-companion-")
         work = Path(cls.work.name)
         cls.binary = work / "companion-fleet"
@@ -1329,7 +1345,7 @@ class CompanionFleetControlTests(unittest.TestCase):
         assert enter.count(banner) == 1
         enter = enter.replace(banner, 'mesh::usbTerminalPort().print("========= CLI Rescue =========\\n");')
         cls.fixture = fixture
-        fixture.write_text(HARNESS.replace("@METHOD@", cls.production)
+        fixture.write_text(HARNESS.replace("@METHOD@", cls.production + cls.local_control)
                            .replace("@USB_INPUT_RESERVED@", body(
                                (ROOT / "src/helpers/HostKiss.cpp").read_text(),
                                "bool usbInputReserved("))
@@ -1513,11 +1529,13 @@ class CompanionFleetControlTests(unittest.TestCase):
 #include <cstring>
 #include <helpers/FleetCommand.h>
 #include "regulator_cli_stub.h"
+#include "usb_mode_console.h"
 static_assert(MESH_ENABLE_FLEET_CONTROL == 0, "compact profile must disable fleet");
 // No channels, clock, signing identity, codec definitions or sendGroupData.
 class MyMesh {
  public:
   bool handleCommand(const char*, uint32_t, char*);
+  bool handleLocalControlCommand(const char*, char*, size_t);
 };
 @METHOD@
 int main() {
@@ -1530,7 +1548,7 @@ int main() {
 '''
         work = Path(self.work.name)
         source = work / "disabled.cpp"
-        source.write_text(harness.replace("@METHOD@", self.production))
+        source.write_text(harness.replace("@METHOD@", self.production + self.local_control))
         for profile, flags in (("stm32-default", ["-DSTM32_PLATFORM=1"]),
                                ("explicit-disable", ["-DMESH_ENABLE_FLEET_CONTROL=0"])):
             with self.subTest(profile=profile):

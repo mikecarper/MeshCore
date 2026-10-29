@@ -1,11 +1,49 @@
 """Regression tests for the serial HIL result reader."""
 import unittest
 import os
+import sys
+from contextlib import ExitStack
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import patch
 from types import SimpleNamespace
 from profile_switch import read_response, exchange_ready, configure_session, exchange, open_session
+
+
+def simulated_native_modem(port, descriptor, *, synthetic_attributes=False):
+    """Model only unsupported PTY/synthetic-fd modem ioctls, not the opener."""
+    import fcntl
+    import struct
+    import termios
+
+    stack = ExitStack()
+    actual_ioctl = fcntl.ioctl
+
+    def ioctl(fd, request, value, *args, **kwargs):
+        if fd != descriptor or request != termios.TIOCMBIC:
+            return actual_ioctl(fd, request, value, *args, **kwargs)
+        mask = struct.unpack('I', value)[0]
+        if mask != termios.TIOCM_DTR | termios.TIOCM_RTS:
+            raise AssertionError('modem lines were not cleared together')
+        port.modem_lines.update(dtr=False, rts=False)
+        port.modem_edges.append(('joint_clear', False, port.modem_lines.copy()))
+        return 0
+
+    stack.enter_context(patch.object(fcntl, 'ioctl', side_effect=ioctl))
+    if synthetic_attributes:
+        def attributes(fd):
+            if fd != descriptor:
+                raise AssertionError('unexpected synthetic descriptor')
+            return [0, 0, termios.HUPCL | 0x4000, 0, 0, 0, []]
+
+        def set_attributes(fd, when, values):
+            if fd != descriptor or when != termios.TCSANOW or values[2] & termios.HUPCL:
+                raise AssertionError('HUPCL was not cleared on the selected descriptor')
+
+        stack.enter_context(patch.object(termios, 'tcgetattr', side_effect=attributes))
+        stack.enter_context(patch.object(termios, 'tcsetattr', side_effect=set_attributes))
+    return stack
+
 
 if os.name == "posix":
     import serial.serialposix
@@ -20,7 +58,23 @@ if os.name == "posix":
             self.modem_lines = {"dtr": True, "rts": True}
             self.modem_edges = []
             self.flow_at_reconfigure = []
+            self._native_fixture = None
             super().__init__(*args, **kwargs)
+
+        def open(self):
+            super().open()
+            # Real pySerial/termios still configure a real PTY. Only the
+            # modem ioctl that PTYs cannot implement is simulated afterward.
+            self._native_fixture = simulated_native_modem(self, self.fileno())
+
+        def close(self):
+            try:
+                super().close()
+            finally:
+                fixture = getattr(self, '_native_fixture', None)
+                if fixture is not None:
+                    fixture.close()
+                    self._native_fixture = None
 
         def _reconfigure_port(self, force_update=False):
             self.flow_at_reconfigure.append(self.dsrdtr)
@@ -62,16 +116,44 @@ class SessionPort:
         self.dtr = True
         self.rts = True
         self.dsrdtr = False
+        self.rtscts = False
         self.opened_control_lines = None
         self.close_count = 0
+        self.modem_lines = {'dtr': True, 'rts': True}
+        self.modem_edges = []
+        self._native_fixture = None
+
+    def _update_dtr_state(self):
+        self.modem_lines['dtr'] = self.dtr
+        self.modem_edges.append(('dtr', self.dtr, self.modem_lines.copy()))
+
+    def _update_rts_state(self):
+        self.modem_lines['rts'] = self.rts
+        self.modem_edges.append(('rts', self.rts, self.modem_lines.copy()))
+
+    def fileno(self):
+        return 77
 
     def open(self):
+        # Only the atomic opener requests native descriptor operations after
+        # open. Direct fake opens need no global native-function patch at all.
+        deferred = all(name in self.__dict__ for name in
+                       ('_update_dtr_state', '_update_rts_state'))
+        if sys.platform.startswith('linux') and os.name == 'posix' and deferred:
+            self._native_fixture = simulated_native_modem(self, self.fileno(), synthetic_attributes=True)
         self.opened_control_lines = (self.dtr, self.rts)
         self.is_open = True
+        if not self.dsrdtr:
+            self._update_dtr_state()
+        if not self.rtscts:
+            self._update_rts_state()
 
     def close(self):
         self.close_count += 1
         self.is_open = False
+        if self._native_fixture is not None:
+            self._native_fixture.close()
+            self._native_fixture = None
 
 
 class FailingSessionPort(SessionPort):
@@ -111,6 +193,11 @@ class ResultReaderTests(unittest.TestCase):
                         self.assertFalse(port.has_reset_transition(), port.modem_edges)
                         self.assertEqual(port.modem_lines, {"dtr": expected, "rts": False})
                         self.assertFalse(port.dsrdtr)
+                        if sys.platform.startswith('linux') and not expected:
+                            self.assertEqual(port.modem_edges, [
+                                ('joint_clear', False, {'dtr': False, 'rts': False})])
+                            self.assertNotIn(True, port.flow_at_reconfigure,
+                                             'Atomic Linux open enabled flow control')
                         if expected:
                             self.assertNotIn(True, port.flow_at_reconfigure,
                                              "Native USB entered the bridge handoff")
@@ -155,6 +242,7 @@ class ResultReaderTests(unittest.TestCase):
             with self.subTest(phase=phase):
                 port = FailingSessionPort(phase)
                 with patch("profile_switch.os.name", "posix"), patch(
+                        "serial_session.sys.platform", "darwin"), patch(
                         "profile_switch.list_ports.comports", return_value=[]):
                     with self.assertRaisesRegex(RuntimeError, phase + " failed"):
                         open_session(port)

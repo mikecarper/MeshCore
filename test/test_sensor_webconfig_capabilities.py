@@ -132,6 +132,7 @@ for value in "${BUILD_APPLICATION_EXPECTATIONS[@]}"; do printf 'A:%s\0' "$value"
         fixture = r'''
 #define MESH_MANAGEMENT_PASSWORD_HOST_TEST 1
 #include <helpers/esp32/ManagementPassword.h>
+#include <helpers/CLIReplyText.h>
 #include <cassert>
 #include <cstdio>
 #include <cstring>

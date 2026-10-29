@@ -5,7 +5,7 @@
 #include <Ed25519.h>
 
 #ifdef USE_CC310_HW_CRYPTO
-#include "helpers/NRF52Crypto.h"
+#include "helpers/NRF52CryptoScratch.h"
 #include "nrf_cc310/include/crys_ec_edw_api.h"
 #include "nrf_cc310/include/crys_ec_mont_edw_error.h"
 #endif
@@ -32,11 +32,11 @@ bool Identity::verify(const uint8_t* sig, const uint8_t* message, int msg_len) c
   // workspace and the CC310 driver are not reentrant.
   CC310CryptoSession session;
   if (session) {
-    static CRYS_ECEDW_TempBuff_t cc310_tmp;
+    CRYS_ECEDW_TempBuff_t* cc310_tmp = cc310VerificationScratch(session);
     const CRYSError_t rc = CRYS_ECEDW_Verify(
         const_cast<uint8_t*>(sig), CRYS_ECEDW_SIGNATURE_BYTES,
         const_cast<uint8_t*>(pub_key), CRYS_ECEDW_MOD_SIZE_IN_BYTES,
-        const_cast<uint8_t*>(message), static_cast<size_t>(msg_len), &cc310_tmp);
+        const_cast<uint8_t*>(message), static_cast<size_t>(msg_len), cc310_tmp);
     if (rc == CRYS_OK) return true;
     // A normal signature mismatch is a conclusive hardware result. Other
     // CC310 errors fall through to the correctness-preserving software path.

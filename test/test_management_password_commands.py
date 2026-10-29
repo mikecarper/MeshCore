@@ -22,10 +22,14 @@ class ManagementPasswordCommandsTest(unittest.TestCase):
         source = r'''
 #include <helpers/esp32/ManagementPassword.h>
 #include <helpers/CLICommandUtils.h>
+#include <helpers/ConfigCapabilities.h>
 #include <cassert>
 #include <cstdio>
 #include <cstring>
 #include <initializer_list>
+struct HardwareSerial {};
+static HardwareSerial Serial;
+#include <helpers/UsbMode.h>
 using namespace mesh::esp32::managementPassword;
 bool save_ok = true; int saves = 0;
 bool durableSave() {
@@ -40,6 +44,22 @@ struct StrHelper {
   static void strncpy(char* out, const char* in, size_t size) { ::strncpy(out, in, size); out[size - 1] = 0; }
 };
 struct NodePrefs { char password[16] = "password"; };
+// Password commands return before unrelated capability or profile queries.
+struct Board {
+  bool getSystemWatchdogRunning(bool&) { assert(false); return false; }
+  bool canControlLoRaFemLna() { assert(false); return false; }
+  bool canControlLoRaFemPaGain() { assert(false); return false; }
+  bool isLoRaFemPaGainEnabled() { assert(false); return false; }
+} board;
+struct Radio {
+  bool supportsRxPowerSavingRfRxDisable() const { assert(false); return false; }
+} radio_driver;
+struct UI {
+  bool supportsDisplayRotation() { assert(false); return false; }
+};
+struct Profiles {
+  uint16_t primaryPreamble() const { assert(false); return 0; }
+};
 class CommonCLI {
  public:
   NodePrefs prefs; NodePrefs* _prefs = &prefs;
@@ -50,6 +70,8 @@ class CommonCLI {
 };
 class MyMesh {
  public:
+  Profiles _radio_profiles;
+  UI* _ui = nullptr;
   char _management_password[16] = "password";
   bool _management_password_ready = true;
   bool handleLocalControlCommand(const char*, char*, size_t);

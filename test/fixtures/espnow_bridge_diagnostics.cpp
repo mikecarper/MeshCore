@@ -219,7 +219,7 @@ static void counters() {
   count = 0;
   diag::increment(count);
   assert(count == 1);
-  for (uint8_t stage = 0; stage <= static_cast<uint8_t>(diag::Stage::TestQueue);
+  for (uint8_t stage = 0; stage <= static_cast<uint8_t>(diag::Stage::WiFiPowerSave);
        ++stage) {
     assert(strcmp(diag::stageName(static_cast<diag::Stage>(stage)), "unknown") != 0);
   }

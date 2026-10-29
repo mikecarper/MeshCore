@@ -274,13 +274,14 @@ static void boundedReplies() {
   memset(&bridge._stats.tx, 0xFF, sizeof(bridge._stats.tx));
   memset(&bridge._stats.probe, 0xFF, sizeof(bridge._stats.probe));
   bridge._stats.error = {diag::Stage::ChannelConflict, INT32_MIN, UINT32_MAX};
-  for (const char* page : {"rx", "tx", "drops", "test"}) {
+  for (const char* page : {"rx", "tx", "drops", "test", "mac"}) {
     char reply[160];
     memset(reply, 0xA5, sizeof(reply));
     bridge.formatStats(page, reply, 157);
     assert(memchr(reply, 0, 157) != nullptr);
     assert(static_cast<uint8_t>(reply[157]) == 0xA5);
     assert(strlen(reply) < 157);
+    if (!strcmp(page, "mac")) assert(!strcmp(reply, "> mac:02:10:20:30:40:50"));
     printf("%s: %s\n", page, reply);
   }
   char status[160];

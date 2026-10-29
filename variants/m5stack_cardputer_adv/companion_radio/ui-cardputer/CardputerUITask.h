@@ -24,8 +24,6 @@ class CardputerUITask : public AbstractUITask {
   CompanionNodePrefs *_node_prefs;
   CustomNodePrefs *_custom_prefs;
   unsigned long next_refresh = 0;
-  unsigned long auto_off_time;
-  bool sleep_enabled = false;
   char alert_text[80];
   unsigned long alert_expiry = 0;
   int unsynced_msg_count = 0;
@@ -33,6 +31,7 @@ class CardputerUITask : public AbstractUITask {
   unsigned long next_batt_chck = 0;
   unsigned long ping_deadline = 0;  // 0 = no Fn+Z ping awaiting a reply
   KeyLock _keylock;
+  uint32_t pairing_prompt_until = 0;
 
   CardputerScreen *splash_screen;
   CardputerScreen *main_screen;
@@ -52,6 +51,10 @@ class CardputerUITask : public AbstractUITask {
   void showPresetAlert(uint8_t slot);
   void pingLastRepeater();
   void openNewestUnread();
+  void serviceDisplayPower();
+  void renderPairingPrompt();
+  bool handlePairingInput(const Keyboard::Event &event);
+  bool handleNotificationInput();
 
   // Returns false if display is already on
   bool turnDisplayOn();
@@ -72,19 +75,19 @@ public:
   int drawModifierBadges(CardputerDisplay &lcd, int x, int y);
   void showAlert(const char *text, int duration_millis);
   void dismissAlert();
-  bool isAlertActive();
+  bool isAlertActive() const;
+  bool isChatVisible() const;
   inline int getMsgCount() const { return unsynced_msg_count; }
   inline bool hasDisplay() const { return _display != NULL; }
   inline bool isBuzzerQuiet() { return _node_prefs->buzzer_quiet; }
   inline const char* getNodeName() { return _node_prefs->node_name; }
   inline uint16_t getBattMilliVoltsCorrected() { return (float)getBattMilliVolts() * _custom_prefs->battery_correction; }
-  void toggleBuzzer();
+  bool toggleBuzzer();
   void toggleBluetooth();
   void cycleTextSize();
-  void togglePowerSave();
+  bool togglePowerSave();
   bool getGPSState();
-  void toggleGPS();
-  inline unsigned long getAutoOffTime() const { return auto_off_time; }
+  bool toggleGPS();
   inline bool powerSaveEnabled() const { return _node_prefs->powersaving_enabled; }
   // Light sleep stops the backlight PWM and I2S audio; keep the CPU awake
   // while the screen is on or a tone is queued.
@@ -93,7 +96,9 @@ public:
   void newMsg(uint8_t path_len, const char *from_name, const char *text, int msgcount, int channel_idx = -1,
               const char *channel_name = nullptr, int queue_index = -1) override;
 
-  void onChannelMessageRecv(const mesh::GroupChannel &channel, const char *text);
+  void onChannelMessageRecv(uint8_t channel_idx, const uint8_t history_id[32], const char *text);
+  void onChannelMessageSent(uint8_t channel_idx, const uint8_t history_id[32], const char *text);
+  void onContactMessageSent(const ContactInfo &contact, const char *text);
   void onContactMessageRecv(const ContactInfo &contact, const char *text);
   void onMessageSendAttempt(uint8_t attempt, uint8_t total, MessageSendState state);
 
@@ -101,10 +106,13 @@ public:
   void discoverRecv(const mesh::Identity &id, float snr);
   void messageRepeatsRecv(uint16_t count);
   void notify(UIEventType t = UIEventType::none) override;
+  uint8_t notificationCapabilities() const override;
+  void notificationScreen(int8_t mode) override;
+  void servicePairingState() override;
+  bool isPairingPromptActive() const override;
   void playSound(SoundType t);
   void loop() override;
   void shutdown(bool restart = false);
   CardputerAdvBoard *getBoard() { return _board; }
-  inline void extendAutoOff() { auto_off_time = millis() + AUTO_OFF_MILLIS; }
   inline void scheduleRefresh(unsigned long ms = 0) { next_refresh = millis() + ms; }
 };

@@ -153,3 +153,20 @@ void RAK3401Board::enableRadioFrontend() {
   digitalWrite(SX126X_POWER_EN, HIGH);
   delay(1);
 }
+
+#if MESH_ENABLE_EMERGENCY_POWER
+void RAK3401Board::setEmergencyRadioSleeping(bool sleeping) {
+  if (sleeping) {
+    if (emergency_fem_suspended) return;
+    emergency_fem_was_enabled = digitalRead(SX126X_POWER_EN) == HIGH;
+    // IO3 controls only the SKY66122 CSD+CPS. Keep the shared IO2 rail live
+    // for the radio core, storage and any fitted sensors.
+    digitalWrite(SX126X_POWER_EN, LOW);
+    emergency_fem_suspended = true;
+  } else if (emergency_fem_suspended) {
+    digitalWrite(SX126X_POWER_EN, emergency_fem_was_enabled ? HIGH : LOW);
+    if (emergency_fem_was_enabled) delay(1);
+    emergency_fem_suspended = false;
+  }
+}
+#endif

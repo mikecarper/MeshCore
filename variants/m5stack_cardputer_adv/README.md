@@ -37,6 +37,17 @@ history and keyboard layouts.
 Companion builds retain all 350 contacts and use the existing bounded contact
 path cache to leave RAM available for Bluetooth, the display and keyboard layouts.
 
+Accepted incoming messages and successful sends from the keyboard, phone app
+or USB terminal share the same local history. Retries do not add another copy.
+Only the conversation actually visible on the screen is marked read.
+
+Channel history identifies each channel by its full name (including protocol
+prefix) and full key, so channels sharing a key keep separate conversations.
+New channel logs use `/meshcore_custom/history/chan2` on the SD card. Older
+`/meshcore_custom/history/chan` logs remain on the card for manual retrieval;
+they are not imported because their channel identity can be ambiguous. Direct
+message logs keep their existing paths.
+
 When the device is managed by bmorcelli's Launcher, install updates by writing
 the app image to the MeshCore app slot over USB rather than reinstalling from
 the SD card: Launcher can repartition the flash to fit the image and drop the
@@ -69,6 +80,38 @@ Settings -> Text size cycles Normal (12 px), Large (16 px, default) and
 Extra large (19 px). The larger fonts are generated from DejaVu Sans with
 `tools/gen_vlw_font.py`.
 
+Radio settings use the same live apply and save path as the USB terminal;
+a reboot is not required. A busy radio applies the saved setting once idle.
+Rejected settings or storage failures show an error
+and retain the previous saved value. TX power supports the radio's signed range,
+including negative values. Display brightness, text size and battery
+correction are saved separately from the standard node preferences.
+
+Screen wake and timeout follow the shared `display.mode` and `display.timeout`
+settings for battery and USB power. Fresh installations use `automatic` mode
+with a 15-second timeout; saved modes and timeouts are retained.
+A key press wakes the screen for the selected timeout; the wake-up
+press is consumed. The `automatic` mode also permits incoming messages to wake
+the screen while no client is connected. Notification screen overrides and
+muted notification outputs are respected. `set display.night auto|on|off` uses
+the shared red-on-black palette without changing the saved daytime colors.
+Automatic night mode uses GPS or recent direct-neighbor locations, starting
+one hour after sunset by default. `set display.night.delay <minutes>` changes
+that delay.
+
+Bluetooth pairing requests show the PIN for up to two minutes when the selected
+screen mode permits it. Esc dismisses the prompt; the current chat and draft
+remain selected. An explicit screen-off setting keeps the screen dark.
+
+The speaker plays fixed UI tones without blocking the mesh loop and honors
+the saved notification outputs and mute settings. A key or top-button press
+dismisses notifications configured to stop on button input. Custom RTTTL
+notification melodies are unsupported on this board.
+
+Tools -> Restart and Power off flush pending contact writes before shutdown.
+Power off waits for Enter release without blocking radio processing; holding
+the key for two seconds or pressing Esc cancels it.
+
 ## Third-party notices
 
 The keyboard/display UI is adapted from MultiMote's MIT-licensed project;
@@ -83,6 +126,13 @@ neither dependency is bundled here.
 
 - Power save uses the companion's own light-sleep loop. It only sleeps while the
   screen is off and no USB or BLE client is connected.
+- With GPS and power save enabled, the receiver sleeps after clock acquisition
+  or at the end of its 10-minute acquisition window, then wakes after 30 minutes.
+  Location telemetry can temporarily hold it awake under the common GPS policy.
+  Turning GPS off cancels current acquisitions; saved GPS intervals apply.
+- Repeater and room-server builds also put the Cap's fixed GNSS receiver into
+  standby when unused, while retaining external sensor support. GPS-free builds
+  send the standby command without adding a GPS parser or GPS settings.
 - Below 3.4 V the UI shows "Battery low" and powers off (no LoRa wake).
 
 ## Building on Windows

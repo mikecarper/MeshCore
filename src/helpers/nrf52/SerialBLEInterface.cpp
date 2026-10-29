@@ -314,15 +314,29 @@ void SerialBLEInterface::onConnect(uint16_t connection_handle) {
 #endif
   BLE_DEBUG_PRINTLN("SerialBLEInterface: connected handle=0x%04X", connection_handle);
   if (instance) {
+    // A queued connect callback can arrive after disable() stopped advertising
+    // and sampled an invalid handle, including after it was enabled again.
+    // Do not admit a link whose physical RX observation was invalidated.
+    // In the pinned Bluefruit core the BLE worker (priority 3) reaches our raw
+    // observer before the deferred callback task (priority 2) can run: the
+    // intervening peripheral CONNECT handlers do not block or yield.
+    if (!instance->_isEnabled
+        || !instance->recv_queue.hasConnection(connection_handle)) {
+      if (instance->_conn_handle == BLE_CONN_HANDLE_INVALID
+          || instance->_conn_handle == connection_handle) {
+        instance->_conn_handle = connection_handle;
+        instance->_isDeviceConnected = false;
+        instance->_security_timer.cancel();
+        instance->_companion_start_timer.cancel();
+        instance->disconnect();
+      } else {
+        sd_ble_gap_disconnect(connection_handle, BLE_HCI_REMOTE_USER_TERMINATED_CONNECTION);
+      }
+      return;
+    }
     instance->_pairingRequestPending.store(false, std::memory_order_release);
     instance->_conn_handle = connection_handle;
     instance->_isDeviceConnected = false;
-    // A queued connect callback can arrive after disable() stopped advertising
-    // and sampled an invalid handle. Close that late link as well.
-    if (!instance->_isEnabled) {
-      instance->disconnect();
-      return;
-    }
     instance->_security_timer.start(millis());
     instance->_companion_start_timer.cancel();
     instance->_companionDataSeen.store(false, std::memory_order_release);
@@ -342,7 +356,8 @@ void SerialBLEInterface::onDisconnect(uint16_t connection_handle, uint8_t reason
 #endif
   BLE_DEBUG_PRINTLN("SerialBLEInterface: disconnected handle=0x%04X reason=%u", connection_handle, reason);
   if (instance) {
-    if (instance->_conn_handle == connection_handle) {
+    if (instance->_conn_handle == connection_handle
+        && !instance->recv_queue.hasConnection(connection_handle)) {
       instance->_pairingRequestPending.store(false, std::memory_order_release);
       instance->_conn_handle = BLE_CONN_HANDLE_INVALID;
       instance->_isDeviceConnected = false;
@@ -396,6 +411,14 @@ void SerialBLEInterface::onSecured(uint16_t connection_handle) {
   meshBleTrace(0xf003, connection_handle);
   BLE_DEBUG_PRINTLN("SerialBLEInterface: onSecured handle=0x%04X", connection_handle);
   if (instance) {
+    if (instance->_conn_handle == connection_handle
+        && !instance->recv_queue.hasConnection(connection_handle)) {
+      instance->_isDeviceConnected = false;
+      instance->_security_timer.cancel();
+      instance->_companion_start_timer.cancel();
+      instance->disconnect();
+      return;
+    }
     if (instance->isValidConnection(connection_handle, true)) {
       BLEConnection* conn = Bluefruit.Connection(connection_handle);
       if (conn == nullptr || !conn->secured()) {
@@ -1279,7 +1302,7 @@ void SerialBLEInterface::recoverStalledTx(const char* cause,
 }
 
 bool SerialBLEInterface::isValidConnection(uint16_t handle, bool requireWaitingForSecurity) const {
-  if (!_isEnabled || _conn_handle != handle) {
+  if (!_isEnabled || _conn_handle != handle || !recv_queue.hasConnection(handle)) {
     return false;
   }
   BLEConnection* conn = Bluefruit.Connection(handle);
@@ -1355,6 +1378,24 @@ void SerialBLEInterface::loop() {
   if (!_isEnabled) return;
 
   if (_conn_handle != BLE_CONN_HANDLE_INVALID) {
+    if (!recv_queue.hasConnection(_conn_handle)) {
+      // An enable transition can invalidate RX while the asynchronous
+      // disconnect is still pending. This link cannot provide a secured RX
+      // snapshot, so enter the existing bounded disconnect recovery directly.
+      {
+        RxQueueGuard guard;
+        if (_conn_handle == BLE_CONN_HANDLE_INVALID
+            || recv_queue.hasConnection(_conn_handle)) return;
+        _isDeviceConnected = false;
+        _security_timer.cancel();
+        _companion_start_timer.cancel();
+        _tx_recovery_handle = _conn_handle;
+        _tx_recovery_generation = recv_queue.generation();
+        _tx_disconnect_recovery.begin();
+      }
+      serviceTxRecovery(now);
+      return;
+    }
     if (_security_timer.expired(now)) {
       // Keep the two-minute PIN-entry window, but do not let an unfinished
       // security exchange occupy the only BLE connection indefinitely.

@@ -84,23 +84,42 @@ void ToolsScreen::menuItemEnter(ToolsMenuItem item) {
 
       break;
 
-    case ToolsMenuItem::PowerOff: {
-      bool done = false;
-      // Wait for key release to prevent firing interrupt
-      do {
-        Keyboard::Event e = _task->getBoard()->getKeyboard()->poll();
-        done = (e.changed && e.key == Keyboard::KEY_RETURN && e.down == false);
-        delay(10);
-      } while (!done);
-      _task->shutdown();
-    } break;
+    case ToolsMenuItem::PowerOff:
+      power_off_pending = true;
+      power_off_released = false;
+      power_off_deadline = static_cast<uint32_t>(millis()) + POWER_OFF_RELEASE_TIMEOUT_MS;
+      _task->showAlert("Release Enter to power off", POWER_OFF_RELEASE_TIMEOUT_MS);
+      break;
 
     case ToolsMenuItem::Restart:
-      ESP.restart();
+      _task->shutdown(true);
       break;
 
     default:
       break;
+  }
+}
+
+bool ToolsScreen::handlePowerOffInput(const Keyboard::Event &e) {
+  if (!power_off_pending) return false;
+  if (e.changed && e.key == Keyboard::KEY_RETURN && !e.down) {
+    power_off_released = true;
+  } else if (e.changed && e.key == Keyboard::KEY_ESC && e.down) {
+    power_off_pending = false;
+    _task->dismissAlert();
+  }
+  return true;
+}
+
+void ToolsScreen::poll() {
+  if (!power_off_pending) return;
+  if (power_off_released) {
+    power_off_pending = false;
+    _task->dismissAlert();
+    _task->shutdown();
+  } else if (static_cast<int32_t>(static_cast<uint32_t>(millis()) - power_off_deadline) >= 0) {
+    power_off_pending = false;
+    _task->showAlert("Power off cancelled: release Enter", 2000);
   }
 }
 

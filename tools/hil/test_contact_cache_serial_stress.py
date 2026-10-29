@@ -51,6 +51,7 @@ class ContactCacheOpenTests(unittest.TestCase):
                 port = FailingSessionPort(phase)
                 with mock.patch.object(hil.serial, "Serial", return_value=port), mock.patch(
                         "serial_session.os.name", "posix"), mock.patch(
+                        "serial_session.sys.platform", "darwin"), mock.patch(
                         "profile_switch.list_ports.comports", return_value=[]):
                     with self.assertRaisesRegex(RuntimeError, phase + " failed"):
                         hil.run(SimpleNamespace(port="test"))

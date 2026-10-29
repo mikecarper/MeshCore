@@ -55,6 +55,13 @@ bridges received packets before those decisions. Normal scope, filters,
 duplicate suppression and repeat settings still affect mesh delivery. Configure
 each side's LoRa network separately; see the [bridge CLI reference](cli_commands.md#bridge-when-bridge-support-is-compiled-in).
 
+Incoming mesh packets use the local primary profile by default. Save
+`set bridge.ingress radio2` on the receiver to mark them for forwarding only on
+its active MeshCore radio2; an unavailable or RX-only radio2 drops them rather
+than falling back to the primary. The serial format and older peer remain
+compatible. See [bridge ingress](cli_commands.md#select-the-radio-for-incoming-bridge-packets)
+for the shared setting and `set bridge.ingress radio` to restore the default.
+
 ## Distinguish power state from transport activity
 
 `get rs232.status` retains the existing heartbeat and automatic-standby report.

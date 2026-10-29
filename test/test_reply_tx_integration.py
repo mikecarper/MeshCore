@@ -20,6 +20,7 @@ class ReplyTxIntegrationTest(unittest.TestCase):
 #include <vector>
 #include <RadioProfiles.h>
 #include <Packet.h>
+#include <helpers/RadioDirectionPolicy.h>
 #include <helpers/ota/OtaManager.h>
 #include <helpers/ota/OtaProtocol.h>
 #include "mota_vectors.h"

@@ -30,6 +30,7 @@ uint32_t millis() { return current_millis; }
 struct Recovery {
   bool active = false;
   bool pending() const { return active; }
+  void begin() { active = true; }
 };
 
 struct SerialBLEInterface {
@@ -37,6 +38,13 @@ struct SerialBLEInterface {
   bool _isDeviceConnected = false;
   uint16_t _conn_handle = BLE_CONN_HANDLE_INVALID;
   uint32_t _last_health_check = 0;
+  struct RxQueueGuard {};
+  struct {
+    bool hasConnection(uint16_t) const { return true; }
+    uint32_t generation() const { return 0; }
+  } recv_queue;
+  uint16_t _tx_recovery_handle = BLE_CONN_HANDLE_INVALID;
+  uint32_t _tx_recovery_generation = 0;
   bool allow_advertising = true;
   bool advertising = false;
   std::atomic<bool> _companionDataSeen{false};

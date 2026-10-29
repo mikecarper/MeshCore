@@ -94,11 +94,11 @@ assert '#include "CompanionHelp.inc"' in packed_help
 help_fragments = (root / "examples/companion_radio/CompanionHelp.inc").read_text()
 for help_line in ('  board\\r\\n', '  version\\r\\n',
                   '  get pwrmgt.bootreason\\r\\n', '  set pin <0-999999>\\r\\n',
-                  '  set mt.hops <0..7> (saved; default 7)\\r\\n',
+                  '  set mt.hops <0..7> (default 7)\\r\\n',
                   '  get mt.node / get mt.shortname\\r\\n',
-                  '  set mt.node <!8hex|default> (saved; use a unique ID)\\r\\n',
-                  '  set mt.shortname <1..4 UTF-8 characters|default> (saved; NodeInfo uses 4 bytes)\\r\\n',
-                  '  send mt.nodeinfo <channel slot> (GPS-free; also automatic after first chat)\\r\\n'):
+                  '  set mt.node <!8hex|default>\\r\\n',
+                  '  set mt.shortname <1..4 UTF-8 characters|default>\\r\\n',
+                  '  send mt.nodeinfo <channel slot> (auto after first chat)\\r\\n'):
     assert help_line in help_fragments
 # Explicit NodeInfo remains available, but first successful chat also arms
 # separate GPS-free metadata. Do not restore the obsolete manual-only policy.

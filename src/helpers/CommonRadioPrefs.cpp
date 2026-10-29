@@ -1,3 +1,4 @@
+#include "CLIReplyText.h"
 #include "CommonRadioPrefs.h"
 #include "TxtDataHelpers.h"
 #include "target.h"
@@ -284,7 +285,7 @@ bool CommonRadioPrefs::handleCommand(const char* command, uint32_t sender_timest
   if (strcmp(command, "get dutycycle") == 0) {
     const float factor = getAirtimeFactor();
     if (!isfinite(factor) || factor < 0.0f) {
-      strcpy(reply, "Error: invalid airtime factor");
+      strcpy(reply, MESH_CLI_REPLY_TEXT("Error: invalid airtime factor", "Error: bad airtime factor"));
     } else {
       const int tenths = static_cast<int>(1000.0f / (factor + 1.0f) + 0.5f);
       sprintf(reply, "> %d.%d%%", tenths / 10, tenths % 10);
@@ -315,7 +316,7 @@ bool CommonRadioPrefs::handleCommand(const char* command, uint32_t sender_timest
       setIntThresh(static_cast<uint8_t>(threshold));
       strcpy(reply, "OK");
     } else {
-      strcpy(reply, "Error, must be 0-255");
+      strcpy(reply, MESH_CLI_REPLY_TEXT("Error, must be 0-255", "Error, 0-255"));
     }
     return true;
   }
@@ -330,7 +331,7 @@ bool CommonRadioPrefs::handleCommand(const char* command, uint32_t sender_timest
       setCadEnabled(strcmp(value, "on") == 0);
       strcpy(reply, "OK");
     } else {
-      strcpy(reply, "Error: use set cad on|off");
+      strcpy(reply, MESH_CLI_REPLY_TEXT("Error: use set cad on|off", "Error: set cad on|off"));
     }
     return true;
   }
@@ -342,7 +343,7 @@ bool CommonRadioPrefs::handleCommand(const char* command, uint32_t sender_timest
   if (startsWith(command, "set radio.rxgain ")) {
     const char* value = command + strlen("set radio.rxgain ");
     if (strcmp(value, "on") != 0 && strcmp(value, "off") != 0) {
-      strcpy(reply, "Error: use set radio.rxgain on|off");
+      strcpy(reply, MESH_CLI_REPLY_TEXT("Error: use set radio.rxgain on|off", "Error: set radio.rxgain on|off"));
       return true;
     }
 
@@ -363,7 +364,7 @@ bool CommonRadioPrefs::handleCommand(const char* command, uint32_t sender_timest
   if (startsWith(command, "set tx ")) {
     int32_t dbm = 0;
     if (!parseIntStrict(command + strlen("set tx "), -128, 127, dbm)) {
-      strcpy(reply, "Error: invalid TX power");
+      strcpy(reply, MESH_CLI_REPLY_TEXT("Error: invalid TX power", "Error: bad TX power"));
     } else if (!radio_driver.setTxPower(static_cast<int8_t>(dbm))) {
       strcpy(reply, "Error: TX power rejected");
     } else {
@@ -399,7 +400,7 @@ bool CommonRadioPrefs::handleCommand(const char* command, uint32_t sender_timest
       setAgcResetInt(static_cast<uint8_t>(seconds));
       sprintf(reply, "OK - interval rounded to %d", (uint32_t) getAgcResetInt());
     } else {
-      strcpy(reply, "Error, must be 0-255");
+      strcpy(reply, MESH_CLI_REPLY_TEXT("Error, must be 0-255", "Error, 0-255"));
     }
     return true;
   }
@@ -429,7 +430,7 @@ bool CommonRadioPrefs::handleCommand(const char* command, uint32_t sender_timest
       setMultiAcks(static_cast<uint8_t>(enabled));
       strcpy(reply, "OK");
     } else {
-      strcpy(reply, "Error, must be 0 or 1");
+      strcpy(reply, MESH_CLI_REPLY_TEXT("Error, must be 0 or 1", "Error, 0|1"));
     }
     return true;
   }

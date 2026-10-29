@@ -158,3 +158,51 @@ void fe_sq(fe h, const fe f) {
 void fe_sq2(fe h, const fe f) {
     fe_compact_product(h, f, f, 1);
 }
+
+static void fe_compact_square_n(fe out, const fe in, int count) {
+    int i;
+    fe_sq(out, in);
+    for (i = 1; i < count; ++i) fe_sq(out, out);
+}
+
+/* Both ref10 exponentiation chains share z^(2^250-1). Keep the same field
+ * operations and carry order, while storing their common code only once.
+ * Every squaring count is public and fixed. z11 is retained for inversion.
+ */
+static void fe_compact_pow250(fe out, fe z11, const fe z) {
+    fe t0, t1, t2;
+    fe_sq(t0, z);
+    fe_compact_square_n(t1, t0, 2);
+    fe_mul(t1, z, t1);
+    fe_mul(z11, t0, t1);
+    fe_sq(t0, z11);
+    fe_mul(t0, t1, t0);                  /* 2^5 - 1 */
+    fe_compact_square_n(t1, t0, 5);
+    fe_mul(t0, t1, t0);                  /* 2^10 - 1 */
+    fe_compact_square_n(t1, t0, 10);
+    fe_mul(t1, t1, t0);                  /* 2^20 - 1 */
+    fe_compact_square_n(t2, t1, 20);
+    fe_mul(t1, t2, t1);                  /* 2^40 - 1 */
+    fe_compact_square_n(t1, t1, 10);
+    fe_mul(t0, t1, t0);                  /* 2^50 - 1 */
+    fe_compact_square_n(t1, t0, 50);
+    fe_mul(t1, t1, t0);                  /* 2^100 - 1 */
+    fe_compact_square_n(t2, t1, 100);
+    fe_mul(t1, t2, t1);                  /* 2^200 - 1 */
+    fe_compact_square_n(t1, t1, 50);
+    fe_mul(out, t1, t0);                 /* 2^250 - 1 */
+}
+
+void fe_invert(fe out, const fe z) {
+    fe power, z11;
+    fe_compact_pow250(power, z11, z);
+    fe_compact_square_n(power, power, 5);
+    fe_mul(out, power, z11);             /* 2^255 - 21 */
+}
+
+void fe_pow22523(fe out, const fe z) {
+    fe power, z11;
+    fe_compact_pow250(power, z11, z);
+    fe_compact_square_n(power, power, 2);
+    fe_mul(out, power, z);               /* 2^252 - 3 */
+}

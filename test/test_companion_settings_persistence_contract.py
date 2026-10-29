@@ -196,13 +196,13 @@ class CompanionSettingsPersistenceContractTests(unittest.TestCase):
             "bool copyPersistedValuesFrom(const CompanionNodePrefs& source)",
         )
         self.assertIn("reinterpret_cast<uintptr_t>(&airtime_factor)", copy)
-        # Both common traffic preferences follow the optional RAK policy.
-        # The final value may never include either runtime adapter.
-        self.assertIn("const auto& last_value = tx_ssh;", copy)
+        # The always-log value follows both common traffic preferences. Include
+        # that final scalar while keeping both runtime adapters outside the copy.
+        self.assertIn("const auto& last_value = usb_logging_always;", copy)
         self.assertIn("reinterpret_cast<uintptr_t>(&last_value)", copy)
-        self.assertIn("&values.tx_ssh", copy)
-        self.assertIn("+ sizeof(tx_ssh)", copy)
-        self.assertIn("end - begin == size - sizeof(values.tx_ssh)", copy)
+        self.assertIn("&values.usb_logging_always", copy)
+        self.assertIn("+ sizeof(usb_logging_always)", copy)
+        self.assertIn("end - begin == size - sizeof(values.usb_logging_always)", copy)
         self.assertIn("reinterpret_cast<uintptr_t>(&values.radio)", copy)
         self.assertIn("reinterpret_cast<uintptr_t>(&values.custom)", copy)
         self.assertIn("size <= radio_begin - begin", copy)

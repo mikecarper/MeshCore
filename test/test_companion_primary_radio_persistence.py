@@ -22,6 +22,7 @@ HARNESS = r'''
 #include <helpers/esp32/PowerTestControls.h>
 #include "companion_fleet_dispatch.h"
 #include "battery_calibration_cli_stub.h"
+#include "usb_mode_console.h"
 #include <sys/stat.h>
 #include <limits>
 #define constrain(value,low,high) ((value)<(low)?(low):((value)>(high)?(high):(value)))

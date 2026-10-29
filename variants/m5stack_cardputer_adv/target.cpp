@@ -14,13 +14,15 @@ WRAPPER_CLASS radio_driver(radio, board);
 ESP32RTCClock fallback_clock;
 AutoDiscoverRTCClock rtc_clock(fallback_clock);
 
-#if CARDPUTER_ADV_UI
+#if ENV_INCLUDE_GPS
   #include <helpers/sensors/MicroNMEALocationProvider.h>
   static MicroNMEALocationProvider nmea(Serial1, &rtc_clock);
   CardputerSensorManager sensors(nmea);
-  CardputerDisplay display;
 #else
-  EnvironmentSensorManager sensors;
+  CardputerSensorManager sensors;
+#endif
+#if CARDPUTER_ADV_UI
+  CardputerDisplay display;
 #endif
 
 bool radio_init() {

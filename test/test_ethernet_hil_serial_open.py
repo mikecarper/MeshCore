@@ -6,6 +6,7 @@ import io
 import os
 from pathlib import Path
 import subprocess
+import struct
 import sys
 from types import ModuleType, SimpleNamespace
 import unittest
@@ -22,6 +23,7 @@ import serial_session as session
 class FakeSerial:
     def __init__(self, **kwargs):
         self.dsrdtr = False
+        self.rtscts = False
         self._dtr = True
         self._rts = True
         self.driver_rts = True
@@ -40,7 +42,7 @@ class FakeSerial:
     def dtr(self, value):
         self._dtr = value
         if self.is_open:
-            self._apply_dtr(value)
+            self._update_dtr_state()
 
     @property
     def rts(self):
@@ -50,8 +52,14 @@ class FakeSerial:
     def rts(self, value):
         self._rts = value
         if self.is_open:
-            self.driver_rts = value
-            self.trace.append(("rts", value))
+            self._update_rts_state()
+
+    def _update_dtr_state(self):
+        self._apply_dtr(self._dtr)
+
+    def _update_rts_state(self):
+        self.driver_rts = self._rts
+        self.trace.append(("rts", self._rts))
 
     def _apply_dtr(self, value):
         if not value and self.driver_rts:
@@ -62,10 +70,12 @@ class FakeSerial:
     def open(self):
         self.opens += 1
         self.is_open = True
+        FakeSerial.live = self
         # POSIX pySerial's real open order: DTR before RTS unless deferred.
         if not self.dsrdtr:
-            self._apply_dtr(self._dtr)
-        self.rts = self._rts
+            self._update_dtr_state()
+        if not self.rtscts:
+            self._update_rts_state()
 
     def close(self):
         self.is_open = False
@@ -97,6 +107,22 @@ def serial_modules(port):
 @unittest.skipUnless(os.name == "posix", "POSIX CH340 pin-order behavior")
 class EthernetHilSerialTests(unittest.TestCase):
     def setUp(self):
+        import fcntl
+        import termios
+
+        def clear_together(fd, request, mask):
+            self.assertEqual(fd, 77)
+            self.assertEqual(request, termios.TIOCMBIC)
+            self.assertEqual(struct.unpack("I", mask)[0], termios.TIOCM_DTR | termios.TIOCM_RTS)
+            port = FakeSerial.live
+            port.driver_dtr = port.driver_rts = False
+            port.trace.append(("modem", False, False))
+
+        for inspector in (patch.object(fcntl, "ioctl", side_effect=clear_together),
+                          patch.object(termios, "tcgetattr", return_value=[0, 0, termios.HUPCL, 0, 0, 0, []]),
+                          patch.object(termios, "tcsetattr")):
+            inspector.start()
+            self.addCleanup(inspector.stop)
         # Exercise the real Linux ownership guard without consulting host
         # fuser or a nonexistent synthetic port. A quiet rc1 is the exact
         # successful no-owner contract; diagnostic output must still refuse.
@@ -112,7 +138,7 @@ class EthernetHilSerialTests(unittest.TestCase):
     def assert_safe(self, port):
         self.assertEqual(port.opens, 1)
         self.assertEqual(port.resets, 0)
-        self.assertEqual(port.trace[0], ("rts", False))
+        self.assertEqual(port.trace, [("modem", False, False)])
         self.assertFalse(port.dsrdtr)
         self.assertFalse(port.driver_rts)
         self.assertFalse(port.driver_dtr)

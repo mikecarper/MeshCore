@@ -32,9 +32,10 @@ class SettingsScreen : public CardputerScreen {
 
   int menu_index = 0;
   bool is_editing = false;
-  bool restart_required = false;
+  char edit_error[80] = "Invalid value";
   String edit_buffer;
   uint8_t edit_u8;
+  int32_t edit_tx_power = 0;
   static constexpr size_t MAX_NUMERIC_EDIT_BYTES = 31;
 
   void renderItem(CardputerDisplay &display, SettingsItem item, int x, int y);
@@ -44,6 +45,8 @@ class SettingsScreen : public CardputerScreen {
   void handleEditInput(SettingsItem item, Keyboard::Event &e);
   bool inputParsePositiveFloat(float &val);
   bool validRadioParams(float freq, float bw, uint8_t sf, uint8_t cr) const;
+  bool commitCommand(const char *command);
+  bool commitRadio(float freq, float bw, uint8_t sf, uint8_t cr);
 
 public:
   SettingsScreen(CardputerUITask *task, mesh::RTCClock *rtc, CompanionNodePrefs *node_prefs,

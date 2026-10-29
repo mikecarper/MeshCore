@@ -106,6 +106,11 @@ bool loadDisplayPowerSettings(FILESYSTEM* fs, bool pairing_supported, bool wake_
   DisplayPowerPrefs prefs;
   prefs.wake_on_boot = wake_on_boot;
   if (pairing_supported) prefs.battery.mode = prefs.usb.mode = DisplayMode::ButtonPairing;
+#if CARDPUTER_ADV_UI
+  // Preserve the keyboard UI's timed message wake on a fresh installation.
+  // A saved profile below remains authoritative, including explicit off.
+  prefs.battery.mode = prefs.usb.mode = DisplayMode::Automatic;
+#endif
   displayPowerPrefs() = prefs;
 #ifdef MESHCORE_HAS_REAL_DISPLAY
   if (!fs) return false;

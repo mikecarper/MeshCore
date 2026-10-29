@@ -13,6 +13,69 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class StartupScreenTest(unittest.TestCase):
+    def test_infrastructure_first_install_window_follows_durable_identity_and_final_prefs(self):
+        flags = []
+        for role in ("simple_repeater", "simple_room_server", "simple_sensor"):
+            source = (ROOT / "examples" / role / "main.cpp").read_text()
+            setup = extract_braced(source, "void setup()")
+            assignment = setup.index("displayPowerPrefs().first_install_boot")
+            start = setup.rfind("#if defined(NRF52_PLATFORM)", 0, assignment)
+            end = setup.index("\n#endif", assignment) + len("\n#endif")
+            with self.subTest(role=role):
+                self.assertLess(setup.index("store.saveWithRetry("), assignment)
+                self.assertLess(setup.index("if (!identity_ready)"), assignment)
+                self.assertLess(setup.index("the_mesh.begin(fs)"), assignment)
+                self.assertLess(assignment, setup.index("ui_task.begin("))
+                self.assertTrue(setup[:start].endswith("#ifdef DISPLAY_CLASS\n"))
+            # Execute the actual conditional assignment, including the real
+            # volatile-filesystem guard, for each infrastructure role.
+            flags.append("void arm_" + role + r'''(IdentityLoadResult identity_load,
+                                                   bool volatile_primary_fs) {
+  (void)identity_load;
+  (void)volatile_primary_fs;
+#ifdef DISPLAY_CLASS
+''' + setup[start:end] + "\n#endif\n}\n")
+        program = r'''
+#include <helpers/ui/DisplayPowerPolicy.h>
+#include <cassert>
+#include <initializer_list>
+enum class IdentityLoadResult { Missing, Loaded, Unreadable };
+@FLAGS@
+int main() {
+  for (auto arm : {arm_simple_repeater, arm_simple_room_server, arm_simple_sensor}) {
+    for (auto identity : {IdentityLoadResult::Missing, IdentityLoadResult::Loaded,
+                          IdentityLoadResult::Unreadable}) {
+      for (bool volatile_fs : {false, true}) {
+        mesh::ui::displayPowerPrefs() = mesh::ui::DisplayPowerPrefs();
+        arm(identity, volatile_fs);
+        bool expected = false;
+#ifdef DISPLAY_CLASS
+        expected = identity == IdentityLoadResult::Missing;
+#if defined(NRF52_PLATFORM)
+        expected = expected && !volatile_fs;
+#endif
+#endif
+        assert(mesh::ui::displayPowerPrefs().first_install_boot == expected);
+      }
+    }
+  }
+}
+'''.replace("@FLAGS@", "\n".join(flags))
+        with tempfile.TemporaryDirectory(prefix="mesh-first-install-flags-") as directory:
+            cpp, exe = Path(directory) / "test.cpp", Path(directory) / "test"
+            cpp.write_text(program, encoding="ascii")
+            for definitions in ([], ["NRF52_PLATFORM"], ["DISPLAY_CLASS=TestDisplay"],
+                                ["NRF52_PLATFORM", "DISPLAY_CLASS=TestDisplay"]):
+                with self.subTest(definitions=definitions):
+                    built = subprocess.run([
+                        "c++", "-std=c++17", "-Wall", "-Wextra", "-Werror",
+                        *["-D" + flag for flag in definitions],
+                        "-I", str(ROOT / "src"), str(cpp), "-o", str(exe)],
+                        capture_output=True, text=True, timeout=60)
+                    self.assertEqual(built.returncode, 0, built.stderr)
+                    checked = subprocess.run([str(exe)], capture_output=True, text=True, timeout=10)
+                    self.assertEqual(checked.returncode, 0, checked.stderr)
+
     def test_screen_precedes_radio_keygen_and_settle_delays(self):
         for role in ("companion_radio", "simple_repeater", "simple_room_server", "simple_sensor"):
             with self.subTest(role=role):

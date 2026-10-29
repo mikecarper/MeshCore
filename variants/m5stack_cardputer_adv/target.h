@@ -8,13 +8,11 @@
 #include <helpers/radiolib/CustomSX1262Wrapper.h>
 #include <helpers/AutoDiscoverRTCClock.h>
 #include "CardputerAdvBoard.h"
+#include "CardputerSensorManager.h"
 
 #if CARDPUTER_ADV_UI
   #include <SD.h>
-  #include "CardputerSensorManager.h"
   #include "hw/CardputerDisplay.h"
-#else
-  #include <helpers/sensors/EnvironmentSensorManager.h>
 #endif
 
 extern CardputerAdvBoard board;
@@ -23,11 +21,9 @@ extern AutoDiscoverRTCClock rtc_clock;
 // The microSD slot shares SCK/MISO/MOSI with the Cap LoRa-1262.
 extern SPIClass lora_spi;
 
-#if CARDPUTER_ADV_UI
 extern CardputerSensorManager sensors;
+#if CARDPUTER_ADV_UI
 extern CardputerDisplay display;
-#else
-extern EnvironmentSensorManager sensors;
 #endif
 
 bool radio_init();

@@ -5,6 +5,7 @@
 #include <Mesh.h>
 #include <helpers/PacketFileLoggingConfig.h>
 #include <helpers/PowerSavingDiagnostics.h>
+#include <helpers/EmergencyOtaWork.h>
 #include <helpers/FloodGroupPlainText.h>
 #include <helpers/FloodRuleExtensions.h>
 #include <helpers/GuestLoginSettings.h>
@@ -354,53 +355,59 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks
   size_t serial_log_remaining = 0;
   size_t serial_log_pending_size = 0;
   char serial_log_pending[640];
+  int serial_acl_next = -1;
+  int serial_acl_count = 0;
+  int serial_recent_next = -1;
+  int serial_recent_count = 0;
+  SimpleMeshTables::RecentRepeaterInfo serial_recent_cursor;
+  int serial_recent_cursor_index = -1;
   bool serial_log_active = false;
   bool serial_log_eof_pending = false;
   bool serial_log_skip_line = false;
-  int serial_acl_next = -1;
-  int serial_acl_count = 0;
   bool serial_acl_header = false;
-  int serial_recent_next = -1;
-  int serial_recent_count = 0;
   bool serial_recent_header = false;
   bool serial_recent_has_cursor = false;
-  SimpleMeshTables::RecentRepeaterInfo serial_recent_cursor;
-  int serial_recent_cursor_index = -1;
+#endif
+  // Runtime only: group scalar timers and flags to avoid gaps before aligned
+  // members. No persisted preferences or queue capacities depend on this order.
+  uint64_t uptime_millis;
+  uint64_t last_battery_alert_sent;
+#if MESH_ENABLE_HOST_CLI
+  uint64_t host_cli_nonce;
+  uint64_t host_cli_claim_challenge;
 #endif
   uint32_t last_millis;
-  uint64_t uptime_millis;
   unsigned long next_local_advert, next_flood_advert;
+  uint32_t primary_radio_mutation_generation = 0;
+  uint32_t radio_reply_deadline = 0;
+#if MESH_ENABLE_HOST_CLI
+  unsigned long host_cli_deadline;
+  unsigned long host_cli_claim_emit_at;
+#endif
+  uint32_t pending_self_advert_delay;
+  unsigned long next_battery_alert_check;
+  unsigned long next_recent_repeater_sweep;
   mesh::DeferredCliCommand deferred_cli_command;
   mesh::RemoteCliReplyCache remote_cli_reply_cache;
   mesh::ReplayResetNonce replay_reset_nonce;
-  bool replay_clock_set = false;
   mesh::TempRadioReplyBarrier temp_radio_reply_barrier;
-  uint32_t primary_radio_mutation_generation = 0;
-  bool primary_radio_mutation_starts_temp = false;
-  uint32_t radio_reply_deadline = 0;
-  bool radio_reply_secondary = false;
   void finishRadioReply(bool delivered);
   void serviceRadioReplyDeadline();
   TransportKey deferred_cli_reply_scope;
+  mesh::RxInactivityWatchdog rx_inactivity_watchdog;
+  mesh::RepeaterRadioTiming radio_timing;
+  mesh::Packet* pending_battery_alert_packet;
+  bool replay_clock_set = false;
+  bool primary_radio_mutation_starts_temp = false;
+  bool radio_reply_secondary = false;
   bool deferred_cli_reply_scoped;
 #if MESH_ENABLE_HOST_CLI
   bool host_cli_waiting;
   bool host_cli_claimed;
   bool host_cli_claim_emit;
-  unsigned long host_cli_deadline;
-  unsigned long host_cli_claim_emit_at;
-  uint64_t host_cli_nonce;
-  uint64_t host_cli_claim_challenge;
 #endif
-  uint32_t pending_self_advert_delay;
   bool pending_self_advert;
   bool pending_self_advert_flood;
-  unsigned long next_battery_alert_check;
-  mesh::RxInactivityWatchdog rx_inactivity_watchdog;
-  mesh::RepeaterRadioTiming radio_timing;
-  unsigned long next_recent_repeater_sweep;
-  uint64_t last_battery_alert_sent;
-  mesh::Packet* pending_battery_alert_packet;
   bool battery_alert_sent;
   bool _logging;
 #ifdef DISPLAY_ACTIVITY_DASHBOARD
@@ -552,10 +559,10 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks
   // is 0 when the allocation failed: every loop below is bounded by it, so a
   // zero-capacity node simply forwards without rule filtering.
   FloodPacketFilterEntry* flood_packet_filters;
-  uint8_t flood_packet_filter_slots;
 #if MESH_ENABLE_FLOOD_RULE_ENGINE
   uint32_t flood_filter_probability_seed;
 #endif
+  uint8_t flood_packet_filter_slots;
   uint8_t flood_packet_filter_blacklist_count;
   uint8_t flood_packet_filter_blacklist[FLOOD_PACKET_FILTER_BLACKLIST_MAX]
                                        [FLOOD_PACKET_FILTER_PATH_ID_SIZE];
@@ -644,6 +651,14 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks
   uint8_t flood_channel_data_rule_max_hops;
 #endif
   ClockSyncSample clock_sync_samples[CLOCK_SYNC_SAMPLE_SLOTS];
+  uint64_t clock_sync_next_attempt_uptime;
+  uint32_t clock_sync_drift_seconds;
+  uint32_t clock_sync_last_estimate;
+  uint32_t clock_sync_last_abs_drift;
+  uint32_t clock_sync_internet_requested_millis;
+  uint32_t pending_discover_tag;
+  unsigned long pending_discover_until;
+  unsigned long dirty_contacts_expiry;
   bool clock_sync_mesh_enabled;
   bool clock_sync_mesh_edge_enabled;
   bool clock_sync_internet_enabled;
@@ -657,15 +672,7 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks
   uint8_t clock_sync_last_fresh_count;
   uint8_t clock_sync_last_required_count;
   uint8_t clock_sync_required_samples;
-  uint32_t clock_sync_drift_seconds;
-  uint32_t clock_sync_last_estimate;
-  uint32_t clock_sync_last_abs_drift;
-  uint32_t clock_sync_internet_requested_millis;
-  uint64_t clock_sync_next_attempt_uptime;
-  uint32_t pending_discover_tag;
-  unsigned long pending_discover_until;
   bool region_load_active;
-  unsigned long dirty_contacts_expiry;
   uint8_t contacts_save_failures;
 #if MAX_NEIGHBOURS
   NeighbourInfo neighbours[MAX_NEIGHBOURS];
@@ -690,19 +697,19 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks
 #endif
   unsigned long _ota_update_at = 0;  // deferred `ota update` fire time (0 = none scheduled)
   float active_bw;  // live BW, including temporary radio overrides
+  uint32_t next_scheduled_radio_time;
+  unsigned long next_scheduled_radio_check_at;
+  uint32_t scheduled_temp_radio_end_time;
+  unsigned long scheduled_temp_radio_end_check_at;
+  unsigned long scheduled_radio_retry_at;
+  unsigned long scheduled_radio_save_retry_at;
   uint8_t active_sf;  // live SF, including temporary radio overrides
   uint8_t active_cr;   // live CR, including temporary radio overrides
   bool saved_radio_apply_pending;
   bool temp_radio_handoff_pending;
   bool temp_radio_applied;
   bool scheduled_temp_radio_started;
-  uint32_t next_scheduled_radio_time;
-  unsigned long next_scheduled_radio_check_at;
-  uint32_t scheduled_temp_radio_end_time;
-  unsigned long scheduled_temp_radio_end_check_at;
   bool scheduled_temp_radio_end_check_final;
-  unsigned long scheduled_radio_retry_at;
-  unsigned long scheduled_radio_save_retry_at;
   uint8_t scheduled_radio_retry_failures;
   ScheduledRadioSetting scheduled_radio_settings[MAX_SCHEDULED_RADIO_SETTINGS];
 #if MESH_ENABLE_FLEET_CONTROL
@@ -1279,6 +1286,21 @@ public:
   NodePrefs* getNodePrefs() {
     return &_prefs;
   }
+#if MESH_ENABLE_EMERGENCY_POWER
+  mesh::power::EmergencyOtaWork _emergency_ota_work;
+  CommonCLI& getPowerCLI() { return _cli; }
+  bool emergencyPowerBusy() const {
+#if defined(ENABLE_OTA)
+    if (_emergency_ota_work.busy(mesh::ota::ota_context_if_active(), millis())) return true;
+#endif
+#if MESH_ENABLE_DIRECT_OTA_ADMIN
+    if (direct_ota_admin.awaitingPeer()) return true;
+#endif
+    return hasPendingOtaApply() || _cli.hasPendingRadioSettings()
+        || _cli.hasActiveUserGpioTimer() || dirty_contacts_expiry != 0
+        || (saved_radio_apply_pending && !temp_radio_applied) || _ota_update_at != 0;
+  }
+#endif
   bool isHiddenNode() const {
     return _prefs.advert_interval == 0 && _prefs.flood_advert_interval == 0;
   }
@@ -2031,6 +2053,10 @@ public:
 #endif
     return true;
   }
+
+#if defined(ESP32_PLATFORM)
+  bool isDeferredOtaUpdatePending() const override { return _ota_update_at != 0; }
+#endif
 
   int getQueueSize() override {
 #ifdef WITH_MQTT_BRIDGE

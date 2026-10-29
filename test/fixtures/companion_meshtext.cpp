@@ -2,6 +2,7 @@
 // production method bodies; all boundary substitutes are visible below.
 @FIXTURE@
 #include <SHA256.h>
+#include <helpers/CompanionChannelAlias.h>
 #include <helpers/CompanionMeshtextChannel.h>
 #include <helpers/MeshtextDelivery.h>
 #include <helpers/CompanionFrameLimits.h>
@@ -205,6 +206,7 @@ public:
   void writeErrFrame(uint8_t value) { error=value; }
   void writeOKFrame() { ok=true; }
   bool sendGroupMessage(uint32_t,mesh::GroupChannel&,const char*,const char*,int) { ++meshcore_sends; return true; }
+  void handleSetChannelFrame(const uint8_t*);
   void command(uint8_t* cmd_frame,int len);
   void commit(int index,const ChannelDetails& value) {
     assert(setChannel(index,value)); _mt_profile_dirty=true; refreshMeshtextProfile();
@@ -496,6 +498,99 @@ static void commands() {
   assert(node.serial.frames[0].size()==50); node.commit(1,{});
   applySet(node,0,{}); assert(node.ok && !node._mt_active && !node.radio.p.enabled());
   assertUntouched(node); puts("PASS commands");
+}
+static void assertMediaMeshConfig(const mesh::RadioProfileConfig& config,float bandwidth) {
+  assert(config.mode==mesh::RadioProfileMode::RxTx);
+  assert(std::fabs(config.params.freq-911.150f)<0.0001f && config.params.bw==bandwidth);
+  assert(config.params.sf==7 && config.params.cr==5 && !config.params.preamble);
+  assert(config.params.protocol==mesh::RadioProfileProtocol::MeshCore);
+}
+static void channelPresets() {
+  // These use the actual binary command branch and RadioProfileCLI image
+  // writer. Channel persistence itself remains this fixture's save boundary.
+  for(bool range:{false,true}) {
+    Preferences::reset(); MyMesh node; node.beginMeshtext();
+    const auto primary=node.radio.p.primary;
+    const auto requested=channel(range?"r2-mediamesh-range":"#r2-mediamesh");
+    applySet(node,0,requested);
+    assert(node.ok && node.error==-1 && !node.radio.p.enabled());
+    assertMediaMeshConfig(node._radio_profiles.savedSecondaryConfig(),range?125:250);
+    assert(node._radio_profiles.manualSecondaryConfigured() && node.fs.files.count("/radio_profiles"));
+    assert(!node._radio_profiles.hasReplyMutation() && !node.fs.files.count("/radio_profiles.reply"));
+    ChannelDetails raw; assert(node.getChannelForSave(0,raw));
+    assert(!strcmp(raw.name,requested.name) && !memcmp(raw.channel.secret,requested.channel.secret,32));
+    node.advance(1999); assert(!node.radio.p.enabled());
+    node.advance(1); assertMediaMeshConfig(node.radio.p.secondary,range?125:250);
+    assert(node.radio.p.primary==primary && node.radio.p.cross==mesh::RadioCrossMode::Off);
+    assert(!node.radio.p.secondary_temporary && !node._mt_active);
+    MyMesh reboot; reboot.fs=node.fs; reboot.stored[0]=raw;
+    reboot._radio_profiles.begin(&reboot.fs,&reboot.radio,&reboot.clock); reboot.beginMeshtext();
+    assertMediaMeshConfig(reboot.radio.p.secondary,range?125:250);
+    assert(reboot._radio_profiles.manualSecondaryConfigured() && !reboot._mt_active);
+    assertUntouched(node); assertUntouched(reboot);
+  }
+
+  Preferences::reset(); MyMesh node; node.beginMeshtext();
+  applySet(node,0,channel("#r2-mediamesh")); assert(node.ok); node.advance(2000);
+  // The newest join/rename chooses the tuple, even with another named alias
+  // present. Names do not continuously force RF over later operator choices.
+  applySet(node,1,channel("#r2-mediamesh-range")); assert(node.ok);
+  assertMediaMeshConfig(node._radio_profiles.savedSecondaryConfig(),125);
+  assertMediaMeshConfig(node.radio.p.secondary,250);
+  node.advance(2000); assertMediaMeshConfig(node.radio.p.secondary,125);
+  auto renamed=channel("r2-mediamesh",16);
+  applySet(node,1,renamed); assert(node.ok);
+  assertMediaMeshConfig(node._radio_profiles.savedSecondaryConfig(),250);
+  assertMediaMeshConfig(node.radio.p.secondary,125);
+  node.advance(2000); assertMediaMeshConfig(node.radio.p.secondary,250);
+  for(const char* command:{"set radio2 off","set radio2 912.5,250,8,5,rx,80"}) {
+    node.cli(command); node.advance(2000);
+    const auto saved=node._radio_profiles.savedSecondaryConfig();
+    const auto running=node.radio.p.secondary;
+    const auto disk=node.fs.files;
+    for(bool edit_key:{false,true}) {
+      if(edit_key) renamed.channel.secret[0]^=0x80;
+      applySet(node,1,renamed); assert(node.ok);
+      assert(node._radio_profiles.savedSecondaryConfig().mode==saved.mode
+          && node._radio_profiles.savedSecondaryConfig().params==saved.params);
+      node.advance(2000);
+      assert(node.radio.p.secondary.mode==running.mode && node.radio.p.secondary.params==running.params);
+      assert(node.fs.files==disk && !node._radio_profiles.hasReplyMutation());
+    }
+  }
+  assertUntouched(node);
+
+  for(bool fail_rf_commit:{false,true}) {
+    Preferences::reset(); MyMesh failed; failed.beginMeshtext();
+    failed.cli("set radio2 912.5,250,8,5,rx,80"); failed.advance(2000);
+    failed.commit(0,channel("ordinary",16));
+    const auto old_channel=failed.stored[0];
+    const auto old_profile=failed.radio.p.secondary;
+    const auto old_disk=failed.fs.files;
+    if(fail_rf_commit) failed.fs.fail_rename_from={"/radio_profiles.reply"};
+    else failed.save_result=false;
+    applySet(failed,0,channel("#r2-mediamesh"));
+    assert(!failed.ok && failed.error==ERR_CODE_FILE_IO_ERROR);
+    assert(!strcmp(failed.stored[0].name,old_channel.name)
+        && !memcmp(failed.stored[0].channel.secret,old_channel.channel.secret,32)
+        && failed.stored[0].channel.tx_radio==old_channel.channel.tx_radio);
+    assert(failed.fs.files==old_disk && !failed._radio_profiles.hasReplyMutation());
+    assert(failed._radio_profiles.savedSecondaryConfig().mode==old_profile.mode
+        && failed._radio_profiles.savedSecondaryConfig().params==old_profile.params);
+    failed.advance(2000);
+    assert(failed.radio.p.secondary.mode==old_profile.mode && failed.radio.p.secondary.params==old_profile.params);
+    assertUntouched(failed);
+  }
+  Preferences::reset(); MyMesh conflicting; active(conflicting);
+  const auto old_profile=conflicting.radio.p.secondary;
+  const auto old_disk=conflicting.fs.files;
+  applySet(conflicting,1,channel("#r2-mediamesh"));
+  assert(!conflicting.ok && conflicting.error==ERR_CODE_BAD_STATE && !conflicting.stored[1].name[0]);
+  assert(conflicting.radio.p.secondary.mode==old_profile.mode
+      && conflicting.radio.p.secondary.params==old_profile.params);
+  assert(conflicting.fs.files==old_disk && conflicting._mt_active);
+  assert(!conflicting._radio_profiles.hasReplyMutation()); assertUntouched(conflicting);
+  puts("PASS channel-presets");
 }
 static void privateCLI() {
   Preferences::reset(); MyMesh node; node.beginMeshtext(); char reply[256];
@@ -1646,6 +1741,7 @@ int main(int argc,char** argv) {
   else if(!strcmp(argv[1],"receive"))receive();
   else if(!strcmp(argv[1],"transmit"))transmit();
   else if(!strcmp(argv[1],"commands"))commands();
+  else if(!strcmp(argv[1],"channel-presets"))channelPresets();
   else if(!strcmp(argv[1],"cli"))privateCLI();
   else if(!strcmp(argv[1],"hops"))hops();
   else if(!strcmp(argv[1],"shortname"))shortname();

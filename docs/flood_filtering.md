@@ -595,11 +595,13 @@ Actions:
 
 ### Content patterns
 
-Sender/text patterns are case-sensitive byte matches. They search anywhere
+Sender/text patterns are case-sensitive byte matches by default. Add `(?i)`
+at the start for ASCII case-insensitive matching. They search anywhere
 unless anchored with `^` and `$`. Supported forms include `.`, `[A-Z]`,
 `[^0-9]`, `*`, `+`, `?`, grouping, and `|` alternatives. Escape punctuation
 with `\` to match it literally; use `[0-9]` for digits. Each pattern is at
-most 63 bytes. Quote values containing spaces.
+most 63 bytes, including `(?i)`. Quote values containing spaces. Case folding
+applies to literals and character classes; non-ASCII bytes remain unchanged.
 
 For `Alice: BEACON 123`, `n=^Alice$` matches the display name and
 `x=^BEACON` matches the body. They can be combined in one row. The parser
@@ -614,6 +616,9 @@ short and specific.
 ```text
 # Block BEACON messages on this channel.
 set fr grp_txt c=#local x="^BEACON" d
+
+# Block either complete sender name, ignoring ASCII letter case.
+set fr grp_txt c=public n="(?i)^(Alice|Bob)$" d
 
 # Exempt Alice from lower-order general rules, then block everyone else.
 set fr grp_txt c=#local n="^Alice$" pri=200 a
@@ -778,7 +783,7 @@ set fr.3 any c=#wardriving m=bc d
 | `channel=...` | `c=...` | Same authenticated name/key or explicit `hash:XX` matcher. |
 | `prefix=...` | `p=...` | Ordered path prefix. |
 | `path=[^]ID>ID...[$]` | `pa=...` | Ordered chain anywhere, or anchored at either end. |
-| `sender=...`, `text=...` | `n=...`, `x=...` | Case-sensitive patterns on an authenticated group-text channel. |
+| `sender=...`, `text=...` | `n=...`, `x=...` | Patterns on an authenticated group-text channel; leading `(?i)` ignores ASCII letter case. |
 | `len=N`, `N+`, or `N-M` | `l=...` | Payload-byte range. |
 | `route=flood`, `direct`, `any` | `rt=f`, `rt=d`, `rt=a` | Route class. |
 | `prob=N`, `enabled=on/off` | `pr=N`, `e=1/0` | Sample matches or retain a disabled row. |

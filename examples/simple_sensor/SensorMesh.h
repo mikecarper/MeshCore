@@ -3,6 +3,10 @@
 #include <Arduino.h>   // needed for PlatformIO
 #include <Mesh.h>
 #include <helpers/PowerSavingDiagnostics.h>
+#include <helpers/EmergencyOtaWork.h>
+#if MESH_ENABLE_EMERGENCY_POWER && defined(ENABLE_OTA)
+#include <helpers/ota/OtaContext.h>
+#endif
 
 #include "TimeSeriesData.h"
 
@@ -86,6 +90,18 @@ public:
   const char* getRole() override { return FIRMWARE_ROLE; }
   const char* getNodeName() { return _prefs.node_name; }
   NodePrefs* getNodePrefs() { return &_prefs; }
+#if MESH_ENABLE_EMERGENCY_POWER
+  mesh::power::EmergencyOtaWork _emergency_ota_work;
+  CommonCLI& getPowerCLI() { return _cli; }
+  bool emergencyPowerBusy() const {
+#if defined(ENABLE_OTA)
+    if (_emergency_ota_work.busy(mesh::ota::ota_context_if_active(), millis())) return true;
+#endif
+    return hasPendingOtaApply() || _cli.hasPendingRadioSettings()
+        || _cli.hasActiveUserGpioTimer() || dirty_contacts_expiry != 0
+        || (saved_radio_apply_pending && !temp_radio_applied);
+  }
+#endif
   uint32_t getPowerSaveSleepSeconds(uint32_t max_secs) const;
   uint32_t getPowerSaveSleepMilliseconds(uint32_t max_ms) const;
   bool isTrackerModeEnabled() const {
