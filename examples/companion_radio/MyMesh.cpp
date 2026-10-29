@@ -3078,13 +3078,6 @@ void MyMesh::begin(bool has_display, bool radio_available,
   initializeOfflineQueue();
   BaseChatMesh::begin();
   _radio_profiles.begin(_store->getPrimaryFS(), _radio, getRTCClock());
-  {
-    const mesh::RadioPresetCLI::Hooks preset_hooks = {
-      this, presetLoad, presetSave, presetCurrent, presetAccepts, presetApply,
-      presetTempRadioActive
-    };
-    _radio_presets.begin(preset_hooks);
-  }
   mesh::loadMorseSettings(_store->getPrimaryFS());
 #if defined(ENABLE_OTA)
   mesh::ota::beginSpeedConfig(_store->getPrimaryFS());
@@ -3446,6 +3439,16 @@ void MyMesh::begin(bool has_display, bool radio_available,
   _clock_sync.begin(nullptr);
 #endif
 
+  // After prefs are loaded, HIL-adjusted and sanitised. /presets is shared with
+  // infrastructure roles, so a node reflashed to Companion can carry a pending
+  // remote load; begin() reverts it through presetApply, which saves _prefs.
+  {
+    const mesh::RadioPresetCLI::Hooks preset_hooks = {
+      this, presetLoad, presetSave, presetCurrent, presetAccepts, presetApply,
+      presetTempRadioActive
+    };
+    _radio_presets.begin(preset_hooks);
+  }
   configureRadioFromPrefs();
 #if MESH_ENABLE_HOST_KISS
   mesh::hostkiss::begin(_store->getPrimaryFS(), *_radio, _radio_profiles, *this);

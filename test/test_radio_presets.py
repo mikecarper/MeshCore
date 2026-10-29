@@ -682,7 +682,21 @@ class CompanionPresetContractTest(unittest.TestCase):
         self.assertIsNotNone(begin)
         assert begin is not None
         b = begin.find('_radio_presets.begin(')
-        self.assertGreater(b, begin.find('_radio_profiles.begin(_store->getPrimaryFS()'))
+        self.assertGreaterEqual(b, 0, 'begin() missing from MyMesh::begin')
+        self.assertEqual(begin.count('_radio_presets.begin('), 1)
+        # A pending record left by an infrastructure role reverts in begin()
+        # and saves _prefs, so prefs must be loaded, HIL-adjusted and
+        # sanitised first, and the radio not yet configured from them.
+        anchors = ('_radio_profiles.begin(_store->getPrimaryFS()',
+                   '_store->loadPrefs(_prefs,',
+                   'applyHilStartupFrequency(_prefs.freq)',
+                   '_prefs.cr = constrain(_prefs.cr, 5, 8);')
+        for anchor in anchors:
+            pos = begin.find(anchor)
+            self.assertGreaterEqual(pos, 0, anchor + ' missing from MyMesh::begin')
+            self.assertGreater(b, pos, 'presets begin() must come after ' + anchor)
+        configure = begin.find('configureRadioFromPrefs();')
+        self.assertGreater(configure, b, 'presets begin() must precede configureRadioFromPrefs()')
         loop = _function_body(cpp, 'void MyMesh::loop()')
         self.assertIsNotNone(loop)
         assert loop is not None
@@ -726,6 +740,7 @@ class CompanionPresetContractTest(unittest.TestCase):
     def test_docs_list_companion_presets(self):
         avail = _read('docs/cli_command_availability.md')
         start = avail.find('## Companion framed CLI')
+        self.assertGreaterEqual(start, 0, 'Companion framed CLI heading missing')
         section = avail[start:avail.find('\n## ', start + 1)]
         self.assertIn('load preset', section)
 
