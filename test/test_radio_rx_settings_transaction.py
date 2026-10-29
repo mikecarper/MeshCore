@@ -146,6 +146,7 @@ public:
     void loop() {}
     bool hasPendingTuning() const { return pending; }
   } _radio_profiles;
+  struct Presets { void loop(unsigned long) {} } _radio_presets;
   CommonCLI() { callbacks.owner = this; }
   @PENDING@
   void loopManagement() {}
