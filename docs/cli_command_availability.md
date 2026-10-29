@@ -105,6 +105,7 @@ over the normal binary USB, BLE, or TCP connection:
 | [`get bootloader.ver`](cli_commands.md#view-the-bootloader-version-nrf52-only) | nRF52 Companion terminal and command `0x42`; unidentifiable metadata returns `unknown` |
 | [`get/set sdcard`](test-results/companion_cli_parity_2026-10-23.md#shared-sd-commands) | nRF52 builds with SD OTA storage; maintenance retains OTA and Ethernet ownership guards |
 | `erase` | Local terminal and binary command `0x42`; reboot after erasing stored settings |
+| [`get preset [n]`; `add preset`; `load preset`; `del preset`](cli_commands.md#save-and-switch-named-radio-presets) | Local terminal and binary command `0x42` only; LoRa CLI cannot use presets on a Companion. `load preset` saves and applies at once with no revert window |
 | `set freq <MHz>` | Local terminal, binary command `0x42`, and authorized LoRa CLI; applies automatically (infrastructure waits two seconds and for the reply to drain) |
 | [`get public.key`](cli_commands.md#view-this-nodes-public-key) | Companion text terminal and binary command `0x42`; read-only, no private-key export feature required |
 | `get prv.key` | Local terminal and binary command `0x42`; requires private key export enabled |

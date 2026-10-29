@@ -29,6 +29,7 @@
 
 #include "DataStore.h"
 #include <helpers/RadioProfileCLI.h>
+#include <helpers/RadioPresetCLI.h>
 #include <helpers/MorseReplyHandoff.h>
 #include <helpers/TempRadioReplyBarrier.h>
 #include <helpers/MeshtextConfig.h>
@@ -222,6 +223,13 @@ public:
   bool handleLocalCommand(const char* command, char* reply) {
     return handleCommand(command, 0, reply);
   }
+
+  // Named primary-radio presets (local operator only; Cardputer UI uses these).
+  bool loadRadioPreset(uint8_t slot, char* reply, size_t cap) {
+    return _radio_presets.loadSlot(slot, reply, cap);
+  }
+  uint8_t activeRadioPreset() const { return _radio_presets.activeSlot(); }
+  const mesh::RadioPresetTable& radioPresetTable() const { return _radio_presets.table(); }
 
   void begin(bool has_display, bool radio_available = true,
              mesh::ui::StartupScreen* startup_screen = nullptr);
@@ -837,6 +845,16 @@ private:
 
   DataStore* _store;
   mesh::RadioProfileCLI _radio_profiles;
+  // Hooks are captureless trampolines with this MyMesh as ctx; /presets lives
+  // on the primary filesystem.
+  mesh::RadioPresetCLI _radio_presets;
+  static bool presetLoad(void* ctx, uint8_t* buf, size_t cap, size_t& len);
+  static bool presetSave(void* ctx, const uint8_t* buf, size_t len);
+  static bool presetCurrent(void* ctx, mesh::RadioPreset& out);
+  static bool presetAccepts(void* ctx, float freq, float bw, uint8_t sf, uint8_t cr,
+                            uint16_t preamble);
+  static bool presetApply(void* ctx, const mesh::RadioPreset& p, char* reply, size_t cap);
+  static bool presetTempRadioActive(void* ctx);
 #if defined(NRF52_PLATFORM) && defined(OTA_SD_STORE)
   mesh::cli::SdCardCLIState _sdcard_cli;
 #endif

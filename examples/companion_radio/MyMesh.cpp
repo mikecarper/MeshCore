@@ -28,6 +28,7 @@
 #include <helpers/ui/StartupScreen.h>
 #include "NotificationSettingsFile.h"
 #include "MyMesh.h"
+#include <helpers/RadioPresetFile.h>
 #include <helpers/HostKiss.h>
 #if defined(RAK_4631) && defined(COMPANION_RADIO_FULL) \
     || (defined(STM32_PLATFORM) && defined(STM32WLxx) && COMPANION_FEATURE_TEXT_TERMINAL)
@@ -3077,6 +3078,13 @@ void MyMesh::begin(bool has_display, bool radio_available,
   initializeOfflineQueue();
   BaseChatMesh::begin();
   _radio_profiles.begin(_store->getPrimaryFS(), _radio, getRTCClock());
+  {
+    const mesh::RadioPresetCLI::Hooks preset_hooks = {
+      this, presetLoad, presetSave, presetCurrent, presetAccepts, presetApply,
+      presetTempRadioActive
+    };
+    _radio_presets.begin(preset_hooks);
+  }
   mesh::loadMorseSettings(_store->getPrimaryFS());
 #if defined(ENABLE_OTA)
   mesh::ota::beginSpeedConfig(_store->getPrimaryFS());
@@ -3652,6 +3660,54 @@ MyMesh::RadioSettingResult MyMesh::applyAndSaveRadioParams(
   if ((result == mesh::RadioParamApplyResult::APPLIED && !applySavedRadioParams())
       || !preamble_restored) queueSavedRadioApply();
   return preamble_restored ? RadioSettingResult::SaveFailed : RadioSettingResult::SaveUnconfirmed;
+}
+
+bool MyMesh::presetLoad(void* ctx, uint8_t* buf, size_t cap, size_t& len) {
+  MyMesh* self = static_cast<MyMesh*>(ctx);
+  return mesh::loadRadioPresetFile(self->_store->getPrimaryFS(), buf, cap, len);
+}
+
+bool MyMesh::presetSave(void* ctx, const uint8_t* buf, size_t len) {
+  MyMesh* self = static_cast<MyMesh*>(ctx);
+  return mesh::saveRadioPresetFile(self->_store->getPrimaryFS(), buf, len);
+}
+
+bool MyMesh::presetCurrent(void* ctx, mesh::RadioPreset& out) {
+  MyMesh* self = static_cast<MyMesh*>(ctx);
+  out.freq = self->_prefs.freq;
+  out.bw = self->_prefs.bw;
+  out.sf = self->_prefs.sf;
+  out.cr = self->_prefs.cr;
+  out.preamble = self->_radio_profiles.primaryPreamble();
+  return true;
+}
+
+bool MyMesh::presetAccepts(void* ctx, float freq, float bw, uint8_t sf, uint8_t cr,
+                           uint16_t preamble) {
+  return static_cast<MyMesh*>(ctx)->_radio_profiles.acceptsPrimary(freq, bw, sf, cr, preamble);
+}
+
+// Same local save+apply path and reply strings as "set radio".
+bool MyMesh::presetApply(void* ctx, const mesh::RadioPreset& p, char* reply, size_t cap) {
+  MyMesh* self = static_cast<MyMesh*>(ctx);
+  const auto result = self->applyAndSaveRadioParams(p.freq, p.bw, p.sf, p.cr,
+      self->_prefs.client_repeat, p.preamble, false);
+  if (reply && cap) {
+    snprintf(reply, cap, "%s", result == RadioSettingResult::Saved ? "OK"
+        : result == RadioSettingResult::SaveFailed ? "Error: radio not saved"
+        : result == RadioSettingResult::SaveUnconfirmed ? "Error: radio save unconfirmed"
+        : "Error: radio rejected");
+  }
+  return result == RadioSettingResult::Saved;
+}
+
+bool MyMesh::presetTempRadioActive(void* ctx) {
+#if COMPANION_FEATURE_TEMP_RADIO
+  return static_cast<MyMesh*>(ctx)->isTempRadioActive();
+#else
+  (void)ctx;
+  return false;
+#endif
 }
 
 bool MyMesh::applyRxPowerSavingRfRxDisabled(const char* value, char* reply, size_t capacity) {
@@ -11150,6 +11206,10 @@ bool MyMesh::handleCommand(const char* command, uint32_t sender_timestamp,
   if (mesh::handleMorseReplyCommand(_morse_reply, _radio, command, reply,
                                     reply_capacity, millis())) return true;
   if (mesh::handleMorseCommand(_radio, command, reply, reply_capacity)) return true;
+  // Presets are local-only on companions: there is no revert path, so an
+  // authorized LoRa CLI command (nonzero timestamp) is not consumed here.
+  if (sender_timestamp == 0 && _radio_presets.handle(command, reply, reply_capacity, false))
+    return true;
   if (_radio_profiles.handle(command, reply, reply_capacity, sender_timestamp != 0)) return true;
   if (!strncmp(command, "set tempradio ", 14)) command += 4;
   if (!strcmp(command, "get tempradio")) command += 4;
@@ -11759,6 +11819,7 @@ void MyMesh::loop() {
 #endif
 #endif
 
+  _radio_presets.loop(millis());
   if (!mesh::morseTimingActive(_radio)) _radio_profiles.loop();
 #if MESH_ENABLE_HOST_KISS
   if (!mesh::morseTimingActive(_radio)) mesh::hostkiss::loop();

@@ -629,5 +629,106 @@ class RadioPresetWiringContractTest(unittest.TestCase):
             self.assertTrue(cmd in avail, cmd + ' missing from cli_command_availability.md')
 
 
+def _public_members(header, class_head):
+    """Return the text of the public: sections of the class that starts at class_head."""
+    start = header.find(class_head)
+    if start < 0:
+        return ''
+    body = _function_body(header, class_head) or ''
+    out, access = [], 'private'
+    for line in body.splitlines():
+        t = line.strip()
+        if t in ('public:', 'protected:', 'private:'):
+            access = t[:-1]
+        elif access == 'public':
+            out.append(line)
+    return '\n'.join(out)
+
+
+class CompanionPresetContractTest(unittest.TestCase):
+    """Source contracts for the companion (T114, Cardputer) integration."""
+
+    CPP = 'examples/companion_radio/MyMesh.cpp'
+    H = 'examples/companion_radio/MyMesh.h'
+
+    def assertSourceMatches(self, text, pattern, msg=None):
+        self.assertTrue(text is not None and re.search(pattern, text), msg or ('no match: ' + pattern))
+
+    def test_dispatch_is_local_only_and_before_profiles(self):
+        body = _function_body(_read(self.CPP), 'bool MyMesh::handleCommand(')
+        self.assertIsNotNone(body)
+        assert body is not None
+        call = '_radio_presets.handle(command, reply, reply_capacity, false)'
+        presets = body.find(call)
+        profiles = body.find('_radio_profiles.handle(')
+        self.assertGreaterEqual(presets, 0, 'companion preset dispatch missing (literal false)')
+        self.assertLess(presets, profiles, 'presets must be dispatched before profiles')
+        self.assertEqual(body.count('_radio_presets.handle('), 1)
+        # Authorized LoRa CLI reaches handleCommand with a nonzero timestamp;
+        # companions have no revert path, so presets stay local-only.
+        self.assertSourceMatches(body, r'sender_timestamp\s*==\s*0\s*&&\s*' + re.escape(call))
+
+    def test_public_api(self):
+        public = _public_members(_read(self.H), 'class MyMesh :')
+        self.assertSourceMatches(public, r'bool\s+loadRadioPreset\(uint8_t\s+slot,\s*char\*\s*reply,'
+                                 r'\s*size_t\s+cap\)')
+        self.assertSourceMatches(public, r'uint8_t\s+activeRadioPreset\(\)\s*const')
+        self.assertSourceMatches(public, r'const\s+mesh::RadioPresetTable&\s+radioPresetTable\(\)\s*const')
+        self.assertSourceMatches(_read(self.H), r'mesh::RadioPresetCLI\s+_radio_presets\s*;')
+
+    def test_begin_after_profiles_and_loop_every_pass(self):
+        cpp = _read(self.CPP)
+        begin = _function_body(cpp, 'void MyMesh::begin(bool has_display')
+        self.assertIsNotNone(begin)
+        assert begin is not None
+        b = begin.find('_radio_presets.begin(')
+        self.assertGreater(b, begin.find('_radio_profiles.begin(_store->getPrimaryFS()'))
+        loop = _function_body(cpp, 'void MyMesh::loop()')
+        self.assertIsNotNone(loop)
+        assert loop is not None
+        self.assertSourceMatches(loop, r'\n\s*_radio_presets\.loop\(millis\(\)\);')
+
+    def test_hooks_use_existing_radio_paths(self):
+        cpp = _read(self.CPP)
+        expect = {
+            'bool MyMesh::presetAccepts(': r'_radio_profiles\.acceptsPrimary\(freq, bw, sf, cr, preamble\)',
+            'bool MyMesh::presetApply(':
+                r'applyAndSaveRadioParams\(\s*p\.freq, p\.bw, p\.sf, p\.cr,\s*'
+                r'self->_prefs\.client_repeat, p\.preamble, false\)',
+            'bool MyMesh::presetCurrent(': r'_radio_profiles\.primaryPreamble\(\)',
+            'bool MyMesh::presetLoad(': r'loadRadioPresetFile\(\s*self->_store->getPrimaryFS\(\)',
+            'bool MyMesh::presetSave(': r'saveRadioPresetFile\(\s*self->_store->getPrimaryFS\(\)',
+            'bool MyMesh::presetTempRadioActive(': r'isTempRadioActive\(\)',
+        }
+        for signature, pattern in expect.items():
+            body = _function_body(cpp, signature)
+            self.assertIsNotNone(body, signature + ' missing')
+            self.assertTrue(re.search(pattern, body), signature + ' does not use ' + pattern)
+        apply = _function_body(cpp, 'bool MyMesh::presetApply(') or ''
+        for err in ('"OK"', '"Error: radio not saved"', '"Error: radio save unconfirmed"',
+                    '"Error: radio rejected"'):
+            self.assertIn(err, apply)
+
+    def test_preset_file_include_is_not_platform_guarded(self):
+        depth_guards = []
+        found = False
+        for line in _read(self.CPP).splitlines():
+            t = line.strip()
+            if t.startswith('#if'):
+                depth_guards.append(t)
+            elif t.startswith('#endif') and depth_guards:
+                depth_guards.pop()
+            elif t == '#include <helpers/RadioPresetFile.h>':
+                found = True
+                self.assertEqual(depth_guards, [], 'RadioPresetFile.h include is guarded')
+        self.assertTrue(found, 'companion MyMesh.cpp must include RadioPresetFile.h')
+
+    def test_docs_list_companion_presets(self):
+        avail = _read('docs/cli_command_availability.md')
+        start = avail.find('## Companion framed CLI')
+        section = avail[start:avail.find('\n## ', start + 1)]
+        self.assertIn('load preset', section)
+
+
 if __name__ == '__main__':
     unittest.main()
