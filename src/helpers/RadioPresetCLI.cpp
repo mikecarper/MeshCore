@@ -58,15 +58,20 @@ void RadioPresetCLI::clearPending() {
   persisted_min_ = 0;
 }
 
-// Restores the pre-load radio settings. The pending record is cleared even if
-// apply fails, so a broken revert cannot retry forever.
+// Restores the pre-load radio settings. Pending is cleared only after a
+// successful apply; on failure the record stays persisted and a retry is armed
+// (loop() retries every RETRY_SECS, begin() retries on the next boot).
 bool RadioPresetCLI::revertNow() {
   RadioPreset prev = table_.pending.previous;
-  clearPending();
   char scratch[96];
   scratch[0] = 0;
-  if (prev.used && presetOk(prev)) hooks_.apply(hooks_.ctx, prev, scratch, sizeof(scratch));
-  return save();
+  if (prev.used && presetOk(prev) && hooks_.apply(hooks_.ctx, prev, scratch, sizeof(scratch))) {
+    clearPending();
+    return save();
+  }
+  remaining_ms_ = RETRY_SECS * 1000u;
+  persisted_min_ = (RETRY_SECS + 59u) / 60u;
+  return false;
 }
 
 void RadioPresetCLI::begin(const Hooks& hooks) {
@@ -234,6 +239,10 @@ bool RadioPresetCLI::doLoad(uint8_t slot, char* reply, size_t cap, bool remote) 
     return true;
   }
   prev.used = true;
+  if (!presetOk(prev)) {  // the revert must be possible before we leave this tuple
+    cli::formatError(reply, cap, "current radio not revertible");
+    return true;
+  }
   if (!RadioPresetTable::validName(prev.name)) {
     memset(prev.name, 0, sizeof(prev.name));
     memcpy(prev.name, "Previous", 8);

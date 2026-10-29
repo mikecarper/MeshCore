@@ -150,6 +150,8 @@ struct Env {
   int saves = 0;
   bool failSave = false;
   bool failApply = false;
+  int failApplyCount = 0;   // fail this many apply calls, then succeed
+  bool curBad = false;
   bool tempRadio = false;
   RadioPreset cur;
   std::vector<RadioPreset> applied;
@@ -181,6 +183,7 @@ static bool hAccepts(void*, float f, float bw, uint8_t sf, uint8_t cr, uint16_t)
 }
 static bool hApply(void* c, const RadioPreset& p, char* reply, size_t cap) {
   Env* e = E(c);
+  if (e->failApplyCount > 0) { e->failApplyCount--; std::snprintf(reply, cap, "Error: boom"); return false; }
   if (e->failApply) { std::snprintf(reply, cap, "Error: boom"); return false; }
   e->applied.push_back(p);
   e->cur = p;
@@ -325,6 +328,38 @@ int main() {
     CHECK(run(c, "load preset 2", r)); CHECK(has(r, "Error: boom"));
     CHECK(!c.pending());
     RadioPresetTable u; CHECK(u.decode(e.store.data(), e.store.size())); CHECK(!u.pending.active);
+  }
+  { // revert_apply_failure_keeps_pending_and_retries
+    Env e; RadioPresetCLI c; setup(c, e); c.loop(1000);
+    run(c, "load preset 2", r);
+    e.failApplyCount = 1;
+    c.loop(1000 + 600001);                       // revert attempt fails
+    CHECK(c.pending() && e.applied.size() == 1);
+    RadioPresetTable u; CHECK(u.decode(e.store.data(), e.store.size())); CHECK(u.pending.active);
+    c.loop(1000 + 600001 + 30000);               // too early to retry
+    CHECK(c.pending() && e.applied.size() == 1);
+    c.loop(1000 + 600001 + 61000);               // retry succeeds
+    CHECK(!c.pending() && e.applied.size() == 2 && near(e.applied[1].freq, 910.525f));
+    RadioPresetTable v; CHECK(v.decode(e.store.data(), e.store.size())); CHECK(!v.pending.active);
+  }
+  { // reboot_revert_failure_keeps_pending
+    Env e; RadioPresetCLI c; setup(c, e); c.loop(1000);
+    run(c, "load preset 2", r);
+    e.failApplyCount = 1;
+    RadioPresetCLI d; d.begin(hooks(e));
+    CHECK(d.pending());
+    RadioPresetTable u; CHECK(u.decode(e.store.data(), e.store.size())); CHECK(u.pending.active);
+    RadioPresetCLI f; f.begin(hooks(e));         // next boot retries and succeeds
+    CHECK(!f.pending() && e.applied.size() == 2 && near(e.applied[1].freq, 910.525f));
+    d.loop(5000); d.loop(5000 + 61000);          // in-session retry also works
+    CHECK(!d.pending());
+  }
+  { // remote_load_refused_when_current_invalid
+    Env e; RadioPresetCLI c; setup(c, e);
+    e.cur.sf = 13;                               // live tuple the role would not accept
+    int s = e.saves;
+    CHECK(run(c, "load preset 2", r)); CHECK(has(r, "Error"));
+    CHECK(e.applied.empty() && e.saves == s && !c.pending());
   }
   { // del_preset
     Env e; RadioPresetCLI c; setup(c, e);

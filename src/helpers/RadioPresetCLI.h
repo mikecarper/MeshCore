@@ -24,6 +24,7 @@ class RadioPresetCLI {
     bool (*tempRadioActive)(void* ctx);
   };
   static constexpr uint32_t REVERT_SECS = 600;
+  static constexpr uint32_t RETRY_SECS = 60;  // between failed revert attempts
 
   void begin(const Hooks& hooks);                                     // load or seed slot 1; if pending -> revert now
   bool handle(const char* cmd, char* reply, size_t cap, bool remote);  // true if consumed
