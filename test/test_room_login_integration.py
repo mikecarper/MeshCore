@@ -23,6 +23,7 @@ HARNESS = r'''
 #include <algorithm>
 #include "filesystem.h"
 #include <helpers/RoomAccessPolicy.h>
+#include <helpers/RadioPresetConfig.h>
 #include <helpers/RemoteCliReplyCache.h>
 #include <helpers/RemoteCliRequest.h>
 #include <helpers/ClientACLResponse.h>

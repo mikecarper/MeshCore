@@ -1,4 +1,5 @@
 #include <helpers/MorseLoopPolicy.h>
+#include <helpers/RadioPresetConfig.h>
 static uint32_t now_ms = 100;
 uint32_t millis() { return now_ms; }
 #define PUB_KEY_SIZE 32

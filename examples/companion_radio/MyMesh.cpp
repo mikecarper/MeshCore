@@ -31,7 +31,9 @@
 #include <helpers/ui/StartupScreen.h>
 #include "NotificationSettingsFile.h"
 #include "MyMesh.h"
+#if MESH_ENABLE_RADIO_PRESETS
 #include <helpers/RadioPresetFile.h>
+#endif
 #include <helpers/HostKiss.h>
 #if defined(RAK_4631) && defined(COMPANION_RADIO_FULL) \
     || (defined(STM32_PLATFORM) && defined(STM32WLxx) && COMPANION_FEATURE_TEXT_TERMINAL)
@@ -3461,6 +3463,7 @@ void MyMesh::begin(bool has_display, bool radio_available,
   _clock_sync.begin(nullptr);
 #endif
 
+#if MESH_ENABLE_RADIO_PRESETS
   // After prefs are loaded, HIL-adjusted and sanitised. /presets is shared with
   // infrastructure roles, so a node reflashed to Companion can carry a pending
   // remote load; begin() reverts it through presetApply, which saves _prefs.
@@ -3471,6 +3474,7 @@ void MyMesh::begin(bool has_display, bool radio_available,
     };
     _radio_presets.begin(preset_hooks);
   }
+#endif
   configureRadioFromPrefs();
 #if MESH_ENABLE_HOST_KISS
   mesh::hostkiss::begin(_store->getPrimaryFS(), *_radio, _radio_profiles, *this);
@@ -3687,6 +3691,7 @@ MyMesh::RadioSettingResult MyMesh::applyAndSaveRadioParams(
   return preamble_restored ? RadioSettingResult::SaveFailed : RadioSettingResult::SaveUnconfirmed;
 }
 
+#if MESH_ENABLE_RADIO_PRESETS
 bool MyMesh::presetLoad(void* ctx, uint8_t* buf, size_t cap, size_t& len) {
   MyMesh* self = static_cast<MyMesh*>(ctx);
   return mesh::loadRadioPresetFile(self->_store->getPrimaryFS(), buf, cap, len);
@@ -3734,6 +3739,7 @@ bool MyMesh::presetTempRadioActive(void* ctx) {
   return false;
 #endif
 }
+#endif
 
 bool MyMesh::applyRxPowerSavingRfRxDisabled(const char* value, char* reply, size_t capacity) {
   if (strcmp(value, "on") && strcmp(value, "off")) {
@@ -11380,10 +11386,12 @@ bool MyMesh::handleCommand(const char* command, uint32_t sender_timestamp,
   if (mesh::handleMorseReplyCommand(_morse_reply, _radio, command, reply,
                                     reply_capacity, millis())) return true;
   if (mesh::handleMorseCommand(_radio, command, reply, reply_capacity)) return true;
+#if MESH_ENABLE_RADIO_PRESETS
   // Presets are local-only on companions: there is no revert path, so an
   // authorized LoRa CLI command (nonzero timestamp) is not consumed here.
   if (sender_timestamp == 0 && _radio_presets.handle(command, reply, reply_capacity, false))
     return true;
+#endif
   if (_radio_profiles.handle(command, reply, reply_capacity, sender_timestamp != 0)) return true;
   if (!strncmp(command, "set tempradio ", 14)) command += 4;
   if (!strcmp(command, "get tempradio")) command += 4;
@@ -11998,7 +12006,9 @@ void MyMesh::loop() {
 #endif
 #endif
 
+#if MESH_ENABLE_RADIO_PRESETS
   _radio_presets.loop(millis());
+#endif
   if (!mesh::morseTimingActive(_radio)) _radio_profiles.loop();
 #if MESH_ENABLE_HOST_KISS
   if (!mesh::morseTimingActive(_radio)) mesh::hostkiss::loop();

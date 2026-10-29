@@ -1,3 +1,7 @@
+#include <helpers/RadioPresetConfig.h>
+
+#if MESH_ENABLE_RADIO_PRESETS
+
 #include "RadioPresetCLI.h"
 
 #include <math.h>
@@ -339,3 +343,5 @@ void RadioPresetCLI::loop(uint32_t now_ms) {
 }
 
 }  // namespace mesh
+
+#endif  // MESH_ENABLE_RADIO_PRESETS

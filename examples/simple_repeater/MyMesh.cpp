@@ -2845,10 +2845,12 @@ void MyMesh::onAnonDataRecv(mesh::Packet *packet, const uint8_t *secret, const m
     reply_path_len = 0xFF;
     if (data[4] == 0 || data[4] >= ' ') {   // is password, ie. a login request
       reply_len = handleLoginReq(sender, secret, timestamp, &data[4], packet->isRouteFlood());
+#if MESH_ENABLE_RADIO_PRESETS
       // A fresh full-admin login (LoRa or ESP-NOW bridge) proves the operator
       // can still reach this node: keep a remotely loaded preset.
       if (reply_len > 4 && reply_data[4] == RESP_SERVER_LOGIN_OK && login_full_admin)
         _cli.radioPresets().onAdminLogin();
+#endif
     } else if (data[4] == ANON_REQ_TYPE_REGIONS && packet->isRouteDirect()) {
       reply_len = handleAnonRegionsReq(sender, timestamp, &data[5], len - 5);
     } else if (data[4] == ANON_REQ_TYPE_OWNER && packet->isRouteDirect()) {

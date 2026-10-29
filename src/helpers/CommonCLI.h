@@ -15,7 +15,10 @@
 #include <helpers/RepeaterRadioTiming.h>
 #include <helpers/DiscoveryResponsePrefs.h>
 #include <helpers/RadioProfileCLI.h>
+#include <helpers/RadioPresetConfig.h>
+#if MESH_ENABLE_RADIO_PRESETS
 #include <helpers/RadioPresetCLI.h>
+#endif
 #include <helpers/MorseReplyHandoff.h>
 #include <helpers/WirelessControl.h>
 #include <helpers/FleetCommand.h>
@@ -1025,6 +1028,7 @@ class CommonCLI {
   uint32_t _rx_settings_retry_at = 0;
   uint32_t _prefs_save_failures = 0;
   mesh::RadioProfileCLI _radio_profiles;
+#if MESH_ENABLE_RADIO_PRESETS
   // Named primary-radio presets. Hooks are captureless trampolines with this
   // CommonCLI as ctx; storage uses the filesystem handed to loadPrefs().
   mesh::RadioPresetCLI _radio_presets;
@@ -1036,6 +1040,7 @@ class CommonCLI {
                             uint16_t preamble);
   static bool presetApply(void* ctx, const mesh::RadioPreset& p, char* reply, size_t cap);
   static bool presetTempRadioActive(void* ctx);
+#endif
 #if MESH_ENABLE_TX_BEACONS
   mesh::BeaconManager* _beacons = nullptr;
   void beginBeacons();
@@ -1120,8 +1125,10 @@ public:
                               uint16_t preamble);
   mesh::RadioProfileCLI& radioProfiles() { return _radio_profiles; }
   const mesh::RadioProfileCLI& radioProfiles() const { return _radio_profiles; }
+#if MESH_ENABLE_RADIO_PRESETS
   mesh::RadioPresetCLI& radioPresets() { return _radio_presets; }
   const mesh::RadioPresetCLI& radioPresets() const { return _radio_presets; }
+#endif
   // Bind only after the role has loaded its saved regions, so boot-time
   // radio2 scope reconciliation does not get replaced by the region image.
   void onRegionsLoaded(FILESYSTEM* fs, bool loaded);

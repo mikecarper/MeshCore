@@ -11,7 +11,10 @@
 #include <helpers/CompanionNotificationPolicy.h>
 #include <helpers/ui/BluetoothPairingUiPolicy.h>
 
+#include <helpers/RadioPresetConfig.h>
+#if MESH_ENABLE_RADIO_PRESETS
 #include <helpers/RadioPresets.h>
+#endif
 
 void CardputerUITask::begin(DisplayDriver *display, SensorManager *sensors, CompanionNodePrefs *node_prefs,
                             CustomNodePrefs *custom_prefs) {
@@ -488,6 +491,16 @@ static void formatTuple(char *out, size_t cap, const char *name, float freq, flo
 // slot 1..5 loads and shows that preset; slot 0 shows the active preset, or "custom" and the live radio.
 void CardputerUITask::showPresetAlert(uint8_t slot) {
   char buf[80];
+#if !MESH_ENABLE_RADIO_PRESETS
+  // Built without presets (MESH_ENABLE_RADIO_PRESETS=0): Fn+0 still shows the live radio.
+  if (slot != 0) {
+    showAlert("Presets not in this build", 2000);
+    return;
+  }
+  formatTuple(buf, sizeof(buf), "custom", _node_prefs->freq, _node_prefs->bw, _node_prefs->sf,
+              _node_prefs->cr, 0);
+  showAlert(buf, 3000);
+#else
   const mesh::RadioPreset *p = nullptr;
   if (slot == 0) {
     uint8_t active = the_mesh_cp.activeRadioPreset();
@@ -515,6 +528,7 @@ void CardputerUITask::showPresetAlert(uint8_t slot) {
   }
   formatTuple(buf, sizeof(buf), p->name, p->freq, p->bw, p->sf, p->cr, p->preamble);
   showAlert(buf, 3000);
+#endif
 }
 
 void CardputerUITask::pingLastRepeater() {

@@ -152,6 +152,7 @@ bool checkRadioReference() { @EXPRESSION@ return morse_timing; }
         code = FIXTURE.replace("@REDRAW@", "").replace("@CUTOFF@", "") + r'''
 #define MESH_ENABLE_MORSE_RX 0
 #define USER_GPIO_CONTROL 1
+#include <helpers/RadioPresetConfig.h>
 struct UserGpio {
   struct Completion { uint8_t pin=4,state=0; uint32_t request_id=99; };
   unsigned loops=0; bool pending=true;

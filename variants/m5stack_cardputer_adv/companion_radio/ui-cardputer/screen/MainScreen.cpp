@@ -1,5 +1,7 @@
 #include "MainScreen.h"
 
+#include <helpers/RadioPresetConfig.h>
+
 #include "helpers.h"
 #include "main/ChannelsPage.h"
 #include "main/ChatPage.h"
@@ -56,6 +58,7 @@ void MainScreen::renderStatusIcons(CardputerDisplay &lcd) {
   lcd.setColor(CardputerDisplay::P_BLACK);
   lcd.drawTextCentered(iconX + 2 + iconWidth / 2 - 1, 0, tmp);
 
+#if MESH_ENABLE_RADIO_PRESETS
   // active radio preset name (or "custom") just left of the battery icon
   {
     uint8_t active = the_mesh_cp.activeRadioPreset();
@@ -63,6 +66,7 @@ void MainScreen::renderStatusIcons(CardputerDisplay &lcd) {
     lcd.setColor(CardputerDisplay::P_GREEN);
     lcd.drawTextRightAlign(iconX - 4, 0, preset ? preset->name : "custom");
   }
+#endif
 
   iconX = 3;
   iconY = 5;

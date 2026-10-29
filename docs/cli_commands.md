@@ -2206,6 +2206,12 @@ remote load is refused. A remote load is also refused while a TempRadio session
 is active. If the revert itself fails, it retries every minute and at every
 boot.
 
+**Build switch:** `MESH_ENABLE_RADIO_PRESETS`. Flash-constrained STM32WL builds
+(such as `wio-e5-mini_repeater`) and ESP-NOW-only builds (`MESH_PRIMARY_ESPNOW`
+without a LoRa primary radio) omit radio presets by default; there the preset
+commands return the ordinary unknown-command reply. Other builds include them;
+set `-D MESH_ENABLE_RADIO_PRESETS=0` or `=1` to override.
+
 ---
 
 #### View or change this node's transmit power

@@ -31,6 +31,7 @@ HARNESS = r'''
 #include <helpers/FloodCommandAliases.h>
 #include <helpers/LoginHistory.h>
 #include <helpers/DefaultPasswordWarning.h>
+#include <helpers/RadioPresetConfig.h>
 #define PUB_KEY_SIZE 32
 #define MAX_PATH_SIZE 64
 #define MAX_PACKET_PAYLOAD 184

@@ -588,7 +588,8 @@ class RadioPresetWiringContractTest(unittest.TestCase):
         self.assertSourceMatches(login, r'login_full_admin\s*=\s*client->isAdmin\(\)\s*;\s*\n\s*return 13;')
         self.assertSourceMatches(
             cpp,
-            r'reply_len\s*=\s*handleLoginReq\([^;]*;\s*\n(?:\s*//[^\n]*\n)*\s*if\s*\(reply_len\s*>\s*4\s*'
+            r'reply_len\s*=\s*handleLoginReq\([^;]*;\s*\n(?:#if MESH_ENABLE_RADIO_PRESETS\n)?'
+            r'(?:\s*//[^\n]*\n)*\s*if\s*\(reply_len\s*>\s*4\s*'
             r'&&\s*reply_data\[4\]\s*==\s*RESP_SERVER_LOGIN_OK\s*&&\s*login_full_admin\)\s*\n?\s*'
             r'_cli\.radioPresets\(\)\.onAdminLogin\(\);')
         self.assertEqual(cpp.count('onAdminLogin()'), 1)
@@ -609,7 +610,8 @@ class RadioPresetWiringContractTest(unittest.TestCase):
         login = _function_body(sensor, 'uint8_t SensorMesh::handleLoginReq(')
         self.assertIsNotNone(login)
         self.assertSourceMatches(login, r'RESP_SERVER_LOGIN_OK[\s\S]*if \(client->isAdmin\(\)\) '
-                                r'_cli\.radioPresets\(\)\.onAdminLogin\(\);\s*\n\s*return 13;')
+                                r'_cli\.radioPresets\(\)\.onAdminLogin\(\);\s*\n'
+                                r'#endif\s*\n\s*return 13;')
         self.assertEqual(sensor.count('onAdminLogin()'), 1)
         docs = _read('docs/cli_commands.md')
         self.assertNotIn('remote load always reverts', docs)
@@ -734,7 +736,9 @@ class CompanionPresetContractTest(unittest.TestCase):
                 depth_guards.pop()
             elif t == '#include <helpers/RadioPresetFile.h>':
                 found = True
-                self.assertEqual(depth_guards, [], 'RadioPresetFile.h include is guarded')
+                # Only the feature switch may guard it, never a platform.
+                self.assertEqual(depth_guards, ['#if MESH_ENABLE_RADIO_PRESETS'],
+                                 'RadioPresetFile.h include is platform-guarded')
         self.assertTrue(found, 'companion MyMesh.cpp must include RadioPresetFile.h')
 
     def test_docs_list_companion_presets(self):
@@ -743,6 +747,147 @@ class CompanionPresetContractTest(unittest.TestCase):
         self.assertGreaterEqual(start, 0, 'Companion framed CLI heading missing')
         section = avail[start:avail.find('\n## ', start + 1)]
         self.assertIn('load preset', section)
+
+
+CONFIG_PROBE = r'''
+#include <helpers/RadioPresetConfig.h>
+#include <cstdio>
+int main() { std::printf("presets=%d\n", (int)MESH_ENABLE_RADIO_PRESETS); return 0; }
+'''
+
+# Tokens that only exist for the presets feature. With the switch off none may
+# survive preprocessing in these files (RadioPresetConfig.h itself is allowed).
+_PRESET_TOKENS = re.compile(
+    r'_radio_presets|radioPresets\(\)|RadioPreset(?!Config)|preset_hooks'
+    r'|preset(?:Load|Save|Current|Accepts|Apply|TempRadioActive)\b'
+    r'|loadRadioPreset|activeRadioPreset|radioPresetTable|_presets_fs|onAdminLogin')
+
+_GATED_FILES = (
+    'src/helpers/CommonCLI.h',
+    'src/helpers/CommonCLI.cpp',
+    'src/helpers/RadioPresetCLI.cpp',
+    'examples/companion_radio/MyMesh.h',
+    'examples/companion_radio/MyMesh.cpp',
+    'examples/simple_repeater/MyMesh.cpp',
+    'examples/simple_room_server/MyMesh.cpp',
+    'examples/simple_sensor/SensorMesh.cpp',
+    'variants/m5stack_cardputer_adv/companion_radio/ui-cardputer/CardputerUITask.cpp',
+    'variants/m5stack_cardputer_adv/companion_radio/ui-cardputer/screen/MainScreen.cpp',
+)
+
+
+def _lines_live_when_disabled(text):
+    """Yield (lineno, line) for lines kept with MESH_ENABLE_RADIO_PRESETS=0.
+
+    Only the switch's own #if/#if ! blocks are evaluated; every other
+    conditional is treated as possibly live, which is the conservative choice.
+    """
+    stack = []  # per #if: None (other condition) or bool (switch block live?)
+    for n, line in enumerate(text.splitlines(), 1):
+        t = line.strip()
+        if t.startswith('#if'):
+            if re.match(r'#if\s+MESH_ENABLE_RADIO_PRESETS\b', t):
+                stack.append(False)
+            elif re.match(r'#if\s+!\s*MESH_ENABLE_RADIO_PRESETS\b', t):
+                stack.append(True)
+            else:
+                stack.append(None)
+            continue
+        if t.startswith('#else') and stack:
+            if stack[-1] is not None:
+                stack[-1] = not stack[-1]
+            continue
+        if t.startswith('#elif') and stack:
+            continue
+        if t.startswith('#endif') and stack:
+            stack.pop()
+            continue
+        if any(s is False for s in stack):
+            continue
+        yield n, line
+
+
+class RadioPresetBuildSwitchTest(unittest.TestCase):
+    """MESH_ENABLE_RADIO_PRESETS: off on STM32 and ESP-NOW-only, on elsewhere."""
+
+    def probe(self, *defines):
+        compiler = shutil.which('g++') or shutil.which('clang++')
+        if compiler is None:
+            self.skipTest('a host C++17 compiler is required')
+        with tempfile.TemporaryDirectory(prefix='radio-preset-switch-') as directory:
+            work = Path(directory)
+            cpp = work / 'probe.cpp'
+            cpp.write_text(CONFIG_PROBE, encoding='ascii')
+            binary = work / ('probe' + ('.exe' if os.name == 'nt' else ''))
+            built = subprocess.run([
+                compiler, '-std=c++17', '-Wall', '-Wextra', '-Werror', *defines,
+                '-I', str(ROOT / 'src'), str(cpp), '-o', str(binary),
+            ], capture_output=True, text=True, timeout=120)
+            self.assertEqual(built.returncode, 0, built.stdout + built.stderr)
+            ran = subprocess.run([str(binary)], capture_output=True, text=True, timeout=20)
+            self.assertEqual(ran.returncode, 0, ran.stdout + ran.stderr)
+            return int(ran.stdout.strip().split('=')[1])
+
+    def test_default_resolution(self):
+        self.assertEqual(self.probe(), 1)
+        self.assertEqual(self.probe('-DESP32=1'), 1)
+        self.assertEqual(self.probe('-DNRF52_PLATFORM=1'), 1)
+        self.assertEqual(self.probe('-DSTM32_PLATFORM'), 0)
+        self.assertEqual(self.probe('-DSTM32_PLATFORM=1'), 0)
+        self.assertEqual(self.probe('-DMESH_PRIMARY_ESPNOW=1'), 0)
+        self.assertEqual(self.probe('-DESP32=1', '-DMESH_PRIMARY_ESPNOW=1'), 0)
+        self.assertEqual(self.probe('-DMESH_PRIMARY_ESPNOW=0'), 1)
+
+    def test_explicit_override_wins(self):
+        self.assertEqual(self.probe('-DSTM32_PLATFORM', '-DMESH_ENABLE_RADIO_PRESETS=1'), 1)
+        self.assertEqual(self.probe('-DMESH_PRIMARY_ESPNOW=1', '-DMESH_ENABLE_RADIO_PRESETS=1'), 1)
+        self.assertEqual(self.probe('-DMESH_ENABLE_RADIO_PRESETS=0'), 0)
+
+    def test_preset_cli_translation_unit_compiles_empty_when_disabled(self):
+        # The src glob still builds RadioPresetCLI.cpp; disabled it must be an
+        # empty, warning-free object so nothing preset-related links.
+        compiler = shutil.which('g++') or shutil.which('clang++')
+        if compiler is None:
+            self.skipTest('a host C++17 compiler is required')
+        with tempfile.TemporaryDirectory(prefix='radio-preset-off-') as directory:
+            obj = Path(directory) / 'off.o'
+            built = subprocess.run([
+                compiler, '-std=c++17', '-Wall', '-Wextra', '-Werror', '-c',
+                '-DMESH_ENABLE_RADIO_PRESETS=0', '-DNAME_MAX=255',
+                '-I', str(ROOT / 'src'), '-I', str(ROOT / 'test'),
+                '-isystem', str(ROOT / 'test' / 'mocks'),
+                str(ROOT / 'src/helpers/RadioPresetCLI.cpp'), '-o', str(obj),
+            ], capture_output=True, text=True, timeout=120, cwd=str(ROOT / 'test'))
+            self.assertEqual(built.returncode, 0, built.stdout + built.stderr)
+            pre = subprocess.run([
+                compiler, '-std=c++17', '-E', '-P', '-DMESH_ENABLE_RADIO_PRESETS=0',
+                '-I', str(ROOT / 'src'), str(ROOT / 'src/helpers/RadioPresetCLI.cpp'),
+            ], capture_output=True, text=True, timeout=120)
+            self.assertEqual(pre.returncode, 0, pre.stderr)
+            self.assertNotIn('RadioPresetCLI', pre.stdout)
+
+    def test_every_preset_use_is_behind_the_switch(self):
+        for rel in _GATED_FILES:
+            text = _read(rel)
+            self.assertIn('MESH_ENABLE_RADIO_PRESETS', text, rel)
+            leaks = ['%s:%d: %s' % (rel, n, line.strip())
+                     for n, line in _lines_live_when_disabled(text)
+                     if _PRESET_TOKENS.search(line)]
+            self.assertEqual(leaks, [], 'preset code outside MESH_ENABLE_RADIO_PRESETS')
+
+    def test_headers_pull_in_the_switch(self):
+        for rel in ('src/helpers/CommonCLI.h', 'examples/companion_radio/MyMesh.h'):
+            text = _read(rel)
+            inc = text.find('#include <helpers/RadioPresetConfig.h>')
+            self.assertGreaterEqual(inc, 0, rel)
+            self.assertLess(inc, text.find('#if MESH_ENABLE_RADIO_PRESETS'), rel)
+
+    def test_docs_mention_the_switch(self):
+        docs = _read('docs/cli_commands.md')
+        self.assertIn('MESH_ENABLE_RADIO_PRESETS', docs)
+        self.assertIn('ESP-NOW-only', docs)
+        avail = _read('docs/cli_command_availability.md')
+        self.assertGreaterEqual(avail.count('MESH_ENABLE_RADIO_PRESETS'), 3)
 
 
 if __name__ == '__main__':

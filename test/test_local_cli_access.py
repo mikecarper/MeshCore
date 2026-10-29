@@ -14,6 +14,7 @@ SANITIZER_FLAGS = [] if os.name == "nt" else ["-fsanitize=address,undefined", "-
 PREAMBLE = r'''
 #include <cassert>
 #include <helpers/TempRadioReplyBarrier.h>
+#include <helpers/RadioPresetConfig.h>
 #include <cstdio>
 #include <cstring>
 #include <cstdint>

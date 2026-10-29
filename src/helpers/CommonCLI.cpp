@@ -74,7 +74,9 @@
 #elif defined(ESP32_PLATFORM) || defined(RP2040_PLATFORM)
 #include "ContactFileTransaction.h"
 #endif
+#if MESH_ENABLE_RADIO_PRESETS
 #include "RadioPresetFile.h"
+#endif
 #include <RTClib.h>
 #include <ctype.h>
 #include <Utils.h>
@@ -250,7 +252,9 @@ void CommonCLI::loop() {
     servicePendingTxPower();
     servicePendingRxSettings();
     _radio_profiles.loop();
+#if MESH_ENABLE_RADIO_PRESETS
     _radio_presets.loop(millis());
+#endif
 #if MESH_ENABLE_HOST_KISS
     mesh::hostkiss::loop();
 #endif
@@ -290,6 +294,7 @@ bool CommonCLI::applyAndSavePrimaryRadioParams(float freq, float bw, uint8_t sf,
   return true;
 }
 
+#if MESH_ENABLE_RADIO_PRESETS
 bool CommonCLI::presetLoad(void* ctx, uint8_t* buf, size_t cap, size_t& len) {
   return mesh::loadRadioPresetFile(static_cast<CommonCLI*>(ctx)->_presets_fs, buf, cap, len);
 }
@@ -327,6 +332,7 @@ bool CommonCLI::presetApply(void* ctx, const mesh::RadioPreset& p, char* reply, 
 bool CommonCLI::presetTempRadioActive(void* ctx) {
   return static_cast<CommonCLI*>(ctx)->_callbacks->isTempRadioActive();
 }
+#endif
 
 bool CommonCLI::primaryRadioApplyReady(bool reply_idle) {
   if (_primary_radio_apply_at
@@ -1366,6 +1372,7 @@ void CommonCLI::loadPrefs(FILESYSTEM* fs) {
 #endif
   _radio_profiles.adoptPrimaryPreamble(_prefs->primary_radio_preamble);
   _radio_profiles.stagePrimary(_prefs->primary_radio_preamble, false);
+#if MESH_ENABLE_RADIO_PRESETS
   // After prefs are final. A preset left pending by a reboot is reverted here
   // through presetApply: that saves the previous tuple into _prefs, so the
   // role's boot-time radio apply (which runs after loadPrefs) starts on it.
@@ -1375,6 +1382,7 @@ void CommonCLI::loadPrefs(FILESYSTEM* fs) {
     presetTempRadioActive
   };
   _radio_presets.begin(preset_hooks);
+#endif
   mesh::hilStartupTrace("prefs_apply_ready");
 }
 
@@ -3731,8 +3739,10 @@ void CommonCLI::handleCommand(uint32_t sender_timestamp, char* command, char* re
                                       command, reply, 160 - 3, millis())) return;
     if (mesh::handleMorseCommand(_callbacks->getProfileRadio(), command, reply, 160 - 3)) return;
 #endif
+#if MESH_ENABLE_RADIO_PRESETS
     // Remote (sender_timestamp != 0) loads are provisional until a fresh admin login.
     if (_radio_presets.handle(command, reply, 160, sender_timestamp != 0)) return;
+#endif
     if (_radio_profiles.handle(command, reply, 160, sender_timestamp != 0)) return;
 #if defined(ENABLE_OTA)
     const auto* ota_context = mesh::ota::ota_context_if_active();
