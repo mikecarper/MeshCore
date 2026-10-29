@@ -15,6 +15,8 @@ class CardputerMesh : public MyMesh {
   uint64_t rx_packet_count = 0;
   uint32_t last_ping_tag = 0;
   uint32_t last_discover_tag = 0;
+  uint8_t last_ping_key[PUB_KEY_SIZE] = { 0 };
+  bool has_last_ping = false;
   uint8_t last_message_hash[MAX_HASH_SIZE] = { 0 };
   uint16_t last_message_heard_repeats = 0;
   CustomNodePrefs _custom_prefs{ .battery_correction = 1.0f, .brightness = 128, .text_level = 1 };
@@ -57,6 +59,8 @@ public:
   // Same effect as the CLI's "powersaving on|off".
   void setPowerSaving(bool enabled);
   bool sendPing(ContactInfo &contact);
+  // Contact most recently passed to sendPing(); false if none or it was deleted.
+  bool lastPingContact(ContactInfo &out) const;
   bool sendAdvert(bool flood);
   bool sendRepeatersDiscover();
   uint32_t getLastPingTag() const { return last_ping_tag; }

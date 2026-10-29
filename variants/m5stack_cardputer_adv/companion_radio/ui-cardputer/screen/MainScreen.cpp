@@ -56,6 +56,14 @@ void MainScreen::renderStatusIcons(CardputerDisplay &lcd) {
   lcd.setColor(CardputerDisplay::P_BLACK);
   lcd.drawTextCentered(iconX + 2 + iconWidth / 2 - 1, 0, tmp);
 
+  // active radio preset name (or "custom") just left of the battery icon
+  {
+    uint8_t active = the_mesh_cp.activeRadioPreset();
+    const mesh::RadioPreset *preset = active ? the_mesh_cp.radioPresetTable().get(active) : nullptr;
+    lcd.setColor(CardputerDisplay::P_GREEN);
+    lcd.drawTextRightAlign(iconX - 4, 0, preset ? preset->name : "custom");
+  }
+
   iconX = 3;
   iconY = 5;
 
@@ -241,6 +249,34 @@ void MainScreen::selectContact(ContactInfo &contact, int idx) {
   unread.resetContact(contact.id.pub_key);
 
   static_cast<ChatPage *>(chat_page)->selectContact(contact, idx);
+}
+
+bool MainScreen::openNewestUnread() {
+  for (int i = (int)unread.countChats() - 1; i >= 0; i--) {
+    const UnreadCounterItem *item = unread.get(i);
+    if (!item || item->count <= 0) {
+      continue;
+    }
+    if (item->is_channel) {
+      ChannelDetails ch;
+      for (int idx = 0; the_mesh_cp.getChannel(idx, ch); idx++) {
+        if (memcmp(ch.channel.secret, item->pkey, CONTACT_LOOKUP_BYTES) == 0) {
+          selectChannel(ch, idx);
+          return true;
+        }
+      }
+    } else {
+      ContactInfo c;
+      for (int idx = 0; idx < the_mesh_cp.getNumContacts(); idx++) {
+        if (the_mesh_cp.getContactByIdx(idx, c) &&
+            memcmp(c.id.pub_key, item->pkey, CONTACT_LOOKUP_BYTES) == 0) {
+          selectContact(c, idx);
+          return true;
+        }
+      }
+    }
+  }
+  return false;
 }
 
 void MainScreen::selectChannel(const ChannelDetails &channel, int idx) {

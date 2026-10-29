@@ -165,7 +165,21 @@ void CardputerMesh::setPowerSaving(bool enabled) {
   sensors.setPowerSavingEnabled(enabled);
 }
 
+bool CardputerMesh::lastPingContact(ContactInfo &out) const {
+  if (!has_last_ping) {
+    return false;
+  }
+  const ContactInfo *c = const_cast<CardputerMesh *>(this)->lookupContactByPubKey(last_ping_key, PUB_KEY_SIZE);
+  if (!c) {
+    return false;
+  }
+  out = *c;
+  return true;
+}
+
 bool CardputerMesh::sendPing(ContactInfo &contact) {
+  memcpy(last_ping_key, contact.id.pub_key, PUB_KEY_SIZE);
+  has_last_ping = true;
   CompanionNodePrefs *prefs = getNodePrefs();
   uint8_t flags = prefs->path_hash_mode & 0x03;
 

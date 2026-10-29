@@ -2,6 +2,7 @@
 
 #include "CardputerAdvBoard.h"
 #include "CardputerDataStore.h"
+#include "KeyLock.h"
 #include "screen/CardputerScreen.h"
 #include "types.h"
 
@@ -30,6 +31,8 @@ class CardputerUITask : public AbstractUITask {
   int unsynced_msg_count = 0;
   unsigned long ui_started_at = 0;
   unsigned long next_batt_chck = 0;
+  unsigned long ping_deadline = 0;  // 0 = no Fn+Z ping awaiting a reply
+  KeyLock _keylock;
 
   CardputerScreen *splash_screen;
   CardputerScreen *main_screen;
@@ -46,6 +49,9 @@ class CardputerUITask : public AbstractUITask {
   void renderAlert();
   void sendFloodAdvert();
   void cycleBrightness();
+  void showPresetAlert(uint8_t slot);
+  void pingLastRepeater();
+  void openNewestUnread();
 
   // Returns false if display is already on
   bool turnDisplayOn();
