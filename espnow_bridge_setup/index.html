@@ -2869,6 +2869,19 @@ set espnow.enabled on
 <p>These settings are saved across reboot. Bridge changes apply immediately;
 changing an enabled bridge's channel, format, or secret restarts the bridge.
 Stopping it first lets you finish configuring both sides before connecting them.</p>
+<p>For a fixed pair, use acknowledged unicast. Run <code>get espnow.stats mac</code> on each
+board, then set each board's destination to the other board's station MAC:</p>
+<pre><code class="language-text">set espnow.peer AA:BB:CC:DD:EE:FF
+get espnow.peer
+</code></pre>
+<p>Use the actual peer MAC in place of the example. The packet bytes stay
+compatible with older receivers. A failed unicast send is retried up to three
+times; MAC success confirms radio reception, not subsequent LoRa forwarding.
+The setting persists across reboot. <code>set espnow.peer broadcast</code> restores the
+default, which lets multiple bridges receive each packet without acknowledgements.
+Dedicated ESP-NOW keeps the WiFi receiver awake to avoid missing bridge packets,
+using more power than modem sleep. When a WiFi service shares the driver, that
+service retains control of its sleep policy.</p>
 <h2 id="what-each-bridge-option-does">What each bridge option does</h2>
 <table>
 <thead>
@@ -2881,6 +2894,10 @@ Stopping it first lets you finish configuring both sides before connecting them.
 <tr>
 <td><code>espnow.enabled</code></td>
 <td><code>on</code> starts ESP-NOW; <code>off</code> stops it and keeps its saved settings. Independent of MQTT or RS-232.</td>
+</tr>
+<tr>
+<td><code>espnow.peer</code></td>
+<td><code>broadcast</code> by default, or a single destination station MAC for acknowledged unicast. Changing it restarts a running bridge.</td>
 </tr>
 <tr>
 <td><code>rs232.enabled</code></td>
