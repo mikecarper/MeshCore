@@ -12016,15 +12016,17 @@ compile this table.</p>
   recent; both require exactly the chain. Commas may replace <code>&gt;</code>.
   Each ID must use the packet's complete hash width. Direct paths and TRACE
   SNR bytes never match. <code>path=blacklist</code> remains the separate unordered table.</li>
-<li><code>sender=&lt;pattern&gt;</code> (<code>n=</code>), <code>text=&lt;pattern&gt;</code> (<code>x=</code>): Case-sensitive patterns
-  on the decrypted sender name and message body. Require an explicit
+<li><code>sender=&lt;pattern&gt;</code> (<code>n=</code>), <code>text=&lt;pattern&gt;</code> (<code>x=</code>): Patterns on the decrypted
+  sender name and message body. Matching is case-sensitive by default; a
+  leading <code>(?i)</code> ignores ASCII letter case in literals and character classes.
+  Non-ASCII bytes remain unchanged. Require an explicit
   authenticated channel (<code>public</code>, <code>#name</code>, or key); <code>channel=*</code> and raw hashes
   are insufficient. These match only plain group text. Patterns search
   anywhere unless anchored with <code>^</code>/<code>$</code>, and support <code>.</code>, classes such as
   <code>[A-Z]</code> or <code>[^0-9]</code>, <code>*</code>, <code>+</code>, <code>?</code>, groups, <code>|</code>, and escaped literals.
   Use <code>[0-9]</code> for digits and quote values containing spaces. The maximum is
-  63 bytes per pattern. Matching uses complete fields, removes AES zero
-  padding, and shares a 131,072-operation work budget across one rule
+  63 bytes per pattern, including <code>(?i)</code>. Matching uses complete fields, removes
+  AES zero padding, and shares a 131,072-operation work budget across one rule
   evaluation. Exhaustion rejects the packet; it cannot grant an allow,
   rewrite, or retry action.
   A message without <code>:</code> has no sender field but can match a text rule.</li>
@@ -12327,6 +12329,7 @@ identical row or adds one to the first empty slot. <code>del fr.N</code> and <co
 have the same behavior as their long forms.</p>
 <p>Content, exceptions, and state changes use that same setter:</p>
 <pre><code class="language-text">set fr grp_txt c=#local x=&quot;^BEACON&quot; d
+set fr grp_txt c=public n=&quot;(?i)^(Alice|Bob)$&quot; d
 set fr grp_txt c=#local n=&quot;^Alice$&quot; pri=200 a
 set fr grp_txt c=#local d
 set fr.4 e=off

@@ -3685,11 +3685,13 @@ independent and the highest-order matching scope or region rewrite wins.</p>
   do not bypass higher-priority drops, hard forwarding gates, or moderation.</li>
 </ul>
 <h3 id="content-patterns">Content patterns</h3>
-<p>Sender/text patterns are case-sensitive byte matches. They search anywhere
+<p>Sender/text patterns are case-sensitive byte matches by default. Add <code>(?i)</code>
+at the start for ASCII case-insensitive matching. They search anywhere
 unless anchored with <code>^</code> and <code>$</code>. Supported forms include <code>.</code>, <code>[A-Z]</code>,
 <code>[^0-9]</code>, <code>*</code>, <code>+</code>, <code>?</code>, grouping, and <code>|</code> alternatives. Escape punctuation
 with <code>\</code> to match it literally; use <code>[0-9]</code> for digits. Each pattern is at
-most 63 bytes. Quote values containing spaces.</p>
+most 63 bytes, including <code>(?i)</code>. Quote values containing spaces. Case folding
+applies to literals and character classes; non-ASCII bytes remain unchanged.</p>
 <p>For <code>Alice: BEACON 123</code>, <code>n=^Alice$</code> matches the display name and
 <code>x=^BEACON</code> matches the body. They can be combined in one row. The parser
 uses the complete fields, including names longer than 31 bytes, and removes
@@ -3701,6 +3703,9 @@ than granting an unverified allow, rewrite, or retry action. Keep patterns
 short and specific.</p>
 <pre><code class="language-text"># Block BEACON messages on this channel.
 set fr grp_txt c=#local x=&quot;^BEACON&quot; d
+
+# Block either complete sender name, ignoring ASCII letter case.
+set fr grp_txt c=public n=&quot;(?i)^(Alice|Bob)$&quot; d
 
 # Exempt Alice from lower-order general rules, then block everyone else.
 set fr grp_txt c=#local n=&quot;^Alice$&quot; pri=200 a
@@ -3875,7 +3880,7 @@ set fr.3 any c=#wardriving m=bc d
 <tr>
 <td><code>sender=...</code>, <code>text=...</code></td>
 <td><code>n=...</code>, <code>x=...</code></td>
-<td>Case-sensitive patterns on an authenticated group-text channel.</td>
+<td>Patterns on an authenticated group-text channel; leading <code>(?i)</code> ignores ASCII letter case.</td>
 </tr>
 <tr>
 <td><code>len=N</code>, <code>N+</code>, or <code>N-M</code></td>
