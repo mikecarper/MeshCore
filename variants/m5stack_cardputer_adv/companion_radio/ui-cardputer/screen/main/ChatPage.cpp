@@ -109,6 +109,8 @@ void ChatPage::sendChatMessage() {
     if (result != MSG_SEND_FAILED) {
       HistoryMessage *msg = chat_history.push_ref();
       msg->out = true;
+      msg->meta = MessageMeta();
+      msg->own_id = the_mesh_cp.lastOwnMessageId();
       snprintf(msg->text, MAX_MESSAGE_LENGTH, "%s", chat_text_box.c_str());
 
       last_sent_message = chat_text_box;
@@ -125,6 +127,8 @@ void ChatPage::sendChatMessage() {
     if (ok) {
       HistoryMessage *msg = chat_history.push_ref();
       msg->out = true;
+      msg->meta = MessageMeta();
+      msg->own_id = the_mesh_cp.lastOwnMessageId();
 
       snprintf(msg->text, MAX_MESSAGE_LENGTH, "%s", chat_text_box.c_str());
 
@@ -244,6 +248,8 @@ bool ChatPage::onChannelMessageRecv(const mesh::GroupChannel &channel, const cha
       memcmp(channel.secret, current_channel.channel.secret, CONTACT_LOOKUP_BYTES) == 0) {
     HistoryMessage *msg = chat_history.push_ref();
     msg->out = false;
+    msg->meta = the_mesh_cp.lastReceivedMeta();
+    msg->own_id = 0;
     snprintf(msg->text, MAX_MESSAGE_LENGTH, "%s", text);
     chat_history_offset = 0;
     return true;
@@ -256,6 +262,8 @@ bool ChatPage::onContactMessageRecv(const ContactInfo &contact, const char *text
       memcmp(contact.id.pub_key, current_contact.id.pub_key, CONTACT_LOOKUP_BYTES) == 0) {
     HistoryMessage *msg = chat_history.push_ref();
     msg->out = false;
+    msg->meta = the_mesh_cp.lastReceivedMeta();
+    msg->own_id = 0;
     snprintf(msg->text, MAX_MESSAGE_LENGTH, "%s", text);
     chat_history_offset = 0;
     return true;

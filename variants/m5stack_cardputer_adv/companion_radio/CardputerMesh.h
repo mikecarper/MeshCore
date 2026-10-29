@@ -2,6 +2,7 @@
 
 #include "CardputerDataStore.h"
 #include "CardputerUITask.h"
+#include "OwnMessageTracker.h"
 #include "types.h"
 
 #include <MyMesh.h>
@@ -19,6 +20,10 @@ class CardputerMesh : public MyMesh {
   bool has_last_ping = false;
   uint8_t last_message_hash[MAX_HASH_SIZE] = { 0 };
   uint16_t last_message_heard_repeats = 0;
+  OwnMessageTracker own_tracker;  // session-only delivery details of own messages
+  uint32_t last_own_id = 0;       // own_id of the most recent own send (0 = none/failed)
+  uint32_t last_dm_own_id = 0;    // own_id tracked by last_msg (DM resend state)
+  MessageMeta last_rx_meta;       // details of the most recently received message
   CustomNodePrefs _custom_prefs{ .battery_correction = 1.0f, .brightness = 128, .text_level = 1 };
   LastSentMessage last_msg;
   unsigned long resend_timeout = 0;
@@ -69,6 +74,11 @@ public:
   void loop();
   void cancelResending();
   bool isMessageSending() { return last_msg.state == MESSAGE_SENDING; }
+  // own_id of the message just sent by sendGroupMessage()/sendDirectMessage() (0 if none).
+  uint32_t lastOwnMessageId() const { return last_own_id; }
+  const OwnMessageTracker &ownMessages() const { return own_tracker; }
+  // Metadata of the message passed to the most recent UI receive callback.
+  const MessageMeta &lastReceivedMeta() const { return last_rx_meta; }
 };
 
 extern CardputerMesh the_mesh_cp;

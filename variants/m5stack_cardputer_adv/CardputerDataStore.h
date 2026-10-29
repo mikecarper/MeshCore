@@ -3,6 +3,7 @@
 #include <DataStore.h>
 #include "globals.h"
 #include "RingBuffer.h"
+#include "HistoryLine.h"
 
 //** Custom node preferences, persisted to file. Power saving is the
 //   companion's own powersaving_enabled pref (shared with the CLI). */
@@ -12,11 +13,7 @@ struct __attribute__((packed)) CustomNodePrefs {
   uint8_t text_level;  // CardputerDisplay::TextLevel
 };
 
-struct HistoryMessage {
-  char text[MAX_MESSAGE_LENGTH];
-  bool out;
-};
-
+// HistoryMessage / MessageMeta and the SD line codec live in HistoryLine.h.
 using ChatHistory = RingBuffer<HistoryMessage, CHAT_HISTORY_RINGBUF_SIZE>;
 
 // Contacts, channels and node prefs stay on the primary (internal) FS managed
@@ -35,6 +32,8 @@ public:
   bool hasHistory() const { return _history_fs != nullptr; }
   void loadCustomPrefs(CustomNodePrefs &prefs);
   void saveCustomPrefs(const CustomNodePrefs &prefs);
-  void storeMessage(const uint8_t pkey[PUB_KEY_SIZE], const char *text, bool is_sent, bool is_channel);
+  // Received messages with meta->has persist as v2 lines; own messages persist text only.
+  void storeMessage(const uint8_t pkey[PUB_KEY_SIZE], const char *text, bool is_sent, bool is_channel,
+                    const MessageMeta *meta = nullptr);
   void loadMessages(const uint8_t pkey[PUB_KEY_SIZE], bool is_channel, ChatHistory &history);
 };
