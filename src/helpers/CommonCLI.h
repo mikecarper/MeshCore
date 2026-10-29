@@ -623,9 +623,9 @@ public:
   // Cancel pending/active temporary-radio windows and restore the saved tuple
   // after the command reply has drained on the current channel.
   virtual bool scheduleNormalRadio() { return false; }
-#if defined(ENABLE_OTA)
+  // Radio presets refuse remote loads while a temporary radio is active, so
+  // every build needs this query (default: no temporary radio).
   virtual bool isTempRadioActive() const { return false; }
-#endif
   virtual void addScheduledRadioParams(bool temporary, float freq, float bw, uint8_t sf, uint8_t cr,
                                        uint32_t start_time, uint32_t end_time, char* reply, uint16_t preamble = 0) {
     (void)preamble;
