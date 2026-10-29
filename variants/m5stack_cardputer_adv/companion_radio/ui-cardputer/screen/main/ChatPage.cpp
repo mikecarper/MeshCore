@@ -295,14 +295,10 @@ void ChatPage::buildInfo(const HistoryMessage &m, char *out, size_t cap) {
       pos = appendf(out, cap, pos, "Pending\n");
       break;
   }
-  // Route of the contact (the tracker does not record the route per message).
-  if (current_contact.out_path_len == OUT_PATH_UNKNOWN) {
-    pos = appendf(out, cap, pos, "Route Flood");
-  } else if ((current_contact.out_path_len & 63) == 0) {
-    pos = appendf(out, cap, pos, "Route Direct");
-  } else {
-    pos = appendf(out, cap, pos, "Route %u hops", (unsigned)(current_contact.out_path_len & 63));
-  }
+  // Route this message was sent with (flood once a retry reset the path).
+  char route[24];
+  formatOwnRoute(it->route, route, sizeof(route));
+  appendf(out, cap, pos, "%s", route);
 }
 
 void ChatPage::renderInfo(CardputerDisplay &lcd, int top, const HistoryMessage &m) {

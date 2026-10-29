@@ -194,6 +194,40 @@ static void tracker_evicts_oldest() {
   std::printf("PASS tracker_evicts_oldest\n");
 }
 
+static void tracker_stores_route() {
+  OwnMessageTracker t;
+  CHECK(sizeof(OwnMessageInfo) == 36);
+  uint32_t direct = t.add(nullptr, false, 0, 0x00);  // direct, 0 hops
+  uint32_t two = t.add(nullptr, false, 0, 0x02);     // 2 hops, 1-byte hashes
+  uint32_t wide = t.add(nullptr, false, 0, 0x43);    // 3 hops, 2-byte hashes
+  uint32_t flood = t.add(nullptr, false, 0, OWN_ROUTE_FLOOD);
+  uint32_t dflt = t.add(nullptr, false, 0);
+  CHECK(t.find(direct)->route == 0x00);
+  CHECK(t.find(two)->route == 0x02);
+  CHECK(t.find(wide)->route == 0x43);
+  CHECK(t.find(flood)->route == OWN_ROUTE_FLOOD);
+  CHECK(t.find(dflt)->route == OWN_ROUTE_FLOOD);
+  t.setRoute(two, OWN_ROUTE_FLOOD); // retries fell back to flood
+  CHECK(t.find(two)->route == OWN_ROUTE_FLOOD);
+  t.setRoute(0, 0x01); // unknown id: no effect, no crash
+  std::printf("PASS tracker_stores_route\n");
+}
+
+static void own_route_format() {
+  char b[24];
+  formatOwnRoute(OWN_ROUTE_FLOOD, b, sizeof(b));
+  CHECK(std::strcmp(b, "Route Flood") == 0);
+  formatOwnRoute(0x00, b, sizeof(b));
+  CHECK(std::strcmp(b, "Route Direct") == 0);
+  formatOwnRoute(0x01, b, sizeof(b));
+  CHECK(std::strcmp(b, "Route 1 hop") == 0);
+  formatOwnRoute(0x02, b, sizeof(b));
+  CHECK(std::strcmp(b, "Route 2 hops") == 0);
+  formatOwnRoute(0x43, b, sizeof(b)); // hash-size bits ignored
+  CHECK(std::strcmp(b, "Route 3 hops") == 0);
+  std::printf("PASS own_route_format\n");
+}
+
 static void split_sender() {
   char name[8];
   CHECK(splitChannelSender("Bob: hi", name, sizeof(name)));
@@ -211,6 +245,8 @@ int main() {
   own_line_brace_prefix_stays_text();
   tracker_counts_echoes();
   tracker_evicts_oldest();
+  tracker_stores_route();
+  own_route_format();
   split_sender();
   return failures ? 1 : 0;
 }
@@ -383,9 +419,9 @@ static void focus_follows_new_messages() {
   ChatFocus f = onMessage(1);
   f.onMessageAdded(5);
   CHECK(f.target == T::Message && f.msg == 2);
-  f.msg = 4;
-  f.onMessageAdded(5); // ring full: the focused (oldest) message dropped, clamp
-  CHECK(f.msg == 4);
+  f.msg = 3;
+  f.onMessageAdded(5); // ring full, focused message not the oldest: follows it
+  CHECK(f.target == T::Message && f.msg == 4);
   ChatFocus g;
   g.onMessageAdded(5); // text box focus is unaffected
   CHECK(g.target == T::TextBox && g.msg == -1);
@@ -394,6 +430,32 @@ static void focus_follows_new_messages() {
   CHECK(h.press(K::Up, true, 0, false) == A::None);
   CHECK(h.target == T::TextBox && h.msg == -1);
   std::printf("PASS focus_follows_new_messages\n");
+}
+
+static void evicted_focus_closes_menu_and_returns_to_box() {
+  // ring of 5, full; the oldest message (index 4) is focused
+  ChatFocus f = onMessage(4);
+  f.onMessageAdded(5); // a new arrival evicts it
+  CHECK(f.target == T::TextBox && f.msg == -1 && !f.info);
+  // menu open on the oldest: closed, nothing can act on another message
+  ChatFocus g = onMessage(4);
+  CHECK(g.press(K::Enter, true, 5, true) == A::OpenMenu);
+  g.onMessageAdded(5);
+  CHECK(g.target == T::TextBox && g.msg == -1);
+  CHECK(g.press(K::Enter, true, 5, true) == A::Send); // Enter is the box again
+  // Info view open on the oldest: closed too
+  ChatFocus h = onMessage(4);
+  h.press(K::Enter, true, 5, false);
+  h.press(K::Down, true, 5, false);
+  CHECK(h.press(K::Enter, true, 5, false) == A::Info && h.info);
+  h.onMessageAdded(5);
+  CHECK(h.target == T::TextBox && !h.info && h.msg == -1);
+  // ring not full (count grew): the menu stays on the same message
+  ChatFocus k = onMessage(4);
+  k.press(K::Enter, true, 5, true);
+  k.onMessageAdded(6);
+  CHECK(k.target == T::Menu && k.msg == 5);
+  std::printf("PASS evicted_focus_closes_menu_and_returns_to_box\n");
 }
 
 int main() {
@@ -411,6 +473,7 @@ int main() {
   menu_reply_targets_box();
   menu_esc_returns_to_message();
   focus_follows_new_messages();
+  evicted_focus_closes_menu_and_returns_to_box();
   return failures ? 1 : 0;
 }
 '''
@@ -472,6 +535,12 @@ class CardputerChatTest(unittest.TestCase):
     def test_own_line_brace_prefix_stays_text(self):
         self._history('own_line_brace_prefix_stays_text')
 
+    def test_tracker_stores_route(self):
+        self._history('tracker_stores_route')
+
+    def test_own_route_format(self):
+        self._history('own_route_format')
+
     def _focus(self, name):
         self.build_and_run('focus', FOCUS_HARNESS, 'PASS ' + name)
 
@@ -516,6 +585,9 @@ class CardputerChatTest(unittest.TestCase):
 
     def test_focus_follows_new_messages(self):
         self._focus('focus_follows_new_messages')
+
+    def test_evicted_focus_closes_menu_and_returns_to_box(self):
+        self._focus('evicted_focus_closes_menu_and_returns_to_box')
 
 if __name__ == '__main__':
     unittest.main()

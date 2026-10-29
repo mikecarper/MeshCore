@@ -8,10 +8,12 @@
 
 #include <stddef.h>
 #include <stdint.h>
+#include <stdio.h>
 #include <string.h>
 
 #define OWN_MESSAGE_TRACKER_SIZE    8
 #define OWN_MESSAGE_MAX_REPEATERS   8
+#define OWN_ROUTE_FLOOD             0xFF // == OUT_PATH_UNKNOWN
 
 struct OwnMessageInfo {
   uint32_t own_id;
@@ -21,9 +23,11 @@ struct OwnMessageInfo {
   uint8_t repeaters[OWN_MESSAGE_MAX_REPEATERS]; // distinct first bytes of the echoing repeater hash
   uint8_t repeater_count;
   enum State : uint8_t { Pending, Delivered, Failed } state;
+  uint8_t route;                      // DM route used: packed out_path_len, OWN_ROUTE_FLOOD = flood
+                                      // (sits in former padding; the struct stays 36 bytes)
   uint32_t sent_ms, rtt_ms;           // rtt_ms valid once a DM is Delivered
 };
-static_assert(sizeof(OwnMessageInfo) <= 40, "OwnMessageInfo must stay <= 40 bytes (RAM budget)");
+static_assert(sizeof(OwnMessageInfo) <= 36, "OwnMessageInfo must stay <= 36 bytes (RAM budget; route uses padding)");
 
 class OwnMessageTracker {
   OwnMessageInfo _items[OWN_MESSAGE_TRACKER_SIZE];
@@ -47,8 +51,8 @@ public:
   OwnMessageTracker() { memset(_items, 0, sizeof(_items)); }
 
   // Returns the new message's own_id (never 0). Evicts the oldest when full.
-  // hash may be null (DMs).
-  uint32_t add(const uint8_t hash[], bool is_channel, uint32_t now_ms) {
+  // hash may be null (DMs). route: packed out_path_len the DM was sent with.
+  uint32_t add(const uint8_t hash[], bool is_channel, uint32_t now_ms, uint8_t route = OWN_ROUTE_FLOOD) {
     OwnMessageInfo &it = _items[_head];
     memset(&it, 0, sizeof(it));
     it.own_id = _next_id++;
@@ -61,6 +65,7 @@ public:
     it.is_channel = is_channel;
     it.state = OwnMessageInfo::Pending;
     it.sent_ms = now_ms;
+    it.route = route;
     _head = (uint8_t)((_head + 1) % OWN_MESSAGE_TRACKER_SIZE);
     if (_count < OWN_MESSAGE_TRACKER_SIZE) {
       _count++;
@@ -98,6 +103,14 @@ public:
     }
   }
 
+  // A DM retry switched route (e.g. the direct path was reset to flood).
+  void setRoute(uint32_t own_id, uint8_t route) {
+    OwnMessageInfo *it = findMut(own_id);
+    if (it) {
+      it->route = route;
+    }
+  }
+
   void onFailed(uint32_t own_id) {
     OwnMessageInfo *it = findMut(own_id);
     if (it && it->state == OwnMessageInfo::Pending) {
@@ -111,3 +124,17 @@ public:
 };
 static_assert(sizeof(OwnMessageTracker) <= OWN_MESSAGE_TRACKER_SIZE * 40 + 8,
               "OwnMessageTracker grew past the RAM budget");
+
+// "Route Flood" / "Route Direct" / "Route <n> hops" for an OwnMessageInfo::route.
+inline void formatOwnRoute(uint8_t route, char *out, size_t cap) {
+  if (!out || cap == 0) {
+    return;
+  }
+  if (route == OWN_ROUTE_FLOOD) {
+    snprintf(out, cap, "Route Flood");
+  } else if ((route & 63) == 0) {
+    snprintf(out, cap, "Route Direct");
+  } else {
+    snprintf(out, cap, "Route %u hop%s", (unsigned)(route & 63), (route & 63) == 1 ? "" : "s");
+  }
+}

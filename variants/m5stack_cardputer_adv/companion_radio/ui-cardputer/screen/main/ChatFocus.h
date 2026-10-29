@@ -40,16 +40,15 @@ struct ChatFocus {
   }
 
   // A message was appended to the history (count = new history size): keep
-  // the focus on the same message, clamped when the ring dropped it.
+  // the focus on the same message. If the full ring evicted the focused
+  // message, close any menu / Info and return to the text box so no action
+  // can target a different message than the one chosen.
   void onMessageAdded(int message_count) {
     if (target == Target::TextBox) {
       return;
     }
     msg++;
     if (msg > message_count - 1) {
-      msg = message_count - 1;
-    }
-    if (msg < 0) {
       focusTextBox();
     }
   }

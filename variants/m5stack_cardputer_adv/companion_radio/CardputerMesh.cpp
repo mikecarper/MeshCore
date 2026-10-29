@@ -135,7 +135,7 @@ int CardputerMesh::sendDirectMessage(const ContactInfo &recipient, uint32_t time
   }
 
   int rc = MyMesh::sendMessage(recipient, timestamp, 0, text, last_msg.expected_ack, est_timeout);
-  last_dm_own_id = rc != MSG_SEND_FAILED ? own_tracker.add(nullptr, false, _ms->getMillis()) : 0;
+  last_dm_own_id = rc != MSG_SEND_FAILED ? own_tracker.add(nullptr, false, _ms->getMillis(), recipient.out_path_len) : 0;
   last_own_id = last_dm_own_id;
   _store->storeMessage(recipient.id.pub_key, text, true, false);
   return rc;
@@ -280,6 +280,7 @@ void CardputerMesh::checkResend() {
       ref->out_path_len = OUT_PATH_UNKNOWN;
     }
     last_msg.recipient.out_path_len = OUT_PATH_UNKNOWN;
+    own_tracker.setRoute(last_dm_own_id, OWN_ROUTE_FLOOD); // remaining retries flood
   }
 
   if (last_msg.attempt < last_msg.total_attempts) {
