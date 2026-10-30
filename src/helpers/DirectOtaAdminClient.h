@@ -22,7 +22,7 @@ public:
   struct Peer { Identity id; int16_t rssi; int8_t snr; uint8_t type; uint32_t heard; };
 
 private:
-  enum Phase : uint8_t { Idle, Discover, Login, ReturnPath, Proof, Command };
+  enum Phase : uint8_t { Idle, Discover, Login, ReturnPath, Proof, Command, AclCommand };
   Phase phase_ = Idle;
   Identity target_;
   uint8_t secret_[PUB_KEY_SIZE] = {};
@@ -173,7 +173,7 @@ public:
   }
   static void clearInput(char* text, size_t capacity) { erase(text, capacity); }
   bool hasSession() const { return session_; }
-  bool awaitingPeer() const { return session_ && (phase_ == Login || phase_ == ReturnPath || phase_ == Proof || phase_ == Command); }
+  bool awaitingPeer() const { return session_ && (phase_ == Login || phase_ == ReturnPath || phase_ == Proof || phase_ == Command || phase_ == AclCommand); }
   bool matchesHash(const uint8_t* hash) const { return awaitingPeer() && target_.isHashMatch(hash); }
   bool matchesTarget(const Identity& id) const { return awaitingPeer() && target_.matches(id); }
   void sharedSecret(uint8_t* destination) const { memcpy(destination, secret_, PUB_KEY_SIZE); }
@@ -185,7 +185,7 @@ public:
     if (phase_ != Idle && expired(now, deadline_)) {
       if (phase_ == Discover) finish("discovery complete");
       else {
-        if (phase_ == Login || phase_ == ReturnPath || phase_ == Proof) clearSession();
+        if (phase_ == Login || phase_ == ReturnPath || phase_ == Proof || phase_ == AclCommand) clearSession();
         finish("request timed out; result is unknown", true);
       }
     }
@@ -310,6 +310,28 @@ public:
       queued(reply, capacity);
       return;
     }
+    // One explicitly requested command using the target's existing ACL. This
+    // skips login and return-path changes and never creates a proven session.
+    if (!strncmp(args, "cmd.acl ", 8)) {
+      Identity peer; const char* rest;
+      if (!parseKey(args + 8, peer, rest) || *rest != ' ' || !*++rest) { strcpy(reply, "ERR peer key or arguments"); return; }
+      if (peer.matches(mesh.self_id)) { strcpy(reply, "ERR peer cannot be this repeater"); return; }
+      for (const char* p = rest; *p; ++p) if (static_cast<uint8_t>(*p) < 32 || *p == 127) { strcpy(reply, "ERR peer control character"); return; }
+      if (strlen(rest) > 154) { strcpy(reply, "ERR peer command too long"); return; }
+      if (!radioEligible(radio_profile_)) { strcpy(reply, "ERR peer radio requires enabled MeshCore RXTX"); return; }
+      clearSession(); target_ = peer;
+      snapshotRadio();
+      mesh.self_id.calcSharedSecret(secret_, target_);
+      uint8_t nonzero = 0;
+      for (size_t i = 0; i < sizeof(secret_); ++i) nonzero |= secret_[i];
+      if (!nonzero) { clearSession(); strcpy(reply, "ERR peer invalid public key"); return; }
+      session_ = true; session_until_ = now + SESSION_MS;
+      mesh.getRNG()->random(&correlation_, 1);
+      begin(AclCommand, now);
+      if (!queueCommand(mesh, rest, now)) { clearSession(); finish("ACL command queue failed", true); }
+      queued(reply, capacity);
+      return;
+    }
     // Explicitly use an existing target ACL grant. There is no anonymous
     // password login: the authenticated empty PATH establishes the return
     // route, then the ordinary full-key proof must succeed before commands.
@@ -383,7 +405,7 @@ public:
       queued(reply, capacity);
       return;
     }
-    snprintf(reply, capacity, "ERR use ota.peer status|capabilities|radio [radio|radio2]|timeout [s]|acl KEY|discover|peers [n]|login[.repeater] KEY PASS|cmd KEY COMMAND|result [off]|close");
+    snprintf(reply, capacity, "ERR use ota.peer status|radio [radio|radio2]|timeout [s]|acl KEY|discover|peers [n]|login[.repeater] KEY PASS|cmd[.acl] KEY COMMAND|result [off]|close");
   }
 
   void onDiscovery(const Packet* packet, uint32_t now) {
@@ -420,7 +442,7 @@ public:
       if (!queueReturnPath(mesh)) { clearSession(); finish("login return path queue failed", true); }
       return;
     }
-    if ((phase_ != Proof && phase_ != Command) || type != PAYLOAD_TYPE_TXT_MSG
+    if ((phase_ != Proof && phase_ != Command && phase_ != AclCommand) || type != PAYLOAD_TYPE_TXT_MSG
         || (data[4] >> 2) != 1 || length < 8 || memcmp(data + 5, prefix_, 3)) return;
     const uint8_t* text = data + 8;
     size_t text_len = length - 8;
@@ -438,6 +460,10 @@ public:
     } else {
       result_length_ = text_len > sizeof(result_) ? sizeof(result_) : text_len;
       memcpy(result_, text, result_length_);
+      if (phase_ == AclCommand) {
+        clearSession(); phase_ = Idle; error_ = false;
+        return;
+      }
       phase_ = Idle; error_ = false;
     }
     last_peer_timestamp_ = timestamp;

@@ -36,6 +36,13 @@ login. It sends an authenticated direct return path and verifies the
 destination's full public key before accepting `ota.peer cmd PUBLIC_KEY get tx`.
 The destination still enforces its ACL permissions for every command.
 
+For a single command using an existing ACL grant, use
+`ota.peer cmd.acl PUBLIC_KEY get tx`. It sends only the encrypted zero-hop CLI
+request, without login, return-path changes or an identity-proof exchange.
+The reply is correlated to that request; this does not open an authenticated
+admin session. The destination still checks the source's ACL role.
+It requires the destination's saved return route to be direct.
+
 For manual USB administration on a configured secondary MeshCore profile, use
 `ota.peer radio radio2` before discovery or login; `ota.peer radio radio` selects
 the primary profile. `ota.peer radio` reports the choice. The secondary profile

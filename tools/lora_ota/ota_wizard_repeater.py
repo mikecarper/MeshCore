@@ -410,6 +410,10 @@ class RepeaterTransport:
         self._validate_password(password)
         async with self._admin_lock:
             await self._check_clock()
+            if self._acl_only:
+                self._authenticated_key = None
+                self._last_peer_use = 0
+                return await self._job(f"ota.peer cmd.acl {key} {text}")
             if key != self._authenticated_key or time.monotonic() - self._last_peer_use > 240:
                 await self._login_locked(key, password)
             command = f"ota.peer cmd {key} {text}"
