@@ -41,6 +41,7 @@ class RoutedRepeaterTransport(RepeaterTransport):
         if kwargs.pop("acl_only", True) is not True:
             raise RepeaterError("Routed LoRa administration requires existing ACL access")
         super().__init__(port, baud, known_repeater=target, acl_only=True, **kwargs)
+        self._allow_routed_path = True
         self.relay_keys, self.prefix_bytes = relays, prefix_bytes
         if type(recovering) is not bool:
             raise RepeaterError("The route recovery choice must be true or false")

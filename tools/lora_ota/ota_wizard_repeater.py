@@ -160,6 +160,7 @@ class RepeaterTransport:
         self._source_key = None
         self._known_repeater = _key(known_repeater) if known_repeater is not None else None
         self._supports_routed_path = False
+        self._allow_routed_path = False
         if acl_only and self._known_repeater is None:
             raise RepeaterError("ACL-only administration requires a complete known repeater key")
         self._acl_only = acl_only
@@ -216,6 +217,9 @@ class RepeaterTransport:
                     raise RepeaterError("Update the USB source firmware to use a known repeater key "
                                         "without discovery (ota.peer login.repeater).")
                 self._supports_routed_path = capabilities.endswith(" routed_path=1")
+                if self._supports_routed_path and not self._allow_routed_path:
+                    if await self.local_command("ota.peer path") != "OTApeer path=off":
+                        raise RepeaterError("The USB source has a routed path; clear it with ota.peer path off before a direct update")
             return self
         except BaseException:
             await self.close()

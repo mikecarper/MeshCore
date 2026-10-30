@@ -111,6 +111,7 @@ class FakeSerial:
         self.peer_key = TARGET
         self.known_repeater_supported = True
         self.routed_path_supported = False
+        self.peer_path = "off"
         self.login_error = None
         self.command_results = {"ver": "v1.18.0.1", "stats-core": "x" * 150}
 
@@ -182,6 +183,11 @@ class FakeSerial:
         elif command == "ota.peer capabilities":
             self.answer(("OTApeer known_repeater=1" + (" routed_path=1" if self.routed_path_supported else ""))
                         if self.known_repeater_supported else "Unknown command")
+        elif command == "ota.peer path":
+            self.answer("OTApeer path=" + self.peer_path)
+        elif command.startswith("ota.peer path "):
+            self.peer_path = command.split(" ", 2)[2]
+            self.answer("OTApeer path=" + self.peer_path)
         elif command == "clock":
             now = self.clock or datetime.now(timezone.utc)
             self.answer(f"{now.hour:02}:{now.minute:02} - {now.day}/{now.month}/{now.year} UTC")
@@ -422,6 +428,47 @@ class RepeaterTransportTest(unittest.IsolatedAsyncioTestCase):
                 self.assertFalse(self.link.supports_routed_path)
                 self.assertFalse(self.serial.is_open)
         self.assertFalse(any(command.startswith("ota.peer login.repeater") for command in self.serial.commands))
+
+    async def test_direct_mode_refuses_existing_native_route_without_clearing_or_using_it(self):
+        await self.link.close()
+        self.serial = FakeSerial()
+        self.serial.routed_path_supported = True
+        self.serial.peer_path = "ABCDEF,123456"
+        self.link = RepeaterTransport("fake", serial_factory=lambda **kwargs: self.serial,
+            open_settle=0, command_timeout=.5, known_repeater=TARGET, acl_only=True)
+        with self.assertRaisesRegex(RepeaterError, "routed path.*direct update"):
+            await self.link.open()
+        self.assertEqual(self.serial.peer_path, "ABCDEF,123456")
+        self.assertEqual(self.serial.commands.count("ota.peer path"), 1)
+        self.assertFalse(any(text.startswith(("ota.peer path ", "ota.peer cmd", "ota.peer acl ",
+                                              "ota.peer login", "ota.peer discover"))
+                             for text in self.serial.commands))
+        self.assertFalse(self.serial.is_open)
+
+    async def test_direct_mode_checks_new_source_route_without_extra_legacy_query(self):
+        for routed in (False, True):
+            with self.subTest(routed=routed):
+                self.serial.routed_path_supported = routed
+                await self.open_known_repeater(acl_only=True)
+                self.assertEqual(self.serial.commands.count("ota.peer path"), int(routed))
+                self.assertEqual(await self.link.remote_command(TARGET, "", "ver"), "v1.18.0.1")
+                self.assertEqual(self.serial.commands.count(f"ota.peer cmd.acl {TARGET} ver"), 1)
+
+    async def test_routed_transport_uses_its_own_recovery_route_guard(self):
+        from ota_wizard_multihop import RoutedRepeaterTransport
+        await self.link.close()
+        self.serial = FakeSerial()
+        self.serial.routed_path_supported = True
+        self.serial.peer_path = "CCCCCC"
+        self.link = RoutedRepeaterTransport("fake", known_repeater=TARGET, relay_keys=["c" * 64],
+            recovering=True, expected_source_key=SOURCE, open_settle=0, command_timeout=.5,
+            serial_factory=lambda **kwargs: self.serial)
+        self.assertIs(await self.link.open(), self.link)
+        self.assertEqual(self.serial.commands.count("ota.peer path"), 1)
+        self.assertTrue(self.link._path_owned)
+        self.assertEqual(self.serial.peer_path, "CCCCCC")
+        await self.link.close()
+        self.assertEqual(self.serial.peer_path, "off")
 
     async def test_owned_return_path_failure_is_transient_without_replaying_commands(self):
         await self.open_known_repeater()
