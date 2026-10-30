@@ -202,7 +202,7 @@
       id: id || "rule-1",
       phase: "rewrite",
       owner: "scope",
-      priority: 100,
+      priority: 0,
       mode: "active",
       stop: "none",
       route: "flood",
@@ -349,20 +349,29 @@
     return `"${text.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
   }
 
+  function inferredPhase(rule) {
+    if (rule.scopeGate !== "unchanged") return "scope_gate";
+    if (rule.targetKind !== "none") return "rewrite";
+    if (rule.retryBucket !== "none") return "schedule";
+    if (clean(rule.sender)) return "content";
+    return "forward";
+  }
+
+  function inferredOwner(phase) {
+    return ["scope_gate", "rewrite"].includes(phase) ? "scope" : "filter";
+  }
+
   function buildDefinition(input) {
     const rule = normalizeRule(input);
-    const header = [
-      "policy", "set", rule.id,
-      `phase=${rule.phase}`,
-      `owner=${rule.owner}`,
-      `priority=${rule.priority}`,
-    ];
+    const header = ["policy", "set", rule.id];
+    if (rule.phase !== inferredPhase(rule)) header.push(`phase=${rule.phase}`);
+    if (rule.owner !== inferredOwner(rule.phase)) header.push(`owner=${rule.owner}`);
+    if (rule.priority !== 0) header.push(`priority=${rule.priority}`);
     if (rule.mode !== "active") header.push(`mode=${rule.mode}`);
-    const matches = [
-      `route=${rule.route}`,
-      `type=${rule.type}`,
-      `hops=${rule.hops}`,
-    ];
+    const matches = [];
+    if (rule.route !== "flood") matches.push(`route=${rule.route}`);
+    if (rule.type !== "any") matches.push(`type=${rule.type}`);
+    if (rule.hops !== "all") matches.push(`hops=${rule.hops}`);
     if (rule.channel) matches.push(`channel=${quoteDsl(rule.channel)}`);
     if (rule.incoming !== "any") matches.push(`rx.scope=${quoteDsl(rule.incoming)}`);
     if (rule.hashBytes) matches.push(`hashbytes=${rule.hashBytes}`);
@@ -377,10 +386,13 @@
     if (rule.scopeGate === "bypass_global") actions.push("scope-gate=bypass");
     if (rule.targetKind === "scope") actions.push(`scope=${quoteDsl(`#${rule.target}`)}`);
     if (rule.targetKind === "region") actions.push(`region=${quoteDsl(rule.target)}`);
-    if (rule.rate != null) actions.push(`rate=${rule.rate}/min`, `burst=${rule.burst}`);
+    if (rule.rate != null) {
+      actions.push(`rate=${rule.rate}/min`);
+      if (rule.burst !== rule.rate) actions.push(`burst=${rule.burst}`);
+    }
     if (rule.timing !== "inherit") actions.push(`timing=${rule.timing}`);
     if (rule.queue !== "inherit") actions.push(`queue=${rule.queue}`);
-    if (rule.retryBucket !== "none") actions.push(`retry=${rule.retryBucket}/${rule.retryAttempts}`);
+    if (rule.retryBucket !== "none") actions.push(`retry=${rule.retryBucket}${rule.retryAttempts === 1 ? "" : `/${rule.retryAttempts}`}`);
     if (rule.tag) actions.push(`tag=${rule.tag}`);
     if (rule.stop !== "none") actions.push(`stop=${rule.stop}`);
     return [...header, "when", ...matches, "do", ...actions].join(" ");
@@ -429,15 +441,18 @@
 
   function parseDefinition(definition) {
     const tokens = tokenize(clean(definition));
-    if (tokens.length < 8 || tokens[0].toLowerCase() !== "policy" || tokens[1].toLowerCase() !== "set") {
+    if (tokens.length < 6 || tokens[0].toLowerCase() !== "policy" || tokens[1].toLowerCase() !== "set") {
       throw new FilterToolError("Readable definitions begin with: policy set <rule-id>.");
     }
     const whenIndex = tokens.findIndex((token) => token.toLowerCase() === "when");
     const doIndex = tokens.findIndex((token) => token.toLowerCase() === "do");
-    if (whenIndex < 3 || doIndex <= whenIndex + 1 || doIndex === tokens.length - 1) {
-      throw new FilterToolError("Definition requires header options, when matchers, and do actions.");
+    if (whenIndex < 3 || doIndex <= whenIndex || doIndex === tokens.length - 1) {
+      throw new FilterToolError("Definition requires when and do sections with at least one action.");
     }
     const rule = defaultRule(tokens[2]);
+    let explicitPhase = false;
+    let explicitOwner = false;
+    rule.type = "any";
     rule.channel = "";
     rule.incoming = "any";
     rule.pathKind = "none";
@@ -459,8 +474,8 @@
 
     tokens.slice(3, whenIndex).forEach((token) => {
       const [name, value] = splitOption(token);
-      if (name === "phase") rule.phase = value;
-      else if (name === "owner") rule.owner = value;
+      if (name === "phase") { rule.phase = value; explicitPhase = true; }
+      else if (name === "owner") { rule.owner = value; explicitOwner = true; }
       else if (name === "priority") rule.priority = Number(value);
       else if (name === "mode") rule.mode = value;
       else throw new FilterToolError(`Unsupported rule-header option: ${token}`);
@@ -501,14 +516,16 @@
       else if (name === "timing") rule.timing = value;
       else if (name === "queue") rule.queue = value;
       else if (name === "retry") {
-        const match = value.match(/^(bucket:[1-6])\/(\d+)$/i);
-        if (!match) throw new FilterToolError("Retry action must use bucket:N/attempts.");
+        const match = value.match(/^(bucket:[1-6])(?:\/(\d+))?$/i);
+        if (!match) throw new FilterToolError("Retry action must use bucket:N or bucket:N/attempts.");
         rule.retryBucket = match[1].toLowerCase();
-        rule.retryAttempts = Number(match[2]);
+        rule.retryAttempts = match[2] == null ? 1 : Number(match[2]);
       } else if (name === "tag") rule.tag = value;
       else if (name === "stop") rule.stop = value;
       else throw new FilterToolError(`Unsupported policy action: ${token}`);
     });
+    if (!explicitPhase) rule.phase = inferredPhase(rule);
+    if (!explicitOwner) rule.owner = inferredOwner(clean(rule.phase).toLowerCase());
     return normalizeRule(rule);
   }
 
@@ -1153,7 +1170,7 @@
       ...defaultRule(id),
       phase: "forward",
       owner: "filter",
-      priority: priority == null ? 100 : priority,
+      priority: priority == null ? 0 : priority,
       type,
       hops,
       channel: "",
@@ -1178,7 +1195,7 @@
         type: "class:group",
         channel: "#rgdata",
         incoming: "any",
-        priority: 100,
+        priority: 0,
       },
     ]),
     blackhole: Object.freeze([
@@ -1188,7 +1205,7 @@
         hops: "all",
         channel: "#rgdata",
         incoming: "none",
-        priority: 100,
+        priority: 0,
       },
     ]),
     scope_rewrite: Object.freeze([
@@ -1197,7 +1214,7 @@
         type: "grp_data",
         channel: "#rgdata",
         incoming: "scope:usa",
-        priority: 100,
+        priority: 0,
       },
     ]),
     prefix_rate: Object.freeze([

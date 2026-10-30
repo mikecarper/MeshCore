@@ -144,28 +144,45 @@ class DirectSession:
     """One target, zero-hop routing, bounded operations, and durable recovery state."""
 
     def __init__(self, transport, public_key: str, password: str, journal: Path,
-                 *, progress: Callable[[str], None] = print, poll_seconds: float = 10,
-                 transfer_timeout: float = 4 * 60 * 60, reboot_timeout: float = 300):
+                 *, progress: Callable[[str], None] = print, poll_seconds: float = 45,
+                 transfer_timeout: float = 4 * 60 * 60, reboot_timeout: float = 300,
+                 source_radio: str = "radio", transfer_radio=None,
+                 window_minutes: int | None = None):
         if not re.fullmatch(r"[0-9a-fA-F]{64}", public_key):
             raise ota.OtaError("Choose a destination with a complete public key.")
         self.link, self.key, self.password = transport, public_key.lower(), password
         self.journal, self.progress = Path(journal), progress
         self.poll_seconds, self.transfer_timeout = poll_seconds, transfer_timeout
         self.reboot_timeout = reboot_timeout
+        if source_radio not in ("radio", "radio2"):
+            raise ota.OtaError("Choose radio or radio2 for the USB source.")
+        if source_radio == "radio2" and not getattr(transport, "supports_radio2", False):
+            raise ota.OtaError("Source radio2 requires a USB repeater with native OTA control.")
+        self.source_radio = source_radio
+        if transfer_radio is not None:
+            if not isinstance(transfer_radio, (tuple, list)) or len(transfer_radio) != 4:
+                raise ota.OtaError("The transfer radio needs frequency, bandwidth, SF and CR.")
+            transfer_radio = radio_tuple(",".join(map(str, transfer_radio)))
+        self.transfer_radio = transfer_radio
         # A run can install a bootloader and then an application. Keep one
         # source lease valid for both complete transfer/reboot budgets, with
         # setup and recovery slack, rather than granting each package four
         # hours against a source window that started only once.
-        self.window_minutes = max(15, math.ceil(
+        self.window_minutes = (max(15, math.ceil(
             (2 * transfer_timeout + 2 * reboot_timeout + 15 * 60) / 60))
-        if self.window_minutes > 10080:
-            raise ota.OtaError("The combined update exceeds the supported temporary radio window.")
+            if window_minutes is None else window_minutes)
+        if type(self.window_minutes) is not int or not 1 <= self.window_minutes <= 10080:
+            raise ota.OtaError("The temporary radio window must be 1..10080 whole minutes.")
         self.saved: dict[str, dict[str, str]] = {}
         self.active = False
         self._serve_stop = None
         self._serve_task = None
         self._state: dict = {"format": 1, "target_key": self.key,
                             "source_key": getattr(transport, "source_key", None),
+                            "auth": "acl" if getattr(transport, "acl_only", False) else "password",
+                            "source_mode": "repeater" if getattr(transport, "supports_radio2", False) else "companion",
+                            "source_radio": source_radio, "transfer_radio": transfer_radio,
+                            "window_minutes": self.window_minutes,
                             "phase": "inspecting"}
 
     async def remote(self, command: str, *, retries: int = 2) -> str:
@@ -177,6 +194,21 @@ class DirectSession:
             except (TimeoutError, asyncio.TimeoutError, ConnectionError, ota.TransmissionError) as exc:
                 if attempt == retries:
                     raise ota.TransmissionError("No reply from the selected direct destination.") from exc
+                if self.source_radio == "radio2" and self._state.get("source_window_attempted") and (
+                        self._state.get("source_window_active") is not False):
+                    # A lost lease/normalradio/install acknowledgement can
+                    # leave the target on either recorded profile. Retry only
+                    # this idempotent command, with three RF attempts total.
+                    alternate = "radio" if self._state.get("control_radio", "radio") == "radio2" else "radio2"
+                    try:
+                        await self._select_profile(alternate)
+                    except ota.OtaError:
+                        if alternate != "radio2":
+                            raise
+                        await self._select_profile("radio")
+                elif (self.source_radio == "radio" and self._different_primary_transfer()
+                      and self._state.get("source_window_attempted")):
+                    await self._alternate_primary_source()
                 await asyncio.sleep(min(1 + attempt, 3))
         raise AssertionError("unreachable")
 
@@ -191,9 +223,16 @@ class DirectSession:
         temporary.replace(self.journal)
 
     async def inspect(self) -> Destination:
-        identity = re.search(r"\b[0-9A-Fa-f]{64}\b", await self.remote("get public.key"))
-        if not identity or identity[0].lower() != self.key:
-            raise ota.OtaError("The responding radio did not prove the selected public key.")
+        # ACL-direct commands already address the selected full key and are
+        # authenticated by the target. Do not add discovery/proof exchanges.
+        if not getattr(self.link, "acl_only", False):
+            verify = getattr(self.link, "verify_peer", None)
+            if verify:
+                await verify(self.key, self.password)
+            else:
+                identity = re.search(r"\b[0-9A-Fa-f]{64}\b", await self.remote("get public.key"))
+                if not identity or identity[0].lower() != self.key:
+                    raise ota.OtaError("The responding radio did not prove the selected public key.")
         status = await self.remote("ota status")
         self_status = await self.remote("ota self")
         version_text = await self.remote("ver")
@@ -260,9 +299,71 @@ class DirectSession:
                 ota.parse_rxps_settings(rxps, label)
             self.saved[label] = {"radio": radio, "rxps": rxps, "ota": config}
         source, target = (radio_tuple(self.saved[label]["radio"]) for label in ("source", "target"))
-        if any(abs(a - b) > .001 for a, b in zip(source, target)):
+        # Explicit LoRa headers carry CR, so different saved coding rates do
+        # not prevent the initial direct admin exchange.
+        if any(abs(a - b) > .001 for a, b in zip(source[:3], target[:3])):
             raise ota.OtaError("The source and destination must start on the same saved radio settings.")
+        if self.transfer_radio is None:
+            self.transfer_radio = target
+        self._state["transfer_radio"] = self.transfer_radio
+        if self.source_radio == "radio2":
+            await self._snapshot_secondary()
         self.save("prepared")
+
+    async def _snapshot_secondary(self) -> None:
+        settings = self.saved["source"]
+        for key in ("radio2", "tempradio2", "radio2.cross", "radioat2", "tempradioat2"):
+            settings[key] = await self.local("get " + key)
+        settings["peer_radio"] = await self.local("ota.peer radio")
+        settings["peer_timeout"] = await self.local("ota.peer timeout")
+        if not re.fullmatch(r"OTApeer radio=(radio|radio2)", settings["peer_radio"]):
+            raise ota.OtaError("The USB repeater did not report its native radio selection.")
+        if settings["peer_radio"] != "OTApeer radio=radio":
+            raise ota.OtaError("Select ota.peer radio radio before using an unused source radio2.")
+        if not re.fullmatch(r"OTApeer timeout=(\d+)s", settings["peer_timeout"]):
+            raise ota.OtaError("The USB repeater did not report its native command timeout.")
+        await self._check_secondary_unused(settings)
+
+    async def _check_secondary_unused(self, settings=None) -> None:
+        values = settings if settings is not None else {
+            key: await self.local("get " + key)
+            for key in ("radio2", "tempradio2", "radio2.cross", "radioat2", "tempradioat2")}
+        if not re.match(r"(?i)^off(?:\s|$)", cli_value(values["radio2"])):
+            raise ota.OtaError("The source already has a configured radio2; it will not be replaced.")
+        if cli_value(values["tempradio2"]).lower() != "off":
+            raise ota.OtaError("The source already has a temporary radio2; it will not be replaced.")
+        if cli_value(values["radio2.cross"]).lower() != "off":
+            raise ota.OtaError("Source radio2.cross must be off before updating.")
+        for key in ("radioat2", "tempradioat2"):
+            value = cli_value(values[key]).lower()
+            if value not in ("off", "none", "-none-") and not re.fullmatch(r"slots:\s*", value):
+                raise ota.OtaError("The source has scheduled radio2 settings; they will not be replaced.")
+
+    async def _select_profile(self, profile: str) -> None:
+        if self.source_radio == "radio2":
+            self.save(self._state["phase"], control_radio_attempted=profile)
+            await self.local("ota.peer radio " + profile)
+            self.save(self._state["phase"], control_radio=profile)
+
+    def _restore_options(self) -> None:
+        """Recovery uses the recorded profile, never the next menu's defaults."""
+        profile = self._state.get("source_radio", "radio")
+        if profile not in ("radio", "radio2"):
+            raise ota.OtaError("The recovery record has an invalid source radio.")
+        if profile == "radio2" and not getattr(self.link, "supports_radio2", False):
+            raise ota.OtaError("This recovery record requires a USB repeater.")
+        self.source_radio = profile
+        value = self._state.get("transfer_radio")
+        if value is not None:
+            if not isinstance(value, (list, tuple)) or len(value) != 4:
+                raise ota.OtaError("The recovery record has an invalid transfer radio.")
+            self.transfer_radio = radio_tuple(",".join(map(str, value)))
+        elif "target" in self.saved:
+            self.transfer_radio = radio_tuple(self.saved["target"]["radio"])
+        minutes = self._state.get("window_minutes", self.window_minutes)
+        if type(minutes) is not int or not 1 <= minutes <= 10080:
+            raise ota.OtaError("The recovery record has an invalid temporary window.")
+        self.window_minutes = minutes
 
     async def _check_temporary_windows(self, command, label: str) -> None:
         if temp_state(await command("get tempradio")) != "off":
@@ -297,10 +398,22 @@ class DirectSession:
             # the first mutation rather than replacing a newly queued lease.
             for label, command in (("source", self.local), ("target", self.remote)):
                 await self._check_temporary_windows(command, label)
+            if self.source_radio == "radio2":
+                await self._check_secondary_unused()
             await self._require_idle_download()
         self.active = True
-        self.save("opening OTA windows")
-        for label, command in (("target", self.remote), ("source", self.local)):
+        self.save("opening OTA windows", lease_expires_at=time.time() + self.window_minutes * 60)
+        # Radio2 must exist before the destination can leave the main channel.
+        order = (("source", self.local), ("target", self.remote)) if self.source_radio == "radio2" else (
+            ("target", self.remote), ("source", self.local))
+        if self.source_radio == "radio2":
+            self.save("opening OTA windows", source_controls_changed=True,
+                      host_remote_timeout=getattr(self.link, "remote_timeout", None))
+            await self._select_profile("radio")
+            await self.local("ota.peer timeout 60")
+            if hasattr(self.link, "remote_timeout"):
+                self.link.remote_timeout = max(self.link.remote_timeout, 75)
+        for label, command in order:
             commands = ["ota config hops 0"]
             if "mode=seeder-only" not in self.saved[label]["ota"]:
                 commands[:0] = ["ota config autofetch off", "ota config autoinstall off"]
@@ -313,25 +426,128 @@ class DirectSession:
                 current = await self._read_rxps(command, label)
                 if current.enabled:
                     raise ota.OtaError(f"The {label} did not disable RX power saving.")
-            # Keep the existing RF tuple so both admin and file traffic stay
-            # reachable even if the process is interrupted before cleanup.
             await self._open_window(label)
         self.save("OTA windows active")
 
     async def _open_window(self, label: str) -> None:
-        command = self.remote if label == "target" else self.local
-        values = radio_tuple(self.saved[label]["radio"])
+        values = self.transfer_radio or radio_tuple(self.saved[label]["radio"])
+        if label == "source" and self.source_radio == "radio2":
+            self.save(self._state["phase"], source_window_attempted=True)
+            text = "set tempradio2 " + ",".join(map(str, values)) + f",rxtx,{self.window_minutes}"
+            try:
+                await self.local(text)
+            except (TimeoutError, ConnectionError, ota.TransmissionError):
+                pass  # A relative lease is reconciled locally, never replayed.
+            # The getter also displays a queued tuple before its two-second
+            # apply delay. A matching tuple alone does not mean it is usable.
+            await asyncio.sleep(2)
+            deadline = time.monotonic() + 45
+            while True:
+                current = await self.local("get tempradio2")
+                if self._secondary_matches(current):
+                    break
+                if time.monotonic() >= deadline:
+                    raise ota.OtaError("The source temporary radio2 did not become active.")
+                await asyncio.sleep(1)
+            # Eligibility is a local firmware check, not an RF probe. Prove
+            # secondary TX works before asking the target to leave primary.
+            for attempt in range(3):
+                try:
+                    await self._select_profile("radio2")
+                    break
+                except ota.OtaError:
+                    if attempt == 2:
+                        raise
+                    await asyncio.sleep(2 + attempt * 2)
+            await self._select_profile("radio")
+            self.save(self._state["phase"], source_window_active=True)
+            return
         text = "tempradio " + ",".join(map(str, values)) + f",{self.window_minutes}"
+        acknowledged = False
+        self.save(self._state["phase"], **{label + "_window_attempted": True})
         try:
             if label == "target":
                 await self.remote(text, retries=0)
             else:
                 await self.local(text)
+            acknowledged = True
         except (TimeoutError, ConnectionError, ota.TransmissionError):
             # Relative leases must not be replayed after a lost acknowledgement.
             # Both entry points have already proved the old window inactive.
             pass
-        await self._wait_window(command)
+        if label == "target" and self.source_radio == "radio2":
+            # The target acknowledges before its two-second RF apply delay.
+            # Waiting locally avoids spending a command on that transition.
+            if acknowledged:
+                await asyncio.sleep(2)
+            await self._select_profile("radio2")
+        if not acknowledged:
+            command = self.remote if label == "target" else self.local
+            await self._wait_window(command)
+        self.save(self._state["phase"], **{label + "_window_active": True})
+
+    def _secondary_matches(self, reply: str) -> bool:
+        try:
+            fields = cli_value(reply).split(",")
+            values = radio_tuple(reply)
+            return (self.transfer_radio is not None and len(fields) > 4
+                    and fields[4].strip().split()[0].lower() == "rxtx"
+                    and all(abs(a - b) <= .001 for a, b in zip(values, self.transfer_radio)))
+        except (ota.OtaError, IndexError):
+            return False
+
+    async def _target_primary(self) -> None:
+        if self.source_radio == "radio2":
+            await self._select_profile("radio")
+        elif self._different_primary_transfer():
+            await self.local("normalradio")
+            self.save(self._state["phase"], source_window_active=False)
+        self.save(self._state["phase"], target_window_active=False)
+
+    def _different_primary_transfer(self) -> bool:
+        return bool(self.transfer_radio and "source" in self.saved and any(
+            abs(a - b) > .001 for a, b in zip(
+                self.transfer_radio[:3], radio_tuple(self.saved["source"]["radio"])[:3])))
+
+    async def _alternate_primary_source(self) -> None:
+        """Reconcile a custom primary transfer without extending its lease."""
+        current = await self.local("get tempradio")
+        state = temp_state(current)
+        if state == "pending":
+            await asyncio.sleep(2)
+            current = await self.local("get tempradio")
+            state = temp_state(current)
+        if state == "active":
+            match = re.search(r"(\d+(?:\.\d+)?),(\d+(?:\.\d+)?),(\d+),(\d+)", current)
+            if not match or any(abs(a - b) > .001 for a, b in zip(
+                    radio_tuple(match[0]), self.transfer_radio)):
+                raise ota.OtaError("The source temporary radio changed; it will not be replaced.")
+            await self.local("normalradio")
+            self.save(self._state["phase"], source_window_active=False)
+        elif state == "off":
+            # A reboot may have cleared only the source's RAM lease. Its
+            # explicit inactive readback permits a new local lease bounded
+            # by the original expiry; never replay a target relative lease.
+            deadline = self._state.get("lease_expires_at")
+            if (not isinstance(deadline, (int, float)) or not math.isfinite(deadline)
+                    or deadline - time.time() < 63):
+                raise ota.OtaError("The recorded source transfer window has expired; use its saved primary channel.")
+            await self._check_temporary_windows(self.local, "source")
+            # Leave the firmware's two-second apply delay plus USB slack.
+            minutes = min(self.window_minutes, math.floor((deadline - time.time() - 3) / 60))
+            if minutes < 1:
+                raise ota.OtaError("The recorded source transfer window has expired.")
+            text = "tempradio " + ",".join(map(str, self.transfer_radio)) + f",{minutes}"
+            self.save(self._state["phase"], source_window_attempted=True)
+            try:
+                await self.local(text)
+            except (TimeoutError, ConnectionError, ota.TransmissionError):
+                if temp_state(await self.local("get tempradio")) != "active":
+                    raise
+            self.save(self._state["phase"], source_window_active=True)
+        else:
+            raise ota.OtaError("The source temporary radio has not finished applying.")
+        await asyncio.sleep(2)
 
     async def _stop_serving(self) -> None:
         if self._serve_task:
@@ -411,6 +627,9 @@ class DirectSession:
 
     async def _installed(self, package: Package, before: Destination) -> Destination:
         info, deadline = package.info, time.monotonic() + self.reboot_timeout
+        # Reboot clears the target's RAM-only primary lease. Keep the source
+        # secondary alive for recovery, but prove the install on normal RF.
+        await self._target_primary()
         while time.monotonic() < deadline:
             try:
                 reset_session = getattr(self.link, "reset_remote_session", None)
@@ -442,8 +661,10 @@ class DirectSession:
         if not self.active:
             await self.begin()
         # A bootloader reboot clears the destination's RAM-only lease.
-        if temp_state(await self.remote("get tempradio")) == "off":
+        if not self._state.get("target_window_active", False):
             await self._open_window("target")
+            if self.source_radio == "radio" and not self._state.get("source_window_active", True):
+                await self._open_window("source")
         await self._require_idle_download()
         self.save("preparing package", package_mid=info.manifest_id, package_hash=info.image_hash.hex(),
                   package_kind=info.kind, package_bootloader=info.is_bootloader,
@@ -607,6 +828,7 @@ class DirectSession:
         return True
 
     async def cleanup(self) -> list[str]:
+        self._restore_options()
         errors = []
         server_stopped = True
         try:
@@ -616,6 +838,20 @@ class DirectSession:
             errors.append("Stop the USB file server before restoring settings.")
         target_policy_safe = True
         if self.active:
+            # A fresh process inherits the native selection from the source;
+            # put it on the last recorded target profile before reconciliation.
+            if self.source_radio == "radio2" and self._state.get("source_window_attempted"):
+                try:
+                    await self._select_profile(self._state.get("control_radio", "radio"))
+                except ota.OtaError:
+                    # A reboot/expired lease can make saved radio2 selection
+                    # ineligible. Its target may already be back on primary.
+                    try:
+                        await self._select_profile("radio")
+                    except Exception as exc:
+                        errors.append(f"Select the source primary control profile: {exc}")
+                except Exception as exc:
+                    errors.append(f"Select the recorded source control profile: {exc}")
             try:
                 target_policy_safe = await self._finalize_download()
             except Exception as exc:
@@ -628,7 +864,20 @@ class DirectSession:
                     await self.remote("ota config autofetch off")
                 except Exception:
                     errors.append("Confirm both target automatic OTA policies are off while its source remains unconfirmed.")
-        if self.active:
+        if self.active and self.source_radio == "radio2":
+            errors.extend(await self._cleanup_secondary(target_policy_safe))
+        elif self.active:
+            if self._different_primary_transfer() and self._state.get("target_window_attempted"):
+                try:
+                    try:
+                        await self.remote("normalradio", retries=0)
+                    except (TimeoutError, ConnectionError, ota.TransmissionError):
+                        pass
+                    await self._target_primary()
+                    if temp_state(await self.remote("get tempradio")) != "off":
+                        raise ota.OtaError("The target did not return to its saved primary radio.")
+                except Exception as exc:
+                    errors.append(f"Restore both original primary radio channels before cleanup: {exc}")
             for label, command in (("target", self.remote), ("source", self.local)):
                 if label not in self.saved:
                     continue
@@ -638,7 +887,7 @@ class DirectSession:
                     try:
                         rxps = ota.parse_rxps_settings(settings["rxps"], label)
                         current = await self._read_rxps(command, label)
-                        if current != rxps:
+                        if not self._rxps_equal(current, rxps):
                             commands.append(ota.rxps_restore_command(rxps))
                             if not rxps.enabled:
                                 commands.append("set radio.rxps off")
@@ -672,6 +921,97 @@ class DirectSession:
         self.active = bool(errors)
         return errors
 
+    @staticmethod
+    def _rxps_equal(current, saved) -> bool:
+        # Level settings recalculate duty-cycle timings when modulation changes.
+        if saved.level is not None and 1 <= saved.level <= 10:
+            return (current.enabled, current.level, current.preamble) == (
+                saved.enabled, saved.level, saved.preamble)
+        return current == saved
+
+    async def _restore_endpoint(self, label: str, *, restore_auto: bool) -> None:
+        command = self.remote if label == "target" else self.local
+        settings = self.saved[label]
+        if settings["rxps"] != "unsupported":
+            desired = ota.parse_rxps_settings(settings["rxps"], label)
+            if not self._rxps_equal(await self._read_rxps(command, label), desired):
+                await command(ota.rxps_restore_command(desired))
+                if not desired.enabled:
+                    await command("set radio.rxps off")
+        for key in ("hops", "autofetch", "autoinstall"):
+            if (key != "hops" and (not restore_auto or "mode=seeder-only" in settings["ota"])):
+                continue
+            match = re.search(rf"\b{key}=([A-Za-z0-9]+)", settings["ota"])
+            if match:
+                await command(f"ota config {key} {match[1]}")
+        await self._verify_restored(command, label, settings, restore_auto=restore_auto)
+
+    async def _cleanup_secondary(self, target_policy_safe: bool) -> list[str]:
+        errors = []
+        settings = self.saved["source"]
+        # normalradio is idempotent; reconcile its reply on either recorded
+        # profile before releasing the secondary lease.
+        if self._state.get("target_window_attempted"):
+            try:
+                self.save(self._state["phase"], target_return_attempted=True)
+                try:
+                    await self.remote("normalradio")
+                except (TimeoutError, ConnectionError, ota.TransmissionError):
+                    pass
+                await self._target_primary()
+                if temp_state(await self.remote("get tempradio")) != "off":
+                    raise ota.OtaError("The destination has not returned to its saved primary radio.")
+                self.save(self._state["phase"], target_return_confirmed=True)
+            except Exception as exc:
+                # Keep this run's secondary alive while its target may still
+                # need it. Recovery can use either recorded control profile.
+                try:
+                    await self._select_profile("radio2")
+                except Exception:
+                    pass
+                return [f"Confirm the target's normal radio before releasing source radio2: {exc}"]
+        elif self._state.get("source_window_attempted"):
+            await self._select_profile("radio")
+        if self._state.get("source_window_attempted"):
+            try:
+                current = await self.local("get tempradio2")
+                if cli_value(current).lower() != "off":
+                    if not self._secondary_matches(current):
+                        raise ota.OtaError("The temporary radio2 changed; it was not cleared.")
+                    # Restore the original native choice while our secondary
+                    # is still eligible. The selection itself survives off.
+                    original = re.fullmatch(r"OTApeer radio=(radio|radio2)", settings["peer_radio"])
+                    await self._select_profile(original[1])
+                    await self.local("set tempradio2 off")
+                    await asyncio.sleep(2)
+                self.save(self._state["phase"], source_window_active=False)
+            except Exception as exc:
+                return [f"Release only the recorded source temporary radio2: {exc}"]
+        # Clear the scanner before restoring target RXPS, which can otherwise
+        # require long preambles against an old target's duty-cycle receiver.
+        await self._select_profile("radio")
+        for label in ("target", "source"):
+            try:
+                await self._restore_endpoint(label, restore_auto=label != "target" or target_policy_safe)
+            except Exception as exc:
+                errors.append(f"Restore the recorded {label} radio/RXPS/OTA settings: {exc}")
+        if self._state.get("source_controls_changed"):
+            try:
+                original = re.fullmatch(r"OTApeer radio=(radio|radio2)", settings["peer_radio"])
+                # A radio2 choice can be retained after clearing its lease;
+                # only set it while eligible, as done just before off above.
+                if original[1] == "radio":
+                    await self._select_profile("radio")
+                timeout = re.fullmatch(r"OTApeer timeout=(\d+)s", settings["peer_timeout"])
+                await self.local("ota.peer timeout " + timeout[1])
+                host_timeout = self._state.get("host_remote_timeout")
+                if isinstance(host_timeout, (int, float)) and hasattr(self.link, "remote_timeout"):
+                    self.link.remote_timeout = host_timeout
+                self.save(self._state["phase"], source_controls_changed=False)
+            except Exception as exc:
+                errors.append(f"Restore the source native radio/timeout controls: {exc}")
+        return errors
+
     async def _read_rxps(self, command, label: str) -> ota.RxpsSettings:
         try:
             reply = await command("get radio.rxps.config")
@@ -692,7 +1032,8 @@ class DirectSession:
         if any(abs(a - b) > .001 for a, b in zip(current_radio, radio_tuple(settings["radio"]))):
             raise ota.OtaError(f"The {label} radio settings changed.")
         if settings["rxps"] != "unsupported":
-            if await self._read_rxps(command, label) != ota.parse_rxps_settings(settings["rxps"], label):
+            if not self._rxps_equal(await self._read_rxps(command, label),
+                                    ota.parse_rxps_settings(settings["rxps"], label)):
                 raise ota.OtaError(f"The {label} RXPS settings did not restore exactly.")
         actual = await command("ota config")
         for key in ("hops", "autofetch", "autoinstall"):

@@ -103,27 +103,27 @@ Four-byte paths remain unsupported.
     <div class="filter-example-grid">
       <button type="button" data-example="hash_width">
         <span>Drop all floods with 1-byte path hashes (including zero hops)</span>
-        <code>when type=any hops=all hashbytes=1 do drop</code>
+        <code>when hashbytes=1 do drop</code>
       </button>
       <button type="button" data-example="hash_width_two_plus">
         <span>Drop all floods with 2- or 3-byte path hashes (including zero hops)</span>
-        <code>when type=any hops=all hashbytes=2+ do drop</code>
+        <code>when hashbytes=2+ do drop</code>
       </button>
       <button type="button" data-example="channel_scope">
         <span>Set #BlackHole86 scope on all #rgdata group traffic</span>
-        <code>when type=class:group hops=all channel=#rgdata do scope=#BlackHole86 timing=fast</code>
+        <code>when type=class:group channel=#rgdata do scope=#BlackHole86 timing=fast</code>
       </button>
       <button type="button" data-example="blackhole">
         <span>Add #BlackHole86 scope to unscoped #rgdata data</span>
-        <code>when type=grp_data hops=all channel=#rgdata rx.scope=none do scope=#BlackHole86 timing=fast</code>
+        <code>when type=grp_data channel=#rgdata rx.scope=none do scope=#BlackHole86 timing=fast</code>
       </button>
       <button type="button" data-example="scope_rewrite">
         <span>Replace #usa with #BlackHole86 on #rgdata data</span>
-        <code>when type=grp_data hops=all channel=#rgdata rx.scope=scope:usa do scope=#BlackHole86 timing=fast</code>
+        <code>when type=grp_data channel=#rgdata rx.scope=scope:usa do scope=#BlackHole86 timing=fast</code>
       </button>
       <button type="button" data-example="prefix_rate">
         <span>Rate-limit packets whose path starts with 860C</span>
-        <code>when type=any hops=all path=prefix:860C do rate=10/min burst=10</code>
+        <code>when path=prefix:860C do rate=10/min</code>
       </button>
       <button type="button" data-example="high_traffic">
         <span>Drop selected flood types at their hop limits</span>
@@ -131,19 +131,19 @@ Four-byte paths remain unsupported.
       </button>
       <button type="button" data-example="moderation">
         <span>Rate-limit Public messages from “Noisy User”</span>
-        <code>when type=grp_txt hops=all channel=public sender="Noisy User" do rate=5/min burst=5</code>
+        <code>when type=grp_txt channel=public sender="Noisy User" do rate=5/min</code>
       </button>
       <button type="button" data-example="blacklist">
         <span>Stop forwarding traffic from blacklisted internet gateways</span>
-        <code>when type=any hops=all path=blacklist do drop</code>
+        <code>when path=blacklist do drop</code>
       </button>
       <button type="button" data-example="factory">
         <span>Three defaults: OTA, distant #wardriving, and bridge/crossover #wardriving</span>
-        <code>when type=ota hops=all tempradio=inactive do drop<br>when type=any channel=#wardriving hops=5+ do drop<br>when type=any channel=#wardriving hops=all via=bridge,cross do drop</code>
+        <code>when type=ota tempradio=inactive do drop<br>when channel=#wardriving hops=5+ do drop<br>when channel=#wardriving via=bridge,cross do drop</code>
       </button>
       <button type="button" data-example="wildcards">
         <span>Set #BlackHole86 scope on login and bucket-matched other traffic</span>
-        <code>when type=class:login hops=all do scope=#BlackHole86 timing=fast<br>when type=class:other hops=all path=bucket:2 do scope=#BlackHole86 timing=slow</code>
+        <code>when type=class:login do scope=#BlackHole86 timing=fast<br>when type=class:other path=bucket:2 do scope=#BlackHole86 timing=slow</code>
       </button>
     </div>
   </div>
@@ -389,7 +389,8 @@ Four-byte paths remain unsupported.
           </label>
           <label>
             Priority
-            <input data-field="priority" type="number" min="0" max="255" inputmode="numeric" value="100">
+            <input data-field="priority" type="number" min="0" max="255" inputmode="numeric" value="0">
+            <span class="filter-field-help">0 is the default; higher values run first within a phase.</span>
           </label>
           <label>
             Mode
@@ -426,6 +427,8 @@ Four-byte paths remain unsupported.
         <p data-role="live-explanation"></p>
         <ul class="filter-inline-warnings" data-role="live-warnings" hidden></ul>
       </div>
+      <p class="filter-field-help">Definitions omit default settings. Priority is 0
+        unless changed; advanced settings appear only when needed to preserve the rule.</p>
 
       <div class="filter-builder-actions">
         <button class="filter-primary-action" type="button" data-role="save-rule">Add rule to policy</button>
@@ -618,7 +621,7 @@ Four-byte paths remain unsupported.
       Accepts one-line <code>policy set ... when ... do ...</code> definitions,
       playground JSON, or a playground Base64 bundle.
     </p>
-    <textarea data-role="import-input" spellcheck="false" placeholder="policy set rgdata-scope phase=rewrite owner=scope priority=150 when route=flood type=grp_data hops=all channel=#rgdata rx.scope=none do scope=#BlackHole86 timing=fast"></textarea>
+    <textarea data-role="import-input" spellcheck="false" placeholder="policy set rgdata-scope when type=grp_data channel=#rgdata rx.scope=none do scope=#BlackHole86 timing=fast"></textarea>
     <div class="filter-builder-actions">
       <button class="filter-primary-action" type="button" data-role="explain-input">Explain input</button>
       <button type="button" data-role="load-input">Load into builder</button>
@@ -657,6 +660,19 @@ Four-byte paths remain unsupported.
     </div>
   </section>
 </div>
+
+## Readable policy defaults
+
+Readable definitions omit priority `0`, active mode, `route=flood`, `type=any`,
+`hops=all`, and unrestricted matchers. Traffic defaults to `via=radio`; actions
+not listed remain unchanged. An empty `when do` matches without additional
+conditions. A rate's burst defaults to that rate, and retry attempts default to 1.
+
+The action selects its phase: scope gate, scope rewrite, retry scheduling, or
+decrypted content when matching a sender; other rules use forwarding. Scope-gate
+and rewrite phases default to the scope-manager owner; other phases use the
+filter-manager owner. Explicit phase, owner, and other advanced overrides stay
+in the definition whenever omitting them would change the rule.
 
 ## Payload type reference
 

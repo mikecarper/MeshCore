@@ -4428,6 +4428,9 @@ bool MyMesh::sendRepeatersFloodText(const char* text, const TransportKey* scope,
 
 void MyMesh::onSendComplete(mesh::Packet* packet) {
   mesh::Mesh::onSendComplete(packet);
+#if MESH_ENABLE_DIRECT_OTA_ADMIN
+  direct_ota_admin.onSendComplete(packet);
+#endif
   _cli.servicePendingTxPower();
   _cli.morseReply().complete(packet);
 #if MESH_ENABLE_FLEET_CONTROL
@@ -4446,6 +4449,9 @@ void MyMesh::onSendComplete(mesh::Packet* packet) {
 
 void MyMesh::onRadioProfileCopyQueued(mesh::Packet* packet, const mesh::Packet* original,
                                      uint8_t priority) {
+#if MESH_ENABLE_DIRECT_OTA_ADMIN
+  direct_ota_admin.onRadioProfileCopyQueued(packet, original);
+#endif
 #if MESH_ENABLE_FLEET_CONTROL
   if (_cli.fleetChannel()) _cli.fleetChannel()->copy(packet, original);
 #endif
@@ -4456,6 +4462,9 @@ void MyMesh::onRadioProfileCopyQueued(mesh::Packet* packet, const mesh::Packet* 
 
 void MyMesh::onSendFail(mesh::Packet* packet) {
   mesh::Mesh::onSendFail(packet);
+#if MESH_ENABLE_DIRECT_OTA_ADMIN
+  direct_ota_admin.onSendFail(packet);
+#endif
   _cli.morseReply().fail(packet);
 #if MESH_ENABLE_FLEET_CONTROL
   if (_cli.fleetChannel()) _cli.fleetChannel()->fail(packet, _cli.radioProfiles());
@@ -13417,7 +13426,7 @@ void MyMesh::handleCommand(uint32_t sender_timestamp, ClientInfo* sender, char *
 
 void MyMesh::loop() {
 #if MESH_ENABLE_DIRECT_OTA_ADMIN
-  direct_ota_admin.service(*this, millis(), !hasPendingRadioWork());
+  direct_ota_admin.service(*this, millis());
 #endif
 #if defined(WITH_WEBCONFIG) || defined(ETHERNET_ENABLED)
   _local_cli_output.service();
