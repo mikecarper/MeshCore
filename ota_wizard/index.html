@@ -1020,6 +1020,23 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="Connect a source radio">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#use-a-known-repeater-key" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Use a known repeater key
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -1030,6 +1047,34 @@
       
     </span>
   </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#use-radio2-for-the-transfer" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Use radio2 for the transfer
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Use radio2 for the transfer">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#keep-control-traffic-low" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Keep control traffic low
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
   
 </li>
       
@@ -2586,6 +2631,23 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="Connect a source radio">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#use-a-known-repeater-key" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Use a known repeater key
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -2596,6 +2658,34 @@
       
     </span>
   </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#use-radio2-for-the-transfer" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Use radio2 for the transfer
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Use radio2 for the transfer">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#keep-control-traffic-low" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Keep control traffic low
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
   
 </li>
       
@@ -2706,6 +2796,28 @@ an <strong>Ikoka Stick Repeater</strong> through that single USB connection. It 
 need a second local radio or the phone app. Install a source firmware build
 containing <code>ota.peer</code> first; older Repeater firmware cannot manage the remote
 node through USB. Check with <code>ota.peer status</code> in its USB console.</p>
+<p>For slow replies during manual USB administration, <code>ota.peer timeout 180</code>
+raises the source's request timeout from 30 to 180 seconds. This RAM-only setting
+survives closing the admin session and resets on reboot; keep the controller's
+timeout longer than the source's.</p>
+<p>If the destination already grants this repeater's public key the required ACL
+role, <code>ota.peer acl PUBLIC_KEY</code> opens a USB admin session without a password
+login. It sends an authenticated direct return path and verifies the
+destination's full public key before accepting <code>ota.peer cmd PUBLIC_KEY get tx</code>.
+The destination still enforces its ACL permissions for every command.</p>
+<p>For a single command using an existing ACL grant, use
+<code>ota.peer cmd.acl PUBLIC_KEY get tx</code>. It sends only the encrypted zero-hop CLI
+request, without login, return-path changes or an identity-proof exchange.
+The reply is correlated to that request; this does not open an authenticated
+admin session. The destination still checks the source's ACL role.
+It requires the destination's saved return route to be direct.</p>
+<p>For manual USB administration on a configured secondary MeshCore profile, use
+<code>ota.peer radio radio2</code> before discovery or login; <code>ota.peer radio radio</code> selects
+the primary profile. <code>ota.peer radio</code> reports the choice. The secondary profile
+must be enabled for RX and TX. This RAM-only choice survives <code>ota.peer close</code>
+and resets to primary on reboot. Changing the choice clears authentication and
+discovered peers; changing the selected profile's configuration cancels a pending
+request and clears authentication. Admin traffic stays on the selected profile.</p>
 <p>The Full Companion source also needs a current build containing the wizard's
 version 2 direct admin support. An older Full Companion may serve OTA files but cannot
 provide this guarded admin connection; the wizard will ask for a source
@@ -2715,15 +2827,42 @@ separate mailbox; the wizard does not consume ordinary queued messages or change
 saved contact routes. Some Full Companion boards borrow queue space for OTA and
 retain up to 128 unread messages during an update. If more are waiting, sync them
 with an app first; the wizard refuses to discard them to make room.</p>
-<p>The source and destination must already use the same main-channel settings
-and hear each other directly. The destination needs working LoRa OTA support
-and its admin password. A stock nRF52 bootloader may need a matching local
+<p>Start with the source's primary frequency, bandwidth and spreading factor
+matching the destination's saved primary profile, with a direct link between
+them. The saved coding rates may differ. The destination needs working LoRa OTA support
+and either its admin password or an admin ACL entry for the source radio.
+A stock nRF52 bootloader may need a matching local
 installation before it can accept remote updates.</p>
-<p>The wizard sends discovery, admin commands, and OTA traffic directly with no
+<p>By default, the wizard sends discovery, admin commands, and OTA traffic directly with no
 relay hops. An older destination may put its first login reply in a flood
 envelope; the wizard accepts it only if it arrives with zero hops, establishes
 a direct return route, then requires a fresh direct identity check.</p>
 <p>Close other apps using the USB port before starting.</p>
+<h3 id="use-a-known-repeater-key">Use a known repeater key</h3>
+<p>With a USB Repeater source, <code>--target PUBLIC_KEY</code> selects a known repeater
+without waiting for a discovery response. Supply its complete 64-character
+public key. The legacy <code>--target-type repeater</code> flag is still accepted.
+The source must reply
+<code>OTApeer known_repeater=1</code> to <code>ota.peer capabilities</code>; update its firmware first if that
+capability is missing.</p>
+<p>For an existing admin ACL grant, replace <code>PUBLIC_KEY</code> with the destination
+repeater's full key:</p>
+<pre><code class="language-bash">python3 tools/lora_ota/ota_wizard.py --mode repeater --port /dev/ttyACM0 \
+  --target PUBLIC_KEY --auth acl --check
+</code></pre>
+<p>Password authentication sends a zero-hop login and verifies the exact public
+key before updating. ACL authentication uses the source's existing permission
+without a password login or a fresh identity-proof exchange. It requires a
+known full repeater key and a saved direct return route on the destination.
+Neither mode falls back to flooding or relays. Keep the same source radio
+connected when recovering an interrupted update.</p>
+<p>In <strong>Settings</strong>, set <strong>Authentication</strong> to <strong>ACL</strong> for this setup. Use
+<strong>Password</strong> when the source has no admin ACL grant; an empty password is
+not an ACL-mode selector.</p>
+<p><strong>Auto</strong> uses ACL for a USB Repeater with a supplied or reused full repeater
+key when no password environment variable is set. Discovery and Full
+Companion connections use password authentication. Explicit <strong>ACL</strong> ignores
+the password environment variable and does not fall back to a login.</p>
 <h2 id="start">Start</h2>
 <p>From the MeshCore checkout, run:</p>
 <pre><code class="language-bash">python3 tools/lora_ota/ota_wizard.py
@@ -2745,9 +2884,38 @@ Preparing a signed input file can also install signature-verification support
 on first use, without installing the USB software.</p>
 <p>For an update, the wizard selects the USB radio and destination automatically
 when there is only one of each. Otherwise, choose from the displayed lists.
-Enter the destination admin password once, choose firmware, then review the
-plan and press Enter to start. Password entry is hidden and passwords are
-never saved. After an action, the menu is shown again.</p>
+With a USB Repeater, enter or reuse a known full repeater key to skip discovery.
+Choose firmware, review the plan, then press Enter to start. If password
+authentication is needed, enter it once. Password entry is hidden and
+passwords are never saved. After an action, the menu is shown again.</p>
+<h2 id="use-radio2-for-the-transfer">Use radio2 for the transfer</h2>
+<p>With a USB Repeater source, set <strong>Source transfer radio</strong> to <strong>radio2</strong> in
+<strong>Settings</strong>. Optionally set <strong>Transfer channel</strong> to <code>FREQ,BW,SF,CR</code>, using
+MHz, kHz, spreading factor and coding-rate denominator. Choose values allowed
+in your region and supported by both boards. Without an override, the wizard
+uses the destination's saved primary settings.</p>
+<p>The wizard starts administration on the shared primary profile, creates a
+temporary RXTX secondary profile on the source, then moves the destination
+to a matching temporary primary profile. It accepts the destination's <code>OK</code>
+acknowledgement before switching subsequent administration to radio2. The
+source's primary radio settings and repeating state stay in place. Source
+RX power saving is temporarily disabled for scanning and restored afterward.</p>
+<p>The source secondary profile must be unused, with no configured profile,
+temporary lease or schedule, and cross-profile forwarding off. Existing
+temporary schedules on the destination also block setup. This lets recovery
+clear the wizard's own lease without replacing another operator's profile.
+The wizard restores the destination to its original primary profile before
+removing the source lease. Full Companion sources use their primary profile.</p>
+<p>For manual administration of an already configured secondary profile, use
+<code>ota.peer radio radio2</code>; the guided wizard's ownership checks are stricter.</p>
+<h3 id="keep-control-traffic-low">Keep control traffic low</h3>
+<p>A successful temporary-profile acknowledgement is sufficient; there is no
+need to follow it with repeated <code>get tempradio</code> queries. Retry a necessary
+read or idempotent setting at most three times. Use <code>get tx</code> as a connectivity
+probe only if all three attempts fail.</p>
+<p>Do not blindly repeat a relative temporary lease, download, install or cancel
+after losing its reply. Check the selected profile and owned package state
+first. A lost acknowledgement can mean that the command already took effect.</p>
 <h2 id="choose-firmware-from-github-releases">Choose firmware from GitHub releases</h2>
 <p>The firmware menu offers:</p>
 <ul>
@@ -2816,18 +2984,20 @@ hash or a different board stops a differential update.</p>
 <strong>Recover an interrupted update</strong>, then select the saved session by its
 public-key prefix and progress state. The wizard checks the complete source
 and destination keys before restoring settings. A normal update also restores an unfinished
-session for the selected destination before proceeding.</p>
+session for the selected destination before proceeding.
+Recovery reuses the recorded authentication and profile options, rather than
+the current menu settings.</p>
 <p>Keep the recovery record until restoration is complete. A lost install reply
 is followed by a running-image check; the wizard does not blindly repeat an
 install command. A cancelled download is cleared only when its package ID
 matches this update. Automatic installation is restored only after installation
 or receive-slot clearance is confirmed; an uncertain result leaves it off and
 keeps the recovery record.</p>
-<p>Temporary radio windows use the existing main-channel
-settings. Existing temporary schedules block an update before settings are
-changed, including on older firmware.
+<p>Temporary radio windows use the existing primary settings unless a transfer
+profile was chosen. Existing temporary schedules block an update before
+settings are changed, including on older firmware.
 The window covers both bootloader and firmware transfers, including reboot
-and setup time. Status checks normally run every ten seconds.</p>
+and setup time. Remote progress checks normally run every 45 seconds.</p>
 <p>The cache is normally <code>~/.cache/meshcore/ota</code> on Linux,
 <code>~/Library/Caches/MeshCore/ota</code> on macOS, or <code>%LOCALAPPDATA%\MeshCore\ota</code> on
 Windows. It contains firmware, public preparation records, selected board
@@ -2859,7 +3029,23 @@ options remain available for scripts:</p>
 </tr>
 <tr>
 <td><code>--target PUBLIC_KEY</code></td>
-<td>Choose the full destination key; direct discovery is still required</td>
+<td>Choose the full destination key; a USB Repeater source skips discovery</td>
+</tr>
+<tr>
+<td><code>--target-type repeater</code></td>
+<td>Legacy flag for known-repeater selection with a USB Repeater source</td>
+</tr>
+<tr>
+<td><code>--auth auto</code>, <code>--auth acl</code> or <code>--auth password</code></td>
+<td>Select authentication; ACL uses the USB Repeater's existing grant</td>
+</tr>
+<tr>
+<td><code>--source-radio radio</code> or <code>--source-radio radio2</code></td>
+<td>Choose the source transfer profile; radio2 requires a USB Repeater</td>
+</tr>
+<tr>
+<td><code>--transfer-radio FREQ,BW,SF,CR</code></td>
+<td>Use a matching temporary transfer profile on both ends</td>
 </tr>
 <tr>
 <td><code>--firmware FILE</code></td>
@@ -2895,9 +3081,11 @@ options remain available for scripts:</p>
 </tr>
 </tbody>
 </table>
-<p>For unattended use, provide <code>MESHCORE_ADMIN_PASSWORD</code> in the process environment
-and pass the port, source type, and target key. The password is excluded from
-preferences, recovery records, and the custom build environment.</p>
+<p>For unattended password authentication, provide <code>MESHCORE_ADMIN_PASSWORD</code> in
+the process environment and pass the port, source type, and target key. With
+an existing ACL grant, use <code>--auth acl</code> and the full known repeater key.
+Passwords are excluded from preferences, recovery records, and the custom
+build environment.</p>
 </details>
 <p>For individual commands and a manual board example, see
 <a href="../ota_station_g2_to_ikoka_stick/">Station G2 to Ikoka Stick</a>. For routed updates
