@@ -269,6 +269,20 @@ class RepeaterTransport:
             return line.startswith(prefix) and bool(re.fullmatch(r"\*+", line[len(prefix):]))
         return False
 
+    async def _next_line(self, timeout):
+        # Python 3.10's wait_for can swallow caller cancellation when the
+        # queue getter finishes in the same turn. A stopped file server must
+        # still leave its attach command and detach the USB folder.
+        getter = asyncio.create_task(self._lines.get())
+        try:
+            done, _ = await asyncio.wait((getter,), timeout=timeout)
+            if not done:
+                raise TimeoutError("The USB repeater did not complete the command; its result is unknown")
+            return getter.result()
+        finally:
+            getter.cancel()
+            await asyncio.gather(getter, return_exceptions=True)
+
     async def local_command(self, text):
         encoded = _one_line(text, 240)
         async with self._command_lock:
@@ -282,7 +296,7 @@ class RepeaterTransport:
                 remaining = deadline - time.monotonic()
                 if remaining <= 0:
                     raise TimeoutError("The USB repeater did not complete the command; its result is unknown")
-                line = await asyncio.wait_for(self._lines.get(), remaining)
+                line = await self._next_line(remaining)
                 if line is None:
                     raise ConnectionError("The USB repeater is disconnected") from self._failure
                 if self._echo_matches(line, text):

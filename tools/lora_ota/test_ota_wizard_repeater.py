@@ -594,6 +594,39 @@ class RepeaterTransportTest(unittest.IsolatedAsyncioTestCase):
         await self.link.close()
         self.assertFalse(self.serial.is_open)
 
+    async def test_attach_reply_completion_cannot_swallow_server_cancellation(self):
+        stop = asyncio.Event()
+        original_get = self.link._lines.get
+        async def cancel_at_attach_reply():
+            line = await original_get()
+            if "OK folder attached" in line:
+                asyncio.get_running_loop().call_soon(serving.cancel)
+            return line
+        with mock.patch.object(self.link._lines, "get", side_effect=cancel_at_attach_reply):
+            serving = asyncio.create_task(self.link.serve(package(), stop))
+            try:
+                done, _ = await asyncio.wait((serving,), timeout=2)
+                self.assertIn(serving, done, "The stop request was swallowed by the completed attach reply")
+                with self.assertRaises(asyncio.CancelledError):
+                    await serving
+            finally:
+                stop.set()
+                if not serving.done():
+                    serving.cancel()
+                await asyncio.gather(serving, return_exceptions=True)
+        self.assertTrue(self.serial.folder_off)
+
+    async def test_command_timeout_leaves_no_reader_to_steal_next_reply(self):
+        original_timeout = self.link.command_timeout
+        self.link.command_timeout = .01
+        try:
+            with mock.patch.object(self.link, "_write", new_callable=mock.AsyncMock):
+                with self.assertRaises(TimeoutError):
+                    await self.link.local_command("no reply")
+        finally:
+            self.link.command_timeout = original_timeout
+        self.assertEqual(await self.link.local_command("get public.key"), "> " + SOURCE)
+
 
 if __name__ == "__main__":
     unittest.main()
