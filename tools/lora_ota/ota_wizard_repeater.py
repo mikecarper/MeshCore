@@ -380,16 +380,34 @@ class RepeaterTransport:
         self._authenticated_key = key
         self._last_peer_use = time.monotonic()
 
-    async def remote_command(self, public_key, password, text):
+    def _peer_key(self, public_key):
         key = _key(public_key)
         if self._known_repeater is not None and key != self._known_repeater:
             raise RepeaterError("The destination differs from the explicit known repeater key")
-        _one_line(text, 154)
+        return key
+
+    def _validate_password(self, password):
         if (not isinstance(password, str) or len(password.encode("utf-8")) > 63
                 or any(ord(char) < 32 or ord(char) == 127 for char in password)):
             raise RepeaterError("Admin passwords must fit in 63 UTF-8 bytes without control characters")
         if self._acl_only and password:
             raise RepeaterError("ACL-only administration requires an empty password")
+
+    async def verify_peer(self, public_key, password):
+        """Freshly prove the complete target key without a second CLI read."""
+        key = self._peer_key(public_key)
+        self._validate_password(password)
+        async with self._admin_lock:
+            self._authenticated_key = None
+            self._last_peer_use = 0
+            await self._check_clock()
+            await self._login_locked(key, password)
+            return key
+
+    async def remote_command(self, public_key, password, text):
+        key = self._peer_key(public_key)
+        _one_line(text, 154)
+        self._validate_password(password)
         async with self._admin_lock:
             await self._check_clock()
             if key != self._authenticated_key or time.monotonic() - self._last_peer_use > 240:

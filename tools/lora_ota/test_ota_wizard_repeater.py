@@ -302,6 +302,42 @@ class RepeaterTransportTest(unittest.IsolatedAsyncioTestCase):
         self.assertIsNone(self.link._authenticated_key)
         self.assertEqual(self.link._last_peer_use, 0)
 
+    async def test_verify_peer_always_uses_fresh_proof_without_extra_cli_read(self):
+        for mode in ("discovery", "known", "acl"):
+            with self.subTest(mode=mode):
+                if mode != "discovery":
+                    await self.open_known_repeater(acl_only=mode == "acl")
+                await self.link.remote_command(TARGET, "", "ver")
+                self.serial.commands.clear()
+                self.assertEqual(await self.link.verify_peer(TARGET.upper(), ""), TARGET)
+                method = "acl" if mode == "acl" else "login.repeater" if mode == "known" else "login"
+                self.assertEqual(sum(command.startswith(f"ota.peer {method} ") for command in self.serial.commands), 1)
+                self.assertFalse(any(command.startswith("ota.peer cmd ") for command in self.serial.commands))
+                if mode == "acl":
+                    self.assertFalse(any(command.startswith("ota.peer login") for command in self.serial.commands))
+                self.assertEqual(self.link._authenticated_key, TARGET)
+                self.assertGreater(self.link._last_peer_use, 0)
+
+                self.serial.login_error = "login identity mismatch"
+                self.serial.commands.clear()
+                with self.assertRaisesRegex(RepeaterError, "login identity mismatch"):
+                    await self.link.verify_peer(TARGET, "")
+                self.assertIsNone(self.link._authenticated_key)
+                self.assertEqual(self.link._last_peer_use, 0)
+                self.assertFalse(any(command.startswith("ota.peer cmd ") for command in self.serial.commands))
+
+    async def test_verify_peer_validates_key_and_password_before_transmitting(self):
+        await self.open_known_repeater(acl_only=True)
+        before = len(self.serial.commands)
+        for key, password in (("bad", ""), ("c" * 64, ""),
+                              (TARGET, "password"), (TARGET, "bad\npassword"),
+                              (TARGET, "x" * 64)):
+            with self.subTest(key=key, password=password):
+                with self.assertRaises(RepeaterError):
+                    await self.link.verify_peer(key, password)
+        self.assertEqual(len(self.serial.commands), before)
+        self.assertIsNone(self.link._authenticated_key)
+
     async def test_known_repeater_masks_password_and_does_not_fall_back_after_denial(self):
         await self.open_known_repeater()
         self.serial.commands.clear()
