@@ -144,7 +144,7 @@ class StreamDecoder:
 class RepeaterTransport:
     def __init__(self, port, baud=115200, *, command_timeout=12,
                  remote_timeout=40, poll_seconds=.25, serial_factory=None,
-                 open_settle=.75, known_repeater: str | None = None):
+                 open_settle=.75, known_repeater: str | None = None, acl_only=False):
         self.port, self.baud = port, baud
         self.command_timeout, self.remote_timeout = command_timeout, remote_timeout
         self.poll_seconds, self.open_settle = poll_seconds, open_settle
@@ -157,6 +157,9 @@ class RepeaterTransport:
         self._failure = None
         self._source_key = None
         self._known_repeater = _key(known_repeater) if known_repeater is not None else None
+        if acl_only and self._known_repeater is None:
+            raise RepeaterError("ACL-only administration requires a complete known repeater key")
+        self._acl_only = acl_only
         self._authenticated_key = None
         self._last_peer_use = 0
         self._clock_checked = False
@@ -359,10 +362,14 @@ class RepeaterTransport:
         if self._known_repeater is not None:
             if key != self._known_repeater:
                 raise RepeaterError("The destination differs from the explicit known repeater key")
-            # The firmware sends a zero-hop repeater login, then requires admin
-            # permission and an authenticated proof of this complete public key.
-            await self._job(f"ota.peer login.repeater {key} {password}")
+            # ACL mode proves the existing identity without sending a password
+            # login. The operator must already have granted this source access.
+            if self._acl_only:
+                await self._job(f"ota.peer acl {key}")
+            else:
+                await self._job(f"ota.peer login.repeater {key} {password}")
             self._authenticated_key = key
+            self._last_peer_use = time.monotonic()
             return
         # Native login binds its packet layout to a freshly discovered board
         # role. A remembered/manual key must prove it is still directly heard.
@@ -371,6 +378,7 @@ class RepeaterTransport:
             raise RepeaterError("The selected destination did not answer fresh direct discovery")
         await self._job(f"ota.peer login {key} {password}")
         self._authenticated_key = key
+        self._last_peer_use = time.monotonic()
 
     async def remote_command(self, public_key, password, text):
         key = _key(public_key)
@@ -380,6 +388,8 @@ class RepeaterTransport:
         if (not isinstance(password, str) or len(password.encode("utf-8")) > 63
                 or any(ord(char) < 32 or ord(char) == 127 for char in password)):
             raise RepeaterError("Admin passwords must fit in 63 UTF-8 bytes without control characters")
+        if self._acl_only and password:
+            raise RepeaterError("ACL-only administration requires an empty password")
         async with self._admin_lock:
             await self._check_clock()
             if key != self._authenticated_key or time.monotonic() - self._last_peer_use > 240:

@@ -5,6 +5,7 @@ import asyncio
 from datetime import datetime, timezone
 import queue
 import struct
+import time
 import unittest
 from unittest import mock
 import zlib
@@ -182,7 +183,7 @@ class FakeSerial:
             self.start_job("discovery complete")
         elif command == "ota.peer peers 0":
             self.answer(f"OTApeer peer=0 key={self.peer_key} type={self.peer_type} rssi=-61 snr=3")
-        elif login_prefix:
+        elif login_prefix or command.startswith("ota.peer acl "):
             if self.login_error:
                 self.start_job(self.login_error, error=True)
             else:
@@ -242,14 +243,14 @@ class RepeaterTransportTest(unittest.IsolatedAsyncioTestCase):
         peers = await self.link.discover()
         self.assertEqual(peers, [{"public_key": TARGET, "type": 2, "rssi": -61, "snr": 3}])
 
-    async def open_known_repeater(self):
+    async def open_known_repeater(self, *, acl_only=False):
         supported, peer_count = self.serial.known_repeater_supported, self.serial.peer_count
         await self.link.close()
         self.serial = FakeSerial()
         self.serial.known_repeater_supported, self.serial.peer_count = supported, peer_count
         self.link = RepeaterTransport("fake", serial_factory=lambda **kwargs: self.serial,
             open_settle=0, command_timeout=.5, remote_timeout=.8, poll_seconds=.001,
-            known_repeater=TARGET)
+            known_repeater=TARGET, acl_only=acl_only)
         await self.link.open()
 
     async def test_known_repeater_authenticates_without_discovery_and_accepts_empty_password(self):
@@ -265,6 +266,41 @@ class RepeaterTransportTest(unittest.IsolatedAsyncioTestCase):
         with self.assertRaisesRegex(RepeaterError, "explicit known repeater key"):
             await self.link.remote_command("c" * 64, "", "ver")
         self.assertEqual(len(self.serial.commands), before)
+
+    async def test_acl_only_requires_known_key_and_rejects_password_before_transmitting(self):
+        with self.assertRaisesRegex(RepeaterError, "complete known repeater key"):
+            RepeaterTransport("fake", acl_only=True)
+        await self.open_known_repeater(acl_only=True)
+        before = len(self.serial.commands)
+        with self.assertRaisesRegex(RepeaterError, "empty password"):
+            await self.link.remote_command(TARGET, "password", "ver")
+        with self.assertRaisesRegex(RepeaterError, "explicit known repeater key"):
+            await self.link.remote_command("c" * 64, "", "ver")
+        self.assertEqual(len(self.serial.commands), before)
+        self.assertIsNone(self.link._authenticated_key)
+
+    async def test_acl_only_proves_key_without_login_or_fallback(self):
+        await self.open_known_repeater(acl_only=True)
+        self.serial.commands.clear()
+        self.assertEqual(await self.link.remote_command(TARGET, "", "ver"), "v1.18.0.1")
+        self.assertIn(f"ota.peer acl {TARGET}", self.serial.commands)
+        self.assertFalse(any(command.startswith(("ota.peer login", "ota.peer discover", "ota.peer peers"))
+                             for command in self.serial.commands))
+        self.serial.reject_login_once = True
+        self.assertEqual(await self.link.remote_command(TARGET, "", "ver"), "v1.18.0.1")
+        self.assertEqual(sum(command.startswith("ota.peer acl ") for command in self.serial.commands), 2)
+        self.assertFalse(any(command.startswith("ota.peer login") for command in self.serial.commands))
+        await self.link.reset_remote_session(TARGET)
+        self.serial.login_error = "ACL identity proof rejected"
+        before = len(self.serial.commands)
+        with self.assertRaisesRegex(RepeaterError, "ACL identity proof rejected"):
+            await self.link.remote_command(TARGET, "", "ota install")
+        attempted = self.serial.commands[before:]
+        self.assertEqual(sum(command.startswith("ota.peer acl ") for command in attempted), 1)
+        self.assertFalse(any(command.startswith(("ota.peer login", "ota.peer discover", "ota.peer cmd "))
+                             for command in attempted))
+        self.assertIsNone(self.link._authenticated_key)
+        self.assertEqual(self.link._last_peer_use, 0)
 
     async def test_known_repeater_masks_password_and_does_not_fall_back_after_denial(self):
         await self.open_known_repeater()
@@ -333,6 +369,57 @@ class RepeaterTransportTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(sum(text.startswith("ota.peer login") for text in self.serial.commands), 1)
         await self.link.remote_command(TARGET, "secret with spaces", "ver")
         self.assertEqual(sum(text.startswith("ota.peer login") for text in self.serial.commands), 1)
+
+    async def test_first_cli_reply_loss_reuses_recent_login_but_still_expires(self):
+        for mode in ("discovery", "known", "acl"):
+            with self.subTest(mode=mode):
+                if mode != "discovery":
+                    await self.open_known_repeater(acl_only=mode == "acl")
+                self.link._clock_checked = True
+                original_job = self.link._job
+                lost_reply = False
+
+                async def lose_first_cli_reply(command):
+                    nonlocal lost_reply
+                    result = await original_job(command)
+                    if command.startswith("ota.peer cmd ") and not lost_reply:
+                        lost_reply = True
+                        raise ota.TransmissionError("request timed out; result is unknown")
+                    return result
+
+                # Replace this module's clock, leaving asyncio's real clock alone.
+                with mock.patch("ota_wizard_repeater.time", wraps=time) as clock, \
+                     mock.patch.object(self.link, "_job", side_effect=lose_first_cli_reply):
+                    clock.monotonic.return_value = 1000
+                    with self.assertRaises(ota.TransmissionError):
+                        await self.link.remote_command(TARGET, "", "ver")
+                    self.assertEqual(self.link._authenticated_key, TARGET)
+                    self.assertEqual(self.link._last_peer_use, 1000)
+                    self.assertEqual(sum(text.startswith("ota.peer cmd ") for text in self.serial.commands), 1)
+
+                    clock.monotonic.return_value = 1001
+                    self.assertEqual(await self.link.remote_command(TARGET, "", "ver"), "v1.18.0.1")
+                    self.assertEqual(sum(text.startswith(("ota.peer login", "ota.peer acl ")) for text in self.serial.commands), 1)
+                    self.assertEqual(self.link._last_peer_use, 1001)
+
+                    clock.monotonic.return_value = 1242
+                    self.assertEqual(await self.link.remote_command(TARGET, "", "ver"), "v1.18.0.1")
+                    self.assertEqual(sum(text.startswith(("ota.peer login", "ota.peer acl ")) for text in self.serial.commands), 2)
+
+    async def test_rejected_login_does_not_start_session_age(self):
+        for mode in ("discovery", "known", "acl"):
+            with self.subTest(mode=mode):
+                if mode != "discovery":
+                    await self.open_known_repeater(acl_only=mode == "acl")
+                self.link._clock_checked = True
+                self.serial.login_error = "admin login rejected"
+                with mock.patch("ota_wizard_repeater.time", wraps=time) as clock:
+                    clock.monotonic.return_value = 1000
+                    with self.assertRaisesRegex(RepeaterError, "admin login rejected"):
+                        await self.link.remote_command(TARGET, "", "ver")
+                self.assertIsNone(self.link._authenticated_key)
+                self.assertEqual(self.link._last_peer_use, 0)
+                self.assertFalse(any(text.startswith("ota.peer cmd ") for text in self.serial.commands))
 
     async def test_room_discovery_preserves_role_and_unknown_key_cannot_login(self):
         self.serial.peer_type = 3

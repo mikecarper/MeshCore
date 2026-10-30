@@ -502,12 +502,90 @@ static void secondaryProofRetries(){
   const int before=radio.calls;c.service(radio,24104);assert(radio.calls==before);
   for(const auto* sent:radio.admitted)assert(sent->radio_profile==1&&sent->tx_radio==mesh::RADIO_TX_SECONDARY);
 }
+static void aclDirectSession(){
+  for(bool use_secondary:{false,true}){
+    Client c;mesh::Mesh radio;
+    if(use_secondary){secondary(radio);command(c,radio,"ota.peer radio radio2",1);}
+    assert(command(c,radio,"ota.peer acl "+key,100).find("state=pending")!=std::string::npos);
+    assert(radio.type==PAYLOAD_TYPE_PATH&&radio.calls==1); // no discovery or ANON login
+    assert(command(c,radio,"ota.peer status",101).find("session=0 busy=1")!=std::string::npos);
+    assert(command(c,radio,"ota.peer cmd "+key+" get tx",102)=="ERR peer request pending");
+    assert(radio.calls==1);
+    mesh::Packet unrelated;c.onSendComplete(&unrelated);c.service(radio,103);assert(radio.calls==1);
+    c.onSendComplete(radio.last_packet);assert(radio.calls==1);c.service(radio,104);
+    assert(radio.type==PAYLOAD_TYPE_TXT_MSG&&radio.calls==2);
+    assert(std::string(radio.sent.begin()+8,radio.sent.end())=="get public.key");
+    std::string prefix(radio.sent.begin()+5,radio.sent.begin()+8);
+    mesh::Packet packet;ingress(packet,radio);
+    auto correct=packet;
+    packet.radio_profile^=1;deliver(c,radio,packet,50000,prefix+"> "+key,105);
+    packet=correct;packet.radio_generation++;deliver(c,radio,packet,50000,prefix+"> "+key,106);
+    packet=correct;packet.path_len=1;deliver(c,radio,packet,50000,prefix+"> "+key,107);
+    packet=correct;packet.direct=false;deliver(c,radio,packet,50000,prefix+"> "+key,108);
+    packet=correct;deliver(c,radio,packet,50000,"ZZ|> "+key,109);
+    assert(command(c,radio,"ota.peer status",110).find("session=0 busy=1")!=std::string::npos);
+    deliver(c,radio,packet,50000,prefix+"> "+key,111);
+    assert(command(c,radio,"ota.peer status",112).find("session=1 busy=0")!=std::string::npos);
+    assert(command(c,radio,"ota.peer result",113).find("state=ok")!=std::string::npos);
+    command(c,radio,"ota.peer cmd "+key+" get tx",114);
+    prefix.assign(radio.sent.begin()+5,radio.sent.begin()+8);
+    assert(std::string(radio.sent.begin()+8,radio.sent.end())=="get tx");
+    deliver(c,radio,packet,50001,prefix+"9",115);
+    assert(command(c,radio,"ota.peer result",116).find("state=ok bytes=1 off=0 data=39")!=std::string::npos);
+    assert(radio.calls==3); // PATH, identity proof, requested command only
+  }
+  for(const auto& invalid:std::vector<std::string>{"",std::string(62,'1'),std::string(64,'G'),key+" ",key+" extra",key+"1"}){
+    Client c;mesh::Mesh radio;
+    assert(command(c,radio,"ota.peer acl "+invalid)=="ERR peer key or arguments");
+    assert(radio.calls==0);assertErased(c);
+  }
+  for(const auto& bad:std::vector<std::string>{std::string(64,'5'),std::string(64,'0')}){
+    Client c;mesh::Mesh radio;
+    assert(command(c,radio,"ota.peer acl "+bad).find("ERR peer ")==0);
+    assert(radio.calls==0);assertErased(c);
+  }
+  {
+    Client c;mesh::Mesh radio;radio.self_id.invalid_peer=true;
+    assert(command(c,radio,"ota.peer acl "+key)=="ERR peer invalid public key");
+    assert(radio.calls==0);assertErased(c);
+  }
+  for(bool allocation:{false,true}){
+    Client c;mesh::Mesh radio;radio.alloc_ok=allocation;radio.send_ok=false;
+    assert(command(c,radio,"ota.peer acl "+key,100).find("state=pending")!=std::string::npos);
+    assert(command(c,radio,"ota.peer result",101).find("state=error")!=std::string::npos);
+    assertErased(c);
+  }
+  for(unsigned failure:{0U,1U,2U,3U}){
+    Client c;mesh::Mesh radio;secondary(radio);command(c,radio,"ota.peer radio radio2",1);
+    command(c,radio,"ota.peer acl "+key,100);
+    auto* path=radio.last_packet;
+    if(failure==0){c.onSendFail(path);c.service(radio,101);}
+    else if(failure==1){++radio.profile_radio.config.generation[1];c.service(radio,101);}
+    else if(failure==2){radio.profile_radio.config.secondary.mode=mesh::RadioProfileMode::Rx;c.service(radio,101);}
+    else {command(c,radio,"ota.peer close",101);c.onSendComplete(path);c.service(radio,102);}
+    assert(radio.calls==1);assertErased(c);
+  }
+  {
+    Client c;mesh::Mesh radio;command(c,radio,"ota.peer acl "+key,100);
+    c.onSendComplete(radio.last_packet);c.service(radio,101);
+    mesh::Packet packet;ingress(packet,radio);std::string prefix(radio.sent.begin()+5,radio.sent.begin()+8);
+    deliver(c,radio,packet,50000,prefix+"> "+std::string(64,'2'),102);
+    assert(command(c,radio,"ota.peer result",103).find("state=error")!=std::string::npos);assertErased(c);
+  }
+  {
+    Client c;mesh::Mesh radio;command(c,radio,"ota.peer acl "+key,100);
+    c.onSendComplete(radio.last_packet);c.service(radio,101);
+    c.tick(30100);assertErased(c); // no ACL grant/no proof response cannot authenticate
+    assert(command(c,radio,"ota.peer cmd "+key+" get tx",30101)=="ERR peer login required");
+  }
+}
 int main(){
   configurableTimeout();
   ownedPathCompletion();
   radioSelection();
   radioInvalidation();
   secondaryProofRetries();
+  aclDirectSession();
   UsbRole role;char gate_command[]="ota.peer status",gate_reply[160];
   role.dispatch(0,nullptr,gate_command,gate_reply,false);assert(!strcmp(gate_reply,"ERR ota.peer requires physical USB"));
   role.dispatch(1,nullptr,gate_command,gate_reply,true);assert(!strcmp(gate_reply,"ERR ota.peer requires physical USB"));

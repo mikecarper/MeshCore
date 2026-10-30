@@ -30,6 +30,12 @@ raises the source's request timeout from 30 to 180 seconds. This RAM-only settin
 survives closing the admin session and resets on reboot; keep the controller's
 timeout longer than the source's.
 
+If the destination already grants this repeater's public key the required ACL
+role, `ota.peer acl PUBLIC_KEY` opens a USB admin session without a password
+login. It sends an authenticated direct return path and verifies the
+destination's full public key before accepting `ota.peer cmd PUBLIC_KEY get tx`.
+The destination still enforces its ACL permissions for every command.
+
 For manual USB administration on a configured secondary MeshCore profile, use
 `ota.peer radio radio2` before discovery or login; `ota.peer radio radio` selects
 the primary profile. `ota.peer radio` reports the choice. The secondary profile

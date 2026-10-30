@@ -310,6 +310,28 @@ public:
       queued(reply, capacity);
       return;
     }
+    // Explicitly use an existing target ACL grant. There is no anonymous
+    // password login: the authenticated empty PATH establishes the return
+    // route, then the ordinary full-key proof must succeed before commands.
+    if (!strncmp(args, "acl ", 4)) {
+      Identity peer; const char* rest;
+      if (!parseKey(args + 4, peer, rest) || *rest) { strcpy(reply, "ERR peer key or arguments"); return; }
+      if (peer.matches(mesh.self_id)) { strcpy(reply, "ERR peer cannot be this repeater"); return; }
+      if (!radioEligible(radio_profile_)) { strcpy(reply, "ERR peer radio requires enabled MeshCore RXTX"); return; }
+      clearSession(); target_ = peer;
+      snapshotRadio();
+      mesh.self_id.calcSharedSecret(secret_, target_);
+      uint8_t nonzero = 0;
+      for (size_t i = 0; i < sizeof(secret_); ++i) nonzero |= secret_[i];
+      if (!nonzero) { clearSession(); strcpy(reply, "ERR peer invalid public key"); return; }
+      session_ = true; session_until_ = now + SESSION_MS;
+      mesh.getRNG()->random(&correlation_, 1);
+      proof_attempts_ = 0;
+      begin(ReturnPath, now);
+      if (!queueReturnPath(mesh)) { clearSession(); finish("login return path queue failed", true); }
+      queued(reply, capacity);
+      return;
+    }
     // The explicit repeater form lets an operator use a complete known key
     // when firmware does not implement discovery. It only chooses the login
     // layout; ECDH, admin permission and the full-key proof still authenticate
@@ -361,7 +383,7 @@ public:
       queued(reply, capacity);
       return;
     }
-    strcpy(reply, "ERR use ota.peer status|capabilities|radio [radio|radio2]|timeout [s]|discover|peers [n]|login[.repeater] KEY PASSWORD|cmd KEY COMMAND|result [off]|close");
+    snprintf(reply, capacity, "ERR use ota.peer status|capabilities|radio [radio|radio2]|timeout [s]|acl KEY|discover|peers [n]|login[.repeater] KEY PASS|cmd KEY COMMAND|result [off]|close");
   }
 
   void onDiscovery(const Packet* packet, uint32_t now) {
