@@ -159,6 +159,17 @@ class WizardTests(unittest.TestCase):
         module.RepeaterTransport = mock.Mock(return_value=link)
         return mock.patch.dict(sys.modules, {'ota_wizard_repeater': module})
 
+    def fake_routed_session(self, session):
+        module = ModuleType('ota_wizard_routed')
+        module.EspNowRelaySession = mock.Mock(return_value=session)
+        return mock.patch.dict(sys.modules, {'ota_wizard_routed': module})
+
+    def fake_multihop(self, link, session):
+        module = ModuleType('ota_wizard_multihop')
+        module.RoutedRepeaterTransport = mock.Mock(return_value=link)
+        module.LoRaRelaySession = mock.Mock(return_value=session)
+        return mock.patch.dict(sys.modules, {'ota_wizard_multihop': module})
+
     def test_check_does_not_prepare_download_or_install_and_saves_no_password(self):
         link = self.link()
         session = SimpleNamespace(inspect=mock.AsyncMock(return_value=destination()),
@@ -309,6 +320,154 @@ class WizardTests(unittest.TestCase):
         with self.fake_transport(link), self.assertRaisesRegex(ota.OtaError, 'recovery first'):
             asyncio.run(wizard.run(self.run_options('--check')))
         link.open.assert_not_awaited()
+
+    def test_lora_relay_check_uses_ordered_route_and_acl_without_password_or_discovery(self):
+        link, session = self.link(), self.inspection_session()
+        relays = ['33'*32, '44'*32]
+        with self.fake_multihop(link, session), \
+                mock.patch.object(wizard, 'DirectSession', side_effect=AssertionError('direct session')), \
+                mock.patch.dict(os.environ, {'MESHCORE_ADMIN_PASSWORD': 'ignored\r\n'}), \
+                mock.patch.object(wizard.getpass, 'getpass', side_effect=AssertionError('password prompt')), \
+                redirect_stdout(io.StringIO()) as output:
+            self.assertEqual(asyncio.run(wizard.run(self.run_options('--check', '--link', 'lora-relay',
+                '--relay', relays[0].upper(), '--relay', relays[1]))), 0)
+            module = sys.modules['ota_wizard_multihop']
+            module.RoutedRepeaterTransport.assert_called_once_with('/dev/ttyUSB0', known_repeater=KEY,
+                relay_keys=relays, prefix_bytes=3, acl_only=True, recovering=False, expected_source_key=None)
+            call = module.LoRaRelaySession.call_args
+            self.assertEqual(call.args[2], '')
+            self.assertEqual(call.kwargs['relay_keys'], relays)
+            self.assertEqual(call.kwargs['ota_hops'], 2)
+            self.assertEqual(call.kwargs['preamble'], 128)
+        link.discover.assert_not_awaited()
+        session.snapshot.assert_not_awaited()
+        self.assertNotIn('ESP-NOW', output.getvalue())
+
+    def test_lora_relay_rejects_missing_duplicate_destination_or_incompatible_options_before_usb(self):
+        relay = '33'*32
+        for flags in ([], ['--relay', relay, '--relay', relay], ['--relay', KEY],
+                      ['--relay', relay, '--mode', 'companion'], ['--relay', relay, '--source-radio', 'radio2'],
+                      ['--relay', relay, '--auth', 'password'], ['--relay', relay, '--ota-hops', '0'],
+                      ['--relay', relay, '--ota-hops', '9'], sum((['--relay', f'{i:064x}'] for i in range(9)), [])):
+            link, session = self.link(), self.inspection_session()
+            with self.subTest(flags=flags), self.fake_multihop(link, session), self.assertRaises(ota.OtaError):
+                asyncio.run(wizard.run(self.run_options('--link', 'lora-relay', *flags)))
+            link.open.assert_not_awaited()
+
+    def test_lora_relay_recovery_uses_saved_relays_and_managed_settings(self):
+        relays = ['33'*32, '44'*32]
+        journal = self.cache/'sessions'/(KEY+'.json'); journal.parent.mkdir()
+        saved = {label: {'radio': '909.5,500,5,5', 'rxps': 'off',
+                        'ota': 'autofetch=off autoinstall=off hops=0'}
+                 for label in ('source', 'target', 'relay_0', 'relay_1')}
+        saved['relay_0']['repeat'], saved['relay_1']['repeat'] = 'on', 'off'
+        record = {'format': 1, 'phase': 'downloading', 'target_key': KEY, 'source_key': SOURCE,
+                  'source_mode': 'repeater', 'source_radio': 'radio', 'auth': 'acl',
+                  'session_kind': 'lora-relay', 'relay_keys': relays, 'prefix_bytes': 2,
+                  'ota_hops': 3, 'preamble': 160, 'transfer_radio': [909.5,500,5,5], 'settings': saved}
+        journal.write_text(json.dumps(record))
+        link, session = self.link(), self.inspection_session()
+        with self.fake_multihop(link, session), \
+                mock.patch.object(wizard, 'DirectSession', side_effect=AssertionError('direct recovery')), \
+                redirect_stdout(io.StringIO()):
+            self.assertEqual(asyncio.run(wizard.run(self.run_options('--recover', '--auth', 'password',
+                '--relay', '55'*32, '--ota-hops', '1'))), 0)
+            module = sys.modules['ota_wizard_multihop']
+            self.assertEqual(module.RoutedRepeaterTransport.call_args.kwargs['relay_keys'], relays)
+            self.assertEqual(module.RoutedRepeaterTransport.call_args.kwargs['prefix_bytes'], 2)
+            self.assertTrue(module.RoutedRepeaterTransport.call_args.kwargs['recovering'])
+            self.assertEqual(module.RoutedRepeaterTransport.call_args.kwargs['expected_source_key'], SOURCE)
+            for call in module.LoRaRelaySession.call_args_list:
+                self.assertEqual(call.kwargs['relay_keys'], relays)
+                self.assertEqual(call.kwargs['ota_hops'], 3)
+                self.assertEqual(call.kwargs['preamble'], 160)
+                self.assertEqual(call.kwargs['transfer_radio'], (909.5,500,5,5))
+        self.assertEqual(session.saved, saved)
+        self.assertEqual(session._state, record)
+        session.inspect.assert_not_awaited()
+
+    def test_lora_relay_recovery_rejects_missing_relay_settings(self):
+        journal = self.cache/'sessions'/(KEY+'.json'); journal.parent.mkdir()
+        saved = {label: {'radio': '909.5,500,5,5', 'rxps': 'off', 'ota': 'autofetch=off autoinstall=off'}
+                 for label in ('source', 'target')}
+        journal.write_text(json.dumps({'format':1,'phase':'armed','target_key':KEY,'source_key':SOURCE,
+            'auth':'acl','source_mode':'repeater','session_kind':'lora-relay','relay_keys':['33'*32],
+            'settings':saved}))
+        link, session = self.link(), self.inspection_session()
+        with self.fake_multihop(link, session), redirect_stdout(io.StringIO()), \
+                self.assertRaisesRegex(ota.OtaError, 'incomplete saved settings'):
+            asyncio.run(wizard.run(self.run_options('--recover')))
+        session.cleanup.assert_not_awaited()
+        link.close.assert_awaited_once()
+
+    def test_lora_relay_ready_plan_shows_shared_channel_ordered_route_and_restoration(self):
+        link, session = self.link(), self.inspection_session()
+        session.transfer_radio = (909.5,500,5,5)
+        session.install = mock.AsyncMock(return_value=destination())
+        package = signed_package()
+        with self.fake_multihop(link, session), \
+                mock.patch.object(wizard, 'GitHubCatalog'), \
+                mock.patch.object(wizard, 'choose_firmware', new_callable=mock.AsyncMock,
+                                  return_value=(self.cache/'local.mota','local')), \
+                mock.patch.object(wizard, 'prepare_selected_firmware', new_callable=mock.AsyncMock,
+                                  return_value=(image(),package)), redirect_stdout(io.StringIO()) as output:
+            self.assertEqual(asyncio.run(wizard.run(self.run_options('--link','lora-relay',
+                '--relay','33'*32,'--relay','44'*32,'--no-bootloader'))),0)
+        text = output.getvalue()
+        self.assertIn('LoRa control and firmware: source → 333333333333 → 444444444444 → destination',text)
+        self.assertIn('Shared channel; hop limit 2; preamble 128 symbols.',text)
+        self.assertIn('Original endpoint and relay settings will be restored.',text)
+        self.assertNotIn('Direct link only',text)
+        self.assertNotIn('ESP-NOW',text)
+        session.install.assert_awaited_once_with(package,destination())
+
+    def test_espnow_relay_check_selects_relay_session_and_acl_without_mutations(self):
+        link, session = self.link(), self.inspection_session()
+        with self.fake_transport(link), self.fake_routed_session(session), \
+                mock.patch.object(wizard, 'DirectSession', side_effect=AssertionError('direct session')), \
+                mock.patch.dict(os.environ, {'MESHCORE_ADMIN_PASSWORD': 'ignored\r\n'}), \
+                redirect_stdout(io.StringIO()):
+            self.assertEqual(asyncio.run(wizard.run(self.run_options('--check', '--link', 'espnow-relay',
+                '--ota-hops', '2', '--transfer-radio', '908.5,500,5,5', '--transfer-preamble', '160'))), 0)
+            self.assertTrue(sys.modules['ota_wizard_repeater'].RepeaterTransport.call_args.kwargs['acl_only'])
+            call=sys.modules['ota_wizard_routed'].EspNowRelaySession.call_args
+            self.assertEqual(call.args[2], '')
+            self.assertEqual(call.kwargs['ota_hops'], 2)
+            self.assertEqual(call.kwargs['preamble'], 160)
+            self.assertEqual(call.kwargs['target_transfer_radio'], (908.5, 500, 5, 5))
+        session.snapshot.assert_not_awaited()
+        session.inspect.assert_awaited_once()
+        link.discover.assert_not_awaited()
+
+    def test_espnow_relay_rejects_incompatible_options_before_opening_source(self):
+        for flags in (['--mode', 'companion'], ['--source-radio', 'radio2'],
+                      ['--auth', 'password'], ['--ota-hops', '0'], ['--ota-hops', '9']):
+            link=self.link()
+            with self.subTest(flags=flags), self.fake_transport(link), self.assertRaises(ota.OtaError):
+                asyncio.run(wizard.run(self.run_options('--link', 'espnow-relay', *flags)))
+            link.open.assert_not_awaited()
+
+    def test_espnow_relay_recovery_uses_saved_kind_hops_and_both_channels(self):
+        journal=self.cache/'sessions'/(KEY+'.json');journal.parent.mkdir()
+        settings={label:{'radio':radio,'rxps':'off','ota':'autofetch=off autoinstall=off hops=1'}
+                  for label,radio in (('source','909.5,500,5,5'),('target','907.5,500,5,5'))}
+        record={'format':1,'phase':'downloading','target_key':KEY,'source_key':SOURCE,
+                'source_mode':'repeater','source_radio':'radio','auth':'acl','session_kind':'espnow-relay',
+                'source_transfer_radio':[909.5,500,5,5],'target_transfer_radio':[908.5,500,5,5],
+                'ota_hops':2,'preamble':160,'settings':settings}
+        journal.write_text(json.dumps(record))
+        link,session=self.link(),self.inspection_session()
+        with self.fake_transport(link), self.fake_routed_session(session), \
+                mock.patch.object(wizard,'DirectSession',side_effect=AssertionError('wrong recovery type')), \
+                redirect_stdout(io.StringIO()):
+            self.assertEqual(asyncio.run(wizard.run(self.run_options('--recover'))),0)
+            for call in sys.modules['ota_wizard_routed'].EspNowRelaySession.call_args_list:
+                self.assertEqual(call.kwargs['ota_hops'],2)
+                self.assertEqual(call.kwargs['preamble'],160)
+                self.assertEqual(call.kwargs['source_transfer_radio'],[909.5,500,5,5])
+                self.assertEqual(call.kwargs['target_transfer_radio'],(908.5,500,5,5))
+        self.assertEqual(session._state,record)
+        session.inspect.assert_not_awaited()
 
     def test_cleanup_exception_always_closes_usb_and_preserves_initial_error(self):
         for inspect_error in (None, ota.OtaError('permission denied')):

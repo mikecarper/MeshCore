@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Interactive, direct LoRa updates through one USB repeater or Full Companion."""
+"""Interactive LoRa updates through a USB repeater or Full Companion."""
 from __future__ import annotations
 
 import argparse
@@ -67,9 +67,27 @@ def radio_text(value) -> str:
     return ",".join(format(part, "g") for part in value)
 
 
+def relay_key(value: str) -> str:
+    if not isinstance(value, str) or not re.fullmatch(r"[0-9A-Fa-f]{64}", value):
+        raise argparse.ArgumentTypeError("use the complete 64-character relay public key")
+    return value.lower()
+
+
+def relay_keys(values) -> list[str]:
+    if not isinstance(values, (list, tuple)) or not 1 <= len(values) <= 8:
+        raise ota.OtaError("LoRa relays needs 1..8 relay keys, in order from source to destination.")
+    try:
+        result = [relay_key(value) for value in values]
+    except argparse.ArgumentTypeError as exc:
+        raise ota.OtaError(str(exc)) from exc
+    if len(set(result)) != len(result):
+        raise ota.OtaError("Each relay may appear only once in the route.")
+    return result
+
+
 def arguments(argv=None):
     parser = argparse.ArgumentParser(description=__doc__,
-                                     epilog="No passwords are saved. All updater transmissions use a direct, zero-hop route.")
+                                     epilog="No passwords are saved. Direct zero-hop updates are the default.")
     parser.add_argument("--port", help="USB port; selected automatically when only one radio is connected")
     parser.add_argument("--mode", choices=("auto", "repeater", "companion"), default="auto")
     parser.add_argument("--target", help="complete destination public key; skips discovery with a USB repeater")
@@ -81,6 +99,15 @@ def arguments(argv=None):
                         help="USB repeater profile for the transfer; radio2 leaves its main channel unchanged")
     parser.add_argument("--transfer-radio", type=transfer_radio, metavar="FREQ,BW,SF,CR",
                         help="temporary transfer channel; default is the destination's current channel")
+    # The sideband lab mode remains accepted for saved hardware-test sessions.
+    parser.add_argument("--link", choices=("direct", "lora-relay", "espnow-relay"), default="direct",
+                        metavar="{direct,lora-relay}", help="direct LoRa or an ordered LoRa relay route")
+    parser.add_argument("--relay", type=relay_key, action="append", default=[], metavar="PUBLIC_KEY",
+                        help="relay's complete public key, repeated in order from source to destination (1..8)")
+    parser.add_argument("--ota-hops", type=int, default=1,
+                        help="LoRa relay hop limit (1..8); raised to the relay count when needed")
+    parser.add_argument("--transfer-preamble", type=int, default=128,
+                        help="temporary preamble for LoRa relay mode; default 128 symbols")
     parser.add_argument("--firmware", type=Path, help="custom application DFU ZIP, BIN, HEX, full mOTA, or prepared OTA bundle")
     parser.add_argument("--base", type=Path, help="original running firmware, checked against the destination hash")
     parser.add_argument("--full", action="store_true", help="use a full update when the destination supports it")
@@ -144,6 +171,16 @@ def load_menu_settings(args) -> None:
         args.auth = values["auth"]
     if values.get("source_radio") in ("radio", "radio2"):
         args.source_radio = values["source_radio"]
+    if values.get("link") in ("direct", "lora-relay"):
+        args.link = values["link"]
+    if values.get("relay_keys"):
+        try:
+            args.relay = relay_keys(values["relay_keys"])
+        except ota.OtaError:
+            pass
+    for field, low, high in (("ota_hops", 1, 8), ("transfer_preamble", 16, 65535)):
+        if type(values.get(field)) is int and low <= values[field] <= high:
+            setattr(args, field, values[field])
     if isinstance(values.get("transfer_radio"), str):
         try:
             args.transfer_radio = transfer_radio(values["transfer_radio"])
@@ -174,6 +211,9 @@ def settings_menu(args) -> None:
             "Authentication: " + args.auth.capitalize(),
             "Source transfer radio: " + args.source_radio,
             "Transfer channel: " + (radio_text(args.transfer_radio) if args.transfer_radio else "Current channel"),
+            "Link: " + ("LoRa relays" if args.link == "lora-relay" else "Direct"),
+            "LoRa relay hop limit: " + str(args.ota_hops),
+            "Relay keys (source to destination): " + (", ".join(key[:12].upper() for key in args.relay) or "Not set"),
             "Back",
         ]
         choice = select("Setting", options, len(options)-1)
@@ -207,10 +247,29 @@ def settings_menu(args) -> None:
                 args.transfer_radio = transfer_radio(value) if value else None
             except argparse.ArgumentTypeError as exc:
                 print(str(exc))
+        elif choice == 11:
+            selected = select("Link", ["Direct", "LoRa relays"], int(args.link == "lora-relay"))
+            args.link = ("direct", "lora-relay")[selected]
+            if selected:
+                args.mode, args.auth, args.source_radio = "repeater", "acl", "radio"
+        elif choice == 12:
+            value = ask("LoRa relay hop limit (1..8)", str(args.ota_hops))
+            if value.isdigit() and 1 <= int(value) <= 8:
+                args.ota_hops = int(value)
+            else:
+                print("Enter a hop limit from 1 to 8.")
+        elif choice == 13:
+            value = ask("Complete relay keys, comma-separated from source to destination (blank to clear)")
+            try:
+                args.relay = relay_keys([part.strip() for part in value.split(",")]) if value else []
+                args.ota_hops = max(args.ota_hops, len(args.relay))
+            except ota.OtaError as exc:
+                print(str(exc))
     save_preferences(menu_settings_path(), **{
         field: str(getattr(args, field)) if field in ("cache", "source_tree") else getattr(args, field)
-        for field in ("full", "no_bootloader", "mode", "port", "motatool", "source_tree", "version", "cache", "auth", "source_radio")},
-        transfer_radio=radio_text(args.transfer_radio) if args.transfer_radio else None)
+        for field in ("full", "no_bootloader", "mode", "port", "motatool", "source_tree", "version", "cache", "auth", "source_radio", "link", "ota_hops", "transfer_preamble")},
+        transfer_radio=radio_text(args.transfer_radio) if args.transfer_radio else None,
+        relay_keys=args.relay)
 
 
 def choose_request(args):
@@ -634,14 +693,18 @@ def choose_known_target(args, mode: str, remembered: dict) -> str | None:
         last = remembered.get("target")
         valid_last = isinstance(last, str) and re.fullmatch(r"[0-9A-Fa-f]{64}", last)
         labels = ([f"Use previous destination — {last[:12].upper()}"] if valid_last else [])
-        labels += ["Enter a destination public key", "Discover nearby repeaters and rooms", "Back"]
-        selected = select("Destination", labels, 0 if valid_last or args.auth == "acl" else 1)
+        routed = args.link == "lora-relay"
+        labels += ["Enter a destination public key"]
+        if not routed:
+            labels += ["Discover nearby repeaters and rooms"]
+        labels += ["Back"]
+        selected = select("Destination", labels, 0 if valid_last or args.auth == "acl" or args.link != "direct" else 1)
         if valid_last and selected == 0:
             return last.lower()
         selected -= int(bool(valid_last))
-        if selected == 1:
+        if selected == 1 and not routed:
             return None
-        if selected == 2:
+        if selected == (1 if routed else 2):
             raise MenuCancelled
         key = ask("Complete destination public key")
     else:
@@ -698,28 +761,64 @@ async def run(args) -> int:
     source_radio = args.source_radio
     transfer = args.transfer_radio
     method = args.auth
+    link_kind, ota_hops, preamble = args.link, args.ota_hops, args.transfer_preamble
+    relays, prefix_bytes = args.relay, 3
+    source_transfer = None
     if recovering:
         saved_mode = previous.get("source_mode", mode)
         if saved_mode not in ("repeater", "companion") or saved_mode != mode:
             raise ota.OtaError("Recovery requires the original USB source type.")
         method = previous.get("auth", "password")
         source_radio = previous.get("source_radio", "radio")
+        link_kind = previous.get("session_kind", "direct")
+        ota_hops = previous.get("ota_hops", 1)
+        preamble = previous.get("preamble", 128)
+        relays = previous.get("relay_keys", [])
+        prefix_bytes = previous.get("prefix_bytes", 3)
+        source_transfer = previous.get("source_transfer_radio")
         if method not in ("acl", "password") or source_radio not in ("radio", "radio2"):
             raise ota.OtaError("The recovery record has invalid connection settings.")
-        recorded_transfer = previous.get("transfer_radio")
+        recorded_transfer = previous.get("target_transfer_radio", previous.get("transfer_radio"))
         transfer = None
         if recorded_transfer is not None:
             try:
                 transfer = transfer_radio(radio_text(recorded_transfer))
             except (argparse.ArgumentTypeError, TypeError, ValueError) as exc:
                 raise ota.OtaError("The recovery record has an invalid transfer channel.") from exc
+    if link_kind not in ("direct", "lora-relay", "espnow-relay"):
+        raise ota.OtaError("The recovery record has an unsupported link type.")
+    if type(ota_hops) is not int or not 1 <= ota_hops <= 8 or type(preamble) is not int or not 16 <= preamble <= 65535:
+        raise ota.OtaError("Relay mode needs a hop limit of 1..8 and a preamble of 16..65535.")
     known_repeater = key if mode == "repeater" else None
+    if link_kind == "lora-relay":
+        relays = relay_keys(relays)
+        ota_hops = max(ota_hops, len(relays))
+        if type(prefix_bytes) is not int or prefix_bytes not in (1, 2, 3):
+            raise ota.OtaError("The recovery record has an invalid relay prefix width.")
+        if mode != "repeater" or known_repeater is None or source_radio != "radio":
+            raise ota.OtaError("LoRa relays requires a USB repeater, a known destination key, and the source main radio.")
+        if key.lower() in relays:
+            raise ota.OtaError("The destination cannot also be a relay.")
+        if method == "password":
+            raise ota.OtaError("LoRa relays requires saved admin ACL grants on the destination and each relay (--auth acl).")
+        method = "acl"
+    if link_kind == "espnow-relay":
+        if mode != "repeater" or known_repeater is None or source_radio != "radio":
+            raise ota.OtaError("ESP-NOW relay mode requires a USB repeater, a known destination key, and the source main radio.")
+        if method == "password":
+            raise ota.OtaError("ESP-NOW relay mode requires the source's saved admin ACL grant (--auth acl).")
+        method = "acl"
     method = authentication(method, mode, known_repeater)
     if source_radio == "radio2" and mode != "repeater":
         raise ota.OtaError("Radio2 transfers require a USB repeater source.")
     if mode == "companion":
         from ota_wizard_companion import CompanionTransport
         link = CompanionTransport(port)
+    elif link_kind == "lora-relay":
+        from ota_wizard_multihop import RoutedRepeaterTransport
+        link = RoutedRepeaterTransport(port, known_repeater=known_repeater, relay_keys=relays,
+                                      prefix_bytes=prefix_bytes, acl_only=True, recovering=recovering,
+                                      expected_source_key=previous.get("source_key") if recovering else None)
     else:
         from ota_wizard_repeater import RepeaterTransport
         link = (RepeaterTransport(port, known_repeater=known_repeater, acl_only=method == "acl")
@@ -745,7 +844,10 @@ async def run(args) -> int:
                     f"{'Room' if item.get('type') == 3 else 'Repeater'} — {item['public_key'][:12].upper()}"
                     for item in nearby], default_target)
                 key = nearby[selected]["public_key"]
-        print(f"Destination: {key[:12].upper()} (zero-hop direct)")
+        route = ("zero-hop direct" if link_kind == "direct" else
+                 f"LoRa through {len(relays)} relay(s); hop limit {ota_hops}" if link_kind == "lora-relay" else
+                 f"ESP-NOW lab control; LoRa hop limit {ota_hops}")
+        print(f"Destination: {key[:12].upper()} ({route})")
         if previous is None:
             previous = session_record(args.cache, key)
             if unfinished(previous):
@@ -762,15 +864,31 @@ async def run(args) -> int:
                     or not isinstance(link.source_key, str) or source_key.lower() != link.source_key.lower()):
                 raise ota.OtaError("The unfinished recovery record belongs to a different source or destination.")
             saved = previous.get("settings")
-            if not isinstance(saved, dict) or set(saved) != {"source", "target"}:
+            expected_settings = {"source", "target"}
+            if link_kind == "lora-relay":
+                expected_settings.update(f"relay_{index}" for index in range(len(relays)))
+            if not isinstance(saved, dict) or set(saved) != expected_settings:
                 raise ota.OtaError("The interrupted update record has incomplete saved settings.")
             for settings in saved.values():
                 if (not isinstance(settings, dict) or not all(
                         isinstance(settings.get(field), str) and len(settings[field]) <= 2048
                         for field in ("radio", "rxps", "ota"))):
                     raise ota.OtaError("The interrupted update record has invalid saved settings.")
+            if link_kind == "lora-relay" and any(saved[f"relay_{index}"].get("repeat") not in ("on", "off")
+                                                   for index in range(len(relays))):
+                raise ota.OtaError("The interrupted update record has invalid relay repeating settings.")
 
         def new_session():
+            if link_kind == "lora-relay":
+                from ota_wizard_multihop import LoRaRelaySession
+                return LoRaRelaySession(link, key, password, journal, relay_keys=relays,
+                    ota_hops=ota_hops, preamble=preamble, transfer_radio=transfer,
+                    progress=user_progress)
+            if link_kind == "espnow-relay":
+                from ota_wizard_routed import EspNowRelaySession
+                return EspNowRelaySession(link, key, password, journal, progress=user_progress,
+                    ota_hops=ota_hops, preamble=preamble, source_transfer_radio=source_transfer,
+                    target_transfer_radio=transfer)
             return DirectSession(link, key, password, journal, progress=user_progress,
                                  source_radio=source_radio, transfer_radio=transfer)
         session = new_session()
@@ -793,7 +911,7 @@ async def run(args) -> int:
             **remembered, "port": port, "mode": mode, "target": key.lower(), "hw": destination.hw_id})
         print(f"{destination.hw_id}: {destination.version_text}")
         if args.check:
-            print("Direct authentication and OTA capability checks passed. No update was installed.")
+            print("Authentication and OTA capability checks passed. No update was installed.")
             print(f"Preparation request: {request_file}")
             return 0
         await session.snapshot()
@@ -810,8 +928,18 @@ async def run(args) -> int:
         print("\nReady to update:")
         print(f"  Destination: {destination.hw_id} — {key[:12].upper()}")
         channel = getattr(session, "transfer_radio", None)
-        if channel:
-            print(f"  Transfer: {source_radio}, {radio_text(channel)}")
+        if link_kind == "espnow-relay":
+            for title, field in (("Source channel", "source_transfer_radio"), ("Destination transfer channel", "target_transfer_radio")):
+                profile = getattr(session, field, None)
+                if profile:
+                    print(f"  {title}: {radio_text(profile)}")
+        elif channel:
+            print(f"  Transfer channel: {radio_text(channel)}")
+        if link_kind == "lora-relay":
+            print("  LoRa control and firmware: source → " + " → ".join(value[:12].upper() for value in relays) + " → destination")
+            print(f"  Shared channel; hop limit {ota_hops}; preamble {preamble} symbols.")
+        if link_kind == "espnow-relay":
+            print(f"  ESP-NOW control; LoRa data hop limit {ota_hops}. Keep the configured relay active.")
         if bootloader:
             print(f"  Bootloader: {bootloader.info.version}, signed exact-board image")
         if application:
@@ -819,7 +947,12 @@ async def run(args) -> int:
         if bootloader or application and application.signer:
             signer = bootloader.signer if bootloader else application.signer
             print(f"  Trusted update signer: {signer[:16]}")
-        print("  Direct link only. Original radio and power-saving settings will be restored.")
+        if link_kind == "lora-relay":
+            print("  Original endpoint and relay settings will be restored.")
+        elif link_kind == "espnow-relay":
+            print("  Original endpoint settings will be restored. The preconfigured relay remains under your control.")
+        else:
+            print("  Direct link only. Original radio and power-saving settings will be restored.")
         if not args.yes and ask("Start", "Y").lower() not in ("y", "yes"):
             print("Update cancelled.")
             return 0
@@ -867,12 +1000,18 @@ def prepare_without_radios(args) -> int:
 def menu_runtime_arguments(args, action: str) -> list[str]:
     result = ["--menu-action", action, "--cache", str(args.cache)]
     for field, default in (("port", None), ("mode", "auto"), ("target", None),
-                           ("target_type", None), ("auth", "auto"), ("source_radio", "radio")):
+                           ("target_type", None), ("auth", "auto"), ("source_radio", "radio"), ("link", "direct")):
         value = getattr(args, field)
         if value is not None and value != default:
             result += ["--" + field.replace("_", "-"), value]
     if args.transfer_radio:
         result += ["--transfer-radio", radio_text(args.transfer_radio)]
+    if args.ota_hops != 1:
+        result += ["--ota-hops", str(args.ota_hops)]
+    if args.transfer_preamble != 128:
+        result += ["--transfer-preamble", str(args.transfer_preamble)]
+    for key in args.relay:
+        result += ["--relay", key]
     for field in ("full", "no_bootloader"):
         if getattr(args, field):
             result.append("--" + field.replace("_", "-"))
