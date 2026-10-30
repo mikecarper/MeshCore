@@ -1,0 +1,100 @@
+{
+  "schema": 1,
+  "status": "completed_with_capture_limits",
+  "test_dates": [
+    "2026-10-29",
+    "2026-10-30"
+  ],
+  "isolated_transfer": {
+    "blocks_complete": 104,
+    "blocks_total": 104,
+    "container_bytes": 213348,
+    "matching_relay_DATA_payloads": 1339,
+    "installation_attempted": false,
+    "controller_outcome": "FAIL: optional ESP32 staging diagnostic unavailable after completed transfer"
+  },
+  "fresh_lora_menu": {
+    "manifest_id": "434E4672",
+    "container_bytes": 377,
+    "payload_bytes": 163,
+    "image_bytes": 2142104,
+    "expected_body": "356D1F43B1B5E15A",
+    "version": "1.18.0.4",
+    "install_verified": true,
+    "phase": "finished",
+    "all_leases_off": true,
+    "espnow_off_all_participants": true,
+    "control_route_relays": 1,
+    "DATA_compressed_bytes": 156,
+    "DATA_source_path0_observed": true,
+    "matching_DATA_relay_copy_observed": false,
+    "limits": [
+      "Co-located same-channel nodes can receive the source directly; this run does not establish that DATA delivery depended on the relay.",
+      "Only one physical relay was tested. Isolated relay DATA evidence comes from the separate two-frequency fixture."
+    ]
+  },
+  "final_firmware": {
+    "Heltec V4.3": {
+      "role": "source",
+      "result": "PASS",
+      "firmware_commit": "925f37a44",
+      "application_sha256": "ab24f35b13598a1d41fd525b1459b63b89bf87828ce1ab570b578ad1b82babbf",
+      "body": "1a277c6c7dabedfe",
+      "version": "v1.18.0.2-halo-keymind-cascade-dev-observer-925f37a4 (Build: 30-Oct-2026)",
+      "radio_mode": "off",
+      "repeat": "off",
+      "radio2": "off (automatic allowed)",
+      "cross": "off",
+      "temporary_radio": "off",
+      "espnow": "off",
+      "native_path": "OTApeer path=off"
+    },
+    "Heltec V4.2": {
+      "role": "relay",
+      "result": "PASS",
+      "firmware_commit": "925f37a44",
+      "application_sha256": "ab24f35b13598a1d41fd525b1459b63b89bf87828ce1ab570b578ad1b82babbf",
+      "body": "1a277c6c7dabedfe",
+      "version": "v1.18.0.2-halo-keymind-cascade-dev-observer-925f37a4 (Build: 30-Oct-2026)",
+      "radio_mode": "off",
+      "repeat": "off",
+      "radio2": "off (automatic allowed)",
+      "cross": "off",
+      "temporary_radio": "off",
+      "espnow": "off",
+      "native_path": "OTApeer path=off"
+    },
+    "Heltec V3": {
+      "role": "target",
+      "result": "PASS",
+      "firmware_commit": "925f37a44",
+      "application_sha256": "b01acc4d78452779f27fae74e792717aad7dc0dad41585e6027914164c51a4b5",
+      "body": "868f98d45734a7db",
+      "version": "v1.18.0.2-halo-keymind-cascade-dev-observer-925f37a4 (Build: 30-Oct-2026)",
+      "radio_mode": "off",
+      "repeat": "off",
+      "radio2": "off (automatic allowed)",
+      "cross": "off",
+      "temporary_radio": "off",
+      "espnow": "off",
+      "native_path": "OTApeer path=off"
+    }
+  },
+  "passive_observers": {
+    "restored": true,
+    "transmitted_during_final_capture": false,
+    "capture_errors": []
+  },
+  "software_tests": {
+    "wizard_windows": 287,
+    "wizard_linux": 287,
+    "hil_windows": 21,
+    "hil_linux": 21,
+    "native_routing_windows": 1,
+    "native_routing_linux_sanitized": 1,
+    "companion_guard_each_os": 2,
+    "cli_replies_each_os": 3,
+    "hosted_docs": 7,
+    "javascript_links_windows": "PASS"
+  }
+}

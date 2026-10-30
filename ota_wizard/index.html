@@ -1079,6 +1079,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#update-through-lora-relays" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Update through LoRa relays
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#choose-firmware-from-github-releases" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2690,6 +2701,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#update-through-lora-relays" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Update through LoRa relays
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#choose-firmware-from-github-releases" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2763,11 +2785,13 @@
 <!-- meshcore-hosted-doc-link:end -->
 
 <h1 id="guided-lora-updates">Guided LoRa updates</h1>
-<p>Run one Python command to update a directly reachable Repeater or Room Server.
+<p>Run one Python command to update a Repeater or Room Server.
 The wizard identifies the board, chooses compatible firmware, prepares the
 transfer, installs it, checks the result, and restores the original radio,
 RX power-saving, and OTA settings. On supported nRF52 boards it also checks
-for a newer compatible signed bootloader and includes that update in the plan.</p>
+for a newer compatible signed bootloader and includes that update in the plan.
+Direct LoRa is the default. The optional <strong>LoRa relays</strong> link sends both
+administration and firmware through an ordered route of repeaters.</p>
 <h2 id="connect-a-source-radio">Connect a source radio</h2>
 <p>Use either connection:</p>
 <table>
@@ -2780,12 +2804,12 @@ for a newer compatible signed bootloader and includes that update in the plan.</
 </thead>
 <tbody>
 <tr>
-<td>Raspberry Pi → USB</td>
+<td>Raspberry Pi â†’ USB</td>
 <td>ESP32 Repeater with OTA and <code>ota.peer</code> support</td>
 <td>Repeater or Room Server</td>
 </tr>
 <tr>
-<td>Computer or Pi → USB</td>
+<td>Computer or Pi â†’ USB</td>
 <td>Full Companion with USB OTA source and direct admin support</td>
 <td>Repeater or Room Server</td>
 </tr>
@@ -2827,8 +2851,8 @@ separate mailbox; the wizard does not consume ordinary queued messages or change
 saved contact routes. Some Full Companion boards borrow queue space for OTA and
 retain up to 128 unread messages during an update. If more are waiting, sync them
 with an app first; the wizard refuses to discard them to make room.</p>
-<p>Start with the source's primary frequency, bandwidth and spreading factor
-matching the destination's saved primary profile, with a direct link between
+<p>For a direct update, start with the source's primary frequency, bandwidth and
+spreading factor matching the destination's saved primary profile, with a direct link between
 them. The saved coding rates may differ. The destination needs working LoRa OTA support
 and either its admin password or an admin ACL entry for the source radio.
 A stock nRF52 bootloader may need a matching local
@@ -2842,9 +2866,8 @@ a direct return route, then requires a fresh direct identity check.</p>
 <p>With a USB Repeater source, <code>--target PUBLIC_KEY</code> selects a known repeater
 without waiting for a discovery response. Supply its complete 64-character
 public key. The legacy <code>--target-type repeater</code> flag is still accepted.
-The source must reply
-<code>OTApeer known_repeater=1</code> to <code>ota.peer capabilities</code>; update its firmware first if that
-capability is missing.</p>
+The source must advertise <code>known_repeater=1</code> in its <code>ota.peer capabilities</code>
+reply; update its firmware first if that capability is missing.</p>
 <p>For an existing admin ACL grant, replace <code>PUBLIC_KEY</code> with the destination
 repeater's full key:</p>
 <pre><code class="language-bash">python3 tools/lora_ota/ota_wizard.py --mode repeater --port /dev/ttyACM0 \
@@ -2854,8 +2877,13 @@ repeater's full key:</p>
 key before updating. ACL authentication uses the source's existing permission
 without a password login or a fresh identity-proof exchange. It requires a
 known full repeater key and a saved direct return route on the destination.
-Neither mode falls back to flooding or relays. Keep the same source radio
-connected when recovering an interrupted update.</p>
+The default direct link does not fall back to relays. Select <strong>LoRa relays</strong>
+explicitly for a routed update. Keep the same source radio connected when
+recovering an interrupted update.</p>
+<p>After an install or during recovery, the wizard rebuilds the authenticated
+direct return route and checks the full public key once. This uses the existing
+ACL grant without a password login. Learned return routes can disappear on
+reboot; ordinary ACL commands still use the single-command path above.</p>
 <p>In <strong>Settings</strong>, set <strong>Authentication</strong> to <strong>ACL</strong> for this setup. Use
 <strong>Password</strong> when the source has no admin ACL grant; an empty password is
 not an ACL-mode selector.</p>
@@ -2870,11 +2898,11 @@ the password environment variable and does not fall back to a login.</p>
 <p>On Windows, use <code>py</code> in place of <code>python3</code>. No command-line options are needed.
 The menu provides these actions:</p>
 <ol>
-<li><strong>Update a nearby radio</strong> — the default.</li>
-<li><strong>Check radios / save a preparation request</strong> — inspect without installing.</li>
-<li><strong>Prepare an update bundle on this computer</strong> — no radios needed.</li>
-<li><strong>Recover an interrupted update</strong> — restore saved settings.</li>
-<li><strong>Settings</strong> — change transfer, bootloader, connection, or build preferences.</li>
+<li><strong>Update a nearby radio</strong> â€” the default.</li>
+<li><strong>Check radios / save a preparation request</strong> â€” inspect without installing.</li>
+<li><strong>Prepare an update bundle on this computer</strong> â€” no radios needed.</li>
+<li><strong>Recover an interrupted update</strong> â€” restore saved settings.</li>
+<li><strong>Settings</strong> â€” change transfer, bootloader, connection, or build preferences.</li>
 <li><strong>Exit</strong>.</li>
 </ol>
 <p>The first live connection installs USB and verification dependencies in a
@@ -2889,8 +2917,8 @@ Choose firmware, review the plan, then press Enter to start. If password
 authentication is needed, enter it once. Password entry is hidden and
 passwords are never saved. After an action, the menu is shown again.</p>
 <h2 id="use-radio2-for-the-transfer">Use radio2 for the transfer</h2>
-<p>With a USB Repeater source, set <strong>Source transfer radio</strong> to <strong>radio2</strong> in
-<strong>Settings</strong>. Optionally set <strong>Transfer channel</strong> to <code>FREQ,BW,SF,CR</code>, using
+<p>With <strong>Link</strong> set to <strong>Direct</strong> and a USB Repeater source, set <strong>Source transfer
+radio</strong> to <strong>radio2</strong> in <strong>Settings</strong>. Optionally set <strong>Transfer channel</strong> to <code>FREQ,BW,SF,CR</code>, using
 MHz, kHz, spreading factor and coding-rate denominator. Choose values allowed
 in your region and supported by both boards. Without an override, the wizard
 uses the destination's saved primary settings.</p>
@@ -2916,6 +2944,38 @@ probe only if all three attempts fail.</p>
 <p>Do not blindly repeat a relative temporary lease, download, install or cancel
 after losing its reply. Check the selected profile and owned package state
 first. A lost acknowledgement can mean that the command already took effect.</p>
+<h2 id="update-through-lora-relays">Update through LoRa relays</h2>
+<p>In <strong>Settings</strong>, select <strong>Link → LoRa relays</strong>. Enter the complete relay public
+keys under <strong>Relay keys</strong>, separated by commas, in order from the source to the
+destination. One to eight relays are supported. The hop limit is raised to the
+number of relays when needed. Then choose <strong>Check radios</strong> or <strong>Update</strong>, and
+enter the destination's complete public key.</p>
+<pre><code class="language-text">USB Repeater --&gt; relay 1 --&gt; relay 2 --&gt; destination
+              LoRa administration and firmware
+</code></pre>
+<p>This mode requires a USB Repeater source with <code>routed_path=1</code> in
+<code>ota.peer capabilities</code>. Each relay and the destination must grant that source
+an admin ACL role. Password login, Full Companion sources and source radio2
+are supported by the default direct mode; relay mode selects the USB
+Repeater's primary radio and ACL authentication.</p>
+<p>Start with every participant on the same primary frequency, bandwidth,
+spreading factor and coding rate. This mode keeps that channel; a different
+<strong>Transfer channel</strong> is rejected. The wizard checks the relay identities and
+settings, opens temporary OTA windows, disables RX power saving, enables
+relay repeating, and sets a positive OTA hop limit. The temporary preamble
+defaults to 128 symbols. Saved radio, RXPS, OTA and relay repeating settings
+are restored afterward, including when recovering an interrupted update.
+Existing temporary profiles, schedules or downloads stop setup before
+settings are changed.</p>
+<p>Relays must already forward administration along the selected route so the
+initial checks can reach every node. Their ACL and filter rules must also
+permit OTA forwarding; the wizard does not change those rules.
+Keep all participants powered until installation and recovery finish. The
+normal <strong>Direct</strong> link continues to use zero-hop OTA.</p>
+<p>For manual USB administration, <code>ota.peer path ABCDEF,123456</code> selects ordered
+relay prefixes; <code>ota.peer path off</code> restores direct operation. Prefixes must
+all use the same width of one, two or three bytes. The wizard uses three-byte
+prefixes derived from the supplied full keys and checks for collisions.</p>
 <h2 id="choose-firmware-from-github-releases">Choose firmware from GitHub releases</h2>
 <p>The firmware menu offers:</p>
 <ul>
@@ -2986,7 +3046,8 @@ public-key prefix and progress state. The wizard checks the complete source
 and destination keys before restoring settings. A normal update also restores an unfinished
 session for the selected destination before proceeding.
 Recovery reuses the recorded authentication and profile options, rather than
-the current menu settings.</p>
+the current menu settings. Relay sessions also retain the ordered relay keys, link type, hop limit,
+channel and preamble. Recovery needs the same source and LoRa relay route.</p>
 <p>Keep the recovery record until restoration is complete. A lost install reply
 is followed by a running-image check; the wizard does not blindly repeat an
 install command. A cancelled download is cleared only when its package ID
@@ -3045,7 +3106,23 @@ options remain available for scripts:</p>
 </tr>
 <tr>
 <td><code>--transfer-radio FREQ,BW,SF,CR</code></td>
-<td>Use a matching temporary transfer profile on both ends</td>
+<td>Direct link's temporary profile; relay mode accepts only the existing shared profile</td>
+</tr>
+<tr>
+<td><code>--link direct</code> or <code>--link lora-relay</code></td>
+<td>Choose zero-hop LoRa or an ordered LoRa relay route</td>
+</tr>
+<tr>
+<td><code>--relay PUBLIC_KEY</code></td>
+<td>Full relay key; repeat in order from source to destination, up to eight</td>
+</tr>
+<tr>
+<td><code>--ota-hops 1</code></td>
+<td>Relay link's LoRa hop limit, 1-8; at least the relay count</td>
+</tr>
+<tr>
+<td><code>--transfer-preamble 128</code></td>
+<td>Relay link's temporary preamble in symbols</td>
 </tr>
 <tr>
 <td><code>--firmware FILE</code></td>
@@ -3089,7 +3166,8 @@ build environment.</p>
 </details>
 <p>For individual commands and a manual board example, see
 <a href="../ota_station_g2_to_ikoka_stick/">Station G2 to Ikoka Stick</a>. For routed updates
-and explicit multi-node setup, use the <a href="../lora_ota_automation/">scripted LoRa OTA guide</a>.</p>
+with a Companion controller and explicit multi-node setup, use the
+<a href="../lora_ota_automation/">scripted LoRa OTA guide</a>.</p>
 
 
 
