@@ -145,6 +145,6 @@ extra_javascript:
   - _javascript/firmware_picker.js?v=20261024-included-bootloader
   - _javascript/telemetry_decoder.js?v=20261022-noise-history
   - _javascript/management_decoder.js
-  - _javascript/filter_tool.js?v=20261002-hashbytes-2plus
+  - _javascript/filter_tool.js?v=20261030-compact-defaults
   - _javascript/preset_test.js?v=20260923-2
   - _javascript/esp32_partition_catalog.js?v=20261001-1

@@ -89,7 +89,101 @@ test("builds and parses the BlackHole86 policy definition", () => {
   const rule = tool.parseDefinition(definition);
   assert.strictEqual(rule.targetKind, "scope");
   assert.strictEqual(rule.target, "BlackHole86");
-  assert.strictEqual(tool.buildDefinition(rule), definition);
+  assert.deepStrictEqual(tool.parseDefinition(tool.buildDefinition(rule)), rule);
+});
+
+test("omits defaults from a catch-all rule without narrowing its match", () => {
+  const full = "policy set catch-all phase=forward owner=filter priority=0 mode=active when route=flood type=any hops=all rx.scope=any via=radio tempradio=any do drop";
+  const compact = "policy set catch-all when do drop";
+  const rule = tool.parseDefinition(full);
+  assert.strictEqual(tool.buildDefinition(rule), compact);
+  assert.deepStrictEqual(tool.parseDefinition(compact), rule);
+  assert.strictEqual(rule.priority, 0);
+  assert.strictEqual(tool.matchRule(rule, packet({ type: "ota", channel: "", hops: 0 })).matched, true);
+  assert.strictEqual(tool.matchRule(rule, packet({ route: "scoped_flood", type: "req", channel: "", hops: 63 })).matched, true);
+});
+
+test("infers processing phase and owner only when they can be omitted safely", () => {
+  const definitions = [
+    ["policy set scope when do scope=#local", "rewrite", "scope"],
+    ["policy set region when do region=sea", "rewrite", "scope"],
+    ["policy set gate when do scope-gate=require", "scope_gate", "scope"],
+    ["policy set retry when do retry=bucket:2", "schedule", "filter"],
+    ['policy set sender when type=grp_txt sender="Noisy User" do drop', "content", "filter"],
+    ["policy set tagged when do tag=seen", "forward", "filter"],
+    ["policy set timed when do timing=fast", "forward", "filter"],
+    ["policy set content phase=content when do drop", "content", "filter"],
+    ["policy set delegated owner=filter when do scope=#local", "rewrite", "filter"],
+    ["policy set admin owner=admin when do drop stop=policy", "forward", "admin"],
+    ["policy set system owner=system when do drop", "forward", "system"],
+    ["policy set scheduled phase=schedule when do queue=high", "schedule", "filter"],
+  ];
+  for (const [definition, phase, owner] of definitions) {
+    const rule = tool.parseDefinition(definition);
+    assert.strictEqual(rule.phase, phase, definition);
+    assert.strictEqual(rule.owner, owner, definition);
+    assert.strictEqual(tool.buildDefinition(rule), definition);
+    assert.deepStrictEqual(tool.parseDefinition(tool.buildDefinition(rule)), rule);
+  }
+  assertToolError(() => tool.parseDefinition(
+    'policy set wrong phase=forward when sender="Noisy User" do drop'
+  ), /only in the content phase/);
+  assertToolError(() => tool.parseDefinition(
+    "policy set wrong owner=scope when do drop"
+  ), /ACL 4 rules may run only/);
+});
+
+test("preserves explicit priorities and all nondefault match and action fields", () => {
+  const full = "policy set nondefaults phase=schedule owner=admin priority=100 mode=shadow when route=scoped_flood type=grp_txt hops=2-6 channel=public rx.scope=allowed hashbytes=2+ path=prefix:ABCD via=bridge,cross tempradio=inactive do drop rate=12/min burst=3 timing=slow queue=high retry=bucket:4/3 tag=matched stop=policy";
+  const rule = tool.parseDefinition(full);
+  const compact = tool.buildDefinition(rule);
+  assert.strictEqual(compact,
+    "policy set nondefaults owner=admin priority=100 mode=shadow when route=scoped_flood type=grp_txt hops=2-6 channel=public rx.scope=allowed hashbytes=2+ path=prefix:ABCD via=bridge,cross tempradio=inactive do drop rate=12/min burst=3 timing=slow queue=high retry=bucket:4/3 tag=matched stop=policy");
+  assert.deepStrictEqual(tool.parseDefinition(compact), rule);
+  for (const priority of [0, 1, 100, 255]) {
+    const variant = tool.normalizeRule({ ...rule, priority });
+    const exported = tool.buildDefinition(variant);
+    assert.strictEqual(exported.includes("priority="), priority !== 0);
+    assert.deepStrictEqual(tool.parseDefinition(exported), variant);
+    const imported = tool.parsePolicyInput(JSON.stringify(tool.policyDocument([variant])))[0];
+    assert.strictEqual(imported.priority, priority);
+    assert.strictEqual(tool.decodeBundle(tool.encodeBundle([variant]))[0].priority, priority);
+  }
+});
+
+test("omits default rate bursts and retry attempts without changing their values", () => {
+  for (const [definition, compact] of [
+    ["policy set rate when do rate=10/min burst=10", "policy set rate when do rate=10/min"],
+    ["policy set burst when do rate=10/min burst=2", "policy set burst when do rate=10/min burst=2"],
+    ["policy set retry when do retry=bucket:3/1", "policy set retry when do retry=bucket:3"],
+    ["policy set attempts when do retry=bucket:3/4", "policy set attempts when do retry=bucket:3/4"],
+  ]) {
+    const rule = tool.parseDefinition(definition);
+    assert.strictEqual(tool.buildDefinition(rule), compact);
+    assert.deepStrictEqual(tool.parseDefinition(compact), rule);
+  }
+  assert.strictEqual(tool.parseDefinition("policy set rate when do rate=10/min").burst, 10);
+  assert.strictEqual(tool.parseDefinition("policy set retry when do retry=bucket:3").retryAttempts, 1);
+});
+
+test("compact exports preserve every normalized example field and full bundle schema", () => {
+  for (const rules of Object.values(tool.EXAMPLES)) {
+    for (const input of rules) {
+      const rule = tool.normalizeRule(input);
+      assert.deepStrictEqual(tool.parseDefinition(tool.buildDefinition(rule)), rule);
+      const document = tool.policyDocument([rule]);
+      assert.deepStrictEqual(document.rules[0], rule);
+      for (const key of ["phase", "owner", "priority", "route", "type", "hops", "burst", "retryAttempts"]) {
+        assert.ok(Object.prototype.hasOwnProperty.call(document.rules[0], key), key);
+      }
+    }
+  }
+  for (const example of ["hash_width", "hash_width_two_plus", "channel_scope", "blackhole", "scope_rewrite", "prefix_rate", "high_traffic", "moderation", "blacklist"]) {
+    for (const rule of tool.EXAMPLES[example]) {
+      assert.strictEqual(rule.priority, 0, example);
+      assert.doesNotMatch(tool.buildDefinition(rule), /priority=/);
+    }
+  }
 });
 
 test("treats channel star as no channel condition", () => {
@@ -126,7 +220,7 @@ test("keeps a payload class and path bucket in one rule", () => {
   const rule = tool.parseDefinition(definition);
   assert.strictEqual(rule.type, "class:other");
   assert.strictEqual(rule.pathKind, "bucket:2");
-  assert.strictEqual(tool.buildDefinition(rule), definition);
+  assert.deepStrictEqual(tool.parseDefinition(tool.buildDefinition(rule)), rule);
   assert.match(tool.explainRule(rule), /catch-all non-group, non-login class/);
 });
 
@@ -158,9 +252,11 @@ test("limits decrypted sender matching to the content phase", () => {
     /only in the content phase/
   );
   const definition = 'policy set noisy-user phase=content owner=filter priority=150 when route=flood type=grp_txt hops=all channel=public sender="Noisy User" do rate=5/min burst=5 tag=public-rate';
-  assert.strictEqual(tool.buildDefinition(tool.parseDefinition(definition)), definition);
+  assert.strictEqual(tool.buildDefinition(tool.parseDefinition(definition)),
+    'policy set noisy-user priority=150 when type=grp_txt channel=public sender="Noisy User" do rate=5/min tag=public-rate');
   const quoted = 'policy set quoted-user phase=content owner=filter priority=1 when route=flood type=grp_txt hops=all sender="Noisy \\"User\\"" do drop';
-  assert.strictEqual(tool.buildDefinition(tool.parseDefinition(quoted)), quoted);
+  assert.deepStrictEqual(tool.parseDefinition(tool.buildDefinition(tool.parseDefinition(quoted))),
+    tool.parseDefinition(quoted));
 });
 
 test("round trips token rate and burst actions", () => {
@@ -200,18 +296,18 @@ test("loads the playground policy examples", () => {
   Object.values(tool.EXAMPLES).forEach((rules) => rules.forEach(tool.normalizeRule));
   assert.strictEqual(
     tool.buildDefinition(tool.EXAMPLES.channel_scope[0]),
-    "policy set rgdata-scope phase=rewrite owner=scope priority=100 when route=flood type=class:group hops=all channel=#rgdata do scope=#BlackHole86 timing=fast"
+    "policy set rgdata-scope when type=class:group channel=#rgdata do scope=#BlackHole86 timing=fast"
   );
   assert.match(tool.explainRule(tool.EXAMPLES.channel_scope[0]), /the #rgdata channel/);
   assert.doesNotMatch(tool.explainRule(tool.EXAMPLES.channel_scope[0]), /authenticated/i);
   assert.strictEqual(
     tool.buildDefinition(tool.EXAMPLES.blackhole[0]),
-    "policy set blackhole-unscoped-rgdata phase=rewrite owner=scope priority=100 when route=flood type=grp_data hops=all channel=#rgdata rx.scope=none do scope=#BlackHole86 timing=fast"
+    "policy set blackhole-unscoped-rgdata when type=grp_data channel=#rgdata rx.scope=none do scope=#BlackHole86 timing=fast"
   );
   assert.strictEqual(tool.EXAMPLES.channel_stop, undefined);
   assert.strictEqual(
     tool.buildDefinition(tool.EXAMPLES.prefix_rate[0]),
-    "policy set prefix-860c-rate phase=forward owner=filter priority=100 when route=flood type=any hops=all path=prefix:860C do rate=10/min burst=10"
+    "policy set prefix-860c-rate when path=prefix:860C do rate=10/min"
   );
   assert.deepStrictEqual(
     tool.EXAMPLES.high_traffic.map((rule) => `${rule.type}:${rule.hops}`),
@@ -392,7 +488,7 @@ test("combined transport selector survives readable and bundle round trips", () 
 
 test("path hash width survives definitions and bundle round trips", () => {
   assert.strictEqual(tool.buildDefinition(tool.EXAMPLES.hash_width[0]),
-    "policy set drop-one-byte-paths phase=forward owner=filter priority=100 when route=flood type=any hops=all hashbytes=1 do drop");
+    "policy set drop-one-byte-paths when hashbytes=1 do drop");
   for (const hashBytes of [1, 2, 3]) {
     const rule = tool.normalizeRule({ ...tool.EXAMPLES.factory[2], hashBytes });
     const definition = tool.buildDefinition(rule);
