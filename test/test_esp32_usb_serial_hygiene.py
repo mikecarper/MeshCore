@@ -612,7 +612,9 @@ int main() {
         self.assertIn(
             "class SenseCapIndicatorBoard : public ESP32Board", header
         )
-        self.assertIn('return "Seeed SenseCAP Indicator";', header)
+        self.assertIn('#ifdef SENSECAP_INDICATOR_LORA', header)
+        self.assertIn('return "Seeed SenseCAP Indicator LoRa";', header)
+        self.assertIn('return "Seeed SenseCAP Indicator ESP-NOW";', header)
         self.assertIn("extern SenseCapIndicatorBoard board;", header)
         self.assertIn("SenseCapIndicatorBoard board;", implementation)
 

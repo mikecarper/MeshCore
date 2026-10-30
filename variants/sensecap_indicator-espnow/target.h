@@ -23,7 +23,11 @@
 class SenseCapIndicatorBoard : public ESP32Board {
  public:
   const char* getManufacturerName() const override {
-    return "Seeed SenseCAP Indicator";
+#ifdef SENSECAP_INDICATOR_LORA
+    return "Seeed SenseCAP Indicator LoRa";
+#else
+    return "Seeed SenseCAP Indicator ESP-NOW";
+#endif
   }
 };
 
