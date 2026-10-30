@@ -17,6 +17,7 @@ public:
   static constexpr size_t MAX_PEERS = 8;
   static constexpr size_t RESULT_BYTES = 160;
   static constexpr size_t RESULT_CHUNK = 48;
+  static constexpr size_t MAX_ROUTE_HOPS = 8;
   static constexpr uint32_t REQUEST_MS = 30000;
   static constexpr uint32_t SESSION_MS = 300000;
   struct Peer { Identity id; int16_t rssi; int8_t snr; uint8_t type; uint32_t heard; };
@@ -32,6 +33,8 @@ private:
   uint32_t job_ = 0, deadline_ = 0, session_until_ = 0, discover_tag_ = 0;
   uint32_t request_ms_ = REQUEST_MS;
   uint8_t radio_profile_ = 0;
+  uint8_t relay_path_[MAX_ROUTE_HOPS * 3] = {};
+  uint8_t relay_path_len_ = 0;
   // Discovery callbacks have no Mesh argument; retain the owning radio so all
   // entry points validate the same live configuration and generation.
   Radio* profile_radio_ = nullptr;
@@ -107,6 +110,42 @@ private:
   void queued(char* reply, size_t capacity) const {
     snprintf(reply, capacity, "OTApeer job=%08lX state=pending", (unsigned long)job_);
   }
+  const uint8_t* outboundPath() const { return relay_path_len_ ? relay_path_ : nullptr; }
+  static bool parsePath(const char* text, uint8_t* path, uint8_t& encoded_length) {
+    size_t count = 0, width = 0;
+    while (*text) {
+      const char* end = strchr(text, ',');
+      const size_t digits = end ? static_cast<size_t>(end - text) : strlen(text);
+      if ((digits != 2 && digits != 4 && digits != 6) || count == MAX_ROUTE_HOPS
+          || (width && digits != width * 2)) return false;
+      width = digits / 2;
+      char hex[7]; memcpy(hex, text, digits); hex[digits] = 0;
+      if (!Utils::fromHex(path + count * width, width, hex)) return false;
+      for (size_t i = 0; i < count; ++i) {
+        if (!memcmp(path + i * width, path + count * width, width)) return false;
+      }
+      ++count;
+      if (!end) break;
+      text = end + 1;
+      if (!*text) return false;
+    }
+    if (!count) return false;
+    encoded_length = static_cast<uint8_t>(((width - 1) << 6) | count);
+    return true;
+  }
+  void formatPath(char* reply, size_t capacity) const {
+    if (!relay_path_len_) { snprintf(reply, capacity, "OTApeer path=off"); return; }
+    const size_t width = (relay_path_len_ >> 6) + 1;
+    const size_t count = relay_path_len_ & 63;
+    char text[MAX_ROUTE_HOPS * 7];
+    size_t offset = 0;
+    for (size_t i = 0; i < count; ++i) {
+      if (i) text[offset++] = ',';
+      Utils::toHex(text + offset, relay_path_ + i * width, width);
+      offset += width * 2;
+    }
+    snprintf(reply, capacity, "OTApeer path=%s", text);
+  }
   bool queueCommand(Mesh& mesh, const char* command, uint32_t now) {
     const size_t length = strlen(command);
     // Preserve room for timestamp, type, reflected prefix and AES padding.
@@ -122,15 +161,20 @@ private:
     erase(plain, sizeof(plain));
     bindRadio(packet);
     session_until_ = now + SESSION_MS;
-    return packet && mesh.sendDirect(packet, nullptr, 0);
+    return packet && mesh.sendDirect(packet, outboundPath(), relay_path_len_);
   }
   bool queueReturnPath(Mesh& mesh) {
-    const uint8_t empty_path[1] = {};
-    Packet* packet = mesh.createPathReturn(target_, secret_, empty_path, 0, 0, nullptr, 0);
+    uint8_t reverse_path[sizeof(relay_path_)] = {};
+    const size_t width = (relay_path_len_ >> 6) + 1;
+    const size_t count = relay_path_len_ & 63;
+    for (size_t i = 0; i < count; ++i) {
+      memcpy(reverse_path + i * width, relay_path_ + (count - i - 1) * width, width);
+    }
+    Packet* packet = mesh.createPathReturn(target_, secret_, reverse_path, relay_path_len_, 0, nullptr, 0);
     if (!packet) return false;
     bindRadio(packet);
     return_path_.prepare(packet);
-    if (!mesh.sendDirect(packet, nullptr, 0)) { return_path_.clear(); return false; }
+    if (!mesh.sendDirect(packet, outboundPath(), relay_path_len_)) { return_path_.clear(); return false; }
     return_path_.arm(packet);
     ++proof_attempts_;
     phase_ = ReturnPath;
@@ -158,7 +202,7 @@ private:
 public:
   ~DirectOtaAdminClient() { clearSession(); erase(result_, sizeof(result_)); }
   void reset() {
-    // The USB owner's RAM-only timeout and radio choice survive closing.
+    // The USB owner's RAM-only timeout, radio and path choices survive closing.
     clearSession(); erase(result_, sizeof(result_));
     result_length_ = 0; phase_ = Idle; error_ = false; peers_count_ = 0; radio_snapshot_ = false;
   }
@@ -225,7 +269,26 @@ public:
     const char* args = command + 8;
     while (*args == ' ') ++args;
     if (!strcmp(args, "capabilities")) {
-      strcpy(reply, "OTApeer known_repeater=1");
+      strcpy(reply, "OTApeer known_repeater=1 routed_path=1");
+      return;
+    }
+    if (!strncmp(args, "path", 4) && (args[4] == 0 || args[4] == ' ')) {
+      const char* value = args + 4;
+      while (*value == ' ') ++value;
+      if (*value) {
+        if (phase_ != Idle) { strcpy(reply, "ERR peer request pending"); return; }
+        uint8_t path[sizeof(relay_path_)] = {}, length = 0;
+        if (strcmp(value, "off") && !parsePath(value, path, length)) {
+          strcpy(reply, "ERR peer path needs 1..8 distinct uniform 1..3-byte hashes or off"); return;
+        }
+        const size_t bytes = (length & 63) * ((length >> 6) + 1);
+        if (length != relay_path_len_ || memcmp(path, relay_path_, bytes)) {
+          reset();
+          memcpy(relay_path_, path, sizeof(relay_path_));
+          relay_path_len_ = length;
+        }
+      }
+      formatPath(reply, capacity);
       return;
     }
     if (!strcmp(args, "status") || !*args) {
@@ -368,6 +431,7 @@ public:
       if (peer.matches(mesh.self_id)) { strcpy(reply, "ERR peer cannot be this repeater"); return; }
       for (const char* p = rest; *p; ++p) if (static_cast<uint8_t>(*p) < 32 || *p == 127) { strcpy(reply, "ERR peer control character"); return; }
       if (login) {
+        if (relay_path_len_) { strcpy(reply, "ERR peer routed path requires ACL"); return; }
         const size_t length = strlen(rest);
         if (length > 63) { strcpy(reply, "ERR peer password too long"); return; }
         const Peer* discovered = nullptr;
@@ -405,7 +469,7 @@ public:
       queued(reply, capacity);
       return;
     }
-    snprintf(reply, capacity, "ERR use ota.peer status|radio [radio|radio2]|timeout [s]|acl KEY|discover|peers [n]|login[.repeater] KEY PASS|cmd[.acl] KEY COMMAND|result [off]|close");
+    snprintf(reply, capacity, "ERR use ota.peer status|radio|path|timeout|acl KEY|discover|peers [n]|login[.repeater] KEY PASS|cmd[.acl] KEY COMMAND|result [off]|close");
   }
 
   void onDiscovery(const Packet* packet, uint32_t now) {

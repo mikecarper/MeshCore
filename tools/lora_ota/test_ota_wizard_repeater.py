@@ -5,6 +5,7 @@ import asyncio
 from datetime import datetime, timezone
 import queue
 import struct
+import threading
 import time
 import unittest
 from unittest import mock
@@ -109,6 +110,7 @@ class FakeSerial:
         self.peer_count = 1
         self.peer_key = TARGET
         self.known_repeater_supported = True
+        self.routed_path_supported = False
         self.login_error = None
         self.command_results = {"ver": "v1.18.0.1", "stats-core": "x" * 150}
 
@@ -120,6 +122,11 @@ class FakeSerial:
 
     def feed(self, data):
         self.incoming.put(bytes(data))
+
+    @property
+    def in_waiting(self):
+        with self.incoming.mutex:
+            return len(self.pending) + sum(len(chunk) for chunk in self.incoming.queue)
 
     def read(self, size):
         if not self.pending:
@@ -173,7 +180,8 @@ class FakeSerial:
         elif command == "ota.peer status":
             self.answer(f"OTApeer v=1 session={int(self.authenticated)} busy=0 peers={self.peer_count}")
         elif command == "ota.peer capabilities":
-            self.answer("OTApeer known_repeater=1" if self.known_repeater_supported else "Unknown command")
+            self.answer(("OTApeer known_repeater=1" + (" routed_path=1" if self.routed_path_supported else ""))
+                        if self.known_repeater_supported else "Unknown command")
         elif command == "clock":
             now = self.clock or datetime.now(timezone.utc)
             self.answer(f"{now.hour:02}:{now.minute:02} - {now.day}/{now.month}/{now.year} UTC")
@@ -245,9 +253,11 @@ class RepeaterTransportTest(unittest.IsolatedAsyncioTestCase):
 
     async def open_known_repeater(self, *, acl_only=False):
         supported, peer_count = self.serial.known_repeater_supported, self.serial.peer_count
+        routed = self.serial.routed_path_supported
         await self.link.close()
         self.serial = FakeSerial()
         self.serial.known_repeater_supported, self.serial.peer_count = supported, peer_count
+        self.serial.routed_path_supported = routed
         self.link = RepeaterTransport("fake", serial_factory=lambda **kwargs: self.serial,
             open_settle=0, command_timeout=.5, remote_timeout=.8, poll_seconds=.001,
             known_repeater=TARGET, acl_only=acl_only)
@@ -384,6 +394,33 @@ class RepeaterTransportTest(unittest.IsolatedAsyncioTestCase):
         with self.assertRaisesRegex(RepeaterError, "Update the USB source firmware"):
             await self.open_known_repeater()
         self.assertFalse(self.serial.is_open)
+
+    async def test_routed_path_capability_is_explicit_and_legacy_source_still_opens(self):
+        await self.open_known_repeater(acl_only=True)
+        self.assertFalse(self.link.supports_routed_path)
+        self.serial.routed_path_supported = True
+        await self.open_known_repeater(acl_only=True)
+        self.assertTrue(self.link.supports_routed_path)
+        await self.link.close()
+        self.assertFalse(self.link.supports_routed_path)
+
+    async def test_routed_path_capability_rejects_unknown_duplicate_and_malformed_fields(self):
+        for value in ("OTApeer known_repeater=0 routed_path=1", "OTApeer known_repeater=1 routed_path=0",
+                      "OTApeer known_repeater=1 routed_path=1 routed_path=1", "OTApeer routed_path=1",
+                      "OTApeer known_repeater=1 arbitrary=1", "OTApeer known_repeater=1 routed_path=1x"):
+            with self.subTest(value=value):
+                await self.link.close()
+                self.serial = FakeSerial()
+                answer = self.serial.answer
+                def capabilities(text):
+                    answer(value if text == "OTApeer known_repeater=1" else text)
+                self.serial.answer = capabilities
+                self.link = RepeaterTransport("fake", serial_factory=lambda **kwargs: self.serial,
+                    open_settle=0, command_timeout=.5, known_repeater=TARGET, acl_only=True)
+                with self.assertRaisesRegex(RepeaterError, "Update the USB source firmware"):
+                    await self.link.open()
+                self.assertFalse(self.link.supports_routed_path)
+                self.assertFalse(self.serial.is_open)
         self.assertFalse(any(command.startswith("ota.peer login.repeater") for command in self.serial.commands))
 
     async def test_owned_return_path_failure_is_transient_without_replaying_commands(self):
@@ -548,6 +585,60 @@ class RepeaterTransportTest(unittest.IsolatedAsyncioTestCase):
         await self.link.remote_command(TARGET, "password", "ver")
         self.assertEqual(sum(text.startswith("ota.peer login") for text in self.serial.commands), 2)
 
+    async def test_acl_reboot_reset_rebuilds_volatile_path_once_without_password_login(self):
+        await self.open_known_repeater(acl_only=True)
+        await self.link.remote_command(TARGET, "", "ver")
+        self.serial.commands.clear()
+        await self.link.reset_remote_session(TARGET.upper())
+        commands = self.serial.commands
+        self.assertEqual(commands[0], "ota.peer close")
+        self.assertEqual(commands.count(f"ota.peer acl {TARGET}"), 1)
+        self.assertFalse(any(text.startswith(("ota.peer login", "ota.peer discover", "ota.peer cmd"))
+                             for text in commands))
+        self.assertFalse(self.serial.folder_off)
+        self.assertEqual(self.link._authenticated_key, TARGET)
+        self.serial.commands.clear()
+        self.assertEqual(await self.link.remote_command(TARGET, "", "ver"), "v1.18.0.1")
+        self.assertEqual(self.serial.commands.count(f"ota.peer cmd.acl {TARGET} ver"), 1)
+        self.assertNotIn(f"ota.peer acl {TARGET}", self.serial.commands)
+
+    async def test_acl_reboot_proof_failure_propagates_without_login_or_command_fallback(self):
+        await self.open_known_repeater(acl_only=True)
+        self.serial.login_error = "login identity mismatch"
+        self.serial.commands.clear()
+        with self.assertRaisesRegex(RepeaterError, "login identity mismatch"):
+            await self.link.reset_remote_session(TARGET)
+        self.assertEqual(self.serial.commands.count("ota.peer close"), 1)
+        self.assertEqual(self.serial.commands.count(f"ota.peer acl {TARGET}"), 1)
+        self.assertIsNone(self.link._authenticated_key)
+        self.assertEqual(self.link._last_peer_use, 0)
+        self.assertFalse(any(text.startswith(("ota.peer login", "ota.peer cmd"))
+                             for text in self.serial.commands))
+
+    async def test_known_password_reboot_reset_remains_close_only(self):
+        await self.open_known_repeater()
+        await self.link.remote_command(TARGET, "password", "ver")
+        self.serial.commands.clear()
+        await self.link.reset_remote_session(TARGET)
+        self.assertEqual(self.serial.commands, ["ota.peer close"])
+        self.assertIsNone(self.link._authenticated_key)
+
+    async def test_reboot_reset_validates_exact_known_key_before_touching_native_session(self):
+        await self.open_known_repeater(acl_only=True)
+        self.serial.commands.clear()
+        for key in ("", "bad", TARGET[:12], "c" * 64):
+            with self.subTest(key=key), self.assertRaises(RepeaterError):
+                await self.link.reset_remote_session(key)
+        self.assertEqual(self.serial.commands, [])
+
+    async def test_acl_reboot_reset_does_not_bootstrap_when_native_close_fails(self):
+        await self.open_known_repeater(acl_only=True)
+        with mock.patch.object(self.link, "local_command", new_callable=mock.AsyncMock,
+                               return_value="ERR peer busy") as command:
+            with self.assertRaisesRegex(RepeaterError, "ERR peer busy"):
+                await self.link.reset_remote_session(TARGET)
+        command.assert_awaited_once_with("ota.peer close")
+
     async def test_reboot_discovery_absence_is_recoverable_before_target_returns(self):
         await self.link.remote_command(TARGET, "password", "ver")
         await self.link.reset_remote_session(TARGET)
@@ -626,6 +717,65 @@ class RepeaterTransportTest(unittest.IsolatedAsyncioTestCase):
         finally:
             self.link.command_timeout = original_timeout
         self.assertEqual(await self.link.local_command("get public.key"), "> " + SOURCE)
+
+
+class BufferedReadTest(unittest.IsolatedAsyncioTestCase):
+    async def asyncSetUp(self):
+        class SizedReadSerial(FakeSerial):
+            """Like pyserial, wait when a sized read has only partial data."""
+            def __init__(self):
+                super().__init__()
+                self.read_sizes = []
+                self.fill_wait = threading.Event()
+                self.release_fill = threading.Event()
+                self.binary_written = threading.Event()
+
+            def read(self, size):
+                self.read_sizes.append(size)
+                data = bytearray(super().read(size))
+                while data and len(data) < size:
+                    if self.in_waiting:
+                        data.extend(super().read(size - len(data)))
+                    else:
+                        self.fill_wait.set()
+                        self.release_fill.wait(3)
+                        break
+                return bytes(data)
+
+            def write(self, raw):
+                count = super().write(raw)
+                if bytes(raw).startswith(b"ms"):
+                    self.binary_written.set()
+                return count
+
+        self.serial = SizedReadSerial()
+        self.serial.open()
+        self.link = RepeaterTransport("buffered", command_timeout=.5)
+        self.link._serial = self.serial
+        self.link._seeder = SeederData(package())
+        self.link._reader_task = asyncio.create_task(self.link._read_loop())
+
+    async def asyncTearDown(self):
+        self.serial.release_fill.set()
+        await self.link.close()
+
+    async def test_fragmented_host_request_does_not_wait_for_a_full_read_buffer(self):
+        frame = request(3, struct.pack("<BIH", 0, 4, 32))
+        for chunk in (frame[:2], frame[2:5], frame[5:]):
+            self.serial.feed(chunk)
+            await asyncio.sleep(.01)
+        answered = await asyncio.to_thread(self.serial.binary_written.wait, 2)
+        self.assertTrue(answered, "A small host request waited for the serial read buffer to fill")
+        self.assertFalse(self.serial.fill_wait.is_set())
+        expected = b"ms\3\0" + package()[4:36]
+        self.assertEqual(self.serial.binary[0][:-1], expected)
+
+    async def test_large_uart_burst_is_drained_in_bounded_batches(self):
+        self.serial.feed(b"log line\r\n" * 200 + request(1))
+        self.assertTrue(await asyncio.to_thread(self.serial.binary_written.wait, 2))
+        self.assertIn(511, self.serial.read_sizes)
+        self.assertTrue(all(1 <= size <= 511 for size in self.serial.read_sizes))
+        self.assertFalse(self.serial.fill_wait.is_set())
 
 
 if __name__ == "__main__":

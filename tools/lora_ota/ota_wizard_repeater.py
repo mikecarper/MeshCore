@@ -159,6 +159,7 @@ class RepeaterTransport:
         self._failure = None
         self._source_key = None
         self._known_repeater = _key(known_repeater) if known_repeater is not None else None
+        self._supports_routed_path = False
         if acl_only and self._known_repeater is None:
             raise RepeaterError("ACL-only administration requires a complete known repeater key")
         self._acl_only = acl_only
@@ -175,6 +176,10 @@ class RepeaterTransport:
     @property
     def acl_only(self):
         return self._acl_only
+
+    @property
+    def supports_routed_path(self):
+        return self._supports_routed_path
 
     async def open(self):
         if self._serial is not None:
@@ -207,9 +212,10 @@ class RepeaterTransport:
                 raise RepeaterError("This repeater needs firmware with direct USB OTA administration (ota.peer)")
             if self._known_repeater is not None:
                 capabilities = await self.local_command("ota.peer capabilities")
-                if capabilities != "OTApeer known_repeater=1":
+                if not re.fullmatch(r"OTApeer known_repeater=1(?: routed_path=1)?", capabilities):
                     raise RepeaterError("Update the USB source firmware to use a known repeater key "
                                         "without discovery (ota.peer login.repeater).")
+                self._supports_routed_path = capabilities.endswith(" routed_path=1")
             return self
         except BaseException:
             await self.close()
@@ -234,8 +240,20 @@ class RepeaterTransport:
     async def _read_loop(self):
         try:
             while self._serial is not None:
-                raw = await asyncio.to_thread(self._serial.read, 512)
-                if not raw and not self._serial.is_open:
+                connection = self._serial
+                def receive(connection=connection):
+                    # read(512) waits for the whole buffer or the serial
+                    # timeout, delaying every small host-folder request.
+                    raw = connection.read(1)
+                    if raw:
+                        available = min(connection.in_waiting, 511)
+                        if available:
+                            raw += connection.read(available)
+                    return raw
+                raw = await asyncio.to_thread(receive)
+                if self._serial is not connection:
+                    return
+                if not raw and not connection.is_open:
                     raise ConnectionError("USB repeater disconnected")
                 for event in self._decoder.feed(raw):
                     if event[0] == "request":
@@ -458,14 +476,20 @@ class RepeaterTransport:
             raise RepeaterError("The repeater did not report valid radio parameters") from exc
 
     async def reset_remote_session(self, public_key):
-        """Drop the peer timestamp floor after a target reboot, retaining USB serving."""
-        _key(public_key)
+        """Reset reboot-sensitive state, retaining USB serving and ACL permissions."""
+        key = self._peer_key(public_key)
         async with self._admin_lock:
             reply = await self.local_command("ota.peer close")
             if reply != "OTApeer closed":
                 raise RepeaterError(reply or "Could not reset the direct admin session")
             self._authenticated_key = None
             self._last_peer_use = 0
+            if self._acl_only:
+                # Learned PATHs deliberately remain volatile. After reboot,
+                # re-establish the direct return route and prove the full key
+                # without a password login. Ordinary cmd.acl stays one-shot.
+                await self._check_clock()
+                await self._login_locked(key, "")
 
     async def set_radio(self, radio):
         if len(radio) != 4:
@@ -524,4 +548,5 @@ class RepeaterTransport:
                 await self._reader_task
         self._reader_task = None
         self._source_key = self._authenticated_key = None
+        self._supports_routed_path = False
         self._clock_checked = False
