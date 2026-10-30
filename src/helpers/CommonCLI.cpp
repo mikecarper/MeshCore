@@ -1377,11 +1377,10 @@ void CommonCLI::loadPrefs(FILESYSTEM* fs) {
   // through presetApply: that saves the previous tuple into _prefs, so the
   // role's boot-time radio apply (which runs after loadPrefs) starts on it.
   _presets_fs = fs;
-  const mesh::RadioPresetCLI::Hooks preset_hooks = {
-    this, presetLoad, presetSave, presetCurrent, presetAccepts, presetApply,
-    presetTempRadioActive
+  static const mesh::RadioPresetCLI::Hooks preset_hooks = {
+    presetLoad, presetSave, presetCurrent, presetAccepts, presetApply, presetTempRadioActive
   };
-  _radio_presets.begin(preset_hooks);
+  _radio_presets.begin(this, preset_hooks);
 #endif
   mesh::hilStartupTrace("prefs_apply_ready");
 }

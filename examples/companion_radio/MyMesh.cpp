@@ -3468,11 +3468,10 @@ void MyMesh::begin(bool has_display, bool radio_available,
   // infrastructure roles, so a node reflashed to Companion can carry a pending
   // remote load; begin() reverts it through presetApply, which saves _prefs.
   {
-    const mesh::RadioPresetCLI::Hooks preset_hooks = {
-      this, presetLoad, presetSave, presetCurrent, presetAccepts, presetApply,
-      presetTempRadioActive
+    static const mesh::RadioPresetCLI::Hooks preset_hooks = {
+      presetLoad, presetSave, presetCurrent, presetAccepts, presetApply, presetTempRadioActive
     };
-    _radio_presets.begin(preset_hooks);
+    _radio_presets.begin(this, preset_hooks);
   }
 #endif
   configureRadioFromPrefs();

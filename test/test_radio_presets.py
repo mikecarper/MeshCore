@@ -149,6 +149,7 @@ struct Env {
   std::vector<uint8_t> store;
   bool haveStore = false;
   int saves = 0;
+  int loads = 0;
   bool failSave = false;
   bool failApply = false;
   int failApplyCount = 0;   // fail this many apply calls, then succeed
@@ -167,6 +168,7 @@ struct Env {
 static Env* E(void* c) { return (Env*)c; }
 static bool hLoad(void* c, uint8_t* buf, size_t cap, size_t& len) {
   Env* e = E(c);
+  e->loads++;
   if (!e->haveStore || e->store.size() > cap) return false;
   std::memcpy(buf, e->store.data(), e->store.size());
   len = e->store.size();
@@ -191,11 +193,7 @@ static bool hApply(void* c, const RadioPreset& p, char* reply, size_t cap) {
   return true;
 }
 static bool hTemp(void* c) { return E(c)->tempRadio; }
-static RadioPresetCLI::Hooks hooks(Env& e) {
-  RadioPresetCLI::Hooks h; h.ctx = &e; h.load = hLoad; h.save = hSave; h.current = hCurrent;
-  h.accepts = hAccepts; h.apply = hApply; h.tempRadioActive = hTemp;
-  return h;
-}
+static const RadioPresetCLI::Hooks kHooks = {hLoad, hSave, hCurrent, hAccepts, hApply, hTemp};
 static bool near(float a, float b) { return std::fabs(a - b) < 0.001f; }
 static bool has(const char* s, const char* sub) { return std::strstr(s, sub) != nullptr; }
 static bool run(RadioPresetCLI& c, const char* cmd, char* reply, bool remote = true) {
@@ -203,7 +201,7 @@ static bool run(RadioPresetCLI& c, const char* cmd, char* reply, bool remote = t
   return c.handle(cmd, reply, 160, remote);
 }
 static void setup(RadioPresetCLI& c, Env& e) {
-  c.begin(hooks(e));
+  c.begin(&e, kHooks);
   char r[160];
   run(c, "add preset Private 2 915.0,62.5,7,5", r);
 }
@@ -212,7 +210,7 @@ int main() {
   char r[160];
   { // seed_us_canada_default
     Env e; e.setCur(915.0f, 250.0f, 11, 5, 0);
-    RadioPresetCLI c; c.begin(hooks(e));
+    RadioPresetCLI c; c.begin(&e, kHooks);
     CHECK(run(c, "get preset", r));
     CHECK(has(r, "1 USA-Canada "));
     CHECK(run(c, "get preset 1", r));
@@ -220,12 +218,12 @@ int main() {
     CHECK(!has(r, "*"));
     CHECK(c.activeSlot() == 0);
     CHECK(e.saves == 1 && e.haveStore);
-    RadioPresetCLI d; d.begin(hooks(e));   // second boot loads, does not reseed
+    RadioPresetCLI d; d.begin(&e, kHooks);   // second boot loads, does not reseed
     CHECK(e.saves == 1 && d.table().get(1) != nullptr);
   }
   { // seed_marks_active_when_on_us
     Env e;
-    RadioPresetCLI c; c.begin(hooks(e));
+    RadioPresetCLI c; c.begin(&e, kHooks);
     CHECK(run(c, "get preset 1", r));
     CHECK(has(r, "1*USA-Canada 910.5250244,62.5,7,5"));
     CHECK(c.activeSlot() == 1);
@@ -233,20 +231,20 @@ int main() {
   }
   { // seed_skipped_when_rejected
     Env e; e.setCur(433.0f, 125.0f, 9, 5, 0);
-    RadioPresetCLI::Hooks h = hooks(e);
+    static RadioPresetCLI::Hooks h = kHooks;
     h.accepts = [](void*, float f, float, uint8_t, uint8_t, uint16_t) { return f < 500.0f; };
-    RadioPresetCLI c; c.begin(h);
+    RadioPresetCLI c; c.begin(&e, h);
     CHECK(c.table().get(1) == nullptr);
     CHECK(e.saves == 0 && !e.haveStore);
   }
   { // seed_when_corrupt
     Env e; e.haveStore = true; e.store.assign(10, 0x55);
-    RadioPresetCLI c; c.begin(hooks(e));
+    RadioPresetCLI c; c.begin(&e, kHooks);
     CHECK(c.table().get(1) != nullptr && std::strcmp(c.table().get(1)->name, "USA-Canada") == 0);
     CHECK(e.saves == 1);
   }
   { // add_validates_like_set_radio
-    Env e; RadioPresetCLI c; c.begin(hooks(e));
+    Env e; RadioPresetCLI c; c.begin(&e, kHooks);
     CHECK(run(c, "add preset Private 2 915.0,62.5,7,5", r)); CHECK(has(r, "OK"));
     CHECK(c.table().get(2) && near(c.table().get(2)->freq, 915.0f));
     CHECK(run(c, "add preset Private 2 915.0,62.5,13,5", r)); CHECK(has(r, "Error"));
@@ -322,7 +320,7 @@ int main() {
     Env e; RadioPresetCLI c; setup(c, e); c.loop(1000);
     run(c, "load preset 2", r);
     size_t n = e.applied.size();
-    RadioPresetCLI d; d.begin(hooks(e));
+    RadioPresetCLI d; d.begin(&e, kHooks);
     CHECK(e.applied.size() == n + 1 && near(e.applied.back().freq, 910.525f) && !d.pending());
     RadioPresetTable u; CHECK(u.decode(e.store.data(), e.store.size())); CHECK(!u.pending.active);
   }
@@ -367,10 +365,10 @@ int main() {
     Env e; RadioPresetCLI c; setup(c, e); c.loop(1000);
     run(c, "load preset 2", r);
     e.failApplyCount = 1;
-    RadioPresetCLI d; d.begin(hooks(e));
+    RadioPresetCLI d; d.begin(&e, kHooks);
     CHECK(d.pending());
     RadioPresetTable u; CHECK(u.decode(e.store.data(), e.store.size())); CHECK(u.pending.active);
-    RadioPresetCLI f; f.begin(hooks(e));         // next boot retries and succeeds
+    RadioPresetCLI f; f.begin(&e, kHooks);         // next boot retries and succeeds
     CHECK(!f.pending() && e.applied.size() == 2 && near(e.applied[1].freq, 910.525f));
     d.loop(5000); d.loop(5000 + 61000);          // in-session retry also works
     CHECK(!d.pending());
@@ -398,19 +396,50 @@ int main() {
     uint8_t buf[RadioPresetTable::ENCODED_MAX];
     size_t n = t.encode(buf, sizeof(buf));
     e.store.assign(buf, buf + n); e.haveStore = true;
-    RadioPresetCLI c; c.begin(hooks(e));
+    RadioPresetCLI c; c.begin(&e, kHooks);
     CHECK(c.table().get(1) && !c.table().get(2) && !c.table().get(3) && c.table().get(4));
     RadioPresetTable u; CHECK(u.decode(e.store.data(), e.store.size()));
     CHECK(!u.get(2) && !u.get(3));
   }
+  { // reads_never_write_flash
+    Env e; RadioPresetCLI c; setup(c, e);
+    int s = e.saves;
+    CHECK(run(c, "get preset", r)); CHECK(has(r, "2 Private"));
+    CHECK(run(c, "get preset 2", r)); CHECK(std::strcmp(r, "2 Private 915.0,62.5,7,5") == 0);
+    CHECK(run(c, "get preset 9", r)); CHECK(has(r, "Error"));
+    CHECK(c.activeSlot() == 1 && c.table().get(2) != nullptr && !c.pending());
+    c.loop(1000); c.loop(700000);
+    CHECK(e.saves == s);
+  }
+  { // seed_kept_in_memory_when_first_save_fails
+    Env e; e.failSave = true;
+    RadioPresetCLI c; c.begin(&e, kHooks);
+    CHECK(e.saves == 0 && !e.haveStore);
+    CHECK(run(c, "get preset 1", r)); CHECK(has(r, "1*USA-Canada 910.5250244,62.5,7,5"));
+    CHECK(c.activeSlot() == 1);
+    e.failSave = false;
+    CHECK(run(c, "add preset Private 2 915.0,62.5,7,5", r)); CHECK(has(r, "OK"));
+    RadioPresetTable u; CHECK(u.decode(e.store.data(), e.store.size()));
+    CHECK(u.get(1) && u.get(2));
+  }
   { // unrelated_commands_pass_through
     Env e; RadioPresetCLI c; setup(c, e);
+    int loads = e.loads, s = e.saves;
     CHECK(!run(c, "get radio", r));
     CHECK(!run(c, "set radio 1,2,3,4", r));
     CHECK(!run(c, "get retry.preset", r));
     CHECK(!run(c, "get presets", r));
     CHECK(!run(c, "ver", r));
+    CHECK(e.loads == loads && e.saves == s);  // unrelated lines never touch /presets
   }
+#if !MESH_RADIO_PRESETS_RESIDENT
+  // Lazy: only the hooks and the revert timer stay resident (<= 40 B on 32-bit
+  // targets, enforced in RadioPresetCLI.h; 64-bit hosts pad the 7 pointers).
+  static_assert(sizeof(RadioPresetCLI) <= sizeof(RadioPresetCLI::Hooks) + 16, "lazy object too large");
+  static_assert(sizeof(RadioPresetCLI) < sizeof(RadioPresetTable), "lazy object holds a table");
+#else
+  static_assert(sizeof(RadioPresetCLI) > sizeof(RadioPresetTable), "resident object holds the table");
+#endif
   if (failures) return 1;
   std::printf("PASS cli\n");
   return 0;
@@ -419,9 +448,10 @@ int main() {
 
 
 class RadioPresetsTest(unittest.TestCase):
+    """Runs with the table resident in RAM (MESH_RADIO_PRESETS_RESIDENT=1)."""
     # ESP-IDF/newlib <limits.h> defines NAME_MAX as a macro. Predefine it on host
     # so any identifier collision with a platform macro fails here too.
-    PLATFORM_MACROS = ('-DNAME_MAX=255',)
+    PLATFORM_MACROS = ('-DNAME_MAX=255', '-DMESH_RADIO_PRESETS_RESIDENT=1')
 
     def build_and_run(self, name, source, expected, extra_sources=()):
         compiler = shutil.which('g++') or shutil.which('clang++')
@@ -455,7 +485,7 @@ class RadioPresetsTest(unittest.TestCase):
 int main() {
   char r[160];
   Env e; e.setCur(915.0f, 250.0f, 11, 5, 0);
-  RadioPresetCLI c; c.begin(hooks(e));
+  RadioPresetCLI c; c.begin(&e, kHooks);
   CHECK(run(c, "get preset 1", r));
   CHECK(has(r, "1 EU-Narrow 869.6"));
   CHECK(c.table().get(1) && std::strcmp(c.table().get(1)->name, "EU-Narrow") == 0);
@@ -477,6 +507,30 @@ int main() {
         self.build_and_run('cli', CLI_HARNESS, 'PASS cli',
                            extra_sources=('src/helpers/TxtDataHelpers.cpp',
                                           'src/helpers/RadioPresetCLI.cpp'))
+
+
+class LazyRadioPresetsTest(RadioPresetsTest):
+    """Same harnesses with the table loaded per command (MESH_RADIO_PRESETS_RESIDENT=0)."""
+    PLATFORM_MACROS = ('-DNAME_MAX=255', '-DMESH_RADIO_PRESETS_RESIDENT=0')
+
+    def test_lazy_object_is_small_and_resident_is_default(self):
+        probe = r'''
+#include <helpers/RadioPresetCLI.h>
+#include <cstdio>
+int main() {
+  std::printf("resident=%d size=%u hooks=%u table=%u\n", (int)MESH_RADIO_PRESETS_RESIDENT,
+              (unsigned)sizeof(mesh::RadioPresetCLI), (unsigned)sizeof(mesh::RadioPresetCLI::Hooks),
+              (unsigned)sizeof(mesh::RadioPresetTable));
+  return 0;
+}
+'''
+        self.build_and_run('lazy_size', probe, 'resident=0 size=')
+        saved = self.PLATFORM_MACROS
+        try:
+            self.PLATFORM_MACROS = ('-DNAME_MAX=255',)
+            self.build_and_run('default_size', probe, 'resident=1 size=')
+        finally:
+            self.PLATFORM_MACROS = saved
 
 
 def _read(rel):
@@ -675,7 +729,7 @@ class CompanionPresetContractTest(unittest.TestCase):
         self.assertSourceMatches(public, r'bool\s+loadRadioPreset\(uint8_t\s+slot,\s*char\*\s*reply,'
                                  r'\s*size_t\s+cap\)')
         self.assertSourceMatches(public, r'uint8_t\s+activeRadioPreset\(\)\s*const')
-        self.assertSourceMatches(public, r'const\s+mesh::RadioPresetTable&\s+radioPresetTable\(\)\s*const')
+        self.assertSourceMatches(public, r'mesh::RadioPresetCLI::TableView\s+radioPresetTable\(\)\s*const')
         self.assertSourceMatches(_read(self.H), r'mesh::RadioPresetCLI\s+_radio_presets\s*;')
 
     def test_begin_after_profiles_and_loop_every_pass(self):

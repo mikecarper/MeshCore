@@ -233,7 +233,8 @@ public:
     return _radio_presets.loadSlot(slot, reply, cap);
   }
   uint8_t activeRadioPreset() const { return _radio_presets.activeSlot(); }
-  const mesh::RadioPresetTable& radioPresetTable() const { return _radio_presets.table(); }
+  // A reference to the resident table, or a copy read from /presets (lazy builds).
+  mesh::RadioPresetCLI::TableView radioPresetTable() const { return _radio_presets.table(); }
 #endif
 
   void begin(bool has_display, bool radio_available = true,
