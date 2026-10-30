@@ -11,6 +11,17 @@ from test_replay_reset_integration import extract_braced
 
 
 ROOT = Path(__file__).resolve().parents[1]
+COMPANION_SEND_DIRECT = r'''
+bool sendDirect(Packet* p,const uint8_t* path,uint8_t length){
+  // Companion supplies a primary-only policy. Dispatcher binds the current
+  // profile on admission; the repeater client's pre-bound profile is separate.
+  assert(p&&p==last_packet&&p==&packets.back());
+  assert(path==nullptr&&length==0&&p->tx_radio==RADIO_TX_PRIMARY);
+  if(type==PAYLOAD_TYPE_PATH)sent.assign(p->payload,p->payload+p->payload_len);
+  if(send_ok)admitted.push_back(p);
+  pending=send_ok;return send_ok;
+}
+'''
 HARNESS = r'''
 #include <helpers/CompanionDirectAdminGuard.h>
 #define CMD_SEND_PATH_DISCOVERY_REQ 52
@@ -166,9 +177,22 @@ int main(){
   packet.path_len=1;m.onPeerDataRecv(&packet,PAYLOAD_TYPE_RESPONSE,0,secret,data,13);assert(m.login_calls==1);
   m.onPeerDataRecv(&packet,PAYLOAD_TYPE_RESPONSE,0,other,data,13);assert(m.data_calls==1);
   packet.path_len=0;
-  m.mode(2);assert(m.response==0&&m.type==PAYLOAD_TYPE_PATH&&m.packet.tx_radio==1);
+  const size_t before_path=m.admitted.size();
+  const int before_path_allocations=m.calls;
+  m.mode(2);assert(m.response==0&&m.type==PAYLOAD_TYPE_PATH);
+  assert(m.calls==before_path_allocations+1&&m.admitted.size()==before_path+1);
+  assert(m.admitted.back()==m.last_packet&&m.last_packet==&m.packets.back());
+  assert(m.last_packet->tx_radio==mesh::RADIO_TX_PRIMARY);
+  assert(m.sent.size()==10&&m.sent[0]==0x11&&m.sent[1]==0x55);
+  assert(m.sent[2]==0xCA&&m.sent[3]==0xFE&&m.sent[4]==0&&m.sent[5]==0xFF);
   assert(m.command("get ota.direct",0,reply)&&strstr(reply,"busy=1"));
   m.pending=false;assert(m.command("get ota.direct",0,reply)&&strstr(reply,"busy=0"));
+  m.alloc_ok=false;m.mode(2);assert(m.response==ERR_CODE_BAD_STATE);
+  assert(m.calls==before_path_allocations+1&&m.admitted.size()==before_path+1);
+  m.alloc_ok=true;m.send_ok=false;m.mode(2);assert(m.response==ERR_CODE_BAD_STATE);
+  assert(m.calls==before_path_allocations+2&&m.admitted.size()==before_path+1);
+  assert(m.last_packet!=m.admitted.back()&&m.last_packet->tx_radio==mesh::RADIO_TX_PRIMARY);
+  m.send_ok=true;
 
   // Exact MAC-bound peer, fresh timestamp, DIRECT0 and command prefix are all
   // required. Ordinary private messages and unmatched CLI replies stay in inbox.
@@ -206,8 +230,12 @@ int main(){
   assert(m.response==0&&m._ota_direct_contact.type==ADV_TYPE_ROOM);
   assert(m._ota_direct_contact.sync_since==0&&m._ota_direct_contact.id.matches(m.contact.id));
   uint32_t timeout=0;
+  const size_t before_login=m.admitted.size();
+  const int before_login_allocations=m.calls;
   assert(m.sendLogin(m._ota_direct_contact,"secret",timeout)==1);
-  assert(m.type==PAYLOAD_TYPE_ANON_REQ&&m.packet.tx_radio==mesh::RADIO_TX_PRIMARY);
+  assert(m.type==PAYLOAD_TYPE_ANON_REQ&&m.calls==before_login_allocations+1);
+  assert(m.admitted.size()==before_login+1&&m.admitted.back()==m.last_packet);
+  assert(m.last_packet==&m.packets.back()&&m.last_packet->tx_radio==mesh::RADIO_TX_PRIMARY);
   assert(m.sent.size()==14&&!memcmp(m.sent.data()+8,"secret",6));
   for(unsigned i=4;i<8;++i)assert(m.sent[i]==0); // Room login requests no historical cursor.
   assert(m.contact.type==ADV_TYPE_ROOM&&m.contact.sync_since==987);
@@ -256,6 +284,7 @@ class CompanionDirectAdminGuardTest(unittest.TestCase):
         start = mesh.index("Packet* Mesh::createPathReturn(const uint8_t* dest_hash,")
         end = mesh.index("\nPacket* Mesh::createDatagram(", start)
         stub = STUB.replace("@PATH_BUILDER@", mesh[start:end])
+        stub = stub.replace(extract_braced(stub, "bool sendDirect("), COMPANION_SEND_DIRECT)
         stub = stub.replace("#define PAYLOAD_TYPE_PATH 8", "#define PAYLOAD_TYPE_PATH 8\n#define PAYLOAD_TYPE_OTA 12")
         stub = stub.replace("bool direct=true;", "uint8_t payload_type=0;uint8_t getPayloadType()const{return payload_type;}\n  bool direct=true;")
         prefix_blocks = []
