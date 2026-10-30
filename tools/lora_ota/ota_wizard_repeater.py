@@ -142,6 +142,8 @@ class StreamDecoder:
 
 
 class RepeaterTransport:
+    supports_radio2 = True
+
     def __init__(self, port, baud=115200, *, command_timeout=12,
                  remote_timeout=40, poll_seconds=.25, serial_factory=None,
                  open_settle=.75, known_repeater: str | None = None, acl_only=False):
@@ -169,6 +171,10 @@ class RepeaterTransport:
     @property
     def source_key(self):
         return self._source_key
+
+    @property
+    def acl_only(self):
+        return self._acl_only
 
     async def open(self):
         if self._serial is not None:

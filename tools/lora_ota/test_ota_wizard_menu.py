@@ -83,14 +83,15 @@ class WizardMenuTests(unittest.TestCase):
     def test_settings_round_trip_without_saving_environment_credentials(self):
         source, download_cache = self.cache / "custom source", self.cache / "downloads elsewhere"
         values = ["1", "2", "2", "2", "3", "2", "4", "COM12", "5", "/tools/motatool",
-                  "6", str(source), "7", "v1.18.0.4-custom", "8", str(download_cache), "9"]
+                  "6", str(source), "7", "v1.18.0.4-custom", "8", str(download_cache),
+                  "9", "2", "10", "2", "11", "910.25,62.5,7,5", "12"]
         options = wizard.arguments([])
         with self.answers(values), mock.patch.dict(os.environ, {"MESHCORE_ADMIN_PASSWORD": "never save me"}):
             wizard.settings_menu(options)
         stored = json.loads(wizard.menu_settings_path().read_text())
         self.assertNotIn("never save me", json.dumps(stored))
         self.assertEqual(set(stored), {"full", "no_bootloader", "mode", "port", "motatool",
-                                      "source_tree", "version", "cache"})
+                                      "source_tree", "version", "cache", "auth", "source_radio", "transfer_radio"})
         restored = wizard.arguments([])
         wizard.load_menu_settings(restored)
         self.assertTrue(restored.full)
@@ -100,15 +101,50 @@ class WizardMenuTests(unittest.TestCase):
         self.assertEqual(restored.source_tree, source)
         self.assertEqual(restored.cache, download_cache)
         self.assertEqual(restored.version, "v1.18.0.4-custom")
+        self.assertEqual(restored.auth, "acl")
+        self.assertEqual(restored.source_radio, "radio2")
+        self.assertEqual(restored.transfer_radio, (910.25, 62.5, 7, 5))
 
     def test_blank_settings_can_restore_automatic_port_builder_and_version(self):
         options = wizard.arguments([])
         options.port, options.motatool, options.version = "COM12", "/tools/motatool", "v1.18.0.4-custom"
-        with self.answers(["4", "", "5", "", "7", "", "9"]):
+        with self.answers(["4", "", "5", "", "7", "", "12"]):
             wizard.settings_menu(options)
         self.assertIsNone(options.port)
         self.assertIsNone(options.motatool)
         self.assertIsNone(options.version)
+
+    def test_known_key_menu_can_reuse_enter_discover_and_back(self):
+        options = wizard.arguments([])
+        options.interactive_menu = True
+        with self.answers(["1"]):
+            self.assertEqual(wizard.choose_known_target(options, 'repeater', {'target': KEY}), KEY)
+        with self.answers(["1", KEY.upper()]):
+            self.assertEqual(wizard.choose_known_target(options, 'repeater', {}), KEY)
+        with self.answers(["2"]):
+            self.assertIsNone(wizard.choose_known_target(options, 'repeater', {}))
+        with self.answers(["3"]), self.assertRaises(wizard.MenuCancelled):
+            wizard.choose_known_target(options, 'repeater', {})
+
+    def test_runtime_bootstrap_preserves_connection_choices(self):
+        options = wizard.arguments(['--auth', 'acl', '--source-radio', 'radio2',
+                                    '--transfer-radio', '910.25,62.5,7,5', '--target', KEY,
+                                    '--target-type', 'repeater', '--mode', 'repeater', '--port', 'COM12'])
+        restored = wizard.arguments(wizard.menu_runtime_arguments(options, 'check'))
+        for field in ('auth', 'source_radio', 'transfer_radio', 'target', 'target_type', 'mode', 'port'):
+            self.assertEqual(getattr(restored, field), getattr(options, field))
+        self.assertEqual(restored.menu_action, 'check')
+
+    def test_invalid_transfer_settings_are_not_saved_or_loaded(self):
+        for value in ('nan,62.5,7,5', '910.25,inf,7,5', '910.25,63,7,5', '910.25,62.5,7,99'):
+            with self.subTest(value=value):
+                options = wizard.arguments([])
+                with self.answers(['11', value, '12']):
+                    wizard.settings_menu(options)
+                self.assertIsNone(options.transfer_radio)
+                wizard.menu_settings_path().write_text(json.dumps({'transfer_radio': value}))
+                wizard.load_menu_settings(options)
+                self.assertIsNone(options.transfer_radio)
 
     def test_menu_prepares_real_full_bundle_from_github_and_cached_request(self):
         request = self.cache / "requests" / (KEY + ".json")

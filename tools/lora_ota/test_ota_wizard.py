@@ -189,11 +189,138 @@ class WizardTests(unittest.TestCase):
             self.assertEqual(asyncio.run(wizard.run(self.run_options(
                 '--check', '--target-type', 'repeater'))), 0)
             sys.modules['ota_wizard_repeater'].RepeaterTransport.assert_called_once_with(
-                '/dev/ttyUSB0', known_repeater=KEY)
+                '/dev/ttyUSB0', known_repeater=KEY, acl_only=False)
         link.discover.assert_not_awaited()
         session.inspect.assert_awaited_once()
         session.snapshot.assert_not_awaited()
         link.close.assert_awaited_once()
+
+    def inspection_session(self):
+        return SimpleNamespace(inspect=mock.AsyncMock(return_value=destination()),
+                               snapshot=mock.AsyncMock(), cleanup=mock.AsyncMock(return_value=[]),
+                               journal=self.cache/'session.json')
+
+    def test_explicit_acl_ignores_password_environment_and_passes_radio2_choices(self):
+        link, session = self.link(), self.inspection_session()
+        with self.fake_transport(link), \
+                mock.patch.object(wizard, 'DirectSession', return_value=session) as constructor, \
+                mock.patch.dict(os.environ, {'MESHCORE_ADMIN_PASSWORD': 'invalid\r\npassword'}), \
+                mock.patch.object(wizard.getpass, 'getpass', side_effect=AssertionError('password prompt')), \
+                redirect_stdout(io.StringIO()):
+            self.assertEqual(asyncio.run(wizard.run(self.run_options('--check', '--auth', 'acl',
+                '--source-radio', 'radio2', '--transfer-radio', '910.250,62.5,7,5'))), 0)
+            sys.modules['ota_wizard_repeater'].RepeaterTransport.assert_called_once_with(
+                '/dev/ttyUSB0', known_repeater=KEY, acl_only=True)
+        self.assertEqual(constructor.call_args.args[2], '')
+        self.assertEqual(constructor.call_args.kwargs['source_radio'], 'radio2')
+        self.assertEqual(constructor.call_args.kwargs['transfer_radio'], (910.25, 62.5, 7, 5))
+        link.discover.assert_not_awaited()
+        session.snapshot.assert_not_awaited()
+
+    def test_auto_known_key_uses_acl_without_a_password(self):
+        link, session = self.link(), self.inspection_session()
+        options = self.run_options('--check')
+        with self.fake_transport(link), \
+                mock.patch.object(wizard, 'DirectSession', return_value=session) as constructor, \
+                mock.patch.dict(os.environ, {}, clear=True), \
+                mock.patch.object(wizard.getpass, 'getpass', side_effect=AssertionError('password prompt')), \
+                redirect_stdout(io.StringIO()):
+            self.assertEqual(asyncio.run(wizard.run(options)), 0)
+            self.assertTrue(sys.modules['ota_wizard_repeater'].RepeaterTransport.call_args.kwargs['acl_only'])
+        self.assertEqual(constructor.call_args.args[2], '')
+        link.discover.assert_not_awaited()
+
+    def test_auto_discovery_still_uses_password(self):
+        link, session = self.link(), self.inspection_session()
+        options = self.run_options('--check')
+        options.target = None
+        with self.fake_transport(link), \
+                mock.patch.object(wizard, 'DirectSession', return_value=session) as constructor, \
+                mock.patch.dict(os.environ, {}, clear=True), \
+                mock.patch.object(wizard.sys.stdin, 'isatty', return_value=True), \
+                mock.patch.object(wizard.getpass, 'getpass', return_value='admin secret'), \
+                redirect_stdout(io.StringIO()):
+            self.assertEqual(asyncio.run(wizard.run(options)), 0)
+            sys.modules['ota_wizard_repeater'].RepeaterTransport.assert_called_once_with('/dev/ttyUSB0')
+        self.assertEqual(constructor.call_args.args[2], 'admin secret')
+        link.discover.assert_awaited_once()
+
+    def test_password_mode_honors_environment_for_known_key(self):
+        link, session = self.link(), self.inspection_session()
+        with self.fake_transport(link), \
+                mock.patch.object(wizard, 'DirectSession', return_value=session) as constructor, \
+                mock.patch.dict(os.environ, {'MESHCORE_ADMIN_PASSWORD': 'admin secret'}), \
+                mock.patch.object(wizard.getpass, 'getpass', side_effect=AssertionError('password prompt')), \
+                redirect_stdout(io.StringIO()):
+            self.assertEqual(asyncio.run(wizard.run(self.run_options('--check', '--auth', 'password'))), 0)
+            self.assertFalse(sys.modules['ota_wizard_repeater'].RepeaterTransport.call_args.kwargs['acl_only'])
+        self.assertEqual(constructor.call_args.args[2], 'admin secret')
+
+    def test_companion_rejects_acl_and_radio2_before_opening(self):
+        for flags, message in ((['--auth', 'acl'], 'Saved ACL access'),
+                               (['--source-radio', 'radio2'], 'Radio2 transfers')):
+            with self.subTest(flags=flags), \
+                    mock.patch.object(wizard, 'DirectSession') as session, \
+                    self.assertRaisesRegex(ota.OtaError, message):
+                asyncio.run(wizard.run(self.run_options('--mode', 'companion', *flags)))
+            session.assert_not_called()
+
+    def test_acl_rejection_closes_without_password_fallback(self):
+        link, session = self.link(), self.inspection_session()
+        session.inspect.side_effect = ota.OtaError('permission denied')
+        with self.fake_transport(link), \
+                mock.patch.object(wizard, 'DirectSession', return_value=session) as constructor, \
+                mock.patch.object(wizard.getpass, 'getpass', side_effect=AssertionError('password fallback')), \
+                redirect_stdout(io.StringIO()), self.assertRaisesRegex(ota.OtaError, 'permission denied'):
+            asyncio.run(wizard.run(self.run_options('--check', '--auth', 'acl')))
+        constructor.assert_called_once()
+        session.cleanup.assert_awaited_once()
+        link.close.assert_awaited_once()
+
+    def test_recovery_uses_recorded_auth_and_radio_instead_of_current_settings(self):
+        journal = self.cache/'sessions'/(KEY+'.json')
+        journal.parent.mkdir()
+        saved = {label: {'radio': '910.525,62.5,7,5', 'rxps': 'off', 'ota': 'autofetch=off autoinstall=off'}
+                 for label in ('source', 'target')}
+        journal.write_text(json.dumps({'format': 1, 'phase': 'armed', 'target_key': KEY,
+            'source_key': SOURCE, 'auth': 'acl', 'source_mode': 'repeater', 'source_radio': 'radio2',
+            'transfer_radio': [910.25, 62.5, 7, 5], 'settings': saved}))
+        link, session = self.link(), self.inspection_session()
+        with self.fake_transport(link), \
+                mock.patch.object(wizard, 'DirectSession', return_value=session) as constructor, \
+                mock.patch.dict(os.environ, {'MESHCORE_ADMIN_PASSWORD': 'ignore me'}), \
+                redirect_stdout(io.StringIO()):
+            self.assertEqual(asyncio.run(wizard.run(self.run_options('--recover', '--auth', 'password',
+                '--transfer-radio', '911.15,125,8,5'))), 0)
+            self.assertTrue(sys.modules['ota_wizard_repeater'].RepeaterTransport.call_args.kwargs['acl_only'])
+        for call in constructor.call_args_list:
+            self.assertEqual(call.args[2], '')
+            self.assertEqual(call.kwargs['source_radio'], 'radio2')
+            self.assertEqual(call.kwargs['transfer_radio'], (910.25, 62.5, 7, 5))
+        session.inspect.assert_not_awaited()
+        self.assertEqual(session.saved, saved)
+        link.discover.assert_not_awaited()
+
+    def test_check_refuses_interrupted_recovery_without_opening_radios(self):
+        journal = self.cache/'sessions'/(KEY+'.json')
+        journal.parent.mkdir()
+        journal.write_text(json.dumps({'format': 1, 'phase': 'armed'}))
+        link = self.link()
+        with self.fake_transport(link), self.assertRaisesRegex(ota.OtaError, 'recovery first'):
+            asyncio.run(wizard.run(self.run_options('--check')))
+        link.open.assert_not_awaited()
+
+    def test_cleanup_exception_always_closes_usb_and_preserves_initial_error(self):
+        for inspect_error in (None, ota.OtaError('permission denied')):
+            link, session = self.link(), self.inspection_session()
+            session.cleanup.side_effect = ValueError('invalid recorded window')
+            session.inspect.side_effect = inspect_error
+            with self.subTest(inspect_error=inspect_error), self.fake_transport(link), \
+                    mock.patch.object(wizard, 'DirectSession', return_value=session), \
+                    redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()), \
+                    self.assertRaisesRegex(ota.OtaError, 'permission denied' if inspect_error else 'settings recovery'):
+                asyncio.run(wizard.run(self.run_options('--check', '--auth', 'acl')))
+            link.close.assert_awaited_once()
 
     def test_known_repeater_requires_full_key_and_repeater_source_before_opening_usb(self):
         for extra, error in (([], 'requires --target'),

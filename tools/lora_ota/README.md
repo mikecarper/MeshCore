@@ -6,6 +6,12 @@ For **MeshCore 1.18.0.1**, choose the exact application package from the
 destinations use the matching OTAFIX 2.4.12 bootloader. Full Companion is a
 source for other nodes and normally updates itself over USB.
 
+For a menu with no arguments, run `python3 tools/lora_ota/ota_wizard.py` from
+the checkout. It supports a USB Repeater or Full Companion source, GitHub
+release selection, differential or full packages, and recovery. USB Repeater
+sources can use an existing admin ACL grant and a temporary radio2 transfer
+profile. See [Guided LoRa updates](../../docs/ota_wizard.md) for setup and limits.
+
 `lora_ota.py` is the existing Companion-based update runner. The separate
 `mota_kiss_direct.py` tool serves one verified `.mota` file through a **full KISS
 modem** on logical radio port `0` or `1`. It does not use the Companion raw-packet
