@@ -16,6 +16,7 @@ STUB = r'''
 #include <deque>
 #include <string>
 #include <vector>
+#include <RadioProfiles.h>
 #define PUB_KEY_SIZE 32
 #define PAYLOAD_TYPE_ANON_REQ 7
 #define PAYLOAD_TYPE_TXT_MSG 2
@@ -27,7 +28,6 @@ STUB = r'''
 #define PH_TYPE_SHIFT 2
 #define MESH_DEBUG_PRINTLN(...) do {} while(0)
 namespace mesh {
-enum { RADIO_TX_PRIMARY=1 };
 struct Identity {
   uint8_t pub_key[32]{};
   Identity()=default;
@@ -57,6 +57,9 @@ struct Packet {
   uint8_t payload[184]{};
   size_t payload_len=0,path_len=0;
   int tx_radio=0;int16_t _rssi=-95;int8_t _snr=20;
+  uint8_t radio_profile=0,radio_origin=0;
+  uint32_t radio_generation=0,radio_origin_generation=0;
+  bool radio_bound=false;
   bool direct=true;
   bool isRouteDirect()const{return direct;}
   bool isRouteFlood()const{return !direct;}
@@ -65,15 +68,23 @@ struct Packet {
 };
 struct Clock {uint32_t now=10000;uint32_t getCurrentTimeUnique(){return ++now;}};
 struct Random {void random(uint8_t* out,size_t size){for(size_t i=0;i<size;++i)out[i]=uint8_t(33+i);}};
+struct Radio {
+  RadioProfiles config;bool expose_profiles=false;
+  RadioProfiles* profiles(){return expose_profiles?&config:nullptr;}
+  const RadioProfiles* profiles()const{return expose_profiles?&config:nullptr;}
+};
 struct Mesh {
   LocalIdentity self_id;
   Clock clock;Random rng;std::deque<Packet> packets;
+  Radio profile_radio;
+  std::vector<Packet*> admitted;
   Packet* last_packet=nullptr;Packet* last_copy=nullptr;bool copy_path=false,fail_path_admission=false;
   std::vector<uint8_t> sent;
   int type=-1,calls=0;bool alloc_ok=true,send_ok=true,pending=false;
   Mesh(){memset(self_id.pub_key,0x55,32);}
   Clock* getRTCClock(){return &clock;}
   Random* getRNG(){return &rng;}
+  Radio* getProfileRadio(){return &profile_radio;}
   Packet* make(int t,const uint8_t* data,size_t length){
     if(!alloc_ok)return nullptr;
     ++calls;type=t;sent.assign(data,data+length);packets.emplace_back();last_packet=&packets.back();return last_packet;
@@ -88,7 +99,15 @@ struct Mesh {
   virtual void onSendFail(Packet*){}
   virtual void onRadioProfileCopyQueued(Packet*,const Packet*,uint8_t){}
   bool sendDirect(Packet* p,const uint8_t* path,uint8_t length){
-    assert(p&&path==nullptr&&length==0&&p->tx_radio==RADIO_TX_PRIMARY);
+    assert(p&&path==nullptr&&length==0&&p->radio_bound);
+    assert(p->tx_radio==RADIO_TX_PRIMARY||p->tx_radio==RADIO_TX_SECONDARY);
+    const uint8_t profile=p->tx_radio==RADIO_TX_SECONDARY?1:0;
+    assert(p->radio_profile==profile&&p->radio_origin==profile);
+    const auto* config=profile_radio.profiles();
+    assert(profile==0||(config&&config->secondary.mode==RadioProfileMode::RxTx));
+    const uint32_t generation=config?config->generation[profile]:0;
+    assert(p->radio_generation==generation&&p->radio_origin_generation==generation);
+    if(send_ok)admitted.push_back(p);
     if(type==PAYLOAD_TYPE_PATH){
       sent.assign(p->payload,p->payload+p->payload_len);
       if(fail_path_admission)onSendFail(p); // Dispatcher can retire a retry before admission
@@ -150,9 +169,15 @@ static std::vector<uint8_t> reply(uint32_t timestamp,uint8_t kind,const std::str
 static void deliver(Client& c,mesh::Mesh& radio,mesh::Packet& packet,uint32_t tag,const std::string& text,uint32_t now=200){
   auto data=reply(tag,1,text);c.onData(radio,&packet,PAYLOAD_TYPE_TXT_MSG,data.data(),data.size(),now);
 }
+static void ingress(mesh::Packet& packet,const mesh::Mesh& radio){
+  assert(radio.last_packet);
+  packet.radio_profile=radio.last_packet->radio_profile;
+  packet.radio_generation=radio.last_packet->radio_generation;
+}
 static void discover(Client& c,mesh::Mesh& radio,uint32_t now,uint8_t type=2){
   command(c,radio,"ota.peer discover",now);
   mesh::Packet packet;packet.payload_len=38;packet.payload[0]=0x90|type;
+  ingress(packet,radio);
   memcpy(packet.payload+2,radio.sent.data()+2,4);memset(packet.payload+6,0x11,32);
   c.onDiscovery(&packet,now+1);c.tick(now+6000);
 }
@@ -165,6 +190,7 @@ static void authenticate(Client& c,mesh::Mesh& radio,uint32_t now=100,
   assert(c.hasSession()&&c.matchesHash(reinterpret_cast<const uint8_t*>("\x11")));
   uint8_t login[13]{};uint32_t tag=20000;memcpy(login,&tag,4);login[7]=3;
   mesh::Packet packet;
+  ingress(packet,radio);
   packet.direct=false;packet.path_len=1;c.onData(radio,&packet,PAYLOAD_TYPE_RESPONSE,login,sizeof(login),now+1);
   assert(radio.type==PAYLOAD_TYPE_ANON_REQ);
   packet.direct=true;packet.path_len=1;c.onData(radio,&packet,PAYLOAD_TYPE_RESPONSE,login,sizeof(login),now+2);
@@ -296,9 +322,192 @@ static void ownedPathCompletion(){
     assert(!radio.direct_ota_admin.hasSession());
   }
 }
+static void secondary(mesh::Mesh& radio){
+  radio.profile_radio.expose_profiles=true;
+  radio.profile_radio.config.secondary.mode=mesh::RadioProfileMode::RxTx;
+  radio.profile_radio.config.generation[0]=17;
+  radio.profile_radio.config.generation[1]=29;
+}
+static void assertErased(const Client& client){
+  uint8_t secret[32];memset(secret,0xAA,sizeof(secret));client.sharedSecret(secret);
+  for(uint8_t byte:secret)assert(byte==0);
+  assert(!client.hasSession());
+}
+static void radioSelection(){
+  Client c;mesh::Mesh radio;
+  assert(command(c,radio,"ota.peer radio")=="OTApeer radio=radio");
+  assert(command(c,radio,"ota.peer status")=="OTApeer v=1 session=0 busy=0 peers=0");
+  assert(command(c,radio,"ota.peer capabilities")=="OTApeer known_repeater=1");
+  for(const auto& invalid:std::vector<std::string>{"auto","both","off","1","radio2 ","radio radio2"})
+    assert(command(c,radio,"ota.peer radio "+invalid)=="ERR peer radio must be radio or radio2");
+  assert(command(c,radio,"ota.peer radio radio2")=="ERR peer radio requires enabled MeshCore RXTX");
+  radio.profile_radio.expose_profiles=true;
+  for(const auto mode:{mesh::RadioProfileMode::Off,mesh::RadioProfileMode::Rx}){
+    radio.profile_radio.config.secondary.mode=mode;
+    assert(command(c,radio,"ota.peer radio radio2")=="ERR peer radio requires enabled MeshCore RXTX");
+  }
+  secondary(radio);
+  for(const auto protocol:{mesh::RadioProfileProtocol::Meshtext,mesh::RadioProfileProtocol::Ethernet,mesh::RadioProfileProtocol::Kiss}){
+    radio.profile_radio.config.secondary.params.protocol=protocol;
+    assert(command(c,radio,"ota.peer radio radio2")=="ERR peer radio requires enabled MeshCore RXTX");
+  }
+  assert(radio.calls==0);
+  radio.profile_radio.config.secondary.params.protocol=mesh::RadioProfileProtocol::MeshCore;
+  assert(command(c,radio,"ota.peer radio radio2")=="OTApeer radio=radio2");
+  assert(command(c,radio,"ota.peer close")=="OTApeer closed");
+  assert(command(c,radio,"ota.peer radio")=="OTApeer radio=radio2");
+  c.reset();assert(command(c,radio,"ota.peer radio")=="OTApeer radio=radio2");
+  Client rebooted;assert(command(rebooted,radio,"ota.peer radio")=="OTApeer radio=radio");
+
+  command(c,radio,"ota.peer discover",100);
+  mesh::Packet packet;packet.payload_len=38;packet.payload[0]=0x92;
+  memcpy(packet.payload+2,radio.sent.data()+2,4);memset(packet.payload+6,0x11,32);
+  packet.radio_profile=0;packet.radio_generation=17;c.onDiscovery(&packet,101);
+  packet.radio_profile=1;packet.radio_generation=28;c.onDiscovery(&packet,102);
+  assert(command(c,radio,"ota.peer peers",103)=="ERR peer not found");
+  assert(command(c,radio,"ota.peer radio radio2",104)=="ERR peer request pending");
+  assert(command(c,radio,"ota.peer radio",105)=="OTApeer radio=radio2");
+  packet.radio_generation=29;c.onDiscovery(&packet,106);c.tick(6100);
+  assert(command(c,radio,"ota.peer status",6101)=="OTApeer v=1 session=0 busy=0 peers=1");
+  assert(command(c,radio,"ota.peer radio radio2",6102)=="OTApeer radio=radio2");
+  assert(command(c,radio,"ota.peer peers",6103).find("key="+key)!=std::string::npos);
+
+  command(c,radio,"ota.peer login "+key+" ",6200);
+  const int login_calls=radio.calls;
+  uint8_t accepted[13]{};uint32_t timestamp=80000;memcpy(accepted,&timestamp,4);accepted[7]=3;
+  packet=mesh::Packet();packet.radio_profile=0;packet.radio_generation=17;
+  c.onData(radio,&packet,PAYLOAD_TYPE_RESPONSE,accepted,sizeof(accepted),6201);
+  packet.radio_profile=1;packet.radio_generation=28;
+  c.onData(radio,&packet,PAYLOAD_TYPE_RESPONSE,accepted,sizeof(accepted),6202);
+  assert(c.hasSession()&&radio.calls==login_calls);
+  packet.radio_generation=29;
+  c.onData(radio,&packet,PAYLOAD_TYPE_RESPONSE,accepted,sizeof(accepted),6203);
+  assert(radio.type==PAYLOAD_TYPE_PATH);
+  c.onSendComplete(radio.last_packet);c.service(radio,6204);
+  assert(radio.type==PAYLOAD_TYPE_TXT_MSG);
+  std::string prefix(radio.sent.begin()+5,radio.sent.begin()+8);
+  packet.radio_profile=0;packet.radio_generation=17;
+  deliver(c,radio,packet,80001,prefix+"wrong proof",6205);
+  packet.radio_profile=1;packet.radio_generation=30;
+  deliver(c,radio,packet,80001,prefix+"wrong proof",6206);
+  assert(c.hasSession()&&command(c,radio,"ota.peer status",6207)=="OTApeer v=1 session=0 busy=1 peers=1");
+  packet.radio_generation=29;deliver(c,radio,packet,80001,prefix+"> "+key,6208);
+  assert(command(c,radio,"ota.peer status",6209)=="OTApeer v=1 session=1 busy=0 peers=1");
+  assert(command(c,radio,"ota.peer radio radio2",6210)=="OTApeer radio=radio2");
+  assert(command(c,radio,"ota.peer status",6211)=="OTApeer v=1 session=1 busy=0 peers=1");
+  command(c,radio,"ota.peer cmd "+key+" ota status",6300);
+  const int cli_calls=radio.calls;
+  prefix.assign(radio.sent.begin()+5,radio.sent.begin()+8);
+  packet.radio_profile=0;packet.radio_generation=17;
+  deliver(c,radio,packet,80002,prefix+"wrong radio",6301);
+  packet.radio_profile=1;packet.radio_generation=28;
+  deliver(c,radio,packet,80002,prefix+"wrong generation",6302);
+  assert(command(c,radio,"ota.peer result",6303).find("state=pending")!=std::string::npos);
+  packet.radio_generation=29;deliver(c,radio,packet,80002,prefix+"ota status",6304);
+  assert(command(c,radio,"ota.peer result",6305).find("state=ok bytes=10")!=std::string::npos);
+  assert(radio.calls==cli_calls);
+  for(const auto* sent:radio.admitted){
+    assert(sent->tx_radio==mesh::RADIO_TX_SECONDARY&&sent->radio_bound);
+    assert(sent->radio_profile==1&&sent->radio_origin==1);
+    assert(sent->radio_generation==29&&sent->radio_origin_generation==29);
+  }
+  assert(command(c,radio,"ota.peer radio radio",6306)=="OTApeer radio=radio");
+  assertErased(c);
+  assert(command(c,radio,"ota.peer status",6307)=="OTApeer v=1 session=0 busy=0 peers=0");
+  assert(command(c,radio,"ota.peer cmd "+key+" ota status",6308)=="ERR peer login required");
+  assert(radio.calls==cli_calls);
+}
+static void radioInvalidation(){
+  // The live configuration, rather than an unrelated packet's metadata,
+  // invalidates discovery, each login phase, pending CLI and idle auth.
+  for(int phase=0;phase<6;++phase){
+    Client c;mesh::Mesh radio;secondary(radio);mesh::Packet packet;
+    command(c,radio,"ota.peer radio radio2",1);
+    if(phase==0)command(c,radio,"ota.peer discover",100);
+    else if(phase>=4){
+      discover(c,radio,1);authenticate(c,radio,6100);
+      if(phase==4)command(c,radio,"ota.peer cmd "+key+" ota install",6200);
+    }else{
+      command(c,radio,"ota.peer login.repeater "+key+" ",100);
+      if(phase>=2){
+        uint8_t accepted[13]{};uint32_t timestamp=90000;memcpy(accepted,&timestamp,4);accepted[7]=3;
+        ingress(packet,radio);c.onData(radio,&packet,PAYLOAD_TYPE_RESPONSE,accepted,sizeof(accepted),101);
+        if(phase==3){c.onSendComplete(radio.last_packet);c.service(radio,102);}
+      }
+    }
+    const int before=radio.calls;
+    ++radio.profile_radio.config.generation[1];
+    if(phase==0)c.onDiscovery(&packet,6300);
+    else c.service(radio,6300);
+    assertErased(c);
+    assert(command(c,radio,"ota.peer status",6301)=="OTApeer v=1 session=0 busy=0 peers=0");
+    if(phase!=5)assert(command(c,radio,"ota.peer result",6302).find("state=error")!=std::string::npos);
+    c.onSendComplete(radio.last_packet);c.service(radio,15000);c.service(radio,23000);
+    assert(command(c,radio,"ota.peer cmd "+key+" ota install",23001)=="ERR peer login required");
+    assert(radio.calls==before); // invalidation never replays a remote command
+    assert(command(c,radio,"ota.peer radio",23002)=="OTApeer radio=radio2");
+  }
+  for(int mutation=0;mutation<4;++mutation){
+    Client c;mesh::Mesh radio;secondary(radio);
+    command(c,radio,"ota.peer radio radio2",1);authenticate(c,radio,100,true,"");
+    command(c,radio,"ota.peer cmd "+key+" ver",200);const int before=radio.calls;
+    if(mutation==0)radio.profile_radio.config.secondary.mode=mesh::RadioProfileMode::Off;
+    else if(mutation==1)radio.profile_radio.config.secondary.mode=mesh::RadioProfileMode::Rx;
+    else if(mutation==2)radio.profile_radio.config.secondary.params.protocol=mesh::RadioProfileProtocol::Meshtext;
+    else radio.profile_radio.expose_profiles=false;
+    // Ingress callbacks must also notice invalidation before accepting a reply.
+    mesh::Packet packet;ingress(packet,radio);
+    const std::string prefix(radio.sent.begin()+5,radio.sent.begin()+8);
+    deliver(c,radio,packet,30000,prefix+"late version",201);
+    assertErased(c);
+    assert(command(c,radio,"ota.peer result",202).find("state=error")!=std::string::npos);
+    assert(command(c,radio,"ota.peer discover",203)=="ERR peer radio requires enabled MeshCore RXTX");
+    assert(command(c,radio,"ota.peer login.repeater "+key+" ",204)=="ERR peer radio requires enabled MeshCore RXTX");
+    c.service(radio,10000);assert(radio.calls==before);
+  }
+  // Changing the other profile cannot cancel the selected profile's job.
+  Client c;mesh::Mesh radio;secondary(radio);
+  command(c,radio,"ota.peer radio radio2",1);authenticate(c,radio,100,true,"");
+  command(c,radio,"ota.peer cmd "+key+" ver",200);const int before=radio.calls;
+  const std::string prefix(radio.sent.begin()+5,radio.sent.begin()+8);
+  ++radio.profile_radio.config.generation[0];radio.profile_radio.config.primary.protocol=mesh::RadioProfileProtocol::Meshtext;
+  mesh::Packet packet;ingress(packet,radio);deliver(c,radio,packet,30000,prefix+"version",201);
+  assert(command(c,radio,"ota.peer status",202)=="OTApeer v=1 session=1 busy=0 peers=0");
+  assert(radio.calls==before);
+
+  // Profile-capable builds still default to primary and bind its generation.
+  Client primary;mesh::Mesh dual;secondary(dual);authenticate(primary,dual,100,true,"");
+  assert(command(primary,dual,"ota.peer radio",111)=="OTApeer radio=radio");
+  command(primary,dual,"ota.peer cmd "+key+" ver",200);
+  const std::string primary_prefix(dual.sent.begin()+5,dual.sent.begin()+8);
+  mesh::Packet wrong;wrong.radio_profile=1;wrong.radio_generation=29;
+  deliver(primary,dual,wrong,30000,primary_prefix+"wrong profile",201);
+  assert(command(primary,dual,"ota.peer result",202).find("state=pending")!=std::string::npos);
+  ++dual.profile_radio.config.generation[0];primary.tick(203);assertErased(primary);
+  assert(command(primary,dual,"ota.peer result",204).find("state=error")!=std::string::npos);
+}
+static void secondaryProofRetries(){
+  Client c;mesh::Mesh radio;secondary(radio);
+  command(c,radio,"ota.peer radio radio2",1);
+  command(c,radio,"ota.peer login.repeater "+key+" ",100);
+  mesh::Packet packet;ingress(packet,radio);
+  uint8_t accepted[13]{};uint32_t timestamp=90000;memcpy(accepted,&timestamp,4);accepted[7]=3;
+  c.onData(radio,&packet,PAYLOAD_TYPE_RESPONSE,accepted,sizeof(accepted),101);
+  c.onSendComplete(radio.last_packet);c.service(radio,102);
+  for(uint32_t now:{8102U,16103U}){
+    c.service(radio,now);assert(radio.type==PAYLOAD_TYPE_PATH);
+    c.onSendComplete(radio.last_packet);c.service(radio,now+1);
+    assert(radio.type==PAYLOAD_TYPE_TXT_MSG);
+  }
+  const int before=radio.calls;c.service(radio,24104);assert(radio.calls==before);
+  for(const auto* sent:radio.admitted)assert(sent->radio_profile==1&&sent->tx_radio==mesh::RADIO_TX_SECONDARY);
+}
 int main(){
   configurableTimeout();
   ownedPathCompletion();
+  radioSelection();
+  radioInvalidation();
+  secondaryProofRetries();
   UsbRole role;char gate_command[]="ota.peer status",gate_reply[160];
   role.dispatch(0,nullptr,gate_command,gate_reply,false);assert(!strcmp(gate_reply,"ERR ota.peer requires physical USB"));
   role.dispatch(1,nullptr,gate_command,gate_reply,true);assert(!strcmp(gate_reply,"ERR ota.peer requires physical USB"));

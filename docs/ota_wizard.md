@@ -30,6 +30,14 @@ raises the source's request timeout from 30 to 180 seconds. This RAM-only settin
 survives closing the admin session and resets on reboot; keep the controller's
 timeout longer than the source's.
 
+For manual USB administration on a configured secondary MeshCore profile, use
+`ota.peer radio radio2` before discovery or login; `ota.peer radio radio` selects
+the primary profile. `ota.peer radio` reports the choice. The secondary profile
+must be enabled for RX and TX. This RAM-only choice survives `ota.peer close`
+and resets to primary on reboot. Changing the choice clears authentication and
+discovered peers; changing the selected profile's configuration cancels a pending
+request and clears authentication. Admin traffic stays on the selected profile.
+
 The Full Companion source also needs a current build containing the wizard's
 version 2 direct admin support. An older Full Companion may serve OTA files but cannot
 provide this guarded admin connection; the wizard will ask for a source
