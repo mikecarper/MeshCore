@@ -13,6 +13,7 @@ STUB = r'''
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
+#include <deque>
 #include <string>
 #include <vector>
 #define PUB_KEY_SIZE 32
@@ -66,7 +67,8 @@ struct Clock {uint32_t now=10000;uint32_t getCurrentTimeUnique(){return ++now;}}
 struct Random {void random(uint8_t* out,size_t size){for(size_t i=0;i<size;++i)out[i]=uint8_t(33+i);}};
 struct Mesh {
   LocalIdentity self_id;
-  Clock clock;Random rng;Packet packet;
+  Clock clock;Random rng;std::deque<Packet> packets;
+  Packet* last_packet=nullptr;Packet* last_copy=nullptr;bool copy_path=false,fail_path_admission=false;
   std::vector<uint8_t> sent;
   int type=-1,calls=0;bool alloc_ok=true,send_ok=true,pending=false;
   Mesh(){memset(self_id.pub_key,0x55,32);}
@@ -74,15 +76,26 @@ struct Mesh {
   Random* getRNG(){return &rng;}
   Packet* make(int t,const uint8_t* data,size_t length){
     if(!alloc_ok)return nullptr;
-    ++calls;type=t;sent.assign(data,data+length);packet=Packet();return &packet;
+    ++calls;type=t;sent.assign(data,data+length);packets.emplace_back();last_packet=&packets.back();return last_packet;
   }
   Packet* createDatagram(int t,const Identity&,const uint8_t*,const uint8_t* d,size_t n){return make(t,d,n);}
   Packet* createAnonDatagram(int t,const LocalIdentity&,const Identity&,const uint8_t*,const uint8_t* d,size_t n){return make(t,d,n);}
   Packet* createControlData(const uint8_t* d,size_t n){return make(11,d,n);}
-  Packet* obtainNewPacket(){if(!alloc_ok)return nullptr;++calls;type=PAYLOAD_TYPE_PATH;packet=Packet();return &packet;}
+  Packet* obtainNewPacket(){if(!alloc_ok)return nullptr;++calls;type=PAYLOAD_TYPE_PATH;packets.emplace_back();last_packet=&packets.back();return last_packet;}
   Packet* createPathReturn(const uint8_t*,const uint8_t*,const uint8_t*,uint8_t,uint8_t,const uint8_t*,size_t);
   Packet* createPathReturn(const Identity& dest,const uint8_t* secret,const uint8_t* path,uint8_t length,uint8_t type,const uint8_t* extra,size_t size){uint8_t hash[1];dest.copyHashTo(hash);return createPathReturn(hash,secret,path,length,type,extra,size);}
-  bool sendDirect(Packet* p,const uint8_t* path,uint8_t length){assert(p&&path==nullptr&&length==0&&p->tx_radio==RADIO_TX_PRIMARY);if(type==PAYLOAD_TYPE_PATH)sent.assign(p->payload,p->payload+p->payload_len);pending=send_ok;return send_ok;}
+  virtual void onSendComplete(Packet*){}
+  virtual void onSendFail(Packet*){}
+  virtual void onRadioProfileCopyQueued(Packet*,const Packet*,uint8_t){}
+  bool sendDirect(Packet* p,const uint8_t* path,uint8_t length){
+    assert(p&&path==nullptr&&length==0&&p->tx_radio==RADIO_TX_PRIMARY);
+    if(type==PAYLOAD_TYPE_PATH){
+      sent.assign(p->payload,p->payload+p->payload_len);
+      if(fail_path_admission)onSendFail(p); // Dispatcher can retire a retry before admission
+      if(copy_path&&send_ok){packets.push_back(*p);last_copy=&packets.back();onRadioProfileCopyQueued(last_copy,p,0);}
+    }
+    pending=send_ok;return send_ok;
+  }
 protected:
   bool hasPendingRadioWork()const{return pending;}
 };
@@ -97,6 +110,9 @@ static uint32_t millis(){return 100;}
 struct UsbRole:mesh::Mesh {
   Client direct_ota_admin;
   void loop(){ @SERVICE_CALL@ }
+  void onSendComplete(mesh::Packet* packet) override { @COMPLETE_CALL@ }
+  void onSendFail(mesh::Packet* packet) override { @FAIL_CALL@ }
+  void onRadioProfileCopyQueued(mesh::Packet* packet,const mesh::Packet* original,uint8_t) override { @COPY_CALL@ }
   void dispatch(uint32_t sender_timestamp,void* sender,char* command,char* reply,bool usb_origin){
     @USB_GATE@
     strcpy(reply,"not a peer command");
@@ -159,8 +175,9 @@ static void authenticate(Client& c,mesh::Mesh& radio,uint32_t now=100,
   // by authenticated ciphertext containing empty return path + dummy payload.
   assert(radio.sent.size()==10&&radio.sent[0]==0x11&&radio.sent[1]==0x55);
   assert(radio.sent[2]==0xCA&&radio.sent[3]==0xFE&&radio.sent[4]==0&&radio.sent[5]==0xFF);
-  c.service(radio,now+3,!radio.pending);assert(radio.type==PAYLOAD_TYPE_PATH); // do not overtake the PATH
-  radio.pending=false;c.service(radio,now+4,!radio.pending);
+  c.service(radio,now+3);assert(radio.type==PAYLOAD_TYPE_PATH); // do not overtake the PATH
+  c.onSendComplete(radio.last_packet); // unrelated radio work can remain pending
+  c.service(radio,now+4);
   assert(radio.type==PAYLOAD_TYPE_TXT_MSG&&radio.sent[4]==12);
   std::string proof(radio.sent.begin()+5,radio.sent.begin()+8);
   assert(std::string(radio.sent.begin()+8,radio.sent.end())=="get public.key");
@@ -224,8 +241,64 @@ static void configurableTimeout(){
   Client rebooted;
   assert(command(rebooted,radio,"ota.peer timeout",246003)=="OTApeer timeout=30s");
 }
+static mesh::Packet* loginPath(UsbRole& radio){
+  auto& c=radio.direct_ota_admin;
+  assert(command(c,radio,"ota.peer login.repeater "+key+" ",100).find("state=pending")!=std::string::npos);
+  mesh::Packet direct;uint8_t accepted[13]{};uint32_t stamp=90000;
+  memcpy(accepted,&stamp,4);accepted[7]=3;
+  c.onData(radio,&direct,PAYLOAD_TYPE_RESPONSE,accepted,sizeof(accepted),101);
+  assert(radio.type==PAYLOAD_TYPE_PATH&&c.hasSession());
+  return radio.last_packet;
+}
+static void ownedPathCompletion(){
+  {
+    UsbRole radio;auto* path=loginPath(radio);const int queued=radio.calls;
+    mesh::Packet unrelated;
+    radio.onSendComplete(&unrelated);radio.loop();
+    assert(radio.calls==queued&&radio.type==PAYLOAD_TYPE_PATH);
+    radio.onSendComplete(path);assert(radio.calls==queued); // callback queues nothing
+    assert(radio.pending); // unrelated queued RF work still prevents global idle
+    radio.loop();assert(radio.calls==queued+1&&radio.type==PAYLOAD_TYPE_TXT_MSG);
+  }
+  {
+    UsbRole radio;radio.copy_path=true;auto* path=loginPath(radio);auto* copy=radio.last_copy;
+    assert(copy&&copy!=path);const int queued=radio.calls;
+    radio.onSendComplete(path);radio.loop();assert(radio.calls==queued); // admitted copy still owns the barrier
+    radio.onSendFail(copy);assert(radio.calls==queued);
+    radio.loop();assert(radio.calls==queued+1&&radio.type==PAYLOAD_TYPE_TXT_MSG);
+    assert(command(radio.direct_ota_admin,radio,"ota.peer status",102).find("session=0 busy=1")!=std::string::npos);
+  }
+  {
+    UsbRole radio;radio.copy_path=true;auto* path=loginPath(radio);auto* copy=radio.last_copy;
+    const int queued=radio.calls;
+    radio.onSendFail(path);radio.loop();assert(radio.calls==queued);
+    radio.onSendFail(copy);radio.loop();assert(radio.calls==queued);
+    assert(!radio.direct_ota_admin.hasSession());
+    assert(command(radio.direct_ota_admin,radio,"ota.peer result",102).find("state=error")!=std::string::npos);
+  }
+  {
+    UsbRole radio;radio.fail_path_admission=true;auto* path=loginPath(radio);const int queued=radio.calls;
+    radio.loop();assert(radio.calls==queued); // pre-admission failure is not terminal ownership
+    radio.onSendComplete(path);radio.loop();assert(radio.calls==queued+1);
+  }
+  {
+    UsbRole radio;auto* cancelled=loginPath(radio);
+    command(radio.direct_ota_admin,radio,"ota.peer close",102);
+    const int closed=radio.calls;radio.onSendComplete(cancelled);radio.loop();assert(radio.calls==closed);
+    auto* current=loginPath(radio);assert(current!=cancelled);const int queued=radio.calls;
+    radio.onSendComplete(cancelled);radio.loop();assert(radio.calls==queued);
+    radio.onSendComplete(current);radio.loop();assert(radio.calls==queued+1);
+  }
+  {
+    UsbRole radio;auto* path=loginPath(radio);const int queued=radio.calls;
+    radio.direct_ota_admin.tick(30100);
+    radio.onSendComplete(path);radio.loop();assert(radio.calls==queued);
+    assert(!radio.direct_ota_admin.hasSession());
+  }
+}
 int main(){
   configurableTimeout();
+  ownedPathCompletion();
   UsbRole role;char gate_command[]="ota.peer status",gate_reply[160];
   role.dispatch(0,nullptr,gate_command,gate_reply,false);assert(!strcmp(gate_reply,"ERR ota.peer requires physical USB"));
   role.dispatch(1,nullptr,gate_command,gate_reply,true);assert(!strcmp(gate_reply,"ERR ota.peer requires physical USB"));
@@ -305,9 +378,9 @@ int main(){
   Client retries;discover(retries,radio,10);command(retries,radio,"ota.peer login "+key+" password",6011);
   mesh::Packet direct;uint8_t accepted_login[13]{};uint32_t stamp=60000;memcpy(accepted_login,&stamp,4);accepted_login[7]=3;
   retries.onData(radio,&direct,PAYLOAD_TYPE_RESPONSE,accepted_login,sizeof(accepted_login),6012);
-  radio.pending=false;retries.service(radio,6013,!radio.pending);assert(radio.type==PAYLOAD_TYPE_TXT_MSG);
-  for(uint32_t now:{14013U,22014U}){radio.pending=false;retries.service(radio,now,!radio.pending);assert(radio.type==PAYLOAD_TYPE_PATH);radio.pending=false;retries.service(radio,now+1,!radio.pending);}
-  const int attempts=radio.calls;retries.service(radio,30015,!radio.pending);assert(radio.calls==attempts);
+  retries.onSendComplete(radio.last_packet);retries.service(radio,6013);assert(radio.type==PAYLOAD_TYPE_TXT_MSG);
+  for(uint32_t now:{14013U,22014U}){retries.service(radio,now);assert(radio.type==PAYLOAD_TYPE_PATH);retries.onSendComplete(radio.last_packet);retries.service(radio,now+1);}
+  const int attempts=radio.calls;retries.service(radio,30015);assert(radio.calls==attempts);
   retries.tick(36011);assert(!retries.hasSession());
   // Execute the production MyMesh loop call with Dispatcher-like protection.
   // Only the derived mesh may inspect its protected radio-work state.
@@ -315,7 +388,7 @@ int main(){
   command(integration.direct_ota_admin,integration,"ota.peer login "+key+" password",6011);
   integration.direct_ota_admin.onData(integration,&direct,PAYLOAD_TYPE_RESPONSE,accepted_login,sizeof(accepted_login),6012);
   integration.loop();assert(integration.type==PAYLOAD_TYPE_PATH);
-  integration.pending=false;integration.loop();assert(integration.type==PAYLOAD_TYPE_TXT_MSG);
+  integration.onSendComplete(integration.last_packet);integration.loop();assert(integration.type==PAYLOAD_TYPE_TXT_MSG);
 
   // Only an explicit repeater choice may bypass discovery. It still completes
   // the same ECDH/admin/PATH/exact-key proof, including an empty ACL password.
@@ -360,7 +433,7 @@ int main(){
     uint8_t response[13]{};uint32_t timestamp=80000;memcpy(response,&timestamp,4);response[7]=3;
     mismatch.onData(r,&direct,PAYLOAD_TYPE_RESPONSE,response,sizeof(response),101);
     assert(command(mismatch,r,"ota.peer status",102).find("session=0 busy=1")!=std::string::npos);
-    r.pending=false;mismatch.service(r,103,true);
+    mismatch.onSendComplete(r.last_packet);mismatch.service(r,103);
     const std::string proof_prefix(r.sent.begin()+5,r.sent.begin()+8);
     deliver(mismatch,r,direct,80001,proof_prefix+"> "+proof,104);
     assert(!mismatch.hasSession());
@@ -389,6 +462,10 @@ class DirectOtaAdminClientTest(unittest.TestCase):
         start = mesh_source.index('direct_ota_admin.service(')
         end = mesh_source.index(';',start)+1
         code = code.replace('@SERVICE_CALL@', mesh_source[start:end])
+        for marker,method in (('@COMPLETE_CALL@','onSendComplete'),('@FAIL_CALL@','onSendFail'),('@COPY_CALL@','onRadioProfileCopyQueued')):
+            start=mesh_source.index('direct_ota_admin.'+method+'(')
+            end=mesh_source.index(';',start)+1
+            code=code.replace(marker,mesh_source[start:end])
         start = mesh_source.index('if (mesh::DirectOtaAdminClient::isCommand(command))')
         opening = mesh_source.index('{',start)
         end,depth=opening+1,1

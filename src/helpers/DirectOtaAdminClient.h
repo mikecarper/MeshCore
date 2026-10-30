@@ -1,6 +1,7 @@
 #pragma once
 
 #include <Mesh.h>
+#include "TempRadioReplyBarrier.h"
 #include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -37,6 +38,7 @@ private:
   char prefix_[4] = {};
   uint8_t result_[RESULT_BYTES] = {};
   size_t result_length_ = 0;
+  TempRadioReplyBarrier return_path_;
 
   static bool expired(uint32_t now, uint32_t deadline) {
     return static_cast<int32_t>(now - deadline) >= 0;
@@ -46,12 +48,14 @@ private:
     while (size--) *p++ = 0;
   }
   void clearSession() {
+    return_path_.clear();
     erase(secret_, sizeof(secret_));
     erase(target_.pub_key, sizeof(target_.pub_key));
     session_ = authenticated_ = false;
     last_peer_timestamp_ = 0;
   }
   void finish(const char* text, bool error = false) {
+    return_path_.clear();
     phase_ = Idle;
     error_ = error;
     result_length_ = strlen(text);
@@ -90,8 +94,11 @@ private:
   bool queueReturnPath(Mesh& mesh) {
     const uint8_t empty_path[1] = {};
     Packet* packet = mesh.createPathReturn(target_, secret_, empty_path, 0, 0, nullptr, 0);
-    if (packet) packet->tx_radio = RADIO_TX_PRIMARY;
-    if (!packet || !mesh.sendDirect(packet, nullptr, 0)) return false;
+    if (!packet) return false;
+    packet->tx_radio = RADIO_TX_PRIMARY;
+    return_path_.prepare(packet);
+    if (!mesh.sendDirect(packet, nullptr, 0)) { return_path_.clear(); return false; }
+    return_path_.arm(packet);
     ++proof_attempts_;
     phase_ = ReturnPath;
     return true;
@@ -150,15 +157,25 @@ public:
       if (phase_ != Idle) finish("admin session expired", true);
     }
   }
-  void service(Mesh& mesh, uint32_t now, bool radio_idle) {
+  void onSendComplete(const Packet* packet) { return_path_.complete(packet); }
+  void onRadioProfileCopyQueued(const Packet* packet, const Packet* original) {
+    return_path_.trackCopy(original, packet);
+  }
+  void onSendFail(const Packet* packet) { return_path_.fail(packet); }
+  void service(Mesh& mesh, uint32_t now) {
     tick(now);
     if (phase_ == Proof && expired(now, proof_retry_at_) && proof_attempts_ < 3) {
       if (!queueReturnPath(mesh)) { clearSession(); finish("login return path queue failed", true); }
-      return; // radio_idle was sampled before this new PATH was queued
+      return;
     }
-    // PATH has lower queue priority than CLI. Wait until its transmission and
-    // retries finish before admitting the proof, rather than relying on delay.
-    if (phase_ == ReturnPath && radio_idle) {
+    // Only the owned PATH and its admitted copies gate the proof. Unrelated
+    // future traffic must not starve login on a busy repeater. Queue the proof
+    // here, after Dispatcher callbacks have drained, never from those hooks.
+    if (phase_ == ReturnPath && !return_path_.waiting()) {
+      if (!return_path_.succeeded()) {
+        clearSession(); finish("login return path transmission failed", true); return;
+      }
+      return_path_.clear();
       phase_ = Proof;
       if (!queueCommand(mesh, "get public.key", now)) { clearSession(); finish("login proof queue failed", true); }
       else proof_retry_at_ = now + 8000;
