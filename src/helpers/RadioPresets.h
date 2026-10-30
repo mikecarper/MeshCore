@@ -13,14 +13,16 @@
 // Slots are 1-based. Pure logic; no hardware access.
 namespace mesh {
 
+// Field order keeps the struct at 28 bytes (no padding holes); the on-disk
+// record layout is fixed separately by putRecord/getRecord.
 struct RadioPreset {
   char name[13];
+  bool used;
+  uint16_t preamble;  // 0 = default/auto
   float freq;
   float bw;
   uint8_t sf;
   uint8_t cr;
-  uint16_t preamble;  // 0 = default/auto
-  bool used;
 };
 
 struct RadioPresetPending {
@@ -202,24 +204,27 @@ class RadioPresetTable {
   }
 };
 
+// "<freq>,<bw>,<sf>,<cr>[,<preamble>]"; freq/bw use the same formatting as
+// "get radio". Returns the length written (snprintf semantics, <0 on error).
+inline int formatPresetTuple(const RadioPreset& p, char* out, size_t cap) {
+  // ftoa/ftoa3 share static buffers: consume each before the next call.
+  int w = snprintf(out, cap, "%s,", StrHelper::ftoa(p.freq));
+  if (w < 0 || (size_t)w >= cap) return w;
+  int w2 = snprintf(out + w, cap - (size_t)w, p.preamble ? "%s,%u,%u,%u" : "%s,%u,%u",
+                    StrHelper::ftoa3(p.bw), (unsigned)p.sf, (unsigned)p.cr, (unsigned)p.preamble);
+  return w2 < 0 ? w2 : w + w2;
+}
+
 // "<slot>[*]<name> <freq>,<bw>,<sf>,<cr>[,<preamble>]" or "<slot> -" when unused.
-// '*' marks the active slot; freq/bw use the same formatting as "get radio".
+// '*' marks the active slot.
 inline size_t formatPreset(const RadioPresetTable& t, uint8_t slot, uint8_t active, char* out, size_t cap) {
   if (!out || cap == 0) return 0;
   const RadioPreset* p = t.get(slot);
-  int w;
-  if (!p) {
-    w = snprintf(out, cap, "%u -", (unsigned)slot);
-  } else {
-    char freq[16], bw[16];  // ftoa/ftoa3 return shared static buffers; copy before the second call
-    snprintf(freq, sizeof(freq), "%s", StrHelper::ftoa(p->freq));
-    snprintf(bw, sizeof(bw), "%s", StrHelper::ftoa3(p->bw));
-    w = snprintf(out, cap, "%u%c%s %s,%s,%u,%u", (unsigned)slot, slot == active ? '*' : ' ', p->name, freq, bw,
-                 (unsigned)p->sf, (unsigned)p->cr);
-    if (w > 0 && (size_t)w < cap && p->preamble) {
-      int w2 = snprintf(out + w, cap - (size_t)w, ",%u", (unsigned)p->preamble);
-      if (w2 > 0) w += w2;
-    }
+  int w = p ? snprintf(out, cap, "%u%c%s ", (unsigned)slot, slot == active ? '*' : ' ', p->name)
+            : snprintf(out, cap, "%u -", (unsigned)slot);
+  if (p && w > 0 && (size_t)w < cap) {
+    int w2 = formatPresetTuple(*p, out + w, cap - (size_t)w);
+    w = w2 < 0 ? w2 : w + w2;
   }
   if (w < 0) {
     out[0] = 0;
@@ -254,11 +259,8 @@ inline size_t formatPresetList(const RadioPresetTable& t, uint8_t active, char* 
   out[0] = 0;
   for (uint8_t s = 1; s <= RadioPresetTable::SLOTS; s++) {
     const RadioPreset* p = t.get(s);
-    if (p) {
-      snprintf(line, sizeof(line), "%s%u%c%s", s > 1 ? " " : "", (unsigned)s, s == active ? '*' : ' ', p->name);
-    } else {
-      snprintf(line, sizeof(line), "%s%u -", s > 1 ? " " : "", (unsigned)s);
-    }
+    snprintf(line, sizeof(line), "%s%u%c%s", s > 1 ? " " : "", (unsigned)s,
+             p ? (s == active ? '*' : ' ') : ' ', p ? p->name : "-");
     size_t l = strlen(line);
     if (n + l >= cap) break;
     memcpy(out + n, line, l + 1);

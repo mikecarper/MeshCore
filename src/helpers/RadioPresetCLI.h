@@ -68,6 +68,7 @@ class RadioPresetCLI {
   bool doLoad(uint8_t slot, char* reply, size_t cap, bool remote);
   bool handleAdd(const char* args, char* reply, size_t cap);
   bool handleGet(const char* args, char* reply, size_t cap);
+  bool commit(const RadioPresetTable& backup, uint8_t slot, const char* what, char* reply, size_t cap);
 };
 
 }  // namespace mesh

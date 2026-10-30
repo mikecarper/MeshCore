@@ -14,8 +14,9 @@
 namespace mesh {
 
 namespace {
-bool parseSlot(const char* s, uint8_t& slot) {
-  if (!s || s[0] < '1' || s[0] > '9' || s[1] != 0) return false;
+// One digit slot followed by `end` (NUL for a whole argument).
+bool parseSlot(const char* s, uint8_t& slot, char end = 0) {
+  if (!s || s[0] < '1' || s[0] > '9' || s[1] != end) return false;
   slot = (uint8_t)(s[0] - '0');
   return slot <= RadioPresetTable::SLOTS;
 }
@@ -34,15 +35,15 @@ bool isCmd(const char* cmd, const char* prefix, const char*& args) {
   return true;
 }
 
-// "<freq>,<bw>,<sf>,<cr>[,<pre>]" part of a formatted preset line.
-void formatTuple(const RadioPreset& p, char* out, size_t cap) {
-  RadioPresetTable t;
-  t.set(1, p.name, p.freq, p.bw, p.sf, p.cr, p.preamble);
-  char line[64];
-  formatPreset(t, 1, 0, line, sizeof(line));
-  const char* sp = strchr(line + 2, ' ');  // skip "1 <name> "
-  snprintf(out, cap, "%s", sp ? sp + 1 : "");
+// Out of line so every error path is one short call; returns true (consumed).
+bool fail(char* reply, size_t cap, const char* msg) {
+  cli::formatError(reply, cap, msg);
+  return true;
 }
+
+const char BAD_SLOT[] = "bad preset slot";
+const char SAVE_FAILED[] = "preset save failed";
+const char APPLY_FAILED[] = "apply failed";
 }  // namespace
 
 bool RadioPresetCLI::save() {
@@ -144,10 +145,7 @@ bool RadioPresetCLI::handleGet(const char* args, char* reply, size_t cap) {
     return true;
   }
   uint8_t slot;
-  if (!parseSlot(args, slot)) {
-    cli::formatError(reply, cap, "bad preset slot");
-    return true;
-  }
+  if (!parseSlot(args, slot)) return fail(reply, cap, BAD_SLOT);
   formatPreset(table_, slot, active, reply, cap);
   return true;
 }
@@ -156,30 +154,15 @@ bool RadioPresetCLI::handleGet(const char* args, char* reply, size_t cap) {
 bool RadioPresetCLI::handleAdd(const char* args, char* reply, size_t cap) {
   char name[RadioPresetTable::MAX_NAME_LEN + 2];
   const char* sp = strchr(args, ' ');
-  if (!sp || (size_t)(sp - args) >= sizeof(name)) {
-    cli::formatError(reply, cap, "usage: add preset <name> <slot> <freq,bw,sf,cr[,pre]>");
-    return true;
-  }
+  if (!sp || (size_t)(sp - args) >= sizeof(name))
+    return fail(reply, cap, "usage: add preset <name> <slot> <freq,bw,sf,cr[,pre]>");
   memcpy(name, args, (size_t)(sp - args));
   name[sp - args] = 0;
-  if (!RadioPresetTable::validName(name)) {
-    cli::formatError(reply, cap, "bad preset name");
-    return true;
-  }
+  if (!RadioPresetTable::validName(name)) return fail(reply, cap, "bad preset name");
   while (*sp == ' ') sp++;
-  char slotTok[4];
-  const char* sp2 = strchr(sp, ' ');
   uint8_t slot;
-  if (!sp2 || (size_t)(sp2 - sp) >= sizeof(slotTok)) {
-    cli::formatError(reply, cap, "bad preset slot");
-    return true;
-  }
-  memcpy(slotTok, sp, (size_t)(sp2 - sp));
-  slotTok[sp2 - sp] = 0;
-  if (!parseSlot(slotTok, slot)) {
-    cli::formatError(reply, cap, "bad preset slot");
-    return true;
-  }
+  if (!parseSlot(sp, slot, ' ')) return fail(reply, cap, BAD_SLOT);
+  const char* sp2 = sp + 1;
   while (*sp2 == ' ') sp2++;
   float f, bw;
   uint8_t sf, cr;
@@ -187,44 +170,37 @@ bool RadioPresetCLI::handleAdd(const char* args, char* reply, size_t cap) {
   char legacy[96];
   if (!cli::parseRadioPreambleSuffix(sp2, 4, legacy, sizeof(legacy), pre) ||
       !cli::parseRadioTupleStrict(legacy, f, bw, sf, cr) || !isfinite(f) || !isfinite(bw) ||
-      !hooks_.accepts(hooks_.ctx, f, bw, sf, cr, pre)) {
-    cli::formatError(reply, cap, "invalid radio params");
-    return true;
-  }
+      !hooks_.accepts(hooks_.ctx, f, bw, sf, cr, pre))
+    return fail(reply, cap, "invalid radio params");
   RadioPresetTable backup = table_;
-  if (!table_.set(slot, name, f, bw, sf, cr, pre)) {
-    cli::formatError(reply, cap, "bad preset");
-    return true;
-  }
+  table_.set(slot, name, f, bw, sf, cr, pre);  // slot and name already validated
+  return commit(backup, slot, "saved", reply, cap);
+}
+
+// Persists a slot edit; on failure the table is rolled back to `backup`.
+bool RadioPresetCLI::commit(const RadioPresetTable& backup, uint8_t slot, const char* what,
+                            char* reply, size_t cap) {
   if (!save()) {
     table_ = backup;
-    cli::formatError(reply, cap, "preset save failed");
-    return true;
+    return fail(reply, cap, SAVE_FAILED);
   }
-  snprintf(reply, cap, "OK - preset %u saved", (unsigned)slot);
+  snprintf(reply, cap, "OK - preset %u %s", (unsigned)slot, what);
   return true;
 }
 
 bool RadioPresetCLI::doLoad(uint8_t slot, char* reply, size_t cap, bool remote) {
   const RadioPreset* p = table_.get(slot);
   if (!p) {
-    char msg[32];
-    snprintf(msg, sizeof(msg), "preset %u empty", (unsigned)slot);
-    cli::formatError(reply, cap, msg);
+    snprintf(reply, cap, "Error: preset %u empty", (unsigned)slot);
     return true;
   }
   RadioPreset target = *p;
-  char tuple[64];
-  formatTuple(target, tuple, sizeof(tuple));
+  char tuple[48];
+  if (formatPresetTuple(target, tuple, sizeof(tuple)) < 0) tuple[0] = 0;
   if (remote) {
-    if (hooks_.tempRadioActive && hooks_.tempRadioActive(hooks_.ctx)) {
-      cli::formatError(reply, cap, "tempradio active");
-      return true;
-    }
-    if (table_.pending.active) {
-      cli::formatError(reply, cap, "preset load pending");
-      return true;
-    }
+    if (hooks_.tempRadioActive && hooks_.tempRadioActive(hooks_.ctx))
+      return fail(reply, cap, "tempradio active");
+    if (table_.pending.active) return fail(reply, cap, "preset load pending");
   }
   if (activeSlot() == slot) {
     snprintf(reply, cap, "OK - already on %s", target.name);
@@ -233,7 +209,7 @@ bool RadioPresetCLI::doLoad(uint8_t slot, char* reply, size_t cap, bool remote) 
   if (!remote) {
     reply[0] = 0;
     if (!hooks_.apply(hooks_.ctx, target, reply, cap)) {
-      if (!reply[0]) cli::formatError(reply, cap, "apply failed");
+      if (!reply[0]) fail(reply, cap, APPLY_FAILED);
       return true;
     }
     if (table_.pending.active) {  // someone is at the device: the change is trusted
@@ -245,15 +221,11 @@ bool RadioPresetCLI::doLoad(uint8_t slot, char* reply, size_t cap, bool remote) 
   }
   RadioPreset prev;
   memset(&prev, 0, sizeof(prev));
-  if (!hooks_.current || !hooks_.current(hooks_.ctx, prev)) {
-    cli::formatError(reply, cap, "cannot read current radio");
-    return true;
-  }
+  if (!hooks_.current || !hooks_.current(hooks_.ctx, prev))
+    return fail(reply, cap, "cannot read current radio");
   prev.used = true;
-  if (!presetOk(prev)) {  // the revert must be possible before we leave this tuple
-    cli::formatError(reply, cap, "current radio not revertible");
-    return true;
-  }
+  if (!presetOk(prev))  // the revert must be possible before we leave this tuple
+    return fail(reply, cap, "current radio not revertible");
   if (!RadioPresetTable::validName(prev.name)) {
     memset(prev.name, 0, sizeof(prev.name));
     memcpy(prev.name, "Previous", 8);
@@ -266,14 +238,13 @@ bool RadioPresetCLI::doLoad(uint8_t slot, char* reply, size_t cap, bool remote) 
   persisted_min_ = REVERT_SECS / 60u;
   if (!save()) {  // persist the revert record before touching the radio
     clearPending();
-    cli::formatError(reply, cap, "preset save failed");
-    return true;
+    return fail(reply, cap, SAVE_FAILED);
   }
   reply[0] = 0;
   if (!hooks_.apply(hooks_.ctx, target, reply, cap)) {
     clearPending();
     save();
-    if (!reply[0]) cli::formatError(reply, cap, "apply failed");
+    if (!reply[0]) fail(reply, cap, APPLY_FAILED);
     return true;
   }
   snprintf(reply, cap, "OK - loading %s %s; log in again within 10 min to keep", target.name, tuple);
@@ -289,31 +260,14 @@ bool RadioPresetCLI::handle(const char* cmd, char* reply, size_t cap, bool remot
   const char* args;
   if (isCmd(cmd, "get preset", args)) return handleGet(args, reply, cap);
   if (isCmd(cmd, "add preset", args)) return handleAdd(args, reply, cap);
-  if (isCmd(cmd, "del preset", args)) {
-    uint8_t slot;
-    if (!parseSlot(args, slot)) {
-      cli::formatError(reply, cap, "bad preset slot");
-      return true;
-    }
-    RadioPresetTable backup = table_;
-    table_.clear(slot);
-    if (!save()) {
-      table_ = backup;
-      cli::formatError(reply, cap, "preset save failed");
-      return true;
-    }
-    snprintf(reply, cap, "OK - preset %u deleted", (unsigned)slot);
-    return true;
-  }
-  if (isCmd(cmd, "load preset", args)) {
-    uint8_t slot;
-    if (!parseSlot(args, slot)) {
-      cli::formatError(reply, cap, "bad preset slot");
-      return true;
-    }
-    return doLoad(slot, reply, cap, remote);
-  }
-  return false;
+  const bool del = isCmd(cmd, "del preset", args);
+  if (!del && !isCmd(cmd, "load preset", args)) return false;
+  uint8_t slot;
+  if (!parseSlot(args, slot)) return fail(reply, cap, BAD_SLOT);
+  if (!del) return doLoad(slot, reply, cap, remote);
+  RadioPresetTable backup = table_;
+  table_.clear(slot);
+  return commit(backup, slot, "deleted", reply, cap);
 }
 
 void RadioPresetCLI::onAdminLogin() {
