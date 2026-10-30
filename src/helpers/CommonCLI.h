@@ -626,9 +626,11 @@ public:
   // Cancel pending/active temporary-radio windows and restore the saved tuple
   // after the command reply has drained on the current channel.
   virtual bool scheduleNormalRadio() { return false; }
-  // Radio presets refuse remote loads while a temporary radio is active, so
-  // every build needs this query (default: no temporary radio).
+#if defined(ENABLE_OTA) || MESH_ENABLE_RADIO_PRESETS
+  // OTA and radio presets (remote loads refused while a temporary radio is
+  // active) query this; other builds keep the vtable slot out.
   virtual bool isTempRadioActive() const { return false; }
+#endif
   virtual void addScheduledRadioParams(bool temporary, float freq, float bw, uint8_t sf, uint8_t cr,
                                        uint32_t start_time, uint32_t end_time, char* reply, uint16_t preamble = 0) {
     (void)preamble;

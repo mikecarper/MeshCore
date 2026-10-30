@@ -585,7 +585,7 @@ class RadioPresetWiringContractTest(unittest.TestCase):
         self.assertIsNotNone(login)
         self.assertSourceMatches(login, r'login_full_admin\s*=\s*false\s*;',
                          'flag must be cleared on every attempt')
-        self.assertSourceMatches(login, r'login_full_admin\s*=\s*client->isAdmin\(\)\s*;\s*\n\s*return 13;')
+        self.assertSourceMatches(login, r'login_full_admin\s*=\s*client->isAdmin\(\)\s*;\s*\n(?:#endif\n)?\s*return 13;')
         self.assertSourceMatches(
             cpp,
             r'reply_len\s*=\s*handleLoginReq\([^;]*;\s*\n(?:#if MESH_ENABLE_RADIO_PRESETS\n)?'

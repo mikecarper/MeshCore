@@ -593,7 +593,9 @@ void MyMesh::putNeighbour(const mesh::Identity &id, uint32_t timestamp, float sn
 
 uint8_t MyMesh::handleLoginReq(const mesh::Identity& sender, const uint8_t* secret, uint32_t sender_timestamp, const uint8_t* data, bool is_flood) {
   using LoginResult = mesh::LoginHistory::Result;
+#if MESH_ENABLE_RADIO_PRESETS
   login_full_admin = false;
+#endif
   const uint32_t attempt_time = getRTCClock()->getCurrentTime();
   ClientInfo* existing_client =
       acl.getClient(sender.pub_key, PUB_KEY_SIZE);
@@ -685,8 +687,10 @@ uint8_t MyMesh::handleLoginReq(const mesh::Identity& sender, const uint8_t* secr
   getRNG()->random(&reply_data[8], 4);   // random blob to help packet-hash uniqueness
   reply_data[12] = FIRMWARE_VER_LEVEL;  // New field
 
+#if MESH_ENABLE_RADIO_PRESETS
   // Strict admin only: region/filter managers never commit a radio preset.
   login_full_admin = client->isAdmin();
+#endif
   return 13;  // reply length
 }
 
