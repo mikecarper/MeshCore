@@ -327,7 +327,8 @@ class RepeaterTransport:
             if offset == total:
                 text = result.decode("utf-8", "replace")
                 if state == "error":
-                    if "timed out" in text.lower() or "unknown" in text.lower():
+                    if (text == "login return path transmission failed"
+                            or "timed out" in text.lower() or "unknown" in text.lower()):
                         raise ota.TransmissionError(text)
                     raise RepeaterError(text)
                 return text

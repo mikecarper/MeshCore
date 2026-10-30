@@ -288,6 +288,36 @@ class RepeaterTransportTest(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(self.serial.is_open)
         self.assertFalse(any(command.startswith("ota.peer login.repeater") for command in self.serial.commands))
 
+    async def test_owned_return_path_failure_is_transient_without_replaying_commands(self):
+        await self.open_known_repeater()
+        self.serial.commands.clear()
+        self.serial.login_error = "login return path transmission failed"
+        with self.assertRaisesRegex(ota.TransmissionError, "return path transmission failed"):
+            await self.link.remote_command(TARGET, "", "ota install")
+        self.assertIsNone(self.link._authenticated_key)
+        self.assertEqual(sum(text.startswith("ota.peer login.repeater") for text in self.serial.commands), 1)
+        self.assertFalse(any(text.startswith("ota.peer cmd ") for text in self.serial.commands))
+        # The caller decides whether to retry a read; the broker itself sends
+        # no second login and never replays the unadmitted install command.
+        self.serial.login_error = None
+        self.assertEqual(await self.link.remote_command(TARGET, "", "ver"), "v1.18.0.1")
+        self.assertEqual(sum(text.startswith("ota.peer login.repeater") for text in self.serial.commands), 2)
+        self.assertFalse(any(text.endswith("ota install") for text in self.serial.commands))
+
+    async def test_permission_and_identity_failures_remain_permanent(self):
+        await self.open_known_repeater()
+        for error in ("admin login rejected", "invalid login identity proof", "login identity mismatch",
+                      "login return path transmission failed unexpectedly"):
+            with self.subTest(error=error):
+                self.serial.login_error = error
+                before = len(self.serial.commands)
+                with self.assertRaisesRegex(RepeaterError, error):
+                    await self.link.remote_command(TARGET, "", "ver")
+                attempted = self.serial.commands[before:]
+                self.assertEqual(sum(text.startswith("ota.peer login.repeater") for text in attempted), 1)
+                self.assertFalse(any(text.startswith("ota.peer cmd ") for text in attempted))
+                self.assertIsNone(self.link._authenticated_key)
+
     async def test_discovery_mode_still_accepts_older_source_firmware(self):
         await self.link.close()
         self.serial = FakeSerial()
