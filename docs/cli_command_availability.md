@@ -173,7 +173,7 @@ should use command `0x42`. See [Companion radio binary protocol](companion_proto
 | Radio | [`get tx`; `set tx <dbm>`](cli_commands.md#view-or-change-this-nodes-transmit-power) | Board TX-power limits apply; busy changes apply automatically | Yes | Yes | Yes |
 | Radio | [`tempradio ...`; `normalradio`](cli_commands.md#change-the-radio-parameters-for-a-set-duration) | Full parser | Yes | Yes | Yes |
 | Radio | [`get/set/del radioat`; `get/set/del tempradioat`](cli_commands.md#schedule-radio-parameter-changes) | Full parser | Yes | Yes | Yes |
-| Radio | [`get preset [n]`; `add preset`; `load preset`; `del preset`](cli_commands.md#save-and-switch-named-radio-presets) | Admin only remotely; remote `load preset` reverts after 10 min unless an admin logs in again; omitted on STM32, ESP-NOW-only and RAK4631 Repeater (`RAK_4631_repeater`, Full sensors) builds (`MESH_ENABLE_RADIO_PRESETS`) | Yes | Yes | Yes |
+| Radio | [`get preset [n]`; `add preset`; `load preset`; `del preset`](cli_commands.md#save-and-switch-named-radio-presets) | Admin only remotely; remote `load preset` reverts after 10 min unless an admin logs in again; omitted on STM32 and ESP-NOW-only builds (`MESH_ENABLE_RADIO_PRESETS`) | Yes | Yes | Yes |
 | Radio | [`get freq`; `set freq <mhz>`](cli_commands.md#view-or-change-this-nodes-frequency) | Local or authorized LoRa CLI | Yes | Yes | Yes |
 | Radio | [`get/set radio.rxgain`](cli_commands.md#view-or-change-this-nodes-rx-boosted-gain-mode-sx12xx-and-lr1110-v1141) | Supported radio | Feature | Feature | Feature |
 | Radio | [`get/set radio.fem.rxgain`](cli_commands.md#view-or-change-the-lora-fem-receive-path-gain-state-on-supported-boards) | Controllable LoRa FEM | Feature | Feature | Feature |
