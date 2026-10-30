@@ -87,10 +87,16 @@ class CliReplyTextTests(unittest.TestCase):
                                (json.dumps(row['verbose']), json.dumps(row['concise']))
                                for row in messages)
         source = ('#include <CLIReplyText.h>\n#include <cstdio>\n'
-                  'int main(){const char* text[]={'+selections+'};'
+                  '#ifdef _WIN32\n#include <fcntl.h>\n#include <io.h>\n#endif\n'
+                  'int main(){\n'
+                  # Compare the selected literals without Windows stdio's
+                  # newline conversion changing the executable's output.
+                  '#ifdef _WIN32\n_setmode(_fileno(stdout),_O_BINARY);\n#endif\n'
+                  'const char* text[]={'+selections+'};'
                   'for(const char* line:text)puts(line);}\n')
         with tempfile.TemporaryDirectory(prefix='cli-reply-text-') as folder:
             work = Path(folder)
+            executable = work / ('test.exe' if os.name == 'nt' else 'test')
             (work / 'test.cpp').write_text(source)
             for flags, key in (([], 'verbose'),
                     (['-DMESH_CLI_COMPACT_REPLIES=0'], 'verbose'),
@@ -102,14 +108,14 @@ class CliReplyTextTests(unittest.TestCase):
                       '-DMESH_CLI_COMPACT_REPLIES=1'], 'concise')):
                 built = subprocess.run([compiler, '-std=c++11', '-Os', '-Wall', '-Wextra',
                     '-Werror', *flags, '-I'+str(ROOT / 'src/helpers'),
-                    str(work / 'test.cpp'), '-o', str(work / 'test')], capture_output=True)
+                    str(work / 'test.cpp'), '-o', str(executable)], capture_output=True)
                 self.assertEqual(built.returncode, 0, built.stderr.decode(errors='replace'))
-                result = subprocess.run([str(work / 'test')], capture_output=True)
+                result = subprocess.run([str(executable)], capture_output=True)
                 self.assertEqual(result.returncode, 0, result.stderr.decode(errors='replace'))
                 self.assertEqual(result.stdout,
                                  ''.join(row[key] + '\n' for row in messages).encode())
                 if key == 'concise':
-                    image = (work / 'test').read_bytes()
+                    image = executable.read_bytes()
                     selected = {row['concise'] for row in messages}
                     for row in messages:
                         if row['verbose'] not in selected:
