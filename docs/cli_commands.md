@@ -2209,8 +2209,12 @@ boot.
 **Build switch:** `MESH_ENABLE_RADIO_PRESETS`. Flash-constrained STM32WL builds
 (such as `wio-e5-mini_repeater`) and ESP-NOW-only builds (`MESH_PRIMARY_ESPNOW`
 without a LoRa primary radio) omit radio presets by default; there the preset
-commands return the ordinary unknown-command reply. Other builds include them;
-set `-D MESH_ENABLE_RADIO_PRESETS=0` or `=1` to override.
+commands return the ordinary unknown-command reply. Two nRF52 images also set
+`MESH_ENABLE_RADIO_PRESETS=0` because they have no room left under their size
+gates: `RAK_4631_companion_radio_full` (flash) and the RAK4631 Repeater built
+from `RAK_4631_repeater`, including its Full sensors + LoRa OTA image (runtime
+RAM). Other builds include them; set `-D MESH_ENABLE_RADIO_PRESETS=0` or `=1`
+to override.
 
 ---
 

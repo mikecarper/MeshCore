@@ -105,7 +105,7 @@ over the normal binary USB, BLE, or TCP connection:
 | [`get bootloader.ver`](cli_commands.md#view-the-bootloader-version-nrf52-only) | nRF52 Companion terminal and command `0x42`; unidentifiable metadata returns `unknown` |
 | [`get/set sdcard`](test-results/companion_cli_parity_2026-10-23.md#shared-sd-commands) | nRF52 builds with SD OTA storage; maintenance retains OTA and Ethernet ownership guards |
 | `erase` | Local terminal and binary command `0x42`; reboot after erasing stored settings |
-| [`get preset [n]`; `add preset`; `load preset`; `del preset`](cli_commands.md#save-and-switch-named-radio-presets) | Local terminal and binary command `0x42` only; LoRa CLI cannot use presets on a Companion. `load preset` saves and applies at once with no revert window; omitted on STM32 and ESP-NOW-only builds (`MESH_ENABLE_RADIO_PRESETS`) |
+| [`get preset [n]`; `add preset`; `load preset`; `del preset`](cli_commands.md#save-and-switch-named-radio-presets) | Local terminal and binary command `0x42` only; LoRa CLI cannot use presets on a Companion. `load preset` saves and applies at once with no revert window; omitted on STM32, ESP-NOW-only and RAK4631 Full Companion builds (`MESH_ENABLE_RADIO_PRESETS`) |
 | `set freq <MHz>` | Local terminal, binary command `0x42`, and authorized LoRa CLI; applies automatically (infrastructure waits two seconds and for the reply to drain) |
 | [`get public.key`](cli_commands.md#view-this-nodes-public-key) | Companion text terminal and binary command `0x42`; read-only, no private-key export feature required |
 | `get prv.key` | Local terminal and binary command `0x42`; requires private key export enabled |
@@ -173,7 +173,7 @@ should use command `0x42`. See [Companion radio binary protocol](companion_proto
 | Radio | [`get tx`; `set tx <dbm>`](cli_commands.md#view-or-change-this-nodes-transmit-power) | Board TX-power limits apply; busy changes apply automatically | Yes | Yes | Yes |
 | Radio | [`tempradio ...`; `normalradio`](cli_commands.md#change-the-radio-parameters-for-a-set-duration) | Full parser | Yes | Yes | Yes |
 | Radio | [`get/set/del radioat`; `get/set/del tempradioat`](cli_commands.md#schedule-radio-parameter-changes) | Full parser | Yes | Yes | Yes |
-| Radio | [`get preset [n]`; `add preset`; `load preset`; `del preset`](cli_commands.md#save-and-switch-named-radio-presets) | Admin only remotely; remote `load preset` reverts after 10 min unless an admin logs in again; omitted on STM32 and ESP-NOW-only builds (`MESH_ENABLE_RADIO_PRESETS`) | Yes | Yes | Yes |
+| Radio | [`get preset [n]`; `add preset`; `load preset`; `del preset`](cli_commands.md#save-and-switch-named-radio-presets) | Admin only remotely; remote `load preset` reverts after 10 min unless an admin logs in again; omitted on STM32, ESP-NOW-only and RAK4631 Repeater (`RAK_4631_repeater`, Full sensors) builds (`MESH_ENABLE_RADIO_PRESETS`) | Yes | Yes | Yes |
 | Radio | [`get freq`; `set freq <mhz>`](cli_commands.md#view-or-change-this-nodes-frequency) | Local or authorized LoRa CLI | Yes | Yes | Yes |
 | Radio | [`get/set radio.rxgain`](cli_commands.md#view-or-change-this-nodes-rx-boosted-gain-mode-sx12xx-and-lr1110-v1141) | Supported radio | Feature | Feature | Feature |
 | Radio | [`get/set radio.fem.rxgain`](cli_commands.md#view-or-change-the-lora-fem-receive-path-gain-state-on-supported-boards) | Controllable LoRa FEM | Feature | Feature | Feature |
