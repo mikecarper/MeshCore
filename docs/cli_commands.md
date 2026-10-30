@@ -2217,8 +2217,11 @@ size gate. Other builds include them; set `-D MESH_ENABLE_RADIO_PRESETS=0` or
 **Storage switch:** `MESH_RADIO_PRESETS_RESIDENT`. By default (`1`) the preset
 table stays in RAM. With `0` each preset command reads `/presets` into a
 temporary table, saves any change and drops it; only the revert timer of a
-pending remote `load preset` stays in RAM (at most 40 bytes). Commands, replies
-and the revert behavior are the same. The RAK4631 Repeater built from
+pending remote `load preset` stays in RAM (at most 32 bytes). Commands, replies
+and the revert behavior are the same, with one safety difference: if a stored
+`/presets` cannot be read later (corrupt, short or missing), preset commands
+reply `Error: presets unreadable` and nothing is written over the file; a
+pending remote load still reverts or commits from RAM. The RAK4631 Repeater built from
 `RAK_4631_repeater` (both its sensor + LoRa OTA images) uses `0` because its
 runtime-RAM headroom is too small for the resident table.
 

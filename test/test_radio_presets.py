@@ -422,6 +422,69 @@ int main() {
     RadioPresetTable u; CHECK(u.decode(e.store.data(), e.store.size()));
     CHECK(u.get(1) && u.get(2));
   }
+  { // del_all_stays_empty_until_reboot
+    Env e; RadioPresetCLI c; setup(c, e);
+    CHECK(run(c, "del preset 1", r)); CHECK(has(r, "OK"));
+    CHECK(run(c, "del preset 2", r)); CHECK(has(r, "OK"));
+    int s = e.saves;
+    CHECK(run(c, "get preset", r)); CHECK(!has(r, "USA-Canada") && has(r, "1 -"));
+    CHECK(c.table().get(1) == nullptr && c.activeSlot() == 0 && e.saves == s);
+    RadioPresetTable u; CHECK(u.decode(e.store.data(), e.store.size())); CHECK(!u.get(1) && !u.get(2));
+    RadioPresetCLI d; d.begin(&e, kHooks);       // a reboot seeds the empty table again
+    CHECK(d.table().get(1) != nullptr && std::strcmp(d.table().get(1)->name, "USA-Canada") == 0);
+  }
+#if !MESH_RADIO_PRESETS_RESIDENT
+  { // lazy_unreadable_store_never_overwritten (corrupt mid-session, pending times out)
+    Env e; RadioPresetCLI c; setup(c, e); c.loop(1000);
+    CHECK(run(c, "load preset 2", r)); CHECK(has(r, "OK - loading"));
+    std::vector<uint8_t> bad = e.store; bad[5] ^= 0xFF;   // CRC now fails
+    e.store = bad;
+    int s = e.saves;
+    c.loop(1000 + 61000);                                 // minute 10 -> 9: save refused
+    CHECK(c.pending() && e.store == bad && e.saves == s);
+    CHECK(run(c, "add preset Nope 3 915,62.5,7,5", r)); CHECK(std::strcmp(r, "Error: presets unreadable") == 0);
+    CHECK(run(c, "del preset 2", r)); CHECK(has(r, "Error: presets unreadable"));
+    CHECK(run(c, "get preset", r)); CHECK(has(r, "Error: presets unreadable"));
+    CHECK(run(c, "load preset 1", r, false)); CHECK(has(r, "Error: presets unreadable"));
+    CHECK(c.loadSlot(1, r, sizeof(r))); CHECK(has(r, "Error: presets unreadable"));
+    CHECK(c.activeSlot() == 0 && e.applied.size() == 1);
+    c.loop(1000 + 600001);                                // revert from the RAM mirror
+    CHECK(!c.pending() && e.applied.size() == 2 && near(e.applied[1].freq, 910.525f));
+    CHECK(e.store == bad && e.saves == s);
+  }
+  { // lazy_unreadable_store_commit_keeps_bytes
+    Env e; RadioPresetCLI c; setup(c, e); c.loop(1000);
+    run(c, "load preset 2", r);
+    std::vector<uint8_t> bad = e.store; bad.resize(bad.size() - 3);   // short file
+    e.store = bad;
+    int s = e.saves;
+    c.onAdminLogin();
+    CHECK(!c.pending() && e.store == bad && e.saves == s && e.applied.size() == 1);
+  }
+  { // lazy_store_vanishes_with_pending (rebuilds the record from RAM)
+    Env e; RadioPresetCLI c; setup(c, e); c.loop(1000);
+    run(c, "load preset 2", r);
+    std::vector<uint8_t> good = e.store;
+    e.store.clear(); e.haveStore = false;
+    int s = e.saves;
+    CHECK(run(c, "add preset Nope 3 915,62.5,7,5", r)); CHECK(has(r, "Error: presets unreadable"));
+    c.loop(1000 + 600001);
+    CHECK(!c.pending() && e.applied.size() == 2 && near(e.applied[1].freq, 910.525f));
+    CHECK(!e.haveStore && e.saves == s);
+    e.store = good; e.haveStore = true;                   // readable again: commands work
+    CHECK(run(c, "get preset 2", r)); CHECK(std::strcmp(r, "2 Private 915.0,62.5,7,5") == 0);
+    CHECK(run(c, "add preset Third 3 915,62.5,7,5", r)); CHECK(has(r, "OK"));
+    RadioPresetTable u; CHECK(u.decode(e.store.data(), e.store.size()));
+    CHECK(u.get(1) && u.get(2) && u.get(3) && !u.pending.active);  // stale pending record dropped
+  }
+  { // lazy_never_stored_missing_store_is_not_unreadable
+    Env e; e.failSave = true;
+    RadioPresetCLI c; c.begin(&e, kHooks);                // seed save fails: nothing stored
+    e.failSave = false;
+    CHECK(run(c, "add preset Private 2 915.0,62.5,7,5", r)); CHECK(has(r, "OK"));
+    RadioPresetTable u; CHECK(u.decode(e.store.data(), e.store.size())); CHECK(u.get(1) && u.get(2));
+  }
+#endif
   { // unrelated_commands_pass_through
     Env e; RadioPresetCLI c; setup(c, e);
     int loads = e.loads, s = e.saves;

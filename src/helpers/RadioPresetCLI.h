@@ -31,7 +31,9 @@
 //
 // Storage (MESH_RADIO_PRESETS_RESIDENT, see RadioPresetConfig.h): resident keeps
 // the table in this object; lazy loads /presets into a stack-local table for each
-// command and keeps only the revert timer here. Replies and behavior match.
+// command and keeps only the revert timer here. Replies and behavior match,
+// except that lazy refuses preset commands while a stored /presets cannot be
+// read (resident keeps serving its RAM copy).
 namespace mesh {
 
 class RadioPresetCLI {
@@ -73,19 +75,27 @@ class RadioPresetCLI {
   // Lazy: the pending record of a remote load, mirrored from /presets so a
   // revert never depends on re-reading the file.
   float prev_freq_ = 0, prev_bw_ = 0;
-  uint16_t prev_preamble_ = 0;
-  uint8_t prev_sf_ = 0, prev_cr_ = 0;
-  uint8_t pending_slot_ = 0;  // 0 = nothing pending
-  bool prev_used_ = false;
 #endif
   uint32_t remaining_ms_ = 0;
   uint32_t last_ms_ = 0;
+#if !MESH_RADIO_PRESETS_RESIDENT
+  uint16_t prev_preamble_ = 0;
+  uint8_t prev_sf_ = 0, prev_cr_ = 0;
+  uint8_t pending_slot_ = 0;  // 0 = nothing pending
+  // PREV_USED: the mirrored tuple is valid. STORED: /presets holds this node's
+  // table (loaded at boot or saved since), so a failed read means "unreadable",
+  // never "missing". UNREADABLE: the last loadTable() could not read it; saves
+  // are refused until a read succeeds, so the user's slots are never replaced.
+  mutable uint8_t flags_ = 0;
+  enum : uint8_t { PREV_USED = 1, STORED = 2, UNREADABLE = 4 };
+#endif
   uint8_t persisted_min_ = 0;  // revert minutes last written to /presets (<= 10)
   bool have_last_ = false;
 
-  bool readTable(RadioPresetTable& t) const;  // load + sanitize; true if it changed
+  bool readFile(RadioPresetTable& t) const;             // false: missing or unreadable (t cleared)
+  bool sanitize(RadioPresetTable& t, bool seed) const;  // true if it changed t
 #if !MESH_RADIO_PRESETS_RESIDENT
-  void loadTable(RadioPresetTable& t) const;
+  bool loadTable(RadioPresetTable& t) const;  // false: the stored table cannot be read
   void keepPending(const RadioPresetPending& p);
 #endif
   bool save(const RadioPresetTable& t) const;
@@ -102,7 +112,7 @@ class RadioPresetCLI {
 };
 
 #if !MESH_RADIO_PRESETS_RESIDENT && UINTPTR_MAX == 0xFFFFFFFFu
-static_assert(sizeof(RadioPresetCLI) <= 40, "lazy RadioPresetCLI must stay within 40 B of RAM");
+static_assert(sizeof(RadioPresetCLI) <= 32, "lazy RadioPresetCLI must stay within 32 B of RAM");
 #endif
 
 }  // namespace mesh

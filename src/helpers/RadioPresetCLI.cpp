@@ -44,6 +44,9 @@ bool fail(char* reply, size_t cap, const char* msg) {
 const char BAD_SLOT[] = "bad preset slot";
 const char SAVE_FAILED[] = "preset save failed";
 const char APPLY_FAILED[] = "apply failed";
+#if !MESH_RADIO_PRESETS_RESIDENT
+const char UNREADABLE_MSG[] = "presets unreadable";
+#endif
 }  // namespace
 
 const RadioPresetCLI::Hooks RadioPresetCLI::kNoHooks = {};
@@ -55,7 +58,7 @@ const RadioPresetCLI::Hooks RadioPresetCLI::kNoHooks = {};
 #else
 #define PRESET_TABLE(t) \
   RadioPresetTable t;   \
-  loadTable(t)
+  if (!loadTable(t)) return fail(reply, cap, UNREADABLE_MSG)
 #endif
 
 bool RadioPresetCLI::pending() const {
@@ -67,9 +70,16 @@ bool RadioPresetCLI::pending() const {
 }
 
 bool RadioPresetCLI::save(const RadioPresetTable& t) const {
+#if !MESH_RADIO_PRESETS_RESIDENT
+  if (flags_ & UNREADABLE) return false;  // t is a placeholder: never overwrite the user's slots
+#endif
   uint8_t buf[RadioPresetTable::ENCODED_MAX];
   size_t n = t.encode(buf, sizeof(buf));
-  return n > 0 && hooks_->save && hooks_->save(ctx_, buf, n);
+  const bool ok = n > 0 && hooks_->save && hooks_->save(ctx_, buf, n);
+#if !MESH_RADIO_PRESETS_RESIDENT
+  if (ok) flags_ |= STORED;
+#endif
+  return ok;
 }
 
 bool RadioPresetCLI::presetOk(const RadioPreset& p) const {
@@ -108,15 +118,20 @@ bool RadioPresetCLI::presetAcceptsDefault() const {
                          RADIO_PRESET_DEFAULT_SF, RADIO_PRESET_DEFAULT_CR, 0);
 }
 
-// Reads /presets into t (clean when missing or corrupt), drops slots the radio
-// would reject and seeds slot 1 when the table is empty. Nothing is saved here;
-// returns true when t differs from the file.
-bool RadioPresetCLI::readTable(RadioPresetTable& t) const {
+// Reads /presets into t; on any failure (missing, unreadable, corrupt) t is
+// left clean and false is returned.
+bool RadioPresetCLI::readFile(RadioPresetTable& t) const {
   uint8_t buf[RadioPresetTable::ENCODED_MAX + 8];
   size_t len = 0;
+  if (hooks_->load && hooks_->load(ctx_, buf, sizeof(buf), len) && t.decode(buf, len)) return true;
+  t.decode(nullptr, 0);  // decode clears on failure
+  return false;
+}
+
+// Drops slots the radio would reject and, with `seed`, puts the US/Canada
+// default in slot 1 of an empty table. Nothing is saved; true if t changed.
+bool RadioPresetCLI::sanitize(RadioPresetTable& t, bool seed) const {
   bool dirty = false;
-  if (!hooks_->load || !hooks_->load(ctx_, buf, sizeof(buf), len) || !t.decode(buf, len))
-    t.decode(nullptr, 0);  // missing or corrupt: start clean (decode clears on failure)
 
   for (uint8_t s = 1; s <= RadioPresetTable::SLOTS; s++) {
     const RadioPreset* p = t.get(s);
@@ -125,7 +140,7 @@ bool RadioPresetCLI::readTable(RadioPresetTable& t) const {
       dirty = true;
     }
   }
-  bool any = false;
+  bool any = !seed;
   for (uint8_t s = 1; s <= RadioPresetTable::SLOTS; s++) any = any || t.get(s) != nullptr;
   if (!any) {
     // Slot 1 is the US/Canada standard, not a copy of the live radio. A board that
@@ -140,14 +155,21 @@ bool RadioPresetCLI::readTable(RadioPresetTable& t) const {
 }
 
 #if !MESH_RADIO_PRESETS_RESIDENT
-// The table resident mode would hold: the file, sanitized and seeded exactly as
-// begin() did, with the pending record as this object last armed it.
-void RadioPresetCLI::loadTable(RadioPresetTable& t) const {
-  readTable(t);
+// The table resident mode would hold, with the pending record as this object
+// last armed it. Resident seeds only in begin(), so the default is added here
+// only while /presets has never been written (the boot-time seed save failed);
+// a stored table emptied by "del preset" stays empty, as in RAM. Returns false
+// when a stored /presets cannot be read: t then carries only the pending record
+// and save() refuses to write until a read succeeds.
+bool RadioPresetCLI::loadTable(RadioPresetTable& t) const {
+  const bool ok = readFile(t);
+  const bool unreadable = !ok && (flags_ & STORED);
+  flags_ = unreadable ? (uint8_t)(flags_ | UNREADABLE) : (uint8_t)(flags_ & ~UNREADABLE);
+  if (!unreadable) sanitize(t, !ok);
   RadioPresetPending& p = t.pending;
   if (pending_slot_ == 0) {
     memset(&p, 0, sizeof(p));
-    return;
+    return !unreadable;
   }
   // The file normally holds the same record; it only supplies the name and the
   // persisted countdown. Without it the record is rebuilt from RAM.
@@ -158,17 +180,18 @@ void RadioPresetCLI::loadTable(RadioPresetTable& t) const {
   }
   p.active = true;
   p.slot = pending_slot_;
-  p.previous.used = prev_used_;
+  p.previous.used = (flags_ & PREV_USED) != 0;
   p.previous.freq = prev_freq_;
   p.previous.bw = prev_bw_;
   p.previous.sf = prev_sf_;
   p.previous.cr = prev_cr_;
   p.previous.preamble = prev_preamble_;
+  return !unreadable;
 }
 
 void RadioPresetCLI::keepPending(const RadioPresetPending& p) {
   pending_slot_ = p.active ? p.slot : 0;
-  prev_used_ = p.previous.used;
+  flags_ = p.previous.used ? (uint8_t)(flags_ | PREV_USED) : (uint8_t)(flags_ & ~PREV_USED);
   prev_freq_ = p.previous.freq;
   prev_bw_ = p.previous.bw;
   prev_sf_ = p.previous.sf;
@@ -188,9 +211,13 @@ void RadioPresetCLI::begin(void* ctx, const Hooks& hooks) {
 #else
   RadioPresetTable t;
 #endif
-  bool dirty = readTable(t);
+  const bool loaded = readFile(t);
+  const bool dirty = sanitize(t, true);  // boot seeds an empty table, stored or not
 #if !MESH_RADIO_PRESETS_RESIDENT
+  flags_ = loaded ? STORED : 0;
   keepPending(t.pending);
+#else
+  (void)loaded;
 #endif
   if (t.pending.active) {
     revertNow(t);  // reboot during the window reverts, whatever time was left
@@ -211,7 +238,7 @@ uint8_t RadioPresetCLI::activeSlot() const {
   return matchSlot(table_);
 #else
   RadioPresetTable t;
-  loadTable(t);
+  if (!loadTable(t)) return 0;
   return matchSlot(t);
 #endif
 }
@@ -388,9 +415,20 @@ bool RadioPresetCLI::handle(const char* cmd, char* reply, size_t cap, bool remot
   return commit(t, undo, slot, "deleted", reply, cap);
 }
 
+// The lazy PRESET_TABLE returns a reply error, so the void paths below load by
+// hand. While /presets is unreadable they still commit or revert from the RAM
+// mirror; save() then refuses, leaving the stored bytes untouched.
+#if MESH_RADIO_PRESETS_RESIDENT
+#define PENDING_TABLE(t) RadioPresetTable& t = table_
+#else
+#define PENDING_TABLE(t) \
+  RadioPresetTable t;    \
+  loadTable(t)
+#endif
+
 void RadioPresetCLI::onAdminLogin() {
   if (!pending()) return;
-  PRESET_TABLE(t);
+  PENDING_TABLE(t);
   clearPending(t);
   save(t);
 }
@@ -404,19 +442,20 @@ void RadioPresetCLI::loop(uint32_t now_ms) {
   if (!pending()) return;
   remaining_ms_ = delta >= remaining_ms_ ? 0 : remaining_ms_ - delta;
   if (remaining_ms_ == 0) {
-    PRESET_TABLE(t);
+    PENDING_TABLE(t);
     revertNow(t);
     return;
   }
   uint32_t mins = (remaining_ms_ + 59999u) / 60000u;
   if (mins != persisted_min_) {  // flash is only written when the shown minute changes
     persisted_min_ = (uint8_t)mins;
-    PRESET_TABLE(t);
+    PENDING_TABLE(t);
     t.pending.remaining_secs = mins * 60u;
     save(t);
   }
 }
 
+#undef PENDING_TABLE
 #undef PRESET_TABLE
 
 }  // namespace mesh
