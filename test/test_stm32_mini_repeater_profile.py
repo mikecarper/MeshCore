@@ -22,6 +22,7 @@ LINK_SIZE_FLAGS = (
     "-fno-reorder-blocks",
     "-fno-reorder-functions",
     "-fno-tree-switch-conversion",
+    "-fno-tree-loop-im",
 )
 LINK_ONLY_SIZE_FLAGS = ("-flto-partition=one",)
 OPTIONAL_CUTS = (
