@@ -6,6 +6,22 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+#ifndef MESH_NOTIFY_RTC_SETTINGS
+#define MESH_NOTIFY_RTC_SETTINGS 0
+#endif
+#if MESH_NOTIFY_RTC_SETTINGS != 0 && MESH_NOTIFY_RTC_SETTINGS != 1
+#error "MESH_NOTIFY_RTC_SETTINGS must be 0 or 1"
+#endif
+#if MESH_NOTIFY_RTC_SETTINGS
+#if !defined(ESP32_PLATFORM) || !defined(TBEAM_SX1262) || !defined(MESH_RADIO_AUTO_FAMILY) || !MESH_RADIO_AUTO_FAMILY
+#error "RTC notification settings require the universal ESP32 T-Beam"
+#endif
+#include <sdkconfig.h>
+#if !defined(CONFIG_IDF_TARGET_ESP32) || !CONFIG_IDF_TARGET_ESP32
+#error "RTC notification settings require the classic ESP32"
+#endif
+#endif
+
 namespace mesh { namespace notify {
 
 constexpr unsigned MAX_RULES = 12, MAX_PULSES = 12, MAX_SOUND = 64;
@@ -47,6 +63,9 @@ struct Settings {
   Rule rules[MAX_RULES];
   uint8_t enabled = 0, outputs = 31;
 };
+#if MESH_NOTIFY_RTC_SETTINGS
+Settings& rtcSettings();
+#endif
 
 inline bool number(const char*& p, uint32_t& n, uint32_t maximum) {
   if(*p<'0'||*p>'9') return false;
@@ -209,7 +228,11 @@ public:
 };
 class Controller {
   Sink& sink; Store& store;
+#if MESH_NOTIFY_RTC_SETTINGS
+  Settings& prefs;
+#else
   Settings prefs;
+#endif
   Rule playing;
   uint32_t started=0,cycle_ms=0;
   uint16_t cycles=0;
@@ -243,7 +266,15 @@ class Controller {
     else if(playing.screen>=0)sink.screen(playing.screen);
   }
 public:
-  Controller(Sink& output,Store& storage):sink(output),store(storage) {}
+  Controller(Sink& output,Store& storage
+#if MESH_NOTIFY_RTC_SETTINGS
+    ,Settings& settings
+#endif
+  ):sink(output),store(storage)
+#if MESH_NOTIFY_RTC_SETTINGS
+    ,prefs(settings)
+#endif
+  {}
   Settings& settings() { return prefs; }
   const Settings& settings() const { return prefs; }
   bool active() const { return running; }

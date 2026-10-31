@@ -2954,12 +2954,18 @@ int RadioLibWrapper::recvRaw(uint8_t* bytes, int sz) {
     // Retry a transient IRQ-status probe before rearming/clearing hardware.
     if (_loop_event_pending) return 0;
     #if defined(ESP32_PLATFORM) && (MESH_RADIO_PROFILE_CHIP == 1262 \
-        || MESH_RADIO_PROFILE_CHIP == 1268 || MESH_RADIO_PROFILE_CHIP == 68)
+        || MESH_RADIO_PROFILE_CHIP == 1268 || MESH_RADIO_PROFILE_CHIP == 68 \
+        || (defined(MESH_RADIO_AUTO_FAMILY) && MESH_RADIO_AUTO_FAMILY))
     // DIO may reveal RX_DONE before its edge ISR publishes. Servicing that
     // packet can leave a late software event for an already-cleared IRQ.
     // Its bounded empty probes must not restart RX over a newer packet.
     // Keep the normal activity timeouts and inactive/error rearm behavior.
     if (!packet_ready && state == STATE_RX && !_rx_ps_armed
+#if defined(MESH_RADIO_AUTO_FAMILY) && MESH_RADIO_AUTO_FAMILY
+        // The universal image also contains SX127x, whose IRQ/rearm rules
+        // remain unchanged. Only its SX126x backend supports duty-cycle RX.
+        && supportsRxPowerSaving()
+#endif
         && !isChipBusy() && isReceivingPacket()) return 0;
     #endif
     #if defined(USE_LR2021)

@@ -926,7 +926,11 @@ private:
   bool _management_password_ready = false;
 #endif
   #if COMPANION_FEATURE_NOTIFICATIONS
-  mesh::notify::Controller _notifications{*this, *this};
+  mesh::notify::Controller _notifications{*this, *this
+#if MESH_NOTIFY_RTC_SETTINGS
+    ,mesh::notify::rtcSettings()
+#endif
+  };
   bool _notification_button_down = false;
   #endif
 #ifdef COMPANION_MESH_CLOCK_SYNC

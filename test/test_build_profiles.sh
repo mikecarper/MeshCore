@@ -172,6 +172,47 @@ def reject(env_name, option_name, needle):
             f"test_build_profiles: {env_name} {option_name} unexpectedly contains {needle}"
         )
 
+# New family images select their driver at startup. Their resolved recipes
+# must use only the universal target source, while legacy names stay exact.
+for prefix, board, directory, legacy_dirs in (
+    ("Tbeam_", "ttgo-t-beam", "lilygo_tbeam_universal",
+     ("lilygo_tbeam_SX1262", "lilygo_tbeam_SX1276")),
+    ("LilyGo_T3S3_", "t3_s3_v1_x", "lilygo_t3s3_universal",
+     ("lilygo_t3s3", "lilygo_t3s3_sx1276")),
+):
+    suffixes = ("repeater", "repeater_bridge_espnow", "room_server", "kiss_modem",
+                "repeater_observer_mqtt", "room_server_observer_mqtt",
+                "companion_radio_ble", "companion_radio_ble_ps")
+    if prefix == "LilyGo_T3S3_":
+        suffixes += ("companion_radio_usb", "terminal_chat")
+    for suffix in suffixes:
+        target = prefix + suffix
+        require(target, "board", board)
+        require(target, "build_src_filter", "+<../variants/" + directory + ">")
+        for legacy_dir in legacy_dirs:
+            reject(target, "build_src_filter", "+<../variants/" + legacy_dir + ">")
+        for flag in ("MESH_RADIO_AUTO_FAMILY=1", "RADIO_CLASS=UniversalLoRaRadio",
+                     "WRAPPER_CLASS=UniversalLoRaRadio", "USE_SX1262", "USE_SX1276"):
+            require(target, "build_flags", flag)
+        for old_class in ("RADIO_CLASS=CustomSX1262", "RADIO_CLASS=CustomSX1276"):
+            reject(target, "build_flags", old_class)
+        if prefix == "Tbeam_":
+            require(target, "build_flags", "P_LORA_BUSY=32")
+            require(target, "build_flags", "P_LORA_DIO_0=26")
+            require(target, "build_flags", "ENV_INCLUDE_GPS=1")
+        else:
+            require(target, "build_flags", "P_LORA_BUSY=34")
+            require(target, "build_flags", "P_LORA_DIO_0=9")
+            require(target, "build_flags", "PIN_OLED_RESET=-1")
+            reject(target, "build_flags", "SX127X_RXEN")
+            reject(target, "build_flags", "SX127X_TXEN")
+for legacy, driver in (("Tbeam_SX1262_repeater", "CustomSX1262"),
+                       ("Tbeam_SX1276_repeater", "CustomSX1276"),
+                       ("LilyGo_T3S3_sx1262_repeater", "CustomSX1262"),
+                       ("LilyGo_T3S3_sx1276_repeater", "CustomSX1276")):
+    require(legacy, "build_flags", "RADIO_CLASS=" + driver)
+    reject(legacy, "build_flags", "MESH_RADIO_AUTO_FAMILY")
+
 xiao_wifi = "Xiao_S3_WIO_companion_radio_wifi"
 require(xiao_wifi, "build_flags", "DISPLAY_CLASS=SSD1306Display")
 require(xiao_wifi, "build_src_filter", "helpers/ui/SSD1306Display.cpp")
@@ -1019,7 +1060,7 @@ done
 for observer_hardware in \
     Ebyte_EoRa-S3 Heltec_E213 Heltec_E290 heltec_rc32 \
     heltec_rc32_without_display Heltec_Wireless_Tracker Heltec_Wireless_Paper \
-    LilyGo_T3S3_sx1276 LilyGo_TETH_Elite_sx1262 meshnology_w12 Xiao_S3; do
+    LilyGo_T3S3 LilyGo_T3S3_sx1276 LilyGo_TETH_Elite_sx1262 meshnology_w12 Xiao_S3; do
   for observer_role in repeater room_server; do
     normal_target="${observer_hardware}_${observer_role}"
     observer_target="${normal_target}_observer_mqtt"
@@ -1033,7 +1074,7 @@ for observer_hardware in \
     [ "$(get_exact_identity_full_pio_env "$normal_target")" = "$observer_target" ] \
       || fail "$normal_target Full did not use its exact observer recipe"
     case "$observer_hardware" in
-      Ebyte_EoRa-S3|LilyGo_T3S3_sx1276)
+      Ebyte_EoRa-S3|LilyGo_T3S3|LilyGo_T3S3_sx1276)
         is_esp32_partition_migration_full_target "$normal_target" \
           || fail "$normal_target lost its partition-migration boundary"
         if get_exact_identity_full_migration_target "$observer_target" >/dev/null; then
@@ -1852,11 +1893,13 @@ unset DEFER_ESP32_PORTABLE_OVERFLOW_TO_FULL
 eval "$saved_has_esp32_full_profile"
 eval "$saved_build_firmware"
 
-reduced_full_alias=Tbeam_SX1262_repeater_lora_ota_no_external_sensors
-[ "$(get_esp32_full_profile_target "$reduced_full_alias")" = Tbeam_SX1262_repeater ] \
-  || fail "reduced ESP32 LoRa OTA alias did not resolve to its FULL base target"
-has_esp32_full_profile "$reduced_full_alias" \
-  || fail "reduced ESP32 LoRa OTA alias lost its expanded FULL replacement"
+for reduced_full_base in Tbeam_repeater Tbeam_SX1262_repeater Tbeam_SX1276_repeater; do
+  reduced_full_alias="${reduced_full_base}_lora_ota_no_external_sensors"
+  [ "$(get_esp32_full_profile_target "$reduced_full_alias")" = "$reduced_full_base" ] \
+    || fail "reduced ESP32 LoRa OTA alias changed its FULL target: $reduced_full_alias"
+  has_esp32_full_profile "$reduced_full_alias" \
+    || fail "reduced ESP32 LoRa OTA alias lost its expanded FULL replacement: $reduced_full_alias"
+done
 
 calls=()
 saved_build_firmware_one_profile=$(declare -f build_firmware_one_profile)

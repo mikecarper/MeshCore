@@ -1,7 +1,22 @@
 #include "CompanionNotificationPolicy.h"
 
+#if MESH_NOTIFY_RTC_SETTINGS
+#include <esp_attr.h>
+#include <new>
+#include <type_traits>
+#endif
+
 namespace mesh { namespace notify {
 namespace {
+#if MESH_NOTIFY_RTC_SETTINGS
+// Constant initialization also makes this safe from a global Controller's ctor.
+constexpr Settings rtc_settings_defaults{};
+RTC_SLOW_ATTR Settings rtc_settings = rtc_settings_defaults;
+bool rtc_settings_initialized = false;
+static_assert(std::is_trivially_copyable<Settings>::value, "RTC settings must be plain data");
+static_assert(std::is_trivially_destructible<Settings>::value, "RTC settings must have no resources");
+#endif
+
 void valueText(const Rule& r,uint16_t f,char* out,size_t size) {
   if(!(r.fields&f)) { snprintf(out,size,"inherit");return; }
   if(f==FVibe)formatPulse(r.vibration,out,size);
@@ -17,6 +32,19 @@ void valueText(const Rule& r,uint16_t f,char* out,size_t size) {
   else if(f==FRemote)snprintf(out,size,"%s",r.remote?"on":"off");
 }
 }
+
+#if MESH_NOTIFY_RTC_SETTINGS
+Settings& rtcSettings() {
+  if(!rtc_settings_initialized) {
+    // RTC RAM survives sleep; notification settings are loaded from disk each boot.
+    // Construct in place to avoid a settings-sized temporary on the startup stack.
+    rtc_settings.~Settings();
+    new (static_cast<void*>(&rtc_settings)) Settings();
+    rtc_settings_initialized = true;
+  }
+  return rtc_settings;
+}
+#endif
 
 bool Controller::validSettings(const Settings& s) const {
   if(s.enabled>1||(s.outputs&~31))return false;

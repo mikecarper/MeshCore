@@ -57,6 +57,7 @@ for target in Generic_E22_sx1262_repeater_lora_ota_no_external_sensors \
               Meshadventurer_sx1262_repeater_lora_ota_no_external_sensors \
               Meshadventurer_sx1268_repeater_lora_ota_no_external_sensors \
               Tbeam_SX1262_repeater_lora_ota_no_external_sensors \
+              Tbeam_repeater_lora_ota_no_external_sensors \
               Tbeam_SX1276_repeater_lora_ota_no_external_sensors; do
   PIO_ENV_PLATFORM_BY_NAME[$target]=ESP32_PLATFORM
   PLATFORMIO_BUILD_FLAGS=""
@@ -78,6 +79,8 @@ BUILD_PROFILE_FOR_TARGET=full
 PACKET_LOGGING_OVERRIDE=on
 for pair in Tbeam_SX1262_repeater_observer_mqtt:31 \
             Tbeam_SX1276_repeater_observer_mqtt:31 \
+            Tbeam_repeater_observer_mqtt:31 \
+            Tbeam_repeater_bridge_espnow:47 \
             Generic_E22_sx1262_repeater_bridge_espnow:47 \
             LilyGo_TLora_V2_1_1_6_repeater_bridge_espnow:47 \
             LilyGo_TLora_V2_1_1_6_repeater_observer_mqtt_:default \
@@ -127,6 +130,11 @@ for full in 0 1; do
                 LilyGo_TLora_V2_1_1_6_room_server_observer_mqtt_ \
                 LilyGo_TLora_V2_1_1_6_repeater_observer_mqtt_ \
                 LilyGo_TLora_V2_1_1_6_companion_radio_usb \
+                Tbeam_room_server_observer_mqtt \
+                Tbeam_SX1262_room_server_observer_mqtt \
+                Tbeam_SX1276_room_server_observer_mqtt \
+                Tbeam_repeater_observer_mqtt \
+                LilyGo_T3S3_room_server_observer_mqtt \
                 Heltec_v4_room_server; do
     PIO_ENV_PLATFORM_BY_NAME[$target]=ESP32_PLATFORM
     PIO_ENV_FULL_BUILD_BY_NAME[$target]=1
@@ -134,12 +142,41 @@ for full in 0 1; do
     PLATFORMIO_BUILD_UNFLAGS=""
     apply_esp32_full_size_profile "$target"
     expected=0
-    if [ "$full" = 1 ] && [[ "${target,,}" == lilygo_tlora_v2_1_1_6_room_server* ]]; then expected=1; fi
+    if [ "$full" = 1 ]; then
+      case "${target,,}" in
+        lilygo_tlora_v2_1_1_6_room_server*|tbeam_room_server_observer_mqtt|\
+        tbeam_sx1262_room_server_observer_mqtt|tbeam_sx1276_room_server_observer_mqtt)
+          expected=1 ;;
+      esac
+    fi
     for flag in ROOM_POSTS_RTC_SLOW_STORAGE OTA_BOUNDED_SOURCE_PROOFS; do
       found=0
       [[ " $PLATFORMIO_BUILD_FLAGS " == *" -D$flag=1 "* ]] && found=1
       [ "$found" = "$expected" ] || fail "$target Full=$full wrong $flag policy"
     done
+  done
+done
+
+# Classic T-Beam Full observers retain cold advert bytes in real IRAM. The
+# universal family needs the same memory policy; S3 and plain roles do not.
+for full in 0 1; do
+  ESP32_FULL_BUILD=$full
+  for target in Tbeam_repeater_observer_mqtt Tbeam_room_server_observer_mqtt \
+                Tbeam_SX1262_repeater_observer_mqtt Tbeam_SX1276_room_server_observer_mqtt \
+                Tbeam_repeater LilyGo_T3S3_repeater_observer_mqtt; do
+    PIO_ENV_PLATFORM_BY_NAME[$target]=ESP32_PLATFORM
+    PIO_ENV_FULL_BUILD_BY_NAME[$target]=1
+    PLATFORMIO_BUILD_FLAGS=""
+    apply_esp32_iram_advert_storage_profile "$target"
+    expected=0
+    if [ "$full" = 1 ]; then
+      case "${target,,}" in
+        tbeam*_repeater_observer_mqtt|tbeam*_room_server_observer_mqtt) expected=1 ;;
+      esac
+    fi
+    found=0
+    [[ " $PLATFORMIO_BUILD_FLAGS " == *" -DFLOOD_ADVERT_IRAM_WORD_STORAGE=1 "* ]] && found=1
+    [ "$found" = "$expected" ] || fail "$target Full=$full wrong IRAM advert policy"
   done
 done
 

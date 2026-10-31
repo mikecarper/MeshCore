@@ -93,6 +93,7 @@ assert_auto_unified Station_G2_room_server Station_G2_room_server_observer_mqtt
 # the ordinary bulk release, including capacity-specific plain recipes.
 for alternate in Tbeam_SX1262_repeater \
     Tbeam_SX1262_repeater_bridge_espnow \
+    Tbeam_repeater Tbeam_repeater_bridge_espnow Tbeam_room_server \
     LilyGo_TLora_V2_1_1_6_repeater; do
   (
     BUILD_PROFILE_OVERRIDE=full
@@ -145,6 +146,7 @@ for target in LilyGo_T3S3_sx1262_repeater \
     LilyGo_T3S3_sx1262_room_server \
     LilyGo_T3S3_sx1276_repeater \
     LilyGo_T3S3_sx1276_room_server \
+    LilyGo_T3S3_repeater LilyGo_T3S3_room_server \
     Station_G2_repeater Station_G2_room_server \
     ThinkNode_M2_Repeater ThinkNode_M2_room_server; do
   is_esp32_partition_migration_full_target "$target" \
@@ -166,6 +168,13 @@ done
 [ "$(get_exact_identity_full_pio_env LilyGo_T3S3_sx1262_room_server)" \
     = LilyGo_T3S3_sx1262_room_server_observer_mqtt ] \
   || fail "T3S3 migration Full lost its observer feature base"
+for role in repeater room_server; do
+  [ "$(get_exact_identity_full_pio_env "LilyGo_T3S3_${role}")" \
+      = "LilyGo_T3S3_${role}_observer_mqtt" ] \
+    || fail "universal T3S3 $role lost its observer feature base"
+  [ "$(get_exact_identity_full_pio_env "Tbeam_${role}")" = "Tbeam_${role}" ] \
+    || fail "universal T-Beam $role lost its distinct capacity identity"
+done
 [ "$(get_exact_identity_full_migration_target heltec_v4_r8_repeater_observer_mqtt)" \
     = heltec_v4_r8_repeater ] \
   || fail "legacy V4 R8 observer lacks its canonical migration target"
@@ -178,9 +187,15 @@ fi
 if get_exact_identity_full_migration_target Station_G2_repeater_observer_mqtt >/dev/null; then
   fail "partition-changing Station G2 observer unexpectedly received an mOTA alias"
 fi
+for target in LilyGo_T3S3_repeater_observer_mqtt LilyGo_T3S3_room_server_observer_mqtt; do
+  if get_exact_identity_full_migration_target "$target" >/dev/null; then
+    fail "universal T3S3 partition migration incorrectly received an automatic mOTA alias: $target"
+  fi
+done
 
 # Portable images and exact reduced OTA identities must not be consolidated.
 for target in heltec_v4_r8_repeater heltec_v4_r8_room_server \
+    Tbeam_repeater Tbeam_room_server LilyGo_T3S3_repeater LilyGo_T3S3_room_server \
     heltec_v4_r8_repeater_lora_ota_no_external_sensors; do
   (
     BUILD_PROFILE_OVERRIDE=standard
@@ -196,12 +211,22 @@ done
 
 for target in Tbeam_SX1262_repeater Tbeam_SX1276_repeater \
     Tbeam_SX1262_room_server Tbeam_SX1276_room_server \
+    Tbeam_repeater Tbeam_room_server \
     LilyGo_TLora_V2_1_1_6_repeater \
     heltec_v4_r8_repeater_lora_ota_no_external_sensors \
     RAK_4631_repeater_bridge_rs232_serial1_lora_ota_no_external_sensors; do
   if get_unified_full_infrastructure_target "$target" >/dev/null; then
     fail "consolidated a distinct capacity/OTA contract: $target"
   fi
+done
+
+# Universal images supplement the existing chip-specific OTA identities. Even
+# on the same MCU board, a bulk grouping must not replace those deployed names.
+for family in Tbeam Tbeam_SX1262 Tbeam_SX1276 LilyGo_T3S3 LilyGo_T3S3_sx1262 LilyGo_T3S3_sx1276; do
+  target="${family}_repeater_observer_mqtt"
+  key=$(get_ordinary_full_group_key "$target") || fail "missing Full identity $target"
+  [ "${key#*|}" = "${family,,}_repeater" ] \
+    || fail "universal radio grouping replaced a distinct OTA family: $target"
 done
 
 (

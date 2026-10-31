@@ -232,6 +232,8 @@ jobs:
         run: |
           python3 -B test/test_universal_lora.py -v
           python3 -B test/test_universal_lora_builds.py -v
+          python3 -B test/test_universal_lora_gpio.py -v
+          python3 -B test/test_notification_rtc_storage.py -v
       - name: Qualify universal T-Beam and T3 S3 Full firmware
         # Sequential builds: PlatformIO shares the checkout's build tree.
         run: |

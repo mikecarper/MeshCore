@@ -17,7 +17,7 @@
 
 // This header is intentionally included only after target.h. The target's
 // build-time pin definitions are the authoritative list of GPIOs claimed by
-// the firmware, except boot-selectable G3 slots which reserve both pin sets.
+// the firmware. Boot-selectable radio slots/families reserve their pin union.
 namespace UserGpioPinPolicy {
 
 inline bool isFirmwareReserved(uint8_t pin) {
@@ -50,6 +50,15 @@ inline bool isFirmwareReserved(uint8_t pin) {
 #endif
 #ifdef P_LORA_DIO_2
     P_LORA_DIO_2,
+#endif
+#ifdef P_LORA_DIO_3
+    P_LORA_DIO_3,
+#endif
+#ifdef P_LORA_DIO_4
+    P_LORA_DIO_4,
+#endif
+#ifdef P_LORA_DIO_5
+    P_LORA_DIO_5,
 #endif
 #ifdef P_LORA_NSS
     P_LORA_NSS,

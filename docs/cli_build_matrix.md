@@ -32,6 +32,9 @@ and switching settings are applied. The `board` command reports the detected
 family. SX126x retains RX power saving and buffered SPI switching; SX127x retains
 its own interrupt pin, modulation limits, and power control. The common factory
 TX power is 20 dBm; SX1262 also supports an explicit 22 dBm setting.
+The universal T-Beam Companion uses 160 contacts and 8 channels to retain Full
+wireless and OTA support within classic ESP32 RAM. Existing chip-specific
+Companion capacities are unchanged.
 
 These images cover the classic T-Beam and T3 S3 SX1262/SX1276/78 variants.
 T-Beam Supreme, T-Beam 1W, SX1272, SX1280, and LR-series radios require their
@@ -45,8 +48,9 @@ A new universal image has its own target identity; it does not bypass existing
 cross-board OTA checks. Use the Full profile for universal T3 S3 infrastructure;
 both radio drivers exceed its older 1.3 MB standard application slot. Full uses
 the board's existing expanded dual-OTA layout; install its matching merged
-image when moving from the smaller layout. The universal T3 S3 image leaves GPIO21/10 free of the
-incorrect SX127x RF-switch assignment and uses no OLED reset GPIO.
+image when moving from the smaller layout. The universal T3 S3 image reserves
+GPIO21/10 as radio DIO pins instead of driving them as RF switches, and uses no
+OLED reset GPIO.
 
 ## Selecting a build profile
 

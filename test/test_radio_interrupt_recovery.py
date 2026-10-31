@@ -163,6 +163,8 @@ struct RadioLibWrapper {
  bool _loop_event_pending=false, _cw_active=false, _profile_repair_required=false, _profile_refresh_required=false;
  bool _rx_ps_armed=false, _rx_hold_continuous=false, _rx_ps_enabled=false;
  bool _rx_ps_continuous_fallback=false, _nf_calib_active=false;
+ bool rxps_hardware=true;
+ bool supportsRxPowerSaving()const{return rxps_hardware;}
  bool _primary_receive_preempt=false;
  uint32_t _rx_ps_eff_rx_us=0, _rx_ps_eff_sleep_us=0;
  float _last_snr=0, _last_rssi=0;
@@ -681,13 +683,48 @@ int main(){
 
     def test_removed_sx126x_stale_irq_guard_aborts_new_receive(self):
         source = self.source(sx126x=True)
-        guard = ("    if (!packet_ready && state == STATE_RX && !_rx_ps_armed\n"
-                 "        && !isChipBusy() && isReceivingPacket()) return 0;\n")
-        self.assertEqual(source.count(guard), 1)
+        start = source.index("    if (!packet_ready && state == STATE_RX && !_rx_ps_armed\n")
+        end = source.index(" return 0;\n", start) + len(" return 0;\n")
+        guard = source[start:end]
         with self.assertRaises(AssertionError) as failure:
             compile_run(source.replace(guard, "")+self.sx126x_late_irq_checks(),
                         ["-DESP32_PLATFORM=1", "-DRADIO_CLASS=CustomSX1262"])
         self.assertIn("late IRQ must not rearm over a newer packet", str(failure.exception))
+
+    def test_universal_sx126x_retains_the_late_irq_guard(self):
+        compile_run(self.source(sx126x=True)+self.sx126x_late_irq_checks(),
+                    ["-DESP32_PLATFORM=1", "-DRADIO_CLASS=UniversalLoRaRadio",
+                     "-DMESH_RADIO_AUTO_FAMILY=1"])
+
+    def universal_sx127x_late_irq_checks(self):
+        checks = self.sx126x_late_irq_checks().split("int main(){", 1)[0]
+        return checks + r'''
+int main(){
+ uint8_t bytes[16]={};
+ auto* w=staleEvent();
+ w->rxps_hardware=false; // The selected SX127x backend has no duty-cycle RX.
+ w->chip.irq=16;
+ assert(w->recvRaw(bytes,sizeof(bytes))==0);
+ assert(w->chip.arms==2&&"SX127x must retain its original IRQ rearm behavior");
+ assert(w->chip.activity_probes==0&&w->chip.irq==0&&w->state==STATE_RX);
+ delete w;
+}
+'''
+
+    def test_universal_sx127x_does_not_use_the_sx126x_late_irq_guard(self):
+        compile_run(self.source(sx126x=True)+self.universal_sx127x_late_irq_checks(),
+                    ["-DESP32_PLATFORM=1", "-DRADIO_CLASS=UniversalLoRaRadio",
+                     "-DMESH_RADIO_AUTO_FAMILY=1"])
+
+    def test_removing_universal_runtime_family_gate_changes_sx127x_rearm(self):
+        source = self.source(sx126x=True)
+        self.assertEqual(source.count("        && supportsRxPowerSaving()\n"), 1)
+        source = source.replace("        && supportsRxPowerSaving()\n", "")
+        with self.assertRaises(AssertionError) as failure:
+            compile_run(source+self.universal_sx127x_late_irq_checks(),
+                        ["-DESP32_PLATFORM=1", "-DRADIO_CLASS=UniversalLoRaRadio",
+                         "-DMESH_RADIO_AUTO_FAMILY=1"])
+        self.assertIn("SX127x must retain its original IRQ rearm behavior", str(failure.exception))
 
     def test_stale_irq_guard_does_not_change_other_platforms_or_phys(self):
         checks = r'''

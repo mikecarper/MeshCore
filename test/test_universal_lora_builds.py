@@ -79,6 +79,21 @@ class UniversalLoRaBuildTest(unittest.TestCase):
         self.assertNotIn("SX127X_TXEN", flags)
         self.assertEqual(flags["PIN_OLED_RESET"], "-1")
 
+    def test_classic_companion_capacity_does_not_change_legacy_targets(self):
+        for target, contacts, channels in (
+            ("Tbeam_companion_radio_ble", "160", "8"),
+            ("Tbeam_companion_radio_ble_ps", "160", "8"),
+            ("Tbeam_SX1262_companion_radio_ble", "160", "8"),
+            ("Tbeam_SX1276_companion_radio_ble", "160", "40"),
+        ):
+            flags = self.defines(target)
+            self.assertEqual(flags["MAX_CONTACTS"], contacts)
+            self.assertEqual(flags["MAX_GROUP_CHANNELS"], channels)
+            if "SX" not in target:
+                self.assertEqual(flags["MESH_NOTIFY_RTC_SETTINGS"], "1")
+            else:
+                self.assertNotIn("MESH_NOTIFY_RTC_SETTINGS", flags)
+
     def test_legacy_names_keep_their_chip_and_paths(self):
         for target, chip, folder in (
             ("Tbeam_SX1262_repeater", "CustomSX1262", "lilygo_tbeam_SX1262"),
