@@ -95,7 +95,8 @@ def build_usb_only(args: argparse.Namespace, parser: argparse.ArgumentParser) ->
     ], cwd=ROOT, env=environment, check=True)
 
 
-def verify_archive(path: Path, board: str, version: str, source: str) -> None:
+def verify_archive(path: Path, board: str, version: str, source: str, *,
+                   full_image: Path | None = None) -> None:
     with zipfile.ZipFile(path) as archive:
         damaged = archive.testzip()
         if damaged:
@@ -109,6 +110,8 @@ def verify_archive(path: Path, board: str, version: str, source: str) -> None:
             if (len(data) != expected["bytes"]
                     or hashlib.sha256(data).hexdigest() != expected["sha256"]):
                 raise ValueError(f"{path}: invalid {filename}")
+        if full_image is not None and archive.read("full-application.bin") != full_image.read_bytes():
+            raise ValueError(f"{path}: migration application differs from the exact published Full image")
 
 
 def bundle_release(output_root: Path, package_dir: Path, boards: list[str],

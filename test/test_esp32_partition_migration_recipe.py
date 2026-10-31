@@ -240,6 +240,14 @@ class Esp32MigrationRecipeTest(unittest.TestCase):
                 archive.writestr("manifest.json", json.dumps(manifest))
                 archive.writestr("full-application.bin", payload)
             verify_archive(archive_path, "heltec-v4", "v1.17.1.7-test", "01234567")
+            publication = Path(temporary) / "published.bin"
+            publication.write_bytes(payload)
+            verify_archive(archive_path, "heltec-v4", "v1.17.1.7-test", "01234567",
+                           full_image=publication)
+            publication.write_bytes(b"another build of the same source and version")
+            with self.assertRaisesRegex(ValueError, "exact published Full image"):
+                verify_archive(archive_path, "heltec-v4", "v1.17.1.7-test", "01234567",
+                               full_image=publication)
             with zipfile.ZipFile(archive_path, "w") as archive:
                 archive.writestr("manifest.json", json.dumps(manifest))
                 archive.writestr("full-application.bin", b"damaged image")

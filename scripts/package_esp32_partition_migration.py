@@ -719,20 +719,49 @@ with a different password. Older bridge packages use the published fallback.
 """
 
 
+def published_full_image(records: list[dict], target: str) -> Path | None:
+    """Bind a migration to the exact qualified ordinary release bytes.
+
+    A second build of the same source/version is not interchangeable: ELF
+    build timestamps and the final image digest can change. Legacy-only
+    migration targets may be absent from the ordinary publication entirely.
+    """
+    matching = [record for record in records
+                if record["manifest"].get("target") == target
+                and record["manifest"].get("platform") == "ESP32_PLATFORM"
+                and record["manifest"].get("build_profile") == "full"]
+    if not matching:
+        return None
+    if len(matching) != 1:
+        raise ValueError(f"{target}: multiple published Full identities")
+    images = [path for path in matching[0]["files"]
+              if path.suffix == ".bin" and not path.name.endswith("-merged.bin")]
+    if len(images) != 1:
+        raise ValueError(f"{target}: published Full identity has no unique application")
+    return images[0]
+
+
 def package_board(name: str, spec: dict, build_dir: Path, output_dir: Path,
                   version: str, source: str,
-                  pio_build_dir: Path | None = None) -> Path:
+                  pio_build_dir: Path | None = None, *,
+                  release_build_dir: Path | None = None) -> Path:
     utility_build_dir = resolve_pio_build_dir(pio_build_dir)
     target = spec["target"]
     target_id = target_id_for_env(target)
     hw_id = hardware_id_for_env(target)
-    images = sorted(build_dir.glob(f"{target}-full-*-{version}-{source}.bin"))
+    pattern = f"{target}-full-*-{version}-{source}.bin"
+    images = sorted(release_build_dir.rglob(pattern)) if release_build_dir else []
+    # An existing publication takes precedence even if invalid. Do not quietly
+    # substitute another rebuild when qualification below rejects its bytes.
+    if not images:
+        images = sorted(build_dir.glob(pattern))
     if len(images) != 1:
         raise ValueError(f"{name}: expected one exact-target Full image, found {len(images)}")
     stem = images[0].stem
-    full_path = build_dir / (stem + ".bin")
-    capability_path = build_dir / (stem + ".capabilities.json")
-    validate_package(build_dir / stem)
+    artifact_dir = images[0].parent
+    full_path = images[0]
+    capability_path = artifact_dir / (stem + ".capabilities.json")
+    validate_package(artifact_dir / stem)
     capabilities = json.loads(capability_path.read_text())
     if (capabilities.get("target") != target
             or capabilities.get("build_profile") != "full"
@@ -742,7 +771,7 @@ def package_board(name: str, spec: dict, build_dir: Path, output_dir: Path,
 
     # build.sh may clean .pio/build between board builds. Its merged image
     # retains the exact bootloader/partition table/app bytes that were audited.
-    merged = (build_dir / (stem + "-merged.bin")).read_bytes()
+    merged = (artifact_dir / (stem + "-merged.bin")).read_bytes()
     if len(merged) < 0x9000 or merged[0x10000:] != full_path.read_bytes():
         raise ValueError(f"{name}: merged image does not contain the release app")
     table = merged[0x8000:0x9000]
@@ -778,7 +807,7 @@ def package_board(name: str, spec: dict, build_dir: Path, output_dir: Path,
         "target-partitions.bin": table,
         "capabilities.json": capability_path.read_bytes(),
     }
-    meshtext_notice = validate_meshtext_notice(build_dir / stem)
+    meshtext_notice = validate_meshtext_notice(artifact_dir / stem)
     if meshtext_notice is not None:
         files[meshtext_notice.name] = meshtext_notice.read_bytes()
     if spec.get("expander_bridge"):
@@ -865,6 +894,9 @@ def package_board(name: str, spec: dict, build_dir: Path, output_dir: Path,
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--build-dir", type=Path, required=True)
+    parser.add_argument("--release-build-dir", type=Path,
+                        help="qualified staged ordinary firmware tree; reuse each exact "
+                             "published Full app instead of a separate migration rebuild")
     parser.add_argument("--pio-build-dir", type=Path,
                         help="explicit utility build tree (default: actual resolved PlatformIO "
                              "build directory; relative paths use the project root)")
@@ -883,7 +915,8 @@ def main() -> None:
     args.output_dir.mkdir(parents=True, exist_ok=True)
     selected = dict.fromkeys(args.board or BOARDS)
     archives = [package_board(name, BOARDS[name], args.build_dir, args.output_dir,
-                              args.version, args.source, utility_build_dir)
+                              args.version, args.source, utility_build_dir,
+                              release_build_dir=args.release_build_dir)
                 for name in selected]
     for archive in archives:
         print(f"{archive}: {archive.stat().st_size} bytes")
