@@ -36,6 +36,7 @@ mesh::LoRaRadioFamily universalLoRaRadioFamily() {
 }
 
 bool prepareUniversalLoRaRadio() {
+  if (radio_driver.family() != mesh::LoRaRadioFamily::None) return true;
   // TBeamBoard calls this after enabling the PMU's radio rail. Probe before
   // regulator policy or any modem initialization can touch the wrong chip.
   spi.begin(P_LORA_SCLK, P_LORA_MISO, P_LORA_MOSI);

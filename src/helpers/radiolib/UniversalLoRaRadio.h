@@ -49,11 +49,11 @@ class UniversalLoRaRadio : public mesh::Radio {
   // These small forwarding methods preserve the complete mesh::Radio contract.
   // An unidentified radio never transmits or reports successful reconfiguration.
 #define MESH_AUTO_LORA_RET(type, method, params, args, fallback) \
-  type method params override { return backend_ ? backend_->method args : fallback; }
+  type method params override { return backend_ ? static_cast<mesh::Radio*>(backend_)->method args : fallback; }
 #define MESH_AUTO_LORA_CONST(type, method, params, args, fallback) \
-  type method params const override { return backend_ ? static_cast<const RadioLibWrapper*>(backend_)->method args : fallback; }
+  type method params const override { return backend_ ? static_cast<const mesh::Radio*>(backend_)->method args : fallback; }
 #define MESH_AUTO_LORA_VOID(method, params, args) \
-  void method params override { if (backend_) backend_->method args; }
+  void method params override { if (backend_) static_cast<mesh::Radio*>(backend_)->method args; }
 #define MESH_AUTO_LORA_EXTRA(type, method, params, args, fallback) \
   type method params { return backend_ ? backend_->method args : fallback; }
 #define MESH_AUTO_LORA_EXTRA_CONST(type, method, params, args, fallback) \

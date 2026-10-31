@@ -222,6 +222,25 @@ jobs:
           -e M5Stack_Cardputer_Adv_repeater -e M5Stack_Cardputer_Adv_room_server
           -e LilyGo_TDeck_companion_radio_ble
 
+  universal-lora-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Build Environment
+        uses: ./.github/actions/setup-build-environment
+      - name: Verify chip probing, forwarding, and build contracts
+        run: |
+          python3 -B test/test_universal_lora.py -v
+          python3 -B test/test_universal_lora_builds.py -v
+      - name: Qualify universal T-Beam and T3 S3 Full firmware
+        # Sequential builds: PlatformIO shares the checkout's build tree.
+        run: |
+          for target in Tbeam_companion_radio_full LilyGo_T3S3_companion_radio_full Tbeam_repeater LilyGo_T3S3_repeater Tbeam_room_server LilyGo_T3S3_room_server; do
+            bash build.sh build-firmware "$target" --firmware-version v1.18.0.2-halo-keymind-cascade-dev --radio-preset usa-cascade-fixed --profile cascade --require-ota
+          done
+      - name: Compile the remaining role interfaces
+        run: pio run -e Tbeam_kiss_modem -e LilyGo_T3S3_kiss_modem -e LilyGo_T3S3_terminal_chat
+
   management-reports:
     runs-on: ubuntu-latest
     steps:

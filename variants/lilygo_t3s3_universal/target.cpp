@@ -29,6 +29,7 @@ mesh::LoRaRadioFamily universalLoRaRadioFamily() {
 }
 
 bool prepareUniversalLoRaRadio() {
+  if (radio_driver.family() != mesh::LoRaRadioFamily::None) return true;
   spi.begin(P_LORA_SCLK, P_LORA_MISO, P_LORA_MOSI);
   const mesh::LoRaChipProbePins pins{P_LORA_NSS, P_LORA_RESET, P_LORA_BUSY};
   return radio_driver.selectFamily(mesh::probeUniversalLoRaChip(spi, pins));

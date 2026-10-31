@@ -16,6 +16,38 @@ page describes the commands intentionally omitted or limited by build profile.
 The [CLI Command Availability Matrix](cli_command_availability.md) expands this
 summary into separate nRF52 and ESP32 command tables.
 
+## Universal T-Beam and T3 S3 radios
+
+The `Tbeam_*` and `LilyGo_T3S3_*` targets detect the radio at startup and use
+the existing SX1262 or SX1276/78 driver. Choose the board family and role;
+there is no radio-chip setting to enter. For example:
+
+```bash
+bash build.sh build-firmware Tbeam_companion_radio_full
+bash build.sh build-firmware LilyGo_T3S3_repeater
+```
+
+Selection happens after board power is enabled and before saved radio regulator
+and switching settings are applied. The `board` command reports the detected
+family. SX126x retains RX power saving and buffered SPI switching; SX127x retains
+its own interrupt pin, modulation limits, and power control. The common factory
+TX power is 20 dBm; SX1262 also supports an explicit 22 dBm setting.
+
+These images cover the classic T-Beam and T3 S3 SX1262/SX1276/78 variants.
+T-Beam Supreme, T-Beam 1W, SX1272, SX1280, and LR-series radios require their
+own targets. An unrecognized or missing radio cannot fall back to a guessed
+driver or start transmitting. Detection reads chip identification registers
+and normally takes a few tens of milliseconds, with a bounded timeout.
+
+The existing `Tbeam_SX1262_*`, `Tbeam_SX1276_*`, and
+`LilyGo_T3S3_sx1262_*`/`sx1276_*` images keep their names and OTA identities.
+A new universal image has its own target identity; it does not bypass existing
+cross-board OTA checks. Use the Full profile for universal T3 S3 infrastructure;
+both radio drivers exceed its older 1.3 MB standard application slot. Full uses
+the board's existing expanded dual-OTA layout; install its matching merged
+image when moving from the smaller layout. The universal T3 S3 image leaves GPIO21/10 free of the
+incorrect SX127x RF-switch assignment and uses no OLED reset GPIO.
+
 ## Selecting a build profile
 
 The runtime settings profile and the feature profile are separate switches:
