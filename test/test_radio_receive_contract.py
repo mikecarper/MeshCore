@@ -16,6 +16,32 @@ def method(text, signature):
     """Keep the shared legacy API without double-counting C++ alternatives."""
     return body(text, signature)
 
+
+def conditional_declaration(text, name):
+    """Copy all branches defining a member, including any nested conditions."""
+    declarations = list(re.finditer(r'\b' + re.escape(name) + r'\s*=', text))
+    if not declarations:
+        raise AssertionError('Missing production declaration: ' + name)
+    stack, blocks = [], []
+    for directive in re.finditer(r'^[ \t]*#[ \t]*(if|ifdef|ifndef|elif|else|endif)\b[^\n]*',
+                                 text, re.MULTILINE):
+        kind = directive.group(1)
+        if kind in ('if', 'ifdef', 'ifndef'):
+            stack.append(directive.start())
+        elif kind == 'endif':
+            if not stack:
+                raise AssertionError('Unmatched production #endif')
+            blocks.append((stack.pop(), directive.end()))
+    if stack:
+        raise AssertionError('Unclosed production conditional')
+    enclosing = [(start, end) for start, end in blocks
+                 if start <= declarations[0].start() and end >= declarations[-1].end()]
+    if not enclosing:
+        raise AssertionError('Missing production conditional for ' + name)
+    start, end = min(enclosing, key=lambda bounds: bounds[1] - bounds[0])
+    return text[start:end]
+
+
 HARNESS = r'''
 #include <cassert>
 #include <cstdio>
@@ -747,8 +773,7 @@ def transition_harness(source=None):
     constants += '\n' + re.search(
         r'^#define RX_POWERSAVING_CONTINUOUS_FALLBACK_US\s+[^\n]+', rxps,
         re.MULTILINE).group(0)
-    settle_start = header.index('#if defined(USE_SX1262) || defined(USE_SX1268) || defined(USE_LLCC68)')
-    settle = header[settle_start:header.index('#endif', settle_start) + len('#endif')]
+    settle = conditional_declaration(header, 'NoiseFloorSettleMillis')
     return (HARNESS.replace('@METHODS@', methods).replace('@NF_CONSTANTS@', constants)
             .replace('@SETTLE_CONSTANT@', settle)
             .replace('@RECOVERY_GETTER@', method(header, 'uint32_t getRecoveryCount() const').replace('override', ''))
@@ -757,6 +782,55 @@ def transition_harness(source=None):
 
 
 class RadioReceiveContractTest(unittest.TestCase):
+    def test_frontend_settling_uses_all_production_family_branches(self):
+        harness = transition_harness().split('struct LegacyRadio {', 1)[0]
+        harness += r'''
+int main() {
+  static_assert(RadioLibWrapper::NoiseFloorSettleMillis == EXPECTED_SETTLE_MS,
+                "The selected chip family must retain its settling margin");
+  RadioLibWrapper w;
+  w.startRecv();
+  now_ms = 100 + EXPECTED_SETTLE_MS - 1;
+  w.loop();
+  assert(w.reads == 0);
+  ++now_ms;
+  w.loop();
+  assert(w.reads == 1 && w._floor_estimator.count() == 1);
+  now_ms = 200;
+  w.startRecv();
+  now_ms += EXPECTED_SETTLE_MS - 1;
+  w.loop();
+  assert(w.reads == 1);
+  ++now_ms;
+  w.loop();
+  assert(w.reads == 2 && w._floor_estimator.count() == 2);
+}
+'''
+        variants = (
+            ('sx1262', 7, ['-DUSE_SX1262=1']),
+            ('sx1268', 7, ['-DUSE_SX1268=1']),
+            ('llcc68', 7, ['-DUSE_LLCC68=1']),
+            ('other', 20, []),
+            ('auto_off', 7, ['-DMESH_RADIO_AUTO_FAMILY=0', '-DUSE_SX1262=1']),
+            ('auto_sx127x', 20, ['-DMESH_RADIO_AUTO_FAMILY=1', '-DUSE_SX1262=1', '-DUSE_SX1276=1']),
+            ('auto_lr1121', 20, ['-DMESH_RADIO_AUTO_FAMILY=1', '-DMESH_RADIO_AUTO_LR1121=1',
+                                 '-DUSE_SX1262=1', '-DUSE_LR1121=1']),
+        )
+        with tempfile.TemporaryDirectory(prefix='meshcore-radio-settling-') as temp:
+            cpp, binary = Path(temp) / 'test.cpp', Path(temp) / 'test'
+            cpp.write_text(harness.replace('\u2014', '-'), encoding='ascii')
+            for family, expected, defines in variants:
+                with self.subTest(family=family):
+                    result = subprocess.run([os.environ.get('CXX', 'c++'), '-std=c++17', '-O1',
+                        '-Wall', '-Wextra', '-Werror', f'-DEXPECTED_SETTLE_MS={expected}', *defines,
+                        *(['-fsanitize=address,undefined', '-fno-sanitize-recover=all', '-fno-pie', '-no-pie']
+                          if sys.platform.startswith('linux') else []),
+                        '-I', str(ROOT / 'src'), str(cpp), '-o', str(binary)],
+                        capture_output=True, text=True, timeout=60)
+                    self.assertEqual(result.returncode, 0, result.stderr)
+                    result = subprocess.run([str(binary)], capture_output=True, text=True, timeout=20)
+                    self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
     def test_preamble_margin_and_receive_deadlines(self):
         radio_source = (ROOT / 'src/helpers/radiolib/RadioLibWrappers.cpp').read_text()
         timing = method(radio_source, 'PacketMillis RadioLibWrapper::calcMaxPacketMillis(')

@@ -259,6 +259,9 @@ class NoiseFloorReadingTests(unittest.TestCase):
         flags = [] if not sys.platform.startswith("linux") else [
             "-fsanitize=address,undefined", "-fno-sanitize-recover=all", "-fno-pie", "-no-pie"]
         variants = (("sx1262", ["-DUSE_SX1262=1"]), ("other", []),
+                    ("auto_sx127x", ["-DMESH_RADIO_AUTO_FAMILY=1", "-DUSE_SX1262=1", "-DUSE_SX1276=1"]),
+                    ("auto_lr1121", ["-DMESH_RADIO_AUTO_FAMILY=1", "-DMESH_RADIO_AUTO_LR1121=1",
+                                      "-DUSE_SX1262=1", "-DUSE_LR1121=1"]),
                     ("stm32_opt_in", ["-DSTM32_PLATFORM=1", "-DMESH_ENABLE_TELEMETRY_HISTORY=1"]),
                     ("stm32_default", ["-DSTM32_PLATFORM=1"]),
                     ("explicit_off", ["-DMESH_ENABLE_TELEMETRY_HISTORY=0"]))

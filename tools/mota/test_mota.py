@@ -525,6 +525,7 @@ def test_measured_full_companion_promotions_are_exact_and_bounded():
         "LilyGo_T3S3_sx1276_companion_radio_ble",
         "Heltec_ct62_companion_radio_ble",
         "Meshadventurer_sx1262_companion_radio_ble",
+        "Meshadventurer_companion_radio_ble",
         "Meshadventurer_sx1268_companion_radio_ble",
         "Heltec_Wireless_Paper_companion_radio_ble",
         "Heltec_E213_companion_radio_ble",
@@ -535,6 +536,8 @@ def test_measured_full_companion_promotions_are_exact_and_bounded():
         "Ebyte_EoRa-S3_companion_radio_ble",
         "Tbeam_SX1262_companion_radio_ble",
         "Tbeam_SX1276_companion_radio_ble",
+        "Tbeam_companion_radio_ble",
+        "LilyGo_T3S3_companion_radio_ble",
         "T_Beam_S3_Supreme_SX1262_companion_radio_ble",
         "GAT562_Mesh_Watch13_companion_radio_ble",
         "LilyGo_T-Echo-Lite_companion_radio_ble",
@@ -546,13 +549,14 @@ def test_measured_full_companion_promotions_are_exact_and_bounded():
         for line in qualified.splitlines()
         if line.strip().endswith("_companion_radio_ble")
     ]
-    assert listed == expected
+    assert listed == expected, f"Full Companion promotion inventory changed: {listed!r}"
     assert 'PIO_ENV_BUILD_BASE_BY_NAME["$full_env"]="$env_name"' in qualified
 
     profile = build.split("apply_companion_radio_full_profile()", 1)[1]
     profile = profile.split("apply_radio_overrides()", 1)[0]
     assert "-DWIFI_SSID=" in profile
     assert "+<helpers/wifi/SerialWifiInterface.cpp>" in profile
+    assert "meshadventurer_companion_radio_full" in profile
     assert "meshadventurer_sx1262_companion_radio_full" in profile
     assert "meshadventurer_sx1268_companion_radio_full" in profile
     assert ("-DMAX_CONTACTS=100 -DMAX_GROUP_CHANNELS=30 "
