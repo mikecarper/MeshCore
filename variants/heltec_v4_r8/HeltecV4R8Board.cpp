@@ -1,6 +1,12 @@
 #include "HeltecV4R8Board.h"
 #include <helpers/ESP32GpioHold.h>
 
+#if MESHCORE_HEADLESS_KISS_COMPAT
+  #include "HeadlessKissPins.h"
+  extern const char meshcore_capability_modem_headless_heltec_r8[] =
+      "meshcore.capability.modem.headless.heltec_r8.v1";
+#endif
+
 // Expansion Kit V2 control-pin notes (kept here beside the shared-reset
 // sequencing): display/touch I2C is SDA 17 / SCL 18; GPIO 21 is the shared
 // LCD_RESET / TP_RESET line; GPIO 44 drives the active-high backlight. The
@@ -9,6 +15,12 @@
 
 void HeltecV4R8Board::begin() {
   ESP32Board::begin();
+
+#if MESHCORE_HEADLESS_KISS_COMPAT
+  const volatile char* capability = meshcore_capability_modem_headless_heltec_r8;
+  (void)*capability;
+  parkHeltecR8KissDisplayPins();
+#endif
 
   periph_power.begin();
   periph_power.claim();  // R8 VEXT also feeds the LoRa antenna boost rail.
@@ -88,7 +100,9 @@ bool HeltecV4R8Board::isExternalPowered() {
 }
 
 const char* HeltecV4R8Board::getManufacturerName() const {
-#ifdef HELTEC_V4_R8_TFT
+#if MESHCORE_HEADLESS_KISS_COMPAT
+  return "Heltec V4 R8";
+#elif defined(HELTEC_V4_R8_TFT)
   return "Heltec V4 R8 TFT";
 #else
   return "Heltec V4 R8 OLED";

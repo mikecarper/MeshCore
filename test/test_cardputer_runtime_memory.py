@@ -13,6 +13,27 @@ from test_replay_reset_integration import extract_braced
 
 
 class CardputerRuntimeMemoryTests(unittest.TestCase):
+    def test_full_retains_custom_ui_allowances_and_selected_wireless_stack(self):
+        full = {"ESP32_PLATFORM": "1", "BLE_PIN_CODE": "123456",
+                "WIFI_SSID": '"WIFI_SSID"', "WIFI_OTA_SEEDER": "1",
+                "ENABLE_OTA": "1", "OTA_SEEDER_ONLY": "1",
+                "COMPANION_RADIO_FULL": "1", "CARDPUTER_ADV_UI": "1",
+                "COMPANION_EXCLUSIVE_WIFI_BLE": "1",
+                "MESH_CONTACT_CACHE": "1", "MAX_CONTACTS": "350",
+                "MAX_GROUP_CHANNELS": "40", "OFFLINE_QUEUE_SIZE": "256"}
+        measured = requirements("ESP32_PLATFORM", full,
+                                "M5Stack_Cardputer_Adv_companion_radio_full")
+        legacy = requirements("ESP32_PLATFORM", {"ESP32_PLATFORM": "1",
+            "BLE_PIN_CODE": "123456", "CARDPUTER_ADV_UI": "1"},
+            "M5Stack_Cardputer_Adv_companion_radio_ble")
+        for key, value in legacy["components"].items():
+            if key.startswith("cardputer_"):
+                self.assertEqual(measured["components"][key], value)
+        self.assertEqual(measured["components"]["wireless_stacks"], max(49152, 32768))
+        self.assertIn("ota_source_scratch", measured["components"])
+        self.assertIn("ota_generic_source_buffers", measured["components"])
+        self.assertGreater(measured["required_heap_bytes"], legacy["required_heap_bytes"])
+
     def test_custom_ui_owners_are_additive_and_fonts_fit_their_allowance(self):
         base = {"ESP32_PLATFORM": "1", "BLE_PIN_CODE": "123456"}
         target = "M5Stack_Cardputer_Adv_companion_radio_ble"

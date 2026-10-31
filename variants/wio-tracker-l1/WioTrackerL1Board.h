@@ -40,7 +40,9 @@ public:
   const char* getManufacturerName() const override {
     // Keep the physical display/power variants distinguishable to read-only
     // USB clients. Older releases used the same name for Pro, E-Ink and 1W.
-#if defined(WIO_TRACKER_L1_EINK)
+#if MESHCORE_HEADLESS_KISS_COMPAT || WIO_L1_DISPLAY_UNIFIED
+    return "Seeed Wio Tracker L1";
+#elif defined(WIO_TRACKER_L1_EINK)
     return "Seeed Wio Tracker L1 E-Ink";
 #else
     return "Seeed Wio Tracker L1 Pro";

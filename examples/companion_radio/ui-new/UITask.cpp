@@ -122,6 +122,9 @@ static mesh::ui::RadioProfileSystemStatus radioProfileSystemStatus(
 #ifndef UI_RECENT_LIST_SIZE
   #define UI_RECENT_LIST_SIZE 4
 #endif
+#if defined(WIO_L1_DISPLAY_UNIFIED) && WIO_L1_DISPLAY_UNIFIED
+#include <helpers/ui/WioL1DisplayLayout.h>
+#endif
 
 #ifdef HAS_TOUCH
   #define PRESS_LABEL "tap center"
@@ -644,6 +647,9 @@ class HomeScreen : public UIScreen {
   }
 
   bool isPageVisible(uint8_t page) const {
+#if defined(WIO_L1_DISPLAY_UNIFIED) && WIO_L1_DISPLAY_UNIFIED && !defined(UI_NO_HIBERNATE)
+    if (page == HomePage::SHUTDOWN && !display.isEink()) return false;
+#endif
     return the_mesh.isDualRadioActive()
         || (page != HomePage::RADIO2 && page != HomePage::RADIO_STATUS);
   }
@@ -1529,7 +1535,12 @@ public:
         r.skipData(type);
       }
 
-      for (int i = 0; i < (sensors_scroll?UI_RECENT_LIST_SIZE:sensors_nb); i++) {
+      int sensor_rows = sensors_scroll ? UI_RECENT_LIST_SIZE : sensors_nb;
+#if defined(WIO_L1_DISPLAY_UNIFIED) && WIO_L1_DISPLAY_UNIFIED
+      sensor_rows = mesh::ui::wio_l1::visibleRows(display.height(), y, normal_line,
+          row_height > 12 ? row_height : 12, sensor_rows);
+#endif
+      for (int i = 0; i < sensor_rows; i++) {
         uint8_t channel, type;
         if (!r.readHeader(channel, type)) { // reached end, reset
           r.reset();
@@ -1586,7 +1597,7 @@ public:
         display.print(buf);
         y += row_height > 12 ? row_height : 12;
       }
-      if (sensors_scroll) sensors_scroll_offset = (sensors_scroll_offset+1)%sensors_nb;
+      if (sensors_nb > sensor_rows) sensors_scroll_offset = (sensors_scroll_offset+1)%sensors_nb;
       else sensors_scroll_offset = 0;
 #endif
 #if UI_WIFI_SETUP_HOME_PAGE == 1
@@ -1598,7 +1609,14 @@ public:
       int count = the_mesh.getDiscoveredNodes(discovered, UI_RECENT_LIST_SIZE);
       display.setColor(UIColor::primary_txt);
       int y = 20;
-      for (int i = 0; i < count; i++, y += 11) {
+      int discovery_spacing = 11;
+#if defined(WIO_L1_DISPLAY_UNIFIED) && WIO_L1_DISPLAY_UNIFIED
+      y = body_top;
+      discovery_spacing = row_height;
+      count = mesh::ui::wio_l1::visibleRows(display.height(), y, normal_line,
+          discovery_spacing, count);
+#endif
+      for (int i = 0; i < count; i++, y += discovery_spacing) {
         char name[32];
         auto a = &discovered[i];
         if ((a->name[0] == 0) || !discovery_disp_names) {
@@ -1624,6 +1642,10 @@ public:
         return 1000; // more frequent updates just after req
       } else if (count < UI_RECENT_LIST_SIZE -1) { // show only 5 sec after last disc
         y = 10 + 11 * UI_RECENT_LIST_SIZE;
+#if defined(WIO_L1_DISPLAY_UNIFIED) && WIO_L1_DISPLAY_UNIFIED
+        y = body_top + count * discovery_spacing;
+        if (y + normal_line > display.height()) return 5000;
+#endif
         display.drawTextCentered(display.width() / 2, y, "discover: " PRESS_LABEL);
       }
 #endif
@@ -1977,6 +1999,9 @@ class MsgPreviewScreen : public UIScreen {
 
   void renderChannelFilter(DisplayDriver& display) const {
 #if UI_MESSAGE_CHANNEL_FOOTER == 1
+#if defined(WIO_L1_DISPLAY_UNIFIED) && WIO_L1_DISPLAY_UNIFIED
+    if (!display.isEink()) return;
+#endif
     display.setTextSize(1);
     const mesh::ui::CompanionMessageChromeLayout layout =
         mesh::ui::makeCompanionMessageChromeLayout(
@@ -2148,6 +2173,9 @@ public:
             native_large ? display.textLineHeight() : 0);
     int body_bottom = UI_MESSAGE_CHANNEL_FOOTER == 1
         ? display.height() - layout.filter_height : display.height();
+#if defined(WIO_L1_DISPLAY_UNIFIED) && WIO_L1_DISPLAY_UNIFIED
+    if (!display.isEink()) body_bottom = display.height();
+#endif
     display.setCompactText(layout.compact_text);
     int header_text_y = 0;
 #if UI_BUTTON_READER_HINT == 1

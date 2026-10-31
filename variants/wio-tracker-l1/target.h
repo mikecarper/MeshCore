@@ -9,7 +9,9 @@
 #include <helpers/ArduinoHelpers.h>
 #include <helpers/sensors/EnvironmentSensorManager.h>
 #ifdef DISPLAY_CLASS
-  #if defined(WIO_TRACKER_L1_EINK)
+  #if defined(WIO_L1_DISPLAY_UNIFIED) && WIO_L1_DISPLAY_UNIFIED
+    #include <helpers/ui/WioL1Display.h>
+  #elif defined(WIO_TRACKER_L1_EINK)
     #include <helpers/ui/GxEPDDisplay.h>
   #else
     #include <helpers/ui/SH1106Display.h>

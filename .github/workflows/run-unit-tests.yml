@@ -221,6 +221,8 @@ jobs:
           -e M5Stack_Cardputer_Adv_companion_radio_usb
           -e M5Stack_Cardputer_Adv_repeater -e M5Stack_Cardputer_Adv_room_server
           -e LilyGo_TDeck_companion_radio_ble
+      - name: Qualify combined Cardputer-Adv Full Companion
+        run: bash build.sh build-firmware M5Stack_Cardputer_Adv_companion_radio_full --firmware-version v1.18.0.2-halo-keymind-cascade-dev --radio-preset usa-cascade-fixed --profile cascade
 
   universal-lora-smoke:
     runs-on: ubuntu-latest
@@ -261,6 +263,27 @@ jobs:
         run: pio run -e muzi_base_repeater -e muzi_base_room_server -e muzi_base_companion_radio_usb -e muzi_base_companion_radio_ble
       - name: Qualify Muzi Full Companion
         run: bash build.sh build-firmware muzi_base_companion_radio_full --firmware-version v1.18.0.2-halo-keymind-cascade-dev --radio-preset usa-cascade-fixed --profile cascade
+
+  headless-kiss-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Build Environment
+        uses: ./.github/actions/setup-build-environment
+      - name: Verify optional-display KISS wiring and consolidation evidence
+        run: |
+          python3 -B test/test_headless_kiss_builds.py -v
+          python3 -B test/test_wio_l1_display_detection.py -v
+          python3 -B test/test_display_power.py -v
+          python3 -B test/test_combined_board_profiles.py -v
+          node test/test_combined_board_picker.js
+      - name: Compile shared and historical KISS recipes
+        # One process: PlatformIO shares the checkout's build tree.
+        run: >-
+          pio run -e heltec_v4_r8_kiss_modem -e heltec_v4_r8_tft_kiss_modem
+          -e WioTrackerL1_kiss_modem -e WioTrackerL1Eink_kiss_modem
+      - name: Qualify Wio L1 Full Companion with runtime OLED, e-paper or headless selection
+        run: bash build.sh build-firmware WioTrackerL1_companion_radio_full --firmware-version v1.18.0.2-halo-keymind-cascade-dev --radio-preset usa-cascade-fixed --profile cascade
 
   management-reports:
     runs-on: ubuntu-latest

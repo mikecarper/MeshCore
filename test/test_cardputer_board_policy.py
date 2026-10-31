@@ -18,6 +18,88 @@ VARIANT = ROOT / "variants/m5stack_cardputer_adv"
 
 
 class CardputerBoardPolicyTests(unittest.TestCase):
+    def test_full_transport_selection_preserves_live_bluetooth_controls(self):
+        source = (VARIANT / "companion_radio/ui-cardputer/CardputerUITask.cpp").read_text()
+        toggle = extract_braced(source, "void CardputerUITask::toggleBluetooth()")
+        transport = extract_braced(source, "void CardputerUITask::toggleTransport()")
+        code = r'''
+#include <cassert>
+#include <cstdio>
+#include <cstring>
+#include <string>
+#include "CompanionBluetooth.h"
+#include "CompanionWiFi.h"
+static std::string command;
+static bool fail = false;
+bool handleCompanionBluetoothCommand(const char* text, char* reply, size_t size,
+                                    CompanionBluetoothCommandSource) {
+  command = text;
+  snprintf(reply, size, "%s", fail ? "Error: save failed" : "OK - saved");
+  return true;
+}
+#if defined(COMPANION_EXCLUSIVE_WIFI_BLE)
+static CompanionTransportMode selected = CompanionTransportMode::Bluetooth;
+CompanionTransportMode getCompanionTransportMode() { return selected; }
+bool selectCompanionTransportMode(CompanionTransportMode next) {
+  if (fail) return false;
+  selected = next;
+  return true;
+}
+#endif
+struct CardputerUITask {
+  bool enabled = true;
+  std::string alert;
+  bool isBluetoothEnabled() const { return enabled; }
+  void showAlert(const char* text, int) { alert = text; }
+  void toggleBluetooth();
+#if defined(COMPANION_EXCLUSIVE_WIFI_BLE)
+  void toggleTransport();
+#endif
+};
+@METHOD@
+#if defined(COMPANION_EXCLUSIVE_WIFI_BLE)
+@TRANSPORT@
+#endif
+int main() {
+  CardputerUITask task;
+  task.toggleBluetooth();
+  assert(command == "set bluetooth off" && task.alert == "saved");
+  task.enabled = false; task.toggleBluetooth();
+  assert(command == "set bluetooth on" && task.alert == "saved");
+  fail = true; task.toggleBluetooth();
+  assert(task.alert == "Error: save failed");
+  fail = false; command.clear();
+#if defined(COMPANION_EXCLUSIVE_WIFI_BLE)
+  task.toggleTransport();
+  assert(selected == CompanionTransportMode::WiFi && command.empty());
+  assert(task.alert == "WiFi selected; reboot required");
+  fail = true; task.toggleTransport();
+  assert(selected == CompanionTransportMode::WiFi && task.alert == "Transport save failed");
+  fail = false; task.toggleTransport();
+  assert(selected == CompanionTransportMode::Bluetooth && command.empty());
+  assert(task.alert == "Bluetooth selected; reboot required");
+#endif
+}
+'''.replace("@METHOD@", toggle).replace("@TRANSPORT@", transport)
+        compiler = os.environ.get("CXX") or shutil.which("g++") or shutil.which("clang++")
+        self.assertIsNotNone(compiler, "a native C++ compiler is required")
+        with tempfile.TemporaryDirectory(prefix="cardputer-transport-") as directory:
+            source = Path(directory) / "transport.cpp"
+            binary = Path(directory) / ("transport.exe" if os.name == "nt" else "transport")
+            source.write_text(code, encoding="ascii")
+            for full in (False, True):
+                with self.subTest(full=full):
+                    flags = (["-DESP32=1", "-DCOMPANION_EXCLUSIVE_WIFI_BLE=1",
+                              '-DWIFI_SSID="test"', "-DBLE_PIN_CODE=123456"] if full else [])
+                    sanitizer = [] if os.name == "nt" else ["-fsanitize=address,undefined",
+                        "-fno-sanitize-recover=all", "-fno-pie", "-no-pie"]
+                    built = subprocess.run([compiler, "-std=c++17", "-Wall", "-Wextra", "-Werror",
+                        *sanitizer, *flags, "-I", str(ROOT / "examples/companion_radio"),
+                        str(source), "-o", str(binary)], capture_output=True, text=True, timeout=30)
+                    self.assertEqual(built.returncode, 0, built.stdout + built.stderr)
+                    tested = subprocess.run([str(binary)], capture_output=True, text=True, timeout=10)
+                    self.assertEqual(tested.returncode, 0, tested.stdout + tested.stderr)
+
     def check_gpio(self, remove_board_guard=False):
         method = extract_braced((VARIANT / "CardputerAdvBoard.h").read_text(),
                                 "bool isUserGpioAvailable(uint8_t pin) const override")

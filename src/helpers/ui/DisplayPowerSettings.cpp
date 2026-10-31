@@ -95,7 +95,8 @@ bool savePrefs(const DisplayPowerPrefs& prefs) {
 #endif  // MESHCORE_HAS_REAL_DISPLAY
 }
 
-bool loadDisplayPowerSettings(FILESYSTEM* fs, bool pairing_supported, bool wake_on_boot) {
+bool loadDisplayPowerSettings(FILESYSTEM* fs, bool pairing_supported, bool wake_on_boot,
+                              uint16_t default_timeout) {
   loadDisplayNightSettings(fs);
 #ifdef MESHCORE_HAS_REAL_DISPLAY
   settings_fs = fs;
@@ -104,6 +105,8 @@ bool loadDisplayPowerSettings(FILESYSTEM* fs, bool pairing_supported, bool wake_
 #endif
   pairing_available = pairing_supported;
   DisplayPowerPrefs prefs;
+  if (default_timeout >= 1 && default_timeout <= 3600)
+    prefs.battery.seconds = prefs.usb.seconds = default_timeout;
   prefs.wake_on_boot = wake_on_boot;
   if (pairing_supported) prefs.battery.mode = prefs.usb.mode = DisplayMode::ButtonPairing;
 #if CARDPUTER_ADV_UI

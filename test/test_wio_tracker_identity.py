@@ -41,7 +41,7 @@ class NRF52BoardDCDC : virtual public NRF52Board {};
 
 
 class WioTrackerIdentityTests(unittest.TestCase):
-    def check_header(self, variant, expected, *, eink=False):
+    def check_header(self, variant, expected, *, eink=False, unified=False):
         compiler = os.environ.get("CXX") or shutil.which("g++") or shutil.which("clang++")
         if not compiler:
             self.skipTest("C++ compiler unavailable")
@@ -65,7 +65,7 @@ void WioTrackerL1Board::begin() {{}}
 int main() {{
   const WioTrackerL1Board board;
   assert(std::strcmp(board.getManufacturerName(), "{expected}") == 0);
-  assert(std::strcmp(board.getManufacturerName(), "Seeed Wio Tracker L1") != 0);
+  assert((std::strcmp(board.getManufacturerName(), "Seeed Wio Tracker L1") == 0) == {str(unified).lower()});
 }}
 '''
             cpp.write_text(source, encoding="ascii")
@@ -73,6 +73,8 @@ int main() {{
                        "-I", str(folder), "-I", str(ROOT)]
             if eink:
                 command.append("-DWIO_TRACKER_L1_EINK")
+            if unified:
+                command.append("-DWIO_L1_DISPLAY_UNIFIED=1")
             result = subprocess.run(command + [str(cpp), "-o", str(executable)],
                                     capture_output=True, text=True, timeout=60)
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
@@ -90,6 +92,9 @@ int main() {{
 
     def test_one_watt_reports_the_distinct_fem_power_profile(self):
         self.check_header("wio-tracker-l1-1w", "Seeed Wio Tracker L1 1W")
+
+    def test_unified_companion_reports_the_shared_physical_family(self):
+        self.check_header("wio-tracker-l1", "Seeed Wio Tracker L1", unified=True)
 
 
 if __name__ == "__main__":

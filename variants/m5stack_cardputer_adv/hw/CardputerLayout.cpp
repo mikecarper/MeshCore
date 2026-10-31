@@ -4,7 +4,8 @@
 
 using namespace Keyboard::Layout;
 
-static LayoutLayer default_layout_layers[2] = {
+// The built-in map is immutable; keep its 450 bytes in flash instead of DRAM.
+static const LayoutLayer default_layout_layers[2] = {
   { (Keyboard::Layout::LAYER_MASK_BASE),
     { "`", "",  "",  "",  "1", "q", "",  "",  "2", "w", "a", "",  "3", "e", "s", "z",  "4", "r", "d",
       "x", "5", "t", "f", "c", "6", "y", "g", "v", "7", "u", "h", "b", "8", "i", "j",  "n", "9", "o",
@@ -170,8 +171,9 @@ void CardputerLayout::parseLayout(FS &fs, LayoutType layoutType) {
 
   LayoutData* layout = new (std::nothrow) LayoutData();
   if (!layout) { layout_file.close(); return; }
-  layout->layers = new (std::nothrow) LayoutLayer[layer_count]();
-  if (!layout->layers) { delete layout; layout_file.close(); return; }
+  LayoutLayer* layers = new (std::nothrow) LayoutLayer[layer_count]();
+  if (!layers) { delete layout; layout_file.close(); return; }
+  layout->layers = layers;
   layout->layers_count = 0;
   int current_layer_index = -1;
   remaining = file_bytes;
@@ -186,12 +188,12 @@ void CardputerLayout::parseLayout(FS &fs, LayoutType layoutType) {
     } else if (readLayerMask(line, mask)) {
       current_layer_index = 0;
       while (current_layer_index < layout->layers_count
-             && layout->layers[current_layer_index].modifiers_mask != mask) ++current_layer_index;
+             && layers[current_layer_index].modifiers_mask != mask) ++current_layer_index;
       if (current_layer_index == layout->layers_count) {
         // The file may change or fail between passes. Never grow past the
         // counted allocation or publish a partial replacement.
         if (layout->layers_count == layer_count) { valid = false; break; }
-        layout->layers[current_layer_index].modifiers_mask = mask;
+        layers[current_layer_index].modifiers_mask = mask;
         ++layout->layers_count;
       }
     } else if (line[0] == 'K' && length >= 5 && line[4] == '='
@@ -200,7 +202,7 @@ void CardputerLayout::parseLayout(FS &fs, LayoutType layoutType) {
                           && line[3] >= '0' && line[3] <= '9')
           ? (line[2] - '0') * 10 + line[3] - '0' : 0;
       if (key_id >= 1 && key_id <= TOTAL_KEYS) {
-        char* dest = layout->layers[current_layer_index].entries[key_id - 1].data;
+        char* dest = layers[current_layer_index].entries[key_id - 1].data;
         memset(dest, 0, KB_LAYOUT_CHAR_MAX + 1);
         memcpy(dest, line + 5, length - 5 < KB_LAYOUT_CHAR_MAX ? length - 5 : KB_LAYOUT_CHAR_MAX);
       }

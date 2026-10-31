@@ -33,6 +33,11 @@ EnvironmentSensorManager sensors = EnvironmentSensorManager();
 #endif
 
 bool radio_init() {
+#if defined(WIO_L1_DISPLAY_UNIFIED) && WIO_L1_DISPLAY_UNIFIED
+  // The pinned nRF52 Wire driver has no event timeout. A failed OLED bus
+  // must not stall radio startup during the optional RTC address probes.
+  if (digitalRead(PIN_WIRE_SDA) == HIGH && digitalRead(PIN_WIRE_SCL) == HIGH)
+#endif
   rtc_clock.begin(Wire);
 
   return radio.std_init(&SPI);

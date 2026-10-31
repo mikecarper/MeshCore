@@ -84,6 +84,9 @@ public:
   inline uint16_t getBattMilliVoltsCorrected() { return (float)getBattMilliVolts() * _custom_prefs->battery_correction; }
   bool toggleBuzzer();
   void toggleBluetooth();
+#if defined(COMPANION_EXCLUSIVE_WIFI_BLE)
+  void toggleTransport();
+#endif
   void cycleTextSize();
   bool togglePowerSave();
   bool getGPSState();

@@ -6,6 +6,12 @@
 
 Standard KISS TNC firmware for MeshCore LoRa radios. Compatible with any KISS client (Direwolf, APRSdroid, YAAC, etc.) for sending and receiving raw packets. MeshCore-specific extensions (cryptography, radio configuration, telemetry) are available through the standard SetHardware (0x06) command.
 
+Use `heltec_v4_r8_kiss_modem` for either the plain or TFT Heltec V4 R8,
+and `WioTrackerL1_kiss_modem` for either OLED or E-Ink Wio L1. These modem
+images leave the displays off. The historical TFT/E-Ink build names and
+their OTA target identities remain available for explicit updates; they
+are omitted from ordinary build lists when the shared recipe is present.
+
 KISS protocol version 2 adds an opt-in logical port 1 for MeshCore's second
 time-shared LoRa profile. It is still one physical transceiver: the firmware
 fast-switches between `radio` and `radio2`; it does not create a second radio.

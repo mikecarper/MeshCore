@@ -35,10 +35,9 @@
 #if COMPANION_RTC_SLOW_OFFLINE_FRAMES && !defined(CONFIG_IDF_TARGET_ESP32S3)
 #error "The separate RTC SLOW offline-frame bank requires ESP32-S3"
 #endif
-#if defined(OTA_SHARED_COMPANION_QUEUE) \
-    && (!defined(CONFIG_IDF_TARGET_ESP32C3) || COMPANION_RTC_SLOW_OFFLINE_FRAMES)
-#error "RTC retained shared-OTA frames are qualified only on ESP32-C3 FAST memory"
-#endif
+// Shared OTA retains only CPU-owned message frames in these same banks.
+// BorrowableFrameBuffer keeps its context/workspace in ordinary DRAM on
+// both qualified chips; it never hands an RTC address to an SDK/DMA owner.
 
 namespace mesh {
 namespace companion_rtc {
