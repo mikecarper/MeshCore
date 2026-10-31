@@ -2575,6 +2575,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#save-and-switch-named-radio-presets" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Save and switch named radio presets
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#view-or-change-this-nodes-transmit-power" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -5852,6 +5863,17 @@
     <span class="md-ellipsis">
       
         View or change this node's radio parameters
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#save-and-switch-named-radio-presets" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Save and switch named radio presets
       
     </span>
   </a>
@@ -9861,6 +9883,60 @@ level/preamble cannot safely cover the new radio timing, the command reply
 reports the effective level and preamble, or <code>RXPS continuous-fast</code> when no
 level through 10 is safe. Slower settings recalculate from the saved RXPS
 minimum and return to it exactly when it is safe.</p>
+<hr />
+<h4 id="save-and-switch-named-radio-presets">Save and switch named radio presets</h4>
+<p><strong>Search terms:</strong> radio preset, saved radio settings, switch frequency, private mesh.</p>
+<p><strong>Usage:</strong>
+- <code>get preset [n]</code>
+- <code>add preset &lt;name&gt; &lt;slot&gt; &lt;freq&gt;,&lt;bw&gt;,&lt;sf&gt;,&lt;cr&gt;[,&lt;preamble&gt;]</code>
+- <code>load preset &lt;slot&gt;</code>
+- <code>del preset &lt;slot&gt;</code></p>
+<p><strong>Parameters:</strong>
+- <code>slot</code>: Preset slot (1-5)
+- <code>name</code>: 1-12 printable characters, no spaces or commas
+- <code>freq</code>, <code>bw</code>, <code>sf</code>, <code>cr</code>: Same values and validation as <code>set radio</code>
+- <code>preamble</code>: Optional preamble length; omit for the default</p>
+<p><strong>Default:</strong> On first boot slot 1 is saved as <code>USA-Canada</code> (910.525 MHz, 62.5 kHz,
+SF7, CR5), the US/Canada standard, not a copy of the current radio. If the running
+radio differs, no slot shows <code>*</code> until you load one. A board that rejects those
+settings (for example a non-US band radio) leaves slot 1 empty. Other slots are empty.
+Builds can override the default with <code>RADIO_PRESET_DEFAULT_NAME</code>, <code>_FREQ</code>, <code>_BW</code>, <code>_SF</code> and <code>_CR</code>.</p>
+<p><code>get preset</code> lists every slot by name, for example
+<code>1*USA-Canada 2 Private 3 - 4 - 5 - (get preset N)</code>; <code>*</code> marks the slot that
+matches the running radio settings and <code>-</code> marks an empty slot. <code>get preset &lt;n&gt;</code>
+shows one slot with its settings, for example <code>1*USA-Canada 910.525,62.5,7,5</code>.
+Presets are stored in <code>/presets</code> and survive reboots.</p>
+<p><code>load preset &lt;slot&gt;</code> saves and applies that preset through the same path as
+<code>set radio</code>: the change applies two seconds later, after the reply has been
+sent. Loading from the local serial terminal is permanent.</p>
+<p><strong>Remote loads revert unless confirmed.</strong> A <code>load preset</code> sent over LoRa
+(including the ESP-NOW bridge) is provisional. The reply is
+<code>OK - loading &lt;name&gt; &lt;settings&gt;; log in again within 10 min to keep</code>. Log in
+again as administrator on the new settings within 10 minutes to keep them.
+Otherwise the node returns to its previous radio settings automatically. A
+reboot during that window also reverts. Region and filter managers cannot use
+preset commands, and their logins do not confirm a pending load. While a load is
+pending, <code>get preset</code> starts with <code>pending, reverts in &lt;m&gt;m;</code> and another
+remote load is refused. A remote load is also refused while a TempRadio session
+is active. If the revert itself fails, it retries every minute and at every
+boot.</p>
+<p><strong>Build switch:</strong> <code>MESH_ENABLE_RADIO_PRESETS</code>. Flash-constrained STM32WL builds
+(such as <code>wio-e5-mini_repeater</code>) and ESP-NOW-only builds (<code>MESH_PRIMARY_ESPNOW</code>
+without a LoRa primary radio) omit radio presets by default; there the preset
+commands return the ordinary unknown-command reply. <code>RAK_4631_companion_radio_full</code>
+also sets <code>MESH_ENABLE_RADIO_PRESETS=0</code> because it has no flash left under its
+size gate. Other builds include them; set <code>-D MESH_ENABLE_RADIO_PRESETS=0</code> or
+<code>=1</code> to override.</p>
+<p><strong>Storage switch:</strong> <code>MESH_RADIO_PRESETS_RESIDENT</code>. By default (<code>1</code>) the preset
+table stays in RAM. With <code>0</code> each preset command reads <code>/presets</code> into a
+temporary table, saves any change and drops it; only the revert timer of a
+pending remote <code>load preset</code> stays in RAM (at most 32 bytes). Commands, replies
+and the revert behavior are the same, with one safety difference: if a stored
+<code>/presets</code> cannot be read later (corrupt, short or missing), preset commands
+reply <code>Error: presets unreadable</code> and nothing is written over the file; a
+pending remote load still reverts or commits from RAM. The RAK4631 Repeater built from
+<code>RAK_4631_repeater</code> (both its sensor + LoRa OTA images) uses <code>0</code> because its
+runtime-RAM headroom is too small for the resident table.</p>
 <hr />
 <h4 id="view-or-change-this-nodes-transmit-power">View or change this node's transmit power</h4>
 <p><strong>Search terms:</strong> tx power, transmit strength, radio output power, dBm.</p>

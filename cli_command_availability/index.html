@@ -3028,6 +3028,10 @@ over the normal binary USB, BLE, or TCP connection:</p>
 <td>Local terminal and binary command <code>0x42</code>; reboot after erasing stored settings</td>
 </tr>
 <tr>
+<td><a href="../cli_commands/#save-and-switch-named-radio-presets"><code>get preset [n]</code>; <code>add preset</code>; <code>load preset</code>; <code>del preset</code></a></td>
+<td>Local terminal and binary command <code>0x42</code> only; LoRa CLI cannot use presets on a Companion. <code>load preset</code> saves and applies at once with no revert window; omitted on STM32, ESP-NOW-only and RAK4631 Full Companion builds (<code>MESH_ENABLE_RADIO_PRESETS</code>)</td>
+</tr>
+<tr>
 <td><code>set freq &lt;MHz&gt;</code></td>
 <td>Local terminal, binary command <code>0x42</code>, and authorized LoRa CLI; applies automatically (infrastructure waits two seconds and for the reply to drain)</td>
 </tr>
@@ -3428,6 +3432,14 @@ should use command <code>0x42</code>. See <a href="../companion_protocol/">Compa
 <td>Radio</td>
 <td><a href="../cli_commands/#schedule-radio-parameter-changes"><code>get/set/del radioat</code>; <code>get/set/del tempradioat</code></a></td>
 <td>Full parser</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>Radio</td>
+<td><a href="../cli_commands/#save-and-switch-named-radio-presets"><code>get preset [n]</code>; <code>add preset</code>; <code>load preset</code>; <code>del preset</code></a></td>
+<td>Admin only remotely; remote <code>load preset</code> reverts after 10 min unless an admin logs in again; omitted on STM32 and ESP-NOW-only builds (<code>MESH_ENABLE_RADIO_PRESETS</code>)</td>
 <td>Yes</td>
 <td>Yes</td>
 <td>Yes</td>
@@ -4929,6 +4941,16 @@ should use command <code>0x42</code>. See <a href="../companion_protocol/">Compa
 <td>Radio</td>
 <td><a href="../cli_commands/#schedule-radio-parameter-changes"><code>get/set/del radioat</code>; <code>get/set/del tempradioat</code></a></td>
 <td>Full parser</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>Radio</td>
+<td><a href="../cli_commands/#save-and-switch-named-radio-presets"><code>get preset [n]</code>; <code>add preset</code>; <code>load preset</code>; <code>del preset</code></a></td>
+<td>Admin only remotely; remote <code>load preset</code> reverts after 10 min unless an admin logs in again; omitted on STM32 and ESP-NOW-only builds (<code>MESH_ENABLE_RADIO_PRESETS</code>)</td>
 <td>Yes</td>
 <td>Yes</td>
 <td>Yes</td>
