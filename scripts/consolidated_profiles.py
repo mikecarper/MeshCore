@@ -6,6 +6,18 @@ import sys
 from optional_display_profiles import resolved_defines, spec_for_defines
 
 SPECS = (
+    dict(key="autoLoRaRadio", capability="radio.autodetect.sx126x_sx127x",
+         marker="meshcore.capability.radio.autodetect.sx126x_sx127x.v1",
+         platform="ESP32_PLATFORM", board="ttgo-t-beam",
+         target=r"Tbeam_(?:repeater(?:_bridge_espnow)?|room_server|kiss_modem|companion_radio_(?:ble|usb|wifi|full)(?:_ps)?)(?:_observer_mqtt)?",
+         defines={"MESH_RADIO_AUTO_FAMILY": "1", "RADIO_CLASS": "UniversalLoRaRadio",
+                  "WRAPPER_CLASS": "UniversalLoRaRadio"}),
+    dict(key="autoLoRaRadio", capability="radio.autodetect.sx126x_sx127x",
+         marker="meshcore.capability.radio.autodetect.sx126x_sx127x.v1",
+         platform="ESP32_PLATFORM", board="t3_s3_v1_x",
+         target=r"LilyGo_T3S3_(?:repeater(?:_bridge_espnow)?|room_server|kiss_modem|terminal_chat|companion_radio_(?:ble|usb|wifi|full)(?:_ps)?)(?:_observer_mqtt)?",
+         defines={"MESH_RADIO_AUTO_FAMILY": "1", "RADIO_CLASS": "UniversalLoRaRadio",
+                  "WRAPPER_CLASS": "UniversalLoRaRadio"}),
     dict(key="unifiedV4Display", capability="display.heltec_v4.unified",
          marker="meshcore.capability.display.heltec_v4.unified.v1",
          platform="ESP32_PLATFORM", board="heltec_v4",

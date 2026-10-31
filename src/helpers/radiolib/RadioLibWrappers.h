@@ -259,7 +259,11 @@ protected:
   // The T096 SX1262 bench test found RSSI valid and stable by 7 ms after RX
   // entry, including the 500 kHz/SF5 worst-case profile. Retain the
   // conservative 20 ms path for the other radio families.
-#if defined(USE_SX1262) || defined(USE_SX1268) || defined(USE_LLCC68)
+#if defined(MESH_RADIO_AUTO_FAMILY) && MESH_RADIO_AUTO_FAMILY
+  // A universal image shares this implementation across both families. Keep
+  // SX127x's settling margin even in TUs that also include the SX126x wrapper.
+  static constexpr uint32_t NoiseFloorSettleMillis = 20UL;
+#elif defined(USE_SX1262) || defined(USE_SX1268) || defined(USE_LLCC68)
   static constexpr uint32_t NoiseFloorSettleMillis = 7UL;
 #else
   static constexpr uint32_t NoiseFloorSettleMillis = 20UL;

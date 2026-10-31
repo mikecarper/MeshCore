@@ -578,6 +578,7 @@ def select_ordinary_full_records(records: list[dict]) -> list[dict]:
             "station_g2_repeater", "station_g2_room_server",
             "tbeam_sx1262_repeater", "tbeam_sx1276_repeater",
             "tbeam_sx1262_room_server", "tbeam_sx1276_room_server",
+            "tbeam_repeater", "tbeam_room_server",
         }
         # Capacity exceptions may still need a dedicated bridge. Old plain
         # Meshadventurer images without the linked driver must not supersede it.

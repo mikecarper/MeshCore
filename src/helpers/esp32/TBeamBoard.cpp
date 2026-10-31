@@ -7,6 +7,10 @@
 #include <nvs.h>
 //#include <RadioLib.h>
 
+#if defined(MESH_RADIO_AUTO_FAMILY) && MESH_RADIO_AUTO_FAMILY
+extern bool prepareUniversalLoRaRadio();
+#endif
+
 uint32_t deviceOnline = 0x00;
 
 #if !defined(PORTABLE_MQTT_OBSERVER) || defined(TBEAM_SUPREME_SX1262)
@@ -42,17 +46,28 @@ void TBeamBoard::begin() {
       digitalWrite(P_LORA_TX_LED, HIGH); //inverted pin for SX1276 - HIGH for off
     #endif
 
-    //radiotype_detect();
+    // The radio rail must be powered before probing. Selection also supplies
+    // the actual wake IRQ before regulator/tuning setup runs in the role.
+#if defined(MESH_RADIO_AUTO_FAMILY) && MESH_RADIO_AUTO_FAMILY
+    prepareUniversalLoRaRadio();
+#endif
 
     esp_reset_reason_t reason = esp_reset_reason();
     if (reason == ESP_RST_DEEPSLEEP) {
       uint64_t wakeup_source = esp_sleep_get_ext1_wakeup_status();
-      if (wakeup_source & (1ULL << P_LORA_DIO_1)) {  // received a LoRa packet (while in deep sleep)
+#if defined(MESH_RADIO_AUTO_FAMILY) && MESH_RADIO_AUTO_FAMILY
+      const uint32_t radio_irq = getIRQGpio();
+#else
+      const uint32_t radio_irq = P_LORA_DIO_1;
+#endif
+      if (radio_irq != static_cast<uint32_t>(-1)
+          && (wakeup_source & (1ULL << radio_irq))) {
         startup_reason = BD_STARTUP_RX_PACKET;
       }
 
       mesh::esp32::releaseRtcGpioIfSupported((gpio_num_t)P_LORA_NSS);
-      mesh::esp32::deinitRtcGpioIfSupported((gpio_num_t)P_LORA_DIO_1);
+      if (radio_irq != static_cast<uint32_t>(-1))
+        mesh::esp32::deinitRtcGpioIfSupported((gpio_num_t)radio_irq);
     }
 }
 

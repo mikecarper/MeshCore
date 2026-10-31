@@ -506,6 +506,8 @@ for section, options in data:
       Ebyte_EoRa-S3_companion_radio_ble
       Tbeam_SX1262_companion_radio_ble
       Tbeam_SX1276_companion_radio_ble
+      Tbeam_companion_radio_ble
+      LilyGo_T3S3_companion_radio_ble
       T_Beam_S3_Supreme_SX1262_companion_radio_ble
       heltec_v4_expansionkit_tft_companion_radio_ble_femon
     )
@@ -2482,8 +2484,8 @@ get_unified_full_infrastructure_target() {
   # T-Beam keeps the observer as its ordinary release choice. TLora retains
   # both identities: its UART cannot fit alongside MQTT and ESP-NOW.
   case "${mqtt_base,,}" in
-    tbeam_sx1262_repeater|tbeam_sx1276_repeater|\
-    tbeam_sx1262_room_server|tbeam_sx1276_room_server|\
+    tbeam_repeater|tbeam_sx1262_repeater|tbeam_sx1276_repeater|\
+    tbeam_room_server|tbeam_sx1262_room_server|tbeam_sx1276_room_server|\
     lilygo_tlora_v2_1_1_6_repeater) return 1 ;;
   esac
 
@@ -3100,12 +3102,13 @@ requires_dram_limited_neighbors() {
     heltec_v2_repeater_lora_ota_no_external_sensors|\
     meshadventurer_sx1262_repeater_lora_ota_no_external_sensors|\
     meshadventurer_sx1268_repeater_lora_ota_no_external_sensors|\
+    tbeam_repeater_lora_ota_no_external_sensors|\
     tbeam_sx1262_repeater_lora_ota_no_external_sensors|\
     tbeam_sx1276_repeater_lora_ota_no_external_sensors)
       return 0 ;;
     generic_e22_sx1262_repeater|generic_e22_sx1268_repeater|\
     heltec_v2_repeater|meshadventurer_sx1262_repeater|\
-    meshadventurer_sx1268_repeater|tbeam_sx1262_repeater|\
+    meshadventurer_sx1268_repeater|tbeam_repeater|tbeam_sx1262_repeater|\
     tbeam_sx1276_repeater)
       if [ "$ESP32_FULL_BUILD" = "1" ]; then return 0; fi ;;
   esac
@@ -3123,6 +3126,7 @@ requires_dram_limited_neighbors() {
         |lilygo_tlora_v2_1_1_6_repeater_bridge_rs232 \
         |meshadventurer_sx1262_repeater_bridge_espnow \
         |meshadventurer_sx1268_repeater_bridge_espnow \
+        |tbeam_repeater_bridge_espnow \
         |tbeam_sx1262_repeater_bridge_espnow \
         |tbeam_sx1276_repeater_bridge_espnow)
         return 0
@@ -3132,7 +3136,7 @@ requires_dram_limited_neighbors() {
   case "${1,,}" in
     lilygo_tlora_v2_1_1_6_repeater_observer_mqtt_)
       return 0 ;;
-    tbeam_sx1262_repeater_observer_mqtt|tbeam_sx1262_room_server_observer_mqtt|tbeam_sx1276_repeater_observer_mqtt|tbeam_sx1276_room_server_observer_mqtt|rak_3x72_repeater|tiny_relay_repeater|wio-e5-mini_repeater|wio-e5-repeater_bridge_rs232|wio-e5_repeater) return 0 ;;
+    tbeam_repeater_observer_mqtt|tbeam_room_server_observer_mqtt|tbeam_sx1262_repeater_observer_mqtt|tbeam_sx1262_room_server_observer_mqtt|tbeam_sx1276_repeater_observer_mqtt|tbeam_sx1276_room_server_observer_mqtt|rak_3x72_repeater|tiny_relay_repeater|wio-e5-mini_repeater|wio-e5-repeater_bridge_rs232|wio-e5_repeater) return 0 ;;
     *) return 1 ;;
   esac
 }
@@ -3438,6 +3442,7 @@ is_esp32_partition_migration_full_target() {
     ebyte_eora-s3_repeater|ebyte_eora-s3_room_server|\
     generic_e22_sx1262_repeater|generic_e22_sx1268_repeater|\
     heltec_ct62_repeater|heltec_ct62_sensor|\
+    lilygo_t3s3_repeater|lilygo_t3s3_room_server|\
     lilygo_t3s3_sx1262_repeater|lilygo_t3s3_sx1262_room_server|\
     lilygo_t3s3_sx1276_repeater|lilygo_t3s3_sx1276_room_server|\
     station_g2_repeater|station_g2_logging_repeater|station_g2_room_server|\
@@ -3846,6 +3851,8 @@ apply_esp32_constrained_companion_size_profile() {
     station_g2_companion_radio_ble \
       |thinknode_m2_companion_radio_ble \
       |thinknode_m2_companion_radio_wifi \
+      |lilygo_t3s3_companion_radio_ble \
+      |lilygo_t3s3_companion_radio_ble_ps \
       |lilygo_t3s3_sx1262_companion_radio_ble \
       |lilygo_t3s3_sx1262_companion_radio_ble_ps \
       |lilygo_t3s3_sx1276_companion_radio_ble \
@@ -3872,8 +3879,8 @@ apply_esp32_iram_advert_storage_profile() {
     lilygo_tlora_v2_1_1_6_repeater_observer_mqtt|lilygo_tlora_v2_1_1_6_repeater_observer_mqtt_|\
     lilygo_tlora_v2_1_1_6_room_server|lilygo_tlora_v2_1_1_6_room_server_|\
     lilygo_tlora_v2_1_1_6_room_server_observer_mqtt|lilygo_tlora_v2_1_1_6_room_server_observer_mqtt_|\
-    tbeam_sx1262_repeater_observer_mqtt|tbeam_sx1276_repeater_observer_mqtt|\
-    tbeam_sx1262_room_server_observer_mqtt|tbeam_sx1276_room_server_observer_mqtt)
+    tbeam_repeater_observer_mqtt|tbeam_sx1262_repeater_observer_mqtt|tbeam_sx1276_repeater_observer_mqtt|\
+    tbeam_room_server_observer_mqtt|tbeam_sx1262_room_server_observer_mqtt|tbeam_sx1276_room_server_observer_mqtt)
       export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -DFLOOD_ADVERT_IRAM_WORD_STORAGE=1"
       ;;
   esac
@@ -3909,13 +3916,13 @@ apply_esp32_full_size_profile() {
   case "${env_name,,}" in
     lilygo_tlora_v2_1_1_6_room_server|lilygo_tlora_v2_1_1_6_room_server_|\
     lilygo_tlora_v2_1_1_6_room_server_observer_mqtt|lilygo_tlora_v2_1_1_6_room_server_observer_mqtt_|\
-    tbeam_sx1262_room_server_observer_mqtt|tbeam_sx1276_room_server_observer_mqtt)
+    tbeam_room_server_observer_mqtt|tbeam_sx1262_room_server_observer_mqtt|tbeam_sx1276_room_server_observer_mqtt)
       # Preserve all 32 Room posts in genuine byte-accessible RTC SLOW memory.
       # The bounded proof implementation serves the same maximum 4096 leaves
       # without retaining the legacy 16 KiB leaf cache alongside Room services.
       export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -DROOM_POSTS_RTC_SLOW_STORAGE=1 -DOTA_BOUNDED_SOURCE_PROOFS=1"
       ;;
-    tbeam_sx1262_repeater_observer_mqtt|tbeam_sx1276_repeater_observer_mqtt)
+    tbeam_repeater_observer_mqtt|tbeam_sx1262_repeater_observer_mqtt|tbeam_sx1276_repeater_observer_mqtt)
       # MQTT/TLS plus OTA left only 3.3 KiB of static-region headroom with
       # 63 rules. Retain the complete rule engine with a 31-entry table.
       append_platformio_build_unflags "-DFLOOD_PACKET_FILTER_SLOTS=63"
@@ -3929,6 +3936,7 @@ apply_esp32_full_size_profile() {
     lilygo_tlora_v2_1_1_6_repeater_bridge_espnow|\
     meshadventurer_sx1262_repeater_bridge_espnow|\
     meshadventurer_sx1268_repeater_bridge_espnow|\
+    tbeam_repeater_bridge_espnow|\
     tbeam_sx1262_repeater_bridge_espnow|\
     tbeam_sx1276_repeater_bridge_espnow)
       if [ "${PACKET_LOGGING_OVERRIDE,,}" = "on" ]; then
@@ -7132,7 +7140,7 @@ get_ordinary_full_priority() {
   case "${base,,}" in
     *_observer_mqtt) echo 20 ;;
     *_bridge_espnow) echo 10 ;;
-    tbeam_sx1262_repeater|tbeam_sx1276_repeater) echo 0 ;;
+    tbeam_repeater|tbeam_sx1262_repeater|tbeam_sx1276_repeater) echo 0 ;;
     *)
       # G2's deployed Full identity is the observer. Other audited plain
       # targets keep their own identity, with observer sources where needed.
