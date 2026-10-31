@@ -501,11 +501,12 @@ void CardputerUITask::showPresetAlert(uint8_t slot) {
               _node_prefs->cr, 0);
   showAlert(buf, 3000);
 #else
+  const auto& presets = the_mesh_cp.radioPresetTable();
   const mesh::RadioPreset *p = nullptr;
   if (slot == 0) {
     uint8_t active = the_mesh_cp.activeRadioPreset();
     if (active != 0) {
-      p = the_mesh_cp.radioPresetTable().get(active);
+      p = presets.get(active);
     }
     if (!p) {
       formatTuple(buf, sizeof(buf), "custom", _node_prefs->freq, _node_prefs->bw, _node_prefs->sf,
@@ -514,7 +515,7 @@ void CardputerUITask::showPresetAlert(uint8_t slot) {
       return;
     }
   } else {
-    p = the_mesh_cp.radioPresetTable().get(slot);
+    p = presets.get(slot);
     if (!p) {
       snprintf(buf, sizeof(buf), "Preset %u empty", (unsigned)slot);
       showAlert(buf, 2000);

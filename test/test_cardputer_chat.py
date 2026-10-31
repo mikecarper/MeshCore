@@ -6,6 +6,8 @@ import subprocess
 import tempfile
 import unittest
 
+from cpp_source import body
+
 ROOT = Path(__file__).resolve().parents[1]
 VARIANT = ROOT / 'variants' / 'm5stack_cardputer_adv'
 
@@ -478,10 +480,115 @@ int main() {
 }
 '''
 
+PRESET_VIEW_HARNESS = r'''
+#include <helpers/RadioPresetCLI.h>
+#include "globals.h"
+#include <cassert>
+#include <cstdio>
+#include <cstring>
+#include <string>
+
+const char* StrHelper::ftoa(float value) {
+  static char buffer[24]; std::snprintf(buffer, sizeof(buffer), "%.3f", value); return buffer;
+}
+const char* StrHelper::ftoa3(float value) {
+  static char buffer[24]; std::snprintf(buffer, sizeof(buffer), "%.1f", value); return buffer;
+}
+struct Prefs { float freq = 911.15f, bw = 125; uint8_t sf = 7, cr = 5; };
+struct CustomNodePrefs { float battery_correction = 1; };
+struct CardputerLayout {
+  bool hasAlternateLayout() const { return false; }
+  const char* getCurrentCode() const { return "US"; }
+  const char* getMainLayoutCode() const { return "US"; }
+  const char* getAlternateLayoutCode() const { return "US"; }
+};
+struct Board { CardputerLayout layout; CardputerLayout* getLayout() { return &layout; } };
+struct CardputerDisplay {
+  enum { P_BLACK, P_GREEN, P_WHITE };
+  std::string preset_label;
+  int width() const { return 240; }
+  void setSmallText() {}
+  void setColor(int) {}
+  void drawRect(int, int, int, int) {}
+  void fillRect(int, int, int, int) {}
+  void drawTextCentered(int, int, const char*) {}
+  void drawTextRightAlign(int, int, const char* text) { preset_label = text; }
+  void drawTextLeftAlign(int, int, const char*) {}
+  int getTextWidth(const char* text) const { return std::strlen(text); }
+  void drawXbm(int, int, const uint8_t*, int, int) {}
+  void setTextSize(int) {}
+};
+static const uint8_t muted_icon[1] = {}, sleep_icon[1] = {}, unread_icon[1] = {};
+struct CardputerMesh {
+  mesh::RadioPresetTable table;
+  uint8_t active = 1;
+  bool admit = true;
+  unsigned loads = 0;
+  // Use the production alias: a reference in resident builds, a value in lazy builds.
+  mesh::RadioPresetCLI::TableView radioPresetTable() const { return table; }
+  uint8_t activeRadioPreset() const { return active; }
+  bool loadRadioPreset(uint8_t slot, char* reply, size_t cap) {
+    ++loads;
+    std::snprintf(reply, cap, "%s", admit ? "OK" : "Error: radio rejected");
+    if (admit) active = slot;
+    return admit;
+  }
+} the_mesh_cp;
+struct CardputerUITask {
+  Prefs prefs;
+  Prefs* _node_prefs = &prefs;
+  Board board;
+  std::string alert;
+  void showPresetAlert(uint8_t slot);
+  void showAlert(const char* text, unsigned) { alert = text; }
+  uint16_t getBattMilliVolts() const { return 4000; }
+  Board* getBoard() { return &board; }
+  int drawModifierBadges(CardputerDisplay&, int x, int) const { return x; }
+  bool isBuzzerQuiet() const { return false; }
+  bool powerSaveEnabled() const { return false; }
+};
+struct MainScreen {
+  CardputerUITask* _task;
+  CustomNodePrefs* _custom_prefs;
+  struct { unsigned countChats() const { return 0; } } unread;
+  void renderStatusIcons(CardputerDisplay& lcd);
+};
+@FORMAT_TUPLE@
+@SHOW_PRESET@
+@RENDER_STATUS@
+
+int main() {
+  assert(the_mesh_cp.table.set(1, "USA-Canada", 910.525f, 62.5f, 7, 5, 0));
+  assert(the_mesh_cp.table.set(2, "MediaMesh", 911.15f, 125, 7, 5, 16));
+  CardputerUITask task;
+  task.showPresetAlert(0);
+  assert(task.alert == "USA-Canada 910.525,62.5,7,5");
+  task.showPresetAlert(2);
+  assert(the_mesh_cp.active == 2 && the_mesh_cp.loads == 1);
+  assert(task.alert == "MediaMesh 911.150,125.0,7,5,16");
+  task.showPresetAlert(5);
+  assert(task.alert == "Preset 5 empty" && the_mesh_cp.loads == 1);
+  the_mesh_cp.admit = false;
+  task.showPresetAlert(1);
+  assert(task.alert == "Error: radio rejected");
+  CustomNodePrefs custom;
+  MainScreen screen{&task, &custom, {}};
+  CardputerDisplay display;
+  screen.renderStatusIcons(display);
+  assert(display.preset_label == "MediaMesh");
+  the_mesh_cp.active = 0;
+  task.showPresetAlert(0);
+  assert(task.alert == "custom 911.150,125.0,7,5");
+  screen.renderStatusIcons(display);
+  assert(display.preset_label == "custom");
+  std::puts("PASS preset table view lifetime");
+}
+'''
+
 class CardputerChatTest(unittest.TestCase):
     PLATFORM_MACROS = ('-DNAME_MAX=255',)
 
-    def build_and_run(self, name, source, expected):
+    def build_and_run(self, name, source, expected, extra_flags=()):
         compiler = shutil.which('g++') or shutil.which('clang++')
         if compiler is None:
             self.skipTest('a host C++17 compiler is required')
@@ -498,7 +605,7 @@ class CardputerChatTest(unittest.TestCase):
             binary = work / (name + ('.exe' if os.name == 'nt' else ''))
             built = subprocess.run([
                 compiler, '-std=c++17', '-O1', '-g', '-Wall', '-Wextra', '-Werror',
-                *sanitize, *self.PLATFORM_MACROS,
+                *sanitize, *self.PLATFORM_MACROS, *extra_flags,
                 '-I', str(stubs), '-I', str(VARIANT), '-isystem', str(ROOT / 'src'),
                 str(cpp), '-o', str(binary),
             ], capture_output=True, text=True, timeout=120, cwd=str(ROOT / 'test'))
@@ -509,6 +616,19 @@ class CardputerChatTest(unittest.TestCase):
 
     def test_keylock_filters(self):
         self.build_and_run('keylock', KEYLOCK_HARNESS, 'PASS keylock')
+
+    def test_preset_ui_keeps_resident_and_lazy_views_alive(self):
+        task = (VARIANT / 'companion_radio/ui-cardputer/CardputerUITask.cpp').read_text()
+        main = (VARIANT / 'companion_radio/ui-cardputer/screen/MainScreen.cpp').read_text()
+        source = PRESET_VIEW_HARNESS.replace(
+            '@FORMAT_TUPLE@', body(task, 'static void formatTuple(')).replace(
+            '@SHOW_PRESET@', body(task, 'void CardputerUITask::showPresetAlert(')).replace(
+            '@RENDER_STATUS@', body(main, 'void MainScreen::renderStatusIcons('))
+        for resident in (0, 1):
+            with self.subTest(resident=resident):
+                self.build_and_run(
+                    'preset-view', source, 'PASS preset table view lifetime',
+                    (f'-DMESH_RADIO_PRESETS_RESIDENT={resident}',))
 
     def _history(self, name):
         self.build_and_run('history', HISTORY_HARNESS, 'PASS ' + name)

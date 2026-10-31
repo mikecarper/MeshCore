@@ -413,6 +413,7 @@ jobs:
           python3 -B test/test_cardputer_ui_lifecycle.py -v
           python3 -B test/test_cardputer_mesh_storage.py -v
           python3 -B test/test_cardputer_messaging.py -v
+          python3 -B test/test_cardputer_chat.py -v
           python3 -B test/test_cardputer_channel_identity.py -v
           python3 -B test/test_cardputer_delivery.py -v
           python3 -B test/test_cardputer_gps.py -v
@@ -420,6 +421,7 @@ jobs:
           python3 -B test/test_cardputer_runtime_memory.py -v
           python3 -B test/test_cardputer_license.py -v
           python3 -B test/test_protocol_parser_bounds.py -v
+          python3 -B test/test_radio_presets.py -v
           python3 -B test/test_region_map_transactions.py -v
           python3 -B test/test_region_name_export.py -v
           python3 -B test/test_cli_error_bounds.py -v

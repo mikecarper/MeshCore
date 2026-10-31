@@ -152,6 +152,7 @@ struct Env {
   int loads = 0;
   bool failSave = false;
   bool failApply = false;
+  bool deferApply = false;  // admission succeeded; the hardware has not retuned
   int failApplyCount = 0;   // fail this many apply calls, then succeed
   bool curBad = false;
   bool tempRadio = false;
@@ -189,7 +190,7 @@ static bool hApply(void* c, const RadioPreset& p, char* reply, size_t cap) {
   if (e->failApplyCount > 0) { e->failApplyCount--; std::snprintf(reply, cap, "Error: boom"); return false; }
   if (e->failApply) { std::snprintf(reply, cap, "Error: boom"); return false; }
   e->applied.push_back(p);
-  e->cur = p;
+  if (!e->deferApply) e->cur = p;
   return true;
 }
 static bool hTemp(void* c) { return E(c)->tempRadio; }
@@ -291,6 +292,83 @@ int main() {
     run(c, "get preset", r);
     CHECK(std::strncmp(r, "pending, reverts in 5m; ", 24) == 0);
     CHECK(std::strlen(r) < 160);
+  }
+  { // old_channel_login_during_deferred_apply_cannot_commit
+    Env e; RadioPresetCLI c; setup(c, e); c.loop(1000);
+    e.deferApply = true;
+    CHECK(run(c, "load preset 2", r)); CHECK(has(r, "OK - loading"));
+    CHECK(c.pending() && near(e.cur.freq, 910.525f));
+    int s = e.saves;
+    c.onAdminLogin();
+    CHECK(c.pending() && e.saves == s);
+    RadioPresetTable stored; CHECK(stored.decode(e.store.data(), e.store.size()));
+    CHECK(stored.pending.active);
+    CHECK(run(c, "get preset", r)); CHECK(has(r, "1*USA-Canada") && !has(r, "2*Private"));
+    e.cur = e.applied.back();  // hardware applies successfully after the handoff
+    c.onAdminLogin();
+    CHECK(!c.pending());
+    CHECK(stored.decode(e.store.data(), e.store.size()) && !stored.pending.active);
+  }
+  { // failed_deferred_apply_keeps_rollback_armed_until_timeout
+    Env e; RadioPresetCLI c; setup(c, e); c.loop(1000);
+    e.deferApply = true;
+    CHECK(run(c, "load preset 2", r));
+    c.loop(1000 + 61000);  // hardware still has the old tuple after a failed retry
+    c.onAdminLogin(); CHECK(c.pending());
+    e.cur.freq = 915.0f;  // a partial reconfiguration also is not confirmation
+    e.cur.sf = 8;
+    c.onAdminLogin(); CHECK(c.pending());
+    e.deferApply = false;
+    c.loop(1000 + 600001);
+    CHECK(!c.pending() && e.applied.size() == 2 && near(e.cur.freq, 910.525f));
+    RadioPresetTable stored; CHECK(stored.decode(e.store.data(), e.store.size()));
+    CHECK(!stored.pending.active);
+  }
+  { // login_on_temporary_radio_cannot_confirm_saved_preset
+    Env e; RadioPresetCLI c; setup(c, e); c.loop(1000);
+    CHECK(run(c, "load preset 2", r));
+    e.tempRadio = true;  // even when the temporary tuple matches the preset
+    int s = e.saves;
+    c.onAdminLogin(); CHECK(c.pending() && e.saves == s);
+    e.tempRadio = false;
+    c.onAdminLogin(); CHECK(!c.pending());
+  }
+  { // deferred_rollback_keeps_pending_and_refuses_late_confirmation
+    Env e; RadioPresetCLI c; setup(c, e); c.loop(1000);
+    CHECK(run(c, "load preset 2", r));
+    e.deferApply = true;
+    c.loop(1000 + 600001);  // rollback admitted, but hardware still on Private
+    CHECK(c.pending() && e.applied.size() == 2 && near(e.cur.freq, 915.0f));
+    RadioPresetTable stored; CHECK(stored.decode(e.store.data(), e.store.size()));
+    CHECK(stored.pending.active);
+    int s = e.saves;
+    c.onAdminLogin(); CHECK(c.pending() && e.saves == s);
+    c.loop(1000 + 600001 + 30000);
+    CHECK(c.pending() && e.applied.size() == 2);
+    e.cur = e.applied.back();  // hardware now restores the previous tuple
+    c.onAdminLogin(); CHECK(c.pending());  // a rollback cannot become a commit
+    c.loop(1000 + 600001 + 61000);
+    CHECK(!c.pending() && e.applied.size() == 3 && near(e.cur.freq, 910.525f));
+    CHECK(stored.decode(e.store.data(), e.store.size()) && !stored.pending.active);
+  }
+  { // failed_deferred_rollback_retries_until_live_profile_restored
+    Env e; RadioPresetCLI c; setup(c, e); c.loop(1000);
+    CHECK(run(c, "load preset 2", r));
+    e.deferApply = true;
+    c.loop(1000 + 600001);
+    c.loop(1000 + 600001 + 61000);  // admitted retry also fails to retune
+    CHECK(c.pending() && e.applied.size() == 3 && near(e.cur.freq, 915.0f));
+    c.onAdminLogin(); CHECK(c.pending());
+    e.deferApply = false;
+    c.loop(1000 + 600001 + 122000);
+    CHECK(!c.pending() && e.applied.size() == 4 && near(e.cur.freq, 910.525f));
+  }
+  { // duplicate_tuple_aliases_can_still_be_confirmed
+    Env e; RadioPresetCLI c; setup(c, e); c.loop(1000);
+    CHECK(run(c, "add preset Alias 3 915.0,62.5,7,5", r));
+    CHECK(run(c, "load preset 3", r)); CHECK(c.pending());
+    CHECK(c.activeSlot() == 2);  // matching prefers the first slot
+    c.onAdminLogin(); CHECK(!c.pending());
   }
   { // remote_load_reverts_on_timeout
     Env e; RadioPresetCLI c; setup(c, e); c.loop(1000);
@@ -452,14 +530,17 @@ int main() {
     CHECK(!c.pending() && e.applied.size() == 2 && near(e.applied[1].freq, 910.525f));
     CHECK(e.store == bad && e.saves == s);
   }
-  { // lazy_unreadable_store_commit_keeps_bytes
+  { // lazy_unreadable_store_cannot_confirm_an_unknown_target
     Env e; RadioPresetCLI c; setup(c, e); c.loop(1000);
     run(c, "load preset 2", r);
     std::vector<uint8_t> bad = e.store; bad.resize(bad.size() - 3);   // short file
     e.store = bad;
     int s = e.saves;
     c.onAdminLogin();
-    CHECK(!c.pending() && e.store == bad && e.saves == s && e.applied.size() == 1);
+    CHECK(c.pending() && e.store == bad && e.saves == s && e.applied.size() == 1);
+    c.loop(1000 + 600001);
+    CHECK(!c.pending() && e.store == bad && e.saves == s && e.applied.size() == 2);
+    CHECK(near(e.cur.freq, 910.525f));
   }
   { // lazy_store_vanishes_with_pending (rebuilds the record from RAM)
     Env e; RadioPresetCLI c; setup(c, e); c.loop(1000);
@@ -655,12 +736,13 @@ class RadioPresetWiringContractTest(unittest.TestCase):
             'bool CommonCLI::presetTempRadioActive(': r'_callbacks->isTempRadioActive\(\)',
             'bool CommonCLI::presetLoad(': r'loadRadioPresetFile\(',
             'bool CommonCLI::presetSave(': r'saveRadioPresetFile\(',
-            'bool CommonCLI::presetCurrent(': r'primary_radio_preamble',
+            'bool CommonCLI::presetCurrent(': r'radio->profiles\(\)->primary',
         }
         for signature, pattern in expect.items():
             body = _function_body(cpp, signature)
             self.assertIsNotNone(body, signature + ' missing')
             self.assertTrue(re.search(pattern, body), signature + ' does not use ' + pattern)
+        self.assertNotIn('_prefs', _function_body(cpp, 'bool CommonCLI::presetCurrent('))
         header = _read('src/helpers/CommonCLI.h')
         self.assertSourceMatches(header, r'mesh::RadioPresetCLI\s+_radio_presets\s*;')
         self.assertSourceMatches(header, r'mesh::RadioPresetCLI&\s*radioPresets\(\)')

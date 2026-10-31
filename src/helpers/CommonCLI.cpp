@@ -304,12 +304,16 @@ bool CommonCLI::presetSave(void* ctx, const uint8_t* buf, size_t len) {
 }
 
 bool CommonCLI::presetCurrent(void* ctx, mesh::RadioPreset& out) {
-  const NodePrefs* prefs = static_cast<CommonCLI*>(ctx)->_prefs;
-  out.freq = prefs->freq;
-  out.bw = prefs->bw;
-  out.sf = prefs->sf;
-  out.cr = prefs->cr;
-  out.preamble = prefs->primary_radio_preamble;
+  const auto* radio = static_cast<CommonCLI*>(ctx)->_callbacks->getProfileRadio();
+  if (!radio || !radio->profiles()) return false;
+  // Saved prefs change before the deferred retune. Only the running profile
+  // can prove a subsequent login reached the loaded preset.
+  const auto& primary = radio->profiles()->primary;
+  out.freq = primary.freq;
+  out.bw = primary.bw;
+  out.sf = primary.sf;
+  out.cr = primary.cr;
+  out.preamble = primary.preamble;
   return true;
 }
 

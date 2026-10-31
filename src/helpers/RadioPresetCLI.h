@@ -90,7 +90,8 @@ class RadioPresetCLI {
   enum : uint8_t { PREV_USED = 1, STORED = 2, UNREADABLE = 4 };
 #endif
   uint8_t persisted_min_ = 0;  // revert minutes last written to /presets (<= 10)
-  bool have_last_ = false;
+  uint8_t timer_flags_ = 0;
+  enum : uint8_t { HaveLast = 1, Reverting = 2 };
 
   bool readFile(RadioPresetTable& t) const;             // false: missing or unreadable (t cleared)
   bool sanitize(RadioPresetTable& t, bool seed) const;  // true if it changed t
@@ -102,6 +103,7 @@ class RadioPresetCLI {
   bool presetAcceptsDefault() const;
   bool presetOk(const RadioPreset& p) const;
   uint8_t matchSlot(const RadioPresetTable& t) const;
+  bool currentMatches(const RadioPreset& target) const;
   void clearPending(RadioPresetTable& t);
   bool revertNow(RadioPresetTable& t);
   bool doLoad(RadioPresetTable& t, uint8_t slot, char* reply, size_t cap, bool remote);

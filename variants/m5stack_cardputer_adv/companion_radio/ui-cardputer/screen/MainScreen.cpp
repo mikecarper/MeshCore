@@ -62,7 +62,8 @@ void MainScreen::renderStatusIcons(CardputerDisplay &lcd) {
   // active radio preset name (or "custom") just left of the battery icon
   {
     uint8_t active = the_mesh_cp.activeRadioPreset();
-    const mesh::RadioPreset *preset = active ? the_mesh_cp.radioPresetTable().get(active) : nullptr;
+    const auto& presets = the_mesh_cp.radioPresetTable();
+    const mesh::RadioPreset *preset = active ? presets.get(active) : nullptr;
     lcd.setColor(CardputerDisplay::P_GREEN);
     lcd.drawTextRightAlign(iconX - 4, 0, preset ? preset->name : "custom");
   }

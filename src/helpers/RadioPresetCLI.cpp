@@ -91,6 +91,7 @@ void RadioPresetCLI::clearPending(RadioPresetTable& t) {
   memset(&t.pending, 0, sizeof(t.pending));
   remaining_ms_ = 0;
   persisted_min_ = 0;
+  timer_flags_ &= ~Reverting;
 #if !MESH_RADIO_PRESETS_RESIDENT
   keepPending(t.pending);
 #endif
@@ -100,10 +101,12 @@ void RadioPresetCLI::clearPending(RadioPresetTable& t) {
 // successful apply; on failure the record stays persisted and a retry is armed
 // (loop() retries every RETRY_SECS, begin() retries on the next boot).
 bool RadioPresetCLI::revertNow(RadioPresetTable& t) {
+  timer_flags_ |= Reverting;
   RadioPreset prev = t.pending.previous;
   char scratch[96];
   scratch[0] = 0;
-  if (prev.used && presetOk(prev) && hooks_->apply(ctx_, prev, scratch, sizeof(scratch))) {
+  if (prev.used && presetOk(prev) && hooks_->apply(ctx_, prev, scratch, sizeof(scratch))
+      && currentMatches(prev)) {
     clearPending(t);
     return save(t);
   }
@@ -203,7 +206,7 @@ void RadioPresetCLI::keepPending(const RadioPresetPending& p) {
 void RadioPresetCLI::begin(void* ctx, const Hooks& hooks) {
   ctx_ = ctx;
   hooks_ = &hooks;
-  have_last_ = false;
+  timer_flags_ = 0;
   remaining_ms_ = 0;
   persisted_min_ = 0;
 #if MESH_RADIO_PRESETS_RESIDENT
@@ -231,6 +234,14 @@ uint8_t RadioPresetCLI::matchSlot(const RadioPresetTable& t) const {
   memset(&cur, 0, sizeof(cur));
   if (!hooks_->current || !hooks_->current(ctx_, cur)) return 0;
   return t.match(cur.freq, cur.bw, cur.sf, cur.cr, cur.preamble);
+}
+
+bool RadioPresetCLI::currentMatches(const RadioPreset& target) const {
+  RadioPreset current;
+  return hooks_->current && hooks_->current(ctx_, current)
+      && current.freq == target.freq && current.bw == target.bw
+      && current.sf == target.sf && current.cr == target.cr
+      && current.preamble == target.preamble;
 }
 
 uint8_t RadioPresetCLI::activeSlot() const {
@@ -427,8 +438,14 @@ bool RadioPresetCLI::handle(const char* cmd, char* reply, size_t cap, bool remot
 #endif
 
 void RadioPresetCLI::onAdminLogin() {
-  if (!pending()) return;
+  if (!pending() || (timer_flags_ & Reverting)) return;
   PENDING_TABLE(t);
+  const RadioPreset* target = t.get(t.pending.slot);
+  // Infrastructure applies after its old-channel reply drains. A login before
+  // that retune, after a failed apply, or on a temporary profile cannot confirm
+  // the permanent change. Compare tuples rather than slot IDs (aliases exist).
+  if (!target || !currentMatches(*target)
+      || (hooks_->tempRadioActive && hooks_->tempRadioActive(ctx_))) return;
   clearPending(t);
   save(t);
 }
@@ -436,9 +453,9 @@ void RadioPresetCLI::onAdminLogin() {
 // Call every main-loop pass; the timebase is updated even with nothing pending
 // so a load always counts from the most recent call.
 void RadioPresetCLI::loop(uint32_t now_ms) {
-  uint32_t delta = have_last_ ? (uint32_t)(now_ms - last_ms_) : 0;  // wrap-safe
+  uint32_t delta = (timer_flags_ & HaveLast) ? (uint32_t)(now_ms - last_ms_) : 0;  // wrap-safe
   last_ms_ = now_ms;
-  have_last_ = true;
+  timer_flags_ |= HaveLast;
   if (!pending()) return;
   remaining_ms_ = delta >= remaining_ms_ ? 0 : remaining_ms_ - delta;
   if (remaining_ms_ == 0) {
