@@ -88,6 +88,7 @@ struct Preset {
 bool mqttPresetEnforcesTokenExp(const Preset* preset) {
   return preset && preset->enforce_exp;
 }
+struct MQTTRadio2Info { const char* radio; const char* mode; bool temporary; };
 namespace MQTTMessageBuilder {
 void formatIsoTimestampForMqtt(long, long, const char*, char* buffer, size_t size) {
   snprintf(buffer, size, "2026-10-14T00:00:00+00:00");
@@ -254,6 +255,7 @@ struct MQTTBridge {
   void getClientVersion(char* output, size_t size) { snprintf(output, size, "test"); }
   int repeatStatus() const { return 0; }
   int collectConnHealth() const { return 0; }
+  const MQTTRadio2Info* radio2StatusInfo(MQTTRadio2Info&, char*, size_t) const { return nullptr; }
   bool buildTopicForSlot(int, int, char* output, size_t size) {
     snprintf(output, size, "status");
     return true;

@@ -67,7 +67,7 @@ struct MQTTBridge {
   bool hasPublishHeadroom(size_t=0,size_t=0,uint8_t=0);
   bool publishToSlot(int,const char*,const char*,size_t,bool=false,uint8_t=0);
   bool publishPacket(mesh::Packet*,bool,bool&,const uint8_t*=nullptr,int=0,float=0,float=0);
-  bool publishRaw(mesh::Packet*,bool&);
+  bool publishRaw(mesh::Packet*,bool,bool&);
 };
 '''.replace('const uint8_t*=', 'const uint8_t* =')
 
@@ -100,7 +100,7 @@ int main(){
   MQTTBridge bridge;Client client;bridge._slots[0].client=&client;
   mesh::Packet packet;bool eligible=false;
   assert(!bridge.publishPacket(&packet,false,eligible)&&eligible);
-  assert(!bridge.publishRaw(&packet,eligible)&&eligible);
+  assert(!bridge.publishRaw(&packet,false,eligible)&&eligible);
   assert(!bridge.publishToSlot(0,"status","{}",2,true,1));
   assert(builds==0&&client.calls==0&&bridge._skipped_publishes==3);
   assert(heap_queries==2); // Both denied paths cache the heap walk, even at tick0.
@@ -108,10 +108,10 @@ int main(){
          MQTTTransportHealth::RecoveryReason::None);
   dma_free=19833;clock_ms=5000;
   assert(bridge.publishPacket(&packet,false,eligible));
-  assert(bridge.publishRaw(&packet,eligible));
+  assert(bridge.publishRaw(&packet,false,eligible));
   assert(bridge.publishToSlot(0,"status","{}",2,true,1));
   assert(builds==2&&client.calls==3&&heap_queries==4);
-  bridge.eligible=0;assert(!bridge.publishRaw(&packet,eligible)&&!eligible);
+  bridge.eligible=0;assert(!bridge.publishRaw(&packet,false,eligible)&&!eligible);
   assert(builds==2&&client.calls==3);
   client.result=-1;
   assert(!bridge.publishToSlot(0,"raw","{}",2,false,0));

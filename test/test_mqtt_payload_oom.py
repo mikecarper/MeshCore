@@ -49,8 +49,9 @@ static int build(unsigned kind, JsonDocument& doc, char* buffer, size_t capacity
   }
   if (kind == 2) return MQTTPayloadBuilder::buildRawMessage(doc,
       "node", "identity", "timestamp", "AABB", buffer, capacity);
+  static const MQTTRadio2Info neighbor_radio2 = {"911.150000,250.0,7,5", "rxtx", false};
   const MQTTPayloadBuilder::NeighborsMessageEntry neighbor = {
-      "ABCDEF", 2.5f, 10, "region", "active", -85, false};
+      "ABCDEF", 2.5f, 10, "region", "active", -85, false, &neighbor_radio2};
   return MQTTPayloadBuilder::buildNeighborsMessage(doc, "node", "identity", "timestamp",
       "region", "*", &neighbor, 1, buffer, capacity, 1, 1, false);
 }

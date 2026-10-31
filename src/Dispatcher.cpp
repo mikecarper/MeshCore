@@ -240,6 +240,7 @@ bool Dispatcher::startOutboundTransmit() {
 #if MESH_PACKET_LOGGING_COMPACT
     serialLogCompactPacket(usbLoggingPort(), 'T', raw, len);
 #else
+    if (usbLogTxFrame) usbLogTxFrame(getLogDateTime(), outbound, raw, len);
     logPacketLine("TX", outbound, len, false, 0.0f, 0);
 #endif
   }

@@ -26,6 +26,14 @@ static int serializeComplete(JsonDocument& doc, char* buffer, size_t buffer_size
   return static_cast<int>(written);
 }
 
+static void addRadio2Fields(JsonObject obj, const MQTTRadio2Info& r) {
+  obj["mode"] = r.mode ? r.mode : "off";
+  if (r.radio && r.mode && strcmp(r.mode, "off") != 0) {
+    obj["radio"] = r.radio;
+    obj["temporary"] = r.temporary;
+  }
+}
+
 }  // namespace
 
 int MQTTPayloadBuilder::buildStatusMessage(
@@ -52,7 +60,8 @@ int MQTTPayloadBuilder::buildStatusMessage(
   int packets_sent,
   int packets_received,
   const char* repeat,
-  const MQTTConnHealth& conn_health
+  const MQTTConnHealth& conn_health,
+  const MQTTRadio2Info* radio2
 ) {
   doc.clear();
   JsonObject root = doc.to<JsonObject>();
@@ -67,6 +76,14 @@ int MQTTPayloadBuilder::buildStatusMessage(
   root["client_version"] = client_version;
   if (repeat != nullptr) {
     root["repeat"] = repeat;
+  }
+  if (radio2 && radio2->radio && radio2->mode && strcmp(radio2->mode, "off") != 0) {
+    JsonObject r2 = root["radios"].to<JsonArray>().add<JsonObject>();
+    r2["id"] = kMQTTRadio2Id;
+    r2["radio"] = radio2->radio;
+    r2["mode"] = radio2->mode;
+    r2["mediamesh"] = true;
+    r2["temporary"] = radio2->temporary;
   }
 
   const bool has_conn_health = conn_health.slots_up >= 0 || conn_health.slots_total >= 0 ||
@@ -127,7 +144,8 @@ int MQTTPayloadBuilder::buildPacketMessage(
   int path_hash_size,
   size_t max_path_bytes,
   char* buffer,
-  size_t buffer_size
+  size_t buffer_size,
+  const char* radio_id
 ) {
   doc.clear();
   JsonObject root = doc.to<JsonObject>();
@@ -187,6 +205,12 @@ int MQTTPayloadBuilder::buildPacketMessage(
     }
   }
 
+  if (radio_id) {
+    const bool tx = direction && strcmp(direction, "tx") == 0;
+    root[tx ? "tx_radio_id" : "rx_radio_id"] = radio_id;
+    root["mediamesh"] = true;
+  }
+
   return serializeComplete(doc, buffer, buffer_size);
 }
 
@@ -197,7 +221,9 @@ int MQTTPayloadBuilder::buildRawMessage(
   const char* timestamp,
   const char* raw,
   char* buffer,
-  size_t buffer_size
+  size_t buffer_size,
+  const char* radio_id,
+  bool is_tx
 ) {
   doc.clear();
   JsonObject root = doc.to<JsonObject>();
@@ -207,6 +233,10 @@ int MQTTPayloadBuilder::buildRawMessage(
   root["timestamp"] = timestamp;
   root["type"] = "RAW";
   root["data"] = raw;
+  if (radio_id) {
+    root[is_tx ? "tx_radio_id" : "rx_radio_id"] = radio_id;
+    root["mediamesh"] = true;
+  }
 
   return serializeComplete(doc, buffer, buffer_size);
 }
@@ -220,7 +250,8 @@ static JsonArray buildNeighborsMessageBase(
   const char* self_default_scope,
   int total_neighbors,
   int queried_neighbors,
-  bool truncated
+  bool truncated,
+  const MQTTRadio2Info* self_radio2
 ) {
   doc.clear();
   JsonObject root = doc.to<JsonObject>();
@@ -236,6 +267,7 @@ static JsonArray buildNeighborsMessageBase(
   JsonObject self = root["self"].to<JsonObject>();
   self["scopes"] = self_scopes ? self_scopes : "";
   self["default_scope"] = self_default_scope ? self_default_scope : "";
+  if (self_radio2) addRadio2Fields(self["radio2"].to<JsonObject>(), *self_radio2);
   return root["neighbors"].to<JsonArray>();
 }
 
@@ -256,6 +288,7 @@ static void addNeighborsMessageEntry(
   }
   nb["scopes"] = neighbor.scopes ? neighbor.scopes : "";
   nb["status"] = neighbor.status;
+  if (neighbor.radio2) addRadio2Fields(nb["radio2"].to<JsonObject>(), *neighbor.radio2);
 }
 
 size_t MQTTPayloadBuilder::measureNeighborsMessageBase(
@@ -264,12 +297,13 @@ size_t MQTTPayloadBuilder::measureNeighborsMessageBase(
   const char* timestamp,
   const char* self_scopes,
   const char* self_default_scope,
-  int total_neighbors
+  int total_neighbors,
+  const MQTTRadio2Info* self_radio2
 ) {
   JsonDocument doc;
   buildNeighborsMessageBase(
     doc, origin, origin_id, timestamp, self_scopes, self_default_scope,
-    total_neighbors, total_neighbors, false);
+    total_neighbors, total_neighbors, false, self_radio2);
   return measureJson(doc);
 }
 
@@ -296,14 +330,15 @@ int MQTTPayloadBuilder::buildNeighborsMessage(
   size_t buffer_size,
   int total_neighbors,
   int queried_neighbors,
-  bool truncated
+  bool truncated,
+  const MQTTRadio2Info* self_radio2
 ) {
   if (!buffer || buffer_size == 0) return 0;
   buffer[0] = '\0';
 
   JsonArray arr = buildNeighborsMessageBase(
     doc, origin, origin_id, timestamp, self_scopes, self_default_scope,
-    total_neighbors, queried_neighbors, truncated);
+    total_neighbors, queried_neighbors, truncated, self_radio2);
   if (doc.overflowed() || arr.isNull() || measureJson(doc) >= buffer_size) return 0;
 
   for (int i = 0; i < neighbor_count; i++) {

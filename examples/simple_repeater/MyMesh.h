@@ -4,6 +4,7 @@
 #include <new>
 #include <Mesh.h>
 #include <helpers/PacketFileLoggingConfig.h>
+#include <helpers/Radio2DiscoverTrailer.h>
 #include <helpers/PowerSavingDiagnostics.h>
 #include <helpers/EmergencyOtaWork.h>
 #include <helpers/FloodGroupPlainText.h>
@@ -886,6 +887,9 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks
       MAX_NEIGHBOURS < MQTTBridge::NEIGHBORS_SCOPE_RESULT_CAPACITY
           ? MAX_NEIGHBOURS : MQTTBridge::NEIGHBORS_SCOPE_RESULT_CAPACITY;
   NeighborDiscoverMetadata neighbor_discover_metadata[NEIGHBOR_SCOPE_RESULTS];
+  // Each queried neighbour's radio2 (MediaMesh) profile, snapshotted with the
+  // metadata above (which keeps its compact 12-byte layout).
+  Radio2DiscoverTrailer neighbor_discover_radio2[NEIGHBOR_SCOPE_RESULTS];
   char neighbor_discover_scopes[NEIGHBOR_SCOPE_RESULTS][96];
   uint8_t neighbor_discover_count;
   uint8_t neighbor_discover_next;            // newest-first entry currently being queried
@@ -916,6 +920,21 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks
                                       size_t len, float snr, int16_t rssi);
   void touchNeighbourHeard(const mesh::Identity& id, uint32_t heard_timestamp,
                            float snr, int16_t rssi);
+  // Neighbours' radio2 (MediaMesh) profiles from their DISCOVER_RESP trailers,
+  // published as `radio2` in the neighbors message. A small cache rather than
+  // a field per neighbour: full builds keep up to 254 neighbours and have no
+  // DRAM for that. On reports win over Off ones; a node not here is unknown.
+  struct Radio2CacheEntry {
+    uint8_t prefix[4];
+    Radio2DiscoverTrailer radio2;
+  };
+  static const int RADIO2_CACHE_SIZE = 24;
+  Radio2CacheEntry radio2_cache[RADIO2_CACHE_SIZE];
+  uint8_t radio2_cache_next;
+  void noteNeighbourRadio2(const mesh::Identity& id, const Radio2DiscoverTrailer& radio2);
+  Radio2DiscoverTrailer neighbourRadio2(const mesh::Identity& id) const;
+  // This node's radio2, for the neighbors message's `self.radio2`; nullptr when off.
+  const MQTTRadio2Info* selfRadio2(MQTTRadio2Info& out, char* radio, size_t radio_size);
   void getLocalScopes(char* buf, size_t len);
   // Overlay peer indices are offset by this base so onPeerDataRecv can tell a
   // discovery response apart from a normal ACL-client index.

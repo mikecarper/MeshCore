@@ -6,6 +6,7 @@
 #include "MQTTMessageBuilder.h"
 
 #include "MQTTPayloadBuilder.h"
+#include "TxtDataHelpers.h"
 #include <ArduinoJson.h>
 #include <cstring>
 #include <math.h>
@@ -62,13 +63,31 @@ int MQTTMessageBuilder::buildStatusMessage(
   int packets_sent,
   int packets_received,
   const char* repeat,
-  const MQTTConnHealth& conn_health
+  const MQTTConnHealth& conn_health,
+  const MQTTRadio2Info* radio2
 ) {
   return MQTTPayloadBuilder::buildStatusMessage(
       doc, origin, origin_id, model, firmware_version, radio, client_version,
       status, timestamp, buffer, buffer_size, battery_mv, uptime_secs, errors,
       queue_len, noise_floor, tx_air_secs, rx_air_secs, recv_errors, internal_heap,
-      packets_sent, packets_received, repeat, conn_health);
+      packets_sent, packets_received, repeat, conn_health, radio2);
+}
+
+void MQTTMessageBuilder::formatRadioProfile(float freq, float bw, int sf, int cr,
+                                            char* dest, size_t dest_size) {
+  if (!dest || dest_size == 0) return;
+  char freq_text[20];
+  char bw_text[16];
+  StrHelper::ftoaFixed(freq_text, sizeof(freq_text), freq, 6);
+  StrHelper::ftoaFixed(bw_text, sizeof(bw_text), bw, 1);
+  snprintf(dest, dest_size, "%s,%s,%d,%d", freq_text, bw_text, sf, cr);
+}
+
+const char* MQTTMessageBuilder::radioIdFor(const mesh::Packet* packet) {
+  // The packet's own profile, captured on receive (Dispatcher::checkRecv) and
+  // kept by an outbound copy: not the radio's profile at publish time, which a
+  // tempradio2 or a scheduled switch can change in between.
+  return (packet && packet->radio_profile == 1) ? kMQTTRadio2Id : nullptr;
 }
 
 int MQTTMessageBuilder::buildPacketMessage(
@@ -92,12 +111,13 @@ int MQTTMessageBuilder::buildPacketMessage(
   int path_hop_count,
   int path_hash_size,
   char* buffer,
-  size_t buffer_size
+  size_t buffer_size,
+  const char* radio_id
 ) {
   return MQTTPayloadBuilder::buildPacketMessage(
       doc, origin, origin_id, timestamp, direction, time, date, len, packet_type,
       route, payload_len, raw, snr, rssi, score, hash, path_bytes, path_hop_count,
-      path_hash_size, MAX_PATH_SIZE, buffer, buffer_size);
+      path_hash_size, MAX_PATH_SIZE, buffer, buffer_size, radio_id);
 }
 
 int MQTTMessageBuilder::buildRawMessage(
@@ -107,10 +127,12 @@ int MQTTMessageBuilder::buildRawMessage(
   const char* timestamp,
   const char* raw,
   char* buffer,
-  size_t buffer_size
+  size_t buffer_size,
+  const char* radio_id,
+  bool is_tx
 ) {
   return MQTTPayloadBuilder::buildRawMessage(
-      doc, origin, origin_id, timestamp, raw, buffer, buffer_size);
+      doc, origin, origin_id, timestamp, raw, buffer, buffer_size, radio_id, is_tx);
 }
 
 int MQTTMessageBuilder::buildNeighborsMessage(
@@ -126,12 +148,13 @@ int MQTTMessageBuilder::buildNeighborsMessage(
   size_t buffer_size,
   int total_neighbors,
   int queried_neighbors,
-  bool truncated
+  bool truncated,
+  const MQTTRadio2Info* self_radio2
 ) {
   return MQTTPayloadBuilder::buildNeighborsMessage(
       doc, origin, origin_id, timestamp, self_scopes, self_default_scope,
       neighbors, neighbor_count, buffer, buffer_size, total_neighbors,
-      queried_neighbors, truncated);
+      queried_neighbors, truncated, self_radio2);
 }
 
 size_t MQTTMessageBuilder::measureNeighborsMessageBase(
@@ -140,11 +163,12 @@ size_t MQTTMessageBuilder::measureNeighborsMessageBase(
   const char* timestamp,
   const char* self_scopes,
   const char* self_default_scope,
-  int total_neighbors
+  int total_neighbors,
+  const MQTTRadio2Info* self_radio2
 ) {
   return MQTTPayloadBuilder::measureNeighborsMessageBase(
       origin, origin_id, timestamp, self_scopes, self_default_scope,
-      total_neighbors);
+      total_neighbors, self_radio2);
 }
 
 size_t MQTTMessageBuilder::measureNeighborsMessageEntry(
@@ -224,7 +248,8 @@ int MQTTMessageBuilder::buildPacketJSON(
     has_path ? packet->path : nullptr,
     has_path ? packet->getPathHashCount() : 0,
     has_path ? packet->getPathHashSize() : 0,
-    buffer, buffer_size
+    buffer, buffer_size,
+    radioIdFor(packet)
   );
 }
 
@@ -303,7 +328,8 @@ int MQTTMessageBuilder::buildPacketJSONFromRaw(
     has_path ? packet->path : nullptr,
     has_path ? packet->getPathHashCount() : 0,
     has_path ? packet->getPathHashSize() : 0,
-    buffer, buffer_size
+    buffer, buffer_size,
+    radioIdFor(packet)
   );
 }
 
@@ -314,7 +340,8 @@ int MQTTMessageBuilder::buildRawJSON(
   const char* origin_id,
   Timezone* timezone,
   char* buffer,
-  size_t buffer_size
+  size_t buffer_size,
+  bool is_tx
 ) {
   if (!packet) return 0;
 
@@ -328,7 +355,8 @@ int MQTTMessageBuilder::buildRawJSON(
   char raw_hex[WIRE_HEX_SCRATCH_SIZE];
   packetToHex(packet, raw_hex, sizeof(raw_hex));
 
-  return buildRawMessage(doc, origin, origin_id, timestamp, raw_hex, buffer, buffer_size);
+  return buildRawMessage(doc, origin, origin_id, timestamp, raw_hex, buffer, buffer_size,
+                         radioIdFor(packet), is_tx);
 }
 
 const char* MQTTMessageBuilder::getRouteTypeString(int route_type) {

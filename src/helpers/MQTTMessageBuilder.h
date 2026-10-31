@@ -71,6 +71,7 @@ public:
    * @param internal_heap Internal heap free bytes (optional, -1 to omit)
    * @param repeat Repeat/forwarding status ("on" or "off"); nullptr omits the field
    * @param conn_health Slot connection health; defaults omit every field
+   * @param radio2 radio2 (MediaMesh) when on: adds the `radios` list; nullptr omits it
    * @return Length of JSON string, or 0 on error
    */
   static int buildStatusMessage(
@@ -97,7 +98,8 @@ public:
     int packets_sent = -1,
     int packets_received = -1,
     const char* repeat = nullptr,
-    const MQTTConnHealth& conn_health = MQTTConnHealth()
+    const MQTTConnHealth& conn_health = MQTTConnHealth(),
+    const MQTTRadio2Info* radio2 = nullptr
   );
 
   /**
@@ -145,7 +147,8 @@ public:
     int path_hop_count,
     int path_hash_size,
     char* buffer,
-    size_t buffer_size
+    size_t buffer_size,
+    const char* radio_id = nullptr   // see radioIdFor(); nullptr = main radio
   );
 
   /**
@@ -166,7 +169,9 @@ public:
     const char* timestamp,
     const char* raw,
     char* buffer,
-    size_t buffer_size
+    size_t buffer_size,
+    const char* radio_id = nullptr,
+    bool is_tx = false
   );
 
   // Neighbors table entry + JSON builder. The layout logic lives in the pure,
@@ -186,7 +191,8 @@ public:
     size_t buffer_size,
     int total_neighbors = -1,
     int queried_neighbors = -1,
-    bool truncated = false
+    bool truncated = false,
+    const MQTTRadio2Info* self_radio2 = nullptr
   );
   static size_t measureNeighborsMessageBase(
     const char* origin,
@@ -194,8 +200,22 @@ public:
     const char* timestamp,
     const char* self_scopes,
     const char* self_default_scope,
-    int total_neighbors
+    int total_neighbors,
+    const MQTTRadio2Info* self_radio2 = nullptr
   );
+
+  /**
+   * "MHz,kHz,SF,CR" for a radio profile, the status `radio` format (frequency
+   * to 6 decimals, bandwidth to 1).
+   */
+  static void formatRadioProfile(float freq, float bw, int sf, int cr, char* dest, size_t dest_size);
+
+  /**
+   * The `rx_radio_id`/`tx_radio_id` a packet's message carries: "radio2" for a
+   * packet received or sent on radio2 (Packet::radio_profile == 1), else
+   * nullptr (the main radio: no radio keys, as before).
+   */
+  static const char* radioIdFor(const mesh::Packet* packet);
   static size_t measureNeighborsMessageEntry(const NeighborsMessageEntry& neighbor);
 
   /**
@@ -253,7 +273,8 @@ public:
     const char* origin_id,
     Timezone* timezone,
     char* buffer,
-    size_t buffer_size
+    size_t buffer_size,
+    bool is_tx = false
   );
 
 private:

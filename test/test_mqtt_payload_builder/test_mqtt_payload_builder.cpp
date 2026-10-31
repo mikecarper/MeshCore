@@ -503,7 +503,7 @@ TEST(MQTTPayloadBuilder, NeighborsMessageMeasurementsMatchCompletePayload) {
 }
 
 TEST(MQTTPayloadBuilder, NeighborsMessageMeasuredPrefixStopsBeforeOverflow) {
-  MQTTPayloadBuilder::NeighborsMessageEntry neighbors[20];
+  MQTTPayloadBuilder::NeighborsMessageEntry neighbors[20] = {};
   static char keys[20][17];
   static char long_scopes[96];
   memset(long_scopes, 'S', sizeof(long_scopes) - 1);
@@ -615,7 +615,7 @@ TEST(MQTTPayloadBuilder, NeighborsMessageHandlesEmptyTableAndNullScopes) {
 TEST(MQTTPayloadBuilder, NeighborsMessageDropsTailWhenBufferFills) {
   // Twenty entries far exceed a tight buffer; the builder must emit a prefix
   // that still parses as complete JSON rather than truncating mid-document.
-  MQTTPayloadBuilder::NeighborsMessageEntry neighbors[20];
+  MQTTPayloadBuilder::NeighborsMessageEntry neighbors[20] = {};
   static char keys[20][17];
   for (int i = 0; i < 20; i++) {
     snprintf(keys[i], sizeof(keys[i]), "%016X", i);
@@ -650,7 +650,7 @@ TEST(MQTTPayloadBuilder, NeighborsMessageDropsTailWhenBufferFills) {
 TEST(MQTTPayloadBuilder, NeighborsMessageRendersUnknownHeardAgeAsNull) {
   // A neighbour stamped before the clock was set has no usable age. The key
   // stays present and null so a consumer cannot read it as "heard just now".
-  MQTTPayloadBuilder::NeighborsMessageEntry neighbors[2];
+  MQTTPayloadBuilder::NeighborsMessageEntry neighbors[2] = {};
   neighbors[0] = {"0011223344556677", 9.75f, 42, "DEN", "responded"};
   neighbors[1] = {"8899AABBCCDDEEFF", -3.5f, 0, "DEN", "responded"};
   neighbors[0].rssi = -87;
@@ -689,6 +689,200 @@ TEST(MQTTPayloadBuilder, NeighborsMessageUnknownHeardAgeFitsMeasuredWidth) {
 
   EXPECT_LE(MQTTPayloadBuilder::measureNeighborsMessageEntry(unknown),
             MQTTPayloadBuilder::measureNeighborsMessageEntry(measured));
+}
+
+// ---- radio2 (MediaMesh) -------------------------------------------------------
+// Main-radio messages stay byte-for-byte as before: the exact-contract tests
+// above (status, raw) and the golden packet below pass no radio id.
+
+TEST(MQTTPayloadBuilder, MainRadioPacketHasNoRadioKeys) {
+  JsonDocument doc;
+  char with_default[1024];
+  char explicit_null[1024];
+  int a = buildRepresentativePacket(doc, "rx", 0.125f, nullptr, 0, 0, "AABB",
+                                    with_default, sizeof(with_default));
+  int b = MQTTPayloadBuilder::buildPacketMessage(
+      doc, "DEN Repeater", "0123456789ABCDEF", kTimestamp, "rx",
+      "12:34:56", "18/07/2026", 42, 4, "D", 20, "AABB",
+      10.26f, -87, 0.125f, "89ABCDEF01234567", nullptr, 0, 0, 64,
+      explicit_null, sizeof(explicit_null), nullptr);
+  ASSERT_GT(a, 0);
+  EXPECT_EQ(a, b);
+  EXPECT_STREQ(with_default, explicit_null);
+  EXPECT_EQ(nullptr, strstr(with_default, "radio_id"));
+  EXPECT_EQ(nullptr, strstr(with_default, "mediamesh"));
+}
+
+TEST(MQTTPayloadBuilder, Radio2RxPacketCarriesRxRadioIdAndMediamesh) {
+  JsonDocument doc;
+  char main_buf[1024];
+  char r2_buf[1024];
+  int main_len = buildRepresentativePacket(doc, "rx", 0.125f, nullptr, 0, 0, "AABB",
+                                           main_buf, sizeof(main_buf));
+  int len = MQTTPayloadBuilder::buildPacketMessage(
+      doc, "DEN Repeater", "0123456789ABCDEF", kTimestamp, "rx",
+      "12:34:56", "18/07/2026", 42, 4, "D", 20, "AABB",
+      10.26f, -87, 0.125f, "89ABCDEF01234567", nullptr, 0, 0, 64,
+      r2_buf, sizeof(r2_buf), kMQTTRadio2Id);
+  ASSERT_GT(len, 0);
+  // Only appended keys: the main-radio message is an exact prefix.
+  std::string expected(main_buf, main_len - 1);
+  expected += ",\"rx_radio_id\":\"radio2\",\"mediamesh\":true}";
+  EXPECT_EQ(expected, std::string(r2_buf));
+
+  JsonDocument parsed;
+  ASSERT_FALSE(deserializeJson(parsed, r2_buf));
+  EXPECT_STREQ("radio2", parsed["rx_radio_id"].as<const char*>());
+  EXPECT_TRUE(parsed["mediamesh"].is<bool>());
+  EXPECT_TRUE(parsed["mediamesh"].as<bool>());
+  EXPECT_FALSE(parsed["tx_radio_id"].is<JsonVariant>());
+  EXPECT_STREQ("10.3", parsed["SNR"].as<const char*>());  // existing keys unchanged
+}
+
+TEST(MQTTPayloadBuilder, Radio2TxPacketCarriesTxRadioId) {
+  JsonDocument doc;
+  char buffer[1024];
+  int len = MQTTPayloadBuilder::buildPacketMessage(
+      doc, "DEN Repeater", "0123456789ABCDEF", kTimestamp, "tx",
+      "12:34:56", "18/07/2026", 42, 4, "F", 20, "AABB",
+      -999.0f, -999, NAN, "89ABCDEF01234567", nullptr, 0, 0, 64,
+      buffer, sizeof(buffer), kMQTTRadio2Id);
+  ASSERT_GT(len, 0);
+  JsonDocument parsed;
+  ASSERT_FALSE(deserializeJson(parsed, buffer));
+  EXPECT_STREQ("radio2", parsed["tx_radio_id"].as<const char*>());
+  EXPECT_FALSE(parsed["rx_radio_id"].is<JsonVariant>());
+  EXPECT_TRUE(parsed["mediamesh"].as<bool>());
+}
+
+TEST(MQTTPayloadBuilder, Radio2RawMessageCarriesRadioId) {
+  JsonDocument doc;
+  char buffer[512];
+  int len = MQTTPayloadBuilder::buildRawMessage(
+      doc, "node", "id", kTimestamp, "AABB", buffer, sizeof(buffer), kMQTTRadio2Id, false);
+  ASSERT_GT(len, 0);
+  EXPECT_STREQ(
+      "{\"origin\":\"node\",\"origin_id\":\"id\","
+      "\"timestamp\":\"2026-07-18T12:34:56.123456+00:00\","
+      "\"type\":\"RAW\",\"data\":\"AABB\",\"rx_radio_id\":\"radio2\",\"mediamesh\":true}",
+      buffer);
+  len = MQTTPayloadBuilder::buildRawMessage(
+      doc, "node", "id", kTimestamp, "AABB", buffer, sizeof(buffer), kMQTTRadio2Id, true);
+  ASSERT_GT(len, 0);
+  JsonDocument parsed;
+  ASSERT_FALSE(deserializeJson(parsed, buffer));
+  EXPECT_STREQ("radio2", parsed["tx_radio_id"].as<const char*>());
+}
+
+TEST(MQTTPayloadBuilder, StatusListsRadio2WhenOn) {
+  const MQTTRadio2Info radio2 = {"911.150000,250.0,7,5", "rxtx", false};
+  JsonDocument doc;
+  char buffer[1024];
+  char minimal[1024];
+  int minimal_len = buildMinimalStatus(doc, minimal, sizeof(minimal));
+  int len = MQTTPayloadBuilder::buildStatusMessage(
+      doc, "DEN Repeater", "0123456789ABCDEF", "Heltec V3", "v1.16.0",
+      "915.000000,62.5,7,5", "MeshCore", "online", kTimestamp,
+      buffer, sizeof(buffer), -1, -1, -1, -1, -999, -1, -1, -1, -1, -1, -1,
+      nullptr, MQTTConnHealth(), &radio2);
+  ASSERT_GT(len, 0);
+  std::string expected(minimal, minimal_len - 1);
+  expected += ",\"radios\":[{\"id\":\"radio2\",\"radio\":\"911.150000,250.0,7,5\","
+              "\"mode\":\"rxtx\",\"mediamesh\":true,\"temporary\":false}]}";
+  EXPECT_EQ(expected, std::string(buffer));
+
+  JsonDocument parsed;
+  ASSERT_FALSE(deserializeJson(parsed, buffer));
+  EXPECT_STREQ("915.000000,62.5,7,5", parsed["radio"].as<const char*>());  // still the main radio
+}
+
+TEST(MQTTPayloadBuilder, StatusOmitsRadiosWhenRadio2OffOrAbsent) {
+  const MQTTRadio2Info off = {nullptr, "off", false};
+  JsonDocument doc;
+  char buffer[1024];
+  char minimal[1024];
+  buildMinimalStatus(doc, minimal, sizeof(minimal));
+  int len = MQTTPayloadBuilder::buildStatusMessage(
+      doc, "DEN Repeater", "0123456789ABCDEF", "Heltec V3", "v1.16.0",
+      "915.000000,62.5,7,5", "MeshCore", "online", kTimestamp,
+      buffer, sizeof(buffer), -1, -1, -1, -1, -999, -1, -1, -1, -1, -1, -1,
+      nullptr, MQTTConnHealth(), &off);
+  ASSERT_GT(len, 0);
+  EXPECT_STREQ(minimal, buffer);
+}
+
+TEST(MQTTPayloadBuilder, NeighborsMessageCarriesRadio2) {
+  const MQTTRadio2Info self = {"910.525000,250.0,7,5", "rxtx", true};
+  const MQTTRadio2Info on = {"911.150000,250.0,7,5", "rx", false};
+  const MQTTRadio2Info off = {nullptr, "off", false};
+  MQTTPayloadBuilder::NeighborsMessageEntry neighbors[] = {
+      {"0011223344556677", 9.75f, 42, "DEN", "responded"},
+      {"8899AABBCCDDEEFF", 12.5f, 300, "DEN", "responded"},
+      {"1122334455667788", 1.0f, 900, "", "timeout"},
+  };
+  neighbors[0].radio2 = &on;
+  neighbors[1].radio2 = &off;
+  // neighbors[2]: no trailer, radio2 stays nullptr (unknown)
+
+  JsonDocument scratch;
+  char buffer[2048];
+  int len = MQTTPayloadBuilder::buildNeighborsMessage(
+      scratch, "DEN Repeater", "0123456789ABCDEF", kTimestamp, "DEN", "*",
+      neighbors, 3, buffer, sizeof(buffer), 3, 3, false, &self);
+  ASSERT_GT(len, 0);
+  JsonDocument parsed;
+  ASSERT_FALSE(deserializeJson(parsed, buffer));
+  EXPECT_STREQ("rxtx", parsed["self"]["radio2"]["mode"].as<const char*>());
+  EXPECT_STREQ("910.525000,250.0,7,5", parsed["self"]["radio2"]["radio"].as<const char*>());
+  EXPECT_TRUE(parsed["self"]["radio2"]["temporary"].as<bool>());
+
+  JsonArray arr = parsed["neighbors"].as<JsonArray>();
+  ASSERT_EQ(3U, arr.size());
+  EXPECT_STREQ("rx", arr[0]["radio2"]["mode"].as<const char*>());
+  EXPECT_STREQ("911.150000,250.0,7,5", arr[0]["radio2"]["radio"].as<const char*>());
+  EXPECT_FALSE(arr[0]["radio2"]["temporary"].as<bool>());
+  EXPECT_STREQ("off", arr[1]["radio2"]["mode"].as<const char*>());
+  EXPECT_FALSE(arr[1]["radio2"]["radio"].is<JsonVariant>());
+  EXPECT_FALSE(arr[1]["radio2"]["temporary"].is<JsonVariant>());
+  EXPECT_FALSE(arr[2]["radio2"].is<JsonVariant>());  // unknown: key left out
+}
+
+TEST(MQTTPayloadBuilder, NeighborsMessageWithoutRadio2IsUnchanged) {
+  MQTTPayloadBuilder::NeighborsMessageEntry neighbors[] = {
+      {"0011223344556677", 9.75f, 42, "DEN,APRS", "responded"},
+  };
+  JsonDocument scratch;
+  char before[1024];
+  char after[1024];
+  int a = MQTTPayloadBuilder::buildNeighborsMessage(
+      scratch, "DEN Repeater", "0123456789ABCDEF", kTimestamp, "DEN,APRS", "*",
+      neighbors, 1, before, sizeof(before), 1, 1, false);
+  int b = MQTTPayloadBuilder::buildNeighborsMessage(
+      scratch, "DEN Repeater", "0123456789ABCDEF", kTimestamp, "DEN,APRS", "*",
+      neighbors, 1, after, sizeof(after), 1, 1, false, nullptr);
+  ASSERT_GT(a, 0);
+  EXPECT_EQ(a, b);
+  EXPECT_STREQ(before, after);
+  EXPECT_EQ(nullptr, strstr(before, "radio2"));
+}
+
+TEST(MQTTPayloadBuilder, NeighborsMeasurementsIncludeRadio2) {
+  const MQTTRadio2Info self = {"910.525000,250.0,7,5", "rxtx", false};
+  const MQTTRadio2Info on = {"911.150000,250.0,7,5", "rxtx", true};
+  MQTTPayloadBuilder::NeighborsMessageEntry entry = {
+      "0011223344556677", 9.75f, 42, "DEN", "responded"};
+  entry.radio2 = &on;
+  JsonDocument scratch;
+  char buffer[2048];
+  int len = MQTTPayloadBuilder::buildNeighborsMessage(
+      scratch, "DEN Repeater", "0123456789ABCDEF", kTimestamp, "DEN", "*",
+      &entry, 1, buffer, sizeof(buffer), 1, 1, false, &self);
+  ASSERT_GT(len, 0);
+  size_t measured =
+      MQTTPayloadBuilder::measureNeighborsMessageBase(
+          "DEN Repeater", "0123456789ABCDEF", kTimestamp, "DEN", "*", 1, &self) +
+      MQTTPayloadBuilder::measureNeighborsMessageEntry(entry);
+  EXPECT_GE(measured, static_cast<size_t>(len));
 }
 
 }  // namespace

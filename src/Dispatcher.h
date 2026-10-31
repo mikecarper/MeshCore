@@ -785,4 +785,14 @@ private:
   void checkSend();
 };
 
+#if MESH_PACKET_LOGGING && !MESH_PACKET_LOGGING_COMPACT
+// Optional: printed ahead of a packet's TX line in the USB packet log, with
+// the frame as sent. The repeater and room server define it, so serial
+// observers (meshcoretomqtt) publish the transmitted packet and its radio2
+// marker; see MQTT_IMPLEMENTATION.md, "radio2". Other roles leave it
+// undefined, and the weak reference costs them only a null test.
+void usbLogTxFrame(const char* log_time, const Packet* packet, const uint8_t raw[], int len)
+    __attribute__((weak));
+#endif
+
 }
