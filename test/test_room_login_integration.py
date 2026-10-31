@@ -23,6 +23,7 @@ HARNESS = r'''
 #include <algorithm>
 #include "filesystem.h"
 #include <helpers/RoomAccessPolicy.h>
+#include <helpers/RadioPresetConfig.h>
 #include <helpers/RemoteCliReplyCache.h>
 #include <helpers/RemoteCliRequest.h>
 #include <helpers/ClientACLResponse.h>
@@ -159,10 +160,13 @@ struct MyMesh {
     void prepareReply(const void*) {}
     void armReply(const void*,bool) {}
   } inactive_morse_reply;
+  struct PresetCommits { unsigned admin_logins = 0; void onAdminLogin() { ++admin_logins; } };
   struct CLI {
     NoMorseReply* reply;
     NoMorseReply& morseReply() { return *reply; }
-  } _cli{&inactive_morse_reply};
+    PresetCommits presets;
+    PresetCommits& radioPresets() { return presets; }
+  } _cli{&inactive_morse_reply, {}};
   FakeACL acl;
   mesh::Identity self_id{};
   PostInfo retained_posts[MAX_UNSYNCED_POSTS]{};
@@ -402,6 +406,8 @@ static void authorizationCases() {
     assert(mesh.acl.storage.reads == (c.accepted ? 1U : 0U));
     // Only the admin credential allocates a durable record for a new identity.
     assert(mesh.acl.storage.writes == (c.accepted && c.role == PERM_ACL_ADMIN ? 1U : 0U));
+    // Only a successful strict-admin login commits a remotely loaded radio preset.
+    assert(mesh._cli.presets.admin_logins == (c.accepted && c.role == PERM_ACL_ADMIN ? 1U : 0U));
     if (c.accepted) {
       assert(mesh.acl.client.permissions == c.role);
       checkReply(mesh, c.role);
@@ -546,6 +552,7 @@ static void storageFailures() {
   full.acl.allocate_ok = false;
   login(full, "admin");
   assert(!full.acl.known && full.acl.allocations == 1 && full.creations == 0);
+  assert(full._cli.presets.admin_logins == 0);  // failed login commits nothing
   assert(full.acl.storage.found && full.acl.storage.ceiling == 160);
   login(full, "admin", 100);
   assert(full.acl.allocations == 1 && full.acl.storage.writes == 1);

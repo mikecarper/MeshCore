@@ -14,6 +14,7 @@ SANITIZER_FLAGS = [] if os.name == "nt" else ["-fsanitize=address,undefined", "-
 PREAMBLE = r'''
 #include <cassert>
 #include <helpers/TempRadioReplyBarrier.h>
+#include <helpers/RadioPresetConfig.h>
 #include <cstdio>
 #include <cstring>
 #include <cstdint>
@@ -60,6 +61,11 @@ struct RadioProfileCLI {
   uint16_t primaryPreamble() const { return 0; }
   void appendSavedPreamble(char*, size_t, uint8_t, float) {}
   void appendPrimaryChirpWarning(char*, size_t, uint8_t, float, uint16_t) const {}
+};
+// Radio presets are local-only on companions; their parser has its own suite.
+struct RadioPresetCLI {
+  unsigned local_calls=0;
+  bool handle(const char*, char*, size_t, bool remote) { assert(!remote); ++local_calls; return false; }
 };
 namespace companion {
 // Retry settings have their own test harness; this one exercises local/remote
@@ -157,6 +163,7 @@ struct MyMesh : CompanionFleetFixture {
   mesh::MorseReplyHandoff _morse_reply;
   bool _morse_reply_admission = false;
   mesh::RadioProfileCLI _radio_profiles;
+  mesh::RadioPresetCLI _radio_presets;
   Identity self_id;
   Store store; Store* _store=&store;
   Prefs _prefs;
@@ -271,16 +278,20 @@ int main() {
     node.onCLICommandRecv(ContactInfo{},nullptr,0,command,reply);
     assert(!strstr(reply,"secret") && !strstr(reply,"token") && !strstr(reply,"A5A5"));
   }
+  const unsigned preset_calls=node._radio_presets.local_calls;
   assert(node.handleCommand("set freq 915.25",0,reply));
   assert(!node._radio_profiles.remote_origin);
+  assert(node._radio_presets.local_calls==preset_calls+1);
   assert(node._prefs.freq==915.25f && !strncmp(reply,"OK",2));
   assert(node.handleCommand("set freq 920",100,reply));
   assert(node._radio_profiles.remote_origin);
+  assert(node._radio_presets.local_calls==preset_calls+1); // never over LoRa
   assert(node._prefs.freq==920.0f && !strcmp(reply,"OK"));
   for(uint32_t stamp:{0u,100u}) {
     reply[0]=0;
     node.onCLICommandRecv(ContactInfo{},nullptr,stamp,"A7|set freq 921.125",reply);
     assert(node._radio_profiles.remote_origin); // even a zero-timestamp LoRa command
+    assert(node._radio_presets.local_calls==preset_calls+1);
     assert(node._prefs.freq==921.125f && !strcmp(reply,"A7|OK"));
     assert(node._prefs.bw==125.0f && node._prefs.sf==7 && node._prefs.cr==5);
     for(const char* bad:{"set freq 149.9","set freq 2500.1","set freq 920oops",

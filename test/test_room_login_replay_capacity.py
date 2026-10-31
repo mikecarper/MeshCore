@@ -52,6 +52,11 @@ struct MyMesh {
   unsigned long dirty_contacts_expiry = 0, next_push = 0;
   uint8_t contacts_save_failures = 0, reply_data[16] = {};
   unsigned replies = 0;
+  struct PresetCommits { unsigned admin_logins = 0; void onAdminLogin() { ++admin_logins; } };
+  struct Cli {
+    PresetCommits presets;
+    PresetCommits& radioPresets() { return presets; }
+  } _cli;
   mesh::Packet response;
   explicit MyMesh(FakeFilesystem* fs) : _fs(fs) {
     // Same order as MyMesh::begin().

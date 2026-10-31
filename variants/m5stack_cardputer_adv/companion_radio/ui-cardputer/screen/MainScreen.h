@@ -60,6 +60,8 @@ public:
   void refreshSelectedContact();
   void selectContact(ContactInfo &contact, int idx);
   void selectChannel(const ChannelDetails &channel, int idx);
+  // Opens the newest chat with unread messages; false when there is none.
+  bool openNewestUnread();
 
   inline MainScreenPage getCurrentPage() const { return (MainScreenPage)current_page; }
   inline void setCurrentPage(MainScreenPage page) {

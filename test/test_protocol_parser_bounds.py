@@ -44,7 +44,7 @@ class ProtocolParserBoundsTests(unittest.TestCase):
                 "size_t Packet::writePath("))
         constructors += "\n" + extract_braced(identity, "Identity::Identity()") + "\n}\n"
         constants = "\n".join(re.findall(
-            r"^#define ANON_REQ_TYPE_(?:REGIONS|OWNER|BASIC)\s+.+$",
+            r"^#define (?:ANON_REQ_TYPE_(?:REGIONS|OWNER|BASIC)|RESP_SERVER_LOGIN_OK)\s+.+$",
             repeater, re.MULTILINE))
         constants += "\n" + re.search(
             r"static constexpr size_t MAX_ANON_REPLY_LEN =[^;]+;", repeater).group()

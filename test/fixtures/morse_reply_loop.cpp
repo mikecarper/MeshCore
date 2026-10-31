@@ -1,4 +1,5 @@
 #include <helpers/MorseLoopPolicy.h>
+#include <helpers/RadioPresetConfig.h>
 static uint32_t now_ms = 100;
 uint32_t millis() { return now_ms; }
 #define PUB_KEY_SIZE 32
@@ -23,6 +24,7 @@ struct CommonCLI {
   ACL* _acl;
   Callbacks* _callbacks;
   struct Profiles { unsigned loops = 0; void loop() { ++loops; } } _radio_profiles;
+  struct Presets { unsigned loops = 0; void loop(unsigned long) { ++loops; } } _radio_presets;
   unsigned management_loops = 0, tx_services = 0;
   CommonCLI(ACL& acl, Callbacks& callbacks) : _acl(&acl), _callbacks(&callbacks) {}
   void loopBatteryForwarding(bool = false) {}
@@ -60,6 +62,7 @@ int main() {
     assert(acl.requested_key_size == 32 && cli._radio_profiles.loops == unsigned(allowed ? 1 : 2));
     assert(cli.management_loops == unsigned(allowed ? 1 : 2));
     assert(cli.tx_services == cli.management_loops);
+    assert(cli._radio_presets.loops == cli._radio_profiles.loops);
     mesh::usable = true; mesh::current = mesh::MorseSettings();
   }
 }

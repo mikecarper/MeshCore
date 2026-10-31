@@ -31,6 +31,7 @@ HARNESS = r'''
 #include <helpers/FloodCommandAliases.h>
 #include <helpers/LoginHistory.h>
 #include <helpers/DefaultPasswordWarning.h>
+#include <helpers/RadioPresetConfig.h>
 #define PUB_KEY_SIZE 32
 #define MAX_PATH_SIZE 64
 #define MAX_PACKET_PAYLOAD 184
@@ -139,6 +140,12 @@ struct MyMesh {
   unsigned creations = 0, path_returns = 0, client_replies = 0, fail_creation_on = 0;
   bool create_ok = true, queue_ok = true;
   bool metadata_reply = false;
+  bool login_full_admin = false;
+  struct PresetCommits { unsigned admin_logins = 0; void onAdminLogin() { ++admin_logins; } };
+  struct Cli {
+    PresetCommits presets;
+    PresetCommits& radioPresets() { return presets; }
+  } _cli;
   MyMesh() { assert(guest_login.begin(&fs)); }
   Clock* getRTCClock() { return &clock; }
   RNG* getRNG() { return &rng; }
@@ -539,6 +546,37 @@ static void defaultPasswordWarnings() {
   empty.sendDefaultPasswordWarning(nullptr, 100, 1);
   assert(empty.creations == 0 && empty.sent.empty());
 }
+// Only a fresh strict-admin login commits a remotely loaded radio preset.
+static void presetCommitOnlyForAdmin() {
+  const auto dispatch = [](MyMesh& mesh, const char* password, uint32_t timestamp) {
+    guest_metadata_fs = &mesh.fs;
+    uint8_t data[40]{}; memcpy(data, &timestamp, 4);
+    memcpy(data + 4, password, strlen(password));
+    mesh::Packet request; request.direct = false; request.path_len = 0x42;
+    mesh.onAnonDataRecv(&request, secret, identity(1), data, 4 + strlen(password));
+  };
+  MyMesh admin;
+  dispatch(admin, "admin", 100);
+  assert(admin.login_full_admin && admin._cli.presets.admin_logins == 1);
+  dispatch(admin, "admin", 100);  // replayed timestamp: rejected, nothing committed
+  assert(!admin.login_full_admin && admin._cli.presets.admin_logins == 1);
+  MyMesh stranger;
+  dispatch(stranger, "wrong", 100);
+  assert(!stranger.login_full_admin && stranger._cli.presets.admin_logins == 0);
+  for (uint8_t role : {uint8_t(PERM_ACL_REGION_MGR), uint8_t(PERM_ACL_FILTER_MGR),
+                       uint8_t(PERM_ACL_READ_WRITE)}) {
+    MyMesh manager;
+    add(manager, 1, role);
+    dispatch(manager, "wrong", 100);  // preauthorized role logs in without a password
+    assert(manager.sent.size() >= 1 && manager.sent[0].packet.payload[4] == RESP_SERVER_LOGIN_OK);
+    assert(!manager.login_full_admin && manager._cli.presets.admin_logins == 0);
+  }
+  MyMesh guest;
+  command(guest, "set guest on", "OK - guest on");
+  dispatch(guest, "", 100);
+  assert(guest.sent.size() >= 1 && !guest.login_full_admin);
+  assert(guest._cli.presets.admin_logins == 0);
+}
 int main(int argc, char** argv) {
   assert(argc == 2);
   if (!strcmp(argv[1], "passwords")) defaultsAndPasswords();
@@ -549,6 +587,7 @@ int main(int argc, char** argv) {
   else if (!strcmp(argv[1], "history")) loginHistoryDecisions();
   else if (!strcmp(argv[1], "anonymous")) anonymousRequestsAreNotLogins();
   else if (!strcmp(argv[1], "default-password")) defaultPasswordWarnings();
+  else if (!strcmp(argv[1], "preset-commit")) presetCommitOnlyForAdmin();
   else assert(false);
   printf("repeater guest %s passed\n", argv[1]);
 }
@@ -669,6 +708,9 @@ class RepeaterGuestAccessTests(unittest.TestCase):
 
     def test_default_password_admin_login_warns_after_the_binary_reply(self):
         self.scenario("default-password")
+
+    def test_only_strict_admin_login_commits_radio_preset(self):
+        self.scenario("preset-commit")
 
     def test_custom_factory_password_and_bounded_long_factory_password(self):
         for index, factory in enumerate(("factory-admin", "12345678901234567890")):

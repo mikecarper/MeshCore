@@ -164,6 +164,32 @@ int main() {
   store.storeMessage(key, "write failure", true, false);
   store.loadMessages(key, false, history);
   assert(history.count() == 0);
+
+  // Received messages persist v2 metadata; own messages persist text only.
+  sd.fail_open = false;
+  uint8_t key2[PUB_KEY_SIZE] = {1};
+  MessageMeta meta;
+  meta.has = true;
+  meta.sent_ts = 5;
+  meta.recv_ts = 6;
+  meta.hops = 2;
+  meta.snr_q4 = -8;
+  meta.rssi = -90;
+  meta.path_len = 2;
+  meta.path[0] = 0xC5;
+  meta.path[1] = 0xD8;
+  store.storeMessage(key2, "{brace} rx", false, false, &meta);
+  store.storeMessage(key2, "own", true, false, &meta);
+  const std::string v2_path = std::string(HISTORY_DIR_DIRECT) + "/01" + std::string(62, '0');
+  assert(sd.files.at(v2_path)->bytes == "<< {m1;5;6;2;-8;-90;1;C5D8} {brace} rx\n>> own\n");
+  sd.files.at(v2_path)->bytes += "<< {legacy brace}\n";
+  store.loadMessages(key2, false, history);
+  assert(history.count() == 3);
+  const HistoryMessage* rx = nullptr;
+  assert(history.get(0, rx) && !rx->out && rx->meta.has && rx->meta.hops == 2 && rx->meta.rssi == -90);
+  assert(rx->meta.path_len == 2 && rx->meta.path[1] == 0xD8 && !strcmp(rx->text, "{brace} rx"));
+  assert(history.get(1, rx) && rx->out && !rx->meta.has && !strcmp(rx->text, "own"));
+  assert(history.get(2, rx) && !rx->out && !rx->meta.has && !strcmp(rx->text, "{legacy brace}"));
 }
 '''
 
@@ -204,9 +230,19 @@ struct MyMesh {
   void loop() { ++base_loops; }
   bool millisHasNowPassed(unsigned long at) const { return int32_t(now - at) > 0; }
 };
+struct Clock { uint32_t getMillis() const { return 500; } };
+struct Tracker {
+  uint32_t next = 0;
+  unsigned channel_adds = 0;
+  uint32_t add(const uint8_t*, bool is_channel, uint32_t) { channel_adds += is_channel; return ++next; }
+};
 struct CardputerMesh : MyMesh {
   Store store;
   Store* _store = &store;
+  Clock clock;
+  Clock* _ms = &clock;
+  Tracker own_tracker;
+  uint32_t pending_channel_own_id = 0;
   uint8_t last_message_hash[MAX_HASH_SIZE] = {};
   uint16_t last_message_heard_repeats = 9;
   unsigned long resend_timeout = 0;
@@ -224,16 +260,19 @@ int main() {
   assert(!node.sendFloodScoped(channel, new mesh::Packet{PAYLOAD_TYPE_GRP_TXT, 42}, 0));
   assert(node.last_message_hash[0] == 0 && node.last_message_heard_repeats == 9);
   assert(!node.sendChannelMessage(7, 0, "text", 4) && node.store.writes == 0);
+  assert(node.own_tracker.channel_adds == 0 && node.pending_channel_own_id == 0);
   node.admit = true;
   auto* group = new mesh::Packet{PAYLOAD_TYPE_GRP_TXT, 77};
   assert(node.sendFloodScoped(channel, group, 0));
   for (uint8_t byte : node.last_message_hash) assert(byte == 77);
   assert(node.last_message_heard_repeats == 0);
+  assert(node.own_tracker.channel_adds == 1 && node.pending_channel_own_id == 1);
   delete group;
   node.last_message_heard_repeats = 3;
   auto* other = new mesh::Packet{1, 66};
   assert(node.sendFloodScoped(channel, other, 0));
   assert(node.last_message_hash[0] == 77 && node.last_message_heard_repeats == 3);
+  assert(node.own_tracker.channel_adds == 1);
   delete other;
   assert(node.sendChannelMessage(7, 0, "text", 4) && node.store.writes == 0);
   node.resend_timeout = 10;
@@ -281,6 +320,14 @@ struct CardputerMesh : MyMesh {
   } last_msg;
   UI ui;
   UI* _ui = &ui;
+  struct Clock { uint32_t getMillis() const { return 900; } } clock;
+  Clock* _ms = &clock;
+  struct Tracker {
+    unsigned acks = 0;
+    uint32_t last_id = 0;
+    void onAck(uint32_t own_id, uint32_t now) { ++acks; last_id = own_id; assert(now == 900); }
+  } own_tracker;
+  uint32_t last_dm_own_id = 7;
   unsigned long resend_timeout = 100;
   ContactInfo accepted_peer;
   bool contact_present = true;
@@ -302,8 +349,10 @@ int main() {
   assert(node.base_calls == 1 && node.lookups == 1 && peer == &node.accepted_peer);
   assert(node.last_msg.state == MESSAGE_DELIVERED && node.last_msg.expected_ack == 0);
   assert(node.resend_timeout == 0 && node.ui.notifications == 1);
+  assert(node.own_tracker.acks == 1 && node.own_tracker.last_id == 7);
   assert(!node.processAck(reinterpret_cast<const uint8_t*>(&ack), peer));
   assert(node.base_calls == 2 && node.ui.notifications == 1 && peer == nullptr);
+  assert(node.own_tracker.acks == 1);
 
   CardputerMesh unrelated;
   ack = 456;
@@ -313,6 +362,7 @@ int main() {
   assert(unrelated.processAck(reinterpret_cast<const uint8_t*>(&ack), peer));
   assert(peer == &unrelated.base_peer && unrelated.base_calls == 2);
   assert(unrelated.last_msg.state == MESSAGE_SENDING && unrelated.resend_timeout == 100);
+  assert(unrelated.own_tracker.acks == 0);
 
   CardputerMesh shared;
   shared.base_owned = true;
@@ -482,9 +532,10 @@ inline int stat(const char* path, struct stat*) {
 '''}
 
     def test_history_source_bound_negative_control(self):
+        # Widen the source bound handed to the line codec past the caller's buffer.
         source = self.storage_source().replace(
-            "msg_len < MAX_MESSAGE_LENGTH && text[msg_len] != '\\0'",
-            "text[msg_len] != '\\0' && msg_len < MAX_MESSAGE_LENGTH")
+            "text, MAX_MESSAGE_LENGTH, line, sizeof(line)",
+            "text, sizeof(line), line, sizeof(line)")
         self.assertNotEqual(source, self.storage_source())
         self.run_cpp(source, headers=self.storage_headers(), fails=True)
 
