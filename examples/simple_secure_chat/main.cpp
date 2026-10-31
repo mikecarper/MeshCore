@@ -34,6 +34,9 @@
 #endif
 #include <RTClib.h>
 #include <target.h>
+#if defined(MESH_RADIO_AUTO_SX1268) && MESH_RADIO_AUTO_SX1268
+#include <helpers/LoRaRadioFamily.h>
+#endif
 
 /* ---------------------------------- CONFIGURATION ------------------------------------- */
 
@@ -408,6 +411,10 @@ public:
     _radio_profiles.begin(_fs, _radio, getRTCClock());
 
     // load persisted prefs
+#if defined(MESH_RADIO_AUTO_SX1268) && MESH_RADIO_AUTO_SX1268
+    // Seed the detected band's default before reading any saved preference.
+    _prefs.freq = mesh::autoLoRaInitialFrequency(universalLoRaRadioFamily(), _prefs.freq);
+#endif
     if (_fs->exists("/node_prefs")) {
     #if defined(RP2040_PLATFORM)
       File file = _fs->open("/node_prefs", "r");
@@ -423,6 +430,14 @@ public:
 #if MESH_USB_LOGGING_AVAILABLE
     _prefs.usb_logging_enabled = constrain(_prefs.usb_logging_enabled, 0, 1);
     mesh::setUsbLoggingEnabled(_prefs.usb_logging_enabled != 0);
+#endif
+#if defined(MESH_RADIO_AUTO_SX1268) && MESH_RADIO_AUTO_SX1268
+    // An unavailable saved band changes RAM only; the disk image stays intact.
+    const auto detected_radio = universalLoRaRadioFamily();
+    const float radio_frequency = mesh::autoLoRaInitialFrequency(detected_radio, _prefs.freq);
+    if (detected_radio == mesh::LoRaRadioFamily::SX1268 && _prefs.freq != radio_frequency)
+      MESH_DEBUG_PRINTLN("Radio: SX1268 using 434 MHz; saved frequency is out of range");
+    _prefs.freq = radio_frequency;
 #endif
 
     if (!mesh::power::beginBatteryCalibrationStore(board, volatile_primary_fs ? nullptr : _fs)) {

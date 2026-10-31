@@ -234,14 +234,22 @@ jobs:
           python3 -B test/test_universal_lora_builds.py -v
           python3 -B test/test_universal_lora_gpio.py -v
           python3 -B test/test_notification_rtc_storage.py -v
+          python3 -B test/test_companion_channels_rtc.py -v
+          python3 -B test/test_universal_sx126x_builds.py -v
+          python3 -B test/test_universal_sx126x_defaults.py -v
+          python3 -B test/test_universal_radio_startup.py -v
+          python3 -B test/test_universal_radio_boot_policy.py -v
+          python3 -B test/test_universal_radio_lto.py -v
+          python3 -B test/test_consolidated_profiles.py -v
+          node test/test_universal_radio_picker.js
       - name: Qualify universal T-Beam and T3 S3 Full firmware
         # Sequential builds: PlatformIO shares the checkout's build tree.
         run: |
-          for target in Tbeam_companion_radio_full LilyGo_T3S3_companion_radio_full Tbeam_repeater LilyGo_T3S3_repeater Tbeam_room_server LilyGo_T3S3_room_server; do
+          for target in Tbeam_companion_radio_full LilyGo_T3S3_companion_radio_full Tbeam_repeater LilyGo_T3S3_repeater Tbeam_room_server LilyGo_T3S3_room_server Tbeam_repeater_observer_mqtt Tbeam_room_server_observer_mqtt Generic_E22_repeater Meshadventurer_repeater Meshadventurer_companion_radio_full Meshadventurer_room_server Tenstar_C3_repeater; do
             bash build.sh build-firmware "$target" --firmware-version v1.18.0.2-halo-keymind-cascade-dev --radio-preset usa-cascade-fixed --profile cascade --require-ota
           done
       - name: Compile the remaining role interfaces
-        run: pio run -e Tbeam_kiss_modem -e LilyGo_T3S3_kiss_modem -e LilyGo_T3S3_terminal_chat
+        run: pio run -e Tbeam_kiss_modem -e LilyGo_T3S3_kiss_modem -e LilyGo_T3S3_terminal_chat -e Generic_E22_kiss_modem -e Meshadventurer_kiss_modem -e Meshadventurer_terminal_chat -e Tenstar_C3_kiss_modem
 
   management-reports:
     runs-on: ubuntu-latest

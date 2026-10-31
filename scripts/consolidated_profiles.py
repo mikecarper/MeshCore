@@ -11,13 +11,26 @@ SPECS = (
          platform="ESP32_PLATFORM", board="ttgo-t-beam",
          target=r"Tbeam_(?:repeater(?:_bridge_espnow)?|room_server|kiss_modem|companion_radio_(?:ble|usb|wifi|full)(?:_ps)?)(?:_observer_mqtt)?",
          defines={"MESH_RADIO_AUTO_FAMILY": "1", "RADIO_CLASS": "UniversalLoRaRadio",
+                  "MESH_RADIO_AUTO_SX127X": "1", "USE_SX1262": "1", "USE_SX1276": "1",
                   "WRAPPER_CLASS": "UniversalLoRaRadio"}),
     dict(key="autoLoRaRadio", capability="radio.autodetect.sx126x_sx127x",
          marker="meshcore.capability.radio.autodetect.sx126x_sx127x.v1",
          platform="ESP32_PLATFORM", board="t3_s3_v1_x",
          target=r"LilyGo_T3S3_(?:repeater(?:_bridge_espnow)?|room_server|kiss_modem|terminal_chat|companion_radio_(?:ble|usb|wifi|full)(?:_ps)?)(?:_observer_mqtt)?",
          defines={"MESH_RADIO_AUTO_FAMILY": "1", "RADIO_CLASS": "UniversalLoRaRadio",
+                  "MESH_RADIO_AUTO_SX127X": "1", "USE_SX1262": "1", "USE_SX1276": "1",
                   "WRAPPER_CLASS": "UniversalLoRaRadio"}),
+    *[dict(key="autoLoRaRadio", capability="radio.autodetect.sx1262_sx1268",
+           marker="meshcore.capability.radio.autodetect.sx1262_sx1268.v1",
+           platform="ESP32_PLATFORM", board=board, target=target,
+           defines={"MESH_RADIO_AUTO_FAMILY": "1", "MESH_RADIO_AUTO_SX1268": "1",
+                    "MESH_RADIO_AUTO_SX127X": "0", "USE_SX1262": "1", "USE_SX1268": "1",
+                    "RADIO_CLASS": "UniversalLoRaRadio", "WRAPPER_CLASS": "UniversalLoRaRadio"})
+      for board, target in (
+          ("esp32doit-devkit-v1", r"Generic_E22_(?:repeater(?:_bridge_espnow)?|kiss_modem)(?:_observer_mqtt)?"),
+          ("esp32doit-devkit-v1", r"Meshadventurer_(?:repeater(?:_bridge_espnow)?|room_server|kiss_modem|terminal_chat|companion_radio_(?:usb|ble|full))(?:_observer_mqtt)?"),
+          ("esp32-c3-devkitm-1", r"Tenstar_C3_(?:repeater(?:_bridge_espnow)?|kiss_modem)(?:_observer_mqtt)?"),
+      )],
     dict(key="unifiedV4Display", capability="display.heltec_v4.unified",
          marker="meshcore.capability.display.heltec_v4.unified.v1",
          platform="ESP32_PLATFORM", board="heltec_v4",
@@ -50,11 +63,48 @@ SPECS = (
 )
 
 
+RADIO_FAMILIES = (
+    ("Tbeam", r"Tbeam_(SX1262|SX1276)",
+     ("repeater", "repeater_bridge_espnow", "room_server", "kiss_modem",
+      "repeater_observer_mqtt", "room_server_observer_mqtt", "companion_radio_ble",
+      "companion_radio_ble_ps", "companion_radio_full")),
+    ("LilyGo_T3S3", r"LilyGo_T3S3_(sx1262|sx1276)",
+     ("repeater", "repeater_bridge_espnow", "room_server", "kiss_modem", "terminal_chat",
+      "repeater_observer_mqtt", "room_server_observer_mqtt", "companion_radio_usb",
+      "companion_radio_ble", "companion_radio_ble_ps", "companion_radio_full")),
+    ("Generic_E22", r"Generic_E22_(sx1262|sx1268)", ("repeater", "repeater_bridge_espnow")),
+    ("Meshadventurer", r"Meshadventurer_(sx1262|sx1268)",
+     ("repeater", "repeater_bridge_espnow", "room_server", "kiss_modem", "terminal_chat",
+      "companion_radio_usb", "companion_radio_ble", "companion_radio_full")),
+    ("Tenstar_C3", r"Tenstar_C3_(sx1262|sx1268)", ("repeater", "repeater_bridge_espnow", "kiss_modem")),
+)
+RADIO_CAPACITY_MINIMUMS = {
+    "tbeam": dict(MAX_CONTACTS=160, MAX_GROUP_CHANNELS=40, OFFLINE_QUEUE_SIZE=128),
+    "lilygo_t3s3": dict(MAX_CONTACTS=350, MAX_GROUP_CHANNELS=40, OFFLINE_QUEUE_SIZE=512),
+    "meshadventurer": dict(MAX_CONTACTS=160, MAX_GROUP_CHANNELS=40, OFFLINE_QUEUE_SIZE=128),
+}
+
+
+def integer_define(value):
+    return int(value.rstrip("uUlL")) if isinstance(value, str) and re.fullmatch(r"\d+[uUlL]*", value) else None
+
+
+def radio_capacity_matches(target, defines):
+    if "_companion_radio_" not in target.lower():
+        return True
+    family = target.lower().split("_companion_radio_", 1)[0]
+    minimums = RADIO_CAPACITY_MINIMUMS.get(family)
+    return minimums is not None and all(
+        integer_define(defines.get(key)) is not None
+        and integer_define(defines[key]) >= minimum for key, minimum in minimums.items())
+
+
 def specs_for_config(target, env):
     defines = resolved_defines(env.get("build_flags", []))
     return [spec for spec in SPECS if env.get("board") == spec["board"]
             and re.fullmatch(spec["target"], target, re.I)
-            and all(defines.get(key) == value for key, value in spec["defines"].items())]
+            and all(defines.get(key) == value for key, value in spec["defines"].items())
+            and (spec["key"] != "autoLoRaRadio" or radio_capacity_matches(target, defines))]
 
 
 def proven(manifest, spec):
@@ -68,11 +118,14 @@ def proven(manifest, spec):
 
 def runtime_metadata(manifest, env, release_source):
     result = {}
-    for spec in SPECS:
-        if spec["capability"] not in manifest.get("capabilities", []):
+    configured = specs_for_config(manifest["target"], env)
+    for capability in dict.fromkeys(spec["capability"] for spec in SPECS):
+        if capability not in manifest.get("capabilities", []):
             continue
-        if spec not in specs_for_config(manifest["target"], env) or not proven(manifest, spec):
+        matches = [spec for spec in configured if spec["capability"] == capability]
+        if len(matches) != 1 or not proven(manifest, matches[0]):
             raise ValueError(manifest["target"] + ": consolidation requires exact configuration and packaged application proof")
+        spec = matches[0]
         source = manifest.get("source_commit", release_source)
         if not isinstance(source, str) or not re.fullmatch(r"[0-9a-f]{40}", source) or source != release_source:
             raise ValueError("Consolidation metadata requires the exact release source")
@@ -102,8 +155,32 @@ def unified_v4_replacements(target):
     return []
 
 
+def radio_legacy(target):
+    for canonical, prefix, roles in RADIO_FAMILIES:
+        found = re.fullmatch(prefix + r"_(" + "|".join(roles) + r")", target, re.I)
+        if found:
+            return canonical, found[1].lower(), found[2].lower()
+    return None
+
+
+def radio_replacements(target):
+    legacy = radio_legacy(target)
+    if legacy is None:
+        return []
+    prefix, _, role = legacy
+    if role.startswith("companion_radio_") or role == "terminal_chat":
+        return [(prefix + "_companion_radio_full", "autoLoRaRadio")]
+    choices = [prefix + "_" + role]
+    if role.endswith("_observer_mqtt"):
+        choices.append(prefix + "_" + role.removesuffix("_observer_mqtt"))
+    return [(name, "autoLoRaRadio") for name in choices]
+
+
 def replacements(target):
     """Known functionality successors, never aliases for deployed update IDs."""
+    radio = radio_replacements(target)
+    if radio:
+        return radio
     unified = unified_v4_replacements(target)
     if re.fullmatch(r"PicoW_companion_radio_(?:usb|ble|wifi)", target, re.I):
         return [("PicoW_companion_radio", "combinedCompanion")]
@@ -129,17 +206,18 @@ def replacements(target):
 
 
 def configuration_replacement(target, envs):
-    def environment(name):
+    def environment(name, radio=False):
         # Full nRF52 targets can be generated by build.sh from their exact
         # USB or BLE base. Never substitute another physical radio variant.
-        for choice in (name, name.replace("_companion_radio_full", "_companion_radio_usb"),
-                       name.replace("_companion_radio_full", "_companion_radio_ble")):
+        transports = ("ble", "usb") if radio else ("usb", "ble")
+        for choice in (name, *(name.replace("_companion_radio_full", "_companion_radio_" + transport)
+                               for transport in transports)):
             if "env:" + choice in envs:
                 return envs["env:" + choice]
         return None
     for candidate, key in replacements(target):
-        env = environment(candidate)
-        source_env = environment(target)
+        env = environment(candidate, key == "autoLoRaRadio")
+        source_env = environment(target, key == "autoLoRaRadio")
         if not env or not source_env or env.get("board") != source_env.get("board"):
             continue
         if key in ("displayAuto", "muziAccessories", "techoLiteDisplay"):
@@ -148,6 +226,19 @@ def configuration_replacement(target, envs):
             qualified = spec and spec["marker"] == expected and re.fullmatch(spec["targets"], candidate.lower())
         else:
             qualified = any(spec["key"] == key for spec in specs_for_config(candidate, env))
+        if key == "autoLoRaRadio":
+            legacy = radio_legacy(target)
+            old = resolved_defines(source_env.get("build_flags", []))
+            new = resolved_defines(env.get("build_flags", []))
+            expected = "CustomSX" + legacy[1][2:]
+            qualified = (qualified and old.get("RADIO_CLASS") == expected
+                         and old.get("WRAPPER_CLASS") == expected + "Wrapper"
+                         and old.get("MESH_RADIO_AUTO_FAMILY", "0") == "0")
+            for field in ("MAX_CONTACTS", "MAX_GROUP_CHANNELS", "OFFLINE_QUEUE_SIZE", "MAX_NEIGHBOURS",
+                          "FLOOD_CHANNEL_SCOPE_SLOTS"):
+                if field in old:
+                    before, after = integer_define(old[field]), integer_define(new.get(field))
+                    qualified = qualified and before is not None and after is not None and after >= before
         if qualified:
             return candidate
     return None
@@ -181,11 +272,29 @@ def omit_redundant_records(records):
                             for row in manifest.get("verification", [])))
         return any(s["key"] == key and proven(manifest, s) for s in SPECS)
 
+    def radio_successor(left, right):
+        source = left.get("source_commit")
+        if (not isinstance(source, str) or not re.fullmatch(r"[0-9a-f]{40}", source)
+                or right.get("source_commit") != source or not same_policy(left, right)):
+            return False
+        # Full already requires its full capacity recipe before advertising
+        # this packaged marker. An old transport/terminal image may retire
+        # only when both actual replacement transports survived linking.
+        if "_companion_radio_" in right.get("target", "").lower():
+            required = {"companion.usb", "companion.bluetooth"}
+            linked = {row.get("capability") for row in right.get("verification", [])
+                      if row.get("present") is True and row.get("source") == "linked image"
+                      and row.get("evidence")}
+            return (right.get("build_profile") == "full"
+                    and required <= set(right.get("capabilities", [])) and required <= linked)
+        return True
+
     result = []
     for record in records:
         manifest = record["manifest"]
         alternatives = replacements(manifest["target"])
         if not any(candidate["manifest"]["target"].lower() == target.lower()
+                   and (key != "autoLoRaRadio" or radio_successor(manifest, candidate["manifest"]))
                    and (same_policy(manifest, candidate["manifest"])
                         or key in ("muziAccessories", "techoLiteDisplay")
                         and candidate["manifest"].get("build_profile") == "full"

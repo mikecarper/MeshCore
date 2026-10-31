@@ -3,6 +3,9 @@
 #include <RadioLib.h>
 #include <math.h>
 #include "SX126xMorseRssi.h"
+#if defined(MESH_RADIO_AUTO_SX1268) && MESH_RADIO_AUTO_SX1268
+#include <helpers/LoRaRadioFamily.h>
+#endif
 
 #ifndef SX126X_TX_BUSY_TIMEOUT_MS
 #define SX126X_TX_BUSY_TIMEOUT_MS 1000UL
@@ -67,7 +70,12 @@ class CustomSX1268 : public SX1268 {
       if (spi) spi->begin(P_LORA_SCLK, P_LORA_MISO, P_LORA_MOSI);
     #endif
   #endif
-      int status = begin(LORA_FREQ, LORA_BW, LORA_SF, cr, RADIOLIB_SX126X_SYNC_WORD_PRIVATE, LORA_TX_POWER, 16, tcxo);
+#if defined(MESH_RADIO_AUTO_SX1268) && MESH_RADIO_AUTO_SX1268
+      const float initial_frequency = mesh::autoLoRaInitialFrequency(mesh::LoRaRadioFamily::SX1268, LORA_FREQ);
+#else
+      const float initial_frequency = LORA_FREQ;
+#endif
+      int status = begin(initial_frequency, LORA_BW, LORA_SF, cr, RADIOLIB_SX126X_SYNC_WORD_PRIVATE, LORA_TX_POWER, 16, tcxo);
       if (status != RADIOLIB_ERR_NONE) {
         mesh::usbLoggingPort().print("ERROR: radio init failed: ");
         mesh::usbLoggingPort().println(status);

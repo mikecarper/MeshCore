@@ -828,8 +828,30 @@
       profile.controls.display === true && releaseBoundControl(profile, "unifiedV4Display"));
   }
 
+  const RADIO_DETECT_FAMILIES = [
+    ["Tbeam", ["Tbeam_SX1262", "Tbeam_SX1276"]],
+    ["LilyGo_T3S3", ["LilyGo_T3S3_sx1262", "LilyGo_T3S3_sx1276"]],
+    ["Generic_E22", ["Generic_E22_sx1262", "Generic_E22_sx1268"]],
+    ["Meshadventurer", ["Meshadventurer_sx1262", "Meshadventurer_sx1268"]],
+    ["Tenstar_C3", ["Tenstar_C3_sx1262", "Tenstar_C3_sx1268"]],
+  ];
+
+  function autoRadioProfile(profile) {
+    return Boolean(profile && profile.controls && profile.controls.platform === "ESP32_PLATFORM" &&
+      RADIO_DETECT_FAMILIES.some(function (family) { return profile.hardware === family[0]; }) &&
+      releaseBoundControl(profile, "autoLoRaRadio"));
+  }
+
   function consolidationSuccessor(profile, candidate) {
     if (!profile || !candidate || profile.role !== candidate.role) return false;
+    const radioFamily = RADIO_DETECT_FAMILIES.find(function (family) {
+      return family[1].includes(profile.hardware);
+    });
+    if (radioFamily && candidate.hardware === radioFamily[0] && autoRadioProfile(candidate)) {
+      return candidate.feature === profile.feature && candidate.ota === profile.ota &&
+        (!profile.sensorProfile || profile.sensorProfile === candidate.sensorProfile) &&
+        (profile.role !== "companion" || isFullCompanion(candidate));
+    }
     if (/^heltec_v4(?:_3)?(?:_expansionkit)?(?:_tft)?$/.test(profile.hardware) &&
         profile.hardware !== "heltec_v4" && unifiedV4DisplayProfile(candidate)) {
       return candidate.feature === profile.feature && candidate.ota === profile.ota &&
@@ -1737,6 +1759,9 @@
       requested[field] = params.get(field) || "";
     });
     [
+      ...RADIO_DETECT_FAMILIES.flatMap(function (family) {
+        return family[1].map(function (hardware) { return [hardware, family[0], autoRadioProfile]; });
+      }),
       ...["heltec_v4_3", "heltec_v4_tft", "heltec_v4_3_tft", "heltec_v4_expansionkit",
         "heltec_v4_expansionkit_tft", "heltec_v4_3_expansionkit_tft"].map(function (hardware) {
         return [hardware, "heltec_v4", unifiedV4DisplayProfile];
@@ -2024,6 +2049,11 @@
     const target = targetWithoutBootloader(profile.target);
     const info = profile.controls || {};
     const notes = [];
+    if (autoRadioProfile(profile)) {
+      notes.push("This image detects the fitted radio at startup. Choose the board and role; a separate radio-chip image is unnecessary.");
+      notes.push("LoRa RX power saving is available when an SX1262 is fitted; the running firmware checks the detected chip.");
+      notes.push("Older chip-specific LoRa OTA identities remain distinct. Use their exact update target, or install this shared image locally over USB.");
+    }
     if (combinedPicoCompanion(profile)) {
       notes.push("This Companion image includes USB, Bluetooth LE and WiFi together. Separate transport firmware is unnecessary; this image does not add a wireless firmware updater.");
     }

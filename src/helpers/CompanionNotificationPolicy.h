@@ -13,8 +13,12 @@
 #error "MESH_NOTIFY_RTC_SETTINGS must be 0 or 1"
 #endif
 #if MESH_NOTIFY_RTC_SETTINGS
-#if !defined(ESP32_PLATFORM) || !defined(TBEAM_SX1262) || !defined(MESH_RADIO_AUTO_FAMILY) || !MESH_RADIO_AUTO_FAMILY
-#error "RTC notification settings require the universal ESP32 T-Beam"
+#if !defined(ESP32_PLATFORM) || !defined(MESH_RADIO_AUTO_FAMILY) || !MESH_RADIO_AUTO_FAMILY
+#error "RTC notification settings require a supported universal ESP32 board"
+#endif
+#if !defined(TBEAM_SX1262) && !(defined(MESHADVENTURER) \
+    && defined(MESH_RADIO_AUTO_SX1268) && MESH_RADIO_AUTO_SX1268)
+#error "RTC notification settings require the universal T-Beam or Meshadventurer"
 #endif
 #include <sdkconfig.h>
 #if !defined(CONFIG_IDF_TARGET_ESP32) || !CONFIG_IDF_TARGET_ESP32

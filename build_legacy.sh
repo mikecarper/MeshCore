@@ -493,6 +493,7 @@ for section, options in data:
       LilyGo_Tlora_C6_companion_radio_ble_
       Heltec_ct62_companion_radio_ble
       Meshadventurer_sx1262_companion_radio_ble
+      Meshadventurer_companion_radio_ble
       Meshadventurer_sx1268_companion_radio_ble
       Heltec_Wireless_Paper_companion_radio_ble
       Heltec_E213_companion_radio_ble
@@ -3097,17 +3098,19 @@ requires_dram_limited_neighbors() {
       # Full sensors plus both OTA backends retain the board's original
       # 50-neighbor table so the fixed mOTA RAM arena has usable heap.
       return 0 ;;
+    generic_e22_repeater_lora_ota_no_external_sensors|\
     generic_e22_sx1262_repeater_lora_ota_no_external_sensors|\
     generic_e22_sx1268_repeater_lora_ota_no_external_sensors|\
     heltec_v2_repeater_lora_ota_no_external_sensors|\
+    meshadventurer_repeater_lora_ota_no_external_sensors|\
     meshadventurer_sx1262_repeater_lora_ota_no_external_sensors|\
     meshadventurer_sx1268_repeater_lora_ota_no_external_sensors|\
     tbeam_repeater_lora_ota_no_external_sensors|\
     tbeam_sx1262_repeater_lora_ota_no_external_sensors|\
     tbeam_sx1276_repeater_lora_ota_no_external_sensors)
       return 0 ;;
-    generic_e22_sx1262_repeater|generic_e22_sx1268_repeater|\
-    heltec_v2_repeater|meshadventurer_sx1262_repeater|\
+    generic_e22_repeater|generic_e22_sx1262_repeater|generic_e22_sx1268_repeater|\
+    heltec_v2_repeater|meshadventurer_repeater|meshadventurer_sx1262_repeater|\
     meshadventurer_sx1268_repeater|tbeam_repeater|tbeam_sx1262_repeater|\
     tbeam_sx1276_repeater)
       if [ "$ESP32_FULL_BUILD" = "1" ]; then return 0; fi ;;
@@ -3119,11 +3122,13 @@ requires_dram_limited_neighbors() {
   if [ "$ESP32_FULL_BUILD" = "1" ] \
       && [ "${PACKET_LOGGING_OVERRIDE,,}" = "on" ]; then
     case "${1,,}" in
-      generic_e22_sx1262_repeater_bridge_espnow \
+      generic_e22_repeater_bridge_espnow \
+        |generic_e22_sx1262_repeater_bridge_espnow \
         |generic_e22_sx1268_repeater_bridge_espnow \
         |heltec_v2_repeater_bridge_espnow \
         |lilygo_tlora_v2_1_1_6_repeater_bridge_espnow \
         |lilygo_tlora_v2_1_1_6_repeater_bridge_rs232 \
+        |meshadventurer_repeater_bridge_espnow \
         |meshadventurer_sx1262_repeater_bridge_espnow \
         |meshadventurer_sx1268_repeater_bridge_espnow \
         |tbeam_repeater_bridge_espnow \
@@ -3440,7 +3445,7 @@ is_esp32_partition_migration_full_target() {
 
   case "$env_name" in
     ebyte_eora-s3_repeater|ebyte_eora-s3_room_server|\
-    generic_e22_sx1262_repeater|generic_e22_sx1268_repeater|\
+    generic_e22_repeater|generic_e22_sx1262_repeater|generic_e22_sx1268_repeater|\
     heltec_ct62_repeater|heltec_ct62_sensor|\
     lilygo_t3s3_repeater|lilygo_t3s3_room_server|\
     lilygo_t3s3_sx1262_repeater|lilygo_t3s3_sx1262_room_server|\
@@ -3449,7 +3454,7 @@ is_esp32_partition_migration_full_target() {
     thinknode_m2_repeater|thinknode_m2_room_server|\
     thinknode_m5_repeater|thinknode_m5_room_server|\
     xiao_c3_repeater|xiao_c3_room_server|\
-    tenstar_c3_sx1262_repeater|tenstar_c3_sx1268_repeater|\
+    tenstar_c3_repeater|tenstar_c3_sx1262_repeater|tenstar_c3_sx1268_repeater|\
     nibble_zero_connect_repeater_|nibble_zero_connect_room_server_|\
     nibble_screen_connect_repeater_|nibble_screen_connect_room_server_)
       return 0
@@ -3930,10 +3935,12 @@ apply_esp32_full_size_profile() {
       record_build_reduction \
         "mesh.flood_rules limited to 31 by measured internal DRAM; complete rule engine retained"
       ;;
+    generic_e22_repeater_bridge_espnow|\
     generic_e22_sx1262_repeater_bridge_espnow|\
     generic_e22_sx1268_repeater_bridge_espnow|\
     heltec_v2_repeater_bridge_espnow|\
     lilygo_tlora_v2_1_1_6_repeater_bridge_espnow|\
+    meshadventurer_repeater_bridge_espnow|\
     meshadventurer_sx1262_repeater_bridge_espnow|\
     meshadventurer_sx1268_repeater_bridge_espnow|\
     tbeam_repeater_bridge_espnow|\
@@ -4648,6 +4655,7 @@ apply_companion_radio_full_profile() {
       record_build_reduction \
         "display.canvas limited to 320x320 internal pixels, scaled to the 480x480 panel; 350 contacts, 512 queued frames and all Full transports retained"
       ;;
+    meshadventurer_companion_radio_full|\
     meshadventurer_sx1262_companion_radio_full|\
     meshadventurer_sx1268_companion_radio_full)
       append_platformio_build_unflags "-DMAX_CONTACTS=160 -DMAX_GROUP_CHANNELS=40 -DOFFLINE_QUEUE_SIZE=128"
@@ -6141,6 +6149,9 @@ get_consolidated_hardware_replacement() {
   # an ordinary build. Packaging independently requires its executed marker.
   # Explicit builds still retain the requested historical OTA identity.
   case "${1,,}" in
+    tbeam_sx1262_*|tbeam_sx1276_*|lilygo_t3s3_sx1262_*|lilygo_t3s3_sx1276_*|\
+    generic_e22_sx1262_*|generic_e22_sx1268_*|meshadventurer_sx1262_*|meshadventurer_sx1268_*|\
+    tenstar_c3_sx1262_*|tenstar_c3_sx1268_*|\
     picow_companion_radio_usb|picow_companion_radio_ble|picow_companion_radio_wifi|\
     heltec_v4_tft_*|heltec_v4_3_tft_*|heltec_v4_expansionkit_*|heltec_v4_3_expansionkit_*|\
     heltec_v4_r8_tft_portrait_repeater_observer_mqtt|heltec_v4_r8_tft_portrait_room_server_observer_mqtt|\

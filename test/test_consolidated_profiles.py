@@ -63,6 +63,27 @@ ACCESSORY_CASES = (
                 "-DDISPLAY_CLASS=GxEPDDisplay", "-DEINK_DISPLAY_MODEL=GxEPD2_122_T61"]),
 )
 
+RADIO_CASES = tuple(
+    dict(prefix=prefix, fixed=fixed, chip=chip, target=prefix + "_repeater",
+         legacy=fixed + "_repeater", board=board, platform="ESP32_PLATFORM", key="autoLoRaRadio",
+         capability="radio.autodetect." + family,
+         marker="meshcore.capability.radio.autodetect." + family + ".v1",
+         flags=["-DMESH_RADIO_AUTO_FAMILY=1", "-DRADIO_CLASS=UniversalLoRaRadio",
+                "-DWRAPPER_CLASS=UniversalLoRaRadio", "-DUSE_SX1262=1", "-DMAX_NEIGHBOURS=50", *flags])
+    for prefix, fixed, chip, board, family, flags in (
+        ("Tbeam", "Tbeam_SX1276", "1276", "ttgo-t-beam", "sx126x_sx127x",
+         ["-DMESH_RADIO_AUTO_SX127X=1", "-DUSE_SX1276=1"]),
+        ("LilyGo_T3S3", "LilyGo_T3S3_sx1262", "1262", "t3_s3_v1_x", "sx126x_sx127x",
+         ["-DMESH_RADIO_AUTO_SX127X=1", "-DUSE_SX1276=1"]),
+        ("Generic_E22", "Generic_E22_sx1268", "1268", "esp32doit-devkit-v1", "sx1262_sx1268",
+         ["-DMESH_RADIO_AUTO_SX127X=0", "-DMESH_RADIO_AUTO_SX1268=1", "-DUSE_SX1268=1"]),
+        ("Meshadventurer", "Meshadventurer_sx1268", "1268", "esp32doit-devkit-v1", "sx1262_sx1268",
+         ["-DMESH_RADIO_AUTO_SX127X=0", "-DMESH_RADIO_AUTO_SX1268=1", "-DUSE_SX1268=1"]),
+        ("Tenstar_C3", "Tenstar_C3_sx1268", "1268", "esp32-c3-devkitm-1", "sx1262_sx1268",
+         ["-DMESH_RADIO_AUTO_SX127X=0", "-DMESH_RADIO_AUTO_SX1268=1", "-DUSE_SX1268=1"]),
+    )
+)
+
 
 def environment(case):
     return dict(board=case["board"], build_flags=list(case["flags"]))
@@ -79,6 +100,190 @@ def manifest(case, target=None, proof=True):
 def record(case, target=None, proof=True):
     row = manifest(case, target, proof)
     return dict(manifest=row, files=[row["target"] + ".bin"])
+
+
+def radio_source_environment(case):
+    flags = ["-DRADIO_CLASS=CustomSX" + case["chip"],
+             "-DWRAPPER_CLASS=CustomSX" + case["chip"] + "Wrapper", "-DMAX_NEIGHBOURS=50"]
+    flags += [flag for flag in case["flags"] if flag.startswith((
+        "-DMAX_CONTACTS=", "-DMAX_GROUP_CHANNELS=", "-DOFFLINE_QUEUE_SIZE="))]
+    return dict(board=case["board"], build_flags=flags)
+
+
+def radio_companion(case):
+    counts = {"Tbeam": (160, 40, 128), "LilyGo_T3S3": (350, 40, 512), "Meshadventurer": (160, 40, 128)}
+    contacts, channels, queue = counts[case["prefix"]]
+    return {**case, "target": case["prefix"] + "_companion_radio_full",
+            "legacy": case["fixed"] + "_companion_radio_ble",
+            "flags": case["flags"] + ["-DMAX_CONTACTS=" + str(contacts),
+                "-DMAX_GROUP_CHANNELS=" + str(channels), "-DOFFLINE_QUEUE_SIZE=" + str(queue)]}
+
+
+def radio_records(case):
+    legacy, current = record(case, case["legacy"], False), record(case)
+    for row in (legacy, current):
+        row["manifest"]["capabilities"].append("sensor.profile.full")
+    if "_companion_radio_" in case["target"]:
+        for key in ("companion.usb", "companion.bluetooth"):
+            current["manifest"]["capabilities"].append(key)
+            current["manifest"]["verification"].append(dict(
+                capability=key, source="linked image", present=True, evidence="actual linked symbol"))
+    return legacy, current
+
+
+class AutoRadioConsolidationTests(unittest.TestCase):
+    def test_each_radio_family_has_one_exact_source_bound_metadata_spec(self):
+        for case in RADIO_CASES:
+            with self.subTest(target=case["target"]):
+                self.assertEqual(consolidated.runtime_metadata(manifest(case), environment(case), SOURCE),
+                                 dict(autoLoRaRadio=True, autoLoRaRadioSource=SOURCE))
+            for change in (dict(board="unknown"), dict(board=RADIO_CASES[0]["board"])):
+                if change["board"] != case["board"]:
+                    with self.subTest(target=case["target"], change=change), self.assertRaises(ValueError):
+                        consolidated.runtime_metadata(manifest(case), {**environment(case), **change}, SOURCE)
+            for flag in case["flags"]:
+                if flag.startswith("-DMAX_NEIGHBOURS"):
+                    continue
+                key = flag[2:].split("=", 1)[0]
+                bad = {**environment(case), "build_flags": case["flags"] + ["-U" + key]}
+                with self.subTest(target=case["target"], removed=key), self.assertRaises(ValueError):
+                    consolidated.runtime_metadata(manifest(case), bad, SOURCE)
+
+    def test_replacement_names_cover_only_known_chip_families_and_roles(self):
+        for prefix, fixed_pattern, roles in consolidated.RADIO_FAMILIES:
+            chips = ("SX1262", "SX1276") if prefix == "Tbeam" else (
+                ("sx1262", "sx1276") if prefix == "LilyGo_T3S3" else ("sx1262", "sx1268"))
+            for chip in chips:
+                for role in roles:
+                    target = prefix + "_" + chip + "_" + role
+                    if role.startswith("companion_radio_") or role == "terminal_chat":
+                        expected = [(prefix + "_companion_radio_full", "autoLoRaRadio")]
+                    else:
+                        expected = [(prefix + "_" + role, "autoLoRaRadio")]
+                        if role.endswith("_observer_mqtt"):
+                            expected.append((prefix + "_" + role.removesuffix("_observer_mqtt"), "autoLoRaRadio"))
+                    with self.subTest(target=target):
+                        self.assertEqual(consolidated.replacements(target), expected)
+                        self.assertEqual(consolidated.replacements(target + "_custom"), [])
+        for target in ("Tbeam_Supreme_SX1262_repeater", "Tbeam_1w_repeater", "LilyGo_T3S3_sx1280_repeater",
+                       "Generic_E22_sx1276_repeater", "Meshadventurer_sx1268_sensor", "Tenstar_C3_sx1268_room_server"):
+            self.assertEqual(consolidated.replacements(target), [], target)
+        for case in RADIO_CASES:
+            self.assertEqual(consolidated.replacements(case["target"]), [])
+
+    def test_configuration_demands_the_fixed_source_driver_and_matching_board(self):
+        for case in RADIO_CASES:
+            canonical, legacy = "env:" + case["target"], "env:" + case["legacy"]
+            source = radio_source_environment(case)
+            envs = {canonical: environment(case), legacy: source}
+            self.assertEqual(consolidated.configuration_replacement(case["legacy"], envs), case["target"])
+            for changed in (dict(board="unknown"),
+                            dict(build_flags=source["build_flags"] + ["-DRADIO_CLASS=CustomSX1280"]),
+                            dict(build_flags=source["build_flags"] + ["-DWRAPPER_CLASS=CustomSX1280Wrapper"]),
+                            dict(build_flags=source["build_flags"] + ["-DMESH_RADIO_AUTO_FAMILY=1"])):
+                invalid = {**envs, legacy: {**source, **changed}}
+                with self.subTest(target=case["legacy"], changed=changed):
+                    self.assertIsNone(consolidated.configuration_replacement(case["legacy"], invalid))
+            smaller = {**environment(case), "build_flags": case["flags"] + ["-DMAX_NEIGHBOURS=49"]}
+            self.assertIsNone(consolidated.configuration_replacement(
+                case["legacy"], {**envs, canonical: smaller}))
+
+    def test_actual_chip_specific_recipes_all_keep_a_qualified_successor(self):
+        from test_universal_sx126x_builds import UniversalSX126xBuildTests as Recipes
+        Recipes.setUpClass()
+        recipes = Recipes()
+        prefixes = tuple("env:" + row[0] + "_" for row in consolidated.RADIO_FAMILIES)
+        envs = {name: dict(board=recipes.option(name, "board"),
+                          build_flags=(recipes.option(name, "build_flags") or "").splitlines())
+                for name in recipes.config.sections() if name.startswith(prefixes)}
+        covered = []
+        for name in envs:
+            target = name.removeprefix("env:")
+            choices = consolidated.radio_replacements(target)
+            if not choices:
+                continue
+            with self.subTest(target=target):
+                successor = consolidated.configuration_replacement(target, envs)
+                self.assertIn((successor, "autoLoRaRadio"), choices)
+                covered.append(target)
+        # Keep all currently deployed chip-specific names as exact build inputs.
+        self.assertGreaterEqual(len(covered), 59)
+
+    def test_generated_full_resolution_preserves_retained_contacts_channels_and_queue(self):
+        for base in (RADIO_CASES[0], RADIO_CASES[1], RADIO_CASES[3]):
+            case = radio_companion(base)
+            canonical_base = "env:" + case["target"].replace("_full", "_ble")
+            legacy = "env:" + case["legacy"]
+            envs = {canonical_base: environment(case), legacy: radio_source_environment(case)}
+            self.assertEqual(consolidated.configuration_replacement(case["legacy"], envs), case["target"])
+            for field in ("MAX_CONTACTS", "MAX_GROUP_CHANNELS", "OFFLINE_QUEUE_SIZE"):
+                changed = {**environment(case), "build_flags": case["flags"] + ["-D" + field + "=1"]}
+                with self.subTest(target=case["target"], cut=field):
+                    self.assertIsNone(consolidated.configuration_replacement(
+                        case["legacy"], {**envs, canonical_base: changed}))
+                    with self.assertRaises(ValueError):
+                        consolidated.runtime_metadata(manifest(case), changed, SOURCE)
+                oversized_source = radio_source_environment(case)
+                oversized_source["build_flags"].append("-D" + field + "=999")
+                self.assertIsNone(consolidated.configuration_replacement(
+                    case["legacy"], {**envs, legacy: oversized_source}))
+            # A smaller USB base cannot hide a qualifying Full BLE recipe.
+            usb = "env:" + case["target"].replace("_full", "_usb")
+            envs[usb] = {**environment(case), "build_flags": case["flags"] + ["-DMAX_GROUP_CHANNELS=1"]}
+            self.assertEqual(consolidated.configuration_replacement(case["legacy"], envs), case["target"])
+
+    def test_ordinary_omission_needs_matching_source_policy_and_packaged_detector(self):
+        for case in RADIO_CASES:
+            old, new = radio_records(case)
+            before = deepcopy([old, new])
+            for order in ([old, new], [new, old]):
+                self.assertEqual(consolidated.omit_redundant_records(order), [new])
+            self.assertEqual([old, new], before)
+            self.assertEqual(consolidated.omit_redundant_records([old]), [old])
+            invalid = [dict(source_commit=None), dict(source_commit="b" * 40), dict(source_commit="a" * 8),
+                       dict(verified=False), dict(platform="NRF52_PLATFORM"), dict(verification=[]),
+                       dict(build_profile="standard"), dict(target=case["prefix"] + "_kiss_modem"),
+                       dict(capabilities=[case["capability"], "sensor.profile.reduced"])]
+            proof = new["manifest"]["verification"][0]
+            invalid += [dict(verification=[{**proof, **change}]) for change in (
+                dict(present=False), dict(source="linked image"), dict(evidence="wrong detector family"))]
+            for changed in invalid:
+                candidate = {**new, "manifest": {**new["manifest"], **changed}}
+                with self.subTest(target=case["target"], changed=changed):
+                    self.assertEqual(consolidated.omit_redundant_records([old, candidate]), [old, candidate])
+            historical = {**old, "manifest": {**old["manifest"], "source_commit": None}}
+            self.assertEqual(consolidated.omit_redundant_records([historical, new]), [historical, new])
+
+    def test_companion_omission_needs_both_real_full_transports(self):
+        for base in (RADIO_CASES[0], RADIO_CASES[1], RADIO_CASES[3]):
+            case = radio_companion(base)
+            old, new = radio_records(case)
+            self.assertEqual(consolidated.omit_redundant_records([old, new]), [new])
+            for key in ("companion.usb", "companion.bluetooth"):
+                for change in (dict(present=False), dict(source="packaged application"), dict(evidence="")):
+                    changed = {**new, "manifest": {**new["manifest"], "verification": [
+                        {**row, **change} if row["capability"] == key else row
+                        for row in new["manifest"]["verification"]]}}
+                    with self.subTest(target=case["target"], key=key, change=change):
+                        self.assertEqual(consolidated.omit_redundant_records([old, changed]), [old, changed])
+            reduced = {**old, "manifest": {**old["manifest"], "build_profile": "standard"}}
+            self.assertEqual(consolidated.omit_redundant_records([reduced, new]), [reduced, new])
+
+    def test_observer_successor_preference_and_plain_fallback_require_the_same_proof(self):
+        for base in RADIO_CASES[:2]:
+            source_target = base["fixed"] + "_repeater_observer_mqtt"
+            observer = base["prefix"] + "_repeater_observer_mqtt"
+            source = radio_source_environment(base)
+            envs = {"env:" + source_target: source, "env:" + observer: environment(base),
+                    "env:" + base["target"]: environment(base)}
+            self.assertEqual(consolidated.configuration_replacement(source_target, envs), observer)
+            envs.pop("env:" + observer)
+            self.assertEqual(consolidated.configuration_replacement(source_target, envs), base["target"])
+            case = {**base, "legacy": source_target}
+            old, new = radio_records(case)
+            self.assertEqual(consolidated.omit_redundant_records([old, new]), [new])
+            new["manifest"]["verification"] = []
+            self.assertEqual(consolidated.omit_redundant_records([old, new]), [old, new])
 
 
 class ConsolidatedProfileTests(unittest.TestCase):

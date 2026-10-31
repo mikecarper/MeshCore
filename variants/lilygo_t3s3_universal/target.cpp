@@ -38,7 +38,7 @@ bool prepareUniversalLoRaRadio() {
 bool radio_init() {
   fallback_clock.begin();
   rtc_clock.begin(Wire);
-  return radio_driver.stdInit(&spi);
+  return prepareUniversalLoRaRadio() && radio_driver.stdInit(&spi);
 }
 
 mesh::LocalIdentity radio_new_identity() {

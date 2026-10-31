@@ -31,6 +31,9 @@
 #include <helpers/ui/StartupScreen.h>
 #include "NotificationSettingsFile.h"
 #include "MyMesh.h"
+#if defined(MESH_RADIO_AUTO_SX1268) && MESH_RADIO_AUTO_SX1268
+#include <helpers/LoRaRadioFamily.h>
+#endif
 #if MESH_ENABLE_RADIO_PRESETS
 #include <helpers/RadioPresetFile.h>
 #endif
@@ -2930,7 +2933,11 @@ void MyMesh::onSendTimeout() {
 }
 
 MyMesh::MyMesh(mesh::Radio &radio, mesh::RNG &rng, mesh::RTCClock &rtc, SimpleMeshTables &tables, DataStore& store, AbstractUITask* ui)
-    : BaseChatMesh(radio, *new ArduinoMillis(), rng, rtc, *new StaticPoolPacketManager(16), tables),
+    : BaseChatMesh(radio, *new ArduinoMillis(), rng, rtc, *new StaticPoolPacketManager(16), tables
+#if COMPANION_CHANNELS_RTC_STORAGE
+        ,mesh::companion::rtcChannels()
+#endif
+      ),
 #ifdef COMPANION_MESH_CLOCK_SYNC
       _clock_sync(radio, _clock_sync_millis, rtc, _clock_sync_acl, sensors,
                   _prefs.airtime_factor),
@@ -3203,6 +3210,10 @@ void MyMesh::begin(bool has_display, bool radio_available,
 #endif
 
   // load persisted prefs
+#if defined(MESH_RADIO_AUTO_SX1268) && MESH_RADIO_AUTO_SX1268
+  // Seed the detected band's default before reading any saved preference.
+  _prefs.freq = mesh::autoLoRaInitialFrequency(universalLoRaRadioFamily(), _prefs.freq);
+#endif
   const bool prefs_ready =
       _store->loadPrefs(_prefs, sensors.node_lat, sensors.node_lon);
 #if MESH_HIL_COMPANION_STARTUP_FREQ_MHZ
@@ -3416,6 +3427,14 @@ void MyMesh::begin(bool has_display, bool radio_available,
   if (!mesh::saveUsbLoggingBootPreference(usb_logging_enabled)) {
     MESH_DEBUG_PRINTLN("Unable to save next-boot USB logging interface state");
   }
+#endif
+#if defined(MESH_RADIO_AUTO_SX1268) && MESH_RADIO_AUTO_SX1268
+  // Finish disk migrations first; an unavailable saved band changes RAM only.
+  const auto detected_radio = universalLoRaRadioFamily();
+  const float radio_frequency = mesh::autoLoRaInitialFrequency(detected_radio, _prefs.freq);
+  if (detected_radio == mesh::LoRaRadioFamily::SX1268 && _prefs.freq != radio_frequency)
+    MESH_DEBUG_PRINTLN("Radio: SX1268 using 434 MHz; saved frequency is out of range");
+  _prefs.freq = radio_frequency;
 #endif
 
 #ifdef BLE_PIN_CODE // 123456 by default

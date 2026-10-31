@@ -268,8 +268,13 @@ void RadioLibWrapper::begin() {
   #else
     const uint8_t initial_cr = 5;
   #endif
-    cacheParams(LORA_FREQ, LORA_BW, LORA_SF, initial_cr);
-    _profiles.primary.freq = LORA_FREQ;
+#if defined(MESH_RADIO_AUTO_FAMILY) && MESH_RADIO_AUTO_FAMILY
+    const float initial_frequency = initialProfileFrequency(LORA_FREQ);
+#else
+    const float initial_frequency = LORA_FREQ;
+#endif
+    cacheParams(initial_frequency, LORA_BW, LORA_SF, initial_cr);
+    _profiles.primary.freq = initial_frequency;
     _profiles.primary.bw = LORA_BW;
     _profiles.primary.sf = LORA_SF;
     _profiles.primary.cr = initial_cr;
@@ -2962,9 +2967,9 @@ int RadioLibWrapper::recvRaw(uint8_t* bytes, int sz) {
     // Keep the normal activity timeouts and inactive/error rearm behavior.
     if (!packet_ready && state == STATE_RX && !_rx_ps_armed
 #if defined(MESH_RADIO_AUTO_FAMILY) && MESH_RADIO_AUTO_FAMILY
-        // The universal image also contains SX127x, whose IRQ/rearm rules
-        // remain unchanged. Only its SX126x backend supports duty-cycle RX.
-        && supportsRxPowerSaving()
+        // Select this workaround by chip family, independently of whether
+        // its wrapper offers duty-cycle RX (SX1268 currently does not).
+        && preserveActiveReceiveOnLateIrq()
 #endif
         && !isChipBusy() && isReceivingPacket()) return 0;
     #endif

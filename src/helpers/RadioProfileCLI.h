@@ -136,6 +136,9 @@ class RadioProfileCLI {
   // Call after the settings filesystem mounts and before radio_init().
 #if MESH_RADIO_SWITCH_TUNING
   static void configureBootTuning(FILESYSTEM* fs, Radio& radio);
+#if defined(MESH_RADIO_AUTO_FAMILY) && MESH_RADIO_AUTO_FAMILY
+  static bool reapplyDeferredBootTuning(Radio& radio);
+#endif
 #else
   static void configureBootTuning(FILESYSTEM*, Radio&) {}
 #endif

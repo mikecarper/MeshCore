@@ -16,15 +16,26 @@ page describes the commands intentionally omitted or limited by build profile.
 The [CLI Command Availability Matrix](cli_command_availability.md) expands this
 summary into separate nRF52 and ESP32 command tables.
 
-## Universal T-Beam and T3 S3 radios
+## Automatic radio detection
 
-The `Tbeam_*` and `LilyGo_T3S3_*` targets detect the radio at startup and use
-the existing SX1262 or SX1276/78 driver. Choose the board family and role;
-there is no radio-chip setting to enter. For example:
+Choose the board family and role; these targets detect the fitted radio at
+startup and select its existing driver. Ordinary releases and the firmware
+picker use one shared image per role instead of separate chip choices.
+
+| Target prefix | Detected radios |
+| --- | --- |
+| `Tbeam_*` | SX1262, SX1276/78 |
+| `LilyGo_T3S3_*` | SX1262, SX1276/78 |
+| `Generic_E22_*` | SX1262, SX1268 |
+| `Meshadventurer_*` | SX1262, SX1268 |
+| `Tenstar_C3_*` | SX1262, SX1268 |
+
+For example:
 
 ```bash
 bash build.sh build-firmware Tbeam_companion_radio_full
 bash build.sh build-firmware LilyGo_T3S3_repeater
+bash build.sh build-firmware Generic_E22_repeater
 ```
 
 Selection happens after board power is enabled and before saved radio regulator
@@ -32,7 +43,7 @@ and switching settings are applied. The `board` command reports the detected
 family. SX126x retains RX power saving and buffered SPI switching; SX127x retains
 its own interrupt pin, modulation limits, and power control. The common factory
 TX power is 20 dBm; SX1262 also supports an explicit 22 dBm setting.
-The universal T-Beam Companion uses 160 contacts and 8 channels to retain Full
+The universal T-Beam Companion uses 160 contacts and 40 channels to retain Full
 wireless and OTA support within classic ESP32 RAM. Existing chip-specific
 Companion capacities are unchanged.
 
@@ -41,11 +52,20 @@ T-Beam Supreme, T-Beam 1W, SX1272, SX1280, and LR-series radios require their
 own targets. An unrecognized or missing radio cannot fall back to a guessed
 driver or start transmitting. Detection reads chip identification registers
 and normally takes a few tens of milliseconds, with a bounded timeout.
+SX1268 keeps its 410–810 MHz limit and its own power controls. When a compiled
+default is outside that range, an SX1268 starts at 434 MHz; valid saved radio
+settings take precedence. Detection does not identify antenna bands or external
+power amplifiers, so boards with different PA wiring remain separate. Tenstar
+supports its unwired reset pin; a real hardware reset still requires that wire.
 
 The existing `Tbeam_SX1262_*`, `Tbeam_SX1276_*`, and
 `LilyGo_T3S3_sx1262_*`/`sx1276_*` images keep their names and OTA identities.
 A new universal image has its own target identity; it does not bypass existing
-cross-board OTA checks. Use the Full profile for universal T3 S3 infrastructure;
+cross-board OTA checks. Chip-specific targets remain available for explicit
+builds and exact historical LoRa OTA updates. To move to a shared target, install
+its matching image locally over USB. Duplicate ordinary images are omitted only
+when the shared recipe and packaged detection capability are verified.
+Use the Full profile for universal T3 S3 infrastructure;
 both radio drivers exceed its older 1.3 MB standard application slot. Full uses
 the board's existing expanded dual-OTA layout; install its matching merged
 image when moving from the smaller layout. The universal T3 S3 image reserves

@@ -327,7 +327,10 @@ size_t encodeNodeInfo(uint32_t from, uint32_t id, uint8_t hop_limit, const char*
   return finishFrame(from, id, hop_limit, channel_name, key, key_len, out, count);
 }
 
-#if defined(NRF52_PLATFORM) && defined(__GNUC__)
+#if defined(MESH_UNIVERSAL_LTO) && MESH_UNIVERSAL_LTO && defined(__GNUC__)
+// Preserve the actual receive codec as executable image evidence under LTO.
+__attribute__((noinline, used))
+#elif defined(NRF52_PLATFORM) && defined(__GNUC__)
 __attribute__((noinline))
 #endif
 bool decodeText(const uint8_t* raw, size_t length, const char* channel_name,

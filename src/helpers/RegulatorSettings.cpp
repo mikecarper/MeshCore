@@ -21,6 +21,9 @@
 #if MESH_REGULATOR_FIXED_SUPPLY
 namespace mesh { namespace power {
 bool beginRegulatorSettings(MainBoard&, Radio&, FILESYSTEM*) { return true; }
+#if defined(MESH_RADIO_AUTO_FAMILY) && MESH_RADIO_AUTO_FAMILY
+bool reapplyDeferredRadioRegulator(Radio&) { return true; }
+#endif
 void serviceRegulatorSettings() {}
 const char* regulatorModeName(RegulatorMode mode) {
   return mode == RegulatorMode::Dcdc ? "dcdc" : mode == RegulatorMode::Ldo ? "ldo" : "auto";
@@ -48,6 +51,9 @@ FILESYSTEM* settings_fs = nullptr;
 RegulatorMode requested[2] = {RegulatorMode::Default, RegulatorMode::Default};
 uint8_t saved_fallback = 0;
 bool initialized = false;
+#if defined(MESH_RADIO_AUTO_FAMILY) && MESH_RADIO_AUTO_FAMILY
+bool radio_boot_deferred = false;
+#endif
 bool fallback_saved = true;
 uint32_t last_service = 0, last_battery = 0, last_save = 0;
 RecoveryPolicy& recovery() {
@@ -171,7 +177,14 @@ bool regulatorRecoveryAvailable() { return initialized && platformRecoverySuppor
 bool beginRegulatorSettings(MainBoard& board, Radio& radio, FILESYSTEM* fs) {
   if (initialized) return true;
   main_board = &board; main_radio = &radio; settings_fs = fs;
+#if defined(MESH_RADIO_AUTO_FAMILY) && MESH_RADIO_AUTO_FAMILY
+  radio_boot_deferred = radio.profiles() == nullptr;
+  // An unidentified radio has no capabilities yet. Read its saved request
+  // now so late identification cannot silently select the factory regulator.
+  if (!board.mcuRegulatorModes() && !radio.regulatorModes() && !radio_boot_deferred) return true;
+#else
   if (!board.mcuRegulatorModes() && !radio.regulatorModes()) return true;
+#endif
   uint8_t data[12];
   bool loaded = readFile(path, data);
   if (!loaded && readFile(backup, data)) {
@@ -212,6 +225,29 @@ bool beginRegulatorSettings(MainBoard& board, Radio& radio, FILESYSTEM* fs) {
   last_service = last_battery = last_save = now;
   return okay;
 }
+
+#if defined(MESH_RADIO_AUTO_FAMILY) && MESH_RADIO_AUTO_FAMILY
+bool reapplyDeferredRadioRegulator(Radio& radio) {
+  if (!initialized || main_radio != &radio || !radio_boot_deferred) return true;
+  if (!radio.profiles()) return false;
+  if (!configuredRegulatorModes(false)) {
+    radio_boot_deferred = false;
+    return true;
+  }
+  const auto mode = effective(false);
+  const uint8_t cpu = activeRegulatorMode(true) == RegulatorMode::Dcdc ? RECOVERY_MCU : 0;
+  const uint8_t selected = cpu | (mode == RegulatorMode::Dcdc ? RECOVERY_RADIO : 0);
+  // Keep the original battery sample, crash counts, and healthy-boot window.
+  // Arm this newly selected domain before native initialization can enable it.
+  recovery().updateActiveDomains(selected);
+  if (!radio.configureBootRegulator(mode)) {
+    recovery().updateActiveDomains(cpu);
+    return false;
+  }
+  radio_boot_deferred = false;
+  return true;
+}
+#endif
 
 void serviceRegulatorSettings() {
   if (!initialized) return;

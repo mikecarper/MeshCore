@@ -44,6 +44,11 @@ const char* const ReplyPath = "/radio_profiles.reply";
 const char* const FastPath = "/radio_fast";
 const char* const FastBackup = "/radio_fast.bak";
 const char* const FastTemp = "/radio_fast.tmp";
+#if defined(MESH_RADIO_AUTO_FAMILY) && MESH_RADIO_AUTO_FAMILY
+FILESYSTEM* deferred_boot_tuning_fs = nullptr;
+Radio* deferred_boot_tuning_radio = nullptr;
+bool deferred_boot_tuning = false;
+#endif
 #endif
 uint32_t checksum(const uint8_t* p, size_t n) {
   return storage::updateCRC32(0xffffffffU, p, n);
@@ -292,10 +297,39 @@ bool RadioProfileCLI::validFastImage(const uint8_t* bytes, RadioSwitchTuning& va
 }
 
 void RadioProfileCLI::configureBootTuning(FILESYSTEM* fs, Radio& radio) {
+#if defined(MESH_RADIO_AUTO_FAMILY) && MESH_RADIO_AUTO_FAMILY
+  deferred_boot_tuning_fs = fs;
+  deferred_boot_tuning_radio = &radio;
+  deferred_boot_tuning = fs && !radio.profiles();
+  if (deferred_boot_tuning) return;
+#endif
   RadioProfileCLI loader;
   loader.fs_ = fs; loader.radio_ = &radio;
   loader.loadFastSettings(true);
 }
+
+#if defined(MESH_RADIO_AUTO_FAMILY) && MESH_RADIO_AUTO_FAMILY
+bool RadioProfileCLI::reapplyDeferredBootTuning(Radio& radio) {
+  if (!deferred_boot_tuning || deferred_boot_tuning_radio != &radio) return true;
+  if (!radio.profiles()) return false;
+  RadioProfileCLI loader;
+  loader.fs_ = deferred_boot_tuning_fs;
+  loader.radio_ = &radio;
+  uint8_t bytes[ImageSize];
+  const auto primary = loader.readImage(FastPath, bytes, sizeof(bytes));
+  bool loaded = primary == ImageReadResult::Valid && loader.validFastImage(bytes, loader.fast_saved_);
+  if (!loaded) {
+    const auto backup = loader.readImage(FastBackup, bytes, sizeof(bytes));
+    if (primary == ImageReadResult::Unreadable || backup == ImageReadResult::Unreadable) return false;
+    loaded = backup == ImageReadResult::Valid && loader.validFastImage(bytes, loader.fast_saved_);
+  }
+  // This is an initialization retry, not a filesystem-repair transaction.
+  // Leave both saved images intact, even when only the backup is usable.
+  if (loaded && !radio.configureBootSwitchTuning(loader.fast_saved_)) return false;
+  deferred_boot_tuning = false;
+  return true;
+}
+#endif
 
 __attribute__((noinline)) void RadioProfileCLI::loadFastSettings(bool boot) {
   fast_pending_ = fast_hold_ = false;

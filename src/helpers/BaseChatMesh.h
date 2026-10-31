@@ -68,6 +68,7 @@ struct ConnectionInfo {
 };
 
 #include "ChannelDetails.h"
+#include "CompanionChannelStorage.h"
 
 /**
  *  \brief  abstract Mesh class for common 'chat' client
@@ -97,7 +98,11 @@ class BaseChatMesh : public mesh::Mesh {
   ContactIndex matching_peer_indexes[MAX_SEARCH_RESULTS];
   unsigned long txt_send_timeout;
 #ifdef MAX_GROUP_CHANNELS
+#if COMPANION_CHANNELS_RTC_STORAGE
+  mesh::companion::ChannelArray& channels;
+#else
   ChannelDetails channels[MAX_GROUP_CHANNELS];
+#endif
   int num_channels;  // only for addChannel()
 #endif
   mesh::Packet* _pendingLoopback;
@@ -117,8 +122,15 @@ protected:
   int sendMessageDetached(const ContactInfo& recipient, uint32_t timestamp,
                           const char* text, uint32_t& expected_ack,
                           uint32_t& est_timeout, uint8_t* packet_hash);
-  BaseChatMesh(mesh::Radio& radio, mesh::MillisecondClock& ms, mesh::RNG& rng, mesh::RTCClock& rtc, mesh::PacketManager& mgr, mesh::MeshTables& tables)
+  BaseChatMesh(mesh::Radio& radio, mesh::MillisecondClock& ms, mesh::RNG& rng, mesh::RTCClock& rtc, mesh::PacketManager& mgr, mesh::MeshTables& tables
+#if COMPANION_CHANNELS_RTC_STORAGE
+      ,mesh::companion::ChannelArray& channel_storage
+#endif
+  )
       : mesh::Mesh(radio, ms, rng, rtc, mgr, tables)
+#if COMPANION_CHANNELS_RTC_STORAGE
+      ,channels(channel_storage)
+#endif
   {
 #if defined(ESP32_PLATFORM) && defined(BOARD_HAS_PSRAM)
     contacts = contacts_fallback;

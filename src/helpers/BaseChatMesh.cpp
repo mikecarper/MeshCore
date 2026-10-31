@@ -4,6 +4,22 @@
 #include <helpers/RemoteCliRequest.h>
 #include <helpers/RemoteCliTimeout.h>
 #include <Utils.h>
+#if COMPANION_CHANNELS_RTC_STORAGE
+#include <esp_attr.h>
+namespace {
+RTC_SLOW_ATTR mesh::companion::ChannelArray companion_channels = {};
+bool companion_channels_initialized = false;
+}
+
+mesh::companion::ChannelArray& mesh::companion::rtcChannels() {
+  if (!companion_channels_initialized) {
+    // RTC bytes survive deep sleep; disk remains the authority on each boot.
+    memset(companion_channels, 0, sizeof(companion_channels));
+    companion_channels_initialized = true;
+  }
+  return companion_channels;
+}
+#endif
 #if defined(ESP32_PLATFORM) && defined(BOARD_HAS_PSRAM)
 #include <esp_heap_caps.h>
 #endif

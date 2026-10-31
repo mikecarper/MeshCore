@@ -14,6 +14,9 @@
 #ifdef WRAPPER_CLASS
 #include "target.h"
 #endif
+#if defined(MESH_RADIO_AUTO_SX1268) && MESH_RADIO_AUTO_SX1268
+#include <helpers/LoRaRadioFamily.h>
+#endif
 #include "PrefsSaveReplyGuard.h"
 #include "UsbLoggingWatchdog.h"
 #include "HostKiss.h"
@@ -1073,6 +1076,10 @@ static void formatSnrDbX4Short(char* dest, size_t dest_len, int16_t snr_x4) {
 }
 
 void CommonCLI::loadPrefs(FILESYSTEM* fs) {
+#if defined(MESH_RADIO_AUTO_SX1268) && MESH_RADIO_AUTO_SX1268
+  // Seed the detected band's default before reading any saved preference.
+  _prefs->freq = mesh::autoLoRaInitialFrequency(universalLoRaRadioFamily(), _prefs->freq);
+#endif
 #if defined(WITH_ESPNOW_BRIDGE)
   mesh::bridge::loadEspNowPeerSettings(fs);
 #endif
@@ -1373,6 +1380,14 @@ void CommonCLI::loadPrefs(FILESYSTEM* fs) {
   mesh::setUsbDebugEnabled(_prefs->usb_debug_enabled != 0);
   mesh::setUsbPacketLoggingAlways(_prefs->usb_logging_always != 0);
   mesh::setUsbLoggingEnabled(_prefs->usb_logging_enabled != 0);
+#endif
+#if defined(MESH_RADIO_AUTO_SX1268) && MESH_RADIO_AUTO_SX1268
+  // Finish disk migrations first; an unavailable saved band changes RAM only.
+  const auto detected_radio = universalLoRaRadioFamily();
+  const float radio_frequency = mesh::autoLoRaInitialFrequency(detected_radio, _prefs->freq);
+  if (detected_radio == mesh::LoRaRadioFamily::SX1268 && _prefs->freq != radio_frequency)
+    MESH_DEBUG_PRINTLN("Radio: SX1268 using 434 MHz; saved frequency is out of range");
+  _prefs->freq = radio_frequency;
 #endif
   _radio_profiles.adoptPrimaryPreamble(_prefs->primary_radio_preamble);
   _radio_profiles.stagePrimary(_prefs->primary_radio_preamble, false);

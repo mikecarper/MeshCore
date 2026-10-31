@@ -58,6 +58,10 @@ protected:
   bool hasPendingRadioInterrupt() const;
   bool claimRadioInterrupt();
   PhysicalLayer* _radio;
+#if defined(MESH_RADIO_AUTO_FAMILY) && MESH_RADIO_AUTO_FAMILY
+  virtual bool preserveActiveReceiveOnLateIrq() const { return false; }
+  virtual float initialProfileFrequency(float preferred) const { return preferred; }
+#endif
   mesh::MainBoard* _board;
   uint32_t n_recv, n_sent, n_recv_errors;
   int16_t _noise_floor, _threshold;

@@ -13,6 +13,15 @@ SPEC.loader.exec_module(GENERATOR)
 
 
 class PickerControlsTests(unittest.TestCase):
+    def test_shared_radio_keeps_supported_runtime_rxps_control(self):
+        shared = dict(RADIO_CLASS='UniversalLoRaRadio', MESH_RADIO_AUTO_FAMILY='1', USE_SX1262='1')
+        self.assertTrue(GENERATOR.has_rxps_control(shared))
+        for field in ('MESH_RADIO_AUTO_FAMILY', 'USE_SX1262'):
+            self.assertFalse(GENERATOR.has_rxps_control({**shared, field: '0'}))
+            self.assertFalse(GENERATOR.has_rxps_control({key: value for key, value in shared.items() if key != field}))
+        self.assertTrue(GENERATOR.has_rxps_control(dict(RADIO_CLASS='CustomSX1262')))
+        self.assertFalse(GENERATOR.has_rxps_control(dict(RADIO_CLASS='CustomSX1276')))
+
     def test_partition_migrations_follow_the_complete_packager_lookup(self):
         expected = {spec['target']: package
                     for package, spec in GENERATOR.BOARDS.items()}

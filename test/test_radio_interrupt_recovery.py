@@ -165,6 +165,8 @@ struct RadioLibWrapper {
  bool _rx_ps_continuous_fallback=false, _nf_calib_active=false;
  bool rxps_hardware=true;
  bool supportsRxPowerSaving()const{return rxps_hardware;}
+ bool sx126x_late_irq_guard=true;
+ bool preserveActiveReceiveOnLateIrq()const{return sx126x_late_irq_guard;}
  bool _primary_receive_preempt=false;
  uint32_t _rx_ps_eff_rx_us=0, _rx_ps_eff_sleep_us=0;
  float _last_snr=0, _last_rssi=0;
@@ -696,6 +698,13 @@ int main(){
                     ["-DESP32_PLATFORM=1", "-DRADIO_CLASS=UniversalLoRaRadio",
                      "-DMESH_RADIO_AUTO_FAMILY=1"])
 
+    def test_universal_sx1268_preserves_rx_without_claiming_rxps_support(self):
+        checks = self.sx126x_late_irq_checks().replace(
+            "auto* w=staleEvent();", "auto* w=staleEvent();w->rxps_hardware=false;")
+        compile_run(self.source(sx126x="CustomSX1268") + checks,
+                    ["-DESP32_PLATFORM=1", "-DRADIO_CLASS=UniversalLoRaRadio",
+                     "-DMESH_RADIO_AUTO_FAMILY=1", "-DMESH_RADIO_AUTO_SX1268=1"])
+
     def universal_sx127x_late_irq_checks(self):
         checks = self.sx126x_late_irq_checks().split("int main(){", 1)[0]
         return checks + r'''
@@ -703,6 +712,7 @@ int main(){
  uint8_t bytes[16]={};
  auto* w=staleEvent();
  w->rxps_hardware=false; // The selected SX127x backend has no duty-cycle RX.
+ w->sx126x_late_irq_guard=false;
  w->chip.irq=16;
  assert(w->recvRaw(bytes,sizeof(bytes))==0);
  assert(w->chip.arms==2&&"SX127x must retain its original IRQ rearm behavior");
@@ -718,8 +728,8 @@ int main(){
 
     def test_removing_universal_runtime_family_gate_changes_sx127x_rearm(self):
         source = self.source(sx126x=True)
-        self.assertEqual(source.count("        && supportsRxPowerSaving()\n"), 1)
-        source = source.replace("        && supportsRxPowerSaving()\n", "")
+        self.assertEqual(source.count("        && preserveActiveReceiveOnLateIrq()\n"), 1)
+        source = source.replace("        && preserveActiveReceiveOnLateIrq()\n", "")
         with self.assertRaises(AssertionError) as failure:
             compile_run(source+self.universal_sx127x_late_irq_checks(),
                         ["-DESP32_PLATFORM=1", "-DRADIO_CLASS=UniversalLoRaRadio",

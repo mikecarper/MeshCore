@@ -6,12 +6,38 @@
 #include <helpers/LoRaRadioFamily.h>
 #include "RadioLibWrappers.h"
 #include "CustomSX1262Wrapper.h"
+#if MESH_RADIO_AUTO_SX1268
+#include "CustomSX1268Wrapper.h"
+#endif
+#if MESH_RADIO_AUTO_SX127X
 #include "CustomSX1276Wrapper.h"
+#endif
 
 // Mesh and Dispatcher retain this address before setup(). Only the selected
 // backend is constructed, after the board powers and identifies its radio.
 // Existing wrappers continue to own IRQs, recovery, profiles and modem state.
 class UniversalLoRaRadio : public mesh::Radio {
+  class SX1262Backend : public CustomSX1262Wrapper {
+   public:
+    SX1262Backend(CustomSX1262& radio, mesh::MainBoard& board)
+        : CustomSX1262Wrapper(radio, board) {}
+   protected:
+    bool preserveActiveReceiveOnLateIrq() const override { return true; }
+  };
+#if MESH_RADIO_AUTO_SX1268
+  class SX1268Backend : public CustomSX1268Wrapper {
+   public:
+    SX1268Backend(CustomSX1268& radio, mesh::MainBoard& board)
+        : CustomSX1268Wrapper(radio, board) {}
+    bool validateProfile(const mesh::RadioProfileParams& params) const override;
+   protected:
+    bool preserveActiveReceiveOnLateIrq() const override { return true; }
+    float initialProfileFrequency(float preferred) const override {
+      return mesh::autoLoRaInitialFrequency(mesh::LoRaRadioFamily::SX1268, preferred);
+    }
+  };
+#endif
+#if MESH_RADIO_AUTO_SX127X
   class SX127Backend : public CustomSX1276Wrapper {
    public:
     SX127Backend(CustomSX1276& radio, mesh::MainBoard& board)
@@ -20,9 +46,24 @@ class UniversalLoRaRadio : public mesh::Radio {
    protected:
     bool checkBeaconOutputPower(float frequency_mhz, int8_t power) const override;
   };
+#endif
 
-  using ChipStorage = typename std::aligned_union<0, CustomSX1262, CustomSX1276>::type;
-  using DriverStorage = typename std::aligned_union<0, CustomSX1262Wrapper, SX127Backend>::type;
+  using ChipStorage = typename std::aligned_union<0, CustomSX1262
+#if MESH_RADIO_AUTO_SX1268
+      , CustomSX1268
+#endif
+#if MESH_RADIO_AUTO_SX127X
+      , CustomSX1276
+#endif
+      >::type;
+  using DriverStorage = typename std::aligned_union<0, SX1262Backend
+#if MESH_RADIO_AUTO_SX1268
+      , SX1268Backend
+#endif
+#if MESH_RADIO_AUTO_SX127X
+      , SX127Backend
+#endif
+      >::type;
   ChipStorage chip_storage_;
   DriverStorage driver_storage_;
   Module& sx126_module_;
@@ -45,6 +86,9 @@ class UniversalLoRaRadio : public mesh::Radio {
   PhysicalLayer* physicalLayer() { return physical_; }
   const PhysicalLayer* physicalLayer() const { return physical_; }
   const char* familyName() const;
+  float defaultFrequency(float preferred) const {
+    return mesh::autoLoRaInitialFrequency(family_, preferred);
+  }
 
   // These small forwarding methods preserve the complete mesh::Radio contract.
   // An unidentified radio never transmits or reports successful reconfiguration.

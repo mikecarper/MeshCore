@@ -1,6 +1,8 @@
 """Exercise notification controllers with local and RTC SLOW settings storage."""
 from pathlib import Path
+import configparser
 import importlib.util
+from itertools import product
 import os
 import re
 import shutil
@@ -229,11 +231,13 @@ class NotificationRtcStorageTests(unittest.TestCase):
                 "-I" + str(ROOT / "examples/companion_radio")]
 
     def test_actual_controller_storage_playback_and_file_roundtrip(self):
-        for enabled in (0, 1):
-            with self.subTest(rtc=enabled):
-                definitions = ["ESP32_PLATFORM", "TBEAM_SX1262", "MESH_RADIO_AUTO_FAMILY=1",
+        for board, enabled in product(("TBEAM_SX1262", "MESHADVENTURER"), (0, 1)):
+            with self.subTest(board=board, rtc=enabled):
+                definitions = ["ESP32_PLATFORM", board, "MESH_RADIO_AUTO_FAMILY=1",
                                "MESH_NOTIFY_RTC_SETTINGS=" + str(enabled)]
-                binary = self.folder / ("storage" + str(enabled) + (".exe" if os.name == "nt" else ""))
+                if board == "MESHADVENTURER":
+                    definitions.append("MESH_RADIO_AUTO_SX1268=1")
+                binary = self.folder / ("storage" + board + str(enabled) + (".exe" if os.name == "nt" else ""))
                 sanitizer = [] if os.name == "nt" else [
                     "-fsanitize=address,undefined", "-fno-omit-frame-pointer", "-fno-pie", "-no-pie"]
                 subprocess.run([*self.flags(definitions), *sanitizer,
@@ -273,6 +277,14 @@ class NotificationRtcStorageTests(unittest.TestCase):
                    [item for item in base if item != "TBEAM_SX1262"],
                    [item for item in base if item != "MESH_RADIO_AUTO_FAMILY=1"],
                    base + ["CONFIG_IDF_TARGET_ESP32=0"]]
+        meshadventurer = ["MESHADVENTURER" if item == "TBEAM_SX1262" else item for item in base]
+        meshadventurer.append("MESH_RADIO_AUTO_SX1268=1")
+        invalid.extend([item for item in meshadventurer if item != missing]
+                       for missing in ("ESP32_PLATFORM", "MESHADVENTURER", "MESH_RADIO_AUTO_FAMILY=1",
+                                       "MESH_RADIO_AUTO_SX1268=1"))
+        invalid.extend((meshadventurer + ["CONFIG_IDF_TARGET_ESP32=0"],
+                        ["MESH_RADIO_AUTO_SX1268=0" if item == "MESH_RADIO_AUTO_SX1268=1" else item
+                         for item in meshadventurer]))
         for definitions in invalid:
             with self.subTest(definitions=definitions):
                 result = subprocess.run([*self.flags(definitions), "-fsyntax-only", str(source)],
@@ -281,6 +293,16 @@ class NotificationRtcStorageTests(unittest.TestCase):
                 self.assertIn("error:", result.stderr)
         # Ordinary targets continue to compile without any ESP32 SDK headers.
         subprocess.run([*self.flags([]), "-fsyntax-only", str(source)], check=True)
+
+    def test_meshadventurer_opt_in_is_only_on_new_companion_recipes(self):
+        for folder in ("meshadventurer", "meshadventurer_universal"):
+            config = configparser.ConfigParser(interpolation=None, inline_comment_prefixes=(";",))
+            config.read(ROOT / "variants" / folder / "platformio.ini")
+            for name in config.sections():
+                flags = config[name].get("build_flags", "")
+                expected = folder == "meshadventurer_universal" and name in (
+                    "env:Meshadventurer_companion_radio_usb", "env:Meshadventurer_companion_radio_ble")
+                self.assertEqual("-D MESH_NOTIFY_RTC_SETTINGS=1" in flags, expected, name)
 
 
 if __name__ == "__main__":

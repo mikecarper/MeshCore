@@ -352,7 +352,10 @@ bool Dispatcher::queueDirectOtaRadioFrame(const uint8_t* message, uint16_t lengt
 }
 #endif
 
-#if defined(NRF52_PLATFORM) && MESH_ENABLE_HOST_KISS
+#if defined(MESH_UNIVERSAL_LTO) && MESH_UNIVERSAL_LTO
+// Keep the actual shared TX scheduler visible to uploadable-image proof.
+__attribute__((noinline, used))
+#elif defined(NRF52_PLATFORM) && MESH_ENABLE_HOST_KISS
 // Keep the cold shared queue as one executable entry on Nordic Full builds.
 // This avoids LTO copies and lets package checks verify the real TX scheduler.
 __attribute__((noinline))

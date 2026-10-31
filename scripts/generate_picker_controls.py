@@ -18,6 +18,14 @@ from consolidated_profiles import runtime_metadata as consolidation_metadata
 ROOT = Path(__file__).resolve().parents[1]
 
 
+def has_rxps_control(defines):
+    if defines.get('RADIO_CLASS') == 'UniversalLoRaRadio':
+        # The fitted chip decides at runtime; retain the SX1262 control in
+        # shared firmware instead of hiding it because the class name changed.
+        return defines.get('MESH_RADIO_AUTO_FAMILY') == '1' and defines.get('USE_SX1262') == '1'
+    return 'SX126' in defines.get('RADIO_CLASS', '')
+
+
 def partition_migrations():
     """Use the packager's exact board/role lookup, not guessed ZIP slugs."""
     result = {}
@@ -157,7 +165,7 @@ def generate(stage, config):
                 'gps': enabled('ENV_INCLUDE_GPS'),
                 'display': defines.get('DISPLAY_CLASS', 'NullDisplayDriver') != 'NullDisplayDriver',
                 'rxgain': enabled('SX126X_RX_BOOSTED_GAIN') or enabled('LR1110_RX_BOOSTED_GAIN'),
-                'rxps': 'SX126' in defines.get('RADIO_CLASS', ''),
+                'rxps': has_rxps_control(defines),
                 'femRx': bool(re.search(r'bool\s+\w*(?:::)?setLoRaFemLnaEnabled\s*\(', board_source)),
                 'femTx': bool(re.search(r'bool\s+\w*(?:::)?setLoRaFemPaGainEnabled\s*\(', board_source)),
                 'webconfig': 'web.webconfig' in caps,
