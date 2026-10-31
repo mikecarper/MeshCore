@@ -98,7 +98,12 @@ class T096FullMemoryTest(unittest.TestCase):
 #define AUTO_OFF_MILLIS 15000
 #define UI_RECENT_LIST_SIZE 3
 #define TELEM_CHANNEL_SELF 0
-uint32_t millis() { return 100; }
+uint32_t now = 100;
+uint32_t millis() { return now; }
+struct Display {
+  bool eink = false;
+  bool isEink() const { return eink; }
+} display;
 struct Lpp {
   uint8_t storage[8];
   bool allocated = false;
@@ -127,16 +132,38 @@ struct Home {
   @REFRESH@
 };
 int main() {
-  Home home;
-  home.refresh_sensors();
-  assert(home.sensors_nb == 0 && !home.sensors_scroll);
-  assert(home.sensors_scroll_offset == 0 && sensors.calls == 0);
-  home.sensors_lpp.allocated = true;
-  home.refresh_sensors();
-  assert(home.sensors_nb == 1 && sensors.calls == 1);
-  assert(home.last_sensors_refresh == 100);
-  home.refresh_sensors();
-  assert(sensors.calls == 1);
+  for (unsigned mode = 0; mode < 2; ++mode) {
+    display.eink = mode != 0;
+    const uint32_t interval = display.eink ? 60000 : 5000;
+    sensors.calls = 0;
+    now = 100;
+    Home home;
+    home.refresh_sensors();
+    assert(home.sensors_nb == 0 && !home.sensors_scroll);
+    assert(home.sensors_scroll_offset == 0 && sensors.calls == 0);
+    home.sensors_lpp.allocated = true;
+    home.refresh_sensors();
+    assert(home.sensors_nb == 1 && sensors.calls == 1);
+    assert(home.last_sensors_refresh == now);
+    now += interval - 1;
+    home.refresh_sensors();
+    assert(sensors.calls == 1);
+    ++now;
+    home.refresh_sensors();
+    assert(sensors.calls == 2 && home.last_sensors_refresh == now);
+    // Empty data forces a refresh before either display's interval expires.
+    home.sensors_lpp.size = 0;
+    home.refresh_sensors();
+    assert(sensors.calls == 3);
+    // The same interval boundaries remain valid across millis() wraparound.
+    home.last_sensors_refresh = UINT32_MAX - 100;
+    now = interval - 102;
+    home.refresh_sensors();
+    assert(sensors.calls == 3);
+    ++now;
+    home.refresh_sensors();
+    assert(sensors.calls == 4 && home.last_sensors_refresh == now);
+  }
 }
 '''.replace("@REFRESH@", refresh)
         with tempfile.TemporaryDirectory(prefix="meshcore-sensor-oom-") as temp:
