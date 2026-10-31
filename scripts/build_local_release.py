@@ -16,7 +16,7 @@ import sys
 import tempfile
 
 from build_esp32_partition_migration import bundle_release, verify_archive
-from package_esp32_partition_migration import BOARDS, resolve_pio_build_dir
+from package_esp32_partition_migration import BOARDS, published_full_image, resolve_pio_build_dir
 from package_cascade_release import (category, collect_artifacts, nrf52_sensor_profile,
                                      omit_retired_onboard_qspi_records)
 from station_g3_profiles import omit_redundant_slot_records
@@ -359,12 +359,21 @@ def validate_embedded_bootloader_records(ordinary: list[dict], embedded: list[di
 
 def build_migration_artifacts(work: Path, version: str, short_source: str,
                               jobs: int, environment: dict[str, str],
-                              pio_build_dir: Path | None = None) -> None:
+                              pio_build_dir: Path | None = None,
+                              release_build_dir: Path | None = None) -> None:
     utility_build_dir = resolve_pio_build_dir(
         pio_build_dir, environment=environment, project_dir=ROOT)
     environment = ordinary_build_environment(environment)
     environment["PLATFORMIO_BUILD_DIR"] = str(utility_build_dir)
+    publication = (select_ordinary_full_records(collect_artifacts(
+        release_build_dir, f"{version}-{short_source}"))
+        if release_build_dir is not None else [])
     for target in migration_targets():
+        if published_full_image(publication, target) is not None:
+            # Rebuilding would change timestamps/ELF hashes while retaining
+            # the same source/version filename. Package the already-qualified
+            # ordinary app instead; only legacy-only identities need a build.
+            continue
         matches = list(work.glob(full_image_pattern(target, version, short_source)))
         if len(matches) == 1:
             continue
@@ -672,6 +681,7 @@ def stage_release(work: Path, migration_work: Path, destination: Path, version: 
         with tempfile.TemporaryDirectory(prefix="migration-package-", dir=staging) as temp_packages:
             package_command = [sys.executable, "-B", "scripts/package_esp32_partition_migration.py",
                                "--build-dir", str(migration_work), "--output-dir", temp_packages,
+                               "--release-build-dir", str(firmware),
                                "--pio-build-dir", str(utility_build_dir),
                                "--version", version, "--source", short_source]
             package_log = work / "migration-packaging.log"
@@ -685,7 +695,8 @@ def stage_release(work: Path, migration_work: Path, destination: Path, version: 
                     f"{board}-{version}-{short_source}-migration.zip"))
                 if len(packages) != 1:
                     raise ValueError(f"missing migration package: {board}")
-                verify_archive(packages[0], board, version, short_source)
+                verify_archive(packages[0], board, version, short_source,
+                               full_image=published_full_image(records, BOARDS[board]["target"]))
                 shutil.copy2(packages[0], migrations / packages[0].name)
         bundle_release(staging, migrations, list(BOARDS), version,
                        short_source, "usa-cascade-fixed", "cascade")
@@ -793,14 +804,15 @@ def main() -> None:
     # package. Keep its recipe and resume artifacts outside the ordinary pass.
     build_embedded_bootloader_artifacts(work, embedded_work, args.firmware_version,
                                        short_source, environment)
-    # Keep exact-identity migration inputs outside the ordinary firmware
-    # matrix. collect_artifacts() walks recursively, so nesting these under
-    # work would still publish a second Full image for the same G2 role.
+    # Reuse the exact qualified publication bytes for ordinary targets. Keep
+    # only migration-exclusive legacy identities outside the ordinary matrix:
+    # collect_artifacts() walks recursively, so nesting those under work would
+    # otherwise publish a second Full image for the same G2 role.
     migration_work = ROOT / ".releases" / f".migration-build-{label}"
     migration_environment = environment.copy()
     migration_environment["OUTPUT_DIR"] = str(migration_work)
     build_migration_artifacts(migration_work, args.firmware_version, short_source,
-                              args.pio_jobs, migration_environment, utility_build_dir)
+                              args.pio_jobs, migration_environment, utility_build_dir, work)
     stage_release(work, migration_work, destination, args.firmware_version, source,
                   utility_build_dir, embedded_work=embedded_work)
 

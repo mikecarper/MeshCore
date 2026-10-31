@@ -473,7 +473,7 @@ def portable_profile_exclusions(status):
 def collect_local_release(directory, version, source):
     """Recheck a completed local release without adding migration-only images."""
     from build_esp32_partition_migration import verify_archive
-    from package_esp32_partition_migration import BOARDS
+    from package_esp32_partition_migration import BOARDS, published_full_image
 
     manifest = json.loads((directory / "manifest.json").read_text())
     if (manifest.get("format") != "meshcore-local-release-v1"
@@ -538,7 +538,8 @@ def collect_local_release(directory, version, source):
     extras = []
     for board in BOARDS:
         path = directory / "esp32-partition-migration" / f"{board}-{version}-{source[:8]}-migration.zip"
-        verify_archive(path, board, version, source[:8])
+        verify_archive(path, board, version, source[:8],
+                       full_image=published_full_image(records, BOARDS[board].get("target")))
         extras.append(path)
     if manifest["migration_board_role_count"] != len(extras):
         raise ValueError("local release migration inventory is incomplete")

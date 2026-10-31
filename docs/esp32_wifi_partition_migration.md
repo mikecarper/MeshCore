@@ -82,6 +82,15 @@ qualification fails that release target rather than publishing a smaller
 ordinary image. Direct `--standard` builds and reduced identities remain
 compatibility/development tools outside the ordinary release selection.
 
+The complete local-release recipe reuses the exact qualified ordinary Full
+application in each matching migration ZIP; it does not rebuild that application
+separately. The same source commit and version can still produce different ELF
+timestamps and image hashes, so publication rechecks the complete application
+bytes, not just its board/version name. Migration-only legacy identities remain
+separate. When packaging already-built firmware directly, pass
+`--release-build-dir <staged-firmware-tree>` to the migration packager to bind
+matching packages to those published applications.
+
 An app-only update cannot change the installed partition table. If a device
 already has the required layout, use the matching Full application through a
 supported updater. If its layout needs expansion, use a verified migration

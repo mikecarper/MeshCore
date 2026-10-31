@@ -277,10 +277,13 @@ class ReleasePublicationTest(unittest.TestCase):
                     hashlib.sha256(p.read_bytes()).hexdigest() + "  " + str(p.relative_to(directory)) + "\n"
                     for p in sorted(directory.rglob("*")) if p.is_file() and p.name != "SHA256SUMS.txt"))
             with patch.object(package, "collect_artifacts", return_value=records), \
-                 patch("package_esp32_partition_migration.BOARDS", {"example": {}}), \
-                 patch("build_esp32_partition_migration.verify_archive"):
+                 patch("package_esp32_partition_migration.BOARDS", {"example": {"target": target}}), \
+                 patch("build_esp32_partition_migration.verify_archive") as verify_migration:
                 write_inventory()
                 self.assertEqual(len(package.collect_local_release(directory, VERSION, SOURCE)[0]), 2)
+                self.assertEqual(verify_migration.call_args.kwargs["full_image"],
+                                 next(path for path in full_files if path.suffix == ".bin"
+                                      and not path.name.endswith("-merged.bin")))
                 for field, value in (("artifact_target", "Other_companion_radio_usb"),
                                      ("profile", "auto")):
                     original = manifest["firmware"][1][field]

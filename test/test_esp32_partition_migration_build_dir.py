@@ -7,6 +7,7 @@ import io
 import json
 import os
 from pathlib import Path
+import shutil
 import struct
 import subprocess
 import sys
@@ -212,6 +213,79 @@ print(json.dumps([["platformio", [["build_dir", str(directory.resolve())]]]]))
             archive = package.package_board("heltec-v4", spec, self.artifacts,
                                             self.output, VERSION, SOURCE)
         self.check_archive(archive, "heltec-v4", expected, identity)
+
+    def test_staged_publication_bytes_take_precedence_over_a_separate_rebuild(self):
+        spec, identity = self.qualified_full("heltec-v4")
+        expected = self.utility_tree(self.custom, spec, "PUBLICATION MATCH")
+        publication = self.work / "staged firmware" / "full-profiles"
+        shutil.copytree(self.artifacts, publication)
+        published = next(path for path in publication.glob("*.bin")
+                         if not path.name.endswith("-merged.bin"))
+        original = published.read_bytes()
+        # A separate rebuild is not authoritative merely because its filename
+        # and version are the same. It must never replace the published bytes.
+        (self.artifacts / published.name).write_bytes(b"different second build")
+        archive = package.package_board("heltec-v4", spec, self.artifacts,
+            self.output, VERSION, SOURCE, self.custom,
+            release_build_dir=publication.parent)
+        self.check_archive(archive, "heltec-v4", expected, identity)
+        verify_archive(archive, "heltec-v4", VERSION, SOURCE, full_image=published)
+        with zipfile.ZipFile(archive) as result:
+            self.assertEqual(result.read("full-application.bin"), original)
+            self.assertEqual(parse_container(result.read("full-application.mota")).payload,
+                             original)
+
+    def test_invalid_or_ambiguous_publication_never_falls_back_to_valid_rebuild(self):
+        spec, _ = self.qualified_full("heltec-v4")
+        self.utility_tree(self.custom, spec, "VALID UTILITIES")
+        publication = self.work / "staged firmware"
+        shutil.copytree(self.artifacts, publication)
+        image = next(path for path in publication.glob("*.bin")
+                     if not path.name.endswith("-merged.bin"))
+        original = image.read_bytes()
+        image.write_bytes(b"invalid published app")
+        with self.assertRaises(ValueError):
+            package.package_board("heltec-v4", spec, self.artifacts,
+                self.output, VERSION, SOURCE, self.custom,
+                release_build_dir=publication)
+        self.assertFalse(self.output.exists())
+        image.write_bytes(original)
+        (publication / "duplicate").mkdir()
+        shutil.copy2(image, publication / "duplicate" / image.name)
+        with self.assertRaisesRegex(ValueError, "expected one exact-target Full image"):
+            package.package_board("heltec-v4", spec, self.artifacts,
+                self.output, VERSION, SOURCE, self.custom,
+                release_build_dir=publication)
+        self.assertFalse(self.output.exists())
+
+    def test_absent_migration_only_target_can_use_its_separate_qualified_image(self):
+        spec, identity = self.qualified_full("heltec-v4")
+        expected = self.utility_tree(self.custom, spec, "MIGRATION ONLY")
+        publication = self.work / "ordinary firmware"
+        publication.mkdir()
+        archive = package.package_board("heltec-v4", spec, self.artifacts,
+            self.output, VERSION, SOURCE, self.custom,
+            release_build_dir=publication)
+        self.check_archive(archive, "heltec-v4", expected, identity)
+
+    def test_published_image_selection_requires_one_exact_qualified_full_application(self):
+        spec, _ = self.qualified_full("heltec-v4")
+        target = spec["target"]
+        image = next(path for path in self.artifacts.glob("*.bin")
+                     if not path.name.endswith("-merged.bin"))
+        record = {"manifest": {"target": target, "platform": "ESP32_PLATFORM",
+                               "build_profile": "full"},
+                  "files": [image, image.with_name(image.stem + "-merged.bin")]}
+        self.assertEqual(package.published_full_image([record], target), image)
+        self.assertIsNone(package.published_full_image([record], "another_repeater"))
+        for field, value in (("platform", "NRF52_PLATFORM"), ("build_profile", "standard")):
+            other = {"manifest": {**record["manifest"], field: value}, "files": record["files"]}
+            self.assertIsNone(package.published_full_image([other], target))
+        with self.assertRaisesRegex(ValueError, "multiple published Full"):
+            package.published_full_image([record, record], target)
+        for files in ([], [image, image]):
+            with self.assertRaisesRegex(ValueError, "unique application"):
+                package.published_full_image([{**record, "files": files}], target)
 
     def test_relative_override_is_project_relative_not_caller_relative(self):
         spec, identity = self.qualified_full("heltec-v4")
@@ -584,8 +658,24 @@ class MigrationMetadataTest(unittest.TestCase):
         self.assertEqual(child_environment["MIGRATION_TEST_OTHER"], "preserved-option")
         self.assertEqual(command[command.index("--pio-build-dir") + 1],
                          str(self.fixture.custom.resolve()))
+        self.assertIn("--release-build-dir", command)
+        self.assertEqual(Path(command[command.index("--release-build-dir") + 1]).name, "firmware")
         archive, = (destination / "esp32-partition-migration").glob("*.zip")
         self.fixture.check_archive(archive, "heltec-v4", expected, identity)
+
+    def test_local_utility_builder_never_rebuilds_an_already_qualified_published_target(self):
+        import build_local_release as recipe
+        spec, _ = self.fixture.qualified_full("heltec-v4")
+        work = self.work / "migration only builds"
+        (work / "build-logs").mkdir(parents=True)
+        with mock.patch.object(recipe, "ROOT", self.project), \
+                mock.patch.object(recipe, "BOARDS", {"heltec-v4": spec}), \
+                mock.patch.object(recipe, "run_logged") as build_full, \
+                mock.patch.object(subprocess, "run", return_value=subprocess.CompletedProcess([], 0)), \
+                redirect_stdout(io.StringIO()):
+            recipe.build_migration_artifacts(work, VERSION, SOURCE, 2, {},
+                self.fixture.custom, self.fixture.artifacts)
+        build_full.assert_not_called()
 
     def test_local_release_rejects_full_without_verified_marker(self):
         import build_local_release as recipe
