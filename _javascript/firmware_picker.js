@@ -828,8 +828,34 @@
       profile.controls.display === true && releaseBoundControl(profile, "unifiedV4Display"));
   }
 
+  const RADIO_DETECT_FAMILIES = [
+    ["Tbeam", ["Tbeam_SX1262", "Tbeam_SX1276"]],
+    ["LilyGo_T3S3", ["LilyGo_T3S3_sx1262", "LilyGo_T3S3_sx1276"]],
+    ["Generic_E22", ["Generic_E22_sx1262", "Generic_E22_sx1268"]],
+    ["Meshadventurer", ["Meshadventurer_sx1262", "Meshadventurer_sx1268"]],
+    ["Tenstar_C3", ["Tenstar_C3_sx1262", "Tenstar_C3_sx1268"]],
+    ["muzi_base", ["muzi_base_uno", "muzi_base_duo", "muzi_base_uno_superIO", "muzi_base_duo_superIO"], "NRF52_PLATFORM"],
+  ];
+
+  function autoRadioProfile(profile) {
+    return Boolean(profile && profile.controls &&
+      RADIO_DETECT_FAMILIES.some(function (family) {
+        return profile.hardware === family[0] && profile.controls.platform === (family[2] || "ESP32_PLATFORM");
+      }) &&
+      releaseBoundControl(profile, "autoLoRaRadio"));
+  }
+
   function consolidationSuccessor(profile, candidate) {
     if (!profile || !candidate || profile.role !== candidate.role) return false;
+    const radioFamily = RADIO_DETECT_FAMILIES.find(function (family) {
+      return family[1].includes(profile.hardware);
+    });
+    if (radioFamily && candidate.hardware === radioFamily[0] && autoRadioProfile(candidate)) {
+      return candidate.feature === profile.feature && candidate.ota === profile.ota &&
+        (!profile.sensorProfile || profile.sensorProfile === candidate.sensorProfile) &&
+        (profile.role !== "companion" || isFullCompanion(candidate)) &&
+        (!/^muzi_base_(?:uno|duo)_superIO$/i.test(profile.hardware) || optionalAutoDisplayProfile(candidate));
+    }
     if (/^heltec_v4(?:_3)?(?:_expansionkit)?(?:_tft)?$/.test(profile.hardware) &&
         profile.hardware !== "heltec_v4" && unifiedV4DisplayProfile(candidate)) {
       return candidate.feature === profile.feature && candidate.ota === profile.ota &&
@@ -881,7 +907,7 @@
     const controller = /^heltec_rc32_(?!without_display_)/.test(target) ? "nv3001b"
       : /^heltec_(?:wireless_tracker|tracker_v1_1)_/.test(target) ? "st7735"
       : /^heltec_v4_r8_tft_/.test(target) ? "st7789"
-      : /^muzi_base_(?:uno|duo)_(?:superio_)?companion_radio_/.test(target) ? "sh1107"
+      : /^muzi_base_(?:(?:uno|duo)_(?:superio_)?)?companion_radio_/.test(target) ? "sh1107"
       : /^lilygo_t-echo-lite_(?:non_shell_)?(?:companion_radio_|repeater|room_server)/.test(target) ? "ssd1681" : "";
     const platform = controller === "sh1107" || controller === "ssd1681" ? "NRF52_PLATFORM" : "ESP32_PLATFORM";
     return Boolean(controller && controls && controls.platform === platform &&
@@ -1737,6 +1763,14 @@
       requested[field] = params.get(field) || "";
     });
     [
+      ...RADIO_DETECT_FAMILIES.flatMap(function (family) {
+        return family[1].map(function (hardware) {
+          return [hardware, family[0], function (profile) {
+            return autoRadioProfile(profile) &&
+              (!/_superIO$/i.test(hardware) || isFullCompanion(profile) && optionalAutoDisplayProfile(profile));
+          }];
+        });
+      }),
       ...["heltec_v4_3", "heltec_v4_tft", "heltec_v4_3_tft", "heltec_v4_expansionkit",
         "heltec_v4_expansionkit_tft", "heltec_v4_3_expansionkit_tft"].map(function (hardware) {
         return [hardware, "heltec_v4", unifiedV4DisplayProfile];
@@ -2024,6 +2058,13 @@
     const target = targetWithoutBootloader(profile.target);
     const info = profile.controls || {};
     const notes = [];
+    if (autoRadioProfile(profile)) {
+      notes.push("This image detects the fitted radio at startup. Choose the board and role; a separate radio-chip image is unnecessary.");
+      notes.push(profile.hardware === "muzi_base"
+        ? "The detected radio selects the correct IRQ, oscillator voltage and RF switching. RX power saving is available with either fitted radio."
+        : "LoRa RX power saving is available when an SX1262 is fitted; the running firmware checks the detected chip.");
+      notes.push("Older chip-specific LoRa OTA identities remain distinct. Use their exact update target, or install this shared image locally over USB.");
+    }
     if (combinedPicoCompanion(profile)) {
       notes.push("This Companion image includes USB, Bluetooth LE and WiFi together. Separate transport firmware is unnecessary; this image does not add a wireless firmware updater.");
     }

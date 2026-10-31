@@ -1850,6 +1850,17 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
+  <a href="#automatic-radio-detection" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Automatic radio detection
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#selecting-a-build-profile" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2589,6 +2600,17 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
+  <a href="#automatic-radio-detection" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Automatic radio detection
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#selecting-a-build-profile" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2706,6 +2728,91 @@
 page describes the commands intentionally omitted or limited by build profile.
 The <a href="../cli_command_availability/">CLI Command Availability Matrix</a> expands this
 summary into separate nRF52 and ESP32 command tables.</p>
+<h2 id="automatic-radio-detection">Automatic radio detection</h2>
+<p>Choose the board family and role; these targets detect the fitted radio at
+startup and select its existing driver. Ordinary releases and the firmware
+picker use one shared image per role instead of separate chip choices.</p>
+<table>
+<thead>
+<tr>
+<th>Target prefix</th>
+<th>Detected radios</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Tbeam_*</code></td>
+<td>SX1262, SX1276/78</td>
+</tr>
+<tr>
+<td><code>LilyGo_T3S3_*</code></td>
+<td>SX1262, SX1276/78</td>
+</tr>
+<tr>
+<td><code>Generic_E22_*</code></td>
+<td>SX1262, SX1268</td>
+</tr>
+<tr>
+<td><code>Meshadventurer_*</code></td>
+<td>SX1262, SX1268</td>
+</tr>
+<tr>
+<td><code>Tenstar_C3_*</code></td>
+<td>SX1262, SX1268</td>
+</tr>
+<tr>
+<td><code>muzi_base_*</code></td>
+<td>SX1262 (Uno), LR1121 (Duo)</td>
+</tr>
+</tbody>
+</table>
+<p>For example:</p>
+<pre><code class="language-bash">bash build.sh build-firmware Tbeam_companion_radio_full
+bash build.sh build-firmware LilyGo_T3S3_repeater
+bash build.sh build-firmware Generic_E22_repeater
+bash build.sh build-firmware muzi_base_companion_radio_full
+</code></pre>
+<p>Selection happens after board power is enabled and before saved radio regulator
+and switching settings are applied. The <code>board</code> command reports the detected
+family. SX126x retains RX power saving and buffered SPI switching; SX127x retains
+its own interrupt pin, modulation limits, and power control. The shared ESP32
+factory TX power is 20 dBm; SX1262 also supports an explicit 22 dBm setting.
+The universal T-Beam Companion uses 160 contacts and 40 channels to retain Full
+wireless and OTA support within classic ESP32 RAM. Existing chip-specific
+Companion capacities are unchanged.</p>
+<p>These images cover the classic T-Beam and T3 S3 SX1262/SX1276/78 variants.
+T-Beam Supreme, T-Beam 1W, SX1272, SX1280, and other LR-series boards require
+their own targets. An unrecognized or missing radio cannot fall back to a guessed
+driver or start transmitting. Detection reads chip identification registers
+and normally takes a few tens of milliseconds, with a bounded timeout.
+SX1268 keeps its 410–810 MHz limit and its own power controls. When a compiled
+default is outside that range, an SX1268 starts at 434 MHz; valid saved radio
+settings take precedence. Detection does not identify antenna bands or external
+power amplifiers, so boards with different PA wiring remain separate. Tenstar
+supports its unwired reset pin; a real hardware reset still requires that wire.</p>
+<p>Muzi Base selects the Uno or Duo IRQ pin, TCXO voltage and RF switching only
+after identifying the radio. The same Companion detects the optional SuperIO
+display/GPS accessories and the fitted QSPI flash's actual JEDEC capacity.
+It retains 350 contacts, 40 channels and 256 queued messages. The fixed Uno/Duo
+LoRa OTA recipes keep their historical identities and remain hardware
+qualification builds; the shared infrastructure recipes do not add an OTA
+receiver or bypass the release qualification requirement. For now the shared
+Repeater and Room recipes are explicit <code>pio run</code> qualification builds, excluded
+from ordinary releases. The shared Full Companion replaces the ordinary
+Uno/Duo USB, BLE and SuperIO choices once its packaged capabilities pass.</p>
+<p>The existing <code>Tbeam_SX1262_*</code>, <code>Tbeam_SX1276_*</code>, and
+<code>LilyGo_T3S3_sx1262_*</code>/<code>sx1276_*</code> images keep their names and OTA identities.
+A new universal image has its own target identity; it does not bypass existing
+cross-board OTA checks. Chip-specific targets remain available for explicit
+builds and exact historical LoRa OTA updates. To move to a shared target, install
+its matching image locally over USB. Duplicate ordinary images are omitted only
+when the shared recipe and packaged detection capability are verified.
+Use the Full profile for universal T3 S3 infrastructure;
+both radio drivers exceed its older 1.3 MB standard application slot. Full uses
+the board's existing expanded dual-OTA layout; install its matching merged
+image when moving from the smaller layout. The universal T3 S3 image reserves
+GPIO21/10 as radio DIO pins instead of driving them as RF switches, and uses no
+OLED reset GPIO.</p>
 <h2 id="selecting-a-build-profile">Selecting a build profile</h2>
 <p>The runtime settings profile and the feature profile are separate switches:</p>
 <pre><code class="language-bash">bash build.sh build-firmware RAK_3401_repeater \
