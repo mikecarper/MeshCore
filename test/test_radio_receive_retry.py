@@ -7,11 +7,11 @@ import subprocess
 import tempfile
 import unittest
 
-from test_radio_receive_contract import HARNESS, ROOT, method
+from test_radio_receive_contract import HARNESS, ROOT, conditional_declaration, method
 
 
 class RadioReceiveRetryTests(unittest.TestCase):
-    def build(self, folder, mutation=None, soft_only=False):
+    def build(self, folder, mutation=None, soft_only=False, defines=None):
         source = (ROOT / 'src/helpers/radiolib/RadioLibWrappers.cpp').read_text()
         header = (ROOT / 'src/helpers/radiolib/RadioLibWrappers.h').read_text()
         dispatcher = (ROOT / 'src/Dispatcher.h').read_text()
@@ -64,8 +64,7 @@ class RadioReceiveRetryTests(unittest.TestCase):
         constants = '\n'.join(re.findall(r'^#define NF_\w+\s+[^\n]+', source, re.MULTILINE))
         constants += '\n' + re.search(
             r'^#define RX_POWERSAVING_CONTINUOUS_FALLBACK_US\s+[^\n]+', rxps, re.MULTILINE).group(0)
-        start = header.index('#if defined(USE_SX1262) || defined(USE_SX1268) || defined(USE_LLCC68)')
-        settle = header[start:header.index('#endif', start) + len('#endif')]
+        settle = conditional_declaration(header, 'NoiseFloorSettleMillis')
         harness = HARNESS[:HARNESS.index('int main() {')]
         harness = harness.replace('#include <RadioProfiles.h>',
             '#define MESH_RECEIVE_HARNESS_HAS_DISPATCHER 1\n#include <Dispatcher.h>\n#include <helpers/StaticPoolPacketManager.h>\n'
@@ -153,7 +152,8 @@ class RadioReceiveRetryTests(unittest.TestCase):
             dispatcher_source = folder / 'Dispatcher.cpp'
             dispatcher_source.write_text(original.replace(alignment, ''), encoding='ascii')
         built = subprocess.run([os.environ.get('CXX', 'g++'), '-std=c++17', '-O1',
-            '-DUSE_SX1262=1', '-fsanitize=address,undefined', '-fno-sanitize-recover=all',
+            *(defines if defines is not None else ['-DUSE_SX1262=1']),
+            '-fsanitize=address,undefined', '-fno-sanitize-recover=all',
             *(['-DRADIO_LIVENESS_SOFT_ONLY=1'] if soft_only else []),
             '-fno-pie', '-no-pie', '-I', str(ROOT / 'test/mocks'), '-I', str(ROOT / 'src'),
             str(cpp), str(dispatcher_source), str(ROOT / 'src/Packet.cpp'),
@@ -185,11 +185,23 @@ class RadioReceiveRetryTests(unittest.TestCase):
                 self.assertIn('refused recovery must not report success', result.stderr)
 
     def test_actual_dispatcher_and_receive_lifecycle(self):
-        with tempfile.TemporaryDirectory(prefix='meshcore-rx-retry-') as folder:
-            result = self.run_probe(self.build(folder))
-            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-            self.assertIn('PASS: receive retry lifecycle', result.stdout)
-            print(result.stdout, end='')
+        variants = (
+            ('sx1262', ['-DUSE_SX1262=1']),
+            ('sx1268', ['-DUSE_SX1268=1']),
+            ('llcc68', ['-DUSE_LLCC68=1']),
+            ('other', []),
+            ('auto_off', ['-DMESH_RADIO_AUTO_FAMILY=0', '-DUSE_SX1262=1']),
+            ('auto_sx127x', ['-DMESH_RADIO_AUTO_FAMILY=1', '-DUSE_SX1262=1', '-DUSE_SX1276=1']),
+            ('auto_lr1121', ['-DMESH_RADIO_AUTO_FAMILY=1', '-DMESH_RADIO_AUTO_LR1121=1',
+                             '-DUSE_SX1262=1', '-DUSE_LR1121=1']),
+        )
+        for family, defines in variants:
+            with self.subTest(family=family), tempfile.TemporaryDirectory(
+                    prefix='meshcore-rx-retry-') as folder:
+                result = self.run_probe(self.build(folder, defines=defines))
+                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                self.assertIn('PASS: receive retry lifecycle', result.stdout)
+                print(result.stdout, end='')
 
     def test_failed_profile_transaction_blocks_fifo_delivery_and_rx_rearm(self):
         with tempfile.TemporaryDirectory(prefix='meshcore-profile-repair-rx-') as folder:
