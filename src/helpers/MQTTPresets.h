@@ -87,7 +87,7 @@ static inline bool mqttPresetNeedsSlotCredentials(const MQTTPresetDef* preset) {
 }
 
 // Number of built-in presets
-static const int MQTT_PRESET_COUNT = 37;
+static const int MQTT_PRESET_COUNT = 39;
 
 // Keep the certificate and preset tables in one translation unit. Defining
 // these as header-local constants created a complete flash copy in every MQTT
@@ -200,6 +200,9 @@ extern const MQTTPresetDef MQTT_PRESETS[MQTT_PRESET_COUNT] = {
     { "ntxmesh",       "wss://ntxmesh.dhovin.me:8883",            "ntxmesh.dhovin.me",               ISRG_ROOT_X1,  MQTT_AUTH_JWT,      MQTT_TOPIC_MESHCORE,  0,       true,   55,      nullptr,     nullptr     },
     { "bsmesh",        "wss://mqtt.bsmesh.de:8885",               "mqtt.bsmesh.de",                  ISRG_ROOT_X1,  MQTT_AUTH_JWT,      MQTT_TOPIC_MESHCORE,  0,       true,   55,      nullptr,     nullptr     },
     { "marwoj",        "mqtts://mqtt.marwoj.net:8883",            nullptr,                           ISRG_ROOT_X1,  MQTT_AUTH_USERPASS,  MQTT_TOPIC_MESHCORE,  0,       true,   55,      "observer-agessaman", "ipRwCEclZkX47K" },
+    // LE Gen-Y ECDSA chains anchor at ISRG Root X1.
+    { "sacmesh",       "wss://mqtt.sacmesh.org:443/",             "mqtt.sacmesh.org",                ISRG_ROOT_X1,  MQTT_AUTH_JWT,      MQTT_TOPIC_MESHCORE,  0,       true,   55,      nullptr,     nullptr     },
+    { "upstatemesh",   "wss://mqtt.upst8me.sh:443/mqtt",          "mqtt.upst8me.sh",                 ISRG_ROOT_X1,  MQTT_AUTH_JWT,      MQTT_TOPIC_MESHCORE,  0,       true,   55,      nullptr,     nullptr     },
 };
 
 #else

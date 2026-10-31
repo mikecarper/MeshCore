@@ -167,6 +167,28 @@ TEST(MQTTPresets, BsmeshIsJwtWithIsrgRootX1) {
   EXPECT_FALSE(mqttPresetNeedsSlotCredentials(p));
 }
 
+TEST(MQTTPresets, NewObserverPresetsUseJwtAndIsrgRootX1) {
+  const struct {
+    const char* name;
+    const char* url;
+    const char* audience;
+  } brokers[] = {
+    {"sacmesh", "wss://mqtt.sacmesh.org:443/", "mqtt.sacmesh.org"},
+    {"upstatemesh", "wss://mqtt.upst8me.sh:443/mqtt", "mqtt.upst8me.sh"},
+  };
+  for (const auto& broker : brokers) {
+    SCOPED_TRACE(broker.name);
+    const MQTTPresetDef* p = findMQTTPreset(broker.name);
+    ASSERT_NE(nullptr, p);
+    EXPECT_STREQ(broker.url, p->server_url);
+    EXPECT_STREQ(broker.audience, p->jwt_audience);
+    EXPECT_EQ(ISRG_ROOT_X1, p->ca_cert);
+    EXPECT_EQ(MQTT_AUTH_JWT, p->auth_type);
+    EXPECT_EQ(MQTT_TOPIC_MESHCORE, p->topic_style);
+    EXPECT_FALSE(mqttPresetNeedsSlotCredentials(p));
+  }
+}
+
 // ---- slot count constants -------------------------------------------------
 
 TEST(MQTTPresets, SlotCountsAreSane) {

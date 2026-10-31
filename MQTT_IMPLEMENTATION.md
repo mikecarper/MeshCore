@@ -234,6 +234,8 @@ below documents the current build.
 | `idahomesh` | `wss://mqtt.idahomesh.org:443/mqtt` | JWT | -- |
 | `ntxmesh` | `wss://ntxmesh.dhovin.me:8883` | JWT | -- |
 | `bsmesh` | `wss://mqtt.bsmesh.de:8885` | JWT | -- |
+| `sacmesh` | `wss://mqtt.sacmesh.org:443/` | JWT | -- |
+| `upstatemesh` | `wss://mqtt.upst8me.sh:443/mqtt` | JWT | -- |
 | `custom` | your own broker | User/pass, or JWT when `mqttN.audience` is set | `set mqttN.server` (see [custom broker setup](#custom-brokers)) |
 | `none` | (slot disabled) | -- | -- |
 
