@@ -34,6 +34,10 @@ class NeighborScopeStorageTest(unittest.TestCase):
 #include <cstddef>
 #define MAX_NEIGHBOURS 254
 #define PUB_KEY_SIZE 32
+#include <helpers/Radio2DiscoverTrailer.h>
+struct MQTTRadio2Info { const char* radio; const char* mode; bool temporary; };
+inline const MQTTRadio2Info* radio2InfoFor(const Radio2DiscoverTrailer&, MQTTRadio2Info&,
+                                           char*, size_t) { return nullptr; }
 namespace mesh {
 struct Identity { uint8_t pub_key[32]; };
 struct Utils { static void toHex(char* out, const uint8_t*, size_t) { out[0] = 0; } };
@@ -44,7 +48,7 @@ struct MQTTBridge {
 struct MQTTMessageBuilder {
   struct NeighborsMessageEntry {
     const char* key; float snr; uint32_t age; const char* scopes;
-    const char* status; int16_t rssi;
+    const char* status; int16_t rssi; const MQTTRadio2Info* radio2;
   };
   static size_t measureNeighborsMessageEntry(const NeighborsMessageEntry&) { return 100; }
 };
@@ -91,6 +95,7 @@ int main() {
             path = Path(directory)
             (path / "test.cpp").write_text(code)
             subprocess.run(["g++", "-std=c++17", "-fsanitize=address,undefined",
+                            "-I" + str(ROOT / "src"),
                             str(path / "test.cpp"), "-o", str(path / "test")], check=True)
             subprocess.run([str(path / "test")], check=True)
 
@@ -191,6 +196,16 @@ int main() {
     ++requested; tag=uint32_t(requested); return admit ? &packet : nullptr;
   }
   void touchNeighbourHeard(const mesh::Identity&,uint32_t,float,int16_t) { ++touched; }
+  // The fixture keeps each neighbour's radio2 beside it; the repeater's
+  // real lookup (a small cache) is tested in test_radio2_neighbour_cache.py.
+  Radio2DiscoverTrailer neighbourRadio2(const mesh::Identity& id) const {
+    for (const auto& n : neighbours) if (!memcmp(n.id.pub_key,id.pub_key,32)) return n.radio2;
+    return Radio2DiscoverTrailer::unknown();
+  }
+  const MQTTRadio2Info* selfRadio2(MQTTRadio2Info& out,char* radio,size_t size) {
+    snprintf(radio,size,"910.525000,250.0,7,5");
+    out.radio=radio; out.mode="rxtx"; out.temporary=false; return &out;
+  }
   void resetNeighborDiscoverJsonBudget() {
     strcpy(self_scopes_buf,"sea;pdx"); strcpy(self_default_scope_buf,"sea");
     strcpy(neighbor_discover_origin,"Seattle");

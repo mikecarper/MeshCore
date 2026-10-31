@@ -1267,6 +1267,23 @@ bool MyMesh::allowTransportPacket(const mesh::Packet* packet, uint8_t context) {
 }
 #endif
 
+#if MESH_PACKET_LOGGING && !MESH_PACKET_LOGGING_COMPACT
+// The frame as sent, ahead of the Dispatcher's TX line, like logRxRaw does for
+// RX: RAW, then the radio2 marker when the packet goes out on radio2. Without
+// the RAW line meshcoretomqtt publishes a TX with the last received frame.
+void mesh::usbLogTxFrame(const char* log_time, const mesh::Packet* packet, const uint8_t raw[], int len) {
+  mesh::SerialLogLine<> line;
+  line.printf("%s RAW: ", log_time);
+  line.hex(raw, len);
+  line.flush(mesh::usbLoggingPort());
+  if (packet->radio_profile == 1) {
+    mesh::SerialLogLine<64> radio_line;
+    radio_line.printf("%s RADIO: radio2", log_time);
+    radio_line.flush(mesh::usbLoggingPort());
+  }
+}
+#endif
+
 void MyMesh::logRxRaw(float snr, float rssi, const uint8_t raw[], int len) {
 #if MESH_PACKET_LOGGING
   if (mesh::isUsbPacketLoggingAllowed()) {
@@ -1277,6 +1294,14 @@ void MyMesh::logRxRaw(float snr, float rssi, const uint8_t raw[], int len) {
     line.printf("%s RAW: ", getLogDateTime());
     line.hex(raw, len);
     line.flush(mesh::usbLoggingPort());
+    // radio2 (MediaMesh): a line of its own after RAW and before the RX
+    // line, which stays unchanged for meshcoretomqtt (its pattern is anchored
+    // to the end of the line). See MQTT_IMPLEMENTATION.md, "radio2".
+    if (_radio->receiveProfile() == 1) {
+      mesh::SerialLogLine<64> radio_line;
+      radio_line.printf("%s RADIO: radio2", getLogDateTime());
+      radio_line.flush(mesh::usbLoggingPort());
+    }
 #endif
   }
 #endif
@@ -3697,12 +3722,23 @@ void MyMesh::onControlDataRecv(mesh::Packet* packet) {
     }
     putNeighbour(id, rtc_clock.getCurrentTime(), packet->getSNR(),
                  packet->getRSSI());
+#if defined(WITH_MQTT_NEIGHBORS)
+    // Its radio2 (MediaMesh) profile, when the reply carries one after the
+    // full key; no trailer (older firmware) is unknown, not off.
+    noteNeighbourRadio2(id, Radio2DiscoverTrailer::parse(
+        &packet->payload[6 + PUB_KEY_SIZE], packet->payload_len - (6 + PUB_KEY_SIZE)));
+#endif
   }
 }
 
 void MyMesh::sendNodeDiscoverReq() {
   uint8_t data[10];
   data[0] = CTL_TYPE_NODE_DISCOVER_REQ; // prefix_only=0
+#if defined(WITH_MQTT_NEIGHBORS)
+  // Bit 1: "add your radio2 profile" (docs/radio_profiles.md). Stock firmware
+  // ignores it; the reply limit is unchanged. Published per neighbour as `radio2`.
+  data[0] |= 0x02;
+#endif
   data[1] = (1 << ADV_TYPE_REPEATER);
   getRNG()->random(&data[2], 4); // tag
   memcpy(&pending_discover_tag, &data[2], 4);
@@ -3857,6 +3893,10 @@ MyMesh::MyMesh(mesh::MainBoard &board, mesh::Radio &radio, mesh::MillisecondCloc
 
 #if MAX_NEIGHBOURS
   memset(neighbours, 0, sizeof(neighbours));
+#endif
+#if defined(WITH_MQTT_NEIGHBORS)
+  memset(radio2_cache, 0, sizeof(radio2_cache));   // all Unknown
+  radio2_cache_next = 0;
 #endif
 
   // defaults
@@ -14283,9 +14323,12 @@ void MyMesh::resetNeighborDiscoverJsonBudget() {
   neighbor_discover_publish_count = 0;
   neighbor_discover_queried_count = 0;
   neighbor_discover_truncated = false;
+  MQTTRadio2Info self_radio2;
+  char self_radio2_text[48];
   neighbor_discover_json_size = MQTTMessageBuilder::measureNeighborsMessageBase(
     neighbor_discover_origin, self_pubkey_hex, timestamp, self_scopes_buf,
-    self_default_scope_buf, neighbor_discover_count);
+    self_default_scope_buf, neighbor_discover_count,
+    selfRadio2(self_radio2, self_radio2_text, sizeof(self_radio2_text)));
 }
 
 // Account for one terminal result. The base measurement reserves maximum-width
@@ -14311,6 +14354,11 @@ bool MyMesh::completeNeighborDiscoverEntry() {
       : (entry.status == ND_SEND_FAILED ? "send_failed" : "timeout")
   };
   measured.rssi = entry.rssi;
+  MQTTRadio2Info measured_radio2;
+  char measured_radio2_text[48];
+  measured.radio2 = radio2InfoFor(neighbor_discover_radio2[neighbor_discover_next],
+                                  measured_radio2, measured_radio2_text,
+                                  sizeof(measured_radio2_text));
   size_t added = MQTTMessageBuilder::measureNeighborsMessageEntry(measured);
   if (neighbor_discover_publish_count > 0) added++;  // array comma
 
@@ -14357,6 +14405,62 @@ bool MyMesh::handleNeighborDiscoverResponse(int overlay_idx,
   entry.rssi = rssi;
   touchNeighbourHeard(neighbor_discover[overlay_idx].id, entry.heard_timestamp, snr, rssi);
   return true;
+}
+
+void MyMesh::noteNeighbourRadio2(const mesh::Identity& id,
+                                 const Radio2DiscoverTrailer& radio2) {
+  if (radio2.state == Radio2DiscoverTrailer::Unknown) return;  // no trailer: keep what we knew
+  int slot = -1, empty = -1, off = -1;
+  for (int i = 0; i < RADIO2_CACHE_SIZE; i++) {
+    const Radio2CacheEntry& e = radio2_cache[i];
+    if (e.radio2.state == Radio2DiscoverTrailer::Unknown) {
+      if (empty < 0) empty = i;
+    } else if (memcmp(e.prefix, id.pub_key, sizeof(e.prefix)) == 0) {
+      slot = i;
+      break;
+    } else if (e.radio2.state == Radio2DiscoverTrailer::Off && off < 0) {
+      off = i;
+    }
+  }
+  if (slot < 0) slot = empty;
+  if (slot < 0 && radio2.state == Radio2DiscoverTrailer::On) {
+    // A full cache keeps MediaMesh nodes: an On report replaces an Off one,
+    // else the oldest slot in turn. An Off report is dropped.
+    if (off >= 0) {
+      slot = off;
+    } else {
+      slot = radio2_cache_next;
+      radio2_cache_next = (uint8_t)((radio2_cache_next + 1) % RADIO2_CACHE_SIZE);
+    }
+  }
+  if (slot < 0) return;
+  memcpy(radio2_cache[slot].prefix, id.pub_key, sizeof(radio2_cache[slot].prefix));
+  radio2_cache[slot].radio2 = radio2;
+}
+
+Radio2DiscoverTrailer MyMesh::neighbourRadio2(const mesh::Identity& id) const {
+  for (int i = 0; i < RADIO2_CACHE_SIZE; i++) {
+    const Radio2CacheEntry& e = radio2_cache[i];
+    if (e.radio2.state != Radio2DiscoverTrailer::Unknown
+        && memcmp(e.prefix, id.pub_key, sizeof(e.prefix)) == 0) {
+      return e.radio2;
+    }
+  }
+  return Radio2DiscoverTrailer::unknown();
+}
+
+const MQTTRadio2Info* MyMesh::selfRadio2(MQTTRadio2Info& out, char* radio, size_t radio_size) {
+  const mesh::RadioProfiles* profiles = _radio->profiles();
+  if (!profiles || !profiles->enabled()
+      || profiles->secondary.params.protocol != mesh::RadioProfileProtocol::MeshCore) {
+    return nullptr;
+  }
+  const mesh::RadioProfileParams& p2 = profiles->secondary.params;
+  MQTTMessageBuilder::formatRadioProfile(p2.freq, p2.bw, p2.sf, p2.cr, radio, radio_size);
+  out.radio = radio;
+  out.mode = profiles->secondary.mode == mesh::RadioProfileMode::RxTx ? "rxtx" : "rx";
+  out.temporary = profiles->secondary_temporary;
+  return &out;
 }
 
 void MyMesh::touchNeighbourHeard(const mesh::Identity& id,
@@ -14476,12 +14580,18 @@ void MyMesh::finishNeighborDiscover() {
   const size_t hex_size = PUB_KEY_SIZE * 2 + 1;
   const size_t entries_bytes =
     sizeof(MQTTMessageBuilder::NeighborsMessageEntry) * publish_count;
-  void* scratch = neighborsAlloc(entries_bytes + hex_size * publish_count);
+  // Each entry's radio2 (MediaMesh) report and its "MHz,kHz,SF,CR" text.
+  const size_t radio2_text_size = 48;
+  const size_t radio2_bytes = sizeof(MQTTRadio2Info) * publish_count;
+  void* scratch = neighborsAlloc(entries_bytes + radio2_bytes
+                                 + (hex_size + radio2_text_size) * publish_count);
   char* json_buf = (char*)neighborsAlloc(MQTTBridge::NEIGHBORS_JSON_BUFFER_SIZE);
 
   if (json_buf && (scratch || publish_count == 0)) {
     auto* entries = (MQTTMessageBuilder::NeighborsMessageEntry*)scratch;
-    char* pubkey_hex = (char*)scratch + entries_bytes;
+    auto* radio2_infos = (MQTTRadio2Info*)((char*)scratch + entries_bytes);
+    char* pubkey_hex = (char*)scratch + entries_bytes + radio2_bytes;
+    char* radio2_text = pubkey_hex + hex_size * publish_count;
     uint32_t now_secs = getRTCClock()->getCurrentTime();
 
     for (int i = 0; i < publish_count; i++) {
@@ -14495,6 +14605,8 @@ void MyMesh::finishNeighborDiscover() {
       entries[i].heard_unknown = !heard_known;
       entries[i].heard_secs_ago = heard_known ? (now_secs - entry.heard_timestamp) : 0;
       entries[i].scopes = neighbor_discover_scopes[i];
+      entries[i].radio2 = radio2InfoFor(neighbor_discover_radio2[i], radio2_infos[i],
+                                        &radio2_text[i * radio2_text_size], radio2_text_size);
       switch (entry.status) {
         case ND_RESPONDED:   entries[i].status = "responded"; break;
         case ND_SEND_FAILED: entries[i].status = "send_failed"; break;
@@ -14519,12 +14631,15 @@ void MyMesh::finishNeighborDiscover() {
 #else
     JsonDocument doc;
 #endif
+    MQTTRadio2Info self_radio2;
+    char self_radio2_text[48];
     int json_len = MQTTMessageBuilder::buildNeighborsMessage(
       doc, neighbor_discover_origin, self_pubkey_hex, timestamp, self_scopes_buf,
       self_default_scope_buf, entries, publish_count,
       json_buf, MQTTBridge::NEIGHBORS_JSON_BUFFER_SIZE,
       neighbor_discover_count, neighbor_discover_queried_count,
-      neighbor_discover_truncated);
+      neighbor_discover_truncated,
+      selfRadio2(self_radio2, self_radio2_text, sizeof(self_radio2_text)));
 
     if (json_len > 0 && mqtt_bridge) {
       mqtt_bridge->requestPublishNeighbors(json_buf, (size_t)json_len);
@@ -14663,6 +14778,7 @@ bool MyMesh::startNeighborDiscover(char* reply) {
   }
 
   memset(neighbor_discover_metadata, 0, sizeof(neighbor_discover_metadata));
+  memset(neighbor_discover_radio2, 0, sizeof(neighbor_discover_radio2));  // Unknown
   for (int i = 0; i < neighbor_discover_count; i++) {
     const auto& source = neighbours[order[i]];
     neighbor_discover[i].id = source.id;
@@ -14672,6 +14788,7 @@ bool MyMesh::startNeighborDiscover(char* reply) {
       metadata.snr = source.snr;
       metadata.rssi = source.rssi;
       metadata.status = ND_UNSENT;
+      neighbor_discover_radio2[i] = neighbourRadio2(source.id);
     }
   }
 

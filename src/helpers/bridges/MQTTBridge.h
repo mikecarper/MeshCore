@@ -555,7 +555,8 @@ private:
   bool publishPacket(mesh::Packet* packet, bool is_tx, bool& has_eligible_target,
                      const uint8_t* raw_data = nullptr, int raw_len = 0,
                      float snr = 0.0f, float rssi = 0.0f);
-  bool publishRaw(mesh::Packet* packet, bool& has_eligible_target);
+  bool publishRaw(mesh::Packet* packet, bool is_tx, bool& has_eligible_target);
+  const MQTTRadio2Info* radio2StatusInfo(MQTTRadio2Info& out, char* radio, size_t radio_size) const;
 #if defined(WITH_MQTT_NEIGHBORS)
   // Publishes the pending _neighbors_json_buffer to every connected slot's
   // neighbors topic. Runs on the MQTT task (Core 0) only.

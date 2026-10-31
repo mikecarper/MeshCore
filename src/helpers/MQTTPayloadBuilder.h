@@ -3,6 +3,7 @@
 #include <ArduinoJson.h>
 #include <stddef.h>
 #include <stdint.h>
+#include "Radio2DiscoverTrailer.h"
 
 // A healthy slot reports sibling outages because a disconnected slot cannot
 // report itself. Defaults omit the fields for existing callers.
@@ -14,6 +15,36 @@ struct MQTTConnHealth {
   int connect_failures = -1; // failed attempts/starts across all slots since boot
   int slots_breaker = -1;
 };
+
+// radio2 (MediaMesh) as an observer reports it: the node's own second profile
+// in the status `radios` list and the neighbors message's `self.radio2`, or a
+// neighbour's profile from its DISCOVER_RESP trailer. `radio` is
+// "MHz,kHz,SF,CR" like the status `radio` field (nullptr when mode is "off");
+// `mode` is "rx", "rxtx" or "off". No default initializers: aggregate.
+struct MQTTRadio2Info {
+  const char* radio;
+  const char* mode;
+  bool temporary;
+};
+
+// A neighbour's DISCOVER_RESP trailer as the neighbors message's `radio2`:
+// nullptr when it sent none (the key is then left out), `radio` only when on.
+inline const MQTTRadio2Info* radio2InfoFor(const Radio2DiscoverTrailer& t, MQTTRadio2Info& out,
+                                           char* radio, size_t radio_size) {
+  if (t.state == Radio2DiscoverTrailer::Unknown) return nullptr;
+  out.mode = t.modeName();
+  out.temporary = t.temporary;
+  out.radio = nullptr;
+  if (t.state == Radio2DiscoverTrailer::On && radio && radio_size) {
+    t.formatRadio(radio, radio_size);
+    out.radio = radio;
+  }
+  return &out;
+}
+
+// The id a radio2 packet carries (`rx_radio_id`/`tx_radio_id`), and the status
+// `radios` entry's id: the multi-radio convention CoreScope reads (#1869).
+static const char* const kMQTTRadio2Id = "radio2";
 
 // Mesh-independent JSON serialization core for MQTT publication payloads.
 // MQTTMessageBuilder keeps the firmware-facing API and delegates these three
@@ -44,7 +75,10 @@ public:
     int packets_sent = -1,
     int packets_received = -1,
     const char* repeat = nullptr,
-    const MQTTConnHealth& conn_health = MQTTConnHealth()
+    const MQTTConnHealth& conn_health = MQTTConnHealth(),
+    // radio2 on (rx or rxtx, MeshCore): adds `radios: [{id: "radio2", radio,
+    // mode, mediamesh: true, temporary}]`. nullptr (radio2 off) adds nothing.
+    const MQTTRadio2Info* radio2 = nullptr
   );
 
   static int buildPacketMessage(
@@ -69,7 +103,11 @@ public:
     int path_hash_size,
     size_t max_path_bytes,
     char* buffer,
-    size_t buffer_size
+    size_t buffer_size,
+    // Set for a packet received or sent on radio2: adds `rx_radio_id` (rx) or
+    // `tx_radio_id` (tx) with this id, and `mediamesh: true`. nullptr (the main
+    // radio) leaves the message byte-for-byte as before.
+    const char* radio_id = nullptr
   );
 
   static int buildRawMessage(
@@ -79,7 +117,9 @@ public:
     const char* timestamp,
     const char* raw,
     char* buffer,
-    size_t buffer_size
+    size_t buffer_size,
+    const char* radio_id = nullptr,  // as buildPacketMessage
+    bool is_tx = false
   );
 
   struct NeighborsMessageEntry {
@@ -94,6 +134,10 @@ public:
     // aggregate for the device toolchain, and a zeroed tail means "age known",
     // so size-measurement callers keep reserving the widest numeric value.
     bool heard_unknown;
+    // The neighbour's radio2 from its DISCOVER_RESP trailer. nullptr = it sent
+    // none (older firmware, or no answer): the `radio2` key is left out, which
+    // consumers read as unknown, never as off.
+    const MQTTRadio2Info* radio2;
   };
 
   // Build neighbors-table JSON for the meshcore/{iata}/{device}/neighbors topic.
@@ -112,7 +156,8 @@ public:
     size_t buffer_size,
     int total_neighbors = -1,
     int queried_neighbors = -1,
-    bool truncated = false
+    bool truncated = false,
+    const MQTTRadio2Info* self_radio2 = nullptr  // `self.radio2`; nullptr leaves it out
   );
 
   // Exact serialized-size components used by paced neighbor discovery. The
@@ -124,7 +169,8 @@ public:
     const char* timestamp,
     const char* self_scopes,
     const char* self_default_scope,
-    int total_neighbors
+    int total_neighbors,
+    const MQTTRadio2Info* self_radio2 = nullptr
   );
   static size_t measureNeighborsMessageEntry(const NeighborsMessageEntry& neighbor);
 };

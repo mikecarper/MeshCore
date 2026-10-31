@@ -69,7 +69,8 @@ struct ACL {
   ClientInfo* getClientByIdx(int i) { return &clients.at(size_t(i)); }
 };
 struct GuestLogin { bool value=false; bool enabled() const { return value; } };
-struct NeighbourInfo { mesh::Identity id; uint32_t heard_timestamp; int8_t snr; int16_t rssi; };
+struct NeighbourInfo { mesh::Identity id; uint32_t heard_timestamp; int8_t snr; int16_t rssi;
+  Radio2DiscoverTrailer radio2; };
 static bool fail_scratch=false, fail_json=false;
 static unsigned allocation=0;
 static void* neighborsAlloc(size_t size) {
@@ -106,6 +107,12 @@ template<class Mesh> std::string runPass(Mesh& m,int count,int result,size_t sco
     row.heard_timestamp=1799999700+uint32_t(i);
     row.snr=int8_t(i%32);
     row.rssi=int16_t(-80-i%15);
+  }
+  // The newest neighbour (published first) answered the radio2 flag: MediaMesh
+  // 911.150 MHz / 250 kHz / SF7 / CR5, rxtx. The rest sent no trailer.
+  if (count>0) {
+    static const uint8_t trailer[]={1,0x05,0x2E,0xE7,0x0D,0x00,0x90,0xD0,0x03,0x00,7,5};
+    m.neighbours[count-1].radio2=Radio2DiscoverTrailer::parse(trailer,sizeof(trailer));
   }
   memset(m.neighbor_discover_scopes,'z',sizeof(m.neighbor_discover_scopes));
   allocation=0;
@@ -147,6 +154,21 @@ template<class Mesh> std::string runPass(Mesh& m,int count,int result,size_t sco
   assert(!deserializeJson(document,m.mock_bridge.last_json));
   assert(document["total_neighbors"].template as<int>()==count);
   if(count>0) assert(document["neighbors"][0]["pubkey"].template as<const char*>()!=nullptr);
+  // radio2 (MediaMesh): this node's own, and the one neighbour that reported one.
+  assert(!strcmp(document["self"]["radio2"]["mode"].template as<const char*>(),"rxtx"));
+  {
+    int with_radio2=0;
+    for (JsonObject nb : document["neighbors"].template as<JsonArray>()) {
+      if (!nb["radio2"].template is<JsonObject>()) continue;
+      ++with_radio2;
+      assert(!strcmp(nb["radio2"]["mode"].template as<const char*>(),"rxtx"));
+      assert(!strcmp(nb["radio2"]["radio"].template as<const char*>(),"911.150000,250.0,7,5"));
+      assert(nb["pubkey"].template as<const char*>()[0]==
+             "0123456789abcdef"[((count-1)>>4)&15]);
+    }
+    const bool newest_published=count>0 && document["neighbors"].template as<JsonArray>().size()>0;
+    assert(with_radio2==(newest_published ? 1 : 0));
+  }
   assert(document["neighbors"].template as<JsonArray>().size()<=size_t(count));
   if(count>MQTTBridge::NEIGHBORS_MAX_PUBLISH_ENTRIES)
     assert(document["truncated"].template as<bool>());

@@ -877,6 +877,7 @@ While `mqtt.neighbors` is on, `get mqtt.status` appends `nbr: <next>/<last>` -- 
 - Timestamps are always emitted in UTC with an explicit `+00:00` offset.
 - The `stats` object is only included when at least one stat value is available; individual fields are omitted when their value is unavailable.
 - `packets_sent` / `packets_received` are cumulative totals since boot (flood + direct), sourced from the dispatcher counters.
+- `radios` appears only while radio2 is on (`rx` or `rxtx`) with the MeshCore protocol; see [radio2 (MediaMesh)](#radio2-mediamesh) below.
 
 ### Packet Message
 ```json
@@ -906,6 +907,7 @@ While `mqtt.neighbors` is on, `get mqtt.status` appends `nbr: <next>/<last>` -- 
 - `time` and `date` are always UTC (`HH:MM:SS` and `DD/MM/YYYY`); `timestamp` is UTC with an explicit `+00:00` offset.
 - `SNR`, `RSSI`, and `score` are only present for RX packets (received from radio). TX packets omit these fields since the packet originates from this node.
 - `score` is the firmware's rebroadcast score for the received packet (the same value used to compute flood-rebroadcast delay), scaled x1000 to match the integer printed in the serial RX log - e.g. a score of `0.234` is emitted as `"234"` (range `0`-`1000`). It is recomputed at publish time from the packet's SNR and length via the radio's `packetScore()`, so it matches what the firmware used on receive. Omitted when unavailable (e.g. the non-PSRAM reconstruction-less fallback path).
+- `rx_radio_id` / `tx_radio_id` and `mediamesh` are only present for packets received or sent on radio2; see [radio2 (MediaMesh)](#radio2-mediamesh) below.
 - `path` is only present for direct-route packets that carry path data. It is a JSON array of lowercase hex hop tokens, one element per hop - e.g. `["aa","bb","cc"]` for single-byte hashes, or `["aaaa","bbbb"]` for multi-byte hashes. This matches the `path` representation emitted by [meshcore-packet-capture](https://github.com/agessaman/meshcore-packet-capture).
 
 ### Raw Message
@@ -971,6 +973,85 @@ itself on the next publish cycle.
 `self.default_scope` is the region name this node floods to by default (`region
 default`); it is `*` when no default region is set, matching the unscoped flood
 the radio actually performs in that case.
+
+`self.radio2` and each neighbor's `radio2` are described under
+[radio2 (MediaMesh)](#radio2-mediamesh) below.
+
+### radio2 (MediaMesh)
+
+An observer with radio2 tags what used it, so analyzers can tell MediaMesh
+traffic and MediaMesh repeaters apart (CoreScope draws MediaMesh paths
+differently). Every key below is optional and absent otherwise: main-radio
+messages are byte-for-byte unchanged, no topic changes, and radio2 packets were
+already published before, untagged. Consumers that do not know these keys
+ignore them.
+
+**Status:** while radio2 is on with the MeshCore protocol, a `radios` list, the
+multi-radio convention CoreScope reads (`id` + `radio`, its #1869). `radio`
+stays the main radio.
+```json
+"radios": [{ "id": "radio2", "radio": "911.150000,250.0,7,5", "mode": "rxtx", "mediamesh": true, "temporary": false }]
+```
+`mode` is `rx` or `rxtx`; `temporary` is `true` while a `tempradio2` runs.
+
+**Packets and raw:** a packet received on radio2 adds `"rx_radio_id": "radio2"`,
+one sent on radio2 adds `"tx_radio_id": "radio2"`, and both add
+`"mediamesh": true` (a JSON boolean). The packet's own profile decides
+(`Packet::radio_profile`, captured on receive), not the radio's profile at
+publish time. A packet sent on both profiles is published once per
+transmission, and only the radio2 copy is tagged.
+
+**Neighbors:** the neighbor refresh asks for each neighbor's radio2 profile (bit
+`0x02` of `DISCOVER_REQ`, see `docs/radio_profiles.md`) and reports it:
+```json
+"self":      { "scopes": "DEN", "default_scope": "*",
+               "radio2": { "radio": "910.525000,250.0,7,5", "mode": "rxtx", "temporary": false } },
+"neighbors": [
+  { "pubkey": "0011…", "…": "…", "radio2": { "radio": "911.150000,250.0,7,5", "mode": "rx", "temporary": false } },
+  { "pubkey": "8899…", "…": "…", "radio2": { "mode": "off" } }
+]
+```
+`mode` is `rx`, `rxtx` or `off`; `radio` and `temporary` only when it is not
+`off`. **A missing `radio2` means unknown, never off.** These are cached,
+last-known reports, not confirmation that a neighbor answered this cycle.
+Repeaters keep a 24-entry RAM cache with no age expiry; a response without a
+trailer preserves the cached report. New reports update an existing entry.
+When full, an on report replaces an off entry first, then entries in rotation
+if all are on; an off report for an uncached node is dropped. Evicted reports
+become unknown. Room servers keep the report with each neighbor instead;
+a response without a trailer clears it to unknown. Neither role refreshes
+a cached report when the neighbor does not answer. `self.radio2` is left out
+while this node's radio2 is off.
+
+**USB packet log (serial observers, e.g. nRF52 with meshcoretomqtt):** a
+repeater or room server that receives a packet on radio2 prints a line of its
+own between the packet's `RAW` and `RX` lines:
+```
+12:34:56 - 29/10/2026 U RAW: 15A3…
+12:34:56 - 29/10/2026 U RADIO: radio2
+12:34:56 - 29/10/2026 U: RX, len=64 (type=4, route=F, payload_len=48) SNR=9 RSSI=-71 score=1000 time=88 hash=…
+```
+For a packet it sends, it prints the frame as sent ahead of the `TX` line, in
+the same order, with the marker when the packet goes out on radio2:
+```
+12:34:57 - 29/10/2026 U RAW: 15A4…
+12:34:57 - 29/10/2026 U RADIO: radio2
+12:34:57 - 29/10/2026 U: TX, len=65 (type=4, route=F, payload_len=48)
+```
+Before this, a `TX` line had no `RAW` of its own, so meshcoretomqtt published
+each transmission with the last frame it had received. Now it publishes the
+frame actually sent, and an observer's own radio2 transmissions show it runs
+MediaMesh.
+
+The `RX` and `TX` lines are unchanged, so readers that match them to the end
+(meshcoretomqtt does) keep working, and a reader that does not know `RADIO:`
+skips the line. One that does applies it to the next `RX` or `TX` line only (a
+new `RAW` line drops it) and publishes the same `rx_radio_id`/`tx_radio_id` and
+`mediamesh` keys as above. Only repeaters and room servers print these lines:
+reception from their raw-receive hook, transmission from `mesh::usbLogTxFrame`,
+which the dispatcher calls just before its `TX` line. Other roles leave that
+weak function undefined, so Companion builds pay only a null test, and compact
+logging (`R`/`T` hex lines) is unchanged.
 
 ## Key Features
 

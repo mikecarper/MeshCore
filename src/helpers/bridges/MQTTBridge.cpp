@@ -3978,7 +3978,7 @@ void MQTTBridge::processPacketQueue() {
     bool raw_eligible = false;
     bool raw_published = false;
     if (_obs->mqtt_raw_enabled) {
-      raw_published = publishRaw(&queued.packet_copy, raw_eligible);
+      raw_published = publishRaw(&queued.packet_copy, queued.is_tx, raw_eligible);
     }
 
     // Decide intentional completion once across the entire queue item. An
@@ -4112,7 +4112,7 @@ void MQTTBridge::processPacketQueue() {
     bool raw_eligible = false;
     bool raw_published = false;
     if (_obs->mqtt_raw_enabled) {
-      raw_published = publishRaw(&queued.packet_copy, raw_eligible);
+      raw_published = publishRaw(&queued.packet_copy, queued.is_tx, raw_eligible);
     }
 
     // Decide intentional completion once across the entire queue item. An
@@ -4311,6 +4311,11 @@ bool MQTTBridge::publishStatus(uint8_t slot_mask) {
   // Internal heap free (for diagnosing repeater hangs from internal heap exhaustion)
   int internal_heap_free = (int)heap_caps_get_free_size(MALLOC_CAP_INTERNAL);
 
+  // radio2 (MediaMesh): the status `radios` entry when it is on.
+  char radio2_info[64];
+  MQTTRadio2Info radio2 = {nullptr, nullptr, false};
+  const MQTTRadio2Info* radio2_report = radio2StatusInfo(radio2, radio2_info, sizeof(radio2_info));
+
   int len = MQTTMessageBuilder::buildStatusMessage(
     _json_scratch_doc,
     _origin, origin_id, _board_model, _firmware_version, radio_info,
@@ -4318,7 +4323,7 @@ bool MQTTBridge::publishStatus(uint8_t slot_mask) {
     battery_mv, uptime_secs, errors, _queue_count, noise_floor,
     tx_air_secs, rx_air_secs, recv_errors, internal_heap_free,
     packets_sent, packets_received,
-    repeatStatus(), collectConnHealth()
+    repeatStatus(), collectConnHealth(), radio2_report
   );
 
   if (len <= 0) return false;
@@ -4453,7 +4458,26 @@ bool MQTTBridge::publishPacket(mesh::Packet* packet, bool is_tx,
   return false;
 }
 
-bool MQTTBridge::publishRaw(mesh::Packet* packet, bool& has_eligible_target) {
+// radio2 (MediaMesh) on with the MeshCore protocol: the status `radios` entry,
+// so analyzers can tell this observer's radio2 packets (rx_radio_id) apart.
+// Off, or a foreign protocol: nullptr, and the status is as before.
+const MQTTRadio2Info* MQTTBridge::radio2StatusInfo(MQTTRadio2Info& out, char* radio,
+                                                   size_t radio_size) const {
+  if (!_radio) return nullptr;
+  const mesh::RadioProfiles* profiles = _radio->profiles();
+  if (!profiles || !profiles->enabled()
+      || profiles->secondary.params.protocol != mesh::RadioProfileProtocol::MeshCore) {
+    return nullptr;
+  }
+  const mesh::RadioProfileParams& p2 = profiles->secondary.params;
+  formatRadioInfo(p2.freq, p2.bw, p2.sf, p2.cr, radio, radio_size);
+  out.radio = radio;
+  out.mode = profiles->secondary.mode == mesh::RadioProfileMode::RxTx ? "rxtx" : "rx";
+  out.temporary = profiles->secondary_temporary;
+  return &out;
+}
+
+bool MQTTBridge::publishRaw(mesh::Packet* packet, bool is_tx, bool& has_eligible_target) {
   has_eligible_target = false;
   if (!packet) return false;
 
@@ -4490,7 +4514,7 @@ bool MQTTBridge::publishRaw(mesh::Packet* packet, bool& has_eligible_target) {
 
   int len = MQTTMessageBuilder::buildRawJSON(
     _json_scratch_doc,
-    packet, _origin, origin_id, _timezone, active_buffer, active_buffer_size
+    packet, _origin, origin_id, _timezone, active_buffer, active_buffer_size, is_tx
   );
 
   if (len > 0) {

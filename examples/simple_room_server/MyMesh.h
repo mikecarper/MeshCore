@@ -2,6 +2,7 @@
 
 #include <Arduino.h>   // needed for PlatformIO
 #include <Mesh.h>
+#include <helpers/Radio2DiscoverTrailer.h>
 #include <helpers/PowerSavingDiagnostics.h>
 #include <helpers/EmergencyOtaWork.h>
 #if MESH_ENABLE_EMERGENCY_POWER && defined(ENABLE_OTA)
@@ -175,6 +176,9 @@ struct NeighbourInfo {
   uint32_t heard_timestamp;
   int8_t snr; // multiplied by 4, user should divide to get float value
   int16_t rssi; // dBm from the last packet heard from this neighbour
+  // Its radio2 (MediaMesh) profile from the last DISCOVER_RESP trailer;
+  // Unknown until it answers one. Published as `radio2` in the neighbors message.
+  Radio2DiscoverTrailer radio2;
 };
 
 class MyMesh : public mesh::Mesh, public CommonCLICallbacks,
@@ -320,6 +324,9 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks,
       MAX_NEIGHBOURS < MQTTBridge::NEIGHBORS_SCOPE_RESULT_CAPACITY
           ? MAX_NEIGHBOURS : MQTTBridge::NEIGHBORS_SCOPE_RESULT_CAPACITY;
   NeighborDiscoverMetadata neighbor_discover_metadata[NEIGHBOR_SCOPE_RESULTS];
+  // Each queried neighbour's radio2 (MediaMesh) profile, snapshotted with the
+  // metadata above (which keeps its compact 12-byte layout).
+  Radio2DiscoverTrailer neighbor_discover_radio2[NEIGHBOR_SCOPE_RESULTS];
   char neighbor_discover_scopes[NEIGHBOR_SCOPE_RESULTS][96];
   uint8_t neighbor_discover_count;
   uint8_t neighbor_discover_next;
@@ -353,6 +360,10 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks,
                                       size_t len, float snr, int16_t rssi);
   void touchNeighbourHeard(const mesh::Identity& id, uint32_t heard_timestamp,
                            float snr, int16_t rssi);
+  // A neighbour's radio2 profile from its DISCOVER_RESP trailer (MediaMesh).
+  void noteNeighbourRadio2(const mesh::Identity& id, const Radio2DiscoverTrailer& radio2);
+  // This node's radio2, for the neighbors message's `self.radio2`; nullptr when off.
+  const MQTTRadio2Info* selfRadio2(MQTTRadio2Info& out, char* radio, size_t radio_size);
   void getLocalScopes(char* buf, size_t len);
   static const int NEIGHBOR_DISCOVER_PEER_BASE = 1000;
   static const unsigned long NEIGHBOR_DISCOVER_QUEUE_TIMEOUT_MS = 29000;

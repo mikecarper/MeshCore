@@ -35,6 +35,7 @@ static bool build_succeeds = true;
 uint32_t millis() { return now_ms; }
 size_t heap_caps_get_free_size(int) { return 100000; }
 struct { uint64_t value = 0xAABBCCDDEEFF; uint64_t getEfuseMac() const { return value; } } ESP;
+struct MQTTRadio2Info { const char* radio; const char* mode; bool temporary; };
 namespace MQTTMessageBuilder {
 void formatIsoTimestampForMqtt(long, long, const char*, char* out, size_t size) { snprintf(out, size, "UTC"); }
 template<typename... Args>
@@ -89,6 +90,7 @@ struct MQTTBridge {
   void refreshOriginFromPrefs() {}
   void getClientVersion(char* out, size_t size) { snprintf(out, size, "test"); }
   int repeatStatus() const { return 0; } int collectConnHealth() const { return 0; }
+  const MQTTRadio2Info* radio2StatusInfo(MQTTRadio2Info&, char*, size_t) const { return nullptr; }
   bool buildTopicForSlot(int i, int type, char* out, size_t size) {
     assert(type == MSG_STATUS); snprintf(out, size, "status%d", i); return topic_enabled[i];
   }

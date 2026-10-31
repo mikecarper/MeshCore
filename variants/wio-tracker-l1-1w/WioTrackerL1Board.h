@@ -44,7 +44,7 @@ public:
   }
 
   const char* getManufacturerName() const override {
-    return "Seeed Wio Tracker L1";
+    return "Seeed Wio Tracker L1 1W";
   }
 
   void powerOff() override {
