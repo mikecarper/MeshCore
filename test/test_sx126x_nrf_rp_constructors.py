@@ -35,6 +35,44 @@ struct Radio {
 '''
 
 
+MUZI_PREFIX = r'''
+#include <helpers/radiolib/TunableRadioHal.h>
+#include "variants/muzi_base/variant.h"
+#define P_LORA_NSS LORA_NSS
+#define P_LORA_DIO_1 LORA_DIO_1
+#define P_LORA_RESET LORA_RESET
+#define P_LORA_BUSY LORA_BUSY
+SPIClass SPI;
+struct Module {
+  ArduinoHal* hal;
+  unsigned cs,irq,reset,busy;
+  Module(ArduinoHal* adapter,unsigned select,unsigned interrupt,unsigned rst,unsigned ready)
+      : hal(adapter),cs(select),irq(interrupt),reset(rst),busy(ready) {}
+};
+struct Board {} board;
+struct Radio {
+  Module* mod;
+  Radio(Module* value) : mod(value) {}
+  ~Radio() { delete mod; }
+};
+struct Wrapper {
+  Radio& chip;
+  Board& selectedBoard;
+  Wrapper(Radio& value,Board& selected) : chip(value),selectedBoard(selected) {}
+};
+struct UniversalLoRaRadio {
+  Module& sx127x;
+  Module& sx126x;
+  Module* lr1121;
+  Board& selectedBoard;
+  UniversalLoRaRadio(Module& first,Module& second,Board& selected,Module* lr)
+      : sx127x(first),sx126x(second),lr1121(lr),selectedBoard(selected) {}
+};
+#define RADIO_CLASS Radio
+#define WRAPPER_CLASS Wrapper
+'''
+
+
 def target_sources(architecture):
     sources=set()
     for config in sorted((ROOT/"variants").glob("*/platformio.ini")):
@@ -61,11 +99,12 @@ class SX126xTargetConstructors(unittest.TestCase):
             base=Path(folder)
             (base/"hal/Arduino").mkdir(parents=True)
             (base/"hal/Arduino/ArduinoHal.h").write_text(MOCK,encoding="ascii")
+            (base/"WVariant.h").write_text("#include <cstdint>\n",encoding="ascii")
             cpp,executable=base/"test.cpp",base/"test"
             cpp.write_text(source,encoding="ascii")
             built=subprocess.run([compiler,"-std=c++17","-Wall","-Wextra","-Werror",
                 f"-D{architecture}",*[f"-D{item}" for item in defines],"-I",str(base),
-                "-I",str(ROOT/"src"),str(cpp),"-o",str(executable)],
+                "-I",str(ROOT/"src"),"-I",str(ROOT),str(cpp),"-o",str(executable)],
                 capture_output=True,text=True,timeout=60)
             self.assertEqual(built.returncode,0,built.stdout+built.stderr)
             ran=subprocess.run([str(executable)],capture_output=True,text=True,timeout=10)
@@ -134,12 +173,18 @@ void check() {{
                 self.assertIn("#if MC_NRF52_HIL_SPIM1_RADIO",text)
             else:
                 self.assertNotIn("BufferedRadioHal",text,str(source))
-            constructions=re.findall(r"^static TunableRadioHal radio_hal\(([^;]+)\);\n"
-                                    r"(RADIO_CLASS radio = new Module\(&radio_hal,[^;]+;)",
-                                    text,re.MULTILINE)
+            # Muzi's shared image now puts the universal/legacy selection
+            # between this common HAL and its legacy Module constructor.
+            # Extract both declarations independently, preserving every
+            # fallback branch rather than requiring them to be adjacent.
+            arguments=re.findall(r"^static TunableRadioHal radio_hal\(([^;]+)\);$",
+                                 text,re.MULTILINE)
+            modules=re.findall(r"^RADIO_CLASS radio = new Module\(&radio_hal,[^;]+;",
+                               text,re.MULTILINE)
             fallback=source.parent.name in {"heltec_t096","heltec_t1","heltec_t114"}
-            self.assertEqual(len(constructions),2 if fallback else 1,str(source))
-            for ordinal,(arguments,module) in enumerate(constructions):
+            self.assertEqual(len(arguments),2 if fallback else 1,str(source))
+            self.assertEqual(len(modules),len(arguments),str(source))
+            for ordinal,(arguments,module) in enumerate(zip(arguments,modules)):
                 owns=fallback and ordinal==1
                 self.assertEqual(arguments, "SPI, 8000000, true" if owns else "SPI",str(source))
                 construction=f"static TunableRadioHal radio_hal({arguments});\n{module}"
@@ -167,20 +212,67 @@ void check() {{
         fixture+="\nint main() {"+"".join(f"{name}::check();" for name,_ in cases)+"}\n"
         self.compile_run("NRF52_PLATFORM",fixture)
 
-    def test_muzi_uno_and_lr1121_duo_keep_bus_and_gain_tunable_byte_clock(self):
+    def test_muzi_fixed_and_automatic_radios_share_tunable_byte_bus(self):
         text=(ROOT/"variants/muzi_base/target.cpp").read_text()
-        constructor=re.search(r"^static TunableRadioHal radio_hal\([^;]+;\n"
-                              r"RADIO_CLASS radio = new Module\(&radio_hal,[^;]+;",text,re.MULTILINE)
-        self.assertIsNotNone(constructor)
+        start=text.index("static TunableRadioHal radio_hal(")
+        end=text.index("VolatileRTCClock fallback_clock;",start)
+        # Compile the actual complete conditional declaration block, so both
+        # physical modules in the automatic image must use this same HAL.
+        constructors=text[start:end]
         self.assertNotIn("BufferedRadioHal",text)
-        fixture=PREFIX+"\nSPIClass SPI;\n"+constructor.group(0)+r'''
+        fixture=MUZI_PREFIX+constructors+r'''
+void check(Module& mod,unsigned irq) {
+  assert(mod.hal==&radio_hal && mod.hal->spi==&SPI);
+  assert(mod.cs==44 && mod.irq==irq && mod.reset==42 && mod.busy==43);
+  assert(mod.hal->spiSettings.hz==8000000 && !mod.hal->initInterface);
+  assert(TunableRadioHal::find(mod.hal)==&radio_hal);
+  assert(radio_hal.capabilities().flags==0);
+  assert(radio_hal.capabilities().spi_clocks==(2|4|8));
+  mod.hal->init();mod.hal->term();
+  assert(SPI.begins==0 && SPI.ends==0);
+  uint8_t tx[]={1,0x7f,0xff},rx[3]={};
+  const unsigned bytes=SPI.bytes;
+  mod.hal->spiTransfer(tx,3,rx);
+  assert(SPI.bytes==bytes+3 && SPI.bursts==0);
+  assert(rx[0]==(1^0xa5) && rx[1]==(0x7f^0xa5) && rx[2]==(0xff^0xa5));
+}
 int main() {
-  assert(radio.mod->hal->spi==&SPI);
-  assert(!radio.mod->owned && radio.mod->hal->spiSettings.hz==8000000);
-  assert(TunableRadioHal::find(radio.mod->hal)==&radio_hal);
+#if defined(MESH_RADIO_AUTO_FAMILY) && MESH_RADIO_AUTO_FAMILY && MESH_RADIO_AUTO_LR1121
+  assert(&radio_driver.sx127x==&sx1262_module);
+  assert(&radio_driver.sx126x==&sx1262_module);
+  assert(radio_driver.lr1121==&lr1121_module && &radio_driver.selectedBoard==&board);
+  check(sx1262_module,38);
+  check(lr1121_module,40);
+#else
+  assert(&radio_driver.chip==&radio && &radio_driver.selectedBoard==&board);
+  check(*radio.mod,
+#if defined(USE_LR1121)
+      40
+#else
+      38
+#endif
+  );
+#endif
+  using Tuning=mesh::RadioSwitchTuning;
+  Tuning tuning;
+  tuning.flags=Tuning::Buffer;
+  assert(!radio_hal.setTuning(tuning));
+  tuning.flags=0;
+  for (uint8_t clock : {2,4,8}) {
+    tuning.spi_mhz=clock;
+    assert(radio_hal.setTuning(tuning));
+    assert(radio_hal.effectiveHz()==unsigned(clock)*1000000);
+    assert(radio_hal.spi==&SPI && !radio_hal.initInterface);
+  }
+  tuning.spi_mhz=9;
+  assert(!radio_hal.setTuning(tuning) && radio_hal.effectiveHz()==8000000);
+  assert(SPI.begins==0 && SPI.ends==0 && SPI.bursts==0);
 }
 '''
-        for definitions in ((),("USE_SX1262",)):
+        fixture="#include <initializer_list>\n"+fixture
+        for definitions in (("USE_SX1262",),("USE_LR1121",),
+                            ("USE_SX1262","USE_LR1121","MESH_RADIO_AUTO_FAMILY=1",
+                             "MESH_RADIO_AUTO_LR1121=1")):
             with self.subTest(defines=definitions):
                 self.compile_run("NRF52_PLATFORM",fixture,defines=definitions)
 

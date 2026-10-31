@@ -70,14 +70,16 @@ USB_PARTITION_BRIDGES = {
 UNCHANGED_COUNTS = {
     ("ESP32-S3-WROOM-1-N4", "uart"): 21,
     ("ebyte_eora-s3", "hwcdc"): 8,
-    ("esp32-c3-devkitm-1", "uart"): 19,
+    # Three shared SX1262/SX1268 Tenstar roles retain external UART.
+    ("esp32-c3-devkitm-1", "uart"): 22,
     ("esp32-c6-devkitm-1", "hwcdc"): 16,
     ("esp32-s3-devkitc-1", "hwcdc"): 22,
     # Original OPI and N16R2 Indicator LoRa repeaters retain their UART backend.
     ("esp32-s3-devkitc-1", "uart"): 57,
     ("esp32-s3-zero", "hwcdc"): 25,
     ("esp32dev", "classic_uart"): 5,
-    ("esp32doit-devkit-v1", "classic_uart"): 19,
+    # Two shared E22 and seven Meshadventurer roles retain classic UART.
+    ("esp32doit-devkit-v1", "classic_uart"): 28,
     ("esp32s3box", "hwcdc"): 7,
     ("heltec-rc32", "hwcdc"): 22,
     ("heltec_v4", "hwcdc"): 46,
@@ -93,12 +95,14 @@ UNCHANGED_COUNTS = {
     ("seeed_xiao_esp32s3_migrator", "uart"): 3,
     ("seeed_wio_tracker_l2", "hwcdc"): 5,
     ("t-deck", "hwcdc"): 4,
-    ("t3_s3_v1_x", "hwcdc"): 19,
+    # Ten shared SX126x/SX127x T3 S3 roles retain native HWCDC.
+    ("t3_s3_v1_x", "hwcdc"): 29,
     ("t_beams3_supreme", "hwcdc"): 9,
     ("thinknode_m7", "uart"): 10,
     ("thinknode_m9", "uart"): 6,
     ("ttgo-lora32-v1", "classic_uart"): 12,
-    ("ttgo-t-beam", "classic_uart"): 16,
+    # Eight shared SX126x/SX127x T-Beam roles retain classic UART.
+    ("ttgo-t-beam", "classic_uart"): 24,
     ("waveshare_s3_lr1121_migrator", "uart"): 2,
 }
 
@@ -287,7 +291,7 @@ class Esp32HwcdcRecipeTests(unittest.TestCase):
                 self.assertEqual(self.sdk["hwcdc_primary_enabled"](row["env"]),
                                  row["kind"] == "hwcdc")
                 self.assertFalse(self.sdk["native_primary_enabled"](row["env"]))
-        expected = Counter({"hwcdc": 342, "uart": 122, "classic_uart": 61})
+        expected = Counter({"hwcdc": 352, "uart": 125, "classic_uart": 78})
         expected.update(kind for _, _, kind in USB_PARTITION_BRIDGES.values())
         self.assertEqual(counts, expected)
 
