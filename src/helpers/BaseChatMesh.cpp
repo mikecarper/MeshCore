@@ -244,6 +244,7 @@ void BaseChatMesh::onAdvertRecv(mesh::Packet* packet, const mesh::Identity& id, 
 
   ContactInfo* from = NULL;
   for (int i = 0; i < num_contacts; i++) {
+    if (contacts[i].isEmptySlot()) continue;
     if (id.matches(contacts[i].id)) {  // is from one of our contacts
       from = &contacts[i];
       if (timestamp <= from->last_advert_timestamp) {  // check for replay attacks!!
@@ -327,11 +328,14 @@ int BaseChatMesh::searchPeersByHash(const uint8_t* hash) {
   // A matching transient slot may have the same identity as an accepted contact.
   // Try persistent contacts first so the transient slot cannot swallow their DMs.
   for (int i = MAX_ANON_CONTACTS; i < num_contacts && n < MAX_SEARCH_RESULTS; i++) {
+    if (contacts[i].isEmptySlot()) continue;
     if (contacts[i].id.isHashMatch(hash)) {
       matching_peer_indexes[n++] = i;
     }
   }
   for (int i = 0; i < MAX_ANON_CONTACTS && n < MAX_SEARCH_RESULTS; i++) {
+    // Empty anonymous slots must not consume matches or derive a null key.
+    if (contacts[i].isEmptySlot()) continue;
     if (contacts[i].id.isHashMatch(hash)) {
       matching_peer_indexes[n++] = i;  // store the INDEXES of matching contacts (for subsequent 'peer' methods)
     }
@@ -748,6 +752,11 @@ int BaseChatMesh::sendCommandData(const ContactInfo& recipient,
 }
 
 bool BaseChatMesh::sendGroupMessage(uint32_t timestamp, mesh::GroupChannel& channel, const char* sender_name, const char* text, int text_len) {
+  if (text_len < 0) {
+    MESH_DEBUG_PRINTLN("sendGroupMessage: invalid negative text_len=%d", text_len);
+    return false;
+  }
+
   uint8_t temp[5+MAX_TEXT_LEN+32];
   memcpy(temp, &timestamp, 4);   // mostly an extra blob to help make packet_hash unique
   temp[4] = 0;  // TXT_TYPE_PLAIN
@@ -1086,6 +1095,7 @@ ContactInfo* BaseChatMesh::searchContactsByPrefix(const char* name_prefix) {
   int len = strlen(name_prefix);
   for (int i = 0; i < num_contacts; i++) {
     auto c = &contacts[i];
+    if (c->isEmptySlot() || c->name[0] == 0) continue;
     if (memcmp(c->name, name_prefix, len) == 0) return c;
   }
   return NULL;  // not found
@@ -1094,6 +1104,7 @@ ContactInfo* BaseChatMesh::searchContactsByPrefix(const char* name_prefix) {
 ContactInfo* BaseChatMesh::lookupContactByPubKey(const uint8_t* pub_key, int prefix_len) {
   for (int i = 0; i < num_contacts; i++) {
     auto c = &contacts[i];
+    if (c->isEmptySlot()) continue;
     if (memcmp(c->id.pub_key, pub_key, prefix_len) == 0) return c;
   }
   return NULL;  // not found
@@ -1102,6 +1113,7 @@ ContactInfo* BaseChatMesh::lookupContactByPubKey(const uint8_t* pub_key, int pre
 ContactInfo* BaseChatMesh::lookupTransientContactByPubKey(const uint8_t* pub_key, int prefix_len) {
   for (int i = 0; i < MAX_ANON_CONTACTS; i++) {
     auto c = &contacts[i];
+    if (c->isEmptySlot()) continue;
     if (memcmp(c->id.pub_key, pub_key, prefix_len) == 0) return c;
   }
   return NULL;  // not found
@@ -1110,6 +1122,7 @@ ContactInfo* BaseChatMesh::lookupTransientContactByPubKey(const uint8_t* pub_key
 ContactInfo* BaseChatMesh::lookupPersistentContactByPubKey(const uint8_t* pub_key, int prefix_len) {
   for (int i = MAX_ANON_CONTACTS; i < num_contacts; i++) {
     auto c = &contacts[i];
+    if (c->isEmptySlot()) continue;
     if (memcmp(c->id.pub_key, pub_key, prefix_len) == 0) return c;
   }
   return NULL;  // not found

@@ -95,6 +95,12 @@ struct ContactInfo {
   bool isTelemLocAllowed() const { return flags & 0x04; }
   bool isTelemEnvAllowed() const { return flags & 0x08; }
   bool isRemoteCLIAllowed() const { return flags & 0x10; }
+  bool isEmptySlot() const {
+    for (int i = 0; i < PUB_KEY_SIZE; i++) {
+      if (id.pub_key[i] != 0) return false;
+    }
+    return true;
+  }
 
 private:
 #if !MESH_CONTACT_CACHE

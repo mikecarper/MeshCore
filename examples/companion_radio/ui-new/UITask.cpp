@@ -617,11 +617,7 @@ class HomeScreen : public UIScreen {
       sensors_scroll_offset = 0;
       return;
     }
-#if AUTO_OFF_MILLIS > 0
-    const uint32_t refresh_interval = 5000;
-#else
-    const uint32_t refresh_interval = 60000;
-#endif
+    const uint32_t refresh_interval = display.isEink() ? 60000 : 5000;
     // Empty data requests an initial/forced sample. Elapsed time also handles
     // returning to this page after more than half a millis() cycle.
     if (sensors_lpp.getSize() == 0
@@ -2293,11 +2289,7 @@ public:
 #endif
     renderChannelFilter(display);
 
-#if AUTO_OFF_MILLIS==0 // probably e-ink
-    return UI_BUTTON_READER_HINT == 1 ? 3000 : 10000;
-#else
-    return 1000;  // next render after 1000 ms
-#endif
+    return display.isEink() ? (UI_BUTTON_READER_HINT == 1 ? 3000 : 10000) : 1000;
   }
 
   bool handleInput(char c) override {
@@ -2735,9 +2727,13 @@ void UITask::shutdown(bool restart){
   if (restart) {
     _board->reboot();
   } else {
-    display.forceFullRefresh();
-    display.clear();
-    display.endFrame();
+    if (_display != NULL && _display->isEink()) {
+      if (_display->isOn()) _display->turnOff();
+    } else {
+      display.forceFullRefresh();
+      display.clear();
+      display.endFrame();
+    }
     // Power off board including radio, display, GPS and components
     _board->powerOff();
   }
@@ -2875,11 +2871,11 @@ void UITask::loop() {
 #endif
 #if defined(UI_HAS_ROTARY_INPUT)
   RotaryInputEvent rotaryEv = rotary_input.poll();
-  if (c == 0 && _display != NULL && _display->isOn()) {
+  if (c == 0 && _display != NULL) {
     if (rotaryEv == RotaryInputEvent::Next) {
-      c = KEY_NEXT;
+      c = checkDisplayOn(KEY_NEXT);
     } else if (rotaryEv == RotaryInputEvent::Prev) {
-      c = KEY_PREV;
+      c = checkDisplayOn(KEY_PREV);
     }
   }
 #endif

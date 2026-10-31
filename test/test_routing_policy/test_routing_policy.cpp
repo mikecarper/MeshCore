@@ -12,6 +12,9 @@ static Packet makeFlood(uint8_t route_type, uint8_t payload_type, uint8_t hops) 
     p.transport_codes[1] = 0;
     p.setPathHashSizeAndCount(1, hops);
     p.payload_len = 1;
+    if (route_type == ROUTE_TYPE_TRANSPORT_FLOOD) {
+        p.transport_codes[0] = 1;  // has to be non-zero
+    }
     return p;
 }
 

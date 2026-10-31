@@ -81,6 +81,10 @@ struct Task {
   void toggleGPS() { ++toggles; }
 };
 
+struct Display {
+  bool isEink() const { return TEST_EINK; }
+} display;
+
 enum class HomePage { OTHER, SENSORS };
 
 struct Home {
@@ -97,7 +101,9 @@ struct Home {
   }
 };
 
-static constexpr uint32_t interval_ms = AUTO_OFF_MILLIS > 0 ? 5000u : 60000u;
+static constexpr uint32_t interval_ms = TEST_NEW_UI
+    ? (TEST_EINK ? 60000u : 5000u)
+    : (AUTO_OFF_MILLIS > 0 ? 5000u : 60000u);
 
 static void begin_case(const char* name, uint32_t initial_ms) {
   active_case = name;

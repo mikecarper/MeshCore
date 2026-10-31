@@ -67,13 +67,14 @@ class HomeSensorRefreshTest(unittest.TestCase):
             for ui in ('ui-new', 'ui-tiny'):
                 source = work / (ui + '.cpp')
                 source.write_text(harness(ui, mutation), encoding='ascii')
-                for auto_off in (15000, 0):
-                    with self.subTest(ui=ui, auto_off=auto_off):
-                        binary = work / (ui + '-' + str(auto_off) +
+                for auto_off, eink in ((15000, False), (15000, True), (0, False), (0, True)):
+                    with self.subTest(ui=ui, auto_off=auto_off, eink=eink):
+                        binary = work / (ui + '-' + str(auto_off) + '-' + str(int(eink)) +
                                          ('.exe' if os.name == 'nt' else ''))
                         compiled = subprocess.run([
                             compiler, '-std=c++17', '-O1', '-g', '-Wall', '-Wextra', '-Werror',
                             *sanitize, '-DAUTO_OFF_MILLIS=' + str(auto_off),
+                            '-DTEST_EINK=' + str(int(eink)),
                             '-DTEST_NEW_UI=' + str(int(ui == 'ui-new')),
                             str(source), '-o', str(binary),
                         ], text=True, capture_output=True, timeout=60)

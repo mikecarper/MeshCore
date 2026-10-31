@@ -9,7 +9,6 @@
 
 class PromicroBoard : public NRF52BoardDCDC {
 protected:
-  uint8_t btn_prev_state;
   float adc_mult = ADC_MULTIPLIER;
 
 public:
@@ -50,16 +49,5 @@ public:
 
   const char* getManufacturerName() const override {
     return "ProMicro DIY";
-  }
-
-  int buttonStateChanged() {
-    #ifdef BUTTON_PIN
-      uint8_t v = digitalRead(BUTTON_PIN);
-      if (v != btn_prev_state) {
-        btn_prev_state = v;
-        return (v == LOW) ? 1 : -1;
-      }
-    #endif
-      return 0;
   }
 };
