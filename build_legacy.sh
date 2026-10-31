@@ -383,6 +383,10 @@ for section, options in data:
       # preserve their complete sensor set and matching bootloader layout.
       case "${env_name,,}" in
         solarxiao_30s_room_server|solarxiao_33s_room_server) continue ;;
+        # Muzi's shared radio/flash image has no qualified receiver loader.
+        # Keep its normal infrastructure recipes explicit-only; never invent
+        # an internal-staging OTA alias for a QSPI filesystem configuration.
+        muzi_base_repeater|muzi_base_room_server) continue ;;
       esac
       ota_env="${env_name%_}_lora_ota_no_external_sensors"
       PIO_ENV_COMPLETE_OTA_BASE_BY_NAME["$ota_env"]="$env_name"
@@ -6151,7 +6155,7 @@ get_consolidated_hardware_replacement() {
   case "${1,,}" in
     tbeam_sx1262_*|tbeam_sx1276_*|lilygo_t3s3_sx1262_*|lilygo_t3s3_sx1276_*|\
     generic_e22_sx1262_*|generic_e22_sx1268_*|meshadventurer_sx1262_*|meshadventurer_sx1268_*|\
-    tenstar_c3_sx1262_*|tenstar_c3_sx1268_*|\
+    tenstar_c3_sx1262_*|tenstar_c3_sx1268_*|muzi_base_uno_*|muzi_base_duo_*|\
     picow_companion_radio_usb|picow_companion_radio_ble|picow_companion_radio_wifi|\
     heltec_v4_tft_*|heltec_v4_3_tft_*|heltec_v4_expansionkit_*|heltec_v4_3_expansionkit_*|\
     heltec_v4_r8_tft_portrait_repeater_observer_mqtt|heltec_v4_r8_tft_portrait_room_server_observer_mqtt|\
@@ -6268,6 +6272,9 @@ get_onboard_qspi_normal_replacement() {
 
 is_qspi_hardware_qualification_target() {
   case "${1,,}" in
+    muzi_base_repeater|muzi_base_room_server|\
+    muzi_base_repeater_lora_ota|muzi_base_repeater_lora_ota_no_external_sensors|\
+    muzi_base_room_server_lora_ota|muzi_base_room_server_lora_ota_no_external_sensors|\
     muzi_base_duo_repeater_lora_ota|muzi_base_duo_room_server_lora_ota|\
     muzi_base_uno_repeater_lora_ota|muzi_base_uno_room_server_lora_ota|\
     lilygo_t-echo_card_repeater_lora_ota|lilygo_t-echo_card_room_server_lora_ota|\

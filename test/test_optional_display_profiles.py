@@ -29,6 +29,7 @@ class OptionalDisplayProfilesTest(unittest.TestCase):
     def test_nrf52_accessories_require_the_exact_radio_panel_and_packaged_marker(self):
         recipes = Recipes()
         for target in ("muzi_base_duo_companion_radio_ble", "muzi_base_uno_companion_radio_ble",
+                       "muzi_base_companion_radio_ble",
                        "LilyGo_T-Echo-Lite_companion_radio_ble"):
             flags = defines(recipes.value("env:" + target, "build_flags"))
             board = recipes.value("env:" + target, "board")

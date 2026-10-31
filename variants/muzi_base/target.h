@@ -4,7 +4,9 @@
 #include <RadioLib.h>
 #include <helpers/radiolib/RadioLibWrappers.h>
 #include "MuziBaseBoard.h"
-#if defined(USE_LR1121)
+#if defined(MESH_RADIO_AUTO_FAMILY) && MESH_RADIO_AUTO_FAMILY && MESH_RADIO_AUTO_LR1121
+  #include <helpers/radiolib/UniversalLoRaRadio.h>
+#elif defined(USE_LR1121)
   #include <helpers/radiolib/CustomLR1121Wrapper.h>
 #elif defined(USE_SX1262)
   #include <helpers/radiolib/CustomSX1262Wrapper.h>
@@ -35,6 +37,11 @@
 extern MuziBaseBoard board;
 extern WRAPPER_CLASS radio_driver;
 extern AutoDiscoverRTCClock rtc_clock;
+
+#if defined(MESH_RADIO_AUTO_FAMILY) && MESH_RADIO_AUTO_FAMILY && MESH_RADIO_AUTO_LR1121
+bool prepareUniversalLoRaRadio();
+mesh::LoRaRadioFamily universalLoRaRadioFamily();
+#endif
 
 // muzi sensor manager, polled from main loop via sensors.loop():
 //  - user button: USER_BTN_POWER_OFF_CLICKS quick presses -> power off (all builds)

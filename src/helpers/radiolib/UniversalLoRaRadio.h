@@ -12,6 +12,9 @@
 #if MESH_RADIO_AUTO_SX127X
 #include "CustomSX1276Wrapper.h"
 #endif
+#if MESH_RADIO_AUTO_LR1121
+#include "CustomLR1121Wrapper.h"
+#endif
 
 // Mesh and Dispatcher retain this address before setup(). Only the selected
 // backend is constructed, after the board powers and identifies its radio.
@@ -21,6 +24,12 @@ class UniversalLoRaRadio : public mesh::Radio {
    public:
     SX1262Backend(CustomSX1262& radio, mesh::MainBoard& board)
         : CustomSX1262Wrapper(radio, board) {}
+#if MESH_RADIO_AUTO_LR1121
+    bool validateProfile(const mesh::RadioProfileParams& params) const override;
+    float rxPowerSavingCaptureCostSymbols() const override {
+      return RX_POWERSAVING_CAPTURE_COST_SYMBOLS;
+    }
+#endif
    protected:
     bool preserveActiveReceiveOnLateIrq() const override { return true; }
   };
@@ -48,12 +57,27 @@ class UniversalLoRaRadio : public mesh::Radio {
   };
 #endif
 
+#if MESH_RADIO_AUTO_LR1121
+  class LR1121Backend : public CustomLR1121Wrapper {
+   public:
+    LR1121Backend(CustomLR1121& radio, mesh::MainBoard& board)
+        : CustomLR1121Wrapper(radio, board) {}
+    bool validateProfile(const mesh::RadioProfileParams& params) const override;
+   protected:
+    bool usesLR1121Policy() const override { return true; }
+    bool checkBeaconOutputPower(float frequency_mhz, int8_t power) const override;
+  };
+#endif
+
   using ChipStorage = typename std::aligned_union<0, CustomSX1262
 #if MESH_RADIO_AUTO_SX1268
       , CustomSX1268
 #endif
 #if MESH_RADIO_AUTO_SX127X
       , CustomSX1276
+#endif
+#if MESH_RADIO_AUTO_LR1121
+      , CustomLR1121
 #endif
       >::type;
   using DriverStorage = typename std::aligned_union<0, SX1262Backend
@@ -63,11 +87,20 @@ class UniversalLoRaRadio : public mesh::Radio {
 #if MESH_RADIO_AUTO_SX127X
       , SX127Backend
 #endif
+#if MESH_RADIO_AUTO_LR1121
+      , LR1121Backend
+#endif
       >::type;
   ChipStorage chip_storage_;
   DriverStorage driver_storage_;
   Module& sx126_module_;
   Module& sx127_module_;
+#if MESH_RADIO_AUTO_LR1121
+  Module* lr1121_module_;
+  using LR1121Initializer = bool (*)(CustomLR1121&, SPIClass*);
+  LR1121Initializer lr1121_initializer_ = nullptr;
+  bool (*lr1121_deep_init_)() = nullptr;
+#endif
   mesh::MainBoard& board_;
   PhysicalLayer* physical_ = nullptr;
   RadioLibWrapper* backend_ = nullptr;
@@ -76,12 +109,21 @@ class UniversalLoRaRadio : public mesh::Radio {
  public:
   // Compile both policies; the runtime capability still rejects RXPS on SX127x.
   static constexpr bool SupportsRxPowerSaving = true;
-  UniversalLoRaRadio(Module& sx126_module, Module& sx127_module, mesh::MainBoard& board);
+  UniversalLoRaRadio(Module& sx126_module, Module& sx127_module, mesh::MainBoard& board
+#if MESH_RADIO_AUTO_LR1121
+      , Module* lr1121_module = nullptr
+#endif
+      );
   ~UniversalLoRaRadio();
   UniversalLoRaRadio(const UniversalLoRaRadio&) = delete;
   UniversalLoRaRadio& operator=(const UniversalLoRaRadio&) = delete;
   bool selectFamily(mesh::LoRaRadioFamily family);
   bool stdInit(SPIClass* spi);
+#if MESH_RADIO_AUTO_LR1121
+  // Board wiring owns LR1121's TCXO and RF-switch setup, including recovery.
+  // Register before selecting a chip; an active driver cannot be rebound.
+  bool setLR1121Initializer(LR1121Initializer initialize, bool (*deep_init)());
+#endif
   mesh::LoRaRadioFamily family() const { return family_; }
   PhysicalLayer* physicalLayer() { return physical_; }
   const PhysicalLayer* physicalLayer() const { return physical_; }
@@ -244,6 +286,11 @@ class UniversalLoRaRadio : public mesh::Radio {
   uint32_t rxPowerSavingTransitionUs() const {
     return backend_ ? backend_->rxPowerSavingTransitionUs() : rxPowerSavingDefaultTransitionUs();
   }
+#if MESH_RADIO_AUTO_LR1121
+  float rxPowerSavingCaptureCostSymbols() const {
+    return backend_ ? backend_->rxPowerSavingCaptureCostSymbols() : rxPowerSavingDefaultCaptureCost();
+  }
+#endif
   void getRxPowerSavingTimings(uint32_t& rx_us, uint32_t& sleep_us) const {
     if (backend_) backend_->getRxPowerSavingTimings(rx_us, sleep_us);
     else { rx_us = 0; sleep_us = 0; }

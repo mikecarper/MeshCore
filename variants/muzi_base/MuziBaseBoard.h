@@ -7,7 +7,10 @@
 // The Muzi Base PCB ships in two radio flavors. Keep the user-facing identity
 // (OTA/DFU name and reported manufacturer) distinct per radio even though the
 // board logic is shared.
-#if defined(USE_SX1262)
+#if defined(MESH_RADIO_AUTO_FAMILY) && MESH_RADIO_AUTO_FAMILY && MESH_RADIO_AUTO_LR1121
+  #define MUZI_BASE_OTA_NAME  "MUZI_BASE_OTA"
+  #define MUZI_BASE_MFR_NAME  "Muzi Base"
+#elif defined(USE_SX1262)
   #define MUZI_BASE_OTA_NAME  "MUZI_BASE_UNO_OTA"
   #define MUZI_BASE_MFR_NAME  "Muzi Base Uno"
 #else
@@ -24,6 +27,9 @@ protected:
 public:
   MuziBaseBoard() : NRF52Board(MUZI_BASE_OTA_NAME) {}
   void begin();
+#if defined(MESH_RADIO_AUTO_FAMILY) && MESH_RADIO_AUTO_FAMILY && MESH_RADIO_AUTO_LR1121
+  void shutdownPeripherals() override;
+#endif
 
   #define BATTERY_SAMPLES 8
 
@@ -45,6 +51,15 @@ public:
   }
 
   const char* getManufacturerName() const override {
+#if defined(MESH_RADIO_AUTO_FAMILY) && MESH_RADIO_AUTO_FAMILY && MESH_RADIO_AUTO_LR1121
+    return detectedManufacturerName();
+#else
     return MUZI_BASE_MFR_NAME;
+#endif
   }
+
+#if defined(MESH_RADIO_AUTO_FAMILY) && MESH_RADIO_AUTO_FAMILY && MESH_RADIO_AUTO_LR1121
+private:
+  const char* detectedManufacturerName() const;
+#endif
 };

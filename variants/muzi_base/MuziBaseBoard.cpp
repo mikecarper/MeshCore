@@ -3,6 +3,31 @@
 
 #include "MuziBaseBoard.h"
 
+#if defined(MESH_RADIO_AUTO_FAMILY) && MESH_RADIO_AUTO_FAMILY && MESH_RADIO_AUTO_LR1121
+#include <helpers/LoRaRadioFamily.h>
+extern bool prepareUniversalLoRaRadio();
+extern mesh::LoRaRadioFamily universalLoRaRadioFamily();
+
+const char* MuziBaseBoard::detectedManufacturerName() const {
+  switch (universalLoRaRadioFamily()) {
+    case mesh::LoRaRadioFamily::SX126x: return "Muzi Base Uno";
+    case mesh::LoRaRadioFamily::LR1121: return "Muzi Base Duo";
+    default: return "Muzi Base (radio not detected)";
+  }
+}
+
+void MuziBaseBoard::shutdownPeripherals() {
+  NRF52BoardDCDC::shutdownPeripherals();
+  // The base knows only the recipe's default IRQ. Both candidate pins are
+  // reserved for this board's radio; neither may retain GPIO sensing while
+  // entering SYSTEMOFF, including the Duo's runtime-selected IRQ on P1.08.
+  detachInterrupt(LORA_SX1262_DIO_1);
+  pinMode(LORA_SX1262_DIO_1, INPUT);
+  detachInterrupt(LORA_LR1121_DIO_1);
+  pinMode(LORA_LR1121_DIO_1, INPUT);
+}
+#endif
+
 #ifdef NRF52_POWER_MANAGEMENT
 const PowerMgtConfig power_config = {
   .lpcomp_ain_channel = PWRMGT_LPCOMP_AIN,
@@ -64,5 +89,10 @@ void MuziBaseBoard::begin() {
 // #endif
 #ifdef NRF52_POWER_MANAGEMENT
   checkBootVoltage(&power_config);
+#endif
+#if defined(MESH_RADIO_AUTO_FAMILY) && MESH_RADIO_AUTO_FAMILY && MESH_RADIO_AUTO_LR1121
+  // Identify only after power/voltage protection, before startup loads the
+  // selected radio's regulator and switch-tuning preferences.
+  prepareUniversalLoRaRadio();
 #endif
 }

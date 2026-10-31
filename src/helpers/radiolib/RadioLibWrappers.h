@@ -62,6 +62,10 @@ protected:
   virtual bool preserveActiveReceiveOnLateIrq() const { return false; }
   virtual float initialProfileFrequency(float preferred) const { return preferred; }
 #endif
+#if defined(MESH_RADIO_AUTO_LR1121) && MESH_RADIO_AUTO_LR1121
+  // Shared code must retain the selected chip's power and airtime policy.
+  virtual bool usesLR1121Policy() const { return false; }
+#endif
   mesh::MainBoard* _board;
   uint32_t n_recv, n_sent, n_recv_errors;
   int16_t _noise_floor, _threshold;
@@ -573,6 +577,9 @@ public:
   bool supportsRxPowerSaving() const override { return SupportsRxPowerSaving; }
   RxPowerSavingStatus getRxPowerSavingStatus() const;
   virtual uint32_t rxPowerSavingTransitionUs() const { return rxPowerSavingDefaultTransitionUs(); }
+#if defined(MESH_RADIO_AUTO_LR1121) && MESH_RADIO_AUTO_LR1121
+  virtual float rxPowerSavingCaptureCostSymbols() const { return rxPowerSavingDefaultCaptureCost(); }
+#endif
   void getRxPowerSavingTimings(uint32_t& rx_us, uint32_t& sleep_us) const {
     rx_us = _rx_ps_rx_us;
     sleep_us = _rx_ps_sleep_us;

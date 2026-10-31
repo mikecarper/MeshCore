@@ -82,6 +82,15 @@ RADIO_CASES = tuple(
         ("Tenstar_C3", "Tenstar_C3_sx1268", "1268", "esp32-c3-devkitm-1", "sx1262_sx1268",
          ["-DMESH_RADIO_AUTO_SX127X=0", "-DMESH_RADIO_AUTO_SX1268=1", "-DUSE_SX1268=1"]),
     )
+) + (
+    dict(prefix="muzi_base", fixed="muzi_base_duo", chip="LR1121", target="muzi_base_repeater",
+         legacy="muzi_base_duo_repeater", board="muzi_base", platform="NRF52_PLATFORM", key="autoLoRaRadio",
+         capability="radio.autodetect.sx1262_lr1121",
+         marker="meshcore.capability.radio.autodetect.sx1262_lr1121.v1",
+         flags=["-DMESH_RADIO_AUTO_FAMILY=1", "-DMESH_RADIO_AUTO_LR1121=1", "-DMESH_RADIO_AUTO_SX127X=0",
+                "-DMESH_MUZI_QSPI_CAPACITY_GUARD=1",
+                "-DRADIO_CLASS=UniversalLoRaRadio", "-DWRAPPER_CLASS=UniversalLoRaRadio",
+                "-DUSE_SX1262=1", "-DUSE_LR1121=1", "-DMAX_NEIGHBOURS=50"]),
 )
 
 
@@ -103,15 +112,17 @@ def record(case, target=None, proof=True):
 
 
 def radio_source_environment(case):
-    flags = ["-DRADIO_CLASS=CustomSX" + case["chip"],
-             "-DWRAPPER_CLASS=CustomSX" + case["chip"] + "Wrapper", "-DMAX_NEIGHBOURS=50"]
+    driver = "Custom" + (case["chip"] if case["chip"].startswith("LR") else "SX" + case["chip"])
+    flags = ["-DRADIO_CLASS=" + driver,
+             "-DWRAPPER_CLASS=" + driver + "Wrapper", "-DMAX_NEIGHBOURS=50"]
     flags += [flag for flag in case["flags"] if flag.startswith((
         "-DMAX_CONTACTS=", "-DMAX_GROUP_CHANNELS=", "-DOFFLINE_QUEUE_SIZE="))]
     return dict(board=case["board"], build_flags=flags)
 
 
 def radio_companion(case):
-    counts = {"Tbeam": (160, 40, 128), "LilyGo_T3S3": (350, 40, 512), "Meshadventurer": (160, 40, 128)}
+    counts = {"Tbeam": (160, 40, 128), "LilyGo_T3S3": (350, 40, 512),
+              "Meshadventurer": (160, 40, 128), "muzi_base": (350, 40, 256)}
     contacts, channels, queue = counts[case["prefix"]]
     return {**case, "target": case["prefix"] + "_companion_radio_full",
             "legacy": case["fixed"] + "_companion_radio_ble",
@@ -152,7 +163,8 @@ class AutoRadioConsolidationTests(unittest.TestCase):
     def test_replacement_names_cover_only_known_chip_families_and_roles(self):
         for prefix, fixed_pattern, roles in consolidated.RADIO_FAMILIES:
             chips = ("SX1262", "SX1276") if prefix == "Tbeam" else (
-                ("sx1262", "sx1276") if prefix == "LilyGo_T3S3" else ("sx1262", "sx1268"))
+                ("sx1262", "sx1276") if prefix == "LilyGo_T3S3" else (
+                    ("uno", "duo") if prefix == "muzi_base" else ("sx1262", "sx1268")))
             for chip in chips:
                 for role in roles:
                     target = prefix + "_" + chip + "_" + role
@@ -204,13 +216,14 @@ class AutoRadioConsolidationTests(unittest.TestCase):
                 continue
             with self.subTest(target=target):
                 successor = consolidated.configuration_replacement(target, envs)
-                self.assertIn((successor, "autoLoRaRadio"), choices)
+                self.assertTrue(any(name == successor and key in ("autoLoRaRadio", "muziRadioAccessories")
+                                    for name, key in choices), choices)
                 covered.append(target)
         # Keep all currently deployed chip-specific names as exact build inputs.
-        self.assertGreaterEqual(len(covered), 59)
+        self.assertGreaterEqual(len(covered), 69)
 
     def test_generated_full_resolution_preserves_retained_contacts_channels_and_queue(self):
-        for base in (RADIO_CASES[0], RADIO_CASES[1], RADIO_CASES[3]):
+        for base in (RADIO_CASES[0], RADIO_CASES[1], RADIO_CASES[3], RADIO_CASES[5]):
             case = radio_companion(base)
             canonical_base = "env:" + case["target"].replace("_full", "_ble")
             legacy = "env:" + case["legacy"]
@@ -241,8 +254,9 @@ class AutoRadioConsolidationTests(unittest.TestCase):
             self.assertEqual([old, new], before)
             self.assertEqual(consolidated.omit_redundant_records([old]), [old])
             invalid = [dict(source_commit=None), dict(source_commit="b" * 40), dict(source_commit="a" * 8),
-                       dict(verified=False), dict(platform="NRF52_PLATFORM"), dict(verification=[]),
+                       dict(verified=False), dict(platform="OTHER_PLATFORM"), dict(verification=[]),
                        dict(build_profile="standard"), dict(target=case["prefix"] + "_kiss_modem"),
+                       dict(capabilities=[case["capability"], "sensor.profile.full", "hardware.qualification.pending"]),
                        dict(capabilities=[case["capability"], "sensor.profile.reduced"])]
             proof = new["manifest"]["verification"][0]
             invalid += [dict(verification=[{**proof, **change}]) for change in (
@@ -255,7 +269,7 @@ class AutoRadioConsolidationTests(unittest.TestCase):
             self.assertEqual(consolidated.omit_redundant_records([historical, new]), [historical, new])
 
     def test_companion_omission_needs_both_real_full_transports(self):
-        for base in (RADIO_CASES[0], RADIO_CASES[1], RADIO_CASES[3]):
+        for base in (RADIO_CASES[0], RADIO_CASES[1], RADIO_CASES[3], RADIO_CASES[5]):
             case = radio_companion(base)
             old, new = radio_records(case)
             self.assertEqual(consolidated.omit_redundant_records([old, new]), [new])
@@ -284,6 +298,71 @@ class AutoRadioConsolidationTests(unittest.TestCase):
             self.assertEqual(consolidated.omit_redundant_records([old, new]), [new])
             new["manifest"]["verification"] = []
             self.assertEqual(consolidated.omit_redundant_records([old, new]), [old, new])
+
+    def test_muzi_superio_shared_successor_needs_radio_accessories_and_both_transports(self):
+        case = radio_companion(RADIO_CASES[5])
+        case["flags"] += ["-DMUZI_BASE=1", "-DMUZI_BASE_ACCESSORY_AUTODETECT=1", "-DDISPLAY_CLASS=SH1107Display"]
+        for chip, driver in (("uno", "CustomSX1262"), ("duo", "CustomLR1121")):
+            target = "muzi_base_" + chip + "_superIO_companion_radio_full"
+            source = radio_source_environment({**case, "chip": "1262" if chip == "uno" else "LR1121"})
+            self.assertIn("-DRADIO_CLASS=" + driver, source["build_flags"])
+            envs = {"env:" + target: source, "env:" + case["target"]: environment(case)}
+            self.assertEqual(consolidated.configuration_replacement(target, envs), case["target"])
+            for flag in ("MUZI_BASE_ACCESSORY_AUTODETECT", "MESH_RADIO_AUTO_LR1121", "MESH_MUZI_QSPI_CAPACITY_GUARD"):
+                invalid = {**environment(case), "build_flags": case["flags"] + ["-U" + flag]}
+                self.assertIsNone(consolidated.configuration_replacement(
+                    target, {**envs, "env:" + case["target"]: invalid}))
+            old, shared = radio_records({**case, "legacy": target})
+            self.assertEqual(consolidated.omit_redundant_records([old, shared]), [old, shared])
+            display = dict(capability="display.autodetect", present=True, source="packaged application",
+                           evidence="meshcore.capability.display.autodetect.muzi_superio.v1")
+            shared["manifest"]["capabilities"].append("display.autodetect")
+            shared["manifest"]["verification"].append(display)
+            self.assertEqual(consolidated.omit_redundant_records([old, shared]), [shared])
+            for capability in (case["capability"], "display.autodetect", "companion.usb", "companion.bluetooth"):
+                candidate = deepcopy(shared)
+                candidate["manifest"]["verification"] = [row for row in candidate["manifest"]["verification"]
+                                                        if row["capability"] != capability]
+                self.assertEqual(consolidated.omit_redundant_records([old, candidate]), [old, candidate])
+
+    def test_muzi_qualification_ota_names_never_resolve_to_a_shared_normal_target(self):
+        for chip in ("uno", "duo"):
+            for role in ("repeater", "room_server"):
+                target = "muzi_base_" + chip + "_" + role + "_lora_ota"
+                self.assertEqual(consolidated.replacements(target), [])
+                self.assertIsNone(consolidated.configuration_replacement(target, {}))
+
+    @unittest.skipIf(os.name == "nt", "Bash release contracts run on Linux/WSL")
+    def test_muzi_release_setup_excludes_unqualified_infrastructure_and_does_not_invent_ota_aliases(self):
+        from test_upstream_observer_recipes import Recipes
+        recipes = Recipes()
+        config = [[name, [["board", recipes.value(name, "board")],
+                          ["build_flags", recipes.value(name, "build_flags").splitlines()]]]
+                  for name in recipes.config.sections() if name.startswith("env:")]
+        with tempfile.TemporaryDirectory() as folder:
+            config_file = Path(folder) / "config.json"
+            config_file.write_text(json.dumps(config))
+            program = r'''
+set -euo pipefail
+source build.sh
+pio() { echo 'PlatformIO must not run in this test' >&2; return 99; }
+mapfile -t ALL_PIO_ENVS < <(python3 -c 'import json,sys; print("\n".join(row[0][4:] for row in json.load(sys.stdin)))' < "$1")
+PIO_CONFIG_JSON=$(cat "$1")
+init_project_context
+for target in muzi_base_repeater muzi_base_room_server; do
+  is_known_pio_env "$target"
+  is_qspi_hardware_qualification_target "$target"
+  is_redundant_bulk_build_target "$target"
+  [ "$(get_pio_build_env "$target")" = "$target" ]
+  ! is_known_pio_env "${target}_lora_ota_no_external_sensors"
+done
+is_known_pio_env muzi_base_companion_radio_full
+! is_qspi_hardware_qualification_target muzi_base_companion_radio_full
+! is_redundant_bulk_build_target muzi_base_companion_radio_full
+'''
+            result = subprocess.run(["bash", "-c", program, "muzi-release", str(config_file)],
+                                    cwd=ROOT, capture_output=True, text=True, timeout=60)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
 
 class ConsolidatedProfileTests(unittest.TestCase):

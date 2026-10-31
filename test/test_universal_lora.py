@@ -449,6 +449,10 @@ class CustomSX1268 : public PhysicalLayer {
   explicit CustomSX1268(Module* m):PhysicalLayer(m){}
   bool std_init(SPIClass*) { ++init_calls; last_module = module; return module->init_ok; }
 };
+class CustomLR1121 : public PhysicalLayer {
+ public:
+  explicit CustomLR1121(Module* m):PhysicalLayer(m){}
+};
 class SX1276 : public PhysicalLayer {
  public:
   explicit SX1276(Module* m):PhysicalLayer(m){}
@@ -473,12 +477,15 @@ class alignas(64) RadioLibWrapper : public mesh::Radio {
   unsigned family_;
   mesh::RadioProfiles profile_;
   virtual bool preserveActiveReceiveOnLateIrq() const { return false; }
+  virtual bool usesLR1121Policy() const { return false; }
   virtual float initialProfileFrequency(float preferred) const { return preferred; }
   virtual bool checkBeaconOutputPower(float, int8_t power) const { return power >= -9 && power <= 22; }
   ~RadioLibWrapper() { --live_backends; selected=nullptr; }
  public:
   static RadioLibWrapper* selected;
   bool lateIrqGuardForTest() const { return preserveActiveReceiveOnLateIrq(); }
+  bool lr1121PolicyForTest() const { return usesLR1121Policy(); }
+  virtual float rxPowerSavingCaptureCostSymbols() const { return rxPowerSavingDefaultCaptureCost(); }
   float profileInitialForTest(float preferred) const { return initialProfileFrequency(preferred); }
   RadioLibWrapper(PhysicalLayer& radio, mesh::MainBoard&):_radio(&radio), family_(radio.module->id) {
     selected=this;
@@ -501,6 +508,14 @@ class CustomSX1268Wrapper : public RadioLibWrapper {
   CustomSX1268Wrapper(CustomSX1268& radio, mesh::MainBoard& board):RadioLibWrapper(radio,board){}
   ~CustomSX1268Wrapper(){}
 };
+class CustomLR1121Wrapper : public RadioLibWrapper {
+  bool (*deep_)() = nullptr;
+ public:
+  CustomLR1121Wrapper(CustomLR1121& radio, mesh::MainBoard& board):RadioLibWrapper(radio,board){}
+  ~CustomLR1121Wrapper(){}
+  void setDeepInitCallback(bool (*callback)()){deep_=callback;}
+  bool (*deepCallbackForTest() const)(){return deep_;}
+};
 RadioLibWrapper* RadioLibWrapper::selected=nullptr;
 '''
 
@@ -517,11 +532,11 @@ def backend_method(method, index):
     elif name in ("supportsMeshtext", "supportsEthernetTunnel"):
         result = "bool(" + {"supportsMeshtext": "MESH_ENABLE_MESHTEXT_WIRE", "supportsEthernetTunnel": "MESH_ENABLE_ETHERNET_WIRE"}[name] + ")"
         if name == "supportsEthernetTunnel":
-            result = "(family_!=1268 && " + result + ")"
+            result = "(family_!=1268 && family_!=1121 && " + result + ")"
     elif name == "supportsRxPowerSaving":
-        result = "family_ == 126"
+        result = "family_ == 126 || family_ == 1121"
     elif name == "supportsRxBoostedGainMode":
-        result = "family_ == 126 || family_ == 1268"
+        result = "family_ == 126 || family_ == 1268 || family_ == 1121"
     elif name == "validateBeaconPower":
         result = "checkBeaconOutputPower(a0,a1)"
     elif method["result"] == "void":
@@ -587,7 +602,7 @@ def dispatch_check(method, index):
         target = "const_api" if method["virtual"] else "const_radio"
     if method["name"] == "validateProfile":
         # The production SX127 subclass deliberately specializes this method.
-        code += "if(family==126){"
+        code += "if(family==126 && !MESH_RADIO_AUTO_LR1121){"
     code += "last_method=0;"
     call = target + "." + method["name"] + "(" + argument_text + ")"
     if method["result"] == "void":
@@ -599,14 +614,14 @@ def dispatch_check(method, index):
             if method["name"] == "profiles":
                 code += "assert(result!=nullptr);"
             elif method["name"] == "supportsRxPowerSaving":
-                code += "assert(result==(family==126));"
+                code += "assert(result==(family==126 || family==1121));"
             elif method["name"] == "supportsRxBoostedGainMode":
-                code += "assert(result==(family==126 || family==1268));"
+                code += "assert(result==(family==126 || family==1268 || family==1121));"
             elif method["name"] in ("supportsMeshtext", "supportsEthernetTunnel"):
                 macro = {"supportsMeshtext": "MESH_ENABLE_MESHTEXT_WIRE", "supportsEthernetTunnel": "MESH_ENABLE_ETHERNET_WIRE"}[method["name"]]
                 expected = "bool(" + macro + ")"
                 if method["name"] == "supportsEthernetTunnel":
-                    expected = "(family!=1268 && " + expected + ")"
+                    expected = "(family!=1268 && family!=1121 && " + expected + ")"
                 code += "assert(result==" + expected + ");"
             elif method["name"] == "validateBeaconPower":
                 code += "assert(result);"
@@ -669,7 +684,8 @@ class UniversalLoRaTest(unittest.TestCase):
         return exe
 
     @classmethod
-    def compile_dispatch(cls, feature_values, *, extra_virtual=False, sx1268=False, sx127x=True):
+    def compile_dispatch(cls, feature_values, *, extra_virtual=False, sx1268=False, sx127x=True,
+                         lr1121=False):
         """Build the unchanged adapter against instrumented chip backends.
 
         The virtual methods are derived from the production mesh::Radio class,
@@ -683,9 +699,11 @@ class UniversalLoRaTest(unittest.TestCase):
         flags = ["-DMESH_RADIO_AUTO_FAMILY=1", "-Wno-unused-parameter",
                  "-DMESH_RADIO_AUTO_SX1268=" + str(int(sx1268)),
                  "-DMESH_RADIO_AUTO_SX127X=" + str(int(sx127x)),
+                 "-DMESH_RADIO_AUTO_LR1121=" + str(int(lr1121)),
                  *["-D%s=%d" % row for row in feature_values.items()]]
         number = "".join(str(value) for value in feature_values.values())
         number += "-68" + str(int(sx1268)) + "-127" + str(int(sx127x))
+        number += "-lr" + str(int(lr1121))
         if extra_virtual:
             number += "-unforwarded"
         folder = cls.work / ("adapter-" + number)
@@ -706,7 +724,8 @@ class UniversalLoRaTest(unittest.TestCase):
         definitions = "\n".join(backend_method(method, i) for i, method in enumerate(methods, 1))
         (folder / "RadioLibWrappers.h").write_text(prefix + BACKEND_SUPPORT +
                                                   BACKEND_CLASS.replace("@METHODS@", definitions))
-        for filename in ("CustomSX1262Wrapper.h", "CustomSX1268Wrapper.h", "CustomSX1276Wrapper.h"):
+        for filename in ("CustomSX1262Wrapper.h", "CustomSX1268Wrapper.h", "CustomSX1276Wrapper.h",
+                         "CustomLR1121Wrapper.h"):
             (folder / filename).write_text('#pragma once\n#include "RadioLibWrappers.h"\n')
         (folder / "helpers").mkdir()
         (folder / "helpers/RegulatorSettings.h").write_text(
@@ -733,17 +752,25 @@ uint8_t data_bytes[8]={1,2,3};
 uint32_t timing_values[2]={17,23};
 int context_value=42;
 bool persistCallback(void*,const mesh::RadioSwitchTuning&) { return true; }
+bool deepInitCallback() { return true; }
+bool initializeLR(CustomLR1121& chip, SPIClass*) {
+  ++init_calls; last_module=chip.module; return chip.module->init_ok;
+}
 mesh::RadioProfileParams makeProfile() {
   mesh::RadioProfileParams p;p.freq=915.125f;p.bw=125;p.sf=7;p.cr=5;return p;
 }
 int main(int argc,char** argv) {
   assert(argc==2);
   const unsigned family=std::stoi(argv[1]);
-  Module sx126(family==1268?1268:126),sx127(127);
+  Module sx126(family==1268?1268:126),sx127(127),lr1121(1121);
   mesh::MainBoard board;
   SPIClass spi;
   {
-    UniversalLoRaRadio radio(sx126,sx127,board);
+    UniversalLoRaRadio radio(sx126,sx127,board
+#if MESH_RADIO_AUTO_LR1121
+        , &lr1121
+#endif
+        );
     mesh::Radio& api=radio;
     const mesh::Radio& const_api=radio;
     const UniversalLoRaRadio& const_radio=radio;
@@ -758,7 +785,8 @@ int main(int argc,char** argv) {
     assert(!api.supportsRxPowerSaving());
     radio.powerOff();
     assert(!shutdowns);
-    const auto chosen=family==1268?mesh::LoRaRadioFamily::SX1268:
+    const auto chosen=family==1121?mesh::LoRaRadioFamily::LR1121:
+      family==1268?mesh::LoRaRadioFamily::SX1268:
       family==126?mesh::LoRaRadioFamily::SX126x:mesh::LoRaRadioFamily::SX127x;
 #if !MESH_RADIO_AUTO_SX1268
     assert(!radio.selectFamily(mesh::LoRaRadioFamily::SX1268));
@@ -766,14 +794,30 @@ int main(int argc,char** argv) {
 #if !MESH_RADIO_AUTO_SX127X
     assert(!radio.selectFamily(mesh::LoRaRadioFamily::SX127x));
 #endif
+#if MESH_RADIO_AUTO_LR1121
+    assert(!radio.selectFamily(mesh::LoRaRadioFamily::LR1121));
+    assert(!radio.setLR1121Initializer(nullptr,deepInitCallback));
+    assert(!radio.setLR1121Initializer(initializeLR,nullptr));
+    assert(radio.setLR1121Initializer(initializeLR,deepInitCallback));
+#else
+    assert(!radio.selectFamily(mesh::LoRaRadioFamily::LR1121));
+#endif
     assert(radio.selectFamily(chosen));
     assert(live_chips==1 && live_backends==1 && !init_calls);
     auto* physical=radio.physicalLayer();
     auto* profiles=api.profiles();
     assert(physical && profiles && const_radio.physicalLayer()==physical);
     assert(radio.family()==chosen);
-    assert(std::strcmp(radio.familyName(),family==1268?"SX1268":family==126?"SX126x":"SX127x")==0);
-    assert(RadioLibWrapper::selected->lateIrqGuardForTest()==(family!=127));
+    assert(std::strcmp(radio.familyName(),family==1121?"LR1121":family==1268?"SX1268":family==126?"SX126x":"SX127x")==0);
+    assert(RadioLibWrapper::selected->lateIrqGuardForTest()==(family!=127 && family!=1121));
+    assert(RadioLibWrapper::selected->lr1121PolicyForTest()==(family==1121));
+#if MESH_RADIO_AUTO_LR1121
+    assert(!radio.setLR1121Initializer(initializeLR,deepInitCallback));
+    if(family==1121)
+      assert(static_cast<CustomLR1121Wrapper*>(RadioLibWrapper::selected)->deepCallbackForTest()==deepInitCallback);
+    if(family==126)
+      assert(radio.rxPowerSavingCaptureCostSymbols()==RX_POWERSAVING_CAPTURE_COST_SYMBOLS);
+#endif
     assert(RadioLibWrapper::selected->profileInitialForTest(915)==(family==1268?434:915));
     assert(RadioLibWrapper::selected->profileInitialForTest(433)==433);
     assert(radio.defaultFrequency(915)==(family==1268?434:915));
@@ -792,11 +836,12 @@ int main(int argc,char** argv) {
     assert(!radio.stdInit(&spi)&&init_calls==0);
     tuning_boot_ok=true;
 #endif
-    (family!=127?sx126:sx127).init_ok=false;
+    auto& module=family==1121?lr1121:family==127?sx127:sx126;
+    module.init_ok=false;
     assert(!radio.stdInit(&spi));
-    (family!=127?sx126:sx127).init_ok=true;
+    module.init_ok=true;
     assert(radio.stdInit(&spi) && init_calls==2);
-    assert(last_module==(family!=127?&sx126:&sx127));
+    assert(last_module==&module);
     @CHECKS@
     if(family==127) {
       auto p=makeProfile();
@@ -837,6 +882,41 @@ int main(int argc,char** argv) {
       assert(!api.validateBeaconPower(433,-10) && !api.validateBeaconPower(433,23));
 #endif
     }
+#if MESH_RADIO_AUTO_LR1121
+    if(family==126) {
+      auto p=makeProfile();
+      for(float f : {150.0f,433.0f,960.0f}) {p.freq=f;assert(api.validateProfile(p));}
+      for(float f : {149.0f,961.0f,1900.0f,2400.0f}) {p.freq=f;assert(!api.validateProfile(p));}
+      p=makeProfile();p.bw=7.8f;assert(api.validateProfile(p));
+      p.bw=203.125f;assert(!api.validateProfile(p));
+    }
+    if(family==1121) {
+      auto p=makeProfile();
+      for(float f : {150.0f,960.0f,1900.0f,2200.0f,2400.0f,2500.0f}) {
+        p.freq=f;assert(api.validateProfile(p));
+      }
+      for(float f : {149.0f,961.0f,1800.0f,2300.0f,2501.0f}) {
+        p.freq=f;assert(!api.validateProfile(p));
+      }
+      p=makeProfile();p.bw=7.8f;assert(!api.validateProfile(p));
+      for(float bw : {203.125f,406.25f,812.5f}) {
+        p.bw=bw;p.freq=915;assert(!api.validateProfile(p));
+        p.freq=2400;assert(api.validateProfile(p));
+      }
+      p=makeProfile();p.protocol=mesh::RadioProfileProtocol::Ethernet;
+      assert(!api.validateProfile(p));
+      p.protocol=mesh::RadioProfileProtocol::Meshtext;
+      assert(api.validateProfile(p)==bool(MESH_ENABLE_MESHTEXT_WIRE));
+      p.protocol=mesh::RadioProfileProtocol::Kiss;
+      assert(api.validateProfile(p)==bool(MESH_ENABLE_HOST_KISS));
+#if MESH_ENABLE_TX_BEACONS
+      assert(api.validateBeaconPower(915,-17));assert(api.validateBeaconPower(915,22));
+      assert(!api.validateBeaconPower(915,-18));assert(!api.validateBeaconPower(915,23));
+      assert(api.validateBeaconPower(2400,-18));assert(api.validateBeaconPower(2400,13));
+      assert(!api.validateBeaconPower(2400,14));assert(!api.validateBeaconPower(2400,-19));
+#endif
+    }
+#endif
     assert(live_chips==1 && live_backends==1);
   }
   assert(!live_chips && !live_backends);
@@ -962,14 +1042,18 @@ int main(){
                     "MESH_ENABLE_ETHERNET_WIRE")
         for values in ((1, 1, 1, 1, 1, 1, 1), (0, 0, 0, 0, 0, 0, 0), (0, 0, 0, 1, 1, 0, 1)):
             definitions = dict(zip(features, values))
-            for sx1268, sx127x in ((False, True), (True, False), (True, True), (False, False)):
-                with self.subTest(features=definitions, sx1268=sx1268, sx127x=sx127x):
-                    binary, virtual_count = self.compile_dispatch(definitions, sx1268=sx1268, sx127x=sx127x)
+            for sx1268, sx127x, lr1121 in ((False, True, False), (True, False, False),
+                    (True, True, False), (False, False, False), (False, False, True), (True, True, True)):
+                with self.subTest(features=definitions, sx1268=sx1268, sx127x=sx127x,lr1121=lr1121):
+                    binary, virtual_count = self.compile_dispatch(definitions, sx1268=sx1268,
+                                                                  sx127x=sx127x,lr1121=lr1121)
                     self.assertGreater(virtual_count, 75)
                     data = binary.read_bytes()
                     self.assertEqual(b"meshcore.capability.radio.autodetect.sx126x_sx127x.v1" in data, sx127x)
                     self.assertEqual(b"meshcore.capability.radio.autodetect.sx1262_sx1268.v1" in data, sx1268)
-                    for family in (126, *([127] if sx127x else []), *([1268] if sx1268 else [])):
+                    self.assertEqual(b"meshcore.capability.radio.autodetect.sx1262_lr1121.v1" in data, lr1121)
+                    for family in (126, *([127] if sx127x else []), *([1268] if sx1268 else []),
+                                   *([1121] if lr1121 else [])):
                         with self.subTest(family=family):
                             self.execute(binary, family)
 

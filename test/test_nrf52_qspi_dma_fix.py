@@ -164,6 +164,7 @@ extern "C" void* selected(unsigned index) {
             def get_abspath(self): return str(self.path)
         class Env:
             def __init__(self, build): self.build = build; self.middleware = []
+            def get(self, key, default=None): return default
             def subst(self, value):
                 self_test.assertEqual(value, '$BUILD_DIR'); return str(self.build)
             def File(self, path): return Path(path)

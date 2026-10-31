@@ -2,14 +2,25 @@
 #include <nrf_gpio.h>
 #include "target.h"
 #include <helpers/radiolib/TunableRadioHal.h>
+#if defined(MESH_RADIO_AUTO_FAMILY) && MESH_RADIO_AUTO_FAMILY && MESH_RADIO_AUTO_LR1121
+#include <helpers/radiolib/PortableLoRaChipProbe.h>
+#endif
 #include "variant.h"
 
 MuziBaseBoard board;
 
 static TunableRadioHal radio_hal(SPI);
+#if defined(MESH_RADIO_AUTO_FAMILY) && MESH_RADIO_AUTO_FAMILY && MESH_RADIO_AUTO_LR1121
+static Module sx1262_module(&radio_hal, P_LORA_NSS, LORA_SX1262_DIO_1,
+                            P_LORA_RESET, P_LORA_BUSY);
+static Module lr1121_module(&radio_hal, P_LORA_NSS, LORA_LR1121_DIO_1,
+                            P_LORA_RESET, P_LORA_BUSY);
+UniversalLoRaRadio radio_driver(sx1262_module, sx1262_module, board, &lr1121_module);
+#else
 RADIO_CLASS radio = new Module(&radio_hal, P_LORA_NSS, P_LORA_DIO_1, P_LORA_RESET, P_LORA_BUSY);
 
 WRAPPER_CLASS radio_driver(radio, board);
+#endif
 
 VolatileRTCClock fallback_clock;
 AutoDiscoverRTCClock rtc_clock(fallback_clock);
@@ -118,10 +129,42 @@ void MuziBaseSensorManager::loop() {
   #endif
 #endif // USE_LR1121
 
+#if defined(MESH_RADIO_AUTO_FAMILY) && MESH_RADIO_AUTO_FAMILY && MESH_RADIO_AUTO_LR1121
+static bool muziInitLR1121(CustomLR1121& chip, SPIClass* spi) {
+  spi->setPins(P_LORA_MISO, P_LORA_SCLK, P_LORA_MOSI);
+  spi->begin();
+  int16_t status = chip.begin(LORA_FREQ, LORA_BW, LORA_SF, LORA_CR,
+      RADIOLIB_LR11X0_LORA_SYNC_WORD_PRIVATE, LORA_TX_POWER, 16,
+      LR11X0_DIO3_TCXO_VOLTAGE);
+  if (status == RADIOLIB_ERR_NONE) status = chip.setCRC(2);
+  if (status == RADIOLIB_ERR_NONE) status = chip.explicitHeader();
+  if (status == RADIOLIB_ERR_NONE) {
+    chip.setRfSwitchTable(rfswitch_dios, rfswitch_table);
+    status = chip.setRxBoostedGainMode(RX_BOOSTED_GAIN);
+  }
+  return status == RADIOLIB_ERR_NONE;
+}
+
+mesh::LoRaRadioFamily universalLoRaRadioFamily() {
+  return radio_driver.family();
+}
+
+bool prepareUniversalLoRaRadio() {
+  if (radio_driver.family() != mesh::LoRaRadioFamily::None) return true;
+  if (!radio_driver.setLR1121Initializer(muziInitLR1121, radio_init)) return false;
+  SPI.setPins(P_LORA_MISO, P_LORA_SCLK, P_LORA_MOSI);
+  SPI.begin();
+  const mesh::PortableLoRaChipProbePins pins{P_LORA_NSS, P_LORA_RESET, P_LORA_BUSY};
+  return radio_driver.selectFamily(mesh::probePortableLoRaChip(SPI, pins));
+}
+#endif
+
 bool radio_init() {
   //rtc_clock.begin(Wire);
 
-#if defined(USE_LR1121)
+#if defined(MESH_RADIO_AUTO_FAMILY) && MESH_RADIO_AUTO_FAMILY && MESH_RADIO_AUTO_LR1121
+  return prepareUniversalLoRaRadio() && radio_driver.stdInit(&SPI);
+#elif defined(USE_LR1121)
   #ifdef LR11X0_DIO3_TCXO_VOLTAGE
     float tcxo = LR11X0_DIO3_TCXO_VOLTAGE;
   #else
@@ -160,21 +203,39 @@ bool radio_init() {
 }
 
 uint32_t radio_get_rng_seed() {
+#if defined(MESH_RADIO_AUTO_FAMILY) && MESH_RADIO_AUTO_FAMILY && MESH_RADIO_AUTO_LR1121
+  return radio_driver.getRngSeed();
+#else
   return radio.random(0x7FFFFFFF);
+#endif
 }
 
 void radio_set_params(float freq, float bw, uint8_t sf, uint8_t cr) {
+#if defined(MESH_RADIO_AUTO_FAMILY) && MESH_RADIO_AUTO_FAMILY && MESH_RADIO_AUTO_LR1121
+  radio_driver.setParams(freq, bw, sf, cr);
+#else
   radio.setFrequency(freq);
   radio.setSpreadingFactor(sf);
   radio.setBandwidth(bw);
   radio.setCodingRate(cr);
+#endif
 }
 
 void radio_set_tx_power(int8_t dbm) {
+#if defined(MESH_RADIO_AUTO_FAMILY) && MESH_RADIO_AUTO_FAMILY && MESH_RADIO_AUTO_LR1121
+  radio_driver.setTxPower(dbm);
+#else
   radio.setOutputPower(dbm);
+#endif
 }
 
 mesh::LocalIdentity radio_new_identity() {
+#if defined(MESH_RADIO_AUTO_FAMILY) && MESH_RADIO_AUTO_FAMILY && MESH_RADIO_AUTO_LR1121
+  auto* physical = radio_driver.physicalLayer();
+  if (!physical) return mesh::LocalIdentity();
+  RadioNoiseListener rng(*physical);
+#else
   RadioNoiseListener rng(radio);
+#endif
   return mesh::LocalIdentity(&rng);  // create new random identity
 }

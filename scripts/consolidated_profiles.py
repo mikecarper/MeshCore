@@ -31,6 +31,14 @@ SPECS = (
           ("esp32doit-devkit-v1", r"Meshadventurer_(?:repeater(?:_bridge_espnow)?|room_server|kiss_modem|terminal_chat|companion_radio_(?:usb|ble|full))(?:_observer_mqtt)?"),
           ("esp32-c3-devkitm-1", r"Tenstar_C3_(?:repeater(?:_bridge_espnow)?|kiss_modem)(?:_observer_mqtt)?"),
       )],
+    dict(key="autoLoRaRadio", capability="radio.autodetect.sx1262_lr1121",
+         marker="meshcore.capability.radio.autodetect.sx1262_lr1121.v1",
+         platform="NRF52_PLATFORM", board="muzi_base",
+         target=r"muzi_base_(?:repeater|room_server|companion_radio_(?:usb|ble|full))",
+         defines={"MESH_RADIO_AUTO_FAMILY": "1", "MESH_RADIO_AUTO_LR1121": "1",
+                  "MESH_MUZI_QSPI_CAPACITY_GUARD": "1",
+                  "MESH_RADIO_AUTO_SX127X": "0", "USE_SX1262": "1", "USE_LR1121": "1",
+                  "RADIO_CLASS": "UniversalLoRaRadio", "WRAPPER_CLASS": "UniversalLoRaRadio"}),
     dict(key="unifiedV4Display", capability="display.heltec_v4.unified",
          marker="meshcore.capability.display.heltec_v4.unified.v1",
          platform="ESP32_PLATFORM", board="heltec_v4",
@@ -77,11 +85,14 @@ RADIO_FAMILIES = (
      ("repeater", "repeater_bridge_espnow", "room_server", "kiss_modem", "terminal_chat",
       "companion_radio_usb", "companion_radio_ble", "companion_radio_full")),
     ("Tenstar_C3", r"Tenstar_C3_(sx1262|sx1268)", ("repeater", "repeater_bridge_espnow", "kiss_modem")),
+    ("muzi_base", r"muzi_base_(uno|duo)",
+     ("repeater", "room_server", "companion_radio_usb", "companion_radio_ble", "companion_radio_full")),
 )
 RADIO_CAPACITY_MINIMUMS = {
     "tbeam": dict(MAX_CONTACTS=160, MAX_GROUP_CHANNELS=40, OFFLINE_QUEUE_SIZE=128),
     "lilygo_t3s3": dict(MAX_CONTACTS=350, MAX_GROUP_CHANNELS=40, OFFLINE_QUEUE_SIZE=512),
     "meshadventurer": dict(MAX_CONTACTS=160, MAX_GROUP_CHANNELS=40, OFFLINE_QUEUE_SIZE=128),
+    "muzi_base": dict(MAX_CONTACTS=350, MAX_GROUP_CHANNELS=40, OFFLINE_QUEUE_SIZE=256),
 }
 
 
@@ -109,6 +120,7 @@ def specs_for_config(target, env):
 
 def proven(manifest, spec):
     return (manifest.get("verified") is True and manifest.get("platform") == spec["platform"]
+            and "hardware.qualification.pending" not in manifest.get("capabilities", [])
             and re.fullmatch(spec["target"], manifest.get("target", ""), re.I)
             and spec["capability"] in manifest.get("capabilities", [])
             and any(row.get("capability") == spec["capability"] and row.get("present") is True
@@ -156,6 +168,9 @@ def unified_v4_replacements(target):
 
 
 def radio_legacy(target):
+    accessory = re.fullmatch(r"muzi_base_(uno|duo)_superio_(companion_radio_(?:usb|ble|full))", target, re.I)
+    if accessory:
+        return "muzi_base", accessory[1].lower(), accessory[2].lower()
     for canonical, prefix, roles in RADIO_FAMILIES:
         found = re.fullmatch(prefix + r"_(" + "|".join(roles) + r")", target, re.I)
         if found:
@@ -168,6 +183,9 @@ def radio_replacements(target):
     if legacy is None:
         return []
     prefix, _, role = legacy
+    if "_superio_" in target.lower():
+        return [("muzi_base_companion_radio_full", "muziRadioAccessories"),
+                ("muzi_base_" + legacy[1] + "_companion_radio_full", "muziAccessories")]
     if role.startswith("companion_radio_") or role == "terminal_chat":
         return [(prefix + "_companion_radio_full", "autoLoRaRadio")]
     choices = [prefix + "_" + role]
@@ -186,9 +204,6 @@ def replacements(target):
         return [("PicoW_companion_radio", "combinedCompanion")]
     if re.fullmatch(r"heltec_v4(?:_3)?_expansionkit_tft_companion_radio_(?:usb|ble|wifi|full)(?:_ps)?(?:_fem(?:on|off))?", target, re.I):
         return unified + [("heltec_v4_tft_companion_radio_full_femon", "tftExpansionCompatible")]
-    match = re.fullmatch(r"muzi_base_(uno|duo)_superio_companion_radio_(?:usb|ble|full)", target, re.I)
-    if match:
-        return [("muzi_base_" + match[1].lower() + "_companion_radio_full", "muziAccessories")]
     if re.fullmatch(r"LilyGo_T-Echo-Lite_non_shell_companion_radio_(?:usb|ble|full)", target, re.I):
         return [("LilyGo_T-Echo-Lite_companion_radio_full", "techoLiteDisplay")]
     match = re.fullmatch(r"heltec_v4_expansionkit_(repeater|room_server)(_observer_mqtt)?", target, re.I)
@@ -216,8 +231,9 @@ def configuration_replacement(target, envs):
                 return envs["env:" + choice]
         return None
     for candidate, key in replacements(target):
-        env = environment(candidate, key == "autoLoRaRadio")
-        source_env = environment(target, key == "autoLoRaRadio")
+        radio = key in ("autoLoRaRadio", "muziRadioAccessories")
+        env = environment(candidate, radio)
+        source_env = environment(target, radio)
         if not env or not source_env or env.get("board") != source_env.get("board"):
             continue
         if key in ("displayAuto", "muziAccessories", "techoLiteDisplay"):
@@ -225,12 +241,18 @@ def configuration_replacement(target, envs):
             expected = {"displayAuto": "rc32", "muziAccessories": "muzi_superio", "techoLiteDisplay": "techo_lite"}[key]
             qualified = spec and spec["marker"] == expected and re.fullmatch(spec["targets"], candidate.lower())
         else:
-            qualified = any(spec["key"] == key for spec in specs_for_config(candidate, env))
-        if key == "autoLoRaRadio":
+            qualified = any(spec["key"] == ("autoLoRaRadio" if radio else key)
+                            for spec in specs_for_config(candidate, env))
+            if key == "muziRadioAccessories":
+                accessory = spec_for_defines(resolved_defines(env.get("build_flags", [])), env.get("board"))
+                qualified = (qualified and accessory and accessory["marker"] == "muzi_superio"
+                             and re.fullmatch(accessory["targets"], candidate.lower()))
+        if radio:
             legacy = radio_legacy(target)
             old = resolved_defines(source_env.get("build_flags", []))
             new = resolved_defines(env.get("build_flags", []))
-            expected = "CustomSX" + legacy[1][2:]
+            expected = {"uno": "CustomSX1262", "duo": "CustomLR1121"}.get(legacy[1],
+                       "CustomSX" + legacy[1][2:])
             qualified = (qualified and old.get("RADIO_CLASS") == expected
                          and old.get("WRAPPER_CLASS") == expected + "Wrapper"
                          and old.get("MESH_RADIO_AUTO_FAMILY", "0") == "0")
@@ -252,6 +274,8 @@ def omit_redundant_records(records):
                 == sorted(x for x in right.get("capabilities", []) if x.startswith("sensor.profile.")))
 
     def qualified(manifest, key):
+        if key == "muziRadioAccessories":
+            return qualified(manifest, "autoLoRaRadio") and qualified(manifest, "muziAccessories")
         if key in ("displayAuto", "muziAccessories", "techoLiteDisplay"):
             from optional_display_profiles import marker, SPECS as displays
             expected = {"displayAuto": "rc32", "muziAccessories": "muzi_superio", "techoLiteDisplay": "techo_lite"}[key]
@@ -294,7 +318,8 @@ def omit_redundant_records(records):
         manifest = record["manifest"]
         alternatives = replacements(manifest["target"])
         if not any(candidate["manifest"]["target"].lower() == target.lower()
-                   and (key != "autoLoRaRadio" or radio_successor(manifest, candidate["manifest"]))
+                   and (key not in ("autoLoRaRadio", "muziRadioAccessories")
+                        or radio_successor(manifest, candidate["manifest"]))
                    and (same_policy(manifest, candidate["manifest"])
                         or key in ("muziAccessories", "techoLiteDisplay")
                         and candidate["manifest"].get("build_profile") == "full"

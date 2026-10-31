@@ -29,6 +29,7 @@ picker use one shared image per role instead of separate chip choices.
 | `Generic_E22_*` | SX1262, SX1268 |
 | `Meshadventurer_*` | SX1262, SX1268 |
 | `Tenstar_C3_*` | SX1262, SX1268 |
+| `muzi_base_*` | SX1262 (Uno), LR1121 (Duo) |
 
 For example:
 
@@ -36,20 +37,21 @@ For example:
 bash build.sh build-firmware Tbeam_companion_radio_full
 bash build.sh build-firmware LilyGo_T3S3_repeater
 bash build.sh build-firmware Generic_E22_repeater
+bash build.sh build-firmware muzi_base_companion_radio_full
 ```
 
 Selection happens after board power is enabled and before saved radio regulator
 and switching settings are applied. The `board` command reports the detected
 family. SX126x retains RX power saving and buffered SPI switching; SX127x retains
-its own interrupt pin, modulation limits, and power control. The common factory
-TX power is 20 dBm; SX1262 also supports an explicit 22 dBm setting.
+its own interrupt pin, modulation limits, and power control. The shared ESP32
+factory TX power is 20 dBm; SX1262 also supports an explicit 22 dBm setting.
 The universal T-Beam Companion uses 160 contacts and 40 channels to retain Full
 wireless and OTA support within classic ESP32 RAM. Existing chip-specific
 Companion capacities are unchanged.
 
 These images cover the classic T-Beam and T3 S3 SX1262/SX1276/78 variants.
-T-Beam Supreme, T-Beam 1W, SX1272, SX1280, and LR-series radios require their
-own targets. An unrecognized or missing radio cannot fall back to a guessed
+T-Beam Supreme, T-Beam 1W, SX1272, SX1280, and other LR-series boards require
+their own targets. An unrecognized or missing radio cannot fall back to a guessed
 driver or start transmitting. Detection reads chip identification registers
 and normally takes a few tens of milliseconds, with a bounded timeout.
 SX1268 keeps its 410–810 MHz limit and its own power controls. When a compiled
@@ -57,6 +59,17 @@ default is outside that range, an SX1268 starts at 434 MHz; valid saved radio
 settings take precedence. Detection does not identify antenna bands or external
 power amplifiers, so boards with different PA wiring remain separate. Tenstar
 supports its unwired reset pin; a real hardware reset still requires that wire.
+
+Muzi Base selects the Uno or Duo IRQ pin, TCXO voltage and RF switching only
+after identifying the radio. The same Companion detects the optional SuperIO
+display/GPS accessories and the fitted QSPI flash's actual JEDEC capacity.
+It retains 350 contacts, 40 channels and 256 queued messages. The fixed Uno/Duo
+LoRa OTA recipes keep their historical identities and remain hardware
+qualification builds; the shared infrastructure recipes do not add an OTA
+receiver or bypass the release qualification requirement. For now the shared
+Repeater and Room recipes are explicit `pio run` qualification builds, excluded
+from ordinary releases. The shared Full Companion replaces the ordinary
+Uno/Duo USB, BLE and SuperIO choices once its packaged capabilities pass.
 
 The existing `Tbeam_SX1262_*`, `Tbeam_SX1276_*`, and
 `LilyGo_T3S3_sx1262_*`/`sx1276_*` images keep their names and OTA identities.

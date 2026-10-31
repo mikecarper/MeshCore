@@ -233,6 +233,11 @@ jobs:
           python3 -B test/test_universal_lora.py -v
           python3 -B test/test_universal_lora_builds.py -v
           python3 -B test/test_universal_lora_gpio.py -v
+          python3 -B test/test_portable_lora_probe.py -v
+          python3 -B test/test_universal_lr_policy.py -v
+          python3 -B test/test_muzi_universal_builds.py -v
+          python3 -B test/test_muzi_universal_startup.py -v
+          python3 -B test/test_muzi_qspi_capacity.py -v
           python3 -B test/test_notification_rtc_storage.py -v
           python3 -B test/test_companion_channels_rtc.py -v
           python3 -B test/test_universal_sx126x_builds.py -v
@@ -250,6 +255,12 @@ jobs:
           done
       - name: Compile the remaining role interfaces
         run: pio run -e Tbeam_kiss_modem -e LilyGo_T3S3_kiss_modem -e LilyGo_T3S3_terminal_chat -e Generic_E22_kiss_modem -e Meshadventurer_kiss_modem -e Meshadventurer_terminal_chat -e Tenstar_C3_kiss_modem
+      - name: Compile Muzi shared radio recipes
+        # Infrastructure remains a local qualification build until its
+        # board-matched LoRa OTA loader has passed physical qualification.
+        run: pio run -e muzi_base_repeater -e muzi_base_room_server -e muzi_base_companion_radio_usb -e muzi_base_companion_radio_ble
+      - name: Qualify Muzi Full Companion
+        run: bash build.sh build-firmware muzi_base_companion_radio_full --firmware-version v1.18.0.2-halo-keymind-cascade-dev --radio-preset usa-cascade-fixed --profile cascade
 
   management-reports:
     runs-on: ubuntu-latest

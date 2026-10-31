@@ -339,6 +339,9 @@ bool RadioLibWrapper::isTxPowerValid(int8_t dbm) const {
 #ifdef MAX_LORA_TX_POWER
   if (dbm > MAX_LORA_TX_POWER) return false;
 #endif
+#if defined(MESH_RADIO_AUTO_LR1121) && MESH_RADIO_AUTO_LR1121
+  if (usesLR1121Policy()) return true;
+#endif
 #if MESH_RADIO_PROFILE_CHIP == 1121 || MESH_RADIO_PROFILE_CHIP == 2021
   // These drivers intentionally clip desired power to the physically selected
   // band's PA limit. A temporary/radio2 band must not reject saved intent.
@@ -1028,6 +1031,8 @@ uint32_t RadioLibWrapper::getBeaconAirtime(const mesh::RadioProfileParams& p, in
   const int de = symbol >= 16000
 #if MESH_RADIO_PROFILE_CHIP == 1121
       || (p.freq > 1000 && p.sf > 10)
+#elif defined(MESH_RADIO_AUTO_LR1121) && MESH_RADIO_AUTO_LR1121
+      || (usesLR1121Policy() && p.freq > 1000 && p.sf > 10)
 #endif
       ? 1 : 0;
   // Round the small integer bit/block ratio without floating-point division.
@@ -1473,6 +1478,8 @@ uint32_t RadioLibWrapper::getProfileAirtime(uint8_t profile, int len, uint8_t cr
 #if MESH_RADIO_PROFILE_CHIP == 1121
       // RadioLib 7.8.1 forces SX128x-compatible LDRO for high-band SF11/12.
       || (p.freq > 1000 && p.sf > 10)
+#elif defined(MESH_RADIO_AUTO_LR1121) && MESH_RADIO_AUTO_LR1121
+      || (usesLR1121Policy() && p.freq > 1000 && p.sf > 10)
 #endif
       ? 1 : 0;
   // Round the small integer bit/block ratio without floating-point division.
@@ -1485,6 +1492,8 @@ uint32_t RadioLibWrapper::getProfileAirtime(uint8_t profile, int len, uint8_t cr
 #if MESH_RADIO_PROFILE_CHIP == 1110 || MESH_RADIO_PROFILE_CHIP == 1121
   // Preserve these wrappers' operational floor even for an inactive tuple.
   return rounded < 200 ? 200 : rounded;
+#elif defined(MESH_RADIO_AUTO_LR1121) && MESH_RADIO_AUTO_LR1121
+  return usesLR1121Policy() && rounded < 200 ? 200 : rounded;
 #else
   return rounded;
 #endif

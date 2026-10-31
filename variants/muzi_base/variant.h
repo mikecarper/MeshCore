@@ -129,7 +129,12 @@ static const uint8_t AREF = (PIN_AREF); // not used
 #define LORA_MOSI               (PIN_SPI_MOSI)  // P1.14
 
 // only the IRQ pin differs per radio. rf-switch/tcxo defines are in platformio.ini
-#if defined(USE_LR1121)
+#define LORA_SX1262_DIO_1         (32+6)
+#define LORA_LR1121_DIO_1         (32+8)
+#if defined(MESH_RADIO_AUTO_FAMILY) && MESH_RADIO_AUTO_FAMILY && MESH_RADIO_AUTO_LR1121
+  // Both modules are built; the selected driver's Module owns the actual IRQ.
+  #define LORA_DIO_1              LORA_SX1262_DIO_1
+#elif defined(USE_LR1121)
   #define LORA_DIO_1              (32+8)            // P1.08  LR1121 IRQ/DIO1
 #elif defined(USE_SX1262)
   #define LORA_DIO_1              (32+6)            // P1.06  SX1262 IRQ/DIO1
@@ -146,7 +151,13 @@ static const uint8_t AREF = (PIN_AREF); // not used
 #define PIN_QSPI_IO2 (0 + 28)
 #define PIN_QSPI_IO3 (0 + 2)
 
+// Muzi production boards use different flash capacities. Leave the Adafruit
+// device list unrestricted so a consumer matches the actual JEDEC ID instead
+// of forcing the 16 MB part from the original reference schematic. Companion
+// storage uses CustomLFS's separately checked JEDEC database.
+#if !defined(MESH_MUZI_QSPI_CAPACITY_GUARD) || !MESH_MUZI_QSPI_CAPACITY_GUARD
 #define EXTERNAL_FLASH_DEVICES W25Q128JVPQ
+#endif
 #define EXTERNAL_FLASH_USE_QSPI
 
 ////////////////////////////////////////////////////////////////////////////////
