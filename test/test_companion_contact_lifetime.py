@@ -35,6 +35,7 @@ class CompanionContactLifetimeTests(unittest.TestCase):
         dispatcher = (ROOT / "src/Dispatcher.cpp").read_text()
         native = (ROOT / "test/test_serial_mode_switch/test_serial_mode_switch.cpp").read_text()
         functions = "\n".join(extract_braced(base, signature) for signature in (
+            "static ContactInfo* findContactByPubKey(",
             "void BaseChatMesh::resetContactValue(",
             "bool BaseChatMesh::initializeContactStorage(",
             "void BaseChatMesh::populateContactFromAdvert(",

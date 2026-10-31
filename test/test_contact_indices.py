@@ -38,6 +38,7 @@ struct ContactInfo {
   } id;
   uint8_t flags = 0;
   uint32_t last_advert_timestamp = 0;
+  bool isEmptySlot() const { return id.prefix == 0 && id.ordinal == 0; }
 };
 @VISITOR@
 static unsigned allocations = 0, fail_allocation = 0;

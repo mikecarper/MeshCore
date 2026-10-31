@@ -262,10 +262,11 @@ class CompanionContactPersistenceContractTests(unittest.TestCase):
         )
         remove = function_body(self.base, "bool BaseChatMesh::removeContact(")
 
-        self.assertIn("int i = 0; i < MAX_ANON_CONTACTS", transient_lookup)
+        self.assertIn("findContactByPubKey(contacts, MAX_ANON_CONTACTS", transient_lookup)
         self.assertIn(
-            "int i = MAX_ANON_CONTACTS; i < num_contacts", persistent_lookup
+            "findContactByPubKey(contacts + MAX_ANON_CONTACTS", persistent_lookup
         )
+        self.assertIn("num_contacts - MAX_ANON_CONTACTS", persistent_lookup)
         self.assertIn("if (!isTransientContact(contact)) return false", clear)
         self.assertNotIn("num_contacts", clear)
         self.assertIn("int idx = MAX_ANON_CONTACTS", remove)

@@ -2727,13 +2727,9 @@ void UITask::shutdown(bool restart){
   if (restart) {
     _board->reboot();
   } else {
-    if (_display != NULL && _display->isEink()) {
-      if (_display->isOn()) _display->turnOff();
-    } else {
-      display.forceFullRefresh();
-      display.clear();
-      display.endFrame();
-    }
+    // Each driver owns blanking, panel sleep and shared power/bus release.
+    auto* screen = _display;
+    if (screen != NULL && screen->isOn()) screen->turnOff();
     // Power off board including radio, display, GPS and components
     _board->powerOff();
   }
