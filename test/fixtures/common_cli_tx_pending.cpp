@@ -84,6 +84,7 @@ public:
   bool _common_save_succeeded = false;
   struct Profiles { void loop() {} void servicePendingTuning() {} } _radio_profiles;
   Profiles& radioProfiles() { return _radio_profiles; }
+  struct Presets { void loop(unsigned long) {} } _radio_presets;
   struct MorseReply { void complete(const void*) {} } _morse_reply;
   MorseReply& morseReply() { return _morse_reply; }
   CommonCLI() { callbacks.owner = this; }

@@ -11,6 +11,11 @@
 #include <helpers/CompanionNotificationPolicy.h>
 #include <helpers/ui/BluetoothPairingUiPolicy.h>
 
+#include <helpers/RadioPresetConfig.h>
+#if MESH_ENABLE_RADIO_PRESETS
+#include <helpers/RadioPresets.h>
+#endif
+
 void CardputerUITask::begin(DisplayDriver *display, SensorManager *sensors, CompanionNodePrefs *node_prefs,
                             CustomNodePrefs *custom_prefs) {
   _display = static_cast<CardputerDisplay *>(display);
@@ -210,6 +215,7 @@ void CardputerUITask::onMessageSendAttempt(uint8_t attempt, uint8_t total, Messa
 }
 
 void CardputerUITask::pingRecv(float snr_tx, float snr_rx) {
+  ping_deadline = 0;
   char buf[40];
   snprintf(buf, sizeof(buf), "SNR there/back: %.2f/%.2f", snr_tx, snr_rx);
   showAlert(buf, 4000);
@@ -270,11 +276,18 @@ void CardputerUITask::loop() {
         kb->setModifiers(latched);  // a wake-up press must not flip Shift/Fn
       } else {
         playSound(SoundType::Keyboard);
-        if (!handleShortcut(event) && current_screen) {
+        if (_keylock.filter(event)) {
+          // locked: only Fn+Q gets through
+        } else if (!handleShortcut(event) && current_screen) {
           current_screen->handleInput(event);
         }
       }
     }
+  }
+
+  if (ping_deadline != 0 && (long)(millis() - ping_deadline) >= 0) {
+    ping_deadline = 0;
+    showAlert("No answer", 3000);
   }
 
   if (_top_btn.check() == BUTTON_EVENT_CLICK) {
@@ -463,6 +476,84 @@ void CardputerUITask::cycleBrightness() {
   showAlert(buf, 1500);
 }
 
+// Formats "<name> <freq>,<bw>,<sf>,<cr>[,<preamble>]" (same number formatting as the CLI).
+static void formatTuple(char *out, size_t cap, const char *name, float freq, float bw, uint8_t sf, uint8_t cr,
+                        uint16_t preamble) {
+  char f[16], b[16];  // ftoa/ftoa3 return a shared static buffer; copy each before the next call
+  snprintf(f, sizeof(f), "%s", StrHelper::ftoa(freq));
+  snprintf(b, sizeof(b), "%s", StrHelper::ftoa3(bw));
+  int w = snprintf(out, cap, "%s %s,%s,%u,%u", name, f, b, (unsigned)sf, (unsigned)cr);
+  if (w > 0 && (size_t)w < cap && preamble) {
+    snprintf(out + w, cap - (size_t)w, ",%u", (unsigned)preamble);
+  }
+}
+
+// slot 1..5 loads and shows that preset; slot 0 shows the active preset, or "custom" and the live radio.
+void CardputerUITask::showPresetAlert(uint8_t slot) {
+  char buf[80];
+#if !MESH_ENABLE_RADIO_PRESETS
+  // Built without presets (MESH_ENABLE_RADIO_PRESETS=0): Fn+0 still shows the live radio.
+  if (slot != 0) {
+    showAlert("Presets not in this build", 2000);
+    return;
+  }
+  formatTuple(buf, sizeof(buf), "custom", _node_prefs->freq, _node_prefs->bw, _node_prefs->sf,
+              _node_prefs->cr, 0);
+  showAlert(buf, 3000);
+#else
+  const mesh::RadioPreset *p = nullptr;
+  if (slot == 0) {
+    uint8_t active = the_mesh_cp.activeRadioPreset();
+    if (active != 0) {
+      p = the_mesh_cp.radioPresetTable().get(active);
+    }
+    if (!p) {
+      formatTuple(buf, sizeof(buf), "custom", _node_prefs->freq, _node_prefs->bw, _node_prefs->sf,
+                  _node_prefs->cr, 0);
+      showAlert(buf, 3000);
+      return;
+    }
+  } else {
+    p = the_mesh_cp.radioPresetTable().get(slot);
+    if (!p) {
+      snprintf(buf, sizeof(buf), "Preset %u empty", (unsigned)slot);
+      showAlert(buf, 2000);
+      return;
+    }
+    char reply[96];
+    if (!the_mesh_cp.loadRadioPreset(slot, reply, sizeof(reply))) {
+      showAlert(strncmp(reply, "OK - ", 5) == 0 ? reply + 5 : reply, 3000);
+      return;
+    }
+  }
+  formatTuple(buf, sizeof(buf), p->name, p->freq, p->bw, p->sf, p->cr, p->preamble);
+  showAlert(buf, 3000);
+#endif
+}
+
+void CardputerUITask::pingLastRepeater() {
+  ContactInfo c;
+  if (!the_mesh_cp.lastPingContact(c)) {
+    showAlert("Ping a repeater from Contacts first", 3000);
+    return;
+  }
+  if (the_mesh_cp.sendPing(c)) {
+    showAlert("Waiting for response...", 4000);
+    ping_deadline = millis() + 10000;
+  } else {
+    showAlert("Ping failed", 2000);
+  }
+}
+
+void CardputerUITask::openNewestUnread() {
+  MainScreen *main = static_cast<MainScreen *>(main_screen);
+  if (!main->openNewestUnread()) {
+    showAlert("No unread", 1500);
+    return;
+  }
+  gotoMainScreen();
+}
+
 bool CardputerUITask::handleShortcut(const Keyboard::Event &e) {
   if (!e.modifiers.fn || e.modifiers.ctrl || e.modifiers.alt || e.modifiers.opt) {
     return false;
@@ -515,6 +606,34 @@ bool CardputerUITask::handleShortcut(const Keyboard::Event &e) {
       return true;
     case Keyboard::KEY_T:  // Tools
       gotoToolsScreen();
+      return true;
+    case Keyboard::KEY_Q:  // key lock (the only key that passes while locked)
+      _keylock.toggle();
+      showAlert(_keylock.locked ? "Keys locked" : "Keys unlocked", 1500);
+      return true;
+    case Keyboard::KEY_0:
+      showPresetAlert(0);
+      return true;
+    case Keyboard::KEY_1:
+      showPresetAlert(1);
+      return true;
+    case Keyboard::KEY_2:
+      showPresetAlert(2);
+      return true;
+    case Keyboard::KEY_3:
+      showPresetAlert(3);
+      return true;
+    case Keyboard::KEY_4:
+      showPresetAlert(4);
+      return true;
+    case Keyboard::KEY_5:
+      showPresetAlert(5);
+      return true;
+    case Keyboard::KEY_Z:  // ping the last repeater pinged from Contacts
+      pingLastRepeater();
+      return true;
+    case Keyboard::KEY_U:  // open newest unread chat
+      openNewestUnread();
       return true;
     case Keyboard::KEY_K: {  // Keyboard layout
       CardputerLayout *lay = _board->getLayout();

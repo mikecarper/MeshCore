@@ -593,6 +593,9 @@ void MyMesh::putNeighbour(const mesh::Identity &id, uint32_t timestamp, float sn
 
 uint8_t MyMesh::handleLoginReq(const mesh::Identity& sender, const uint8_t* secret, uint32_t sender_timestamp, const uint8_t* data, bool is_flood) {
   using LoginResult = mesh::LoginHistory::Result;
+#if MESH_ENABLE_RADIO_PRESETS
+  login_full_admin = false;
+#endif
   const uint32_t attempt_time = getRTCClock()->getCurrentTime();
   ClientInfo* existing_client =
       acl.getClient(sender.pub_key, PUB_KEY_SIZE);
@@ -684,6 +687,10 @@ uint8_t MyMesh::handleLoginReq(const mesh::Identity& sender, const uint8_t* secr
   getRNG()->random(&reply_data[8], 4);   // random blob to help packet-hash uniqueness
   reply_data[12] = FIRMWARE_VER_LEVEL;  // New field
 
+#if MESH_ENABLE_RADIO_PRESETS
+  // Strict admin only: region/filter managers never commit a radio preset.
+  login_full_admin = client->isAdmin();
+#endif
   return 13;  // reply length
 }
 
@@ -2867,6 +2874,12 @@ void MyMesh::onAnonDataRecv(mesh::Packet *packet, const uint8_t *secret, const m
     reply_path_len = 0xFF;
     if (data[4] == 0 || data[4] >= ' ') {   // is password, ie. a login request
       reply_len = handleLoginReq(sender, secret, timestamp, &data[4], packet->isRouteFlood());
+#if MESH_ENABLE_RADIO_PRESETS
+      // A fresh full-admin login (LoRa or ESP-NOW bridge) proves the operator
+      // can still reach this node: keep a remotely loaded preset.
+      if (reply_len > 4 && reply_data[4] == RESP_SERVER_LOGIN_OK && login_full_admin)
+        _cli.radioPresets().onAdminLogin();
+#endif
     } else if (data[4] == ANON_REQ_TYPE_REGIONS && packet->isRouteDirect()) {
       reply_len = handleAnonRegionsReq(sender, timestamp, &data[5], len - 5);
     } else if (data[4] == ANON_REQ_TYPE_OWNER && packet->isRouteDirect()) {

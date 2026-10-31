@@ -125,25 +125,18 @@ bool CardputerDataStore::saveCustomPrefs(const CustomNodePrefs &prefs) {
 }
 
 void CardputerDataStore::storeMessage(const uint8_t pkey[PUB_KEY_SIZE], const char *text, bool is_sent,
-                                      bool is_channel) {
+                                      bool is_channel, const MessageMeta *meta) {
   if (!_history_fs) {
     return;
   }
   char path[128];
-  char msg_copy[MAX_MESSAGE_LENGTH + 1] = { 0 };
+  // "<< " + v2 prefix (<= 78 chars) + text; the codec swaps newlines for spaces.
+  char line[MAX_MESSAGE_LENGTH + 96];
   char pkey_hex[PUB_KEY_SIZE * 2 + 1];
   buf_to_hex_fast(pkey, PUB_KEY_SIZE, pkey_hex);
 
-  int msg_len;
-  for (msg_len = 0; msg_len < MAX_MESSAGE_LENGTH && text[msg_len] != '\0'; msg_len++) {
-    if (text[msg_len] == '\n' || text[msg_len] == '\r') {
-      msg_copy[msg_len] = ' '; // Swap newline with space
-    } else {
-      msg_copy[msg_len] = text[msg_len];
-    }
-  }
-
-  msg_copy[msg_len] = '\0';
+  // Own messages keep text only: their delivery details are session-only.
+  encodeHistoryLineParts(is_sent, is_sent ? nullptr : meta, text, MAX_MESSAGE_LENGTH, line, sizeof(line));
 
   snprintf(path, sizeof(path), "%s/%s", is_channel ? CHANNEL_HISTORY_ID_DIR : HISTORY_DIR_DIRECT, pkey_hex);
 
@@ -153,23 +146,16 @@ void CardputerDataStore::storeMessage(const uint8_t pkey[PUB_KEY_SIZE], const ch
     return;
   }
 
-  file.print(is_sent ? ">> " : "<< ");
-  file.println(msg_copy);
+  file.println(line);
   file.close();
 }
 
 static void push_history_line(ChatHistory &history, char *buf) {
-  int len = strlen(buf);
-
-  if (len < 4 || (buf[0] != '>' && buf[0] != '<') || buf[0] != buf[1]) {
+  if (!isHistoryLine(buf)) {
     return;
   }
-
-  HistoryMessage *msg = history.push_ref();
-  msg->out = buf[0] == '>';
-
-  strncpy(msg->text, buf + 3, sizeof(msg->text));
-  msg->text[sizeof(msg->text) - 1] = '\0';
+  // Legacy and v2 lines; a legacy text starting with '{' stays text.
+  decodeHistoryLine(buf, *history.push_ref());
 }
 
 void CardputerDataStore::loadMessages(const uint8_t pkey[PUB_KEY_SIZE], bool is_channel,

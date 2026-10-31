@@ -60,6 +60,16 @@ struct MyMesh {
   unsigned allocations = 0, direct_sends = 0, flood_sends = 0, logins = 0;
   uint32_t sent_delay = 0, login_timestamp = 0;
   bool login_flood = false, login_empty = false;
+  // Set by the production handleLoginReq for strict-admin logins only.
+  bool login_full_admin = false;
+  struct PresetCLI {
+    unsigned admin_logins = 0;
+    void onAdminLogin() { ++admin_logins; }
+  };
+  struct CLI {
+    PresetCLI presets;
+    PresetCLI& radioPresets() { return presets; }
+  } _cli;
   struct ACL {
     ClientInfo client;
     bool present = false;

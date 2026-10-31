@@ -1,5 +1,7 @@
 #include "MainScreen.h"
 
+#include <helpers/RadioPresetConfig.h>
+
 #include "helpers.h"
 #include "main/ChannelsPage.h"
 #include "main/ChatPage.h"
@@ -55,6 +57,16 @@ void MainScreen::renderStatusIcons(CardputerDisplay &lcd) {
   lcd.drawTextCentered(iconX + 2 + iconWidth / 2, 0, tmp);
   lcd.setColor(CardputerDisplay::P_BLACK);
   lcd.drawTextCentered(iconX + 2 + iconWidth / 2 - 1, 0, tmp);
+
+#if MESH_ENABLE_RADIO_PRESETS
+  // active radio preset name (or "custom") just left of the battery icon
+  {
+    uint8_t active = the_mesh_cp.activeRadioPreset();
+    const mesh::RadioPreset *preset = active ? the_mesh_cp.radioPresetTable().get(active) : nullptr;
+    lcd.setColor(CardputerDisplay::P_GREEN);
+    lcd.drawTextRightAlign(iconX - 4, 0, preset ? preset->name : "custom");
+  }
+#endif
 
   iconX = 3;
   iconY = 5;
@@ -250,6 +262,37 @@ void MainScreen::selectContact(ContactInfo &contact, int idx) {
   unread.resetContact(contact.id.pub_key);
 
   static_cast<ChatPage *>(chat_page)->selectContact(contact, idx);
+}
+
+bool MainScreen::openNewestUnread() {
+  for (int i = (int)unread.countChats() - 1; i >= 0; i--) {
+    const UnreadCounterItem *item = unread.get(i);
+    if (!item || item->count <= 0) {
+      continue;
+    }
+    if (item->is_channel) {
+      // Unread channels are keyed by the full channel history id (name + key).
+      ChannelDetails ch;
+      uint8_t history_id[PUB_KEY_SIZE];
+      for (int idx = 0; the_mesh_cp.getChannel(idx, ch); idx++) {
+        if (CardputerMesh::channelHistoryId(ch, history_id)
+            && memcmp(history_id, item->pkey, sizeof(history_id)) == 0) {
+          selectChannel(ch, idx);
+          return true;
+        }
+      }
+    } else {
+      ContactInfo c;
+      for (int idx = 0; idx < the_mesh_cp.getNumContacts(); idx++) {
+        if (the_mesh_cp.getContactByIdx(idx, c) &&
+            memcmp(c.id.pub_key, item->pkey, PUB_KEY_SIZE) == 0) {
+          selectContact(c, idx);
+          return true;
+        }
+      }
+    }
+  }
+  return false;
 }
 
 void MainScreen::selectChannel(const ChannelDetails &channel, int idx) {

@@ -2162,6 +2162,71 @@ minimum and return to it exactly when it is safe.
 
 ---
 
+#### Save and switch named radio presets
+
+**Search terms:** radio preset, saved radio settings, switch frequency, private mesh.
+
+**Usage:**
+- `get preset [n]`
+- `add preset <name> <slot> <freq>,<bw>,<sf>,<cr>[,<preamble>]`
+- `load preset <slot>`
+- `del preset <slot>`
+
+**Parameters:**
+- `slot`: Preset slot (1-5)
+- `name`: 1-12 printable characters, no spaces or commas
+- `freq`, `bw`, `sf`, `cr`: Same values and validation as `set radio`
+- `preamble`: Optional preamble length; omit for the default
+
+**Default:** On first boot slot 1 is saved as `USA-Canada` (910.525 MHz, 62.5 kHz,
+SF7, CR5), the US/Canada standard, not a copy of the current radio. If the running
+radio differs, no slot shows `*` until you load one. A board that rejects those
+settings (for example a non-US band radio) leaves slot 1 empty. Other slots are empty.
+Builds can override the default with `RADIO_PRESET_DEFAULT_NAME`, `_FREQ`, `_BW`, `_SF` and `_CR`.
+
+`get preset` lists every slot by name, for example
+`1*USA-Canada 2 Private 3 - 4 - 5 - (get preset N)`; `*` marks the slot that
+matches the running radio settings and `-` marks an empty slot. `get preset <n>`
+shows one slot with its settings, for example `1*USA-Canada 910.525,62.5,7,5`.
+Presets are stored in `/presets` and survive reboots.
+
+`load preset <slot>` saves and applies that preset through the same path as
+`set radio`: the change applies two seconds later, after the reply has been
+sent. Loading from the local serial terminal is permanent.
+
+**Remote loads revert unless confirmed.** A `load preset` sent over LoRa
+(including the ESP-NOW bridge) is provisional. The reply is
+`OK - loading <name> <settings>; log in again within 10 min to keep`. Log in
+again as administrator on the new settings within 10 minutes to keep them.
+Otherwise the node returns to its previous radio settings automatically. A
+reboot during that window also reverts. Region and filter managers cannot use
+preset commands, and their logins do not confirm a pending load. While a load is
+pending, `get preset` starts with `pending, reverts in <m>m;` and another
+remote load is refused. A remote load is also refused while a TempRadio session
+is active. If the revert itself fails, it retries every minute and at every
+boot.
+
+**Build switch:** `MESH_ENABLE_RADIO_PRESETS`. Flash-constrained STM32WL builds
+(such as `wio-e5-mini_repeater`) and ESP-NOW-only builds (`MESH_PRIMARY_ESPNOW`
+without a LoRa primary radio) omit radio presets by default; there the preset
+commands return the ordinary unknown-command reply. `RAK_4631_companion_radio_full`
+also sets `MESH_ENABLE_RADIO_PRESETS=0` because it has no flash left under its
+size gate. Other builds include them; set `-D MESH_ENABLE_RADIO_PRESETS=0` or
+`=1` to override.
+
+**Storage switch:** `MESH_RADIO_PRESETS_RESIDENT`. By default (`1`) the preset
+table stays in RAM. With `0` each preset command reads `/presets` into a
+temporary table, saves any change and drops it; only the revert timer of a
+pending remote `load preset` stays in RAM (at most 32 bytes). Commands, replies
+and the revert behavior are the same, with one safety difference: if a stored
+`/presets` cannot be read later (corrupt, short or missing), preset commands
+reply `Error: presets unreadable` and nothing is written over the file; a
+pending remote load still reverts or commits from RAM. The RAK4631 Repeater built from
+`RAK_4631_repeater` (both its sensor + LoRa OTA images) uses `0` because its
+runtime-RAM headroom is too small for the resident table.
+
+---
+
 #### View or change this node's transmit power
 
 **Search terms:** tx power, transmit strength, radio output power, dBm.

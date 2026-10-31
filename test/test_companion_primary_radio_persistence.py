@@ -105,6 +105,8 @@ struct MyMesh : CompanionFleetFixture {
   Radio* _radio=&radio;
   Clock clock;
   mesh::RadioProfileCLI _radio_profiles;
+  // Preset slots are parsed by test_radio_presets; nothing here names one.
+  struct NoRadioPresets { bool handle(const char*,char*,size_t,bool){return false;} } _radio_presets;
   char reply[160]={};
   MyMesh() {
     _prefs.freq=909.5f; _prefs.bw=62.5f; _prefs.sf=7; _prefs.cr=5;

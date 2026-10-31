@@ -28,13 +28,26 @@ struct ContactInfo {
 namespace mesh { struct GroupChannel { uint8_t secret[32] = {}; }; }
 struct ChannelDetails { mesh::GroupChannel channel; char name[32] = "channel"; };
 struct CustomNodePrefs { float battery_correction; uint8_t brightness, text_level; };
+struct MessageMeta { bool has = false; };
+#define OWN_ROUTE_FLOOD 0xFF
+struct Tracker {
+  uint32_t next = 0, failed_id = 0, routed_id = 0;
+  unsigned adds = 0, fails = 0;
+  uint8_t route = 0;
+  uint32_t add(const uint8_t*, bool, uint32_t, uint8_t r = OWN_ROUTE_FLOOD) { ++adds; route = r; return ++next; }
+  void setRoute(uint32_t id, uint8_t r) { routed_id = id; route = r; }
+  void onFailed(uint32_t id) { ++fails; failed_id = id; }
+};
+struct Clock { uint32_t getMillis() const { return 7; } };
 @LAST_MESSAGE@
 struct Store {
   bool save_ok = true;
   unsigned writes = 0;
   uint8_t key[32] = {};
   std::string text;
-  void storeMessage(const uint8_t* pubkey, const char* value, bool, bool) {
+  const MessageMeta* meta = nullptr;
+  void storeMessage(const uint8_t* pubkey, const char* value, bool, bool, const MessageMeta* m = nullptr) {
+    meta = m;
     ++writes; memcpy(key, pubkey, 32); text = value;
   }
   bool saveCustomPrefs(const CustomNodePrefs&) { return save_ok; }
@@ -85,6 +98,12 @@ struct CardputerMesh : MyMesh {
   UI* _ui = &ui;
   LastSentMessage last_msg;
   unsigned long resend_timeout = 0;
+  Tracker own_tracker;
+  Clock clock;
+  Clock* _ms = &clock;
+  uint32_t last_own_id = 0, last_dm_own_id = 0;
+  bool ui_dm_sending = false;
+  MessageMeta last_rx_meta;
   CustomNodePrefs _custom_prefs{1.0f, 128, 1}, _saved_custom_prefs = _custom_prefs;
   bool isMessageSending() const { return last_msg.state == MESSAGE_SENDING; }
   int sendDirectMessage(const ContactInfo&, uint32_t, const char*);
@@ -115,6 +134,8 @@ int main() {
   assert(node.resend_timeout == node.now + node.timeout && node.store.writes == 1);
   assert(node.ui.sent_contacts == 1);
   assert(node.last_msg.expected_ack == 1000 && node.last_msg.attempt == 1);
+  assert(node.own_tracker.adds == 1 && node.last_own_id == 1 && node.last_dm_own_id == 1);
+  assert(node.own_tracker.route == 2 && !node.ui_dm_sending);
   assert(node.sendDirectMessage(node.current, 6, "other") == MSG_SEND_FAILED && node.sends == 1);
   node.current.out_path_len = 3;
   node.now = 30000; node.timeout = 32000;
@@ -126,6 +147,7 @@ int main() {
   node.checkResend();
   assert(!node.isMessageSending() && node.resend_timeout == 0 && node.last_msg.expected_ack == 0);
   assert(node.ui.events.back() == MESSAGE_FAILED && node.store.writes == 1);
+  assert(node.own_tracker.fails == 1 && node.own_tracker.failed_id == 1);
 
   CardputerMesh removed;
   assert(removed.sendDirectMessage(removed.current, 1, "test") != MSG_SEND_FAILED);
@@ -138,6 +160,7 @@ int main() {
   assert(fallback.resend_timeout == fallback.now + DIRECT_SEND_ROUTE_RESEND_RELAY);
   fallback.checkResend(); fallback.checkResend(); fallback.checkResend();
   assert(fallback.sent_path == OUT_PATH_UNKNOWN && fallback.path_saves == 1);
+  assert(fallback.own_tracker.routed_id == 1 && fallback.own_tracker.route == OWN_ROUTE_FLOOD);
   assert(fallback.resend_timeout == fallback.now + DIRECT_SEND_FLOOD_RESEND_RELAY);
   fallback.checkResend(); fallback.checkResend(); fallback.checkResend();
   assert(!fallback.isMessageSending() && fallback.sends == 6);
@@ -148,6 +171,13 @@ int main() {
   blocked.last_msg.attempt = DIRECT_SEND_ROUTE_ATTEMPTS;
   blocked.persist = false; blocked.checkResend();
   assert(blocked.current.out_path_len == 4 && !blocked.isMessageSending() && blocked.sends == 1);
+
+  // App/terminal DMs reach history through the same hook but have no keyboard
+  // ACK state, so they stay untracked.
+  CardputerMesh app;
+  uint32_t ack = 0, estimate = 0;
+  assert(app.sendMessage(app.current, 9, 0, "app", ack, estimate) != MSG_SEND_FAILED);
+  assert(app.ui.sent_contacts == 1 && app.own_tracker.adds == 0 && app.last_own_id == 0);
 
   CardputerMesh custom;
   custom._custom_prefs.brightness = 200;
@@ -163,6 +193,7 @@ int main() {
   accepted.onUiChannelMessage(7, "group");
   assert(accepted.ui.channels == 1 && accepted.store.writes == 2 && accepted.store.key[31] == 88);
   assert(accepted.ui.key[31] == 88);
+  assert(accepted.store.meta == &accepted.last_rx_meta);
 }
 '''
 
@@ -199,6 +230,7 @@ struct Mesh {
   }
 } the_mesh_cp;
 struct History { unsigned count = 1; void clear() { count = 0; } };
+struct ChatFocus { int msg = 0; };
 struct ChatPage {
   int current_contact_idx = 2, current_channel_idx = -1;
   ContactInfo current_contact;
@@ -207,6 +239,7 @@ struct ChatPage {
   History chat_history;
   int chat_history_offset = 2;
   std::string last_sent_message = "previous";
+  ChatFocus focus{3};
   void refreshSelectedContact();
   bool refreshSelectedChannel();
 };
@@ -223,6 +256,7 @@ int main() {
   the_mesh_cp.contacts.erase(the_mesh_cp.contacts.begin());
   page.refreshSelectedContact();
   assert(page.current_contact_idx == -1 && page.chat_history.count == 0 && page.last_sent_message.empty());
+  assert(page.focus.msg == 0);
   page.current_channel_idx = 4; page.current_channel = the_mesh_cp.channel;
   CardputerMesh::channelHistoryId(page.current_channel, page.current_channel_history_id);
   strcpy(the_mesh_cp.channel.name, "renamed");
