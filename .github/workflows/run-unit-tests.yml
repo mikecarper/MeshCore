@@ -17,6 +17,11 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: '3.13'
+      - name: Install pinned ArduinoJson headers for portal fixtures
+        run: >-
+          git clone --depth 1 --single-branch --branch v7.4.3
+          https://github.com/bblanchon/ArduinoJson.git
+          .pio/libdeps/wifi-diagnostics/ArduinoJson
       - name: Verify WiFi events, recovery history and readable status without hardware
         env:
           PYTHONPATH: test
