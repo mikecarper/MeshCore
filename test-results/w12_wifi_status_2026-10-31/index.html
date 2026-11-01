@@ -2522,6 +2522,17 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#station-power-policy-follow-up-2026-11-01" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Station power policy follow-up — 2026-11-01
+      
+    </span>
+  </a>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -2688,6 +2699,22 @@ limits: RAK4631 Full Companion is 712,700 / 712,704 application bytes including
 EndF; Wio-E5 Mini Repeater uses 245,368 / 245,760 flash bytes. Both runtime RAM
 checks pass. The hosted-link check passes all seven tests, and the MOTA suite
 passes all 50 tests after updating its inherited USB-logging helper contract.</p>
+<h2 id="station-power-policy-follow-up-2026-11-01">Station power policy follow-up — 2026-11-01</h2>
+<p>Preview 5 was reported to obtain a LAN address, then disconnect with driver
+reason 34; a later join reported reason 39. This establishes a successful
+association and IP exchange, but does not identify the cause of the later loss.</p>
+<p>An independent source audit found that Arduino 2.0.17 reapplies its cached
+modem-sleep preference when the asynchronous <code>STA_START</code> event runs. WebConfig
+previously set only the SDK preference, allowing a delayed event to replace
+saved <code>none</code> or <code>max</code> with Arduino's default <code>min</code>. Saved-station startup now
+prepares that cache before starting the interface and retains the explicit SDK
+write. The live CLI setter updates both, including the cache while WiFi is off.
+Stored values, coexistence restrictions and connection deadlines are unchanged.</p>
+<p>All 22 focused host tests passed across station ownership/recovery, canonical
+credentials, connection deadlines and transport power-policy fixtures. The new
+regressions execute the production startup and setter with a delayed
+<code>STA_START</code>; removing either cache update reproduces the failure. This validates
+the policy race, not a hardware fix for the reported reason-34/39 disconnects.</p>
 
 
 
