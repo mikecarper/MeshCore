@@ -160,7 +160,7 @@ class DualProfileTest : public testing::Test {
   void tick(uint32_t ms = 1) { clock.now += ms; node.loop(); }
 };
 
-TEST_F(DualProfileTest, OtaSpeedPacesBothCopiesAndYieldsToOrdinaryTraffic) {
+TEST_F(DualProfileTest, OtaSpeedPacesEachProfileAndYieldsToOrdinaryTraffic) {
   node.flood_attempts = 0;
   node.tempRadioActive = true;
   node.ota_speed = 0.05f;
@@ -171,21 +171,33 @@ TEST_F(DualProfileTest, OtaSpeedPacesBothCopiesAndYieldsToOrdinaryTraffic) {
   radio.complete = true;
   tick(100); // actual OTA TX airtime: 100 ms; quiet allowance: 1900 ms
   EXPECT_EQ(radio.transmissions.size(), 1u);
+  tick();
+  ASSERT_TRUE(radio.sending);
+  EXPECT_EQ((std::vector<uint8_t>{0, 1}), radio.transmissions);
+  radio.complete = true; tick(100);
+  // The first secondary copy has no prior secondary transmission to wait for.
+  // A second OTA packet must now respect both profiles' own quiet clocks.
+  ASSERT_NE(nullptr, queue(PAYLOAD_TYPE_OTA));
   auto* normal = queue(PAYLOAD_TYPE_GRP_TXT);
   ASSERT_NE(nullptr, normal);
   tick();
-  ASSERT_TRUE(radio.sending); // the OTA copy yields to normal messages
-  EXPECT_EQ(radio.transmissions.size(), 2u);
+  ASSERT_TRUE(radio.sending); // paced OTA yields to normal messages
+  EXPECT_EQ((std::vector<uint8_t>{0, 1, 0}), radio.transmissions);
   radio.complete = true; tick(100);
   tick(); // the normal dispatcher's next-TX deadline opens on the following loop
   ASSERT_TRUE(radio.sending);
   radio.complete = true; tick(100);
-  EXPECT_EQ(radio.transmissions.size(), 3u); // both normal-message profiles sent
+  EXPECT_EQ((std::vector<uint8_t>{0, 1, 0, 1}), radio.transmissions);
   tick(1000);
-  EXPECT_EQ(radio.transmissions.size(), 3u);
-  node.ota_speed = 1.0f;
-  tick(101); // discard the old slow wait without losing the secondary copy
   EXPECT_EQ(radio.transmissions.size(), 4u);
+  node.ota_speed = 1.0f;
+  tick(101); // discard both old slow waits without losing either copy
+  ASSERT_TRUE(radio.sending);
+  EXPECT_EQ(radio.transmissions.size(), 5u);
+  EXPECT_EQ(radio.transmissions.back(), 0u);
+  radio.complete = true; tick(100);
+  tick(); ASSERT_TRUE(radio.sending);
+  EXPECT_EQ(radio.transmissions.size(), 6u);
   EXPECT_EQ(radio.transmissions.back(), 1u);
   radio.complete = true; tick(100);
   EXPECT_EQ(manager.getFreeCount(), 40);
@@ -596,7 +608,7 @@ TEST_F(DualProfileTest, CadCannotPullPacedOtaAheadOfItsQuietDeadline) {
   tick(); radio.complete = true; tick(100); // 1900 ms quiet, ending at 2001
   auto* ota = node.obtainNewPacket();
   *ota = makeFloodPacket(PAYLOAD_TYPE_OTA);
-  ota->tx_radio = mesh::RADIO_TX_SECONDARY;
+  ota->tx_radio = mesh::RADIO_TX_PRIMARY; // this profile owns the quiet deadline
   ASSERT_TRUE(node.sendPacket(ota, 0));
   auto* normal = node.obtainNewPacket();
   *normal = makeFloodPacket(PAYLOAD_TYPE_GRP_TXT);

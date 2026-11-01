@@ -77,7 +77,8 @@ static void parsing() {
   assert(!validFields(terminator));
   for (const char* token : {"sender=", "text=", "sender=[", "text=a**", "sender=Alice(?i)", "text=(?i)(?i)rain",
        "len=", "len=-1", "len=3-2",
-       "len=185", "len=184-185", "len=1+2", "len=1+-2", "len=1-2+", "len=1--2", "len=99999999999999999999",
+       "len=185", "len=184-185", "len=256", "len=440", "len=65535", "len=0-440",
+       "len=1+2", "len=1+-2", "len=1-2+", "len=1--2", "len=99999999999999999999",
        "route=bad", "prob=0", "prob=101", "prob=-1", "prob=50%", "enabled=yes"}) {
     Fields row{}; uint8_t seen = 0; char reply[160] = {};
     assert(parseToken(token, row, seen, reply) == -1 && strncmp(reply, "Err -", 5) == 0);
@@ -281,6 +282,27 @@ static void storage() {
   assert(bytes == expected);
   ByteReader full{bytes}; Fields loaded{};
   assert(readFields(full, loaded) && full.position == bytes.size() && sameFields(source, loaded));
+  // The on-disk format retains uint16 bounds. Invalid high bytes must never
+  // wrap into a valid one-byte bound (256->0, 440->184, 65535->255).
+  for (size_t position : {size_t(0), size_t(2)}) {
+    for (uint16_t value : {uint16_t(185), uint16_t(256), uint16_t(440), uint16_t(65535)}) {
+      ByteReader corrupt{bytes};
+      corrupt.bytes[position] = uint8_t(value);
+      corrupt.bytes[position + 1] = uint8_t(value >> 8);
+      assert(!readFields(corrupt, loaded));
+    }
+  }
+  const Fields maximum = parse("len=184-184");
+  std::vector<uint8_t> maximumBytes;
+  auto maximumWriter = [&maximumBytes](const void* data, size_t size) {
+    const auto* first = static_cast<const uint8_t*>(data);
+    maximumBytes.insert(maximumBytes.end(), first, first + size); return true;
+  };
+  assert(writeFields(maximumWriter, maximum));
+  assert(maximumBytes[0] == 184 && maximumBytes[1] == 0
+      && maximumBytes[2] == 184 && maximumBytes[3] == 0);
+  ByteReader maximumRead{maximumBytes};
+  assert(readFields(maximumRead, loaded) && sameFields(maximum, loaded));
   for (size_t length = 0; length < bytes.size(); ++length) {
     ByteReader shortRead{{bytes.begin(), bytes.begin() + length}};
     assert(!readFields(shortRead, loaded));

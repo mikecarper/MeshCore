@@ -19,8 +19,10 @@ enum PathPosition : uint8_t { Prefix, Anywhere, Suffix, Exact };
 // Zero initialization retains every FPF7 default. Keep the old path's first
 // nine bytes in its established field; only a fourth 3-byte ID needs a tail.
 struct Fields {
-  uint16_t min_payload;
-  uint16_t max_payload;
+  // RAM needs only one byte per bound. FPF7 still stores two-byte values;
+  // decode and validate those before narrowing so corrupt high bytes fail.
+  uint8_t min_payload;
+  uint8_t max_payload;
   uint8_t route;
   uint8_t probability;
   uint8_t path_position;
@@ -30,7 +32,8 @@ struct Fields {
   char sender[64];
   char text[64];
 };
-static_assert(sizeof(Fields) <= 140, "Update the extended filter RAM budget");
+static_assert(MAX_PACKET_PAYLOAD <= UINT8_MAX, "Extended rule payload bounds need one byte");
+static_assert(sizeof(Fields) == 138, "Update the extended filter RAM budget");
 
 inline bool hasFields(const Fields& fields) {
   return fields.min_payload || fields.max_payload || fields.route
@@ -172,13 +175,18 @@ inline int parseToken(const char* token, Fields& fields, uint8_t& seen, char* re
       char* plus = strchr(range, '+');
       if (separator) *separator++ = 0;
       if (plus) *plus = 0;
-      valid = unsignedValue(range, MAX_PACKET_PAYLOAD, fields.min_payload);
+      uint16_t minimum = 0, maximum = 0;
+      valid = unsignedValue(range, MAX_PACKET_PAYLOAD, minimum);
       if (valid && separator) valid = !plus
-          && unsignedValue(separator, MAX_PACKET_PAYLOAD, fields.max_payload)
-          && fields.min_payload <= fields.max_payload;
+          && unsignedValue(separator, MAX_PACKET_PAYLOAD, maximum)
+          && minimum <= maximum;
       else if (valid) {
         valid = !plus || plus[1] == 0;
-        fields.max_payload = plus ? MAX_PACKET_PAYLOAD : fields.min_payload;
+        maximum = plus ? MAX_PACKET_PAYLOAD : minimum;
+      }
+      if (valid) {
+        fields.min_payload = uint8_t(minimum);
+        fields.max_payload = uint8_t(maximum);
       }
     }
     if (valid) fields.payload_set = 1;
@@ -346,9 +354,13 @@ bool readFields(File& file, Fields& fields) {
   auto read = [&file](void* out, size_t size) {
     return file.read(static_cast<uint8_t*>(out), size) == size;
   };
+  uint16_t minimum = 0, maximum = 0;
+  if (!read(&minimum, 2) || !read(&maximum, 2)
+      || minimum > MAX_PACKET_PAYLOAD || maximum > MAX_PACKET_PAYLOAD) return false;
+  fields.min_payload = uint8_t(minimum);
+  fields.max_payload = uint8_t(maximum);
   uint8_t sender_size = 0, text_size = 0;
-  return read(&fields.min_payload, 2) && read(&fields.max_payload, 2)
-      && read(&fields.route, 1) && read(&fields.probability, 1)
+  return read(&fields.route, 1) && read(&fields.probability, 1)
       && read(&fields.path_position, 1) && read(&fields.disabled, 1)
       && read(&fields.payload_set, 1)
       && read(fields.path_tail, 3)
@@ -360,9 +372,10 @@ bool readFields(File& file, Fields& fields) {
 
 template <typename Writer>
 bool writeFields(Writer& write, const Fields& fields) {
+  const uint16_t minimum = fields.min_payload, maximum = fields.max_payload;
   uint8_t sender_size = uint8_t(strlen(fields.sender));
   uint8_t text_size = uint8_t(strlen(fields.text));
-  return write(&fields.min_payload, 2) && write(&fields.max_payload, 2)
+  return write(&minimum, 2) && write(&maximum, 2)
       && write(&fields.route, 1) && write(&fields.probability, 1)
       && write(&fields.path_position, 1) && write(&fields.disabled, 1)
       && write(&fields.payload_set, 1)

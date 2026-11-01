@@ -15,6 +15,10 @@
 
 namespace mesh {
 
+#if !MESH_OTA_PACKET_PACING
+static_assert(ota::OTA_SPEED_DEFAULT == 1.0f, "Fixed packet pacing requires the normal 1x relay speed");
+#endif
+
 #define MAX_RX_DELAY_MILLIS        32000  // 32 seconds
 #define MIN_TX_BUDGET_RESERVE_MS   100    // min budget (ms) required before allowing next TX
 #define MIN_TX_BUDGET_AIRTIME_DIV  2      // require at least 1/N of estimated airtime as budget before TX
@@ -105,7 +109,9 @@ void Dispatcher::begin() {
   outbound_radio_retry_pending = false;
   outbound_radio_retry_used = false;
   outbound_cancellation = OutboundCancellation::None;
+#if MESH_OTA_PACKET_PACING
   for (auto& timing : ota_tx_timing) timing = {};
+#endif
   radio_nonrx_start = _ms->getMillis();
   radio_nonrx_timer_armed = false;
 
@@ -1294,6 +1300,7 @@ bool Dispatcher::isTransmitChannelReady(const Packet* packet, uint32_t& retry_de
   return true;
 }
 
+#if MESH_OTA_PACKET_PACING
 void Dispatcher::noteOtaTransmit(uint8_t profile, uint32_t generation,
                                 uint32_t airtime, uint32_t now) {
   if (profile >= 2) return;
@@ -1319,6 +1326,7 @@ uint32_t Dispatcher::otaQuietRemaining(uint8_t profile, uint32_t generation,
   timing.airtime = 0;
   return 0;
 }
+#endif
 
 void Dispatcher::checkSend() {
   if (_radio->isCarrierWaveActive()) return;

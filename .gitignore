@@ -66,6 +66,7 @@ __pycache__/
 # -A` re-commits it. .wt-* covers the hand-made ones; .build-wt-* the CI ones.
 .build-wt-*/
 .wt-*/
+/.meshlog-review/
 scripts/__pycache__/*
 
 # Reduced-TLS mbedTLS archives, ~6 MB per arch, fetched by scripts/fetch_mbedtls_4k.sh.

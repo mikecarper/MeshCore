@@ -377,7 +377,7 @@ def requirements(platform, defines, target):
     if repeater:
         engine = integer(defines, "MESH_ENABLE_FLOOD_RULE_ENGINE", int(platform != "STM32_PLATFORM"))
         slots = integer(defines, "FLOOD_PACKET_FILTER_SLOTS", 63 if engine else 16)
-        parts["flood_filter_table"] = slots * (304 if engine else 40) + 16
+        parts["flood_filter_table"] = slots * (300 if engine else 40) + 16
         psram_tables_default = int(platform == "ESP32_PLATFORM" and qualified_repeater
                                    and integer(defines, "CONFIG_IDF_TARGET_ESP32S3", 0)
                                    and "BOARD_HAS_PSRAM" in defines)

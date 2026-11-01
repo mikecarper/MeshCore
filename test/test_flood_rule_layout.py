@@ -24,8 +24,8 @@ static constexpr uint8_t NAME_LEN = 32, PATH_PREFIX_BYTES_MAX = 9;
 '''
 
 SCENARIOS = r'''
-static_assert(sizeof(RepeaterEntry) == 300 && sizeof(RoomEntry) == 332,
-              "compact repeater rows save 32 bytes; room layout stays unchanged");
+static_assert(sizeof(RepeaterEntry) == 296 && sizeof(RoomEntry) == 328,
+              "one-byte validated payload bounds save four bytes per rule row");
 static_assert(sizeof(LegacyEntry) == 40, "retain legacy STM32 rule layout");
 static_assert(alignof(RepeaterEntry) >= alignof(uint32_t));
 static_assert(alignof(RoomEntry) >= alignof(uint32_t));

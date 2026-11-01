@@ -8,6 +8,7 @@ import runpy
 import shlex
 import shutil
 import subprocess
+import tempfile
 import textwrap
 from pathlib import Path
 import unittest
@@ -106,6 +107,51 @@ class MiniRepeaterProfileTest(unittest.TestCase):
         self.assertRegex(self.flags, r"-D\s+MESH_ENABLE_RECENT_REPEATERS=1\b")
         # Numeric shortcut GET is deliberately not part of this size profile.
         self.assertNotIn("NUMERIC", self.flags)
+
+    def test_fixed_ota_relay_pace_is_scoped_and_preserves_dispatch(self):
+        # Exercise actual queueing, TX completion, busy-channel fairness,
+        # route retirement and receive/watchdog behavior in both policies.
+        from test_radio_direction_dispatcher import SOURCE
+        self.assertRegex(self.flags, r"-D\s+MESH_OTA_PACKET_PACING=0\b")
+        for section in self.config.sections():
+            if section != SECTION:
+                self.assertNotIn("MESH_OTA_PACKET_PACING", self.config[section].get("build_flags", ""))
+        source = SOURCE.replace("unsigned inbound=0;", "unsigned inbound=0, completed=0;")
+        source = source.replace("  using mesh::Dispatcher::getTransmitProfileMask;",
+                                "  void onSendComplete(mesh::Packet*) override { ++completed; }\n"
+                                "  using mesh::Dispatcher::getTransmitProfileMask;")
+        source = source.replace("PAYLOAD_TYPE_TXT_MSG<<PH_TYPE_SHIFT", "PAYLOAD_TYPE_OTA<<PH_TYPE_SHIFT")
+        source = source.replace("p->header=ROUTE_TYPE_FLOOD;", "p->header=ROUTE_TYPE_FLOOD|(PAYLOAD_TYPE_OTA<<PH_TYPE_SHIFT);")
+        source = source.rsplit("}", 1)[0] + "assert(d.completed == r.tx);\n}\n"
+        compiler = os.environ.get("CXX") or shutil.which("g++") or shutil.which("clang++")
+        self.assertIsNotNone(compiler)
+        with tempfile.TemporaryDirectory(prefix="mini-fixed-pace-") as directory:
+            work = Path(directory)
+            (work / "main.cpp").write_text(source)
+            (work / "Mesh.h").write_text("#pragma once\n#include <Dispatcher.h>\n")
+            flags = ["-DMESH_ENABLE_RADIO_DIRECTION=1", "-DMESH_ENABLE_BRIDGE_INGRESS=1",
+                     "-DRADIO_LIVENESS_SOFT_ONLY=1"]
+            sanitize = [] if os.name == "nt" else ["-fsanitize=address,undefined",
+                         "-fno-sanitize-recover=all", "-fno-pie", "-no-pie"]
+            for policy in (None, 0):
+                with self.subTest(policy=policy):
+                    executable = work / ("default.exe" if policy is None else "fixed.exe")
+                    built = subprocess.run([compiler, "-std=c++17", "-O1", *sanitize, *flags,
+                        *([] if policy is None else ["-DMESH_OTA_PACKET_PACING=0"]),
+                        "-I", str(work), "-I", str(ROOT / "test/mocks"), "-I", str(ROOT / "src"),
+                        str(work / "main.cpp"), str(ROOT / "src/Dispatcher.cpp"),
+                        str(ROOT / "src/Packet.cpp"), str(ROOT / "src/helpers/StaticPoolPacketManager.cpp"),
+                        "-o", str(executable)], capture_output=True, text=True, timeout=60)
+                    self.assertEqual(built.returncode, 0, built.stdout + built.stderr)
+                    run = subprocess.run([str(executable)], capture_output=True, text=True, timeout=20,
+                                         env=dict(os.environ, ASAN_OPTIONS="detect_leaks=0"))
+                    self.assertEqual(run.returncode, 0, run.stdout + run.stderr)
+            invalid = subprocess.run([compiler, "-std=c++17", "-fsyntax-only", "-x", "c++", "-",
+                        "-I", str(ROOT / "test/mocks"), "-I", str(ROOT / "src"),
+                        "-DENABLE_OTA=1", "-DMESH_OTA_PACKET_PACING=0"],
+                        input="#include <Dispatcher.h>\n", capture_output=True, text=True, timeout=10)
+            self.assertNotEqual(invalid.returncode, 0)
+            self.assertIn("OTA-enabled firmware requires variable packet pacing", invalid.stderr)
 
     def test_compact_crypto_and_unused_timer_wrappers_are_explicit(self):
         for macro in ("ED25519_COMPACT_SHA512=1", "ED25519_COMPACT_SCALAR=1",

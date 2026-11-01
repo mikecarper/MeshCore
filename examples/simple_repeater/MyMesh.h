@@ -551,7 +551,7 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks
   };
   mutable FloodRetryBridgeState flood_retry_bridge_states[TOTAL_FLOOD_RETRY_SLOTS];
   FloodRetryBridgeReachability flood_retry_bridge_reachability[FLOOD_RETRY_BRIDGE_BUCKETS + 1];
-  static_assert(sizeof(FloodPacketFilterEntry) <= (MESH_ENABLE_FLOOD_RULE_ENGINE ? 304 : 40),
+  static_assert(sizeof(FloodPacketFilterEntry) <= (MESH_ENABLE_FLOOD_RULE_ENGINE ? 300 : 40),
                 "Update the flood-table runtime RAM budget in check_firmware_ram.py");
   // The rule table is the single largest member of this object. It is heap
   // allocated in the constructor (before setup(), while the heap is still

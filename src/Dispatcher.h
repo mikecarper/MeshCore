@@ -19,6 +19,13 @@
 #endif
 #include <string.h>
 
+#ifndef MESH_OTA_PACKET_PACING
+  #define MESH_OTA_PACKET_PACING 1
+#endif
+#if !MESH_OTA_PACKET_PACING && defined(ENABLE_OTA)
+  #error OTA-enabled firmware requires variable packet pacing
+#endif
+
 namespace mesh {
 
 #if MESH_ENABLE_EMERGENCY_POWER
@@ -442,9 +449,11 @@ class Dispatcher {
 #endif
   uint8_t outbound_restore_cr;
   unsigned long next_tx_time;
+#if MESH_OTA_PACKET_PACING
   struct OtaTxTiming {
     uint32_t finished_at = 0, airtime = 0, generation = 0;
   } ota_tx_timing[2];
+#endif
   unsigned long cad_busy_start;
   unsigned long radio_nonrx_start;
   unsigned long next_floor_calib_time;
@@ -495,9 +504,16 @@ class Dispatcher {
   uint32_t outbound_restore_retry_at = 0;
   uint32_t outbound_restore_recovery_at = 0;
   void updateTxBudget();
+#if MESH_OTA_PACKET_PACING
   void noteOtaTransmit(uint8_t profile, uint32_t generation, uint32_t airtime,
                        uint32_t now);
   uint32_t otaQuietRemaining(uint8_t profile, uint32_t generation, uint32_t now);
+#else
+  // Fixed-1x relay recipes have no OTA speed setting or source workspace.
+  // Keep normal completion hooks, CAD and airtime credit without quiet state.
+  void noteOtaTransmit(uint8_t, uint32_t, uint32_t, uint32_t) {}
+  uint32_t otaQuietRemaining(uint8_t, uint32_t, uint32_t) { return 0; }
+#endif
 
 protected:
   // Preserve RX affinity while an authenticated command is handled outside
