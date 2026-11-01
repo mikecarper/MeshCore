@@ -65,6 +65,7 @@ COMMON_QUERY_EXCEPTIONS = {
     'role': 'Build-selected firmware role',
     'rxps.wd': 'Runtime RX power-saving recovery counters',
     'tx.status': 'HIL-only applied-power verification for guarded RF tests',
+    'wifi.diag': 'Retained WiFi join and disconnect diagnostics',
     'wifi.pwd': 'Setter is in the observer or standalone-WiFi delegate',
 }
 OBSERVER_QUERY_EXCEPTIONS = {
