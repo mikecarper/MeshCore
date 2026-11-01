@@ -243,7 +243,7 @@ int main() {
         dispatcher = method(cli, "bool handle_ota_command(")
         self.assertLess(dispatcher.index("return handle_status(reply, c)"),
                         dispatcher.index("c.prepareRakStorage()"))
-        self.assertIn('"qspi|storage|self|id|stats|help|?|h"', dispatcher)
+        self.assertIn('"qspi|storage|self|id|stats|pace|wire|help|?|h"', dispatcher)
 
     def test_existing_local_combined_loader_advertises_the_exact_new_capability(self):
         candidate = (ROOT.parent / "Adafruit_nRF52_Bootloader_OTAFIX" /

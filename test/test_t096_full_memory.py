@@ -2,10 +2,13 @@
 """Exercise the Full overlay, real linker reserve, and sensor allocation failure."""
 
 from pathlib import Path
+import json
 import re
 import subprocess
 import tempfile
 import unittest
+
+from test_upstream_observer_recipes import Recipes
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -21,14 +24,26 @@ def method(text, signature):
 
 
 def full_flags(target):
+    recipes = Recipes()
+    candidates = (target, target.replace("companion_radio_full", "companion_radio_ble"),
+                  target.replace("companion_radio_full", "companion_radio_usb"))
+    base = next(name for name in candidates if recipes.config.has_section("env:" + name))
+    section = "env:" + base
+    board = recipes.value(section, "board")
+    options = [["board", board], *[
+        [key, recipes.value(section, key).splitlines()]
+        for key in ("build_flags", "build_src_filter", "extra_scripts")]]
     result = subprocess.run([
         "bash", "-c", r'''
 source build.sh
+IFS= read -r PIO_CONFIG_JSON
 PIO_ENV_PLATFORM_BY_NAME["$1"]=NRF52_PLATFORM
-pio_env_option_contains() { return 0; }
-apply_companion_radio_full_profile "$1" "$1"
+PIO_ENV_BOARD_BY_NAME["$1"]="$3"
+PIO_ENV_BUILD_BASE_BY_NAME["$1"]="$2"
+apply_companion_radio_full_profile "$1" "$2"
 printf '%s\n%s\n' "$PLATFORMIO_BUILD_FLAGS" "$PLATFORMIO_BUILD_UNFLAGS"
-''', "test", target], cwd=ROOT, text=True, capture_output=True, check=True)
+''', "test", target, base, board], input=json.dumps([[section, options]]) + "\n",
+        cwd=ROOT, text=True, capture_output=True, check=True)
     return result.stdout
 
 
@@ -48,6 +63,18 @@ class T096FullMemoryTest(unittest.TestCase):
                     self.assertIn("-D" + feature + "=1", flags)
                 self.assertNotIn("-DMAX_CONTACTS", flags)
                 self.assertNotIn("-DMAX_GROUP_CHANNELS", flags)
+                self.assertIn("-DCFG_TUD_CDC=2", flags)
+                self.assertIn("-DMESH_DUAL_CDC_LOGGING=1", flags)
+
+    def test_single_stream_profiles_keep_ota_sources_without_dual_cdc(self):
+        for target in ("t1000e_companion_radio_full", "wio_wm1110_companion_radio_full"):
+            with self.subTest(target=target):
+                flags = full_flags(target)
+                for feature in ("COMPANION_FEATURE_BLE_MOTA_SOURCE", "COMPANION_FEATURE_USB_MOTA_SOURCE"):
+                    self.assertIn("-D" + feature + "=1", flags)
+                for option in ("COMPANION_FEATURE_DEDICATED_USB_LOGGING=1",
+                               "CFG_TUD_CDC=2", "MESH_DUAL_CDC_LOGGING=1"):
+                    self.assertNotIn("-D" + option, flags)
 
     def test_all_nrf52_full_profiles_share_without_changing_legacy(self):
         for target in ("RAK_4631_companion_radio_full", "WioTrackerL1Eink_companion_radio_full",
