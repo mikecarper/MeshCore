@@ -18,7 +18,8 @@ enum { WL_DISCONNECTED = 6, WL_CONNECTED = 3, WIFI_STA = 1, WIFI_AP = 2, WIFI_AP
        WIFI_IF_STA = 0, ESP_OK = 0, WIFI_PS_NONE = 0,
        WIFI_PS_MAX_MODEM = 2, WIFI_PS_MIN_MODEM = 1 };
 using wifi_ps_type_t = int;
-void esp_wifi_set_ps(int) {}
+static int applied_ps = -1;
+void esp_wifi_set_ps(int mode) { applied_ps = mode; }
 void* xSemaphoreCreateMutex() { return nullptr; }
 struct IP {
   struct Text { const char* c_str() const { return "192.168.0.2"; } };
@@ -29,9 +30,25 @@ struct FakeWiFi {
   int current_mode = WIFI_STA, ap_clients = 0, ap_disconnects = 0;
   bool fail_mode = false, fail_ap_stop = false;
   bool next_begin_connects = false;
+  int cached_ps = WIFI_PS_MIN_MODEM;
+  bool sta_start_pending = false;
   std::string ssid, password;
   int status() const { return state; }
-  bool mode(int value) { if (fail_mode) return false; current_mode = value; return true; }
+  bool mode(int value) {
+    if (fail_mode) return false;
+    if ((value & WIFI_STA) && !(current_mode & WIFI_STA)) sta_start_pending = true;
+    current_mode = value; return true;
+  }
+  bool setSleep(int value) {
+    if (cached_ps == value) return false;
+    cached_ps = value;
+    if (current_mode & WIFI_STA) applied_ps = value;
+    return true;
+  }
+  void deliverStaStart() {
+    assert(sta_start_pending); sta_start_pending = false;
+    applied_ps = cached_ps; // Arduino 2.x's asynchronous STA_START handler.
+  }
   int getMode() const { return current_mode; }
   int softAPgetStationNum() const { return ap_clients; }
   void disconnect(bool, bool) { ++disconnects; state = WL_DISCONNECTED; }

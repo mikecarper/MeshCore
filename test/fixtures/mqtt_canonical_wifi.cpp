@@ -18,7 +18,16 @@ void beginStation(const char* ssid, const char* password) {
 }}
 @WEB_POLICY@
 enum { WIFI_OFF, WIFI_STA, WIFI_PS_NONE, WIFI_PS_MAX_MODEM, WIFI_PS_MIN_MODEM };
-struct { unsigned disconnects = 0; int getMode() { return WIFI_STA; }
+static int applied_ps = -1;
+struct { unsigned disconnects = 0; int current_mode = WIFI_STA, cached_ps = WIFI_PS_MIN_MODEM;
+  int getMode() { return current_mode; }
+  bool setSleep(int value) {
+    if (cached_ps == value) return false;
+    cached_ps = value;
+    if (current_mode == WIFI_STA) applied_ps = value;
+    return true;
+  }
+  void deliverStaStart() { current_mode = WIFI_STA; applied_ps = cached_ps; }
   void disconnect() { ++disconnects; } } WiFi;
 uint32_t millis() { return 1000; }
 using wifi_ps_type_t = int;
@@ -27,7 +36,7 @@ using esp_err_t = int;
 constexpr int ESP_OK = 0, ESP_ERR_WIFI_NOT_INIT = -1;
 constexpr int WIFI_MODE_NULL = WIFI_OFF, WIFI_MODE_AP = 2;
 int esp_wifi_get_mode(wifi_mode_t* mode) { *mode = WIFI_STA; return ESP_OK; }
-int esp_wifi_set_ps(int) { return 0; }
+int esp_wifi_set_ps(int mode) { applied_ps = mode; return 0; }
 
 size_t strlcpy(char* to, const char* from, size_t size) {
   const size_t len = strlen(from);

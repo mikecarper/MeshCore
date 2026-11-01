@@ -221,8 +221,6 @@ class MQTTTransportPowerSaveTest(unittest.TestCase):
         policy = mqtt[start:end + len("      esp_wifi_set_ps(ps_mode);")]
         fixture = fixture.replace("constexpr bool kPrimaryEspNowRadio = false;",
                                   f"constexpr bool kPrimaryEspNowRadio = {str(primary_espnow).lower()};")
-        fixture = fixture.replace("int esp_wifi_set_ps(int) { return 0; }",
-                                  "int applied_ps = -1; int esp_wifi_set_ps(int mode) { applied_ps = mode; return 0; }")
         fixture = fixture.replace("  void beginWiFiStation();",
                                   "  void beginWiFiStation();\n  void applyConnectedPowerSave() {\n" + policy + "\n  }")
         modes = ["WIFI_PS_MIN_MODEM", "WIFI_PS_MIN_MODEM" if bluetooth else "WIFI_PS_NONE",

@@ -100,6 +100,35 @@ class WebConfigStationOwnershipTest(unittest.TestCase):
     def test_non_mqtt_portal_retains_saved_station_recovery(self):
         self.compile_and_run(self.station_fixture())
 
+    def test_saved_power_policy_survives_a_delayed_station_start(self):
+        fixture = self.station_fixture().split("int main() {", 1)[0] + r'''
+int main() {
+  const uint8_t key[32] = {};
+  const int expected[] = {WIFI_PS_MIN_MODEM, WIFI_PS_NONE, WIFI_PS_MAX_MODEM};
+  for (uint8_t preference = 0; preference < 3; ++preference) {
+    WiFi = FakeWiFi{};
+    WiFi.current_mode = 0;
+    WebConfigServer portal(nullptr, nullptr, true, key, "test", "test", "repeater", "W12", true);
+    portal._wifi_power_save = preference;
+    assert(portal.beginSavedStation(clock_ms));
+    assert(applied_ps == expected[preference]);
+    // The SDK setting was correct, but Arduino can deliver STA_START later
+    // and reapply its cached MIN_MODEM default over the saved NONE/MAX policy.
+    WiFi.deliverStaStart();
+    assert(applied_ps == expected[preference]);
+    // setSleep returns false for an unchanged cache; another attempt is valid.
+    assert(!WiFi.setSleep(expected[preference]));
+    assert(portal.beginSavedStation(++clock_ms));
+    assert(applied_ps == expected[preference]);
+  }
+}
+'''
+        self.compile_and_run(fixture)
+        stale = fixture.replace("  (void)WiFi.setSleep(ps_mode);\n", "", 1)
+        self.assertNotEqual(stale, fixture)
+        with self.assertRaises(AssertionError):
+            self.compile_and_run(stale)
+
     def test_shared_outage_blocks_idle_portal_reconnect_and_allows_foreground(self):
         self.compile_and_run(self.station_fixture(), "-DWITH_MQTT_BRIDGE=1",
                              "-DTEST_BACKGROUND_SUSPEND=1")

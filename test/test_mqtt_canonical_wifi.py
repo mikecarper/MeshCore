@@ -101,6 +101,41 @@ class MQTTCanonicalWiFiTest(unittest.TestCase):
     def test_companion_compiled_password_fallback_is_preserved(self):
         self.compile(self.fixture(), '-DWIFI_PWD="compiled-password"')
 
+    def test_cli_power_save_survives_radio_restart_and_corrects_live_sdk_mode(self):
+        fixture = self.fixture().split("int main() {", 1)[0] + r'''
+int main() {
+  reset_nvs();
+  char reply[160] = {};
+  assert(WebConfigServer::saveStandaloneWiFi("saved-network", "saved-password", 1));
+  const char* values[] = {"min", "none", "max"};
+  const int expected[] = {WIFI_PS_MIN_MODEM, WIFI_PS_NONE, WIFI_PS_MAX_MODEM};
+  for (unsigned preference = 0; preference < 3; ++preference) {
+    WiFi.current_mode = WIFI_OFF;
+    applied_ps = -1;
+    assert(WebConfigServer::setStandaloneWiFiPowerSave(values[preference], reply, sizeof(reply)));
+    assert(applied_ps == -1); // Saving must not power on a stopped interface.
+    WiFi.deliverStaStart();
+    assert(applied_ps == expected[preference]);
+    // A newer SDK-only owner may leave the driver different from the cache.
+    // An unchanged Arduino cache makes setSleep return false; apply explicitly.
+    applied_ps = expected[(preference + 1) % 3];
+    assert(WebConfigServer::setStandaloneWiFiPowerSave(values[preference], reply, sizeof(reply)));
+    assert(applied_ps == expected[preference]);
+    WiFi.deliverStaStart();
+    assert(applied_ps == expected[preference]);
+  }
+  const int saved_cache = WiFi.cached_ps, saved_driver = applied_ps;
+  nvs_available = false;
+  assert(!WebConfigServer::setStandaloneWiFiPowerSave("none", reply, sizeof(reply)));
+  assert(WiFi.cached_ps == saved_cache && applied_ps == saved_driver);
+}
+'''
+        self.compile(fixture)
+        stale = fixture.replace("  (void)WiFi.setSleep(mode);\n", "", 1)
+        self.assertNotEqual(stale, fixture)
+        with self.assertRaises(FixtureFailure):
+            self.compile(stale)
+
     def test_pre_fix_mqtt_gate_rejects_fresh_portal_credentials(self):
         fixture = self.fixture()
         stale = fixture.replace("const bool wifi_configured = prepareWiFiCredentials();",

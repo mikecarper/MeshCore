@@ -169,3 +169,23 @@ limits: RAK4631 Full Companion is 712,700 / 712,704 application bytes including
 EndF; Wio-E5 Mini Repeater uses 245,368 / 245,760 flash bytes. Both runtime RAM
 checks pass. The hosted-link check passes all seven tests, and the MOTA suite
 passes all 50 tests after updating its inherited USB-logging helper contract.
+
+## Station power policy follow-up — 2026-11-01
+
+Preview 5 was reported to obtain a LAN address, then disconnect with driver
+reason 34; a later join reported reason 39. This establishes a successful
+association and IP exchange, but does not identify the cause of the later loss.
+
+An independent source audit found that Arduino 2.0.17 reapplies its cached
+modem-sleep preference when the asynchronous `STA_START` event runs. WebConfig
+previously set only the SDK preference, allowing a delayed event to replace
+saved `none` or `max` with Arduino's default `min`. Saved-station startup now
+prepares that cache before starting the interface and retains the explicit SDK
+write. The live CLI setter updates both, including the cache while WiFi is off.
+Stored values, coexistence restrictions and connection deadlines are unchanged.
+
+All 22 focused host tests passed across station ownership/recovery, canonical
+credentials, connection deadlines and transport power-policy fixtures. The new
+regressions execute the production startup and setter with a delayed
+`STA_START`; removing either cache update reproduces the failure. This validates
+the policy race, not a hardware fix for the reported reason-34/39 disconnects.

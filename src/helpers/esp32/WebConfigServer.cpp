@@ -538,9 +538,11 @@ bool WebConfigServer::setStandaloneWiFiPowerSave(const char* value, char* reply,
     snprintf(reply, reply_len, "Error: failed to save WiFi power save");
     return false;
   }
+  const wifi_ps_type_t mode = power_save == mesh::wifi::kPowerSaveNone ? WIFI_PS_NONE
+      : power_save == mesh::wifi::kPowerSaveMax ? WIFI_PS_MAX_MODEM : WIFI_PS_MIN_MODEM;
+  // STA_START reapplies Arduino's cache, including after a later radio restart.
+  (void)WiFi.setSleep(mode);
   if (WiFi.getMode() != WIFI_OFF) {
-    const wifi_ps_type_t mode = power_save == mesh::wifi::kPowerSaveNone ? WIFI_PS_NONE
-        : power_save == mesh::wifi::kPowerSaveMax ? WIFI_PS_MAX_MODEM : WIFI_PS_MIN_MODEM;
     esp_wifi_set_ps(mode);
   }
   snprintf(reply, reply_len, "OK - WiFi power save saved; reboot to apply");
@@ -1052,6 +1054,14 @@ bool WebConfigServer::startLanMode(char reply[]) {
 bool WebConfigServer::beginSavedStation(uint32_t now) {
   if (mesh::wifi::networkPower().backgroundSuspended()
       && !isNetworkForegroundActive(now)) return false;
+  _wifi_power_save = effectiveWiFiPowerSave(_wifi_power_save);
+  const wifi_ps_type_t ps_mode =
+      _wifi_power_save == mesh::wifi::kPowerSaveNone ? WIFI_PS_NONE
+      : _wifi_power_save == mesh::wifi::kPowerSaveMax ? WIFI_PS_MAX_MODEM
+                                                       : WIFI_PS_MIN_MODEM;
+  // Prepare the cache before starting STA: its delayed event can otherwise
+  // overwrite the SDK policy below. False also means the cache was correct.
+  (void)WiFi.setSleep(ps_mode);
   WiFi.mode(WIFI_STA);
   if (mesh::wifi::applyProtocolMask(WIFI_IF_STA) != ESP_OK) {
     return false;
@@ -1063,11 +1073,6 @@ bool WebConfigServer::beginSavedStation(uint32_t now) {
   _setup_started_at = 0;
   _wifi_reconnect_tracker.noteDisconnected(now);
   mesh::wifi::beginStation(_wifi_ssid, _wifi_password);
-  _wifi_power_save = effectiveWiFiPowerSave(_wifi_power_save);
-  wifi_ps_type_t ps_mode =
-      _wifi_power_save == mesh::wifi::kPowerSaveNone ? WIFI_PS_NONE
-      : _wifi_power_save == mesh::wifi::kPowerSaveMax ? WIFI_PS_MAX_MODEM
-                                                       : WIFI_PS_MIN_MODEM;
   esp_wifi_set_ps(ps_mode);
   _connect_deadline = WebConfigBatch::scheduleAt(
       now, WebConfigBatch::kInitialWiFiConnectTimeoutMs);
