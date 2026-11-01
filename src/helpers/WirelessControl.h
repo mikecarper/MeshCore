@@ -202,11 +202,14 @@ public:
     due_ = now + 250;
     // Keep the group latch independent of the set of services available on a board.
     if (command.scope == All) master_off_ = !on;
+#if defined(ESP_PLATFORM)
     if (command.scope == WiFi) {
       snprintf(reply, size, "%s", on
           ? "OK - WiFi enabled for this boot; use get wifi.status to check connection"
           : "OK - WiFi disabled for this boot");
-    } else {
+    } else
+#endif
+    {
       snprintf(reply, size, "OK - %s %s requested (this boot); get %s for status",
                name, on ? "on" : "off", name);
     }

@@ -365,7 +365,7 @@ def test_canonical_bulk_matrix_omits_runtime_and_transport_aliases():
     # exclusive ASCII logging terminal rather than instantiating CDC 1.
     assert "-DCFG_DEBUG=1" in nrf52_full
     assert "-DRECOVERABLE_EXTERNAL_RADIO=1" in nrf52_full
-    assert 'if [ "$env_name" = "t1000e_companion_radio_full" ]; then' in nrf52_full
+    assert 'if ! has_nrf52_dedicated_usb_logging "$env_name"; then' in nrf52_full
     assert "MESH_USB_LOGGING_DISABLED" not in nrf52_full
     esp32_full = full.split("return 0\n  fi", 1)[1]
     assert "-DCFG_TUD_CDC=2" not in esp32_full
@@ -456,6 +456,49 @@ def test_canonical_bulk_matrix_omits_runtime_and_transport_aliases():
     )[1].split("get_full_companion_replacement()", 1)[0]
     assert 'is_esp32_companion_radio_full_target "$full_env"' in replacement
     assert "is_esp32_dual_cdc_companion_radio_full_target" not in replacement
+
+
+def test_nrf52_dedicated_logging_requires_a_second_native_usb_endpoint():
+    import subprocess
+
+    root = Path(__file__).resolve().parents[2]
+    build = (root / "build_legacy.sh").read_text(encoding="utf-8")
+    helper = "has_nrf52_dedicated_usb_logging() {" + build.split(
+        "has_nrf52_dedicated_usb_logging() {", 1
+    )[1].split("\n}", 1)[0] + "\n}\n"
+    # Execute the production decision with only its platform/configuration
+    # dependencies stubbed. A UART-backed board must keep its primary stream,
+    # while a native-USB Full Companion may create the separate logging CDC.
+    harness = r'''
+is_nrf52_companion_radio_full_target() {
+  case "$1" in
+    RAK_4631_companion_radio_full|t1000e_companion_radio_full|wio_wm1110_companion_radio_full) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+get_pio_build_env() { printf '%s' "$1"; }
+pio_env_option_contains() {
+  [ "$1" = wio_wm1110_companion_radio_full ] \
+    && [ "$2" = build_flags ] && [ "$3" = MESH_PRIMARY_UART_PORT ]
+}
+''' + helper + r'''
+for target in RAK_4631_companion_radio_full t1000e_companion_radio_full \
+    wio_wm1110_companion_radio_full RAK_4631_repeater meshnology_w12_companion_radio_full; do
+  if has_nrf52_dedicated_usb_logging "$target"; then
+    printf '%s:dedicated\n' "$target"
+  else
+    printf '%s:primary\n' "$target"
+  fi
+done
+'''
+    observed = subprocess.check_output(["bash", "-c", harness], text=True).splitlines()
+    assert observed == [
+        "RAK_4631_companion_radio_full:dedicated",
+        "t1000e_companion_radio_full:primary",
+        "wio_wm1110_companion_radio_full:primary",
+        "RAK_4631_repeater:primary",
+        "meshnology_w12_companion_radio_full:primary",
+    ], observed
 
 
 def test_single_tty_logging_off_keeps_ascii_until_explicit_mode_switch():

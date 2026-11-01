@@ -1409,7 +1409,7 @@
     "src/helpers/CommonCLI.cpp": "9c9466eb48af7b8d606d21c553ebbf89a49345bb0c43279ecfeee041f0211c00",
     "examples/simple_repeater/MyMesh.cpp": "c86174ab5c781157aeeaeea9e429f0ebe99d03282313a240e8e6389c669e0b17",
     "src/helpers/RadioProfileCLI.cpp": "8e3d293cb522717b13901c27d7fc471f5c370710919fb3d74d35449bc497552d",
-    "src/helpers/WirelessControl.h": "b3ef0bbd55195a2edcbf0d40d2665898c7e231a4a21e4a7f4ef681297e647655",
+    "src/helpers/WirelessControl.h": "0944bfdefb7003b47af52104b4c7447d7e5e65d54b3396790878c5b49e472913",
     "src/helpers/PowerSavingDiagnostics.h": "18b78f5780046ea8c772c4ce6c337741ae0c027039d9399c94c5f4205d114000",
     "src/helpers/FloodAdvertCLI.h": "0f378e4d0f6c3b9b79991068a4b4208139484d2144ee1d7c5094d39043463be4",
     "src/helpers/LedSettings.cpp": "df0681234ca1337148ad59caa935857bc692f98bf18603ca6d099c0382028400",

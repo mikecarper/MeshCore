@@ -125,12 +125,20 @@ int main(int argc,char** argv) {
  } else if(test==10){
    Fixture f;f.b.active=0;
    f.run("set wifi on");
+#if defined(ESP_PLATFORM)
    assert(strcmp(f.reply,"OK - WiFi enabled for this boot; use get wifi.status to check connection")==0);
+#else
+   assert(strcmp(f.reply,"OK - wifi on requested (this boot); get wifi for status")==0);
+#endif
    assert(f.c.pending()&&f.b.active==0); // Enabling does not claim a connection.
    f.run("get wifi");assert(strcmp(f.reply,"wifi off (pending)")==0);
    f.tick();f.run("get wifi");assert(strcmp(f.reply,"wifi on")==0);
    f.run("set wifi off");
+#if defined(ESP_PLATFORM)
    assert(strcmp(f.reply,"OK - WiFi disabled for this boot")==0);
+#else
+   assert(strcmp(f.reply,"OK - wifi off requested (this boot); get wifi for status")==0);
+#endif
    f.tick();assert(f.b.active==0);
    // Keep the independent ESP-NOW/master control responses unchanged.
    f.run("set espnow on");
@@ -146,12 +154,16 @@ class WirelessControlTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             source = Path(tmp)/'wireless.cpp'
             source.write_text('#include <cstdlib>\n'+HARNESS)
-            binary = Path(tmp)/'wireless'
-            subprocess.run([os.environ.get('CXX', 'g++'), '-std=c++11', '-Wall', '-Wextra', '-Werror',
-                            '-I', str(ROOT/'src'), str(source), '-o', str(binary)], check=True)
-            for scenario in range(11):
-                with self.subTest(scenario=scenario):
-                    subprocess.run([str(binary), str(scenario)], check=True)
+            for platform, defines in (('other', []), ('esp32', ['-DESP_PLATFORM=1'])):
+                binary = Path(tmp)/('wireless-' + platform)
+                subprocess.run([os.environ.get('CXX', 'g++'), '-std=c++11', '-Wall', '-Wextra', '-Werror',
+                                *defines, '-I', str(ROOT/'src'), str(source), '-o', str(binary)], check=True)
+                # WiFi-only prose must not consume flash on constrained boards
+                # which expose Bluetooth or UART through this shared controller.
+                self.assertEqual(b'WiFi enabled for this boot' in binary.read_bytes(), platform == 'esp32')
+                for scenario in range(11):
+                    with self.subTest(platform=platform, scenario=scenario):
+                        subprocess.run([str(binary), str(scenario)], check=True)
 
     def test_actual_companion_transport_adapter(self):
         from test_companion_bluetooth_control import HARNESS as BT_HARNESS

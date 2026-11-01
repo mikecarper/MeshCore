@@ -1,3 +1,7 @@
+<!-- meshcore-hosted-doc-link:start -->
+<p class="meshcore-hosted-doc-link"><a href="https://mikecarper.github.io/MeshCore/test-results/w12_wifi_status_2026-10-31/">View this page on MeshCore Docs</a>.</p>
+<!-- meshcore-hosted-doc-link:end -->
+
 # W12 WiFi status and diagnostic validation — 2026-10-31
 
 Baseline: `a85d282144b979ea97f97a1854c4049d5e710c16` on `keymindCascade`.
@@ -152,3 +156,16 @@ Both diagnostic firmware builds passed, built serially:
 
 These remain expanded-partition verification builds. No device was flashed,
 and the reporter's actual network failure has not been reproduced on hardware.
+
+## Preview release capacity checks
+
+The longer WiFi control acknowledgements are ESP32-only. Other platforms retain
+their original generic reply, avoiding unused WiFi prose in constrained images.
+The controller regression executes both platform paths and checks that the
+ESP32-only message is absent from the other platform's executable.
+
+The exact existing CI capacity builds pass without feature cuts or relaxed
+limits: RAK4631 Full Companion is 712,700 / 712,704 application bytes including
+EndF; Wio-E5 Mini Repeater uses 245,368 / 245,760 flash bytes. Both runtime RAM
+checks pass. The hosted-link check passes all seven tests, and the MOTA suite
+passes all 50 tests after updating its inherited USB-logging helper contract.
