@@ -493,6 +493,14 @@ int main(){
    const auto& text=node.port.output;
    assert(text.find("Commands:\r\n  stats-core / stats-radio / stats-radio-diag / stats-packets\r\n")==0);
    assert(text.find("  get public.key\r\n")!=std::string::npos);
+#if defined(ESP32) && defined(WIFI_SSID)
+   const std::string diagnostic="  get wifi.diag (attempts, last disconnect)\r\n";
+   const auto diagnostic_at=text.find(diagnostic);
+   assert(diagnostic_at!=std::string::npos);
+   assert(text.find(diagnostic,diagnostic_at+diagnostic.size())==std::string::npos);
+#else
+   assert(text.find("wifi.diag")==std::string::npos);
+#endif
 #if MESH_ENABLE_LOST_REPLY
    assert(text.find("  get/set lost.reply <off|no|yes>\r\n")!=std::string::npos);
 #else

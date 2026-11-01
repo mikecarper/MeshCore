@@ -5,6 +5,7 @@ import os
 from pathlib import Path
 import shutil
 import subprocess
+import sys
 import tempfile
 import unittest
 
@@ -16,6 +17,7 @@ from test_replay_reset_integration import extract_braced
 ROOT = Path(__file__).resolve().parents[1]
 ADAPTER = "lib/PsychicMqttClient/src/PsychicMqttClient.cpp"
 BRIDGE = "src/helpers/bridges/MQTTBridge.cpp"
+DIAGNOSTICS = "src/helpers/esp32/WiFiStationDiagnostics.cpp"
 
 HARNESS = r'''
 #include <atomic>
@@ -26,6 +28,7 @@ HARNESS = r'''
 #include <cstring>
 #include <functional>
 #include <helpers/WiFiNetworkPowerPolicy.h>
+#include <helpers/esp32/WiFiStationDiagnostics.h>
 #include <helpers/MQTTConnectionPolicy.h>
 #include <helpers/MQTTTransportHealth.h>
 #define private public
@@ -40,6 +43,15 @@ static const char* TAG = "test";
 #define MQTT_DEBUG_PRINTLN(...) ((void)0)
 #define pdMS_TO_TICKS(ms) ((ms) / portTICK_PERIOD_MS)
 static uint32_t now_ms = 0, elapsed_ms = 0, tick_ms = 1;
+static unsigned diagnostic_lock_depth = 0;
+void portENTER_CRITICAL(unsigned* mux) {
+  assert(mux && diagnostic_lock_depth == 0);
+  ++diagnostic_lock_depth;
+}
+void portEXIT_CRITICAL(unsigned* mux) {
+  assert(mux && diagnostic_lock_depth == 1);
+  --diagnostic_lock_depth;
+}
 static uint32_t callback_after_ms = UINT32_MAX;
 static int disconnect_result = ESP_OK, stop_result = ESP_OK;
 static int disconnect_calls = 0, stop_calls = 0, sleeps = 0;
@@ -82,6 +94,9 @@ static int wifi_mode = WIFI_STA, wifi_stops = 0;
 int esp_wifi_get_mode(int* mode) { *mode = wifi_mode; return ESP_OK; }
 bool mqttStationWiFiMutationAllowed() { return !(wifi_mode & WIFI_MODE_AP); }
 namespace mesh { namespace wifi {
+unsigned diagnostics_mux = 0;
+ConnectionDiagnostics diagnostics;
+@DIAGNOSTICS_METHODS@
 bool espNowChannelConstrained() { return false; }
 int restoreEspNowChannel() { assert(false); return ESP_ERR_INVALID_STATE; }
 } }
@@ -91,6 +106,8 @@ struct {
   int getMode() const { return wifi_mode; }
   void mode(int mode) {
     assert(mode == WIFI_OFF && mesh::wifi::networkPower().backgroundSuspended());
+    const auto state = mesh::wifi::stationDiagnosticsSnapshot();
+    assert(state.phase == mesh::wifi::ConnectionPhase::Stopped && state.phase_ms == now_ms);
     wifi_mode = mode;
     ++wifi_stops;
   }
@@ -168,6 +185,12 @@ int main(int argc, char** argv) {
   const int scenario = std::atoi(argv[1]);
   tick_ms = static_cast<uint32_t>(std::atoi(argv[2]));
   if (std::atoi(argv[3])) now_ms = UINT32_MAX - 511U;
+  // A stop may change readiness, but must retain the previous attempt's reason.
+  const uint8_t ssid[] = "disconnect-test";
+  auto& diagnostics = mesh::wifi::diagnostics;
+  diagnostics.begin(reinterpret_cast<const char*>(ssid), now_ms - 100U);
+  diagnostics.disconnected(ssid, sizeof(ssid) - 1, MQTTErrorLabels::kWifiAuthFail, now_ms - 50U);
+  diagnostics.begin(reinterpret_cast<const char*>(ssid), now_ms);
   PsychicMqttClient client;
   active_client = &client;
   client._client = reinterpret_cast<void*>(1);
@@ -270,6 +293,11 @@ int main(int argc, char** argv) {
     assert(!control.backgroundSuspended() && wifi_stops == 0);
     assert(bridge.queues == 1 && bridge.ntp_starts == 0 && bridge.slot_starts == 0);
   } else assert(false);
+  const auto state = mesh::wifi::stationDiagnosticsSnapshot();
+  assert(state.phase == (wifi_stops ? mesh::wifi::ConnectionPhase::Stopped
+                                   : mesh::wifi::ConnectionPhase::Connecting));
+  assert(state.attempts == 2 && state.has_disconnect && state.last_reason == MQTTErrorLabels::kWifiAuthFail);
+  assert(diagnostic_lock_depth == 0);
   printf("PASS: %d\n", scenario);
 }
 '''
@@ -288,6 +316,10 @@ class MqttDisconnectTests(unittest.TestCase):
         ))
         task = method(BRIDGE, "void MQTTBridge::mqttTaskLoop()")
         source = (HARNESS.replace("@ADAPTER_METHODS@", adapter)
+                  .replace("@DIAGNOSTICS_METHODS@", "\n".join(method(DIAGNOSTICS, signature) for signature in (
+                      "void noteStationDiagnosticPhase(",
+                      "ConnectionDiagnosticsSnapshot stationDiagnosticsSnapshot()",
+                  )))
                   .replace("@TASK_STOP@", extract_braced(task, "    if (_stop_requested)"))
                   .replace("@OUTAGE_GUARD@", extract_braced(task, "    if (!serviceNetworkPower("))
                   .replace("@BRIDGE_METHOD@", "\n".join(method(BRIDGE, signature) for signature in (
@@ -312,6 +344,8 @@ class MqttDisconnectTests(unittest.TestCase):
                         (directory / "Arduino.h").write_text(arduino, encoding="ascii")
                         built = subprocess.run([compiler, "-std=c++17", "-Wall", "-Wextra",
                             "-Werror", "-DARDUINO_ARCH_ESP32=1", "-DESP_PLATFORM=1",
+                            *(["-fsanitize=address,undefined", "-fno-sanitize-recover=all",
+                               "-fno-pie", "-no-pie"] if sys.platform.startswith("linux") else []),
                             f"-DESP_IDF_VERSION_MAJOR={idf}",
                             "-I", str(directory), "-I", str(ROOT / "lib/PsychicMqttClient/src"),
                             "-I", str(ROOT / "src"), str(cpp), "-o", str(binary)],

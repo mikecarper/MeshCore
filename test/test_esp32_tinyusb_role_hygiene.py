@@ -2,7 +2,11 @@
 """Keep ESP32 native-USB role output away from blocking Arduino writes."""
 
 from pathlib import Path
+import os
 import re
+import shutil
+import subprocess
+import tempfile
 import unittest
 
 from cpp_source import body
@@ -19,17 +23,44 @@ def source(relative: str) -> str:
 class Esp32TinyUsbRoleHygieneTest(unittest.TestCase):
     def test_console_helper_preserves_other_platform_semantics(self):
         text = source("src/helpers/UsbLogging.cpp")
-        self.assertRegex(
-            text,
-            r"static Stream& rawUsbConsolePort\(\)\s*\{\s*"
-            r"#if MESH_ESP32_TINYUSB_NONBLOCKING\s+"
-            r"return buffered_esp32_tinyusb_terminal_port;\s+"
-            r"#elif MESH_ESP32_HWCDC_SESSION_GUARD\s+"
-            r"return guarded_esp32_hwcdc_port;\s+"
-            r"#elif MESH_NRF52_USB_CONSOLE_COOPERATIVE\s+"
-            r"return buffered_primary_usb_terminal_port;\s+"
-            r"#else\s+return Serial;\s+#endif",
+        compiler = shutil.which("g++") or shutil.which("clang++")
+        self.assertIsNotNone(compiler, "a host C++ compiler is required")
+        selector = body(text, "static Stream& rawUsbConsolePort()")
+        flags = ("MESH_PRIMARY_SERIAL_IS_UART", "MESH_ESP32_TINYUSB_NONBLOCKING",
+                 "MESH_ESP32_HWCDC_SESSION_GUARD", "MESH_NRF52_USB_CONSOLE_COOPERATIVE")
+        # Execute the production selection, including the UART bridge which
+        # has no native CDC/DTR. Sentinel identity catches a wrong transport.
+        cases = (
+            ("uart_bridge", (1, 0, 0, 0), "buffered_primary_uart_terminal_port"),
+            ("tinyusb", (0, 1, 0, 0), "buffered_esp32_tinyusb_terminal_port"),
+            ("hwcdc", (0, 0, 1, 0), "guarded_esp32_hwcdc_port"),
+            ("nrf52_usb", (0, 0, 0, 1), "buffered_primary_usb_terminal_port"),
+            ("other_serial", (0, 0, 0, 0), "Serial"),
+            ("uart_priority", (1, 1, 1, 1), "buffered_primary_uart_terminal_port"),
         )
+        harness = ["#include <cassert>", "struct Stream {};",
+                   "Stream Serial, buffered_primary_uart_terminal_port,",
+                   "buffered_esp32_tinyusb_terminal_port, guarded_esp32_hwcdc_port,",
+                   "buffered_primary_usb_terminal_port;"]
+        for name, values, expected in cases:
+            harness.extend(f"#define {flag} {value}" for flag, value in zip(flags, values))
+            harness.extend((f"namespace {name} {{",
+                            selector,
+                            f"void check() {{ assert(&rawUsbConsolePort() == &{expected}); }}",
+                            "}"))
+            harness.extend(f"#undef {flag}" for flag in flags)
+        harness.append("int main() {" + "".join(name + "::check();" for name, _, _ in cases) + "}")
+        with tempfile.TemporaryDirectory(prefix="usb-console-selection-") as temporary:
+            cpp, binary = Path(temporary) / "selection.cpp", Path(temporary) / "selection"
+            cpp.write_text("\n".join(harness))
+            sanitizers = ([] if os.name == "nt" else
+                          ["-fsanitize=address,undefined", "-fno-sanitize-recover=all", "-fno-pie", "-no-pie"])
+            built = subprocess.run([compiler, "-std=c++11", "-Wall", "-Wextra", "-Werror",
+                                    *sanitizers, str(cpp), "-o", str(binary)],
+                                   capture_output=True, text=True, timeout=60)
+            self.assertEqual(built.returncode, 0, built.stdout + built.stderr)
+            checked = subprocess.run([str(binary)], capture_output=True, text=True, timeout=10)
+            self.assertEqual(checked.returncode, 0, checked.stdout + checked.stderr)
         # The shared binary-owner facade wraps the same transport selection.
         # With host KISS omitted, every platform still gets its original port.
         facade = body(text, "Stream& usbConsolePort()")
