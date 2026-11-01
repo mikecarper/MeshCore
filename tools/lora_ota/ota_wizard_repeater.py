@@ -146,11 +146,13 @@ class RepeaterTransport:
 
     def __init__(self, port, baud=115200, *, command_timeout=12,
                  remote_timeout=40, poll_seconds=.25, serial_factory=None,
-                 open_settle=.75, known_repeater: str | None = None, acl_only=False):
+                 open_settle=.75, known_repeater: str | None = None, acl_only=False,
+                 seeder_factory=None):
         self.port, self.baud = port, baud
         self.command_timeout, self.remote_timeout = command_timeout, remote_timeout
         self.poll_seconds, self.open_settle = poll_seconds, open_settle
         self._serial_factory = serial_factory
+        self._seeder_factory = seeder_factory or SeederData
         self._serial = self._reader_task = None
         self._decoder = StreamDecoder()
         self._lines = asyncio.Queue(maxsize=64)
@@ -510,7 +512,7 @@ class RepeaterTransport:
     async def serve(self, blob, stop_event):
         if self._serve_task is not None:
             raise RepeaterError("The USB repeater is already serving an update")
-        self._seeder = SeederData(blob)
+        self._seeder = self._seeder_factory(blob)
         self._serve_task, self._serve_stop = asyncio.current_task(), stop_event
         stopped = failed = None
         try:

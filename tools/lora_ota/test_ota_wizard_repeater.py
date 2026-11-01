@@ -603,6 +603,31 @@ class RepeaterTransportTest(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(self.serial.folder_off)
         self.assertIsNone(self.link._seeder)
 
+    async def test_seeder_factory_installs_data_policy_before_folder_attachment(self):
+        await self.link.close()
+        self.serial = FakeSerial()
+        policies = []
+        def factory(blob):
+            from ota_block_drain import BlockDrainSeeder
+            gate = BlockDrainSeeder(blob)
+            policies.append(gate)
+            return gate
+        self.link = RepeaterTransport('fake', serial_factory=lambda **kwargs: self.serial,
+            open_settle=0, command_timeout=.5, seeder_factory=factory)
+        await self.link.open()
+        stopped = asyncio.Event()
+        serving = asyncio.create_task(self.link.serve(package(), stopped))
+        for _ in range(100):
+            if policies and not self.serial.attaching and len(self.serial.binary) >= 3: break
+            await asyncio.sleep(.01)
+        self.assertEqual(len(policies), 1)
+        self.assertIs(self.link._seeder, policies[0])
+        gate = policies[0]
+        offset = gate.info.payload_offset
+        self.assertEqual(gate.request(3, struct.pack('<BIH', 0, offset, 16)), (1, b''))
+        stopped.set()
+        await asyncio.wait_for(serving, 1)
+
     async def test_stale_job_and_unknown_results_do_not_resend_mutations(self):
         await self.link.remote_command(TARGET, "password", "ver")
         self.serial.stale_job = True
