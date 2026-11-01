@@ -1069,8 +1069,8 @@ bool WebConfigServer::beginSavedStation(uint32_t now) {
       : _wifi_power_save == mesh::wifi::kPowerSaveMax ? WIFI_PS_MAX_MODEM
                                                        : WIFI_PS_MIN_MODEM;
   esp_wifi_set_ps(ps_mode);
-  _connect_deadline = now + 15000;
-  if (_connect_deadline == 0) _connect_deadline = 1;
+  _connect_deadline = WebConfigBatch::scheduleAt(
+      now, WebConfigBatch::kInitialWiFiConnectTimeoutMs);
   return true;
 }
 
@@ -1425,8 +1425,8 @@ void WebConfigServer::tick(uint32_t now) {
     // waiting for its link. Acquire the station with a fresh bounded attempt.
     if (_owns_wifi && !_connect_deadline && WiFi.status() != WL_CONNECTED) {
       if (!beginSavedStation(now)) {
-        _connect_deadline = now + 15000;
-        if (_connect_deadline == 0) _connect_deadline = 1;
+        _connect_deadline = WebConfigBatch::scheduleAt(
+            now, WebConfigBatch::kInitialWiFiConnectTimeoutMs);
       }
     }
     if (WiFi.status() == WL_CONNECTED) {
@@ -1529,7 +1529,7 @@ void WebConfigServer::tick(uint32_t now) {
                && _wifi_reconnect_tracker.retryDue(now)) {
       _wifi_reconnect_tracker.noteAttempt(now);
       _setup_reconnect_in_progress = true;
-      _setup_reconnect_deadline = now + 20000UL;
+      _setup_reconnect_deadline = WebConfigBatch::setupWiFiConnectDeadline(now);
       mesh::usbDebugPort().printf(
           "WebConfig: retrying saved WiFi '%s'\n", _wifi_ssid);
       mesh::wifi::beginStation(_wifi_ssid, _wifi_password);

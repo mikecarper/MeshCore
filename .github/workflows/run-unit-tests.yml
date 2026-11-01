@@ -30,6 +30,7 @@ jobs:
           test_wifi_connection_diagnostics test_wifi_station_diagnostics
           test_wifi_station_security
           test_wifi_diagnostic_cli test_webconfig_wifi_status
+          test_webconfig_connect_timeout
           test_webui_status_readability test_webconfig_station_ownership
           test_webconfig_network_power test_companion_wifi_status
           test_companion_wifi_status_format -v

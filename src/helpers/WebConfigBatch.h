@@ -43,7 +43,17 @@ static const int kMaxBatch = 24;             // .h:90 MAX_BATCH
 static const uint32_t kDrainPacingMs = 25;   // .cpp:296 inter-command gap
 static const uint32_t kRebootFallbackMs = 30000;  // .cpp:331 drain-finish fallback
 static const uint32_t kRebootConfirmMs = 3000;    // .cpp:784 first result-read arm
+// Preview builds may extend station joins without changing normal defaults.
+#if defined(WEBCONFIG_WIFI_CONNECT_TIMEOUT_MS)
+static_assert(WEBCONFIG_WIFI_CONNECT_TIMEOUT_MS >= 5000
+                  && WEBCONFIG_WIFI_CONNECT_TIMEOUT_MS <= 120000,
+              "WebConfig WiFi connect timeout must be 5000..120000 ms");
+static const uint32_t kInitialWiFiConnectTimeoutMs = WEBCONFIG_WIFI_CONNECT_TIMEOUT_MS;
+static const uint32_t kSetupWiFiConnectTimeoutMs = WEBCONFIG_WIFI_CONNECT_TIMEOUT_MS;
+#else
+static const uint32_t kInitialWiFiConnectTimeoutMs = 15000;
 static const uint32_t kSetupWiFiConnectTimeoutMs = 20000;
+#endif
 static const uint32_t kSetupHandoffRebootConfirmMs = 1000;
 static const uint32_t kStopWarnMs = 10000;   // .h:95 STOP_WARN_MS
 static const uint32_t kReauthReceiptMs = 120000;
