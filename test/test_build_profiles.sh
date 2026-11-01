@@ -1240,7 +1240,26 @@ for full_env in "${SUPPORTED_PIO_ENVS[@]}"; do
     || fail "$full_env Full Companion omitted the validated nRF52 BLE bootstrap"
   [[ "$PLATFORMIO_BUILD_FLAGS" == *"RECOVERABLE_EXTERNAL_RADIO=1"* ]] \
     || fail "$full_env Full Companion must keep Companion transports available while radio recovery runs"
-  if [ "$full_env" = "t1000e_companion_radio_full" ]; then
+  if pio_env_option_contains "$pio_env" build_flags "MESH_PRIMARY_UART_PORT"; then
+    pio_env_option_contains "$pio_env" build_flags "ENABLE_USB_INTERFACE" \
+      || fail "$full_env omitted its wired UART Companion transport"
+    [[ "$PLATFORMIO_BUILD_FLAGS" == *"COMPANION_FEATURE_USB_MOTA_SOURCE=1"* ]] \
+      || fail "$full_env omitted its wired folder seeder"
+    [[ "$PLATFORMIO_BUILD_FLAGS" == *"COMPANION_FEATURE_BLE_MOTA_SOURCE=1"* ]] \
+      || fail "$full_env omitted BLE folder seeding"
+    [[ "$PLATFORMIO_BUILD_FLAGS" == *"MESH_DEBUG=1"* ]] \
+      || fail "$full_env omitted primary UART diagnostics"
+    [[ "$PLATFORMIO_BUILD_FLAGS" == *"MESH_PACKET_LOGGING=1"* ]] \
+      || fail "$full_env omitted primary UART packet logging"
+    for incompatible in COMPANION_FEATURE_DEDICATED_USB_LOGGING=1 CFG_TUD_CDC=2 \
+        MESH_DUAL_CDC_LOGGING=1 MESH_USB_LOGGING_DISABLED=1; do
+      [[ "$PLATFORMIO_BUILD_FLAGS" != *"$incompatible"* ]] \
+        || fail "$full_env applied native USB logging policy to a UART transport"
+      if pio_env_option_contains "$pio_env" build_flags "$incompatible"; then
+        fail "$full_env recipe applied native USB logging policy to a UART transport"
+      fi
+    done
+  elif [ "$full_env" = "t1000e_companion_radio_full" ]; then
     [[ "$PLATFORMIO_BUILD_FLAGS" == *"COMPANION_FEATURE_BLE_MOTA_SOURCE=1"* ]] \
       || fail "$full_env Full Companion omitted BLE folder seeding"
     [[ "$PLATFORMIO_BUILD_FLAGS" != *"COMPANION_FEATURE_BLE_MOTA_SOURCE=0"* ]] \
