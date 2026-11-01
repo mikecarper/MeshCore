@@ -1159,15 +1159,15 @@ int main() {
             "screen_objects_and_history": 2048,
             "allocation_and_transient_margin": 4096,
         })
-        self.assertEqual(selected["required_heap_bytes"], 81088)
-        self.assertEqual(selected["required_contiguous_bytes"], 19168)
-        # The fresh Full baseline's 81,668 bytes passed only after the real
-        # 32-byte per-row reduction and same-driver OLED accounting proof.
+        self.assertEqual(selected["required_heap_bytes"], 80836)
+        self.assertEqual(selected["required_contiguous_bytes"], 18916)
+        # Rule compaction and same-driver OLED accounting retain the other
+        # reserves. Payload-bound narrowing saves another four bytes per row.
         # Neither a one-byte deficit nor the old failed capacity can bypass
         # the existing real-ELF gate.
         with tempfile.TemporaryDirectory() as temporary:
             path = Path(temporary) / "firmware.elf"
-            for available, expected in ((81087, False), (81088, True), (81668, True)):
+            for available, expected in ((80835, False), (80836, True), (81668, True)):
                 with self.subTest(available=available):
                     elf32(path, {"__HeapBase": (0x20010000, 0),
                                  "__HeapLimit": (0x20010000 + available, 0)})
@@ -1204,13 +1204,13 @@ int main() {
         }
         full = ram.requirements("ESP32_PLATFORM", defines, "Heltec_v3_repeater_observer_mqtt")
         parts = full["components"]
-        self.assertEqual(full["required_heap_bytes"], 201904)
+        self.assertEqual(full["required_heap_bytes"], 201652)
         self.assertEqual(parts["display_pixels_and_driver"], 2048)
         self.assertEqual(parts["uart_bridge_and_driver"], 3072 + 4096)
         self.assertEqual(parts["wireless_stacks"], 49152)
         self.assertEqual(parts["mqtt_startup_allowance"], 24576)
         self.assertEqual(parts["allocation_and_transient_margin"], 16384)
-        self.assertEqual(full["required_contiguous_bytes"], 19168)
+        self.assertEqual(full["required_contiguous_bytes"], 18916)
         for driver, expected in (("SH1106Display", 2048), ("SH1107Display", 4096),
                                  ("ST7735Display", 25602)):
             with self.subTest(driver=driver):
@@ -1221,7 +1221,7 @@ int main() {
                 self.assertEqual(other["components"], {
                     **parts, "display_pixels_and_driver": expected,
                 })
-                self.assertEqual(other["required_contiguous_bytes"], max(19168, expected))
+                self.assertEqual(other["required_contiguous_bytes"], max(18916, expected))
 
     def test_sh1106_full_mqtt_release_profile_is_linked_in_ci(self):
         workflow = (ROOT / ".github/workflows/run-unit-tests.yml").read_text()
