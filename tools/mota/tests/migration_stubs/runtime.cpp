@@ -34,6 +34,8 @@ unsigned retained_reads = 0;
 unsigned retained_clears = 0;
 unsigned retained_sets = 0;
 bool candidate_installed = false;
+bool stock_installed = false;
+bool stock_hash_damaged = false;
 bool interrupt_hash = false;
 bool interrupt_classification = false;
 unsigned classification_checks = 0;
@@ -89,6 +91,12 @@ InstalledVariant installed_variant_for_runtime(const uint8_t *image, size_t size
 const uint8_t migration_candidate[40960] = {};
 const uint8_t migration_candidate_sha256[32] = { 0x01, 0x23, 0x45, 0x67, 0x89, 0xAB, 0xCD, 0xEF };
 const uint8_t migration_legacy_sha256[32] = {};
+// The real registry's stock RAK 0.4.3 image identity; the SHA stub below
+// controls whether that digest is observed, not the cryptographic primitive.
+const uint8_t migration_stock_sha256[1][32] = {{
+  0x6c,0xbf,0xa5,0x69,0xa0,0x5c,0xbd,0x23,0x2d,0xab,0xe4,0xa6,0x54,0xab,0xe9,0xc0,
+  0x4b,0x7a,0x03,0xab,0x45,0x76,0x15,0x02,0x8d,0x28,0xf2,0xd1,0x32,0x9e,0x58,0xd2}};
+const uint32_t migration_stock_count = 1;
 const bool migration_has_legacy = false;
 const uint32_t migration_app_base = 0x26000, migration_boot_version = 0x02040CFF,
                migration_board_id = 0x239A0029;
@@ -168,6 +176,10 @@ void SHA256::finalize(void *out, size_t size) {
     std::memcpy(out, migration_test::application_hash, size);
   else if (migration_test::candidate_installed)
     std::memcpy(out, migration_candidate_sha256, size);
+  else if (migration_test::stock_installed) {
+    std::memcpy(out, migration_stock_sha256[0], size);
+    if (migration_test::stock_hash_damaged) static_cast<uint8_t *>(out)[31] ^= 1;
+  }
 }
 
 namespace mesh {
@@ -373,11 +385,50 @@ int main(int argc, char **argv) {
     now = 140000;
     bootloader_migration_tick(true, true);
     no_install(softdevice_checks);
-    arm(); // Recovery/unknown loaders remain an explicit operator decision.
+    assert(!bootloader_migration_request(nullptr, reply, sizeof(reply)));
+    assert(!bootloader_migration_pending());
+    assert(std::strstr(reply, "not a reviewed exact compatible image"));
     assert(durable_lock_present && store_writes == 1);
     now = 141500;
     bootloader_migration_tick(true, true);
-    assert(endf_checks == 1);
+    assert(endf_checks == 0); // Explicit commands cannot bypass source identity.
+  } else if (std::strncmp(scenario, "stock-", 6) == 0) {
+    auto *boot = reinterpret_cast<uint8_t *>(migration::BOOT_BASE);
+    std::memset(boot, 0xFF, migration::BOOT_SIZE);
+    std::strcpy(reinterpret_cast<char *>(boot + 0x100), "UF2 Bootloader 0.4.3\r\n");
+    stock_installed = true;
+    const bool automatic = std::strcmp(scenario, "stock-automatic") == 0;
+    const bool manual = std::strcmp(scenario, "stock-manual") == 0;
+    if (std::strcmp(scenario, "stock-damaged-hash") == 0) stock_hash_damaged = true;
+    else if (std::strcmp(scenario, "stock-recovery") == 0)
+      std::strcpy(reinterpret_cast<char *>(boot + 0x100), "UF2 Bootloader R_0x02040BFF\r\n");
+    else if (std::strcmp(scenario, "stock-modern-mismatch") == 0) {
+      auto *p = installed_manifest(0x02040BFF);
+      p[24] = 'X'; seal_manifest(p);
+    } else assert(automatic || manual);
+    if (automatic) {
+      now = 69999; bootloader_migration_tick(true, true);
+      assert(!bootloader_migration_pending());
+      now = 70000; bootloader_migration_tick(true, true);
+    } else {
+      const bool accepted = bootloader_migration_request(nullptr, reply, sizeof(reply));
+      assert(accepted == manual);
+    }
+    assert(bootloader_migration_pending() == (automatic || manual));
+    if (automatic || manual) {
+      assert(durable_lock_present && store_writes == 1);
+      assert(power_registers.GPREGRET == mesh::ota::ATTEMPT_MARKER);
+      now += 1499; bootloader_migration_tick(true, true);
+      assert(bootloader_migration_pending() && endf_checks == 0);
+      ++now; bootloader_migration_tick(true, true);
+      assert(!bootloader_migration_pending() && endf_checks == 1);
+    } else {
+      assert(!durable_lock_present && store_writes == 0);
+      assert(std::strstr(reply, "not a reviewed exact compatible image"));
+      now = 70000; bootloader_migration_tick(true, true);
+      assert(!bootloader_migration_pending());
+      assert(endf_checks == 0);
+    }
   } else if (std::strcmp(scenario, "previous-image-interrupted-classification") == 0) {
     durable_lock_present = true;
     std::memcpy(durable_lock_hash, application_hash, 32);
@@ -785,13 +836,14 @@ int main(int argc, char **argv) {
     if (std::strcmp(mutation, "crc") == 0) p[40] ^= 1;
     bootloader_migration_status(reply, sizeof(reply));
     assert(!std::strstr(reply, "up to date"));
-    assert(bootloader_migration_request(nullptr, reply, sizeof(reply)));
-    assert(bootloader_migration_pending());
+    assert(!bootloader_migration_request(nullptr, reply, sizeof(reply)));
+    assert(!bootloader_migration_pending());
+    assert(std::strstr(reply, "not a reviewed exact compatible image"));
     assert(!std::strstr(reply, "up to date"));
     now = 1500;
     bootloader_migration_tick(true, true);
-    // The production install preflight still runs, and the EndF stub refuses it.
-    assert(endf_checks == 1);
+    // Source rejection happens while the application/SoftDevice stays running.
+    assert(endf_checks == 0);
     assert(!bootloader_migration_pending());
   } else if (std::strcmp(scenario, "wrong-confirmation") == 0) {
     assert(!bootloader_migration_request("0123456789ABCDE0", reply, sizeof(reply)));

@@ -87,22 +87,24 @@ bool installed_up_to_date() {
                                          migration_softdevice_fwid);
 }
 
-bool installed_allows_automatic() {
+bool qualified_legacy_hash(const uint8_t digest[32]) {
+  return migration::legacy_digest_allowed(digest, migration_stock_sha256,
+                                          migration_stock_count) ||
+         (migration_has_legacy && memcmp(digest, migration_legacy_sha256, 32) == 0);
+}
+
+bool installed_allows_update() {
   const uint8_t *boot = reinterpret_cast<const uint8_t *>(migration::BOOT_BASE);
   OtaBootloaderIdentity installed;
   const bool valid = ota_bootloader_identity_from_image(boot, migration::BOOT_SIZE, installed);
   automatic_variant = migration::installed_variant(boot, migration::BOOT_SIZE,
                                                     valid ? installed.boot_version : 0);
-  if (automatic_variant == migration::InstalledVariant::Recovery) return false;
-  if (valid && automatic_variant == migration::InstalledVariant::Normal &&
-      migration::installed_matches_resource(installed, migration_board_id, migration_device_name,
-                                            mota_nrf52_app_base(), migration_softdevice_fwid))
-    return true;
-  // Only the explicitly pinned legacy bridge may omit modern identity/text.
-  if (!migration_has_legacy) return false;
-  uint8_t digest[32];
-  hash_region(migration::BOOT_BASE, migration::BOOT_SIZE, digest);
-  return memcmp(digest, migration_legacy_sha256, sizeof(digest)) == 0;
+  if (!valid) installed = OtaBootloaderIdentity();
+  uint8_t digest[32] = {};
+  if (!installed.present) hash_region(migration::BOOT_BASE, migration::BOOT_SIZE, digest);
+  return migration::installed_source_allowed(installed, automatic_variant,
+      !installed.present && qualified_legacy_hash(digest), migration_board_id,
+      migration_device_name, mota_nrf52_app_base(), migration_softdevice_fwid);
 }
 
 bool lock_automatic_for_firmware() {
@@ -220,8 +222,13 @@ void install() {
   // A damaged or ambiguous modern manifest cannot masquerade as a legacy
   // loader. Only the explicitly pinned, byte-exact legacy image is eligible.
   if (!valid_identity) installed = OtaBootloaderIdentity();
-  if (!migration::installed_can_migrate(installed, candidate, migration_has_legacy,
-                                       memcmp(digest, migration_legacy_sha256, sizeof(digest)) == 0,
+  const bool legacy_matches = qualified_legacy_hash(digest);
+  if (!migration::installed_source_allowed(installed,
+          migration::installed_variant(boot, migration::BOOT_SIZE,
+                                       valid_identity ? installed.boot_version : 0),
+          legacy_matches, migration_board_id, migration_device_name,
+          snapshot.app_base, snapshot.softdevice_fwid) ||
+      !migration::installed_can_migrate(installed, candidate, true, legacy_matches,
                                        snapshot.app_base, snapshot.softdevice_fwid))
     fail_and_reset(12);
 
@@ -318,6 +325,13 @@ bool bootloader_migration_request(const char *confirmation, char *reply, size_t 
     return true;
   }
   already_installed = false;
+  if (!installed_allows_update()) {
+    loader_excluded = true;
+    last_result = 12;
+    result_is_current = true;
+    snprintf(reply, capacity, "ERR installed bootloader is not a reviewed exact compatible image");
+    return false;
+  }
   if (!lock_automatic_for_firmware()) {
     last_result = 18;
     result_is_current = true;
@@ -389,7 +403,7 @@ void bootloader_migration_tick(bool outbound_idle, bool ota_idle) {
       automatic_blocked = true;
       return;
     }
-    if (!installed_allows_automatic()) {
+    if (!installed_allows_update()) {
       loader_excluded = true;
       automatic_blocked = true;
       if (!write_reboot_marker(0)) {
