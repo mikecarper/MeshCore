@@ -27,14 +27,24 @@ static unsigned meshtextRetryLimit(const mesh::mt::PendingFrame&) { return 0; }
 static uint32_t meshtextRetryDelay(const mesh::mt::PendingFrame&) { return 100; }
 namespace mesh { namespace ota {
 struct BoundaryManager {
-  unsigned calls = 0;
+  unsigned calls = 0, transmitted = 0, failed = 0;
   bool enabled = false;
   uint8_t hops = 255;
   OtaReplyRoute route;
+  std::vector<uint8_t> response;
+  uint32_t response_at = 0;
   uint32_t directTransportEpoch() const { return 42; }
   void set_direct_transport_enabled(bool value) { enabled = value; }
   void note_rx_path_hops(uint8_t value) { hops = value; }
   bool on_message(const uint8_t*, uint16_t, OtaReplyRoute value) { ++calls; route = value; return true; }
+  void noteResponseTransmitted(const uint8_t* bytes, uint16_t length,
+                               const OtaReplyRoute& value, uint32_t at) {
+    ++transmitted; response.assign(bytes, bytes + length); route = value; response_at = at;
+  }
+  void noteResponseFailed(const uint8_t* bytes, uint16_t length,
+                          const OtaReplyRoute& value, uint32_t at) {
+    ++failed; response.assign(bytes, bytes + length); route = value; response_at = at;
+  }
   uint8_t fetchState() const { return 0; }
 };
 struct BoundaryContext {
@@ -146,6 +156,18 @@ int main() {
   assert(f.node.queueDirectOtaRadioFrame(message, sizeof(message), 1, gen));
   transmit(f);
   assert(f.node.getNumSentDirect() == 1 && !f.node._mt_sent && !f.node._ethernet_sent);
+  const auto& manager = mesh::ota::context.manager;
+  assert(manager.transmitted == 1 && !manager.failed);
+  assert(manager.response.size() == sizeof(message) && !memcmp(manager.response.data(), message, sizeof(message)));
+  assert(manager.response_at == f.clock.now && manager.route.direct);
+  assert(manager.route.profile == 1 && manager.route.generation == gen);
+  assert(f.node.queueDirectOtaRadioFrame(message, sizeof(message), 1, gen));
+  assert(f.node.discardQueuedForeignRadioFrame(Protocol::MeshCore));
+  assert(manager.transmitted == 1 && manager.failed == 1);
+  assert(manager.response.size() == sizeof(message) && !memcmp(manager.response.data(), message, sizeof(message)));
+  assert(manager.response_at == f.clock.now && manager.route.direct);
+  assert(manager.route.profile == 1 && manager.route.generation == gen);
+  assert(!f.node._mt_sent && !f.node._mt_failed && !f.node._ethernet_sent && !f.node._ethernet_failed);
   uint8_t raw[16]; const auto n = mesh::ota::ota_direct_wire_encode(raw, sizeof(raw), message, sizeof(message));
   f.radio.active = 1; f.radio.rx.assign(raw, raw + n); f.radio.incoming = true; f.tick();
   assert(mesh::ota::context.manager.calls == 1 && mesh::ota::context.manager.enabled);

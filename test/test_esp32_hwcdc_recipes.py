@@ -88,7 +88,7 @@ UNCHANGED_COUNTS = {
     ("heltec_v4_r8", "hwcdc"): 25,
     ("heltec_wifi_lora_32_V2", "classic_uart"): 9,
     ("meshnology_w12", "hwcdc"): 12,
-    ("m5stack-stamps3", "hwcdc"): 4,
+    ("m5stack-stamps3", "hwcdc"): 5,
     ("seeed_xiao_esp32c3", "hwcdc"): 7,
     ("seeed_xiao_esp32s3", "hwcdc"): 26,
     ("seeed_xiao_esp32s3_migrator", "hwcdc"): 1,
@@ -291,17 +291,20 @@ class Esp32HwcdcRecipeTests(unittest.TestCase):
                 self.assertEqual(self.sdk["hwcdc_primary_enabled"](row["env"]),
                                  row["kind"] == "hwcdc")
                 self.assertFalse(self.sdk["native_primary_enabled"](row["env"]))
-        expected = Counter({"hwcdc": 352, "uart": 125, "classic_uart": 78})
+        expected = Counter({"hwcdc": 353, "uart": 125, "classic_uart": 78})
         expected.update(kind for _, _, kind in USB_PARTITION_BRIDGES.values())
         self.assertEqual(counts, expected)
 
     def test_canonical_full_companions_preserve_their_usb_base_transport(self):
-        for name, board in (
-            ("Waveshare_S3_LR1121_companion_radio_full", "esp32-s3-zero"),
-            ("Wio_Tracker_L2_companion_radio_full", "seeed_wio_tracker_l2"),
+        for name, base_name, board in (
+            ("Waveshare_S3_LR1121_companion_radio_full",
+             "Waveshare_S3_LR1121_companion_radio_usb", "esp32-s3-zero"),
+            ("Wio_Tracker_L2_companion_radio_full",
+             "Wio_Tracker_L2_companion_radio_usb", "seeed_wio_tracker_l2"),
+            ("M5Stack_Cardputer_Adv_companion_radio_full",
+             "M5Stack_Cardputer_Adv_companion_radio_ble", "m5stack-stamps3"),
         ):
             with self.subTest(environment=name):
-                base_name = name.removesuffix("_full") + "_usb"
                 self.assertEqual(self.config.get(f"env:{name}", "extends"),
                                  [f"env:{base_name}"])
                 for row in (self.rows[name], self.rows[base_name]):
@@ -370,6 +373,7 @@ class Esp32HwcdcRecipeTests(unittest.TestCase):
             "M5Stack_Cardputer_Adv_repeater", "M5Stack_Cardputer_Adv_room_server",
             "M5Stack_Cardputer_Adv_companion_radio_usb",
             "M5Stack_Cardputer_Adv_companion_radio_ble",
+            "M5Stack_Cardputer_Adv_companion_radio_full",
         })
         for name in names:
             with self.subTest(environment=name):

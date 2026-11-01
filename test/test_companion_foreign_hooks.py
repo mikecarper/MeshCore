@@ -59,7 +59,7 @@ def fixture(declarations=None):
     direct = preprocessor_block(mesh_h, "#if MESH_ENABLE_OTA_KISS_DIRECT\n  bool allowDirectOtaTransmit")
     direct_methods = "\n".join(guarded_method(mesh_cpp, signature) for signature in (
         "uint32_t Mesh::directOtaEpoch(", "bool Mesh::allowDirectOtaTransmit(",
-        "bool Mesh::onDirectOtaRadioFrame("))
+        "bool Mesh::onDirectOtaRadioFrame(", "void Mesh::onDirectOtaRadioSendComplete("))
     mt = (ROOT / "examples/companion_radio/MeshtextCompanion.cpp").read_text()
     eth = (ROOT / "examples/companion_radio/EthernetCompanion.cpp").read_text()
     callbacks = "\n".join(guarded_method(source, signature) for source, signature in (
