@@ -25,13 +25,63 @@ from package_cardputer_license import validate_artifact_notice as validate_cardp
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "tools" / "mota"))
-from motalib import parse_endf_ident, parse_nrf52_layout, target_id_for_env
+from motalib import parse_endf, parse_endf_ident, parse_nrf52_layout, target_id_for_env
 
 FIRMWARE_SUFFIXES = {".bin", ".uf2", ".hex", ".zip"}
 
 
 def is_companion(target):
     return "companion" in target.lower() or "comp_radio" in target.lower()
+
+
+def embedded_stock_legacy_records(profile, parsed):
+    """Read the stock inventory for the exact pinned replacement's S140 ABI."""
+    from nrf52_legacy_bootloaders import legacy_bootloaders_for
+    match = re.search(r"_s140_([0-9.]+)\.zip$", profile["files"]["zip"]["name"])
+    geometry = {"6.1.1": (0x26000, 0xB6), "7.3.0": (0x27000, 0x123)}
+    if match is None or match[1] not in geometry:
+        raise ValueError("unrecognized pinned embedded bootloader S140 geometry")
+    return legacy_bootloaders_for(profile["id"], parsed["sourceHardware"], *geometry[match[1]])
+
+
+def validate_embedded_stock_metadata(metadata, profile, parsed):
+    # Preserve historical releases that predate stock support. A new stock
+    # claim must match the current reviewed inventory completely, not a subset
+    # with convenient names or a hash copied from another board's package.
+    if "stock_legacy" not in metadata:
+        return "stock_legacy_offset" not in metadata
+    if metadata["stock_legacy"] != embedded_stock_legacy_records(profile, parsed):
+        return False
+    offset = metadata.get("stock_legacy_offset")
+    return (type(offset) is int and offset >= 0 and offset % 4 == 0
+            if metadata["stock_legacy"] else offset is None)
+
+
+def validate_embedded_stock_body(metadata, body):
+    if "stock_legacy" not in metadata or not metadata["stock_legacy"]:
+        return
+    payload = b"".join(bytes.fromhex(item["image_sha256"]) for item in metadata["stock_legacy"])
+    start, candidate = metadata["stock_legacy_offset"], metadata["app_offset"]
+    end = start + len(payload)
+    if (body[start:end] != payload or body.find(payload) != start
+            or body.find(payload, start + 1) >= 0
+            or not (end <= candidate or start >= candidate + metadata["image_bytes"])):
+        raise ValueError("packaged application lacks its exact reviewed stock bootloader hash table")
+
+
+def validate_embedded_bootloader_application(manifest, application):
+    """Recheck embedded resources in the actual published DFU application."""
+    embedded = manifest.get("embedded_bootloader")
+    if not embedded:
+        return
+    body, _ = parse_endf(application)
+    offset, size = embedded["app_offset"], embedded["image_bytes"]
+    candidate = body[offset:offset + size]
+    if (len(candidate) != size
+            or hashlib.sha256(candidate).hexdigest() != embedded["candidate_sha256"]
+            or b"BL embedded 2.4.12" not in body):
+        raise ValueError("packaged embedded bootloader differs from qualification")
+    validate_embedded_stock_body(embedded, body)
 
 
 def embedded_bootloader_variant(manifest):
@@ -49,7 +99,7 @@ def embedded_bootloader_variant(manifest):
     if not isinstance(metadata, dict):
         raise ValueError(f"{artifact}: invalid embedded bootloader metadata")
     try:
-        profile, _ = select_profile(load_manifest(), target)
+        profile, parsed = select_profile(load_manifest(), target)
     except (ValueError, KeyError) as exc:
         raise ValueError(f"{artifact}: embedded bootloader requires an exact supported profile") from exc
     verified = any(check.get("capability") == capability
@@ -65,6 +115,7 @@ def embedded_bootloader_variant(manifest):
             or not isinstance(metadata.get("candidate_sha256"), str)
             or not re.fullmatch(r"[0-9a-f]{64}", metadata["candidate_sha256"])
             or metadata.get("legacy_sha256") not in (None, LEGACY_SHA256)
+            or not validate_embedded_stock_metadata(metadata, profile, parsed)
             or metadata.get("image_bytes") != BOOT_SIZE
             or type(offset) is not int or offset < 0 or offset % 4
             or metadata.get("activation") != "ota bootloader update"
@@ -240,16 +291,13 @@ def validate_nrf52_sensor_pairs(records):
             raise ValueError(f"{artifact_target}: sensor pair application exceeds its linked flash region")
         embedded = manifest.get("embedded_bootloader")
         if embedded:
-            offset, size = embedded["app_offset"], embedded["image_bytes"]
-            candidate = application[offset:offset + size]
-            if (len(candidate) != size
-                    or hashlib.sha256(candidate).hexdigest() != embedded["candidate_sha256"]
-                    or b"BL embedded 2.4.12" not in application):
-                raise ValueError(f"{artifact_target}: packaged embedded bootloader differs from qualification")
+            validate_embedded_bootloader_application(manifest, application)
         proof = (identity.target_id, identity.hw_id, identity.fw_version,
                  layout.app_base, layout.linked_app_end, layout.stage_ceiling, layout.flags,
                  manifest.get("ota_update_requirements", {}), manifest.get("source_commit"),
                  tuple((key, embedded.get(key)) for key in ("profile", "candidate_sha256", "legacy_sha256"))
+                 + ((json.dumps(embedded.get("stock_legacy"), sort_keys=True),)
+                    if "stock_legacy" in embedded else ())
                  if embedded else ())
         groups.setdefault((manifest["target"], bootloader), []).append((sensor, proof))
     for (target, bootloader), pair in groups.items():
@@ -304,6 +352,10 @@ def collect_artifacts(directory, version):
             if ".uf2" not in extensions or (manifest.get("ota_update_verified") and ".zip" not in extensions):
                 raise ValueError(f"{stem}: nRF52 UF2/DFU artifacts incomplete")
             check_uf2(directory / (stem + ".uf2"))
+            if manifest.get("embedded_bootloader"):
+                with zipfile.ZipFile(directory / (stem + ".zip")) as package:
+                    entry = json.loads(package.read("manifest.json"))["manifest"]["application"]
+                    validate_embedded_bootloader_application(manifest, package.read(entry["bin_file"]))
         if any(item.stat().st_size == 0 for item in files):
             raise ValueError(f"{stem}: empty firmware artifact")
         memory = validate_package(directory / stem)

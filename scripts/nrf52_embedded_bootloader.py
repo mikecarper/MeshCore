@@ -14,6 +14,8 @@ import tempfile
 from urllib.request import urlopen
 import zipfile
 
+from nrf52_legacy_bootloaders import legacy_bootloaders_for
+
 ROOT = Path(__file__).resolve().parents[1]
 VERSION = "2.4.12"
 BOOT_VERSION = 0x02040CFF
@@ -246,6 +248,10 @@ def emit_resource(project, target, output, *, flags=(), cppdefines=(), src_filte
     if linked_base is not None and linked_base != identity.app_base:
         raise ValueError("candidate SoftDevice base does not match the application linker")
     legacy = load_legacy(legacy_path) if legacy_path else None
+    stock_legacy = legacy_bootloaders_for(profile["id"], parsed["sourceHardware"],
+                                         identity.app_base, identity.softdevice_fwid)
+    if len(stock_legacy) > 32:
+        raise ValueError("too many reviewed stock bootloader identities")
     output = Path(output)
     output.mkdir(parents=True, exist_ok=True)
     arrays = {"migration_candidate": image,
@@ -258,7 +264,15 @@ def emit_resource(project, target, output, *, flags=(), cppdefines=(), src_filte
         source += f"alignas(4) const uint8_t {name}[{len(data)}] = {{\n"
         source += "".join("  " + ", ".join(f"0x{value:02X}" for value in data[index:index + 16]) + ",\n"
                           for index in range(0, len(data), 16)) + "};\n"
+    # A zero-count resource retains one inert row so C++ never needs a
+    # non-standard zero-length array. The count, not the sentinel, authorizes it.
+    stock_hashes = [bytes.fromhex(item["image_sha256"]) for item in stock_legacy]
+    header += f"extern const uint8_t migration_stock_sha256[{max(1, len(stock_hashes))}][32];\n"
+    source += f"alignas(4) const uint8_t migration_stock_sha256[{max(1, len(stock_hashes))}][32] = {{\n"
+    source += "".join("  {" + ", ".join(f"0x{value:02X}" for value in digest) + "},\n"
+                      for digest in (stock_hashes or [bytes(32)])) + "};\n"
     values = {"migration_has_legacy": ("bool", "true" if legacy else "false"),
+              "migration_stock_count": ("uint32_t", str(len(stock_hashes))),
               "migration_app_base": ("uint32_t", hex(identity.app_base)),
               "migration_boot_version": ("uint32_t", hex(identity.boot_version)),
               "migration_board_id": ("uint32_t", hex(identity.board_id)),
@@ -278,6 +292,7 @@ def emit_resource(project, target, output, *, flags=(), cppdefines=(), src_filte
                 "source_zip_sha256": profile["files"]["zip"]["sha256"],
                 "candidate_sha256": hashlib.sha256(image).hexdigest(),
                 "legacy_sha256": hashlib.sha256(legacy).hexdigest() if legacy else None,
+                "stock_legacy": stock_legacy,
                 "image_size": BOOT_SIZE, "app_base": identity.app_base,
                 "boot_version": identity.boot_version, "board_id": identity.board_id,
                 "softdevice_fwid": identity.softdevice_fwid, "device_name": identity.device_name}
