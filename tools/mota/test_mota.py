@@ -564,6 +564,7 @@ def test_measured_full_companion_promotions_are_exact_and_bounded():
 
     expected = [
         "M5Stack_Unit_C6L_companion_radio_ble",
+        "M5Stack_Cardputer_Adv_companion_radio_ble",
         "Heltec_Wireless_Tracker_companion_radio_ble",
         "LilyGo_T3S3_sx1276_companion_radio_ble",
         "Heltec_ct62_companion_radio_ble",

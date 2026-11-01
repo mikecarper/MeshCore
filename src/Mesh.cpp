@@ -314,6 +314,21 @@ bool Mesh::onDirectOtaRadioFrame(const uint8_t* bytes, size_t length,
   context->track_session(context->manager.fetchState(), _ms->getMillis());
   return true;
 }
+
+void Mesh::onDirectOtaRadioSendComplete(const uint8_t* bytes, size_t length,
+                                       uint8_t profile, uint32_t generation,
+                                       bool success) {
+  auto* context = ota::ota_context_if_active();
+  const uint8_t* message = nullptr;
+  uint16_t message_len = 0;
+  if (!context || !ota::ota_direct_wire_decode(bytes, length, message, message_len)) return;
+  ota::OtaReplyRoute route;
+  route.profile = profile;
+  route.generation = generation;
+  route.direct = true;
+  if (success) context->manager.noteResponseTransmitted(message, message_len, route, _ms->getMillis());
+  else context->manager.noteResponseFailed(message, message_len, route, _ms->getMillis());
+}
 #endif
 #endif
 
@@ -834,6 +849,19 @@ float Mesh::getOtaPacketSpeedFactor() const {
 #endif
 }
 
+float Mesh::getOtaPacketSpeedFactor(uint8_t profile, uint32_t generation) const {
+  const float configured = getOtaSpeedFactor();
+#if defined(ENABLE_OTA)
+  const auto* context = ota::ota_context_if_active();
+  const float adaptive = context ? context->manager.adaptivePacketSpeed(profile, generation) : 1.0f;
+  return configured < adaptive ? configured : adaptive;
+#else
+  (void)profile;
+  (void)generation;
+  return configured;
+#endif
+}
+
 uint32_t Mesh::getOtaPacketAirtime() const {
   const auto* profiles = _radio->profiles();
   if (!profiles || !profiles->enabled()) return _radio->getProfileAirtime(0, MAX_TRANS_UNIT);
@@ -1045,6 +1073,18 @@ uint8_t Mesh::getExtraAckTransmitCount() const {
 }
 
 void Mesh::onSendComplete(Packet* packet) {
+#if defined(ENABLE_OTA)
+  if (packet && !packet->forwarded && packet->getPayloadType() == PAYLOAD_TYPE_OTA
+      && packet->getPathHashCount() == 0) {
+    if (auto* context = ota::ota_context_if_active()) {
+      ota::OtaReplyRoute route;
+      route.profile = packet->radio_profile;
+      route.generation = packet->radio_generation;
+      context->manager.noteResponseTransmitted(packet->payload, packet->payload_len,
+          route, _ms->getMillis());
+    }
+  }
+#endif
   // Profile selection/copying happens after sendOtaFlood(). Remember the
   // actual transmitting profile as well, including locally injected OTA.
   if (packet && packet->getPayloadType() == PAYLOAD_TYPE_OTA
@@ -1079,6 +1119,18 @@ void Mesh::onTracePacketQueuedForSend(Packet* packet) {
 }
 
 void Mesh::onSendFail(Packet* packet) {
+#if defined(ENABLE_OTA)
+  if (packet && !packet->forwarded && packet->getPayloadType() == PAYLOAD_TYPE_OTA
+      && packet->getPathHashCount() == 0) {
+    if (auto* context = ota::ota_context_if_active()) {
+      ota::OtaReplyRoute route;
+      route.profile = packet->radio_profile;
+      route.generation = packet->radio_generation;
+      context->manager.noteResponseFailed(packet->payload, packet->payload_len,
+          route, _ms->getMillis());
+    }
+  }
+#endif
   clearPendingDirectRetryOnSendFail(packet);
   clearPendingFloodRetryOnSendFail(packet);
 }

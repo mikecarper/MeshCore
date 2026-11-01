@@ -176,6 +176,14 @@ def requirements(platform, defines, target):
         depth = integer(defines, "UI_BUFFER_COLOR_DEPTH", 8)
         pixels = 480 * 480 if "INDICATOR_TRANSPORT_RENDER_PROFILE" in defines else 320 * 320
         display_heap = (pixels * depth + 7) // 8 + 1024
+    elif display == "WioL1Display":
+        if platform != "NRF52_PLATFORM" or not integer(defines, "WIO_L1_DISPLAY_UNIFIED", 0):
+            raise ValueError("unified Wio L1 display budget requires nRF52 and its unified recipe")
+        # The two drivers share one static placement buffer, counted in the
+        # linked ELF. Only the selected OLED allocates a framebuffer/adapter;
+        # e-paper pixel storage lives inside that same static placement buffer.
+        # Retain the existing nRF52 OLED allowance, even on headless boots.
+        display_heap = DISPLAY_HEAP["SH1106Display"]
     elif display == "WioTrackerL2Display":
         if platform != "ESP32_PLATFORM":
             raise ValueError("Wio Tracker L2 display budget requires ESP32")

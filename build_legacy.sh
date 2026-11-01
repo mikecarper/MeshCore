@@ -482,6 +482,11 @@ for section, options in data:
       PIO_ENV_FULL_BUILD_BY_NAME["$full_env"]=0
       PIO_ENV_FULL_WIFI_OTA_BY_NAME["$full_env"]=0
       PIO_ENV_BUILD_BASE_BY_NAME["$full_env"]="$env_name"
+      if [ "$full_env" = WioTrackerL1_companion_radio_full ]; then
+        # The BLE recipe owns runtime OLED/e-paper selection. Keep the old
+        # USB-only OLED recipe exact for explicit compatibility builds.
+        PIO_ENV_BUILD_BASE_BY_NAME["$full_env"]="$ble_env"
+      fi
     done
 
     # Some qualified boards historically published only BLE, or BLE plus USB,
@@ -492,6 +497,7 @@ for section, options in data:
     # remain explicit-build aliases and canonical releases use the Full target.
     local -a qualified_esp32_full_companion_bases=(
       M5Stack_Unit_C6L_companion_radio_ble
+      M5Stack_Cardputer_Adv_companion_radio_ble
       Heltec_Wireless_Tracker_companion_radio_ble
       LilyGo_T3S3_sx1276_companion_radio_ble
       LilyGo_Tlora_C6_companion_radio_ble_
@@ -4600,6 +4606,15 @@ apply_companion_radio_full_profile() {
   # measured-safe tables for FULL OTA without changing ordinary USB/BLE/WiFi
   # companion builds.
   case "${env_name,,}" in
+    m5stack_cardputer_adv_companion_radio_full)
+      # Keep the complete keyboard UI and 350/40/256 capacities. USB is
+      # independent; the saved WiFi/BLE selection applies on the next boot.
+      # Only CPU-owned retained frames use RTC; the borrowed OTA context
+      # stays in ordinary DRAM and keeps 128 receive frames while active.
+      export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -DCOMPANION_EXCLUSIVE_WIFI_BLE=1 -DOTA_SHARED_COMPANION_QUEUE=1 -DCOMPANION_RTC_FAST_OFFLINE_FRAMES=32 -DCOMPANION_RTC_SLOW_OFFLINE_FRAMES=32"
+      record_build_reduction \
+        "Cardputer Full: USB plus selected WiFi or Bluetooth; 256 offline frames normally, 128 during mOTA"
+      ;;
     heltec_wireless_paper_companion_radio_full)
       # The cold mOTA workspace fits in half the offline queue. Keep the
       # board's 350 contacts and all simultaneous Full transports.
@@ -6166,6 +6181,7 @@ get_consolidated_hardware_replacement() {
     picow_companion_radio_usb|picow_companion_radio_ble|picow_companion_radio_wifi|\
     heltec_v4_tft_*|heltec_v4_3_tft_*|heltec_v4_expansionkit_*|heltec_v4_3_expansionkit_*|\
     heltec_v4_r8_tft_portrait_repeater_observer_mqtt|heltec_v4_r8_tft_portrait_room_server_observer_mqtt|\
+    heltec_v4_r8_tft_kiss_modem|wiotrackerl1eink_kiss_modem|wiotrackerl1eink_companion_radio_*|\
     muzi_base_duo_superio_companion_radio_*|muzi_base_uno_superio_companion_radio_*|lilygo_t-echo-lite_non_shell_companion_radio_*|\
     heltec_rc32_without_display_*) ;;
     *) return 1 ;;

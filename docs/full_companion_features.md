@@ -35,6 +35,24 @@ wired Companion interface does not qualify automatic USB bootloader entry or
 change the board's firmware programming requirements. The new UART backend
 has host-side regression tests; live WM1110 hardware validation is still needed.
 
+**Wio Tracker L1** Full uses one image for the OLED, E-Ink, Lite and Pro
+models. It detects the screen at startup and also runs headless. The E-Ink
+idle timeout defaults to 15 minutes; saved display settings take precedence.
+The 1W model keeps its separate image. Use USB to move from an older
+`WioTrackerL1Eink` image to `WioTrackerL1_companion_radio_full`; historical
+LoRa OTA target identities remain separate.
+
+**Cardputer-Adv** Full combines USB and Bluetooth with the keyboard UI in
+`M5Stack_Cardputer_Adv_companion_radio_full`. USB remains available when
+Bluetooth is disabled. WiFi and Bluetooth run one at a time; select the
+wireless transport and reboot as shown below. Full retains 350 contacts,
+40 channels and 256 queued messages. During an mOTA session, 128 queue
+slots remain available while the other half holds its workspace. Sync
+pending messages before starting if more than 128 are queued. The older
+USB and BLE build names remain available for explicit compatibility builds.
+When moving from the older BLE image, forget the previous phone pairing and
+pair again if necessary; Full uses NimBLE and keeps the saved PIN.
+
 The Wireless Paper Full memory-sharing update keeps 350 contacts and 256
 queued messages normally. During an mOTA session, 128 message slots are
 available while the other half holds its workspace. If more than 128 unread
@@ -135,7 +153,8 @@ Reboot does not undo a saved-off preference. See
 [Bluetooth controls](cli_commands.md#turn-bluetooth-on-or-off-companion) for
 reply draining, connection checks, and unavailable boot modes.
 
-SenseCAP Indicator selects one secondary wireless transport per boot:
+SenseCAP Indicator and Cardputer-Adv Full select one secondary wireless
+transport per boot:
 
 ```text
 set companion.transport wifi

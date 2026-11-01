@@ -6,6 +6,23 @@ import sys
 from optional_display_profiles import resolved_defines, spec_for_defines
 
 SPECS = (
+    dict(key="unifiedWioL1Display", capability="display.wio_l1.unified",
+         marker="meshcore.capability.display.wio_l1_unified.v1",
+         platform="NRF52_PLATFORM", board="seeed-wio-tracker-l1",
+         target=r"WioTrackerL1_companion_radio_(?:ble|full)",
+         defines={"WIO_TRACKER_L1": "1", "WIO_L1_DISPLAY_UNIFIED": "1",
+                  "DISPLAY_CLASS": "WioL1Display", "MAX_CONTACTS": "350",
+                  "MAX_GROUP_CHANNELS": "40", "OFFLINE_QUEUE_SIZE": "256"}),
+    *[dict(key=key, capability="modem.headless." + family,
+           marker="meshcore.capability.modem.headless." + family + ".v1",
+           platform=platform, board=board, target=target,
+           defines={guard: "1", "MESHCORE_HEADLESS_KISS_COMPAT": "1"})
+      for key, family, platform, board, target, guard in (
+          ("headlessR8Kiss", "heltec_r8", "ESP32_PLATFORM", "heltec_v4_r8",
+           r"heltec_v4_r8_kiss_modem", "HELTEC_V4_R8"),
+          ("headlessWioL1Kiss", "wio_l1", "NRF52_PLATFORM", "seeed-wio-tracker-l1",
+           r"WioTrackerL1_kiss_modem", "WIO_TRACKER_L1"),
+      )],
     dict(key="autoLoRaRadio", capability="radio.autodetect.sx126x_sx127x",
          marker="meshcore.capability.radio.autodetect.sx126x_sx127x.v1",
          platform="ESP32_PLATFORM", board="ttgo-t-beam",
@@ -128,7 +145,9 @@ def specs_for_config(target, env):
             and (spec["key"] != "wm1110CombinedCompanion" or all(
                 integer_define(defines.get(key)) is not None
                 and integer_define(defines[key]) >= value
-                for key, value in WM1110_CAPACITY_MINIMUMS.items()))]
+                for key, value in WM1110_CAPACITY_MINIMUMS.items()))
+            and (spec["key"] not in ("headlessR8Kiss", "headlessWioL1Kiss")
+                 or "DISPLAY_CLASS" not in defines)]
 
 
 def proven(manifest, spec):
@@ -211,6 +230,12 @@ def replacements(target):
     """Known functionality successors, never aliases for deployed update IDs."""
     if target.lower() == "wio_wm1110_companion_radio_ble":
         return [("wio_wm1110_companion_radio_full", "wm1110CombinedCompanion")]
+    if re.fullmatch(r"WioTrackerL1Eink_companion_radio_(?:ble|full)", target, re.I):
+        return [("WioTrackerL1_companion_radio_full", "unifiedWioL1Display")]
+    if target.lower() == "heltec_v4_r8_tft_kiss_modem":
+        return [("heltec_v4_r8_kiss_modem", "headlessR8Kiss")]
+    if target.lower() == "wiotrackerl1eink_kiss_modem":
+        return [("WioTrackerL1_kiss_modem", "headlessWioL1Kiss")]
     radio = radio_replacements(target)
     if radio:
         return radio
@@ -247,7 +272,7 @@ def configuration_replacement(target, envs):
         return None
     for candidate, key in replacements(target):
         radio = key in ("autoLoRaRadio", "muziRadioAccessories")
-        env = environment(candidate, radio)
+        env = environment(candidate, radio or key == "unifiedWioL1Display")
         source_env = environment(target, radio)
         if not env or not source_env or env.get("board") != source_env.get("board"):
             continue
@@ -321,10 +346,14 @@ def omit_redundant_records(records):
                             for row in manifest.get("verification", [])))
         return any(s["key"] == key and proven(manifest, s) for s in SPECS)
 
-    def radio_successor(left, right):
+    def radio_successor(left, right, key):
         source = left.get("source_commit")
+        wio_full = (key == "unifiedWioL1Display" and right.get("build_profile") == "full"
+                    and left.get("target", "").lower().endswith(("_usb", "_ble"))
+                    and same_sensors(left, right))
         if (not isinstance(source, str) or not re.fullmatch(r"[0-9a-f]{40}", source)
-                or right.get("source_commit") != source or not same_policy(left, right)):
+                or right.get("source_commit") != source
+                or not (same_policy(left, right) or wio_full)):
             return False
         # Full already requires its full capacity recipe before advertising
         # this packaged marker. An old transport/terminal image may retire
@@ -356,12 +385,14 @@ def omit_redundant_records(records):
         manifest = record["manifest"]
         alternatives = replacements(manifest["target"])
         if not any(candidate["manifest"]["target"].lower() == target.lower()
-                   and (key not in ("autoLoRaRadio", "muziRadioAccessories")
-                        or radio_successor(manifest, candidate["manifest"]))
+                   and (key not in ("autoLoRaRadio", "muziRadioAccessories", "unifiedWioL1Display",
+                                    "headlessR8Kiss", "headlessWioL1Kiss")
+                        or radio_successor(manifest, candidate["manifest"], key))
                    and (key != "wm1110CombinedCompanion"
                         or wm1110_successor(manifest, candidate["manifest"]))
                    and (same_policy(manifest, candidate["manifest"])
-                        or key in ("muziAccessories", "techoLiteDisplay", "wm1110CombinedCompanion")
+                        or key in ("muziAccessories", "techoLiteDisplay", "unifiedWioL1Display",
+                                   "wm1110CombinedCompanion")
                         and candidate["manifest"].get("build_profile") == "full"
                         and manifest["target"].lower().endswith(("_usb", "_ble")))
                    and qualified(candidate["manifest"], key)

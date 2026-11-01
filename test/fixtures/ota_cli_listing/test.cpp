@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include "helpers/CLIReplyText.h"
 #include "helpers/ota/OtaTargets.h"
 
 namespace mesh {

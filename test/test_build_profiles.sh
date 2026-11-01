@@ -9,16 +9,6 @@ fail() {
   exit 1
 }
 
-# These are the only current ESP32 Companion recipes without a qualified Full
-# replacement. Keep inventory assertions consistent without exempting boards.
-is_existing_cardputer_companion_recipe() {
-  case "$1" in
-    M5Stack_Cardputer_Adv_companion_radio_usb|M5Stack_Cardputer_Adv_companion_radio_ble)
-      return 0 ;;
-  esac
-  return 1
-}
-
 # Optional debug settings must remain usable by strict shell callers before
 # any PlatformIO flags have been initialized.
 (
@@ -241,6 +231,17 @@ require("Heltec_E290_companion_usb_ble", "build_flags", "ENABLE_USB_INTERFACE")
 require("Heltec_E290_companion_usb_ble", "build_flags", "BLE_PIN_CODE=123456")
 require("Heltec_T190_companion_radio_usb_ble_", "build_flags", "ENABLE_USB_INTERFACE")
 require("Heltec_T190_companion_radio_usb_ble_", "build_flags", "BLE_PIN_CODE=123456")
+cardputer = "M5Stack_Cardputer_Adv_companion_radio_ble"
+require(cardputer, "board", "m5stack-stamps3")
+require(cardputer, "board_build.partitions", "default_8MB.csv")
+for flag in ("CARDPUTER_ADV_UI=1", "MESH_CONTACT_CACHE=1", "MAX_CONTACTS=350",
+             "MAX_GROUP_CHANNELS=40", "OFFLINE_QUEUE_SIZE=256",
+             "ENABLE_USB_INTERFACE", "BLE_PIN_CODE=123456",
+             "RECOVERABLE_EXTERNAL_RADIO", "ENV_INCLUDE_GPS=1"):
+    require(cardputer, "build_flags", flag)
+for source in ("examples/companion_radio", "variants/m5stack_cardputer_adv/companion_radio",
+               "variants/m5stack_cardputer_adv/hw"):
+    require(cardputer, "build_src_filter", source)
 waveshare_full = "Waveshare_S3_LR1121_companion_radio_full"
 require(waveshare_full, "board", "esp32-s3-zero")
 require(waveshare_full, "board_build.flash_mode", "dio")
@@ -509,11 +510,10 @@ for env_name in (
 ):
     require(env_name, "build_flags", "BLE_TX_POWER=0")
 
-for env_name in (
-    "WioTrackerL1_companion_radio_usb",
-    "WioTrackerL1_companion_radio_ble",
-):
-    require(env_name, "build_flags", "UI_NO_HIBERNATE")
+require("WioTrackerL1_companion_radio_usb", "build_flags", "UI_NO_HIBERNATE")
+require("WioTrackerL1_companion_radio_ble", "build_flags", "WIO_L1_DISPLAY_UNIFIED=1")
+require("WioTrackerL1_companion_radio_ble", "build_flags", "DISPLAY_CLASS=WioL1Display")
+reject("WioTrackerL1_companion_radio_ble", "build_flags", "UI_NO_HIBERNATE")
 
 rak_usb = "RAK_3401_companion_radio_usb"
 require(rak_usb, "build_flags", "RAK_BOARD")
@@ -531,6 +531,11 @@ for env_name in ("RAK_4631_companion_radio_usb", "RAK_4631_repeater"):
 # aliases remain directly buildable, but canonical release resolution must
 # replace each with that exact board's Full target.
 init_project_context >/dev/null
+
+# The generated L1 Full target must use the recipe with both display drivers,
+# rather than the earlier USB-only OLED recipe with the same physical board.
+[ "${PIO_ENV_BUILD_BASE_BY_NAME[WioTrackerL1_companion_radio_full]:-}" = WioTrackerL1_companion_radio_ble ] \
+  || fail "Wio L1 Full did not select its runtime-display BLE base"
 
 # The interactive board menu must offer the same ordinary Full choices as the
 # release, while exact compatibility/development recipes stay directly usable.
@@ -580,15 +585,18 @@ init_project_context >/dev/null
     || fail "nRF52 menu depends on alias input order"
 )
 
-# Cardputer's existing UI recipes have not qualified a combined Full profile.
-# Keep both exact transport recipes available in its ordinary release lists.
+# Cardputer keeps its historical recipes for explicit recovery builds while
+# ordinary releases publish one USB/BLE/WiFi Full image with the keyboard UI.
 for cardputer_env in M5Stack_Cardputer_Adv_companion_radio_usb \
     M5Stack_Cardputer_Adv_companion_radio_ble; do
   [ "$(get_pio_build_env "$cardputer_env")" = "$cardputer_env" ] \
     || fail "$cardputer_env lost its exact board recipe"
   for resolver in resolve_all_firmwares resolve_companion_firmwares; do
-    grep -Fxq "$cardputer_env" <<<"$("$resolver")" \
-      || fail "$resolver omitted supported Cardputer recipe $cardputer_env"
+    if grep -Fxq "$cardputer_env" <<<"$("$resolver")"; then
+      fail "$resolver republishes Cardputer transport alias $cardputer_env"
+    fi
+    grep -Fxq M5Stack_Cardputer_Adv_companion_radio_full <<<"$("$resolver")" \
+      || fail "$resolver omitted combined Cardputer Full"
   done
 done
 
@@ -604,9 +612,6 @@ for resolver in resolve_all_firmwares resolve_repeater_firmwares \
     fi
     is_redundant_bulk_build_target "$release_env" \
       && fail "$resolver republishes utility or legacy alias $release_env"
-    if is_existing_cardputer_companion_recipe "$release_env"; then
-      continue
-    fi
     if is_kiss_modem_target "$release_env"; then
       if is_esp32_full_release_build_target "$release_env"; then
         fail "$release_env host modem was promoted into the node Full profile"
@@ -1115,6 +1120,8 @@ while IFS='|' read -r source_env full_env build_base; do
   is_redundant_bulk_build_target "$source_env" \
     || fail "$source_env remained beside its Full Companion"
 done <<'FULL_COMPANION_SPECS'
+M5Stack_Cardputer_Adv_companion_radio_usb|M5Stack_Cardputer_Adv_companion_radio_full|M5Stack_Cardputer_Adv_companion_radio_full
+M5Stack_Cardputer_Adv_companion_radio_ble|M5Stack_Cardputer_Adv_companion_radio_full|M5Stack_Cardputer_Adv_companion_radio_full
 LilyGo_Tlora_C6_companion_radio_ble_|LilyGo_Tlora_C6_companion_radio_full_|LilyGo_Tlora_C6_companion_radio_ble_
 Meshimi_companion_radio_ble_|Meshimi_companion_radio_full_|Meshimi_companion_radio_ble_
 WHY2025_badge_companion_radio_ble_|WHY2025_badge_companion_radio_full_|WHY2025_badge_companion_radio_ble_
@@ -1362,8 +1369,7 @@ MQTT_BRIDGE_OVERRIDE=""
 
 while IFS= read -r env_name; do
   if [ "${PIO_ENV_PLATFORM_BY_NAME[$env_name]:-}" = ESP32_PLATFORM ] \
-      && ! is_companion_radio_full_target "$env_name" \
-      && ! is_existing_cardputer_companion_recipe "$env_name"; then
+      && ! is_companion_radio_full_target "$env_name"; then
     fail "canonical ESP32 Companion inventory still contains $env_name"
   fi
 done < <(resolve_companion_firmwares)

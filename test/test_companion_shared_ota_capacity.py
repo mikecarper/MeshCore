@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Exercise C3's full queue while its explicit OTA work borrows cold storage."""
+"""Exercise split C3/S3 queues while explicit OTA work borrows cold storage."""
 
 from pathlib import Path
 import re
@@ -30,15 +30,19 @@ class SharedCompanionOtaCapacityTest(unittest.TestCase):
             binary = Path(temp) / "queue"
             (Path(temp) / "sdkconfig.h").write_text("#pragma once\n")
             (Path(temp) / "esp_attr.h").write_text(
-                '#pragma once\n#define RTC_FAST_ATTR __attribute__((section(".rtc.force_fast.test")))\n')
+                '#pragma once\n#define RTC_FAST_ATTR __attribute__((section(".rtc.force_fast.test")))\n'
+                '#define RTC_SLOW_ATTR __attribute__((section(".rtc.force_slow.test")))\n')
             command = ["c++", "-std=c++17", "-Wall", "-Wextra", "-Werror",
                        "-I", str(ROOT / "src"), "-I", temp, "-x", "c++", "-",
                        "-o", str(binary)]
             if rtc:
+                s3 = rtc == "ESP32S3"
                 command[1:1] = ["-DNDEBUG", "-DESP32_PLATFORM=1", "-DCOMPANION_RADIO_FULL=1",
-                    "-DOTA_SHARED_COMPANION_QUEUE=1", "-DOFFLINE_QUEUE_SIZE=224", "-DCONFIG_IDF_TARGET_ESP32C3=1",
+                    "-DOTA_SHARED_COMPANION_QUEUE=1", f"-DOFFLINE_QUEUE_SIZE={256 if s3 else 224}",
+                    f"-DCONFIG_IDF_TARGET_{'ESP32S3' if s3 else 'ESP32C3'}=1",
                     "-DCONFIG_ESP_SYSTEM_ALLOW_RTC_FAST_MEM_AS_HEAP=1",
-                    "-DCOMPANION_RTC_FAST_OFFLINE_FRAMES=32"]
+                    "-DCOMPANION_RTC_FAST_OFFLINE_FRAMES=32",
+                    f"-DCOMPANION_RTC_SLOW_OFFLINE_FRAMES={32 if s3 else 0}"]
             if run:
                 command[1:1] = ["-fsanitize=address,undefined", "-g"]
             result = subprocess.run(command, input=text, text=True,
@@ -52,6 +56,10 @@ class SharedCompanionOtaCapacityTest(unittest.TestCase):
                     match = re.search(r'\.rtc\.force_fast\.test\s+([0-9a-fA-F]+)', sections)
                     self.assertIsNotNone(match, sections)
                     self.assertEqual(int(match[1], 16), 32 * 177, sections)
+                    if s3:
+                        match = re.search(r'\.rtc\.force_slow\.test\s+([0-9a-fA-F]+)', sections)
+                        self.assertIsNotNone(match, sections)
+                        self.assertEqual(int(match[1], 16), 32 * 177, sections)
                 def no_core_dump():
                     resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
                 result = subprocess.run([str(binary), *args], text=True,
@@ -59,7 +67,7 @@ class SharedCompanionOtaCapacityTest(unittest.TestCase):
                 self.assertEqual(result.returncode, expected_returncode, result.stderr)
             return result
 
-    def queue_fixture(self, rtc=False):
+    def queue_fixture(self, rtc=False, capacity=224):
         source = (ROOT / "examples/companion_radio/MyMesh.cpp").read_text()
         declaration = (ROOT / "examples/companion_radio/MyMesh.h").read_text()
         retained = re.search(
@@ -140,20 +148,20 @@ struct MyMesh {
 int main() {
   using mesh::ota::OtaContext;
   MyMesh mesh;
-  for (unsigned head = 0; head < 224; ++head) {
-    while (mesh.offline_queue_len < 224) mesh.add();
-    // Visit every wrapped head with a full 224-frame normal queue.
+  for (unsigned head = 0; head < @CAPACITY@; ++head) {
+    while (mesh.offline_queue_len < @CAPACITY@) mesh.add();
+    // Visit every wrapped head with a full normal queue.
     for (unsigned i = 0; i < head; ++i) { mesh.pop(); mesh.add(); }
     int original_head = mesh.offline_queue_head;
     unsigned constructed = OtaContext::constructions;
     assert(!MyMesh::acquireOfflineQueueForOta(&mesh));
-    assert(mesh.offline_queue_len == 224);
+    assert(mesh.offline_queue_len == @CAPACITY@);
     assert(mesh.offline_queue_head == original_head);
     assert(OtaContext::constructions == constructed && OtaContext::live == 0);
     // Only the explicit drain consumes frames, preserving the newest 128.
     unsigned notified = mesh.notifications;
-    assert(MyMesh::drainOfflineQueueForOta(&mesh) == 96);
-    assert(mesh.notifications == notified + 96 && mesh.offline_queue_len == 128);
+    assert(MyMesh::drainOfflineQueueForOta(&mesh) == @DRAINED@);
+    assert(mesh.notifications == notified + @DRAINED@ && mesh.offline_queue_len == 128);
     assert(MyMesh::drainOfflineQueueForOta(&mesh) == 0);
     OtaContext* owner = MyMesh::acquireOfflineQueueForOta(&mesh);
     assert(owner && OtaContext::live == 1 && mesh.offline_queue.capacity() == 128);
@@ -163,15 +171,16 @@ int main() {
     memset(owner->bytes, 0xCC, sizeof owner->bytes);
     for (unsigned i = 0; i < head % 128; ++i) { mesh.pop(); mesh.add(); }
     MyMesh::releaseOfflineQueueFromOta(&mesh);
-    assert(OtaContext::live == 0 && mesh.offline_queue.capacity() == 224);
+    assert(OtaContext::live == 0 && mesh.offline_queue.capacity() == @CAPACITY@);
     assert(OtaContext::constructions == OtaContext::destructions);
     MyMesh::releaseOfflineQueueFromOta(&mesh); // idle release cannot destroy twice
-    while (mesh.offline_queue_len < 224) mesh.add();
+    while (mesh.offline_queue_len < @CAPACITY@) mesh.add();
     while (mesh.offline_queue_len) mesh.pop();
     assert(mesh.expected.empty());
   }
 }
-'''.replace("@RETAINED@", retained).replace("@METHODS@", methods)
+'''.replace("@RETAINED@", retained).replace("@METHODS@", methods).replace(
+    "@CAPACITY@", str(capacity)).replace("@DRAINED@", str(capacity - 128))
         if rtc:
             start = declaration.index('  // Concrete definitions in MyMesh.cpp')
             end = declaration.index('\n#endif\n#if defined(OTA_SHARED_COMPANION_QUEUE)', start)
@@ -194,6 +203,10 @@ int main() {
 
     def test_rtc_backed_224_and_128_fifo_all_heads_use_actual_mesh_storage_and_callbacks(self):
         self.compile(self.queue_fixture(rtc=True), run=True, rtc=True)
+
+    def test_s3_256_and_128_fifo_all_heads_use_both_banks_and_actual_mesh_callbacks(self):
+        self.compile(self.queue_fixture(rtc=True, capacity=256),
+                     run=True, rtc="ESP32S3")
 
     def test_rtc_owner_reset_geometry_and_release_build_safeguards(self):
         harness = self.queue_fixture(rtc=True).split('int main() {', 1)[0] + r'''

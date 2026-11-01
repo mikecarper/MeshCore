@@ -3834,13 +3834,20 @@ void setup() {
 #if defined(OLED_AUTO_DETECT) && OLED_AUTO_DETECT
   mesh::ui::loadOLEDControllerSettings(regulator_prefs_fs);
 #endif
+#if defined(WIO_L1_DISPLAY_UNIFIED) && WIO_L1_DISPLAY_UNIFIED
+  display.detect();
+#endif
   mesh::ui::loadDisplayPowerSettings(display_prefs_fs,
 #ifdef BLE_PIN_CODE
       true,
 #else
       false,
 #endif
-      true);
+      true
+#if defined(WIO_L1_DISPLAY_UNIFIED) && WIO_L1_DISPLAY_UNIFIED
+      , display.defaultTimeoutSeconds()
+#endif
+      );
   mesh::ui::StartupScreen startup_screen;
 #endif
 

@@ -43,6 +43,13 @@ class PickerControlsTests(unittest.TestCase):
                        verified=True, capabilities=[], verification=[])
         self.assertNotIn('dedicatedUsbLogging', GENERATOR.runtime_metadata(unknown, False, source))
 
+    def test_cardputer_full_explains_wireless_selection_and_shared_queue(self):
+        note = GENERATOR.capacity_note([
+            'Cardputer Full: USB plus selected WiFi or Bluetooth; 256 offline frames normally, 128 during mOTA'], {})
+        for text in ('USB remains available', 'set companion.transport wifi|ble', 'reboot',
+                     '350 contacts', '40 channels', '256 queued messages', '128 queue slots'):
+            self.assertIn(text, note)
+
     def test_shared_radio_keeps_supported_runtime_rxps_control(self):
         shared = dict(RADIO_CLASS='UniversalLoRaRadio', MESH_RADIO_AUTO_FAMILY='1', USE_SX1262='1')
         self.assertTrue(GENERATOR.has_rxps_control(shared))

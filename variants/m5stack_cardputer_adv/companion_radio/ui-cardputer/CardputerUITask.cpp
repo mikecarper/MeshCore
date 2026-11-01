@@ -8,6 +8,7 @@
 #include "target.h"
 #include "helpers.h"
 #include "CompanionBluetooth.h"
+#include "CompanionWiFi.h"
 #include <helpers/CompanionNotificationPolicy.h>
 #include <helpers/ui/BluetoothPairingUiPolicy.h>
 
@@ -431,6 +432,19 @@ int CardputerUITask::drawModifierBadges(CardputerDisplay &lcd, int x, int y) {
   lcd.setTextSize(1);
   return x;
 }
+
+#if defined(COMPANION_EXCLUSIVE_WIFI_BLE)
+void CardputerUITask::toggleTransport() {
+  const CompanionTransportMode next = getCompanionTransportMode() == CompanionTransportMode::WiFi
+      ? CompanionTransportMode::Bluetooth : CompanionTransportMode::WiFi;
+  if (!selectCompanionTransportMode(next)) {
+    showAlert("Transport save failed", 2500);
+    return;
+  }
+  showAlert(next == CompanionTransportMode::WiFi
+      ? "WiFi selected; reboot required" : "Bluetooth selected; reboot required", 2500);
+}
+#endif
 
 void CardputerUITask::toggleBluetooth() {
   // Same checks and saved preference as the CLI's "set bluetooth on|off"

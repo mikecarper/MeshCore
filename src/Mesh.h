@@ -565,6 +565,8 @@ protected:
   uint32_t directOtaEpoch() const override;
   bool onDirectOtaRadioFrame(const uint8_t* bytes, size_t length, uint8_t profile,
                             uint32_t generation) override;
+  void onDirectOtaRadioSendComplete(const uint8_t* bytes, size_t length, uint8_t profile,
+                                    uint32_t generation, bool success) override;
 #endif
   void syncOtaTiming(ota::OtaManager& manager);
   unsigned long _next_ota_tick = 0;
@@ -577,6 +579,7 @@ protected:
 #endif
   float getOtaSpeedFactor() const override;
   float getOtaPacketSpeedFactor() const override;
+  float getOtaPacketSpeedFactor(uint8_t profile, uint32_t generation) const override;
   uint32_t getOtaPacketAirtime() const;
 
   /**

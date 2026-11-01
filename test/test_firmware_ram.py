@@ -285,6 +285,20 @@ int main() {
                     elf32(path, {"__HeapBase": (0x2003F800-capacity,0), "__HeapLimit": (0x2003F800,0)})
                     self.assertEqual(ram.check_firmware(path,"NRF52_PLATFORM","nrf52840",flags,target)==0, accepted)
 
+    def test_wio_l1_unified_display_keeps_oled_heap_allowance_on_every_boot(self):
+        flags = {"DISPLAY_CLASS": "WioL1Display", "WIO_L1_DISPLAY_UNIFIED": 1,
+                 "UI_SMALL_MESSAGE_FONT": 1, "COMPANION_RADIO_FULL": 1, "BLE_PIN_CODE": 123456}
+        target = "WioTrackerL1_companion_radio_full"
+        policy = ram.requirements("NRF52_PLATFORM", flags, target)
+        oled = ram.requirements("NRF52_PLATFORM", {**flags, "DISPLAY_CLASS": "SH1106Display"}, target)
+        self.assertEqual(policy["components"], oled["components"])
+        self.assertEqual(policy["components"]["display_pixels_and_driver"], 4096)
+        self.assertEqual(policy["components"]["allocation_and_transient_margin"], 4096)
+        for platform, changed in (("ESP32_PLATFORM", flags),
+                                  ("NRF52_PLATFORM", {**flags, "WIO_L1_DISPLAY_UNIFIED": 0})):
+            with self.subTest(platform=platform, flags=changed), self.assertRaises(ValueError):
+                ram.requirements(platform, changed, target)
+
     def test_device_encoder_budget_matches_storage_and_role_gates(self):
         matrix = [
             ("ESP32_PLATFORM", {"ENABLE_OTA": 1, "MESHCORE_OTA_DEVICE_DEFLATE": 1}, "v4_repeater", True),

@@ -291,7 +291,7 @@ class CompanionRtcQueueTests(unittest.TestCase):
                 'CONFIG_ESP_SYSTEM_ALLOW_RTC_FAST_MEM_AS_HEAP=1', 'COMPANION_RTC_FAST_OFFLINE_FRAMES=32']
         cases = ([value for value in base if not value.startswith('CONFIG_IDF_TARGET_')],
                  base + ['BOARD_HAS_PSRAM=1'], [value for value in base if not value.startswith('CONFIG_IDF_TARGET_')]
-                 + ['OTA_SHARED_COMPANION_QUEUE=1', 'CONFIG_IDF_TARGET_ESP32S3=1'],
+                 + ['OTA_SHARED_COMPANION_QUEUE=1', 'CONFIG_IDF_TARGET_ESP32=1'],
                  base + ['ONE_KEY_DM_SHARED_OFFLINE_QUEUE=1'],
                  base + ['COMPANION_RTC_SLOW_OFFLINE_FRAMES=32'],
                  [value for value in base if not value.startswith('COMPANION_RADIO_FULL')],
@@ -320,6 +320,7 @@ class CompanionRtcQueueTests(unittest.TestCase):
                 ('MKE_s3_companion_radio_full', 32, 32, 350, 256),
                 ('ThinkNode_M2_companion_radio_full', 32, 32, 350, 256),
                 ('ThinkNode_M5_companion_radio_full', 32, 32, 350, 256),
+                ('M5Stack_Cardputer_Adv_companion_radio_full', 32, 32, 350, 256),
                 ('SenseCapIndicator-ESPNow_companion_radio_full', 0, 0, 350, 256),
                 ('RAK_4631_companion_radio_full', 0, 0, 350, 256)):
             with self.subTest(target=target):
@@ -337,6 +338,9 @@ class CompanionRtcQueueTests(unittest.TestCase):
                 if target in ('Xiao_C3_companion_radio_full', 'Heltec_CT62_companion_radio_full'):
                     self.assertEqual(flags.get('OTA_SHARED_COMPANION_QUEUE'), '1')
                     self.assertEqual(flags.get('ONE_KEY_DM_COMPACT_HELD'), '1')
+                elif target == 'M5Stack_Cardputer_Adv_companion_radio_full':
+                    self.assertEqual(flags.get('OTA_SHARED_COMPANION_QUEUE'), '1')
+                    self.assertEqual(flags.get('COMPANION_EXCLUSIVE_WIFI_BLE'), '1')
                 else:
                     self.assertNotIn('OTA_SHARED_COMPANION_QUEUE', flags)
 

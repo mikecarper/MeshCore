@@ -175,7 +175,11 @@ profile_start = build.index("\napply_companion_radio_full_profile() {")
 profile_end = build.index("\napply_radio_overrides()", profile_start)
 profile = build[profile_start:profile_end]
 flag = "-DCOMPANION_EXCLUSIVE_WIFI_BLE=1"
-assert profile.count(flag) == 1
+assert profile.count(flag) == 2
+cardputer_start = profile.index("    m5stack_cardputer_adv_companion_radio_full)")
+cardputer_case = profile[cardputer_start:profile.index(";;", cardputer_start)]
+assert flag in cardputer_case
+assert "-DOTA_SHARED_COMPANION_QUEUE=1" in cardputer_case
 exclusive_policy = profile.index(
     "# Both Indicator Full layouts select exactly one secondary"
 )

@@ -105,7 +105,7 @@ void Dispatcher::begin() {
   outbound_radio_retry_pending = false;
   outbound_radio_retry_used = false;
   outbound_cancellation = OutboundCancellation::None;
-  ota_tx_airtime = 0;
+  for (auto& timing : ota_tx_timing) timing = {};
   radio_nonrx_start = _ms->getMillis();
   radio_nonrx_timer_armed = false;
 
@@ -395,8 +395,8 @@ void Dispatcher::finishForeignRadioFrame(bool success, bool account_airtime) {
     const uint32_t elapsed = (uint32_t)_ms->getMillis() - foreign_radio_start;
     total_air_time += elapsed;
     if (direct_ota) {
-      ota_tx_finished_at = _ms->getMillis();
-      ota_tx_airtime = elapsed;
+      noteOtaTransmit(foreign_radio_profile, foreign_radio_generation, elapsed,
+                      _ms->getMillis());
     }
     updateTxBudget();
     tx_budget_ms = elapsed >= tx_budget_ms ? 0 : tx_budget_ms - elapsed;
@@ -406,6 +406,12 @@ void Dispatcher::finishForeignRadioFrame(bool success, bool account_airtime) {
     } else next_tx_time = _ms->getMillis();
   }
   if (success && _radio->profiles()) ++_radio->profiles()->tx_packets[foreign_radio_profile];
+#if MESH_ENABLE_OTA_KISS_DIRECT
+  if (direct_ota) {
+    onDirectOtaRadioSendComplete(foreign_radio_bytes, foreign_radio_length,
+        foreign_radio_profile, foreign_radio_generation, success);
+  }
+#endif
   // Release ownership before calling the application; it may submit another
   // explicit user message. No retry is scheduled after any failure/timeout.
   foreign_radio_length = 0;
@@ -464,11 +470,8 @@ bool Dispatcher::checkForeignRadioSend() {
   }
   if (!restoreOutboundTxOverrides() || _radio->isCarrierWaveActive()) return false;
   const uint32_t now = _ms->getMillis();
-  if (foreign_radio_protocol == RadioProfileProtocol::MeshCore && ota_tx_airtime) {
-    const uint32_t quiet = ota::packetQuietTime(ota_tx_airtime, getOtaPacketSpeedFactor());
-    if (now - ota_tx_finished_at < quiet) return false;
-    ota_tx_airtime = 0;
-  }
+  if (foreign_radio_protocol == RadioProfileProtocol::MeshCore
+      && otaQuietRemaining(foreign_radio_profile, foreign_radio_generation, now)) return false;
   // Continuous explicit foreign chat must leave due MeshCore traffic a turn
   // between messages; a blocked/absent MeshCore queue does not stall MT.
   if (foreign_radio_yield_meshcore && _mgr->getOutboundCount(now) > 0) {
@@ -854,8 +857,8 @@ void Dispatcher::loop() {
       long t = _ms->getMillis() - outbound_start;
       total_air_time += t;
       if (outbound->getPayloadType() == PAYLOAD_TYPE_OTA) {
-        ota_tx_finished_at = _ms->getMillis();
-        ota_tx_airtime = t > 0 ? (uint32_t)t : 0;
+        noteOtaTransmit(outbound->radio_profile, outbound->radio_generation,
+                        t > 0 ? (uint32_t)t : 0, _ms->getMillis());
       }
       //Serial.print("  airtime="); Serial.println(t);
 
@@ -1291,15 +1294,38 @@ bool Dispatcher::isTransmitChannelReady(const Packet* packet, uint32_t& retry_de
   return true;
 }
 
+void Dispatcher::noteOtaTransmit(uint8_t profile, uint32_t generation,
+                                uint32_t airtime, uint32_t now) {
+  if (profile >= 2) return;
+  auto& timing = ota_tx_timing[profile];
+  timing.finished_at = now;
+  timing.airtime = airtime;
+  timing.generation = generation;
+}
+
+uint32_t Dispatcher::otaQuietRemaining(uint8_t profile, uint32_t generation,
+                                       uint32_t now) {
+  if (profile >= 2) return 0;
+  auto& timing = ota_tx_timing[profile];
+  if (timing.generation != generation) {
+    timing = {};
+    return 0;
+  }
+  if (!timing.airtime) return 0;
+  const uint32_t gap = ota::packetQuietTime(timing.airtime,
+      getOtaPacketSpeedFactor(profile, generation));
+  const uint32_t elapsed = now - timing.finished_at;
+  if (elapsed < gap) return gap - elapsed;
+  timing.airtime = 0;
+  return 0;
+}
+
 void Dispatcher::checkSend() {
   if (_radio->isCarrierWaveActive()) return;
   // Keep queued packets intact while recovering a failed per-packet CR
   // override. RX processing and ordinary watchdogs continue in loop().
   if (!restoreOutboundTxOverrides()) return;
   const uint32_t now = _ms->getMillis();
-  if (ota_tx_airtime && now - ota_tx_finished_at >= ota::packetQuietTime(ota_tx_airtime, getOtaPacketSpeedFactor())) {
-    ota_tx_airtime = 0;
-  }
   uint32_t next_outbound;
   if (_mgr->getNextOutboundTime(now, next_outbound)) {
     if ((int32_t)(next_outbound - now) > 0) return;
@@ -1317,27 +1343,21 @@ void Dispatcher::checkSend() {
     failOutboundTransmit();
     return;
   }
-  if (ota_tx_airtime) {
-    const uint32_t gap = ota::packetQuietTime(ota_tx_airtime, getOtaPacketSpeedFactor());
-    const uint32_t elapsed = now - ota_tx_finished_at;
-    if (elapsed >= gap) ota_tx_airtime = 0;
-    else if (pending && pending->getPayloadType() == PAYLOAD_TYPE_OTA) {
-      // Preserve this packet's priority and retry ownership. A short deferral
-      // lets ordinary traffic run and makes live speed changes take effect
-      // within 100 ms, even when the previous speed was much slower.
-      const uint32_t remaining = gap - elapsed;
-      int candidates = _mgr->getOutboundTotal();
-      do {
-        if (candidates-- <= 0 || !_mgr->deferOutboundForPacing(pending, now,
-            now + (remaining > 100 ? 100 : remaining))) return;
-        pending = _mgr->peekNextOutbound(now);
-      } while (pending && pending->getPayloadType() == PAYLOAD_TYPE_OTA);
-      if (!pending) return;
-      if (!isPacketRadioCurrent(pending)) {
-        outbound = _mgr->getNextOutbound(now);
-        failOutboundTransmit();
-        return;
-      }
+  int candidates = _mgr->getOutboundTotal();
+  while (pending && pending->getPayloadType() == PAYLOAD_TYPE_OTA) {
+    const uint32_t remaining = otaQuietRemaining(pending->radio_profile,
+        pending->radio_generation, now);
+    if (!remaining) break;
+    // Preserve priority and retry ownership while allowing another profile
+    // or ordinary traffic through. Recheck live speed changes within 100 ms.
+    if (candidates-- <= 0 || !_mgr->deferOutboundForPacing(pending, now,
+        now + (remaining > 100 ? 100 : remaining))) return;
+    pending = _mgr->peekNextOutbound(now);
+    if (!pending) return;
+    if (!isPacketRadioCurrent(pending)) {
+      outbound = _mgr->getNextOutbound(now);
+      failOutboundTransmit();
+      return;
     }
   }
   updateTxBudget();

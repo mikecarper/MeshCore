@@ -16,6 +16,9 @@ class SettingsScreen : public CardputerScreen {
     DeviceTextSize,
     DeviceBeep,
     DeviceBluetooth,
+#if defined(COMPANION_EXCLUSIVE_WIFI_BLE)
+    DeviceTransport,
+#endif
     DeviceGps,
     DevicePowersave,
     DeviceBatteryCorrection,

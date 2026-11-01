@@ -41,6 +41,11 @@ def partition_migrations():
 def capacity_note(reductions, defines):
     notes = []
     for reduction in reductions:
+        if reduction == 'Cardputer Full: USB plus selected WiFi or Bluetooth; 256 offline frames normally, 128 during mOTA':
+            notes.append('USB remains available. Select WiFi or Bluetooth with set companion.transport wifi|ble, then reboot. '
+                         'Full retains 350 contacts, 40 channels and 256 queued messages; 128 queue slots remain while mOTA borrows storage. '
+                         'Sync unread messages before starting mOTA if more than 128 are pending.')
+            continue
         if reduction == 'display.canvas limited to 320x320 internal pixels, scaled to the 480x480 panel; 350 contacts, 512 queued frames and all Full transports retained':
             notes.append('Display renders at 320x320 and scales to the 480x480 panel to preserve internal RAM. All Full transports, 350 contacts, 512 queued messages and full-length message previews are retained.')
             continue

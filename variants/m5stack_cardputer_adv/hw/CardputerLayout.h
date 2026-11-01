@@ -34,7 +34,7 @@ struct LayoutLayer {
 struct LayoutData {
   char language_code[3];
   uint8_t layers_count;
-  LayoutLayer *layers;
+  const LayoutLayer *layers;
 };
 
 class CardputerLayout {

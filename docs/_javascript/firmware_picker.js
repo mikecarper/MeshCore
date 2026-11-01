@@ -831,6 +831,12 @@
       profile.controls.display === true && releaseBoundControl(profile, "unifiedV4Display"));
   }
 
+  function unifiedWioL1DisplayProfile(profile) {
+    return Boolean(profile && profile.hardware === "WioTrackerL1" && isFullCompanion(profile) &&
+      profile.controls && profile.controls.platform === "NRF52_PLATFORM" &&
+      optionalAutoDisplayProfile(profile) && releaseBoundControl(profile, "unifiedWioL1Display"));
+  }
+
   const RADIO_DETECT_FAMILIES = [
     ["Tbeam", ["Tbeam_SX1262", "Tbeam_SX1276"]],
     ["LilyGo_T3S3", ["LilyGo_T3S3_sx1262", "LilyGo_T3S3_sx1276"]],
@@ -850,6 +856,17 @@
 
   function consolidationSuccessor(profile, candidate) {
     if (!profile || !candidate || profile.role !== candidate.role) return false;
+    if (/^WioTrackerL1Eink_companion_radio_(?:ble|full)$/.test(profile.target) && profile.role === "companion") {
+      return unifiedWioL1DisplayProfile(candidate);
+    }
+    if (profile.target === "heltec_v4_r8_tft_kiss_modem") {
+      return candidate.target === "heltec_v4_r8_kiss_modem" && candidate.controls &&
+        candidate.controls.platform === "ESP32_PLATFORM" && releaseBoundControl(candidate, "headlessR8Kiss");
+    }
+    if (profile.target === "WioTrackerL1Eink_kiss_modem") {
+      return candidate.target === "WioTrackerL1_kiss_modem" && candidate.controls &&
+        candidate.controls.platform === "NRF52_PLATFORM" && releaseBoundControl(candidate, "headlessWioL1Kiss");
+    }
     const radioFamily = RADIO_DETECT_FAMILIES.find(function (family) {
       return family[1].includes(profile.hardware);
     });
@@ -911,8 +928,9 @@
       : /^heltec_(?:wireless_tracker|tracker_v1_1)_/.test(target) ? "st7735"
       : /^heltec_v4_r8_tft_/.test(target) ? "st7789"
       : /^muzi_base_(?:(?:uno|duo)_(?:superio_)?)?companion_radio_/.test(target) ? "sh1107"
-      : /^lilygo_t-echo-lite_(?:non_shell_)?(?:companion_radio_|repeater|room_server)/.test(target) ? "ssd1681" : "";
-    const platform = controller === "sh1107" || controller === "ssd1681" ? "NRF52_PLATFORM" : "ESP32_PLATFORM";
+      : /^lilygo_t-echo-lite_(?:non_shell_)?(?:companion_radio_|repeater|room_server)/.test(target) ? "ssd1681"
+      : /^wiotrackerl1_companion_radio_(?:ble|full)$/.test(target) ? "sh1106_ssd1680" : "";
+    const platform = ["sh1107", "ssd1681", "sh1106_ssd1680"].includes(controller) ? "NRF52_PLATFORM" : "ESP32_PLATFORM";
     return Boolean(controller && controls && controls.platform === platform &&
       controls.display === true && controls.displayAuto === true && controls.displayController === controller &&
       /^[0-9a-f]{40}$/.test(controls.displaySource || "") &&
@@ -1790,6 +1808,10 @@
       ["muzi_base_uno_superIO", "muzi_base_uno", function (profile) { return isFullCompanion(profile) && optionalAutoDisplayProfile(profile); }],
       ["muzi_base_duo_superIO", "muzi_base_duo", function (profile) { return isFullCompanion(profile) && optionalAutoDisplayProfile(profile); }],
       ["LilyGo_T-Echo-Lite_non_shell", "LilyGo_T-Echo-Lite", function (profile) { return isFullCompanion(profile) && optionalAutoDisplayProfile(profile); }],
+      ["WioTrackerL1Eink", "WioTrackerL1", function (profile) { return unifiedWioL1DisplayProfile(profile) ||
+        profile.target === "WioTrackerL1_kiss_modem" && releaseBoundControl(profile, "headlessWioL1Kiss"); }],
+      ["heltec_v4_r8_tft", "heltec_v4_r8", function (profile) { return profile.target === "heltec_v4_r8_kiss_modem" &&
+        releaseBoundControl(profile, "headlessR8Kiss"); }],
     ].forEach(function (alias) {
       if (!profiles.some(function (profile) { return profile.hardware === alias[0] && (!requested.role || profile.role === requested.role); }) &&
           profiles.some(function (profile) { return profile.hardware === alias[1] && alias[2](profile) && (!requested.role || profile.role === requested.role); })) {
@@ -2078,6 +2100,13 @@
     if (unifiedV4DisplayProfile(profile)) {
       notes.push("One ordinary Heltec V4 image supports V4.2/V4.3 with OLED, the stock touch TFT kit, or no screen. The saved display.type setting selects auto, oled, tft or off; board reports the detected revision and active display. R8 uses its separate hardware image.");
       notes.push("When changing from a legacy TFT or expansion-kit target, use a local USB installation or a supported WiFi application update. Their LoRa OTA target IDs remain distinct; never force a different target's LoRa OTA package.");
+    }
+    if (unifiedWioL1DisplayProfile(profile)) {
+      notes.push("One Wio L1 Full Companion supports the OLED, e-paper and headless models, including Lite and Pro. The screen is detected at startup; the 1W model uses separate firmware.");
+      notes.push("E-paper keeps its screen visible for 15 minutes by default. Saved display timeout settings take precedence. Older e-paper LoRa OTA identities remain distinct; use USB to change to this combined target.");
+    }
+    if (releaseBoundControl(profile, "headlessR8Kiss") || releaseBoundControl(profile, "headlessWioL1Kiss")) {
+      notes.push("This KISS modem supports either display version of this board and leaves the display off. Historical display-specific OTA identities remain separate.");
     }
     if (releaseBoundControl(profile, "oledExpansionCompatible")) {
       notes.push("The same OLED firmware supports the base Heltec V4 and its OLED expansion kit. Existing expansion-kit OTA identities still require their exact historical update or a local USB migration.");
@@ -2429,7 +2458,7 @@
         ? "This Full image shares one 2.4 GHz radio between WiFi/MQTT and ESP-NOW. When both are enabled, ESP-NOW begins after WiFi connects and only when bridge.channel matches that access point's fixed channel. ESP-NOW-only mode does not need WiFi credentials. Primary ESP-NOW mesh uses set espnow.channel instead."
         : "Set bridge.channel to the bridge channel. Primary ESP-NOW mesh uses set espnow.channel instead; see the board guide before changing channels.");
     }
-    if (full && /sensecapindicator/i.test(profile.target)) section("Indicator wireless transport", [
+    if (full && (/sensecapindicator/i.test(profile.target) || profile.target === "M5Stack_Cardputer_Adv_companion_radio_full")) section("Wireless transport", [
       { label: "WiFi", commands: ["set companion.transport wifi", "reboot"] },
       { label: "Bluetooth", commands: ["set companion.transport ble", "reboot"] },
       { label: "Check", commands: ["get companion.transport"] },

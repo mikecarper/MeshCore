@@ -38,6 +38,9 @@ SPECS = (
          driver="GxEPDDisplay", controller="ssd1681", marker="techo_lite", platform="NRF52_PLATFORM",
          defines={"EINK_DISPLAY_MODEL": "GxEPD2_122_T61"},
          targets=r"lilygo_t-echo-lite_(?:non_shell_)?(?:companion_radio_(?:usb|ble|full)|(?:repeater|room_server)(?:_lora_ota(?:_no_external_sensors)?)?)"),
+    dict(flag="WIO_L1_DISPLAY_UNIFIED", board="seeed-wio-tracker-l1", guard="WIO_TRACKER_L1",
+         driver="WioL1Display", controller="sh1106_ssd1680", marker="wio_l1", platform="NRF52_PLATFORM",
+         targets=r"wiotrackerl1_companion_radio_(?:ble|full)"),
 )
 
 

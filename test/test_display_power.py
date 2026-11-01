@@ -363,6 +363,24 @@ void firstInstallSettingsTests() {
   }
 }
 void companionSettingsTests() {
+  for (uint16_t seconds : {uint16_t(15), uint16_t(900)}) {
+    FakeFS fs;
+    assert(!loadDisplayPowerSettings(&fs, true, true, seconds));
+    assert(displayPowerPrefs().battery.seconds == seconds);
+    assert(displayPowerPrefs().usb.seconds == seconds);
+    DisplayPowerPolicy policy;
+    policy.update(displayPowerPrefs(), false, false, false, 100);
+    policy.update(displayPowerPrefs(), false, false, false, 100 + seconds * 1000U - 1);
+    assert(policy.on());
+    policy.update(displayPowerPrefs(), false, false, false, 100 + seconds * 1000U);
+    assert(!policy.on());
+    char reply[160];
+    assert(handleDisplayPowerCommand("set display.timeout 123", reply, sizeof(reply)));
+    assert(std::string(reply) == "OK");
+    assert(loadDisplayPowerSettings(&fs, true, true, 900));
+    assert(displayPowerPrefs().battery.seconds == 123);
+    assert(displayPowerPrefs().usb.seconds == seconds);
+  }
   for (bool ble : {false, true}) {
     FakeFS fs;
     assert(!loadDisplayPowerSettings(&fs, ble, true));

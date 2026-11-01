@@ -3,8 +3,19 @@
 
 #include "WioTrackerL1Board.h"
 
+#if MESHCORE_HEADLESS_KISS_COMPAT
+  #include "HeadlessKissPins.h"
+  extern const char meshcore_capability_modem_headless_wio_l1[] =
+      "meshcore.capability.modem.headless.wio_l1.v1";
+#endif
+
 void WioTrackerL1Board::begin() {
   NRF52BoardDCDC::begin();
+#if MESHCORE_HEADLESS_KISS_COMPAT
+  const volatile char* capability = meshcore_capability_modem_headless_wio_l1;
+  (void)*capability;
+  parkWioL1KissDisplayPins();
+#endif
   btn_prev_state = HIGH;
 
   pinMode(PIN_VBAT_READ, INPUT); // VBAT ADC input

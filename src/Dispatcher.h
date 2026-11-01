@@ -442,8 +442,9 @@ class Dispatcher {
 #endif
   uint8_t outbound_restore_cr;
   unsigned long next_tx_time;
-  uint32_t ota_tx_finished_at = 0;
-  uint32_t ota_tx_airtime = 0;
+  struct OtaTxTiming {
+    uint32_t finished_at = 0, airtime = 0, generation = 0;
+  } ota_tx_timing[2];
   unsigned long cad_busy_start;
   unsigned long radio_nonrx_start;
   unsigned long next_floor_calib_time;
@@ -494,6 +495,9 @@ class Dispatcher {
   uint32_t outbound_restore_retry_at = 0;
   uint32_t outbound_restore_recovery_at = 0;
   void updateTxBudget();
+  void noteOtaTransmit(uint8_t profile, uint32_t generation, uint32_t airtime,
+                       uint32_t now);
+  uint32_t otaQuietRemaining(uint8_t profile, uint32_t generation, uint32_t now);
 
 protected:
   // Preserve RX affinity while an authenticated command is handled outside
@@ -573,6 +577,8 @@ protected:
   // The KISS host framing is off-air. These are bounded, zero-hop OTA radio
   // frames, never Packet objects and never a second physical TX owner.
   virtual bool onDirectOtaRadioFrame(const uint8_t*, size_t, uint8_t, uint32_t) { return false; }
+  virtual void onDirectOtaRadioSendComplete(const uint8_t*, size_t, uint8_t,
+                                           uint32_t, bool) { }
   virtual bool allowDirectOtaTransmit(uint8_t, uint32_t) const { return false; }
   // Captured when queued: abort, fallback and workspace replacement retire
   // this token even when the physical temporary profile remains unchanged.
@@ -597,6 +603,9 @@ protected:
   virtual float getAirtimeBudgetFactor() const;
   virtual float getOtaSpeedFactor() const { return 1.0f; }
   virtual float getOtaPacketSpeedFactor() const { return getOtaSpeedFactor(); }
+  virtual float getOtaPacketSpeedFactor(uint8_t, uint32_t) const {
+    return getOtaPacketSpeedFactor();
+  }
   virtual int calcRxDelay(float score, uint32_t air_time) const;
   virtual bool shouldBypassRxDelay(const Packet* packet) {
     (void)packet;

@@ -1,6 +1,7 @@
 #include "SettingsScreen.h"
 
 #include "helpers.h"
+#include "CompanionWiFi.h"
 #include <helpers/CLICommandUtils.h>
 
 
@@ -68,6 +69,12 @@ void SettingsScreen::renderItem(CardputerDisplay &lcd, SettingsItem item, int x,
     case SettingsItem::DeviceBluetooth:
       snprintf(tmp, sizeof(tmp), "Bluetooth: %s", _task->isBluetoothEnabled() ? "ON" : "OFF");
       break;
+#if defined(COMPANION_EXCLUSIVE_WIFI_BLE)
+    case SettingsItem::DeviceTransport:
+      snprintf(tmp, sizeof(tmp), "Transport: %s", getCompanionTransportMode() == CompanionTransportMode::WiFi
+          ? "WiFi" : "Bluetooth");
+      break;
+#endif
 
     case SettingsItem::DevicePowersave:
       snprintf(tmp, sizeof(tmp), "Power save: %s", _task->powerSaveEnabled() ? "ON" : "OFF");
@@ -118,6 +125,12 @@ bool SettingsScreen::enterItemEdit(SettingsItem item) {
     case SettingsItem::DeviceBluetooth:
       _task->toggleBluetooth();
       return true;
+
+#if defined(COMPANION_EXCLUSIVE_WIFI_BLE)
+    case SettingsItem::DeviceTransport:
+      _task->toggleTransport();
+      return true;
+#endif
 
     case SettingsItem::DevicePowersave:
       _task->togglePowerSave();
