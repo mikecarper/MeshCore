@@ -47,6 +47,17 @@ connected to a Raspberry Pi can still be logged or uplinked by software on the
 Pi, but that is a separate host-side bridge rather than MQTT running in the
 radio firmware.
 
+ESP32 builds using a supported SDK, including the W12's IDF 4.4.8, enable both
+WPA3-Personal SAE methods: Hash-to-Element (H2E) and Hunt-and-Peck. Enter the
+network's SSID and password normally; no H2E command or board variant is needed.
+This also supports access points that require H2E. The setting is applied before
+authentication for WebConfig, MQTT observers and WiFi companions, including
+their reconnect attempts.
+
+The explicit SAE setting avoids the older SDK default that can exclude
+H2E-only access points. See
+[Espressif advisory AR2026-003](https://documentation.espressif.com/AR2026-003_OTA_Bug_Advisory_for_WPA3-SAE_H2E_Configuration_Issues_in_ESP-IDF_EN.html).
+
 ## How the MQTT bridge works
 
 The MQTT bridge is an outbound observer. It does not subscribe to MQTT topics

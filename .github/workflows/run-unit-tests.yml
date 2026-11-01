@@ -28,6 +28,7 @@ jobs:
         run: >-
           python3 -B -m unittest
           test_wifi_connection_diagnostics test_wifi_station_diagnostics
+          test_wifi_station_security
           test_wifi_diagnostic_cli test_webconfig_wifi_status
           test_webui_status_readability test_webconfig_station_ownership
           test_webconfig_network_power test_companion_wifi_status

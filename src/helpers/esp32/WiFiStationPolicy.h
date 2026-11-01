@@ -5,6 +5,7 @@
 #include <WiFi.h>
 #include <helpers/esp32/WiFiRadioPolicy.h>
 #include <helpers/esp32/WiFiStationDiagnostics.h>
+#include <helpers/esp32/WiFiStationSecurity.h>
 #include <helpers/WirelessControl.h>
 #if defined(MESH_SOAK_WIFI_KEY_OVERRIDE)
 #include "../../../tools/hil/S3SoakWiFiKey.h"
@@ -36,7 +37,7 @@ inline wl_status_t beginStation(const char* ssid, const char* password) {
   password = mesh::hil::soakStationPassword(password);
 #endif
   if (!espNowChannelConstrained()) {
-    return WiFi.begin(ssid, password);
+    return beginStationWithSecurity(ssid, password);
   }
 
 #if (defined(MESH_PRIMARY_ESPNOW) && MESH_PRIMARY_ESPNOW) || defined(WITH_ESPNOW_BRIDGE)
@@ -87,7 +88,7 @@ inline wl_status_t beginStation(const char* ssid, const char* password) {
   uint8_t bssid[6];
   memcpy(bssid, selected_bssid, sizeof(bssid));
   WiFi.scanDelete();
-  return WiFi.begin(ssid, password, channel, bssid);
+  return beginStationWithSecurity(ssid, password, channel, bssid);
 #else
   noteStationDiagnosticPhase(ConnectionPhase::PolicyFailed);
   return WL_CONNECT_FAILED;
