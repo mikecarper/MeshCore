@@ -841,7 +841,10 @@ static void drainUsbTerminalOutputBeforeProtocolSwitch() {
 }
 
 static bool hasObservableActiveUsbTerminalClient() {
-#if defined(ESP32) && defined(ARDUINO_USB_MODE) && ARDUINO_USB_MODE == 1 \
+#if MESH_PRIMARY_SERIAL_IS_UART
+  // A USB-UART cable cannot reveal whether a terminal process is open.
+  return usb_terminal_line_len != 0 || usb_terminal_discard_line;
+#elif defined(ESP32) && defined(ARDUINO_USB_MODE) && ARDUINO_USB_MODE == 1 \
     && defined(ARDUINO_USB_CDC_ON_BOOT) && ARDUINO_USB_CDC_ON_BOOT
   // HWCDC exposes only whether USB is plugged in, not whether a host process
   // has opened the terminal. Treat actual buffered activity as ownership; an
@@ -3336,6 +3339,7 @@ static bool hasCompanionNonBluetoothClient() {
   if (the_mesh.isAnyNetworkTerminalMode()) return true;
 #endif
 #if defined(ENABLE_USB_INTERFACE) \
+    && !MESH_PRIMARY_SERIAL_IS_UART \
     && (defined(NRF52_PLATFORM) || defined(RP2040_PLATFORM) \
         || (defined(ESP32) && defined(ARDUINO_USB_CDC_ON_BOOT) && ARDUINO_USB_CDC_ON_BOOT \
             && (!defined(ARDUINO_USB_MODE) || ARDUINO_USB_MODE == 0)))
@@ -3550,6 +3554,7 @@ public:
     if (the_mesh.isAnyNetworkTerminalMode()) mask |= mesh::wireless::WiFi;
 #endif
 #if defined(ENABLE_USB_INTERFACE) \
+    && !MESH_PRIMARY_SERIAL_IS_UART \
     && (defined(NRF52_PLATFORM) || defined(RP2040_PLATFORM) \
         || (defined(ESP32) && defined(ARDUINO_USB_CDC_ON_BOOT) && ARDUINO_USB_CDC_ON_BOOT \
             && (!defined(ARDUINO_USB_MODE) || ARDUINO_USB_MODE == 0)))
@@ -4166,6 +4171,17 @@ void setup() {
 #endif
 
 // add usb interface
+#if defined(WIO_WM1110) && defined(COMPANION_RADIO_FULL) && COMPANION_RADIO_FULL \
+    && defined(ENABLE_USB_INTERFACE) && defined(BLE_PIN_CODE) \
+    && defined(MESH_PRIMARY_UART_PORT) && MESH_PRIMARY_SERIAL_IS_UART \
+    && MAX_CONTACTS >= 350 && MAX_GROUP_CHANNELS >= 40 && OFFLINE_QUEUE_SIZE >= 256
+  // A linked proof of the combined setup, not a claim of physical bench
+  // qualification. The primary wired stream is explicitly the UART bridge.
+  static const char wm1110_combined_capability[] =
+      "meshcore.capability.companion.wm1110.combined.v1";
+  const volatile char* wm1110_combined_marker = wm1110_combined_capability;
+  (void)*wm1110_combined_marker;
+#endif
 #if defined(RP2040_PLATFORM) && defined(ENABLE_WIFI_INTERFACE)
 #if defined(PICOW_COMBINED_COMPANION) && PICOW_COMBINED_COMPANION == 1 \
     && defined(ENABLE_USB_INTERFACE) && defined(PIO_FRAMEWORK_ARDUINO_ENABLE_BLUETOOTH)
@@ -4234,6 +4250,16 @@ void setup() {
         USB_HOST_LOSS_EDGE_MS,
         USB_HOST_LOSS_GRACE_MS,
         the_mesh.hasFiniteDelayedReplyForRoute(&usb_serial_interface));
+  });
+#elif MESH_PRIMARY_SERIAL_IS_UART
+  // No native DTR/host-presence signal traverses a CH340-style UART bridge.
+  // Only a completed command frame can grant a bounded Binary reply route;
+  // an idle cable or an ASCII byte must not hold up Bluetooth dispatch.
+  usb_serial_interface.setConnectedCheck([]() {
+    return mesh::isUsbCompanionClientConnected()
+        && usb_serial_interface.hasReceivedFrame()
+        && uint32_t(millis() - usb_serial_interface.getLastFrameMillis())
+            < USB_CLIENT_IDLE_TIMEOUT;
   });
 #elif defined(NRF52_PLATFORM)
   usb_serial_interface.setConnectedCheck([]() {

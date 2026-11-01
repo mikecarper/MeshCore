@@ -39,7 +39,7 @@
   // Build-local Arduino hook queries its actual CDC descriptor's IN endpoint.
   extern "C" bool meshEsp32TinyUsbTxPending();
 #endif
-#if defined(NRF52_PLATFORM) && defined(USE_TINYUSB)
+#if defined(NRF52_PLATFORM) && defined(USE_TINYUSB) && !MESH_PRIMARY_SERIAL_IS_UART
   #include <Adafruit_TinyUSB.h>
 #endif
 #if defined(NRF52_PLATFORM)
@@ -49,7 +49,7 @@
   #include "UsbAsciiBinarySwitch.h"
 #endif
 
-#if defined(NRF52_PLATFORM) && \
+#if defined(NRF52_PLATFORM) && !MESH_PRIMARY_SERIAL_IS_UART && \
     (defined(USE_TINYUSB) || defined(ENABLE_USB_INTERFACE) || defined(OTA_FOLDER_SERIAL))
   #define MESH_NRF52_PRIMARY_USB_NONBLOCKING 1
   #include <Adafruit_TinyUSB.h>
@@ -65,6 +65,9 @@
 #endif
 
 #if defined(MESH_DUAL_CDC_LOGGING)
+  #if MESH_PRIMARY_SERIAL_IS_UART
+    #error "A primary UART bridge cannot use native dual-CDC logging"
+  #endif
   #if !defined(COMPANION_FEATURE_DEDICATED_USB_LOGGING) || \
       !COMPANION_FEATURE_DEDICATED_USB_LOGGING
     #error "MESH_DUAL_CDC_LOGGING requires its dedicated Companion capability"
@@ -82,7 +85,7 @@
 
 namespace mesh {
 
-#if defined(ENABLE_USB_INTERFACE) \
+#if defined(ENABLE_USB_INTERFACE) || MESH_PRIMARY_SERIAL_IS_UART \
     || (defined(ESP32_PLATFORM) && defined(MESHCORE_EXPANDED_PARTITION_PROFILE))
 // A USB Companion owns its primary stream for framed traffic until saved
 // preferences are loaded. Starting disabled prevents early boot diagnostics
@@ -114,7 +117,7 @@ static void endUsbTextWrite() { usb_text_writers.fetch_sub(1); }
 static std::atomic<uint32_t> usb_logging_tx_progress{0};
 static std::atomic<bool> usb_logging_tx_waiting{false};
 #if MESH_ESP32_TINYUSB_NONBLOCKING \
-    || (defined(NRF52_PLATFORM) && defined(USE_TINYUSB))
+    || (defined(NRF52_PLATFORM) && defined(USE_TINYUSB) && !MESH_PRIMARY_SERIAL_IS_UART)
 static bool usb_logging_watchdog_detached = false;
 static uint32_t usb_logging_watchdog_attach_at = 0;
 #endif
@@ -139,6 +142,61 @@ class NullUsbLoggingStream : public Stream {
 };
 
 static NullUsbLoggingStream null_usb_logging_stream;
+
+#if MESH_PRIMARY_SERIAL_IS_UART
+// UART bridges expose no DTR or USB reset event to the MCU. Do not consult an
+// unrelated CDC peripheral. Actual input establishes only a bounded activity
+// lease; Binary Companion additionally requires a complete framed command.
+static constexpr uint32_t primary_uart_client_idle_ms = 10 * 60 * 1000UL;
+static uint32_t primary_uart_last_rx_at = 0;
+static bool primary_uart_has_rx = false;
+static std::atomic<bool> primary_uart_terminal_discard_pending{false};
+
+static void notePrimaryUartInput() {
+  primary_uart_has_rx = true;
+  primary_uart_last_rx_at = millis();
+}
+
+static size_t writePrimaryUartOnce(void*, const uint8_t* data, size_t size) {
+  if (data == nullptr || size == 0) return 0;
+  Stream& port = primarySerialPort();
+  const int capacity = port.availableForWrite();
+  if (capacity <= 0) return 0;
+  const size_t attempt = size < static_cast<size_t>(capacity)
+      ? size : static_cast<size_t>(capacity);
+  noteUsbLoggingTxAttempt();
+  const size_t written = port.write(data, attempt);
+  if (written) noteUsbLoggingTxComplete();
+  return written;
+}
+
+class PrimaryUartStream : public SingleAttemptNonBlockingStream {
+ public:
+  using SingleAttemptNonBlockingStream::SingleAttemptNonBlockingStream;
+  int available() override {
+    const int count = SingleAttemptNonBlockingStream::available();
+    if (count > 0) notePrimaryUartInput();
+    return count;
+  }
+  int read() override {
+    const int value = SingleAttemptNonBlockingStream::read();
+    if (value >= 0) notePrimaryUartInput();
+    return value;
+  }
+  int peek() override {
+    const int value = SingleAttemptNonBlockingStream::peek();
+    if (value >= 0) notePrimaryUartInput();
+    return value;
+  }
+};
+
+static PrimaryUartStream primary_uart_companion_port(
+    primarySerialPort(), writePrimaryUartOnce);
+static AtomicWholeRecordNonBlockingStream<11>
+    primary_uart_mota_port(primary_uart_companion_port);
+static BufferedNonBlockingWriteStream<4096>
+    buffered_primary_uart_terminal_port(primary_uart_companion_port);
+#endif
 
 #if MESH_ESP32_TINYUSB_NONBLOCKING
 // Arduino-ESP32 2.0.17 constructs Serial as USBCDC(0). Keep its RX queue and
@@ -1263,6 +1321,9 @@ static WholeRecordNonBlockingStream<640>
 static AtomicWholeRecordNonBlockingStream<>
     nonblocking_primary_usb_logging_port(
     nonblocking_primary_usb_companion_port);
+  #elif MESH_PRIMARY_SERIAL_IS_UART
+static AtomicWholeRecordNonBlockingStream<>
+    nonblocking_primary_usb_logging_port(primary_uart_companion_port);
   #else
 static WholeRecordNonBlockingStream<>
     nonblocking_primary_usb_logging_port(Serial);
@@ -1464,7 +1525,7 @@ void beginUsbLoggingPort() {
 
 void serviceUsbLoggingPort() {
 #if MESH_ESP32_TINYUSB_NONBLOCKING \
-    || (defined(NRF52_PLATFORM) && defined(USE_TINYUSB))
+    || (defined(NRF52_PLATFORM) && defined(USE_TINYUSB) && !MESH_PRIMARY_SERIAL_IS_UART)
   // A timed reconnect retains all descriptors and never blocks the radio loop
   // in delay(), Serial.end(), or a host-progress wait.
   if (usb_logging_watchdog_detached
@@ -1481,7 +1542,7 @@ void serviceUsbLoggingPort() {
     usb_logging_watchdog_detached = false;
   }
 #endif
-#if defined(NRF52_PLATFORM) && (defined(ENABLE_USB_INTERFACE) || defined(USE_TINYUSB))
+#if MESH_NRF52_PRIMARY_USB_NONBLOCKING
   serviceNrf52UsbSessionReenumeration();
 #endif
 #if MESH_ESP32_TINYUSB_NONBLOCKING
@@ -1726,7 +1787,9 @@ Stream& usbDebugPort() {
 }
 
 Stream& usbCompanionPort() {
-#if MESH_ESP32_TINYUSB_NONBLOCKING
+#if MESH_PRIMARY_SERIAL_IS_UART
+  return primary_uart_companion_port;
+#elif MESH_ESP32_TINYUSB_NONBLOCKING
   return nonblocking_esp32_tinyusb_port;
 #elif MESH_ESP32_HWCDC_SESSION_GUARD
   return guarded_esp32_hwcdc_port;
@@ -1739,12 +1802,23 @@ Stream& usbCompanionPort() {
 
 #if defined(NRF52_PLATFORM) && (defined(ENABLE_USB_INTERFACE) || defined(USE_TINYUSB))
 bool isUsbCompanionClientConnected() {
+#if MESH_PRIMARY_SERIAL_IS_UART
+  if (primary_uart_companion_port.available() > 0) return true;
+  if (!primary_uart_has_rx) return false;
+  if (uint32_t(millis() - primary_uart_last_rx_at) < primary_uart_client_idle_ms)
+    return true;
+  primary_uart_has_rx = false;
+  return false;
+#else
   return canAccessPrimaryUsbSession(nullptr);
+#endif
 }
 #endif
 
 Stream& usbMotaPort() {
-#if MESH_ESP32_TINYUSB_NONBLOCKING
+#if MESH_PRIMARY_SERIAL_IS_UART
+  return primary_uart_mota_port;
+#elif MESH_ESP32_TINYUSB_NONBLOCKING
   return nonblocking_esp32_tinyusb_mota_port;
 #elif MESH_ESP32_HWCDC_SESSION_GUARD
   return guarded_esp32_hwcdc_mota_port;
@@ -1757,7 +1831,9 @@ Stream& usbMotaPort() {
 
 static Stream& rawUsbTerminalPort(bool enabled) {
   if (!enabled) return null_usb_logging_stream;
-#if MESH_ESP32_TINYUSB_NONBLOCKING
+#if MESH_PRIMARY_SERIAL_IS_UART
+  return buffered_primary_uart_terminal_port;
+#elif MESH_ESP32_TINYUSB_NONBLOCKING
   return buffered_esp32_tinyusb_terminal_port;
 #elif defined(NRF52_PLATFORM) && (defined(ENABLE_USB_INTERFACE) || defined(USE_TINYUSB))
   return buffered_primary_usb_terminal_port;
@@ -1767,7 +1843,9 @@ static Stream& rawUsbTerminalPort(bool enabled) {
 }
 
 static Stream& rawUsbConsolePort() {
-#if MESH_ESP32_TINYUSB_NONBLOCKING
+#if MESH_PRIMARY_SERIAL_IS_UART
+  return buffered_primary_uart_terminal_port;
+#elif MESH_ESP32_TINYUSB_NONBLOCKING
   return buffered_esp32_tinyusb_terminal_port;
 #elif MESH_ESP32_HWCDC_SESSION_GUARD
   return guarded_esp32_hwcdc_port;
@@ -1817,7 +1895,19 @@ bool canAcceptUsbConsoleCommand() {
 }
 
 void serviceUsbTerminalPort() {
-#if MESH_ESP32_TINYUSB_NONBLOCKING
+#if MESH_PRIMARY_SERIAL_IS_UART
+  if (primary_uart_terminal_discard_pending.exchange(false, std::memory_order_acq_rel)
+      && !buffered_primary_uart_terminal_port.tryDiscardPending()) {
+    primary_uart_terminal_discard_pending.store(true, std::memory_order_release);
+    return;
+  }
+  if (isUsbBinaryStreamOwned()) {
+    if (!buffered_primary_uart_terminal_port.tryDiscardPending())
+      primary_uart_terminal_discard_pending.store(true, std::memory_order_release);
+    return;
+  }
+  buffered_primary_uart_terminal_port.service();
+#elif MESH_ESP32_TINYUSB_NONBLOCKING
   serviceEsp32TinyUsbPorts();
 #elif defined(NRF52_PLATFORM) && (defined(ENABLE_USB_INTERFACE) || defined(USE_TINYUSB))
   const uint32_t reset_generation =
@@ -1843,7 +1933,10 @@ void serviceUsbTerminalPort() {
 }
 
 void discardUsbTerminalOutput() {
-#if MESH_ESP32_TINYUSB_NONBLOCKING
+#if MESH_PRIMARY_SERIAL_IS_UART
+  primary_uart_terminal_discard_pending.store(true, std::memory_order_release);
+  serviceUsbTerminalPort();
+#elif MESH_ESP32_TINYUSB_NONBLOCKING
   esp32_tinyusb_terminal_discard_pending.store(true, std::memory_order_release);
   if (esp32_tinyusb_queue_busy.test_and_set(std::memory_order_acquire)) return;
   esp32_tinyusb_text_queue.discardPending();
@@ -1858,7 +1951,10 @@ void discardUsbTerminalOutput() {
 }
 
 bool hasPendingUsbTerminalOutput() {
-#if MESH_ESP32_TINYUSB_NONBLOCKING
+#if MESH_PRIMARY_SERIAL_IS_UART
+  return primary_uart_terminal_discard_pending.load(std::memory_order_acquire)
+      || buffered_primary_uart_terminal_port.queuedByteCount() != 0;
+#elif MESH_ESP32_TINYUSB_NONBLOCKING
   if (esp32_tinyusb_queue_busy.test_and_set(std::memory_order_acquire)) return true;
   const bool pending = esp32_tinyusb_text_queue.queuedByteCount() != 0;
   esp32_tinyusb_queue_busy.clear(std::memory_order_release);
@@ -1880,7 +1976,11 @@ uint32_t usbTerminalDroppedBytes() {
 }
 
 bool takeUsbTerminalSessionReset() {
-#if MESH_ESP32_TINYUSB_NONBLOCKING
+#if MESH_PRIMARY_SERIAL_IS_UART
+  // A UART bridge cannot expose the host's COM open/close or USB bus reset.
+  // The Companion parser uses bounded actual-input/frame activity instead.
+  return false;
+#elif MESH_ESP32_TINYUSB_NONBLOCKING
   const uint32_t reset_generation =
       esp32_tinyusb_reset_generation.load(std::memory_order_acquire);
   if (reset_generation == esp32_tinyusb_taken_reset_generation) return false;
@@ -1911,7 +2011,7 @@ bool takeUsbTerminalSessionReset() {
 #endif
 }
 
-#if defined(NRF52_PLATFORM) && (defined(ENABLE_USB_INTERFACE) || defined(USE_TINYUSB))
+#if MESH_NRF52_PRIMARY_USB_NONBLOCKING
 static void completePrimaryUsbSessionReset(void*) {
   // This runs under the primary SingleAttempt stream's producer gate. It
   // removes a write that raced the owner-task close callback before allowing
@@ -1928,7 +2028,9 @@ static void completePrimaryUsbSessionReset(void*) {
 #endif
 
 bool tryCompleteUsbTerminalSessionReset() {
-#if MESH_ESP32_TINYUSB_NONBLOCKING
+#if MESH_PRIMARY_SERIAL_IS_UART
+  return true;
+#elif MESH_ESP32_TINYUSB_NONBLOCKING
   serviceEsp32TinyUsbPorts();
   return esp32_tinyusb_clean_generation.load(std::memory_order_acquire)
       == esp32_tinyusb_reset_generation.load(std::memory_order_acquire);
@@ -1990,6 +2092,9 @@ bool usbLoggingInterfaceRestartRequired() {
 }
 
 const char* usbLoggingPortDescription() {
+#if MESH_PRIMARY_SERIAL_IS_UART
+  return "primary USB-to-UART bridge (tty/COM name is host-assigned)";
+#endif
 #if defined(MESH_DUAL_CDC_LOGGING)
   if (hasDedicatedUsbLoggingPort())
     return "dedicated USB CDC 1, interface 02 (Linux: *-if02; tty/COM name is host-assigned)";
@@ -2044,7 +2149,7 @@ UsbLoggingObservation observeUsbLoggingTransport() {
       || meshEsp32HwcdcTxPending()
 #endif
       ;
-#elif defined(NRF52_PLATFORM) && defined(USE_TINYUSB)
+#elif defined(NRF52_PLATFORM) && defined(USE_TINYUSB) && !MESH_PRIMARY_SERIAL_IS_UART
   result.supported = true;
   const uint8_t instance = hasDedicatedUsbLoggingPort() ? 1 : 0;
   result.host_connected = tud_mounted();
@@ -2069,11 +2174,12 @@ void probeUsbLoggingTransport() {
 #endif
   static const uint8_t record[] = "[USB watchdog] heartbeat\r\n";
 #if MESH_ESP32_TINYUSB_NONBLOCKING || MESH_ESP32_HWCDC_SESSION_GUARD \
-    || defined(MESH_DUAL_CDC_LOGGING) || MESH_NRF52_USB_CONSOLE_COOPERATIVE
+    || defined(MESH_DUAL_CDC_LOGGING) || MESH_NRF52_USB_CONSOLE_COOPERATIVE \
+    || MESH_PRIMARY_SERIAL_IS_UART
   Stream& port = usbLoggingPort();
   if (port.availableForWrite() >= int(sizeof(record) - 1))
     (void)port.write(record, sizeof(record) - 1);
-#elif defined(NRF52_PLATFORM) && defined(USE_TINYUSB)
+#elif defined(NRF52_PLATFORM) && defined(USE_TINYUSB) && !MESH_PRIMARY_SERIAL_IS_UART
   // Ordinary nRF52 roles may still use the framework Serial facade. Never
   // call its retrying write path from the watchdog: use one native attempt.
   if (tud_cdc_n_connected(0)
@@ -2117,7 +2223,7 @@ UsbLoggingRecoveryResult recoverUsbLoggingTransport(uint8_t stage) {
     }
   }
   return UsbLoggingRecoveryResult::Attempted;
-#elif defined(NRF52_PLATFORM) && defined(USE_TINYUSB)
+#elif defined(NRF52_PLATFORM) && defined(USE_TINYUSB) && !MESH_PRIMARY_SERIAL_IS_UART
   if (stage == 1) {
 #if defined(MESH_DUAL_CDC_LOGGING)
     if (hasDedicatedUsbLoggingPort()) {
@@ -2145,7 +2251,9 @@ UsbLoggingRecoveryResult recoverUsbLoggingTransport(uint8_t stage) {
 }
 
 bool isUsbLoggingTransportRecoveryPending() {
-#if defined(NRF52_PLATFORM) && defined(USE_TINYUSB)
+#if MESH_PRIMARY_SERIAL_IS_UART
+  return false;
+#elif defined(NRF52_PLATFORM) && defined(USE_TINYUSB)
   return usb_logging_watchdog_detached
       || nrf52_usb_reenumeration_pending.load(std::memory_order_acquire);
 #elif defined(NRF52_PLATFORM) && defined(ENABLE_USB_INTERFACE)
@@ -2188,7 +2296,7 @@ extern "C" bool meshEsp32HwcdcShouldReportBusReset() {
 }
 #endif
 
-#if defined(NRF52_PLATFORM) && defined(USE_TINYUSB)
+#if defined(NRF52_PLATFORM) && defined(USE_TINYUSB) && !MESH_PRIMARY_SERIAL_IS_UART
 extern "C" void meshTinyUsbLoggingTxComplete(uint8_t instance) {
   if (instance == (mesh::hasDedicatedUsbLoggingPort() ? 1 : 0))
     mesh::noteUsbLoggingTxComplete();
@@ -2229,7 +2337,7 @@ extern "C" void meshEsp32TinyUsbDeviceSessionBoundary(bool mounted) {
 }
 #endif
 
-#if defined(NRF52_PLATFORM) && (defined(ENABLE_USB_INTERFACE) || defined(USE_TINYUSB))
+#if MESH_NRF52_PRIMARY_USB_NONBLOCKING
 // A protocol-only, weak-declaration-free translation unit supplies strong
 // versions of TinyUSB's callbacks and forwards here. Preserve Adafruit's CDC0
 // 1200-baud touch behavior exactly, capture every CDC0 host-session close and

@@ -51,6 +51,13 @@ SPECS = (
          platform="RP2040_PLATFORM", board="rpipicow", target=r"PicoW_companion_radio",
          defines={"PICOW_COMBINED_COMPANION": "1", "ENABLE_USB_INTERFACE": "1",
                   "ENABLE_WIFI_INTERFACE": "1", "PIO_FRAMEWORK_ARDUINO_ENABLE_BLUETOOTH": "1"}),
+    dict(key="wm1110CombinedCompanion", capability="companion.wm1110.combined",
+         marker="meshcore.capability.companion.wm1110.combined.v1",
+         platform="NRF52_PLATFORM", board="seeed-xiao-afruitnrf52-nrf52840",
+         target=r"wio_wm1110_companion_radio_full",
+         defines={"WIO_WM1110": "1", "COMPANION_RADIO_FULL": "1",
+                  "ENABLE_USB_INTERFACE": "1", "MESH_PRIMARY_UART_PORT": "Serial1",
+                  "BLE_PIN_CODE": "123456"}),
     dict(key="oledExpansionCompatible", capability="hardware.heltec_v4.oled_kit",
          marker="meshcore.capability.hardware.heltec_v4.oled_kit.v1",
          platform="ESP32_PLATFORM", board="heltec_v4",
@@ -94,6 +101,8 @@ RADIO_CAPACITY_MINIMUMS = {
     "meshadventurer": dict(MAX_CONTACTS=160, MAX_GROUP_CHANNELS=40, OFFLINE_QUEUE_SIZE=128),
     "muzi_base": dict(MAX_CONTACTS=350, MAX_GROUP_CHANNELS=40, OFFLINE_QUEUE_SIZE=256),
 }
+WM1110_CAPACITY_MINIMUMS = dict(MAX_CONTACTS=350, MAX_GROUP_CHANNELS=40,
+                              OFFLINE_QUEUE_SIZE=256)
 
 
 def integer_define(value):
@@ -115,7 +124,11 @@ def specs_for_config(target, env):
     return [spec for spec in SPECS if env.get("board") == spec["board"]
             and re.fullmatch(spec["target"], target, re.I)
             and all(defines.get(key) == value for key, value in spec["defines"].items())
-            and (spec["key"] != "autoLoRaRadio" or radio_capacity_matches(target, defines))]
+            and (spec["key"] != "autoLoRaRadio" or radio_capacity_matches(target, defines))
+            and (spec["key"] != "wm1110CombinedCompanion" or all(
+                integer_define(defines.get(key)) is not None
+                and integer_define(defines[key]) >= value
+                for key, value in WM1110_CAPACITY_MINIMUMS.items()))]
 
 
 def proven(manifest, spec):
@@ -196,6 +209,8 @@ def radio_replacements(target):
 
 def replacements(target):
     """Known functionality successors, never aliases for deployed update IDs."""
+    if target.lower() == "wio_wm1110_companion_radio_ble":
+        return [("wio_wm1110_companion_radio_full", "wm1110CombinedCompanion")]
     radio = radio_replacements(target)
     if radio:
         return radio
@@ -261,6 +276,13 @@ def configuration_replacement(target, envs):
                 if field in old:
                     before, after = integer_define(old[field]), integer_define(new.get(field))
                     qualified = qualified and before is not None and after is not None and after >= before
+        if key == "wm1110CombinedCompanion":
+            old = resolved_defines(source_env.get("build_flags", []))
+            new = resolved_defines(env.get("build_flags", []))
+            qualified = qualified and old.get("WIO_WM1110") == "1" and "BLE_PIN_CODE" in old
+            for field in WM1110_CAPACITY_MINIMUMS:
+                before, after = integer_define(old.get(field)), integer_define(new.get(field))
+                qualified = qualified and before is not None and after is not None and after >= before
         if qualified:
             return candidate
     return None
@@ -268,10 +290,13 @@ def configuration_replacement(target, envs):
 
 def omit_redundant_records(records):
     """Remove resumed alternatives only with an actual qualified successor."""
+    def same_sensors(left, right):
+        return (sorted(x for x in left.get("capabilities", []) if x.startswith("sensor.profile."))
+                == sorted(x for x in right.get("capabilities", []) if x.startswith("sensor.profile.")))
+
     def same_policy(left, right):
         return (left.get("build_profile") == right.get("build_profile")
-                and sorted(x for x in left.get("capabilities", []) if x.startswith("sensor.profile."))
-                == sorted(x for x in right.get("capabilities", []) if x.startswith("sensor.profile.")))
+                and same_sensors(left, right))
 
     def qualified(manifest, key):
         if key == "muziRadioAccessories":
@@ -313,6 +338,19 @@ def omit_redundant_records(records):
                     and required <= set(right.get("capabilities", [])) and required <= linked)
         return True
 
+    def wm1110_successor(left, right):
+        source = left.get("source_commit")
+        required = {"companion.usb", "companion.bluetooth"}
+        linked = {row.get("capability") for row in right.get("verification", [])
+                  if row.get("present") is True and row.get("source") == "linked image"
+                  and row.get("evidence")}
+        return (left.get("target", "").lower() == "wio_wm1110_companion_radio_ble"
+                and right.get("target", "").lower() == "wio_wm1110_companion_radio_full"
+                and isinstance(source, str) and re.fullmatch(r"[0-9a-f]{40}", source)
+                and right.get("source_commit") == source
+                and right.get("build_profile") == "full" and same_sensors(left, right)
+                and required <= set(right.get("capabilities", [])) and required <= linked)
+
     result = []
     for record in records:
         manifest = record["manifest"]
@@ -320,8 +358,10 @@ def omit_redundant_records(records):
         if not any(candidate["manifest"]["target"].lower() == target.lower()
                    and (key not in ("autoLoRaRadio", "muziRadioAccessories")
                         or radio_successor(manifest, candidate["manifest"]))
+                   and (key != "wm1110CombinedCompanion"
+                        or wm1110_successor(manifest, candidate["manifest"]))
                    and (same_policy(manifest, candidate["manifest"])
-                        or key in ("muziAccessories", "techoLiteDisplay")
+                        or key in ("muziAccessories", "techoLiteDisplay", "wm1110CombinedCompanion")
                         and candidate["manifest"].get("build_profile") == "full"
                         and manifest["target"].lower().endswith(("_usb", "_ble")))
                    and qualified(candidate["manifest"], key)

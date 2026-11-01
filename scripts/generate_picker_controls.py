@@ -14,6 +14,7 @@ from package_cascade_release import embedded_bootloader_variant, nrf52_sensor_pr
 from station_g3_profiles import runtime_metadata as station_g3_metadata
 from optional_display_profiles import runtime_metadata as display_metadata
 from consolidated_profiles import runtime_metadata as consolidation_metadata
+from consolidated_profiles import SPECS as CONSOLIDATION_SPECS, proven as consolidation_proven
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -112,11 +113,23 @@ def runtime_metadata(manifest, mqtt, release_source=None):
         result['loggingModes'] = ['none', 'usb', 'wifi', 'both'] if mqtt else ['none', 'usb']
         result['loggingControl'] = 'logging.output' if mqtt else 'usb.logging'
         result['loggingSource'] = manifest.get('source_commit', release_source)
-    if 'companion.dedicated_usb_logging' in verified:
-        result['dedicatedUsbLogging'] = True
     linked = {check['capability'] for check in manifest.get('verification', [])
               if check.get('present') is True and check.get('source') == 'linked image'
               and check.get('evidence')}
+    if 'companion.wm1110.combined' in capabilities:
+        spec = next(spec for spec in CONSOLIDATION_SPECS if spec['key'] == 'wm1110CombinedCompanion')
+        if (not consolidation_proven(manifest, spec)
+                or not {'companion.usb', 'companion.bluetooth'} <= capabilities & linked
+                or 'companion.dedicated_usb_logging' in capabilities | verified):
+            raise ValueError('WM1110 UART logging requires the exact qualified combined application')
+        source = manifest.get('source_commit', release_source)
+        if (not isinstance(source, str) or not re.fullmatch(r'[0-9a-f]{40}', source)
+                or release_source is not None and source != release_source):
+            raise ValueError('WM1110 UART logging requires the exact release source')
+        # Its computer-facing CH340C is a UART bridge, not a second nRF CDC.
+        result.update(dedicatedUsbLogging=False, dedicatedUsbLoggingSource=source)
+    elif 'companion.dedicated_usb_logging' in verified:
+        result['dedicatedUsbLogging'] = True
     merged_runtime = any(check.get('capability') == 'bridge.rs232.merged'
                          and check.get('present') is True
                          and check.get('source') == 'packaged application'

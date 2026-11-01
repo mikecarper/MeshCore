@@ -4,7 +4,8 @@
 // strong callbacks which override Adafruit's weak defaults for nRF52 USB
 // Companion builds. CDC0 needs exact close events even on single-CDC targets;
 // dual-CDC builds additionally forward CDC1 reconnect events.
-#if defined(ARDUINO) && defined(NRF52_PLATFORM) && defined(USE_TINYUSB)
+#if defined(ARDUINO) && defined(NRF52_PLATFORM) && defined(USE_TINYUSB) \
+    && !defined(MESH_PRIMARY_UART_PORT)
 #include <stdint.h>
 extern "C" void meshTinyUsbLoggingTxComplete(uint8_t instance);
 // No weak callback declaration is imported in this translation unit.
@@ -14,7 +15,8 @@ extern "C" void tud_cdc_tx_complete_cb(uint8_t instance) {
 #endif
 
 #if defined(ARDUINO) && defined(NRF52_PLATFORM) \
-    && (defined(ENABLE_USB_INTERFACE) || defined(USE_TINYUSB))
+    && (defined(ENABLE_USB_INTERFACE) || defined(USE_TINYUSB)) \
+    && !defined(MESH_PRIMARY_UART_PORT)
 #include <class/cdc/cdc.h>
 
 extern "C" void meshTinyUsbCdcLineStateChanged(uint8_t instance, bool dtr,

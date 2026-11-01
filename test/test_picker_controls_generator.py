@@ -13,6 +13,36 @@ SPEC.loader.exec_module(GENERATOR)
 
 
 class PickerControlsTests(unittest.TestCase):
+    def test_wm1110_single_uart_logging_is_explicit_and_release_bound(self):
+        from copy import deepcopy
+        source = 'a' * 40
+        marker = 'meshcore.capability.companion.wm1110.combined.v1'
+        manifest = dict(target='wio_wm1110_companion_radio_full', platform='NRF52_PLATFORM',
+                        verified=True, source_commit=source,
+                        capabilities=['companion.wm1110.combined', 'companion.usb', 'companion.bluetooth'],
+                        verification=[dict(capability='companion.wm1110.combined', present=True,
+                                           source='packaged application', evidence=marker),
+                                      *[dict(capability=cap, present=True, source='linked image',
+                                             evidence='linked transport')
+                                        for cap in ('companion.usb', 'companion.bluetooth')]])
+        self.assertEqual(GENERATOR.runtime_metadata(manifest, False, source), dict(
+            otaRole='none', dedicatedUsbLogging=False, dedicatedUsbLoggingSource=source))
+        for changes in (dict(target='other_companion_radio_full'), dict(platform='ESP32_PLATFORM'),
+                        dict(verified=False), dict(verification=[]), dict(source_commit='b' * 40),
+                        dict(source_commit='bad-source'),
+                        dict(capabilities=manifest['capabilities'] + ['companion.dedicated_usb_logging'])):
+            with self.subTest(changes=changes), self.assertRaisesRegex(ValueError, 'WM1110'):
+                GENERATOR.runtime_metadata({**manifest, **changes}, False, source)
+        for index in range(len(manifest['verification'])):
+            for changes in (dict(present=False), dict(source='config'), dict(evidence='')):
+                invalid = deepcopy(manifest)
+                invalid['verification'][index].update(changes)
+                with self.subTest(index=index, changes=changes), self.assertRaisesRegex(ValueError, 'WM1110'):
+                    GENERATOR.runtime_metadata(invalid, False, source)
+        unknown = dict(target='wio_wm1110_companion_radio_full', platform='NRF52_PLATFORM',
+                       verified=True, capabilities=[], verification=[])
+        self.assertNotIn('dedicatedUsbLogging', GENERATOR.runtime_metadata(unknown, False, source))
+
     def test_shared_radio_keeps_supported_runtime_rxps_control(self):
         shared = dict(RADIO_CLASS='UniversalLoRaRadio', MESH_RADIO_AUTO_FAMILY='1', USE_SX1262='1')
         self.assertTrue(GENERATOR.has_rxps_control(shared))

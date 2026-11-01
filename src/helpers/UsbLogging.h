@@ -2,6 +2,7 @@
 
 #include "UsbLoggingStatus.h"
 #include "HostKissConfig.h"
+#include "PrimarySerialBackend.h"
 
 // Canonical USB-capable images compile at least one of these two diagnostics.
 // A master USB output gate and a separate debug-verbosity gate keep packet
@@ -44,13 +45,13 @@
   #define MESH_ESP32_USB_CONSOLE_COOPERATIVE 0
 #endif
 
-#if defined(NRF52_PLATFORM) && defined(USE_TINYUSB)
+#if defined(NRF52_PLATFORM) && defined(USE_TINYUSB) && !MESH_PRIMARY_SERIAL_IS_UART
   #define MESH_NRF52_USB_CONSOLE_COOPERATIVE 1
 #else
   #define MESH_NRF52_USB_CONSOLE_COOPERATIVE 0
 #endif
 #define MESH_USB_CONSOLE_COOPERATIVE \
-  (MESH_ESP32_USB_CONSOLE_COOPERATIVE || MESH_NRF52_USB_CONSOLE_COOPERATIVE)
+  (MESH_ESP32_USB_CONSOLE_COOPERATIVE || MESH_NRF52_USB_CONSOLE_COOPERATIVE || MESH_PRIMARY_SERIAL_IS_UART)
 
 namespace mesh {
 
@@ -165,7 +166,8 @@ Stream& usbDebugPort();
 // Primary USB Companion data stream. Native TinyUSB on nRF52 and ESP32 uses
 // one FIFO attempt per write, never the framework's wait-for-space loop.
 // Callers retain and retry unwritten suffixes. Other platforms retain Serial
-// or their hardware-CDC session facade.
+// or their hardware-CDC session facade. An explicit MESH_PRIMARY_UART_PORT
+// selects that wired bridge without native-USB line-state/session assumptions.
 Stream& usbCompanionPort();
 // A primary nRF52 client may send commands with DTR low (stock MeshCLI does).
 // Accept actual input in the current USB session as proof of a reader, while

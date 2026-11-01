@@ -18,6 +18,23 @@ New **Heltec T114** Full images automatically detect the optional screen and
 also run without it. Choose **Heltec T114** in the firmware picker for either
 board configuration; see the [T114 update guide](heltec_t114.md).
 
+**Wio WM1110** also has a combined `wio_wm1110_companion_radio_full` profile.
+It keeps Bluetooth and adds the dev kit's CH340C USB-to-UART connection at
+115200 baud. This is `Serial1`, not native nRF52 USB CDC: it does not create
+a second USB logging port, require USB DTR, or infer a disconnect when a CDC
+session changes. `get usb.mode` reports `uart`. The wired interface starts
+in the text terminal and accepts the same framed Companion handoff and
+explicit terminal commands described below. Logging is off by default;
+when enabled, it owns the wired text stream rather than mixing log text into
+binary Companion replies. BLE remains an independent link.
+
+WM1110 Full retains 350 contacts, 40 channels and 256 normal queued frames,
+and the shared mOTA source workspace described for nRF52 Full below. The old
+BLE-only target remains available for exact historical builds. Adding this
+wired Companion interface does not qualify automatic USB bootloader entry or
+change the board's firmware programming requirements. The new UART backend
+has host-side regression tests; live WM1110 hardware validation is still needed.
+
 The Wireless Paper Full memory-sharing update keeps 350 contacts and 256
 queued messages normally. During an mOTA session, 128 message slots are
 available while the other half holds its workspace. If more than 128 unread

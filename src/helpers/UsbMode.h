@@ -25,6 +25,9 @@ inline const char* usbModeName() {
         return WithPrefix ? "usb.mode tinyusb" : "tinyusb";
     #endif
   #endif
+#elif defined(NRF52_PLATFORM) && defined(MESH_PRIMARY_UART_PORT)
+  if (std::is_same<SerialType, decltype(MESH_PRIMARY_UART_PORT)>::value)
+    return WithPrefix ? "usb.mode uart" : "uart";
 #elif defined(NRF52_PLATFORM) && defined(USE_TINYUSB)
   if (std::is_same<SerialType, Adafruit_USBD_CDC>::value)
     return WithPrefix ? "usb.mode tinyusb" : "tinyusb";

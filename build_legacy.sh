@@ -3006,6 +3006,12 @@ is_nrf52_companion_radio_full_target() {
     && is_companion_radio_full_target "$1"
 }
 
+has_nrf52_dedicated_usb_logging() {
+  is_nrf52_companion_radio_full_target "$1" \
+    && [ "$1" != "t1000e_companion_radio_full" ] \
+    && ! pio_env_option_contains "$(get_pio_build_env "$1")" build_flags "MESH_PRIMARY_UART_PORT"
+}
+
 # The RAK15002 STORE path is deliberately limited to the canonical RAK4631
 # receiver identities and the RAK4631 Full Companion.  Exact NOR targets,
 # deployed bridge identities, ordinary non-OTA roles, and the older strict
@@ -3724,8 +3730,7 @@ declare_build_capability_contract() {
     record_build_expectation "companion.usb_mota_source" "ota folder on"
     record_build_expectation "companion.mota_sender" \
       "_ZN4mesh3ota16SerialMotaSource4read"
-    if is_nrf52_companion_radio_full_target "$env_name" \
-        && [ "$env_name" != "t1000e_companion_radio_full" ]; then
+    if has_nrf52_dedicated_usb_logging "$env_name"; then
       record_build_expectation "companion.dedicated_usb_logging" \
         "get usb.logging"
     fi
@@ -4474,12 +4479,14 @@ apply_companion_radio_full_profile() {
     # Lossless name compression retains every seeder target and its wire ID
     # while recovering flash headroom; reuse the existing bounded OTA decoder.
     export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -DOTA_TARGET_NAME_FRONT_CODED=1"
-    if [ "$env_name" = "t1000e_companion_radio_full" ]; then
+    if ! has_nrf52_dedicated_usb_logging "$env_name"; then
       # The T1000-E's primary CDC transport is the only USB interface. Its
       # `usb.logging on` selects an input-capable ASCII logging terminal on
       # CDC 0. `usb.logging off` restores automatic framed-Companion detection.
       # Do not instantiate or re-enumerate a second CDC interface on this
       # board: its native USB/SoftDevice handoff is sensitive to that change.
+      # UART-backed nRF52 targets such as WM1110 likewise have only their
+      # CH340 primary stream; never invent a second USB logging endpoint.
       :
     else
       export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -DCOMPANION_FEATURE_DEDICATED_USB_LOGGING=1 -DCFG_TUD_CDC=2 -DMESH_DUAL_CDC_LOGGING=1"

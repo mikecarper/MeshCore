@@ -510,6 +510,31 @@ picker.applyFullCompanionCapabilities([nrfUf2OnlyFull]);
 assert.strictEqual(nrfUf2OnlyFull.dedicatedUsbLogging, true);
 assert.strictEqual(nrfUf2OnlyFull.logging, "usb-runtime");
 
+// WM1110's wired companion is a single USB-UART bridge. DFU packaging and
+// absent/stale release controls must never advertise a second CDC interface.
+for (const kinds of [["zip", "uf2"], ["zip"], ["uf2"], ["bin"]]) {
+  const wm1110 = Object.assign(picker.parseTargetProfile("wio_wm1110_companion_radio_full"),
+    {installKinds: kinds});
+  picker.applyFullCompanionCapabilities([wm1110]);
+  assert.strictEqual(wm1110.dedicatedUsbLogging, false);
+  assert(!picker.installSteps(wm1110, kinds[0]).join("\n").includes("interface 02"));
+}
+for (const dedicated of [undefined, false, true]) {
+  const wmSource = "abcd1234" + "0".repeat(32), wmTarget = "wio_wm1110_companion_radio_full";
+  const wmReleases = [release(family, "2026-08-23T12:00:00Z",
+    [asset(wmTarget + "-" + family + ".zip"), asset(wmTarget + "-" + family + ".uf2")])];
+  const wmControls = {familyTag: family, source: wmSource, profiles: {[wmTarget]: {
+    platform: "NRF52_PLATFORM", dedicatedUsbLogging: dedicated,
+    dedicatedUsbLoggingSource: wmSource,
+    wm1110CombinedCompanion: true, wm1110CombinedCompanionSource: wmSource,
+  }}};
+  const wmProfile = picker.buildCatalog(wmReleases, wmControls).profiles[0];
+  assert.strictEqual(wmProfile.dedicatedUsbLogging, false);
+  const wmDirections = picker.installSteps(wmProfile, "zip").join("\n");
+  assert(!wmDirections.includes("interface 02"));
+  assert(wmDirections.includes("starts in its ASCII terminal"));
+}
+
 const g2RxBoosted = picker.parseTargetProfile(
   "Station_G2_logging_repeater"
 );
