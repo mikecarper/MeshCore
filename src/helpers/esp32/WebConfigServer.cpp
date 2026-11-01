@@ -192,6 +192,7 @@ static uint8_t effectiveWiFiPowerSave(uint8_t configured) {
 }
 
 static void stopOwnedWiFiRadio() {
+  mesh::wifi::noteStationDiagnosticPhase(mesh::wifi::ConnectionPhase::Stopped);
   if (mesh::wifi::espNowChannelConstrained()) {
     // Keep a primary ESP-NOW radio or running bridge on its mesh channel.
     WiFi.setAutoReconnect(false);
@@ -305,7 +306,7 @@ static bool fixedTimeEquals(const char* a, const char* b, size_t max_len) {
   return diff == 0;
 }
 
-static void appendOtaSeederStatus(char* reply, size_t reply_len) {
+static void appendOtaSeederStatus(char* reply, size_t reply_len, const char* ssid) {
 #if defined(ESP32_PLATFORM) && defined(ENABLE_OTA) && \
     (defined(WIFI_OTA_SEEDER) || defined(WIFI_SSID) || defined(ENABLE_WIFI_INTERFACE))
   mesh::ota::WiFiOtaSeeder::appendStatus(reply, reply_len);
@@ -313,6 +314,7 @@ static void appendOtaSeederStatus(char* reply, size_t reply_len) {
   (void)reply;
   (void)reply_len;
 #endif
+  mesh::wifi::appendStationDiagnosticsHint(reply, reply_len, ssid);
 }
 
 // RAII lock; tolerates a null mutex (allocation failure) by not locking.
@@ -636,10 +638,40 @@ bool WebConfigServer::formatWiFiCliStatus(char* reply, size_t reply_len) {
   return true;
 }
 
+bool WebConfigServer::formatWebUIStatus(char* reply, size_t reply_len, bool enabled,
+                                       const WebConfigServer* runtime) {
+  if (!reply || reply_len == 0) return false;
+  const char* auto_start = enabled ? "on" : "off";
+  if (runtime && runtime->isStopping()) {
+    snprintf(reply, reply_len, "> Web UI: stopping; auto-start: %s", auto_start);
+  } else if (!runtime || !runtime->isRunning()) {
+    snprintf(reply, reply_len, "> Web UI: %s; auto-start: %s",
+             runtime && runtime->isStartPending() ? "starting" : "stopped", auto_start);
+  } else if (runtime->mode() == MODE_SETUP) {
+    char ssid[33] = {}, ip[16] = {};
+    getSetupInfo(ssid, sizeof(ssid), ip, sizeof(ip));
+    snprintf(reply, reply_len,
+             "> Web UI: setup hotspot '%s' at http://%s/; auto-start: %s",
+             ssid, ip, auto_start);
+  } else if (runtime->mode() == MODE_CONNECTING) {
+    snprintf(reply, reply_len, "> Web UI: connecting to WiFi; auto-start: %s", auto_start);
+  } else {
+    char ip[16] = {};
+    strlcpy(ip, WiFi.localIP().toString().c_str(), sizeof(ip));
+    if (WiFi.status() == WL_CONNECTED && strcmp(ip, "0.0.0.0") != 0) {
+      snprintf(reply, reply_len, "> Web UI: running at http://%s/; auto-start: %s",
+               ip, auto_start);
+    } else {
+      snprintf(reply, reply_len, "> Web UI: waiting for WiFi; auto-start: %s", auto_start);
+    }
+  }
+  return true;
+}
+
 bool WebConfigServer::formatWiFiStatus(
     char* reply, size_t reply_len,
     const mesh::wifi::CompanionWiFiRuntimeState* companion_runtime,
-    const void* legacy_prefs) {
+    const void* legacy_prefs, const WebConfigServer* runtime) {
   if (!reply || reply_len == 0) return false;
 
   char ssid[32] = "";
@@ -647,7 +679,7 @@ bool WebConfigServer::formatWiFiStatus(
   uint8_t power_save = mesh::wifi::kDefaultPowerSave;
   bool configured = loadStandaloneWiFi(
       ssid, sizeof(ssid), password, sizeof(password), &power_save, legacy_prefs);
-  WebConfigServer* active = _active;
+  const WebConfigServer* active = runtime ? runtime : _active;
   if (!legacy_prefs && active && active->_wifi_ssid[0]) {
     mesh::wifi::Credentials canonical;
     if (mesh::wifi::readCredentials(canonical) == mesh::wifi::CredentialState::Absent) {
@@ -660,36 +692,48 @@ bool WebConfigServer::formatWiFiStatus(
     char ap_ssid[33] = "";
     char ip[16] = "";
     getSetupInfo(ap_ssid, sizeof(ap_ssid), ip, sizeof(ip));
-    snprintf(reply, reply_len, "> setup AP, SSID: %s, IP: %s", ap_ssid, ip);
-    appendOtaSeederStatus(reply, reply_len);
+    if (WiFi.status() == WL_CONNECTED) {
+      snprintf(reply, reply_len,
+               "> WiFi: connected to '%s'; setup hotspot '%s' at http://%s/",
+               WiFi.SSID().c_str(), ap_ssid, ip);
+    } else if (configured && active->_retry_saved_wifi_in_setup) {
+      snprintf(reply, reply_len,
+               "> WiFi: could not connect to '%s'; setup hotspot '%s' at http://%s/",
+               ssid, ap_ssid, ip);
+    } else {
+      snprintf(reply, reply_len,
+               "> WiFi: setup hotspot '%s'; open http://%s/ to configure WiFi",
+               ap_ssid, ip);
+    }
+    appendOtaSeederStatus(reply, reply_len, ssid);
     return true;
   }
   if (mesh::wifi::networkPower().backgroundSuspended()
       && !mesh::wifi::networkPower().foregroundActive()) {
     snprintf(reply, reply_len,
-             "> suspended; recovery every 30 minutes, SSID: %s",
+             "> WiFi: paused; retries every 30 minutes; saved network: '%s'",
              configured ? ssid : "(not configured)");
-    appendOtaSeederStatus(reply, reply_len);
+    appendOtaSeederStatus(reply, reply_len, ssid);
     return true;
   }
   if (active && active->_mode == MODE_CONNECTING) {
-    snprintf(reply, reply_len, "> connecting, SSID: %s",
+    snprintf(reply, reply_len, "> WiFi: connecting to '%s'",
              configured ? ssid : "(not configured)");
-    appendOtaSeederStatus(reply, reply_len);
+    appendOtaSeederStatus(reply, reply_len, ssid);
     return true;
   }
 
   const wl_status_t status = WiFi.status();
   if (status == WL_CONNECTED) {
-    snprintf(reply, reply_len, "> connected, SSID: %s, IP: %s, RSSI: %d dBm",
+    snprintf(reply, reply_len, "> WiFi: connected to '%s'; IP: %s; signal: %d dBm",
              WiFi.SSID().c_str(),
              WiFi.localIP().toString().c_str(), WiFi.RSSI());
-    appendOtaSeederStatus(reply, reply_len);
+    appendOtaSeederStatus(reply, reply_len, ssid);
     return true;
   }
   if (!configured) {
-    strcpy(reply, "> not configured; run 'start webconfig'");
-    appendOtaSeederStatus(reply, reply_len);
+    snprintf(reply, reply_len, "> WiFi: no saved network; run 'start webconfig' to set up");
+    appendOtaSeederStatus(reply, reply_len, ssid);
     return true;
   }
 
@@ -700,18 +744,18 @@ bool WebConfigServer::formatWiFiStatus(
     switch (mesh::wifi::classifyCompanionWiFiFallback(*companion_runtime)) {
       case mesh::wifi::CompanionWiFiFallbackState::OffDisabled:
         snprintf(reply, reply_len,
-                 "> off, WiFi disabled; configured SSID: %s", ssid);
-        appendOtaSeederStatus(reply, reply_len);
+                 "> WiFi: off; saved network: '%s'", ssid);
+        appendOtaSeederStatus(reply, reply_len, ssid);
         return true;
       case mesh::wifi::CompanionWiFiFallbackState::Inactive:
         snprintf(reply, reply_len,
-                 "> inactive, WiFi enabled but services stopped; configured SSID: %s",
+                 "> WiFi: enabled, not connecting; saved network: '%s'",
                  ssid);
-        appendOtaSeederStatus(reply, reply_len);
+        appendOtaSeederStatus(reply, reply_len, ssid);
         return true;
       case mesh::wifi::CompanionWiFiFallbackState::ReconnectScheduled:
-        snprintf(reply, reply_len, "> reconnect scheduled, SSID: %s", ssid);
-        appendOtaSeederStatus(reply, reply_len);
+        snprintf(reply, reply_len, "> WiFi: reconnect scheduled for '%s'", ssid);
+        appendOtaSeederStatus(reply, reply_len, ssid);
         return true;
       case mesh::wifi::CompanionWiFiFallbackState::ConnectingOrRetrying:
         break;
@@ -720,26 +764,27 @@ bool WebConfigServer::formatWiFiStatus(
 
   switch (status) {
     case WL_NO_SSID_AVAIL:
-      snprintf(reply, reply_len, "> failed, SSID not found: %s", ssid);
+      snprintf(reply, reply_len, "> WiFi: network '%s' not found", ssid);
       break;
     case WL_CONNECT_FAILED:
-      snprintf(reply, reply_len, "> failed to connect, SSID: %s", ssid);
+      snprintf(reply, reply_len,
+               "> WiFi: could not connect to '%s'; check network and password", ssid);
       break;
     case WL_CONNECTION_LOST:
-      snprintf(reply, reply_len, "> connection lost, SSID: %s", ssid);
+      snprintf(reply, reply_len, "> WiFi: connection to '%s' lost", ssid);
       break;
     default:
       if (active && active->_mode == MODE_LAN) {
-        snprintf(reply, reply_len, "> disconnected, SSID: %s", ssid);
+        snprintf(reply, reply_len, "> WiFi: disconnected from '%s'", ssid);
       } else if (companion_runtime) {
-        snprintf(reply, reply_len, "> connecting/retrying, SSID: %s", ssid);
+        snprintf(reply, reply_len, "> WiFi: connecting or retrying '%s'", ssid);
       } else {
         snprintf(reply, reply_len,
-                 "> off, configured SSID: %s; run 'start webconfig'", ssid);
+                 "> WiFi: idle; saved network: '%s'; run 'start webconfig' to connect", ssid);
       }
       break;
   }
-  appendOtaSeederStatus(reply, reply_len);
+  appendOtaSeederStatus(reply, reply_len, ssid);
   return true;
 }
 
@@ -1395,6 +1440,7 @@ void WebConfigServer::tick(uint32_t now) {
           WiFi.localIP().toString().c_str());
     } else if ((_owns_wifi || !_runtime_wifi_ownership_managed) && _connect_deadline
                && (int32_t)(now - _connect_deadline) >= 0) {
+      mesh::wifi::noteStationDiagnosticPhase(mesh::wifi::ConnectionPhase::TimedOut);
       mesh::usbDebugPort().printf(
           "WebConfig: WiFi '%s' unavailable; opening setup AP\n", _wifi_ssid);
       const bool retry_saved_wifi = _wifi_ssid[0] != 0;
@@ -1473,6 +1519,7 @@ void WebConfigServer::tick(uint32_t now) {
           WiFi.localIP().toString().c_str());
     } else if (_owns_wifi && _setup_reconnect_in_progress
                && (int32_t)(now - _setup_reconnect_deadline) >= 0) {
+      mesh::wifi::noteStationDiagnosticPhase(mesh::wifi::ConnectionPhase::TimedOut);
       WiFi.disconnect(false, false);
       _setup_reconnect_in_progress = false;
       _setup_reconnect_deadline = 0;
@@ -1613,6 +1660,7 @@ void WebConfigServer::serviceSetupWiFiHandoff(uint32_t now) {
     return;
   }
 
+  mesh::wifi::noteStationDiagnosticPhase(mesh::wifi::ConnectionPhase::TimedOut);
   WiFi.disconnect(false, false);  // stop STA attempt; leave the setup AP up
   {
     WCLock lock(_mux);

@@ -857,6 +857,7 @@ public:
   static void formatSlotDiagReply(char* buf, size_t bufsize, int slot_index);
   static uint8_t getLastWifiDisconnectReason();
   static unsigned long getLastWifiDisconnectTime();
+  /** SDK WiFi disconnect label, or nullptr when only the raw code is known. */
   static const char* wifiReasonStr(uint8_t reason);
   static const char* tlsErrorStr(int32_t err);
 

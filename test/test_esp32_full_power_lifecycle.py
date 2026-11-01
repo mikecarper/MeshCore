@@ -29,6 +29,7 @@ FIXTURE = r'''
 #include <helpers/PowerManagementUtils.h>
 #include <helpers/PowerSavingDiagnostics.h>
 #include <helpers/WiFiNetworkPowerPolicy.h>
+#include <helpers/WiFiConnectionDiagnostics.h>
 #include <helpers/WirelessControl.h>
 uint32_t now = 0;
 uint32_t millis() { return now; }
@@ -89,6 +90,7 @@ struct WiFiMock {
 namespace mesh {
 namespace bridge { constexpr int ESPNOW_FORMAT_WRAPPED = 1; }
 namespace wifi {
+  void noteStationDiagnosticPhase(ConnectionPhase) {}
   void applyProtocolMask(int) {} void restoreEspNowChannel() {}
   bool espNowChannelConstrained() { return espnow_owners != 0; }
 }
@@ -253,6 +255,7 @@ struct MyMesh {
   bool startWebConfigImpl(bool force_ap, char* reply, bool automatic_setup);
   @WIFI_OWNER_DECLARATION@
   bool startWebConfig(bool force_ap, char* reply); bool stopWebConfig(char* reply);
+  bool getWebUIStatus(char* reply) const { strcpy(reply, "Web UI status"); return true; }
   uint32_t getPowerSaveSleepMilliseconds(uint32_t) const;
   bool hasPendingWork() const; uint32_t getPowerSaveSleepSeconds(uint32_t) const;
   mesh::powerdiag::Mask pendingWorkReason() const;

@@ -8,6 +8,7 @@
 #include <helpers/WiFiReconnectPolicy.h>
 #include <helpers/WebConfigBatch.h>
 #include <helpers/WiFiNetworkPowerPolicy.h>
+#include <helpers/WiFiConnectionDiagnostics.h>
 #define MESH_MANAGEMENT_PASSWORD_HOST_TEST
 #include <helpers/esp32/ManagementPassword.h>
 static uint32_t clock_ms = 1000;
@@ -44,12 +45,15 @@ struct Control { bool blocked(int) { return false; } };
 Control& control() { static Control c; return c; }
 }
 namespace wifi {
+ConnectionDiagnostics diagnostics;
+void noteStationDiagnosticPhase(ConnectionPhase phase) { diagnostics.phase(phase, millis()); }
 constexpr uint8_t kPowerSaveMax = 2, kDefaultPowerSave = 0, kPowerSaveNone = 1;
 constexpr bool kPrimaryEspNowRadio = false;
 bool fail_protocol = false;
 int applyProtocolMask(int) { return fail_protocol ? -1 : ESP_OK; }
 void setStationAutoReconnect(bool) {}
 int beginStation(const char* ssid, const char* password) {
+  diagnostics.begin(ssid, millis());
   ++WiFi.begins; WiFi.ssid = ssid; WiFi.password = password;
   if (WiFi.next_begin_connects) WiFi.state = WL_CONNECTED;
   return WiFi.state;
@@ -342,16 +346,29 @@ int main() {
   assert(portal._mode == WebConfigServer::MODE_LAN && portal.server_starts == 1);
 #else
   assert(portal.startAutoMode(reply) && WiFi.begins == 1);
+  const auto* station_ssid = reinterpret_cast<const uint8_t*>(canonical_ssid);
+  mesh::wifi::diagnostics.disconnected(station_ssid, strlen(canonical_ssid), 202, 2000);
   portal.tick(15999);
   assert(portal.setup_starts == 0);
   portal.tick(16000);
   assert(portal.setup_starts == 1 && portal._retry_saved_wifi_in_setup);
+  auto diagnostic = mesh::wifi::diagnostics.snapshot();
+  assert(diagnostic.phase == mesh::wifi::ConnectionPhase::TimedOut);
+  assert(diagnostic.has_disconnect && diagnostic.last_reason == 202);
+  // The deliberate AP fallback leave/stop cannot replace the original error.
+  mesh::wifi::diagnostics.disconnected(station_ssid, strlen(canonical_ssid), 8, 16001);
+  mesh::wifi::diagnostics.stopped(16002);
+  assert(mesh::wifi::diagnostics.snapshot().phase == mesh::wifi::ConnectionPhase::TimedOut);
+  assert(mesh::wifi::diagnostics.snapshot().last_reason == 202);
   assert(WiFi.begins == 1);
   portal.tick(300999);
   assert(WiFi.begins == 1);
   WiFi.next_begin_connects = true;
   portal.tick(301000);
   assert(WiFi.begins == 2);
+  assert(mesh::wifi::diagnostics.snapshot().attempts == 2);
+  assert(mesh::wifi::diagnostics.snapshot().phase == mesh::wifi::ConnectionPhase::Connecting);
+  assert(mesh::wifi::diagnostics.snapshot().last_reason == 202);
   assert(WiFi.ssid == canonical_ssid && WiFi.password == canonical_password);
   portal.tick(301001);
   assert(portal._mode == WebConfigServer::MODE_LAN && portal.server_starts == 1);

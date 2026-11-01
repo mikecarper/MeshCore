@@ -354,6 +354,7 @@ folder transport.
 - `get wifi.ssid`
 - `get wifi.pwd`
 - `get wifi.status`
+- `get wifi.diag`
 - `get wifi.powersave`
 - `get wifi.cli`
 - `set wifi.ssid <network name>`
@@ -363,15 +364,18 @@ folder transport.
 
 `set webui on` is the persistent master switch. It starts the portal now and
 again after future reboots; `set webui off` closes it and disables that boot
-start. `get webui` reports the saved on/off state plus whether the portal is
-inactive, joining WiFi, serving a setup AP, or serving a LAN URL. The default is
+start. `get webui` reports the current session first, followed by an explicit
+`auto-start: on|off` setting. It distinguishes stopped, starting, stopping,
+connecting, waiting for WiFi, a setup hotspot and a working LAN URL. The default is
 `off` on repeater and room-server builds. An unconfigured MQTT node can open
 first-time setup while no WebUI choice has been saved. An explicit
 `set webui off` prevents that AP from returning after reboot and pausing
 ESP-NOW. On display-equipped repeaters, an
 otherwise-unused triple click toggles the same saved setting.
-Consequently, `> off, http://192.168.1.130/` means the saved boot setting is
-off while a temporary WebConfig session is currently active at that URL.
+For example, `> Web UI: running at http://192.168.1.130/; auto-start: off`
+means a temporary session is working at that address and automatic startup
+after reboot is disabled. Repeating `start webconfig` reports the current
+session instead of an already-running error.
 
 `start webconfig` is a temporary start that does not change the saved switch.
 It serves the shared WiFi, radio, flood, loop, and status page and reports its
@@ -450,6 +454,7 @@ local/framed command parser:
 - `get wifi.protocol` / `set wifi.protocol <bg|bgn>` (default `bgn`)
 - `get wifi.mode` / `set wifi.mode <normal|wifi-only>` (default `normal`)
 - `get wifi.status` (connection plus saved/boot/live radio settings)
+- `get wifi.diag` (connection attempts and the last driver disconnect reason)
 
 The same reply includes SSID, IP address and RSSI when connected,
 `protocol=<saved>/<boot>/<live bitmap>`, `mode=<saved>[/<boot>]`, live modem
@@ -477,15 +482,27 @@ and can close the page before its reply is collected.
 On unified FULL USB + WiFi and FULL logging-fallback ESP32
 repeater/room-server builds,
 `get wifi.ssid` reports the saved standalone WebConfig network and
-`get wifi.status` reports whether WiFi is unconfigured, off, connecting,
-running the setup AP, failed, or connected. A connected result includes the
-SSID, LAN IP, and RSSI. When the shared OTA seeder is running, the reply appends
-`OTA TCP 5001: listening` or `OTA TCP 5001: client connected`. WiFi being off
+`get wifi.status` labels the live WiFi state: no saved network, idle, off,
+paused, connecting, setup hotspot, failed, or connected. A connected result
+includes the network name, LAN IP and signal strength. A recovery hotspot
+response explains that the saved-network connection failed and gives the
+hotspot URL. When the shared OTA seeder is running, the reply appends
+`OTA TCP 5001: listening` or `OTA TCP 5001: client connected`. WiFi being idle
 is normal while WebConfig is inactive; run `start webconfig` when a temporary
 connection is wanted. `get wifi.powersave` reports the saved standalone setting
 as `none`, `min`, or `max`. Fresh Cascade-profile builds default to `min`;
 target-default builds use `none`. A saved setting takes precedence after an
 upgrade.
+
+On ESP32, `get wifi.diag` reports the current connection attempt, application
+attempt count, time since the last attempt, and the driver's last disconnect
+reason with its age. It distinguishes joining the access point from waiting
+for an IP address. These details remain available after a failed join opens a
+setup hotspot, including when MQTT has never started. Application attempt
+counts exclude the driver's internal automatic retries. Diagnostics are kept
+in memory and reset on reboot. A reason such as authentication failure suggests
+what to check; it does not prove the password is wrong. See
+[WiFi troubleshooting](WiFi.md#troubleshooting) for examples.
 
 The WiFi `set` commands work on MQTT observers and on FULL standalone
 ESP32 repeater/room-server builds. Changing the SSID or password automatically

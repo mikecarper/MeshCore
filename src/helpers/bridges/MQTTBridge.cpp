@@ -42,6 +42,28 @@
 #include <freertos/semphr.h>
 #include <mbedtls/platform.h>
 
+// Use the shared, host-tested WiFi labels only while their numeric keys still
+// match the SDK. Unknown reasons retain the caller's raw-number fallback.
+static_assert(MQTTErrorLabels::kWifiAuthExpire == static_cast<uint16_t>(WIFI_REASON_AUTH_EXPIRE), "WiFi auth-expired code changed");
+static_assert(MQTTErrorLabels::kWifiAssocExpire == static_cast<uint16_t>(WIFI_REASON_ASSOC_EXPIRE), "WiFi assoc-expired code changed");
+static_assert(MQTTErrorLabels::kWifiAssocLeave == static_cast<uint16_t>(WIFI_REASON_ASSOC_LEAVE), "WiFi assoc-leave code changed");
+static_assert(MQTTErrorLabels::kWifi4WayHandshakeTimeout == static_cast<uint16_t>(WIFI_REASON_4WAY_HANDSHAKE_TIMEOUT), "WiFi 4-way handshake code changed");
+static_assert(MQTTErrorLabels::kWifiGroupCipherInvalid == static_cast<uint16_t>(WIFI_REASON_GROUP_CIPHER_INVALID), "WiFi group-cipher code changed");
+static_assert(MQTTErrorLabels::kWifiCipherSuiteRejected == static_cast<uint16_t>(WIFI_REASON_CIPHER_SUITE_REJECTED), "WiFi cipher-suite code changed");
+static_assert(MQTTErrorLabels::kWifiMissingAcks == static_cast<uint16_t>(WIFI_REASON_MISSING_ACKS), "WiFi missing-acks code changed");
+static_assert(MQTTErrorLabels::kWifiTimeout == static_cast<uint16_t>(WIFI_REASON_TIMEOUT), "WiFi timeout code changed");
+static_assert(MQTTErrorLabels::kWifiInvalidPmkid == static_cast<uint16_t>(WIFI_REASON_INVALID_PMKID), "WiFi PMKID code changed");
+static_assert(MQTTErrorLabels::kWifiBssTransitionDisassoc == static_cast<uint16_t>(WIFI_REASON_BSS_TRANSITION_DISASSOC), "WiFi BSS-transition code changed");
+static_assert(MQTTErrorLabels::kWifiBeaconTimeout == static_cast<uint16_t>(WIFI_REASON_BEACON_TIMEOUT), "WiFi beacon code changed");
+static_assert(MQTTErrorLabels::kWifiNoApFound == static_cast<uint16_t>(WIFI_REASON_NO_AP_FOUND), "WiFi AP-not-found code changed");
+static_assert(MQTTErrorLabels::kWifiAuthFail == static_cast<uint16_t>(WIFI_REASON_AUTH_FAIL), "WiFi auth-failed code changed");
+static_assert(MQTTErrorLabels::kWifiAssocFail == static_cast<uint16_t>(WIFI_REASON_ASSOC_FAIL), "WiFi assoc-failed code changed");
+static_assert(MQTTErrorLabels::kWifiHandshakeTimeout == static_cast<uint16_t>(WIFI_REASON_HANDSHAKE_TIMEOUT), "WiFi handshake code changed");
+static_assert(MQTTErrorLabels::kWifiConnectionFail == static_cast<uint16_t>(WIFI_REASON_CONNECTION_FAIL), "WiFi connection-failed code changed");
+static_assert(MQTTErrorLabels::kWifiApTsfReset == static_cast<uint16_t>(WIFI_REASON_AP_TSF_RESET), "WiFi AP-reset code changed");
+static_assert(MQTTErrorLabels::kWifiRoaming == static_cast<uint16_t>(WIFI_REASON_ROAMING), "WiFi roaming code changed");
+static_assert(MQTTErrorLabels::kWifiSaQueryTimeout == static_cast<uint16_t>(WIFI_REASON_SA_QUERY_TIMEOUT), "WiFi SA-query code changed");
+
 // Keep the host-tested labels tied to the SDK used by the firmware. In
 // particular, 0x8008 is a clean TCP close and 0x8018 is an SSL write failure.
 static_assert(MQTTErrorLabels::kTlsCannotResolveHostname == ESP_ERR_ESP_TLS_CANNOT_RESOLVE_HOSTNAME, "TLS DNS code changed");
@@ -638,26 +660,7 @@ const char* MQTTBridge::getSlotPresetName(int slot_index) const {
 }
 
 const char* MQTTBridge::wifiReasonStr(uint8_t reason) {
-  switch (reason) {
-    case 2:   return "auth expired";
-    case 4:   return "assoc timeout";
-    case 8:   return "AP disconnected";
-    case 15:  return "4-way handshake timeout";
-    case 18:  return "group cipher mismatch";
-    case 40:  return "cipher suite rejected";
-    case 49:  return "invalid PMKID";
-    case 61:  return "AP BSS management";
-    case 88:  return "AP BSS management";
-    case 168: return "AP band-steering kick";
-    case 34:  return "AP state mismatch (class 3 frame)";
-    case 39:  return "SSID not found";
-    case 63:  return "SA query timeout (PMF)";
-    case 200: return "signal lost";
-    case 201: return "security mismatch";
-    case 202: return "auth mode rejected";
-    case 204: return "handshake timeout";
-    default:  return nullptr;
-  }
+  return MQTTErrorLabels::wifiReason(reason);
 }
 
 const char* MQTTBridge::tlsErrorStr(int32_t err) {
@@ -1748,6 +1751,7 @@ bool MQTTBridge::serviceNetworkPower(uint32_t now) {
         && (newly_suspended || (!mesh::wifi::espNowChannelConstrained()
                                && WiFi.getMode() != WIFI_OFF))) {
       WiFi.setAutoReconnect(false);
+      mesh::wifi::noteStationDiagnosticPhase(mesh::wifi::ConnectionPhase::Stopped);
       WiFi.disconnect(false, false);
       if (mesh::wifi::espNowChannelConstrained()) {
         // ESP-NOW is an independent radio owner. Stop failed STA attempts,

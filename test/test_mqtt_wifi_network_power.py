@@ -21,6 +21,7 @@ BRIDGE = "src/helpers/bridges/MQTTBridge.cpp"
 
 PREAMBLE = r'''
 #include <helpers/WiFiNetworkPowerPolicy.h>
+#include <helpers/WiFiConnectionDiagnostics.h>
 #include <helpers/MQTTConnectionPolicy.h>
 #include <helpers/MQTTConnectionHealth.h>
 #include <helpers/MQTTTransportHealth.h>
@@ -80,6 +81,7 @@ bool mqttStationWiFiMutationAllowed() {
       && !(sdk_mode & WIFI_MODE_AP);
 }
 namespace mesh { namespace wifi {
+void noteStationDiagnosticPhase(ConnectionPhase) {}
 bool espNowChannelConstrained() { return espnow_constrained; }
 int restoreEspNowChannel() {
   ++channel_restores;

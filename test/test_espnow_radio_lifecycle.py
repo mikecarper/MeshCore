@@ -284,6 +284,17 @@ int main(){
     def test_bridge_channel_constraint_tracks_runtime_state(self):
         with tempfile.TemporaryDirectory() as tmp:
             folder=Path(tmp)
+            # Event tracking is covered by the diagnostics integration suite;
+            # this harness substitutes its boundary, retaining real join policy.
+            (folder/'helpers/esp32').mkdir(parents=True)
+            (folder/'helpers/esp32/WiFiStationDiagnostics.h').write_text('''
+#pragma once
+#include <helpers/WiFiConnectionDiagnostics.h>
+namespace mesh { namespace wifi {
+inline void beginStationDiagnostics(const char*) {}
+inline void noteStationDiagnosticPhase(ConnectionPhase) {}
+}}
+''')
             (folder/'esp_err.h').write_text('#pragma once\nusing esp_err_t=int;\nconstexpr int ESP_OK=0,ESP_ERR_INVALID_STATE=-2,ESP_ERR_WIFI_NOT_INIT=-3;\n')
             (folder/'esp_wifi.h').write_text(r'''
 #pragma once

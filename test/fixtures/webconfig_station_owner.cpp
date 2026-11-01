@@ -40,6 +40,7 @@ struct MyMesh {
   const char* getBuildDate() const { return "test"; }
   const char* getRole() const { return "test"; }
   bool startWebConfig(bool force_ap, char* reply);
+  bool getWebUIStatus(char* reply) const { strcpy(reply, "Web UI status"); return true; }
   bool startWebConfigImpl(bool force_ap, char* reply, bool automatic_setup);
   bool webConfigOwnsWiFi() const;
   void suspendUnconfiguredSetupBridges();

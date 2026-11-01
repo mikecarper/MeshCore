@@ -11796,7 +11796,7 @@ bool MyMesh::startWebConfigImpl(bool force_ap, char* reply, bool automatic_setup
     if (!automatic_setup && !_webconfig->isStopping()) {
       _webconfig->requestNetworkAccess();
     }
-    strcpy(reply, "Err: webconfig already running");
+    getWebUIStatus(reply);
     return true;
   }
   if (mesh::wireless::control().blocked(mesh::wireless::WiFi)) {
@@ -11907,20 +11907,8 @@ bool MyMesh::setWebUIEnabled(bool enabled, char* reply) {
 }
 
 bool MyMesh::getWebUIStatus(char* reply) const {
-  const bool enabled = WebConfigServer::loadEnabled(false);
-  if (!_webconfig || (!_webconfig->isRunning() && !_webconfig->isStopping())) {
-    snprintf(reply, 160, "> %s, inactive", enabled ? "on" : "off");
-  } else if (_webconfig->mode() == WebConfigServer::MODE_SETUP) {
-    char ssid[33], ip[16];
-    WebConfigServer::getSetupInfo(ssid, sizeof(ssid), ip, sizeof(ip));
-    snprintf(reply, 160, "> %s, setup AP %s http://%s/", enabled ? "on" : "off", ssid, ip);
-  } else if (_webconfig->mode() == WebConfigServer::MODE_CONNECTING) {
-    snprintf(reply, 160, "> %s, connecting to WiFi", enabled ? "on" : "off");
-  } else {
-    snprintf(reply, 160, "> %s, http://%s/", enabled ? "on" : "off",
-             WiFi.localIP().toString().c_str());
-  }
-  return true;
+  return WebConfigServer::formatWebUIStatus(reply, 160,
+      WebConfigServer::loadEnabled(false), _webconfig);
 }
 
 bool MyMesh::getWiFiSSID(char* reply) const {
@@ -11928,7 +11916,8 @@ bool MyMesh::getWiFiSSID(char* reply) const {
 }
 
 bool MyMesh::getWiFiStatus(char* reply) const {
-  return WebConfigServer::formatWiFiStatus(reply, 160, nullptr, canonicalWiFiLegacyPrefs());
+  return WebConfigServer::formatWiFiStatus(reply, 160, nullptr, canonicalWiFiLegacyPrefs(),
+                                          _webconfig);
 }
 
 bool MyMesh::getWiFiPowerSave(char* reply) const {

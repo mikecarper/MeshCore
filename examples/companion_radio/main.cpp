@@ -130,6 +130,7 @@ MultiSerialInterface interface_manager;
     #include <helpers/esp32/TlsClockValidity.h>
     #include <helpers/esp32/WiFiRadioPolicy.h>
     #include <helpers/esp32/WiFiStationPolicy.h>
+    #include <helpers/esp32/WiFiStationDiagnostics.h>
     #include <Preferences.h>
     #include <atomic>
     #include <esp_sntp.h>
@@ -2064,6 +2065,9 @@ void halt() {
   bool handleCompanionWiFiCompatibilityCommand(const char* command, char* reply,
                                               size_t reply_size) {
     if (!command || !reply || !reply_size) return false;
+    if (strcmp(command, "get wifi.diag") == 0) {
+      return mesh::wifi::formatStationDiagnostics(reply, reply_size);
+    }
     if (strcmp(command, "get wifi.protocol") == 0) {
       snprintf(reply, reply_size, "%s (boot=%s%s)",
                mesh::wifi::stationProtocolName(mesh::wifi::configuredStationProtocol()),
@@ -2814,6 +2818,7 @@ void halt() {
   }
 
   static void stopCompanionInfrastructureWiFi() {
+    mesh::wifi::noteStationDiagnosticPhase(mesh::wifi::ConnectionPhase::Stopped);
     WiFi.setAutoReconnect(false);
     if (mesh::wifi::espNowChannelConstrained()) {
       // Primary ESP-NOW and a live optional bridge both share this driver.

@@ -98,13 +98,13 @@ int main() {
 
         self.assertIn("classifyCompanionWiFiFallback", formatter)
         self.assertIn(
-            '> off, WiFi disabled; configured SSID: %s', formatter
+            "> WiFi: off; saved network: '%s'", formatter
         )
         self.assertIn(
-            '> inactive, WiFi enabled but services stopped;', formatter
+            "> WiFi: enabled, not connecting; saved network: '%s'", formatter
         )
-        self.assertIn('> reconnect scheduled, SSID: %s', formatter)
-        self.assertIn('> connecting/retrying, SSID: %s', formatter)
+        self.assertIn("> WiFi: reconnect scheduled for '%s'", formatter)
+        self.assertIn("> WiFi: connecting or retrying '%s'", formatter)
         # Existing rich setup/connecting and connected reports retain priority.
         self.assertLess(
             formatter.index("active->_mode == MODE_SETUP"),

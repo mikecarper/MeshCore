@@ -214,6 +214,16 @@ def build_and_run(scenario, *, mutation=None, full=True):
         folder = Path(temporary)
         (folder / 'helpers/esp32').mkdir(parents=True)
         (folder / 'helpers/esp32/WiFiRadioPolicy.h').write_text(policy)
+        # This suite owns radio-policy SDK behavior; the separately executed
+        # diagnostics integration suite owns Arduino event callbacks and locks.
+        (folder / 'helpers/esp32/WiFiStationDiagnostics.h').write_text('''
+#pragma once
+#include <helpers/WiFiConnectionDiagnostics.h>
+namespace mesh { namespace wifi {
+inline void beginStationDiagnostics(const char*) {}
+inline void noteStationDiagnosticPhase(ConnectionPhase) {}
+}}
+''')
         for name in ('esp_err.h', 'esp_wifi.h', 'WiFi.h', 'Preferences.h'):
             (folder / name).write_text('#pragma once\n')
         fixture = (ROOT / 'test/fixtures/wifi_ap_shared_lr_sdk.h').read_text()

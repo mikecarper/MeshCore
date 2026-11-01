@@ -138,6 +138,12 @@ struct StatusPower {
   bool foregroundActive() const { return foreground; }
 };
 StatusPower& networkPower() { static StatusPower value; return value; }
+unsigned diagnostic_calls=0;
+bool formatStationDiagnostics(char* reply, size_t capacity) {
+  ++diagnostic_calls;
+  snprintf(reply, capacity, "> WiFi diagnostic");
+  return true;
+}
 // Protocol persistence has its own real SDK-boundary suite; only the endpoint
 // is mocked here so the complete production CLI handler can be executed.
 CompatibilitySaveResult saveStationProtocol(StationProtocol value) {
@@ -165,11 +171,14 @@ int main() {
 #if defined(ESP32) && defined(WIFI_SSID)
   char reply[192]={};
   for (const char* text : {"get wifi.modex", "set wifi.modex wifi-only", "get unknown",
-                          "get wifi.compat", "get wifi.status detail", "get wifi.status detailx"})
+                          "get wifi.compat", "get wifi.status detail", "get wifi.status detailx",
+                          "get wifi.diag extra", "get wifi.diagx"})
     assert(!handleCompanionWiFiCompatibilityCommand(text,reply,sizeof(reply)));
   assert(!handleCompanionWiFiCompatibilityCommand(nullptr,reply,sizeof(reply)));
   assert(!handleCompanionWiFiCompatibilityCommand("get wifi.status",nullptr,192));
   assert(!handleCompanionWiFiCompatibilityCommand("get wifi.status",reply,0));
+  assert(handleCompanionWiFiCompatibilityCommand("get wifi.diag",reply,sizeof(reply)));
+  assert(strcmp(reply, "> WiFi diagnostic")==0 && diagnostic_calls==1);
 #if !defined(COMPANION_EXCLUSIVE_WIFI_BLE)
   for (const char* text : {"set wifi.mode", "set wifi.mode none", "set wifi.mode wifi-only extra"}) {
     assert(handleCompanionWiFiCompatibilityCommand(text,reply,sizeof(reply)));

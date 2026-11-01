@@ -253,12 +253,18 @@ public:
                                 size_t reply_len);
   static bool formatWiFiSSID(char* reply, size_t reply_len, const void* legacy_prefs = NULL);
   static bool formatWiFiPassword(char* reply, size_t reply_len, const void* legacy_prefs = NULL);
+  // A station join starts before HTTP routes attach. Infrastructure callers
+  // pass their live session so status does not depend on HTTP admission.
   static bool formatWiFiStatus(
       char* reply, size_t reply_len,
       const mesh::wifi::CompanionWiFiRuntimeState* companion_runtime = NULL,
-      const void* legacy_prefs = NULL);
+      const void* legacy_prefs = NULL,
+      const WebConfigServer* runtime = NULL);
   static bool formatWiFiPowerSave(char* reply, size_t reply_len, const void* legacy_prefs = NULL);
   static bool formatWiFiCliStatus(char* reply, size_t reply_len);
+  // Report the current portal session separately from its saved boot setting.
+  static bool formatWebUIStatus(char* reply, size_t reply_len, bool enabled,
+                                const WebConfigServer* runtime);
 
   // UI tasks use an otherwise-unused multi-click gesture without reaching into
   // MyMesh directly. The mesh loop consumes the request and performs the NVS /

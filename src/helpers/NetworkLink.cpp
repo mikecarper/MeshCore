@@ -5,6 +5,7 @@
 #include "MQTTConnectionPolicy.h"
 #include "UsbLogging.h"
 #include "WifiPowerSavePolicy.h"
+#include "esp32/WiFiStationPolicy.h"
 
 #include <atomic>
 #include <climits>
@@ -327,7 +328,7 @@ class WiFiNetworkLink final : public NetworkLinkBase {
     // Preserve the existing restart behavior: MQTT stop leaves the station up,
     // and begin() must not force a disconnect that races the first DNS lookup.
     if (!isConnected()) {
-      WiFi.begin(_ssid, _password);
+      mesh::wifi::beginStation(_ssid, _password);
     } else {
       noteConnected(millis());
     }
@@ -385,7 +386,7 @@ class WiFiNetworkLink final : public NetworkLinkBase {
       _reconnect_backoff_attempt =
           MQTTConnectionPolicy::nextWifiBackoffAttempt(_reconnect_backoff_attempt);
       WiFi.disconnect();
-      WiFi.begin(_ssid, _password);
+      mesh::wifi::beginStation(_ssid, _password);
     }
     _last_connected = false;
     return transitioned ? NetworkTransition::Down : NetworkTransition::None;
@@ -687,6 +688,7 @@ class AutomaticNetworkLink final : public NetworkLink {
       // Keep only the selected STA associated so sockets cannot silently stay
       // on Wi-Fi after the manager has declared Ethernet active.
       WiFi.setAutoReconnect(false);
+      mesh::wifi::noteStationDiagnosticPhase(mesh::wifi::ConnectionPhase::Stopped);
       WiFi.disconnect(false, false);
       _wifi_started.store(false, std::memory_order_release);
     }

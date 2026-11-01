@@ -119,7 +119,7 @@ int main() {
 #include <cstdio>
 #include <cstring>
 #include <helpers/WiFiNetworkPowerPolicy.h>
-void appendOtaSeederStatus(char* reply, size_t capacity) {
+void appendOtaSeederStatus(char* reply, size_t capacity, const char*) {
   size_t used = strlen(reply);
   snprintf(reply + used, capacity - used, "; seeder status");
 }
@@ -133,9 +133,9 @@ int main() {
   char reply[160]; auto& power = mesh::wifi::networkPower();
   power.setManaged(true); power.setSuspended(true);
   assert(format(reply, sizeof(reply), true));
-  assert(strcmp(reply, "> suspended; recovery every 30 minutes, SSID: working-network; seeder status") == 0);
+  assert(strcmp(reply, "> WiFi: paused; retries every 30 minutes; saved network: 'working-network'; seeder status") == 0);
   assert(format(reply, sizeof(reply), false));
-  assert(strstr(reply, "SSID: (not configured); seeder status"));
+  assert(strstr(reply, "saved network: '(not configured)'; seeder status"));
   power.setHold(mesh::wifi::NetworkPowerHold::WebConfig, true);
   format(reply, sizeof(reply), true); assert(strcmp(reply, "> connecting") == 0);
   power.setHold(mesh::wifi::NetworkPowerHold::WebConfig, false);

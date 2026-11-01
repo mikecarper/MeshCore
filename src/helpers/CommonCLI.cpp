@@ -101,6 +101,7 @@
 #endif
 #ifdef ESP_PLATFORM
 #include <helpers/esp32/ManagementPassword.h>
+#include <helpers/esp32/WiFiStationDiagnostics.h>
 #include <WiFi.h>
 #include <WiFiClientSecure.h>
 #include <esp_wifi.h>
@@ -6147,6 +6148,12 @@ void CommonCLI::handleSetCmd(uint32_t sender_timestamp, char* command, char* rep
 void CommonCLI::handleGetCmd(uint32_t sender_timestamp, char* command, char* reply) {
   if (mesh::handleUsbModeCommand(command, reply, 160, Serial)) return;
   const char* config = &command[4];
+#if defined(ESP_PLATFORM)
+  if (strcmp(config, "wifi.diag") == 0) {
+    mesh::wifi::formatStationDiagnostics(reply, 160);
+    return;
+  }
+#endif
   if (mesh::configcap::isCommand(command)) {
     mesh::configcap::Features features;
 #if defined(NRF52_PLATFORM)

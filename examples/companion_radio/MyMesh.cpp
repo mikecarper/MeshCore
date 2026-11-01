@@ -5196,25 +5196,8 @@ bool MyMesh::handleLocalControlCommand(const char* command, char* reply,
   }
 
   if (strcmp(command, "get webui") == 0) {
-    const bool enabled = WebConfigServer::loadEnabled(true);
-    if (!_webconfig
-        || (!_webconfig->isRunning() && !_webconfig->isStopping())) {
-      snprintf(reply, reply_size, "> %s, inactive", enabled ? "on" : "off");
-    } else if (_webconfig->mode() == WebConfigServer::MODE_SETUP) {
-      char ssid[33] = {0};
-      char ip[16] = {0};
-      WebConfigServer::getSetupInfo(ssid, sizeof(ssid), ip, sizeof(ip));
-      snprintf(reply, reply_size, "> %s, setup AP %s http://%s/",
-               enabled ? "on" : "off", ssid, ip);
-    } else if (_webconfig->mode() == WebConfigServer::MODE_CONNECTING) {
-      snprintf(reply, reply_size, "> %s, connecting to WiFi",
-               enabled ? "on" : "off");
-    } else {
-      snprintf(reply, reply_size, "> %s, http://%s/",
-               enabled ? "on" : "off",
-               WiFi.localIP().toString().c_str());
-    }
-    return true;
+    return WebConfigServer::formatWebUIStatus(reply, reply_size,
+        WebConfigServer::loadEnabled(true), _webconfig);
   }
 
   if (strcmp(command, "set webui on") == 0
@@ -5696,8 +5679,8 @@ bool MyMesh::startWebConfig(bool force_ap, char* reply) {
 #endif
       return _webconfig->requestStart(true, reply);
     }
-    strcpy(reply, "Err: WebUI already running");
-    return false;
+    return WebConfigServer::formatWebUIStatus(reply, 160,
+        WebConfigServer::loadEnabled(true), _webconfig);
   }
   if (force_ap) {
 #ifdef WITH_MQTT_BRIDGE

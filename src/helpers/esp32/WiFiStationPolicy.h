@@ -4,6 +4,7 @@
 #include <string.h>
 #include <WiFi.h>
 #include <helpers/esp32/WiFiRadioPolicy.h>
+#include <helpers/esp32/WiFiStationDiagnostics.h>
 #include <helpers/WirelessControl.h>
 #if defined(MESH_SOAK_WIFI_KEY_OVERRIDE)
 #include "../../../tools/hil/S3SoakWiFiKey.h"
@@ -22,7 +23,15 @@ inline void setStationAutoReconnect(bool enabled) {
 }
 
 inline wl_status_t beginStation(const char* ssid, const char* password) {
-  if (mesh::wireless::control().blocked(mesh::wireless::WiFi)) return WL_CONNECT_FAILED;
+  beginStationDiagnostics(ssid);
+  if (mesh::wireless::control().blocked(mesh::wireless::WiFi)) {
+    noteStationDiagnosticPhase(ConnectionPhase::Blocked);
+    return WL_CONNECT_FAILED;
+  }
+  if (!ssid || !ssid[0]) {
+    noteStationDiagnosticPhase(ConnectionPhase::NoSSID);
+    return WL_CONNECT_FAILED;
+  }
 #if defined(MESH_SOAK_WIFI_KEY_OVERRIDE)
   password = mesh::hil::soakStationPassword(password);
 #endif
@@ -31,17 +40,20 @@ inline wl_status_t beginStation(const char* ssid, const char* password) {
   }
 
 #if (defined(MESH_PRIMARY_ESPNOW) && MESH_PRIMARY_ESPNOW) || defined(WITH_ESPNOW_BRIDGE)
-  if (!ssid || !ssid[0]) return WL_CONNECT_FAILED;
   setStationAutoReconnect(false);
   if (applyProtocolMask(WIFI_IF_STA) != ESP_OK
       || restoreEspNowChannel() != ESP_OK) {
+    noteStationDiagnosticPhase(ConnectionPhase::PolicyFailed);
     return WL_CONNECT_FAILED;
   }
 
   // Do not collide with WebConfig's asynchronous SSID scan. The caller's
   // normal retry path will try again after that scan completes.
   const int16_t prior_scan = WiFi.scanComplete();
-  if (prior_scan == WIFI_SCAN_RUNNING) return WL_IDLE_STATUS;
+  if (prior_scan == WIFI_SCAN_RUNNING) {
+    noteStationDiagnosticPhase(ConnectionPhase::ScanBusy);
+    return WL_IDLE_STATUS;
+  }
   if (prior_scan >= 0) WiFi.scanDelete();
 
   const uint8_t channel = activeEspNowChannel();
@@ -59,6 +71,7 @@ inline wl_status_t beginStation(const char* ssid, const char* password) {
   }
 
   if (best < 0) {
+    noteStationDiagnosticPhase(ConnectionPhase::APNotOnChannel);
     WiFi.scanDelete();
     restoreEspNowChannel();
     return WL_NO_SSID_AVAIL;
@@ -66,6 +79,7 @@ inline wl_status_t beginStation(const char* ssid, const char* password) {
 
   const uint8_t* selected_bssid = WiFi.BSSID(best);
   if (!selected_bssid) {
+    noteStationDiagnosticPhase(ConnectionPhase::PolicyFailed);
     WiFi.scanDelete();
     restoreEspNowChannel();
     return WL_CONNECT_FAILED;
@@ -75,6 +89,7 @@ inline wl_status_t beginStation(const char* ssid, const char* password) {
   WiFi.scanDelete();
   return WiFi.begin(ssid, password, channel, bssid);
 #else
+  noteStationDiagnosticPhase(ConnectionPhase::PolicyFailed);
   return WL_CONNECT_FAILED;
 #endif
 }
@@ -89,6 +104,7 @@ inline bool enforceStationChannel() {
   // write from every WebConfig and Companion loop while it is disconnected.
   if (WiFi.status() != WL_CONNECTED) return true;
   if (WiFi.channel() == activeEspNowChannel()) return true;
+  noteStationDiagnosticPhase(ConnectionPhase::PolicyFailed);
   WiFi.disconnect(false, false);
   restoreEspNowChannel();
   return false;

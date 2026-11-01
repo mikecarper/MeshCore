@@ -179,6 +179,7 @@ static void handleSave(PortalImpl* impl, WiFiClient& client, const char* body) {
   }
 
   if (WiFi.status() != WL_CONNECTED) {
+    mesh::wifi::noteStationDiagnosticPhase(mesh::wifi::ConnectionPhase::TimedOut);
     WiFi.disconnect();
     sendResponse(client, 200, "OK", "text/html",
                  "<!doctype html><meta name=viewport content='width=device-width'><h2>Connection failed</h2>"
@@ -341,6 +342,7 @@ static void portalTask(void* arg) {
         break;
       }
       if (static_cast<int32_t>(now - impl->recovery_deadline) >= 0) {
+        mesh::wifi::noteStationDiagnosticPhase(mesh::wifi::ConnectionPhase::TimedOut);
         WiFi.disconnect();
         impl->recovery_connecting = false;
         mesh::usbLoggingPort().println(

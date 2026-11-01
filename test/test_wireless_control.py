@@ -122,6 +122,21 @@ int main(int argc,char** argv) {
    f.run("set 2.4ghz on",Bluetooth);
    assert(strstr(f.reply,"no remaining")&&!f.c.pending()&&f.b.active==Bluetooth);
    f.run("set 2.4ghz on all",Bluetooth);f.tick();assert(f.b.active==All);
+ } else if(test==10){
+   Fixture f;f.b.active=0;
+   f.run("set wifi on");
+   assert(strcmp(f.reply,"OK - WiFi enabled for this boot; use get wifi.status to check connection")==0);
+   assert(f.c.pending()&&f.b.active==0); // Enabling does not claim a connection.
+   f.run("get wifi");assert(strcmp(f.reply,"wifi off (pending)")==0);
+   f.tick();f.run("get wifi");assert(strcmp(f.reply,"wifi on")==0);
+   f.run("set wifi off");
+   assert(strcmp(f.reply,"OK - WiFi disabled for this boot")==0);
+   f.tick();assert(f.b.active==0);
+   // Keep the independent ESP-NOW/master control responses unchanged.
+   f.run("set espnow on");
+   assert(strcmp(f.reply,"OK - espnow on requested (this boot); get espnow for status")==0);
+   f.tick();f.run("set 2.4ghz off");
+   assert(strcmp(f.reply,"OK - 2.4ghz off requested (this boot); get 2.4ghz for status")==0);
  }
 }
 '''
@@ -134,7 +149,7 @@ class WirelessControlTests(unittest.TestCase):
             binary = Path(tmp)/'wireless'
             subprocess.run([os.environ.get('CXX', 'g++'), '-std=c++11', '-Wall', '-Wextra', '-Werror',
                             '-I', str(ROOT/'src'), str(source), '-o', str(binary)], check=True)
-            for scenario in range(10):
+            for scenario in range(11):
                 with self.subTest(scenario=scenario):
                     subprocess.run([str(binary), str(scenario)], check=True)
 

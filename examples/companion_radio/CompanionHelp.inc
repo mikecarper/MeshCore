@@ -188,6 +188,7 @@ MESH_COMPANION_HELP_BEGIN
 MESH_COMPANION_HELP_END
 MESH_COMPANION_HELP_BEGIN
     "  get wifi.status (connection, saved/boot/live settings)\r\n"
+    "  get wifi.diag (attempts, last disconnect)\r\n"
 MESH_COMPANION_HELP_END
 MESH_COMPANION_HELP_BEGIN
     "  set wifi.protocol <bg|bgn> (saved; reboot required)\r\n"

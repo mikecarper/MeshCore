@@ -20,8 +20,10 @@ HARNESS = r'''
 #include <cstdint>
 #include <cstring>
 #include <helpers/WiFiNetworkPowerPolicy.h>
+#include <helpers/WiFiConnectionDiagnostics.h>
 
 namespace mesh { namespace wifi {
+void noteStationDiagnosticPhase(ConnectionPhase) {}
 bool espnow = false, station_allowed = true;
 int protocols = 0, channels = 0, associations = 0, restore_result = 0;
 bool espNowChannelConstrained() { return espnow; }

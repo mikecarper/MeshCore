@@ -623,10 +623,11 @@ to 63 characters and exact 64-character hexadecimal WPA/WPA2 PSKs; other
 64-character values and all longer values are rejected. MQTT observer WiFi
 passwords remain limited to 63 characters by their fixed persisted layout.
 
-`get webui` starts with the saved boot setting, then reports the current
-session. For example, `> off, http://192.168.1.130/` means automatic WebConfig
-startup is saved as off, but a temporary session started by `start webconfig`
-is currently active at that URL.
+`get webui` reports the current session first and labels its saved startup
+setting separately. For example,
+`> Web UI: running at http://192.168.1.130/; auto-start: off` means a temporary
+session is working at that URL and automatic startup after reboot is disabled.
+Repeating `start webconfig` shows that session's current status.
 
 ### WebConfig CLI terminal
 
@@ -843,10 +844,107 @@ provision WiFi and MQTT again.
 
 ## Troubleshooting
 
+### W12 access-point compatibility and connection status
+
+The W12's ESP32-S3 radio uses **2.4 GHz 802.11b/g/n**. Its network must offer
+that band and permit those client protocols. A newer WiFi 6/7 access point can
+keep its newer modes enabled while allowing compatible 2.4 GHz clients; the
+whole access point does not need to be restricted to WiFi 4.
+See [Espressif's ESP32-S3 specifications](https://www.espressif.com/en/products/socs/esp32-s3).
+
+WPA2-only is not a firmware requirement. The bundled ESP32-S3 SDK enables
+WPA3-Personal/SAE, and the Arduino station configuration permits optional PMF.
+Individual access-point/security combinations can still need troubleshooting.
+For a controlled comparison, try a visible, separate 2.4 GHz SSID using
+WPA2-Personal with AES, 20 MHz channel width and a locally permitted channel
+such as 1, 6 or 11. This is a diagnostic baseline, not a required downgrade of
+the main network. [Espressif documents WPA3 and PMF support here](https://docs.espressif.com/projects/esp-idf/en/v4.4.7/esp32s3/api-guides/wifi-security.html).
+
+`set wifi on` allows WiFi for this boot; it is not a confirmation that the
+station has connected or that the MQTT observer is running. On a build with
+MQTT, check `get mqtt.enabled` and `get mqtt.running`. Enable the observer with
+`set mqtt.enabled on` after configuring its WiFi and broker settings. An
+unsupported response to those MQTT commands indicates that the installed
+image does not provide that observer interface.
+
+`get wifi.status` reports a first saved-network join as `connecting`, even
+before the WebConfig HTTP server starts. Earlier builds could incorrectly
+report `off` during that interval while `start webconfig` correctly reported
+an already-running session. The status formatter now uses the role's live
+WebConfig session instead of relying on its attached HTTP routes.
+
+The `auto-start: on|off` label in `get webui` describes saved WebConfig
+**automatic startup**, separately from the live session. For example:
+
+```text
+set wifi on
+OK - WiFi enabled for this boot; use get wifi.status to check connection
+get wifi.status
+> WiFi: connecting to 'iot'
+get webui
+> Web UI: connecting to WiFi; auto-start: off
+```
+
+If the join fails and a recovery hotspot starts, the response explains both:
+
+```text
+get wifi.status
+> WiFi: could not connect to 'iot'; setup hotspot 'MC-D177' at http://192.168.4.1/
+get webui
+> Web UI: setup hotspot 'MC-D177' at http://192.168.4.1/; auto-start: off
+```
+
+The WiFi query also distinguishes idle (a saved network with no active join),
+off, paused, missing network, a lost connection and a connected station. A
+connected station includes its IP address and signal strength. A recovery
+hotspot can remain available briefly after the station connects; that combined
+state is reported as connected with the hotspot still available.
+A recovery setup AP appearing after a saved-network join means its 15-second
+connection deadline elapsed. That alone does not establish whether the cause
+was a missing network, authentication, association or another timeout.
+
+Run `get wifi.diag` before rebooting to inspect the connection attempt and
+the last driver disconnect reason. This works for WebConfig-only joins and
+Companions, including when MQTT has never started. The diagnostic history
+remains available after fallback opens a setup hotspot. It distinguishes
+joining the access point from being associated and waiting for an IP address,
+and includes the application attempt count and time since the last attempt.
+The count excludes retries performed internally by the driver. History is
+kept in memory and resets on reboot.
+History follows the last attempted SSID and clears when a different SSID is
+attempted. Immediately after editing saved settings, it can still describe
+the previous network until a connection to the new network is attempted.
+
+For example, a timed-out join with a recorded authentication failure can show:
+
+```text
+get wifi.diag
+> WiFi: connection timed out; tries: 1; last try: 18s ago
+Last drop: driver 202 auth failed (check password); 4s ago
+```
+
+The last disconnect includes the raw SDK reason number, a readable description
+and its age. For example, `201` means SSID not found, `202` authentication
+failed, `203` association failed and `204` handshake timeout. Authentication
+failure can suggest checking the password or access-point security settings;
+it does not establish that the password is wrong. SSID not found does not
+establish a security-mode mismatch. If the connection deadline expires
+without a driver reason, the diagnostic reports that limitation rather than
+guessing. A firmware-requested disconnect is distinguished from a failed join,
+so opening a setup hotspot or switching WiFi off does not replace the useful
+failure with a misleading router error.
+
+On MQTT builds, `set usb.logging on` and `set usb.debug on` also enable live
+USB event logs after the MQTT network owner initializes. `get mqttN.diag`
+describes broker/transport failures; use `get wifi.diag` for the station link.
+
+### MQTT observer diagnostics
+
 For an MQTT observer:
 
 ```text
 get wifi.status
+get wifi.diag
 get mqtt.enabled
 get mqtt.status
 get mqtt.stats
