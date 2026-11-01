@@ -601,6 +601,9 @@
     if (!profile || profile.role !== "companion" || profile.mode !== "full") {
       return false;
     }
+    // WM1110's computer port is CH340C -> Serial1. Its DFU ZIP does not
+    // imply native USB or a separate logging CDC, even without metadata.
+    if (/^wio_wm1110_companion_radio_full$/i.test(profile.target || "")) return false;
     const installKinds = Array.isArray(profile.installKinds)
       ? profile.installKinds
       : [];
@@ -1152,7 +1155,11 @@
         profile.variant = "mqtt-observer";
       }
     }
-    if (typeof controls.dedicatedUsbLogging === "boolean") {
+    if (/^wio_wm1110_companion_radio_full$/i.test(profile.target || "")) {
+      // Keep old/foreign controls from overriding this exact wired backend.
+      // Qualified current controls also publish an explicit source-bound false.
+      profile.dedicatedUsbLogging = false;
+    } else if (typeof controls.dedicatedUsbLogging === "boolean") {
       profile.dedicatedUsbLogging = controls.dedicatedUsbLogging;
     }
     const sensorSource = controls.sensorProfileSource;
