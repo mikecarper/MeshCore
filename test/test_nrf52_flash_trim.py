@@ -295,7 +295,9 @@ char* other(char* destination, const char* source) { return strcpy(destination, 
         companion = BuildEnvironment(BUILD_FLAGS=list(base["BUILD_FLAGS"]),
             SRC_FILTER=["+<../examples/companion_radio/*.cpp>"], CPPDEFINES=[],
             PIOENV="RAK_4631_companion_radio_full")
-        TRIM.install(companion)
+        with patch.object(TRIM, "install_ota_pacing_size") as size_policy:
+            TRIM.install(companion)
+            size_policy.assert_called_once_with(companion)
         self.assertIn(("MESH_CLI_SHARE_REPLY_COPIES", 1), companion["CPPDEFINES"])
         self.assertEqual(companion["BUILD_FLAGS"], base["BUILD_FLAGS"])
 
@@ -316,7 +318,9 @@ char* other(char* destination, const char* source) { return strcpy(destination, 
         explicit = BuildEnvironment(BUILD_FLAGS=["-DMESH_CLI_SHARE_REPLY_COPIES=1"],
             SRC_FILTER=["+<../examples/companion_radio/*.cpp>"], CPPDEFINES=[],
             PIOENV="RAK_4631_companion_radio_full")
-        TRIM.install(explicit)
+        with patch.object(TRIM, "install_ota_pacing_size") as size_policy:
+            TRIM.install(explicit)
+            size_policy.assert_called_once_with(explicit)
         self.assertNotIn(("MESH_CLI_SHARE_REPLY_COPIES", 1), explicit["CPPDEFINES"])
         self.assertEqual(explicit["BUILD_FLAGS"], ["-DMESH_CLI_SHARE_REPLY_COPIES=1"])
 

@@ -43,7 +43,12 @@ class CliReplyTextTests(unittest.TestCase):
             self.assertEqual(re.findall(r'\d+(?:\.\d+)?', old),
                              re.findall(r'\d+(?:\.\d+)?', new))
             self.assertFalse(old.startswith(('> ', '{', 'KEYBACKUP ', 'ACK')))
-            self.assertNotRegex(old.lower().replace('[reboot]', ''),
+            protected = old.lower().replace('[reboot]', '')
+            if (row['file'] == 'src/helpers/ota/OtaCli.cpp' and
+                    old == 'ERR self serve requires ESP32 or external-storage nRF52; host sources use ota folder'):
+                # This describes source capabilities, not host data or its retention.
+                protected = protected.replace('host sources use ota folder', 'ota folder')
+            self.assertNotRegex(protected,
                 r'host|replay|password|login|save unconfirmed|reboot|'
                 r'retained|warning|applying in|restore scheduled')
             for protected in ('[reboot]', 'default'):
@@ -61,6 +66,29 @@ class CliReplyTextTests(unittest.TestCase):
             # token, including command tests, branches, calls and arguments.
             self.assertEqual(hashlib.sha256(original_tokens(source)).hexdigest(),
                              fixture['noncompact_tokens_sha256'][file], file)
+
+    def test_ota_prose_keeps_discovery_and_retry_parser_keywords(self):
+        messages = {row['verbose']: row['concise']
+                    for row in json.loads(FIXTURE.read_text())['messages']
+                    if row['file'] == 'src/helpers/ota/OtaCli.cpp'}
+        self.assertEqual(len(messages), 15)
+        self.assertGreaterEqual(sum(len(old) - len(new)
+                                    for old, new in messages.items()), 240)
+        for prefix in ('No updates seen yet', 'ERR no such update',
+                       'no trusted signer keys'):
+            rows = [(old, new) for old, new in messages.items() if old.startswith(prefix)]
+            self.assertEqual(len(rows), 1, prefix)
+            self.assertTrue(rows[0][1].startswith(prefix), prefix)
+        for old, new in messages.items():
+            self.assertFalse(old.startswith(('OK', 'usage:', 'ERR usage:')))
+            for token in re.findall(r'`([^`]+)`', old):
+                self.assertIn(token, new)
+            if 'disabled' in old:
+                self.assertIn('disabled', new)
+            if 'cannot install' in old:
+                self.assertIn('cannot install', new)
+            if 'cannot update its bootloader' in old:
+                self.assertIn('cannot update its bootloader', new)
 
     def test_profile_activation_is_explicit_and_default_is_off(self):
         fixture = json.loads(FIXTURE.read_text())

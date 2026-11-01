@@ -2,6 +2,7 @@
 #include <helpers/ota/OtaByteIO.h>
 #include <helpers/ota/OtaManager.h>
 #include <helpers/ota/MotaSeederProto.h>
+#include <helpers/CLIReplyText.h>
 #include <Utils.h>
 #include "test_ota/mota_vectors.h"
 #include <algorithm>

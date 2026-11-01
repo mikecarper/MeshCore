@@ -6,6 +6,8 @@
 #include "OtaFormat.h"
 #include "OtaMemoryPolicy.h"
 #include "OtaTiming.h"
+#include "OtaReceiveCadence.h"
+#include "OtaPacketPacer.h"
 #include "OtaProtocol.h"
 #include "OtaDirectWire.h"
 #include "OtaByteIO.h"
@@ -13,6 +15,9 @@
 #include "MotaContainer.h"
 #include "OtaSource.h"
 #include "MerkleTree.h"
+#ifndef OTA_TRANSFER_DIAGNOSTICS
+#define OTA_TRANSFER_DIAGNOSTICS 1
+#endif
 #if OTA_BOUNDED_SOURCE_PROOFS
 #include "SourceMerkleProof.h"
 #endif
@@ -493,7 +498,39 @@ public:
   float speed() const { return _speed; }
   // Sender-only, loss-responsive packet pacing. This does not alter discovery,
   // proof, or retry timers; the user's persisted speed remains an upper bound.
-  float adaptivePacketSpeed() const { return _adaptive_packet_speed; }
+  float adaptivePacketSpeed() const { return _packet_pacer.pace(); }
+  float adaptivePacketSpeed(uint8_t profile) const { return _packet_pacer.pace(profile); }
+  float adaptivePacketSpeed(uint8_t profile, uint32_t generation) const;
+  void noteResponseTransmitted(const uint8_t* msg, uint16_t len,
+                               const OtaReplyRoute& route, uint32_t now_ms);
+  void noteResponseFailed(const uint8_t* msg, uint16_t len,
+                          const OtaReplyRoute& route, uint32_t now_ms);
+  // Local diagnostics; no extra telemetry packets or protocol fields.
+  enum class WireChoice : uint8_t {
+    None, Deflate, LegacyRequest, RawRequest, HostRaw, NoEncoder, NoWorkspace, NoGain, EncodeFailed
+  };
+  enum class WireFallback : uint8_t { None, LegacyPeer, V2Timeout, V2Stall, InflateFailed };
+  struct WireStats {
+    uint32_t data_packets = 0;
+    uint32_t deflated_packets = 0;
+    uint32_t data_bytes = 0;
+    uint16_t raw_bytes = 0;
+    uint16_t encoded_bytes = 0;
+    uint16_t fallbacks = 0;
+    WireChoice choice = WireChoice::None;
+    WireFallback fallback = WireFallback::None;
+  };
+  const WireStats& wireStats() const {
+#if OTA_TRANSFER_DIAGNOSTICS
+    return _wire_stats;
+#else
+    static const WireStats unavailable{};
+    return unavailable;
+#endif
+  }
+  bool fetchWireV2() const { return _wire_v2_session; }
+  bool fetchAllowsDeflate() const { return _wire_allow_deflate; }
+  uint32_t observedDataIntervalMs() const { return _receive_cadence.serviceIntervalMs(0); }
   uint32_t pacedDelay(uint32_t ms) const { return scaleDelay(ms, _speed); }
   // Faster pacing cannot shorten a loss-recovery deadline below the existing
   // physical packet-flight allowance. Slower pacing expands that allowance.
@@ -506,6 +543,9 @@ public:
   // Feed the actual TempRadio packet airtime and dispatcher transmit-spacing factor. The fetch retry
   // deadline then follows SF/BW, configured airtime budget, flight width, and observed/configured path.
   void set_link_timing(uint32_t max_packet_airtime_ms, uint16_t tx_spacing_permille) {
+    if (_radio_packet_airtime_ms != max_packet_airtime_ms ||
+        _tx_spacing_permille != (tx_spacing_permille < 1000 ? 1000 : tx_spacing_permille))
+      _receive_cadence.reset();
     _radio_packet_airtime_ms = max_packet_airtime_ms;
     _tx_spacing_permille = tx_spacing_permille < 1000 ? 1000 : tx_spacing_permille;
   }
@@ -718,8 +758,11 @@ private:
   bool queueServeJob(const uint8_t* mid, uint16_t block, uint16_t want_mask,
                      bool wire_v2 = false, bool allow_deflate = false,
                      bool extended_length = false);
-  void noteServedRequestPacing(const uint8_t* mid, uint16_t block,
-                               uint16_t want, uint16_t full_mask);
+  bool responseDataKey(const uint8_t* msg, uint16_t len, const OtaReplyRoute& route,
+                       OtaPacketPacer::Key& key, uint16_t& bit, uint16_t& full_mask,
+                       bool& deflated, uint16_t& data_bytes) const;
+  uint32_t pacingGraceMs() const;
+  uint32_t retryServiceIntervalMs(uint32_t physical_interval_ms) const;
   bool queueManifestJob(const uint8_t* mid, uint16_t want_mask, bool leaves = false);
   uint32_t manifestEgressGapMs() const;
   uint32_t proofEgressGapMs() const;
@@ -753,7 +796,7 @@ private:
   void requestMissing();                                  // start a flight, or recover one stalled slot
   uint16_t wireRequestMask(uint32_t block, uint16_t need, uint16_t received,
                            uint16_t encoded_len) const;
-  void downgradeWireToLegacy();                           // old source answered/ignored the v2 request profile
+  void downgradeWireToLegacy(WireFallback reason);        // old source answered/ignored the v2 request profile
   void downgradeDirectTransport();                       // preserve committed blocks; discard unverified geometry
   void invalidateDirectTransport();                      // retire already-admitted direct raw frames
   uint16_t fetchFragmentData() const {
@@ -817,14 +860,7 @@ private:
   };
   ServeJob   _serve_jobs[OTA_SERVE_QUEUE];
   uint8_t    _n_serve_jobs = 0;
-  float      _adaptive_packet_speed = 1.0f;
-  uint8_t    _pace_clean_blocks = 0;
-  uint8_t    _pace_mid[4] = {0};
-  uint16_t   _pace_last_full_block = 0;
-  bool       _pace_has_mid = false;
-  uint8_t    _pace_loss_mid[4] = {0};
-  uint16_t   _pace_last_loss_block = 0;
-  bool       _pace_has_loss = false;
+  OtaPacketPacer _packet_pacer;
   struct ManifestServeJob {
     OtaReplyRoute route;
     uint8_t mid[4];
@@ -837,7 +873,6 @@ private:
   uint8_t    _n_manifest_jobs = 0;
   OtaReplyRoute _request_route;
   const OtaReplyRoute* _reply_route = nullptr;
-  uint8_t    _serve_block[OTA_MAX_BLOCK];
   uint16_t   _serve_block_len = 0;
   bool       _serve_block_loaded = false;
   // Raw/host-encoded _serve_block, or device-encoder output in ServeView::scratch.
@@ -850,6 +885,9 @@ private:
   void*              _deflate_encode_ctx = nullptr;
   OtaDeflateDecodeFn _deflate_decode = nullptr;
   void*              _deflate_decode_ctx = nullptr;
+#if OTA_TRANSFER_DIAGNOSTICS
+  WireStats _wire_stats;
+#endif
 
   // fetch
   OtaStore*  _fetch = nullptr;
@@ -917,12 +955,12 @@ private:
     uint8_t wire_stalls = 0;                    // eventually unlock a vanished representation and retry cleanly
     uint8_t buf[OTA_MAX_BLOCK];
   };
-  ReassemblySlot _reasm[OTA_FETCH_PIPELINE];
   uint8_t    _retry_slot = 0;                   // round-robin stalled-slot retry cursor
   uint8_t    _pipeline_width = OTA_FETCH_PIPELINE_INITIAL; // live request window, adaptive up to array capacity
   bool       _flight_dirty = false;             // a timeout/bad proof required recovery in this flight
   bool       _flight_request_pending = false;   // local queue has not accepted this flight yet
   uint32_t   _fetch_wait_since_ms = 0;           // last new fragment/proof/request; retry deadline anchor
+  OtaReceiveCadence _receive_cadence;
   uint32_t   _radio_packet_airtime_ms = 0;       // measured for MAX_TRANS_UNIT at active SF/BW
   float      _speed = OTA_SPEED_DEFAULT;
   uint16_t   _tx_spacing_permille = 2000;        // 1/duty-cycle; default airtime factor 1 => 50% TX
@@ -980,6 +1018,10 @@ private:
   uint8_t    _n_cat = 0;
   bool       _catalog_browse_requested = false;
   uint32_t   _now_ms = 0;                       // coarse clock (fed by set_clock; for ages/LRU/jitter)
+  // Keep scalar state within Thumb's short field-access range. These buffers
+  // have no persistent or wire layout and retain their existing capacity.
+  uint8_t _serve_block[OTA_MAX_BLOCK];
+  ReassemblySlot _reasm[OTA_FETCH_PIPELINE];
 };
 
 } // namespace ota

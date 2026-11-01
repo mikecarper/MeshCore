@@ -17,6 +17,7 @@ class OtaSelfServePolicyTest(unittest.TestCase):
         cli = (ROOT / "src/helpers/ota/OtaCli.cpp").read_text(encoding="ascii")
         branch = method(cli, 'else if (is_cmd(a, "self|id", &rest))').removeprefix("else ")
         harness = r'''
+#include <helpers/CLIReplyText.h>
 #include <cassert>
 #include <cstdint>
 #include <cstdio>
@@ -362,6 +363,7 @@ int main() {
                 '\nreturn true;\n}\n')
             source = path / "test.cpp"
             source.write_text(r'''
+#include <helpers/CLIReplyText.h>
 #include <helpers/ota/OtaByteIO.h>
 #include <cassert>
 #include <cstdio>

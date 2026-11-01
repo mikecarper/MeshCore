@@ -3213,45 +3213,86 @@ TEST(OtaTransfer, ServerPacesOneKilobyteBlockAndProactiveProofWithBackpressure) 
   EXPECT_EQ(server.pendingServeJobs(), 0u);
 }
 
-TEST(OtaTransfer, SenderPacketPaceBacksOffOnDistinctLostBlocks) {
+TEST(OtaTransfer, SenderPacketPaceNeedsActualCompletedResponseEvidence) {
   MotaManifest manifest;
   ASSERT_TRUE(mota_parse(SIM_MOTA_1K, SIM_MOTA_1K_LEN, manifest));
-  ASSERT_EQ(manifest.block_count, 3u);
-
   OtaManager server;
   CapturedMessages sent;
   server.begin(0, capture_send, &sent);
   ASSERT_TRUE(server.serve(SIM_MOTA_1K, SIM_MOTA_1K_LEN));
-  EXPECT_FLOAT_EQ(server.adaptivePacketSpeed(), 1.0f);
-
+  OtaReplyRoute route;
+  route.profile = 0;
+  route.generation = 7;
   auto request = [&](uint16_t block, uint16_t mask) {
     ReqMsg req{};
     memcpy(req.manifest_id, manifest.merkle_root, 4);
-    req.block_idx = block;
-    req.want_mask = mask;
+    req.block_idx = block; req.want_mask = mask;
     uint8_t wire[MAX_PACKET_PAYLOAD];
     const uint16_t len = encode_req(wire, sizeof(wire), req);
-    return len != 0 && server.on_message(wire, len);
+    return len && server.on_message(wire, len, route);
   };
-
   ASSERT_TRUE(request(0, 0xFFFF));
+  ASSERT_TRUE(request(0, 1));  // sparse while still waiting for source/queue/CAD
   EXPECT_FLOAT_EQ(server.adaptivePacketSpeed(), 1.0f);
-  ASSERT_TRUE(request(0, 0x0001));
-  EXPECT_FLOAT_EQ(server.adaptivePacketSpeed(), 0.5f);
-  ASSERT_TRUE(request(0, 0x0001));
-  EXPECT_FLOAT_EQ(server.adaptivePacketSpeed(), 0.5f); // same hole cannot ratchet down
-  ASSERT_TRUE(request(1, 0x0001));
-  EXPECT_FLOAT_EQ(server.adaptivePacketSpeed(), 0.4f);
-  ASSERT_TRUE(request(0, 0x0001));
-  EXPECT_FLOAT_EQ(server.adaptivePacketSpeed(), 0.3f);
-  ASSERT_TRUE(request(1, 0x0001));
-  EXPECT_FLOAT_EQ(server.adaptivePacketSpeed(), 0.25f); // automatic floor
-  ASSERT_TRUE(request(1, 0x0001));
-  EXPECT_FLOAT_EQ(server.adaptivePacketSpeed(), 0.25f);
-
-  // Reinitializing a source starts with the configured maximum again.
+  for (unsigned i = 0; i < 7; ++i) server.serviceEgress();
+  ASSERT_EQ(sent.items.size(), 7u);
+  server.set_clock(1000);
+  ASSERT_TRUE(request(0, 1));  // radio admission is still not TX completion
+  EXPECT_FLOAT_EQ(server.adaptivePacketSpeed(), 1.0f);
+  OtaReplyRoute wrong = route;
+  wrong.profile = 1;
+  for (const auto& message : sent.items) {
+    server.noteResponseTransmitted(message.data(), message.size(), wrong, 1000);
+  }
+  ASSERT_TRUE(request(0, 1));
+  EXPECT_FLOAT_EQ(server.adaptivePacketSpeed(), 1.0f);
+  for (const auto& message : sent.items) {
+    server.noteResponseTransmitted(message.data(), message.size(), route, 1000);
+  }
+  if (OTA_TRANSFER_DIAGNOSTICS) EXPECT_EQ(server.wireStats().data_packets, 7u);
+  if (OTA_TRANSFER_DIAGNOSTICS) EXPECT_EQ(server.wireStats().deflated_packets, 0u);
+  if (OTA_TRANSFER_DIAGNOSTICS) EXPECT_EQ(server.wireStats().data_bytes, 1024u);
+  if (OTA_TRANSFER_DIAGNOSTICS) EXPECT_EQ(server.wireStats().choice, OtaManager::WireChoice::LegacyRequest);
+  ASSERT_TRUE(request(0, 1));  // request could have been in flight before final TX
+  EXPECT_FLOAT_EQ(server.adaptivePacketSpeed(), 1.0f);
+  server.set_clock(2000);
+  ASSERT_TRUE(request(0, 1));
+  EXPECT_FLOAT_EQ(server.adaptivePacketSpeed(0, 7), 0.5f);
+  EXPECT_FLOAT_EQ(server.adaptivePacketSpeed(1, 7), 1.0f);
+  ASSERT_TRUE(request(0, 1));
+  EXPECT_FLOAT_EQ(server.adaptivePacketSpeed(), 0.5f); // duplicate loss cannot ratchet
+  route.generation = 8;
+  ASSERT_TRUE(request(0, 1));
+  EXPECT_FLOAT_EQ(server.adaptivePacketSpeed(), 1.0f); // quiet replacement profile starts fresh
   server.begin(0, capture_send, &sent);
   EXPECT_FLOAT_EQ(server.adaptivePacketSpeed(), 1.0f);
+}
+
+TEST(OtaTransfer, FailedSourceTransmissionCanBeRequestedAgainWithoutLossPenalty) {
+  MotaManifest manifest;
+  ASSERT_TRUE(mota_parse(SIM_MOTA_1K, SIM_MOTA_1K_LEN, manifest));
+  OtaManager server;
+  CapturedMessages sent;
+  server.begin(0, capture_send, &sent);
+  ASSERT_TRUE(server.serve(SIM_MOTA_1K, SIM_MOTA_1K_LEN));
+  ReqMsg req{};
+  memcpy(req.manifest_id, manifest.merkle_root, 4);
+  req.want_mask = 0xFFFF;
+  uint8_t wire[MAX_PACKET_PAYLOAD];
+  uint16_t len = encode_req(wire, sizeof(wire), req);
+  ASSERT_TRUE(server.on_message(wire, len));
+  server.serviceEgress();
+  ASSERT_EQ(sent.items.size(), 1u);
+  server.noteResponseFailed(sent.items[0].data(), sent.items[0].size(), {}, 100);
+  req.want_mask = 1;
+  len = encode_req(wire, sizeof(wire), req);
+  server.set_clock(2000);
+  ASSERT_TRUE(server.on_message(wire, len));
+  server.serviceEgress();
+  ASSERT_EQ(sent.items.size(), 2u);
+  EXPECT_EQ(sent.items[0], sent.items[1]);
+  EXPECT_FLOAT_EQ(server.adaptivePacketSpeed(), 1.0f);
+  if (OTA_TRANSFER_DIAGNOSTICS) EXPECT_EQ(server.wireStats().data_packets, 0u);
 }
 
 TEST(OtaTransfer, LiteralLegacyFullMaskServesTwoKilobyteBlockInThirteenFragments) {
@@ -3355,8 +3396,49 @@ TEST(OtaTransfer, NegotiatedV2Carries171RawBytesAndRepeatsRepresentationId) {
                                                       manifest.block_size() - offset));
     if (i + 1 < fragment_count) EXPECT_EQ(sent.items.back().size(), MAX_PACKET_PAYLOAD);
     memcpy(reassembled.data() + offset, data.data + OTA_DATA_V2_STREAM_ID_BYTES, slice_len);
+    server.noteResponseTransmitted(sent.items.back().data(), sent.items.back().size(), {}, i);
   }
   EXPECT_EQ(0, memcmp(reassembled.data(), manifest.payload, manifest.block_size()));
+  if (OTA_TRANSFER_DIAGNOSTICS) EXPECT_EQ(server.wireStats().data_packets, 6u);
+  if (OTA_TRANSFER_DIAGNOSTICS) EXPECT_EQ(server.wireStats().data_bytes, 1024u);
+  if (OTA_TRANSFER_DIAGNOSTICS) EXPECT_EQ(server.wireStats().choice, OtaManager::WireChoice::NoEncoder);
+}
+
+TEST(OtaTransfer, CompletedExtendedV2AndDirectDataReportActualCompression) {
+  MotaManifest manifest;
+  ASSERT_TRUE(mota_parse(SIM_MOTA_2K, SIM_MOTA_2K_LEN, manifest));
+  for (bool direct : {false, true}) {
+    OtaManager server;
+    CapturedMessages sent;
+    VectorDeflateCodec encoder{};
+    encoder.manifest = &manifest;
+    server.begin(0, capture_send, &sent);
+    server.set_direct_transport_enabled(direct);
+    server.set_transport_deflate_encoder(vector_2k_wire_encode, &encoder);
+    ASSERT_TRUE(server.serve(SIM_MOTA_2K, SIM_MOTA_2K_LEN));
+    OtaReplyRoute route;
+    route.profile = 1; route.generation = 19; route.direct = direct;
+    ReqMsg request{};
+    memcpy(request.manifest_id, manifest.merkle_root, 4);
+    request.want_mask = ota_req_make_v2(0x0FFFu, true, true);
+    uint8_t wire[MAX_PACKET_PAYLOAD];
+    ASSERT_TRUE(server.on_message(wire, encode_req(wire, sizeof(wire), request), route));
+    const uint32_t encoded = SIM_MOTA_2K_DEFLATED_LENGTHS[0];
+    const uint32_t fragment_data = direct ? OTA_DIRECT_FRAG_DATA : OTA_FRAG_DATA_V2;
+    const uint32_t fragments = (encoded + fragment_data - 1) / fragment_data;
+    for (uint32_t i = 0; i < fragments; ++i) {
+      server.serviceEgress();
+      ASSERT_EQ(sent.items.size(), i + 1);
+      server.noteResponseTransmitted(sent.items.back().data(), sent.items.back().size(), route, i);
+      server.noteResponseTransmitted(sent.items.back().data(), sent.items.back().size(), route, i);
+    }
+    if (OTA_TRANSFER_DIAGNOSTICS) EXPECT_EQ(server.wireStats().data_packets, fragments);
+    if (OTA_TRANSFER_DIAGNOSTICS) EXPECT_EQ(server.wireStats().deflated_packets, fragments);
+    if (OTA_TRANSFER_DIAGNOSTICS) EXPECT_EQ(server.wireStats().data_bytes, encoded);
+    if (OTA_TRANSFER_DIAGNOSTICS) EXPECT_EQ(server.wireStats().raw_bytes, 2048u);
+    if (OTA_TRANSFER_DIAGNOSTICS) EXPECT_EQ(server.wireStats().encoded_bytes, encoded);
+    if (OTA_TRANSFER_DIAGNOSTICS) EXPECT_EQ(server.wireStats().choice, OtaManager::WireChoice::Deflate);
+  }
 }
 
 TEST(OtaTransfer, LegacyProofRequestBypassesProactiveProofTurnaround) {
@@ -3882,6 +3964,8 @@ TEST(OtaTransfer, FailedTwoKilobyteInflateRetriesRawWithoutLeavingExtendedV2) {
   EXPECT_EQ(decoder.calls, 1u);
   EXPECT_EQ(client.blocksHave(), 0u);
   EXPECT_TRUE(sent.items.empty());                         // retry is paced by the normal deadline
+  if (OTA_TRANSFER_DIAGNOSTICS) EXPECT_EQ(client.wireStats().fallback, OtaManager::WireFallback::InflateFailed);
+  if (OTA_TRANSFER_DIAGNOSTICS) EXPECT_EQ(client.wireStats().fallbacks, 1u);
 
   const uint32_t timeout = client.fetchRetryTimeoutMs();
   client.set_clock(100 + timeout);
@@ -5809,6 +5893,177 @@ TEST(OtaSpeed, MissingProofFallbackStaysArmedAtMillisRollover) {
   client.set_clock(1); client.serviceEgress();
   ASSERT_EQ(sent.items.size(), 1u);
   EXPECT_EQ(ota_msg_type(sent.items.back().data(), sent.items.back().size()), OTA_REQ_PROOF);
+}
+
+static void start_cadence_fetch(OtaManager& client, OtaStoreRam<4096>& store,
+                                CapturedMessages& sent, const MotaManifest& manifest,
+                                uint32_t now = 100) {
+  client.begin(SIM_TARGET_ID, capture_send, &sent);
+  client.set_fetch_store(&store);
+  client.set_max_hops(0);
+  client.set_link_timing(100, 2000);
+  client.set_clock(now);
+  ASSERT_EQ(client.pull(manifest.merkle_root, manifest.target_id), OtaManager::PULL_STARTED);
+  deliver_manifest_fragment(client, manifest.merkle_root, 0,
+                            manifest.manifest_start, OTA_MF_FRAG);
+  deliver_manifest_fragment(client, manifest.merkle_root, 1,
+                            manifest.manifest_start + OTA_MF_FRAG,
+                            (uint16_t)(MOTA_MFL - OTA_MF_FRAG));
+  ASSERT_EQ(client.fetchState(), OtaManager::FETCHING);
+  client.note_rx_path_hops(0);
+}
+
+static bool deliver_cadence_fragment(OtaManager& client, const MotaManifest& manifest,
+                                     uint16_t block, uint8_t fragment, uint32_t now,
+                                     bool wire_v2, bool shortened = false) {
+  const uint32_t block_offset = block * manifest.block_size();
+  const uint16_t block_length = (uint16_t)std::min<uint32_t>(manifest.block_size(),
+      manifest.payload_size - block_offset);
+  const uint16_t fragment_size = wire_v2 ? OTA_FRAG_DATA_V2 : OTA_FRAG_DATA;
+  const uint16_t offset = fragment * fragment_size;
+  const uint16_t length = (uint16_t)std::min<uint32_t>(fragment_size, block_length - offset);
+  DataMsg data{};
+  memcpy(data.manifest_id, manifest.merkle_root, 4);
+  data.block_idx = block;
+  uint8_t representation[OTA_DATA_V2_STREAM_ID_BYTES + OTA_FRAG_DATA_V2];
+  if (wire_v2) {
+    if (!ota_data_v2_pack(fragment, block_length, false, data.frag_off)) return false;
+    mh4(representation, manifest.payload + block_offset, block_length);
+    memcpy(representation + OTA_DATA_V2_STREAM_ID_BYTES,
+           manifest.payload + block_offset + offset, length);
+    data.data = representation;
+    data.data_len = (uint16_t)(OTA_DATA_V2_STREAM_ID_BYTES + length);
+  } else {
+    data.frag_off = offset;
+    data.data = manifest.payload + block_offset + offset;
+    data.data_len = length;
+  }
+  if (shortened) --data.data_len;
+  uint8_t wire[MAX_PACKET_PAYLOAD];
+  const uint16_t wire_length = encode_data(wire, sizeof(wire), data);
+  if (!wire_length) return false;
+  client.set_clock(now);
+  return client.on_message(wire, wire_length);
+}
+
+TEST(OtaReceiveCadenceIntegration, SlowValidDataExtendsThePhysicalRetryAllowance) {
+  MotaManifest manifest;
+  ASSERT_TRUE(mota_parse(SIM_MOTA_1K, SIM_MOTA_1K_LEN, manifest));
+  ASSERT_GE(manifest.block_size(), 3u * OTA_FRAG_DATA_V2);
+  for (bool wire_v2 : {false, true}) {
+    uint32_t intervals[2] = {};
+    for (unsigned slow = 0; slow < 2; ++slow) {
+      OtaManager client;
+      OtaStoreRam<4096> store;
+      CapturedMessages sent;
+      start_cadence_fetch(client, store, sent, manifest);
+      ASSERT_TRUE(deliver_cadence_fragment(client, manifest, 0, 0, 100, wire_v2));
+      ASSERT_TRUE(deliver_cadence_fragment(client, manifest, 0, 1,
+                                           slow ? 2100 : 300, wire_v2));
+      intervals[slow] = client.fetchRetryTimeoutMs();
+      EXPECT_GE(intervals[slow], (uint32_t)OTA_FETCH_RETRY_PARTIAL_MIN_MS);
+      EXPECT_LE(intervals[slow], (uint32_t)OTA_FETCH_RETRY_MAX_MS);
+    }
+    EXPECT_GT(intervals[1], intervals[0]);
+  }
+}
+
+TEST(OtaReceiveCadenceIntegration, DuplicateAndMalformedDataDoNotTrainRetryTiming) {
+  MotaManifest manifest;
+  ASSERT_TRUE(mota_parse(SIM_MOTA_1K, SIM_MOTA_1K_LEN, manifest));
+  for (bool wire_v2 : {false, true}) {
+    OtaManager client;
+    OtaStoreRam<4096> store;
+    CapturedMessages sent;
+    start_cadence_fetch(client, store, sent, manifest);
+    ASSERT_TRUE(deliver_cadence_fragment(client, manifest, 0, 0, 100, wire_v2));
+    ASSERT_TRUE(deliver_cadence_fragment(client, manifest, 0, 1, 2100, wire_v2));
+    const uint32_t trained = client.fetchRetryTimeoutMs();
+    ASSERT_TRUE(deliver_cadence_fragment(client, manifest, 0, 1, 30000, wire_v2));
+    EXPECT_EQ(client.fetchRetryTimeoutMs(), trained);
+    EXPECT_FALSE(deliver_cadence_fragment(client, manifest, 0, 2, 50000, wire_v2, true));
+    EXPECT_EQ(client.fetchRetryTimeoutMs(), trained);
+  }
+}
+
+TEST(OtaReceiveCadenceIntegration, SlowSettingDoesNotMultiplyObservedPacingTwice) {
+  MotaManifest manifest;
+  ASSERT_TRUE(mota_parse(SIM_MOTA_1K, SIM_MOTA_1K_LEN, manifest));
+  for (bool wire_v2 : {false, true}) {
+    uint32_t retry[2], proof[2];
+    for (unsigned slow = 0; slow < 2; ++slow) {
+      OtaManager client;
+      OtaStoreRam<4096> store;
+      CapturedMessages sent;
+      start_cadence_fetch(client, store, sent, manifest);
+      ASSERT_TRUE(client.set_speed(slow ? 0.25f : 1.0f));
+      ASSERT_TRUE(deliver_cadence_fragment(client, manifest, 0, 0, 100, wire_v2));
+      ASSERT_TRUE(deliver_cadence_fragment(client, manifest, 0, 1, 2100, wire_v2));
+      EXPECT_EQ(client.observedDataIntervalMs(), 2000u);
+      retry[slow] = client.fetchRetryTimeoutMs();
+      proof[slow] = client.proofGraceMs();
+    }
+    // Physical floors and guards may grow, but the measured two-second DATA
+    // gap already includes source pacing and must not become eight seconds.
+    EXPECT_GE(retry[1], retry[0]);
+    EXPECT_LT(retry[1], retry[0] * 2u);
+    EXPECT_GE(proof[1], proof[0]);
+    EXPECT_LE(proof[1], proof[0] + 1000u);
+  }
+}
+
+TEST(OtaReceiveCadenceIntegration, NewFlightExcludesIdleButRetainsItsLearnedInterval) {
+  MotaManifest manifest;
+  ASSERT_TRUE(mota_parse(SIM_MOTA_1K, SIM_MOTA_1K_LEN, manifest));
+  ASSERT_GE(manifest.block_count, 2u);
+  for (bool wire_v2 : {false, true}) {
+    uint32_t intervals[2] = {};
+    for (unsigned idle = 0; idle < 2; ++idle) {
+      OtaManager client;
+      OtaStoreRam<4096> store;
+      CapturedMessages sent;
+      start_cadence_fetch(client, store, sent, manifest);
+      ASSERT_TRUE(deliver_cadence_fragment(client, manifest, 0, 0, 100, wire_v2));
+      ASSERT_TRUE(deliver_cadence_fragment(client, manifest, 0, 1, 2100, wire_v2));
+      if (wire_v2) deliver_verified_v2_raw_block(client, manifest, 0);
+      else deliver_verified_block(client, manifest, 0);
+      ASSERT_EQ(client.blocksHave(), 1u);
+      ASSERT_EQ(client.fetchState(), OtaManager::FETCHING);
+      ASSERT_TRUE(deliver_cadence_fragment(client, manifest, 1, 0,
+                                           idle ? 22100 : 2200, wire_v2));
+      intervals[idle] = client.fetchRetryTimeoutMs();
+      EXPECT_GE(intervals[idle], 4000u); // the 2 s service estimate survived
+    }
+    EXPECT_EQ(intervals[0], intervals[1]); // the 20 s idle did not become a DATA gap
+  }
+}
+
+TEST(OtaReceiveCadenceIntegration, ANewFetchDoesNotInheritItsPredecessorsCadence) {
+  MotaManifest manifest;
+  ASSERT_TRUE(mota_parse(SIM_MOTA_1K, SIM_MOTA_1K_LEN, manifest));
+  for (bool wire_v2 : {false, true}) {
+    OtaManager client;
+    OtaStoreRam<4096> first_store;
+    CapturedMessages sent;
+    start_cadence_fetch(client, first_store, sent, manifest);
+    ASSERT_TRUE(deliver_cadence_fragment(client, manifest, 0, 0, 100, wire_v2));
+    ASSERT_TRUE(deliver_cadence_fragment(client, manifest, 0, 1, 2100, wire_v2));
+    const uint32_t old_interval = client.fetchRetryTimeoutMs();
+    client.reset_session();
+    OtaStoreRam<4096> next_store;
+    client.set_fetch_store(&next_store);
+    client.set_clock(30000);
+    ASSERT_EQ(client.pull(manifest.merkle_root, manifest.target_id), OtaManager::PULL_STARTED);
+    deliver_manifest_fragment(client, manifest.merkle_root, 0,
+                              manifest.manifest_start, OTA_MF_FRAG);
+    deliver_manifest_fragment(client, manifest.merkle_root, 1,
+                              manifest.manifest_start + OTA_MF_FRAG,
+                              (uint16_t)(MOTA_MFL - OTA_MF_FRAG));
+    ASSERT_EQ(client.fetchState(), OtaManager::FETCHING);
+    client.note_rx_path_hops(0);
+    ASSERT_TRUE(deliver_cadence_fragment(client, manifest, 0, 0, 30100, wire_v2));
+    EXPECT_LT(client.fetchRetryTimeoutMs(), old_interval);
+  }
 }
 
 #include "test_ota_direct_manager.inc"

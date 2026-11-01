@@ -28,10 +28,16 @@ class OtaDirectManagerTests(unittest.TestCase):
             sources = ("OtaManager.cpp", "OtaProtocol.cpp", "MotaContainer.cpp",
                        "MerkleTree.cpp", "FirmwareInfo.cpp", "OtaDeflate.cpp",
                        "OtaApply.cpp", "MotaSourceSerial.cpp", "FolderMotaStore.cpp")
-            binary = directory / "ota-core"
+            for diagnostics in (1, 0):
+                self.run_core(directory, googletest, flags, sources, objects, diagnostics)
+
+    def run_core(self, directory, googletest, flags, sources, objects, diagnostics):
+        with self.subTest(diagnostics=diagnostics):
+            binary = directory / ("ota-core-" + str(diagnostics))
             built = subprocess.run([
                 "g++", "-std=c++17", "-pthread", *flags,
                 "-DOTA_TRANSPORT_DEFLATE_TEST=1", "-DOTA_FETCH_PIPELINE=4",
+                "-DOTA_TRANSFER_DIAGNOSTICS=" + str(diagnostics),
                 "-I", str(ROOT / "src"), "-I", str(ROOT / "test/mocks"),
                 "-I", str(googletest / "include"), "-I", str(googletest),
                 str(ROOT / "test/test_ota/test_ota_core.cpp"),

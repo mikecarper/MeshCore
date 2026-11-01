@@ -416,6 +416,25 @@ The setting is available on OTA-enabled repeaters, rooms, sensors, Companions,
 and seeder-only builds. Its separate `/ota_speed` settings file preserves the
 existing preference layouts and does not need an active OTA workspace.
 
+Automatic packet pacing uses actual DATA transmission completion. Requests for
+fragments still queued or waiting for CAD do not count as loss. Each radio
+profile has its own pacing state, reset when that profile changes. After two
+clean response flights and subsequent forward progress, the source probes the
+next rate (0.25, 0.5, 0.75, 1x), reverting if a probe loses fragments. CAD and
+the configured airtime budget still apply. Receivers also learn valid DATA
+spacing so a slower source does not cause premature retries.
+
+`ota pace` shows the last admitted profile rates, observed DATA gap, and retry
+wait. `ota wire` shows completed DATA packet/byte counts, how many packets used
+DEFLATE, the last encoded/raw block lengths, and the latest fallback reason.
+Counters cover the current OTA manager lifetime. `host-raw` means the host did
+not supply a smaller encoded block; `not-smaller` is a normal raw-block choice.
+`legacy-peer`, `v2-timeout`, and `v2-stall` select legacy transfer;
+`inflate-failed` disables compression while retaining v2. These diagnostics
+are local and generate no extra measurement traffic.
+RAK4631 Full omits these optional diagnostics to fit its fixed flash slot;
+automatic recovery and the existing `get ota.speed` command remain available.
+
 ## Optional: let it update automatically
 
 By default your node only *discovers* updates - it won't download or install on its own. If you want more

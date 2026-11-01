@@ -896,6 +896,10 @@ jobs:
           python3 -B test/test_reply_tx_integration.py
           python3 -B test/test_admin_cli_reply_scope.py
           python3 -B test/test_ota_speed.py -v
+          python3 -B test/test_ota_packet_pacer.py -v
+          python3 -B test/test_ota_receive_cadence.py -v
+          python3 -B test/test_ota_tx_adapter.py -v
+          python3 -B test/test_ota_transfer_diagnostics.py -v
           python3 -B test/test_ota_announce_cadence.py -v
           python3 -B test/test_ota_apply_delivery.py -v
           python3 -B test/test_ota_install_preflight.py -v
@@ -1276,6 +1280,7 @@ jobs:
       - name: Verify nRF52 infrastructure trims and unchanged Companion scope
         run: |
           python3 -B test/test_nrf52_flash_trim.py -v
+          python3 -B test/test_nrf52_ota_pacing_size.py -v
           python3 -B test/test_nrf52_vl53l0x_const.py -v
           python3 -B test/test_nrf52_gnss_version_trim.py -v
           python3 -B test/test_nrf52_program_lifetime.py -v

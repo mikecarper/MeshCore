@@ -11,6 +11,7 @@
 #endif
 #include "Utils.h"
 #include "helpers/CLICommandUtils.h"
+#include "helpers/CLIReplyText.h"
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
@@ -18,6 +19,30 @@
 
 namespace mesh {
 namespace ota {
+
+static const char* wire_choice_word(OtaManager::WireChoice choice) {
+  switch (choice) {
+    case OtaManager::WireChoice::Deflate: return "deflate";
+    case OtaManager::WireChoice::LegacyRequest: return "legacy-request";
+    case OtaManager::WireChoice::RawRequest: return "raw-request";
+    case OtaManager::WireChoice::HostRaw: return "host-raw";
+    case OtaManager::WireChoice::NoEncoder: return "no-encoder";
+    case OtaManager::WireChoice::NoWorkspace: return "no-workspace";
+    case OtaManager::WireChoice::NoGain: return "not-smaller";
+    case OtaManager::WireChoice::EncodeFailed: return "encode-failed";
+    default: return "none";
+  }
+}
+
+static const char* wire_fallback_word(OtaManager::WireFallback reason) {
+  switch (reason) {
+    case OtaManager::WireFallback::LegacyPeer: return "legacy-peer";
+    case OtaManager::WireFallback::V2Timeout: return "v2-timeout";
+    case OtaManager::WireFallback::V2Stall: return "v2-stall";
+    case OtaManager::WireFallback::InflateFailed: return "inflate-failed";
+    default: return "none";
+  }
+}
 
 // Read complete whitespace-delimited words, never truncated scanf fields.
 // Three also denotes an overlong word, so callers reject the whole command.
@@ -393,7 +418,7 @@ static __attribute__((noinline)) bool handle_neighbors(
                     (unsigned)h->n_seeders, (unsigned)age, tag);
       shown++;
     }
-    if (shown == 0) strcpy(reply, "No updates seen yet - re-run `ota ls` in a few seconds (just asked around).");
+    if (shown == 0) strcpy(reply, MESH_CLI_REPLY_TEXT("No updates seen yet - re-run `ota ls` in a few seconds (just asked around).", "No updates seen yet; retry `ota ls` shortly."));
   return true;
 }
 
@@ -419,7 +444,7 @@ bool handle_ota_command(const char* command, char* reply, mesh::MainBoard& board
 #if defined(NRF52_PLATFORM) && defined(OTA_RAK15002_SD_STORE) && !defined(OTA_SEEDER_ONLY)
   // Radio/USB startup and status remain independent of removable storage.
   // Explicit transfer/catalog/cache work may prepare it at this main-loop boundary.
-  if (!is_cmd(a, "qspi|storage|self|id|stats|help|?|h", &rest)) c.prepareRakStorage();
+  if (!is_cmd(a, "qspi|storage|self|id|stats|pace|wire|help|?|h", &rest)) c.prepareRakStorage();
 #endif
   if (is_cmd(a, "neighbors|nbrs|updates|ls|n", &rest))
     return handle_neighbors(rest, reply, c);
@@ -498,6 +523,23 @@ static __attribute__((noinline)) bool handle_control_command(
   // ---- admin OTA stats: crypto identities (our fw's content-id + body_hash), serving set, live fetch,
   //      policy - one dense line. The remote-admin CLI path is admin-gated, so this is admin-only over the
   //      mesh (send it from the app's repeater command screen, or the WiFi/serial OTA console).
+  } else if (OTA_TRANSFER_DIAGNOSTICS && is_cmd(a, "wire", &rest)) {
+    const auto& wire = c.manager.wireStats();
+    snprintf(reply, 160,
+        "wire tx=%lu deflate=%lu bytes=%lu last=%u/%u:%s rx=%s/%s fallback=%s:%u",
+        (unsigned long)wire.data_packets, (unsigned long)wire.deflated_packets,
+        (unsigned long)wire.data_bytes, wire.encoded_bytes, wire.raw_bytes,
+        wire_choice_word(wire.choice), c.manager.fetchWireV2() ? "v2" : "legacy",
+        c.manager.fetchAllowsDeflate() ? "deflate" : "raw",
+        wire_fallback_word(wire.fallback), wire.fallbacks);
+  } else if (OTA_TRANSFER_DIAGNOSTICS && is_cmd(a, "pace", &rest)) {
+    char primary[16], secondary[16];
+    formatSpeedFactor(c.manager.adaptivePacketSpeed(0), primary, sizeof(primary));
+    formatSpeedFactor(c.manager.adaptivePacketSpeed(1), secondary, sizeof(secondary));
+    snprintf(reply, 160, "pace last radio=%sx radio2=%sx data-gap=%lums retry=%lums",
+        primary, secondary,
+        (unsigned long)c.manager.observedDataIntervalMs(),
+        (unsigned long)c.manager.fetchRetryTimeoutMs());
   } else if (is_cmd(a, "stats", &rest)) {
     // our running fw's merkle content-id (mid) comes from the self serve entry; the EndF body_hash (fw
     // identity, matched against a delta base) is separate - surface BOTH (only body_hash showed before).
@@ -572,7 +614,7 @@ static __attribute__((noinline)) bool handle_control_command(
       for (uint8_t k = 0; k < c.manager.catalogCount(); k++)
         if (memcmp(c.manager.catalogRow(k)->mid, mid, 4) == 0) { sel = c.manager.catalogRow(k); break; }
     }
-    if (!sel) { strcpy(reply, "ERR no such update (copy its eight-digit ID from `ota ls`)"); return true; }
+    if (!sel) { strcpy(reply, MESH_CLI_REPLY_TEXT("ERR no such update (copy its eight-digit ID from `ota ls`)", "ERR no such update; use ID from `ota ls`")); return true; }
     // destination is MANDATORY: with none given, show the choices (flash always; folder iff a link is up).
     if (*dst == 0) {
 #if defined(OTA_SEEDER_ONLY)
@@ -580,7 +622,7 @@ static __attribute__((noinline)) bool handle_control_command(
         snprintf(reply, 160, "choose a destination: `ota pull %s folder`  (folder: %s)",
                  selstr, c.folder_dest_info);
       else
-        strcpy(reply, "ERR no folder connected (run motatool serve --tcp)");
+        strcpy(reply, MESH_CLI_REPLY_TEXT("ERR no folder connected (run motatool serve --tcp)", "ERR no folder; run motatool serve --tcp"));
 #else
       if (c.folder_dest)
         snprintf(reply, 160, "choose a destination: `ota pull %s flash` | `ota pull %s folder`  (folder: %s)",
@@ -626,7 +668,7 @@ static __attribute__((noinline)) bool handle_control_command(
     OtaStore* store = nullptr; const char* dname = nullptr;
     if (to_flash) {
 #if defined(OTA_SEEDER_ONLY)
-      strcpy(reply, "ERR seeder-only build cannot stage or install firmware; use `folder`");
+      strcpy(reply, MESH_CLI_REPLY_TEXT("ERR seeder-only build cannot stage or install firmware; use `folder`", "ERR source-only: cannot stage or install; use folder"));
       return true;
 #else
       if (selboot) {
@@ -774,7 +816,7 @@ static __attribute__((noinline)) bool handle_control_command(
       store = &c.fetch_store; dname = rescue ? "flash+rescue" : "flash";
 #endif
     } else if (to_folder) {
-      if (!c.folder_dest) { strcpy(reply, "ERR no folder connected (run motatool serve --tcp/--serial)"); return true; }
+      if (!c.folder_dest) { strcpy(reply, MESH_CLI_REPLY_TEXT("ERR no folder connected (run motatool serve --tcp/--serial)", "ERR no folder; run motatool serve --tcp/--serial")); return true; }
       c.folder_dest->set_mid(selmid); store = c.folder_dest; dname = validate ? "folder+validate" : "folder";
     }
     c.manager.reset_session();
@@ -865,9 +907,9 @@ static __attribute__((noinline)) bool handle_control_command(
     } else if (strcmp(rest, "self") != 0) {
       strcpy(reply, "ERR usage: ota serve [self|status]");
     } else if (!c.self_serve_supported) {
-      strcpy(reply, "ERR self serve requires ESP32 or external-storage nRF52; host sources use ota folder");
+      strcpy(reply, MESH_CLI_REPLY_TEXT("ERR self serve requires ESP32 or external-storage nRF52; host sources use ota folder", "ERR self-serve needs ESP32/external nRF52; use ota folder"));
     } else if (!ota_serve_self(c, 0)) {
-      strcpy(reply, "ERR serve self (invalid running image or insufficient RAM)");
+      strcpy(reply, MESH_CLI_REPLY_TEXT("ERR serve self (invalid running image or insufficient RAM)", "ERR self-serve: bad image or low RAM"));
     } else {
       char midhx[9]; mesh::Utils::toHex(midhx, c.serve_self_manifest + 20, 4);
       uint32_t image = rd_u32le(c.serve_self_manifest + 11);
@@ -941,13 +983,13 @@ static __attribute__((noinline)) bool handle_control_command(
              (unsigned long)(qspi_capacity / 1024), c.fetch_store.status1(),
              c.fetch_store.last_stage(), error[0] ? " error=" : "", error);
 #else
-    strcpy(reply, "ERR this build does not use a QSPI OTA store");
+    strcpy(reply, MESH_CLI_REPLY_TEXT("ERR this build does not use a QSPI OTA store", "ERR no QSPI OTA store"));
 #endif
 
   // ---- running firmware identity (compare against a delta's base_hash) ----
   } else if (is_cmd(a, "self|id", &rest)) {
     SelfFwInfo fi;
-    if (!ota_self_firmware(fi) || !fi.valid) { strcpy(reply, "ERR no EndF (firmware lacks the trailer?)"); return true; }
+    if (!ota_self_firmware(fi) || !fi.valid) { strcpy(reply, MESH_CLI_REPLY_TEXT("ERR no EndF (firmware lacks the trailer?)", "ERR no EndF firmware trailer")); return true; }
     char hx[17]; mesh::Utils::toHex(hx, fi.body_hash, 8);
     // maxblk is before the optional bootloader diagnostics so it survives the 160-byte remote reply cap.
     int n = snprintf(reply, 160, "self body=%u image=%u base_hash=%s | maxblk:%u",
@@ -1132,7 +1174,7 @@ static __attribute__((noinline)) bool handle_control_command(
     const bool ok = c.apply_fetched_bootloader(operator_mid, operator_hash8, m2);
     snprintf(reply, 160, "%s | %s", ok ? "OK" : "ERR", m2);
 #else
-    strcpy(reply, "ERR this build cannot update its bootloader over LoRa");
+    strcpy(reply, MESH_CLI_REPLY_TEXT("ERR this build cannot update its bootloader over LoRa", "ERR cannot update its bootloader via LoRa"));
 #endif
 
   } else if (is_cmd(a, "install|apply|applydelta", &rest)) {
@@ -1141,7 +1183,7 @@ static __attribute__((noinline)) bool handle_control_command(
     // validates in order (payload hash -> built-for-this-firmware -> signature/trust) and returns the
     // FIRST failing gate, so the operator knows exactly why it refused; it proceeds only if all pass.
 #if defined(OTA_SEEDER_ONLY)
-    strcpy(reply, "ERR seeder-only build cannot install firmware via LoRa");
+    strcpy(reply, MESH_CLI_REPLY_TEXT("ERR seeder-only build cannot install firmware via LoRa", "ERR source-only; cannot install via LoRa"));
     return true;
 #elif defined(NRF52_PLATFORM) && defined(OTA_SD_STORE)
     if (c.sdCacheFetching()) {
@@ -1262,7 +1304,7 @@ static __attribute__((noinline)) bool handle_control_command(
 #endif
 #if defined(OTA_SEEDER_ONLY)
     if (is_cmd(p, "autofetch|autoinstall", &value)) {
-      strcpy(reply, "ERR seeder-only build keeps autofetch and autoinstall off");
+      strcpy(reply, MESH_CLI_REPLY_TEXT("ERR seeder-only build keeps autofetch and autoinstall off", "ERR source-only: autofetch/autoinstall off"));
     } else
 #endif
     if (is_cmd(p, "autofetch", &value)) {
@@ -1339,11 +1381,11 @@ static __attribute__((noinline)) bool handle_control_command(
         char hx[17]; mesh::Utils::toHex(hx, c.allow.get(i), 8);
         n += snprintf(reply + n, 160 - n, " %s", hx);
       }
-      if (c.allow.count() == 0) strcpy(reply, "no trusted signer keys yet (add one with `ota key add <hex>`)");
+      if (c.allow.count() == 0) strcpy(reply, MESH_CLI_REPLY_TEXT("no trusted signer keys yet (add one with `ota key add <hex>`)", "no trusted signer keys; use `ota key add <hex>`"));
     }
 
   } else {
-    strcpy(reply, "Unknown OTA command. Type `ota help`.");
+    strcpy(reply, MESH_CLI_REPLY_TEXT("Unknown OTA command. Type `ota help`.", "Unknown OTA command; use ota help"));
   }
   return true;
 }
@@ -1353,7 +1395,7 @@ static bool handle_dev(const char* d, char* reply, OtaContext& c) {
 #if defined(OTA_SEEDER_ONLY)
   (void)d;
   (void)c;
-  strcpy(reply, "ERR ota dev staging/apply is disabled on this seeder-only build");
+  strcpy(reply, MESH_CLI_REPLY_TEXT("ERR ota dev staging/apply is disabled on this seeder-only build", "ERR source-only: ota dev staging/apply disabled"));
 #else
   if (strncmp(d, "stage ", 6) == 0) {
     uint32_t sz;

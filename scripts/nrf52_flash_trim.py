@@ -290,6 +290,14 @@ def companion_shared_replies_policy(platform, mcu, env_name, src_filter,
         "MESH_CLI_SHARE_REPLY_COPIES"))
 
 
+def install_ota_pacing_size(build_env):
+    hook_path = build_env.subst("$PROJECT_DIR/scripts/nrf52_ota_pacing_size.py")
+    hook_spec = importlib.util.spec_from_file_location("mesh_nrf52_ota_pacing_size", hook_path)
+    hook = importlib.util.module_from_spec(hook_spec)
+    hook_spec.loader.exec_module(hook)
+    return hook.install(build_env)
+
+
 def install(build_env):
     platform = build_env.PioPlatform()
     mcu = build_env.BoardConfig().get("build.mcu", "")
@@ -326,6 +334,7 @@ def install(build_env):
             flags, cppdefines):
         if "MESH_CLI_SHARE_REPLY_COPIES" not in flag_defines(flags, cppdefines):
             build_env.AppendUnique(CPPDEFINES=[("MESH_CLI_SHARE_REPLY_COPIES", 1)])
+        install_ota_pacing_size(build_env)
     if infrastructure:
         names = ("local OTA target name only" if definitions.get("OTA_TARGET_NAME_TABLE") == 0
                  or flag_defines(flags, cppdefines).get("OTA_TARGET_NAME_TABLE") == "0"

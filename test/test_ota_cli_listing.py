@@ -53,7 +53,8 @@ class OtaCliListingTest(unittest.TestCase):
                 for seeder in (False, True):
                     with self.subTest(compact=compact, seeder=seeder):
                         executable = directory / f"listing-{compact}-{seeder}"
-                        defines = [f"-DOTA_TARGET_NAME_FRONT_CODED={compact}", "-DNRF52_PLATFORM=1"]
+                        defines = [f"-DOTA_TARGET_NAME_FRONT_CODED={compact}",
+                                   f"-DMESH_CLI_COMPACT_REPLIES={compact}", "-DNRF52_PLATFORM=1"]
                         if seeder:
                             defines.append("-DOTA_SEEDER_ONLY=1")
                         subprocess.run([os.environ.get("CXX") or shutil.which("c++") or "g++", "-std=c++11", *flags, "-no-pie",

@@ -190,10 +190,10 @@ void OtaManager::begin(uint32_t my_target_id, OtaSend send, void* ctx) {
   _auto_failure_at = 0; _auto_failure_delay = 0;
   clearPendingEgress();
   releaseColdBuffers();
-  _adaptive_packet_speed = 1.0f;
-  _pace_clean_blocks = 0;
-  _pace_has_mid = false;
-  _pace_has_loss = false;
+  _packet_pacer.reset();
+#if OTA_TRANSFER_DIAGNOSTICS
+  _wire_stats = {};
+#endif
 }
 
 // ---------------- serve (multi-mota registry) ----------------
@@ -261,6 +261,9 @@ void OtaManager::registerSelfEntry() {
   memcpy(e.mid, _view0.m.merkle_root, 4);
   e.target_id = _view0.m.target_id; e.fw_version = _view0.m.fw_version;
   e.codec_id = _view0.m.codec_id; e.flags = _view0.m.flags; e.have_count = _view0.m.block_count;
+  e.payload_size = _view0.m.payload_size;
+  e.block_size_log2 = _view0.m.block_size_log2;
+  e.source_caps = 0;
   e.is_self = true; e.src = nullptr; e.src_idx = 0;
 }
 
@@ -675,6 +678,7 @@ uint32_t OtaManager::proofEgressGapMs() const {
 
 void OtaManager::clearPendingEgress() {
   invalidateDirectTransport();
+  _packet_pacer.reset();
   _n_manifest_jobs = 0;
   _n_serve_jobs = 0;
   _serve_block_len = 0;
@@ -815,6 +819,10 @@ bool OtaManager::loadActiveServeBlock() {
   _serve_wire_deflated = false;
 
   // A host-backed MotaSource can provide a pre-compressed block without putting an encoder in firmware.
+  WireChoice choice = !job.wire_v2 ? WireChoice::LegacyRequest :
+      !job.allow_deflate ? WireChoice::RawRequest :
+      v->read_deflated ? WireChoice::HostRaw :
+      !_deflate_encode ? WireChoice::NoEncoder : WireChoice::NoWorkspace;
   // Only device encoders need separate raw input and compressed output. Host
   // output can use the existing outbound cache, which remains pinned until
   // every DATA fragment has left. Streaming proofs need no output buffer.
@@ -833,6 +841,7 @@ bool OtaManager::loadActiveServeBlock() {
       _serve_wire_block = _serve_block;
       _serve_wire_len = encoded_len;
       _serve_wire_deflated = true;
+      choice = WireChoice::Deflate;
     }
   }
   if (!_serve_wire_block) {
@@ -847,57 +856,131 @@ bool OtaManager::loadActiveServeBlock() {
     if (job.wire_v2 && job.allow_deflate && !v->read_deflated && _deflate_encode &&
         v->scratch && v->scratch_sz >= blen) {
       uint16_t encoded_len = 0;
-      if (_deflate_encode(_deflate_encode_ctx, _serve_block, (uint16_t)blen,
-                          v->scratch, (uint16_t)blen, &encoded_len) &&
-          encoded_len > 0 && encoded_len < blen) {
+      const bool encoded = _deflate_encode(_deflate_encode_ctx, _serve_block, (uint16_t)blen,
+                                           v->scratch, (uint16_t)blen, &encoded_len);
+      choice = encoded ? WireChoice::NoGain : WireChoice::EncodeFailed;
+      if (encoded && encoded_len > 0 && encoded_len < blen) {
         _serve_wire_block = v->scratch;
         _serve_wire_len = encoded_len;
         _serve_wire_deflated = true;
+        choice = WireChoice::Deflate;
       }
     }
   }
   mh4(_serve_wire_id, _serve_wire_block, _serve_wire_len);
+#if OTA_TRANSFER_DIAGNOSTICS
+  _wire_stats.raw_bytes = _serve_block_len;
+  _wire_stats.encoded_bytes = _serve_wire_len;
+  _wire_stats.choice = choice;
+#endif
+  (void)choice;
   _serve_block_loaded = true;
   return true;
 }
 
-void OtaManager::noteServedRequestPacing(const uint8_t* mid, uint16_t block,
-                                         uint16_t want, uint16_t full_mask) {
-  if (want != full_mask) {
-    // A sparse mask is the receiver's explicit evidence that our previous
-    // DATA burst left holes. One extra packet-airtime gap is much cheaper than
-    // repeated multi-second request turns on a fast link.
-    if (!_pace_has_loss || memcmp(_pace_loss_mid, mid, sizeof(_pace_loss_mid)) != 0
-        || _pace_last_loss_block != block) {
-      memcpy(_pace_loss_mid, mid, sizeof(_pace_loss_mid));
-      _pace_last_loss_block = block;
-      _pace_has_loss = true;
-      if (_adaptive_packet_speed > 0.5f) _adaptive_packet_speed = 0.5f;
-      else if (_adaptive_packet_speed > 0.25f) {
-        _adaptive_packet_speed -= 0.1f;
-        if (_adaptive_packet_speed < 0.25f) _adaptive_packet_speed = 0.25f;
-      }
+float OtaManager::adaptivePacketSpeed(uint8_t profile, uint32_t generation) const {
+  return _packet_pacer.pace(profile, generation);
+}
+
+uint32_t OtaManager::pacingGraceMs() const {
+  // A request already travelling back before the last response finished is
+  // not evidence that those just-transmitted bytes were lost.
+  uint64_t grace = (uint64_t)_radio_packet_airtime_ms * 2u + 100u;
+  return grace > OTA_FETCH_RETRY_MAX_MS ? OTA_FETCH_RETRY_MAX_MS : (uint32_t)grace;
+}
+
+bool OtaManager::responseDataKey(const uint8_t* msg, uint16_t len,
+    const OtaReplyRoute& route, OtaPacketPacer::Key& key, uint16_t& bit,
+    uint16_t& full_mask, bool& deflated, uint16_t& data_bytes) const {
+  DataMsg dm;
+  if (!decode_data(msg, len, dm)) return false;
+  const int index = serveEntryIndex(dm.manifest_id);
+  if (index < 0) return false;
+  // Completion must never resolve a source or read its USB/BLE backing file.
+  const ServeEntry& entry = _serve[index];
+  if (entry.block_size_log2 >= 32) return false;
+  const uint32_t bs = 1u << entry.block_size_log2;
+  const uint64_t off = (uint64_t)dm.block_idx * bs;
+  if (off >= entry.payload_size || bs > OTA_MAX_BLOCK) return false;
+  const uint16_t raw_len = (uint16_t)((uint64_t)entry.payload_size - off < bs
+      ? entry.payload_size - off : bs);
+  key = {};
+  key.profile = route.profile;
+  key.generation = route.generation;
+  key.block = dm.block_idx;
+  memcpy(key.mid, dm.manifest_id, 4);
+  key.format = route.direct ? 4u : 0u;
+  uint8_t fragment = 0;
+  uint16_t encoded_len = raw_len;
+  const bool v2 = (dm.frag_off & OTA_DATA_V2_MARK) != 0;
+  const uint16_t fragment_data = route.direct ? OTA_DIRECT_FRAG_DATA :
+      (v2 ? OTA_FRAG_DATA_V2 : OTA_FRAG_DATA);
+  deflated = false;
+  if (v2) {
+    const bool extended = bs > OTA_DATA_V2_LEGACY_MAX_ENCODED;
+    if (dm.data_len <= OTA_DATA_V2_STREAM_ID_BYTES || !(extended
+        ? ota_data_v2_unpack_extended(dm.frag_off, raw_len, fragment, encoded_len, deflated)
+        : ota_data_v2_unpack(dm.frag_off, fragment, encoded_len, deflated))) return false;
+    if (encoded_len > raw_len || (deflated ? encoded_len >= raw_len : encoded_len != raw_len)) return false;
+    key.stream = rd_u32le(dm.data);
+    key.format |= 1u | (extended ? 2u : 0u);
+    data_bytes = dm.data_len - OTA_DATA_V2_STREAM_ID_BYTES;
+  } else {
+    if (route.direct || dm.frag_off % fragment_data != 0) return false;
+    fragment = dm.frag_off / fragment_data;
+    data_bytes = dm.data_len;
+  }
+  const uint32_t frag_off = (uint32_t)fragment * fragment_data;
+  if (fragment >= 16 || frag_off >= encoded_len) return false;
+  const uint16_t remaining = encoded_len - frag_off;
+  if (data_bytes != (remaining < fragment_data ? remaining : fragment_data)) return false;
+  bit = (uint16_t)(1u << fragment);
+  full_mask = frag_full_mask((encoded_len + fragment_data - 1u) / fragment_data);
+  return true;
+}
+
+void OtaManager::noteResponseTransmitted(const uint8_t* msg, uint16_t len,
+    const OtaReplyRoute& route, uint32_t now_ms) {
+  OtaPacketPacer::Key key;
+  uint16_t bit, full_mask, bytes;
+  bool deflated;
+  if (responseDataKey(msg, len, route, key, bit, full_mask, deflated, bytes)) {
+    if (_packet_pacer.sent(key, bit, now_ms)) {
+#if OTA_TRANSFER_DIAGNOSTICS
+      ++_wire_stats.data_packets;
+      _wire_stats.data_bytes += bytes;
+      if (deflated) ++_wire_stats.deflated_packets;
+#endif
     }
-    _pace_clean_blocks = 0;
     return;
   }
-  if (!_pace_has_mid || memcmp(_pace_mid, mid, sizeof(_pace_mid)) != 0) {
-    memcpy(_pace_mid, mid, sizeof(_pace_mid));
-    _pace_has_mid = true;
-    _pace_last_full_block = block;
-    _pace_clean_blocks = 0;
+  ProofMsg proof;
+  if (decode_proof(msg, len, proof))
+    _packet_pacer.proofSent(route.profile, route.generation,
+                            proof.manifest_id, proof.block_idx, now_ms);
+}
+
+void OtaManager::noteResponseFailed(const uint8_t* msg, uint16_t len,
+    const OtaReplyRoute& route, uint32_t now_ms) {
+  (void)now_ms;
+  OtaPacketPacer::Key key;
+  uint16_t bit, full_mask, bytes;
+  bool deflated;
+  if (responseDataKey(msg, len, route, key, bit, full_mask, deflated, bytes)) {
+    if (!_packet_pacer.failed(key, bit)) return;
+    for (uint8_t i = 0; i < _n_serve_jobs; ++i) {
+      ServeJob& job = _serve_jobs[i];
+      if (job.block == key.block && memcmp(job.mid, key.mid, 4) == 0 && job.route == route &&
+          job.wire_v2 == ((key.format & 1u) != 0) &&
+          job.extended_length == ((key.format & 2u) != 0))
+        job.emitted_mask &= (uint16_t)~bit;
+    }
     return;
   }
-  // Count only forward progress; duplicates of a full request are not proof
-  // that the receiver tolerated the current packet rate.
-  if (block <= _pace_last_full_block) return;
-  _pace_last_full_block = block;
-  if (_adaptive_packet_speed >= 1.0f) return;
-  if (++_pace_clean_blocks >= 16) {
-    _adaptive_packet_speed += 0.1f;
-    if (_adaptive_packet_speed > 1.0f) _adaptive_packet_speed = 1.0f;
-    _pace_clean_blocks = 0;
-  }
+  ProofMsg proof;
+  if (decode_proof(msg, len, proof))
+    _packet_pacer.proofFailed(route.profile, route.generation,
+                              proof.manifest_id, proof.block_idx);
 }
 
 bool OtaManager::handleReq(const uint8_t* m, uint16_t n) {
@@ -906,6 +989,8 @@ bool OtaManager::handleReq(const uint8_t* m, uint16_t n) {
   ServeView* v = resolve(rq.manifest_id);
   if (!v) return false;
   bool accepted = false;
+  bool all_full = true;
+  uint16_t first_full = UINT16_MAX;
   const uint32_t block_size = v->m.block_size();
   for (uint8_t i = 0; i < rq.n_items; i++) {
     const uint32_t idx = rq.items[i].block_idx;
@@ -927,12 +1012,21 @@ bool OtaManager::handleReq(const uint8_t* m, uint16_t n) {
     const uint16_t requested = wire_v2
         ? ota_req_v2_fragments(rq.items[i].want_mask) : rq.items[i].want_mask;
     const uint16_t want = (uint16_t)(requested & valid_mask);
+    if (want != valid_mask) all_full = false;
     if (want != 0 && queueServeJob(v->m.merkle_root, (uint16_t)idx, want,
                                   wire_v2, allow_deflate, extended_length)) {
       accepted = true;
-      noteServedRequestPacing(v->m.merkle_root, (uint16_t)idx, want, valid_mask);
-    }
+      _packet_pacer.bind(_request_route.profile, _request_route.generation);
+      const uint8_t format = (wire_v2 ? 1u : 0u) | (extended_length ? 2u : 0u) |
+          (_request_route.direct ? 4u : 0u);
+      _packet_pacer.request(_request_route.profile, _request_route.generation,
+          v->m.merkle_root, (uint16_t)idx, format, want, _now_ms, pacingGraceMs());
+      if (want == valid_mask && idx < first_full) first_full = (uint16_t)idx;
+    } else all_full = false;
   }
+  if (accepted && all_full && first_full != UINT16_MAX)
+    _packet_pacer.forwardRequest(_request_route.profile, _request_route.generation,
+        v->m.merkle_root, first_full, _now_ms, 0);
   return accepted;
 }
 
@@ -1040,7 +1134,13 @@ void OtaManager::serviceEgress(OtaReplyRouteValid route_valid, void* route_ctx) 
       dm.data_len = (uint16_t)frag_len;
     }
     uint8_t b[OTA_DIRECT_MESSAGE_MAX];
-    if (emit(b, encode_data(b, sizeof(b), dm), false, &job.route)) {
+    const uint16_t message_len = encode_data(b, sizeof(b), dm);
+    if (emit(b, message_len, false, &job.route)) {
+      OtaPacketPacer::Key key;
+      uint16_t sent_bit, full_mask, bytes;
+      bool deflated;
+      if (responseDataKey(b, message_len, job.route, key, sent_bit, full_mask, deflated, bytes))
+        _packet_pacer.queued(key, full_mask, sent_bit);
       const uint16_t bit = (uint16_t)(1u << fragment);
       job.pending_mask &= (uint16_t)~bit;
       job.emitted_mask |= bit;
@@ -1400,6 +1500,7 @@ void OtaManager::clearReassemblySlot(uint8_t slot) {
 
 // Forget all blocks currently being reassembled or awaiting proofs.
 void OtaManager::clearReassembly() {
+  _receive_cadence.reset();
   for (uint8_t slot = 0; slot < OTA_FETCH_PIPELINE; slot++) clearReassemblySlot(slot);
   _retry_slot = 0;
   _req_count = 0;
@@ -1416,8 +1517,14 @@ bool OtaManager::anyWireDataReceived() const {
   return false;
 }
 
-void OtaManager::downgradeWireToLegacy() {
+void OtaManager::downgradeWireToLegacy(WireFallback reason) {
   if (!_wire_v2_session) return;
+#if OTA_TRANSFER_DIAGNOSTICS
+  _wire_stats.fallback = reason;
+  if (_wire_stats.fallbacks != UINT16_MAX) ++_wire_stats.fallbacks;
+#endif
+  (void)reason;
+  _receive_cadence.reset();
   if (_direct_session) downgradeDirectTransport();
   _wire_v2_session = false;
   _wire_v2_confirmed = false;
@@ -1441,6 +1548,7 @@ void OtaManager::downgradeWireToLegacy() {
 
 void OtaManager::downgradeDirectTransport() {
   if (!_direct_session) return;
+  _receive_cadence.reset();
   invalidateDirectTransport();
   _direct_session = false;
   _direct_confirmed = false;
@@ -1494,6 +1602,14 @@ static uint8_t count_mask_bits(uint16_t mask) {
   return count;
 }
 
+uint32_t OtaManager::retryServiceIntervalMs(uint32_t physical_interval_ms) const {
+  uint32_t observed = observedDataIntervalMs();
+  // Observations already include the sender's pacing. Undo our later retry
+  // scaling here so a deliberate slow setting is not applied twice.
+  if (_speed < 1.0f) observed = (uint32_t)ceil((double)observed * _speed);
+  return observed > physical_interval_ms ? observed : physical_interval_ms;
+}
+
 uint32_t OtaManager::fetchRetryTimeoutMs() const {
   if (_radio_packet_airtime_ms == 0) return retryDelay(OTA_FETCH_RETRY_FALLBACK_MS);
 
@@ -1516,8 +1632,11 @@ uint32_t OtaManager::fetchRetryTimeoutMs() const {
   }
   uint32_t path_transmissions = _observed_path_transmissions;
   if (path_transmissions == 0) path_transmissions = (uint32_t)_max_hops + 1u;
-  uint64_t service = (uint64_t)packets * _radio_packet_airtime_ms * path_transmissions;
-  service = (service * _tx_spacing_permille + 999u) / 1000u;
+  uint64_t physical_interval = (uint64_t)_radio_packet_airtime_ms * path_transmissions;
+  physical_interval = (physical_interval * _tx_spacing_permille + 999u) / 1000u;
+  const uint32_t interval = retryServiceIntervalMs(
+      physical_interval > UINT32_MAX ? UINT32_MAX : (uint32_t)physical_interval);
+  uint64_t service = (uint64_t)packets * interval;
   service = (service * 5u + 3u) / 4u;                    // 25% CAD/relay contention allowance
   service += OTA_FETCH_RETRY_GUARD_MS;
   uint64_t floor = OTA_FETCH_RETRY_MIN_MS;
@@ -1527,9 +1646,7 @@ uint32_t OtaManager::fetchRetryTimeoutMs() const {
     // an unanswered host/relay request. Four full-packet service intervals cover
     // queued DATA/proof/turnaround; measured airtime and the observed path raise
     // the floor automatically on slower or relayed links.
-    uint64_t partial_floor = (uint64_t)_radio_packet_airtime_ms
-        * _observed_path_transmissions * _tx_spacing_permille * 4u;
-    partial_floor = (partial_floor + 999u) / 1000u;
+    uint64_t partial_floor = (uint64_t)interval * 4u;
     partial_floor += OTA_FETCH_RETRY_GUARD_MS;
     if (partial_floor < OTA_FETCH_RETRY_PARTIAL_MIN_MS)
       partial_floor = OTA_FETCH_RETRY_PARTIAL_MIN_MS;
@@ -1546,6 +1663,7 @@ uint32_t OtaManager::proofGraceMs() const {
   if (path_transmissions == 0) path_transmissions = (uint32_t)_max_hops + 1u;
   uint64_t grace = (uint64_t)_radio_packet_airtime_ms * path_transmissions;
   grace = (grace * _tx_spacing_permille + 999u) / 1000u;
+  grace = retryServiceIntervalMs(grace > UINT32_MAX ? UINT32_MAX : (uint32_t)grace);
   grace += 100u;
   if (grace < OTA_PROOF_GRACE_MS) grace = OTA_PROOF_GRACE_MS;
   if (grace > OTA_FETCH_RETRY_MAX_MS) grace = OTA_FETCH_RETRY_MAX_MS;
@@ -2185,12 +2303,13 @@ bool OtaManager::handleData(const uint8_t* m, uint16_t n) {
     // traffic must not force a session-wide downgrade. Never mix it with already accepted v2 bytes.
     if (_wire_v2_session) {
       if (_wire_v2_confirmed || anyWireDataReceived()) return false;
-      downgradeWireToLegacy();
+      downgradeWireToLegacy(WireFallback::LegacyPeer);
     }
     const uint16_t bit = (uint16_t)(1u << kf);
     if (slot.mask & bit) return true;                          // duplicate flood/retry copy is terminal too
     memcpy(slot.buf + dm.frag_off, dm.data, dm.data_len);
     slot.mask |= bit;
+    _receive_cadence.observe(dm.block_idx, (uint8_t)kf, _now_ms);
   } else {
     if (!_wire_v2_session || dm.data_len <= OTA_DATA_V2_STREAM_ID_BYTES) return false;
     uint8_t fragment = 0;
@@ -2233,6 +2352,7 @@ bool OtaManager::handleData(const uint8_t* m, uint16_t n) {
     memcpy(slot.buf + fragment_off, dm.data + OTA_DATA_V2_STREAM_ID_BYTES, fragment_len);
     slot.mask |= bit;
     slot.wire_stalls = 0;
+    _receive_cadence.observe(dm.block_idx, fragment, _now_ms);
   }
   noteFetchActivity();
   if (slot.mask != slot.need || slot.awaiting_proof) return true;
@@ -2260,6 +2380,11 @@ bool OtaManager::handleData(const uint8_t* m, uint16_t n) {
       _serve_wire_block = nullptr;
       _serve_wire_len = 0;
       if (!decoded || decoded_len != blen) {
+#if OTA_TRANSFER_DIAGNOSTICS
+        _wire_stats.fallback = WireFallback::InflateFailed;
+        if (_wire_stats.fallbacks != UINT16_MAX) ++_wire_stats.fallbacks;
+#endif
+        _receive_cadence.reset();
         _wire_allow_deflate = false;                         // retry this/future blocks as raw v2
         slot.mask = 0;
         const uint16_t fragment_data = fetchFragmentData();
@@ -2384,7 +2509,10 @@ bool OtaManager::requestSlot(uint8_t slot_index) {
           (unsigned)slot.block, (unsigned)want, (unsigned)_have, (unsigned)_fbc,
           (unsigned)slot.mask, (unsigned)_req_count);
   bool sent = emit(b, encode_req(b, sizeof(b), rq), false, fetchReplyRoute());
-  if (sent) noteFetchActivity();
+  if (sent) {
+    _receive_cadence.beginFlight();  // recovery turnaround is not DATA cadence
+    noteFetchActivity();
+  }
   return sent;
 }
 
@@ -2408,12 +2536,16 @@ bool OtaManager::requestFlight() {
           (unsigned)_pipeline_width, (unsigned)OTA_FETCH_PIPELINE);
   bool sent = emit(b, encode_req_window(b, sizeof(b), request), false, fetchReplyRoute());
   _flight_request_pending = !sent;
-  if (sent) noteFetchActivity();
+  if (sent) {
+    _receive_cadence.beginFlight();
+    noteFetchActivity();
+  }
   return sent;
 }
 
 bool OtaManager::fillPipeline() {
   if (activePipelineSlots() != 0) return false;             // flights never overlap/refill
+  _receive_cadence.beginFlight();
   uint8_t assigned = 0;
   while (true) {
     int slot_index = findEmptyReassemblySlot();
@@ -2459,7 +2591,7 @@ void OtaManager::requestMissing() {
   // bits (or the first response burst was lost). Retry once in the universal legacy profile instead of
   // pinning the session to a feature it has not observed on air.
   if (_wire_v2_session && !_wire_v2_confirmed && !anyWireDataReceived()) {
-    downgradeWireToLegacy();
+    downgradeWireToLegacy(WireFallback::V2Timeout);
     notePipelineStall();
     requestFlight();
     return;
@@ -2475,7 +2607,7 @@ void OtaManager::requestMissing() {
   // then clear the whole flight and ask again in the universal legacy profile so an old seeder can take over.
   const bool empty_v2 = _wire_v2_session && _wire_v2_confirmed && !anyWireDataReceived();
   if (empty_v2 && _wire_empty_stalls >= 1) {
-    downgradeWireToLegacy();
+    downgradeWireToLegacy(WireFallback::V2Stall);
     requestFlight();
     return;
   }
@@ -2498,7 +2630,7 @@ void OtaManager::requestMissing() {
       // remain. Keep one sparse retry, then fall back the whole flight to the universal profile. Clearing
       // every slot prevents geometry/representation mixing and guarantees that old sources can take over.
       if (_direct_session) downgradeDirectTransport();
-      else downgradeWireToLegacy();
+      else downgradeWireToLegacy(WireFallback::V2Stall);
     }
     if (requestSlot(slot)) {
       // Advance fallback evidence only when the sparse retry enters the

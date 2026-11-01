@@ -17,6 +17,7 @@ SOURCE = r'''
 #include <cstdio>
 #include <cstring>
 #include <string>
+#include <helpers/CLIReplyText.h>
 
 namespace mesh { struct Utils {
   static bool fromHex(uint8_t* out, size_t size, const char* text) {
@@ -221,7 +222,8 @@ class BootloaderUpdateCliTest(unittest.TestCase):
                     built = subprocess.run([
                         compiler, "-std=c++17", "-O1", "-g", "-Wall", "-Wextra", "-Werror",
                         "-Wno-unused-function", "-Wno-unused-parameter", *sanitize,
-                        *["-D" + macro + "=1" for macro in macros], str(source), "-o", str(binary),
+                        *["-D" + macro + "=1" for macro in macros], "-I", str(ROOT / "src"),
+                        str(source), "-o", str(binary),
                     ], capture_output=True, text=True, timeout=60)
                     self.assertEqual(built.returncode, 0, built.stdout + built.stderr)
                     tested = subprocess.run([str(binary)], capture_output=True, text=True, timeout=30)
