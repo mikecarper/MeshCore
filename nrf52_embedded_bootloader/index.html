@@ -2529,8 +2529,9 @@ the exact board's <a href="https://github.com/mikecarper/Adafruit_nRF52_Bootload
 in one application image. After installing that application, it checks the
 bootloader once at 70 seconds after startup and updates it when needed. The
 check waits for idle radio and OTA activity, and skips a valid matching
-bootloader at the same or newer version. Recovery and unrecognized bootloaders
-are excluded from automatic installation. Ordinary firmware has no automatic
+bootloader at the same or newer version. Reviewed stock bootloaders, including
+RAK 0.4.3, are supported by exact installed-image hashes rather than their names.
+Recovery and unrecognized bootloaders are excluded from automatic installation. Ordinary firmware has no automatic
 bootloader update.</p>
 <p>This follows the internal-flash bridge in
 <a href="https://github.com/MeshEnvy/meshcore-firmware/pull/2">MeshEnvy firmware PR #2</a>.
@@ -2570,7 +2571,26 @@ shrink the filesystem to make room.</p>
 and their output names stay unchanged. The embedded image remains an
 application UF2/DFU package, not a combined SoftDevice/bootloader DFU package.</p>
 <p>An installed bootloader with valid compatible identity metadata must match the
-candidate's board and runtime layout. For the explicitly qualified legacy
+candidate's board and runtime layout. Modern identity mismatches never fall back
+to stock-loader rules. Current all-in-one Repeater and Room Server builds also
+include a small, exact-byte stock inventory automatically; no environment variable
+or separate legacy file is needed for those images. The initial reviewed inventory
+covers the published factory RAK 0.3.2/0.4.1/0.4.2/0.4.3/0.4.4 images on RAK4631
+and RAK3401, R1 Neo's own image, T114 vendor images, T-Echo/Lite, T1000-E's recovery
+image, Wio Tracker L1, and the exact XIAO base/Sense product images. See
+<a href="https://github.com/mikecarper/MeshCore/blob/keymindCascade/scripts/nrf52_legacy_bootloaders.py"><code>nrf52_legacy_bootloaders.py</code></a>
+for exact source URLs, file and padded-image hashes, hardware and layout mappings.</p>
+<p>Each entry binds the entire 40 KiB bootloader region, the physical build target,
+the replacement profile and the S140/application layout. A different byte, shared
+USB ID or a matching version string is insufficient. A RAK3401 may legitimately
+have the factory RAK4631 loader; its replacement is still the exact RAK3401 profile.
+Related boards do not inherit representative module/SDK hashes automatically.
+Unknown or recovery images remain excluded, and flash protection, MBR geometry,
+watchdog and durable-state checks remain mandatory. These are source/image
+compatibility checks, not a claim that every transition or power interruption has
+been hardware-qualified. Full Companion is <strong>not</strong> an all-in-one updater: use the
+separate exact-board USB bootloader ZIP and reinstall its application afterward.</p>
+<p>For the separately qualified legacy
 RAK4631 transition, also supply the exact installed bootloader image:</p>
 <pre><code class="language-sh">MESHCORE_NRF52_LEGACY_BOOTLOADER=/absolute/path/full.hex \
   bash build.sh build-firmware RAK_4631_repeater --with-bootloader 2.4.12
@@ -2579,7 +2599,8 @@ RAK4631 transition, also supply the exact installed bootloader image:</p>
 It accepts the qualified MeshEnvy <code>0.9.2-ev1</code> RAK4631 image, whose full-region
 SHA-256 is <code>64bfe69d56eefc2d0fe51770902aff70ea0cc06cad261d3d219e4a3c0efac8dc</code>.
 A matching version string alone is insufficient; another board's image or an
-unknown stock bootloader is not accepted by that exception.</p>
+unknown stock bootloader is not accepted by that explicit exception. It remains
+separate from the automatic reviewed-stock inventory.</p>
 <p>A P1 already running a XIAO bootloader needs a deliberate identity migration;
 the embedded installer does not change one board identity into another. Use
 the documented temporary recovery bridge for the installed identity, followed
