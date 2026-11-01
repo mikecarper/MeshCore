@@ -3376,6 +3376,23 @@ factor starts at 1, so <code>packet</code> reflects the saved setting up to 1x.
 The setting is available on OTA-enabled repeaters, rooms, sensors, Companions,
 and seeder-only builds. Its separate <code>/ota_speed</code> settings file preserves the
 existing preference layouts and does not need an active OTA workspace.</p>
+<p>Automatic packet pacing uses actual DATA transmission completion. Requests for
+fragments still queued or waiting for CAD do not count as loss. Each radio
+profile has its own pacing state, reset when that profile changes. After two
+clean response flights and subsequent forward progress, the source probes the
+next rate (0.25, 0.5, 0.75, 1x), reverting if a probe loses fragments. CAD and
+the configured airtime budget still apply. Receivers also learn valid DATA
+spacing so a slower source does not cause premature retries.</p>
+<p><code>ota pace</code> shows the last admitted profile rates, observed DATA gap, and retry
+wait. <code>ota wire</code> shows completed DATA packet/byte counts, how many packets used
+DEFLATE, the last encoded/raw block lengths, and the latest fallback reason.
+Counters cover the current OTA manager lifetime. <code>host-raw</code> means the host did
+not supply a smaller encoded block; <code>not-smaller</code> is a normal raw-block choice.
+<code>legacy-peer</code>, <code>v2-timeout</code>, and <code>v2-stall</code> select legacy transfer;
+<code>inflate-failed</code> disables compression while retaining v2. These diagnostics
+are local and generate no extra measurement traffic.
+RAK4631 Full omits these optional diagnostics to fit its fixed flash slot;
+automatic recovery and the existing <code>get ota.speed</code> command remain available.</p>
 <h2 id="optional-let-it-update-automatically">Optional: let it update automatically</h2>
 <p>By default your node only <em>discovers</em> updates - it won't download or install on its own. If you want more
 automation (e.g. for a remote node you can't easily reach), you can opt in. These settings are saved.</p>
