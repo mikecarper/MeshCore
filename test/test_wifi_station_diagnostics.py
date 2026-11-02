@@ -112,6 +112,7 @@ class WiFiStationDiagnosticsIntegrationTests(unittest.TestCase):
         (cls.folder / "helpers/esp32").mkdir(parents=True)
         for name, content in {
             "Arduino.h": ARDUINO,
+            "esp_arduino_version.h": "#pragma once\n",
             "WiFi.h": WIFI,
             "helpers/esp32/WiFiRadioPolicy.h": RADIO_POLICY,
             "helpers/WirelessControl.h": WIRELESS_CONTROL,

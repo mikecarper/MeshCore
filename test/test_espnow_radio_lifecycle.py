@@ -296,6 +296,7 @@ inline void noteStationDiagnosticPhase(ConnectionPhase) {}
 }}
 ''')
             (folder/'esp_err.h').write_text('#pragma once\nusing esp_err_t=int;\nconstexpr int ESP_OK=0,ESP_ERR_INVALID_STATE=-2,ESP_ERR_WIFI_NOT_INIT=-3;\n')
+            (folder/'esp_arduino_version.h').write_text('#pragma once\n')
             (folder/'esp_wifi.h').write_text(r'''
 #pragma once
 #include <cstdint>

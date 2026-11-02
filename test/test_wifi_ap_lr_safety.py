@@ -224,7 +224,7 @@ inline void beginStationDiagnostics(const char*) {}
 inline void noteStationDiagnosticPhase(ConnectionPhase) {}
 }}
 ''')
-        for name in ('esp_err.h', 'esp_wifi.h', 'WiFi.h', 'Preferences.h'):
+        for name in ('esp_err.h', 'esp_wifi.h', 'esp_arduino_version.h', 'WiFi.h', 'Preferences.h'):
             (folder / name).write_text('#pragma once\n')
         fixture = (ROOT / 'test/fixtures/wifi_ap_shared_lr_sdk.h').read_text()
         dispatcher = (ROOT / 'src/Dispatcher.h').read_text()
