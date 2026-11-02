@@ -17,6 +17,9 @@ void stationEvent(arduino_event_t* event) {
   // allocate, or reconnect here, including while another owner changes mode.
   portENTER_CRITICAL(&diagnostics_mux);
   switch (event->event_id) {
+    case ARDUINO_EVENT_WIFI_STA_START:
+      diagnostics.driverStarted(now);
+      break;
     case ARDUINO_EVENT_WIFI_STA_CONNECTED: {
       const auto& station = event->event_info.wifi_sta_connected;
       diagnostics.associated(station.ssid, station.ssid_len, now);
@@ -34,7 +37,7 @@ void stationEvent(arduino_event_t* event) {
       diagnostics.lostIP(now);
       break;
     case ARDUINO_EVENT_WIFI_STA_STOP:
-      diagnostics.stopped(now);
+      diagnostics.driverStopped(now);
       break;
     default:
       break;

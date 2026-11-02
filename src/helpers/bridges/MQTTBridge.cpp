@@ -229,13 +229,13 @@ void MQTTBridge::beginWiFiStation() {
   if (_wifi_credentials_changed) {
     WiFi.disconnect();
     _wifi_credentials_changed = false;
-    _last_wifi_reconnect_attempt = millis();
     _wifi_reconnect_backoff_attempt = 0;
   }
   const wifi_ps_type_t mode = mqttWiFiPowerSaveMode(
       _manage_wifi && _node_info.canonical_wifi ? _wifi_power_save : _obs->wifi_power_save);
   (void)WiFi.setSleep(mode);
   mesh::wifi::applyStationPowerSave(mode);
+  _last_wifi_reconnect_attempt = millis();
   mesh::wifi::beginStation(_wifi_ssid, _wifi_password);
 }
 

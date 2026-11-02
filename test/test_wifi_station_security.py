@@ -46,6 +46,7 @@ struct wifi_sta_config_t {
  wifi_sort_method_t sort_method;
  struct {int8_t rssi; wifi_auth_mode_t authmode;} threshold;
  struct {bool capable; bool required;} pmf_cfg;
+ uint8_t failure_retry_cnt;
 #ifndef TEST_NO_SAE_TYPES
  wifi_sae_pwe_method_t sae_pwe_h2e;
 #if defined(SAE_H2E_IDENTIFIER_LEN)
@@ -236,10 +237,11 @@ class WiFiStationSecurityTests(unittest.TestCase):
             (cls.folder / name).write_text(content)
         pinned = (FIXTURES / "arduino2_sta_begin.inc").read_text()
         sources = {"pinned": pinned, "identifier": pinned, "idf443": pinned,
-                   "explicit-off": pinned}
+                   "explicit-off": pinned, "recovery": pinned, "recovery-off": pinned}
         installed = installed_sdk_source()
         if installed:
             sources["installed"] = installed
+            sources["installed-recovery"] = installed
         cls.binaries = {}
         cls.fallback_binaries = {}
         versions = {"old-idf": (4, 4, 2), "disabled-wpa3": (4, 4, 8),
@@ -257,6 +259,10 @@ class WiFiStationSecurityTests(unittest.TestCase):
                     "#pragma once\n#define ESP_IDF_VERSION_VAL(major,minor,patch) (((major)<<16)|((minor)<<8)|(patch))\n"
                     f"#define ESP_IDF_VERSION ESP_IDF_VERSION_VAL({major},{minor},{patch})\n")
                 flags = []
+                if label in ("recovery", "installed-recovery"):
+                    flags.append("-DMESH_WIFI_RECOVERY=1")
+                elif label == "recovery-off":
+                    flags.append("-DMESH_WIFI_RECOVERY=0")
                 if all_scan:
                     flags.append("-DMESH_WIFI_ALL_CHANNEL_SCAN=1")
                 elif label == "explicit-off":

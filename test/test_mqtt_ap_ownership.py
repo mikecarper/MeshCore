@@ -95,6 +95,21 @@ class MQTTAccessPointOwnershipTest(unittest.TestCase):
     def test_first_join_and_reconnect_restore_transmit_power_from_saved_mode(self):
         self.run_fixture("startup_power")
 
+    def test_late_start_and_rollover_preserve_each_new_join_window(self):
+        self.run_fixture("late_start")
+        self.run_fixture("late_start", None, "-DMESH_WIFI_RECOVERY=0")
+        self.run_fixture("late_start", None, "-DMESH_WIFI_RECOVERY=1")
+
+    def test_missing_actual_join_timestamp_aborts_a_late_first_attempt(self):
+        source = self.fixture()
+        stale = source.replace("  _last_wifi_reconnect_attempt = millis();\n", "", 1)
+        self.assertNotEqual(stale, source)
+        with self.assertRaises(FixtureFailure):
+            self.run_fixture("late_start", stale, "-DMESH_WIFI_RECOVERY=1")
+
+    def test_controlled_recovery_preserves_join_window_and_defers_to_access_point(self):
+        self.run_fixture("recovery_window", None, "-DMESH_WIFI_RECOVERY=1")
+
     def test_startup_cannot_leave_a_previous_low_transmit_power_limit(self):
         source = self.fixture()
         start = source.index("void MQTTBridge::beginWiFiStation(")

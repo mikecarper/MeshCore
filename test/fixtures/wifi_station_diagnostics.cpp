@@ -148,6 +148,37 @@ int main(int argc, char** argv) {
     assert(!snapshot().has_disconnect && snapshot().attempts == 1);
     deliver(ARDUINO_EVENT_WIFI_STA_DISCONNECTED, "iot", 201);
     assert(!snapshot().has_disconnect);
+  } else if (scenario == "driver-restart") {
+    start();
+    fake_now = 2000;
+    deliver(ARDUINO_EVENT_WIFI_STA_DISCONNECTED, "iot", 39);
+    deliver(ARDUINO_EVENT_WIFI_STA_STOP);
+    assert(snapshot().phase == ConnectionPhase::Stopped);
+    fake_now = 3000;
+    deliver(ARDUINO_EVENT_WIFI_STA_START);
+    assert(snapshot().phase == ConnectionPhase::Connecting);
+    assert(snapshot().attempts == 1 && snapshot().attempt_ms == 1000);
+    assert(snapshot().has_disconnect && snapshot().last_reason == 39);
+    deliver(ARDUINO_EVENT_WIFI_STA_CONNECTED);
+    assert(snapshot().phase == ConnectionPhase::WaitingIP);
+    deliver(ARDUINO_EVENT_WIFI_STA_GOT_IP);
+    assert(snapshot().phase == ConnectionPhase::Online);
+    // A deliberate stop takes priority over queued lifecycle events.
+    assert(beginStation("iot", "secret") == WL_CONNECTED);
+    noteStationDiagnosticPhase(ConnectionPhase::Stopped);
+    deliver(ARDUINO_EVENT_WIFI_STA_STOP);
+    deliver(ARDUINO_EVENT_WIFI_STA_START);
+    deliver(ARDUINO_EVENT_WIFI_STA_CONNECTED);
+    deliver(ARDUINO_EVENT_WIFI_STA_GOT_IP);
+    assert(snapshot().phase == ConnectionPhase::Stopped);
+    // A timeout/preflight failure must also survive the driver's restart.
+    assert(beginStation("iot", "secret") == WL_CONNECTED);
+    noteStationDiagnosticPhase(ConnectionPhase::TimedOut);
+    deliver(ARDUINO_EVENT_WIFI_STA_STOP);
+    deliver(ARDUINO_EVENT_WIFI_STA_START);
+    deliver(ARDUINO_EVENT_WIFI_STA_CONNECTED);
+    deliver(ARDUINO_EVENT_WIFI_STA_GOT_IP);
+    assert(snapshot().phase == ConnectionPhase::TimedOut);
   } else if (scenario == "timeout") {
     start();
     fake_now = 16000;

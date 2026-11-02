@@ -29,7 +29,9 @@ jobs:
           python3 -B -m unittest
           test_wifi_connection_diagnostics test_wifi_station_diagnostics
           test_wifi_station_security
+          test_wifi_station_security_arduino3
           test_wifi_station_power
+          test_wifi_recovery
           test_wifi_diagnostic_cli test_webconfig_wifi_status
           test_webconfig_connect_timeout
           test_mqtt_canonical_wifi

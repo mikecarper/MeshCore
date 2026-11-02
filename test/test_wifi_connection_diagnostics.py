@@ -169,6 +169,68 @@ void explicitStopsAndWraparound() {
   assert(fullSSID.snapshot().phase == ConnectionPhase::Connecting);
 }
 
+void driverLifecycle() {
+  const ConnectionPhase active_phases[] = {
+    ConnectionPhase::Connecting, ConnectionPhase::WaitingIP,
+    ConnectionPhase::Online, ConnectionPhase::Disconnected
+  };
+  for (auto prior : active_phases) {
+    ConnectionDiagnostics tracker;
+    tracker.begin("iot", 100);
+    tracker.disconnected(network, sizeof(network), 34, 150);
+    tracker.phase(prior, 160);
+    tracker.driverStopped(200);
+    tracker.driverStopped(210); // Duplicate STOP must retain the restart intent.
+    assert(tracker.snapshot().phase == ConnectionPhase::Stopped);
+    tracker.driverStarted(300);
+    const auto resumed = tracker.snapshot();
+    assert(resumed.phase == ConnectionPhase::Connecting && resumed.phase_ms == 300);
+    assert(resumed.attempts == 1 && resumed.attempt_ms == 100);
+    assert(resumed.last_reason == 34 && resumed.last_disconnect_ms == 150);
+    tracker.driverStarted(310); // Duplicate START must not restart phase clocks.
+    assert(tracker.snapshot().phase_ms == 300);
+    tracker.associated(other, sizeof(other), 320);
+    tracker.gotIP(330);
+    assert(tracker.snapshot().phase == ConnectionPhase::Connecting);
+    tracker.associated(network, sizeof(network), 340);
+    tracker.gotIP(350);
+    assert(tracker.snapshot().phase == ConnectionPhase::Online);
+  }
+
+  const ConnectionPhase explicit_phases[] = {
+    ConnectionPhase::TimedOut, ConnectionPhase::ScanBusy, ConnectionPhase::Blocked,
+    ConnectionPhase::NoSSID, ConnectionPhase::PolicyFailed, ConnectionPhase::APNotOnChannel
+  };
+  for (auto outcome : explicit_phases) {
+    ConnectionDiagnostics tracker;
+    tracker.begin("iot", 100);
+    tracker.driverStopped(150);
+    tracker.phase(outcome, 200); // An explicit result revokes a pending restart.
+    tracker.driverStopped(210);
+    tracker.driverStarted(220);
+    tracker.associated(network, sizeof(network), 230);
+    tracker.gotIP(240);
+    assert(tracker.snapshot().phase == outcome && tracker.snapshot().phase_ms == 200);
+  }
+  for (bool direct_phase : {false, true}) {
+    ConnectionDiagnostics tracker;
+    tracker.begin("iot", 100);
+    tracker.driverStopped(150);
+    if (direct_phase) tracker.phase(ConnectionPhase::Stopped, 200);
+    else tracker.stopped(200);
+    tracker.driverStopped(210);
+    tracker.driverStarted(220);
+    tracker.associated(network, sizeof(network), 230);
+    tracker.gotIP(240);
+    assert(tracker.snapshot().phase == ConnectionPhase::Stopped);
+  }
+  ConnectionDiagnostics no_attempt;
+  no_attempt.driverStopped(0);
+  no_attempt.driverStarted(1);
+  assert(no_attempt.snapshot().phase == ConnectionPhase::Stopped);
+  assert(no_attempt.snapshot().attempts == 0);
+}
+
 void formatterBoundaries() {
   ConnectionDiagnosticsSnapshot value;
   value.attempts = UINT32_MAX;
@@ -240,6 +302,7 @@ void hintsNeverDamageStatus() {
 int main() {
   stateAndReasons();
   explicitStopsAndWraparound();
+  driverLifecycle();
   formatterBoundaries();
   hintsNeverDamageStatus();
 }

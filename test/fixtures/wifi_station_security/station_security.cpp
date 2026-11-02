@@ -42,6 +42,12 @@ static const wifi_config_t& joined(const char* ssid,const char* password) {
   assert(config.sta.scan_method==WIFI_FAST_SCAN);
 #endif
   assert(config.sta.sort_method==WIFI_CONNECT_AP_BY_SIGNAL);
+#if defined(MESH_WIFI_RECOVERY) && MESH_WIFI_RECOVERY \
+    && defined(MESH_WIFI_ALL_CHANNEL_SCAN) && MESH_WIFI_ALL_CHANNEL_SCAN
+  assert(config.sta.failure_retry_cnt==1);
+#else
+  assert(config.sta.failure_retry_cnt==0);
+#endif
   assert(config.sta.pmf_cfg.capable&&!config.sta.pmf_cfg.required);
 #if defined(SAE_H2E_IDENTIFIER_LEN)
   for(uint8_t byte:config.sta.sae_h2e_identifier)assert(byte==0);

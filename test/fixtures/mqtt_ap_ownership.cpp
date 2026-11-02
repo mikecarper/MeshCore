@@ -218,6 +218,77 @@ int main(int argc,char** argv){
   const int expected_writes=bridge._manage_wifi?2:1;
   assert(power_writes==expected_writes&&tx_power_writes==expected_writes&&channel_checks==1);
   assert(applied_ps==WIFI_PS_NONE&&applied_tx==WIFI_POWER_19_5dBm);
+ }else if(scenario=="late_start"){
+  for(uint32_t start:{1000000U,UINT32_MAX-1000U}){
+   MQTTBridge worker;
+   worker.outage={true,start-300000U,0}; // The outage can predate this new attempt.
+   WiFi.state=WL_DISCONNECTED;
+   now_ms=start;
+   const int initial_begins=station_begins;
+   worker.beginWiFiStation();
+   assert(worker._last_wifi_reconnect_attempt==start);
+   assert(station_begins==initial_begins+1);
+   now_ms=start+10001U;
+   worker.handleWiFiConnection(now_ms);
+   assert(station_begins==initial_begins+1); // A late boot/start is still a fresh join.
+#if defined(MESH_WIFI_RECOVERY) && MESH_WIFI_RECOVERY
+   now_ms=start+46000U;
+   worker.handleWiFiConnection(now_ms);
+   assert(station_begins==initial_begins+1); // Keep the complete authentication window.
+#endif
+   now_ms=start+60001U;
+   worker.handleWiFiConnection(now_ms);
+   assert(station_begins==initial_begins+2);
+   assert(worker._last_wifi_reconnect_attempt==now_ms);
+   const auto latest_attempt=worker._last_wifi_reconnect_attempt;
+   sdk_mode=WIFI_AP;
+   worker.beginWiFiStation();
+   assert(station_begins==initial_begins+2);
+   assert(worker._last_wifi_reconnect_attempt==latest_attempt);
+   sdk_mode=WIFI_STA;
+  }
+ }else if(scenario=="recovery_window"){
+#if defined(MESH_WIFI_RECOVERY) && MESH_WIFI_RECOVERY
+  const uint32_t start=1000000U;
+  bridge.outage={true,start-300000U,0};
+  WiFi.state=WL_DISCONNECTED;
+  now_ms=start;
+  bridge.beginWiFiStation();
+  assert(station_begins==1&&bridge._last_wifi_reconnect_attempt==start);
+  for(uint32_t elapsed:{15000U,30000U,59000U}){
+   now_ms=start+elapsed;
+   assert(!bridge.handleWiFiConnection(now_ms));
+   assert(station_begins==1&&station_disconnects==0);
+   assert(bridge._wifi_reconnect_backoff_attempt==0);
+  }
+  // The retry is due after 60 seconds, but the setup/OTA AP owns the driver.
+  for(int mode:{WIFI_AP,WIFI_AP_STA}){
+   sdk_mode=mode;
+   now_ms=start+60000U+(mode==WIFI_AP?0U:12000U);
+   assert(!bridge.handleWiFiConnection(now_ms));
+   assert(station_begins==1&&station_disconnects==0);
+   assert(bridge._last_wifi_reconnect_attempt==start);
+   assert(bridge._wifi_reconnect_backoff_attempt==0);
+   assert(bridge._last_wifi_check==start+59000U);
+  }
+  sdk_mode=WIFI_STA;
+  const uint32_t retry=start+73000U;
+  now_ms=retry;
+  assert(!bridge.handleWiFiConnection(now_ms));
+  assert(station_begins==2&&station_disconnects==1);
+  assert(bridge._last_wifi_reconnect_attempt==retry);
+  assert(bridge._wifi_reconnect_backoff_attempt==1);
+  assert(!bridge.handleWiFiConnection(now_ms)); // Same maintenance tick cannot retry twice.
+  for(uint32_t elapsed:{15000U,30000U,59000U}){
+   now_ms=retry+elapsed;
+   assert(!bridge.handleWiFiConnection(now_ms));
+   assert(station_begins==2&&station_disconnects==1);
+   assert(bridge._last_wifi_reconnect_attempt==retry);
+   assert(bridge._wifi_reconnect_backoff_attempt==1);
+  }
+#else
+  assert(false);
+#endif
  }else if(scenario=="startup_power"){
   const int modes[]={WIFI_PS_MIN_MODEM,WIFI_PS_NONE,WIFI_PS_MAX_MODEM};
   const int powers[]={WIFI_POWER_11dBm,WIFI_POWER_19_5dBm,WIFI_POWER_11dBm};

@@ -157,7 +157,12 @@ static inline uint32_t wifiReconnectBackoffMs(uint8_t attempt) {
 // mirrors the two-part guard the bridge applied inline.
 static inline bool wifiReconnectDue(uint32_t now, uint32_t disconnected_since,
                                     uint32_t last_attempt, uint8_t attempt) {
-  const uint32_t delay = wifiReconnectBackoffMs(attempt);
+  uint32_t delay = wifiReconnectBackoffMs(attempt);
+#if defined(MESH_WIFI_RECOVERY) && MESH_WIFI_RECOVERY
+  // The driver may still be authenticating or performing its own AP retry.
+  // Do not abort that work with the shorter ordinary MQTT reconnect rungs.
+  if (delay < 60000UL) delay = 60000UL;
+#endif
   return elapsedMs(now, disconnected_since) >= delay &&
          elapsedMs(now, last_attempt) >= delay;
 }

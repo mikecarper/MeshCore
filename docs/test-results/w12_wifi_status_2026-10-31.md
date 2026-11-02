@@ -206,3 +206,32 @@ override, and the enabled experiment across supported and SAE-fallback SDKs.
 Checks include a 64-character PSK, fixed-channel selection, healthy-link
 idempotence and driver-managed reconnects. This validates the configured scan
 policy; connection stability on the reported network still needs testing.
+
+## Connection recovery comparison — 2026-11-02
+
+The reported W12 connects with ESPHome. Its log locations match ESPHome
+2026.10, which retries individual APs before selecting another. The exact
+ESPHome binary and configuration remain unknown.
+
+Two host regressions reproduce firmware issues: a driver stop/start left
+diagnostics at `stopped`, and an MQTT station started later in uptime could
+inherit an old reconnect timestamp. Driver events now preserve explicit stop
+intent while resuming interrupted diagnostics, and each MQTT join records its
+own start time.
+
+The controlled `MESH_WIFI_RECOVERY=1` build protects a 60-second MQTT join
+window. Standalone and Companion recovery permit two earlier fallback attempts
+60 seconds apart, then return to five-minute intervals. Combined with the
+all-channel scan experiment, the SDK gets one additional retry per scanned AP.
+Arduino's internal retries remain separate from these application timers.
+
+The comparison build also qualifies Arduino 3.3.12 compatibility hooks without
+changing production board SDKs. Its published package contains ESP-IDF 5.5.5;
+ESPHome 2026.10 defaults to native IDF 5.5.6. This is a newer-driver experiment,
+not proof that both images use identical settings or that the network issue is
+resolved. Existing authentication thresholds, PMF, SAE and fixed-channel
+ESP-NOW constraints are retained.
+
+Sources: [ESPHome connection manager](https://github.com/esphome/esphome/blob/2026.10.1/esphome/components/wifi/wifi_component.cpp),
+[ESP-IDF AP retry setting](https://docs.espressif.com/projects/esp-idf/en/v4.4.8/esp32s3/api-reference/network/esp_wifi.html#_CPPv4N17wifi_sta_config_t17failure_retry_cntE),
+[Arduino 3.3.12 release](https://github.com/espressif/arduino-esp32/releases/tag/3.3.12).

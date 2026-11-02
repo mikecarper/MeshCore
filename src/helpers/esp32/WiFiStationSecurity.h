@@ -2,6 +2,7 @@
 
 #include <string.h>
 #include <WiFi.h>
+#include <esp_arduino_version.h>
 #include <helpers/esp32/WiFiStationDiagnostics.h>
 
 #if (defined(CONFIG_ESP32_WIFI_ENABLE_WPA3_SAE) && CONFIG_ESP32_WIFI_ENABLE_WPA3_SAE) \
@@ -103,17 +104,24 @@ inline wl_status_t beginStationWithSecurity(const char* ssid, const char* passwo
   // Explicitly allow H2E and Hunt-and-Peck before the first authentication
   // frame. The SDK default excludes H2E-only APs on IDF 4.4.8 (AR2026-003).
   config.sta.sae_pwe_h2e = WPA3_SAE_PWE_BOTH;
+#if defined(MESH_WIFI_RECOVERY) && MESH_WIFI_RECOVERY
+  // Let the driver retry a scanned AP once before moving to the next match.
+  // Reuse the driver's asynchronous scan for the additional attempt.
+  if (config.sta.scan_method == WIFI_ALL_CHANNEL_SCAN) config.sta.failure_retry_cnt = 1;
+#endif
 #if defined(SAE_H2E_IDENTIFIER_LEN)
   memset(config.sta.sae_h2e_identifier, 0, sizeof(config.sta.sae_h2e_identifier));
 #endif
   if (esp_wifi_set_config(WIFI_IF_STA, &config) != ESP_OK) return failed();
 
   // This overload preserves the configured SAE method and Arduino's DHCP /
-  // static-IP handling. A queued disconnect can leave its cached status at
-  // CONNECTED, in which case it skips connecting; explicitly restart that join.
+  // static-IP handling. Arduino 2 can skip its join on a stale cached status.
+  // Arduino 3 instead checks the netif connection bit and already starts it.
   const wl_status_t result = WiFi.begin();
   if (result == WL_CONNECTED) {
+#if !defined(ESP_ARDUINO_VERSION_MAJOR) || ESP_ARDUINO_VERSION_MAJOR < 3
     if (!WiFi.reconnect()) return failed();
+#endif
     return WL_IDLE_STATUS;
   }
   return result;

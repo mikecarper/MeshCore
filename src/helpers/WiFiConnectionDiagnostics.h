@@ -33,6 +33,7 @@ class ConnectionDiagnostics {
   ConnectionDiagnosticsSnapshot snapshot() const { return state_; }
 
   void begin(const char* ssid, uint32_t now) {
+    driver_stopped_ = false;
     char requested[33] = {};
     if (ssid) {
       for (size_t i = 0; i < sizeof(requested) - 1 && ssid[i]; ++i) {
@@ -50,10 +51,12 @@ class ConnectionDiagnostics {
   }
 
   void phase(ConnectionPhase value, uint32_t now) {
+    if (value == ConnectionPhase::Stopped) driver_stopped_ = false;
     if (state_.phase == value) return;
     // A caller's join deadline is not a second, more specific failure when
     // policy or a fixed-channel scan already prevented the driver attempt.
     if (value == ConnectionPhase::TimedOut && preflightFailed()) return;
+    driver_stopped_ = false;
     state_.phase = value;
     state_.phase_ms = now;
   }
@@ -90,7 +93,25 @@ class ConnectionDiagnostics {
     }
   }
 
+  // Driver restarts can occur during an existing attempt. Only a driver's
+  // stop of an active attempt permits START to restore its diagnostic phase;
+  // an explicit operator/power-policy stop must remain stopped.
+  void driverStopped(uint32_t now) {
+    const bool may_resume = active() || driver_stopped_;
+    stopped(now);
+    driver_stopped_ = may_resume && state_.phase == ConnectionPhase::Stopped;
+  }
+
+  void driverStarted(uint32_t now) {
+    if (driver_stopped_ && state_.phase == ConnectionPhase::Stopped
+        && state_.attempts && state_.ssid[0]) {
+      phase(ConnectionPhase::Connecting, now);
+    }
+    driver_stopped_ = false;
+  }
+
   void stopped(uint32_t now) {
+    driver_stopped_ = false;
     switch (state_.phase) {
       case ConnectionPhase::TimedOut:
       case ConnectionPhase::ScanBusy:
@@ -127,6 +148,7 @@ class ConnectionDiagnostics {
   }
 
   ConnectionDiagnosticsSnapshot state_;
+  bool driver_stopped_ = false;
 };
 
 inline const char* connectionPhaseName(ConnectionPhase phase) {

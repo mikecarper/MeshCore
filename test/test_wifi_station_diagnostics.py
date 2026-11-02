@@ -31,7 +31,8 @@ WIFI = r'''
 #include <vector>
 enum wl_status_t {WL_IDLE_STATUS,WL_CONNECTED,WL_NO_SSID_AVAIL,WL_CONNECT_FAILED};
 enum {ARDUINO_EVENT_WIFI_STA_CONNECTED=1,ARDUINO_EVENT_WIFI_STA_GOT_IP,
- ARDUINO_EVENT_WIFI_STA_DISCONNECTED,ARDUINO_EVENT_WIFI_STA_LOST_IP,ARDUINO_EVENT_WIFI_STA_STOP};
+ ARDUINO_EVENT_WIFI_STA_DISCONNECTED,ARDUINO_EVENT_WIFI_STA_LOST_IP,ARDUINO_EVENT_WIFI_STA_STOP,
+ ARDUINO_EVENT_WIFI_STA_START};
 constexpr int WIFI_SCAN_RUNNING=-1;
 struct StationConnected {uint8_t ssid[32];uint8_t ssid_len;};
 struct StationDisconnected {uint8_t ssid[32];uint8_t ssid_len;uint8_t reason;};
@@ -147,6 +148,9 @@ class WiFiStationDiagnosticsIntegrationTests(unittest.TestCase):
 
     def test_original_auth_failure_survives_local_disconnect_and_ap_recovery(self):
         self.run_scenario("recovery")
+
+    def test_driver_restart_restores_attempt_without_reviving_explicit_stops(self):
+        self.run_scenario("driver-restart")
 
     def test_preflight_failures_never_claim_the_driver_joined(self):
         self.run_scenario("preflight")
