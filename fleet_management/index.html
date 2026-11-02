@@ -1476,6 +1476,45 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
+  <a href="#hardware-and-role-conditions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Hardware and role conditions
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Hardware and role conditions">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#sd-backed-receivers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        SD-backed receivers
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#packet-budget" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Packet budget
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#two-packet-delivery" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2707,6 +2746,45 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
+  <a href="#hardware-and-role-conditions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Hardware and role conditions
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Hardware and role conditions">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#sd-backed-receivers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        SD-backed receivers
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#packet-budget" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Packet budget
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#two-packet-delivery" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2978,6 +3056,64 @@ Each receiving node reserves the Unix-second sequence in durable storage
 including after reboot or a lost reply. Retry an uncertain command with a fresh
 sequence; the operation should be chosen to be idempotent.</p>
 <h2 id="supported-controls">Supported controls</h2>
+<h3 id="hardware-and-role-conditions">Hardware and role conditions</h3>
+<p>Use <code>get hardware</code> on a node to find its hardware name, role and short ID:</p>
+<pre><code class="language-text">&gt; hw=heltec_tower_v2 role=repeater id=536D28C9
+</code></pre>
+<p>Prefix a command with <code>@board/role</code> to run it only on matching hardware:</p>
+<pre><code class="language-text">@Heltec_tower_v2/r ota pull A1B2C3D4 flash
+@#536D28C9/r ota pull A1B2C3D4 flash
+</code></pre>
+<p>The second line is the shorter spelling of the first. <code>/r</code> selects repeaters,
+<code>/s</code> room servers, <code>/c</code> Companions and <code>/n</code> sensors. Omit <code>/role</code> to match any
+role on that board; <code>@*/r</code> selects any repeater. Hardware names ignore case and
+accept underscores for spaces. Use the reported name or ID: board names can
+differ between builds with different storage or radio hardware.</p>
+<p>These prefixes work in ordinary authenticated admin CLI queues as well as signed
+fleet commands. A mismatched node replies <code>OK - skipped (hardware/role)</code> and
+does not run the inner command, so an app can continue its template queue.
+Sensor and Companion guards work in their ordinary CLI; signed fleet reception
+remains limited to repeaters and room servers.
+For example, after the existing fleet enrollment:</p>
+<pre><code class="language-text">fleet send 3 get hardware
+fleet send 3 @Heltec_tower_v2/r get radio2
+fleet send 3 @#536D28C9/r ota pull A1B2C3D4 flash
+fleet send 3 @*/s get radio2
+</code></pre>
+<p>Fleet OTA pulls require a specific hardware name or short ID, <code>/r</code> or <code>/s</code>,
+the exact eight-hex-digit manifest ID from <code>ota ls</code>, and the <code>flash</code> destination.
+The normal <a href="../lora_ota_automation/">LoRa OTA setup</a>, temporary-radio requirement,
+image compatibility checks and signer policy still apply. Explicit installation,
+rescue and bootloader commands are not added to fleet control. An existing
+autoinstall setting retains its normal effect.</p>
+<h4 id="sd-backed-receivers">SD-backed receivers</h4>
+<p>The same <code>flash</code> destination selects the receiver's configured OTA store,
+including microSD on the SD-enabled MeshTower V2 and adaptive RAK4631/RAK15002
+receiver builds. It does not force internal-flash staging. Use the hardware
+identity reported by <code>get hardware</code>, not the SD module's name:</p>
+<pre><code class="language-text">fleet send 3 @Heltec_tower_v2/r ota pull A1B2C3D4 flash
+fleet send 3 @RAK4631/r ota pull 11223344 flash
+</code></pre>
+<p>Each ID must identify that board's update. SD installation requires a usable
+card, the matching SD-capable bootloader and a signed package from a trusted
+signer. Check <code>ota self</code> and <code>ota storage</code> through individual admin CLI before
+starting. An SD socket or an archive-only firmware build does not enable
+installation; SD Companions and the legacy RAK15002 seeder remain sources only.
+SD partial downloads remain on the card for resume. Keep the card inserted
+through download and installation; the receiver does not move an active
+transfer to internal storage if the card is removed. See
+<a href="../ota_meshtower_v2_sdcard/#automatic-storage-selection">MeshTower SD storage selection</a>
+and <a href="../ota_nrf52_qspi/">RAK4631 storage options</a>.</p>
+<p>The prefix is covered by the existing command signature and consumes the normal
+command-byte budget; no extra packet format is needed. Its short ID is a
+32-bit FNV-1a hash of the hardware name after lowercasing and replacing spaces
+with underscores. It is a selector, not an authentication or compatibility key.
+Ordinary unguarded commands retain their existing behavior. Older firmware
+rejects guarded commands; both endpoints need this support for signed fleet use.
+Fixed-size STM32 builds omit hardware guards with fleet control. Run password,
+private-key backup, replay-recovery and interactive <code>region load</code> commands
+without a guard so their existing special handling remains in charge.</p>
+<h3 id="packet-budget">Packet budget</h3>
 <p>The Companion automatically uses <strong>one or two LoRa packets</strong>, depending on the
 signed command's size. Whole-fleet commands fit <strong>87 ASCII bytes</strong> in one packet
 or <strong>230 bytes</strong> across two. Targets consume some of that allowance:</p>
@@ -3099,6 +3235,18 @@ Reboot or changing enrollment discards the partial transfers.</p>
 <tr>
 <td>UTC clock</td>
 <td><code>clock</code>, <code>clock sync</code>, <code>time &lt;epoch-seconds&gt;</code></td>
+</tr>
+<tr>
+<td>Hardware identity</td>
+<td><code>get hardware</code></td>
+</tr>
+<tr>
+<td>OTA download</td>
+<td><code>@board/r ota pull &lt;manifest-id-8-hex&gt; flash</code> (<code>/s</code> for rooms)</td>
+</tr>
+<tr>
+<td>OTA progress</td>
+<td><code>ota status</code>, <code>ota stats</code>, <code>ota self</code></td>
 </tr>
 <tr>
 <td>Profile diagnostics</td>

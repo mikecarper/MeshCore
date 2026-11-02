@@ -7751,6 +7751,12 @@
 <!-- meshcore-hosted-doc-link:end -->
 
 <h1 id="cli-commands">CLI Commands</h1>
+<p>For hardware-specific app templates, use <code>get hardware</code>, then prefix a command
+with <code>@board/role</code>, for example <code>@Heltec_tower_v2/r ota pull A1B2C3D4 flash</code>.
+<code>/r</code> means repeater, <code>/s</code> room server, <code>/c</code> Companion and <code>/n</code> sensor. Other
+hardware replies <code>OK - skipped (hardware/role)</code>. A short <code>@#&lt;hardware-id&gt;/r</code>
+form is also available. See <a href="../fleet_management/#hardware-and-role-conditions">hardware and role conditions</a>
+for signed fleet use, availability and OTA prerequisites.</p>
 <p>For SolarXiao Base/Advanced/MPPT automatic detection, manual overrides, live
 battery/MCU readings and charger controls, see <a href="../solarxiao_power/">SolarXiao carrier profiles</a>
 (<code>get solar</code>, <code>get solar readings</code>, <code>set solar.board auto</code>, <code>get mppt</code>, <code>set mppt</code>).</p>
