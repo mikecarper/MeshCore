@@ -1,3 +1,7 @@
+<!-- meshcore-hosted-doc-link:start -->
+<p class="meshcore-hosted-doc-link"><a href="https://mikecarper.github.io/MeshCore/test-results/rxps_recovery_2026-11-02/">View this page on MeshCore Docs</a>.</p>
+<!-- meshcore-hosted-doc-link:end -->
+
 # RX power-saving recovery — 2 November 2026 UTC
 <p class="meshcore-hosted-doc-link"><a href="https://mikecarper.github.io/MeshCore/test-results/rxps_recovery_2026-11-02/">View this page on MeshCore Docs</a>.</p>
 
