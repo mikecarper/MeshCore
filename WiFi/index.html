@@ -3645,9 +3645,12 @@ reported as <code>min</code>. The SenseCAP Indicator exception uses the active-m
 above rather than assuming BLE and infrastructure WiFi are active together.
 ESP-NOW and
 infrastructure WiFi still must use the same fixed channel.</p>
-<p>MQTT observer targets normally limit ESP32 WiFi transmit power to 11 dBm unless
-the board configuration overrides <code>MQTT_WIFI_TX_POWER</code>. This setting affects
-WiFi only, not LoRa transmit power.</p>
+<p>ESP32 WiFi stations request 19.5 dBm transmit power with effective power saving
+set to <code>none</code>, or 11 dBm with <code>min</code> or <code>max</code>. This applies to Companions,
+standalone WebConfig and MQTT observers on every board. The driver enforces its
+radio limits. Builds can override these requests with <code>MQTT_WIFI_TX_POWER</code> and
+<code>MQTT_WIFI_POWER_SAVE_TX_POWER</code>, respectively. These settings affect WiFi only,
+not LoRa transmit power.</p>
 <h2 id="companion-wifi-compatibility-settings">Companion WiFi compatibility settings</h2>
 <p>ESP32 WiFi Companions, including Full Companion, provide two independent,
 saved compatibility controls. Defaults remain <code>bgn</code> and <code>normal</code>; neither
