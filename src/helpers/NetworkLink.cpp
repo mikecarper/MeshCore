@@ -6,6 +6,7 @@
 #include "UsbLogging.h"
 #include "WifiPowerSavePolicy.h"
 #include "esp32/WiFiStationPolicy.h"
+#include "esp32/WiFiStationPower.h"
 
 #include <atomic>
 #include <climits>
@@ -247,7 +248,9 @@ class WiFiNetworkLink final : public NetworkLinkBase {
     static_assert((int)WifiPowerSavePolicy::kModeNone == (int)WIFI_PS_NONE, "wifi_ps_type_t drift");
     static_assert((int)WifiPowerSavePolicy::kModeMinModem == (int)WIFI_PS_MIN_MODEM, "wifi_ps_type_t drift");
     static_assert((int)WifiPowerSavePolicy::kModeMaxModem == (int)WIFI_PS_MAX_MODEM, "wifi_ps_type_t drift");
-    esp_wifi_set_ps((wifi_ps_type_t)WifiPowerSavePolicy::modeFor(wifi_power_save));
+    const wifi_ps_type_t mode = (wifi_ps_type_t)WifiPowerSavePolicy::modeFor(wifi_power_save);
+    (void)WiFi.setSleep(mode);
+    mesh::wifi::applyStationPowerSave(mode);
     // Read back rather than logging what we asked for: this is the only place
     // the mode is observable on a running node, and the setting used to change
     // meaning between the CLI and this path.
@@ -255,11 +258,6 @@ class WiFiNetworkLink final : public NetworkLinkBase {
     esp_wifi_get_ps(&applied);
     NETWORK_DEBUG_PRINTLN("WiFi power save: %s (mode=%d)",
                           WifiPowerSavePolicy::nameFor(wifi_power_save), (int)applied);
-#ifdef MQTT_WIFI_TX_POWER
-    WiFi.setTxPower(MQTT_WIFI_TX_POWER);
-#else
-    WiFi.setTxPower(WIFI_POWER_11dBm);
-#endif
   }
 
  public:
@@ -386,6 +384,7 @@ class WiFiNetworkLink final : public NetworkLinkBase {
       _reconnect_backoff_attempt =
           MQTTConnectionPolicy::nextWifiBackoffAttempt(_reconnect_backoff_attempt);
       WiFi.disconnect();
+      applyPowerPrefs(wifi_power_save);
       mesh::wifi::beginStation(_ssid, _password);
     }
     _last_connected = false;

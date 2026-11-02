@@ -365,7 +365,12 @@ layouts on the same board; follow the exact image's installation directions.
 - `WITH_MQTT_BRIDGE=1` - Enable MQTT bridge (required)
 - `WITH_SNMP=1` - Enable SNMP agent (optional, see [MQTT_SNMP.md](MQTT_SNMP.md))
 - `MQTT_DEBUG=1` - Enable debug logging (optional)
-- `MQTT_WIFI_TX_POWER` - WiFi TX power level (default: `WIFI_POWER_11dBm`)
+- `MQTT_WIFI_TX_POWER` - WiFi transmit-power request with effective power saving
+  off (default: `WIFI_POWER_19_5dBm`, 19.5 dBm).
+- `MQTT_WIFI_POWER_SAVE_TX_POWER` - WiFi transmit-power request with effective
+  power saving `min` or `max` (default: `WIFI_POWER_11dBm`, 11 dBm). The driver
+  enforces its radio limits; these settings also apply to Companions and
+  standalone WebConfig.
 - `DEFAULT_WIFI_POWER_SAVE_MODE` - Fresh-install WiFi modem-sleep default:
   `0` = `min`, `1` = `none`, `2` = `max`. The Cascade profile sets `0`;
   target-default builds use `1`.

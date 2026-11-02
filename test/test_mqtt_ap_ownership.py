@@ -23,6 +23,7 @@ class MQTTAccessPointOwnershipTest(unittest.TestCase):
         source = (ROOT / "src/helpers/bridges/MQTTBridge.cpp").read_text(encoding="ascii")
         initialize = "\n".join(method(source, signature) for signature in (
             "static bool mqttStationWiFiMutationAllowed(",
+            "static wifi_ps_type_t mqttWiFiPowerSaveMode(",
             "void MQTTBridge::beginWiFiStation(",
             "bool MQTTBridge::initializeWiFiInTask(",
             "bool MQTTBridge::handleWiFiConnection(",
@@ -34,7 +35,13 @@ class MQTTAccessPointOwnershipTest(unittest.TestCase):
         fixture = (ROOT / "test/fixtures/mqtt_ap_ownership.cpp").read_text(encoding="ascii")
         policy = (ROOT / "src/helpers/esp32/WiFiRadioPolicy.h").read_text(encoding="ascii")
         guard = method(policy, "inline bool stationMutationAllowed(")
+        power = (ROOT / "src/helpers/esp32/WiFiStationPower.h").read_text(encoding="ascii")
+        power_methods = "\n".join(method(power, signature) for signature in (
+            "inline wifi_power_t stationTransmitPower(",
+            "inline esp_err_t applyStationPowerSave(",
+        ))
         return (fixture.replace("@STATION_GUARD@", guard)
+                .replace("@STATION_POWER@", power_methods)
                 .replace("@INITIALIZE@", initialize).replace("@WAIT@", wait)
                 .replace("@TASK_START@", startup).replace("@TASK_STOP@", stop))
 
@@ -84,6 +91,19 @@ class MQTTAccessPointOwnershipTest(unittest.TestCase):
     def test_initialized_worker_defers_recovery_and_power_changes_during_ap(self):
         self.run_fixture("recovery")
         self.run_fixture("companion_recovery")
+
+    def test_first_join_and_reconnect_restore_transmit_power_from_saved_mode(self):
+        self.run_fixture("startup_power")
+
+    def test_startup_cannot_leave_a_previous_low_transmit_power_limit(self):
+        source = self.fixture()
+        start = source.index("void MQTTBridge::beginWiFiStation(")
+        end = source.index("bool MQTTBridge::initializeWiFiInTask(", start)
+        stale = source[:start] + source[start:end].replace(
+            "  mesh::wifi::applyStationPowerSave(mode);", "", 1) + source[end:]
+        self.assertNotEqual(stale, source)
+        with self.assertRaises(FixtureFailure):
+            self.run_fixture("startup_power", stale)
 
     def test_reverted_ap_guard_drops_the_owned_access_point(self):
         source = self.fixture()

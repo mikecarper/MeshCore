@@ -21,6 +21,7 @@ HARNESS = r'''
 #include <cstring>
 #include <helpers/WiFiNetworkPowerPolicy.h>
 #include <helpers/WiFiConnectionDiagnostics.h>
+int ps_applied = 0;
 
 namespace mesh { namespace wifi {
 void noteStationDiagnosticPhase(ConnectionPhase) {}
@@ -31,7 +32,7 @@ bool stationMutationAllowed() { return station_allowed; }
 void applyProtocolMask(int) { ++protocols; }
 int restoreEspNowChannel() { ++channels; return restore_result; }
 void setStationAutoReconnect(bool);
-void beginStation(const char*, const char*) { ++associations; }
+void beginStation(const char*, const char*) { assert(ps_applied > 0); ++associations; }
 }}
 
 constexpr int WIFI_STA = 1, WIFI_OFF = 0, WIFI_IF_STA = 0, TCP_PORT = 5000;
@@ -84,7 +85,7 @@ bool companion_wifi_setup_requested = false;
 bool companion_wifi_has_credentials = true;
 char configured_wifi_ssid[] = "saved-network";
 char configured_wifi_password[] = "saved-password";
-int ntp_cancels = 0, resets = 0, ps_applied = 0, console_starts = 0, console_stops = 0;
+int ntp_cancels = 0, resets = 0, console_starts = 0, console_stops = 0;
 void cancelCompanionWiFiNtp(bool retry) { assert(!retry); ++ntp_cancels; }
 void resetCompanionWiFiRecoveryState() { ++resets; }
 void applyCompanionWiFiPowerSave() { ++ps_applied; }
@@ -186,7 +187,7 @@ int main() {
   assert(!companion_wifi_background_stopped && board.inhibit);
   assert(wifi_interface.enabled && wifi_interface.begins == 1);
   assert(mesh::wifi::associations == 1 && WiFi.reconnect);
-  assert(WiFi.current_mode == WIFI_STA && ps_applied == 1);
+  assert(WiFi.current_mode == WIFI_STA && ps_applied == 2);
 #ifdef ENABLE_OTA
   assert(console_starts == 1);
 #endif

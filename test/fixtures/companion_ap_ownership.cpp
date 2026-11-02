@@ -28,7 +28,7 @@ namespace mesh{namespace wifi{
  void setStationAutoReconnect(bool){++reconnect_writes;}
  bool enforceStationChannel(){++channel_checks;return true;}
  void applyProtocolMask(int){}
- void beginStation(const char*,const char*){++joins;}
+ void beginStation(const char*,const char*){assert(power_writes>0);++joins;}
 }}
 namespace mesh{namespace wireless{
  constexpr int WiFi=1;
@@ -151,7 +151,7 @@ int main(int argc,char** argv){
   query_error=ESP_FAIL;startCompanionWiFi();assert_untouched();query_error=0;
   sdk_mode=WIFI_STA;board.ota=false;startCompanionWiFi();
   assert(companion_wifi_active&&!companion_wifi_services_stopped&&board.inhibit_sleep);
-  assert(mode_writes==1&&joins==1&&socket_starts==1&&console_starts==1&&power_writes==1);
+  assert(mode_writes==1&&joins==1&&socket_starts==1&&console_starts==1&&power_writes==2);
   startCompanionWiFi();assert(mode_writes==1&&socket_starts==1);
  }else if(scenario=="registration"){
   companion_wifi_interface_registered=false;
@@ -174,7 +174,7 @@ int main(int argc,char** argv){
   power.setHold(mesh::wifi::NetworkPowerHold::CompanionClient,true);
   startCompanionWiFi();
   assert(companion_wifi_active&&!companion_wifi_services_stopped&&board.inhibit_sleep);
-  assert(mode_writes==1&&joins==1&&socket_starts==1&&console_starts==1&&power_writes==1);
+  assert(mode_writes==1&&joins==1&&socket_starts==1&&console_starts==1&&power_writes==2);
   assert(!companion_wifi_espnow_restore_pending);
   serviceCompanionWiFiCredentialReload();
   assert(!companion_wifi_credential_reload_pending&&companion_wifi_credential_reload_at==0);

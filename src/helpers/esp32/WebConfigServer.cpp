@@ -46,6 +46,7 @@ static_assert(sizeof(WEBCONFIG_AP_PREFIX) <= 28,
 #include "helpers/esp32/WiFiRadioPolicy.h"
 #include "helpers/esp32/WiFiAccessPointPolicy.h"
 #include "helpers/esp32/WiFiStationPolicy.h"
+#include "helpers/esp32/WiFiStationPower.h"
 #include "helpers/esp32/ManagementPassword.h"
 
 // ESPAsyncWebServer closes every ordinary response, so splitting the UI into
@@ -543,7 +544,7 @@ bool WebConfigServer::setStandaloneWiFiPowerSave(const char* value, char* reply,
   // STA_START reapplies Arduino's cache, including after a later radio restart.
   (void)WiFi.setSleep(mode);
   if (WiFi.getMode() != WIFI_OFF) {
-    esp_wifi_set_ps(mode);
+    mesh::wifi::applyStationPowerSave(mode);
   }
   snprintf(reply, reply_len, "OK - WiFi power save saved; reboot to apply");
   return true;
@@ -1072,8 +1073,8 @@ bool WebConfigServer::beginSavedStation(uint32_t now) {
   _setup_reconnect_deadline = 0;
   _setup_started_at = 0;
   _wifi_reconnect_tracker.noteDisconnected(now);
+  mesh::wifi::applyStationPowerSave(ps_mode);
   mesh::wifi::beginStation(_wifi_ssid, _wifi_password);
-  esp_wifi_set_ps(ps_mode);
   _connect_deadline = WebConfigBatch::scheduleAt(
       now, WebConfigBatch::kInitialWiFiConnectTimeoutMs);
   return true;

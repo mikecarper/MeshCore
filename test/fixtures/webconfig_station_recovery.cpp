@@ -18,8 +18,13 @@ enum { WL_DISCONNECTED = 6, WL_CONNECTED = 3, WIFI_STA = 1, WIFI_AP = 2, WIFI_AP
        WIFI_IF_STA = 0, ESP_OK = 0, WIFI_PS_NONE = 0,
        WIFI_PS_MAX_MODEM = 2, WIFI_PS_MIN_MODEM = 1 };
 using wifi_ps_type_t = int;
+using wifi_power_t = int;
+using esp_err_t = int;
+constexpr int ESP_FAIL = -2, WIFI_POWER_11dBm = 44, WIFI_POWER_19_5dBm = 78;
 static int applied_ps = -1;
-void esp_wifi_set_ps(int mode) { applied_ps = mode; }
+static int applied_tx = -1;
+int esp_wifi_set_ps(int mode) { applied_ps = mode; return ESP_OK; }
+int esp_wifi_set_max_tx_power(int8_t value) { applied_tx = value; return ESP_OK; }
 void* xSemaphoreCreateMutex() { return nullptr; }
 struct IP {
   struct Text { const char* c_str() const { return "192.168.0.2"; } };
@@ -50,11 +55,13 @@ struct FakeWiFi {
     applied_ps = cached_ps; // Arduino 2.x's asynchronous STA_START handler.
   }
   int getMode() const { return current_mode; }
+  bool setTxPower(int value) { applied_tx = value; return true; }
   int softAPgetStationNum() const { return ap_clients; }
   void disconnect(bool, bool) { ++disconnects; state = WL_DISCONNECTED; }
   void softAPdisconnect(bool) { ++ap_disconnects; if (!fail_ap_stop) current_mode &= ~WIFI_AP; }
   IP localIP() const { return {}; }
 } WiFi;
+@POWER_POLICY@
 namespace mesh {
 namespace wireless {
 enum { WiFi = 1 };

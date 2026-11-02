@@ -8,6 +8,7 @@ import tempfile
 import unittest
 
 from test_replay_reset_integration import extract_braced
+from test_wifi_station_power import power_policy
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -49,6 +50,7 @@ class MQTTCanonicalWiFiTest(unittest.TestCase):
                                  "  if (_callbacks->usesCanonicalWiFi())")
         mqtt_methods = "\n".join(extract_braced(mqtt, signature) for signature in (
             "static bool mqttStationWiFiMutationAllowed(",
+            "static wifi_ps_type_t mqttWiFiPowerSaveMode(",
             "bool MQTTBridge::prepareWiFiCredentials(",
             "void MQTTBridge::beginWiFiStation(",
             "static bool isWiFiConfigValid(",
@@ -69,6 +71,7 @@ class MQTTCanonicalWiFiTest(unittest.TestCase):
         reconnect_end = mqtt.index("#endif", reconnect_start) + len("#endif")
         reconnect = mqtt[reconnect_start:reconnect_end]
         return (fixture.replace("@WEB_POLICY@", web_policy)
+                .replace("@POWER_POLICY@", power_policy())
                 .replace("@WEB_METHODS@", web_methods)
                 .replace("@MQTT_METHODS@", mqtt_methods)
                 .replace("@BEGIN_GATE@", gate).replace("@RECONNECT@", reconnect)
@@ -112,8 +115,10 @@ int main() {
   for (unsigned preference = 0; preference < 3; ++preference) {
     WiFi.current_mode = WIFI_OFF;
     applied_ps = -1;
+    applied_tx = -1;
     assert(WebConfigServer::setStandaloneWiFiPowerSave(values[preference], reply, sizeof(reply)));
     assert(applied_ps == -1); // Saving must not power on a stopped interface.
+    assert(applied_tx == -1);
     WiFi.deliverStaStart();
     assert(applied_ps == expected[preference]);
     // A newer SDK-only owner may leave the driver different from the cache.
@@ -121,6 +126,7 @@ int main() {
     applied_ps = expected[(preference + 1) % 3];
     assert(WebConfigServer::setStandaloneWiFiPowerSave(values[preference], reply, sizeof(reply)));
     assert(applied_ps == expected[preference]);
+    assert(applied_tx == (preference == 1 ? 78 : 44));
     WiFi.deliverStaStart();
     assert(applied_ps == expected[preference]);
   }

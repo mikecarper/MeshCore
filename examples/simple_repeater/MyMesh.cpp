@@ -43,6 +43,7 @@ mesh::FloodAdvertLimiter::Entry* repeaterRtcAdvertSlowBank() {
 #if defined(WITH_UDP_BRIDGE)
 #include <helpers/esp32/WiFiCredentials.h>
 #include <helpers/esp32/WiFiStationPolicy.h>
+#include <helpers/esp32/WiFiStationPower.h>
 #endif
 #include <helpers/UsbLogging.h>
 #include <helpers/MorseLoopPolicy.h>
@@ -14949,11 +14950,13 @@ void MyMesh::serviceUDPBridge() {
   WiFi.persistent(false);
   if (!WiFi.mode(WIFI_STA) || mesh::wifi::applyProtocolMask(WIFI_IF_STA) != ESP_OK) return;
   mesh::wifi::setStationAutoReconnect(true);
-  mesh::wifi::beginStation(credentials.ssid, credentials.password);
   const uint8_t power_save = mesh::wifi::effectivePowerSave(credentials.power_save, false,
       mesh::wifi::espNowChannelConstrained());
-  esp_wifi_set_ps(power_save == mesh::wifi::kPowerSaveNone ? WIFI_PS_NONE
-      : power_save == mesh::wifi::kPowerSaveMax ? WIFI_PS_MAX_MODEM : WIFI_PS_MIN_MODEM);
+  const wifi_ps_type_t mode = power_save == mesh::wifi::kPowerSaveNone ? WIFI_PS_NONE
+      : power_save == mesh::wifi::kPowerSaveMax ? WIFI_PS_MAX_MODEM : WIFI_PS_MIN_MODEM;
+  (void)WiFi.setSleep(mode);
+  mesh::wifi::applyStationPowerSave(mode);
+  mesh::wifi::beginStation(credentials.ssid, credentials.password);
 }
 #endif
 

@@ -36,6 +36,7 @@
 #include <esp_tls_errors.h>
 #include <helpers/esp32/SntpOperationCoordinator.h>
 #include <helpers/esp32/WiFiStationPolicy.h>
+#include <helpers/esp32/WiFiStationPower.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
 #include <freertos/queue.h>
@@ -208,6 +209,21 @@ static bool mqttStationWiFiMutationAllowed() {
   return mesh::wifi::stationMutationAllowed();
 }
 
+static wifi_ps_type_t mqttWiFiPowerSaveMode(uint8_t configured) {
+  const uint8_t effective = mesh::wifi::effectivePowerSave(
+      configured,
+#if defined(COMPANION_EXCLUSIVE_WIFI_BLE)
+      false,
+#elif defined(BLE_PIN_CODE) && defined(WIFI_SSID)
+      mesh::wifi::activeCompanionMode() != mesh::wifi::CompanionMode::WiFiOnly,
+#else
+      false,
+#endif
+      mesh::wifi::kPrimaryEspNowRadio);
+  return effective == mesh::wifi::kPowerSaveNone ? WIFI_PS_NONE
+      : effective == mesh::wifi::kPowerSaveMax ? WIFI_PS_MAX_MODEM : WIFI_PS_MIN_MODEM;
+}
+
 void MQTTBridge::beginWiFiStation() {
   if (!mqttStationWiFiMutationAllowed()) return;
   if (_wifi_credentials_changed) {
@@ -216,6 +232,10 @@ void MQTTBridge::beginWiFiStation() {
     _last_wifi_reconnect_attempt = millis();
     _wifi_reconnect_backoff_attempt = 0;
   }
+  const wifi_ps_type_t mode = mqttWiFiPowerSaveMode(
+      _manage_wifi && _node_info.canonical_wifi ? _wifi_power_save : _obs->wifi_power_save);
+  (void)WiFi.setSleep(mode);
+  mesh::wifi::applyStationPowerSave(mode);
   mesh::wifi::beginStation(_wifi_ssid, _wifi_password);
 }
 
@@ -3582,32 +3602,9 @@ bool MQTTBridge::handleWiFiConnection(unsigned long now) {
       s_wifi_connected_at = now;
       _wifi_reconnect_backoff_attempt = 0;
       #ifdef ESP_PLATFORM
-      wifi_ps_type_t ps_mode;
-      uint8_t ps_pref = mesh::wifi::effectivePowerSave(
-          _manage_wifi && _node_info.canonical_wifi ? _wifi_power_save : _obs->wifi_power_save,
-#if defined(COMPANION_EXCLUSIVE_WIFI_BLE)
-          false,
-#elif defined(BLE_PIN_CODE) && defined(WIFI_SSID)
-          mesh::wifi::activeCompanionMode()
-              != mesh::wifi::CompanionMode::WiFiOnly,
-#else
-          false,
-#endif
-          mesh::wifi::kPrimaryEspNowRadio
-      );
-      if (ps_pref == 1) {
-        ps_mode = WIFI_PS_NONE;
-      } else if (ps_pref == 2) {
-        ps_mode = WIFI_PS_MAX_MODEM;
-      } else {
-        ps_mode = WIFI_PS_MIN_MODEM;
-      }
-      esp_wifi_set_ps(ps_mode);
-      #ifdef MQTT_WIFI_TX_POWER
-      WiFi.setTxPower(MQTT_WIFI_TX_POWER);
-      #else
-      WiFi.setTxPower(WIFI_POWER_11dBm);
-      #endif
+      const wifi_ps_type_t ps_mode = mqttWiFiPowerSaveMode(
+          _manage_wifi && _node_info.canonical_wifi ? _wifi_power_save : _obs->wifi_power_save);
+      mesh::wifi::applyStationPowerSave(ps_mode);
       #endif
     }
     if (s_wifi_connected_at == 0) {

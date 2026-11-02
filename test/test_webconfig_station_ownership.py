@@ -6,6 +6,7 @@ import unittest
 from test_replay_reset_integration import extract_braced
 import test_wifi_ota_start as wifi_start
 import test_webconfig_login_throttle as login_tests
+from test_wifi_station_power import power_policy
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -67,6 +68,7 @@ class WebConfigStationOwnershipTest(unittest.TestCase):
         batch = source[batch_start:batch_end]
         capability = re.search(r'  doc\["wifi_psk64"\] = .*?;', source).group(0)
         return (fixture.replace("@CONSTRUCTOR@", constructor).replace("@START@", start)
+                .replace("@POWER_POLICY@", power_policy())
                 .replace("@SETTER@", setter).replace("@RECOVERY@", recovery)
                 .replace("@PREPARE@", prepare)
                 .replace("@ATTEMPT@", attempt).replace("@CREDENTIAL_BATCH@", batch)
@@ -112,6 +114,7 @@ int main() {
     portal._wifi_power_save = preference;
     assert(portal.beginSavedStation(clock_ms));
     assert(applied_ps == expected[preference]);
+    assert(applied_tx == (preference == 1 ? 78 : 44));
     // The SDK setting was correct, but Arduino can deliver STA_START later
     // and reapply its cached MIN_MODEM default over the saved NONE/MAX policy.
     WiFi.deliverStaStart();

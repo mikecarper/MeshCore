@@ -130,6 +130,7 @@ MultiSerialInterface interface_manager;
     #include <helpers/esp32/TlsClockValidity.h>
     #include <helpers/esp32/WiFiRadioPolicy.h>
     #include <helpers/esp32/WiFiStationPolicy.h>
+    #include <helpers/esp32/WiFiStationPower.h>
     #include <helpers/esp32/WiFiStationDiagnostics.h>
     #include <Preferences.h>
     #include <atomic>
@@ -2009,9 +2010,10 @@ void halt() {
       reloadCompanionWiFiPowerSave();
       return true;
     }
+    const wifi_ps_type_t mode = companionWiFiPowerSaveType(companion_wifi_power_save);
+    (void)WiFi.setSleep(mode);
     if (WiFi.getMode() == WIFI_OFF) return true;
-    return esp_wifi_set_ps(
-        companionWiFiPowerSaveType(companion_wifi_power_save)) == ESP_OK;
+    return mesh::wifi::applyStationPowerSave(mode) == ESP_OK;
   }
 
   CompanionWiFiPowerSaveResult setCompanionWiFiPowerSave(uint8_t mode) {
@@ -2750,6 +2752,7 @@ void halt() {
     mesh::wifi::applyProtocolMask(WIFI_IF_STA);
     mesh::wifi::setStationAutoReconnect(true);
     WiFi.disconnect(false, false);
+    applyCompanionWiFiPowerSave();
     mesh::wifi::beginStation(
         configured_wifi_ssid, configured_wifi_password);
     wifi_reconnect_tracker.noteAttempt(millis());
@@ -2771,6 +2774,7 @@ void halt() {
       WiFi.mode(WIFI_STA);
       mesh::wifi::applyProtocolMask(WIFI_IF_STA);
       wifi_reconnect_tracker.noteDisconnected(millis());
+      applyCompanionWiFiPowerSave();
       mesh::wifi::beginStation(
           configured_wifi_ssid, configured_wifi_password);
     }
@@ -2884,6 +2888,7 @@ void halt() {
       mesh::wifi::applyProtocolMask(WIFI_IF_STA);
       mesh::wifi::setStationAutoReconnect(true);
       wifi_reconnect_tracker.noteDisconnected(millis());
+      applyCompanionWiFiPowerSave();
       mesh::wifi::beginStation(configured_wifi_ssid, configured_wifi_password);
     }
     applyCompanionWiFiPowerSave();
@@ -4804,6 +4809,7 @@ void loop() {
     mesh::wifi::setStationAutoReconnect(true);
 #endif
     WiFi.disconnect(false, false);
+    applyCompanionWiFiPowerSave();
     mesh::wifi::beginStation(
         configured_wifi_ssid, configured_wifi_password);
   }

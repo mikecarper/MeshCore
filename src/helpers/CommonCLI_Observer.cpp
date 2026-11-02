@@ -28,6 +28,7 @@
 #include "WiFiPowerSave.h"
 #include "esp32/TlsClockValidity.h"
 #include "esp32/WiFiRadioPolicy.h"
+#include "esp32/WiFiStationPower.h"
 #endif
 #if defined(ESP32_PLATFORM) && defined(ENABLE_OTA) && \
     (defined(WIFI_OTA_SEEDER) || defined(WIFI_SSID) || defined(ENABLE_WIFI_INTERFACE))
@@ -465,7 +466,8 @@ bool CommonCLI::handleObserverSetCmd(uint32_t sender_timestamp, const char* conf
       if (WiFi.status() == WL_CONNECTED) {
         wifi_ps_type_t ps_mode = (ps_value == 1) ? WIFI_PS_NONE :
                                 (ps_value == 2) ? WIFI_PS_MAX_MODEM : WIFI_PS_MIN_MODEM;
-        esp_err_t ps_result = esp_wifi_set_ps(ps_mode);
+        (void)WiFi.setSleep(ps_mode);
+        esp_err_t ps_result = mesh::wifi::applyStationPowerSave(ps_mode);
         if (ps_result == ESP_OK) {
           const char* ps_name = (ps_value == 1) ? "none" : (ps_value == 2) ? "max" : "min";
           sprintf(reply, "OK - power save set to %s", ps_name);

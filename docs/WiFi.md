@@ -752,9 +752,12 @@ above rather than assuming BLE and infrastructure WiFi are active together.
 ESP-NOW and
 infrastructure WiFi still must use the same fixed channel.
 
-MQTT observer targets normally limit ESP32 WiFi transmit power to 11 dBm unless
-the board configuration overrides `MQTT_WIFI_TX_POWER`. This setting affects
-WiFi only, not LoRa transmit power.
+ESP32 WiFi stations request 19.5 dBm transmit power with effective power saving
+set to `none`, or 11 dBm with `min` or `max`. This applies to Companions,
+standalone WebConfig and MQTT observers on every board. The driver enforces its
+radio limits. Builds can override these requests with `MQTT_WIFI_TX_POWER` and
+`MQTT_WIFI_POWER_SAVE_TX_POWER`, respectively. These settings affect WiFi only,
+not LoRa transmit power.
 
 ## Companion WiFi compatibility settings
 

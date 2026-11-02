@@ -34,6 +34,7 @@ uint32_t now_ms = 100;
 uint32_t millis() { return now_ms; }
 unsigned identity_calls=0, address_calls=0, begin_calls=0, enable_calls=0;
 unsigned register_calls=0, manager_enable_calls=0, sdk_ps_calls=0;
+unsigned sdk_tx_calls=0;
 bool identity_ok=true, register_ok=true, begin_ok=true;
 enum class InterfaceType { Bluetooth };
 struct CompanionNodePrefs {
@@ -100,7 +101,11 @@ bool companionTransportWiFiActiveAtBoot() {
 #endif
 
 enum wifi_ps_type_t { WIFI_PS_NONE, WIFI_PS_MIN_MODEM, WIFI_PS_MAX_MODEM };
-constexpr int ESP_OK=0, WIFI_OFF=0, WIFI_IF_STA=0, WIFI_AP=2;
+using wifi_power_t=int;
+using esp_err_t=int;
+constexpr int ESP_OK=0, ESP_FAIL=-1, WIFI_OFF=0, WIFI_IF_STA=0, WIFI_AP=2;
+constexpr int WIFI_POWER_11dBm=44, WIFI_POWER_19_5dBm=78;
+int last_tx=-1;
 enum wl_status_t { WL_CONNECTED=3, WL_NO_SSID_AVAIL=1, WL_CONNECT_FAILED=4,
                    WL_CONNECTION_LOST=5, WL_DISCONNECTED=6 };
 wifi_ps_type_t last_ps=WIFI_PS_MIN_MODEM;
@@ -119,12 +124,16 @@ struct {
   TestIP localIP() const { return {1}; }
   TestIP softAPIP() const { return {uint32_t(mode & WIFI_AP)}; }
   int RSSI() const { return -74; }
+  bool setSleep(wifi_ps_type_t) { return true; }
 } WiFi;
 char configured_wifi_ssid[32]="test WLAN";
 bool companion_wifi_requested=true, companion_wifi_active=true;
 bool companion_wifi_has_credentials=true, companion_wifi_credential_reload_pending=false;
 int esp_wifi_set_ps(wifi_ps_type_t value) {
   ++sdk_ps_calls; last_ps=value; return ESP_OK;
+}
+int esp_wifi_set_max_tx_power(int8_t value) {
+  ++sdk_tx_calls; last_tx=value; return ESP_OK;
 }
 int esp_wifi_get_ps(wifi_ps_type_t* value) { *value=last_ps; return ESP_OK; }
 int esp_wifi_get_protocol(int, uint8_t* value) { *value=7; return ESP_OK; }
@@ -151,6 +160,9 @@ CompatibilitySaveResult saveStationProtocol(StationProtocol value) {
 }
 } }
 
+namespace mesh { namespace wifi {
+@STATION_POWER@
+} }
 @METHODS@
 
 void rebootCompatibility() {
@@ -261,8 +273,13 @@ int main() {
   nvs_values["powersave"]={PT_U8, {}, kPowerSaveNone};
   reloadCompanionWiFiPowerSave();
   assert(getCompanionWiFiPowerSave()==kPowerSaveNone && last_ps==WIFI_PS_NONE);
+  assert(last_tx==WIFI_POWER_19_5dBm);
+  assert(setCompanionWiFiPowerSave(kPowerSaveMin)==CompanionWiFiPowerSaveResult::Applied);
+  assert(last_ps==WIFI_PS_MIN_MODEM&&last_tx==WIFI_POWER_11dBm);
+  assert(setCompanionWiFiPowerSave(kPowerSaveMax)==CompanionWiFiPowerSaveResult::Applied);
+  assert(last_ps==WIFI_PS_MAX_MODEM&&last_tx==WIFI_POWER_11dBm);
   assert(setCompanionWiFiPowerSave(kPowerSaveNone)==CompanionWiFiPowerSaveResult::Applied);
-  assert(last_ps==WIFI_PS_NONE);
+  assert(last_ps==WIFI_PS_NONE&&last_tx==WIFI_POWER_19_5dBm);
   rebootCompatibility();
   assert(activeCompanionMode()==CompanionMode::Normal);
 #endif
@@ -281,6 +298,7 @@ int main() {
   assert(companionWiFiBluetoothActive());
   reloadCompanionWiFiPowerSave();
   assert(getCompanionWiFiPowerSave()==kPowerSaveMin && last_ps==WIFI_PS_MIN_MODEM);
+  assert(last_tx==WIFI_POWER_11dBm);
   unsigned before=sdk_ps_calls;
   assert(setCompanionWiFiPowerSave(kPowerSaveNone)==CompanionWiFiPowerSaveResult::BluetoothConflict);
   assert(sdk_ps_calls==before && last_ps==WIFI_PS_MIN_MODEM);
@@ -341,7 +359,13 @@ class CompanionWiFiCompatibilityTest(unittest.TestCase):
                 "void formatCompanionWiFiStatus(",
                 "bool handleCompanionWiFiCompatibilityCommand(",
             ]
-        source = HARNESS.replace("@METHODS@", "\n".join(method(main, item) for item in signatures))
+        power = (ROOT / "src/helpers/esp32/WiFiStationPower.h").read_text()
+        power_methods = "\n".join(method(power, signature) for signature in (
+            "inline wifi_power_t stationTransmitPower(",
+            "inline esp_err_t applyStationPowerSave(",
+        ))
+        source = HARNESS.replace("@METHODS@", "\n".join(method(main, item) for item in signatures)).replace(
+            "@STATION_POWER@", power_methods)
         compiler = os.environ.get("CXX") or shutil.which("g++")
         self.assertIsNotNone(compiler, "A host C++ compiler is required")
         with tempfile.TemporaryDirectory(prefix="companion-wifi-boot-") as directory:

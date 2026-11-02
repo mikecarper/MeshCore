@@ -40,15 +40,18 @@ using esp_err_t = int;
 constexpr int ESP_OK = 0, ESP_ERR_INVALID_ARG = 1, ESP_ERR_INVALID_STATE = 2;
 constexpr int ESP_ERR_NO_MEM = 3, RUNTIME_MQTT_SLOTS = 6, WL_CONNECTED = 1;
 constexpr int WL_DISCONNECTED = 0, WIFI_POWER_11dBm = 11;
+constexpr int WIFI_POWER_19_5dBm = 78, ESP_FAIL = -1;
 using wl_status_t = int;
 using wifi_ps_type_t = int;
+using wifi_power_t = int;
 constexpr int WIFI_PS_NONE = 0, WIFI_PS_MAX_MODEM = 1, WIFI_PS_MIN_MODEM = 2;
 namespace mesh { namespace wifi {
 constexpr bool kPrimaryEspNowRadio = false;
 bool enforceStationChannel() { return true; }
 } }
 bool mqttStationWiFiMutationAllowed() { return true; }
-void esp_wifi_set_ps(wifi_ps_type_t) {}
+int esp_wifi_set_ps(wifi_ps_type_t) { return ESP_OK; }
+int esp_wifi_set_max_tx_power(int8_t) { return ESP_OK; }
 constexpr int MQTT_AUTH_JWT = 1;
 constexpr int MQTT_ERROR_TYPE_CONNECTION_REFUSED = 5;
 struct esp_mqtt_error_codes {
@@ -66,9 +69,11 @@ unsigned long fake_time(void*) { return wall_seconds; }
 struct {
   int state = WL_CONNECTED;
   int status() const { return state; }
-  void setTxPower(int) {}
   void disconnect() { state = WL_DISCONNECTED; }
 } WiFi;
+namespace mesh { namespace wifi {
+@STATION_POWER@
+} }
 struct { size_t size = 2097152; size_t getPsramSize() const { return size; } } ESP;
 size_t heap_caps_get_free_size(uint32_t caps) {
   assert(caps == MALLOC_CAP_INTERNAL || caps == (MALLOC_CAP_INTERNAL | MALLOC_CAP_DMA));
@@ -313,7 +318,12 @@ struct MQTTBridge {
 class MqttHandshakeSchedulerTest(unittest.TestCase):
     def fixture(self):
         bridge = "src/helpers/bridges/MQTTBridge.cpp"
-        return PREAMBLE + "\n".join(method(bridge, signature) for signature in (
+        power_methods = "\n".join(method("src/helpers/esp32/WiFiStationPower.h", signature) for signature in (
+            "inline wifi_power_t stationTransmitPower(",
+            "inline esp_err_t applyStationPowerSave(",
+        ))
+        return PREAMBLE.replace("@STATION_POWER@", power_methods) + "\n".join(method(bridge, signature) for signature in (
+            "static wifi_ps_type_t mqttWiFiPowerSaveMode(",
             "int MQTTBridge::activatedSlotCount() const",
             "bool MQTTBridge::canActivateSlot(int index) const",
             "bool MQTTBridge::hasPendingSlotConnection() const",

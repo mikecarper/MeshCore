@@ -130,7 +130,7 @@ assert re.search(
 )
 assert re.search(
     r"mesh::wifi::effectivePowerSave\(\s+"
-    r"_manage_wifi && _node_info\.canonical_wifi \? _wifi_power_save : _obs->wifi_power_save,\s+"
+    r"configured,\s+"
     r"#if defined\(COMPANION_EXCLUSIVE_WIFI_BLE\)\s+false,\s+"
     r"#elif defined\(BLE_PIN_CODE\) && defined\(WIFI_SSID\)",
     mqtt,
@@ -215,12 +215,15 @@ class MQTTTransportPowerSaveTest(unittest.TestCase):
         # Keep the shared production-method harness, with a smaller main that
         # exercises the connected worker's actual PS selection and driver call.
         fixture = fixture[:fixture.index("int main() {")]
-        start = mqtt.index("      wifi_ps_type_t ps_mode;",
+        start = mqtt.index("      const wifi_ps_type_t ps_mode = mqttWiFiPowerSaveMode(",
                            mqtt.index("bool MQTTBridge::handleWiFiConnection"))
-        end = mqtt.index("      esp_wifi_set_ps(ps_mode);", start)
-        policy = mqtt[start:end + len("      esp_wifi_set_ps(ps_mode);")]
+        endpoint = "      mesh::wifi::applyStationPowerSave(ps_mode);"
+        end = mqtt.index(endpoint, start)
+        policy = mqtt[start:end + len(endpoint)]
         fixture = fixture.replace("constexpr bool kPrimaryEspNowRadio = false;",
                                   f"constexpr bool kPrimaryEspNowRadio = {str(primary_espnow).lower()};")
+        fixture = fixture.replace("struct MQTTBridge {",
+                                  "static wifi_ps_type_t mqttWiFiPowerSaveMode(uint8_t configured);\nstruct MQTTBridge {")
         fixture = fixture.replace("  void beginWiFiStation();",
                                   "  void beginWiFiStation();\n  void applyConnectedPowerSave() {\n" + policy + "\n  }")
         modes = ["WIFI_PS_MIN_MODEM", "WIFI_PS_MIN_MODEM" if bluetooth else "WIFI_PS_NONE",
@@ -250,6 +253,7 @@ int main() {
     MQTTBridge worker(obs); worker.begin();
     assert(worker.isReady() && worker._wifi_power_save == saved);
     worker.applyConnectedPowerSave(); assert(applied_ps == expected[saved]);
+    assert(applied_tx == (expected[saved]==WIFI_PS_NONE ? WIFI_POWER_19_5dBm : WIFI_POWER_11dBm));
     // Exercise the real WebConfig resolver and reload, not a policy mock:
     // WiFiOnly preserves NONE while Normal+BLE clamps it to MIN everywhere.
     char ssid[32]={}, password[65]={}; uint8_t web_ps=255;
@@ -317,8 +321,8 @@ int main() {
     def test_worker_cannot_revert_to_mutable_legacy_power_save(self):
         fixture = self.policy_fixture(False, False)
         stale = fixture.replace(
-            "_manage_wifi && _node_info.canonical_wifi ? _wifi_power_save : _obs->wifi_power_save,",
-            "_obs->wifi_power_save,")
+            "_manage_wifi && _node_info.canonical_wifi ? _wifi_power_save : _obs->wifi_power_save)",
+            "_obs->wifi_power_save)")
         self.assertNotEqual(stale, fixture)
         with self.assertRaises(canonical_wifi.FixtureFailure):
             self.compile(stale)
@@ -326,7 +330,7 @@ int main() {
     def test_wifi_only_rejects_old_compiled_ble_clamps_in_both_consumers(self):
         fixture = self.policy_fixture(False, False, wifi_only=True)
         for signature in ("static bool bluetoothWiFiCoexistenceRequired(",
-                          "void applyConnectedPowerSave("):
+                          "static wifi_ps_type_t mqttWiFiPowerSaveMode(uint8_t configured) {"):
             with self.subTest(consumer=signature):
                 current = canonical_wifi.extract_braced(fixture, signature)
                 old = re.sub(

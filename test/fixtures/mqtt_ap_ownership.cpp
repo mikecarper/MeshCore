@@ -16,13 +16,16 @@ using wifi_mode_t=int;
 using esp_err_t=int;
 using wl_status_t=int;
 using wifi_ps_type_t=int;
+using wifi_power_t=int;
 constexpr int ESP_OK=0,ESP_FAIL=-1,ESP_ERR_WIFI_NOT_INIT=-2;
 constexpr int WIFI_MODE_NULL=0,WIFI_STA=1,WIFI_AP=2,WIFI_AP_STA=3,WIFI_MODE_AP=2;
 constexpr int WL_CONNECTED=3,WL_DISCONNECTED=0,RUNTIME_MQTT_SLOTS=2;
 constexpr int WIFI_PS_NONE=0,WIFI_PS_MIN_MODEM=1,WIFI_PS_MAX_MODEM=2,WIFI_POWER_11dBm=44;
+constexpr int WIFI_POWER_19_5dBm=78;
 int sdk_mode=WIFI_STA,mode_reads=0,enable_calls=0,mode_writes=0;
 int reconnect_writes=0,autoconnect_writes=0,event_registers=0,station_begins=0;
 int station_disconnects=0,channel_checks=0,power_writes=0,tx_power_writes=0;
+int applied_ps=-1,applied_tx=-1,cached_ps=WIFI_PS_MIN_MODEM,cache_writes=0;
 int read_failure_at=0;
 bool driver_initialized=true,facade_started=true,enable_failure=false,race_ap=false;
 uint32_t now_ms=0;std::function<void()> tick;
@@ -34,7 +37,8 @@ int esp_wifi_get_mode(wifi_mode_t* mode){
 uint32_t millis(){return now_ms;}
 TickType_t xTaskGetTickCount(){return now_ms;}
 void vTaskDelay(TickType_t value){now_ms+=value;if(tick)tick();}
-int esp_wifi_set_ps(int){++power_writes;return ESP_OK;}
+int esp_wifi_set_ps(int mode){++power_writes;applied_ps=mode;return ESP_OK;}
+int esp_wifi_set_max_tx_power(int8_t power){++tx_power_writes;applied_tx=power;return ESP_OK;}
 using WiFiEvent_t=int;
 constexpr int ARDUINO_EVENT_WIFI_STA_GOT_IP=1,ARDUINO_EVENT_WIFI_STA_DISCONNECTED=2;
 struct WiFiEventInfo_t{
@@ -59,13 +63,18 @@ struct WiFiClass{
  template<class T>void onEvent(T){++event_registers;}
  int status(){return state;}
  void disconnect(){++station_disconnects;state=WL_DISCONNECTED;}
- void setTxPower(int){++tx_power_writes;}
+ bool setSleep(int mode){++cache_writes;cached_ps=mode;return true;}
 }WiFi;
 namespace mesh{namespace wifi{
+ @STATION_POWER@
  @STATION_GUARD@
  constexpr bool kPrimaryEspNowRadio=false;
  void setStationAutoReconnect(bool){++reconnect_writes;}
- void beginStation(const char*,const char*){++station_begins;}
+ void beginStation(const char*,const char*){
+  assert(applied_ps==cached_ps);
+  assert(applied_tx==stationTransmitPower(applied_ps));
+  ++station_begins;
+ }
  bool enforceStationChannel(){++channel_checks;return true;}
 }}
 int s_wifi_disconnect_reason=0;uint32_t s_wifi_disconnect_time=0;
@@ -124,6 +133,7 @@ void assert_ap_untouched(){
  assert(sdk_mode&WIFI_AP);
  assert(enable_calls==0&&mode_writes==0&&reconnect_writes==0&&autoconnect_writes==0);
  assert(event_registers==0&&station_begins==0);
+ assert(cache_writes==0&&power_writes==0&&tx_power_writes==0);
 }
 int main(int argc,char** argv){
  assert(argc==2);const std::string scenario=argv[1];MQTTBridge bridge;
@@ -205,6 +215,28 @@ int main(int argc,char** argv){
   assert(station_begins==(bridge._manage_wifi?1:0));
   assert(station_disconnects==(bridge._manage_wifi?1:0));
   WiFi.state=WL_CONNECTED;assert(bridge.handleWiFiConnection(40000));
-  assert(power_writes==1&&tx_power_writes==1&&channel_checks==1);
+  const int expected_writes=bridge._manage_wifi?2:1;
+  assert(power_writes==expected_writes&&tx_power_writes==expected_writes&&channel_checks==1);
+  assert(applied_ps==WIFI_PS_NONE&&applied_tx==WIFI_POWER_19_5dBm);
+ }else if(scenario=="startup_power"){
+  const int modes[]={WIFI_PS_MIN_MODEM,WIFI_PS_NONE,WIFI_PS_MAX_MODEM};
+  const int powers[]={WIFI_POWER_11dBm,WIFI_POWER_19_5dBm,WIFI_POWER_11dBm};
+  WiFi.state=WL_DISCONNECTED;
+  for(int saved:{0,1,2,1}){
+   bridge._wifi_power_save=saved;
+   bridge._obs->wifi_power_save=(saved+1)%3; // Canonical snapshot owns policy.
+   bridge.beginWiFiStation();
+   assert(cached_ps==modes[saved]&&applied_ps==modes[saved]);
+   assert(applied_tx==powers[saved]);
+  }
+  // A noncanonical observer retains its legacy preference authority.
+  bridge._node_info.canonical_wifi=false;
+  bridge._obs->wifi_power_save=2;
+  bridge.beginWiFiStation();
+  assert(applied_ps==WIFI_PS_MAX_MODEM&&applied_tx==WIFI_POWER_11dBm);
+  bridge._obs->wifi_power_save=1;
+  bridge.beginWiFiStation();
+  assert(applied_ps==WIFI_PS_NONE&&applied_tx==WIFI_POWER_19_5dBm);
+  assert(station_begins==6&&power_writes==6&&tx_power_writes==6);
  }else assert(false);
 }

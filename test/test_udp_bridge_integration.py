@@ -7,6 +7,7 @@ import subprocess
 import tempfile
 import unittest
 from cpp_source import body
+from test_wifi_station_power import power_policy
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -25,6 +26,11 @@ uint32_t millis(){return now_ms;}
 bool millisHasNowPassed(uint32_t value){return static_cast<int32_t>(now_ms-value)>=0;}
 enum {WIFI_OFF=0,WIFI_STA=1,WIFI_AP=2,WIFI_AP_STA=3,WL_IDLE_STATUS=0,WL_CONNECTED=3};
 enum {WIFI_IF_STA=0,ESP_OK=0,WIFI_PS_NONE=0,WIFI_PS_MIN_MODEM=1,WIFI_PS_MAX_MODEM=2};
+using wifi_ps_type_t=int;
+using wifi_power_t=int;
+using esp_err_t=int;
+constexpr int ESP_FAIL=-1,WIFI_POWER_11dBm=44,WIFI_POWER_19_5dBm=78;
+int applied_ps=-1,applied_tx=-1;
 struct {
  int current=WIFI_OFF,state=WL_IDLE_STATUS,begins=0,modes=0; uint32_t ip=0,mask=0x00ffffff;
  int getMode() const{return current;}
@@ -33,12 +39,16 @@ struct {
  uint32_t subnetMask()const{return mask;}
  void persistent(bool){}
  bool mode(int value){++modes;current=value;return true;}
+ bool setSleep(int){return true;}
+ bool setTxPower(int value){applied_tx=value;return true;}
 } WiFi;
 using wifi_mode_t=int;
 constexpr int WIFI_MODE_NULL=0,WIFI_MODE_STA=1;
 int sdk_override=-1;
 int esp_wifi_get_mode(wifi_mode_t*value){*value=sdk_override<0?WiFi.current:sdk_override;return ESP_OK;}
-void esp_wifi_set_ps(int){}
+int esp_wifi_set_ps(int mode){applied_ps=mode;return ESP_OK;}
+int esp_wifi_set_max_tx_power(int8_t value){applied_tx=value;return ESP_OK;}
+@POWER_POLICY@
 namespace mesh { namespace wifi {
  constexpr uint8_t kDefaultPowerSave=1,kPowerSaveNone=1,kPowerSaveMax=2;
  struct Credentials {char ssid[32]="test";char password[65]="";uint8_t power_save=1;};
@@ -111,6 +121,7 @@ int main(){
  for(unsigned i=0;i<8;++i){prefs.peers[i].ip[0]=10;prefs.peers[i].ip[3]=i+2;prefs.peers[i].port=4404;}
  assert(node.setUDPBridgePrefs(prefs));
  assert(node.udp_bridge&&UDPBridge::allocations==1&&WiFi.begins==1&&WiFi.current==WIFI_STA);
+ assert(applied_ps==WIFI_PS_NONE&&applied_tx==78);
  assert(!node.udp_bridge->running&&mesh::wifi::networkPower().foregroundActive());
  WiFi.state=WL_CONNECTED;WiFi.ip=0x0100000a;
  node.serviceUDPBridge();
@@ -343,7 +354,8 @@ int main(){
             'void MyMesh::serviceUDPBridge(', 'void MyMesh::formatUDPBridgeStatus('))
         for flags in ((),('WITH_MQTT_BRIDGE',),('WITH_WEBCONFIG',),('WITH_MQTT_BRIDGE','WITH_WEBCONFIG')):
             with self.subTest(flags=flags),tempfile.TemporaryDirectory() as tmp:
-                path=Path(tmp);(path/'test.cpp').write_text(HARNESS.replace('@METHODS@',methods))
+                path=Path(tmp);(path/'test.cpp').write_text(HARNESS.replace('@METHODS@',methods)
+                    .replace('@POWER_POLICY@',power_policy()))
                 binary=path/'test'
                 subprocess.run([os.environ.get('CXX','g++'),'-std=c++17','-fsanitize=address,undefined',
                     '-fno-omit-frame-pointer','-fno-pie','-no-pie','-I',str(ROOT/'src'),
