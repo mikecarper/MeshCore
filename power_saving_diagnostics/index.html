@@ -2479,6 +2479,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#rx-power-saving-recovery" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        RX power-saving recovery
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#esp32-bluetooth-off-and-cpu-sleep" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2675,6 +2686,29 @@ most 256 bytes of collector state. Each wait-call interval must be shorter
 than the 32-bit <code>micros()</code> wrap (about 71 minutes); the normal wait paths here
 are much shorter. Keep gaps between policy observations below the <code>millis()</code>
 wrap (about 49 days).</p>
+<h2 id="rx-power-saving-recovery">RX power-saving recovery</h2>
+<p><code>get radio.rxps.status</code> separates the saved request from the receive mode.
+When an arm command fails, the radio falls back to continuous RX if that can
+be started, while keeping RXPS requested. Automatic attempts are spaced by
+5 seconds, 15 seconds, 60 seconds, then 5 minutes for persistent failures.
+An idle node retries too; packet traffic is not needed to restart RXPS.</p>
+<p>For example, <code>desired=on,effective=continuous,err=-708,fail=3</code> followed by
+<code>retry=60s,streak=3</code> means the third consecutive arm attempt failed and normal
+RX is being used until the next safe attempt. The cumulative <code>fail</code> counter
+does not reset on a later success, while the consecutive <code>streak</code> does.
+<code>hold=radio2</code>, <code>hold=calib</code> and <code>hold=timing</code> describe intentional pauses;
+they are not additional failed arm attempts. <code>effective=inactive</code> does not
+promise reception: check the driver error and radio diagnostics.</p>
+<p>Retry deadlines participate in MCU wake scheduling, without becoming a
+pending packet or preventing an idle tracker from suspending its radio.
+Recovery uses the existing BUSY, TX, pending-IRQ and packet-ownership checks.
+A busy radio defers the attempt without increasing the failure count.
+Reapplying the same enabled setting during an error fallback requests a fresh
+attempt; changing settings or rebooting is no longer necessary to clear a
+permanent retry cutoff.</p>
+<p>This recovery policy does not change LoRa timings, TCXO delays, transmit
+preambles or RXPS levels. LR1121 capture margins and current savings still need
+physical qualification; see the <a href="../test-results/lr1121_rxps_2026-10-27/">existing LR1121 validation scope</a>.</p>
 <h2 id="esp32-bluetooth-off-and-cpu-sleep">ESP32 Bluetooth off and CPU sleep</h2>
 <p>Switching Bluetooth off now completes a reversible host/controller shutdown,
 including when Bluetooth was saved off at startup. Existing pairings, address,

@@ -897,6 +897,10 @@
          <lastmod>2026-11-02</lastmod>
     </url>
     <url>
+         <loc>https://mikecarper.github.io/MeshCore/test-results/rxps_recovery_2026-11-02/</loc>
+         <lastmod>2026-11-02</lastmod>
+    </url>
+    <url>
          <loc>https://mikecarper.github.io/MeshCore/test-results/s3_memory_soak_validation/</loc>
          <lastmod>2026-11-02</lastmod>
     </url>
@@ -997,6 +1001,14 @@
          <lastmod>2026-11-02</lastmod>
     </url>
     <url>
+         <loc>https://mikecarper.github.io/MeshCore/test-results/t096_ble_head_2026-11-02/</loc>
+         <lastmod>2026-11-02</lastmod>
+    </url>
+    <url>
+         <loc>https://mikecarper.github.io/MeshCore/test-results/t1000_ble_head_2026-11-01/</loc>
+         <lastmod>2026-11-02</lastmod>
+    </url>
+    <url>
          <loc>https://mikecarper.github.io/MeshCore/test-results/t1000_usb_bluetooth_priority_2026-10-20/</loc>
          <lastmod>2026-11-02</lastmod>
     </url>
@@ -1042,6 +1054,10 @@
     </url>
     <url>
          <loc>https://mikecarper.github.io/MeshCore/test-results/w12_wifi_status_2026-10-31/</loc>
+         <lastmod>2026-11-02</lastmod>
+    </url>
+    <url>
+         <loc>https://mikecarper.github.io/MeshCore/test-results/xiao_s3_head_2026-11-02/</loc>
          <lastmod>2026-11-02</lastmod>
     </url>
     <url>

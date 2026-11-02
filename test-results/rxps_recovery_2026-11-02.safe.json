@@ -1,0 +1,169 @@
+{
+  "base_commit": "42e84b135655dc20e3e7e922d2ab3881f9c9bb6e",
+  "builds": [
+    {
+      "artifact_files": {
+        "Waveshare_S3_LR1121_repeater-full-usb-wifi-ota-v1.18.0.2-rxps-recovery-test-42e84b13-merged.bin": {
+          "bytes": 2028536,
+          "sha256": "a326df43cc7348520277c287ec733ea738941970502c98de31a070c5ed0527f3"
+        },
+        "Waveshare_S3_LR1121_repeater-full-usb-wifi-ota-v1.18.0.2-rxps-recovery-test-42e84b13.bin": {
+          "bytes": 1963000,
+          "sha256": "738587f5a6fa57cec4784059f21b1fe000d9f18dfad19c3186a8a87aa79700c7"
+        },
+        "Waveshare_S3_LR1121_repeater-full-usb-wifi-ota-v1.18.0.2-rxps-recovery-test-42e84b13.capabilities.json": {
+          "bytes": 3842,
+          "sha256": "778002f45eaf156bd307a829fef6a457af57e9ea5c9a3d033faf146eaef55049"
+        },
+        "Waveshare_S3_LR1121_repeater-full-usb-wifi-ota-v1.18.0.2-rxps-recovery-test-42e84b13.memory.json": {
+          "bytes": 4237,
+          "sha256": "d8e9c3b5d59d6d750f86d97f6147911d7ca1c2991fb917c4ecb30d36b9ef13da"
+        },
+        "Waveshare_S3_LR1121_repeater-full-usb-wifi-ota-v1.18.0.2-rxps-recovery-test-42e84b13.meshtext-license.txt": {
+          "bytes": 1945,
+          "sha256": "c37d0a453a2491514bac33ed835c1877f207390f134ae439a97b06b004e236d2"
+        },
+        "Waveshare_S3_LR1121_repeater-full.partsig": {
+          "bytes": 83,
+          "sha256": "7b48967daf5b9cbe7238c9793cc7b8f40e316134dfa273dc47737f73cd959902"
+        }
+      },
+      "artifact_target": "Waveshare_S3_LR1121_repeater",
+      "build_log_sha256": "c416ddbe9cdfc158cc2735db229a04303ef7f573f727a20c91f6814b4aad72aa",
+      "build_profile": "full",
+      "capabilities": [
+        "bridge.espnow",
+        "bridge.udp",
+        "profile.full",
+        "radio2.kiss.host",
+        "radio2.kiss.usb",
+        "radio2.kiss.tcp",
+        "ota.update.wifi",
+        "ota.update.lora",
+        "cli.retry_preset",
+        "telemetry.history",
+        "ota.cli",
+        "web.webconfig",
+        "logging.usb.packets",
+        "logging.usb.control",
+        "logging.usb.output",
+        "bridge.udp.configuration"
+      ],
+      "capability_verification_passed": true,
+      "linked_available_internal_bytes": 242248,
+      "linked_memory_scope": "Linked capacity before runtime allocation; physical boot/load/soak validation remains required.",
+      "linked_required_heap_bytes": 230288,
+      "platform": "ESP32_PLATFORM",
+      "platformio_env": "Waveshare_S3_LR1121_repeater_observer_mqtt",
+      "ram_check_passed": true,
+      "target": "Waveshare_S3_LR1121_repeater",
+      "verified_capability_markers": 15
+    },
+    {
+      "artifact_files": {
+        "muzi_base_companion_radio_full-v1.18.0.2-rxps-recovery-test-42e84b13.capabilities.json": {
+          "bytes": 4794,
+          "sha256": "9ad3e2125ce526eb90900ac54cad257374914d96028ac1eef33f888e6e5ae37b"
+        },
+        "muzi_base_companion_radio_full-v1.18.0.2-rxps-recovery-test-42e84b13.memory.json": {
+          "bytes": 1736,
+          "sha256": "7b7281c78172450f82d6b89a887b5808c40bfb7f7a78264044fd8671dca8a043"
+        },
+        "muzi_base_companion_radio_full-v1.18.0.2-rxps-recovery-test-42e84b13.meshtext-license.txt": {
+          "bytes": 1945,
+          "sha256": "c37d0a453a2491514bac33ed835c1877f207390f134ae439a97b06b004e236d2"
+        },
+        "muzi_base_companion_radio_full-v1.18.0.2-rxps-recovery-test-42e84b13.uf2": {
+          "bytes": 1261056,
+          "sha256": "21334db84d9a66fbe8fd0cb34f237950cb9664d656d48e9d5386e372929e7950"
+        },
+        "muzi_base_companion_radio_full-v1.18.0.2-rxps-recovery-test-42e84b13.zip": {
+          "bytes": 631223,
+          "sha256": "83c87b475fec5347e60603c0870aec00cc647c037b32e9dd2908b5a92e4c1d1e"
+        }
+      },
+      "artifact_target": "muzi_base_companion_radio_full",
+      "build_log_sha256": "74c08b43bf62529171150b807d76d870d3fd9dec4c2c03f69b416eef6adc8a13",
+      "build_profile": "full",
+      "capabilities": [
+        "profile.full",
+        "companion.meshtext.channel_text",
+        "radio2.kiss.host",
+        "radio2.kiss.usb",
+        "ota.update.bluetooth",
+        "companion.temp_radio",
+        "companion.ota_cli",
+        "companion.usb",
+        "companion.bluetooth",
+        "companion.usb_logging",
+        "companion.usb_mota_source",
+        "companion.mota_sender",
+        "companion.dedicated_usb_logging",
+        "companion.ble_mota_source",
+        "logging.usb.packets",
+        "logging.usb.control",
+        "radio.autodetect.sx1262_lr1121",
+        "display.autodetect"
+      ],
+      "capability_verification_passed": true,
+      "linked_available_internal_bytes": 88916,
+      "linked_memory_scope": "Linked capacity before runtime allocation; physical boot/load/soak validation remains required.",
+      "linked_required_heap_bytes": 59200,
+      "platform": "NRF52_PLATFORM",
+      "platformio_env": "muzi_base_companion_radio_usb",
+      "ram_check_passed": true,
+      "target": "muzi_base_companion_radio_full",
+      "verified_capability_markers": 17
+    }
+  ],
+  "busy_defer_ms": 100,
+  "checked_at": "2026-11-02T02:11:22.091322+00:00",
+  "hardware_flashed": false,
+  "host_tests": {
+    "asan_ubsan_cpp_harnesses": true,
+    "count": 95,
+    "log_sha256": "2fc14fc6183592ae409a0dfbd9e4ac05501760cbdc8161779748f9a62f0bf73f",
+    "passed": true,
+    "rxps_runtime_negative_controls": 8
+  },
+  "implementation_is_uncommitted": true,
+  "native_tests": {
+    "command": "pio test -e native -f test_rx_power_saving",
+    "count": 20,
+    "log_sha256": "f2d79fd1e0a87d506829d2c536840c2c58fece1bd92bc8a38a6311fc5d148bed",
+    "passed": true
+  },
+  "original_lr1121_failure_confirmed_fixed": false,
+  "physical_rx_or_current_test_performed": false,
+  "radio_phy_or_persisted_preferences_layout_changed": false,
+  "retry_delays_ms": [
+    5000,
+    15000,
+    60000,
+    300000
+  ],
+  "schema_version": 1,
+  "scope": "Software recovery and diagnostic validation; no physical RF/current qualification.",
+  "source_and_test_sha256": {
+    "docs/cli_commands.md": "2999f9c8073853609d93f3856961efbc47e922305ae856e837e083f4d3cc1bcc",
+    "docs/power_saving_diagnostics.md": "c54c5e332b0924b79022a01091c52e22998741e52f6354335a355f65647fd7a0",
+    "examples/companion_radio/MyMesh.cpp": "322b6ee0884b71284274815483e854d5fb3c036a592e37faf4d528c1c7c05216",
+    "src/Dispatcher.cpp": "371997f3076125e758389cb282a438f40a0d863978d1f50004d096799d13320b",
+    "src/Dispatcher.h": "3d82d54a9efdda32170793250a6ed504eaf1a81e5c21cb369250d376aee895fb",
+    "src/helpers/radiolib/RXPowerSaving.h": "7361320a301dae498a71f7c1b844fb8d71cbaf43162d5b5ccfed28e85c9ac804",
+    "src/helpers/radiolib/RXPowerSavingCLI.cpp": "386787c42b635d39b703583115fbf583d9831c7910f5d1c0052ef83b9e2f7a50",
+    "src/helpers/radiolib/RadioLibWrappers.cpp": "84e3dd4851c19c5afe819d75bcaa55591ecff480b2032c45cc725f362c2bd1b9",
+    "src/helpers/radiolib/RadioLibWrappers.h": "7a1f7b93821189c5c456ec9f7f9ba71eecf71cad43ccc15420219368c8fb90fe",
+    "src/helpers/radiolib/UniversalLoRaRadio.h": "b45a302e9fb82e8006bf920fd66955f0a6500032d87c3db2104dcc7914016b17",
+    "test/fixtures/companion_radio_diagnostics/test.cpp": "e87c421327e9d4420e6d115986999a313feb35dc8dd3e552e5555e1b20d36436",
+    "test/fixtures/companion_rxps_getters.cpp": "0dd9a97bffdbb1b785da0979ef21eedca6950ea15d01a6cd8988348fd4831423",
+    "test/test_companion_rxps_getters.py": "7877e776f6ad101481a25717726f5bd935d5a4a6eb742a7412b813495a57daa6",
+    "test/test_radio_profile_idle_dispatcher.py": "54a65040139fb6dfe30c8abd6e496e67982984d7dbdf89e419126d0d5ef15415",
+    "test/test_radio_receive_contract.py": "84715053522b0e2c167a802f0171a44702954ed1540866e7854d24c090a838f5",
+    "test/test_radio_rxps_rejection.py": "d7a9fc5aa7c8dd458a014929961af12bd95bc4804a2fe5aa46302750d5bd3ac5",
+    "test/test_rx_power_saving/test_rx_power_saving.cpp": "43b273a2362aeefcef1abd93644e3b0ff7f9dd5ecf9f3973214363dbefd26e2c",
+    "test/test_rxps_runtime.py": "3eb04c47d5df5a28afb24b87c0710ce9009de854299cf392aec53fe33e7209c6"
+  },
+  "streak_saturates_at": 255,
+  "tracked_patch_sha256": "7fb42fbca431978e65784035f24669447b3df477ff66d22b23d9c3d3a4903d0a"
+}
