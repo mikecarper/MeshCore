@@ -167,6 +167,20 @@ def requirements(platform, defines, target):
         raise ValueError(f"no memory policy for {platform}")
     qualified_repeater = integer(defines, "MESH_CLIENT_REPEATER_ONLY", 0) != 0
     repeater = qualified_repeater or "repeater" in target.lower()
+    require_psram = integer(defines, "MESH_REPEATER_REQUIRE_PSRAM", 0)
+    if require_psram not in (0, 1):
+        raise ValueError("MESH_REPEATER_REQUIRE_PSRAM must be 0 or 1")
+    if require_psram:
+        tables_default = int(platform == "ESP32_PLATFORM" and qualified_repeater
+                             and integer(defines, "CONFIG_IDF_TARGET_ESP32S3", 0)
+                             and "BOARD_HAS_PSRAM" in defines)
+        if (platform != "ESP32_PLATFORM" or not qualified_repeater
+                or "BOARD_HAS_PSRAM" not in defines
+                or not integer(defines, "CONFIG_IDF_TARGET_ESP32S3", 0)
+                or integer(defines, "MESH_REPEATER_PSRAM_TABLES", tables_default) != 1
+                or ("CONFIG_SPIRAM_USE_MALLOC" in defines
+                    and not integer(defines, "CONFIG_SPIRAM_USE_MALLOC", 0))):
+            raise ValueError("MESH_REPEATER_REQUIRE_PSRAM needs ESP32-S3 repeater PSRAM tables")
     companion = not qualified_repeater and bool(re.search(r"companion|comp_radio|comp_.*radio", target, re.I))
     full = "COMPANION_RADIO_FULL" in defines or "companion_radio_full" in target.lower()
     display = str(defines.get("DISPLAY_CLASS", "")).strip('"')
@@ -215,6 +229,7 @@ def requirements(platform, defines, target):
     else:
         raise ValueError(f"add a runtime allocation budget for display {display!r}")
     parts = {}
+    external_parts = {}
     if integer(defines, "CARDPUTER_ADV_UI", 0):
         if platform != "ESP32_PLATFORM" or not companion:
             raise ValueError("Cardputer UI budget requires an ESP32 Companion")
@@ -383,22 +398,28 @@ def requirements(platform, defines, target):
                                    and "BOARD_HAS_PSRAM" in defines)
         if platform == "ESP32_PLATFORM" and integer(
                 defines, "MESH_REPEATER_PSRAM_TABLES", psram_tables_default):
-            # The data normally lives in PSRAM, but all capacities also need
-            # safe internal fallback. Moving it out of BSS cannot erase that
-            # requirement or relax startup admission when PSRAM is missing.
+            # Ordinary builds retain the complete internal fallback allowance.
+            # Required-PSRAM builds allocate these same capacities externally
+            # before radio startup and fail closed instead of falling back.
             scopes = integer(defines, "FLOOD_CHANNEL_SCOPE_SLOTS",
                              31 if "CONFIG_IDF_TARGET_ESP32" in defines else 255)
             required = integer(defines, "FLOOD_CHANNEL_SCOPE_REQUIRE_SLOTS", scopes)
             direct = integer(defines, "FLOOD_CHANNEL_DIRECT_SCOPE_SLOTS",
                              min(scopes, integer(defines, "MAX_REGION_ENTRIES", 32)))
-            parts["repeater_scope_storage_fallback"] = (
-                scopes * 36 + required * 34 + direct * 32 + 2 + 16)
+            scope_bytes = scopes * 36 + required * 34 + direct * 32 + 2 + 16
+            if require_psram:
+                external_parts["repeater_scope_storage"] = scope_bytes
+            else:
+                parts["repeater_scope_storage_fallback"] = scope_bytes
             if ("PORTABLE_MQTT_OBSERVER" not in defines
                     and not integer(defines, "FLOOD_ADVERT_IRAM_WORD_STORAGE", 0)
                     and not integer(defines, "FLOOD_ADVERT_RTC_FAST_SLOTS", 0)
                     and not integer(defines, "FLOOD_ADVERT_RTC_SLOW_SLOTS", 0)):
-                parts["repeater_advert_storage_fallback"] = (
-                    integer(defines, "FLOOD_ADVERT_SOURCE_SLOTS", 128) * 140 + 16)
+                advert_bytes = integer(defines, "FLOOD_ADVERT_SOURCE_SLOTS", 128) * 140 + 16
+                if require_psram:
+                    external_parts["repeater_advert_storage"] = advert_bytes
+                else:
+                    parts["repeater_advert_storage_fallback"] = advert_bytes
     if "room_server" in target.lower() and integer(
             defines, "MESH_ENABLE_ROOM_FLOOD_RULE_ENGINE", 0):
         # FloodRuleEngine keeps all 31 persisted rules in one startup heap
@@ -530,6 +551,15 @@ def requirements(platform, defines, target):
         largest = max(largest, mqtt["worker_stack_bytes"], mqtt["client_task_stack_bytes"])
     result = {"required_heap_bytes": required, "required_contiguous_bytes": largest,
               "components": parts, "display": display, "full_companion": full}
+    if require_psram:
+        result["external_memory"] = {
+            "required_heap_bytes": sum(external_parts.values()),
+            "required_contiguous_bytes": max(external_parts.values()),
+            "components": external_parts,
+            "enforced_before_radio_startup": True,
+            "internal_fallback": False,
+            "capacity_verified_at_build": False,
+        }
     if mqtt:
         result["mqtt"] = mqtt
     return result
@@ -652,6 +682,11 @@ def check_firmware(elf_path, platform, mcu, defines, target, output=None):
     if "mqtt" in policy:
         print("MQTT RAM scope: startup minimum with runtime admission; "
               "maximum TLS/WSS/outbox load is not qualified by this build check.")
+    if "external_memory" in policy:
+        external = policy["external_memory"]
+        print(f"Required PSRAM: {external['required_heap_bytes']:,} heap bytes; "
+              f"{external['required_contiguous_bytes']:,} contiguous; "
+              "enforced before radio startup without internal fallback, not physical qualification.")
     if not passed:
         print("Runtime RAM check failed: insufficient heap for enabled features. "
               "Share cold buffers or reduce allocations before publishing this build.", file=sys.stderr)

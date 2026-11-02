@@ -4049,14 +4049,21 @@ MyMesh::MyMesh(mesh::MainBoard &board, mesh::Radio &radio, mesh::MillisecondCloc
 
 // OTA mesh-integration (receive/begin/loop) is centralized in mesh::Mesh - no per-example wiring.
 
-void MyMesh::begin(FILESYSTEM *fs) {
+bool MyMesh::prepareStartupStorage() {
 #if MESH_REPEATER_PSRAM_TABLES
   // initArduino() has now initialized either QSPI or OPI PSRAM. Allocate
   // complete tables before any routing or persistence can obtain an address.
-  if (!flood_channel_storage.begin("channel scope tables")) abort();
+  if (!flood_channel_storage.begin("channel scope tables")) return false;
 #ifndef PORTABLE_MQTT_OBSERVER
-  if (!flood_advert_limiter.begin()) abort();
+  if (!flood_advert_limiter.begin()) return false;
 #endif
+#endif
+  return true;
+}
+
+void MyMesh::begin(FILESYSTEM *fs) {
+#if MESH_REPEATER_PSRAM_TABLES
+  if (!prepareStartupStorage()) abort();
 #endif
 #if MESH_ENABLE_FLOOD_RULE_ENGINE
   flood_filter_probability_seed = getRNG()->nextInt(0, UINT32_MAX);

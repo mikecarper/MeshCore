@@ -32,6 +32,7 @@ jobs:
           test_wifi_station_security_arduino3
           test_wifi_station_power
           test_wifi_recovery
+          test_repeater_required_psram
           test_wifi_diagnostic_cli test_webconfig_wifi_status
           test_webconfig_connect_timeout
           test_mqtt_canonical_wifi

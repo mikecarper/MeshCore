@@ -272,6 +272,7 @@ def production_program():
     begin_start = source.index("{", begin_start) + 1
     begin = source[begin_start:source.index("#if MESH_ENABLE_FLOOD_RULE_ENGINE", begin_start)]
     methods = [
+        "bool MyMesh::prepareStartupStorage(",
         "bool MyMesh::loadFloodChannelScopes(", "bool MyMesh::saveFloodChannelScopes(",
         "void MyMesh::loadFloodChannelScopeRequirements(",
         "bool MyMesh::saveFloodChannelScopeRequirements(",
@@ -291,7 +292,8 @@ def production_program():
     owner += declarations
     owner += "explicit MyMesh(MemoryFS& fs) : _fs(&fs) {\n" + resets + "}\n"
     owner += "void begin() {\n" + begin + "}\n"
-    owner += ("bool loadFloodChannelScopes();\n"
+    owner += ("bool prepareStartupStorage();\n"
+              "bool loadFloodChannelScopes();\n"
               "bool saveFloodChannelScopes(bool empty_table=false);\n"
               "void loadFloodChannelScopeRequirements();\n"
               "bool saveFloodChannelScopeRequirements(bool empty_table=false);\n"

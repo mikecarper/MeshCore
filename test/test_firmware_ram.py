@@ -526,6 +526,136 @@ int main() {
         self.assertIn("repeater_scope_storage_fallback", renamed["components"])
         self.assertIn("repeater_advert_storage_fallback", renamed["components"])
 
+    def test_required_psram_is_explicit_and_preserves_every_default_budget(self):
+        cases = (
+            ("ESP32_PLATFORM", {}, "board_repeater"),
+            ("ESP32_PLATFORM", {"CONFIG_IDF_TARGET_ESP32S3": 1, "BOARD_HAS_PSRAM": 1,
+                                "MESH_CLIENT_REPEATER_ONLY": 1}, "board_repeater"),
+            ("NRF52_PLATFORM", {}, "board_repeater"),
+            ("RP2040_PLATFORM", {}, "board_repeater"),
+            ("STM32_PLATFORM", {}, "board_repeater"),
+        )
+        for platform, flags, target in cases:
+            with self.subTest(platform=platform, flags=flags):
+                original = ram.requirements(platform, flags, target)
+                self.assertNotIn("external_memory", original)
+                self.assertEqual(original, ram.requirements(platform, {
+                    **flags, "MESH_REPEATER_REQUIRE_PSRAM": 0}, target))
+
+    def test_required_psram_moves_only_full_table_allocations_and_metadata(self):
+        flags = {"CONFIG_IDF_TARGET_ESP32S3": 1, "BOARD_HAS_PSRAM": 1,
+                 "MESH_CLIENT_REPEATER_ONLY": 1, "WITH_MQTT_BRIDGE": 1,
+                 "DISPLAY_CLASS": "SSD1306Display", "ADMIN_PASSWORD": "test",
+                 "ENABLE_OTA": 1, "WITH_UDP_BRIDGE": 1, "WITH_RS232_BRIDGE": "Serial2"}
+        target = "meshnology_w12_repeater_observer_mqtt"
+        original = ram.requirements("ESP32_PLATFORM", flags, target)
+        selected = ram.requirements("ESP32_PLATFORM", {
+            **flags, "MESH_REPEATER_REQUIRE_PSRAM": 1}, target)
+        moved = {"repeater_scope_storage": 18892, "repeater_advert_storage": 17936}
+        self.assertEqual(selected["external_memory"], {
+            "required_heap_bytes": 36828, "required_contiguous_bytes": 18892,
+            "components": moved, "enforced_before_radio_startup": True,
+            "internal_fallback": False, "capacity_verified_at_build": False})
+        self.assertEqual(selected["components"], {
+            name: value for name, value in original["components"].items()
+            if name not in {"repeater_scope_storage_fallback", "repeater_advert_storage_fallback"}})
+        self.assertEqual(selected["required_heap_bytes"], original["required_heap_bytes"] - sum(moved.values()))
+        self.assertEqual(selected["mqtt"], original["mqtt"])
+        self.assertEqual(selected["components"]["allocation_and_transient_margin"], 16384)
+        self.assertEqual(selected["components"]["wireless_stacks"], 49152)
+        self.assertEqual(selected["components"]["client_table"], original["components"]["client_table"])
+        self.assertEqual(selected["components"]["flood_filter_table"], original["components"]["flood_filter_table"])
+        self.assertEqual(selected["components"]["neighbor_history"], original["components"]["neighbor_history"])
+        self.assertEqual(selected, ram.requirements("ESP32_PLATFORM", {
+            **flags, "MESH_REPEATER_REQUIRE_PSRAM": 1, "MESH_MIN_RUNTIME_HEAP": 1}, target))
+
+    def test_required_psram_preserves_custom_capacities_and_external_contiguous_bound(self):
+        flags = {"CONFIG_IDF_TARGET_ESP32S3": 1, "BOARD_HAS_PSRAM": 1,
+                 "MESH_CLIENT_REPEATER_ONLY": 1, "CONFIG_SPIRAM_USE_MALLOC": 1}
+        for extra in ({"FLOOD_CHANNEL_SCOPE_SLOTS": 7, "FLOOD_CHANNEL_SCOPE_REQUIRE_SLOTS": 11,
+                       "FLOOD_CHANNEL_DIRECT_SCOPE_SLOTS": 3, "FLOOD_ADVERT_SOURCE_SLOTS": 17},
+                      {"MAX_REGION_ENTRIES": 64, "FLOOD_ADVERT_SOURCE_SLOTS": 200}):
+            with self.subTest(extra=extra):
+                baseline = ram.requirements("ESP32_PLATFORM", {**flags, **extra}, "custom_forwarder")
+                selected = ram.requirements("ESP32_PLATFORM", {
+                    **flags, **extra, "MESH_REPEATER_REQUIRE_PSRAM": 1}, "custom_forwarder")
+                external = selected["external_memory"]
+                for name in ("repeater_scope_storage", "repeater_advert_storage"):
+                    self.assertEqual(external["components"][name], baseline["components"][name + "_fallback"])
+                self.assertEqual(external["required_heap_bytes"], sum(external["components"].values()))
+                self.assertEqual(external["required_contiguous_bytes"], max(external["components"].values()))
+                self.assertEqual(selected["components"], {
+                    name: value for name, value in baseline["components"].items()
+                    if not name.endswith("_storage_fallback")})
+
+    def test_required_psram_does_not_move_alternate_advert_storage(self):
+        flags = {"CONFIG_IDF_TARGET_ESP32S3": 1, "BOARD_HAS_PSRAM": 1,
+                 "MESH_CLIENT_REPEATER_ONLY": 1, "MESH_REPEATER_REQUIRE_PSRAM": 1}
+        for extra in ({"PORTABLE_MQTT_OBSERVER": 1}, {"FLOOD_ADVERT_IRAM_WORD_STORAGE": 1},
+                      {"FLOOD_ADVERT_RTC_FAST_SLOTS": 16}, {"FLOOD_ADVERT_RTC_SLOW_SLOTS": 50}):
+            with self.subTest(extra=extra):
+                selected = ram.requirements("ESP32_PLATFORM", {**flags, **extra}, "s3_repeater")
+                external = selected["external_memory"]
+                self.assertEqual(external["components"], {"repeater_scope_storage": 18892})
+                self.assertEqual(external["required_heap_bytes"], 18892)
+                self.assertEqual(external["required_contiguous_bytes"], 18892)
+
+    def test_required_psram_rejects_invalid_flags_platforms_and_disabled_tables(self):
+        flags = {"CONFIG_IDF_TARGET_ESP32S3": 1, "BOARD_HAS_PSRAM": 1,
+                 "MESH_CLIENT_REPEATER_ONLY": 1}
+        for value in (-1, 2, "yes", "1.0"):
+            with self.subTest(value=value), self.assertRaises(ValueError):
+                ram.requirements("ESP32_PLATFORM", {**flags, "MESH_REPEATER_REQUIRE_PSRAM": value}, "s3_repeater")
+        invalid = [
+            ("ESP32_PLATFORM", {key: value for key, value in flags.items() if key != removed})
+            for removed in flags
+        ]
+        invalid += [("ESP32_PLATFORM", {**flags, **extra}) for extra in (
+            {"CONFIG_IDF_TARGET_ESP32S3": 0}, {"MESH_CLIENT_REPEATER_ONLY": 0},
+            {"MESH_REPEATER_PSRAM_TABLES": 0}, {"MESH_REPEATER_PSRAM_TABLES": 2},
+            {"CONFIG_SPIRAM_USE_MALLOC": 0})]
+        invalid += [(platform, flags) for platform in ("NRF52_PLATFORM", "RP2040_PLATFORM", "STM32_PLATFORM")]
+        for platform, defines in invalid:
+            with self.subTest(platform=platform, flags=defines), self.assertRaises(ValueError):
+                ram.requirements(platform, {**defines, "MESH_REPEATER_REQUIRE_PSRAM": 1}, "named_repeater")
+
+    def test_required_psram_elf_retains_exact_internal_gate_and_reports_runtime_external_contract(self):
+        flags = {"BOARD_HAS_PSRAM": 1, "MESH_CLIENT_REPEATER_ONLY": 1,
+                 "WITH_MQTT_BRIDGE": 1, "MESH_REPEATER_REQUIRE_PSRAM": 1}
+        target = "meshnology_w12_repeater_observer_mqtt"
+        expected = ram.requirements("ESP32_PLATFORM", {**flags, "CONFIG_IDF_TARGET_ESP32S3": 1}, target)
+        required = expected["required_heap_bytes"]
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "firmware.elf"
+            report = Path(temporary) / "firmware.memory.json"
+            for capacity, accepted in ((required - 1, False), (required, True)):
+                with self.subTest(capacity=capacity), contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+                    esp_fixture(path, modern=True, internal_length=capacity + 0x4000)
+                    status = ram.check_firmware(path, "ESP32_PLATFORM", "esp32s3", flags, target, report)
+                    result = json.loads(report.read_text())
+                    self.assertEqual(status == 0, accepted)
+                    self.assertEqual(result["passed"], accepted)
+                    self.assertEqual(result["available_internal_bytes"], capacity)
+                    self.assertEqual(result["required_heap_bytes"], required)
+                    self.assertEqual(result["components"], expected["components"])
+                    self.assertEqual(result["external_memory"], expected["external_memory"])
+                    # Internal admission is separate; the board's mandatory
+                    # external allocations still have to pass before radio startup.
+                    self.assertFalse(result["external_memory"]["capacity_verified_at_build"])
+
+    def test_required_psram_elf_uses_authoritative_mcu_over_stale_sdk_flags(self):
+        flags = {"BOARD_HAS_PSRAM": 1, "MESH_CLIENT_REPEATER_ONLY": 1,
+                 "MESH_REPEATER_REQUIRE_PSRAM": 1}
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "firmware.elf"
+            esp_fixture(path, modern=True, internal_length=0x40000)
+            with self.assertRaises(ValueError):
+                ram.check_firmware(path, "ESP32_PLATFORM", "esp32", {
+                    **flags, "CONFIG_IDF_TARGET_ESP32S3": 1}, "named_repeater")
+            with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+                self.assertEqual(ram.check_firmware(path, "ESP32_PLATFORM", "esp32s3", {
+                    **flags, "CONFIG_IDF_TARGET_ESP32S3": 0}, "named_repeater"), 0)
+
     def test_psram_repeater_table_defaults_cover_opi_and_qspi_families_without_a_g3_marker(self):
         flags = {"BOARD_HAS_PSRAM": 1, "MESH_CLIENT_REPEATER_ONLY": 1,
                  "CONFIG_IDF_TARGET_ESP32S3": 1, "CONFIG_SPIRAM_USE_MALLOC": 1}

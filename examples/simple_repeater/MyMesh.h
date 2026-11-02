@@ -1291,6 +1291,7 @@ public:
   MyMesh(const MyMesh&) = delete;
   MyMesh& operator=(const MyMesh&) = delete;
 
+  bool prepareStartupStorage();
   void begin(FILESYSTEM* fs);
   void sendNodeDiscoverReq();
   const char* getFirmwareVer() override { return FIRMWARE_VERSION; }

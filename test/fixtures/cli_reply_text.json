@@ -1482,7 +1482,7 @@
   ],
   "noncompact_tokens_sha256": {
     "src/helpers/CommonCLI.cpp": "9c9466eb48af7b8d606d21c553ebbf89a49345bb0c43279ecfeee041f0211c00",
-    "examples/simple_repeater/MyMesh.cpp": "e4ca783b5bafbdc45e295dfa012bc3fe23d7156edfecc1ef6d34f7918345f68b",
+    "examples/simple_repeater/MyMesh.cpp": "1980c36e1474e7738385cf6ed237b019b238ea3e71eac7a7273b62bbb2302899",
     "src/helpers/RadioProfileCLI.cpp": "8e3d293cb522717b13901c27d7fc471f5c370710919fb3d74d35449bc497552d",
     "src/helpers/WirelessControl.h": "0944bfdefb7003b47af52104b4c7447d7e5e65d54b3396790878c5b49e472913",
     "src/helpers/PowerSavingDiagnostics.h": "18b78f5780046ea8c772c4ce6c337741ae0c027039d9399c94c5f4205d114000",

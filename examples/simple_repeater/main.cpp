@@ -172,6 +172,32 @@ static unsigned long userBtnDownAt = 0;
 #define USER_BTN_HOLD_OFF_MILLIS 1500
 #endif
 
+#if MESH_REPEATER_REQUIRE_PSRAM
+static bool required_psram_failed = false;
+static uint32_t required_psram_notice_at = 0;
+
+// A required-memory failure leaves native USB available for diagnosis and
+// reflashing. Do not enter the mesh loop or run commands against partial state.
+static void serviceRequiredPsramFailure() {
+  mesh::serviceUsbLoggingPort();
+#if MESH_USB_CONSOLE_COOPERATIVE
+  mesh::serviceUsbTerminalPort();
+#endif
+  auto& console = mesh::usbConsolePort();
+  bool requested = false;
+  for (unsigned consumed = 0; consumed < 256 && console.available(); ++consumed) {
+    const int value = console.read();
+    if (value == '\r' || value == '\n') requested = true;
+  }
+  const uint32_t now = millis();
+  if (requested || uint32_t(now - required_psram_notice_at) >= 5000UL) {
+    console.println("ERROR: required PSRAM tables unavailable; LoRa startup stopped. Check PSRAM or flash standard firmware.");
+    required_psram_notice_at = now;
+  }
+  delay(10);
+}
+#endif
+
 void setup() {
   mesh::wireless::control().begin(infrastructure_wireless);
   mesh::prepareUsbLoggingPort();
@@ -186,6 +212,17 @@ void setup() {
   mesh::hilStartupTrace("board_begin");
   board.begin();
   mesh::hilStartupTrace("board_ready");
+
+#if MESH_REPEATER_REQUIRE_PSRAM
+  // Board startup resets the transceiver. Admit the complete external tables
+  // before radio_init(), identity generation, or any mesh/network operation.
+  if (!the_mesh.prepareStartupStorage()) {
+    required_psram_failed = true;
+    required_psram_notice_at = millis() - 5000UL;
+    serviceRequiredPsramFailure();
+    return;
+  }
+#endif
 
 #ifdef HAS_EXTERNAL_WATCHDOG
   external_watchdog.begin();
@@ -732,6 +769,12 @@ static bool usbLoggingRecoverySafe(void*) {
 }
 
 void loop() {
+#if MESH_REPEATER_REQUIRE_PSRAM
+  if (required_psram_failed) {
+    serviceRequiredPsramFailure();
+    return;
+  }
+#endif
 #if defined(NRF52_PLATFORM)
   board.prepareSleepCycle();
 #endif

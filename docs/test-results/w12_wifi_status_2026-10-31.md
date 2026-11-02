@@ -235,3 +235,8 @@ ESP-NOW constraints are retained.
 Sources: [ESPHome connection manager](https://github.com/esphome/esphome/blob/2026.10.1/esphome/components/wifi/wifi_component.cpp),
 [ESP-IDF AP retry setting](https://docs.espressif.com/projects/esp-idf/en/v4.4.8/esp32s3/api-reference/network/esp_wifi.html#_CPPv4N17wifi_sta_config_t17failure_retry_cntE),
 [Arduino 3.3.12 release](https://github.com/espressif/arduino-esp32/releases/tag/3.3.12).
+
+The SDK3 Observer comparison requires PSRAM for its existing full-capacity scope
+and advert tables. Allocation is checked before radio startup; failure leaves
+USB diagnostics available. This variant accounts for 36,828 bytes externally
+instead of reserving an internal fallback. Normal builds retain that fallback.
