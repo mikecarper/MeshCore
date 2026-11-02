@@ -224,12 +224,12 @@ class WiFiScanFixTest(unittest.TestCase):
             def version_text(version):
                 return "".join(f"#define ESP_ARDUINO_VERSION_{key} {value}\n"
                                for key, value in zip(("MAJOR", "MINOR", "PATCH"), version))
-            for version in ((3, 1, 3), (3, 3, 11)):
+            for version in ((3, 1, 3), (3, 3, 11), (3, 3, 12)):
                 header.write_text(version_text(version))
                 self.assertEqual(FIX.require_known_framework(source), version)
                 self.assertIs(FIX.replace_scan_source(env, node), node)
                 self.assertFalse(env.build.exists())
-            for changed in ("", version_text((2, 0, 18)), version_text((3, 3, 12)),
+            for changed in ("", version_text((2, 0, 18)), version_text((3, 3, 13)),
                             version_text((2, 0, 17)) + "#define ESP_ARDUINO_VERSION_MAJOR 2\n"):
                 header.write_text(changed)
                 with self.assertRaises(RuntimeError): FIX.replace_scan_source(env, node)

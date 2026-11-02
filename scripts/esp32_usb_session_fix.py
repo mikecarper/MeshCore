@@ -368,6 +368,8 @@ PATCHED_HWCDC_3311_SHA256 = "7b693bf5d72df97336360969ff429c67f3783d472123aeb79b3
 HWCDC_STARTUP_PINS = {
     (3, 1, 3): (PINNED_HWCDC_313_SHA256, PATCHED_HWCDC_313_SHA256),
     (3, 3, 11): (PINNED_HWCDC_3311_SHA256, PATCHED_HWCDC_3311_SHA256),
+    # The 3.3.12 HWCDC driver is byte-identical to the reviewed 3.3.11 driver.
+    (3, 3, 12): (PINNED_HWCDC_3311_SHA256, PATCHED_HWCDC_3311_SHA256),
 }
 HWCDC_STARTUP_INCLUDE = '#include "hal/usb_serial_jtag_ll.h"\n'
 HWCDC_STARTUP_HOOK = 'extern "C" bool meshEsp32HwcdcShouldReportBusReset() __attribute__((weak));\n'

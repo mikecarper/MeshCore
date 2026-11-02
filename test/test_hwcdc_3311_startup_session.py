@@ -167,10 +167,15 @@ class Hwcdc3311StartupSessionTests(startup.HwcdcStartupSessionTests):
                                encoding="ascii")
             with self.assertRaises(RuntimeError):
                 FIX.replace_hwcdc_source(env, node)
-            # An unreviewed framework version keeps its existing driver.
+            # 3.3.12 retains this exact driver and uses the same capture hook.
             version.write_text("#define ESP_ARDUINO_VERSION_MAJOR 3\n"
                                "#define ESP_ARDUINO_VERSION_MINOR 3\n"
                                "#define ESP_ARDUINO_VERSION_PATCH 12\n", encoding="ascii")
+            self.assertEqual(Path(FIX.replace_hwcdc_source(env, node)).read_text(), self.patched)
+            # An unreviewed framework version keeps its existing driver.
+            version.write_text("#define ESP_ARDUINO_VERSION_MAJOR 3\n"
+                               "#define ESP_ARDUINO_VERSION_MINOR 3\n"
+                               "#define ESP_ARDUINO_VERSION_PATCH 13\n", encoding="ascii")
             self.assertIs(FIX.replace_hwcdc_source(env, node), node)
 
     def test_shared_predicate_is_exported_without_the_217_tx_backport(self):

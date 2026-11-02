@@ -145,24 +145,25 @@ class BleLifecycleFixTests(unittest.TestCase):
                     self.assertIn("alloc-dealloc-mismatch", run.stderr)
 
     def test_hash_guards_idempotence_and_old_sdk_unchanged(self):
-        for name, (_, _, original, repaired) in FIX.SOURCE_PINS.items():
-            with self.subTest(name=name):
-                source = "// reviewed source fixture\n" + original
-                expected = source.replace(original, repaired)
-                pins = {name: (hashlib.sha256(source.encode()).hexdigest(),
-                               hashlib.sha256(expected.encode()).hexdigest(), original, repaired)}
-                with patch.object(FIX, "SOURCE_PINS", pins):
-                    self.assertEqual(FIX.patched_ble_source(source, (3, 3, 11), name), expected)
-                    self.assertEqual(FIX.patched_ble_source(expected, (3, 3, 11), name), expected)
-                    self.assertEqual(FIX.patched_ble_source(source.replace("\n", "\r\n"), (3, 3, 11), name), expected)
-                    for version in ((2, 0, 17), (3, 1, 3)):
-                        self.assertEqual(FIX.patched_ble_source(source, version, name), source)
-                    with self.assertRaisesRegex(RuntimeError, "changed pinned source"):
-                        FIX.patched_ble_source(source + "// changed\n", (3, 3, 11), name)
-                    with self.assertRaisesRegex(RuntimeError, "unreviewed framework"):
-                        FIX.patched_ble_source(source, (3, 3, 12), name)
-                    with self.assertRaisesRegex(RuntimeError, "unreviewed source"):
-                        FIX.patched_ble_source(source, (3, 3, 11), "BLEOther.cpp")
+        for version, sources in FIX.FRAMEWORK_PINS.items():
+            for name, (_, _, original, repaired) in sources.items():
+                with self.subTest(version=version, name=name):
+                    source = "// reviewed source fixture\n" + original
+                    expected = source.replace(original, repaired)
+                    pins = {name: (hashlib.sha256(source.encode()).hexdigest(),
+                                   hashlib.sha256(expected.encode()).hexdigest(), original, repaired)}
+                    with patch.object(FIX, "FRAMEWORK_PINS", {version: pins}):
+                        self.assertEqual(FIX.patched_ble_source(source, version, name), expected)
+                        self.assertEqual(FIX.patched_ble_source(expected, version, name), expected)
+                        self.assertEqual(FIX.patched_ble_source(source.replace("\n", "\r\n"), version, name), expected)
+                        for old in ((2, 0, 17), (3, 1, 3)):
+                            self.assertEqual(FIX.patched_ble_source(source, old, name), source)
+                        with self.assertRaisesRegex(RuntimeError, "changed pinned source"):
+                            FIX.patched_ble_source(source + "// changed\n", version, name)
+                        with self.assertRaisesRegex(RuntimeError, "unreviewed framework"):
+                            FIX.patched_ble_source(source, (3, 3, 13), name)
+                        with self.assertRaisesRegex(RuntimeError, "unreviewed source"):
+                            FIX.patched_ble_source(source, version, "BLEOther.cpp")
 
     def test_middleware_copies_only_pinned_sources_without_touching_shared_sdk(self):
         with tempfile.TemporaryDirectory(prefix="ble-sdk-middleware-") as directory:
@@ -179,7 +180,7 @@ class BleLifecycleFixTests(unittest.TestCase):
             pins = {"BLEDevice.cpp": (hashlib.sha256(original.encode()).hexdigest(),
                     hashlib.sha256(expected.encode()).hexdigest(), FIX.ORIGINAL, FIX.REPAIRED)}
             node, env = FakeNode(source), FakeEnvironment(root / "build")
-            with patch.object(FIX, "SOURCE_PINS", pins):
+            with patch.object(FIX, "FRAMEWORK_PINS", {(3, 3, 11): pins, (3, 3, 12): pins}):
                 destination = FIX.replace_ble_source(env, node)
                 self.assertEqual(source.read_text(), original)
                 self.assertEqual(destination.read_text(), expected)
@@ -188,25 +189,34 @@ class BleLifecycleFixTests(unittest.TestCase):
                 self.assertEqual(FIX.replace_ble_source(env, node), destination)
                 self.assertEqual(destination.stat().st_mtime_ns, timestamp)
                 version.write_text(version.read_text().replace("PATCH 11", "PATCH 12"))
+                self.assertEqual(FIX.replace_ble_source(env, node), destination)
+                version.write_text(version.read_text().replace("PATCH 12", "PATCH 13"))
                 with self.assertRaisesRegex(RuntimeError, "unreviewed framework"):
                     FIX.replace_ble_source(env, node)
 
     def test_installed_exact_sdk_pins_when_available(self):
-        packages = Path.home() / ".platformio/packages"
-        candidates = list(packages.glob("framework-arduinoespressif32*"))
-        sdk = None
+        core_dir = Path(os.environ.get("PLATFORMIO_CORE_DIR", str(Path.home() / ".platformio")))
+        candidates = list((core_dir / "packages").glob("framework-arduinoespressif32*"))
+        if os.environ.get("MESH_ARDUINO_SDK_TEST_DIR"):
+            candidates.append(Path(os.environ["MESH_ARDUINO_SDK_TEST_DIR"]))
+        tested = 0
         for candidate in candidates:
             source = candidate / "libraries/BLE/src/BLEDevice.cpp"
-            if source.exists() and FIX.framework_version(source) == (3, 3, 11):
-                sdk = source.parent
-                break
-        if sdk is None:
-            self.skipTest("Pinned Arduino3.3.11 SDK is not installed")
-        for name in FIX.SOURCE_PINS:
-            source = (sdk / name).read_text()
-            patched = FIX.patched_ble_source(source, (3, 3, 11), name)
-            self.assertNotEqual(source, patched)
-            self.assertEqual(FIX.patched_ble_source(patched, (3, 3, 11), name), patched)
+            if not source.exists():
+                continue
+            version = FIX.framework_version(source)
+            if version not in FIX.FRAMEWORK_PINS:
+                continue
+            for name in FIX.FRAMEWORK_PINS[version]:
+                original = (source.parent / name).read_text(encoding="utf-8")
+                patched = FIX.patched_ble_source(original, version, name)
+                self.assertNotEqual(original, patched)
+                self.assertEqual(FIX.patched_ble_source(patched, version, name), patched)
+                old, new = FIX.FRAMEWORK_PINS[version][name][2:]
+                self.assertEqual(patched.replace(new, old, 1), original)
+            tested += 1
+        if not tested:
+            self.skipTest("Pinned Arduino3.3.11/3.3.12 SDK is not installed")
 
 
 if __name__ == "__main__":

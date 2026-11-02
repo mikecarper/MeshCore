@@ -20,6 +20,8 @@ for version in ((3, 1, 3), (3, 3, 11)):
     fixture = FIXTURES / ".".join(map(str, version))
     raw = json.loads((fixture / "vfs_api.json").read_text(encoding="ascii"))["source"]
     SDK_VARIANTS.append((version, raw, FIX.patched_vfs_source(raw, version), fixture))
+# The reviewed 3.3.12 FS source is byte-identical; share its source witness.
+SDK_VARIANTS.append(((3, 3, 12), raw, FIX.patched_vfs_source(raw, (3, 3, 12)), fixture))
 
 
 def method(source, signature):
@@ -276,6 +278,8 @@ class FileBufferFixTest(unittest.TestCase):
             for version, raw, patched, fixture in SDK_VARIANTS:
                 with self.subTest(version=version):
                     original_header = (fixture / "esp_arduino_version.h").read_bytes()
+                    if version == (3, 3, 12):
+                        original_header = original_header.replace(b"VERSION_PATCH 11", b"VERSION_PATCH 12")
                     source.write_text(raw, encoding="utf-8")
                     header.write_bytes(original_header)
                     self.assertEqual(FIX.require_pinned_framework(source), version)
@@ -296,12 +300,12 @@ class FileBufferFixTest(unittest.TestCase):
                     for changed in (raw + "\n", patched + "\n",
                                     raw.replace("return res == 0;", "return true;", 1)):
                         with self.assertRaises(RuntimeError): FIX.patched_vfs_source(changed, version)
-                    for other_version, _, _, _ in SDK_VARIANTS:
-                        if other_version != version:
+                    for other_version, other_raw, _, _ in SDK_VARIANTS:
+                        if other_version != version and other_raw != raw:
                             with self.assertRaises(RuntimeError): FIX.patched_vfs_source(raw, other_version)
                     header.write_bytes(original_header + b"\n#define ESP_ARDUINO_VERSION_MAJOR 9\n")
                     with self.assertRaises(RuntimeError): FIX.replace_vfs_source(env, node)
-            with self.assertRaises(RuntimeError): FIX.patched_vfs_source(RAW, (3, 3, 12))
+            with self.assertRaises(RuntimeError): FIX.patched_vfs_source(RAW, (3, 3, 13))
 
     def test_exact_fingerprints_shape_normalization_and_idempotence(self):
         self.assertEqual(hashlib.sha256((FIXTURES / "vfs_api.cpp").read_bytes()).hexdigest(), FIX.PINNED_VFS_SHA256)

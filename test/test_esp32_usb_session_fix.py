@@ -119,7 +119,8 @@ class Esp32UsbSessionFixTests(unittest.TestCase):
             cores = {}
             for name, version in (("framework-arduinoespressif32", (3, 1, 3)),
                                   ("framework-arduinoespressif32@src-old", (2, 0, 17)),
-                                  ("framework-arduinoespressif32@src-new", (3, 3, 11))):
+                                  ("framework-arduinoespressif32@src-new", (3, 3, 11)),
+                                  ("framework-arduinoespressif32@src-experiment", (3, 3, 12))):
                 core = packages / name / "cores/esp32"
                 core.mkdir(parents=True)
                 (core / "USBCDC.cpp").write_text(CDC, encoding="ascii")

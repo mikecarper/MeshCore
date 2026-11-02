@@ -68,6 +68,10 @@ FRAMEWORK_PINS = {
     (3, 3, 11): (
         '3d345bcb3b764f08c6e923dbacc96f27da10edb12beb774de439228057d14a54',
         '0cfa80cc29a38e854fa17401605dbe9adbd6157195ec5444f0a90d68c344cd0c'),
+    # The FS source and compiler/newlib ABI are unchanged in 3.3.12.
+    (3, 3, 12): (
+        '3d345bcb3b764f08c6e923dbacc96f27da10edb12beb774de439228057d14a54',
+        '0cfa80cc29a38e854fa17401605dbe9adbd6157195ec5444f0a90d68c344cd0c'),
 }
 
 

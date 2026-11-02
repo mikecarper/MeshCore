@@ -18,7 +18,7 @@ ZEROED_DECLARATION = "wifi_scan_config_t config = {};"
 PATCHED_VERSION = (2, 0, 17)
 # These existing recipes keep their own framework sources. This narrowly
 # qualified Arduino 2 fix does not claim to qualify Arduino 3 scanning.
-KNOWN_UNCHANGED_VERSIONS = {(3, 1, 3), (3, 3, 11)}
+KNOWN_UNCHANGED_VERSIONS = {(3, 1, 3), (3, 3, 11), (3, 3, 12)}
 
 
 def patched_scan_source(source, framework_version=PATCHED_VERSION):
