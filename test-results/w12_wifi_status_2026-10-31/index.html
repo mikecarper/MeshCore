@@ -2533,6 +2533,17 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#ap-selection-preview-2026-11-01" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        AP-selection preview — 2026-11-01
+      
+    </span>
+  </a>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -2715,6 +2726,20 @@ credentials, connection deadlines and transport power-policy fixtures. The new
 regressions execute the production startup and setter with a delayed
 <code>STA_START</code>; removing either cache update reproduces the failure. This validates
 the policy race, not a hardware fix for the reported reason-34/39 disconnects.</p>
+<h2 id="ap-selection-preview-2026-11-01">AP-selection preview — 2026-11-01</h2>
+<p>The reported W12 confirmed live <code>ps=0</code> on Preview 6 but still encountered
+authentication and handshake timeouts. Preview 7 opts into
+<code>MESH_WIFI_ALL_CHANNEL_SCAN=1</code>, preparing Arduino's all-channel scan and
+signal-based sorting before credentials are staged. This lets the SDK consider
+all matching access points and try the strongest first. Ordinary builds keep
+their existing scan behavior. Fixed-channel ESP-NOW selection still constrains
+the channel and BSSID; credentials, PMF/SAE settings and retry timing are intact.</p>
+<p>All 10 station-security host tests passed with ASan/UBSan. The matrix covers
+the pinned and installed Arduino 2.0.17 staging paths, an explicit disabled
+override, and the enabled experiment across supported and SAE-fallback SDKs.
+Checks include a 64-character PSK, fixed-channel selection, healthy-link
+idempotence and driver-managed reconnects. This validates the configured scan
+policy; connection stability on the reported network still needs testing.</p>
 
 
 
