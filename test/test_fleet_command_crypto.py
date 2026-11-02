@@ -377,6 +377,45 @@ class FleetCommandCryptoTests(unittest.TestCase):
             with self.subTest(command=command):
                 self.assertEqual(self.decode(envelope(command)), "reject")
 
+    def test_hardware_guard_and_role_remain_inside_the_signed_command(self):
+        for command in ("@Heltec_tower_v2/r get radio2", "@#536D28C9/s get hardware",
+                        "@*/r clock", "@Heltec_tower_v2/r ota pull A1B2C3D4 flash",
+                        "ota status", "ota stats", "ota self"):
+            with self.subTest(command=command):
+                expected = envelope2(command=command)
+                encoded = self.run_tool("encode2", CHANNEL.hex(), "all", NOW, NOW + 120, command)
+                self.assertEqual(encoded, expected.hex())
+                self.assertEqual(self.decode(expected), f"{NOW}\n{NOW + 120}\n{command}")
+                self.assertLessEqual(len(expected), 165)
+        original = envelope2(command="@Heltec_tower_v2/r ota pull A1B2C3D4 flash")
+        for command in ("@Heltec_tower_v2/s ota pull A1B2C3D4 flash",
+                        "@Heltec_tower_v3/r ota pull A1B2C3D4 flash",
+                        "@Heltec_tower_v2/r ota pull A1B2C3D5 flash"):
+            forged = envelope2(command=command)[:-64] + original[-64:]
+            self.assertEqual(self.decode(forged), "reject")
+
+    def test_fleet_pull_requires_specific_hardware_role_and_exact_manifest_id(self):
+        forbidden = (
+            "ota pull A1B2C3D4 flash", "@*/r ota pull A1B2C3D4 flash",
+            "@Heltec_tower_v2 ota pull A1B2C3D4 flash",
+            "@Heltec_tower_v2/c ota pull A1B2C3D4 flash",
+            "@Heltec_tower_v2/n ota pull A1B2C3D4 flash",
+            "@Heltec_tower_v2/r ota pull 1 flash",
+            "@Heltec_tower_v2/r ota pull A1B2C3D4",
+            "@Heltec_tower_v2/r ota pull A1B2C3D4 folder",
+            "@Heltec_tower_v2/r ota pull A1B2C3D4 flash rescue",
+            "@Heltec_tower_v2/r ota pull A1B2C3DZ flash",
+            "@Heltec_tower_v2/r ota pull A1B2C3D4 flash extra",
+            "@Heltec_tower_v2/r ota install A1B2C3D4",
+            "@Heltec_tower_v2/r reboot", "@Heltec_tower_v2/r get prv.key",
+            "@Heltec_tower_v2/r @*/s get radio2", "@Heltec_tower_v2/r get radio2;reboot",
+        )
+        for command in forbidden:
+            with self.subTest(command=command):
+                self.assertEqual(self.decode(envelope2(command=command)), "reject")
+                self.assertEqual(self.run_tool("encode2", CHANNEL.hex(), "all", NOW,
+                                              NOW + 120, command), "reject")
+
     def test_filter_shorthand_uses_the_same_signed_management_envelope(self):
         for command in ["get fr", "get fr.2", "get fr.2 n", "get flood.rule.2 text",
                         "set fr.2 any c=public q=10 s",

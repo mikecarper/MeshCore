@@ -27,6 +27,7 @@ HARNESS = r'''
 #include <string>
 #include <vector>
 #include <helpers/FleetCommand.h>
+#include <helpers/HardwareCommand.h>
 #include <helpers/CLIReplyText.h>
 #include <helpers/TempRadioReplyBarrier.h>
 #include "regulator_cli_stub.h"
@@ -43,6 +44,7 @@ struct RescueStream : Stream {
   int peek() override { ++peeks; return available() ? uint8_t(input[position]) : -1; }
   size_t write(uint8_t value) override { output += char(value); return 1; }
 };
+struct HardwareBoard { const char* getManufacturerName() const { return "test_board"; } } board;
 static RescueStream rescue_input, rescue_output;
 
 namespace mesh {
@@ -1279,6 +1281,20 @@ int main(int argc, char** argv) {
         "clock sync extra", "time", "time -1", "time +1800000000", "time NaN",
         "time 4294967296", "time 1735689599", "time 1800000000 extra"})
       rejected(node, ("fleet send 1 all " + std::string(clock_command)).c_str());
+  } else if(scenario=="hardware_guard") {
+    for(const char* guarded:{"@Heltec_tower_v2/r ota pull A1B2C3D4 flash",
+                            "@#536D28C9/s get hardware","@*/r get radio2"}) {
+      const std::string cli=std::string("fleet send 1 ")+guarded;
+      rejected(node,cli.c_str(),1);
+      assert(node.handleCommand(cli.c_str(),0,reply));
+      compactBroadcast(node,guarded);
+      ++node.clock.now;
+    }
+    for(const char* unsafe:{"@*/r ota pull A1B2C3D4 flash",
+                           "@Heltec_tower_v2/c ota pull A1B2C3D4 flash",
+                           "@Heltec_tower_v2/r ota install A1B2C3D4",
+                           "@Heltec_tower_v2/r @other/s get radio2"})
+      rejected(node,(std::string("fleet send 1 ")+unsafe).c_str());
   } else assert(false);
   printf("Companion fleet scenario %s passed\n", argv[1]);
 }
@@ -1481,6 +1497,9 @@ class CompanionFleetControlTests(unittest.TestCase):
 
     def test_invalid_syntax_targets_and_forbidden_commands(self):
         self.scenario("syntax")
+
+    def test_hardware_guards_remain_signed_with_local_only_sender_authority(self):
+        self.scenario("hardware_guard")
 
     def test_private_128_bit_key_required_even_if_channel_is_renamed(self):
         self.scenario("private_channel")

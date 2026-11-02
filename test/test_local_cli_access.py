@@ -115,6 +115,7 @@ struct Prefs {
   void clearDirty(){}
 };
 struct Board {
+  const char* getManufacturerName() const {return "test_board";}
   int power_offs=0;
   uint16_t charge_target=4200;
   unsigned charge_writes=0;

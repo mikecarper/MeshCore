@@ -1,5 +1,6 @@
 #include "CLIReplyText.h"
 #include "ConfigCapabilities.h"
+#include "HardwareCommand.h"
 #include <helpers/RegulatorSettings.h>
 #if defined(USE_LR2021)
 #include <helpers/radiolib/LR2021CalibrationSettings.h>
@@ -6583,6 +6584,12 @@ void CommonCLI::handleGetCmd(uint32_t sender_timestamp, char* command, char* rep
     mesh::Utils::toHex(&reply[2], _callbacks->getSelfId().pub_key, PUB_KEY_SIZE);
   } else if (configKeyEquals(config, "role")) {
     sprintf(reply, "> %s", _callbacks->getRole());
+#if MESH_ENABLE_FLEET_CONTROL
+  } else if (configKeyEquals(config, "hardware")) {
+    mesh::hardwareCommand::format(
+        mesh::hardwareCommand::hardware(_board->getManufacturerName()),
+        _callbacks->getRole(), reply, 157);
+#endif
   } else if (configKeyEquals(config, "bridge.type")) {
     sprintf(reply, "> %s",
 #if defined(WITH_UDP_BRIDGE) && !defined(WITH_MQTT_BRIDGE) && !defined(WITH_RS232_BRIDGE) && !defined(WITH_ESPNOW_BRIDGE)

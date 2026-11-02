@@ -18,6 +18,20 @@ hardware ID `Heltec_tower_v2`, application layout, and artifact names remain
 unchanged. The required Full and Reduced sensor choices use that same target.
 Existing SD users need no configuration change.
 
+Firmware with [hardware-aware fleet commands](fleet_management.md#hardware-and-role-conditions)
+can start a download on this receiver with:
+
+```text
+fleet send 3 @Heltec_tower_v2/r ota pull A1B2C3D4 flash
+```
+
+Replace the example ID with the signed update's eight-digit ID from `ota ls`.
+`flash` selects this build's OTA store, including SD when a usable card is
+selected. The private fleet enrollment, temporary-radio window, trusted signer
+and matching SD-aware bootloader are still required. This command starts the
+download; explicit installation remains an individual admin operation, and an
+already-enabled trusted autoinstall policy retains its normal effect.
+
 The build aliases `Heltec_tower_v2_repeater` and
 `Heltec_tower_v2_repeater_lora_ota_no_external_sensors` resolve to this primary
 target. An installed internal-only image has a different OTA identity and

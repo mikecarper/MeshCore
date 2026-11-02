@@ -1,5 +1,6 @@
 #include <helpers/CLIReplyText.h>
 #include "MyMesh.h"
+#include <helpers/HardwareCommand.h>
 #include <helpers/ui/DisplayNightLocation.h>
 
 #if FLOOD_ADVERT_RTC_FAST_SLOTS
@@ -12592,6 +12593,13 @@ void MyMesh::handleCommand(uint32_t sender_timestamp, ClientInfo* sender, char *
     command += 3;
   }
 
+#if MESH_ENABLE_FLEET_CONTROL
+  const char* hardware_command = command;
+  if (mesh::hardwareCommand::apply(hardware_command,
+          mesh::hardwareCommand::hardware(_cli.getBoard()->getManufacturerName()),
+          FIRMWARE_ROLE, reply, 157)) return;
+  command += hardware_command - command;
+#endif
   mesh::cli::normalizeCommandVerb(command);
   const mesh::cli::NoArgCommandMatch discover_neighbors_match =
       mesh::cli::matchNoArgCommand(command, "discover.neighbors");

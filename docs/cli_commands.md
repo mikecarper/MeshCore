@@ -4,6 +4,13 @@
 
 # CLI Commands
 
+For hardware-specific app templates, use `get hardware`, then prefix a command
+with `@board/role`, for example `@Heltec_tower_v2/r ota pull A1B2C3D4 flash`.
+`/r` means repeater, `/s` room server, `/c` Companion and `/n` sensor. Other
+hardware replies `OK - skipped (hardware/role)`. A short `@#<hardware-id>/r`
+form is also available. See [hardware and role conditions](fleet_management.md#hardware-and-role-conditions)
+for signed fleet use, availability and OTA prerequisites.
+
 For SolarXiao Base/Advanced/MPPT automatic detection, manual overrides, live
 battery/MCU readings and charger controls, see [SolarXiao carrier profiles](solarxiao_power.md)
 (`get solar`, `get solar readings`, `set solar.board auto`, `get mppt`, `set mppt`).

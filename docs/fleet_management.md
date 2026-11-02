@@ -237,6 +237,83 @@ sequence; the operation should be chosen to be idempotent.
 
 ## Supported controls
 
+### Hardware and role conditions
+
+Use `get hardware` on a node to find its hardware name, role and short ID:
+
+```text
+> hw=heltec_tower_v2 role=repeater id=536D28C9
+```
+
+Prefix a command with `@board/role` to run it only on matching hardware:
+
+```text
+@Heltec_tower_v2/r ota pull A1B2C3D4 flash
+@#536D28C9/r ota pull A1B2C3D4 flash
+```
+
+The second line is the shorter spelling of the first. `/r` selects repeaters,
+`/s` room servers, `/c` Companions and `/n` sensors. Omit `/role` to match any
+role on that board; `@*/r` selects any repeater. Hardware names ignore case and
+accept underscores for spaces. Use the reported name or ID: board names can
+differ between builds with different storage or radio hardware.
+
+These prefixes work in ordinary authenticated admin CLI queues as well as signed
+fleet commands. A mismatched node replies `OK - skipped (hardware/role)` and
+does not run the inner command, so an app can continue its template queue.
+Sensor and Companion guards work in their ordinary CLI; signed fleet reception
+remains limited to repeaters and room servers.
+For example, after the existing fleet enrollment:
+
+```text
+fleet send 3 get hardware
+fleet send 3 @Heltec_tower_v2/r get radio2
+fleet send 3 @#536D28C9/r ota pull A1B2C3D4 flash
+fleet send 3 @*/s get radio2
+```
+
+Fleet OTA pulls require a specific hardware name or short ID, `/r` or `/s`,
+the exact eight-hex-digit manifest ID from `ota ls`, and the `flash` destination.
+The normal [LoRa OTA setup](lora_ota_automation.md), temporary-radio requirement,
+image compatibility checks and signer policy still apply. Explicit installation,
+rescue and bootloader commands are not added to fleet control. An existing
+autoinstall setting retains its normal effect.
+
+#### SD-backed receivers
+
+The same `flash` destination selects the receiver's configured OTA store,
+including microSD on the SD-enabled MeshTower V2 and adaptive RAK4631/RAK15002
+receiver builds. It does not force internal-flash staging. Use the hardware
+identity reported by `get hardware`, not the SD module's name:
+
+```text
+fleet send 3 @Heltec_tower_v2/r ota pull A1B2C3D4 flash
+fleet send 3 @RAK4631/r ota pull 11223344 flash
+```
+
+Each ID must identify that board's update. SD installation requires a usable
+card, the matching SD-capable bootloader and a signed package from a trusted
+signer. Check `ota self` and `ota storage` through individual admin CLI before
+starting. An SD socket or an archive-only firmware build does not enable
+installation; SD Companions and the legacy RAK15002 seeder remain sources only.
+SD partial downloads remain on the card for resume. Keep the card inserted
+through download and installation; the receiver does not move an active
+transfer to internal storage if the card is removed. See
+[MeshTower SD storage selection](ota_meshtower_v2_sdcard.md#automatic-storage-selection)
+and [RAK4631 storage options](ota_nrf52_qspi.md).
+
+The prefix is covered by the existing command signature and consumes the normal
+command-byte budget; no extra packet format is needed. Its short ID is a
+32-bit FNV-1a hash of the hardware name after lowercasing and replacing spaces
+with underscores. It is a selector, not an authentication or compatibility key.
+Ordinary unguarded commands retain their existing behavior. Older firmware
+rejects guarded commands; both endpoints need this support for signed fleet use.
+Fixed-size STM32 builds omit hardware guards with fleet control. Run password,
+private-key backup, replay-recovery and interactive `region load` commands
+without a guard so their existing special handling remains in charge.
+
+### Packet budget
+
 The Companion automatically uses **one or two LoRa packets**, depending on the
 signed command's size. Whole-fleet commands fit **87 ASCII bytes** in one packet
 or **230 bytes** across two. Targets consume some of that allowance:
@@ -301,6 +378,9 @@ Reboot or changing enrollment discards the partial transfers.
 | Scheduled primary profile | `get/set/del radioat`, `get/set/del tempradioat` |
 | Scheduled second profile | `get/set/del radioat2`, `get/set/del tempradioat2` |
 | UTC clock | `clock`, `clock sync`, `time <epoch-seconds>` |
+| Hardware identity | `get hardware` |
+| OTA download | `@board/r ota pull <manifest-id-8-hex> flash` (`/s` for rooms) |
+| OTA progress | `ota status`, `ota stats`, `ota self` |
 | Profile diagnostics | `get radio2.status`, `get radio2.timing` |
 | Crossover | `get radio2.cross`, `set radio2.cross <auto|on|off>` |
 | Repeater guest login | `get guest`, `set guest on|off` |

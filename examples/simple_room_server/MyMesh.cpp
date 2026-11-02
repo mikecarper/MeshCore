@@ -1,4 +1,5 @@
 #include "MyMesh.h"
+#include <helpers/HardwareCommand.h>
 #include <helpers/ui/DisplayNightLocation.h>
 #if defined(USE_LR2021)
 #include <helpers/radiolib/LR2021SideDetectorConfig.h>
@@ -4093,6 +4094,13 @@ void MyMesh::handleCommand(uint32_t sender_timestamp, char *command, char *reply
     command += 3;
   }
 
+#if MESH_ENABLE_FLEET_CONTROL
+  const char* hardware_command = command;
+  if (mesh::hardwareCommand::apply(hardware_command,
+          mesh::hardwareCommand::hardware(_cli.getBoard()->getManufacturerName()),
+          FIRMWARE_ROLE, reply, 157)) return;
+  command += hardware_command - command;
+#endif
   mesh::cli::normalizeCommandVerb(command);
 
   if (mesh::room_mail_protocol_detail::prefix(command, "mail")) {

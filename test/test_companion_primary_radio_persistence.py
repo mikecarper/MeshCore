@@ -71,7 +71,7 @@ struct Radio : mesh::Radio {
   bool isInRecvMode() const override { return true; }
 };
 struct Sensors { double node_lat=0,node_lon=0; } sensors;
-struct BatteryBoard {} board;
+struct BatteryBoard { const char* getManufacturerName() const {return "test_board";} } board;
 // Morse dispatch is independently executable in its own shared-handler suite;
 // this legacy fixture keeps that optional branch inactive for tuple rollback.
 namespace mesh {

@@ -280,6 +280,7 @@ class RadioProfileCLI {public:
 '''
 
 HARNESS = r'''
+#include <helpers/HardwareCommand.h>
 #include <helpers/FleetChannel.h>
 #include <helpers/PersistentStoreFormat.h>
 #include <cassert>
@@ -961,8 +962,39 @@ static int ackDelayScenario(){
  jitter_pick_boundary=0;puts("fleet runtime ack_delay_ceiling passed");return 0;
 }
 
+static int hardwareScenario(){
+ struct Case{const char* board;const char* role;bool download;};
+ for(const auto& c:{Case{"Heltec_tower_v2","repeater",true},
+                    Case{"Heltec_tower_v2","room_server",false},
+                    Case{"Heltec_v3","repeater",false},
+                    Case{"Heltec_tower_v2","companion",false}}){
+  fs::FS disk;Mesh mesh;RadioProfileCLI profiles;FleetChannel fleet(&disk);LocalIdentity publisher;
+  enroll(fleet,publisher);bind(fleet,mesh,profiles);
+  const uint32_t seq=mesh.clock.now;
+  Packet packet=targetsCommand(publisher,seq,"all","@Heltec_tower_v2/r ota pull A1B2C3D4 flash");
+  unsigned dispatches=0,downloads=0;char response[160]={};
+  auto handler=[&](uint32_t sequence,const char* command,char* reply){
+   ++dispatches;assert(storage::readLE32(disk.files.at(Path).data()+56)==sequence);
+   if(!mesh::hardwareCommand::apply(command,c.board,c.role,reply,157)){
+    assert(!strcmp(command,"ota pull A1B2C3D4 flash"));++downloads;strcpy(reply,"OK - pull started");
+   }
+   strcpy(response,reply);
+  };
+  fleet.receive(&packet,mesh);fleet.service(mesh,profiles,"node",handler);
+  assert(dispatches==1&&downloads==unsigned(c.download)&&mesh.queued==1);
+  assert(!strcmp(response,c.download?"OK - pull started":"OK - skipped (hardware/role)"));
+  fake_ms+=1000;fleet.receive(&packet,mesh);fleet.service(mesh,profiles,"node",handler);
+  assert(dispatches==1&&downloads==unsigned(c.download));
+  FleetChannel rebooted(&disk);fake_ms+=1000;
+  rebooted.receive(&packet,mesh);rebooted.service(mesh,profiles,"node",handler);
+  assert(dispatches==1&&downloads==unsigned(c.download));
+ }
+ return 0;
+}
+
 int main(int argc,char** argv){
  assert(argc==2);const std::string scenario=argv[1];
+ if(scenario=="hardware_guard")return hardwareScenario();
  if(scenario=="ack_delay_ceiling")return ackDelayScenario();
  if(scenario.rfind("gps_",0)==0)return gpsScenario(scenario);
  if(scenario.rfind("regions_",0)==0)return regionScenario(scenario);
@@ -1493,6 +1525,9 @@ class SHA256 : public SHA256Base {{ public:
 
     def test_gps_center_radius_targets_inside_seattle_and_excludes_portland(self):
         self.scenario("gps_inside_outside")
+
+    def test_hardware_guard_stages_only_matching_role_and_never_replays_after_reboot(self):
+        self.scenario("hardware_guard")
 
     def test_gps_unknown_invalid_out_of_range_and_absent_location_providers_fail_closed(self):
         self.scenario("gps_unknown_and_bad_fixes")

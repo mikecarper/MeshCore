@@ -1,5 +1,6 @@
 #include "FleetCommand.h"
 #include "RadioProfilePresets.h"
+#include "HardwareCommand.h"
 #include <SHA256.h>
 #include <math.h>
 #include <string.h>
@@ -554,6 +555,26 @@ bool FleetCommand::commandAllowed(const char* command) {
     pattern_characters = pattern_characters || byte == '|' || byte == '\\';
   }
   if (!length || command[0] == ' ' || command[length - 1] == ' ') return false;
+  hardwareCommand::Selector selector;
+  const auto guard = hardwareCommand::parse(command, selector);
+  if (guard == hardwareCommand::Parse::Invalid) return false;
+  if (guard == hardwareCommand::Parse::Valid) {
+    length -= size_t(selector.command - command);
+    command = selector.command;
+  }
+  if (!strcmp(command, "get hardware")) return true;
+  // Fleet can stage a specific advertised update for an explicit board/role.
+  // Installation, rescue, catalog-index aliases and policy writes stay outside
+  // fleet capability; ordinary OTA compatibility/signature checks still run.
+  if (!strncmp(command, "ota pull ", 9)) {
+    if (guard != hardwareCommand::Parse::Valid || selector.any
+        || (selector.role != 'r' && selector.role != 's')
+        || length != 23 || strcmp(command + 17, " flash")) return false;
+    for (size_t i = 9; i < 17; ++i) if (hexDigit(command[i]) < 0) return false;
+    return true;
+  }
+  if (!strcmp(command, "ota status") || !strcmp(command, "ota stats")
+      || !strcmp(command, "ota self")) return true;
   if (!strcmp(command, "clock") || !strcmp(command, "clock sync")) return true;
   if (!strncmp(command, "time ", 5)) {
     uint32_t value;

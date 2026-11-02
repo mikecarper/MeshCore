@@ -1,4 +1,5 @@
 #include <helpers/CLIReplyText.h>
+#include <helpers/HardwareCommand.h>
 #include <helpers/ConfigCapabilities.h>
 #include <helpers/RegulatorSettings.h>
 #if defined(USE_LR2021)
@@ -11250,6 +11251,18 @@ bool MyMesh::handleCommand(const char* command, uint32_t sender_timestamp,
     command += 3;
     while (*command == ' ' || *command == '\t') command++;
   }
+
+#if MESH_ENABLE_FLEET_CONTROL
+  if (mesh::hardwareCommand::apply(command,
+          mesh::hardwareCommand::hardware(board.getManufacturerName()),
+          "companion", reply, reply_capacity)) return true;
+  if (!strcmp(command, "get hardware")) {
+    mesh::hardwareCommand::format(
+        mesh::hardwareCommand::hardware(board.getManufacturerName()),
+        "companion", reply, reply_capacity);
+    return true;
+  }
+#endif
 
 #if defined(ESP32_PLATFORM)
   // Catch remote requests before the direct-transport router below. That

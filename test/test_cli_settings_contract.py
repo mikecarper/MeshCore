@@ -53,6 +53,7 @@ COMMON_QUERY_EXCEPTIONS = {
     'rs232.running': 'Live UART bridge state; set rs232.enabled controls intent',
     'rs232.status': 'Live heartbeat, negotiated standby and UART owner diagnostics',
     'bridge.type': 'Build-selected bridge transport',
+    'hardware': 'Build-selected hardware identity and firmware role',
     'password': 'Written by the password command, not set password',
     'public.key': 'Derived from identity; written through set prv.key',
     'pwrmgt.bootmv': 'Boot-time voltage measurement',
@@ -269,6 +270,7 @@ namespace mesh { struct Utils {
             'wifi.tcp',                              # Read-only app listener/traffic diagnostic
               'dm.held',                               # Read-only pending-DM count
             'flash.health',                          # Read-only flash health diagnostics
+            'hardware',                              # Build-selected hardware identity and role
             'key.backup.transport',                  # Identity-backup transport capability
             'mqtt', 'mqtt.running',                  # MQTT connection status
             'ota.direct',                            # Direct USB OTA session diagnostics

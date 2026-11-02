@@ -585,6 +585,7 @@ jobs:
 
       - name: Verify signed private fleet management
         run: |
+          python3 -B test/test_hardware_commands.py -v
           python3 -B test/test_fleet_command_crypto.py -v
           python3 -B test/test_companion_fleet_control.py -v
           python3 -B test/test_fleet_channel_runtime.py -v
