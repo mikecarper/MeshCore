@@ -1,0 +1,268 @@
+{
+  "application_zip_sha256": "4fb87768d303b396bcc6da16ab38c2c77dbb8e6362e2f7131ac6012c3b804ba4",
+  "ble_qualification_passed": true,
+  "board": "Heltec T096",
+  "capture_text_correction": {
+    "additional_hardware_trial_for_correction": false,
+    "cause": "btmon default-width output clipped the third Disconnect Complete heading at the four-digit packet number",
+    "initial_result_retained_privately": true,
+    "initial_text_classification": "Incomplete: two disconnects and one open handle",
+    "resolution": "Decoded the same original btsnoop at 240 columns; all three successful requested disconnects are present"
+  },
+  "date_utc": "2026-11-02",
+  "hci_classifier_harness_sha256": "dfdc6646f7b2456e3cf4f183de20702547c52591b7fd459ebec9706f3cc0bb26",
+  "historical_0x3e_reproduced": false,
+  "historical_root_cause_established": false,
+  "host": "Mercerwood Mesh Pi",
+  "installation": {
+    "after_core": {
+      "battery_mv": 4191,
+      "error_flags": 0,
+      "outbound_queue_length": 0,
+      "uptime_seconds": 3
+    },
+    "application_only": true,
+    "artifact_sha256": "4fb87768d303b396bcc6da16ab38c2c77dbb8e6362e2f7131ac6012c3b804ba4",
+    "before_core": {
+      "battery_mv": 4191,
+      "error_flags": 8,
+      "outbound_queue_length": 0,
+      "uptime_seconds": 2661
+    },
+    "before_version": "v1.18.0.2-halo-keymind-cascade-dev-cfc9d44b (Build: 29-Oct-2026)",
+    "bootloader_written": false,
+    "channels_preserved": true,
+    "contacts_preserved": true,
+    "device_preferences_preserved": true,
+    "dfu_exit_code": 0,
+    "dfu_finished_at": "2026-11-02T00:09:40.137477+00:00",
+    "dfu_started_at": "2026-11-02T00:08:35.423622+00:00",
+    "erase_requested": false,
+    "expected_version": "v1.18.0.2-halo-keymind-cascade-dev-8cc67955",
+    "final_core": {
+      "battery_mv": 4173,
+      "error_flags": 0,
+      "outbound_queue_length": 0,
+      "uptime_seconds": 9
+    },
+    "final_serial_unowned": true,
+    "finished_at": "2026-11-02T00:09:50.643636+00:00",
+    "identity_preserved": true,
+    "installed_version": "v1.18.0.2-halo-keymind-cascade-dev-8cc67955 (Build: 02-Nov-2026)",
+    "passed": true,
+    "preflash_readback_verified": true,
+    "private_key_exported": false,
+    "readback_policies_preserved": true,
+    "softdevice_written": false,
+    "source_commit": "8cc67955a127fa3de7d5c780254e31a5cb35067b",
+    "started_at": "2026-11-02T00:08:31.468342+00:00",
+    "startup_readiness_rejections": [],
+    "usb_query_cycles": 12,
+    "usb_reopens": 3
+  },
+  "installed_version": "v1.18.0.2-halo-keymind-cascade-dev-8cc67955 (Build: 02-Nov-2026)",
+  "limitations": [
+    "Existing bond and one Pi/controller; fresh pairing, phone clients, long soak and sustained payload traffic were not tested.",
+    "USB remained connected; battery-only operation and cold boot were not part of this check.",
+    "No new firmware BLE fix or historical root cause is established by these passing sessions."
+  ],
+  "older_sequence_comparison": {
+    "bleak_acquired_mtu": 247,
+    "client_sequence": "legacy MTU acquisition before encrypted subscription",
+    "hci": {
+      "att_unlikely_error_count": 0,
+      "classification_complete": true,
+      "classification_source": "Original btsnoop decoded with btmon -i 0 -C 240; event names untruncated",
+      "clean": true,
+      "encryption_successes": 1,
+      "ignored_foreign_connection_events": 0,
+      "lifecycle_parse_errors": 0,
+      "minimum_required_sessions": 1,
+      "owned_disconnect_commands": 1,
+      "strict_passed": true,
+      "target_command_failures": 0,
+      "target_disconnect_reasons": [
+        "0x16"
+      ],
+      "target_disconnect_statuses": [
+        "0x00"
+      ],
+      "target_establishment_0x3e_disconnects": 0,
+      "target_failed_establishments": 0,
+      "target_ll_response_timeout_0x22_disconnects": 0,
+      "target_open_handles_at_end": 0,
+      "target_pending_attempts_at_end": 0,
+      "target_successful_connection_events": 1,
+      "target_timeout_0x08_disconnects": 0,
+      "trace_log_sha256": "075303ff9cd1199eea32abf87112fe5ed48792b1ef68c8c9cf24505d281c41f0",
+      "unattributed_controller_events": 0
+    },
+    "session": {
+      "advertisement_verified": true,
+      "device_info_matches_usb": true,
+      "disconnected": true,
+      "final_core": {
+        "battery_mv": 4177,
+        "error_flags": 0,
+        "outbound_queue_length": 0,
+        "uptime_seconds": 296
+      },
+      "finished_at": "2026-11-02T00:14:39.181166+00:00",
+      "full_version_matches_usb": true,
+      "hold_seconds": 30,
+      "identity_matches_usb": true,
+      "initial_core": {
+        "battery_mv": 4191,
+        "error_flags": 0,
+        "outbound_queue_length": 0,
+        "uptime_seconds": 266
+      },
+      "passed": true,
+      "started_at": "2026-11-02T00:13:45.165764+00:00"
+    }
+  },
+  "older_sequence_harness_sha256": "2accd74ac0da44371527f4659c34a2aa7e69a4245fa79b72c1c5e559ad9a2b2b",
+  "post_ble": {
+    "all_target_serial_interfaces_unowned": true,
+    "ble_disconnected": true,
+    "btmon_stopped": true,
+    "channels_preserved": true,
+    "contacts_preserved": true,
+    "fem_rxgain": "> on",
+    "fem_txgain": "> on (fixed TX PA)",
+    "final_bluetooth": "bluetooth on",
+    "final_core": {
+      "battery_mv": 4188,
+      "error_flags": 0,
+      "outbound_queue_length": 0,
+      "uptime_seconds": 351
+    },
+    "host_bond_present": true,
+    "identity_and_device_info_preserved": true,
+    "mcu_regulator": "> auto; active dcdc; fallback off; crashes 0; recovery on",
+    "passed": true,
+    "readback_policies_preserved": true,
+    "usb_interfaces_checked": 1,
+    "usb_present": true,
+    "verified_at": "2026-11-02T00:15:35.988204+00:00"
+  },
+  "qualification": {
+    "client_sequence": "Protected encrypted read then subscription, local APP_START/device/full version/core-stat requests; no optional MTU acquisition",
+    "condition": "USB data connected; serial handles closed; existing bond; host WiFi unchanged",
+    "finished_at": "2026-11-02T00:13:14.396629+00:00",
+    "hci": {
+      "att_unlikely_error_count": 0,
+      "classification_complete": true,
+      "classification_source": "Original btsnoop decoded with btmon -i 0 -C 240; event names untruncated",
+      "clean": true,
+      "encryption_successes": 3,
+      "ignored_foreign_connection_events": 0,
+      "lifecycle_parse_errors": 0,
+      "minimum_required_sessions": 3,
+      "owned_disconnect_commands": 3,
+      "strict_passed": true,
+      "target_command_failures": 0,
+      "target_disconnect_reasons": [
+        "0x16",
+        "0x16",
+        "0x16"
+      ],
+      "target_disconnect_statuses": [
+        "0x00",
+        "0x00",
+        "0x00"
+      ],
+      "target_establishment_0x3e_disconnects": 0,
+      "target_failed_establishments": 0,
+      "target_ll_response_timeout_0x22_disconnects": 0,
+      "target_open_handles_at_end": 0,
+      "target_pending_attempts_at_end": 0,
+      "target_successful_connection_events": 3,
+      "target_timeout_0x08_disconnects": 0,
+      "trace_log_sha256": "6e8526f915292d179b237cb4adef6fb5f4f28236471b00864543c4d1c259bc26",
+      "unattributed_controller_events": 0
+    },
+    "sessions": [
+      {
+        "advertisement_verified": true,
+        "device_info_matches_usb": true,
+        "disconnected": true,
+        "final_core": {
+          "battery_mv": 4188,
+          "error_flags": 0,
+          "outbound_queue_length": 0,
+          "uptime_seconds": 121
+        },
+        "finished_at": "2026-11-02T00:11:44.369298+00:00",
+        "full_version_matches_usb": true,
+        "hold_seconds": 30,
+        "identity_matches_usb": true,
+        "initial_core": {
+          "battery_mv": 4188,
+          "error_flags": 0,
+          "outbound_queue_length": 0,
+          "uptime_seconds": 90
+        },
+        "passed": true,
+        "protected_read_succeeded": true,
+        "session": 1,
+        "started_at": "2026-11-02T00:11:00.708181+00:00"
+      },
+      {
+        "advertisement_verified": true,
+        "device_info_matches_usb": true,
+        "disconnected": true,
+        "final_core": {
+          "battery_mv": 4159,
+          "error_flags": 0,
+          "outbound_queue_length": 0,
+          "uptime_seconds": 166
+        },
+        "finished_at": "2026-11-02T00:12:28.285207+00:00",
+        "full_version_matches_usb": true,
+        "hold_seconds": 30,
+        "identity_matches_usb": true,
+        "initial_core": {
+          "battery_mv": 4188,
+          "error_flags": 0,
+          "outbound_queue_length": 0,
+          "uptime_seconds": 135
+        },
+        "passed": true,
+        "protected_read_succeeded": true,
+        "session": 2,
+        "started_at": "2026-11-02T00:11:46.373554+00:00"
+      },
+      {
+        "advertisement_verified": true,
+        "device_info_matches_usb": true,
+        "disconnected": true,
+        "final_core": {
+          "battery_mv": 4188,
+          "error_flags": 0,
+          "outbound_queue_length": 0,
+          "uptime_seconds": 209
+        },
+        "finished_at": "2026-11-02T00:13:12.349183+00:00",
+        "full_version_matches_usb": true,
+        "hold_seconds": 30,
+        "identity_matches_usb": true,
+        "initial_core": {
+          "battery_mv": 4188,
+          "error_flags": 0,
+          "outbound_queue_length": 0,
+          "uptime_seconds": 179
+        },
+        "passed": true,
+        "protected_read_succeeded": true,
+        "session": 3,
+        "started_at": "2026-11-02T00:12:30.289560+00:00"
+      }
+    ],
+    "started_at": "2026-11-02T00:10:49.446713+00:00"
+  },
+  "qualification_harness_sha256": "74afe248be4253fa946f3a1d3ff299b383684a5fca0d61ab13f923e89ca107c2",
+  "schema": 1,
+  "source_commit": "8cc67955a127fa3de7d5c780254e31a5cb35067b",
+  "target": "Heltec_t096_companion_radio_full_femon"
+}

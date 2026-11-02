@@ -1,0 +1,1505 @@
+{
+  "application_body_hash16": "ab310e27e16e0421",
+  "application_image_sha256": "eb72ef8670a5e0b09cfc2bf8d9ea78f26de2c11924fe12d061063754c81990e5",
+  "basic_application_and_usb_passed": true,
+  "board": "Seeed XIAO ESP32-S3 WIO",
+  "date_utc": "2026-11-02",
+  "dual_profile_delivery_qualified": false,
+  "final": {
+    "all_target_serial_ports_unowned": true,
+    "checked_at": "2026-11-02T00:57:21.247630+00:00",
+    "passed": true,
+    "peer_final_core": {
+      "battery_mv": 4173,
+      "error_flags": 8,
+      "outbound_queue_length": 0,
+      "uptime_seconds": 2856
+    },
+    "peer_identity_device_contacts_channels_checked_policies_preserved": true,
+    "xiao_final_core": {
+      "battery_mv": 68,
+      "errors": 0,
+      "queue_len": 0,
+      "uptime_secs": 667
+    },
+    "xiao_final_radio_diag": "state=0(IDLE), recv=9, sent=18, errors=0, err_flags=0, outbound=no, last_rx=148s ago",
+    "xiao_memory": "Free: 170288, Min: 165888, Max: 155636, Queue: 0, IntFree: 170288, IntMax: 155636, PSRAM: 8264107/8388607",
+    "xiao_original_flood_advert_hours": 0,
+    "xiao_original_identity_and_checked_settings_preserved": true,
+    "xiao_original_local_advert_minutes": 0,
+    "xiao_original_primary": "902.75,250,7,5",
+    "xiao_original_radio_mode": "off",
+    "xiao_original_tx_dbm": 2,
+    "xiao_saved_secondary": "off (manual)",
+    "xiao_temporary_profiles_cleared": true
+  },
+  "firmware_source_changed": false,
+  "harness_sha256": {
+    "xiao_final_check_return.py": "411cf436eb11ad089f24d26071e55b9e543a33e2c7bcb9dabd14a6ce65621bb4",
+    "xiao_qualify_head.py": "499bd818bd8a013413e2cb807abef4b2afd58184cd790d07b5e28def4b928839",
+    "xiao_rf_lowerpower_v2.py": "b10a2479ef1320254afad9ea643531c0f0f105e786598b281504990663712b00",
+    "xiao_rf_return_dual.py": "d09e00b5d9d42ab14df10fcb14b95e9953c57eaa7b9d94f1cfe554bfaade1a3f",
+    "xiao_rf_singleprofile.py": "900893d3bdfcc3ac241728d996e8b7e253442e99d71af55a5c8b529578dc2e2a",
+    "xiao_rf_test.py": "68026357f9fc5e88edda64c03d5ca26b3af081d8ec0d8c8fcd6ec4638f76dc70",
+    "xiao_s3_console.py": "10b3a8f35baac153690d6a685ca51c4a8c0b5312c372693306ed1bf0e6176699",
+    "xiao_usb_stress.py": "4a5f494036fca3755a4a796813b9c00dfabd4d34706e3a0cdee6f6b3a433bc36",
+    "xiao_warm_boot.py": "f0134bc0fae33ec7adcfc2754e9287d5709070fa696f07e51146a9501b40c114"
+  },
+  "host": "Mercerwood Mesh Pi",
+  "installation": {
+    "application_address": 65536,
+    "application_readback_sha256_verified": true,
+    "backup_otadata_sha256": "f94c5d786a7a8fab06ac5d10e33bf37711a6697636dc037559ea19cc410a17f0",
+    "backup_sha256": "87a118ce82905880860b566e87e2a6346047920b3e2a9e1ad3b38d40eb1e8ed8",
+    "chip": "ESP32-S3",
+    "complete": true,
+    "definitions_sha256": "339fd7f51d754fce0efa00c4d0d588c4d0f5f9ed3f5dceb09c8b45c192131d05",
+    "firmware_body_hash16": "ab310e27e16e0421",
+    "firmware_version": 17956866,
+    "flash_bytes": 8388608,
+    "flasher_sha256": "5ce26910caac69377dcd371cb2a9253e6d42567fb5d3ee6055b26d86b245cba2",
+    "hardware_id": "Xiao_S3_WIO",
+    "image_bytes": 2106712,
+    "image_sha256": "eb72ef8670a5e0b09cfc2bf8d9ea78f26de2c11924fe12d061063754c81990e5",
+    "live_otadata_sha256": "f94c5d786a7a8fab06ac5d10e33bf37711a6697636dc037559ea19cc410a17f0",
+    "operation": "application-only-flash",
+    "otadata_address": 57344,
+    "otadata_size": 8192,
+    "otadata_unchanged": true,
+    "other_flash_ranges_written": false,
+    "partition_sha256": "f4e3b6cfe370c81dca210d57f3c463f924a539842a19fff6eda4615278ee97a2",
+    "partition_table_unchanged": true,
+    "schema_version": 1,
+    "session_finish": "real flasher completed; application health requires separate verification",
+    "slot_name": "app0",
+    "slot_size": 3342336,
+    "target_id": 2891715589
+  },
+  "installed_version": "v1.18.0.2-halo-keymind-cascade-dev-observer-8cc67955 (Build: 02-Nov-2026)",
+  "limits": [
+    "Single-profile discovery is a bounded bench result, not proof of range, sustained forwarding or multi-hop performance.",
+    "The scanning-peer misses remain failures. No root cause or firmware fix is established.",
+    "USB power remained present; battery cold boot, WiFi joining, TLS/WSS/MQTT load, LoRa OTA installation and bootloader changes were not qualified.",
+    "The raw battery GPIO reading was treated as unknown; no battery calibration, charger or emergency policy was changed."
+  ],
+  "linked_memory_admission": {
+    "available_internal_bytes": 240456,
+    "largest_internal_region_bytes": 207688,
+    "passed": true,
+    "required_contiguous_bytes": 18916,
+    "required_heap_bytes": 230288,
+    "scope": "Linked capacity before runtime allocation; physical boot/load/soak validation remains required."
+  },
+  "preparation_observations": [
+    "A no-reset programmer probe could not synchronize while the original application was running; guarded reset later backed up and wrote successfully.",
+    "The initial query after flash with a 0.3-second settle failed the board readiness check; the rejected raw reply was not captured. One-second-settled checks passed; historical cause remains unassigned.",
+    "The first lower-power setup stopped before RF requests because get tx.status is a test-build-only getter. All settings were restored. Its private record is retained; it is not an RF trial."
+  ],
+  "rf_test": {
+    "acceptance": "Fresh nonce plus complete target public identity in a zero-hop discovery push; local OK alone is insufficient.",
+    "peer_saved_secondary": "902.750 MHz, 250 kHz, SF7, CR 4/5, RX, explicit preamble 96",
+    "peer_tx_dbm": -5,
+    "per_round_receive_window_seconds": 20,
+    "primary": "904.525 MHz, 62.5 kHz, SF7, CR 4/5",
+    "trials": [
+      {
+        "active_xiao_profile": "904.525,62.500,7,5,128",
+        "all_three_exchanges_passed": false,
+        "condition": "original dual-profile peer",
+        "finished_at": "2026-11-02T00:44:37.225628+00:00",
+        "identity_bound_response_count": 1,
+        "peer_core_after": {
+          "battery_mv": 4188,
+          "error_flags": 8,
+          "outbound_queue_length": 0,
+          "uptime_seconds": 2096
+        },
+        "peer_core_before": {
+          "battery_mv": 4188,
+          "error_flags": 8,
+          "outbound_queue_length": 0,
+          "uptime_seconds": 2016
+        },
+        "peer_packet_delta": {
+          "direct_rx": 3,
+          "direct_tx": 3,
+          "flood_rx": 0,
+          "flood_tx": 0,
+          "recv": 3,
+          "recv_errors": 0,
+          "sent": 3
+        },
+        "peer_scan_after": "> rx; RX=3,0 TX=3,0 switches=42487 errors=0 max=1282us preamble=96,96; test=4/4,4/4 ready budget=773us; WARN recommended preamble: radio=96,radio2=40",
+        "peer_scan_before": "> rx; RX=0,0 TX=0,0 switches=40905 errors=0 max=1282us preamble=96,96; test=4/4,4/4 ready budget=773us; WARN recommended preamble: radio=96,radio2=40",
+        "peer_watchdog_after": "> soft=1,hard=0",
+        "peer_watchdog_before": "> soft=1,hard=0",
+        "rounds": [
+          {
+            "local_command_accepted": true,
+            "response": null,
+            "round": 1,
+            "t096_packets": {
+              "direct_rx": 0,
+              "direct_tx": 1,
+              "flood_rx": 0,
+              "flood_tx": 0,
+              "recv": 0,
+              "recv_errors": 0,
+              "sent": 1
+            },
+            "xiao_packets": {
+              "direct_rx": 1,
+              "direct_tx": 2,
+              "flood_rx": 0,
+              "flood_tx": 0,
+              "recv": 1,
+              "recv_errors": 0,
+              "sent": 2
+            }
+          },
+          {
+            "local_command_accepted": true,
+            "response": null,
+            "round": 2,
+            "t096_packets": {
+              "direct_rx": 1,
+              "direct_tx": 2,
+              "flood_rx": 0,
+              "flood_tx": 0,
+              "recv": 1,
+              "recv_errors": 0,
+              "sent": 2
+            },
+            "xiao_packets": {
+              "direct_rx": 2,
+              "direct_tx": 4,
+              "flood_rx": 0,
+              "flood_tx": 0,
+              "recv": 2,
+              "recv_errors": 0,
+              "sent": 4
+            }
+          },
+          {
+            "local_command_accepted": true,
+            "response": {
+              "fresh_nonce_matched": true,
+              "full_identity_matched": true,
+              "latency_seconds": 2.6645,
+              "remote_snr_db": 12.25,
+              "rssi_dbm": -5,
+              "snr_db": 12.0,
+              "zero_hop": true
+            },
+            "round": 3,
+            "t096_packets": {
+              "direct_rx": 3,
+              "direct_tx": 3,
+              "flood_rx": 0,
+              "flood_tx": 0,
+              "recv": 3,
+              "recv_errors": 0,
+              "sent": 3
+            },
+            "xiao_packets": {
+              "direct_rx": 3,
+              "direct_tx": 6,
+              "flood_rx": 0,
+              "flood_tx": 0,
+              "recv": 3,
+              "recv_errors": 0,
+              "sent": 6
+            }
+          }
+        ],
+        "settings_restored": true,
+        "started_at": "2026-11-02T00:43:10.766230+00:00",
+        "transport": {
+          "discarded_prefix_bytes": 0,
+          "ignored_push_frames": 3,
+          "invalid_length_candidates": 0,
+          "ports_closed": 1,
+          "ports_opened": 1,
+          "request_bytes_sent": 697,
+          "request_frames_sent": 41,
+          "response_frames_received": 45,
+          "response_payload_bytes": 1909
+        },
+        "xiao_core_after": {
+          "battery_mv": 38,
+          "errors": 0,
+          "queue_len": 0,
+          "uptime_secs": 313
+        },
+        "xiao_core_before": {
+          "battery_mv": 84,
+          "errors": 0,
+          "queue_len": 0,
+          "uptime_secs": 233
+        },
+        "xiao_packet_delta": {
+          "direct_rx": 3,
+          "direct_tx": 6,
+          "flood_rx": 0,
+          "flood_tx": 0,
+          "recv": 3,
+          "recv_errors": 0,
+          "sent": 6
+        },
+        "xiao_tx_dbm": 2
+      },
+      {
+        "active_xiao_profile": "904.525,62.500,7,5,128",
+        "all_three_exchanges_passed": false,
+        "condition": "original dual-profile peer, lower XIAO TX",
+        "finished_at": "2026-11-02T00:48:33.865144+00:00",
+        "identity_bound_response_count": 0,
+        "peer_core_after": {
+          "battery_mv": 4206,
+          "error_flags": 8,
+          "outbound_queue_length": 0,
+          "uptime_seconds": 2333
+        },
+        "peer_core_before": {
+          "battery_mv": 4195,
+          "error_flags": 8,
+          "outbound_queue_length": 0,
+          "uptime_seconds": 2251
+        },
+        "peer_packet_delta": {
+          "direct_rx": 0,
+          "direct_tx": 3,
+          "flood_rx": 0,
+          "flood_tx": 0,
+          "recv": 0,
+          "recv_errors": 0,
+          "sent": 3
+        },
+        "peer_scan_after": "> rx; RX=3,0 TX=6,0 switches=47265 errors=0 max=1282us preamble=96,96; test=4/4,4/4 ready budget=773us; WARN recommended preamble: radio=96,radio2=40",
+        "peer_scan_before": "> rx; RX=3,0 TX=3,0 switches=45641 errors=0 max=1282us preamble=96,96; test=4/4,4/4 ready budget=773us; WARN recommended preamble: radio=96,radio2=40",
+        "peer_watchdog_after": "> soft=1,hard=0",
+        "peer_watchdog_before": "> soft=1,hard=0",
+        "rounds": [
+          {
+            "local_command_accepted": true,
+            "response": null,
+            "round": 1,
+            "t096_packets": {
+              "direct_rx": 3,
+              "direct_tx": 4,
+              "flood_rx": 0,
+              "flood_tx": 0,
+              "recv": 3,
+              "recv_errors": 0,
+              "sent": 4
+            },
+            "xiao_packets": {
+              "direct_rx": 1,
+              "direct_tx": 2,
+              "flood_rx": 0,
+              "flood_tx": 0,
+              "recv": 1,
+              "recv_errors": 0,
+              "sent": 2
+            }
+          },
+          {
+            "local_command_accepted": true,
+            "response": null,
+            "round": 2,
+            "t096_packets": {
+              "direct_rx": 3,
+              "direct_tx": 5,
+              "flood_rx": 0,
+              "flood_tx": 0,
+              "recv": 3,
+              "recv_errors": 0,
+              "sent": 5
+            },
+            "xiao_packets": {
+              "direct_rx": 2,
+              "direct_tx": 4,
+              "flood_rx": 0,
+              "flood_tx": 0,
+              "recv": 2,
+              "recv_errors": 0,
+              "sent": 4
+            }
+          },
+          {
+            "local_command_accepted": true,
+            "response": null,
+            "round": 3,
+            "t096_packets": {
+              "direct_rx": 3,
+              "direct_tx": 6,
+              "flood_rx": 0,
+              "flood_tx": 0,
+              "recv": 3,
+              "recv_errors": 0,
+              "sent": 6
+            },
+            "xiao_packets": {
+              "direct_rx": 3,
+              "direct_tx": 6,
+              "flood_rx": 0,
+              "flood_tx": 0,
+              "recv": 3,
+              "recv_errors": 0,
+              "sent": 6
+            }
+          }
+        ],
+        "settings_restored": true,
+        "started_at": "2026-11-02T00:47:05.546127+00:00",
+        "transport": {
+          "discarded_prefix_bytes": 0,
+          "ignored_push_frames": 0,
+          "invalid_length_candidates": 0,
+          "ports_closed": 1,
+          "ports_opened": 1,
+          "request_bytes_sent": 697,
+          "request_frames_sent": 41,
+          "response_frames_received": 41,
+          "response_payload_bytes": 1797
+        },
+        "xiao_core_after": {
+          "battery_mv": 70,
+          "errors": 0,
+          "queue_len": 0,
+          "uptime_secs": 144
+        },
+        "xiao_core_before": {
+          "battery_mv": 40,
+          "errors": 0,
+          "queue_len": 0,
+          "uptime_secs": 62
+        },
+        "xiao_packet_delta": {
+          "direct_rx": 3,
+          "direct_tx": 6,
+          "flood_rx": 0,
+          "flood_tx": 0,
+          "recv": 3,
+          "recv_errors": 0,
+          "sent": 6
+        },
+        "xiao_tx_dbm": -9
+      },
+      {
+        "active_xiao_profile": "904.525,62.500,7,5,128",
+        "all_three_exchanges_passed": true,
+        "condition": "peer secondary disabled temporarily",
+        "finished_at": "2026-11-02T00:51:59.974239+00:00",
+        "identity_bound_response_count": 3,
+        "peer_core_after": {
+          "battery_mv": 4177,
+          "error_flags": 8,
+          "outbound_queue_length": 0,
+          "uptime_seconds": 2538
+        },
+        "peer_core_before": {
+          "battery_mv": 4188,
+          "error_flags": 8,
+          "outbound_queue_length": 0,
+          "uptime_seconds": 2413
+        },
+        "peer_packet_delta": {
+          "direct_rx": 6,
+          "direct_tx": 3,
+          "flood_rx": 0,
+          "flood_tx": 0,
+          "recv": 6,
+          "recv_errors": 0,
+          "sent": 3
+        },
+        "peer_scan_after": "> rx; RX=9,0 TX=9,0 switches=49854 errors=0 max=2930us preamble=96,96; test=4/4,4/4 pending budget=807us; timing self-test pending; wait=116s",
+        "peer_scan_before": "> rx; RX=3,0 TX=6,0 switches=48909 errors=0 max=1282us preamble=96,96; test=4/4,4/4 ready budget=773us; WARN recommended preamble: radio=96,radio2=40",
+        "peer_watchdog_after": "> soft=1,hard=0",
+        "peer_watchdog_before": "> soft=1,hard=0",
+        "rounds": [
+          {
+            "local_command_accepted": true,
+            "response": {
+              "fresh_nonce_matched": true,
+              "full_identity_matched": true,
+              "latency_seconds": 3.6652,
+              "remote_snr_db": 11.75,
+              "rssi_dbm": -5,
+              "snr_db": 12.0,
+              "zero_hop": true
+            },
+            "round": 1,
+            "t096_packets": {
+              "direct_rx": 5,
+              "direct_tx": 7,
+              "flood_rx": 0,
+              "flood_tx": 0,
+              "recv": 5,
+              "recv_errors": 0,
+              "sent": 7
+            },
+            "xiao_packets": {
+              "direct_rx": 4,
+              "direct_tx": 8,
+              "flood_rx": 0,
+              "flood_tx": 0,
+              "recv": 4,
+              "recv_errors": 0,
+              "sent": 8
+            }
+          },
+          {
+            "local_command_accepted": true,
+            "response": {
+              "fresh_nonce_matched": true,
+              "full_identity_matched": true,
+              "latency_seconds": 1.9331,
+              "remote_snr_db": 12.0,
+              "rssi_dbm": -5,
+              "snr_db": 11.75,
+              "zero_hop": true
+            },
+            "round": 2,
+            "t096_packets": {
+              "direct_rx": 7,
+              "direct_tx": 8,
+              "flood_rx": 0,
+              "flood_tx": 0,
+              "recv": 7,
+              "recv_errors": 0,
+              "sent": 8
+            },
+            "xiao_packets": {
+              "direct_rx": 5,
+              "direct_tx": 10,
+              "flood_rx": 0,
+              "flood_tx": 0,
+              "recv": 5,
+              "recv_errors": 0,
+              "sent": 10
+            }
+          },
+          {
+            "local_command_accepted": true,
+            "response": {
+              "fresh_nonce_matched": true,
+              "full_identity_matched": true,
+              "latency_seconds": 4.5982,
+              "remote_snr_db": 12.5,
+              "rssi_dbm": -5,
+              "snr_db": 12.0,
+              "zero_hop": true
+            },
+            "round": 3,
+            "t096_packets": {
+              "direct_rx": 9,
+              "direct_tx": 9,
+              "flood_rx": 0,
+              "flood_tx": 0,
+              "recv": 9,
+              "recv_errors": 0,
+              "sent": 9
+            },
+            "xiao_packets": {
+              "direct_rx": 6,
+              "direct_tx": 12,
+              "flood_rx": 0,
+              "flood_tx": 0,
+              "recv": 6,
+              "recv_errors": 0,
+              "sent": 12
+            }
+          }
+        ],
+        "settings_restored": true,
+        "started_at": "2026-11-02T00:49:48.094006+00:00",
+        "transport": {
+          "discarded_prefix_bytes": 0,
+          "ignored_push_frames": 6,
+          "invalid_length_candidates": 0,
+          "ports_closed": 1,
+          "ports_opened": 1,
+          "request_bytes_sent": 1396,
+          "request_frames_sent": 135,
+          "response_frames_received": 146,
+          "response_payload_bytes": 6701
+        },
+        "xiao_core_after": {
+          "battery_mv": 94,
+          "errors": 0,
+          "queue_len": 0,
+          "uptime_secs": 350
+        },
+        "xiao_core_before": {
+          "battery_mv": 72,
+          "errors": 0,
+          "queue_len": 0,
+          "uptime_secs": 225
+        },
+        "xiao_packet_delta": {
+          "direct_rx": 3,
+          "direct_tx": 6,
+          "flood_rx": 0,
+          "flood_tx": 0,
+          "recv": 3,
+          "recv_errors": 0,
+          "sent": 6
+        },
+        "xiao_tx_dbm": 2
+      },
+      {
+        "active_xiao_profile": "904.525,62.500,7,5,128",
+        "all_three_exchanges_passed": false,
+        "condition": "return to original dual profile on the same XIAO boot",
+        "finished_at": "2026-11-02T00:55:18.048088+00:00",
+        "identity_bound_response_count": 2,
+        "peer_core_after": {
+          "battery_mv": 4184,
+          "error_flags": 8,
+          "outbound_queue_length": 0,
+          "uptime_seconds": 2737
+        },
+        "peer_core_before": {
+          "battery_mv": 4181,
+          "error_flags": 8,
+          "outbound_queue_length": 0,
+          "uptime_seconds": 2625
+        },
+        "peer_packet_delta": {
+          "direct_rx": 3,
+          "direct_tx": 3,
+          "flood_rx": 0,
+          "flood_tx": 0,
+          "recv": 3,
+          "recv_errors": 0,
+          "sent": 3
+        },
+        "peer_scan_after": "> rx; RX=12,0 TX=12,0 switches=53780 errors=0 max=2930us preamble=96,96; test=4/4,4/4 ready budget=807us; WARN recommended preamble: radio=96,radio2=40",
+        "peer_scan_before": "> rx; RX=9,0 TX=9,0 switches=52246 errors=0 max=2930us preamble=96,96; test=4/4,4/4 ready budget=807us; WARN recommended preamble: radio=96,radio2=40",
+        "peer_watchdog_after": "> soft=1,hard=0",
+        "peer_watchdog_before": "> soft=1,hard=0",
+        "rounds": [
+          {
+            "local_command_accepted": true,
+            "response": {
+              "fresh_nonce_matched": true,
+              "full_identity_matched": true,
+              "latency_seconds": 1.4823,
+              "remote_snr_db": 12.0,
+              "rssi_dbm": -5,
+              "snr_db": 12.0,
+              "zero_hop": true
+            },
+            "round": 1,
+            "t096_packets": {
+              "direct_rx": 10,
+              "direct_tx": 10,
+              "flood_rx": 0,
+              "flood_tx": 0,
+              "recv": 10,
+              "recv_errors": 0,
+              "sent": 10
+            },
+            "xiao_packets": {
+              "direct_rx": 7,
+              "direct_tx": 14,
+              "flood_rx": 0,
+              "flood_tx": 0,
+              "recv": 7,
+              "recv_errors": 0,
+              "sent": 14
+            }
+          },
+          {
+            "local_command_accepted": true,
+            "response": {
+              "fresh_nonce_matched": true,
+              "full_identity_matched": true,
+              "latency_seconds": 3.2527,
+              "remote_snr_db": 12.5,
+              "rssi_dbm": -5,
+              "snr_db": 12.25,
+              "zero_hop": true
+            },
+            "round": 2,
+            "t096_packets": {
+              "direct_rx": 11,
+              "direct_tx": 11,
+              "flood_rx": 0,
+              "flood_tx": 0,
+              "recv": 11,
+              "recv_errors": 0,
+              "sent": 11
+            },
+            "xiao_packets": {
+              "direct_rx": 8,
+              "direct_tx": 16,
+              "flood_rx": 0,
+              "flood_tx": 0,
+              "recv": 8,
+              "recv_errors": 0,
+              "sent": 16
+            }
+          },
+          {
+            "local_command_accepted": true,
+            "response": null,
+            "round": 3,
+            "t096_packets": {
+              "direct_rx": 12,
+              "direct_tx": 12,
+              "flood_rx": 0,
+              "flood_tx": 0,
+              "recv": 12,
+              "recv_errors": 0,
+              "sent": 12
+            },
+            "xiao_packets": {
+              "direct_rx": 9,
+              "direct_tx": 18,
+              "flood_rx": 0,
+              "flood_tx": 0,
+              "recv": 9,
+              "recv_errors": 0,
+              "sent": 18
+            }
+          }
+        ],
+        "settings_restored": true,
+        "started_at": "2026-11-02T00:53:19.380138+00:00",
+        "transport": {
+          "discarded_prefix_bytes": 0,
+          "ignored_push_frames": 3,
+          "invalid_length_candidates": 0,
+          "ports_closed": 1,
+          "ports_opened": 1,
+          "request_bytes_sent": 721,
+          "request_frames_sent": 42,
+          "response_frames_received": 47,
+          "response_payload_bytes": 2083
+        },
+        "xiao_core_after": {
+          "battery_mv": 40,
+          "errors": 0,
+          "queue_len": 0,
+          "uptime_secs": 548
+        },
+        "xiao_core_before": {
+          "battery_mv": 44,
+          "errors": 0,
+          "queue_len": 0,
+          "uptime_secs": 436
+        },
+        "xiao_packet_delta": {
+          "direct_rx": 3,
+          "direct_tx": 6,
+          "flood_rx": 0,
+          "flood_tx": 0,
+          "recv": 3,
+          "recv_errors": 0,
+          "sent": 6
+        },
+        "xiao_tx_dbm": 2
+      }
+    ],
+    "xiao_temporary_preamble_symbols": 128
+  },
+  "schema_version": 1,
+  "single_profile_discovery_passed": true,
+  "source_commit": "8cc67955a127fa3de7d5c780254e31a5cb35067b",
+  "target": "Xiao_S3_WIO_repeater_observer_mqtt",
+  "usb": {
+    "core_samples": [
+      {
+        "battery_mv": 52,
+        "errors": 0,
+        "queue_len": 0,
+        "uptime_secs": 113
+      },
+      {
+        "battery_mv": 50,
+        "errors": 0,
+        "queue_len": 0,
+        "uptime_secs": 114
+      },
+      {
+        "battery_mv": 48,
+        "errors": 0,
+        "queue_len": 0,
+        "uptime_secs": 114
+      },
+      {
+        "battery_mv": 32,
+        "errors": 0,
+        "queue_len": 0,
+        "uptime_secs": 115
+      },
+      {
+        "battery_mv": 54,
+        "errors": 0,
+        "queue_len": 0,
+        "uptime_secs": 116
+      },
+      {
+        "battery_mv": 54,
+        "errors": 0,
+        "queue_len": 0,
+        "uptime_secs": 116
+      },
+      {
+        "battery_mv": 56,
+        "errors": 0,
+        "queue_len": 0,
+        "uptime_secs": 117
+      },
+      {
+        "battery_mv": 50,
+        "errors": 0,
+        "queue_len": 0,
+        "uptime_secs": 117
+      },
+      {
+        "battery_mv": 48,
+        "errors": 0,
+        "queue_len": 0,
+        "uptime_secs": 118
+      },
+      {
+        "battery_mv": 42,
+        "errors": 0,
+        "queue_len": 0,
+        "uptime_secs": 119
+      },
+      {
+        "battery_mv": 50,
+        "errors": 0,
+        "queue_len": 0,
+        "uptime_secs": 119
+      },
+      {
+        "battery_mv": 72,
+        "errors": 0,
+        "queue_len": 0,
+        "uptime_secs": 120
+      },
+      {
+        "battery_mv": 66,
+        "errors": 0,
+        "queue_len": 0,
+        "uptime_secs": 122
+      },
+      {
+        "battery_mv": 54,
+        "errors": 0,
+        "queue_len": 0,
+        "uptime_secs": 124
+      },
+      {
+        "battery_mv": 44,
+        "errors": 0,
+        "queue_len": 0,
+        "uptime_secs": 126
+      }
+    ],
+    "query_cycles": 12,
+    "readback_preferences_preserved": true,
+    "reopens": 3
+  },
+  "usb_stress": {
+    "all_serial_handles_closed": true,
+    "core_samples": [
+      {
+        "battery_mv": 58,
+        "errors": 0,
+        "queue_len": 0,
+        "uptime_secs": 560
+      },
+      {
+        "battery_mv": 48,
+        "errors": 0,
+        "queue_len": 0,
+        "uptime_secs": 561
+      },
+      {
+        "battery_mv": 74,
+        "errors": 0,
+        "queue_len": 0,
+        "uptime_secs": 561
+      },
+      {
+        "battery_mv": 80,
+        "errors": 0,
+        "queue_len": 0,
+        "uptime_secs": 562
+      },
+      {
+        "battery_mv": 64,
+        "errors": 0,
+        "queue_len": 0,
+        "uptime_secs": 563
+      },
+      {
+        "battery_mv": 56,
+        "errors": 0,
+        "queue_len": 0,
+        "uptime_secs": 563
+      },
+      {
+        "battery_mv": 42,
+        "errors": 0,
+        "queue_len": 0,
+        "uptime_secs": 564
+      },
+      {
+        "battery_mv": 72,
+        "errors": 0,
+        "queue_len": 0,
+        "uptime_secs": 564
+      },
+      {
+        "battery_mv": 68,
+        "errors": 0,
+        "queue_len": 0,
+        "uptime_secs": 565
+      },
+      {
+        "battery_mv": 90,
+        "errors": 0,
+        "queue_len": 0,
+        "uptime_secs": 566
+      },
+      {
+        "battery_mv": 80,
+        "errors": 0,
+        "queue_len": 0,
+        "uptime_secs": 566
+      },
+      {
+        "battery_mv": 62,
+        "errors": 0,
+        "queue_len": 0,
+        "uptime_secs": 567
+      },
+      {
+        "battery_mv": 56,
+        "errors": 0,
+        "queue_len": 0,
+        "uptime_secs": 567
+      },
+      {
+        "battery_mv": 40,
+        "errors": 0,
+        "queue_len": 0,
+        "uptime_secs": 568
+      },
+      {
+        "battery_mv": 60,
+        "errors": 0,
+        "queue_len": 0,
+        "uptime_secs": 569
+      },
+      {
+        "battery_mv": 76,
+        "errors": 0,
+        "queue_len": 0,
+        "uptime_secs": 569
+      },
+      {
+        "battery_mv": 68,
+        "errors": 0,
+        "queue_len": 0,
+        "uptime_secs": 570
+      },
+      {
+        "battery_mv": 58,
+        "errors": 0,
+        "queue_len": 0,
+        "uptime_secs": 571
+      },
+      {
+        "battery_mv": 42,
+        "errors": 0,
+        "queue_len": 0,
+        "uptime_secs": 571
+      },
+      {
+        "battery_mv": 70,
+        "errors": 0,
+        "queue_len": 0,
+        "uptime_secs": 572
+      },
+      {
+        "battery_mv": 70,
+        "errors": 0,
+        "queue_len": 0,
+        "uptime_secs": 572
+      },
+      {
+        "battery_mv": 88,
+        "errors": 0,
+        "queue_len": 0,
+        "uptime_secs": 573
+      },
+      {
+        "battery_mv": 56,
+        "errors": 0,
+        "queue_len": 0,
+        "uptime_secs": 574
+      },
+      {
+        "battery_mv": 40,
+        "errors": 0,
+        "queue_len": 0,
+        "uptime_secs": 574
+      },
+      {
+        "battery_mv": 70,
+        "errors": 0,
+        "queue_len": 0,
+        "uptime_secs": 575
+      },
+      {
+        "battery_mv": 84,
+        "errors": 0,
+        "queue_len": 0,
+        "uptime_secs": 575
+      },
+      {
+        "battery_mv": 70,
+        "errors": 0,
+        "queue_len": 0,
+        "uptime_secs": 576
+      },
+      {
+        "battery_mv": 58,
+        "errors": 0,
+        "queue_len": 0,
+        "uptime_secs": 577
+      },
+      {
+        "battery_mv": 46,
+        "errors": 0,
+        "queue_len": 0,
+        "uptime_secs": 577
+      },
+      {
+        "battery_mv": 44,
+        "errors": 0,
+        "queue_len": 0,
+        "uptime_secs": 578
+      },
+      {
+        "battery_mv": 74,
+        "errors": 0,
+        "queue_len": 0,
+        "uptime_secs": 578
+      },
+      {
+        "battery_mv": 86,
+        "errors": 0,
+        "queue_len": 0,
+        "uptime_secs": 579
+      },
+      {
+        "battery_mv": 70,
+        "errors": 0,
+        "queue_len": 0,
+        "uptime_secs": 580
+      },
+      {
+        "battery_mv": 62,
+        "errors": 0,
+        "queue_len": 0,
+        "uptime_secs": 580
+      },
+      {
+        "battery_mv": 42,
+        "errors": 0,
+        "queue_len": 0,
+        "uptime_secs": 581
+      },
+      {
+        "battery_mv": 60,
+        "errors": 0,
+        "queue_len": 0,
+        "uptime_secs": 582
+      },
+      {
+        "battery_mv": 76,
+        "errors": 0,
+        "queue_len": 0,
+        "uptime_secs": 582
+      },
+      {
+        "battery_mv": 86,
+        "errors": 0,
+        "queue_len": 0,
+        "uptime_secs": 583
+      },
+      {
+        "battery_mv": 52,
+        "errors": 0,
+        "queue_len": 0,
+        "uptime_secs": 583
+      },
+      {
+        "battery_mv": 48,
+        "errors": 0,
+        "queue_len": 0,
+        "uptime_secs": 584
+      },
+      {
+        "battery_mv": 40,
+        "errors": 0,
+        "queue_len": 0,
+        "uptime_secs": 585
+      },
+      {
+        "battery_mv": 68,
+        "errors": 0,
+        "queue_len": 0,
+        "uptime_secs": 585
+      },
+      {
+        "battery_mv": 60,
+        "errors": 0,
+        "queue_len": 0,
+        "uptime_secs": 586
+      },
+      {
+        "battery_mv": 82,
+        "errors": 0,
+        "queue_len": 0,
+        "uptime_secs": 586
+      },
+      {
+        "battery_mv": 52,
+        "errors": 0,
+        "queue_len": 0,
+        "uptime_secs": 587
+      },
+      {
+        "battery_mv": 50,
+        "errors": 0,
+        "queue_len": 0,
+        "uptime_secs": 588
+      },
+      {
+        "battery_mv": 46,
+        "errors": 0,
+        "queue_len": 0,
+        "uptime_secs": 588
+      },
+      {
+        "battery_mv": 62,
+        "errors": 0,
+        "queue_len": 0,
+        "uptime_secs": 589
+      },
+      {
+        "battery_mv": 68,
+        "errors": 0,
+        "queue_len": 0,
+        "uptime_secs": 590
+      },
+      {
+        "battery_mv": 90,
+        "errors": 0,
+        "queue_len": 0,
+        "uptime_secs": 590
+      },
+      {
+        "battery_mv": 64,
+        "errors": 0,
+        "queue_len": 0,
+        "uptime_secs": 591
+      },
+      {
+        "battery_mv": 66,
+        "errors": 0,
+        "queue_len": 0,
+        "uptime_secs": 591
+      },
+      {
+        "battery_mv": 56,
+        "errors": 0,
+        "queue_len": 0,
+        "uptime_secs": 592
+      },
+      {
+        "battery_mv": 40,
+        "errors": 0,
+        "queue_len": 0,
+        "uptime_secs": 593
+      },
+      {
+        "battery_mv": 74,
+        "errors": 0,
+        "queue_len": 0,
+        "uptime_secs": 593
+      },
+      {
+        "battery_mv": 76,
+        "errors": 0,
+        "queue_len": 0,
+        "uptime_secs": 594
+      },
+      {
+        "battery_mv": 80,
+        "errors": 0,
+        "queue_len": 0,
+        "uptime_secs": 594
+      },
+      {
+        "battery_mv": 60,
+        "errors": 0,
+        "queue_len": 0,
+        "uptime_secs": 595
+      },
+      {
+        "battery_mv": 48,
+        "errors": 0,
+        "queue_len": 0,
+        "uptime_secs": 596
+      },
+      {
+        "battery_mv": 38,
+        "errors": 0,
+        "queue_len": 0,
+        "uptime_secs": 596
+      },
+      {
+        "battery_mv": 64,
+        "errors": 0,
+        "queue_len": 0,
+        "uptime_secs": 597
+      },
+      {
+        "battery_mv": 70,
+        "errors": 0,
+        "queue_len": 0,
+        "uptime_secs": 598
+      },
+      {
+        "battery_mv": 90,
+        "errors": 0,
+        "queue_len": 0,
+        "uptime_secs": 598
+      },
+      {
+        "battery_mv": 64,
+        "errors": 0,
+        "queue_len": 0,
+        "uptime_secs": 599
+      },
+      {
+        "battery_mv": 42,
+        "errors": 0,
+        "queue_len": 0,
+        "uptime_secs": 599
+      },
+      {
+        "battery_mv": 46,
+        "errors": 0,
+        "queue_len": 0,
+        "uptime_secs": 600
+      },
+      {
+        "battery_mv": 64,
+        "errors": 0,
+        "queue_len": 0,
+        "uptime_secs": 601
+      },
+      {
+        "battery_mv": 72,
+        "errors": 0,
+        "queue_len": 0,
+        "uptime_secs": 601
+      },
+      {
+        "battery_mv": 86,
+        "errors": 0,
+        "queue_len": 0,
+        "uptime_secs": 602
+      },
+      {
+        "battery_mv": 64,
+        "errors": 0,
+        "queue_len": 0,
+        "uptime_secs": 602
+      },
+      {
+        "battery_mv": 62,
+        "errors": 0,
+        "queue_len": 0,
+        "uptime_secs": 603
+      },
+      {
+        "battery_mv": 44,
+        "errors": 0,
+        "queue_len": 0,
+        "uptime_secs": 604
+      },
+      {
+        "battery_mv": 56,
+        "errors": 0,
+        "queue_len": 0,
+        "uptime_secs": 604
+      },
+      {
+        "battery_mv": 58,
+        "errors": 0,
+        "queue_len": 0,
+        "uptime_secs": 605
+      },
+      {
+        "battery_mv": 92,
+        "errors": 0,
+        "queue_len": 0,
+        "uptime_secs": 606
+      },
+      {
+        "battery_mv": 60,
+        "errors": 0,
+        "queue_len": 0,
+        "uptime_secs": 606
+      },
+      {
+        "battery_mv": 48,
+        "errors": 0,
+        "queue_len": 0,
+        "uptime_secs": 607
+      },
+      {
+        "battery_mv": 48,
+        "errors": 0,
+        "queue_len": 0,
+        "uptime_secs": 607
+      },
+      {
+        "battery_mv": 66,
+        "errors": 0,
+        "queue_len": 0,
+        "uptime_secs": 608
+      },
+      {
+        "battery_mv": 72,
+        "errors": 0,
+        "queue_len": 0,
+        "uptime_secs": 609
+      },
+      {
+        "battery_mv": 84,
+        "errors": 0,
+        "queue_len": 0,
+        "uptime_secs": 609
+      },
+      {
+        "battery_mv": 58,
+        "errors": 0,
+        "queue_len": 0,
+        "uptime_secs": 610
+      },
+      {
+        "battery_mv": 50,
+        "errors": 0,
+        "queue_len": 0,
+        "uptime_secs": 610
+      },
+      {
+        "battery_mv": 42,
+        "errors": 0,
+        "queue_len": 0,
+        "uptime_secs": 611
+      },
+      {
+        "battery_mv": 74,
+        "errors": 0,
+        "queue_len": 0,
+        "uptime_secs": 612
+      },
+      {
+        "battery_mv": 68,
+        "errors": 0,
+        "queue_len": 0,
+        "uptime_secs": 612
+      },
+      {
+        "battery_mv": 88,
+        "errors": 0,
+        "queue_len": 0,
+        "uptime_secs": 613
+      },
+      {
+        "battery_mv": 56,
+        "errors": 0,
+        "queue_len": 0,
+        "uptime_secs": 613
+      },
+      {
+        "battery_mv": 50,
+        "errors": 0,
+        "queue_len": 0,
+        "uptime_secs": 614
+      },
+      {
+        "battery_mv": 56,
+        "errors": 0,
+        "queue_len": 0,
+        "uptime_secs": 615
+      },
+      {
+        "battery_mv": 62,
+        "errors": 0,
+        "queue_len": 0,
+        "uptime_secs": 615
+      },
+      {
+        "battery_mv": 68,
+        "errors": 0,
+        "queue_len": 0,
+        "uptime_secs": 616
+      },
+      {
+        "battery_mv": 88,
+        "errors": 0,
+        "queue_len": 0,
+        "uptime_secs": 617
+      },
+      {
+        "battery_mv": 58,
+        "errors": 0,
+        "queue_len": 0,
+        "uptime_secs": 617
+      },
+      {
+        "battery_mv": 44,
+        "errors": 0,
+        "queue_len": 0,
+        "uptime_secs": 618
+      },
+      {
+        "battery_mv": 48,
+        "errors": 0,
+        "queue_len": 0,
+        "uptime_secs": 618
+      },
+      {
+        "battery_mv": 68,
+        "errors": 0,
+        "queue_len": 0,
+        "uptime_secs": 619
+      },
+      {
+        "battery_mv": 84,
+        "errors": 0,
+        "queue_len": 0,
+        "uptime_secs": 620
+      },
+      {
+        "battery_mv": 82,
+        "errors": 0,
+        "queue_len": 0,
+        "uptime_secs": 620
+      },
+      {
+        "battery_mv": 62,
+        "errors": 0,
+        "queue_len": 0,
+        "uptime_secs": 621
+      },
+      {
+        "battery_mv": 70,
+        "errors": 0,
+        "queue_len": 0,
+        "uptime_secs": 623
+      },
+      {
+        "battery_mv": 62,
+        "errors": 0,
+        "queue_len": 0,
+        "uptime_secs": 625
+      },
+      {
+        "battery_mv": 38,
+        "errors": 0,
+        "queue_len": 0,
+        "uptime_secs": 627
+      },
+      {
+        "battery_mv": 66,
+        "errors": 0,
+        "queue_len": 0,
+        "uptime_secs": 630
+      },
+      {
+        "battery_mv": 78,
+        "errors": 0,
+        "queue_len": 0,
+        "uptime_secs": 632
+      },
+      {
+        "battery_mv": 38,
+        "errors": 0,
+        "queue_len": 0,
+        "uptime_secs": 634
+      },
+      {
+        "battery_mv": 52,
+        "errors": 0,
+        "queue_len": 0,
+        "uptime_secs": 636
+      },
+      {
+        "battery_mv": 66,
+        "errors": 0,
+        "queue_len": 0,
+        "uptime_secs": 638
+      },
+      {
+        "battery_mv": 64,
+        "errors": 0,
+        "queue_len": 0,
+        "uptime_secs": 640
+      },
+      {
+        "battery_mv": 86,
+        "errors": 0,
+        "queue_len": 0,
+        "uptime_secs": 643
+      }
+    ],
+    "echo_correlated_commands": 354,
+    "exact_echo_required": true,
+    "finished_at": "2026-11-02T00:56:51.557760+00:00",
+    "fresh_reopens": 10,
+    "maximum_command_latency_seconds": 0.125419,
+    "passed": true,
+    "query_cycles": 100,
+    "started_at": "2026-11-02T00:55:26.400653+00:00"
+  },
+  "warm_reboot": {
+    "after_core": {
+      "battery_mv": 76,
+      "errors": 0,
+      "queue_len": 0,
+      "uptime_secs": 10
+    },
+    "application_body": "self body=2106656 image=2106712 base_hash=AB310E27E16E0421 | maxblk:2048",
+    "before_core": {
+      "battery_mv": 80,
+      "errors": 0,
+      "queue_len": 0,
+      "uptime_secs": 404
+    },
+    "checked_at": "2026-11-02T00:46:19.209467+00:00",
+    "checked_saved_preferences_preserved": true,
+    "full_version": "v1.18.0.2-halo-keymind-cascade-dev-observer-8cc67955 (Build: 02-Nov-2026)",
+    "identity_preserved": true,
+    "original_RF_policy_preserved": true,
+    "passed": true,
+    "readiness_rejections": 0
+  },
+  "warm_reboot_passed": true
+}
