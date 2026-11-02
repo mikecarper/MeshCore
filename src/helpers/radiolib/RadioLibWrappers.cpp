@@ -509,6 +509,9 @@ uint8_t RadioLibWrapper::beginReconfigure() {
       || isChipBusy() || isReceivingPacket()) {
     return 2;
   }
+  // A short frame can complete during the activity query itself. Retain its
+  // FIFO before even entering standby, just as the post-standby check does.
+  if (hasPendingRadioInterrupt()) return 2;
 #endif
 
 #if MESH_HIL_PROFILE_TIMING
@@ -2572,6 +2575,7 @@ void RadioLibWrapper::loop() {
     return;
   }
   serviceProfileScan();
+  serviceRxPowerSavingRetry(static_cast<uint32_t>(millis()));
   if (_rx_ps_enabled && !_rx_ps_continuous_fallback) {
     rxPsWatchdogCheck();
   }
@@ -2737,7 +2741,8 @@ int RadioLibWrapper::startReceivePowerSaving() {
   const bool planned_continuous = rxPowerSavingUsesContinuousFallback(_rx_ps_rx_us, _rx_ps_sleep_us);
   const bool invalid_timing = !planned_continuous
       && !canStartRxPowerSavingDutyCycle(_rx_ps_rx_us, _rx_ps_sleep_us, rxPowerSavingTransitionUs());
-  if (planned_continuous || invalid_timing || !_rx_ps_arm_retry.canAttempt()) {
+  if (planned_continuous || invalid_timing
+      || !_rx_ps_arm_retry.canAttempt(static_cast<uint32_t>(millis()))) {
     _rx_ps_continuous_fallback = true;
     if (invalid_timing) _rx_ps_last_error = RX_POWERSAVING_ERR_TIMING;
     const int16_t err = startContinuousReceive();
@@ -2764,7 +2769,7 @@ int RadioLibWrapper::startReceivePowerSaving() {
   _rx_ps_continuous_fallback = true;
   _rx_ps_eff_rx_us = _rx_ps_eff_sleep_us = 0;
   ++_rx_ps_arm_failures;
-  _rx_ps_arm_retry.recordFailure();
+  _rx_ps_arm_retry.recordFailure(static_cast<uint32_t>(millis()));
   MESH_DEBUG_PRINTLN("RadioLibWrapper: startReceiveDutyCycle(%d), continuous RX fallback", err);
   stopDutyCycleHardware();
   const int16_t fallback_error = startContinuousReceive();
@@ -2779,6 +2784,45 @@ void RadioLibWrapper::stopReceiveDutyCycle() {
   _rx_ps_armed = false;
   _rx_ps_eff_rx_us = _rx_ps_eff_sleep_us = 0;
   if (err != RADIOLIB_ERR_NONE) _rx_ps_last_error = err;
+}
+
+bool RadioLibWrapper::rxPowerSavingRetryEligible() const {
+#if MESH_ENABLE_RADIO_DIRECTION
+  if (!mesh::radioDirection::radioReceiveAllowed()) return false;
+#endif
+#if MESH_ENABLE_TX_BEACONS
+  if (_beacon_owned) return false;
+#endif
+  return _rx_ps_enabled && _rx_ps_continuous_fallback && !_rx_ps_armed
+      && state == STATE_RX && !_profiles.enabled() && !_profile_rxps_suspended
+      && !_profile_repair_required && !_profile_refresh_required
+      && !_rx_hold_continuous && !_nf_calib_active && !_nf_refresh_requested
+      && !_cw_active
+      && !rxPowerSavingUsesContinuousFallback(_rx_ps_rx_us, _rx_ps_sleep_us)
+      && canStartRxPowerSavingDutyCycle(
+          _rx_ps_rx_us, _rx_ps_sleep_us, rxPowerSavingTransitionUs());
+}
+
+bool RadioLibWrapper::getRxPowerSavingRetryDelay(uint32_t now, uint32_t& delay_ms) const {
+  // This is maintenance, not a pending packet or failed continuous-RX start.
+  // Keep it separate from getReceiveRetryDelay's tracker/OTA/AGC semantics.
+  if (!rxPowerSavingRetryEligible()) return false;
+  delay_ms = _rx_ps_arm_retry.delayMs(now);
+  return true;
+}
+
+void RadioLibWrapper::serviceRxPowerSavingRetry(uint32_t now) {
+  uint32_t delay;
+  if (!getRxPowerSavingRetryDelay(now, delay) || delay != 0) return;
+  // Admission checks BUSY, TX and RX ownership and preserves a completion
+  // racing standby. Deferral is not a failed arm and must not create a zero
+  // deadline that keeps a sleeping MCU polling continuously.
+  const uint8_t resume_rx = beginReconfigure();
+  if (resume_rx != 1) {
+    _rx_ps_arm_retry.defer(now);
+    return;
+  }
+  endReconfigure(true);
 }
 
 bool RadioLibWrapper::isPacketReady() {
@@ -2876,7 +2920,10 @@ mesh::RadioParamApplyResult RadioLibWrapper::trySetRxPowerSaving(bool enabled, u
     return Result::APPLIED;
   }
 
-  if (!_profile_repair_required && _rx_ps_enabled == enabled
+  const bool retry_requested = enabled && !_rx_ps_armed && _rx_ps_continuous_fallback
+      && !rxPowerSavingUsesContinuousFallback(rx_us, sleep_us)
+      && canStartRxPowerSavingDutyCycle(rx_us, sleep_us, rxPowerSavingTransitionUs());
+  if (!_profile_repair_required && !retry_requested && _rx_ps_enabled == enabled
       && _rx_ps_rx_us == rx_us && _rx_ps_sleep_us == sleep_us) return Result::APPLIED;
 
   uint8_t resume_rx = beginReconfigure();
@@ -2897,6 +2944,17 @@ RxPowerSavingStatus RadioLibWrapper::getRxPowerSavingStatus() const {
   RxPowerSavingStatus status;
   status.supported = supportsRxPowerSaving();
   status.armed = _rx_ps_armed;
+  status.receiving = state == STATE_RX;
+  status.suspended = _profile_rxps_suspended;
+  status.calibrating = _nf_calib_active;
+  status.timing_fallback = _rx_ps_enabled
+      && (rxPowerSavingUsesContinuousFallback(_rx_ps_rx_us, _rx_ps_sleep_us)
+          || !canStartRxPowerSavingDutyCycle(
+              _rx_ps_rx_us, _rx_ps_sleep_us, rxPowerSavingTransitionUs()));
+  status.retry_pending = _rx_ps_enabled && !_rx_ps_armed && _rx_ps_arm_retry.pending();
+  status.consecutive_failures = _rx_ps_arm_retry.consecutiveFailures();
+  status.retry_delay_ms = status.retry_pending
+      ? _rx_ps_arm_retry.delayMs(static_cast<uint32_t>(millis())) : 0;
   status.last_error = _rx_ps_last_error;
   status.arm_failures = _rx_ps_arm_failures;
   status.effective_rx_us = _rx_ps_armed ? _rx_ps_eff_rx_us : 0;

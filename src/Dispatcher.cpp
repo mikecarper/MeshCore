@@ -635,6 +635,9 @@ bool Dispatcher::getNextQueueWakeDelay(uint32_t& delay_millis) const {
   uint32_t receive_retry_delay = 0;
   const bool receive_retry = radioDirection::radioReceiveAllowed() && radio_available
       && _radio->getReceiveRetryDelay(now, receive_retry_delay);
+  uint32_t rxps_retry_delay = 0;
+  const bool rxps_retry = radioDirection::radioReceiveAllowed() && radio_available
+      && _radio->getRxPowerSavingRetryDelay(now, rxps_retry_delay);
   if (outbound != NULL) {
     if (outbound_radio_retry_pending) {
       int32_t signed_retry_delay = (int32_t)(outbound_radio_retry_at - now);
@@ -644,6 +647,7 @@ bool Dispatcher::getNextQueueWakeDelay(uint32_t& delay_millis) const {
       if (receive_retry && receive_retry_delay < delay_millis) {
         delay_millis = receive_retry_delay;
       }
+      if (rxps_retry && rxps_retry_delay < delay_millis) delay_millis = rxps_retry_delay;
       if (dual_profile && profile_delay < delay_millis) {
         delay_millis = profile_delay;
       }
@@ -656,6 +660,11 @@ bool Dispatcher::getNextQueueWakeDelay(uint32_t& delay_millis) const {
 
   if (receive_retry) {
     if (!found || receive_retry_delay < shortest_delay) shortest_delay = receive_retry_delay;
+    found = true;
+  }
+
+  if (rxps_retry) {
+    if (!found || rxps_retry_delay < shortest_delay) shortest_delay = rxps_retry_delay;
     found = true;
   }
 

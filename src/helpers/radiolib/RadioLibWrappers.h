@@ -328,6 +328,8 @@ protected:
   void idle() override;
   void startRecv() override;
   void serviceDirectionPolicy();
+  bool rxPowerSavingRetryEligible() const;
+  void serviceRxPowerSavingRetry(uint32_t now);
   void rxPsWatchdogCheck();
   void requestPeriodicNoiseFloorRefresh();
   void requestNoiseFloorRefresh();
@@ -701,6 +703,7 @@ public:
             && (!_rx_ps_enabled || _rx_ps_continuous_fallback)));
   }
   bool getReceiveRetryDelay(uint32_t now, uint32_t& delay_ms) const override;
+  bool getRxPowerSavingRetryDelay(uint32_t now, uint32_t& delay_ms) const override;
   bool getNoiseFloorWakeDelay(uint32_t now, uint32_t& delay_ms) const override;
   bool getProfileIdleDelay(uint32_t& delay_ms) const override;
   void resetStats() {

@@ -101,12 +101,27 @@ void RXPowerSavingCLI::get(const RxPowerSavingConfig& config,
   // and nobody remembers it runs outside the datasheet rule.
   int len = snprintf(reply, reply_size,
            "> desired=%s,effective=%s,supported=%s,err=%d,fail=%lu,level=%lu%s%s,preamble=%lu,rx=%lu,sleep=%lu",
-           config.enabled ? "on" : "off", status.armed ? "armed" : "continuous",
+           config.enabled ? "on" : "off", status.armed ? "armed"
+               : status.receiving ? "continuous" : "inactive",
            status.supported ? "yes" : "no", (int)status.last_error,
            (unsigned long)status.arm_failures, (unsigned long)config.level,
            isRxPowerSavingUnguardedLevel(config.level) ? "(!)" : "", margin,
            (unsigned long)config.preamble, (unsigned long)config.rx_us,
            (unsigned long)config.sleep_us);
+
+  // Runtime holds are distinct from an arm failure. Keep configuration keys
+  // stable, and put the bounded recovery countdown in the same status reply.
+  if (len > 0 && (size_t)len < reply_size && config.enabled && !status.armed) {
+    const char* hold = status.suspended ? "radio2" : status.calibrating ? "calib"
+        : status.timing_fallback ? "timing" : nullptr;
+    if (hold) {
+      snprintf(reply + len, reply_size - (size_t)len, ",hold=%s", hold);
+    } else if (status.retry_pending) {
+      snprintf(reply + len, reply_size - (size_t)len, ",retry=%lus,streak=%u",
+          (unsigned long)((uint64_t(status.retry_delay_ms) + 999UL) / 1000UL),
+          (unsigned)status.consecutive_failures);
+    }
+  }
 
   // Only report the periods the hardware really runs with when a driver had to
   // clamp them - printing them always would not fit the 160 byte reply buffer.

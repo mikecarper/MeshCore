@@ -254,6 +254,7 @@ class UniversalLoRaRadio : public mesh::Radio {
   MESH_AUTO_LORA_CONST(bool, isCalibratingNoiseFloor, (), (), false)
   MESH_AUTO_LORA_CONST(bool, getNoiseFloorWakeDelay, (uint32_t now, uint32_t& delay_ms), (now, delay_ms), false)
   MESH_AUTO_LORA_CONST(bool, getReceiveRetryDelay, (uint32_t now, uint32_t& delay_ms), (now, delay_ms), false)
+  MESH_AUTO_LORA_CONST(bool, getRxPowerSavingRetryDelay, (uint32_t now, uint32_t& delay_ms), (now, delay_ms), false)
   MESH_AUTO_LORA_CONST(bool, getProfileIdleDelay, (uint32_t& delay_ms), (delay_ms), false)
   MESH_AUTO_LORA_VOID(triggerNoiseFloorCalibrate, (int threshold), (threshold))
   MESH_AUTO_LORA_VOID(recalibrateNoiseFloor, (), ())

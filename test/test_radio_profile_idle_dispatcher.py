@@ -16,8 +16,13 @@ HARNESS = r'''
 #include <cstddef>
 #include <cstdint>
 #include <initializer_list>
+#define MESH_ENABLE_RADIO_DIRECTION 1
 #include <helpers/AGCResetScheduler.h>
 #include <helpers/RadioDirectionPolicy.h>
+namespace mesh { namespace radioDirection {
+Mode current = Mode::Both;
+Mode mode() { return current; }
+}}
 namespace radioDirection = mesh::radioDirection;
 #define MESH_ENABLE_FOREIGN_RADIO 1
 #define MESH_ENABLE_TX_BEACONS 1
@@ -32,10 +37,17 @@ struct Radio {
   }
   uint32_t getRecoveryCount() const { return recovery; }
   @DEFAULT@
+  @RETRY_DEFAULT@
 };
 struct Scanner : Radio {
-  bool supported = false;
-  uint32_t delay = 0;
+  bool supported = false, rxps_retry = false;
+  uint32_t delay = 0, rxps_delay = 0;
+  mutable unsigned rxps_reads = 0;
+  bool getRxPowerSavingRetryDelay(uint32_t, uint32_t& out) const override {
+    ++rxps_reads;
+    if (!rxps_retry) return false;
+    out = rxps_delay; return true;
+  }
   mutable unsigned reads = 0;
   bool getProfileIdleDelay(uint32_t& out) const override {
     ++reads; out = delay; return supported;
@@ -74,6 +86,7 @@ int main() {
   Radio unknown;
   uint32_t unchanged = 71;
   assert(!unknown.getProfileIdleDelay(unchanged) && unchanged == 71);
+  assert(!unknown.getRxPowerSavingRetryDelay(1000, unchanged) && unchanged == 71);
   Clock clock;
   Manager manager;
   Dispatcher legacy{&unknown, &clock, &manager};
@@ -85,6 +98,7 @@ int main() {
   assert(legacy.getNextQueueWakeDelay(unchanged) && unchanged == 0);
 
   for (uint32_t now : {1000U, UINT32_MAX - 15U}) {
+    radioDirection::current = radioDirection::Mode::Both;
     clock.now = now;
     manager = {};
     Scanner radio;
@@ -93,6 +107,32 @@ int main() {
     assert(node.canIdleDualRadio() && radio.reads == 0);
     assert(!node.getDualRadioIdleDelay(delay) && delay == 0 && radio.reads == 0);
     assert(!node.getNextQueueWakeDelay(delay) && radio.reads == 0);
+    // RXPS maintenance gets a timed wake while preserving the legacy empty queue result.
+    radio.rxps_retry = true; radio.rxps_delay = 5000;
+    assert(node.getNextQueueWakeDelay(delay) && delay == 5000);
+    const unsigned maintenance_reads = radio.rxps_reads;
+    node.radio_available = false;
+    delay = 97;
+    assert(!node.getNextQueueWakeDelay(delay) && delay == 97);
+    assert(radio.rxps_reads == maintenance_reads);
+    node.radio_available = true;
+    for (auto mode : {radioDirection::Mode::Tx, radioDirection::Mode::Off}) {
+      radioDirection::current = mode;
+      delay = 96;
+      assert(!node.getNextQueueWakeDelay(delay) && delay == 96);
+      assert(radio.rxps_reads == maintenance_reads);
+    }
+    radioDirection::current = radioDirection::Mode::Rx;
+    assert(node.getNextQueueWakeDelay(delay) && delay == 5000);
+    radioDirection::current = radioDirection::Mode::Both;
+    manager.rx = true; manager.rx_at = now + 3000;
+    assert(node.getNextQueueWakeDelay(delay) && delay == 3000);
+    manager.rx_at = now + 10000;
+    assert(node.getNextQueueWakeDelay(delay) && delay == 5000);
+    radio.rxps_delay = 0;
+    assert(node.getNextQueueWakeDelay(delay) && delay == 0);
+    radio.rxps_retry = false;
+    manager = {};
     radio.profile.active = true;
     radio.delay = 37;
     assert(!node.canIdleDualRadio()); // Unknown ports keep their polling contract.
@@ -134,6 +174,13 @@ int main() {
     radio.receive_delay = 50;
     assert(node.getNextQueueWakeDelay(delay) && delay == 37);
     radio.receive_retry = false;
+    radio.rxps_retry = true; radio.rxps_delay = 9;
+    assert(node.getNextQueueWakeDelay(delay) && delay == 9);
+    radio.rxps_delay = 70;
+    assert(node.getNextQueueWakeDelay(delay) && delay == 37);
+    radio.receive_retry = true; radio.receive_delay = 4;
+    assert(node.getNextQueueWakeDelay(delay) && delay == 4);
+    radio.receive_retry = false; radio.rxps_retry = false;
     node.outbound_restore_cr = 5;
     node.outbound_restore_retry_at = now + 2;
     assert(node.getNextQueueWakeDelay(delay) && delay == 2);
@@ -166,6 +213,11 @@ int main() {
     assert(node.getNextQueueWakeDelay(delay) && delay == 37);
     radio.delay = 400;
     assert(node.getNextQueueWakeDelay(delay) && delay == 200);
+    radio.rxps_retry = true; radio.rxps_delay = 150;
+    assert(node.getNextQueueWakeDelay(delay) && delay == 150);
+    radio.rxps_delay = 250;
+    assert(node.getNextQueueWakeDelay(delay) && delay == 200);
+    radio.rxps_retry = false;
     radio.receive_retry = true; radio.receive_delay = 6;
     assert(node.getNextQueueWakeDelay(delay) && delay == 6);
     radio.delay = 3;
@@ -182,6 +234,7 @@ class RadioProfileIdleDispatcherTest(unittest.TestCase):
         header = (ROOT / 'src/Dispatcher.h').read_text(encoding='ascii')
         source = (ROOT / 'src/Dispatcher.cpp').read_text(encoding='ascii')
         code = HARNESS.replace('@DEFAULT@', method(header, 'virtual bool getProfileIdleDelay('))
+        code = code.replace('@RETRY_DEFAULT@', method(header, 'virtual bool getRxPowerSavingRetryDelay('))
         code = code.replace('@ADMISSION@', method(header, 'bool canIdleDualRadio() const') + '\n'
                             + method(header, 'bool getDualRadioIdleDelay('))
         code = code.replace('@DEADLINES@', method(source, 'bool Dispatcher::getNextQueueWakeDelay('))

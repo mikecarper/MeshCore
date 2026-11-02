@@ -216,14 +216,14 @@ int main() {
   assert(!h.command("clear stats",nullptr,sizeof(reply)));
   assert(!h.command("clear stats",reply,0));assert(h.clears==0);
   assert(h.driver._rx_ps_arm_failures==23);
-  for(unsigned i=0;i<RX_POWERSAVING_MAX_CONSEC_ARM_FAILURES;++i)
-    h.driver._rx_ps_arm_retry.recordFailure();
-  assert(!h.driver._rx_ps_arm_retry.canAttempt());
+  for(unsigned i=0;i<3;++i)
+    h.driver._rx_ps_arm_retry.recordFailure(1000);
+  assert(!h.driver._rx_ps_arm_retry.canAttempt(1000));
   assert(h.command("clear stats",reply,sizeof(reply)));
   assert(!strcmp(reply,"(OK - stats reset)")&&h.clears==1);
   assert(h.driver.n_recv==0&&h.driver.n_sent==0&&h.driver.n_recv_errors==0);
   assert(h.driver._rx_ps_arm_failures==0);
-  assert(h.driver._rx_ps_arm_retry.consecutiveFailures()==0&&h.driver._rx_ps_arm_retry.canAttempt());
+  assert(h.driver._rx_ps_arm_retry.consecutiveFailures()==0&&h.driver._rx_ps_arm_retry.canAttempt(1000));
   assert(h.driver._rx_ps_enabled&&h.driver._rx_ps_rx_us==123456&&h.driver._rx_ps_sleep_us==765432);
   assert(h.dispatcher.n_sent_flood==0&&h.dispatcher.n_sent_direct==0&&h.dispatcher.n_recv_flood==0&&h.dispatcher.n_recv_direct==0);
   assert(h.dispatcher._err_flags==0&&h.tables._direct_dups==0&&h.tables._flood_dups==0);

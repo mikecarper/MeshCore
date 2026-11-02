@@ -161,7 +161,11 @@ struct RadioLibWrapper {
   uint8_t beginReconfigure() { return 0; } // counted SPI/RX boundaries are separate
   void endReconfigure(bool) {}
   bool supportsRxPowerSaving() const { return true; }
+  uint32_t rxPowerSavingTransitionUs() const { return rxPowerSavingDefaultTransitionUs(); }
   bool supportsRxBoostedGainMode() const { return true; }
+  // Timed RXPS recovery has its own production-method harness. These tests
+  // isolate receive ownership, calibration and mode-watchdog behavior.
+  void serviceRxPowerSavingRetry(uint32_t) {}
   int startReceiveMode() {
     ++arms;
     if (_nf_calib_active) ++calibration_arms;

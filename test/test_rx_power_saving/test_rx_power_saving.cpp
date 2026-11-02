@@ -1,4 +1,5 @@
 #include <gtest/gtest.h>
+#include <algorithm>
 #include <cmath>
 #include <helpers/radiolib/RXPowerSaving.h>
 #include <helpers/radiolib/RXPowerSavingCLI.h>
@@ -169,20 +170,80 @@ public:
 };
 }
 
-TEST(RxPowerSaving, RepeatedArmFailuresStopUntilResetOrSuccess) {
-  RxPowerSavingArmRetryState retry;
-  for (unsigned i = 0; i < 3; ++i) {
-    EXPECT_TRUE(retry.canAttempt());
-    retry.recordFailure();
+TEST(RxPowerSaving, ArmFailuresBackOffAndRecoverAcrossClockRollover) {
+  for (uint32_t origin : {100U, UINT32_MAX - 4999U}) {
+    RxPowerSavingArmRetryState retry;
+    uint32_t now = origin;
+    EXPECT_TRUE(retry.canAttempt(now));
+    EXPECT_FALSE(retry.pending());
+    EXPECT_EQ(0U, retry.delayMs(now));
+    unsigned failures = 0;
+    for (uint32_t delay : {5000U, 15000U, 60000U, 300000U, 300000U}) {
+      ASSERT_TRUE(retry.canAttempt(now));
+      retry.recordFailure(now);
+      EXPECT_TRUE(retry.pending());
+      EXPECT_EQ(++failures, retry.consecutiveFailures());
+      EXPECT_FALSE(retry.canAttempt(now));
+      EXPECT_EQ(delay, retry.delayMs(now));
+      now += delay - 1;
+      EXPECT_FALSE(retry.canAttempt(now));
+      EXPECT_EQ(1U, retry.delayMs(now));
+      ++now;
+      EXPECT_TRUE(retry.canAttempt(now));
+      EXPECT_EQ(0U, retry.delayMs(now));
+    }
+    // Admission deferral retains the streak and cannot create a due-wake spin.
+    retry.defer(now);
+    EXPECT_EQ(failures, retry.consecutiveFailures());
+    EXPECT_EQ(100U, retry.delayMs(now));
+    now += 100;
+    EXPECT_TRUE(retry.canAttempt(now));
+    retry.recordSuccess();
+    EXPECT_EQ(0U, retry.consecutiveFailures());
+    EXPECT_FALSE(retry.pending());
+    EXPECT_TRUE(retry.canAttempt(now));
+    retry.recordFailure(now);
+    EXPECT_EQ(5000U, retry.delayMs(now));
+    retry.reset();
+    EXPECT_FALSE(retry.pending());
+    EXPECT_EQ(0U, retry.consecutiveFailures());
+    EXPECT_TRUE(retry.canAttempt(now));
   }
-  EXPECT_FALSE(retry.canAttempt());
-  retry.recordFailure();
-  EXPECT_EQ(3, retry.consecutiveFailures());
-  retry.reset();
-  EXPECT_TRUE(retry.canAttempt());
-  retry.recordFailure();
-  retry.recordSuccess();
-  EXPECT_EQ(0, retry.consecutiveFailures());
+}
+
+TEST(RxPowerSaving, ArmFailureStreakSaturatesAndBackoffRemainsBounded) {
+  RxPowerSavingArmRetryState retry;
+  uint32_t now = 0;
+  for (unsigned attempt = 0; attempt < 300; ++attempt) {
+    ASSERT_TRUE(retry.canAttempt(now));
+    retry.recordFailure(now);
+    EXPECT_EQ(std::min(attempt + 1, 255U), retry.consecutiveFailures());
+    EXPECT_LE(retry.delayMs(now), 300000U);
+    now += retry.delayMs(now);
+  }
+  EXPECT_EQ(255U, retry.consecutiveFailures());
+  EXPECT_TRUE(retry.canAttempt(now));
+}
+
+TEST(RxPowerSaving, StaleArmDeadlinesAndOversizedDefersCannotCreateLongWaits) {
+  for (uint32_t origin : {100U, UINT32_MAX - 4999U}) {
+    RxPowerSavingArmRetryState retry;
+    retry.recordFailure(origin);
+    // A scanner or radio owner can retain a failed arm for more than half
+    // the millis range. Its expired deadline must remain immediately due.
+    const uint32_t resumed = origin + UINT32_C(0x80000000) + 1000000U;
+    EXPECT_TRUE(retry.pending());
+    EXPECT_TRUE(retry.canAttempt(resumed));
+    EXPECT_EQ(0U, retry.delayMs(resumed));
+    retry.defer(resumed, UINT32_MAX);
+    EXPECT_EQ(1U, retry.consecutiveFailures());
+    EXPECT_FALSE(retry.canAttempt(resumed));
+    EXPECT_EQ(300000U, retry.delayMs(resumed));
+    EXPECT_FALSE(retry.canAttempt(resumed + 299999U));
+    EXPECT_EQ(1U, retry.delayMs(resumed + 299999U));
+    EXPECT_TRUE(retry.canAttempt(resumed + 300000U));
+    EXPECT_EQ(0U, retry.delayMs(resumed + 300000U));
+  }
 }
 
 TEST(RxPowerSaving, ConfigUsesRuntimeRadioTimingAndKeepsWirePreamble) {

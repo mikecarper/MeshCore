@@ -96,7 +96,7 @@ static std::string expected(const MyMesh& mesh, bool config) {
            prefs.rx_powersaving_enabled ? "on" : "off", unsigned(prefs.rx_ps_level),
            unsigned(prefs.rx_ps_preamble), static_cast<unsigned long>(rx),
            static_cast<unsigned long>(sleep),
-           !config && radio_driver.fallback ? ",mode=continuous-fast" : "");
+           !config && radio_driver.fallback ? ",mode=continuous-fallback" : "");
   std::string out = result;
   if (!config && level && level != prefs.rx_ps_level) out += ",effective-level=" + std::to_string(level);
   if (!config && preamble && preamble != prefs.rx_ps_preamble) out += ",effective-preamble=" + std::to_string(preamble);

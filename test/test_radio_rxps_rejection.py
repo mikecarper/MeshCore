@@ -235,6 +235,7 @@ class RadioRxpsRejectionTest(unittest.TestCase):
         harness = harness.replace('  void recalibrateNoiseFloor() { _noise_floor_valid=false; }',
             '  void recalibrateNoiseFloor();\n  bool setRxPowerSaving(bool,uint32_t,uint32_t);\n'
             '  mesh::RadioParamApplyResult trySetRxPowerSaving(bool,uint32_t,uint32_t);\n'
+            '  uint32_t rxPowerSavingTransitionUs() const { return rxPowerSavingDefaultTransitionUs(); }\n'
             + method(header, 'bool isCalibratingNoiseFloor() const').replace(' override', ''))
         harness = harness.replace('bool validateProfile(const mesh::RadioProfileParams& p) const { return mesh::RadioProfiles::valid(p); }',
                                   'bool validateProfile(const mesh::RadioProfileParams&) const;')

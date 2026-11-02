@@ -2567,14 +2567,28 @@ Station G2/G3 targets default to `off`.
   the on/off and timing values. Deployment tools use it to restore a
   level-based preference without converting it to fixed manual timings.
 - `get radio.rxps.status` reports the saved `desired` state, actual `effective`
-  state (`armed` or `continuous`), hardware support, last driver error (`err`),
+  state (`armed`, `continuous` or `inactive`), hardware support, last driver error (`err`),
   arm failures (`fail`), level, preamble and requested RX/sleep
   periods in microseconds. Levels `9` and `10` carry `(!)` to mark experimental
   settings. It includes `catch` for armed, level-based settings and
   `erx`/`eslp` when the driver clamps the periods and the reply has room.
-  Three consecutive failed arm attempts trigger continuous receive as a
-  fallback. Unsupported radios stay in continuous receive. Saved preferences
-  remain intact.
+  A failed arm falls back to ordinary receive and schedules another attempt
+  after 5 seconds, then 15 seconds, 60 seconds and at most 5 minutes between
+  subsequent failures. It does not permanently give up after three failures.
+  `retry=<seconds>s` shows the next recovery deadline and `streak` counts
+  consecutive failed attempts. `fail` remains the cumulative count; a successful
+  arm clears the streak and countdown, not the cumulative history.
+  Retries wait for a safe gap in reception and do not interrupt a packet,
+  transmission, radio2 scan, calibration or another radio owner. The MCU can
+  sleep until the maintenance deadline while ordinary RX remains available.
+  Reapplying the same enabled RXPS setting during an arm-error fallback requests
+  a fresh attempt through the same admission checks; healthy unchanged settings
+  remain a no-op. `hold=radio2`, `hold=calib` or `hold=timing` identifies an
+  intentional pause or a tuple requiring continuous receive. `inactive` means
+  the wrapper is not currently in RX; it must not be interpreted as working
+  continuous reception. Unsupported radios retain their existing receive mode.
+  Saved preferences remain intact, and successful arming alone does not prove
+  RF reception or measured current savings.
 - `radio.rxps.rfrx_disabled` is a runtime-only diagnostic setting and resets to `off` after reboot.
 - Its default `off` state keeps the host-controlled SX1262 receive path enabled during RX duty-cycle mode. Setting it to `on` reproduces the old missing-RF_RX behavior and can significantly reduce receive sensitivity, making remote commands harder to receive.
 - `radio.rxps.rfrx_disabled` is supported only on SX1262 targets with a host-controlled RX enable pin.

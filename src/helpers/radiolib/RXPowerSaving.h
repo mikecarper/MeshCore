@@ -90,7 +90,6 @@ static constexpr uint8_t RX_POWERSAVING_MAX_LEVEL = RX_POWERSAVING_GUARDED_LEVEL
 #define RX_POWERSAVING_CONSERVATIVE_LEVEL 3 // catches 13 (P16) / 16 (P32)
 #define RX_POWERSAVING_BALANCED_LEVEL 6 // catches 10 (P16) / 10 (P32)
 #define RX_POWERSAVING_PROFILE_PREAMBLE 16
-static constexpr uint8_t RX_POWERSAVING_MAX_CONSEC_ARM_FAILURES = 3;
 
 // Symbols of a sender's preamble consumed before a packet can be latched:
 // ~2 to latch the preamble plus ~2 lost to RX-window startup, measured on
@@ -598,13 +597,35 @@ inline bool recalcRxPowerSavingFromLevel(uint8_t level, uint8_t sf, float bw, ui
 // Runtime RXPS control is separate from the persisted role-specific layout.
 class RxPowerSavingArmRetryState {
   uint8_t _consecutive_failures = 0;
+  bool _pending = false;
+  uint32_t _retry_at = 0;
 public:
-  bool canAttempt() const { return _consecutive_failures < RX_POWERSAVING_MAX_CONSEC_ARM_FAILURES; }
-  void recordSuccess() { _consecutive_failures = 0; }
-  void recordFailure() {
-    if (canAttempt()) ++_consecutive_failures;
+  bool pending() const { return _pending; }
+  bool canAttempt(uint32_t now) const {
+    const uint32_t remaining = _retry_at - now;
+    // Every scheduled wait is at most five minutes. A larger wrapped value
+    // is overdue, even after a radio owner suspended retries for many days.
+    return !_pending || remaining == 0 || remaining > 300000UL;
   }
-  void reset() { _consecutive_failures = 0; }
+  uint32_t delayMs(uint32_t now) const {
+    return canAttempt(now) ? 0 : uint32_t(_retry_at - now);
+  }
+  void recordSuccess() { reset(); }
+  void recordFailure(uint32_t now) {
+    if (_consecutive_failures < UINT8_MAX) ++_consecutive_failures;
+    // Stay in ordinary RX between attempts. A persistent hardware fault must
+    // neither hot-poll the chip nor permanently disable requested RXPS.
+    const uint32_t delay = _consecutive_failures == 1 ? 5000UL
+        : _consecutive_failures == 2 ? 15000UL
+        : _consecutive_failures == 3 ? 60000UL : 300000UL;
+    defer(now, delay);
+  }
+  void defer(uint32_t now, uint32_t delay_ms = 100) {
+    _pending = true;
+    if (delay_ms > 300000UL) delay_ms = 300000UL;
+    _retry_at = now + delay_ms;  // Zero is a valid wrapped deadline.
+  }
+  void reset() { _consecutive_failures = 0; _pending = false; _retry_at = 0; }
   uint8_t consecutiveFailures() const { return _consecutive_failures; }
 };
 
@@ -625,8 +646,15 @@ struct RxPowerSavingConfig {
 struct RxPowerSavingStatus {
   bool supported = false;
   bool armed = false;
+  bool receiving = false;
+  bool suspended = false;
+  bool calibrating = false;
+  bool timing_fallback = false;
+  bool retry_pending = false;
+  uint8_t consecutive_failures = 0;
   int16_t last_error = 0;
   uint32_t arm_failures = 0;
+  uint32_t retry_delay_ms = 0;
   uint32_t effective_rx_us = 0;
   uint32_t effective_sleep_us = 0;
 };

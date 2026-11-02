@@ -108,6 +108,69 @@ int main() {
     }
    }
   }
+  // The maximum recovery diagnostic fits the actual prefixed route in full.
+  radio.desired.enabled = 1;
+  radio.desired.level = 10;
+  control.status = {};
+  control.status.supported = control.status.receiving = true;
+  control.status.last_error = INT16_MIN;
+  control.status.arm_failures = UINT32_MAX;
+  control.status.retry_pending = true;
+  control.status.retry_delay_ms = 300000;
+  control.status.consecutive_failures = UINT8_MAX;
+  auto runtime = [&](const char* effective, const char* reason) {
+    const auto saved_config = radio.desired;
+    const auto saved_status = control.status;
+    char full[512];
+    radio.formatRxPowerSavingStatus(full, sizeof(full));
+    const std::string expected = full;
+    assert(expected.find(effective) != std::string::npos);
+    assert(expected.find(reason) != std::string::npos);
+    assert(expected.size() <= 156);
+    if (expected.find(",hold=") != std::string::npos)
+      assert(expected.find(",retry=") == std::string::npos);
+    for (size_t capacity = 0; capacity <= 180; ++capacity) {
+      std::vector<unsigned char> bytes(capacity + 16, 0xA7);
+      char* reply = reinterpret_cast<char*>(bytes.data() + 8);
+      radio.formatRxPowerSavingStatus(reply, capacity);
+      if (capacity) {
+        const auto count = std::min(expected.size(), capacity - 1);
+        assert(strlen(reply) == count && !memcmp(reply, expected.data(), count));
+      }
+      for (size_t n = 0; n < 8; ++n) assert(bytes[n] == 0xA7);
+      for (size_t n = 8 + capacity; n < bytes.size(); ++n) assert(bytes[n] == 0xA7);
+    }
+    std::vector<unsigned char> bytes(176, 0xA7);
+    char* reply = reinterpret_cast<char*>(bytes.data() + 8);
+    memcpy(reply, "  >", 3);
+    CommonCLI cli;
+    cli.get("radio.rxps.status", reply + 3);
+    assert(!memcmp(reply, "  >", 3) && std::string(reply + 3) == expected);
+    for (size_t n = 0; n < 8; ++n) assert(bytes[n] == 0xA7);
+    for (size_t n = 168; n < bytes.size(); ++n) assert(bytes[n] == 0xA7);
+    assert(!memcmp(&radio.desired, &saved_config, sizeof(saved_config)));
+    assert(!memcmp(&control.status, &saved_status, sizeof(saved_status)));
+  };
+  runtime("effective=continuous", ",retry=300s,streak=255");
+  control.status.retry_delay_ms = 1001;
+  runtime("effective=continuous", ",retry=2s,streak=255");
+  control.status.retry_delay_ms = 1;
+  runtime("effective=continuous", ",retry=1s,streak=255");
+  control.status.retry_delay_ms = 0;
+  runtime("effective=continuous", ",retry=0s,streak=255");
+  control.status.suspended = control.status.calibrating = control.status.timing_fallback = true;
+  runtime("effective=continuous", ",hold=radio2");
+  control.status.suspended = false;
+  runtime("effective=continuous", ",hold=calib");
+  control.status.calibrating = false;
+  runtime("effective=continuous", ",hold=timing");
+  control.status.timing_fallback = false;
+  control.status.receiving = false;
+  runtime("effective=inactive", ",retry=0s,streak=255");
+  radio.desired.enabled = 0;
+  char off[512];
+  radio.formatRxPowerSavingStatus(off, sizeof(off));
+  assert(strstr(off, "desired=off,effective=inactive") && !strstr(off, ",retry=") && !strstr(off, ",hold="));
   assert(saw_truncation && "The 157-byte prefixed route must exercise real truncation");
   radio.formatRxPowerSavingStatus(nullptr, 160);
 }

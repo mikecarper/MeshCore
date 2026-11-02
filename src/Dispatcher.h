@@ -275,6 +275,11 @@ public:
   virtual bool getReceiveRetryDelay(uint32_t now, uint32_t& delay_ms) const {
     (void)now; (void)delay_ms; return false;
   }
+  // Retry requested RX power saving while ordinary RX remains available.
+  // This is MCU maintenance, not packet work that prevents tracker suspend.
+  virtual bool getRxPowerSavingRetryDelay(uint32_t now, uint32_t& delay_ms) const {
+    (void)now; (void)delay_ms; return false;
+  }
   // A supported profile scanner may idle the MCU while RF keeps receiving.
   // Return a conservative whole-millisecond service budget, not an RF sleep
   // permission. False (unsupported/not ready) or zero retains fast polling.

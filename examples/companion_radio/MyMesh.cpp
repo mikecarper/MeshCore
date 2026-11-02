@@ -9536,7 +9536,8 @@ bool MyMesh::handleRxPowerSavingGetCommand(const char* command, char* reply,
            (unsigned)_prefs.rx_ps_level, (unsigned)_prefs.rx_ps_preamble,
            (unsigned long)rx_us, (unsigned long)sleep_us,
            !config && radio_driver.isRxPowerSavingContinuousFallback()
-               ? ",mode=continuous-fast" : "");
+               ? (rxPowerSavingUsesContinuousFallback(rx_us, sleep_us)
+                   ? ",mode=continuous-fast" : ",mode=continuous-fallback") : "");
   size_t used = strlen(reply);
   if (!config && effective_level != 0 && effective_level != _prefs.rx_ps_level
       && used < reply_size - 1) {
