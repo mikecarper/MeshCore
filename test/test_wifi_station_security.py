@@ -118,6 +118,8 @@ class WiFiSTAClass {
  int getMode() const {return WIFI_MODE_STA;}
  bool disconnect(bool=false,bool=false) {return esp_wifi_disconnect()==ESP_OK;}
  void setAutoReconnect(bool value) {autoreconnect=value;}
+ void setScanMethod(wifi_scan_method_t value) {calls.emplace_back("scan-method");_scanMethod=value;}
+ void setSortMethod(wifi_sort_method_t value) {calls.emplace_back("sort-method");_sortMethod=value;}
  int scanComplete() {return -2;}
  void scanDelete() {}
  int scanNetworks(bool,bool,bool,int,int channel,const char*,const uint8_t*) {
@@ -171,12 +173,23 @@ FALLBACK = r'''
 #include <helpers/esp32/WiFiStationSecurity.h>
 int main() {
  const uint8_t bssid[]={1,2,3,4,5,6};
- assert(mesh::wifi::beginStationWithSecurity("iot","test-password",6,bssid)!=WL_CONNECT_FAILED);
- assert(connected_configs.size()==1);
- const auto& config=connected_configs.front().sta;
- assert(memcmp(config.ssid,"iot",4)==0&&memcmp(config.password,"test-password",14)==0);
- assert(config.channel==6&&config.bssid_set&&memcmp(config.bssid,bssid,6)==0);
- assert(config.threshold.authmode==WIFI_AUTH_WPA2_PSK);
+ const std::string keys[]={"test-password",std::string(64,'a')};
+ for (const auto& key:keys) {
+  connected_configs.clear();sdk_status=WL_DISCONNECTED;
+  assert(mesh::wifi::beginStationWithSecurity("iot",key.c_str(),6,bssid)!=WL_CONNECT_FAILED);
+  assert(connected_configs.size()==1);
+  const auto& config=connected_configs.front().sta;
+  assert(memcmp(config.ssid,"iot",4)==0&&memcmp(config.password,key.data(),key.size())==0);
+  assert(config.channel==6&&config.bssid_set&&memcmp(config.bssid,bssid,6)==0);
+  assert(config.threshold.authmode==WIFI_AUTH_WPA2_PSK);
+  assert(config.pmf_cfg.capable&&!config.pmf_cfg.required);
+#if defined(MESH_WIFI_ALL_CHANNEL_SCAN) && MESH_WIFI_ALL_CHANNEL_SCAN
+  assert(config.scan_method==WIFI_ALL_CHANNEL_SCAN);
+#else
+  assert(config.scan_method==WIFI_FAST_SCAN);
+#endif
+  assert(config.sort_method==WIFI_CONNECT_AP_BY_SIGNAL);
+ }
 }
 '''
 
@@ -222,7 +235,8 @@ class WiFiStationSecurityTests(unittest.TestCase):
         }.items():
             (cls.folder / name).write_text(content)
         pinned = (FIXTURES / "arduino2_sta_begin.inc").read_text()
-        sources = {"pinned": pinned, "identifier": pinned, "idf443": pinned}
+        sources = {"pinned": pinned, "identifier": pinned, "idf443": pinned,
+                   "explicit-off": pinned}
         installed = installed_sdk_source()
         if installed:
             sources["installed"] = installed
@@ -233,38 +247,44 @@ class WiFiStationSecurityTests(unittest.TestCase):
                     "corrupt-idf503": (5, 0, 3), "corrupt-idf510": (5, 1, 0)}
         sources.update({label: pinned for label in versions})
         for label, source in sources.items():
-            folder = cls.folder / label
-            folder.mkdir()
-            (folder / "production_sta_begin.inc").write_text(source)
-            major, minor, patch = versions.get(label, (4, 4, 3) if label == "idf443" else (4, 4, 8))
-            (folder / "esp_idf_version.h").write_text(
-                "#pragma once\n#define ESP_IDF_VERSION_VAL(major,minor,patch) (((major)<<16)|((minor)<<8)|(patch))\n"
-                f"#define ESP_IDF_VERSION ESP_IDF_VERSION_VAL({major},{minor},{patch})\n")
-            flags = []
-            fixture = FIXTURES / "station_security.cpp"
-            if label in versions:
-                flags.append("-DTEST_NO_SAE_TYPES=1")
-                fixture = folder / "fallback.cpp"
-                fixture.write_text(FALLBACK)
-            if label == "disabled-wpa3":
-                (folder / "WiFi.h").write_text(WIFI.replace(
-                    "CONFIG_ESP32_WIFI_ENABLE_WPA3_SAE 1", "CONFIG_ESP32_WIFI_ENABLE_WPA3_SAE 0").replace(
-                    "CONFIG_ESP_WIFI_ENABLE_WPA3_SAE 1", "CONFIG_ESP_WIFI_ENABLE_WPA3_SAE 0"))
-            if label == "identifier":
-                flags.append("-DSAE_H2E_IDENTIFIER_LEN=32")
-            binary = folder / "test"
-            built = subprocess.run([
-                os.environ.get("CXX", "g++"), "-std=c++17", "-O1", "-Wall", "-Wextra", "-Werror",
-                "-fsanitize=address,undefined", "-fno-sanitize-recover=all", "-fno-pie", "-no-pie",
-                "-DESP_PLATFORM=1", "-DWITH_ESPNOW_BRIDGE=1",
-                *flags,
-                "-I", str(folder), "-I", str(cls.folder), "-I", str(ROOT / "src"),
-                str(fixture), "-o", str(binary),
-            ], capture_output=True, text=True, timeout=60)
-            if built.returncode:
-                raise AssertionError(built.stdout + built.stderr)
-            destination = cls.fallback_binaries if label in versions else cls.binaries
-            destination[label] = binary
+            for all_scan in ((False,) if label == "explicit-off" else (False, True)):
+                variant = label + ("-all" if all_scan else "")
+                folder = cls.folder / variant
+                folder.mkdir()
+                (folder / "production_sta_begin.inc").write_text(source)
+                major, minor, patch = versions.get(label, (4, 4, 3) if label == "idf443" else (4, 4, 8))
+                (folder / "esp_idf_version.h").write_text(
+                    "#pragma once\n#define ESP_IDF_VERSION_VAL(major,minor,patch) (((major)<<16)|((minor)<<8)|(patch))\n"
+                    f"#define ESP_IDF_VERSION ESP_IDF_VERSION_VAL({major},{minor},{patch})\n")
+                flags = []
+                if all_scan:
+                    flags.append("-DMESH_WIFI_ALL_CHANNEL_SCAN=1")
+                elif label == "explicit-off":
+                    flags.append("-DMESH_WIFI_ALL_CHANNEL_SCAN=0")
+                fixture = FIXTURES / "station_security.cpp"
+                if label in versions:
+                    flags.append("-DTEST_NO_SAE_TYPES=1")
+                    fixture = folder / "fallback.cpp"
+                    fixture.write_text(FALLBACK)
+                if label == "disabled-wpa3":
+                    (folder / "WiFi.h").write_text(WIFI.replace(
+                        "CONFIG_ESP32_WIFI_ENABLE_WPA3_SAE 1", "CONFIG_ESP32_WIFI_ENABLE_WPA3_SAE 0").replace(
+                        "CONFIG_ESP_WIFI_ENABLE_WPA3_SAE 1", "CONFIG_ESP_WIFI_ENABLE_WPA3_SAE 0"))
+                if label == "identifier":
+                    flags.append("-DSAE_H2E_IDENTIFIER_LEN=32")
+                binary = folder / "test"
+                built = subprocess.run([
+                    os.environ.get("CXX", "g++"), "-std=c++17", "-O1", "-Wall", "-Wextra", "-Werror",
+                    "-fsanitize=address,undefined", "-fno-sanitize-recover=all", "-fno-pie", "-no-pie",
+                    "-DESP_PLATFORM=1", "-DWITH_ESPNOW_BRIDGE=1",
+                    *flags,
+                    "-I", str(folder), "-I", str(cls.folder), "-I", str(ROOT / "src"),
+                    str(fixture), "-o", str(binary),
+                ], capture_output=True, text=True, timeout=60)
+                if built.returncode:
+                    raise AssertionError(built.stdout + built.stderr)
+                destination = cls.fallback_binaries if label in versions else cls.binaries
+                destination[variant] = binary
 
     def run_scenario(self, scenario):
         for label, binary in self.binaries.items():
@@ -291,13 +311,17 @@ class WiFiStationSecurityTests(unittest.TestCase):
     def test_driver_reconnect_retains_h2e_selection(self):
         self.run_scenario("reconnect")
 
+    def test_preview_scan_policy_is_staged_before_join_and_keeps_security_and_routes(self):
+        self.run_scenario("scan-policy")
+
     def test_cached_arduino_status_cannot_skip_join_or_invent_a_policy_failure(self):
         self.run_scenario("cached-status")
 
     def test_modern_sdk_does_not_reuse_a_password_identifier(self):
-        result = subprocess.run([str(self.binaries["identifier"]), "identifier"],
-                                capture_output=True, text=True, timeout=10)
-        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        for label in ("identifier", "identifier-all"):
+            result = subprocess.run([str(self.binaries[label]), "identifier"],
+                                    capture_output=True, text=True, timeout=10)
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
     def test_old_disabled_and_affected_sdks_compile_without_sae_fields(self):
         for label, binary in self.fallback_binaries.items():

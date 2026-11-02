@@ -63,6 +63,12 @@ inline wl_status_t failed() {
 inline wl_status_t beginStationWithSecurity(const char* ssid, const char* password,
                                            int32_t channel = 0,
                                            const uint8_t* bssid = nullptr) {
+#if defined(MESH_WIFI_ALL_CHANNEL_SCAN) && MESH_WIFI_ALL_CHANNEL_SCAN
+  // Build-only AP-selection experiment. Prepare Arduino's cache before its
+  // credential overload stages the SDK config, including on older SDKs.
+  WiFi.setScanMethod(WIFI_ALL_CHANNEL_SCAN);
+  WiFi.setSortMethod(WIFI_CONNECT_AP_BY_SIGNAL);
+#endif
 #if defined(MESH_WIFI_HAS_SAE_PWE)
   using namespace station_security_detail;
   const size_t ssid_length = ssid ? strnlen(ssid, 33) : 0;

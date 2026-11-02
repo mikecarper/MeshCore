@@ -1,4 +1,5 @@
 #include <WiFi.h>
+#include <algorithm>
 #include "production_sta_begin.inc"
 #include <helpers/esp32/WiFiStationPolicy.h>
 
@@ -15,6 +16,8 @@ static void reset() {
   sdk_associated=preserve_cached_status=false;
   constrained=blocked=false;
   sdk_status=WL_DISCONNECTED;
+  WiFiSTAClass::_scanMethod=WIFI_FAST_SCAN;
+  WiFiSTAClass::_sortMethod=WIFI_CONNECT_AP_BY_SIGNAL;
   sdk_config={};
   memcpy(sdk_config.sta.ssid,"stale-network",13);
   memcpy(sdk_config.sta.password,"stale-key",9);
@@ -33,7 +36,11 @@ static const wifi_config_t& joined(const char* ssid,const char* password) {
   assert(config.sta.sae_pwe_h2e==WPA3_SAE_PWE_BOTH);
   assert(config.sta.threshold.authmode==(key_size?WIFI_AUTH_WPA2_PSK:WIFI_AUTH_OPEN));
   assert(config.sta.threshold.rssi==-127);
+#if defined(MESH_WIFI_ALL_CHANNEL_SCAN) && MESH_WIFI_ALL_CHANNEL_SCAN
+  assert(config.sta.scan_method==WIFI_ALL_CHANNEL_SCAN);
+#else
   assert(config.sta.scan_method==WIFI_FAST_SCAN);
+#endif
   assert(config.sta.sort_method==WIFI_CONNECT_AP_BY_SIGNAL);
   assert(config.sta.pmf_cfg.capable&&!config.sta.pmf_cfg.required);
 #if defined(SAE_H2E_IDENTIFIER_LEN)
@@ -69,6 +76,33 @@ int main(int argc,char** argv) {
     assert(mesh::wifi::beginStation("iot","test-password")!=WL_CONNECT_FAILED);
     const auto& config=joined("iot","test-password");
     assert(config.sta.bssid_set&&config.sta.channel==6&&config.sta.bssid[0]==4);
+  } else if(scenario=="scan-policy") {
+    for(bool fixed:{false,true}) {
+      reset(); if(fixed)requestFixedChannel();
+#if defined(MESH_WIFI_ALL_CHANNEL_SCAN) && MESH_WIFI_ALL_CHANNEL_SCAN
+      WiFiSTAClass::_sortMethod=WIFI_CONNECT_AP_BY_SECURITY;
+#endif
+      const std::string raw_key(64,'a');
+      assert(mesh::wifi::beginStation("iot",raw_key.c_str())!=WL_CONNECT_FAILED);
+      const auto& config=joined("iot",raw_key.c_str());
+      assert(config.sta.bssid_set==fixed&&config.sta.channel==(fixed?6:0));
+      if(fixed)assert(config.sta.bssid[0]==4);
+#if defined(MESH_WIFI_ALL_CHANNEL_SCAN) && MESH_WIFI_ALL_CHANNEL_SCAN
+      const auto enable=std::find(calls.begin(),calls.end(),"enable");
+      assert(std::find(calls.begin(),enable,"scan-method")!=enable);
+      assert(std::find(calls.begin(),enable,"sort-method")!=enable);
+#else
+      assert(std::find(calls.begin(),calls.end(),"scan-method")==calls.end());
+      assert(std::find(calls.begin(),calls.end(),"sort-method")==calls.end());
+#endif
+      // Driver-managed retries use no-argument begin() and must keep the
+      // selected scan strategy, fixed-channel guard and authentication fields.
+      sdk_status=WL_DISCONNECTED;clearCalls();
+      assert(WiFi.begin()!=WL_CONNECT_FAILED);
+      const auto& retry=joined("iot",raw_key.c_str());
+      assert(retry.sta.bssid_set==fixed&&retry.sta.channel==(fixed?6:0));
+      if(fixed)assert(retry.sta.bssid[0]==4);
+    }
   } else if(scenario=="failures") {
     reset();
     assert(mesh::wifi::beginStation("iot","test-password")!=WL_CONNECT_FAILED);
