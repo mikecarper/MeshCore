@@ -9,7 +9,7 @@
 #include <helpers/stm32/STM32Board.h>
 
 #define PIN_VBAT_READ A0
-#define ADC_MULTIPLIER (5 * 1.73 * 1000)
+#define ADC_MULTIPLIER 8650
 
 class TinyRelayBoard : public STM32Board
 {
@@ -32,7 +32,7 @@ class TinyRelayBoard : public STM32Board
         for (int i = 0; i < 8; i++) {
             raw += analogRead(PIN_VBAT_READ);
         }
-        return calibrateBatteryMillivolts(((double)raw) * ADC_MULTIPLIER / 8 / 4096);
+        return calibrateBatteryMillivolts((raw * ADC_MULTIPLIER) / (8 * 4096));
     }
 
     void setGpio(uint32_t values) override

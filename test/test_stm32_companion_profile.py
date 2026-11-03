@@ -8,6 +8,7 @@ fixing its size limit by silently shrinking storage or Companion capacities.
 import configparser
 from pathlib import Path
 import re
+import runpy
 import shlex
 import subprocess
 import tempfile
@@ -83,6 +84,38 @@ class TinyRelaySTM32CompanionProfileTest(STM32CompanionProfileTest):
         self.assertIn("digitalWrite(PA1, (values & 2) >> 1)", header)
         self.assertIn("analogRead(PIN_VBAT_READ)", header)
 
+    def test_compact_loop_flag_reaches_compile_and_link_only_for_tiny_companion(self):
+        flag = "-fno-tree-loop-im"
+        hook = "post:scripts/stm32_tiny_size.py"
+        self.assertIn(flag, shlex.split(self.companion["build_flags"]))
+        self.assertEqual(self.companion["extra_scripts"].split(), [
+            "${stm32_base.extra_scripts}", hook])
+        for section in self.config.sections():
+            if section != self.companion.name:
+                self.assertNotIn(flag, self.config[section].get("build_flags", ""))
+                self.assertNotIn(hook, self.config[section].get("extra_scripts", ""))
+        common = configparser.ConfigParser(interpolation=None)
+        common.read(ROOT / "platformio.ini")
+        for inherited in ("post:arch/stm32/build_hex.py",
+                          "post:scripts/check_firmware_ram.py"):
+            self.assertIn(inherited, common["stm32_base"]["extra_scripts"].split())
+
+        class Environment(dict):
+            def Append(self, **values):
+                for key, items in values.items():
+                    self.setdefault(key, []).extend(items)
+
+        for target in (self.target, "Tiny_Relay_repeater", "Tiny_Relay_sensor",
+                       "Tiny_Relay_kiss_modem", "RAK_3x72_companion_radio_usb",
+                       "wio-e5-mini_companion_radio_usb", "wio-e5_companion_radio_usb"):
+            with self.subTest(target=target):
+                environment = Environment(PIOENV=target, LINKFLAGS=["existing"])
+                runpy.run_path(str(ROOT / "scripts/stm32_tiny_size.py"), init_globals={
+                    "env": environment, "Import": lambda name: self.assertEqual(name, "env")})
+                self.assertEqual(dict(environment), {
+                    "PIOENV": target,
+                    "LINKFLAGS": ["existing", *([flag] if target == self.target else [])]})
+
 
 class WioDevSTM32CompanionProfileTest(STM32CompanionProfileTest):
     variant = "wio-e5-dev"
@@ -131,10 +164,15 @@ class STM32CompanionCICoverageTest(unittest.TestCase):
 
 
 class RAK3x72BatteryScaleTest(unittest.TestCase):
+    variant = "rak3x72"
+
     def test_all_eight_sample_adc_sums_keep_exact_previous_voltage_and_sampling(self):
-        header = (ROOT / "variants/rak3x72/target.h").read_text()
+        header = (ROOT / "variants" / self.variant / "target.h").read_text()
         scale = re.search(r"^#define\s+ADC_MULTIPLIER\s+(.+)$", header, re.MULTILINE)[1]
         sample = body(header, "uint16_t getBattMilliVolts() override").replace(" override", "")
+        supports_calibration = body(
+            header, "bool supportsBatteryCalibration() const override"
+        ).replace(" override", "")
         source = r'''
 #include <cassert>
 #include <cstdint>
@@ -142,8 +180,10 @@ class RAK3x72BatteryScaleTest(unittest.TestCase):
 #include <helpers/BatteryCalibration.h>
 #define PIN_VBAT_READ 7
 #define ADC_MULTIPLIER @SCALE@
-static unsigned reads, resolutions;
+static unsigned reads, resolutions, calibrations;
 static uint32_t remaining;
+static uint16_t calibration_input;
+static float calibration_multiplier;
 void analogReadResolution(int bits) { assert(bits == 12 && reads == 0); ++resolutions; }
 int analogRead(int pin) {
   assert(pin == PIN_VBAT_READ && resolutions == 1 && reads < 8);
@@ -154,25 +194,37 @@ int analogRead(int pin) {
 }
 class Board {
   uint16_t calibrateBatteryMillivolts(uint16_t raw) const {
-    return mesh::power::scaleBatteryMillivolts(raw, 1.0f);
+    ++calibrations;
+    calibration_input = raw;
+    return mesh::power::scaleBatteryMillivolts(raw, calibration_multiplier);
   }
-public: @BODY@
+public: @SUPPORTS_CALIBRATION@ @BODY@
 };
 static_assert(ADC_MULTIPLIER == 8650, "revisit the fixed-point scale if calibration changes");
+static_assert((5 * 1.73 * 1000) == 8650.0, "original double scale must remain exact");
 static_assert(uint64_t(8) * 4095 * 8650 <= std::numeric_limits<uint32_t>::max(),
               "battery accumulation product must not overflow");
 int main() {
   Board board;
-  for (uint32_t sum = 0; sum <= 8 * 4095; ++sum) {
-    reads = resolutions = 0;
-    remaining = sum;
-    const uint16_t previous = ((double)sum) * ADC_MULTIPLIER / 8 / 4096;
-    assert(board.getBattMilliVolts() == previous);
-    assert(reads == 8 && resolutions == 1 && remaining == 0);
+  assert(board.supportsBatteryCalibration());
+  const float multipliers[] = {0.0f, 0.5f, 0.9875f, 1.0f, 1.5f};
+  for (float multiplier : multipliers) {
+    calibration_multiplier = multiplier;
+    for (uint32_t sum = 0; sum <= 8 * 4095; ++sum) {
+      reads = resolutions = calibrations = 0;
+      remaining = sum;
+      // Preserve the original double expression independently of today's macro.
+      const uint16_t previous = ((double)sum) * (5 * 1.73 * 1000) / 8 / 4096;
+      const uint16_t expected = mesh::power::scaleBatteryMillivolts(previous, multiplier);
+      assert(board.getBattMilliVolts() == expected);
+      assert(calibrations == 1 && calibration_input == previous);
+      assert(reads == 8 && resolutions == 1 && remaining == 0);
+    }
   }
 }
-'''.replace("@SCALE@", scale).replace("@BODY@", sample)
-        with tempfile.TemporaryDirectory(prefix="mesh-rak3x72-battery-") as directory:
+'''.replace("@SCALE@", scale).replace("@BODY@", sample).replace(
+            "@SUPPORTS_CALIBRATION@", supports_calibration)
+        with tempfile.TemporaryDirectory(prefix=f"mesh-{self.variant}-battery-") as directory:
             root = Path(directory)
             cpp = root / "battery.cpp"
             cpp.write_text(source)
@@ -181,6 +233,10 @@ int main() {
                             *SANITIZER_FLAGS, "-I", str(ROOT / "src"),
                             str(cpp), "-o", str(binary)], check=True)
             subprocess.run([str(binary)], check=True)
+
+
+class TinyRelayBatteryScaleTest(RAK3x72BatteryScaleTest):
+    variant = "tiny_relay"
 
 
 if __name__ == "__main__":

@@ -64,6 +64,8 @@ class CliReplyTextTests(unittest.TestCase):
             self.assertEqual(actual, messages, file)
             # Substituting each original literal recovers every original C++
             # token, including command tests, branches, calls and arguments.
+            # Review unrelated behavior changes before refreshing a fixture
+            # hash; keep their tokens covered by this guard as well.
             self.assertEqual(hashlib.sha256(original_tokens(source)).hexdigest(),
                              fixture['noncompact_tokens_sha256'][file], file)
 

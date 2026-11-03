@@ -1464,9 +1464,8 @@ DispatcherAction Mesh::onRecvPacket(Packet* pkt) {
       break;
     }
     case PAYLOAD_TYPE_ADVERT: {
-      int i = 0;
-      Identity id;
-      memcpy(id.pub_key, &pkt->payload[i], PUB_KEY_SIZE); i += PUB_KEY_SIZE;
+      const Identity id(pkt->payload);
+      int i = PUB_KEY_SIZE;
 
       uint32_t timestamp;
       memcpy(&timestamp, &pkt->payload[i], 4); i += 4;

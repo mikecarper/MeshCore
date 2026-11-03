@@ -52,11 +52,41 @@ def test_internal_bootloader_target_wiring_is_central_and_not_duplicated():
         if line.strip() and not line.lstrip().startswith("#")
     ]
     assert len(inventory) == len(set(inventory))
-    # The RAK4631 adaptive RAK15002 receiver contract deliberately adds the
-    # three generated receiver roles to the established exact inventory. Keep
-    # the count and the names fixed so an unrelated target cannot silently
-    # acquire the retained-RAM / internal-bootloader-update layout.
-    assert len(inventory) == 26
+    # RAK4631 adaptive RAK15002 receivers and the two ProMicro M33S radio
+    # profiles deliberately share the qualified internal-flash layout. Keep
+    # every name fixed so an unrelated target cannot silently acquire the
+    # retained-RAM / internal-bootloader-update layout.
+    expected_inventory = {
+        "Heltec_tower_v2_repeater_lora_ota_no_external_sensors",
+        "Heltec_t096_repeater_lora_ota_no_external_sensors",
+        "Heltec_t096_repeater_bridge_rs232_lora_ota_no_external_sensors",
+        "Heltec_t1_repeater_lora_ota_no_external_sensors",
+        "GAT562_30S_Mesh_Kit_repeater_lora_ota_no_external_sensors",
+        "Heltec_t114_without_display_repeater_lora_ota_no_external_sensors",
+        "Heltec_t114_repeater_lora_ota_no_external_sensors",
+        "Mesh_pocket_repeater_lora_ota_no_external_sensors",
+        "KeepteenLT1_repeater_lora_ota_no_external_sensors",
+        "Minewsemi_me25ls01_repeater_lora_ota_no_external_sensors",
+        "ProMicro_repeater_lora_ota_no_external_sensors",
+        "ProMicro_m33s_repeater_lora_ota_no_external_sensors",
+        "ProMicro_400m33s_repeater_lora_ota_no_external_sensors",
+        "t1000e_repeater_lora_ota_no_external_sensors",
+        "ThinkNode_M3_repeater_lora_ota_no_external_sensors",
+        "RAK_3401_repeater_lora_ota_no_external_sensors",
+        "RAK_4631_repeater_lora_ota_no_external_sensors",
+        "RAK_4631_repeater_unified_lora_ota",
+        "RAK_4631_room_server_lora_ota_no_external_sensors",
+        "RAK_4631_room_server_ethernet_lora_ota_no_external_sensors",
+        "RAK_4631_sensor_lora_ota_no_external_sensors",
+        "RAK_3401_repeater_unified_lora_ota",
+        "RAK_4631_repeater_bridge_rs232_serial1_lora_ota_no_external_sensors",
+        "RAK_4631_repeater_bridge_rs232_serial2_lora_ota_no_external_sensors",
+        "GAT562_Mesh_Tracker_Pro_repeater_lora_ota_no_external_sensors",
+        "R1Neo_repeater_lora_ota_no_external_sensors",
+        "GAT562_Mesh_EVB_Pro_repeater_lora_ota_no_external_sensors",
+        "RAK_WisMesh_Tag_repeater_lora_ota_no_external_sensors",
+    }
+    assert set(inventory) == expected_inventory
     assert {
         "RAK_4631_room_server_lora_ota_no_external_sensors",
         "RAK_4631_room_server_ethernet_lora_ota_no_external_sensors",
@@ -570,6 +600,7 @@ def test_measured_full_companion_promotions_are_exact_and_bounded():
         "Heltec_ct62_companion_radio_ble",
         "Meshadventurer_sx1262_companion_radio_ble",
         "Meshadventurer_companion_radio_ble",
+        "Meshadventurer_m33s_companion_radio_ble",
         "Meshadventurer_sx1268_companion_radio_ble",
         "Heltec_Wireless_Paper_companion_radio_ble",
         "Heltec_E213_companion_radio_ble",
@@ -601,6 +632,7 @@ def test_measured_full_companion_promotions_are_exact_and_bounded():
     assert "-DWIFI_SSID=" in profile
     assert "+<helpers/wifi/SerialWifiInterface.cpp>" in profile
     assert "meshadventurer_companion_radio_full" in profile
+    assert "meshadventurer_m33s_companion_radio_full" in profile
     assert "meshadventurer_sx1262_companion_radio_full" in profile
     assert "meshadventurer_sx1268_companion_radio_full" in profile
     assert ("-DMAX_CONTACTS=100 -DMAX_GROUP_CHANNELS=30 "

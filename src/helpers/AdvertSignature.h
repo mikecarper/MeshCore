@@ -22,10 +22,14 @@ static inline int buildMessage(const uint8_t* payload, int payload_len,
   if (payload == nullptr || out == nullptr || payload_len < kHeaderLen ||
       payload_len > kHeaderLen + MAX_ADVERT_DATA_SIZE) return -1;
   int app_data_len = payload_len - kHeaderLen;
-  memcpy(out, payload, PUB_KEY_SIZE + 4);
-  memcpy(out + PUB_KEY_SIZE + 4, payload + kHeaderLen, app_data_len);
+  const int message_len = PUB_KEY_SIZE + 4 + app_data_len;
+  // One bounded copy skips the stored signature. This avoids fixed-size
+  // memcpy expansion in flash-constrained builds while preserving all bytes.
+  for (int i = 0; i < message_len; ++i) {
+    out[i] = payload[i < PUB_KEY_SIZE + 4 ? i : i + SIGNATURE_SIZE];
+  }
   *sig = payload + PUB_KEY_SIZE + 4;
-  return PUB_KEY_SIZE + 4 + app_data_len;
+  return message_len;
 }
 
 }  // namespace AdvertSignature
