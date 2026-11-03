@@ -191,27 +191,42 @@ struct {
   bool isWebConfigActiveOrStopping() const { return active; }
 } the_mesh;
 constexpr int WIFI_STA = 1, WIFI_IF_STA = 0;
-struct { void mode(int) {} void disconnect(bool, bool) {} } WiFi;
+bool station_disconnected = false;
+unsigned power_save_applications = 0;
+struct {
+  void mode(int) {}
+  void disconnect(bool stop, bool erase) {
+    assert(!stop && !erase); station_disconnected = true;
+  }
+} WiFi;
 namespace mesh { namespace wifi {
 unsigned starts = 0;
 bool stationMutationAllowed() { return station_allowed; }
 void applyProtocolMask(int) {} void setStationAutoReconnect(bool) {}
 void beginStation(const char* ssid, const char* password) {
+  assert(station_disconnected && power_save_applications == starts + 1);
   ++starts; assert(!strcmp(ssid, "latest")); assert(!strcmp(password, "latest-password"));
 }
 } }
+// The policy implementation has its own tests; observe this association seam.
+bool applyCompanionWiFiPowerSave() {
+  assert(station_disconnected); ++power_save_applications; return true;
+}
 struct { void noteAttempt(uint32_t) {} } wifi_reconnect_tracker;
 @METHOD@
 int main() {
   serviceCompanionWiFiCredentialReload(); assert(companion_wifi_credential_reload_pending);
+  assert(!power_save_applications && !station_disconnected);
   now = 1500; the_mesh.transition = true;
   serviceCompanionWiFiCredentialReload(); assert(companion_wifi_credential_reload_pending);
+  assert(!power_save_applications && !station_disconnected);
   the_mesh.transition = false; // The LAN listener is active, but does not own association.
   assert(the_mesh.isWebConfigActiveOrStopping());
   serviceCompanionWiFiCredentialReload();
   assert(!companion_wifi_credential_reload_pending && !companion_wifi_espnow_restore_pending);
-  assert(mesh::wifi::starts == 1);
-  serviceCompanionWiFiCredentialReload(); assert(mesh::wifi::starts == 1);
+  assert(mesh::wifi::starts == 1 && power_save_applications == 1);
+  serviceCompanionWiFiCredentialReload();
+  assert(mesh::wifi::starts == 1 && power_save_applications == 1);
 }
 '''.replace('@METHOD@', actual)
         self.compile_and_run(fixture)

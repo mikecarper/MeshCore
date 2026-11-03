@@ -110,9 +110,16 @@ class OledFontExperimentsTest(unittest.TestCase):
         expected.extend(False for _ in excluded)
         cases.extend([
             ("-DENABLE_OTA=1",), ("-DOTA_TRANSPORT_DEFLATE_TEST=1",),
-            ("-DNRF52_PLATFORM=1", "-DCOMPANION_RADIO_FULL=1", "-DENABLE_USB_INTERFACE=1"),
         ])
-        expected.extend((True, True, True))
+        expected.extend((True, True))
+        # Reader requires an explicit feature flag on Full USB profiles.
+        for platform in ("NRF52_PLATFORM", "ESP32_PLATFORM"):
+            reader = (f"-D{platform}=1", "-DCOMPANION_RADIO_FULL=1", "-DENABLE_USB_INTERFACE=1")
+            cases.extend([
+                reader, (*reader, "-DCOMPANION_FEATURE_READER=0"),
+                (*reader, "-DCOMPANION_FEATURE_READER=1"),
+            ])
+            expected.extend((False, False, True))
         for flags, decoder_enabled in zip(cases, expected):
             with self.subTest(flags=flags):
                 output = self.directory / "guard.o"

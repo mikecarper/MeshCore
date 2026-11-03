@@ -8,8 +8,18 @@ import tempfile
 import unittest
 
 from test_replay_reset_integration import extract_braced
+from cpp_source import _events
 
 ROOT = Path(__file__).resolve().parents[1]
+
+
+def call_order_source(source):
+    """Mask non-code tokens without changing real call spellings or offsets."""
+    code = list(source)
+    for kind, start, end, _ in _events(source):
+        if kind in ("ignored", "literal", "directive"):
+            code[start:end] = " " * (end - start)
+    return "".join(code)
 
 
 class StartupScreenTest(unittest.TestCase):
@@ -91,6 +101,7 @@ int main() {
                     self.assertEqual(re.sub(r"//[^\n]*|\s+", "", body),
                                      "for(;;)delay(1000);")
                     setup = setup.replace(failure, "", 1)
+                setup = call_order_source(setup)
                 frame = setup.index("startup_screen.begin(")
                 self.assertLess(setup.index("board.begin()"), frame)
                 self.assertLess(setup.index("loadDisplayPowerSettings("), frame)
@@ -106,7 +117,8 @@ int main() {
                 identity_source = setup
                 if role == "companion_radio":
                     mesh = (ROOT / "examples/companion_radio/MyMesh.cpp").read_text()
-                    identity_source = extract_braced(mesh, "void MyMesh::begin(")
+                    identity_source = call_order_source(
+                        extract_braced(mesh, "void MyMesh::begin("))
                     self.assertIn(", &startup_screen", setup)
                     self.assertIn("&& !store.isVolatilePrimaryFS()) display_prefs_fs = nullptr;", setup)
                 self.assertLess(identity_source.index("generatingKey()"),
