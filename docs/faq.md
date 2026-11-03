@@ -989,6 +989,22 @@ their flash can keep two app slots for LoRa OTA.
 **A:**
 For companion radios, you can set these radios' transmit power in the smartphone app. For repeater and room server radios, you can set their transmit power using the command line command `set tx`. You can get their current value using command line command `get tx`
 
+On SolarXiao 33S and Ikoka Nano/Stick E22-900M33S boards, this setting is the
+SX1262 chip's drive into the external amplifier. A 9 dBm drive can produce
+approximately 33 dBm (2W) at the module output; `get tx` does not measure that
+output. Ebyte specifies that chip drive must not exceed 9 dBm.
+
+The 33S targets now enforce a 9 dBm maximum in every firmware role and clamp
+higher saved settings on startup. Earlier repeater and room-server releases,
+including 1.18.0.1, set a 9 dBm default without enforcing that maximum.
+When checking one of those older installations, use `get tx`; do not increase
+it above 9 to troubleshoot weak output. See the
+[Ebyte module specification](https://www.ebyte.com/product/2147.html).
+
+Ikoka Nano, Stick and Handheld 30 dBm targets also enforce their established
+20 dBm chip-drive limit in every role. This is their amplifier distortion
+limit, separate from the 33S module's 9 dBm safety ceiling.
+
 [WARN] **WARNING: Set these values at your own risk. Incorrect power settings can permanently damage your radio hardware.**
 
 | Device / Model                                                                     | Region / Description                | In-App Setting (dBm) | Target Radio Output    | Notes                                                                                                                                          |
@@ -998,7 +1014,7 @@ For companion radios, you can set these radios' transmit power in the smartphone
 |                                                                                    | EU868  Max at 1dB compression point | 15 dBm               | 34.5 dBm (2.82W)       | 1dB compression point                                                                                                                          |
 |                                                                                    | US915 1W Output                     | 10 dBm               | 1W                     | Refer to your local government's requirements                                                                                                  | 
 |                                                                                    | EU868 1W Output                     | 9 dBm                | 1W                     | Refer to your local government's requirements                                                                                                  |
-| **Ikoka Stick E22-900M30S**                                                        | 1W Model                            | 19 dBm               | 1W                     | **DO NOT EXCEED** (Risk of burn out) [data sheet](https://www.cdebyte.com/pdf-down.aspx?id=4216)                                               |
+| **Ikoka Nano / Stick / Handheld E22-900M30S**                                      | 1W Model                            | 20 dBm               | ~1W                    | Firmware caps chip drive at 20 dBm to avoid PA distortion. |
 | **Ikoka Stick E22-900M33S**                                                        | 2W Model                            | 9 dBm                | 2W                     | **DO NOT EXCEED** (Risk of burn out) [data sheet](https://www.cdebyte.com/pdf-down.aspx?id=4216) Refer to your local government's requirements |
 | **Heltec V4**                                                                      | Standard Output                     | 10 dBm               | 22 dBm (~0.15W)        |                                                                                                                                                |
 |                                                                                    | High Output                         | 22 dBm               | 28 dBm (~0.5W to 0.6W) |                                                                                                                                                |
