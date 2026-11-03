@@ -2,6 +2,7 @@
 
 #include <Ed25519.h>
 #include <Mesh.h>
+#include <helpers/AdvertDataLayout.h>
 #include <helpers/ClockSyncUtils.h>
 #include <helpers/FloodAdvertCLI.h>
 #include <helpers/StaticPoolPacketManager.h>
@@ -1831,6 +1832,7 @@ public:
   mesh::StaticFloodAdvertLimiter<4> limiter;
   unsigned advert_callbacks = 0;
   unsigned forwarding_checks = 0;
+  std::vector<uint8_t> last_advert_data;
   using TraceTestMesh::TraceTestMesh;
   mesh::FloodAdvertLimiter* getFloodAdvertLimiter() override { return &limiter; }
   bool allowPacketForward(const mesh::Packet* packet) override {
@@ -1838,7 +1840,10 @@ public:
     return TraceTestMesh::allowPacketForward(packet);
   }
   void onAdvertRecv(mesh::Packet*, const mesh::Identity&, uint32_t,
-                    const uint8_t*, size_t) override { ++advert_callbacks; }
+                    const uint8_t* app_data, size_t app_data_len) override {
+    ++advert_callbacks;
+    last_advert_data.assign(app_data, app_data + app_data_len);
+  }
 };
 
 class AdvertReceiveLimit : public ::testing::Test {
@@ -1873,6 +1878,34 @@ protected:
     tables.seen = seen;
     auto packet = advert(seq, hops);
     return node.receivePacket(&packet);
+  }
+  void resetReceiveObservations() {
+    tables.seen = false;
+    tables.was_seen_calls = tables.mark_seen_calls = 0;
+    node.advert_callbacks = node.forwarding_checks = 0;
+    node.last_advert_data.clear();
+    node.limiter.reset();
+    g_mock_ed25519_verify_result = true;
+    g_mock_ed25519_verify_calls = 0;
+  }
+  mesh::Packet routedAdvert(uint8_t route, uint8_t hops, uint8_t hash_size) {
+    auto packet = advert(1, hops, hash_size);
+    packet.header = route | (PAYLOAD_TYPE_ADVERT << PH_TYPE_SHIFT);
+    packet.transport_codes[0] = 0x1234;
+    packet.transport_codes[1] = 0x5678;
+    memcpy(packet.path, node.self_id.pub_key, hash_size);
+    return packet;
+  }
+  void expectPacketUnchanged(const mesh::Packet& before, const mesh::Packet& after) {
+    EXPECT_EQ(before.header, after.header);
+    EXPECT_EQ(before.path_len, after.path_len);
+    EXPECT_EQ(0, memcmp(before.path, after.path, sizeof(before.path)));
+    EXPECT_EQ(before.payload_len, after.payload_len);
+    EXPECT_EQ(0, memcmp(before.payload, after.payload, before.payload_len));
+    EXPECT_EQ(before.transport_codes[0], after.transport_codes[0]);
+    EXPECT_EQ(before.transport_codes[1], after.transport_codes[1]);
+    EXPECT_EQ(before.forwarded, after.forwarded);
+    EXPECT_EQ(before.flood_retry_policy, after.flood_retry_policy);
   }
 };
 
@@ -1935,12 +1968,184 @@ TEST_F(AdvertReceiveLimit, MinimumAdvertPayloadRemainsAcceptedAcrossRoutes) {
         const bool forward = packet.isRouteFlood() || direct_relay;
         EXPECT_EQ(forward, node.receivePacket(&packet) != ACTION_RELEASE);
         EXPECT_EQ(forward ? 1U : 0U, node.forwarding_checks);
-        EXPECT_EQ(direct_relay ? 0U : 1U, g_mock_ed25519_verify_calls);
+        EXPECT_EQ(1U, g_mock_ed25519_verify_calls);
         EXPECT_EQ(direct_relay ? 0U : 1U, node.advert_callbacks);
         EXPECT_EQ(1U, tables.was_seen_calls);
         EXPECT_EQ(1, tables.mark_seen_calls);
         EXPECT_EQ(direct_relay ? 1 : (packet.isRouteFlood() ? hops + 1 : 0),
                   packet.getPathHashCount());
+      }
+    }
+  }
+}
+
+TEST_F(AdvertReceiveLimit, ForgedTransitDirectAdvertsCannotChangeRoutingState) {
+  for (uint8_t route : {ROUTE_TYPE_DIRECT, ROUTE_TYPE_TRANSPORT_DIRECT}) {
+    for (uint8_t hash_size = 1; hash_size <= 3; ++hash_size) {
+      for (uint8_t hops : {1, 2}) {
+        SCOPED_TRACE(::testing::Message() << "route=" << unsigned(route)
+            << " hash_size=" << unsigned(hash_size) << " hops=" << unsigned(hops));
+        resetReceiveObservations();
+        auto packet = routedAdvert(route, hops, hash_size);
+        const auto before = packet;
+        g_mock_ed25519_verify_result = false;
+        EXPECT_EQ(ACTION_RELEASE, node.receivePacket(&packet));
+        EXPECT_EQ(1U, g_mock_ed25519_verify_calls);
+        EXPECT_EQ(1U, tables.was_seen_calls);
+        EXPECT_EQ(0, tables.mark_seen_calls);
+        EXPECT_FALSE(tables.seen);
+        EXPECT_EQ(0U, node.forwarding_checks);
+        EXPECT_EQ(0U, node.advert_callbacks);
+        EXPECT_EQ(0, manager.getOutboundTotal());
+        expectPacketUnchanged(before, packet);
+
+        // A forged first copy must not poison duplicate suppression for an
+        // authentic copy of the same advert and route.
+        g_mock_ed25519_verify_result = true;
+        EXPECT_NE(ACTION_RELEASE, node.receivePacket(&packet));
+        EXPECT_EQ(2U, g_mock_ed25519_verify_calls);
+        EXPECT_EQ(1, tables.mark_seen_calls);
+        EXPECT_EQ(1U, node.forwarding_checks);
+        EXPECT_EQ(0U, node.advert_callbacks); // Transit does not deliver locally.
+        EXPECT_EQ(hops - 1, packet.getPathHashCount());
+      }
+    }
+  }
+}
+
+TEST_F(AdvertReceiveLimit, DirectDuplicatesAndUnrelatedNextHopsAvoidSignatureWork) {
+  for (uint8_t route : {ROUTE_TYPE_DIRECT, ROUTE_TYPE_TRANSPORT_DIRECT}) {
+    for (uint8_t hash_size = 1; hash_size <= 3; ++hash_size) {
+      for (bool matching_next_hop : {false, true}) {
+        for (bool seen : {false, true}) {
+          if (matching_next_hop && !seen) continue;
+          SCOPED_TRACE(::testing::Message() << "route=" << unsigned(route)
+              << " hash_size=" << unsigned(hash_size)
+              << " matching_next_hop=" << matching_next_hop << " seen=" << seen);
+          resetReceiveObservations();
+          tables.seen = seen;
+          auto packet = routedAdvert(route, 2, hash_size);
+          if (!matching_next_hop) packet.path[0] ^= 0x80;
+          const auto before = packet;
+          g_mock_ed25519_verify_result = false;
+          EXPECT_EQ(ACTION_RELEASE, node.receivePacket(&packet));
+          EXPECT_EQ(0U, g_mock_ed25519_verify_calls);
+          EXPECT_EQ(matching_next_hop ? 1U : 0U, tables.was_seen_calls);
+          EXPECT_EQ(0, tables.mark_seen_calls);
+          EXPECT_EQ(seen, tables.seen);
+          EXPECT_EQ(0U, node.forwarding_checks);
+          EXPECT_EQ(0U, node.advert_callbacks);
+          EXPECT_EQ(0, manager.getOutboundTotal());
+          expectPacketUnchanged(before, packet);
+        }
+      }
+    }
+  }
+}
+
+TEST_F(AdvertReceiveLimit, OversizedAdvertsCannotBypassBoundsThroughDirectRoutes) {
+  const size_t header_len = PUB_KEY_SIZE + sizeof(uint32_t) + SIGNATURE_SIZE;
+  for (size_t length = header_len + MAX_ADVERT_DATA_SIZE + 1;
+       length <= MAX_PACKET_PAYLOAD; ++length) {
+    for (uint8_t route : {ROUTE_TYPE_FLOOD, ROUTE_TYPE_TRANSPORT_FLOOD,
+                           ROUTE_TYPE_DIRECT, ROUTE_TYPE_TRANSPORT_DIRECT}) {
+      for (uint8_t hash_size = 1; hash_size <= 3; ++hash_size) {
+        for (uint8_t hops : {0, 2}) {
+          SCOPED_TRACE(::testing::Message() << "payload_len=" << length
+              << " route=" << unsigned(route) << " hash_size=" << unsigned(hash_size)
+              << " hops=" << unsigned(hops));
+          resetReceiveObservations();
+          auto packet = routedAdvert(route, hops, hash_size);
+          memset(packet.payload + header_len, 0, MAX_PACKET_PAYLOAD - header_len);
+          packet.payload_len = length;
+          const auto before = packet;
+          EXPECT_EQ(ACTION_RELEASE, node.receivePacket(&packet));
+          EXPECT_EQ(0U, g_mock_ed25519_verify_calls);
+          EXPECT_EQ(0U, tables.was_seen_calls);
+          EXPECT_EQ(0, tables.mark_seen_calls);
+          EXPECT_FALSE(tables.seen);
+          EXPECT_EQ(0U, node.forwarding_checks);
+          EXPECT_EQ(0U, node.advert_callbacks);
+          EXPECT_EQ(0, manager.getOutboundTotal());
+          expectPacketUnchanged(before, packet);
+        }
+      }
+    }
+  }
+}
+
+TEST_F(AdvertReceiveLimit, EveryTruncatedOptionalPrefixStopsBeforeRouting) {
+  const size_t header_len = PUB_KEY_SIZE + sizeof(uint32_t) + SIGNATURE_SIZE;
+  for (unsigned options = 0; options < 16; ++options) {
+    const uint8_t flags = (options << 4) | ADV_TYPE_CHAT;
+    const size_t prefix_len = 1 + ((flags & ADV_LATLON_MASK) ? 8 : 0)
+        + ((flags & ADV_FEAT1_MASK) ? 2 : 0) + ((flags & ADV_FEAT2_MASK) ? 2 : 0);
+    for (size_t length = 1; length < prefix_len; ++length) {
+      for (uint8_t route : {ROUTE_TYPE_FLOOD, ROUTE_TYPE_TRANSPORT_FLOOD,
+                             ROUTE_TYPE_DIRECT, ROUTE_TYPE_TRANSPORT_DIRECT}) {
+        for (uint8_t hash_size = 1; hash_size <= 3; ++hash_size) {
+          for (uint8_t hops : {0, 2}) {
+            SCOPED_TRACE(::testing::Message() << "flags=" << unsigned(flags)
+                << " app_length=" << length << " route=" << unsigned(route)
+                << " hash_size=" << unsigned(hash_size) << " hops=" << unsigned(hops));
+            resetReceiveObservations();
+            auto packet = routedAdvert(route, hops, hash_size);
+            memset(packet.payload + header_len, 0x6E, MAX_ADVERT_DATA_SIZE);
+            packet.payload[header_len] = flags;
+            packet.payload_len = header_len + length;
+            const auto before = packet;
+            EXPECT_EQ(ACTION_RELEASE, node.receivePacket(&packet));
+            EXPECT_EQ(0U, g_mock_ed25519_verify_calls);
+            EXPECT_EQ(0U, tables.was_seen_calls);
+            EXPECT_EQ(0, tables.mark_seen_calls);
+            EXPECT_FALSE(tables.seen);
+            EXPECT_EQ(0U, node.forwarding_checks);
+            EXPECT_EQ(0U, node.advert_callbacks);
+            EXPECT_EQ(0, manager.getOutboundTotal());
+            expectPacketUnchanged(before, packet);
+          }
+        }
+      }
+    }
+  }
+}
+
+TEST_F(AdvertReceiveLimit, CompleteOptionalPrefixesAndMaximumFutureMetadataRemainValid) {
+  const size_t header_len = PUB_KEY_SIZE + sizeof(uint32_t) + SIGNATURE_SIZE;
+  for (unsigned options = 0; options < 16; ++options) {
+    for (uint8_t type = ADV_TYPE_NONE; type <= 15; ++type) {
+      const uint8_t flags = (options << 4) | type;
+      const size_t prefix_len = 1 + ((flags & ADV_LATLON_MASK) ? 8 : 0)
+          + ((flags & ADV_FEAT1_MASK) ? 2 : 0) + ((flags & ADV_FEAT2_MASK) ? 2 : 0);
+      // A name flag with no remaining name bytes is wire-compatible. At the
+      // upper bound the name and future feature values remain opaque bytes.
+      for (size_t length : {prefix_len, size_t(MAX_ADVERT_DATA_SIZE)}) {
+        for (uint8_t route : {ROUTE_TYPE_FLOOD, ROUTE_TYPE_TRANSPORT_FLOOD,
+                               ROUTE_TYPE_DIRECT, ROUTE_TYPE_TRANSPORT_DIRECT}) {
+          for (uint8_t hops : {0, 2}) {
+            SCOPED_TRACE(::testing::Message() << "flags=" << unsigned(flags)
+                << " app_length=" << length << " route=" << unsigned(route)
+                << " hops=" << unsigned(hops));
+            resetReceiveObservations();
+            auto packet = routedAdvert(route, hops, 3);
+            memset(packet.payload + header_len, 'N', MAX_ADVERT_DATA_SIZE);
+            packet.payload[header_len] = flags;
+            packet.payload_len = header_len + length;
+            const std::vector<uint8_t> metadata(packet.payload + header_len,
+                                               packet.payload + packet.payload_len);
+            const bool direct_relay = packet.isRouteDirect() && hops > 0;
+            const bool forwards = packet.isRouteFlood() || direct_relay;
+            EXPECT_EQ(forwards, node.receivePacket(&packet) != ACTION_RELEASE);
+            EXPECT_EQ(1U, g_mock_ed25519_verify_calls);
+            EXPECT_EQ(1U, tables.was_seen_calls);
+            EXPECT_EQ(1, tables.mark_seen_calls);
+            EXPECT_EQ(forwards ? 1U : 0U, node.forwarding_checks);
+            EXPECT_EQ(direct_relay ? 0U : 1U, node.advert_callbacks);
+            if (!direct_relay) EXPECT_EQ(metadata, node.last_advert_data);
+            EXPECT_EQ(0, memcmp(metadata.data(), packet.payload + header_len, length));
+            EXPECT_FALSE(node.limiter.isBad(packet.payload, clock.now));
+          }
+        }
       }
     }
   }

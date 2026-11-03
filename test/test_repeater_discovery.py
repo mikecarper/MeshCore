@@ -455,7 +455,7 @@ class RepeaterDiscoveryTests(unittest.TestCase):
         for text, name in (
             (source, "CTL_TYPE_NODE_DISCOVER_REQ"),
             (source, "CTL_TYPE_NODE_DISCOVER_RESP"),
-            ((ROOT / "src/helpers/AdvertDataHelpers.h").read_text(), "ADV_TYPE_REPEATER"),
+            ((ROOT / "src/helpers/AdvertDataLayout.h").read_text(), "ADV_TYPE_REPEATER"),
             ((ROOT / "src/MeshCore.h").read_text(), "PUB_KEY_SIZE"),
             ((ROOT / "src/Packet.h").read_text(), "PAYLOAD_TYPE_CONTROL"),
             ((ROOT / "src/Packet.h").read_text(), "PAYLOAD_TYPE_OTA"),

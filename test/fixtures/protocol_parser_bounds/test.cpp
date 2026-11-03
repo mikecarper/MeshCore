@@ -357,6 +357,8 @@ static void checkAnonymousDispatch() {
 
 static void checkAdverts() {
   const uint8_t one_byte = ADV_NAME_MASK;
+  require(AdvertDataLayout::hasCompletePrefix(nullptr, 0), "optional metadata rejected");
+  require(!AdvertDataLayout::hasCompletePrefix(nullptr, 1), "null metadata prefix accepted");
   require(!AdvertDataParser(nullptr, 0).isValid(), "null advert accepted");
   require(!AdvertDataParser(nullptr, 1).isValid(), "null nonempty advert accepted");
   require(!AdvertDataParser(&one_byte, MAX_ADVERT_DATA_SIZE + 1).isValid(), "oversized advert accepted");
@@ -367,6 +369,9 @@ static void checkAdverts() {
     for (size_t length = 0; length <= MAX_ADVERT_DATA_SIZE; ++length) {
       std::vector<uint8_t> bytes(length, 'x');
       if (length) bytes[0] = flags;
+      require(AdvertDataLayout::hasCompletePrefix(bytes.data(), length)
+                  == (length == 0 || length >= required),
+              "wire metadata prefix boundary rejected incorrectly");
       AdvertDataParser parser(bytes.data(), length);
       require(parser.isValid() == (length >= required), "advert field boundary rejected incorrectly");
       if (parser.isValid()) {

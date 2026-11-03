@@ -8,6 +8,16 @@
 // keep each native test executable on the same production implementation.
 #include "../../src/helpers/AdvertDataHelpers.cpp"
 
+TEST(AdvertDataLayout, AllowsOptionalEmptyMetadataButRejectsMissingNonemptyBytes) {
+  EXPECT_TRUE(AdvertDataLayout::hasCompletePrefix(nullptr, 0));
+  EXPECT_FALSE(AdvertDataLayout::hasCompletePrefix(nullptr, 1));
+  const uint8_t flags = ADV_NAME_MASK;
+  EXPECT_TRUE(AdvertDataLayout::hasCompletePrefix(&flags, 0));
+  EXPECT_TRUE(AdvertDataLayout::hasCompletePrefix(&flags, 1));
+  // The wire-level empty case must not change the local metadata parser.
+  EXPECT_FALSE(AdvertDataParser(&flags, 0).isValid());
+}
+
 TEST(AdvertDataParser, RejectsNullEmptyAndOversizedInputsBeforeReading) {
   EXPECT_FALSE(AdvertDataParser(nullptr, 0).isValid());
   EXPECT_FALSE(AdvertDataParser(nullptr, 1).isValid());
@@ -103,6 +113,9 @@ TEST(AdvertDataParser, AllFlagAndLengthCombinationsStayWithinSuppliedBytes) {
     for (size_t length = 0; length <= MAX_ADVERT_DATA_SIZE; ++length) {
       std::vector<uint8_t> bytes(length, 'x');
       if (length) bytes[0] = static_cast<uint8_t>(flags);
+      EXPECT_EQ(length == 0 || length >= required,
+                AdvertDataLayout::hasCompletePrefix(bytes.data(), length))
+          << "flags=" << flags << " length=" << length;
       AdvertDataParser parser(bytes.data(), static_cast<uint8_t>(length));
       EXPECT_EQ(length >= required, parser.isValid())
           << "flags=" << flags << " length=" << length;

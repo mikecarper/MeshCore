@@ -7088,6 +7088,11 @@ USB logging remains independent. On images with both outputs,
 
 #### View or change MQTT advert signature filtering
 
+LoRa relay validation is always enabled and does not depend on this setting.
+Flood and routed-direct adverts must have a complete 100-132 byte payload,
+enough bytes for their flagged optional fields, and a valid Ed25519 signature.
+Empty metadata remains valid.
+
 **Usage:**
 
 - `get mqtt.advert.verify`

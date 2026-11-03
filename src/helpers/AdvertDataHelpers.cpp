@@ -48,13 +48,9 @@ bool AdvertDataParser::isValidName(const char *n) {
     if (app_data == nullptr || app_data_len == 0 || app_data_len > MAX_ADVERT_DATA_SIZE) return;
 
     _flags = app_data[0];
-    const size_t prefix_len = 1
-        + ((_flags & ADV_LATLON_MASK) ? sizeof(_lat) + sizeof(_lon) : 0)
-        + ((_flags & ADV_FEAT1_MASK) ? sizeof(_extra1) : 0)
-        + ((_flags & ADV_FEAT2_MASK) ? sizeof(_extra2) : 0);
     // Validate the complete fixed prefix before copying any optional fields.
     // This also preserves the defaults if a later field is truncated.
-    if (app_data_len < prefix_len) return;
+    if (!AdvertDataLayout::hasCompletePrefix(app_data, app_data_len)) return;
 
     size_t i = 1;
     if (_flags & ADV_LATLON_MASK) {

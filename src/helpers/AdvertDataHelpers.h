@@ -3,18 +3,7 @@
 #include <stddef.h>
 #include <stdint.h>
 #include <Mesh.h>
-
-#define ADV_TYPE_NONE         0
-#define ADV_TYPE_CHAT         1
-#define ADV_TYPE_REPEATER     2
-#define ADV_TYPE_ROOM         3
-#define ADV_TYPE_SENSOR       4
-//FUTURE: 5..15
-
-#define ADV_LATLON_MASK       0x10
-#define ADV_FEAT1_MASK        0x20   // FUTURE
-#define ADV_FEAT2_MASK        0x40   // FUTURE
-#define ADV_NAME_MASK         0x80
+#include <helpers/AdvertDataLayout.h>
 
 class AdvertDataBuilder {
   uint8_t _type;

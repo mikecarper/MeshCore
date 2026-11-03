@@ -1,4 +1,6 @@
 #include "Mesh.h"
+#include <helpers/AdvertDataLayout.h>
+#include <helpers/AdvertSignature.h>
 #include <helpers/ManagementReport.h>
 #include <SHA256.h>
 #ifdef ESP_PLATFORM
@@ -59,6 +61,14 @@ static bool hasValidEncryptedPayloadLength(uint16_t payload_len, uint16_t clear_
   const uint16_t overhead = clear_prefix_len + CIPHER_MAC_SIZE;
   if (payload_len < overhead + CIPHER_BLOCK_SIZE) return false;
   return ((payload_len - overhead) % CIPHER_BLOCK_SIZE) == 0;
+}
+
+static bool verifyAdvertSignature(const Packet* packet, const Identity& identity) {
+  uint8_t message[AdvertSignature::kMaxMessageLen];
+  const uint8_t* signature;
+  const int message_len = AdvertSignature::buildMessage(
+      packet->payload, packet->payload_len, message, &signature);
+  return message_len >= 0 && identity.verify(signature, message, message_len);
 }
 
 bool Mesh::isTelemetryHistoryPayload(const Packet* packet) {
@@ -1144,11 +1154,24 @@ int Mesh::searchChannelsByHash(const uint8_t* hash, GroupChannel channels[], int
 }
 
 DispatcherAction Mesh::onRecvPacket(Packet* pkt) {
-  const size_t min_advert_len = PUB_KEY_SIZE + sizeof(uint32_t) + SIGNATURE_SIZE;
-  // Reject incomplete adverts before direct forwarding or retry/echo observers.
-  if (pkt->getPayloadType() == PAYLOAD_TYPE_ADVERT && pkt->payload_len < min_advert_len) {
-    MESH_DEBUG_PRINTLN("%s Mesh::onRecvPacket(): incomplete advertisement packet", getLogDateTime());
-    return ACTION_RELEASE;
+  const bool is_advert = pkt->getPayloadType() == PAYLOAD_TYPE_ADVERT;
+  // Reject malformed adverts before direct forwarding or retry/echo observers.
+  if (is_advert) {
+    if (pkt->payload_len < AdvertSignature::kHeaderLen) {
+      MESH_DEBUG_PRINTLN("%s Mesh::onRecvPacket(): incomplete advertisement packet", getLogDateTime());
+      return ACTION_RELEASE;
+    }
+    // Every application byte must fit in the complete signed message.
+    if (pkt->payload_len > AdvertSignature::kHeaderLen + MAX_ADVERT_DATA_SIZE) {
+      MESH_DEBUG_PRINTLN("%s Mesh::onRecvPacket(): oversized advertisement packet", getLogDateTime());
+      return ACTION_RELEASE;
+    }
+    if (!AdvertDataLayout::hasCompletePrefix(
+            pkt->payload + AdvertSignature::kHeaderLen,
+            pkt->payload_len - AdvertSignature::kHeaderLen)) {
+      MESH_DEBUG_PRINTLN("%s Mesh::onRecvPacket(): truncated advertisement fields", getLogDateTime());
+      return ACTION_RELEASE;
+    }
   }
 
   // Trace and control payloads are direct-only.  Dispatcher enforces this for
@@ -1230,7 +1253,18 @@ DispatcherAction Mesh::onRecvPacket(Packet* pkt) {
       // heard before all planned hops are consumed. Only stop forwarding once
       // this node proves it can decrypt the payload.
       removePathPrefix(pkt, pkt->getPathHashCount());
-    } else if (self_id.isHashMatch(pkt->path, pkt->getPathHashSize()) || maybeShortCircuitDirect(pkt)) {
+    } else if (self_id.isHashMatch(pkt->path, pkt->getPathHashSize())
+        || (!is_advert && maybeShortCircuitDirect(pkt))) {
+      if (is_advert) {
+        // Adverts do not use path shortcuts. Only the intended next hop pays
+        // for signature verification, and known duplicates remain cheap.
+        if (_tables->wasSeen(pkt)) return ACTION_RELEASE;
+        const Identity id(pkt->payload);
+        if (!verifyAdvertSignature(pkt, id)) {
+          MESH_DEBUG_PRINTLN("%s Mesh::onRecvPacket(): forged routed advertisement", getLogDateTime());
+          return ACTION_RELEASE;
+        }
+      }
       if (allowPacketForward(pkt)) {
         pkt->forwarded = true;
         const uint32_t d = getDirectRetransmitDelay(pkt);
@@ -1245,7 +1279,7 @@ DispatcherAction Mesh::onRecvPacket(Packet* pkt) {
           return ACTION_RELEASE;
         }
 
-        if (!_tables->wasSeen(pkt)) {
+        if (is_advert || !_tables->wasSeen(pkt)) {
           _tables->markSeen(pkt);
           bool final_hop_retry = pkt->getPathHashCount() == 1
               && pkt->getPayloadType() == PAYLOAD_TYPE_TXT_MSG
@@ -1430,21 +1464,13 @@ DispatcherAction Mesh::onRecvPacket(Packet* pkt) {
       break;
     }
     case PAYLOAD_TYPE_ADVERT: {
-      // Do not accept unsigned trailing data by truncating it for signature
-      // verification. An attacker could vary that tail to manufacture distinct
-      // packet hashes and falsely accumulate abuse against an authentic key.
-      if (pkt->payload_len > min_advert_len + MAX_ADVERT_DATA_SIZE) {
-        MESH_DEBUG_PRINTLN("%s Mesh::onRecvPacket(): oversized advertisement packet", getLogDateTime());
-        break;
-      }
-
       int i = 0;
       Identity id;
       memcpy(id.pub_key, &pkt->payload[i], PUB_KEY_SIZE); i += PUB_KEY_SIZE;
 
       uint32_t timestamp;
       memcpy(&timestamp, &pkt->payload[i], 4); i += 4;
-      const uint8_t* signature = &pkt->payload[i]; i += SIGNATURE_SIZE;
+      i += SIGNATURE_SIZE;
 
       if (self_id.matches(id.pub_key)) {
         MESH_DEBUG_PRINTLN("%s Mesh::onRecvPacket(): receiving SELF advert packet", getLogDateTime());
@@ -1464,18 +1490,7 @@ DispatcherAction Mesh::onRecvPacket(Packet* pkt) {
         uint8_t* app_data = &pkt->payload[i];
         int app_data_len = pkt->payload_len - i;
 
-        // check that signature is valid
-        bool is_ok;
-        {
-          uint8_t message[PUB_KEY_SIZE + 4 + MAX_ADVERT_DATA_SIZE];
-          int msg_len = 0;
-          memcpy(&message[msg_len], id.pub_key, PUB_KEY_SIZE); msg_len += PUB_KEY_SIZE;
-          memcpy(&message[msg_len], &timestamp, 4); msg_len += 4;
-          memcpy(&message[msg_len], app_data, app_data_len); msg_len += app_data_len;
-
-          is_ok = id.verify(signature, message, msg_len);
-        }
-        if (is_ok) {
+        if (verifyAdvertSignature(pkt, id)) {
           MESH_DEBUG_PRINTLN("%s Mesh::onRecvPacket(): valid advertisement received!", getLogDateTime());
           if (limiter) {
             uint8_t hash[MAX_HASH_SIZE];

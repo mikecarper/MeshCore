@@ -90,7 +90,7 @@ def production_delayed_reply_inputs(work):
               "PAYLOAD_TYPE_ACK", "REQ_TYPE_GET_STATUS", "REQ_TYPE_GET_TELEMETRY_DATA",
               "TELEM_PERM_BASE", "ADV_TYPE_NONE", "ADV_TYPE_ROOM", "RESP_SERVER_LOGIN_OK")
     for relative in ("examples/companion_radio/MyMesh.h", "src/MeshCore.h", "src/Packet.h", "src/helpers/BaseChatMesh.h",
-                     "src/helpers/ContactInfo.h", "src/helpers/AdvertDataHelpers.h",
+                     "src/helpers/ContactInfo.h", "src/helpers/AdvertDataLayout.h",
                      "src/helpers/SensorManager.h"):
         text = (ROOT / relative).read_text()
         constants += "\n" + "\n".join(re.findall(
