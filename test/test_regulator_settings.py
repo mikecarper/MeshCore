@@ -1,6 +1,7 @@
 """Execute the real regulator settings and retained-platform implementations."""
 from pathlib import Path
 import os
+import re
 import shutil
 import subprocess
 import tempfile
@@ -273,7 +274,9 @@ class RegulatorSettingsTests(unittest.TestCase):
                 hook = 'mesh::power::beginRegulatorSettings(board, radio_driver, '
                 self.assertEqual(setup.count(hook),1)
                 self.assertLess(setup.index('board.begin()'),setup.index(hook))
-                self.assertLess(setup.index(hook),setup.index('radio_init()'))
+                radio_init = re.search(r'(?m)^\s*while\s*\([^;\n]*\bradio_init\s*\(\s*\)', setup)
+                self.assertIsNotNone(radio_init, f'{role} setup has no radio initialization loop')
+                self.assertLess(setup.index(hook), radio_init.start())
                 self.assertIn('beginRegulatorSettings(board, radio_driver, regulator_prefs_fs)',setup)
                 if role == 'companion_radio':
                     self.assertIn('store.isVolatilePrimaryFS()',setup)
