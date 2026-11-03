@@ -171,7 +171,7 @@ sections in the same atomic policy file. FULL room servers have 31 forward
 slots and empty repeater-only sections. Compact target profiles retain their
 separate FPF6-era controls. `flood.moderation` has 16 slots. A new
 repeater FPF7 table starts with `ota all suspend=tempradio` in slot 1 and an
-authenticated `#wardriving hops=5+` radio drop in slot 2, and an authenticated
+authenticated `#wardriving hops=3+` radio drop in slot 2, and an authenticated
 `#wardriving hops=all mode=bridge,cross` drop in slot 3. FULL room servers seed
 only the OTA row; their generalized engine also accepts transport-mode rules. `flood.moderation` starts empty. A row can opt into
 `suspend=tempradio`;
@@ -1244,8 +1244,9 @@ It covers every hop count, including zero-hop/local messages, flood routes and
 direct routes. It remains active during temporary-radio sessions and with
 `radio2.cross on`: enabling crossover makes a copy eligible, but does not
 override the filter. The second built-in rule still permits ordinary
-`#wardriving` forwarding through four received hops; the third rule keeps
-those messages on their originating radio profile.
+`#wardriving` forwarding through two received hops (the final retransmission
+has three path hops); the third rule keeps those messages on their originating
+radio profile.
 
 Bridge filtering runs in both directions before bridge deduplication, inbound
 queueing, serial writes, ESP-NOW queueing, or MQTT packet publication. It
@@ -1275,8 +1276,15 @@ On FULL room servers, add a transport rule explicitly; their factory table
 still has only the OTA row. Companions and compact FPF6 builds do not expose
 this generalized filter table.
 
-Saved tables, occupied slots, and deleted defaults are preserved on upgrade.
-To add the new default to an existing table without replacing another rule,
+A one-time upgrade changes the exact unchanged previous factory radio row
+(`#wardriving hops=5+`) to `hops=3+`, even if it was moved to another slot.
+Modified, disabled, or deleted rows are preserved, as are the other rules in
+the table. This permits reception through two hops and one final
+retransmission with three path hops. A later explicit choice of `hops=5+`
+is retained across reboots.
+
+The bridge/crossover row is not added to existing tables automatically.
+To add it without replacing another rule,
 omit the slot number (repeating the identical command reuses its row):
 
 ```text
@@ -1295,7 +1303,7 @@ The repeater's factory-seeded forwarding rows can be restored through the CLI:
 
 ```text
 set flood.rule.1 type=ota hops=all drop suspend=tempradio
-set flood.rule.2 type=any channel=#wardriving hops=5+ drop
+set flood.rule.2 type=any channel=#wardriving hops=3+ drop
 set flood.rule.3 type=any channel=#wardriving hops=all mode=bridge,cross drop
 ```
 
@@ -1303,7 +1311,7 @@ Or use the equivalent short forms:
 
 ```text
 set fr.1 ota d f=t
-set fr.2 any 5+ c=#wardriving d
+set fr.2 any 3+ c=#wardriving d
 set fr.3 any c=#wardriving m=bc d
 ```
 

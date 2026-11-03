@@ -4405,9 +4405,13 @@ set flood.rule.3 type=any channel=#wardriving hops=all mode=bridge,cross drop
 set flood.rule type=any channel=#wardriving hops=all mode=bridge,cross drop
 ```
 
-Saved tables are preserved on upgrade; new defaults are seeded only when the
-table is first initialized. Bridge/cross modes accept drop, rate, priority and
-stop actions; scope rewrites, retry actions and TX timing are rejected.
+New defaults are seeded when the table is first initialized. A one-time
+upgrade changes the exact unchanged previous `#wardriving hops=5+` factory
+radio row to `hops=3+`; modified, disabled, or deleted rows and all other saved
+rules are preserved. A later explicit choice of `hops=5+` survives reboot.
+The bridge/cross row is not added to existing tables automatically.
+Bridge/cross modes accept drop, rate, priority and stop actions; scope
+rewrites, retry actions and TX timing are rejected.
 These modes cover direct as well as flood packets, in both crossing directions.
 The default authenticates the channel key, avoiding false drops from short
 channel-hash collisions. FULL room servers support explicit transport rules;
@@ -4425,7 +4429,7 @@ blocks:
 
 ```text
 set flood.rule type=any channel=#test hops=all drop
-set flood.rule.2 type=any channel=#wardriving hops=5+ drop
+set flood.rule.2 type=any channel=#wardriving hops=3+ drop
 set flood.rule type=any channel=9cd8fcf22a47333b591d96a2b848b73f hops=4+ drop
 get flood.rule
 del flood.rule.2
@@ -5025,13 +5029,17 @@ Generalized repeaters also seed slot 2 with the authenticated `#wardriving`
 radio hop limit and slot 3 with the bridge/crossover block:
 
 ```text
-set flood.rule.2 type=any channel=#wardriving hops=5+ drop
+set flood.rule.2 type=any channel=#wardriving hops=3+ drop
 set flood.rule.3 type=any channel=#wardriving hops=all mode=bridge,cross drop
 ```
 
-These numbered commands replace those slots. Saved tables are preserved on
-upgrade; use the unnumbered third command to add the new rule without replacing
-an occupied slot. See [restoring the three defaults](flood_filtering.md#restore-the-factory-seeded-rows).
+These numbered commands replace those slots. The radio limit allows a packet
+received with up to two path hops to transmit once more with three path hops.
+A one-time upgrade changes only the exact unchanged previous `hops=5+`
+factory radio row to `hops=3+`; modified, disabled, or deleted rows and the
+rest of the table are preserved. A later explicit `hops=5+` choice is retained
+across reboots. Use an unnumbered command to add a missing rule without
+replacing an occupied slot. See [restoring the three defaults](flood_filtering.md#restore-the-factory-seeded-rows).
 
 **Remote-admin lockout warning:** There are no hidden payload-type or short-hop
 exceptions. FPF7 drop and rate rows may block `req`, `response`, `txt_msg`,

@@ -1282,7 +1282,7 @@
         tempRadio: "inactive",
       },
       {
-        ...documentedDropRule("wardriving-after-hop-4", "any", "5+", 220),
+        ...documentedDropRule("wardriving-after-hop-2", "any", "3+", 220),
         owner: "system",
         channel: "#wardriving",
       },

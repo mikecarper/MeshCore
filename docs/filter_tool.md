@@ -139,7 +139,7 @@ Four-byte paths remain unsupported.
       </button>
       <button type="button" data-example="factory">
         <span>Three defaults: OTA, distant #wardriving, and bridge/crossover #wardriving</span>
-        <code>when type=ota tempradio=inactive do drop<br>when channel=#wardriving hops=5+ do drop<br>when channel=#wardriving via=bridge,cross do drop</code>
+        <code>when type=ota tempradio=inactive do drop<br>when channel=#wardriving hops=3+ do drop<br>when channel=#wardriving via=bridge,cross do drop</code>
       </button>
       <button type="button" data-example="wildcards">
         <span>Set #BlackHole86 scope on login and bucket-matched other traffic</span>

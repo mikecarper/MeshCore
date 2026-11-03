@@ -222,6 +222,7 @@ static_assert(mesh::HostCliBridge::REMOTE_REPLY_MAX
 #define FLOOD_PACKET_FILTER_FILE      "/flood_filter"
 #define FLOOD_PACKET_FILTER_TEMP_FILE "/flood_filter.tmp"
 #define FLOOD_PACKET_FILTER_BACKUP_FILE "/flood_filter.bak"
+#define FLOOD_WARDRIVING_DEFAULTS_FILE  "/flood_wd2"
 #define FLOOD_PACKET_FILTER_BLACKLIST_FILE "/flood_filter_bl"
 #define FLOOD_CHANNEL_SCOPE_FILE      "/flood_ch_scope"
 #define FLOOD_CHANNEL_SCOPE_TEMP_FILE "/flood_ch_scope.tmp"
@@ -248,7 +249,7 @@ static const char FLOOD_CHANNEL_SCOPE_USAGE[] =
     "Err - use: set flood.channel.scope[.n] <match> <region|scope=name> [...]";
 #endif
 #ifndef DEFAULT_WARDRIVING_MAX_HOPS
-  #define DEFAULT_WARDRIVING_MAX_HOPS 4
+  #define DEFAULT_WARDRIVING_MAX_HOPS 2
 #endif
 
 #ifndef REPEATERS_CHANNEL_KEY_HEX
@@ -4118,7 +4119,9 @@ void MyMesh::begin(FILESYSTEM *fs) {
 #if !defined(PORTABLE_MQTT_OBSERVER)
 #if MESH_ENABLE_FLOOD_RULE_ENGINE
   bool flood_filters_loaded = loadFloodPacketFilters();
-  if (flood_filters_loaded) importLegacyFloodPolicySections();
+  if (flood_filters_loaded && importLegacyFloodPolicySections()) {
+    migrateDefaultWardrivingFilter();
+  }
 #else
   loadFloodPacketFilterBlacklist();
   bool flood_filters_loaded = loadFloodPacketFilters();
@@ -6663,6 +6666,28 @@ static void formatFloodModerationPath(
     char* dest, size_t dest_len, uint8_t hash_size, uint8_t path_hops,
     const uint8_t path[FLOOD_GROUP_MODERATION_PATH_BYTES_MAX]);
 
+#if MESH_ENABLE_FLOOD_RULE_ENGINE
+template<typename Entry>
+static void seedWardrivingFloodPacketFilter(Entry& entry, uint8_t min_hops) {
+  memset(&entry, 0, sizeof(entry));
+  entry.active = true;
+  entry.payload_type = FLOOD_PACKET_FILTER_ANY_TYPE;
+  entry.min_hops = min_hops;
+  entry.max_hops = FLOOD_PACKET_FILTER_MAX_HOPS;
+  entry.channel_key_len = CIPHER_KEY_SIZE;
+  mesh::Utils::sha256(
+      entry.channel_secret, CIPHER_KEY_SIZE,
+      (const uint8_t*)DEFAULT_WARDRIVING_CHANNEL,
+      strlen(DEFAULT_WARDRIVING_CHANNEL));
+  mesh::Utils::sha256(
+      &entry.channel_hash, sizeof(entry.channel_hash),
+      entry.channel_secret, entry.channel_key_len);
+  StrHelper::strncpy(entry.channel_name, DEFAULT_WARDRIVING_CHANNEL,
+                     sizeof(entry.channel_name));
+  entry.drop_on_match = true;
+}
+#endif
+
 void MyMesh::seedDefaultFloodPacketFilters() {
   // Slots 0, 1 and 2 carry the built-in defaults; without a table there is
   // nothing to seed and the node forwards unfiltered.
@@ -6681,22 +6706,7 @@ void MyMesh::seedDefaultFloodPacketFilters() {
   // authentication limits this any-type row to GRP_TXT and GRP_DATA packets.
   if (flood_packet_filter_slots < 2) return;
   auto& wardriving = flood_packet_filters[1];
-  memset(&wardriving, 0, sizeof(wardriving));
-  wardriving.active = true;
-  wardriving.payload_type = FLOOD_PACKET_FILTER_ANY_TYPE;
-  wardriving.min_hops = DEFAULT_WARDRIVING_MAX_HOPS + 1;
-  wardriving.max_hops = FLOOD_PACKET_FILTER_MAX_HOPS;
-  wardriving.channel_key_len = CIPHER_KEY_SIZE;
-  mesh::Utils::sha256(
-      wardriving.channel_secret, CIPHER_KEY_SIZE,
-      (const uint8_t*)DEFAULT_WARDRIVING_CHANNEL,
-      strlen(DEFAULT_WARDRIVING_CHANNEL));
-  mesh::Utils::sha256(
-      &wardriving.channel_hash, sizeof(wardriving.channel_hash),
-      wardriving.channel_secret, wardriving.channel_key_len);
-  StrHelper::strncpy(wardriving.channel_name, DEFAULT_WARDRIVING_CHANNEL,
-                     sizeof(wardriving.channel_name));
-  wardriving.drop_on_match = true;
+  seedWardrivingFloodPacketFilter(wardriving, DEFAULT_WARDRIVING_MAX_HOPS + 1);
 
   // Bridge admission is independent of the ordinary LoRa hop limit. Use the
   // same authenticated channel identity, including zero-hop/local messages.
@@ -6714,6 +6724,52 @@ static_assert(CIPHER_KEY_SIZE == FloodFilterPolicy::CHANNEL_KEY_128_LEN,
               "flood rule 128-bit key encoding changed");
 static_assert(PUB_KEY_SIZE == FloodFilterPolicy::CHANNEL_KEY_256_LEN,
               "flood rule 256-bit key encoding changed");
+
+bool MyMesh::migrateDefaultWardrivingFilter() {
+#if DEFAULT_WARDRIVING_MAX_HOPS == 2
+  // Wait until legacy policy sections have joined the authoritative image.
+  // Saving here before that import could hide an operator's older settings.
+  if (_fs == NULL || !flood_policy_has_embedded_sections
+      || flood_packet_filter_slots == 0) return true;
+  // This is an upgrade, not a permanent rewrite rule. An operator can choose
+  // the old 5+ limit again after this device has completed the migration.
+  if (_fs->exists(FLOOD_WARDRIVING_DEFAULTS_FILE)) return true;
+
+  FloodPacketFilterEntry previous_default;
+  seedWardrivingFloodPacketFilter(previous_default, 5);
+  uint64_t changed_slots = 0;
+  for (uint8_t i = 0; i < flood_packet_filter_slots; i++) {
+    auto& entry = flood_packet_filters[i];
+    // Include every configured field, including channel identity, extensions
+    // and transport. Runtime counters and struct padding are not settings.
+    if (FloodFilterPolicy::sameRuleConfiguration(entry, previous_default)) {
+      entry.min_hops = DEFAULT_WARDRIVING_MAX_HOPS + 1;
+      changed_slots |= uint64_t(1) << i;
+    }
+  }
+  if (changed_slots != 0 && !saveFloodPacketFilters()) {
+    for (uint8_t i = 0; i < flood_packet_filter_slots; i++) {
+      if (changed_slots & (uint64_t(1) << i)) {
+        flood_packet_filters[i].min_hops = previous_default.min_hops;
+      }
+    }
+    MESH_DEBUG_PRINTLN("default wardriving hop migration save failed");
+    return false;
+  }
+  // Only presence is recorded; an empty file is intentional. Create it after
+  // the policy commit, including when the table was already customized, so a
+  // later explicit 5+ choice survives reboot. A reset before this point is
+  // harmless: the next boot rechecks the committed policy before marking it.
+  File marker = openFloodSettingsWrite(_fs, FLOOD_WARDRIVING_DEFAULTS_FILE);
+  if (!marker) {
+    MESH_DEBUG_PRINTLN("default wardriving hop migration marker failed");
+    return false;
+  }
+  marker.close();
+  if (!_fs->exists(FLOOD_WARDRIVING_DEFAULTS_FILE)) return false;
+#endif
+  return true;
+}
 
 bool MyMesh::loadFloodPacketFilters() {
   if (flood_packet_filter_slots == 0) return false;

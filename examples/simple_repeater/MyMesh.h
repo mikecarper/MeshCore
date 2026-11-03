@@ -1046,6 +1046,7 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks
   bool saveFloodPacketFilters(bool empty_scope_phase = false,
                               bool empty_forward_phase = false);
 #if MESH_ENABLE_FLOOD_RULE_ENGINE
+  bool migrateDefaultWardrivingFilter();
   bool migrateLegacyFloodChannelBlocks();
   bool migrateLegacyFloodChannelData();
   bool importLegacyFloodPolicySections();

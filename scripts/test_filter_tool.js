@@ -466,13 +466,20 @@ test("flags remote-login reach, future-type, spoofing, and policy-stop risks", (
 test("factory has three rules with independent radio and transport decisions", () => {
   const rules = tool.EXAMPLES.factory;
   assert.strictEqual(rules.length, 3);
+  assert.strictEqual(rules[1].id, "wardriving-after-hop-2");
+  assert.ok(tool.buildDefinition(rules[1]).includes("hops=3+"));
   for (const via of ["radio", "bridge", "cross"]) {
-    for (const hops of [0, 4, 5, 63]) {
-      const facts = packet({ channel: "#wardriving", via, hops });
-      assert.strictEqual(tool.simulatePolicy(rules, facts).decision.drop,
-        via !== "radio" || hops >= 5);
-      assert.strictEqual(tool.simulatePolicy(rules,
-        { ...facts, channel: "#other", tempRadio: true }).decision.drop, false);
+    for (const hops of [0, 1, 2, 3, 4, 5, 63]) {
+      for (const type of ["grp_txt", "grp_data"]) {
+        for (const tempRadio of [false, true]) {
+          const facts = packet({ channel: "#wardriving", via, hops, type, tempRadio });
+          assert.strictEqual(tool.simulatePolicy(rules, facts).decision.drop,
+            via !== "radio" || hops >= 3,
+            `${via} ${type} with ${hops} received hops, tempradio=${tempRadio}`);
+          assert.strictEqual(tool.simulatePolicy(rules,
+            { ...facts, channel: "#other" }).decision.drop, false);
+        }
+      }
     }
   }
 });

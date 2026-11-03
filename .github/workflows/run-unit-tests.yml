@@ -827,6 +827,7 @@ jobs:
           python3 -B test/test_common_cli_retry_tail.py -v
           python3 -B test/test_common_prefs_legacy_rxgain.py -v
           python3 -B test/test_flood_policy_capacity.py -v
+          python3 -B test/test_wardriving_default_migration.py -v
           python3 -B test/test_flood_rule_layout.py -v
           python3 -B test/test_mqtt_prefs_commit.py -v
           python3 -B test/test_identity_and_settings_recovery.py -v
