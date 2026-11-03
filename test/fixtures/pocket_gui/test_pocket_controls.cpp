@@ -186,16 +186,16 @@ int main() {
     assert(home._page == HomeScreen::MAP);
   }
 
-  // The existing Network-page hold remains the Reader action in the new GUI.
+  // Short presses on either Network page leave the Reader closed; it opens on hold.
   home._page = HomeScreen::RADIO;
-  key(home, KEY_ENTER);
-  assert(task.reader_opens == 1 && home._page == HomeScreen::RADIO);
+  assert(!home.handleInput(static_cast<char>(KEY_ENTER)));
+  assert(task.reader_opens == 0 && home._page == HomeScreen::RADIO);
   home._page = HomeScreen::RADIO2;
-  key(home, KEY_ENTER);
-  assert(task.reader_opens == 2 && home._page == HomeScreen::RADIO2);
+  assert(!home.handleInput(static_cast<char>(KEY_ENTER)));
+  assert(task.reader_opens == 0 && home._page == HomeScreen::RADIO2);
   home._page = HomeScreen::RADIO_STATUS;
   key(home, KEY_ENTER);
-  assert(home._radio_status_page == 2 && task.reader_opens == 2);
+  assert(home._radio_status_page == 2 && task.reader_opens == 0);
   the_mesh.dual = false;
   home._page = HomeScreen::RADIO;
   key(home, KEY_NEXT);
