@@ -11,9 +11,9 @@ static constexpr uint32_t kNetworkRecoveryProbeMs = 2UL * 60UL * 1000UL;
 static constexpr uint32_t kNetworkRecoveryIntervalMs = 30UL * 60UL * 1000UL;
 static constexpr uint32_t kNetworkHealthyMs = 30000UL;
 
-// MQTT and its NTP bootstrap share one outage clock. A successful WiFi
-// association or time reply alone is not proof that an MQTT destination works.
-// Failed attempts must never extend either the grace period or the cooldown.
+// Background network work without a configured direct MQTT uplink shares one
+// outage clock. Failed attempts must not extend the grace period or cooldown.
+// A configured direct MQTT uplink keeps this policy in the foreground state.
 class NetworkPowerPolicy {
 public:
   enum class Action { Run, Suspend, Resume };

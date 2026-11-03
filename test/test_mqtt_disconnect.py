@@ -141,6 +141,7 @@ struct MQTTBridge {
   uint32_t _network_espnow_restore_at = 0;
   bool _ntp_force_requested = false, _ntp_diag_requested = false;
   bool _ntp_sync_pending = false, _manage_wifi = true, _wifi_status_initialized = true;
+  bool _wifi_configured = false;
   uint32_t _last_wifi_check = 0, _last_slot_reconnect_ms = 0;
   uint32_t _ntp_refresh_retry_at = 0;
   std::atomic<bool> _stop_requested{false}, _stop_acked{false};

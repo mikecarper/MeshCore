@@ -1697,7 +1697,9 @@ bool MQTTBridge::waitUnlessStopping(uint32_t delay_ms) {
 bool MQTTBridge::serviceNetworkPower(uint32_t now) {
   auto& control = mesh::wifi::networkPower();
   bool useful_network = false;
+  bool configured_mqtt = false;
   for (int i = 0; i < RUNTIME_MQTT_SLOTS; ++i) {
+    if (_slots[i].enabled) configured_mqtt = true;
     const uint32_t acknowledgments = _slots[i].client
         ? _slots[i].client->getPublishAck() : 0;
     const bool broker_replied = acknowledgments != 0
@@ -1714,7 +1716,12 @@ bool MQTTBridge::serviceNetworkPower(uint32_t now) {
   }
   wifi_mode_t mode = WIFI_MODE_NULL;
   const bool ap_active = esp_wifi_get_mode(&mode) == ESP_OK && (mode & WIFI_MODE_AP);
-  bool foreground = control.foregroundActive() || ap_active
+  // A configured direct MQTT uplink is a standing request for WiFi. Do not
+  // turn off its station just because an AP or broker is temporarily down;
+  // their own reconnect backoffs still pace attempts. This also applies when
+  // the Companion, rather than this worker, owns the station.
+  bool foreground = (_wifi_configured && configured_mqtt)
+      || control.foregroundActive() || ap_active
       || (_board && _board->isOTAUpdateRunning())
       || _ntp_force_requested || _ntp_diag_requested;
 #ifdef WITH_SNMP
@@ -1938,9 +1945,9 @@ void MQTTBridge::mqttTaskLoop() {
 
     unsigned long now = millis();
 
-    // The MQTT and NTP schedulers share this single WiFi outage budget.
-    // Quiesce on the owner core before an external Companion station owner
-    // sees the suspension flag; failed timers cannot wake each other up.
+    // Configured direct MQTT keeps WiFi available. For background work without
+    // an MQTT uplink, quiesce on the owner core before an external Companion
+    // station owner sees suspension; failed timers cannot wake each other up.
     if (!serviceNetworkPower(static_cast<uint32_t>(now))) {
       processPacketQueue();
       vTaskDelay(pdMS_TO_TICKS(250));

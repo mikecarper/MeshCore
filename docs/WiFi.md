@@ -122,30 +122,29 @@ slots.
 
 ## Automatic network outage power saving
 
-ESP32 MQTT firmware uses one shared outage timer for MQTT and NTP. If no broker
-demonstrates a working connection for five minutes, the MQTT worker stops its
-clients and NTP request before suspending background WiFi. Saved WiFi and broker
-settings remain enabled. Failed requests, a WiFi association, and NTP replies
-alone do not restart the outage timer or keep a failed MQTT uplink awake.
+When direct WiFi MQTT is enabled with a saved network and at least one broker
+slot, the firmware keeps WiFi available even if the AP or all brokers are down.
+It does not require incoming application requests to keep the connection up.
+WiFi and broker reconnect attempts remain backed off; after repeated failures a
+broker's own circuit breaker can wait 30 minutes before its next attempt.
+Keeping the WiFi radio available during an outage uses more power.
 
-After 30 minutes, the firmware opens a recovery window lasting up to two
-minutes. A new broker acknowledgment, including one immediately followed by a
-disconnect, or a connection that stays up for 30 seconds
-returns the node to normal operation. Otherwise WiFi is suspended for another
-30 minutes. An explicit management request can ask for an earlier probe.
+When the MQTT worker has no configured WiFi/broker pair, its background outage
+policy can still suspend WiFi after five minutes. It then opens a recovery window
+of up to two minutes every 30 minutes. On repeaters and room servers,
+`set wifi on` asks for an earlier probe, as does an explicit WebConfig request.
 Automatic NTP requests have a 15-second timeout; failed requests wait 30 minutes
 instead of repeatedly running a blocking server search. Successful NTP retains
 the daily refresh schedule.
 
-Active browser administration, setup/OTA access points, connected Companion
-clients, and an attached WiFi OTA seeder protect their network access. An idle
-WebConfig listener does not prevent the cooldown. An enabled SNMP agent keeps a
-working LAN connection available. ESP-NOW keeps its radio and channel; only the
-failed infrastructure connection is suspended. LoRa continues operating, and
-when CPU power saving is enabled, its normal sleep eligibility returns after
-background WiFi shuts down. USB console and logging sleep rules still apply
-separately. This policy does not automatically turn off working services or
-expire an active setup access point.
+During that fallback, active browser administration, setup/OTA access points,
+connected Companion clients, and an attached WiFi OTA seeder protect their
+network access. An idle WebConfig listener does not prevent the cooldown. An
+enabled SNMP agent keeps a working LAN connection available. ESP-NOW keeps its
+radio and channel if the infrastructure connection is suspended. LoRa continues
+operating, and when CPU power saving is enabled, its normal sleep eligibility
+returns after background WiFi shuts down. USB console and logging sleep rules
+still apply separately. This policy does not expire an active setup access point.
 
 See [MQTT_IMPLEMENTATION.md](https://github.com/mikecarper/MeshCore/blob/keymindCascade/MQTT_IMPLEMENTATION.md) for the complete preset
 list, custom broker configuration, topic formats, authentication, diagnostics,
@@ -222,14 +221,12 @@ An administrator can still override the automatic cutoff with an explicit
 `start webconfig` command.
 
 Once an SSID is saved, the provisioning cutoff no longer applies. When WiFi is
-selected by `logging.output wifi|both`, the station stays enabled and keeps
-trying the saved network indefinitely: ESP automatic reconnect remains on and
-the explicit fallback advances through 15, 30, 60, 120, then 300-second retry
-intervals, remaining at five minutes until it reconnects. MQTT broker retries
-use their own backoff; a repeatedly failing broker eventually receives one
-probe every 30 minutes. Selecting `logging.output off|usb` keeps the MQTT bridge
-off, so saved credentials alone do not force WiFi on unless WebConfig is also
-enabled explicitly.
+selected by `logging.output wifi|both` and a broker is configured, the station
+keeps trying its saved network. ESP automatic reconnect is enabled, and the
+explicit fallback advances through 15, 30, 60, 120, then 300-second intervals.
+Selecting `logging.output off|usb` keeps the MQTT bridge off, so saved
+credentials alone do not force WiFi on unless WebConfig is also enabled
+explicitly.
 
 The equivalent MQTT observer CLI setup is:
 
@@ -999,7 +996,7 @@ attempts skipped for memory pressure; a growing `B` can explain missing packet
 reports while broker connections still look healthy. `DNS failed (0x8001)`
 records a hostname lookup failure, which can follow an earlier disconnect; it
 does not identify the reason for that first disconnect. `wifi.status` showing
-`suspended` means the shared outage cooldown is active, not that WiFi settings
+`paused` means the shared outage cooldown is active, not that WiFi settings
 were erased. These diagnostics do not reveal passwords or tokens, but WiFi
 status can include the SSID or local IP address. Redact them before posting.
 
