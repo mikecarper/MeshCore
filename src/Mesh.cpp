@@ -1144,6 +1144,13 @@ int Mesh::searchChannelsByHash(const uint8_t* hash, GroupChannel channels[], int
 }
 
 DispatcherAction Mesh::onRecvPacket(Packet* pkt) {
+  const size_t min_advert_len = PUB_KEY_SIZE + sizeof(uint32_t) + SIGNATURE_SIZE;
+  // Reject incomplete adverts before direct forwarding or retry/echo observers.
+  if (pkt->getPayloadType() == PAYLOAD_TYPE_ADVERT && pkt->payload_len < min_advert_len) {
+    MESH_DEBUG_PRINTLN("%s Mesh::onRecvPacket(): incomplete advertisement packet", getLogDateTime());
+    return ACTION_RELEASE;
+  }
+
   // Trace and control payloads are direct-only.  Dispatcher enforces this for
   // RF input before any logging/bridge hook; retain the core check for packets
   // arriving through another transport implementation.
@@ -1423,11 +1430,6 @@ DispatcherAction Mesh::onRecvPacket(Packet* pkt) {
       break;
     }
     case PAYLOAD_TYPE_ADVERT: {
-      const size_t min_advert_len = PUB_KEY_SIZE + sizeof(uint32_t) + SIGNATURE_SIZE;
-      if (pkt->payload_len < min_advert_len) {
-        MESH_DEBUG_PRINTLN("%s Mesh::onRecvPacket(): incomplete advertisement packet", getLogDateTime());
-        break;
-      }
       // Do not accept unsigned trailing data by truncating it for signature
       // verification. An attacker could vary that tail to manufacture distinct
       // packet hashes and falsely accumulate abuse against an authentic key.

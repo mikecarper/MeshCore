@@ -63,9 +63,10 @@ public:
 class ForwardingTestTables : public mesh::MeshTables {
 public:
   bool seen = false;
+  unsigned was_seen_calls = 0;
   int mark_seen_calls = 0;
 
-  bool wasSeen(const mesh::Packet*) override { return seen; }
+  bool wasSeen(const mesh::Packet*) override { ++was_seen_calls; return seen; }
   void markSeen(const mesh::Packet*) override {
     seen = true;
     mark_seen_calls++;
@@ -1874,6 +1875,76 @@ protected:
     return node.receivePacket(&packet);
   }
 };
+
+TEST_F(AdvertReceiveLimit, IncompleteAdvertsStopBeforeRoutingOrReceiveSideEffects) {
+  for (uint8_t route : {ROUTE_TYPE_FLOOD, ROUTE_TYPE_TRANSPORT_FLOOD,
+                         ROUTE_TYPE_DIRECT, ROUTE_TYPE_TRANSPORT_DIRECT}) {
+    for (uint8_t hash_size = 1; hash_size <= 3; ++hash_size) {
+      for (uint8_t hops : {0, 2}) {
+        for (uint16_t length = 0; length < 100; ++length) {
+          SCOPED_TRACE(::testing::Message() << "route=" << unsigned(route)
+              << " hash_size=" << unsigned(hash_size) << " hops=" << unsigned(hops)
+              << " payload_len=" << length);
+          auto packet = advert(1, hops, hash_size);
+          packet.header = route | (PAYLOAD_TYPE_ADVERT << PH_TYPE_SHIFT);
+          packet.transport_codes[0] = 0x1234;
+          packet.transport_codes[1] = 0x5678;
+          // A direct relay must recognize itself as the next hop; otherwise
+          // its unrelated path filter could hide a missing size check.
+          memcpy(packet.path, node.self_id.pub_key, hash_size);
+          packet.payload_len = length;
+          if (length == 99 && hops > 0) {
+            EXPECT_GT(packet.getRawLength(), 102); // Header/path bytes are not advert data.
+          }
+          EXPECT_EQ(ACTION_RELEASE, node.receivePacket(&packet));
+          EXPECT_EQ(hops, packet.getPathHashCount());
+          EXPECT_EQ(0U, g_mock_ed25519_verify_calls);
+          EXPECT_EQ(0U, node.advert_callbacks);
+          EXPECT_EQ(0U, node.forwarding_checks);
+          EXPECT_EQ(0U, tables.was_seen_calls);
+          EXPECT_EQ(0, tables.mark_seen_calls);
+          EXPECT_FALSE(tables.seen);
+          EXPECT_EQ(0, manager.getOutboundTotal());
+        }
+      }
+    }
+  }
+}
+
+TEST_F(AdvertReceiveLimit, MinimumAdvertPayloadRemainsAcceptedAcrossRoutes) {
+  for (uint8_t route : {ROUTE_TYPE_FLOOD, ROUTE_TYPE_TRANSPORT_FLOOD,
+                         ROUTE_TYPE_DIRECT, ROUTE_TYPE_TRANSPORT_DIRECT}) {
+    for (uint8_t hash_size = 1; hash_size <= 3; ++hash_size) {
+      for (uint8_t hops : {0, 2}) {
+        SCOPED_TRACE(::testing::Message() << "route=" << unsigned(route)
+            << " hash_size=" << unsigned(hash_size) << " hops=" << unsigned(hops));
+        tables.seen = false;
+        tables.was_seen_calls = tables.mark_seen_calls = 0;
+        node.advert_callbacks = node.forwarding_checks = 0;
+        node.limiter.reset();
+        g_mock_ed25519_verify_calls = 0;
+        auto packet = advert(1, hops, hash_size);
+        packet.header = route | (PAYLOAD_TYPE_ADVERT << PH_TYPE_SHIFT);
+        packet.transport_codes[0] = 0x1234;
+        packet.transport_codes[1] = 0x5678;
+        memcpy(packet.path, node.self_id.pub_key, hash_size);
+        ASSERT_EQ(100, packet.payload_len); // No application flags byte is required.
+        EXPECT_EQ(102 + hops * hash_size + (packet.hasTransportCodes() ? 4 : 0),
+                  packet.getRawLength());
+        const bool direct_relay = packet.isRouteDirect() && hops > 0;
+        const bool forward = packet.isRouteFlood() || direct_relay;
+        EXPECT_EQ(forward, node.receivePacket(&packet) != ACTION_RELEASE);
+        EXPECT_EQ(forward ? 1U : 0U, node.forwarding_checks);
+        EXPECT_EQ(direct_relay ? 0U : 1U, g_mock_ed25519_verify_calls);
+        EXPECT_EQ(direct_relay ? 0U : 1U, node.advert_callbacks);
+        EXPECT_EQ(1U, tables.was_seen_calls);
+        EXPECT_EQ(1, tables.mark_seen_calls);
+        EXPECT_EQ(direct_relay ? 1 : (packet.isRouteFlood() ? hops + 1 : 0),
+                  packet.getPathHashCount());
+      }
+    }
+  }
+}
 
 TEST_F(AdvertReceiveLimit, StopsOnlyForwardingAndKeepsLocalAdvertCallbacks) {
   EXPECT_NE(ACTION_RELEASE, receive(1));
