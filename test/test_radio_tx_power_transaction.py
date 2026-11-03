@@ -321,18 +321,20 @@ class ExternalPaPowerLimitTests(unittest.TestCase):
                        "kiss_modem")
         ikoka_roles = ("companion_radio_ble", "companion_radio_usb", "repeater",
                        "room_server", "room_server_lora_ota", "kiss_modem")
-        expected = {"solarxiao_33S_" + role for role in solar_roles} if cap == 9 else set()
-        rating = "33" if cap == 9 else "30"
-        expected.update("ikoka_" + board + "_nrf_" + rating + "dbm_" + role
-                        for board in ("nano", "stick") for role in ikoka_roles)
+        expected = {"solarxiao_33S_" + role for role in solar_roles} if cap == 8 else set()
+        if cap in (9, 20):
+            rating = "33" if cap == 9 else "30"
+            expected.update("ikoka_" + board + "_nrf_" + rating + "dbm_" + role
+                            for board in ("nano", "stick") for role in ikoka_roles)
         if cap == 20:
             expected.update("ikoka_handheld_nrf_" + role for role in (
                 "e22_30dbm_096_companion_radio_ble", "e22_30dbm_096_rotated_companion_radio_ble",
                 "e22_30dbm_096_companion_radio_usb", "e22_30dbm_096_rotated_companion_radio_usb",
                 "e22_30dbm_repeater", "e22_30dbm_room_server", "e22_30dbm_room_server_lora_ota",
                 "kiss_modem"))
-        pattern = (r"env:(?:solarxiao_33S_|ikoka_(?:nano|stick)_nrf_33dbm_)" if cap == 9
-                   else r"env:(?:ikoka_(?:nano|stick)_nrf_30dbm_|ikoka_handheld_nrf_)")
+        pattern = {8: r"env:solarxiao_33S_",
+                   9: r"env:ikoka_(?:nano|stick)_nrf_33dbm_",
+                   20: r"env:(?:ikoka_(?:nano|stick)_nrf_30dbm_|ikoka_handheld_nrf_)"}[cap]
         discovered = {section[4:] for section in self.config.sections()
                       if re.match(pattern, section)}
         self.assertEqual(discovered, expected,
@@ -347,7 +349,7 @@ class ExternalPaPowerLimitTests(unittest.TestCase):
             if (key, value) not in unflags}
 
     def test_all_39_external_pa_roles_have_their_documented_input_limit(self):
-        for cap in (9, 20):
+        for cap in (8, 9, 20):
             for target in self.targets(cap):
                 with self.subTest(target=target):
                     defines = self.power_defines(target)
@@ -372,7 +374,7 @@ class ExternalPaPowerLimitTests(unittest.TestCase):
         # Compile each distinct resolved cap through production admission and
         # apply paths, rather than using a comment or assumed startup default.
         profiles = set()
-        for cap in (9, 20):
+        for cap in (8, 9, 20):
             resolved = {tuple(sorted(self.power_defines(target).items()))
                         for target in self.targets(cap)}
             self.assertEqual(resolved, {(("LORA_TX_POWER", cap), ("MAX_LORA_TX_POWER", cap))})

@@ -990,16 +990,33 @@ their flash can keep two app slots for LoRa OTA.
 For companion radios, you can set these radios' transmit power in the smartphone app. For repeater and room server radios, you can set their transmit power using the command line command `set tx`. You can get their current value using command line command `get tx`
 
 On SolarXiao 33S and Ikoka Nano/Stick E22-900M33S boards, this setting is the
-SX1262 chip's drive into the external amplifier. A 9 dBm drive can produce
-approximately 33 dBm (2W) at the module output; `get tx` does not measure that
-output. Ebyte specifies that chip drive must not exceed 9 dBm.
+SX1262 chip's drive into the external amplifier. The module can produce
+approximately 33 dBm (2W) at its output with a much lower chip drive;
+`get tx` does not measure that output.
 
-The 33S targets now enforce a 9 dBm maximum in every firmware role and clamp
-higher saved settings on startup. Earlier repeater and room-server releases,
-including 1.18.0.1, set a 9 dBm default without enforcing that maximum.
-When checking one of those older installations, use `get tx`; do not increase
-it above 9 to troubleshoot weak output. See the
-[Ebyte module specification](https://www.ebyte.com/product/2147.html).
+SolarXiao 33S defaults to and enforces 8 dBm, following the
+[board maker's instructions](https://github.com/wehooper4/Meshtastic-Hardware/blob/main/XaioSeries/SolarXaio/readme.md).
+Ikoka Nano/Stick 33 dBm targets enforce the
+[Ebyte module's 9 dBm ceiling](https://www.ebyte.com/product/2147.html).
+All firmware roles apply their board limit and clamp higher saved settings
+on startup. Earlier repeater and room-server releases, including 1.18.0.1,
+set a 9 dBm default without enforcing that maximum. Do not increase chip
+drive to troubleshoot weak output.
+
+DIY boards can fit the same M33S modules under other names, including
+[MTL-1](https://github.com/meshcore-dev/MeshCore/issues/2778),
+[MTL-2](https://github.com/kt314-sh/MTL-2) and
+[Ebytastic](https://github.com/Sobollion/Ebytastic). A generic ProMicro, XIAO,
+Heltec or E22 firmware cannot infer that external amplifier from the radio
+chip type. Such hardware needs a matching build with its chip-drive default
+and maximum set before first startup; changing `set tx` afterwards does not
+protect the initial startup. The named SolarXiao/Ikoka limits do not apply
+automatically to these other targets.
+
+The [Ikoka Handheld hardware](https://github.com/ndoo/ikoka-handheld-meshtastic-device#lora-module)
+also accepts M33S modules, but the current Handheld firmware targets specify
+M30S. Their 20 dBm drive setting is not suitable for an M33S-fitted Handheld;
+that combination requires a separate matching firmware target.
 
 Ikoka Nano, Stick and Handheld 30 dBm targets also enforce their established
 20 dBm chip-drive limit in every role. This is their amplifier distortion
@@ -1016,6 +1033,7 @@ limit, separate from the 33S module's 9 dBm safety ceiling.
 |                                                                                    | EU868 1W Output                     | 9 dBm                | 1W                     | Refer to your local government's requirements                                                                                                  |
 | **Ikoka Nano / Stick / Handheld E22-900M30S**                                      | 1W Model                            | 20 dBm               | ~1W                    | Firmware caps chip drive at 20 dBm to avoid PA distortion. |
 | **Ikoka Stick E22-900M33S**                                                        | 2W Model                            | 9 dBm                | 2W                     | **DO NOT EXCEED** (Risk of burn out) [data sheet](https://www.cdebyte.com/pdf-down.aspx?id=4216) Refer to your local government's requirements |
+| **SolarXiao E22-900M33S** | 2W Model | 8 dBm | ~2W | Board maker specifies 8 dBm or lower; firmware enforces this limit. |
 | **Heltec V4**                                                                      | Standard Output                     | 10 dBm               | 22 dBm (~0.15W)        |                                                                                                                                                |
 |                                                                                    | High Output                         | 22 dBm               | 28 dBm (~0.5W to 0.6W) |                                                                                                                                                |
 

@@ -127,8 +127,18 @@ Radio target and role selection remain separate from the power profile:
 
 | Fitted module | Repeater | Room Server |
 | --- | --- | --- |
-| E22 M30S | `solarxiao_30S_repeater` | `solarxiao_30S_room_server_lora_ota` |
-| E22 M33S | `solarxiao_33S_repeater` | `solarxiao_33S_room_server_lora_ota` |
+| E22-900M30S | `solarxiao_30S_repeater` | `solarxiao_30S_room_server_lora_ota` |
+| E22-900M33S | `solarxiao_33S_repeater` | `solarxiao_33S_room_server_lora_ota` |
+
+All SolarXiao 33S firmware roles default to and enforce an 8 dBm chip-drive
+ceiling, including Companion and KISS. Higher saved power settings are clamped
+on startup. This follows the
+[board maker's M33S instructions](https://github.com/wehooper4/Meshtastic-Hardware/blob/main/XaioSeries/SolarXaio/readme.md);
+the setting is the drive into the amplifier, not the amplified RF output.
+
+The maker also lists a 433 MHz E22-400M33S hardware option. The table above
+describes the existing SX1262 firmware targets, not a qualification of that
+SX1268 module. Match both the radio module and its frequency band.
 
 All three power profiles work in these role builds. Room uses its existing
 onboard-QSPI OTA target, identity and application layout, with the matching
