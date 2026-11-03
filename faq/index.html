@@ -5360,6 +5360,19 @@ their flash can keep two app slots for LoRa OTA.</p>
 <h3 id="77-q-i-have-a-station-g2-or-a-heltec-v4-or-an-ikoka-stick-or-a-radio-with-an-ebyte-e22-900m30s-or-an-ebyte-e22-900m33s-module-what-should-their-transmit-power-be-set-to">7.7. Q: I have a Station G2, or a Heltec V4, or an Ikoka Stick, or a radio with an EByte E22-900M30S or an EByte E22-900M33S module, what should their transmit power be set to?</h3>
 <p><strong>A:</strong>
 For companion radios, you can set these radios' transmit power in the smartphone app. For repeater and room server radios, you can set their transmit power using the command line command <code>set tx</code>. You can get their current value using command line command <code>get tx</code></p>
+<p>On SolarXiao 33S and Ikoka Nano/Stick E22-900M33S boards, this setting is the
+SX1262 chip's drive into the external amplifier. A 9 dBm drive can produce
+approximately 33 dBm (2W) at the module output; <code>get tx</code> does not measure that
+output. Ebyte specifies that chip drive must not exceed 9 dBm.</p>
+<p>The 33S targets now enforce a 9 dBm maximum in every firmware role and clamp
+higher saved settings on startup. Earlier repeater and room-server releases,
+including 1.18.0.1, set a 9 dBm default without enforcing that maximum.
+When checking one of those older installations, use <code>get tx</code>; do not increase
+it above 9 to troubleshoot weak output. See the
+<a href="https://www.ebyte.com/product/2147.html">Ebyte module specification</a>.</p>
+<p>Ikoka Nano, Stick and Handheld 30 dBm targets also enforce their established
+20 dBm chip-drive limit in every role. This is their amplifier distortion
+limit, separate from the 33S module's 9 dBm safety ceiling.</p>
 <p>[WARN] <strong>WARNING: Set these values at your own risk. Incorrect power settings can permanently damage your radio hardware.</strong></p>
 <table>
 <thead>
@@ -5408,11 +5421,11 @@ For companion radios, you can set these radios' transmit power in the smartphone
 <td style="text-align: left;">Refer to your local government's requirements</td>
 </tr>
 <tr>
-<td style="text-align: left;"><strong>Ikoka Stick E22-900M30S</strong></td>
+<td style="text-align: left;"><strong>Ikoka Nano / Stick / Handheld E22-900M30S</strong></td>
 <td style="text-align: left;">1W Model</td>
-<td style="text-align: left;">19 dBm</td>
-<td style="text-align: left;">1W</td>
-<td style="text-align: left;"><strong>DO NOT EXCEED</strong> (Risk of burn out) <a href="https://www.cdebyte.com/pdf-down.aspx?id=4216">data sheet</a></td>
+<td style="text-align: left;">20 dBm</td>
+<td style="text-align: left;">~1W</td>
+<td style="text-align: left;">Firmware caps chip drive at 20 dBm to avoid PA distortion.</td>
 </tr>
 <tr>
 <td style="text-align: left;"><strong>Ikoka Stick E22-900M33S</strong></td>
