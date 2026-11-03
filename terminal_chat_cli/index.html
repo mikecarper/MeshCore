@@ -2930,7 +2930,9 @@ opening that port from an app.</p>
 remain available. See <a href="../full_companion_usb_switcher/">Companion USB CLI and binary switcher</a>
 for the state machine and limitations.</p>
 <h2 id="commands">Commands</h2>
-<p>ESP32 and nRF52 Full Companions include an offline World English Bible lookup:</p>
+<p>Custom ESP32 and nRF52 Full Companion USB builds can opt into an offline World
+English Bible lookup with <code>COMPANION_FEATURE_READER=1</code>. Standard builds leave
+it disabled to preserve firmware space:</p>
 <pre><code class="language-text">get reader 3:16
 get reader 2
 get reader 2:2-12
