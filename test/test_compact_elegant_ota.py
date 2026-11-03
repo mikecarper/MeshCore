@@ -8,12 +8,14 @@ import os
 from pathlib import Path
 import re
 import shutil
+import signal
 import subprocess
 import tempfile
 import threading
+import time
 import unittest
 
-from test_webconfig_ui_runtime import BROWSER, run_browser
+from test_webconfig_ui_runtime import BROWSER
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -30,6 +32,47 @@ def embedded_page():
     if len(data) != length:
         raise AssertionError("compressed OTA page has a bad length")
     return gzip.decompress(data).decode("utf-8")
+
+
+def run_until_complete(command, complete, timeout=30):
+    """Keep real browser I/O running until the page reports its terminal state."""
+    with tempfile.TemporaryFile() as diagnostics:
+        options = {"stdout": subprocess.DEVNULL, "stderr": diagnostics}
+        if os.name == "nt":
+            options["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP
+        else:
+            options["start_new_session"] = True
+        process = subprocess.Popen(command, **options)
+        failure = None
+        deadline = time.monotonic() + timeout
+        try:
+            while not complete.is_set():
+                if process.poll() is not None:
+                    failure = "Headless browser exited before OTA completion (exit %s)" % process.returncode
+                    break
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    failure = "Headless browser timed out waiting for OTA completion"
+                    break
+                complete.wait(min(0.1, remaining))
+        finally:
+            # Terminate the entire owned tree before removing its profile,
+            # including when startup or a real file/network operation stalls.
+            if os.name == "nt":
+                subprocess.run(["taskkill", "/T", "/F", "/PID", str(process.pid)],
+                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                               check=False)
+            else:
+                try:
+                    os.killpg(process.pid, signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
+            if process.poll() is None:
+                process.kill()
+            process.wait(timeout=5)
+        if failure:
+            diagnostics.seek(0)
+            raise AssertionError(failure + "\n" + diagnostics.read().decode("utf-8", "replace")[-4000:])
 
 
 class CompactElegantOtaTests(unittest.TestCase):
@@ -68,12 +111,24 @@ for (const size of [0, 3, 64, 262144, 700123]) {
         self.assertEqual(embedded_page().count("MESH_SPARK_MD5"), 0)
         self.assertIn("SparkMD5", embedded_page())
 
-    @unittest.skipUnless(BROWSER, "Chromium-family browser is unavailable")
     def test_real_browser_streams_firmware_and_filesystem_with_correct_md5(self):
+        if not BROWSER:
+            if os.environ.get("MESHCORE_REQUIRE_OTA_BROWSER") == "1":
+                self.fail("A Chromium-family browser is required for the OTA integration test")
+            self.skipTest("Chromium-family browser is unavailable")
         payload = bytes(i % 251 for i in range(700123))  # three FileReader chunks
         requests = []
+        complete = threading.Event()
+        reports = []
         page = embedded_page().replace("</body>", r'''
 <script>
+function reportOtaTest(){
+ fetch('/__test_result',{method:'POST',body:document.documentElement.outerHTML});
+}
+window.addEventListener('error',function(event){
+ document.body.setAttribute('data-test-error',event.message||'JavaScript error');
+ reportOtaTest();
+});
 window.addEventListener('load',function(){
  var bytes=new Uint8Array(700123);for(var i=0;i<bytes.length;i++)bytes[i]=i%251;
  var input=document.getElementById('file'),button=document.getElementById('upload');
@@ -88,8 +143,11 @@ window.addEventListener('load',function(){
    var text=document.getElementById('status').textContent;
    if(phase===2){
      if(text.indexOf('Upload failed (HTTP 500)')<0)return;
+     var identity=document.getElementById('identity').textContent;
+     if(identity.indexOf('Reading device identity')===0)return;
      clearInterval(timer);document.body.setAttribute('data-test-done',!button.disabled&&!input.disabled&&!document.querySelector('input[value="filesystem"]').disabled?'yes':'no');
-     document.body.setAttribute('data-test-identity',document.getElementById('identity').textContent);return;
+     document.body.setAttribute('data-test-identity',identity);
+     reportOtaTest();return;
    }
    if(text.indexOf('Update complete')<0)return;
    if(phase++===0){send('filesystem');return;}
@@ -113,6 +171,15 @@ window.addEventListener('load',function(){
 
             def do_POST(self):
                 body = self.rfile.read(int(self.headers["Content-Length"]))
+                if self.path == "/__test_result":
+                    reports.append(body.decode("utf-8"))
+                    self.send_response(200)
+                    self.send_header("Content-Length", "2")
+                    self.end_headers()
+                    self.wfile.write(b"OK")
+                    self.wfile.flush()
+                    complete.set()
+                    return
                 message = BytesParser(policy=policy.default).parsebytes(
                     b"Content-Type: " + self.headers["Content-Type"].encode("ascii")
                     + b"\r\nMIME-Version: 1.0\r\n\r\n" + body)
@@ -132,16 +199,19 @@ window.addEventListener('load',function(){
         thread.start()
         try:
             with tempfile.TemporaryDirectory(prefix="meshcore-ota-browser-") as folder:
+                # Virtual time can finish while native FileReader/network tasks
+                # are pending. Await the page's real completion report instead.
                 command = [BROWSER, "--headless=new", "--disable-gpu", "--no-first-run",
-                           "--user-data-dir=" + folder, "--virtual-time-budget=15000", "--dump-dom",
+                           "--user-data-dir=" + folder,
                            "http://127.0.0.1:%d/update" % server.server_port]
                 if os.name != "nt" and hasattr(os, "geteuid") and os.geteuid() == 0:
                     command.insert(1, "--no-sandbox")
-                result = run_browser(command)
-            self.assertEqual(result.returncode, 0, result.stderr.decode(errors="replace"))
-            self.assertIn('data-test-busy="yes"', result.stdout.decode(errors="replace"))
-            self.assertIn('data-test-done="yes"', result.stdout.decode(errors="replace"))
-            self.assertIn('data-test-identity="test node · ESP32"', result.stdout.decode(errors="replace"))
+                run_until_complete(command, complete)
+            self.assertEqual(len(reports), 1)
+            self.assertNotIn('data-test-error=', reports[0])
+            self.assertIn('data-test-busy="yes"', reports[0])
+            self.assertIn('data-test-done="yes"', reports[0])
+            self.assertIn('data-test-identity="test node \u00b7 ESP32"', reports[0])
         finally:
             server.shutdown()
             server.server_close()

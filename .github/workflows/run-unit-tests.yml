@@ -10,6 +10,21 @@ on:
   workflow_dispatch:
 
 jobs:
+  compact-ota-browser:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Verify real browser OTA uploads and checksums
+        env:
+          MESHCORE_REQUIRE_OTA_BROWSER: '1'
+        run: python3 -B test/test_compact_elegant_ota.py -v
+
   wifi-diagnostics:
     runs-on: ubuntu-latest
     steps:
@@ -1414,7 +1429,6 @@ jobs:
           python3 -B test/test_webconfig_ui.py
           python3 -B test/test_webconfig_regulators.py -v
           python3 -B test/test_webconfig_gzip.py
-          python3 -B test/test_compact_elegant_ota.py -v
           python3 -B test/test_webconfig_secret_masking.py
           python3 -B test/test_webconfig_station_ownership.py -v
           python3 -B test/test_mqtt_canonical_wifi.py -v
