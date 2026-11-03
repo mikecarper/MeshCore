@@ -470,6 +470,7 @@ private:
   void handleUi(AsyncWebServerRequest* req);
   void handleStatus(AsyncWebServerRequest* req);
   void handleLogin(AsyncWebServerRequest* req);
+  void handleAdminPasswordReveal(AsyncWebServerRequest* req);
   void handleLogout(AsyncWebServerRequest* req);
   void handleConfigGet(AsyncWebServerRequest* req);
   void handleConfigPost(AsyncWebServerRequest* req);

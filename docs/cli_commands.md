@@ -3413,6 +3413,12 @@ the same 15/45-minute cycle from boot. Keep the clock set to UTC: a plausible
 timestamp alone does not prove it is synchronized. Queued
 future traffic does not keep a critically low node awake indefinitely.
 
+Repeater and Room builds with telemetry history record battery voltage and MCU
+temperature every 30 minutes during emergency sleep. Sampling uses an existing
+maintenance wake and leaves the radio asleep. External voltage sensors and GPS
+are not polled for these sleep samples. History is held in RAM and is lost on
+reboot.
+
 This schedule uses resumable timed sleep, preserving identity and settings.
 WiFi/ESP-NOW services are temporarily stopped and their previous live subset
 is restored when the node wakes. Companion builds and flash-constrained

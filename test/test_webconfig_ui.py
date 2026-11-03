@@ -15,7 +15,8 @@ class WebConfigUiTest(unittest.TestCase):
     def test_wifi_password_fields_have_local_show_controls(self):
         page = SOURCE.read_text(encoding="utf-8")
         self.assertEqual(page.count('onclick="toggleWiFiPassword(this)"'), 2)
-        self.assertEqual(page.count('class="pwrow"'), 2)
+        self.assertEqual(len(re.findall(
+            r'<div class="pwrow">\s*<input type="password" data-k="wifi\.pwd"', page)), 2)
         self.assertIn('type="password" data-k="wifi.pwd" id="wz-wifi-pwd"', page)
         self.assertIn('type="password" data-k="wifi.pwd" id="app-wifi-pwd"', page)
         self.assertIn('input.type=show?"text":"password"', page)

@@ -710,6 +710,7 @@ jobs:
           python3 -B test/test_solar_daylight.py -v
           python3 -B test/test_power_schedule.py -v
           python3 -B test/test_emergency_power_runtime.py -v
+          python3 -B test/test_emergency_telemetry_sampling.py -v
           python3 -B test/test_emergency_power_ota.py -v
           python3 -B test/test_emergency_power_bench.py -v
           python3 -B test/test_emergency_sleep_backends.py -v
@@ -1049,6 +1050,8 @@ jobs:
           python3 -B test/test_service_start_retry.py -v
           python3 -B test/test_webconfig_recovery_auth.py -v
           python3 -B test/test_webconfig_password_sessions.py -v
+          python3 -B test/test_webconfig_password_persistence.py -v
+          python3 -B test/test_webconfig_password_reveal.py -v
           python3 -B test/test_webconfig_login_throttle.py -v
           python3 -B test/test_esp32_wifi_scan_fix.py -v
           python3 -B test/test_esp32_wifi_scan_recipes.py -v

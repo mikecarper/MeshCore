@@ -144,7 +144,7 @@ public:
   void configureHistory() {
     @HISTORY_INIT@
   }
-  void sampleTelemetryHistory();
+  void sampleTelemetryHistory(bool emergency_only = false);
   bool handleTelemetryHistoryCommand(const char*,char*,size_t=160,bool=true);
   int handleRequest(ClientInfo*,uint32_t,uint8_t*,size_t,size_t);
   void handleCommand(uint32_t sender_timestamp,char* command,char* reply,
@@ -391,6 +391,7 @@ static Store* selected=nullptr;static bool actual_history=false;
 struct Board {void loop() {++board_loops;order.push_back(3);}} board;
 struct Radio {} radio_driver;
 namespace mesh {
+struct RadioProfileCLI {static void configureBootTuning(Store*,Radio&) {}};
 namespace leds {void beginSettings(Board&,Store*) {}}
 namespace power {
 bool beginRegulatorSettings(Board&,Radio&,Store*) {++reg_begin;return true;}

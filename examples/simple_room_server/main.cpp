@@ -486,7 +486,11 @@ void loop() {
   emergency_busy = emergency_busy || the_mesh.hasPendingSerialOutput();
 #endif
   if (emergency_power.service(the_mesh, radio_driver, board,
-          the_mesh.getPowerCLI(), emergency_busy, the_mesh.emergencyPowerBusy())) return;
+          the_mesh.getPowerCLI(), emergency_busy, the_mesh.emergencyPowerBusy())) {
+    // The radio stays asleep; reuse the existing CPU maintenance wake.
+    if (the_mesh.getPowerCLI().emergencyActive()) the_mesh.sampleEmergencyTelemetry();
+    return;
+  }
 #endif
   the_mesh.loop();
   const bool morse_timing = mesh::morseTimingActive(&radio_driver);

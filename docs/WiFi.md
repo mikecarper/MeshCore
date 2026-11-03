@@ -182,6 +182,9 @@ There is no separate setup WiFi password. A protected first-time setup AP with
 no saved SSID retains its provisioning flow; recovery with a saved SSID requires
 the existing admin login. Deliberately passwordless images retain their local
 no-password policy. The portal uses plain HTTP, so use a trusted network.
+The password fields show a mask when a password is saved. After signing in,
+tap the eye to view it or type a new password and confirmation to change it.
+Viewing the saved value does not submit a password change.
 
 Changing the password ends existing browser sessions after the save succeeds.
 The submitting page keeps the save result and tries the new password once,

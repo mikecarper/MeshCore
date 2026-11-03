@@ -539,7 +539,7 @@ protected:
 #if MESH_ENABLE_TELEMETRY_HISTORY
   bool handleTelemetryHistoryCommand(const char* command, char* reply,
                                      size_t reply_capacity = 160, bool include_prompt = true);
-  void sampleTelemetryHistory();
+  void sampleTelemetryHistory(bool emergency_only = false);
   void sampleNoiseFloorHistory();
 #endif
 
@@ -571,6 +571,11 @@ public:
 #if MESH_ENABLE_EMERGENCY_POWER
   mesh::power::EmergencyOtaWork _emergency_ota_work;
   CommonCLI& getPowerCLI() { return _cli; }
+  void sampleEmergencyTelemetry() {
+#if MESH_ENABLE_TELEMETRY_HISTORY
+    sampleTelemetryHistory(true);
+#endif
+  }
   bool emergencyPowerBusy() const {
 #if defined(ENABLE_OTA)
     if (_emergency_ota_work.busy(mesh::ota::ota_context_if_active(), millis())) return true;

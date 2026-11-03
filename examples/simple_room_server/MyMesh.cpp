@@ -3977,7 +3977,7 @@ void MyMesh::sampleNoiseFloorHistory() {
                           getRTCClock()->getCurrentTime(), millis());
 }
 
-void MyMesh::sampleTelemetryHistory() {
+void MyMesh::sampleTelemetryHistory(bool emergency_only) {
   const uint32_t now = getRTCClock()->getCurrentTime();
   if (!telemetry_history.sampleDue(now)) return;
 
@@ -3985,7 +3985,7 @@ void MyMesh::sampleTelemetryHistory() {
   int32_t longitude_e7 = 0;
   bool gps_valid = false;
 #if ENV_INCLUDE_GPS == 1
-  LocationProvider* location = sensors.getLocationProvider();
+  LocationProvider* location = emergency_only ? NULL : sensors.getLocationProvider();
   if (location != NULL && location->isEnabled() && location->isValid()) {
     const long latitude_e6 = location->getLatitude();
     const long longitude_e6 = location->getLongitude();
@@ -4011,6 +4011,10 @@ void MyMesh::sampleTelemetryHistory() {
   telemetry_history.record(now, temperature_c, temperature_valid,
                            _cli.getBoard()->getBattMilliVolts(),
                            latitude_e7, longitude_e7, gps_valid);
+
+  // Do not start external I2C sensors during a low-battery wake. Their
+  // unsampled buckets remain missing in the separate voltage history.
+  if (emergency_only) return;
 
   SensorManager::VoltageSensorReading sensor_readings[
       mesh::ExternalVoltageHistory::MAX_CHANNELS];

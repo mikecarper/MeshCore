@@ -1001,7 +1001,7 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks
                                         bool allow_redundant_copies = true);
   void servicePostMeshLoop();
 #if MESH_ENABLE_TELEMETRY_HISTORY
-  void sampleTelemetryHistory();
+  void sampleTelemetryHistory(bool emergency_only = false);
   void sampleNoiseFloorHistory();
 #if MESH_ENABLE_TELEMETRY_GPS_HISTORY
   uint8_t resizeTelemetryGpsDays(uint8_t requested_days);
@@ -1311,6 +1311,11 @@ public:
 #if MESH_ENABLE_EMERGENCY_POWER
   mesh::power::EmergencyOtaWork _emergency_ota_work;
   CommonCLI& getPowerCLI() { return _cli; }
+  void sampleEmergencyTelemetry() {
+#if MESH_ENABLE_TELEMETRY_HISTORY
+    sampleTelemetryHistory(true);
+#endif
+  }
   bool emergencyPowerBusy() const {
 #if defined(ENABLE_OTA)
     if (_emergency_ota_work.busy(mesh::ota::ota_context_if_active(), millis())) return true;

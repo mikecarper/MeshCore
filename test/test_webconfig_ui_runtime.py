@@ -77,6 +77,101 @@ def embedded_page():
 
 
 class WebConfigUiRuntimeTest(unittest.TestCase):
+    def test_admin_eye_reveals_on_demand_without_changing_saved_settings(self):
+        status, config = self.setup_values()
+        status.update(mode="lan", needs_password=False)
+        prelude = r'''<script>
+(function(){
+  var status=%s,config=%s,reveals=0,header="",submitted=null;
+  function response(v){return Promise.resolve({ok:true,status:200,json:function(){return Promise.resolve(v)}})}
+  window.fetch=function(path,opts){
+    if(path==="/api/status")return response(status);
+    if(path==="/api/admin-password/reveal"){reveals++;header=(opts.headers||{})["X-WebConfig-Reveal"];return response({password:"saved-test"})}
+    if(path==="/api/config"&&opts&&opts.method==="POST"){submitted=JSON.parse(opts.body);return response({state:"pending"})}
+    if(path.indexOf("/api/config/result?")===0)return response({state:"running",results:[]});
+    if(path==="/api/config")return response(config);
+    return response({});
+  };
+  window.addEventListener("load",function(){setTimeout(function(){
+    var body=document.body,input=document.getElementById("app-admin-password"),btn=document.querySelector('[aria-controls="app-admin-password"]');
+    body.setAttribute("data-prefetch",reveals);body.setAttribute("data-placeholder",input.placeholder);
+    btn.click();setTimeout(function(){
+      body.setAttribute("data-revealed",input.type==="text"&&input.value==="saved-test");
+      body.setAttribute("data-header",header);body.setAttribute("data-clean",!("password" in st.dirty)&&st.orig.password==="");
+      st.dirty.name="Changed";saveChanges();
+      body.setAttribute("data-post-clean",!!submitted&&!("password" in submitted.set));
+      btn.click();body.setAttribute("data-hidden",input.type==="password"&&input.value===""&&!("password" in st.dirty));
+      input.value="new-test";input.dispatchEvent(new Event("input",{bubbles:true}));btn.click();
+      body.setAttribute("data-typed",input.type==="text"&&input.value==="new-test"&&st.dirty.password==="new-test"&&reveals===1);
+    },20);
+  },200)});
+})();
+</script>''' % (json.dumps(status), json.dumps(config))
+        dom = self.run_page(prelude, virtual_time=900)
+        for attr, expected in (("prefetch", "0"), ("placeholder", "********"),
+                               ("revealed", "true"), ("header", "1"),
+                               ("clean", "true"), ("post-clean", "true"),
+                               ("hidden", "true"), ("typed", "true")):
+            self.assertIn(f'data-{attr}="{expected}"', dom)
+
+    def test_admin_eye_drops_late_reply_after_logout(self):
+        status, config = self.setup_values()
+        status.update(mode="lan", needs_password=False)
+        prelude = r'''<script>
+(function(){
+  var status=%s,config=%s,resolveReveal;
+  function response(v){return Promise.resolve({ok:true,status:200,json:function(){return Promise.resolve(v)}})}
+  window.fetch=function(path){
+    if(path==="/api/status")return response(status);
+    if(path==="/api/config")return response(config);
+    if(path==="/api/admin-password/reveal")return new Promise(function(r){resolveReveal=r});
+    return response({});
+  };
+  window.addEventListener("load",function(){setTimeout(function(){
+    var input=document.getElementById("app-admin-password"),btn=document.querySelector('[aria-controls="app-admin-password"]');
+    btn.click();doLogout();setTimeout(function(){
+      resolveReveal({ok:true,status:200,json:function(){return Promise.resolve({password:"saved-test"})}});
+      setTimeout(function(){document.body.setAttribute("data-late-safe",input.value===""&&input.type==="password"&&!input.dataset.savedReveal&&!st.authed)},20);
+    },20);
+  },200)});
+})();
+</script>''' % (json.dumps(status), json.dumps(config))
+        self.assertIn('data-late-safe="true"', self.run_page(prelude, virtual_time=900))
+
+    def test_admin_reveal_requires_explicit_setup_login(self):
+        status, config = self.setup_values()
+        status.update(mode="setup", needs_password=False)
+        prelude = r'''<script>
+(function(){
+  var status=%s,config=%s,authorized=false,loginHeader="",reveals=0;
+  function response(v,code){return Promise.resolve({ok:code<400,status:code,json:function(){return Promise.resolve(v)}})}
+  window.fetch=function(path,opts){
+    if(path==="/api/status")return response(status,200);
+    if(path==="/api/config")return response(config,200);
+    if(path==="/api/admin-password/reveal"){reveals++;return response(authorized?{password:"saved-test"}:{error:"auth"},authorized?200:401)}
+    if(path==="/api/login"){loginHeader=(opts.headers||{})["X-WebConfig-Explicit-Login"];authorized=true;return response({ok:true},200)}
+    return response({},200);
+  };
+  window.addEventListener("load",function(){setTimeout(function(){
+    var input=document.getElementById("wz-admin-password"),btn=document.querySelector('[aria-controls="wz-admin-password"]');
+    btn.click();setTimeout(function(){
+      document.body.setAttribute("data-login-required",!document.getElementById("v-login").classList.contains("hide"));
+      document.body.setAttribute("data-login-guidance",document.getElementById("login-note").textContent.indexOf("tap the eye again")>=0);
+      document.getElementById("login-pwd").value="saved-test";
+      document.getElementById("login-form").dispatchEvent(new Event("submit",{bubbles:true,cancelable:true}));
+      setTimeout(function(){btn.click();setTimeout(function(){
+        document.body.setAttribute("data-explicit-login",loginHeader);
+        document.body.setAttribute("data-after-login",reveals===2&&input.value==="saved-test"&&input.type==="text");
+      },20)},80);
+    },30);
+  },200)});
+})();
+</script>''' % (json.dumps(status), json.dumps(config))
+        dom = self.run_page(prelude, virtual_time=1200)
+        for attr, expected in (("login-required", "true"), ("login-guidance", "true"),
+                               ("explicit-login", "1"), ("after-login", "true")):
+            self.assertIn(f'data-{attr}="{expected}"', dom)
+
     def test_tx_save_receipt_confirms_durable_save_and_automatic_application(self):
         for reply, chip, toast in (("OK - saved; pending", "Saved", "Saved; radio changes apply automatically"),
                                    ("OK", "OK", "Saved [OK]")):

@@ -1989,6 +1989,9 @@ void WebConfigServer::registerRoutes() {
     dispatchRequest(r, &WebConfigServer::handleLogin);
   },
               NULL, collectBody);
+  _server->on("/api/admin-password/reveal", HTTP_GET, [](AsyncWebServerRequest* r) {
+    dispatchRequest(r, &WebConfigServer::handleAdminPasswordReveal);
+  });
   _server->on("/api/logout", HTTP_POST, [](AsyncWebServerRequest* r) {
     dispatchRequest(r, &WebConfigServer::handleLogout);
   });
@@ -2443,7 +2446,11 @@ void WebConfigServer::handleLogin(AsyncWebServerRequest* req) {
     req->send(503, "application/json", "{\"error\":\"credentials unavailable\"}");
     return;
   }
-  if (credential.password[0] == 0 || (_mode == MODE_SETUP
+  // Provisioning retains its historical no-password bypass. A caller that
+  // explicitly asks to authenticate must prove the password and get a cookie.
+  const bool explicit_login = req->hasHeader("X-WebConfig-Explicit-Login")
+      && req->getHeader("X-WebConfig-Explicit-Login")->value() == "1";
+  if (credential.password[0] == 0 || (!explicit_login && _mode == MODE_SETUP
       && _setup_provisioning_privilege
       && _ap_auth_generation == credential.generation
       && mesh::esp32::managementPassword::apPasswordEligible(credential.password))) {
@@ -2513,6 +2520,82 @@ void WebConfigServer::handleLogin(AsyncWebServerRequest* req) {
   _session_last_seen = now;
   _session_generation = credential.generation;
   noteNetworkActivity();
+  req->send(res);
+}
+
+void WebConfigServer::handleAdminPasswordReveal(AsyncWebServerRequest* req) {
+  if (_mode == MODE_OFF) { req->send(503); return; }
+  // The non-simple header forces CORS preflight for cross-origin fetches and
+  // ensures a browser only requests the secret in response to an explicit UI action.
+  if (!req->hasHeader("X-WebConfig-Reveal")
+      || req->getHeader("X-WebConfig-Reveal")->value() != "1"
+      || (req->hasHeader("Origin")
+          && (!req->hasHeader("Host") || req->getHeader("Origin")->value()
+              != String("http://") + req->getHeader("Host")->value()))
+      || (req->hasHeader("Sec-Fetch-Site")
+          && req->getHeader("Sec-Fetch-Site")->value() != "same-origin"
+          && req->getHeader("Sec-Fetch-Site")->value() != "none")) {
+    req->send(403, "application/json", "{\"error\":\"origin\"}");
+    return;
+  }
+  WCLock lock(_mux);
+  uint32_t generation = 0;
+  // checkAuthLocked alone also accepts initial AP provisioning and legacy
+  // passwordless nodes. A current explicit login cookie is mandatory here.
+  if (!checkAuthLocked(req, &generation) || !_session_token[0]
+      || _session_generation != generation
+      || (uint32_t)(millis() - _session_last_seen) > WEBCONFIG_SESSION_TTL_MS
+      || !webConfigCookieMatches(req, _session_token)) {
+    req->send(401, "application/json", "{\"error\":\"sign in required\"}");
+    return;
+  }
+  // Serialize against setters in other tasks until the response is queued.
+  // This guard reserves a flag; it does not hold the shared state mutex.
+  mesh::esp32::managementPassword::ChangeGuard reveal_guard;
+  if (!reveal_guard.acquired()) {
+    req->send(503, "application/json", "{\"error\":\"credentials busy\"}");
+    return;
+  }
+  mesh::esp32::managementPassword::Snapshot credential;
+  if (!mesh::esp32::managementPassword::snapshot(credential)
+      || credential.generation != generation || !credential.password[0]) {
+    req->send(401, "application/json", "{\"error\":\"sign in required\"}");
+    return;
+  }
+  StaticJsonDocument<128> doc;
+  doc["password"] = credential.password;
+  const size_t length = measureJson(doc);
+  AsyncResponseStream* res = doc.overflowed() ? nullptr
+      : req->beginResponseStream("application/json", length);
+  bool complete = res && serializeJson(doc, *res) == length
+      && res->available() == length
+      && res->addHeader("Cache-Control", "no-store")
+      && res->addHeader("X-Content-Type-Options", "nosniff");
+  if (complete) {
+    const AsyncWebHeader* header = res->getHeader("Cache-Control");
+    complete = header && header->value() == "no-store";
+    header = res->getHeader("X-Content-Type-Options");
+    complete = complete && header && header->value() == "nosniff";
+  }
+  doc.clear();
+  memset(credential.password, 0, sizeof(credential.password));
+  if (!complete) {
+    delete res;
+    req->send(503, "application/json", "{\"error\":\"not enough memory\"}");
+    return;
+  }
+  // A USB/LoRa setter can rotate the committed credential while JSON is
+  // produced. Do not return it to a session of a different generation.
+  mesh::esp32::managementPassword::Snapshot latest;
+  const bool current = mesh::esp32::managementPassword::snapshot(latest)
+      && latest.generation == generation;
+  memset(latest.password, 0, sizeof(latest.password));
+  if (!current) {
+    delete res;
+    clearSessionLocked();
+    req->send(401, "application/json", "{\"error\":\"sign in required\"}");
+    return;
+  }
   req->send(res);
 }
 

@@ -50,6 +50,8 @@ struct AsyncWebServerRequest {
   std::string body, reply; void* _tempObject=nullptr;
   int status=0; AsyncWebServerResponse response{};
   Client* client() { return has_client ? &socket : nullptr; }
+  bool hasHeader(const char*) const { return false; }
+  AsyncWebHeader* getHeader(const char*) { return nullptr; }
   void send(int code, const char* =nullptr, const char* content=nullptr) { status=code; reply=content ? content : ""; }
   AsyncWebServerResponse* beginResponse(int code, const char*, const char*) { response.status=code; return &response; }
   AsyncResponseStream* beginResponseStream(const char*, size_t = 0) { return new AsyncResponseStream; }
