@@ -22,7 +22,7 @@ HARNESS = r'''
 #define UI_HAS_JOYSTICK 0
 #define UI_WIFI_SETUP_HOME_PAGE 0
 #define MESH_DEBUG_PRINTLN(...)
-constexpr char KEY_ENTER='e', KEY_NEXT='n', KEY_PREV='p', KEY_SELECT='s', KEY_UP='u', KEY_DOWN='d';
+constexpr char KEY_ENTER='e', KEY_NEXT='n', KEY_PREV='p', KEY_SELECT='s', KEY_UP='u', KEY_DOWN='d', KEY_LEFT='l', KEY_RIGHT='r';
 constexpr int BUTTON_EVENT_CLICK=1, BUTTON_EVENT_LONG_PRESS=2, BUTTON_EVENT_DOUBLE_CLICK=3;
 constexpr int BUTTON_EVENT_TRIPLE_CLICK=4, BUTTON_EVENT_QUADRUPLE_CLICK=5;
 uint32_t now_ms=0;
@@ -156,6 +156,13 @@ void visible() {
   event(ui, BUTTON_EVENT_LONG_PRESS);
   assert(ui.reader_closes==1 && ui.curr==ui.home);
   ui.home_screen.radio_page=true;
+#ifdef UI_HAS_NAV_INPUT
+  event(ui, BUTTON_EVENT_CLICK);
+  assert(ui.curr==ui.home && ui.reader_opens==0);
+#endif
+  assert(ui.handleLongPress(KEY_LEFT)==KEY_LEFT);
+  assert(ui.handleLongPress(KEY_RIGHT)==KEY_RIGHT);
+  assert(ui.curr==ui.home && ui.reader_opens==0);
   event(ui, BUTTON_EVENT_LONG_PRESS);
   assert(ui.reader_opens==1 && ui.curr==ui.reader);
 #endif

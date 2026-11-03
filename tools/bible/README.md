@@ -1,7 +1,9 @@
 # Offline Reader lookup
 
-ESP32 and nRF52 **Full Companion** USB terminals (and the ESP32 TCP terminal)
-include an embedded 879-verse corpus from the World English Bible:
+Reader is disabled in standard Companion builds to preserve flash space. A
+custom ESP32 or nRF52 **Full Companion** USB build can enable it with
+`COMPANION_FEATURE_READER=1`. The USB terminal (and ESP32 TCP terminal) then
+includes an embedded 879-verse corpus from the World English Bible:
 
 ```text
 get reader 3:16
@@ -23,7 +25,7 @@ last verse of a range. An optional page number refers to the first verse in
 that command: `get reader 21:17 2`. No radio request can access the reader.
 No WiFi, phone, API key, filesystem
 space or bootloader update is needed. Reduced/ordinary Companion and other
-roles omit the corpus. `COMPANION_FEATURE_READER=0` excludes it from a Full build.
+roles omit the corpus; the opt-in requires a Full Companion USB build.
 
 ## On-device Reader
 

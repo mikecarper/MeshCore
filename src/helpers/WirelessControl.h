@@ -47,6 +47,24 @@ inline Command parse(const char* s) {
   return {scope, Action::Invalid};
 }
 
+// Match Control::handle when the build has no wireless services, without
+// retaining the state-transition machinery on flash-constrained devices.
+inline bool handleNoServices(const char* text, char* reply, size_t size) {
+  const auto command = parse(text);
+  if (command.action == Action::None || !reply || !size) return false;
+  if (command.action == Action::Invalid) {
+    snprintf(reply, size, MESH_CLI_REPLY_TEXT("Error: use set wifi/espnow on|off [force]; set 2.4ghz on [all|force]|off [force]", "Error: set wifi/espnow on|off [force]; set 2.4ghz on [all|force]|off [force]"));
+  } else if (command.action == Action::Get) {
+    if (command.scope == All)
+      snprintf(reply, size, "wifi=unavailable, bluetooth=unavailable, espnow=unavailable");
+    else
+      snprintf(reply, size, "%s unavailable", command.scope == WiFi ? "wifi" : "espnow");
+  } else {
+    snprintf(reply, size, MESH_CLI_REPLY_TEXT("Error: requested wireless service unavailable in this build/boot", "Error: wireless service unavailable this build/boot"));
+  }
+  return true;
+}
+
 class Backend {
 public:
   virtual uint8_t available() const = 0; // Services usable in this boot.

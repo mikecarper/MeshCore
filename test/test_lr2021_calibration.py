@@ -2,12 +2,13 @@
 
 from pathlib import Path
 import os
+import re
 import shutil
 import subprocess
 import tempfile
 import unittest
 
-from cpp_source import body
+from cpp_source import body, _uncommented
 from test_display_power import FS_STUB
 
 
@@ -349,9 +350,11 @@ class LR2021CalibrationTests(unittest.TestCase):
     def test_all_cli_roles_load_before_init_and_service_pending(self):
         for role in ("simple_repeater", "simple_room_server", "simple_sensor", "companion_radio"):
             source = (ROOT / "examples" / role / "main.cpp").read_text()
-            setup = body(source, "void setup()")
+            setup = _uncommented(body(source, "void setup()"))
             with self.subTest(role=role):
-                self.assertLess(setup.index("loadLR2021CalibrationSettings("), setup.index("radio_init()"))
+                init = re.search(r"\bwhile\s*\([^\n;]*\bradio_init\s*\(\s*\)", setup)
+                self.assertIsNotNone(init, "startup must initialize the radio")
+                self.assertLess(setup.index("loadLR2021CalibrationSettings("), init.start())
                 self.assertIn("loopLR2021CalibrationSettings(radio_driver)", source)
                 self.assertIn("#if defined(USE_LR2021)", source)
 

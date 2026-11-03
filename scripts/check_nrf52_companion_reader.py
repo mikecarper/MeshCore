@@ -23,6 +23,19 @@ ROOT = Path(__file__).resolve().parents[1]
 TYPOGRAPHY = str.maketrans({'\u00a0':' ', '\u2013':'-', '\u2014':'-', '\u2018':"'", '\u2019':"'", '\u201c':'"', '\u201d':'"'})
 
 
+def check_disabled(path):
+    elf = FirmwareElf(path)
+    if elf.unpack('H', 18)[0] != 40:
+        raise ValueError('Expected ARM ELF')
+    retained = [name for name in elf.symbols
+                if 'readerData' in name or 'replyVerse' in name
+                or 'handleReaderCommand' in name]
+    if retained:
+        raise ValueError('Reader code or corpus unexpectedly linked: ' + repr(retained))
+    return {'passed': True, 'reader': 'disabled',
+            'elf_sha256': hashlib.sha256(elf.data).hexdigest()}
+
+
 def check(path, every_page=False):
     elf = FirmwareElf(path)
     if elf.unpack('H', 18)[0] != 40:
@@ -132,8 +145,10 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('elf')
     parser.add_argument('--every-page', action='store_true')
+    parser.add_argument('--expect-disabled', action='store_true')
     args = parser.parse_args()
     try:
-        print(json.dumps(check(args.elf, args.every_page), indent=2))
+        print(json.dumps(check_disabled(args.elf) if args.expect_disabled
+                         else check(args.elf, args.every_page), indent=2))
     except (ValueError, OSError) as error:
         parser.exit(1, f'FAILED: {error}\n')

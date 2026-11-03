@@ -1739,12 +1739,6 @@ public:
       movePage(-1);
       return true;
     }
-#if COMPANION_FEATURE_READER
-    if (key == KEY_ENTER && isRadioPage()) {
-      _task->showReader();
-      return true;
-    }
-#endif
     if (key == KEY_NEXT || key == KEY_RIGHT) {
       movePage(1);
       if (_page == HomePage::RECENT) {
@@ -3157,7 +3151,8 @@ char UITask::handleLongPress(char c) {
   // The radio page's reader gesture, including exit, takes precedence over
   // the global early-boot rescue gesture just like the WiFi setup page.
   if (_display != NULL && isReaderActive()) { closeReader(); return 0; }
-  if (_display != NULL && curr == home && static_cast<HomeScreen*>(home)->isRadioPage()) {
+  if (c == KEY_ENTER && _display != NULL && curr == home
+      && static_cast<HomeScreen*>(home)->isRadioPage()) {
     showReader();
     return 0;
   }

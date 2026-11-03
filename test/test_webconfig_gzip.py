@@ -50,7 +50,12 @@ class WebConfigGzipTest(unittest.TestCase):
         self.assertIn("gzip, 1000 iterations", header)
         blobs = arrays(header)
         for page in (ROOT / "webui/pages").glob("*.html"):
-            self.assertEqual(gzip.decompress(blobs["MESH_HTML_" + page.stem.upper()]), page.read_bytes())
+            expected = page.read_bytes()
+            if page.name == "elegant_ota_compact.html":
+                marker = b"/* MESH_SPARK_MD5 */"
+                self.assertEqual(expected.count(marker), 1)
+                expected = expected.replace(marker, (ROOT / "webui/vendor/spark-md5-3.0.2.min.js").read_bytes())
+            self.assertEqual(gzip.decompress(blobs["MESH_HTML_" + page.stem.upper()]), expected)
 
     def test_loader_matches_legacy_android_browser_syntax(self):
         blobs = arrays((ROOT / "src/helpers/esp32/WebConfigHtml.h").read_text())

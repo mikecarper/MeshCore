@@ -11,7 +11,7 @@
 /* nRF52's Arduino recipe defaults to -Ofast, which more than doubles this
  * decoder. Keep the size policy local to tinf instead of changing MeshCore. */
 #pragma GCC push_options
-#if defined(NRF52_PLATFORM)
+#if defined(NRF52_PLATFORM) && __GNUC__ >= 12
 #pragma GCC optimize ("Oz")
 #else
 #pragma GCC optimize ("Os")

@@ -3672,6 +3672,16 @@ static bool companionNativeUsbLightSleepReady() {
 
 bool handleCompanionWirelessCommand(const char* command, char* reply, size_t size,
                                    CompanionWirelessSource source) {
+#if defined(STM32_PLATFORM) && !defined(BLE_PIN_CODE) && !defined(WIFI_SSID) \
+    && !defined(WITH_BRIDGE) && !defined(WITH_MQTT_BRIDGE) \
+    && !defined(WITH_UDP_BRIDGE) && !defined(WITH_ESPNOW_BRIDGE) \
+    && !defined(WITH_WEBCONFIG) && !defined(ETHERNET_ENABLED) \
+    && !MESH_ENABLE_EMERGENCY_POWER \
+    && (!defined(MESH_PRIMARY_ESPNOW) || !MESH_PRIMARY_ESPNOW)
+  // This build has no wireless transport whose state can change.
+  (void)source;
+  return mesh::wireless::handleNoServices(command, reply, size);
+#else
 #if defined(BLE_PIN_CODE)
   const auto wireless_command = mesh::wireless::parse(command);
   if (reply && size && companion_bluetooth_off_at != 0
@@ -3700,6 +3710,7 @@ bool handleCompanionWirelessCommand(const char* command, char* reply, size_t siz
     }
   }
   return mesh::wireless::control().handle(command, reply, size, millis(), requester);
+#endif
 }
 
 #if COMPANION_RTC_TERMINAL_INPUT

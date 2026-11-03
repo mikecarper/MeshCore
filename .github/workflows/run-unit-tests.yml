@@ -52,12 +52,12 @@ jobs:
           --firmware-version v1.18.0.1-halo-keymind-cascade-dev
           --radio-preset usa-cascade-fixed --profile cascade --require-ota
 
-      - name: Verify linked Companion crypto, retained Reader and ARM stack use
+      - name: Verify linked Companion crypto, Reader exclusion and ARM stack use
         run: |
           python3 -m pip install unicorn==2.1.4
           python3 -B test/test_cc310_shared_scratch.py -v
           python3 -B scripts/check_nrf52_companion_crypto.py .pio/build/RAK_4631_companion_radio_full/firmware.elf
-          python3 -B scripts/check_nrf52_companion_reader.py .pio/build/RAK_4631_companion_radio_full/firmware.elf
+          python3 -B scripts/check_nrf52_companion_reader.py --expect-disabled .pio/build/RAK_4631_companion_radio_full/firmware.elf
           python3 -B scripts/check_nrf52_companion_ota_workspace.py .pio/build/RAK_4631_companion_radio_full/firmware.elf
 
       - name: Qualify XIAO Full Companion with Meshtext and direct OTA
@@ -293,6 +293,14 @@ jobs:
         run: pio run -e muzi_base_repeater -e muzi_base_room_server -e muzi_base_companion_radio_usb -e muzi_base_companion_radio_ble
       - name: Qualify Muzi Full Companion
         run: bash build.sh build-firmware muzi_base_companion_radio_full --firmware-version v1.18.0.2-halo-keymind-cascade-dev --radio-preset usa-cascade-fixed --profile cascade
+      - name: Upload universal build failure logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: universal-lora-build-logs
+          path: out/build-logs/*.log
+          if-no-files-found: ignore
+          retention-days: 7
 
   headless-kiss-smoke:
     runs-on: ubuntu-latest
@@ -1168,6 +1176,8 @@ jobs:
       - name: Verify WiFi, ESP-NOW and combined wireless controls
         run: |
           python3 -B test/test_wireless_control.py -v
+          python3 -B test/test_stm32_wireless_specialization.py -v
+          python3 -B test/test_companion_no_wireless.py -v
           python3 -B test/test_serial_wifi_sessions.py -v
           python3 -B test/test_companion_wifi_listener.py -v
           python3 -B test/test_wifi_compatibility.py -v
@@ -1404,6 +1414,7 @@ jobs:
           python3 -B test/test_webconfig_ui.py
           python3 -B test/test_webconfig_regulators.py -v
           python3 -B test/test_webconfig_gzip.py
+          python3 -B test/test_compact_elegant_ota.py -v
           python3 -B test/test_webconfig_secret_masking.py
           python3 -B test/test_webconfig_station_ownership.py -v
           python3 -B test/test_mqtt_canonical_wifi.py -v

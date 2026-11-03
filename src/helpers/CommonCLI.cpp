@@ -3750,8 +3750,20 @@ void CommonCLI::handleCommand(uint32_t sender_timestamp, char* command, char* re
 #if MESH_ENABLE_TX_BEACONS
     if (handleBeaconCommand(command, reply, 157)) return;
 #endif
+#if defined(STM32_PLATFORM) && defined(STM32WLxx) && defined(USE_STM32WL) \
+    && !defined(WITH_WEBCONFIG) && !defined(WITH_MQTT_BRIDGE) \
+    && !defined(WITH_UDP_BRIDGE) && !defined(WITH_ESPNOW_BRIDGE) \
+    && !defined(WITH_BRIDGE) && !defined(ETHERNET_ENABLED) \
+    && !defined(BLE_PIN_CODE) && !defined(WIFI_SSID) \
+    && !MESH_ENABLE_EMERGENCY_POWER \
+    && (!defined(MESH_PRIMARY_ESPNOW) || !MESH_PRIMARY_ESPNOW)
+    // The integrated STM32WL target has no 2.4 GHz services. Keep the same
+    // unsupported-command replies without retaining the state machine.
+    if (mesh::wireless::handleNoServices(command, reply, 160)) return;
+#else
     if (mesh::wireless::control().handle(command, reply, 160, millis(),
                                        _callbacks->wirelessCommandSource(sender_timestamp))) return;
+#endif
     // Infrastructure callers can already have reflected a three-byte CLI
     // request prefix into the same 160-byte reply. Reserve it for bulk pages.
 #if MESH_ENABLE_CARRIER_TOOLS || MESH_ENABLE_MORSE_RX

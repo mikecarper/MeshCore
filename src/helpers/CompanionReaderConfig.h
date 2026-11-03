@@ -1,12 +1,7 @@
 #pragma once
 
 #ifndef COMPANION_FEATURE_READER
-  #if defined(COMPANION_RADIO_FULL) && defined(ENABLE_USB_INTERFACE) \
-      && (defined(ESP32_PLATFORM) || defined(NRF52_PLATFORM))
-    #define COMPANION_FEATURE_READER 1
-  #else
-    #define COMPANION_FEATURE_READER 0
-  #endif
+  #define COMPANION_FEATURE_READER 0
 #endif
 
 #ifndef COMPANION_READER_COMPACT_STREAM

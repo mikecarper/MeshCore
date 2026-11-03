@@ -118,7 +118,16 @@ def main():
                     "#pragma once", "#include <stdint.h>", "#include <pgmspace.h>"]
     for page in sorted(Path("webui/pages").glob("*.html")):
         symbol = "MESH_HTML_" + page.stem.upper()
-        compressed = compress_page(page.read_bytes())
+        page_bytes = page.read_bytes()
+        if page.name == "elegant_ota_compact.html":
+            # Inline the pinned, locally vendored MD5 implementation: the OTA
+            # page must work without internet and the server verifies its hash.
+            marker = b"/* MESH_SPARK_MD5 */"
+            if page_bytes.count(marker) != 1:
+                raise ValueError("compact OTA page must contain one MD5 marker")
+            vendor = Path("webui/vendor/spark-md5-3.0.2.min.js").read_bytes()
+            page_bytes = page_bytes.replace(marker, vendor)
+        compressed = compress_page(page_bytes)
         static_lines.append("const uint32_t %s_LEN = %d;" % (symbol, len(compressed)))
         append_byte_array(static_lines, symbol, compressed)
     static_header = Path("src/helpers/esp32/StaticHtml.h")

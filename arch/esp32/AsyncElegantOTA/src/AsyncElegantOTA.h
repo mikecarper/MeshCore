@@ -21,7 +21,14 @@
 #include "ESPAsyncWebServer.h"
 #include "FS.h"
 
-#include "elegantWebpage.h"
+#if defined(ESP32) && defined(MESH_COMPACT_ELEGANT_OTA) && MESH_COMPACT_ELEGANT_OTA
+  // Keep the full AsyncElegantOTA upload protocol; only its page is smaller.
+  #include <helpers/esp32/StaticHtml.h>
+  #define ELEGANT_HTML MESH_HTML_ELEGANT_OTA_COMPACT
+  #define ELEGANT_HTML_SIZE MESH_HTML_ELEGANT_OTA_COMPACT_LEN
+#else
+  #include "elegantWebpage.h"
+#endif
 
 
 class AsyncElegantOtaClass{

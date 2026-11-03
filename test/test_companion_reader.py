@@ -78,7 +78,7 @@ class CompanionReaderTest(unittest.TestCase):
                 "#pragma once\n#include <stdint.h>\n#include <stddef.h>\n#include <stdio.h>\n#include <string.h>\n"
                 "class Stream { public: virtual size_t write(const uint8_t*,size_t);size_t print(const char*); };\n")
             flags = ["-mcpu=cortex-m4", "-mthumb", "-Oz", "-fno-inline-small-functions",
-                     "-fstack-usage", "-DNRF52_PLATFORM=1", "-DCOMPANION_RADIO_FULL=1",
+                     "-fstack-usage", "-DNRF52_PLATFORM=1", "-DCOMPANION_RADIO_FULL=1", "-DCOMPANION_FEATURE_READER=1",
                      "-DENABLE_USB_INTERFACE=1", "-I" + str(directory),
                      "-I" + str(ROOT / "src"), "-I" + str(FIXTURE)]
             if compact:
@@ -239,7 +239,7 @@ class CompanionReaderTest(unittest.TestCase):
         with tempfile.TemporaryDirectory(prefix="meshcore-reader-") as directory:
             directory = Path(directory)
             for platform, compact in (("ESP32_PLATFORM", False), ("NRF52_PLATFORM", False), ("NRF52_PLATFORM", True)):
-                flags = [f"-D{platform}=1", "-DCOMPANION_RADIO_FULL=1", "-DENABLE_USB_INTERFACE=1"]
+                flags = [f"-D{platform}=1", "-DCOMPANION_RADIO_FULL=1", "-DENABLE_USB_INTERFACE=1", "-DCOMPANION_FEATURE_READER=1"]
                 if compact:
                     flags.append("-DCOMPANION_READER_COMPACT_STREAM=1")
                 obj, binary = directory / "tinf.o", directory / "reader.exe"
@@ -264,7 +264,7 @@ class CompanionReaderTest(unittest.TestCase):
             self.skipTest("host G++ required")
         for platform, compact, expected in (("NRF52_PLATFORM", False, 3), ("NRF52_PLATFORM", True, 0),
                                              ("ESP32_PLATFORM", True, None)):
-            flags = [f"-D{platform}=1", "-DCOMPANION_RADIO_FULL=1", "-DENABLE_USB_INTERFACE=1"]
+            flags = [f"-D{platform}=1", "-DCOMPANION_RADIO_FULL=1", "-DENABLE_USB_INTERFACE=1", "-DCOMPANION_FEATURE_READER=1"]
             if compact:
                 flags.append("-DCOMPANION_READER_COMPACT_STREAM=1")
             result = self.run_checked([cxx, "-E", "-P", *flags,
@@ -280,6 +280,8 @@ class CompanionReaderTest(unittest.TestCase):
             self.skipTest("host G++ required")
         for flags in ([], ["-DESP32_PLATFORM=1"], ["-DNRF52_PLATFORM=1"],
                       ["-DESP32_PLATFORM=1", "-DCOMPANION_RADIO_FULL=1"],
+                      ["-DESP32_PLATFORM=1", "-DCOMPANION_RADIO_FULL=1", "-DENABLE_USB_INTERFACE=1"],
+                      ["-DNRF52_PLATFORM=1", "-DCOMPANION_RADIO_FULL=1", "-DENABLE_USB_INTERFACE=1"],
                       ["-DESP32_PLATFORM=1", "-DCOMPANION_RADIO_FULL=1",
                        "-DENABLE_USB_INTERFACE=1", "-DCOMPANION_FEATURE_READER=0"]):
             result = self.run_checked([cxx, "-E", "-P", *flags,
@@ -448,7 +450,7 @@ int main() {
             generated = directory / "dispatch.cpp"
             generated.write_text(harness)
             for platform in ("ESP32_PLATFORM", "NRF52_PLATFORM"):
-                flags = [f"-D{platform}=1", "-DCOMPANION_RADIO_FULL=1", "-DENABLE_USB_INTERFACE=1"]
+                flags = [f"-D{platform}=1", "-DCOMPANION_RADIO_FULL=1", "-DENABLE_USB_INTERFACE=1", "-DCOMPANION_FEATURE_READER=1"]
                 obj, binary = directory / "tinf.o", directory / "dispatch.exe"
                 self.run_checked([cc, "-std=c11", "-Os", *flags, "-c",
                                   str(ROOT / "src/helpers/ota/OtaTinf.c"), "-o", str(obj)])
@@ -465,7 +467,7 @@ int main() {
             self.skipTest("host GCC and G++ required")
         with tempfile.TemporaryDirectory(prefix="meshcore-reader-reader-") as directory:
             directory = Path(directory)
-            flags = ["-DNRF52_PLATFORM=1", "-DCOMPANION_RADIO_FULL=1", "-DENABLE_USB_INTERFACE=1"]
+            flags = ["-DNRF52_PLATFORM=1", "-DCOMPANION_RADIO_FULL=1", "-DENABLE_USB_INTERFACE=1", "-DCOMPANION_FEATURE_READER=1"]
             obj, binary = directory / "tinf.o", directory / "reader.exe"
             self.run_checked([cc, "-Os", *flags, "-c", str(ROOT / "src/helpers/ota/OtaTinf.c"),
                               "-o", str(obj)])
@@ -582,7 +584,7 @@ int main() {
             generated = directory / "interlock.cpp"
             generated.write_text(harness)
             for platform in ("ESP32_PLATFORM", "NRF52_PLATFORM"):
-                flags = [f"-D{platform}=1", "-DCOMPANION_RADIO_FULL=1", "-DENABLE_USB_INTERFACE=1"]
+                flags = [f"-D{platform}=1", "-DCOMPANION_RADIO_FULL=1", "-DENABLE_USB_INTERFACE=1", "-DCOMPANION_FEATURE_READER=1"]
                 obj, binary = directory / "tinf.o", directory / "interlock.exe"
                 self.run_checked([cc, "-std=c11", "-Os", *flags, "-c",
                                   str(ROOT / "src/helpers/ota/OtaTinf.c"), "-o", str(obj)])
@@ -594,7 +596,11 @@ int main() {
 
     def test_reader_button_routing_and_profile_gate(self):
         ui = (ROOT / "examples/companion_radio/ui-new/UITask.cpp").read_text(encoding="utf-8")
-        long_press = ui[ui.index("char UITask::handleLongPress("):]
+        home = extract_braced(ui, "class HomeScreen")
+        short_press = extract_braced(home, "bool handleInput(char c) override")
+        self.assertNotIn("showReader(", short_press)
+        long_press = extract_braced(ui, "char UITask::handleLongPress(")
+        self.assertRegex(long_press, r"if\s*\(c\s*==\s*KEY_ENTER[\s\S]*?isRadioPage\(\)\)\s*\{\s*showReader\(\)")
         self.assertLess(long_press.index("isReaderActive()"), long_press.index("enterCLIRescue()"))
         self.assertLess(long_press.index("isRadioPage()"), long_press.index("enterCLIRescue()"))
         self.assertIn("#if COMPANION_FEATURE_READER\n#include \"ReaderScreen.h\"", ui)

@@ -256,7 +256,9 @@ for the state machine and limitations.
 
 ## Commands
 
-ESP32 and nRF52 Full Companions include an offline World English Bible lookup:
+Custom ESP32 and nRF52 Full Companion USB builds can opt into an offline World
+English Bible lookup with `COMPANION_FEATURE_READER=1`. Standard builds leave
+it disabled to preserve firmware space:
 
 ```text
 get reader 3:16

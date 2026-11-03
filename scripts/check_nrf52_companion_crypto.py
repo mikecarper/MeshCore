@@ -43,8 +43,6 @@ def check(path):
     if elf.symbols.get("base", (0, 0))[1] != 960:
         raise ValueError("Companion must retain the 960-byte Ed25519 base table")
     reader = "_ZN4mesh5bible9generatedL10readerDataE"
-    if reader not in elf.symbols:
-        raise ValueError("Companion Reader corpus is missing")
     path_cache = elf.symbols.get("_ZZN4mesh18contactPathStorageEvE4pool")
     if path_cache and elf.sections[path_cache[2]][1] != 8:  # SHT_NOBITS
         raise ValueError("Contact path cache has a flash load image; expected zero-initialized storage")
@@ -102,7 +100,7 @@ def check(path):
     return {
         "passed": True, "elf_sha256": hashlib.sha256(elf.data).hexdigest(),
         "base_table_bytes": elf.symbols["base"][1],
-        "reader_data_bytes": elf.symbols[reader][1], "vectors": rows,
+        "reader_data_bytes": elf.symbols.get(reader, (0, 0))[1], "vectors": rows,
         "zero_initialized_path_cache_bytes": path_cache[1] if path_cache else 0,
         "stack_limit_bytes": 2048,
         "scope": "Crypto function frames only; excludes caller/ISR/task stacks and physical timing.",

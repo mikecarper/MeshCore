@@ -31,7 +31,7 @@ class PocketReaderTest(unittest.TestCase):
             self.assertIsNotNone(font)
             selected = directory / "font.c"
             selected.write_text('#include "u8g2_fonts.h"\n' + font.group())
-            flags = ["-g", "-O1", "-DHELTEC_MESH_POCKET=1", "-DCOMPANION_RADIO_FULL=1",
+            flags = ["-g", "-O1", "-DHELTEC_MESH_POCKET=1", "-DCOMPANION_RADIO_FULL=1", "-DCOMPANION_FEATURE_READER=1",
                      "-DNRF52_PLATFORM=1", "-DENABLE_USB_INTERFACE=1", "-DUI_POCKET_GUI=1",
                      "-DUI_SMALL_MESSAGE_FONT=0", "-DUI_BUTTON_READER_HINT=1", "-DUI_READER_TOUCH_BAR=0",
                      "-I" + str(FIXTURE), "-I" + str(ROOT / "src"), "-I" + str(ROOT),

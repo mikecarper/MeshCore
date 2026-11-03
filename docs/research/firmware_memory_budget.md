@@ -477,8 +477,10 @@ these are crypto function frames only, excluding callers, interrupts and other
 tasks. The loop stack stays at 8 KiB. A full firmware RAM check still applies.
 
 CI runs `scripts/check_nrf52_companion_crypto.py` on the actual Full RAK ELF.
-It checks the 960-byte table and retained Reader corpus, executes two RFC 8032
-vectors, and rejects crypto function stack use above 2 KiB. Host tests compare
+It checks the 960-byte table, executes two RFC 8032 vectors, and rejects crypto
+function stack use above 2 KiB. Reader is now disabled by default in Companion
+builds; an explicit `COMPANION_FEATURE_READER=1` retains the implementation and
+corpus. Host tests compare
 1,791 scalars and 128 keypair/signature/shared-secret cases against the original
 implementation, plus scalar boundary/random and sanitizer tests. Clean Full
 builds also cover T1000-E and T096. These builds are synthetic coverage for

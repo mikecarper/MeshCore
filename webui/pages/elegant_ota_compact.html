@@ -1,0 +1,53 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>MeshCore OTA</title><style>
+body{font:16px sans-serif;max-width:38rem;margin:2rem auto;padding:0 1rem;line-height:1.45}
+fieldset{margin:1rem 0}button,input{font:inherit}button{padding:.5rem 1rem}progress{width:100%}
+#status{white-space:pre-wrap;overflow-wrap:anywhere}
+</style></head><body>
+<h1>MeshCore OTA</h1><p id="identity">Reading device identity…</p>
+<fieldset><legend>Update type</legend>
+<label><input type="radio" name="type" value="firmware" checked> Firmware</label>
+<label><input type="radio" name="type" value="filesystem"> Filesystem</label></fieldset>
+<label for="file">Image (.bin or .bin.gz)</label><br><input id="file" type="file" accept=".bin,.bin.gz"><br>
+<button type="button" id="upload">Upload</button>
+<progress id="progress" max="100" value="0" hidden></progress><p id="status" role="status"></p>
+<script>/* spark-md5 3.0.2, André Cruz, (MIT OR WTFPL); see webui/vendor. */
+/* MESH_SPARK_MD5 */
+</script><script>
+(function(){
+  var input=document.getElementById('file'),button=document.getElementById('upload');
+  var status=document.getElementById('status'),progress=document.getElementById('progress');
+  var modes=document.querySelectorAll('input[name="type"]');
+  function setBusy(busy){button.disabled=busy;input.disabled=busy;for(var i=0;i<modes.length;i++)modes[i].disabled=busy;}
+  function finish(message){status.textContent=message;setBusy(false);}
+  fetch('/update/identity',{cache:'no-store'}).then(function(response){
+    if(!response.ok)throw Error('Identity unavailable');return response.json();
+  }).then(function(identity){
+    document.getElementById('identity').textContent=(identity.id||'MeshCore')+' · '+(identity.hardware||'ESP32');
+  }).catch(function(){document.getElementById('identity').textContent='Device identity unavailable';});
+  button.onclick=function(){
+    var file=input.files&&input.files[0];
+    if(!file||!file.size){finish('Select a nonempty image.');return;}
+    var type=document.querySelector('input[name="type"]:checked').value;
+    var md5=new SparkMD5.ArrayBuffer(),reader=new FileReader(),offset=0,chunk=262144;
+    setBusy(true);progress.hidden=false;progress.value=0;
+    status.textContent='Calculating checksum…';
+    reader.onerror=function(){finish('Could not read the selected file.');};
+    reader.onload=function(event){
+      md5.append(event.target.result);offset+=event.target.result.byteLength;
+      if(offset<file.size){readNext();return;}
+      var form=new FormData(),request=new XMLHttpRequest();
+      form.append('MD5',md5.end());form.append(type,file,type);
+      request.open('POST','/update');request.withCredentials=true;
+      request.upload.onprogress=function(event){if(event.lengthComputable){progress.value=Math.round(event.loaded*100/event.total);status.textContent='Uploading '+progress.value+'%';}};
+      request.onload=function(){finish(request.status===200?'Update complete; the device will reboot.':'Upload failed (HTTP '+request.status+'): '+request.responseText);};
+      request.onerror=function(){finish('Upload failed; check the connection and retry.');};
+      request.onabort=function(){finish('Upload cancelled.');};
+      request.send(form);
+    };
+    function readNext(){reader.readAsArrayBuffer(file.slice(offset,Math.min(file.size,offset+chunk)));}
+    readNext();
+  };
+})();
+</script></body></html>
