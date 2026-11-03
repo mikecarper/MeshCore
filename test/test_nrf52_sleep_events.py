@@ -127,20 +127,35 @@ class Nrf52SleepEventTests(unittest.TestCase):
         self.run_case("irq_owner")
 
     def test_all_sleeping_roles_prepare_after_transitions_before_work(self):
-        preparation = "#if defined(NRF52_PLATFORM)\n  board.prepareSleepCycle();\n#endif\n"
-        priority = ("#if defined(BLE_PIN_CODE)\n"
-                    "  serviceCompanionUsbBluetoothPriority();\n#endif\n")
         for role in ("simple_repeater", "simple_room_server", "simple_sensor",
                      "companion_radio"):
-            with self.subTest(role=role):
-                source = (ROOT / "examples" / role / "main.cpp").read_text(encoding="ascii")
-                actual = body(source, "\nvoid loop() {")
-                # Companion's transport transition may resume/start BLE and
-                # invalidate the prior cache. Query SDK state after it, with
-                # no other loop work before this single preparation.
-                entry = "\nvoid loop() {\n" + (priority if role == "companion_radio" else "") + preparation
-                self.assertTrue(actual.startswith(entry))
-                self.assertEqual(actual.count("board.prepareSleepCycle();"), 1)
+            source = (ROOT / "examples" / role / "main.cpp").read_text(encoding="ascii")
+            actual = body(source, "\nvoid loop() {")
+            for ble in (False, True):
+                with self.subTest(role=role, ble=ble):
+                    command = shlex.split(os.environ.get("CXX", "g++")) + [
+                        "-E", "-P", "-x", "c++", "-DNRF52_PLATFORM=1",
+                        "-I", str(ROOT / "src"),
+                    ]
+                    if role == "simple_repeater":
+                        # Use the production feature defaults: the required
+                        # PSRAM failure path cannot run on nRF52.
+                        command += ["-include", "helpers/RepeaterPsramStorage.h"]
+                    if ble:
+                        command.append("-DBLE_PIN_CODE=1")
+                    result = subprocess.run(command + ["-"], input=actual,
+                                            capture_output=True, text=True)
+                    self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                    active = "".join(result.stdout.split())
+                    # Companion's transport transition may resume/start BLE
+                    # and invalidate the prior cache. Require the SDK snapshot
+                    # immediately after it, before any other active loop work.
+                    entry = "voidloop(){"
+                    if role == "companion_radio" and ble:
+                        entry += "serviceCompanionUsbBluetoothPriority();"
+                    entry += "board.prepareSleepCycle();"
+                    self.assertTrue(active.startswith(entry), active[:len(entry) + 120])
+                    self.assertEqual(active.count("board.prepareSleepCycle();"), 1)
 
     def test_companion_transition_precedes_the_authoritative_sdk_snapshot(self):
         source = (ROOT / "examples/companion_radio/main.cpp").read_text(encoding="ascii")

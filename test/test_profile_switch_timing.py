@@ -145,6 +145,7 @@ struct RadioLibWrapper {
   bool _profile_repair_required=false,_rx_hold_continuous=true;
   bool _rx_ps_armed=false,_profile_refresh_required=false;
   bool pending=false,busy=false,receiving=false,post_irq=false;
+  bool completion_during_probe=false;
   uint8_t state=STATE_RX;
   unsigned standby_calls=0;
   int16_t standby_result=0;
@@ -159,7 +160,11 @@ struct RadioLibWrapper {
   Chip* _radio=&chip;
   bool hasPendingRadioInterrupt() { now_us+=2;return pending; }
   bool isChipBusy() { now_us+=3;return busy; }
-  bool isReceivingPacket() { now_us+=5;return receiving; }
+  bool isReceivingPacket() {
+    now_us+=5;
+    if(completion_during_probe) pending=true;
+    return receiving;
+  }
   void claimRadioInterrupt() { now_us+=4;pending=false; }
   uint8_t beginReconfigure();
 };
@@ -168,26 +173,27 @@ int main() {
   using namespace mesh::profiletiming;
   auto& direction=mesh_hil_profile_timing.direction[0];
   // Success, already idle, each admission guard, both standby failures,
-  // an IRQ arriving in standby, and the physical-repair branch.
-  for(unsigned scenario=0;scenario<13;++scenario) {
+  // an IRQ arriving during the activity probe or standby, and physical repair.
+  for(unsigned scenario=0;scenario<14;++scenario) {
     RadioLibWrapper radio;
     uint8_t expected_result=2;
     unsigned admission=0,standby=0,post=0,calls=0;
     switch(scenario) {
-      case 0: expected_result=1;admission=10;standby=20;post=2;calls=1;break;
-      case 1: radio.state=STATE_IDLE;expected_result=0;admission=10;post=2;break;
+      case 0: expected_result=1;admission=12;standby=20;post=2;calls=1;break;
+      case 1: radio.state=STATE_IDLE;expected_result=0;admission=12;post=2;break;
       case 2: radio.pending=true;admission=2;break;
       case 3: radio.state=STATE_TX_WAIT;admission=2;break;
       case 4: radio.busy=true;admission=5;break;
       case 5: radio.receiving=true;admission=10;break;
       case 6: radio._cw_active=true;break;
-      case 7: radio.standby_result=-1;expected_result=3;admission=10;standby=20;calls=1;break;
-      case 8: radio.post_irq=true;admission=10;standby=20;post=2;calls=1;break;
+      case 7: radio.standby_result=-1;expected_result=3;admission=12;standby=20;calls=1;break;
+      case 8: radio.post_irq=true;admission=12;standby=20;post=2;calls=1;break;
       case 9: radio._profile_repair_required=true;expected_result=1;admission=7;standby=20;post=4;calls=1;break;
       case 10: radio._profile_repair_required=true;radio.busy=true;admission=3;break;
       case 11: radio._profile_repair_required=true;radio.standby_result=-1;
         expected_result=3;admission=7;standby=20;calls=1;break;
       case 12: radio._beacon_owned=true;break;
+      case 13: radio.completion_during_probe=true;admission=12;break;
     }
     now_us=0;begin(0,1,now_us);
     const uint32_t samples=direction.stage[Admission].count;
@@ -206,9 +212,9 @@ int main() {
     assert(direction.stage[Standby].count==direction.stage[Admission].count);
     assert(direction.stage[PostStandby].count==direction.stage[Admission].count);
   }
-  assert(direction.successes==3 && direction.busy==8 && direction.failures==2);
+  assert(direction.successes==3 && direction.busy==9 && direction.failures==2);
   assert(direction.stage[Standby].min_us==0 && direction.stage[Standby].max_us==20);
-  assert(direction.worst_us[Whole]==32 && direction.worst_us[Admission]==10);
+  assert(direction.worst_us[Whole]==34 && direction.worst_us[Admission]==12);
 }
 '''.replace("@GLOBALS@", self.production_globals()).replace("@METHOD@", implementation)
         self.compile_run(fixture)

@@ -171,7 +171,11 @@ class Hwcdc3311StartupSessionTests(startup.HwcdcStartupSessionTests):
             version.write_text("#define ESP_ARDUINO_VERSION_MAJOR 3\n"
                                "#define ESP_ARDUINO_VERSION_MINOR 3\n"
                                "#define ESP_ARDUINO_VERSION_PATCH 12\n", encoding="ascii")
-            self.assertEqual(Path(FIX.replace_hwcdc_source(env, node)).read_text(), self.patched)
+            if self.version == (3, 1, 3):
+                with self.assertRaises(RuntimeError):
+                    FIX.replace_hwcdc_source(env, node)
+            path.write_text(RAW, encoding="ascii")
+            self.assertEqual(Path(FIX.replace_hwcdc_source(env, node)).read_text(), PATCHED)
             # An unreviewed framework version keeps its existing driver.
             version.write_text("#define ESP_ARDUINO_VERSION_MAJOR 3\n"
                                "#define ESP_ARDUINO_VERSION_MINOR 3\n"
