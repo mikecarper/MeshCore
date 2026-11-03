@@ -8,6 +8,19 @@ static constexpr uint8_t CLOCK_SYNC_SAMPLE_SOURCE_SIGNED_ADVERT = 1;
 static constexpr uint8_t CLOCK_SYNC_SAMPLE_SOURCE_PUBLIC_CHANNEL = 2;
 // Used only when /clock_sync has no valid saved threshold; persisted operator settings win.
 static constexpr uint32_t CLOCK_SYNC_DRIFT_DEFAULT_SECONDS = 10UL * 60UL;
+static constexpr uint64_t CLOCK_SYNC_NORMAL_RESYNC_MILLIS = 7ULL * 24ULL * 60ULL * 60ULL * 1000ULL;
+static constexpr uint64_t CLOCK_SYNC_EMERGENCY_RESYNC_MILLIS = 3ULL * 24ULL * 60ULL * 60ULL * 1000ULL;
+
+inline uint64_t clockSyncEffectiveDeadline(uint64_t normal_deadline,
+                                          bool successful_wait,
+                                          bool emergency_active) {
+  // Keep the normal deadline anchored to the last successful estimate. This
+  // lets entry into emergency mode shorten an existing wait immediately and
+  // lets exit restore it, without shifting bootstrap or failed-attempt retries.
+  const uint64_t advance = CLOCK_SYNC_NORMAL_RESYNC_MILLIS - CLOCK_SYNC_EMERGENCY_RESYNC_MILLIS;
+  return successful_wait && emergency_active && normal_deadline >= advance
+      ? normal_deadline - advance : normal_deadline;
+}
 
 inline bool clockSyncRequiresUniquePath(bool edge_mode) {
   return !edge_mode;

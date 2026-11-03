@@ -283,7 +283,6 @@ struct NeighbourInfo {
 #define CLOCK_SYNC_PATH_ID_SIZE             8
 #define CLOCK_SYNC_STARTUP_DELAY_MILLIS     (30ULL * 60ULL * 1000ULL)
 #define CLOCK_SYNC_RETRY_INTERVAL_MILLIS    (30ULL * 60ULL * 1000ULL)
-#define CLOCK_SYNC_RESYNC_INTERVAL_MILLIS   (7ULL * 24ULL * 60ULL * 60ULL * 1000ULL)
 #define CLOCK_SYNC_SAMPLE_MAX_AGE_MILLIS    (2UL * 60UL * 60UL * 1000UL)
 #define CLOCK_SYNC_CONSENSUS_WINDOW_SECONDS 600UL
 #define CLOCK_SYNC_DRIFT_MIN_SECONDS        30UL
@@ -1140,6 +1139,7 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks
   void resetClockSyncAttempt();
   void suppressMeshClockSyncForBoot(uint8_t source);
   void checkGpsClockSyncOverride();
+  uint64_t nextClockSyncAttemptUptime() const;
   bool isClockSyncCollectionActive() const;
   uint32_t estimateClockTransitMillis(const mesh::Packet* packet) const;
   void recordClockSyncSample(uint8_t source_kind, const uint8_t source_id[4], uint32_t epoch,

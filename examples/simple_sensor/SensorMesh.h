@@ -123,6 +123,7 @@ public:
     _cli.savePrefs(_fs, scope);
   }
   void onManualClockSet() override { _clock_sync.onManualClockSet(); }
+  bool clockSyncEmergencyActive() const override { return _cli.emergencyActive(); }
   bool formatFileSystem() override;
   void sendSelfAdvertisement(int delay_millis, bool flood) override;
   void updateAdvertTimer() override;

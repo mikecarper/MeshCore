@@ -13,6 +13,7 @@ public:
 
   // WiFi/NTP, or another authoritative source, owns the clock for this boot.
   virtual bool hasAuthoritativeClock() const { return false; }
+  virtual bool clockSyncEmergencyActive() const { return false; }
 
   // Let a role repair any timestamp-based caches after the RTC moves.
   virtual void onMeshClockAdjusted(uint32_t old_epoch, uint32_t new_epoch) {
@@ -113,6 +114,7 @@ private:
   void suppressForBoot(uint8_t source);
   static const char* suppressionName(uint8_t source);
   void checkGpsOverride();
+  uint64_t nextAttemptUptime() const;
   void checkClock();
 
   uint32_t estimateTransitMillis(const Packet* packet) const;

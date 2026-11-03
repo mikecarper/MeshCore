@@ -36,7 +36,6 @@ constexpr uint8_t REQUIRED_SAMPLES_DEFAULT =
 constexpr uint64_t STARTUP_DELAY_MILLIS =
     MESH_CLOCK_SYNC_STARTUP_DELAY_MILLIS;
 constexpr uint64_t RETRY_INTERVAL_MILLIS = 30ULL * 60ULL * 1000ULL;
-constexpr uint64_t RESYNC_INTERVAL_MILLIS = 7ULL * 24ULL * 60ULL * 60ULL * 1000ULL;
 constexpr uint32_t SAMPLE_MAX_AGE_MILLIS = 2UL * 60UL * 60UL * 1000UL;
 constexpr uint32_t CONSENSUS_WINDOW_SECONDS = 600UL;
 constexpr uint32_t DRIFT_MIN_SECONDS = 30UL;
@@ -350,12 +349,19 @@ void MeshClockSync::checkGpsOverride() {
   }
 }
 
+uint64_t MeshClockSync::nextAttemptUptime() const {
+  return clockSyncEffectiveDeadline(_next_attempt_uptime,
+      _complete && _mesh_enabled && _suppressed_by == SUPPRESS_NONE,
+      _callbacks != nullptr && _callbacks->clockSyncEmergencyActive());
+}
+
 bool MeshClockSync::collectionActive() const {
   if (!_mesh_enabled || _suppressed_by != SUPPRESS_NONE) return false;
   if (!_complete) return true;
-  if (_next_attempt_uptime == 0) return false;
-  if (_uptime_millis >= _next_attempt_uptime) return true;
-  return _next_attempt_uptime - _uptime_millis
+  const uint64_t next_attempt = nextAttemptUptime();
+  if (next_attempt == 0) return false;
+  if (_uptime_millis >= next_attempt) return true;
+  return next_attempt - _uptime_millis
       <= (uint64_t)SAMPLE_MAX_AGE_MILLIS;
 }
 
@@ -545,7 +551,7 @@ bool MeshClockSync::applyEstimate(uint32_t epoch, uint8_t sample_count) {
   _last_estimate = epoch;
   _last_abs_drift = magnitude > UINT32_MAX ? UINT32_MAX : (uint32_t)magnitude;
   _complete = true;
-  _next_attempt_uptime = _uptime_millis + RESYNC_INTERVAL_MILLIS;
+  _next_attempt_uptime = _uptime_millis + CLOCK_SYNC_NORMAL_RESYNC_MILLIS;
 
   if (magnitude <= _drift_seconds) {
     _last_result = RESULT_WITHIN_DRIFT;
@@ -577,7 +583,7 @@ void MeshClockSync::checkClock() {
   bool mesh_available = _mesh_enabled && _suppressed_by == SUPPRESS_NONE;
   bool force_mesh = _force_mesh_pending && mesh_available;
   if ((!mesh_available && !_internet_enabled)
-      || (!force_mesh && _uptime_millis < _next_attempt_uptime)) return;
+      || (!force_mesh && _uptime_millis < nextAttemptUptime())) return;
   if (force_mesh) _force_mesh_pending = false;
   if (_complete) _complete = false;
 
@@ -721,8 +727,9 @@ void MeshClockSync::formatStatus(const char* args, char* reply,
                   : "suppressed-internet")));
   const char* mode = _mesh_edge_enabled ? "edge" : "paths";
   const char* evidence = _mesh_edge_enabled ? "sources" : "paths";
-  uint64_t remaining_ms = _next_attempt_uptime > _uptime_millis
-      ? _next_attempt_uptime - _uptime_millis : 0;
+  const uint64_t next_attempt = nextAttemptUptime();
+  uint64_t remaining_ms = next_attempt > _uptime_millis
+      ? next_attempt - _uptime_millis : 0;
   unsigned long next_seconds = (unsigned long)((remaining_ms + 999ULL) / 1000ULL);
   if (!mesh_available && !_internet_enabled) {
     const char* reason = _mesh_enabled ? mesh_state : "mesh-off";

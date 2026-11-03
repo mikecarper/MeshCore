@@ -11173,17 +11173,26 @@ void MyMesh::checkGpsClockSyncOverride() {
   }
 }
 
+uint64_t MyMesh::nextClockSyncAttemptUptime() const {
+  return mesh::clockSyncEffectiveDeadline(clock_sync_next_attempt_uptime,
+      clock_sync_complete && clock_sync_last_source == CLOCK_SYNC_SOURCE_MESH
+          && clock_sync_mesh_enabled
+          && clock_sync_mesh_suppressed_by == CLOCK_SYNC_MESH_SUPPRESS_NONE,
+      _cli.emergencyActive());
+}
+
 bool MyMesh::isClockSyncCollectionActive() const {
   if (!clock_sync_mesh_enabled
       || clock_sync_mesh_suppressed_by != CLOCK_SYNC_MESH_SUPPRESS_NONE) return false;
   if (!clock_sync_complete) return true;
-  if (clock_sync_next_attempt_uptime == 0) return false;
-  if (uptime_millis >= clock_sync_next_attempt_uptime) return true;
+  const uint64_t next_attempt = nextClockSyncAttemptUptime();
+  if (next_attempt == 0) return false;
+  if (uptime_millis >= next_attempt) return true;
 
   // Keep only the evidence that could still be fresh at the next scheduled
   // evaluation. This opens a two-hour rolling collection window before each
-  // seven-day re-sync without decrypting Public traffic for the entire week.
-  return clock_sync_next_attempt_uptime - uptime_millis
+  // re-sync without decrypting Public traffic throughout the waiting period.
+  return next_attempt - uptime_millis
       <= (uint64_t)CLOCK_SYNC_SAMPLE_MAX_AGE_MILLIS;
 }
 
@@ -11403,7 +11412,7 @@ bool MyMesh::applyClockEstimate(uint32_t estimate, uint8_t source, uint8_t sampl
   clock_sync_last_estimate = estimate;
   clock_sync_last_abs_drift = magnitude > UINT32_MAX ? UINT32_MAX : (uint32_t)magnitude;
   clock_sync_complete = true;
-  clock_sync_next_attempt_uptime = uptime_millis + CLOCK_SYNC_RESYNC_INTERVAL_MILLIS;
+  clock_sync_next_attempt_uptime = uptime_millis + mesh::CLOCK_SYNC_NORMAL_RESYNC_MILLIS;
 
   if (magnitude <= clock_sync_drift_seconds) {
     clock_sync_last_result = CLOCK_SYNC_RESULT_WITHIN_DRIFT;
@@ -11452,16 +11461,21 @@ void MyMesh::checkClockSync() {
       && clock_sync_mesh_suppressed_by == CLOCK_SYNC_MESH_SUPPRESS_NONE;
   bool force_mesh = clock_sync_force_mesh_pending && mesh_available;
   if ((!mesh_available && !clock_sync_internet_enabled)
-      || (!force_mesh && uptime_millis < clock_sync_next_attempt_uptime)) return;
+      || (!force_mesh && uptime_millis < nextClockSyncAttemptUptime())) return;
 
   // A manual mesh request bypasses both the normal deadline and the optional
   // internet-first probe once. It never bypasses the source safety latch.
   if (force_mesh) clock_sync_force_mesh_pending = false;
 
-  // A successful estimate closes the current attempt but leaves a seven-day
-  // deadline behind. Reopen the attempt when that deadline arrives; failures
+  // A successful estimate closes the current attempt until the normal or
+  // emergency deadline. Reopen the attempt when it arrives; failures
   // below retain the existing 30-minute retry cadence until the next success.
-  if (clock_sync_complete) clock_sync_complete = false;
+  if (clock_sync_complete) {
+    clock_sync_complete = false;
+    // Internet estimates can finish on a later loop. Keep an early emergency
+    // attempt eligible after its successful-wait deadline stops being used.
+    clock_sync_next_attempt_uptime = uptime_millis;
+  }
 
   if (!force_mesh) {
 #ifdef WITH_MQTT_BRIDGE
@@ -11634,8 +11648,9 @@ void MyMesh::formatClockSyncStatus(const char* args, char* reply, size_t reply_l
   const char* mesh_mode = clock_sync_mesh_edge_enabled ? "edge" : "paths";
   const char* evidence_name = clock_sync_mesh_edge_enabled ? "sources" : "paths";
   bool collection_active = isClockSyncCollectionActive();
-  uint64_t remaining_ms = clock_sync_next_attempt_uptime > uptime_millis
-      ? clock_sync_next_attempt_uptime - uptime_millis : 0;
+  const uint64_t next_attempt = nextClockSyncAttemptUptime();
+  uint64_t remaining_ms = next_attempt > uptime_millis
+      ? next_attempt - uptime_millis : 0;
   unsigned long next_seconds = (unsigned long)((remaining_ms + 999ULL) / 1000ULL);
   if (!mesh_available && !clock_sync_internet_enabled) {
     const char* reason = clock_sync_mesh_enabled ? mesh_state : "mesh-off";

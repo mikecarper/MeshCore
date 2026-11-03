@@ -730,6 +730,7 @@ jobs:
           python3 -B test/test_regulator_settings.py -v
           python3 -B test/test_battery_forwarding.py -v
           python3 -B test/test_emergency_power.py -v
+          python3 -B test/test_emergency_clock_sync.py -v
           python3 -B test/test_solar_daylight.py -v
           python3 -B test/test_power_schedule.py -v
           python3 -B test/test_emergency_power_runtime.py -v

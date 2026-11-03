@@ -3380,6 +3380,9 @@ radio sleeps and normal mesh, sensor and screen work is suspended. The CPU
 uses timed sleep with brief watchdog, clock, voltage-protection and command
 maintenance wakes. Active firmware updates and unfinished critical operations
 defer sleep. Existing hard low-voltage protection remains in force.
+While emergency mode is active, a successful LoRa clock estimate is rechecked
+after three days, instead of the normal seven days. The due check waits for the
+first normal loop/wake and does not alter the 15/45-minute sleep cycle.
 On ESP32, an active native USB connection uses short CPU idle waits to keep
 the console usable while the radio sleeps. Timed light sleep resumes after
 USB detaches and its disconnect grace expires.
@@ -3589,18 +3592,22 @@ of fresh evidence sources has been collected, whichever comes first. A
 successful estimate changes the RTC only when the absolute difference is
 **greater than** `clock.sync.drift`; correction can move the clock forward or
 backward. A valid estimate within the threshold counts as a successful sync
-without changing the clock. Seven days after each successful estimate, the
-node evaluates time again; the seven-day deadline therefore starts from the
-last successful estimate rather than from boot. This is a lazy uptime deadline:
-the check runs on the first normal loop/wake after it becomes due and does not
-wake the device by itself. If no source or consensus is available, the node
-retries every 30 minutes, and newly collected evidence triggers another
-immediate evaluation once the configured source count is present. Every reboot
-starts with the initial bootstrap attempt. An existing saved setting always
-overrides the platform default.
+without changing the clock. Following a successful LoRa estimate, the next
+evaluation is due seven days later in normal mode, or three days later while
+emergency mode is active. Entering emergency mode immediately selects the
+three-day deadline from that same last successful LoRa estimate, even if it was
+obtained in normal mode. Leaving emergency mode restores the seven-day deadline
+from the same anchor; each new successful estimate resets the anchor. A
+successful internet estimate keeps a seven-day deadline in either mode. These
+are lazy uptime deadlines: the check runs on the first normal loop/wake after
+it becomes due and does not wake the device by itself. If no source or
+consensus is available, the node retries every 30 minutes, and newly collected
+evidence triggers another immediate evaluation once the configured source
+count is present. Every reboot starts with the initial bootstrap attempt. An
+existing saved setting always overrides the platform default.
 
-`clock.sync.mesh now` bypasses the startup/seven-day deadline and queues a
-LoRa-only consensus evaluation on the next normal loop, even when the internet
+`clock.sync.mesh now` bypasses the startup or active periodic deadline and queues
+a LoRa-only consensus evaluation on the next normal loop, even when the internet
 source is also enabled. It uses any currently fresh samples without clearing the
 16-slot table. If there is not yet enough evidence, mesh collection remains open
 and the next attempt follows the normal 30-minute retry. The command requires
@@ -3644,8 +3651,9 @@ evidence as `paths` or `sources`. It reports `reason=need-more-paths` or
 `reason=need-more-sources` when fewer than the configured number exist, and
 `reason=no-consensus` when enough evidence exists but the effective quorum does
 not agree. Mesh collection begins immediately after boot. Following a
-successful estimate, it resumes two hours before the next seven-day deadline so
-only evidence that can still be fresh at evaluation time is processed.
+successful LoRa estimate, it resumes two hours before the next deadline (seven
+days normally, or three days in emergency mode) so only evidence that can still
+be fresh at evaluation time is processed.
 
 `get clock.sync.status` reports whether the clock was set and a `reason` when it
 was not. Common reasons include `waiting-deadline`, `need-more-sources`,
@@ -3700,13 +3708,16 @@ gives up receive-path diversity. Public-channel display names can be spoofed, so
 one sender can claim multiple names and inflate the edge-mode vote count.
 
 `clock.sync.internet` is available on WiFi MQTT repeater-observer builds. Its
-initial and seven-day queries run on the MQTT/WiFi task and are read-only until
-the repeater applies the configured drift test. Failed queries retry after 30
+queries run on the MQTT/WiFi task and are read-only until the repeater applies
+the configured drift test. A successful internet estimate keeps the next
+periodic deadline at seven days in either normal or emergency mode. A due
+three-day recheck following a LoRa estimate still tries the configured internet
+source before falling back to LoRa consensus. Failed queries retry after 30
 minutes. On other infrastructure-node builds, the preference can be stored but
 status reports that internet time is unavailable. MQTT builds retain their
 existing startup NTP behavior required for MQTT/TLS/JWT operation; this setting
-controls the additional delayed drift checks. Startup NTP is always preferred when it
-succeeds, regardless of this setting.
+controls the additional delayed drift checks. Startup NTP is always preferred
+when it succeeds, regardless of this setting.
 
 Sensor and room-server builds support mesh clock consensus and report
 `clock.sync.internet` as unavailable. Changing any `clock.sync.*` setting starts

@@ -599,6 +599,7 @@ public:
     _cli.savePrefs(_fs, scope);
   }
   void onManualClockSet() override { _clock_sync.onManualClockSet(); }
+  bool clockSyncEmergencyActive() const override { return _cli.emergencyActive(); }
   bool hasAuthoritativeClock() const override {
 #ifdef WITH_MQTT_BRIDGE
     return bridge != nullptr && bridge->hasFreshNtpThisBoot();
