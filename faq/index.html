@@ -5382,9 +5382,12 @@ and maximum set before first startup; changing <code>set tx</code> afterwards do
 protect the initial startup. The named SolarXiao/Ikoka limits do not apply
 automatically to these other targets.</p>
 <p>The <a href="https://github.com/ndoo/ikoka-handheld-meshtastic-device#lora-module">Ikoka Handheld hardware</a>
-also accepts M33S modules, but the current Handheld firmware targets specify
-M30S. Their 20 dBm drive setting is not suitable for an M33S-fitted Handheld;
-that combination requires a separate matching firmware target.</p>
+also accepts M33S modules. Select its dedicated <code>e22_33dbm</code> or <code>e22_400m33s</code>
+profile, which defaults to and enforces 8 dBm. Its M30S image uses 20 dBm
+drive and is unsuitable for an M33S-fitted Handheld. Dedicated M33S profiles
+also cover ProMicro, XIAO, Generic E22 and Meshadventurer wiring; see
+<a href="../e22_amplified_modules/">amplified E22 module selection</a>. Check the carrier
+pinout before using these DIY profiles.</p>
 <p>Ikoka Nano, Stick and Handheld 30 dBm targets also enforce their established
 20 dBm chip-drive limit in every role. This is their amplifier distortion
 limit, separate from the 33S module's 9 dBm safety ceiling.</p>
