@@ -37,6 +37,7 @@ struct esp_bt_controller_config_t { int n; };
 static int controller=0,host=0,fail_address=0,fail_data=0,fail_start=0,init_count=0,stop_count=0;
 static int fail_adv_stop=0, fail_host_disable=0, fail_host_deinit=0;
 static int fail_controller_disable=0, fail_controller_deinit=0;
+static int captured_interval_min=0, captured_interval_max=0;
 static uint8_t captured_addr[6],captured_raw[31];
 static callback_t cb=nullptr;
 static uint32_t ticks=0;
@@ -63,6 +64,7 @@ static int esp_ble_gap_config_adv_data_raw(uint8_t* a,uint32_t n){
 }
 static int esp_ble_gap_start_advertising(esp_ble_adv_params_t* a){
  if(a->adv_type!=ADV_TYPE_NONCONN_IND||a->own_addr_type!=BLE_ADDR_TYPE_RANDOM)return 1;
+ captured_interval_min=a->adv_int_min;captured_interval_max=a->adv_int_max;
  esp_ble_gap_cb_param_t p={};p.adv_start_cmpl.status=fail_start;cb(ESP_GAP_BLE_ADV_START_COMPLETE_EVT,&p);return 0;
 }
 static int esp_ble_gap_stop_advertising(){

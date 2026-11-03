@@ -25,6 +25,40 @@
 #include <helpers/MorseLoopPolicy.h>
 #include <helpers/PowerManagementUtils.h>
 #include <helpers/EmergencyPowerRuntime.h>
+#if defined(MESH_SENSOR_MOTION) && MESH_SENSOR_MOTION && defined(RAK_WISMESH_TAG)
+#include <helpers/tracker/TagModeButton.h>
+#include <helpers/nrf52/SleepCycleState.h>
+static mesh::tracker::TagModeButton tag_mode_button;
+static uint8_t tag_mode_blinks = 0;
+static bool tag_mode_led_on = false;
+static uint32_t tag_mode_led_due = 0;
+
+// The ISR only invalidates a pending sleep; flash writes and the gesture state
+// machine stay on the application loop.
+static void tagModeButtonWake() { mesh_nrf52::sleepCycleState().invalidate(); }
+
+static void beginTagModeFeedback(uint8_t blinks) {
+  if (!mesh::leds::enabled() || board.isOTAUpdateRunning()) return;
+  tag_mode_blinks = blinks;
+  tag_mode_led_on = true;
+  digitalWrite(LED_BLUE, HIGH);
+  tag_mode_led_due = uint32_t(millis()) + 100u;
+}
+
+static void serviceTagModeFeedback() {
+  if (!tag_mode_blinks || int32_t(uint32_t(millis()) - tag_mode_led_due) < 0) return;
+  if (tag_mode_led_on) {
+    digitalWrite(LED_BLUE, LOW);
+    tag_mode_led_on = false;
+    --tag_mode_blinks;
+    tag_mode_led_due = uint32_t(millis()) + 120u;
+  } else {
+    digitalWrite(LED_BLUE, HIGH);
+    tag_mode_led_on = true;
+    tag_mode_led_due = uint32_t(millis()) + 100u;
+  }
+}
+#endif
 #if defined(NRF52_PLATFORM) && MESH_ENABLE_SENSOR_TRACKER
 #include <utility/SoftwareTimer.h>
 static SoftwareTimer tracker_wake_timer;
@@ -331,6 +365,11 @@ void setup() {
 #endif
 
   board.onBootComplete();
+#if defined(MESH_SENSOR_MOTION) && MESH_SENSOR_MOTION && defined(RAK_WISMESH_TAG)
+  pinMode(PIN_USER_BTN, INPUT_PULLUP);
+  tag_mode_button.begin(digitalRead(PIN_USER_BTN) == LOW, millis());
+  attachInterrupt(uint32_t(PIN_USER_BTN), tagModeButtonWake, CHANGE);
+#endif
 }
 
 static bool usbLoggingRecoverySafe(void*) {
@@ -420,16 +459,37 @@ void loop() {
   mesh::power::serviceRegulatorSettings();
   board.loop();   // let the board feed its watchdog, run periodic housekeeping
 
+#if defined(MESH_SENSOR_MOTION) && MESH_SENSOR_MOTION && defined(RAK_WISMESH_TAG)
+  if (tag_mode_button.update(digitalRead(PIN_USER_BTN) == LOW, millis())) {
+    const bool saved = the_mesh.toggleTrackerProfile();
+    const uint8_t blinks = !saved ? 3 :
+        the_mesh.getTrackerProfile() == mesh::tracker::profile::Mode::Hiking ? 2 : 1;
+    beginTagModeFeedback(blinks);
+  }
+  serviceTagModeFeedback();
+#endif
+
 #if defined(MESH_SENSOR_FINDMY) && MESH_SENSOR_FINDMY
   bool suspend_findmy = board.isOTAUpdateRunning();
 #if MESH_ENABLE_EMERGENCY_POWER
-  suspend_findmy = suspend_findmy || the_mesh.getPowerCLI().emergencySleepMilliseconds() != 0;
+  suspend_findmy = suspend_findmy || (board.supportsEmergencySleep()
+      && the_mesh.getPowerCLI().emergencySleepMilliseconds() != 0);
 #endif
   the_mesh.serviceFindMy(suspend_findmy);
 #endif
 
 #if MESH_ENABLE_EMERGENCY_POWER
   static mesh::power::EmergencyPowerRuntime emergency_power;
+#if defined(MESH_SENSOR_MOTION) && MESH_SENSOR_MOTION && defined(RAK_WISMESH_TAG)
+  // Keep a deliberate button sequence/acknowledgment responsive without
+  // waking the LoRa radio just to change profiles during emergency sleep.
+  if ((tag_mode_button.needsPolling() || tag_mode_blinks)
+      && board.supportsEmergencySleep()
+      && the_mesh.getPowerCLI().emergencySleepMilliseconds() != 0) {
+    delay(2);
+    return;
+  }
+#endif
 #if defined(ESP32_PLATFORM)
   board.servicePowerTestControls();
 #endif
@@ -486,6 +546,10 @@ void loop() {
       && sleep_guard(!morse_timing, mesh::powerdiag::Reason::Morse)
       && sleep_guard(!board.isUsbDataConnected(), mesh::powerdiag::Reason::UsbSession)
       && sleep_guard(!mesh::isUsbLoggingWatchdogArmed(), mesh::powerdiag::Reason::UsbRecovery);
+#if defined(MESH_SENSOR_MOTION) && MESH_SENSOR_MOTION && defined(RAK_WISMESH_TAG)
+  can_power_save = can_power_save && sleep_guard(
+      !tag_mode_button.needsPolling() && !tag_mode_blinks, mesh::powerdiag::Reason::Button);
+#endif
 #if MESH_ENABLE_HOST_KISS
   can_power_save = can_power_save
       && sleep_guard(!mesh::hostkiss::usbActive(), mesh::powerdiag::Reason::UsbSession);

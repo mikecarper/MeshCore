@@ -35,9 +35,12 @@ class Esp32Beacon {
   // addr is in displayed byte order, with its static-random bits already set;
   // payload includes the two-byte company identifier but no AD length/type.
   // Returns true only after the controller reports advertising started.
-  bool start(const uint8_t addr[6], const uint8_t payload[29]) {
+  // Interval is rounded up to the next 0.625 ms Bluetooth unit. A 1.28 s
+  // interval preserves the original beacon behavior when not specified.
+  bool start(const uint8_t addr[6], const uint8_t payload[29], uint16_t interval_ms = 1280) {
 #if MESH_FINDMY_ESP32_BLUEDROID
-    if (!addr || !payload || (addr[0] & 0xc0u) != 0xc0u) return false;
+    if (!addr || !payload || (addr[0] & 0xc0u) != 0xc0u
+        || interval_ms < 20 || interval_ms > 10240) return false;
     State& s = state();
     if (s.owner || esp_bt_controller_get_status() != ESP_BT_CONTROLLER_STATUS_IDLE
         || esp_bluedroid_get_status() != ESP_BLUEDROID_STATUS_UNINITIALIZED)
@@ -82,9 +85,11 @@ class Esp32Beacon {
     }
 
     esp_ble_adv_params_t params = {};
-    // 1.28 seconds. Longer intervals save power at the cost of discovery.
-    params.adv_int_min = 2048;
-    params.adv_int_max = 2048;
+    // Legacy advertising uses units of 0.625 ms and permits 20..10240 ms.
+    // Round upward so an interval is never faster than the requested value.
+    const uint16_t interval_units = static_cast<uint16_t>((uint32_t(interval_ms) * 8u + 4u) / 5u);
+    params.adv_int_min = interval_units;
+    params.adv_int_max = interval_units;
     params.adv_type = ADV_TYPE_NONCONN_IND;
     params.own_addr_type = BLE_ADDR_TYPE_RANDOM;
     params.channel_map = ADV_CHNL_ALL;
@@ -103,6 +108,7 @@ class Esp32Beacon {
 #else
     (void)addr;
     (void)payload;
+    (void)interval_ms;
     return false;
 #endif
   }

@@ -1,7 +1,16 @@
 #include "SensorMesh.h"
 #include <helpers/CLICommandUtils.h>
 #include <helpers/UsbLoggingWatchdog.h>
+#include <helpers/tracker/TrackerGeofenceCli.h>
 #include <math.h>
+
+#if defined(MESH_SENSOR_MOTION) && MESH_SENSOR_MOTION
+#ifndef MESH_SENSOR_MOTION_THRESHOLD_STEPS
+#define MESH_SENSOR_MOTION_THRESHOLD_STEPS 4
+#endif
+static_assert(MESH_SENSOR_MOTION_THRESHOLD_STEPS >= 1 && MESH_SENSOR_MOTION_THRESHOLD_STEPS <= 127,
+              "LIS2DH motion threshold must be 1..127 steps");
+#endif
 
 #if MESH_ENABLE_SENSOR_TRACKER
 
@@ -16,6 +25,88 @@ bool SensorMesh::saveTrackerRecord(mesh::tracker::TrackerRecord& candidate) {
     return false;
   }
   tracker = candidate;
+  return true;
+}
+
+bool SensorMesh::saveTrackerGeofence(mesh::tracker::geofence::Record& candidate) {
+  if (!tracker_storage_available || tracker_geofence_storage_fault
+      || mesh::tracker::geofence::save(_fs, candidate) != mesh::tracker::geofence::StoreResult::Success) {
+    tracker_geofence_storage_fault = true;
+    return false;
+  }
+  tracker_geofence = candidate;
+  return true;
+}
+
+void SensorMesh::observeTrackerGeofence(bool fresh, int32_t latitude, int32_t longitude) {
+  using namespace mesh::tracker::geofence;
+  if (!fresh || !validLatitude(latitude) || !validLongitude(longitude)) {
+    tracker_geofence_last_acquisition = 2;
+    return; // A missing fix never clears a previously observed exit.
+  }
+  tracker_geofence_last_acquisition = 1;
+  const Result observed = classify(tracker_geofence.box, true, latitude, longitude);
+  if (observed == Result::Unknown
+      || (observed == tracker_geofence.last_known && !tracker_geofence.previous_box)) return;
+  Record candidate = tracker_geofence;
+  candidate.last_known = observed;
+  candidate.previous_box = false;
+  if (!saveTrackerGeofence(candidate) && observed == Result::Outside) {
+    // An inability to persist must not hide a newly observed exit. A failed
+    // transition back inside leaves the prior outside state intact.
+    tracker_geofence.last_known = Result::Outside;
+    tracker_geofence.previous_box = false;
+  }
+}
+
+bool SensorMesh::handleTrackerGeofenceCommand(const char* command, char* reply) {
+  using namespace mesh::tracker::geofence;
+  if (!strcmp(command, "get tracker.fence")) {
+    snprintf(reply, 157, "box=%s last-known=%s last-acquisition=%s storage=%s",
+        tracker_geofence.box.configured ? "set" : "off",
+        tracker_geofence.previous_box ? "outside(previous-box)" : resultName(tracker_geofence.last_known),
+        tracker_geofence_last_acquisition == 1 ? "valid" : tracker_geofence_last_acquisition == 2 ? "no-fix" : "none",
+        tracker_geofence_storage_fault ? "fault" : "ok");
+    return true;
+  }
+  if (!strcmp(command, "get tracker.box")) {
+    if (!tracker_geofence.box.configured) { strcpy(reply, "off"); return true; }
+    char south[20], west[20], north[20], east[20];
+    formatCoordinate(tracker_geofence.box.south, south, sizeof(south));
+    formatCoordinate(tracker_geofence.box.west, west, sizeof(west));
+    formatCoordinate(tracker_geofence.box.north, north, sizeof(north));
+    formatCoordinate(tracker_geofence.box.east, east, sizeof(east));
+    snprintf(reply, 157, "%s,%s,%s,%s", south, west, north, east);
+    return true;
+  }
+  if (!strcmp(command, "set tracker.box clear")) {
+    Record candidate;
+    candidate.generation = tracker_geofence.generation;
+    if (!saveTrackerGeofence(candidate)) strcpy(reply, "ERR: box save failed");
+    else { tracker_geofence_last_acquisition = 0; strcpy(reply, "OK - box cleared"); }
+    return true;
+  }
+  static const char prefix[] = "set tracker.box ";
+  if (strncmp(command, prefix, sizeof(prefix) - 1) != 0) return false;
+  Box box;
+  if (!parseBox(command + sizeof(prefix) - 1, box)) {
+    strcpy(reply, "ERR: box requires south,west,north,east"); return true;
+  }
+  Record candidate;
+  candidate.box = box;
+  // Keep a confirmed exit latched through a box edit until a fresh fix
+  // establishes that the tracker is inside the new box.
+  if (tracker_geofence.last_known == Result::Outside) {
+    candidate.last_known = Result::Outside;
+    candidate.previous_box = true;
+  }
+  candidate.generation = tracker_geofence.generation;
+  if (!saveTrackerGeofence(candidate)) strcpy(reply, "ERR: box save failed");
+  else {
+    tracker_geofence_last_acquisition = 0;
+    strcpy(reply, candidate.last_known == Result::Outside
+        ? "OK - box set; outside retained pending fix" : "OK - box set; location unknown");
+  }
   return true;
 }
 
@@ -35,6 +126,17 @@ void SensorMesh::configureTrackerRuntime() {
   } else {
     cancelTrackerPending();
     tracker_acquiring = false;
+#if defined(MESH_SENSOR_MOTION) && MESH_SENSOR_MOTION
+    motion_gps_acquiring = false;
+    motion_gps_attempted = false;
+    motion_gps_policy.reset();
+    motion_quiet_policy.reset();
+    motion_observation = mesh::tracker::motion::Observation::Unknown;
+    motion_polled = false;
+    motion_owner_check_pending = false;
+    tracker_quiet_extended = false;
+    (void)motion_sensor.stop(motion_bus);
+#endif
     tracker_awake_until = 0;
     tracker_next_check = 0;
     memset(tracker_secret, 0, sizeof(tracker_secret));
@@ -43,6 +145,182 @@ void SensorMesh::configureTrackerRuntime() {
     updateFloodAdvertTimer();
   }
 }
+
+bool SensorMesh::prepareTrackerErase() {
+  // Disarm first, even when stopping a sensor or formatting later fails.
+  // An ambiguous erase must never resume the old tracker configuration.
+  tracker.enabled = false;
+  tracker_storage_fault = true;
+  tracker_geofence_storage_fault = true;
+#if defined(MESH_SENSOR_MOTION) && MESH_SENSOR_MOTION
+  tracker_profile_storage_fault = true;
+  const bool motion_stopped = motion_sensor.stop(motion_bus);
+#endif
+  configureTrackerRuntime();
+  tracker = mesh::tracker::TrackerRecord();
+  tracker_geofence = mesh::tracker::geofence::Record();
+  tracker_geofence_last_acquisition = 0;
+#if defined(MESH_SENSOR_MOTION) && MESH_SENSOR_MOTION
+  tracker_profile = mesh::tracker::profile::Record();
+  applyTrackerProfile(uint32_t(futureMillis(0)));
+  return motion_stopped;
+#else
+  return true;
+#endif
+}
+
+void SensorMesh::finishTrackerErase(bool success) {
+  tracker_storage_fault = !success;
+  tracker_geofence_storage_fault = !success;
+#if defined(MESH_SENSOR_MOTION) && MESH_SENSOR_MOTION
+  tracker_profile_storage_fault = !success;
+  applyTrackerProfile(uint32_t(futureMillis(0)));
+#endif
+}
+
+#if defined(MESH_SENSOR_MOTION) && MESH_SENSOR_MOTION
+void SensorMesh::applyTrackerProfile(uint32_t now_ms) {
+  const bool hiking = !tracker_profile_storage_fault
+      && tracker_profile.mode == mesh::tracker::profile::Mode::Hiking;
+  motion_gps_policy.setHiking(hiking, now_ms);
+  // Hiking and storage faults cannot retain Backyard's longer quiet
+  // deadline. Keep any already-earlier scheduled check intact.
+  if (tracker_quiet_extended && (hiking || tracker_profile_storage_fault)) {
+    const uint32_t normal_due = trackerFutureSeconds(tracker_owner_check_anchor, tracker.normal_interval);
+    if (normal_due < tracker_next_check) tracker_next_check = normal_due;
+    tracker_quiet_extended = false;
+  }
+}
+
+bool SensorMesh::setTrackerProfile(mesh::tracker::profile::Mode mode) {
+  using namespace mesh::tracker::profile;
+  if (!tracker_storage_available || tracker_profile_storage_fault || !isValid(mode)) return false;
+  if (tracker_profile.mode == mode) return true;
+  Record candidate = tracker_profile;
+  candidate.mode = mode;
+  if (save(_fs, candidate) != StoreResult::Success) {
+    // A failed publication can be ambiguous. Reboot/reload before accepting
+    // any further profile change or extending an owner-check deadline.
+    tracker_profile_storage_fault = true;
+    applyTrackerProfile(uint32_t(futureMillis(0)));
+    return false;
+  }
+  tracker_profile = candidate;
+  applyTrackerProfile(uint32_t(futureMillis(0)));
+  return true;
+}
+
+bool SensorMesh::toggleTrackerProfile() {
+  auto mode = tracker_profile.mode;
+  return mesh::tracker::profile::toggle(mode) && setTrackerProfile(mode);
+}
+
+bool SensorMesh::handleTrackerProfileCommand(const char* command, char* reply) {
+  using namespace mesh::tracker::profile;
+  Record candidate = tracker_profile;
+  const CommandResult result = parseCommand(command, candidate, reply, 157);
+  if (result == CommandResult::Unhandled) return false;
+  if (tracker_profile_storage_fault) {
+    strcpy(reply, "ERR: profile storage unavailable");
+  } else if (result == CommandResult::Changed && !setTrackerProfile(candidate.mode)) {
+    strcpy(reply, "ERR: profile save failed");
+  }
+  return true;
+}
+
+bool SensorMesh::trackerCanExtendOwnerCheck(uint32_t now_ms) const {
+  using mesh::tracker::motion::Observation;
+  return !tracker_profile_storage_fault
+      && tracker_profile.mode == mesh::tracker::profile::Mode::Backyard
+      && tracker.last_lost == mesh::tracker::Safe && motion_sensor.isReady()
+      && motion_polled && uint32_t(now_ms - motion_last_poll) <= 60000UL
+      && motion_observation == Observation::NoMotionObserved
+      && motion_quiet_policy.confirmed() && !tracker_geofence_storage_fault
+      && tracker_geofence.box.configured && tracker_geofence_last_acquisition == 1
+      && tracker_geofence.last_known == mesh::tracker::geofence::Result::Inside;
+}
+
+uint32_t SensorMesh::trackerOwnerInterval(uint32_t now, uint32_t now_ms, bool confirmed_safe) {
+  tracker_owner_check_anchor = now;
+  tracker_quiet_extended = confirmed_safe && trackerCanExtendOwnerCheck(now_ms)
+      && tracker.normal_interval < 7200;
+  return tracker.last_lost == mesh::tracker::Lost ? tracker.lost_interval
+      : tracker_quiet_extended ? 7200 : tracker.normal_interval;
+}
+
+void SensorMesh::serviceTrackerMotion(uint32_t now, uint32_t now_ms, bool emergency) {
+  using mesh::tracker::motion::Observation;
+  // Tracker sleep already has a real 30-second wake timer. Poll only at that
+  // cadence; an internal LIS2DH latch preserves events between MCU wakes.
+  if (!motion_polled || uint32_t(now_ms - motion_last_poll) >= 30000UL) {
+    motion_polled = true;
+    motion_last_poll = now_ms;
+    if (!motion_sensor.isReady()) {
+      (void)motion_sensor.begin(motion_bus, now_ms, MESH_SENSOR_MOTION_THRESHOLD_STEPS);
+      motion_observation = Observation::Unknown;
+    } else {
+      motion_observation = motion_sensor.poll(motion_bus, now_ms);
+      if (motion_observation == Observation::Motion) motion_gps_policy.noteMotion();
+    }
+    if (motion_quiet_policy.observe(motion_observation, now_ms)
+        && tracker.last_lost != mesh::tracker::Lost)
+      motion_owner_check_pending = true;
+  }
+  // An earlier extension is valid only while the current evidence stays
+  // healthy and inside. On sensor/fix loss, restore the normal deadline
+  // measured from the last completed owner check, not from the failure.
+  if (tracker_quiet_extended && !trackerCanExtendOwnerCheck(now_ms)) {
+    const uint32_t normal_due = trackerFutureSeconds(tracker_owner_check_anchor, tracker.normal_interval);
+    if (normal_due < tracker_next_check) tracker_next_check = normal_due;
+    tracker_quiet_extended = false;
+  }
+  if (motion_owner_check_pending) {
+    if (!tracker_pending && !tracker_acquiring && !tracker_storage_fault)
+      tracker_next_check = now; // The scheduled owner path coalesces GPS work.
+    motion_owner_check_pending = false;
+    tracker_quiet_extended = false;
+  }
+  if (motion_gps_acquiring) {
+    // A scheduled owner/manual check may reuse an already running GPS fix;
+    // it is the scheduled check, rather than motion, that permits LoRa.
+    if (!emergency && !tracker_pending && now >= tracker_next_check
+        && !board.isOTAUpdateRunning() && !board.isRadioTestActive()
+        && !isAnyTempRadioActive() && !hasPendingOtaApply() && !isDualRadioActive()
+        && !set_radio_at && !revert_radio_at && !saved_radio_apply_pending
+        && _mgr->getFreeCount() > 2 && !hasOutbound()) {
+      motion_gps_acquiring = false;
+      tracker_acquiring = true;
+      return;
+    }
+    if (sensors.isTrackerGpsAcquisitionPending()) return;
+    motion_gps_acquiring = false;
+    double lat = 0, lon = 0;
+    const bool valid = sensors.takeTrackerGpsPosition(lat, lon) && isfinite(lat) && isfinite(lon)
+        && lat >= -90 && lat <= 90 && lon >= -180 && lon <= 180;
+    if (valid) observeTrackerGeofence(true, (int32_t)lround(lat * 1e7), (int32_t)lround(lon * 1e7));
+    else observeTrackerGeofence(false, 0, 0);
+    motion_gps_policy.completed(now_ms, valid);
+    motion_gps_attempted = false;
+  }
+  if (emergency || !tracker_geofence.box.configured || tracker_storage_fault || tracker_geofence_storage_fault
+      || tracker_pending || tracker_acquiring || motion_gps_acquiring
+      || now >= tracker_next_check || !motion_gps_policy.due(now_ms)
+      || board.isOTAUpdateRunning() || board.isRadioTestActive()
+      || isAnyTempRadioActive() || hasPendingOtaApply() || isDualRadioActive()
+      || set_radio_at || revert_radio_at || saved_radio_apply_pending || hasOutbound()) return;
+  // This acquisition observes the fence only: it must not create a packet,
+  // reserve a flood, or advance the owner's independent check deadline.
+  motion_gps_policy.started();
+  motion_gps_attempted = true;
+  if (sensors.beginTrackerGpsAcquisition()) {
+    motion_gps_acquiring = true;
+  } else {
+    motion_gps_attempted = false;
+    motion_gps_policy.completed(now_ms, false);
+    observeTrackerGeofence(false, 0, 0);
+  }
+}
+#endif
 
 void SensorMesh::wakeTrackerRadio() {
   if (!tracker_radio_asleep) return;
@@ -98,9 +376,23 @@ bool SensorMesh::trackerNeedsRadio() const {
 
 void SensorMesh::serviceTracker() {
   if (!tracker.enabled) { wakeTrackerRadio(); return; }
+#if MESH_ENABLE_EMERGENCY_POWER
+  const bool tracker_emergency = board.supportsEmergencySleep()
+      && _cli.emergencySleepMilliseconds() != 0;
+#else
+  const bool tracker_emergency = false;
+#endif
   const uint32_t now = getRTCClock()->getCurrentTime();
   const uint32_t now_ms = uint32_t(futureMillis(0));
   const uint32_t elapsed = uint32_t(now_ms - uint32_t(tracker_clock_millis)) / 1000;
+  if (tracker_clock_millis && now < tracker_clock_rtc) {
+    // A corrected clock must not leave an owner check stranded in the future.
+    // Route planning below independently keeps the flood rollback lock.
+    tracker_next_check = now;
+#if defined(MESH_SENSOR_MOTION) && MESH_SENSOR_MOTION
+    tracker_quiet_extended = false;
+#endif
+  }
   if (now > tracker_clock_rtc && uint64_t(now - tracker_clock_rtc) > uint64_t(elapsed) + 2) {
     // GPS/manual UTC correction cannot manufacture six hours of RF silence.
     // Refresh the conservative quiet anchor without forgiving an outage.
@@ -117,6 +409,16 @@ void SensorMesh::serviceTracker() {
     mesh::tracker::planRoute(tracker.route, now, true, candidate.route);
     saveTrackerRecord(candidate);
   }
+#if defined(MESH_SENSOR_MOTION) && MESH_SENSOR_MOTION
+  const bool motion_acquiring_before = motion_gps_acquiring;
+  serviceTrackerMotion(now, now_ms, tracker_emergency);
+  // Emergency mode waits for the in-flight GPS operation solely so the
+  // sensor manager can stop it, not to wake LoRa for a newly due check.
+  if (tracker_emergency && motion_acquiring_before) return;
+#endif
+  // A requested emergency sleep may finish an existing GPS/reply operation,
+  // but must not admit a new scheduled owner check or wake its radio.
+  if (tracker_emergency && !tracker_acquiring && !tracker_pending) return;
   if (trackerNeedsRadio()) wakeTrackerRadio();
   if (tracker_radio_asleep) return;
   if (tracker_storage_fault) {
@@ -129,13 +431,21 @@ void SensorMesh::serviceTracker() {
     mesh::tracker::noteFailure(tracker.route, now, candidate.route);
     saveTrackerRecord(candidate);
     tracker_next_check = trackerFutureSeconds(now,
+#if defined(MESH_SENSOR_MOTION) && MESH_SENSOR_MOTION
+        trackerOwnerInterval(now, now_ms, false));
+#else
         tracker.last_lost == mesh::tracker::Lost ? tracker.lost_interval : tracker.normal_interval);
+#endif
   } else if (!tracker_acquiring && now >= tracker_next_check) {
     if (board.isOTAUpdateRunning() || board.isRadioTestActive()
         || isAnyTempRadioActive() || hasPendingOtaApply() || isDualRadioActive()
         || set_radio_at || revert_radio_at || saved_radio_apply_pending
         || _mgr->getFreeCount() <= 2 || hasOutbound()) return;
     tracker_acquiring = true;
+#if defined(MESH_SENSOR_MOTION) && MESH_SENSOR_MOTION
+    motion_gps_policy.started();
+    motion_gps_attempted = true;
+#endif
     sensors.beginTrackerGpsAcquisition();
   }
   if (tracker_acquiring) {
@@ -150,7 +460,20 @@ void SensorMesh::serviceTracker() {
       request.flags = mesh::tracker::FreshGps;
       request.latitude = (int32_t)lround(lat * 1e7);
       request.longitude = (int32_t)lround(lon * 1e7);
-    } else request.flags = mesh::tracker::GpsAttemptFailed;
+      observeTrackerGeofence(true, request.latitude, request.longitude);
+    } else {
+      observeTrackerGeofence(false, 0, 0);
+      request.flags = mesh::tracker::GpsAttemptFailed;
+    }
+#if defined(MESH_SENSOR_MOTION) && MESH_SENSOR_MOTION
+    if (motion_gps_attempted) {
+      motion_gps_policy.completed(now_ms, (request.flags & mesh::tracker::FreshGps) != 0);
+      motion_gps_attempted = false;
+    }
+#endif
+    // The receiver is now shut down; leave the scheduled check due for the
+    // next active window instead of creating new LoRa traffic during sleep.
+    if (tracker_emergency) return;
     request.battery_mv = board.getBattMilliVolts();
 
     // GPS gets its bounded chance to establish UTC, but an unset RTC cannot
@@ -257,8 +580,13 @@ bool SensorMesh::handleTrackerResponse(mesh::Packet* packet, uint8_t type,
     if (stayawake > 300) stayawake = 300;
     tracker_awake_until = stayawake ? futureMillis((uint32_t)stayawake * 1000UL) : 0;
   }
-  tracker_next_check = trackerFutureSeconds(getRTCClock()->getCurrentTime(),
+  const uint32_t owner_reply_now = getRTCClock()->getCurrentTime();
+  tracker_next_check = trackerFutureSeconds(owner_reply_now,
+#if defined(MESH_SENSOR_MOTION) && MESH_SENSOR_MOTION
+      trackerOwnerInterval(owner_reply_now, uint32_t(futureMillis(0)), status == mesh::tracker::Safe));
+#else
       tracker.last_lost == mesh::tracker::Lost ? tracker.lost_interval : tracker.normal_interval);
+#endif
   return true;
 }
 
@@ -300,6 +628,20 @@ bool SensorMesh::handleTrackerCommand(uint32_t sender_timestamp, const char* com
   const bool setter = strncmp(command, "set tracker.", 12) == 0;
   if (!getter && !setter && strcmp(command, "tracker check") != 0) return false;
   if (sender_timestamp != 0) { strcpy(reply, "ERR: tracker is local-only"); return true; }
+#if defined(MESH_SENSOR_MOTION) && MESH_SENSOR_MOTION
+  if (handleTrackerProfileCommand(command, reply)) return true;
+  if (!strcmp(command, "get tracker.motion")) {
+    using mesh::tracker::motion::Observation;
+    const char* state = !tracker.enabled ? "off"
+        : motion_observation == Observation::Motion ? "motion"
+        : motion_observation == Observation::NoMotionObserved ? "quiet-window" : "unknown";
+    snprintf(reply, 157, "motion=%s gps=%s pending=%s",
+             state, motion_gps_acquiring ? "active" : "idle",
+             motion_gps_policy.pending() ? "yes" : "no");
+    return true;
+  }
+#endif
+  if (handleTrackerGeofenceCommand(command, reply)) return true;
   if (strcmp(command, "get tracker.owner") == 0) {
     static const char hex[] = "0123456789abcdef";
     for (size_t i = 0; i < 32; ++i) {

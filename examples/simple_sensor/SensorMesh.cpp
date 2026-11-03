@@ -1,4 +1,5 @@
 #include "SensorMesh.h"
+#include <helpers/tracker/SensorTelemetryInterval.h>
 #include <helpers/HardwareCommand.h>
 #include <helpers/ui/DisplayNightLocation.h>
 #if defined(USE_LR2021)
@@ -1426,6 +1427,20 @@ void SensorMesh::begin(FILESYSTEM* fs) {
   tracker_storage_fault = tracker_load != mesh::tracker::StoreResult::Success
       && tracker_load != mesh::tracker::StoreResult::NotFound;
   if (tracker_storage_fault) tracker.enabled = false;
+  const auto geofence_load = tracker_storage_available
+      ? mesh::tracker::geofence::load(_fs, tracker_geofence)
+      : mesh::tracker::geofence::StoreResult::Unavailable;
+  tracker_geofence_storage_fault = geofence_load != mesh::tracker::geofence::StoreResult::Success
+      && geofence_load != mesh::tracker::geofence::StoreResult::NotFound;
+#if defined(MESH_SENSOR_MOTION) && MESH_SENSOR_MOTION
+  const auto profile_load = tracker_storage_available
+      ? mesh::tracker::profile::load(_fs, tracker_profile)
+      : mesh::tracker::profile::StoreResult::Unavailable;
+  tracker_profile_storage_fault = profile_load != mesh::tracker::profile::StoreResult::Success
+      && profile_load != mesh::tracker::profile::StoreResult::NotFound;
+  if (tracker_profile_storage_fault) tracker_profile = mesh::tracker::profile::Record();
+  applyTrackerProfile(millis());
+#endif
   tracker_boot_anchor = getRTCClock()->getCurrentTime();
   configureTrackerRuntime();
 #endif
@@ -1474,6 +1489,9 @@ bool SensorMesh::applySavedRadioParams() {
 }
 
 bool SensorMesh::formatFileSystem() {
+#if MESH_ENABLE_SENSOR_TRACKER
+  if (!prepareTrackerErase()) return false;
+#endif
 #if defined(MESH_SENSOR_FINDMY) && MESH_SENSOR_FINDMY
   if (!findmy_.prepareErase()) return false;
 #endif
@@ -1490,6 +1508,9 @@ bool SensorMesh::formatFileSystem() {
 #endif
 #if defined(MESH_SENSOR_FINDMY) && MESH_SENSOR_FINDMY
   findmy_.finishErase(formatted);
+#endif
+#if MESH_ENABLE_SENSOR_TRACKER
+  finishTrackerErase(formatted);
 #endif
   return formatted;
 }
@@ -1683,7 +1704,12 @@ void SensorMesh::loop() {
   if (tracker_awake_until && millisHasNowPassed(tracker_awake_until)) {
     tracker_awake_until = 0;
   }
-  if (!mesh::morseTimingActive(_radio) && tracker.enabled && trackerNeedsRadio()) wakeTrackerRadio();
+  bool tracker_wake_allowed = true;
+#if MESH_ENABLE_EMERGENCY_POWER
+  if (board.supportsEmergencySleep() && _cli.emergencySleepMilliseconds() != 0)
+    tracker_wake_allowed = tracker_acquiring || tracker_pending;
+#endif
+  if (tracker_wake_allowed && !mesh::morseTimingActive(_radio) && tracker.enabled && trackerNeedsRadio()) wakeTrackerRadio();
 #endif
   _cli.loop();
   mesh::Mesh::loop();
@@ -1717,7 +1743,7 @@ void SensorMesh::loop() {
   servicePendingPrimaryRadioSettings();
 
   uint32_t curr = getRTCClock()->getCurrentTime();
-  if (curr >= last_read_time + SENSOR_READ_INTERVAL_SECS) {
+  if (curr >= last_read_time + mesh::tracker::sensorTelemetryInterval(isTrackerModeEnabled(), SENSOR_READ_INTERVAL_SECS)) {
     telemetry.reset();
     telemetry.addVoltage(TELEM_CHANNEL_SELF, (float)board.getBattMilliVolts() / 1000.0f);
     // query other sensors -- target specific
@@ -1847,6 +1873,9 @@ mesh::powerdiag::Mask SensorMesh::pendingWorkReason() const {
   using mesh::powerdiag::Reason;
 #if MESH_ENABLE_SENSOR_TRACKER
   if (tracker.enabled && (tracker_pending || tracker_acquiring
+#if defined(MESH_SENSOR_MOTION) && MESH_SENSOR_MOTION
+      || motion_gps_acquiring
+#endif
       || (tracker_awake_until && !millisHasNowPassed(tracker_awake_until))
       || (!tracker_storage_fault && getRTCClock()->getCurrentTime() >= tracker_next_check))) return mask(Reason::Tracker);
 #endif
@@ -1872,7 +1901,7 @@ mesh::powerdiag::Mask SensorMesh::pendingWorkReason() const {
           || (saved_radio_apply_pending && !temp_radio_applied))) return mask(Reason::Scheduled);
 
   uint32_t now_secs = getRTCClock()->getCurrentTime();
-  return now_secs >= last_read_time + SENSOR_READ_INTERVAL_SECS
+  return now_secs >= last_read_time + mesh::tracker::sensorTelemetryInterval(isTrackerModeEnabled(), SENSOR_READ_INTERVAL_SECS)
       ? mask(Reason::Scheduled) : 0;
 }
 
@@ -1940,7 +1969,7 @@ uint32_t SensorMesh::getPowerSaveSleepMilliseconds(uint32_t max_ms) const {
   }
 
   uint32_t now_secs = getRTCClock()->getCurrentTime();
-  uint32_t sensor_due = last_read_time + SENSOR_READ_INTERVAL_SECS;
+  uint32_t sensor_due = last_read_time + mesh::tracker::sensorTelemetryInterval(isTrackerModeEnabled(), SENSOR_READ_INTERVAL_SECS);
   if (now_secs < sensor_due) {
     uint32_t sensor_delay = mesh::power::secondsToSleepMilliseconds(sensor_due - now_secs);
     if (sensor_delay < sleep_ms) sleep_ms = sensor_delay;

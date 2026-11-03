@@ -18,6 +18,11 @@
 #include <nrf.h>
 #include <nrf_nvic.h>
 #include <nrf_soc.h>
+#if defined(MESH_SENSOR_FINDMY) && MESH_SENSOR_FINDMY
+#include <atomic>
+#include "findmy/FindMyNrf52.h"
+#include "findmy/Nrf52FindMyMediator.h"
+#endif
 #ifdef USE_TINYUSB
 #include <Adafruit_TinyUSB.h>
 #endif
@@ -27,9 +32,90 @@
 #endif
 
 static BLEDfu bledfu;
+#if defined(MESH_SENSOR_FINDMY) && MESH_SENSOR_FINDMY
+static std::atomic<uint16_t> ota_conn_handle(BLE_CONN_HANDLE_INVALID);
+#else
 static uint16_t ota_conn_handle = BLE_CONN_HANDLE_INVALID;
+#endif
 static bool ota_active = false;
 static bool ota_ble_started = false;
+
+#if defined(MESH_SENSOR_FINDMY) && MESH_SENSOR_FINDMY
+namespace {
+// One S140 advertising set and identity address are shared with BLE DFU.
+// All methods except Bluefruit's connection callbacks run on the sensor loop.
+class Nrf52FindMyDriver {
+  ble_gap_addr_t original_address_ = {};
+ public:
+  bool initialize() {
+    uint8_t softdevice_enabled = 0;
+    if (mesh_nrf52::softdeviceIsEnabled(softdevice_enabled) != NRF_SUCCESS
+        || softdevice_enabled || ota_ble_started) return false;
+    Bluefruit.configPrphConn(BLE_GATT_ATT_MTU_DEFAULT,
+                             BLE_GAP_EVENT_LENGTH_MIN, 2, 1);
+    mesh_nrf52::sleepCycleState().invalidate();
+    mesh_nrf52::applyBluetoothLedPolicy();
+    if (!Bluefruit.begin(1, 0)) return false;
+    // Bluefruit has no reusable end()/begin() cycle. Even if a later setup
+    // step fails, do not initialize it a second time before reboot.
+    ota_ble_started = true;
+    mesh_nrf52::bluetoothLedStarted();
+    return bledfu.begin() == ERROR_NONE
+        && sd_ble_gap_addr_get(&original_address_) == NRF_SUCCESS;
+  }
+  bool advertising() const { return Bluefruit.Advertising.isRunning(); }
+  bool scanning() const { return Bluefruit.Scanner.isRunning(); }
+  bool connected() const {
+    return ota_conn_handle.load(std::memory_order_acquire) != BLE_CONN_HANDLE_INVALID
+        || Bluefruit.Periph.connected() != 0;
+  }
+  void preventRestart() { Bluefruit.Advertising.restartOnDisconnect(false); }
+  bool stopAdvertising() { return Bluefruit.Advertising.stop(); }
+  bool restoreAddress() {
+    return sd_ble_gap_addr_set(&original_address_) == NRF_SUCCESS;
+  }
+  bool setBeaconAddress(const uint8_t display_addr[6]) {
+    ble_gap_addr_t address = {};
+    address.addr_type = BLE_GAP_ADDR_TYPE_RANDOM_STATIC;
+    for (unsigned i = 0; i < 6; ++i) address.addr[i] = display_addr[5 - i];
+    return sd_ble_gap_addr_set(&address) == NRF_SUCCESS;
+  }
+  bool configureBeacon(const uint8_t payload[29], uint16_t interval_units) {
+    // BLE DFU uses +4 dBm. Select the sensor beacon power explicitly on each
+    // handoff so its range and battery cost do not depend on DFU history.
+    if (!Bluefruit.setTxPower(0)) return false;
+    Bluefruit.autoConnLed(false);
+    Bluefruit.Advertising.restartOnDisconnect(false);
+    Bluefruit.Advertising.clearData();
+    Bluefruit.ScanResponse.clearData();
+    Bluefruit.Advertising.setType(BLE_GAP_ADV_TYPE_NONCONNECTABLE_NONSCANNABLE_UNDIRECTED);
+    Bluefruit.Advertising.setInterval(interval_units, interval_units);
+    Bluefruit.Advertising.setFastTimeout(0);
+    return Bluefruit.Advertising.addData(BLE_GAP_AD_TYPE_MANUFACTURER_SPECIFIC_DATA,
+                                        payload, 29);
+  }
+  bool startAdvertising() { return Bluefruit.Advertising.start(0); }
+  bool requestDisconnect() {
+    const uint16_t handle = ota_conn_handle.load(std::memory_order_acquire);
+    return handle != BLE_CONN_HANDLE_INVALID
+        && sd_ble_gap_disconnect(handle, BLE_HCI_REMOTE_USER_TERMINATED_CONNECTION) == NRF_SUCCESS;
+  }
+};
+
+Nrf52FindMyDriver findmy_ble_driver;
+mesh::findmy::Nrf52FindMyMediator<Nrf52FindMyDriver> findmy_ble(findmy_ble_driver);
+} // namespace
+
+namespace mesh { namespace findmy {
+bool nrf52StartBeacon(const uint8_t addr[6], const uint8_t payload[29], uint16_t interval_ms) {
+  return findmy_ble.startBeacon(addr, payload, interval_ms);
+}
+bool nrf52StopBeacon() { return findmy_ble.stopBeacon(); }
+bool nrf52BeaconActive() { return findmy_ble.beaconActive(); }
+}} // namespace mesh::findmy
+
+bool NRF52Board::isOTAUpdateRunning() const { return findmy_ble.dfuBusy(); }
+#endif
 
 // Intentional reboot paths share the recovery policy's clean-reset marker.
 // Keep this optional for standalone board/library builds without the policy.
@@ -1002,6 +1088,12 @@ bool NRF52Board::startOTAUpdate(const char *id, char reply[], bool force_ap) {
     return true;
   }
 
+#if defined(MESH_SENSOR_FINDMY) && MESH_SENSOR_FINDMY
+  // DFU and Find My share S140's only advertising set and GAP identity.
+  // The mediator stops the beacon and restores the original identity before
+  // this method touches either resource.
+  if (!findmy_ble.claimDfu()) return false;
+#else
   if (!ota_ble_started) {
     // The application only needs the buttonless DFU control connection; the
     // bootloader handles firmware data. Large ATT and queue reservations can
@@ -1023,8 +1115,13 @@ bool NRF52Board::startOTAUpdate(const char *id, char reply[], bool force_ap) {
     // To be consistent OTA DFU should be added first if it exists
     bledfu.begin();
   }
+#endif
 
   // Set max power. Accepted values are: -40, -30, -20, -16, -12, -8, -4, 0, 4
+#if defined(MESH_SENSOR_FINDMY) && MESH_SENSOR_FINDMY
+  mesh_nrf52::applyBluetoothLedPolicy();
+  Bluefruit.Advertising.setType(BLE_GAP_ADV_TYPE_CONNECTABLE_SCANNABLE_UNDIRECTED);
+#endif
   Bluefruit.setTxPower(4);
   // Set the BLE device name
   Bluefruit.setName(ota_name);
@@ -1045,6 +1142,9 @@ bool NRF52Board::startOTAUpdate(const char *id, char reply[], bool force_ap) {
       || !Bluefruit.Advertising.addData(BLE_GAP_AD_TYPE_COMPLETE_LOCAL_NAME,
                                        ota_name, (uint8_t)ota_name_len)
       || !Bluefruit.ScanResponse.addService(bledfu)) {
+#if defined(MESH_SENSOR_FINDMY) && MESH_SENSOR_FINDMY
+    findmy_ble.finishDfuStart(false);
+#endif
     return false;
   }
 
@@ -1060,7 +1160,12 @@ bool NRF52Board::startOTAUpdate(const char *id, char reply[], bool force_ap) {
   Bluefruit.Advertising.restartOnDisconnect(true);
   Bluefruit.Advertising.setInterval(32, 244); // in unit of 0.625 ms
   Bluefruit.Advertising.setFastTimeout(30);   // number of seconds in fast mode
-  if (!Bluefruit.Advertising.start(0)) return false;  // 0 = advertise until stopped
+  if (!Bluefruit.Advertising.start(0)) {  // 0 = advertise until stopped
+#if defined(MESH_SENSOR_FINDMY) && MESH_SENSOR_FINDMY
+    findmy_ble.finishDfuStart(false);
+#endif
+    return false;
+  }
 
   ota_active = true;
   format_ota_reply(reply);
@@ -1069,6 +1174,21 @@ bool NRF52Board::startOTAUpdate(const char *id, char reply[], bool force_ap) {
 }
 
 bool NRF52Board::stopOTAUpdate(char reply[]) {
+#if defined(MESH_SENSOR_FINDMY) && MESH_SENSOR_FINDMY
+  if (!findmy_ble.dfuBusy()) {
+    strcpy(reply, "OK - OTA not running");
+    return true;
+  }
+  // Once shutdown is requested, a partial failure can leave either an
+  // advertiser or connection alive. Do not subsequently claim DFU is ready;
+  // the mediator retains exclusive ownership until a successful stop retry.
+  ota_active = false;
+  if (!findmy_ble.stopDfu()) return false;
+  // A disconnect completes asynchronously. Keep the mediator's DFU claim
+  // until both Bluefruit's connection count and the callback handle clear.
+  strcpy(reply, findmy_ble.dfuBusy() ? "OK - OTA disconnecting" : "OK - OTA stopped");
+  return true;
+#else
   if (!ota_active) {
     strcpy(reply, "OK - OTA not running");
     return true;
@@ -1084,5 +1204,6 @@ bool NRF52Board::stopOTAUpdate(char reply[]) {
 
   strcpy(reply, "OK - OTA stopped");
   return true;
+#endif
 }
 #endif

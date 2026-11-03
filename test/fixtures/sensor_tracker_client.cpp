@@ -515,15 +515,15 @@ static void rebootAndNonces() {
 
 static void idleClockAndCutoffCrossing() {
   { SensorMesh mesh; configure(mesh); queueCheck(mesh); transmitted(mesh); assert(response(mesh, Safe));
-    const uint32_t accepted = mesh.rtc.now; const uint32_t next = mesh.tracker_next_check;
+    const uint32_t accepted = mesh.rtc.now;
     mesh.serviceTracker(); assert(mesh.tracker_radio_asleep);
     mesh.rtc.now -= 60; ++mesh.now_ms; mesh.serviceTracker();
     assert(mesh.tracker.route.flags & kClockFault && restored(mesh).route.flags & kClockFault);
-    assert(mesh.tracker_next_check == next && mesh.created == 1);
-    mesh.rtc.now = accepted + 60; mesh.serviceTracker();
-    assert(mesh.tracker.route.flags & kClockFault && mesh.created == 1);
-    mesh.rtc.now = next; mesh.now_ms += 1800000;
-    queueCheck(mesh); assert(!mesh.flood_sends && mesh.direct_sends == 2); transmitted(mesh);
+    assert(mesh.tracker_next_check == mesh.rtc.now && mesh.tracker_acquiring && mesh.created == 1);
+    sensors.fix(); mesh.serviceTracker();
+    assert(mesh.tracker.route.flags & kClockFault && !mesh.flood_sends && mesh.direct_sends == 2);
+    transmitted(mesh);
+    mesh.rtc.now = accepted + 60;
     assert(response(mesh, Safe) && !mesh.tracker.route.flags && !restored(mesh).route.flags); }
   for (bool direct : {false, true}) {
     SensorMesh mesh; configure(mesh); const uint32_t start = mesh.rtc.now;
@@ -661,6 +661,326 @@ static void gpsAndMaintenance() {
   ++scenarios;
 }
 
+static void geofenceScenario() {
+  using mesh::tracker::geofence::Result;
+  SensorMesh mesh;
+  assert(command(mesh, "get tracker.box") == "off");
+  assert(command(mesh, "get tracker.fence").find("box=off last-known=unknown last-acquisition=none") == 0);
+  assert(!mesh.isTrackerFindMyEscalated());
+  for (const char* invalid : {"", "47,-123,46,-122", "-91,-123,48,-122", "47,-181,48,-122",
+                              "47.12345678,-123,48,-122", "47,-123,48,-122junk"}) {
+    assert(command(mesh, std::string("set tracker.box ") + invalid).find("ERR:") == 0);
+  }
+  assert(command(mesh, "set tracker.box 47,-123,48,-122") == "OK - box set; location unknown");
+  assert(command(mesh, "get tracker.box") == "47.0000000,-123.0000000,48.0000000,-122.0000000");
+  assert(command(mesh, "set tracker.box clear", mesh.rtc.now) == "ERR: tracker is local-only");
+  configure(mesh);
+
+  queueCheck(mesh); // Fresh inside fix.
+  assert(mesh.trackerGeofenceState() == Result::Inside && !mesh.isTrackerFindMyEscalated());
+  assert(command(mesh, "get tracker.fence").find("last-known=inside last-acquisition=valid") != std::string::npos);
+  transmitted(mesh); assert(response(mesh, Safe));
+  assert(mesh.tracker_next_check == mesh.rtc.now + mesh.tracker.normal_interval);
+
+  // A fresh exit is persisted independently of a safe owner reply; LoRa
+  // cadence remains the existing owner-controlled normal interval.
+  mesh.tracker_next_check = mesh.rtc.now; mesh.serviceTracker();
+  assert(mesh.tracker_acquiring); sensors.fix(47.5, -121.5); mesh.serviceTracker();
+  assert(mesh.trackerGeofenceState() == Result::Outside && mesh.isTrackerFindMyEscalated());
+  transmitted(mesh); assert(response(mesh, Safe));
+  assert(mesh.tracker.last_lost == Safe && mesh.isTrackerFindMyEscalated());
+  assert(mesh.tracker_next_check == mesh.rtc.now + mesh.tracker.normal_interval);
+  mesh::tracker::geofence::Record saved;
+  assert(mesh::tracker::geofence::load(&mesh.fs, saved) == mesh::tracker::geofence::StoreResult::Success);
+  assert(saved.last_known == Result::Outside);
+  {
+    const FakeSensors original_sensors = sensors;
+    SensorMesh reboot;
+    reboot.fs.files = mesh.fs.files;
+    metadata_filesystem = &reboot.fs;
+    reboot.tracker = mesh.tracker;
+    assert(mesh::tracker::geofence::load(&reboot.fs, reboot.tracker_geofence)
+           == mesh::tracker::geofence::StoreResult::Success);
+    assert(reboot.trackerGeofenceState() == Result::Outside && reboot.isTrackerFindMyEscalated());
+    assert(command(reboot, "get tracker.fence").find("last-known=outside last-acquisition=none") != std::string::npos);
+    metadata_filesystem = &mesh.fs;
+    sensors = original_sensors;
+  }
+  assert(command(mesh, "set tracker.box 47,-123,48,-122") == "OK - box set; outside retained pending fix");
+  assert(mesh.isTrackerFindMyEscalated());
+  assert(command(mesh, "get tracker.fence").find("last-known=outside(previous-box) last-acquisition=none") != std::string::npos);
+
+  // No fix and an invalid fix cannot clear a confirmed exit.
+  mesh.tracker_next_check = mesh.rtc.now; mesh.serviceTracker();
+  sensors.pending = sensors.fresh = false; mesh.serviceTracker();
+  assert(mesh.trackerGeofenceState() == Result::Outside && mesh.isTrackerFindMyEscalated());
+  assert(command(mesh, "get tracker.fence").find("last-known=outside(previous-box) last-acquisition=no-fix") != std::string::npos);
+  transmitted(mesh); assert(response(mesh, Safe));
+  mesh.tracker_next_check = mesh.rtc.now; mesh.serviceTracker();
+  sensors.fix(47.5, -121.5); mesh.serviceTracker();
+  assert(command(mesh, "get tracker.fence").find("last-known=outside last-acquisition=valid") != std::string::npos);
+  assert(mesh::tracker::geofence::load(&mesh.fs, saved) == mesh::tracker::geofence::StoreResult::Success);
+  assert(!saved.previous_box && saved.last_known == Result::Outside);
+  transmitted(mesh); assert(response(mesh, Safe));
+  mesh.tracker_next_check = mesh.rtc.now; mesh.serviceTracker();
+  sensors.fix(NAN, -122); mesh.serviceTracker();
+  assert(mesh.trackerGeofenceState() == Result::Outside && mesh.isTrackerFindMyEscalated());
+  transmitted(mesh); assert(response(mesh, Safe));
+
+  // A new valid inside fix clears the fence cause, but an owner Lost answer
+  // still independently escalates, using the existing lost interval.
+  mesh.tracker_next_check = mesh.rtc.now; mesh.serviceTracker();
+  sensors.fix(47.5, -122.5); mesh.serviceTracker();
+  assert(mesh.trackerGeofenceState() == Result::Inside && !mesh.isTrackerFindMyEscalated());
+  transmitted(mesh); assert(response(mesh, Lost, 120));
+  assert(mesh.tracker.last_lost == Lost && mesh.isTrackerFindMyEscalated());
+  assert(mesh.tracker_next_check == mesh.rtc.now + mesh.tracker.lost_interval);
+
+  // Clearing the box persists the disabled state and does not change owner loss.
+  assert(command(mesh, "set tracker.box clear") == "OK - box cleared");
+  assert(mesh.isTrackerFindMyEscalated() && mesh.tracker.last_lost == Lost);
+  assert(command(mesh, "get tracker.box") == "off");
+  assert(mesh::tracker::geofence::load(&mesh.fs, saved) == mesh::tracker::geofence::StoreResult::Success);
+  assert(!saved.box.configured && saved.last_known == Result::Unknown);
+  ++scenarios;
+}
+
+static void geofenceStorageFault() {
+  using mesh::tracker::geofence::Result;
+  {
+    SensorMesh mesh; configure(mesh);
+    assert(command(mesh, "set tracker.box 47,-123,48,-122") == "OK - box set; location unknown");
+    mesh.observeTrackerGeofence(true, 475000000, -1215000000);
+    assert(mesh.isTrackerFindMyEscalated() && mesh.trackerGeofenceState() == Result::Outside);
+    const unsigned writes = mesh.fs.write_opens;
+    mesh.observeTrackerGeofence(false, 0, 0);
+    mesh.observeTrackerGeofence(true, 475000000, -1215000000);
+    assert(mesh.fs.write_opens == writes); // no wear for unchanged/no fix
+    mesh.fs.short_write = true;
+    mesh.observeTrackerGeofence(true, 475000000, -1225000000);
+    assert(mesh.tracker_geofence_storage_fault && !mesh.tracker_storage_fault);
+    assert(mesh.trackerGeofenceState() == Result::Outside && mesh.isTrackerFindMyEscalated());
+    assert(command(mesh, "get tracker.fence").find("storage=fault") != std::string::npos);
+    assert(command(mesh, "set tracker.box clear") == "ERR: box save failed");
+    mesh.fs.short_write = false;
+    mesh::tracker::geofence::Record saved;
+    assert(mesh::tracker::geofence::load(&mesh.fs, saved) == mesh::tracker::geofence::StoreResult::Success);
+    assert(saved.last_known == Result::Outside); // reboot stays conservative
+  }
+  {
+    SensorMesh mesh; configure(mesh);
+    assert(command(mesh, "set tracker.box 47,-123,48,-122") == "OK - box set; location unknown");
+    mesh.observeTrackerGeofence(true, 475000000, -1225000000);
+    assert(mesh.trackerGeofenceState() == Result::Inside);
+    mesh.fs.short_write = true;
+    mesh.observeTrackerGeofence(true, 475000000, -1215000000);
+    assert(mesh.tracker_geofence_storage_fault && !mesh.tracker_storage_fault);
+    assert(mesh.isTrackerFindMyEscalated()); // do not hide a newly observed exit
+  }
+  ++scenarios;
+}
+
+#if defined(MESH_SENSOR_MOTION) && MESH_SENSOR_MOTION
+static void motionScheduling() {
+  using mesh::tracker::motion::Observation;
+  {
+    SensorMesh mesh; configure(mesh);
+    assert(command(mesh, "set tracker.box 47,-123,48,-122") == "OK - box set; location unknown");
+    queueCheck(mesh); transmitted(mesh); assert(response(mesh, Safe));
+    assert(mesh.trackerGeofenceState() == mesh::tracker::geofence::Result::Inside);
+    mesh.serviceTracker();
+    assert(mesh.tracker_radio_asleep);
+    // A working sensor must report quiet repeatedly for five minutes.
+    for (int i = 0; i < 12; ++i) {
+      mesh.now_ms += 30000; mesh.rtc.now += 30; mesh.serviceTracker();
+    }
+    assert(mesh.motion_quiet_policy.confirmed());
+    assert(mesh.trackerCanExtendOwnerCheck(mesh.now_ms));
+    assert(mesh.trackerOwnerInterval(mesh.rtc.now, mesh.now_ms, false) == 1800);
+    // A fresh Unknown reply must not reuse an older Safe response to extend.
+    assert(command(mesh, "tracker check") == "OK scheduled");
+    queueCheck(mesh); transmitted(mesh); assert(response(mesh, Unknown));
+    assert(mesh.tracker.last_lost == Safe && mesh.tracker_next_check == mesh.rtc.now + 1800);
+    mesh.tracker.last_lost = Unknown;
+    assert(!mesh.trackerCanExtendOwnerCheck(mesh.now_ms));
+    mesh.tracker.last_lost = Safe;
+    assert(mesh.trackerOwnerInterval(mesh.rtc.now, mesh.now_ms, true) == 7200);
+    mesh.tracker_next_check = mesh.rtc.now + 7200;
+    assert(command(mesh, "get tracker.profile") == "profile=backyard");
+    assert(command(mesh, "set tracker.profile hiking", 1) == "ERR: tracker is local-only");
+    assert(mesh.getTrackerProfile() == mesh::tracker::profile::Mode::Backyard);
+    assert(command(mesh, "set tracker.profile hiking") == "OK - profile hiking");
+    assert(mesh.getTrackerProfile() == mesh::tracker::profile::Mode::Hiking);
+    assert(mesh.isTrackerProfileAvailable() && !mesh.trackerCanExtendOwnerCheck(mesh.now_ms));
+    assert(!mesh.tracker_quiet_extended && mesh.tracker_next_check == mesh.rtc.now + mesh.tracker.normal_interval);
+    mesh::tracker::profile::Record stored_profile;
+    assert(mesh::tracker::profile::load(&mesh.fs, stored_profile)
+           == mesh::tracker::profile::StoreResult::Success);
+    assert(stored_profile.mode == mesh::tracker::profile::Mode::Hiking);
+    const auto writes_after_hiking = mesh.fs.write_opens;
+    assert(command(mesh, "set tracker.profile hiking") == "OK - profile hiking");
+    assert(mesh.fs.write_opens == writes_after_hiking); // no extra flash wear
+    assert(command(mesh, "set tracker.profile backyard") == "OK - profile backyard");
+    assert(mesh.tracker_next_check == mesh.rtc.now + mesh.tracker.normal_interval);
+    assert(mesh.toggleTrackerProfile() && mesh.getTrackerProfile() == mesh::tracker::profile::Mode::Hiking);
+    assert(mesh.toggleTrackerProfile() && mesh.getTrackerProfile() == mesh::tracker::profile::Mode::Backyard);
+    assert(mesh.trackerOwnerInterval(mesh.rtc.now, mesh.now_ms, true) == 7200);
+    mesh.tracker_next_check = mesh.rtc.now + 7200;
+    assert(command(mesh, "get tracker.motion").find("quiet-window") != std::string::npos);
+    mesh.tracker_geofence_last_acquisition = 2;
+    assert(!mesh.trackerCanExtendOwnerCheck(mesh.now_ms)); // a failed GPS fix is unknown
+    mesh.tracker_geofence_last_acquisition = 1;
+
+    // A failed accelerometer must immediately retire the quiet extension.
+    const uint32_t normal_due = mesh.rtc.now + mesh.tracker.normal_interval;
+    mesh.motion_sensor.available = false;
+    mesh.now_ms += 30000; mesh.rtc.now += 30; mesh.serviceTracker();
+    assert(mesh.motion_observation == Observation::Unknown);
+    assert(mesh.tracker_next_check == normal_due && !mesh.tracker_quiet_extended);
+    assert(command(mesh, "get tracker.motion").find("unknown") != std::string::npos);
+    mesh.motion_sensor.available = true;
+    for (int i = 0; i < 13; ++i) {
+      mesh.now_ms += 30000; mesh.rtc.now += 30; mesh.serviceTracker();
+    }
+    assert(mesh.motion_quiet_policy.confirmed() && mesh.trackerCanExtendOwnerCheck(mesh.now_ms));
+    assert(mesh.trackerOwnerInterval(mesh.rtc.now, mesh.now_ms, true) == 7200);
+    mesh.tracker_next_check = mesh.rtc.now + 7200;
+
+    // A genuine quiet-to-motion transition triggers exactly one earlier owner
+    // check and coalesces its GPS work instead of sending on every poll.
+    const unsigned first_created = mesh.created;
+    mesh.now_ms += 30000; mesh.rtc.now += 30;
+    mesh.motion_sensor.next = Observation::Motion;
+    mesh.serviceTracker();
+    assert(mesh.tracker_acquiring && sensors.pending && !mesh.tracker_radio_asleep);
+    assert(mesh.created == first_created);
+    sensors.fix(); mesh.serviceTracker(); assert(mesh.created == first_created + 1);
+    transmitted(mesh); assert(response(mesh, Safe));
+    mesh.serviceTracker(); assert(mesh.tracker_radio_asleep);
+
+    // Motion without a verified quiet edge only starts a GPS/geofence fix.
+    // LoRa stays asleep and the owner deadline is not advanced.
+    mesh.motion_quiet_policy.reset();
+    mesh.tracker_next_check = mesh.rtc.now + 7200;
+    const uint32_t owner_due = mesh.tracker_next_check;
+    const unsigned before_gps = sensors.starts, before_packets = mesh.created, before_wakes = mesh.radio.wakes;
+    mesh.now_ms += 16 * 60000; mesh.rtc.now += 16 * 60;
+    mesh.motion_sensor.next = Observation::Motion;
+    mesh.serviceTracker();
+    assert(mesh.motion_gps_acquiring && sensors.pending);
+    assert(mesh.tracker_radio_asleep && mesh.radio.wakes == before_wakes);
+    assert(mesh.created == before_packets && mesh.tracker_next_check == owner_due);
+    sensors.fix(47.5, -121.5); mesh.serviceTracker();
+    assert(!mesh.motion_gps_acquiring && mesh.isTrackerFindMyEscalated());
+    assert(mesh.created == before_packets && sensors.starts == before_gps + 1);
+
+    // A failed motion fix backs off at least one hour, while an explicit
+    // owner check bypasses that throttle and is not hidden.
+    mesh.motion_quiet_policy.reset();
+    mesh.tracker_next_check = mesh.rtc.now + 7200;
+    mesh.now_ms += 16 * 60000; mesh.rtc.now += 16 * 60;
+    mesh.motion_sensor.next = Observation::Motion; mesh.serviceTracker();
+    assert(mesh.motion_gps_acquiring && sensors.pending);
+    sensors.pending = false; sensors.fresh = false; mesh.serviceTracker();
+    assert(!mesh.motion_gps_acquiring);
+    const unsigned after_failed = sensors.starts;
+    mesh.now_ms += 16 * 60000; mesh.rtc.now += 16 * 60;
+    mesh.motion_sensor.next = Observation::Motion; mesh.serviceTracker();
+    assert(!mesh.motion_gps_acquiring && sensors.starts == after_failed);
+    assert(command(mesh, "tracker check") == "OK scheduled");
+    mesh.serviceTracker(); assert(mesh.tracker_acquiring && sensors.starts == after_failed + 1);
+  }
+  {
+    // An ambiguous profile save prevents further changes and removes a
+    // backyard-only extended owner check without delaying normal work.
+    SensorMesh mesh; configure(mesh);
+    mesh.tracker_quiet_extended = true;
+    mesh.tracker_owner_check_anchor = mesh.rtc.now;
+    mesh.tracker_next_check = mesh.rtc.now + 7200;
+    mesh.fs.short_write = true;
+    assert(command(mesh, "set tracker.profile hiking") == "ERR: profile save failed");
+    assert(!mesh.isTrackerProfileAvailable());
+    assert(command(mesh, "get tracker.profile") == "ERR: profile storage unavailable");
+    assert(!mesh.toggleTrackerProfile());
+    assert(mesh.tracker_next_check == mesh.rtc.now + mesh.tracker.normal_interval);
+    assert(!mesh.tracker_quiet_extended);
+  }
+  {
+    SensorMesh mesh; configure(mesh);
+    assert(command(mesh, "set tracker.box 47,-123,48,-122") == "OK - box set; location unknown");
+    queueCheck(mesh); transmitted(mesh); assert(response(mesh, Safe));
+    mesh.serviceTracker(); assert(mesh.tracker_radio_asleep);
+    mesh.tracker_next_check = mesh.rtc.now + 7200;
+    mesh.now_ms += 16 * 60000; mesh.rtc.now += 16 * 60;
+    mesh.motion_sensor.next = Observation::Motion; mesh.serviceTracker();
+    assert(mesh.motion_gps_acquiring && sensors.pending && mesh.tracker_radio_asleep);
+    const unsigned before_packets = mesh.created, before_wakes = mesh.radio.wakes;
+    mesh._cli.emergency_sleep = true;
+    mesh.tracker_next_check = mesh.rtc.now; // due while emergency is requested
+    mesh.loop();
+    assert(mesh.motion_gps_acquiring && !mesh.tracker_acquiring && mesh.radio.wakes == before_wakes);
+    sensors.fix(); mesh.loop();
+    assert(!mesh.motion_gps_acquiring && mesh.created == before_packets && mesh.radio.wakes == before_wakes);
+    mesh.serviceTracker(); assert(mesh.created == before_packets && mesh.radio.wakes == before_wakes);
+  }
+  {
+    SensorMesh mesh; configure(mesh);
+    mesh.serviceTracker(); assert(mesh.tracker_acquiring && sensors.pending);
+    const unsigned before_packets = mesh.created;
+    mesh._cli.emergency_sleep = true;
+    sensors.fix(); mesh.serviceTracker();
+    assert(!mesh.tracker_acquiring && !mesh.tracker_pending && mesh.created == before_packets);
+  }
+  {
+    SensorMesh mesh; configure(mesh);
+    mesh.serviceTracker(); assert(mesh.tracker_acquiring && sensors.pending);
+    mesh.tracker_storage_fault = true;
+    mesh.serviceTracker();
+    assert(!mesh.tracker_acquiring && sensors.pending);
+    mesh._cli.emergency_sleep = true;
+    assert(mesh.emergencyPowerBusy());
+    sensors.fix();
+    assert(!mesh.emergencyPowerBusy());
+  }
+  {
+    // Boards which cannot enter emergency sleep must not silently suppress
+    // tracking because the saved emergency policy asks them to sleep.
+    SensorMesh mesh; configure(mesh);
+    mesh.board.emergency_supported = false;
+    mesh._cli.emergency_sleep = true;
+    mesh.serviceTracker();
+    assert(mesh.tracker_acquiring && sensors.pending);
+  }
+  {
+    SensorMesh mesh; configure(mesh);
+    assert(command(mesh, "set tracker.box 47,-123,48,-122") == "OK - box set; location unknown");
+    assert(command(mesh, "set tracker.profile hiking") == "OK - profile hiking");
+    mesh.serviceTracker(); assert(sensors.pending && mesh.tracker_acquiring);
+    SPIFFS.fs = &mesh.fs; SPIFFS.success = true; SPIFFS.calls = 0;
+    assert(mesh.formatFileSystem() && SPIFFS.calls == 1);
+    assert(!mesh.tracker.enabled && !sensors.pending && !sensors.mode && !mesh.tracker_acquiring);
+    assert(!mesh.tracker_geofence.box.configured && mesh.tracker_profile.mode == mesh::tracker::profile::Mode::Backyard);
+    assert(!mesh.tracker_storage_fault && !mesh.tracker_geofence_storage_fault && !mesh.tracker_profile_storage_fault);
+    assert(command(mesh, "set tracker.box 47,-123,48,-122") == "OK - box set; location unknown");
+  }
+  {
+    SensorMesh mesh; configure(mesh);
+    mesh.motion_sensor.fail_stop = true;
+    SPIFFS.fs = &mesh.fs; SPIFFS.success = true; SPIFFS.calls = 0;
+    assert(!mesh.formatFileSystem() && SPIFFS.calls == 0);
+    assert(!mesh.tracker.enabled && !sensors.mode && mesh.tracker_storage_fault && mesh.tracker_profile_storage_fault);
+    assert(command(mesh, "set tracker.profile hiking") == "ERR: profile storage unavailable");
+  }
+  {
+    SensorMesh mesh; configure(mesh);
+    SPIFFS.fs = &mesh.fs; SPIFFS.success = false; SPIFFS.calls = 0;
+    assert(!mesh.formatFileSystem() && SPIFFS.calls == 1);
+    assert(!mesh.tracker.enabled && mesh.tracker_storage_fault && mesh.tracker_geofence_storage_fault && mesh.tracker_profile_storage_fault);
+  }
+  ++scenarios;
+}
+#endif
+
 int main(int argc, char** argv) {
   assert(argc == 2); const std::string name = argv[1];
   if (name == "commands") commands();
@@ -682,6 +1002,11 @@ int main(int argc, char** argv) {
   else if (name == "forward-clock") forwardClockCorrection();
   else if (name == "gps-handoff") managerOwnsAcquisitionHandoff();
   else if (name == "gps") gpsAndMaintenance();
+  else if (name == "geofence") geofenceScenario();
+  else if (name == "geofence-fault") geofenceStorageFault();
+#if defined(MESH_SENSOR_MOTION) && MESH_SENSOR_MOTION
+  else if (name == "motion") motionScheduling();
+#endif
   else assert(false);
   printf("PASS: sensor tracker client %s (%u scenario groups)\n", name.c_str(), scenarios);
 }

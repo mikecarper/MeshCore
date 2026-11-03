@@ -30,6 +30,11 @@ def peer_methods(source):
     if loop.count(boundary) != 1:
         raise AssertionError("tracker foreground service boundary changed")
     methods += loop[:loop.index(boundary)] + "}\n"
+    header = (ROOT / "examples/simple_sensor/SensorMesh.h").read_text(encoding="ascii")
+    busy = extract_braced(header, "bool emergencyPowerBusy() const")
+    methods += "#if MESH_ENABLE_EMERGENCY_POWER\n" + busy.replace(
+        "bool emergencyPowerBusy() const", "bool SensorMesh::emergencyPowerBusy() const", 1) + "\n#endif\n"
+    methods += "#define ESP32 1\n" + extract_braced(source, "bool SensorMesh::formatFileSystem()") + "\n#undef ESP32\n"
     # Preserve the existing local-console lease renewal, including its sender
     # check. Command parsing and its timestamp normalization remain separate.
     methods += "void SensorMesh::localConsoleLease(uint32_t sender_timestamp) {\n"
@@ -68,7 +73,7 @@ class SensorTrackerClientTests(unittest.TestCase):
         cls.temp.cleanup()
 
     @classmethod
-    def build(cls, name, tracker, sensor):
+    def build(cls, name, tracker, sensor, motion=False):
         work = cls.work / name
         work.mkdir()
         (work / "SensorMesh.h").write_text('#include "sensor_tracker_client.h"\n', encoding="ascii")
@@ -85,6 +90,7 @@ class SensorTrackerClientTests(unittest.TestCase):
         binary = work / "client"
         built = subprocess.run([
             cls.compiler, "-std=c++17", "-Wall", "-Wextra", "-Werror", "-Wno-unused-parameter",
+            *(["-DMESH_SENSOR_MOTION=1", "-DMESH_ENABLE_EMERGENCY_POWER=1"] if motion else []),
             *SANITIZERS, "-I", str(work), "-I", str(FIXTURE), "-I", str(ROOT / "src"),
             str(cpp), str(ROOT / "src/Packet.cpp"), *cls.crypto, "-o", str(binary),
         ], text=True, capture_output=True, timeout=60)
@@ -162,6 +168,15 @@ class SensorTrackerClientTests(unittest.TestCase):
     def test_gps_timeout_invalid_fixes_and_maintenance_awake_guards(self):
         self.run_group("gps")
 
+    def test_geofence_last_known_and_owner_loss_remain_independent(self):
+        self.run_group("geofence")
+
+    def test_geofence_persistence_failure_keeps_exit_visible(self):
+        self.run_group("geofence-fault")
+
+    def test_motion_gps_and_owner_scheduling(self):
+        self.run_group("motion", self.build("motion", self.tracker, self.sensor, motion=True))
+
     def test_reboot_preserves_nonce_floor_and_conservative_flood_wait(self):
         self.run_group("reboot")
 
@@ -216,9 +231,10 @@ class SensorTrackerClientTests(unittest.TestCase):
 
     def test_negative_control_tracker_forces_early_manager_handoff(self):
         guard = "if (sensors.isTrackerGpsAcquisitionPending()) return;"
-        self.assertEqual(self.tracker.count(guard), 1)
+        tracker_service = extract_braced(self.tracker, "void SensorMesh::serviceTracker()")
+        self.assertEqual(tracker_service.count(guard), 1)
         early = "if (sensors.isTrackerGpsAcquisitionPending() && !millisHasNowPassed(sensors.acquisition_until)) return;"
-        mutated = self.tracker.replace(guard, early, 1)
+        mutated = self.tracker.replace(tracker_service, tracker_service.replace(guard, early, 1), 1)
         self.run_group("gps-handoff", self.build("early-gps-handoff", mutated, self.sensor), success=False)
 
 

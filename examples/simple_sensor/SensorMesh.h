@@ -45,13 +45,29 @@
 #if MESH_ENABLE_SENSOR_TRACKER
 #include <helpers/SensorTrackerStore.h>
 #include <helpers/TrackerProtocol.h>
+#include <helpers/tracker/TrackerGeofenceStore.h>
+#endif
+
+#if defined(MESH_SENSOR_MOTION) && MESH_SENSOR_MOTION
+#if !defined(RAK_WISMESH_TAG) || !MESH_ENABLE_SENSOR_TRACKER
+#error "Sensor motion prototype requires the RAK WisMesh Tag tracker"
+#endif
+#include <helpers/tracker/Lis2dhMotionLatch.h>
+#include <helpers/tracker/Lis2dhWireBus.h>
+#include <helpers/tracker/MotionGpsPolicy.h>
+#include <helpers/tracker/TrackerProfile.h>
 #endif
 
 #if defined(MESH_SENSOR_FINDMY) && MESH_SENSOR_FINDMY
-#if !defined(ESP32_PLATFORM)
-#error "Sensor Find My is currently supported only on ESP32"
-#endif
+#if defined(ESP32_PLATFORM)
 #include <helpers/findmy/FindMyEsp32.h>
+using SensorFindMyBackend = mesh::findmy::Esp32Beacon;
+#elif defined(NRF52_PLATFORM)
+#include <helpers/findmy/FindMyNrf52.h>
+using SensorFindMyBackend = mesh::findmy::Nrf52Beacon;
+#else
+#error "Sensor Find My is currently supported only on ESP32 and nRF52"
+#endif
 #include <helpers/findmy/SensorFindMy.h>
 #endif
 
@@ -83,8 +99,20 @@ public:
   SensorMesh(mesh::MainBoard& board, mesh::Radio& radio, mesh::MillisecondClock& ms, mesh::RNG& rng, mesh::RTCClock& rtc, mesh::MeshTables& tables);
   void begin(FILESYSTEM* fs);
   void loop();
+#if defined(MESH_SENSOR_MOTION) && MESH_SENSOR_MOTION
+  bool setTrackerProfile(mesh::tracker::profile::Mode mode);
+  bool toggleTrackerProfile();
+  mesh::tracker::profile::Mode getTrackerProfile() const { return tracker_profile.mode; }
+  bool isTrackerProfileAvailable() const { return tracker_storage_available && !tracker_profile_storage_fault; }
+#endif
 #if defined(MESH_SENSOR_FINDMY) && MESH_SENSOR_FINDMY
-  void serviceFindMy(bool suspend) { findmy_.service(suspend, millis()); }
+  void serviceFindMy(bool suspend) {
+#if MESH_ENABLE_SENSOR_TRACKER
+    findmy_.service(suspend, millis(), isTrackerFindMyEscalated());
+#else
+    findmy_.service(suspend, millis(), false);
+#endif
+  }
 #endif
   bool canRecoverUsbLogging() const {
     return dirty_contacts_expiry == 0 && !hasOutbound() && !isAnyTempRadioActive()
@@ -108,6 +136,16 @@ public:
 #if defined(ENABLE_OTA)
     if (_emergency_ota_work.busy(mesh::ota::ota_context_if_active(), millis())) return true;
 #endif
+#if MESH_ENABLE_SENSOR_TRACKER
+    // Let the bounded GPS acquisition or owner reply window finish so the
+    // normal sensor service can shut the receiver down before deep sleep.
+    if (sensors.isTrackerGpsAcquisitionPending()) return true;
+    if (tracker.enabled && (tracker_acquiring || tracker_pending
+#if defined(MESH_SENSOR_MOTION) && MESH_SENSOR_MOTION
+        || motion_gps_acquiring
+#endif
+        )) return true;
+#endif
     return hasPendingOtaApply() || _cli.hasPendingRadioSettings()
         || _cli.hasActiveUserGpioTimer() || dirty_contacts_expiry != 0
         || (saved_radio_apply_pending && !temp_radio_applied);
@@ -122,6 +160,17 @@ public:
     return false;
 #endif
   }
+#if MESH_ENABLE_SENSOR_TRACKER
+  mesh::tracker::geofence::Result trackerGeofenceState() const {
+    return tracker_geofence.last_known;
+  }
+  // Owner-reported loss and a confirmed box exit are independent causes.
+  bool isTrackerFindMyEscalated() const {
+    return tracker.enabled && (tracker.last_lost == mesh::tracker::Lost
+        || (tracker_geofence.box.configured
+            && tracker_geofence.last_known == mesh::tracker::geofence::Result::Outside));
+  }
+#endif
   void setTrackerStorageAvailable(bool available) {
 #if MESH_ENABLE_SENSOR_TRACKER
     tracker_storage_available = available;
@@ -276,15 +325,40 @@ protected:
   void sendAckTo(const ClientInfo& dest, uint32_t ack_hash, uint8_t path_hash_size=1);
 private:
 #if defined(MESH_SENSOR_FINDMY) && MESH_SENSOR_FINDMY
-  mesh::findmy::SensorFindMy<FILESYSTEM, mesh::findmy::Esp32Beacon> findmy_;
+  mesh::findmy::SensorFindMy<FILESYSTEM, SensorFindMyBackend> findmy_;
 #endif
 #if MESH_ENABLE_SENSOR_TRACKER
   mesh::tracker::TrackerRecord tracker;
+  mesh::tracker::geofence::Record tracker_geofence;
+  bool tracker_geofence_storage_fault = false;
+  // Most recent acquisition since boot: 0 none, 1 valid, 2 no valid fix.
+  uint8_t tracker_geofence_last_acquisition = 0;
   uint8_t tracker_secret[PUB_KEY_SIZE] = {};
   bool tracker_storage_available = true;
   bool tracker_storage_fault = false;
   bool tracker_radio_asleep = false;
   bool tracker_acquiring = false;
+#if defined(MESH_SENSOR_MOTION) && MESH_SENSOR_MOTION
+  mesh::tracker::motion::WireBus motion_bus;
+  mesh::tracker::motion::Lis2dhMotionLatch<mesh::tracker::motion::WireBus> motion_sensor;
+  mesh::tracker::motion::GpsPolicy motion_gps_policy;
+  mesh::tracker::profile::Record tracker_profile;
+  bool tracker_profile_storage_fault = false;
+  mesh::tracker::motion::QuietPolicy motion_quiet_policy;
+  mesh::tracker::motion::Observation motion_observation = mesh::tracker::motion::Observation::Unknown;
+  bool motion_polled = false;
+  uint32_t motion_last_poll = 0;
+  bool motion_gps_acquiring = false;
+  bool motion_gps_attempted = false;
+  bool motion_owner_check_pending = false;
+  bool tracker_quiet_extended = false;
+  uint32_t tracker_owner_check_anchor = 0;
+  bool trackerCanExtendOwnerCheck(uint32_t now_ms) const;
+  uint32_t trackerOwnerInterval(uint32_t now, uint32_t now_ms, bool confirmed_safe);
+  void serviceTrackerMotion(uint32_t now, uint32_t now_ms, bool emergency);
+  void applyTrackerProfile(uint32_t now_ms);
+  bool handleTrackerProfileCommand(const char* command, char* reply);
+#endif
   bool tracker_pending = false;
   bool tracker_sent = false;
   uint8_t tracker_packet_hash[MAX_HASH_SIZE] = {};
@@ -296,7 +370,12 @@ private:
   uint32_t tracker_clock_rtc = 0;
   unsigned long tracker_clock_millis = 0;
   bool handleTrackerCommand(uint32_t sender_timestamp, const char* command, char* reply);
+  bool handleTrackerGeofenceCommand(const char* command, char* reply);
+  bool saveTrackerGeofence(mesh::tracker::geofence::Record& candidate);
+  void observeTrackerGeofence(bool fresh, int32_t latitude, int32_t longitude);
   void configureTrackerRuntime();
+  bool prepareTrackerErase();
+  void finishTrackerErase(bool success);
   bool saveTrackerRecord(mesh::tracker::TrackerRecord& candidate);
   bool trackerNeedsRadio() const;
   void wakeTrackerRadio();

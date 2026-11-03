@@ -704,6 +704,18 @@ jobs:
           python3 -B test/test_findmy_config.py -v
           python3 -B test/test_sensor_findmy.py -v
           python3 -B test/test_findmy_esp32.py -v
+          python3 -B test/test_findmy_nrf52.py -v
+          python3 -B test/test_lis2dh_motion.py -v
+          python3 -B test/test_motion_gps_policy.py -v
+          python3 -B test/test_tag_mode_button.py -v
+          python3 -B test/test_owner_phone_link.py -v
+          python3 -B test/test_tracker_escalation.py -v
+          python3 -B test/test_home_beacon.py -v
+          python3 -B test/test_home_beacon_set.py -v
+          python3 -B examples/home_beacon/test_controller.py -v
+          python3 -B test/test_tracker_profile.py -v
+          python3 -B test/test_tracker_geofence.py -v
+          python3 -B test/test_tracker_geofence_store.py -v
           python3 -B test/test_tracker_route_policy.py -v
           python3 -B test/test_sensor_tracker_store.py -v
           python3 -B test/test_tracker_owner_response.py -v

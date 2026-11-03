@@ -54,12 +54,14 @@ struct FakeBackend {
   static bool fail_start;
   static bool fail_stop;
   static bool retain_failed_start;
+  static uint16_t interval;
   static uint8_t address[6], payload[29];
   bool active = false;
   bool owned = false;
-  bool start(const uint8_t addr[6], const uint8_t data[29]) {
+  bool start(const uint8_t addr[6], const uint8_t data[29], uint16_t interval_ms) {
     assert(!owned);  // A previous failed start must be fully cleaned up.
     ++starts;
+    interval = interval_ms;
     memcpy(address, addr, 6);
     memcpy(payload, data, 29);
     active = !fail_start;
@@ -80,6 +82,7 @@ unsigned FakeBackend::stops = 0;
 bool FakeBackend::fail_start = false;
 bool FakeBackend::fail_stop = false;
 bool FakeBackend::retain_failed_start = false;
+uint16_t FakeBackend::interval = 0;
 uint8_t FakeBackend::address[6] = {};
 uint8_t FakeBackend::payload[29] = {};
 
@@ -102,6 +105,7 @@ int main() {
   assert(strstr(reply, "findmy off") && FakeBackend::starts == 0);
   assert(sensor.handleCommand("set findmy on", reply, sizeof(reply), 20));
   assert(strstr(reply, "active") && FakeBackend::starts == 1);
+  assert(FakeBackend::interval == 10000);
   assert(FakeBackend::address[0] == 0xc1 && FakeBackend::address[5] == 0x06);
   assert(FakeBackend::payload[0] == 0x4c && FakeBackend::payload[1] == 0x00);
   assert(FakeBackend::payload[5] == 0x07 && FakeBackend::payload[26] == 0x1c);
@@ -109,6 +113,17 @@ int main() {
   assert(strstr(reply, "findmy=on") && strstr(reply, "beacon=active") && !strstr(reply, encoded));
   sensor.service(false, 100);
   assert(FakeBackend::starts == 1);
+
+  // The faster beacon is only requested after the tracker reports escalation.
+  sensor.service(false, 101, true);
+  assert(FakeBackend::starts == 2 && FakeBackend::interval == 1280);
+  sensor.service(false, 102, true);
+  assert(FakeBackend::starts == 2);
+  sensor.service(false, 103, false);
+  assert(FakeBackend::starts == 3 && FakeBackend::interval == 10000);
+  // Restore the counters expected by the remaining independent lifecycle cases.
+  FakeBackend::starts = 1;
+  FakeBackend::stops = 0;
 
   sensor.service(true, 200);
   assert(FakeBackend::stops == 1);

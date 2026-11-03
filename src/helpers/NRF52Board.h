@@ -87,6 +87,9 @@ public:
   virtual bool getBootloaderVersion(char* version, size_t max_len) override;
   virtual bool startOTAUpdate(const char *id, char reply[], bool force_ap = false) override;
   virtual bool stopOTAUpdate(char reply[]) override;
+#if defined(MESH_SENSOR_FINDMY) && MESH_SENSOR_FINDMY
+  bool isOTAUpdateRunning() const override;
+#endif
   // Normal loop-entry preparation must precede all work servicing/checks. The
   // profile-only second preparation below precedes a complete new guard pass;
   // authoritative SDK queries and event clearing never belong in sleep().

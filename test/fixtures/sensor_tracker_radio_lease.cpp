@@ -6,6 +6,7 @@
 #include <helpers/PowerManagementUtils.h>
 #include <helpers/PowerSavingDiagnostics.h>
 #include <helpers/MorseLoopPolicy.h>
+#include <helpers/tracker/SensorTelemetryInterval.h>
 #include <cassert>
 #include <cstdio>
 #include <cstring>
@@ -120,6 +121,7 @@ public:
   SensorMesh(Radio& radio, Clock& time, StaticPoolPacketManager& manager)
       : mesh::Mesh(radio, time, manager), clock(time), radio_driver(radio) { begin(); }
   RTC* getRTCClock() const { return const_cast<RTC*>(&rtc); }
+  bool isTrackerModeEnabled() const { return tracker.enabled; }
   bool millisHasNowPassed(unsigned long timestamp) const {
     return int32_t(clock.now - uint32_t(timestamp)) > 0;
   }

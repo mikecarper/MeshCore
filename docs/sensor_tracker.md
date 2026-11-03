@@ -80,11 +80,65 @@ still applies. Encrypted path replies can update the retained path.
 | `set tracker.path <hex\|direct\|clear>` | Save a known path or mark it unknown. |
 | `tracker check` | Schedule a check now, if no check is already pending. |
 
+The experimental RAK Tag motion build also supports
+`get tracker.profile` and `set tracker.profile backyard|hiking`.
+Backyard is the default. Hiking uses a five-minute minimum between
+motion-triggered GPS checks instead of fifteen minutes and does not extend
+the owner check to two hours while still. Both keep the configured lost
+interval and the no-fix backoff; changing profiles does not postpone work
+already due. A profile change is saved before it takes effect.
+
+On the RAK Tag, three short presses of the front user button toggle the
+profile. When LEDs are enabled, one blue flash indicates Backyard, two
+indicate Hiking, and three indicate that the setting could not be saved.
+The button must be released after startup before a sequence is accepted.
+
+Motion is checked approximately every 30 seconds using the LIS2DH's internal
+latch. Its default threshold is 64 mg (`MESH_SENSOR_MOTION_THRESHOLD_STEPS=4`)
+and is build-time configurable. Failed motion reads remain unknown rather
+than still. Successive failed motion GPS fixes back off for 1, 2, 4, then
+6 hours; an independently scheduled or manual owner check is not blocked.
+Real dog-motion sensitivity, battery life, and the phone connection for
+proximity have not yet been verified.
+
 Tracker configuration and routing checkpoints use a separate durable store.
 Mode changes do not replace the saved manual GPS or power-saving preferences.
 If storage cannot safely retain configuration or a flood reservation, automatic
 tracker checks fail closed. Volatile filesystem recovery is unsuitable for this
 mode because a restart could otherwise reset the flood limits.
+
+## Find My boundary
+
+Optionally set a rectangular boundary from two corners, in decimal degrees:
+
+```text
+set tracker.box <south>,<west>,<north>,<east>
+get tracker.box
+get tracker.fence
+```
+
+Coordinates are inclusive, with up to seven digits after the decimal point.
+For a box crossing the antimeridian, set west greater than east. Use
+`set tracker.box clear` to remove the box. The box is off by default and
+does not enable tracker mode or change LoRa report intervals.
+
+Every scheduled tracker GPS acquisition checks the box. A confirmed outside
+fix enables the faster Find My beacon when that optional feature is enabled;
+an owner-reported lost state also enables it independently. A missed or invalid
+fix never clears a confirmed exit. A new valid inside fix clears the boundary
+cause, without changing the owner's lost setting.
+
+`get tracker.fence` reports **last-known** inside/outside and the result of the
+most recent acquisition since boot; neither is a claim about the dog's current
+location. A saved outside state survives restart. If the box is edited while
+outside, `outside(previous-box)` remains latched until a valid fix is checked
+against the new box. Storage failures are shown in the same status. No GPS fix
+means the device cannot determine a new boundary state.
+
+GPS noise can move a reported point across a boundary even when the tracker
+is stationary. Each change in the last-known state currently writes flash;
+debouncing or a margin around the boundary is not yet implemented. Measure GPS
+accuracy and flash wear on the target device before relying on this feature.
 
 ## Reporting and sleep
 

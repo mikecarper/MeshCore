@@ -19,6 +19,7 @@ DEADLINES = r'''
 #include <cassert>
 #include <helpers/PowerManagementUtils.h>
 #include <helpers/PowerSavingDiagnostics.h>
+#include <helpers/tracker/SensorTelemetryInterval.h>
 #define SENSOR_READ_INTERVAL_SECS 60
 bool logging=false;
 namespace mesh {bool isUsbLoggingWatchdogArmed(){return logging;}}
@@ -44,6 +45,9 @@ public:
 #if MESH_ENABLE_SENSOR_TRACKER
  struct {bool enabled=true;} tracker;
  bool tracker_pending=false,tracker_acquiring=false,tracker_storage_fault=false;
+#if defined(MESH_SENSOR_MOTION) && MESH_SENSOR_MOTION
+ bool motion_gps_acquiring=false;
+#endif
  unsigned long tracker_awake_until=0;uint32_t tracker_next_check=1900;
 #endif
  bool dual=false,ota=false,temp=false,outbound=false;
@@ -56,6 +60,13 @@ public:
  struct Alert {unsigned long send_expiry=0;} alert;
  Alert* alert_tasks[1]={&alert};int num_alert_tasks=0;
  const Clock* getRTCClock()const{return &rtc;}
+ bool isTrackerModeEnabled()const{
+#if MESH_ENABLE_SENSOR_TRACKER
+ return tracker.enabled;
+#else
+ return false;
+#endif
+ }
  bool millisHasNowPassed(unsigned long time)const{return (int32_t)(millis()-time)>=0;}
  bool isDualRadioActive()const{return dual;}
  bool canIdleDualRadio()const{return !dual;}
@@ -123,9 +134,19 @@ int main(){
  s.queue_delay_set=false;s.retry_delay_set=true;s.retry_delay=1500;
  assert(s.getPowerSaveSleepSeconds(30)==retry_idle);s.retry_delay_set=false;
  s.dirty_contacts_expiry=now_ms+1001;assert(s.getPowerSaveSleepSeconds(30)==retry_idle);
- s.dirty_contacts_expiry=0;s.last_read_time=45;
+ s.dirty_contacts_expiry=0;
+#if defined(MESH_SENSOR_MOTION) && MESH_SENSOR_MOTION && MESH_ENABLE_SENSOR_TRACKER
+ s.last_read_time=0;s.rtc.now=295;
+ assert(s.getPowerSaveSleepSeconds(30)==5);s.rtc.now=300;
+ assert(s.hasPendingWork()&&s.getPowerSaveSleepSeconds(30)==0);
+ s.tracker.enabled=false;s.rtc.now=59;
+ assert(!s.hasPendingWork()&&s.getPowerSaveSleepSeconds(30)==1);
+ s.rtc.now=60;assert(s.hasPendingWork());
+#else
+ s.last_read_time=45;
  assert(s.getPowerSaveSleepSeconds(30)==5);s.last_read_time=40;
  assert(s.hasPendingWork()&&s.getPowerSaveSleepSeconds(30)==0);
+#endif
 }
 '''
 
@@ -329,6 +350,8 @@ class SensorTrackerSleepTest(unittest.TestCase):
                 with self.subTest(enabled=enabled, platform=platform):
                     self.compile_run(DEADLINES.replace("@METHODS@", methods),
                                      (f"MESH_ENABLE_SENSOR_TRACKER={enabled}", *platform))
+        self.compile_run(DEADLINES.replace("@METHODS@", methods),
+                         ("MESH_ENABLE_SENSOR_TRACKER=1", "MESH_SENSOR_MOTION=1", "NRF52_PLATFORM=1"))
 
     def test_actual_main_timer_allocation_queue_failure_and_platform_paths(self):
         main = (ROOT / "examples/simple_sensor/main.cpp").read_text()

@@ -89,6 +89,7 @@ nav:
           - gps_tracking.md
           - companion_lost_reply.md
           - sensor_tracker.md
+          - sensor_tracker_power.md
           - sensor_findmy.md
           - nrf52_power_management.md
       - CLI and protocol reference:

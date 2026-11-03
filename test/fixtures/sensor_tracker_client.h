@@ -5,6 +5,23 @@
 #include <Packet.h>
 #include <helpers/SensorTrackerStore.h>
 #include <helpers/TrackerProtocol.h>
+#include <helpers/tracker/TrackerGeofenceStore.h>
+#if defined(MESH_SENSOR_MOTION) && MESH_SENSOR_MOTION
+#include <helpers/tracker/MotionGpsPolicy.h>
+#include <helpers/tracker/TrackerProfile.h>
+struct FakeMotionBus {};
+struct FakeMotionSensor {
+  bool available = true, ready = false, fail_stop = false;
+  mesh::tracker::motion::Observation next = mesh::tracker::motion::Observation::NoMotionObserved;
+  bool begin(FakeMotionBus&, uint32_t, uint8_t) { return ready = available; }
+  bool isReady() const { return ready; }
+  mesh::tracker::motion::Observation poll(FakeMotionBus&, uint32_t) {
+    if (!available) { ready = false; return mesh::tracker::motion::Observation::Unknown; }
+    auto value = next; next = mesh::tracker::motion::Observation::NoMotionObserved; return value;
+  }
+  bool stop(FakeMotionBus&) { ready = false; return !fail_stop; }
+};
+#endif
 #include <array>
 #include <cmath>
 #include <limits>
@@ -46,6 +63,8 @@ struct FakeRTC : mesh::RTCClock {
 };
 struct FakeBoard {
   bool usb = false, ota = false, test = false;
+  bool emergency_supported = true;
+  bool supportsEmergencySleep() const { return emergency_supported; }
   bool isUsbDataConnected() const { return usb; }
   bool isOTAUpdateRunning() const { return ota; }
   bool isRadioTestActive() const { return test; }
@@ -104,6 +123,13 @@ struct FakeSensors {
   }
 };
 static FakeSensors sensors;
+struct FakeFormat {
+  bool success = true;
+  unsigned calls = 0;
+  MemoryFS* fs = nullptr;
+  bool format() { ++calls; if (success && fs) fs->files.clear(); return success; }
+};
+static FakeFormat SPIFFS;
 
 struct FakePool {
   std::set<mesh::Packet*> allocated;
@@ -152,9 +178,37 @@ public:
   FakePool* _mgr = &pool;
   mesh::LocalIdentity self_id;
   mesh::tracker::TrackerRecord tracker;
+  mesh::tracker::geofence::Record tracker_geofence;
+  bool tracker_geofence_storage_fault = false;
+  uint8_t tracker_geofence_last_acquisition = 0;
   uint8_t tracker_secret[32] = {};
   bool tracker_storage_available = true, tracker_storage_fault = false;
   bool tracker_radio_asleep = false, tracker_acquiring = false;
+#if defined(MESH_SENSOR_MOTION) && MESH_SENSOR_MOTION
+  FakeMotionBus motion_bus;
+  FakeMotionSensor motion_sensor;
+  mesh::tracker::motion::GpsPolicy motion_gps_policy;
+  mesh::tracker::profile::Record tracker_profile;
+  bool tracker_profile_storage_fault = false;
+  mesh::tracker::motion::QuietPolicy motion_quiet_policy;
+  mesh::tracker::motion::Observation motion_observation = mesh::tracker::motion::Observation::Unknown;
+  bool motion_polled = false;
+  uint32_t motion_last_poll = 0;
+  bool motion_gps_acquiring = false;
+  bool motion_gps_attempted = false;
+  bool motion_owner_check_pending = false;
+  bool tracker_quiet_extended = false;
+  uint32_t tracker_owner_check_anchor = 0;
+  bool trackerCanExtendOwnerCheck(uint32_t now_ms) const;
+  uint32_t trackerOwnerInterval(uint32_t now, uint32_t now_ms, bool confirmed_safe);
+  void serviceTrackerMotion(uint32_t now, uint32_t now_ms, bool emergency);
+  void applyTrackerProfile(uint32_t now_ms);
+  bool handleTrackerProfileCommand(const char* command, char* reply);
+  bool setTrackerProfile(mesh::tracker::profile::Mode mode);
+  bool toggleTrackerProfile();
+  mesh::tracker::profile::Mode getTrackerProfile() const { return tracker_profile.mode; }
+  bool isTrackerProfileAvailable() const { return tracker_storage_available && !tracker_profile_storage_fault; }
+#endif
   bool tracker_pending = false, tracker_sent = false;
   uint8_t tracker_packet_hash[MAX_HASH_SIZE] = {};
   uint32_t tracker_next_check = 0, tracker_pending_tag = 0;
@@ -171,6 +225,8 @@ public:
   struct CLI {
     unsigned tx_services = 0, rx_services = 0;
     bool pending_radio_settings = false;
+    bool emergency_sleep = false;
+    uint32_t emergencySleepMilliseconds() const { return emergency_sleep ? 10000 : 0; }
     void servicePendingTxPower() { ++tx_services; }
     void servicePendingRxSettings() { ++rx_services; }
     struct Profiles {
@@ -194,7 +250,8 @@ public:
     void loop() { ++loops; }
     void observeAcceptedFlood(const mesh::Packet*) { ++observed; } } _clock_sync;
   uint32_t set_radio_at = 0, revert_radio_at = 0;
-  bool saved_radio_apply_pending = false, temporary = false, pending_ota = false, dual = false;
+  bool saved_radio_apply_pending = false, temp_radio_applied = false, temporary = false, pending_ota = false, dual = false;
+  unsigned long dirty_contacts_expiry = 0;
   unsigned primary_radio_services = 0;
   void servicePendingPrimaryRadioSettings(bool tx_gap) { assert(tx_gap); ++primary_radio_services; }
   bool queue_wake = false, retry_wake = false, available = true;
@@ -272,10 +329,25 @@ public:
   mesh::Packet* createSelfAdvert() { auto* p = pool.alloc(); p->header = PAYLOAD_TYPE_ADVERT << PH_TYPE_SHIFT; return p; }
   void sendZeroHop(mesh::Packet* p, int) { ++adverts; ++zero_hops; releasePacket(p); }
   bool isTrackerModeEnabled() const { return tracker.enabled; }
+  mesh::tracker::geofence::Result trackerGeofenceState() const { return tracker_geofence.last_known; }
+  bool isTrackerFindMyEscalated() const {
+    return tracker.enabled && (tracker.last_lost == mesh::tracker::Lost
+        || (tracker_geofence.box.configured
+            && tracker_geofence.last_known == mesh::tracker::geofence::Result::Outside));
+  }
   bool handleTrackerCommand(uint32_t, const char*, char*);
+  bool handleTrackerGeofenceCommand(const char*, char*);
+  bool saveTrackerGeofence(mesh::tracker::geofence::Record&);
+  void observeTrackerGeofence(bool, int32_t, int32_t);
   void localConsoleLease(uint32_t);
   void loop();
   void configureTrackerRuntime();
+  bool formatFileSystem();
+  bool prepareTrackerErase();
+  void finishTrackerErase(bool);
+#if MESH_ENABLE_EMERGENCY_POWER
+  bool emergencyPowerBusy() const;
+#endif
   bool saveTrackerRecord(mesh::tracker::TrackerRecord&);
   bool trackerNeedsRadio() const;
   void wakeTrackerRadio();
