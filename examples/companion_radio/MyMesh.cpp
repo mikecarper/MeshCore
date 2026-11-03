@@ -5487,8 +5487,8 @@ void MyMesh::serviceMQTT(const char* wifi_ssid, const char* wifi_password) {
       && !_mqtt_bridge->isStopping();
 
   // Start the recovery scheduler even when the router is down at boot. The
-  // Companion still owns association; waiting for GOT_IP here would leave its
-  // failed station outside MQTT/NTP's shared power budget indefinitely.
+  // Companion still owns association; direct MQTT keeps it available while
+  // the station and brokers retry their connections.
   if (_mqtt_configured && wifi_ssid && wifi_ssid[0]
       && !_mqtt_started && _mqtt_bridge
       && !_mqtt_bridge->isStartPending()
