@@ -420,6 +420,14 @@ void loop() {
   mesh::power::serviceRegulatorSettings();
   board.loop();   // let the board feed its watchdog, run periodic housekeeping
 
+#if defined(MESH_SENSOR_FINDMY) && MESH_SENSOR_FINDMY
+  bool suspend_findmy = board.isOTAUpdateRunning();
+#if MESH_ENABLE_EMERGENCY_POWER
+  suspend_findmy = suspend_findmy || the_mesh.getPowerCLI().emergencySleepMilliseconds() != 0;
+#endif
+  the_mesh.serviceFindMy(suspend_findmy);
+#endif
+
 #if MESH_ENABLE_EMERGENCY_POWER
   static mesh::power::EmergencyPowerRuntime emergency_power;
 #if defined(ESP32_PLATFORM)

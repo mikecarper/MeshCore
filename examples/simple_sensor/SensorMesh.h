@@ -47,6 +47,14 @@
 #include <helpers/TrackerProtocol.h>
 #endif
 
+#if defined(MESH_SENSOR_FINDMY) && MESH_SENSOR_FINDMY
+#if !defined(ESP32_PLATFORM)
+#error "Sensor Find My is currently supported only on ESP32"
+#endif
+#include <helpers/findmy/FindMyEsp32.h>
+#include <helpers/findmy/SensorFindMy.h>
+#endif
+
 #define PERM_RESERVED1         (1 << 2)
 #define PERM_RESERVED2         (1 << 3)
 #define PERM_RESERVED3         (1 << 4)
@@ -75,6 +83,9 @@ public:
   SensorMesh(mesh::MainBoard& board, mesh::Radio& radio, mesh::MillisecondClock& ms, mesh::RNG& rng, mesh::RTCClock& rtc, mesh::MeshTables& tables);
   void begin(FILESYSTEM* fs);
   void loop();
+#if defined(MESH_SENSOR_FINDMY) && MESH_SENSOR_FINDMY
+  void serviceFindMy(bool suspend) { findmy_.service(suspend, millis()); }
+#endif
   bool canRecoverUsbLogging() const {
     return dirty_contacts_expiry == 0 && !hasOutbound() && !isAnyTempRadioActive()
         && !hasPendingOtaApply() && !saved_radio_apply_pending && !_cli.hasPendingRadioSettings()
@@ -264,6 +275,9 @@ protected:
   virtual bool handleIncomingMsg(ClientInfo& from, uint32_t timestamp, uint8_t* data, uint8_t flags, size_t len);
   void sendAckTo(const ClientInfo& dest, uint32_t ack_hash, uint8_t path_hash_size=1);
 private:
+#if defined(MESH_SENSOR_FINDMY) && MESH_SENSOR_FINDMY
+  mesh::findmy::SensorFindMy<FILESYSTEM, mesh::findmy::Esp32Beacon> findmy_;
+#endif
 #if MESH_ENABLE_SENSOR_TRACKER
   mesh::tracker::TrackerRecord tracker;
   uint8_t tracker_secret[PUB_KEY_SIZE] = {};

@@ -771,6 +771,10 @@ void SensorMesh::handleCommand(uint32_t sender_timestamp, char* command, char* r
 #endif
   mesh::cli::normalizeCommandVerb(command);
 
+#if defined(MESH_SENSOR_FINDMY) && MESH_SENSOR_FINDMY
+  if (findmy_.handleCommand(command, reply, 157, millis())) return;
+#endif
+
 #if MESH_ENABLE_SENSOR_TRACKER
   if (sender_timestamp == 0 && tracker.enabled) {
     wakeTrackerRadio();
@@ -1364,6 +1368,9 @@ SensorMesh::SensorMesh(mesh::MainBoard& board, mesh::Radio& radio, mesh::Millise
 void SensorMesh::begin(FILESYSTEM* fs) {
   mesh::Mesh::begin();
   _fs = fs;
+#if defined(MESH_SENSOR_FINDMY) && MESH_SENSOR_FINDMY
+  findmy_.begin(fs);
+#endif
   // load persisted prefs
   _cli.loadPrefs(_fs);
   _cli.beginManagement(*this, _fs);
@@ -1467,16 +1474,24 @@ bool SensorMesh::applySavedRadioParams() {
 }
 
 bool SensorMesh::formatFileSystem() {
+#if defined(MESH_SENSOR_FINDMY) && MESH_SENSOR_FINDMY
+  if (!findmy_.prepareErase()) return false;
+#endif
+  bool formatted;
 #if defined(NRF52_PLATFORM) || defined(STM32_PLATFORM)
-    return InternalFS.format();
+    formatted = InternalFS.format();
 #elif defined(RP2040_PLATFORM)
-    return LittleFS.format();
+    formatted = LittleFS.format();
 #elif defined(ESP32)
-    return SPIFFS.format();
+    formatted = SPIFFS.format();
 #else
     #error "need to implement file system erase"
     return false;
 #endif
+#if defined(MESH_SENSOR_FINDMY) && MESH_SENSOR_FINDMY
+  findmy_.finishErase(formatted);
+#endif
+  return formatted;
 }
 
 bool SensorMesh::saveIdentity(const mesh::LocalIdentity& new_id) {

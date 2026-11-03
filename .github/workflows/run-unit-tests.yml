@@ -700,6 +700,10 @@ jobs:
 
       - name: Verify Sensor dog tracker ownership, routes, storage, GPS and sleep
         run: |
+          python3 -B test/test_findmy_packet.py -v
+          python3 -B test/test_findmy_config.py -v
+          python3 -B test/test_sensor_findmy.py -v
+          python3 -B test/test_findmy_esp32.py -v
           python3 -B test/test_tracker_route_policy.py -v
           python3 -B test/test_sensor_tracker_store.py -v
           python3 -B test/test_tracker_owner_response.py -v
