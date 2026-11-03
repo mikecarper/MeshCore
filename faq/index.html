@@ -5361,15 +5361,30 @@ their flash can keep two app slots for LoRa OTA.</p>
 <p><strong>A:</strong>
 For companion radios, you can set these radios' transmit power in the smartphone app. For repeater and room server radios, you can set their transmit power using the command line command <code>set tx</code>. You can get their current value using command line command <code>get tx</code></p>
 <p>On SolarXiao 33S and Ikoka Nano/Stick E22-900M33S boards, this setting is the
-SX1262 chip's drive into the external amplifier. A 9 dBm drive can produce
-approximately 33 dBm (2W) at the module output; <code>get tx</code> does not measure that
-output. Ebyte specifies that chip drive must not exceed 9 dBm.</p>
-<p>The 33S targets now enforce a 9 dBm maximum in every firmware role and clamp
-higher saved settings on startup. Earlier repeater and room-server releases,
-including 1.18.0.1, set a 9 dBm default without enforcing that maximum.
-When checking one of those older installations, use <code>get tx</code>; do not increase
-it above 9 to troubleshoot weak output. See the
-<a href="https://www.ebyte.com/product/2147.html">Ebyte module specification</a>.</p>
+SX1262 chip's drive into the external amplifier. The module can produce
+approximately 33 dBm (2W) at its output with a much lower chip drive;
+<code>get tx</code> does not measure that output.</p>
+<p>SolarXiao 33S defaults to and enforces 8 dBm, following the
+<a href="https://github.com/wehooper4/Meshtastic-Hardware/blob/main/XaioSeries/SolarXaio/readme.md">board maker's instructions</a>.
+Ikoka Nano/Stick 33 dBm targets enforce the
+<a href="https://www.ebyte.com/product/2147.html">Ebyte module's 9 dBm ceiling</a>.
+All firmware roles apply their board limit and clamp higher saved settings
+on startup. Earlier repeater and room-server releases, including 1.18.0.1,
+set a 9 dBm default without enforcing that maximum. Do not increase chip
+drive to troubleshoot weak output.</p>
+<p>DIY boards can fit the same M33S modules under other names, including
+<a href="https://github.com/meshcore-dev/MeshCore/issues/2778">MTL-1</a>,
+<a href="https://github.com/kt314-sh/MTL-2">MTL-2</a> and
+<a href="https://github.com/Sobollion/Ebytastic">Ebytastic</a>. A generic ProMicro, XIAO,
+Heltec or E22 firmware cannot infer that external amplifier from the radio
+chip type. Such hardware needs a matching build with its chip-drive default
+and maximum set before first startup; changing <code>set tx</code> afterwards does not
+protect the initial startup. The named SolarXiao/Ikoka limits do not apply
+automatically to these other targets.</p>
+<p>The <a href="https://github.com/ndoo/ikoka-handheld-meshtastic-device#lora-module">Ikoka Handheld hardware</a>
+also accepts M33S modules, but the current Handheld firmware targets specify
+M30S. Their 20 dBm drive setting is not suitable for an M33S-fitted Handheld;
+that combination requires a separate matching firmware target.</p>
 <p>Ikoka Nano, Stick and Handheld 30 dBm targets also enforce their established
 20 dBm chip-drive limit in every role. This is their amplifier distortion
 limit, separate from the 33S module's 9 dBm safety ceiling.</p>
@@ -5433,6 +5448,13 @@ limit, separate from the 33S module's 9 dBm safety ceiling.</p>
 <td style="text-align: left;">9 dBm</td>
 <td style="text-align: left;">2W</td>
 <td style="text-align: left;"><strong>DO NOT EXCEED</strong> (Risk of burn out) <a href="https://www.cdebyte.com/pdf-down.aspx?id=4216">data sheet</a> Refer to your local government's requirements</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>SolarXiao E22-900M33S</strong></td>
+<td style="text-align: left;">2W Model</td>
+<td style="text-align: left;">8 dBm</td>
+<td style="text-align: left;">~2W</td>
+<td style="text-align: left;">Board maker specifies 8 dBm or lower; firmware enforces this limit.</td>
 </tr>
 <tr>
 <td style="text-align: left;"><strong>Heltec V4</strong></td>

@@ -2703,17 +2703,25 @@ LTC4162 chemistry and cell-count checks still independently guard charger writes
 </thead>
 <tbody>
 <tr>
-<td>E22 M30S</td>
+<td>E22-900M30S</td>
 <td><code>solarxiao_30S_repeater</code></td>
 <td><code>solarxiao_30S_room_server_lora_ota</code></td>
 </tr>
 <tr>
-<td>E22 M33S</td>
+<td>E22-900M33S</td>
 <td><code>solarxiao_33S_repeater</code></td>
 <td><code>solarxiao_33S_room_server_lora_ota</code></td>
 </tr>
 </tbody>
 </table>
+<p>All SolarXiao 33S firmware roles default to and enforce an 8 dBm chip-drive
+ceiling, including Companion and KISS. Higher saved power settings are clamped
+on startup. This follows the
+<a href="https://github.com/wehooper4/Meshtastic-Hardware/blob/main/XaioSeries/SolarXaio/readme.md">board maker's M33S instructions</a>;
+the setting is the drive into the amplifier, not the amplified RF output.</p>
+<p>The maker also lists a 433 MHz E22-400M33S hardware option. The table above
+describes the existing SX1262 firmware targets, not a qualification of that
+SX1268 module. Match both the radio module and its frequency band.</p>
 <p>All three power profiles work in these role builds. Room uses its existing
 onboard-QSPI OTA target, identity and application layout, with the matching
 board/storage-aware OTAFIX bootloader. The older plain <code>*_room_server</code> targets
