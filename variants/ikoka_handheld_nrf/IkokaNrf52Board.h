@@ -44,7 +44,11 @@ public:
   }
 
   const char* getManufacturerName() const override {
+#ifdef MANUFACTURER_STRING
+    return MANUFACTURER_STRING;
+#else
     return "Ikoka Handheld E22 30dBm (Xiao_nrf52)";
+#endif
   }
 };
 

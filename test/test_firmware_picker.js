@@ -24,6 +24,28 @@ assert(picker.unavailableBootloaderForHardware(bootloaderCatalog, "Heltec_tower_
 assert.strictEqual(picker.bootloaderForHardware(bootloaderCatalog, "RAK_3401", "nrf52").storage, "adaptive");
 assert.strictEqual(picker.bootloaderForHardware(bootloaderCatalog, "RAK_4631", "nrf52").id, "wiscore_rak4631_auto");
 assert.strictEqual(picker.bootloaderForHardware(bootloaderCatalog, "ThinkNode_M8", "nrf52"), null);
+// An RF-module choice changes application identity, while keeping the exact
+// MCU/flash bootloader. Keep the picker and embedded-resource aliases aligned.
+const m33BootloaderHardware = {
+  ProMicro_m33s: "ProMicro",
+  ProMicro_400m33s: "ProMicro",
+  Xiao_nrf52_m33s: "Xiao_nrf52",
+  Xiao_nrf52_400m33s: "Xiao_nrf52",
+  ikoka_handheld_nrf_e22_33dbm: "Xiao_nrf52",
+  ikoka_handheld_nrf_e22_33dbm_096: "Xiao_nrf52",
+  ikoka_handheld_nrf_e22_400m33s: "Xiao_nrf52",
+  ikoka_handheld_nrf_e22_400m33s_096: "Xiao_nrf52",
+  ikoka_nano_nrf_400m33s: "Xiao_nrf52",
+  ikoka_stick_nrf_400m33s: "Xiao_nrf52",
+  solarxiao_400M33S: "Xiao_nrf52",
+};
+for (const [hardware, bootHardware] of Object.entries(m33BootloaderHardware)) {
+  const expected = picker.bootloaderForHardware(bootloaderCatalog, bootHardware, "nrf52");
+  assert(expected, bootHardware);
+  assert.strictEqual(picker.bootloaderForHardware(bootloaderCatalog, hardware, "nrf52").id,
+    expected.id, hardware);
+  assert.strictEqual(picker.bootloaderForHardware(bootloaderCatalog, hardware, "esp32"), null);
+}
 const nrf52Hardware = require("./fixtures/firmware_picker_nrf52_1_17_1_7.json").hardware;
 assert.strictEqual(nrf52Hardware.length, 53);
 let mappedNrf52 = 0;

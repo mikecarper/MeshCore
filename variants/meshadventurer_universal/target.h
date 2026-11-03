@@ -44,11 +44,19 @@ class UniversalMeshadventurerBoard : public MeshadventurerBoard {
     prepareUniversalLoRaRadio();
   }
   const char* getManufacturerName() const override {
+#if defined(MESH_E22_M33S)
+    switch (universalLoRaRadioFamily()) {
+      case mesh::LoRaRadioFamily::SX126x: return "Meshadventurer 900M33S";
+      case mesh::LoRaRadioFamily::SX1268: return "Meshadventurer 400M33S";
+      default: return "Meshadventurer M33S (radio undetected)";
+    }
+#else
     switch (universalLoRaRadioFamily()) {
       case mesh::LoRaRadioFamily::SX126x: return "Meshadventurer SX1262";
       case mesh::LoRaRadioFamily::SX1268: return "Meshadventurer SX1268";
       default: return "Meshadventurer (radio undetected)";
     }
+#endif
   }
 };
 

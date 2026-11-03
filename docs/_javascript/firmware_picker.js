@@ -175,10 +175,27 @@
       profiles: profiles, unavailableProfiles: unavailableProfiles };
   }
 
+  // Only the MCU, flash wiring and application layout are shared here.
+  // Firmware/OTA hardware identities and PA drive limits stay distinct.
+  const BOOTLOADER_HARDWARE = Object.freeze({
+    ProMicro_m33s: "ProMicro",
+    ProMicro_400m33s: "ProMicro",
+    Xiao_nrf52_m33s: "Xiao_nrf52",
+    Xiao_nrf52_400m33s: "Xiao_nrf52",
+    ikoka_handheld_nrf_e22_33dbm: "Xiao_nrf52",
+    ikoka_handheld_nrf_e22_33dbm_096: "Xiao_nrf52",
+    ikoka_handheld_nrf_e22_400m33s: "Xiao_nrf52",
+    ikoka_handheld_nrf_e22_400m33s_096: "Xiao_nrf52",
+    ikoka_nano_nrf_400m33s: "Xiao_nrf52",
+    ikoka_stick_nrf_400m33s: "Xiao_nrf52",
+    solarxiao_400M33S: "Xiao_nrf52",
+  });
+
   function bootloaderForHardware(catalog, hardware, chipFamily) {
     if (!catalog || chipFamily !== "nrf52" || !hardware) return null;
+    const bootHardware = BOOTLOADER_HARDWARE[hardware] || hardware;
     const matches = catalog.profiles.filter(function (profile) {
-      return profile.meshcoreHardware.includes(hardware);
+      return profile.meshcoreHardware.includes(bootHardware);
     });
     return matches.length === 1 ? matches[0] : null;
   }
@@ -228,7 +245,10 @@
     "xiao_nrf52", "ikoka_handheld_nrf_e22_30dbm",
     "ikoka_nano_nrf_22dbm", "ikoka_nano_nrf_30dbm", "ikoka_nano_nrf_33dbm",
     "ikoka_stick_nrf_22dbm", "ikoka_stick_nrf_30dbm", "ikoka_stick_nrf_33dbm",
-    "solarxiao_30s", "solarxiao_33s", "lilygo_t-echo-lite",
+    "solarxiao_30s", "solarxiao_33s", "solarxiao_400m33s", "lilygo_t-echo-lite",
+    "xiao_nrf52_m33s", "xiao_nrf52_400m33s",
+    "ikoka_handheld_nrf_e22_33dbm", "ikoka_handheld_nrf_e22_400m33s",
+    "ikoka_nano_nrf_400m33s", "ikoka_stick_nrf_400m33s",
   ].concat(QSPI_REPEATER_ALIAS_HARDWARE));
 
   let pickerInstanceCount = 0;
@@ -841,7 +861,9 @@
     ["Tbeam", ["Tbeam_SX1262", "Tbeam_SX1276"]],
     ["LilyGo_T3S3", ["LilyGo_T3S3_sx1262", "LilyGo_T3S3_sx1276"]],
     ["Generic_E22", ["Generic_E22_sx1262", "Generic_E22_sx1268"]],
+    ["Generic_E22_m33s", []],
     ["Meshadventurer", ["Meshadventurer_sx1262", "Meshadventurer_sx1268"]],
+    ["Meshadventurer_m33s", []],
     ["Tenstar_C3", ["Tenstar_C3_sx1262", "Tenstar_C3_sx1268"]],
     ["muzi_base", ["muzi_base_uno", "muzi_base_duo", "muzi_base_uno_superIO", "muzi_base_duo_superIO"], "NRF52_PLATFORM"],
   ];
@@ -2087,6 +2109,14 @@
     const target = targetWithoutBootloader(profile.target);
     const info = profile.controls || {};
     const notes = [];
+    const moduleHardware = String(profile && profile.hardware || "").toLowerCase();
+    if (/(?:m33s|_33dbm|solarxiao_33s)/.test(moduleHardware)) {
+      const drive = /^ikoka_(?:nano|stick)_nrf_33dbm$/.test(moduleHardware) ? "9" : "8";
+      notes.push("M33S amplifier profile: " + drive + " dBm maximum chip drive, not RF output. Match the fitted module; ordinary 22 dBm or M30S firmware is unsuitable.");
+    }
+    if (moduleHardware.includes("400m33s")) {
+      notes.push("E22-400M33S / SX1268: starts at 433 MHz. The USA 900 MHz preset is incompatible; keep the matching low-band module and application identity.");
+    }
     if (autoRadioProfile(profile)) {
       notes.push("This image detects the fitted radio at startup. Choose the board and role; a separate radio-chip image is unnecessary.");
       notes.push(profile.hardware === "muzi_base"

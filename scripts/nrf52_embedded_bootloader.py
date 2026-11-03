@@ -52,12 +52,30 @@ def load_manifest(project=ROOT):
     return manifest
 
 
+# A PA/module choice does not change the MCU bootloader or its flash wiring.
+# This map must never be used for application hardware_id or MOTA target IDs.
+BOOTLOADER_HARDWARE = {
+    "ProMicro_m33s": "ProMicro",
+    "ProMicro_400m33s": "ProMicro",
+    "Xiao_nrf52_m33s": "Xiao_nrf52",
+    "Xiao_nrf52_400m33s": "Xiao_nrf52",
+    "ikoka_handheld_nrf_e22_33dbm": "Xiao_nrf52",
+    "ikoka_handheld_nrf_e22_33dbm_096": "Xiao_nrf52",
+    "ikoka_handheld_nrf_e22_400m33s": "Xiao_nrf52",
+    "ikoka_handheld_nrf_e22_400m33s_096": "Xiao_nrf52",
+    "ikoka_nano_nrf_400m33s": "Xiao_nrf52",
+    "ikoka_stick_nrf_400m33s": "Xiao_nrf52",
+    "solarxiao_400M33S": "Xiao_nrf52",
+}
+
+
 def select_profile(manifest, target):
     from generate_mesh_america_release import target_profiles
     parsed = target_profiles([target])[target]
     if parsed["role"] not in ("repeater", "room"):
         raise ValueError("embedded bootloader is limited to repeater and room-server roles")
-    names = {parsed["sourceHardware"], parsed["hardware"]}
+    names = {BOOTLOADER_HARDWARE.get(name, name)
+             for name in (parsed["sourceHardware"], parsed["hardware"])}
     if any(parsed["sourceHardware"] in item["meshcoreHardware"]
            for item in manifest.get("unavailableProfiles", ())):
         raise ValueError("this exact hardware has no qualified OTAFIX download")
@@ -248,7 +266,8 @@ def emit_resource(project, target, output, *, flags=(), cppdefines=(), src_filte
     if linked_base is not None and linked_base != identity.app_base:
         raise ValueError("candidate SoftDevice base does not match the application linker")
     legacy = load_legacy(legacy_path) if legacy_path else None
-    stock_legacy = legacy_bootloaders_for(profile["id"], parsed["sourceHardware"],
+    stock_hardware = BOOTLOADER_HARDWARE.get(parsed["sourceHardware"], parsed["sourceHardware"])
+    stock_legacy = legacy_bootloaders_for(profile["id"], stock_hardware,
                                          identity.app_base, identity.softdevice_fwid)
     if len(stock_legacy) > 32:
         raise ValueError("too many reviewed stock bootloader identities")

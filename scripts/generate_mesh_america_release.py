@@ -196,7 +196,12 @@ def generate(catalog, plan, family, records, profiles, repo):
         cap = next(name for name in row["files"] if name.endswith(".capabilities.json"))
         memory = next(name for name in row["files"] if name.endswith(".memory.json"))
         methods = ", ".join(row.get("ota_update_methods", [])) or "USB or board-specific wired programming"
-        notes = [f"Keymind Cascade MeshCore {plan['version']}. USA Cascade: 910.525 MHz / BW62.5 / SF7 / CR5. Saved radio settings take precedence.",
+        low_band = "_400m33s_" in row["target"].lower()
+        auto_m33 = parsed["hardware"] in ("Generic_E22_m33s", "Meshadventurer_m33s")
+        radio_defaults = ("433 MHz / BW62.5 / SF7 / CR5 (E22-400M33S)" if low_band
+                          else "910.525 MHz for SX1262 / 433 MHz for SX1268, BW62.5 / SF7 / CR5" if auto_m33
+                          else "USA Cascade: 910.525 MHz / BW62.5 / SF7 / CR5")
+        notes = [f"Keymind Cascade MeshCore {plan['version']}. {radio_defaults}. Saved radio settings take precedence.",
                  f"EXACT TARGET - {row['target']}. Match the exact board, radio, screen, and storage hardware.",
                  f"PROFILE - {profile}. See the qualified capabilities and memory reports for this image.",
                  f"SELF-UPDATE - Verified methods: {methods}."]

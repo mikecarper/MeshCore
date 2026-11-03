@@ -32,7 +32,12 @@ inline LoRaRadioFamily& autoLoRaRxPowerSavingFamily() {
 inline float autoLoRaInitialFrequency(LoRaRadioFamily family, float preferred) {
   // A universal image can contain a 900 MHz preset, but an SX1268 cannot.
   // Only its invalid initial default falls back; valid saved tuning is kept.
+#if defined(MESH_E22_M33S) && MESH_E22_M33S
+  const float low_band_default = 433.0f;
+#else
+  const float low_band_default = 434.0f;
+#endif
   return family == LoRaRadioFamily::SX1268 && !(preferred >= 410.0f && preferred <= 810.0f)
-      ? 434.0f : preferred;
+      ? low_band_default : preferred;
 }
 }

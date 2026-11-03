@@ -8,7 +8,7 @@ import sys
 import zipfile
 
 from nrf52_embedded_bootloader import (ROOT, BOOT_SIZE, VERSION, MANIFEST_SHA256,
-    LEGACY_SHA256, load_manifest, select_profile, download_zip, validate_candidate_zip)
+    LEGACY_SHA256, BOOTLOADER_HARDWARE, load_manifest, select_profile, download_zip, validate_candidate_zip)
 from nrf52_legacy_bootloaders import legacy_bootloaders_for
 
 sys.path.insert(0, str(ROOT / "tools/mota"))
@@ -22,7 +22,8 @@ def qualify(directory, manifest_path):
         raise ValueError("embedded bootloader requires qualified nRF52 firmware")
     profile, parsed = select_profile(load_manifest(), manifest["target"])
     candidate, identity = validate_candidate_zip(download_zip(profile, ROOT / ".pio/otafix-cache"), profile)
-    stock_legacy = legacy_bootloaders_for(profile["id"], parsed["sourceHardware"],
+    hardware = BOOTLOADER_HARDWARE.get(parsed["sourceHardware"], parsed["sourceHardware"])
+    stock_legacy = legacy_bootloaders_for(profile["id"], hardware,
                                          identity.app_base, identity.softdevice_fwid)
     resource = directory / "bootloader-migration-resource"
     metadata = json.loads((resource / "BootloaderMigrationResource.json").read_text())

@@ -1,11 +1,14 @@
 """Execute real TX-power admission, retry and unchanged-value behavior."""
-import configparser
 from pathlib import Path
 import re
+import subprocess
+import sys
 import unittest
 
 from test_radio_interrupt_recovery import compile_run
 from test_radio_receive_contract import method
+from test_onboard_qspi_profiles import effective_defines
+from platformio.project.config import ProjectConfig
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -288,32 +291,25 @@ int main() {
                     f"-DMESH_ENABLE_CARRIER_TOOLS={carrier_tools}"))
 
 
-class ExternalPaPowerLimitTests(unittest.TestCase):
-    """A safe startup default must not become the only external PA protection."""
+class ResolvedPaProfiles:
+    """Read-only, fully resolved build recipes shared by PA safety checks."""
 
     @classmethod
     def setUpClass(cls):
-        cls.config = configparser.ConfigParser(
-            interpolation=None, strict=False, inline_comment_prefixes=(";",))
-        cls.config.read([ROOT / "platformio.ini",
-                         *sorted((ROOT / "variants").glob("*/platformio.ini"))])
+        # Resolve the actual PlatformIO inheritance and interpolation rules.
+        # Loading this Python library does not launch a PlatformIO process.
+        cls.config = ProjectConfig(str(ROOT / "platformio.ini"))
 
-    def option(self, section, key, stack=()):
-        pair = (section, key)
-        self.assertNotIn(pair, stack, "recursive PlatformIO option")
-        value = self.config.get(section, key, fallback=None)
-        if value is None:
-            for parent in self.config.get(section, "extends", fallback="").replace(",", " ").split():
-                inherited = self.option(parent, key, stack + (pair,))
-                if inherited:
-                    return inherited
-            return ""
+    def option(self, section, key):
+        value = self.config.get(section, key, default="")
+        return "\n".join(value) if isinstance(value, list) else str(value)
 
-        def replace(match):
-            reference_section, reference_key = match.group(1).rsplit(".", 1)
-            return self.option(reference_section, reference_key, stack + (pair,))
+    def defines(self, target):
+        return effective_defines(self.config.items("env:" + target, as_dict=True))
 
-        return re.sub(r"\$\{([^}]+)\}", replace, value)
+
+class ExternalPaPowerLimitTests(ResolvedPaProfiles, unittest.TestCase):
+    """A safe startup default must not become the only external PA protection."""
 
     def targets(self, cap):
         solar_roles = ("companion_radio_ble", "companion_radio_usb", "repeater",
@@ -334,7 +330,7 @@ class ExternalPaPowerLimitTests(unittest.TestCase):
                 "kiss_modem"))
         pattern = {8: r"env:solarxiao_33S_",
                    9: r"env:ikoka_(?:nano|stick)_nrf_33dbm_",
-                   20: r"env:(?:ikoka_(?:nano|stick)_nrf_30dbm_|ikoka_handheld_nrf_)"}[cap]
+                   20: r"env:(?:ikoka_(?:nano|stick)_nrf_30dbm_|ikoka_handheld_nrf_(?:e22_30dbm_|kiss_modem$))"}[cap]
         discovered = {section[4:] for section in self.config.sections()
                       if re.match(pattern, section)}
         self.assertEqual(discovered, expected,
@@ -342,11 +338,8 @@ class ExternalPaPowerLimitTests(unittest.TestCase):
         return sorted(expected)
 
     def power_defines(self, target):
-        pattern = r"-D\s*(LORA_TX_POWER|MAX_LORA_TX_POWER)\s*=\s*(-?\d+)\b"
-        unflags = set(re.findall(pattern, self.option("env:" + target, "build_unflags")))
-        return {key: int(value) for key, value in re.findall(
-            pattern, self.option("env:" + target, "build_flags"))
-            if (key, value) not in unflags}
+        return {name: int(value) for name, value in self.defines(target).items()
+                if name in ("LORA_TX_POWER", "MAX_LORA_TX_POWER")}
 
     def test_all_39_external_pa_roles_have_their_documented_input_limit(self):
         for cap in (8, 9, 20):
@@ -455,6 +448,258 @@ int main() {
             with self.subTest(profile=profile):
                 defines = tuple("-D" + key + "=" + str(value) for key, value in profile)
                 compile_run(code, defines=defines + ("-DMESH_RADIO_PROFILE_CHIP=1262",))
+
+M33_MODULE_PROFILES = (
+    ("ikoka_handheld_nrf_e22_33dbm", "ikoka_handheld_nrf_e22_30dbm", "sx1262"),
+    ("ikoka_handheld_nrf_e22_400m33s", "ikoka_handheld_nrf_e22_30dbm", "sx1268"),
+    ("Generic_E22_m33s", "Generic_E22", "auto"),
+    ("Meshadventurer_m33s", "Meshadventurer", "auto"),
+    ("ProMicro_m33s", "ProMicro", "sx1262"),
+    ("ProMicro_400m33s", "ProMicro", "sx1268"),
+    ("Xiao_nrf52_m33s", "Xiao_nrf52", "sx1262"),
+    ("Xiao_nrf52_400m33s", "Xiao_nrf52", "sx1268"),
+    ("solarxiao_400M33S", "solarxiao_33S", "sx1268"),
+    ("ikoka_nano_nrf_400m33s", "ikoka_nano_nrf_33dbm", "sx1268"),
+    ("ikoka_stick_nrf_400m33s", "ikoka_stick_nrf_33dbm", "sx1268"),
+)
+M33_COMMON_ROLES = ("companion_radio_ble", "companion_radio_usb", "repeater",
+                    "room_server_lora_ota", "kiss_modem")
+
+
+def m33_roles(hardware):
+    if hardware.startswith("ikoka_handheld_"):
+        return ("096_companion_radio_ble", "096_companion_radio_usb",
+                "repeater", "room_server_lora_ota", "kiss_modem")
+    if hardware == "Generic_E22_m33s":
+        return ("repeater", "repeater_bridge_espnow", "kiss_modem")
+    if hardware == "Meshadventurer_m33s":
+        return ("repeater", "repeater_bridge_espnow", "companion_radio_usb",
+                "companion_radio_ble", "terminal_chat", "room_server", "kiss_modem")
+    if hardware.startswith("ProMicro_"):
+        return ("repeater", "room_server", "terminal_chat", "companion_radio_usb", "companion_radio_ble",
+                "sensor", "kiss_modem")
+    if hardware.startswith(("Xiao_nrf52_", "solarxiao_")):
+        return M33_COMMON_ROLES
+    return M33_COMMON_ROLES
+
+
+class M33ModuleVariantTests(ResolvedPaProfiles, unittest.TestCase):
+    """M33 PA hardware needs its own safe image before the first radio init."""
+
+    def profiles(self):
+        for hardware, parent, family in M33_MODULE_PROFILES:
+            expected = {hardware + "_" + role for role in m33_roles(hardware)}
+            actual = {section[4:] for section in self.config.sections()
+                      if section.startswith("env:" + hardware + "_")}
+            self.assertEqual(actual, expected, "All firmware roles need a safe M33 recipe")
+            for target in sorted(expected):
+                role = target[len(hardware) + 1:]
+                source = parent + "_" + role
+                if hardware.startswith("ikoka_handheld_") and role == "kiss_modem":
+                    source = "ikoka_handheld_nrf_kiss_modem"
+                yield target, source, family
+
+    def test_all_m33_roles_limit_initial_and_runtime_drive_to_8_dbm(self):
+        for target, _, family in self.profiles():
+            with self.subTest(target=target):
+                definitions = self.defines(target)
+                self.assertEqual(definitions["LORA_TX_POWER"], "8")
+                self.assertEqual(definitions["MAX_LORA_TX_POWER"], "8")
+                if family == "auto":
+                    self.assertEqual(definitions["RADIO_CLASS"], "UniversalLoRaRadio")
+                    self.assertEqual(definitions["WRAPPER_CLASS"], "UniversalLoRaRadio")
+                    self.assertEqual(definitions["MESH_RADIO_AUTO_FAMILY"], "1")
+                    self.assertEqual(definitions["MESH_RADIO_AUTO_SX1268"], "1")
+                    self.assertEqual(definitions["MESH_RADIO_AUTO_SX127X"], "0")
+                else:
+                    suffix = "SX1268" if family == "sx1268" else "SX1262"
+                    self.assertEqual(definitions["RADIO_CLASS"], "Custom" + suffix)
+                    self.assertEqual(definitions["WRAPPER_CLASS"], "Custom" + suffix + "Wrapper")
+                    self.assertIn("USE_" + suffix, definitions)
+                    self.assertNotIn("USE_SX1262" if family == "sx1268" else "USE_SX1268",
+                                     definitions)
+                    if family == "sx1268":
+                        self.assertEqual(float(definitions["LORA_FREQ"]), 433.0)
+
+    def test_module_selection_preserves_carrier_wiring_storage_and_roles(self):
+        def carrier_pins(definitions):
+            return {key: value for key, value in definitions.items()
+                    if key.startswith(("P_LORA_", "SX126X_", "PIN_GPS_", "PIN_BOARD_",
+                                       "PIN_WIRE_")) or key == "PIN_USER_BTN"}
+
+        for target, parent, _ in self.profiles():
+            with self.subTest(target=target, parent=parent):
+                definitions, parent_definitions = self.defines(target), self.defines(parent)
+                self.assertEqual(carrier_pins(definitions), carrier_pins(parent_definitions))
+                for option in ("board", "board_build.ldscript", "board_upload.maximum_size",
+                               "board_build.partitions", "build_src_filter", "lib_deps"):
+                    self.assertEqual(self.option("env:" + target, option),
+                                     self.option("env:" + parent, option), option)
+                for name in ("ENABLE_OTA", "DISABLE_LORA_OTA", "OTA_QSPI_STORE",
+                             "OTA_QSPI_BOOTLOADER_UPDATE", "QSPIFLASH", "ENABLE_USB_INTERFACE",
+                             "BLE_PIN_CODE", "DISPLAY_CLASS", "DISPLAY_ROTATION"):
+                    self.assertEqual(definitions.get(name), parent_definitions.get(name), name)
+
+    def test_m33_choices_get_distinct_ota_identity_and_target_catalog_entries(self):
+        sys.path.insert(0, str(ROOT / "tools/mota"))
+        from motalib import hardware_id_for_env, target_id_for_env
+
+        rows = {name: int(identifier, 16) for identifier, name in re.findall(
+            r'\{ 0x([0-9a-fA-F]{8}), "([^"]+)" \},',
+            (ROOT / "src/helpers/ota/OtaTargets.h").read_text())}
+        target_ids = set()
+        for target, parent, _ in self.profiles():
+            with self.subTest(target=target):
+                definitions = self.defines(target)
+                self.assertNotIn("OTA_VARIANT", definitions,
+                                 "A module choice must not silently alias its parent's OTA image")
+                self.assertNotIn("MOTA_TARGET_ID", definitions)
+                self.assertNotIn("MOTA_HW_ID", definitions)
+                identity = target_id_for_env(target)
+                self.assertNotEqual(identity, target_id_for_env(parent))
+                self.assertNotIn(identity, target_ids)
+                target_ids.add(identity)
+                self.assertNotEqual(hardware_id_for_env(target), hardware_id_for_env(parent))
+                if "ENABLE_OTA" in definitions and "DISABLE_LORA_OTA" not in definitions:
+                    self.assertEqual(rows.get(target), identity,
+                                     "OTA-enabled module choices must be recognizable over LoRa")
+
+    def test_bootloader_choices_share_only_the_mcu_bootloader_identity(self):
+        sys.path.insert(0, str(ROOT / "scripts"))
+        from nrf52_embedded_bootloader import load_manifest, select_profile
+        manifest = load_manifest()
+        for target, parent, family in self.profiles():
+            if family == "auto" or not target.endswith(("_repeater", "_room_server")):
+                continue
+            with self.subTest(target=target):
+                expected, _ = select_profile(manifest, parent)
+                actual, metadata = select_profile(manifest, target)
+                self.assertEqual(actual["id"], expected["id"])
+                self.assertEqual(metadata["sourceHardware"],
+                                 target.rsplit("_room_server" if target.endswith("_room_server")
+                                               else "_repeater", 1)[0])
+
+    def test_release_presets_cannot_retune_a_400m33s_image_to_900_mhz(self):
+        program = r'''
+set -euo pipefail
+source "$1/build.sh"
+RADIO_FREQ_OVERRIDE=$3
+RADIO_BW_OVERRIDE=62.5
+RADIO_SF_OVERRIDE=7
+RADIO_CR_OVERRIDE=5
+RADIO_SETTING_TITLE=$USA_CASCADIA_RADIO_TITLE
+PLATFORMIO_BUILD_FLAGS=-DKEEP_CALLER_FLAG=1
+apply_radio_overrides "$2" >/dev/null
+printf '%s\n' "$PLATFORMIO_BUILD_FLAGS"
+'''
+        for hardware, _, family in M33_MODULE_PROFILES:
+            if family != "sx1268":
+                continue
+            for frequency, expected in (("910.525", "433"), ("869.618", "433"),
+                                        ("409.999", "433"), ("493.001", "433"),
+                                        ("410", "410"), ("433.175", "433.175"),
+                                        ("493", "493")):
+                with self.subTest(hardware=hardware, frequency=frequency):
+                    result = subprocess.run(
+                        ["bash", "-c", program, "m33-release-test", str(ROOT),
+                         hardware + "_repeater", frequency], capture_output=True,
+                        text=True, timeout=30, check=True, cwd=ROOT)
+                    definitions = effective_defines({"build_flags": result.stdout})
+                    self.assertEqual(definitions["LORA_FREQ"], expected)
+                    self.assertEqual(definitions["KEEP_CALLER_FLAG"], "1")
+                    self.assertEqual(definitions["LORA_BW"], "62.5")
+                    self.assertNotIn("MESHCORE_USA_RADIO_PRESET", definitions)
+        for target in ("ProMicro_repeater", "Xiao_nrf52_m33s_repeater",
+                       "solarxiao_33S_repeater", "Generic_E22_m33s_repeater"):
+            with self.subTest(target=target):
+                result = subprocess.run(
+                    ["bash", "-c", program, "m33-release-test", str(ROOT),
+                     target, "910.525"], capture_output=True, text=True,
+                    timeout=30, check=True, cwd=ROOT)
+                definitions = effective_defines({"build_flags": result.stdout})
+                self.assertEqual(definitions["LORA_FREQ"], "910.525")
+                self.assertEqual(definitions["MESHCORE_USA_RADIO_PRESET"], "1")
+
+    def test_first_production_begin_uses_safe_power_before_preferences_load(self):
+        # Execute the production init bodies with resolved board defaults. The
+        # begin() probe represents the first RadioLib hardware write, before
+        # CommonCLI/Companion loads and clamps any old saved preferences.
+        startup_profiles = set()
+        for target, _, family in self.profiles():
+            definitions = self.defines(target)
+            chips = (1262, 1268) if family == "auto" else (1268 if family == "sx1268" else 1262,)
+            for chip in chips:
+                selected = {key: value for key, value in definitions.items()
+                            if key in ("LORA_FREQ", "LORA_BW", "LORA_SF", "LORA_CR",
+                                       "LORA_TX_POWER", "MAX_LORA_TX_POWER", "NRF52_PLATFORM",
+                                       "ESP32_PLATFORM", "MESH_RADIO_AUTO_SX1268", "MESH_E22_M33S")
+                            or key.startswith(("P_LORA_", "SX126X_"))}
+                startup_profiles.add((chip, tuple(sorted(selected.items()))))
+        for chip, definitions in sorted(startup_profiles):
+            source = (ROOT / f"src/helpers/radiolib/CustomSX{chip}.h").read_text()
+            init = method(source, "bool std_init(SPIClass* spi = NULL)")
+            # Both declarations share this body; remove the closing directive
+            # for the preceding RP2040-only alternative declaration.
+            init = "bool std_init(SPIClass* spi = NULL) " + init[init.index("{"):]
+            code = r'''
+#include <cassert>
+#include <cstddef>
+#include <cstdint>
+#include <helpers/LoRaRadioFamily.h>
+#define MESH_DEBUG_PRINTLN(...) ((void)0)
+#define RADIOLIB_ERR_NONE 0
+#define RADIOLIB_ERR_CHIP_NOT_FOUND -2
+#define RADIOLIB_ERR_SPI_CMD_FAILED -3
+#define RADIOLIB_NC -1
+#define RADIOLIB_SX126X_SYNC_WORD_PRIVATE 18
+#define D0 0
+#define D1 1
+#define D2 2
+#define D3 3
+#define D4 4
+#define D5 5
+#define D6 6
+#define D7 7
+#define D8 8
+#define D9 9
+#define D10 10
+struct SPIClass {
+  template <typename... Args> void begin(Args...) {}
+  template <typename... Args> void setPins(Args...) {}
+};
+namespace mesh {
+struct Logger { template <typename T> void print(T) {} template <typename T> void println(T) {} };
+Logger logger;
+Logger& usbLoggingPort() { return logger; }
+}
+struct Chip {
+  unsigned begins = 0;
+  uint32_t tcxoDelay = 1600, _rxDutyCycleTransitionUs = 0;
+  int begin(float frequency, float, int, int, int, int power, int, float, bool = false) {
+    ++begins;
+    assert(begins == 1 && power == 8 && power == MAX_LORA_TX_POWER);
+#if MESH_RADIO_AUTO_SX1268 && TEST_CHIP == 1268
+    assert(frequency == mesh::autoLoRaInitialFrequency(mesh::LoRaRadioFamily::SX1268, LORA_FREQ));
+    assert(frequency == 433.0f);
+#else
+    assert(frequency == static_cast<float>(LORA_FREQ));
+#endif
+    return RADIOLIB_ERR_NONE;
+  }
+  void setCRC(int) {}
+  void setCurrentLimit(int) {}
+  void setDio2AsRfSwitch(bool) {}
+  void setRxBoostedGainMode(bool) {}
+  void setRfSwitchPins(int, int) {}
+  @INIT@
+};
+int main() { SPIClass spi; Chip radio; assert(radio.std_init(&spi) && radio.begins == 1); }
+'''
+            flags = tuple("-D" + key + ("=" + value if value is not None else "")
+                          for key, value in definitions)
+            with self.subTest(chip=chip, definitions=definitions):
+                compile_run(code.replace("@INIT@", init),
+                            defines=flags + (f"-DTEST_CHIP={chip}",))
 
 
 if __name__ == "__main__":

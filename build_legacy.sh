@@ -504,6 +504,7 @@ for section, options in data:
       Heltec_ct62_companion_radio_ble
       Meshadventurer_sx1262_companion_radio_ble
       Meshadventurer_companion_radio_ble
+      Meshadventurer_m33s_companion_radio_ble
       Meshadventurer_sx1268_companion_radio_ble
       Heltec_Wireless_Paper_companion_radio_ble
       Heltec_E213_companion_radio_ble
@@ -1402,6 +1403,10 @@ get_env_metadata() {
       ;;
     ikoka_handheld_nrf_e22_30dbm_096)
       board_family="$IKOKA_HANDHELD_NRF_BOARD_FAMILY"
+      board_modifier="096"
+      ;;
+    ikoka_handheld_nrf_e22_33dbm_096|ikoka_handheld_nrf_e22_400m33s_096)
+      board_family=${board_part%_096}
       board_modifier="096"
       ;;
     ikoka_handheld_nrf)
@@ -3114,10 +3119,12 @@ requires_dram_limited_neighbors() {
       # Full sensors plus both OTA backends retain the board's original
       # 50-neighbor table so the fixed mOTA RAM arena has usable heap.
       return 0 ;;
+    generic_e22_m33s_repeater_lora_ota_no_external_sensors|\
     generic_e22_repeater_lora_ota_no_external_sensors|\
     generic_e22_sx1262_repeater_lora_ota_no_external_sensors|\
     generic_e22_sx1268_repeater_lora_ota_no_external_sensors|\
     heltec_v2_repeater_lora_ota_no_external_sensors|\
+    meshadventurer_m33s_repeater_lora_ota_no_external_sensors|\
     meshadventurer_repeater_lora_ota_no_external_sensors|\
     meshadventurer_sx1262_repeater_lora_ota_no_external_sensors|\
     meshadventurer_sx1268_repeater_lora_ota_no_external_sensors|\
@@ -3125,6 +3132,7 @@ requires_dram_limited_neighbors() {
     tbeam_sx1262_repeater_lora_ota_no_external_sensors|\
     tbeam_sx1276_repeater_lora_ota_no_external_sensors)
       return 0 ;;
+    generic_e22_m33s_repeater|meshadventurer_m33s_repeater|\
     generic_e22_repeater|generic_e22_sx1262_repeater|generic_e22_sx1268_repeater|\
     heltec_v2_repeater|meshadventurer_repeater|meshadventurer_sx1262_repeater|\
     meshadventurer_sx1268_repeater|tbeam_repeater|tbeam_sx1262_repeater|\
@@ -3138,7 +3146,9 @@ requires_dram_limited_neighbors() {
   if [ "$ESP32_FULL_BUILD" = "1" ] \
       && [ "${PACKET_LOGGING_OVERRIDE,,}" = "on" ]; then
     case "${1,,}" in
-      generic_e22_repeater_bridge_espnow \
+      generic_e22_m33s_repeater_bridge_espnow \
+        |meshadventurer_m33s_repeater_bridge_espnow \
+        |generic_e22_repeater_bridge_espnow \
         |generic_e22_sx1262_repeater_bridge_espnow \
         |generic_e22_sx1268_repeater_bridge_espnow \
         |heltec_v2_repeater_bridge_espnow \
@@ -3950,6 +3960,8 @@ apply_esp32_full_size_profile() {
       record_build_reduction \
         "mesh.flood_rules limited to 31 by measured internal DRAM; complete rule engine retained"
       ;;
+    generic_e22_m33s_repeater_bridge_espnow|\
+    meshadventurer_m33s_repeater_bridge_espnow|\
     generic_e22_repeater_bridge_espnow|\
     generic_e22_sx1262_repeater_bridge_espnow|\
     generic_e22_sx1268_repeater_bridge_espnow|\
@@ -4681,6 +4693,7 @@ apply_companion_radio_full_profile() {
       record_build_reduction \
         "display.canvas limited to 320x320 internal pixels, scaled to the 480x480 panel; 350 contacts, 512 queued frames and all Full transports retained"
       ;;
+    meshadventurer_m33s_companion_radio_full|\
     meshadventurer_companion_radio_full|\
     meshadventurer_sx1262_companion_radio_full|\
     meshadventurer_sx1268_companion_radio_full)
@@ -4715,10 +4728,26 @@ apply_companion_radio_full_profile() {
 }
 
 apply_radio_overrides() {
+  local target=${1:-}
+  target=${target,,}
+  local frequency=$RADIO_FREQ_OVERRIDE
+  local low_band=0
+  # The 400M33S PA and SX1268 cannot use the ordinary 900 MHz preset. Keep
+  # an explicitly selected valid low-band frequency; otherwise start at 433.
+  case "$target" in
+    *_400m33s_*)
+      low_band=1
+      if [ -n "$frequency" ] && ! python3 -c 'import sys; sys.exit(0 if 410 <= float(sys.argv[1]) <= 493 else 1)' "$frequency"; then
+        frequency=433
+        echo "${1}: using 433 MHz for the fitted E22-400M33S (900 MHz preset is incompatible)."
+      fi
+      ;;
+  esac
   if [ -n "$RADIO_FREQ_OVERRIDE" ] && [ -n "$RADIO_BW_OVERRIDE" ] && [ -n "$RADIO_SF_OVERRIDE" ] && [ -n "$RADIO_CR_OVERRIDE" ]; then
-    export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -DLORA_FREQ=${RADIO_FREQ_OVERRIDE} -DLORA_BW=${RADIO_BW_OVERRIDE} -DLORA_SF=${RADIO_SF_OVERRIDE} -DLORA_CR=${RADIO_CR_OVERRIDE}"
-    if [ "$RADIO_SETTING_TITLE" = "$USA_CASCADIA_RADIO_TITLE" ] \
-        || is_usa_cascadia_radio_title "$RADIO_SETTING_TITLE"; then
+    export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -DLORA_FREQ=${frequency} -DLORA_BW=${RADIO_BW_OVERRIDE} -DLORA_SF=${RADIO_SF_OVERRIDE} -DLORA_CR=${RADIO_CR_OVERRIDE}"
+    if [ "$low_band" = 0 ] \
+        && { [ "$RADIO_SETTING_TITLE" = "$USA_CASCADIA_RADIO_TITLE" ] \
+        || is_usa_cascadia_radio_title "$RADIO_SETTING_TITLE"; }; then
       export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -DMESHCORE_USA_RADIO_PRESET=1"
     fi
   fi
@@ -5585,7 +5614,7 @@ build_firmware_one_profile() {
   apply_nrf52_size_profile "$env_name"
   apply_lora_ota_no_external_sensors_profile "$env_name"
   apply_rak4631_rak15002_sd_store_profile "$env_name"
-  apply_radio_overrides
+  apply_radio_overrides "$env_name"
   apply_firmware_profile_overrides
   # Full LoRa images retain their normal role while a connected host uses
   # an explicitly enabled raw radio2 KISS session. Reduced profiles omit it.

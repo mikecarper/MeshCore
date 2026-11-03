@@ -44,8 +44,8 @@ SPECS = (
                     "MESH_RADIO_AUTO_SX127X": "0", "USE_SX1262": "1", "USE_SX1268": "1",
                     "RADIO_CLASS": "UniversalLoRaRadio", "WRAPPER_CLASS": "UniversalLoRaRadio"})
       for board, target in (
-          ("esp32doit-devkit-v1", r"Generic_E22_(?:repeater(?:_bridge_espnow)?|kiss_modem)(?:_observer_mqtt)?"),
-          ("esp32doit-devkit-v1", r"Meshadventurer_(?:repeater(?:_bridge_espnow)?|room_server|kiss_modem|terminal_chat|companion_radio_(?:usb|ble|full))(?:_observer_mqtt)?"),
+          ("esp32doit-devkit-v1", r"Generic_E22_(?:m33s_)?(?:repeater(?:_bridge_espnow)?|kiss_modem)(?:_observer_mqtt)?"),
+          ("esp32doit-devkit-v1", r"Meshadventurer_(?:m33s_)?(?:repeater(?:_bridge_espnow)?|room_server|kiss_modem|terminal_chat|companion_radio_(?:usb|ble|full))(?:_observer_mqtt)?"),
           ("esp32-c3-devkitm-1", r"Tenstar_C3_(?:repeater(?:_bridge_espnow)?|kiss_modem)(?:_observer_mqtt)?"),
       )],
     dict(key="autoLoRaRadio", capability="radio.autodetect.sx1262_lr1121",
@@ -116,6 +116,7 @@ RADIO_CAPACITY_MINIMUMS = {
     "tbeam": dict(MAX_CONTACTS=160, MAX_GROUP_CHANNELS=40, OFFLINE_QUEUE_SIZE=128),
     "lilygo_t3s3": dict(MAX_CONTACTS=350, MAX_GROUP_CHANNELS=40, OFFLINE_QUEUE_SIZE=512),
     "meshadventurer": dict(MAX_CONTACTS=160, MAX_GROUP_CHANNELS=40, OFFLINE_QUEUE_SIZE=128),
+    "meshadventurer_m33s": dict(MAX_CONTACTS=160, MAX_GROUP_CHANNELS=40, OFFLINE_QUEUE_SIZE=128),
     "muzi_base": dict(MAX_CONTACTS=350, MAX_GROUP_CHANNELS=40, OFFLINE_QUEUE_SIZE=256),
 }
 WM1110_CAPACITY_MINIMUMS = dict(MAX_CONTACTS=350, MAX_GROUP_CHANNELS=40,

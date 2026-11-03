@@ -164,21 +164,34 @@ class OtaTargetNameTest(unittest.TestCase):
             self.assertEqual(row, firsts[group + 1])
             self.assertEqual(position, len(raw))
         self.assertEqual(names, [name for _, name in rows])
-        return data, lengths
+        return data, offsets, lengths, firsts
 
     def test_rak_full_grouped_roles_keep_all_names_in_same_scratch_and_save_flash(self):
-        data, lengths = self.grouped_roundtrip(self.rows)
+        def encoded_bytes(chunks):
+            data, offsets, lengths, firsts = chunks
+            return len(data) + 2 * (len(offsets) + len(lengths) + len(firsts))
+
+        grouped = self.grouped_roundtrip(self.rows)
         previous = gen_targets.compressed_name_chunks(self.rows, 4096)
-        self.assertGreater(len(previous[0]) - len(data), 1000)
-        self.assertLessEqual(max(lengths), 4096)
+        # Inventory growth changes suffix diversity and chunk boundaries, so
+        # an absolute byte delta is not a stable live-catalog benchmark. Every
+        # current name must still round-trip and grouped tables must occupy
+        # less flash, including all uint16_t restart tables in both encodings.
+        self.assertLess(encoded_bytes(grouped), encoded_bytes(previous))
+        self.assertLessEqual(max(grouped[2]), 4096)
         # Unusual/legacy names stay complete; larger future inventories restart
         # board prefixes and carry a complete suffix dictionary in each chunk.
         future = gen_targets.target_rows(
             [f"board_{i:04d}_{role}" for i in range(700)
              for role in ("repeater", "companion_radio_usb", "room_server")]
             + ["legacy_without_role", "odd_BOARD_repeatr", "case_Companion_ble"])
-        _, chunks = self.grouped_roundtrip(future)
-        self.assertGreater(len(chunks), 1)
+        future_grouped = self.grouped_roundtrip(future)
+        self.assertGreater(len(future_grouped[2]), 1)
+        # This fixed matrix measures role-sharing performance independently
+        # of the live hardware inventory. Grouped tables must consume at most
+        # half the old encoding's flash, including restart metadata.
+        future_previous = gen_targets.compressed_name_chunks(future, 4096)
+        self.assertLessEqual(2 * encoded_bytes(future_grouped), encoded_bytes(future_previous))
 
     def test_grouped_decoder_rejects_bad_dictionary_prefix_count_and_role_index(self):
         from zopfli_compress import raw_deflate_compress

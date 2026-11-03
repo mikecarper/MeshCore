@@ -37,11 +37,13 @@ def is_companion(target):
 def embedded_stock_legacy_records(profile, parsed):
     """Read the stock inventory for the exact pinned replacement's S140 ABI."""
     from nrf52_legacy_bootloaders import legacy_bootloaders_for
+    from nrf52_embedded_bootloader import BOOTLOADER_HARDWARE
     match = re.search(r"_s140_([0-9.]+)\.zip$", profile["files"]["zip"]["name"])
     geometry = {"6.1.1": (0x26000, 0xB6), "7.3.0": (0x27000, 0x123)}
     if match is None or match[1] not in geometry:
         raise ValueError("unrecognized pinned embedded bootloader S140 geometry")
-    return legacy_bootloaders_for(profile["id"], parsed["sourceHardware"], *geometry[match[1]])
+    hardware = BOOTLOADER_HARDWARE.get(parsed["sourceHardware"], parsed["sourceHardware"])
+    return legacy_bootloaders_for(profile["id"], hardware, *geometry[match[1]])
 
 
 def validate_embedded_stock_metadata(metadata, profile, parsed):
