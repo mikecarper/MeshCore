@@ -311,12 +311,26 @@ public:
 
   mesh::RadioParamApplyResult tryConfigSideDetectors(const uint8_t* sideDetSFs, uint8_t num, float bw) override {
     using Result = mesh::RadioParamApplyResult;
-    if (_profiles.enabled()) return Result::FAILED;
-    const uint8_t primary_sf = getSpreadingFactor();
-    float active_bw = _params_valid ? _cur_bw : ((CustomLR2021 *)_radio)->getBandwidthKhz();
+    // While radio2 is active, retain valid primary detectors in RAM without
+    // arming them on either profile. The public CLI still disallows changes.
+    const bool stage_primary = _profiles.enabled() && num != 0;
+    const uint8_t primary_sf = stage_primary ? _profiles.primary.sf : getSpreadingFactor();
+    float active_bw = stage_primary ? _profiles.primary.bw
+        : (_params_valid ? _cur_bw : ((CustomLR2021 *)_radio)->getBandwidthKhz());
     if (active_bw <= 0.0f) active_bw = bw;
     if (!mesh::lr2021::validateSideDetectorSFs(sideDetSFs, num, primary_sf, active_bw)) {
       return Result::FAILED;
+    }
+
+    if (stage_primary) {
+      for (uint8_t i = 0; i < mesh::lr2021::MAX_SIDE_DETECTORS; i++) {
+        _sideDetSFs[i] = i < num ? sideDetSFs[i] : 0;
+      }
+      _numSideDet = num;
+      // A profile can be disabled before the scanner first runs. Force the
+      // next profile application to install the newly cached detectors.
+      _profile_refresh_required = true;
+      return Result::APPLIED;
     }
 
     LR2021LoRaSideDetector_t tmp[mesh::lr2021::MAX_SIDE_DETECTORS] = {};

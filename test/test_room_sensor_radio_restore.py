@@ -297,8 +297,31 @@ int main() {
   }
   {
     Node node; radio_driver.profile_state.active = true; node.startup();
-    assert(!node.saved_radio_apply_pending && !radio_driver.side_commands);
-    assert(node._prefs.extra_sf[0] == 10); // Retain saved intent while dual radio disables it.
+    assert(!node.saved_radio_apply_pending && radio_driver.side_commands == 1);
+    assert(node._prefs.extra_sf[0] == 10 && radio_driver.side_sfs[0] == 10);
+    // Stage saved intent for the primary while dual radio suspends it, then
+    // use the same retained list when dual radio is later disabled.
+    radio_driver.profile_state.active = false;
+    node.startup();
+    assert(!node.saved_radio_apply_pending && radio_driver.side_sfs[0] == 10);
+  }
+  {
+    // A primary change may invalidate saved side detectors while radio2
+    // suspends them. A failed clear must keep both copies for a later retry.
+    Node node; radio_driver.profile_state.active = true;
+    node._prefs.sf = 10;
+    node._prefs.extra_sf[0] = radio_driver.side_sfs[0] = 11;
+    node._prefs.extra_sf[1] = radio_driver.side_sfs[1] = 12;
+    radio_driver.side_results = {false, true};
+    node.startup();
+    assert(node.saved_radio_apply_pending && node.saves == 0);
+    assert(node._prefs.extra_sf[0] == 11 && radio_driver.side_sfs[0] == 11);
+    node.service();
+    assert(!node.saved_radio_apply_pending && node.saves == 1);
+    assert(node._prefs.extra_sf[0] == 0 && radio_driver.side_sfs[0] == 0);
+    radio_driver.profile_state.active = false;
+    node.startup(); // Turning radio2 off must not restore the invalid cache.
+    assert(!node.saved_radio_apply_pending && radio_driver.side_sfs[0] == 0);
   }
 #endif
   startupAndRetry(); receiveBetweenTupleAndPower(); tempRadioRestoration();

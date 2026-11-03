@@ -2993,7 +2993,9 @@ bool MyMesh::applySavedRadioParams() {
   if (!mesh::lr2021::storedSideDetectorCount(_prefs.extra_sf, extra_sf_count)
       || !mesh::lr2021::validateSideDetectorSFs(
           _prefs.extra_sf, extra_sf_count, _prefs.sf, _prefs.bw)) {
-    if (side_detectors_allowed && !radio_driver.configSideDetectors(nullptr, 0, _prefs.bw)) return false;
+    // Clear the wrapper's cached list even during radio2 scanning; otherwise
+    // disabling radio2 could restore this now-invalid list from RAM.
+    if (!radio_driver.configSideDetectors(nullptr, 0, _prefs.bw)) return false;
     memset(_prefs.extra_sf, 0, sizeof(_prefs.extra_sf));
     extra_sf_count = 0;
     savePrefs();
@@ -3021,7 +3023,7 @@ bool MyMesh::applySavedRadioParams() {
       && !radio_driver.setRxBoostedGainMode(_prefs.rx_boosted_gain)) return false;
 #endif
 #if defined(USE_LR2021)
-  if (side_detectors_allowed
+  if ((side_detectors_allowed || extra_sf_count > 0)
       && !radio_driver.configSideDetectors(_prefs.extra_sf, extra_sf_count, _prefs.bw)) return false;
 #endif
   return radio_driver.setTxPower(_prefs.tx_power_dbm);

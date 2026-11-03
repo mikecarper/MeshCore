@@ -32,6 +32,7 @@ HARNESS = r'''
 #include <helpers/CLIReplyText.h>
 #include <helpers/RepeaterRadioTiming.h>
 #include <helpers/TempRadioLeaseDeadline.h>
+#include <helpers/radiolib/LR2021SideDetectorConfig.h>
 #define MESH_DEBUG_PRINTLN(...) ((void)0)
 #define MESH_ENABLE_TELEMETRY_HISTORY 0
 #define MAX_SCHEDULED_RADIO_SETTINGS 8
@@ -43,10 +44,6 @@ uint32_t millis() { return now_ms; }
 namespace mesh {
 struct Packet {};
 int clampLoRaTxPower(int power, float) { return power; }
-namespace lr2021 {
-bool storedSideDetectorCount(const uint8_t*, uint8_t& count) { count = 0; return true; }
-bool validateSideDetectorSFs(const uint8_t*, uint8_t, uint8_t, float) { return true; }
-}
 }
 struct CommonCLI {
   template <typename T> static void recalculateRxPowerSavingFromLevel(T*) {}
@@ -55,6 +52,9 @@ uint32_t nextRadioApplyRetryDelay(uint8_t& failures) { ++failures; return 100; }
 struct RadioDriver {
   bool gain_supported = true, gain_success = true, power_success = true;
   bool side_detector_success = true;
+  bool secondary_enabled = false;
+  unsigned side_detector_calls = 0;
+  uint8_t side_detector_count = 0;
   unsigned gain_calls = 0, power_calls = 0;
   bool active_gain = false;
   int active_power = 0;
@@ -71,7 +71,12 @@ struct RadioDriver {
     active_power = power;
     return true;
   }
-  bool configSideDetectors(const uint8_t*, uint8_t, float) { return side_detector_success; }
+  bool configSideDetectors(const uint8_t*, uint8_t num, float) {
+    ++side_detector_calls;
+    side_detector_count = num;
+    // Valid saved extras stage in the driver's cache while radio2 scans.
+    return side_detector_success;
+  }
 } radio_driver;
 struct RTC {
   uint32_t now = 100000;
@@ -322,6 +327,35 @@ int main() {
     m.processScheduledRadioSettings();
     assert(!m.saved_radio_apply_pending);
   }
+#if defined(USE_LR2021)
+  { // Saved valid extras are staged while radio2 scans and remain available
+    // when the primary returns to a single profile.
+    MyMesh m;
+    m._prefs.extra_sf[0] = 8;
+    radio_driver.secondary_enabled = true;
+    assert(m.applySavedRadioParams());
+    assert(m._prefs.extra_sf[0] == 8 && radio_driver.side_detector_count == 1);
+    assert(m.saves == 0 && radio_driver.side_detector_calls == 1);
+    radio_driver.secondary_enabled = false;
+    assert(m.applySavedRadioParams());
+    assert(m._prefs.extra_sf[0] == 8 && radio_driver.side_detector_calls == 2);
+  }
+  { // Previously accepted invalid detectors are removed before primary setup,
+    // including when radio2 is enabled; failed hardware cleanup does not save.
+    MyMesh m;
+    m._prefs.sf = 10;
+    m._prefs.extra_sf[0] = 11; m._prefs.extra_sf[1] = 12;
+    radio_driver.secondary_enabled = true;
+    radio_driver.side_detector_success = false;
+    assert(!m.applySavedRadioParams());
+    assert(m._prefs.extra_sf[0] == 11 && m._prefs.extra_sf[1] == 12);
+    assert(m.saves == 0 && m.restores == 0);
+    radio_driver.side_detector_success = true;
+    assert(m.applySavedRadioParams());
+    assert(m._prefs.extra_sf[0] == 0 && m._prefs.extra_sf[1] == 0);
+    assert(m.saves == 1 && m.restores == 1);
+  }
+#endif
   { // Expiring one scheduled lease must retain a later temporary entry.
     MyMesh m;
     char reply[160];

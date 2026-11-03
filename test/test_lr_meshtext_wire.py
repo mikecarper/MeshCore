@@ -66,6 +66,96 @@ class LRMeshtextWireTest(unittest.TestCase):
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
             return result.stdout
 
+    def test_lr2021_side_detector_datasheet_limits(self):
+        code = r'''
+#include <cassert>
+#include <helpers/radiolib/LR2021SideDetectorConfig.h>
+using mesh::lr2021::validateSideDetectorSFs;
+int main() {
+  const uint8_t sides[] = {11, 12};
+  assert(validateSideDetectorSFs(sides, 1, 10, 62.5f));
+  assert(!validateSideDetectorSFs(sides, 2, 10, 62.5f));
+  const uint8_t wide[] = {6, 7};
+  // 10 + 10 + 12 = 32: equality fails at 1000 kHz, but 812.5 passes.
+  assert(validateSideDetectorSFs(wide, 2, 5, 812.5f));
+  assert(!validateSideDetectorSFs(wide, 2, 5, 1000.0f));
+  const uint8_t low_cost[] = {6};
+  assert(validateSideDetectorSFs(low_cost, 1, 5, 1000.0f));
+  const uint8_t other[] = {7, 8, 9};
+  assert(validateSideDetectorSFs(other, 3, 6, 500.0f));
+  assert(!validateSideDetectorSFs(other, 3, 6, 812.5f));
+  assert(validateSideDetectorSFs(nullptr, 0, 0, 0));
+  std::puts("PASS: LR2021 detector limits");
+}
+'''
+        self.assertIn("PASS:", self.run_cpp('#include <cstdio>\n' + code))
+
+    def test_lr2021_stages_and_clears_detector_cache_with_radio2(self):
+        source = (ROOT / "src/helpers/radiolib/CustomLR2021Wrapper.h").read_text()
+        configure = method(source, "mesh::RadioParamApplyResult tryConfigSideDetectors(").replace(" override", "")
+        build = method(source, "static void buildSideDetectorConfig(")
+        code = COMMON + r'''
+#include <helpers/radiolib/LR2021SideDetectorConfig.h>
+#define MESH_DEBUG_PRINTLN(...) ((void)0)
+namespace mesh { enum class RadioParamApplyResult { APPLIED, BUSY, FAILED }; }
+struct LR2021LoRaSideDetector_t {
+  uint8_t sf = 0, syncWord = 0; bool ldro = false, invertIQ = false;
+};
+struct CustomLR2021 {
+  int calls = 0, result = 0; size_t count = 99;
+  float getBandwidthKhz() { return 62.5f; }
+  int setSideDetector(const LR2021LoRaSideDetector_t*, size_t n) {
+    ++calls; count = n; return result;
+  }
+};
+struct Wrapper {
+  mesh::RadioProfiles _profiles;
+  CustomLR2021 chip; CustomLR2021* _radio = &chip;
+  uint8_t _sideDetSFs[3] = {11, 12, 0}; size_t _numSideDet = 2;
+  bool _params_valid = true, _profile_refresh_required = false; float _cur_bw = 62.5f;
+  uint8_t admission = 1, live_sf = 10; int begins = 0, ends = 0;
+  uint8_t getSpreadingFactor() { return live_sf; }
+  uint8_t beginReconfigure() { ++begins; return admission; }
+  void endReconfigure(uint8_t) { ++ends; }
+  bool applySideDetectorConfig(uint8_t, float) { return true; }
+  bool restoreAfterDeepInit() { return true; }
+  @BUILD@
+  @CONFIGURE@
+};
+int main() {
+  using Result = mesh::RadioParamApplyResult;
+  Wrapper w;
+  w._profiles.secondary.mode = mesh::RadioProfileMode::Rx;
+  w._profiles.primary.sf = 7; w._profiles.primary.bw = 125;
+  const uint8_t side[] = {8};
+  // The current chip SF is the secondary (10), not the primary (7).
+  assert(w.tryConfigSideDetectors(side, 1, 62.5f) == Result::APPLIED);
+  assert(w.chip.calls == 0 && w.begins == 0 && w._numSideDet == 1 && w._sideDetSFs[0] == 8);
+  assert(w._profile_refresh_required); // Also works if radio2 is stopped before its first scan.
+  w._profiles.primary.sf = 10;
+  const uint8_t invalid[] = {11, 12};
+  assert(w.tryConfigSideDetectors(invalid, 2, 62.5f) == Result::FAILED);
+  assert(w.chip.calls == 0 && w._numSideDet == 1 && w._sideDetSFs[0] == 8);
+  w.admission = 2;
+  assert(w.tryConfigSideDetectors(nullptr, 0, 62.5f) == Result::BUSY);
+  assert(w.chip.calls == 0 && w._numSideDet == 1);
+  w.admission = 1;
+  w.chip.result = -1;
+  assert(w.tryConfigSideDetectors(nullptr, 0, 62.5f) == Result::FAILED);
+  assert(w._numSideDet == 1);
+  w.chip.result = 0;
+  assert(w.tryConfigSideDetectors(nullptr, 0, 62.5f) == Result::APPLIED);
+  assert(w.chip.count == 0 && w._numSideDet == 0 && w._sideDetSFs[0] == 0);
+  w._profiles.secondary.mode = mesh::RadioProfileMode::Off;
+  w.live_sf = 7;
+  assert(w.tryConfigSideDetectors(side, 1, 125) == Result::APPLIED);
+  assert(w.chip.count == 1 && w._numSideDet == 1 && w._sideDetSFs[0] == 8);
+  std::puts("PASS: LR2021 stages and clears detector cache");
+}
+'''
+        code = code.replace("@BUILD@", build).replace("@CONFIGURE@", configure)
+        self.assertIn("PASS:", self.run_cpp(code))
+
     def test_actual_three_lr_families_protocol_errors_and_restore(self):
         for family in ("LR1110", "LR1121", "LR2021"):
             with self.subTest(family=family):
@@ -236,6 +326,10 @@ int main() {
   wrapper._profiles.secondary.mode = mesh::RadioProfileMode::RxTx;
   wrapper._beacon_restoring = true;
   assert(wrapper.applySideDetectorConfig(7, 125) && wrapper.chip.count == 0);
+  wrapper._profiles.secondary.mode = mesh::RadioProfileMode::Off;
+  wrapper._beacon_restoring = false; wrapper.beacon_owned = false;
+  assert(wrapper.applySideDetectorConfig(7, 125) && wrapper.chip.count == 3);
+  assert(wrapper.chip.values[0].sf == 8 && wrapper.chip.values[2].sf == 10);
   // An off-channel TX keeps the wrapper's normal RX cache. Clamp using the
   // driver's actual band, matching the PA chosen by its setOutputPower().
   wrapper.chip.frequency = 2440;
