@@ -14264,6 +14264,10 @@ completed MQTT shutdown before it can write firmware.</p>
 </blockquote>
 <hr />
 <h4 id="view-or-change-mqtt-advert-signature-filtering">View or change MQTT advert signature filtering</h4>
+<p>LoRa relay validation is always enabled and does not depend on this setting.
+Flood and routed-direct adverts must have a complete 100-132 byte payload,
+enough bytes for their flagged optional fields, and a valid Ed25519 signature.
+Empty metadata remains valid.</p>
 <p><strong>Usage:</strong></p>
 <ul>
 <li><code>get mqtt.advert.verify</code></li>
