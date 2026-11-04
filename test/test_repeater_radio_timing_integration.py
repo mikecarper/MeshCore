@@ -85,7 +85,7 @@ struct RTC {
 };
 struct RadioPrefs {
   bool rx_watchdog_enabled = true, rx_boosted_gain = true;
-  uint8_t advert_interval = 60, flood_advert_interval = 24, path_hash_mode = 0;
+  uint8_t advert_interval = 60, flood_advert_interval = 24, path_hash_mode = 0, radio2_flood_advert_disabled = 0;
   float freq = 909.5f, bw = 62.5f;
   uint8_t sf = 7, cr = 5;
   uint8_t extra_sf[4] = {};
@@ -204,6 +204,7 @@ public:
   void updateAdvertTimer();
   void updateFloodAdvertTimer();
   bool radio2FloodAdvertEligible() const;
+  @ADVERT_CALLBACK@
   void queueSavedRadioApply();
   void refreshScheduledRadioState();
   void processScheduledRadioSettings(bool tx_gap = false);
@@ -580,6 +581,24 @@ int main() {
     m.advance(6 * HOUR); m.servicePostMeshLoop();
     assert(m.primary_floods == 1 && m.radio2_floods == 1);
   }
+  { // Disabling the setting only suppresses radio2; turning it on just after
+    // the missed midpoint does not replay a stale advert.
+    MyMesh m;
+    m._prefs.rx_watchdog_enabled = false;
+    m._prefs.advert_interval = 0; m.updateAdvertTimer();
+    m._prefs.flood_advert_interval = 12;
+    m.radio.config.secondary.mode = mesh::RadioProfileMode::RxTx;
+    m.updateFloodAdvertTimer();
+    m.advance(5 * HOUR); m._prefs.radio2_flood_advert_disabled = 0xA5;
+    m.onRadio2FloodAdvertChanged(false); // no loop while the setting is off
+    m.advance(HOUR + 1); m._prefs.radio2_flood_advert_disabled = 0;
+    m.onRadio2FloodAdvertChanged(true); m.servicePostMeshLoop();
+    assert(m.radio2_floods == 0 && m.primary_floods == 0);
+    m.advance(6 * HOUR - 1); m.servicePostMeshLoop();
+    assert(m.radio2_floods == 0 && m.primary_floods == 1);
+    m.advance(6 * HOUR); m.servicePostMeshLoop();
+    assert(m.radio2_floods == 1 && m.primary_floods == 1);
+  }
   { // RX-only secondary and disabled primary flood never transmit on radio2.
     MyMesh m;
     m._prefs.rx_watchdog_enabled = false;
@@ -762,7 +781,10 @@ int main() {
         for lr2021 in (False, True):
             with self.subTest(lr2021=lr2021):
                 defines = "#define USE_LR2021 1\n" if lr2021 else ""
-                self.compile_and_run(defines + HARNESS.replace("@METHODS@", methods))
+                callback = method((ROOT / "examples/simple_repeater/MyMesh.h").read_text(),
+                                  "void onRadio2FloodAdvertChanged(").replace(" override", "")
+                self.compile_and_run(defines + HARNESS.replace("@METHODS@", methods)
+                                     .replace("@ADVERT_CALLBACK@", callback))
 
     def test_scheduled_radio_relative_and_absolute_times(self):
         source = (ROOT / "src/helpers/CommonCLI.cpp").read_text(encoding="utf-8")

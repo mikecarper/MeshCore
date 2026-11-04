@@ -3149,7 +3149,7 @@ void MyMesh::updateAdvertTimer() {
   }
 }
 bool MyMesh::canSendSecondaryFloodAdvert() const {
-  return mesh::radio2FloodAdvertEligible(_radio->profiles());
+  return !_prefs.radio2_flood_advert_disabled && mesh::radio2FloodAdvertEligible(_radio->profiles());
 }
 
 void MyMesh::updateFloodAdvertTimer() {

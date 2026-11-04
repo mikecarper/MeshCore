@@ -5704,7 +5704,7 @@ void MyMesh::updateFloodAdvertTimer() {
 }
 
 bool MyMesh::radio2FloodAdvertEligible() const {
-  return mesh::radio2FloodAdvertEligible(_radio->profiles());
+  return !_prefs.radio2_flood_advert_disabled && mesh::radio2FloodAdvertEligible(_radio->profiles());
 }
 
 #if MESH_ENABLE_PACKET_FILE_LOGGING

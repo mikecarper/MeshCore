@@ -4373,12 +4373,22 @@ reduce unnecessary recoveries when no traffic is expected.
 
 **Default:** `47` (Repeater, Room Server) - `0`, disabled (Sensor)
 
-On a Repeater, Room Server, or Sensor with a transmit-capable MeshCore radio2 profile,
-the node also sends a scoped flood advert on radio2 halfway between its
-primary flood adverts. For a 12-hour interval, the radio2 advert is six hours
-after each primary advert. The schedule is relative to the node's timer, not
-fixed clock hours. A midpoint missed by more than a minute while asleep is
-skipped. The local zero-hop advert schedule is unchanged.
+On a Repeater, Room Server, or Sensor with a transmit-capable MeshCore radio2
+profile, the node can also send a scoped flood advert on radio2 halfway between
+its primary flood adverts:
+
+```text
+get radio2.advert
+set radio2.advert on
+set radio2.advert off
+```
+
+This setting defaults to `on` and is saved. For a 12-hour flood interval, the
+radio2 advert is six hours after each primary advert. The schedule is relative
+to the node's timer, not fixed clock hours. A midpoint missed by more than a
+minute while asleep is skipped. Turning it off prevents future scheduling;
+an advert already queued may still transmit. The local zero-hop advert schedule
+is unchanged.
 
 ---
 

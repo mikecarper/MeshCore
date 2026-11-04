@@ -1392,6 +1392,7 @@ public:
   void sendSelfAdvertisement(int delay_millis, bool flood) override;
   void updateAdvertTimer() override;
   void updateFloodAdvertTimer() override;
+  void onRadio2FloodAdvertChanged(bool enabled) override { if (!enabled) radio2_flood_advert.pause(); }
 
   void setLoggingOn(bool enable) override {
 #if MESH_ENABLE_PACKET_FILE_LOGGING

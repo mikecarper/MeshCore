@@ -1148,6 +1148,7 @@ void CommonCLI::loadPrefs(FILESYSTEM* fs) {
   _prefs->usb_logging_always = 0;
   _prefs->trace_when_repeat_off = 0;
   _prefs->discovery_responses = mesh::discovery::DEFAULT_RESPONSES;
+  _prefs->radio2_flood_advert_disabled = 0;
   _prefs->ota_channel = 0;
 #ifdef WITH_RS232_BRIDGE
   _prefs->rs232_heartbeat = 1;
@@ -1485,6 +1486,7 @@ void CommonCLI::loadPrefsInt(FILESYSTEM* fs, const char* filename) {
   _prefs->usb_logging_always = 0;
   _prefs->trace_when_repeat_off = 0;
   _prefs->discovery_responses = mesh::discovery::DEFAULT_RESPONSES;
+  _prefs->radio2_flood_advert_disabled = 0;
   _prefs->gps_sync_interval_hours = 0;
   _prefs->ota_channel = 0;
   _prefs->rs232_bridge_enabled = 0;
@@ -1549,6 +1551,9 @@ void CommonCLI::loadPrefsInt(FILESYSTEM* fs, const char* filename) {
     if (file.size() == 290 && legacy_rx_boosted_gain == 1) {
       _prefs->rx_boosted_gain = 1;
     }
+    // Longer historical images wrote zero here. An exact marker disables the
+    // new radio2 flood advert; the legacy 290-byte gain remains untouched.
+    _prefs->radio2_flood_advert_disabled = file.size() > 290 && legacy_rx_boosted_gain == 0xA5 ? 0xA5 : 0;
     file.read((uint8_t *)&_prefs->rx_delay_base, sizeof(_prefs->rx_delay_base));      // 80
     file.read((uint8_t *)&_prefs->tx_delay_factor, sizeof(_prefs->tx_delay_factor));  // 84
     file.read((uint8_t *)&_prefs->guest_password[0], sizeof(_prefs->guest_password)); // 88
@@ -2236,7 +2241,7 @@ static bool writeCommonPrefsImage(Writer& writer, NodePrefs* prefs) {
   WRITE_COMMON_PREFS(&prefs->tx_power_dbm);       // 76
   WRITE_COMMON_PREFS(&prefs->disable_fwd);        // 77
   WRITE_COMMON_PREFS(&prefs->advert_interval);    // 78
-  WRITE_COMMON_PREFS_BYTES(pad, 1);               // 79
+  WRITE_COMMON_PREFS(&prefs->radio2_flood_advert_disabled); // 79: legacy gain/padding
   WRITE_COMMON_PREFS(&prefs->rx_delay_base);      // 80
   WRITE_COMMON_PREFS(&prefs->tx_delay_factor);    // 84
   WRITE_COMMON_PREFS_BYTES(prefs->guest_password, sizeof(prefs->guest_password)); // 88
@@ -2518,7 +2523,7 @@ void CommonCLI::savePrefs(FILESYSTEM* fs, PrefsSaveRouting::Scope scope) {
     file.write((uint8_t *)&_prefs->tx_power_dbm, sizeof(_prefs->tx_power_dbm));        // 76
     file.write((uint8_t *)&_prefs->disable_fwd, sizeof(_prefs->disable_fwd));          // 77
     file.write((uint8_t *)&_prefs->advert_interval, sizeof(_prefs->advert_interval));  // 78
-    file.write(pad, 1);                                                                // 79 : 1 byte unused (rx_boosted_gain moved to end)
+    file.write(&_prefs->radio2_flood_advert_disabled, 1);                              // 79 : legacy gain/padding
     file.write((uint8_t *)&_prefs->rx_delay_base, sizeof(_prefs->rx_delay_base));      // 80
     file.write((uint8_t *)&_prefs->tx_delay_factor, sizeof(_prefs->tx_delay_factor));  // 84
     file.write((uint8_t *)&_prefs->guest_password[0], sizeof(_prefs->guest_password)); // 88
@@ -5170,6 +5175,21 @@ void CommonCLI::handleSetCmd(uint32_t sender_timestamp, char* command, char* rep
     } else {
       strcpy(reply, MESH_CLI_REPLY_TEXT("ERROR: telemetry.access must be all or acl", "ERROR: telemetry.access all|acl"));
     }
+  } else if (memcmp(config, "radio2.advert ", 14) == 0) {
+    bool enabled = false;
+    if (!parseOnOffStrict(&config[14], enabled)) {
+      mesh::cli::formatError(reply, 160, "use set radio2.advert on|off");
+    } else {
+      const uint8_t previous = _prefs->radio2_flood_advert_disabled;
+      _prefs->radio2_flood_advert_disabled = enabled ? 0 : 0xA5;
+      if (!trySavePrefs()) {
+        _prefs->radio2_flood_advert_disabled = previous;
+        mesh::cli::formatError(reply, 160, "save unconfirmed; reboot may differ");
+      } else {
+        _callbacks->onRadio2FloodAdvertChanged(enabled);
+        strcpy(reply, "OK");
+      }
+    }
   } else if (memcmp(config, "flood.advert.interval ", 22) == 0) {
     uint32_t hours = 0;
     if (!parseUint32Strict(&config[22], hours)
@@ -6546,6 +6566,8 @@ void CommonCLI::handleGetCmd(uint32_t sender_timestamp, char* command, char* rep
     sprintf(reply, "> %s", _prefs->allow_read_only ? "on" : "off");
   } else if (configKeyEquals(config, "telemetry.access")) {
     sprintf(reply, "> %s", _prefs->telemetry_access == TELEMETRY_ACCESS_ACL ? "acl" : "all");
+  } else if (configKeyEquals(config, "radio2.advert")) {
+    sprintf(reply, "> %s", _prefs->radio2_flood_advert_disabled ? "off" : "on");
   } else if (configKeyEquals(config, "flood.advert.interval")) {
     mesh::RepeaterRadioTiming timing;
     timing.setTempDuration(_callbacks->getTempRadioDurationSeconds());

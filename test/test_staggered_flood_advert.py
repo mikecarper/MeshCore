@@ -17,8 +17,10 @@ class StaggeredFloodAdvertTests(unittest.TestCase):
                                   ("SensorMesh", "examples/simple_sensor/SensorMesh.cpp")):
             with self.subTest(role=role):
                 source = (ROOT / source_path).read_text()
+                header = (ROOT / source_path.replace('.cpp', '.h')).read_text()
                 update = method(source, f"void {role}::updateFloodAdvertTimer(")
                 eligible = method(source, f"bool {role}::canSendSecondaryFloodAdvert(")
+                callback = method(header, "void onRadio2FloodAdvertChanged(").replace(' override', '')
                 loop = method(source, f"void {role}::loop(")
                 start = loop.index("  if (next_flood_advert &&")
                 end = loop.index("  servicePendingPrimaryRadioSettings();", start)
@@ -42,13 +44,14 @@ struct Radio {mesh::RadioProfiles value;mesh::RadioProfiles* profiles(){return &
 class @ROLE@ {
 public:
  Radio radio;Radio* _radio=&radio;
- struct {uint32_t flood_advert_interval=12;uint8_t path_hash_mode=0;} _prefs;
+ struct {uint32_t flood_advert_interval=12;uint8_t path_hash_mode=0,radio2_flood_advert_disabled=0;} _prefs;
  unsigned long next_flood_advert=0,next_local_advert=0;
  mesh::StaggeredFloodAdvert secondary_flood_advert;
  bool tracker=false;int default_scope=0,local_sends=0;
  std::vector<mesh::Packet> sends;mesh::Packet scratch;
  bool isTrackerModeEnabled()const{return tracker;}
  bool canSendSecondaryFloodAdvert()const;
+ @CALLBACK@
  void updateFloodAdvertTimer();
  void updateAdvertTimer(){next_local_advert=0;}
  mesh::Packet* createSelfAdvert(){scratch=mesh::Packet{};return &scratch;}
@@ -66,6 +69,25 @@ int main(){
  now_ms=6*hour-1;node.periodic();assert(node.sends.empty());
  now_ms=6*hour;node.periodic();assert(node.sends.size()==1);
  assert(node.sends.back().radio_profile==1&&node.sends.back().tx_radio==mesh::RADIO_TX_SECONDARY);
+ // Turning off the setting suppresses only the radio2 midpoint. Enabling it
+ // after the midpoint never sends a stale flood, even within the grace period.
+ now_ms=0;@ROLE@ setting;
+ setting.radio.value.secondary.mode=mesh::RadioProfileMode::RxTx;
+ setting.updateFloodAdvertTimer();
+ now_ms=5*hour;setting._prefs.radio2_flood_advert_disabled=0xA5;
+ setting.onRadio2FloodAdvertChanged(false); // no loop while disabled
+ now_ms=6*hour+1;setting._prefs.radio2_flood_advert_disabled=0;
+ setting.onRadio2FloodAdvertChanged(true);setting.periodic();assert(setting.sends.empty());
+ now_ms=12*hour;setting.periodic();assert(setting.sends.size()==1);
+ assert(setting.sends.back().tx_radio==mesh::RADIO_TX_PRIMARY);
+ now_ms=18*hour;setting.periodic();assert(setting.sends.size()==2);
+ assert(setting.sends.back().tx_radio==mesh::RADIO_TX_SECONDARY);
+ now_ms=0;@ROLE@ off;
+ off.radio.value.secondary.mode=mesh::RadioProfileMode::RxTx;
+ off._prefs.radio2_flood_advert_disabled=0xA5;off.updateFloodAdvertTimer();
+ now_ms=6*hour;off.periodic();assert(off.sends.empty());
+ now_ms=12*hour;off.periodic();assert(off.sends.size()==1);
+ assert(off.sends[0].tx_radio==mesh::RADIO_TX_PRIMARY);
  now_ms=12*hour;node.periodic();assert(node.sends.size()==2);
  assert(node.sends.back().radio_profile==0&&node.sends.back().tx_radio==mesh::RADIO_TX_PRIMARY);
  node.radio.value.cross=mesh::RadioCrossMode::On;
@@ -103,6 +125,7 @@ int main(){
 '''
                 code = (code.replace("@ROLE@", role).replace("@PERIODIC@", periodic)
                         .replace("@UPDATE@", update).replace("@ELIGIBLE@", eligible)
+                        .replace("@CALLBACK@", callback)
                         .replace("@TRACKER@", tracker))
                 with tempfile.TemporaryDirectory(prefix="staggered-role-") as folder:
                     temp = Path(folder)

@@ -1579,7 +1579,8 @@ void SensorMesh::updateAdvertTimer() {
   }
 }
 bool SensorMesh::canSendSecondaryFloodAdvert() const {
-  return !isTrackerModeEnabled() && mesh::radio2FloodAdvertEligible(_radio->profiles());
+  return !_prefs.radio2_flood_advert_disabled && !isTrackerModeEnabled()
+      && mesh::radio2FloodAdvertEligible(_radio->profiles());
 }
 
 void SensorMesh::updateFloodAdvertTimer() {

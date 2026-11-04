@@ -49,6 +49,9 @@ class StaggeredFloodAdvert {
     return send;
   }
 
+  // A disabled setting must not later replay a midpoint missed while off.
+  void pause() { eligible_before_ = false; }
+
   uint32_t sleepDeadline(bool eligible) const {
     return eligible ? deadline_ : 0;
   }

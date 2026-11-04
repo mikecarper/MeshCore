@@ -218,6 +218,9 @@ public:
   // Independent repeater reply gates: bit 0=node, bit 1=anonymous regions.
   // Stored in a checked extension before the platform-specific EOF footer.
   uint8_t discovery_responses = 3;
+  // Zero preserves the default automatic radio2 flood advert. The exact 0xA5
+  // marker at legacy padding byte 79 disables it.
+  uint8_t radio2_flood_advert_disabled = 0;
   // Runtime UART choice for merged RS-232 repeater artifacts. Appended at
   // /com_prefs offset 862; single-UART builds keep their compiled port here.
   uint8_t bridge_uart = 0;
@@ -572,6 +575,7 @@ public:
   virtual void sendSelfAdvertisement(int delay_millis, bool flood) = 0;
   virtual void updateAdvertTimer() = 0;
   virtual void updateFloodAdvertTimer() = 0;
+  virtual void onRadio2FloodAdvertChanged(bool /*enabled*/) { }
   virtual void setLoggingOn(bool enable) = 0;
   virtual void eraseLogFile() = 0;
   virtual void dumpLogFile() = 0;

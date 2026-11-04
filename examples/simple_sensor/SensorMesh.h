@@ -129,6 +129,7 @@ public:
   void sendSelfAdvertisement(int delay_millis, bool flood) override;
   void updateAdvertTimer() override;
   void updateFloodAdvertTimer() override;
+  void onRadio2FloodAdvertChanged(bool enabled) override { if (!enabled) secondary_flood_advert.pause(); }
   void setLoggingOn(bool enable) override {  }
   void eraseLogFile() override { }
   void dumpLogFile() override { }
