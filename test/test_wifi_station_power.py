@@ -12,6 +12,12 @@ def power_policy():
     return source[source.index("namespace mesh {"):]
 
 
+def tx_power_policy():
+    # The whole header: the WIFI_TX_POWER_DBM range static_assert is part of the
+    # contract the modem-sleep clamp depends on.
+    return (ROOT / "src/helpers/esp32/WiFiTxPowerPolicy.h").read_text()
+
+
 class WiFiStationPowerTest(unittest.TestCase):
     compile_and_run = wifi_start.WiFiOtaStartTest.compile_and_run
 
@@ -32,9 +38,25 @@ int esp_wifi_set_max_tx_power(int8_t power) {
   if (!tx_success) return -8;
   applied_tx=power; return ESP_OK;
 }
-''' + power_policy() + r'''
+''' + tx_power_policy() + power_policy() + r'''
 int main() {
   using mesh::wifi::applyStationPowerSave;
+  using mesh::wifi::stationPowerSaveTxPower;
+#ifdef TEST_TX_CEILING
+  // esp_wifi_set_max_tx_power() replaces the ceiling, so a profile cap of
+  // WIFI_TX_POWER_DBM must survive every modem-sleep write.
+  {
+    const int normal=78, saving=44;
+    const int expected_normal=normal < TX_CEILING_UNITS ? normal : TX_CEILING_UNITS;
+    const int expected_saving=saving < TX_CEILING_UNITS ? saving : TX_CEILING_UNITS;
+    assert(applyStationPowerSave(WIFI_PS_NONE)==ESP_OK);
+    assert(applied_tx==expected_normal);
+    assert(applyStationPowerSave(WIFI_PS_MIN_MODEM)==ESP_OK);
+    assert(applied_tx==expected_saving);
+    assert(stationPowerSaveTxPower(WIFI_PS_NONE)==expected_normal);
+    return 0;
+  }
+#endif
 #ifdef TEST_OVERRIDES
   const int normal=68, saving=34;
 #else
@@ -66,6 +88,17 @@ int main() {
                              "-DTEST_OVERRIDES=1",
                              "-DMQTT_WIFI_TX_POWER=WIFI_POWER_17dBm",
                              "-DMQTT_WIFI_POWER_SAVE_TX_POWER=WIFI_POWER_8_5dBm")
+
+    def test_profile_tx_ceiling_is_not_reopened_by_power_save(self):
+        # 13 dBm = 52 SDK units: below the 19.5 dBm modem-sleep write, so the
+        # clamp must hold it. 20 dBm = 80 units: above it, so normal power is
+        # left alone.
+        self.compile_and_run("#include <initializer_list>\n" + self.fixture(),
+                             "-DTEST_TX_CEILING=1", "-DWIFI_TX_POWER_DBM=13",
+                             "-DTX_CEILING_UNITS=52")
+        self.compile_and_run("#include <initializer_list>\n" + self.fixture(),
+                             "-DTEST_TX_CEILING=1", "-DWIFI_TX_POWER_DBM=20",
+                             "-DTX_CEILING_UNITS=80")
 
 
 if __name__ == "__main__":

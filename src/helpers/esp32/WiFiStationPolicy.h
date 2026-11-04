@@ -36,6 +36,11 @@ inline wl_status_t beginStation(const char* ssid, const char* password) {
 #if defined(MESH_SOAK_WIFI_KEY_OVERRIDE)
   password = mesh::hil::soakStationPassword(password);
 #endif
+  // The ceiling is a profile setting, not a join precondition: a driver that
+  // has not started yet, or a failed write, must not prevent the association.
+  if (applyStationTxPowerCap() != ESP_OK) {
+    noteStationDiagnosticPhase(ConnectionPhase::PolicyFailed);
+  }
   if (!espNowChannelConstrained()) {
     return beginStationWithSecurity(ssid, password);
   }

@@ -3,6 +3,8 @@
 #include <WiFi.h>
 #include <esp_wifi.h>
 
+#include <helpers/esp32/WiFiTxPowerPolicy.h>
+
 namespace mesh {
 namespace wifi {
 
@@ -23,10 +25,25 @@ inline wifi_power_t stationTransmitPower(wifi_ps_type_t mode) {
 
 // Restore normal transmit power when modem sleep is disabled, including after
 // a live settings change or reconnect. The SDK enforces its radio limits.
+//
+// esp_wifi_set_max_tx_power() replaces the ceiling rather than raising it, so
+// the modem-sleep value must never exceed a profile's WIFI_TX_POWER_DBM cap.
+// Without the clamp, every association and every power-save change silently
+// reopens the ceiling the profile deliberately closed: a board capped at 13 dBm
+// that runs with power save off gets 19.5 dBm back on the next connect event.
+inline int8_t stationPowerSaveTxPower(wifi_ps_type_t mode) {
+  int8_t power = static_cast<int8_t>(stationTransmitPower(mode));
+#if defined(WIFI_TX_POWER_DBM)
+  const int8_t cap = configuredTxPowerUnits();
+  if (power > cap) power = cap;
+#endif
+  return power;
+}
+
 inline esp_err_t applyStationPowerSave(wifi_ps_type_t mode) {
   const esp_err_t result = esp_wifi_set_ps(mode);
   if (result != ESP_OK) return result;
-  return esp_wifi_set_max_tx_power(static_cast<int8_t>(stationTransmitPower(mode)));
+  return esp_wifi_set_max_tx_power(stationPowerSaveTxPower(mode));
 }
 
 }  // namespace wifi

@@ -955,6 +955,36 @@ On MQTT builds, `set usb.logging on` and `set usb.debug on` also enable live
 USB event logs after the MQTT network owner initializes. `get mqttN.diag`
 describes broker/transport failures; use `get wifi.diag` for the station link.
 
+### Per-board WiFi transmit-power ceiling
+
+ESP-IDF expresses the station's maximum transmit power in 0.25 dBm steps over
+2–20 dBm, and the driver floors a request to its own power table. Some ESP32-S3
+boards reach a practical WiFi ceiling well below the SDK maximum: a hotter PA
+lengthens association and produces 802.11 missing-ack (34) and timeout (39)
+disconnects.
+
+A build profile can cap that ceiling with `WIFI_TX_POWER_DBM`. Boards that do not
+define it keep the limit from their PHY init data, so the setting never changes
+other targets. The Meshnology W12 profile sets 13 dBm for every W12 target:
+
+```ini
+[meshnology_w12]
+build_flags =
+  ...
+  -D WIFI_TX_POWER_DBM=13
+```
+
+The ceiling is applied on each station join and is not a join precondition: a
+driver that has not started yet is retried on the next attempt. With USB
+debugging enabled, WebConfig prints the ceiling the driver actually accepted:
+
+```text
+WiFi TX ceiling: 13.00 dBm (profile requests 13 dBm)
+```
+
+A lower reported value means the driver floored the request to its table. A
+"driver rejected the requested value" line means the ceiling was not applied.
+
 ### MQTT observer diagnostics
 
 For an MQTT observer:

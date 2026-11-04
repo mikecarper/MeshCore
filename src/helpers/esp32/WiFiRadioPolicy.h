@@ -5,6 +5,7 @@
 #include <esp_wifi.h>
 #include <helpers/WiFiChannelPolicy.h>
 #include <helpers/esp32/WiFiCompatibility.h>
+#include <helpers/esp32/WiFiTxPowerPolicy.h>
 #include <atomic>
 
 #if defined(MESH_PRIMARY_ESPNOW) && MESH_PRIMARY_ESPNOW
@@ -175,6 +176,27 @@ inline bool stationMutationAllowed(bool setup_handoff = false) {
   const esp_err_t result = esp_wifi_get_mode(&mode);
   return result == ESP_ERR_WIFI_NOT_INIT
       || (result == ESP_OK && (!(mode & WIFI_MODE_AP) || setup_handoff));
+}
+
+// Apply a profile's WiFi transmit-power ceiling. esp_wifi_set_max_tx_power()
+// is a country-level limit and reports ESP_ERR_WIFI_NOT_STARTED before
+// esp_wifi_start(), so a not-yet-started driver is not a failure: the next join
+// after WiFi.mode(WIFI_STA) writes it. Boards without WIFI_TX_POWER_DBM return
+// ESP_OK and keep the PHY init data's own ceiling.
+inline esp_err_t applyStationTxPowerCap() {
+#if defined(WIFI_TX_POWER_DBM)
+  const int8_t requested = mesh::wifi::configuredTxPowerUnits();
+  const esp_err_t result = esp_wifi_set_max_tx_power(requested);
+  if (result == ESP_ERR_WIFI_NOT_STARTED) return ESP_OK;
+  if (result != ESP_OK) return result;
+  int8_t applied = 0;
+  if (esp_wifi_get_max_tx_power(&applied) != ESP_OK) return ESP_ERR_INVALID_STATE;
+  // The driver floors a request to its table, so accept any applied ceiling
+  // that is no higher than the requested one.
+  return applied <= requested ? ESP_OK : ESP_ERR_INVALID_STATE;
+#else
+  return ESP_OK;
+#endif
 }
 
 inline esp_err_t applyAccessPointProtocolMask() {
