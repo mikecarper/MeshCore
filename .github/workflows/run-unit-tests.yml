@@ -593,6 +593,10 @@ jobs:
           python3 -B test/test_lr2021_apply_transaction.py -v
           python3 -B test/test_lr2021_trim_apply_wait.py -v
           python3 -B test/test_lr2021_calibration.py -v
+          python3 -B test/test_lr2021_auto_trim.py -v
+          python3 -B test/test_lr2021_auto_trim_profiles.py -v
+          python3 -B test/test_lr2021_frequency_correction.py -v
+          python3 -B test/test_lr2021_packet_frequency.py -v
           python3 -B test/test_meshtracker_x1_battery.py -v
           python3 -B test/test_drv2605_power.py -v
           python3 -B test/test_radio_interrupt_recovery.py -v
@@ -1201,6 +1205,8 @@ jobs:
           python3 -B test/test_wifi_compatibility.py -v
           python3 -B test/test_companion_wifi_compatibility.py -v
           python3 -B test/test_companion_wifi_status_format.py -v
+          python3 -B test/test_wifi_station_tx_power.py -v
+          python3 -B test/test_wifi_tx_cli.py -v
           python3 -B test/test_serial_ethernet_sessions.py -v
           python3 -B test/test_companion_wifi_session.py -v
           python3 -B test/test_espnow_radio_lifecycle.py -v

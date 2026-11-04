@@ -3,6 +3,7 @@
 #include <stddef.h>
 #include <stdint.h>
 #include <string.h>
+#include "LR2021FrequencyCorrection.h"
 
 namespace mesh { namespace lr2021 {
 
@@ -12,7 +13,13 @@ struct XoscTrimSelection {
   bool enabled = false;
   uint8_t a = 0;
   uint8_t b = 0;
+  int32_t correction_ppb = 0;
 };
+
+inline bool sameCalibration(const XoscTrimSelection& a, const XoscTrimSelection& b) {
+  return a.enabled == b.enabled && (!a.enabled || (a.a == b.a && a.b == b.b))
+      && a.correction_ppb == b.correction_ppb;
+}
 
 inline bool validXoscTrim(uint8_t a, uint8_t b) {
   return a <= XoscTrimMaximum && b <= XoscTrimMaximum;
@@ -57,30 +64,58 @@ inline bool parseXoscTrim(const char* value, XoscTrimSelection& selection) {
   return true;
 }
 
-constexpr size_t XoscTrimRecordSize = 8;
-
-inline void encodeXoscTrim(const XoscTrimSelection& selection,
-                          uint8_t (&record)[XoscTrimRecordSize]) {
+constexpr size_t XoscTrimLegacyRecordSize = 8;
+inline void encodeLegacyXoscTrim(const XoscTrimSelection& selection,
+                                 uint8_t (&record)[XoscTrimLegacyRecordSize]) {
   record[0] = 'X'; record[1] = 'T'; record[2] = 1;
   record[3] = selection.enabled ? 1 : 0;
   record[4] = selection.enabled ? selection.a : 0;
   record[5] = selection.enabled ? selection.b : 0;
-  record[6] = 0;
-  record[7] = 0;
-  for (size_t i = 0; i < XoscTrimRecordSize - 1; ++i) record[7] ^= record[i];
+  record[6] = record[7] = 0;
+  for (unsigned i = 0; i < 7; ++i) record[7] ^= record[i];
+}
+#if defined(MESHNOLOGY_W12) && defined(MESH_ENABLE_LR2021_AUTO_XTRIM) && MESH_ENABLE_LR2021_AUTO_XTRIM
+constexpr size_t XoscTrimRecordSize = 12;
+#else
+constexpr size_t XoscTrimRecordSize = XoscTrimLegacyRecordSize;
+#endif
+
+inline void encodeXoscTrim(const XoscTrimSelection& selection,
+                          uint8_t (&record)[XoscTrimRecordSize]) {
+  record[0] = 'X'; record[1] = 'T'; record[2] = XoscTrimRecordSize == 12 ? 2 : 1;
+  record[3] = selection.enabled ? 1 : 0;
+  record[4] = selection.enabled ? selection.a : 0;
+  record[5] = selection.enabled ? selection.b : 0;
+  memset(record + 6, 0, XoscTrimRecordSize - 6);
+#if defined(MESHNOLOGY_W12) && defined(MESH_ENABLE_LR2021_AUTO_XTRIM) && MESH_ENABLE_LR2021_AUTO_XTRIM
+  const uint32_t bits = static_cast<uint32_t>(selection.correction_ppb);
+  for (unsigned i = 0; i < 4; ++i) record[6+i] = static_cast<uint8_t>(bits >> (i*8));
+#endif
+  for (size_t i = 0; i < XoscTrimRecordSize - 1; ++i) record[XoscTrimRecordSize-1] ^= record[i];
 }
 
 inline bool decodeXoscTrim(const uint8_t* record, size_t length,
                           XoscTrimSelection& selection) {
-  if (!record || length != XoscTrimRecordSize || record[3] > 1
+  if (!record || (length != XoscTrimRecordSize && length != XoscTrimLegacyRecordSize) || record[3] > 1
       || !validXoscTrim(record[4], record[5])) return false;
   XoscTrimSelection candidate;
   candidate.enabled = record[3] != 0;
   candidate.a = record[4];
   candidate.b = record[5];
-  uint8_t expected[XoscTrimRecordSize];
-  encodeXoscTrim(candidate, expected);
-  if (memcmp(record, expected, length)) return false;
+  if (record[0] != 'X' || record[1] != 'T' || record[2] != (length == 12 ? 2 : 1)) return false;
+  uint8_t checksum = 0;
+  for (size_t i = 0; i < length - 1; ++i) checksum ^= record[i];
+  if (checksum != record[length-1] || (!candidate.enabled && (candidate.a || candidate.b))) return false;
+  if (length == XoscTrimLegacyRecordSize) {
+    if (record[6]) return false;
+  } else {
+    if (record[10]) return false;
+    const uint32_t bits = uint32_t(record[6]) | (uint32_t(record[7]) << 8)
+        | (uint32_t(record[8]) << 16) | (uint32_t(record[9]) << 24);
+    candidate.correction_ppb = bits <= INT32_MAX ? static_cast<int32_t>(bits)
+        : static_cast<int32_t>(static_cast<int64_t>(bits) - 0x100000000LL);
+    if (!validFrequencyCorrection(candidate.correction_ppb)) return false;
+  }
   selection = candidate;
   return true;
 }

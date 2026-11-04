@@ -170,6 +170,14 @@ public:
   */
   virtual int recvRaw(uint8_t* bytes, int sz) = 0;
 
+#if defined(MESH_ENABLE_LR2021_AUTO_XTRIM) && MESH_ENABLE_LR2021_AUTO_XTRIM
+  // Read only immediately after a successful recvRaw; callers must copy it.
+  virtual bool lastPacketFrequency(lr2021::PacketFrequencyObservation& out) const {
+    out = {};
+    return false;
+  }
+#endif
+
   /** Called after the received packet and its radio metadata have been processed. */
   virtual void onReceiveProcessed() { }
 

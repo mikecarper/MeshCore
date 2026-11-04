@@ -5,6 +5,10 @@
 #include "MeshCore.h"
 #include "LR2021Band.h"
 #include "LR2021CalibrationPolicy.h"
+#if defined(MESH_ENABLE_LR2021_AUTO_XTRIM) && MESH_ENABLE_LR2021_AUTO_XTRIM
+#include "LR2021PacketFrequency.h"
+#include "LR2021FrequencyCorrection.h"
+#endif
 #include "../MorseRx.h"
 #include <stdio.h>
 
@@ -41,6 +45,13 @@ class CustomLR2021 : public LR2021 {
   float _last_frequency_error_mhz = 0;
   uint32_t _last_frequency_error_at = 0;
   bool _last_frequency_error_valid = false;
+#if defined(MESH_ENABLE_LR2021_AUTO_XTRIM) && MESH_ENABLE_LR2021_AUTO_XTRIM
+  // Unlike the retained CLI value, this validity belongs to the latest read.
+  bool _packet_frequency_valid = false;
+  int32_t _frequency_correction_ppb = 0;
+  float _nominal_frequency_mhz = 0;
+  float _last_packet_nominal_frequency_mhz = 0;
+#endif
   uint32_t _rf_switch_pins[Module::RFSWITCH_MAX_PINS] = {};
   const Module::RfSwitchMode_t* _rf_switch_table = nullptr;
 
@@ -220,10 +231,29 @@ class CustomLR2021 : public LR2021 {
         return;
       }
       const uint32_t age_seconds = uint32_t(this->mod->hal->millis() - _last_frequency_error_at) / 1000;
+#if defined(MESH_ENABLE_LR2021_AUTO_XTRIM) && MESH_ENABLE_LR2021_AUTO_XTRIM
+      snprintf(reply, capacity, "> %+ld Hz; freq=%.6f MHz; age=%lus; programmed=%.6f MHz",
+          static_cast<long>(_last_frequency_error_hz), static_cast<double>(_last_packet_nominal_frequency_mhz),
+          static_cast<unsigned long>(age_seconds), static_cast<double>(_last_frequency_error_mhz));
+#else
       snprintf(reply, capacity, "> %+ld Hz; freq=%.6f MHz; age=%lus",
           static_cast<long>(_last_frequency_error_hz), static_cast<double>(_last_frequency_error_mhz),
           static_cast<unsigned long>(age_seconds));
+#endif
     }
+
+#if defined(MESH_ENABLE_LR2021_AUTO_XTRIM) && MESH_ENABLE_LR2021_AUTO_XTRIM
+    bool lastPacketFrequency(mesh::lr2021::PacketFrequencyObservation& out) const {
+      out = {};
+      if (!_packet_frequency_valid) return false;
+      out.offset_hz = _last_frequency_error_hz;
+      // Match RadioLib's MHz-to-Hz conversion for SetRfFrequency.
+      out.frequency_hz = static_cast<uint32_t>(_last_packet_nominal_frequency_mhz * 1000000.0f);
+      out.captured_at_ms = _last_frequency_error_at;
+      out.valid = true;
+      return true;
+    }
+#endif
 
 #if LR2021_TX_PREARM_MS > 0
     using LR2021::standby;
@@ -260,7 +290,12 @@ class CustomLR2021 : public LR2021 {
 
     int16_t beginMorseReceive(float frequency_mhz) {
       const auto regulator = _regulator.beginInitialization();
-      const uint8_t gain = mesh::lr2021::isHighBand(frequency_mhz) ? gainModeHf : gainModeLf;
+#if defined(MESH_ENABLE_LR2021_AUTO_XTRIM) && MESH_ENABLE_LR2021_AUTO_XTRIM
+      const float hardware_frequency_mhz = mesh::lr2021::correctedFrequencyMHz(frequency_mhz, _frequency_correction_ppb);
+#else
+      const float hardware_frequency_mhz = frequency_mhz;
+#endif
+      const uint8_t gain = mesh::lr2021::isHighBand(hardware_frequency_mhz) ? gainModeHf : gainModeLf;
       int16_t status = LR2021::beginGFSK(frequency_mhz,
           mesh::MorseRx::ReceiverBitRateKbps, 0.6f, 4.8f, 2, 16, tcxoVoltage);
       if (status == RADIOLIB_ERR_NONE) status = restoreXoscTrim();
@@ -387,6 +422,22 @@ class CustomLR2021 : public LR2021 {
     }
 
     float getFreqMHz() const { return freqMHz; }
+#if defined(MESH_ENABLE_LR2021_AUTO_XTRIM) && MESH_ENABLE_LR2021_AUTO_XTRIM
+    float getNominalFreqMHz() const { return _nominal_frequency_mhz; }
+    int32_t frequencyCorrectionPpb() const { return _frequency_correction_ppb; }
+    bool configureFrequencyCorrection(int32_t ppb) {
+      if (!mesh::lr2021::validFrequencyCorrection(ppb)) return false;
+      _frequency_correction_ppb = ppb;
+      return true;
+    }
+    using LR2021::setFrequency;
+    int16_t setFrequency(float nominal_mhz) override {
+      const float actual_mhz = mesh::lr2021::correctedFrequencyMHz(nominal_mhz, _frequency_correction_ppb);
+      const int16_t result = LR2021::setFrequency(actual_mhz);
+      if (result == RADIOLIB_ERR_NONE) _nominal_frequency_mhz = nominal_mhz;
+      return result;
+    }
+#endif
 
     int16_t transmitMorseCarrier() {
       // RadioLib's generic direct-TX path always selects MODE_TX. Use the
@@ -523,6 +574,9 @@ class CustomLR2021 : public LR2021 {
     }
 
     int16_t readData(uint8_t* data, size_t len) override {
+#if defined(MESH_ENABLE_LR2021_AUTO_XTRIM) && MESH_ENABLE_LR2021_AUTO_XTRIM
+      _packet_frequency_valid = false;
+#endif
       // PR #3512 (d208bfef): reject continuous-RX FIFO races. The wrapper
       // stops RX before this snapshot; reject errors/mismatches before copying.
       uint16_t fifo_level = 0;
@@ -546,6 +600,10 @@ class CustomLR2021 : public LR2021 {
         _last_frequency_error_mhz = measured_frequency;
         _last_frequency_error_at = this->mod->hal->millis();
         _last_frequency_error_valid = true;
+#if defined(MESH_ENABLE_LR2021_AUTO_XTRIM) && MESH_ENABLE_LR2021_AUTO_XTRIM
+        _packet_frequency_valid = true;
+        _last_packet_nominal_frequency_mhz = _nominal_frequency_mhz;
+#endif
       }
       // A bad CRC/read leaves the last valid sample and its original age.
       return result;

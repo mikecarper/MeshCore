@@ -2,6 +2,7 @@
 
 #include <WiFi.h>
 #include <helpers/esp32/WiFiRadioPolicy.h>
+#include <helpers/esp32/WiFiStationPower.h>
 #include <helpers/esp32/ManagementPassword.h>
 #include <string.h>
 
@@ -116,6 +117,9 @@ inline bool startAccessPoint(const char* ssid, bool reuse_existing, const char* 
       && WiFi.softAP(ssid, password, channel)
       && applyAccessPointProtocolMask() == ESP_OK;
   if (ready) {
+    // Leave automatic AP defaults intact; an explicit WiFi TX preference is
+    // shared across station and AP modes on the same physical radio.
+    (void)applyManualStationTxPower();
     ready = false;
     const uint32_t started = millis();
     do {

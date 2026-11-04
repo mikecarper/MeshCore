@@ -63,11 +63,14 @@ inline bool validateSideDetectorSFs(const uint8_t* side_sfs, uint8_t num,
   if (num == 0) return true;
   if (primary_sf < 5 || primary_sf > 12 || bandwidth_khz <= 0.0f) return false;
 
-  // These limits mirror LR2021::setSideDetector(). A primary SF of 10 or
-  // greater permits two side detectors, not one.
-  if ((primary_sf >= 10 || bandwidth_khz > 500.0f) && num > 2) return false;
+  // LR20xx datasheet 9.9.6: a main SF of 10-12 permits only one side
+  // detector. Above 500 kHz there can be at most two side detectors.
+  if (primary_sf >= 10 && num > 1) return false;
+  if (bandwidth_khz > 500.0f && num > 2) return false;
 
-  uint32_t detector_factor_sum = 0;
+  // The detection-factor budget includes the main detector as well.
+  uint32_t detector_factor_sum =
+      10U + static_cast<uint32_t>(((primary_sf - 5U) >> 1U) << 1U);
   for (uint8_t i = 0; i < num; i++) {
     const uint8_t sf = side_sfs[i];
     if (sf < 5 || sf > 12 || sf <= primary_sf || sf > primary_sf + 4) return false;

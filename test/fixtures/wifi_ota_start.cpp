@@ -164,6 +164,7 @@ esp_err_t esp_wifi_set_protocol(int interface_id, uint8_t protocols) {
   return ESP_OK;
 }
 namespace mesh { namespace wifi {
+esp_err_t applyManualStationTxPower() { return ESP_OK; }
 bool espNowChannelConstrained() { return constrain_espnow_channel; }
 uint8_t activeEspNowChannel() { return 6; }
 uint8_t stationScanChannel() { return constrain_espnow_channel ? 6 : 0; }

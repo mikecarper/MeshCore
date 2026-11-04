@@ -318,7 +318,7 @@ struct MQTTBridge {
 class MqttHandshakeSchedulerTest(unittest.TestCase):
     def fixture(self):
         bridge = "src/helpers/bridges/MQTTBridge.cpp"
-        power_methods = "\n".join(method("src/helpers/esp32/WiFiStationPower.h", signature) for signature in (
+        power_methods = "inline esp_err_t applyRequestedStationTxPower(int8_t p) { return esp_wifi_set_max_tx_power(p); }\n" + "\n".join(method("src/helpers/esp32/WiFiStationPower.h", signature) for signature in (
             "inline wifi_power_t stationTransmitPower(",
             "inline esp_err_t applyStationPowerSave(",
         ))

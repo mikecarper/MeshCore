@@ -762,6 +762,24 @@ radio limits. Builds can override these requests with `MQTT_WIFI_TX_POWER` and
 `MQTT_WIFI_POWER_SAVE_TX_POWER`, respectively. These settings affect WiFi only,
 not LoRa transmit power.
 
+To choose a different WiFi transmit-power limit, use:
+
+```text
+set wifi.tx 15
+get wifi.tx
+set wifi.tx auto
+```
+
+Values from 2 to 21 dBm in 0.25 dBm steps are accepted. The setting is saved
+and remains in effect across reconnects, reboots and changes to `wifi.powersave`.
+`auto` restores the existing power-saving-based policy. The driver selects a
+supported level and applies device and regulatory limits; the reported driver
+limit is not a measurement of RF output. WiFi station, setup AP and ESP-NOW
+share the same radio and power limit. This does not change LoRa `set tx`.
+On builds using ESP-NOW as the primary mesh radio, a manual `wifi.tx` setting
+also overrides that radio's WiFi power; `auto` restores its normal `set tx`
+behavior.
+
 ## Companion WiFi compatibility settings
 
 ESP32 WiFi Companions, including Full Companion, provide two independent,

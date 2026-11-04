@@ -84,6 +84,9 @@
 #include <helpers/esp32/CompanionAdminPassword.h>
 #include <helpers/esp32/ManagementPassword.h>
 #endif
+#if defined(ESP32) && defined(WIFI_SSID)
+#include <helpers/esp32/WiFiTxPowerCLI.h>
+#endif
 #include <helpers/UsbLoggingWatchdog.h>
 #if MESH_PACKET_LOGGING
 #include <helpers/SerialPacketLog.h>
@@ -1915,10 +1918,17 @@ void MyMesh::onGroupDataRecv(mesh::Packet* packet, uint8_t type,
   BaseChatMesh::onGroupDataRecv(packet, type, key, data, len);
 }
 
-#if defined(COMPANION_MESH_CLOCK_SYNC) || defined(MESHCORE_HAS_COLOR_DISPLAY)
+#if defined(COMPANION_MESH_CLOCK_SYNC) || defined(MESHCORE_HAS_COLOR_DISPLAY) \
+    || (defined(USE_LR2021) && defined(MESHNOLOGY_W12) && defined(MESH_ENABLE_LR2021_AUTO_XTRIM) && MESH_ENABLE_LR2021_AUTO_XTRIM)
 void MyMesh::onAdvertRecv(mesh::Packet* packet, const mesh::Identity& id,
                           uint32_t timestamp, const uint8_t* app_data,
                           size_t app_data_len) {
+#if defined(USE_LR2021) && defined(MESHNOLOGY_W12) && defined(MESH_ENABLE_LR2021_AUTO_XTRIM) && MESH_ENABLE_LR2021_AUTO_XTRIM
+  mesh::lr2021::observeLR2021AutoTrimAdvert(id.pub_key, timestamp,
+      getRTCClock()->getCurrentTime(), packet->lr2021_frequency,
+      !packet->radio_local && !packet->forwarded && packet->getPathHashCount() == 0);
+#endif
+
 #if defined(MESHCORE_HAS_COLOR_DISPLAY)
   if (!isLocalContactImport(packet)) {
     mesh::ui::observeDisplayNightAdvert(packet, id, self_id, app_data,
@@ -5255,6 +5265,19 @@ bool MyMesh::handleLocalControlCommand(const char* command, char* reply,
   }
 #endif
 
+  if (strcmp(command, "get wifi.tx") == 0) {
+    mesh::wifi::formatTxPowerStatus(reply, reply_size);
+    return true;
+  }
+
+  if (strcmp(command, "set wifi.tx") == 0
+      || strncmp(command, "set wifi.tx ", 12) == 0) {
+    const char* value = command + 11;
+    while (*value == ' ') value++;
+    mesh::wifi::handleTxPowerSet(value, reply, reply_size);
+    return true;
+  }
+
   if (strcmp(command, "get wifi.powersave") == 0) {
     formatWiFiPowerSaving(reply, reply_size);
     return true;
@@ -5877,6 +5900,10 @@ void MyMesh::execCommand(char* cmd, char* reply) {
   }
 #endif
 #if defined(ESP32) && defined(WIFI_SSID)
+  if (cmd && strcmp(cmd, "get wifi.tx") == 0) {
+    mesh::wifi::formatTxPowerStatus(reply, 160);
+    return;
+  }
   if (cmd && strcmp(cmd, "get wifi.powersave") == 0) {
     formatWiFiPowerSaving(reply, 160);
     return;
@@ -6020,6 +6047,10 @@ void MyMesh::execCommand(char* cmd, char* reply) {
     return;
   }
 #if defined(ESP32) && defined(WIFI_SSID)
+  if (strcmp(key, "wifi.tx") == 0) {
+    mesh::wifi::handleTxPowerSet(value, reply, 160);
+    return;
+  }
   if (strcmp(key, "wifi.powersave") == 0) {
     applyAndSaveWiFiPowerSaving(value, reply, 160);
     return;
@@ -10850,6 +10881,10 @@ void MyMesh::handleTerminalCommand(char* command, bool reader_prompt,
     applyAndSavePowerSaving(command + 12, reply);
     terminalOutput().printf("  -> %s\r\n", reply);
 #if defined(ESP32) && defined(WIFI_SSID)
+  } else if (strcmp(command, "get wifi.tx") == 0) {
+    char reply[160];
+    mesh::wifi::formatTxPowerStatus(reply, sizeof(reply));
+    terminalOutput().printf("  -> %s\r\n", reply);
   } else if (strcmp(command, "get wifi.powersave") == 0) {
     char reply[160];
     formatWiFiPowerSaving(reply, sizeof(reply));
@@ -10887,6 +10922,14 @@ void MyMesh::handleTerminalCommand(char* command, bool reader_prompt,
       applyAndSavePowerSaving(config + 12, reply);
       terminalOutput().printf("  -> %s\r\n", reply);
 #if defined(ESP32) && defined(WIFI_SSID)
+    } else if (strncmp(config, "wifi.tx", 7) == 0
+               && (config[7] == 0 || config[7] == ' '
+                   || config[7] == '\t')) {
+      const char* value = config + 7;
+      while (*value == ' ' || *value == '\t') value++;
+      char reply[160];
+      mesh::wifi::handleTxPowerSet(value, reply, sizeof(reply));
+      terminalOutput().printf("  -> %s\r\n", reply);
     } else if (strncmp(config, "wifi.powersave", 14) == 0
                && (config[14] == 0 || config[14] == ' '
                    || config[14] == '\t')) {

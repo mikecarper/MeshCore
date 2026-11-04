@@ -169,6 +169,9 @@ StaticPoolPacketManager::StaticPoolPacketManager(int pool_size)
 
 mesh::Packet* StaticPoolPacketManager::allocNew() {
   auto* packet = unused.removeByIdx(0);  // NULL if empty.
+#if MESH_ENABLE_LR2021_AUTO_XTRIM
+  if (packet) packet->lr2021_frequency = {};
+#endif
 #if defined(WITH_UDP_BRIDGE)
   if (packet) packet->udp_bridge_ingress = false;
 #endif

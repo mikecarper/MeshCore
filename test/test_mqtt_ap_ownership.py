@@ -36,7 +36,9 @@ class MQTTAccessPointOwnershipTest(unittest.TestCase):
         policy = (ROOT / "src/helpers/esp32/WiFiRadioPolicy.h").read_text(encoding="ascii")
         guard = method(policy, "inline bool stationMutationAllowed(")
         power = (ROOT / "src/helpers/esp32/WiFiStationPower.h").read_text(encoding="ascii")
-        power_methods = "\n".join(method(power, signature) for signature in (
+        # The separate TX-preference store is exercised by its own suite;
+        # this ownership fixture models its default automatic policy.
+        power_methods = "inline esp_err_t applyRequestedStationTxPower(int8_t p) { return esp_wifi_set_max_tx_power(p); }\n" + "\n".join(method(power, signature) for signature in (
             "inline wifi_power_t stationTransmitPower(",
             "inline esp_err_t applyStationPowerSave(",
         ))

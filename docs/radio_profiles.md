@@ -235,6 +235,16 @@ On LR2021 boards such as W12, saved extra-SF detectors pause when incompatible
 with the temporary tuple and return when normal radio settings are restored.
 Compatible extra-SF detectors remain active.
 
+LR2021 side detectors share the primary frequency and bandwidth and detect
+different spreading factors; they do not receive simultaneous packets. The
+primary SF must be the lowest. Up to three extras are supported, limited to
+one when the primary SF is 10 or higher and two above 500 kHz. The hardware's
+combined detector bandwidth limit can further reduce the allowed set. After a
+firmware update, an incompatible saved extra-SF list is cleared so the primary
+radio can start; configure a valid list again if needed.
+See the [LR20xx datasheet](https://www.semtech.com/products/wireless-rf/lora-plus/lr2021)
+for the detector limits.
+
 ## Repeater, room-server, and sensor replies
 
 These roles default to **`tx.reply both`** for CLI replies to authenticated

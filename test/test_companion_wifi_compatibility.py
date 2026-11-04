@@ -360,7 +360,7 @@ class CompanionWiFiCompatibilityTest(unittest.TestCase):
                 "bool handleCompanionWiFiCompatibilityCommand(",
             ]
         power = (ROOT / "src/helpers/esp32/WiFiStationPower.h").read_text()
-        power_methods = "\n".join(method(power, signature) for signature in (
+        power_methods = "inline esp_err_t applyRequestedStationTxPower(int8_t p) { return esp_wifi_set_max_tx_power(p); }\n" + "\n".join(method(power, signature) for signature in (
             "inline wifi_power_t stationTransmitPower(",
             "inline esp_err_t applyStationPowerSave(",
         ))
