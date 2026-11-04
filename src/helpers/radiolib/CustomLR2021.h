@@ -6,6 +6,7 @@
 #include "LR2021Band.h"
 #if defined(MESH_W12_PRAM_EXPERIMENT) && MESH_W12_PRAM_EXPERIMENT
 #include "W12RxDutyTiming.h"
+#include "W12PramLabTrace.h"
 #endif
 #include "LR2021CalibrationPolicy.h"
 #if defined(MESH_ENABLE_LR2021_AUTO_XTRIM) && MESH_ENABLE_LR2021_AUTO_XTRIM
@@ -594,7 +595,12 @@ class CustomLR2021 : public LR2021 {
       if (staged != RADIOLIB_ERR_NONE) return staged;
       uint8_t bytes[] = {uint8_t(t.rx_ticks >> 16), uint8_t(t.rx_ticks >> 8), uint8_t(t.rx_ticks),
                          uint8_t(t.cycle_ticks >> 16), uint8_t(t.cycle_ticks >> 8), uint8_t(t.cycle_ticks), 0};
-      return SPIcommand(RADIOLIB_LR2021_CMD_SET_RX_DUTY_CYCLE, true, bytes, sizeof(bytes));
+      // Include the arm command and RadioLib's immediate status verification:
+      // a subsequent NSS pulse may wake/cancel the duty-cycle state machine.
+      mesh::w12pram::spiTrace().active=true;
+      const int16_t rc=SPIcommand(RADIOLIB_LR2021_CMD_SET_RX_DUTY_CYCLE, true, bytes, sizeof(bytes));
+      if (rc!=RADIOLIB_ERR_NONE) mesh::w12pram::spiTrace().active=false;
+      return rc;
     }
     int16_t labSpiCommand(uint16_t op,bool write,uint8_t* data,size_t len,const uint8_t* out=nullptr,size_t outlen=0) {
       return SPIcommand(op,write,data,len,out,outlen);

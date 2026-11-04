@@ -24,6 +24,8 @@ private:
   uint32_t _lab_last_poll = 0, _lab_progress_at = 0, _lab_prev_cads = 0;
   uint32_t _lab_good = 0, _lab_bad = 0, _lab_recoveries = 0;
   uint32_t _lab_good_profile[2] = {};
+  uint32_t _lab_busy_high=0, _lab_busy_low=0, _lab_busy_edges=0;
+  bool _lab_busy_seen=false, _lab_busy_previous=false;
   uint8_t _lab_rx_preamble[2] = {}; // 0 uses normal profile auto/fixed choice
   mesh::w12pram::Status _lab_status = {};
 
@@ -107,6 +109,12 @@ public:
   }
   uint32_t getEstAirtimeFor(int len) override {
     if (_lab_scan_active && _lab_last_profile>=0) return getProfileAirtime(uint8_t(_lab_last_profile),len);
+    // LR2021::getTimeOnAir reads the packet type over SPI. Once RXPS is
+    // armed that NSS pulse can wake/stop the autonomous duty-cycle loop.
+    // The active profile is LoRa, so use the cached tuple instead. Supplying
+    // the coding rate also avoids getProfileAirtime's single-radio fallback.
+    if (_rx_ps_armed && _params_valid && _active_profile < 2 && _cur_cr >= 5 && _cur_cr <= 8)
+      return getProfileAirtime(_active_profile,len,_cur_cr);
     return RadioLibWrapper::getEstAirtimeFor(len);
   }
   float packetScore(float snr, int len) override {
@@ -115,6 +123,13 @@ public:
   }
   bool labScannerUncertain() const { return _lab_uncertain; }
   bool labScannerActive() const { return _lab_scan_active; }
+  void labRxpsBusyStatus(char* out, size_t capacity) const {
+    const auto& trace=mesh::w12pram::spiTrace();
+    snprintf(out,capacity,"RXPS busy=%lu/%lu edges=%lu armed=%u spi=%lu first=%04X,%04X,%04X,%04X",
+        (unsigned long)_lab_busy_high,(unsigned long)_lab_busy_low,
+        (unsigned long)_lab_busy_edges,unsigned(_rx_ps_armed), (unsigned long)trace.count,
+        trace.first[0],trace.first[1],trace.first[2],trace.first[3]);
+  }
   bool getProfileIdleDelay(uint32_t& delay_ms) const override {
     if (!_lab_scan_active) return RadioLibWrapper::getProfileIdleDelay(delay_ms);
     // The LR2021 owns both visits. The ESP32 may sleep without stopping CAD;
@@ -380,6 +395,13 @@ public:
   void loop() override {
     if (_lab_uncertain) return;
     if (!_lab_scan_active) {
+      if (_rx_ps_armed) {
+        // Sample the pin without SPI so observation cannot wake/cancel RXPS.
+        const bool busy=digitalRead(P_LORA_BUSY) == HIGH;
+        if (busy) ++_lab_busy_high; else ++_lab_busy_low;
+        if (_lab_busy_seen && busy!=_lab_busy_previous) ++_lab_busy_edges;
+        _lab_busy_seen=true; _lab_busy_previous=busy;
+      }
       RadioLibWrapper::loop();
       bool rx_allowed=true;
       bool radio_owned=_cw_active;

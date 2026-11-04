@@ -15,6 +15,7 @@ program = r'''
 #include <cstddef>
 #include <vector>
 #include "helpers/radiolib/W12RxDutyTiming.h"
+#include "helpers/radiolib/W12PramLabTrace.h"
 using RadioLibIrqFlags_t = uint32_t;
 constexpr int RADIOLIB_ERR_NONE=0, RADIOLIB_ERR_INVALID_RX_PERIOD=-1;
 constexpr int RADIOLIB_LR2021_RX_TIMEOUT_INF=0xFFFFFF;

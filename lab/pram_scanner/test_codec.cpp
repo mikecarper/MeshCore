@@ -1,8 +1,13 @@
 #include "helpers/radiolib/W12PramScannerCodec.h"
 #include "helpers/radiolib/W12RxDutyTiming.h"
+#include "helpers/radiolib/W12PramLabTrace.h"
 #include <cassert>
 using namespace mesh::w12pram;
 int main() {
+  auto& trace=mesh::w12pram::spiTrace(); trace.reset(); trace.add(0x1234); assert(trace.count==0);
+  trace.active=true; for (unsigned i=0;i<10;i++) trace.add(uint16_t(0x100+i));
+  assert(trace.count==10 && trace.first[0]==0x100 && trace.first[7]==0x107);
+  trace.reset(); assert(!trace.active && trace.count==0 && trace.first[0]==0);
   mesh::w12rxps::Timing timing{};
   assert(mesh::w12rxps::encode(65625,60000,1000,timing));
   assert(timing.rx_ticks==2150 && timing.cycle_ticks==4083);

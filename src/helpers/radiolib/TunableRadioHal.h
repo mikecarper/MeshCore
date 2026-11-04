@@ -2,6 +2,9 @@
 
 #include <hal/Arduino/ArduinoHal.h>
 #include "../RadioSwitchTuning.h"
+#if defined(MESH_W12_PRAM_EXPERIMENT) && MESH_W12_PRAM_EXPERIMENT
+#include "W12PramLabTrace.h"
+#endif
 
 // A radio keeps the board-selected SPI controller and its original lifetime
 // owner. Runtime tuning only changes transaction settings and transfer style;
@@ -30,6 +33,12 @@ class TunableRadioHal : public ArduinoHal {
   bool bufferedTransfersEnabled() const { return _bufferEnabled; }
 
  public:
+#if defined(MESH_W12_PRAM_EXPERIMENT) && MESH_W12_PRAM_EXPERIMENT
+  void spiTransfer(uint8_t* out, size_t len, uint8_t* in) override {
+    if (out && len >= 2) mesh::w12pram::spiTrace().add(uint16_t(out[0]) << 8 | out[1]);
+    ArduinoHal::spiTransfer(out, len, in);
+  }
+#endif
   explicit TunableRadioHal(SPIClass& bus, uint32_t hz = 8000000,
       bool initializeBus = false, bool canBuffer = false,
       uint32_t maxHz = DefaultMaxSpiHz)

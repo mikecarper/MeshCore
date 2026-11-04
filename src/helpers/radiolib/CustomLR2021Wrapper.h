@@ -732,10 +732,17 @@ protected:
 #if defined(MESH_W12_PRAM_EXPERIMENT) && MESH_W12_PRAM_EXPERIMENT
   int16_t armDutyCycle(RadioLibIrqFlags_t flags, RadioLibIrqFlags_t mask,
                        uint32_t* effective_rx_us, uint32_t* effective_sleep_us) override {
+    mesh::w12pram::spiTrace().reset();
+    _lab_busy_high=_lab_busy_low=_lab_busy_edges=0;
+    _lab_busy_seen=false;
     *effective_rx_us = _rx_ps_rx_us;
     *effective_sleep_us = _rx_ps_sleep_us;
     return static_cast<CustomLR2021*>(_radio)->labStartRxDutyCycle(
         _rx_ps_rx_us, _rx_ps_sleep_us, flags, mask);
+  }
+  int16_t stopDutyCycleHardware() override {
+    mesh::w12pram::spiTrace().active=false;
+    return _radio->standby();
   }
 #endif
 
