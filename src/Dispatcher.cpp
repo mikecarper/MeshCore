@@ -940,6 +940,14 @@ void Dispatcher::loop() {
       && (adaptive ? agc_reset.due(agc_now)
       : millisHasNowPassed(agc_reset.nextAt()))) {
     bool attempted;
+#if defined(MESH_W12_PRAM_EXPERIMENT) && MESH_W12_PRAM_EXPERIMENT
+    const uint32_t lab_agc_retry_ms = _radio->labAGCMaintenanceRetryMs();
+    if (lab_agc_retry_ms) {
+      // The scanner owns RF or a FIFO is ambiguous: never credit a no-op as
+      // maintenance, including in the legacy fixed-interval path.
+      attempted = false;
+    } else
+#endif
     if (!adaptive) {
       _radio->resetAGC();
       attempted = true;
@@ -952,6 +960,9 @@ void Dispatcher::loop() {
       // Ownership/calibration deferral is not a reset or health evidence.
       const uint32_t deferred_at = _ms->getMillis();
       uint32_t retry_delay = 50, receive_delay;
+#if defined(MESH_W12_PRAM_EXPERIMENT) && MESH_W12_PRAM_EXPERIMENT
+      if (lab_agc_retry_ms > retry_delay) retry_delay = lab_agc_retry_ms;
+#endif
       if (adaptive && _radio->getReceiveRetryDelay(deferred_at, receive_delay)
           && receive_delay > retry_delay) retry_delay = receive_delay;
       agc_reset.noteDeferred(deferred_at, retry_delay);

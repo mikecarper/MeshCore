@@ -21,6 +21,9 @@ private:
   float _lab_last_logical_mhz = 0;
   int _lab_last_profile = -1;
   int16_t _lab_error = 0;
+  int16_t _lab_last_recovery_error = 0;
+  mesh::w12pram::RecoveryOrigin _lab_recovery_origin = mesh::w12pram::RecoveryOrigin::None;
+  uint8_t _lab_recovery_timer = 0; // last cached observation before recovery
   uint32_t _lab_last_poll = 0, _lab_progress_at = 0, _lab_prev_cads = 0;
   uint32_t _lab_good = 0, _lab_bad = 0, _lab_recoveries = 0;
   uint32_t _lab_good_profile[2] = {};
@@ -91,8 +94,10 @@ private:
 #endif
     startRecv(); return isInRecvMode();
   }
-  void labRecover(int16_t err) {
-    _lab_error=err; ++_lab_recoveries; _lab_resume_pending=false;
+  void labRecover(int16_t err, mesh::w12pram::RecoveryOrigin origin=mesh::w12pram::RecoveryOrigin::Other) {
+    _lab_error=err; _lab_last_recovery_error=err; _lab_recovery_origin=origin;
+    _lab_recovery_timer=mesh::w12pram::timeoutObservation(_lab_status);
+    ++_lab_recoveries; _lab_resume_pending=false;
     // A chip reset tears down even a stuck PRAM hook and all custom code.
     if (!labReinitialize()) _profile_repair_required=true;
   }
@@ -123,6 +128,12 @@ public:
   }
   bool labScannerUncertain() const { return _lab_uncertain; }
   bool labScannerActive() const { return _lab_scan_active; }
+  bool hasAutonomousProfileIdle() const override { return _lab_scan_active && _lab_status.hooked; }
+  // A deferred attempt is not a successful reset. Retry on the health-poll
+  // cadence; once scanner ownership ends the same deadline remains due.
+  uint32_t labAGCMaintenanceRetryMs() const override {
+    return (_lab_scan_active || _lab_uncertain) ? 1000U : 0U;
+  }
   void labRxpsBusyStatus(char* out, size_t capacity) const {
     const auto& trace=mesh::w12pram::spiTrace();
     snprintf(out,capacity,"RXPS busy=%lu/%lu edges=%lu armed=%u spi=%lu first=%04X,%04X,%04X,%04X modes=%u,%u,%u,%u,%u,%u bad=%u",
@@ -146,7 +157,7 @@ public:
         && _profiles.generation[1] == _lab_snap[1].generation;
     delay_ms = mesh::w12pram::idleBudget(_lab_scan_active, _lab_status.hooked,
         blocked, generations_match, uint32_t(millis()), _lab_last_poll,
-        mesh::esp32::profileSleepSliceMillis());
+        mesh::esp32::autonomousProfileSleepSliceMillis());
     return delay_ms != 0;
   }
   void labScannerStatus(char* out, size_t cap) const {
@@ -161,6 +172,13 @@ public:
       (unsigned long)_lab_status.irq,(unsigned long)_lab_status.lost_irq,(unsigned long)_lab_status.irq_gate,
       (unsigned long)_lab_status.events,(unsigned long)_lab_good_profile[0],(unsigned long)_lab_good_profile[1],
       _lab_rx_preamble[0],_lab_rx_preamble[1]);
+  }
+  void labScannerRecoveryDiag(char* out, size_t cap) const {
+    snprintf(out,cap,"PRAM recovery origin=%s err=%d count=%lu timer=%s cached=%s",
+      mesh::w12pram::recoveryOriginName(_lab_recovery_origin),
+      int(_lab_last_recovery_error),(unsigned long)_lab_recoveries,
+      mesh::w12pram::timeoutObservationName(_lab_recovery_timer),
+      mesh::w12pram::timeoutObservationName(mesh::w12pram::timeoutObservation(_lab_status)));
   }
   bool labScannerSetRxPreamble(unsigned profile, unsigned preamble) {
     if (_lab_scan_active || _lab_resume_pending || _lab_uncertain || profile<1 || profile>2 || (preamble && (preamble<8 || preamble>255))) return false;
@@ -428,11 +446,35 @@ public:
     if ((uint32_t)(now-_lab_last_poll)<1000 || isChipBusy()) return;
     _lab_last_poll=now;
     mesh::w12pram::Status s={}; int16_t rc=labScannerCommand(2,nullptr,0,s);
-    if (rc!=RADIOLIB_ERR_NONE || !s.hooked) { labRecover(rc ? rc : RADIOLIB_ERR_UNKNOWN); return; }
+    if (rc!=RADIOLIB_ERR_NONE || !s.hooked) {
+      labRecover(rc ? rc : RADIOLIB_ERR_UNKNOWN, mesh::w12pram::RecoveryOrigin::StatusPoll); return;
+    }
     _lab_status=s;
+    // Op2 is a read-only snapshot. A separate guarded op7 can repair a lost
+    // header timer, without resetting a live timer or consuming pending RX.
+    if (mesh::w12pram::mayRepairHeaderTimer(s, hasPendingRadioInterrupt(),
+            digitalRead(P_LORA_DIO_1) == HIGH, isChipBusy())) {
+      mesh::w12pram::Status repaired={};
+      const int16_t repair_rc=labScannerCommand(7,nullptr,0,repaired);
+      // A failed or ambiguous repair leaves the original snapshot intact;
+      // the normal, IRQ-guarded watchdog remains the bounded fallback.
+      if (repair_rc==RADIOLIB_ERR_NONE && repaired.hooked) {
+        if (repaired.timer_repaired && repaired.state==3 && repaired.timeout_known && repaired.timeout_armed)
+          _lab_progress_at=now; // bounded: at most two real repairs per CAD visit
+        s=_lab_status=repaired;
+      }
+    }
     if (s.state==4 && (s.irq & (1u<<18))) _loop_event_pending=true; // recover missed ISR
     if (s.cads != _lab_prev_cads) { _lab_prev_cads=s.cads; _lab_progress_at=now; }
-    else if ((uint32_t)(now-_lab_progress_at)>10000) labRecover(RADIOLIB_ERR_SPI_CMD_TIMEOUT); // includes parked-without-IRQ
+    else if ((uint32_t)(now-_lab_progress_at)>10000) {
+      // RxDone can arrive as the watchdog expires. Keep its FIFO for
+      // recvRaw(), and recheck the interrupt immediately before any reset.
+      const bool pin_high = digitalRead(P_LORA_DIO_1) == HIGH;
+      if (mesh::w12pram::mayRecoverStalledScan(s, hasPendingRadioInterrupt(), pin_high)
+          && !hasPendingRadioInterrupt() && digitalRead(P_LORA_DIO_1) != HIGH) {
+        labRecover(RADIOLIB_ERR_SPI_CMD_TIMEOUT, mesh::w12pram::RecoveryOrigin::NoCad); // includes parked-without-IRQ
+      }
+    }
   }
   int recvRaw(uint8_t* bytes,int sz) override {
     if (_lab_uncertain) return 0;
@@ -441,10 +483,10 @@ public:
     if (_profiles.generation[0]!=_lab_snap[0].generation || _profiles.generation[1]!=_lab_snap[1].generation || !_profiles.enabled()) { labRecover(RADIOLIB_ERR_UNKNOWN); return 0; }
     auto* r=static_cast<CustomLR2021*>(_radio);
     mesh::w12pram::Status s={}; int16_t rc=labScannerCommand(2,nullptr,0,s);
-    if (rc!=RADIOLIB_ERR_NONE) { labRecover(rc); return 0; }
+    if (rc!=RADIOLIB_ERR_NONE) { labRecover(rc, mesh::w12pram::RecoveryOrigin::RxStatus); return 0; }
     const auto event=mesh::w12pram::classify(s);
     if (event==mesh::w12pram::RxEvent::Ignore) return 0; // late ISR after resume
-    if (event!=mesh::w12pram::RxEvent::Deliver) { labRecover(RADIOLIB_ERR_UNKNOWN); return 0; }
+    if (event!=mesh::w12pram::RxEvent::Deliver) { labRecover(RADIOLIB_ERR_UNKNOWN, mesh::w12pram::RecoveryOrigin::RxStatus); return 0; }
     _lab_status=s; const uint8_t ch=s.last_hit;
     const int len=r->getPacketLength(); int delivered=0;
     if (len>0 && len<=sz) {
@@ -456,7 +498,7 @@ public:
     } else { ++_lab_bad; ++n_recv_errors; (void)r->clearRxFifo(); }
     rc=labScannerCommand(3,nullptr,0,_lab_status); // parked until data has been consumed
     if (rc!=RADIOLIB_ERR_NONE || !_lab_status.hooked || _profiles.generation[0]!=_lab_snap[0].generation || _profiles.generation[1]!=_lab_snap[1].generation || !_profiles.enabled()) {
-      labRecover(rc ? rc : RADIOLIB_ERR_UNKNOWN);
+      labRecover(rc ? rc : RADIOLIB_ERR_UNKNOWN, mesh::w12pram::RecoveryOrigin::RxResume);
       return 0; // restore changes the live profile; never mislabel this frame
     }
     _lab_prev_cads=_lab_status.cads; _lab_progress_at=millis();

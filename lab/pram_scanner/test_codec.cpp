@@ -2,8 +2,16 @@
 #include "helpers/radiolib/W12RxDutyTiming.h"
 #include "helpers/radiolib/W12PramLabTrace.h"
 #include <cassert>
+#include <cstring>
+#include <initializer_list>
 using namespace mesh::w12pram;
 int main() {
+  assert(std::strcmp(recoveryOriginName(RecoveryOrigin::None),"none")==0);
+  assert(std::strcmp(recoveryOriginName(RecoveryOrigin::Other),"other")==0);
+  assert(std::strcmp(recoveryOriginName(RecoveryOrigin::NoCad),"no-cad")==0);
+  assert(std::strcmp(recoveryOriginName(RecoveryOrigin::StatusPoll),"status-poll")==0);
+  assert(std::strcmp(recoveryOriginName(RecoveryOrigin::RxStatus),"rx-status")==0);
+  assert(std::strcmp(recoveryOriginName(RecoveryOrigin::RxResume),"rx-resume")==0);
   const uint8_t stat[]={0x04, 0x04};
   auto& trace=mesh::w12pram::spiTrace(); trace.reset(); trace.add(0x1234,stat,sizeof stat); assert(trace.count==0);
   trace.active=true; for (unsigned i=0;i<10;i++) trace.add(uint16_t(0x100+i),stat,sizeof stat);
@@ -40,6 +48,26 @@ int main() {
   assert(!mayResume(true,false,true,false,true,false,true));
   assert(!mayResume(true,false,true,false,false,true,true));
   assert(!mayResume(true,false,true,false,false,false,false));
+  Status stalled{}; stalled.state=3;
+  assert(mayRecoverStalledScan(stalled,false,false)); // RX stuck without an event
+  assert(!mayRecoverStalledScan(stalled,true,false)); // queued software ISR
+  assert(!mayRecoverStalledScan(stalled,false,true)); // physical IRQ asserted
+  stalled.state=4; stalled.irq=1u<<18;
+  assert(!mayRecoverStalledScan(stalled,false,false)); // parked packet owns FIFO
+  stalled.state=3;
+  assert(!mayRecoverStalledScan(stalled,false,false)); // RxDone raced park
+  stalled.state=4; stalled.irq=0;
+  assert(mayRecoverStalledScan(stalled,false,false)); // parked with no packet
+  stalled.state=3; stalled.hooked=1; stalled.timeout_known=true; stalled.timeout_armed=false;
+  assert(mayRepairHeaderTimer(stalled,false,false,false));
+  assert(!mayRepairHeaderTimer(stalled,true,false,false));
+  assert(!mayRepairHeaderTimer(stalled,false,true,false));
+  assert(!mayRepairHeaderTimer(stalled,false,false,true));
+  for (unsigned bit : {6u,9u,18u,21u,22u,23u}) {
+    stalled.irq=1u<<bit; assert(!mayRepairHeaderTimer(stalled,false,false,false));
+  }
+  stalled.irq=0; stalled.timeout_armed=true;
+  assert(!mayRepairHeaderTimer(stalled,false,false,false));
   assert(idleBudget(true,true,false,true,100,0,10)==10);
   assert(idleBudget(true,true,false,true,997,0,10)==3);
   assert(idleBudget(true,true,false,true,1000,0,10)==0);
@@ -54,6 +82,19 @@ int main() {
   late.last_hit=2;assert(classify(late)==RxEvent::Invalid);
   late.last_hit=1;late.irq=0;assert(classify(late)==RxEvent::Invalid);
   late.state=1;late.hooked=0;assert(classify(late)==RxEvent::Invalid);
-  raw[3]=0x80; Status stopped=decode(raw); assert(stopped.stopped && !stopped.hooked); raw[3]=1;
+  raw[3]=0x80; Status stopped=decode(raw); assert(stopped.stopped && !stopped.hooked);
+  assert(timeoutObservation(stopped)==0); // old blob has no timer observation
+  raw[3]=0x05; Status timer_off=decode(raw);
+  assert(timer_off.hooked && !timer_off.stopped && timeoutObservation(timer_off)==1);
+  raw[3]=0x87; Status timer_on_stopped=decode(raw);
+  assert(timer_on_stopped.hooked && timer_on_stopped.stopped && timeoutObservation(timer_on_stopped)==2);
+  raw[3]=0x02; Status reserved=decode(raw);
+  assert(!reserved.hooked && !reserved.stopped && timeoutObservation(reserved)==0); // validity bit wins
+  raw[3]=0x0F; Status repaired=decode(raw);
+  assert(repaired.hooked && repaired.timeout_known && repaired.timeout_armed && repaired.timer_repaired);
+  assert(std::strcmp(timeoutObservationName(0),"unknown")==0);
+  assert(std::strcmp(timeoutObservationName(1),"off")==0);
+  assert(std::strcmp(timeoutObservationName(2),"armed")==0);
+  raw[3]=1;
   Status s=decode(raw); assert(s.state==4 && s.last_hit==1 && s.current==0 && s.hooked==1 && s.cads==7 && s.falses==8 && s.lost==9 && s.packets==10 && s.rounds==11 && s.events==12);
 }

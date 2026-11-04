@@ -143,6 +143,12 @@ public:
 #endif
 #if defined(MESH_W12_PRAM_EXPERIMENT) && MESH_W12_PRAM_EXPERIMENT
   virtual bool getW12PramRxSnapshot(W12PramRxSnapshot& out) const { out={}; return false; }
+  // A chip-owned scan can safely offer a longer CPU sleep admission than a
+  // host-timed profile visit. This is experimental and false by default.
+  virtual bool hasAutonomousProfileIdle() const { return false; }
+  // A scanner-owned or ambiguous FIFO cannot safely service AGC maintenance.
+  // Zero preserves the ordinary retry policy; this never reports a reset.
+  virtual uint32_t labAGCMaintenanceRetryMs() const { return 0; }
 #endif
   virtual uint8_t receiveProfile() const { return 0; }
   virtual uint32_t receiveProfileGeneration() const {
@@ -762,6 +768,11 @@ public:
     delay_millis = profile_millis;
     return true;
   }
+#if defined(MESH_W12_PRAM_EXPERIMENT) && MESH_W12_PRAM_EXPERIMENT
+  bool hasAutonomousDualRadioIdle() const {
+    return isDualRadioActive() && radio_available && _radio->hasAutonomousProfileIdle();
+  }
+#endif
 
   Packet* obtainNewPacket();
   void releasePacket(Packet* packet);

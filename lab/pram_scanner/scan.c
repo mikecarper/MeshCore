@@ -56,6 +56,7 @@ typedef int (*handler_t)(u32 len, const u8 *p, struct resp *r);
 #define GP 0x806000u
 #define EV_PENDING (*(volatile u32 *)(GP + 0x44))
 #define EV_LEFT    (*(volatile u32 *)(GP + 0x6C))
+#define RX_TIMEOUT_ARMED (*(volatile u8 *)(GP + 0x0C)) // ROM-owned timer flag; read only
 #define STATE_FN   (*(u32 (**)(u32))(GP + 0x34))
 #define NOTIFY_FN  (*(void (**)(u32))(GP + 0x38))
 #define ROM_STATUS_UPDATE ((void (*)(void))0x25A4)
@@ -77,21 +78,31 @@ static void yield(void) {
 
 struct chan { u32 freq; u8 mod0, mod1, peak, pre; };
 
-// RX timeout ticks (32.768 kHz) for `sym` symbols of this channel: sym * 2^sf / bw * 32768
+// RX timeout ticks (32.768 kHz), rounded up so the timeout is never early.
 static u32 wait_ticks(u32 mod0, u32 sym) {
-  u32 sf = mod0 >> 4, bwc = mod0 & 0x0F, bw_div;
+  u32 sf = mod0 >> 4, bwc = mod0 & 0x0F, shift;
   switch (bwc) {
-    case 2: bw_div = 31250; break;
-    case 3: bw_div = 62500; break;
-    case 4: bw_div = 125000; break;
-    case 5: bw_div = 250000; break;
-    case 6: bw_div = 500000; break;
-    default: bw_div = 125000; break;
+    case 2: shift = 14; break; // 32768/31250 = 2^14/15625
+    case 3: shift = 13; break;
+    case 4: shift = 12; break;
+    case 5: shift = 11; break;
+    case 6: shift = 10; break;
+    default: shift = 12; break;
   }
-  u32 chips = sym << sf;                              // <= 255 * 4096
-  u32 q = chips / bw_div, rem = chips % bw_div;       // chips * 32768 / bw without overflowing 32 bits
-  u32 t = (q << 15) + ((((rem << 8) / bw_div)) << 7) + 1;
-  return t > 0xFFFFFFu ? 0xFFFFFFu : t;
+  if (!sym) return 1;
+  if (sf >= 32 || sym > (0xFFFFFFFFu >> sf)) return 0xFFFFFFu;
+  u32 chips = sym << sf;
+  // Split before multiplication: rem < 15625 and shift <= 14, so the
+  // rounded fractional numerator stays within 32 bits. No 64-bit divide is
+  // needed in the PRAM image.
+  u32 whole = chips / 15625u;
+  u32 rem = chips - whole * 15625u;
+  if (whole > (0xFFFFFFu >> shift)) return 0xFFFFFFu;
+  u32 t = whole << shift;
+  u32 tail = ((rem << shift) + 15624u) / 15625u;
+  if (tail > 0xFFFFFFu - t) return 0xFFFFFFu;
+  t += tail;
+  return t ? t : 1;
 }
 #define TAB ((const struct chan *)0x807800)
 #define POLL_MAX 200000u
@@ -103,7 +114,7 @@ int scan_cmd(u32 len, const u8 *p, struct resp *r) {
   if (n == 0 || n > 32 || rounds == 0) return 1;
   u32 wsym = p[3];
   u8 cadp[7] = { (u8)nsym, p[4], (u8)exitm, 0, 0, 0, 0 };
-  u8 fb[4], mod[2], pkt[4] = { 0, 0, 0, 0x02 };   // explicit header, CRC on, standard IQ
+  u8 fb[4], mod[2], pkt[4] = { 0, 0, 0xFF, 0x02 }; // max RX length, explicit header, CRC on
   u32 last_pre = 0x100, last_mod = 0xFFFFFFFFu, last_peak = 0x100, cads = 0, polls = 0, hit = 0xFF, rnd = 0, falses = 0;
   for (rnd = 0; rnd < rounds && hit == 0xFF; rnd++) {
     for (u32 c = 0; c < n; c++) {
@@ -169,6 +180,8 @@ out:
 // The host routes only RxDone to its DIO, so it sleeps through the hops.
 #define IRQ_HDR_ERR  (1u << 9)
 #define IRQ_CRC      (1u << 22)
+#define IRQ_HEADER_TERMINAL (IRQ_HDR | IRQ_RX_DONE | IRQ_TIMEOUT | IRQ_HDR_ERR)
+#define IRQ_HEADER_BLOCKED (IRQ_HEADER_TERMINAL | IRQ_CRC | (1u << 23))
 #define IRQ_OWN      (IRQ_PREAMBLE | IRQ_HDR | IRQ_CAD_DET | IRQ_HDR_ERR | IRQ_CAD_DONE | IRQ_TIMEOUT)
 #define IRQ_GATE     (*(volatile u32 *)0x80060C)   // global mask applied by 0x6ADC before the status
 // The RX timeout (a channel of the radio's 32.768 kHz timer block). SetRx arms it through 0xC7F4;
@@ -182,6 +195,7 @@ struct bgs {
   u32 running, state, n, c, wsym, gate_saved;
   u32 last_mod, last_pre, last_peak;
   u32 cads, falses, hdr_err, hits, rounds, last_hit, events, lost_irq;
+  u32 header_repairs;                 // bounded repairs for the current CAD visit
   u8 cadp[8];
 };
 #define BG ((struct bgs *)0x807A00)    // after the channel table (32 x 8 bytes at 0x807800)
@@ -197,7 +211,7 @@ static void hook_in(struct bgs *b) {
 
 static void start_cad(struct bgs *b) {
   const struct chan *ch = &TAB[b->c];
-  u8 fb[4], mod[2], pkt[4] = { 0, 0, 0, 0x02 };
+  u8 fb[4], mod[2], pkt[4] = { 0, 0, 0xFF, 0x02 };
   u32 f = ch->freq;
   fb[0] = f >> 24; fb[1] = f >> 16; fb[2] = f >> 8; fb[3] = f;
   H_SET_RF_FREQ(4, fb, 0);
@@ -209,6 +223,7 @@ static void start_cad(struct bgs *b) {
   b->cadp[3] = wt >> 16; b->cadp[4] = wt >> 8; b->cadp[5] = wt;
   H_CAD_PARAMS(7, b->cadp, 0);
   IRQ = IRQ_OWN;
+  b->header_repairs = 0;
   H_SET_CAD(0, 0, 0);
   b->cads++;
   b->state = S_CAD;
@@ -228,6 +243,24 @@ static void rx_abandon(struct bgs *b) {
   next_chan(b);
 }
 
+// Never restart a running timer or replace a terminal RX event. A repair is
+// bounded per visit; if the ROM repeatedly cancels it, the host watchdog
+// remains the final fallback rather than extending the window indefinitely.
+static u32 arm_header_timer(struct bgs *b, u32 owner, u32 repair) {
+  if (!owner || b->running != RUNNING || b->state != S_RX || RX_TIMEOUT_ARMED
+      || (repair && b->header_repairs >= 2) || (EV_PENDING & ~1u)
+      || (IRQ & IRQ_HEADER_BLOCKED)) return 0;
+  const struct chan *ch = &TAB[b->c];
+  const u32 ticks = wait_ticks(ch->mod0, (ch->pre ? ch->pre : 32) + 16);
+  if (RX_TIMEOUT_ARMED || (EV_PENDING & ~1u) || (IRQ & IRQ_HEADER_BLOCKED)) return 0;
+  if (repair) b->header_repairs++;
+  ROM_RX_TIMEOUT_ARM(ticks);
+  // A valid header/RxDone can race the final check and arm. Never leave a
+  // newly armed header timer running over that packet's payload.
+  if (IRQ & IRQ_HEADER_BLOCKED) ROM_RX_TIMEOUT_STOP();
+  return 1;
+}
+
 u32 bg_state(u32 ev) {
   struct bgs *b = BG;
   u32 (*h)(u32) = (u32 (*)(u32))b->orig;
@@ -239,6 +272,7 @@ u32 bg_state(u32 ev) {
   hook_in(b);                          // the ROM handler may have installed its successor
   b->events++;
   u32 s = IRQ;
+  u32 started_header_window = 0;
   switch (b->state) {
     case S_CAD:
       if (!(s & IRQ_CAD_DONE)) break;
@@ -252,9 +286,12 @@ u32 bg_state(u32 ev) {
         // A preamble stopped the RX timeout. Re-arm it until the header: a preamble that never
         // becomes a header (noise, an aborted packet, another modulation) would otherwise leave
         // the radio in RX with no event to wake the scan.
-        if (!(s & (IRQ_HDR | IRQ_RX_DONE))) {
-          const struct chan *ch = &TAB[b->c];
-          ROM_RX_TIMEOUT_ARM(wait_ticks(ch->mod0, (ch->pre ? ch->pre : 32) + 16));
+        if (!(s & IRQ_HEADER_TERMINAL)) {
+          // Replace the short CAD-to-preamble timeout with a full header
+          // window. No subsequent repair may restart an already armed timer.
+          ROM_RX_TIMEOUT_STOP();
+          arm_header_timer(b, STATE_SLOT == (u32)bg_state, 0);
+          started_header_window = 1;
         }
       } else {
         if (s & (IRQ_TIMEOUT | IRQ_HDR_ERR)) { b->falses++; rx_abandon(b); }
@@ -265,6 +302,8 @@ u32 bg_state(u32 ev) {
       if (s & (IRQ_HDR | IRQ_RX_DONE)) ROM_RX_TIMEOUT_STOP();   // the header came: no limit on the payload
       if (s & IRQ_RX_DONE) { b->hits++; b->state = S_PARK; }
       else if (s & (IRQ_TIMEOUT | IRQ_HDR_ERR)) { b->hdr_err++; b->lost_irq = s; rx_abandon(b); }
+      else if (!(s & IRQ_HDR) && !started_header_window)
+        arm_header_timer(b, STATE_SLOT == (u32)bg_state, 1);
       break;
     default:
       break;
@@ -273,7 +312,11 @@ u32 bg_state(u32 ev) {
 }
 
 static void bg_resp(struct bgs *b, struct resp *r) {
-  u32 v[10] = { b->state | (b->last_hit << 8) | (b->c << 16) | ((STATE_SLOT == (u32)bg_state) << 24),
+  // Byte 3: bit 0 is hooked, bit 7 remains op6's stopped flag. Bit 2 marks
+  // the lab timer observation as available; bit 1 is its instantaneous value.
+  // Old blobs leave both bits clear, so their status decodes as unknown.
+  u32 flags = (STATE_SLOT == (u32)bg_state ? 1u : 0u) | 4u | (RX_TIMEOUT_ARMED ? 2u : 0u);
+  u32 v[10] = { b->state | (b->last_hit << 8) | (b->c << 16) | (flags << 24),
                 b->cads, b->falses, b->hdr_err, b->hits, b->rounds, b->events, b->lost_irq, IRQ, IRQ_GATE };
   for (u32 i = 0; i < 10; i++) {
     r->buf[4 * i] = v[i]; r->buf[4 * i + 1] = v[i] >> 8; r->buf[4 * i + 2] = v[i] >> 16; r->buf[4 * i + 3] = v[i] >> 24;
@@ -286,7 +329,8 @@ static void bg_resp(struct bgs *b, struct resp *r) {
 //   op 1  start: scan the table from channel 0 and return at once (exit mode RX)
 //   op 3  resume after a packet: clear RxDone / CrcError (the host has read the packet) and
 //         carry on from the next channel
-//   op 2  status
+//   op 2  status (read only)
+//   op 7  guarded, bounded repair of a lost header timer
 //   op 0  stop: give the state slot back; the chip stays in whatever the ROM left it (send
 //         SetStandby next)
 // Response, 10 LE words: state | last hit << 8 | channel << 16 | hooked << 24, CADs, false alarms,
@@ -321,6 +365,14 @@ int bg_cmd(u32 len, const u8 *p, struct resp *r) {
     IRQ = IRQ_RX_DONE | IRQ_CRC | IRQ_OWN;
     b->last_mod = 0xFFFFFFFFu; b->last_pre = 0x100;
     next_chan(b);
+  } else if (op == 7) {
+    if (b->running != RUNNING) return 1;
+    const u32 repaired = arm_header_timer(b, STATE_SLOT == (u32)bg_state, 1);
+    bg_resp(b, r);
+    // The status describes the post-repair state. Bit 3 reports that this
+    // command actually armed, so the host never treats a no-op as progress.
+    if (repaired) r->buf[3] |= 0x08u;
+    return 3;
   } else if (op == 6) {
     // Lab extension: chip-side guarded handoff.  Normal CAD->RX processing
     // and host command dispatch share this main loop.  IRQ hardware may
@@ -360,7 +412,7 @@ int bg_cmd(u32 len, const u8 *p, struct resp *r) {
 int bench_cmd(u32 len, const u8 *p, struct resp *r) {
   if (len != 8 || p[0] > 1) return 1;
   if (p[0]) {
-    u8 pkt[4] = {0, p[7], 0, 0x02};
+    u8 pkt[4] = {0, p[7], 0xFF, 0x02};
     if (H_SET_RF_FREQ(4, p+1, 0) != 2 || H_LORA_MOD(2, p+5, 0) != 2 || H_LORA_PKT(4, pkt, 0) != 2) return 0;
   }
   r->buf[0] = 0x42; r->len=1; return 3;

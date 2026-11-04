@@ -18,7 +18,7 @@ program = r'''
 uint32_t now_ms=0; int pin_high=0;
 uint32_t millis() { return now_ms; }
 int digitalRead(int p) { assert(p==14); return pin_high; }
-namespace mesh { namespace esp32 { uint32_t profileSleepSliceMillis() { return 10; } } }
+namespace mesh { namespace esp32 { uint32_t autonomousProfileSleepSliceMillis() { return 1000; } } }
 class RadioLibWrapper { public: virtual bool getProfileIdleDelay(uint32_t& d) const { d=7; return true; } };
 class Wrapper : public RadioLibWrapper {
 public:
@@ -33,7 +33,8 @@ public:
 };
 int main() {
   Wrapper w; uint32_t ms=0; w._lab_status.hooked=1; w._lab_snap[0].generation=1; w._lab_snap[1].generation=2;
-  assert(w.getProfileIdleDelay(ms) && ms==10);
+  assert(w.getProfileIdleDelay(ms) && ms==1000);
+  now_ms=1; assert(w.getProfileIdleDelay(ms) && ms==999); now_ms=0;
   pin_high=1; assert(!w.getProfileIdleDelay(ms)); pin_high=0;
   w.pending=true; assert(!w.getProfileIdleDelay(ms)); w.pending=false;
   w._lab_uncertain=true; assert(!w.getProfileIdleDelay(ms)); w._lab_uncertain=false;
