@@ -383,8 +383,11 @@ class ExternalPaPowerLimitTests(ResolvedPaProfiles, unittest.TestCase):
             "mesh::RadioParamApplyResult RadioLibWrapper::trySetTxPower("))
         common = (ROOT / "src/helpers/CommonCLI.cpp").read_text()
         companion = (ROOT / "examples/companion_radio/MyMesh.cpp").read_text()
+        # Check the persisted-value sanitizer, not a new/fresh-defaults or
+        # command-local clamp which may intentionally reference local values.
+        common_load = method(common, "void CommonCLI::loadPrefsInt(")
         common_clamp = re.search(
-            r"_prefs->tx_power_dbm\s*=\s*mesh::clampLoRaTxPower\([^;]+;", common)
+            r"_prefs->tx_power_dbm\s*=\s*mesh::clampLoRaTxPower\([^;]+;", common_load)
         companion_clamp = re.search(
             r"_prefs\.tx_power_dbm\s*=\s*constrain\([^;]+;", companion)
         self.assertIsNotNone(common_clamp, "Infrastructure saved TX must be clamped on load")

@@ -238,6 +238,7 @@ public:
   bool saveMainIdentity(const mesh::LocalIdentity &identity);
   bool loadPrefs(CompanionNodePrefs& prefs, double& node_lat,
                  double& node_lon);
+  bool canSeedBrowserRadioDefaults() const;
   bool savePrefs(const CompanionNodePrefs& prefs, double node_lat, double node_lon);
 #if UI_POCKET_GUI
   bool loadPocketGuiSettings(mesh::ui::pocket::Settings& settings);

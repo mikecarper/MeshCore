@@ -894,6 +894,7 @@ private:
   bool _morse_reply_admission = false;
   mesh::TempRadioReplyBarrier _primary_radio_reply;
   bool _primary_radio_blocked = false, _primary_radio_reply_admission = false;
+  void seedBrowserRadioDefaults(bool prefs_ready);
 #if MESH_ENABLE_MESHTEXT_CHAT
   mesh::mt::Region _mt_region = mesh::mt::Region::Unset;
   uint32_t _mt_slot = 0, _mt_node = 0, _mt_packet_id = 0;

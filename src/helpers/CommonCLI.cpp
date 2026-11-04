@@ -1,5 +1,6 @@
 #include "CLIReplyText.h"
 #include "ConfigCapabilities.h"
+#include "BrowserRadioDefaults.h"
 #include "HardwareCommand.h"
 #include <helpers/RegulatorSettings.h>
 #if defined(USE_LR2021)
@@ -1284,6 +1285,49 @@ void CommonCLI::loadPrefs(FILESYSTEM* fs) {
     _prefs->bridge_pkt_src = 1;  // Default to RX (logRx) for new installs
   }
   mesh::hilStartupTrace("prefs_common_ready");
+  if (is_fresh_install) {
+    mesh::browserRadioDefaults::Settings value;
+    if (mesh::browserRadioDefaults::read(value)
+        && mesh::browserRadioDefaults::freshStore([fs](const char* path, bool& present) {
+          return mesh::filePresence(fs, path, present);
+        })) {
+      const float freq = value.frequencyHz / 1000000.0f;
+      const float bw = value.bandwidthHz / 1000.0f;
+      const int8_t power = mesh::clampLoRaTxPower(
+          value.txOverride ? value.txPowerDbm : _prefs->tx_power_dbm, freq);
+#ifdef WRAPPER_CLASS
+      // Generic bounds are deliberately wider than some actual radio chips.
+      // This driver check is pure: reject unsupported power before any save.
+      const bool power_supported = radio_driver.isTxPowerValid(power);
+#else
+      // A transport without a pure board/driver validator may keep its known
+      // compiled power, but cannot safely accept an explicit TX override.
+      const bool power_supported = !value.txOverride;
+#endif
+      const auto* radio = _callbacks->getProfileRadio();
+      if (power_supported && radio && radio->profiles()
+          && acceptsPrimaryRadioParams(freq, bw, value.sf, value.cr, value.preamble)) {
+        const float old_freq = _prefs->freq, old_bw = _prefs->bw;
+        const uint8_t old_sf = _prefs->sf, old_cr = _prefs->cr;
+        const int8_t old_power = _prefs->tx_power_dbm;
+        const uint16_t old_preamble = _prefs->primary_radio_preamble;
+        const uint32_t old_rx = _prefs->rx_ps_rx_us, old_sleep = _prefs->rx_ps_sleep_us;
+        _prefs->freq = freq; _prefs->bw = bw; _prefs->sf = value.sf; _prefs->cr = value.cr;
+        _prefs->tx_power_dbm = power;
+        _prefs->primary_radio_preamble = value.preamble;
+        // One checked, atomic /com_prefs image owns tuple + preamble. Failed
+        // acceptance/save restores every RAM field before the role starts RF.
+        const bool timings_ready = recalculateRxPowerSavingFromLevel(_prefs)
+            || !_prefs->rx_powersaving_enabled || !_prefs->rx_ps_level;
+        if (!timings_ready || !saveCommonPrefs()) {
+          _prefs->freq = old_freq; _prefs->bw = old_bw;
+          _prefs->sf = old_sf; _prefs->cr = old_cr; _prefs->tx_power_dbm = old_power;
+          _prefs->primary_radio_preamble = old_preamble;
+          _prefs->rx_ps_rx_us = old_rx; _prefs->rx_ps_sleep_us = old_sleep;
+        }
+      }
+    }
+  }
 #ifdef WITH_MQTT_BRIDGE
   // Load observer preferences (MQTT/WiFi/timezone/SNMP/alert) from /mqtt_prefs.
   // Readers (MQTTBridge, AlertReporter, observer CLI) use _mqtt_prefs directly -

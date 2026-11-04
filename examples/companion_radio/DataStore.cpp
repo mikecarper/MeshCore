@@ -13,6 +13,8 @@
 #include <helpers/FileRead.h>
 #include <helpers/AdvertDataHelpers.h>
 #include <helpers/LazyPersistence.h>
+#include <helpers/BrowserRadioDefaults.h>
+#include <helpers/FilePresence.h>
 #if defined(ESP32_PLATFORM) || defined(RP2040_PLATFORM)
 #include <helpers/ContactFileTransaction.h>
 #endif
@@ -1047,6 +1049,17 @@ bool DataStore::canCreateMainIdentity() const {
 bool DataStore::saveMainIdentity(const mesh::LocalIdentity &identity) {
   if (_identity_creation_blocked) return false;
   return identity_store.save("_main", identity);
+}
+
+bool DataStore::canSeedBrowserRadioDefaults() const {
+  if (_prefs_load_incomplete) return false;
+#if defined(NRF52_PLATFORM)
+  if (_primary_storage_unavailable || _volatile_primary_fs
+      || _secondary_authority_unknown) return false;
+#endif
+  return mesh::browserRadioDefaults::freshStore([this](const char* path, bool& present) {
+    return mesh::filePresence(_fs, path, present);
+  });
 }
 
 bool DataStore::loadPrefs(CompanionNodePrefs& prefs, double& node_lat,

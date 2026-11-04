@@ -1,6 +1,8 @@
 #include <helpers/CLIReplyText.h>
 #include <helpers/HardwareCommand.h>
 #include <helpers/ConfigCapabilities.h>
+#include <helpers/BrowserRadioDefaults.h>
+#include <helpers/radiolib/RadioPowerLimits.h>
 #include <helpers/RegulatorSettings.h>
 #if defined(USE_LR2021)
 #include <helpers/radiolib/LR2021CalibrationSettings.h>
@@ -3220,6 +3222,9 @@ void MyMesh::begin(bool has_display, bool radio_available,
 #endif
   const bool prefs_ready =
       _store->loadPrefs(_prefs, sensors.node_lat, sensors.node_lon);
+  // Before any saved-radio apply or automatic traffic. A normal update, an
+  // unreadable store, or an existing preamble always keeps its saved intent.
+  seedBrowserRadioDefaults(prefs_ready);
 #if MESH_HIL_COMPANION_STARTUP_FREQ_MHZ
   // A role transition can expose old Companion preferences independently of
   // the Repeater's saved radio. Keep this private image on its bench channel
@@ -3566,6 +3571,57 @@ void MyMesh::begin(bool has_display, bool radio_available,
   }
 #endif
 #endif
+}
+
+void MyMesh::seedBrowserRadioDefaults(bool prefs_ready) {
+  mesh::browserRadioDefaults::Settings value;
+  if (!prefs_ready || !_radio_available || !_radio || !_radio->profiles()
+      || !mesh::browserRadioDefaults::read(value)
+      || !_store->canSeedBrowserRadioDefaults()) return;
+  const float freq = value.frequencyHz / 1000000.0f;
+  const float bw = value.bandwidthHz / 1000.0f;
+  const int8_t power = value.txOverride
+      ? mesh::clampLoRaTxPower(value.txPowerDbm, freq)
+      : mesh::clampLoRaTxPower(_prefs.tx_power_dbm, freq);
+  if (!_radio_profiles.acceptsPrimary(freq, bw, value.sf, value.cr, value.preamble)
+      || !radio_driver.isTxPowerValid(power)) return;
+  uint32_t rx = _prefs.rx_ps_rx_us, sleep = _prefs.rx_ps_sleep_us;
+  if (_prefs.rx_powersaving_enabled && _prefs.rx_ps_level
+      && !recalcRxPowerSavingFromLevel(_prefs.rx_ps_level, value.sf, bw,
+          _prefs.rx_ps_preamble, &rx, &sleep)) return;
+
+  const float old_freq = _prefs.freq, old_bw = _prefs.bw;
+  const uint8_t old_sf = _prefs.sf, old_cr = _prefs.cr;
+  const int8_t old_power = _prefs.tx_power_dbm;
+  const uint16_t old_preamble = _radio_profiles.primaryPreamble();
+  // The established Companion stores keep preamble separate from the tuple.
+  // Seed through their checked writers, before RF, and compensate failures.
+  if (!_radio_profiles.savePrimaryPreamble(value.preamble)) {
+    // A failed commit can still have published the new image. Force a checked
+    // compensating write instead of letting "unchanged" short-circuit it.
+    _radio_profiles.adoptPrimaryPreamble(value.preamble);
+    if (!_radio_profiles.restorePrimaryPreamble(old_preamble)) {
+      _radio_available = false;
+      setRadioAvailable(false);
+      mesh::usbLoggingPort().println("Radio defaults save unconfirmed; RF paused. Reboot after checking storage.");
+    }
+    return;
+  }
+  _prefs.freq = freq; _prefs.bw = bw; _prefs.sf = value.sf; _prefs.cr = value.cr;
+  _prefs.tx_power_dbm = power;
+  if (_store->savePrefs(_prefs, sensors.node_lat, sensors.node_lon)) {
+    _prefs.rx_ps_rx_us = rx; _prefs.rx_ps_sleep_us = sleep;
+    return;
+  }
+  _prefs.freq = old_freq; _prefs.bw = old_bw;
+  _prefs.sf = old_sf; _prefs.cr = old_cr; _prefs.tx_power_dbm = old_power;
+  const bool preamble_restored = _radio_profiles.restorePrimaryPreamble(old_preamble);
+  const bool prefs_restored = _store->savePrefs(_prefs, sensors.node_lat, sensors.node_lon);
+  if (!preamble_restored || !prefs_restored) {
+    _radio_available = false;
+    setRadioAvailable(false);
+    mesh::usbLoggingPort().println("Radio defaults rollback unconfirmed; RF paused. Reboot after checking storage.");
+  }
 }
 
 void MyMesh::configureRadioFromPrefs() {
