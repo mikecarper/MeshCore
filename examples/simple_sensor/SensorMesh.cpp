@@ -1,5 +1,8 @@
 #include "SensorMesh.h"
 #include <helpers/HardwareCommand.h>
+#if defined(USE_LR2021) && defined(MESHNOLOGY_W12) && defined(MESH_ENABLE_LR2021_AUTO_XTRIM) && MESH_ENABLE_LR2021_AUTO_XTRIM
+#include <helpers/radiolib/LR2021CalibrationSettings.h>
+#endif
 #include <helpers/ui/DisplayNightLocation.h>
 #if defined(USE_LR2021)
 #include <helpers/radiolib/LR2021SideDetectorConfig.h>
@@ -867,6 +870,12 @@ void SensorMesh::handleCommand(uint32_t sender_timestamp, char* command, char* r
 void SensorMesh::onAdvertRecv(mesh::Packet* packet, const mesh::Identity& id,
                               uint32_t timestamp, const uint8_t* app_data,
                               size_t app_data_len) {
+#if defined(USE_LR2021) && defined(MESHNOLOGY_W12) && defined(MESH_ENABLE_LR2021_AUTO_XTRIM) && MESH_ENABLE_LR2021_AUTO_XTRIM
+  mesh::lr2021::observeLR2021AutoTrimAdvert(id.pub_key, timestamp,
+      getRTCClock()->getCurrentTime(), packet->lr2021_frequency,
+      !packet->radio_local && !packet->forwarded && packet->getPathHashCount() == 0);
+#endif
+
 #if defined(MESHCORE_HAS_COLOR_DISPLAY)
   mesh::ui::observeDisplayNightAdvert(packet, id, self_id, app_data,
                                      app_data_len, millis());

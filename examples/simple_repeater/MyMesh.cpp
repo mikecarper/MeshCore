@@ -90,6 +90,9 @@ mesh::FloodAdvertLimiter::Entry* repeaterRtcAdvertSlowBank() {
 #endif
 #if defined(USE_LR2021)
 #include <helpers/radiolib/LR2021SideDetectorConfig.h>
+#if defined(USE_LR2021) && defined(MESHNOLOGY_W12) && defined(MESH_ENABLE_LR2021_AUTO_XTRIM) && MESH_ENABLE_LR2021_AUTO_XTRIM
+#include <helpers/radiolib/LR2021CalibrationSettings.h>
+#endif
 #endif
 #include <helpers/radiolib/RXPowerSaving.h>
 #include <helpers/RxReservePacketManager.h>
@@ -3006,6 +3009,11 @@ static bool isShare(const mesh::Packet *packet) {
 
 void MyMesh::onAdvertRecv(mesh::Packet *packet, const mesh::Identity &id, uint32_t timestamp,
                           const uint8_t *app_data, size_t app_data_len) {
+#if defined(USE_LR2021) && defined(MESHNOLOGY_W12) && defined(MESH_ENABLE_LR2021_AUTO_XTRIM) && MESH_ENABLE_LR2021_AUTO_XTRIM
+  mesh::lr2021::observeLR2021AutoTrimAdvert(id.pub_key, timestamp,
+      getRTCClock()->getCurrentTime(), packet->lr2021_frequency,
+      !packet->radio_local && !packet->forwarded && packet->getPathHashCount() == 0);
+#endif
 #if defined(MESHCORE_HAS_COLOR_DISPLAY)
   mesh::ui::observeDisplayNightAdvert(packet, id, self_id, app_data,
                                      app_data_len, millis());

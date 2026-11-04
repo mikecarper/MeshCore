@@ -1043,6 +1043,9 @@ bool Dispatcher::tryParsePacket(Packet* pkt, const uint8_t* raw, int len) {
 
   int i = 0;
 
+#if defined(MESH_ENABLE_LR2021_AUTO_XTRIM) && MESH_ENABLE_LR2021_AUTO_XTRIM
+  pkt->lr2021_frequency = {};
+#endif
   pkt->tx_cr = 0;
   pkt->flood_retry_policy = FLOOD_RETRY_POLICY_DEFAULT;
   pkt->radio_profile = pkt->radio_origin = _radio->receiveProfile();
@@ -1114,6 +1117,11 @@ void Dispatcher::checkRecv() {
     uint8_t raw[MAX_TRANS_UNIT+1];
     int len = _radio->recvRaw(raw, MAX_TRANS_UNIT);
     if (len > 0) {
+#if defined(MESH_ENABLE_LR2021_AUTO_XTRIM) && MESH_ENABLE_LR2021_AUTO_XTRIM
+      // Freeze the sample before any logging or bridge callbacks can run.
+      lr2021::PacketFrequencyObservation packet_frequency;
+      _radio->lastPacketFrequency(packet_frequency);
+#endif
       // A successful driver read proves RX works even if application parsing
       // rejects the packet or the packet pool has no space. IRQs alone do not.
 #ifdef RADIO_LIVENESS_SOFT_ONLY
@@ -1188,6 +1196,10 @@ void Dispatcher::checkRecv() {
           MESH_DEBUG_PRINTLN("%s Dispatcher::checkRecv(): WARNING: received data, no unused packets available!", getLogDateTime());
         } else {
           if (tryParsePacket(pkt, raw, len)) {
+#if defined(MESH_ENABLE_LR2021_AUTO_XTRIM) && MESH_ENABLE_LR2021_AUTO_XTRIM
+            // This packet may remain in the delayed receive queue.
+            pkt->lr2021_frequency = packet_frequency;
+#endif
             last_meshcore_recv_millis = _ms->getMillis();
             if (auto* p = _radio->profiles()) ++p->rx_packets[pkt->radio_profile];
             pkt->_snr = snr * 4.0f;
@@ -1451,6 +1463,9 @@ Packet* Dispatcher::obtainNewPacket() {
   if (pkt == NULL) {
     _err_flags |= ERR_EVENT_FULL;
   } else {
+#if MESH_ENABLE_LR2021_AUTO_XTRIM
+    pkt->lr2021_frequency = {};
+#endif
     pkt->payload_len = pkt->path_len = 0;
     pkt->_rssi = 0;
     pkt->_snr = 0;

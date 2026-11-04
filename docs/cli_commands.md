@@ -2496,6 +2496,59 @@ shows it. A reported radio recovery failure still needs diagnosis.
 `set radio.xtrim default` removes the override and resets/reinitializes the radio
 to restore its original trim. Node identity and other settings remain saved.
 
+W12 Repeater, Room, Sensor, and Companion builds also provide:
+
+```text
+set radio.xtrim auto
+get radio.xtrim.auto
+get radio.xtrim.correction
+set radio.xtrim auto cancel
+```
+
+Automatic trim is off until started. Turn radio2 off first and leave the radio
+profile unchanged. The node listens for signed, fresh adverts from three
+distinct nearby identities on the current frequency; each trial and its
+independent final verification need one new advert from each of the same three
+identities. They must agree within 1.5 kHz, and the trim verification median
+must be within 1 kHz of the winning trial. The node then applies a bounded
+digital adjustment equal to 75% of the remaining measured offset and checks
+fresh adverts from the same three peers before saving. It applies the adjustment
+proportionally on both radio profiles while reporting their nominal frequencies.
+Offsets smaller than 400 Hz do not cause a new digital adjustment. Each listening window can last two
+minutes and the whole session is limited to 15 minutes. Temporarily increase
+the reference radios' advert frequency if needed. No adverts are sent by
+the calibration itself. Accurate node time is required to check advert freshness.
+
+During a trial, the physical trim changes and reception can temporarily change;
+`get radio.xtrim` shows the saved setting, whereas `get radio.xtrim.auto` shows
+the current trial, phase, sample count and whether the baseline was observed.
+`get radio.xtrim.correction` shows the active and saved digital correction in
+parts per billion. `set radio.xtrim default` clears both the trim override and
+digital correction; setting a manual trim also clears the old correction.
+Cancel, timeout, conflicting samples, a profile change, or a failed save
+requests restoration of the original setting. If RX is disabled during a trial,
+restoration is deferred until reboot and status reports this; the physical trim
+may differ until then. With RX on, restore is attempted up to three times on
+failure or for up to 30 seconds while busy; if it cannot finish, status reports
+that restoration is deferred. The original saved selection remains in place.
+If saving fails, the stored setting may be uncertain; verify it after reboot.
+
+This is relative to the observed transmitters, not an absolute frequency
+standard. If the baseline has no quorum, a candidate can still be saved after
+independent verification with an offset within 2 kHz, but this cannot prove it
+improved the original setting. The status reports `saved; baseline unknown` in
+that case. A signed identity does not prove physical proximity: the path can be
+relayed, and multiple identities need not represent independent oscillators.
+Use an independent calibrated receiver to establish absolute accuracy or prove
+improvement when the baseline is unknown. Automatic calibration is available
+in those builds but only runs when explicitly requested.
+
+For compatibility with older firmware, the legacy trim record remains readable
+alongside the newer paired trim-and-correction record. If older firmware changes
+the trim, a later upgrade uses the changed trim and clears the stale correction.
+Re-saving exactly the same trim in older firmware is indistinguishable from no
+edit, so the prior correction may still be restored after re-upgrade.
+
 These controls are available through local CLI and authorized LoRa CLI. They do
 not change the configured channel frequency shown by `get radio` or `get freq`.
 The [Semtech LR20xx driver documents the capacitor range and step size](https://github.com/Lora-net/usp/blob/main/smtc_rac_lib/radio_drivers/lr20xx_driver/inc/lr20xx_system.h).
