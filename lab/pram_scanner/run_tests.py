@@ -13,6 +13,10 @@ with tempfile.TemporaryDirectory() as d:
     assert re.search(pattern, source).group() == re.search(pattern, case).group()
     run(['g++','-std=c++17','-I','src',str(lab/'test_codec.cpp'),'-o',str(tmp/'codec')])
     run([str(tmp/'codec')])
+    run(['g++','-std=c++17','-I','src',str(lab/'test_spi_trace.cpp'),'-o',str(tmp/'spi_trace')])
+    run([str(tmp/'spi_trace')])
+    run(['g++','-std=c++17','-I','src',str(lab/'test_sleep_diag.cpp'),'-o',str(tmp/'sleep_diag')])
+    run([str(tmp/'sleep_diag')])
     run(['g++','-std=c++17',str(lab/'test_pause_guard.cpp'),'-o',str(tmp/'guard')])
     run([str(tmp/'guard')])
     run(['g++','-std=c++17','-DMESH_W12_PRAM_EXPERIMENT=1','-I','test/mocks','-I','src',

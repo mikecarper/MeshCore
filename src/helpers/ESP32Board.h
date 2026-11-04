@@ -23,6 +23,21 @@
 #include "esp32/LightSleepPolicy.h"
 #include "esp32/PowerTestControls.h"
 #include "esp32/CpuClockPolicy.h"
+#if defined(MESH_W12_PRAM_EXPERIMENT) && MESH_W12_PRAM_EXPERIMENT
+#include <esp_sleep.h>
+#include <driver/gpio.h>
+#include "radiolib/W12PramSleepDiag.h"
+inline void w12RecordSleepWake(esp_err_t error, bool radio_wakeup, gpio_num_t pin) {
+  if (error != ESP_OK) return;
+  const auto cause = esp_sleep_get_wakeup_cause();
+  const auto kind = cause == ESP_SLEEP_WAKEUP_GPIO ? mesh::w12pram::WakeKind::Gpio
+      : cause == ESP_SLEEP_WAKEUP_TIMER ? mesh::w12pram::WakeKind::Timer
+      : mesh::w12pram::WakeKind::Other;
+  const bool radio_high = kind == mesh::w12pram::WakeKind::Gpio
+      && radio_wakeup && gpio_get_level(pin) == HIGH;
+  mesh::w12pram::sleepDiag().record(true, kind, radio_high);
+}
+#endif
 #include <esp_pm.h>
 #if CONFIG_IDF_TARGET_ESP32
 #include <soc/efuse_reg.h>
@@ -481,6 +496,9 @@ public:
       if (wake_us > 0) {
         if (diagnostics) mesh::powerdiag::sleepBegin(micros(), millis());
         const esp_err_t error = esp_light_sleep_start();
+#if defined(MESH_W12_PRAM_EXPERIMENT) && MESH_W12_PRAM_EXPERIMENT
+        w12RecordSleepWake(error, false, GPIO_NUM_0);
+#endif
         if (diagnostics) {
           mesh::powerdiag::sleepEnd(micros());
           if (setup_error != ESP_OK) mesh::powerdiag::boardError(setup_error, millis());
@@ -543,6 +561,9 @@ public:
     if (gpio_error == ESP_OK && !pending_after_setup && !deadline_expired) {
       if (diagnostics) mesh::powerdiag::sleepBegin(micros(), millis());
       sleep_error = esp_light_sleep_start();
+#if defined(MESH_W12_PRAM_EXPERIMENT) && MESH_W12_PRAM_EXPERIMENT
+      w12RecordSleepWake(sleep_error, radio_wakeup, wakeupPin);
+#endif
       if (diagnostics) mesh::powerdiag::sleepEnd(micros());
     }
 

@@ -125,10 +125,13 @@ public:
   bool labScannerActive() const { return _lab_scan_active; }
   void labRxpsBusyStatus(char* out, size_t capacity) const {
     const auto& trace=mesh::w12pram::spiTrace();
-    snprintf(out,capacity,"RXPS busy=%lu/%lu edges=%lu armed=%u spi=%lu first=%04X,%04X,%04X,%04X",
+    snprintf(out,capacity,"RXPS busy=%lu/%lu edges=%lu armed=%u spi=%lu first=%04X,%04X,%04X,%04X modes=%u,%u,%u,%u,%u,%u bad=%u",
         (unsigned long)_lab_busy_high,(unsigned long)_lab_busy_low,
         (unsigned long)_lab_busy_edges,unsigned(_rx_ps_armed), (unsigned long)trace.count,
-        trace.first[0],trace.first[1],trace.first[2],trace.first[3]);
+        trace.first[0],trace.first[1],trace.first[2],trace.first[3],
+        unsigned(trace.modes[0]),unsigned(trace.modes[1]),unsigned(trace.modes[2]),
+        unsigned(trace.modes[3]),unsigned(trace.modes[4]),unsigned(trace.modes[5]),
+        unsigned(trace.invalid_status));
   }
   bool getProfileIdleDelay(uint32_t& delay_ms) const override {
     if (!_lab_scan_active) return RadioLibWrapper::getProfileIdleDelay(delay_ms);

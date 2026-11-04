@@ -22,6 +22,9 @@
 #include "UsbLoggingWatchdog.h"
 #include "HostKiss.h"
 #include "PowerSavingDiagnostics.h"
+#if defined(MESH_W12_PRAM_EXPERIMENT) && MESH_W12_PRAM_EXPERIMENT
+#include "radiolib/W12PramSleepDiag.h"
+#endif
 #include "HilStartupTrace.h"
 #include "FilePresence.h"
 #include "BridgeIngressSettings.h"
@@ -3698,7 +3701,7 @@ void CommonCLI::handleCommand(uint32_t sender_timestamp, char* command, char* re
     mesh::cli::normalizeCommandVerb(command);
 #if defined(MESH_W12_PRAM_EXPERIMENT) && MESH_W12_PRAM_EXPERIMENT
     if (radio_driver.labScannerUncertain() && strcmp(command,"get pramscan") && strcmp(command,"get pramscan.last")
-        && strcmp(command,"get pramscan.timing") && strcmp(command,"get pramscan.bench") && strcmp(command,"get pramscan.diag")
+        && strcmp(command,"get pramscan.timing") && strcmp(command,"get pramscan.bench") && strcmp(command,"get pramscan.diag") && strcmp(command,"get pramscan.sleep")
         && strcmp(command,"set pramscan recover") && strcmp(command,"ver") && strcmp(command,"reboot")) {
       snprintf(reply,160,"ERR - ambiguous RX FIFO retained; use get pramscan or set pramscan recover"); return;
     }
@@ -3810,6 +3813,7 @@ void CommonCLI::handleCommand(uint32_t sender_timestamp, char* command, char* re
 #if defined(USE_LR2021)
 #if defined(MESH_W12_PRAM_EXPERIMENT) && MESH_W12_PRAM_EXPERIMENT
     if (strcmp(command,"get pramscan") == 0) { radio_driver.labScannerStatus(reply,160); return; }
+    if (strcmp(command,"get pramscan.sleep") == 0) { mesh::w12pram::sleepDiag().format(reply,160); return; }
     if (strcmp(command,"get radio.rxps.busy") == 0) { radio_driver.labRxpsBusyStatus(reply,160); return; }
     if (strcmp(command,"get pramscan.last") == 0) { radio_driver.labScannerLast(reply,160); return; }
     if (strcmp(command,"get pramscan.diag") == 0) { radio_driver.labScannerDiag(reply,160); return; }

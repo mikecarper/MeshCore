@@ -4,8 +4,9 @@
 #include <cassert>
 using namespace mesh::w12pram;
 int main() {
-  auto& trace=mesh::w12pram::spiTrace(); trace.reset(); trace.add(0x1234); assert(trace.count==0);
-  trace.active=true; for (unsigned i=0;i<10;i++) trace.add(uint16_t(0x100+i));
+  const uint8_t stat[]={0x04, 0x04};
+  auto& trace=mesh::w12pram::spiTrace(); trace.reset(); trace.add(0x1234,stat,sizeof stat); assert(trace.count==0);
+  trace.active=true; for (unsigned i=0;i<10;i++) trace.add(uint16_t(0x100+i),stat,sizeof stat);
   assert(trace.count==10 && trace.first[0]==0x100 && trace.first[7]==0x107);
   trace.reset(); assert(!trace.active && trace.count==0 && trace.first[0]==0);
   mesh::w12rxps::Timing timing{};
