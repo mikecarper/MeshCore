@@ -141,6 +141,9 @@ public:
   virtual bool isBeaconChannelBusy() { return true; }
   virtual uint32_t getBeaconAirtime(const RadioProfileParams&, int) { return 0; }
 #endif
+#if defined(MESH_W12_PRAM_EXPERIMENT) && MESH_W12_PRAM_EXPERIMENT
+  virtual bool getW12PramRxSnapshot(W12PramRxSnapshot& out) const { out={}; return false; }
+#endif
   virtual uint8_t receiveProfile() const { return 0; }
   virtual uint32_t receiveProfileGeneration() const {
     return profiles() ? profiles()->generation[receiveProfile()] : 0;

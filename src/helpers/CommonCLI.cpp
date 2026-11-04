@@ -3696,6 +3696,13 @@ bool CommonCLI::handleUDPBridgeCommand(uint32_t sender_timestamp,
 void CommonCLI::handleCommand(uint32_t sender_timestamp, char* command, char* reply) {
     PrefsSaveReplyGuard save_reply(_prefs_save_failures, reply);
     mesh::cli::normalizeCommandVerb(command);
+#if defined(MESH_W12_PRAM_EXPERIMENT) && MESH_W12_PRAM_EXPERIMENT
+    if (radio_driver.labScannerUncertain() && strcmp(command,"get pramscan") && strcmp(command,"get pramscan.last")
+        && strcmp(command,"get pramscan.timing") && strcmp(command,"get pramscan.bench") && strcmp(command,"get pramscan.diag")
+        && strcmp(command,"set pramscan recover") && strcmp(command,"ver") && strcmp(command,"reboot")) {
+      snprintf(reply,160,"ERR - ambiguous RX FIFO retained; use get pramscan or set pramscan recover"); return;
+    }
+#endif
 #if MESH_ENABLE_RADIO_DIRECTION
     if (mesh::radioDirection::handleDirectionCommand(command, reply, 157)) return;
 #endif
@@ -3801,6 +3808,22 @@ void CommonCLI::handleCommand(uint32_t sender_timestamp, char* command, char* re
       return;
     }
 #if defined(USE_LR2021)
+#if defined(MESH_W12_PRAM_EXPERIMENT) && MESH_W12_PRAM_EXPERIMENT
+    if (strcmp(command,"get pramscan") == 0) { radio_driver.labScannerStatus(reply,160); return; }
+    if (strcmp(command,"get pramscan.last") == 0) { radio_driver.labScannerLast(reply,160); return; }
+    if (strcmp(command,"get pramscan.diag") == 0) { radio_driver.labScannerDiag(reply,160); return; }
+    if (strncmp(command,"set pramscan.rxpre ",19) == 0) {
+      unsigned profile=0, pre=0; char extra=0;
+      const bool valid=sscanf(command+19,"%u %u %c",&profile,&pre,&extra)==2;
+      snprintf(reply,160,valid && radio_driver.labScannerSetRxPreamble(profile,pre)?"OK - RX preamble set (0=profile)":"ERR - use set pramscan.rxpre 1|2 0|8-255 while stopped"); return;
+    }
+    if (strcmp(command,"get pramscan.timing") == 0) { radio_driver.labScannerTiming(reply,160); return; }
+    if (strcmp(command,"get pramscan.bench") == 0) { radio_driver.labScannerBenchStatus(reply,160); return; }
+    if (strcmp(command,"run pramscan.bench") == 0) { snprintf(reply,160,radio_driver.labScannerBench()?"OK - no-RF config bench complete; use get pramscan.bench":"ERR - scanner busy or bench failed"); return; }
+    if (strcmp(command,"set pramscan on") == 0) { snprintf(reply,160,radio_driver.labScannerStart()?"OK - PRAM scanner running; LDO; automatic TX":"ERR - scanner unavailable or busy; check two profiles and RXPS off"); return; }
+    if (strcmp(command,"set pramscan off") == 0) { snprintf(reply,160,radio_driver.labScannerStop()?"OK - PRAM scanner stopped; radio restored":"ERR - scanner busy or restore failed"); return; }
+    if (strcmp(command,"set pramscan recover") == 0) { snprintf(reply,160,radio_driver.labScannerRecover()?"OK - recovered; ambiguous FIFO discarded":"ERR - no recoverable ambiguous FIFO or reset failed"); return; }
+#endif
     if (mesh::lr2021::handleLR2021CalibrationCommand(command, reply, 160, radio_driver)) return;
     if (strcmp(command, "get radio.apply") == 0) {
       radio_driver.formatApplyStatus(reply, 160);

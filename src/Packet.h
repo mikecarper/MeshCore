@@ -2,6 +2,9 @@
 
 #include <MeshCore.h>
 #include <RadioTxPolicy.h>
+#if defined(MESH_W12_PRAM_EXPERIMENT) && MESH_W12_PRAM_EXPERIMENT
+#include <helpers/radiolib/W12PramRxSnapshot.h>
+#endif
 #if defined(MESH_ENABLE_LR2021_AUTO_XTRIM) && MESH_ENABLE_LR2021_AUTO_XTRIM
 #include <helpers/radiolib/LR2021PacketFrequency.h>
 #endif
@@ -73,6 +76,9 @@ public:
   uint8_t tx_radio = RADIO_TX_AUTO;  // local policy, never sent over the air
   bool radio_reply = false;  // authenticated admin CLI reply; never serialized
   bool radio_reply_force = false;  // captured reply-only RX-mode override
+#if defined(MESH_W12_PRAM_EXPERIMENT) && MESH_W12_PRAM_EXPERIMENT
+  W12PramRxSnapshot w12_rx; // immutable reception snapshot; not serialized
+#endif
 #if defined(MESH_ENABLE_LR2021_AUTO_XTRIM) && MESH_ENABLE_LR2021_AUTO_XTRIM
   // Snapshot for this RF reception only, never serialized.
   lr2021::PacketFrequencyObservation lr2021_frequency;

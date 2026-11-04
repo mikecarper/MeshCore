@@ -1,0 +1,429 @@
+// Isolated lab only: custom MIT scanner occupies PRAM instead of Semtech patch.
+// Guarded scanner handoff is experimental; uncertain ownership triggers reset.
+// The chip stays on LDO for scanner and normal TX until explicit exit.
+private:
+  bool _lab_scan_active = false;
+  bool _lab_resume_pending = false;
+  bool _lab_sleeping = false;
+  bool _lab_session_ldo = false;
+  bool _lab_uncertain = false; // unread/ambiguous IRQ preserved for controlled recovery
+  bool _lab_bench_complete = false;
+  uint32_t _lab_pause_last=0, _lab_pause_min=UINT32_MAX, _lab_pause_max=0;
+  uint32_t _lab_resume_last=0, _lab_resume_min=UINT32_MAX, _lab_resume_max=0;
+  struct LabBench { uint32_t n=0, min=UINT32_MAX, max=0; uint64_t sum=0;
+    void add(uint32_t v) { ++n; sum+=v; if(v<min) min=v; if(v>max) max=v; }
+    uint32_t mean() const { return n ? uint32_t(sum/n) : 0; }
+  } _lab_bench_up, _lab_bench_down, _lab_bench_control;
+  uint32_t _lab_resume_at = 0, _lab_tx_pauses = 0, _lab_tx_resumes = 0;
+  mesh::RadioProfileParams _lab_profiles[2] = {};
+  mesh::w12pram::Profile _lab_snap[2] = {};
+  mesh::w12pram::Profile _lab_last = {};
+  float _lab_last_logical_mhz = 0;
+  int _lab_last_profile = -1;
+  int16_t _lab_error = 0;
+  uint32_t _lab_last_poll = 0, _lab_progress_at = 0, _lab_prev_cads = 0;
+  uint32_t _lab_good = 0, _lab_bad = 0, _lab_recoveries = 0;
+  uint32_t _lab_good_profile[2] = {};
+  uint8_t _lab_rx_preamble[2] = {}; // 0 uses normal profile auto/fixed choice
+  mesh::w12pram::Status _lab_status = {};
+
+  int16_t labScannerCommand(uint8_t op, const uint8_t* extra, size_t n, mesh::w12pram::Status& out) {
+    if (n > 4) return RADIOLIB_ERR_UNKNOWN;
+    uint8_t req[6] = {4, op, 0, 0, 0, 0};
+    for (size_t i=0;i<n;i++) req[2+i]=extra[i];
+    uint8_t response[40] = {};
+    int16_t rc=static_cast<CustomLR2021*>(_radio)->labSpiCommand(0x012D, false, response, sizeof(response), req, n+2);
+    if (rc == RADIOLIB_ERR_NONE) out=mesh::w12pram::decode(response);
+    return rc;
+  }
+  bool labReinitialize() {
+    _lab_scan_active=false;
+    static_cast<CustomLR2021*>(_radio)->labSetPramScan(false);
+    const auto& p=_profiles.params(0);
+    cacheParams(p.freq,p.bw,p.sf,p.cr);
+    _active_profile=0;
+    _profile_generation=_profiles.generation[0];
+    _physical_preamble=profilePreamble(0);
+#if MESH_ENABLE_MESHTEXT_WIRE || MESH_ENABLE_ETHERNET_WIRE || MESH_ENABLE_HOST_KISS
+    _physical_protocol=p.protocol;
+#endif
+    _profile_refresh_required=true;
+    bool ok=restoreAfterDeepInit();
+    if (!ok) { _profile_repair_required=true; return false; }
+    _lab_session_ldo=false;
+    _profile_refresh_required=true; // regular scanner will republish its state
+#if MESH_ENABLE_RADIO_DIRECTION
+    if (!mesh::radioDirection::radioReceiveAllowed()) return true;
+#endif
+    startRecv();
+    return isInRecvMode();
+  }
+  // SCN3 stopped its handler. Checked standby ends any active CAD; rebuild
+  // the complete host tuple and RX IRQ mapping without overwriting PRAM.
+  bool labWarmRestore(uint8_t target=0) {
+    if (target>1 || (target==1 && !_profiles.enabled())) return false;
+    auto* r=static_cast<CustomLR2021*>(_radio);
+    if (r->standby()!=RADIOLIB_ERR_NONE) return false;
+    if (hasPendingRadioInterrupt() || isPacketPendingOrReceiving() || hasPendingRadioInterrupt()) {
+      // Do not reset/clear an IRQ or FIFO that raced the handoff. Ownership
+      // is ambiguous after unhooking; stop all automatic actions for review.
+      _lab_uncertain=true; _lab_scan_active=false; _lab_resume_pending=false;
+      _profile_repair_required=true; _lab_error=RADIOLIB_ERR_UNKNOWN; state=0;
+      return false;
+    }
+    _lab_scan_active=false; r->labSetPramScan(false);
+    const auto& p=_profiles.params(target);
+    _physical_preamble=profilePreamble(target);
+    invalidateScanTuple();
+    if (!applyParams(p.freq,p.bw,p.sf,p.cr)) return false;
+#if MESH_ENABLE_MESHTEXT_WIRE || MESH_ENABLE_ETHERNET_WIRE || MESH_ENABLE_HOST_KISS
+    if (!applyProtocol(p.protocol)) return false;
+    _physical_protocol=p.protocol;
+#endif
+    cacheParams(p.freq,p.bw,p.sf,p.cr);
+    _active_profile=target; _profile_generation=_profiles.generation[target];
+    _profile_refresh_required=false; _profile_repair_required=false;
+    state=0;
+#if MESH_ENABLE_RADIO_DIRECTION
+    if (!mesh::radioDirection::radioReceiveAllowed()) return true;
+#endif
+    startRecv(); return isInRecvMode();
+  }
+  void labRecover(int16_t err) {
+    _lab_error=err; ++_lab_recoveries; _lab_resume_pending=false;
+    // A chip reset tears down even a stuck PRAM hook and all custom code.
+    if (!labReinitialize()) _profile_repair_required=true;
+  }
+
+public:
+  bool getW12PramRxSnapshot(mesh::W12PramRxSnapshot& out) const override {
+    out={};
+    if (!_lab_scan_active || _lab_last_profile<0) return false;
+    out.logical_freq_hz=uint32_t(_lab_last_logical_mhz*1000000.0f);
+    out.actual_freq_hz=_lab_last.freq_hz; out.bw_hz=_lab_last.bw_hz;
+    out.generation=_lab_last.generation; out.preamble=_lab_last.preamble;
+    out.profile=uint8_t(_lab_last_profile); out.sf=_lab_last.sf; out.cr=_lab_last.cr; out.valid=true;
+    return true;
+  }
+  uint32_t getEstAirtimeFor(int len) override {
+    if (_lab_scan_active && _lab_last_profile>=0) return getProfileAirtime(uint8_t(_lab_last_profile),len);
+    return RadioLibWrapper::getEstAirtimeFor(len);
+  }
+  float packetScore(float snr, int len) override {
+    if (_lab_scan_active && _lab_last_profile>=0) return packetScoreInt(snr,_lab_last.sf,len);
+    return RadioLibWrapper::packetScore(snr,len);
+  }
+  bool labScannerUncertain() const { return _lab_uncertain; }
+  bool labScannerActive() const { return _lab_scan_active; }
+  void labScannerStatus(char* out, size_t cap) const {
+    snprintf(out,cap,"PRAM %s uncertain=%u hook=%u state=%u ch=%u hit=%u cad=%lu good=%lu bad=%lu lost=%lu err=%d rec=%lu tx=%lu/%lu resume=%u",
+      _lab_scan_active?"on":"off",_lab_uncertain,_lab_status.hooked,_lab_status.state,_lab_status.current,_lab_status.last_hit,
+      (unsigned long)_lab_status.cads,(unsigned long)_lab_good,(unsigned long)_lab_bad,
+      (unsigned long)_lab_status.lost,(int)_lab_error,(unsigned long)_lab_recoveries,
+      (unsigned long)_lab_tx_pauses,(unsigned long)_lab_tx_resumes,_lab_resume_pending);
+  }
+  void labScannerDiag(char* out, size_t cap) const {
+    snprintf(out,cap,"PRAM diag cached irq=%08lX lost_irq=%08lX gate=%08lX events=%lu good=%lu/%lu rxpre=%u/%u (0=profile)",
+      (unsigned long)_lab_status.irq,(unsigned long)_lab_status.lost_irq,(unsigned long)_lab_status.irq_gate,
+      (unsigned long)_lab_status.events,(unsigned long)_lab_good_profile[0],(unsigned long)_lab_good_profile[1],
+      _lab_rx_preamble[0],_lab_rx_preamble[1]);
+  }
+  bool labScannerSetRxPreamble(unsigned profile, unsigned preamble) {
+    if (_lab_scan_active || _lab_resume_pending || _lab_uncertain || profile<1 || profile>2 || (preamble && (preamble<8 || preamble>255))) return false;
+    _lab_rx_preamble[profile-1]=uint8_t(preamble); return true;
+  }
+  void labScannerTiming(char* out, size_t cap) const {
+    snprintf(out,cap,"PRAM handoff us: pause=%lu/%lu/%lu resume=%lu/%lu/%lu n=%lu/%lu",
+      (unsigned long)_lab_pause_last,(unsigned long)(_lab_pause_min==UINT32_MAX?0:_lab_pause_min),(unsigned long)_lab_pause_max,
+      (unsigned long)_lab_resume_last,(unsigned long)(_lab_resume_min==UINT32_MAX?0:_lab_resume_min),(unsigned long)_lab_resume_max,
+      (unsigned long)_lab_tx_pauses,(unsigned long)_lab_tx_resumes);
+  }
+  void labScannerBenchStatus(char* out, size_t cap) const {
+    if (!_lab_bench_complete) { snprintf(out,cap,"PRAM bench: no completed run"); return; }
+    snprintf(out,cap,"PRAM cfg SPI us 1>2=%lu/%lu/%lu 2>1=%lu/%lu/%lu noop=%lu/%lu/%lu n=%lu; excludes CAD dwell/RX lock",
+      (unsigned long)_lab_bench_up.min,(unsigned long)_lab_bench_up.mean(),(unsigned long)_lab_bench_up.max,
+      (unsigned long)_lab_bench_down.min,(unsigned long)_lab_bench_down.mean(),(unsigned long)_lab_bench_down.max,
+      (unsigned long)_lab_bench_control.min,(unsigned long)_lab_bench_control.mean(),(unsigned long)_lab_bench_control.max,
+      (unsigned long)_lab_bench_up.n);
+  }
+  void labScannerLast(char* out, size_t cap) const {
+    if (_lab_last_profile < 0) { snprintf(out,cap,"PRAM last: none"); return; }
+    snprintf(out,cap,"PRAM last: radio=%d freq=%.6f MHz actual=%lu Hz bw=%lu Hz sf=%u cr=%u pre=%u gen=%lu",
+      _lab_last_profile+1,(double)_lab_last_logical_mhz,(unsigned long)_lab_last.freq_hz,
+      (unsigned long)_lab_last.bw_hz,_lab_last.sf,_lab_last.cr,_lab_last.preamble,(unsigned long)_lab_last.generation);
+  }
+  mesh::RadioParamApplyResult labPauseScanner(bool for_tx=false, uint8_t target=0) {
+    using Result=mesh::RadioParamApplyResult;
+    if (!_lab_scan_active) return Result::APPLIED;
+    const uint32_t started=micros();
+    if (hasPendingRadioInterrupt() || isChipBusy()) return Result::BUSY;
+    mesh::w12pram::Status reply={};
+    const int16_t rc=labScannerCommand(6,nullptr,0,reply);
+    // A failed SPI transaction may still have stopped the chip. Reset it;
+    // never carry on with a possibly detached handler or overwrite PRAM live.
+    if (rc!=RADIOLIB_ERR_NONE) { labRecover(rc); return Result::FAILED; }
+    const auto decision=mesh::w12pram::pauseResult(reply);
+    if (decision==mesh::w12pram::PauseResult::Busy) return Result::BUSY;
+    if (decision!=mesh::w12pram::PauseResult::Stopped) { labRecover(RADIOLIB_ERR_UNKNOWN); return Result::FAILED; }
+    // The guarded stop ends ROM ownership, but CAD hardware may still run.
+    // Checked standby and full tuple restore precede channel check and TX.
+    if (!labWarmRestore(target)) {
+      if (_lab_uncertain) return Result::BUSY; // preserve ambiguous FIFO, no reset
+      labRecover(RADIOLIB_ERR_UNKNOWN); return Result::FAILED;
+    }
+    if (for_tx) {
+      _lab_pause_last=uint32_t(micros()-started);
+      if (_lab_pause_last<_lab_pause_min) _lab_pause_min=_lab_pause_last;
+      if (_lab_pause_last>_lab_pause_max) _lab_pause_max=_lab_pause_last;
+    }
+    return Result::APPLIED;
+  }
+  bool labScannerStop() {
+    _lab_resume_pending=false; // manual off remains off even during TX pause
+    if (_lab_uncertain) return false;
+    if (state==3 || isChipBusy() || hasPendingRadioInterrupt()) return false;
+    if (!_lab_scan_active && !_lab_session_ldo) return true;
+    const auto rc=labPauseScanner();
+    if (rc!=mesh::RadioParamApplyResult::APPLIED) return false;
+    // Explicit exit restores the configured regulator and tears down PRAM.
+    return labReinitialize();
+  }
+  bool labScannerStart(bool automatic=false) {
+    const uint32_t started=micros();
+#if MESH_ENABLE_RADIO_DIRECTION
+    if (!mesh::radioDirection::radioReceiveAllowed()) return false;
+#endif
+    if (_lab_uncertain || _lab_sleeping || _lab_scan_active || !_profiles.enabled() || !_params_valid || _rx_ps_enabled || _cw_active
+        || state == 3 || isChipBusy() || hasPendingRadioInterrupt() || isPacketPendingOrReceiving()) return false;
+#if MESH_ENABLE_TX_BEACONS
+    if (isBeaconRadioOwned()) return false;
+#endif
+    mesh::w12pram::Packed packed[2] = {};
+    for (uint8_t i=0;i<2;i++) {
+      const auto& p=_profiles.params(i);
+      const uint16_t pre=_lab_rx_preamble[i] ? _lab_rx_preamble[i] : profilePreamble(i);
+      if (p.protocol != mesh::RadioProfileProtocol::MeshCore || !validateProfile(p) || pre==0 || pre>255) return false;
+      _lab_profiles[i]=p;
+      _lab_snap[i]={uint32_t(hardwareFrequencyMHz(p.freq)*1000000.0f),uint32_t(p.bw*1000.0f),p.sf,p.cr,uint8_t(pre),_profiles.generation[i]};
+      if (!mesh::w12pram::pack(_lab_snap[i],packed[i])) return false;
+    }
+    if (labs((long)_lab_snap[0].freq_hz-(long)_lab_snap[1].freq_hz) >= 20000000L) return false;
+    auto* r=static_cast<CustomLR2021*>(_radio);
+    int16_t rc=RADIOLIB_ERR_NONE;
+    if (automatic) {
+      // Includes pre- and post-standby RxDone checks; never reset a late FIFO.
+      const uint8_t admitted=beginReconfigure();
+      if (admitted>1) return false;
+    } else {
+      // Only a checked hard reset permits writing or replacing PRAM.
+      if (!labReinitialize()) return false;
+      rc=r->standby();
+    }
+    if (rc==RADIOLIB_ERR_NONE) {
+      rc=r->setRegulatorLDO(); // scanner bypasses DCDC workaround
+      if (rc==RADIOLIB_ERR_NONE) _lab_session_ldo=true;
+    }
+    uint8_t major=0,minor=0;
+    if (rc==RADIOLIB_ERR_NONE) rc=r->getVersion(&major,&minor);
+    if (rc==RADIOLIB_ERR_NONE && (major!=1 || minor!=0x18)) rc=RADIOLIB_ERR_UNKNOWN;
+    if (!automatic) {
+      const size_t words=sizeof(w12_pram_scan_blob)/sizeof(w12_pram_scan_blob[0]);
+      for (size_t at=0;rc==RADIOLIB_ERR_NONE && at<words;) {
+        size_t count=words-at<32 ? words-at : 32;
+        rc=r->writeRegMem32(0x801000u+uint32_t(at*4),w12_pram_scan_blob+at,count);
+        at+=count;
+      }
+      if (rc==RADIOLIB_ERR_NONE) rc=r->activatePram();
+    }
+    uint8_t req=2,ident[4]={};
+    if (rc==RADIOLIB_ERR_NONE) rc=r->labSpiCommand(0x012D,false,ident,4,&req,1);
+    if (rc==RADIOLIB_ERR_NONE && (ident[0]!='S'||ident[1]!='C'||ident[2]!='N'||ident[3]!='3')) rc=RADIOLIB_ERR_UNKNOWN;
+    if (rc==RADIOLIB_ERR_NONE) rc=r->setRxTxFallbackMode(3); // FS
+    uint8_t enable=1;
+    if (rc==RADIOLIB_ERR_NONE) rc=r->labSpiCommand(0x0209,true,&enable,1);
+    if (rc==RADIOLIB_ERR_NONE) rc=r->setDioIrqConfig(LR2021_IRQ_DIO,1u<<18); // RxDone only
+    uint32_t table[4]={packed[0].frequency,packed[0].modem,packed[1].frequency,packed[1].modem};
+    if (rc==RADIOLIB_ERR_NONE) rc=r->writeRegMem32(0x807800,table,4);
+    const uint8_t args[]={2,1,8,0x10}; // 2 profiles; 1-symbol preamble-only CAD; 8-symbol wait
+    if (rc==RADIOLIB_ERR_NONE) rc=labScannerCommand(1,args,sizeof(args),_lab_status);
+    if (rc==RADIOLIB_ERR_NONE && !_lab_status.hooked) rc=RADIOLIB_ERR_UNKNOWN;
+    if (rc!=RADIOLIB_ERR_NONE) { labRecover(rc); return false; }
+    _lab_error=0;
+    if (!automatic) {
+      _lab_last_profile=-1; _lab_good=_lab_bad=0; _lab_good_profile[0]=_lab_good_profile[1]=0; _lab_tx_pauses=_lab_tx_resumes=0;
+      _lab_pause_last=_lab_pause_max=_lab_resume_last=_lab_resume_max=0;
+      _lab_pause_min=_lab_resume_min=UINT32_MAX;
+    } else {
+      ++_lab_tx_resumes; _lab_resume_last=uint32_t(micros()-started);
+      if (_lab_resume_last<_lab_resume_min) _lab_resume_min=_lab_resume_last;
+      if (_lab_resume_last>_lab_resume_max) _lab_resume_max=_lab_resume_last;
+    }
+    _lab_resume_pending=false;
+    _lab_scan_active=true; r->labSetPramScan(true); _lab_last_poll=millis(); _lab_progress_at=millis(); _lab_prev_cads=_lab_status.cads;
+    state=1; // lab scanner owns the radio and has armed CAD/RX
+    return true;
+  }
+  mesh::RadioParamApplyResult prepareTransmitProfile(uint8_t p) override {
+    return prepareTransmitProfile(p,false);
+  }
+  mesh::RadioParamApplyResult prepareTransmitProfile(uint8_t p, bool reply) override {
+    using Result=mesh::RadioParamApplyResult;
+    if (_lab_uncertain) return Result::BUSY;
+    if (p>1 || !_profiles.canTransmit(p,reply)) return Result::FAILED;
+    if (_lab_scan_active) {
+      const Result paused=labPauseScanner(true,p);
+      if (paused!=Result::APPLIED) return paused;
+      ++_lab_tx_pauses;
+      _lab_resume_pending=true;
+    }
+    // Dispatcher runs the configured channel check and start in this same
+    // synchronous turn. Never restart the scanner in the middle of that turn.
+    if (_lab_resume_pending) _lab_resume_at=millis()+600;
+    return RadioLibWrapper::prepareTransmitProfile(p,reply);
+  }
+  mesh::RadioParamApplyResult tryRestoreCodingRate(uint8_t cr) override {
+    if (_lab_scan_active || _lab_uncertain) return mesh::RadioParamApplyResult::BUSY;
+    const auto rc=RadioLibWrapper::tryRestoreCodingRate(cr);
+    if (_lab_resume_pending) _lab_resume_at=millis()+600;
+    return rc;
+  }
+  bool labScannerBench() {
+    // Explicit user request only; no CAD or RF transmit in this measurement.
+    _lab_bench_complete=false;
+    if (!_lab_scan_active || !_profiles.enabled() || _profiles.generation[0]!=_lab_snap[0].generation
+        || _profiles.generation[1]!=_lab_snap[1].generation || hasPendingRadioInterrupt() || isChipBusy()) return false;
+    if (labPauseScanner()!=mesh::RadioParamApplyResult::APPLIED) return false;
+    _lab_resume_pending=true; _lab_resume_at=millis()+600;
+    if (beginReconfigure()>1) return false; // retain pending RxDone for normal receiver
+    mesh::w12pram::Packed p[2]={};
+    if (!mesh::w12pram::pack(_lab_snap[0],p[0]) || !mesh::w12pram::pack(_lab_snap[1],p[1])) { labRecover(RADIOLIB_ERR_UNKNOWN); return false; }
+    auto* r=static_cast<CustomLR2021*>(_radio);
+    auto call=[&](uint8_t action,const mesh::w12pram::Packed& profile,uint32_t& elapsed)->int16_t {
+      uint8_t req[9]={}; mesh::w12pram::benchRequest(action,profile,req);
+      uint8_t response=0; const uint32_t at=micros();
+      const int16_t rc=r->labSpiCommand(0x012D,false,&response,1,req,sizeof(req));
+      elapsed=uint32_t(micros()-at);
+      return rc==RADIOLIB_ERR_NONE && response!=0x42 ? RADIOLIB_ERR_UNKNOWN : rc;
+    };
+    _lab_bench_up={}; _lab_bench_down={}; _lab_bench_control={};
+    uint32_t elapsed=0; int16_t rc=call(1,p[0],elapsed); // establish primary
+    for (unsigned i=0;rc==RADIOLIB_ERR_NONE && i<20;i++) {
+      rc=call(0,p[0],elapsed); if (rc==RADIOLIB_ERR_NONE) _lab_bench_control.add(elapsed);
+      if (rc==RADIOLIB_ERR_NONE) { rc=call(1,p[1],elapsed); if(rc==RADIOLIB_ERR_NONE) _lab_bench_up.add(elapsed); }
+      if (rc==RADIOLIB_ERR_NONE) { rc=call(1,p[0],elapsed); if(rc==RADIOLIB_ERR_NONE) _lab_bench_down.add(elapsed); }
+    }
+    if (rc!=RADIOLIB_ERR_NONE) { labRecover(rc); return false; }
+    if (!_profiles.enabled() || _profiles.generation[0]!=_lab_snap[0].generation || _profiles.generation[1]!=_lab_snap[1].generation) { labRecover(RADIOLIB_ERR_UNKNOWN); return false; }
+    if (!labWarmRestore()) { if (!_lab_uncertain) labRecover(RADIOLIB_ERR_UNKNOWN); return false; }
+    _lab_bench_complete=(_lab_bench_up.n==20 && _lab_bench_down.n==20 && _lab_bench_control.n==20);
+    _lab_resume_at=millis()+50;
+    return true;
+  }
+#if MESH_ENABLE_TX_BEACONS
+  mesh::RadioParamApplyResult prepareBeaconTransmit(const mesh::RadioProfileParams& p, int8_t power) override {
+    using Result=mesh::RadioParamApplyResult;
+    if (_lab_uncertain) return Result::BUSY;
+    if (_lab_scan_active) {
+      const Result paused=labPauseScanner(true,0);
+      if (paused!=Result::APPLIED) return paused;
+      ++_lab_tx_pauses; _lab_resume_pending=true;
+    }
+    if (_lab_resume_pending) _lab_resume_at=millis()+600;
+    return RadioLibWrapper::prepareBeaconTransmit(p,power);
+  }
+#endif
+  bool labReconfigureBlocked() const override { return _lab_scan_active || _lab_uncertain; }
+  void idle() override { if (!_lab_scan_active && !_lab_uncertain) RadioLibWrapper::idle(); }
+  void startRecv() override { if (!_lab_scan_active && !_lab_uncertain) RadioLibWrapper::startRecv(); }
+  void resetAGC() override { if (!_lab_scan_active && !_lab_uncertain) RadioLibWrapper::resetAGC(); }
+  bool tryResetAGC() override { return !_lab_scan_active && !_lab_uncertain && RadioLibWrapper::tryResetAGC(); }
+  void triggerNoiseFloorCalibrate(int threshold) override {
+    if (!_lab_scan_active && !_lab_uncertain) RadioLibWrapper::triggerNoiseFloorCalibrate(threshold);
+  }
+  bool labScannerRecover() {
+    if (!_lab_uncertain) return false;
+    _lab_uncertain=false; // explicit operator action discards ambiguous FIFO
+    labRecover(RADIOLIB_ERR_UNKNOWN);
+    return !_profile_repair_required;
+  }
+  bool recoverRadio(bool hard) override {
+    if (_lab_uncertain || _lab_scan_active) return false; // do not discard/replace scanner-owned state
+    return RadioLibWrapper::recoverRadio(hard);
+  }
+  bool setTrackerSleep(bool sleeping) override {
+    if (_lab_uncertain) return false;
+    if (sleeping) {
+      _lab_resume_pending=false;
+      if (_lab_scan_active && labPauseScanner()!=mesh::RadioParamApplyResult::APPLIED) return false;
+      _lab_sleeping=true;
+    }
+    const bool ok=RadioLibWrapper::setTrackerSleep(sleeping);
+    if (!sleeping || !ok) _lab_sleeping=false;
+    return ok;
+  }
+  void loop() override {
+    if (_lab_uncertain) return;
+    if (!_lab_scan_active) {
+      RadioLibWrapper::loop();
+      bool rx_allowed=true;
+      bool radio_owned=_cw_active;
+#if MESH_ENABLE_TX_BEACONS
+      radio_owned=radio_owned || isBeaconRadioOwned();
+#endif
+#if MESH_ENABLE_RADIO_DIRECTION
+      rx_allowed=mesh::radioDirection::radioReceiveAllowed();
+#endif
+      if (mesh::w12pram::mayResume(_lab_resume_pending,_lab_sleeping,rx_allowed,state==3,radio_owned,
+              _profile_repair_required,(int32_t)(millis()-_lab_resume_at)>=0)) {
+        if (!labScannerStart(true)) _lab_resume_at=millis()+1000;
+      }
+      return;
+    }
+#if MESH_ENABLE_RADIO_DIRECTION
+    if (!mesh::radioDirection::radioReceiveAllowed()) { labRecover(RADIOLIB_ERR_UNKNOWN); return; }
+#endif
+    if (_profiles.generation[0]!=_lab_snap[0].generation || _profiles.generation[1]!=_lab_snap[1].generation || !_profiles.enabled()) { labRecover(RADIOLIB_ERR_UNKNOWN); return; }
+    const uint32_t now=millis();
+    if ((uint32_t)(now-_lab_last_poll)<1000 || isChipBusy()) return;
+    _lab_last_poll=now;
+    mesh::w12pram::Status s={}; int16_t rc=labScannerCommand(2,nullptr,0,s);
+    if (rc!=RADIOLIB_ERR_NONE || !s.hooked) { labRecover(rc ? rc : RADIOLIB_ERR_UNKNOWN); return; }
+    _lab_status=s;
+    if (s.state==4 && (s.irq & (1u<<18))) _loop_event_pending=true; // recover missed ISR
+    if (s.cads != _lab_prev_cads) { _lab_prev_cads=s.cads; _lab_progress_at=now; }
+    else if ((uint32_t)(now-_lab_progress_at)>10000) labRecover(RADIOLIB_ERR_SPI_CMD_TIMEOUT); // includes parked-without-IRQ
+  }
+  int recvRaw(uint8_t* bytes,int sz) override {
+    if (_lab_uncertain) return 0;
+    if (!_lab_scan_active) return RadioLibWrapper::recvRaw(bytes,sz);
+    if (!claimRadioInterrupt()) return 0;
+    if (_profiles.generation[0]!=_lab_snap[0].generation || _profiles.generation[1]!=_lab_snap[1].generation || !_profiles.enabled()) { labRecover(RADIOLIB_ERR_UNKNOWN); return 0; }
+    auto* r=static_cast<CustomLR2021*>(_radio);
+    mesh::w12pram::Status s={}; int16_t rc=labScannerCommand(2,nullptr,0,s);
+    if (rc!=RADIOLIB_ERR_NONE) { labRecover(rc); return 0; }
+    const auto event=mesh::w12pram::classify(s);
+    if (event==mesh::w12pram::RxEvent::Ignore) return 0; // late ISR after resume
+    if (event!=mesh::w12pram::RxEvent::Deliver) { labRecover(RADIOLIB_ERR_UNKNOWN); return 0; }
+    _lab_status=s; const uint8_t ch=s.last_hit;
+    const int len=r->getPacketLength(); int delivered=0;
+    if (len>0 && len<=sz) {
+      _last_snr=r->getSNR(); _last_rssi=r->getRSSI();
+      rc=r->readData(bytes,len); // validates FIFO size, header and CRC
+      if (rc==RADIOLIB_ERR_NONE) {
+        delivered=len; // publish attribution only after resume succeeds
+      } else { ++_lab_bad; ++n_recv_errors; }
+    } else { ++_lab_bad; ++n_recv_errors; (void)r->clearRxFifo(); }
+    rc=labScannerCommand(3,nullptr,0,_lab_status); // parked until data has been consumed
+    if (rc!=RADIOLIB_ERR_NONE || !_lab_status.hooked || _profiles.generation[0]!=_lab_snap[0].generation || _profiles.generation[1]!=_lab_snap[1].generation || !_profiles.enabled()) {
+      labRecover(rc ? rc : RADIOLIB_ERR_UNKNOWN);
+      return 0; // restore changes the live profile; never mislabel this frame
+    }
+    _lab_prev_cads=_lab_status.cads; _lab_progress_at=millis();
+    if (delivered) {
+      _lab_last_profile=ch; _lab_last=_lab_snap[ch]; _lab_last_logical_mhz=_lab_profiles[ch].freq;
+      _active_profile=ch; _profile_generation=_lab_snap[ch].generation; // Dispatcher tags Packet::radio_profile
+      ++_lab_good; ++_lab_good_profile[ch]; ++n_recv; last_recv_millis=millis();
+    }
+    return delivered;
+  }
+private:

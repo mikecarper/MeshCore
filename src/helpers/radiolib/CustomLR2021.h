@@ -28,6 +28,9 @@
 #endif
 
 class CustomLR2021 : public LR2021 {
+#if defined(MESH_W12_PRAM_EXPERIMENT) && MESH_W12_PRAM_EXPERIMENT
+  bool _lab_pram_scan_active = false;
+#endif
 #if LR2021_USE_DCDC
   mesh::power::RadioRegulatorState _regulator{mesh::power::REGULATOR_DCDC | mesh::power::REGULATOR_LDO,
       mesh::power::RegulatorMode::Dcdc};
@@ -573,6 +576,21 @@ class CustomLR2021 : public LR2021 {
       return false;
     }
 
+#if defined(MESH_W12_PRAM_EXPERIMENT) && MESH_W12_PRAM_EXPERIMENT
+    int16_t labSpiCommand(uint16_t op,bool write,uint8_t* data,size_t len,const uint8_t* out=nullptr,size_t outlen=0) {
+      return SPIcommand(op,write,data,len,out,outlen);
+    }
+    void labSetPramScan(bool active) {
+      _lab_pram_scan_active=active;
+      if (active) {
+        _last_frequency_error_valid=false;
+#if defined(MESH_ENABLE_LR2021_AUTO_XTRIM) && MESH_ENABLE_LR2021_AUTO_XTRIM
+        _packet_frequency_valid=false;
+#endif
+      }
+    }
+#endif
+
     int16_t readData(uint8_t* data, size_t len) override {
 #if defined(MESH_ENABLE_LR2021_AUTO_XTRIM) && MESH_ENABLE_LR2021_AUTO_XTRIM
       _packet_frequency_valid = false;
@@ -592,7 +610,11 @@ class CustomLR2021 : public LR2021 {
         return RADIOLIB_ERR_PACKET_TOO_SHORT;
       }
       int32_t frequency_error_hz = 0;
+#if defined(MESH_W12_PRAM_EXPERIMENT) && MESH_W12_PRAM_EXPERIMENT
+      const bool measured = !_lab_pram_scan_active && readPacketFrequencyErrorHz(frequency_error_hz) == RADIOLIB_ERR_NONE;
+#else
       const bool measured = readPacketFrequencyErrorHz(frequency_error_hz) == RADIOLIB_ERR_NONE;
+#endif
       const float measured_frequency = freqMHz;
       const int16_t result = LR2021::readData(data, len);
       if (result == RADIOLIB_ERR_NONE && measured) {

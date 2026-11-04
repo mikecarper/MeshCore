@@ -426,6 +426,9 @@ mesh::RadioParamApplyResult RadioLibWrapper::trySetTxPower(int8_t dbm) {
 }
 
 uint8_t RadioLibWrapper::beginReconfigure() {
+#if defined(MESH_W12_PRAM_EXPERIMENT) && MESH_W12_PRAM_EXPERIMENT
+  if (labReconfigureBlocked()) return 2;
+#endif
 #if MESH_HIL_PROFILE_TIMING
   mesh::profiletiming::ReconfigureScope profile_timing;
 #endif
