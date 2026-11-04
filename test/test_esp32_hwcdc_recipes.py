@@ -78,8 +78,8 @@ UNCHANGED_COUNTS = {
     ("esp32-s3-devkitc-1", "uart"): 57,
     ("esp32-s3-zero", "hwcdc"): 25,
     ("esp32dev", "classic_uart"): 5,
-    # Two shared E22 and seven Meshadventurer roles retain classic UART.
-    ("esp32doit-devkit-v1", "classic_uart"): 28,
+    # E22 and Meshadventurer roles, including M33S variants, retain classic UART.
+    ("esp32doit-devkit-v1", "classic_uart"): 38,
     ("esp32s3box", "hwcdc"): 7,
     ("heltec-rc32", "hwcdc"): 22,
     ("heltec_v4", "hwcdc"): 46,
@@ -291,7 +291,7 @@ class Esp32HwcdcRecipeTests(unittest.TestCase):
                 self.assertEqual(self.sdk["hwcdc_primary_enabled"](row["env"]),
                                  row["kind"] == "hwcdc")
                 self.assertFalse(self.sdk["native_primary_enabled"](row["env"]))
-        expected = Counter({"hwcdc": 353, "uart": 125, "classic_uart": 78})
+        expected = Counter({"hwcdc": 353, "uart": 125, "classic_uart": 88})
         expected.update(kind for _, _, kind in USB_PARTITION_BRIDGES.values())
         self.assertEqual(counts, expected)
 
@@ -401,6 +401,27 @@ class Esp32HwcdcRecipeTests(unittest.TestCase):
         expected = Counter(UNCHANGED_COUNTS)
         expected.update((board, kind) for board, _, kind in USB_PARTITION_BRIDGES.values())
         self.assertEqual(counts, expected)
+
+    def test_m33s_esp32_profiles_keep_their_base_uart_transport(self):
+        roles = {
+            "Generic_E22": ("repeater", "repeater_bridge_espnow", "kiss_modem"),
+            "Meshadventurer": ("repeater", "room_server", "terminal_chat",
+                               "companion_radio_usb", "companion_radio_ble",
+                               "kiss_modem", "repeater_bridge_espnow"),
+        }
+        for family, names in roles.items():
+            for role in names:
+                name = f"{family}_m33s_{role}"
+                base_name = f"{family}_{role}"
+                with self.subTest(environment=name):
+                    self.assertEqual(self.config.get(f"env:{name}", "extends"),
+                                     [f"env:{base_name}"])
+                    for row in (self.rows[name], self.rows[base_name]):
+                        self.assertEqual((row["board"], row["mcu"], row["kind"]),
+                                         ("esp32doit-devkit-v1", "esp32", "classic_uart"))
+                        self.assertEqual(row["values"], {USB_MODE: "0", USB_CDC: "0"})
+                        self.assertFalse(self.sdk["hwcdc_primary_enabled"](row["env"]))
+                        self.assertFalse(self.sdk["native_primary_enabled"](row["env"]))
 
     def test_non_esp32_recipes_do_not_acquire_esp32_usb_selectors(self):
         checked = set()
