@@ -43,7 +43,18 @@ inline int8_t stationPowerSaveTxPower(wifi_ps_type_t mode) {
 inline esp_err_t applyStationPowerSave(wifi_ps_type_t mode) {
   const esp_err_t result = esp_wifi_set_ps(mode);
   if (result != ESP_OK) return result;
-  return esp_wifi_set_max_tx_power(stationPowerSaveTxPower(mode));
+  const int8_t power = stationPowerSaveTxPower(mode);
+  const esp_err_t tx_result = esp_wifi_set_max_tx_power(power);
+  if (tx_result != ESP_OK) return tx_result;
+#if defined(WIFI_TX_POWER_DBM)
+  // Read back the ceiling: a driver that silently ignores the write would leave
+  // the profile's cap open. The SDK stores the raw request and floors the PHY to
+  // its own table, so "no higher than requested" is the ceiling in effect.
+  int8_t applied = 0;
+  if (esp_wifi_get_max_tx_power(&applied) != ESP_OK) return ESP_ERR_INVALID_STATE;
+  return mesh::wifi::txCeilingSatisfied(applied, power) ? ESP_OK : ESP_ERR_INVALID_STATE;
+#endif
+  return ESP_OK;
 }
 
 }  // namespace wifi

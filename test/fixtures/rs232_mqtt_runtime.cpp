@@ -131,7 +131,6 @@ struct MQTTNodeInfo {
 class MQTTBridge : public AbstractBridge {
   bool running = false;
   bool stopping = false;
-  bool network_suspended = false;
   bool start_pending = false;
 public:
   inline static unsigned live = 0, fail_starts = 0;
@@ -149,21 +148,15 @@ public:
     if (fail_starts) { --fail_starts; start_pending = true; return; }
     running = true;
     start_pending = false;
-    network_suspended = false;
   }
-  void end() override { ++ends; running = stopping = network_suspended = start_pending = false; }
+  void end() override { ++ends; running = stopping = start_pending = false; }
   void requestStop() { start_pending = false; stopping = running; }
   bool isStartPending() const { return start_pending; }
   bool isStopping() const { return stopping; }
   bool isRunning() const override { return running; }
-  bool isNetworkSuspended() const { return network_suspended; }
-  void setNetworkSuspended(bool paused) {
-    assert(running && !stopping);
-    network_suspended = paused;
-  }
   void loop() override {
     ++loops;
-    if (stopping) { ++ends; running = stopping = network_suspended = false; return; }
+    if (stopping) { ++ends; running = stopping = false; return; }
     if (start_pending) begin();
   }
   void sendPacket(mesh::Packet* p) override { if (allow(p)) ++sent; }
@@ -310,25 +303,21 @@ int main() {
     expect_get(cli, "bridge.type", "> mqtt+rs232+espnow");
     expect_get(cli, "rs232.enabled", "> off");
     expect_get(cli, "rs232.running", "> off");
-    fresh.mqtt_bridge->setNetworkSuspended(true);
     assert(fresh.isMqttBridgeRunning() && fresh._prefs.bridge_enabled);
-    assert(fresh.bridgesPreventSleep());  // ESP-NOW retains its radio owner.
+    assert(fresh.bridgesPreventSleep());  // ESP-NOW and MQTT retain their radio owners.
     assert(fresh.setEspNowBridgeState(false));
-    assert(!fresh.bridgesPreventSleep());  // Paused MQTT is still configured.
-    assert(fresh.setRs232BridgeState(true));
-    assert(fresh.bridgesPreventSleep());  // An active UART remains independent.
-    assert(fresh.setRs232BridgeState(false));
-    assert(!fresh.bridgesPreventSleep());
-    fresh.mqtt_bridge->setNetworkSuspended(false);
-    assert(fresh.bridgesPreventSleep());  // The recovery probe owns the radio.
+    assert(fresh.bridgesPreventSleep());  // Running MQTT still owns the radio.
     char pause_reply[256] = {};
     cli.set("espnow.enabled off", pause_reply);
     assert(strcmp(pause_reply, "OK") == 0);
-    fresh.mqtt_bridge->setNetworkSuspended(true);
     assert(fresh.requestMqttBridgeStop());
     assert(fresh.isMqttBridgeStopping() && fresh.bridgesPreventSleep());
     fresh.serviceBridges();
     assert(!fresh.isMqttBridgeRunning() && !fresh.bridgesPreventSleep());
+    assert(fresh.setRs232BridgeState(true));
+    assert(fresh.bridgesPreventSleep());  // An active UART remains independent.
+    assert(fresh.setRs232BridgeState(false));
+    assert(!fresh.bridgesPreventSleep());
     assert(fresh.setBridgeState(true));
     assert(fresh.isMqttBridgeRunning() && fresh.bridgesPreventSleep());
     cli.set("espnow.enabled on", pause_reply);

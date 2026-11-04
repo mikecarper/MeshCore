@@ -27,7 +27,7 @@ HARNESS = r'''
 #include <cstdlib>
 #include <cstring>
 #include <functional>
-#include <helpers/WiFiNetworkPowerPolicy.h>
+#include <helpers/esp32/WiFiCoordinator.h>
 #include <helpers/esp32/WiFiStationDiagnostics.h>
 #include <helpers/MQTTConnectionPolicy.h>
 #include <helpers/MQTTTransportHealth.h>
@@ -87,8 +87,8 @@ PsychicMqttClient::~PsychicMqttClient() {}
 
 @ADAPTER_METHODS@
 
-constexpr int RUNTIME_MQTT_SLOTS = 1, WIFI_MODE_NULL = 0;
-constexpr int WIFI_MODE_AP = 2, WIFI_STA = 1, WIFI_OFF = 0;
+constexpr int RUNTIME_MQTT_SLOTS = 1;
+constexpr int WIFI_MODE_AP = 2, WIFI_STA = 1;
 using wifi_mode_t = int;
 static int wifi_mode = WIFI_STA, wifi_stops = 0;
 int esp_wifi_get_mode(int* mode) { *mode = wifi_mode; return ESP_OK; }
@@ -100,18 +100,6 @@ ConnectionDiagnostics diagnostics;
 bool espNowChannelConstrained() { return false; }
 int restoreEspNowChannel() { assert(false); return ESP_ERR_INVALID_STATE; }
 } }
-struct {
-  void setAutoReconnect(bool enabled) { assert(!enabled); }
-  void disconnect(bool stop, bool erase) { assert(!stop && !erase); }
-  int getMode() const { return wifi_mode; }
-  void mode(int mode) {
-    assert(mode == WIFI_OFF && mesh::wifi::networkPower().backgroundSuspended());
-    const auto state = mesh::wifi::stationDiagnosticsSnapshot();
-    assert(state.phase == mesh::wifi::ConnectionPhase::Stopped && state.phase_ms == now_ms);
-    wifi_mode = mode;
-    ++wifi_stops;
-  }
-} WiFi;
 
 struct MQTTBridge {
   struct Slot {
@@ -129,16 +117,13 @@ struct MQTTBridge {
     MQTTTransportHealth::State transport_health;
   } _slots[RUNTIME_MQTT_SLOTS];
   using MQTTSlot = Slot;
-  mesh::wifi::NetworkPowerPolicy _network_power_policy;
-  std::atomic<bool> _network_suspended{false}, _fresh_ntp_this_boot{false};
+  std::atomic<bool> _fresh_ntp_this_boot{false};
   bool _slot_attempt_pending[RUNTIME_MQTT_SLOTS] = {};
   std::atomic<bool> _slot_transport_fault_pending[RUNTIME_MQTT_SLOTS] = {};
   std::atomic<bool> _slot_health_reset_pending[RUNTIME_MQTT_SLOTS] = {};
   bool _status_publish_pending[RUNTIME_MQTT_SLOTS] = {};
   bool _slot_force_jwt_mint[RUNTIME_MQTT_SLOTS] = {};
   uint32_t _network_publish_acks[RUNTIME_MQTT_SLOTS] = {};
-  bool _network_espnow_restore_pending = false;
-  uint32_t _network_espnow_restore_at = 0;
   bool _ntp_force_requested = false, _ntp_diag_requested = false;
   bool _ntp_sync_pending = false, _manage_wifi = true, _wifi_status_initialized = true;
   uint32_t _last_wifi_check = 0, _last_slot_reconnect_ms = 0;
@@ -161,19 +146,9 @@ struct MQTTBridge {
     }
     ++destroyed;
   }
-  bool serviceNetworkPower(uint32_t now);
-  void serviceEspNowChannelRestore(uint32_t now);
   void workerStop() {
     while (true) {
 @TASK_STOP@
-    }
-  }
-  void workerOutageOnce() {
-    for (unsigned iteration = 0; iteration < 1; ++iteration) {
-      const uint32_t now = now_ms;
-@OUTAGE_GUARD@
-      ++ntp_starts;
-      ++slot_starts;
     }
   }
 };
@@ -203,26 +178,6 @@ int main(int argc, char** argv) {
     const int stopped = stop_calls;
     client.disconnect();
     assert(stop_calls == stopped);  // already stopped is idempotent
-  } else if (scenario == 1) {
-    stop_result = ESP_ERR_INVALID_STATE;
-    auto& control = mesh::wifi::networkPower();
-    control.setManaged(true);
-    MQTTBridge bridge;
-    bridge._slots[0].client = &client;
-    const uint32_t start = now_ms;
-    assert(bridge.serviceNetworkPower(start));
-    now_ms = start + 300000U;
-    assert(!bridge.serviceNetworkPower(now_ms));
-    assert(elapsed_ms >= 1000U && stop_calls == 1 && client.isStarted());
-    assert(!bridge._network_suspended && !control.backgroundSuspended());
-    assert(wifi_stops == 0 && wifi_mode == WIFI_STA);
-    // An owning-task retry can now complete teardown without another wait if
-    // the disconnect request itself fails. Only the successful SDK stop grants
-    // the bridge permission to turn the station off.
-    disconnect_result = ESP_ERR_INVALID_STATE;
-    stop_result = ESP_OK;
-    assert(!bridge.serviceNetworkPower(now_ms));
-    assert(!client.isStarted() && control.backgroundSuspended() && wifi_stops == 1);
   } else if (scenario == 2) {
     disconnect_result = ESP_ERR_INVALID_STATE;
     client.disconnect();
@@ -278,20 +233,6 @@ int main(int argc, char** argv) {
     assert(client.isStarted() && strcmp(token, "protected-token") == 0);
     assert(bridge._slots[0].initial_connect_done);
     assert(strcmp(bridge._slots[0].broker_uri, "mqtt://original") == 0);
-  } else if (scenario == 9) {
-    disconnect_result = ESP_ERR_INVALID_STATE;
-    stop_result = ESP_ERR_INVALID_STATE;
-    auto& control = mesh::wifi::networkPower();
-    control.setManaged(true);
-    MQTTBridge bridge;
-    bridge._slots[0].client = &client;
-    const uint32_t start = now_ms;
-    assert(bridge.serviceNetworkPower(start));
-    now_ms = start + 300000U;
-    bridge.workerOutageOnce();
-    assert(client.isStarted() && !bridge._network_suspended);
-    assert(!control.backgroundSuspended() && wifi_stops == 0);
-    assert(bridge.queues == 1 && bridge.ntp_starts == 0 && bridge.slot_starts == 0);
   } else assert(false);
   const auto state = mesh::wifi::stationDiagnosticsSnapshot();
   assert(state.phase == (wifi_stops ? mesh::wifi::ConnectionPhase::Stopped
@@ -321,10 +262,7 @@ class MqttDisconnectTests(unittest.TestCase):
                       "ConnectionDiagnosticsSnapshot stationDiagnosticsSnapshot()",
                   )))
                   .replace("@TASK_STOP@", extract_braced(task, "    if (_stop_requested)"))
-                  .replace("@OUTAGE_GUARD@", extract_braced(task, "    if (!serviceNetworkPower("))
                   .replace("@BRIDGE_METHOD@", "\n".join(method(BRIDGE, signature) for signature in (
-                      "bool MQTTBridge::serviceNetworkPower(",
-                      "void MQTTBridge::serviceEspNowChannelRestore(",
                       "void MQTTBridge::teardownSlot(",
                   ))))
         with tempfile.TemporaryDirectory(prefix="meshcore-mqtt-disconnect-") as temporary:
@@ -351,7 +289,7 @@ class MqttDisconnectTests(unittest.TestCase):
                             "-I", str(ROOT / "src"), str(cpp), "-o", str(binary)],
                             capture_output=True, text=True, timeout=60)
                         self.assertEqual(built.returncode, 0, built.stdout + built.stderr)
-                        for scenario in range(10):
+                        for scenario in (0, 2, 3, 4, 5, 6, 7, 8):
                             for wrap in (0, 1):
                                 with self.subTest(scenario=scenario, wrap=wrap):
                                     checked = subprocess.run([str(binary), str(scenario), str(tick), str(wrap)],

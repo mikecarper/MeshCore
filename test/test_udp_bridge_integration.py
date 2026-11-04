@@ -4,6 +4,7 @@ from pathlib import Path
 import os
 import re
 import subprocess
+import sys
 import tempfile
 import unittest
 from cpp_source import body
@@ -19,7 +20,8 @@ HARNESS = r'''
 #include <new>
 #include <initializer_list>
 #include <helpers/UDPBridgePrefs.h>
-#include <helpers/WiFiNetworkPowerPolicy.h>
+#include <helpers/esp32/WiFiCoordinator.h>
+#include <helpers/esp32/InfrastructureBridgeCoordinator.h>
 #include <helpers/WirelessControl.h>
 uint32_t now_ms=1000;
 uint32_t millis(){return now_ms;}
@@ -116,13 +118,13 @@ int main(){
  MyMesh node;
  char status[157];node.formatUDPBridgeStatus(status,sizeof(status));assert(strstr(status,"off ip=0.0.0.0"));
  node.serviceUDPBridge();
- assert(!node.udp_bridge&&!mesh::wifi::networkPower().foregroundActive()&&WiFi.begins==0);
+ assert(!node.udp_bridge&&!mesh::wifi::coordinator().hasStationLease(mesh::wifi::StationOwner::UdpBridge)&&WiFi.begins==0);
  auto prefs=node.udp_bridge_settings.data;prefs.enabled=1;
  for(unsigned i=0;i<8;++i){prefs.peers[i].ip[0]=10;prefs.peers[i].ip[3]=i+2;prefs.peers[i].port=4404;}
  assert(node.setUDPBridgePrefs(prefs));
  assert(node.udp_bridge&&UDPBridge::allocations==1&&WiFi.begins==1&&WiFi.current==WIFI_STA);
  assert(applied_ps==WIFI_PS_NONE&&applied_tx==78);
- assert(!node.udp_bridge->running&&mesh::wifi::networkPower().foregroundActive());
+ assert(!node.udp_bridge->running&&mesh::wifi::coordinator().hasStationLease(mesh::wifi::StationOwner::UdpBridge));
  WiFi.state=WL_CONNECTED;WiFi.ip=0x0100000a;
  node.serviceUDPBridge();
  node.formatUDPBridgeStatus(status,sizeof(status));assert(strstr(status,"ready ip=10.0.0.1"));
@@ -138,7 +140,7 @@ int main(){
  assert(!node.udp_bridge->running); // Association alone is not a usable IP.
  WiFi.ip=0x0100000a;node.serviceUDPBridge();assert(node.udp_bridge->running);
  node._cli.board.ota=true;node.serviceUDPBridge();
- assert(!node.udp_bridge->running&&!mesh::wifi::networkPower().foregroundActive());
+ assert(!node.udp_bridge->running&&!mesh::wifi::coordinator().hasStationLease(mesh::wifi::StationOwner::UdpBridge));
  node._cli.board.ota=false;node.serviceUDPBridge();assert(node.udp_bridge->running);
  assert(node.setUDPBridgeNetworkState(false));node.serviceUDPBridge();assert(!node.udp_bridge->running);
  assert(node.setUDPBridgeNetworkState(true)&&node.udp_bridge->running);
@@ -159,16 +161,13 @@ int main(){
 #endif
  node.serviceUDPBridge();assert(WiFi.begins==before_mqtt+1);
  WiFi.state=WL_CONNECTED;node.serviceUDPBridge();assert(node.udp_bridge->running);
- // A failed MQTT destination must not park a healthy independent LAN bridge.
- mesh::wifi::NetworkPowerPolicy policy;
- assert(policy.update(now_ms,false,mesh::wifi::networkPower().foregroundActive())==mesh::wifi::NetworkPowerPolicy::Action::Run);
- assert(policy.update(now_ms+600000,false,mesh::wifi::networkPower().foregroundActive())==mesh::wifi::NetworkPowerPolicy::Action::Run);
+ assert(mesh::wifi::coordinator().hasStationLease(mesh::wifi::StationOwner::UdpBridge));
  Backend backend;auto& control=mesh::wireless::control();control.begin(backend);char reply[160];
  assert(control.handle("set wifi off force",reply,sizeof(reply),now_ms,mesh::wireless::Independent));
  node.serviceUDPBridge();assert(!node.udp_bridge->running); // Honor off before reply-drain grace ends.
  node.formatUDPBridgeStatus(status,sizeof(status));assert(strstr(status,"wifi-paused"));
  now_ms+=250;control.service(now_ms);assert(control.blocked(mesh::wireless::WiFi));
- node.serviceUDPBridge();assert(!node.udp_bridge->running&&!mesh::wifi::networkPower().foregroundActive());
+ node.serviceUDPBridge();assert(!node.udp_bridge->running&&!mesh::wifi::coordinator().hasStationLease(mesh::wifi::StationOwner::UdpBridge));
  node.setUDPBridgeNetworkState(true);assert(!node.udp_bridge->running); // No silent master-off bypass.
  assert(control.handle("set wifi on",reply,sizeof(reply),now_ms,mesh::wireless::Independent));
  now_ms+=250;control.service(now_ms);node.serviceUDPBridge();assert(node.udp_bridge->running);
@@ -185,7 +184,7 @@ int main(){
  assert(node.udp_bridge_settings.data.port==before.port&&node.udp_bridge->running);
  node.udp_bridge_settings.save_ok=true;prefs.enabled=0;
  assert(node.setUDPBridgePrefs(prefs)&&!node.udp_bridge&&UDPBridge::allocations==0);
- assert(!mesh::wifi::networkPower().foregroundActive());
+ assert(!mesh::wifi::coordinator().hasStationLease(mesh::wifi::StationOwner::UdpBridge));
 }
 '''
 
@@ -195,6 +194,7 @@ class UDPBridgeIntegrationTest(unittest.TestCase):
                       'bool MyMesh::webConfigOwnsWiFi(')
         fixture = r'''
 #include <cassert>
+#include <helpers/esp32/InfrastructureBridgeCoordinator.h>
 struct Worker {
   bool running=false,stopping=false;
   bool isRunning()const{return running;}
@@ -229,7 +229,9 @@ int main(){
                 (path / 'test.cpp').write_text(fixture, encoding='ascii')
                 binary = path / 'test'
                 subprocess.run([os.environ.get('CXX', 'g++'), '-std=c++11', '-Wall', '-Wextra', '-Werror',
-                    '-fsanitize=address,undefined', '-fno-omit-frame-pointer', '-fno-pie', '-no-pie',
+                    '-fsanitize=address,undefined', '-fno-omit-frame-pointer',
+                    *(['-fno-pie', '-no-pie'] if sys.platform.startswith('linux') else []),
+                    '-I', str(ROOT / 'src'),
                     *['-D' + flag + '=1' for flag in flags], str(path / 'test.cpp'), '-o', str(binary)], check=True)
                 subprocess.run([str(binary)], check=True)
 
@@ -288,7 +290,8 @@ int main() {
                 binary = path / 'test'
                 subprocess.run([os.environ.get('CXX', 'g++'), '-std=c++11', '-Wall', '-Wextra', '-Werror',
                     '-DWITH_UDP_BRIDGE=1', '-DWITH_ESPNOW_BRIDGE=1',
-                    '-fsanitize=address,undefined', '-fno-omit-frame-pointer', '-fno-pie', '-no-pie',
+                    '-fsanitize=address,undefined', '-fno-omit-frame-pointer',
+                    *(['-fno-pie', '-no-pie'] if sys.platform.startswith('linux') else []),
                     '-I', str(ROOT / 'src'), *['-D' + flag + '=1' for flag in flags],
                     str(path / 'test.cpp'), '-o', str(binary)], check=True)
                 subprocess.run([str(binary)], check=True)

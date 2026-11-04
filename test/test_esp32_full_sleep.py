@@ -103,7 +103,7 @@ int main() {
 #include <cstdint>
 #include <helpers/UsbHostSleepPolicy.h>
 #include <helpers/PowerSavingDiagnostics.h>
-#include <helpers/WiFiNetworkPowerPolicy.h>
+#include <helpers/esp32/WiFiCoordinator.h>
 #include <helpers/MorseLoopPolicy.h>
 static uint32_t now = 1000;
 uint32_t millis() { return now; }
@@ -181,7 +181,6 @@ struct Control { bool transition = false; bool pending() const { return transiti
 Control& control() { return controller; }
 }
 }
-@SUSPENDED@
 @READY@
 void idle() { const bool morse_timing = mesh::morseTimingActive(the_mesh.getProfileRadio()); @BRANCH@ }
 template<class T> void blocks(T& flag) {
@@ -219,49 +218,6 @@ int main() {
   blocks(mesh::watchdog); blocks(mesh::wireless::controller.transition);
   prefs.powersaving_enabled = false; before = sleeps; idle(); assert(sleeps == before);
   prefs.powersaving_enabled = true; idle(); assert(sleeps == before + 1);
-  // A requested WiFi service and idle WebConfig listener remain logically
-  // enabled during MQTT cooldown. Sleep needs transport quiescence and the
-  // station owner's physical stop, rather than a disabled saved preference.
-  auto& power = mesh::wifi::networkPower();
-  power.setManaged(true); power.setSuspended(true);
-  companion_wireless.services = mesh::wireless::WiFi;
-  companion_wifi_background_stopped = true;
-  sdk_result = ESP_ERR_WIFI_NOT_INIT;
-  before = sleeps; idle(); assert(sleeps == before + 1);
-  for (int stopped_result : {ESP_ERR_WIFI_NOT_STARTED, ESP_OK}) {
-    sdk_result = stopped_result; sdk_mode = WIFI_MODE_NULL;
-    before = sleeps; idle(); assert(sleeps == before + 1);
-  }
-  sdk_result = ESP_ERR_WIFI_NOT_INIT;
-  blocks(mesh::wifi::espnow_constrained);
-  for (wifi_mode_t mode : {WIFI_MODE_STA, WIFI_MODE_AP, WIFI_MODE_APSTA}) {
-    sdk_mode = mode; sdk_result = ESP_OK;
-    before = sleeps; idle(); assert(sleeps == before);
-  }
-  sdk_mode = WIFI_MODE_NULL; sdk_result = 99;
-  before = sleeps; idle(); assert(sleeps == before); // Failed physical cleanup/read.
-  sdk_result = ESP_ERR_WIFI_NOT_INIT;
-  companion_wifi_background_stopped = false;
-  before = sleeps; idle(); assert(sleeps == before); // Owner has not stopped STA yet.
-  companion_wifi_background_stopped = true;
-  for (unsigned service : {mesh::wireless::Bluetooth, mesh::wireless::EspNow}) {
-    companion_wireless.services = mesh::wireless::WiFi | service;
-    before = sleeps; idle(); assert(sleeps == before);
-  }
-  companion_wireless.services = mesh::wireless::WiFi;
-  for (auto hold : {mesh::wifi::NetworkPowerHold::WebConfig,
-                   mesh::wifi::NetworkPowerHold::CompanionClient,
-                   mesh::wifi::NetworkPowerHold::OtaSeeder}) {
-    power.setHold(hold, true);
-    before = sleeps; idle(); assert(sleeps == before);
-    power.setHold(hold, false);
-  }
-  blocks(board.ota); blocks(bt_controller_active); blocks(bt_host_active);
-  power.setSuspended(false);
-  before = sleeps; idle(); assert(sleeps == before); // Worker has begun its probe.
-  power.setManaged(false);
-  companion_wifi_background_stopped = false;
-  companion_wireless.services = 0; sdk_mode = WIFI_MODE_NULL; sdk_result = ESP_OK;
   // The real board policy must observe USB even while pending work/logging
   // inhibit this branch. A rebooting host cannot disappear for one SOF gap
   // and cause Full to shut down its console immediately.
@@ -271,8 +227,6 @@ int main() {
   now += 120000; idle(); assert(sleeps == before + 1);
 }
 '''.replace("@READY@", ready).replace("@BRANCH@", branch).replace("@USB_HELD@", usb_held)
-        source = source.replace("@SUSPENDED@", function(main,
-            "static bool companionWiFiBackgroundSuspended()"))
         source = "#include <initializer_list>\n" + source
         flags = ("ESP32_PLATFORM", "ESP32", "ENABLE_USB_INTERFACE", "ARDUINO_USB_CDC_ON_BOOT=1",
                  'WIFI_SSID=""', "BLE_PIN_CODE=123456", "MESH_USB_LOGGING_AVAILABLE=1",

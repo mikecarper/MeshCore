@@ -4,6 +4,7 @@
 from pathlib import Path
 import shutil
 import subprocess
+import sys
 import tempfile
 import unittest
 
@@ -113,9 +114,8 @@ public:
   }
 };
 struct MQTTBridge : AbstractBridge {
-  bool running = false, paused = false;
+  bool running = false;
   bool isRunning() const override { return running; }
-  bool isNetworkSuspended() const { return paused; }
   bool isStopping() const { return false; }
 };
 struct Callbacks {
@@ -244,7 +244,7 @@ int main() {
 #ifdef WITH_MQTT_BRIDGE
     MQTTBridge broker; node.mqtt_bridge = &broker;
     node.bridge->wake_delay = 30000; broker.running = true;
-    assert(node.hasPendingWork()); broker.paused = true;
+    assert(node.hasPendingWork()); broker.running = false;
     assert(!node.hasPendingWork()); node.mqtt_bridge = nullptr;
 #endif
     request(node, RS232Bridge::PowerAction::Resume);
@@ -339,7 +339,8 @@ class RS232HeartbeatOwnerTests(unittest.TestCase):
                     if mqtt:
                         flags.append("-DWITH_MQTT_BRIDGE=1")
                     built = subprocess.run([compiler, "-std=c++17", "-Wall", "-Wextra", "-Werror",
-                        "-fsanitize=address,undefined", "-fno-sanitize-recover=all", "-fno-pie", "-no-pie",
+                        "-fsanitize=address,undefined", "-fno-sanitize-recover=all",
+                        *(["-fno-pie", "-no-pie"] if sys.platform.startswith("linux") else []),
                         *flags, "-I", str(ROOT / "src"), str(cpp), "-o", str(binary)], capture_output=True, text=True, timeout=60)
                     self.assertEqual(built.returncode, 0, built.stdout + built.stderr)
                     checked = subprocess.run([str(binary)], capture_output=True, text=True, timeout=10)

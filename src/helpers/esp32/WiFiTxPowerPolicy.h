@@ -53,5 +53,14 @@ inline int txPowerDbmFromUnits(int8_t units) {
   return units / kTxPowerStepUnits;
 }
 
+// One acceptance rule for every ceiling write: the SDK stores the raw request
+// and floors the PHY to its own power table, so a reported ceiling no higher
+// than the request is the cap in effect, and anything above it means the write
+// never took hold. Both the join path and the modem-sleep path use this so the
+// rule cannot drift between them.
+inline bool txCeilingSatisfied(int8_t applied, int8_t requested) {
+  return applied <= requested;
+}
+
 }  // namespace wifi
 }  // namespace mesh

@@ -381,7 +381,10 @@ WebConfigServer::WebConfigServer(Callbacks* callbacks, void* mqtt_prefs, bool ow
 
 WebConfigServer::~WebConfigServer() {
   detachRoutes();
-  mesh::wifi::networkPower().setHold(mesh::wifi::NetworkPowerHold::WebConfig, false);
+  mesh::wifi::coordinator().setStationLease(
+      mesh::wifi::StationOwner::WebConfig, false);
+  mesh::wifi::coordinator().setAccessPointLease(
+      mesh::wifi::AccessPointOwner::WebConfigSetup, false);
   closeTerminal();
   delete _room_mailbox;
   if (_mux) vSemaphoreDelete(_mux);
@@ -711,14 +714,6 @@ bool WebConfigServer::formatWiFiStatus(
     appendOtaSeederStatus(reply, reply_len, ssid);
     return true;
   }
-  if (mesh::wifi::networkPower().backgroundSuspended()
-      && !mesh::wifi::networkPower().foregroundActive()) {
-    snprintf(reply, reply_len,
-             "> WiFi: paused; retries every 30 minutes; saved network: '%s'",
-             configured ? ssid : "(not configured)");
-    appendOtaSeederStatus(reply, reply_len, ssid);
-    return true;
-  }
   if (active && active->_mode == MODE_CONNECTING) {
     snprintf(reply, reply_len, "> WiFi: connecting to '%s'",
              configured ? ssid : "(not configured)");
@@ -825,12 +820,10 @@ void WebConfigServer::noteNetworkActivity() {
   // This is separate from _last_activity, which also tracks boot and captive
   // portal events. Those events must not renew an idle LAN listener's lease.
   _network_activity_until = WebConfigBatch::scheduleAt(millis(), 120000UL);
-  mesh::wifi::networkPower().setHold(mesh::wifi::NetworkPowerHold::WebConfig, true);
 }
 
 void WebConfigServer::requestNetworkAccess() {
   noteNetworkActivity();
-  mesh::wifi::networkPower().requestProbe();
 }
 
 bool WebConfigServer::isNetworkForegroundActive(uint32_t now) const {
@@ -843,11 +836,6 @@ bool WebConfigServer::isNetworkForegroundActive(uint32_t now) const {
       || _room_mailbox->state() == mesh::RoomWebMailbox::State::Running)) return true;
   return _network_activity_until
       && !WebConfigBatch::deadlineReached(now, _network_activity_until);
-}
-
-void WebConfigServer::refreshNetworkPowerHold(uint32_t now) {
-  mesh::wifi::networkPower().setHold(mesh::wifi::NetworkPowerHold::WebConfig,
-                                  isNetworkForegroundActive(now));
 }
 
 // ---------------------------------------------------------------------------
@@ -991,7 +979,8 @@ bool WebConfigServer::startSetupMode(char reply[]) {
   }
   if (!ap_ok) {
     if (!promote_lan) stopOwnedWiFiRadio();
-    refreshNetworkPowerHold(millis());
+    mesh::wifi::coordinator().setAccessPointLease(
+        mesh::wifi::AccessPointOwner::WebConfigSetup, false);
     strcpy(reply, "Err: failed to start AP");
     _start_retryable = true;
     return false;
@@ -1004,6 +993,10 @@ bool WebConfigServer::startSetupMode(char reply[]) {
 
   _mode = MODE_SETUP;
   _was_setup_ap = true;
+  mesh::wifi::coordinator().setAccessPointLease(
+      mesh::wifi::AccessPointOwner::WebConfigSetup, true);
+  mesh::wifi::coordinator().setStationLease(
+      mesh::wifi::StationOwner::WebConfig, _owns_wifi);
   _initial_setup = _wifi_ssid[0] == 0 && credential.password[0] != 0;
   _setup_provisioning_privilege = _initial_setup && ap_password != nullptr;
   _ap_auth_generation = credential.generation;
@@ -1011,7 +1004,6 @@ bool WebConfigServer::startSetupMode(char reply[]) {
   _setup_started_at = millis();
   _last_activity = _setup_started_at;
   if (!promote_lan) createServer();
-  refreshNetworkPowerHold(_setup_started_at);
   // Keep the pre-AP scan results for the picker. Only an explicit browser
   // rescan needs to leave the AP's home channel after clients have joined.
 
@@ -1053,8 +1045,6 @@ bool WebConfigServer::startLanMode(char reply[]) {
 }
 
 bool WebConfigServer::beginSavedStation(uint32_t now) {
-  if (mesh::wifi::networkPower().backgroundSuspended()
-      && !isNetworkForegroundActive(now)) return false;
   _wifi_power_save = effectiveWiFiPowerSave(_wifi_power_save);
   const wifi_ps_type_t ps_mode =
       _wifi_power_save == mesh::wifi::kPowerSaveNone ? WIFI_PS_NONE
@@ -1260,7 +1250,6 @@ void WebConfigServer::requestStop() {
   _stopping = true;
   _stop_warn_at = WebConfigBatch::scheduleAt(millis(), STOP_WARN_MS);
   _stop_warned = false;
-  refreshNetworkPowerHold(millis());
 }
 
 bool WebConfigServer::stopForOTA(char reply[]) {
@@ -1348,7 +1337,10 @@ void WebConfigServer::finalizeTeardown() {
   _board_cmds = 0;
   _board_cmds_probed = false;
   _network_activity_until = 0;
-  refreshNetworkPowerHold(millis());
+  mesh::wifi::coordinator().setStationLease(
+      mesh::wifi::StationOwner::WebConfig, false);
+  mesh::wifi::coordinator().setAccessPointLease(
+      mesh::wifi::AccessPointOwner::WebConfigSetup, false);
   if (_cb) _cb->onWebConfigStopped();
 }
 
@@ -1406,7 +1398,12 @@ void WebConfigServer::serviceSetupPassword(uint32_t now) {
 }
 
 void WebConfigServer::tick(uint32_t now) {
-  refreshNetworkPowerHold(now);
+  mesh::wifi::coordinator().setStationLease(
+      mesh::wifi::StationOwner::WebConfig,
+      (_mode != MODE_OFF || _stopping) && _owns_wifi);
+  mesh::wifi::coordinator().setAccessPointLease(
+      mesh::wifi::AccessPointOwner::WebConfigSetup,
+      _mode == MODE_SETUP && !_stopping);
   serviceSetupPassword(now);
   if (_stopping) {
     uint32_t refs = handlerRefCount();
@@ -1432,12 +1429,6 @@ void WebConfigServer::tick(uint32_t now) {
 
   serviceTerminal(now);
   serviceRoom(now);
-
-  // The MQTT/NTP owner has stopped its transports before publishing this
-  // state. An idle portal must not start an independent reconnect loop while
-  // those consumers are in their shared thirty-minute recovery cooldown.
-  if (mesh::wifi::networkPower().backgroundSuspended()
-      && !isNetworkForegroundActive(now)) return;
 
   // A primary ESP-NOW radio and its WiFi station cannot remain on different
   // channels. Reject a router-driven channel move (for example a CSA) and put
@@ -1973,8 +1964,6 @@ void WebConfigServer::dispatchRequest(AsyncWebServerRequest* req,
     req->send(503, "application/json", "{\"error\":\"webconfig stopped\"}");
     return;
   }
-
-  mesh::wifi::networkPower().setHold(mesh::wifi::NetworkPowerHold::WebConfig, true);
 
   (target->*handler)(req);
 

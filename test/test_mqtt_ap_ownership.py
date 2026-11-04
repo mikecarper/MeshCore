@@ -38,6 +38,7 @@ class MQTTAccessPointOwnershipTest(unittest.TestCase):
         power = (ROOT / "src/helpers/esp32/WiFiStationPower.h").read_text(encoding="ascii")
         power_methods = "\n".join(method(power, signature) for signature in (
             "inline wifi_power_t stationTransmitPower(",
+            "inline int8_t stationPowerSaveTxPower(",
             "inline esp_err_t applyStationPowerSave(",
         ))
         return (fixture.replace("@STATION_GUARD@", guard)

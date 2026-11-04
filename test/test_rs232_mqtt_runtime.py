@@ -4,6 +4,7 @@ from pathlib import Path
 import re
 import shutil
 import subprocess
+import sys
 import tempfile
 import unittest
 
@@ -111,8 +112,9 @@ class RS232MQTTRuntimeTests(unittest.TestCase):
             work = Path(temporary)
             source, binary = work / "main.cpp", work / "test"
             source.write_text(code, encoding="ascii")
+            pie_flags = ["-fno-pie", "-no-pie"] if sys.platform.startswith("linux") else ["-Wno-deprecated-declarations"]
             result = subprocess.run([compiler, "-std=c++17", "-Wall", "-Wextra", "-Werror",
-                "-fsanitize=address,undefined", "-fno-sanitize-recover=all", "-fno-pie", "-no-pie",
+                "-fsanitize=address,undefined", "-fno-sanitize-recover=all", *pie_flags,
                 *flags, "-I" + str(ROOT / "src"), str(source), "-o", str(binary)],
                 capture_output=True, text=True, timeout=60)
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
@@ -193,14 +195,12 @@ class RS232MQTTRuntimeTests(unittest.TestCase):
   MyMesh mesh; mesh.defaults(); mesh.boot(); CommonCLI cli(mesh);
   expect_get(cli, "bridge.type", "> mqtt+rs232");
   assert(mesh.isMqttBridgeRunning() && !mesh.isRs232BridgeRunning());
-  mesh.mqtt_bridge->setNetworkSuspended(true);
   assert(mesh.isMqttBridgeRunning() && mesh._prefs.bridge_enabled);
-  assert(!mesh.bridgesPreventSleep());
+  assert(mesh.bridgesPreventSleep());
   char reply[256] = {};
   cli.set("rs232.enabled on", reply); assert(strcmp(reply, "OK") == 0);
   assert(mesh.isRs232BridgeRunning() && mesh.isMqttBridgeRunning());
-  assert(mesh.bridgesPreventSleep());  // Paused MQTT cannot mask an active UART.
-  mesh.mqtt_bridge->setNetworkSuspended(false);
+  assert(mesh.bridgesPreventSleep());
   const unsigned starts = mesh.mqtt_bridge->begins;
   cli.set("bridge.baud 57600", reply); assert(strcmp(reply, "OK") == 0);
   assert(mesh.isRs232BridgeRunning() && mesh.mqtt_bridge->begins == starts);
@@ -235,8 +235,9 @@ class RS232MQTTRuntimeTests(unittest.TestCase):
             work = Path(directory)
             source, binary = work / "main.cpp", work / "test"
             source.write_text(code, encoding="ascii")
+            pie_flags = ["-fno-pie", "-no-pie"] if sys.platform.startswith("linux") else ["-Wno-deprecated-declarations"]
             built = subprocess.run([compiler, "-std=c++17", "-Wall", "-Wextra", "-Werror",
-                "-fsanitize=address,undefined", "-fno-sanitize-recover=all", "-fno-pie", "-no-pie",
+                "-fsanitize=address,undefined", "-fno-sanitize-recover=all", *pie_flags,
                 *flags, "-I" + str(ROOT / "src"), str(source), "-o", str(binary)],
                 capture_output=True, text=True, timeout=60)
             self.assertEqual(built.returncode, 0, built.stdout + built.stderr)

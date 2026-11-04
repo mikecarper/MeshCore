@@ -34,7 +34,8 @@ mesh::FloodAdvertLimiter::Entry* repeaterRtcAdvertSlowBank() {
 #endif
 #if defined(ESP32_PLATFORM)
 #include <helpers/esp32/BootFileSystem.h>
-#include <helpers/WiFiNetworkPowerPolicy.h>
+#include <helpers/esp32/WiFiCoordinator.h>
+#include <helpers/esp32/InfrastructureBridgeCoordinator.h>
 #if defined(WITH_WEBCONFIG) || defined(WITH_MQTT_BRIDGE) || defined(WITH_ESPNOW_BRIDGE) || defined(WITH_UDP_BRIDGE) \
     || defined(LIGHTWEIGHT_WIFI_OTA) || (defined(ADMIN_PASSWORD) && !defined(DISABLE_WIFI_OTA))
 #include <WiFi.h>
@@ -11857,14 +11858,18 @@ bool MyMesh::startWebConfig(bool force_ap, char* reply) {
 }
 
 bool MyMesh::webConfigOwnsWiFi() const {
-  bool owns_wifi = true;
+  bool mqtt_running = false;
+  bool mqtt_stopping = false;
 #ifdef WITH_MQTT_BRIDGE
-  owns_wifi = !mqtt_bridge || (!mqtt_bridge->isRunning() && !mqtt_bridge->isStopping());
+  mqtt_running = mqtt_bridge && mqtt_bridge->isRunning();
+  mqtt_stopping = mqtt_bridge && mqtt_bridge->isStopping();
 #endif
+  bool udp_enabled = false;
 #ifdef WITH_UDP_BRIDGE
-  owns_wifi = owns_wifi && !isUDPBridgeNetworkEnabled();
+  udp_enabled = isUDPBridgeNetworkEnabled();
 #endif
-  return owns_wifi;
+  return mesh::wifi::infrastructureWebConfigOwnsStation(
+      mqtt_running, mqtt_stopping, udp_enabled);
 }
 
 bool MyMesh::startWebConfigImpl(bool force_ap, char* reply, bool automatic_setup) {
@@ -14919,7 +14924,7 @@ bool MyMesh::setUDPBridgeNetworkState(bool enabled) {
   udp_station_retry_at = 0;
   if (!enabled) {
     if (udp_bridge) udp_bridge->serviceNetwork(false);
-    mesh::wifi::networkPower().setHold(mesh::wifi::NetworkPowerHold::UdpBridge, false);
+    mesh::wifi::coordinator().setStationLease(mesh::wifi::StationOwner::UdpBridge, false);
   } else {
     serviceUDPBridge();
   }
@@ -14996,9 +15001,7 @@ bool MyMesh::resetUDPBridgeStats() {
 void MyMesh::serviceUDPBridge() {
   const bool requested = isUDPBridgeNetworkEnabled()
       && !_cli.getBoard()->isOTAUpdateRunning();
-  // MQTT's broker outage clock does not describe this independent LAN bridge.
-  // Publish a separate hold before asking its worker to resume a parked STA.
-  mesh::wifi::networkPower().setHold(mesh::wifi::NetworkPowerHold::UdpBridge, requested);
+  mesh::wifi::coordinator().setStationLease(mesh::wifi::StationOwner::UdpBridge, requested);
   if (!requested) {
     if (udp_bridge) udp_bridge->serviceNetwork(false);
     return;
@@ -15061,14 +15064,13 @@ void MyMesh::serviceIdleWiFi() {
 #ifdef WITH_UDP_BRIDGE
   if (isUDPBridgeNetworkEnabled()) return;
 #endif
-  if (mesh::wifi::networkPower().foregroundActive()) return;
+  if (mesh::wifi::coordinator().hasStationLease(mesh::wifi::StationOwner::Ota)) return;
 #ifdef WITH_WEBCONFIG
-  if (isWebConfigActive() && (!mesh::wifi::networkPower().backgroundSuspended()
-      || _webconfig->isNetworkForegroundActive(millis()))) return;
+  if (isWebConfigActive()) return;
 #endif
 #ifdef WITH_MQTT_BRIDGE
   if (_ota_update_at) return;
-  // The MQTT worker owns physical shutdown and resume, including cooldown.
+  // The MQTT worker owns physical shutdown and resume.
   // Never race its Core 0 Arduino/SDK interface transition from this loop.
   if (mqtt_bridge && (mqtt_bridge->isRunning() || mqtt_bridge->isStopping())) return;
 #endif
@@ -15110,10 +15112,10 @@ mesh::powerdiag::Mask MyMesh::pendingWorkReason() const {
   if (isUDPBridgeRunning()) return mask(Reason::Bridge);
 #endif
 #if defined(ESP32_PLATFORM)
-  if (mesh::wifi::networkPower().foregroundActive()) return mask(Reason::Network);
+  if (mesh::wifi::coordinator().hasStationLease(mesh::wifi::StationOwner::Ota)) return mask(Reason::Network);
 #endif
 #ifdef WITH_WEBCONFIG
-  if (isWebConfigActive() && (!mesh::wifi::networkPower().backgroundSuspended()
+  if (isWebConfigActive() && (webConfigOwnsWiFi()
       || _webconfig->isNetworkForegroundActive(millis()))) return mask(Reason::Network);
 #endif
 #if defined(ESP32_PLATFORM) \
@@ -15134,11 +15136,7 @@ mesh::powerdiag::Mask MyMesh::pendingWorkReason() const {
 #if defined(WITH_BRIDGE)
   const AbstractBridge* active_bridge = activeBridge();
   if (active_bridge && active_bridge->isRunning()) {
-#ifdef WITH_MQTT_BRIDGE
-    if (active_bridge != mqtt_bridge || !mqtt_bridge->isNetworkSuspended()) return mask(Reason::Bridge);
-#else
     return mask(Reason::Bridge);
-#endif
   }
 #ifdef WITH_MQTT_BRIDGE
   if (mqtt_bridge && mqtt_bridge->isStopping()) return mask(Reason::BridgeCleanup);

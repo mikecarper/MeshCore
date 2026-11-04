@@ -5,7 +5,7 @@
 #include <cstring>
 #include <initializer_list>
 #include <helpers/RoomWebMailbox.h>
-#include <helpers/WiFiNetworkPowerPolicy.h>
+#include <helpers/esp32/WiFiCoordinator.h>
 
 static uint32_t millis() { return 123; }
 struct WebConfigBatch {
@@ -67,7 +67,6 @@ struct WebConfigServer {
   void closeTerminal() {}
   uint32_t handlerRefCount() const { return 0; }
   bool isNetworkForegroundActive(uint32_t) const;
-  void refreshNetworkPowerHold(uint32_t);
   bool isRunning() const { return _mode != MODE_OFF; }
   bool isStopping() const { return _stopping; }
   void requestStop();
@@ -100,7 +99,6 @@ int main() {
       assert(portal.stopForOTA(reply));
       assert(strcmp(reply, "WebConfig stopped") == 0);
       assert(!portal.routes && !portal.server.listening && portal.isStopping());
-      assert(mesh::wifi::networkPower().foregroundActive());
       assert(WiFi.sta && !WiFi.ap && WiFi.stops == 0);
       assert(WiFi.connected == !setup);
       // OTA can now bind port 80 and create its own AP, while HTTP request
@@ -118,7 +116,7 @@ int main() {
       assert(WiFi.ap && WiFi.sta && WiFi.stops == 0);
       assert(WiFi.ap_stops == unsigned(setup));
       assert(portal.callbacks.stops == 1 && !portal._keep_wifi_on_stop);
-      assert(!mesh::wifi::networkPower().foregroundActive());
+      assert(!mesh::wifi::coordinator().hasStationLease(mesh::wifi::StationOwner::WebConfig));
     }
   }
   WebConfigServer ordinary;

@@ -29,15 +29,17 @@ using esp_err_t = int;
 enum wifi_ps_type_t { WIFI_PS_NONE, WIFI_PS_MIN_MODEM, WIFI_PS_MAX_MODEM };
 enum wifi_power_t { WIFI_POWER_8_5dBm=34, WIFI_POWER_11dBm=44,
                     WIFI_POWER_17dBm=68, WIFI_POWER_19_5dBm=78 };
-constexpr int ESP_OK=0, ESP_FAIL=-1;
-int ps_result=ESP_OK, applied_ps=-1, applied_tx=-1, tx_writes=0;
-bool tx_success=true;
+constexpr int ESP_OK=0, ESP_FAIL=-1, ESP_ERR_INVALID_STATE=0x103;
+int ps_result=ESP_OK, applied_ps=-1, applied_tx=-1, tx_writes=0, table_step=4;
+bool tx_success=true, driver_ignores_write=false;
 int esp_wifi_set_ps(wifi_ps_type_t mode) { applied_ps=mode; return ps_result; }
 int esp_wifi_set_max_tx_power(int8_t power) {
   ++tx_writes;
   if (!tx_success) return -8;
-  applied_tx=power; return ESP_OK;
+  if (!driver_ignores_write) applied_tx=power - (power % table_step);
+  return ESP_OK;
 }
+int esp_wifi_get_max_tx_power(int8_t* out) { *out = applied_tx; return ESP_OK; }
 ''' + tx_power_policy() + power_policy() + r'''
 int main() {
   using mesh::wifi::applyStationPowerSave;
@@ -54,6 +56,20 @@ int main() {
     assert(applyStationPowerSave(WIFI_PS_MIN_MODEM)==ESP_OK);
     assert(applied_tx==expected_saving);
     assert(stationPowerSaveTxPower(WIFI_PS_NONE)==expected_normal);
+
+    // A driver that floors the request to its own table still satisfies the cap.
+    table_step=8;
+    assert(applyStationPowerSave(WIFI_PS_NONE)==ESP_OK);
+    assert(applied_tx==expected_normal-(expected_normal%8));
+    table_step=4;
+
+    // If the driver silently ignores the write, the read-back reports it.
+    const int writes_before=tx_writes;
+    applied_tx=84;
+    driver_ignores_write=true;
+    assert(applyStationPowerSave(WIFI_PS_NONE)==ESP_ERR_INVALID_STATE);
+    assert(tx_writes==writes_before+1);  // the write was attempted, not skipped
+    driver_ignores_write=false;
     return 0;
   }
 #endif

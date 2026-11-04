@@ -180,20 +180,30 @@ inline bool stationMutationAllowed(bool setup_handoff = false) {
 
 // Apply a profile's WiFi transmit-power ceiling. esp_wifi_set_max_tx_power()
 // is a country-level limit and reports ESP_ERR_WIFI_NOT_STARTED before
-// esp_wifi_start(), so a not-yet-started driver is not a failure: the next join
-// after WiFi.mode(WIFI_STA) writes it. Boards without WIFI_TX_POWER_DBM return
-// ESP_OK and keep the PHY init data's own ceiling.
+// esp_wifi_start() and ESP_ERR_WIFI_NOT_INIT before esp_wifi_init(), so a driver
+// that is not ready yet is not a failure: the next join writes it. Boards
+// without WIFI_TX_POWER_DBM return ESP_OK and keep the PHY init data's ceiling.
 inline esp_err_t applyStationTxPowerCap() {
 #if defined(WIFI_TX_POWER_DBM)
   const int8_t requested = mesh::wifi::configuredTxPowerUnits();
+  int8_t current = 0;
+  const esp_err_t current_state = esp_wifi_get_max_tx_power(&current);
+  if (current_state == ESP_ERR_WIFI_NOT_STARTED || current_state == ESP_ERR_WIFI_NOT_INIT) {
+    return ESP_OK;
+  }
+  if (current_state == ESP_OK && mesh::wifi::txCeilingSatisfied(current, requested)) {
+    // Already at or below the profile ceiling (a power-save write or an earlier
+    // join). Re-writing cannot raise it and would overwrite a tighter limit
+    // another radio owner had applied.
+    return ESP_OK;
+  }
   const esp_err_t result = esp_wifi_set_max_tx_power(requested);
-  if (result == ESP_ERR_WIFI_NOT_STARTED) return ESP_OK;
+  if (result == ESP_ERR_WIFI_NOT_STARTED || result == ESP_ERR_WIFI_NOT_INIT) return ESP_OK;
   if (result != ESP_OK) return result;
   int8_t applied = 0;
   if (esp_wifi_get_max_tx_power(&applied) != ESP_OK) return ESP_ERR_INVALID_STATE;
-  // The driver floors a request to its table, so accept any applied ceiling
-  // that is no higher than the requested one.
-  return applied <= requested ? ESP_OK : ESP_ERR_INVALID_STATE;
+  return mesh::wifi::txCeilingSatisfied(applied, requested)
+      ? ESP_OK : ESP_ERR_INVALID_STATE;
 #else
   return ESP_OK;
 #endif

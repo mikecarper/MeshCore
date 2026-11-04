@@ -34,6 +34,11 @@ int main() {
     assert(units >= W::kTxPowerMinUnits && units <= W::kTxPowerMaxUnits);
     assert(W::txPowerDbmFromUnits(static_cast<int8_t>(units)) == dbm);
   }
+  // One acceptance rule, shared by the join path and the modem-sleep path:
+  // a reported ceiling no higher than the request is the cap in effect.
+  assert(W::txCeilingSatisfied(52, 52));
+  assert(W::txCeilingSatisfied(44, 52));
+  assert(!W::txCeilingSatisfied(56, 52));
   return 0;
 }
 """
@@ -47,24 +52,35 @@ enum esp_err_t {
   ESP_OK = 0,
   ESP_ERR_INVALID_ARG = 1,
   ESP_ERR_INVALID_STATE = 2,
-  ESP_ERR_WIFI_NOT_STARTED = 3,
+  ESP_ERR_WIFI_NOT_INIT = 3,
+  ESP_ERR_WIFI_NOT_STARTED = 4,
 };
 
 int calls = 0;
 int8_t ceiling = 84;
 int8_t table_step = 4;      // the driver's own power-table granularity
 bool started = true;
+bool initialized = true;
 bool driver_ignores_write = false;
 
 esp_err_t esp_wifi_set_max_tx_power(int8_t power) {
   ++calls;
+  if (!initialized) return ESP_ERR_WIFI_NOT_INIT;
   if (!started) return ESP_ERR_WIFI_NOT_STARTED;
   if (power < 8 || power > 84) return ESP_ERR_INVALID_ARG;
   if (driver_ignores_write) return ESP_OK;  // keeps reporting its old ceiling
   ceiling = power - (power % table_step);    // floored to the driver's table
   return ESP_OK;
 }
-esp_err_t esp_wifi_get_max_tx_power(int8_t* out) { *out = ceiling; return ESP_OK; }
+esp_err_t esp_wifi_get_max_tx_power(int8_t* out) {
+  // The SDK refuses both reads and writes before the driver is initialized or
+  // started, so the mock has to report that or the readiness branches go
+  // untested.
+  if (!initialized) return ESP_ERR_WIFI_NOT_INIT;
+  if (!started) return ESP_ERR_WIFI_NOT_STARTED;
+  *out = ceiling;
+  return ESP_OK;
+}
 
 namespace mesh { namespace wifi {
 @CAP_POLICY@
@@ -73,20 +89,31 @@ namespace mesh { namespace wifi {
 int main() {
   namespace W = mesh::wifi;
 #if defined(WIFI_TX_POWER_DBM)
-  calls = 0; started = true; ceiling = 84; table_step = 4; driver_ignores_write = false;
+  calls = 0; started = true; initialized = true; ceiling = 84; table_step = 4; driver_ignores_write = false;
   assert(W::applyStationTxPowerCap() == ESP_OK);
   assert(calls == 1);
   assert(ceiling == W::configuredTxPowerUnits());
 
-  // A driver that has not started yet is retried on the next join, not a failure.
-  calls = 0; started = false; ceiling = 84;
+  // A driver that is not initialized or not started yet is not a policy failure:
+  // the ceiling is deferred, not dropped, and no write is attempted.
+  calls = 0; started = true; initialized = false; ceiling = 84;
+  assert(W::applyStationTxPowerCap() == ESP_OK);
+  assert(calls == 0);
+
+  calls = 0; started = false; initialized = true; ceiling = 84;
+  assert(W::applyStationTxPowerCap() == ESP_OK);
+  assert(calls == 0);
+
+  // Once the driver is up, the deferred ceiling is written on the next join.
+  calls = 0; started = true; initialized = true; ceiling = 84;
   assert(W::applyStationTxPowerCap() == ESP_OK);
   assert(calls == 1);
+  assert(ceiling == W::configuredTxPowerUnits());
 
   // The driver floors a request to its own power table, so an applied ceiling
   // below the request is still a successful cap: 13 dBm becomes 12 dBm when the
   // table steps by 2 dBm.
-  calls = 0; started = true; ceiling = 84; table_step = 8; driver_ignores_write = false;
+  calls = 0; started = true; initialized = true; ceiling = 84; table_step = 8; driver_ignores_write = false;
   assert(W::applyStationTxPowerCap() == ESP_OK);
   assert(calls == 1);
   const int8_t floored = static_cast<int8_t>(W::configuredTxPowerUnits()
@@ -95,11 +122,23 @@ int main() {
   assert(floored < W::configuredTxPowerUnits());
 
   // A reported ceiling above the request means the write never took effect.
-  calls = 0; started = true; ceiling = 84; table_step = 4; driver_ignores_write = true;
+  calls = 0; started = true; initialized = true; ceiling = 84; table_step = 4; driver_ignores_write = true;
   assert(W::applyStationTxPowerCap() == ESP_ERR_INVALID_STATE);
   assert(calls == 1);
+
+  // A ceiling already at or below the cap (a power-save write, or the join that
+  // applied it) is preserved without a redundant write.
+  calls = 0; started = true; initialized = true; ceiling = 44; table_step = 4; driver_ignores_write = false;
+  assert(W::applyStationTxPowerCap() == ESP_OK);
+  assert(calls == 0);
+  assert(ceiling == 44);
+
+  calls = 0; started = true; initialized = true; ceiling = W::configuredTxPowerUnits();
+  table_step = 4; driver_ignores_write = false;
+  assert(W::applyStationTxPowerCap() == ESP_OK);
+  assert(calls == 0);
 #else
-  calls = 0; started = true; ceiling = 84;
+  calls = 0; started = true; initialized = true; ceiling = 84;
   assert(W::applyStationTxPowerCap() == ESP_OK);
   assert(calls == 0);  // boards without a profile ceiling never touch the driver
   assert(ceiling == 84);

@@ -122,7 +122,7 @@ MultiSerialInterface interface_manager;
     #include <helpers/WiFiPowerSave.h>
     #include <helpers/CompanionWiFiNtpPolicy.h>
     #include <helpers/CompanionWiFiStatusFormat.h>
-    #include <helpers/WiFiNetworkPowerPolicy.h>
+    #include <helpers/esp32/WiFiCoordinator.h>
     #include <helpers/ui/DisplayTextLayout.h>
     #include <helpers/ui/IndicatorRenderProfile.h>
     #include <helpers/ui/WiFiSetupQrDisplay.h>
@@ -1728,7 +1728,6 @@ void halt() {
   static bool companion_wifi_active = false;
   static bool companion_wifi_disable_in_progress = false;
   static bool companion_wifi_services_stopped = false;
-  static bool companion_wifi_background_stopped = false;
   static bool companion_wifi_espnow_restore_pending = false;
   static uint32_t companion_wifi_espnow_restore_at = 0;
 #ifdef WITH_WEBCONFIG
@@ -1862,10 +1861,6 @@ void halt() {
   }
 
   static void serviceCompanionWiFiNtp() {
-    if (mesh::wifi::networkPower().backgroundSuspended()) {
-      cancelCompanionWiFiNtp(false);
-      return;
-    }
     // Configured MQTT builds already perform a fresh startup NTP sync and a
     // daily refresh. The common Companion owner covers every non-MQTT or
     // runtime-unconfigured WiFi node without racing MQTT's SNTP proof.
@@ -2149,7 +2144,6 @@ void halt() {
 
   void scheduleCompanionWiFiCredentialReload() {
     loadCompanionWiFiCredentials();
-    mesh::wifi::networkPower().requestProbe();
     companion_wifi_credential_reload_pending = true;
     companion_wifi_credential_reload_at = millis() + 1500UL;
     if (companion_wifi_credential_reload_at == 0) {
@@ -2250,10 +2244,7 @@ void halt() {
       state = "setup-ap";
     } else {
       snprintf(ssid, sizeof(ssid), "%s", configured_wifi_ssid);
-      if (mesh::wifi::networkPower().backgroundSuspended()
-          && !mesh::wifi::networkPower().foregroundActive()) {
-        state = "suspended(30m)";
-      } else if (status == WL_CONNECTED) {
+      if (status == WL_CONNECTED) {
         state = "connected";
         snprintf(ssid, sizeof(ssid), "%s", WiFi.SSID().c_str());
         snprintf(ip, sizeof(ip), "%s", WiFi.localIP().toString().c_str());
@@ -2311,7 +2302,6 @@ void halt() {
 
   void requestCompanionWiFiSetup() {
     if (mesh::wireless::control().blocked(mesh::wireless::WiFi)) return;
-    mesh::wifi::networkPower().requestProbe();
     companion_wifi_setup_stop_requested = false;
     companion_wifi_setup_requested = true;
   }
@@ -2335,7 +2325,6 @@ void halt() {
       return false;
     }
     companion_wifi_requested = enabled;
-    if (enabled) mesh::wifi::networkPower().requestProbe();
     if (!companion_wifi_requested && companion_wifi_active) {
       companion_wifi_disable_in_progress = true;
     }
@@ -2665,18 +2654,11 @@ void halt() {
 #endif
 
 #if defined(ESP32) && defined(WIFI_SSID)
-  static bool companionWiFiBackgroundSuspended() {
-    // MQTT publishes this flag only after its own TLS and SNTP work is quiet.
-    // A foreground OTA command can acquire the radio before its next pass.
-    return mesh::wifi::networkPower().backgroundSuspended()
-        && !mesh::wifi::networkPower().foregroundActive()
-        && !board.isOTAUpdateRunning();
-  }
-
   static bool companionWiFiAutomaticRecoveryAllowed() {
-    // MQTT owns one combined outage/cooldown clock. Raising an automatic AP
-    // during that grace period would create a foreground owner indefinitely.
-    return !mesh::wifi::networkPower().managed();
+    // When MQTT is actively running on Companion, it shares the station;
+    // do not raise an automatic setup AP over an active MQTT session.
+    return !mesh::wifi::coordinator().hasStationLease(
+        mesh::wifi::StationOwner::MqttBridge);
   }
 
 #ifdef WITH_WEBCONFIG
@@ -2696,7 +2678,7 @@ void halt() {
 
   static void serviceCompanionWiFiAutoWebConfig() {
     if (!companion_wifi_webconfig_start_pending || !companion_wifi_requested
-        || !companion_wifi_active || companionWiFiBackgroundSuspended()) return;
+        || !companion_wifi_active) return;
     if (!WebConfigServer::loadEnabled(true)) {
       companion_wifi_webconfig_start_pending = false;
       return;
@@ -2706,18 +2688,6 @@ void halt() {
     startCompanionWiFiAutoWebConfig();
   }
 #endif
-
-  static void serviceCompanionWiFiNetworkPowerHold() {
-    bool active = wifi_interface.isConnected()
-        || companion_wifi_credential_reload_pending
-        || companion_wifi_setup_requested
-        || board.isOTAUpdateRunning();
-#ifdef ENABLE_OTA
-    active = active || ota_console_client.connected();
-#endif
-    mesh::wifi::networkPower().setHold(
-        mesh::wifi::NetworkPowerHold::CompanionClient, active);
-  }
 
   static void resetCompanionWiFiRecoveryState() {
     wifi_reconnect_tracker = WiFiReconnectPolicy::Tracker();
@@ -2731,7 +2701,6 @@ void halt() {
         || static_cast<int32_t>(millis() - companion_wifi_credential_reload_at) < 0) {
       return;
     }
-    if (companionWiFiBackgroundSuspended()) return;
 #ifdef WITH_WEBCONFIG
     if (the_mesh.isWebConfigWiFiTransitionActive()) return;
 #endif
@@ -2762,11 +2731,12 @@ void halt() {
   static void startCompanionWiFi() {
     if (mesh::wireless::control().blocked(mesh::wireless::WiFi)) return;
     if (companion_wifi_active) return;
-    if (companionWiFiBackgroundSuspended()) return;
     if (!mesh::wifi::stationMutationAllowed()) return;
 
     board.setInhibitSleep(true);
     companion_wifi_espnow_restore_pending = false;
+    mesh::wifi::coordinator().setStationLease(
+        mesh::wifi::StationOwner::Companion, true);
     mesh::wifi::setStationAutoReconnect(true);
     resetCompanionWiFiRecoveryState();
 
@@ -2798,7 +2768,6 @@ void halt() {
 #endif
     companion_wifi_active = true;
     companion_wifi_services_stopped = false;
-    companion_wifi_background_stopped = false;
     WIFI_DEBUG_PRINTLN("WiFi enabled by BOOT/GPIO 0 control");
   }
 
@@ -2847,60 +2816,15 @@ void halt() {
       return;
     }
     if (board.isOTAUpdateRunning()
-        || mesh::wifi::networkPower().foregroundActive()
         || !mesh::wifi::stationMutationAllowed()) return;
     const uint32_t now = millis();
     if (static_cast<int32_t>(now - companion_wifi_espnow_restore_at) < 0) return;
     // esp_wifi_set_channel may fail until an asynchronous disconnect/scan
     // completes. Retry the channel only; repeated disconnects would prevent
-    // the shared ESP-NOW receiver from recovering during a long cooldown.
+    // the shared ESP-NOW receiver from recovering.
     companion_wifi_espnow_restore_pending =
         mesh::wifi::restoreEspNowChannel() != ESP_OK;
     companion_wifi_espnow_restore_at = now + 1000UL;
-  }
-
-  static void serviceCompanionWiFiBackgroundPower() {
-    serviceCompanionEspNowChannelRestore();
-    if (!companion_wifi_active || !companion_wifi_requested) return;
-    if (companionWiFiBackgroundSuspended()) {
-      if (companion_wifi_background_stopped) return;
-      // Settings and MQTT's scheduling task stay enabled. These idle socket
-      // listeners and the common NTP request own no useful foreground work.
-      cancelCompanionWiFiNtp(false);
-      wifi_interface.end();
-#ifdef ENABLE_OTA
-      ota_console_stop();
-#endif
-      stopCompanionInfrastructureWiFi();
-      board.setInhibitSleep(mesh::wifi::espNowChannelConstrained());
-      companion_wifi_background_stopped = true;
-      WIFI_DEBUG_PRINTLN("Network unavailable; WiFi suspended until the next recovery probe");
-      return;
-    }
-    if (!companion_wifi_background_stopped) return;
-    if (!mesh::wifi::stationMutationAllowed()) return;
-
-    board.setInhibitSleep(true);
-    companion_wifi_espnow_restore_pending = false;
-    resetCompanionWiFiRecoveryState();
-    if (companion_wifi_has_credentials) {
-      WiFi.mode(WIFI_STA);
-      mesh::wifi::applyProtocolMask(WIFI_IF_STA);
-      mesh::wifi::setStationAutoReconnect(true);
-      wifi_reconnect_tracker.noteDisconnected(millis());
-      applyCompanionWiFiPowerSave();
-      mesh::wifi::beginStation(configured_wifi_ssid, configured_wifi_password);
-    }
-    applyCompanionWiFiPowerSave();
-    if (companion_wifi_interface_registered) {
-      wifi_interface.begin(TCP_PORT);
-      wifi_interface.enable();
-    }
-#ifdef ENABLE_OTA
-    ota_console_start();
-#endif
-    companion_wifi_background_stopped = false;
-    WIFI_DEBUG_PRINTLN("WiFi resumed for a bounded network recovery probe");
   }
 
   static bool finishStoppingCompanionWiFi() {
@@ -2926,10 +2850,11 @@ void halt() {
 #endif
 
     stopCompanionInfrastructureWiFi();
+    mesh::wifi::coordinator().setStationLease(
+        mesh::wifi::StationOwner::Companion, false);
     board.setInhibitSleep(false);
     resetCompanionWiFiRecoveryState();
     companion_wifi_active = false;
-    companion_wifi_background_stopped = false;
 #ifdef WITH_WEBCONFIG
     companion_wifi_webconfig_start_pending = false;
 #endif
@@ -2953,7 +2878,7 @@ void halt() {
     if (companion_wifi_requested && !companion_wifi_active) {
       startCompanionWiFi();
     }
-    serviceCompanionWiFiBackgroundPower();
+    serviceCompanionEspNowChannelRestore();
 #ifdef WITH_WEBCONFIG
     serviceCompanionWiFiAutoWebConfig();
 #endif
@@ -3643,23 +3568,6 @@ static bool companionNativeUsbLightSleepReady() {
   // receiver. Preserve live services and pending replies while permitting
   // the same short sleep slice when those services have been turned off.
   uint8_t enabled_services = companion_wireless.enabled();
-#if defined(ESP32) && defined(WIFI_SSID)
-  // The user's saved WiFi preference and an idle WebConfig listener remain
-  // enabled during automatic suspension. Only a confirmed physical power-off
-  // releases their sleep blocker; foreground work and shared ESP-NOW retain it.
-  if (companion_wifi_background_stopped
-      && mesh::wifi::networkPower().backgroundSuspended()
-      && !mesh::wifi::networkPower().foregroundActive()
-      && !mesh::wifi::espNowChannelConstrained()) {
-    wifi_mode_t parked_mode = WIFI_MODE_NULL;
-    const esp_err_t parked_result = esp_wifi_get_mode(&parked_mode);
-    if ((parked_result == ESP_OK && parked_mode == WIFI_MODE_NULL)
-        || parked_result == ESP_ERR_WIFI_NOT_INIT
-        || parked_result == ESP_ERR_WIFI_NOT_STARTED) {
-      enabled_services &= static_cast<uint8_t>(~mesh::wireless::WiFi);
-    }
-  }
-#endif
 #if defined(BLE_PIN_CODE)
   if (bluetooth_interface.isPowerTransitionPending()) return false;
 #endif
@@ -4433,9 +4341,6 @@ void loop() {
   }
 #endif
   mesh::wireless::control().service(millis());
-#if defined(ESP32) && defined(WIFI_SSID)
-  serviceCompanionWiFiNetworkPowerHold();
-#endif
 #if defined(NRF52_PLATFORM)
   board.feedWatchdog();
 #endif
@@ -4707,11 +4612,8 @@ void loop() {
     }
   #endif
   serviceCompanionWiFiCredentialReload();
-  serviceCompanionWiFiNetworkPowerHold();
   serviceCompanionWiFiState();
-  if (companion_wifi_requested && companion_wifi_active
-      && !companionWiFiBackgroundSuspended()
-      && !companion_wifi_background_stopped) {
+  if (companion_wifi_requested && companion_wifi_active) {
   #ifdef ENABLE_OTA
     ota_console_loop();  // service the local text console (port 5002)
   #endif

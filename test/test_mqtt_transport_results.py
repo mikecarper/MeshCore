@@ -195,7 +195,7 @@ TASK_PREAMBLE = r'''
 #include <cstdlib>
 #include <string>
 #include <vector>
-#include "helpers/WiFiNetworkPowerPolicy.h"
+#include "helpers/esp32/WiFiCoordinator.h"
 #define PORTABLE_MQTT_OBSERVER 1
 #define MQTT_DEBUG_PRINTLN(...) ((void)0)
 using TickType_t = uint32_t;
@@ -220,9 +220,6 @@ struct MQTTPrefs {
   bool mqtt_status_enabled = true;
 };
 struct MQTTBridge {
-  mesh::wifi::NetworkPowerPolicy _network_power_policy;
-  std::atomic<bool> _network_suspended{false};
-  bool _network_espnow_restore_pending = false;
   struct Slot {
     struct Client {
       bool isStarted() const { return false; }
@@ -257,7 +254,6 @@ struct MQTTBridge {
     assert(!_stop_acked);
   }
   bool initializeWiFiInTask() { return true; }
-  bool serviceNetworkPower(uint32_t) { work(); return true; }
   void serviceBackgroundNtp(uint32_t) {
     work();
     if (scenario == 7) {
@@ -401,7 +397,7 @@ ASYNC_STOP_PREAMBLE = r'''
 #include <limits>
 #include "helpers/MQTTLifecycle.h"
 #include "helpers/MQTTConnectionPolicy.h"
-#include "helpers/WiFiNetworkPowerPolicy.h"
+#include "helpers/esp32/WiFiCoordinator.h"
 #define ESP_PLATFORM 1
 #define MQTT_DEBUG_PRINTLN(...) ((void)0)
 #define pdMS_TO_TICKS(ms) (ms)
@@ -433,7 +429,6 @@ struct MQTTBridge {
   } ops{this};
   MQTTLifecycle::Coordinator _lifecycle{ops, 1};
   std::atomic<bool> _stop_requested{false}, _stop_acked{false};
-  std::atomic<bool> _network_suspended{true};
   bool _initialized = true, resources_owned = true;
   bool _start_requested = false; uint32_t _start_retry_at = 0;
   bool _slots_setup_done = true, _staged_raw_valid = true;
@@ -445,8 +440,7 @@ struct MQTTBridge {
     assert(_lifecycle.requestStart());
     assert(_lifecycle.onTaskStarted());
     s_mqtt_bridge_instance = this;
-    mesh::wifi::networkPower().setManaged(true);
-    mesh::wifi::networkPower().setSuspended(true);
+    mesh::wifi::coordinator().setStationLease(mesh::wifi::StationOwner::MqttBridge, true);
   }
   void cancelNtpRefresh() { ++cancels; }
   void begin() { assert(false); }
@@ -484,7 +478,7 @@ static void assert_finished(MQTTBridge& bridge, bool clean) {
   assert(!bridge._ntp_estimate_requested && !bridge._ntp_estimate_done);
   assert(!bridge._ntp_estimate_ok && bridge._ntp_estimate_epoch == 0);
   assert(bridge.cancels == 1);
-  assert(!bridge._network_suspended && !mesh::wifi::networkPower().managed());
+  assert(!mesh::wifi::coordinator().hasStationLease(mesh::wifi::StationOwner::MqttBridge));
 }
 '''
 
