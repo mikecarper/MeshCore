@@ -3,6 +3,7 @@
 #include <Arduino.h>   // needed for PlatformIO
 #include <Mesh.h>
 #include <helpers/Radio2DiscoverTrailer.h>
+#include <helpers/StaggeredFloodAdvert.h>
 #include <helpers/PowerSavingDiagnostics.h>
 #include <helpers/EmergencyOtaWork.h>
 #if MESH_ENABLE_EMERGENCY_POWER && defined(ENABLE_OTA)
@@ -220,6 +221,8 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks,
   uint32_t last_millis;
   uint64_t uptime_millis;
   unsigned long next_local_advert, next_flood_advert;
+  mesh::StaggeredFloodAdvert secondary_flood_advert;
+  bool canSendSecondaryFloodAdvert() const;
   bool _logging;
 #ifdef DISPLAY_ACTIVITY_DASHBOARD
   RadioActivityWindow _activity;

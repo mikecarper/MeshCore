@@ -3148,11 +3148,18 @@ void MyMesh::updateAdvertTimer() {
     next_local_advert = 0; // stop the timer
   }
 }
+bool MyMesh::canSendSecondaryFloodAdvert() const {
+  return mesh::radio2FloodAdvertEligible(_radio->profiles());
+}
+
 void MyMesh::updateFloodAdvertTimer() {
   if (_prefs.flood_advert_interval > 0) { // schedule flood advert timer
-    next_flood_advert = futureMillis(((uint32_t)_prefs.flood_advert_interval) * 60 * 60 * 1000);
+    const uint32_t interval = ((uint32_t)_prefs.flood_advert_interval) * 60UL * 60UL * 1000UL;
+    next_flood_advert = futureMillis(interval);
+    secondary_flood_advert.schedule(millis(), interval, canSendSecondaryFloodAdvert());
   } else {
     next_flood_advert = 0; // stop the timer
+    secondary_flood_advert.schedule(millis(), 0, false);
   }
 }
 
@@ -4331,7 +4338,10 @@ void MyMesh::loop() {
   if (next_flood_advert && millisHasNowPassed(next_flood_advert)) {
     mesh::Packet *pkt = createSelfAdvert();
     uint32_t delay_millis = 0;
-    if (pkt) sendFloodScoped(default_scope, pkt, delay_millis, _prefs.path_hash_mode + 1);
+    if (pkt) {
+      pkt->tx_radio = mesh::RADIO_TX_PRIMARY;
+      sendFloodScoped(default_scope, pkt, delay_millis, _prefs.path_hash_mode + 1);
+    }
 
     updateFloodAdvertTimer(); // schedule next flood advert
     updateAdvertTimer();      // also schedule local advert (so they don't overlap)
@@ -4340,6 +4350,16 @@ void MyMesh::loop() {
     if (pkt) sendZeroHop(pkt);
 
     updateAdvertTimer(); // schedule next local advert
+  }
+
+  if (secondary_flood_advert.service(millis(), canSendSecondaryFloodAdvert())) {
+    mesh::Packet *pkt = createSelfAdvert();
+    if (pkt) {
+      // The local packet originates on radio2, so crossover filtering does
+      // not suppress its explicit secondary-only transmission.
+      mesh::targetRadio2FloodAdvert(*pkt);
+      sendFloodScoped(default_scope, pkt, 0, _prefs.path_hash_mode + 1);
+    }
   }
 
   servicePendingPrimaryRadioSettings();
@@ -4581,6 +4601,8 @@ uint32_t MyMesh::getPowerSaveSleepMilliseconds(uint32_t max_ms) const {
   }
   sleep_ms = limitSleepToMillisTimer(next_flood_advert, sleep_ms);
   sleep_ms = limitSleepToMillisTimer(next_local_advert, sleep_ms);
+  sleep_ms = limitSleepToMillisTimer(
+      secondary_flood_advert.sleepDeadline(canSendSecondaryFloodAdvert()), sleep_ms);
   const bool radio_apply_backoff = radio_apply_retry_at && !millisHasNowPassed(radio_apply_retry_at);
   if (radio_apply_backoff) {
     sleep_ms = limitSleepToMillisTimer(radio_apply_retry_at, sleep_ms);
@@ -4674,7 +4696,9 @@ mesh::powerdiag::Mask MyMesh::pendingWorkReason() const {
   if (hasQueuedWorkDue()) return mask(Reason::Queue);
   if (hasRetryWorkDue()) return mask(Reason::Retry);
   if (acl.getNumClients() > 0 && isMillisTimerDue(next_push)) return mask(Reason::Scheduled);
-  if (isMillisTimerDue(next_flood_advert) || isMillisTimerDue(next_local_advert)) return mask(Reason::Scheduled);
+  if (isMillisTimerDue(next_flood_advert) || isMillisTimerDue(next_local_advert)
+      || isMillisTimerDue(secondary_flood_advert.sleepDeadline(canSendSecondaryFloodAdvert())))
+    return mask(Reason::Scheduled);
   const bool radio_apply_backoff = radio_apply_retry_at && !isMillisTimerDue(radio_apply_retry_at);
   if (!radio_apply_backoff
       && (isMillisTimerDue(set_radio_at) || isMillisTimerDue(revert_radio_at)

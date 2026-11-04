@@ -13,5 +13,7 @@ if env["PIOENV"] == "wio-e5-mini_repeater":
         "-fno-reorder-functions",
         "-fno-tree-switch-conversion",
         "-fno-tree-loop-im",
+        "-fno-tree-pre",
+        "-fno-tree-slsr",
         "-flto-partition=one",
     ])

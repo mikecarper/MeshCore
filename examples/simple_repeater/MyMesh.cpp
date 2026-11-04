@@ -3481,7 +3481,7 @@ void __attribute__((noinline)) MyMesh::processDeferredCliCommand() {
   if (temp_radio_reply_barrier.waiting() || _cli.radioProfiles().hasReplyMutation()) {
     // A second command must not replace the callback ownership of an
     // unconfirmed mutation. Local/USB recovery remains available.
-    strcpy(reply, "Err - radio acknowledgement/storage commit pending; retry later");
+    strcpy(reply, MESH_CLI_REPLY_TEXT("Err - radio acknowledgement/storage commit pending; retry later", "Err - radio ack/storage commit pending; retry later"));
     remote_cli_reply_cache.remember(client->id.pub_key, deferred_cli_command.request_id,
         deferred_cli_command.command_fingerprint, reply);
     sendRemoteCliReply(client, deferred_cli_command.secret, deferred_cli_command.path_hash_size,
@@ -5536,6 +5536,7 @@ uint32_t MyMesh::getPowerSaveSleepMilliseconds(uint32_t max_ms) const {
   }
   const uint32_t before_scheduled = sleep_ms;
   sleep_ms = limitSleepToMillisTimer(next_flood_advert, sleep_ms);
+  sleep_ms = limitSleepToMillisTimer(radio2_flood_advert.sleepDeadline(radio2FloodAdvertEligible()), sleep_ms);
   sleep_ms = limitSleepToMillisTimer(next_local_advert, sleep_ms);
   sleep_ms = limitSleepToMillisTimer(dirty_contacts_expiry, sleep_ms);
   sleep_ms = limitSleepToMillisTimer(next_recent_repeater_sweep, sleep_ms);
@@ -5698,6 +5699,12 @@ void MyMesh::updateFloodAdvertTimer() {
   } else {
     next_flood_advert = 0; // stop the timer
   }
+  radio2_flood_advert.schedule(millis(), hours * mesh::RepeaterRadioTiming::HOUR_MS,
+                               radio2FloodAdvertEligible());
+}
+
+bool MyMesh::radio2FloodAdvertEligible() const {
+  return mesh::radio2FloodAdvertEligible(_radio->profiles());
 }
 
 #if MESH_ENABLE_PACKET_FILE_LOGGING
@@ -9225,7 +9232,7 @@ void MyMesh::setFloodPacketFilter(const char* args, char* reply,
   char* token = params;
   while (*token != 0) {
     if (token_count >= 7) {
-      strcpy(reply, MESH_CLI_REPLY_TEXT("Err - too many flood filter parameters", "Err - excess flood filter parameters"));
+      strcpy(reply, MESH_CLI_REPLY_TEXT("Err - too many flood filter parameters", "Err - extra flood filter args"));
       return;
     }
     tokens[token_count++] = token;
@@ -13443,17 +13450,17 @@ void MyMesh::handleCommand(uint32_t sender_timestamp, ClientInfo* sender, char *
         }
         region = region_map.findByName(region_name);
         if (region == NULL || region->isWildcard()) {
-          strcpy(reply, MESH_CLI_REPLY_TEXT("Err - unknown or invalid alert region", "Err - unknown/invalid alert region"));
+          strcpy(reply, MESH_CLI_REPLY_TEXT("Err - unknown or invalid alert region", "Err - invalid alert region"));
           return;
         }
       } else {
         region = findNarrowestBatteryAlertRegion(ambiguous);
         if (region == NULL) {
-          strcpy(reply, MESH_CLI_REPLY_TEXT("Err - define a usable region before enabling battery alerts", "Err - battery alerts need a usable region first"));
+          strcpy(reply, MESH_CLI_REPLY_TEXT("Err - define a usable region before enabling battery alerts", "Err - battery alerts need usable region"));
           return;
         }
         if (ambiguous) {
-          strcpy(reply, MESH_CLI_REPLY_TEXT("Err - multiple narrowest regions; specify one", "Err - specify one of the narrowest regions"));
+          strcpy(reply, MESH_CLI_REPLY_TEXT("Err - multiple narrowest regions; specify one", "Err - choose a narrowest region"));
           return;
         }
       }
@@ -14129,11 +14136,22 @@ void __attribute__((noinline)) MyMesh::servicePostMeshLoop() {
   if (active_bridge && active_bridge->isRunning()) active_bridge->loop();
 #endif
 
-  if (next_flood_advert && millisHasNowPassed(next_flood_advert)) {
+  const bool primary_flood_due = next_flood_advert && millisHasNowPassed(next_flood_advert);
+  // A due primary advert starts a new cycle, so discard an overdue midpoint
+  // instead of emitting both adverts together after a long sleep.
+  const bool secondary_flood_due = !primary_flood_due
+      && radio2_flood_advert.service(millis(), radio2FloodAdvertEligible());
+  if (primary_flood_due || secondary_flood_due) {
     mesh::Packet *pkt = createSelfAdvert();
-    uint32_t delay_millis = 0;
-    if (pkt) sendFloodScoped(default_scope, pkt, delay_millis, _prefs.path_hash_mode + 1);
-
+    if (pkt) {
+      // A separately scheduled radio2 advert replaces automatic cross-profile
+      // fan-out for this periodic packet; manual adverts retain their policy.
+      if (secondary_flood_due) mesh::targetRadio2FloodAdvert(*pkt);
+      else pkt->tx_radio = mesh::RADIO_TX_PRIMARY;
+      sendFloodScoped(default_scope, pkt, 0, _prefs.path_hash_mode + 1);
+    }
+  }
+  if (primary_flood_due) {
     updateFloodAdvertTimer(); // schedule next flood advert
     if (!radio_timing.isTemporary()) updateAdvertTimer();
   }
@@ -15169,7 +15187,9 @@ mesh::powerdiag::Mask MyMesh::pendingWorkReason() const {
     return mask(Reason::Calibration);
   if (hasQueuedWorkDue()) return mask(Reason::Queue);
   if (hasRetryWorkDue()) return mask(Reason::Retry);
-  if (isMillisTimerDue(next_flood_advert) || isMillisTimerDue(next_local_advert)) return mask(Reason::Scheduled);
+  if (isMillisTimerDue(next_flood_advert) || isMillisTimerDue(next_local_advert)
+      || isMillisTimerDue(radio2_flood_advert.sleepDeadline(radio2FloodAdvertEligible())))
+    return mask(Reason::Scheduled);
   if (isMillisTimerDue(dirty_contacts_expiry)) return mask(Reason::Scheduled);
   if (isMillisTimerDue(next_recent_repeater_sweep)) return mask(Reason::Scheduled);
   if (_prefs.battery_alert_enabled && isMillisTimerDue(next_battery_alert_check)) return mask(Reason::Scheduled);

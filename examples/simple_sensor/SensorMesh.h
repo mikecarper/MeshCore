@@ -3,6 +3,7 @@
 #include <Arduino.h>   // needed for PlatformIO
 #include <Mesh.h>
 #include <helpers/PowerSavingDiagnostics.h>
+#include <helpers/StaggeredFloodAdvert.h>
 #include <helpers/EmergencyOtaWork.h>
 #if MESH_ENABLE_EMERGENCY_POWER && defined(ENABLE_OTA)
 #include <helpers/ota/OtaContext.h>
@@ -299,6 +300,8 @@ private:
   FILESYSTEM* _fs;
   uint16_t pending_preamble = 0;
   unsigned long next_local_advert, next_flood_advert;
+  mesh::StaggeredFloodAdvert secondary_flood_advert;
+  bool canSendSecondaryFloodAdvert() const;
   NodePrefs _prefs;
   ClientACL  acl;
   CommonCLI _cli;

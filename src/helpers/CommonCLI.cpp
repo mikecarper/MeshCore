@@ -4305,9 +4305,9 @@ void CommonCLI::handleCommand(uint32_t sender_timestamp, char* command, char* re
 #else
     } else if (memcmp(command, "ota", 3) == 0 && (command[3] == 0 || command[3] == ' ')) {
 #if defined(STM32_PLATFORM) && defined(WIO_E5_MINI_NO_EXTERNAL_SENSORS)
-      strcpy(reply, MESH_CLI_REPLY_TEXT("LoRa OTA absent; tempradio cannot enable it. Install OTA repeater firmware", "LoRa OTA absent; install OTA repeater; tempradio cannot enable it"));
+      strcpy(reply, MESH_CLI_REPLY_TEXT("LoRa OTA absent; tempradio cannot enable it. Install OTA repeater firmware", "LoRa OTA absent; use OTA repeater; tempradio cannot enable it"));
 #else
-      strcpy(reply, MESH_CLI_REPLY_TEXT("LoRa OTA is not included in this build; tempradio cannot enable it. Use an OTA-enabled repeater firmware", "LoRa OTA absent; install OTA repeater; tempradio cannot enable it"));
+      strcpy(reply, MESH_CLI_REPLY_TEXT("LoRa OTA is not included in this build; tempradio cannot enable it. Use an OTA-enabled repeater firmware", "LoRa OTA absent; use OTA repeater; tempradio cannot enable it"));
 #endif
 #endif
     } else if (strcmp(command, "power") == 0) {
@@ -5086,7 +5086,7 @@ void CommonCLI::handleSetCmd(uint32_t sender_timestamp, char* command, char* rep
     return;
   }
   if (isBasicRetryConfig(config) && !_callbacks->supportsBasicRetryConfig()) {
-    strcpy(reply, MESH_CLI_REPLY_TEXT("Error, retry configuration unsupported on this role", "Error, retry unsupported for role"));
+    strcpy(reply, MESH_CLI_REPLY_TEXT("Error, retry configuration unsupported on this role", "Error, retry unsupported here"));
     return;
   }
   if (memcmp(config, "dutycycle ", 10) == 0) {
@@ -5274,7 +5274,7 @@ void CommonCLI::handleSetCmd(uint32_t sender_timestamp, char* command, char* rep
   } else if (memcmp(config, "radio.fem.rxgain ", 17) == 0) {
     const auto* radio = _callbacks->getProfileRadio();
     if (radio && (radio->isMorseTxActive() || radio->isMorseRxActive())) {
-      mesh::cli::formatError(reply, 160, MESH_CLI_REPLY_TEXT("stop Morse before changing LoRa FEM gain", "stop Morse before setting FEM gain"));
+      mesh::cli::formatError(reply, 160, MESH_CLI_REPLY_TEXT("stop Morse before changing LoRa FEM gain", "stop Morse before FEM gain"));
       return;
     }
     if (!_board->canControlLoRaFemLna()) {
@@ -5305,7 +5305,7 @@ void CommonCLI::handleSetCmd(uint32_t sender_timestamp, char* command, char* rep
   } else if (memcmp(config, "radio.fem.txgain ", 17) == 0) {
     const auto* radio = _callbacks->getProfileRadio();
     if (radio && (radio->isMorseTxActive() || radio->isMorseRxActive())) {
-      mesh::cli::formatError(reply, 160, MESH_CLI_REPLY_TEXT("stop Morse before changing LoRa FEM gain", "stop Morse before setting FEM gain"));
+      mesh::cli::formatError(reply, 160, MESH_CLI_REPLY_TEXT("stop Morse before changing LoRa FEM gain", "stop Morse before FEM gain"));
       return;
     }
     if (!_board->canControlLoRaFemPaGain()) {
@@ -6512,7 +6512,7 @@ void CommonCLI::handleGetCmd(uint32_t sender_timestamp, char* command, char* rep
     return;
   }
   if (isBasicRetryConfig(config) && !_callbacks->supportsBasicRetryConfig()) {
-    strcpy(reply, MESH_CLI_REPLY_TEXT("Error, retry configuration unsupported on this role", "Error, retry unsupported for role"));
+    strcpy(reply, MESH_CLI_REPLY_TEXT("Error, retry configuration unsupported on this role", "Error, retry unsupported here"));
     return;
   }
   mesh::cli::RecentRepeaterGetQuery recent_query;

@@ -16,6 +16,7 @@ HARNESS = r'''
 #include <helpers/PowerManagementUtils.h>
 #include <helpers/TempRadioLeaseDeadline.h>
 #include <helpers/PowerSavingDiagnostics.h>
+#include <helpers/StaggeredFloodAdvert.h>
 #define SENSOR_READ_INTERVAL_SECS 60
 static uint32_t now_ms = 1000;
 uint32_t millis() { return now_ms; }
@@ -25,6 +26,10 @@ struct Node {
   struct { bool battery_alert_enabled = false; } _prefs;
   struct { int getNumClients() const { return 0; } } acl;
   unsigned long next_flood_advert = 0, next_local_advert = 0;
+  mesh::StaggeredFloodAdvert radio2_flood_advert, secondary_flood_advert;
+  bool secondary_eligible = false;
+  bool radio2FloodAdvertEligible() const { return secondary_eligible; }
+  bool canSendSecondaryFloodAdvert() const { return secondary_eligible; }
   unsigned long dirty_contacts_expiry = 0, next_recent_repeater_sweep = 0;
   unsigned long next_battery_alert_check = 0, next_push = 0;
   unsigned long radio_apply_retry_at = 0, set_radio_at = 0, revert_radio_at = 0;
@@ -115,6 +120,16 @@ int main() {
       assert(node.getPowerSaveSleepSeconds(30) == expected);
       assert(node.getPowerSaveSleepMilliseconds(30000) == expected_ms);
       node.next_flood_advert = 0;
+      if (ms > 0) {
+        node.secondary_eligible = true;
+        node.radio2_flood_advert.schedule(now, 2 * ms, true);
+        node.secondary_flood_advert.schedule(now, 2 * ms, true);
+        assert(node.getPowerSaveSleepMilliseconds(30000) == expected_ms);
+        node.secondary_eligible = false;
+        assert(node.getPowerSaveSleepMilliseconds(30000) == 30000);
+        node.radio2_flood_advert.schedule(now, 0, false);
+        node.secondary_flood_advert.schedule(now, 0, false);
+      }
     }
     assert(node.limitSleepToMillisTimer(uint32_t(now - 1), 30) == 0);
     node.queue = true; node.queue_ms = 2500;

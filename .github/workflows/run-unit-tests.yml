@@ -971,6 +971,7 @@ jobs:
           python3 -B test/test_radio_profile_idle_dispatcher.py -v
           python3 -B test/test_radio_rxps_rejection.py -v
           python3 -B test/test_repeater_radio_timing_integration.py
+          python3 -B test/test_staggered_flood_advert.py -v
           python3 -B test/test_temp_radio_reply_delivery_contract.py
           python3 -B test/test_reply_tx_integration.py
           python3 -B test/test_admin_cli_reply_scope.py

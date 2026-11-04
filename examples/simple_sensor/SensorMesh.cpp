@@ -1578,12 +1578,23 @@ void SensorMesh::updateAdvertTimer() {
     next_local_advert = 0;  // stop the timer
   }
 }
+bool SensorMesh::canSendSecondaryFloodAdvert() const {
+  return !isTrackerModeEnabled() && mesh::radio2FloodAdvertEligible(_radio->profiles());
+}
+
 void SensorMesh::updateFloodAdvertTimer() {
-  if (isTrackerModeEnabled()) { next_flood_advert = 0; return; }
+  if (isTrackerModeEnabled()) {
+    next_flood_advert = 0;
+    secondary_flood_advert.schedule(millis(), 0, false);
+    return;
+  }
   if (_prefs.flood_advert_interval > 0) {  // schedule flood advert timer
-    next_flood_advert = futureMillis( ((uint32_t)_prefs.flood_advert_interval) * 60 * 60 * 1000);
+    const uint32_t interval = ((uint32_t)_prefs.flood_advert_interval) * 60UL * 60UL * 1000UL;
+    next_flood_advert = futureMillis(interval);
+    secondary_flood_advert.schedule(millis(), interval, canSendSecondaryFloodAdvert());
   } else {
     next_flood_advert = 0;  // stop the timer
+    secondary_flood_advert.schedule(millis(), 0, false);
   }
 }
 
@@ -1699,7 +1710,10 @@ void SensorMesh::loop() {
   if (next_flood_advert && millisHasNowPassed(next_flood_advert)) {
     mesh::Packet* pkt = createSelfAdvert();
     unsigned long delay_millis = 0;
-    if (pkt) sendFloodScoped(default_scope, pkt, delay_millis, _prefs.path_hash_mode + 1);
+    if (pkt) {
+      pkt->tx_radio = mesh::RADIO_TX_PRIMARY;
+      sendFloodScoped(default_scope, pkt, delay_millis, _prefs.path_hash_mode + 1);
+    }
 
     updateFloodAdvertTimer();   // schedule next flood advert
     updateAdvertTimer();   // also schedule local advert (so they don't overlap)
@@ -1708,6 +1722,14 @@ void SensorMesh::loop() {
     if (pkt) sendZeroHop(pkt);
 
     updateAdvertTimer();   // schedule next local advert
+  }
+
+  if (secondary_flood_advert.service(millis(), canSendSecondaryFloodAdvert())) {
+    mesh::Packet* pkt = createSelfAdvert();
+    if (pkt) {
+      mesh::targetRadio2FloodAdvert(*pkt);
+      sendFloodScoped(default_scope, pkt, 0, _prefs.path_hash_mode + 1);
+    }
   }
 
   servicePendingPrimaryRadioSettings();
@@ -1857,6 +1879,7 @@ mesh::powerdiag::Mask SensorMesh::pendingWorkReason() const {
   if (hasRetryWorkDue()) return mask(Reason::Retry);
   if (isMillisTimerDue(next_flood_advert)
       || isMillisTimerDue(next_local_advert)
+      || isMillisTimerDue(secondary_flood_advert.sleepDeadline(canSendSecondaryFloodAdvert()))
       || isMillisTimerDue(dirty_contacts_expiry)) return mask(Reason::Scheduled);
   if (num_alert_tasks > 0
       && isMillisTimerDue(alert_tasks[0]->send_expiry)) return mask(Reason::Scheduled);
@@ -1919,6 +1942,7 @@ uint32_t SensorMesh::getPowerSaveSleepMilliseconds(uint32_t max_ms) const {
 
   const uint32_t before_scheduled = sleep_ms;
   sleep_ms = limitSleepToMillisTimer(next_flood_advert, sleep_ms);
+  sleep_ms = limitSleepToMillisTimer(secondary_flood_advert.sleepDeadline(canSendSecondaryFloodAdvert()), sleep_ms);
   sleep_ms = limitSleepToMillisTimer(next_local_advert, sleep_ms);
   sleep_ms = limitSleepToMillisTimer(dirty_contacts_expiry, sleep_ms);
   if (num_alert_tasks > 0) {

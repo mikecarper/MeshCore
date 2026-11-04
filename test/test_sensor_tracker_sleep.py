@@ -19,6 +19,7 @@ DEADLINES = r'''
 #include <cassert>
 #include <helpers/PowerManagementUtils.h>
 #include <helpers/PowerSavingDiagnostics.h>
+#include <helpers/StaggeredFloodAdvert.h>
 #define SENSOR_READ_INTERVAL_SECS 60
 bool logging=false;
 namespace mesh {bool isUsbLoggingWatchdogArmed(){return logging;}}
@@ -50,6 +51,15 @@ public:
  bool queue_due=false,retry_due=false,queue_delay_set=false,retry_delay_set=false;
  uint32_t queue_delay=0,retry_delay=0;
  unsigned long next_flood_advert=0,next_local_advert=0,dirty_contacts_expiry=0;
+ mesh::StaggeredFloodAdvert secondary_flood_advert;
+ bool secondary_available=false;
+ bool canSendSecondaryFloodAdvert()const{
+#if MESH_ENABLE_SENSOR_TRACKER
+  return secondary_available && !tracker.enabled;
+#else
+  return secondary_available;
+#endif
+ }
  unsigned long radio_apply_retry_at=0,set_radio_at=0,revert_radio_at=0;
  bool saved_radio_apply_pending=false,temp_radio_applied=false;
  uint32_t last_read_time=100;
@@ -126,6 +136,17 @@ int main(){
  s.dirty_contacts_expiry=0;s.last_read_time=45;
  assert(s.getPowerSaveSleepSeconds(30)==5);s.last_read_time=40;
  assert(s.hasPendingWork()&&s.getPowerSaveSleepSeconds(30)==0);
+ // A radio2 midpoint wakes the CPU in sensor mode, but never in tracker mode.
+ s.last_read_time=100;s.secondary_available=true;
+#if MESH_ENABLE_SENSOR_TRACKER
+ s.tracker.enabled=false;
+#endif
+ s.secondary_flood_advert.schedule(now_ms,10000,true);
+ assert(s.getPowerSaveSleepSeconds(30)==5);
+#if MESH_ENABLE_SENSOR_TRACKER
+ s.tracker.enabled=true;
+ assert(s.getPowerSaveSleepSeconds(30)==30);
+#endif
 }
 '''
 

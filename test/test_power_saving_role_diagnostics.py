@@ -182,6 +182,7 @@ int main() {
 #include <initializer_list>
 #include <helpers/PowerSavingDiagnostics.h>
 #include <helpers/PowerManagementUtils.h>
+#include <helpers/StaggeredFloodAdvert.h>
 static uint32_t millis() { return 100; }
 #define WITH_BRIDGE 1
 #define WITH_RS232_BRIDGE 1
@@ -210,6 +211,9 @@ struct MyMesh {
   bool pending_self_advert = false;
   struct { bool battery_alert_enabled = false; } _prefs;
   unsigned long next_flood_advert = 0, next_local_advert = 0, dirty_contacts_expiry = 0;
+  mesh::StaggeredFloodAdvert radio2_flood_advert;
+  bool secondary_eligible = false;
+  bool radio2FloodAdvertEligible() const { return secondary_eligible; }
   unsigned long next_recent_repeater_sweep = 0, next_battery_alert_check = 0;
   AbstractBridge uart; AbstractBridge* bridge = &uart;
   uint8_t active_rs232_bridge_uart = 0;
@@ -245,6 +249,13 @@ int main() {
     assert(node.bridge_enabled && !node.uart.running);
     assert(!node.hasPendingWork()); // Configured but suspended is not active UART ownership.
     assert(node.getPowerSaveSleepSeconds(30) == 30);
+    node.secondary_eligible = true;
+    node.radio2_flood_advert.schedule(98, 4, true);
+    assert(node.pendingWorkReason() == mask(Reason::Scheduled));
+    assert(node.getPowerSaveSleepSeconds(30) == 0);
+    node.secondary_eligible = false;
+    assert(!node.hasPendingWork());
+    node.radio2_flood_advert.schedule(100, 0, false);
     auto check = [&](bool& flag, Reason why) {
       flag = true;
       assert(node.hasPendingWork());

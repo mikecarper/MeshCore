@@ -1419,7 +1419,7 @@ bool RadioProfileCLI::handle(const char* command, char* reply, size_t capacity, 
           : 0;
       const uint64_t session_left = pending_left > temp_remaining_ms_ ? pending_left : temp_remaining_ms_;
       if ((temp_active_ || temp_pending_) && (uint64_t)(start-epoch)*1000 < session_left) {
-        cli::formatError(reply, capacity, MESH_CLI_REPLY_TEXT("temporary schedule overlaps active session", "temp schedule overlaps active session")); return true;
+        cli::formatError(reply, capacity, MESH_CLI_REPLY_TEXT("temporary schedule overlaps active session", "temp overlaps active session")); return true;
       }
       for (const auto& s : schedules_) if (s.active && s.temporary && start < s.end && end > s.start) {
         cli::formatError(reply, capacity, MESH_CLI_REPLY_TEXT("temporary schedules overlap", "temp schedules overlap")); return true;

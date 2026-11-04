@@ -45,7 +45,7 @@ inline bool handleFloodAdvertGet(FloodAdvertLimiter* limiter, const char* comman
     return true;
   }
   if (!limiter) {
-    strcpy(reply, MESH_CLI_REPLY_TEXT("ERR: advert limiter unavailable on this role", "ERR: advert limiter unavailable for role"));
+    strcpy(reply, MESH_CLI_REPLY_TEXT("ERR: advert limiter unavailable on this role", "ERR: advert limiter unavailable here"));
     return true;
   }
 
@@ -56,7 +56,7 @@ inline bool handleFloodAdvertGet(FloodAdvertLimiter* limiter, const char* comman
   if (total == 0 && !detail && number == 1) {
     strcpy(reply, "> no rate-limited adverts");
   } else if (offset >= total) {
-    strcpy(reply, MESH_CLI_REPLY_TEXT("ERR: advert list index out of range", "ERR: advert index out of range"));
+    strcpy(reply, MESH_CLI_REPLY_TEXT("ERR: advert list index out of range", "ERR: invalid advert index"));
   } else if (detail) {
     const auto& row = rows[0];
     char key[PUB_KEY_SIZE * 2 + 1];
@@ -102,7 +102,7 @@ inline bool handleFloodAdvertClear(FloodAdvertLimiter* limiter, const char* comm
   if (*end || !valid) {
     strcpy(reply, "ERR: clear flood.advert all|<64-hex-key>");
   } else if (!limiter) {
-    strcpy(reply, MESH_CLI_REPLY_TEXT("ERR: advert limiter unavailable on this role", "ERR: advert limiter unavailable for role"));
+    strcpy(reply, MESH_CLI_REPLY_TEXT("ERR: advert limiter unavailable on this role", "ERR: advert limiter unavailable here"));
   } else {
     if (all) limiter->reset();
     else limiter->clear(key);

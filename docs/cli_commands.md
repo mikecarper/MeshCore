@@ -4369,9 +4369,16 @@ reduce unnecessary recoveries when no traffic is expected.
 - `set flood.advert.interval <hours>`
 
 **Parameters:**
-- `hours`: Interval in hours (3-168)
+- `hours`: Interval in hours (3-168), or `0` to disable
 
 **Default:** `47` (Repeater, Room Server) - `0`, disabled (Sensor)
+
+On a Repeater, Room Server, or Sensor with a transmit-capable MeshCore radio2 profile,
+the node also sends a scoped flood advert on radio2 halfway between its
+primary flood adverts. For a 12-hour interval, the radio2 advert is six hours
+after each primary advert. The schedule is relative to the node's timer, not
+fixed clock hours. A midpoint missed by more than a minute while asleep is
+skipped. The local zero-hop advert schedule is unchanged.
 
 ---
 

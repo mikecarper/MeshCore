@@ -5,6 +5,7 @@
 #include <helpers/StaticPoolPacketManager.h>
 #include <helpers/PowerManagementUtils.h>
 #include <helpers/PowerSavingDiagnostics.h>
+#include <helpers/StaggeredFloodAdvert.h>
 #include <helpers/MorseLoopPolicy.h>
 #include <cassert>
 #include <cstdio>
@@ -111,6 +112,8 @@ public:
   bool tracker_radio_asleep = false, saved_radio_apply_pending = false, temp_radio_applied = false;
   unsigned long tracker_awake_until = 0, set_radio_at = 0, revert_radio_at = 0;
   unsigned long next_flood_advert = 0, next_local_advert = 0, dirty_contacts_expiry = 0;
+  mesh::StaggeredFloodAdvert secondary_flood_advert;
+  bool canSendSecondaryFloodAdvert() const { return false; }
   unsigned long radio_apply_retry_at = 0;
   uint32_t tracker_next_check = 1900, last_read_time = 100;
   struct Alert { unsigned long send_expiry = 0; } alert;

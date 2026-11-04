@@ -60,7 +60,7 @@ inline bool handleNoServices(const char* text, char* reply, size_t size) {
     else
       snprintf(reply, size, "%s unavailable", command.scope == WiFi ? "wifi" : "espnow");
   } else {
-    snprintf(reply, size, MESH_CLI_REPLY_TEXT("Error: requested wireless service unavailable in this build/boot", "Error: wireless service unavailable this build/boot"));
+    snprintf(reply, size, MESH_CLI_REPLY_TEXT("Error: requested wireless service unavailable in this build/boot", "Error: wireless unavailable this build/boot"));
   }
   return true;
 }
@@ -178,7 +178,7 @@ public:
     }
 #endif
     if (!(available & command.scope)) {
-      snprintf(reply, size, MESH_CLI_REPLY_TEXT("Error: requested wireless service unavailable in this build/boot", "Error: wireless service unavailable this build/boot"));
+      snprintf(reply, size, MESH_CLI_REPLY_TEXT("Error: requested wireless service unavailable in this build/boot", "Error: wireless unavailable this build/boot"));
       return true;
     }
     const bool on = command.action == Action::On || command.action == Action::OnAll;

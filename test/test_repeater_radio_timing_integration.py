@@ -31,6 +31,7 @@ HARNESS = r'''
 #include <initializer_list>
 #include <helpers/CLIReplyText.h>
 #include <helpers/RepeaterRadioTiming.h>
+#include <helpers/StaggeredFloodAdvert.h>
 #include <helpers/TempRadioLeaseDeadline.h>
 #include <helpers/radiolib/LR2021SideDetectorConfig.h>
 #define MESH_DEBUG_PRINTLN(...) ((void)0)
@@ -42,7 +43,7 @@ HARNESS = r'''
 static uint32_t now_ms = 1;
 uint32_t millis() { return now_ms; }
 namespace mesh {
-struct Packet {};
+struct Packet { uint8_t tx_radio = RADIO_TX_AUTO, radio_profile = 0; bool radio_local = true; };
 int clampLoRaTxPower(int power, float) { return power; }
 }
 struct CommonCLI {
@@ -114,7 +115,12 @@ struct CLI {
   bool hasReplyMutation() const { return false; }
   bool finishReplyMutation(bool) { return true; }
 };
-struct Radio { uint32_t last_rx = 0; uint32_t getLastRecvMillis() { return last_rx; } };
+struct Radio {
+  uint32_t last_rx = 0;
+  mesh::RadioProfiles config;
+  uint32_t getLastRecvMillis() { return last_rx; }
+  const mesh::RadioProfiles* profiles() const { return &config; }
+};
 // This fixture exercises packet-radio scheduling, not a Morse session. The
 // separate Morse loop-policy suite executes the real ownership predicate.
 namespace mesh { bool morseTimingActive(const Radio*) { return false; } }
@@ -138,6 +144,7 @@ public:
   uint64_t uptime_millis = 1;
   uint32_t last_millis = 1;
   uint32_t next_local_advert = 0, next_flood_advert = 0;
+  mesh::StaggeredFloodAdvert radio2_flood_advert;
   bool saved_radio_apply_pending = false, temp_radio_handoff_pending = false;
   bool temp_radio_applied = false, scheduled_temp_radio_started = false;
   uint32_t next_scheduled_radio_time = 0, next_scheduled_radio_check_at = 0;
@@ -150,6 +157,7 @@ public:
   uint32_t pending_self_advert_delay = 0;
   bool outbound = false, apply_success = true, restore_success = true;
   int saves = 0, applies = 0, restores = 0, local_adverts = 0, flood_adverts = 0;
+  int radio2_floods = 0, primary_floods = 0;
   int default_scope = 0;
   mesh::Packet packet;
   MyMesh() {
@@ -181,8 +189,12 @@ public:
     last_millis = now_ms;
     rtc.now += seconds;
   }
-  mesh::Packet* createSelfAdvert() { return &packet; }
-  void sendFloodScoped(int, mesh::Packet*, uint32_t, int) { ++flood_adverts; }
+  mesh::Packet* createSelfAdvert() { packet = {}; return &packet; }
+  void sendFloodScoped(int, mesh::Packet* p, uint32_t, int) {
+    ++flood_adverts;
+    if (p->tx_radio == mesh::RADIO_TX_SECONDARY) { assert(p->radio_profile == 1 && p->radio_local); ++radio2_floods; }
+    if (p->tx_radio == mesh::RADIO_TX_PRIMARY) { assert(p->radio_profile == 0); ++primary_floods; }
+  }
   void sendZeroHop(mesh::Packet*) { ++local_adverts; }
   void sendSelfAdvertisementNow(uint32_t, bool) {}
   void checkBatteryAlert() {}
@@ -191,6 +203,7 @@ public:
   void setTempRadioTiming(uint32_t);
   void updateAdvertTimer();
   void updateFloodAdvertTimer();
+  bool radio2FloodAdvertEligible() const;
   void queueSavedRadioApply();
   void refreshScheduledRadioState();
   void processScheduledRadioSettings(bool tx_gap = false);
@@ -537,6 +550,62 @@ int main() {
     m.advance(23 * HOUR); m.servicePostMeshLoop();
     assert(m._cli.board.reboots == 1);
   }
+  { // Both profiles use the same flood period, staggered by half a cycle.
+    MyMesh m;
+    m._prefs.rx_watchdog_enabled = false;
+    m._prefs.advert_interval = 0; m.updateAdvertTimer();
+    m._prefs.flood_advert_interval = 12;
+    m.radio.config.secondary.mode = mesh::RadioProfileMode::RxTx;
+    m.radio.config.cross = mesh::RadioCrossMode::On;
+    m.updateFloodAdvertTimer();
+    m.advance(6 * HOUR); m.servicePostMeshLoop();
+    assert(m.radio2_floods == 1 && m.primary_floods == 0);
+    m.advance(6 * HOUR); m.servicePostMeshLoop();
+    assert(m.radio2_floods == 1 && m.primary_floods == 1);
+    m.advance(6 * HOUR); m.servicePostMeshLoop();
+    assert(m.radio2_floods == 2 && m.primary_floods == 1);
+    m.advance(6 * HOUR); m.servicePostMeshLoop();
+    assert(m.radio2_floods == 2 && m.primary_floods == 2);
+  }
+  { // Turning on radio2 after a missed midpoint never creates a late burst.
+    MyMesh m;
+    m._prefs.rx_watchdog_enabled = false;
+    m._prefs.advert_interval = 0; m.updateAdvertTimer();
+    m._prefs.flood_advert_interval = 12; m.updateFloodAdvertTimer();
+    m.advance(7 * HOUR);
+    m.radio.config.secondary.mode = mesh::RadioProfileMode::RxTx;
+    m.servicePostMeshLoop();
+    assert(m.radio2_floods == 0);
+    m.advance(5 * HOUR); m.servicePostMeshLoop();
+    m.advance(6 * HOUR); m.servicePostMeshLoop();
+    assert(m.primary_floods == 1 && m.radio2_floods == 1);
+  }
+  { // RX-only secondary and disabled primary flood never transmit on radio2.
+    MyMesh m;
+    m._prefs.rx_watchdog_enabled = false;
+    m._prefs.advert_interval = 0; m.updateAdvertTimer();
+    m.radio.config.secondary.mode = mesh::RadioProfileMode::Rx;
+    m.radio.config.cross = mesh::RadioCrossMode::Off;
+    m._prefs.flood_advert_interval = 12; m.updateFloodAdvertTimer();
+    m.advance(6 * HOUR); m.servicePostMeshLoop();
+    m.advance(6 * HOUR); m.servicePostMeshLoop();
+    assert(m.radio2_floods == 0 && m.primary_floods == 1);
+    m.radio.config.secondary.mode = mesh::RadioProfileMode::RxTx;
+    m._prefs.flood_advert_interval = 0; m.updateFloodAdvertTimer();
+    m.advance(6 * HOUR); m.servicePostMeshLoop();
+    assert(m.radio2_floods == 0 && m.primary_floods == 1);
+  }
+  { // TempRadio's effective three-hour flood period is staggered at 90 minutes.
+    MyMesh m;
+    m._prefs.rx_watchdog_enabled = false;
+    m.radio.config.secondary.mode = mesh::RadioProfileMode::RxTx;
+    m.radio.config.cross = mesh::RadioCrossMode::Off;
+    startTemp(m, 1440);
+    m.advance(90 * 60); m.servicePostMeshLoop();
+    assert(m.radio2_floods == 1 && m.primary_floods == 0);
+    m.advance(90 * 60); m.servicePostMeshLoop();
+    assert(m.radio2_floods == 1 && m.primary_floods == 1);
+  }
   puts("Production scheduler, storage-backoff, watchdog and advert scenarios passed");
 }
 '''
@@ -671,6 +740,7 @@ int main() {
             "void MyMesh::setTempRadioTiming(",
             "void MyMesh::updateAdvertTimer()",
             "void MyMesh::updateFloodAdvertTimer()",
+            "bool MyMesh::radio2FloodAdvertEligible() const",
             "void MyMesh::queueSavedRadioApply()",
             "bool MyMesh::applySavedRadioParams()",
             "void MyMesh::refreshScheduledRadioState()",

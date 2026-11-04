@@ -5,6 +5,7 @@
 #include <Mesh.h>
 #include <helpers/PacketFileLoggingConfig.h>
 #include <helpers/Radio2DiscoverTrailer.h>
+#include <helpers/StaggeredFloodAdvert.h>
 #include <helpers/PowerSavingDiagnostics.h>
 #include <helpers/EmergencyOtaWork.h>
 #include <helpers/FloodGroupPlainText.h>
@@ -378,6 +379,7 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks
 #endif
   uint32_t last_millis;
   unsigned long next_local_advert, next_flood_advert;
+  mesh::StaggeredFloodAdvert radio2_flood_advert;
   uint32_t primary_radio_mutation_generation = 0;
   uint32_t radio_reply_deadline = 0;
 #if MESH_ENABLE_HOST_CLI
@@ -1020,6 +1022,7 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks
   void recordTelemetryHistoryTx(const mesh::Packet* packet);
 #endif
   void sendSelfAdvertisementNow(uint32_t delay_millis, bool flood);
+  bool radio2FloodAdvertEligible() const;
   bool sendRepeatersFloodText(const char* text, const TransportKey* scope = nullptr,
                               mesh::Packet** queued_packet = nullptr);
   uint8_t getRegionDepth(const RegionEntry* region);
