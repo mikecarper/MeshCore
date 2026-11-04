@@ -28,6 +28,16 @@ inline PauseResult pauseResult(const Status& s) {
 inline bool mayResume(bool requested,bool sleeping,bool rx_allowed,bool tx_active,bool carrier,bool repairing,bool due) {
   return requested && !sleeping && rx_allowed && !tx_active && !carrier && !repairing && due;
 }
+// A running chip-owned scan has no host-managed visit deadline. Bound the
+// MCU sleep by the next health poll; the radio IRQ wakes it for a packet.
+inline uint32_t idleBudget(bool active, bool hooked, bool blocked, bool generations_match,
+                           uint32_t now, uint32_t last_poll, uint32_t slice_ms) {
+  if (!active || !hooked || blocked || !generations_match || !slice_ms) return 0;
+  const uint32_t elapsed = now - last_poll;
+  if (elapsed >= 1000) return 0;
+  const uint32_t until_poll = 1000 - elapsed;
+  return until_poll < slice_ms ? until_poll : slice_ms;
+}
 inline void benchRequest(uint8_t mode,const Packed& p,uint8_t (&out)[9]) {
   const uint32_t f=p.frequency,m=p.modem;
   const uint8_t tmp[9]={6,mode,uint8_t(f>>24),uint8_t(f>>16),uint8_t(f>>8),uint8_t(f),uint8_t(m),uint8_t(m>>8),uint8_t(m>>24)};

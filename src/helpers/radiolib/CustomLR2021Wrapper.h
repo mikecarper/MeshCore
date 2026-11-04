@@ -6,6 +6,7 @@
 #if defined(MESH_W12_PRAM_EXPERIMENT) && MESH_W12_PRAM_EXPERIMENT
 #include "W12PramScannerCodec.h"
 #include "W12PramScannerBlob.h"
+#include <helpers/esp32/PowerTestControls.h>
 #endif
 #include "PrimaryRadioApplyWait.h"
 #include "RadioLibWrappers.h"
@@ -104,6 +105,22 @@ class CustomLR2021Wrapper : public RadioLibWrapper {
   }
 
 public:
+#if defined(MESH_W12_PRAM_EXPERIMENT) && MESH_W12_PRAM_EXPERIMENT
+  static constexpr bool SupportsRxPowerSaving = true;
+  bool supportsRxPowerSaving() const override { return true; }
+  uint32_t rxPowerSavingTransitionUs() const override { return 1000; }
+  void onReceiveProcessed() override {
+    if (!_lab_scan_active && !_lab_uncertain) finishReceiveProcessing();
+  }
+  mesh::RadioParamApplyResult trySetRxPowerSaving(bool enabled, uint32_t rx_us, uint32_t sleep_us) {
+    if (_lab_scan_active || _lab_uncertain || _lab_resume_pending)
+      return mesh::RadioParamApplyResult::BUSY;
+    return RadioLibWrapper::trySetRxPowerSaving(enabled, rx_us, sleep_us);
+  }
+  bool setRxPowerSaving(bool enabled, uint32_t rx_us, uint32_t sleep_us) override {
+    return trySetRxPowerSaving(enabled, rx_us, sleep_us) == mesh::RadioParamApplyResult::APPLIED;
+  }
+#endif
   uint8_t regulatorModes() const override { return static_cast<CustomLR2021*>(_radio)->regulatorModes(); }
   mesh::power::RegulatorMode defaultRegulatorMode() const override {
     return static_cast<CustomLR2021*>(_radio)->defaultRegulatorMode();
@@ -705,8 +722,22 @@ protected:
     const int16_t standby = recordApply(mesh::lr2021::ApplyStatus::Stage::Standby,
                                        _radio->standby());
     if (standby != RADIOLIB_ERR_NONE) return standby;
+#if defined(MESH_W12_PRAM_EXPERIMENT) && MESH_W12_PRAM_EXPERIMENT
+    return recordApply(mesh::lr2021::ApplyStatus::Stage::Receive, startReceivePowerSaving());
+#else
     return recordApply(mesh::lr2021::ApplyStatus::Stage::Receive, _radio->startReceive());
+#endif
   }
+
+#if defined(MESH_W12_PRAM_EXPERIMENT) && MESH_W12_PRAM_EXPERIMENT
+  int16_t armDutyCycle(RadioLibIrqFlags_t flags, RadioLibIrqFlags_t mask,
+                       uint32_t* effective_rx_us, uint32_t* effective_sleep_us) override {
+    *effective_rx_us = _rx_ps_rx_us;
+    *effective_sleep_us = _rx_ps_sleep_us;
+    return static_cast<CustomLR2021*>(_radio)->labStartRxDutyCycle(
+        _rx_ps_rx_us, _rx_ps_sleep_us, flags, mask);
+  }
+#endif
 
   bool radioDeepInit() override {
     invalidateScanTuple();

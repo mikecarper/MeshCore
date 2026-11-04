@@ -1,7 +1,16 @@
 #include "helpers/radiolib/W12PramScannerCodec.h"
+#include "helpers/radiolib/W12RxDutyTiming.h"
 #include <cassert>
 using namespace mesh::w12pram;
 int main() {
+  mesh::w12rxps::Timing timing{};
+  assert(mesh::w12rxps::encode(65625,60000,1000,timing));
+  assert(timing.rx_ticks==2150 && timing.cycle_ticks==4083);
+  assert(mesh::w12rxps::encode(1000000,1000000,1000,timing));
+  assert(timing.rx_ticks==32768 && timing.cycle_ticks==65503);
+  assert(!mesh::w12rxps::encode(0,60000,1000,timing));
+  assert(!mesh::w12rxps::encode(65625,1000,1000,timing));
+  assert(!mesh::w12rxps::encode(UINT32_MAX,UINT32_MAX,1000,timing));
   Profile a={910525000,62500,7,5,32,8}, b={911150000,250000,7,5,32,9};
   Packed x{},y{};
   assert(pack(a,x) && pack(b,y));
@@ -25,6 +34,14 @@ int main() {
   assert(!mayResume(true,false,true,false,true,false,true));
   assert(!mayResume(true,false,true,false,false,true,true));
   assert(!mayResume(true,false,true,false,false,false,false));
+  assert(idleBudget(true,true,false,true,100,0,10)==10);
+  assert(idleBudget(true,true,false,true,997,0,10)==3);
+  assert(idleBudget(true,true,false,true,1000,0,10)==0);
+  assert(idleBudget(true,true,false,true,5,UINT32_MAX-4,10)==10); // wrap
+  assert(idleBudget(false,true,false,true,100,0,10)==0);
+  assert(idleBudget(true,false,false,true,100,0,10)==0);
+  assert(idleBudget(true,true,true,true,100,0,10)==0);
+  assert(idleBudget(true,true,false,false,100,0,10)==0);
   uint8_t req[9]={};benchRequest(1,y,req);assert(req[0]==6 && req[1]==1 && req[2]==0x36 && req[6]==0x85 && req[7]==0x30 && req[8]==32);
   Status late={};late.hooked=1;late.state=1;assert(classify(late)==RxEvent::Ignore);
   late.state=4;late.last_hit=1;late.irq=1u<<18;assert(classify(late)==RxEvent::Deliver);

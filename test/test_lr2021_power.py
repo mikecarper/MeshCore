@@ -145,6 +145,8 @@ class Wrapper {
   CustomLR2021* _radio;
   Board* _board;
   bool _morse_rx_fsk_mode=false;
+  bool _scan_tuple_owned=true;
+  @INVALIDATE@
   bool prepareRadioHardReset() { ++_board->prepare_calls;return _board->prepare_ok; }
   bool restoreAfterDeepInit() { return radioDeepInit(); }
   @DEEP@
@@ -233,7 +235,9 @@ int main() {
   // Board reset/frequency failures do not proceed into the radio/regulator.
   const int calls=radio.regulator_calls;
   const size_t native_calls=radio.calls.size();
+  wrapper._scan_tuple_owned=true;
   board.prepare_ok=false;assert(!wrapper.radioDeepInit());
+  assert(!wrapper._scan_tuple_owned);
   board.prepare_ok=true;board.frequency_ok=false;assert(!wrapper.radioDeepInit());
   assert(radio.regulator_calls==calls && radio.calls.size()==native_calls);
 }
@@ -261,6 +265,7 @@ class LR2021PowerTest(unittest.TestCase):
             "@INIT@": method(driver, "bool std_init("),
             "@MORSE@": method(driver, "int16_t beginMorseReceive("),
             "@DEEP@": method(wrapper, "bool radioDeepInit(").replace(" override", ""),
+            "@INVALIDATE@": method(wrapper, "void invalidateScanTuple("),
             "@RESTORE@": restore,
         }.items():
             source = source.replace(marker, body)

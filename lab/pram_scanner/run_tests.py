@@ -20,6 +20,8 @@ with tempfile.TemporaryDirectory() as d:
     run([str(tmp/'packet')])
     run(['python3',str(lab/'test_handoff.py')])
     run(['python3',str(lab/'test_dispatcher.py')])
+    run(['python3',str(lab/'test_rxps_driver.py')])
+    run(['python3',str(lab/'test_idle_admission.py')])
     blob = (lab/'scan-safe.bin').read_bytes()
     words = re.findall(r'0x([0-9a-fA-F]{8})u', (root/'src/helpers/radiolib/W12PramScannerBlob.h').read_text())
     assert len(blob) % 4 == 0 and b''.join(struct.pack('<I',int(w,16)) for w in words) == blob

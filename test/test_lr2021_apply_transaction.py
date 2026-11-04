@@ -51,6 +51,11 @@ struct Wrapper {
   CustomLR2021 chip;CustomLR2021* _radio=&chip;
   Board board;Board* _board=&board;
   bool _dbm_valid=true;int8_t _cur_dbm=5;
+  bool _scan_tuple_owned=false,_scan_retune=false,_scan_tuple_applied=false;
+  uint8_t _cur_sf=7,_cur_cr=5;
+  bool scanTargetMatches(float,float,uint8_t,uint8_t) const{return false;}
+  void invalidateScanTuple(){_scan_tuple_owned=false;}
+  float hardwareFrequencyMHz(float frequency) const{return frequency;}
   int16_t recordApply(mesh::lr2021::ApplyStatus::Stage s,int16_t c){return _apply_status.record(s,c);}
   uint16_t preambleLengthForParams(uint8_t,float){return 32;}
   bool applySideDetectorConfig(uint8_t,float){return recordApply(mesh::lr2021::ApplyStatus::Stage::SideDetectors,chip.next())==0;}

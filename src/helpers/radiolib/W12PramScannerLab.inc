@@ -115,6 +115,22 @@ public:
   }
   bool labScannerUncertain() const { return _lab_uncertain; }
   bool labScannerActive() const { return _lab_scan_active; }
+  bool getProfileIdleDelay(uint32_t& delay_ms) const override {
+    if (!_lab_scan_active) return RadioLibWrapper::getProfileIdleDelay(delay_ms);
+    // The LR2021 owns both visits. The ESP32 may sleep without stopping CAD;
+    // the board's level-triggered GPIO check protects an arriving RxDone.
+    // Wake at least once per second to service the existing progress watchdog.
+    const bool blocked = _lab_uncertain || _lab_sleeping || _lab_resume_pending
+        || _profile_repair_required || _cw_active || !isInRecvMode()
+        || !_profiles.enabled() || hasPendingRadioInterrupt()
+        || digitalRead(P_LORA_DIO_1) == HIGH;
+    const bool generations_match = _profiles.generation[0] == _lab_snap[0].generation
+        && _profiles.generation[1] == _lab_snap[1].generation;
+    delay_ms = mesh::w12pram::idleBudget(_lab_scan_active, _lab_status.hooked,
+        blocked, generations_match, uint32_t(millis()), _lab_last_poll,
+        mesh::esp32::profileSleepSliceMillis());
+    return delay_ms != 0;
+  }
   void labScannerStatus(char* out, size_t cap) const {
     snprintf(out,cap,"PRAM %s uncertain=%u hook=%u state=%u ch=%u hit=%u cad=%lu good=%lu bad=%lu lost=%lu err=%d rec=%lu tx=%lu/%lu resume=%u",
       _lab_scan_active?"on":"off",_lab_uncertain,_lab_status.hooked,_lab_status.state,_lab_status.current,_lab_status.last_hit,

@@ -94,6 +94,7 @@ int main() {
         source = (ROOT / "src/helpers/radiolib/CustomLR2021Wrapper.h").read_text()
         configure = method(source, "mesh::RadioParamApplyResult tryConfigSideDetectors(").replace(" override", "")
         build = method(source, "static void buildSideDetectorConfig(")
+        invalidate = method(source, "void invalidateScanTuple(")
         code = COMMON + r'''
 #include <helpers/radiolib/LR2021SideDetectorConfig.h>
 #define MESH_DEBUG_PRINTLN(...) ((void)0)
@@ -113,12 +114,14 @@ struct Wrapper {
   CustomLR2021 chip; CustomLR2021* _radio = &chip;
   uint8_t _sideDetSFs[3] = {11, 12, 0}; size_t _numSideDet = 2;
   bool _params_valid = true, _profile_refresh_required = false; float _cur_bw = 62.5f;
+  bool _scan_tuple_owned = true;
   uint8_t admission = 1, live_sf = 10; int begins = 0, ends = 0;
   uint8_t getSpreadingFactor() { return live_sf; }
   uint8_t beginReconfigure() { ++begins; return admission; }
   void endReconfigure(uint8_t) { ++ends; }
   bool applySideDetectorConfig(uint8_t, float) { return true; }
   bool restoreAfterDeepInit() { return true; }
+  @INVALIDATE@
   @BUILD@
   @CONFIGURE@
 };
@@ -130,6 +133,7 @@ int main() {
   const uint8_t side[] = {8};
   // The current chip SF is the secondary (10), not the primary (7).
   assert(w.tryConfigSideDetectors(side, 1, 62.5f) == Result::APPLIED);
+  assert(!w._scan_tuple_owned);
   assert(w.chip.calls == 0 && w.begins == 0 && w._numSideDet == 1 && w._sideDetSFs[0] == 8);
   assert(w._profile_refresh_required); // Also works if radio2 is stopped before its first scan.
   w._profiles.primary.sf = 10;
@@ -153,7 +157,8 @@ int main() {
   std::puts("PASS: LR2021 stages and clears detector cache");
 }
 '''
-        code = code.replace("@BUILD@", build).replace("@CONFIGURE@", configure)
+        code = (code.replace("@BUILD@", build).replace("@CONFIGURE@", configure)
+                .replace("@INVALIDATE@", invalidate))
         self.assertIn("PASS:", self.run_cpp(code))
 
     def test_actual_three_lr_families_protocol_errors_and_restore(self):
@@ -230,6 +235,7 @@ int main() {
         build = method(source, "static void buildSideDetectorConfig(")
         side = method(source, "bool applySideDetectorConfig(")
         scan = method(source, "int16_t performChannelScan()").replace(" override", "")
+        invalidate = method(source, "void invalidateScanTuple(")
         power = method(source, "int16_t applyCachedTxPower(").replace(" override", "")
         code = COMMON + r'''
 #define USE_LR2021 1
@@ -282,6 +288,7 @@ struct Wrapper : RadioLibWrapper, ApplyRecorder {
   mesh::RadioProfiles _profiles;
   bool beacon_owned = false, _beacon_restoring = false;
   bool _params_valid = true;
+  bool _scan_tuple_owned = true;
   float _cur_bw = 125;
   uint8_t _sideDetSFs[3] = {8, 9, 10};
   size_t _numSideDet = 3;
@@ -299,6 +306,7 @@ struct Wrapper : RadioLibWrapper, ApplyRecorder {
   }
   bool restoreAfterDeepInit() { assert(false); return false; }
   bool isBeaconRadioOwned() const { return beacon_owned; }
+  @INVALIDATE@
   @BUILD@
   @SIDE@
   @SCAN@
@@ -345,6 +353,7 @@ int main() {
   assert(temporary.applySideDetectorConfig(11, 250) && temporary.chip.count == 0);
   assert(temporary._numSideDet == 3 && temporary._sideDetSFs[0] == 8);
   assert(temporary.performChannelScan() == RADIOLIB_CHANNEL_FREE);
+  assert(!temporary._scan_tuple_owned); // CAD invalidates scan reuse even on the fast branch
   assert(temporary.primary_scans == 1 && temporary.multi_scans == 0);
   assert(temporary.chip.sf == 11 && temporary.chip.sf_changes == 0);
   // A failed disable must remain a real apply failure, even during TempRadio.
@@ -384,6 +393,7 @@ int main() {
 }
 '''
         code = (code.replace("@BUILD@", build).replace("@SIDE@", side)
+                .replace("@INVALIDATE@", invalidate)
                 .replace("@SCAN@", scan).replace("@POWER@", power))
         self.assertIn("PASS:", self.run_cpp(code))
 

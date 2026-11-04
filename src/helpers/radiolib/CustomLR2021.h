@@ -4,6 +4,9 @@
 #include "RadioRegulatorState.h"
 #include "MeshCore.h"
 #include "LR2021Band.h"
+#if defined(MESH_W12_PRAM_EXPERIMENT) && MESH_W12_PRAM_EXPERIMENT
+#include "W12RxDutyTiming.h"
+#endif
 #include "LR2021CalibrationPolicy.h"
 #if defined(MESH_ENABLE_LR2021_AUTO_XTRIM) && MESH_ENABLE_LR2021_AUTO_XTRIM
 #include "LR2021PacketFrequency.h"
@@ -577,6 +580,22 @@ class CustomLR2021 : public LR2021 {
     }
 
 #if defined(MESH_W12_PRAM_EXPERIMENT) && MESH_W12_PRAM_EXPERIMENT
+    int16_t labStartRxDutyCycle(uint32_t rx_us, uint32_t sleep_us,
+                                RadioLibIrqFlags_t flags, RadioLibIrqFlags_t mask) {
+      mesh::w12rxps::Timing t;
+      // W12 uses a crystal, so the board's wake compensation is 1 ms.
+      if (!mesh::w12rxps::encode(rx_us, sleep_us, 1000, t))
+        return RADIOLIB_ERR_INVALID_RX_PERIOD;
+      RadioModeConfig_t cfg = {};
+      cfg.receive.timeout = RADIOLIB_LR2021_RX_TIMEOUT_INF;
+      cfg.receive.irqFlags = flags;
+      cfg.receive.irqMask = mask;
+      const int16_t staged = stageMode(RADIOLIB_RADIO_MODE_RX, &cfg);
+      if (staged != RADIOLIB_ERR_NONE) return staged;
+      uint8_t bytes[] = {uint8_t(t.rx_ticks >> 16), uint8_t(t.rx_ticks >> 8), uint8_t(t.rx_ticks),
+                         uint8_t(t.cycle_ticks >> 16), uint8_t(t.cycle_ticks >> 8), uint8_t(t.cycle_ticks), 0};
+      return SPIcommand(RADIOLIB_LR2021_CMD_SET_RX_DUTY_CYCLE, true, bytes, sizeof(bytes));
+    }
     int16_t labSpiCommand(uint16_t op,bool write,uint8_t* data,size_t len,const uint8_t* out=nullptr,size_t outlen=0) {
       return SPIcommand(op,write,data,len,out,outlen);
     }
