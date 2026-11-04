@@ -65,6 +65,11 @@ int esp_now_deinit(){assert(sdk_active);sdk_active=false;++deinit_calls;return 0
 int esp_wifi_force_wakeup_acquire(){if(failure==5)return -1;++wake_refs;return 0;}
 int esp_wifi_force_wakeup_release(){assert(wake_refs==1);--wake_refs;return 0;}
 int esp_wifi_set_max_tx_power(int value){if(failure==6)return -1;power=value;return 0;}
+namespace mesh { namespace wifi {
+ int saved_primary_power = -1;
+ int applyRequestedStationTxPower(int8_t value){return esp_wifi_set_max_tx_power(value);}
+ void setPrimaryEspNowAutomaticTxPower(int8_t value){saved_primary_power=value;}
+}}
 template<typename T> int esp_now_register_send_cb(T){return failure==7?-1:0;}
 template<typename T> int esp_now_register_recv_cb(T){return failure==8?-1:0;}
 int esp_now_unregister_send_cb(){return 0;}

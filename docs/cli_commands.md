@@ -363,11 +363,18 @@ folder transport.
 - `get wifi.status`
 - `get wifi.diag`
 - `get wifi.powersave`
+- `get wifi.tx`
 - `get wifi.cli`
 - `set wifi.ssid <network name>`
 - `set wifi.pwd [password]`
 - `set wifi.powersave <none|min|max>`
+- `set wifi.tx <auto|2..21>`
 - `set wifi.cli <on|off>`
+
+`wifi.tx` accepts dBm in 0.25 steps and is saved separately from LoRa power.
+`auto` restores the normal WiFi power policy. The driver may select a different
+supported limit; `get wifi.tx` shows the saved request and the driver limit
+when WiFi is running. See [WiFi power behavior](WiFi.md#wifi-power-behavior).
 
 `set webui on` is the persistent master switch. It starts the portal now and
 again after future reboots; `set webui off` closes it and disables that boot

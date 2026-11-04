@@ -103,6 +103,7 @@
 #ifdef ESP_PLATFORM
 #include <helpers/esp32/ManagementPassword.h>
 #include <helpers/esp32/WiFiStationDiagnostics.h>
+#include <helpers/esp32/WiFiTxPowerCLI.h>
 #include <WiFi.h>
 #include <WiFiClientSecure.h>
 #include <esp_wifi.h>
@@ -4502,6 +4503,13 @@ bool CommonCLI::handleSdCardGetCmd(const char* config, char* reply) {
 
 void CommonCLI::handleSetCmd(uint32_t sender_timestamp, char* command, char* reply) {
   const char* config = &command[4];
+#if defined(ESP_PLATFORM)
+  if (strncmp(config, "wifi.tx", 7) == 0 &&
+      (config[7] == '\0' || config[7] == ' ' || config[7] == '\t')) {
+    mesh::wifi::handleTxPowerSet(config + 7, reply, 160);
+    return;
+  }
+#endif
 #if defined(RAK_4631)
   if (mesh::peripherals::handleCommand(_prefs->peripherals_shared, command,
           reply, 160, _sensors->supportsSharedPeripheralMode(),
@@ -6162,6 +6170,10 @@ void CommonCLI::handleGetCmd(uint32_t sender_timestamp, char* command, char* rep
   if (mesh::handleUsbModeCommand(command, reply, 160, Serial)) return;
   const char* config = &command[4];
 #if defined(ESP_PLATFORM)
+  if (strcmp(config, "wifi.tx") == 0) {
+    mesh::wifi::formatTxPowerStatus(reply, 160);
+    return;
+  }
   if (strcmp(config, "wifi.diag") == 0) {
     mesh::wifi::formatStationDiagnostics(reply, 160);
     return;

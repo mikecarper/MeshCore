@@ -1202,6 +1202,8 @@ jobs:
           python3 -B test/test_wifi_compatibility.py -v
           python3 -B test/test_companion_wifi_compatibility.py -v
           python3 -B test/test_companion_wifi_status_format.py -v
+          python3 -B test/test_wifi_station_tx_power.py -v
+          python3 -B test/test_wifi_tx_cli.py -v
           python3 -B test/test_serial_ethernet_sessions.py -v
           python3 -B test/test_companion_wifi_session.py -v
           python3 -B test/test_espnow_radio_lifecycle.py -v
