@@ -1347,6 +1347,17 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
+  <a href="#experimental-w12-on-chip-scanner" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Experimental W12 on-chip scanner
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#quick-setup" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2806,6 +2817,17 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
+  <a href="#experimental-w12-on-chip-scanner" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Experimental W12 on-chip scanner
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#quick-setup" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -3138,6 +3160,40 @@ survive firmware updates; selecting a profile does not change the crossing polic
 <code>radio</code>; <code>tempradio2</code> temporarily replaces <code>radio2</code>. These are time-shared receive
 windows, not simultaneous receivers. Receiving or transmitting a packet on one
 profile makes the other unavailable until that packet finishes.</p>
+<h2 id="experimental-w12-on-chip-scanner">Experimental W12 on-chip scanner</h2>
+<p>W12 repeater, room and sensor firmware automatically tries the experimental
+on-chip scanner when <code>radio2</code> is configured with compatible profiles. It falls
+back to normal host switching if the profiles are unsupported or the scanner
+fails. Check the active mode and fallback reason, or turn off automatic scanning
+for the current boot. Activation follows the existing two-minute host-switch
+measurement window, so its timing recommendation can finish first:</p>
+<pre><code class="language-text">get pramscan
+set pramscan off
+set pramscan on
+get pramscan.last
+get pramscan.recovery
+</code></pre>
+<p><code>set pramscan on</code> allows another automatic start; it does not guarantee the
+scanner can start. The on/off selection is not saved and returns to automatic
+after reboot. Both profiles must use MeshCore, SF7 or SF8, bandwidth 62.5, 125
+or 250 kHz, preambles up to 255 symbols, frequencies less than 20 MHz apart,
+and a supported LR2021 ROM. With radio2 off, a previously enabled <code>radio.rxps</code>
+setting instead uses the LR2021's native receive duty cycle; enabling radio2
+suspends that duty cycle until radio2 is off again. RXPS is off by default.</p>
+<p>The scanner is experimental: packet loss and TX handoff under load are not yet
+fully qualified. An ambiguous packet/interrupt during a handoff is retained
+briefly, then discarded if needed to restore host switching; the recovery is
+counted by <code>get pramscan.recovery</code>, and the scanner will not retry that profile
+pair until it changes or <code>set pramscan on</code> is used. It replaces the vendor
+radio patch while active, uses the radio's LDO regulator, and may defer AGC
+maintenance. The ESP32 may sleep and wake on a received packet when power
+saving is enabled and the usual USB and wireless sleep conditions permit it;
+the radio remains active while scanning. Current consumption has not been
+measured.</p>
+<p>Full W12 Repeater images require the board's PSRAM for the full-capacity
+repeater tables. If PSRAM is unavailable, LoRa startup stops and the USB
+console reports the failure; check the hardware or flash Standard firmware.
+Standard builds retain the existing internal-memory fallback.</p>
 <p>The second-profile commands are shared by repeater, Companion, room server,
 sensor and standalone terminal-chat firmware with a LoRa radio. ESP-NOW-only
 devices reject LoRa profile commands. KISS is a raw host-controlled modem: it
@@ -3362,6 +3418,15 @@ accepted command includes the initial two-second application delay.
 On LR2021 boards such as W12, saved extra-SF detectors pause when incompatible
 with the temporary tuple and return when normal radio settings are restored.
 Compatible extra-SF detectors remain active.</p>
+<p>LR2021 side detectors share the primary frequency and bandwidth and detect
+different spreading factors; they do not receive simultaneous packets. The
+primary SF must be the lowest. Up to three extras are supported, limited to
+one when the primary SF is 10 or higher and two above 500 kHz. The hardware's
+combined detector bandwidth limit can further reduce the allowed set. After a
+firmware update, an incompatible saved extra-SF list is cleared so the primary
+radio can start; configure a valid list again if needed.
+See the <a href="https://www.semtech.com/products/wireless-rf/lora-plus/lr2021">LR20xx datasheet</a>
+for the detector limits.</p>
 <h2 id="repeater-room-server-and-sensor-replies">Repeater, room-server, and sensor replies</h2>
 <p>These roles default to <strong><code>tx.reply both</code></strong> for CLI replies to authenticated
 admins only. Those replies are queued on <code>radio</code> and on an active <code>radio2</code>

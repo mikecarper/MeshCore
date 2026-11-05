@@ -7761,7 +7761,13 @@ for signed fleet use, availability and OTA prerequisites.</p>
 battery/MCU readings and charger controls, see <a href="../solarxiao_power/">SolarXiao carrier profiles</a>
 (<code>get solar</code>, <code>get solar readings</code>, <code>set solar.board auto</code>, <code>get mppt</code>, <code>set mppt</code>).</p>
 <p>See <a href="../radio_profiles/">two LoRa profiles</a> for <code>radio2</code>, <code>tempradio2</code>, scheduling,
-RX-only mode, cross-transmission policy, and optional radio preambles.</p>
+RX-only mode, cross-transmission policy, and optional radio preambles.
+W12 repeater, room and sensor builds also provide the experimental
+<code>set pramscan on</code>, <code>get pramscan</code> and <code>set pramscan off</code> commands. The scanner
+starts automatically on compatible dual-radio profiles; <code>off</code> selects host
+switching until reboot. See
+<a href="../radio_profiles/#experimental-w12-on-chip-scanner">W12 on-chip scanner</a>
+for hardware limits and reliability considerations.</p>
 <p>For a saved MediaMesh second profile, use <code>set radio2 mediamesh</code>
 (911.150 MHz, 250 kHz, SF7, CR 4/5, <code>rxtx</code>, automatic preamble), or
 <code>set radio2 mediamesh-range</code> for 125 kHz. These leave the primary profile
@@ -8036,12 +8042,18 @@ folder transport.</p>
 <li><code>get wifi.status</code></li>
 <li><code>get wifi.diag</code></li>
 <li><code>get wifi.powersave</code></li>
+<li><code>get wifi.tx</code></li>
 <li><code>get wifi.cli</code></li>
 <li><code>set wifi.ssid &lt;network name&gt;</code></li>
 <li><code>set wifi.pwd [password]</code></li>
 <li><code>set wifi.powersave &lt;none|min|max&gt;</code></li>
+<li><code>set wifi.tx &lt;auto|2..21&gt;</code></li>
 <li><code>set wifi.cli &lt;on|off&gt;</code></li>
 </ul>
+<p><code>wifi.tx</code> accepts dBm in 0.25 steps and is saved separately from LoRa power.
+<code>auto</code> restores the normal WiFi power policy. The driver may select a different
+supported limit; <code>get wifi.tx</code> shows the saved request and the driver limit
+when WiFi is running. See <a href="../WiFi/#wifi-power-behavior">WiFi power behavior</a>.</p>
 <p><code>set webui on</code> is the persistent master switch. It starts the portal now and
 again after future reboots; <code>set webui off</code> closes it and disables that boot
 start. <code>get webui</code> reports the current session first, followed by an explicit
@@ -10245,6 +10257,52 @@ request fails and restores the previous saved selection; <code>get radio.xtrim</
 shows it. A reported radio recovery failure still needs diagnosis.
 <code>set radio.xtrim default</code> removes the override and resets/reinitializes the radio
 to restore its original trim. Node identity and other settings remain saved.</p>
+<p>W12 Repeater, Room, Sensor, and Companion builds also provide:</p>
+<pre><code class="language-text">set radio.xtrim auto
+get radio.xtrim.auto
+get radio.xtrim.correction
+set radio.xtrim auto cancel
+</code></pre>
+<p>Automatic trim is off until started. Turn radio2 off first and leave the radio
+profile unchanged. The node listens for signed, fresh adverts from three
+distinct nearby identities on the current frequency; each trial and its
+independent final verification need one new advert from each of the same three
+identities. They must agree within 1.5 kHz, and the trim verification median
+must be within 1 kHz of the winning trial. The node then applies a bounded
+digital adjustment equal to 75% of the remaining measured offset and checks
+fresh adverts from the same three peers before saving. It applies the adjustment
+proportionally on both radio profiles while reporting their nominal frequencies.
+Offsets smaller than 400 Hz do not cause a new digital adjustment. Each listening window can last two
+minutes and the whole session is limited to 15 minutes. Temporarily increase
+the reference radios' advert frequency if needed. No adverts are sent by
+the calibration itself. Accurate node time is required to check advert freshness.</p>
+<p>During a trial, the physical trim changes and reception can temporarily change;
+<code>get radio.xtrim</code> shows the saved setting, whereas <code>get radio.xtrim.auto</code> shows
+the current trial, phase, sample count and whether the baseline was observed.
+<code>get radio.xtrim.correction</code> shows the active and saved digital correction in
+parts per billion. <code>set radio.xtrim default</code> clears both the trim override and
+digital correction; setting a manual trim also clears the old correction.
+Cancel, timeout, conflicting samples, a profile change, or a failed save
+requests restoration of the original setting. If RX is disabled during a trial,
+restoration is deferred until reboot and status reports this; the physical trim
+may differ until then. With RX on, restore is attempted up to three times on
+failure or for up to 30 seconds while busy; if it cannot finish, status reports
+that restoration is deferred. The original saved selection remains in place.
+If saving fails, the stored setting may be uncertain; verify it after reboot.</p>
+<p>This is relative to the observed transmitters, not an absolute frequency
+standard. If the baseline has no quorum, a candidate can still be saved after
+independent verification with an offset within 2 kHz, but this cannot prove it
+improved the original setting. The status reports <code>saved; baseline unknown</code> in
+that case. A signed identity does not prove physical proximity: the path can be
+relayed, and multiple identities need not represent independent oscillators.
+Use an independent calibrated receiver to establish absolute accuracy or prove
+improvement when the baseline is unknown. Automatic calibration is available
+in those builds but only runs when explicitly requested.</p>
+<p>For compatibility with older firmware, the legacy trim record remains readable
+alongside the newer paired trim-and-correction record. If older firmware changes
+the trim, a later upgrade uses the changed trim and clears the stale correction.
+Re-saving exactly the same trim in older firmware is indistinguishable from no
+edit, so the prior correction may still be restored after re-upgrade.</p>
 <p>These controls are available through local CLI and authorized LoRa CLI. They do
 not change the configured channel frequency shown by <code>get radio</code> or <code>get freq</code>.
 The <a href="https://github.com/Lora-net/usp/blob/main/smtc_rac_lib/radio_drivers/lr20xx_driver/inc/lr20xx_system.h">Semtech LR20xx driver documents the capacitor range and step size</a>.</p>

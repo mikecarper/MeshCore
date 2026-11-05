@@ -1621,10 +1621,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#automatic-network-outage-power-saving" class="md-nav__link">
+  <a href="#wifi-and-mqtt-outages" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Automatic network outage power saving
+        WiFi and MQTT outages
       
     </span>
   </a>
@@ -1753,6 +1753,17 @@
     <span class="md-ellipsis">
       
         W12 access-point compatibility and connection status
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#per-board-automatic-wifi-transmit-power" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Per-board automatic WiFi transmit power
       
     </span>
   </a>
@@ -2711,10 +2722,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#automatic-network-outage-power-saving" class="md-nav__link">
+  <a href="#wifi-and-mqtt-outages" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Automatic network outage power saving
+        WiFi and MQTT outages
       
     </span>
   </a>
@@ -2843,6 +2854,17 @@
     <span class="md-ellipsis">
       
         W12 access-point compatibility and connection status
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#per-board-automatic-wifi-transmit-power" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Per-board automatic WiFi transmit power
       
     </span>
   </a>
@@ -3076,29 +3098,16 @@ broker connected, stale queued packets are flushed. MQTT packet delivery is
 best effort rather than durable storage. Each enabled slot publishes
 independently, so one failed broker does not intentionally stop the other
 slots.</p>
-<h2 id="automatic-network-outage-power-saving">Automatic network outage power saving</h2>
-<p>ESP32 MQTT firmware uses one shared outage timer for MQTT and NTP. If no broker
-demonstrates a working connection for five minutes, the MQTT worker stops its
-clients and NTP request before suspending background WiFi. Saved WiFi and broker
-settings remain enabled. Failed requests, a WiFi association, and NTP replies
-alone do not restart the outage timer or keep a failed MQTT uplink awake.</p>
-<p>After 30 minutes, the firmware opens a recovery window lasting up to two
-minutes. A new broker acknowledgment, including one immediately followed by a
-disconnect, or a connection that stays up for 30 seconds
-returns the node to normal operation. Otherwise WiFi is suspended for another
-30 minutes. An explicit management request can ask for an earlier probe.
-Automatic NTP requests have a 15-second timeout; failed requests wait 30 minutes
+<h2 id="wifi-and-mqtt-outages">WiFi and MQTT outages</h2>
+<p>While a WiFi service is enabled, AP or broker outages no longer trigger the
+shared 30-minute WiFi suspension. The station remains available to reconnect and
+for other enabled services. Reconnect attempts still use their own backoff, and
+an MQTT broker's circuit breaker can wait 30 minutes after repeated failures.
+Keeping WiFi available during an outage uses more power. Explicit WiFi-off,
+setup access point expiry and ordinary idle-driver cleanup still apply.</p>
+<p>Automatic NTP requests have a 15-second timeout; failed requests wait 30 minutes
 instead of repeatedly running a blocking server search. Successful NTP retains
 the daily refresh schedule.</p>
-<p>Active browser administration, setup/OTA access points, connected Companion
-clients, and an attached WiFi OTA seeder protect their network access. An idle
-WebConfig listener does not prevent the cooldown. An enabled SNMP agent keeps a
-working LAN connection available. ESP-NOW keeps its radio and channel; only the
-failed infrastructure connection is suspended. LoRa continues operating, and
-when CPU power saving is enabled, its normal sleep eligibility returns after
-background WiFi shuts down. USB console and logging sleep rules still apply
-separately. This policy does not automatically turn off working services or
-expire an active setup access point.</p>
 <p>See <a href="https://github.com/mikecarper/MeshCore/blob/keymindCascade/MQTT_IMPLEMENTATION.md">MQTT_IMPLEMENTATION.md</a> for the complete preset
 list, custom broker configuration, topic formats, authentication, diagnostics,
 and memory limits.</p>
@@ -3188,14 +3197,12 @@ setup even without WiFi credentials. The timeout itself is not saved.
 An administrator can still override the automatic cutoff with an explicit
 <code>start webconfig</code> command.</p>
 <p>Once an SSID is saved, the provisioning cutoff no longer applies. When WiFi is
-selected by <code>logging.output wifi|both</code>, the station stays enabled and keeps
-trying the saved network indefinitely: ESP automatic reconnect remains on and
-the explicit fallback advances through 15, 30, 60, 120, then 300-second retry
-intervals, remaining at five minutes until it reconnects. MQTT broker retries
-use their own backoff; a repeatedly failing broker eventually receives one
-probe every 30 minutes. Selecting <code>logging.output off|usb</code> keeps the MQTT bridge
-off, so saved credentials alone do not force WiFi on unless WebConfig is also
-enabled explicitly.</p>
+selected by <code>logging.output wifi|both</code> and a broker is configured, the station
+keeps trying its saved network. ESP automatic reconnect is enabled, and the
+explicit fallback advances through 15, 30, 60, 120, then 300-second intervals.
+Selecting <code>logging.output off|usb</code> keeps the MQTT bridge off, so saved
+credentials alone do not force WiFi on unless WebConfig is also enabled
+explicitly.</p>
 <p>The equivalent MQTT observer CLI setup is:</p>
 <pre><code class="language-text">set wifi.ssid Your WiFi Name
 set wifi.pwd Your WiFi Password
@@ -3654,6 +3661,20 @@ standalone WebConfig and MQTT observers on every board. The driver enforces its
 radio limits. Builds can override these requests with <code>MQTT_WIFI_TX_POWER</code> and
 <code>MQTT_WIFI_POWER_SAVE_TX_POWER</code>, respectively. These settings affect WiFi only,
 not LoRa transmit power.</p>
+<p>To choose a different WiFi transmit-power limit, use:</p>
+<pre><code class="language-text">set wifi.tx 15
+get wifi.tx
+set wifi.tx auto
+</code></pre>
+<p>Values from 2 to 21 dBm in 0.25 dBm steps are accepted. The setting is saved
+and remains in effect across reconnects, reboots and changes to <code>wifi.powersave</code>.
+<code>auto</code> restores the existing power-saving-based policy. The driver selects a
+supported level and applies device and regulatory limits; the reported driver
+limit is not a measurement of RF output. WiFi station, setup AP and ESP-NOW
+share the same radio and power limit. This does not change LoRa <code>set tx</code>.
+On builds using ESP-NOW as the primary mesh radio, a manual <code>wifi.tx</code> setting
+also overrides that radio's WiFi power; <code>auto</code> restores its normal <code>set tx</code>
+behavior.</p>
 <h2 id="companion-wifi-compatibility-settings">Companion WiFi compatibility settings</h2>
 <p>ESP32 WiFi Companions, including Full Companion, provide two independent,
 saved compatibility controls. Defaults remain <code>bgn</code> and <code>normal</code>; neither
@@ -3808,6 +3829,32 @@ failure with a misleading router error.</p>
 <p>On MQTT builds, <code>set usb.logging on</code> and <code>set usb.debug on</code> also enable live
 USB event logs after the MQTT network owner initializes. <code>get mqttN.diag</code>
 describes broker/transport failures; use <code>get wifi.diag</code> for the station link.</p>
+<h3 id="per-board-automatic-wifi-transmit-power">Per-board automatic WiFi transmit power</h3>
+<p>ESP-IDF expresses the station's maximum transmit power in 0.25 dBm steps over
+2–20 dBm, and the driver floors a request to its own power table. Some ESP32-S3
+boards reach a practical WiFi ceiling well below the SDK maximum: a hotter PA
+lengthens association and produces 802.11 missing-ack (34) and timeout (39)
+disconnects.</p>
+<p>A build profile can cap the automatic setting with <code>WIFI_TX_POWER_DBM</code>. Boards
+that do not define it keep their existing automatic behavior. The Meshnology W12
+profile sets an automatic maximum of 13 dBm for every W12 target:</p>
+<pre><code class="language-ini">[meshnology_w12]
+build_flags =
+  ...
+  -D WIFI_TX_POWER_DBM=13
+</code></pre>
+<p>The default is applied on station joins and power-save changes. An explicit
+<code>set wifi.tx</code> setting takes precedence, including a value above 13 dBm;
+<code>set wifi.tx auto</code> restores the board default. The SDK may quantize the
+requested value; use <code>get wifi.tx</code> to see the saved preference and driver limit.
+With USB debugging enabled, WebConfig also reports the driver limit:</p>
+<pre><code class="language-text">WiFi TX limit: 13.00 dBm (automatic profile cap 13 dBm)
+</code></pre>
+<p>A lower reported value can mean the driver floored the request or that WiFi
+power saving selected a lower value.</p>
+<p>The W12 also allows 30 seconds for a saved WiFi connection before falling back
+to setup mode. A custom build can override that default, for example with
+<code>-DWEBCONFIG_WIFI_CONNECT_TIMEOUT_MS=60000</code> for a 60-second window.</p>
 <h3 id="mqtt-observer-diagnostics">MQTT observer diagnostics</h3>
 <p>For an MQTT observer:</p>
 <pre><code class="language-text">get wifi.status
@@ -3828,9 +3875,8 @@ In <code>mqtt.stats</code>, <code>drops=A/B</code> separates outbox-cap drops fr
 attempts skipped for memory pressure; a growing <code>B</code> can explain missing packet
 reports while broker connections still look healthy. <code>DNS failed (0x8001)</code>
 records a hostname lookup failure, which can follow an earlier disconnect; it
-does not identify the reason for that first disconnect. <code>wifi.status</code> showing
-<code>suspended</code> means the shared outage cooldown is active, not that WiFi settings
-were erased. These diagnostics do not reveal passwords or tokens, but WiFi
+does not identify the reason for that first disconnect. These diagnostics do
+not reveal passwords or tokens, but WiFi
 status can include the SSID or local IP address. Redact them before posting.</p>
 <p>The shared MQTT bridge recovers failed transports on its owning task, including
 errors without a subsequent disconnect callback and connection attempts that
