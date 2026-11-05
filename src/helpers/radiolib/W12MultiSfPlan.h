@@ -10,7 +10,7 @@ namespace mesh { namespace w12multisf {
 // Admission for an experimental receive-only multi-SF plan. This does not
 // change the modem: callers must still acquire it and prove TX/RX restoration.
 enum class Admission : uint8_t {
-  Ready, Unsupported, InvalidRange, InvalidBandwidth, DualRadio, RxPowerSaving,
+  Ready, Unsupported, InvalidRange, UnsupportedRange, InvalidBandwidth, DualRadio, RxPowerSaving,
   ExtraDetectors
 };
 
@@ -44,6 +44,7 @@ inline Admission makePlan(bool supported, uint8_t lower, uint8_t upper,
   candidate.rx_primary = lower;
   candidate.tx_sf = tx_sf;
   candidate.side_count = upper - lower;
+  if (lower >= 10 && candidate.side_count > 1) return Admission::UnsupportedRange;
   for (uint8_t i = 0; i < candidate.side_count; ++i)
     candidate.side_sf[i] = lower + i + 1;
   if (!mesh::lr2021::validateSideDetectorSFs(candidate.side_sf,

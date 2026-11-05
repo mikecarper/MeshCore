@@ -12,7 +12,7 @@ int main() {
   assert(makePlan(true, 7, 10, 7, 500, false, false, false, plan) == Admission::Ready);
   assert(makePlan(true, 5, 8, 7, 812.5, false, false, false, plan) == Admission::InvalidBandwidth);
   assert(plan.side_count == 0);
-  assert(makePlan(true, 10, 12, 7, 62.5, false, false, false, plan) == Admission::InvalidBandwidth);
+  assert(makePlan(true, 10, 12, 7, 62.5, false, false, false, plan) == Admission::UnsupportedRange);
   assert(makePlan(true, 5, 5, 7, 0, false, false, false, plan) == Admission::InvalidBandwidth);
   assert(makePlan(true, 5, 5, 7, 44, false, false, false, plan) == Admission::InvalidBandwidth);
   assert(makePlan(true, 5, 9, 7, 62.5, false, false, false, plan) == Admission::InvalidRange);
