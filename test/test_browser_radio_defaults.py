@@ -198,6 +198,7 @@ int main() {
 
     def test_only_space_limited_profiles_opt_out(self):
         for path, profile in (("variants/rak3x72/platformio.ini", "RAK_3x72_companion_radio_usb"),
+                              ("variants/wio-e5-dev/platformio.ini", "wio-e5_companion_radio_usb"),
                               ("variants/wio-e5-mini/platformio.ini", "wio-e5-mini_repeater"),
                               ("variants/wio-e5-mini/platformio.ini", "wio-e5-mini_companion_radio_usb")):
             section = (ROOT / path).read_text().split("[env:" + profile + "]", 1)[1].split("[", 1)[0]
