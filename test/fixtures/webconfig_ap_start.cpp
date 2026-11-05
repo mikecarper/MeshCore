@@ -346,7 +346,6 @@ struct WebConfigServer {
   ~WebConfigServer() { delete _dns; }
   void createServer() { ++servers; }
   void requestNetworkAccess() {}
-  void refreshNetworkPowerHold(uint32_t) {}
   void initializeManagementPassword();
   bool startSetupMode(char reply[]);
   bool checkAuth(AsyncWebServerRequest*) const { return auth_allowed; }

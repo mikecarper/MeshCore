@@ -425,17 +425,12 @@ int main(){
  assert(!the_mesh.bridge&&!the_mesh.web&&radio_driver.active&&::WiFi.mode_value==WIFI_STA);
  c.handle("set wifi on",reply,sizeof(reply),900,Independent);c.service(1150);
  assert(the_mesh.bridge&&the_mesh.web&&radio_driver.active);
- // A running MQTT service can have its background WiFi suspended. Repeating
- // "on" must wake an immediate bounded probe without toggling the services.
- auto& power=mesh::wifi::networkPower();
- power.setManaged(true);power.setSuspended(true);
+ // Repeating "on" leaves the running services active and does not rely on
+ // the removed background outage-suspension policy.
  c.handle("set wifi on",reply,sizeof(reply),1160,Independent);c.service(1410);
- assert(the_mesh.bridge&&the_mesh.web&&power.consumeProbeRequest());
- assert(!power.consumeProbeRequest());
- power.setSuspended(false);
+ assert(the_mesh.bridge&&the_mesh.web);
  c.handle("set wifi on",reply,sizeof(reply),1420,Independent);c.service(1670);
- assert(!power.consumeProbeRequest()); // A healthy link is not restarted.
- power.setManaged(false);
+ assert(the_mesh.bridge&&the_mesh.web);
  c.handle("set espnow off",reply,sizeof(reply),1700,Independent);c.service(1950);
  assert(!radio_driver.active&&the_mesh.web&&the_mesh.bridge&&::WiFi.mode_value==WIFI_STA);
 #else

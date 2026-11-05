@@ -141,12 +141,6 @@ bool companion_wifi_power_save_loaded=false;
 uint8_t companion_wifi_power_save=mesh::wifi::kDefaultPowerSave;
 namespace mesh { namespace wifi {
 constexpr bool kPrimaryEspNowRadio=false;
-struct StatusPower {
-  bool suspended=false, foreground=false;
-  bool backgroundSuspended() const { return suspended; }
-  bool foregroundActive() const { return foreground; }
-};
-StatusPower& networkPower() { static StatusPower value; return value; }
 unsigned diagnostic_calls=0;
 bool formatStationDiagnostics(char* reply, size_t capacity) {
   ++diagnostic_calls;
@@ -235,9 +229,7 @@ int main() {
   companion_wifi_active=true; companion_wifi_credential_reload_pending=true;
   formatCompanionWiFiStatus(reply,sizeof(reply)); assert(strstr(reply,"reconnect-pending"));
   companion_wifi_credential_reload_pending=false;
-  networkPower().suspended=true;
-  formatCompanionWiFiStatus(reply,sizeof(reply)); assert(strstr(reply,"suspended(30m)"));
-  networkPower().suspended=false; companion_wifi_has_credentials=false;
+  companion_wifi_has_credentials=false;
   formatCompanionWiFiStatus(reply,sizeof(reply)); assert(strstr(reply,"unconfigured"));
   companion_wifi_has_credentials=true;
   for (auto state : {WL_NO_SSID_AVAIL,WL_CONNECT_FAILED,WL_CONNECTION_LOST,WL_DISCONNECTED}) {

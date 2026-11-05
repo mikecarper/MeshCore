@@ -40,7 +40,7 @@
 #include <helpers/WiFiPowerSave.h>
 #include <helpers/WiFiReconnectPolicy.h>
 #include <helpers/WebConfigLoginThrottle.h>
-#include <helpers/WiFiNetworkPowerPolicy.h>
+#include <helpers/esp32/WiFiCoordinator.h>
 #include <helpers/ui/DisplayBuildFlags.h>
 #include "WebConfigJsonAllocator.h"
 
@@ -437,7 +437,6 @@ private:
 
   void createServer();
   void noteNetworkActivity();
-  void refreshNetworkPowerHold(uint32_t now);
   bool beginSavedStation(uint32_t now);
   void serviceStartRetry(uint32_t now);
   void registerRoutes();

@@ -14,7 +14,8 @@
 #endif
 #if defined(ESP32_PLATFORM)
 #include <helpers/esp32/BootFileSystem.h>
-#include <helpers/WiFiNetworkPowerPolicy.h>
+#include <helpers/esp32/WiFiCoordinator.h>
+#include <helpers/esp32/InfrastructureBridgeCoordinator.h>
 #if defined(WITH_WEBCONFIG) || defined(WITH_MQTT_BRIDGE) || defined(WITH_ESPNOW_BRIDGE) \
     || defined(LIGHTWEIGHT_WIFI_OTA) || (defined(ADMIN_PASSWORD) && !defined(DISABLE_WIFI_OTA))
 #include <WiFi.h>
@@ -4601,15 +4602,13 @@ void MyMesh::serviceIdleWiFi() {
     && (!defined(MESH_PRIMARY_ESPNOW) || !MESH_PRIMARY_ESPNOW) \
     && (!defined(MESH_ESPNOW_RADIO) || !MESH_ESPNOW_RADIO)
   if (_cli.getBoard()->isOTAUpdateRunning()) return;
-  if (mesh::wifi::networkPower().foregroundActive()) return;
+  if (mesh::wifi::coordinator().hasStationLease(mesh::wifi::StationOwner::Ota)) return;
 #ifdef WITH_WEBCONFIG
-  if (isWebConfigActive() && (!mesh::wifi::networkPower().backgroundSuspended()
-      || _webconfig->isNetworkForegroundActive(millis()))) return;
+  if (isWebConfigActive()) return;
 #endif
 #ifdef WITH_MQTT_BRIDGE
   if (_ota_update_at) return;
-  // The MQTT worker also owns its suspended station: Core 1 must not race
-  // the worker's shutdown or the next bounded probe on Core 0.
+  // Core 1 must not race the worker's shutdown on Core 0.
   if (bridge && (bridge->isRunning() || bridge->isStopping())) return;
 #endif
 #ifdef WITH_ESPNOW_BRIDGE
@@ -4641,11 +4640,10 @@ mesh::powerdiag::Mask MyMesh::pendingWorkReason() const {
   if (hasPendingOtaApply()) return mask(Reason::Ota);
   if (_cli.hasPendingRadioSettings()) return mask(Reason::Scheduled);
 #if defined(ESP32_PLATFORM)
-  if (mesh::wifi::networkPower().foregroundActive()) return mask(Reason::Network);
+  if (mesh::wifi::coordinator().hasStationLease(mesh::wifi::StationOwner::Ota)) return mask(Reason::Network);
 #endif
 #ifdef WITH_WEBCONFIG
-  if (isWebConfigActive() && (!mesh::wifi::networkPower().backgroundSuspended()
-      || _webconfig->isNetworkForegroundActive(millis()))) return mask(Reason::Network);
+  if (isWebConfigActive()) return mask(Reason::Network);
 #endif
 #if defined(ESP32_PLATFORM) \
     && (defined(WITH_WEBCONFIG) || defined(WITH_MQTT_BRIDGE) || defined(WITH_ESPNOW_BRIDGE) \
@@ -4661,11 +4659,7 @@ mesh::powerdiag::Mask MyMesh::pendingWorkReason() const {
   if (_local_cli_output.busy()) return mask(Reason::SerialIO);
 #endif
 #if defined(WITH_BRIDGE)
-#ifdef WITH_MQTT_BRIDGE
-  if (bridge && bridge->isRunning() && !bridge->isNetworkSuspended()) return mask(Reason::Bridge);
-#else
   if (bridge && bridge->isRunning()) return mask(Reason::Bridge);
-#endif
 #ifdef WITH_MQTT_BRIDGE
   if (bridge && bridge->isStopping()) return mask(Reason::BridgeCleanup);
 #endif

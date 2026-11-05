@@ -18,6 +18,7 @@ HARNESS = r'''
 int mode=0, power=-1, set_ps_result=0, set_power_result=0, get_ps_result=0;
 bool nvs_available=true, nvs_present=false, nvs_write=true, nvs_bad_type=false;
 bool namespace_present=false, nvs_commit_ok=true;
+bool driver_ignores_write=false, readback_fails=false;
 uint8_t stored=0;
 #include "helpers/esp32/WiFiStationPower.h"
 constexpr int ESP_ERR_WIFI_NOT_STARTED=-30, ESP_ERR_WIFI_NOT_INIT=-31;

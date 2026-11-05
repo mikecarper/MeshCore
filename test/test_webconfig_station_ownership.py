@@ -41,7 +41,7 @@ class WebConfigStationOwnershipTest(unittest.TestCase):
                 self.compile_and_run(body, "-DWITH_MQTT_BRIDGE=1")
                 # A stopped/unconfigured MQTT implementation used to keep
                 # ownership forever merely because its code was compiled in.
-                stale = (body.replace("return owns_wifi;", "return false;", 1)
+                stale = (body.replace("return mesh::wifi::infrastructureWebConfigOwnsStation(\n      mqtt_running, mqtt_stopping, udp_enabled);", "return false;", 1)
                          if role == "simple_repeater" else re.sub(
                              r"owns_wifi = !.*?;", "owns_wifi = false;", body, count=1, flags=re.DOTALL))
                 self.assertNotEqual(body, stale)
@@ -131,10 +131,6 @@ int main() {
         self.assertNotEqual(stale, fixture)
         with self.assertRaises(AssertionError):
             self.compile_and_run(stale)
-
-    def test_shared_outage_blocks_idle_portal_reconnect_and_allows_foreground(self):
-        self.compile_and_run(self.station_fixture(), "-DWITH_MQTT_BRIDGE=1",
-                             "-DTEST_BACKGROUND_SUSPEND=1")
 
     def test_manual_companion_start_preserves_legacy_join_and_15s_fallback(self):
         self.compile_and_run(self.station_fixture(), "-DWITH_MQTT_BRIDGE=1",

@@ -2,6 +2,7 @@
 #include <cstring>
 #include <new>
 #include <helpers/WirelessControl.h>
+#include <helpers/esp32/InfrastructureBridgeCoordinator.h>
 struct Worker {
   bool running = false, stopping = false;
   bool isRunning() const { return running; }

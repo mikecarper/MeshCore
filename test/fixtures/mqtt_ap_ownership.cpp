@@ -8,7 +8,7 @@
 #include "helpers/MQTTConnectionPolicy.h"
 #include "helpers/MQTTTransportHealth.h"
 #include "helpers/WiFiPowerSave.h"
-#include "helpers/WiFiNetworkPowerPolicy.h"
+#include "helpers/esp32/WiFiCoordinator.h"
 #define MQTT_DEBUG_PRINTLN(...) ((void)0)
 #define pdMS_TO_TICKS(value) (value)
 using TickType_t=uint32_t;
@@ -80,9 +80,6 @@ namespace mesh{namespace wifi{
 int s_wifi_disconnect_reason=0;uint32_t s_wifi_disconnect_time=0;
 unsigned long s_wifi_connected_at=0;
 struct MQTTBridge{
- mesh::wifi::NetworkPowerPolicy _network_power_policy;
- std::atomic<bool>_network_suspended{false};
- bool _network_espnow_restore_pending=false;
  bool _wifi_event_registered=false,_manage_wifi=true,_ntp_sync_pending=false;
  bool _wifi_credentials_changed=false;
  int _wifi_reconnect_backoff_attempt=0;

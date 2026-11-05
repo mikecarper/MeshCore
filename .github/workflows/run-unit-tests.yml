@@ -710,7 +710,7 @@ jobs:
           python3 -B test/test_mqtt_advert_verify.py -v
           python3 -B test/test_mqtt_publish_ack.py -v
           python3 -B test/test_companion_mqtt_diagnostics.py -v
-          python3 -B test/test_wifi_network_power_policy.py -v
+          python3 -B test/test_wifi_coordinator.py -v
           python3 -B test/test_mqtt_wifi_network_power.py -v
           python3 -B test/test_companion_wifi_network_power.py -v
           python3 -B test/test_webconfig_network_power.py -v

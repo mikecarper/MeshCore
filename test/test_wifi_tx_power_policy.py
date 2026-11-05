@@ -31,6 +31,9 @@ int main() {
     assert(units >= W::kTxPowerMinUnits && units <= W::kTxPowerMaxUnits);
     assert(W::txPowerDbmFromUnits(static_cast<int8_t>(units)) == dbm);
   }
+  assert(W::txCeilingSatisfied(48, 52));  // SDK can round down.
+  assert(W::txCeilingSatisfied(52, 52));
+  assert(!W::txCeilingSatisfied(56, 52)); // Ignored writes are rejected.
   return 0;
 }
 """
@@ -83,6 +86,15 @@ class WiFiTxPowerPolicyTest(unittest.TestCase):
         self.assertIn("const esp_err_t tx_result = applyStationTxPower();", policy)
         self.assertIn("tx_result != ESP_ERR_WIFI_NOT_STARTED", policy)
         self.assertIn("tx_result != ESP_ERR_WIFI_NOT_INIT", policy)
+
+    def test_board_defaults_are_scoped_to_w12(self):
+        w12 = (ROOT / "variants/meshnology_w12/platformio.ini").read_text()
+        base = w12.split("[meshnology_w12]", 1)[1].split("\n[", 1)[0]
+        self.assertIn("-D WIFI_TX_POWER_DBM=13", base)
+        self.assertIn("-D WEBCONFIG_WIFI_DEFAULT_CONNECT_TIMEOUT_MS=30000", base)
+        for path in (ROOT / "variants").glob("*/platformio.ini"):
+            if path.parent.name != "meshnology_w12":
+                self.assertNotIn("WIFI_TX_POWER_DBM", path.read_text(), str(path))
 
 
 

@@ -1,4 +1,4 @@
-"""Exercise the production portal's bounded foreground ownership policy."""
+"""Exercise the production portal's bounded foreground activity tracking and WiFi coordinator leases."""
 from pathlib import Path
 import unittest
 
@@ -16,13 +16,17 @@ class WebConfigNetworkPowerTest(unittest.TestCase):
         methods = "\n".join(extract_braced(source, signature) for signature in (
             "void WebConfigServer::noteNetworkActivity(",
             "void WebConfigServer::requestNetworkAccess(",
-            "bool WebConfigServer::isNetworkForegroundActive(",
-            "void WebConfigServer::refreshNetworkPowerHold("))
+            "bool WebConfigServer::isNetworkForegroundActive("))
         return r'''
 #include <cassert>
 #include <cstdint>
+#define WIFI_OFF 0
+#define WIFI_STA 1
+#define WIFI_MODE_NULL 0
+#define WIFI_MODE_STA 1
+#define ESP_OK 0
 #include <helpers/WebConfigBatch.h>
-#include <helpers/WiFiNetworkPowerPolicy.h>
+#include <helpers/esp32/WiFiCoordinator.h>
 #include <helpers/RoomWebMailbox.h>
 uint32_t now = 1000;
 uint32_t millis() { return now; }
@@ -42,24 +46,20 @@ struct WebConfigServer {
   void noteNetworkActivity();
   void requestNetworkAccess();
   bool isNetworkForegroundActive(uint32_t) const;
-  void refreshNetworkPowerHold(uint32_t);
 };
 @METHODS@
 int main() {
   WebConfigServer portal;
-  auto& power = mesh::wifi::networkPower();
-  power.setManaged(true); power.setSuspended(true);
-  // Boot/connection timestamps and a listener alone never hold failed WiFi.
+  auto& coord = mesh::wifi::coordinator();
+  coord.reset();
+  // Boot/connection timestamps and a listener alone do not mark foreground activity.
   portal._last_activity = now;
   assert(!portal.isNetworkForegroundActive(now));
-  portal.refreshNetworkPowerHold(now);
-  assert(!power.foregroundActive());
   portal.requestNetworkAccess();
-  assert(power.consumeProbeRequest() && power.foregroundActive());
   now += 119999;
   assert(portal.isNetworkForegroundActive(now));
-  ++now; portal.refreshNetworkPowerHold(now);
-  assert(!portal.isNetworkForegroundActive(now) && !power.foregroundActive());
+  ++now;
+  assert(!portal.isNetworkForegroundActive(now));
   // The bounded lease works across millis() rollover.
   now = UINT32_MAX - 100;
   portal.noteNetworkActivity();
@@ -98,53 +98,13 @@ int main() {
   portal._mode = WebConfigServer::MODE_OFF; portal._stopping = true;
   assert(portal.isNetworkForegroundActive(now));
   portal._stopping = false;
-  portal.refreshNetworkPowerHold(now);
-  assert(!power.foregroundActive());
-  power.setManaged(false);
+  assert(!portal.isNetworkForegroundActive(now));
+  coord.reset();
 }
 '''.replace("@METHODS@", methods)
 
     def test_actual_activity_setup_and_inflight_work_hold_with_bounded_idle(self):
         self.compile_and_run(self.fixture())
-
-    def test_status_reports_shared_cooldown_before_connecting_or_off(self):
-        source = (ROOT / "src/helpers/esp32/WebConfigServer.cpp").read_text()
-        formatter = extract_braced(source, "bool WebConfigServer::formatWiFiStatus(")
-        block = extract_braced(formatter,
-            "  if (mesh::wifi::networkPower().backgroundSuspended()")
-        self.assertLess(formatter.index(block),
-                        formatter.index("active->_mode == MODE_CONNECTING"))
-        fixture = r'''
-#include <cassert>
-#include <cstdio>
-#include <cstring>
-#include <helpers/WiFiNetworkPowerPolicy.h>
-void appendOtaSeederStatus(char* reply, size_t capacity, const char*) {
-  size_t used = strlen(reply);
-  snprintf(reply + used, capacity - used, "; seeder status");
-}
-bool format(char* reply, size_t reply_len, bool configured) {
-  const char* ssid = "working-network";
-@BLOCK@
-  snprintf(reply, reply_len, "> connecting");
-  return true;
-}
-int main() {
-  char reply[160]; auto& power = mesh::wifi::networkPower();
-  power.setManaged(true); power.setSuspended(true);
-  assert(format(reply, sizeof(reply), true));
-  assert(strcmp(reply, "> WiFi: paused; retries every 30 minutes; saved network: 'working-network'; seeder status") == 0);
-  assert(format(reply, sizeof(reply), false));
-  assert(strstr(reply, "saved network: '(not configured)'; seeder status"));
-  power.setHold(mesh::wifi::NetworkPowerHold::WebConfig, true);
-  format(reply, sizeof(reply), true); assert(strcmp(reply, "> connecting") == 0);
-  power.setHold(mesh::wifi::NetworkPowerHold::WebConfig, false);
-  power.setSuspended(false);
-  format(reply, sizeof(reply), true); assert(strcmp(reply, "> connecting") == 0);
-  power.setManaged(false);
-}
-'''.replace("@BLOCK@", block)
-        self.compile_and_run(fixture)
 
 
 if __name__ == "__main__":

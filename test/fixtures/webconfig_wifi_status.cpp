@@ -5,7 +5,7 @@
 #include <string>
 #include <helpers/CompanionWiFiStatus.h>
 #include <helpers/WebConfigBatch.h>
-#include <helpers/WiFiNetworkPowerPolicy.h>
+#include <helpers/esp32/WiFiCoordinator.h>
 #include <helpers/WiFiConnectionDiagnostics.h>
 
 enum { WL_IDLE_STATUS, WL_NO_SSID_AVAIL, WL_SCAN_COMPLETED, WL_CONNECTED,
@@ -86,7 +86,6 @@ public:
   void requestStop();
   void attachRoutes();
   void detachRoutes();
-  void refreshNetworkPowerHold(uint32_t) {}
   @IS_RUNNING@
 };
 WebConfigServer* WebConfigServer::_active = nullptr;
@@ -126,12 +125,6 @@ int main() {
   assert(strstr(reply, "waiting for WiFi owner"));
   assert(mesh.getWiFiStatus(reply) && strcmp(reply, "> WiFi: connecting to 'iot'") == 0);
   assert(WebConfigServer::_active == nullptr);
-
-  // Shared background cooldown retains priority over a connecting session.
-  auto& power = mesh::wifi::networkPower();
-  power.setManaged(true); power.setSuspended(true);
-  assert(mesh.getWiFiStatus(reply) && strstr(reply, "> WiFi: paused;"));
-  power.setManaged(false);
 
   // HTTP admission appears only once routes attach; teardown removes it even
   // though the role retains its object for a subsequent start.

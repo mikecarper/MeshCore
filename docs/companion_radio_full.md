@@ -642,7 +642,7 @@ The Companion TCP listener starts only after a usable WiFi station or setup-AP
 address exists. If opening the socket fails, it closes any failed-start socket
 and retries with a delay capped at 30 seconds, without restarting the WiFi
 connection or disturbing BLE, WebConfig, OTA, or a healthy accepted TCP client.
-Turning WiFi off or suspending it cancels the listener request; retry service
+Turning WiFi off cancels the listener request; retry service
 cannot turn it back on. Use `get wifi.tcp` through BLE, USB, or the browser CLI
 to inspect listener state, registration, accepted clients, completed RX/TX
 frames, and errors without a PC port probe. `get display.wifi` also shows the
