@@ -12,6 +12,9 @@ Packet::Packet() {
   _snr = 0;
   tx_cr = 0;
   flood_retry_policy = FLOOD_RETRY_POLICY_DEFAULT;
+#if defined(MESH_W12_PRAM_SEQ_TX_LAB) && MESH_W12_PRAM_SEQ_TX_LAB
+  w12_pre_tx_deadline = 0; w12_post_tx_retry_used = false;
+#endif
   radio_generation = radio_origin_generation = 0;
   radio_profile = radio_origin = 0;
   radio_bound = false; radio_local = true;
@@ -90,6 +93,9 @@ bool Packet::readFrom(const uint8_t src[], uint8_t len) {
   _snr = 0;
   tx_cr = 0;
   flood_retry_policy = FLOOD_RETRY_POLICY_DEFAULT;
+#if defined(MESH_W12_PRAM_SEQ_TX_LAB) && MESH_W12_PRAM_SEQ_TX_LAB
+  w12_pre_tx_deadline = 0; w12_post_tx_retry_used = false;
+#endif
   radio_generation = radio_origin_generation = 0;
   radio_profile = radio_origin = 0;
   radio_bound = false; radio_local = true;

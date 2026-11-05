@@ -6,6 +6,12 @@
 #if defined(MESH_W12_MULTISF_EXPERIMENT) && MESH_W12_MULTISF_EXPERIMENT
 #include "W12MultiSfPlan.h"
 #endif
+#if defined(MESH_W12_PRAM_SEQUENTIAL_LAB) && MESH_W12_PRAM_SEQUENTIAL_LAB
+#if !defined(MESH_W12_PRAM_EXPERIMENT) || !MESH_W12_PRAM_EXPERIMENT
+#error "Sequential PRAM lab requires the W12 PRAM scanner"
+#endif
+#include "W12PramSequentialLab.h"
+#endif
 #if defined(MESH_W12_PRAM_EXPERIMENT) && MESH_W12_PRAM_EXPERIMENT
 #include "W12PramScannerCodec.h"
 #include "W12PramAutoPolicy.h"
@@ -638,6 +644,21 @@ protected:
 
 public:
   bool startSendRaw(const uint8_t* bytes, int len) override {
+#if defined(MESH_W12_PRAM_SEQUENTIAL_LAB) && MESH_W12_PRAM_SEQUENTIAL_LAB
+#if defined(MESH_W12_PRAM_SEQ_TX_LAB) && MESH_W12_PRAM_SEQ_TX_LAB
+    _lab_seq_tx_block=mesh::PreTransmitBlock::None;
+    if (_lab_seq_requested) {
+      const uint32_t busy_before=_lab_seq_tx_busy;
+      if (!labSequentialTxClear()) {
+        _lab_seq_tx_block=_lab_seq_tx_busy!=busy_before
+            ? mesh::PreTransmitBlock::Busy : mesh::PreTransmitBlock::Error;
+        return false;
+      }
+    }
+#else
+    if (_lab_seq_requested) return false;
+#endif
+#endif
 #if defined(MESH_W12_PRAM_EXPERIMENT) && MESH_W12_PRAM_EXPERIMENT
     if (_lab_scan_active || _lab_uncertain) return false;
 #endif
@@ -664,6 +685,18 @@ public:
 #endif
     return RadioLibWrapper::startSendRaw(bytes, len);
   }
+#if defined(MESH_W12_PRAM_SEQUENTIAL_LAB) && MESH_W12_PRAM_SEQUENTIAL_LAB && (MESH_ENABLE_CARRIER_TOOLS || MESH_ENABLE_MORSE_RX)
+  mesh::RadioParamApplyResult setCarrierWave(uint8_t p, uint32_t duration) override {
+    if (_lab_seq_requested && duration) return mesh::RadioParamApplyResult::FAILED;
+    return RadioLibWrapper::setCarrierWave(p, duration);
+  }
+#endif
+#if defined(MESH_W12_PRAM_SEQUENTIAL_LAB) && MESH_W12_PRAM_SEQUENTIAL_LAB && MESH_ENABLE_CARRIER_TOOLS
+  mesh::MorseTxResult startMorseTx(float freq, uint8_t wpm, const char* text) override {
+    if (_lab_seq_requested) return mesh::MorseTxResult::Busy;
+    return RadioLibWrapper::startMorseTx(freq, wpm, text);
+  }
+#endif
 
 #if defined(MESH_W12_MULTISF_EXPERIMENT) && MESH_W12_MULTISF_EXPERIMENT && MESH_ENABLE_TX_BEACONS && \
     (!defined(MESH_W12_PRAM_EXPERIMENT) || !MESH_W12_PRAM_EXPERIMENT)
