@@ -406,6 +406,19 @@ public:
  * \brief  An abstraction for managing instances of Packets (eg. in a static pool),
  *        and for managing the outbound packet queue.
 */
+#if defined(MESH_W12_PRAM_SEQ_TX_LAB) && MESH_W12_PRAM_SEQ_TX_LAB
+// A queue reservation owns exactly one packet until the manager either
+// defers it back to its queue or releases the reservation to the caller.
+class PacketManager;
+struct OutboundReservation {
+  Packet* packet = nullptr;
+  PacketManager* owner = nullptr;
+  uint32_t scheduled_for = 0;
+  uint32_t generation = 0;
+  uint8_t priority = 0;
+};
+#endif
+
 class PacketManager {
 public:
   virtual Packet* allocNew() = 0;
@@ -413,6 +426,17 @@ public:
 
   virtual bool queueOutbound(Packet* packet, uint8_t priority, uint32_t scheduled_for) = 0;
   virtual Packet* getNextOutbound(uint32_t now) = 0;    // by priority
+#if defined(MESH_W12_PRAM_SEQ_TX_LAB) && MESH_W12_PRAM_SEQ_TX_LAB
+  // Optional queue-safe ownership for a pre-TX attempt. A successful reserve
+  // removes one due packet and records its ordering metadata. A successful
+  // defer restores it with the same priority and original age, scheduled at
+  // retry_at. Both defer and release consume the token; on failure the caller
+  // still owns the reserved packet and must retry or release it explicitly.
+  virtual bool supportsOutboundReservation() const { return false; }
+  virtual bool reserveNextOutbound(uint32_t, OutboundReservation&) { return false; }
+  virtual bool deferReservedOutbound(OutboundReservation&, uint32_t) { return false; }
+  virtual bool releaseOutboundReservation(OutboundReservation&) { return false; }
+#endif
   virtual Packet* peekNextOutbound(uint32_t now) {
     (void)now;
     return NULL;

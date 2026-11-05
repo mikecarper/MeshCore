@@ -97,6 +97,14 @@ public:
   }
 
 
+#if defined(MESH_W12_PRAM_SEQ_TX_LAB) && MESH_W12_PRAM_SEQ_TX_LAB
+  bool reserveNextOutbound(uint32_t now, mesh::OutboundReservation& reservation) override {
+    // Match get/peek expiry and preserve the existing age record on defer.
+    expireStaleOutbound(now);
+    return StaticPoolPacketManager::reserveNextOutbound(now, reservation);
+  }
+
+#endif
   mesh::Packet* peekNextOutbound(uint32_t now) override {
     // Dispatcher chooses active/passive channel sensing from this pointer, so
     // apply the same expiry policy as getNextOutbound() before exposing it.

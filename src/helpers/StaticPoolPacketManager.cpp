@@ -49,7 +49,11 @@ void PacketQueue::rebuildNextTime() {
 
 mesh::Packet* PacketQueue::get(uint32_t now, bool resolve_flood_scope,
                                FloodScopePreference scope_preference,
-                               void* scope_preference_context) {
+                               void* scope_preference_context
+#if defined(MESH_W12_PRAM_SEQ_TX_LAB) && MESH_W12_PRAM_SEQ_TX_LAB
+                               , uint8_t* reserved_priority, uint32_t* reserved_schedule
+#endif
+                               ) {
   uint8_t min_pri = 0xFF;
   int best_idx = -1;
   for (int j = 0; j < _num; j++) {
@@ -61,6 +65,10 @@ mesh::Packet* PacketQueue::get(uint32_t now, bool resolve_flood_scope,
   }
   if (best_idx < 0) return NULL;   // empty, or all items are still in the future
 
+#if defined(MESH_W12_PRAM_SEQ_TX_LAB) && MESH_W12_PRAM_SEQ_TX_LAB
+  if (reserved_priority) *reserved_priority = _pri_table[best_idx];
+  if (reserved_schedule) *reserved_schedule = _schedule_table[best_idx];
+#endif
   if (resolve_flood_scope) {
     applyBestFloodTransportScope(_table[best_idx], scope_preference,
                                  scope_preference_context);
@@ -191,6 +199,10 @@ mesh::Packet* StaticPoolPacketManager::allocNew() {
 
 void StaticPoolPacketManager::free(mesh::Packet* packet) {
   if (packet == NULL) return;
+#if defined(MESH_W12_PRAM_SEQ_TX_LAB) && MESH_W12_PRAM_SEQ_TX_LAB
+  // Do not let an abandoned token requeue a packet that was already freed.
+  if (reserved_outbound == packet) reserved_outbound = nullptr;
+#endif
   if (!unused.add(packet, 0, 0)) {
     MESH_DEBUG_PRINTLN("free: unused queue full, possible double-free detected");
   }
@@ -198,6 +210,9 @@ void StaticPoolPacketManager::free(mesh::Packet* packet) {
 
 bool StaticPoolPacketManager::queueOutbound(mesh::Packet* packet, uint8_t priority, uint32_t scheduled_for) {
   if (packet == NULL) return false;
+#if defined(MESH_W12_PRAM_SEQ_TX_LAB) && MESH_W12_PRAM_SEQ_TX_LAB
+  if (packet == reserved_outbound) return false;
+#endif
   if (!send_queue.add(packet, priority, scheduled_for)) {
     MESH_DEBUG_PRINTLN("queueOutbound: send queue full, dropping packet");
     return false;
@@ -210,6 +225,43 @@ mesh::Packet* StaticPoolPacketManager::getNextOutbound(uint32_t now) {
   return send_queue.get(now);
 }
 
+#if defined(MESH_W12_PRAM_SEQ_TX_LAB) && MESH_W12_PRAM_SEQ_TX_LAB
+bool StaticPoolPacketManager::reservationMatches(const mesh::OutboundReservation& r) const {
+  return r.packet && r.packet == reserved_outbound && r.owner == this
+      && r.generation && r.generation == reservation_generation
+      && r.priority == reserved_priority && r.scheduled_for == reserved_schedule;
+}
+
+bool StaticPoolPacketManager::reserveNextOutbound(uint32_t now, mesh::OutboundReservation& r) {
+  // Refuse to overwrite the caller's outstanding token or another lease.
+  if (r.packet || r.owner || reserved_outbound) return false;
+  uint8_t priority = 0;
+  uint32_t scheduled_for = 0;
+  auto* packet = send_queue.get(now, false, nullptr, nullptr, &priority, &scheduled_for);
+  if (!packet) return false;
+  if (++reservation_generation == 0) ++reservation_generation;
+  reserved_outbound = packet;
+  reserved_priority = priority; reserved_schedule = scheduled_for;
+  r.packet = packet; r.owner = this; r.priority = priority;
+  r.scheduled_for = scheduled_for; r.generation = reservation_generation;
+  return true;
+}
+
+bool StaticPoolPacketManager::deferReservedOutbound(mesh::OutboundReservation& r, uint32_t retry_at) {
+  if (!reservationMatches(r) || !send_queue.add(r.packet, reserved_priority, retry_at)) return false;
+  reserved_outbound = nullptr;
+  r = {};
+  return true;
+}
+
+bool StaticPoolPacketManager::releaseOutboundReservation(mesh::OutboundReservation& r) {
+  if (!reservationMatches(r)) return false;
+  reserved_outbound = nullptr;
+  r = {};
+  return true;
+}
+
+#endif
 mesh::Packet* StaticPoolPacketManager::peekNextOutbound(uint32_t now) {
   return send_queue.peek(now);
 }
