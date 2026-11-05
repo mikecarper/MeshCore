@@ -101,8 +101,18 @@ bool saveRecord(const XoscTrimSelection& selection, const char* main_path,
       || !recover(main_path, backup_path)) return false;
   if (settings_fs->exists(temporary_path) && !settings_fs->remove(temporary_path)) return false;
   if (settings_fs->exists(temporary_path)) return false;
+#if defined(NRF52_PLATFORM) || defined(STM32_PLATFORM)
+  // LittleFS opens through a File bound to the filesystem. The temporary
+  // path was removed above, so FILE_O_WRITE cannot append stale data.
+  File file(*settings_fs);
+  if (!file.open(temporary_path, FILE_O_WRITE)) return false;
+#elif defined(RP2040_PLATFORM)
+  File file = settings_fs->open(temporary_path, "w");
+  if (!file) return false;
+#else
   File file = settings_fs->open(temporary_path, "w", true);
   if (!file) return false;
+#endif
   uint8_t bytes[XoscTrimRecordSize];
   size_t length = sizeof(bytes);
   if (legacy) {

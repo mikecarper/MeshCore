@@ -342,6 +342,22 @@ class LR2021CalibrationTests(unittest.TestCase):
                                 '#include <helpers/radiolib/LR2021CalibrationPolicy.h>')
         self.compile_run(SETTINGS + "\n" + source, ("-DUSE_LR2021=1",), stubs)
 
+        # Adafruit LittleFS opens a File through its bound filesystem, not
+        # fs->open(path, "w", true). Hide that convenience API to ensure the
+        # actual settings implementation compiles against the nRF boundary.
+        native_fs = stubs["helpers/IdentityStore.h"].replace(
+            'File open(const char* name, const char* mode, bool = false)',
+            'File internalOpen(const char* name, const char* mode, bool = false)'
+        ).replace('fs->open(path, mode == FILE_O_WRITE ? "w" : "r")',
+                  'fs->internalOpen(path, mode == FILE_O_WRITE ? "w" : "r")')
+        for platform in ("NRF52_PLATFORM", "STM32_PLATFORM"):
+            with self.subTest(platform=platform):
+                platform_stubs = dict(stubs, **{"helpers/IdentityStore.h": native_fs})
+                self.compile_run(SETTINGS + "\n" + source,
+                                 ("-DUSE_LR2021=1", "-D" + platform), platform_stubs)
+        self.compile_run(SETTINGS + "\n" + source,
+                         ("-DUSE_LR2021=1", "-DRP2040_PLATFORM"), stubs)
+
     def test_reset_and_morse_reapply_only_selected_trim(self):
         source = (RADIO / "CustomLR2021.h").read_text()
         self.assertIn("restoreXoscTrim()", body(source, "bool std_init("))
