@@ -207,12 +207,13 @@ class CompanionWiFiListenerTests(unittest.TestCase):
         self.assertIn("return true;", command)
         self.assertRegex(main, r"companion_wifi_interface_registered\s*=\s*"
                               r"interface_manager\.addInterface\(InterfaceType::WiFi")
-        for signature in ("static void startCompanionWiFi(",
-                          "static void serviceCompanionWiFiBackgroundPower("):
-            method = extract_braced(main, signature)
-            gate = extract_braced(method, "if (companion_wifi_interface_registered)")
-            self.assertIn("wifi_interface.begin(TCP_PORT)", gate)
-            self.assertIn("wifi_interface.enable()", gate)
+        method = extract_braced(main, "static void startCompanionWiFi(")
+        gate = extract_braced(method, "if (companion_wifi_interface_registered)")
+        self.assertIn("wifi_interface.begin(TCP_PORT)", gate)
+        self.assertIn("wifi_interface.enable()", gate)
+        service = extract_braced(main, "static void serviceCompanionWiFiState(")
+        requested = extract_braced(service, "if (companion_wifi_requested && !companion_wifi_active)")
+        self.assertIn("startCompanionWiFi();", requested)
         diagnostic = extract_braced(main, "void formatCompanionWiFiTcpStatus(")
         self.assertNotRegex(diagnostic, r"(?:\.connect\(|WiFiClient\s+|server\.available)")
         display = extract_braced(main, "void formatCompanionWiFiDisplayStatus(")

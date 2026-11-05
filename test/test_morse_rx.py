@@ -344,6 +344,8 @@ int main() {
             source = (ROOT / f"src/helpers/radiolib/Custom{chip}Wrapper.h").read_text(encoding="utf-8")
             extracted = "\n".join(method(source, signature) for signature in (
                 "bool supportsMorseRx(", "float morseReceiverBandwidthKHz(", "int16_t prepareMorseReceiver("))
+            if chip == "LR2021":
+                extracted += "\n" + method(source, "float hardwareFrequencyMHz(")
             if "int16_t startMorseReceiver(" in source:
                 extracted += "\n"+method(source,"int16_t startMorseReceiver(")
             fixture = fixture.replace(f"@{chip}@", extracted)

@@ -109,7 +109,7 @@ int main() {
             "STM32WLx": ("bool supportsMorseTx(", "int16_t prepareMorseCarrier(", "int16_t leaveMorseCarrier(", "bool restoreCarrierWaveModem("),
             "LR1110": ("bool supportsCarrierWave(", "int16_t prepareMorseCarrier(", "bool restoreCarrierWaveModem("),
             "LR1121": ("bool supportsMorseTx(", "int16_t prepareMorseCarrier(", "bool restoreCarrierWaveModem("),
-            "LR2021": ("bool supportsMorseTx(", "bool validateMorseFrequency(", "int16_t prepareMorseCarrier(", "int16_t enterMorseCarrier(", "bool restoreCarrierWaveModem("),
+            "LR2021": ("float hardwareFrequencyMHz(", "bool supportsMorseTx(", "bool validateMorseFrequency(", "int16_t prepareMorseCarrier(", "int16_t enterMorseCarrier(", "bool restoreCarrierWaveModem("),
         }
         for chip_name, signatures in specs.items():
             header = (ROOT / f"src/helpers/radiolib/Custom{chip_name}Wrapper.h").read_text(encoding="ascii")
