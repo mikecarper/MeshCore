@@ -289,6 +289,7 @@ bool Dispatcher::deferLabPreTransmit() {
   if (!outbound->w12_pre_tx_deadline) {
     outbound->w12_pre_tx_deadline=now+30000U;
     if (!outbound->w12_pre_tx_deadline) outbound->w12_pre_tx_deadline=1;
+    lab_has_blocked_packets=true;
   }
   if (int32_t(now-outbound->w12_pre_tx_deadline)>=0) return false;
   const uint32_t delay=getCADFailRetryDelay();
@@ -716,13 +717,15 @@ bool Dispatcher::getNextQueueWakeDelay(uint32_t& delay_millis) const {
   bool found = dual_profile;
   uint32_t shortest_delay = profile_delay;
 #if defined(MESH_W12_PRAM_SEQ_TX_LAB) && MESH_W12_PRAM_SEQ_TX_LAB
-  for (int i=0,n=_mgr->getOutboundTotal();i<n;++i) {
-    const Packet* pending=_mgr->getOutboundByIdx(i);
-    if (!pending || !pending->w12_pre_tx_deadline) continue;
-    const int32_t wait=int32_t(pending->w12_pre_tx_deadline-now);
-    const uint32_t remaining=wait>0 ? uint32_t(wait) : 0;
-    if (!found || remaining<shortest_delay) shortest_delay=remaining;
-    found=true;
+  if (lab_has_blocked_packets) {
+    for (int i=0,n=_mgr->getOutboundTotal();i<n;++i) {
+      const Packet* pending=_mgr->getOutboundByIdx(i);
+      if (!pending || !pending->w12_pre_tx_deadline) continue;
+      const int32_t wait=int32_t(pending->w12_pre_tx_deadline-now);
+      const uint32_t remaining=wait>0 ? uint32_t(wait) : 0;
+      if (!found || remaining<shortest_delay) shortest_delay=remaining;
+      found=true;
+    }
   }
 #endif
 #if MESH_ENABLE_TX_BEACONS
@@ -769,6 +772,11 @@ bool Dispatcher::getNextQueueWakeDelay(uint32_t& delay_millis) const {
         delay_millis = receive_retry_delay;
       }
       if (rxps_retry && rxps_retry_delay < delay_millis) delay_millis = rxps_retry_delay;
+#if defined(MESH_W12_PRAM_SEQ_TX_LAB) && MESH_W12_PRAM_SEQ_TX_LAB
+      // A different queued packet can expire while this one is retained for
+      // a retry. Never sleep past the earliest queued deadline.
+      if (found && shortest_delay < delay_millis) delay_millis=shortest_delay;
+#endif
       if (dual_profile && profile_delay < delay_millis) {
         delay_millis = profile_delay;
       }
@@ -836,15 +844,18 @@ void Dispatcher::expireLabBlockedSends() {
 #endif
   if (lab_pre_tx_held && outbound && outbound->w12_pre_tx_deadline
       && int32_t(now-outbound->w12_pre_tx_deadline)>=0) failOutboundTransmit();
-  // Run independently of radio owners and queue scheduling, so a blocked
-  // packet expires even during a carrier, a beacon, or failed CR restoration.
+  // Most loops have no blocked packets: avoid an O(queue size) scan until a
+  // pre-TX deadline has actually been established.
+  if (!lab_has_blocked_packets) return;
+  bool remains=outbound && outbound->w12_pre_tx_deadline;
   for (int i=_mgr->getOutboundTotal()-1;i>=0;--i) {
     Packet* pending=_mgr->getOutboundByIdx(i);
-    if (!pending || !pending->w12_pre_tx_deadline
-        || int32_t(now-pending->w12_pre_tx_deadline)<0) continue;
+    if (!pending || !pending->w12_pre_tx_deadline) continue;
+    if (int32_t(now-pending->w12_pre_tx_deadline)<0) { remains=true; continue; }
     Packet* expired=_mgr->removeOutboundByIdx(i);
     if (expired) { onSendFail(expired); releasePacket(expired); }
   }
+  lab_has_blocked_packets=remains;
 }
 #endif
 
@@ -1631,6 +1642,7 @@ void Dispatcher::checkSend() {
       if (!pending->w12_pre_tx_deadline) {
         pending->w12_pre_tx_deadline=now+30000U;
         if (!pending->w12_pre_tx_deadline) pending->w12_pre_tx_deadline=1;
+        lab_has_blocked_packets=true;
       }
       uint32_t retry_at=now+200U;
       if (int32_t(retry_at-pending->w12_pre_tx_deadline)>0) retry_at=pending->w12_pre_tx_deadline;

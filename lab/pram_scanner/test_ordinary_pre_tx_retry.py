@@ -14,7 +14,7 @@ struct Test {
  enum class OutboundCancellation {None,Cancelled};
  mesh::PacketManager* _mgr; mesh::OutboundReservation lab_outbound_reservation={};
  mesh::Packet* outbound=nullptr; Clock clock,*_ms=&clock;
- bool lab_pre_tx_held=false,outbound_radio_retry_pending=false,outbound_radio_retry_used=false;
+ bool lab_pre_tx_held=false,lab_has_blocked_packets=false,outbound_radio_retry_pending=false,outbound_radio_retry_used=false;
  uint32_t outbound_radio_retry_at=0,outbound_radio_prepare_deadline=0;
  OutboundCancellation outbound_cancellation=OutboundCancellation::None;
  uint32_t getCADFailRetryDelay(){return 200;}

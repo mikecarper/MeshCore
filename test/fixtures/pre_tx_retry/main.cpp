@@ -39,6 +39,7 @@ class Radio : public mesh::Radio {
 class Dispatcher : public mesh::Dispatcher {
  public:
   unsigned failed=0,complete=0;
+  using mesh::Dispatcher::getNextQueueWakeDelay;
   Dispatcher(Radio& r,Clock& c,StaticPoolPacketManager& m):mesh::Dispatcher(r,c,m){}
   mesh::DispatcherAction onRecvPacket(mesh::Packet*) override{return ACTION_RELEASE;}
   void onSendFail(mesh::Packet*) override{++failed;}
@@ -65,6 +66,9 @@ int main(){
   assert(!f.r.calls && f.m.getOutboundTotal()==1 && low->w12_pre_tx_deadline==30101);
   f.queue(88,0);f.loop(102);assert(f.r.calls==1 && f.r.ids[0]==88);f.loop(103);
   f.loop(302);assert(f.r.calls==2 && f.r.ids[1]==77);f.loop(303);assert(f.d.complete==2);}
+ {Fixture f;f.r.outcomes={Radio::Busy,Radio::Unknown};auto*other=f.queue(68,2);f.loop(101);
+  f.queue(67,1);f.loop(102);assert(f.r.calls==2);other->w12_pre_tx_deadline=150;uint32_t delay=0;
+  assert(f.d.getNextQueueWakeDelay(delay) && delay==48);f.loop(150);assert(f.d.failed==1);}
  {Fixture f;f.r.prepares={mesh::RadioParamApplyResult::BUSY,mesh::RadioParamApplyResult::APPLIED};
   f.r.outcomes={Radio::Success};f.queue(55,1);f.loop(101);assert(f.r.calls==0 && f.m.getOutboundTotal()==1 && !f.d.failed);
   f.loop(302);assert(f.r.calls==1);f.loop(303);assert(f.d.complete==1);}
