@@ -155,6 +155,10 @@ struct MyMesh : Callbacks {
   } radio_driver;
   bool pending_self_advert = false;
   unsigned long next_flood_advert = 0, next_local_advert = 0;
+  struct {
+    unsigned long sleepDeadline(bool) const { return 0; }
+  } radio2_flood_advert;
+  bool radio2FloodAdvertEligible() const { return false; }
   unsigned long dirty_contacts_expiry = 0, next_recent_repeater_sweep = 0;
   unsigned long next_battery_alert_check = 0;
   bool isDualRadioActive() const { return false; }

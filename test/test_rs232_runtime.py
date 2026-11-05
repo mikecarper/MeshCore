@@ -227,7 +227,11 @@ class RS232RuntimeTests(unittest.TestCase):
             routing[name] = implementation[start:end]
         loop_start = implementation.index("#if defined(WITH_ESPNOW_BRIDGE)",
                                           implementation.index("MyMesh::servicePostMeshLoop()"))
-        loop_end = implementation.index("  if (next_flood_advert", loop_start)
+        # Include the complete RS-232 / generic-bridge service guard, without
+        # depending on whichever advert scheduling code follows it.
+        service_guard = implementation.index(
+            "#if defined(WITH_RS232_BRIDGE)\n  serviceRs232BridgePower();", loop_start)
+        loop_end = implementation.index("#endif\n", service_guard) + len("#endif\n")
         pending_start = implementation.index("#if defined(WITH_BRIDGE)",
                                              implementation.index("mesh::powerdiag::Mask MyMesh::pendingWorkReason()"))
         pending_end = implementation.index("  if (radio_driver.isWatchdogObserving()", pending_start)

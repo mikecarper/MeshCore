@@ -40,7 +40,9 @@ class ESPNowRuntimeTests(unittest.TestCase):
             routing[name] = implementation[start:end]
         service_start = implementation.index("#if defined(WITH_ESPNOW_BRIDGE)",
                                              implementation.index("MyMesh::servicePostMeshLoop()"))
-        service_end = implementation.index("  if (next_flood_advert", service_start)
+        service_guard = implementation.index(
+            "#if defined(WITH_RS232_BRIDGE)\n  serviceRs232BridgePower();", service_start)
+        service_end = implementation.index("#endif\n", service_guard) + len("#endif\n")
         pending_start = implementation.index("#if defined(WITH_BRIDGE)",
                                              implementation.index("mesh::powerdiag::Mask MyMesh::pendingWorkReason()"))
         pending_end = implementation.index("  if (radio_driver.isWatchdogObserving()", pending_start)
