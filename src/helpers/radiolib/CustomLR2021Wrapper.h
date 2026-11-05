@@ -7,7 +7,9 @@
 #include "W12PramScannerCodec.h"
 #include "W12PramAutoPolicy.h"
 #include "W12PramScannerBlob.h"
+#if defined(ESP32_PLATFORM)
 #include <helpers/esp32/PowerTestControls.h>
+#endif
 #endif
 #include "PrimaryRadioApplyWait.h"
 #include "RadioLibWrappers.h"

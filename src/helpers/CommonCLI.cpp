@@ -3858,7 +3858,9 @@ void CommonCLI::handleCommand(uint32_t sender_timestamp, char* command, char* re
 #if defined(MESH_W12_PRAM_EXPERIMENT) && MESH_W12_PRAM_EXPERIMENT
     if (strcmp(command,"get pramscan") == 0) { radio_driver.labScannerStatus(reply,160); return; }
     if (strcmp(command,"get pramscan.recovery") == 0) { radio_driver.labScannerRecoveryDiag(reply,160); return; }
+#if defined(ESP32_PLATFORM)
     if (strcmp(command,"get pramscan.sleep") == 0) { mesh::w12pram::sleepDiag().format(reply,160); return; }
+#endif
 #if defined(MESH_W12_RXPS_EXPERIMENT) && MESH_W12_RXPS_EXPERIMENT
     if (strcmp(command,"get radio.rxps.busy") == 0) { radio_driver.labRxpsBusyStatus(reply,160); return; }
 #endif

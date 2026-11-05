@@ -6,6 +6,7 @@ namespace mesh { namespace w12pram {
 class AutoPolicy {
  public:
   enum class Reason : uint8_t { None, Off, Unsupported, Failed, Uncertain };
+  explicit AutoPolicy(bool enabled = true) : enabled_(enabled) {}
   bool enabled() const { return enabled_; }
   bool blocked() const { return reason_ == Reason::Failed || reason_ == Reason::Unsupported; }
   Reason reason() const { return !enabled_ ? Reason::Off : reason_; }

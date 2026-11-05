@@ -9,6 +9,7 @@ configs = [root / 'platformio.ini', *sorted((root / 'variants').rglob('*.ini')),
            *sorted(root.glob('platformio.*.ini'))]
 flag = re.compile(r'(?:^|\s)-D\s*MESH_W12_PRAM_EXPERIMENT(?:\s|=|$)')
 allowed_file = root / 'variants/meshnology_w12/platformio.ini'
+experimental_file = root / 'variants/meshtracker_x1/platformio.ini'
 for path in configs:
     section = ''
     for number, line in enumerate(path.read_text(encoding='utf-8').splitlines(), 1):
@@ -18,7 +19,9 @@ for path in configs:
         if stripped.startswith('[') and stripped.endswith(']'):
             section = stripped[1:-1]
         if flag.search(line):
-            assert path == allowed_file and section == 'meshnology_w12_pram', (path, number, section)
+            assert (path == allowed_file and section == 'meshnology_w12_pram') or (
+                path == experimental_file and section == 'MeshTracker_X1_pram_lab'
+            ), (path, number, section)
 
 config = configparser.ConfigParser(interpolation=None)
 config.read(allowed_file, encoding='utf-8')

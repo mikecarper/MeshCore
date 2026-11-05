@@ -52,6 +52,22 @@ saving is enabled and the usual USB and wireless sleep conditions permit it;
 the radio remains active while scanning. Current consumption has not been
 measured.
 
+The MeshTracker X1 has a separate, experimental build-time scanner opt-in in
+`MeshTracker_X1_pram_lab`. It is not included in the normal X1 builds and starts
+off on each boot; `set pramscan on` permits a test attempt. The X1's TCXO,
+memory use, ROM and RF behavior still need hardware qualification. Its nRF52
+CPU does not use the W12's radio-owned sleep integration, and this opt-in does
+not enable LR2021 receive duty cycling or W12 crystal calibration.
+For a local test build, add the following to `platformio.local.ini` and build
+`MeshTracker_X1_repeater_pram_lab`:
+
+```ini
+[env:MeshTracker_X1_repeater_pram_lab]
+extends = env:MeshTracker_X1_repeater
+build_flags = ${env:MeshTracker_X1_repeater.build_flags}
+  ${MeshTracker_X1_pram_lab.build_flags}
+```
+
 Full W12 Repeater images require the board's PSRAM for the full-capacity
 repeater tables. If PSRAM is unavailable, LoRa startup stops and the USB
 console reports the failure; check the hardware or flash Standard firmware.

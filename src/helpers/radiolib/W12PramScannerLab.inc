@@ -4,7 +4,11 @@
 private:
   bool _lab_scan_active = false;
   bool _lab_pram_loaded = false; // invalidated by every radio hard reset
+#if defined(MESH_LR2021_PRAM_MANUAL_START) && MESH_LR2021_PRAM_MANUAL_START
+  mesh::w12pram::AutoPolicy _lab_auto{false};
+#else
   mesh::w12pram::AutoPolicy _lab_auto;
+#endif
   bool _lab_resume_pending = false;
   bool _lab_sleeping = false;
   bool _lab_session_ldo = false;
@@ -149,7 +153,14 @@ public:
   }
   bool labScannerUncertain() const { return _lab_uncertain; }
   bool labScannerActive() const { return _lab_scan_active; }
-  bool hasAutonomousProfileIdle() const override { return _lab_scan_active && _lab_status.hooked; }
+  bool hasAutonomousProfileIdle() const override {
+#if defined(NRF52_PLATFORM)
+    // No nRF wake/IRQ ownership has been qualified for this scanner.
+    return false;
+#else
+    return _lab_scan_active && _lab_status.hooked;
+#endif
+  }
   // A deferred attempt is not a successful reset. Retry on the health-poll
   // cadence; once scanner ownership ends the same deadline remains due.
   uint32_t labAGCMaintenanceRetryMs() const override {
@@ -169,6 +180,11 @@ public:
 #endif
   bool getProfileIdleDelay(uint32_t& delay_ms) const override {
     if (!_lab_scan_active) return RadioLibWrapper::getProfileIdleDelay(delay_ms);
+#if defined(NRF52_PLATFORM)
+    // Poll through the normal host loop: no radio-owned idle sleep on nRF yet.
+    delay_ms = 0;
+    return false;
+#else
     // The LR2021 owns both visits. The ESP32 may sleep without stopping CAD;
     // the board's level-triggered GPIO check protects an arriving RxDone.
     // Wake at least once per second to service the existing progress watchdog.
@@ -182,6 +198,7 @@ public:
         blocked, generations_match, uint32_t(millis()), _lab_last_poll,
         mesh::esp32::autonomousProfileSleepSliceMillis());
     return delay_ms != 0;
+#endif
   }
   void labScannerStatus(char* out, size_t cap) const {
     const auto reason=_lab_uncertain ? mesh::w12pram::AutoPolicy::Reason::Uncertain : _lab_auto.reason();

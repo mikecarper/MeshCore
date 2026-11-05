@@ -32,6 +32,7 @@ with tempfile.TemporaryDirectory() as d:
     run(['python3',str(lab/'test_autonomous_sleep.py')])
     run(['python3',str(lab/'test_agc_deferral.py')])
     run(['python3',str(lab/'test_opt_in.py')])
+    run(['python3',str(lab/'test_x1_opt_in.py')])
     run(['python3',str(lab/'test_airtime_no_spi.py')])
     run(['python3',str(lab/'test_airtime_transition.py')])
     run(['python3',str(lab/'test_rx_packet_params.py')])
