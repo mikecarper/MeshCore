@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""W12 infrastructure includes the scanner, which stays off until requested."""
+"""W12 infrastructure includes and automatically starts the scanner when eligible."""
 from pathlib import Path
 import configparser
 import re
@@ -35,6 +35,8 @@ for section in config.sections():
 source = (root / 'src/helpers/radiolib/W12PramScannerLab.inc').read_text(encoding='utf-8')
 assert 'bool _lab_scan_active = false;' in source
 assert 'bool _lab_resume_pending = false;' in source
+assert 'labServiceAutomatic(rx_allowed, radio_owned)' in source
+assert 'bool enabled_=true' in (root / 'src/helpers/radiolib/W12PramAutoPolicy.h').read_text(encoding='utf-8')
 readme = (root / 'docs/radio_profiles.md').read_text(encoding='utf-8')
 assert 'set pramscan on' in readme and 'set pramscan off' in readme
-print('PASS W12 infrastructure scanner availability and runtime-off default')
+print('PASS W12 infrastructure scanner availability and automatic policy')

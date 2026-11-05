@@ -18,31 +18,38 @@ profile makes the other unavailable until that packet finishes.
 
 ## Experimental W12 on-chip scanner
 
-W12 repeater, room, and sensor firmware includes an experimental scanner that
-switches the two profiles on the LR2021 instead of the ESP32. It is **off at
-boot and after reboot** and is started explicitly:
+W12 repeater, room and sensor firmware automatically tries the experimental
+on-chip scanner when `radio2` is configured with compatible profiles. It falls
+back to normal host switching if the profiles are unsupported or the scanner
+fails. Check the active mode and fallback reason, or turn off automatic scanning
+for the current boot:
 
 ```text
-set pramscan on
 get pramscan
 set pramscan off
+set pramscan on
+get pramscan.last
+get pramscan.recovery
 ```
 
-Configure both `radio` and `radio2` first. The scanner requires two enabled
-MeshCore profiles, SF7 or SF8, supported preambles of 8–255 symbols, frequencies
-less than 20 MHz apart, and a supported LR2021 ROM. It cannot run alongside
-single-profile RX power saving. The latter is not enabled in standard W12 builds.
-`get pramscan.last` shows the settings used by
-the last received packet. `set pramscan off` restores normal radio operation.
-The setting is not saved and must be enabled again after reboot.
+`set pramscan on` allows another automatic start; it does not guarantee the
+scanner can start. The on/off selection is not saved and returns to automatic
+after reboot. Both profiles must use MeshCore, SF7 or SF8, bandwidth 62.5, 125
+or 250 kHz, preambles up to 255 symbols, frequencies less than 20 MHz apart,
+and a supported LR2021 ROM. With radio2 off, a previously enabled `radio.rxps`
+setting instead uses the LR2021's native receive duty cycle; enabling radio2
+suspends that duty cycle until radio2 is off again. RXPS is off by default.
 
-This feature is experimental: packet loss and TX handoff under load are not yet
-fully qualified. It replaces the vendor radio patch while active, uses the
-radio's LDO regulator, and may defer AGC maintenance for as long as it runs.
-The ESP32 may sleep and wake on a received packet when power saving is enabled
-and the usual USB and wireless sleep conditions permit it; the radio remains
-active while scanning. Do not rely on this mode for operational nodes until
-it has been qualified for your conditions.
+The scanner is experimental: packet loss and TX handoff under load are not yet
+fully qualified. An ambiguous packet/interrupt during a handoff is retained
+briefly, then discarded if needed to restore host switching; the recovery is
+counted by `get pramscan.recovery`, and the scanner will not retry that profile
+pair until it changes or `set pramscan on` is used. It replaces the vendor
+radio patch while active, uses the radio's LDO regulator, and may defer AGC
+maintenance. The ESP32 may sleep and wake on a received packet when power
+saving is enabled and the usual USB and wireless sleep conditions permit it;
+the radio remains active while scanning. Current consumption has not been
+measured.
 
 Full W12 Repeater images require the board's PSRAM for the full-capacity
 repeater tables. If PSRAM is unavailable, LoRa startup stops and the USB

@@ -13,7 +13,7 @@ inline uint8_t timeoutObservation(const Status& s) {
 inline const char* timeoutObservationName(uint8_t observation) {
   return observation == 2 ? "armed" : observation == 1 ? "off" : "unknown";
 }
-enum class RecoveryOrigin : uint8_t { None, Other, NoCad, StatusPoll, RxStatus, RxResume };
+enum class RecoveryOrigin : uint8_t { None, Other, NoCad, StatusPoll, RxStatus, RxResume, Handoff };
 inline const char* recoveryOriginName(RecoveryOrigin origin) {
   switch (origin) {
     case RecoveryOrigin::None: return "none";
@@ -21,6 +21,7 @@ inline const char* recoveryOriginName(RecoveryOrigin origin) {
     case RecoveryOrigin::StatusPoll: return "status-poll";
     case RecoveryOrigin::RxStatus: return "rx-status";
     case RecoveryOrigin::RxResume: return "rx-resume";
+    case RecoveryOrigin::Handoff: return "handoff";
     default: return "other";
   }
 }

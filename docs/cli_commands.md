@@ -19,8 +19,8 @@ See [two LoRa profiles](radio_profiles.md) for `radio2`, `tempradio2`, schedulin
 RX-only mode, cross-transmission policy, and optional radio preambles.
 W12 repeater, room and sensor builds also provide the experimental
 `set pramscan on`, `get pramscan` and `set pramscan off` commands. The scanner
-starts off, does not persist across reboot, and requires two configured LoRa
-profiles and RX power saving off. See
+starts automatically on compatible dual-radio profiles; `off` selects host
+switching until reboot. See
 [W12 on-chip scanner](radio_profiles.md#experimental-w12-on-chip-scanner)
 for hardware limits and reliability considerations.
 

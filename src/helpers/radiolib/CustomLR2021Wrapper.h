@@ -5,6 +5,7 @@
 #include "LR2021ApplyStatus.h"
 #if defined(MESH_W12_PRAM_EXPERIMENT) && MESH_W12_PRAM_EXPERIMENT
 #include "W12PramScannerCodec.h"
+#include "W12PramAutoPolicy.h"
 #include "W12PramScannerBlob.h"
 #include <helpers/esp32/PowerTestControls.h>
 #endif
@@ -116,7 +117,7 @@ public:
     if (!_lab_scan_active && !_lab_uncertain) finishReceiveProcessing();
   }
   mesh::RadioParamApplyResult trySetRxPowerSaving(bool enabled, uint32_t rx_us, uint32_t sleep_us) {
-    if (_lab_scan_active || _lab_uncertain || _lab_resume_pending)
+    if (_lab_uncertain || (_lab_scan_active && labReconfigureBlocked()))
       return mesh::RadioParamApplyResult::BUSY;
     return RadioLibWrapper::trySetRxPowerSaving(enabled, rx_us, sleep_us);
   }
@@ -752,6 +753,9 @@ protected:
 #endif
 
   bool radioDeepInit() override {
+#if defined(MESH_W12_PRAM_EXPERIMENT) && MESH_W12_PRAM_EXPERIMENT
+    _lab_pram_loaded=false; // hard reset destroys the scanner program
+#endif
     invalidateScanTuple();
     if (!prepareRadioHardReset()) return false;
     if (!_board->prepareRadioFrequency(LORA_FREQ)) return false;

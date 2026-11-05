@@ -3,10 +3,15 @@
 // The chip stays on LDO for scanner and normal TX until explicit exit.
 private:
   bool _lab_scan_active = false;
+  bool _lab_pram_loaded = false; // invalidated by every radio hard reset
+  mesh::w12pram::AutoPolicy _lab_auto;
   bool _lab_resume_pending = false;
   bool _lab_sleeping = false;
   bool _lab_session_ldo = false;
   bool _lab_uncertain = false; // unread/ambiguous IRQ preserved for controlled recovery
+  uint32_t _lab_uncertain_at=0, _lab_ambiguous_recoveries=0, _lab_cold_starts=0;
+  bool _lab_transition_waiting=false;
+  uint32_t _lab_transition_at=0;
   bool _lab_bench_complete = false;
   uint32_t _lab_pause_last=0, _lab_pause_min=UINT32_MAX, _lab_pause_max=0;
   uint32_t _lab_resume_last=0, _lab_resume_min=UINT32_MAX, _lab_resume_max=0;
@@ -23,6 +28,7 @@ private:
   float _lab_last_logical_mhz = 0;
   int _lab_last_profile = -1;
   int16_t _lab_error = 0;
+  uint32_t _lab_resume_dropped = 0; // valid FIFO reads not delivered after resume failure
   int16_t _lab_last_recovery_error = 0;
   mesh::w12pram::RecoveryOrigin _lab_recovery_origin = mesh::w12pram::RecoveryOrigin::None;
   uint8_t _lab_recovery_timer = 0; // last cached observation before recovery
@@ -45,7 +51,7 @@ private:
     if (rc == RADIOLIB_ERR_NONE) out=mesh::w12pram::decode(response);
     return rc;
   }
-  bool labReinitialize() {
+  bool labReinitialize(bool resume_rx=true) {
     _lab_scan_active=false;
     static_cast<CustomLR2021*>(_radio)->labSetPramScan(false);
     const auto& p=_profiles.params(0);
@@ -61,11 +67,17 @@ private:
     if (!ok) { _profile_repair_required=true; return false; }
     _lab_session_ldo=false;
     _profile_refresh_required=true; // regular scanner will republish its state
+    if (!resume_rx) return true;
 #if MESH_ENABLE_RADIO_DIRECTION
     if (!mesh::radioDirection::radioReceiveAllowed()) return true;
 #endif
     startRecv();
     return isInRecvMode();
+  }
+  void labMarkUncertain() {
+    if (!_lab_uncertain) _lab_uncertain_at=millis();
+    _lab_uncertain=true; _lab_resume_pending=false;
+    _profile_repair_required=true; _lab_error=RADIOLIB_ERR_UNKNOWN;
   }
   // SCN3 stopped its handler. Checked standby ends any active CAD; rebuild
   // the complete host tuple and RX IRQ mapping without overwriting PRAM.
@@ -76,8 +88,7 @@ private:
     if (hasPendingRadioInterrupt() || isPacketPendingOrReceiving() || hasPendingRadioInterrupt()) {
       // Do not reset/clear an IRQ or FIFO that raced the handoff. Ownership
       // is ambiguous after unhooking; stop all automatic actions for review.
-      _lab_uncertain=true; _lab_scan_active=false; _lab_resume_pending=false;
-      _profile_repair_required=true; _lab_error=RADIOLIB_ERR_UNKNOWN; state=0;
+      labMarkUncertain(); _lab_scan_active=false; state=0;
       return false;
     }
     _lab_scan_active=false; r->labSetPramScan(false);
@@ -102,6 +113,8 @@ private:
     _lab_error=err; _lab_last_recovery_error=err; _lab_recovery_origin=origin;
     _lab_recovery_timer=mesh::w12pram::timeoutObservation(_lab_status);
     ++_lab_recoveries; _lab_resume_pending=false;
+    _lab_auto.observe(_profiles.generation[0],_profiles.generation[1]);
+    _lab_auto.block(mesh::w12pram::AutoPolicy::Reason::Failed);
     // A chip reset tears down even a stuck PRAM hook and all custom code.
     if (!labReinitialize()) _profile_repair_required=true;
   }
@@ -167,8 +180,9 @@ public:
     return delay_ms != 0;
   }
   void labScannerStatus(char* out, size_t cap) const {
-    snprintf(out,cap,"PRAM %s uncertain=%u hook=%u state=%u ch=%u hit=%u cad=%lu good=%lu bad=%lu lost=%lu err=%d rec=%lu tx=%lu/%lu resume=%u",
-      _lab_scan_active?"on":"off",_lab_uncertain,_lab_status.hooked,_lab_status.state,_lab_status.current,_lab_status.last_hit,
+    const auto reason=_lab_uncertain ? mesh::w12pram::AutoPolicy::Reason::Uncertain : _lab_auto.reason();
+    snprintf(out,cap,"PRAM %s auto=%s fallback=%s uncertain=%u hook=%u state=%u ch=%u hit=%u cad=%lu good=%lu bad=%lu lost=%lu err=%d rec=%lu tx=%lu/%lu resume=%u",
+      _lab_scan_active?"on":"off",_lab_auto.enabled()?"on":"off",mesh::w12pram::autoReasonName(reason),_lab_uncertain,_lab_status.hooked,_lab_status.state,_lab_status.current,_lab_status.last_hit,
       (unsigned long)_lab_status.cads,(unsigned long)_lab_good,(unsigned long)_lab_bad,
       (unsigned long)_lab_status.lost,(int)_lab_error,(unsigned long)_lab_recoveries,
       (unsigned long)_lab_tx_pauses,(unsigned long)_lab_tx_resumes,_lab_resume_pending);
@@ -180,9 +194,9 @@ public:
       _lab_rx_preamble[0],_lab_rx_preamble[1]);
   }
   void labScannerRecoveryDiag(char* out, size_t cap) const {
-    snprintf(out,cap,"PRAM recovery origin=%s err=%d count=%lu timer=%s cached=%s",
+    snprintf(out,cap,"PRAM recovery origin=%s err=%d count=%lu ambiguous=%lu lost_read=%lu cold=%lu timer=%s cached=%s",
       mesh::w12pram::recoveryOriginName(_lab_recovery_origin),
-      int(_lab_last_recovery_error),(unsigned long)_lab_recoveries,
+      int(_lab_last_recovery_error),(unsigned long)_lab_recoveries,(unsigned long)_lab_ambiguous_recoveries,(unsigned long)_lab_resume_dropped,(unsigned long)_lab_cold_starts,
       mesh::w12pram::timeoutObservationName(_lab_recovery_timer),
       mesh::w12pram::timeoutObservationName(mesh::w12pram::timeoutObservation(_lab_status)));
   }
@@ -217,17 +231,17 @@ public:
     if (hasPendingRadioInterrupt() || isChipBusy()) return Result::BUSY;
     mesh::w12pram::Status reply={};
     const int16_t rc=labScannerCommand(6,nullptr,0,reply);
-    // A failed SPI transaction may still have stopped the chip. Reset it;
-    // never carry on with a possibly detached handler or overwrite PRAM live.
-    if (rc!=RADIOLIB_ERR_NONE) { labRecover(rc); return Result::FAILED; }
+    // A failed SPI transaction may still have stopped the chip; preserve the
+    // ambiguous state until bounded recovery rather than resetting it here.
+    if (rc!=RADIOLIB_ERR_NONE) { labMarkUncertain(); return Result::FAILED; }
     const auto decision=mesh::w12pram::pauseResult(reply);
     if (decision==mesh::w12pram::PauseResult::Busy) return Result::BUSY;
-    if (decision!=mesh::w12pram::PauseResult::Stopped) { labRecover(RADIOLIB_ERR_UNKNOWN); return Result::FAILED; }
+    if (decision!=mesh::w12pram::PauseResult::Stopped) { labMarkUncertain(); return Result::FAILED; }
     // The guarded stop ends ROM ownership, but CAD hardware may still run.
     // Checked standby and full tuple restore precede channel check and TX.
     if (!labWarmRestore(target)) {
       if (_lab_uncertain) return Result::BUSY; // preserve ambiguous FIFO, no reset
-      labRecover(RADIOLIB_ERR_UNKNOWN); return Result::FAILED;
+      labMarkUncertain(); return Result::FAILED;
     }
     if (for_tx) {
       _lab_pause_last=uint32_t(micros()-started);
@@ -236,6 +250,13 @@ public:
     }
     return Result::APPLIED;
   }
+  bool labQuiesceForReset() {
+    if (beginReconfigure()>1) return false;
+    if (hasPendingRadioInterrupt() || digitalRead(P_LORA_DIO_1)==HIGH) {
+      labMarkUncertain(); return false;
+    }
+    return true;
+  }
   bool labScannerStop() {
     _lab_resume_pending=false; // manual off remains off even during TX pause
     if (_lab_uncertain) return false;
@@ -243,8 +264,36 @@ public:
     if (!_lab_scan_active && !_lab_session_ldo) return true;
     const auto rc=labPauseScanner();
     if (rc!=mesh::RadioParamApplyResult::APPLIED) return false;
+    // The warm handoff has resumed RX. Quiesce it again before the reset;
+    // a packet arriving during that window must not be silently erased.
+    if (!labQuiesceForReset()) return false;
     // Explicit exit restores the configured regulator and tears down PRAM.
     return labReinitialize();
+  }
+  bool labScannerProfilesSupported() {
+    if (!_profiles.enabled()) return false;
+    mesh::w12pram::Profile scan[2] = {};
+    for (uint8_t i=0;i<2;i++) {
+      const auto& p=_profiles.params(i);
+      const uint16_t pre=_lab_rx_preamble[i] ? _lab_rx_preamble[i] : profilePreamble(i);
+      if (p.protocol != mesh::RadioProfileProtocol::MeshCore || !validateProfile(p) || pre==0 || pre>255) return false;
+      scan[i]={uint32_t(hardwareFrequencyMHz(p.freq)*1000000.0f),uint32_t(p.bw*1000.0f),p.sf,p.cr,uint8_t(pre),_profiles.generation[i]};
+      mesh::w12pram::Packed packed;
+      if (!mesh::w12pram::pack(scan[i],packed)) return false;
+    }
+    return labs((long)scan[0].freq_hz-(long)scan[1].freq_hz) < 20000000L;
+  }
+  // The setting is intentionally RAM-only: explicit off holds for this boot.
+  // Initial activation is queued so the radio can finish pending work safely.
+  bool labScannerSetAutomatic(bool enabled) {
+    if (!enabled) {
+      if (!labScannerStop()) return false;
+      _lab_auto.setEnabled(false);
+      return true;
+    }
+    if (_lab_uncertain) return false;
+    _lab_auto.setEnabled(true);
+    return true;
   }
   bool labScannerStart(bool automatic=false) {
     const uint32_t started=micros();
@@ -273,9 +322,14 @@ public:
       const uint8_t admitted=beginReconfigure();
       if (admitted>1) return false;
     } else {
-      // Only a checked hard reset permits writing or replacing PRAM.
-      if (!labReinitialize()) return false;
-      rc=r->standby();
+      // Quiesce RX before the hard reset; a completion racing standby keeps
+      // ownership of its FIFO. A late physical IRQ after admission is
+      // ambiguous, so retain it for bounded recovery rather than clearing it.
+      if (!labQuiesceForReset()) return false;
+      ++_lab_cold_starts;
+      // Stay in standby after reinitialization: briefly entering RX here
+      // could admit a packet immediately before the PRAM load.
+      if (!labReinitialize(false)) return false;
     }
     if (rc==RADIOLIB_ERR_NONE) {
       rc=r->setRegulatorLDO(); // scanner bypasses DCDC workaround
@@ -292,6 +346,7 @@ public:
         at+=count;
       }
       if (rc==RADIOLIB_ERR_NONE) rc=r->activatePram();
+      if (rc==RADIOLIB_ERR_NONE) _lab_pram_loaded=true;
     }
     uint8_t req=2,ident[4]={};
     if (rc==RADIOLIB_ERR_NONE) rc=r->labSpiCommand(0x012D,false,ident,4,&req,1);
@@ -305,7 +360,7 @@ public:
     const uint8_t args[]={2,1,8,0x10}; // 2 profiles; 1-symbol preamble-only CAD; 8-symbol wait
     if (rc==RADIOLIB_ERR_NONE) rc=labScannerCommand(1,args,sizeof(args),_lab_status);
     if (rc==RADIOLIB_ERR_NONE && !_lab_status.hooked) rc=RADIOLIB_ERR_UNKNOWN;
-    if (rc!=RADIOLIB_ERR_NONE) { labRecover(rc); return false; }
+    if (rc!=RADIOLIB_ERR_NONE) { labMarkUncertain(); return false; }
     _lab_error=0;
     if (!automatic) {
       _lab_last_profile=-1; _lab_good=_lab_bad=0; _lab_good_profile[0]=_lab_good_profile[1]=0; _lab_tx_pauses=_lab_tx_resumes=0;
@@ -317,7 +372,7 @@ public:
       if (_lab_resume_last>_lab_resume_max) _lab_resume_max=_lab_resume_last;
     }
     _lab_resume_pending=false;
-    _lab_scan_active=true; r->labSetPramScan(true); _lab_last_poll=millis(); _lab_progress_at=millis(); _lab_prev_cads=_lab_status.cads;
+    _lab_scan_active=true; _lab_auto.active(); r->labSetPramScan(true); _lab_last_poll=millis(); _lab_progress_at=millis(); _lab_prev_cads=_lab_status.cads;
     state=1; // lab scanner owns the radio and has armed CAD/RX
     return true;
   }
@@ -390,7 +445,15 @@ public:
     return RadioLibWrapper::prepareBeaconTransmit(p,power);
   }
 #endif
-  bool labReconfigureBlocked() const override { return _lab_scan_active || _lab_uncertain; }
+  bool labReconfigureBlocked() override {
+    if (_lab_uncertain) return true; // retain ambiguous FIFO for explicit recovery
+    if (!_lab_scan_active) return false;
+    const auto paused=labPauseScanner();
+    if (paused!=mesh::RadioParamApplyResult::APPLIED) return true;
+    _lab_resume_pending=_lab_auto.enabled();
+    _lab_resume_at=millis()+600;
+    return false;
+  }
   void idle() override { if (!_lab_scan_active && !_lab_uncertain) RadioLibWrapper::idle(); }
   void startRecv() override { if (!_lab_scan_active && !_lab_uncertain) RadioLibWrapper::startRecv(); }
   void resetAGC() override { if (!_lab_scan_active && !_lab_uncertain) RadioLibWrapper::resetAGC(); }
@@ -401,7 +464,8 @@ public:
   bool labScannerRecover() {
     if (!_lab_uncertain) return false;
     _lab_uncertain=false; // explicit operator action discards ambiguous FIFO
-    labRecover(RADIOLIB_ERR_UNKNOWN);
+    ++_lab_ambiguous_recoveries; ++n_recv_errors;
+    labRecover(RADIOLIB_ERR_UNKNOWN, mesh::w12pram::RecoveryOrigin::Handoff);
     return !_profile_repair_required;
   }
   bool recoverRadio(bool hard) override {
@@ -419,8 +483,73 @@ public:
     if (!sleeping || !ok) _lab_sleeping=false;
     return ok;
   }
+  void labServiceAutomatic(bool rx_allowed, bool radio_owned) {
+    if (_lab_uncertain) return; // never discard an ambiguous FIFO
+    _lab_auto.observe(_profiles.generation[0],_profiles.generation[1]);
+    if (!_profiles.enabled() || !labScannerProfilesSupported()) {
+      // An off/incompatible second profile must not leave the radio in LDO
+      // or spin on a warm resume. Preserve pending IRQs until a safe stop.
+      if (_lab_session_ldo && !labScannerStop()) return;
+      _lab_resume_pending=false;
+      if (_profiles.enabled()) _lab_auto.block(mesh::w12pram::AutoPolicy::Reason::Unsupported);
+      return;
+    }
+    if (!_lab_auto.enabled() || _lab_auto.blocked()) return;
+    if (mesh::w12pram::mayResume(_lab_resume_pending,_lab_sleeping,rx_allowed,state==3,radio_owned,
+            _profile_repair_required,(int32_t)(millis()-_lab_resume_at)>=0)) {
+      const uint32_t recoveries=_lab_recoveries;
+      if (!labScannerStart(_lab_pram_loaded)) {
+        if (_lab_recoveries!=recoveries || _profile_repair_required) {
+          _lab_resume_pending=false;
+          _lab_auto.block(mesh::w12pram::AutoPolicy::Reason::Failed);
+        } else _lab_resume_at=millis()+1000;
+      }
+    } else if (!_lab_resume_pending && _lab_auto.due(millis()) && !_lab_sleeping
+               && rx_allowed && state!=3 && !radio_owned && !_profile_repair_required) {
+      // First activation needs a hard reset and PRAM load. A pending packet,
+      // BUSY or carrier only delays it; a failed hardware transaction latches
+      // host scanning for this generation pair rather than resetting forever.
+      const uint32_t recoveries=_lab_recoveries;
+      if (!labScannerStart(false)) {
+        if (_lab_recoveries!=recoveries || _profile_repair_required)
+          _lab_auto.block(mesh::w12pram::AutoPolicy::Reason::Failed);
+        else _lab_auto.busy(millis());
+      }
+    }
+  }
+  void labServiceUncertain() {
+    if (!_lab_uncertain) return;
+    // The stopped PRAM hook may have raced an RF IRQ. Give the radio a
+    // bounded settling period, but do not leave an unattended node frozen.
+    // This reset explicitly discards an ambiguous FIFO; it does not claim a
+    // confirmed lost packet. Block scanner restart until configuration changes.
+    const uint32_t elapsed=uint32_t(millis()-_lab_uncertain_at);
+    if (elapsed<1000 || (isChipBusy() && elapsed<5000)) return;
+    _lab_uncertain=false;
+    ++_lab_ambiguous_recoveries; ++n_recv_errors;
+    labRecover(RADIOLIB_ERR_UNKNOWN, mesh::w12pram::RecoveryOrigin::Handoff);
+  }
+  void labStopForProfileTransition() {
+    if (labScannerStop()) { _lab_transition_waiting=false; return; }
+    if (_lab_uncertain) { _lab_transition_waiting=false; return; }
+    // Ordinary BUSY, including pending RxDone, is not a failed handoff.
+    // Let the dispatcher drain a still-current frame and retry the stop.
+    // If a stale FIFO or stuck chip cannot drain, recover once after a bound.
+    const uint32_t now=millis();
+    if (!_lab_transition_waiting) { _lab_transition_waiting=true; _lab_transition_at=now; }
+    else if (uint32_t(now-_lab_transition_at)>=5000) {
+      _lab_transition_waiting=false; labMarkUncertain();
+    }
+  }
+  bool labRxProfileCurrent() {
+    if (_profiles.generation[0]!=_lab_snap[0].generation ||
+        _profiles.generation[1]!=_lab_snap[1].generation || !_profiles.enabled()) {
+      return false; // never claim or misattribute a stale FIFO
+    }
+    return true;
+  }
   void loop() override {
-    if (_lab_uncertain) return;
+    if (_lab_uncertain) { labServiceUncertain(); return; }
     if (!_lab_scan_active) {
 #if defined(MESH_W12_RXPS_EXPERIMENT) && MESH_W12_RXPS_EXPERIMENT
       if (_rx_ps_armed) {
@@ -440,23 +569,27 @@ public:
 #if MESH_ENABLE_RADIO_DIRECTION
       rx_allowed=mesh::radioDirection::radioReceiveAllowed();
 #endif
-      if (mesh::w12pram::mayResume(_lab_resume_pending,_lab_sleeping,rx_allowed,state==3,radio_owned,
-              _profile_repair_required,(int32_t)(millis()-_lab_resume_at)>=0)) {
-        if (!labScannerStart(true)) _lab_resume_at=millis()+1000;
-      }
+      labServiceAutomatic(rx_allowed, radio_owned);
       return;
     }
+    bool must_stop = _profiles.generation[0]!=_lab_snap[0].generation
+        || _profiles.generation[1]!=_lab_snap[1].generation || !_profiles.enabled();
 #if MESH_ENABLE_RADIO_DIRECTION
-    if (!mesh::radioDirection::radioReceiveAllowed()) { labRecover(RADIOLIB_ERR_UNKNOWN); return; }
+    must_stop = must_stop || !mesh::radioDirection::radioReceiveAllowed();
 #endif
-    if (_profiles.generation[0]!=_lab_snap[0].generation || _profiles.generation[1]!=_lab_snap[1].generation || !_profiles.enabled()) { labRecover(RADIOLIB_ERR_UNKNOWN); return; }
+    if (must_stop) {
+      // A stale or disabled profile cannot be used to attribute a packet.
+      // Stop only through the guarded handoff; a pending IRQ is retained for
+      // bounded, counted recovery rather than silently reset here.
+      labStopForProfileTransition();
+      return;
+    }
+    _lab_transition_waiting=false;
     const uint32_t now=millis();
     if ((uint32_t)(now-_lab_last_poll)<1000 || isChipBusy()) return;
     _lab_last_poll=now;
     mesh::w12pram::Status s={}; int16_t rc=labScannerCommand(2,nullptr,0,s);
-    if (rc!=RADIOLIB_ERR_NONE || !s.hooked) {
-      labRecover(rc ? rc : RADIOLIB_ERR_UNKNOWN, mesh::w12pram::RecoveryOrigin::StatusPoll); return;
-    }
+    if (rc!=RADIOLIB_ERR_NONE || !s.hooked) { labMarkUncertain(); return; }
     _lab_status=s;
     // Op2 is a read-only snapshot. A separate guarded op7 can repair a lost
     // header timer, without resetting a live timer or consuming pending RX.
@@ -480,21 +613,22 @@ public:
       const bool pin_high = digitalRead(P_LORA_DIO_1) == HIGH;
       if (mesh::w12pram::mayRecoverStalledScan(s, hasPendingRadioInterrupt(), pin_high)
           && !hasPendingRadioInterrupt() && digitalRead(P_LORA_DIO_1) != HIGH) {
-        labRecover(RADIOLIB_ERR_SPI_CMD_TIMEOUT, mesh::w12pram::RecoveryOrigin::NoCad); // includes parked-without-IRQ
+        labMarkUncertain(); // bounded recovery accounts for a late IRQ race
       }
     }
   }
   int recvRaw(uint8_t* bytes,int sz) override {
     if (_lab_uncertain) return 0;
     if (!_lab_scan_active) return RadioLibWrapper::recvRaw(bytes,sz);
+    // Check attribution before claiming the IRQ; stale FIFO is ambiguous.
+    if (!labRxProfileCurrent()) return 0;
     if (!claimRadioInterrupt()) return 0;
-    if (_profiles.generation[0]!=_lab_snap[0].generation || _profiles.generation[1]!=_lab_snap[1].generation || !_profiles.enabled()) { labRecover(RADIOLIB_ERR_UNKNOWN); return 0; }
     auto* r=static_cast<CustomLR2021*>(_radio);
     mesh::w12pram::Status s={}; int16_t rc=labScannerCommand(2,nullptr,0,s);
-    if (rc!=RADIOLIB_ERR_NONE) { labRecover(rc, mesh::w12pram::RecoveryOrigin::RxStatus); return 0; }
+    if (rc!=RADIOLIB_ERR_NONE) { labMarkUncertain(); return 0; }
     const auto event=mesh::w12pram::classify(s);
     if (event==mesh::w12pram::RxEvent::Ignore) return 0; // late ISR after resume
-    if (event!=mesh::w12pram::RxEvent::Deliver) { labRecover(RADIOLIB_ERR_UNKNOWN, mesh::w12pram::RecoveryOrigin::RxStatus); return 0; }
+    if (event!=mesh::w12pram::RxEvent::Deliver) { labMarkUncertain(); return 0; }
     _lab_status=s; const uint8_t ch=s.last_hit;
     const int len=r->getPacketLength(); int delivered=0;
     if (len>0 && len<=sz) {
@@ -506,6 +640,9 @@ public:
     } else { ++_lab_bad; ++n_recv_errors; (void)r->clearRxFifo(); }
     rc=labScannerCommand(3,nullptr,0,_lab_status); // parked until data has been consumed
     if (rc!=RADIOLIB_ERR_NONE || !_lab_status.hooked || _profiles.generation[0]!=_lab_snap[0].generation || _profiles.generation[1]!=_lab_snap[1].generation || !_profiles.enabled()) {
+      // A validated frame cannot yet be delivered across the reset without
+      // losing its immutable profile attribution. Count it explicitly.
+      if (delivered) { ++_lab_resume_dropped; ++_lab_bad; ++n_recv_errors; }
       labRecover(rc ? rc : RADIOLIB_ERR_UNKNOWN, mesh::w12pram::RecoveryOrigin::RxResume);
       return 0; // restore changes the live profile; never mislabel this frame
     }

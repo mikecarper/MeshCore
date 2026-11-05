@@ -39,9 +39,7 @@ public:
     if (op==7) { ++repair_calls; out=repaired; return repair_result; }
     out=response; return command_result;
   }
-  void labRecover(int16_t reason, mesh::w12pram::RecoveryOrigin why) {
-    last_error=reason; origin=why; ++recoveries;
-  }
+  void labMarkUncertain() { ++recoveries; }
   void poll() {
 ''' + watchdog + r'''
   }
@@ -52,14 +50,11 @@ static Driver stalled() {
   return d;
 }
 int main() {
-  auto d=stalled(); d.poll(); assert(d.recoveries==1 && d.last_error==-705
-      && d.origin==mesh::w12pram::RecoveryOrigin::NoCad); // genuine stall
+  auto d=stalled(); d.poll(); assert(d.recoveries==1); // bounded recovery for a stall
   d=stalled(); d.command_result=-705; d.poll();
-  assert(d.recoveries==1 && d.last_error==-705
-      && d.origin==mesh::w12pram::RecoveryOrigin::StatusPoll); // same error, different source
+  assert(d.recoveries==1); // failed status does not prove the FIFO empty
   d=stalled(); d.response.hooked=0; d.poll();
-  assert(d.recoveries==1 && d.last_error==-1
-      && d.origin==mesh::w12pram::RecoveryOrigin::StatusPoll);
+  assert(d.recoveries==1);
   d=stalled(); d.pending=true; d.poll(); assert(d.recoveries==0);
   d=stalled(); physical=true; d.poll(); assert(d.recoveries==0);
   d=stalled(); race_high=true; d.poll(); assert(d.recoveries==0); // late DIO edge

@@ -29,6 +29,7 @@ program = r'''
 #include <cstdio>
 #include <cstring>
 #include "helpers/radiolib/W12PramScannerCodec.h"
+#include "helpers/radiolib/W12PramAutoPolicy.h"
 using u32 = uint32_t;
 using u8 = uint8_t;
 struct resp { u32 len; u8* buf; };
@@ -47,6 +48,11 @@ public:
   mesh::w12pram::RecoveryOrigin _lab_recovery_origin=mesh::w12pram::RecoveryOrigin::None;
   uint8_t _lab_recovery_timer=0;
   unsigned long _lab_recoveries=0;
+  unsigned long _lab_resume_dropped=0;
+  unsigned long _lab_ambiguous_recoveries=0;
+  unsigned long _lab_cold_starts=0;
+  mesh::w12pram::AutoPolicy _lab_auto;
+  struct { uint32_t generation[2]={1,2}; } _profiles;
   bool _lab_resume_pending=false, _profile_repair_required=false;
   mesh::w12pram::Status _lab_status{};
   bool labReinitialize() { _lab_status={}; return true; }
