@@ -55,6 +55,7 @@ with tempfile.TemporaryDirectory() as d:
     run([sys.executable,str(root/'test/test_lr2021_safe_mode.py')])
     run([sys.executable,str(root/'test/test_lr2021_multisf_service.py')])
     run([sys.executable,str(root/'test/test_lr2021_multisf_pre_tx.py')])
+    run([sys.executable,str(root/'test/test_lr2021_multisf_status.py')])
     run([sys.executable,str(lab/'test_safe_active_loop.py')])
     run([sys.executable,str(lab/'test_airtime_no_spi.py')])
     run([sys.executable,str(lab/'test_airtime_transition.py')])
