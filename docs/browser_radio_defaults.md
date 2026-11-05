@@ -10,6 +10,10 @@ before installing it. This does not replace stored settings on an ordinary
 update. Use a fresh installation or factory reset to adopt different defaults;
 use the radio's USB settings commands to change an already configured node.
 
+The space-limited RAK 3x72 USB Companion and Wio E5 Mini Repeater builds omit
+the embedded defaults record. Configure their radio settings over USB instead.
+Their normal saved settings continue to work across reboots and updates.
+
 The record changes only the primary LoRa frequency, bandwidth, spreading factor,
 coding rate, optional TX power, and preamble. It does not alter identity, regions,
 secondary radio, Bluetooth, Wi-Fi or other preferences. Companion, Repeater,

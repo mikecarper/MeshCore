@@ -23,6 +23,7 @@ class BrowserRadioDefaultsTest(unittest.TestCase):
         compiler = os.environ.get("CXX") or shutil.which("g++") or shutil.which("clang++")
         if not compiler:
             raise AssertionError("a host C++17 compiler is required")
+        cls.compiler = compiler
         cls.temp = tempfile.TemporaryDirectory(prefix="meshcore-browser-radio-defaults-")
         cls.addClassCleanup(cls.temp.cleanup)
         suffix = ".exe" if os.name == "nt" else ""
@@ -141,6 +142,65 @@ class BrowserRadioDefaultsTest(unittest.TestCase):
         self.assertLess(startup.index("seedBrowserRadioDefaults(prefs_ready);"),
                         startup.index("configureRadioFromPrefs();"))
         self.assertEqual(startup.count("seedBrowserRadioDefaults(prefs_ready);"), 1)
+
+    def test_optional_feature_excludes_marker_and_read_from_linked_image(self):
+        probe = Path(self.temp.name) / "optional-feature.cpp"
+        probe.write_text('''#include "helpers/BrowserRadioDefaults.h"
+int main() {
+#if MESH_ENABLE_BROWSER_RADIO_DEFAULTS
+  mesh::browserRadioDefaults::Settings settings{};
+  return mesh::browserRadioDefaults::read(settings) ? 1 : 0;
+#else
+  return 0;
+#endif
+}
+''', encoding="utf-8")
+        for mode, flag, expected in (("default", [], 1),
+                                     ("enabled", ["-DMESH_ENABLE_BROWSER_RADIO_DEFAULTS=1"], 1),
+                                     ("disabled", ["-DMESH_ENABLE_BROWSER_RADIO_DEFAULTS=0"], 0)):
+            with self.subTest(mode=mode):
+                output = Path(self.temp.name) / ("optional-" + mode + (".exe" if os.name == "nt" else ""))
+                self.compile([self.compiler, "-std=c++17", "-O2", *flag,
+                              "-I", str(ROOT / "src"), str(probe),
+                              str(ROOT / "src/helpers/BrowserRadioDefaults.cpp"), "-o", str(output)])
+                self.assertEqual(output.read_bytes().count(MAGIC), expected)
+                self.assertEqual(subprocess.run([str(output)], timeout=10).returncode, 0)
+
+    def test_disabled_feature_omits_both_real_startup_seeding_paths(self):
+        def gated_region(source, anchor):
+            # Extract the actual surrounding #if, including nested directives.
+            start = source.rfind("#if MESH_ENABLE_BROWSER_RADIO_DEFAULTS", 0, source.index(anchor))
+            self.assertNotEqual(start, -1)
+            depth = 0
+            result = []
+            for line in source[start:].splitlines(keepends=True):
+                stripped = line.strip()
+                if stripped.startswith(("#if ", "#ifdef ", "#ifndef ")):
+                    depth += 1
+                elif stripped.startswith("#endif"):
+                    depth -= 1
+                result.append(line)
+                if depth == 0:
+                    return "".join(result)
+            self.fail("unterminated feature gate")
+
+        for file, anchor in (("examples/companion_radio/MyMesh.cpp", "seedBrowserRadioDefaults(prefs_ready);"),
+                             ("src/helpers/CommonCLI.cpp", "mesh::browserRadioDefaults::read(value)")):
+            region = gated_region((ROOT / file).read_text(), anchor)
+            for enabled in (0, 1):
+                with self.subTest(file=file, enabled=enabled):
+                    result = subprocess.run(
+                        [self.compiler, "-E", "-P", "-x", "c++", "-",
+                         "-DMESH_ENABLE_BROWSER_RADIO_DEFAULTS=" + str(enabled)],
+                        input=region, text=True, capture_output=True, timeout=10)
+                    self.assertEqual(result.returncode, 0, result.stderr)
+                    self.assertEqual(anchor in result.stdout, bool(enabled))
+
+    def test_only_space_limited_profiles_opt_out(self):
+        for path, profile in (("variants/rak3x72/platformio.ini", "RAK_3x72_companion_radio_usb"),
+                              ("variants/wio-e5-mini/platformio.ini", "wio-e5-mini_repeater")):
+            section = (ROOT / path).read_text().split("[env:" + profile + "]", 1)[1].split("[", 1)[0]
+            self.assertIn("-D MESH_ENABLE_BROWSER_RADIO_DEFAULTS=0", section)
 
     def test_linked_image_is_one_canonical_disabled_patch_template(self):
         ran = subprocess.run([str(self.linked)], capture_output=True, timeout=10)
