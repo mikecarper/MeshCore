@@ -154,11 +154,28 @@ public:
   }
   void formatW12MultiSf(char* out, size_t cap) const override {
 #if defined(MESH_W12_PRAM_SEQUENTIAL_LAB) && MESH_W12_PRAM_SEQUENTIAL_LAB
-    const char* status = _multi_sf_enabled ? "single active"
-        : _lab_seq_requested && _lab_scan_active ? "dual active"
-        : _multi_failed ? "blocked; normal RX"
-        : _lab_seq_requested && _lab_auto.blocked() ? "scanner unavailable; normal RX"
-        : "pending or off";
+    const auto& cfg=mesh::lr2021::multiSfSettings();
+    const char* status = "pending";
+    if (mesh::lr2021::safeMode()) status=(_multi_sf_enabled || _lab_scan_active) ? "safe mode stopping" : "safe mode";
+    else if (!mesh::lr2021::multiSfSettingsValid()) status="fallback: settings unavailable";
+    else if (!cfg.enabled) status=(_multi_sf_enabled || _lab_seq_requested) ? "stopping" : "off";
+    else if (!_profiles.enabled() && cfg.profile==1) status="fallback: radio2 off";
+    else if (_multi_sf_enabled) status=(cfg.profile==0 && !_profiles.enabled()
+        && cfg.first==_multi_sf_lower && cfg.last==_multi_sf_upper) ? "single active" : "changing";
+    else if (_lab_seq_requested && _lab_scan_active) status=(cfg.profile==_lab_seq_selected
+        && cfg.first==_lab_seq_first && cfg.last==_lab_seq_last) ? "dual active" : "changing";
+    else if (_lab_seq_requested && _lab_auto.blocked()) status="fallback: scanner unavailable";
+    else if (!_profiles.enabled() && _params_valid) {
+      mesh::w12multisf::Plan plan;
+      const auto why=mesh::w12multisf::makePlan(
+          _profiles.primary.protocol==mesh::RadioProfileProtocol::MeshCore,
+          cfg.first,cfg.last,_cur_sf,_cur_bw,false,false,_numSideDet!=0,plan);
+      if (why==mesh::w12multisf::Admission::TxOutsideRange) status="fallback: TX SF outside range";
+      else if (why==mesh::w12multisf::Admission::ExtraDetectors) status="fallback: extra SF configured";
+      else if (why!=mesh::w12multisf::Admission::Ready) status="fallback: unsupported profile";
+      else if (_multi_failed) status="fallback: radio apply failed";
+    }
+    else if (_multi_failed) status="fallback: scanner setup failed";
 #else
     const char* status = _multi_sf_enabled ? "single active" : "off";
 #endif
