@@ -60,3 +60,21 @@ receive preamble as an **assumption** about the sender. LoRa's explicit header d
 not report sender preamble length, so this is still an estimate. Unknown coding
 rates or unreadable packet status contribute zero rather than a misleading estimate;
 `get pramscan.seq` reports the count as `unknown`. TX airtime is unchanged.
+
+A separate, unqualified `MESH_W12_PRAM_SEQ_TX_LAB=1` build flag adds packet
+TX to this experiment. It also requires `MESH_W12_PRAM_EXPERIMENT=1` and
+`MESH_W12_PRAM_SEQUENTIAL_LAB=1`. With disjoint radio channels configured,
+run `set pramscan off`, `set radio.mode rx`, `set pramscan.seq 1` (or `2`),
+`set radio.mode both`, then `set pramscan on`. `get pramscan.seqtx` reports
+final-sweep clear, busy and error counts. Beacon, Morse and carrier TX remain
+blocked. `set pramscan off` and `set pramscan.seq off` exit the experiment.
+
+Before packet TX this lab requires a guarded pause and a fresh two-symbol CAD
+sweep of each SF on the outgoing frequency, plus the configured TX SF if it
+is outside the receive range. An uncertain IRQ, overlapping profile, busy
+result or scan error blocks TX even if ordinary channel-check backoff expires.
+At this late boundary busy packets can be dropped; queue-safe retries are not
+implemented. CAD is probabilistic, cannot hear incompatible modulations, and
+a signal can start after its SF was checked. Short preambles may fall between
+visits, especially with SF5 on wide bandwidth. This is for supervised RF
+tests only, not operational service. RX is interrupted during the sweep.

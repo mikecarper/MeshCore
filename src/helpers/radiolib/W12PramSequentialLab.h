@@ -69,6 +69,34 @@ inline bool sequentialReceiveAirtime(const Profile& p, uint8_t cr, bool crc,
   return true;
 }
 
+// This lab only handles spectrally separated profiles; CAD at one bandwidth
+// cannot establish that an overlapping profile of another bandwidth is idle.
+inline bool sequentialChannelsDisjoint(const Profile& a, const Profile& b) {
+  const uint64_t f1=a.freq_hz, f2=b.freq_hz;
+  const uint64_t distance=f1>f2 ? f1-f2 : f2-f1;
+  return a.bw_hz && b.bw_hz && 2*distance > uint64_t(a.bw_hz)+b.bw_hz;
+}
+// Include all scanner slots on the target profile and also its configured TX
+// SF if that is outside the selected receive range.
+inline bool sequentialTxSFs(const SequentialPlan& plan, uint8_t profile, uint8_t txsf,
+                            uint8_t (&out)[SequentialMaxSlots+1], uint8_t& count) {
+  count=0;
+  if (profile>1 || txsf<5 || txsf>12 || !plan.count || plan.count>SequentialMaxSlots) return false;
+  bool includes_tx=false;
+  for (uint8_t i=0; i<plan.count; ++i) {
+    if (plan.slots[i].logical_profile!=profile) continue;
+    const uint8_t sf=plan.slots[i].physical.sf;
+    if (sf<5 || sf>12) return false;
+    bool seen=false;
+    for (uint8_t j=0;j<count;++j) if (out[j]==sf) seen=true;
+    if (!seen) out[count++]=sf;
+    if (sf==txsf) includes_tx=true;
+  }
+  if (!count) return false;
+  if (!includes_tx) out[count++]=txsf;
+  return true;
+}
+
 inline bool sequentialHit(const SequentialPlan& plan, uint8_t slot,
                           uint32_t gen0, uint32_t gen1, SequentialSlot& out) {
   if (!plan.count || plan.count > SequentialMaxSlots || slot >= plan.count

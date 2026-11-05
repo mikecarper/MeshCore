@@ -1,6 +1,9 @@
 // Isolated lab only: custom MIT scanner occupies PRAM instead of Semtech patch.
 // Guarded scanner handoff is experimental; uncertain ownership triggers reset.
 // The chip stays on LDO for scanner and normal TX until explicit exit.
+#if defined(MESH_W12_PRAM_SEQ_TX_LAB) && MESH_W12_PRAM_SEQ_TX_LAB && (!defined(MESH_W12_PRAM_SEQUENTIAL_LAB) || !MESH_W12_PRAM_SEQUENTIAL_LAB)
+#error "TX lab requires the sequential scanner lab"
+#endif
 #if defined(MESH_W12_PRAM_SEQUENTIAL_LAB) && MESH_W12_PRAM_SEQUENTIAL_LAB
 #ifndef MESH_W12_PRAM_SEQ_SYMBOLS
 #define MESH_W12_PRAM_SEQ_SYMBOLS 1
@@ -47,6 +50,11 @@ private:
   uint8_t _lab_seq_rx_cr=0;
   bool _lab_seq_rx_crc=false, _lab_seq_rx_valid=false;
   uint32_t _lab_seq_rx_unknown=0;
+#if defined(MESH_W12_PRAM_SEQ_TX_LAB) && MESH_W12_PRAM_SEQ_TX_LAB
+  bool _lab_seq_tx_lease=false, _lab_seq_tx_prepared=false;
+  uint8_t _lab_seq_tx_profile=0;
+  uint32_t _lab_seq_tx_busy=0, _lab_seq_tx_error=0, _lab_seq_tx_clear=0;
+#endif
 #endif
   mesh::w12pram::Profile _lab_last = {};
   float _lab_last_logical_mhz = 0;
@@ -99,6 +107,9 @@ private:
     return isInRecvMode();
   }
   void labMarkUncertain() {
+#if defined(MESH_W12_PRAM_SEQ_TX_LAB) && MESH_W12_PRAM_SEQ_TX_LAB
+    _lab_seq_tx_lease=false;
+#endif
     if (!_lab_uncertain) _lab_uncertain_at=millis();
     _lab_uncertain=true; _lab_resume_pending=false;
     _profile_repair_required=true; _lab_error=RADIOLIB_ERR_UNKNOWN;
@@ -134,6 +145,9 @@ private:
     startRecv(); return isInRecvMode();
   }
   void labRecover(int16_t err, mesh::w12pram::RecoveryOrigin origin=mesh::w12pram::RecoveryOrigin::Other) {
+#if defined(MESH_W12_PRAM_SEQ_TX_LAB) && MESH_W12_PRAM_SEQ_TX_LAB
+    _lab_seq_tx_lease=false;
+#endif
     _lab_error=err; _lab_last_recovery_error=err; _lab_recovery_origin=origin;
     _lab_recovery_timer=mesh::w12pram::timeoutObservation(_lab_status);
     ++_lab_recoveries; _lab_resume_pending=false;
@@ -299,6 +313,9 @@ public:
     return true;
   }
   bool labScannerStop() {
+#if defined(MESH_W12_PRAM_SEQ_TX_LAB) && MESH_W12_PRAM_SEQ_TX_LAB
+    _lab_seq_tx_lease=false;
+#endif
     _lab_resume_pending=false; // manual off remains off even during TX pause
     if (_lab_uncertain) return false;
     if (state==3 || isChipBusy() || hasPendingRadioInterrupt()) return false;
@@ -325,7 +342,13 @@ public:
     if (labs((long)scan[0].freq_hz-(long)scan[1].freq_hz) >= 20000000L) return false;
 #if defined(MESH_W12_PRAM_SEQUENTIAL_LAB) && MESH_W12_PRAM_SEQUENTIAL_LAB
     if (_lab_seq_requested) {
+#if defined(MESH_W12_PRAM_SEQ_TX_LAB) && MESH_W12_PRAM_SEQ_TX_LAB
+      if (mesh::radioDirection::mode() != mesh::radioDirection::Mode::Rx
+          && mesh::radioDirection::mode() != mesh::radioDirection::Mode::Both) return false;
+      if (!mesh::w12pram::sequentialChannelsDisjoint(scan[0],scan[1])) return false;
+#else
       if (mesh::radioDirection::mode() != mesh::radioDirection::Mode::Rx) return false;
+#endif
       // Never overwrite an active slot map: an unread FIFO still owns it.
       if (_lab_scan_active) return true;
       return mesh::w12pram::sequentialPlan(scan,_lab_seq_selected,5,8,_lab_seq_plan);
@@ -343,10 +366,15 @@ public:
     _lab_seq_selected=uint8_t(selected); _lab_seq_requested=true; _lab_seq_plan.count=0; return true;
   }
   void labSequentialStatus(char* out, size_t cap) const {
-    snprintf(out,cap,"seq=%s radio=%u slots=%u cad=%u flags=%02x scanner=%s receive-only rxcr=%u crc=%u pre=assumed unknown=%lu",
+    snprintf(out,cap,"seq=%s radio=%u slots=%u cad=%u flags=%02x scanner=%s %s rxcr=%u crc=%u pre=assumed unknown=%lu",
         _lab_seq_requested?"on":"off",unsigned(_lab_seq_selected+1),
         unsigned(_lab_seq_plan.count),unsigned(MESH_W12_PRAM_SEQ_SYMBOLS),
         unsigned(MESH_W12_PRAM_SEQ_FLAGS),_lab_scan_active?"on":"off/fallback",
+#if defined(MESH_W12_PRAM_SEQ_TX_LAB) && MESH_W12_PRAM_SEQ_TX_LAB
+        "tx-lab",
+#else
+        "receive-only",
+#endif
         unsigned(_lab_seq_rx_cr),unsigned(_lab_seq_rx_crc),
         (unsigned long)_lab_seq_rx_unknown);
   }
@@ -371,7 +399,12 @@ public:
     if (_lab_uncertain || _lab_sleeping || _lab_scan_active || !_profiles.enabled() || !_params_valid || _rx_ps_enabled || _cw_active
         || state == 3 || isChipBusy() || hasPendingRadioInterrupt() || isPacketPendingOrReceiving()) return false;
 #if defined(MESH_W12_PRAM_SEQUENTIAL_LAB) && MESH_W12_PRAM_SEQUENTIAL_LAB
+#if defined(MESH_W12_PRAM_SEQ_TX_LAB) && MESH_W12_PRAM_SEQ_TX_LAB
+    if (_lab_seq_requested && mesh::radioDirection::mode() != mesh::radioDirection::Mode::Rx
+        && mesh::radioDirection::mode() != mesh::radioDirection::Mode::Both) return false;
+#else
     if (_lab_seq_requested && mesh::radioDirection::mode() != mesh::radioDirection::Mode::Rx) return false;
+#endif
 #endif
 #if MESH_ENABLE_TX_BEACONS
     if (isBeaconRadioOwned()) return false;
@@ -463,17 +496,92 @@ public:
       if (_lab_resume_last>_lab_resume_max) _lab_resume_max=_lab_resume_last;
     }
     _lab_resume_pending=false;
+#if defined(MESH_W12_PRAM_SEQ_TX_LAB) && MESH_W12_PRAM_SEQ_TX_LAB
+    _lab_seq_tx_lease=false;
+#endif
     _lab_scan_active=true; _lab_auto.active(); r->labSetPramScan(true); _lab_last_poll=millis(); _lab_progress_at=millis(); _lab_prev_cads=_lab_status.cads;
     state=1; // lab scanner owns the radio and has armed CAD/RX
     return true;
   }
+#if defined(MESH_W12_PRAM_SEQ_TX_LAB) && MESH_W12_PRAM_SEQ_TX_LAB
+  // Final, mandatory check. The ordinary Dispatcher CAD timeout may permit TX
+  // after a busy result, so that earlier check is not an authorization here.
+  bool labSequentialTxClear() {
+    const bool prepared=_lab_seq_tx_prepared;
+    _lab_seq_tx_prepared=false; // every attempt consumes its authorization
+    if (!_lab_seq_requested || !_lab_seq_tx_lease || !prepared || _lab_scan_active || _lab_uncertain
+        || mesh::radioDirection::mode()!=mesh::radioDirection::Mode::Both
+        || !_profiles.enabled() || _lab_seq_tx_profile>1
+        || _profiles.generation[0]!=_lab_seq_plan.generation[0]
+        || _profiles.generation[1]!=_lab_seq_plan.generation[1]
+        || !mesh::w12pram::sequentialChannelsDisjoint(_lab_snap[0],_lab_snap[1])
+        || _active_profile!=_lab_seq_tx_profile
+        || _profile_generation!=_profiles.generation[_lab_seq_tx_profile]
+        || !_params_valid || _profile_refresh_required || _profile_repair_required) {
+      ++_lab_seq_tx_error; return false;
+    }
+    const auto& p=_profiles.params(_lab_seq_tx_profile);
+    auto* r=static_cast<CustomLR2021*>(_radio);
+    if (_cur_freq!=p.freq || _cur_bw!=p.bw || _cur_sf!=p.sf
+        || _physical_preamble!=profilePreamble(_lab_seq_tx_profile)
+        || r->getSpreadingFactor()!=p.sf || _cw_active || isChipBusy()
+        || hasPendingRadioInterrupt() || isPacketPendingOrReceiving()) {
+      ++_lab_seq_tx_busy; return false;
+    }
+    uint8_t sfs[mesh::w12pram::SequentialMaxSlots+1]={}, count=0;
+    if (!mesh::w12pram::sequentialTxSFs(_lab_seq_plan,_lab_seq_tx_profile,p.sf,sfs,count)) {
+      ++_lab_seq_tx_error; return false;
+    }
+    // Standby freezes RX before the first CAD clears IRQ flags. A packet may
+    // complete during standby: preserve any latched FIFO rather than clear it.
+    if (r->standby()!=RADIOLIB_ERR_NONE) { ++_lab_seq_tx_error; labMarkUncertain(); return false; }
+    if (hasPendingRadioInterrupt() || isPacketPendingOrReceiving() || hasPendingRadioInterrupt()) {
+      ++_lab_seq_tx_busy; labMarkUncertain(); return false;
+    }
+    state=0;
+    int16_t result=RADIOLIB_CHANNEL_FREE;
+    for (uint8_t i=0;i<count;++i) {
+      if (r->setSpreadingFactor(sfs[i])!=RADIOLIB_ERR_NONE) { result=RADIOLIB_ERR_UNKNOWN; break; }
+      result=performChannelScanWithTimeout(cadScanTimeoutMillis(sfs[i],p.bw));
+      _board->serviceWatchdog();
+      if (result!=RADIOLIB_CHANNEL_FREE) break;
+    }
+    const bool restored=r->standby()==RADIOLIB_ERR_NONE
+        && r->setSpreadingFactor(p.sf)==RADIOLIB_ERR_NONE
+        && r->clearIrqFlags(UINT32_MAX)==RADIOLIB_ERR_NONE;
+    claimRadioInterrupt(); // CAD-only IRQ; RX has remained in standby.
+    if (!restored) { ++_lab_seq_tx_error; labMarkUncertain(); return false; }
+    if (result!=RADIOLIB_CHANNEL_FREE) {
+      if (result==RADIOLIB_LORA_DETECTED) ++_lab_seq_tx_busy;
+      else ++_lab_seq_tx_error;
+      startRecv();
+      if (!isInRecvMode()) labMarkUncertain();
+      return false;
+    }
+    ++_lab_seq_tx_clear;
+    return true;
+  }
+  void labSequentialTxStatus(char* out, size_t cap) const {
+    snprintf(out,cap,"seqtx=%s busy=%lu error=%lu clear=%lu",
+        _lab_seq_tx_lease?"paused":"idle",(unsigned long)_lab_seq_tx_busy,
+        (unsigned long)_lab_seq_tx_error,(unsigned long)_lab_seq_tx_clear);
+  }
+#endif
   mesh::RadioParamApplyResult prepareTransmitProfile(uint8_t p) override {
     return prepareTransmitProfile(p,false);
   }
   mesh::RadioParamApplyResult prepareTransmitProfile(uint8_t p, bool reply) override {
     using Result=mesh::RadioParamApplyResult;
+#if defined(MESH_W12_PRAM_SEQ_TX_LAB) && MESH_W12_PRAM_SEQ_TX_LAB
+    if (_lab_seq_requested) _lab_seq_tx_prepared=false;
+#endif
 #if defined(MESH_W12_PRAM_SEQUENTIAL_LAB) && MESH_W12_PRAM_SEQUENTIAL_LAB
+#if defined(MESH_W12_PRAM_SEQ_TX_LAB) && MESH_W12_PRAM_SEQ_TX_LAB
+    if (_lab_seq_requested && (mesh::radioDirection::mode() != mesh::radioDirection::Mode::Both
+        || (!_lab_scan_active && !_lab_seq_tx_lease))) return Result::BUSY;
+#else
     if (_lab_seq_requested) return Result::FAILED;
+#endif
 #endif
     if (_lab_uncertain) return Result::BUSY;
     if (p>1 || !_profiles.canTransmit(p,reply)) return Result::FAILED;
@@ -482,11 +590,21 @@ public:
       if (paused!=Result::APPLIED) return paused;
       ++_lab_tx_pauses;
       _lab_resume_pending=true;
+#if defined(MESH_W12_PRAM_SEQ_TX_LAB) && MESH_W12_PRAM_SEQ_TX_LAB
+      if (_lab_seq_requested) { _lab_seq_tx_lease=true; _lab_seq_tx_profile=p; }
+#endif
     }
     // Dispatcher runs the configured channel check and start in this same
     // synchronous turn. Never restart the scanner in the middle of that turn.
     if (_lab_resume_pending) _lab_resume_at=millis()+600;
-    return RadioLibWrapper::prepareTransmitProfile(p,reply);
+#if defined(MESH_W12_PRAM_SEQ_TX_LAB) && MESH_W12_PRAM_SEQ_TX_LAB
+    if (_lab_seq_requested && _lab_seq_tx_profile!=p) return Result::BUSY;
+#endif
+    const Result result=RadioLibWrapper::prepareTransmitProfile(p,reply);
+#if defined(MESH_W12_PRAM_SEQ_TX_LAB) && MESH_W12_PRAM_SEQ_TX_LAB
+    if (_lab_seq_requested && result==Result::APPLIED) _lab_seq_tx_prepared=true;
+#endif
+    return result;
   }
   mesh::RadioParamApplyResult tryRestoreCodingRate(uint8_t cr) override {
     if (_lab_scan_active || _lab_uncertain) return mesh::RadioParamApplyResult::BUSY;

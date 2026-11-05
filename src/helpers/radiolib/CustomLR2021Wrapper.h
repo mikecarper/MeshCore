@@ -529,7 +529,11 @@ protected:
 public:
   bool startSendRaw(const uint8_t* bytes, int len) override {
 #if defined(MESH_W12_PRAM_SEQUENTIAL_LAB) && MESH_W12_PRAM_SEQUENTIAL_LAB
+#if defined(MESH_W12_PRAM_SEQ_TX_LAB) && MESH_W12_PRAM_SEQ_TX_LAB
+    if (_lab_seq_requested && !labSequentialTxClear()) return false;
+#else
     if (_lab_seq_requested) return false;
+#endif
 #endif
 #if defined(MESH_W12_PRAM_EXPERIMENT) && MESH_W12_PRAM_EXPERIMENT
     if (_lab_scan_active || _lab_uncertain) return false;
