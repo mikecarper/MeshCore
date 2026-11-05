@@ -38,7 +38,7 @@ static void success() {
     prime(w);
     w.chip.standbyXOSC = warm;
     const uint8_t features = w.chip.getProfileSwitchFeatures();
-    assert(w.getOldAGCInterval() == 600);
+    assert(w.getOldAGCInterval() == 0);
     assert(w.periodicAGCMaintenance(false) == Result::Applied);
     assert(w.chip.trace == (MC_SX1262_FAST_FS ? "IfCWR" : "sCWR"));
     assert(w.chip.actual_rx_commands == 1 && w.chip._profileFastResumes == 1);
@@ -245,7 +245,7 @@ static void noOp() {
 static void legacy() {
   CustomSX1262Wrapper w;
   prime(w);
-  assert(w.getOldAGCInterval() == 600);
+  assert(w.getOldAGCInterval() == 0);
   assert(w.periodicOldAGCMaintenance() == Result::Applied && w.old_resets == 1);
   w.startRecv();
   assert(w.periodicOldAGCMaintenance() == Result::Applied && w.old_resets == 2);

@@ -57,7 +57,7 @@ public:
 protected:
 #if MESH_WARM_RX_REFRESH
   WarmRxRefresh _warm_refresh;
-  uint32_t _old_agc_seconds=600;
+  uint32_t _old_agc_seconds=0;
   virtual bool warmRxRefreshUsesFs() const { return false; }
   virtual WarmRxRefresh::Outcome performWarmRxRefresh(WarmRxRefresh::Reason& reason) {
     reason=WarmRxRefresh::Reason::Policy;

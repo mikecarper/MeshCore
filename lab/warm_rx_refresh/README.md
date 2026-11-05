@@ -20,8 +20,9 @@ A deferred or failed warm operation retries after 250 ms without receiving
 credit for a completed refresh.
 
 `get agc.old` and `set agc.old <seconds>` control an independent legacy full-reset
-timer: zero disables it, its maximum is 86400 seconds, and it defaults to 600
-seconds after each MCU reboot. It is RAM-only and does not change preferences.
+timer: zero disables it, its maximum is 86400 seconds, and it defaults to zero
+(disabled) after each MCU reboot. It is RAM-only and does not change preferences.
+For example, `set agc.old 600` enables a ten-minute full-reset interval.
 Its first deadline is anchored when Dispatcher begins servicing the enabled
 timer, and it neither follows TX postponement nor adaptive escalation. When
 both timers are due, the old timer goes first and the primary retries later.

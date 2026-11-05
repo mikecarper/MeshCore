@@ -40,6 +40,8 @@ static void scheduler() {
     now_ms = started;
     CustomSX1262Wrapper w;
     prime(w);
+    assert(w.getOldAGCInterval() == 0);
+    assert(w.setOldAGCInterval(600));
     Dispatcher node(w);
     node.service();
     uint32_t wake;
@@ -66,6 +68,7 @@ static void scheduler() {
   now_ms = 0;
   CustomSX1262Wrapper simultaneous;
   prime(simultaneous);
+  assert(simultaneous.setOldAGCInterval(600));
   Dispatcher node(simultaneous);
   node._prefs.agc_reset_interval = 15; // Main interval remains 60 seconds.
   node.service();
@@ -86,7 +89,7 @@ static void scheduler() {
   now_ms = 0;
   CustomSX1262Wrapper disabled;
   prime(disabled);
-  disabled.setOldAGCInterval(0);
+  assert(disabled.getOldAGCInterval() == 0); // Boot policy needs no disabling command.
   Dispatcher off(disabled);
   off.service();
   now_ms = 2000000;
@@ -99,6 +102,7 @@ static void scheduler() {
   now_ms = 0;
   CustomSX1262Wrapper recovered;
   prime(recovered);
+  assert(recovered.setOldAGCInterval(600));
   Dispatcher recovery(recovered);
   recovery.service();
   now_ms = 600000;

@@ -5155,7 +5155,7 @@ void CommonCLI::handleSetCmd(uint32_t sender_timestamp, char* command, char* rep
     if(!radio || !radio->supportsWarmRxRefresh()) mesh::cli::formatError(reply,160,"unsupported");
     else if(!mesh::cli::parseUnsignedIntegerStrict(value,seconds) || seconds>86400) mesh::cli::formatError(reply,160,"old AGC interval must be 0-86400 seconds");
     else if(!radio->setOldAGCInterval(seconds)) mesh::cli::formatError(reply,160,"failed to set old AGC interval");
-    else sprintf(reply,"OK - old full-reset interval %lu seconds (RAM only; default 600 after reboot)",(unsigned long)seconds);
+    else sprintf(reply,"OK - old full-reset interval %lu seconds (RAM only; disabled after reboot)",(unsigned long)seconds);
   } else if (memcmp(config, "agc.reset.interval ", 19) == 0 || memcmp(config,"agc ",4)==0) {
     uint32_t seconds;
     const char* value=memcmp(config,"agc ",4)==0 ? config+4 : config+19;
