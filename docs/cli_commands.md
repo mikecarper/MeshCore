@@ -4297,23 +4297,25 @@ the short alias uses that same parser and saved setting.
 **Default:** `0.0`
 
 On Heltec V4 builds based on `Heltec_lora32_v4`, this saved interval schedules
-a same-channel warm receive refresh. The existing value, four-second rounding,
-and adaptive scheduling are retained. A completed refresh enters SetFs or warm
-standby and returns through checked continuous RX, without sleep, calibration,
-retuning, or resetting the noise-floor cache. It is not proof of an analog AGC
-reset or a sensitivity improvement. V4 R8 and other board families retain the
-existing reset method unless explicitly built with `MESH_WARM_RX_REFRESH=1`
-on a supported SX1262 wrapper.
+a same-channel RXPS pulse. The existing value, four-second rounding and adaptive
+scheduling are retained. It does not retune, calibrate, change gain or reset
+the noise-floor cache. Completing the hardware sleep/wake sequence is not proof
+of an analog AGC reset or a sensitivity improvement. V4 R8 and other board
+families retain the existing reset method unless explicitly built with the
+legacy-named `MESH_WARM_RX_REFRESH=1` flag on a supported SX1262 wrapper.
 
-The V4 warm path requires continuous primary LoRa RX, with `radio.rxps` and
-`radio2` off and the warm/packet-cache fast features enabled. Packet ownership,
-TX, BUSY, exclusive calibration, or unavailable cached context defer the
-operation; deferred and failed attempts retry after 250 ms without completion
-credit. Shared recovery watchdogs still use their existing full-reset path.
-The saved starting interval is reported even while the warm path is deferred.
+The opted-in V4 primary path now performs one asynchronous RXPS pulse. It
+requires continuous primary LoRa RX, with `radio.rxps` and `radio2` off. It does
+not require radio2 warm, FS or packet-cache shortcuts. An admitted pulse stages
+ordinary LoRa duty-cycle RX, observes a post-arm BUSY low/high/natural-low
+sequence, checks RC standby and RTC cleanup, and checks continuous RX reentry.
+The saved interval and its existing scheduler remain unchanged. Shared recovery
+watchdogs still use their existing full-reset path. A packet, TX, BUSY or another
+radio owner defers admission; an unadmitted deferral retries after 250 ms. A
+consumed failed attempt retains its failure diagnostics and normal interval.
 
-On those supported builds, an independent full-reset timer is also available
-through the Repeater, Room Server, Sensor, and Companion text parsers:
+An independent full-reset timer remains available through the Repeater, Room
+Server, Sensor and Companion text parsers:
 
 - `get agc.old`
 - `set agc.old <seconds>`: `0` disables it; `1-86400` enables it.
@@ -4322,16 +4324,25 @@ through the Repeater, Room Server, Sensor, and Companion text parsers:
 This second timer is RAM-only and **disabled after every reboot**. Enabling it
 does not change the saved primary interval. Its first deadline starts when it
 is enabled; it does not use adaptive escalation or TX postponement. If both
-timers are due, the old reset runs first and the warm refresh is deferred.
+timers are due, the old reset runs first and the primary pulse is deferred.
 
-`get agc.status`, `get agc.timing`, and `get agc.recovery` expose requests,
-admissions, deferrals, failures, checked reentries, persistent failure code/step,
-and separate warm/recovery timing spans. A warm span runs from the transition
-command to successful SetRx return; it is a software command duration, not an
-independent RF-outage measurement. Getter pages are separate, non-atomic reads.
-The legacy `get agc.old.status`, `.timing`, and `.errors` pages, including their
-`agc.reset.*` compatibility names, require `MESH_AGC_TIMING_DIAGNOSTICS=1`.
-See [warm receive refresh](../lab/warm_rx_refresh/README.md) for counter details.
+`get agc.status`, `get agc.timing`, `get agc.recovery`, `get agc.pulse`,
+`get agc.sleep` and `get agc.checks` are cached diagnostics. Successful completion
+requires an observed cycle plus checked RTC cleanup, SetRx and RX-mode status.
+The total timing includes the initial listening window. The sleep timing is a
+sampled BUSY-high span, not an independently measured RF outage. Long or missing
+observations fail the witness check. The default compensated sleep request is
+4000 us; TCXO and transition compensation make the encoded retained-sleep timer
+shorter. This does not establish improved sensitivity or reception.
+
+Explicit bench builds with `MESH_RXPS_PULSE_LAB=1` also expose local
+`get agc.test.sleep_us` and `set agc.test.sleep_us 6554|4000|3000|2616`. The selector is
+RAM-only, changes no saved interval, and cannot change an active pulse. Set the
+primary interval to zero and wait for `pending=0` before changing it. Normal
+builds expose no sleep-duration setter. The legacy `get agc.old.status`,
+`.timing` and `.errors` pages, including their `agc.reset.*` compatibility names,
+require `MESH_AGC_TIMING_DIAGNOSTICS=1`. Separate getter pages are non-atomic.
+See [RXPS receive pulse](../lab/rxps_pulse/README.md) for witness and timing limits.
 
 With device `powersaving` on and a nonzero AGC interval, Companion, Repeater,
 Room Server, and Sensor firmware use adaptive reset scheduling. The saved

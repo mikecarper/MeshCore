@@ -3752,6 +3752,17 @@ bool CommonCLI::handleUDPBridgeCommand(uint32_t sender_timestamp,
 void CommonCLI::handleCommand(uint32_t sender_timestamp, char* command, char* reply) {
     PrefsSaveReplyGuard save_reply(_prefs_save_failures, reply);
     mesh::cli::normalizeCommandVerb(command);
+#if MESH_RXPS_PULSE_LAB
+    if(sender_timestamp==0 && mesh::handleRxpsPulseLabCommand(_callbacks->getProfileRadio(),command,reply,157)) return;
+#endif
+    // Cached getters remain available during an asynchronous RXPS lease.
+    // Defer mutating commands (including board FEM GPIO) before any driver
+    // or board callback can accidentally assert NSS during retained sleep.
+    const auto* maintenance_radio=_callbacks->getProfileRadio();
+    if(maintenance_radio && maintenance_radio->isAGCMaintenancePending()
+        && strncmp(command,"get ",4)!=0 && strcmp(command,"ver")!=0) {
+      mesh::cli::formatError(reply,160,"radio maintenance pending; retry shortly");return;
+    }
 #if MESH_WARM_RX_LAB_TIMER
     if(mesh::handleWarmRxLabTimerCommand(_callbacks->getProfileRadio(),command,reply,157)) return;
 #endif
@@ -6589,9 +6600,11 @@ void CommonCLI::handleGetCmd(uint32_t sender_timestamp, char* command, char* rep
     const auto* radio=_callbacks->getProfileRadio();
     if(!radio || !radio->supportsWarmRxRefresh()) mesh::cli::formatError(reply,160,"unsupported");
     else sprintf(reply,"> %lu",(unsigned long)radio->getOldAGCInterval());
-  } else if(configKeyEquals(config,"agc.status") || configKeyEquals(config,"agc.timing") || configKeyEquals(config,"agc.recovery")) {
+  } else if(configKeyEquals(config,"agc.status") || configKeyEquals(config,"agc.timing") || configKeyEquals(config,"agc.recovery")
+      || configKeyEquals(config,"agc.pulse") || configKeyEquals(config,"agc.sleep") || configKeyEquals(config,"agc.checks")) {
     const auto* radio=_callbacks->getProfileRadio();
-    const uint8_t page=configKeyEquals(config,"agc.timing")?1:configKeyEquals(config,"agc.recovery")?2:0;
+    const uint8_t page=configKeyEquals(config,"agc.timing")?1:configKeyEquals(config,"agc.recovery")?2:
+        configKeyEquals(config,"agc.pulse")?3:configKeyEquals(config,"agc.sleep")?4:configKeyEquals(config,"agc.checks")?5:0;
     if(!radio || !radio->formatWarmRxRefresh(page,((uint32_t)_prefs->agc_reset_interval)*4,reply,157)) mesh::cli::formatError(reply,160,"unsupported");
   } else if (configKeyEquals(config, "agc.reset.interval") || configKeyEquals(config,"agc")) {
     sprintf(reply, "> %d", ((uint32_t) _prefs->agc_reset_interval) * 4);

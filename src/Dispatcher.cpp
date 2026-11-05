@@ -704,11 +704,13 @@ void Dispatcher::logPacketLine(const char* direction, const Packet* packet,
 #endif
 
 bool Dispatcher::getNextNoiseFloorWakeDelay(uint32_t& delay_millis) const {
+  if(_radio->isAGCMaintenancePending()) { delay_millis=0;return true; }
   return radioDirection::radioReceiveAllowed() && radio_available
       && _radio->getNoiseFloorWakeDelay(_ms->getMillis(), delay_millis);
 }
 
 bool Dispatcher::getNextQueueWakeDelay(uint32_t& delay_millis) const {
+  if(_radio->isAGCMaintenancePending()) { delay_millis=0;return true; }
   const bool dual_profile = radioDirection::radioReceiveAllowed() && isDualRadioActive();
   uint32_t profile_delay = 0;
   if (dual_profile && (!radio_available
@@ -893,6 +895,19 @@ void Dispatcher::expireLabBlockedSends() {
 #endif
 
 void Dispatcher::loop() {
+#if defined(MESH_WARM_RX_REFRESH) && MESH_WARM_RX_REFRESH
+  uint32_t primary_cadence_ms=radioDirection::radioReceiveAllowed()?(uint32_t)getAGCResetInterval()*1000UL:0;
+#if MESH_WARM_RX_LAB_TIMER
+  uint32_t lab_cadence_ms=0;
+  if(_radio->getWarmRxLabInterval(lab_cadence_ms)) primary_cadence_ms=lab_cadence_ms;
+#endif
+  _radio->configureAGCMaintenance(primary_cadence_ms);
+  if(_radio->isAGCMaintenanceActive()) {
+    _radio->loop();
+    if(_radio->isAGCMaintenanceActive()) return;
+  }
+#endif
+
 #if defined(MESH_W12_PRAM_SEQ_TX_LAB) && MESH_W12_PRAM_SEQ_TX_LAB
   expireLabBlockedSends();
 #endif
@@ -1198,8 +1213,11 @@ void Dispatcher::loop() {
     {
       // An old attempt owns this loop. Do not count an uninvoked primary
       // request or run both maintenance methods back to back.
-      attempted = !recovered_this_loop && !old_agc_serviced
-          && _radio->periodicAGCMaintenance(adaptive) == AGCMaintenanceResult::Applied;
+      const auto result=(!recovered_this_loop && !old_agc_serviced)
+          ? _radio->periodicAGCMaintenance(adaptive) : AGCMaintenanceResult::Deferred;
+      // A consumed admitted failure keeps its diagnostic and normal cadence;
+      // it is not receiver-health credit and must not repeat every250ms.
+      attempted=result==AGCMaintenanceResult::Applied || result==AGCMaintenanceResult::Failed;
     }
     #else
     if (!adaptive) {

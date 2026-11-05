@@ -29,7 +29,8 @@ namespace radioDirection = mesh::radioDirection;
 struct Profiles { bool active = false; bool enabled() const { return active; } };
 struct Radio {
   Profiles profile;
-  bool receive_retry = false;
+  bool receive_retry = false, maintenance = false;
+  bool isAGCMaintenancePending() const { return maintenance; }
   uint32_t receive_delay = 0, recovery = 0;
   Profiles* profiles() { return &profile; }
   bool getReceiveRetryDelay(uint32_t, uint32_t& out) const {
@@ -90,6 +91,9 @@ int main() {
   Clock clock;
   Manager manager;
   Dispatcher legacy{&unknown, &clock, &manager};
+  unknown.maintenance=true;
+  assert(legacy.getNextQueueWakeDelay(unchanged) && unchanged==0);
+  unknown.maintenance=false;
   assert(legacy.canIdleDualRadio());
   assert(!legacy.getDualRadioIdleDelay(unchanged) && unchanged == 0);
   unknown.profile.active = true;

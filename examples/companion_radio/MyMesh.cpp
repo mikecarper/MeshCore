@@ -9039,6 +9039,7 @@ void MyMesh::servicePendingTxPower() {
 }
 
 bool MyMesh::applyAndSaveFemRxGain(bool enabled) {
+  if(_radio && _radio->isAGCMaintenancePending()) return false;
   // Binary Companion setters and WebConfig also enter through this helper.
   // Do not alter an external FEM while the Morse transmitter owns it.
   if (_radio && (_radio->isMorseTxActive() || _radio->isMorseRxActive())) return false;
@@ -11351,6 +11352,10 @@ bool MyMesh::handleCommand(const char* command, uint32_t sender_timestamp,
   if (command == NULL || reply == NULL) return false;
   size_t reply_capacity = 160;
   while (*command == ' ' || *command == '\t') command++;
+  if(_radio && _radio->isAGCMaintenancePending() && strncmp(command,"get ",4)!=0 && strcmp(command,"ver")!=0) {
+    mesh::cli::formatError(reply,reply_capacity,"radio maintenance pending; retry shortly");return true;
+  }
+
 
 #if COMPANION_FEATURE_DIRECT_OTA_ADMIN
   if (handleDirectOtaCommand(command, sender_timestamp, reply, reply_capacity)) return true;

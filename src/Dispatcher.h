@@ -20,6 +20,9 @@
 #include <string.h>
 
 // Explicit lab builds only; never changes the persisted interval format.
+#ifndef MESH_RXPS_PULSE_LAB
+  #define MESH_RXPS_PULSE_LAB 0
+#endif
 #ifndef MESH_WARM_RX_LAB_TIMER
   #define MESH_WARM_RX_LAB_TIMER 0
 #endif
@@ -359,9 +362,16 @@ public:
   virtual bool formatAGCTimingDiagnostics(uint8_t, char*, size_t) const { return false; }
 #endif
   virtual uint32_t getRecoveryCount() const { return 0; }
-  // The primary warm experiment reuses the existing saved AGC interval.
+  // The primary RXPS pulse reuses the existing saved AGC interval.
   // Its optional old full-reset timer is independent and RAM-only.
   virtual bool supportsWarmRxRefresh() const { return false; }
+  // An asynchronous primary pulse owns the physical radio between loop ticks.
+  virtual bool isAGCMaintenanceActive() const { return false; }
+  virtual bool isAGCMaintenancePending() const { return false; }
+  virtual void configureAGCMaintenance(uint32_t) { }
+  virtual void cancelAGCMaintenance() { }
+  virtual bool setAGCPulseSleep(uint32_t) { return false; }
+  virtual uint32_t getAGCPulseSleep() const { return 0; }
 #if MESH_WARM_RX_LAB_TIMER
   virtual bool setWarmRxLabInterval(bool, uint32_t) { return false; }
   virtual bool getWarmRxLabInterval(uint32_t&) const { return false; }

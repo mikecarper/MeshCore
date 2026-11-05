@@ -26,6 +26,7 @@
 #include "HilTxFrequencyGuard.h"
 #include "ESP32RadioTrace.h"
 #include "WarmRxRefresh.h"
+#include "RxpsPulse.h"
 #if defined(MESH_AGC_TIMING_DIAGNOSTICS) && MESH_AGC_TIMING_DIAGNOSTICS
 #include "AGCTimingDiagnostics.h"
 #endif
@@ -57,6 +58,8 @@ public:
 protected:
 #if MESH_WARM_RX_REFRESH
   WarmRxRefresh _warm_refresh;
+  RxpsPulse _rxps_pulse;
+  uint8_t _rxps_pulse_retries=0;
   uint32_t _old_agc_seconds=0;
 #if MESH_WARM_RX_LAB_TIMER
   bool _warm_rx_lab_timer_active=false;
@@ -411,6 +414,10 @@ protected:
   }
   virtual int16_t stopDutyCycleHardware() { return _radio->standby(); }
   virtual int16_t startContinuousReceive() { return _radio->startReceive(); }
+#if MESH_WARM_RX_REFRESH
+  virtual bool startAGCPulse() { return false; }
+  virtual void serviceAGCPulse() { }
+#endif
   virtual bool isPacketReady();
   // true while the chip cannot service SPI (RX duty-cycle sleep window, or
   // briefly while processing a command); radios expose this via the BUSY pin
@@ -671,6 +678,9 @@ public:
         : preambleLengthForParams(getSpreadingFactor(), static_cast<float>(LORA_BW));
   }
   bool updatePreamble(uint8_t sf, float bw) {
+#if MESH_WARM_RX_REFRESH
+    if(_rxps_pulse.pending) return false;
+#endif
     return _radio->setPreambleLength(preambleLengthForParams(sf, bw)) == RADIOLIB_ERR_NONE;
   }
   PacketMillis calcMaxPacketMillis(uint8_t sf, float bw, uint8_t cr, uint16_t preambleSymbols);
@@ -751,8 +761,17 @@ public:
   uint32_t agcMaintenanceRetryMs() const override { return supportsWarmRxRefresh()?250:50; }
   bool formatWarmRxRefresh(uint8_t page,uint32_t seconds,char* reply,size_t capacity) const override {
     if(!supportsWarmRxRefresh()) return false;
-    _warm_refresh.format(page,seconds,reply,capacity); return true;
+    _rxps_pulse.format(page,seconds,reply,capacity); return true;
   }
+  bool isAGCMaintenanceActive() const override { return _rxps_pulse.owns(); }
+  bool isAGCMaintenancePending() const override { return _rxps_pulse.pending; }
+  void configureAGCMaintenance(uint32_t ms) override { _rxps_pulse.cadence(ms); }
+  void cancelAGCMaintenance() override { _rxps_pulse.cancelRequest(); }
+  bool setAGCPulseSleep(uint32_t us) override {
+    return supportsWarmRxRefresh() && (us==2616 || us==3000 || us==4000 || us==6554)
+        && _rxps_pulse.configure(us,rxPowerSavingTransitionUs());
+  }
+  uint32_t getAGCPulseSleep() const override { return supportsWarmRxRefresh()?_rxps_pulse.sleep_us:0; }
 #endif
   bool tryResetAGC() override;
 #if defined(MESH_AGC_TIMING_DIAGNOSTICS) && MESH_AGC_TIMING_DIAGNOSTICS

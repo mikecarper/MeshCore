@@ -41,13 +41,35 @@ inline bool handleWarmRxLabTimerCommand(Radio* radio,const char* command,
 #endif
 }
 
+// Only explicitly compiled bench firmware can change the compensated sleep
+// request. It does not save preferences or trigger a radio operation.
+inline bool handleRxpsPulseLabCommand(Radio* radio,const char* command,char* reply,size_t capacity) {
+#if MESH_RXPS_PULSE_LAB
+  const bool get=strcmp(command,"get agc.test.sleep_us")==0;
+  const bool set=strncmp(command,"set agc.test.sleep_us ",22)==0;
+  if(!get && !set) return false;
+  if(!radio || !radio->supportsWarmRxRefresh()) cli::formatError(reply,capacity,"unsupported");
+  else if(get) snprintf(reply,capacity,"> %lu",(unsigned long)radio->getAGCPulseSleep());
+  else {
+    uint32_t us=0;
+    if(!cli::parseUnsignedIntegerStrict(command+22,us) || (us!=2616 && us!=3000 && us!=4000 && us!=6554))
+      cli::formatError(reply,capacity,"pulse sleep must be 2616, 3000, 4000 or 6554 us");
+    else if(!radio->setAGCPulseSleep(us)) cli::formatError(reply,capacity,"pulse pending or timing unsupported");
+    else snprintf(reply,capacity,"OK - pulse sleep request %lu us (RAM only)",(unsigned long)us);
+  }
+  return true;
+#else
+  (void)radio;(void)command;(void)reply;(void)capacity;return false;
+#endif
+}
+
 // Runtime-only maintenance controls shared with the Companion text parser.
 // Primary saved interval aliases stay in CommonRadioPrefs so its normal
 // dirty/save/rollback transaction remains authoritative.
 inline bool handleAGCMaintenanceCommand(Radio* radio,const char* command,
     uint32_t primary_seconds,char* reply,size_t capacity) {
   if(!command || !reply || !capacity) return false;
-  if(handleWarmRxLabTimerCommand(radio,command,reply,capacity)) return true;
+  if(handleWarmRxLabTimerCommand(radio,command,reply,capacity) || handleRxpsPulseLabCommand(radio,command,reply,capacity)) return true;
   const size_t diagnostic_capacity=capacity<157?capacity:157;
   if(strcmp(command,"get agc.old")==0) {
     if(!radio || !radio->supportsWarmRxRefresh()) cli::formatError(reply,capacity,"unsupported");
@@ -64,8 +86,10 @@ inline bool handleAGCMaintenanceCommand(Radio* radio,const char* command,
     return true;
   }
   if(strcmp(command,"get agc.status")==0 || strcmp(command,"get agc.timing")==0
-      || strcmp(command,"get agc.recovery")==0) {
-    const uint8_t page=strcmp(command,"get agc.timing")==0?1:strcmp(command,"get agc.recovery")==0?2:0;
+      || strcmp(command,"get agc.recovery")==0 || strcmp(command,"get agc.pulse")==0
+      || strcmp(command,"get agc.sleep")==0 || strcmp(command,"get agc.checks")==0) {
+    const uint8_t page=strcmp(command,"get agc.timing")==0?1:strcmp(command,"get agc.recovery")==0?2:
+        strcmp(command,"get agc.pulse")==0?3:strcmp(command,"get agc.sleep")==0?4:strcmp(command,"get agc.checks")==0?5:0;
     if(!radio || !radio->formatWarmRxRefresh(page,primary_seconds,reply,diagnostic_capacity))
       cli::formatError(reply,capacity,"unsupported");
     return true;

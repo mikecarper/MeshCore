@@ -305,8 +305,9 @@ and interference conditions. Configure it with:
 `set agc.reset.interval <number>`
 
 The unit is seconds, rounded down to a multiple of four. On Heltec V4,
-this schedules a guarded same-channel warm receive refresh. It does not prove
-that analog gain was reset or that receiver sensitivity improved. The older
+this schedules a guarded RXPS sleep/wake pulse followed by checked continuous
+receive reentry. It does not prove that analog gain was reset or that receiver
+sensitivity improved. The older
 full-reset method is available separately with `set agc.old 600`; this RAM-only
 timer is disabled after reboot. V4 R8 and other builds keep the existing reset
 method unless opted in. See [AGC settings](cli_commands.md#view-or-change-the-agc-reset-interval).
