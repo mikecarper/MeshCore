@@ -31,9 +31,13 @@ int main() {
     assert(units >= W::kTxPowerMinUnits && units <= W::kTxPowerMaxUnits);
     assert(W::txPowerDbmFromUnits(static_cast<int8_t>(units)) == dbm);
   }
-  assert(W::txCeilingSatisfied(48, 52));  // SDK can round down.
+  assert(W::txCeilingSatisfied(44, 51));  // SDK can return its mapped value.
+  assert(W::txCeilingSatisfied(51, 51));  // Or the raw requested value.
   assert(W::txCeilingSatisfied(52, 52));
   assert(!W::txCeilingSatisfied(56, 52)); // Ignored writes are rejected.
+  assert(!W::txCeilingSatisfied(52, 80)); // An ignored increase is rejected.
+  assert(W::txCeilingSatisfied(80, 84));  // 20 dBm uses the top PHY step.
+  assert(!W::txCeilingSatisfied(7, 7));
   return 0;
 }
 """

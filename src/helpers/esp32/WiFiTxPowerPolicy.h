@@ -53,13 +53,18 @@ inline int txPowerDbmFromUnits(int8_t units) {
   return units / kTxPowerStepUnits;
 }
 
-// One acceptance rule for every ceiling write: the SDK stores the raw request
-// and floors the PHY to its own power table, so a reported ceiling no higher
-// than the request is the cap in effect, and anything above it means the write
-// never took hold. Both the join path and the modem-sleep path use this so the
-// rule cannot drift between them.
+// ESP-IDF 4.x documents the PHY mapping in esp_wifi_set_max_tx_power(). Some
+// versions report the raw requested ceiling, others the table value. Accept
+// either, but do not silently accept a stale lower ceiling on a power increase.
 inline bool txCeilingSatisfied(int8_t applied, int8_t requested) {
-  return applied <= requested;
+  if (requested < kTxPowerMinUnits || requested > kTxPowerMaxUnits) return false;
+  static constexpr int8_t levels[] = {8, 20, 28, 34, 44, 52, 56, 60, 66, 72, 80};
+  int8_t mapped = levels[0];
+  for (unsigned i = 1; i < sizeof(levels) / sizeof(levels[0]); ++i) {
+    if (requested < levels[i]) break;
+    mapped = levels[i];
+  }
+  return applied == requested || applied == mapped;
 }
 
 }  // namespace wifi

@@ -84,6 +84,9 @@ int main() {
   assert(saveStationTxPower(44)); power = 84; driver_ignores_write = true;
   assert(applyStationTxPower() == ESP_ERR_INVALID_STATE);
   assert(applyManualStationTxPower() == ESP_ERR_INVALID_STATE); // setup AP
+  assert(saveStationTxPower(80)); power = 52;
+  assert(applyStationTxPower() == ESP_ERR_INVALID_STATE); // ignored increase
+  assert(applyManualStationTxPower() == ESP_ERR_INVALID_STATE); // setup AP
   driver_ignores_write = false; readback_fails = true;
   assert(applyStationTxPower() == ESP_ERR_INVALID_STATE); readback_fails = false;
   assert(saveStationTxPower(60));
