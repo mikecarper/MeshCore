@@ -1060,7 +1060,6 @@ jobs:
           python3 -B test/test_profile_idle_esp32.py -v
           python3 -B test/test_profile_idle.py -v
           python3 -B test/test_esp32_usb_sleep.py
-          python3 -B test/test_usb_keyboard_console.py -v
           python3 -B test/test_esp32_full_sleep.py
           python3 -B test/test_esp32_full_power_lifecycle.py
 

@@ -21,8 +21,6 @@ For runtime on/off commands and board exceptions, see
 For practical on/off commands and update directions, see
 [Full Companion feature switches](full_companion_features.md).
 
-Experimental large-screen ESP32 builds can use a [USB keyboard console](usb_keyboard.md).
-
 Shared hardware commands include [power and watchdog diagnostics](companion_power_diagnostics.md),
 [radio recovery and RXEN diagnostics](companion_radio_diagnostics.md), and
 [SD card management on supported builds](test-results/companion_cli_parity_2026-10-23.md#shared-sd-commands).
