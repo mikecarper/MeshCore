@@ -43,8 +43,22 @@ int main() {
   loadSafeModeSettings(&fs); assert(!safeMode());
   const auto good=fs.files.at("/radio_safe");
   fs.fail_write=true;
-  assert(run("set radio.safe on") && !strncmp(reply,"Error",5) && !safeMode());
+  assert(run("set radio.safe on") && strstr(reply,"not saved") && strstr(reply,"on for this boot") && safeMode());
+  assert(run("get radio.safe") && !strcmp(reply,"> on (not saved)"));
   fs.fail_write=false;
+  loadSafeModeSettings(&fs); assert(!safeMode()); // previous committed off survives
+  fs.fail_rename_from={"/radio_safe.tmp", "/radio_safe.bak"};
+  assert(run("set radio.safe on") && strstr(reply,"not saved") && safeMode());
+  assert(!valid && !writable); // publication was indeterminate
+  assert(run("get radio.safe") && !strcmp(reply,"> on (not saved)"));
+  fs.fail_rename_from.clear();
+  loadSafeModeSettings(&fs); assert(!safeMode());
+  assert(run("set radio.safe on") && !strncmp(reply,"OK",2) && safeMode());
+  fs.fail_write=true;
+  assert(run("set radio.safe off") && strstr(reply,"not saved") && safeMode());
+  fs.fail_write=false;
+  loadSafeModeSettings(&fs); assert(safeMode());
+  assert(run("set radio.safe off") && !strncmp(reply,"OK",2) && !safeMode());
   fs.files["/radio_safe"][2]^=1;
   loadSafeModeSettings(&fs); assert(safeMode());
   assert(run("get radio.safe") && strstr(reply,"settings unavailable"));
