@@ -320,7 +320,7 @@ public:
 #if defined(MESH_W12_PRAM_SEQUENTIAL_LAB) && MESH_W12_PRAM_SEQUENTIAL_LAB
   // Explicitly stopped and receive-only; never enable on a live TX-capable radio.
   bool labSequentialConfigure(int selected) {
-    if (_lab_scan_active || _lab_uncertain || _lab_auto.enabled()) return false;
+    if (_lab_scan_active || _lab_uncertain || _lab_auto.enabled() || state==3 || _cw_active) return false;
     if (selected < 0) { _lab_seq_requested=false; _lab_seq_plan.count=0; return true; }
     if (selected > 1 || !_profiles.enabled()
         || mesh::radioDirection::mode() != mesh::radioDirection::Mode::Rx) return false;

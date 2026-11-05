@@ -27,7 +27,8 @@ namespace mesh { namespace radioDirection {
 enum class Mode { Both, Rx }; static Mode value=Mode::Rx; Mode mode() { return value; }
 } }
 struct Scanner {
-  bool _lab_scan_active=false, _lab_uncertain=false, _lab_seq_requested=false;
+  bool _lab_scan_active=false, _lab_uncertain=false, _lab_seq_requested=false, _cw_active=false;
+  uint8_t state=1;
   uint8_t _lab_seq_selected=0;
   struct { bool on=false; bool enabled() const { return on; } } _lab_auto;
   struct { bool on=true; bool enabled() const { return on; } } _profiles;
@@ -39,7 +40,9 @@ int main() {
   s._lab_auto.on=true; assert(!s.labSequentialConfigure(0));
   s._lab_auto.on=false; s._lab_scan_active=true; assert(!s.labSequentialConfigure(0));
   s._lab_scan_active=false; s._lab_uncertain=true; assert(!s.labSequentialConfigure(0));
-  s._lab_uncertain=false; s._profiles.on=false; assert(!s.labSequentialConfigure(0));
+  s._lab_uncertain=false; s.state=3; assert(!s.labSequentialConfigure(0));
+  s.state=1; s._cw_active=true; assert(!s.labSequentialConfigure(0));
+  s._cw_active=false; s._profiles.on=false; assert(!s.labSequentialConfigure(0));
   s._profiles.on=true; mesh::radioDirection::value=mesh::radioDirection::Mode::Both;
   assert(!s.labSequentialConfigure(0));
   mesh::radioDirection::value=mesh::radioDirection::Mode::Rx;
