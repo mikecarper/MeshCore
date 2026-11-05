@@ -16,9 +16,9 @@ Run python3 lab/pram_scanner/run_tests.py with Python 3 and g++. It compiles tes
 
 To regenerate PRAM, build the patched ARC GCC 13.3 Docker image from the pinned upstream repository's docker/Dockerfile.gcc, as described upstream, and use its firmware/pram/build_scan.sh with this directory's scan.c, scan_hdr.S and pram.ld. Rename resulting scan.bin to scan-safe.bin and regenerate the host header as little-endian 32-bit words; run the tests. Retain the license notice.
 
-The W12 Full image uses a separate checkout and one PlatformIO process:
+The experimental W12 Full image uses a separate checkout and one PlatformIO process. The PRAM experiment is disabled in the normal W12 build and must be explicitly enabled for this invocation:
 
-    PLATFORMIO_BUILD_FLAGS="-DWEBCONFIG_WIFI_CONNECT_TIMEOUT_MS=60000UL -DMESH_WIFI_ALL_CHANNEL_SCAN=1 -DMESH_WIFI_RECOVERY=1" OUTPUT_DIR=lab/pram_scanner/full-tx-final bash build.sh build-firmware meshnology_w12_repeater_observer_mqtt --full-exact --profile default --radio-preset target --firmware-version v1.18.0.2-w12-pramscan-txlab
+    PLATFORMIO_BUILD_FLAGS="-DMESH_W12_PRAM_EXPERIMENT=1 -DWEBCONFIG_WIFI_CONNECT_TIMEOUT_MS=60000UL -DMESH_WIFI_ALL_CHANNEL_SCAN=1 -DMESH_WIFI_RECOVERY=1" OUTPUT_DIR=lab/pram_scanner/full-tx-final bash build.sh build-firmware meshnology_w12_repeater_observer_mqtt --full-exact --profile default --radio-preset target --firmware-version v1.18.0.2-w12-pramscan-txlab
 
 Commands include set pramscan on, set pramscan off, get pramscan, get pramscan.last, get pramscan.diag, get pramscan.timing, set pramscan.rxpre 2 32, run pramscan.bench, and get pramscan.bench. Change receive preamble only while stopped. The benchmark measures full SPI command round trips for frequency/modulation configuration, not RF lock, full RX readiness or packet switching. Reset/recovery has different costs.
 
