@@ -130,7 +130,11 @@ public:
     return true;
   }
   uint32_t getEstAirtimeFor(int len) override {
-    if (_lab_scan_active && _lab_last_profile>=0) return getProfileAirtime(uint8_t(_lab_last_profile),len);
+    // A profile can be disabled before scanner ownership is released. Pass
+    // the validated snapshot's coding rate so the single-profile fallback
+    // in getProfileAirtime does not call this virtual method recursively.
+    if (_lab_scan_active && _lab_last_profile>=0)
+      return getProfileAirtime(uint8_t(_lab_last_profile),len,_lab_last.cr);
     // LR2021::getTimeOnAir reads the packet type over SPI. Once RXPS is
     // armed that NSS pulse can wake/stop the autonomous duty-cycle loop.
     // The active profile is LoRa, so use the cached tuple instead. Supplying

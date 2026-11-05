@@ -21,6 +21,7 @@ class Wrapper : public RadioLibWrapper {
 public:
   bool _lab_scan_active=false, _rx_ps_armed=false, _params_valid=true;
   int _lab_last_profile=-1; uint8_t _active_profile=0, _cur_cr=5;
+  struct { uint8_t cr=5; } _lab_last;
   int profile_calls=0, last_profile=-1, last_len=-1, last_cr=-1;
   uint32_t getProfileAirtime(uint8_t p, int len, uint8_t cr=0) {
     ++profile_calls; last_profile=p; last_len=len; last_cr=cr; return 123;
@@ -34,7 +35,7 @@ int main() {
   assert(w.getEstAirtimeFor(123)==123 && w.driver_calls==1);
   assert(w.last_profile==0 && w.last_len==123 && w.last_cr==5);
   w._lab_scan_active=true; w._lab_last_profile=1;
-  assert(w.getEstAirtimeFor(55)==123 && w.last_profile==1 && w.driver_calls==1);
+  assert(w.getEstAirtimeFor(55)==123 && w.last_profile==1 && w.last_cr==5 && w.driver_calls==1);
   w._lab_scan_active=false; w._rx_ps_armed=false;
   assert(w.getEstAirtimeFor(8)==99 && w.driver_calls==2);
 }
