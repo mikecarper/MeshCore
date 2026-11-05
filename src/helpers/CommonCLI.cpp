@@ -1291,6 +1291,7 @@ void CommonCLI::loadPrefs(FILESYSTEM* fs) {
     _prefs->bridge_pkt_src = 1;  // Default to RX (logRx) for new installs
   }
   mesh::hilStartupTrace("prefs_common_ready");
+#if MESH_ENABLE_BROWSER_RADIO_DEFAULTS
   if (is_fresh_install) {
     mesh::browserRadioDefaults::Settings value;
     if (mesh::browserRadioDefaults::read(value)
@@ -1334,6 +1335,7 @@ void CommonCLI::loadPrefs(FILESYSTEM* fs) {
       }
     }
   }
+#endif
 #ifdef WITH_MQTT_BRIDGE
   // Load observer preferences (MQTT/WiFi/timezone/SNMP/alert) from /mqtt_prefs.
   // Readers (MQTTBridge, AlertReporter, observer CLI) use _mqtt_prefs directly -

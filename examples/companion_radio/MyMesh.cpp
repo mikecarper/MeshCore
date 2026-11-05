@@ -3235,7 +3235,9 @@ void MyMesh::begin(bool has_display, bool radio_available,
       _store->loadPrefs(_prefs, sensors.node_lat, sensors.node_lon);
   // Before any saved-radio apply or automatic traffic. A normal update, an
   // unreadable store, or an existing preamble always keeps its saved intent.
+#if MESH_ENABLE_BROWSER_RADIO_DEFAULTS
   seedBrowserRadioDefaults(prefs_ready);
+#endif
 #if MESH_HIL_COMPANION_STARTUP_FREQ_MHZ
   // A role transition can expose old Companion preferences independently of
   // the Repeater's saved radio. Keep this private image on its bench channel
@@ -3584,6 +3586,7 @@ void MyMesh::begin(bool has_display, bool radio_available,
 #endif
 }
 
+#if MESH_ENABLE_BROWSER_RADIO_DEFAULTS
 void MyMesh::seedBrowserRadioDefaults(bool prefs_ready) {
   mesh::browserRadioDefaults::Settings value;
   if (!prefs_ready || !_radio_available || !_radio || !_radio->profiles()
@@ -3634,6 +3637,7 @@ void MyMesh::seedBrowserRadioDefaults(bool prefs_ready) {
     mesh::usbLoggingPort().println("Radio defaults rollback unconfirmed; RF paused. Reboot after checking storage.");
   }
 }
+#endif
 
 void MyMesh::configureRadioFromPrefs() {
   board.attachDynamicPrefs(_prefs.getCustom());

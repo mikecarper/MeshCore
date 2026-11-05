@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""W12 infrastructure includes and automatically starts the scanner when eligible."""
+"""W12 infrastructure and Companion builds include the scanner when eligible."""
 from pathlib import Path
 import configparser
 import re
@@ -28,12 +28,18 @@ config.read(allowed_file, encoding='utf-8')
 assert flag.search(config['meshnology_w12_pram']['build_flags'])
 roles = {'meshnology_w12_repeater', 'meshnology_w12_repeater_bridge_espnow',
          'meshnology_w12_repeater_observer_mqtt', 'meshnology_w12_room_server',
-         'meshnology_w12_sensor'}
+         'meshnology_w12_sensor', 'meshnology_w12_companion_radio_usb',
+         'meshnology_w12_companion_radio_ble', 'meshnology_w12_companion_radio_wifi'}
 for section in config.sections():
     if not section.startswith('env:meshnology_w12_'):
         continue
     enabled = '${meshnology_w12_pram.build_flags}' in config[section].get('build_flags', '')
     assert enabled == (section[4:] in roles), (section, enabled)
+# Full Companion inherits the Wi-Fi build's flags instead of referencing the
+# scanner block directly. Check that inheritance explicitly.
+full = config['env:meshnology_w12_companion_radio_full']
+assert full['extends'] == 'env:meshnology_w12_companion_radio_wifi'
+assert '${env:meshnology_w12_companion_radio_wifi.build_flags}' in full['build_flags']
 
 source = (root / 'src/helpers/radiolib/W12PramScannerLab.inc').read_text(encoding='utf-8')
 assert 'bool _lab_scan_active = false;' in source
@@ -42,4 +48,4 @@ assert 'labServiceAutomatic(rx_allowed, radio_owned)' in source
 assert 'bool enabled_=true' in (root / 'src/helpers/radiolib/W12PramAutoPolicy.h').read_text(encoding='utf-8')
 readme = (root / 'docs/radio_profiles.md').read_text(encoding='utf-8')
 assert 'set pramscan on' in readme and 'set pramscan off' in readme
-print('PASS W12 infrastructure scanner availability and automatic policy')
+print('PASS W12 infrastructure and Companion scanner availability and automatic policy')

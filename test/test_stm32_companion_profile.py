@@ -59,9 +59,11 @@ class STM32CompanionProfileTest(unittest.TestCase):
         for definition in ("MAX_CONTACTS=100", "MAX_GROUP_CHANNELS=8",
                            "ENABLE_USB_INTERFACE"):
             self.assertRegex(flags, r"-D\s+" + re.escape(definition) + r"\b")
-        for flags in (flags, self.config[self.base]["build_flags"]):
-            self.assertNotRegex(flags, r"COMPANION_FEATURE_\w+=0")
-            self.assertNotRegex(flags, r"MESH_ENABLE_\w+=0")
+        for entry in (flags, self.config[self.base]["build_flags"]):
+            self.assertNotRegex(entry, r"COMPANION_FEATURE_\w+=0")
+        disabled = set(re.findall(r"-D\s*(MESH_ENABLE_\w+)=0\b", flags))
+        self.assertEqual(disabled, {"MESH_ENABLE_BROWSER_RADIO_DEFAULTS"})
+        self.assertNotRegex(self.config[self.base]["build_flags"], r"MESH_ENABLE_\w+=0")
         self.assertIn("+<../examples/companion_radio/*.cpp>",
                       self.companion["build_src_filter"])
         self.assertIn("-Oz", self.companion["build_flags"])

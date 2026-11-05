@@ -1,5 +1,6 @@
 #include "BrowserRadioDefaults.h"
 
+#if MESH_ENABLE_BROWSER_RADIO_DEFAULTS
 namespace mesh {
 namespace browserRadioDefaults {
 
@@ -27,3 +28,4 @@ bool read(Settings& result) {
 
 }  // namespace browserRadioDefaults
 }  // namespace mesh
+#endif

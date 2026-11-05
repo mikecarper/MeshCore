@@ -1,3 +1,7 @@
+<!-- meshcore-hosted-doc-link:start -->
+<p class="meshcore-hosted-doc-link"><a href="https://mikecarper.github.io/MeshCore/browser_radio_defaults/">View this page on MeshCore Docs</a>.</p>
+<!-- meshcore-hosted-doc-link:end -->
+
 # Browser-editable primary radio defaults
 
 Keymind applications built with this feature retain one 64-byte defaults record
@@ -5,6 +9,11 @@ in application flash. A compatible flasher can customize an **unsigned** image
 before installing it. This does not replace stored settings on an ordinary
 update. Use a fresh installation or factory reset to adopt different defaults;
 use the radio's USB settings commands to change an already configured node.
+
+The space-limited RAK 3x72, Wio E5, and Tiny Relay USB Companion builds, and
+the Wio E5 Mini Repeater and USB Companion builds, omit the embedded defaults
+record. Configure their radio settings over USB instead.
+Their normal saved settings continue to work across reboots and updates.
 
 The record changes only the primary LoRa frequency, bandwidth, spreading factor,
 coding rate, optional TX power, and preamble. It does not alter identity, regions,

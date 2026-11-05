@@ -328,6 +328,8 @@ class FleetRadioSchedulesTests(unittest.TestCase):
   (work/"helpers").mkdir()
   mesh=MESH.replace('#include <Identity.h>','#include <Hardware.h>\n#include <Identity.h>')
   mesh=mesh.replace('struct Clock {','struct Clock :RTCClock {').replace('uint32_t getCurrentTime() const{return now;}','uint32_t getCurrentTime()override{return now;}')
+  mesh=mesh.replace('bool scoped=false,radio_reply=false,radio_bound=false;',
+   'uint8_t tx_radio=RADIO_TX_AUTO;bool radio_local=true,scoped=false,radio_reply=false,radio_bound=false;')
   utils=UTILS.replace('class Utils { public:', 'class Utils { public:\n static int parseTextParts(char*,const char*[],int,char);')
   for name,content in {"Utils.h":utils,"FS.h":FILESYSTEM,"Mesh.h":mesh,"Hardware.h":HARDWARE,
                        "helpers/RegionMap.h":REGION_MAP,
@@ -348,10 +350,16 @@ void finalizeHMAC(const uint8_t* key,size_t size,void* out,size_t n){{SHA256Base
   source=(ROOT/"examples/simple_repeater/MyMesh.cpp").read_text()
   primary=PRIMARY_HARNESS[:PRIMARY_HARNESS.index('static constexpr uint32_t HOUR')]
   primary=primary.replace('static uint32_t now_ms = 1;\nuint32_t millis() { return now_ms; }','#define now_ms fake_ms')
-  primary=primary.replace('struct Packet {};','').replace('class MyMesh {','class MyMesh :public FleetReplyHooks {')
-  primary=primary.replace('struct Radio { uint32_t last_rx = 0; uint32_t getLastRecvMillis() { return last_rx; } };',
-   'struct PrimaryPHY { uint32_t last_rx=0; mesh::RadioProfiles state; uint32_t getLastRecvMillis(){return last_rx;} mesh::RadioProfiles* profiles(){return &state;} };')
+  packet='struct Packet { uint8_t tx_radio = RADIO_TX_AUTO, radio_profile = 0; bool radio_local = true; };'
+  assert primary.count(packet)==1
+  primary=primary.replace(packet,'').replace('class MyMesh {','class MyMesh :public FleetReplyHooks {')
+  assert primary.count('struct Radio {\n')==1
+  primary=primary.replace('struct Radio {\n','struct PrimaryPHY {\n')
+  primary=primary.replace('morseTimingActive(const Radio*)','morseTimingActive(const PrimaryPHY*)')
   primary=primary.replace('Radio radio; Radio* _radio','PrimaryPHY radio; PrimaryPHY* _radio')
+  callback=body((ROOT/'examples/simple_repeater/MyMesh.h').read_text(),
+                'void onRadio2FloodAdvertChanged(').replace(' override','')
+  primary=primary.replace('@ADVERT_CALLBACK@',callback)
   primary=primary.replace('  MyMesh() {',r'''
   ScheduledRadioSetting fleet_schedule_setting_{};
   uint8_t fleet_schedule_delete_mask_[(MAX_SCHEDULED_RADIO_SETTINGS+7)/8]{};
@@ -373,6 +381,7 @@ void finalizeHMAC(const uint8_t* key,size_t size,void* out,size_t n){{SHA256Base
    'static bool selectorIsAll(', 'static bool parsePositiveSelector(', 'static void formatFixed3(',
    'void MyMesh::checkRxInactivityWatchdog()', 'void MyMesh::setTempRadioTiming(',
    'void MyMesh::updateAdvertTimer()', 'void MyMesh::updateFloodAdvertTimer()',
+   'bool MyMesh::radio2FloodAdvertEligible() const',
    'void MyMesh::queueSavedRadioApply()', 'bool MyMesh::applySavedRadioParams()',
    'void MyMesh::refreshScheduledRadioState()', 'void MyMesh::processScheduledRadioSettings(bool tx_gap)',
    'void MyMesh::applyTempRadioParams(', 'bool MyMesh::scheduleNormalRadio()',

@@ -243,7 +243,9 @@ def test_espnow_tx_power_matches_cli_callback_contract():
     setter = implementation.split(
         "bool ESPNOWRadio::setTxPower(int8_t dbm) {", 1
     )[1].split("\n}", 1)[0]
-    assert "esp_wifi_set_max_tx_power(dbm * 4) != ESP_OK" in setter
+    # ESP-NOW must use the shared radio-wide policy: it honors a saved manual
+    # limit and board caps rather than resetting the SDK power directly.
+    assert "mesh::wifi::applyRequestedStationTxPower(dbm * 4) != ESP_OK" in setter
     assert setter.index("return false;") < setter.index("tx_power_dbm_ = dbm;")
     assert "return true;" in setter
 

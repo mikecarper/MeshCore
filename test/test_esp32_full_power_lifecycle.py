@@ -28,6 +28,7 @@ FIXTURE = r'''
 #include <helpers/WebConfigBatch.h>
 #include <helpers/PowerManagementUtils.h>
 #include <helpers/PowerSavingDiagnostics.h>
+#include <helpers/StaggeredFloodAdvert.h>
 #include <helpers/esp32/WiFiCoordinator.h>
 #include <helpers/esp32/InfrastructureBridgeCoordinator.h>
 #include <helpers/WiFiConnectionDiagnostics.h>
@@ -232,6 +233,9 @@ struct MyMesh {
   struct { int getNumClients() const { return 0; } } acl;
   bool pending_self_advert = false, saved_radio_apply_pending = false, temp_radio_applied = false;
   unsigned long next_flood_advert = 0, next_local_advert = 0, dirty_contacts_expiry = 0;
+  mesh::StaggeredFloodAdvert radio2_flood_advert, secondary_flood_advert;
+  bool radio2FloodAdvertEligible() const { return false; }
+  bool canSendSecondaryFloodAdvert() const { return false; }
   unsigned long next_recent_repeater_sweep = 0, next_battery_alert_check = 0, next_push = 0;
   unsigned long radio_apply_retry_at = 0, set_radio_at = 0, revert_radio_at = 0;
   bool hasPendingOtaApply() const { return false; } bool hasQueuedWorkDue() const { return false; }

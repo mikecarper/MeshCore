@@ -3,6 +3,10 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#ifndef MESH_ENABLE_BROWSER_RADIO_DEFAULTS
+#define MESH_ENABLE_BROWSER_RADIO_DEFAULTS 1
+#endif
+
 // A deliberately retained, versioned *defaults* image, not a runtime override.
 // Browser tools may edit this one block and repair the containing image's
 // checksums. Existing preferences remain authoritative on ordinary updates.
