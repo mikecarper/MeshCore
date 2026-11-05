@@ -26,7 +26,10 @@ class WiFiDiagnosticCLITest(unittest.TestCase):
         signature = '  if (strcmp(config, "wifi.diag") == 0)'
         start = getter.index(signature)
         block = extract_braced(getter, signature)
-        self.assertTrue(getter[:start].endswith("#if defined(ESP_PLATFORM)\n"))
+        guard = getter.rfind("#if defined(ESP_PLATFORM)\n", 0, start)
+        self.assertGreaterEqual(guard, 0)
+        self.assertNotIn("#endif", getter[guard:start])
+        self.assertNotIn("#else", getter[guard:start])
         self.assertTrue(getter[start + len(block):].startswith("\n#endif"))
         self.assertLess(start, getter.index("handleObserverGetCmd("))
         source = r'''

@@ -37,11 +37,16 @@ uint32_t millis() { return 1000; }
 using wifi_ps_type_t = int;
 using wifi_mode_t = int;
 using esp_err_t = int;
-constexpr int ESP_OK = 0, ESP_FAIL = -2, ESP_ERR_WIFI_NOT_INIT = -1;
+constexpr int ESP_OK = 0, ESP_FAIL = -2, ESP_ERR_WIFI_NOT_INIT = -1, ESP_ERR_INVALID_STATE = 0x103;
 constexpr int WIFI_MODE_NULL = WIFI_OFF, WIFI_MODE_AP = 2;
 int esp_wifi_get_mode(wifi_mode_t* mode) { *mode = WIFI_STA; return ESP_OK; }
 int esp_wifi_set_ps(int mode) { applied_ps = mode; return 0; }
 int esp_wifi_set_max_tx_power(int8_t value) { applied_tx = value; return ESP_OK; }
+int esp_wifi_get_max_tx_power(int8_t* value) {
+  if (applied_tx < 0) return ESP_FAIL;
+  *value = static_cast<int8_t>(applied_tx);
+  return ESP_OK;
+}
 @POWER_POLICY@
 
 size_t strlcpy(char* to, const char* from, size_t size) {
