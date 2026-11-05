@@ -5,7 +5,7 @@ import subprocess, tempfile
 root=Path(__file__).resolve().parents[2]
 s=(root/'src/helpers/radiolib/W12PramScannerLab.inc').read_text()
 start=s.index('  bool labSequentialTxClear() {')
-end=s.index('  void labSequentialTxStatus(',start)
+end=s.index('  void clearPreTransmitBlock()',start)
 method=s[start:end]
 program=r'''
 #include <cassert>

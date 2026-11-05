@@ -530,7 +530,15 @@ public:
   bool startSendRaw(const uint8_t* bytes, int len) override {
 #if defined(MESH_W12_PRAM_SEQUENTIAL_LAB) && MESH_W12_PRAM_SEQUENTIAL_LAB
 #if defined(MESH_W12_PRAM_SEQ_TX_LAB) && MESH_W12_PRAM_SEQ_TX_LAB
-    if (_lab_seq_requested && !labSequentialTxClear()) return false;
+    _lab_seq_tx_block=mesh::PreTransmitBlock::None;
+    if (_lab_seq_requested) {
+      const uint32_t busy_before=_lab_seq_tx_busy;
+      if (!labSequentialTxClear()) {
+        _lab_seq_tx_block=_lab_seq_tx_busy!=busy_before
+            ? mesh::PreTransmitBlock::Busy : mesh::PreTransmitBlock::Error;
+        return false;
+      }
+    }
 #else
     if (_lab_seq_requested) return false;
 #endif

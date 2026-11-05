@@ -177,6 +177,9 @@ StaticPoolPacketManager::StaticPoolPacketManager(int pool_size)
 
 mesh::Packet* StaticPoolPacketManager::allocNew() {
   auto* packet = unused.removeByIdx(0);  // NULL if empty.
+#if defined(MESH_W12_PRAM_SEQ_TX_LAB) && MESH_W12_PRAM_SEQ_TX_LAB
+  if (packet) { packet->w12_pre_tx_deadline=0; packet->w12_post_tx_retry_used=false; }
+#endif
 #if MESH_ENABLE_LR2021_AUTO_XTRIM
   if (packet) packet->lr2021_frequency = {};
 #endif

@@ -66,6 +66,11 @@ public:
   int8_t _snr;
   uint8_t tx_cr;  // volatile local-only TX coding-rate override; not serialized
   uint8_t flood_retry_policy;  // volatile receive-policy result; not serialized
+#if defined(MESH_W12_PRAM_SEQ_TX_LAB) && MESH_W12_PRAM_SEQ_TX_LAB
+  // Queue metadata for bounded pre-TX deferrals; never serialized.
+  uint32_t w12_pre_tx_deadline = 0;
+  bool w12_post_tx_retry_used = false;
+#endif
   bool forwarded = false;  // local relay ownership, copied into retries; never serialized
   uint32_t radio_generation = 0;
   uint32_t radio_origin_generation = 0;

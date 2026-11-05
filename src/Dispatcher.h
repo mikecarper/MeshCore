@@ -38,6 +38,13 @@ enum class RadioParamApplyResult : uint8_t {
   FAILED
 };
 
+#if defined(MESH_W12_PRAM_SEQ_TX_LAB) && MESH_W12_PRAM_SEQ_TX_LAB
+// A block reported here is provably before calling the radio's transmit API.
+// No result means a start error may have transmitted and must not be retried
+// under the pre-transmit policy.
+enum class PreTransmitBlock : uint8_t { None, Busy, Error };
+#endif
+
 /**
  * \brief  Abstraction of local/volatile clock with Millisecond granularity.
 */
@@ -51,6 +58,10 @@ public:
 */
 class Radio {
 public:
+#if defined(MESH_W12_PRAM_SEQ_TX_LAB) && MESH_W12_PRAM_SEQ_TX_LAB
+  virtual void clearPreTransmitBlock() {}
+  virtual PreTransmitBlock takePreTransmitBlock() { return PreTransmitBlock::None; }
+#endif
   MESH_REGULATOR_VIRTUAL uint8_t regulatorModes() const { return 0; }
   MESH_REGULATOR_VIRTUAL power::RegulatorMode defaultRegulatorMode() const { return power::RegulatorMode::Default; }
   // Cache a selection before the first hardware initialization. Save later
@@ -511,6 +522,9 @@ class Dispatcher {
   uint32_t foreign_radio_ota_epoch = 0;
 #endif
   uint32_t foreign_radio_retry_at = 0, foreign_radio_prepare_deadline = 0;
+#if defined(MESH_W12_PRAM_SEQ_TX_LAB) && MESH_W12_PRAM_SEQ_TX_LAB
+  uint32_t foreign_pre_tx_deadline = 0;
+#endif
   uint32_t foreign_radio_start = 0, foreign_radio_expiry = 0;
   bool foreign_radio_sending = false;
   bool foreign_radio_yield_meshcore = false;

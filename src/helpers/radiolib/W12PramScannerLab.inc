@@ -53,6 +53,7 @@ private:
   uint32_t _lab_seq_rx_unknown=0;
 #if defined(MESH_W12_PRAM_SEQ_TX_LAB) && MESH_W12_PRAM_SEQ_TX_LAB
   bool _lab_seq_tx_lease=false, _lab_seq_tx_prepared=false;
+  mesh::PreTransmitBlock _lab_seq_tx_block=mesh::PreTransmitBlock::None;
   uint8_t _lab_seq_tx_profile=0;
   uint32_t _lab_seq_tx_busy=0, _lab_seq_tx_error=0, _lab_seq_tx_clear=0;
 #endif
@@ -584,6 +585,12 @@ public:
     }
     ++_lab_seq_tx_clear;
     return true;
+  }
+  void clearPreTransmitBlock() override { _lab_seq_tx_block=mesh::PreTransmitBlock::None; }
+  mesh::PreTransmitBlock takePreTransmitBlock() override {
+    const auto result=_lab_seq_tx_block;
+    _lab_seq_tx_block=mesh::PreTransmitBlock::None;
+    return result;
   }
   void labSequentialTxStatus(char* out, size_t cap) const {
     snprintf(out,cap,"seqtx=%s busy=%lu error=%lu clear=%lu",
