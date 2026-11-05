@@ -141,6 +141,70 @@ int main() {
                             str(src), "-o", str(exe)], check=True)
             subprocess.run([str(exe)], check=True)
 
+    def test_actual_enable_path_validates_before_changing_the_radio(self):
+        source = (ROOT / "src/helpers/radiolib/CustomLR2021Wrapper.h").read_text()
+        enable = method(source, "mesh::RadioParamApplyResult trySetW12MultiSf(").replace(" override", "")
+        harness = r'''
+#include <cassert>
+#include <cstdint>
+#include "helpers/radiolib/W12MultiSfPlan.h"
+#define RADIOLIB_ERR_NONE 0
+namespace mesh {
+enum class RadioParamApplyResult { APPLIED, BUSY, FAILED };
+enum class RadioProfileProtocol { MeshCore, Other };
+}
+struct Profiles {
+  struct { mesh::RadioProfileProtocol protocol = mesh::RadioProfileProtocol::MeshCore; } primary;
+  bool dual = false;
+  bool enabled() const { return dual; }
+};
+struct CustomLR2021 {
+  int fail = 0, writes = 0, sf = 7;
+  int setSideDetector(void*, int) { ++writes; return fail == 1 ? -1 : 0; }
+  int setSpreadingFactor(int n) { ++writes; if (fail == 2) return -1; sf = n; return 0; }
+};
+struct Test {
+  bool _params_valid = true, _rx_ps_enabled = false, _multi_sf_enabled = false;
+  bool _profile_refresh_required = false, _profile_repair_required = false;
+  uint8_t _multi_sf_lower = 5, _multi_sf_upper = 8, _cur_sf = 7, _numSideDet = 0;
+  float _cur_bw = 62.5;
+  int admission = 1, resumes = 0; bool restored = true, receiving = true;
+  Profiles _profiles; CustomLR2021 chip, *_radio = &chip;
+  uint8_t beginReconfigure() { return admission; }
+  void invalidateScanTuple() {}
+  void endReconfigure(bool b) { if (b) ++resumes; }
+  bool isInRecvMode() { return receiving; }
+  bool restoreAfterDeepInit() { return restored; }
+  ENABLE_METHOD
+};
+int main() {
+  using Result = mesh::RadioParamApplyResult;
+  Test valid; assert(valid.trySetW12MultiSf(true, 5, 8) == Result::APPLIED);
+  assert(valid._multi_sf_enabled && valid.chip.writes == 2 && valid.resumes == 1);
+  assert(valid.trySetW12MultiSf(false, 0, 0) == Result::APPLIED && !valid._multi_sf_enabled);
+  Test bw; bw._cur_bw = 1000;
+  assert(bw.trySetW12MultiSf(true, 5, 8) == Result::FAILED && bw.chip.writes == 0);
+  Test dual; dual._profiles.dual = true;
+  assert(dual.trySetW12MultiSf(true, 5, 8) == Result::FAILED && dual.chip.writes == 0);
+  Test power; power._rx_ps_enabled = true;
+  assert(power.trySetW12MultiSf(true, 5, 8) == Result::FAILED && power.chip.writes == 0);
+  Test busy; busy.admission = 2;
+  assert(busy.trySetW12MultiSf(true, 5, 8) == Result::BUSY && busy.chip.writes == 0);
+  Test fail; fail.chip.fail = 2;
+  assert(fail.trySetW12MultiSf(true, 5, 8) == Result::FAILED);
+  assert(!fail._multi_sf_enabled && fail.resumes == 1 && !fail._profile_repair_required);
+  Test broken; broken.chip.fail = 1; broken.restored = false;
+  assert(broken.trySetW12MultiSf(true, 5, 8) == Result::FAILED);
+  assert(!broken._multi_sf_enabled && broken._profile_repair_required);
+}
+'''.replace("ENABLE_METHOD", enable)
+        with tempfile.TemporaryDirectory() as d:
+            src, exe = Path(d) / "test.cpp", Path(d) / "test"
+            src.write_text(harness)
+            subprocess.run(["g++", "-std=c++17", "-Wall", "-Wextra", "-Werror", "-I", "src",
+                            str(src), "-o", str(exe)], cwd=ROOT, check=True)
+            subprocess.run([str(exe)], check=True)
+
     def test_opt_in_and_conflict_guards(self):
         source = (ROOT / "src/helpers/radiolib/CustomLR2021Wrapper.h").read_text()
         self.assertIn("MESH_W12_MULTISF_EXPERIMENT", source)
