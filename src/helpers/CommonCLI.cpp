@@ -3851,6 +3851,9 @@ void CommonCLI::handleCommand(uint32_t sender_timestamp, char* command, char* re
       if (!radio || (!off && !_radio_profiles.secondaryRuntimeAvailable())) {
         strcpy(reply, "Error: radio2 schedule or radio change pending"); return;
       }
+      if (!off && (_prefs->rx_powersaving_enabled || _prefs->extra_sf[0])) {
+        strcpy(reply, "Error: turn RXPS and extra.sf off first"); return;
+      }
       const auto result = radio->trySetW12MultiSf(!off, lower, upper);
       if (result == mesh::RadioParamApplyResult::BUSY) strcpy(reply, "Error: radio busy; retry");
       else if (result != mesh::RadioParamApplyResult::APPLIED)

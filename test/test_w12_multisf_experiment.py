@@ -213,6 +213,8 @@ int main() {
         profile = (ROOT / "src/helpers/RadioProfileCLI.cpp").read_text()
         self.assertIn("radio_->w12MultiSfEnabled() && (base || temporary || scheduled)", profile)
         self.assertIn("radio_ && radio_->w12MultiSfEnabled()", profile)
+        cli = (ROOT / "src/helpers/CommonCLI.cpp").read_text()
+        self.assertIn("_prefs->rx_powersaving_enabled || _prefs->extra_sf[0]", cli)
 
 
 if __name__ == "__main__":
