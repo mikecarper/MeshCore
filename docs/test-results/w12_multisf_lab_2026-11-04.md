@@ -1,3 +1,7 @@
+<!-- meshcore-hosted-doc-link:start -->
+<p class="meshcore-hosted-doc-link"><a href="https://mikecarper.github.io/MeshCore/test-results/w12_multisf_lab_2026-11-04/">View this page on MeshCore Docs</a>.</p>
+<!-- meshcore-hosted-doc-link:end -->
+
 # W12 multi-SF lab checks, 2026-11-04
 
 These are short, close-range checks, not packet-delivery guarantees. A W12 and
