@@ -349,6 +349,9 @@ public:
   // True means the maintenance sequence was admitted, not that receiver
   // sensitivity has been measured. Busy implementations may defer it.
   virtual bool tryResetAGC() { resetAGC(); return true; }
+#if defined(MESH_AGC_TIMING_DIAGNOSTICS) && MESH_AGC_TIMING_DIAGNOSTICS
+  virtual bool formatAGCTimingDiagnostics(uint8_t, char*, size_t) const { return false; }
+#endif
   virtual uint32_t getRecoveryCount() const { return 0; }
 
   virtual uint8_t getRadioState() const { return 0; }

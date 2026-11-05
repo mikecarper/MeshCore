@@ -25,6 +25,9 @@
 #include "RXPowerSaving.h"
 #include "HilTxFrequencyGuard.h"
 #include "ESP32RadioTrace.h"
+#if defined(MESH_AGC_TIMING_DIAGNOSTICS) && MESH_AGC_TIMING_DIAGNOSTICS
+#include "AGCTimingDiagnostics.h"
+#endif
 #if defined(STATION_G3_ESP32)
 #include <StationG3RadioSlot.h>
 #endif
@@ -51,6 +54,9 @@ class RadioLibWrapper : public mesh::Radio {
 public:
   static constexpr bool SupportsRxPowerSaving = false;
 protected:
+#if defined(MESH_AGC_TIMING_DIAGNOSTICS) && MESH_AGC_TIMING_DIAGNOSTICS
+  AGCTimingDiagnostics _agc_timing;
+#endif
   // Mode is owned by this loop, not by the ISR or another wrapper.
   uint8_t state = 0;
   uint8_t _interrupt_slot = 0xff;
@@ -705,6 +711,12 @@ public:
   }
   void resetAGC() override;
   bool tryResetAGC() override;
+#if defined(MESH_AGC_TIMING_DIAGNOSTICS) && MESH_AGC_TIMING_DIAGNOSTICS
+  bool formatAGCTimingDiagnostics(uint8_t page, char* reply, size_t capacity) const override {
+    _agc_timing.format(page, reply, capacity);
+    return true;
+  }
+#endif
   uint32_t getRecoveryCount() const override { return n_wd_soft + n_wd_hard; }
 
   void loop() override;

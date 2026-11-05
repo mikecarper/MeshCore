@@ -327,5 +327,11 @@ public:
     return ((CustomSX1262 *)_radio)->getRxBoostedGainMode();
   }
 
-  void doResetAGC() override { sx126xResetAGC((SX126x *)_radio, getRxBoostedGainMode()); }
+  void doResetAGC() override {
+    sx126xResetAGC((SX126x *)_radio, getRxBoostedGainMode()
+#if defined(MESH_AGC_TIMING_DIAGNOSTICS) && MESH_AGC_TIMING_DIAGNOSTICS
+        , &_agc_timing
+#endif
+    );
+  }
 };

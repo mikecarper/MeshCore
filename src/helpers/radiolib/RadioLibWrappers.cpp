@@ -1761,10 +1761,16 @@ void RadioLibWrapper::doResetAGC() {
 }
 
 void RadioLibWrapper::resetAGC() {
+#if defined(MESH_AGC_TIMING_DIAGNOSTICS) && MESH_AGC_TIMING_DIAGNOSTICS
+  AGCTimingDiagnostics::PeriodicRequest diagnostic_request(_agc_timing);
+#endif
   resetAGCIfIdle();
 }
 
 bool RadioLibWrapper::tryResetAGC() {
+#if defined(MESH_AGC_TIMING_DIAGNOSTICS) && MESH_AGC_TIMING_DIAGNOSTICS
+  AGCTimingDiagnostics::PeriodicRequest diagnostic_request(_agc_timing);
+#endif
 #if MC_AGESSAMAN_NOISE_FLOOR_EXACT
   if (usesAgessamanNoiseFloor()) return resetAGCIfIdle(false);
 #endif
@@ -1775,14 +1781,38 @@ bool RadioLibWrapper::tryResetAGC() {
 }
 
 bool RadioLibWrapper::resetAGCIfIdle(bool refresh_floor) {
-#if MESH_ENABLE_TX_BEACONS
-  if (_beacon_owned) return false;
+#if defined(MESH_AGC_TIMING_DIAGNOSTICS) && MESH_AGC_TIMING_DIAGNOSTICS
+  _agc_timing.sequenceRequest();
 #endif
-  if (_cw_active) return false;
+#if MESH_ENABLE_TX_BEACONS
+  if (_beacon_owned) {
+#if defined(MESH_AGC_TIMING_DIAGNOSTICS) && MESH_AGC_TIMING_DIAGNOSTICS
+    _agc_timing.reject(AGCTimingDiagnostics::Skip::Beacon);
+#endif
+    return false;
+  }
+#endif
+  if (_cw_active) {
+#if defined(MESH_AGC_TIMING_DIAGNOSTICS) && MESH_AGC_TIMING_DIAGNOSTICS
+    _agc_timing.reject(AGCTimingDiagnostics::Skip::Carrier);
+#endif
+    return false;
+  }
   // make sure we're not mid-receiving and mid-sending of packet!
-  if (isPacketPendingOrReceiving() || (state == STATE_TX_WAIT)) return false;
+  if (isPacketPendingOrReceiving() || (state == STATE_TX_WAIT)) {
+#if defined(MESH_AGC_TIMING_DIAGNOSTICS) && MESH_AGC_TIMING_DIAGNOSTICS
+    _agc_timing.reject(AGCTimingDiagnostics::Skip::Packet);
+#endif
+    return false;
+  }
 
+#if defined(MESH_AGC_TIMING_DIAGNOSTICS) && MESH_AGC_TIMING_DIAGNOSTICS
+  _agc_timing.admit(static_cast<uint32_t>(micros()));
+#endif
   doResetAGC();
+#if defined(MESH_AGC_TIMING_DIAGNOSTICS) && MESH_AGC_TIMING_DIAGNOSTICS
+  _agc_timing.helperFinished(static_cast<uint32_t>(micros()));
+#endif
   state = STATE_IDLE;   // trigger a startReceive()
   const bool gain_restored = !_rx_boosted_gain_valid
       || (_rx_boosted_gain_applied = applyRxBoostedGainMode(_cur_rx_boosted_gain));
@@ -2767,6 +2797,9 @@ void RadioLibWrapper::startRecv() {
 #endif
   if (_cw_active || _profile_repair_required) return;
   int err = startReceiveMode();
+#if defined(MESH_AGC_TIMING_DIAGNOSTICS) && MESH_AGC_TIMING_DIAGNOSTICS
+  _agc_timing.receiveEntry(err, static_cast<uint32_t>(micros()));
+#endif
   if (err == RADIOLIB_ERR_NONE) {
     // A very short frame may complete while startReceiveMode() returns.
 #if defined(ESP32_PLATFORM)

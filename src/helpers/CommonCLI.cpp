@@ -6560,6 +6560,17 @@ void CommonCLI::handleGetCmd(uint32_t sender_timestamp, char* command, char* rep
     snprintf(reply, 160, "> %s%s. # channel busy: %u",
              (_prefs->cad_enabled || required) ? "on" : "off",
              required ? " (required by radio.mode tx)" : "", _board->n_cad_busy);
+#if defined(MESH_AGC_TIMING_DIAGNOSTICS) && MESH_AGC_TIMING_DIAGNOSTICS
+  } else if (configKeyEquals(config, "agc.reset.status")
+      || configKeyEquals(config, "agc.reset.timing")
+      || configKeyEquals(config, "agc.reset.errors")) {
+    const uint8_t page = configKeyEquals(config, "agc.reset.timing") ? 1
+        : configKeyEquals(config, "agc.reset.errors") ? 2 : 0;
+    const auto* radio = _callbacks->getProfileRadio();
+    if (!radio || !radio->formatAGCTimingDiagnostics(page, reply, 157)) {
+      mesh::cli::formatError(reply, 160, "unsupported");
+    }
+#endif
   } else if (configKeyEquals(config, "agc.reset.interval")) {
     sprintf(reply, "> %d", ((uint32_t) _prefs->agc_reset_interval) * 4);
   } else if (configKeyEquals(config, "multi.acks")) {
