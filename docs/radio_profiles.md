@@ -26,6 +26,27 @@ fails. Check the active mode and fallback reason, or turn off automatic scanning
 for the current boot. Activation follows the existing two-minute host-switch
 measurement window, so its timing recommendation can finish first:
 
+On these builds, multi-SF reception also defaults to the primary radio at SF5–8,
+including when radio2 is off. Transmission keeps the configured SF. Select
+which radio and up to four consecutive receive SFs (SF5–10):
+
+```text
+get radio.multisf
+set radio.multisf 6-9
+set radio.multisf radio2
+set radio.multisf radio
+set radio.multisf off
+set radio.multisf on
+```
+
+The settings persist. `get radio.multisf` reports the selected configuration
+and whether it is active or has fallen back. With radio2 off, selecting
+radio2 falls back to ordinary receive until radio2 is configured. With radio2
+off, a primary TX SF outside the selected range also falls back to ordinary receive.
+Existing extra-SF detector settings cannot be combined with the single-radio
+multi-SF mode. While multi-SF is active, saved RX power-saving settings are
+held and resume when compatible; the preference is not deleted.
+
 ```text
 get pramscan
 set pramscan off
@@ -37,7 +58,8 @@ get pramscan.last
 get pramscan.recovery
 ```
 
-`set radio.safe on` persists across restarts and stops the experimental scanner;
+`set radio.safe on` persists across restarts and stops the experimental scanner
+and multi-SF reception;
 the ordinary radio and radio2 host switching remain available. Use
 `set radio.safe off` to permit experiments again. An unreadable or damaged
 setting keeps safe mode on. `set pramscan off` is a temporary per-boot control.
@@ -46,11 +68,16 @@ the current boot; `get radio.safe` shows `on (not saved)`.
 
 `set pramscan on` allows another automatic start; it does not guarantee the
 scanner can start. The on/off selection is not saved and returns to automatic
-after reboot. Both profiles must use MeshCore, SF7 or SF8, bandwidth 62.5, 125
-or 250 kHz, preambles up to 255 symbols, frequencies less than 20 MHz apart,
-and a supported LR2021 ROM. With radio2 off, a previously enabled `radio.rxps`
-setting instead uses the LR2021's native receive duty cycle; enabling radio2
-suspends that duty cycle until radio2 is off again. RXPS is off by default.
+after reboot. Both profiles must use MeshCore, bandwidth 62.5, 125 or 250 kHz,
+preambles up to 255 symbols, frequencies less than 20 MHz apart, and a supported
+LR2021 ROM. The fixed profile must use SF7 or SF8; multi-SF accepts SF5–10
+within its four-SF range. TX-capable scanning also requires disjoint channels.
+Unsupported profiles fall back to host switching. RXPS is off by default.
+
+Time-sharing multiple SFs and profiles can miss packets, particularly with short
+preambles, weak signals, or slow SFs. The ordinary single-radio channel check
+retains the dispatcher's existing maximum-wait behavior; it is not an absolute
+clear-channel guarantee.
 
 The scanner is experimental: packet loss and TX handoff under load are not yet
 fully qualified. An ambiguous packet/interrupt during a handoff is retained

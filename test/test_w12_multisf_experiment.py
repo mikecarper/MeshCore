@@ -276,7 +276,7 @@ int main() {
         self.assertIn("trySetW12MultiSf(false,5,8)", method(source, "mesh::RadioParamApplyResult trySetParams("))
         profile = (ROOT / "src/helpers/RadioProfileCLI.cpp").read_text()
         self.assertIn("radio_->w12MultiSfEnabled() && (base || temporary || scheduled)", profile)
-        self.assertIn("radio_ && radio_->w12MultiSfEnabled()", profile)
+        self.assertIn("radio_ && radio_->w12MultiSfEnabled()", profile.replace("\n", ""))
         cli = (ROOT / "src/helpers/CommonCLI.cpp").read_text()
         self.assertIn("handleMultiSfSettingsCommand", cli)
 

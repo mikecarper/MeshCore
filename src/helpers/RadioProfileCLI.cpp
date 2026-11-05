@@ -658,9 +658,6 @@ void RadioProfileCLI::noteSecondaryManualChange() {
 }
 
 bool RadioProfileCLI::canAutoSecondary() const {
-#if defined(MESH_W12_MULTISF_EXPERIMENT) && MESH_W12_MULTISF_EXPERIMENT
-  if (radio_ && radio_->w12MultiSfEnabled()) return false;
-#endif
 #if MESH_ENABLE_MESHTEXT_CHAT || MESH_ENABLE_ETHERNET_TUNNEL || MESH_ENABLE_HOST_KISS
   if (manual_secondary_ || saved_.mode != RadioProfileMode::Off || secondaryRuntimeBusy()) return false;
   const auto& current = radio_->profiles()->secondary;
@@ -676,6 +673,10 @@ bool RadioProfileCLI::requestAutoSecondary(const RadioProfileConfig& config) {
   if (!canAutoSecondary() || config.mode == RadioProfileMode::Off
       || (uint8_t)config.mode > (uint8_t)RadioProfileMode::RxTx
       || !radio_->validateProfile(config.params)) return false;
+#if defined(MESH_W12_MULTISF_EXPERIMENT) && MESH_W12_MULTISF_EXPERIMENT
+  if (radio_->w12MultiSfEnabled()
+      && radio_->trySetW12MultiSf(false, 5, 8) != RadioParamApplyResult::APPLIED) return false;
+#endif
   if (auto_secondary_requested_ && (config.mode != auto_secondary_.mode
       || config.params != auto_secondary_.params)) return false;
   auto preview = *radio_->profiles();
@@ -714,7 +715,8 @@ bool RadioProfileCLI::autoSecondaryActive() const {
 
 bool RadioProfileCLI::useSecondaryProtocol(RadioProfileProtocol protocol) {
 #if defined(MESH_W12_MULTISF_EXPERIMENT) && MESH_W12_MULTISF_EXPERIMENT
-  if (radio_ && radio_->w12MultiSfEnabled()) return false;
+  if (radio_ && radio_->w12MultiSfEnabled()
+      && radio_->trySetW12MultiSf(false, 5, 8) != RadioParamApplyResult::APPLIED) return false;
 #endif
 #if MESH_ENABLE_MESHTEXT_CHAT || MESH_ENABLE_ETHERNET_TUNNEL || MESH_ENABLE_HOST_KISS
   if (protocol == RadioProfileProtocol::MeshCore) {
