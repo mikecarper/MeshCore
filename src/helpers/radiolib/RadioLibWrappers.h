@@ -25,6 +25,7 @@
 #include "RXPowerSaving.h"
 #include "HilTxFrequencyGuard.h"
 #include "ESP32RadioTrace.h"
+#include "WarmRxRefresh.h"
 #if defined(MESH_AGC_TIMING_DIAGNOSTICS) && MESH_AGC_TIMING_DIAGNOSTICS
 #include "AGCTimingDiagnostics.h"
 #endif
@@ -54,6 +55,15 @@ class RadioLibWrapper : public mesh::Radio {
 public:
   static constexpr bool SupportsRxPowerSaving = false;
 protected:
+#if MESH_WARM_RX_REFRESH
+  WarmRxRefresh _warm_refresh;
+  uint32_t _old_agc_seconds=600;
+  virtual bool warmRxRefreshUsesFs() const { return false; }
+  virtual WarmRxRefresh::Outcome performWarmRxRefresh(WarmRxRefresh::Reason& reason) {
+    reason=WarmRxRefresh::Reason::Policy;
+    return WarmRxRefresh::Outcome::Deferred;
+  }
+#endif
 #if defined(MESH_AGC_TIMING_DIAGNOSTICS) && MESH_AGC_TIMING_DIAGNOSTICS
   AGCTimingDiagnostics _agc_timing;
 #endif
@@ -710,6 +720,20 @@ public:
     return cadScanTimeoutMillis();
   }
   void resetAGC() override;
+#if MESH_WARM_RX_REFRESH
+  bool setOldAGCInterval(uint32_t seconds) override {
+    if(!supportsWarmRxRefresh() || seconds>86400) return false;
+    _old_agc_seconds=seconds; return true;
+  }
+  uint32_t getOldAGCInterval() const override { return supportsWarmRxRefresh()?_old_agc_seconds:0; }
+  mesh::AGCMaintenanceResult periodicAGCMaintenance(bool adaptive) override;
+  mesh::AGCMaintenanceResult periodicOldAGCMaintenance() override;
+  uint32_t agcMaintenanceRetryMs() const override { return supportsWarmRxRefresh()?250:50; }
+  bool formatWarmRxRefresh(uint8_t page,uint32_t seconds,char* reply,size_t capacity) const override {
+    if(!supportsWarmRxRefresh()) return false;
+    _warm_refresh.format(page,seconds,reply,capacity); return true;
+  }
+#endif
   bool tryResetAGC() override;
 #if defined(MESH_AGC_TIMING_DIAGNOSTICS) && MESH_AGC_TIMING_DIAGNOSTICS
   bool formatAGCTimingDiagnostics(uint8_t page, char* reply, size_t capacity) const override {

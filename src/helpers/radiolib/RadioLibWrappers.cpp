@@ -530,6 +530,11 @@ uint8_t RadioLibWrapper::beginReconfigure() {
 #endif
       ;
   if (_rx_ps_armed || was_rx) {
+#if MESH_WARM_RX_REFRESH
+    if (_warm_refresh.attempting) {
+      _warm_refresh.transition(static_cast<uint32_t>(micros()),warmRxRefreshUsesFs());
+    }
+#endif
     const int16_t standby_status =
 #if MESH_HIL_PROFILE_TIMING
         profile_timing.standbyResult(_radio->standby());
@@ -1767,6 +1772,51 @@ void RadioLibWrapper::resetAGC() {
   resetAGCIfIdle();
 }
 
+#if MESH_WARM_RX_REFRESH
+mesh::AGCMaintenanceResult RadioLibWrapper::periodicAGCMaintenance(bool adaptive) {
+  using Result=mesh::AGCMaintenanceResult;
+  if(!supportsWarmRxRefresh()) {
+    if(adaptive) return !isCalibratingNoiseFloor() && tryResetAGC() ? Result::Applied : Result::Deferred;
+#if defined(MESH_AGC_TIMING_DIAGNOSTICS) && MESH_AGC_TIMING_DIAGNOSTICS
+    AGCTimingDiagnostics::PeriodicRequest diagnostic_request(_agc_timing);
+#endif
+    // Keep the legacy command sequence and resampling behavior. Admission
+    // still does not guarantee that every ignored legacy command succeeded.
+    return resetAGCIfIdle() ? Result::Applied : Result::Deferred;
+  }
+  _warm_refresh.request(static_cast<uint32_t>(micros()));
+  WarmRxRefresh::Reason reason=WarmRxRefresh::Reason::None;
+  WarmRxRefresh::Outcome outcome=WarmRxRefresh::Outcome::Deferred;
+  if(state!=STATE_RX || !_params_valid || _warm_refresh.pending) reason=WarmRxRefresh::Reason::State;
+  else if(_profiles.enabled() || _active_profile!=0 || _profile_generation!=_profiles.generation[0]
+      || _profile_refresh_required || _profile_repair_required || _profile_retry_at
+      || _profile_rxps_suspended || _rx_ps_enabled || _rx_ps_armed || _rx_hold_continuous
+      || _rx_retry_pending || _nf_calib_active || _nf_window_armed || _cw_active || _morse_owned
+#if MESH_ENABLE_MORSE_RX
+      || _morse_rx_owned
+#endif
+#if MESH_ENABLE_TX_BEACONS
+      || _beacon_owned
+#endif
+#if MESH_ENABLE_RADIO_DIRECTION
+      || !mesh::radioDirection::radioReceiveAllowed()
+#endif
+      ) reason=WarmRxRefresh::Reason::Policy;
+  else if(isChipBusy()) reason=WarmRxRefresh::Reason::Busy;
+  else outcome=performWarmRxRefresh(reason);
+  outcome=_warm_refresh.finish(outcome,reason,static_cast<uint32_t>(micros()));
+  return outcome==WarmRxRefresh::Outcome::Applied ? Result::Applied
+      : outcome==WarmRxRefresh::Outcome::Failed ? Result::Failed : Result::Deferred;
+}
+
+mesh::AGCMaintenanceResult RadioLibWrapper::periodicOldAGCMaintenance() {
+#if defined(MESH_AGC_TIMING_DIAGNOSTICS) && MESH_AGC_TIMING_DIAGNOSTICS
+  AGCTimingDiagnostics::PeriodicRequest diagnostic_request(_agc_timing);
+#endif
+  return resetAGCIfIdle()?mesh::AGCMaintenanceResult::Applied:mesh::AGCMaintenanceResult::Deferred;
+}
+#endif
+
 bool RadioLibWrapper::tryResetAGC() {
 #if defined(MESH_AGC_TIMING_DIAGNOSTICS) && MESH_AGC_TIMING_DIAGNOSTICS
   AGCTimingDiagnostics::PeriodicRequest diagnostic_request(_agc_timing);
@@ -2797,6 +2847,9 @@ void RadioLibWrapper::startRecv() {
 #endif
   if (_cw_active || _profile_repair_required) return;
   int err = startReceiveMode();
+#if MESH_WARM_RX_REFRESH
+  _warm_refresh.receiveEntry(err,static_cast<uint32_t>(micros()));
+#endif
 #if defined(MESH_AGC_TIMING_DIAGNOSTICS) && MESH_AGC_TIMING_DIAGNOSTICS
   _agc_timing.receiveEntry(err, static_cast<uint32_t>(micros()));
 #endif

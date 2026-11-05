@@ -76,6 +76,9 @@ void Dispatcher::setRadioAvailable(bool available) {
   radio_nonrx_start = now;
   next_floor_calib_time = now;
   agc_reset.reset();
+#if defined(MESH_WARM_RX_REFRESH) && MESH_WARM_RX_REFRESH
+  old_agc_reset.reset();
+#endif
   _radio->begin();
   prev_isrecv_mode = _radio->isInRecvMode();
 #ifdef RADIO_LIVENESS_SOFT_ONLY
@@ -122,6 +125,9 @@ void Dispatcher::begin() {
 
   const unsigned long now = _ms->getMillis();
   agc_reset.reset();
+#if defined(MESH_WARM_RX_REFRESH) && MESH_WARM_RX_REFRESH
+  old_agc_reset.reset();
+#endif
   dispatcher_started = true;
   if (radio_available) {
     _radio->begin();
@@ -742,6 +748,15 @@ bool Dispatcher::getNextQueueWakeDelay(uint32_t& delay_millis) const {
   }
 #endif
   // Timed MCU sleep must not skip the adaptive maintenance/retry deadline.
+#if defined(MESH_WARM_RX_REFRESH) && MESH_WARM_RX_REFRESH
+  if(radioDirection::radioReceiveAllowed() && radio_available) {
+    uint32_t old_delay;
+    if(old_agc_reset.nextDelay(now,old_delay)) {
+      if(!found || old_delay<shortest_delay) shortest_delay=old_delay;
+      found=true;
+    }
+  }
+#endif
   // Preserve the legacy queue-only query when power saving is off.
   if (radioDirection::radioReceiveAllowed() && radio_available && useAdaptiveAGC()) {
     uint32_t agc_delay;
@@ -908,6 +923,9 @@ void Dispatcher::loop() {
   const bool adaptive = receive_allowed && useAdaptiveAGC();
   agc_reset.configure(now, agc_interval > 0 ? agc_interval : 0,
                       adaptive, adaptive ? _radio->getRecoveryCount() : 0);
+#if defined(MESH_WARM_RX_REFRESH) && MESH_WARM_RX_REFRESH
+  old_agc_reset.configure(now,receive_allowed?_radio->getOldAGCInterval()*1000UL:0,false,0);
+#endif
   if (!radio_nonrx_timer_armed) {
     // Application setup can outlast the watchdog after begin() leaves the
     // radio in standby. Start observing when loop service actually begins,
@@ -1120,6 +1138,19 @@ void Dispatcher::loop() {
   }
 
   const uint32_t agc_now = _ms->getMillis();
+#if defined(MESH_WARM_RX_REFRESH) && MESH_WARM_RX_REFRESH
+  bool old_agc_serviced=false;
+  if(old_agc_reset.due(agc_now)) {
+    old_agc_serviced=true;
+    // A shared recovery already serviced the radio. Keep the old timer due
+    // without running a second maintenance sequence in this same loop.
+    const auto result=recovered_this_loop ? AGCMaintenanceResult::Deferred
+        : _radio->periodicOldAGCMaintenance();
+    const uint32_t finished=_ms->getMillis();
+    if(result==AGCMaintenanceResult::Applied) old_agc_reset.noteAttempt(finished);
+    else old_agc_reset.noteDeferred(finished,250);
+  }
+#endif
   if ((!adaptive || !recovered_this_loop) && agc_interval > 0
       && (adaptive ? agc_reset.due(agc_now)
       : millisHasNowPassed(agc_reset.nextAt()))) {
@@ -1132,18 +1163,27 @@ void Dispatcher::loop() {
       attempted = false;
     } else
 #endif
+    #if defined(MESH_WARM_RX_REFRESH) && MESH_WARM_RX_REFRESH
+    {
+      // An old attempt owns this loop. Do not count an uninvoked primary
+      // request or run both maintenance methods back to back.
+      attempted = !recovered_this_loop && !old_agc_serviced
+          && _radio->periodicAGCMaintenance(adaptive) == AGCMaintenanceResult::Applied;
+    }
+    #else
     if (!adaptive) {
       _radio->resetAGC();
       attempted = true;
     } else {
       attempted = !_radio->isCalibratingNoiseFloor() && _radio->tryResetAGC();
     }
+    #endif
     if (attempted) {
       agc_reset.noteAttempt(_ms->getMillis());
     } else {
       // Ownership/calibration deferral is not a reset or health evidence.
       const uint32_t deferred_at = _ms->getMillis();
-      uint32_t retry_delay = 50, receive_delay;
+      uint32_t retry_delay = _radio->agcMaintenanceRetryMs(), receive_delay;
 #if defined(MESH_W12_PRAM_EXPERIMENT) && MESH_W12_PRAM_EXPERIMENT
       if (lab_agc_retry_ms > retry_delay) retry_delay = lab_agc_retry_ms;
 #endif

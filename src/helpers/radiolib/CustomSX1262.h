@@ -9,6 +9,7 @@
 #include <helpers/RadioSwitchTuning.h>
 #include "SX126xMorseRssi.h"
 #include "ESP32RadioTrace.h"
+#include "WarmRxRefresh.h"
 #if defined(STATION_G3_ESP32)
 #include <StationG3RadioSlot.h>
 #endif
@@ -72,6 +73,11 @@ class CustomSX1262 : public SX1262 {
   uint32_t _profileFastResumes = 0;
   bool _coldStandby = true;
   bool _tcxoWakePending = false;
+#if MESH_WARM_RX_REFRESH
+  WarmRxRefresh::Step _warm_refresh_step = WarmRxRefresh::Step::None;
+  bool _warm_refresh_tracking = false;
+  uint32_t _warm_refresh_returned_us = 0;
+#endif
 
   public:
     uint32_t getTcxoDelay() const { return tcxoDelay; }
@@ -166,6 +172,38 @@ class CustomSX1262 : public SX1262 {
     void beginProfileSwitch(bool continuousRx) { _profileSwitch.begin(continuousRx, standbyXOSC); }
     void endProfileSwitch(bool success) { _profileSwitch.end(success); }
     bool profileSwitchFailed() const { return _profileSwitch.failed(); }
+#if MESH_WARM_RX_REFRESH
+    bool warmRxRefreshReady() const {
+      const uint8_t required=mesh::RadioSwitchTuning::Warm|mesh::RadioSwitchTuning::Packet;
+      return (getProfileSwitchFeatures()&required)==required && _profileSwitch.enabled
+          && !_profileSwitch.open && _profileSwitch.rxValid && !_coldStandby && !_tcxoWakePending
+          && _profileSwitch.packetValid
+          && _profileSwitch.packetPreamble==preambleLengthLoRa
+          && _profileSwitch.packetCrc==crcTypeLoRa && _profileSwitch.packetImplicitLen==implicitLen
+          && _profileSwitch.packetHeader==headerType && _profileSwitch.packetIq==invertIQEnabled;
+    }
+    void trackWarmRxRefresh(bool enabled) { _warm_refresh_tracking=enabled; }
+    WarmRxRefresh::Step warmRxRefreshStep() const { return _warm_refresh_step; }
+    int16_t warmRxRefreshError() const { return _profileSwitch.error; }
+    uint32_t warmRxRefreshReturnedUs() const { return _warm_refresh_returned_us; }
+    int16_t startWarmRxRefreshReceive() {
+      // Never fall back to the normal, parameter-writing receive entry here.
+      if(!_profileSwitch.canResumeFast()
+          || !(getProfileSwitchFeatures()&mesh::RadioSwitchTuning::Packet)
+          || !_profileSwitch.matchesPacket(preambleLengthLoRa,crcTypeLoRa,implicitLen,headerType,invertIQEnabled)) {
+        _warm_refresh_step=WarmRxRefresh::Step::Context;
+        return WarmRxRefresh::ContextError;
+      }
+      const uint32_t before=_profileFastResumes;
+      const int16_t result=startReceive();
+      if(result==RADIOLIB_ERR_NONE && _profileFastResumes-before!=1) {
+        _warm_refresh_step=WarmRxRefresh::Step::Context;
+        _profileSwitch.invalidate();
+        return WarmRxRefresh::ContextError;
+      }
+      return result;
+    }
+#endif
 #if (defined(MC_NRF_RADIO_PROFILE_PRIORITY) && MC_NRF_RADIO_PROFILE_PRIORITY) \
     || (defined(MC_NRF_RADIO_PROFILE_USB_IRQ_GUARD) && MC_NRF_RADIO_PROFILE_USB_IRQ_GUARD)
     bool hilOwnsWarmProfileRetune() const {
@@ -211,12 +249,18 @@ class CustomSX1262 : public SX1262 {
       useFs = useFs && hilUseFsOnRetune;
 #endif
       if (alreadyAwake && useFs) {
+#if MESH_WARM_RX_REFRESH
+        if(_warm_refresh_tracking) _warm_refresh_step=WarmRxRefresh::Step::Fs;
+#endif
         getMod()->setRfSwitchState(Module::MODE_IDLE);
         rc = setFs();
 #ifdef MC_SX1262_HIL
         if (rc == RADIOLIB_ERR_NONE) ++hilFsEntries;
 #endif
       } else {
+#if MESH_WARM_RX_REFRESH
+        if(_warm_refresh_tracking) _warm_refresh_step=WarmRxRefresh::Step::Standby;
+#endif
         rc = alreadyAwake
             ? SX1262::standby(RADIOLIB_SX126X_STANDBY_XOSC, false)
             : _coldStandby ? SX1262::standby(RADIOLIB_SX126X_STANDBY_RC) : SX1262::standby();
@@ -809,6 +853,9 @@ class CustomSX1262 : public SX1262 {
         reuseIq = reuseIq && _profileSwitch.matchesPacketIq(invertIQEnabled);
 #endif
         _profileSwitch.rxValid = false;  // fail closed on any command error
+#if MESH_WARM_RX_REFRESH
+        if(_warm_refresh_tracking) _warm_refresh_step=WarmRxRefresh::Step::ClearIrq;
+#endif
         int16_t rc = clearIrqStatus();
 #ifdef MC_SX1262_HIL
         if (rc == RADIOLIB_ERR_NONE && skipPacket) ++hilPacketSkips;
@@ -827,9 +874,15 @@ class CustomSX1262 : public SX1262 {
                                       implicitLen, headerType, invertIQEnabled);
         }
         if (rc == RADIOLIB_ERR_NONE) {
+#if MESH_WARM_RX_REFRESH
+          if(_warm_refresh_tracking) _warm_refresh_step=WarmRxRefresh::Step::SetRx;
+#endif
           rxTimeout = RADIOLIB_SX126X_RX_TIMEOUT_INF;
           getMod()->setRfSwitchState(Module::MODE_RX);
           rc = setRx(rxTimeout);  // original BUSY waits and status checks
+#if MESH_WARM_RX_REFRESH
+          if(_warm_refresh_tracking) _warm_refresh_returned_us=static_cast<uint32_t>(micros());
+#endif
         }
         stagedMode = RADIOLIB_RADIO_MODE_NONE;
         if (rc == RADIOLIB_ERR_NONE) {
