@@ -362,6 +362,7 @@ class CompanionWiFiCompatibilityTest(unittest.TestCase):
         power = (ROOT / "src/helpers/esp32/WiFiStationPower.h").read_text()
         power_methods = "inline esp_err_t applyRequestedStationTxPower(int8_t p) { return esp_wifi_set_max_tx_power(p); }\n" + "\n".join(method(power, signature) for signature in (
             "inline wifi_power_t stationTransmitPower(",
+            "inline int8_t stationPowerSaveTxPower(",
             "inline esp_err_t applyStationPowerSave(",
         ))
         source = HARNESS.replace("@METHODS@", "\n".join(method(main, item) for item in signatures)).replace(

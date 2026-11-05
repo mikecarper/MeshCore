@@ -970,6 +970,42 @@ On MQTT builds, `set usb.logging on` and `set usb.debug on` also enable live
 USB event logs after the MQTT network owner initializes. `get mqttN.diag`
 describes broker/transport failures; use `get wifi.diag` for the station link.
 
+### Per-board automatic WiFi transmit power
+
+ESP-IDF expresses the station's maximum transmit power in 0.25 dBm steps over
+2–20 dBm, and the driver floors a request to its own power table. Some ESP32-S3
+boards reach a practical WiFi ceiling well below the SDK maximum: a hotter PA
+lengthens association and produces 802.11 missing-ack (34) and timeout (39)
+disconnects.
+
+A build profile can cap the automatic setting with `WIFI_TX_POWER_DBM`. Boards
+that do not define it keep their existing automatic behavior. The Meshnology W12
+profile sets an automatic maximum of 13 dBm for every W12 target:
+
+```ini
+[meshnology_w12]
+build_flags =
+  ...
+  -D WIFI_TX_POWER_DBM=13
+```
+
+The default is applied on station joins and power-save changes. An explicit
+`set wifi.tx` setting takes precedence, including a value above 13 dBm;
+`set wifi.tx auto` restores the board default. The SDK may quantize the
+requested value; use `get wifi.tx` to see the saved preference and driver limit.
+With USB debugging enabled, WebConfig also reports the driver limit:
+
+```text
+WiFi TX limit: 13.00 dBm (automatic profile cap 13 dBm)
+```
+
+A lower reported value can mean the driver floored the request or that WiFi
+power saving selected a lower value.
+
+The W12 also allows 30 seconds for a saved WiFi connection before falling back
+to setup mode. A custom build can override that default, for example with
+`-DWEBCONFIG_WIFI_CONNECT_TIMEOUT_MS=60000` for a 60-second window.
+
 ### MQTT observer diagnostics
 
 For an MQTT observer:

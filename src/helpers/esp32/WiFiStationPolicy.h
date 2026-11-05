@@ -4,6 +4,9 @@
 #include <string.h>
 #include <WiFi.h>
 #include <helpers/esp32/WiFiRadioPolicy.h>
+#if defined(WIFI_TX_POWER_DBM)
+#include <helpers/esp32/WiFiStationPower.h>
+#endif
 #include <helpers/esp32/WiFiStationDiagnostics.h>
 #include <helpers/esp32/WiFiStationSecurity.h>
 #include <helpers/WirelessControl.h>
@@ -35,6 +38,15 @@ inline wl_status_t beginStation(const char* ssid, const char* password) {
   }
 #if defined(MESH_SOAK_WIFI_KEY_OVERRIDE)
   password = mesh::hil::soakStationPassword(password);
+#endif
+  // Reapply the saved manual setting or the board's automatic default before
+  // association. A driver that has not started yet must not block joining.
+#if defined(WIFI_TX_POWER_DBM)
+  const esp_err_t tx_result = applyStationTxPower();
+  if (tx_result != ESP_OK && tx_result != ESP_ERR_WIFI_NOT_STARTED
+      && tx_result != ESP_ERR_WIFI_NOT_INIT) {
+    noteStationDiagnosticPhase(ConnectionPhase::PolicyFailed);
+  }
 #endif
   if (!espNowChannelConstrained()) {
     return beginStationWithSecurity(ssid, password);

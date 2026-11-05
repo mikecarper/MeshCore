@@ -62,13 +62,23 @@ int main() {
   assert(readStationTxPower(value) && value == kWifiTxPowerAuto);
   assert(!namespace_present); // a read on factory firmware does not create NVS
   assert(applyManualStationTxPower() == ESP_OK && power == -1); // AP auto is unchanged
-  assert(applyStationPowerSave(WIFI_PS_NONE) == ESP_OK && power == 78);
+  const int normal =
+#ifdef WIFI_TX_POWER_DBM
+      52;
+#else
+      78;
+#endif
+  assert(applyStationPowerSave(WIFI_PS_NONE) == ESP_OK && power == normal);
   assert(applyStationPowerSave(WIFI_PS_MIN_MODEM) == ESP_OK && power == 44);
   assert(saveStationTxPower(60));
   assert(applyManualStationTxPower() == ESP_OK && power == 60); // setup AP applies override
   assert(readStationTxPower(value) && value == 60);
   assert(applyStationTxPower() == ESP_OK && power == 60);
   assert(applyStationPowerSave(WIFI_PS_NONE) == ESP_OK && power == 60);
+  assert(saveStationTxPower(84)); // Manual power above the W12 default is honored.
+  assert(applyStationPowerSave(WIFI_PS_NONE) == ESP_OK && power == 84);
+  assert(applyStationTxPower() == ESP_OK && power == 84); // join/reconnect
+  assert(saveStationTxPower(60));
   assert(applyRequestedStationTxPower(40) == ESP_OK && power == 60); // ESP-NOW cannot overwrite override
   assert(saveStationTxPower(kWifiTxPowerAuto));
   assert(applyRequestedStationTxPower(40) == ESP_OK && power == 40); // legacy ESP-NOW auto behavior
@@ -102,10 +112,11 @@ class WiFiStationTxPowerTest(unittest.TestCase):
                                ('nvs.h', NVS), ('test.cpp', HARNESS)]:
                 (path / name).write_text(text)
             executable = path / 'test'
-            subprocess.run([compiler, '-std=c++11', '-Wall', '-Wextra', '-Werror',
-                            '-I', str(path), '-I', str(ROOT / 'src'),
-                            str(path / 'test.cpp'), '-o', str(executable)], check=True)
-            subprocess.run([str(executable)], check=True)
+            for flags in ([], ['-DWIFI_TX_POWER_DBM=13']):
+                subprocess.run([compiler, '-std=c++11', '-Wall', '-Wextra', '-Werror',
+                                *flags, '-I', str(path), '-I', str(ROOT / 'src'),
+                                str(path / 'test.cpp'), '-o', str(executable)], check=True)
+                subprocess.run([str(executable)], check=True)
 
 
 if __name__ == '__main__':

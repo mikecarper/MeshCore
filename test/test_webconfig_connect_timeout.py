@@ -43,10 +43,16 @@ int main() {
   static_assert(B::kFullSetupApWindowMs == 1800000, "setup window");
 }
 '''
-        for override, initial, setup in ((None, 15000, 20000), (5000, 5000, 5000),
-                                         (60000, 60000, 60000), (120000, 120000, 120000)):
-            with self.subTest(override=override):
+        for default, override, initial, setup in ((None, None, 15000, 20000),
+                                                   (None, 5000, 5000, 5000),
+                                                   (30000, None, 30000, 30000),
+                                                   (30000, 60000, 60000, 60000),
+                                                   (None, 60000, 60000, 60000),
+                                                   (None, 120000, 120000, 120000)):
+            with self.subTest(default=default, override=override):
                 flags = [f"-DEXPECT_INITIAL={initial}UL", f"-DEXPECT_SETUP={setup}UL"]
+                if default is not None:
+                    flags.append(f"-DWEBCONFIG_WIFI_DEFAULT_CONNECT_TIMEOUT_MS={default}UL")
                 if override is not None:
                     flags.append(f"-DWEBCONFIG_WIFI_CONNECT_TIMEOUT_MS={override}UL")
                 self.compile_and_run(fixture, *flags)

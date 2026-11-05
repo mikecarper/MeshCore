@@ -1078,6 +1078,33 @@ bool WebConfigServer::beginSavedStation(uint32_t now) {
   _wifi_reconnect_tracker.noteDisconnected(now);
   mesh::wifi::applyStationPowerSave(ps_mode);
   mesh::wifi::beginStation(_wifi_ssid, _wifi_password);
+#if defined(WIFI_TX_POWER_DBM)
+  // The driver may quantize the requested limit. Distinguish an explicit
+  // user setting from the W12 automatic default in the diagnostic output.
+  uint8_t preference = mesh::wifi::kWifiTxPowerAuto;
+  const bool have_preference = mesh::wifi::readStationTxPower(preference);
+  int8_t applied = 0;
+  const esp_err_t ceiling_state = esp_wifi_get_max_tx_power(&applied);
+  if (ceiling_state == ESP_OK && have_preference && preference) {
+    mesh::usbDebugPort().printf(
+        "WiFi TX limit: %d.%02d dBm (manual setting %u.%02u dBm)\n",
+        applied / 4, (applied % 4) * 25, unsigned(preference / 4),
+        unsigned(preference % 4) * 25);
+  } else if (ceiling_state == ESP_OK && have_preference &&
+             applied > mesh::wifi::configuredTxPowerUnits()) {
+    mesh::usbDebugPort().printf(
+        "WiFi TX limit: %d.%02d dBm (automatic cap %d dBm was not applied)\n",
+        applied / 4, (applied % 4) * 25, WIFI_TX_POWER_DBM);
+  } else if (ceiling_state == ESP_OK && have_preference) {
+    mesh::usbDebugPort().printf(
+        "WiFi TX limit: %d.%02d dBm (automatic profile cap %d dBm)\n",
+        applied / 4, (applied % 4) * 25, WIFI_TX_POWER_DBM);
+  } else if (ceiling_state == ESP_ERR_WIFI_NOT_STARTED) {
+    mesh::usbDebugPort().println("WiFi TX limit: driver not started yet");
+  } else {
+    mesh::usbDebugPort().println("WiFi TX limit: unavailable");
+  }
+#endif
   _connect_deadline = WebConfigBatch::scheduleAt(
       now, WebConfigBatch::kInitialWiFiConnectTimeoutMs);
   return true;

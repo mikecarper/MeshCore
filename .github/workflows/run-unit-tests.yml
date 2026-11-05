@@ -46,6 +46,8 @@ jobs:
           test_wifi_station_security
           test_wifi_station_security_arduino3
           test_wifi_station_power
+          test_wifi_tx_power_policy
+          test_wifi_w12_power_join
           test_wifi_recovery
           test_repeater_required_psram
           test_wifi_diagnostic_cli test_webconfig_wifi_status

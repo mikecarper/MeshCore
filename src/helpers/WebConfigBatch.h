@@ -43,7 +43,10 @@ static const int kMaxBatch = 24;             // .h:90 MAX_BATCH
 static const uint32_t kDrainPacingMs = 25;   // .cpp:296 inter-command gap
 static const uint32_t kRebootFallbackMs = 30000;  // .cpp:331 drain-finish fallback
 static const uint32_t kRebootConfirmMs = 3000;    // .cpp:784 first result-read arm
-// Preview builds may extend station joins without changing normal defaults.
+// A board may choose a default without preventing a preview from overriding it.
+#if !defined(WEBCONFIG_WIFI_CONNECT_TIMEOUT_MS) && defined(WEBCONFIG_WIFI_DEFAULT_CONNECT_TIMEOUT_MS)
+#define WEBCONFIG_WIFI_CONNECT_TIMEOUT_MS WEBCONFIG_WIFI_DEFAULT_CONNECT_TIMEOUT_MS
+#endif
 #if defined(WEBCONFIG_WIFI_CONNECT_TIMEOUT_MS)
 static_assert(WEBCONFIG_WIFI_CONNECT_TIMEOUT_MS >= 5000
                   && WEBCONFIG_WIFI_CONNECT_TIMEOUT_MS <= 120000,

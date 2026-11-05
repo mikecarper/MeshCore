@@ -4,6 +4,7 @@
 #include <atomic>
 #include <esp_wifi.h>
 #include <nvs.h>
+#include "WiFiTxPowerPolicy.h"
 
 namespace mesh {
 namespace wifi {
@@ -88,12 +89,23 @@ inline wifi_power_t stationTransmitPower(wifi_ps_type_t mode) {
 #endif
 }
 
+// The board profile is an automatic default. An explicit `wifi.tx` setting
+// remains authoritative, including when it is higher than the default.
+inline int8_t stationPowerSaveTxPower(wifi_ps_type_t mode) {
+  int8_t value = static_cast<int8_t>(stationTransmitPower(mode));
+#if defined(WIFI_TX_POWER_DBM)
+  const int8_t cap = configuredTxPowerUnits();
+  if (value > cap) value = cap;
+#endif
+  return value;
+}
+
 // Restore normal transmit power when modem sleep is disabled, including after
 // a live settings change or reconnect. The SDK enforces its radio limits.
 inline esp_err_t applyStationPowerSave(wifi_ps_type_t mode) {
   const esp_err_t result = esp_wifi_set_ps(mode);
   if (result != ESP_OK) return result;
-  return applyRequestedStationTxPower(static_cast<int8_t>(stationTransmitPower(mode)));
+  return applyRequestedStationTxPower(stationPowerSaveTxPower(mode));
 }
 
 // Apply a new preference without changing the current power-saving mode.
@@ -103,7 +115,7 @@ inline esp_err_t applyStationTxPower() {
   const esp_err_t result = esp_wifi_get_ps(&mode);
   if (result != ESP_OK) return result;
   const int8_t espnow = primaryEspNowAutomaticTxPower().load();
-  const int8_t fallback = espnow >= 0 ? espnow : static_cast<int8_t>(stationTransmitPower(mode));
+  const int8_t fallback = espnow >= 0 ? espnow : stationPowerSaveTxPower(mode);
   return applyRequestedStationTxPower(fallback);
 }
 
