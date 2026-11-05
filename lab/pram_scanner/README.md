@@ -73,8 +73,10 @@ Before packet TX this lab requires a guarded pause and a fresh two-symbol CAD
 sweep of each SF on the outgoing frequency, plus the configured TX SF if it
 is outside the receive range. An uncertain IRQ, overlapping profile, busy
 result or scan error blocks TX even if ordinary channel-check backoff expires.
-At this late boundary busy packets can be dropped; queue-safe retries are not
-implemented. CAD is probabilistic, cannot hear incompatible modulations, and
+A proved pre-transmit busy/error defers the original packet with its priority
+and age for up to 30 seconds; a start failure with uncertain TX uses the
+existing limited retry policy. The direct OTA/foreign slot is also bounded.
+CAD is probabilistic, cannot hear incompatible modulations, and
 a signal can start after its SF was checked. Short preambles may fall between
 visits, especially with SF5 on wide bandwidth. This is for supervised RF
 tests only, not operational service. RX is interrupted during the sweep.

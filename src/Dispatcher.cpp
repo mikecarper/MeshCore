@@ -194,13 +194,26 @@ bool Dispatcher::startOutboundTransmit() {
 #if defined(MESH_W12_PRAM_SEQ_TX_LAB) && MESH_W12_PRAM_SEQ_TX_LAB
   // Do not leak a previous attempt's known-pre-TX status across early exits.
   _radio->clearPreTransmitBlock();
+  lab_last_start_block=PreTransmitBlock::None;
 #endif
   if (!radioDirection::radioTransmitAllowed()) return false;
   if (outbound == NULL) return false;
-  if (!restoreOutboundTxOverrides()) return false;
-  if (!isPacketRadioCurrent(outbound)
-      || _radio->prepareTransmitProfile(outbound->radio_profile,
-          outbound->radio_reply && outbound->radio_reply_force) != RadioParamApplyResult::APPLIED) return false;
+  if (!restoreOutboundTxOverrides()) {
+#if defined(MESH_W12_PRAM_SEQ_TX_LAB) && MESH_W12_PRAM_SEQ_TX_LAB
+    lab_last_start_block=PreTransmitBlock::Error;
+#endif
+    return false;
+  }
+  if (!isPacketRadioCurrent(outbound)) return false;
+  const auto profile_result=_radio->prepareTransmitProfile(outbound->radio_profile,
+      outbound->radio_reply && outbound->radio_reply_force);
+  if (profile_result!=RadioParamApplyResult::APPLIED) {
+#if defined(MESH_W12_PRAM_SEQ_TX_LAB) && MESH_W12_PRAM_SEQ_TX_LAB
+    lab_last_start_block=profile_result==RadioParamApplyResult::BUSY
+        ? PreTransmitBlock::Busy : PreTransmitBlock::Error;
+#endif
+    return false;
+  }
 
   int len = 0;
   uint8_t raw[MAX_TRANS_UNIT];
@@ -238,6 +251,9 @@ bool Dispatcher::startOutboundTransmit() {
   }
   outbound_start = _ms->getMillis();
   if (!_radio->startSendRaw(raw, len)) {
+#if defined(MESH_W12_PRAM_SEQ_TX_LAB) && MESH_W12_PRAM_SEQ_TX_LAB
+    lab_last_start_block=_radio->takePreTransmitBlock();
+#endif
     MESH_DEBUG_PRINTLN("%s Dispatcher::startOutboundTransmit(): ERROR: send start failed!",
                        getLogDateTime());
     restoreOutboundTxOverrides();
@@ -258,6 +274,49 @@ bool Dispatcher::startOutboundTransmit() {
   return true;
 }
 
+#if defined(MESH_W12_PRAM_SEQ_TX_LAB) && MESH_W12_PRAM_SEQ_TX_LAB
+void Dispatcher::releaseLabOutboundReservation() {
+  if (lab_outbound_reservation.packet && !_mgr->releaseOutboundReservation(lab_outbound_reservation)) {
+    // The manager's free() also invalidates its own outstanding lease.
+    MESH_DEBUG_PRINTLN("Dispatcher: invalid outbound reservation on release");
+  }
+}
+
+bool Dispatcher::deferLabPreTransmit() {
+  if (!outbound || lab_outbound_reservation.packet!=outbound
+      || outbound_cancellation!=OutboundCancellation::None) return false;
+  const uint32_t now=_ms->getMillis();
+  if (!outbound->w12_pre_tx_deadline) {
+    outbound->w12_pre_tx_deadline=now+30000U;
+    if (!outbound->w12_pre_tx_deadline) outbound->w12_pre_tx_deadline=1;
+  }
+  if (int32_t(now-outbound->w12_pre_tx_deadline)>=0) return false;
+  const uint32_t delay=getCADFailRetryDelay();
+  uint32_t retry_at=now+(delay<50U ? 50U : delay);
+  if (int32_t(retry_at-outbound->w12_pre_tx_deadline)>0) retry_at=outbound->w12_pre_tx_deadline;
+  if (!retry_at) retry_at=1;
+  // A previous uncertain transmit may have consumed the one normal retry.
+  // Preserve that policy across queue deferral; never restart it from zero.
+  outbound->w12_post_tx_retry_used=outbound_radio_retry_used;
+  if (!_mgr->deferReservedOutbound(lab_outbound_reservation,retry_at)) {
+    // A full queue or temporary manager failure must not discard the owned
+    // packet. Hold its original reservation and retry the defer within the
+    // same bounded deadline; no TX is attempted from this state.
+    lab_pre_tx_held=true;
+    outbound_radio_retry_pending=true;
+    outbound_radio_retry_at=retry_at;
+    return true;
+  }
+  lab_pre_tx_held=false;
+  outbound=nullptr;
+  outbound_radio_retry_pending=false;
+  outbound_radio_retry_used=false;
+  outbound_radio_prepare_deadline=0;
+  outbound_cancellation=OutboundCancellation::None;
+  return true;
+}
+#endif
+
 bool Dispatcher::scheduleOutboundRadioRetry() {
   if (outbound == NULL || outbound_radio_retry_used || outbound_cancellation != OutboundCancellation::None) return false;
   // A lost TxDone may follow a real transmission, so a denied flood must not
@@ -276,6 +335,10 @@ bool Dispatcher::scheduleOutboundRadioRetry() {
 void Dispatcher::failOutboundTransmit() {
   if (outbound == NULL) return;
 
+#if defined(MESH_W12_PRAM_SEQ_TX_LAB) && MESH_W12_PRAM_SEQ_TX_LAB
+  releaseLabOutboundReservation();
+  lab_pre_tx_held=false;
+#endif
   restoreOutboundTxOverrides();
   if (outbound_cancellation == OutboundCancellation::Delivered) {
     // A downstream echo confirms delivery even if the driver's completion
@@ -288,6 +351,9 @@ void Dispatcher::failOutboundTransmit() {
     onSendFail(outbound);
   }
   releasePacket(outbound);
+#if defined(MESH_W12_PRAM_SEQ_TX_LAB) && MESH_W12_PRAM_SEQ_TX_LAB
+  lab_outbound_reservation={};
+#endif
   outbound = NULL;
   outbound_radio_retry_pending = false;
   outbound_radio_retry_used = false;
@@ -497,6 +563,11 @@ bool Dispatcher::checkForeignRadioSend() {
     foreign_radio_yield_meshcore = false;
     return false;
   }
+#if defined(MESH_W12_PRAM_SEQ_TX_LAB) && MESH_W12_PRAM_SEQ_TX_LAB
+  if (foreign_pre_tx_deadline && int32_t(now-foreign_pre_tx_deadline)>=0) {
+    finishForeignRadioFrame(false,false); return false;
+  }
+#endif
   if (foreign_radio_retry_at && (int32_t)(now - foreign_radio_retry_at) < 0) return false;
   updateTxBudget();
   const uint32_t airtime = validPrepareBusyAirtime(
@@ -562,6 +633,8 @@ bool Dispatcher::checkForeignRadioSend() {
       if (int32_t(at-foreign_pre_tx_deadline)<0) {
         const uint32_t wait=getCADFailRetryDelay();
         foreign_radio_retry_at=at+(wait<50U ? 50U : wait);
+        if (int32_t(foreign_radio_retry_at-foreign_pre_tx_deadline)>0)
+          foreign_radio_retry_at=foreign_pre_tx_deadline;
         if (!foreign_radio_retry_at) foreign_radio_retry_at=1;
         return false;
       }
@@ -837,6 +910,16 @@ void Dispatcher::loop() {
   }
 
   if (outbound) {  // waiting for outbound send to complete, or for its one radio retry
+#if defined(MESH_W12_PRAM_SEQ_TX_LAB) && MESH_W12_PRAM_SEQ_TX_LAB
+    if (lab_pre_tx_held) {
+      checkRecv();
+      if (outbound_cancellation!=OutboundCancellation::None || !isPacketRadioCurrent(outbound)
+          || !allowPacketTransmit(outbound)) { failOutboundTransmit(); return; }
+      if (!millisHasNowPassed(outbound_radio_retry_at)) return;
+      if (!deferLabPreTransmit()) failOutboundTransmit();
+      return;
+    }
+#endif
     if (outbound_radio_retry_pending) {
       // The failed send has already returned the chip to RX. Drain a packet
       // arriving during backoff before asking to retune; otherwise BUSY can
@@ -859,6 +942,11 @@ void Dispatcher::loop() {
       const auto prepared = _radio->prepareTransmitProfile(outbound->radio_profile,
           outbound->radio_reply && outbound->radio_reply_force);
       if (prepared == RadioParamApplyResult::BUSY) {
+#if defined(MESH_W12_PRAM_SEQ_TX_LAB) && MESH_W12_PRAM_SEQ_TX_LAB
+        // It is provably before TX; return the original reservation to the
+        // queue so higher-priority work can proceed, retaining retry state.
+        if (lab_outbound_reservation.packet==outbound && deferLabPreTransmit()) return;
+#endif
         if (outbound_radio_prepare_deadline == 0) {
           // A frame already being received may legitimately own either scan
           // profile. Allow its longest full-packet airtime plus recovery grace.
@@ -899,8 +987,15 @@ void Dispatcher::loop() {
           return;
         }
         outbound_radio_retry_pending = false;
-        if (!allowPacketTransmit(outbound) || !startOutboundTransmit()) failOutboundTransmit();
-        else return;
+        if (!allowPacketTransmit(outbound)) {
+          failOutboundTransmit();
+        } else if (!startOutboundTransmit()) {
+#if defined(MESH_W12_PRAM_SEQ_TX_LAB) && MESH_W12_PRAM_SEQ_TX_LAB
+          const auto block=lab_last_start_block;
+          if (block!=PreTransmitBlock::None && deferLabPreTransmit()) return;
+#endif
+          failOutboundTransmit();
+        } else return;
       }
     } else if (_radio->isSendComplete()) {
       long t = _ms->getMillis() - outbound_start;
@@ -942,7 +1037,13 @@ void Dispatcher::loop() {
       } else {
         n_sent_direct++;
       }
+#if defined(MESH_W12_PRAM_SEQ_TX_LAB) && MESH_W12_PRAM_SEQ_TX_LAB
+      releaseLabOutboundReservation();
+#endif
       releasePacket(outbound);  // return to pool
+#if defined(MESH_W12_PRAM_SEQ_TX_LAB) && MESH_W12_PRAM_SEQ_TX_LAB
+      lab_outbound_reservation={};
+#endif
       outbound = NULL;
       outbound_radio_retry_pending = false;
       outbound_radio_retry_used = false;
@@ -1438,6 +1539,13 @@ void Dispatcher::checkSend() {
   // Discard work bound to an expired/changed profile before it can be retuned
   // onto a different channel. This also retires its retry ownership normally.
   Packet* pending = _mgr->peekNextOutbound(now);
+#if defined(MESH_W12_PRAM_SEQ_TX_LAB) && MESH_W12_PRAM_SEQ_TX_LAB
+  if (pending && pending->w12_pre_tx_deadline && int32_t(now-pending->w12_pre_tx_deadline)>=0) {
+    outbound=_mgr->getNextOutbound(now);
+    failOutboundTransmit();
+    return;
+  }
+#endif
   if (pending && !isPacketRadioCurrent(pending)) {
     outbound = _mgr->getNextOutbound(now);
     failOutboundTransmit();
@@ -1479,7 +1587,19 @@ void Dispatcher::checkSend() {
   if (pending && _radio->profiles()) {
     const auto prepared = _radio->prepareTransmitProfile(pending->radio_profile,
         pending->radio_reply && pending->radio_reply_force);
-    if (prepared == RadioParamApplyResult::BUSY) return;
+    if (prepared == RadioParamApplyResult::BUSY) {
+#if defined(MESH_W12_PRAM_SEQ_TX_LAB) && MESH_W12_PRAM_SEQ_TX_LAB
+      // Packet is still queued, so reschedule in place and preserve metadata.
+      if (!pending->w12_pre_tx_deadline) {
+        pending->w12_pre_tx_deadline=now+30000U;
+        if (!pending->w12_pre_tx_deadline) pending->w12_pre_tx_deadline=1;
+      }
+      uint32_t retry_at=now+200U;
+      if (int32_t(retry_at-pending->w12_pre_tx_deadline)>0) retry_at=pending->w12_pre_tx_deadline;
+      if (!_mgr->deferOutbound(pending,retry_at)) next_tx_time=retry_at;
+#endif
+      return;
+    }
     if (prepared == RadioParamApplyResult::FAILED) {
       outbound = _mgr->getNextOutbound(now);
       failOutboundTransmit();
@@ -1499,10 +1619,27 @@ void Dispatcher::checkSend() {
   // a newly due higher-priority packet cannot skip its own profile, airtime,
   // and OTA pacing checks. A manager may also expire/reorder work on peek.
   if (pending && _mgr->peekNextOutbound(now) != pending) return;
+#if defined(MESH_W12_PRAM_SEQ_TX_LAB) && MESH_W12_PRAM_SEQ_TX_LAB
+  // Never remove a packet unless its exact priority and age can be restored.
+  if (!_mgr->supportsOutboundReservation()) { next_tx_time=futureMillis(250); return; }
+  if (!_mgr->reserveNextOutbound(now,lab_outbound_reservation)) return;
+  outbound=lab_outbound_reservation.packet;
+  if (pending && outbound!=pending) {
+    if (!_mgr->deferReservedOutbound(lab_outbound_reservation,lab_outbound_reservation.scheduled_for)) {
+      failOutboundTransmit();
+    } else outbound=nullptr;
+    return;
+  }
+#else
   outbound = _mgr->getNextOutbound(now);
+#endif
   if (outbound) {
     outbound_radio_retry_pending = false;
+#if defined(MESH_W12_PRAM_SEQ_TX_LAB) && MESH_W12_PRAM_SEQ_TX_LAB
+    outbound_radio_retry_used = outbound->w12_post_tx_retry_used;
+#else
     outbound_radio_retry_used = false;
+#endif
     outbound_cancellation = OutboundCancellation::None;
 
     if (!allowPacketTransmit(outbound)) {
@@ -1520,6 +1657,14 @@ void Dispatcher::checkSend() {
     }
 
     if (!startOutboundTransmit()) {
+#if defined(MESH_W12_PRAM_SEQ_TX_LAB) && MESH_W12_PRAM_SEQ_TX_LAB
+      const auto block=lab_last_start_block;
+      if (block!=PreTransmitBlock::None) {
+        if (deferLabPreTransmit()) return;
+        failOutboundTransmit();
+        return;
+      }
+#endif
       // RadioLib performs its radio-specific cleanup (including LR1110 hard
       // recovery for a stuck BUSY command) before returning false. Retain the
       // packet and let the firmware make one fresh start without app help.
@@ -1589,6 +1734,9 @@ void Dispatcher::retireUnusedCADWait(uint8_t profile) {
 }
 
 bool Dispatcher::queueTransmitCandidate(Packet* packet, uint8_t priority, uint32_t scheduled_for) {
+#if defined(MESH_W12_PRAM_SEQ_TX_LAB) && MESH_W12_PRAM_SEQ_TX_LAB
+  packet->w12_pre_tx_deadline=0; packet->w12_post_tx_retry_used=false;
+#endif
   retireUnusedCADWait(packet->radio_profile);
   return _mgr->queueOutbound(packet, priority, scheduled_for);
 }

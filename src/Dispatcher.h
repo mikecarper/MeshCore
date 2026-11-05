@@ -510,6 +510,13 @@ class Dispatcher {
   friend class FleetChannel;  // bounded deferred receiver and exact reply retirement
   enum class OutboundCancellation : uint8_t { None, Cancelled, Delivered };
   Packet* outbound;  // current outbound packet
+#if defined(MESH_W12_PRAM_SEQ_TX_LAB) && MESH_W12_PRAM_SEQ_TX_LAB
+  OutboundReservation lab_outbound_reservation = {};
+  bool lab_pre_tx_held = false;
+  PreTransmitBlock lab_last_start_block = PreTransmitBlock::None;
+  bool deferLabPreTransmit();
+  void releaseLabOutboundReservation();
+#endif
   unsigned long outbound_expiry, outbound_start, total_air_time, rx_air_time;
   unsigned long outbound_radio_retry_at;
   uint32_t outbound_radio_prepare_deadline = 0;
