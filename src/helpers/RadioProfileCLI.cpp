@@ -658,6 +658,9 @@ void RadioProfileCLI::noteSecondaryManualChange() {
 }
 
 bool RadioProfileCLI::canAutoSecondary() const {
+#if defined(MESH_W12_MULTISF_EXPERIMENT) && MESH_W12_MULTISF_EXPERIMENT
+  if (radio_ && radio_->w12MultiSfEnabled()) return false;
+#endif
 #if MESH_ENABLE_MESHTEXT_CHAT || MESH_ENABLE_ETHERNET_TUNNEL || MESH_ENABLE_HOST_KISS
   if (manual_secondary_ || saved_.mode != RadioProfileMode::Off || secondaryRuntimeBusy()) return false;
   const auto& current = radio_->profiles()->secondary;
@@ -710,6 +713,9 @@ bool RadioProfileCLI::autoSecondaryActive() const {
 }
 
 bool RadioProfileCLI::useSecondaryProtocol(RadioProfileProtocol protocol) {
+#if defined(MESH_W12_MULTISF_EXPERIMENT) && MESH_W12_MULTISF_EXPERIMENT
+  if (radio_ && radio_->w12MultiSfEnabled()) return false;
+#endif
 #if MESH_ENABLE_MESHTEXT_CHAT || MESH_ENABLE_ETHERNET_TUNNEL || MESH_ENABLE_HOST_KISS
   if (protocol == RadioProfileProtocol::MeshCore) {
     clearSecondaryProtocol();
@@ -1142,6 +1148,11 @@ bool RadioProfileCLI::handle(const char* command, char* reply, size_t capacity, 
   const bool timing = kind == Timing || kind == TimingAlias;
   if (!radio_ || !radio_->profiles()) { cli::formatError(reply, capacity, MESH_CLI_REPLY_TEXT("radio profiles unsupported", "profiles unsupported")); return true; }
   if (command == text && *args && verb == Get && (temporary || base)) verb = Set;
+#if defined(MESH_W12_MULTISF_EXPERIMENT) && MESH_W12_MULTISF_EXPERIMENT
+  if (radio_->w12MultiSfEnabled() && (base || temporary || scheduled) && verb != Get) {
+    cli::formatError(reply, capacity, "turn radio.multisf off first"); return true;
+  }
+#endif
   if (remote_origin && !remote_command_
       && (((base || temporary) && verb == Set) || (scheduled_temp && verb == Delete))) {
     cli::formatError(reply, capacity, "this role requires local USB for radio2 changes"); return true;

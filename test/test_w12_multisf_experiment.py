@@ -1,0 +1,154 @@
+"""Host-only checks for an opt-in W12 receive/TX split experiment."""
+from pathlib import Path
+import subprocess
+import tempfile
+import unittest
+
+from cpp_source import body as method
+
+ROOT = Path(__file__).resolve().parents[1]
+
+
+class W12MultiSfExperiment(unittest.TestCase):
+    def test_plan_and_guarded_rollback(self):
+        with tempfile.TemporaryDirectory() as d:
+            for name in ("w12_multisf_plan", "w12_multisf_transaction"):
+                exe = Path(d) / name
+                subprocess.run(["g++", "-std=c++17", "-Wall", "-Wextra", "-Werror",
+                                "-I", "src", f"test/fixtures/{name}.cpp", "-o", str(exe)],
+                               cwd=ROOT, check=True)
+                subprocess.run([str(exe)], cwd=ROOT, check=True)
+
+    def test_driver_restores_tx_and_uses_logical_airtime(self):
+        source = (ROOT / "src/helpers/radiolib/CustomLR2021Wrapper.h").read_text()
+        send = method(source, "bool startSendRaw(")
+        self.assertLess(send.index("beginReconfigure()"), send.index("setSideDetector(nullptr"))
+        self.assertLess(send.index("setSpreadingFactor(plan.tx_sf)"), send.index("RadioLibWrapper::startSendRaw(bytes, len)"))
+        self.assertIn("restoreAfterDeepInit()", send)
+        receive = method(source, "int startReceiveMode()")
+        self.assertIn("applyMultiSfReceiveTuple(plan)", receive)
+        airtime = method(source, "uint32_t getEstAirtimeFor(")
+        self.assertIn("RadioLibWrapper::getProfileAirtime(0, len, _cur_cr)", airtime)
+
+    def test_actual_send_path_guards_and_restores(self):
+        source = (ROOT / "src/helpers/radiolib/CustomLR2021Wrapper.h").read_text()
+        send = method(source, "bool startSendRaw(").replace(" override", "")
+        harness = r'''
+#include <cassert>
+#include <cstdint>
+#define MESH_W12_MULTISF_EXPERIMENT 1
+#define RADIOLIB_ERR_NONE 0
+namespace mesh { namespace w12multisf {
+enum class Admission { Ready, Unsupported };
+struct Plan { uint8_t tx_sf = 7; };
+} }
+struct CustomLR2021 {
+  int fail = 0, sf = 5, detector_calls = 0;
+  int setSideDetector(void*, int) { ++detector_calls; return fail == 1 ? -1 : 0; }
+  int setSpreadingFactor(int n) { if (fail == 2) return -1; sf = n; return 0; }
+  int setPreambleLength(int) { return fail == 3 ? -1 : 0; }
+};
+struct RadioLibWrapper {
+  CustomLR2021 chip; CustomLR2021* _radio = &chip;
+  bool started = false, sent_ok = true;
+  bool startSendRaw(const uint8_t*, int) { started = true; return sent_ok; }
+};
+struct Test : RadioLibWrapper {
+  bool _multi_sf_enabled = true, _profile_refresh_required = false, _profile_repair_required = false;
+  int admission = 1, resumes = 0; bool restored = true, receiving = true, pending = false;
+  mesh::w12multisf::Admission multiSfPlan(mesh::w12multisf::Plan&) { return mesh::w12multisf::Admission::Ready; }
+  void invalidateScanTuple() {}
+  uint8_t beginReconfigure() { return admission; }
+  int currentPreambleLength() { return 32; }
+  bool restoreAfterDeepInit() { return restored; }
+  void endReconfigure(bool b) { if (b) ++resumes; }
+  bool isInRecvMode() { return receiving; }
+  bool hasPendingRadioInterrupt() { return pending; }
+  void startRecv() { ++resumes; }
+  SEND_METHOD
+};
+int main() {
+  uint8_t packet = 1;
+  Test busy; busy.admission = 2;
+  assert(!busy.startSendRaw(&packet, 1));
+  assert(!busy.started && busy.chip.detector_calls == 0 && busy.chip.sf == 5);
+  Test ok; assert(ok.startSendRaw(&packet, 1));
+  assert(ok.started && ok.chip.sf == 7 && ok.chip.detector_calls == 1);
+  for (int failure = 1; failure <= 3; ++failure) {
+    Test failed; failed.chip.fail = failure;
+    assert(!failed.startSendRaw(&packet, 1));
+    assert(!failed.started && failed.resumes == 1 && !failed._profile_repair_required);
+    Test broken; broken.chip.fail = failure; broken.restored = false;
+    assert(!broken.startSendRaw(&packet, 1));
+    assert(!broken.started && broken._profile_repair_required);
+  }
+  Test start_failed; start_failed.sent_ok = false;
+  assert(!start_failed.startSendRaw(&packet, 1) && start_failed.resumes == 1);
+}
+'''.replace("SEND_METHOD", send)
+        with tempfile.TemporaryDirectory() as d:
+            src, exe = Path(d) / "test.cpp", Path(d) / "test"
+            src.write_text(harness)
+            subprocess.run(["g++", "-std=c++17", "-Wall", "-Wextra", "-Werror",
+                            str(src), "-o", str(exe)], check=True)
+            subprocess.run([str(exe)], check=True)
+
+    def test_actual_receive_path_checks_profile_and_programs_side_detectors(self):
+        source = (ROOT / "src/helpers/radiolib/CustomLR2021Wrapper.h").read_text()
+        receive = method(source, "int startReceiveMode()").replace(" override", "")
+        harness = r'''
+#include <cassert>
+#include <cstdint>
+#define MESH_W12_MULTISF_EXPERIMENT 1
+#define RADIOLIB_ERR_NONE 0
+#define RADIOLIB_ERR_UNKNOWN -1
+namespace mesh {
+namespace lr2021 { struct ApplyStatus { enum class Stage { Standby, Receive }; }; }
+namespace w12multisf { enum class Admission { Ready, Unsupported }; struct Plan {}; }
+}
+struct FakeRadio {
+  int standby_error = 0, starts = 0;
+  int standby() { return standby_error; }
+  int startReceive() { ++starts; return 0; }
+};
+struct Test {
+  FakeRadio chip, *_radio = &chip;
+  bool _multi_sf_enabled = true, tuple_ok = true, supported = true, _scan_retune = false;
+  int tuples = 0;
+  void invalidateScanTuple() {}
+  int recordApply(mesh::lr2021::ApplyStatus::Stage, int code) { return code; }
+  mesh::w12multisf::Admission multiSfPlan(mesh::w12multisf::Plan&) {
+    return supported ? mesh::w12multisf::Admission::Ready : mesh::w12multisf::Admission::Unsupported;
+  }
+  bool applyMultiSfReceiveTuple(const mesh::w12multisf::Plan&) { ++tuples; return tuple_ok; }
+  RECEIVE_METHOD
+};
+int main() {
+  Test normal; assert(normal.startReceiveMode() == 0);
+  assert(normal.tuples == 1 && normal.chip.starts == 1);
+  Test blocked; blocked.supported = false;
+  assert(blocked.startReceiveMode() == -1 && blocked.chip.starts == 0 && blocked.tuples == 0);
+  Test error; error.tuple_ok = false;
+  assert(error.startReceiveMode() == -1 && error.chip.starts == 0);
+  Test standby; standby.chip.standby_error = -7;
+  assert(standby.startReceiveMode() == -7 && standby.tuples == 0 && standby.chip.starts == 0);
+}
+'''.replace("RECEIVE_METHOD", receive)
+        with tempfile.TemporaryDirectory() as d:
+            src, exe = Path(d) / "test.cpp", Path(d) / "test"
+            src.write_text(harness)
+            subprocess.run(["g++", "-std=c++17", "-Wall", "-Wextra", "-Werror",
+                            str(src), "-o", str(exe)], check=True)
+            subprocess.run([str(exe)], check=True)
+
+    def test_opt_in_and_conflict_guards(self):
+        source = (ROOT / "src/helpers/radiolib/CustomLR2021Wrapper.h").read_text()
+        self.assertIn("MESH_W12_MULTISF_EXPERIMENT", source)
+        self.assertIn("if (enabled && _multi_sf_enabled)", source)
+        profile = (ROOT / "src/helpers/RadioProfileCLI.cpp").read_text()
+        self.assertIn("radio_->w12MultiSfEnabled() && (base || temporary || scheduled)", profile)
+        self.assertIn("radio_ && radio_->w12MultiSfEnabled()", profile)
+
+
+if __name__ == "__main__":
+    unittest.main()

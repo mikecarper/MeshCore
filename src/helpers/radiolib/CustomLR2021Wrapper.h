@@ -3,6 +3,9 @@
 #include "CustomLR2021.h"
 #include "LR2021SideDetectorConfig.h"
 #include "LR2021ApplyStatus.h"
+#if defined(MESH_W12_MULTISF_EXPERIMENT) && MESH_W12_MULTISF_EXPERIMENT
+#include "W12MultiSfPlan.h"
+#endif
 #if defined(MESH_W12_PRAM_EXPERIMENT) && MESH_W12_PRAM_EXPERIMENT
 #include "W12PramScannerCodec.h"
 #include "W12PramAutoPolicy.h"
@@ -27,6 +30,21 @@
 class CustomLR2021Wrapper : public RadioLibWrapper {
 #if MESH_LR2021_RXPS_HOLD_AVAILABLE
   bool _side_detector_uncertain = false;
+#endif
+#if defined(MESH_W12_MULTISF_EXPERIMENT) && MESH_W12_MULTISF_EXPERIMENT
+  bool _multi_sf_enabled = false;
+  uint8_t _multi_sf_lower = 5, _multi_sf_upper = 8;
+  mesh::w12multisf::Admission multiSfPlan(mesh::w12multisf::Plan& plan) const {
+    return mesh::w12multisf::makePlan(_params_valid, _multi_sf_lower, _multi_sf_upper,
+        _cur_sf, _cur_bw, _profiles.enabled(), _rx_ps_enabled, _numSideDet != 0, plan);
+  }
+  bool applyMultiSfReceiveTuple(const mesh::w12multisf::Plan& plan) {
+    LR2021LoRaSideDetector_t cfg[mesh::lr2021::MAX_SIDE_DETECTORS] = {};
+    buildSideDetectorConfig(plan.side_sf, plan.side_count, _cur_bw, cfg);
+    auto* radio = static_cast<CustomLR2021*>(_radio);
+    return radio->setSpreadingFactor(plan.rx_primary) == RADIOLIB_ERR_NONE
+        && radio->setSideDetector(plan.side_count ? cfg : nullptr, plan.side_count) == RADIOLIB_ERR_NONE;
+  }
 #endif
 #if defined(MESH_W12_PRAM_EXPERIMENT) && MESH_W12_PRAM_EXPERIMENT
 #include "W12PramScannerLab.inc"
@@ -111,6 +129,50 @@ class CustomLR2021Wrapper : public RadioLibWrapper {
   }
 
 public:
+#if defined(MESH_W12_MULTISF_EXPERIMENT) && MESH_W12_MULTISF_EXPERIMENT
+  bool w12MultiSfEnabled() const override { return _multi_sf_enabled; }
+  void formatW12MultiSf(char* out, size_t cap) const override {
+    mesh::w12multisf::Plan plan;
+    const auto admitted = multiSfPlan(plan);
+    snprintf(out, cap, "> %s%s %u-%u tx=%u (RAM only)",
+        _multi_sf_enabled ? "on" : "off", !_multi_sf_enabled ? "" :
+        admitted != mesh::w12multisf::Admission::Ready ? "/blocked" :
+        state == STATE_RX ? "/receiving" : "/pending",
+        (unsigned)_multi_sf_lower, (unsigned)_multi_sf_upper, (unsigned)_cur_sf);
+  }
+  mesh::RadioParamApplyResult trySetW12MultiSf(bool enabled, uint8_t lower, uint8_t upper) override {
+    using Result = mesh::RadioParamApplyResult;
+    mesh::w12multisf::Plan plan;
+    if (enabled && mesh::w12multisf::makePlan(_params_valid, lower, upper, _cur_sf,
+        _cur_bw, _profiles.enabled(), _rx_ps_enabled, _numSideDet != 0, plan)
+            != mesh::w12multisf::Admission::Ready) return Result::FAILED;
+    if (enabled == _multi_sf_enabled && (!enabled || (lower == _multi_sf_lower && upper == _multi_sf_upper)))
+      return Result::APPLIED;
+    const uint8_t resume = beginReconfigure();
+    if (resume > 1) return resume == 2 ? Result::BUSY : Result::FAILED;
+    const bool previous = _multi_sf_enabled;
+    const uint8_t old_lower = _multi_sf_lower, old_upper = _multi_sf_upper;
+    auto* radio = static_cast<CustomLR2021*>(_radio);
+    const bool normal = radio->setSideDetector(nullptr, 0) == RADIOLIB_ERR_NONE
+        && radio->setSpreadingFactor(_cur_sf) == RADIOLIB_ERR_NONE;
+    if (normal) {
+      _multi_sf_enabled = enabled;
+      if (enabled) { _multi_sf_lower = lower; _multi_sf_upper = upper; }
+      invalidateScanTuple();
+      endReconfigure(resume);
+      if (!resume || isInRecvMode()) return Result::APPLIED;
+    }
+    _multi_sf_enabled = previous; _multi_sf_lower = old_lower; _multi_sf_upper = old_upper;
+    const bool restored = restoreAfterDeepInit();
+    if (restored) endReconfigure(resume);
+    if (!restored || (resume && !isInRecvMode())) _profile_refresh_required = _profile_repair_required = true;
+    return Result::FAILED;
+  }
+  uint32_t getEstAirtimeFor(int len) override {
+    return _multi_sf_enabled ? RadioLibWrapper::getProfileAirtime(0, len, _cur_cr)
+                             : RadioLibWrapper::getEstAirtimeFor(len);
+  }
+#endif
 #if MESH_LR2021_RXPS_AVAILABLE
   // The autonomous single-profile duty cycle is a separate experiment from
   // the dual-profile PRAM scanner, and must not be enabled by it implicitly.
@@ -143,6 +205,9 @@ public:
   }
 #endif
   mesh::RadioParamApplyResult trySetRxPowerSaving(bool enabled, uint32_t rx_us, uint32_t sleep_us) {
+#if defined(MESH_W12_MULTISF_EXPERIMENT) && MESH_W12_MULTISF_EXPERIMENT
+    if (enabled && _multi_sf_enabled) return mesh::RadioParamApplyResult::FAILED;
+#endif
 #if defined(MESH_W12_PRAM_EXPERIMENT) && MESH_W12_PRAM_EXPERIMENT
     if (_lab_uncertain || (_lab_scan_active && labReconfigureBlocked()))
       return mesh::RadioParamApplyResult::BUSY;
@@ -280,6 +345,13 @@ public:
 
   mesh::RadioParamApplyResult trySetParams(float freq, float bw, uint8_t sf, uint8_t cr,
                                          const uint32_t* timings = nullptr) override {
+#if defined(MESH_W12_MULTISF_EXPERIMENT) && MESH_W12_MULTISF_EXPERIMENT
+    mesh::w12multisf::Plan multi_plan;
+    if (_multi_sf_enabled && (timings || mesh::w12multisf::makePlan(true,
+        _multi_sf_lower, _multi_sf_upper, sf, bw, _profiles.enabled(),
+        _rx_ps_enabled, _numSideDet != 0, multi_plan) != mesh::w12multisf::Admission::Ready))
+      return mesh::RadioParamApplyResult::FAILED;
+#endif
     _apply_status.begin();
     const auto result = RadioLibWrapper::trySetParams(freq, bw, sf, cr, timings);
     if (result == mesh::RadioParamApplyResult::APPLIED) _apply_status.applied();
@@ -540,8 +612,36 @@ public:
     if (_lab_scan_active || _lab_uncertain) return false;
 #endif
     invalidateScanTuple();
+#if defined(MESH_W12_MULTISF_EXPERIMENT) && MESH_W12_MULTISF_EXPERIMENT
+    if (_multi_sf_enabled) {
+      mesh::w12multisf::Plan plan;
+      if (multiSfPlan(plan) != mesh::w12multisf::Admission::Ready) return false;
+      const uint8_t resume = beginReconfigure();
+      if (resume > 1) return false;
+      auto* radio = static_cast<CustomLR2021*>(_radio);
+      if (radio->setSideDetector(nullptr, 0) != RADIOLIB_ERR_NONE
+          || radio->setSpreadingFactor(plan.tx_sf) != RADIOLIB_ERR_NONE
+          || radio->setPreambleLength(currentPreambleLength()) != RADIOLIB_ERR_NONE) {
+        const bool restored = restoreAfterDeepInit();
+        if (restored) endReconfigure(resume);
+        if (!restored || (resume && !isInRecvMode())) _profile_refresh_required = _profile_repair_required = true;
+        return false;
+      }
+      const bool sent = RadioLibWrapper::startSendRaw(bytes, len);
+      if (!sent && resume && !hasPendingRadioInterrupt()) startRecv();
+      return sent;
+    }
+#endif
     return RadioLibWrapper::startSendRaw(bytes, len);
   }
+
+#if defined(MESH_W12_MULTISF_EXPERIMENT) && MESH_W12_MULTISF_EXPERIMENT && MESH_ENABLE_TX_BEACONS
+  mesh::RadioParamApplyResult prepareBeaconTransmit(const mesh::RadioProfileParams& params,
+                                                     int8_t power) override {
+    if (_multi_sf_enabled) return mesh::RadioParamApplyResult::FAILED;
+    return RadioLibWrapper::prepareBeaconTransmit(params, power);
+  }
+#endif
 
   bool setCodingRate(uint8_t cr) override {
 #if defined(MESH_W12_PRAM_EXPERIMENT) && MESH_W12_PRAM_EXPERIMENT
@@ -557,6 +657,9 @@ public:
   }
 
   mesh::RadioParamApplyResult tryConfigSideDetectors(const uint8_t* sideDetSFs, uint8_t num, float bw) override {
+#if defined(MESH_W12_MULTISF_EXPERIMENT) && MESH_W12_MULTISF_EXPERIMENT
+    if (_multi_sf_enabled) return mesh::RadioParamApplyResult::FAILED;
+#endif
     invalidateScanTuple();
     using Result = mesh::RadioParamApplyResult;
     // While radio2 is active, retain valid primary detectors in RAM without
@@ -702,6 +805,31 @@ protected:
 
   int16_t performChannelScan() override {
     invalidateScanTuple();
+#if defined(MESH_W12_MULTISF_EXPERIMENT) && MESH_W12_MULTISF_EXPERIMENT
+    if (_multi_sf_enabled) {
+      mesh::w12multisf::Plan plan;
+      if (multiSfPlan(plan) != mesh::w12multisf::Admission::Ready) return RADIOLIB_ERR_UNKNOWN;
+      auto* radio = static_cast<CustomLR2021*>(_radio);
+      int16_t result = radio->standby();
+      if (result == RADIOLIB_ERR_NONE) result = radio->setSideDetector(nullptr, 0);
+      if (result == RADIOLIB_ERR_NONE) {
+        result = RADIOLIB_CHANNEL_FREE;
+        for (uint8_t sf = _multi_sf_lower; sf <= _multi_sf_upper; ++sf) {
+          if (radio->standby() != RADIOLIB_ERR_NONE || radio->setSpreadingFactor(sf) != RADIOLIB_ERR_NONE) {
+            result = RADIOLIB_ERR_UNKNOWN; break;
+          }
+          result = performChannelScanWithTimeout(cadScanTimeoutMillis(sf, _cur_bw));
+          _board->serviceWatchdog();
+          if (result != RADIOLIB_CHANNEL_FREE) break;
+        }
+      }
+      if (radio->standby() != RADIOLIB_ERR_NONE || !applyMultiSfReceiveTuple(plan)) {
+        if (!restoreAfterDeepInit()) _profile_refresh_required = _profile_repair_required = true;
+        return RADIOLIB_ERR_UNKNOWN;
+      }
+      return result;
+    }
+#endif
     if (_numSideDet == 0 || _profiles.enabled()) return RadioLibWrapper::performChannelScan();
 
     CustomLR2021* radio = (CustomLR2021 *)_radio;
@@ -800,6 +928,14 @@ protected:
     const int16_t standby = recordApply(mesh::lr2021::ApplyStatus::Stage::Standby,
                                        _radio->standby());
     if (standby != RADIOLIB_ERR_NONE) return standby;
+#if defined(MESH_W12_MULTISF_EXPERIMENT) && MESH_W12_MULTISF_EXPERIMENT
+    if (_multi_sf_enabled) {
+      mesh::w12multisf::Plan plan;
+      if (multiSfPlan(plan) != mesh::w12multisf::Admission::Ready
+          || !applyMultiSfReceiveTuple(plan)) return RADIOLIB_ERR_UNKNOWN;
+      return recordApply(mesh::lr2021::ApplyStatus::Stage::Receive, _radio->startReceive());
+    }
+#endif
 #if MESH_LR2021_RXPS_AVAILABLE
     return recordApply(mesh::lr2021::ApplyStatus::Stage::Receive, startReceivePowerSaving());
 #else

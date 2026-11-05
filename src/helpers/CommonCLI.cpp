@@ -3830,6 +3830,35 @@ void CommonCLI::handleCommand(uint32_t sender_timestamp, char* command, char* re
     // Remote (sender_timestamp != 0) loads are provisional until a fresh admin login.
     if (_radio_presets.handle(command, reply, 160, sender_timestamp != 0)) return;
 #endif
+#if defined(MESH_W12_MULTISF_EXPERIMENT) && MESH_W12_MULTISF_EXPERIMENT
+    if (strcmp(command, "get radio.multisf") == 0) {
+      auto* radio = _callbacks->getProfileRadio();
+      if (radio) radio->formatW12MultiSf(reply, 160);
+      else strcpy(reply, "Error: radio unavailable");
+      return;
+    }
+    if (strncmp(command, "set radio.multisf ", 18) == 0) {
+      auto* radio = _callbacks->getProfileRadio();
+      const char* arg = command + 18;
+      const bool off = strcmp(arg, "off") == 0;
+      unsigned lower = 5, upper = 8;
+      int consumed = 0;
+      if (!off && strcmp(arg, "on") != 0
+          && (sscanf(arg, "%u-%u%n", &lower, &upper, &consumed) != 2
+              || arg[consumed] != '\0' || lower > 255 || upper > 255)) {
+        strcpy(reply, "Error: use set radio.multisf on|off|5-8"); return;
+      }
+      if (!radio || (!off && !_radio_profiles.secondaryRuntimeAvailable())) {
+        strcpy(reply, "Error: radio2 schedule or radio change pending"); return;
+      }
+      const auto result = radio->trySetW12MultiSf(!off, lower, upper);
+      if (result == mesh::RadioParamApplyResult::BUSY) strcpy(reply, "Error: radio busy; retry");
+      else if (result != mesh::RadioParamApplyResult::APPLIED)
+        strcpy(reply, "Error: unsupported range, bandwidth, radio2, RXPS or extra.sf");
+      else radio->formatW12MultiSf(reply, 160);
+      return;
+    }
+#endif
     if (_radio_profiles.handle(command, reply, 160, sender_timestamp != 0)) return;
 #if defined(ENABLE_OTA)
     const auto* ota_context = mesh::ota::ota_context_if_active();
@@ -5331,6 +5360,12 @@ void CommonCLI::handleSetCmd(uint32_t sender_timestamp, char* command, char* rep
               result == mesh::RadioParamApplyResult::BUSY ? "; pending" : "");
     }
   } else if (memcmp(config, "radio.rxps ", 11) == 0) { // RX PowerSaving
+#if defined(MESH_W12_MULTISF_EXPERIMENT) && MESH_W12_MULTISF_EXPERIMENT
+    if (_callbacks->getProfileRadio() && _callbacks->getProfileRadio()->w12MultiSfEnabled()
+        && strcmp(config + 11, "off") != 0) {
+      strcpy(reply, "Error: turn radio.multisf off first"); return;
+    }
+#endif
     const char* value = &config[11];
     uint8_t enable = _prefs->rx_powersaving_enabled;
     uint32_t rx_us = _prefs->rx_ps_rx_us;
@@ -6206,6 +6241,11 @@ void CommonCLI::handleSetCmd(uint32_t sender_timestamp, char* command, char* rep
       sprintf(reply, "OK - reboot.interval set to %d", _prefs->reboot_interval);
     }
   } else if (strcmp(config, "extra.sf") == 0 || memcmp(config, "extra.sf ", 9) == 0) {
+#if defined(MESH_W12_MULTISF_EXPERIMENT) && MESH_W12_MULTISF_EXPERIMENT
+    if (_callbacks->getProfileRadio() && _callbacks->getProfileRadio()->w12MultiSfEnabled()) {
+      strcpy(reply, "Error: turn radio.multisf off first"); return;
+    }
+#endif
 #if defined(USE_LR2021)
     const auto* radio = _callbacks->getProfileRadio();
     const auto* profiles = radio ? radio->profiles() : nullptr;
