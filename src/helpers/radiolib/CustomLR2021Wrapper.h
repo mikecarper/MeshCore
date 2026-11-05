@@ -161,7 +161,8 @@ public:
     else if (!cfg.enabled) status=(_multi_sf_enabled || _lab_seq_requested) ? "stopping" : "off";
     else if (!_profiles.enabled() && cfg.profile==1) status="fallback: radio2 off";
     else if (_multi_sf_enabled) status=(cfg.profile==0 && !_profiles.enabled()
-        && cfg.first==_multi_sf_lower && cfg.last==_multi_sf_upper) ? "single active" : "changing";
+        && cfg.first==_multi_sf_lower && cfg.last==_multi_sf_upper)
+        ? (isInRecvMode() ? "single active" : "single pending") : "changing";
     else if (_lab_seq_requested && _lab_scan_active) status=(cfg.profile==_lab_seq_selected
         && cfg.first==_lab_seq_first && cfg.last==_lab_seq_last) ? "dual active" : "changing";
     else if (_lab_seq_requested && _lab_auto.blocked()) status="fallback: scanner unavailable";
@@ -722,14 +723,23 @@ public:
   }
 #if defined(MESH_W12_PRAM_SEQUENTIAL_LAB) && MESH_W12_PRAM_SEQUENTIAL_LAB && (MESH_ENABLE_CARRIER_TOOLS || MESH_ENABLE_MORSE_RX)
   mesh::RadioParamApplyResult setCarrierWave(uint8_t p, uint32_t duration) override {
-    if (_lab_seq_requested && duration) return mesh::RadioParamApplyResult::FAILED;
+    if (duration) {
+      const auto released=labReleaseForExclusive();
+      if (released!=mesh::RadioParamApplyResult::APPLIED) return released;
+    }
     return RadioLibWrapper::setCarrierWave(p, duration);
   }
 #endif
 #if defined(MESH_W12_PRAM_SEQUENTIAL_LAB) && MESH_W12_PRAM_SEQUENTIAL_LAB && MESH_ENABLE_CARRIER_TOOLS
   mesh::MorseTxResult startMorseTx(float freq, uint8_t wpm, const char* text) override {
-    if (_lab_seq_requested) return mesh::MorseTxResult::Busy;
+    if (labReleaseForExclusive()!=mesh::RadioParamApplyResult::APPLIED) return mesh::MorseTxResult::Busy;
     return RadioLibWrapper::startMorseTx(freq, wpm, text);
+  }
+#endif
+#if defined(MESH_W12_PRAM_SEQUENTIAL_LAB) && MESH_W12_PRAM_SEQUENTIAL_LAB && MESH_ENABLE_MORSE_RX
+  mesh::MorseRxResult startMorseRx(float freq, uint8_t wpm, uint32_t duration) override {
+    if (labReleaseForExclusive()!=mesh::RadioParamApplyResult::APPLIED) return mesh::MorseRxResult::Busy;
+    return RadioLibWrapper::startMorseRx(freq, wpm, duration);
   }
 #endif
 
@@ -1032,7 +1042,12 @@ protected:
       mesh::w12multisf::Plan plan;
       if (multiSfPlan(plan) != mesh::w12multisf::Admission::Ready
           || !applyMultiSfReceiveTuple(plan)) return RADIOLIB_ERR_UNKNOWN;
+#if MESH_LR2021_RXPS_AVAILABLE
+      // Preserve RXPS intent while its multi-SF hold selects continuous RX.
+      return recordApply(mesh::lr2021::ApplyStatus::Stage::Receive, startReceivePowerSaving());
+#else
       return recordApply(mesh::lr2021::ApplyStatus::Stage::Receive, _radio->startReceive());
+#endif
     }
 #endif
 #if MESH_LR2021_RXPS_AVAILABLE

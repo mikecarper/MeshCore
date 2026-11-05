@@ -28,6 +28,7 @@ struct Fake : RadioLibWrapper {
   struct { uint32_t generation; } _lab_snap[2]={{1},{2}};
   bool _lab_uncertain=false, _lab_scan_active=true, _lab_transition_waiting=false;
   bool _cw_active=false, _loop_event_pending=false, stop_ok=false;
+  bool _lab_exclusive_restore_auto=false;
   uint32_t _lab_transition_at=0, _lab_last_poll=0, _lab_prev_cads=0, _lab_progress_at=0;
   int stops=0, polls=0;
   mesh::w12pram::Status _lab_status={};
@@ -35,6 +36,8 @@ struct Fake : RadioLibWrapper {
   void labMarkUncertain() { _lab_uncertain=true; }
   void labServiceUncertain() {}
   void labServiceAutomatic(bool,bool) {}
+  bool labExclusivePending() { return false; }
+  bool labScannerSetAutomatic(bool) { return true; }
   bool isChipBusy() { return false; }
   bool hasPendingRadioInterrupt() { return false; }
   int16_t labScannerCommand(uint8_t,const uint8_t*,size_t,mesh::w12pram::Status& status) {

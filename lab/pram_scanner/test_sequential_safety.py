@@ -14,11 +14,10 @@ wrapper = (root / 'src/helpers/radiolib/CustomLR2021Wrapper.h').read_text()
 configure = body(source, 'bool labSequentialConfigure(')
 assert 'if (_lab_seq_requested) return Result::FAILED;' in body(
     source, 'mesh::RadioParamApplyResult prepareTransmitProfile(uint8_t p, bool reply)')
-assert 'if (_lab_seq_requested) return Result::FAILED;' in body(
-    source, 'mesh::RadioParamApplyResult prepareBeaconTransmit(')
+assert 'labReleaseForExclusive()' in body(source, 'mesh::RadioParamApplyResult prepareBeaconTransmit(')
 assert 'if (_lab_seq_requested) return false;' in body(wrapper, 'bool startSendRaw(')
-assert 'if (_lab_seq_requested && duration)' in body(wrapper, 'mesh::RadioParamApplyResult setCarrierWave(')
-assert 'if (_lab_seq_requested)' in body(wrapper, 'mesh::MorseTxResult startMorseTx(')
+assert 'labReleaseForExclusive()' in body(wrapper, 'mesh::RadioParamApplyResult setCarrierWave(')
+assert 'labReleaseForExclusive()' in body(wrapper, 'mesh::MorseTxResult startMorseTx(')
 assert 'mode() != mesh::radioDirection::Mode::Rx' in body(source, 'bool labScannerStart(')
 program = r'''
 #include <cassert>
