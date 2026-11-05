@@ -75,9 +75,9 @@ inline void benchRequest(uint8_t mode,const Packed& p,uint8_t (&out)[9]) {
   for (unsigned i=0;i<9;i++) out[i]=tmp[i];
 }
 enum class RxEvent { Ignore, Deliver, Invalid };
-inline RxEvent classify(const Status& s) {
+inline RxEvent classify(const Status& s, uint8_t slot_count=2) {
   if (!s.hooked) return RxEvent::Invalid;
-  if (s.state==4 && s.last_hit<2 && (s.irq & (1u<<18))) return RxEvent::Deliver;
+  if (s.state==4 && s.last_hit<slot_count && (s.irq & (1u<<18))) return RxEvent::Deliver;
   // A delayed edge from a prior packet is harmless after the scanner resumed.
   if (s.state>=1 && s.state<=3 && !(s.irq & (1u<<18))) return RxEvent::Ignore;
   return RxEvent::Invalid;

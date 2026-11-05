@@ -38,6 +38,13 @@ enum class RadioParamApplyResult : uint8_t {
   FAILED
 };
 
+#if defined(MESH_W12_PRAM_SEQ_TX_LAB) && MESH_W12_PRAM_SEQ_TX_LAB
+// A block reported here is provably before calling the radio's transmit API.
+// No result means a start error may have transmitted and must not be retried
+// under the pre-transmit policy.
+enum class PreTransmitBlock : uint8_t { None, Busy, Error };
+#endif
+
 /**
  * \brief  Abstraction of local/volatile clock with Millisecond granularity.
 */
@@ -51,6 +58,10 @@ public:
 */
 class Radio {
 public:
+#if defined(MESH_W12_PRAM_SEQ_TX_LAB) && MESH_W12_PRAM_SEQ_TX_LAB
+  virtual void clearPreTransmitBlock() {}
+  virtual PreTransmitBlock takePreTransmitBlock() { return PreTransmitBlock::None; }
+#endif
   MESH_REGULATOR_VIRTUAL uint8_t regulatorModes() const { return 0; }
   MESH_REGULATOR_VIRTUAL power::RegulatorMode defaultRegulatorMode() const { return power::RegulatorMode::Default; }
   // Cache a selection before the first hardware initialization. Save later
@@ -111,6 +122,15 @@ public:
   virtual void begin() { }
   virtual RadioProfiles* profiles() { return nullptr; }
   virtual const RadioProfiles* profiles() const { return nullptr; }
+#if defined(MESH_W12_MULTISF_EXPERIMENT) && MESH_W12_MULTISF_EXPERIMENT
+  virtual bool w12MultiSfEnabled() const { return false; }
+  virtual RadioParamApplyResult trySetW12MultiSf(bool, uint8_t, uint8_t) {
+    return RadioParamApplyResult::FAILED;
+  }
+  virtual void formatW12MultiSf(char* out, size_t capacity) const {
+    if (capacity) out[0] = 0;
+  }
+#endif
 #if MESH_RADIO_SWITCH_TUNING
   virtual RadioSwitchCapabilities switchTuningCapabilities() const { return {}; }
   virtual RadioSwitchTuning switchTuning() const { return {}; }
@@ -165,6 +185,11 @@ public:
   virtual uint32_t getProfileAirtime(uint8_t, int len_bytes, uint8_t = 0) {
     return getEstAirtimeFor(len_bytes);
   }
+#if defined(MESH_W12_PRAM_SEQUENTIAL_LAB) && MESH_W12_PRAM_SEQUENTIAL_LAB
+  virtual uint32_t getReceivedAirtimeFor(uint8_t, int, uint32_t legacy) {
+    return legacy;
+  }
+#endif
   virtual RadioParamApplyResult trySetPrimaryParams(const RadioProfileParams& p,
       bool temporary, const uint32_t* timings = nullptr) {
     (void)temporary;
@@ -390,6 +415,19 @@ public:
  * \brief  An abstraction for managing instances of Packets (eg. in a static pool),
  *        and for managing the outbound packet queue.
 */
+#if defined(MESH_W12_PRAM_SEQ_TX_LAB) && MESH_W12_PRAM_SEQ_TX_LAB
+// A queue reservation owns exactly one packet until the manager either
+// defers it back to its queue or releases the reservation to the caller.
+class PacketManager;
+struct OutboundReservation {
+  Packet* packet = nullptr;
+  PacketManager* owner = nullptr;
+  uint32_t scheduled_for = 0;
+  uint32_t generation = 0;
+  uint8_t priority = 0;
+};
+#endif
+
 class PacketManager {
 public:
   virtual Packet* allocNew() = 0;
@@ -397,6 +435,17 @@ public:
 
   virtual bool queueOutbound(Packet* packet, uint8_t priority, uint32_t scheduled_for) = 0;
   virtual Packet* getNextOutbound(uint32_t now) = 0;    // by priority
+#if defined(MESH_W12_PRAM_SEQ_TX_LAB) && MESH_W12_PRAM_SEQ_TX_LAB
+  // Optional queue-safe ownership for a pre-TX attempt. A successful reserve
+  // removes one due packet and records its ordering metadata. A successful
+  // defer restores it with the same priority and original age, scheduled at
+  // retry_at. Both defer and release consume the token; on failure the caller
+  // still owns the reserved packet and must retry or release it explicitly.
+  virtual bool supportsOutboundReservation() const { return false; }
+  virtual bool reserveNextOutbound(uint32_t, OutboundReservation&) { return false; }
+  virtual bool deferReservedOutbound(OutboundReservation&, uint32_t) { return false; }
+  virtual bool releaseOutboundReservation(OutboundReservation&) { return false; }
+#endif
   virtual Packet* peekNextOutbound(uint32_t now) {
     (void)now;
     return NULL;
@@ -461,6 +510,15 @@ class Dispatcher {
   friend class FleetChannel;  // bounded deferred receiver and exact reply retirement
   enum class OutboundCancellation : uint8_t { None, Cancelled, Delivered };
   Packet* outbound;  // current outbound packet
+#if defined(MESH_W12_PRAM_SEQ_TX_LAB) && MESH_W12_PRAM_SEQ_TX_LAB
+  OutboundReservation lab_outbound_reservation = {};
+  bool lab_pre_tx_held = false;
+  bool lab_has_blocked_packets = false;
+  PreTransmitBlock lab_last_start_block = PreTransmitBlock::None;
+  bool deferLabPreTransmit();
+  void releaseLabOutboundReservation();
+  void expireLabBlockedSends();
+#endif
   unsigned long outbound_expiry, outbound_start, total_air_time, rx_air_time;
   unsigned long outbound_radio_retry_at;
   uint32_t outbound_radio_prepare_deadline = 0;
@@ -506,6 +564,9 @@ class Dispatcher {
   uint32_t foreign_radio_ota_epoch = 0;
 #endif
   uint32_t foreign_radio_retry_at = 0, foreign_radio_prepare_deadline = 0;
+#if defined(MESH_W12_PRAM_SEQ_TX_LAB) && MESH_W12_PRAM_SEQ_TX_LAB
+  uint32_t foreign_pre_tx_deadline = 0;
+#endif
   uint32_t foreign_radio_start = 0, foreign_radio_expiry = 0;
   bool foreign_radio_sending = false;
   bool foreign_radio_yield_meshcore = false;

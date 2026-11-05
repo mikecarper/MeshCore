@@ -673,6 +673,10 @@ bool RadioProfileCLI::requestAutoSecondary(const RadioProfileConfig& config) {
   if (!canAutoSecondary() || config.mode == RadioProfileMode::Off
       || (uint8_t)config.mode > (uint8_t)RadioProfileMode::RxTx
       || !radio_->validateProfile(config.params)) return false;
+#if defined(MESH_W12_MULTISF_EXPERIMENT) && MESH_W12_MULTISF_EXPERIMENT
+  if (radio_->w12MultiSfEnabled()
+      && radio_->trySetW12MultiSf(false, 5, 8) != RadioParamApplyResult::APPLIED) return false;
+#endif
   if (auto_secondary_requested_ && (config.mode != auto_secondary_.mode
       || config.params != auto_secondary_.params)) return false;
   auto preview = *radio_->profiles();
@@ -710,6 +714,10 @@ bool RadioProfileCLI::autoSecondaryActive() const {
 }
 
 bool RadioProfileCLI::useSecondaryProtocol(RadioProfileProtocol protocol) {
+#if defined(MESH_W12_MULTISF_EXPERIMENT) && MESH_W12_MULTISF_EXPERIMENT
+  if (radio_ && radio_->w12MultiSfEnabled()
+      && radio_->trySetW12MultiSf(false, 5, 8) != RadioParamApplyResult::APPLIED) return false;
+#endif
 #if MESH_ENABLE_MESHTEXT_CHAT || MESH_ENABLE_ETHERNET_TUNNEL || MESH_ENABLE_HOST_KISS
   if (protocol == RadioProfileProtocol::MeshCore) {
     clearSecondaryProtocol();
@@ -1142,6 +1150,12 @@ bool RadioProfileCLI::handle(const char* command, char* reply, size_t capacity, 
   const bool timing = kind == Timing || kind == TimingAlias;
   if (!radio_ || !radio_->profiles()) { cli::formatError(reply, capacity, MESH_CLI_REPLY_TEXT("radio profiles unsupported", "profiles unsupported")); return true; }
   if (command == text && *args && verb == Get && (temporary || base)) verb = Set;
+#if defined(MESH_W12_MULTISF_EXPERIMENT) && MESH_W12_MULTISF_EXPERIMENT
+  if (radio_->w12MultiSfEnabled() && (base || temporary || scheduled) && verb != Get
+      && radio_->trySetW12MultiSf(false, 5, 8) != RadioParamApplyResult::APPLIED) {
+    cli::formatError(reply, capacity, "radio busy; retry"); return true;
+  }
+#endif
   if (remote_origin && !remote_command_
       && (((base || temporary) && verb == Set) || (scheduled_temp && verb == Delete))) {
     cli::formatError(reply, capacity, "this role requires local USB for radio2 changes"); return true;

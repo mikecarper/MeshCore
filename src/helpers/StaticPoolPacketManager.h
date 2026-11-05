@@ -22,10 +22,17 @@ public:
   PacketQueue(int max_entries);
   mesh::Packet* get(uint32_t now, bool resolve_flood_scope = false,
                     FloodScopePreference scope_preference = NULL,
-                    void* scope_preference_context = NULL);
+                    void* scope_preference_context = NULL
+#if defined(MESH_W12_PRAM_SEQ_TX_LAB) && MESH_W12_PRAM_SEQ_TX_LAB
+                    , uint8_t* reserved_priority = NULL, uint32_t* reserved_schedule = NULL
+#endif
+                    );
   mesh::Packet* peek(uint32_t now) const;
   bool add(mesh::Packet* packet, uint8_t priority, uint32_t scheduled_for);
   int count() const { return _num; }
+#if defined(MESH_W12_PRAM_SEQ_TX_LAB) && MESH_W12_PRAM_SEQ_TX_LAB
+  int capacity() const { return _size; }
+#endif
   int countBefore(uint32_t now) const;
   bool getNextTime(uint32_t now, uint32_t& scheduled_for) const;
   mesh::Packet* itemAt(int i) const {
@@ -40,6 +47,13 @@ class StaticPoolPacketManager : public mesh::PacketManager {
   PacketQueue unused, send_queue, rx_queue;
   FloodScopePreference flood_scope_preference;
   void* flood_scope_preference_context;
+#if defined(MESH_W12_PRAM_SEQ_TX_LAB) && MESH_W12_PRAM_SEQ_TX_LAB
+  mesh::Packet* reserved_outbound = nullptr;
+  uint32_t reservation_generation = 0;
+  uint32_t reserved_schedule = 0;
+  uint8_t reserved_priority = 0;
+  bool reservationMatches(const mesh::OutboundReservation& reservation) const;
+#endif
 
 public:
   StaticPoolPacketManager(int pool_size);
@@ -53,6 +67,12 @@ public:
   void free(mesh::Packet* packet) override;
   bool queueOutbound(mesh::Packet* packet, uint8_t priority, uint32_t scheduled_for) override;
   mesh::Packet* getNextOutbound(uint32_t now) override;
+#if defined(MESH_W12_PRAM_SEQ_TX_LAB) && MESH_W12_PRAM_SEQ_TX_LAB
+  bool supportsOutboundReservation() const override { return true; }
+  bool reserveNextOutbound(uint32_t now, mesh::OutboundReservation& reservation) override;
+  bool deferReservedOutbound(mesh::OutboundReservation& reservation, uint32_t retry_at) override;
+  bool releaseOutboundReservation(mesh::OutboundReservation& reservation) override;
+#endif
   mesh::Packet* peekNextOutbound(uint32_t now) override;
   bool deferOutbound(mesh::Packet* packet, uint32_t scheduled_for) override {
     return send_queue.reschedule(packet, scheduled_for);

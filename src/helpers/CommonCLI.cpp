@@ -3831,6 +3831,19 @@ void CommonCLI::handleCommand(uint32_t sender_timestamp, char* command, char* re
     // Remote (sender_timestamp != 0) loads are provisional until a fresh admin login.
     if (_radio_presets.handle(command, reply, 160, sender_timestamp != 0)) return;
 #endif
+#if defined(MESH_W12_MULTISF_EXPERIMENT) && MESH_W12_MULTISF_EXPERIMENT
+    if (mesh::lr2021::handleMultiSfSettingsCommand(command,reply,160)) {
+      if (!strcmp(command,"get radio.multisf")) {
+        auto* radio=_callbacks->getProfileRadio();
+        if (radio) {
+          char status[80]; radio->formatW12MultiSf(status,sizeof(status));
+          const size_t used=strlen(reply);
+          if (used<159) snprintf(reply+used,160-used,"; %s",status);
+        }
+      }
+      return;
+    }
+#endif
     if (_radio_profiles.handle(command, reply, 160, sender_timestamp != 0)) return;
 #if defined(ENABLE_OTA)
     const auto* ota_context = mesh::ota::ota_context_if_active();
@@ -3857,6 +3870,32 @@ void CommonCLI::handleCommand(uint32_t sender_timestamp, char* command, char* re
     }
 #if defined(USE_LR2021)
 #if defined(MESH_W12_PRAM_EXPERIMENT) && MESH_W12_PRAM_EXPERIMENT
+#if defined(MESH_W12_PRAM_SEQUENTIAL_LAB) && MESH_W12_PRAM_SEQUENTIAL_LAB
+#if defined(MESH_W12_PRAM_SEQ_TX_LAB) && MESH_W12_PRAM_SEQ_TX_LAB
+    if (strcmp(command,"get pramscan.seqtx") == 0) { radio_driver.labSequentialTxStatus(reply,160); return; }
+#endif
+    if (strncmp(command,"set pramscan.range ",19) == 0) {
+      unsigned first=0,last=0; char extra=0;
+      const bool parsed=sscanf(command+19,"%u-%u %c",&first,&last,&extra)==2;
+      const bool ok=parsed && first<=255 && last<=255
+          && radio_driver.labSequentialSetRange(uint8_t(first),uint8_t(last));
+      snprintf(reply,160,ok?"OK - experimental SF range set for this boot"
+          :"ERR - stop PRAM; use 5-10, at most four SFs"); return;
+    }
+    if (strcmp(command,"get pramscan.seq") == 0) { radio_driver.labSequentialStatus(reply,160); return; }
+    if (strncmp(command,"set pramscan.seq ",17) == 0) {
+      const char* arg=command+17;
+      const int selected=!strcmp(arg,"1")?0:!strcmp(arg,"2")?1:!strcmp(arg,"off")?-1:-2;
+      const bool ok=selected>=-1 && radio_driver.labSequentialConfigure(selected);
+#if defined(MESH_W12_PRAM_SEQ_TX_LAB) && MESH_W12_PRAM_SEQ_TX_LAB
+      snprintf(reply,160,ok?"OK - sequential TX lab; select radio.mode both before starting PRAM"
+          :"ERR - stop PRAM, select radio.mode rx, enable radio2; use 1|2|off"); return;
+#else
+      snprintf(reply,160,ok?"OK - sequential receive-only lab; use set pramscan on"
+          :"ERR - stop PRAM, select radio.mode rx, enable radio2; use 1|2|off"); return;
+#endif
+    }
+#endif
     if (mesh::lr2021::handleSafeModeCommand(command, reply, 160)) return;
     if (strcmp(command,"get pramscan") == 0) { radio_driver.labScannerStatus(reply,160); return; }
     if (strcmp(command,"get pramscan.recovery") == 0) { radio_driver.labScannerRecoveryDiag(reply,160); return; }
@@ -6208,6 +6247,11 @@ void CommonCLI::handleSetCmd(uint32_t sender_timestamp, char* command, char* rep
       sprintf(reply, "OK - reboot.interval set to %d", _prefs->reboot_interval);
     }
   } else if (strcmp(config, "extra.sf") == 0 || memcmp(config, "extra.sf ", 9) == 0) {
+#if defined(MESH_W12_MULTISF_EXPERIMENT) && MESH_W12_MULTISF_EXPERIMENT
+    if (_callbacks->getProfileRadio() && _callbacks->getProfileRadio()->w12MultiSfEnabled()) {
+      strcpy(reply, "Error: turn radio.multisf off first"); return;
+    }
+#endif
 #if defined(USE_LR2021)
     const auto* radio = _callbacks->getProfileRadio();
     const auto* profiles = radio ? radio->profiles() : nullptr;
