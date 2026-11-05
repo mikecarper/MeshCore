@@ -495,8 +495,7 @@ int main() {
             "void WebConfigServer::requestStop(", "bool WebConfigServer::stopForOTA(",
             "void WebConfigServer::finalizeTeardown(",
             "void WebConfigServer::clearSessionLocked(",
-            "bool WebConfigServer::isNetworkForegroundActive(",
-            "void WebConfigServer::refreshNetworkPowerHold("))
+            "bool WebConfigServer::isNetworkForegroundActive("))
         fixture = (ROOT / "test/fixtures/webconfig_ota_handoff.cpp").read_text()
         self.compile_and_run(fixture.replace("@METHODS@", methods))
 

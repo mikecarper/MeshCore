@@ -28,7 +28,8 @@ FIXTURE = r'''
 #include <helpers/WebConfigBatch.h>
 #include <helpers/PowerManagementUtils.h>
 #include <helpers/PowerSavingDiagnostics.h>
-#include <helpers/WiFiNetworkPowerPolicy.h>
+#include <helpers/esp32/WiFiCoordinator.h>
+#include <helpers/esp32/InfrastructureBridgeCoordinator.h>
 #include <helpers/WiFiConnectionDiagnostics.h>
 #include <helpers/WirelessControl.h>
 uint32_t now = 0;
@@ -153,8 +154,6 @@ struct MQTTNodeInfo {
   uint8_t* sf; uint8_t* cr; uint8_t* repeat_flag; bool repeat_when_nonzero; bool canonical_wifi = false;
 };
 struct MQTTBridge : AbstractBridge {
-  bool network_suspended = false;
-  bool isNetworkSuspended() const { return network_suspended; }
   bool isStartPending() const { return false; }
   template<class... Args> explicit MQTTBridge(Args...) {}
   void setDeviceID(const char*) {} void setFirmwareVersion(const char*) {}
@@ -185,7 +184,6 @@ struct WebConfigServer {
   void updateWiFiOwnership(bool owner) { owns = owner; }
   void requestNetworkAccess() {
     foreground_until = millis() + 120000;
-    mesh::wifi::networkPower().requestProbe();
   }
   bool isNetworkForegroundActive(uint32_t tick) const {
     return _mode == MODE_SETUP || stopping
@@ -324,6 +322,9 @@ int main() {
   // An explicit ESP-NOW start ends the suspension and owns the shared radio.
   assert(node.setEspNowBridgeState(true));
   assert(!node._unconfigured_setup_espnow_suspended && node.espnow_bridge.isRunning());
+  // The ESP-NOW lease is not wired by this PR: the physical bridge guard must
+  // still preserve the driver even when the coordinator reports no lease.
+  assert(!mesh::wifi::coordinator().hasAnyEspNowLease());
   node.serviceIdleWiFi(); assert(sdk_started && node.hasPendingWork());
   // Real active ESP-NOW is restored on failed startup and successful shutdown.
   node._cli.board.allow_start = false;
@@ -383,6 +384,8 @@ int main() {
   node._ota_update_at = 0; node.@WORKER@->running = true;
   node.serviceIdleWiFi(); assert(sdk_started);
   node.@WORKER@->running = false; node._cli.board.ota = true;
+  // Browser OTA protects its AP directly, independent of an OTA AP lease.
+  assert(!mesh::wifi::coordinator().hasAccessPointLease(mesh::wifi::AccessPointOwner::OtaSetup));
   node.serviceIdleWiFi(); assert(sdk_started);
   node._cli.board.ota = false; node.serviceIdleWiFi(); assert(!sdk_started);
 }
@@ -502,40 +505,27 @@ int main() {
 int main() {
   MyMesh node; char reply[160] = {};
   strcpy(node._cli.prefs.wifi_ssid, "working-network");
-  auto& power = mesh::wifi::networkPower();
-  power.setManaged(true);
   assert(node.setMqttBridgeState(true));
   assert(node.startWebConfig(false, reply));
   node._webconfig->_mode = WebConfigServer::MODE_LAN;
   now += 120001; // Explicit-start lease has elapsed; listener is idle.
-  power.consumeProbeRequest();
-  node.@WORKER@->network_suspended = true;
-  power.setSuspended(true);
+  // While MQTT is running, node has pending work and does not tear down WiFi.
   unsigned off_before = WiFi.off_modes;
   node.serviceIdleWiFi();
   assert(WiFi.off_modes == off_before && sdk_started);
-  assert(node.hasPendingWork()); // Cannot sleep before worker shutdown completes.
-  WiFi.mode(WIFI_OFF); // Only the Core 0 network owner performs this shutdown.
-  node.serviceIdleWiFi();
-  assert(!sdk_initialized && !node.hasPendingWork());
-  assert(node.getPowerSaveSleepSeconds(30) == 30);
-  // An operator can wake the existing listener without creating a second
-  // server, taking station ownership, or deinitializing the worker's driver.
-  assert(node.startWebConfig(false, reply));
-  assert(power.consumeProbeRequest());
-  assert(node._webconfig->isNetworkForegroundActive(now));
   assert(node.hasPendingWork());
-  now += 120001;
-  assert(!node.hasPendingWork());
-  power.setHold(mesh::wifi::NetworkPowerHold::OtaSeeder, true);
-  assert(node.hasPendingWork());
-  power.setHold(mesh::wifi::NetworkPowerHold::OtaSeeder, false);
-  assert(!node.hasPendingWork());
-  power.setSuspended(false);
-  node.@WORKER@->network_suspended = false;
+  // Stopping MQTT while an idle non-owning LAN WebConfig listener is present:
+  assert(node.setMqttBridgeState(false));
+  WiFi.mode(WIFI_OFF);
   node.serviceIdleWiFi();
-  assert(node.hasPendingWork()); // Resume is owned by the MQTT worker too.
-  power.setManaged(false);
+  assert(!sdk_initialized);
+  // Active OTA seeder lease keeps pendingWorkReason() active:
+  node.stopWebConfig(reply); node.servicePortal();
+  assert(!node.hasPendingWork());
+  mesh::wifi::coordinator().setStationLease(mesh::wifi::StationOwner::Ota, true);
+  assert(node.hasPendingWork());
+  mesh::wifi::coordinator().setStationLease(mesh::wifi::StationOwner::Ota, false);
+  assert(!node.hasPendingWork());
 }
 '''
         for role in ("simple_repeater", "simple_room_server"):

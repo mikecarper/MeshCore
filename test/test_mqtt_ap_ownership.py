@@ -40,6 +40,7 @@ class MQTTAccessPointOwnershipTest(unittest.TestCase):
         # this ownership fixture models its default automatic policy.
         power_methods = "inline esp_err_t applyRequestedStationTxPower(int8_t p) { return esp_wifi_set_max_tx_power(p); }\n" + "\n".join(method(power, signature) for signature in (
             "inline wifi_power_t stationTransmitPower(",
+            "inline int8_t stationPowerSaveTxPower(",
             "inline esp_err_t applyStationPowerSave(",
         ))
         return (fixture.replace("@STATION_GUARD@", guard)

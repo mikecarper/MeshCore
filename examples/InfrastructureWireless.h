@@ -6,9 +6,6 @@
 #include <WiFi.h>
 #include <helpers/esp32/WiFiRadioPolicy.h>
 #endif
-#if defined(ESP32) && defined(WITH_MQTT_BRIDGE)
-#include <helpers/WiFiNetworkPowerPolicy.h>
-#endif
 
 class InfrastructureWirelessBackend : public mesh::wireless::Backend {
   bool wifi_saved_ = false, resume_web_ = false, resume_mqtt_ = false;
@@ -140,15 +137,7 @@ public:
       resume_udp_ = false;
 #endif
       wifi_saved_ = resume_web_ = resume_mqtt_ = false;
-      const bool running = (enabled() & mesh::wireless::WiFi) != 0;
-#ifdef WITH_MQTT_BRIDGE
-      // The MQTT owner can still be logically enabled while its outage policy
-      // has powered down WiFi. An explicit on request should try it now rather
-      // than silently waiting for the next 30-minute recovery window.
-      if (running && mesh::wifi::networkPower().backgroundSuspended())
-        mesh::wifi::networkPower().requestProbe();
-#endif
-      return running ? Result::Done : Result::Failed;
+      return (enabled() & mesh::wireless::WiFi) ? Result::Done : Result::Failed;
     }
 #endif
 #ifdef WITH_ESPNOW_BRIDGE

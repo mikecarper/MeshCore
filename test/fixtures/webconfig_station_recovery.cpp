@@ -7,7 +7,7 @@
 #include <helpers/RoomWebMailbox.h>
 #include <helpers/WiFiReconnectPolicy.h>
 #include <helpers/WebConfigBatch.h>
-#include <helpers/WiFiNetworkPowerPolicy.h>
+#include <helpers/esp32/WiFiCoordinator.h>
 #include <helpers/WiFiConnectionDiagnostics.h>
 #define MESH_MANAGEMENT_PASSWORD_HOST_TEST
 #include <helpers/esp32/ManagementPassword.h>
@@ -20,11 +20,12 @@ enum { WL_DISCONNECTED = 6, WL_CONNECTED = 3, WIFI_STA = 1, WIFI_AP = 2, WIFI_AP
 using wifi_ps_type_t = int;
 using wifi_power_t = int;
 using esp_err_t = int;
-constexpr int ESP_FAIL = -2, WIFI_POWER_11dBm = 44, WIFI_POWER_19_5dBm = 78;
+constexpr int ESP_FAIL = -2, ESP_ERR_INVALID_STATE = -3, WIFI_POWER_11dBm = 44, WIFI_POWER_19_5dBm = 78;
 static int applied_ps = -1;
 static int applied_tx = -1;
 int esp_wifi_set_ps(int mode) { applied_ps = mode; return ESP_OK; }
 int esp_wifi_set_max_tx_power(int8_t value) { applied_tx = value; return ESP_OK; }
+int esp_wifi_get_max_tx_power(int8_t* value) { *value = static_cast<int8_t>(applied_tx); return ESP_OK; }
 void* xSemaphoreCreateMutex() { return nullptr; }
 struct IP {
   struct Text { const char* c_str() const { return "192.168.0.2"; } };
@@ -317,33 +318,6 @@ int main() {
   companion.tick(16000);
   assert(companion.setup_starts == 1 && companion._retry_saved_wifi_in_setup);
   assert(!companion._runtime_wifi_ownership_managed);
-#elif defined(TEST_BACKGROUND_SUSPEND)
-  auto& power = mesh::wifi::networkPower();
-  power.setManaged(true); power.setSuspended(true);
-  portal._mode = WebConfigServer::MODE_LAN;
-  clock_ms = 301000;
-  portal.tick(clock_ms);
-  assert(WiFi.begins == 0 && portal.setup_starts == 0);
-  // A connecting listener must not reopen an AP or acquire STA while the
-  // background owner has deliberately stopped MQTT and NTP for the cooldown.
-  portal._mode = WebConfigServer::MODE_CONNECTING;
-  portal._connect_deadline = 16000;
-  portal.tick(clock_ms);
-  assert(WiFi.begins == 0 && portal.setup_starts == 0);
-  portal._connect_deadline = 0;
-  portal.foreground = true;
-  portal.tick(++clock_ms);
-  assert(WiFi.begins == 1 && portal._connect_deadline == clock_ms + 15000);
-  portal.foreground = false;
-  clock_ms += 16000;
-  portal.tick(clock_ms);
-  assert(portal.setup_starts == 0 && WiFi.begins == 1);
-  // Resuming the worker permits ordinary ownership/reconnect logic again.
-  power.setSuspended(false);
-  portal._mode = WebConfigServer::MODE_LAN;
-  clock_ms += 301000;
-  portal.tick(clock_ms);
-  assert(WiFi.begins == 2);
 #elif defined(TEST_EXTERNAL_OWNER)
   portal.updateWiFiOwnership(false);
   assert(portal._runtime_wifi_ownership_managed);

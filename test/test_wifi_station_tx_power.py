@@ -18,11 +18,13 @@ ESP_WIFI = r'''
 #pragma once
 #include <stdint.h>
 using esp_err_t = int;
-constexpr int ESP_OK = 0, ESP_FAIL = -1;
+constexpr int ESP_OK = 0, ESP_FAIL = -1, ESP_ERR_INVALID_STATE = -2;
 extern int mode, power, set_ps_result, set_power_result, get_ps_result;
+extern bool driver_ignores_write, readback_fails;
 inline int esp_wifi_set_ps(int value) { if (set_ps_result) return set_ps_result; mode = value; return ESP_OK; }
 inline int esp_wifi_get_ps(int* value) { if (get_ps_result) return get_ps_result; *value = mode; return ESP_OK; }
-inline int esp_wifi_set_max_tx_power(int8_t value) { if (set_power_result) return set_power_result; power = value; return ESP_OK; }
+inline int esp_wifi_set_max_tx_power(int8_t value) { if (set_power_result) return set_power_result; if (!driver_ignores_write) power = value; return ESP_OK; }
+inline int esp_wifi_get_max_tx_power(int8_t* value) { if (readback_fails) return ESP_FAIL; *value = static_cast<int8_t>(power); return ESP_OK; }
 '''
 NVS = r'''
 #pragma once
@@ -53,6 +55,7 @@ HARNESS = r'''
 int mode = 0, power = -1, set_ps_result = 0, set_power_result = 0, get_ps_result = 0;
 bool nvs_available = true, nvs_present = false, nvs_write = true, nvs_bad_type = false;
 bool namespace_present = false, nvs_commit_ok = true;
+bool driver_ignores_write = false, readback_fails = false;
 #include <stdint.h>
 uint8_t stored = 0;
 #include "helpers/esp32/WiFiStationPower.h"
@@ -62,18 +65,43 @@ int main() {
   assert(readStationTxPower(value) && value == kWifiTxPowerAuto);
   assert(!namespace_present); // a read on factory firmware does not create NVS
   assert(applyManualStationTxPower() == ESP_OK && power == -1); // AP auto is unchanged
-  assert(applyStationPowerSave(WIFI_PS_NONE) == ESP_OK && power == 78);
+  const int normal =
+#ifdef WIFI_TX_POWER_DBM
+      52;
+#else
+      78;
+#endif
+  assert(applyStationPowerSave(WIFI_PS_NONE) == ESP_OK && power == normal);
   assert(applyStationPowerSave(WIFI_PS_MIN_MODEM) == ESP_OK && power == 44);
   assert(saveStationTxPower(60));
   assert(applyManualStationTxPower() == ESP_OK && power == 60); // setup AP applies override
   assert(readStationTxPower(value) && value == 60);
   assert(applyStationTxPower() == ESP_OK && power == 60);
   assert(applyStationPowerSave(WIFI_PS_NONE) == ESP_OK && power == 60);
+  assert(saveStationTxPower(84)); // Manual power above the W12 default is honored.
+  assert(applyStationPowerSave(WIFI_PS_NONE) == ESP_OK && power == 84);
+  assert(applyStationTxPower() == ESP_OK && power == 84); // join/reconnect
+  assert(saveStationTxPower(44)); power = 84; driver_ignores_write = true;
+  assert(applyStationTxPower() == ESP_ERR_INVALID_STATE);
+  assert(applyManualStationTxPower() == ESP_ERR_INVALID_STATE); // setup AP
+  assert(saveStationTxPower(80)); power = 52;
+  assert(applyStationTxPower() == ESP_ERR_INVALID_STATE); // ignored increase
+  assert(applyManualStationTxPower() == ESP_ERR_INVALID_STATE); // setup AP
+  driver_ignores_write = false; readback_fails = true;
+  assert(applyStationTxPower() == ESP_ERR_INVALID_STATE); readback_fails = false;
+  assert(saveStationTxPower(60));
   assert(applyRequestedStationTxPower(40) == ESP_OK && power == 60); // ESP-NOW cannot overwrite override
   assert(saveStationTxPower(kWifiTxPowerAuto));
   assert(applyRequestedStationTxPower(40) == ESP_OK && power == 40); // legacy ESP-NOW auto behavior
   setPrimaryEspNowAutomaticTxPower(40);
   assert(applyStationTxPower() == ESP_OK && power == 40); // auto restores primary ESP-NOW preference
+#if MESH_PRIMARY_ESPNOW
+  assert(applyStationPowerSave(WIFI_PS_NONE) == ESP_OK && power == 40);
+  assert(applyStationPowerSave(WIFI_PS_MIN_MODEM) == ESP_OK && power == 40);
+#endif
+  assert(saveStationTxPower(60));
+  assert(applyStationPowerSave(WIFI_PS_NONE) == ESP_OK && power == 60); // explicit wifi.tx wins
+  assert(saveStationTxPower(kWifiTxPowerAuto));
   setPrimaryEspNowAutomaticTxPower(-1);
   assert(applyStationPowerSave(WIFI_PS_MIN_MODEM) == ESP_OK && power == 44);
   assert(!saveStationTxPower(7) && !saveStationTxPower(85));
@@ -102,10 +130,11 @@ class WiFiStationTxPowerTest(unittest.TestCase):
                                ('nvs.h', NVS), ('test.cpp', HARNESS)]:
                 (path / name).write_text(text)
             executable = path / 'test'
-            subprocess.run([compiler, '-std=c++11', '-Wall', '-Wextra', '-Werror',
-                            '-I', str(path), '-I', str(ROOT / 'src'),
-                            str(path / 'test.cpp'), '-o', str(executable)], check=True)
-            subprocess.run([str(executable)], check=True)
+            for flags in ([], ['-DWIFI_TX_POWER_DBM=13'], ['-DMESH_PRIMARY_ESPNOW=1']):
+                subprocess.run([compiler, '-std=c++11', '-Wall', '-Wextra', '-Werror',
+                                *flags, '-I', str(path), '-I', str(ROOT / 'src'),
+                                str(path / 'test.cpp'), '-o', str(executable)], check=True)
+                subprocess.run([str(executable)], check=True)
 
 
 if __name__ == '__main__':

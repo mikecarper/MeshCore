@@ -120,31 +120,18 @@ best effort rather than durable storage. Each enabled slot publishes
 independently, so one failed broker does not intentionally stop the other
 slots.
 
-## Automatic network outage power saving
+## WiFi and MQTT outages
 
-When direct WiFi MQTT is enabled with a saved network and at least one broker
-slot, the firmware keeps WiFi available even if the AP or all brokers are down.
-It does not require incoming application requests to keep the connection up.
-WiFi and broker reconnect attempts remain backed off; after repeated failures a
-broker's own circuit breaker can wait 30 minutes before its next attempt.
-Keeping the WiFi radio available during an outage uses more power.
+While a WiFi service is enabled, AP or broker outages no longer trigger the
+shared 30-minute WiFi suspension. The station remains available to reconnect and
+for other enabled services. Reconnect attempts still use their own backoff, and
+an MQTT broker's circuit breaker can wait 30 minutes after repeated failures.
+Keeping WiFi available during an outage uses more power. Explicit WiFi-off,
+setup access point expiry and ordinary idle-driver cleanup still apply.
 
-When the MQTT worker has no configured WiFi/broker pair, its background outage
-policy can still suspend WiFi after five minutes. It then opens a recovery window
-of up to two minutes every 30 minutes. On repeaters and room servers,
-`set wifi on` asks for an earlier probe, as does an explicit WebConfig request.
 Automatic NTP requests have a 15-second timeout; failed requests wait 30 minutes
 instead of repeatedly running a blocking server search. Successful NTP retains
 the daily refresh schedule.
-
-During that fallback, active browser administration, setup/OTA access points,
-connected Companion clients, and an attached WiFi OTA seeder protect their
-network access. An idle WebConfig listener does not prevent the cooldown. An
-enabled SNMP agent keeps a working LAN connection available. ESP-NOW keeps its
-radio and channel if the infrastructure connection is suspended. LoRa continues
-operating, and when CPU power saving is enabled, its normal sleep eligibility
-returns after background WiFi shuts down. USB console and logging sleep rules
-still apply separately. This policy does not expire an active setup access point.
 
 See [MQTT_IMPLEMENTATION.md](https://github.com/mikecarper/MeshCore/blob/keymindCascade/MQTT_IMPLEMENTATION.md) for the complete preset
 list, custom broker configuration, topic formats, authentication, diagnostics,
@@ -970,6 +957,42 @@ On MQTT builds, `set usb.logging on` and `set usb.debug on` also enable live
 USB event logs after the MQTT network owner initializes. `get mqttN.diag`
 describes broker/transport failures; use `get wifi.diag` for the station link.
 
+### Per-board automatic WiFi transmit power
+
+ESP-IDF expresses the station's maximum transmit power in 0.25 dBm steps over
+2–20 dBm, and the driver floors a request to its own power table. Some ESP32-S3
+boards reach a practical WiFi ceiling well below the SDK maximum: a hotter PA
+lengthens association and produces 802.11 missing-ack (34) and timeout (39)
+disconnects.
+
+A build profile can cap the automatic setting with `WIFI_TX_POWER_DBM`. Boards
+that do not define it keep their existing automatic behavior. The Meshnology W12
+profile sets an automatic maximum of 13 dBm for every W12 target:
+
+```ini
+[meshnology_w12]
+build_flags =
+  ...
+  -D WIFI_TX_POWER_DBM=13
+```
+
+The default is applied on station joins and power-save changes. An explicit
+`set wifi.tx` setting takes precedence, including a value above 13 dBm;
+`set wifi.tx auto` restores the board default. The SDK may quantize the
+requested value; use `get wifi.tx` to see the saved preference and driver limit.
+With USB debugging enabled, WebConfig also reports the driver limit:
+
+```text
+WiFi TX limit: 13.00 dBm (automatic profile cap 13 dBm)
+```
+
+A lower reported value can mean the driver floored the request or that WiFi
+power saving selected a lower value.
+
+The W12 also allows 30 seconds for a saved WiFi connection before falling back
+to setup mode. A custom build can override that default, for example with
+`-DWEBCONFIG_WIFI_CONNECT_TIMEOUT_MS=60000` for a 60-second window.
+
 ### MQTT observer diagnostics
 
 For an MQTT observer:
@@ -995,9 +1018,8 @@ In `mqtt.stats`, `drops=A/B` separates outbox-cap drops from packet publication
 attempts skipped for memory pressure; a growing `B` can explain missing packet
 reports while broker connections still look healthy. `DNS failed (0x8001)`
 records a hostname lookup failure, which can follow an earlier disconnect; it
-does not identify the reason for that first disconnect. `wifi.status` showing
-`paused` means the shared outage cooldown is active, not that WiFi settings
-were erased. These diagnostics do not reveal passwords or tokens, but WiFi
+does not identify the reason for that first disconnect. These diagnostics do
+not reveal passwords or tokens, but WiFi
 status can include the SSID or local IP address. Redact them before posting.
 
 The shared MQTT bridge recovers failed transports on its owning task, including

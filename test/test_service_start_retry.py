@@ -44,7 +44,6 @@ struct WebConfigServer {
   bool isStopping() const { return _stopping; }
   bool isStartPending() const { return _start_mode != MODE_OFF; }
   void detachRoutes() {}
-  void refreshNetworkPowerHold(uint32_t) {}
   bool start(bool ap, char* reply) {
     ++starts; last_ap = ap; strcpy(last_ssid, _wifi_ssid);
     _start_retryable = fail_start && !invalid;

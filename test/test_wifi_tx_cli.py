@@ -49,7 +49,7 @@ inline void nvs_close(nvs_handle_t) {}
 #pragma once
 #include <stdint.h>
 using esp_err_t=int;
-constexpr int ESP_OK=0, ESP_FAIL=-1, ESP_ERR_WIFI_NOT_INIT=1, ESP_ERR_WIFI_NOT_STARTED=2;
+constexpr int ESP_OK=0, ESP_FAIL=-1, ESP_ERR_WIFI_NOT_INIT=1, ESP_ERR_WIFI_NOT_STARTED=2, ESP_ERR_INVALID_STATE=4;
 enum wifi_ps_type_t { WIFI_PS_NONE, WIFI_PS_MIN_MODEM, WIFI_PS_MAX_MODEM };
 enum wifi_mode_t { WIFI_MODE_NULL, WIFI_MODE_STA };
 extern bool started, fail_apply;

@@ -46,6 +46,8 @@ jobs:
           test_wifi_station_security
           test_wifi_station_security_arduino3
           test_wifi_station_power
+          test_wifi_tx_power_policy
+          test_wifi_w12_power_join
           test_wifi_recovery
           test_repeater_required_psram
           test_w12_required_psram
@@ -709,7 +711,7 @@ jobs:
           python3 -B test/test_mqtt_advert_verify.py -v
           python3 -B test/test_mqtt_publish_ack.py -v
           python3 -B test/test_companion_mqtt_diagnostics.py -v
-          python3 -B test/test_wifi_network_power_policy.py -v
+          python3 -B test/test_wifi_coordinator.py -v
           python3 -B test/test_mqtt_wifi_network_power.py -v
           python3 -B test/test_companion_wifi_network_power.py -v
           python3 -B test/test_webconfig_network_power.py -v
