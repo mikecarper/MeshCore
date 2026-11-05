@@ -94,6 +94,9 @@ int main() {
   assert(c.report(held_enter, sizeof(held_enter)) == UsbKeyboardConsole::Action::None);
   assert(c.report(held_enter, sizeof(held_enter)) == UsbKeyboardConsole::Action::None);
   c.report(release, sizeof(release));
+  assert(c.report(blocked_rollover, sizeof(blocked_rollover)) == UsbKeyboardConsole::Action::None);
+  assert(c.report(held_enter, sizeof(held_enter)) == UsbKeyboardConsole::Action::None);
+  c.report(release, sizeof(release));
   assert(press(c, 0x28) == UsbKeyboardConsole::Action::Submit);
   c.clearCommand();
   press(c, 0x04, 0x02);  // Shift-A

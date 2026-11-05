@@ -93,7 +93,12 @@ public:
   // entire rollover/error report rather than generating accidental commands.
   Action report(const uint8_t* bytes, size_t size) {
     if (!_connected || !bytes || size < 8) return Action::None;
-    for (size_t i = 2; i < 8; ++i) if (bytes[i] >= 1 && bytes[i] <= 3) return Action::None;
+    for (size_t i = 2; i < 8; ++i) {
+      if (bytes[i] >= 1 && bytes[i] <= 3) {
+        _suppressUntilRelease = true;
+        return Action::None;
+      }
+    }
     if (_suppressUntilRelease) {
       memcpy(_previous, bytes + 2, sizeof(_previous));
       if (!anyPressed(bytes)) _suppressUntilRelease = false;
