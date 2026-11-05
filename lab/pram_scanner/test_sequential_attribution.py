@@ -7,7 +7,7 @@ import tempfile
 root = Path(__file__).resolve().parents[2]
 source = (root / 'src/helpers/radiolib/W12PramScannerLab.inc').read_text()
 start = source.index('    uint8_t slot_count=2;')
-end = source.index('    const int len=r->getPacketLength();', start)
+end = source.index('#if defined(MESH_W12_PRAM_SEQUENTIAL_LAB) && MESH_W12_PRAM_SEQUENTIAL_LAB\n    // Packet status', start)
 mapping = source[start:end]
 program = r'''
 #include <cassert>

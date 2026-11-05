@@ -1169,7 +1169,11 @@ void Dispatcher::checkRecv() {
         if (profile == 1 && profiles->enabled()
             && supportsForeignRadioProtocol(profiles->params(profile).protocol)
             && _radio->receiveProfileGeneration() == profiles->generation[profile]) {
+#if defined(MESH_W12_PRAM_SEQUENTIAL_LAB) && MESH_W12_PRAM_SEQUENTIAL_LAB
+          rx_air_time += _radio->getReceivedAirtimeFor(profile, len, _radio->getProfileAirtime(profile, len));
+#else
           rx_air_time += _radio->getProfileAirtime(profile, len);
+#endif
           ++_radio->profiles()->rx_packets[profile];
 #if MESH_ENABLE_HOST_KISS
           if (profiles->params(profile).protocol == RadioProfileProtocol::Kiss) {
@@ -1191,7 +1195,11 @@ void Dispatcher::checkRecv() {
         if (profiles && profile < 2
             && onDirectOtaRadioFrame(raw, (size_t)len, profile,
                                     _radio->receiveProfileGeneration())) {
+#if defined(MESH_W12_PRAM_SEQUENTIAL_LAB) && MESH_W12_PRAM_SEQUENTIAL_LAB
+          rx_air_time += _radio->getReceivedAirtimeFor(profile, len, _radio->getProfileAirtime(profile, len));
+#else
           rx_air_time += _radio->getProfileAirtime(profile, len);
+#endif
           ++_radio->profiles()->rx_packets[profile];
           ++n_recv_direct;
         }
@@ -1230,7 +1238,11 @@ void Dispatcher::checkRecv() {
             pkt->_snr = snr * 4.0f;
             pkt->_rssi = (int16_t)rssi;
             score = _radio->packetScore(snr, len);
+#if defined(MESH_W12_PRAM_SEQUENTIAL_LAB) && MESH_W12_PRAM_SEQUENTIAL_LAB
+            air_time = _radio->getReceivedAirtimeFor(profile, len, _radio->getEstAirtimeFor(len));
+#else
             air_time = _radio->getEstAirtimeFor(len);
+#endif
             rx_air_time += air_time;
           } else {
             _mgr->free(pkt);  // put back into pool

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 from pathlib import Path
-import re, subprocess, tempfile, struct
+import re, subprocess, tempfile, struct, sys
 root = Path(__file__).resolve().parents[2]
 lab = root / 'lab/pram_scanner'
 def run(args):
@@ -25,25 +25,28 @@ with tempfile.TemporaryDirectory() as d:
     run(['g++','-std=c++17','-Wall','-Wextra','-Werror','-I','src',
          str(lab/'test_sequential_plan.cpp'),'-o',str(tmp/'sequential')])
     run([str(tmp/'sequential')])
-    run(['python3',str(lab/'test_sequential_attribution.py')])
-    run(['python3',str(lab/'test_sequential_safety.py')])
-    run(['python3',str(lab/'test_handoff.py')])
-    run(['python3',str(lab/'test_dispatcher.py')])
-    run(['python3',str(lab/'test_rxps_driver.py')])
-    run(['python3',str(lab/'test_rxps_gate.py')])
-    run(['python3',str(lab/'test_logical_frequency_snapshot.py')])
-    run(['python3',str(lab/'test_idle_admission.py')])
-    run(['python3',str(lab/'test_automatic.py')])
-    run(['python3',str(lab/'test_autonomous_sleep.py')])
-    run(['python3',str(lab/'test_agc_deferral.py')])
-    run(['python3',str(lab/'test_opt_in.py')])
-    run(['python3',str(lab/'test_airtime_no_spi.py')])
-    run(['python3',str(lab/'test_airtime_transition.py')])
-    run(['python3',str(lab/'test_rx_packet_params.py')])
-    run(['python3',str(lab/'test_watchdog_admission.py')])
-    run(['python3',str(lab/'test_header_timer_repair.py')])
-    run(['python3',str(lab/'test_wait_ticks.py')])
-    run(['python3',str(lab/'test_timer_observation.py')])
+    run(['g++','-std=c++17','-Wall','-Wextra','-Werror','-I','src', str(lab/'test_sequential_airtime.cpp'),'-o',str(tmp/'sequential_airtime')])
+    run([str(tmp/'sequential_airtime')])
+    run([sys.executable,str(lab/'test_sequential_airtime_hook.py')])
+    run([sys.executable,str(lab/'test_sequential_attribution.py')])
+    run([sys.executable,str(lab/'test_sequential_safety.py')])
+    run([sys.executable,str(lab/'test_handoff.py')])
+    run([sys.executable,str(lab/'test_dispatcher.py')])
+    run([sys.executable,str(lab/'test_rxps_driver.py')])
+    run([sys.executable,str(lab/'test_rxps_gate.py')])
+    run([sys.executable,str(lab/'test_logical_frequency_snapshot.py')])
+    run([sys.executable,str(lab/'test_idle_admission.py')])
+    run([sys.executable,str(lab/'test_automatic.py')])
+    run([sys.executable,str(lab/'test_autonomous_sleep.py')])
+    run([sys.executable,str(lab/'test_agc_deferral.py')])
+    run([sys.executable,str(lab/'test_opt_in.py')])
+    run([sys.executable,str(lab/'test_airtime_no_spi.py')])
+    run([sys.executable,str(lab/'test_airtime_transition.py')])
+    run([sys.executable,str(lab/'test_rx_packet_params.py')])
+    run([sys.executable,str(lab/'test_watchdog_admission.py')])
+    run([sys.executable,str(lab/'test_header_timer_repair.py')])
+    run([sys.executable,str(lab/'test_wait_ticks.py')])
+    run([sys.executable,str(lab/'test_timer_observation.py')])
     blob = (lab/'scan-safe.bin').read_bytes()
     words = re.findall(r'0x([0-9a-fA-F]{8})u', (root/'src/helpers/radiolib/W12PramScannerBlob.h').read_text())
     assert len(blob) % 4 == 0 and b''.join(struct.pack('<I',int(w,16)) for w in words) == blob

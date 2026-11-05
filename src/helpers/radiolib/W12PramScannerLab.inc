@@ -44,6 +44,9 @@ private:
   mesh::w12pram::SequentialPlan _lab_seq_plan = {};
   mesh::w12pram::SequentialSlot _lab_seq_hit = {};
   uint32_t _lab_seq_words[mesh::w12pram::SequentialMaxSlots * 2] = {};
+  uint8_t _lab_seq_rx_cr=0;
+  bool _lab_seq_rx_crc=false, _lab_seq_rx_valid=false;
+  uint32_t _lab_seq_rx_unknown=0;
 #endif
   mesh::w12pram::Profile _lab_last = {};
   float _lab_last_logical_mhz = 0;
@@ -164,6 +167,19 @@ public:
       return getProfileAirtime(_active_profile,len,_cur_cr);
     return RadioLibWrapper::getEstAirtimeFor(len);
   }
+#if defined(MESH_W12_PRAM_SEQUENTIAL_LAB) && MESH_W12_PRAM_SEQUENTIAL_LAB
+  uint32_t getReceivedAirtimeFor(uint8_t profile, int len, uint32_t legacy) override {
+    if (_lab_seq_requested && _lab_scan_active && _lab_last_profile==profile) {
+      uint32_t ms=0;
+      if (_lab_seq_rx_valid && mesh::w12pram::sequentialReceiveAirtime(
+              _lab_last,_lab_seq_rx_cr,_lab_seq_rx_crc,len,ms)) return ms;
+      // Do not claim a configured coding rate is the received header's rate.
+      ++_lab_seq_rx_unknown;
+      return 0;
+    }
+    return legacy;
+  }
+#endif
   float packetScore(float snr, int len) override {
     if (_lab_scan_active && _lab_last_profile>=0) return packetScoreInt(snr,_lab_last.sf,len);
     return RadioLibWrapper::packetScore(snr,len);
@@ -327,10 +343,12 @@ public:
     _lab_seq_selected=uint8_t(selected); _lab_seq_requested=true; _lab_seq_plan.count=0; return true;
   }
   void labSequentialStatus(char* out, size_t cap) const {
-    snprintf(out,cap,"seq=%s radio=%u slots=%u cad=%u flags=%02x scanner=%s receive-only",
+    snprintf(out,cap,"seq=%s radio=%u slots=%u cad=%u flags=%02x scanner=%s receive-only rxcr=%u crc=%u pre=assumed unknown=%lu",
         _lab_seq_requested?"on":"off",unsigned(_lab_seq_selected+1),
         unsigned(_lab_seq_plan.count),unsigned(MESH_W12_PRAM_SEQ_SYMBOLS),
-        unsigned(MESH_W12_PRAM_SEQ_FLAGS),_lab_scan_active?"on":"off/fallback");
+        unsigned(MESH_W12_PRAM_SEQ_FLAGS),_lab_scan_active?"on":"off/fallback",
+        unsigned(_lab_seq_rx_cr),unsigned(_lab_seq_rx_crc),
+        (unsigned long)_lab_seq_rx_unknown);
   }
 #endif
   // The setting is intentionally RAM-only: explicit off holds for this boot.
@@ -740,6 +758,17 @@ public:
     }
 #endif
     if (!actual) actual=&_lab_snap[ch];
+#if defined(MESH_W12_PRAM_SEQUENTIAL_LAB) && MESH_W12_PRAM_SEQUENTIAL_LAB
+    // Packet status belongs to this parked FIFO; capture before read/resume.
+    uint8_t received_cr=0; bool received_crc=false, received_params_valid=false;
+    if (_lab_seq_requested) {
+      uint8_t raw_cr=0;
+      if (r->getLoRaPacketStatus(&raw_cr,&received_crc)==RADIOLIB_ERR_NONE
+          && raw_cr>=1 && raw_cr<=4) {
+        received_cr=raw_cr+4; received_params_valid=true;
+      }
+    }
+#endif
     const int len=r->getPacketLength(); int delivered=0;
     if (len>0 && len<=sz) {
       _last_snr=r->getSNR(); _last_rssi=r->getRSSI();
@@ -761,6 +790,8 @@ public:
 #if defined(MESH_W12_PRAM_SEQUENTIAL_LAB) && MESH_W12_PRAM_SEQUENTIAL_LAB
       if (_lab_seq_requested) {
         _lab_last_profile=ch; _lab_last=*actual; _lab_last_logical_mhz=_lab_logical_mhz[ch];
+        _lab_seq_rx_cr=received_cr; _lab_seq_rx_crc=received_crc;
+        _lab_seq_rx_valid=received_params_valid;
       } else
 #endif
       { _lab_last_profile=ch; _lab_last=_lab_snap[ch]; _lab_last_logical_mhz=_lab_logical_mhz[ch]; }

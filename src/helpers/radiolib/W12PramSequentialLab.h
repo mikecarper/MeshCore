@@ -48,6 +48,27 @@ inline bool sequentialPlan(const Profile (&profiles)[2], uint8_t selected,
   return true;
 }
 
+// Explicit-header LoRa airtime. The preamble belongs to the sender and is
+// not transmitted in the header; p.preamble is only our configured estimate.
+// CR and CRC are read from the actual received header before the FIFO resumes.
+inline bool sequentialReceiveAirtime(const Profile& p, uint8_t cr, bool crc,
+                                     int len, uint32_t& ms) {
+  ms=0;
+  if (p.sf<5 || p.sf>12 || !p.bw_hz || !p.preamble || cr<5 || cr>8
+      || len<0 || len>255) return false;
+  const uint64_t symbol_num=(uint64_t(1) << p.sf)*1000000ULL;
+  const bool ldro=symbol_num>=16000ULL*p.bw_hz;
+  const int sf_coeff=p.sf<=6 ? 0 : 8;
+  int bits=8*len+(crc ? 16 : 0)-4*p.sf+sf_coeff+20;
+  if (bits<0) bits=0;
+  const int div=4*(p.sf-(ldro ? 2 : 0));
+  const uint32_t coded=(bits+div-1)/div;
+  const uint32_t symbols_x4=(p.preamble+8u)*4u+(p.sf<=6 ? 25u : 17u)+coded*cr*4u;
+  const uint64_t denom=uint64_t(p.bw_hz)*4000ULL;
+  ms=uint32_t((symbol_num*symbols_x4+denom-1)/denom);
+  return true;
+}
+
 inline bool sequentialHit(const SequentialPlan& plan, uint8_t slot,
                           uint32_t gen0, uint32_t gen1, SequentialSlot& out) {
   if (!plan.count || plan.count > SequentialMaxSlots || slot >= plan.count

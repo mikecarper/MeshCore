@@ -53,5 +53,10 @@ The lab defaults to one-symbol preamble-only CAD. Build flags
 the CAD length and preamble-only or any-symbol detection. SF5/6 peak values
 are unverified; no RF delivery rate or 32-symbol coverage is guaranteed. The
 plan rejects profiles outside the existing supported band/BW and 20 MHz span.
-The generic received-airtime counter still estimates from the configured
-profile SF, not the individual slot's detected SF.
+
+The sequential lab reports receive airtime using the detected slot's SF and bandwidth,
+the received header's short-interleaver coding rate and CRC flag, and the configured
+receive preamble as an **assumption** about the sender. LoRa's explicit header does
+not report sender preamble length, so this is still an estimate. Unknown coding
+rates or unreadable packet status contribute zero rather than a misleading estimate;
+`get pramscan.seq` reports the count as `unknown`. TX airtime is unchanged.

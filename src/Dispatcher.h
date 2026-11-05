@@ -165,6 +165,11 @@ public:
   virtual uint32_t getProfileAirtime(uint8_t, int len_bytes, uint8_t = 0) {
     return getEstAirtimeFor(len_bytes);
   }
+#if defined(MESH_W12_PRAM_SEQUENTIAL_LAB) && MESH_W12_PRAM_SEQUENTIAL_LAB
+  virtual uint32_t getReceivedAirtimeFor(uint8_t, int, uint32_t legacy) {
+    return legacy;
+  }
+#endif
   virtual RadioParamApplyResult trySetPrimaryParams(const RadioProfileParams& p,
       bool temporary, const uint32_t* timings = nullptr) {
     (void)temporary;
