@@ -35,7 +35,9 @@ class CustomLR2021Wrapper : public RadioLibWrapper {
   bool _multi_sf_enabled = false;
   uint8_t _multi_sf_lower = 5, _multi_sf_upper = 8;
   mesh::w12multisf::Admission multiSfPlan(mesh::w12multisf::Plan& plan) const {
-    return mesh::w12multisf::makePlan(_params_valid, _multi_sf_lower, _multi_sf_upper,
+    return mesh::w12multisf::makePlan(_params_valid
+            && _profiles.primary.protocol == mesh::RadioProfileProtocol::MeshCore,
+        _multi_sf_lower, _multi_sf_upper,
         _cur_sf, _cur_bw, _profiles.enabled(), _rx_ps_enabled, _numSideDet != 0, plan);
   }
   bool applyMultiSfReceiveTuple(const mesh::w12multisf::Plan& plan) {
@@ -143,7 +145,9 @@ public:
   mesh::RadioParamApplyResult trySetW12MultiSf(bool enabled, uint8_t lower, uint8_t upper) override {
     using Result = mesh::RadioParamApplyResult;
     mesh::w12multisf::Plan plan;
-    if (enabled && mesh::w12multisf::makePlan(_params_valid, lower, upper, _cur_sf,
+    if (enabled && mesh::w12multisf::makePlan(_params_valid
+        && _profiles.primary.protocol == mesh::RadioProfileProtocol::MeshCore,
+        lower, upper, _cur_sf,
         _cur_bw, _profiles.enabled(), _rx_ps_enabled, _numSideDet != 0, plan)
             != mesh::w12multisf::Admission::Ready) return Result::FAILED;
     if (enabled == _multi_sf_enabled && (!enabled || (lower == _multi_sf_lower && upper == _multi_sf_upper)))
