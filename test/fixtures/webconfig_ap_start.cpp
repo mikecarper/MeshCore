@@ -10,6 +10,7 @@
 #include <string>
 #define MESH_MANAGEMENT_PASSWORD_HOST_TEST
 #include <helpers/esp32/ManagementPassword.h>
+#include <helpers/esp32/WiFiCoordinator.h>
 namespace password = mesh::esp32::managementPassword;
 #ifndef TEST_ADMIN_PASSWORD
 #define TEST_ADMIN_PASSWORD ""
@@ -377,9 +378,12 @@ void requireEndpoint(const WebConfigServer& portal, const char* reply, bool cach
   if (expectedAuth() == WIFI_AUTH_WPA2_PSK)
     assert(strcmp(reinterpret_cast<const char*>(WiFi.live_config.ap.password), TEST_ADMIN_PASSWORD) == 0);
   assert(portal.servers == 1);
+  assert(mesh::wifi::coordinator().hasAccessPointLease(mesh::wifi::AccessPointOwner::WebConfigSetup));
+  assert(mesh::wifi::coordinator().hasStationLease(mesh::wifi::StationOwner::WebConfig) == portal._owns_wifi);
   assert(WiFi.initialized && WiFi.driver_stops == 0 && WiFi.driver_deinits == 0);
 }
 void reset(Fault fault = Fault::None) {
+  mesh::wifi::coordinator().reset();
   auto& state = password::detail::state();
   { password::detail::Lock lock(state); state.current = {};
     state.changing = state.uploading = state.rotating = false; }
@@ -412,6 +416,7 @@ int main() {
     const uint32_t started = millis();
     assert(!portal.startSetupMode(reply));
     assert(portal._start_retryable);
+    assert(!mesh::wifi::coordinator().hasAccessPointLease(mesh::wifi::AccessPointOwner::WebConfigSetup));
     assert(millis() - started < 4500);
     assert(portal._mode == WebConfigServer::MODE_OFF && !portal._dns && portal.servers == 0);
     const unsigned prepared = fault != Fault::ModeSetterFailure

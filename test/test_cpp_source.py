@@ -296,7 +296,10 @@ print([(path.depth, sorted(path.choices.items()), path.branches) for path in mer
     def test_actual_setup_begin_and_radio_init_keep_correlated_guard_boundaries(self):
         cases = (
             ("examples/companion_radio/main.cpp", "\nvoid setup()", "\nstatic void serviceUsbLoggingOnlySession"),
-            ("examples/companion_radio/MyMesh.cpp", "void MyMesh::begin(", "\nvoid MyMesh::configureRadioFromPrefs("),
+            ("examples/companion_radio/MyMesh.cpp", "void MyMesh::begin(",
+             "\n#if MESH_ENABLE_BROWSER_RADIO_DEFAULTS\nvoid MyMesh::seedBrowserRadioDefaults("),
+            ("examples/companion_radio/MyMesh.cpp", "void MyMesh::seedBrowserRadioDefaults(",
+             "\n#endif\n\nvoid MyMesh::configureRadioFromPrefs("),
             ("src/helpers/radiolib/CustomSX1262.h", "bool std_init(SPIClass* spi = NULL)",
              "\n    int16_t startReceiveDutyCycle("),
         )

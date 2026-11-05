@@ -55,6 +55,11 @@ struct MyMesh {
   bool pending_self_advert = false;
   bool saved_radio_apply_pending = false, temp_radio_applied = false;
   unsigned long next_flood_advert = 0, next_local_advert = 0;
+  struct {
+    unsigned long sleepDeadline(bool) const { return 0; }
+  } radio2_flood_advert, secondary_flood_advert;
+  bool radio2FloodAdvertEligible() const { return false; }
+  bool canSendSecondaryFloodAdvert() const { return false; }
   unsigned long dirty_contacts_expiry = 0, next_recent_repeater_sweep = 0;
   unsigned long next_battery_alert_check = 0, next_push = 0;
   unsigned long radio_apply_retry_at = 0, set_radio_at = 0, revert_radio_at = 0;
