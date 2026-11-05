@@ -349,11 +349,19 @@ class LR2021CalibrationTests(unittest.TestCase):
             'File open(const char* name, const char* mode, bool = false)',
             'File internalOpen(const char* name, const char* mode, bool = false)'
         ).replace('fs->open(path, mode == FILE_O_WRITE ? "w" : "r")',
-                  'fs->internalOpen(path, mode == FILE_O_WRITE ? "w" : "r")')
+                  'fs->internalOpen(path, mode == FILE_O_WRITE ? "w" : "r")'
+        ).replace('files[name].clear();', 'if (!files.count(name)) files[name] = {};'
+        ).replace('fs->files[name].assign(in, in + written);',
+                  'fs->files[name].insert(fs->files[name].end(), in, in + written);')
+        # LittleFS FILE_O_WRITE appends; a stale temporary record must be
+        # removed before opening the new record or its readback will fail.
+        native_settings = SETTINGS.replace(
+            'assert(command(radio,"set radio.xtrim 3,4")',
+            'fs.files["/radio_xtrim.tmp"]={42,43};\n  assert(command(radio,"set radio.xtrim 3,4")', 1)
         for platform in ("NRF52_PLATFORM", "STM32_PLATFORM"):
             with self.subTest(platform=platform):
                 platform_stubs = dict(stubs, **{"helpers/IdentityStore.h": native_fs})
-                self.compile_run(SETTINGS + "\n" + source,
+                self.compile_run(native_settings + "\n" + source,
                                  ("-DUSE_LR2021=1", "-D" + platform), platform_stubs)
         self.compile_run(SETTINGS + "\n" + source,
                          ("-DUSE_LR2021=1", "-DRP2040_PLATFORM"), stubs)
