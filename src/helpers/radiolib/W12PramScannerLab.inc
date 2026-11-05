@@ -392,6 +392,10 @@ public:
     return true;
   }
   bool labScannerStart(bool automatic=false) {
+#if defined(MESH_W12_PRAM_SEQ_TX_LAB) && MESH_W12_PRAM_SEQ_TX_LAB
+    // A restart attempt relinquishes any paused-TX lease even if restart fails.
+    _lab_seq_tx_lease=false; _lab_seq_tx_prepared=false;
+#endif
     const uint32_t started=micros();
 #if MESH_ENABLE_RADIO_DIRECTION
     if (!mesh::radioDirection::radioReceiveAllowed()) return false;
@@ -421,6 +425,9 @@ public:
     if (labs((long)_lab_snap[0].freq_hz-(long)_lab_snap[1].freq_hz) >= 20000000L) return false;
 #if defined(MESH_W12_PRAM_SEQUENTIAL_LAB) && MESH_W12_PRAM_SEQUENTIAL_LAB
     if (_lab_seq_requested) {
+#if defined(MESH_W12_PRAM_SEQ_TX_LAB) && MESH_W12_PRAM_SEQ_TX_LAB
+      if (!mesh::w12pram::sequentialChannelsDisjoint(_lab_snap[0],_lab_snap[1])) return false;
+#endif
       if (!mesh::w12pram::sequentialPlan(_lab_snap,_lab_seq_selected,5,8,_lab_seq_plan)) return false;
       for (uint8_t i=0;i<_lab_seq_plan.count;i++) {
         _lab_seq_words[i*2]=_lab_seq_plan.slots[i].packed.frequency;
