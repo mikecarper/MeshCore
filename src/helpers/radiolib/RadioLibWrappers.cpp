@@ -314,6 +314,9 @@ void RadioLibWrapper::begin() {
   // start average out some samples
   _floor_estimator.reset(true);
   _secondary_floor_estimator.reset(true);
+#if MC_AGESSAMAN_NOISE_FLOOR_EXACT
+  _agessaman_floor.reset();
+#endif
   _nf_calib_active = false;
   _nf_window_armed = _nf_lazy_refresh = _nf_refresh_attempted = false;
   _nf_last_calib = 0;
@@ -676,6 +679,9 @@ mesh::RadioParamApplyResult RadioLibWrapper::trySetParams(float freq, float bw, 
   if (resume_rx > 1) return resume_rx == 2
       ? mesh::RadioParamApplyResult::BUSY : mesh::RadioParamApplyResult::FAILED;
 
+#if MC_AGESSAMAN_NOISE_FLOOR_EXACT
+  const bool was_exact = usesAgessamanNoiseFloor();
+#endif
   const bool had_previous_params = _params_valid;
   const float previous_freq = _cur_freq;
   const float previous_bw = _cur_bw;
@@ -725,6 +731,13 @@ mesh::RadioParamApplyResult RadioLibWrapper::trySetParams(float freq, float bw, 
     _profiles.setPrimary(requested, _profiles.primary_temporary);
     _profile_generation = _profiles.generation[0];
     _profile_refresh_required = false;
+#if MC_AGESSAMAN_NOISE_FLOOR_EXACT
+    if (was_exact != usesAgessamanNoiseFloor()
+        || (usesAgessamanNoiseFloor() && (!had_previous_params || previous_freq != freq
+            || previous_bw != bw || previous_sf != sf || previous_cr != cr))) {
+      recalibrateNoiseFloor();
+    }
+#endif
   } else {
     // RX resume is part of a primary command just as it is for scan hops.
     // Restore the active physical profile and power policy before recovery;
@@ -1605,6 +1618,46 @@ bool RadioLibWrapper::setTrackerSleep(bool sleeping) {
   return !sleeping || _radio->sleep() == RADIOLIB_ERR_NONE;
 }
 
+#if MC_AGESSAMAN_NOISE_FLOOR_EXACT
+bool RadioLibWrapper::usesAgessamanNoiseFloor() const {
+  // Duty cycling and scanning retain their bounded, profile-aware estimator.
+  return !_profiles.enabled() && !_rx_ps_enabled;
+}
+
+void RadioLibWrapper::serviceAgessamanNoiseFloor() {
+  const bool rx = state == STATE_RX && !hasPendingRadioInterrupt();
+  const bool published = _agessaman_floor.loop(rx,
+      [this]() { return isReceivingPacket(); },
+      [this]() { return getCurrentRSSI(); }, _noise_floor);
+  _nf_refresh_requested = !_agessaman_floor.complete()
+      || _agessaman_floor.pendingPublication();
+  if (!published) return;
+
+  _noise_floor_centi_dbm = int32_t(_noise_floor) * 100;
+  _noise_floor_valid = true;
+  _nf_last_calib = millis();
+#if MESH_ENABLE_TELEMETRY_HISTORY
+  _nf_published_at[0] = static_cast<uint32_t>(_nf_last_calib);
+  _nf_published_generation[0] = _profiles.generation[0];
+  _nf_published_valid |= 1U;
+#endif
+}
+
+void RadioLibWrapper::resetAgessamanNoiseFloor() {
+  _noise_floor = 0;
+  _noise_floor_centi_dbm = 0;
+  _noise_floor_valid = false;
+  _agessaman_floor.reset();
+  _nf_refresh_requested = true;
+  _nf_calib_active = false;
+  _nf_window_armed = _nf_lazy_refresh = _nf_refresh_attempted = false;
+  _nf_last_calib = _nf_calib_deadline = _nf_sample_from = 0;
+#if MESH_ENABLE_TELEMETRY_HISTORY
+  _nf_published_valid &= ~1U;
+#endif
+}
+#endif
+
 void RadioLibWrapper::triggerNoiseFloorCalibrate(int threshold) {
   _threshold = threshold;
 #if MESH_ENABLE_RADIO_DIRECTION
@@ -1630,6 +1683,12 @@ void RadioLibWrapper::triggerNoiseFloorCalibrate(int threshold) {
 }
 
 void RadioLibWrapper::recalibrateNoiseFloor() {
+#if MC_AGESSAMAN_NOISE_FLOOR_EXACT
+  if (usesAgessamanNoiseFloor()) {
+    resetAgessamanNoiseFloor();
+    return;
+  }
+#endif
   // A gain or tuning change starts a new baseline. Keep the published value
   // available while discarding the old samples and rise-hold history.
   _noise_floor_valid = false;
@@ -1659,6 +1718,12 @@ void RadioLibWrapper::recalibrateNoiseFloor() {
 }
 
 void RadioLibWrapper::requestPeriodicNoiseFloorRefresh() {
+#if MC_AGESSAMAN_NOISE_FLOOR_EXACT
+  if (usesAgessamanNoiseFloor()) {
+    requestNoiseFloorRefresh();
+    return;
+  }
+#endif
   const uint32_t interval = _nf_lazy_refresh ? NF_LAZY_REFRESH_INTERVAL_MS
       : (_rx_ps_enabled && !_rx_ps_continuous_fallback
           ? NF_RXPS_REFRESH_INTERVAL_MS : NF_CALIB_INTERVAL_MS);
@@ -1673,6 +1738,14 @@ void RadioLibWrapper::requestPeriodicNoiseFloorRefresh() {
 }
 
 void RadioLibWrapper::requestNoiseFloorRefresh() {
+#if MC_AGESSAMAN_NOISE_FLOOR_EXACT
+  if (usesAgessamanNoiseFloor()) {
+    _agessaman_floor.trigger();
+    _nf_refresh_requested = !_agessaman_floor.complete()
+        || _agessaman_floor.pendingPublication();
+    return;
+  }
+#endif
   if (_nf_refresh_requested) return;
   _nf_refresh_requested = true;
   _nf_lazy_refresh = false;
@@ -1692,6 +1765,9 @@ void RadioLibWrapper::resetAGC() {
 }
 
 bool RadioLibWrapper::tryResetAGC() {
+#if MC_AGESSAMAN_NOISE_FLOOR_EXACT
+  if (usesAgessamanNoiseFloor()) return resetAGCIfIdle(false);
+#endif
   // BUSY is expected during RXPS sleep. Reuse the legacy explicit wake/reset
   // sequence there; polling only every 50 ms can miss every short RX window.
   // Outside known duty cycling, a busy SPI command still defers admission.
@@ -1710,6 +1786,13 @@ bool RadioLibWrapper::resetAGCIfIdle(bool refresh_floor) {
   state = STATE_IDLE;   // trigger a startReceive()
   const bool gain_restored = !_rx_boosted_gain_valid
       || (_rx_boosted_gain_applied = applyRxBoostedGainMode(_cur_rx_boosted_gain));
+
+#if MC_AGESSAMAN_NOISE_FLOOR_EXACT
+  if (usesAgessamanNoiseFloor()) {
+    resetAgessamanNoiseFloor();
+    return true;
+  }
+#endif
 
   // Adaptive maintenance restores the same RF path. A valid, idle baseline
   // keeps its existing refresh deadline instead of spending another complete
@@ -2579,6 +2662,13 @@ void RadioLibWrapper::loop() {
   }
   serviceProfileScan();
   serviceRxPowerSavingRetry(static_cast<uint32_t>(millis()));
+#if MC_AGESSAMAN_NOISE_FLOOR_EXACT
+  if (usesAgessamanNoiseFloor()) {
+    serviceAgessamanNoiseFloor();
+    checkReceiveMode(static_cast<uint32_t>(millis()));
+    return;
+  }
+#endif
   if (_rx_ps_enabled && !_rx_ps_continuous_fallback) {
     rxPsWatchdogCheck();
   }
@@ -2890,6 +2980,14 @@ bool RadioLibWrapper::getNoiseFloorWakeDelay(uint32_t now, uint32_t& delay_ms) c
 #if MESH_ENABLE_TX_BEACONS
   if (_beacon_owned) return false;
 #endif
+#if MC_AGESSAMAN_NOISE_FLOOR_EXACT
+  if (usesAgessamanNoiseFloor()) {
+    if (_cw_active || state != STATE_RX
+        || (_agessaman_floor.complete() && !_agessaman_floor.pendingPublication())) return false;
+    delay_ms = 0;
+    return true;
+  }
+#endif
   // Dual-profile scanning and foreign owners retain their existing cadence.
   // Failed RX startup has its separate retry deadline, not an active batch.
   if (_cw_active || _profiles.enabled() || state != STATE_RX
@@ -2945,6 +3043,9 @@ mesh::RadioParamApplyResult RadioLibWrapper::trySetRxPowerSaving(bool enabled, u
   uint8_t resume_rx = beginReconfigure();
   if (resume_rx > 1) return resume_rx == 2 ? Result::BUSY : Result::FAILED;
 
+#if MC_AGESSAMAN_NOISE_FLOOR_EXACT
+  const bool was_exact = usesAgessamanNoiseFloor();
+#endif
   _rx_ps_enabled = enabled;
   _rx_ps_rx_us = rx_us;
   _rx_ps_sleep_us = sleep_us;
@@ -2952,6 +3053,9 @@ mesh::RadioParamApplyResult RadioLibWrapper::trySetRxPowerSaving(bool enabled, u
   _rx_ps_last_error = RADIOLIB_ERR_NONE;
   _rx_ps_continuous_fallback = enabled
       && rxPowerSavingUsesContinuousFallback(rx_us, sleep_us);
+#if MC_AGESSAMAN_NOISE_FLOOR_EXACT
+  if (was_exact != usesAgessamanNoiseFloor()) recalibrateNoiseFloor();
+#endif
   endReconfigure(resume_rx);
   return Result::APPLIED;
 }

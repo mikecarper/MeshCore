@@ -3,6 +3,13 @@
 #include <Arduino.h>
 
 #include "NoiseFloorEstimator.h"
+
+#ifndef MC_AGESSAMAN_NOISE_FLOOR_EXACT
+#define MC_AGESSAMAN_NOISE_FLOOR_EXACT 0
+#endif
+#if MC_AGESSAMAN_NOISE_FLOOR_EXACT
+#include "AgessamanNoiseFloor.h"
+#endif
 #include "../TelemetryHistoryConfig.h"
 #include "../CarrierTools.h"
 #include "../RadioDirectionPolicy.h"
@@ -84,6 +91,12 @@ protected:
   bool _nf_refresh_requested;
   NoiseFloorEstimator _floor_estimator;
   NoiseFloorEstimator _secondary_floor_estimator;
+#if MC_AGESSAMAN_NOISE_FLOOR_EXACT
+  AgessamanNoiseFloor _agessaman_floor;
+  bool usesAgessamanNoiseFloor() const;
+  void serviceAgessamanNoiseFloor();
+  void resetAgessamanNoiseFloor();
+#endif
   uint32_t _rx_mode_checked_at = 0;
   uint8_t _rx_mode_failures = 0;
   // Independent of calibration and watchdog counters: repeated failed starts
@@ -284,6 +297,10 @@ protected:
     return profile == 1 ? _secondary_floor_estimator : _floor_estimator;
   }
   float profileNoiseFloorSecondsRemaining(uint8_t profile) const {
+#if MC_AGESSAMAN_NOISE_FLOOR_EXACT
+    // Accepted samples follow loop cadence, so there is no fixed time estimate.
+    if (usesAgessamanNoiseFloor()) return 0.0f;
+#endif
     if (!isCalibratingNoiseFloor()) return 0.0f;
     const NoiseFloorEstimator& estimator = profileFloorEstimator(profile);
     if (!_profiles.enabled()) return estimator.secondsRemaining();
@@ -705,6 +722,10 @@ public:
   // Full-batch RF ownership for UI and recovery guards. CPU idle between
   // readings is governed separately by getNoiseFloorWakeDelay().
   bool isCalibratingNoiseFloor() const override {
+#if MC_AGESSAMAN_NOISE_FLOOR_EXACT
+    // Passive collection must not take radio ownership when its gate is blocked.
+    if (usesAgessamanNoiseFloor()) return false;
+#endif
     return isInRecvMode() && !_rx_ps_armed && (_nf_calib_active
         || (_nf_refresh_requested
             && (!_rx_ps_enabled || _rx_ps_continuous_fallback)));
