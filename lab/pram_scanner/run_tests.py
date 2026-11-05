@@ -29,6 +29,7 @@ with tempfile.TemporaryDirectory() as d:
     run(['python3',str(lab/'test_logical_frequency_snapshot.py')])
     run(['python3',str(lab/'test_idle_admission.py')])
     run(['python3',str(lab/'test_automatic.py')])
+    run(['python3',str(lab/'test_safe_active_loop.py')])
     run(['python3',str(lab/'test_autonomous_sleep.py')])
     run(['python3',str(lab/'test_agc_deferral.py')])
     run(['python3',str(lab/'test_opt_in.py')])
