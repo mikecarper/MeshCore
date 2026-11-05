@@ -8,6 +8,83 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 
 
 class UsbKeyboardConsoleTest(unittest.TestCase):
+    def test_real_keyboard_service_ignores_obscured_and_unrendered_input(self):
+        compiler = shutil.which("g++")
+        if not compiler:
+            self.skipTest("g++ is not available")
+        ui = (ROOT / "examples/companion_radio/ui-new/UITask.cpp").read_text()
+        start = ui.index("mesh::usbkeyboard::EventType serviceKeyboard(")
+        body = ui.index("{", start)
+        depth = 0
+        for end in range(body, len(ui)):
+            if ui[end] == "{": depth += 1
+            elif ui[end] == "}":
+                depth -= 1
+                if not depth: break
+        service = ui[start:end + 1]
+        harness = r'''
+#include <cassert>
+#include <deque>
+#include "helpers/esp32/UsbKeyboardHost.h"
+#include "helpers/ui/UsbKeyboardConsole.h"
+namespace mesh { namespace ui {
+enum class DisplayWake { Button };
+bool usbKeyboardScreenFits(int w,int h,int line) { return w>=96 && line>0 && h>=line*6; }
+} }
+std::deque<mesh::usbkeyboard::Event> events;
+namespace mesh { namespace usbkeyboard {
+bool next(Event& event) { if (events.empty()) return false; event=events.front(); events.pop_front(); return true; }
+} }
+struct DisplayDriver {
+  bool on=true; int font=0, wakes=0;
+  void setTextSize(int) { ++font; }
+  int width() { return 128; } int height() { return 64; } int textLineHeight() { return 8; }
+  bool isOn() { return on; } void wake(mesh::ui::DisplayWake) { on=true; ++wakes; }
+};
+mesh::ui::UsbKeyboardConsole keyboard_console;
+bool keyboard_present=false, keyboard_terminal_owned=false, keyboard_box_drawn=false;
+int keyboard_measured_width=-1, keyboard_measured_height=-1;
+bool keyboard_screen_fits=false; int submitted=0, keyboard_output=0;
+struct Mesh { void setTerminalInputEditing(int&, bool) {} } the_mesh;
+void releaseKeyboardTerminalIfIdle() {}
+void closeKeyboardTerminal() { keyboard_console.disconnect(); keyboard_box_drawn=false; }
+void submitKeyboardCommand() { ++submitted; keyboard_console.clearCommand(); }
+@SERVICE@
+void report(unsigned char key) {
+  mesh::usbkeyboard::Event e{}; e.type=mesh::usbkeyboard::EventType::Report; e.report[2]=key;
+  events.push_back(e);
+}
+int main() {
+  DisplayDriver d;
+  mesh::usbkeyboard::Event e{}; e.type=mesh::usbkeyboard::EventType::Connected; events.push_back(e);
+  serviceKeyboard(&d,true); assert(keyboard_present && !keyboard_console.connected() && d.font==0);
+  serviceKeyboard(&d,true); assert(keyboard_console.connected() && !keyboard_box_drawn && d.font==1);
+  report(4); serviceKeyboard(&d,true); assert(keyboard_console.length()==0); // not drawn
+  keyboard_box_drawn=true;
+  report(4); serviceKeyboard(&d,true); assert(keyboard_console.length()==0); // still held
+  report(0); serviceKeyboard(&d,true); report(4); serviceKeyboard(&d,true);
+  assert(keyboard_console.length()==1);
+  report(0); serviceKeyboard(&d,true);
+  report(0x28); serviceKeyboard(&d,false); assert(submitted==0); // alert/pairing
+  keyboard_box_drawn=true; report(0x28); serviceKeyboard(&d,true); assert(submitted==0);
+  report(0); serviceKeyboard(&d,true);
+  d.on=false; report(0x28); serviceKeyboard(&d,false); assert(d.on && d.wakes==1 && submitted==0);
+  keyboard_box_drawn=true; report(0x28); serviceKeyboard(&d,true); assert(submitted==0);
+  report(0); serviceKeyboard(&d,true); report(0x28); serviceKeyboard(&d,true); assert(submitted==1);
+  report(0); serviceKeyboard(&d,true); report(0x29); serviceKeyboard(&d,true);
+  assert(!keyboard_console.visible()); int font=d.font;
+  report(0); serviceKeyboard(&d,true); report(4); serviceKeyboard(&d,true);
+  assert(keyboard_console.length()==0 && d.font==font); // hidden leaves normal UI untouched
+}
+'''.replace("@SERVICE@", service)
+        with tempfile.TemporaryDirectory() as temp:
+            source = pathlib.Path(temp) / "service.cpp"
+            binary = pathlib.Path(temp) / "service"
+            source.write_text(harness)
+            subprocess.run([compiler, "-std=c++17", "-DMESH_USB_KEYBOARD_HOST=1",
+                            "-I", str(ROOT / "src"), str(source), "-o", str(binary)], check=True)
+            subprocess.run([str(binary)], check=True)
+
     def test_real_button_dispatch_keeps_actions_and_probes(self):
         compiler = shutil.which("g++")
         if not compiler:
