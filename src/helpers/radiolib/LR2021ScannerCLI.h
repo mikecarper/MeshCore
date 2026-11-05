@@ -26,10 +26,16 @@ inline bool isScannerFrameCommandAllowed(const uint8_t* bytes, size_t length) {
   for (const char* allowed : exact) if (!strcmp(command, allowed)) return true;
   static const char range[] = "set radio.multisf ";
   if (strncmp(command, range, sizeof(range)-1)) return false;
-  unsigned first=0, last=0; int used=0;
   const char* value = command + sizeof(range)-1;
-  return sscanf(value, "%u-%u%n", &first, &last, &used) == 2 && !value[used]
-      && first >= 5 && last <= 10 && first <= last && last-first <= 3;
+  const auto number = [](const char*& p, unsigned& n) {
+    if (*p < '0' || *p > '9') return false;
+    n = unsigned(*p++ - '0');
+    if (*p >= '0' && *p <= '9') n = n * 10 + unsigned(*p++ - '0');
+    return true;
+  };
+  unsigned first=0, last=0;
+  if (!number(value, first) || *value++ != '-' || !number(value, last) || *value) return false;
+  return first >= 5 && last <= 10 && first <= last && last-first <= 3;
 }
 
 // Companion's control parser uses this handler for local CLI requests.
