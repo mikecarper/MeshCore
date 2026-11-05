@@ -362,6 +362,10 @@ protected:
 #endif
   virtual int startReceiveMode();
   int startReceivePowerSaving();
+#if defined(MESHNOLOGY_W12) && defined(MESH_W12_RXPS_EXPERIMENT) && MESH_W12_RXPS_EXPERIMENT
+  virtual bool rxPowerSavingExtraSfHold() const { return false; }
+  virtual bool rxPowerSavingExtraSfRepair() const { return false; }
+#endif
   virtual void stopReceiveDutyCycle();
   virtual int16_t armDutyCycle(RadioLibIrqFlags_t irq_flags, RadioLibIrqFlags_t irq_mask,
       uint32_t* effective_rx_us, uint32_t* effective_sleep_us) {

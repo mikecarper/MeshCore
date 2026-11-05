@@ -774,6 +774,7 @@ jobs:
           python3 -B test/test_esp32_uart_quiet_session.py -v
           python3 -B test/test_companion_rxps_getters.py -v
           python3 -B test/test_rxps_runtime.py -v
+          python3 -B test/test_w12_extrasf_rxps_hold.py -v
           python3 -B test/test_rxps_hardware_capability.py -v
           python3 -B test/test_nrf52_sleep_cycle.py -v
           python3 -B test/test_nrf52_sleep_events.py -v

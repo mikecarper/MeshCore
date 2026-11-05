@@ -112,7 +112,11 @@ void RXPowerSavingCLI::get(const RxPowerSavingConfig& config,
   // Runtime holds are distinct from an arm failure. Keep configuration keys
   // stable, and put the bounded recovery countdown in the same status reply.
   if (len > 0 && (size_t)len < reply_size && config.enabled && !status.armed) {
-    const char* hold = status.suspended ? "radio2" : status.calibrating ? "calib"
+    const char* hold = status.suspended ? "radio2" :
+#if defined(MESHNOLOGY_W12) && defined(MESH_W12_RXPS_EXPERIMENT) && MESH_W12_RXPS_EXPERIMENT
+        status.extra_sf_repair ? "extra-sf-repair" : status.extra_sf_hold ? "extra-sf" :
+#endif
+        status.calibrating ? "calib"
         : status.timing_fallback ? "timing" : nullptr;
     if (hold) {
       snprintf(reply + len, reply_size - (size_t)len, ",hold=%s", hold);

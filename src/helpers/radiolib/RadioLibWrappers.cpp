@@ -2735,6 +2735,16 @@ int RadioLibWrapper::startReceivePowerSaving() {
     return RADIOLIB_ERR_NONE;
   }
   if (_rx_ps_armed) stopReceiveDutyCycle();
+#if defined(MESHNOLOGY_W12) && defined(MESH_W12_RXPS_EXPERIMENT) && MESH_W12_RXPS_EXPERIMENT
+  if (_rx_ps_enabled && rxPowerSavingExtraSfHold()) {
+    // Side detectors need a continuous RX window: the saved RXPS timings only
+    // account for the primary SF. Keep intent unchanged and suppress retries.
+    _rx_ps_continuous_fallback = true;
+    const int16_t err = startContinuousReceive();
+    if (err != RADIOLIB_ERR_NONE) _rx_ps_last_error = err;
+    return err;
+  }
+#endif
   if (!_rx_ps_enabled || _nf_calib_active) {
     if (!_rx_ps_enabled) _rx_ps_continuous_fallback = false;
     const int16_t err = startContinuousReceive();
@@ -2790,6 +2800,9 @@ void RadioLibWrapper::stopReceiveDutyCycle() {
 }
 
 bool RadioLibWrapper::rxPowerSavingRetryEligible() const {
+#if defined(MESHNOLOGY_W12) && defined(MESH_W12_RXPS_EXPERIMENT) && MESH_W12_RXPS_EXPERIMENT
+  if (rxPowerSavingExtraSfHold()) return false;
+#endif
 #if MESH_ENABLE_RADIO_DIRECTION
   if (!mesh::radioDirection::radioReceiveAllowed()) return false;
 #endif
@@ -2949,12 +2962,19 @@ RxPowerSavingStatus RadioLibWrapper::getRxPowerSavingStatus() const {
   status.armed = _rx_ps_armed;
   status.receiving = state == STATE_RX;
   status.suspended = _profile_rxps_suspended;
+#if defined(MESHNOLOGY_W12) && defined(MESH_W12_RXPS_EXPERIMENT) && MESH_W12_RXPS_EXPERIMENT
+  status.extra_sf_hold = _rx_ps_enabled && rxPowerSavingExtraSfHold();
+  status.extra_sf_repair = status.extra_sf_hold && rxPowerSavingExtraSfRepair();
+#endif
   status.calibrating = _nf_calib_active;
   status.timing_fallback = _rx_ps_enabled
       && (rxPowerSavingUsesContinuousFallback(_rx_ps_rx_us, _rx_ps_sleep_us)
           || !canStartRxPowerSavingDutyCycle(
               _rx_ps_rx_us, _rx_ps_sleep_us, rxPowerSavingTransitionUs()));
   status.retry_pending = _rx_ps_enabled && !_rx_ps_armed && _rx_ps_arm_retry.pending();
+#if defined(MESHNOLOGY_W12) && defined(MESH_W12_RXPS_EXPERIMENT) && MESH_W12_RXPS_EXPERIMENT
+  if (status.extra_sf_hold) status.retry_pending = false;
+#endif
   status.consecutive_failures = _rx_ps_arm_retry.consecutiveFailures();
   status.retry_delay_ms = status.retry_pending
       ? _rx_ps_arm_retry.delayMs(static_cast<uint32_t>(millis())) : 0;

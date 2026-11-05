@@ -23,6 +23,9 @@
 #endif
 
 class CustomLR2021Wrapper : public RadioLibWrapper {
+#if defined(MESHNOLOGY_W12) && defined(MESH_W12_RXPS_EXPERIMENT) && MESH_W12_RXPS_EXPERIMENT
+  bool _side_detector_uncertain = false;
+#endif
 #if defined(MESH_W12_PRAM_EXPERIMENT) && MESH_W12_PRAM_EXPERIMENT
 #include "W12PramScannerLab.inc"
 #endif
@@ -113,6 +116,17 @@ public:
   static constexpr bool SupportsRxPowerSaving = true;
   bool supportsRxPowerSaving() const override { return true; }
   uint32_t rxPowerSavingTransitionUs() const override { return 1000; }
+#if defined(MESHNOLOGY_W12)
+  bool rxPowerSavingExtraSfHold() const override {
+    if (_side_detector_uncertain) return true;
+    if (!_numSideDet || _profiles.enabled()) return false;
+    // Unknown physical parameters fail toward continuous RX. An incompatible
+    // temporary primary suspends the saved side detectors, so it can use RXPS.
+    return !_params_valid || mesh::lr2021::validateSideDetectorSFs(
+        _sideDetSFs, _numSideDet, _cur_sf, _cur_bw);
+  }
+  bool rxPowerSavingExtraSfRepair() const override { return _side_detector_uncertain; }
+#endif
   void onReceiveProcessed() override {
     if (!_lab_scan_active && !_lab_uncertain) finishReceiveProcessing();
   }
@@ -562,23 +576,57 @@ public:
     int16_t status = ((CustomLR2021 *)_radio)->setSideDetector(num > 0 ? tmp : nullptr, num);
     MESH_DEBUG_PRINTLN("setSideDetector() returned %d", status);
 
+#if defined(MESHNOLOGY_W12) && defined(MESH_W12_RXPS_EXPERIMENT) && MESH_W12_RXPS_EXPERIMENT
+    if (hasPendingRadioInterrupt()) {
+      // A completion can arrive after standby admission. Do not restart RX or
+      // overwrite its FIFO; retry the desired setting after it is consumed.
+      _side_detector_uncertain = true;
+      _profile_refresh_required = true;
+      return status == RADIOLIB_ERR_NONE ? Result::BUSY : Result::FAILED;
+    }
+#endif
+
     if (status == RADIOLIB_ERR_NONE) {
+#if defined(MESHNOLOGY_W12) && defined(MESH_W12_RXPS_EXPERIMENT) && MESH_W12_RXPS_EXPERIMENT
+      _side_detector_uncertain = false;
+#endif
       for (uint8_t i = 0; i < mesh::lr2021::MAX_SIDE_DETECTORS; i++) {
         _sideDetSFs[i] = i < num ? sideDetSFs[i] : 0;
       }
       _numSideDet = num;
     } else {
+#if defined(MESHNOLOGY_W12) && defined(MESH_W12_RXPS_EXPERIMENT) && MESH_W12_RXPS_EXPERIMENT
+      _side_detector_uncertain = true;
+#endif
       // Setting side detectors writes the detector bytes and sync words in two
       // separate commands. If the second command fails, restore the cached
       // configuration so a rejected CLI change cannot leave partial hardware state.
       bool restored = applySideDetectorConfig(primary_sf, active_bw);
-      if (!restored) restored = restoreAfterDeepInit();
+      if (!restored) {
+#if defined(MESHNOLOGY_W12) && defined(MESH_W12_RXPS_EXPERIMENT) && MESH_W12_RXPS_EXPERIMENT
+        // Leave late IRQ/FIFO ownership intact. Normal profile/setting retries
+        // will restore the accepted tuple after the packet has been consumed.
+        _profile_refresh_required = true;
+#else
+        restored = restoreAfterDeepInit();
+#endif
+      }
       if (!restored) {
         MESH_DEBUG_PRINTLN("LR2021: failed to restore side detectors after config error");
+#if defined(MESHNOLOGY_W12) && defined(MESH_W12_RXPS_EXPERIMENT) && MESH_W12_RXPS_EXPERIMENT
+        _profile_refresh_required = true;
+#endif
       }
     }
 
     endReconfigure(resume_rx);
+#if defined(MESHNOLOGY_W12) && defined(MESH_W12_RXPS_EXPERIMENT) && MESH_W12_RXPS_EXPERIMENT
+    // A successful detector write is not a successful transition if the
+    // formerly active receiver did not restart. The caller restores the old
+    // accepted setting through the normal guarded/pending retry path; do not
+    // reset here because a late RX interrupt may still own the FIFO.
+    if (status == RADIOLIB_ERR_NONE && resume_rx && !isInRecvMode()) return Result::FAILED;
+#endif
     return status == RADIOLIB_ERR_NONE ? Result::APPLIED : Result::FAILED;
   }
 
@@ -600,30 +648,42 @@ protected:
     // Disable them without changing their configuration, then restore the
     // normal set when the owner's receive-restoration transaction runs.
     if (isBeaconRadioOwned() && !_beacon_restoring) {
-      return recordApply(Stage::SideDetectors,
-          ((CustomLR2021 *)_radio)->setSideDetector(nullptr, 0)) == RADIOLIB_ERR_NONE;
+      const int16_t rc = ((CustomLR2021 *)_radio)->setSideDetector(nullptr, 0);
+#if defined(MESHNOLOGY_W12) && defined(MESH_W12_RXPS_EXPERIMENT) && MESH_W12_RXPS_EXPERIMENT
+      if (rc == RADIOLIB_ERR_NONE) _side_detector_uncertain = false;
+#endif
+      return recordApply(Stage::SideDetectors, rc) == RADIOLIB_ERR_NONE;
     }
 #endif
     if (_profiles.enabled()) {
-      return recordApply(Stage::SideDetectors,
-          ((CustomLR2021 *)_radio)->setSideDetector(nullptr, 0)) == RADIOLIB_ERR_NONE;
+      const int16_t rc = ((CustomLR2021 *)_radio)->setSideDetector(nullptr, 0);
+#if defined(MESHNOLOGY_W12) && defined(MESH_W12_RXPS_EXPERIMENT) && MESH_W12_RXPS_EXPERIMENT
+      if (rc == RADIOLIB_ERR_NONE) _side_detector_uncertain = false;
+#endif
+      return recordApply(Stage::SideDetectors, rc) == RADIOLIB_ERR_NONE;
     }
     if (!mesh::lr2021::validateSideDetectorSFs(_sideDetSFs, _numSideDet, primary_sf, bw)) {
       // Extra SFs belong to the saved receive tuple. A temporary primary can
       // make that list illegal; suspend it without discarding the saved set.
       // Applying the normal tuple enables the same detectors again.
       if (_profiles.primary_temporary) {
-        return recordApply(Stage::SideDetectors,
-            ((CustomLR2021 *)_radio)->setSideDetector(nullptr, 0)) == RADIOLIB_ERR_NONE;
+        const int16_t rc = ((CustomLR2021 *)_radio)->setSideDetector(nullptr, 0);
+#if defined(MESHNOLOGY_W12) && defined(MESH_W12_RXPS_EXPERIMENT) && MESH_W12_RXPS_EXPERIMENT
+        if (rc == RADIOLIB_ERR_NONE) _side_detector_uncertain = false;
+#endif
+        return recordApply(Stage::SideDetectors, rc) == RADIOLIB_ERR_NONE;
       }
       recordApply(Stage::SideDetectors, RADIOLIB_ERR_INVALID_SIDE_DETECT);
       return false;
     }
     LR2021LoRaSideDetector_t config[mesh::lr2021::MAX_SIDE_DETECTORS] = {};
     buildSideDetectorConfig(_sideDetSFs, _numSideDet, bw, config);
-    return recordApply(Stage::SideDetectors,
-        ((CustomLR2021 *)_radio)->setSideDetector(_numSideDet > 0 ? config : nullptr,
-                                                _numSideDet)) == RADIOLIB_ERR_NONE;
+    const int16_t rc = ((CustomLR2021 *)_radio)->setSideDetector(
+        _numSideDet > 0 ? config : nullptr, _numSideDet);
+#if defined(MESHNOLOGY_W12) && defined(MESH_W12_RXPS_EXPERIMENT) && MESH_W12_RXPS_EXPERIMENT
+    if (rc == RADIOLIB_ERR_NONE) _side_detector_uncertain = false;
+#endif
+    return recordApply(Stage::SideDetectors, rc) == RADIOLIB_ERR_NONE;
   }
 
   int16_t performChannelScan() override {

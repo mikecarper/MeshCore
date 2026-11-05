@@ -648,6 +648,10 @@ struct RxPowerSavingStatus {
   bool armed = false;
   bool receiving = false;
   bool suspended = false;
+#if defined(MESHNOLOGY_W12) && defined(MESH_W12_RXPS_EXPERIMENT) && MESH_W12_RXPS_EXPERIMENT
+  bool extra_sf_hold = false;
+  bool extra_sf_repair = false;
+#endif
   bool calibrating = false;
   bool timing_fallback = false;
   bool retry_pending = false;
