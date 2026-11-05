@@ -18,8 +18,8 @@ profile makes the other unavailable until that packet finishes.
 
 ## Experimental LR2021 on-chip scanner
 
-W12 repeater, room and sensor firmware, and MeshTracker X1 repeater and room
-firmware, automatically try the experimental
+W12 repeater, room, sensor and Companion firmware, and MeshTracker X1 repeater,
+room and Companion firmware, automatically try the experimental
 on-chip scanner when `radio2` is configured with compatible profiles. It falls
 back to normal host switching if the profiles are unsupported or the scanner
 fails. Check the active mode and fallback reason, or turn off automatic scanning
@@ -73,6 +73,8 @@ preambles up to 255 symbols, frequencies less than 20 MHz apart, and a supported
 LR2021 ROM. The fixed profile must use SF7 or SF8; multi-SF accepts SF5–10
 within its four-SF range. TX-capable scanning also requires disjoint channels.
 Unsupported profiles fall back to host switching. RXPS is off by default.
+On Companion firmware these controls are available in the local CLI, including
+the USB terminal.
 
 Time-sharing multiple SFs and profiles can miss packets, particularly with short
 preambles, weak signals, or slow SFs. The ordinary single-radio channel check

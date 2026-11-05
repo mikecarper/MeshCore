@@ -1,6 +1,7 @@
 #include <helpers/RegulatorSettings.h>
 #if defined(USE_LR2021)
 #include <helpers/radiolib/LR2021CalibrationSettings.h>
+#include <helpers/radiolib/LR2021SafeMode.h>
 #endif
 #include <helpers/LedSettings.h>
 #include <Arduino.h>   // needed for PlatformIO
@@ -3741,6 +3742,9 @@ void setup() {
   mesh::RadioProfileCLI::configureBootTuning(regulator_prefs_fs, radio_driver);
 #if defined(USE_LR2021)
   mesh::lr2021::loadLR2021CalibrationSettings(regulator_prefs_fs, radio_driver);
+#if defined(MESH_W12_PRAM_EXPERIMENT) && MESH_W12_PRAM_EXPERIMENT
+  mesh::lr2021::loadSafeModeSettings(regulator_prefs_fs);
+#endif
 #endif
 
 

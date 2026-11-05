@@ -243,6 +243,11 @@ MESH_COMPANION_HELP_BEGIN
 MESH_COMPANION_HELP_END
 #endif
 MESH_COMPANION_HELP_BEGIN
+#if defined(USE_LR2021) && defined(MESH_W12_PRAM_EXPERIMENT) && MESH_W12_PRAM_EXPERIMENT
+    "  get/set radio.safe <on|off>\r\n"
+    "  get/set radio.multisf <on|off|radio|radio2|5-8>\r\n"
+    "  get pramscan; set pramscan <on|off|recover>\r\n"
+#endif
     "  get radio.rxps.config\r\n"
     "  get/set radio.rxps <off|on|level 1-10 [preamble 16|32]|rx_us sleep_us>\r\n"
     "  get/set radio.cad <on|off>\r\n"

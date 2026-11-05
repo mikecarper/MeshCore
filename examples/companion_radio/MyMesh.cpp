@@ -6,6 +6,7 @@
 #include <helpers/RegulatorSettings.h>
 #if defined(USE_LR2021)
 #include <helpers/radiolib/LR2021CalibrationSettings.h>
+#include <helpers/radiolib/LR2021ScannerCLI.h>
 #endif
 #if defined(ESP32_PLATFORM)
 #include <helpers/BootSlot.h>
@@ -4250,6 +4251,9 @@ bool MyMesh::handleLocalControlCommand(const char* command, char* reply,
                                        size_t reply_size) {
   if (!command || !reply || reply_size == 0) return false;
   while (*command == ' ') command++;
+#if defined(USE_LR2021) && defined(MESH_W12_PRAM_EXPERIMENT) && MESH_W12_PRAM_EXPERIMENT
+  if (mesh::lr2021::handleScannerCommand(command, reply, reply_size, radio_driver)) return true;
+#endif
   if (mesh::handleUsbModeCommand(command, reply, reply_size, Serial)) return true;
 #if defined(ESP32_PLATFORM) && defined(WIFI_SSID)
   if (strncmp(command, "password", 8) == 0
