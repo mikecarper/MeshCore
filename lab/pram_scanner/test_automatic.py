@@ -16,7 +16,7 @@ static uint32_t now=100; static uint32_t millis(){return now;}
 namespace mesh {enum class RadioParamApplyResult {APPLIED,BUSY,FAILED};}
 struct Fake {
   mesh::w12pram::AutoPolicy _lab_auto;
-  struct {uint32_t generation[2]={1,2}; bool active=true; bool enabled()const{return active;}} _profiles;
+  struct {uint32_t generation[2]={1,2}; bool active=true, recommendation=true; bool enabled()const{return active;} bool recommendationReady()const{return recommendation;}} _profiles;
   struct {uint32_t generation;} _lab_snap[2]={{1},{2}};
   bool _lab_uncertain=false,_lab_sleeping=false,_lab_resume_pending=false,_lab_session_ldo=false,_lab_pram_loaded=false;
   bool _profile_repair_required=false,_lab_scan_active=false, supported=true, stop_ok=true, chip_busy=false;
@@ -44,6 +44,8 @@ struct Fake {
 };
 int main(){using Reason=mesh::w12pram::AutoPolicy::Reason;
   {Fake f;f._profiles.active=false;f.labServiceAutomatic(true,false);assert(f.cold==0);f._profiles.active=true;f.labServiceAutomatic(true,false);assert(f.cold==1&&f._lab_scan_active);}
+  {Fake f;f._profiles.recommendation=false;f.labServiceAutomatic(true,false);assert(f.cold==0&&f.warm==0);f._profiles.recommendation=true;f.labServiceAutomatic(true,false);assert(f.cold==1);}
+  {Fake f;f._lab_resume_pending=true;f._lab_pram_loaded=true;f._lab_resume_at=now;f._profiles.recommendation=false;f.labServiceAutomatic(true,false);assert(f.warm==0&&f._lab_resume_pending);f._profiles.recommendation=true;f.labServiceAutomatic(true,false);assert(f.warm==1);}
   {Fake f;assert(f.labScannerSetAutomatic(false));f.labServiceAutomatic(true,false);assert(f.cold==0&&!f._lab_auto.enabled());assert(f.labScannerSetAutomatic(true));f.labServiceAutomatic(true,false);assert(f.cold==1);}
   {Fake f;f.supported=false;f.labServiceAutomatic(true,false);assert(f.cold==0&&f._lab_auto.reason()==Reason::Unsupported);f.supported=true;f.labServiceAutomatic(true,false);assert(f.cold==0);++f._profiles.generation[1];f.labServiceAutomatic(true,false);assert(f.cold==1);}
   {Fake f;f.start_result=1;f.labServiceAutomatic(true,false);assert(f.cold==1);now+=999;f.labServiceAutomatic(true,false);assert(f.cold==1);now++;f.start_result=0;f.labServiceAutomatic(true,false);assert(f.cold==2);}

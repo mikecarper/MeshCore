@@ -495,6 +495,10 @@ public:
       return;
     }
     if (!_lab_auto.enabled() || _lab_auto.blocked()) return;
+    // The recommendation uses real host retunes for a 120-second window.
+    // Starting PRAM earlier stops those retunes and leaves its status pending
+    // forever, even when the initial four samples in each direction exist.
+    if (!_profiles.recommendationReady()) return;
     if (mesh::w12pram::mayResume(_lab_resume_pending,_lab_sleeping,rx_allowed,state==3,radio_owned,
             _profile_repair_required,(int32_t)(millis()-_lab_resume_at)>=0)) {
       const uint32_t recoveries=_lab_recoveries;

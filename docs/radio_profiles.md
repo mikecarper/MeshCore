@@ -22,7 +22,8 @@ W12 repeater, room and sensor firmware automatically tries the experimental
 on-chip scanner when `radio2` is configured with compatible profiles. It falls
 back to normal host switching if the profiles are unsupported or the scanner
 fails. Check the active mode and fallback reason, or turn off automatic scanning
-for the current boot:
+for the current boot. Activation follows the existing two-minute host-switch
+measurement window, so its timing recommendation can finish first:
 
 ```text
 get pramscan
