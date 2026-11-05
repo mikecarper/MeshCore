@@ -41,6 +41,8 @@ get pramscan.recovery
 the ordinary radio and radio2 host switching remain available. Use
 `set radio.safe off` to permit experiments again. An unreadable or damaged
 setting keeps safe mode on. `set pramscan off` is a temporary per-boot control.
+If saving safe mode fails, the CLI reports the error and still turns it on for
+the current boot; `get radio.safe` shows `on (not saved)`.
 
 `set pramscan on` allows another automatic start; it does not guarantee the
 scanner can start. The on/off selection is not saved and returns to automatic

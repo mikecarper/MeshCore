@@ -14,7 +14,7 @@ namespace {
 constexpr char Path[] = "/radio_safe";
 constexpr size_t Size = 10;
 FILESYSTEM* fs = nullptr;
-bool safe = true, valid = false, writable = false;
+bool safe = true, valid = false, writable = false, volatile_safe = false;
 
 uint32_t checksum(const uint8_t* data, size_t size) {
   uint32_t crc=0xffffffffU;
@@ -60,7 +60,7 @@ bool save(bool value) {
 #else
   return false;
 #endif
-  safe=value; valid=true;
+  safe=value; valid=true; volatile_safe=false;
   return true;
 }
 }
@@ -68,7 +68,7 @@ bool save(bool value) {
 bool safeMode() { return safe; }
 
 void loadSafeModeSettings(FILESYSTEM* store) {
-  fs=store; safe=true; valid=writable=false;
+  fs=store; safe=true; valid=writable=volatile_safe=false;
   if (!fs) return;
 #if defined(ESP32_PLATFORM) || defined(RP2040_PLATFORM)
   if (!ContactFileTransaction::recover(fs, Path, filePresence<FILESYSTEM>)) return;
@@ -89,7 +89,8 @@ void loadSafeModeSettings(FILESYSTEM* store) {
 bool handleSafeModeCommand(const char* command, char* reply, size_t capacity) {
   if (!command || !reply || !capacity) return false;
   if (!strcmp(command, "get radio.safe")) {
-    snprintf(reply, capacity, valid ? "> %s" : "> on (settings unavailable)", safe ? "on" : "off");
+    if (volatile_safe) snprintf(reply, capacity, "> on (not saved)");
+    else snprintf(reply, capacity, valid ? "> %s" : "> on (settings unavailable)", safe ? "on" : "off");
     return true;
   }
   if (strncmp(command, "set radio.safe", 14) || (command[14] && command[14] != ' ' && command[14] != '\t')) return false;
@@ -99,7 +100,12 @@ bool handleSafeModeCommand(const char* command, char* reply, size_t capacity) {
     snprintf(reply,capacity,"Error: use set radio.safe on|off"); return true;
   }
   const bool requested=!strcmp(value,"on");
-  if (!save(requested)) snprintf(reply,capacity,"Error: radio.safe not saved%s", safe ? "; safe mode on" : "");
+  if (!save(requested)) {
+    // An emergency stop must work now even if flash is full or cannot be
+    // written. Make the nonpersistent result explicit until the next boot.
+    if (requested) { safe=true; volatile_safe=true; }
+    snprintf(reply,capacity,"Error: radio.safe not saved%s", safe ? "; safe mode on for this boot" : "");
+  }
   else snprintf(reply,capacity,"OK - radio.safe %s",value);
   return true;
 }
