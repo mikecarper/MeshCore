@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Test X1's explicit opt-in and conservative nRF scanner idle behavior."""
+"""Test X1's scanner configuration and conservative nRF idle behavior."""
 import configparser
 from pathlib import Path
 import subprocess
@@ -12,14 +12,15 @@ from test_lr2021_apply_transaction import method
 
 config = configparser.ConfigParser(interpolation=None)
 config.read(root / 'variants/meshtracker_x1/platformio.ini', encoding='utf-8')
-lab = config['MeshTracker_X1_pram_lab']['build_flags']
+lab = config['MeshTracker_X1_pram']['build_flags']
 assert 'MESH_W12_PRAM_EXPERIMENT=1' in lab
-assert 'MESH_LR2021_PRAM_MANUAL_START=1' in lab
+assert 'MESH_LR2021_PRAM_MANUAL_START' not in lab
 assert 'MESH_W12_RXPS_EXPERIMENT' not in lab
 assert 'LR2021_TCXO_VOLTAGE=1.6f' in config['MeshTracker_X1']['build_flags']
 for section in config.sections():
     if section.startswith('env:'):
-        assert 'MeshTracker_X1_pram_lab' not in config[section].get('build_flags', '')
+        enabled = 'MeshTracker_X1_pram' in config[section].get('build_flags', '')
+        assert enabled == (section in ('env:MeshTracker_X1_repeater', 'env:MeshTracker_X1_room_server'))
 
 source = (root / 'src/helpers/radiolib/W12PramScannerLab.inc').read_text(encoding='utf-8')
 assert 'AutoPolicy _lab_auto{false};' in source
@@ -56,4 +57,4 @@ with tempfile.TemporaryDirectory() as tmp:
                     '-DNRF52_PLATFORM', '-I', str(root / 'src'),
                     str(tmp / 'test.cpp'), '-o', str(tmp / 'test')], check=True)
     subprocess.run([str(tmp / 'test')], check=True)
-print('PASS X1 scanner opt-in, startup policy and nRF host idle ownership')
+print('PASS X1 scanner configuration, startup policy and nRF host idle ownership')

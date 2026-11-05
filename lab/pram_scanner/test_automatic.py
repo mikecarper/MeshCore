@@ -13,7 +13,8 @@ code=r'''
 #include <helpers/radiolib/W12PramAutoPolicy.h>
 #define RADIOLIB_ERR_UNKNOWN -1
 static uint32_t now=100; static uint32_t millis(){return now;}
-namespace mesh {enum class RadioParamApplyResult {APPLIED,BUSY,FAILED};}
+namespace mesh {enum class RadioParamApplyResult {APPLIED,BUSY,FAILED};
+namespace lr2021 { bool safe = false; bool safeMode() { return safe; } }}
 struct Fake {
   mesh::w12pram::AutoPolicy _lab_auto;
   struct {uint32_t generation[2]={1,2}; bool active=true, recommendation=true; bool enabled()const{return active;} bool recommendationReady()const{return recommendation;}} _profiles;
@@ -43,6 +44,7 @@ struct Fake {
 @CURRENT@
 };
 int main(){using Reason=mesh::w12pram::AutoPolicy::Reason;
+  {Fake f; mesh::lr2021::safe=true; f.labServiceAutomatic(true,false); assert(f.cold==0); assert(!f.labScannerSetAutomatic(true)); mesh::lr2021::safe=false; f.labServiceAutomatic(true,false); assert(f.cold==1); mesh::lr2021::safe=true; f.labServiceAutomatic(true,false); assert(f.stops==1); mesh::lr2021::safe=false;}
   {Fake f;f._profiles.active=false;f.labServiceAutomatic(true,false);assert(f.cold==0);f._profiles.active=true;f.labServiceAutomatic(true,false);assert(f.cold==1&&f._lab_scan_active);}
   {Fake f;f._profiles.recommendation=false;f.labServiceAutomatic(true,false);assert(f.cold==0&&f.warm==0);f._profiles.recommendation=true;f.labServiceAutomatic(true,false);assert(f.cold==1);}
   {Fake f;f._profiles.recommendation=false;f.supported=false;f.labServiceAutomatic(true,false);assert(f.support_checks==0&&f._lab_auto.reason()==Reason::None);f._profiles.recommendation=true;f.supported=true;f.labServiceAutomatic(true,false);assert(f.cold==1);}
