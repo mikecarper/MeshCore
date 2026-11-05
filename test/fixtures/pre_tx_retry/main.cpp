@@ -8,6 +8,16 @@ class Radio : public mesh::Radio {
  public:
   enum Outcome { Busy, Error, Unknown, Success };
   std::vector<Outcome> outcomes; unsigned calls=0; bool sending=false;
+  mesh::RadioProfiles profiles_data; bool expose_profiles=false;
+  Radio() {profiles_data.primary.freq=910.525f;profiles_data.primary.bw=62.5f;
+    profiles_data.primary.sf=7;profiles_data.primary.cr=5;}
+  mesh::RadioProfiles* profiles() override {return expose_profiles?&profiles_data:nullptr;}
+  const mesh::RadioProfiles* profiles() const override {return expose_profiles?&profiles_data:nullptr;}
+  std::vector<mesh::RadioParamApplyResult> prepares; unsigned prepare_calls=0;
+  mesh::RadioParamApplyResult prepareTransmitProfile(uint8_t) override {
+    if (prepare_calls<prepares.size()) return prepares[prepare_calls++];
+    return mesh::RadioParamApplyResult::APPLIED;
+  }
   mesh::PreTransmitBlock block=mesh::PreTransmitBlock::None;
   std::vector<uint8_t> ids;
   void clearPreTransmitBlock() override {block=mesh::PreTransmitBlock::None;}
@@ -48,6 +58,19 @@ int main(){
   f.loop(101);assert(f.r.calls==1 && f.m.getOutboundTotal()==0);
   f.loop(302);assert(f.r.calls==2 && f.m.getOutboundTotal()==1 && p->w12_post_tx_retry_used);
   f.loop(503);assert(f.r.calls==3 && f.d.failed==1);f.loop(1000);assert(f.r.calls==3);}
+ {Fixture f;f.r.expose_profiles=true;
+  f.r.prepares={mesh::RadioParamApplyResult::BUSY,mesh::RadioParamApplyResult::APPLIED,mesh::RadioParamApplyResult::APPLIED};
+  f.r.outcomes={Radio::Success,Radio::Success};auto*low=f.queue(77,4);f.loop(101);
+  assert(!f.r.calls && f.m.getOutboundTotal()==1 && low->w12_pre_tx_deadline==30101);
+  f.queue(88,0);f.loop(102);assert(f.r.calls==1 && f.r.ids[0]==88);f.loop(103);
+  f.loop(302);assert(f.r.calls==2 && f.r.ids[1]==77);f.loop(303);assert(f.d.complete==2);}
+ {Fixture f;f.r.prepares={mesh::RadioParamApplyResult::BUSY,mesh::RadioParamApplyResult::APPLIED};
+  f.r.outcomes={Radio::Success};f.queue(55,1);f.loop(101);assert(f.r.calls==0 && f.m.getOutboundTotal()==1 && !f.d.failed);
+  f.loop(302);assert(f.r.calls==1);f.loop(303);assert(f.d.complete==1);}
+ {Fixture f;f.r.prepares={mesh::RadioParamApplyResult::APPLIED,mesh::RadioParamApplyResult::BUSY,mesh::RadioParamApplyResult::APPLIED};
+  f.r.outcomes={Radio::Unknown,Radio::Unknown};auto*p=f.queue(66,1);f.loop(101);assert(f.r.calls==1);
+  f.loop(302);assert(f.r.calls==1 && f.m.getOutboundTotal()==1 && p->w12_post_tx_retry_used);
+  f.loop(503);assert(f.r.calls==2 && f.d.failed==1);}
  {Fixture f;f.r.outcomes={Radio::Error};f.queue(44,1);f.loop(101);assert(!f.d.failed && f.m.getOutboundTotal()==1);
   f.loop(30101);assert(f.d.failed==1 && f.r.calls==1);}
 }

@@ -504,6 +504,7 @@ class Dispatcher {
 #if defined(MESH_W12_PRAM_SEQ_TX_LAB) && MESH_W12_PRAM_SEQ_TX_LAB
   OutboundReservation lab_outbound_reservation = {};
   bool lab_pre_tx_held = false;
+  PreTransmitBlock lab_last_start_block = PreTransmitBlock::None;
   bool deferLabPreTransmit();
   void releaseLabOutboundReservation();
 #endif

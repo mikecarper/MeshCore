@@ -194,13 +194,26 @@ bool Dispatcher::startOutboundTransmit() {
 #if defined(MESH_W12_PRAM_SEQ_TX_LAB) && MESH_W12_PRAM_SEQ_TX_LAB
   // Do not leak a previous attempt's known-pre-TX status across early exits.
   _radio->clearPreTransmitBlock();
+  lab_last_start_block=PreTransmitBlock::None;
 #endif
   if (!radioDirection::radioTransmitAllowed()) return false;
   if (outbound == NULL) return false;
-  if (!restoreOutboundTxOverrides()) return false;
-  if (!isPacketRadioCurrent(outbound)
-      || _radio->prepareTransmitProfile(outbound->radio_profile,
-          outbound->radio_reply && outbound->radio_reply_force) != RadioParamApplyResult::APPLIED) return false;
+  if (!restoreOutboundTxOverrides()) {
+#if defined(MESH_W12_PRAM_SEQ_TX_LAB) && MESH_W12_PRAM_SEQ_TX_LAB
+    lab_last_start_block=PreTransmitBlock::Error;
+#endif
+    return false;
+  }
+  if (!isPacketRadioCurrent(outbound)) return false;
+  const auto profile_result=_radio->prepareTransmitProfile(outbound->radio_profile,
+      outbound->radio_reply && outbound->radio_reply_force);
+  if (profile_result!=RadioParamApplyResult::APPLIED) {
+#if defined(MESH_W12_PRAM_SEQ_TX_LAB) && MESH_W12_PRAM_SEQ_TX_LAB
+    lab_last_start_block=profile_result==RadioParamApplyResult::BUSY
+        ? PreTransmitBlock::Busy : PreTransmitBlock::Error;
+#endif
+    return false;
+  }
 
   int len = 0;
   uint8_t raw[MAX_TRANS_UNIT];
@@ -238,6 +251,9 @@ bool Dispatcher::startOutboundTransmit() {
   }
   outbound_start = _ms->getMillis();
   if (!_radio->startSendRaw(raw, len)) {
+#if defined(MESH_W12_PRAM_SEQ_TX_LAB) && MESH_W12_PRAM_SEQ_TX_LAB
+    lab_last_start_block=_radio->takePreTransmitBlock();
+#endif
     MESH_DEBUG_PRINTLN("%s Dispatcher::startOutboundTransmit(): ERROR: send start failed!",
                        getLogDateTime());
     restoreOutboundTxOverrides();
@@ -926,6 +942,11 @@ void Dispatcher::loop() {
       const auto prepared = _radio->prepareTransmitProfile(outbound->radio_profile,
           outbound->radio_reply && outbound->radio_reply_force);
       if (prepared == RadioParamApplyResult::BUSY) {
+#if defined(MESH_W12_PRAM_SEQ_TX_LAB) && MESH_W12_PRAM_SEQ_TX_LAB
+        // It is provably before TX; return the original reservation to the
+        // queue so higher-priority work can proceed, retaining retry state.
+        if (lab_outbound_reservation.packet==outbound && deferLabPreTransmit()) return;
+#endif
         if (outbound_radio_prepare_deadline == 0) {
           // A frame already being received may legitimately own either scan
           // profile. Allow its longest full-packet airtime plus recovery grace.
@@ -970,7 +991,7 @@ void Dispatcher::loop() {
           failOutboundTransmit();
         } else if (!startOutboundTransmit()) {
 #if defined(MESH_W12_PRAM_SEQ_TX_LAB) && MESH_W12_PRAM_SEQ_TX_LAB
-          const auto block=_radio->takePreTransmitBlock();
+          const auto block=lab_last_start_block;
           if (block!=PreTransmitBlock::None && deferLabPreTransmit()) return;
 #endif
           failOutboundTransmit();
@@ -1566,7 +1587,19 @@ void Dispatcher::checkSend() {
   if (pending && _radio->profiles()) {
     const auto prepared = _radio->prepareTransmitProfile(pending->radio_profile,
         pending->radio_reply && pending->radio_reply_force);
-    if (prepared == RadioParamApplyResult::BUSY) return;
+    if (prepared == RadioParamApplyResult::BUSY) {
+#if defined(MESH_W12_PRAM_SEQ_TX_LAB) && MESH_W12_PRAM_SEQ_TX_LAB
+      // Packet is still queued, so reschedule in place and preserve metadata.
+      if (!pending->w12_pre_tx_deadline) {
+        pending->w12_pre_tx_deadline=now+30000U;
+        if (!pending->w12_pre_tx_deadline) pending->w12_pre_tx_deadline=1;
+      }
+      uint32_t retry_at=now+200U;
+      if (int32_t(retry_at-pending->w12_pre_tx_deadline)>0) retry_at=pending->w12_pre_tx_deadline;
+      if (!_mgr->deferOutbound(pending,retry_at)) next_tx_time=retry_at;
+#endif
+      return;
+    }
     if (prepared == RadioParamApplyResult::FAILED) {
       outbound = _mgr->getNextOutbound(now);
       failOutboundTransmit();
@@ -1625,7 +1658,7 @@ void Dispatcher::checkSend() {
 
     if (!startOutboundTransmit()) {
 #if defined(MESH_W12_PRAM_SEQ_TX_LAB) && MESH_W12_PRAM_SEQ_TX_LAB
-      const auto block=_radio->takePreTransmitBlock();
+      const auto block=lab_last_start_block;
       if (block!=PreTransmitBlock::None) {
         if (deferLabPreTransmit()) return;
         failOutboundTransmit();
