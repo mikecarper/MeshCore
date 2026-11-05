@@ -1,4 +1,5 @@
 name: Setup Build Environment
+description: Set up Python, PlatformIO, and version metadata for firmware builds.
 runs:
   using: "composite"
   steps:
