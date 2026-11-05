@@ -20,9 +20,9 @@ The existing saved `agc.reset.interval` remains the primary interval, with the
 same zero-disable behavior, four-second storage steps, 1020-second maximum,
 default, and adaptive scheduling policy. `get agc` and `set agc <seconds>` are
 aliases. Fixed scheduling still postpones the primary deadline after TX.
-The aliases, independent timer control, and diagnostic pages below use the
-Common CLI in Repeater, Room Server, and Sensor. Companion retains its
-canonical `agc.reset.interval` control through its separate parser.
+The aliases, independent timer control, and diagnostic pages below are
+available in Repeater, Room Server, Sensor, and Companion text parsers.
+Companion's primary alias retains its existing 0-255-second parser range.
 A deferred or failed warm operation retries after 250 ms without receiving
 credit for a completed refresh.
 

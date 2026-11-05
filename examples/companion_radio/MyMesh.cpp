@@ -1,5 +1,6 @@
 #include <helpers/CLIReplyText.h>
 #include <helpers/HardwareCommand.h>
+#include <helpers/AGCMaintenanceCLI.h>
 #include <helpers/ConfigCapabilities.h>
 #include <helpers/BrowserRadioDefaults.h>
 #include <helpers/radiolib/RadioPowerLimits.h>
@@ -11167,7 +11168,7 @@ static bool isCompanionRadioPrefsCommand(const char* command) {
   static const char* const exact_commands[] = {
     "get radio", "get freq", "get af", "get dutycycle", "get tx",
     "get rxdelay", "get path.hash.mode", "get multi.acks",
-    "get txdelay", "get direct.txdelay", "get int.thresh", "get agc.reset.interval",
+    "get txdelay", "get direct.txdelay", "get int.thresh", "get agc.reset.interval", "get agc",
     "get radio.rxps.status"
   };
   for (const char* candidate : exact_commands) {
@@ -11177,7 +11178,7 @@ static bool isCompanionRadioPrefsCommand(const char* command) {
   static const char* const set_prefixes[] = {
     "set radio ", "set af ", "set dutycycle ", "set rxdelay ",
     "set path.hash.mode ", "set multi.acks ", "set txdelay ",
-    "set direct.txdelay ", "set int.thresh ", "set agc.reset.interval "
+    "set direct.txdelay ", "set int.thresh ", "set agc.reset.interval ", "set agc "
   };
   for (const char* prefix : set_prefixes) {
     if (strncmp(command, prefix, strlen(prefix)) == 0) return true;
@@ -11620,6 +11621,9 @@ bool MyMesh::handleCommand(const char* command, uint32_t sender_timestamp,
     }
     return true;
   }
+
+  if (mesh::handleAGCMaintenanceCommand(_radio,command,
+          ((uint32_t)_prefs.agc_reset_interval)*4,reply,reply_capacity)) return true;
 
   if (isCompanionRadioPrefsCommand(command)) {
     const float previous_af = _prefs.airtime_factor;

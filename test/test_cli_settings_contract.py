@@ -47,6 +47,15 @@ def full_command_keys(text):
 
 
 COMMON_QUERY_EXCEPTIONS = {
+    'agc.status': 'Passive warm-maintenance counters for set agc',
+    'agc.timing': 'Passive warm transition-to-checked-RX command timing',
+    'agc.recovery': 'Passive ordinary rearm timing and retained warm errors',
+    'agc.old.status': 'Compile-gated passive legacy full-reset counters',
+    'agc.old.timing': 'Compile-gated passive legacy helper and RX-entry timing',
+    'agc.old.errors': 'Compile-gated passive legacy command/rearm errors',
+    'agc.reset.status': 'Legacy alias of passive agc.old.status',
+    'agc.reset.timing': 'Legacy alias of passive agc.old.timing',
+    'agc.reset.errors': 'Legacy alias of passive agc.old.errors',
     'bootloader.ver': 'Installed bootloader identity',
     'bridge.running': 'Live bridge state; set bridge.enabled controls intent',
     'espnow.running': 'Live ESP-NOW bridge state; set espnow.enabled controls intent',
@@ -204,8 +213,9 @@ namespace mesh { struct Utils {
     def test_every_migrated_radio_setter_is_reachable_in_infrastructure(self):
         common_set, common_get = methods(COMMON.read_text(encoding='utf-8'), 'void CommonCLI::handle')
         shared = extract_braced(RADIO.read_text(encoding='utf-8'), 'bool CommonRadioPrefs::handleCommand(')
-        migrated = set(re.findall(r'startsWith\(command, "set ([\w.]+) ', shared))
-        self.assertEqual(len(migrated), 13, 'Review changes to the shared radio command surface')
+        migrated = set(re.findall(r'startsWith\(command,\s*"set ([\w.]+) ', shared))
+        self.assertEqual(len(migrated), 14, 'Review changes to the shared radio command surface')
+        self.assertIn('agc', migrated, 'The saved-interval alias must remain audited')
         self.assertFalse(migrated - literal_keys(common_set))
         self.assertFalse(migrated - literal_keys(common_get))
 
@@ -328,8 +338,8 @@ namespace mesh { struct Utils {
                     set_blocks.append(extract_braced(setter, 'if (strcmp(config, "extra.sf") == 0 ||'))
                     get_blocks.append(extract_braced(getter, 'if (strcmp(config, "extra.sf") == 0)'))
                     for key in keys:
-                        set_blocks.append(extract_braced(setter, f'if (memcmp(config, "{key} ", {len(key)+1}) == 0)'))
-                        get_blocks.append(extract_braced(getter, f'if (configKeyEquals(config, "{key}"))'))
+                        set_blocks.append(extract_braced(setter, f'if (memcmp(config, "{key} ", {len(key)+1}) == 0'))
+                        get_blocks.append(extract_braced(getter, f'if (configKeyEquals(config, "{key}")'))
                     fixture = template.replace('@SET@', ' else '.join(set_blocks))
                     fixture = fixture.replace('@GET@', ' else '.join(get_blocks))
                     fixture = fixture.replace('@DISPATCH@', dispatch)

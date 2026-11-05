@@ -4286,10 +4286,13 @@ hardware busy-result count.
 **Usage:**
 - `get agc.reset.interval`
 - `set agc.reset.interval <value>`
-- `get agc` / `set agc <value>` (Common CLI aliases)
+- `get agc` / `set agc <value>` (aliases)
 
 **Parameters:**
 - `value`: Interval in seconds, 0-1020, rounded down to a multiple of 4 (17 becomes 16). 0 to disable.
+
+Companion's existing primary text parser retains its 0-255-second input range;
+the short alias uses that same parser and saved setting.
 
 **Default:** `0.0`
 
@@ -4309,10 +4312,8 @@ operation; deferred and failed attempts retry after 250 ms without completion
 credit. Shared recovery watchdogs still use their existing full-reset path.
 The saved starting interval is reported even while the warm path is deferred.
 
-On those supported Repeater, Room Server, and Sensor builds, the Common CLI
-also exposes an independent full-reset timer. Companion keeps the canonical
-`agc.reset.interval` primary control; these additional text commands are not
-part of its separate command parser.
+On those supported builds, an independent full-reset timer is also available
+through the Repeater, Room Server, Sensor, and Companion text parsers:
 
 - `get agc.old`
 - `set agc.old <seconds>`: `0` disables it; `1-86400` enables it.
