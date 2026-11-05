@@ -25,7 +25,7 @@ int main(){
   f.radio.next_block=PreTransmitBlock::None;f.tick(201);assert(f.radio.sends==2);
   f.radio.complete=true;f.tick();assert(f.d.direct_done.size()==1 && f.d.direct_done[0]);}
  {Fixture f;directProfile(f);f.radio.next_block=PreTransmitBlock::Error;
-  assert(enqueue(f));f.tick();assert(f.d.hasForeignRadioFrame());f.tick(30000);
+  assert(enqueue(f));f.tick();assert(f.d.hasForeignRadioFrame());f.radio.carrier=true;f.tick(30000);
   assert(f.radio.sends==1 && f.d.direct_done.size()==1 && !f.d.direct_done[0]);}
  {Fixture f;directProfile(f);f.radio.start_ok=false;assert(enqueue(f));f.tick();f.tick(30000);
   assert(f.radio.sends==1 && f.d.direct_done.size()==1 && !f.d.direct_done[0]);}

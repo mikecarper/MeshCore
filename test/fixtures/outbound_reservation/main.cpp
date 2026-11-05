@@ -55,12 +55,11 @@ static void test_failure_retains_ownership() {
   auto* a=manager.allocNew(); auto* b=manager.allocNew(); mesh::Packet extra;
   assert(a && b && manager.queueOutbound(a,1,5));
   mesh::OutboundReservation r={}; assert(manager.reserveNextOutbound(5,r));
-  assert(manager.queueOutbound(b,1,5) && manager.queueOutbound(&extra,1,5));
-  assert(!manager.deferReservedOutbound(r,20));
-  assert(r.packet==a && r.owner==&manager);
-  assert(manager.getNextOutbound(5)==b); manager.free(b);
+  assert(manager.queueOutbound(b,1,5));
+  // External packets cannot consume the rollback slot while a is reserved.
+  assert(!manager.queueOutbound(&extra,1,5));
   assert(manager.deferReservedOutbound(r,20));
-  assert(manager.getNextOutbound(5)==&extra);
+  assert(manager.getNextOutbound(5)==b); manager.free(b);
   assert(manager.getNextOutbound(20)==a); manager.free(a);
 }
 

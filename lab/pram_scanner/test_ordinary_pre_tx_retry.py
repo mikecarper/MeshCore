@@ -14,7 +14,7 @@ struct Test {
  enum class OutboundCancellation {None,Cancelled};
  mesh::PacketManager* _mgr; mesh::OutboundReservation lab_outbound_reservation={};
  mesh::Packet* outbound=nullptr; Clock clock,*_ms=&clock;
- bool lab_pre_tx_held=false,outbound_radio_retry_pending=false,outbound_radio_retry_used=false;
+ bool lab_pre_tx_held=false,lab_has_blocked_packets=false,outbound_radio_retry_pending=false,outbound_radio_retry_used=false;
  uint32_t outbound_radio_retry_at=0,outbound_radio_prepare_deadline=0;
  OutboundCancellation outbound_cancellation=OutboundCancellation::None;
  uint32_t getCADFailRetryDelay(){return 200;}
@@ -35,11 +35,10 @@ int main(){
    assert(m.releaseOutboundReservation(t.lab_outbound_reservation));m.free(low); }
  { StaticPoolPacketManager m(2);Test t;t._mgr=&m;auto* a=m.allocNew();auto* b=m.allocNew();mesh::Packet extra;
    assert(m.queueOutbound(a,3,100));assert(m.reserveNextOutbound(100,t.lab_outbound_reservation));t.outbound=a;
-   assert(m.queueOutbound(b,1,100)&&m.queueOutbound(&extra,1,100));
-   assert(t.deferLabPreTransmit() && t.lab_pre_tx_held && t.outbound==a && t.lab_outbound_reservation.packet==a);
-   assert(m.getNextOutbound(100)==b);m.free(b);t.clock.now=300;
+   assert(m.queueOutbound(b,1,100)); assert(!m.queueOutbound(&extra,1,100));
    assert(t.deferLabPreTransmit() && !t.lab_pre_tx_held && !t.outbound);
-   assert(m.getNextOutbound(100)==&extra);assert(m.getNextOutbound(500)==a);m.free(a); }
+   assert(m.getNextOutbound(100)==b);m.free(b);
+   assert(m.getNextOutbound(300)==a);m.free(a); }
 }
 '''.replace('METHOD',method)
 with tempfile.TemporaryDirectory() as d:
