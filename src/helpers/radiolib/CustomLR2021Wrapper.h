@@ -7,6 +7,7 @@
 #include "W12PramScannerCodec.h"
 #include "W12PramAutoPolicy.h"
 #include "W12PramScannerBlob.h"
+#include "LR2021SafeMode.h"
 #if defined(ESP32_PLATFORM)
 #include <helpers/esp32/PowerTestControls.h>
 #endif
