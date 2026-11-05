@@ -1,5 +1,8 @@
 #include "SensorMesh.h"
 #include <helpers/HardwareCommand.h>
+#if defined(USE_LR2021) && defined(MESHNOLOGY_W12) && defined(MESH_ENABLE_LR2021_AUTO_XTRIM) && MESH_ENABLE_LR2021_AUTO_XTRIM
+#include <helpers/radiolib/LR2021CalibrationSettings.h>
+#endif
 #include <helpers/ui/DisplayNightLocation.h>
 #if defined(USE_LR2021)
 #include <helpers/radiolib/LR2021SideDetectorConfig.h>
@@ -867,6 +870,12 @@ void SensorMesh::handleCommand(uint32_t sender_timestamp, char* command, char* r
 void SensorMesh::onAdvertRecv(mesh::Packet* packet, const mesh::Identity& id,
                               uint32_t timestamp, const uint8_t* app_data,
                               size_t app_data_len) {
+#if defined(USE_LR2021) && defined(MESHNOLOGY_W12) && defined(MESH_ENABLE_LR2021_AUTO_XTRIM) && MESH_ENABLE_LR2021_AUTO_XTRIM
+  mesh::lr2021::observeLR2021AutoTrimAdvert(id.pub_key, timestamp,
+      getRTCClock()->getCurrentTime(), packet->lr2021_frequency,
+      !packet->radio_local && !packet->forwarded && packet->getPathHashCount() == 0);
+#endif
+
 #if defined(MESHCORE_HAS_COLOR_DISPLAY)
   mesh::ui::observeDisplayNightAdvert(packet, id, self_id, app_data,
                                      app_data_len, millis());
@@ -1432,7 +1441,9 @@ bool SensorMesh::applySavedRadioParams() {
   if (!mesh::lr2021::storedSideDetectorCount(_prefs.extra_sf, extra_sf_count)
       || !mesh::lr2021::validateSideDetectorSFs(
           _prefs.extra_sf, extra_sf_count, _prefs.sf, _prefs.bw)) {
-    if (side_detectors_allowed && !radio_driver.configSideDetectors(nullptr, 0, _prefs.bw)) return false;
+    // Clear the wrapper's cached list even during radio2 scanning; otherwise
+    // disabling radio2 could restore this now-invalid list from RAM.
+    if (!radio_driver.configSideDetectors(nullptr, 0, _prefs.bw)) return false;
     memset(_prefs.extra_sf, 0, sizeof(_prefs.extra_sf));
     extra_sf_count = 0;
     savePrefs();
@@ -1460,7 +1471,7 @@ bool SensorMesh::applySavedRadioParams() {
       && !radio_driver.setRxBoostedGainMode(_prefs.rx_boosted_gain)) return false;
 #endif
 #if defined(USE_LR2021)
-  if (side_detectors_allowed
+  if ((side_detectors_allowed || extra_sf_count > 0)
       && !radio_driver.configSideDetectors(_prefs.extra_sf, extra_sf_count, _prefs.bw)) return false;
 #endif
   return radio_driver.setTxPower(_prefs.tx_power_dbm);

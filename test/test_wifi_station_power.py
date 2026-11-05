@@ -9,7 +9,33 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def power_policy():
     source = (ROOT / "src/helpers/esp32/WiFiStationPower.h").read_text()
-    return source[source.index("namespace mesh {"):]
+    # These integration fixtures model the separate TX preference's NVS and
+    # current driver state, while executing the production policy unchanged.
+    sdk = r'''
+#include <atomic>
+using nvs_handle_t = int;
+constexpr int ESP_ERR_NVS_NOT_FOUND = 73, NVS_READONLY = 0, NVS_READWRITE = 1;
+static bool tx_pref_present = false;
+static uint8_t tx_pref_value = 0;
+int nvs_open(const char*, int mode, nvs_handle_t* h) {
+  if (mode == NVS_READONLY && !tx_pref_present) return ESP_ERR_NVS_NOT_FOUND;
+  *h = 1; return ESP_OK;
+}
+int nvs_get_u8(nvs_handle_t, const char*, uint8_t* value) {
+  if (!tx_pref_present) return ESP_ERR_NVS_NOT_FOUND;
+  *value = tx_pref_value; return ESP_OK;
+}
+int nvs_set_u8(nvs_handle_t, const char*, uint8_t value) {
+  tx_pref_present = true; tx_pref_value = value; return ESP_OK;
+}
+int nvs_commit(nvs_handle_t) { return ESP_OK; }
+void nvs_close(nvs_handle_t) {}
+int esp_wifi_get_ps(wifi_ps_type_t* mode) {
+  *mode = static_cast<wifi_ps_type_t>(applied_ps < 0 ? WIFI_PS_NONE : applied_ps);
+  return ESP_OK;
+}
+'''
+    return sdk + source[source.index("namespace mesh {"):]
 
 
 class WiFiStationPowerTest(unittest.TestCase):

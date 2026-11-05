@@ -76,6 +76,13 @@ uint8_t Packet::writeTo(uint8_t dest[]) const {
 }
 
 bool Packet::readFrom(const uint8_t src[], uint8_t len) {
+#if defined(MESH_W12_PRAM_EXPERIMENT) && MESH_W12_PRAM_EXPERIMENT
+  w12_rx = {}; // a reused/bridged packet must not inherit RF metadata
+#endif
+#if defined(MESH_ENABLE_LR2021_AUTO_XTRIM) && MESH_ENABLE_LR2021_AUTO_XTRIM
+  // Bridge/decoded packets and reused pool slots cannot inherit RF metadata.
+  lr2021_frequency = {};
+#endif
   if (src == NULL || len < 2) return false;   // header + path_len
 
   uint8_t i = 0;

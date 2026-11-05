@@ -446,6 +446,9 @@ protected:
   virtual bool ownsWarmProfileRetune() const { return false; }
 #endif
   // 0 = reconfigure from idle, 1 = resume RX afterwards, 2 = currently busy.
+#if defined(MESH_W12_PRAM_EXPERIMENT) && MESH_W12_PRAM_EXPERIMENT
+  virtual bool labReconfigureBlocked() const { return false; }
+#endif
   uint8_t beginReconfigure();
   void endReconfigure(bool resume_rx);
   bool restoreAfterDeepInit();

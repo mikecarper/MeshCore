@@ -50,9 +50,15 @@ TEST(LR2021SideDetectors, ParsesStrictBoundedListsAndDisable) {
       "999999999999999999999999999999999999999999999999999999", side_sfs, num));
 }
 
-TEST(LR2021SideDetectors, AcceptsTwoDetectorsAtPrimarySf10) {
-  const uint8_t valid[] = {11, 12};
-  EXPECT_TRUE(mesh::lr2021::validateSideDetectorSFs(valid, 2, 10, 62.5f));
+TEST(LR2021SideDetectors, EnforcesMainSfAndBandwidthLimits) {
+  const uint8_t main_ten[] = {11, 12};
+  EXPECT_TRUE(mesh::lr2021::validateSideDetectorSFs(main_ten, 1, 10, 62.5f));
+  EXPECT_FALSE(mesh::lr2021::validateSideDetectorSFs(main_ten, 2, 10, 62.5f));
+
+  // Strictly below 32 MHz: main SF5 + SF6 + SF7 = 10 + 10 + 12.
+  const uint8_t two[] = {6, 7};
+  EXPECT_TRUE(mesh::lr2021::validateSideDetectorSFs(two, 2, 5, 812.5f));
+  EXPECT_FALSE(mesh::lr2021::validateSideDetectorSFs(two, 2, 5, 1000.0f));
 
   const uint8_t too_many[] = {10, 11, 12};
   EXPECT_FALSE(mesh::lr2021::validateSideDetectorSFs(too_many, 3, 9, 812.5f));

@@ -179,9 +179,11 @@ MESH_COMPANION_HELP_END
 #endif
 MESH_COMPANION_HELP_BEGIN
     "  get wifi.powersave\r\n"
+    "  get wifi.tx\r\n"
 MESH_COMPANION_HELP_END
 MESH_COMPANION_HELP_BEGIN
     "  set wifi.powersave <none|min|max>\r\n"
+    "  set wifi.tx <auto|2..21>\r\n"
 MESH_COMPANION_HELP_END
 MESH_COMPANION_HELP_BEGIN
     "  get wifi.protocol\r\n"

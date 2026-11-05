@@ -233,6 +233,9 @@ inline void noteStationDiagnosticPhase(ConnectionPhase) {}
         source = fixture + '\n#include <atomic>\n#include <helpers/bridges/ESPNowBridgeDiagnostics.h>\n'
         source += 'constexpr int ESP_ERR_INVALID_ARG=-4;\n#include <helpers/esp32/WiFiRadioPolicy.h>\n'
         source += '#include <helpers/esp32/WiFiStationPolicy.h>\n'
+        source += 'namespace mesh {namespace wifi {\n'
+        source += 'inline int applyRequestedStationTxPower(int8_t power) { return esp_wifi_set_max_tx_power(power); }\n'
+        source += 'inline void setPrimaryEspNowAutomaticTxPower(int8_t) {}\n}}\n'
         source += 'namespace mesh {namespace wifi {\n' + stop + '\n}}\n'
         web = WEB_CLASS.replace('@PROMOTE@', promotion).replace('@IDLE@', idle)
         source += radio_header + radio + BRIDGE_CLASS + bridge + web + CHECKS

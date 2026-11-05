@@ -213,6 +213,7 @@ struct MQTTBridge {
   std::atomic<bool> _ntp_synced{false}, _fresh_ntp_this_boot{false};
   std::atomic<uint32_t> _backward_clock_reset_epoch{0};
   bool _manage_wifi = true, _wifi_status_initialized = true;
+  bool _wifi_configured = false;
   bool _ntp_force_requested = false, _ntp_diag_requested = false;
   bool _ntp_estimate_requested = false, _ntp_sync_pending = true;
   bool _ntp_estimate_done = false, _ntp_estimate_ok = false;
@@ -292,6 +293,61 @@ static void resetEnvironment() {
 }
 
 static constexpr uint32_t grace = 300000U, interval = 1800000U, probe = 120000U;
+
+static void configuredDirectMqttKeepsWifiAvailable() {
+  // Exercise real worker policy with no incoming application messages, no
+  // PUBACKs, and both a disconnected AP and a disconnected broker. Both the
+  // infrastructure-owned station and the Companion-owned station stay awake.
+  for (bool manage_wifi : {true, false}) {
+    for (bool ap_connected : {true, false}) {
+      for (uint32_t start : {100U, UINT32_MAX - 10000U}) {
+        resetEnvironment();
+        MQTTBridge bridge;
+        bridge._wifi_configured = true;
+        bridge._manage_wifi = manage_wifi;
+        WiFi.state = ap_connected ? WL_CONNECTED : WL_DISCONNECTED;
+        for (int index = 1; index < RUNTIME_MQTT_SLOTS; ++index)
+          bridge._slots[index].enabled = false;
+        for (uint32_t elapsed : {0U, grace, interval, 24U * 60U * 60U * 1000U}) {
+          clock_ms = start + elapsed;
+          require(bridge.serviceNetworkPower(clock_ms),
+                  "configured direct MQTT was suspended during an outage");
+          require(!bridge._network_suspended
+                  && !mesh::wifi::networkPower().backgroundSuspended()
+                  && WiFi.disconnects == 0 && WiFi.offs == 0,
+                  "configured direct MQTT lost its WiFi station");
+        }
+      }
+    }
+  }
+
+  // A saved network without an enabled broker does not create an MQTT hold.
+  // Enabling a broker after suspension must release the old cooldown at once.
+  for (bool manage_wifi : {true, false}) {
+    resetEnvironment();
+    MQTTBridge bridge;
+    bridge._wifi_configured = true;
+    bridge._manage_wifi = manage_wifi;
+    for (auto& slot : bridge._slots) slot.enabled = false;
+    require(bridge.serviceNetworkPower(100U), "unconfigured network did not start");
+    require(!bridge.serviceNetworkPower(100U + grace),
+            "saved WiFi without an enabled MQTT slot prevented power saving");
+    bridge._slots[1].enabled = true;
+    require(bridge.serviceNetworkPower(101U + grace),
+            "new MQTT configuration did not cancel the outage pause");
+    require(!bridge._network_suspended
+            && !mesh::wifi::networkPower().backgroundSuspended()
+            && bridge.initializes == (manage_wifi ? 1 : 0),
+            "MQTT configuration did not return station ownership correctly");
+  }
+
+  resetEnvironment();
+  MQTTBridge bridge;
+  bridge._wifi_configured = false;
+  require(bridge.serviceNetworkPower(100U), "network did not start");
+  require(!bridge.serviceNetworkPower(100U + grace),
+          "broker alone kept an unconfigured WiFi station awake");
+}
 
 static void failureStopsBothServicesBeforeWifi() {
   resetEnvironment();
@@ -773,7 +829,8 @@ int main(int argc, char** argv) {
   require(argc == 2, "one case is required");
   const std::string name = argv[1];
   try {
-    if (name == "handoff") failureStopsBothServicesBeforeWifi();
+    if (name == "direct-mqtt") configuredDirectMqttKeepsWifiAvailable();
+    else if (name == "handoff") failureStopsBothServicesBeforeWifi();
     else if (name == "failed-stop") failedSdkStopWithholdsHandoff();
     else if (name == "failed-stop-wake") failedSuspendLateConnectCannotAbandonTransportOwnership();
     else if (name == "recovery") recoveryHasOneBoundedWindow();
@@ -906,6 +963,9 @@ class MqttWiFiNetworkPowerTests(unittest.TestCase):
 
     def test_failed_ntp_and_mqtt_quiesce_before_wifi_shutdown_publication(self):
         self.run_case("handoff")
+
+    def test_direct_mqtt_keeps_wifi_awake_without_inbound_messages(self):
+        self.run_case("direct-mqtt")
 
     def test_failed_sdk_transport_stop_keeps_station_owned_and_awake(self):
         self.run_case("failed-stop")

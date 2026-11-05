@@ -5,6 +5,7 @@
 #include <esp_wifi.h>
 #include <helpers/ESPNowRawFragmentation.h>
 #include <helpers/esp32/WiFiRadioPolicy.h>
+#include <helpers/esp32/WiFiStationPower.h>
 #include <helpers/WirelessControl.h>
 #if ESP_ARDUINO_VERSION_MAJOR >= 3
   #include <esp_mac.h>
@@ -227,6 +228,9 @@ void ESPNOWRadio::end() {
     initialized_ = false;
   }
 #if defined(MESH_PRIMARY_ESPNOW) && MESH_PRIMARY_ESPNOW
+  mesh::wifi::setPrimaryEspNowAutomaticTxPower(-1);
+#endif
+#if defined(MESH_PRIMARY_ESPNOW) && MESH_PRIMARY_ESPNOW
   if (wake_held_) {
     esp_wifi_force_wakeup_release();
     wake_held_ = false;
@@ -247,8 +251,11 @@ uint32_t ESPNOWRadio::getRngSeed() {
 }
 
 bool ESPNOWRadio::setTxPower(int8_t dbm) {
-  if (esp_wifi_set_max_tx_power(dbm * 4) != ESP_OK) return false;
+  if (mesh::wifi::applyRequestedStationTxPower(dbm * 4) != ESP_OK) return false;
   tx_power_dbm_ = dbm;
+#if defined(MESH_PRIMARY_ESPNOW) && MESH_PRIMARY_ESPNOW
+  mesh::wifi::setPrimaryEspNowAutomaticTxPower(dbm * 4);
+#endif
   return true;
 }
 

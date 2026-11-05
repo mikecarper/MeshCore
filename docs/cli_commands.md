@@ -363,11 +363,18 @@ folder transport.
 - `get wifi.status`
 - `get wifi.diag`
 - `get wifi.powersave`
+- `get wifi.tx`
 - `get wifi.cli`
 - `set wifi.ssid <network name>`
 - `set wifi.pwd [password]`
 - `set wifi.powersave <none|min|max>`
+- `set wifi.tx <auto|2..21>`
 - `set wifi.cli <on|off>`
+
+`wifi.tx` accepts dBm in 0.25 steps and is saved separately from LoRa power.
+`auto` restores the normal WiFi power policy. The driver may select a different
+supported limit; `get wifi.tx` shows the saved request and the driver limit
+when WiFi is running. See [WiFi power behavior](WiFi.md#wifi-power-behavior).
 
 `set webui on` is the persistent master switch. It starts the portal now and
 again after future reboots; `set webui off` closes it and disables that boot
@@ -2495,6 +2502,59 @@ request fails and restores the previous saved selection; `get radio.xtrim`
 shows it. A reported radio recovery failure still needs diagnosis.
 `set radio.xtrim default` removes the override and resets/reinitializes the radio
 to restore its original trim. Node identity and other settings remain saved.
+
+W12 Repeater, Room, Sensor, and Companion builds also provide:
+
+```text
+set radio.xtrim auto
+get radio.xtrim.auto
+get radio.xtrim.correction
+set radio.xtrim auto cancel
+```
+
+Automatic trim is off until started. Turn radio2 off first and leave the radio
+profile unchanged. The node listens for signed, fresh adverts from three
+distinct nearby identities on the current frequency; each trial and its
+independent final verification need one new advert from each of the same three
+identities. They must agree within 1.5 kHz, and the trim verification median
+must be within 1 kHz of the winning trial. The node then applies a bounded
+digital adjustment equal to 75% of the remaining measured offset and checks
+fresh adverts from the same three peers before saving. It applies the adjustment
+proportionally on both radio profiles while reporting their nominal frequencies.
+Offsets smaller than 400 Hz do not cause a new digital adjustment. Each listening window can last two
+minutes and the whole session is limited to 15 minutes. Temporarily increase
+the reference radios' advert frequency if needed. No adverts are sent by
+the calibration itself. Accurate node time is required to check advert freshness.
+
+During a trial, the physical trim changes and reception can temporarily change;
+`get radio.xtrim` shows the saved setting, whereas `get radio.xtrim.auto` shows
+the current trial, phase, sample count and whether the baseline was observed.
+`get radio.xtrim.correction` shows the active and saved digital correction in
+parts per billion. `set radio.xtrim default` clears both the trim override and
+digital correction; setting a manual trim also clears the old correction.
+Cancel, timeout, conflicting samples, a profile change, or a failed save
+requests restoration of the original setting. If RX is disabled during a trial,
+restoration is deferred until reboot and status reports this; the physical trim
+may differ until then. With RX on, restore is attempted up to three times on
+failure or for up to 30 seconds while busy; if it cannot finish, status reports
+that restoration is deferred. The original saved selection remains in place.
+If saving fails, the stored setting may be uncertain; verify it after reboot.
+
+This is relative to the observed transmitters, not an absolute frequency
+standard. If the baseline has no quorum, a candidate can still be saved after
+independent verification with an offset within 2 kHz, but this cannot prove it
+improved the original setting. The status reports `saved; baseline unknown` in
+that case. A signed identity does not prove physical proximity: the path can be
+relayed, and multiple identities need not represent independent oscillators.
+Use an independent calibrated receiver to establish absolute accuracy or prove
+improvement when the baseline is unknown. Automatic calibration is available
+in those builds but only runs when explicitly requested.
+
+For compatibility with older firmware, the legacy trim record remains readable
+alongside the newer paired trim-and-correction record. If older firmware changes
+the trim, a later upgrade uses the changed trim and clears the stale correction.
+Re-saving exactly the same trim in older firmware is indistinguishable from no
+edit, so the prior correction may still be restored after re-upgrade.
 
 These controls are available through local CLI and authorized LoRa CLI. They do
 not change the configured channel frequency shown by `get radio` or `get freq`.

@@ -261,6 +261,7 @@ struct Control { bool disabled = false; bool blocked(uint8_t) const { return dis
 Control& control() { static Control control; return control; }
 }
 namespace wifi {
+esp_err_t applyManualStationTxPower() { return ESP_OK; }
 @AP_MASK@
 constexpr uint8_t kProtocolMask = WIFI_PROTOCOL_11B | WIFI_PROTOCOL_11G | WIFI_PROTOCOL_11N | WIFI_PROTOCOL_LR;
 int accessPointChannel() { return 6; }

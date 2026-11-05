@@ -63,6 +63,11 @@ inline bool transitionUartQuietSession(UartQuietSessionAction action) {
 
 inline bool manualCpuSleepEnabled() { return powerTestControls().sleep_enabled; }
 inline uint32_t profileSleepSliceMillis() { return powerTestControls().slice_ms; }
+#if defined(MESH_W12_PRAM_EXPERIMENT) && MESH_W12_PRAM_EXPERIMENT
+// The on-chip scanner needs only its periodic health poll; host-managed
+// profile switching must continue to use the short slice above.
+inline constexpr uint32_t autonomousProfileSleepSliceMillis() { return 1000; }
+#endif
 inline uint32_t profileSleepGuardMicros() { return uint32_t(powerTestControls().guard_ms) * 1000; }
 inline uint32_t profileSleepMinimumMicros() { return uint32_t(powerTestControls().minimum_ms) * 1000; }
 inline uint32_t profileSleepSettleMillis(uint32_t normal) {

@@ -19,8 +19,12 @@ bool tryProfileIdleSleep(Mesh& mesh, Board& board,
   const uint32_t observed_us = static_cast<uint32_t>(esp_timer_get_time());
   uint32_t profile_ms = 0;
   const uint32_t minimum_us = profileSleepMinimumMicros();
+  uint32_t maximum_profile_ms = profileSleepSliceMillis();
+#if defined(MESH_W12_PRAM_EXPERIMENT) && MESH_W12_PRAM_EXPERIMENT
+  if (mesh.hasAutonomousDualRadioIdle()) maximum_profile_ms = autonomousProfileSleepSliceMillis();
+#endif
   if (!mesh.getDualRadioIdleDelay(profile_ms) || profile_ms * 1000UL < minimum_us
-      || profile_ms > profileSleepSliceMillis())
+      || profile_ms > maximum_profile_ms)
     return false;
 
   const uint32_t role_deadline = budget_started_us + budget_ms * 1000UL;

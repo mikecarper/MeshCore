@@ -2,6 +2,9 @@
 
 #include <hal/Arduino/ArduinoHal.h>
 #include "../RadioSwitchTuning.h"
+#if defined(MESH_W12_PRAM_EXPERIMENT) && MESH_W12_PRAM_EXPERIMENT
+#include "W12PramLabTrace.h"
+#endif
 
 // A radio keeps the board-selected SPI controller and its original lifetime
 // owner. Runtime tuning only changes transaction settings and transfer style;
@@ -13,6 +16,13 @@ class TunableRadioHal : public ArduinoHal {
   const bool _canBuffer;
   uint8_t _spiMHz = 0;
   bool _bufferEnabled;
+#if defined(MESH_W12_PRAM_EXPERIMENT) && MESH_W12_PRAM_EXPERIMENT
+  // The Module owns these buffers through spiEndTransaction(), after it has
+  // already released NSS. They never escape the current transaction.
+  const uint8_t* _trace_out = nullptr;
+  const uint8_t* _trace_in = nullptr;
+  size_t _trace_len = 0;
+#endif
   // The pinned C6 core calculates SPI dividers from 40 MHz and cannot select
   // the 80/9 divider. Do not advertise a clock its HAL would round away.
 #if defined(ESP32_PLATFORM) && !defined(CONFIG_IDF_TARGET_ESP32C6)
@@ -30,6 +40,20 @@ class TunableRadioHal : public ArduinoHal {
   bool bufferedTransfersEnabled() const { return _bufferEnabled; }
 
  public:
+#if defined(MESH_W12_PRAM_EXPERIMENT) && MESH_W12_PRAM_EXPERIMENT
+  void spiTransfer(uint8_t* out, size_t len, uint8_t* in) override {
+    ArduinoHal::spiTransfer(out, len, in);
+    _trace_out = out; _trace_in = in; _trace_len = len;
+  }
+  void spiEndTransaction() override {
+    ArduinoHal::spiEndTransaction();
+    // Module has released NSS, and still owns both complete frame buffers.
+    // ArduinoHal clocks byte-for-byte; the first two input bytes are Stat.
+    if (_trace_out && _trace_len >= 2)
+      mesh::w12pram::spiTrace().add(uint16_t(_trace_out[0]) << 8 | _trace_out[1], _trace_in, _trace_len);
+    _trace_out = _trace_in = nullptr; _trace_len = 0;
+  }
+#endif
   explicit TunableRadioHal(SPIClass& bus, uint32_t hz = 8000000,
       bool initializeBus = false, bool canBuffer = false,
       uint32_t maxHz = DefaultMaxSpiHz)

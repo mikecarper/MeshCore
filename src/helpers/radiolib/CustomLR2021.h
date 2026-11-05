@@ -4,7 +4,15 @@
 #include "RadioRegulatorState.h"
 #include "MeshCore.h"
 #include "LR2021Band.h"
+#if defined(MESH_W12_PRAM_EXPERIMENT) && MESH_W12_PRAM_EXPERIMENT
+#include "W12RxDutyTiming.h"
+#include "W12PramLabTrace.h"
+#endif
 #include "LR2021CalibrationPolicy.h"
+#if defined(MESH_ENABLE_LR2021_AUTO_XTRIM) && MESH_ENABLE_LR2021_AUTO_XTRIM
+#include "LR2021PacketFrequency.h"
+#include "LR2021FrequencyCorrection.h"
+#endif
 #include "../MorseRx.h"
 #include <stdio.h>
 
@@ -24,6 +32,9 @@
 #endif
 
 class CustomLR2021 : public LR2021 {
+#if defined(MESH_W12_PRAM_EXPERIMENT) && MESH_W12_PRAM_EXPERIMENT
+  bool _lab_pram_scan_active = false;
+#endif
 #if LR2021_USE_DCDC
   mesh::power::RadioRegulatorState _regulator{mesh::power::REGULATOR_DCDC | mesh::power::REGULATOR_LDO,
       mesh::power::RegulatorMode::Dcdc};
@@ -41,6 +52,13 @@ class CustomLR2021 : public LR2021 {
   float _last_frequency_error_mhz = 0;
   uint32_t _last_frequency_error_at = 0;
   bool _last_frequency_error_valid = false;
+#if defined(MESH_ENABLE_LR2021_AUTO_XTRIM) && MESH_ENABLE_LR2021_AUTO_XTRIM
+  // Unlike the retained CLI value, this validity belongs to the latest read.
+  bool _packet_frequency_valid = false;
+  int32_t _frequency_correction_ppb = 0;
+  float _nominal_frequency_mhz = 0;
+  float _last_packet_nominal_frequency_mhz = 0;
+#endif
   uint32_t _rf_switch_pins[Module::RFSWITCH_MAX_PINS] = {};
   const Module::RfSwitchMode_t* _rf_switch_table = nullptr;
 
@@ -220,10 +238,29 @@ class CustomLR2021 : public LR2021 {
         return;
       }
       const uint32_t age_seconds = uint32_t(this->mod->hal->millis() - _last_frequency_error_at) / 1000;
+#if defined(MESH_ENABLE_LR2021_AUTO_XTRIM) && MESH_ENABLE_LR2021_AUTO_XTRIM
+      snprintf(reply, capacity, "> %+ld Hz; freq=%.6f MHz; age=%lus; programmed=%.6f MHz",
+          static_cast<long>(_last_frequency_error_hz), static_cast<double>(_last_packet_nominal_frequency_mhz),
+          static_cast<unsigned long>(age_seconds), static_cast<double>(_last_frequency_error_mhz));
+#else
       snprintf(reply, capacity, "> %+ld Hz; freq=%.6f MHz; age=%lus",
           static_cast<long>(_last_frequency_error_hz), static_cast<double>(_last_frequency_error_mhz),
           static_cast<unsigned long>(age_seconds));
+#endif
     }
+
+#if defined(MESH_ENABLE_LR2021_AUTO_XTRIM) && MESH_ENABLE_LR2021_AUTO_XTRIM
+    bool lastPacketFrequency(mesh::lr2021::PacketFrequencyObservation& out) const {
+      out = {};
+      if (!_packet_frequency_valid) return false;
+      out.offset_hz = _last_frequency_error_hz;
+      // Match RadioLib's MHz-to-Hz conversion for SetRfFrequency.
+      out.frequency_hz = static_cast<uint32_t>(_last_packet_nominal_frequency_mhz * 1000000.0f);
+      out.captured_at_ms = _last_frequency_error_at;
+      out.valid = true;
+      return true;
+    }
+#endif
 
 #if LR2021_TX_PREARM_MS > 0
     using LR2021::standby;
@@ -260,7 +297,12 @@ class CustomLR2021 : public LR2021 {
 
     int16_t beginMorseReceive(float frequency_mhz) {
       const auto regulator = _regulator.beginInitialization();
-      const uint8_t gain = mesh::lr2021::isHighBand(frequency_mhz) ? gainModeHf : gainModeLf;
+#if defined(MESH_ENABLE_LR2021_AUTO_XTRIM) && MESH_ENABLE_LR2021_AUTO_XTRIM
+      const float hardware_frequency_mhz = mesh::lr2021::correctedFrequencyMHz(frequency_mhz, _frequency_correction_ppb);
+#else
+      const float hardware_frequency_mhz = frequency_mhz;
+#endif
+      const uint8_t gain = mesh::lr2021::isHighBand(hardware_frequency_mhz) ? gainModeHf : gainModeLf;
       int16_t status = LR2021::beginGFSK(frequency_mhz,
           mesh::MorseRx::ReceiverBitRateKbps, 0.6f, 4.8f, 2, 16, tcxoVoltage);
       if (status == RADIOLIB_ERR_NONE) status = restoreXoscTrim();
@@ -387,6 +429,22 @@ class CustomLR2021 : public LR2021 {
     }
 
     float getFreqMHz() const { return freqMHz; }
+#if defined(MESH_ENABLE_LR2021_AUTO_XTRIM) && MESH_ENABLE_LR2021_AUTO_XTRIM
+    float getNominalFreqMHz() const { return _nominal_frequency_mhz; }
+    int32_t frequencyCorrectionPpb() const { return _frequency_correction_ppb; }
+    bool configureFrequencyCorrection(int32_t ppb) {
+      if (!mesh::lr2021::validFrequencyCorrection(ppb)) return false;
+      _frequency_correction_ppb = ppb;
+      return true;
+    }
+    using LR2021::setFrequency;
+    int16_t setFrequency(float nominal_mhz) override {
+      const float actual_mhz = mesh::lr2021::correctedFrequencyMHz(nominal_mhz, _frequency_correction_ppb);
+      const int16_t result = LR2021::setFrequency(actual_mhz);
+      if (result == RADIOLIB_ERR_NONE) _nominal_frequency_mhz = nominal_mhz;
+      return result;
+    }
+#endif
 
     int16_t transmitMorseCarrier() {
       // RadioLib's generic direct-TX path always selects MODE_TX. Use the
@@ -522,7 +580,46 @@ class CustomLR2021 : public LR2021 {
       return false;
     }
 
+#if defined(MESH_W12_PRAM_EXPERIMENT) && MESH_W12_PRAM_EXPERIMENT
+    int16_t labStartRxDutyCycle(uint32_t rx_us, uint32_t sleep_us,
+                                RadioLibIrqFlags_t flags, RadioLibIrqFlags_t mask) {
+      mesh::w12rxps::Timing t;
+      // W12 uses a crystal, so the board's wake compensation is 1 ms.
+      if (!mesh::w12rxps::encode(rx_us, sleep_us, 1000, t))
+        return RADIOLIB_ERR_INVALID_RX_PERIOD;
+      RadioModeConfig_t cfg = {};
+      cfg.receive.timeout = RADIOLIB_LR2021_RX_TIMEOUT_INF;
+      cfg.receive.irqFlags = flags;
+      cfg.receive.irqMask = mask;
+      const int16_t staged = stageMode(RADIOLIB_RADIO_MODE_RX, &cfg);
+      if (staged != RADIOLIB_ERR_NONE) return staged;
+      uint8_t bytes[] = {uint8_t(t.rx_ticks >> 16), uint8_t(t.rx_ticks >> 8), uint8_t(t.rx_ticks),
+                         uint8_t(t.cycle_ticks >> 16), uint8_t(t.cycle_ticks >> 8), uint8_t(t.cycle_ticks), 0};
+      // Include the arm command and RadioLib's immediate status verification:
+      // a subsequent NSS pulse may wake/cancel the duty-cycle state machine.
+      mesh::w12pram::spiTrace().active=true;
+      const int16_t rc=SPIcommand(RADIOLIB_LR2021_CMD_SET_RX_DUTY_CYCLE, true, bytes, sizeof(bytes));
+      if (rc!=RADIOLIB_ERR_NONE) mesh::w12pram::spiTrace().active=false;
+      return rc;
+    }
+    int16_t labSpiCommand(uint16_t op,bool write,uint8_t* data,size_t len,const uint8_t* out=nullptr,size_t outlen=0) {
+      return SPIcommand(op,write,data,len,out,outlen);
+    }
+    void labSetPramScan(bool active) {
+      _lab_pram_scan_active=active;
+      if (active) {
+        _last_frequency_error_valid=false;
+#if defined(MESH_ENABLE_LR2021_AUTO_XTRIM) && MESH_ENABLE_LR2021_AUTO_XTRIM
+        _packet_frequency_valid=false;
+#endif
+      }
+    }
+#endif
+
     int16_t readData(uint8_t* data, size_t len) override {
+#if defined(MESH_ENABLE_LR2021_AUTO_XTRIM) && MESH_ENABLE_LR2021_AUTO_XTRIM
+      _packet_frequency_valid = false;
+#endif
       // PR #3512 (d208bfef): reject continuous-RX FIFO races. The wrapper
       // stops RX before this snapshot; reject errors/mismatches before copying.
       uint16_t fifo_level = 0;
@@ -538,7 +635,11 @@ class CustomLR2021 : public LR2021 {
         return RADIOLIB_ERR_PACKET_TOO_SHORT;
       }
       int32_t frequency_error_hz = 0;
+#if defined(MESH_W12_PRAM_EXPERIMENT) && MESH_W12_PRAM_EXPERIMENT
+      const bool measured = !_lab_pram_scan_active && readPacketFrequencyErrorHz(frequency_error_hz) == RADIOLIB_ERR_NONE;
+#else
       const bool measured = readPacketFrequencyErrorHz(frequency_error_hz) == RADIOLIB_ERR_NONE;
+#endif
       const float measured_frequency = freqMHz;
       const int16_t result = LR2021::readData(data, len);
       if (result == RADIOLIB_ERR_NONE && measured) {
@@ -546,6 +647,10 @@ class CustomLR2021 : public LR2021 {
         _last_frequency_error_mhz = measured_frequency;
         _last_frequency_error_at = this->mod->hal->millis();
         _last_frequency_error_valid = true;
+#if defined(MESH_ENABLE_LR2021_AUTO_XTRIM) && MESH_ENABLE_LR2021_AUTO_XTRIM
+        _packet_frequency_valid = true;
+        _last_packet_nominal_frequency_mhz = _nominal_frequency_mhz;
+#endif
       }
       // A bad CRC/read leaves the last valid sample and its original age.
       return result;
