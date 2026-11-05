@@ -70,6 +70,7 @@ int main() {
         source = rxps_runtime.production_source()
         source = source.replace('#include <cassert>',
             '#define MESHNOLOGY_W12 1\n#define MESH_W12_RXPS_EXPERIMENT 1\n'
+            '#define MESH_W12_MULTISF_EXPERIMENT 1\n'
             '#include <helpers/radiolib/LR2021SideDetectorConfig.h>\n'
             '#include <helpers/radiolib/LR2021ApplyStatus.h>\n'
             'struct LR2021LoRaSideDetector_t { uint8_t sf = 0; };\n'
@@ -77,6 +78,7 @@ int main() {
         source = source.replace('  bool _rx_ps_enabled = true, _rx_ps_armed = false;',
             '  uint8_t _sideDetSFs[3] = {8, 0, 0}; size_t _numSideDet = 0;\n'
             '  bool _params_valid = true, _side_detector_uncertain = false, detector_restore = true;\n'
+            '  bool _multi_sf_enabled = false;\n'
             '  int detector_error = 0, deep_init_calls = 0; bool detector_irq = false;\n'
             '  uint8_t _cur_sf = 7; float _cur_bw = 62.5f;\n'
             '  bool rxPowerSavingExtraSfHold() const;\n'
@@ -108,6 +110,16 @@ int main() {
             hold + '\n' + configure + '\n' + apply_side + '\nstatic uint32_t retryDelay(', 1)
         extra = r'''
 static void extraSfHoldAndResume() {
+  // Multi-SF holds a saved RXPS preference without losing or misreporting it.
+  RadioLibWrapper multisf;
+  assert(multisf.startReceivePowerSaving() == 0 && multisf._rx_ps_armed);
+  assert(multisf.beginReconfigure() == 1); multisf._multi_sf_enabled=true;
+  multisf.endReconfigure(true);
+  assert(!multisf._rx_ps_armed && multisf._rx_ps_continuous_fallback);
+  assert(multisf.getRxPowerSavingStatus().extra_sf_hold);
+  assert(multisf.beginReconfigure() == 1); multisf._multi_sf_enabled=false;
+  multisf.endReconfigure(true);
+  assert(multisf._rx_ps_armed && !multisf._rx_ps_continuous_fallback);
   // Saved RXPS on at boot must use continuous RX as soon as the compatible
   // detectors are installed; repeated maintenance must never rearm it.
   RadioLibWrapper r;

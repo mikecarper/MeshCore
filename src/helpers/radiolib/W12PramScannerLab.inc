@@ -702,15 +702,42 @@ public:
     _lab_resume_at=millis()+50;
     return true;
   }
+  uint32_t _lab_exclusive_until=0;
+  bool _lab_exclusive_restore_auto=false;
+  bool labExclusivePending() const {
+    return _lab_exclusive_until && int32_t(millis()-_lab_exclusive_until)<0;
+  }
+  mesh::RadioParamApplyResult labReleaseForExclusive() {
+    using Result=mesh::RadioParamApplyResult;
+    // Keep automatic reacquisition away from a caller retrying BUSY. Expire
+    // the lease if the caller gives up so ordinary reception can resume.
+    _lab_exclusive_until=millis()+5000;
+    if (!_lab_exclusive_until) _lab_exclusive_until=1;
+#if defined(MESH_W12_MULTISF_EXPERIMENT) && MESH_W12_MULTISF_EXPERIMENT
+    if (_multi_sf_enabled) {
+      const Result released=trySetW12MultiSf(false,5,8);
+      if (released!=Result::APPLIED) return released;
+    }
+#endif
+    if (_lab_scan_active || _lab_session_ldo
+#if defined(MESH_W12_PRAM_SEQUENTIAL_LAB) && MESH_W12_PRAM_SEQUENTIAL_LAB
+        || _lab_seq_requested
+#endif
+        ) {
+      const bool restore=_lab_auto.enabled();
+      if (!labScannerSetAutomatic(false)) return Result::BUSY;
+      _lab_exclusive_restore_auto=_lab_exclusive_restore_auto || restore;
+#if defined(MESH_W12_PRAM_SEQUENTIAL_LAB) && MESH_W12_PRAM_SEQUENTIAL_LAB
+      if (_lab_seq_requested && !labSequentialConfigure(-1)) return Result::BUSY;
+#endif
+    }
+    return Result::APPLIED;
+  }
 #if MESH_ENABLE_TX_BEACONS
   mesh::RadioParamApplyResult prepareBeaconTransmit(const mesh::RadioProfileParams& p, int8_t power) override {
     using Result=mesh::RadioParamApplyResult;
-#if defined(MESH_W12_MULTISF_EXPERIMENT) && MESH_W12_MULTISF_EXPERIMENT
-    if (_multi_sf_enabled) return Result::FAILED;
-#endif
-#if defined(MESH_W12_PRAM_SEQUENTIAL_LAB) && MESH_W12_PRAM_SEQUENTIAL_LAB
-    if (_lab_seq_requested) return Result::FAILED;
-#endif
+    const Result released=labReleaseForExclusive();
+    if (released!=Result::APPLIED) return released;
     if (_lab_uncertain) return Result::BUSY;
     if (_lab_scan_active) {
       const Result paused=labPauseScanner(true,0);
@@ -763,17 +790,20 @@ public:
     defined(MESH_W12_PRAM_SEQUENTIAL_LAB) && MESH_W12_PRAM_SEQUENTIAL_LAB
   uint32_t _multi_retry_at=0, _multi_gen0=UINT32_MAX, _multi_gen1=UINT32_MAX;
   uint8_t _multi_key_first=0, _multi_key_last=0, _multi_key_profile=0, _multi_key_flags=0;
+  bool _multi_key_extra=false;
   bool _multi_failed=false;
-  void serviceMultiSf() {
+  void serviceMultiSf(bool rx_allowed, bool radio_owned) {
     const auto& cfg=mesh::lr2021::multiSfSettings();
     const bool wanted=mesh::lr2021::multiSfSettingsValid() && cfg.enabled && !mesh::lr2021::safeMode();
-    const uint8_t flags=uint8_t(wanted) | (uint8_t(_profiles.enabled())<<1);
+    const uint8_t flags=uint8_t(wanted) | (uint8_t(_profiles.enabled())<<1) | (uint8_t(rx_allowed)<<2);
     if (_multi_gen0!=_profiles.generation[0] || _multi_gen1!=_profiles.generation[1]
         || _multi_key_first!=cfg.first || _multi_key_last!=cfg.last
-        || _multi_key_profile!=cfg.profile || _multi_key_flags!=flags) {
+        || _multi_key_profile!=cfg.profile || _multi_key_flags!=flags
+        || _multi_key_extra!=(_numSideDet!=0)) {
       _multi_gen0=_profiles.generation[0]; _multi_gen1=_profiles.generation[1];
       _multi_key_first=cfg.first; _multi_key_last=cfg.last;
       _multi_key_profile=cfg.profile; _multi_key_flags=flags;
+      _multi_key_extra=_numSideDet!=0;
       _multi_retry_at=0; _multi_failed=false;
     }
     if (_multi_retry_at && int32_t(millis()-_multi_retry_at)<0) return;
@@ -781,23 +811,33 @@ public:
 
     // Single-profile side detectors own the modem. Release them before
     // switching to a dual-profile scanner or entering safe mode.
-    const bool single=wanted && !_profiles.enabled() && cfg.profile==0;
+    const bool single=wanted && rx_allowed && !_profiles.enabled() && cfg.profile==0;
     if (_multi_sf_enabled && (!single || _multi_sf_lower!=cfg.first || _multi_sf_upper!=cfg.last)) {
       const auto result=trySetW12MultiSf(false,5,8);
       if (result!=mesh::RadioParamApplyResult::APPLIED) return;
     }
-    if (!_profiles.enabled() || !wanted) {
+    if (!_profiles.enabled() || !wanted || !rx_allowed) {
       if (_lab_seq_requested) {
         if (!labScannerSetAutomatic(false) || !labSequentialConfigure(-1)) return;
         if (!mesh::lr2021::safeMode()) labScannerSetAutomatic(true);
       }
-      if (single && !_multi_sf_enabled && !_multi_failed && _params_valid && !_lab_uncertain) {
+      if (single && !radio_owned && !_multi_sf_enabled && !_multi_failed && _params_valid && !_lab_uncertain) {
         const auto result=trySetW12MultiSf(true,cfg.first,cfg.last);
         if (result==mesh::RadioParamApplyResult::FAILED) _multi_failed=true;
       }
       return;
     }
-    if (_multi_sf_enabled || _multi_failed) return;
+    // A scanner that never started cannot own a TX lease. Release the
+    // sequential request before falling back, or prepareTransmitProfile()
+    // would report BUSY forever despite normal host switching being active.
+    if (_lab_seq_requested && _lab_auto.blocked()) {
+      if (!labScannerSetAutomatic(false) || !labSequentialConfigure(-1)) return;
+      _multi_failed=true;
+      _lab_auto.setEnabled(true);
+      _lab_auto.block(mesh::w12pram::AutoPolicy::Reason::Failed);
+      return;
+    }
+    if (_multi_sf_enabled || _multi_failed || !rx_allowed || radio_owned) return;
     if (!_lab_seq_requested || _lab_seq_selected!=cfg.profile
         || _lab_seq_first!=cfg.first || _lab_seq_last!=cfg.last) {
       if (!labScannerSetAutomatic(false)) return;
@@ -906,17 +946,26 @@ public:
       }
 #endif
       RadioLibWrapper::loop();
-#if defined(MESH_W12_MULTISF_EXPERIMENT) && MESH_W12_MULTISF_EXPERIMENT && \
-    defined(MESH_W12_PRAM_SEQUENTIAL_LAB) && MESH_W12_PRAM_SEQUENTIAL_LAB
-      serviceMultiSf();
-#endif
       bool rx_allowed=true;
-      bool radio_owned=_cw_active;
+      bool radio_owned=_cw_active || labExclusivePending();
 #if MESH_ENABLE_TX_BEACONS
       radio_owned=radio_owned || isBeaconRadioOwned();
 #endif
+#if MESH_ENABLE_CARRIER_TOOLS
+      radio_owned=radio_owned || _morse_owned;
+#endif
+#if MESH_ENABLE_MORSE_RX
+      radio_owned=radio_owned || _morse_rx_owned;
+#endif
 #if MESH_ENABLE_RADIO_DIRECTION
       rx_allowed=mesh::radioDirection::radioReceiveAllowed();
+#endif
+      if (!radio_owned && _lab_exclusive_restore_auto && !mesh::lr2021::safeMode()) {
+        if (labScannerSetAutomatic(true)) _lab_exclusive_restore_auto=false;
+      }
+#if defined(MESH_W12_MULTISF_EXPERIMENT) && MESH_W12_MULTISF_EXPERIMENT && \
+    defined(MESH_W12_PRAM_SEQUENTIAL_LAB) && MESH_W12_PRAM_SEQUENTIAL_LAB
+      serviceMultiSf(rx_allowed, radio_owned);
 #endif
       labServiceAutomatic(rx_allowed, radio_owned);
       return;
