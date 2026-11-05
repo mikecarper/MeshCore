@@ -160,6 +160,7 @@ public:
     else if (!mesh::lr2021::multiSfSettingsValid()) status="fallback: settings unavailable";
     else if (!cfg.enabled) status=(_multi_sf_enabled || _lab_seq_requested) ? "stopping" : "off";
     else if (!_profiles.enabled() && cfg.profile==1) status="fallback: radio2 off";
+    else if (_profiles.enabled() && _lab_user_auto_off) status="fallback: PRAM off for this boot";
     else if (_multi_sf_enabled) status=(cfg.profile==0 && !_profiles.enabled()
         && cfg.first==_multi_sf_lower && cfg.last==_multi_sf_upper)
         ? (isInRecvMode() ? "single active" : "single pending") : "changing";

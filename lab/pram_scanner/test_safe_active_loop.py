@@ -28,7 +28,7 @@ struct Fake : RadioLibWrapper {
   struct { uint32_t generation; } _lab_snap[2]={{1},{2}};
   bool _lab_uncertain=false, _lab_scan_active=true, _lab_transition_waiting=false;
   bool _cw_active=false, _loop_event_pending=false, stop_ok=false;
-  bool _lab_exclusive_restore_auto=false;
+  bool _lab_exclusive_restore_auto=false, _lab_user_auto_off=false;
   uint32_t _lab_transition_at=0, _lab_last_poll=0, _lab_prev_cads=0, _lab_progress_at=0;
   int stops=0, polls=0;
   mesh::w12pram::Status _lab_status={};
