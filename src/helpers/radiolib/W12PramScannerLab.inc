@@ -860,7 +860,7 @@ public:
       labServiceAutomatic(rx_allowed, radio_owned);
       return;
     }
-    bool must_stop = _profiles.generation[0]!=_lab_snap[0].generation
+    bool must_stop = mesh::lr2021::safeMode() || _profiles.generation[0]!=_lab_snap[0].generation
         || _profiles.generation[1]!=_lab_snap[1].generation || !_profiles.enabled();
 #if MESH_ENABLE_RADIO_DIRECTION
     must_stop = must_stop || !mesh::radioDirection::radioReceiveAllowed();
