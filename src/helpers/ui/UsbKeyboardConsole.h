@@ -32,6 +32,7 @@ public:
     memset(_lines, 0, sizeof(_lines));
     _length = _cursor = _count = _last = _scroll = 0;
     _caps = false;
+    _suppressUntilRelease = false;
     ++_revision;
   }
 
@@ -49,8 +50,14 @@ public:
   // hides the box. A key held across dismissal must not become a new press.
   void ignoreReport(const uint8_t* bytes, size_t size) {
     if (!_connected || !bytes || size < 8) return;
-    for (size_t i = 2; i < 8; ++i) if (bytes[i] >= 1 && bytes[i] <= 3) return;
+    for (size_t i = 2; i < 8; ++i) {
+      if (bytes[i] >= 1 && bytes[i] <= 3) {
+        _suppressUntilRelease = true;
+        return;
+      }
+    }
     memcpy(_previous, bytes + 2, sizeof(_previous));
+    if (_suppressUntilRelease && !anyPressed(bytes)) _suppressUntilRelease = false;
   }
 
   const char* lineFromNewest(size_t index) const {
@@ -87,6 +94,11 @@ public:
   Action report(const uint8_t* bytes, size_t size) {
     if (!_connected || !bytes || size < 8) return Action::None;
     for (size_t i = 2; i < 8; ++i) if (bytes[i] >= 1 && bytes[i] <= 3) return Action::None;
+    if (_suppressUntilRelease) {
+      memcpy(_previous, bytes + 2, sizeof(_previous));
+      if (!anyPressed(bytes)) _suppressUntilRelease = false;
+      return Action::None;
+    }
     // Escape is handled alone, so an Enter in the same HID report can never
     // submit a draft that was hidden when the report arrived.
     for (size_t i = 2; i < 8; ++i) {
@@ -119,7 +131,7 @@ public:
   }
 
 private:
-  bool _connected = false, _visible = false, _caps = false;
+  bool _connected = false, _visible = false, _caps = false, _suppressUntilRelease = false;
   char _command[CommandCapacity] = {};
   char _lines[LineCount][LineCapacity] = {};
   uint8_t _previous[6] = {};
@@ -128,6 +140,11 @@ private:
 
   static bool contains(const uint8_t* keys, uint8_t key) {
     for (size_t i = 0; i < 6; ++i) if (keys[i] == key) return true;
+    return false;
+  }
+
+  static bool anyPressed(const uint8_t* bytes) {
+    for (size_t i = 2; i < 8; ++i) if (bytes[i]) return true;
     return false;
   }
 

@@ -87,6 +87,13 @@ int main() {
   c.ignoreReport(held_enter, sizeof(held_enter));
   assert(c.report(held_enter, sizeof(held_enter)) == UsbKeyboardConsole::Action::None);
   c.report(release, sizeof(release));
+  // If the blocked report is HID rollover, no key can be trusted until a
+  // complete release report arrives.
+  const uint8_t blocked_rollover[8] = {0, 0, 1, 1, 1, 1, 1, 1};
+  c.ignoreReport(blocked_rollover, sizeof(blocked_rollover));
+  assert(c.report(held_enter, sizeof(held_enter)) == UsbKeyboardConsole::Action::None);
+  assert(c.report(held_enter, sizeof(held_enter)) == UsbKeyboardConsole::Action::None);
+  c.report(release, sizeof(release));
   assert(press(c, 0x28) == UsbKeyboardConsole::Action::Submit);
   c.clearCommand();
   press(c, 0x04, 0x02);  // Shift-A
