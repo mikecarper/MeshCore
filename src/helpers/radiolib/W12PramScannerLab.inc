@@ -1,6 +1,20 @@
 // Isolated lab only: custom MIT scanner occupies PRAM instead of Semtech patch.
 // Guarded scanner handoff is experimental; uncertain ownership triggers reset.
 // The chip stays on LDO for scanner and normal TX until explicit exit.
+#if defined(MESH_W12_PRAM_SEQUENTIAL_LAB) && MESH_W12_PRAM_SEQUENTIAL_LAB
+#ifndef MESH_W12_PRAM_SEQ_SYMBOLS
+#define MESH_W12_PRAM_SEQ_SYMBOLS 1
+#endif
+#ifndef MESH_W12_PRAM_SEQ_FLAGS
+#define MESH_W12_PRAM_SEQ_FLAGS 0x10
+#endif
+#if MESH_W12_PRAM_SEQ_SYMBOLS != 1 && MESH_W12_PRAM_SEQ_SYMBOLS != 2
+#error "Sequential lab supports one or two CAD symbols"
+#endif
+#if MESH_W12_PRAM_SEQ_FLAGS != 0 && MESH_W12_PRAM_SEQ_FLAGS != 0x10
+#error "Sequential lab CAD flags must be 0 (any symbol) or 0x10 (preamble)"
+#endif
+#endif
 private:
   bool _lab_scan_active = false;
   bool _lab_pram_loaded = false; // invalidated by every radio hard reset
@@ -24,6 +38,13 @@ private:
   // immutable hardware tuple and generation are retained in _lab_snap.
   float _lab_logical_mhz[2] = {};
   mesh::w12pram::Profile _lab_snap[2] = {};
+#if defined(MESH_W12_PRAM_SEQUENTIAL_LAB) && MESH_W12_PRAM_SEQUENTIAL_LAB
+  bool _lab_seq_requested = false;
+  uint8_t _lab_seq_selected = 0;
+  mesh::w12pram::SequentialPlan _lab_seq_plan = {};
+  mesh::w12pram::SequentialSlot _lab_seq_hit = {};
+  uint32_t _lab_seq_words[mesh::w12pram::SequentialMaxSlots * 2] = {};
+#endif
   mesh::w12pram::Profile _lab_last = {};
   float _lab_last_logical_mhz = 0;
   int _lab_last_profile = -1;
@@ -285,8 +306,33 @@ public:
       mesh::w12pram::Packed packed;
       if (!mesh::w12pram::pack(scan[i],packed)) return false;
     }
-    return labs((long)scan[0].freq_hz-(long)scan[1].freq_hz) < 20000000L;
+    if (labs((long)scan[0].freq_hz-(long)scan[1].freq_hz) >= 20000000L) return false;
+#if defined(MESH_W12_PRAM_SEQUENTIAL_LAB) && MESH_W12_PRAM_SEQUENTIAL_LAB
+    if (_lab_seq_requested) {
+      if (mesh::radioDirection::mode() != mesh::radioDirection::Mode::Rx) return false;
+      // Never overwrite an active slot map: an unread FIFO still owns it.
+      if (_lab_scan_active) return true;
+      return mesh::w12pram::sequentialPlan(scan,_lab_seq_selected,5,8,_lab_seq_plan);
+    }
+#endif
+    return true;
   }
+#if defined(MESH_W12_PRAM_SEQUENTIAL_LAB) && MESH_W12_PRAM_SEQUENTIAL_LAB
+  // Explicitly stopped and receive-only; never enable on a live TX-capable radio.
+  bool labSequentialConfigure(int selected) {
+    if (_lab_scan_active || _lab_uncertain || _lab_auto.enabled()) return false;
+    if (selected < 0) { _lab_seq_requested=false; _lab_seq_plan.count=0; return true; }
+    if (selected > 1 || !_profiles.enabled()
+        || mesh::radioDirection::mode() != mesh::radioDirection::Mode::Rx) return false;
+    _lab_seq_selected=uint8_t(selected); _lab_seq_requested=true; _lab_seq_plan.count=0; return true;
+  }
+  void labSequentialStatus(char* out, size_t cap) const {
+    snprintf(out,cap,"seq=%s radio=%u slots=%u cad=%u flags=%02x scanner=%s receive-only",
+        _lab_seq_requested?"on":"off",unsigned(_lab_seq_selected+1),
+        unsigned(_lab_seq_plan.count),unsigned(MESH_W12_PRAM_SEQ_SYMBOLS),
+        unsigned(MESH_W12_PRAM_SEQ_FLAGS),_lab_scan_active?"on":"off/fallback");
+  }
+#endif
   // The setting is intentionally RAM-only: explicit off holds for this boot.
   // Initial activation is queued so the radio can finish pending work safely.
   bool labScannerSetAutomatic(bool enabled) {
@@ -306,6 +352,9 @@ public:
 #endif
     if (_lab_uncertain || _lab_sleeping || _lab_scan_active || !_profiles.enabled() || !_params_valid || _rx_ps_enabled || _cw_active
         || state == 3 || isChipBusy() || hasPendingRadioInterrupt() || isPacketPendingOrReceiving()) return false;
+#if defined(MESH_W12_PRAM_SEQUENTIAL_LAB) && MESH_W12_PRAM_SEQUENTIAL_LAB
+    if (_lab_seq_requested && mesh::radioDirection::mode() != mesh::radioDirection::Mode::Rx) return false;
+#endif
 #if MESH_ENABLE_TX_BEACONS
     if (isBeaconRadioOwned()) return false;
 #endif
@@ -319,6 +368,15 @@ public:
       if (!mesh::w12pram::pack(_lab_snap[i],packed[i])) return false;
     }
     if (labs((long)_lab_snap[0].freq_hz-(long)_lab_snap[1].freq_hz) >= 20000000L) return false;
+#if defined(MESH_W12_PRAM_SEQUENTIAL_LAB) && MESH_W12_PRAM_SEQUENTIAL_LAB
+    if (_lab_seq_requested) {
+      if (!mesh::w12pram::sequentialPlan(_lab_snap,_lab_seq_selected,5,8,_lab_seq_plan)) return false;
+      for (uint8_t i=0;i<_lab_seq_plan.count;i++) {
+        _lab_seq_words[i*2]=_lab_seq_plan.slots[i].packed.frequency;
+        _lab_seq_words[i*2+1]=_lab_seq_plan.slots[i].packed.modem;
+      }
+    }
+#endif
     auto* r=static_cast<CustomLR2021*>(_radio);
     int16_t rc=RADIOLIB_ERR_NONE;
     if (automatic) {
@@ -360,8 +418,19 @@ public:
     if (rc==RADIOLIB_ERR_NONE) rc=r->labSpiCommand(0x0209,true,&enable,1);
     if (rc==RADIOLIB_ERR_NONE) rc=r->setDioIrqConfig(LR2021_IRQ_DIO,1u<<18); // RxDone only
     uint32_t table[4]={packed[0].frequency,packed[0].modem,packed[1].frequency,packed[1].modem};
-    if (rc==RADIOLIB_ERR_NONE) rc=r->writeRegMem32(0x807800,table,4);
-    const uint8_t args[]={2,1,8,0x10}; // 2 profiles; 1-symbol preamble-only CAD; 8-symbol wait
+    if (rc==RADIOLIB_ERR_NONE) {
+#if defined(MESH_W12_PRAM_SEQUENTIAL_LAB) && MESH_W12_PRAM_SEQUENTIAL_LAB
+      if (_lab_seq_requested) rc=r->writeRegMem32(0x807800,_lab_seq_words,_lab_seq_plan.count*2);
+      else
+#endif
+      rc=r->writeRegMem32(0x807800,table,4);
+    }
+    uint8_t args[]={2,1,8,0x10}; // normal two-profile scanner
+#if defined(MESH_W12_PRAM_SEQUENTIAL_LAB) && MESH_W12_PRAM_SEQUENTIAL_LAB
+    if (_lab_seq_requested) {
+      args[0]=_lab_seq_plan.count; args[1]=MESH_W12_PRAM_SEQ_SYMBOLS; args[3]=MESH_W12_PRAM_SEQ_FLAGS;
+    }
+#endif
     if (rc==RADIOLIB_ERR_NONE) rc=labScannerCommand(1,args,sizeof(args),_lab_status);
     if (rc==RADIOLIB_ERR_NONE && !_lab_status.hooked) rc=RADIOLIB_ERR_UNKNOWN;
     if (rc!=RADIOLIB_ERR_NONE) { labMarkUncertain(); return false; }
@@ -385,6 +454,9 @@ public:
   }
   mesh::RadioParamApplyResult prepareTransmitProfile(uint8_t p, bool reply) override {
     using Result=mesh::RadioParamApplyResult;
+#if defined(MESH_W12_PRAM_SEQUENTIAL_LAB) && MESH_W12_PRAM_SEQUENTIAL_LAB
+    if (_lab_seq_requested) return Result::FAILED;
+#endif
     if (_lab_uncertain) return Result::BUSY;
     if (p>1 || !_profiles.canTransmit(p,reply)) return Result::FAILED;
     if (_lab_scan_active) {
@@ -405,6 +477,9 @@ public:
     return rc;
   }
   bool labScannerBench() {
+#if defined(MESH_W12_PRAM_SEQUENTIAL_LAB) && MESH_W12_PRAM_SEQUENTIAL_LAB
+    if (_lab_seq_requested) return false;
+#endif
     // Explicit user request only; no CAD or RF transmit in this measurement.
     _lab_bench_complete=false;
     if (!_lab_scan_active || !_profiles.enabled() || _profiles.generation[0]!=_lab_snap[0].generation
@@ -439,6 +514,9 @@ public:
 #if MESH_ENABLE_TX_BEACONS
   mesh::RadioParamApplyResult prepareBeaconTransmit(const mesh::RadioProfileParams& p, int8_t power) override {
     using Result=mesh::RadioParamApplyResult;
+#if defined(MESH_W12_PRAM_SEQUENTIAL_LAB) && MESH_W12_PRAM_SEQUENTIAL_LAB
+    if (_lab_seq_requested) return Result::FAILED;
+#endif
     if (_lab_uncertain) return Result::BUSY;
     if (_lab_scan_active) {
       const Result paused=labPauseScanner(true,0);
@@ -643,10 +721,25 @@ public:
     auto* r=static_cast<CustomLR2021*>(_radio);
     mesh::w12pram::Status s={}; int16_t rc=labScannerCommand(2,nullptr,0,s);
     if (rc!=RADIOLIB_ERR_NONE) { labMarkUncertain(); return 0; }
-    const auto event=mesh::w12pram::classify(s);
+    uint8_t slot_count=2;
+#if defined(MESH_W12_PRAM_SEQUENTIAL_LAB) && MESH_W12_PRAM_SEQUENTIAL_LAB
+    if (_lab_seq_requested) slot_count=_lab_seq_plan.count;
+#endif
+    const auto event=mesh::w12pram::classify(s,slot_count);
     if (event==mesh::w12pram::RxEvent::Ignore) return 0; // late ISR after resume
     if (event!=mesh::w12pram::RxEvent::Deliver) { labMarkUncertain(); return 0; }
-    _lab_status=s; const uint8_t ch=s.last_hit;
+    _lab_status=s; uint8_t ch=s.last_hit;
+    const mesh::w12pram::Profile* actual=nullptr;
+#if defined(MESH_W12_PRAM_SEQUENTIAL_LAB) && MESH_W12_PRAM_SEQUENTIAL_LAB
+    if (_lab_seq_requested) {
+      if (!mesh::w12pram::sequentialHit(_lab_seq_plan,s.last_hit,_profiles.generation[0],
+                                       _profiles.generation[1],_lab_seq_hit)) {
+        labMarkUncertain(); return 0;
+      }
+      ch=_lab_seq_hit.logical_profile; actual=&_lab_seq_hit.physical;
+    }
+#endif
+    if (!actual) actual=&_lab_snap[ch];
     const int len=r->getPacketLength(); int delivered=0;
     if (len>0 && len<=sz) {
       _last_snr=r->getSNR(); _last_rssi=r->getRSSI();
@@ -665,8 +758,13 @@ public:
     }
     _lab_prev_cads=_lab_status.cads; _lab_progress_at=millis();
     if (delivered) {
-      _lab_last_profile=ch; _lab_last=_lab_snap[ch]; _lab_last_logical_mhz=_lab_logical_mhz[ch];
-      _active_profile=ch; _profile_generation=_lab_snap[ch].generation; // Dispatcher tags Packet::radio_profile
+#if defined(MESH_W12_PRAM_SEQUENTIAL_LAB) && MESH_W12_PRAM_SEQUENTIAL_LAB
+      if (_lab_seq_requested) {
+        _lab_last_profile=ch; _lab_last=*actual; _lab_last_logical_mhz=_lab_logical_mhz[ch];
+      } else
+#endif
+      { _lab_last_profile=ch; _lab_last=_lab_snap[ch]; _lab_last_logical_mhz=_lab_logical_mhz[ch]; }
+      _active_profile=ch; _profile_generation=actual->generation; // Dispatcher tags Packet::radio_profile
       ++_lab_good; ++_lab_good_profile[ch]; ++n_recv; last_recv_millis=millis();
     }
     return delivered;

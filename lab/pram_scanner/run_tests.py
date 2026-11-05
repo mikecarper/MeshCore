@@ -22,6 +22,11 @@ with tempfile.TemporaryDirectory() as d:
     run(['g++','-std=c++17','-DMESH_W12_PRAM_EXPERIMENT=1','-I','test/mocks','-I','src',
          str(lab/'test_packet.cpp'),'src/Packet.cpp','-o',str(tmp/'packet')])
     run([str(tmp/'packet')])
+    run(['g++','-std=c++17','-Wall','-Wextra','-Werror','-I','src',
+         str(lab/'test_sequential_plan.cpp'),'-o',str(tmp/'sequential')])
+    run([str(tmp/'sequential')])
+    run(['python3',str(lab/'test_sequential_attribution.py')])
+    run(['python3',str(lab/'test_sequential_safety.py')])
     run(['python3',str(lab/'test_handoff.py')])
     run(['python3',str(lab/'test_dispatcher.py')])
     run(['python3',str(lab/'test_rxps_driver.py')])

@@ -37,3 +37,20 @@ The lab-only `get pramscan.sleep` counts successful GPIO, timer and other CPU wa
 While the scanner owns the radio or retains an ambiguous FIFO, a due AGC maintenance attempt is deferred by one second rather than retried every 50 ms. It is not recorded as a successful reset, and after scanner ownership ends the outstanding attempt remains scheduled. The fixed-interval path uses a strict deadline comparison, so it can retry one millisecond after that deadline; other scheduling or radio blockers can delay it further. Other radio builds retain their existing retry policy. The LR2021 wrapper's AGC reset mechanism and its effect in this scanner remain unverified; a long-running scanner can therefore defer maintenance indefinitely.
 
 The [published W12 schematic](https://wiki.meshnology.com/assets/files/W12-MB-V0.2(1)-b62d4b0929d59c1a3c9ca5847eb65bf8.pdf) also shows LR2021 DIO7 connected to ESP32 GPIO7, in addition to the DIO8/GPIO14 interrupt already used by the firmware. GPIO7 is exposed on the expansion header, and the schematic revision must be confirmed. Mapping a preamble event there may permit activity detection without SPI, but the event is latched and can remain asserted after a false preamble; a simple high-level test or fixed-time clear is not a safe indication of current reception. No GPIO7 mapping is enabled by this experiment.
+# Sequential receive-only slot experiment
+
+The separate `MESH_W12_PRAM_SEQUENTIAL_LAB=1` build flag enables a RAM-only
+experiment. It is off by default and is not a release setting. With a second
+profile enabled, stop PRAM, set `radio.mode rx`, run `set pramscan.seq 1` or
+`set pramscan.seq 2`, then `set pramscan on`. The selected radio visits SF5–8;
+the other visits its configured SF. `get pramscan.seq` shows whether the
+scanner is active or has fallen back, and `get pramscan.last` identifies the
+logical radio and physical SF. Packet TX, beacon TX and carrier TX are blocked
+while the experiment is selected. Stop PRAM and set `pramscan.seq off` to exit.
+
+The lab defaults to one-symbol preamble-only CAD. Build flags
+`MESH_W12_PRAM_SEQ_SYMBOLS=1|2` and `MESH_W12_PRAM_SEQ_FLAGS=0x10|0` select
+the CAD length and preamble-only or any-symbol detection. SF5/6 peak values
+are unverified; no RF delivery rate or 32-symbol coverage is guaranteed. The
+plan rejects profiles outside the existing supported band/BW and 20 MHz span.
+

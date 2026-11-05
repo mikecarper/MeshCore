@@ -3856,6 +3856,16 @@ void CommonCLI::handleCommand(uint32_t sender_timestamp, char* command, char* re
     }
 #if defined(USE_LR2021)
 #if defined(MESH_W12_PRAM_EXPERIMENT) && MESH_W12_PRAM_EXPERIMENT
+#if defined(MESH_W12_PRAM_SEQUENTIAL_LAB) && MESH_W12_PRAM_SEQUENTIAL_LAB
+    if (strcmp(command,"get pramscan.seq") == 0) { radio_driver.labSequentialStatus(reply,160); return; }
+    if (strncmp(command,"set pramscan.seq ",17) == 0) {
+      const char* arg=command+17;
+      const int selected=!strcmp(arg,"1")?0:!strcmp(arg,"2")?1:!strcmp(arg,"off")?-1:-2;
+      const bool ok=selected>=-1 && radio_driver.labSequentialConfigure(selected);
+      snprintf(reply,160,ok?"OK - sequential receive-only lab; use set pramscan on"
+          :"ERR - stop PRAM, select radio.mode rx, enable radio2; use 1|2|off"); return;
+    }
+#endif
     if (strcmp(command,"get pramscan") == 0) { radio_driver.labScannerStatus(reply,160); return; }
     if (strcmp(command,"get pramscan.recovery") == 0) { radio_driver.labScannerRecoveryDiag(reply,160); return; }
     if (strcmp(command,"get pramscan.sleep") == 0) { mesh::w12pram::sleepDiag().format(reply,160); return; }
