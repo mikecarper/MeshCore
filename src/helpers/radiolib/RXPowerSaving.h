@@ -1,5 +1,6 @@
 #pragma once
 #include <stdint.h>
+#include "LR2021RxpsCapability.h"
 #include <math.h>
 #if defined(MESH_RADIO_AUTO_LR1121) && MESH_RADIO_AUTO_LR1121
 #include <helpers/LoRaRadioFamily.h>
@@ -648,7 +649,7 @@ struct RxPowerSavingStatus {
   bool armed = false;
   bool receiving = false;
   bool suspended = false;
-#if defined(MESHNOLOGY_W12) && defined(MESH_W12_RXPS_EXPERIMENT) && MESH_W12_RXPS_EXPERIMENT
+#if MESH_LR2021_RXPS_HOLD_AVAILABLE
   bool extra_sf_hold = false;
   bool extra_sf_repair = false;
 #endif

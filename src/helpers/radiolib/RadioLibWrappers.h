@@ -362,7 +362,7 @@ protected:
 #endif
   virtual int startReceiveMode();
   int startReceivePowerSaving();
-#if defined(MESHNOLOGY_W12) && defined(MESH_W12_RXPS_EXPERIMENT) && MESH_W12_RXPS_EXPERIMENT
+#if MESH_LR2021_RXPS_HOLD_AVAILABLE
   virtual bool rxPowerSavingExtraSfHold() const { return false; }
   virtual bool rxPowerSavingExtraSfRepair() const { return false; }
 #endif

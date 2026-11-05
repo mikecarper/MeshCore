@@ -2735,7 +2735,7 @@ int RadioLibWrapper::startReceivePowerSaving() {
     return RADIOLIB_ERR_NONE;
   }
   if (_rx_ps_armed) stopReceiveDutyCycle();
-#if defined(MESHNOLOGY_W12) && defined(MESH_W12_RXPS_EXPERIMENT) && MESH_W12_RXPS_EXPERIMENT
+#if MESH_LR2021_RXPS_HOLD_AVAILABLE
   if (_rx_ps_enabled && rxPowerSavingExtraSfHold()) {
     // Side detectors need a continuous RX window: the saved RXPS timings only
     // account for the primary SF. Keep intent unchanged and suppress retries.
@@ -2800,7 +2800,7 @@ void RadioLibWrapper::stopReceiveDutyCycle() {
 }
 
 bool RadioLibWrapper::rxPowerSavingRetryEligible() const {
-#if defined(MESHNOLOGY_W12) && defined(MESH_W12_RXPS_EXPERIMENT) && MESH_W12_RXPS_EXPERIMENT
+#if MESH_LR2021_RXPS_HOLD_AVAILABLE
   if (rxPowerSavingExtraSfHold()) return false;
 #endif
 #if MESH_ENABLE_RADIO_DIRECTION
@@ -2962,7 +2962,7 @@ RxPowerSavingStatus RadioLibWrapper::getRxPowerSavingStatus() const {
   status.armed = _rx_ps_armed;
   status.receiving = state == STATE_RX;
   status.suspended = _profile_rxps_suspended;
-#if defined(MESHNOLOGY_W12) && defined(MESH_W12_RXPS_EXPERIMENT) && MESH_W12_RXPS_EXPERIMENT
+#if MESH_LR2021_RXPS_HOLD_AVAILABLE
   status.extra_sf_hold = _rx_ps_enabled && rxPowerSavingExtraSfHold();
   status.extra_sf_repair = status.extra_sf_hold && rxPowerSavingExtraSfRepair();
 #endif
@@ -2972,7 +2972,7 @@ RxPowerSavingStatus RadioLibWrapper::getRxPowerSavingStatus() const {
           || !canStartRxPowerSavingDutyCycle(
               _rx_ps_rx_us, _rx_ps_sleep_us, rxPowerSavingTransitionUs()));
   status.retry_pending = _rx_ps_enabled && !_rx_ps_armed && _rx_ps_arm_retry.pending();
-#if defined(MESHNOLOGY_W12) && defined(MESH_W12_RXPS_EXPERIMENT) && MESH_W12_RXPS_EXPERIMENT
+#if MESH_LR2021_RXPS_HOLD_AVAILABLE
   if (status.extra_sf_hold) status.retry_pending = false;
 #endif
   status.consecutive_failures = _rx_ps_arm_retry.consecutiveFailures();

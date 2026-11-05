@@ -113,7 +113,7 @@ void RXPowerSavingCLI::get(const RxPowerSavingConfig& config,
   // stable, and put the bounded recovery countdown in the same status reply.
   if (len > 0 && (size_t)len < reply_size && config.enabled && !status.armed) {
     const char* hold = status.suspended ? "radio2" :
-#if defined(MESHNOLOGY_W12) && defined(MESH_W12_RXPS_EXPERIMENT) && MESH_W12_RXPS_EXPERIMENT
+#if MESH_LR2021_RXPS_HOLD_AVAILABLE
         status.extra_sf_repair ? "extra-sf-repair" : status.extra_sf_hold ? "extra-sf" :
 #endif
         status.calibrating ? "calib"

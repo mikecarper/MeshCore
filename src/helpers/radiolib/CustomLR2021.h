@@ -4,9 +4,11 @@
 #include "RadioRegulatorState.h"
 #include "MeshCore.h"
 #include "LR2021Band.h"
-#if defined(MESH_W12_PRAM_EXPERIMENT) && MESH_W12_PRAM_EXPERIMENT && \
-    defined(MESH_W12_RXPS_EXPERIMENT) && MESH_W12_RXPS_EXPERIMENT
+#include "LR2021RxpsCapability.h"
+#if MESH_LR2021_RXPS_AVAILABLE
 #include "W12RxDutyTiming.h"
+#endif
+#if defined(MESH_W12_PRAM_EXPERIMENT) && MESH_W12_PRAM_EXPERIMENT && defined(MESH_W12_RXPS_EXPERIMENT) && MESH_W12_RXPS_EXPERIMENT
 #include "W12PramLabTrace.h"
 #endif
 #include "LR2021CalibrationPolicy.h"
@@ -581,13 +583,12 @@ class CustomLR2021 : public LR2021 {
       return false;
     }
 
-#if defined(MESH_W12_PRAM_EXPERIMENT) && MESH_W12_PRAM_EXPERIMENT
-#if defined(MESH_W12_RXPS_EXPERIMENT) && MESH_W12_RXPS_EXPERIMENT
+#if MESH_LR2021_RXPS_AVAILABLE
     int16_t labStartRxDutyCycle(uint32_t rx_us, uint32_t sleep_us,
                                 RadioLibIrqFlags_t flags, RadioLibIrqFlags_t mask) {
       mesh::w12rxps::Timing t;
-      // W12 uses a crystal, so the board's wake compensation is 1 ms.
-      if (!mesh::w12rxps::encode(rx_us, sleep_us, 1000, t))
+      // The transition is specific to the qualified board and oscillator.
+      if (!mesh::w12rxps::encode(rx_us, sleep_us, MESH_LR2021_RXPS_TRANSITION_US, t))
         return RADIOLIB_ERR_INVALID_RX_PERIOD;
       RadioModeConfig_t cfg = {};
       cfg.receive.timeout = RADIOLIB_LR2021_RX_TIMEOUT_INF;
@@ -599,12 +600,17 @@ class CustomLR2021 : public LR2021 {
                          uint8_t(t.cycle_ticks >> 16), uint8_t(t.cycle_ticks >> 8), uint8_t(t.cycle_ticks), 0};
       // Include the arm command and RadioLib's immediate status verification:
       // a subsequent NSS pulse may wake/cancel the duty-cycle state machine.
+#if defined(MESH_W12_PRAM_EXPERIMENT) && MESH_W12_PRAM_EXPERIMENT && defined(MESH_W12_RXPS_EXPERIMENT) && MESH_W12_RXPS_EXPERIMENT
       mesh::w12pram::spiTrace().active=true;
+#endif
       const int16_t rc=SPIcommand(RADIOLIB_LR2021_CMD_SET_RX_DUTY_CYCLE, true, bytes, sizeof(bytes));
+#if defined(MESH_W12_PRAM_EXPERIMENT) && MESH_W12_PRAM_EXPERIMENT && defined(MESH_W12_RXPS_EXPERIMENT) && MESH_W12_RXPS_EXPERIMENT
       if (rc!=RADIOLIB_ERR_NONE) mesh::w12pram::spiTrace().active=false;
+#endif
       return rc;
     }
-#endif // MESH_W12_RXPS_EXPERIMENT
+#endif // MESH_LR2021_RXPS_AVAILABLE
+#if defined(MESH_W12_PRAM_EXPERIMENT) && MESH_W12_PRAM_EXPERIMENT
     int16_t labSpiCommand(uint16_t op,bool write,uint8_t* data,size_t len,const uint8_t* out=nullptr,size_t outlen=0) {
       return SPIcommand(op,write,data,len,out,outlen);
     }

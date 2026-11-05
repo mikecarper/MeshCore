@@ -25,7 +25,7 @@
 #endif
 
 class CustomLR2021Wrapper : public RadioLibWrapper {
-#if defined(MESHNOLOGY_W12) && defined(MESH_W12_RXPS_EXPERIMENT) && MESH_W12_RXPS_EXPERIMENT
+#if MESH_LR2021_RXPS_HOLD_AVAILABLE
   bool _side_detector_uncertain = false;
 #endif
 #if defined(MESH_W12_PRAM_EXPERIMENT) && MESH_W12_PRAM_EXPERIMENT
@@ -111,14 +111,13 @@ class CustomLR2021Wrapper : public RadioLibWrapper {
   }
 
 public:
-#if defined(MESH_W12_PRAM_EXPERIMENT) && MESH_W12_PRAM_EXPERIMENT && \
-    defined(MESH_W12_RXPS_EXPERIMENT) && MESH_W12_RXPS_EXPERIMENT
+#if MESH_LR2021_RXPS_AVAILABLE
   // The autonomous single-profile duty cycle is a separate experiment from
   // the dual-profile PRAM scanner, and must not be enabled by it implicitly.
   static constexpr bool SupportsRxPowerSaving = true;
   bool supportsRxPowerSaving() const override { return true; }
-  uint32_t rxPowerSavingTransitionUs() const override { return 1000; }
-#if defined(MESHNOLOGY_W12)
+  uint32_t rxPowerSavingTransitionUs() const override { return MESH_LR2021_RXPS_TRANSITION_US; }
+#if MESH_LR2021_RXPS_HOLD_AVAILABLE
   bool rxPowerSavingExtraSfHold() const override {
     if (_side_detector_uncertain) return true;
     if (!_numSideDet || _profiles.enabled()) return false;
@@ -130,11 +129,24 @@ public:
   bool rxPowerSavingExtraSfRepair() const override { return _side_detector_uncertain; }
 #endif
   void onReceiveProcessed() override {
-    if (!_lab_scan_active && !_lab_uncertain) finishReceiveProcessing();
+#if defined(MESH_W12_PRAM_EXPERIMENT) && MESH_W12_PRAM_EXPERIMENT
+    if (_lab_scan_active || _lab_uncertain) return;
+#endif
+    finishReceiveProcessing();
   }
+#if !defined(MESH_W12_PRAM_EXPERIMENT) || !MESH_W12_PRAM_EXPERIMENT
+  uint32_t getEstAirtimeFor(int len) override {
+    // getTimeOnAir queries packet type over SPI; NSS can stop duty-cycle RX.
+    if (_rx_ps_armed && _params_valid && _active_profile < 2 && _cur_cr >= 5 && _cur_cr <= 8)
+      return getProfileAirtime(_active_profile, len, _cur_cr);
+    return RadioLibWrapper::getEstAirtimeFor(len);
+  }
+#endif
   mesh::RadioParamApplyResult trySetRxPowerSaving(bool enabled, uint32_t rx_us, uint32_t sleep_us) {
+#if defined(MESH_W12_PRAM_EXPERIMENT) && MESH_W12_PRAM_EXPERIMENT
     if (_lab_uncertain || (_lab_scan_active && labReconfigureBlocked()))
       return mesh::RadioParamApplyResult::BUSY;
+#endif
     return RadioLibWrapper::trySetRxPowerSaving(enabled, rx_us, sleep_us);
   }
   bool setRxPowerSaving(bool enabled, uint32_t rx_us, uint32_t sleep_us) override {
@@ -578,7 +590,7 @@ public:
     int16_t status = ((CustomLR2021 *)_radio)->setSideDetector(num > 0 ? tmp : nullptr, num);
     MESH_DEBUG_PRINTLN("setSideDetector() returned %d", status);
 
-#if defined(MESHNOLOGY_W12) && defined(MESH_W12_RXPS_EXPERIMENT) && MESH_W12_RXPS_EXPERIMENT
+#if MESH_LR2021_RXPS_HOLD_AVAILABLE
     if (hasPendingRadioInterrupt()) {
       // A completion can arrive after standby admission. Do not restart RX or
       // overwrite its FIFO; retry the desired setting after it is consumed.
@@ -589,7 +601,7 @@ public:
 #endif
 
     if (status == RADIOLIB_ERR_NONE) {
-#if defined(MESHNOLOGY_W12) && defined(MESH_W12_RXPS_EXPERIMENT) && MESH_W12_RXPS_EXPERIMENT
+#if MESH_LR2021_RXPS_HOLD_AVAILABLE
       _side_detector_uncertain = false;
 #endif
       for (uint8_t i = 0; i < mesh::lr2021::MAX_SIDE_DETECTORS; i++) {
@@ -597,7 +609,7 @@ public:
       }
       _numSideDet = num;
     } else {
-#if defined(MESHNOLOGY_W12) && defined(MESH_W12_RXPS_EXPERIMENT) && MESH_W12_RXPS_EXPERIMENT
+#if MESH_LR2021_RXPS_HOLD_AVAILABLE
       _side_detector_uncertain = true;
 #endif
       // Setting side detectors writes the detector bytes and sync words in two
@@ -605,7 +617,7 @@ public:
       // configuration so a rejected CLI change cannot leave partial hardware state.
       bool restored = applySideDetectorConfig(primary_sf, active_bw);
       if (!restored) {
-#if defined(MESHNOLOGY_W12) && defined(MESH_W12_RXPS_EXPERIMENT) && MESH_W12_RXPS_EXPERIMENT
+#if MESH_LR2021_RXPS_HOLD_AVAILABLE
         // Leave late IRQ/FIFO ownership intact. Normal profile/setting retries
         // will restore the accepted tuple after the packet has been consumed.
         _profile_refresh_required = true;
@@ -615,14 +627,14 @@ public:
       }
       if (!restored) {
         MESH_DEBUG_PRINTLN("LR2021: failed to restore side detectors after config error");
-#if defined(MESHNOLOGY_W12) && defined(MESH_W12_RXPS_EXPERIMENT) && MESH_W12_RXPS_EXPERIMENT
+#if MESH_LR2021_RXPS_HOLD_AVAILABLE
         _profile_refresh_required = true;
 #endif
       }
     }
 
     endReconfigure(resume_rx);
-#if defined(MESHNOLOGY_W12) && defined(MESH_W12_RXPS_EXPERIMENT) && MESH_W12_RXPS_EXPERIMENT
+#if MESH_LR2021_RXPS_HOLD_AVAILABLE
     // A successful detector write is not a successful transition if the
     // formerly active receiver did not restart. The caller restores the old
     // accepted setting through the normal guarded/pending retry path; do not
@@ -651,7 +663,7 @@ protected:
     // normal set when the owner's receive-restoration transaction runs.
     if (isBeaconRadioOwned() && !_beacon_restoring) {
       const int16_t rc = ((CustomLR2021 *)_radio)->setSideDetector(nullptr, 0);
-#if defined(MESHNOLOGY_W12) && defined(MESH_W12_RXPS_EXPERIMENT) && MESH_W12_RXPS_EXPERIMENT
+#if MESH_LR2021_RXPS_HOLD_AVAILABLE
       if (rc == RADIOLIB_ERR_NONE) _side_detector_uncertain = false;
 #endif
       return recordApply(Stage::SideDetectors, rc) == RADIOLIB_ERR_NONE;
@@ -659,7 +671,7 @@ protected:
 #endif
     if (_profiles.enabled()) {
       const int16_t rc = ((CustomLR2021 *)_radio)->setSideDetector(nullptr, 0);
-#if defined(MESHNOLOGY_W12) && defined(MESH_W12_RXPS_EXPERIMENT) && MESH_W12_RXPS_EXPERIMENT
+#if MESH_LR2021_RXPS_HOLD_AVAILABLE
       if (rc == RADIOLIB_ERR_NONE) _side_detector_uncertain = false;
 #endif
       return recordApply(Stage::SideDetectors, rc) == RADIOLIB_ERR_NONE;
@@ -670,7 +682,7 @@ protected:
       // Applying the normal tuple enables the same detectors again.
       if (_profiles.primary_temporary) {
         const int16_t rc = ((CustomLR2021 *)_radio)->setSideDetector(nullptr, 0);
-#if defined(MESHNOLOGY_W12) && defined(MESH_W12_RXPS_EXPERIMENT) && MESH_W12_RXPS_EXPERIMENT
+#if MESH_LR2021_RXPS_HOLD_AVAILABLE
         if (rc == RADIOLIB_ERR_NONE) _side_detector_uncertain = false;
 #endif
         return recordApply(Stage::SideDetectors, rc) == RADIOLIB_ERR_NONE;
@@ -682,7 +694,7 @@ protected:
     buildSideDetectorConfig(_sideDetSFs, _numSideDet, bw, config);
     const int16_t rc = ((CustomLR2021 *)_radio)->setSideDetector(
         _numSideDet > 0 ? config : nullptr, _numSideDet);
-#if defined(MESHNOLOGY_W12) && defined(MESH_W12_RXPS_EXPERIMENT) && MESH_W12_RXPS_EXPERIMENT
+#if MESH_LR2021_RXPS_HOLD_AVAILABLE
     if (rc == RADIOLIB_ERR_NONE) _side_detector_uncertain = false;
 #endif
     return recordApply(Stage::SideDetectors, rc) == RADIOLIB_ERR_NONE;
@@ -788,28 +800,30 @@ protected:
     const int16_t standby = recordApply(mesh::lr2021::ApplyStatus::Stage::Standby,
                                        _radio->standby());
     if (standby != RADIOLIB_ERR_NONE) return standby;
-#if defined(MESH_W12_PRAM_EXPERIMENT) && MESH_W12_PRAM_EXPERIMENT && \
-    defined(MESH_W12_RXPS_EXPERIMENT) && MESH_W12_RXPS_EXPERIMENT
+#if MESH_LR2021_RXPS_AVAILABLE
     return recordApply(mesh::lr2021::ApplyStatus::Stage::Receive, startReceivePowerSaving());
 #else
     return recordApply(mesh::lr2021::ApplyStatus::Stage::Receive, _radio->startReceive());
 #endif
   }
 
-#if defined(MESH_W12_PRAM_EXPERIMENT) && MESH_W12_PRAM_EXPERIMENT && \
-    defined(MESH_W12_RXPS_EXPERIMENT) && MESH_W12_RXPS_EXPERIMENT
+#if MESH_LR2021_RXPS_AVAILABLE
   int16_t armDutyCycle(RadioLibIrqFlags_t flags, RadioLibIrqFlags_t mask,
                        uint32_t* effective_rx_us, uint32_t* effective_sleep_us) override {
+#if defined(MESH_W12_PRAM_EXPERIMENT) && MESH_W12_PRAM_EXPERIMENT && defined(MESH_W12_RXPS_EXPERIMENT) && MESH_W12_RXPS_EXPERIMENT
     mesh::w12pram::spiTrace().reset();
     _lab_busy_high=_lab_busy_low=_lab_busy_edges=0;
     _lab_busy_seen=false;
+#endif
     *effective_rx_us = _rx_ps_rx_us;
     *effective_sleep_us = _rx_ps_sleep_us;
     return static_cast<CustomLR2021*>(_radio)->labStartRxDutyCycle(
         _rx_ps_rx_us, _rx_ps_sleep_us, flags, mask);
   }
   int16_t stopDutyCycleHardware() override {
+#if defined(MESH_W12_PRAM_EXPERIMENT) && MESH_W12_PRAM_EXPERIMENT && defined(MESH_W12_RXPS_EXPERIMENT) && MESH_W12_RXPS_EXPERIMENT
     mesh::w12pram::spiTrace().active=false;
+#endif
     return _radio->standby();
   }
 #endif

@@ -7,9 +7,12 @@ import tempfile
 root = Path(__file__).resolve().parents[2]
 source = (root / 'src/helpers/radiolib/CustomLR2021.h').read_text()
 start = source.index('    int16_t labStartRxDutyCycle(')
-end = source.index('#endif // MESH_W12_RXPS_EXPERIMENT', start)
+end = source.index('#endif // MESH_LR2021_RXPS_AVAILABLE', start)
 method = source[start:end]
 program = r'''
+#define MESH_LR2021_RXPS_TRANSITION_US 1000
+#define MESH_W12_PRAM_EXPERIMENT 1
+#define MESH_W12_RXPS_EXPERIMENT 1
 #include <cassert>
 #include <cstdint>
 #include <cstddef>
