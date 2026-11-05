@@ -2,6 +2,7 @@
 
 import os
 import json
+import hashlib
 from pathlib import Path
 import shutil
 import subprocess
@@ -52,7 +53,9 @@ echo UNWANTED_MENU >>"$TEST_LOG"
 
 @unittest.skipUnless(os.name == "posix" and shutil.which("bash"), "POSIX bash required")
 class BenchFlasherTests(unittest.TestCase):
-    def run_fake(self, mode, mismatch=False, s3=True):
+    def run_fake(self, mode, mismatch=False, s3=True, expected_mac=None,
+                 extra_args=(), capture_check_fail=False, capture_fail=False,
+                 include_usb_id=True):
         with tempfile.TemporaryDirectory(prefix="meshcore-flasher-wrapper-") as directory:
             work = Path(directory)
             flasher = work / "fake.sh"
@@ -65,12 +68,28 @@ class BenchFlasherTests(unittest.TestCase):
             readlink.chmod(0o755)
             image = work / "test-merged.bin"
             image.write_bytes(b"fake fixture only")
+            fake_python = bindir / "capture-python"
+            fake_python.write_text(
+                '#!/bin/sh\nprintf "capture:%s\\n" "$*" >>"$TEST_LOG"\n'
+                'case " $* " in *" --check-only "*) '
+                '[ "$TEST_CAPTURE_CHECK_FAIL" != 1 ] || exit 1;; '
+                '*) [ "$TEST_CAPTURE_FAIL" != 1 ] || exit 1;; esac\n'
+            )
+            fake_python.chmod(0o755)
             env = dict(os.environ, PATH=str(bindir) + os.pathsep + os.environ["PATH"],
                        TEST_LOG=str(log), TEST_MISMATCH="1" if mismatch else "",
-                       TEST_CHIP_IS_S3="1" if s3 else "0")
+                       TEST_CHIP_IS_S3="1" if s3 else "0",
+                       MESHFIRMWARE_CAPTURE_PYTHON=str(fake_python),
+                       TEST_CAPTURE_CHECK_FAIL="1" if capture_check_fail else "0",
+                       TEST_CAPTURE_FAIL="1" if capture_fail else "0")
             args = ["bash", str(WRAPPER), "--flasher", str(flasher), "--bench-dir", str(work),
                     "--port", "/dev/null", "--usb-path", "exact-bench-usb-path",
-                    "--usb-id", "exact-bench-usb-id", "--device", "heltec_v4"]
+                    "--device", "heltec_v4"]
+            if include_usb_id:
+                args.extend(("--usb-id", "exact-bench-usb-id"))
+            if expected_mac is not None:
+                args.extend(("--expect-mac", expected_mac))
+            args.extend(str(arg).replace("{work}", str(work)) for arg in extra_args)
             if mode == "probe":
                 args.append("--probe")
             elif mode == "watchdog":
@@ -114,6 +133,99 @@ class BenchFlasherTests(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("identities disagree", result.stderr)
         self.assertEqual(actions, "")
+
+    def test_explicit_silicon_mac_is_checked_before_any_erase(self):
+        result, actions = self.run_fake("erase", expected_mac="AA:BB:CC:DD:EE:FF")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("Verified ESP32 chip MAC: aabbccddeeff", result.stdout)
+        result, actions = self.run_fake("erase", expected_mac="11:22:33:44:55:66")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("differs from the explicitly selected target", result.stderr)
+        self.assertNotIn("erase-flash", actions)
+        self.assertNotIn("write-flash", actions)
+
+    def test_malformed_expected_mac_is_rejected_before_startup(self):
+        result, actions = self.run_fake("erase", expected_mac="aabb")
+        self.assertEqual(result.returncode, 2)
+        self.assertEqual(actions, "")
+
+    def test_write_baud_is_validated_before_any_flash_action(self):
+        result, actions = self.run_fake("erase", extra_args=("--write-baud", "115201"))
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("Unsupported write baud", result.stderr)
+        self.assertEqual(actions, "")
+
+    def test_selected_write_baud_applies_only_to_firmware_write(self):
+        result, actions = self.run_fake("erase", extra_args=("--write-baud", "921600"))
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("--baud 921600 write-flash 0x0000", actions)
+        self.assertIn("--baud 115200 erase-flash", actions)
+        self.assertLess(actions.index("erase-flash"), actions.index("write-flash"))
+
+    def test_capture_rejects_untrusted_arguments_before_session(self):
+        cases = (
+            (("--capture-runtime", "relative.log"), True),
+            (("--capture-runtime", "{work}/capture.log"), False),
+            (("--capture-runtime", "{work}/capture.log", "--capture-protocol", "other"), True),
+        )
+        for args, include_usb_id in cases:
+            with self.subTest(args=args, include_usb_id=include_usb_id):
+                result, actions = self.run_fake("erase", extra_args=args, include_usb_id=include_usb_id)
+                self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
+                self.assertEqual(actions, "")
+        result, actions = self.run_fake(
+            "watchdog", extra_args=("--capture-runtime", "{work}/capture.log"))
+        self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
+        self.assertEqual(actions, "")
+
+    def test_capture_preflight_failure_refuses_erase(self):
+        result, actions = self.run_fake(
+            "erase", extra_args=("--capture-runtime", "{work}/capture.log"), capture_check_fail=True)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("--check-only", actions)
+        self.assertNotIn("erase-flash", actions)
+        self.assertNotIn("write-flash", actions)
+
+    def test_capture_is_s3_only_and_checks_before_write(self):
+        result, actions = self.run_fake(
+            "erase", s3=False, extra_args=("--capture-runtime", "{work}/capture.log"))
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("positively identified ESP32-S3", result.stderr)
+        self.assertNotIn("capture:", actions)
+        self.assertNotIn("erase-flash", actions)
+        self.assertNotIn("write-flash", actions)
+
+    def test_capture_preflights_then_guardedly_resets_after_write(self):
+        result, actions = self.run_fake(
+            "erase", extra_args=("--capture-runtime", "{work}/capture.log",
+                                  "--capture-protocol", "companion"))
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        lines = actions.splitlines()
+        captures = [line for line in lines if line.startswith("capture:")]
+        self.assertEqual(len(captures), 2, actions)
+        for call in captures:
+            self.assertIn("--protocol companion", call)
+            self.assertIn("--usb-path exact-bench-usb-path", call)
+            self.assertIn("--usb-id exact-bench-usb-id", call)
+            self.assertIn("--expected-serial aabbccddeeff", call)
+            self.assertIn("--output ", call)
+            self.assertIn("/capture.log", call)
+        self.assertIn("--check-only", captures[0])
+        self.assertNotIn("--check-only", captures[1])
+        self.assertLess(actions.index(captures[0]), actions.index("erase-flash"))
+        self.assertLess(actions.index("write-flash"), actions.index("write-mem"))
+        self.assertLess(actions.index("write-mem"), actions.index("--after watchdog-reset"))
+        self.assertLess(actions.index("--after watchdog-reset"), actions.rindex(captures[1]))
+        self.assertEqual(actions.count("verify-MAC"), 2)
+        self.assertNotIn("finish", actions)
+
+    def test_runtime_capture_failure_is_reported_after_write_without_finish(self):
+        result, actions = self.run_fake(
+            "erase", extra_args=("--capture-runtime", "{work}/capture.log"), capture_fail=True)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("write-flash", actions)
+        self.assertIn("--after watchdog-reset", actions)
+        self.assertNotIn("finish", actions)
 
     def test_watchdog_recovery_is_s3_only_masked_and_mac_verified(self):
         result, actions = self.run_fake("watchdog")
@@ -274,12 +386,38 @@ try {
 class WindowsAppUpdateTests(unittest.TestCase):
     """Only AST-loaded functions plus fake USB/ROM/validator operations run."""
 
+    @classmethod
+    def setUpClass(cls):
+        # The wrapper intentionally pins its reviewed validator. A newer local
+        # flasher checkout may contain a different validator, so recover the
+        # pinned blob from local history for the fake-device tests. This never
+        # changes the checkout or relaxes the wrapper's real verification.
+        expected = "fd1cc2c2198d31878587a2a7aa48f7ec49055b29af3cb5f2a9630ec2d8787df8"
+        path = WINDOWS_FLASHER.parent / "tools/meshcore_partition_expansion.py"
+        current = path.read_bytes() if path.is_file() else b""
+        if hashlib.sha256(current).hexdigest() == expected:
+            cls.validator_bytes = current
+            return
+        git = shutil.which("git")
+        if not git:
+            raise unittest.SkipTest("pinned partition validator unavailable and git is not installed")
+        try:
+            result = subprocess.run(
+                [git, "-C", str(WINDOWS_FLASHER.parent), "show",
+                 "addbb4cc191d9c04d5d1aa44b55243b60c965c29:tools/meshcore_partition_expansion.py"],
+                stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True,
+            )
+        except (OSError, subprocess.CalledProcessError):
+            raise unittest.SkipTest("pinned partition validator is absent from the local flasher history")
+        if hashlib.sha256(result.stdout).hexdigest() != expected:
+            raise unittest.SkipTest("local flasher history does not contain the exact pinned validator")
+        cls.validator_bytes = result.stdout
+
     def run_case(self, case):
         with tempfile.TemporaryDirectory(prefix="meshcore-app-update-") as directory:
             work = Path(directory)
             (work / "tools").mkdir()
-            shutil.copyfile(WINDOWS_FLASHER.parent / "tools/meshcore_partition_expansion.py",
-                            work / "tools/meshcore_partition_expansion.py")
+            (work / "tools/meshcore_partition_expansion.py").write_bytes(self.validator_bytes)
             if case == "helper-hash":
                 (work / "tools/meshcore_partition_expansion.py").write_text("not the pinned helper")
             env = dict(os.environ, BENCH_TEST_CASE=case, BENCH_TEST_WORK=str(work),

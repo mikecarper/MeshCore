@@ -10,30 +10,43 @@ bench_dir=''
 requested_port=''
 expected_usb_path=''
 expected_usb_id=''
+expected_chip_mac=''
 device=''
 image=''
 probe=0
 watchdog_recover=0
 erase=0
+capture_runtime=''
+capture_protocol=infrastructure
+write_baud=115200
+bench_script_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 
 usage() {
     printf '%s\n' \
         'Usage: mcfirmware_bench_flash.sh --port DEVICE --usb-path EXACT_BY_PATH_NAME' \
         '  --device BUILD_BOARD_NAME --bench-dir ABSOLUTE_BENCH_DIR' \
         '  [--usb-id EXACT_BY_ID_NAME] [--flasher PATH]' \
+        '  [--expect-mac AA:BB:CC:DD:EE:FF]' \
+        '  [--capture-runtime ABSOLUTE_NEW_RAW_FILE]' \
+        '  [--capture-protocol infrastructure|companion]' \
+        '  [--write-baud 115200|230400|460800|921600]' \
         '  (--probe | --watchdog-recover | --image ABSOLUTE_MERGED_BIN --erase)' \
         '' \
         '--probe resets only the selected radio, reads chip/flash IDs, then restores runtime.' \
         '--watchdog-recover is S3-only: clear volatile forced-ROM bit, reset target MCU by watchdog.' \
         '  No flash erasure/write; runtime startup must be verified separately afterward.' \
         '--image requires explicit --erase and a content-verified merged ESP32 image.' \
+        '--capture-runtime is S3 HWCDC only; capture boot bytes and require a completed ver reply.' \
+        '  Uses MESHFIRMWARE_CAPTURE_PYTHON (default python3), with pyserial installed.' \
+        '  Requires the selected USB by-id and by-path links to remain stable across resets.' \
+        '  Infrastructure capture contains raw serial output; review it before sharing.' \
         'Uses a new isolated flasher-cache child under --bench-dir; skips startup menu,' \
         'global USB autosuspend/group changes and Pi reboot/speed prompts.'
 }
 
 while (($#)); do
     case "$1" in
-        --flasher|--bench-dir|--port|--usb-path|--usb-id|--device|--image)
+        --flasher|--bench-dir|--port|--usb-path|--usb-id|--expect-mac|--device|--image|--capture-runtime|--capture-protocol|--write-baud)
             (($# >= 2)) || { usage >&2; exit 2; }
             case "$1" in
                 --flasher) flasher=$2 ;;
@@ -41,8 +54,12 @@ while (($#)); do
                 --port) requested_port=$2 ;;
                 --usb-path) expected_usb_path=$2 ;;
                 --usb-id) expected_usb_id=$2 ;;
+                --expect-mac) expected_chip_mac=$2 ;;
                 --device) device=$2 ;;
                 --image) image=$2 ;;
+                --capture-runtime) capture_runtime=$2 ;;
+                --capture-protocol) capture_protocol=$2 ;;
+                --write-baud) write_baud=$2 ;;
             esac
             shift 2 ;;
         --probe) probe=1; shift ;;
@@ -52,6 +69,21 @@ while (($#)); do
         *) printf 'Unknown option: %s\n' "$1" >&2; usage >&2; exit 2 ;;
     esac
 done
+case "$write_baud" in
+    115200|230400|460800|921600) ;;
+    *) echo 'Unsupported write baud.' >&2; exit 2 ;;
+esac
+if [[ -n "$expected_chip_mac" ]]; then
+    [[ "$expected_chip_mac" =~ ^([[:xdigit:]]{12}|([[:xdigit:]]{2}:){5}[[:xdigit:]]{2})$ ]] || {
+        echo 'Expected chip MAC must be twelve hexadecimal digits, optionally colon-separated.' >&2; exit 2;
+    }
+    expected_chip_mac=${expected_chip_mac//:/}
+    expected_chip_mac=${expected_chip_mac,,}
+fi
+case "$capture_protocol" in
+    infrastructure|companion) ;;
+    *) echo 'Unsupported runtime capture protocol.' >&2; exit 2 ;;
+esac
 
 [[ -f "$flasher" && -n "$requested_port" && -n "$device" && "$bench_dir" == /* ]] \
     || { usage >&2; exit 2; }
@@ -66,6 +98,16 @@ elif ((probe || watchdog_recover)); then
 else
     [[ "$erase" == 1 && "$image" == /* && -r "$image" && -s "$image" ]] \
         || { echo 'Installing requires --image ABSOLUTE_MERGED_BIN and explicit --erase.' >&2; exit 2; }
+fi
+if [[ -n "$capture_runtime" ]]; then
+    [[ "$watchdog_recover" == 0 && "$capture_runtime" == /* && -n "$expected_usb_id" ]] || {
+        echo '--capture-runtime requires --usb-id and probe/install mode.' >&2; exit 2;
+    }
+    capture_python=${MESHFIRMWARE_CAPTURE_PYTHON:-python3}
+    capture_helper="$bench_script_dir/capture_infrastructure_boot.py"
+    command -v "$capture_python" >/dev/null && [[ -r "$capture_helper" ]] || {
+        echo 'Runtime capture requires its Python helper and configured interpreter.' >&2; exit 2;
+    }
 fi
 
 guard_selected_usb() {
@@ -147,6 +189,23 @@ fi
 
 prepare_esp32_flash_session "$DEVICE_PORT" "$DEVICE"
 guard_selected_usb
+[[ "${ESP32_FLASH_EXPECTED_MAC:-}" =~ ^[0-9a-f]{12}$ ]] || {
+    echo 'Guarded session did not bind a valid ESP32 silicon MAC; refusing write.' >&2; exit 1;
+}
+if [[ -n "$expected_chip_mac" && "$ESP32_FLASH_EXPECTED_MAC" != "$expected_chip_mac" ]]; then
+    echo 'Guarded ESP32 silicon MAC differs from the explicitly selected target; refusing write.' >&2
+    exit 1
+fi
+printf 'Verified ESP32 chip MAC: %s\n' "$ESP32_FLASH_EXPECTED_MAC"
+if [[ -n "$capture_runtime" ]]; then
+    [[ "${ESP32_SESSION_IS_S3:-0}" == 1 && -n "${WATCHDOGRESET:-}" ]] || {
+        echo 'Runtime capture requires a positively identified ESP32-S3.' >&2; exit 1;
+    }
+    capture_args=(--protocol "$capture_protocol" --usb-path "$expected_usb_path" --usb-id "$expected_usb_id"
+        --expected-serial "$ESP32_FLASH_EXPECTED_MAC" --output "$capture_runtime")
+    # Check imports, output destination and all USB identities before erasing.
+    "$capture_python" "$capture_helper" "${capture_args[@]}" --check-only
+fi
 if [[ "$NORESET" == no_reset ]]; then
     flash_id_command=flash_id
     chip_id_command=chip_id
@@ -193,10 +252,31 @@ if ((!probe)); then
     sleep 1
     guard_selected_usb
     after_mode=$(esp32_write_after_mode "$DEVICE_PORT")
-    run_esp32_session_esptool "$DEVICE_PORT" --after "$after_mode" --baud 115200 "$WRITEFLASH" \
+    run_esp32_session_esptool "$DEVICE_PORT" --after "$after_mode" --baud "$write_baud" "$WRITEFLASH" \
         "${ESP32_MERGED_WRITE_ARGS[@]}"
 fi
-finish_esp32_flash_session "$DEVICE_PORT"
+if [[ -n "$capture_runtime" ]]; then
+    # S3 HWCDC applications legitimately retain the ROM's USB product name.
+    # Keep every MAC/write guard, but establish runtime from its real reply.
+    # This mirrors the guarded --watchdog-recover sequence above: the masked
+    # write only clears the volatile forced-download bit; it never changes flash.
+    guard_selected_usb
+    DEVICE_PORT=$(esp32_verified_destructive_port "$DEVICE_PORT" "S3 capture forced-ROM bit clear")
+    guard_selected_usb
+    run_esp32_session_esptool "$DEVICE_PORT" --after "$NORESET" --baud 115200 \
+        "$write_mem_command" 0x6000812c 0 0x1
+    guard_selected_usb
+    DEVICE_PORT=$(esp32_verified_destructive_port "$DEVICE_PORT" "S3 capture watchdog reset")
+    guard_selected_usb
+    run_esp32_session_esptool "$DEVICE_PORT" --after "$WATCHDOGRESET" --baud 115200 "$READMAC"
+    # The intended reset is complete. A failed runtime diagnosis must retain
+    # its first boot evidence, rather than trigger another cleanup reset.
+    BOOTLOADER_PROBE_ACTIVE=0
+    BOOTLOADER_PROBE_PORT=''
+    "$capture_python" "$capture_helper" "${capture_args[@]}"
+else
+    finish_esp32_flash_session "$DEVICE_PORT"
+fi
 # Successful finish already verified the runtime USB handoff. Retain guarded
 # cleanup recovery for failures, but don't reset that proven runtime a second time.
 BOOTLOADER_PROBE_ACTIVE=0
