@@ -200,7 +200,7 @@ int main() {
   Test dual; dual._profiles.dual = true;
   assert(dual.trySetW12MultiSf(true, 5, 8) == Result::FAILED && dual.chip.writes == 0);
   Test power; power._rx_ps_enabled = true;
-  assert(power.trySetW12MultiSf(true, 5, 8) == Result::FAILED && power.chip.writes == 0);
+  assert(power.trySetW12MultiSf(true, 5, 8) == Result::APPLIED && power._rx_ps_enabled);
   Test busy; busy.admission = 2;
   assert(busy.trySetW12MultiSf(true, 5, 8) == Result::BUSY && busy.chip.writes == 0);
   Test fail; fail.chip.fail = 2;
@@ -270,15 +270,15 @@ int main() {
     def test_opt_in_and_conflict_guards(self):
         source = (ROOT / "src/helpers/radiolib/CustomLR2021Wrapper.h").read_text()
         self.assertIn("MESH_W12_MULTISF_EXPERIMENT", source)
-        self.assertIn("if (enabled && _multi_sf_enabled)", source)
+        self.assertIn("if (_multi_sf_enabled) return true;", source)
         profile_check = method(source, "bool validateProfile(")
         self.assertIn("RadioLibWrapper::validateProfile(profile)", profile_check)
-        self.assertIn("profile.sf, profile.bw", profile_check)
+        self.assertIn("trySetW12MultiSf(false,5,8)", method(source, "mesh::RadioParamApplyResult trySetParams("))
         profile = (ROOT / "src/helpers/RadioProfileCLI.cpp").read_text()
         self.assertIn("radio_->w12MultiSfEnabled() && (base || temporary || scheduled)", profile)
         self.assertIn("radio_ && radio_->w12MultiSfEnabled()", profile)
         cli = (ROOT / "src/helpers/CommonCLI.cpp").read_text()
-        self.assertIn("_prefs->rx_powersaving_enabled || _prefs->extra_sf[0]", cli)
+        self.assertIn("handleMultiSfSettingsCommand", cli)
 
 
 if __name__ == "__main__":

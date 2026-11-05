@@ -9,5 +9,14 @@ namespace mesh { namespace lr2021 {
 bool safeMode();
 void loadSafeModeSettings(FILESYSTEM* fs);
 bool handleSafeModeCommand(const char* command, char* reply, size_t capacity);
+#if defined(MESH_W12_MULTISF_EXPERIMENT) && MESH_W12_MULTISF_EXPERIMENT
+struct MultiSfSettings {
+  bool enabled = true;
+  uint8_t first = 5, last = 8, profile = 0;
+};
+const MultiSfSettings& multiSfSettings();
+bool multiSfSettingsValid();
+bool handleMultiSfSettingsCommand(const char* command, char* reply, size_t capacity);
+#endif
 } }
 #endif

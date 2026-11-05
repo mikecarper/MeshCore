@@ -387,7 +387,12 @@ public:
     if (_lab_scan_active || _lab_uncertain || _lab_auto.enabled() || state==3 || _cw_active) return false;
     if (selected < 0) { _lab_seq_requested=false; _lab_seq_plan.count=0; return true; }
     if (selected > 1 || !_profiles.enabled()
+#if defined(MESH_W12_PRAM_SEQ_TX_LAB) && MESH_W12_PRAM_SEQ_TX_LAB
+        || (mesh::radioDirection::mode() != mesh::radioDirection::Mode::Rx
+            && mesh::radioDirection::mode() != mesh::radioDirection::Mode::Both)) return false;
+#else
         || mesh::radioDirection::mode() != mesh::radioDirection::Mode::Rx) return false;
+#endif
     _lab_seq_selected=uint8_t(selected); _lab_seq_requested=true; _lab_seq_plan.count=0; return true;
   }
   bool labSequentialSetRange(uint8_t first, uint8_t last) {
@@ -754,6 +759,58 @@ public:
     if (!sleeping || !ok) _lab_sleeping=false;
     return ok;
   }
+#if defined(MESH_W12_MULTISF_EXPERIMENT) && MESH_W12_MULTISF_EXPERIMENT && \
+    defined(MESH_W12_PRAM_SEQUENTIAL_LAB) && MESH_W12_PRAM_SEQUENTIAL_LAB
+  uint32_t _multi_retry_at=0, _multi_gen0=UINT32_MAX, _multi_gen1=UINT32_MAX;
+  uint8_t _multi_key_first=0, _multi_key_last=0, _multi_key_profile=0, _multi_key_flags=0;
+  bool _multi_failed=false;
+  void serviceMultiSf() {
+    const auto& cfg=mesh::lr2021::multiSfSettings();
+    const bool wanted=mesh::lr2021::multiSfSettingsValid() && cfg.enabled && !mesh::lr2021::safeMode();
+    const uint8_t flags=uint8_t(wanted) | (uint8_t(_profiles.enabled())<<1);
+    if (_multi_gen0!=_profiles.generation[0] || _multi_gen1!=_profiles.generation[1]
+        || _multi_key_first!=cfg.first || _multi_key_last!=cfg.last
+        || _multi_key_profile!=cfg.profile || _multi_key_flags!=flags) {
+      _multi_gen0=_profiles.generation[0]; _multi_gen1=_profiles.generation[1];
+      _multi_key_first=cfg.first; _multi_key_last=cfg.last;
+      _multi_key_profile=cfg.profile; _multi_key_flags=flags;
+      _multi_retry_at=0; _multi_failed=false;
+    }
+    if (_multi_retry_at && int32_t(millis()-_multi_retry_at)<0) return;
+    _multi_retry_at=millis()+1000;
+
+    // Single-profile side detectors own the modem. Release them before
+    // switching to a dual-profile scanner or entering safe mode.
+    const bool single=wanted && !_profiles.enabled() && cfg.profile==0;
+    if (_multi_sf_enabled && (!single || _multi_sf_lower!=cfg.first || _multi_sf_upper!=cfg.last)) {
+      const auto result=trySetW12MultiSf(false,5,8);
+      if (result!=mesh::RadioParamApplyResult::APPLIED) return;
+    }
+    if (!_profiles.enabled() || !wanted) {
+      if (_lab_seq_requested) {
+        if (!labScannerSetAutomatic(false) || !labSequentialConfigure(-1)) return;
+        if (!mesh::lr2021::safeMode()) labScannerSetAutomatic(true);
+      }
+      if (single && !_multi_sf_enabled && !_multi_failed && _params_valid && !_lab_uncertain) {
+        const auto result=trySetW12MultiSf(true,cfg.first,cfg.last);
+        if (result==mesh::RadioParamApplyResult::FAILED) _multi_failed=true;
+      }
+      return;
+    }
+    if (_multi_sf_enabled || _multi_failed) return;
+    if (!_lab_seq_requested || _lab_seq_selected!=cfg.profile
+        || _lab_seq_first!=cfg.first || _lab_seq_last!=cfg.last) {
+      if (!labScannerSetAutomatic(false)) return;
+      if (!labSequentialSetRange(cfg.first,cfg.last) || !labSequentialConfigure(cfg.profile)) {
+        _multi_failed=true;
+        // The normal two-profile scanner is the fallback.
+        labSequentialConfigure(-1); labScannerSetAutomatic(true);
+        return;
+      }
+      labScannerSetAutomatic(true);
+    }
+  }
+#endif
   void labServiceAutomatic(bool rx_allowed, bool radio_owned) {
     if (_lab_uncertain) return; // never discard an ambiguous FIFO
     if (mesh::lr2021::safeMode()) {
@@ -849,6 +906,10 @@ public:
       }
 #endif
       RadioLibWrapper::loop();
+#if defined(MESH_W12_MULTISF_EXPERIMENT) && MESH_W12_MULTISF_EXPERIMENT && \
+    defined(MESH_W12_PRAM_SEQUENTIAL_LAB) && MESH_W12_PRAM_SEQUENTIAL_LAB
+      serviceMultiSf();
+#endif
       bool rx_allowed=true;
       bool radio_owned=_cw_active;
 #if MESH_ENABLE_TX_BEACONS
@@ -862,6 +923,14 @@ public:
     }
     bool must_stop = mesh::lr2021::safeMode() || _profiles.generation[0]!=_lab_snap[0].generation
         || _profiles.generation[1]!=_lab_snap[1].generation || !_profiles.enabled();
+#if defined(MESH_W12_MULTISF_EXPERIMENT) && MESH_W12_MULTISF_EXPERIMENT && \
+    defined(MESH_W12_PRAM_SEQUENTIAL_LAB) && MESH_W12_PRAM_SEQUENTIAL_LAB
+    const auto& multisf=mesh::lr2021::multiSfSettings();
+    const bool seq_wanted=mesh::lr2021::multiSfSettingsValid() && multisf.enabled && !_multi_failed;
+    must_stop = must_stop || (seq_wanted != _lab_seq_requested)
+        || (_lab_seq_requested && (multisf.profile!=_lab_seq_selected
+            || multisf.first!=_lab_seq_first || multisf.last!=_lab_seq_last));
+#endif
 #if MESH_ENABLE_RADIO_DIRECTION
     must_stop = must_stop || !mesh::radioDirection::radioReceiveAllowed();
 #endif

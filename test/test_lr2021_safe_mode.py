@@ -19,8 +19,23 @@ int main() {
 #endif
   char reply[160];
   auto run=[&](const char* cmd) { return handleSafeModeCommand(cmd,reply,sizeof(reply)); };
+  auto multi=[&](const char* cmd) { return handleMultiSfSettingsCommand(cmd,reply,sizeof(reply)); };
   assert(safeMode()); // no scan before persistent boot settings load
   loadSafeModeSettings(&fs); assert(!safeMode());
+  assert(multiSfSettingsValid() && multiSfSettings().enabled && multiSfSettings().first==5
+      && multiSfSettings().last==8 && multiSfSettings().profile==0);
+  assert(multi("set radio.multisf 6-9") && !strncmp(reply,"OK",2));
+  assert(multi("set radio.multisf radio2") && !strncmp(reply,"OK",2));
+  loadSafeModeSettings(&fs);
+  assert(multiSfSettingsValid() && multiSfSettings().first==6 && multiSfSettings().last==9
+      && multiSfSettings().profile==1);
+  assert(multi("set radio.multisf 4-10") && !strncmp(reply,"Error",5));
+  assert(multi("set radio.multisf off") && !strncmp(reply,"OK",2));
+  loadSafeModeSettings(&fs); assert(!multiSfSettings().enabled);
+  fs.files["/radio_multisf"][1]^=1;
+  loadSafeModeSettings(&fs); assert(!multiSfSettingsValid());
+  assert(multi("set radio.multisf on") && !strncmp(reply,"OK",2));
+  loadSafeModeSettings(&fs); assert(multiSfSettingsValid() && multiSfSettings().enabled);
   assert(run("get radio.safe") && !strcmp(reply,"> off"));
   assert(run("set radio.safe on") && !strncmp(reply,"OK",2) && safeMode());
   loadSafeModeSettings(&fs); assert(safeMode());
@@ -71,7 +86,8 @@ namespace mesh { template <typename FS> bool filePresence(FS* fs,const char* pat
                 (tmp/'test.cpp').write_text(HARNESS)
                 result=subprocess.run([os.environ.get('CXX','c++'),'-std=c++17','-Wall','-Wextra','-Werror',
                     '-Wno-sign-compare','-Wno-misleading-indentation','-D'+platform,
-                    '-DMESH_W12_PRAM_EXPERIMENT=1','-I'+str(tmp),'-I'+str(ROOT/'src/helpers'),
+                    '-DMESH_W12_PRAM_EXPERIMENT=1','-DMESH_W12_MULTISF_EXPERIMENT=1',
+                    '-I'+str(tmp),'-I'+str(ROOT/'src/helpers'),
                     str(tmp/'test.cpp'),'-o',str(tmp/'test')],capture_output=True,text=True)
                 self.assertEqual(result.returncode,0,result.stderr)
                 result=subprocess.run([str(tmp/'test')],capture_output=True,text=True)
