@@ -73,8 +73,10 @@ preambles up to 255 symbols, frequencies less than 20 MHz apart, and a supported
 LR2021 ROM. The fixed profile must use SF7 or SF8; multi-SF accepts SF5–10
 within its four-SF range. TX-capable scanning also requires disjoint channels.
 Unsupported profiles fall back to host switching. RXPS is off by default.
-On Companion firmware these controls are available in the local CLI, including
-the USB terminal.
+On Companion firmware these controls are available in the local CLI. Builds
+with USB support accept them in the USB terminal. BLE-only builds accept these
+scanner commands through local-control frame `0x4A`; the connected client must
+support that frame. Not every app exposes it as a console.
 
 Time-sharing multiple SFs and profiles can miss packets, particularly with short
 preambles, weak signals, or slow SFs. The ordinary single-radio channel check

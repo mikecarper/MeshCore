@@ -8010,10 +8010,16 @@ void MyMesh::handleCmdFrame(size_t len) {
     }
   } else if (cmd_frame[0]
              == mesh::companion::CMD_EXEC_LOCAL_OTA_CONTROL) {
-#if COMPANION_FEATURE_OTA_CLI
+#if COMPANION_FEATURE_OTA_CLI || (defined(USE_LR2021) && defined(MESH_W12_PRAM_EXPERIMENT) && MESH_W12_PRAM_EXPERIMENT)
     const size_t command_len = len - 1;
-    if (!mesh::companion::isBleOtaControlCommandAllowed(
-            &cmd_frame[1], command_len)) {
+    bool allowed = false;
+#if COMPANION_FEATURE_OTA_CLI
+    allowed = mesh::companion::isBleOtaControlCommandAllowed(&cmd_frame[1], command_len);
+#endif
+#if defined(USE_LR2021) && defined(MESH_W12_PRAM_EXPERIMENT) && MESH_W12_PRAM_EXPERIMENT
+    allowed = allowed || mesh::lr2021::isScannerFrameCommandAllowed(&cmd_frame[1], command_len);
+#endif
+    if (!allowed) {
       writeErrFrame(ERR_CODE_ILLEGAL_ARG);
     } else {
       char command[MAX_FRAME_SIZE] = {0};

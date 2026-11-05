@@ -3,10 +3,36 @@
 #if defined(USE_LR2021) && defined(MESH_W12_PRAM_EXPERIMENT) && MESH_W12_PRAM_EXPERIMENT
 #include <helpers/radiolib/LR2021SafeMode.h>
 #include <stdio.h>
+#include <stdint.h>
 #include <string.h>
 
 namespace mesh { namespace lr2021 {
-// Companion's control parser uses this same handler for USB and framed CLI.
+// Only explicitly named scanner controls are accepted by the framed CLI.
+inline bool isScannerFrameCommandAllowed(const uint8_t* bytes, size_t length) {
+  if (!bytes || !length || length > 48) return false;
+  char command[49];
+  for (size_t i = 0; i < length; ++i) {
+    if (bytes[i] < 0x20 || bytes[i] > 0x7e) return false;
+    command[i] = static_cast<char>(bytes[i]);
+  }
+  command[length] = 0;
+  static const char* const exact[] = {
+    "get radio.safe", "set radio.safe on", "set radio.safe off", "get radio.multisf",
+    "set radio.multisf on", "set radio.multisf off", "set radio.multisf radio",
+    "set radio.multisf radio1", "set radio.multisf radio2", "get pramscan",
+    "get pramscan.last", "get pramscan.diag", "get pramscan.timing",
+    "get pramscan.recovery", "set pramscan on", "set pramscan off", "set pramscan recover"
+  };
+  for (const char* allowed : exact) if (!strcmp(command, allowed)) return true;
+  static const char range[] = "set radio.multisf ";
+  if (strncmp(command, range, sizeof(range)-1)) return false;
+  unsigned first=0, last=0; int used=0;
+  const char* value = command + sizeof(range)-1;
+  return sscanf(value, "%u-%u%n", &first, &last, &used) == 2 && !value[used]
+      && first >= 5 && last <= 10 && first <= last && last-first <= 3;
+}
+
+// Companion's control parser uses this handler for local CLI requests.
 template <typename Radio>
 bool handleScannerCommand(const char* command, char* reply, size_t capacity, Radio& radio) {
   if (!command || !reply || !capacity) return false;
