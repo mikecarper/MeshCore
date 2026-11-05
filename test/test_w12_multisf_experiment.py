@@ -218,6 +218,55 @@ int main() {
                             str(src), "-o", str(exe)], cwd=ROOT, check=True)
             subprocess.run([str(exe)], check=True)
 
+    def test_actual_receive_tuple_installs_slowest_sf_activity_bounds(self):
+        source = (ROOT / "src/helpers/radiolib/CustomLR2021Wrapper.h").read_text()
+        method_source = method(source, "bool applyMultiSfReceiveTuple(")
+        harness = r'''
+#include <cassert>
+#include <cstdint>
+#include <cstddef>
+#include "helpers/radiolib/W12MultiSfPlan.h"
+#define MAX_TRANS_UNIT 255
+#define RADIOLIB_ERR_NONE 0
+struct LR2021LoRaSideDetector_t { uint8_t sf = 0; };
+struct CustomLR2021 {
+  int fail = 0; uint8_t sf = 0, count = 0; uint32_t preamble = 0, payload = 0;
+  int setSpreadingFactor(uint8_t value) { if (fail == 1) return -1; sf = value; return 0; }
+  int setSideDetector(const LR2021LoRaSideDetector_t*, uint8_t n) { if (fail == 2) return -1; count = n; return 0; }
+  void setPreambleMillis(uint32_t value) { preamble = value; }
+  void setMaxPayloadMillis(uint32_t value) { payload = value; }
+};
+struct Test {
+  float _cur_bw = 62.5; uint16_t configured_preamble = 32;
+  CustomLR2021 chip, *_radio = &chip;
+  uint16_t currentPreambleLength() { return configured_preamble; }
+  static void buildSideDetectorConfig(const uint8_t* sfs, size_t n, float, LR2021LoRaSideDetector_t* cfg) {
+    for (size_t i = 0; i < n; ++i) cfg[i].sf = sfs[i];
+  }
+  TUPLE_METHOD
+};
+int main() {
+  mesh::w12multisf::Plan plan;
+  assert(mesh::w12multisf::makePlan(true, 5, 8, 7, 62.5, false, false, false, plan)
+      == mesh::w12multisf::Admission::Ready);
+  Test ok; assert(ok.applyMultiSfReceiveTuple(plan));
+  assert(ok.chip.sf == 5 && ok.chip.count == 3 && ok.chip.preamble >= 2098 && ok.chip.payload >= 2000);
+  Test long_pre; long_pre.configured_preamble = 1024;
+  assert(long_pre.applyMultiSfReceiveTuple(plan) && long_pre.chip.preamble > ok.chip.preamble);
+  for (int failure = 1; failure <= 2; ++failure) {
+    Test t; t.chip.fail = failure;
+    assert(!t.applyMultiSfReceiveTuple(plan));
+    assert(t.chip.preamble == 0 && t.chip.payload == 0);
+  }
+}
+'''.replace("TUPLE_METHOD", method_source)
+        with tempfile.TemporaryDirectory() as d:
+            src, exe = Path(d) / "test.cpp", Path(d) / "test"
+            src.write_text(harness)
+            subprocess.run(["g++", "-std=c++17", "-Wall", "-Wextra", "-Werror", "-I", "src",
+                            str(src), "-o", str(exe)], cwd=ROOT, check=True)
+            subprocess.run([str(exe)], check=True)
+
     def test_opt_in_and_conflict_guards(self):
         source = (ROOT / "src/helpers/radiolib/CustomLR2021Wrapper.h").read_text()
         self.assertIn("MESH_W12_MULTISF_EXPERIMENT", source)
