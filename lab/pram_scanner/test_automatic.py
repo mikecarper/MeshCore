@@ -21,9 +21,9 @@ struct Fake {
   bool _lab_uncertain=false,_lab_sleeping=false,_lab_resume_pending=false,_lab_session_ldo=false,_lab_pram_loaded=false;
   bool _profile_repair_required=false,_lab_scan_active=false, supported=true, stop_ok=true, chip_busy=false;
   bool _lab_transition_waiting=false; uint32_t _lab_transition_at=0;
-  int state=1, cold=0, warm=0, stops=0, errors=0, start_result=0, reset_calls=0;
+  int state=1, cold=0, warm=0, stops=0, errors=0, start_result=0, reset_calls=0, support_checks=0;
   uint32_t _lab_recoveries=0, _lab_resume_at=0, _lab_uncertain_at=0, _lab_ambiguous_recoveries=0, n_recv_errors=0;
-  bool labScannerProfilesSupported(){return supported;}
+  bool labScannerProfilesSupported(){++support_checks;return supported;}
   bool labScannerStart(bool resume){
     if(resume)++warm;else ++cold;
     if(start_result==1)return false; // BUSY, do not count as hardware failure
@@ -45,11 +45,14 @@ struct Fake {
 int main(){using Reason=mesh::w12pram::AutoPolicy::Reason;
   {Fake f;f._profiles.active=false;f.labServiceAutomatic(true,false);assert(f.cold==0);f._profiles.active=true;f.labServiceAutomatic(true,false);assert(f.cold==1&&f._lab_scan_active);}
   {Fake f;f._profiles.recommendation=false;f.labServiceAutomatic(true,false);assert(f.cold==0&&f.warm==0);f._profiles.recommendation=true;f.labServiceAutomatic(true,false);assert(f.cold==1);}
+  {Fake f;f._profiles.recommendation=false;f.supported=false;f.labServiceAutomatic(true,false);assert(f.support_checks==0&&f._lab_auto.reason()==Reason::None);f._profiles.recommendation=true;f.supported=true;f.labServiceAutomatic(true,false);assert(f.cold==1);}
+  {Fake f;f._profiles.recommendation=false;f.supported=false;f._lab_auto.observe(1,2);f._lab_auto.block(Reason::Unsupported);f.labServiceAutomatic(true,false);assert(f._lab_auto.reason()==Reason::None&&f.cold==0);f.supported=true;f.labServiceAutomatic(true,false);assert(f.cold==0);f._profiles.recommendation=true;f.labServiceAutomatic(true,false);assert(f.cold==1&&f._profiles.generation[0]==1&&f._profiles.generation[1]==2);}
   {Fake f;f._lab_resume_pending=true;f._lab_pram_loaded=true;f._lab_resume_at=now;f._profiles.recommendation=false;f.labServiceAutomatic(true,false);assert(f.warm==0&&f._lab_resume_pending);f._profiles.recommendation=true;f.labServiceAutomatic(true,false);assert(f.warm==1);}
   {Fake f;assert(f.labScannerSetAutomatic(false));f.labServiceAutomatic(true,false);assert(f.cold==0&&!f._lab_auto.enabled());assert(f.labScannerSetAutomatic(true));f.labServiceAutomatic(true,false);assert(f.cold==1);}
-  {Fake f;f.supported=false;f.labServiceAutomatic(true,false);assert(f.cold==0&&f._lab_auto.reason()==Reason::Unsupported);f.supported=true;f.labServiceAutomatic(true,false);assert(f.cold==0);++f._profiles.generation[1];f.labServiceAutomatic(true,false);assert(f.cold==1);}
+  {Fake f;f.supported=false;f.labServiceAutomatic(true,false);assert(f.cold==0&&f._lab_auto.reason()==Reason::Unsupported);f.supported=true;f.labServiceAutomatic(true,false);assert(f.cold==1);}
   {Fake f;f.start_result=1;f.labServiceAutomatic(true,false);assert(f.cold==1);now+=999;f.labServiceAutomatic(true,false);assert(f.cold==1);now++;f.start_result=0;f.labServiceAutomatic(true,false);assert(f.cold==2);}
   {Fake f;f.start_result=2;f.labServiceAutomatic(true,false);assert(f.cold==1&&f._lab_auto.reason()==Reason::Failed);now+=5000;f.labServiceAutomatic(true,false);assert(f.cold==1);++f._profiles.generation[0];f.start_result=0;f.labServiceAutomatic(true,false);assert(f.cold==2);}
+  {Fake f;f.start_result=2;f.labServiceAutomatic(true,false);f.supported=false;f.labServiceAutomatic(true,false);assert(f._lab_auto.reason()==Reason::Failed);f.supported=true;f.labServiceAutomatic(true,false);assert(f.cold==1&&f._lab_auto.reason()==Reason::Failed);}
   {Fake f;f._lab_session_ldo=true;f._lab_resume_pending=true;f._profiles.active=false;f.stop_ok=false;f.labServiceAutomatic(true,false);assert(f.stops==1&&f.warm==0);f.stop_ok=true;f.labServiceAutomatic(true,false);assert(f.stops==2&&!f._lab_session_ldo);}
   {Fake f;f._lab_resume_pending=true;f._lab_session_ldo=true;f._lab_pram_loaded=true;f._lab_resume_at=now;f.labServiceAutomatic(true,false);assert(f.warm==1&&f.cold==0);}
   {Fake f;f._lab_resume_pending=true;f._lab_session_ldo=true;f._lab_pram_loaded=false;f._lab_resume_at=now;f.labServiceAutomatic(true,false);assert(f.warm==0&&f.cold==1);}

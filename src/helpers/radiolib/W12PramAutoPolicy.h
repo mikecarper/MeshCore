@@ -25,6 +25,7 @@ class AutoPolicy {
   }
   void busy(uint32_t now) { due_ = now + 1000u; if (!due_) due_ = 1; }
   void block(Reason reason) { reason_ = reason; due_ = 0; }
+  void clearUnsupported() { if (reason_ == Reason::Unsupported) { reason_ = Reason::None; due_ = 0; } }
   void active() { reason_ = Reason::None; due_ = 0; }
  private:
   uint32_t primary_=0, secondary_=0, due_=0;

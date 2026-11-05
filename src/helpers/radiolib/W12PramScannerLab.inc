@@ -486,19 +486,28 @@ public:
   void labServiceAutomatic(bool rx_allowed, bool radio_owned) {
     if (_lab_uncertain) return; // never discard an ambiguous FIFO
     _lab_auto.observe(_profiles.generation[0],_profiles.generation[1]);
-    if (!_profiles.enabled() || !labScannerProfilesSupported()) {
-      // An off/incompatible second profile must not leave the radio in LDO
-      // or spin on a warm resume. Preserve pending IRQs until a safe stop.
+    if (!_profiles.enabled()) {
+      // An off second profile must not leave the radio in LDO.
       if (_lab_session_ldo && !labScannerStop()) return;
       _lab_resume_pending=false;
-      if (_profiles.enabled()) _lab_auto.block(mesh::w12pram::AutoPolicy::Reason::Unsupported);
+      _lab_auto.clearUnsupported();
       return;
     }
-    if (!_lab_auto.enabled() || _lab_auto.blocked()) return;
     // The recommendation uses real host retunes for a 120-second window.
     // Starting PRAM earlier stops those retunes and leaves its status pending
-    // forever, even when the initial four samples in each direction exist.
-    if (!_profiles.recommendationReady()) return;
+    // forever. The provisional 512-symbol preamble isn't a final profile and
+    // must not be latched as an unsupported scanner setting either.
+    if (!_profiles.recommendationReady()) { _lab_auto.clearUnsupported(); return; }
+    if (!labScannerProfilesSupported()) {
+      if (_lab_session_ldo && !labScannerStop()) return;
+      _lab_resume_pending=false;
+      if (!_lab_auto.blocked()) _lab_auto.block(mesh::w12pram::AutoPolicy::Reason::Unsupported);
+      return;
+    }
+    // Effective automatic preambles can change without a profile generation
+    // change. Clear only this eligibility result; never clear a failed reset.
+    _lab_auto.clearUnsupported();
+    if (!_lab_auto.enabled() || _lab_auto.blocked()) return;
     if (mesh::w12pram::mayResume(_lab_resume_pending,_lab_sleeping,rx_allowed,state==3,radio_owned,
             _profile_repair_required,(int32_t)(millis()-_lab_resume_at)>=0)) {
       const uint32_t recoveries=_lab_recoveries;
