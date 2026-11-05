@@ -48,6 +48,7 @@ with tempfile.TemporaryDirectory() as d:
     run([sys.executable,str(lab/'test_agc_deferral.py')])
     run([sys.executable,str(lab/'test_opt_in.py')])
     run([sys.executable,str(lab/'test_x1_opt_in.py')])
+    run([sys.executable,str(root/'test/test_lr2021_safe_mode.py')])
     run([sys.executable,str(lab/'test_airtime_no_spi.py')])
     run([sys.executable,str(lab/'test_airtime_transition.py')])
     run([sys.executable,str(lab/'test_rx_packet_params.py')])

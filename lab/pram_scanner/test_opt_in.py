@@ -20,7 +20,7 @@ for path in configs:
             section = stripped[1:-1]
         if flag.search(line):
             assert (path == allowed_file and section == 'meshnology_w12_pram') or (
-                path == experimental_file and section == 'MeshTracker_X1_pram_lab'
+                path == experimental_file and section == 'MeshTracker_X1_pram'
             ), (path, number, section)
 
 config = configparser.ConfigParser(interpolation=None)

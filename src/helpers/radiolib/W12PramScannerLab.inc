@@ -418,7 +418,7 @@ public:
       _lab_auto.setEnabled(false);
       return true;
     }
-    if (_lab_uncertain) return false;
+    if (_lab_uncertain || mesh::lr2021::safeMode()) return false;
     _lab_auto.setEnabled(true);
     return true;
   }
@@ -428,6 +428,7 @@ public:
     _lab_seq_tx_lease=false; _lab_seq_tx_prepared=false;
 #endif
     const uint32_t started=micros();
+    if (mesh::lr2021::safeMode()) return false;
 #if MESH_ENABLE_RADIO_DIRECTION
     if (!mesh::radioDirection::radioReceiveAllowed()) return false;
 #endif
@@ -667,7 +668,7 @@ public:
 #endif
     // Explicit user request only; no CAD or RF transmit in this measurement.
     _lab_bench_complete=false;
-    if (!_lab_scan_active || !_profiles.enabled() || _profiles.generation[0]!=_lab_snap[0].generation
+    if (mesh::lr2021::safeMode() || !_lab_scan_active || !_profiles.enabled() || _profiles.generation[0]!=_lab_snap[0].generation
         || _profiles.generation[1]!=_lab_snap[1].generation || hasPendingRadioInterrupt() || isChipBusy()) return false;
     if (labPauseScanner()!=mesh::RadioParamApplyResult::APPLIED) return false;
     _lab_resume_pending=true; _lab_resume_at=millis()+600;
@@ -755,6 +756,10 @@ public:
   }
   void labServiceAutomatic(bool rx_allowed, bool radio_owned) {
     if (_lab_uncertain) return; // never discard an ambiguous FIFO
+    if (mesh::lr2021::safeMode()) {
+      if (_lab_scan_active || _lab_session_ldo || _lab_resume_pending) labScannerStop();
+      return;
+    }
     _lab_auto.observe(_profiles.generation[0],_profiles.generation[1]);
     if (!_profiles.enabled()) {
       // An off second profile must not leave the radio in LDO.

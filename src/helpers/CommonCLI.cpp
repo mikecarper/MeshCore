@@ -25,6 +25,7 @@
 #include "PowerSavingDiagnostics.h"
 #if defined(MESH_W12_PRAM_EXPERIMENT) && MESH_W12_PRAM_EXPERIMENT
 #include "radiolib/W12PramSleepDiag.h"
+#include "radiolib/LR2021SafeMode.h"
 #endif
 #include "HilStartupTrace.h"
 #include "FilePresence.h"
@@ -3746,7 +3747,7 @@ void CommonCLI::handleCommand(uint32_t sender_timestamp, char* command, char* re
 #if defined(MESH_W12_PRAM_EXPERIMENT) && MESH_W12_PRAM_EXPERIMENT
     if (radio_driver.labScannerUncertain() && strcmp(command,"get pramscan") && strcmp(command,"get pramscan.last")
         && strcmp(command,"get pramscan.timing") && strcmp(command,"get pramscan.bench") && strcmp(command,"get pramscan.diag") && strcmp(command,"get pramscan.sleep") && strcmp(command,"get pramscan.recovery")
-        && strcmp(command,"set pramscan recover") && strcmp(command,"ver") && strcmp(command,"reboot")) {
+        && strcmp(command,"set pramscan recover") && strcmp(command,"get radio.safe") && strcmp(command,"set radio.safe on") && strcmp(command,"ver") && strcmp(command,"reboot")) {
       snprintf(reply,160,"ERR - ambiguous RX FIFO retained; use get pramscan or set pramscan recover"); return;
     }
 #endif
@@ -3914,6 +3915,7 @@ void CommonCLI::handleCommand(uint32_t sender_timestamp, char* command, char* re
 #endif
     }
 #endif
+    if (mesh::lr2021::handleSafeModeCommand(command, reply, 160)) return;
     if (strcmp(command,"get pramscan") == 0) { radio_driver.labScannerStatus(reply,160); return; }
     if (strcmp(command,"get pramscan.recovery") == 0) { radio_driver.labScannerRecoveryDiag(reply,160); return; }
 #if defined(ESP32_PLATFORM)
@@ -3932,7 +3934,7 @@ void CommonCLI::handleCommand(uint32_t sender_timestamp, char* command, char* re
     if (strcmp(command,"get pramscan.timing") == 0) { radio_driver.labScannerTiming(reply,160); return; }
     if (strcmp(command,"get pramscan.bench") == 0) { radio_driver.labScannerBenchStatus(reply,160); return; }
     if (strcmp(command,"run pramscan.bench") == 0) { snprintf(reply,160,radio_driver.labScannerBench()?"OK - no-RF config bench complete; use get pramscan.bench":"ERR - scanner busy or bench failed"); return; }
-    if (strcmp(command,"set pramscan on") == 0) { snprintf(reply,160,radio_driver.labScannerSetAutomatic(true)?"OK - PRAM auto on; check get pramscan":"ERR - ambiguous FIFO; recover first"); return; }
+    if (strcmp(command,"set pramscan on") == 0) { snprintf(reply,160,mesh::lr2021::safeMode()?"ERR - radio.safe on; set radio.safe off first":radio_driver.labScannerSetAutomatic(true)?"OK - PRAM auto on; check get pramscan":"ERR - ambiguous FIFO; recover first"); return; }
     if (strcmp(command,"set pramscan off") == 0) {
 #if defined(MESH_LR2021_PRAM_MANUAL_START) && MESH_LR2021_PRAM_MANUAL_START
       const char* stopped = "OK - PRAM auto off; radio restored";
