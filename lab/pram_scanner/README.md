@@ -53,3 +53,5 @@ The lab defaults to one-symbol preamble-only CAD. Build flags
 the CAD length and preamble-only or any-symbol detection. SF5/6 peak values
 are unverified; no RF delivery rate or 32-symbol coverage is guaranteed. The
 plan rejects profiles outside the existing supported band/BW and 20 MHz span.
+The generic received-airtime counter still estimates from the configured
+profile SF, not the individual slot's detected SF.
