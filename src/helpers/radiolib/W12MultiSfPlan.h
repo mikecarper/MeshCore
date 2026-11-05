@@ -21,6 +21,41 @@ struct Plan {
   uint8_t side_count = 0;
 };
 
+struct ActivityBounds {
+  uint32_t preamble_ms = 0;
+  uint32_t payload_ms = 0;
+};
+
+// Bound the LR2021 activity watchdog for the slowest enabled receive SF.
+// Explicit header and the longest coding rate are assumed. The caller chooses
+// the sender preamble budget; longer unconfigured preambles remain unqualified.
+inline bool activityBounds(const Plan& plan, float bandwidth_khz,
+                           uint16_t sender_preamble_symbols, uint16_t max_payload,
+                           ActivityBounds& out) {
+  out = {};
+  const uint8_t slowest = plan.rx_primary + plan.side_count;
+  if (slowest < 5 || slowest > 12 || !isfinite(bandwidth_khz)
+      || bandwidth_khz <= 0 || bandwidth_khz > 1000 || !sender_preamble_symbols)
+    return false;
+  // Nominal bandwidths such as 83.34 kHz are rounded. Bias low so rounding
+  // cannot shorten a deadline for the actual radio bandwidth.
+  const uint32_t bw_hz = static_cast<uint32_t>(bandwidth_khz * 999.0f);
+  if (!bw_hz) return false;
+  const uint64_t symbol_us = ((uint64_t(1) << slowest) * 1000000u + bw_hz - 1) / bw_hz;
+  const uint32_t denominator = 4u * (slowest - (symbol_us >= 16000 ? 2u : 0u));
+  const uint32_t payload_numerator = 8u * max_payload + 64u;
+  const uint32_t blocks = (payload_numerator + denominator - 1) / denominator;
+  // Extra symbols cover framing, rounding and the receive-side IRQ guard.
+  const uint64_t preamble_us = (uint64_t(sender_preamble_symbols) + 20u) * symbol_us;
+  const uint64_t payload_us = (16u + 8u * blocks) * symbol_us;
+  const uint64_t preamble_ms = (preamble_us + 999u) / 1000u;
+  const uint64_t payload_ms = (payload_us + 999u) / 1000u;
+  if (preamble_ms > UINT32_MAX || payload_ms > UINT32_MAX) return false;
+  out.preamble_ms = static_cast<uint32_t>(preamble_ms);
+  out.payload_ms = static_cast<uint32_t>(payload_ms);
+  return true;
+}
+
 inline Admission makePlan(bool supported, uint8_t lower, uint8_t upper,
                           uint8_t tx_sf, float bandwidth_khz,
                           bool dual_radio, bool rx_power_saving,

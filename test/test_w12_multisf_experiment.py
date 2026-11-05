@@ -27,6 +27,12 @@ class W12MultiSfExperiment(unittest.TestCase):
         self.assertIn("restoreAfterDeepInit()", send)
         receive = method(source, "int startReceiveMode()")
         self.assertIn("applyMultiSfReceiveTuple(plan)", receive)
+        tuple_apply = method(source, "bool applyMultiSfReceiveTuple(")
+        self.assertIn("activityBounds(plan, _cur_bw, assumed_preamble", tuple_apply)
+        self.assertIn("radio->setPreambleMillis(bounds.preamble_ms)", tuple_apply)
+        self.assertIn("radio->setMaxPayloadMillis(bounds.payload_ms)", tuple_apply)
+        enable = method(source, "mesh::RadioParamApplyResult trySetW12MultiSf(")
+        self.assertIn("radio->setPreambleMillis(normal_bounds.preambleMillis)", enable)
         airtime = method((ROOT / "src/helpers/radiolib/W12PramScannerLab.inc").read_text(),
                          "uint32_t getEstAirtimeFor(")
         self.assertIn("RadioLibWrapper::getProfileAirtime(0,len,_cur_cr)", airtime)
@@ -159,15 +165,19 @@ struct Profiles {
   bool dual = false;
   bool enabled() const { return dual; }
 };
+struct PacketMillis { uint32_t preambleMillis, payloadMillis; };
 struct CustomLR2021 {
   int fail = 0, writes = 0, sf = 7;
   int setSideDetector(void*, int) { ++writes; return fail == 1 ? -1 : 0; }
   int setSpreadingFactor(int n) { ++writes; if (fail == 2) return -1; sf = n; return 0; }
+  void setPreambleMillis(uint32_t) {}
+  void setMaxPayloadMillis(uint32_t) {}
 };
 struct Test {
   bool _params_valid = true, _rx_ps_enabled = false, _multi_sf_enabled = false;
   bool _profile_refresh_required = false, _profile_repair_required = false;
   uint8_t _multi_sf_lower = 5, _multi_sf_upper = 8, _cur_sf = 7, _numSideDet = 0;
+  uint8_t _cur_cr = 5;
   float _cur_bw = 62.5;
   int admission = 1, resumes = 0; bool restored = true, receiving = true;
   Profiles _profiles; CustomLR2021 chip, *_radio = &chip;
@@ -176,6 +186,8 @@ struct Test {
   void endReconfigure(bool b) { if (b) ++resumes; }
   bool isInRecvMode() { return receiving; }
   bool restoreAfterDeepInit() { return restored; }
+  uint16_t currentPreambleLength() { return 32; }
+  PacketMillis calcMaxPacketMillis(uint8_t, float, uint8_t, uint16_t) { return {1, 2}; }
   ENABLE_METHOD
 };
 int main() {

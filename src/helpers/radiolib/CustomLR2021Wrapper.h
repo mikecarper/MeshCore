@@ -41,11 +41,20 @@ class CustomLR2021Wrapper : public RadioLibWrapper {
         _cur_sf, _cur_bw, _profiles.enabled(), _rx_ps_enabled, _numSideDet != 0, plan);
   }
   bool applyMultiSfReceiveTuple(const mesh::w12multisf::Plan& plan) {
+    mesh::w12multisf::ActivityBounds bounds;
+    const uint16_t configured_preamble = currentPreambleLength();
+    const uint16_t assumed_preamble = configured_preamble > 512 ? configured_preamble : 512;
+    if (!mesh::w12multisf::activityBounds(plan, _cur_bw, assumed_preamble,
+                                           MAX_TRANS_UNIT, bounds)) return false;
     LR2021LoRaSideDetector_t cfg[mesh::lr2021::MAX_SIDE_DETECTORS] = {};
     buildSideDetectorConfig(plan.side_sf, plan.side_count, _cur_bw, cfg);
     auto* radio = static_cast<CustomLR2021*>(_radio);
-    return radio->setSpreadingFactor(plan.rx_primary) == RADIOLIB_ERR_NONE
-        && radio->setSideDetector(plan.side_count ? cfg : nullptr, plan.side_count) == RADIOLIB_ERR_NONE;
+    if (radio->setSpreadingFactor(plan.rx_primary) != RADIOLIB_ERR_NONE
+        || radio->setSideDetector(plan.side_count ? cfg : nullptr, plan.side_count) != RADIOLIB_ERR_NONE)
+      return false;
+    radio->setPreambleMillis(bounds.preamble_ms);
+    radio->setMaxPayloadMillis(bounds.payload_ms);
+    return true;
   }
 #endif
 #if defined(MESH_W12_PRAM_EXPERIMENT) && MESH_W12_PRAM_EXPERIMENT
@@ -171,6 +180,12 @@ public:
     if (normal) {
       _multi_sf_enabled = enabled;
       if (enabled) { _multi_sf_lower = lower; _multi_sf_upper = upper; }
+      else {
+        const PacketMillis normal_bounds = calcMaxPacketMillis(_cur_sf, _cur_bw, _cur_cr,
+                                                               currentPreambleLength());
+        radio->setPreambleMillis(normal_bounds.preambleMillis);
+        radio->setMaxPayloadMillis(normal_bounds.payloadMillis);
+      }
       invalidateScanTuple();
       endReconfigure(resume);
       if (!resume || isInRecvMode()) return Result::APPLIED;
