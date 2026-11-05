@@ -157,7 +157,7 @@ public:
   uint32_t pending_self_advert_delay = 0;
   bool outbound = false, apply_success = true, restore_success = true;
   int saves = 0, applies = 0, restores = 0, local_adverts = 0, flood_adverts = 0;
-  int radio2_floods = 0, primary_floods = 0;
+  int radio2_floods = 0, primary_floods = 0, auto_floods = 0;
   int default_scope = 0;
   mesh::Packet packet;
   MyMesh() {
@@ -194,6 +194,7 @@ public:
     ++flood_adverts;
     if (p->tx_radio == mesh::RADIO_TX_SECONDARY) { assert(p->radio_profile == 1 && p->radio_local); ++radio2_floods; }
     if (p->tx_radio == mesh::RADIO_TX_PRIMARY) { assert(p->radio_profile == 0); ++primary_floods; }
+    if (p->tx_radio == mesh::RADIO_TX_AUTO) { assert(p->radio_profile == 0); ++auto_floods; }
   }
   void sendZeroHop(mesh::Packet*) { ++local_adverts; }
   void sendSelfAdvertisementNow(uint32_t, bool) {}
@@ -598,6 +599,21 @@ int main() {
     assert(m.radio2_floods == 0 && m.primary_floods == 1);
     m.advance(6 * HOUR); m.servicePostMeshLoop();
     assert(m.radio2_floods == 1 && m.primary_floods == 1);
+  }
+  { // Disabled staggered adverts retain the normal cross/fan-out policy.
+    MyMesh m;
+    m._prefs.rx_watchdog_enabled = false;
+    m._prefs.advert_interval = 0; m.updateAdvertTimer();
+    m._prefs.flood_advert_interval = 12;
+    m._prefs.radio2_flood_advert_disabled = 0xA5;
+    m.radio.config.secondary.mode = mesh::RadioProfileMode::RxTx;
+    m.radio.config.cross = mesh::RadioCrossMode::On;
+    m.updateFloodAdvertTimer();
+    m.advance(6 * HOUR); m.servicePostMeshLoop();
+    assert(m.flood_adverts == 0);
+    m.advance(6 * HOUR); m.servicePostMeshLoop();
+    assert(m.flood_adverts == 1 && m.auto_floods == 1);
+    assert(m.primary_floods == 0 && m.radio2_floods == 0);
   }
   { // RX-only secondary and disabled primary flood never transmit on radio2.
     MyMesh m;

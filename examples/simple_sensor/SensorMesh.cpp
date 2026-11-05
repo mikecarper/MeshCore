@@ -1712,7 +1712,7 @@ void SensorMesh::loop() {
     mesh::Packet* pkt = createSelfAdvert();
     unsigned long delay_millis = 0;
     if (pkt) {
-      pkt->tx_radio = mesh::RADIO_TX_PRIMARY;
+      if (!_prefs.radio2_flood_advert_disabled) pkt->tx_radio = mesh::RADIO_TX_PRIMARY;
       sendFloodScoped(default_scope, pkt, delay_millis, _prefs.path_hash_mode + 1);
     }
 

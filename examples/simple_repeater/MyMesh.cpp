@@ -14147,7 +14147,7 @@ void __attribute__((noinline)) MyMesh::servicePostMeshLoop() {
       // A separately scheduled radio2 advert replaces automatic cross-profile
       // fan-out for this periodic packet; manual adverts retain their policy.
       if (secondary_flood_due) mesh::targetRadio2FloodAdvert(*pkt);
-      else pkt->tx_radio = mesh::RADIO_TX_PRIMARY;
+      else if (!_prefs.radio2_flood_advert_disabled) pkt->tx_radio = mesh::RADIO_TX_PRIMARY;
       sendFloodScoped(default_scope, pkt, 0, _prefs.path_hash_mode + 1);
     }
   }

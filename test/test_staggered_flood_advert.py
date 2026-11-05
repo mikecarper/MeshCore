@@ -87,7 +87,7 @@ int main(){
  off._prefs.radio2_flood_advert_disabled=0xA5;off.updateFloodAdvertTimer();
  now_ms=6*hour;off.periodic();assert(off.sends.empty());
  now_ms=12*hour;off.periodic();assert(off.sends.size()==1);
- assert(off.sends[0].tx_radio==mesh::RADIO_TX_PRIMARY);
+ assert(off.sends[0].tx_radio==mesh::RADIO_TX_AUTO); // preserve original cross policy
  now_ms=12*hour;node.periodic();assert(node.sends.size()==2);
  assert(node.sends.back().radio_profile==0&&node.sends.back().tx_radio==mesh::RADIO_TX_PRIMARY);
  node.radio.value.cross=mesh::RadioCrossMode::On;
