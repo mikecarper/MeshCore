@@ -133,6 +133,15 @@ class CustomLR2021Wrapper : public RadioLibWrapper {
 public:
 #if defined(MESH_W12_MULTISF_EXPERIMENT) && MESH_W12_MULTISF_EXPERIMENT
   bool w12MultiSfEnabled() const override { return _multi_sf_enabled; }
+  bool validateProfile(const mesh::RadioProfileParams& profile) const override {
+    if (!RadioLibWrapper::validateProfile(profile)) return false;
+    if (!_multi_sf_enabled) return true;
+    mesh::w12multisf::Plan plan;
+    return profile.protocol == mesh::RadioProfileProtocol::MeshCore
+        && mesh::w12multisf::makePlan(true, _multi_sf_lower, _multi_sf_upper,
+             profile.sf, profile.bw, _profiles.enabled(), _rx_ps_enabled,
+             _numSideDet != 0, plan) == mesh::w12multisf::Admission::Ready;
+  }
   void formatW12MultiSf(char* out, size_t cap) const override {
     mesh::w12multisf::Plan plan;
     const auto admitted = multiSfPlan(plan);
