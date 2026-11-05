@@ -1,11 +1,10 @@
 #include "StaticPoolPacketManager.h"
 
-#if defined(ESP32_PLATFORM) && defined(MESHNOLOGY_W12) && MESHNOLOGY_W12 && \
-    defined(MESH_W12_PRAM_EXPERIMENT) && MESH_W12_PRAM_EXPERIMENT
-// The W12 scanner's 32-packet runtime reservation assumes this ceiling.
+#if defined(MESH_W12_PRAM_EXPERIMENT) && MESH_W12_PRAM_EXPERIMENT
+// The scanner packet pool runtime reservations assume this ceiling.
 // Keep it linked to the real packet type as local metadata evolves.
 static_assert(sizeof(mesh::Packet) <= 328,
-              "Update the W12 scanner packet pool RAM budget");
+              "Update the LR2021 scanner packet pool RAM budget");
 #endif
 
 PacketQueue::PacketQueue(int max_entries) {

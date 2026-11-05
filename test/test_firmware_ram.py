@@ -69,27 +69,32 @@ def esp_fixture(path, modern=False, fragmented=False, internal_length=0x10000):
 
 
 class FirmwareRamTest(unittest.TestCase):
-    def test_w12_scanner_pool_reservation_is_role_and_feature_scoped(self):
-        flags = {"MESHNOLOGY_W12": 1, "MESH_W12_PRAM_EXPERIMENT": 1}
-        for role in ("repeater", "repeater_observer_mqtt", "room_server", "sensor"):
-            target = "meshnology_w12_" + role
-            with self.subTest(role=role):
-                active = ram.requirements("ESP32_PLATFORM", flags, target)
-                legacy = ram.requirements("ESP32_PLATFORM", {
-                    **flags, "MESH_W12_PRAM_EXPERIMENT": 0,
-                }, target)
-                self.assertEqual(active["components"]["radio_packet_pool"], 12800)
-                self.assertEqual(legacy["components"]["radio_packet_pool"], 10240)
-                self.assertEqual(active["required_heap_bytes"] - legacy["required_heap_bytes"], 2560)
-                self.assertEqual(active["components"]["allocation_and_transient_margin"],
-                                 legacy["components"]["allocation_and_transient_margin"])
+    def test_scanner_pool_reservation_is_role_and_feature_scoped(self):
+        flags = {"MESH_W12_PRAM_EXPERIMENT": 1}
+        for platform, board in (("ESP32_PLATFORM", "meshnology_w12"),
+                                ("NRF52_PLATFORM", "MeshTracker_X1")):
+            for role in ("repeater", "repeater_observer_mqtt", "room_server", "sensor"):
+                target = board + "_" + role
+                with self.subTest(platform=platform, role=role):
+                    active = ram.requirements(platform, flags, target)
+                    legacy = ram.requirements(platform, {
+                        **flags, "MESH_W12_PRAM_EXPERIMENT": 0,
+                    }, target)
+                    self.assertEqual(active["components"]["radio_packet_pool"], 12800)
+                    self.assertEqual(legacy["components"]["radio_packet_pool"], 10240)
+                    self.assertEqual(active["required_heap_bytes"] - legacy["required_heap_bytes"], 2560)
+                    self.assertEqual(active["components"]["allocation_and_transient_margin"],
+                                     legacy["components"]["allocation_and_transient_margin"])
         for platform, flags, target, expected in (
-            ("ESP32_PLATFORM", {"MESH_W12_PRAM_EXPERIMENT": 1}, "other_repeater", 10240),
+            ("ESP32_PLATFORM", {"MESH_W12_PRAM_EXPERIMENT": 1}, "other_repeater", 12800),
             ("ESP32_PLATFORM", {"MESHNOLOGY_W12": 1}, "meshnology_w12_repeater", 10240),
             ("NRF52_PLATFORM", {"MESHNOLOGY_W12": 1, "MESH_W12_PRAM_EXPERIMENT": 1},
-             "meshnology_w12_repeater", 10240),
+             "meshnology_w12_repeater", 12800),
             ("ESP32_PLATFORM", {"MESHNOLOGY_W12": 1, "MESH_W12_PRAM_EXPERIMENT": 1},
-             "meshnology_w12_companion_radio_full", 5120),
+             "meshnology_w12_companion_radio_full", 6400),
+            ("NRF52_PLATFORM", {"MESH_W12_PRAM_EXPERIMENT": 1},
+             "MeshTracker_X1_companion_radio_ble", 6400),
+            ("NRF52_PLATFORM", {}, "MeshTracker_X1_companion_radio_ble", 5120),
         ):
             with self.subTest(platform=platform, target=target):
                 self.assertEqual(ram.requirements(platform, flags, target)["components"]
@@ -111,6 +116,9 @@ int main() { return 0; }
                             "-DMESH_W12_PRAM_EXPERIMENT=1", "-DMESH_ENABLE_LR2021_AUTO_XTRIM=1",
                             "-DWITH_UDP_BRIDGE=1", str(cpp)], check=True, timeout=30)
         self.assertLessEqual(32 * 328 + 4 * 32 * (4 + 1 + 4) + 32 * 8 + 124 + 46 * 16, 12800)
+        self.assertLessEqual(16 * 328 + 3 * 16 * (4 + 1 + 4) + 124 + 26 * 16, 6400)
+        self.assertIn("new StaticPoolPacketManager(16)",
+                      (ROOT / "examples/companion_radio/MyMesh.cpp").read_text())
         for path, constructor in (
             ("examples/simple_repeater/MyMesh.cpp", "createObserverPacketManager(32)"),
             ("examples/simple_room_server/MyMesh.cpp", "createObserverPacketManager(32)"),
@@ -149,8 +157,10 @@ int main() { return 0; }
                                        *["-D" + value for value in defines], str(probe)],
                                       text=True, capture_output=True, timeout=30)
             self.assertNotEqual(compile_probe(flags).returncode, 0)
-            for other in (flags[:-1], [flags[0], flags[2]], flags[1:],
-                          [flags[0], "MESHNOLOGY_W12=0", flags[2]]):
+            self.assertNotEqual(compile_probe(["NRF52_PLATFORM=1", flags[2]]).returncode, 0)
+            self.assertNotEqual(compile_probe([flags[2]]).returncode, 0)
+            for other in (flags[:-1], ["NRF52_PLATFORM=1"],
+                          [flags[0], "MESH_W12_PRAM_EXPERIMENT=0"]):
                 with self.subTest(defines=other):
                     self.assertEqual(compile_probe(other).returncode, 0)
             probe.write_text('#include <Packet.h>\n' + guard + '\n')
