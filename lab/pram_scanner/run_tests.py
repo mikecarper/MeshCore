@@ -25,6 +25,8 @@ with tempfile.TemporaryDirectory() as d:
     run(['python3',str(lab/'test_handoff.py')])
     run(['python3',str(lab/'test_dispatcher.py')])
     run(['python3',str(lab/'test_rxps_driver.py')])
+    run(['python3',str(lab/'test_rxps_gate.py')])
+    run(['python3',str(lab/'test_logical_frequency_snapshot.py')])
     run(['python3',str(lab/'test_idle_admission.py')])
     run(['python3',str(lab/'test_autonomous_sleep.py')])
     run(['python3',str(lab/'test_agc_deferral.py')])

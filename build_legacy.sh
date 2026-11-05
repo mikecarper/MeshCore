@@ -3924,6 +3924,14 @@ apply_esp32_full_size_profile() {
     return 0
   fi
 
+  case "${env_name,,}" in
+    meshnology_w12_repeater|meshnology_w12_repeater_bridge_espnow|meshnology_w12_repeater_observer_mqtt)
+      # The W12 has onboard PSRAM. Keep complete repeater tables in verified
+      # external memory and preserve internal headroom in the Full image.
+      export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -DMESH_REPEATER_REQUIRE_PSRAM=1"
+      ;;
+  esac
+
   # The FULL artifact uses the board's dual-OTA slots, so restore features that
   # target or legacy-slot profiles disabled only to save application space.
   append_platformio_build_unflags "-DWEBCONFIG_DISABLED=1"

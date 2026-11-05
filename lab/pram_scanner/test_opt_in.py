@@ -1,31 +1,40 @@
 #!/usr/bin/env python3
-"""Keep the experimental flag out of all checked-in PlatformIO environments."""
+"""W12 infrastructure includes the scanner, which stays off until requested."""
 from pathlib import Path
 import configparser
 import re
-import shlex
 
 root = Path(__file__).resolve().parents[2]
 configs = [root / 'platformio.ini', *sorted((root / 'variants').rglob('*.ini')),
            *sorted(root.glob('platformio.*.ini'))]
-define = re.compile(r'(?:^|\s)-D\s*MESH_W12_PRAM_EXPERIMENT(?:\s|=|$)')
+flag = re.compile(r'(?:^|\s)-D\s*MESH_W12_PRAM_EXPERIMENT(?:\s|=|$)')
+allowed_file = root / 'variants/meshnology_w12/platformio.ini'
 for path in configs:
+    section = ''
     for number, line in enumerate(path.read_text(encoding='utf-8').splitlines(), 1):
-        if line.lstrip().startswith((';', '#')):
+        stripped = line.strip()
+        if stripped.startswith((';', '#')):
             continue
-        assert not define.search(line), f'experimental flag enabled in {path}:{number}'
+        if stripped.startswith('[') and stripped.endswith(']'):
+            section = stripped[1:-1]
+        if flag.search(line):
+            assert path == allowed_file and section == 'meshnology_w12_pram', (path, number, section)
 
 config = configparser.ConfigParser(interpolation=None)
-config.read(root / 'variants/meshnology_w12/platformio.ini', encoding='utf-8')
-flags = config['env:meshnology_w12_repeater_observer_mqtt']['build_flags']
-assert '${meshnology_w12.build_flags}' in flags and '${meshnology_w12_auto_trim.build_flags}' in flags
-assert not define.search(flags)
-readme = (root / 'lab/pram_scanner/README.md').read_text(encoding='utf-8')
-commands = [line.strip() for line in readme.splitlines()
-            if line.strip().startswith('PLATFORMIO_BUILD_FLAGS=')]
-assert len(commands) == 1
-words = shlex.split(commands[0])
-assert words[0].startswith('PLATFORMIO_BUILD_FLAGS=')
-assert '-DMESH_W12_PRAM_EXPERIMENT=1' in words[0].split('=', 1)[1].split()
-assert 'meshnology_w12_repeater_observer_mqtt' in words and '--full-exact' in words
-print('PASS W12 PRAM experiment requires an explicit build flag')
+config.read(allowed_file, encoding='utf-8')
+assert flag.search(config['meshnology_w12_pram']['build_flags'])
+roles = {'meshnology_w12_repeater', 'meshnology_w12_repeater_bridge_espnow',
+         'meshnology_w12_repeater_observer_mqtt', 'meshnology_w12_room_server',
+         'meshnology_w12_sensor'}
+for section in config.sections():
+    if not section.startswith('env:meshnology_w12_'):
+        continue
+    enabled = '${meshnology_w12_pram.build_flags}' in config[section].get('build_flags', '')
+    assert enabled == (section[4:] in roles), (section, enabled)
+
+source = (root / 'src/helpers/radiolib/W12PramScannerLab.inc').read_text(encoding='utf-8')
+assert 'bool _lab_scan_active = false;' in source
+assert 'bool _lab_resume_pending = false;' in source
+readme = (root / 'docs/radio_profiles.md').read_text(encoding='utf-8')
+assert 'set pramscan on' in readme and 'set pramscan off' in readme
+print('PASS W12 infrastructure scanner availability and runtime-off default')

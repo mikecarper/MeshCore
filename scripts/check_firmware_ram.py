@@ -381,8 +381,22 @@ def requirements(platform, defines, target):
         # headroom within 2 KiB. Socket/WiFi objects retain their existing
         # network allowance. This never replaces the transient margin.
         parts["host_kiss_codec"] = 2048
-    # Packet bytes plus all three queue tables and allocation overhead.
-    parts["radio_packet_pool"] = 5120 if companion else 10240
+    # Packet bytes plus queue tables and allocation overhead. The W12 PRAM
+    # scanner retains extra receive metadata per packet. Its infrastructure
+    # roles allocate 32 packets; the MQTT observer also allocates a fourth
+    # queue and a 32-entry age table. Budget the larger case for every W12
+    # scanner role: 32 * 328-byte Packet bound + 4 * 32 * (4+1+4) queue
+    # bytes + 32 * 8 age bytes + 124-byte manager + 46 * 16 allocation
+    # overhead = 12,764 bytes, rounded up. This does not use transient margin
+    # or assume packet allocations go to PSRAM.
+    w12_scanner_infrastructure = (
+        platform == "ESP32_PLATFORM"
+        and integer(defines, "MESHNOLOGY_W12", 0) != 0
+        and integer(defines, "MESH_W12_PRAM_EXPERIMENT", 0) != 0
+        and not companion
+        and (repeater or bool(re.search(r"room_server|sensor", target, re.I)))
+    )
+    parts["radio_packet_pool"] = 12800 if w12_scanner_infrastructure else (5120 if companion else 10240)
     # These tables moved out of .bss, so linker heap bounds now include their
     # space. Count it as startup allocation instead; C++ assertions bind the
     # per-entry bounds to the production structures.

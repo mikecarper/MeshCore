@@ -69,6 +69,98 @@ def esp_fixture(path, modern=False, fragmented=False, internal_length=0x10000):
 
 
 class FirmwareRamTest(unittest.TestCase):
+    def test_w12_scanner_pool_reservation_is_role_and_feature_scoped(self):
+        flags = {"MESHNOLOGY_W12": 1, "MESH_W12_PRAM_EXPERIMENT": 1}
+        for role in ("repeater", "repeater_observer_mqtt", "room_server", "sensor"):
+            target = "meshnology_w12_" + role
+            with self.subTest(role=role):
+                active = ram.requirements("ESP32_PLATFORM", flags, target)
+                legacy = ram.requirements("ESP32_PLATFORM", {
+                    **flags, "MESH_W12_PRAM_EXPERIMENT": 0,
+                }, target)
+                self.assertEqual(active["components"]["radio_packet_pool"], 12800)
+                self.assertEqual(legacy["components"]["radio_packet_pool"], 10240)
+                self.assertEqual(active["required_heap_bytes"] - legacy["required_heap_bytes"], 2560)
+                self.assertEqual(active["components"]["allocation_and_transient_margin"],
+                                 legacy["components"]["allocation_and_transient_margin"])
+        for platform, flags, target, expected in (
+            ("ESP32_PLATFORM", {"MESH_W12_PRAM_EXPERIMENT": 1}, "other_repeater", 10240),
+            ("ESP32_PLATFORM", {"MESHNOLOGY_W12": 1}, "meshnology_w12_repeater", 10240),
+            ("NRF52_PLATFORM", {"MESHNOLOGY_W12": 1, "MESH_W12_PRAM_EXPERIMENT": 1},
+             "meshnology_w12_repeater", 10240),
+            ("ESP32_PLATFORM", {"MESHNOLOGY_W12": 1, "MESH_W12_PRAM_EXPERIMENT": 1},
+             "meshnology_w12_companion_radio_full", 5120),
+        ):
+            with self.subTest(platform=platform, target=target):
+                self.assertEqual(ram.requirements(platform, flags, target)["components"]
+                                 ["radio_packet_pool"], expected)
+
+    def test_w12_scanner_pool_bounds_real_packet_and_psram_fallbacks(self):
+        # Packet contains only fixed-width fields and is the same size on the
+        # tested host and ESP32-S3; its ceiling leaves 16 bytes per allocation
+        # for all 46 allocations in the worst-case observer pool.
+        program = r'''
+#include <Packet.h>
+static_assert(sizeof(mesh::Packet) <= 328, "Update the W12 packet pool budget");
+int main() { return 0; }
+'''
+        with tempfile.TemporaryDirectory() as temp:
+            cpp = Path(temp) / "packet.cpp"
+            cpp.write_text(program)
+            subprocess.run(["g++", "-std=c++17", "-fsyntax-only", "-I", str(ROOT / "src"),
+                            "-DMESH_W12_PRAM_EXPERIMENT=1", "-DMESH_ENABLE_LR2021_AUTO_XTRIM=1",
+                            "-DWITH_UDP_BRIDGE=1", str(cpp)], check=True, timeout=30)
+        self.assertLessEqual(32 * 328 + 4 * 32 * (4 + 1 + 4) + 32 * 8 + 124 + 46 * 16, 12800)
+        for path, constructor in (
+            ("examples/simple_repeater/MyMesh.cpp", "createObserverPacketManager(32)"),
+            ("examples/simple_room_server/MyMesh.cpp", "createObserverPacketManager(32)"),
+            ("examples/simple_sensor/SensorMesh.cpp", "StaticPoolPacketManager(32)"),
+        ):
+            self.assertIn(constructor, (ROOT / path).read_text())
+        flags = {"MESHNOLOGY_W12": 1, "MESH_W12_PRAM_EXPERIMENT": 1,
+                 "MESH_CLIENT_REPEATER_ONLY": 1, "BOARD_HAS_PSRAM": 1,
+                 "CONFIG_IDF_TARGET_ESP32S3": 1, "CONFIG_SPIRAM_USE_MALLOC": 1}
+        target = "meshnology_w12_repeater_observer_mqtt"
+        fallback = ram.requirements("ESP32_PLATFORM", flags, target)
+        required = ram.requirements("ESP32_PLATFORM", {**flags, "MESH_REPEATER_REQUIRE_PSRAM": 1}, target)
+        self.assertEqual(fallback["components"]["radio_packet_pool"], 12800)
+        self.assertEqual(required["components"]["radio_packet_pool"], 12800)
+        for fallback_key, external_key in (("repeater_scope_storage_fallback", "repeater_scope_storage"),
+                                            ("repeater_advert_storage_fallback", "repeater_advert_storage")):
+            self.assertGreater(fallback["components"][fallback_key], 0)
+            self.assertNotIn(fallback_key, required["components"])
+            self.assertEqual(fallback["components"][fallback_key],
+                             required["external_memory"]["components"][external_key])
+        self.assertFalse(required["external_memory"]["internal_fallback"])
+        self.assertTrue(required["external_memory"]["enforced_before_radio_startup"])
+
+    def test_w12_scanner_pool_build_guard_rejects_oversized_packet(self):
+        source = (ROOT / "src/helpers/StaticPoolPacketManager.cpp").read_text()
+        assertion = source.index("static_assert(sizeof(mesh::Packet) <= 328")
+        start = source.rfind("#if", 0, assertion)
+        end = source.index("#endif", assertion) + len("#endif")
+        guard = source[start:end]
+        flags = ["ESP32_PLATFORM=1", "MESHNOLOGY_W12=1", "MESH_W12_PRAM_EXPERIMENT=1"]
+        with tempfile.TemporaryDirectory() as temp:
+            probe = Path(temp) / "packet_guard.cpp"
+            probe.write_text("namespace mesh { struct Packet { char bytes[329]; }; }\n" + guard + "\n")
+            def compile_probe(defines):
+                return subprocess.run(["g++", "-std=c++17", "-fsyntax-only",
+                                       *["-D" + value for value in defines], str(probe)],
+                                      text=True, capture_output=True, timeout=30)
+            self.assertNotEqual(compile_probe(flags).returncode, 0)
+            for other in (flags[:-1], [flags[0], flags[2]], flags[1:],
+                          [flags[0], "MESHNOLOGY_W12=0", flags[2]]):
+                with self.subTest(defines=other):
+                    self.assertEqual(compile_probe(other).returncode, 0)
+            probe.write_text('#include <Packet.h>\n' + guard + '\n')
+            checked = subprocess.run(["g++", "-std=c++17", "-fsyntax-only",
+                                      "-I", str(ROOT / "src"),
+                                      *["-D" + value for value in flags],
+                                      "-DMESH_ENABLE_LR2021_AUTO_XTRIM=1", "-DWITH_UDP_BRIDGE=1",
+                                      str(probe)], text=True, capture_output=True, timeout=30)
+            self.assertEqual(checked.returncode, 0, checked.stderr)
+
     def test_explicit_esp32_contact_cache_adds_reader_allowance(self):
         flags = {"BLE_PIN_CODE": 123456, "DISPLAY_CLASS": "SSD1306Display",
                  "MAX_CONTACTS": 160, "MAX_GROUP_CHANNELS": 8,

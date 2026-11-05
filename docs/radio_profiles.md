@@ -16,6 +16,39 @@ There are **at most two active profiles**. `tempradio` temporarily replaces
 windows, not simultaneous receivers. Receiving or transmitting a packet on one
 profile makes the other unavailable until that packet finishes.
 
+## Experimental W12 on-chip scanner
+
+W12 repeater, room, and sensor firmware includes an experimental scanner that
+switches the two profiles on the LR2021 instead of the ESP32. It is **off at
+boot and after reboot** and is started explicitly:
+
+```text
+set pramscan on
+get pramscan
+set pramscan off
+```
+
+Configure both `radio` and `radio2` first. The scanner requires two enabled
+MeshCore profiles, SF7 or SF8, supported preambles of 8–255 symbols, frequencies
+less than 20 MHz apart, and a supported LR2021 ROM. It cannot run alongside
+single-profile RX power saving. The latter is not enabled in standard W12 builds.
+`get pramscan.last` shows the settings used by
+the last received packet. `set pramscan off` restores normal radio operation.
+The setting is not saved and must be enabled again after reboot.
+
+This feature is experimental: packet loss and TX handoff under load are not yet
+fully qualified. It replaces the vendor radio patch while active, uses the
+radio's LDO regulator, and may defer AGC maintenance for as long as it runs.
+The ESP32 may sleep and wake on a received packet when power saving is enabled
+and the usual USB and wireless sleep conditions permit it; the radio remains
+active while scanning. Do not rely on this mode for operational nodes until
+it has been qualified for your conditions.
+
+Full W12 Repeater images require the board's PSRAM for the full-capacity
+repeater tables. If PSRAM is unavailable, LoRa startup stops and the USB
+console reports the failure; check the hardware or flash Standard firmware.
+Standard builds retain the existing internal-memory fallback.
+
 The second-profile commands are shared by repeater, Companion, room server,
 sensor and standalone terminal-chat firmware with a LoRa radio. ESP-NOW-only
 devices reject LoRa profile commands. KISS is a raw host-controlled modem: it

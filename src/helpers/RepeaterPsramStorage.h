@@ -49,7 +49,13 @@
 #include <stdlib.h>
 #include <type_traits>
 #if MESH_REPEATER_REQUIRE_PSRAM
+// IDF 5 (Arduino 3) exports this predicate here; IDF 4 (Arduino 2)
+// defines the same predicate in the SoC memory-types header instead.
+#if __has_include(<esp_memory_utils.h>)
 #include <esp_memory_utils.h>
+#else
+#include <soc/soc_memory_types.h>
+#endif
 #endif
 
 namespace mesh {

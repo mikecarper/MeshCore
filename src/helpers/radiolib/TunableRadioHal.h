@@ -2,7 +2,8 @@
 
 #include <hal/Arduino/ArduinoHal.h>
 #include "../RadioSwitchTuning.h"
-#if defined(MESH_W12_PRAM_EXPERIMENT) && MESH_W12_PRAM_EXPERIMENT
+#if defined(MESH_W12_PRAM_EXPERIMENT) && MESH_W12_PRAM_EXPERIMENT && \
+    defined(MESH_W12_RXPS_EXPERIMENT) && MESH_W12_RXPS_EXPERIMENT
 #include "W12PramLabTrace.h"
 #endif
 
@@ -16,7 +17,8 @@ class TunableRadioHal : public ArduinoHal {
   const bool _canBuffer;
   uint8_t _spiMHz = 0;
   bool _bufferEnabled;
-#if defined(MESH_W12_PRAM_EXPERIMENT) && MESH_W12_PRAM_EXPERIMENT
+#if defined(MESH_W12_PRAM_EXPERIMENT) && MESH_W12_PRAM_EXPERIMENT && \
+    defined(MESH_W12_RXPS_EXPERIMENT) && MESH_W12_RXPS_EXPERIMENT
   // The Module owns these buffers through spiEndTransaction(), after it has
   // already released NSS. They never escape the current transaction.
   const uint8_t* _trace_out = nullptr;
@@ -40,7 +42,8 @@ class TunableRadioHal : public ArduinoHal {
   bool bufferedTransfersEnabled() const { return _bufferEnabled; }
 
  public:
-#if defined(MESH_W12_PRAM_EXPERIMENT) && MESH_W12_PRAM_EXPERIMENT
+#if defined(MESH_W12_PRAM_EXPERIMENT) && MESH_W12_PRAM_EXPERIMENT && \
+    defined(MESH_W12_RXPS_EXPERIMENT) && MESH_W12_RXPS_EXPERIMENT
   void spiTransfer(uint8_t* out, size_t len, uint8_t* in) override {
     ArduinoHal::spiTransfer(out, len, in);
     _trace_out = out; _trace_in = in; _trace_len = len;

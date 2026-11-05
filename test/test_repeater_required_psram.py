@@ -199,6 +199,37 @@ class RequiredRepeaterPsramTests(unittest.TestCase):
     def test_full_scope_and_advert_capacities_start_once_and_preserve_all_entries(self):
         self.run_scenario("healthy")
 
+    def test_required_psram_header_supports_arduino2_and_3_sdk_layouts(self):
+        # Exercise the real production header with the actual public-header
+        # layouts of IDF 4 and 5. Give both layouts distinct markers so a
+        # successful compile also proves the selected header is correct.
+        program = r"""
+#include <helpers/RepeaterPsramStorage.h>
+#ifndef EXPECTED_MEMORY_HEADER
+#error wrong memory header
+#endif
+struct Table { int value; };
+int main() { mesh::RepeaterPsramStorage<Table> storage; return storage.begin() ? 0 : 1; }
+"""
+        for layout in ('arduino2', 'arduino3'):
+            with self.subTest(layout=layout), tempfile.TemporaryDirectory() as td:
+                work = Path(td)
+                (work / 'sdkconfig.h').write_text(SDK)
+                (work / 'esp_heap_caps.h').write_text(HEAP)
+                (work / 'soc').mkdir()
+                (work / 'soc/soc_memory_types.h').write_text(
+                    ('#define EXPECTED_MEMORY_HEADER 1\n' if layout == 'arduino2'
+                     else '#error IDF5 must prefer esp_memory_utils.h\n') + MEMORY)
+                if layout == 'arduino3':
+                    (work / 'esp_memory_utils.h').write_text('#define EXPECTED_MEMORY_HEADER 1\n' + MEMORY)
+                result = subprocess.run(
+                    self.compiler + ['-std=c++17', '-fsyntax-only', '-I', str(work),
+                                     '-isystem', str(ROOT / 'src'), '-isystem', str(ROOT / 'test/mocks')]
+                    + ['-D' + flag for flag in FLAGS]
+                    + ['-DMESH_REPEATER_REQUIRE_PSRAM=1', '-x', 'c++', '-'],
+                    input=program, capture_output=True, text=True, timeout=20)
+                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
     def test_illegal_required_policy_is_rejected_by_production_header(self):
         probe = self.work / "guard.cpp"
         probe.write_text('#include <helpers/RepeaterPsramStorage.h>\n')

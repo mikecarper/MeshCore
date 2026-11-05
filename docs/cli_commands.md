@@ -17,6 +17,12 @@ battery/MCU readings and charger controls, see [SolarXiao carrier profiles](sola
 
 See [two LoRa profiles](radio_profiles.md) for `radio2`, `tempradio2`, scheduling,
 RX-only mode, cross-transmission policy, and optional radio preambles.
+W12 repeater, room and sensor builds also provide the experimental
+`set pramscan on`, `get pramscan` and `set pramscan off` commands. The scanner
+starts off, does not persist across reboot, and requires two configured LoRa
+profiles and RX power saving off. See
+[W12 on-chip scanner](radio_profiles.md#experimental-w12-on-chip-scanner)
+for hardware limits and reliability considerations.
 
 For a saved MediaMesh second profile, use `set radio2 mediamesh`
 (911.150 MHz, 250 kHz, SF7, CR 4/5, `rxtx`, automatic preamble), or

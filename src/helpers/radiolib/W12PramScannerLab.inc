@@ -15,7 +15,9 @@ private:
     uint32_t mean() const { return n ? uint32_t(sum/n) : 0; }
   } _lab_bench_up, _lab_bench_down, _lab_bench_control;
   uint32_t _lab_resume_at = 0, _lab_tx_pauses = 0, _lab_tx_resumes = 0;
-  mesh::RadioProfileParams _lab_profiles[2] = {};
+  // Only the configured logical frequency is needed after admission; the
+  // immutable hardware tuple and generation are retained in _lab_snap.
+  float _lab_logical_mhz[2] = {};
   mesh::w12pram::Profile _lab_snap[2] = {};
   mesh::w12pram::Profile _lab_last = {};
   float _lab_last_logical_mhz = 0;
@@ -27,8 +29,10 @@ private:
   uint32_t _lab_last_poll = 0, _lab_progress_at = 0, _lab_prev_cads = 0;
   uint32_t _lab_good = 0, _lab_bad = 0, _lab_recoveries = 0;
   uint32_t _lab_good_profile[2] = {};
+#if defined(MESH_W12_RXPS_EXPERIMENT) && MESH_W12_RXPS_EXPERIMENT
   uint32_t _lab_busy_high=0, _lab_busy_low=0, _lab_busy_edges=0;
   bool _lab_busy_seen=false, _lab_busy_previous=false;
+#endif
   uint8_t _lab_rx_preamble[2] = {}; // 0 uses normal profile auto/fixed choice
   mesh::w12pram::Status _lab_status = {};
 
@@ -134,6 +138,7 @@ public:
   uint32_t labAGCMaintenanceRetryMs() const override {
     return (_lab_scan_active || _lab_uncertain) ? 1000U : 0U;
   }
+#if defined(MESH_W12_RXPS_EXPERIMENT) && MESH_W12_RXPS_EXPERIMENT
   void labRxpsBusyStatus(char* out, size_t capacity) const {
     const auto& trace=mesh::w12pram::spiTrace();
     snprintf(out,capacity,"RXPS busy=%lu/%lu edges=%lu armed=%u spi=%lu first=%04X,%04X,%04X,%04X modes=%u,%u,%u,%u,%u,%u bad=%u",
@@ -144,6 +149,7 @@ public:
         unsigned(trace.modes[3]),unsigned(trace.modes[4]),unsigned(trace.modes[5]),
         unsigned(trace.invalid_status));
   }
+#endif
   bool getProfileIdleDelay(uint32_t& delay_ms) const override {
     if (!_lab_scan_active) return RadioLibWrapper::getProfileIdleDelay(delay_ms);
     // The LR2021 owns both visits. The ESP32 may sleep without stopping CAD;
@@ -255,7 +261,7 @@ public:
       const auto& p=_profiles.params(i);
       const uint16_t pre=_lab_rx_preamble[i] ? _lab_rx_preamble[i] : profilePreamble(i);
       if (p.protocol != mesh::RadioProfileProtocol::MeshCore || !validateProfile(p) || pre==0 || pre>255) return false;
-      _lab_profiles[i]=p;
+      _lab_logical_mhz[i]=p.freq;
       _lab_snap[i]={uint32_t(hardwareFrequencyMHz(p.freq)*1000000.0f),uint32_t(p.bw*1000.0f),p.sf,p.cr,uint8_t(pre),_profiles.generation[i]};
       if (!mesh::w12pram::pack(_lab_snap[i],packed[i])) return false;
     }
@@ -416,6 +422,7 @@ public:
   void loop() override {
     if (_lab_uncertain) return;
     if (!_lab_scan_active) {
+#if defined(MESH_W12_RXPS_EXPERIMENT) && MESH_W12_RXPS_EXPERIMENT
       if (_rx_ps_armed) {
         // Sample the pin without SPI so observation cannot wake/cancel RXPS.
         const bool busy=digitalRead(P_LORA_BUSY) == HIGH;
@@ -423,6 +430,7 @@ public:
         if (_lab_busy_seen && busy!=_lab_busy_previous) ++_lab_busy_edges;
         _lab_busy_seen=true; _lab_busy_previous=busy;
       }
+#endif
       RadioLibWrapper::loop();
       bool rx_allowed=true;
       bool radio_owned=_cw_active;
@@ -503,7 +511,7 @@ public:
     }
     _lab_prev_cads=_lab_status.cads; _lab_progress_at=millis();
     if (delivered) {
-      _lab_last_profile=ch; _lab_last=_lab_snap[ch]; _lab_last_logical_mhz=_lab_profiles[ch].freq;
+      _lab_last_profile=ch; _lab_last=_lab_snap[ch]; _lab_last_logical_mhz=_lab_logical_mhz[ch];
       _active_profile=ch; _profile_generation=_lab_snap[ch].generation; // Dispatcher tags Packet::radio_profile
       ++_lab_good; ++_lab_good_profile[ch]; ++n_recv; last_recv_millis=millis();
     }

@@ -105,7 +105,10 @@ class CustomLR2021Wrapper : public RadioLibWrapper {
   }
 
 public:
-#if defined(MESH_W12_PRAM_EXPERIMENT) && MESH_W12_PRAM_EXPERIMENT
+#if defined(MESH_W12_PRAM_EXPERIMENT) && MESH_W12_PRAM_EXPERIMENT && \
+    defined(MESH_W12_RXPS_EXPERIMENT) && MESH_W12_RXPS_EXPERIMENT
+  // The autonomous single-profile duty cycle is a separate experiment from
+  // the dual-profile PRAM scanner, and must not be enabled by it implicitly.
   static constexpr bool SupportsRxPowerSaving = true;
   bool supportsRxPowerSaving() const override { return true; }
   uint32_t rxPowerSavingTransitionUs() const override { return 1000; }
@@ -722,14 +725,16 @@ protected:
     const int16_t standby = recordApply(mesh::lr2021::ApplyStatus::Stage::Standby,
                                        _radio->standby());
     if (standby != RADIOLIB_ERR_NONE) return standby;
-#if defined(MESH_W12_PRAM_EXPERIMENT) && MESH_W12_PRAM_EXPERIMENT
+#if defined(MESH_W12_PRAM_EXPERIMENT) && MESH_W12_PRAM_EXPERIMENT && \
+    defined(MESH_W12_RXPS_EXPERIMENT) && MESH_W12_RXPS_EXPERIMENT
     return recordApply(mesh::lr2021::ApplyStatus::Stage::Receive, startReceivePowerSaving());
 #else
     return recordApply(mesh::lr2021::ApplyStatus::Stage::Receive, _radio->startReceive());
 #endif
   }
 
-#if defined(MESH_W12_PRAM_EXPERIMENT) && MESH_W12_PRAM_EXPERIMENT
+#if defined(MESH_W12_PRAM_EXPERIMENT) && MESH_W12_PRAM_EXPERIMENT && \
+    defined(MESH_W12_RXPS_EXPERIMENT) && MESH_W12_RXPS_EXPERIMENT
   int16_t armDutyCycle(RadioLibIrqFlags_t flags, RadioLibIrqFlags_t mask,
                        uint32_t* effective_rx_us, uint32_t* effective_sleep_us) override {
     mesh::w12pram::spiTrace().reset();

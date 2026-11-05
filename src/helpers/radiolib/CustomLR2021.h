@@ -4,7 +4,8 @@
 #include "RadioRegulatorState.h"
 #include "MeshCore.h"
 #include "LR2021Band.h"
-#if defined(MESH_W12_PRAM_EXPERIMENT) && MESH_W12_PRAM_EXPERIMENT
+#if defined(MESH_W12_PRAM_EXPERIMENT) && MESH_W12_PRAM_EXPERIMENT && \
+    defined(MESH_W12_RXPS_EXPERIMENT) && MESH_W12_RXPS_EXPERIMENT
 #include "W12RxDutyTiming.h"
 #include "W12PramLabTrace.h"
 #endif
@@ -581,6 +582,7 @@ class CustomLR2021 : public LR2021 {
     }
 
 #if defined(MESH_W12_PRAM_EXPERIMENT) && MESH_W12_PRAM_EXPERIMENT
+#if defined(MESH_W12_RXPS_EXPERIMENT) && MESH_W12_RXPS_EXPERIMENT
     int16_t labStartRxDutyCycle(uint32_t rx_us, uint32_t sleep_us,
                                 RadioLibIrqFlags_t flags, RadioLibIrqFlags_t mask) {
       mesh::w12rxps::Timing t;
@@ -602,6 +604,7 @@ class CustomLR2021 : public LR2021 {
       if (rc!=RADIOLIB_ERR_NONE) mesh::w12pram::spiTrace().active=false;
       return rc;
     }
+#endif // MESH_W12_RXPS_EXPERIMENT
     int16_t labSpiCommand(uint16_t op,bool write,uint8_t* data,size_t len,const uint8_t* out=nullptr,size_t outlen=0) {
       return SPIcommand(op,write,data,len,out,outlen);
     }
