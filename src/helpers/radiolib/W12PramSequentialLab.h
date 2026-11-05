@@ -15,13 +15,15 @@ struct SequentialPlan {
 };
 
 inline bool packSequentialLab(const Profile& p, Packed& out) {
-  if (p.freq_hz < 150000000u || p.freq_hz > 1090000000u || p.sf < 5 || p.sf > 8
+  if (p.freq_hz < 150000000u || p.freq_hz > 1090000000u || p.sf < 5 || p.sf > 10
       || p.cr < 5 || p.cr > 8 || !p.preamble) return false;
   uint8_t bw;
   switch (p.bw_hz) { case 62500: bw=3; break; case 125000: bw=4; break; case 250000: bw=5; break; default: return false; }
   // 5/6 are RadioLib's two-symbol reference values, not validated for the
   // lab's one-symbol CAD. RF tests must determine usable thresholds.
-  const uint8_t peaks[] = {56, 56, 60, 64};
+  // SF9/10 use RadioLib's two-symbol reference values. All values need
+  // hardware qualification for the selected one- or two-symbol CAD mode.
+  const uint8_t peaks[] = {56, 56, 60, 64, 58, 60};
   const uint8_t ldro = ((uint64_t(1) << p.sf) * 1000000u >= 16000ULL * p.bw_hz);
   out.frequency=p.freq_hz;
   out.modem=(p.sf << 4 | bw) | (uint32_t((p.cr - 4) << 4 | ldro) << 8)
@@ -32,7 +34,8 @@ inline bool packSequentialLab(const Profile& p, Packed& out) {
 inline bool sequentialPlan(const Profile (&profiles)[2], uint8_t selected,
                            uint8_t first_sf, uint8_t last_sf, SequentialPlan& out) {
   out.count = 0;
-  if (selected > 1 || first_sf < 5 || last_sf > 8 || first_sf > last_sf) return false;
+  if (selected > 1 || first_sf < 5 || last_sf > 10 || first_sf > last_sf
+      || uint8_t(last_sf-first_sf) >= SequentialMaxSlots-1) return false;
   out.generation[0]=profiles[0].generation; out.generation[1]=profiles[1].generation;
   const int64_t diff = int64_t(profiles[0].freq_hz) - int64_t(profiles[1].freq_hz);
   if (diff <= -20000000LL || diff >= 20000000LL) return false;

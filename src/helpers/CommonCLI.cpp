@@ -3860,6 +3860,14 @@ void CommonCLI::handleCommand(uint32_t sender_timestamp, char* command, char* re
 #if defined(MESH_W12_PRAM_SEQ_TX_LAB) && MESH_W12_PRAM_SEQ_TX_LAB
     if (strcmp(command,"get pramscan.seqtx") == 0) { radio_driver.labSequentialTxStatus(reply,160); return; }
 #endif
+    if (strncmp(command,"set pramscan.range ",19) == 0) {
+      unsigned first=0,last=0; char extra=0;
+      const bool parsed=sscanf(command+19,"%u-%u %c",&first,&last,&extra)==2;
+      const bool ok=parsed && first<=255 && last<=255
+          && radio_driver.labSequentialSetRange(uint8_t(first),uint8_t(last));
+      snprintf(reply,160,ok?"OK - experimental SF range set for this boot"
+          :"ERR - stop PRAM; use 5-10, at most four SFs"); return;
+    }
     if (strcmp(command,"get pramscan.seq") == 0) { radio_driver.labSequentialStatus(reply,160); return; }
     if (strncmp(command,"set pramscan.seq ",17) == 0) {
       const char* arg=command+17;

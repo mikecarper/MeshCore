@@ -24,6 +24,12 @@ int main() {
   assert(plan.slots[4].logical_profile==0 && plan.slots[4].physical.bw_hz==62500);
   assert(!sequentialPlan(profiles,0,4,8,plan) && !plan.count);
   assert(!sequentialPlan(profiles,0,5,9,plan) && !plan.count);
+  assert(sequentialPlan(profiles,0,6,9,plan) && plan.count==5);
+  for (uint8_t i=0;i<4;++i) assert(plan.slots[i].physical.sf==6+i);
+  assert(sequentialPlan(profiles,1,7,10,plan) && plan.count==5);
+  assert(plan.slots[3].physical.sf==10 && plan.slots[3].logical_profile==1);
+  assert(!sequentialPlan(profiles,0,6,10,plan) && !plan.count);
+  assert(!sequentialPlan(profiles,0,11,11,plan) && !plan.count);
   profiles[1].freq_hz=924525000;
   assert(!sequentialPlan(profiles,0,5,8,plan) && !plan.count);
 }

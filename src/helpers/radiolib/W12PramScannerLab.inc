@@ -44,6 +44,7 @@ private:
 #if defined(MESH_W12_PRAM_SEQUENTIAL_LAB) && MESH_W12_PRAM_SEQUENTIAL_LAB
   bool _lab_seq_requested = false;
   uint8_t _lab_seq_selected = 0;
+  uint8_t _lab_seq_first = 5, _lab_seq_last = 8;
   mesh::w12pram::SequentialPlan _lab_seq_plan = {};
   mesh::w12pram::SequentialSlot _lab_seq_hit = {};
   uint32_t _lab_seq_words[mesh::w12pram::SequentialMaxSlots * 2] = {};
@@ -337,6 +338,11 @@ public:
       if (p.protocol != mesh::RadioProfileProtocol::MeshCore || !validateProfile(p) || pre==0 || pre>255) return false;
       scan[i]={uint32_t(hardwareFrequencyMHz(p.freq)*1000000.0f),uint32_t(p.bw*1000.0f),p.sf,p.cr,uint8_t(pre),_profiles.generation[i]};
       mesh::w12pram::Packed packed;
+#if defined(MESH_W12_PRAM_SEQUENTIAL_LAB) && MESH_W12_PRAM_SEQUENTIAL_LAB
+      if (_lab_seq_requested && i==_lab_seq_selected) {
+        if (!mesh::w12pram::packSequentialLab(scan[i],packed)) return false;
+      } else
+#endif
       if (!mesh::w12pram::pack(scan[i],packed)) return false;
     }
     if (labs((long)scan[0].freq_hz-(long)scan[1].freq_hz) >= 20000000L) return false;
@@ -351,7 +357,7 @@ public:
 #endif
       // Never overwrite an active slot map: an unread FIFO still owns it.
       if (_lab_scan_active) return true;
-      return mesh::w12pram::sequentialPlan(scan,_lab_seq_selected,5,8,_lab_seq_plan);
+      return mesh::w12pram::sequentialPlan(scan,_lab_seq_selected,_lab_seq_first,_lab_seq_last,_lab_seq_plan);
     }
 #endif
     return true;
@@ -365,10 +371,16 @@ public:
         || mesh::radioDirection::mode() != mesh::radioDirection::Mode::Rx) return false;
     _lab_seq_selected=uint8_t(selected); _lab_seq_requested=true; _lab_seq_plan.count=0; return true;
   }
+  bool labSequentialSetRange(uint8_t first, uint8_t last) {
+    if (_lab_scan_active || _lab_uncertain || _lab_auto.enabled() || state==3 || _cw_active
+        || first<5 || last>10 || first>last || last-first>=mesh::w12pram::SequentialMaxSlots-1) return false;
+    _lab_seq_first=first; _lab_seq_last=last; _lab_seq_plan.count=0;
+    return true;
+  }
   void labSequentialStatus(char* out, size_t cap) const {
-    snprintf(out,cap,"seq=%s radio=%u slots=%u cad=%u flags=%02x scanner=%s %s rxcr=%u crc=%u pre=assumed unknown=%lu",
+    snprintf(out,cap,"seq=%s radio=%u sf=%u-%u slots=%u cad=%u flags=%02x scanner=%s %s rxcr=%u crc=%u pre=assumed unknown=%lu",
         _lab_seq_requested?"on":"off",unsigned(_lab_seq_selected+1),
-        unsigned(_lab_seq_plan.count),unsigned(MESH_W12_PRAM_SEQ_SYMBOLS),
+        unsigned(_lab_seq_first),unsigned(_lab_seq_last),unsigned(_lab_seq_plan.count),unsigned(MESH_W12_PRAM_SEQ_SYMBOLS),
         unsigned(MESH_W12_PRAM_SEQ_FLAGS),_lab_scan_active?"on":"off/fallback",
 #if defined(MESH_W12_PRAM_SEQ_TX_LAB) && MESH_W12_PRAM_SEQ_TX_LAB
         "tx-lab",
@@ -420,6 +432,11 @@ public:
       if (p.protocol != mesh::RadioProfileProtocol::MeshCore || !validateProfile(p) || pre==0 || pre>255) return false;
       _lab_logical_mhz[i]=p.freq;
       _lab_snap[i]={uint32_t(hardwareFrequencyMHz(p.freq)*1000000.0f),uint32_t(p.bw*1000.0f),p.sf,p.cr,uint8_t(pre),_profiles.generation[i]};
+#if defined(MESH_W12_PRAM_SEQUENTIAL_LAB) && MESH_W12_PRAM_SEQUENTIAL_LAB
+      if (_lab_seq_requested && i==_lab_seq_selected) {
+        if (!mesh::w12pram::packSequentialLab(_lab_snap[i],packed[i])) return false;
+      } else
+#endif
       if (!mesh::w12pram::pack(_lab_snap[i],packed[i])) return false;
     }
     if (labs((long)_lab_snap[0].freq_hz-(long)_lab_snap[1].freq_hz) >= 20000000L) return false;
@@ -428,7 +445,7 @@ public:
 #if defined(MESH_W12_PRAM_SEQ_TX_LAB) && MESH_W12_PRAM_SEQ_TX_LAB
       if (!mesh::w12pram::sequentialChannelsDisjoint(_lab_snap[0],_lab_snap[1])) return false;
 #endif
-      if (!mesh::w12pram::sequentialPlan(_lab_snap,_lab_seq_selected,5,8,_lab_seq_plan)) return false;
+      if (!mesh::w12pram::sequentialPlan(_lab_snap,_lab_seq_selected,_lab_seq_first,_lab_seq_last,_lab_seq_plan)) return false;
       for (uint8_t i=0;i<_lab_seq_plan.count;i++) {
         _lab_seq_words[i*2]=_lab_seq_plan.slots[i].packed.frequency;
         _lab_seq_words[i*2+1]=_lab_seq_plan.slots[i].packed.modem;
@@ -844,8 +861,15 @@ public:
       }
     }
     if (s.state==4 && (s.irq & (1u<<18))) _loop_event_pending=true; // recover missed ISR
+#if defined(MESH_W12_PRAM_SEQUENTIAL_LAB) && MESH_W12_PRAM_SEQUENTIAL_LAB
+    // SF10/62.5, CR8, 255-byte payload and 255-symbol preamble takes ~12.8s.
+    // Allow the longest supported slot to complete before stall recovery.
+    const uint32_t stall_ms=_lab_seq_requested ? 30000U : 10000U;
+#else
+    const uint32_t stall_ms=10000U;
+#endif
     if (s.cads != _lab_prev_cads) { _lab_prev_cads=s.cads; _lab_progress_at=now; }
-    else if ((uint32_t)(now-_lab_progress_at)>10000) {
+    else if ((uint32_t)(now-_lab_progress_at)>stall_ms) {
       // RxDone can arrive as the watchdog expires. Keep its FIFO for
       // recvRaw(), and recheck the interrupt immediately before any reset.
       const bool pin_high = digitalRead(P_LORA_DIO_1) == HIGH;

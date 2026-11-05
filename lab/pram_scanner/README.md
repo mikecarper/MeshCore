@@ -78,3 +78,10 @@ implemented. CAD is probabilistic, cannot hear incompatible modulations, and
 a signal can start after its SF was checked. Short preambles may fall between
 visits, especially with SF5 on wide bandwidth. This is for supervised RF
 tests only, not operational service. RX is interrupted during the sweep.
+
+The separate lab accepts `set pramscan.range 5-8`, `6-9`, or `7-10` (up to
+four SFs in 5–10), while stopped. This setting is currently RAM-only, and the
+fixed profile remains limited to SF7–8. SF9/10 CAD thresholds and delivery
+have not been hardware-tested. A 6–9 or 7–10 sweep on 62.5 kHz can miss a
+32-symbol SF7/250 packet on the fixed profile even under ideal timing; these
+ranges are not qualified for operation.

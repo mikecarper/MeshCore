@@ -31,6 +31,7 @@ with tempfile.TemporaryDirectory() as d:
     run([str(tmp/'sequential_tx')])
     run([sys.executable,str(lab/'test_sequential_tx_boundary.py')])
     run([sys.executable,str(lab/'test_sequential_tx_prepare.py')])
+    run([sys.executable,str(lab/'test_sequential_range.py')])
     run([sys.executable,str(lab/'test_sequential_airtime_hook.py')])
     run([sys.executable,str(lab/'test_sequential_attribution.py')])
     run([sys.executable,str(lab/'test_sequential_safety.py')])
