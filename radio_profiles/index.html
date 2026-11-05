@@ -1347,10 +1347,10 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#experimental-w12-on-chip-scanner" class="md-nav__link">
+  <a href="#experimental-lr2021-on-chip-scanner" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Experimental W12 on-chip scanner
+        Experimental LR2021 on-chip scanner
       
     </span>
   </a>
@@ -2817,10 +2817,10 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#experimental-w12-on-chip-scanner" class="md-nav__link">
+  <a href="#experimental-lr2021-on-chip-scanner" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Experimental W12 on-chip scanner
+        Experimental LR2021 on-chip scanner
       
     </span>
   </a>
@@ -3160,26 +3160,62 @@ survive firmware updates; selecting a profile does not change the crossing polic
 <code>radio</code>; <code>tempradio2</code> temporarily replaces <code>radio2</code>. These are time-shared receive
 windows, not simultaneous receivers. Receiving or transmitting a packet on one
 profile makes the other unavailable until that packet finishes.</p>
-<h2 id="experimental-w12-on-chip-scanner">Experimental W12 on-chip scanner</h2>
-<p>W12 repeater, room and sensor firmware automatically tries the experimental
+<h2 id="experimental-lr2021-on-chip-scanner">Experimental LR2021 on-chip scanner</h2>
+<p>W12 repeater, room, sensor and Companion firmware, and MeshTracker X1 repeater,
+room and Companion firmware, automatically try the experimental
 on-chip scanner when <code>radio2</code> is configured with compatible profiles. It falls
 back to normal host switching if the profiles are unsupported or the scanner
 fails. Check the active mode and fallback reason, or turn off automatic scanning
 for the current boot. Activation follows the existing two-minute host-switch
 measurement window, so its timing recommendation can finish first:</p>
+<p>On these builds, multi-SF reception also defaults to the primary radio at SF5–8,
+including when radio2 is off. Transmission keeps the configured SF. Select
+which radio and up to four consecutive receive SFs (SF5–10):</p>
+<pre><code class="language-text">get radio.multisf
+set radio.multisf 6-9
+set radio.multisf radio2
+set radio.multisf radio
+set radio.multisf off
+set radio.multisf on
+</code></pre>
+<p>The settings persist. <code>get radio.multisf</code> reports the selected configuration
+and whether it is active or has fallen back. With radio2 off, selecting
+radio2 falls back to ordinary receive until radio2 is configured. With radio2
+off, a primary TX SF outside the selected range also falls back to ordinary receive.
+Existing extra-SF detector settings cannot be combined with the single-radio
+multi-SF mode. While multi-SF is active, saved RX power-saving settings are
+held and resume when compatible; the preference is not deleted.</p>
 <pre><code class="language-text">get pramscan
 set pramscan off
 set pramscan on
+get radio.safe
+set radio.safe on
+set radio.safe off
 get pramscan.last
 get pramscan.recovery
 </code></pre>
+<p><code>set radio.safe on</code> persists across restarts and stops the experimental scanner
+and multi-SF reception;
+the ordinary radio and radio2 host switching remain available. Use
+<code>set radio.safe off</code> to permit experiments again. An unreadable or damaged
+setting keeps safe mode on. <code>set pramscan off</code> is a temporary per-boot control.
+If saving safe mode fails, the CLI reports the error and still turns it on for
+the current boot; <code>get radio.safe</code> shows <code>on (not saved)</code>.</p>
 <p><code>set pramscan on</code> allows another automatic start; it does not guarantee the
 scanner can start. The on/off selection is not saved and returns to automatic
-after reboot. Both profiles must use MeshCore, SF7 or SF8, bandwidth 62.5, 125
-or 250 kHz, preambles up to 255 symbols, frequencies less than 20 MHz apart,
-and a supported LR2021 ROM. With radio2 off, a previously enabled <code>radio.rxps</code>
-setting instead uses the LR2021's native receive duty cycle; enabling radio2
-suspends that duty cycle until radio2 is off again. RXPS is off by default.</p>
+after reboot. Both profiles must use MeshCore, bandwidth 62.5, 125 or 250 kHz,
+preambles up to 255 symbols, frequencies less than 20 MHz apart, and a supported
+LR2021 ROM. The fixed profile must use SF7 or SF8; multi-SF accepts SF5–10
+within its four-SF range. TX-capable scanning also requires disjoint channels.
+Unsupported profiles fall back to host switching. RXPS is off by default.
+On Companion firmware these controls are available in the local CLI. Builds
+with USB support accept them in the USB terminal. BLE-only builds accept these
+scanner commands through local-control frame <code>0x4A</code>; the connected client must
+support that frame. Not every app exposes it as a console.</p>
+<p>Time-sharing multiple SFs and profiles can miss packets, particularly with short
+preambles, weak signals, or slow SFs. The ordinary single-radio channel check
+retains the dispatcher's existing maximum-wait behavior; it is not an absolute
+clear-channel guarantee.</p>
 <p>The scanner is experimental: packet loss and TX handoff under load are not yet
 fully qualified. An ambiguous packet/interrupt during a handoff is retained
 briefly, then discarded if needed to restore host switching; the recovery is
@@ -3190,6 +3226,9 @@ maintenance. The ESP32 may sleep and wake on a received packet when power
 saving is enabled and the usual USB and wireless sleep conditions permit it;
 the radio remains active while scanning. Current consumption has not been
 measured.</p>
+<p>The X1 scanner has not yet been verified on hardware. Its nRF52 CPU does not
+use the W12's radio-owned sleep integration. X1 RXPS and W12 crystal
+calibration are not enabled by the scanner.</p>
 <p>Full W12 Repeater images require the board's PSRAM for the full-capacity
 repeater tables. If PSRAM is unavailable, LoRa startup stops and the USB
 console reports the failure; check the hardware or flash Standard firmware.

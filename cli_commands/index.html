@@ -10361,6 +10361,10 @@ Station G2/G3 targets default to <code>off</code>.</p>
 - While radio2 profile scanning is enabled, RXPS is suspended so neither
   profile sleeps through its listening window. The requested RXPS setting
   is retained and restored after returning to single-profile receive.
+- On W12, compatible <code>extra.sf</code> detectors also hold RXPS in continuous receive.
+  <code>get radio.rxps.status</code> shows <code>hold=extra-sf</code>. The saved RXPS preference is
+  retained and resumes when the detectors are cleared or temporarily inactive.
+  <code>hold=extra-sf-repair</code> means a detector configuration needs recovery.
 - <code>get rxps.wd</code> reports the radio watchdogs' soft and hard recovery counts.
   See <a href="../test-results/radio_receive_calibration/">receive calibration and recovery</a> for
   noise sampling, CAD handling, and the continuous-RX mode check.
