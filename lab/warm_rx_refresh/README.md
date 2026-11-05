@@ -1,8 +1,9 @@
-# Experimental warm receive refresh
+# Warm receive refresh
 
-Build with `MESH_WARM_RX_REFRESH=1` to replace periodic AGC maintenance on
-supported SX1262 wrappers with an owned same-channel warm receive refresh.
-The default build keeps the existing maintenance implementation. The fast path
+Heltec V4 builds based on `Heltec_lora32_v4` enable `MESH_WARM_RX_REFRESH=1`
+and replace periodic AGC maintenance with an owned same-channel warm receive
+refresh. V4 R8 and other board families keep their existing implementation.
+Other supported SX1262 builds can opt in with the same flag. The fast path
 also requires the existing warm-profile and complete packet-cache features.
 It refuses an unacknowledged or incomplete cached receive context.
 
@@ -12,10 +13,16 @@ It does not sleep, calibrate, retune, write packet/modulation parameters, or
 restart the noise-floor estimator. This is an experimental receive refresh;
 it does not establish that the hardware analog AGC has been reset.
 
+The source flag is defined for the whole build, including Dispatcher. Changing
+only this helper's default macro does not enable the scheduler consistently.
+
 The existing saved `agc.reset.interval` remains the primary interval, with the
 same zero-disable behavior, four-second storage steps, 1020-second maximum,
 default, and adaptive scheduling policy. `get agc` and `set agc <seconds>` are
 aliases. Fixed scheduling still postpones the primary deadline after TX.
+The aliases, independent timer control, and diagnostic pages below use the
+Common CLI in Repeater, Room Server, and Sensor. Companion retains its
+canonical `agc.reset.interval` control through its separate parser.
 A deferred or failed warm operation retries after 250 ms without receiving
 credit for a completed refresh.
 

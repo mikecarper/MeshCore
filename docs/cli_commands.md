@@ -4286,11 +4286,51 @@ hardware busy-result count.
 **Usage:**
 - `get agc.reset.interval`
 - `set agc.reset.interval <value>`
+- `get agc` / `set agc <value>` (Common CLI aliases)
 
 **Parameters:**
 - `value`: Interval in seconds, 0-1020, rounded down to a multiple of 4 (17 becomes 16). 0 to disable.
 
 **Default:** `0.0`
+
+On Heltec V4 builds based on `Heltec_lora32_v4`, this saved interval schedules
+a same-channel warm receive refresh. The existing value, four-second rounding,
+and adaptive scheduling are retained. A completed refresh enters SetFs or warm
+standby and returns through checked continuous RX, without sleep, calibration,
+retuning, or resetting the noise-floor cache. It is not proof of an analog AGC
+reset or a sensitivity improvement. V4 R8 and other board families retain the
+existing reset method unless explicitly built with `MESH_WARM_RX_REFRESH=1`
+on a supported SX1262 wrapper.
+
+The V4 warm path requires continuous primary LoRa RX, with `radio.rxps` and
+`radio2` off and the warm/packet-cache fast features enabled. Packet ownership,
+TX, BUSY, exclusive calibration, or unavailable cached context defer the
+operation; deferred and failed attempts retry after 250 ms without completion
+credit. Shared recovery watchdogs still use their existing full-reset path.
+The saved starting interval is reported even while the warm path is deferred.
+
+On those supported Repeater, Room Server, and Sensor builds, the Common CLI
+also exposes an independent full-reset timer. Companion keeps the canonical
+`agc.reset.interval` primary control; these additional text commands are not
+part of its separate command parser.
+
+- `get agc.old`
+- `set agc.old <seconds>`: `0` disables it; `1-86400` enables it.
+- `set agc.old 600` enables one full reset every ten minutes.
+
+This second timer is RAM-only and **disabled after every reboot**. Enabling it
+does not change the saved primary interval. Its first deadline starts when it
+is enabled; it does not use adaptive escalation or TX postponement. If both
+timers are due, the old reset runs first and the warm refresh is deferred.
+
+`get agc.status`, `get agc.timing`, and `get agc.recovery` expose requests,
+admissions, deferrals, failures, checked reentries, persistent failure code/step,
+and separate warm/recovery timing spans. A warm span runs from the transition
+command to successful SetRx return; it is a software command duration, not an
+independent RF-outage measurement. Getter pages are separate, non-atomic reads.
+The legacy `get agc.old.status`, `.timing`, and `.errors` pages, including their
+`agc.reset.*` compatibility names, require `MESH_AGC_TIMING_DIAGNOSTICS=1`.
+See [warm receive refresh](../lab/warm_rx_refresh/README.md) for counter details.
 
 With device `powersaving` on and a nonzero AGC interval, Companion, Repeater,
 Room Server, and Sensor firmware use adaptive reset scheduling. The saved
@@ -4306,7 +4346,8 @@ current adaptive interval. `0` disables periodic AGC maintenance even with
 power saving on. With power saving off, fixed-interval behavior is retained.
 This follows device `powersaving`, independently of LoRa `radio.rxps`.
 
-Adaptive scheduling does not treat a quiet mesh, strong packets, a stable
+For the existing reset method on other builds, adaptive scheduling does not
+treat a quiet mesh, strong packets, a stable
 noise floor, or a successful transmission as proof of full receiver sensitivity.
 TX cannot continually postpone adaptive maintenance. Pending RX/TX, a BUSY
 chip outside known RX duty cycling, carrier/Morse ownership, and an active
