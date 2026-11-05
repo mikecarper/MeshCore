@@ -11,9 +11,9 @@ on:
 
 jobs:
   w12-pram-scanner:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: actions/setup-python@v6
         with:
           python-version: '3.13'
@@ -21,24 +21,25 @@ jobs:
         run: python3 -B lab/pram_scanner/run_tests.py
 
   compact-ota-browser:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: actions/setup-python@v6
         with:
           python-version: '3.13'
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
-          node-version: '20'
+          node-version: '22'
+          package-manager-cache: false
       - name: Verify real browser OTA uploads and checksums
         env:
           MESHCORE_REQUIRE_OTA_BROWSER: '1'
         run: python3 -B test/test_compact_elegant_ota.py -v
 
   wifi-diagnostics:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: actions/setup-python@v6
         with:
           python-version: '3.13'
@@ -69,9 +70,9 @@ jobs:
           test_companion_wifi_status_format -v
 
   nrf52-companion-smoke:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Setup Build Environment
         uses: ./.github/actions/setup-build-environment
       - name: Qualify RAK4631 Full Companion with linked Meshtext support
@@ -112,9 +113,9 @@ jobs:
         run: pio run -e Heltec_t096_companion_radio_ble_femoff -e Heltec_t096_companion_radio_ble_femon
 
   nrf52-sensor-smoke:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Setup Build Environment
         uses: ./.github/actions/setup-build-environment
       - name: Verify nRF52 HEX packaging with installed build dependencies
@@ -142,9 +143,9 @@ jobs:
         run: pio run -e RAK_4631_repeater_rak15002_sd_seeder_only
 
   optional-display-smoke:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Setup Build Environment
         uses: ./.github/actions/setup-build-environment
       - name: Qualify RC32 Full Companion with optional T108 detection
@@ -173,9 +174,9 @@ jobs:
           done
 
   esp32-sensor-smoke:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Setup Build Environment
         uses: ./.github/actions/setup-build-environment
       - name: Compile GPS-capable Sensor tracker on ESP32-S3
@@ -203,9 +204,9 @@ jobs:
           done
 
   esp32-ethernet-companion-smoke:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Setup Build Environment
         uses: ./.github/actions/setup-build-environment
       - name: Qualify ESP32 Full Companion with radio2 Ethernet and existing Meshtext
@@ -215,9 +216,9 @@ jobs:
           --radio-preset usa-cascade-fixed --profile cascade --require-ota
 
   esp32-classic-companion-smoke:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Setup Build Environment
         uses: ./.github/actions/setup-build-environment
       - name: Qualify Heltec V2 BLE with retained contacts and RAM reserves
@@ -233,9 +234,9 @@ jobs:
           --radio-preset usa-cascade-fixed --profile cascade --require-ota
 
   esp32-constrained-companion-smoke:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Setup Build Environment
         uses: ./.github/actions/setup-build-environment
       - name: Qualify C3 Full Companion with all transports and Meshtext
@@ -255,9 +256,9 @@ jobs:
           --radio-preset usa-cascade-fixed --profile cascade --require-ota
 
   cross-platform-smoke:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Setup Build Environment
         uses: ./.github/actions/setup-build-environment
       - name: Compile RP2040 contacts, ESP32-C6 rooms and ESP-NOW Companion
@@ -267,9 +268,9 @@ jobs:
           -e LilyGo_Tlora_C6_room_server_ -e Generic_ESPNOW_comp_radio_usb
 
   cardputer-smoke:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Setup Build Environment
         uses: ./.github/actions/setup-build-environment
       - name: Compile Cardputer-Adv roles and shared T-Deck Companion
@@ -283,9 +284,9 @@ jobs:
         run: bash build.sh build-firmware M5Stack_Cardputer_Adv_companion_radio_full --firmware-version v1.18.0.2-halo-keymind-cascade-dev --radio-preset usa-cascade-fixed --profile cascade
 
   universal-lora-smoke:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Setup Build Environment
         uses: ./.github/actions/setup-build-environment
       - name: Verify chip probing, forwarding, and build contracts
@@ -323,7 +324,7 @@ jobs:
         run: bash build.sh build-firmware muzi_base_companion_radio_full --firmware-version v1.18.0.2-halo-keymind-cascade-dev --radio-preset usa-cascade-fixed --profile cascade
       - name: Upload universal build failure logs
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: universal-lora-build-logs
           path: out/build-logs/*.log
@@ -331,9 +332,9 @@ jobs:
           retention-days: 7
 
   headless-kiss-smoke:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Setup Build Environment
         uses: ./.github/actions/setup-build-environment
       - name: Verify optional-display KISS wiring and consolidation evidence
@@ -352,9 +353,9 @@ jobs:
         run: bash build.sh build-firmware WioTrackerL1_companion_radio_full --firmware-version v1.18.0.2-halo-keymind-cascade-dev --radio-preset usa-cascade-fixed --profile cascade
 
   management-reports:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: actions/setup-python@v6
         with:
           python-version: '3.13'
@@ -371,10 +372,10 @@ jobs:
           node scripts/test_telemetry_decoder.js
 
   stm32-companion-smoke:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     steps:
       - name: Clone Repo
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Setup Build Environment
         uses: ./.github/actions/setup-build-environment
@@ -406,9 +407,9 @@ jobs:
           python3 -B test/test_ed25519_compact_field.py Ed25519CompactFieldTest.test_arm_shared_powers_match_oracle_aliases_and_stay_within_stack_budget -v
 
   stm32-mini-repeater-smoke:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Setup Build Environment
         uses: ./.github/actions/setup-build-environment
       - name: Verify constrained Mini Repeater feature boundaries
@@ -435,10 +436,10 @@ jobs:
             --radio-preset usa-cascade-fixed --profile cascade --allow-no-ota
 
   bootloader-version:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     steps:
       - name: Clone Repo
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Setup Python
         uses: actions/setup-python@v6
@@ -494,11 +495,11 @@ jobs:
           python3 -B test/test_nrf52_bootloader_version.py -v
 
   test:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     steps:
 
       - name: Clone Repo
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Setup Build Environment
         uses: ./.github/actions/setup-build-environment
@@ -1035,12 +1036,13 @@ jobs:
           python3 -B test/test_client_acl_response.py -v
 
       - name: Setup Node for official app compatibility tests
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: '22'
+          package-manager-cache: false
 
       - name: Cache pinned official app and browser protocol sources
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/.cache/meshcore-tests
           key: official-clients-${{ hashFiles('test/test_official_app_compatibility.py', 'test/test_official_config_gui.py', 'test/test_official_web_console.py') }}
@@ -1472,15 +1474,15 @@ jobs:
       - name: Upload Test Results
         # Upload test results even if the test step failed.
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: test-results
           path: .pio/build/native/
 
   hosted-doc-links:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: actions/setup-python@v6
         with:
           python-version: '3.13'
