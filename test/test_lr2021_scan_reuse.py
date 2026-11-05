@@ -133,7 +133,8 @@ struct Wrapper : RadioLibWrapper {
 };
 int main() {
   Wrapper w;
-#if !defined(MESHNOLOGY_W12) || (defined(MESH_DISABLE_LR2021_SCAN_REUSE) && MESH_DISABLE_LR2021_SCAN_REUSE)
+#if (!defined(MESHNOLOGY_W12) && (!defined(MESH_LR2021_SCAN_REUSE) || !MESH_LR2021_SCAN_REUSE)) \
+    || (defined(MESH_DISABLE_LR2021_SCAN_REUSE) && MESH_DISABLE_LR2021_SCAN_REUSE)
   // A different LR2021 board retains the full pre-existing retune path.
   assert(w.hop()); assert(w.saw(Sf)&&w.saw(Cr));
   w.chip.trace.clear(); assert(w.hop()); assert(w.saw(Sf)&&w.saw(Cr));
@@ -192,6 +193,10 @@ int main() {
             exe = Path(temp) / "test"
             cpp.write_text(code)
             for flags in ([], ["-DMESHNOLOGY_W12=1"],
+                          ["-DMESH_LR2021_SCAN_REUSE=1", "-DMESH_TRACKER_X1=1"],
+                          ["-DMESH_TRACKER_X1=1"],
+                          ["-DMESH_TRACKER_X1=1", "-DMESH_LR2021_SCAN_REUSE=1",
+                           "-DMESH_DISABLE_LR2021_SCAN_REUSE=1"],
                           ["-DMESHNOLOGY_W12=1", "-DMESH_DISABLE_LR2021_SCAN_REUSE=1"]):
                 with self.subTest(flags=flags):
                     build = subprocess.run([compiler, "-std=c++17", *flags,
@@ -200,6 +205,12 @@ int main() {
                     self.assertEqual(build.returncode, 0, build.stdout + build.stderr)
                     run = subprocess.run([str(exe)], capture_output=True, text=True)
                     self.assertEqual(run.returncode, 0, run.stdout + run.stderr)
+
+    def test_x1_opt_in_is_inherited_by_all_roles(self):
+        variant = (ROOT / "variants/meshtracker_x1/platformio.ini").read_text()
+        base = variant.split("[env:", 1)[0]
+        self.assertIn("-D MESH_LR2021_SCAN_REUSE=1", base)
+        self.assertIn("-D LR2021_TCXO_VOLTAGE=1.6f", base)
 
 
 if __name__ == "__main__":

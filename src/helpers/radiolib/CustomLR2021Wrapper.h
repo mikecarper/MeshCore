@@ -56,9 +56,9 @@ class CustomLR2021Wrapper : public RadioLibWrapper {
   }
 
   bool scanTargetMatches(float freq, float bw, uint8_t sf, uint8_t cr) const {
-#if !defined(MESHNOLOGY_W12) || (defined(MESH_DISABLE_LR2021_SCAN_REUSE) && MESH_DISABLE_LR2021_SCAN_REUSE)
-    // Other LR2021 boards retain the existing full retune until separately
-    // qualified on their own RF and power hardware.
+#if (!defined(MESHNOLOGY_W12) && (!defined(MESH_LR2021_SCAN_REUSE) || !MESH_LR2021_SCAN_REUSE)) \
+    || (defined(MESH_DISABLE_LR2021_SCAN_REUSE) && MESH_DISABLE_LR2021_SCAN_REUSE)
+    // Boards without an explicit opt-in retain the full retune path.
     (void)freq; (void)bw; (void)sf; (void)cr;
     return false;
 #else
