@@ -53,6 +53,7 @@ with tempfile.TemporaryDirectory() as d:
     run([sys.executable,str(lab/'test_opt_in.py')])
     run([sys.executable,str(lab/'test_x1_opt_in.py')])
     run([sys.executable,str(root/'test/test_lr2021_safe_mode.py')])
+    run([sys.executable,str(root/'test/test_lr2021_scanner_cli.py')])
     run([sys.executable,str(root/'test/test_lr2021_multisf_service.py')])
     run([sys.executable,str(root/'test/test_lr2021_multisf_pre_tx.py')])
     run([sys.executable,str(root/'test/test_lr2021_multisf_status.py')])

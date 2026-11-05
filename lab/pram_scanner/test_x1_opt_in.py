@@ -20,7 +20,9 @@ assert 'LR2021_TCXO_VOLTAGE=1.6f' in config['MeshTracker_X1']['build_flags']
 for section in config.sections():
     if section.startswith('env:'):
         enabled = 'MeshTracker_X1_pram' in config[section].get('build_flags', '')
-        assert enabled == (section in ('env:MeshTracker_X1_repeater', 'env:MeshTracker_X1_room_server'))
+        assert enabled == (section in ('env:MeshTracker_X1_repeater', 'env:MeshTracker_X1_room_server',
+                                      'env:MeshTracker_X1_companion_radio_usb',
+                                      'env:MeshTracker_X1_companion_radio_ble'))
 
 source = (root / 'src/helpers/radiolib/W12PramScannerLab.inc').read_text(encoding='utf-8')
 assert 'AutoPolicy _lab_auto{false};' in source
