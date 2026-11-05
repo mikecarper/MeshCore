@@ -95,9 +95,11 @@ class MiniRepeaterProfileTest(unittest.TestCase):
                         if path == ROOT / "variants/wio-e5-mini/platformio.ini" and name == SECTION:
                             continue
                         self.assertNotRegex(flags, r"-D\s*" + macro + r"=0\b")
-        # Retain the profile's pre-existing trims, rather than adding unrelated cuts.
+        # Retain pre-existing trims plus the approved browser-defaults omission.
         disabled = set(re.findall(r"-D\s*(MESH_ENABLE_\w+)=0\b", self.flags))
-        self.assertEqual(disabled, {*OPTIONAL_CUTS, "MESH_ENABLE_CLOCK_SYNC",
+        self.assertRegex(self.flags, r"-D\s+MESH_ENABLE_BROWSER_RADIO_DEFAULTS=0\b")
+        self.assertEqual(disabled, {*OPTIONAL_CUTS, "MESH_ENABLE_BROWSER_RADIO_DEFAULTS",
+                                    "MESH_ENABLE_CLOCK_SYNC",
                                     "MESH_ENABLE_FLOOD_GROUP_MODERATION"})
 
     def test_host_cli_live_logging_and_existing_core_features_remain(self):
