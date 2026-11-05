@@ -5,6 +5,7 @@ import subprocess
 
 root = Path(__file__).resolve().parents[2]
 source = (root / 'src/helpers/radiolib/CustomLR2021Wrapper.h').read_text()
+capability = (root / 'src/helpers/radiolib/LR2021RxpsCapability.h').read_text().replace('#pragma once', '')
 
 # Preprocess actual wrapper sections instead of duplicating their guard logic.
 support_marker = '  static constexpr bool SupportsRxPowerSaving = true;'
@@ -19,23 +20,35 @@ receive = source[receive_start:receive_end]
 def preprocessed(*defines):
     args = ['g++', '-E', '-P', '-x', 'c++', '-']
     args.extend('-D' + define for define in defines)
-    return subprocess.run(args, input=support + receive, text=True,
+    return subprocess.run(args, input=capability + support + receive, text=True,
                           stdout=subprocess.PIPE, check=True).stdout
 
 
 for flags in ((), ('MESH_W12_PRAM_EXPERIMENT=1',),
               ('MESH_W12_RXPS_EXPERIMENT=1',),
-              ('MESH_W12_PRAM_EXPERIMENT=1', 'MESH_W12_RXPS_EXPERIMENT=0')):
+              ('MESHNOLOGY_W12=1', 'MESH_W12_PRAM_EXPERIMENT=1', 'MESH_W12_RXPS_EXPERIMENT=0'),
+              ('MESHNOLOGY_W12=1', 'MESH_W12_PRAM_EXPERIMENT=0', 'MESH_W12_RXPS_EXPERIMENT=1')):
     result = preprocessed(*flags)
     assert support_marker not in result, flags
     assert 'startReceivePowerSaving()' not in result, flags
     assert 'labStartRxDutyCycle(' not in result, flags
     assert '_radio->startReceive()' in result, flags
 
-result = preprocessed('MESH_W12_PRAM_EXPERIMENT=1', 'MESH_W12_RXPS_EXPERIMENT=1')
-assert support_marker in result
-assert 'startReceivePowerSaving()' in result
-assert 'labStartRxDutyCycle(' in result
+for flags in (('MESHNOLOGY_W12=1', 'MESH_W12_PRAM_EXPERIMENT=1', 'MESH_W12_RXPS_EXPERIMENT=1'),
+              ('MESH_LR2021_RXPS_ENABLE=1', 'MESH_LR2021_RXPS_QUALIFIED=1',
+               'MESH_LR2021_RXPS_TRANSITION_US=1000')):
+    result = preprocessed(*flags)
+    assert support_marker in result, flags
+    assert 'startReceivePowerSaving()' in result, flags
+    assert 'labStartRxDutyCycle(' in result, flags
+for flags in (('MESH_LR2021_RXPS_ENABLE=1',),
+              ('MESH_LR2021_RXPS_ENABLE=1', 'MESH_LR2021_RXPS_QUALIFIED=1'),
+              ('MESH_LR2021_RXPS_ENABLE=1', 'MESH_LR2021_RXPS_QUALIFIED=1',
+               'MESH_LR2021_RXPS_TRANSITION_US=999')):
+    args = ['g++', '-E', '-P', '-x', 'c++', '-'] + ['-D' + f for f in flags]
+    result = subprocess.run(args, input=capability, text=True, stdout=subprocess.PIPE,
+                            stderr=subprocess.PIPE)
+    assert result.returncode != 0, flags
 # The HAL tracing and busy-pin diagnostics exist solely to inspect RXPS.
 # Scanner-only firmware must not retain their buffers or singleton state.
 hal = (root / 'src/helpers/radiolib/TunableRadioHal.h').read_text()
