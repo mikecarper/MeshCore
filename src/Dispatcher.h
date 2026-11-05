@@ -507,6 +507,7 @@ class Dispatcher {
   PreTransmitBlock lab_last_start_block = PreTransmitBlock::None;
   bool deferLabPreTransmit();
   void releaseLabOutboundReservation();
+  void expireLabBlockedSends();
 #endif
   unsigned long outbound_expiry, outbound_start, total_air_time, rx_air_time;
   unsigned long outbound_radio_retry_at;

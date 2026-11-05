@@ -30,6 +30,9 @@ public:
   mesh::Packet* peek(uint32_t now) const;
   bool add(mesh::Packet* packet, uint8_t priority, uint32_t scheduled_for);
   int count() const { return _num; }
+#if defined(MESH_W12_PRAM_SEQ_TX_LAB) && MESH_W12_PRAM_SEQ_TX_LAB
+  int capacity() const { return _size; }
+#endif
   int countBefore(uint32_t now) const;
   bool getNextTime(uint32_t now, uint32_t& scheduled_for) const;
   mesh::Packet* itemAt(int i) const {

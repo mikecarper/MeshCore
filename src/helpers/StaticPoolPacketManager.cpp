@@ -212,6 +212,9 @@ bool StaticPoolPacketManager::queueOutbound(mesh::Packet* packet, uint8_t priori
   if (packet == NULL) return false;
 #if defined(MESH_W12_PRAM_SEQ_TX_LAB) && MESH_W12_PRAM_SEQ_TX_LAB
   if (packet == reserved_outbound) return false;
+  // Keep the removed packet's exact queue slot available for rollback, even
+  // when a caller queues a packet that does not belong to our fixed pool.
+  if (reserved_outbound && send_queue.count() >= send_queue.capacity()-1) return false;
 #endif
   if (!send_queue.add(packet, priority, scheduled_for)) {
     MESH_DEBUG_PRINTLN("queueOutbound: send queue full, dropping packet");

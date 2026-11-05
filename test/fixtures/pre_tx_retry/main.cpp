@@ -7,7 +7,8 @@ class Clock : public mesh::MillisecondClock { public: uint32_t now=100; unsigned
 class Radio : public mesh::Radio {
  public:
   enum Outcome { Busy, Error, Unknown, Success };
-  std::vector<Outcome> outcomes; unsigned calls=0; bool sending=false;
+  std::vector<Outcome> outcomes; unsigned calls=0; bool sending=false, carrier=false;
+  bool isCarrierWaveActive() const override {return carrier;}
   mesh::RadioProfiles profiles_data; bool expose_profiles=false;
   Radio() {profiles_data.primary.freq=910.525f;profiles_data.primary.bw=62.5f;
     profiles_data.primary.sf=7;profiles_data.primary.cr=5;}
@@ -72,5 +73,5 @@ int main(){
   f.loop(302);assert(f.r.calls==1 && f.m.getOutboundTotal()==1 && p->w12_post_tx_retry_used);
   f.loop(503);assert(f.r.calls==2 && f.d.failed==1);}
  {Fixture f;f.r.outcomes={Radio::Error};f.queue(44,1);f.loop(101);assert(!f.d.failed && f.m.getOutboundTotal()==1);
-  f.loop(30101);assert(f.d.failed==1 && f.r.calls==1);}
+  f.r.carrier=true;f.loop(30101);assert(f.d.failed==1 && f.r.calls==1 && f.m.getOutboundTotal()==0);}
 }
