@@ -9,12 +9,45 @@
 
 namespace mesh {
 
+// An explicitly compiled lab-only override. This helper performs no save,
+// radio command, or scheduler attempt; the next Dispatcher loop configures a
+// future fixed deadline. The separate numeric getter keeps saved status honest.
+inline bool handleWarmRxLabTimerCommand(Radio* radio,const char* command,
+    char* reply,size_t capacity) {
+#if MESH_WARM_RX_LAB_TIMER
+  if(!command || !reply || !capacity) return false;
+  const bool get=strcmp(command,"get agc.test.ms")==0;
+  const bool set=strncmp(command,"set agc.test.ms ",16)==0;
+  if(!get && !set) return false;
+  if(!radio || !radio->supportsWarmRxRefresh()) cli::formatError(reply,capacity,"unsupported");
+  else if(get) {
+    uint32_t interval_ms=0;
+    if(radio->getWarmRxLabInterval(interval_ms)) snprintf(reply,capacity,"> %lu",(unsigned long)interval_ms);
+    else snprintf(reply,capacity,"> off");
+  } else {
+    const char* value=command+16;
+    const bool active=strcmp(value,"off")!=0;
+    uint32_t interval_ms=0;
+    if(active && (!cli::parseUnsignedIntegerStrict(value,interval_ms) || interval_ms>60000))
+      cli::formatError(reply,capacity,"warm lab interval must be off or 0-60000 ms");
+    else if(!radio->setWarmRxLabInterval(active,interval_ms)) cli::formatError(reply,capacity,"failed to set warm lab interval");
+    else if(active) snprintf(reply,capacity,"OK - warm lab interval %lu ms (RAM only)",(unsigned long)interval_ms);
+    else snprintf(reply,capacity,"OK - warm lab timer off (saved interval inherited)");
+  }
+  return true;
+#else
+  (void)radio; (void)command; (void)reply; (void)capacity;
+  return false;
+#endif
+}
+
 // Runtime-only maintenance controls shared with the Companion text parser.
 // Primary saved interval aliases stay in CommonRadioPrefs so its normal
 // dirty/save/rollback transaction remains authoritative.
 inline bool handleAGCMaintenanceCommand(Radio* radio,const char* command,
     uint32_t primary_seconds,char* reply,size_t capacity) {
   if(!command || !reply || !capacity) return false;
+  if(handleWarmRxLabTimerCommand(radio,command,reply,capacity)) return true;
   const size_t diagnostic_capacity=capacity<157?capacity:157;
   if(strcmp(command,"get agc.old")==0) {
     if(!radio || !radio->supportsWarmRxRefresh()) cli::formatError(reply,capacity,"unsupported");

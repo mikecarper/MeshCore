@@ -28,6 +28,18 @@ def methods(source, signatures):
     return "\n".join(body(source, signature).replace(" override", "") for signature in signatures)
 
 
+def lab_timer_fields(source):
+    return "#if MESH_WARM_RX_LAB_TIMER\n" + "\n".join(field(source, name) for name in (
+        "_warm_rx_lab_timer_active", "_warm_rx_lab_timer_ms")) + "\n#endif"
+
+
+def lab_timer_methods(source, virtual=False):
+    prefix = "virtual " if virtual else ""
+    return "#if MESH_WARM_RX_LAB_TIMER\n" + methods(source, (
+        prefix + "bool setWarmRxLabInterval(", prefix + "bool getWarmRxLabInterval(",
+        prefix + "uint32_t warmRxLabTimerRevision(")) + "\n#endif"
+
+
 def harness():
     driver = (ROOT / "src/helpers/radiolib/CustomSX1262.h").read_text()
     custom = (ROOT / "src/helpers/radiolib/CustomSX1262Wrapper.h").read_text()
@@ -77,6 +89,8 @@ def harness():
     ))
     wrapper = (FIXTURE / "wrapper.cpp").read_text()
     wrapper = wrapper.replace("@PERIODIC_OLD_FIELD@", field(header, "_old_agc_seconds"))
+    wrapper = wrapper.replace("@LAB_TIMER_FIELDS@", lab_timer_fields(header))
+    wrapper = wrapper.replace("@LAB_TIMER_METHODS@", lab_timer_methods(header))
     wrapper = wrapper.replace("@BASE_SUPPORT@", body(dispatcher, "virtual bool supportsWarmRxRefresh("))
     wrapper = wrapper.replace("@WRAPPER_DECLARATIONS@", declarations)
     wrapper = wrapper.replace("@CUSTOM_WRAPPER_METHODS@", custom_methods)
@@ -88,6 +102,8 @@ def harness():
     service_start = dispatch_source.index("  const uint32_t agc_now = _ms->getMillis();")
     service_end = dispatch_source.index("  // check inbound (delayed) queue", service_start)
     dispatch_fixture = (FIXTURE / "dispatcher.cpp").read_text()
+    dispatch_fixture = dispatch_fixture.replace("@LAB_TIMER_REVISION@",
+        "#if MESH_WARM_RX_LAB_TIMER\n" + field(dispatcher, "_agc_lab_timer_revision") + "\n#endif")
     dispatch_fixture = dispatch_fixture.replace("@CONFIGURE@", dispatch_source[configure_start:configure_end])
     dispatch_fixture = dispatch_fixture.replace("@SERVICE@", dispatch_source[service_start:service_end])
     wake_start = dispatch_source.index("  // Timed MCU sleep must not skip the adaptive maintenance/retry deadline.")
@@ -104,6 +120,7 @@ def harness():
     result = result.replace("@WRAPPER@", wrapper)
     cases = (FIXTURE / "main.cpp").read_text()
     cases = cases.replace("@SCHEDULER_CASES@", (FIXTURE / "scheduler.cpp").read_text())
+    cases = cases.replace("@LAB_TIMER_CASES@", (FIXTURE / "lab_timer.cpp").read_text())
     return result.replace("@SCENARIOS@", cases)
 
 
@@ -119,8 +136,9 @@ class WarmRxRefreshTests(unittest.TestCase):
         cpp = work / "refresh.cpp"
         cpp.write_text(harness(), encoding="ascii")
         cls.binaries = []
-        for fs in (0, 1):
-            binary = work / ("refresh-fs" + str(fs))
+        cls.lab_binaries = []
+        for fs, lab in ((0, 0), (1, 0), (0, 1), (1, 1)):
+            binary = work / ("refresh-fs" + str(fs) + "-lab" + str(lab))
             flags = ["-std=c++17", "-O1", "-g", "-Wall", "-Wextra", "-Werror",
                      "-DMESH_WARM_RX_REFRESH=1", "-DMC_SX1262_FAST_PROFILE_SWITCH=1",
                      "-DMC_SX1262_FAST_PACKET_CACHE=1", "-DMC_SX1262_FAST_IQ_CACHE=0",
@@ -128,6 +146,7 @@ class WarmRxRefreshTests(unittest.TestCase):
                      "-DMESH_ENABLE_TX_BEACONS=1", "-DMESH_ENABLE_MORSE_RX=1",
                      "-DMESH_ENABLE_RADIO_DIRECTION=1"]
             flags += ["-DMC_AGESSAMAN_NOISE_FLOOR_EXACT=1"]
+            flags += ["-DMESH_WARM_RX_LAB_TIMER=" + str(lab)]
             if sys.platform.startswith("linux"):
                 flags += ["-fsanitize=address,undefined", "-fno-sanitize-recover=all",
                           "-fno-omit-frame-pointer", "-fno-pie", "-no-pie"]
@@ -137,9 +156,11 @@ class WarmRxRefreshTests(unittest.TestCase):
             if built.returncode:
                 raise AssertionError(built.stdout + built.stderr)
             cls.binaries.append(binary)
+            if lab:
+                cls.lab_binaries.append(binary)
 
-    def run_case(self, scenario):
-        for binary in self.binaries:
+    def run_case(self, scenario, lab_only=False):
+        for binary in self.lab_binaries if lab_only else self.binaries:
             with self.subTest(binary=binary.name):
                 ran = subprocess.run([str(binary), scenario], capture_output=True,
                                      text=True, timeout=15)
@@ -170,6 +191,18 @@ class WarmRxRefreshTests(unittest.TestCase):
     def test_existing_dispatcher_scheduler_wrap_and_busy_deferral(self):
         self.run_case("scheduler")
 
+    def test_lab_one_and_four_second_fixed_cadences_wake_and_wrap(self):
+        self.run_case("lab-cadence", lab_only=True)
+
+    def test_lab_override_changes_start_future_deadlines_and_off_restores_saved_policy(self):
+        self.run_case("lab-changes", lab_only=True)
+
+    def test_lab_busy_retry_stays_250ms_and_primary_zero_preserves_old_timer(self):
+        self.run_case("lab-deferral", lab_only=True)
+
+    def test_lab_unsupported_radio_retains_existing_saved_scheduler(self):
+        self.run_case("lab-unsupported", lab_only=True)
+
     def test_feature_defaults_off_and_unsupported_base_retains_safe_defaults(self):
         dispatcher = (ROOT / "src/Dispatcher.h").read_text()
         interface = methods(dispatcher, (
@@ -180,6 +213,7 @@ class WarmRxRefreshTests(unittest.TestCase):
 #include <cassert>
 #include <helpers/radiolib/WarmRxRefresh.h>
 static_assert(MESH_WARM_RX_REFRESH == 0, "warm experiment must default off");
+static_assert(MESH_WARM_RX_LAB_TIMER == 0, "warm lab timer must default off");
 struct Unsupported { @INTERFACE@ };
 int main() {
   Unsupported value;
@@ -188,6 +222,9 @@ int main() {
   assert(value.agcMaintenanceRetryMs() == 50);
 }
 """.replace("@INTERFACE@", interface)
+        default = re.search(r"#ifndef MESH_WARM_RX_LAB_TIMER\n[^\n]+\n#endif", dispatcher)
+        self.assertIsNotNone(default, "lab flag must have an explicit default")
+        fixture = default.group() + "\n" + fixture
         compiler = os.environ.get("CXX") or shutil.which("g++") or shutil.which("clang++")
         work = Path(self.work.name)
         cpp, binary = work / "defaults.cpp", work / "defaults"

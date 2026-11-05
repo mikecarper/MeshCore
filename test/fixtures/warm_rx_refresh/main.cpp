@@ -278,6 +278,7 @@ static void legacy() {
 }
 
 @SCHEDULER_CASES@
+@LAB_TIMER_CASES@
 
 int main(int argc, char** argv) {
   assert(argc == 2);
@@ -290,6 +291,12 @@ int main(int argc, char** argv) {
   else if (scenario == "noop") noOp();
   else if (scenario == "legacy") legacy();
   else if (scenario == "scheduler") scheduler();
+#if MESH_WARM_RX_LAB_TIMER
+  else if (scenario == "lab-cadence") labTimerCadence();
+  else if (scenario == "lab-changes") labTimerChanges();
+  else if (scenario == "lab-deferral") labTimerDeferralAndIndependence();
+  else if (scenario == "lab-unsupported") labTimerUnsupported();
+#endif
   else assert(false);
   printf("PASS: %s\n", scenario.c_str());
 }

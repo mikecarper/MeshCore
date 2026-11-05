@@ -58,6 +58,10 @@ protected:
 #if MESH_WARM_RX_REFRESH
   WarmRxRefresh _warm_refresh;
   uint32_t _old_agc_seconds=0;
+#if MESH_WARM_RX_LAB_TIMER
+  bool _warm_rx_lab_timer_active=false;
+  uint32_t _warm_rx_lab_timer_ms=0, _warm_rx_lab_timer_revision=0;
+#endif
   virtual bool warmRxRefreshUsesFs() const { return false; }
   virtual WarmRxRefresh::Outcome performWarmRxRefresh(WarmRxRefresh::Reason& reason) {
     reason=WarmRxRefresh::Reason::Policy;
@@ -721,6 +725,22 @@ public:
   }
   void resetAGC() override;
 #if MESH_WARM_RX_REFRESH
+#if MESH_WARM_RX_LAB_TIMER
+  bool setWarmRxLabInterval(bool active,uint32_t interval_ms) override {
+    if(!supportsWarmRxRefresh() || interval_ms>60000) return false;
+    if(!active) interval_ms=0;
+    if(active!=_warm_rx_lab_timer_active || interval_ms!=_warm_rx_lab_timer_ms) {
+      _warm_rx_lab_timer_active=active; _warm_rx_lab_timer_ms=interval_ms;
+      ++_warm_rx_lab_timer_revision;
+    }
+    return true;
+  }
+  bool getWarmRxLabInterval(uint32_t& interval_ms) const override {
+    if(!supportsWarmRxRefresh() || !_warm_rx_lab_timer_active) return false;
+    interval_ms=_warm_rx_lab_timer_ms; return true;
+  }
+  uint32_t warmRxLabTimerRevision() const override { return _warm_rx_lab_timer_revision; }
+#endif
   bool setOldAGCInterval(uint32_t seconds) override {
     if(!supportsWarmRxRefresh() || seconds>86400) return false;
     _old_agc_seconds=seconds; return true;

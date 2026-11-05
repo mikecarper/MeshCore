@@ -26,6 +26,7 @@ struct RadioLibWrapper {
   mesh::RadioProfiles _profiles;
   WarmRxRefresh _warm_refresh;
   @PERIODIC_OLD_FIELD@
+  @LAB_TIMER_FIELDS@
   bool _cw_active = false, _beacon_owned = false, _beacon_restoring = false;
   bool _profile_repair_required = false, _profile_refresh_required = false;
   bool _params_valid = true, _rx_hold_continuous = false;
@@ -93,6 +94,7 @@ struct RadioLibWrapper {
   bool usesAgessamanNoiseFloor() const;
   int startReceiveMode() { return _radio->startReceive(); }
   @BASE_SUPPORT@
+  @LAB_TIMER_METHODS@
   virtual bool warmRxRefreshUsesFs() const { return false; }
   virtual void beginProfileRetune(bool) {}
   virtual void endProfileRetune(bool) {}

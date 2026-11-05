@@ -11,6 +11,7 @@ struct Dispatcher {
   HostClock clock;
   HostClock* _ms = &clock;
   mesh::AGCResetScheduler agc_reset, old_agc_reset;
+  @LAB_TIMER_REVISION@
   bool adaptive_mode = false, recovered_this_loop = false, radio_available = true;
   explicit Dispatcher(RadioLibWrapper& radio) : _radio(&radio) {}
   bool useAdaptiveAGC() const { return adaptive_mode; }

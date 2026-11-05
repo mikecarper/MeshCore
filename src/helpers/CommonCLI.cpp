@@ -13,6 +13,7 @@
 #include "CarrierTools.h"
 #include "PacketFileLoggingConfig.h"
 #include "CommonCLI.h"
+#include "AGCMaintenanceCLI.h"
 #ifdef WRAPPER_CLASS
 #include "target.h"
 #endif
@@ -3751,6 +3752,9 @@ bool CommonCLI::handleUDPBridgeCommand(uint32_t sender_timestamp,
 void CommonCLI::handleCommand(uint32_t sender_timestamp, char* command, char* reply) {
     PrefsSaveReplyGuard save_reply(_prefs_save_failures, reply);
     mesh::cli::normalizeCommandVerb(command);
+#if MESH_WARM_RX_LAB_TIMER
+    if(mesh::handleWarmRxLabTimerCommand(_callbacks->getProfileRadio(),command,reply,157)) return;
+#endif
 #if defined(MESH_W12_PRAM_EXPERIMENT) && MESH_W12_PRAM_EXPERIMENT
     if (radio_driver.labScannerUncertain() && strcmp(command,"get pramscan") && strcmp(command,"get pramscan.last")
         && strcmp(command,"get pramscan.timing") && strcmp(command,"get pramscan.bench") && strcmp(command,"get pramscan.diag") && strcmp(command,"get pramscan.sleep") && strcmp(command,"get pramscan.recovery")

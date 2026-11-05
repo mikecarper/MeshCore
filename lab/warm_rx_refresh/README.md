@@ -76,3 +76,23 @@ expose the existing full-reset diagnostics, including shared recovery calls.
 The compatibility names `get agc.reset.status`, `.timing`, and `.errors` still
 refer to those legacy diagnostics. They do not describe the new warm method.
 Disable `agc.old` explicitly when testing warm-only maintenance.
+
+## Faster cadence lab build
+
+`MESH_WARM_RX_LAB_TIMER=1` adds the runtime-only `agc.test.ms` control on
+supported warm-refresh radios. All ordinary builds default this flag to 0.
+`get agc.test.ms` initially reports `off`. `set agc.test.ms 1000` or `set agc.test.ms 4000`
+uses a fixed primary interval in milliseconds, including an idle-clock wake
+for the deadline. Numeric 0 disables this primary timer. `set agc.test.ms off`
+clears the override and inherits the unchanged saved `agc.reset.interval`.
+The accepted numeric range is 0 through 60000. A mode/value change starts one
+future deadline on the next Dispatcher loop; it never forces a refresh or
+replays missed slots. Busy ownership defers through the existing retry policy.
+
+The override does not change preferences, trigger a save, or affect the
+independent `agc.old` timer. `get agc` and `get agc.status` continue to report
+the saved interval; query `get agc.test.ms` separately to identify the lab
+request. Requested cadence is not proof of an admitted radio transition or
+its exact spacing: use the existing admitted/completed/timing counters.
+The override starts off after reboot. This lab control is not enabled in the
+separately built production candidate.

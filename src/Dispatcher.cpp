@@ -757,8 +757,26 @@ bool Dispatcher::getNextQueueWakeDelay(uint32_t& delay_millis) const {
     }
   }
 #endif
+#if MESH_WARM_RX_LAB_TIMER
+  // A fixed lab override still owns a wake deadline when MCU power saving is
+  // off. Numeric zero disables it; the independent old timer stays separate.
+  uint32_t lab_interval_ms=0;
+  const bool lab_timer_active=_radio->supportsWarmRxRefresh()
+      && _radio->getWarmRxLabInterval(lab_interval_ms);
+  if(radioDirection::radioReceiveAllowed() && radio_available && lab_timer_active && lab_interval_ms) {
+    uint32_t lab_delay;
+    if(agc_reset.nextDelay(now,lab_delay)) {
+      if(!found || lab_delay<shortest_delay) shortest_delay=lab_delay;
+      found=true;
+    }
+  }
+#endif
   // Preserve the legacy queue-only query when power saving is off.
-  if (radioDirection::radioReceiveAllowed() && radio_available && useAdaptiveAGC()) {
+  if (radioDirection::radioReceiveAllowed() && radio_available && useAdaptiveAGC()
+#if MESH_WARM_RX_LAB_TIMER
+      && !lab_timer_active
+#endif
+      ) {
     uint32_t agc_delay;
     const bool agc_found = agc_reset.nextDelay(now, agc_delay);
     if (agc_found && (!found || agc_delay < shortest_delay)) shortest_delay = agc_delay;
@@ -919,8 +937,21 @@ void Dispatcher::loop() {
 
   const unsigned long now = _ms->getMillis();
   const bool receive_allowed = radioDirection::radioReceiveAllowed();
-  const int agc_interval = receive_allowed ? getAGCResetInterval() : 0;
-  const bool adaptive = receive_allowed && useAdaptiveAGC();
+  int agc_interval = receive_allowed ? getAGCResetInterval() : 0;
+  bool adaptive = receive_allowed && useAdaptiveAGC();
+#if MESH_WARM_RX_LAB_TIMER
+  const uint32_t lab_revision=_radio->warmRxLabTimerRevision();
+  if(lab_revision!=_agc_lab_timer_revision) {
+    // Even equal numeric intervals in a different mode begin one future
+    // deadline, with no forced maintenance or replay of missed slots.
+    agc_reset.reset(); _agc_lab_timer_revision=lab_revision;
+  }
+  uint32_t lab_interval_ms=0;
+  if(_radio->supportsWarmRxRefresh() && _radio->getWarmRxLabInterval(lab_interval_ms)) {
+    agc_interval=receive_allowed?static_cast<int>(lab_interval_ms):0;
+    adaptive=false; // The lab override requests a fixed millisecond cadence.
+  }
+#endif
   agc_reset.configure(now, agc_interval > 0 ? agc_interval : 0,
                       adaptive, adaptive ? _radio->getRecoveryCount() : 0);
 #if defined(MESH_WARM_RX_REFRESH) && MESH_WARM_RX_REFRESH

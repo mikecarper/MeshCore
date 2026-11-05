@@ -19,6 +19,11 @@
 #endif
 #include <string.h>
 
+// Explicit lab builds only; never changes the persisted interval format.
+#ifndef MESH_WARM_RX_LAB_TIMER
+  #define MESH_WARM_RX_LAB_TIMER 0
+#endif
+
 #ifndef MESH_OTA_PACKET_PACING
   #define MESH_OTA_PACKET_PACING 1
 #endif
@@ -357,6 +362,11 @@ public:
   // The primary warm experiment reuses the existing saved AGC interval.
   // Its optional old full-reset timer is independent and RAM-only.
   virtual bool supportsWarmRxRefresh() const { return false; }
+#if MESH_WARM_RX_LAB_TIMER
+  virtual bool setWarmRxLabInterval(bool, uint32_t) { return false; }
+  virtual bool getWarmRxLabInterval(uint32_t&) const { return false; }
+  virtual uint32_t warmRxLabTimerRevision() const { return 0; }
+#endif
   virtual bool setOldAGCInterval(uint32_t) { return false; }
   virtual uint32_t getOldAGCInterval() const { return 0; }
   virtual bool formatWarmRxRefresh(uint8_t, uint32_t, char*, size_t) const { return false; }
@@ -894,6 +904,9 @@ private:
   bool queueTransmitCandidate(Packet* packet, uint8_t priority, uint32_t scheduled_for);
   // Keep the frequently accessed core fields at compact ARM load offsets.
   AGCResetScheduler agc_reset;
+#if MESH_WARM_RX_LAB_TIMER
+  uint32_t _agc_lab_timer_revision = 0;
+#endif
 #if defined(MESH_WARM_RX_REFRESH) && MESH_WARM_RX_REFRESH
   AGCResetScheduler old_agc_reset;
 #endif

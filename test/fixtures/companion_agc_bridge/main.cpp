@@ -29,6 +29,7 @@ struct Capture : Stream {
 struct Radio : mesh::Radio {
   bool supported=true, accept=true, diagnostic_supported=true;
   uint32_t old_seconds=0;
+  @LAB_RADIO_FIELDS@
   unsigned sets=0;
   mutable unsigned warm_calls=0, old_calls=0;
   mutable uint32_t last_primary=0;
@@ -36,6 +37,7 @@ struct Radio : mesh::Radio {
   WarmRxRefresh warm;
   AGCTimingDiagnostics legacy;
   bool supportsWarmRxRefresh() const override { return supported; }
+  @LAB_RADIO_METHODS@
   uint32_t getOldAGCInterval() const override { return old_seconds; }
   bool setOldAGCInterval(uint32_t seconds) override {
     ++sets;if(!accept)return false;old_seconds=seconds;return true;
@@ -238,11 +240,87 @@ static void diagnosticsAndBounds() {
   assert(mesh.image()==before && mesh.saves==0 && !mesh._prefs.isDirty());
 }
 
+static void labRuntime() {
+  MyMesh node;
+  node._prefs.agc_reset_interval=7;
+  node.stored=7;
+  const std::string before=node.image();
+#if MESH_WARM_RX_LAB_TIMER
+  assert(node.command("get agc.test.ms")=="> off");
+  uint32_t value=UINT32_MAX;
+  assert(!node.radio.getWarmRxLabInterval(value) && value==UINT32_MAX);
+  assert(node.radio.warmRxLabTimerRevision()==0);
+  const unsigned old_sets=node.radio.sets;
+  assert(node.command("set agc.old 600").find("OK - old full-reset interval 600")==0);
+  for(uint32_t ms:{0U,1U,1000U,4000U,60000U}) {
+    char command[80];snprintf(command,sizeof(command),"set agc.test.ms %lu",(unsigned long)ms);
+    assert(node.command(command)=="OK - warm lab interval "+std::to_string(ms)+" ms (RAM only)");
+    assert(node.command("get agc.test.ms")=="> "+std::to_string(ms));
+    assert(node.radio.getWarmRxLabInterval(value) && value==ms);
+    assert(node.command("get agc")=="> 28" && node.command("get agc.reset.interval")=="> 28");
+    const std::string status=node.command("get agc.status");
+    assert(status.find("interval=28,")!=std::string::npos && node.radio.last_primary==28);
+    assert(node.radio.old_seconds==600 && node.radio.sets==old_sets+1);
+    assert(node.image()==before && node.saves==0 && node.stored==7 && !node._prefs.isDirty());
+  }
+  const uint32_t active_revision=node.radio.warmRxLabTimerRevision();
+  assert(node.command("set agc.test.ms 60000")=="OK - warm lab interval 60000 ms (RAM only)");
+  assert(node.radio.warmRxLabTimerRevision()==active_revision);
+  for(const char* bad:{"", "-1", "-0", "60001", "4294967295", "4294967296",
+      "999999999999999999999999", "1x", "1 2", "1.0", "1e2",
+      "1\n", "1\r", "0x10", "OFF", "off ", "on"}) {
+    const std::string command="set agc.test.ms "+std::string(bad);
+    assert(node.command(command.c_str()).find("Error:")==0);
+    assert(node.command("get agc.test.ms")=="> 60000");
+    assert(node.radio.warmRxLabTimerRevision()==active_revision);
+    assert(node.image()==before && node.saves==0 && node.radio.old_seconds==600);
+  }
+  // The shared unsigned parser accepts a plus sign and horizontal padding;
+  // getters always return the canonical unsigned decimal representation.
+  for(const char* numeric:{"+1", " 1", "1 ", "\t1\t"}) {
+    const std::string command="set agc.test.ms "+std::string(numeric);
+    assert(node.command(command.c_str())=="OK - warm lab interval 1 ms (RAM only)");
+    assert(node.command("get agc.test.ms")=="> 1");
+  }
+  assert(node.command("AA|set agc.test.ms 1000")=="AA|OK - warm lab interval 1000 ms (RAM only)");
+  assert(node.command("AA|get agc.test.ms")=="AA|> 1000");
+  assert(node.command("set agc.test.ms off")=="OK - warm lab timer off (saved interval inherited)");
+  assert(node.command("get agc.test.ms")=="> off");
+  const uint32_t off_revision=node.radio.warmRxLabTimerRevision();
+  assert(!node.radio.getWarmRxLabInterval(value));
+  assert(node.command("set agc.test.ms off")=="OK - warm lab timer off (saved interval inherited)");
+  assert(node.radio.warmRxLabTimerRevision()==off_revision);
+  assert(!node.radio.setWarmRxLabInterval(true,60001));
+  assert(!node.radio.getWarmRxLabInterval(value) && node.radio.warmRxLabTimerRevision()==off_revision);
+  // Unsupported radios cannot acquire an override or expose runtime state.
+  node.radio.supported=false;
+  assert(node.command("set agc.test.ms 1000")=="Error: unsupported");
+  assert(node.command("set agc.test.ms off")=="Error: unsupported");
+  assert(node.command("get agc.test.ms")=="Error: unsupported");
+  assert(!node.radio.setWarmRxLabInterval(true,1000));
+  node._radio=nullptr;
+  assert(node.command("set agc.test.ms 1000")=="Error: unsupported");
+  assert(node.command("get agc.test.ms")=="Error: unsupported");
+  mesh::Radio unsupported;
+  value=123;
+  assert(!unsupported.setWarmRxLabInterval(true,1000));
+  assert(!unsupported.getWarmRxLabInterval(value) && value==123);
+  assert(unsupported.warmRxLabTimerRevision()==0);
+#else
+  for(const char* command:{"get agc.test.ms","set agc.test.ms 1000","set agc.test.ms off"}) {
+    char reply[160]="unchanged";
+    assert(!node.handleCommand(command,0,reply) && !strcmp(reply,"unchanged"));
+  }
+#endif
+  assert(node.image()==before && node.saves==0 && node.stored==7 && !node._prefs.isDirty());
+}
+
 int main(int argc,char** argv) {
   assert(argc==2);
   if(!strcmp(argv[1],"aliases"))aliases();
   else if(!strcmp(argv[1],"transactions"))invalidAndTransactions();
   else if(!strcmp(argv[1],"runtime"))runtimeOld();
   else if(!strcmp(argv[1],"diagnostics"))diagnosticsAndBounds();
+  else if(!strcmp(argv[1],"lab"))labRuntime();
   else assert(false);
 }
