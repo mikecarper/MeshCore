@@ -427,6 +427,18 @@ public:
     _lab_auto.setEnabled(true);
     return true;
   }
+  bool _lab_user_auto_off=false;
+  bool labScannerSetAutomaticManual(bool enabled) {
+    if (!enabled && !_lab_scan_active && !_lab_session_ldo && !_lab_uncertain) {
+      // A separate radio owner may be transmitting. Nothing scanner-owned
+      // remains to stop, so remember explicit off without interrupting it.
+      _lab_auto.setEnabled(false);
+      _lab_resume_pending=false;
+    } else if (!labScannerSetAutomatic(enabled)) return false;
+    _lab_user_auto_off=!enabled;
+    if (!enabled) _lab_exclusive_restore_auto=false;
+    return true;
+  }
   bool labScannerStart(bool automatic=false) {
 #if defined(MESH_W12_PRAM_SEQ_TX_LAB) && MESH_W12_PRAM_SEQ_TX_LAB
     // A restart attempt relinquishes any paused-TX lease even if restart fails.
@@ -819,12 +831,16 @@ public:
     if (!_profiles.enabled() || !wanted || !rx_allowed) {
       if (_lab_seq_requested) {
         if (!labScannerSetAutomatic(false) || !labSequentialConfigure(-1)) return;
-        if (!mesh::lr2021::safeMode()) labScannerSetAutomatic(true);
+        if (!mesh::lr2021::safeMode() && !_lab_user_auto_off) labScannerSetAutomatic(true);
       }
       if (single && !radio_owned && !_multi_sf_enabled && !_multi_failed && _params_valid && !_lab_uncertain) {
         const auto result=trySetW12MultiSf(true,cfg.first,cfg.last);
         if (result==mesh::RadioParamApplyResult::FAILED) _multi_failed=true;
       }
+      return;
+    }
+    if (_lab_user_auto_off) {
+      if (_lab_seq_requested && (!labScannerSetAutomatic(false) || !labSequentialConfigure(-1))) return;
       return;
     }
     // A scanner that never started cannot own a TX lease. Release the
@@ -960,7 +976,7 @@ public:
 #if MESH_ENABLE_RADIO_DIRECTION
       rx_allowed=mesh::radioDirection::radioReceiveAllowed();
 #endif
-      if (!radio_owned && _lab_exclusive_restore_auto && !mesh::lr2021::safeMode()) {
+      if (!radio_owned && _lab_exclusive_restore_auto && !_lab_user_auto_off && !mesh::lr2021::safeMode()) {
         if (labScannerSetAutomatic(true)) _lab_exclusive_restore_auto=false;
       }
 #if defined(MESH_W12_MULTISF_EXPERIMENT) && MESH_W12_MULTISF_EXPERIMENT && \

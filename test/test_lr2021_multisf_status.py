@@ -27,6 +27,7 @@ struct Fake {
    bool dual=false; bool enabled() const { return dual; } } _profiles;
  struct { bool value=false; bool blocked() const { return value; } } _lab_auto;
  bool _multi_sf_enabled=false,_lab_seq_requested=false,_lab_scan_active=false,_multi_failed=false,_params_valid=true;
+ bool _lab_user_auto_off=false;
  uint8_t _multi_sf_lower=5,_multi_sf_upper=8,_lab_seq_selected=0,_lab_seq_first=5,_lab_seq_last=8;
  uint8_t _cur_sf=7; float _cur_bw=62.5; int _numSideDet=0;
  bool isInRecvMode() const { return true; }

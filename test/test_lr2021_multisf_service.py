@@ -10,6 +10,7 @@ service = method(source, 'void serviceMultiSf(')
 prepare = method(source, 'mesh::RadioParamApplyResult prepareTransmitProfile(uint8_t p, bool reply)').replace(' override', '').replace('RadioLibWrapper::prepareTransmitProfile', 'Base::prepareTransmitProfile')
 release = method(source, 'mesh::RadioParamApplyResult labReleaseForExclusive()')
 pending = method(source, 'bool labExclusivePending() const')
+manual = method(source, 'bool labScannerSetAutomaticManual(')
 beacon = method(source, 'mesh::RadioParamApplyResult prepareBeaconTransmit(').replace(' override', '').replace('RadioLibWrapper::prepareBeaconTransmit', 'Base::prepareBeaconTransmit')
 code = r"""
 #include <cassert>
@@ -48,7 +49,7 @@ struct Fake : Base {
  bool _multi_key_extra=false; unsigned _numSideDet=0;
  mesh::w12pram::AutoPolicy _lab_auto;
  bool _lab_seq_tx_prepared=false,_lab_seq_tx_lease=false,_lab_scan_active=false,_lab_resume_pending=false;
- bool _lab_session_ldo=false,_lab_exclusive_restore_auto=false;
+ bool _lab_session_ldo=false,_lab_exclusive_restore_auto=false,_lab_user_auto_off=false;
  uint32_t _lab_exclusive_until=0;
  uint8_t _lab_seq_tx_profile=0; uint32_t _lab_tx_pauses=0,_lab_resume_at=0;
  uint8_t _multi_sf_lower=5,_multi_sf_upper=8,_lab_seq_selected=0,_lab_seq_first=5,_lab_seq_last=8;
@@ -78,6 +79,7 @@ struct Fake : Base {
  @PREPARE@
  @RELEASE@
  @PENDING@
+ @MANUAL@
  @BEACON@
  void tick() { clock_ms+=1001; serviceMultiSf(mesh::radioDirection::current!=mesh::radioDirection::Mode::Tx,
      labExclusivePending()||beacon_owned); }
@@ -137,8 +139,17 @@ int main() {
  assert(f.prepareTransmitProfile(0,false)==mesh::RadioParamApplyResult::APPLIED);
  mesh::radioDirection::current=mesh::radioDirection::Mode::Both; f.tick();
  assert(f._lab_seq_requested);
+ // Manual scanner off during an exclusive owner wins over deferred restore.
+ f._lab_scan_active=true; f._lab_session_ldo=true;
+ assert(f.prepareBeaconTransmit(beacon,9)==mesh::RadioParamApplyResult::APPLIED);
+ assert(f._lab_exclusive_restore_auto);
+ assert(f.labScannerSetAutomaticManual(false));
+ assert(!f._lab_exclusive_restore_auto && f._lab_user_auto_off);
+ for (int i=0;i<8;++i) f.tick(); f.beacon_owned=false; f.tick();
+ assert(!f._lab_seq_requested && f._lab_user_auto_off);
+ assert(f.labScannerSetAutomaticManual(true)); f.tick(); assert(f._lab_seq_requested);
 }
-""".replace('@SERVICE@',service).replace('@PREPARE@',prepare).replace('@RELEASE@',release).replace('@PENDING@',pending).replace('@BEACON@',beacon)
+""".replace('@SERVICE@',service).replace('@PREPARE@',prepare).replace('@RELEASE@',release).replace('@PENDING@',pending).replace('@MANUAL@',manual).replace('@BEACON@',beacon)
 with tempfile.TemporaryDirectory() as directory:
     p=Path(directory); (p/'test.cpp').write_text(code)
     subprocess.run(['g++','-std=c++17','-Wall','-Wextra','-Werror','-Wno-misleading-indentation',str(p/'test.cpp'),'-o',str(p/'test')],check=True)
