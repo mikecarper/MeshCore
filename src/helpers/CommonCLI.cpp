@@ -3854,7 +3854,7 @@ void CommonCLI::handleCommand(uint32_t sender_timestamp, char* command, char* re
       const auto result = radio->trySetW12MultiSf(!off, lower, upper);
       if (result == mesh::RadioParamApplyResult::BUSY) strcpy(reply, "Error: radio busy; retry");
       else if (result != mesh::RadioParamApplyResult::APPLIED)
-        strcpy(reply, "Error: unsupported range, bandwidth, radio2, RXPS or extra.sf");
+        strcpy(reply, "Error: TX SF must be in range; check bandwidth, radio2, RXPS and extra.sf");
       else radio->formatW12MultiSf(reply, 160);
       return;
     }

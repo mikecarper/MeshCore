@@ -27,8 +27,9 @@ class W12MultiSfExperiment(unittest.TestCase):
         self.assertIn("restoreAfterDeepInit()", send)
         receive = method(source, "int startReceiveMode()")
         self.assertIn("applyMultiSfReceiveTuple(plan)", receive)
-        airtime = method(source, "uint32_t getEstAirtimeFor(")
-        self.assertIn("RadioLibWrapper::getProfileAirtime(0, len, _cur_cr)", airtime)
+        airtime = method((ROOT / "src/helpers/radiolib/W12PramScannerLab.inc").read_text(),
+                         "uint32_t getEstAirtimeFor(")
+        self.assertIn("RadioLibWrapper::getProfileAirtime(0,len,_cur_cr)", airtime)
 
     def test_actual_send_path_guards_and_restores(self):
         source = (ROOT / "src/helpers/radiolib/CustomLR2021Wrapper.h").read_text()

@@ -134,9 +134,10 @@ public:
     return true;
   }
   uint32_t getEstAirtimeFor(int len) override {
-    // A profile can be disabled before scanner ownership is released. Pass
-    // the validated snapshot's coding rate so the single-profile fallback
-    // in getProfileAirtime does not call this virtual method recursively.
+#if defined(MESH_W12_MULTISF_EXPERIMENT) && MESH_W12_MULTISF_EXPERIMENT
+    if (_multi_sf_enabled) return RadioLibWrapper::getProfileAirtime(0,len,_cur_cr);
+#endif
+    // Keep the coding rate for a profile disabled during scanner release.
     if (_lab_scan_active && _lab_last_profile>=0)
       return getProfileAirtime(uint8_t(_lab_last_profile),len,_lab_last.cr);
     // LR2021::getTimeOnAir reads the packet type over SPI. Once RXPS is
@@ -456,6 +457,9 @@ public:
 #if MESH_ENABLE_TX_BEACONS
   mesh::RadioParamApplyResult prepareBeaconTransmit(const mesh::RadioProfileParams& p, int8_t power) override {
     using Result=mesh::RadioParamApplyResult;
+#if defined(MESH_W12_MULTISF_EXPERIMENT) && MESH_W12_MULTISF_EXPERIMENT
+    if (_multi_sf_enabled) return Result::FAILED;
+#endif
     if (_lab_uncertain) return Result::BUSY;
     if (_lab_scan_active) {
       const Result paused=labPauseScanner(true,0);

@@ -139,7 +139,7 @@ public:
     snprintf(out, cap, "> %s%s %u-%u tx=%u (RAM only)",
         _multi_sf_enabled ? "on" : "off", !_multi_sf_enabled ? "" :
         admitted != mesh::w12multisf::Admission::Ready ? "/blocked" :
-        state == STATE_RX ? "/receiving" : "/pending",
+        isInRecvMode() ? "/receiving" : "/pending",
         (unsigned)_multi_sf_lower, (unsigned)_multi_sf_upper, (unsigned)_cur_sf);
   }
   mesh::RadioParamApplyResult trySetW12MultiSf(bool enabled, uint8_t lower, uint8_t upper) override {
@@ -172,10 +172,12 @@ public:
     if (!restored || (resume && !isInRecvMode())) _profile_refresh_required = _profile_repair_required = true;
     return Result::FAILED;
   }
+#if !defined(MESH_W12_PRAM_EXPERIMENT) || !MESH_W12_PRAM_EXPERIMENT
   uint32_t getEstAirtimeFor(int len) override {
     return _multi_sf_enabled ? RadioLibWrapper::getProfileAirtime(0, len, _cur_cr)
                              : RadioLibWrapper::getEstAirtimeFor(len);
   }
+#endif
 #endif
 #if MESH_LR2021_RXPS_AVAILABLE
   // The autonomous single-profile duty cycle is a separate experiment from
@@ -639,7 +641,8 @@ public:
     return RadioLibWrapper::startSendRaw(bytes, len);
   }
 
-#if defined(MESH_W12_MULTISF_EXPERIMENT) && MESH_W12_MULTISF_EXPERIMENT && MESH_ENABLE_TX_BEACONS
+#if defined(MESH_W12_MULTISF_EXPERIMENT) && MESH_W12_MULTISF_EXPERIMENT && MESH_ENABLE_TX_BEACONS && \
+    (!defined(MESH_W12_PRAM_EXPERIMENT) || !MESH_W12_PRAM_EXPERIMENT)
   mesh::RadioParamApplyResult prepareBeaconTransmit(const mesh::RadioProfileParams& params,
                                                      int8_t power) override {
     if (_multi_sf_enabled) return mesh::RadioParamApplyResult::FAILED;
