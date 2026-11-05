@@ -42,8 +42,8 @@ GOLDEN = {
                  'calls': 'ddc85fafb3f655e589c045e2ee91fac95b3926624c4ac91b657a7de346e27098'},
     'nrf_minimal': {'text': '633d0e5e67abed482f64ca2563011ba263f169e039e1d89190de06668f975395',
                     'calls': 'd550ea873fb4408c2796b439736b205fea1ab985c3da58a06fb69cc557347ae5'},
-    'esp_full': {'text': 'd5f302351cb7f5ab70ea090b0c9b55fb78179b56b9b9247a5afbfd48eea616fe',
-                 'calls': '7b4d5ad502845d13bdacec6ebc83442461d0768e76872c2b4c578a4b014ea5c2'},
+    'esp_full': {'text': 'fee8d0cc18e051da06859527ba13c87a2c8645fe89fb9d6b570e1042921bc88f',
+                 'calls': 'd772aa172ae1647c9d69f6fa23bf70b5ff4f2b2daf7fd7cc5b528c0f82a266e1'},
     'stm32_wl_usb': {'text': 'e23a0514d2d52091196cd689b88c984db52642df8e9fd67a878c74a6312c520d'},
 }
 # Snapshots taken before shortening the English descriptions. These bind every
@@ -53,7 +53,7 @@ COMMAND_INVENTORY = {
     'nrf_full': '90321d86ecd2a04efff4c95aee0578935c84439786a9725383a21287808ec8f0',
     'nrf_minimal': '420617a933aec1f81c90c9b78b0457e3509b6da62b649969b4ffa9b8418538c5',
     'stm32_wl_usb': '36e6972aefe8fc2355d937c06ecae1656224618529c2f7a18f459008856476e7',
-    'esp_full': '77f676718d8f8109553e995fb77fda5bdd665cd96df256091afecefe4eb315ad',
+    'esp_full': 'ea728cc706b387dfa463cf632db0f0a0e2e64a288e487582c5942234073fa25c',
 }
 
 FAST_HELP = (b'  get radio.fast / get radio.fast.caps\r\n'
@@ -250,6 +250,8 @@ class CompanionHelpWriterTests(unittest.TestCase):
                 self.assertEqual(result.returncode,0,result.stderr.decode(errors='replace'))
                 self.assertEqual(result.stdout.count(b'  get wifi.diag (attempts, last disconnect)\r\n'),
                                  1 if name == 'esp_full' else 0)
+                for wifi_tx_command in (b'  get wifi.tx\r\n', b'  set wifi.tx <auto|2..21>\r\n'):
+                    self.assertEqual(result.stdout.count(wifi_tx_command), 1 if name == 'esp_full' else 0)
                 self.assertEqual(hashlib.sha256(command_inventory(result.stdout)).hexdigest(),
                                  COMMAND_INVENTORY[name])
                 for command, detail in (
