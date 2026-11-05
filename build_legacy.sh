@@ -4550,6 +4550,11 @@ apply_companion_radio_full_profile() {
   # layout explicitly so Full-only runtime policies, including the bounded
   # first-boot WebConfig window, cannot silently compile with legacy defaults.
   export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -DWIFI_OTA_SEEDER=1 -DCOMPANION_FEATURE_USB_MOTA_SOURCE=1 -DCOMPANION_FEATURE_NETWORK_TERMINAL=1 -DCOMPANION_FEATURE_MEMORY_DIAGNOSTICS=1 -DMESHCORE_EXPANDED_PARTITION_PROFILE=1"
+  # PLATFORMIO_BUILD_UNFLAGS replaces the environment's build_unflags. Keep
+  # native USB CDC off in the explicitly selected keyboard-host images.
+  if pio_env_option_contains "$pio_env_name" build_flags "MESH_USB_KEYBOARD_HOST=1"; then
+    append_platformio_build_unflags "-DARDUINO_USB_MODE=1 -DARDUINO_USB_CDC_ON_BOOT=1"
+  fi
   append_platformio_build_unflags "-DDISABLE_WIFI_OTA=1 -fexceptions"
   export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -UDISABLE_WIFI_OTA -DLIGHTWEIGHT_WIFI_OTA=1 -fno-exceptions"
 
@@ -6353,11 +6358,11 @@ is_redundant_bulk_build_target() {
       || is_qspi_hardware_qualification_target "$1"; then
     return 0
   fi
-  # Bench fixtures, migration utilities and the unqualified optional SD
-  # source use exact recipes, not the ordinary release/OTA receiver matrix.
+  # Bench fixtures, migration utilities and unqualified keyboard/SD targets
+  # use exact recipes, not the ordinary release/OTA receiver matrix.
   case "${1,,}" in
     profile_switch_*|profile_fixed_*|profile_four_tx_v4_rx|*partition_migrator*|*partition_expander*|*_partition_legacy_seed|\
-    *_legacy_partition_test|*_sim|rak_4631_repeater_rak15002_sd_seeder_only)
+    *_legacy_partition_test|*_sim|*_companion_radio_full_keyboard|rak_4631_repeater_rak15002_sd_seeder_only)
       return 0
       ;;
   esac

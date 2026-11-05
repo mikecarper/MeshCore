@@ -38,6 +38,9 @@ inline void w12RecordSleepWake(esp_err_t error, bool radio_wakeup, gpio_num_t pi
   mesh::w12pram::sleepDiag().record(true, kind, radio_high);
 }
 #endif
+#if defined(MESH_USB_KEYBOARD_HOST) && MESH_USB_KEYBOARD_HOST
+#include "esp32/UsbKeyboardHost.h"
+#endif
 #include <esp_pm.h>
 #if CONFIG_IDF_TARGET_ESP32
 #include <soc/efuse_reg.h>
@@ -401,6 +404,14 @@ public:
                             bool has_deadline, uint32_t deadline_us) {
     using mesh::powerdiag::Reason;
     const bool diagnostics = mesh::powerdiag::enabled();
+#if defined(MESH_USB_KEYBOARD_HOST) && MESH_USB_KEYBOARD_HOST
+    // The USB host must see new devices and key input; its PHY cannot wake
+    // the S3 from manual light sleep. The FreeRTOS idle task may still run.
+    if (mesh::usbkeyboard::active()) {
+      if (diagnostics) mesh::powerdiag::boardVeto(Reason::UsbSession, millis());
+      return;
+    }
+#endif
     // Preserve native-host signal history even while a test disables sleep.
     const bool usb_sleep_held = isUsbSleepHeld();
     if (!mesh::esp32::manualCpuSleepEnabled()) {

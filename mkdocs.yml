@@ -92,6 +92,7 @@ nav:
           - nrf52_power_management.md
       - CLI and protocol reference:
           - cli_commands.md
+          - usb_keyboard.md
           - cli_build_matrix.md
           - cli_command_availability.md
           - terminal_chat_cli.md

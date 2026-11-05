@@ -15,6 +15,9 @@
 #endif
 #include <helpers/UsbLoggingWatchdog.h>
 #include <helpers/UsbLoggingClientActivity.h>
+#if defined(MESH_USB_KEYBOARD_HOST) && MESH_USB_KEYBOARD_HOST
+#include <helpers/esp32/UsbKeyboardHost.h>
+#endif
 #include <helpers/MorseLoopPolicy.h>
 #include <Mesh.h>
 #include <helpers/BluetoothMac.h>
@@ -3562,9 +3565,13 @@ public:
 static CompanionWirelessBackend companion_wireless;
 
 #if defined(ESP32_PLATFORM) && defined(ENABLE_USB_INTERFACE) \
-    && defined(ARDUINO_USB_CDC_ON_BOOT) && ARDUINO_USB_CDC_ON_BOOT \
+    && ((defined(ARDUINO_USB_CDC_ON_BOOT) && ARDUINO_USB_CDC_ON_BOOT) \
+        || (defined(MESH_USB_KEYBOARD_HOST) && MESH_USB_KEYBOARD_HOST)) \
     && !defined(ETHERNET_ENABLED) && !defined(SERIAL_RX)
 static bool companionNativeUsbLightSleepReady() {
+#if defined(MESH_USB_KEYBOARD_HOST) && MESH_USB_KEYBOARD_HOST
+  if (mesh::usbkeyboard::active()) return false;
+#endif
   // Full compiles every transport, but a compiled driver is not an active
   // receiver. Preserve live services and pending replies while permitting
   // the same short sleep slice when those services have been turned off.
@@ -3648,7 +3655,9 @@ void setup() {
   // wireless preparation.  Bluefruit preserves USB power state while it
   // enables the SoftDevice; a late first Serial.begin() can leave that enable
   // path in an invalid state on native-USB boards such as the T1000-E.
+#if !defined(MESH_USB_KEYBOARD_HOST) || !MESH_USB_KEYBOARD_HOST
   Serial.begin(115200);
+#endif
   mesh::wireless::control().begin(companion_wireless);
 #if !MESH_ESP32_HWCDC_SESSION_GUARD
   mesh::prepareUsbLoggingPort();
@@ -4169,7 +4178,11 @@ void setup() {
     return !mesh::hostkiss::usbInputReserved(next_byte);
   });
 #endif
-#if defined(ESP32) && defined(ARDUINO_USB_MODE) && ARDUINO_USB_MODE == 1 \
+#if defined(MESH_USB_KEYBOARD_HOST) && MESH_USB_KEYBOARD_HOST
+  // The native USB port belongs to the keyboard. Do not advertise a phantom
+  // UART client or occupy GPIO43/44 (some TFT boards use them for the panel).
+  usb_serial_interface.setConnectedCheck([]() { return false; });
+#elif defined(ESP32) && defined(ARDUINO_USB_MODE) && ARDUINO_USB_MODE == 1 \
     && defined(ARDUINO_USB_CDC_ON_BOOT) && ARDUINO_USB_CDC_ON_BOOT
   // The ESP32 USB-Serial-JTAG peripheral (HWCDC) has no DTR concept at all.
   // Its bool operator is a transient RX/TX activity heuristic, and even the
@@ -4540,9 +4553,10 @@ void loop() {
 #elif defined(ESP32_PLATFORM)
     const uint32_t sleep_budget_started_us = static_cast<uint32_t>(esp_timer_get_time());
 #if defined(ENABLE_USB_INTERFACE) \
-    && defined(ARDUINO_USB_CDC_ON_BOOT) && ARDUINO_USB_CDC_ON_BOOT \
+    && ((defined(ARDUINO_USB_CDC_ON_BOOT) && ARDUINO_USB_CDC_ON_BOOT) \
+        || (defined(MESH_USB_KEYBOARD_HOST) && MESH_USB_KEYBOARD_HOST)) \
     && !defined(ETHERNET_ENABLED) && !defined(SERIAL_RX)
-    // Automatic light sleep is disabled for native USB, even in a PM-enabled
+    // Automatic light sleep is disabled for USB, even in a PM-enabled
     // core. A short timer slice gives idle battery builds real light sleep without
     // delaying radio, GPS, button, or newly attached USB work by more than the
     // normal 10 ms loop cadence. can_sleep already proved no USB host is up.

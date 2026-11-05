@@ -22,6 +22,13 @@
 #include "../MyMesh.h"
 #include "../CompanionWiFi.h"
 #include "target.h"
+#if defined(MESH_USB_KEYBOARD_HOST) && MESH_USB_KEYBOARD_HOST
+  #include <helpers/esp32/UsbKeyboardHost.h>
+  #include <helpers/ui/UsbKeyboardOverlay.h>
+  #if !defined(WITH_WEBCONFIG) || !COMPANION_FEATURE_TEXT_TERMINAL
+    #error "USB keyboard console requires the Companion text terminal"
+  #endif
+#endif
 #include <time.h>
 #include <math.h>
 #if UI_POCKET_GUI
@@ -50,6 +57,141 @@
   #define BLE_PAIRING_DISPLAY_MILLIS 120000UL
 #endif
 #define BOOT_SCREEN_MILLIS   3000   // 3 seconds
+
+#if defined(MESH_USB_KEYBOARD_HOST) && MESH_USB_KEYBOARD_HOST
+namespace {
+mesh::ui::UsbKeyboardConsole keyboard_console;
+
+class KeyboardTerminalStream : public Stream {
+public:
+  int available() override { return 0; }
+  int read() override { return -1; }
+  int peek() override { return -1; }
+  void flush() override {}
+  int availableForWrite() override { return 512; }
+  size_t write(uint8_t byte) override { keyboard_console.append(byte); return 1; }
+  using Print::write;
+};
+
+KeyboardTerminalStream keyboard_output;
+bool keyboard_present = false;
+bool keyboard_terminal_owned = false;
+bool keyboard_box_drawn = false;
+int keyboard_measured_width = -1, keyboard_measured_height = -1;
+bool keyboard_screen_fits = false;
+
+void closeKeyboardTerminal() {
+  if (keyboard_terminal_owned && the_mesh.ownsStreamTerminal(keyboard_output))
+    the_mesh.endStreamTerminal(keyboard_output);
+  keyboard_terminal_owned = false;
+  keyboard_box_drawn = false;
+  keyboard_console.disconnect();
+}
+
+void releaseKeyboardTerminalIfIdle() {
+  if (!keyboard_terminal_owned) return;
+  if (!the_mesh.ownsStreamTerminal(keyboard_output)) {
+    keyboard_terminal_owned = false;
+    return;
+  }
+#if COMPANION_FEATURE_READER
+  if (the_mesh.streamTerminalBusy()) return;
+#endif
+  the_mesh.endStreamTerminal(keyboard_output);
+  keyboard_terminal_owned = false;
+}
+
+bool openKeyboardTerminal() {
+  if (keyboard_terminal_owned && the_mesh.ownsStreamTerminal(keyboard_output)) return true;
+  keyboard_terminal_owned = the_mesh.beginStreamTerminal(keyboard_output);
+  if (!keyboard_terminal_owned) keyboard_console.append("Terminal busy; try again\n");
+  return keyboard_terminal_owned;
+}
+
+void submitKeyboardCommand() {
+  if (!openKeyboardTerminal()) return;
+#if COMPANION_FEATURE_READER
+  if (the_mesh.streamTerminalBusy()) {
+    keyboard_console.append("Wait for current output\n");
+    return;
+  }
+#endif
+  // The terminal parser edits its input in place. Clear both this copy and
+  // the editor promptly after executing, including when it held a password.
+  char command[mesh::ui::UsbKeyboardConsole::CommandCapacity];
+  memcpy(command, keyboard_console.command(), keyboard_console.length() + 1);
+  const size_t secret = mesh::ui::usbKeyboardSecretStart(command);
+  keyboard_console.append("> ");
+  for (size_t i = 0; command[i]; ++i)
+    keyboard_console.append(static_cast<uint8_t>(i >= secret ? '*' : command[i]));
+  keyboard_console.append("\n");
+  keyboard_console.clearCommand();
+  the_mesh.setTerminalInputEditing(keyboard_output, false);
+  the_mesh.runStreamTerminal(command);
+  memset(command, 0, sizeof(command));
+  releaseKeyboardTerminalIfIdle();
+}
+
+mesh::usbkeyboard::EventType serviceKeyboard(DisplayDriver* display, bool accept_input) {
+  using mesh::usbkeyboard::EventType;
+  if (display && keyboard_present && (!keyboard_console.connected() || keyboard_console.visible())
+      && (keyboard_measured_width != display->width() || keyboard_measured_height != display->height())) {
+    // Measure once after detection (or rotation), not on unrelated UI loops.
+    display->setTextSize(1);
+    keyboard_measured_width = display->width();
+    keyboard_measured_height = display->height();
+    keyboard_screen_fits = mesh::ui::usbKeyboardScreenFits(
+        keyboard_measured_width, keyboard_measured_height, display->textLineHeight());
+  }
+  const bool fits = display && keyboard_screen_fits;
+  if (!accept_input) keyboard_box_drawn = false;
+  releaseKeyboardTerminalIfIdle();
+  if (!fits && keyboard_console.connected()) closeKeyboardTerminal();
+  if (fits && keyboard_present && !keyboard_console.connected()) {
+    keyboard_console.connect();
+  }
+  mesh::usbkeyboard::Event event;
+  EventType error = EventType::None;
+  while (mesh::usbkeyboard::next(event)) {
+    if (event.type == EventType::Disconnected || event.type == EventType::Stopped) {
+      keyboard_present = false;
+      keyboard_measured_width = keyboard_measured_height = -1;
+      keyboard_screen_fits = false;
+      if (keyboard_console.connected()) closeKeyboardTerminal();
+    } else if (event.type == mesh::usbkeyboard::EventType::Connected) {
+      keyboard_present = true;
+      keyboard_box_drawn = false;
+      if (fits && !keyboard_console.connected()) {
+        keyboard_console.connect();
+      }
+    } else if (event.type == EventType::Unsupported || event.type == EventType::Error) {
+      error = event.type;
+    } else if (fits && keyboard_console.connected() && event.type == EventType::Report) {
+      if (!accept_input || (keyboard_console.visible() && !keyboard_box_drawn)) {
+        keyboard_console.ignoreReport(event.report, sizeof(event.report));
+        if (display && !display->isOn()) {
+          for (size_t i = 2; i < sizeof(event.report); ++i) {
+            if (event.report[i]) {
+              display->wake(mesh::ui::DisplayWake::Button);
+              keyboard_console.invalidate();
+              break;
+            }
+          }
+        }
+        continue;
+      }
+      const bool was_visible = keyboard_console.visible();
+      const auto action = keyboard_console.report(event.report, sizeof(event.report));
+      if (was_visible != keyboard_console.visible()) keyboard_box_drawn = false;
+      if (action == mesh::ui::UsbKeyboardConsole::Action::Submit) submitKeyboardCommand();
+      if (keyboard_terminal_owned)
+        the_mesh.setTerminalInputEditing(keyboard_output, keyboard_console.length() != 0);
+    }
+  }
+  return error;
+}
+}  // namespace
+#endif
 
 #ifdef PIN_STATUS_LED
 #define LED_ON_MILLIS     20
@@ -2810,6 +2952,24 @@ void UITask::loop() {
   serviceWiFiToggleButton();
   servicePairingState();
 
+#if defined(MESH_USB_KEYBOARD_HOST) && MESH_USB_KEYBOARD_HOST
+  static uint32_t keyboard_revision = 0;
+  static uint32_t keyboard_next_refresh = 0;
+  serviceKeyboard(_display, _display && _display->isOn() && !_alert[0]
+      && !isPairingScreenActive() && !morse_timing);
+  if (keyboard_revision != keyboard_console.revision()) {
+    keyboard_revision = keyboard_console.revision();
+    if (_display && keyboard_console.connected()) _display->wake(mesh::ui::DisplayWake::Button);
+    const uint32_t now = millis();
+    if (!_display || !_display->isEink() || static_cast<int32_t>(now - keyboard_next_refresh) >= 0) {
+      _next_refresh = now;
+      keyboard_next_refresh = now + 700;
+    } else if (static_cast<int32_t>(_next_refresh - keyboard_next_refresh) > 0) {
+      _next_refresh = keyboard_next_refresh;
+    }
+  }
+#endif
+
   // Keep an already-due refresh due while drawing is deferred, without
   // moving a future throttle or letting it age past half the clock range.
   const uint32_t refresh_now = millis();
@@ -2827,29 +2987,44 @@ void UITask::loop() {
   char c = 0;
 #if UI_HAS_JOYSTICK
   int ev = user_btn.check();
+#if defined(MESH_USB_KEYBOARD_HOST) && MESH_USB_KEYBOARD_HOST
+  if (ev != BUTTON_EVENT_NONE) (void)mesh::usbkeyboard::probe();
+#endif
   if (ev == BUTTON_EVENT_CLICK) {
     c = checkDisplayOn(KEY_ENTER);
   } else if (ev == BUTTON_EVENT_LONG_PRESS) {
     c = handleLongPress(KEY_ENTER);  // REVISIT: could be mapped to different key code
   }
   ev = joystick_left.check();
+#if defined(MESH_USB_KEYBOARD_HOST) && MESH_USB_KEYBOARD_HOST
+  if (ev != BUTTON_EVENT_NONE) (void)mesh::usbkeyboard::probe();
+#endif
   if (ev == BUTTON_EVENT_CLICK) {
     c = checkDisplayOn(KEY_LEFT);
   } else if (ev == BUTTON_EVENT_LONG_PRESS) {
     c = handleLongPress(KEY_LEFT);
   }
   ev = joystick_right.check();
+#if defined(MESH_USB_KEYBOARD_HOST) && MESH_USB_KEYBOARD_HOST
+  if (ev != BUTTON_EVENT_NONE) (void)mesh::usbkeyboard::probe();
+#endif
   if (ev == BUTTON_EVENT_CLICK) {
     c = checkDisplayOn(KEY_RIGHT);
   } else if (ev == BUTTON_EVENT_LONG_PRESS) {
     c = handleLongPress(KEY_RIGHT);
   }
   ev = back_btn.check();
+#if defined(MESH_USB_KEYBOARD_HOST) && MESH_USB_KEYBOARD_HOST
+  if (ev != BUTTON_EVENT_NONE) (void)mesh::usbkeyboard::probe();
+#endif
   if (ev == BUTTON_EVENT_TRIPLE_CLICK || ev == BUTTON_EVENT_QUADRUPLE_CLICK) {
     c = handleMultiClick(KEY_SELECT, ev == BUTTON_EVENT_QUADRUPLE_CLICK);
   }
 #elif defined(PIN_USER_BTN)
   int ev = user_btn.check();
+#if defined(MESH_USB_KEYBOARD_HOST) && MESH_USB_KEYBOARD_HOST
+  if (ev != BUTTON_EVENT_NONE) (void)mesh::usbkeyboard::probe();
+#endif
   #ifdef UI_HAS_NAV_INPUT
   if (ev == BUTTON_EVENT_CLICK) {
     c = checkDisplayOn(KEY_ENTER);
@@ -2900,6 +3075,9 @@ void UITask::loop() {
 #if defined(PIN_USER_BTN_ANA)
   if (abs(millis() - _analogue_pin_read_millis) > 10) {
     int ev = analog_btn.check();
+#if defined(MESH_USB_KEYBOARD_HOST) && MESH_USB_KEYBOARD_HOST
+    if (ev != BUTTON_EVENT_NONE) (void)mesh::usbkeyboard::probe();
+#endif
     if (ev == BUTTON_EVENT_CLICK) {
       c = checkDisplayOn(KEY_NEXT);
     } else if (ev == BUTTON_EVENT_LONG_PRESS) {
@@ -2948,6 +3126,9 @@ void UITask::loop() {
         touched, touch_x, touch_y, _display->width(), _display->height(),
         curr == msg_preview && UI_MESSAGE_CHANNEL_FOOTER == 1,
         split_transport_selector, reader_touch_bar);
+#if defined(MESH_USB_KEYBOARD_HOST) && MESH_USB_KEYBOARD_HOST
+    if (action != mesh::ui::TouchAction::None) (void)mesh::usbkeyboard::probe();
+#endif
     const bool on_transport_selector = split_transport_selector != nullptr;
     if (c == 0) {
       switch (action) {
@@ -3056,7 +3237,14 @@ void UITask::loop() {
             _touch_debug_screen == curr ? _touch_debug_y : -1);
       }
 #endif
+#if defined(MESH_USB_KEYBOARD_HOST) && MESH_USB_KEYBOARD_HOST
+      keyboard_box_drawn = !isPairingScreenActive() && !_alert[0]
+          && mesh::ui::drawUsbKeyboardOverlay(*_display, keyboard_console);
+#endif
       _display->endFrame();
+#if defined(MESH_USB_KEYBOARD_HOST) && MESH_USB_KEYBOARD_HOST
+      if (_display->isEink() && keyboard_console.connected()) keyboard_next_refresh = millis() + 700;
+#endif
     }
 #if AUTO_OFF_MILLIS > 0
 #if MOMENTARY_BUTTON_WAKE_HOLD_MS > 0 && defined(PIN_USER_BTN)
