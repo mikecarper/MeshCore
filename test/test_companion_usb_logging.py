@@ -498,8 +498,13 @@ int main(){
    const auto diagnostic_at=text.find(diagnostic);
    assert(diagnostic_at!=std::string::npos);
    assert(text.find(diagnostic,diagnostic_at+diagnostic.size())==std::string::npos);
+   for(const auto command : {"  get wifi.tx\r\n", "  set wifi.tx <auto|2..21>\r\n"}) {
+     const auto at=text.find(command);
+     assert(at!=std::string::npos && text.find(command,at+strlen(command))==std::string::npos);
+   }
 #else
    assert(text.find("wifi.diag")==std::string::npos);
+   assert(text.find("wifi.tx")==std::string::npos);
 #endif
 #if MESH_ENABLE_LOST_REPLY
    assert(text.find("  get/set lost.reply <off|no|yes>\r\n")!=std::string::npos);
