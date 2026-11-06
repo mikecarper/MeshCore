@@ -8,6 +8,7 @@
   let contacts=[], targetLocked=false, contactKey='';
   let catalogFile=null, catalogBaseFile=null, catalogDest=null, catalogVersion='', catalogInstallSupported=false, catalogCandidates=[], catalogGeneration=0;
   let preservedCount=0, preservedExportSnapshot=null, preservedExportToken=null, preservedExportInterrupted=false;
+  let investigationTimer=null, investigationStage='', investigationStopping=false, investigationActive=false;
   const log = text => { $('status').textContent += String(text) + '\n'; $('status').scrollTop = $('status').scrollHeight; };
   const fail = error => log('Error: ' + (error?.message || error));
   const bytes = (file, limit = 64 * 1024 * 1024) => {
@@ -52,6 +53,43 @@
   }
   function invalidate() { session = info = chainPrepared = chainConfig = null; $('transfer').disabled = true; $('resume').disabled = true;
     $('install').disabled = true; $('chain-run').disabled = true; $('chain-resume').disabled = true; }
+  function showInvestigationProgress(label, timeoutMs) {
+    const progress=$('investigation-progress'); if(progress.hidden)return;
+    const stage=label+'|'+(Number.isFinite(timeoutMs)?timeoutMs:'');
+    if(stage===investigationStage)return;
+    investigationStage=stage; clearInterval(investigationTimer);
+    $('investigation-progress-label').textContent=label;
+    const started=Date.now(), update=()=>{
+      const seconds=Math.floor((Date.now()-started)/1000);
+      $('investigation-progress-elapsed').textContent='Elapsed: '+seconds+'s'+
+        (Number.isFinite(timeoutMs)&&timeoutMs>0 ? ' (reply timeout: '+Math.ceil(timeoutMs/1000)+'s)' : '');
+    };
+    update();investigationTimer=setInterval(update,1000);
+  }
+  function finishInvestigationProgress(label) {
+    clearInterval(investigationTimer);investigationTimer=null;investigationStage='';
+    $('investigation-progress-label').textContent=label;
+    $('investigation-progress-elapsed').textContent='';
+  }
+  function onInvestigationProgress(event) {
+    if(!event || typeof event.stage!=='string' || investigationStopping || !investigationActive)return;
+    const labels={
+      'refreshing-contacts':'Refreshing contacts…',
+      'sending-login':'Sending login…',
+      'waiting-login':'Waiting for login response…',
+      identity:'Checking target identity…',
+      'sending-command':'Sending request to target…',
+      'command-sent':'Waiting for target reply…',
+      'waiting-reply':'Waiting for target reply…'
+    };
+    const label=labels[event.stage];if(!label)return;
+    const command=typeof event.command==='string' && /^[a-z0-9. ]{1,40}$/i.test(event.command) ? ' ('+event.command+')' : '';
+    if(event.stage==='waiting-login')
+      $('investigation').textContent+='> login (password hidden)\n';
+    if(event.stage==='command-sent' && command)
+      $('investigation').textContent+='> '+event.command+'\n';
+    showInvestigationProgress(label+command,event.timeoutMs);
+  }
   function refreshPreservedMessages() {
     if(typeof LoraOtaCompanion.preservedMessages!=='function')return;
     try {
@@ -98,6 +136,8 @@
   refreshPreservedMessages();
   function clearInvestigation() {
     $('investigation').hidden = true; $('investigation').textContent = '';
+    finishInvestigationProgress('');$('investigation-progress').hidden=true;
+    $('investigation-stop').hidden=true; investigationStopping=false;
     $('legacy-warning').hidden = true;
     $('legacy-source-block').hidden = true;
     catalogGeneration++; catalogFile=null; catalogBaseFile=null; catalogDest=null; catalogVersion=''; catalogInstallSupported=false; catalogCandidates=[];
@@ -189,7 +229,7 @@
       $('contact-status').textContent = 'Connecting to radio…';
       if(companion)$('acl').checked=false;
       const direct = companion
-        ? new LoraOtaCompanion.CompanionTransport(port, {remoteTimeout:75000, onPreserved:refreshPreservedMessages})
+        ? new LoraOtaCompanion.CompanionTransport(port, {remoteTimeout:75000, onPreserved:refreshPreservedMessages, onInvestigationProgress})
         : new LoraOtaSerial.RepeaterTransport(port, {knownRepeater:key, aclOnly:$('acl').checked, remoteTimeout:75000});
       link = relays.length ? new LoraOtaRoute.RoutedRepeaterTransport(direct, key, relays) : direct;
       await link.open();
@@ -280,9 +320,14 @@
     }
     clearInvestigation(); invalidate(); busy(true); $('inspect').disabled = true;
     const output = $('investigation'), replies = {};
-    let target = '', complete = false, verified = false;
+    let target = '', complete = false, verified = false, stopped = false, failed = false;
     output.hidden = false;
     output.textContent = 'Investigating target…\n';
+    $('investigation-progress').hidden=false;
+    investigationStopping=false;investigationActive=true;
+    $('investigation-stop').hidden=!(standard && typeof link?.cancelInvestigation==='function');
+    $('investigation-stop').disabled=false;
+    showInvestigationProgress('Preparing target connection…');
     const add = text => { output.textContent += text + '\n'; };
     const checks = [
       ['OTA status', 'ota status'], ['OTA storage and image', 'ota self'],
@@ -293,6 +338,7 @@
       ['Install verification', 'ota installhash']
     ];
     let next = 0, allReplies = true;
+    const checkStopped=()=>{if(investigationStopping)throw Error('Investigation stopped by user');};
     try {
       if (!link) throw Error('Connect a source radio first.');
       target = selectTarget().toLowerCase();
@@ -300,9 +346,14 @@
       if(standard) {
         add('Companion warning: this radio can investigate, but needs guarded OTA support before it can send an update.');
         await link.enableStandardInvestigation();
+        showInvestigationProgress('Logging in and checking target identity…');
         await link.investigateVerifyPeer(target, password);
-      } else await link.verifyPeer(target, password);
-      verified = !standard || link.investigationVerified===true;
+      } else {
+        if($('source').value!=='companion' && !link.authenticated && !$('acl').checked)add('> login (password hidden)');
+        showInvestigationProgress($('acl').checked || link.authenticated ? 'Checking target identity…' : 'Logging in and checking target identity…');
+        await link.verifyPeer(target, password);
+      }
+      checkStopped();verified = !standard || link.investigationVerified===true;
       add(verified ? 'Identity: full public key verified (' + target.slice(0, 12).toUpperCase() + ')' :
         'Identity not fully verified: this target does not support the full-key check. Results are diagnostics only; firmware selection and updates are disabled.');
       if(standard) {
@@ -310,7 +361,10 @@
         add('Disconnect the Companion to choose another target.');
       }
       for (; next < checks.length; next++) {
+        checkStopped();
         const [label, command] = checks[next];
+        showInvestigationProgress('Checking '+label.toLowerCase()+'…');
+        if($('source').value!=='companion')add('> '+command);
         let reply;
         try { reply = String(await (standard ? link.investigateCommand(target, password, command) : link.remoteCommand(target, password, command))).trim(); }
         catch(error) {
@@ -319,7 +373,7 @@
           }
           throw error;
         }
-        replies[command] = reply;
+        checkStopped();replies[command] = reply;
         const normalized = reply.replace(/^>\s*/, '');
         if (command === 'ota installhash') {
           catalogInstallSupported=normalized === 'ERR usage: ota installhash <64-hex-container-sha256>';
@@ -333,6 +387,9 @@
       }
       if (/\bqspi\b/i.test((replies['ota status'] || '') + ' ' + (replies['ota self'] || ''))) {
         try {
+          checkStopped();
+          showInvestigationProgress('Checking external flash…');
+          if($('source').value!=='companion')add('> ota qspi');
           const qspi = String(await (standard ? link.investigateCommand(target, password, 'ota qspi') : link.remoteCommand(target, password, 'ota qspi'))).trim();
           replies['ota qspi'] = qspi;
           const normalized = qspi.replace(/^>\s*/, '');
@@ -344,6 +401,7 @@
         }
       }
       complete = allReplies;
+      checkStopped();$('investigation-stop').hidden=true;
       if(verified)try {
         catalogDest=LoraOtaChecks.destination(replies['ota status'],replies['ota self'],replies.ver);catalogVersion=replies.ver;
         if(catalogDest.nrf && !catalogDest.external && !catalogDest.sd)
@@ -355,12 +413,17 @@
           $('firmware-catalog-status').textContent=(catalogInstallSupported ? '' : 'The target has not confirmed verified installation; this updater cannot install to it. ')+'Choose the target type to find matching firmware.';
         }else if(!globalThis.LoraOtaCatalog){
           $('firmware-catalog-status').textContent='Firmware catalog is unavailable. Choose a file manually.';
-        }else await discoverCatalog(role);
+        }else { showInvestigationProgress('Finding matching firmware…'); await discoverCatalog(role); }
       } catch(error) {
         $('firmware-catalog-status').textContent='Could not select firmware automatically: '+(error?.message || error)+'. You can choose a file manually.';
       } else $('firmware-catalog-status').textContent='Target identity is not fully verified; firmware selection and updates are disabled.';
     } catch (error) {
-      add((verified ? 'Check interrupted: ' : 'Identity not verified: ') + (error?.message || error));
+      stopped=investigationStopping && /^(?:Investigation canceled\.|Investigation stopped by user)/.test(error?.message||'');
+      failed=!stopped;
+      if(stopped)add('Investigation stopped. Unrelated messages already received are saved in this browser.');
+      else add((verified ? 'Check interrupted: ' : 'Identity not verified: ') + (error?.message || error));
+      if(/(?:login|remote command|target reply).*timed out/i.test(error?.message||''))
+        add('No reply received. Check that the target is awake and reachable, and verify the radio settings, path, admin password and Companion clock before trying again.');
       if(standard && link?.investigationEnabled)add('Disconnect the Companion before choosing another target or retrying the login.');
       for (; next < checks.length; next++) add(checks[next][0] + ': Not checked');
       fail(error);
@@ -372,6 +435,9 @@
         refreshPreservedMessages();
       }
       add(verified ? 'Firmware compatibility: run the package check before transferring.' : 'Firmware compatibility: not checked because the target identity was not fully verified.');
+      finishInvestigationProgress(stopped ? 'Investigation stopped.' : failed ? 'Investigation stopped with an error.' : complete ? 'Investigation finished.' : 'Investigation finished with incomplete checks.');
+      $('investigation-stop').hidden=true;
+      investigationActive=false;
       ui.dispatchEvent(new CustomEvent('lora-ota-investigated', {detail:{target,replies,complete,verified}}));
       busy(false); $('inspect').disabled = !link;
     }
@@ -549,6 +615,12 @@
   $('connect').addEventListener('click', () => run(connect()));
   $('investigate').addEventListener('click', () => run(investigate()));
   $('legacy-investigate').addEventListener('click', () => run(investigate(true)));
+  $('investigation-stop').addEventListener('click',()=>{
+    if(!link || typeof link.cancelInvestigation!=='function')return;
+    investigationStopping=true;$('investigation-stop').disabled=true;
+    showInvestigationProgress('Stopping safely…');
+    try { link.cancelInvestigation(); } catch(error) { fail(error); }
+  });
   $('inspect').addEventListener('click', () => run(inspect()));
   $('find-route').addEventListener('click', () => run(findRoute()));
   $('transfer').addEventListener('click', () => run(transfer(false)));
