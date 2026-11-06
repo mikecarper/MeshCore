@@ -84,6 +84,7 @@ HARNESS = r'''<script>
   window.addEventListener('error',e=>report({error:e.message,cmds}));
   window.addEventListener('unhandledrejection',e=>report({error:String(e.reason),cmds}));
   window.addEventListener('load',async()=>{
+    el('source').value='repeater';el('source').dispatchEvent(new Event('change'));
     try {
       const image=new Uint8Array(100), v=new DataView(image.buffer), at=44;
       image.set(enc.encode('EndF'),at);v.setUint32(at+4,at,true);

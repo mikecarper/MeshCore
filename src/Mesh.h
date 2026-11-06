@@ -262,7 +262,7 @@ protected:
 
   // A role can retain a blocked flood as a forwarding-only candidate for a
   // different radio, without repeating local delivery of the seen packet.
-#if !defined(COMPANION_RADIO_FULL) && !MESH_ROLE_COMPANION
+#if !defined(COMPANION_RADIO_FULL) && !MESH_ROLE_COMPANION && MESH_ENABLE_FLOOD_PROFILE_POLICY
   virtual bool deferredFloodCandidate(const Packet*, uint8_t, bool) { return false; }
   void onForwardPacketQueued(Packet* packet, uint8_t ingress) override {
     deferredFloodCandidate(packet, ingress, true);

@@ -2570,6 +2570,8 @@ void MyMesh::onPeerDataRecv(mesh::Packet* packet, uint8_t type, int sender_idx,
                           const uint8_t* secret, uint8_t* data, size_t len) {
   const uint32_t now = _ms->getMillis();
   const bool selected = _ota_direct_admin.matchesSecret(secret, now);
+  if (selected && (!directOtaRadioCurrent() || !packet || packet->radio_profile != 0
+                   || packet->radio_generation != _ota_direct_radio_generation)) return;
   const bool cli_reply = type == PAYLOAD_TYPE_TXT_MSG && data && len >= 5
       && (data[4] >> 2) == TXT_TYPE_CLI_DATA;
   if (selected && (type == PAYLOAD_TYPE_RESPONSE || cli_reply)) {
@@ -2590,6 +2592,8 @@ bool MyMesh::onPeerPathRecv(mesh::Packet* packet, int sender_idx, const uint8_t*
                           uint8_t* extra, uint8_t extra_len) {
   const uint32_t now = _ms->getMillis();
   if (_ota_direct_admin.matchesSecret(secret, now)) {
+    if (!directOtaRadioCurrent() || !packet || packet->radio_profile != 0
+        || packet->radio_generation != _ota_direct_radio_generation) return false;
     if (_ota_direct_admin.acceptsPath(packet, secret, path_len, now)
         && extra_type == PAYLOAD_TYPE_RESPONSE && extra && extra_len) {
       _ota_direct_admin.noteLogin(extra, extra_len);
@@ -6524,6 +6528,14 @@ void MyMesh::resetUsbHostSessionInput() {
 }
 
 #if COMPANION_FEATURE_DIRECT_OTA_ADMIN
+bool MyMesh::directOtaRadioCurrent() const {
+  const auto* profiles = _radio ? _radio->profiles() : nullptr;
+  return _ota_direct_radio_owned && profiles
+      && profiles->generation[0] == _ota_direct_radio_generation
+      && profiles->params(0).protocol == mesh::RadioProfileProtocol::MeshCore
+      && profiles->canTransmit(0);
+}
+
 void MyMesh::closeDirectOtaAdmin() {
   if (_ota_direct_transient && isTransientContact(*_ota_direct_transient)
       && _ota_direct_transient->type == ADV_TYPE_NONE
@@ -6533,6 +6545,8 @@ void MyMesh::closeDirectOtaAdmin() {
   _ota_direct_transient = nullptr;
   resetContactValue(_ota_direct_contact);
   _ota_direct_admin.clear();
+  _ota_direct_radio_owned = false;
+  _ota_direct_radio_generation = 0;
 }
 
 // No accepted contact or stored route is changed by these USB-owned modes.
@@ -6544,6 +6558,13 @@ __attribute__((noinline, cold)) bool MyMesh::handleDirectOtaFrame(size_t len) {
     return true;
   }
   const uint8_t mode = cmd_frame[1];
+  // Keep the initial primary profile throughout this USB-owned session. A
+  // changed profile or an expired lease requires an explicit close/reopen.
+  if (mode != 3 && _ota_direct_radio_owned
+      && (!directOtaRadioCurrent() || !_ota_direct_admin.active(_ms->getMillis()))) {
+    writeErrFrame(ERR_CODE_BAD_STATE);
+    return true;
+  }
   if ((mode == 1 && len != 3 + PUB_KEY_SIZE)
       || ((mode == 2 || mode == 3) && len != 2 + PUB_KEY_SIZE)
       || (mode == 4 && len != 5 + PUB_KEY_SIZE)) {
@@ -6553,12 +6574,18 @@ __attribute__((noinline, cold)) bool MyMesh::handleDirectOtaFrame(size_t len) {
   const uint8_t* key = cmd_frame + 2;
   if (mode == 1) {
     const uint8_t type = cmd_frame[2 + PUB_KEY_SIZE];
-    if (type != ADV_TYPE_REPEATER && type != ADV_TYPE_ROOM) {
+    if (type != ADV_TYPE_REPEATER && type != ADV_TYPE_ROOM && type != ADV_TYPE_SENSOR) {
       writeErrFrame(ERR_CODE_ILLEGAL_ARG);
       return true;
     }
     mesh::Identity peer;
     memcpy(peer.pub_key, key, PUB_KEY_SIZE);
+    const auto* profiles = _radio ? _radio->profiles() : nullptr;
+    if (!profiles || profiles->params(0).protocol != mesh::RadioProfileProtocol::MeshCore
+        || !profiles->canTransmit(0)) {
+      writeErrFrame(ERR_CODE_BAD_STATE);
+      return true;
+    }
     if (!_ota_direct_admin.matches(peer, _ms->getMillis())) {
       closeDirectOtaAdmin();
       if (!lookupContactByPubKey(key, PUB_KEY_SIZE)) {
@@ -6586,6 +6613,10 @@ __attribute__((noinline, cold)) bool MyMesh::handleDirectOtaFrame(size_t len) {
       _ota_direct_contact.sync_since = 0;
       _ota_direct_contact.tx_radio = mesh::RADIO_TX_PRIMARY;
     }
+    if (!_ota_direct_radio_owned) {
+      _ota_direct_radio_generation = profiles->generation[0];
+      _ota_direct_radio_owned = true;
+    }
     _ota_direct_admin.arm(_ota_direct_contact.id,
         _ota_direct_contact.getSharedSecret(self_id), _ms->getMillis());
     writeOKFrame();
@@ -6608,11 +6639,12 @@ __attribute__((noinline, cold)) bool MyMesh::handleDirectOtaFrame(size_t len) {
 bool MyMesh::handleDirectOtaCommand(const char* command, uint32_t timestamp,
                                     char* reply, size_t capacity) {
   const bool status = !strcmp(command, "get ota.direct");
+  const bool capabilities = !strcmp(command, "get ota.direct.capabilities");
   static const char prefix[] = "get ota.direct.reply";
   const size_t prefix_len = sizeof(prefix) - 1;
   const bool result = !strncmp(command, prefix, prefix_len)
       && (command[prefix_len] == 0 || command[prefix_len] == ' ');
-  if ((!status && !result) || timestamp != 0) return false;
+  if ((!status && !capabilities && !result) || timestamp != 0) return false;
   if (!_ota_direct_usb_route || _serial->captureReplyRoute() != _ota_direct_usb_route) {
     snprintf(reply, capacity, "ERR ota.direct requires physical USB");
     return true;
@@ -6621,6 +6653,10 @@ bool MyMesh::handleDirectOtaCommand(const char* command, uint32_t timestamp,
     snprintf(reply, capacity, "> ota.direct v=2 active=%u busy=%u",
              _ota_direct_admin.active(_ms->getMillis()) ? 1 : 0,
              hasPendingRadioWork() ? 1 : 0);
+    return true;
+  }
+  if (capabilities) {
+    snprintf(reply, capacity, "> ota.direct.cap guarded_cli=1 guarded_radio=1");
     return true;
   }
   const char* value = command + prefix_len;
@@ -6887,8 +6923,18 @@ void MyMesh::handleCmdFrame(size_t len) {
     i += 6;
     ContactInfo *recipient = lookupContactByPubKey(pub_key_prefix, 6);
 #if COMPANION_FEATURE_DIRECT_OTA_ADMIN
-    if (txt_type == TXT_TYPE_CLI_COMMAND && _ota_direct_admin.matchesPrefix(pub_key_prefix, 6, _ms->getMillis()))
+    // Repeaters in the field also accept the legacy CLI_DATA request type.
+    // Both forms must use the guarded zero-hop peer, never a stored path.
+    if ((txt_type == TXT_TYPE_CLI_DATA || txt_type == TXT_TYPE_CLI_COMMAND)
+        && _ota_direct_radio_owned
+        && !memcmp(_ota_direct_contact.id.pub_key, pub_key_prefix, 6)) {
+      if (_serial->captureReplyRoute() != _ota_direct_usb_route
+          || !_ota_direct_admin.active(_ms->getMillis()) || !directOtaRadioCurrent()) {
+        writeErrFrame(ERR_CODE_BAD_STATE);
+        return;
+      }
       recipient = &_ota_direct_contact;
+    }
 #endif
     if (recipient && (txt_type == TXT_TYPE_PLAIN || txt_type == TXT_TYPE_CLI_DATA || txt_type == TXT_TYPE_CLI_COMMAND)) {
       char *text = (char *)&cmd_frame[i];
@@ -7570,7 +7616,14 @@ void MyMesh::handleCmdFrame(size_t len) {
     uint8_t *pub_key = &cmd_frame[1];
     ContactInfo *recipient = lookupContactByPubKey(pub_key, PUB_KEY_SIZE);
 #if COMPANION_FEATURE_DIRECT_OTA_ADMIN
-    if (_ota_direct_admin.matchesPrefix(pub_key, PUB_KEY_SIZE, _ms->getMillis())) recipient = &_ota_direct_contact;
+    if (_ota_direct_radio_owned && !memcmp(_ota_direct_contact.id.pub_key, pub_key, PUB_KEY_SIZE)) {
+      if (_serial->captureReplyRoute() != _ota_direct_usb_route
+          || !_ota_direct_admin.active(_ms->getMillis()) || !directOtaRadioCurrent()) {
+        writeErrFrame(ERR_CODE_BAD_STATE);
+        return;
+      }
+      recipient = &_ota_direct_contact;
+    }
 #endif
     char *password = (char *)&cmd_frame[1 + PUB_KEY_SIZE];
     cmd_frame[len] = 0; // ensure null terminator in password
@@ -8287,8 +8340,14 @@ void MyMesh::handleCmdFrame(size_t len) {
       uint8_t priority = cmd_frame[1];
       if (tryParsePacket(pkt, &cmd_frame[2], len - 2)) {
 #if COMPANION_FEATURE_DIRECT_OTA_ADMIN
-        if (pkt->getPayloadType() == PAYLOAD_TYPE_OTA
-            && _ota_direct_admin.active(_ms->getMillis())) {
+        if (pkt->getPayloadType() == PAYLOAD_TYPE_OTA && _ota_direct_radio_owned) {
+          if (_serial->captureReplyRoute() != _ota_direct_usb_route
+              || !_ota_direct_admin.active(_ms->getMillis()) || !directOtaRadioCurrent()
+              || !pkt->isRouteDirect() || pkt->getPathHashCount() != 0) {
+            releasePacket(pkt);
+            writeErrFrame(ERR_CODE_BAD_STATE);
+            return;
+          }
           pkt->tx_radio = mesh::RADIO_TX_PRIMARY;
         }
 #endif

@@ -1150,6 +1150,7 @@ bool MyMesh::allowPacketForward(const mesh::Packet *packet) {
   if (!_cli.batteryAllowsForward(packet->isRouteFlood())) return false;
   if (_prefs.disable_fwd && !(_prefs.trace_when_repeat_off == 1 && packet
       && packet->isRouteDirect() && packet->getPayloadType() == PAYLOAD_TYPE_TRACE)) return false;
+#if MESH_ENABLE_FLOOD_PROFILE_POLICY
   if (!mesh::flood_profiles::allowIngress(packet, _cli.radioProfiles())) {
     if (packet->getPayloadType() != PAYLOAD_TYPE_OTA) {
       if (!deferred_floods_) deferred_floods_ = new (std::nothrow) mesh::flood_profiles::DeferredFloods;
@@ -1157,6 +1158,7 @@ bool MyMesh::allowPacketForward(const mesh::Packet *packet) {
     }
     return false;
   }
+#endif
 #if !defined(PORTABLE_MQTT_OBSERVER) && MESH_ENABLE_FLOOD_RULE_ENGINE
   uint64_t matches = recv_pkt_filter_match_mask;
   if (packet->isRouteDirect()) {
@@ -1236,9 +1238,11 @@ bool MyMesh::allowPacketForward(const mesh::Packet *packet) {
   return true;
 }
 
+#if MESH_ENABLE_FLOOD_PROFILE_POLICY
 bool MyMesh::deferredFloodCandidate(const mesh::Packet* packet, uint8_t ingress, bool consume) {
   return deferred_floods_ && deferred_floods_->match(packet, _cli.radioProfiles(), millis(), ingress, consume);
 }
+#endif
 
 bool MyMesh::allowPacketTransmit(const mesh::Packet* packet) const {
   if (!_cli.batteryAllowsTransmit(packet)) return false;

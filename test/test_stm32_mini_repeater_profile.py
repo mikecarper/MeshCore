@@ -95,10 +95,12 @@ class MiniRepeaterProfileTest(unittest.TestCase):
                         if path == ROOT / "variants/wio-e5-mini/platformio.ini" and name == SECTION:
                             continue
                         self.assertNotRegex(flags, r"-D\s*" + macro + r"=0\b")
-        # Retain pre-existing trims plus the approved browser-defaults omission.
+        # Retain pre-existing trims plus the approved browser-defaults and new flood controls omissions.
         disabled = set(re.findall(r"-D\s*(MESH_ENABLE_\w+)=0\b", self.flags))
         self.assertRegex(self.flags, r"-D\s+MESH_ENABLE_BROWSER_RADIO_DEFAULTS=0\b")
+        self.assertRegex(self.flags, r"-D\s+MESH_ENABLE_FLOOD_PROFILE_POLICY=0\b")
         self.assertEqual(disabled, {*OPTIONAL_CUTS, "MESH_ENABLE_BROWSER_RADIO_DEFAULTS",
+                                    "MESH_ENABLE_FLOOD_PROFILE_POLICY",
                                     "MESH_ENABLE_CLOCK_SYNC",
                                     "MESH_ENABLE_FLOOD_GROUP_MODERATION"})
 
@@ -482,6 +484,7 @@ printf '%s\n' "${BUILD_REDUCTIONS[@]}"
             "management.reporting and data.tx omitted to preserve the Mini Repeater app boundary",
             "logging.file omitted; live USB/MQTT packet logging retained",
             "battery.forwarding omitted; battery alerts and readings retained",
+            "radio.flood per-profile controls omitted; global repeat retained",
         ]
         for target in (TARGET, "wio-e5-mini_companion_radio_usb", "wio-e5-mini_sensor",
                        "wio-e5_repeater", "RAK_3x72_repeater", TARGET + "_custom"):

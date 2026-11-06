@@ -40,6 +40,10 @@ jobs:
           python3 -m pip install detools==0.53.0
           node test/test_browser_lora_ota_checks.js
           node --test test/test_browser_lora_ota_repeat.js
+          node --test test/test_browser_lora_ota_sim.js
+          node --test test/test_browser_lora_ota_companion_source.js
+          node --test test/test_browser_lora_ota_contacts.js
+          node --test test/test_browser_lora_ota_companion.js
           node --test test/test_browser_lora_ota_package.js test/test_browser_lora_ota_zip.js test/test_browser_lora_ota_delta.js test/test_browser_lora_ota_serial.js test/test_browser_lora_ota_route.js test/test_browser_lora_ota_session.js test/test_browser_lora_ota_routed_session.js test/test_browser_lora_ota_plan.js test/test_browser_lora_ota_candidates.js test/test_browser_lora_ota_chain.js test/test_browser_lora_ota_chain_ui.js test/test_browser_lora_ota_discovery.js test/test_browser_lora_ota_collect.js
           python3 -B test/test_browser_ota_lease.py
           python3 -B test/test_ota_installhash.py -v
@@ -50,6 +54,7 @@ jobs:
           MESHCORE_REQUIRE_OTA_BROWSER=1 MESHCORE_REQUIRE_DETOOLS=1 python3 -B test/test_browser_lora_ota_delta.py -v
           python3 -B test/test_browser_lora_ota_nrf_c_decoder.py -v
           MESHCORE_REQUIRE_OTA_BROWSER=1 python3 -B test/test_browser_lora_ota_runtime.py -v
+          MESHCORE_REQUIRE_OTA_BROWSER=1 python3 -B test/test_browser_lora_ota_companion_runtime.py -v
           MESHCORE_REQUIRE_OTA_BROWSER=1 python3 -B test/test_browser_lora_ota_routed_runtime.py -v
           MESHCORE_REQUIRE_OTA_BROWSER=1 python3 -B test/test_browser_lora_ota_routefind_runtime.py -v
           MESHCORE_REQUIRE_OTA_BROWSER=1 python3 -B test/test_browser_lora_ota_delta_runtime.py -v
@@ -490,6 +495,7 @@ jobs:
           python3 -B test/test_management_feature_gate.py -v
           python3 -B test/test_carrier_wave.py -v
           python3 -B test/test_radio_profile_cli.py -v
+          python3 -B test/test_flood_profile_policy.py -v
           python3 -B test/test_mediamesh_scope_integration.py -v
           python3 -B test/test_radio_switch_tuning_cli.py -v
           python3 -B test/test_radio_switch_tuning_transaction.py -v

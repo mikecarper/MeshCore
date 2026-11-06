@@ -40,7 +40,7 @@ const char* const TempPath = "/radio_profiles.tmp";
 // Never considered a boot-time committed image. Losing power before the
 // acknowledgement leaves the previous saved radio untouched.
 const char* const ReplyPath = "/radio_profiles.reply";
-#if !defined(COMPANION_RADIO_FULL) && !MESH_ROLE_COMPANION
+#if !defined(COMPANION_RADIO_FULL) && !MESH_ROLE_COMPANION && MESH_ENABLE_FLOOD_PROFILE_POLICY
 const char* const FloodPath = "/flood_profiles";
 const char* const FloodBackup = "/flood_profiles.bak";
 const char* const FloodTemp = "/flood_profiles.tmp";
@@ -207,7 +207,7 @@ bool RadioProfileCLI::writeImage(const char* path, const uint8_t* bytes, size_t 
       && memcmp(bytes, verify, size) == 0;
 }
 
-#if !defined(COMPANION_RADIO_FULL) && !MESH_ROLE_COMPANION
+#if !defined(COMPANION_RADIO_FULL) && !MESH_ROLE_COMPANION && MESH_ENABLE_FLOOD_PROFILE_POLICY
 void RadioProfileCLI::beginRepeaterFloodPolicy() {
   repeater_flood_policy_ = true;
   flood_profile_mask_ = 3;
@@ -1181,6 +1181,11 @@ bool RadioProfileCLI::handle(const char* command, char* reply, size_t capacity, 
   if (handleFastSettings(key, args, verb, remote_origin, reply, capacity)) return true;
 #endif
 #if !defined(COMPANION_RADIO_FULL) && !MESH_ROLE_COMPANION
+#if !MESH_ENABLE_FLOOD_PROFILE_POLICY
+  if (!strcmp(key, "radio.flood") || !strcmp(key, "radio2.flood")) {
+    cli::formatError(reply, capacity, "per-radio flood controls unsupported"); return true;
+  }
+#else
   if (repeater_flood_policy_ && (!strcmp(key, "radio.flood") || !strcmp(key, "radio2.flood"))) {
     const uint8_t bit = !strcmp(key, "radio.flood") ? 1 : 2;
     if (verb == Get && !*args) snprintf(reply, capacity, "> %s", flood_profile_mask_ & bit ? "on" : "off");
@@ -1191,6 +1196,7 @@ bool RadioProfileCLI::handle(const char* command, char* reply, size_t capacity, 
     } else cli::formatError(reply, capacity, "use get/set radio[2].flood on|off");
     return true;
   }
+#endif
 #endif
   enum { Base, Temporary, Scheduled, ScheduledTemporary, Crossing, Replies,
          Status, Scan, Timing, TimingAlias, KeyCount };

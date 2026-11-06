@@ -23,7 +23,7 @@ class RadioProfileCLI {
   };
  private:
   FILESYSTEM* fs_ = nullptr;
-#if !defined(COMPANION_RADIO_FULL) && !MESH_ROLE_COMPANION
+#if !defined(COMPANION_RADIO_FULL) && !MESH_ROLE_COMPANION && MESH_ENABLE_FLOOD_PROFILE_POLICY
   bool repeater_flood_policy_ = false, flood_policy_hold_ = false;
   uint8_t flood_profile_mask_ = 3;
   bool saveFloodPolicy(uint8_t mask);
@@ -138,7 +138,7 @@ class RadioProfileCLI {
                     const Schedule* schedule = nullptr) const;
   void appendSecondaryWarnings(char* reply, size_t capacity, const RadioProfiles& preview) const;
  public:
-#if !defined(COMPANION_RADIO_FULL) && !MESH_ROLE_COMPANION
+#if !defined(COMPANION_RADIO_FULL) && !MESH_ROLE_COMPANION && MESH_ENABLE_FLOOD_PROFILE_POLICY
   // Repeater-only forwarding policy; local and direct messages are unaffected.
   void beginRepeaterFloodPolicy();
   bool floodProfileAllowed(uint8_t profile) const {

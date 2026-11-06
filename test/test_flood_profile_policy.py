@@ -53,6 +53,42 @@ class FloodProfileTest(unittest.TestCase):
             self.assertEqual(p.returncode,0,p.stderr)
             r=subprocess.run([str(exe)],capture_output=True,text=True)
             self.assertEqual(r.returncode,0,r.stdout+r.stderr)
+    def test_feature_cut_is_scoped_to_the_new_mini_repeater_control(self):
+        import configparser
+        config=configparser.ConfigParser(interpolation=None,inline_comment_prefixes=(';',))
+        config.read(ROOT/'variants/wio-e5-mini/platformio.ini')
+        self.assertIn('-D MESH_ENABLE_FLOOD_PROFILE_POLICY=0',config['env:wio-e5-mini_repeater']['build_flags'])
+        for section in config.sections():
+            if section!='env:wio-e5-mini_repeater':
+                self.assertNotIn('MESH_ENABLE_FLOOD_PROFILE_POLICY',config[section].get('build_flags',''))
+        self.assertIn('#define MESH_ENABLE_FLOOD_PROFILE_POLICY 1',(ROOT/'src/MeshCore.h').read_text())
+
+    def test_mini_reports_unsupported_without_changing_ordinary_forwarding(self):
+        cc=shutil.which('g++') or shutil.which('clang++')
+        if not cc:self.skipTest('C++ compiler unavailable')
+        code = r"""
+#define main original_main
+#include "test/fixtures/radio_profiles/cli_test.cpp"
+#undef main
+int main() {
+  Fixture f(true); f.cli.beginRepeaterFloodPolicy(); char reply[160] = {};
+  for (const char* cmd : {"get radio.flood", "set radio.flood off", "get radio2.flood", "set radio2.flood on"}) {
+    assert(f.cli.handle(cmd, reply, sizeof(reply))); assert(strstr(reply, "unsupported"));
+  }
+  assert(f.cli.floodProfileAllowed(0) && f.cli.floodProfileAllowed(1));
+  assert(f.fs.files.count("/flood_profiles") == 0);
+}
+"""
+        with tempfile.TemporaryDirectory() as d:
+            src=Path(d)/'mini.cpp';src.write_text(code);exe=Path(d)/'mini.exe'
+            p=subprocess.run([cc,'-std=c++17','-DMESH_ENABLE_FLOOD_PROFILE_POLICY=0',
+                '-DMESH_ENABLE_FLEET_CONTROL=0','-DMESH_ENABLE_CARRIER_TOOLS=0',
+                '-I',str(ROOT),'-I',str(ROOT/'test/fixtures/radio_profiles/mocks'),'-I',str(ROOT/'test/mocks'),'-I',str(ROOT/'src'),
+                str(ROOT/'src/helpers/RadioProfileCLI.cpp'),str(src),'-o',str(exe)],capture_output=True,text=True)
+            self.assertEqual(p.returncode,0,p.stderr)
+            r=subprocess.run([str(exe)],capture_output=True,text=True)
+            self.assertEqual(r.returncode,0,r.stdout+r.stderr)
+
     def test_production_repeater_wires_ingress_and_egress(self):
         s=(ROOT/'examples/simple_repeater/MyMesh.cpp').read_text(encoding='utf8')
         self.assertIn('mesh::flood_profiles::allowIngress(packet, _cli.radioProfiles())',s)

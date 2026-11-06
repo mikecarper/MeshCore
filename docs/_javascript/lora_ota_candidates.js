@@ -74,6 +74,9 @@
     const buildDelta = dependencies.buildDelta || ((a,b,o) => delta.buildInWorker(a,b,o));
     const encode = dependencies.compressBlock;
     const relays = options.relays ?? 0;
+    const kinds = options.kinds || ['full', 'delta'];
+    if (!Array.isArray(kinds) || !kinds.length || kinds.some(k => !['full','delta'].includes(k)))
+      throw Error('Invalid update candidate types');
     for (const from of parsed) {
       cancelled(signal);
       const c = from.capabilities;
@@ -94,7 +97,7 @@
         maxBlock:c.maxBlock, codecs:c.codecs.reduce((bits,v)=>bits | (1<<v),0)};
       for (const to of parsed) {
         if (to.firmware.fwVersion <= from.firmware.fwVersion || to.firmware.targetId !== from.firmware.targetId || to.firmware.hwId !== from.firmware.hwId) continue;
-        for (const kind of ['full','delta']) {
+        for (const kind of kinds) {
           cancelled(signal);
           const codec = kind === 'full' ? 0 : c.nrf ? 2 : 1;
           if (!c.codecs.includes(codec)) continue;

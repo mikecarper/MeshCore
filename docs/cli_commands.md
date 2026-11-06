@@ -4088,7 +4088,9 @@ forwarding, locally addressed DMs and the node's own replies are unaffected.
 floods only on radio2, keep `repeat on` and set `radio.flood off`. These
 settings persist across restart. Turning global repeat off blocks new forwarding;
 ordinary forwarded packets already queued may still drain. The per-radio flood
-settings are also checked when a queued packet is transmitted.
+settings are also checked when a queued packet is transmitted. The Wio E5 Mini
+Repeater reports per-radio flood controls as unsupported; its existing global
+`repeat` setting remains available.
 
 #### Allow routed traces while repeating is disabled (repeater only)
 
