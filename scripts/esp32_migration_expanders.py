@@ -124,6 +124,18 @@ def verify_compiled_target(image: bytes, target: str) -> int:
     return target_id
 
 
+def verify_esp32_chip_flash(board: str, spec: dict, image: bytes) -> None:
+    """Check an application's hardware header against the exact board plan."""
+    if len(image) < 24 or image[0] != 0xE9:
+        raise ValueError(f"{board}: invalid or truncated ESP32 image header")
+    chip_id = struct.unpack_from("<H", image, 12)[0]
+    flash_sizes = {0: 1, 1: 2, 2: 4, 3: 8, 4: 16, 5: 32, 6: 64, 7: 128}
+    flash_mib = flash_sizes.get(image[3] >> 4)
+    if (chip_id != spec["usb_chip"] or flash_mib is None
+            or flash_mib * 1024 * 1024 != spec["flash_bytes"]):
+        raise ValueError(f"{board}: candidate chip or flash header does not match board")
+
+
 def write_project_overlay(path: Path, project_ini: Path, boards: list[str], catalog: dict) -> None:
     path.write_text(project_overlay(project_ini.read_text(encoding="utf-8"), boards, catalog),
                     encoding="utf-8")
@@ -141,13 +153,7 @@ def evaluate_candidate(board: str, spec: dict, image: bytes, version: str) -> di
     target = spec["target"]
     target_id = verify_compiled_target(image, target)
     if "usb_chip" in spec and "flash_bytes" in spec:
-        if len(image) < 24:
-            raise ValueError(f"{board}: truncated ESP32 image header")
-        chip_id = struct.unpack_from("<H", image, 12)[0]
-        flash_sizes = {0: 1, 1: 2, 2: 4, 3: 8, 4: 16, 5: 32, 6: 64, 7: 128}
-        flash_mib = flash_sizes.get(image[3] >> 4)
-        if chip_id != spec["usb_chip"] or flash_mib is None or flash_mib * 1024 * 1024 != spec["flash_bytes"]:
-            raise ValueError(f"{board}: candidate chip or flash header does not match board")
+        verify_esp32_chip_flash(board, spec, image)
     identity = FwIdent(pack_version(version.split("-", 1)[0]), target_id,
                        hardware_id_for_env(target))
     staged_image = bridge_with_successor_endf(image, identity)

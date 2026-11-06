@@ -16,7 +16,7 @@ from package_esp32_partition_migration import (
     BOARDS, LEGACY_SLOT_BYTES, bridge_with_successor_endf, check_esp32_stage,
     pack_version, parse_container, parse_endf_ident, role_for_target, verify,
 )
-from motalib import CODEC_FULL, hw_id_bytes
+from motalib import CODEC_FULL, hardware_id_for_env, hw_id_bytes, target_id_for_env
 
 
 def _digest(data: bytes) -> str:
@@ -42,12 +42,15 @@ def standalone_assets(archive_path: Path, board: str, target: str,
     if full_image is None:
         return {}
     full_path = Path(full_image)
-    if full_path.suffix != '.bin' or full_path.name.endswith('-merged.bin'):
+    if (full_path.is_symlink() or not full_path.is_file()
+            or full_path.suffix != '.bin' or full_path.name.endswith('-merged.bin')):
         raise ValueError('migration successor must be a published app-only image')
     full = full_path.read_bytes()
     ident = parse_endf_ident(full)
     if ident is None:
         raise ValueError('migration successor has no firmware identity')
+    if ident.target_id != target_id_for_env(target) or ident.hw_id != hardware_id_for_env(target):
+        raise ValueError('migration successor identity differs from board target')
     if ident.fw_version != pack_version(version.split('-', 1)[0]):
         raise ValueError('migration successor version differs from release')
     with zipfile.ZipFile(archive_path) as archive:
@@ -116,11 +119,14 @@ def standalone_assets(archive_path: Path, board: str, target: str,
 
         if len(wifi) > LEGACY_SLOT_BYTES:
             raise ValueError('Wi-Fi migration image exceeds legacy slot')
+        from esp32_migration_expanders import verify_esp32_chip_flash
+        verify_esp32_chip_flash(board, spec, wifi)
         parsed = parse_container(lora)
         if verify(parsed):
             raise ValueError('invalid LoRa migration container')
         if not parsed.manifest.is_full or parsed.manifest.codec_id != CODEC_FULL:
             raise ValueError('LoRa migration must be a full image')
+        verify_esp32_chip_flash(board, spec, parsed.payload)
         if (parsed.manifest.target_id != ident.target_id
                 or parsed.manifest.fw_version != ident.fw_version
                 or parsed.manifest.hw_id != hw_id_bytes(ident.hw_id)):

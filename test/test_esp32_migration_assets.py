@@ -92,7 +92,8 @@ class StandaloneMigrationTests(unittest.TestCase):
         self.assertNotIn('full-application.bin', assets)
 
     def test_missing_combined_never_silently_publishes_legacy_fallback(self):
-        del self.files['partition-expander.bin'], self.files['partition-expander.mota']
+        self.files.pop('partition-expander.bin', None)
+        self.files.pop('partition-expander.mota', None)
         del self.manifest['expander_evaluation']
         self.assertEqual(self.assets(), {})
 
@@ -126,7 +127,7 @@ class StandaloneMigrationTests(unittest.TestCase):
             self.assets()
 
     def test_mota_must_be_same_expander_and_target(self):
-        other = b'other expander'
+        other = self.candidate_header() + b'other expander'
         self.files['partition-expander.mota'] = mota_full(
             bridge_with_successor_endf(other, self.identity), self.identity, 1024)
         with self.assertRaisesRegex(ValueError, 'payloads differ'):
@@ -150,6 +151,40 @@ class StandaloneMigrationTests(unittest.TestCase):
         self.files['full-application.bin'] += b'not-the-published-image'
         with self.assertRaisesRegex(ValueError, 'Full differs'):
             self.assets()
+
+    def test_full_and_manifest_cannot_share_a_wrong_target_or_hardware(self):
+        for wrong in (FwIdent(self.identity.fw_version, self.identity.target_id ^ 1, self.identity.hw_id),
+                      FwIdent(self.identity.fw_version, self.identity.target_id, 'another-board')):
+            with self.subTest(wrong=wrong):
+                body = b'forged Full'
+                self.full.write_bytes(body + build_endf(body, wrong))
+                self.files['full-application.bin'] = self.full.read_bytes()
+                self.manifest['target_id'] = f'0x{wrong.target_id:08x}'
+                self.manifest['hardware_id'] = wrong.hw_id
+                with self.assertRaisesRegex(ValueError, 'successor identity differs from board target'):
+                    self.assets()
+
+    def test_full_application_must_be_a_regular_file_not_a_symlink(self):
+        self.write_archive()
+        link = self.root / 'linked-full.bin'
+        try:
+            link.symlink_to(self.full)
+        except OSError:
+            self.skipTest('symbolic-link creation is unavailable')
+        with self.assertRaisesRegex(ValueError, 'published app-only image'):
+            standalone_assets(self.path, self.board, self.target,
+                              self.version, self.source, link)
+
+    def test_full_application_rejects_non_files_and_accepts_regular_file(self):
+        self.write_archive()
+        directory = self.root / 'directory.bin'
+        directory.mkdir()
+        with self.assertRaisesRegex(ValueError, 'published app-only image'):
+            standalone_assets(self.path, self.board, self.target,
+                              self.version, self.source, directory)
+        self.assertEqual(standalone_assets(self.path, self.board, self.target,
+                                           self.version, self.source, self.full)
+                         [f'{self.board}-{self.version}-{self.source}-expander.bin'], self.bridge)
 
     def test_incomplete_combined_pair_and_mismatched_target_are_errors(self):
         del self.files['partition-expander.mota']
@@ -175,18 +210,22 @@ class StandaloneMigrationTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'combined expander evidence'):
             self.assets()
 
-    def test_oversize_fallback_requires_measured_exact_candidate(self):
+    def prepare_oversize_fallback(self):
         marker = self.candidate_header() + TARGET_MARKER + struct.pack('<I', self.identity.target_id)
         candidate = marker + b'x' * (LEGACY_SLOT_BYTES + 1 - len(marker))
-        del self.files['partition-expander.bin'], self.files['partition-expander.mota']
+        self.files.pop('partition-expander.bin', None)
+        self.files.pop('partition-expander.mota', None)
         self.files.update({
             'expander-candidate.bin': candidate,
-            'wifi-bridge.bin': b'small legacy wifi bridge',
-            'lora-bridge.mota': mota_full(bridge_with_successor_endf(b'legacy lora', self.identity),
+            'wifi-bridge.bin': self.candidate_header() + b'small legacy wifi bridge',
+            'lora-bridge.mota': mota_full(bridge_with_successor_endf(self.candidate_header() + b'legacy lora', self.identity),
                                           self.identity, 1024),
         })
         self.manifest['expander_evaluation'] = evaluate_candidate(
             self.board, self.spec, candidate, self.version)
+
+    def test_oversize_fallback_requires_measured_exact_candidate(self):
+        self.prepare_oversize_fallback()
         assets = self.assets()
         self.assertEqual(json.loads(next(value for name, value in assets.items()
                                          if name.endswith('-migration.json')))['mode'], 'separate')
@@ -195,6 +234,23 @@ class StandaloneMigrationTests(unittest.TestCase):
         self.manifest['expander_evaluation']['image_sha256'] = 'bad'
         with self.assertRaisesRegex(ValueError, 'evidence'):
             self.assets()
+
+    def test_separate_fallback_rechecks_each_image_chip_and_flash(self):
+        for field in ('wifi', 'lora'):
+            for fault in ('magic', 'chip', 'flash'):
+                with self.subTest(field=field, fault=fault):
+                    self.prepare_oversize_fallback()
+                    bad = bytearray(self.candidate_header())
+                    if fault == 'magic': bad[0] = 0
+                    if fault == 'chip': struct.pack_into('<H', bad, 12, 0)
+                    if fault == 'flash': bad[3] = 0x40
+                    if field == 'wifi':
+                        self.files['wifi-bridge.bin'] = bytes(bad) + b'bridge'
+                    else:
+                        payload = bridge_with_successor_endf(bytes(bad) + b'bridge', self.identity)
+                        self.files['lora-bridge.mota'] = mota_full(payload, self.identity, 1024)
+                    with self.assertRaisesRegex(ValueError, 'ESP32 image header|chip or flash header'):
+                        self.assets()
 
 
 class AtomicMigrationPublicationTests(unittest.TestCase):
