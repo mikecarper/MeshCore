@@ -15,12 +15,21 @@ choose **Investigate** to check its OTA capabilities. Select the firmware and
 choose **Check firmware and target**. After
 checking the result, choose **Transfer**, then **Install and verify**.
 
-Investigation retries unanswered read-only commands up to three times and
-shows each attempt, waiting up to 20 seconds for a reply;
-unanswered checks are marked incomplete. Login and update operations are not
-automatically repeated.
+Investigation tries the initial identity check up to three times. Once the
+target has replied, it tries unanswered read-only checks up to seven times,
+waiting up to 20 seconds per attempt. Unanswered checks are marked incomplete.
+Login and update operations are not automatically repeated. The target's
+radio settings are checked again when needed to safely set up an update.
 
-The target needs a firmware build that supports verified `ota installhash`.
+Guarded OTA is available in custom Keymind Cascade Companion Full builds based
+on commit `bede4d85f` or later when guarded CLI and radio support are enabled.
+The 1.18.0.1 release and published 1.18.0.2 previews do not have both features.
+Older compatible Companions can use raw packets and their shared message queue.
+Keep other apps disconnected and avoid changing radio settings during a transfer.
+
+Older targets use `ota install`. They validate the staged image, but cannot
+bind the entire staged container to the browser's hash before installation.
+The updater checks the reported firmware identity and body hash after reboot.
 
 <div data-lora-ota>
   <section class="lora-ota-step">
@@ -30,6 +39,7 @@ The target needs a firmware build that supports verified `ota installhash`.
     </label>
     <p>Plug in your USB radio, then connect it and choose the device to update.</p>
     <p class="lora-ota-actions"><button type="button" data-role="connect">Connect USB source</button> <button type="button" data-role="disconnect" class="lora-ota-secondary">Disconnect</button></p>
+    <p data-role="source-info" role="status" hidden></p>
     <label>Search contacts by name or public-key prefix<input data-role="contact-search" autocomplete="off" spellcheck="false" disabled></label>
     <p><strong>Device to update</strong></p>
     <p data-role="contact-status" role="status">Connect a Companion to load contacts.</p>
@@ -44,7 +54,7 @@ The target needs a firmware build that supports verified `ota installhash`.
     <p class="lora-ota-actions"><button type="button" data-role="investigate" disabled>Investigate</button></p>
     <section data-role="legacy-warning" hidden>
       <p>This Companion needs to read its message queue to investigate. Pending unrelated messages will move from the Companion to this browser and cannot be restored to the Companion. They are stored unencrypted in this browser profile and can be downloaded below. Closing the browser while a message is being received can lose that message.</p>
-      <p>Investigation can continue, but this Companion needs firmware with guarded OTA support to send an update.</p>
+      <p>Keep other apps disconnected while using this Companion.</p>
       <p><button type="button" data-role="legacy-investigate">Continue investigation</button></p>
     </section>
     <p data-role="investigation-progress" hidden><span data-role="investigation-progress-label" role="status" aria-live="polite"></span> <span data-role="investigation-progress-elapsed" aria-live="off"></span></p>
@@ -60,7 +70,7 @@ The target needs a firmware build that supports verified `ota installhash`.
   </section>
   <section class="lora-ota-step">
     <h2>2. Choose firmware</h2>
-    <p data-role="legacy-source-block" hidden>This Companion can check firmware, but needs guarded OTA support to send an update.</p>
+    <p data-role="legacy-source-block" hidden>This Companion uses its shared message queue and raw packets.</p>
     <p data-role="firmware-catalog-status" role="status">Investigate the target to find matching firmware.</p>
     <section data-role="firmware-role-wrap" hidden><label>Target type
       <select data-role="firmware-role"><option value="">Choose a type</option><option value="repeater">Repeater</option><option value="room">Room</option><option value="sensor">Sensor</option></select>
@@ -127,16 +137,16 @@ The target needs a firmware build that supports verified `ota installhash`.
 
 ## Setup and advanced details
 
-The source needs a Full Companion build with guarded direct OTA support, or
-a Repeater with `ota.peer` and USB folder support. Older Companion builds
-without the guarded USB capability can investigate a stored contact after you
-choose to move its pending messages into this browser; they cannot serve OTA
-updates. Saved messages can be downloaded, but cannot be restored to the
-Companion. The target needs firmware
-that supports the verified `ota installhash` command;
-older versions cannot install through this updater yet. Before starting, put both radios on matching
-active TempRadio settings matching their saved primary channel, set RX power saving off, and turn
-automatic OTA fetch and install off. For a direct update, set OTA hops to 0.
+The source needs a compatible USB Companion with raw packet support, or a
+Repeater with `ota.peer` and USB folder support. Older Companions use their
+shared message queue: unrelated messages moved into the browser can be
+downloaded, but cannot be restored to the Companion. Before starting, set the
+target's TempRadio to match the source radio, turn RX power saving off, and
+turn automatic OTA fetch and install off. For a direct update, set OTA hops
+to 0. On older Companions, the browser can read the saved radio settings but
+cannot confirm active temporary settings, RX power saving or preamble; check
+these on the device. Some firmware accepts raw OTA packets from USB but
+suppresses their transmission without an active temporary radio.
 Existing downloads and source folders must be cleared first. If the source
 clock is wrong, set it before connecting. Multi-version updates require a
 supported identified RAK bootloader and successful simulation of every step.

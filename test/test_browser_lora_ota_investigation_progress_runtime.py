@@ -53,7 +53,7 @@ class InvestigationProgressBrowserTest(unittest.TestCase):
         self.assertRegex(result['identity'], r'(?i)get public\.key')
         self.assertIn('attempt 1 of 3', result['identity'])
         self.assertRegex(result['statusProgress'], r'(?i)ota status')
-        self.assertIn('attempt 1 of 3', result['statusProgress'])
+        self.assertIn('attempt 1 of 7', result['statusProgress'])
         self.assertTrue(result['complete'], result)
         self.assertTrue(result['verified'], result)
         self.assertIn('ota status', result['cmds'])

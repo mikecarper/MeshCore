@@ -46,6 +46,7 @@ async function fixture() {
     if (cmd==='ota installhash') return 'ERR usage: ota installhash <64-hex-container-sha256>';
     if (cmd.startsWith('ota pull ')) { state='ready'; return 'OK'; }
     if (/^ota installhash [0-9a-f]{64}$/.test(cmd)) { installed=true; return 'OK'; }
+    if (cmd==='ota install') { installed=true; return 'OK'; }
     throw Error('Unexpected '+label+':'+cmd);
   };
   const link={aclOnly:true,opened:true,supportsRoutedPath:true,target,relays:[first,second],sourceKey:source,
@@ -87,10 +88,20 @@ test('all participants are checked and transfer does not mutate radios or polici
   assert.equal(f.calls.some(c=>/:(?:set |tempradio |normalradio|ota config (?:hops|autofetch|autoinstall) )/.test(c)),false);
 });
 
-test('routed updates refuse a target without verified install before serving',async()=>{
+test('routed updates use legacy install only for an explicit unsupported probe',async()=>{
   const f=await fixture();
   f.overrides.set(target+':ota installhash','Unknown command');
-  await assert.rejects(f.session.start(),/does not support verified OTA installation/);
+  await f.session.start();
+  const result=await f.session.install();
+  assert.equal(result.baseHash,f.body);
+  assert.equal(f.calls.filter(c=>c===target+':ota install').length,1);
+  assert.equal(f.calls.some(c=>c.startsWith(target+':ota installhash ')),false);
+});
+
+test('routed updates stop on ambiguous install capability',async()=>{
+  const f=await fixture();
+  f.overrides.set(target+':ota installhash','ERR usage: ota install');
+  await assert.rejects(f.session.start(),/Cannot determine whether the target supports/);
   assert.equal(f.calls.includes('serve'),false);
   assert.equal(f.calls.some(c=>c.includes(':ota pull ')||c.endsWith(':ota install')),false);
 });

@@ -62,8 +62,19 @@
     async local(command) { return value(await this.link.localCommand(command)); }
     async requireInstallHash() {
       const reply = String(await this.link.remoteCommand(this.key, this.password, 'ota installhash')).trim().replace(/^>\s*/, '');
-      if (reply !== 'ERR usage: ota installhash <64-hex-container-sha256>')
-        throw Error('Target firmware does not support verified OTA installation; update it before using this updater');
+      if (reply === 'ERR usage: ota installhash <64-hex-container-sha256>') {
+        this.installMode = 'hash';
+        return;
+      }
+      // Only an explicit unsupported-command response establishes that the
+      // older install verb is needed. A timeout or unexpected answer leaves
+      // the target's capabilities unknown and must never select a fallback.
+      if (/^(?:(?:err(?:or)?\s*:?\s*)?(?:unknown|unsupported)\b)/i.test(reply)) {
+        this.installMode = 'legacy';
+        this.progress('Older target: ota install validates the staged package, but cannot bind the full container hash. Post-install verification is limited to the target-reported firmware hash prefix.');
+        return;
+      }
+      throw Error('Cannot determine whether the target supports verified OTA installation');
     }
     async readDownload() {
       const status = await this.remote('ota status');
@@ -91,19 +102,39 @@
       checks.validateInternalPlan(this.inplacePlan, this.info, status, self, dest,
         this.inplacePlan?.storage === 'qspi' ? await this.remote('ota qspi') : null);
       if (!this.info.isFull && this.info.codecId === 1)
-        checks.confirmSequentialTarget(status, self, await this.link.remoteCommand(this.key, this.password, 'get bootloader.ver'));
+        await checks.ensureSequentialTarget(status, self, () => this.link.remoteCommand(this.key, this.password, 'get bootloader.ver'));
       if (this.info.signed) {
         const trusted = await this.remote('ota key list');
         if (!trusted.toLowerCase().split(/\s+/).includes(checks.hex(this.info.signer.subarray(0, 8)))) throw Error('The target does not list the supplied trusted signer; add it on the target first');
       }
       this.bodyHash = await expectedBody(this.info, this.image);
-      for (const command of [c => this.local(c), c => this.remote(c)]) {
-        const radio = temp(await command('get tempradio'));
-        const primary = temp(await command('get radio'));
-        if (radio.some((v, i) => Math.abs(v - primary[i]) > 0.001)) throw Error('For this direct prototype, the temporary radio must match each radio’s saved primary channel');
+      const checkSourceOta = !this.link.browserRawSource || this.link.otaSupported === true;
+      if (!checkSourceOta) this.progress('The Companion firmware OTA seeder and folder state cannot be checked.');
+      for (const [command, source] of [[c => this.local(c), true], [c => this.remote(c), false]]) {
+        if (source && this.link.browserRawSource && this.link.localCliSupported === false) {
+          const radio = await this.link.savedSourceRadio();
+          if (!Array.isArray(radio) || radio.length !== 4 || radio.some(v => !Number.isFinite(v) || v <= 0))
+            throw Error('Cannot read the Companion saved radio settings');
+          this.tempRadio = radio.slice();
+          this.progress('The Companion reported these saved radio settings on connection. Active temporary settings, RX power saving and preamble cannot be verified on this firmware.');
+          continue;
+        }
+        let radio;
+        try { radio = temp(await command('get tempradio')); }
+        catch (error) {
+          if (!source && /active temporary radio window is required/i.test(String(error.message))) {
+            const hint = this.tempRadio ? ' Run `tempradio '+this.tempRadio.join(',')+',<minutes>` on the target, matching the Companion.' : '';
+            throw Error('An active temporary radio window is required on the target for LoRa OTA.'+hint);
+          }
+          throw error;
+        }
+        if (source) {
+          const primary = temp(await command('get radio'));
+          if (radio.some((v, i) => Math.abs(v - primary[i]) > 0.001)) throw Error('The source temporary radio must match its saved primary channel');
+        }
         const rxps = await command('get radio.rxps');
         if (!/^off\b/i.test(rxps)) throw Error('Turn RX power saving off before starting');
-        policy(await command('ota config'));
+        if (!source || checkSourceOta) policy(await command('ota config'));
         if (!this.tempRadio) this.tempRadio = radio;
         else if (radio.some((v, i) => Math.abs(v - this.tempRadio[i]) > 0.001)) throw Error('Temporary radio settings do not match');
       }
@@ -115,8 +146,10 @@
         if (!record || record.target?.toLowerCase() !== this.key.toLowerCase() || record.source?.toLowerCase() !== this.link.sourceKey?.toLowerCase() || record.id !== state.id || record.packageHash !== this.packageHash || !['pull attempted', 'ready'].includes(record.phase))
           throw Error('The existing download has no matching browser recovery record; resolve it before proceeding');
       }
-      if (!/\bfetch idle\b/i.test(await this.local('ota stats'))) throw Error('The source already has an OTA download');
-      if (!/^folder=off\b/i.test(await this.local('ota folder'))) throw Error('The source already has an attached OTA folder');
+      if (checkSourceOta) {
+        if (!/\bfetch idle\b/i.test(await this.local('ota stats'))) throw Error('The source already has an OTA download');
+        if (!/^folder=off\b/i.test(await this.local('ota folder'))) throw Error('The source already has an attached OTA folder');
+      }
       return {...dest, download:state.state};
     }
     async start(options = {}) {
@@ -168,7 +201,9 @@
       const id = checks.hex(this.info.merkleRoot), before = await this.inspect({allowExisting:true}), current = await this.readDownload();
       if (before.download !== 'ready' || current.id !== id || current.state !== 'ready') throw Error('The selected package is not ready to install');
       this.journal({phase: 'install attempted', target: this.key, source: this.link.sourceKey, id, packageHash:this.packageHash, bodyHash: this.bodyHash});
-      try { await this.remote('ota installhash ' + this.installHash); } catch (error) {
+      const command = this.installMode === 'hash' ? 'ota installhash ' + this.installHash : this.installMode === 'legacy' ? 'ota install' : null;
+      if (!command) throw Error('Target installation capability is unknown');
+      try { await this.remote(command); } catch (error) {
         if (!/timeout|timed out|disconnect|result is unknown/i.test(String(error.message))) throw error;
         this.progress('Install reply was lost; checking the running firmware');
       }

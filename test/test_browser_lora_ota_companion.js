@@ -14,6 +14,7 @@ class Port{
   async write(b){
     assert.equal(b[0],60);assert.equal(b.length,b[1]+256*b[2]+3);const f=b.slice(3);this.frames.push(f);let out;
     if(f[0]===1){out=new Uint8Array(58);out[0]=5;out.set(fromHex(source),4);const v=new DataView(out.buffer);v.setUint32(48,910525,true);v.setUint32(52,62500,true);out[56]=7;out[57]=5;}
+    else if(f[0]===22){out=new Uint8Array(82);out[0]=13;out[1]=13;out.set(enc.encode('06-Nov-2026'),8);out.set(enc.encode('Test board'),20);out.set(enc.encode(this.noCli?'v1.16.05':'v1.18.0.2-preview'),60);}
     else if(f[0]===4){
       const contact=(pub,type,fav,path,name)=>{const b=new Uint8Array(148);b[0]=3;b.set(fromHex(pub),1);b[33]=type;b[34]=fav?1:0;b[35]=path;b.set(enc.encode(name),100);return b;};
       queueMicrotask(()=>{this.push(wire(Uint8Array.of(2,4,0,0,0)));this.push(wire(contact('11'.repeat(32),2,false,2,'Repeater')));this.push(wire(contact(key,this.targetType,true,255,'Room')));this.push(wire(contact('33'.repeat(32),4,false,1,'Sensor')));this.push(wire(contact('44'.repeat(32),1,false,0,'Chat')));this.push(wire(Uint8Array.of(4,0,0,0,0)));});return;
@@ -26,6 +27,7 @@ class Port{
     else if(f[0]===66&&this.noCli){out=Uint8Array.of(1,2);}
     else if(f[0]===66){const cmd=dec.decode(f.slice(1));let reply;
       if(cmd==='get ota.direct')reply=`> ota.direct v=2 active=${this.guard?1:0} busy=0`;
+      else if(cmd==='ver')reply='v1.18.0.2-dev-12345678 (Build: 06-Nov-2026)';
       else if(cmd==='get ota.direct.capabilities')reply=this.legacy?'Unknown command':'> ota.direct.cap guarded_cli=1 guarded_radio=1';
       else if(cmd==='get radio.rxps')reply=this.rxps;
       else if(cmd==='get radio')reply='> 910.525,62.5,7,5';
@@ -41,7 +43,7 @@ class Port{
 async function run(){
   const d=new Decoder(),frame=wire(Uint8Array.of(29,1,2));assert.deepEqual(d.feed(frame.slice(0,2)),[]);assert.deepEqual(Array.from(d.feed(frame.slice(2))[0]),[29,1,2]);
   const port=new Port(),link=new CompanionTransport(port,{openSettle:0,commandTimeout:1000,remoteTimeout:1000});
-  await link.open();assert.equal(link.sourceKey,source);assert.equal(await link.localCommand('get radio'),'> 910.525,62.5,7,5');
+  await link.open();assert.equal(link.sourceKey,source);assert.equal(link.firmwareVersion,'v1.18.0.2-dev-12345678');assert.equal(link.otaMode,'guarded');assert.equal(await link.localCommand('get radio'),'> 910.525,62.5,7,5');
   assert.equal(await link.localCommand('get radio.rxps'),'> off,unsupported');port.rxps='Error: unsupported';assert.equal(await link.localCommand('get radio.rxps'),'Error: unsupported');
   const contacts=await link.contacts();assert.equal(contacts.length,4);assert.equal(contacts[0].key,key);assert.equal(contacts[0].hops,null);assert.equal(contacts.find(c=>c.type===4).name,'Sensor');
   link.selectTarget('33'.repeat(32));assert.equal(link.peerType,4);link.selectTarget(key);
@@ -54,10 +56,10 @@ async function run(){
   assert(port.frames.some(f=>f[0]===65));await link.close();assert.equal(port.guard,false);
   const old=new Port();old.legacy=true;const oldLink=new CompanionTransport(old,{openSettle:0,commandTimeout:1000});
   await oldLink.open();assert.equal(oldLink.otaSupported,false);assert.equal((await oldLink.contacts()).length,4);oldLink.selectTarget(key);
-  await assert.rejects(()=>oldLink.verifyPeer(key,'password'),/guarded zero-hop/);assert(!old.frames.some(f=>f[0]===26||f[0]===65));await oldLink.close();
+  await assert.rejects(()=>oldLink.verifyPeer(key,'password'),/inbox warning/);assert(!old.frames.some(f=>f[0]===26||f[0]===65));await oldLink.close();
   const stock=new Port();stock.noCli=true;const stockLink=new CompanionTransport(stock,{openSettle:0,commandTimeout:1000});
-  await stockLink.open();assert.equal(stockLink.otaSupported,false);assert.equal((await stockLink.contacts()).length,4);stockLink.selectTarget(key);
-  await assert.rejects(()=>stockLink.verifyPeer(key,'password'),/guarded zero-hop/);assert(!stock.frames.some(f=>f[0]===26||f[0]===65));await stockLink.close();
+  await stockLink.open();assert.equal(stockLink.otaSupported,false);assert.equal(stockLink.firmwareVersion,'v1.16.05');assert.equal(stockLink.otaMode,'legacy');assert.equal((await stockLink.contacts()).length,4);stockLink.selectTarget(key);
+  await assert.rejects(()=>stockLink.verifyPeer(key,'password'),/inbox warning/);assert(!stock.frames.some(f=>f[0]===26||f[0]===65));await stockLink.close();
   const stale=new Port();stale.clock-=3600;const staleLink=new CompanionTransport(stale,{knownRepeater:key,openSettle:0,commandTimeout:1000});
   await staleLink.open();await assert.rejects(()=>staleLink.verifyPeer(key,'password'),/clock is out of sync/);assert(!stale.frames.some(f=>f[0]===6));await staleLink.close();
   const guest=new Port();guest.loginPermissions=2;const guestLink=new CompanionTransport(guest,{knownRepeater:key,openSettle:0,commandTimeout:1000});
@@ -67,24 +69,34 @@ async function run(){
   assert(sensor.frames.some(f=>f[0]===52&&f[1]===1&&f[34]===4));await sensorLink.close();
   // The guarded investigation retries only unanswered reads, rearming its
   // mailbox with a new tag each time. A successful answer stops the attempts.
-  const retry=new Port();retry.timeoutFirst={'get public.key':2,'ota status':1};const events=[];
+  const retry=new Port();retry.timeoutFirst={'get public.key':2,'ota status':6};const events=[];
   const retryLink=new CompanionTransport(retry,{openSettle:0,commandTimeout:1000,remoteTimeout:120,investigationTimeout:120,onInvestigationProgress:e=>events.push(e)});
   await retryLink.open();await retryLink.contacts();retryLink.selectTarget(key);
   await retryLink.investigateVerifyPeer(key,'');
   assert.equal(retry.remoteAttempts['get public.key'],3);
   assert.equal(await retryLink.investigateCommand(key,'','ota status'),'> 9');
-  assert.equal(retry.remoteAttempts['ota status'],2);
+  assert.equal(retry.remoteAttempts['ota status'],7);
   const sent=retry.frames.filter(f=>f[0]===2).map(f=>dec.decode(f.slice(13)));
-  assert.equal(new Set(sent.map(s=>s.slice(0,3))).size,5);
+  assert.equal(new Set(sent.map(s=>s.slice(0,3))).size,10);
   assert(events.some(e=>e.stage==='retrying-command'&&e.command==='get public.key'&&e.attempt===2&&e.maxAttempts===3));
+  assert(events.some(e=>e.stage==='waiting-reply'&&e.command==='ota status'&&e.attempt===7&&e.maxAttempts===7));
   const before=sent.length;
   await assert.rejects(()=>retryLink.investigateCommand(key,'','set tx 9'),/read.only/i);
   assert.equal(retry.frames.filter(f=>f[0]===2).length,before);
-  let calls=0;retryLink.remoteReply=async()=>{calls++;throw Error('Serial connection lost');};
+  let calls=0;retryLink.remoteReply=async()=>{calls++;const e=Error('Remote command timed out; result is unknown');e.loraReplyTimeout=true;throw e;};
+  await assert.rejects(()=>retryLink.investigateCommand(key,'','ota self'),e=>e.loraReplyTimeout&&e.attempts===7);assert.equal(calls,7);
+  calls=0;retryLink.remoteReply=async()=>{calls++;throw Error('Serial connection lost');};
   await assert.rejects(()=>retryLink.investigateCommand(key,'','ota self'),/Serial connection lost/);assert.equal(calls,1);
   calls=0;retryLink.remoteReply=async()=>{calls++;retryLink.investigationCancelled=true;const e=Error('Remote command timed out; result is unknown');e.loraReplyTimeout=true;throw e;};
   await assert.rejects(()=>retryLink.investigateCommand(key,'','ota self'),/cancel/i);assert.equal(calls,1);
   await retryLink.close();
+  const missing=new Port();missing.timeoutFirst={'get public.key':3};const missingEvents=[];
+  const missingLink=new CompanionTransport(missing,{openSettle:0,commandTimeout:1000,investigationTimeout:80,onInvestigationProgress:e=>missingEvents.push(e)});
+  await missingLink.open();await missingLink.contacts();missingLink.selectTarget(key);
+  await assert.rejects(()=>missingLink.investigateVerifyPeer(key,''),e=>e.loraReplyTimeout&&e.attempts===3);
+  assert.equal(missing.remoteAttempts['get public.key'],3);
+  assert(missingEvents.some(e=>e.stage==='waiting-reply'&&e.command==='get public.key'&&e.attempt===3&&e.maxAttempts===3));
+  await missingLink.close();
   const defaults=new Port(), defaultEvents=[];
   const defaultLink=new CompanionTransport(defaults,{openSettle:0,commandTimeout:1000,onInvestigationProgress:e=>defaultEvents.push(e)});
   await defaultLink.open();await defaultLink.contacts();defaultLink.selectTarget(key);

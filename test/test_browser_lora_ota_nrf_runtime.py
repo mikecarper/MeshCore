@@ -171,7 +171,9 @@ class BrowserLoraOtaNrfRuntimeTest(unittest.TestCase):
         self.assertEqual(result['total'], len(result['served']))
         self.assertEqual(result['workerCount'], 1)
         self.assertEqual(result['workerOptions'], {'mode':'in-place', 'runtimeStageCeiling':0xD4000, 'runtimeStorage':'internal'})
-        self.assertIn('remote get bootloader.ver', result['cmds'])
+        # ota self reports the bootloader's live ABI and supported codecs;
+        # the negative capability test below verifies those are enforced.
+        self.assertGreaterEqual(result['cmds'].count('remote ota self'), 2)
         self.assertEqual(sum(bool(re.fullmatch(r'remote ota installhash [0-9a-f]{64}', c)) for c in result['cmds']), 1)
         self.assertNotIn('remote ota install', result['cmds'])
         self.assertFalse(result['folder'])

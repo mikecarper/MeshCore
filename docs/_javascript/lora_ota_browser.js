@@ -194,8 +194,7 @@
   $('password').addEventListener('input',clearInvestigation);
   $('file').addEventListener('change',()=>{
     catalogFile=null;
-    if($('file').files[0])$('firmware-catalog-status').textContent='Using your selected firmware file; check it against the target before transferring.'+
-      (catalogDest && !catalogInstallSupported ? ' The current target has not confirmed verified installation; this updater cannot install to it.' : '');
+    if($('file').files[0])$('firmware-catalog-status').textContent='Using your selected firmware file; check it against the target before transferring.';
   });
   $('base').addEventListener('change',()=>{
     $('firmware-base-status').textContent=$('base').files[0] ? 'Using your selected installed firmware file.' :
@@ -226,6 +225,7 @@
     if (activeTask) { log('Waiting for the current radio request to finish…'); await activeTask.catch(() => {}); }
     if (link) await link.close();
     link = session = chainPrepared = chainConfig = null;contacts=[];targetLocked=false;contactKey='';
+    $('source-info').hidden=true; $('source-info').textContent='';
     $('key').value='';$('password').value='';$('contact-search').value='';clearInvestigation();renderContacts();busy(false); $('connect').disabled = false; $('inspect').disabled = true; $('find-route').disabled = true;
     $('chain-plan').disabled = true; $('chain-run').disabled = true; $('chain-resume').disabled = true;
     $('transfer').disabled = true; $('resume').disabled = true; $('install').disabled = true;
@@ -258,12 +258,16 @@
       await link.open();
       if (controller.signal.aborted) throw new DOMException('Connection canceled', 'AbortError');
       if(companion){
+        const sourceVersion=link.firmwareVersion ? link.firmwareVersion+(link.firmwareVersionTruncated?'…':'') : 'version unavailable';
+        const sourceMode=link.otaMode==='guarded' ? 'guarded OTA' : 'raw-packet OTA compatibility';
+        $('source-info').textContent='Companion firmware: '+sourceVersion+' · '+sourceMode+' selected automatically.';
+        $('source-info').hidden=false;
         $('contact-status').textContent = 'Loading contacts…';
         contacts=await link.contacts();
         if (controller.signal.aborted) throw new DOMException('Connection canceled', 'AbortError');
         renderContacts();
         log('Loaded '+LoraOtaContacts.choices(contacts).length+' eligible contacts.');
-        if(link.otaUnavailableReason)log(link.otaUnavailableReason);
+        if(link.otaMode!=='guarded')log('Using raw-packet compatibility. Packet-send support will be checked when the transfer starts.');
       } else $('contact-status').textContent = 'Connected. Enter the target public key.';
       busy(false); $('connect').disabled = true; $('inspect').disabled = false;
       $('chain-plan').disabled = false;
@@ -273,6 +277,7 @@
       if(!controller.signal.aborted && error?.name!=='NotFoundError')fail(error);
       if (link) { try { await link.close(); } catch (_) {} }
       link = session = null; $('connect').disabled = false; $('inspect').disabled = true;
+      $('source-info').hidden=true; $('source-info').textContent='';
       $('contact-status').textContent = controller.signal.aborted || error?.name === 'NotFoundError'
         ? 'USB connection canceled. Choose a USB device to try again.'
         : error?.usbOpenFailed
@@ -291,13 +296,12 @@
     const deltaHelp=catalogDest.nrf && !catalogDest.external && !catalogDest.sd
       ? ($('base').files[0] || catalogBaseFile ? ' An installed image is selected for the required in-place differential.'
         : ' This target needs an in-place differential; also select the exact installed firmware below.') : '';
-    const installHelp=catalogInstallSupported ? '' : ' The current target has not confirmed verified installation; this updater cannot install to it.';
-    $('firmware-catalog-status').textContent='Downloaded '+result.name+'; hardware identity verified. Check firmware and target before transferring.'+deltaHelp+installHelp;
+    $('firmware-catalog-status').textContent='Downloaded '+result.name+'; hardware identity verified. Check firmware and target before transferring.'+deltaHelp;
   }
   async function discoverCatalog(role) {
     const generation=catalogGeneration;
     if(!catalogDest || !role)return;
-    if(catalogInstallSupported && catalogDest.nrf && !catalogDest.sd && (catalogDest.codecs & 4) && !$('base').files[0] && typeof LoraOtaCatalog.findInstalled==='function') {
+    if(catalogDest.nrf && !catalogDest.sd && (catalogDest.codecs & 4) && !$('base').files[0] && typeof LoraOtaCatalog.findInstalled==='function') {
       const baseHelp=catalogDest.external ? 'You can select it manually to make a differential.' : 'Select it manually for the required differential.';
       $('firmware-base-status').textContent='Looking for the installed firmware…';
       try {
@@ -323,11 +327,7 @@
     }
     $('firmware-choice-wrap').hidden=!candidates.length;
     $('firmware-download').hidden=!candidates.length;
-    if(!candidates.length){$('firmware-catalog-status').textContent=(catalogInstallSupported ? '' : 'The target has not confirmed verified installation; this updater cannot install to it. ')+'No matching newer firmware found. You can choose a file manually.';return;}
-    if(!catalogInstallSupported){
-      $('firmware-catalog-status').textContent='The target has not confirmed verified installation; this updater cannot install to it. Matching downloads are listed for reference.';
-      return;
-    }
+    if(!candidates.length){$('firmware-catalog-status').textContent='No matching newer firmware found. You can choose a file manually.';return;}
     const recommended=typeof LoraOtaCatalog.recommendVerified==='function'
       ? await LoraOtaCatalog.recommendVerified(candidates,catalogDest) : null;
     if(generation!==catalogGeneration || !link)return;
@@ -363,10 +363,10 @@
       ['Firmware version', 'ver'], ['Bootloader version', 'get bootloader.ver'],
       ['Bootloader capabilities', 'ota bootloader status'], ['OTA settings', 'ota config'],
       ['Trusted OTA keys', 'ota key list'], ['Temporary radio', 'get tempradio'],
-      ['Radio settings', 'get radio'], ['Radio power saving', 'get radio.rxps'],
+      ['Radio power saving', 'get radio.rxps'],
       ['Install verification', 'ota installhash']
     ];
-    let next = 0, allReplies = true;
+    let next = 0, allReplies = true, targetReplied = false, esp32Target;
     const noPassword = $('acl').checked || $('password').value.length === 0;
     const password = $('acl').checked ? '' : $('password').value;
     const companion = $('source').value === 'companion';
@@ -374,13 +374,14 @@
     // A completed repeater job timeout can be retried; a serial or browser-side
     // job timeout cannot, because the previous operation may still be running.
     const repeaterRead = async (description, operation, canRetry) => {
-      for(let attempt=1;attempt<=3;attempt++) {
-        showInvestigationProgress(description+' (attempt '+attempt+' of 3)',20000);
-        add('> '+description+' (attempt '+attempt+' of 3)');
+      const maxAttempts=targetReplied ? 7 : 3;
+      for(let attempt=1;attempt<=maxAttempts;attempt++) {
+        showInvestigationProgress(description+' (attempt '+attempt+' of '+maxAttempts+')',20000);
+        add('> '+description+' (attempt '+attempt+' of '+maxAttempts+')');
         try { return await operation(); }
         catch(error) {
           if(error?.message!=='request timed out; result is unknown' || !canRetry())throw error;
-          if(attempt===3){error.attempts=attempt;error.loraReplyTimeout=true;throw error;}
+          if(attempt===maxAttempts){error.attempts=attempt;error.loraReplyTimeout=true;throw error;}
           add('No reply; retrying.');
         }
       }
@@ -389,7 +390,7 @@
       ? link.investigateCommand(target, password, command)
       : repeaterRead(command, () => link.remoteCommand(target, password, command),
           () => noPassword || (link.authenticatedKey===target && Date.now()-link.lastPeerUse<240000));
-    const exhaustedTimeout = error => error?.attempts===3 && error.loraReplyTimeout===true && !link.failure &&
+    const exhaustedTimeout = error => (error?.attempts===3 || error?.attempts===7) && error.loraReplyTimeout===true && !link.failure &&
       (error.message==='Remote command timed out; result is unknown' || error.message==='request timed out; result is unknown');
     const sourceTimeout = async value => {
       const response = String(await link.localCommand('ota.peer timeout'+(value===undefined?'':' '+value))).trim();
@@ -411,7 +412,7 @@
         }
       }
       if(standard) {
-        add('Companion warning: this radio can investigate, but needs guarded OTA support before it can send an update.');
+        add('Companion: using the shared message queue and raw packets. Keep other apps disconnected during the update.');
         await link.enableStandardInvestigation();
         showInvestigationProgress(link.investigationAuthenticated ? 'Checking target identity…' : noPassword ? 'Checking existing access without a password…' : 'Logging in and checking target identity…');
         await link.investigateVerifyPeer(target, password);
@@ -424,7 +425,7 @@
         if(noPassword) await repeaterRead('Checking target identity', () => link.verifyPeer(target, password), () => true);
         else await link.verifyPeer(target, password);
       }
-      checkStopped();verified = !standard || link.investigationVerified===true;
+      checkStopped();targetReplied=true;verified = !standard || link.investigationVerified===true;
       add(verified ? 'Identity: full public key verified (' + target.slice(0, 12).toUpperCase() + ')' :
         'Identity not fully verified: this target does not support the full-key check. Results are diagnostics only; firmware selection and updates are disabled.');
       if(standard) {
@@ -434,12 +435,16 @@
       for (; next < checks.length; next++) {
         checkStopped();
         const [label, command] = checks[next];
+        if(command==='get bootloader.ver' || command==='ota bootloader status') {
+          if(esp32Target===undefined)esp32Target=await LoraOtaChecks.isKnownEsp32(replies['ota status']||'',replies['ota self']||'');
+          if(esp32Target){add(label+': Skipped (ESP32)');continue;}
+        }
         showInvestigationProgress('Checking '+label.toLowerCase()+'…');
         let reply;
         try { reply = String(await readCommand(command)).trim(); }
         catch(error) {
           if(exhaustedTimeout(error)) {
-            allReplies=false; replies[command]=''; add(label+': No reply after 3 attempts; not checked'); continue;
+            allReplies=false; replies[command]=''; add(label+': No reply after '+error.attempts+' attempts; not checked'); continue;
           }
           throw error;
         }
@@ -448,8 +453,8 @@
         if (command === 'ota installhash') {
           catalogInstallSupported=normalized === 'ERR usage: ota installhash <64-hex-container-sha256>';
           add(label + ': ' + (catalogInstallSupported
-            ? 'Supported' : 'Not supported or unknown (' + (normalized || 'empty response') + ')'));
-          if(!catalogInstallSupported)add('This updater cannot install to the current target without confirmed verified installation support.');
+            ? 'Full container hash verification supported' : 'Full container hash verification not confirmed (' + (normalized || 'empty response') + ')'));
+          if(!catalogInstallSupported)add('Older firmware can use its legacy installer; the staged container cannot be bound to the full hash before installation.');
         } else {
           const unknown = !normalized || /^(?:err(?:or)?\b|unknown\b|unsupported\b)/i.test(normalized);
           add(label + ': ' + (unknown ? 'Unknown or unsupported (' + (normalized || 'empty response') + ')' : normalized));
@@ -466,7 +471,7 @@
             ? 'Unknown or unsupported (' + (normalized || 'empty response') + ')' : normalized));
         } catch(error) {
           if(!exhaustedTimeout(error))throw error;
-          allReplies=false; replies['ota qspi']=''; add('External flash: No reply after 3 attempts; not checked');
+          allReplies=false; replies['ota qspi']=''; add('External flash: No reply after '+error.attempts+' attempts; not checked');
         }
       }
       complete = allReplies;
@@ -479,7 +484,7 @@
         const role=({2:'repeater',3:'room',4:'sensor'})[contact?.type];
         if(!role){
           $('firmware-role-wrap').hidden=false;
-          $('firmware-catalog-status').textContent=(catalogInstallSupported ? '' : 'The target has not confirmed verified installation; this updater cannot install to it. ')+'Choose the target type to find matching firmware.';
+          $('firmware-catalog-status').textContent='Choose the target type to find matching firmware.';
         }else if(!globalThis.LoraOtaCatalog){
           $('firmware-catalog-status').textContent='Firmware catalog is unavailable. Choose a file manually.';
         }else { showInvestigationProgress('Finding matching firmware…'); await discoverCatalog(role); }
@@ -510,9 +515,6 @@
         }
       }
       if(standard) {
-        $('legacy-source-block').hidden=false;
-        const notice=' This Companion cannot send OTA updates until it has guarded OTA support.';
-        if(!$('firmware-catalog-status').textContent.includes(notice.trim()))$('firmware-catalog-status').textContent+=notice;
         refreshPreservedMessages();
       }
       add(verified ? 'Firmware compatibility: run the package check before transferring.' : 'Firmware compatibility: not checked because the target identity was not fully verified.');
@@ -574,7 +576,6 @@
           await verify();
           const status = await remote('ota status');
           const self = await remote('ota self');
-          const bootloader = await remote('get bootloader.ver');
           const version = await remote('ver');
           const destination = LoraOtaChecks.destination(status, self, version);
           const base = await firmwareBytes(baseFile, 4 * 1024 * 1024);
@@ -595,7 +596,7 @@
               deltaOptions = {mode:'in-place', runtimeStorage:'internal', runtimeStageCeiling:stage};
               inplacePlan = {storage:'internal', app:layout.app, layoutCeiling:layout.ceiling, layoutFlags:layout.flags};
             }
-          } else LoraOtaChecks.confirmSequentialTarget(status, self, bootloader);
+          } else await LoraOtaChecks.ensureSequentialTarget(status, self, () => remote('get bootloader.ver'));
           preparing = new AbortController();
           log('Preparing the differential package in this browser…');
           const delta = await MeshCoreLoraDelta.buildInWorker(base, input, {...deltaOptions, signal:preparing.signal});
@@ -617,30 +618,6 @@
       const targetImage = $('image').files[0];
       if (!info.isFull && !targetImage && !expectedImage) throw Error('Select the matching new .bin image for the differential package.');
       if (!expectedImage && targetImage) expectedImage = await firmwareBytes(targetImage);
-      if(standard) {
-        await verify();
-        const status=await remote('ota status'), self=await remote('ota self'), version=await remote('ver');
-        const dest=LoraOtaChecks.destination(status,self,version);
-        LoraOtaChecks.validate(info,dest,!!expectedSigner && info.signed);
-        LoraOtaChecks.validateInternalPlan(inplacePlan,info,status,self,dest,
-          inplacePlan?.storage==='qspi' ? await remote('ota qspi') : null);
-        if(!info.isFull && info.codecId===1)
-          LoraOtaChecks.confirmSequentialTarget(status,self,await remote('get bootloader.ver'));
-        if(info.signed) {
-          const trusted=await remote('ota key list');
-          if(!trusted.toLowerCase().split(/\s+/).includes(LoraOtaChecks.hex(info.signer.subarray(0,8))))
-            throw Error('The target does not list the supplied trusted signer; add it on the target first');
-        }
-        await LoraOtaSession.expectedBody(info,expectedImage);
-        const install=String(await remote('ota installhash')).trim().replace(/^>\s*/,'');
-        const supported=install==='ERR usage: ota installhash <64-hex-container-sha256>';
-        const warning='This Companion cannot send OTA updates until it has guarded OTA support.';
-        const result='Package matches the reported target hardware, version and image checks. '+
-          (supported?'Target verified installation is supported. ':'Target verified installation is not confirmed. ')+
-          'Source radio, queue and final transfer preflight were not checked. '+warning;
-        $('firmware-catalog-status').textContent=result; log(result); session=null;
-        return;
-      }
       const Session = link.relays?.length ? LoraOtaRoutedSession.RoutedSession : LoraOtaSession.DirectSession;
       session = new Session(link, $('key').value.trim(), $('acl').checked ? '' : $('password').value, info, {
         signerVerified:!!expectedSigner && info.signed, image:expectedImage, inplacePlan,
@@ -658,7 +635,7 @@
     } catch (error) {
       invalidate(); fail(error);
       if(link && $('source').value==='companion' && link.otaSupported===false)
-        $('firmware-catalog-status').textContent='Package check could not be completed: '+(error?.message||error)+'. This Companion cannot send OTA updates until it has guarded OTA support.';
+        $('firmware-catalog-status').textContent='Package check could not be completed: '+(error?.message||error);
     }
     finally { preparing = null; busy(false); $('inspect').disabled = !link; }
   }
@@ -682,8 +659,7 @@
   $('firmware-choice').addEventListener('change',()=>{
     catalogFile=null;invalidate();
     $('firmware-download').disabled=!$('firmware-choice').value;
-    if($('firmware-choice').value)$('firmware-catalog-status').textContent='Download the selected firmware, then check it against the target.'+
-      (catalogInstallSupported ? '' : ' The current target has not confirmed verified installation; this updater cannot install to it.');
+    if($('firmware-choice').value)$('firmware-catalog-status').textContent='Download the selected firmware, then check it against the target.';
   });
   $('firmware-download').addEventListener('click',()=>run((async()=>{
     const index=Number($('firmware-choice').value),generation=catalogGeneration;
@@ -749,8 +725,11 @@
       const bootStatus=await link.remoteCommand(target,password,'ota bootloader status');
       const bootProfile=LoraOtaSim.identify(bootVersion,bootStatus);
       const installProbe=String(await link.remoteCommand(target,password,'ota installhash')).trim().replace(/^>\s*/, '');
-      if(installProbe!=='ERR usage: ota installhash <64-hex-container-sha256>')
-        throw Error('The target does not support verified package installation');
+      if(installProbe!=='ERR usage: ota installhash <64-hex-container-sha256>') {
+        if(!/^(?:(?:err(?:or)?\s*:?\s*)?(?:unknown|unsupported)\b)/i.test(installProbe))
+          throw Error('Cannot determine the target installation capability');
+        log('Older target: legacy installation cannot bind the full container hash before installation. Each reboot must still verify the reported firmware hash.');
+      }
       const sourceRadio=LoraOtaSession.temp(await link.localCommand('get tempradio'));
       const old=await firmwareBytes(baseFile,4*1024*1024), first=await MeshCoreMotaPackage.parseEndF(old);
       const saved=readChainJournal(), pending=!!saved&&saved.phase!=='complete', savedMeta=readChainMeta();

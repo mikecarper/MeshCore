@@ -26,7 +26,7 @@ def repeater_harness(fault):
         const fault=FAULT;
         jobError=(fault==='identity_exhaust'&&identity)||(fault==='later_exhaust'&&remote==='ota status')
           ||(fault==='ambiguous'&&remote==='ota status')||(fault==='hard'&&remote==='ota status')
-          ||(fault==='later_retry'&&remote==='ota status'&&counts[remote]<3);
+          ||(fault==='later_retry'&&remote==='ota status'&&counts[remote]<7);
         jobResult=jobError?(fault==='ambiguous'?'OTA request timed out; its result is unknown':fault==='hard'?'permission denied':'request timed out; result is unknown'):(identity?'OK':this.remote(remote));'''.replace('FAULT', repr(fault))
     assert harness.count(original) == 1
     harness = harness.replace(original, replacement, 1)
@@ -49,20 +49,20 @@ class RepeaterRetryBrowserTest(unittest.TestCase):
     def test_completed_timeout_retries_and_stops_on_reply(self):
         result = run_harness(repeater_harness('later_retry'), timeout=90)
         self.assertNotIn('error', result, result)
-        self.assertEqual(result['counts']['ota status'], 3, result)
+        self.assertEqual(result['counts']['ota status'], 7, result)
         self.assertEqual(result['counts']['ota self'], 1, result)
-        self.assertIn('attempt 3 of 3', result['result'])
+        self.assertIn('attempt 7 of 7', result['result'])
         self.assertEqual(result['peerTimeout'], 60, result)
         self.assertIn('local ota.peer timeout 20', result['cmds'], result)
         self.assertIn('local ota.peer timeout 60', result['cmds'], result)
 
-    def test_three_timeouts_leave_partial_results(self):
+    def test_seven_timeouts_leave_partial_results(self):
         result = run_harness(repeater_harness('later_exhaust'), timeout=90)
         self.assertNotIn('error', result, result)
         self.assertFalse(result['complete'], result)
-        self.assertEqual(result['counts']['ota status'], 3, result)
+        self.assertEqual(result['counts']['ota status'], 7, result)
         self.assertEqual(result['counts']['ota self'], 1, result)
-        self.assertIn('OTA status: No reply after 3 attempts', result['result'])
+        self.assertIn('OTA status: No reply after 7 attempts', result['result'])
 
     def test_identity_timeout_stops_after_three_attempts(self):
         result = run_harness(repeater_harness('identity_exhaust'), timeout=90)

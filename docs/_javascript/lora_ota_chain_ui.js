@@ -37,9 +37,8 @@
     const status=await link.remoteCommand(key,password,'ota status');
     const self=await link.remoteCommand(key,password,'ota self');
     const version=await link.remoteCommand(key,password,'ver');
-    const boot=await link.remoteCommand(key,password,'get bootloader.ver');
     const d=checks.destination(status,self,version);
-    if(!d.nrf)checks.confirmSequentialTarget(status,self,boot);
+    if(!d.nrf)await checks.ensureSequentialTarget(status,self,()=>link.remoteCommand(key,password,'get bootloader.ver'));
     if(d.maxBlock<1024)throw Error('The target block limit is too small for the browser planner');
     const caps={...d,bodyHash:d.baseHash,otaConfirmed:true,wireConfirmed:false,wireProfile:'legacy',
       deflate:false,maxBlock:1024,codecs:d.nrf?[0,1,2].filter(x=>d.codecs&(1<<x)):[0,1]};

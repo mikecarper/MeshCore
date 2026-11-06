@@ -23,6 +23,7 @@ HARNESS = r'''<script>
       if(bytes[0]!==60||bytes.length!==3+bytes[1]+256*bytes[2])throw Error('invalid binary frame');
       const f=bytes.slice(3);this.frames.push(Array.from(f));let out;
       if(f[0]===1){out=new Uint8Array(58);out[0]=5;out.set(unhex(source),4);const v=new DataView(out.buffer);v.setUint32(48,910525,true);v.setUint32(52,62500,true);out[56]=7;out[57]=5;}
+      else if(f[0]===22){out=new Uint8Array(82);out[0]=13;out[1]=13;out.set(enc.encode('06-Nov-2026'),8);out.set(enc.encode('Test board'),20);out.set(enc.encode('v1.18.0.2-preview'),60);}
       else if(f[0]===4){const contact=(k,type,fav,path,name)=>{const c=new Uint8Array(148);c[0]=3;c.set(unhex(k),1);c[33]=type;c[34]=fav;c[35]=path;c.set(enc.encode(name),100);return c;};
         const rows=[contact('11'.repeat(32),2,0,3,'Far'),contact('22'.repeat(32),3,0,1,'Room'),contact('33'.repeat(32),4,0,0,'Sensor'),contact('44'.repeat(32),1,1,0,'Other companion'),contact(key,2,1,0,'Test repeater'),contact('55'.repeat(32),2,0,1,'Near')];
         queueMicrotask(()=>{this.push(wire(Uint8Array.of(2,rows.length,0,0,0)));for(const c of rows)this.push(wire(c));this.push(wire(Uint8Array.of(4,0,0,0,0)));});return;}
@@ -53,6 +54,7 @@ HARNESS = r'''<script>
         if(text==='get ota.direct')value=`> ota.direct v=2 active=${guard?1:0} busy=0`;
         else if(text==='get ota.direct.capabilities')value='> ota.direct.cap guarded_cli=1 guarded_radio=1';
         else if(text.startsWith('get ota.direct.reply ')){const at=Number(text.split(' ').pop()),b=enc.encode(reply),part=b.slice(at,at+40);value=`> ota.reply req=${corr} state=ready bytes=${b.length} off=${at} data=${hex(part)||'-'}`;}
+        else if(text==='ver')value='v1.18.0.2-dev-12345678 (Build: 06-Nov-2026)';
         else if(text==='get tempradio')value='TempRadio active: '+radio+' 100s left,preamble=32';
         else if(text==='get radio')value='> '+radio;
         else if(text==='get radio.rxps')value='Error: RX power saving is unsupported on this radio';
@@ -399,7 +401,7 @@ class CompanionBrowserRuntimeTest(unittest.TestCase):
                 self.assertGreaterEqual(result['choices'],2,result)
                 self.assertFalse(any(f[0]==65 for f in result['frames']),result)
 
-    def test_investigate_legacy_target_does_not_select_catalog_image(self):
+    def test_investigate_legacy_target_can_select_catalog_image(self):
         if not BROWSER:
             if os.environ.get('MESHCORE_REQUIRE_OTA_BROWSER') == '1': self.fail('Chromium is required')
             self.skipTest('Chromium unavailable')
@@ -408,12 +410,12 @@ class CompanionBrowserRuntimeTest(unittest.TestCase):
         self.assertEqual(harness.count(old),1)
         result=run_harness(harness.replace(old,"else if(text==='ota installhash')reply='Unknown OTA command';"),timeout=90)
         self.assertNotIn('error',result,result)
-        self.assertNotRegex(result['catalog'],r'(?i)downloaded.*identity verified')
-        self.assertRegex(result['catalog'],r'(?i)(?:not confirmed.*install|install.*(?:support|unavailable|unknown)|cannot install)')
-        self.assertFalse(any('/firmware/' in url for url in result['catalogRequests']),result)
+        self.assertRegex(result['catalog'],r'(?i)downloaded.*identity verified')
+        self.assertRegex(result['result'],r'(?i)legacy install|older firmware')
+        self.assertTrue(any('/firmware/' in url for url in result['catalogRequests']),result)
         self.assertFalse(any(f[0]==65 for f in result['frames']),result)
 
-    def test_legacy_target_manual_download_still_cannot_transfer(self):
+    def test_legacy_target_catalog_image_passes_preflight_with_warning(self):
         if not BROWSER:
             if os.environ.get('MESHCORE_REQUIRE_OTA_BROWSER') == '1': self.fail('Chromium is required')
             self.skipTest('Chromium unavailable')
@@ -421,17 +423,14 @@ class CompanionBrowserRuntimeTest(unittest.TestCase):
         harness=catalog_harness().replace(old,"else if(text==='ota installhash')reply='Unknown OTA command';")
         report="await report({catalogRequests,catalog:el('firmware-catalog-status').textContent,choiceHidden:el('firmware-choice-wrap').hidden,choices:el('firmware-choice').options.length,result:el('investigation').textContent,status:el('status').textContent,cmds,frames:port.frames,guard,complete:event.detail.complete});return;"
         self.assertEqual(harness.count(report),1)
-        manual=r'''await new Promise(r=>setTimeout(r,0));
-    if(el('firmware-choice-wrap').hidden)throw Error('manual candidate list unavailable');
-    el('firmware-choice').value='0';el('firmware-choice').dispatchEvent(new Event('change',{bubbles:true}));
-    el('firmware-download').click();await wait(()=>/downloaded/i.test(el('firmware-catalog-status').textContent)||el('status').textContent.includes('Error:'));
-    if(el('status').textContent.includes('Error:'))throw Error(el('status').textContent);
-    el('inspect').click();await wait(()=>el('status').textContent.includes('Error:'));
+        manual=r'''if(!/downloaded.*identity verified/i.test(el('firmware-catalog-status').textContent))throw Error('firmware was not selected');
+    el('inspect').click();await wait(()=>!el('transfer').disabled||el('status').textContent.includes('Error:'));
     await report({status:el('status').textContent,transferDisabled:el('transfer').disabled,frames:port.frames});return;'''
         result=run_harness(harness.replace(report,manual),timeout=90)
         self.assertNotIn('error',result,result)
-        self.assertRegex(result['status'],r'(?i)does not support verified OTA installation')
-        self.assertTrue(result['transferDisabled'],result)
+        self.assertNotIn('Error:', result['status'], result)
+        self.assertRegex(result['status'],r'(?i)older target|legacy installer')
+        self.assertFalse(result['transferDisabled'],result)
         self.assertFalse(any(f[0]==65 for f in result['frames']),result)
 
     def test_investigate_without_firmware_only_reads_target(self):
@@ -443,12 +442,24 @@ class CompanionBrowserRuntimeTest(unittest.TestCase):
         self.assertTrue(result['complete'],result)
         self.assertIn('board',result['result'])
         self.assertIn('OTAFIX2.4.12',result['result'])
-        self.assertRegex(result['result'],r'(?i)install verification:\s*supported')
+        self.assertRegex(result['result'],r'(?i)install verification:.*supported')
         self.assertRegex(result['result'],r'(?i)firmware compatibility:.*(?:choose a firmware|run the package check)')
-        required={'ota status','ota self','ver','get bootloader.ver','ota bootloader status','ota config','ota key list','get tempradio','get radio','get radio.rxps','ota installhash'}
+        required={'ota status','ota self','ver','get bootloader.ver','ota bootloader status','ota config','ota key list','get tempradio','get radio.rxps','ota installhash'}
         self.assertTrue(required.issubset(result['cmds']),result)
         self.assertTrue(all(c in required | {'get public.key'} for c in result['cmds']),result)
         self.assertFalse(any(f[0]==65 for f in result['frames']),result)
+
+    def test_connected_guarded_companion_shows_version_and_selected_mode(self):
+        if not BROWSER:
+            if os.environ.get('MESHCORE_REQUIRE_OTA_BROWSER') == '1': self.fail('Chromium is required')
+            self.skipTest('Chromium unavailable')
+        harness=investigation_harness().replace("result:el('investigation').textContent,status:",
+            "sourceInfo:el('source-info').textContent,result:el('investigation').textContent,status:",1)
+        result=run_harness(harness,timeout=90)
+        self.assertNotIn('error',result,result)
+        self.assertIn('v1.18.0.2-dev-12345678',result['sourceInfo'])
+        self.assertRegex(result['sourceInfo'],r'(?i)guarded OTA.*selected automatically')
+        self.assertTrue(any(f[0]==22 for f in result['frames']),result)
 
     def test_investigate_legacy_target_does_not_claim_verified_install(self):
         if not BROWSER:
@@ -528,7 +539,8 @@ class CompanionBrowserRuntimeTest(unittest.TestCase):
         harness=harness.replace(start,start+"await report({status:el('status').textContent,cmds,frames:port.frames});return;")
         result=run_harness(harness,timeout=45)
         self.assertNotIn('error',result,result)
-        self.assertIn('guarded zero-hop',result['status'])
+        self.assertIn('raw-packet compatibility',result['status'])
+        self.assertRegex(result['status'],r'(?i)run investigate.*verify.*public key')
         self.assertFalse(any(f[0] in (26,52,65) for f in result['frames']))
 
 

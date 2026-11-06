@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Exercise stock-Companion investigation through the actual browser UI."""
 import os
+import json
 import unittest
 
 from test_browser_lora_ota_runtime import BROWSER
@@ -44,6 +45,9 @@ def legacy_harness(fault=''):
         harness = harness.replace("if(text==='get public.key')reply='> '+key;", "if(text==='get public.key')reply='Error: unknown setting: public.key';", 1)
     elif fault == 'guest_denied':
         harness = harness.replace("if(text==='get public.key')reply='> '+key;", "if(text==='get public.key')reply='Error: permission denied';", 1)
+    elif fault in ('full_transfer', 'no_cli_transfer'):
+        harness = harness.replace("else if(text==='ota installhash')reply='ERR usage: ota installhash <64-hex-container-sha256>';", "else if(text==='ota installhash')reply='Unknown OTA command';", 1)
+        harness = harness.replace("else if(/^ota installhash [0-9a-f]{64}$/.test(text))", "else if(text==='ota install')", 1)
     old_end = "else throw Error('unexpected remote '+text);out=Uint8Array.of(6,0,0,0,0,0,0,0,0,0);"
     assert harness.count(old_end) == 1
     new_end = r'''else throw Error('unexpected remote '+text);
@@ -62,7 +66,7 @@ def legacy_harness(fault=''):
         if(!(LEGACY_FAULT==='proof_retry'&&text==='get public.key'&&retryCounts[text]<3)
           && !(LEGACY_FAULT==='proof_exhausted'&&text==='get public.key')
           && !(LEGACY_FAULT==='timeout'&&text==='get bootloader.ver')
-          && !(LEGACY_FAULT==='later_retry'&&text==='ota status'&&retryCounts[text]<3))
+          && !(LEGACY_FAULT==='later_retry'&&text==='ota status'&&retryCounts[text]<7))
           inbox.push(message(key,1,tag+(LEGACY_FAULT==='identity'&&text==='get public.key'?'> '+'dd'.repeat(32):reply)));
         out=Uint8Array.of(6,0,0,0,0,0,0,0,0,0);'''.replace('LEGACY_FAULT', repr(fault))
     if fault in ('timeout', 'proof_retry', 'proof_exhausted', 'later_retry', 'empty_login_timeout'):
@@ -92,10 +96,19 @@ def legacy_harness(fault=''):
     for(const cmd of ['get public.key','ota status']){let rejected=false;try{await transport.standardReply(cmd);}catch(_){rejected=true;}if(!rejected)throw Error('unauthenticated command was accepted');}
     await report({prelogin:true,frames:port.frames});return;'''
         action = action.replace("el('legacy-investigate').click();const event=await done;", attempt, 1)
-    if fault == 'package':
+    if fault in ('package', 'full_transfer', 'no_cli_transfer'):
         package_check = r'''const chosen=new DataTransfer();chosen.items.add(new File([expected],'firmware.bin'));el('file').files=chosen.files;el('file').dispatchEvent(new Event('change',{bubbles:true}));
-    el('inspect').click();await wait(()=>!el('inspect').disabled);if(!el('transfer').disabled||!el('resume').disabled||!el('install').disabled)throw Error('standard companion enabled OTA transfer');'''
+    el('inspect').click();await wait(()=>!el('inspect').disabled);if(el('transfer').disabled||!el('resume').disabled||!el('install').disabled)throw Error('validated legacy OTA preflight did not enable transfer');'''
+        if fault in ('full_transfer', 'no_cli_transfer'):
+            package_check += r'''
+    el('transfer').click();await wait(()=>!el('install').disabled||el('status').textContent.includes('Error:'));
+    if(el('status').textContent.includes('Error:'))throw Error(el('status').textContent);
+    el('install').click();await wait(()=>el('status').textContent.includes('Installed and verified:')||el('status').textContent.includes('Error:'));
+    if(el('status').textContent.includes('Error:'))throw Error(el('status').textContent);'''
         action = action.replace("const event=await done;", "const event=await done;" + package_check, 1)
+        after_investigation = "if(el('investigation').hidden||!el('transfer').disabled||!el('install').disabled)throw Error('investigation did not show results or enabled an update');"
+        assert harness.count(after_investigation) == 1
+        harness = harness.replace(after_investigation, "if(el('investigation').hidden)throw Error('investigation did not show results');", 1)
     elif fault == 'mutating':
         mutation_check = r'''const before=port.frames.length;let rejected=false;try{await window.__testTransport.standardReply('set tx 9');}catch(_){rejected=true;}if(!rejected||port.frames.length!==before)throw Error('mutating command was accepted');'''
         action = action.replace("const event=await done;", "const event=await done;" + mutation_check, 1)
@@ -106,8 +119,33 @@ def legacy_harness(fault=''):
     el('legacy-inbox-clear').click();await wait(()=>localStorage.getItem('meshcore-lora-ota-preserved-inbox-v1')===null);'''
         action = action.replace("const event=await done;", "const event=await done;" + export_check, 1)
     harness = harness.replace(click, action, 1)
-    harness = harness.replace("result:el('investigation').textContent,status:", "exported:window.__testExported||'',packageStatus:el('firmware-catalog-status').textContent,verified:event.detail.verified,searchLocked:el('contact-search').disabled,buttonsDisabled:[...el('contact').querySelectorAll('button')].every(b=>b.disabled),preserved:JSON.parse(localStorage.getItem('meshcore-lora-ota-preserved-inbox-v1')||'[]'),result:el('investigation').textContent,status:", 1)
+    harness = harness.replace("result:el('investigation').textContent,status:", "installed,otaData,advertSeen,sourceInfo:el('source-info').textContent,exported:window.__testExported||'',packageStatus:el('firmware-catalog-status').textContent,verified:event.detail.verified,searchLocked:el('contact-search').disabled,buttonsDisabled:[...el('contact').querySelectorAll('button')].every(b=>b.disabled),preserved:JSON.parse(localStorage.getItem('meshcore-lora-ota-preserved-inbox-v1')||'[]'),result:el('investigation').textContent,status:", 1)
+    if fault in ('no_cli_transfer', 'no_cli_probe'):
+        # Firmware 1.16.05 handles command 66 as a FEM query and returns RESP_OK,
+        # not a local CLI response. Keep all other binary protocol behavior.
+        branch = "} else if(f[0]===66){const text=dec.decode(f.slice(1));let value;"
+        assert harness.count(branch) == 1
+        harness = harness.replace(branch, "} else if(f[0]===66){out=Uint8Array.of(0);" + branch.replace('f[0]===66', 'f[0]===166'), 1)
+        version = "out.set(enc.encode('v1.18.0.2-preview'),60)"
+        assert harness.count(version) == 1
+        harness = harness.replace(version, "out.set(enc.encode('v1.16.05'),60)", 1)
     return harness
+
+
+def hardware_harness(hw, profiles, nrf_marker=False):
+    """Exercise target classification through the real investigation UI."""
+    harness = legacy_harness()
+    status = "'OTA hw=board | target:12345678 | maxblk:1024 | '"
+    assert harness.count(status) == 1
+    replacement = "'OTA hw=" + hw + " | target:12345678 | maxblk:1024 | " + ('bl:QSPI | ' if nrf_marker else '') + "'"
+    harness = harness.replace(status, replacement, 1)
+    marker = "window.addEventListener('load',async()=>{try{"
+    assert harness.count(marker) == 1
+    controls = json.dumps({'profiles': profiles}, separators=(',', ':'))
+    mock = ("const savedFetch=window.fetch.bind(window);window.fetch=(url,opts)=>"
+            "String(url).includes('/_data/firmware_controls.json')?Promise.resolve(new Response("
+            + json.dumps(controls) + ",{status:200,headers:{'Content-Type':'application/json'}})):savedFetch(url,opts);")
+    return harness.replace(marker, marker + mock, 1)
 
 
 class LegacyInvestigationBrowserTest(unittest.TestCase):
@@ -124,6 +162,7 @@ class LegacyInvestigationBrowserTest(unittest.TestCase):
         self.assertIn('ota status', result['cmds'])
         self.assertIn('ota self', result['cmds'])
         self.assertIn('ver', result['cmds'])
+        self.assertNotIn('get radio', result['cmds'])
         self.assertTrue(result['searchLocked'], result)
         self.assertTrue(result['buttonsDisabled'], result)
         saved = [r.get('frameHex', '') for r in result['preserved']]
@@ -132,6 +171,35 @@ class LegacyInvestigationBrowserTest(unittest.TestCase):
         self.assertIn('2301020304', saved, result)
         self.assertFalse(any(f[0] in (52, 65) for f in result['frames']), result)
         self.assertFalse(any(c.startswith(('ota pull', 'ota installhash ')) for c in result['cmds']), result)
+
+    def test_esp32_skips_bootloader_checks(self):
+        profiles = {
+            'Station_G2_repeater_observer_mqtt-full-usb-wifi': {'platform': 'ESP32_PLATFORM'},
+            'Station_G2_room_server_observer_mqtt-full-usb-wifi': {'platform': 'ESP32_PLATFORM'},
+        }
+        result = run_harness(hardware_harness('Station_G2', profiles), timeout=90)
+        self.assertNotIn('error', result, result)
+        self.assertTrue(result['verified'], result)
+        self.assertNotIn('get bootloader.ver', result['cmds'], result)
+        self.assertNotIn('ota bootloader status', result['cmds'], result)
+        self.assertNotIn('get radio', result['cmds'], result)
+        self.assertRegex(result['result'], r'(?i)bootloader.*skipped.*ESP32')
+
+    def test_unknown_conflicting_or_nrf_identity_keeps_bootloader_checks(self):
+        esp = {'Station_G2_repeater_observer_mqtt': {'platform': 'ESP32_PLATFORM'}}
+        cases = (
+            ('unknown', 'unrecognized_board', {}, False),
+            ('conflict', 'Station_G2', {**esp, 'Station_G2_sensor': {'platform': 'NRF52_PLATFORM'}}, False),
+            ('nrf_marker', 'Station_G2', esp, True),
+            ('nrf', 'RAK_4631', {'RAK_4631_repeater': {'platform': 'NRF52_PLATFORM'}}, True),
+        )
+        for name, hw, profiles, marker in cases:
+            with self.subTest(case=name):
+                result = run_harness(hardware_harness(hw, profiles, marker), timeout=90)
+                self.assertNotIn('error', result, result)
+                self.assertIn('get bootloader.ver', result['cmds'], result)
+                self.assertIn('ota bootloader status', result['cmds'], result)
+                self.assertNotIn('get radio', result['cmds'], result)
 
     def test_empty_password_logins_with_acl_then_proves_access(self):
         harness=legacy_harness()
@@ -254,11 +322,51 @@ class LegacyInvestigationBrowserTest(unittest.TestCase):
         self.assertRegex(result['result'], r'(?i)not fully verified|unverified')
         self.assertFalse(any(f[0] in (52, 65) for f in result['frames']), result)
 
-    def test_package_check_cannot_enable_transfer_on_old_companion(self):
+    def test_package_check_runs_real_preflight_on_old_companion(self):
         result = run_harness(legacy_harness('package'), timeout=90)
         self.assertNotIn('error', result, result)
-        self.assertRegex(result['packageStatus'], r'(?i)cannot send|guarded')
+        self.assertGreaterEqual(result['cmds'].count('ota status'), 2, result)
+        self.assertGreaterEqual(result['cmds'].count('ota self'), 2, result)
+        self.assertGreaterEqual(result['cmds'].count('get tempradio'), 2, result)
         self.assertFalse(any(f[0] in (52, 65) for f in result['frames']), result)
+
+    def test_full_update_using_old_companion(self):
+        result = run_harness(legacy_harness('full_transfer'), timeout=120)
+        self.assertNotIn('error', result, result)
+        self.assertTrue(result['installed'], result)
+        self.assertTrue(result['otaData'], result)
+        self.assertTrue(result['advertSeen'], result)
+        self.assertIn('Installed and verified:', result['status'])
+        self.assertRegex(result['status'], r'(?i)older target|legacy install')
+        self.assertIn('ota install', result['cmds'])
+        self.assertFalse(any(c.startswith('ota installhash ') for c in result['cmds']), result)
+        self.assertGreaterEqual(result['cmds'].count('get public.key'), 2, result)
+        self.assertTrue(any(f[0] == 65 for f in result['frames']), result)
+        self.assertFalse(any(f[0] == 52 for f in result['frames']), result)
+
+    def test_full_update_using_companion_without_local_cli(self):
+        result = run_harness(legacy_harness('no_cli_transfer'), timeout=120)
+        self.assertNotIn('error', result, result)
+        self.assertTrue(result['installed'], result)
+        self.assertTrue(result['otaData'], result)
+        self.assertTrue(result['advertSeen'], result)
+        self.assertIn('Installed and verified:', result['status'])
+        self.assertRegex(result['status'], r'(?i)unverified|cannot.*(?:verif|read)')
+        self.assertIn('v1.16.05', result['sourceInfo'])
+        self.assertRegex(result['sourceInfo'], r'(?i)raw.packet.*compatibility')
+        self.assertIn('ota install', result['cmds'])
+        self.assertGreaterEqual(result['cmds'].count('get public.key'), 2, result)
+        self.assertTrue(any(f[0] == 65 for f in result['frames']), result)
+        self.assertFalse(any(f[0] == 52 for f in result['frames']), result)
+
+    def test_old_companion_version_selects_raw_packet_compatibility(self):
+        result = run_harness(legacy_harness('no_cli_probe'), timeout=90)
+        self.assertNotIn('error', result, result)
+        self.assertTrue(result['verified'], result)
+        self.assertIn('v1.16.05', result['sourceInfo'])
+        self.assertRegex(result['sourceInfo'], r'(?i)raw.packet.*compatibility.*selected automatically')
+        self.assertTrue(any(f[0] == 22 for f in result['frames']), result)
+        self.assertFalse(any(f[0] == 52 for f in result['frames']), result)
 
     def test_interrupted_record_requires_export_before_explicit_clear(self):
         result = run_harness(legacy_harness('save_failure_export'), timeout=90)
@@ -272,10 +380,10 @@ class LegacyInvestigationBrowserTest(unittest.TestCase):
         self.assertNotIn('error', result, result)
         self.assertFalse(result['complete'], result)
         self.assertIn('get bootloader.ver', result['cmds'], result)
-        self.assertEqual(result['cmds'].count('get bootloader.ver'), 3, result)
+        self.assertEqual(result['cmds'].count('get bootloader.ver'), 7, result)
         self.assertIn('ota bootloader status', result['cmds'], result)
         self.assertIn('ota config', result['cmds'], result)
-        self.assertRegex(result['result'], r'(?i)bootloader version.*no reply after 3 attempts')
+        self.assertRegex(result['result'], r'(?i)bootloader version.*no reply after 7 attempts')
         self.assertFalse(any(f[0] in (52, 65) for f in result['frames']), result)
 
     def test_identity_timeout_retries_with_fresh_tags_and_ignores_stale_reply(self):
@@ -300,10 +408,10 @@ class LegacyInvestigationBrowserTest(unittest.TestCase):
         result = run_harness(legacy_harness('later_retry'), timeout=90)
         self.assertNotIn('error', result, result)
         self.assertTrue(result['complete'], result)
-        self.assertEqual(result['cmds'].count('ota status'), 3, result)
+        self.assertEqual(result['cmds'].count('ota status'), 7, result)
         self.assertEqual(result['cmds'].count('ota self'), 1, result)
-        self.assertIn('attempt 2 of 3', result['result'])
-        self.assertIn('attempt 3 of 3', result['result'])
+        self.assertIn('attempt 2 of 7', result['result'])
+        self.assertIn('attempt 7 of 7', result['result'])
 
     def test_identity_timeout_stops_after_three_attempts(self):
         result = run_harness(legacy_harness('proof_exhausted'), timeout=90)
