@@ -61,8 +61,14 @@ struct Output {
     text += bytes;
   }
 };
+struct Radio {
+  bool maintenance_pending = false;
+  bool isAGCMaintenancePending() const { return maintenance_pending; }
+};
 struct MyMesh {
   Board board;
+  Radio radio;
+  Radio* _radio = &radio;
   SerialTransport serial;
   SerialTransport* _serial = &serial;
   Output output;
@@ -156,6 +162,14 @@ int main() {
 #endif
   dispatch(mesh,&mesh.serial.usb,false);
   dispatch(mesh,&mesh.serial.ble,true);
+  // Read-only bootloader diagnostics remain available while radio work is pending.
+  mesh.radio.maintenance_pending = true;
+  char pending_reply[160] = {};
+  assert(mesh.handleCommand("get bootloader.ver", 0, pending_reply));
+  assert(pending_reply == wanted(mesh));
+  assert(mesh.handleCommand("set tx 7", 0, pending_reply));
+  assert(std::string(pending_reply).find("radio maintenance pending") != std::string::npos);
+  mesh.radio.maintenance_pending = false;
   mesh.output.text.clear();mesh.terminal("get bootloader.ver");
   assert(mesh.output.text == "  -> " + wanted(mesh) + "\r\n");
 #if defined(NRF52_PLATFORM)

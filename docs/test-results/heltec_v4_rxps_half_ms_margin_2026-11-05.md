@@ -1,3 +1,7 @@
+<!-- meshcore-hosted-doc-link:start -->
+<p class="meshcore-hosted-doc-link"><a href="https://mikecarper.github.io/MeshCore/test-results/heltec_v4_rxps_half_ms_margin_2026-11-05/">View this page on MeshCore Docs</a>.</p>
+<!-- meshcore-hosted-doc-link:end -->
+
 # V4 RXPS minimum plus 0.5 ms margin - 2026-11-05
 
 The common timing rule now adds 500 us above each supported radio's fastest

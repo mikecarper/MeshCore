@@ -6,10 +6,11 @@
 #include <initializer_list>
 
 struct Radio {
-  bool morse = false, morse_rx = false;
+  bool morse = false, morse_rx = false, agc_pending = false;
   unsigned calibrations = 0;
   bool isMorseTxActive() const { return morse; }
   bool isMorseRxActive() const { return morse_rx; }
+  bool isAGCMaintenancePending() const { return agc_pending; }
   void recalibrateNoiseFloor() { ++calibrations; }
 };
 struct Board {
@@ -53,6 +54,14 @@ struct CommonCLI {
 };
 
 int main() {
+  {
+    MyMesh owner; owner.radio.agc_pending = true;
+    assert(!owner.applyAndSaveFemRxGain(false));
+    assert(board.rx && !board.rx_calls && !owner.saves && !owner.radio.calibrations);
+    owner.radio.agc_pending = false;
+    assert(owner.applyAndSaveFemRxGain(false));
+    assert(!board.rx && owner.saves == 1 && owner.radio.calibrations == 1);
+  }
   for (bool receiving : {false, true}) {
    for (bool requested : {false, true}) {
     MyMesh owner; owner.radio.morse = !receiving; owner.radio.morse_rx = receiving;

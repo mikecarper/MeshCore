@@ -39,6 +39,7 @@ struct Radio {
   unsigned calibrations = 0;
   bool isMorseTxActive() const { return false; }
   bool isMorseRxActive() const { return false; }
+  bool isAGCMaintenancePending() const { return false; }
   void recalibrateNoiseFloor() { ++calibrations; }
 };
 struct Prefs {

@@ -439,17 +439,17 @@ __attribute__((noinline)) bool RadioProfileCLI::handleFastSettings(const char* k
     cli::formatError(reply, capacity, "use get/set radio.fast[.control] value"); return true;
   }
   if (remote || remote_command_) {
-    cli::formatError(reply, capacity, "radio.fast changes require local USB or BLE"); return true;
+    cli::formatError(reply, capacity, MESH_CLI_REPLY_TEXT("radio.fast changes require local USB or BLE", "radio.fast needs local USB or BLE")); return true;
   }
   if (hasReplyMutation() || fast_hold_) {
-    cli::formatError(reply, capacity, "radio settings held; retry after recovery"); return true;
+    cli::formatError(reply, capacity, MESH_CLI_REPLY_TEXT("radio settings held; retry after recovery", "radio held; retry after recovery")); return true;
   }
   RadioSwitchTuning next = fast_pending_ ? fast_saved_ : current;
   if (spi) {
     // Single-digit selections remain strict; 9 labels the 8888888 Hz clock.
     if (!args[1] && strchr("02489", args[0])) next.spi_mhz = args[0] - '0';
     else if (!strcmp(args, "16")) next.spi_mhz = 16;
-    else { cli::formatError(reply, capacity, "SPI MHz: 0,2,4,8,9,16 where supported"); return true; }
+    else { cli::formatError(reply, capacity, MESH_CLI_REPLY_TEXT("SPI MHz: 0,2,4,8,9,16 where supported", "SPI MHz: 0,2,4,8,9,16 if supported")); return true; }
   } else {
     const bool on = !strcmp(args, "on");
     if (!on && strcmp(args, "off")) { cli::formatError(reply, capacity, "use on or off"); return true; }
@@ -468,7 +468,7 @@ __attribute__((noinline)) bool RadioProfileCLI::handleFastSettings(const char* k
     fast_pending_ = true;
     fast_retry_ms_ = 0;
     snprintf(reply, capacity, "OK - saved; pending");
-  } else cli::formatError(reply, capacity, "radio tuning could not be applied/saved");
+  } else cli::formatError(reply, capacity, MESH_CLI_REPLY_TEXT("radio tuning could not be applied/saved", "radio tuning apply/save failed"));
   return true;
 }
 #endif
@@ -1158,10 +1158,10 @@ bool RadioProfileCLI::handle(const char* command, char* reply, size_t capacity, 
 #endif
   if (remote_origin && !remote_command_
       && (((base || temporary) && verb == Set) || (scheduled_temp && verb == Delete))) {
-    cli::formatError(reply, capacity, "this role requires local USB for radio2 changes"); return true;
+    cli::formatError(reply, capacity, MESH_CLI_REPLY_TEXT("this role requires local USB for radio2 changes", "radio2 changes require local USB")); return true;
   }
   if (hasReplyMutation() && verb != Get) {
-    cli::formatError(reply, capacity, "radio acknowledgement pending"); return true;
+    cli::formatError(reply, capacity, MESH_CLI_REPLY_TEXT("radio acknowledgement pending", "radio ack pending")); return true;
   }
   if ((timing || scan || status) && (verb != Get || *args)) {
     snprintf(reply, capacity, "Error: %s is read-only", timing ? "radio timing" : key);
@@ -1437,7 +1437,7 @@ bool RadioProfileCLI::handle(const char* command, char* reply, size_t capacity, 
 #if MESH_ENABLE_FLEET_CONTROL
       if (remote_command_) {
         if (!stageRemoteSchedule(i, s)) {
-          cli::formatError(reply, capacity, "radio acknowledgement pending"); return true;
+          cli::formatError(reply, capacity, MESH_CLI_REPLY_TEXT("radio acknowledgement pending", "radio ack pending")); return true;
         }
       } else { schedules_[first+i] = s; noteSecondaryManualChange(); publish(); }
 #else

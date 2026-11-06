@@ -10,6 +10,7 @@ from pathlib import Path
 import re
 import runpy
 import shlex
+import shutil
 import subprocess
 import tempfile
 import textwrap
@@ -19,6 +20,125 @@ from cpp_source import body
 from test_serial_wifi_sessions import SANITIZER_FLAGS
 
 ROOT = Path(__file__).resolve().parents[1]
+
+
+class CompactSTM32WLCompanionAgcTest(unittest.TestCase):
+    def test_rak_size_flag_is_scoped_to_compile_and_lto_link(self):
+        config = configparser.ConfigParser(interpolation=None, inline_comment_prefixes=(';',))
+        config.read(ROOT / 'variants/rak3x72/platformio.ini')
+        selected = config['env:RAK_3x72_companion_radio_usb']
+        flag = '-fno-tree-loop-im'
+        hook = 'post:scripts/stm32_rak_companion_size.py'
+        self.assertIn(flag, shlex.split(selected['build_flags']))
+        self.assertEqual(selected['extra_scripts'].split(), ['${stm32_base.extra_scripts}', hook])
+        for section in config.sections():
+            if section != selected.name:
+                self.assertNotIn(flag, config[section].get('build_flags', ''))
+                self.assertNotIn(hook, config[section].get('extra_scripts', ''))
+        class Environment(dict):
+            def Append(self, **values):
+                for key, items in values.items():
+                    self.setdefault(key, []).extend(items)
+        for target in ('RAK_3x72_companion_radio_usb', 'RAK_3x72_repeater', 'Tiny_Relay_companion_radio_usb'):
+            env = Environment(PIOENV=target, LINKFLAGS=['existing'])
+            runpy.run_path(str(ROOT / 'scripts/stm32_rak_companion_size.py'), init_globals={
+                'env': env, 'Import': lambda name: self.assertEqual(name, 'env')})
+            self.assertEqual(env['LINKFLAGS'], ['existing'] + ([flag] if target == 'RAK_3x72_companion_radio_usb' else []))
+
+    def test_mini_loop_size_policy_is_scoped_to_compile_and_link(self):
+        config = configparser.ConfigParser(interpolation=None, inline_comment_prefixes=(';',))
+        config.read(ROOT / 'variants/wio-e5-mini/platformio.ini')
+        target = 'env:wio-e5-mini_companion_radio_usb'
+        flag = '-fno-tree-loop-im'
+        hook = 'post:scripts/stm32_mini_companion_size.py'
+        self.assertIn(flag, shlex.split(config[target]['build_flags']))
+        self.assertEqual(config[target]['extra_scripts'].split(), ['${stm32_base.extra_scripts}', hook])
+        for section in config.sections():
+            if section not in (target, 'env:wio-e5-mini_repeater'):
+                self.assertNotIn(flag, config[section].get('build_flags', ''))
+            if section != target:
+                self.assertNotIn(hook, config[section].get('extra_scripts', ''))
+        class Environment(dict):
+            def Append(self, **values):
+                for key, items in values.items():
+                    self.setdefault(key, []).extend(items)
+        for name in ('wio-e5-mini_companion_radio_usb', 'wio-e5-mini_repeater', 'Tiny_Relay_companion_radio_usb'):
+            env = Environment(PIOENV=name, LINKFLAGS=['existing'])
+            runpy.run_path(str(ROOT / 'scripts/stm32_mini_companion_size.py'), init_globals={
+                'env': env, 'Import': lambda key: self.assertEqual(key, 'env')})
+            self.assertEqual(env['LINKFLAGS'], ['existing'] + ([flag] if name == 'wio-e5-mini_companion_radio_usb' else []))
+
+    def test_only_qualified_stm32wl_companions_use_compact_unsupported_route(self):
+        for variant, target, base in (
+            ('rak3x72', 'RAK_3x72_companion_radio_usb', 'rak3x72'),
+            ('wio-e5-mini', 'wio-e5-mini_companion_radio_usb', 'lora_e5_mini'),
+            ('wio-e5-dev', 'wio-e5_companion_radio_usb', 'lora_e5'),
+            ('tiny_relay', 'Tiny_Relay_companion_radio_usb', 'Tiny_Relay'),
+        ):
+            config = configparser.ConfigParser(interpolation=None, inline_comment_prefixes=(';',))
+            config.read(ROOT / 'variants' / variant / 'platformio.ini')
+            self.assertRegex(config[base]['build_flags'], r'-D\s+WRAPPER_CLASS=CustomSTM32WLxWrapper\b')
+            for section in config.sections():
+                flags = config[section].get('build_flags', '')
+                if section == 'env:' + target:
+                    self.assertRegex(flags, r'-D\s+STM32WL_COMPANION_COMPACT_UNSUPPORTED_AGC=1\b')
+                else:
+                    self.assertNotIn('STM32WL_COMPANION_COMPACT_UNSUPPORTED_AGC', flags)
+            for section in (base, 'env:' + target):
+                self.assertNotRegex(config[section].get('build_flags', ''), r'-D\s+MESH_WARM_RX_REFRESH(?:=1)?(?:\s|$)')
+
+    def test_original_and_compact_unsupported_replies_match(self):
+        compiler = shutil.which('g++') or shutil.which('clang++')
+        if not compiler:
+            self.skipTest('host C++ compiler required')
+        radio = r'''#pragma once
+#include <cstddef>
+#include <cstdint>
+namespace mesh { struct Radio {
+  bool supportsWarmRxRefresh() const { return false; }
+  bool setOldAGCInterval(uint32_t) { return false; }
+  uint32_t getOldAGCInterval() const { return 0; }
+  bool formatWarmRxRefresh(uint8_t, uint32_t, char*, size_t) const { return false; }
+}; }
+'''
+        harness = r'''
+#include <cassert>
+#include <cstdio>
+#include <initializer_list>
+#include <helpers/AGCMaintenanceCLI.h>
+int main() {
+  mesh::Radio radio;
+  const char* cmds[]={"get agc.old", "set agc.old ", "set agc.old 0", "set agc.old bad",
+    "get agc.status", "get agc.timing", "get agc.recovery", "get agc.pulse", "get agc.sleep", "get agc.checks",
+    "get agc.old.status", "get agc.old.timing", "get agc.old.errors", "get agc.reset.status",
+    "get agc.reset.timing", "get agc.reset.errors", "get agc", "set agc 32", "set agc.old",
+    "set agc.oldx 1", "get agc.old ", "get agc.status x", "get agc.statusx", "get agc.test.ms"};
+  for (auto* node : {&radio, static_cast<mesh::Radio*>(nullptr)}) for (size_t cap : {size_t(0),size_t(1),size_t(8),size_t(160)})
+    for (const auto* cmd : cmds) {
+      char reply[160]="unchanged";
+      bool handled=mesh::handleAGCMaintenanceCommand(node,cmd,28,reply,cap);
+      printf("%d:%s\n",handled,reply);
+    }
+  char reply[160]={};
+  assert(!mesh::handleAGCMaintenanceCommand(&radio,nullptr,0,reply,sizeof(reply)));
+  assert(!mesh::handleAGCMaintenanceCommand(&radio,"get agc.old",0,nullptr,sizeof(reply)));
+}
+'''
+        with tempfile.TemporaryDirectory(prefix='stm32wl-companion-agc-') as directory:
+            path = Path(directory)
+            (path / 'Dispatcher.h').write_text(radio)
+            (path / 'main.cpp').write_text(harness)
+            outputs = []
+            for compact in (0, 1):
+                executable = path / ('test' + str(compact))
+                result = subprocess.run([compiler, '-std=c++17', '-DSTM32WL_COMPANION_COMPACT_UNSUPPORTED_AGC='+str(compact),
+                                         '-I', str(path), '-I', str(ROOT / 'src'), str(path / 'main.cpp'), '-o', str(executable)],
+                                        capture_output=True, text=True)
+                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                result = subprocess.run([str(executable)], capture_output=True, text=True)
+                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                outputs.append(result.stdout)
+            self.assertEqual(outputs[0], outputs[1])
 
 
 class STM32CompanionProfileTest(unittest.TestCase):

@@ -704,13 +704,19 @@ void Dispatcher::logPacketLine(const char* direction, const Packet* packet,
 #endif
 
 bool Dispatcher::getNextNoiseFloorWakeDelay(uint32_t& delay_millis) const {
+#if (!defined(WIO_E5_MINI_COMPACT_UNSUPPORTED_AGC) || !WIO_E5_MINI_COMPACT_UNSUPPORTED_AGC) && \
+    (!defined(STM32WL_COMPANION_COMPACT_UNSUPPORTED_AGC) || !STM32WL_COMPANION_COMPACT_UNSUPPORTED_AGC)
   if(_radio->isAGCMaintenancePending()) { delay_millis=0;return true; }
+#endif
   return radioDirection::radioReceiveAllowed() && radio_available
       && _radio->getNoiseFloorWakeDelay(_ms->getMillis(), delay_millis);
 }
 
 bool Dispatcher::getNextQueueWakeDelay(uint32_t& delay_millis) const {
+#if (!defined(WIO_E5_MINI_COMPACT_UNSUPPORTED_AGC) || !WIO_E5_MINI_COMPACT_UNSUPPORTED_AGC) && \
+    (!defined(STM32WL_COMPANION_COMPACT_UNSUPPORTED_AGC) || !STM32WL_COMPANION_COMPACT_UNSUPPORTED_AGC)
   if(_radio->isAGCMaintenancePending()) { delay_millis=0;return true; }
+#endif
   const bool dual_profile = radioDirection::radioReceiveAllowed() && isDualRadioActive();
   uint32_t profile_delay = 0;
   if (dual_profile && (!radio_available
@@ -1232,7 +1238,12 @@ void Dispatcher::loop() {
     } else {
       // Ownership/calibration deferral is not a reset or health evidence.
       const uint32_t deferred_at = _ms->getMillis();
+#if (defined(WIO_E5_MINI_COMPACT_UNSUPPORTED_AGC) && WIO_E5_MINI_COMPACT_UNSUPPORTED_AGC) || \
+    (defined(STM32WL_COMPANION_COMPACT_UNSUPPORTED_AGC) && STM32WL_COMPANION_COMPACT_UNSUPPORTED_AGC)
+      uint32_t retry_delay = 50, receive_delay;
+#else
       uint32_t retry_delay = _radio->agcMaintenanceRetryMs(), receive_delay;
+#endif
 #if defined(MESH_W12_PRAM_EXPERIMENT) && MESH_W12_PRAM_EXPERIMENT
       if (lab_agc_retry_ms > retry_delay) retry_delay = lab_agc_retry_ms;
 #endif

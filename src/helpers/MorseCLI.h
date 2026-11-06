@@ -2,6 +2,7 @@
 
 #include <Dispatcher.h>
 #include <helpers/CLICommandUtils.h>
+#include <helpers/CLIReplyText.h>
 #include <helpers/MorseSettings.h>
 #include <helpers/MorseReplyHandoff.h>
 #include <stdio.h>
@@ -97,7 +98,7 @@ inline bool handleMorseReplyCommand(MorseReplyHandoff& handoff, Radio* radio,
         || (!query && cw && *action) || !strncmp(key, "tempradio", 9)
         || (!query && key_length == 5 && !strncmp(key, "radio", 5) && *action)
         || (!query && key_length == 6 && !strncmp(key, "radio2", 6) && *action)) {
-      cli::formatError(reply, capacity, "Morse reply handoff pending; use morse stop or retry later");
+      cli::formatError(reply, capacity, MESH_CLI_REPLY_TEXT("Morse reply handoff pending; use morse stop or retry later", "Morse handoff pending; use morse stop or retry later"));
       return true;
     }
   }
@@ -109,12 +110,12 @@ inline bool handleMorseReplyCommand(MorseReplyHandoff& handoff, Radio* radio,
   const uint32_t duration = uint32_t(minutes * 60000.0f + 0.5f);
   if (duration < 1000 || duration > 300000) return false;
   if (radio->isCarrierWaveActive() || radio->isMorseTxActive() || radio->isMorseRxActive()) {
-    cli::formatError(reply, capacity, "radio busy; stop Morse/CW or retry when idle");
+    cli::formatError(reply, capacity, MESH_CLI_REPLY_TEXT("radio busy; stop Morse/CW or retry when idle", "radio busy; stop Morse/CW or retry idle"));
     return true;
   }
   const auto& settings = morseSettings();
   if (!handoff.stage(settings.frequency_khz, settings.wpm, duration, now)) {
-    cli::formatError(reply, capacity, "Morse reply handoff pending; retry later");
+    cli::formatError(reply, capacity, MESH_CLI_REPLY_TEXT("Morse reply handoff pending; retry later", "Morse handoff pending; retry later"));
     return true;
   }
   snprintf(reply, capacity,
@@ -145,7 +146,7 @@ inline void formatMorseCapturePage(Radio* radio, const char* argument,
   const int prefix = snprintf(reply, capacity, "> %04u/%04u next=---- truncated=%u ",
       unsigned(offset), unsigned(total), unsigned(radio->morseCaptureTruncated()));
   if (prefix < 0 || size_t(prefix) + 1 >= capacity) {
-    cli::formatError(reply, capacity, "reply buffer too small for capture page");
+    cli::formatError(reply, capacity, MESH_CLI_REPLY_TEXT("reply buffer too small for capture page", "capture page reply buffer too small"));
     return;
   }
   const size_t copied = radio->readMorseCapture(offset, reply + prefix, capacity - prefix);
@@ -186,7 +187,7 @@ inline void formatMorseTracePage(Radio* radio, const char* argument,
       unsigned(offset), unsigned(length), (unsigned long)radio->morseTraceTotal(),
       unsigned(radio->morseTraceTruncated()));
   if (prefix < 0 || size_t(prefix) + 1 >= capacity) {
-    cli::formatError(reply, capacity, "reply buffer too small for trace page");
+    cli::formatError(reply, capacity, MESH_CLI_REPLY_TEXT("reply buffer too small for trace page", "trace page reply buffer too small"));
     return;
   }
   size_t used = prefix, next = offset;
@@ -211,7 +212,7 @@ inline void formatMorseTracePage(Radio* radio, const char* argument,
     ++next;
   }
   if (next == offset && next < length) {
-    cli::formatError(reply, capacity, "reply buffer too small for trace entry");
+    cli::formatError(reply, capacity, MESH_CLI_REPLY_TEXT("reply buffer too small for trace entry", "trace entry reply buffer too small"));
     return;
   }
 #if defined(MESH_MORSE_HIL_RAW_RSSI) && MESH_MORSE_HIL_RAW_RSSI
@@ -258,7 +259,7 @@ inline bool handleMorseCommand(Radio* radio, const char* command,
       && !radio->supportsMorseRx()
 #endif
       )) {
-    cli::formatError(reply, capacity, "Morse unsupported on this radio");
+    cli::formatError(reply, capacity, MESH_CLI_REPLY_TEXT("Morse unsupported on this radio", "Morse unsupported by radio"));
     return true;
   }
   const char* args = cli::skipRecentRepeaterSpaces(key + length);
@@ -266,7 +267,7 @@ inline bool handleMorseCommand(Radio* radio, const char* command,
   if (hil_squelch) {
 #if MESH_ENABLE_MORSE_RX
     if (!radio->supportsMorseRx()) {
-      cli::formatError(reply, capacity, "Morse RX unsupported on this radio");
+      cli::formatError(reply, capacity, MESH_CLI_REPLY_TEXT("Morse RX unsupported on this radio", "Morse RX unsupported by radio"));
       return true;
     }
     if (query) {
@@ -293,7 +294,7 @@ inline bool handleMorseCommand(Radio* radio, const char* command,
     if (isnan(value)) snprintf(reply, capacity, "OK - HIL Morse squelch auto; volatile RX only");
     else snprintf(reply, capacity, "OK - HIL Morse squelch %.3f dBm; volatile RX only", value);
 #else
-    cli::formatError(reply, capacity, "Morse RX unsupported on this radio");
+    cli::formatError(reply, capacity, MESH_CLI_REPLY_TEXT("Morse RX unsupported on this radio", "Morse RX unsupported by radio"));
 #endif
     return true;
   }
@@ -330,7 +331,7 @@ inline bool handleMorseCommand(Radio* radio, const char* command,
 #endif
   const auto& current = morseSettings();
   if ((query || (base && !*args && !setting)) && !morseSettingsUsable()) {
-    cli::formatError(reply, capacity, "saved Morse settings unavailable; verify and save morse.freq");
+    cli::formatError(reply, capacity, MESH_CLI_REPLY_TEXT("saved Morse settings unavailable; verify and save morse.freq", "Morse settings unavailable; verify/save morse.freq"));
     return true;
   }
   if (frequency || speed) {
@@ -345,7 +346,7 @@ inline bool handleMorseCommand(Radio* radio, const char* command,
       return true;
     }
     if (speed && !morseSettingsUsable()) {
-      cli::formatError(reply, capacity, "verify and save morse.freq before changing Morse WPM");
+      cli::formatError(reply, capacity, MESH_CLI_REPLY_TEXT("verify and save morse.freq before changing Morse WPM", "verify/save morse.freq before Morse WPM"));
       return true;
     }
     if (radio->isCarrierWaveActive() || radio->isMorseTxActive()
@@ -353,7 +354,7 @@ inline bool handleMorseCommand(Radio* radio, const char* command,
         || radio->isMorseRxActive()
 #endif
         ) {
-      cli::formatError(reply, capacity, "radio busy; stop Morse/CW before changing settings");
+      cli::formatError(reply, capacity, MESH_CLI_REPLY_TEXT("radio busy; stop Morse/CW before changing settings", "radio busy; stop Morse/CW before settings"));
       return true;
     }
     auto candidate = current;
@@ -362,7 +363,7 @@ inline bool handleMorseCommand(Radio* radio, const char* command,
       if (!cli::parseDecimalStrict(args, value)
           || value < MorseMinFrequencyKHz / 1000.0f
           || value > MorseMaxFrequencyKHz / 1000.0f) {
-        cli::formatError(reply, capacity, "morse.freq must be 100-1000 MHz");
+        cli::formatError(reply, capacity, MESH_CLI_REPLY_TEXT("morse.freq must be 100-1000 MHz", "morse.freq: 100-1000 MHz"));
         return true;
       }
       candidate.frequency_khz = uint32_t(value * 1000.0f + 0.5f);
@@ -370,14 +371,14 @@ inline bool handleMorseCommand(Radio* radio, const char* command,
       uint32_t value = 0;
       if (!cli::parseUnsignedIntegerStrict(args, value)
           || value < MorseMinWpm || value > MorseMaxWpm) {
-        snprintf(reply, capacity, "Error: morse.wpm must be %u-%u",
+        snprintf(reply, capacity, MESH_CLI_REPLY_TEXT("Error: morse.wpm must be %u-%u", "Error: morse.wpm %u-%u"),
             unsigned(MorseMinWpm), unsigned(MorseMaxWpm));
         return true;
       }
       candidate.wpm = uint8_t(value);
     }
     if (!saveMorseSettings(candidate)) {
-      cli::formatError(reply, capacity, "Morse settings could not be saved");
+      cli::formatError(reply, capacity, MESH_CLI_REPLY_TEXT("Morse settings could not be saved", "Morse settings not saved"));
     } else if (frequency) {
       snprintf(reply, capacity, "OK - morse.freq %.3f MHz", candidate.frequencyMHz());
     } else snprintf(reply, capacity, "OK - morse.wpm %u", unsigned(candidate.wpm));
@@ -444,7 +445,7 @@ inline bool handleMorseCommand(Radio* radio, const char* command,
       && !radio->supportsMorseRx()
 #endif
       ) {
-    cli::formatError(reply, capacity, "Morse RX unsupported on this radio");
+    cli::formatError(reply, capacity, MESH_CLI_REPLY_TEXT("Morse RX unsupported on this radio", "Morse RX unsupported by radio"));
     return true;
   }
 #if MESH_ENABLE_MORSE_RX
@@ -488,7 +489,7 @@ inline bool handleMorseCommand(Radio* radio, const char* command,
     return true;
   }
   if ((send || listen) && !morseSettingsUsable()) {
-    cli::formatError(reply, capacity, "saved Morse settings unavailable; verify and save morse.freq");
+    cli::formatError(reply, capacity, MESH_CLI_REPLY_TEXT("saved Morse settings unavailable; verify and save morse.freq", "Morse settings unavailable; verify/save morse.freq"));
     return true;
   }
 #if MESH_ENABLE_MORSE_RX
@@ -500,7 +501,7 @@ inline bool handleMorseCommand(Radio* radio, const char* command,
     }
     const uint32_t duration = uint32_t(minutes * 60000.0f + 0.5f);
     if (duration < 1000 || duration > 300000) {
-      cli::formatError(reply, capacity, "Morse listening must last 1-300 seconds");
+      cli::formatError(reply, capacity, MESH_CLI_REPLY_TEXT("Morse listening must last 1-300 seconds", "Morse listening: 1-300 seconds"));
       return true;
     }
     const auto result = radio->startMorseRx(current.frequencyMHz(), current.wpm, duration);
@@ -510,25 +511,25 @@ inline bool handleMorseCommand(Radio* radio, const char* command,
             current.frequencyMHz(), radio->morseRxBandwidthKHz(), minutes);
         break;
       case MorseRxResult::Busy:
-        cli::formatError(reply, capacity, "radio busy; stop Morse/CW or retry when idle"); break;
+        cli::formatError(reply, capacity, MESH_CLI_REPLY_TEXT("radio busy; stop Morse/CW or retry when idle", "radio busy; stop Morse/CW or retry idle")); break;
       case MorseRxResult::Unsupported:
-        cli::formatError(reply, capacity, "Morse RX unsupported on this radio"); break;
+        cli::formatError(reply, capacity, MESH_CLI_REPLY_TEXT("Morse RX unsupported on this radio", "Morse RX unsupported by radio")); break;
       case MorseRxResult::InvalidFrequency:
-        cli::formatError(reply, capacity, "Morse frequency unsupported by this radio"); break;
+        cli::formatError(reply, capacity, MESH_CLI_REPLY_TEXT("Morse frequency unsupported by this radio", "Morse frequency unsupported by radio")); break;
       case MorseRxResult::Overlap:
-        cli::formatError(reply, capacity, "Morse frequency overlaps radio or radio2; change morse.freq"); break;
+        cli::formatError(reply, capacity, MESH_CLI_REPLY_TEXT("Morse frequency overlaps radio or radio2; change morse.freq", "Morse overlaps radio or radio2; set morse.freq")); break;
       case MorseRxResult::InvalidSpeed:
         snprintf(reply, capacity, "Error: Morse RX needs %u-%u WPM; set morse.wpm", unsigned(MorseRx::MinWpm), unsigned(MorseMaxWpm)); break;
       case MorseRxResult::InvalidDuration:
-        cli::formatError(reply, capacity, "Morse listening must last 1-300 seconds"); break;
+        cli::formatError(reply, capacity, MESH_CLI_REPLY_TEXT("Morse listening must last 1-300 seconds", "Morse listening: 1-300 seconds")); break;
       default:
-        cli::formatError(reply, capacity, "Morse RX transition failed; check radio recovery"); break;
+        cli::formatError(reply, capacity, MESH_CLI_REPLY_TEXT("Morse RX transition failed; check radio recovery", "Morse RX failed; check radio recovery")); break;
     }
     return true;
   }
 #endif
   if (send && !radio->supportsMorseTx()) {
-    cli::formatError(reply, capacity, "Morse TX unsupported on this radio");
+    cli::formatError(reply, capacity, MESH_CLI_REPLY_TEXT("Morse TX unsupported on this radio", "Morse TX unsupported by radio"));
     return true;
   }
   const auto result = stop ? radio->stopMorseTx()
@@ -543,25 +544,25 @@ inline bool handleMorseCommand(Radio* radio, const char* command,
           radio->isInRecvMode() ? "; receive resumed" : "");
       break;
     case MorseTxResult::Busy:
-      cli::formatError(reply, capacity, "radio busy; stop Morse/CW or retry when idle");
+      cli::formatError(reply, capacity, MESH_CLI_REPLY_TEXT("radio busy; stop Morse/CW or retry when idle", "radio busy; stop Morse/CW or retry idle"));
       break;
     case MorseTxResult::Unsupported:
-      cli::formatError(reply, capacity, "Morse TX unsupported on this radio");
+      cli::formatError(reply, capacity, MESH_CLI_REPLY_TEXT("Morse TX unsupported on this radio", "Morse TX unsupported by radio"));
       break;
     case MorseTxResult::InvalidFrequency:
-      cli::formatError(reply, capacity, "Morse frequency unsupported by this radio");
+      cli::formatError(reply, capacity, MESH_CLI_REPLY_TEXT("Morse frequency unsupported by this radio", "Morse frequency unsupported by radio"));
       break;
     case MorseTxResult::Overlap:
-      cli::formatError(reply, capacity, "Morse frequency overlaps radio or radio2; change morse.freq");
+      cli::formatError(reply, capacity, MESH_CLI_REPLY_TEXT("Morse frequency overlaps radio or radio2; change morse.freq", "Morse overlaps radio or radio2; set morse.freq"));
       break;
     case MorseTxResult::InvalidText:
-      cli::formatError(reply, capacity, "supported Morse ASCII only (80 characters max)");
+      cli::formatError(reply, capacity, MESH_CLI_REPLY_TEXT("supported Morse ASCII only (80 characters max)", "Morse ASCII only (80 characters max)"));
       break;
     case MorseTxResult::InvalidSpeed:
-      snprintf(reply, capacity, "Error: morse.wpm must be %u-%u", unsigned(MorseMinWpm), unsigned(MorseMaxWpm));
+      snprintf(reply, capacity, MESH_CLI_REPLY_TEXT("Error: morse.wpm must be %u-%u", "Error: morse.wpm %u-%u"), unsigned(MorseMinWpm), unsigned(MorseMaxWpm));
       break;
     case MorseTxResult::TooLong:
-      cli::formatError(reply, capacity, "limit 80 characters/180 seconds; shorten text or raise WPM");
+      cli::formatError(reply, capacity, MESH_CLI_REPLY_TEXT("limit 80 characters/180 seconds; shorten text or raise WPM", "80 characters/180 seconds max; shorten text or raise WPM"));
       break;
     default:
       cli::formatError(reply, capacity, "Morse failed; check radio recovery");

@@ -10088,22 +10088,22 @@ void MyMesh::handleTerminalPath(ContactInfo& recipient,
     case mesh::cli::TerminalPathParseResult::Valid:
       break;
     case mesh::cli::TerminalPathParseResult::Missing:
-      terminalOutput().print(MESH_CLI_REPLY_TEXT("  ERROR: use path <direct|clear|hops separated by spaces or commas>\r\n", "  ERROR: path <direct|clear|space/comma-separated hops>\r\n"));
+      terminalOutput().print(MESH_CLI_REPLY_TEXT("  ERROR: use path <direct|clear|hops separated by spaces or commas>\r\n", "  ERROR: path <direct|clear|hops separated by spaces/commas>\r\n"));
       return;
     case mesh::cli::TerminalPathParseResult::InvalidPrefix:
-      terminalOutput().print(MESH_CLI_REPLY_TEXT("  ERROR: each path hop must be 2, 4, or 6 hex digits\r\n", "  ERROR: path hops need 2, 4, or 6 hex digits\r\n"));
+      terminalOutput().print(MESH_CLI_REPLY_TEXT("  ERROR: each path hop must be 2, 4, or 6 hex digits\r\n", "  ERROR: hops: 2, 4, or 6 hex digits\r\n"));
       return;
     case mesh::cli::TerminalPathParseResult::MixedPrefixSize:
-      terminalOutput().print(MESH_CLI_REPLY_TEXT("  ERROR: all path hops must use the same width\r\n", "  ERROR: path hops need equal widths\r\n"));
+      terminalOutput().print(MESH_CLI_REPLY_TEXT("  ERROR: all path hops must use the same width\r\n", "  ERROR: path hops need equal width\r\n"));
       return;
     case mesh::cli::TerminalPathParseResult::InvalidSeparator:
-      terminalOutput().print(MESH_CLI_REPLY_TEXT("  ERROR: separate path hops with spaces or commas\r\n", "  ERROR: separate hops with spaces/commas\r\n"));
+      terminalOutput().print(MESH_CLI_REPLY_TEXT("  ERROR: separate path hops with spaces or commas\r\n", "  ERROR: separate hops with space/comma\r\n"));
       return;
     case mesh::cli::TerminalPathParseResult::TooManyHops:
       terminalOutput().print(MESH_CLI_REPLY_TEXT("  ERROR: path must contain at most 63 hops\r\n", "  ERROR: path max 63 hops\r\n"));
       return;
     case mesh::cli::TerminalPathParseResult::RouteTooLong:
-      terminalOutput().print("  ERROR: path is too long\r\n");
+      terminalOutput().print(MESH_CLI_REPLY_TEXT("  ERROR: path is too long\r\n", "  ERROR: path too long\r\n"));
       return;
   }
 
@@ -10161,7 +10161,7 @@ void MyMesh::importTerminalCard(char* command) {
 
   while (*command == ' ') command++;
   if (strncmp(command, "meshcore://", 11) != 0) {
-    terminalOutput().print("  ERROR: invalid card format\r\n");
+    terminalOutput().print(MESH_CLI_REPLY_TEXT("  ERROR: invalid card format\r\n", "  ERROR: bad card format\r\n"));
     return;
   }
 
@@ -10174,14 +10174,14 @@ void MyMesh::importTerminalCard(char* command) {
   size_t encoded_len = strlen(encoded);
   if (encoded_len == 0 || (encoded_len & 1) != 0
       || encoded_len / 2 > sizeof(_terminal_tmp_buf)) {
-    terminalOutput().print("  ERROR: invalid card format\r\n");
+    terminalOutput().print(MESH_CLI_REPLY_TEXT("  ERROR: invalid card format\r\n", "  ERROR: bad card format\r\n"));
     return;
   }
 
   size_t raw_len = encoded_len / 2;
   if (!mesh::Utils::fromHex(_terminal_tmp_buf, raw_len, encoded)
       || !importContact(_terminal_tmp_buf, raw_len)) {
-    terminalOutput().print("  ERROR: invalid card\r\n");
+    terminalOutput().print(MESH_CLI_REPLY_TEXT("  ERROR: invalid card\r\n", "  ERROR: bad card\r\n"));
     return;
   }
 
@@ -10209,7 +10209,7 @@ void MyMesh::handleTerminalDisplayCommand(const char* arguments) {
   if (result == mesh::TerminalDisplayParseResult::InvalidCategory
       || result == mesh::TerminalDisplayParseResult::InvalidValue) {
     terminalOutput().print(
-        "  ERROR: use show [adverts|channels|emergency] [on|off]\r\n");
+        MESH_CLI_REPLY_TEXT("  ERROR: use show [adverts|channels|emergency] [on|off]\r\n", "  ERROR: show [adverts|channels|emergency] [on|off]\r\n"));
     return;
   }
 
@@ -10263,7 +10263,7 @@ void MyMesh::sendTerminalChannelMessage(ChannelDetails& channel,
       ? MAX_TEXT_LEN - prefix_len : 0;
   const size_t text_len = text == NULL ? 0 : strlen(text);
   if (text_len == 0) {
-    terminalOutput().print("  ERROR: message is empty\r\n");
+    terminalOutput().print(MESH_CLI_REPLY_TEXT("  ERROR: message is empty\r\n", "  ERROR: empty message\r\n"));
   } else if (text_len > max_text_len) {
     terminalOutput().printf(MESH_CLI_REPLY_TEXT("  ERROR: message must be 1-%u UTF-8 bytes for this node name\r\n", "  ERROR: message 1-%u UTF-8 bytes for node name\r\n"),
                   (unsigned)max_text_len);
@@ -10275,7 +10275,7 @@ void MyMesh::sendTerminalChannelMessage(ChannelDetails& channel,
 #endif
     terminalOutput().printf("  Sent to %s.\r\n", channel.name);
   } else {
-    terminalOutput().print("  ERROR: unable to send\r\n");
+    terminalOutput().print(MESH_CLI_REPLY_TEXT("  ERROR: unable to send\r\n", "  ERROR: send failed\r\n"));
   }
 }
 
@@ -10516,13 +10516,13 @@ void MyMesh::sendTerminalTraceRoute(const uint8_t* route, uint8_t hash_size,
 
   const size_t route_byte_len = static_cast<size_t>(hash_size) * hop_count;
   if (route_byte_len > MAX_PACKET_PAYLOAD - 9) {
-    terminalOutput().print("  ERROR: trace path is too long\r\n");
+    terminalOutput().print(MESH_CLI_REPLY_TEXT("  ERROR: trace path is too long\r\n", "  ERROR: trace path too long\r\n"));
     return;
   }
 
   const uint8_t flags = mesh::traceFlagsForHashSize(hash_size);
   if (flags == 0xFF) {
-    terminalOutput().print(MESH_CLI_REPLY_TEXT("  ERROR: trace hash size must be 1, 2, or 4 bytes\r\n", "  ERROR: trace hashes need 1, 2, or 4 bytes\r\n"));
+    terminalOutput().print(MESH_CLI_REPLY_TEXT("  ERROR: trace hash size must be 1, 2, or 4 bytes\r\n", "  ERROR: trace hash: 1, 2, or 4 bytes\r\n"));
     return;
   }
 
@@ -10559,12 +10559,12 @@ void MyMesh::sendTerminalTraceRoute(const uint8_t* route, uint8_t hash_size,
   const uint8_t history = _delayed_replies.reserveTrace(tag, auth, _ms->getMillis());
   if (history == mesh::CompanionDelayedReplies::NO_HISTORY) {
     releasePacket(packet);
-    terminalOutput().print(MESH_CLI_REPLY_TEXT("  ERROR: trace tag is quarantined or reply history is full\r\n", "  ERROR: trace quarantined or reply history full\r\n"));
+    terminalOutput().print(MESH_CLI_REPLY_TEXT("  ERROR: trace tag is quarantined or reply history is full\r\n", "  ERROR: trace quarantined or history full\r\n"));
     return;
   }
   if (!sendDirect(packet, route, static_cast<uint8_t>(route_byte_len))) {
     _delayed_replies.abandonTrace(history);
-    terminalOutput().print("  ERROR: unable to send trace\r\n");
+    terminalOutput().print(MESH_CLI_REPLY_TEXT("  ERROR: unable to send trace\r\n", "  ERROR: trace send failed\r\n"));
     return;
   }
 
@@ -10585,7 +10585,7 @@ void MyMesh::sendTerminalTraceRoute(const uint8_t* route, uint8_t hash_size,
 void MyMesh::sendTerminalTrace(ContactInfo& recipient) {
   if (recipient.out_path_len == OUT_PATH_UNKNOWN
       || !mesh::Packet::isValidPathLen(recipient.out_path_len)) {
-    terminalOutput().print("  ERROR: recipient has no valid direct path\r\n");
+    terminalOutput().print(MESH_CLI_REPLY_TEXT("  ERROR: recipient has no valid direct path\r\n", "  ERROR: recipient has no direct path\r\n"));
     return;
   }
 
@@ -10601,7 +10601,7 @@ void MyMesh::sendTerminalTrace(ContactInfo& recipient) {
     return;
   }
   if (route.hop_count >= MAX_PATH_SIZE) {
-    terminalOutput().print("  ERROR: round-trip trace path is too long\r\n");
+    terminalOutput().print(MESH_CLI_REPLY_TEXT("  ERROR: round-trip trace path is too long\r\n", "  ERROR: round-trip trace path too long\r\n"));
     return;
   }
 
@@ -10619,20 +10619,20 @@ void MyMesh::sendTerminalRawTrace(const char* arguments) {
       break;
     case mesh::RawTracePathParseResult::MissingHashSize:
     case mesh::RawTracePathParseResult::MissingPrefixes:
-      terminalOutput().print("  ERROR: use trace path <1|2|4> <prefixes...>\r\n");
+      terminalOutput().print(MESH_CLI_REPLY_TEXT("  ERROR: use trace path <1|2|4> <prefixes...>\r\n", "  ERROR: trace path <1|2|4> <prefixes...>\r\n"));
       return;
     case mesh::RawTracePathParseResult::InvalidHashSize:
-      terminalOutput().print(MESH_CLI_REPLY_TEXT("  ERROR: trace hash size must be 1, 2, or 4 bytes\r\n", "  ERROR: trace hashes need 1, 2, or 4 bytes\r\n"));
+      terminalOutput().print(MESH_CLI_REPLY_TEXT("  ERROR: trace hash size must be 1, 2, or 4 bytes\r\n", "  ERROR: trace hash: 1, 2, or 4 bytes\r\n"));
       return;
     case mesh::RawTracePathParseResult::InvalidPrefix:
-      terminalOutput().printf(MESH_CLI_REPLY_TEXT("  ERROR: every prefix must be exactly %u hex digits\r\n", "  ERROR: each prefix needs %u hex digits\r\n"),
+      terminalOutput().printf(MESH_CLI_REPLY_TEXT("  ERROR: every prefix must be exactly %u hex digits\r\n", "  ERROR: prefix needs %u hex digits\r\n"),
                     (unsigned)route.hash_size * 2);
       return;
     case mesh::RawTracePathParseResult::TooManyHops:
       terminalOutput().print(MESH_CLI_REPLY_TEXT("  ERROR: trace path must contain at most 63 prefixes\r\n", "  ERROR: trace path max 63 prefixes\r\n"));
       return;
     case mesh::RawTracePathParseResult::RouteTooLong:
-      terminalOutput().print("  ERROR: trace path is too long\r\n");
+      terminalOutput().print(MESH_CLI_REPLY_TEXT("  ERROR: trace path is too long\r\n", "  ERROR: trace path too long\r\n"));
       return;
   }
 
@@ -10730,7 +10730,7 @@ void MyMesh::handleTerminalCommand(char* command, bool reader_prompt,
     listTerminalChannels();
   } else if (channel_match != mesh::cli::TerminalChannelCommandMatch::NoMatch) {
     if (channel_match != mesh::cli::TerminalChannelCommandMatch::Valid) {
-      terminalOutput().print("  ERROR: use channel <name-or-slot> <message>\r\n");
+      terminalOutput().print(MESH_CLI_REPLY_TEXT("  ERROR: use channel <name-or-slot> <message>\r\n", "  ERROR: channel <name-or-slot> <message>\r\n"));
       return;
     }
 
@@ -10762,7 +10762,7 @@ void MyMesh::handleTerminalCommand(char* command, bool reader_prompt,
     }
 
     if (!found) {
-      terminalOutput().print("  ERROR: channel not found (use 'channels')\r\n");
+      terminalOutput().print(MESH_CLI_REPLY_TEXT("  ERROR: channel not found (use 'channels')\r\n", "  ERROR: channel not found; see 'channels'\r\n"));
     } else {
       sendTerminalChannelMessage(channel, channel_message.text
 #if CARDPUTER_ADV_UI
@@ -10792,7 +10792,7 @@ void MyMesh::handleTerminalCommand(char* command, bool reader_prompt,
                                expected_ack, est_timeout, packet_retry_key,
                                NULL, text_fingerprint);
       if (result == MSG_SEND_FAILED) {
-        terminalOutput().print("  ERROR: unable to send\r\n");
+        terminalOutput().print(MESH_CLI_REPLY_TEXT("  ERROR: unable to send\r\n", "  ERROR: send failed\r\n"));
       } else {
         rememberTerminalAck(*recipient, text, message_timestamp, expected_ack,
                             est_timeout, packet_retry_key, replacement_entry);
@@ -10804,7 +10804,7 @@ void MyMesh::handleTerminalCommand(char* command, bool reader_prompt,
     ChannelDetails channel;
     const char* text = command + 7;
     if (!getChannel(0, channel) || channel.name[0] == 0) {
-      terminalOutput().print("  ERROR: Public channel is unavailable\r\n");
+      terminalOutput().print(MESH_CLI_REPLY_TEXT("  ERROR: Public channel is unavailable\r\n", "  ERROR: Public channel unavailable\r\n"));
     } else {
       sendTerminalChannelMessage(channel, text
 #if CARDPUTER_ADV_UI
@@ -10829,7 +10829,7 @@ void MyMesh::handleTerminalCommand(char* command, bool reader_prompt,
 #endif
       terminalOutput().print("  OK - clock set\r\n");
     } else {
-      terminalOutput().print("  ERROR: clock cannot go backwards\r\n");
+      terminalOutput().print(MESH_CLI_REPLY_TEXT("  ERROR: clock cannot go backwards\r\n", "  ERROR: clock cannot go back\r\n"));
     }
   } else if (recipient_match
              == mesh::cli::TerminalArgumentCommandMatch::Valid) {
@@ -10879,7 +10879,7 @@ void MyMesh::handleTerminalCommand(char* command, bool reader_prompt,
     ContactInfo* recipient = getTerminalRecipient();
     if (command_match
         != mesh::cli::TerminalArgumentCommandMatch::Valid) {
-      terminalOutput().print("  ERROR: use cmd <remote-command>\r\n");
+      terminalOutput().print(MESH_CLI_REPLY_TEXT("  ERROR: use cmd <remote-command>\r\n", "  ERROR: cmd <remote-command>\r\n"));
     } else if (recipient == NULL) {
       terminalOutput().print(MESH_CLI_REPLY_TEXT("  ERROR: no recipient selected (use 'to' first)\r\n", "  ERROR: choose recipient with 'to'\r\n"));
     } else {
@@ -10912,7 +10912,7 @@ void MyMesh::handleTerminalCommand(char* command, bool reader_prompt,
     sendTerminalTrace(*recipient);
   } else if (strcmp(command, "advert") == 0) {
     terminalOutput().print(advert() ? "  advert sent (zero hop)\r\n"
-                          : "  ERROR: unable to send advert\r\n");
+                          : MESH_CLI_REPLY_TEXT("  ERROR: unable to send advert\r\n", "  ERROR: advert send failed\r\n"));
   } else if (strcmp(command, "reset path") == 0) {
     ContactInfo* recipient = getTerminalRecipient();
     if (recipient == NULL) {
@@ -10933,7 +10933,7 @@ void MyMesh::handleTerminalCommand(char* command, bool reader_prompt,
         ? createSelfAdvert(_prefs.node_name)
         : createSelfAdvert(_prefs.node_name, sensors.node_lat, sensors.node_lon);
     if (packet == NULL) {
-      terminalOutput().print("  ERROR: unable to create card\r\n");
+      terminalOutput().print(MESH_CLI_REPLY_TEXT("  ERROR: unable to create card\r\n", "  ERROR: card creation failed\r\n"));
     } else {
       packet->header |= ROUTE_TYPE_FLOOD;
       uint8_t raw_len = packet->writeTo(_terminal_tmp_buf);
@@ -11067,7 +11067,7 @@ void MyMesh::handleTerminalCommand(char* command, bool reader_prompt,
       const char* value = config + 16;
       while (*value == ' ' || *value == '\t') value++;
       if (strcmp(value, "on") != 0 && strcmp(value, "off") != 0) {
-        terminalOutput().print("  ERROR: use set radio.fem.rxgain <on|off>\r\n");
+        terminalOutput().print(MESH_CLI_REPLY_TEXT("  ERROR: use set radio.fem.rxgain <on|off>\r\n", "  ERROR: set radio.fem.rxgain <on|off>\r\n"));
       } else if (_radio && (_radio->isMorseTxActive() || _radio->isMorseRxActive())) {
         terminalOutput().print(MESH_CLI_REPLY_TEXT("  ERROR: stop Morse before changing LoRa FEM gain\r\n", "  ERROR: stop Morse before FEM gain\r\n"));
       } else if (!board.canControlLoRaFemLna()) {
@@ -11083,7 +11083,7 @@ void MyMesh::handleTerminalCommand(char* command, bool reader_prompt,
       const char* value = config + 16;
       while (*value == ' ' || *value == '\t') value++;
       if (strcmp(value, "on") != 0 && strcmp(value, "off") != 0) {
-        terminalOutput().print("  ERROR: use set radio.fem.txgain <on|off>\r\n");
+        terminalOutput().print(MESH_CLI_REPLY_TEXT("  ERROR: use set radio.fem.txgain <on|off>\r\n", "  ERROR: set radio.fem.txgain <on|off>\r\n"));
       } else if (_radio && (_radio->isMorseTxActive() || _radio->isMorseRxActive())) {
         terminalOutput().print(MESH_CLI_REPLY_TEXT("  ERROR: stop Morse before changing LoRa FEM gain\r\n", "  ERROR: stop Morse before FEM gain\r\n"));
       } else if (!board.canControlLoRaFemPaGain()) {
@@ -11264,7 +11264,7 @@ bool MyMesh::handleDirectCommand(const char* command, char* reply, size_t reply_
     memset(key, 0, sizeof(key));
     memset(hex, 0, sizeof(hex));
 #else
-    mesh::cli::formatError(reply, reply_size, "private key export disabled in this build");
+    mesh::cli::formatError(reply, reply_size, MESH_CLI_REPLY_TEXT("private key export disabled in this build", "private key export disabled"));
 #endif
     return true;
   }
@@ -11655,7 +11655,7 @@ bool MyMesh::handleCommand(const char* command, uint32_t sender_timestamp,
         _prefs.path_hash_mode = previous_hash_mode;
         _prefs.multi_acks = previous_multi_acks;
         _prefs.clearDirty();
-        mesh::cli::formatError(reply, reply_capacity, "setting changed but save failed");
+        mesh::cli::formatError(reply, reply_capacity, MESH_CLI_REPLY_TEXT("setting changed but save failed", "setting changed; save failed"));
       }
     }
     return true;
@@ -11670,7 +11670,7 @@ bool MyMesh::handleCommand(const char* command, uint32_t sender_timestamp,
   // runtime-aware FEM handlers above.
   if (board.handleCommand(command, sender_timestamp, reply)) {
     if (_prefs.isDirty() && !savePrefs()) {
-      mesh::cli::formatError(reply, reply_capacity, "board setting changed but save failed");
+      mesh::cli::formatError(reply, reply_capacity, MESH_CLI_REPLY_TEXT("board setting changed but save failed", "board setting changed; save failed"));
     }
     return true;
   }

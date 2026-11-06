@@ -61,7 +61,7 @@ class RoomWebUiTest(unittest.TestCase):
         with tempfile.TemporaryDirectory(prefix="meshcore-room-ui-", dir=cache_root, ignore_cleanup_errors=True) as temporary:
             work = Path(temporary)
             page = work / "index.html"
-            page.write_text(source)
+            page.write_text(source, encoding="utf-8")
             args = [BROWSER, "--headless=new", "--disable-gpu", "--no-first-run", "--no-default-browser-check",
                     "--user-data-dir=" + str(work / "profile"), "--virtual-time-budget=" + str(virtual_time),
                     "--dump-dom", page.as_uri()]

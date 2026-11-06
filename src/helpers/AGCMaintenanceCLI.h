@@ -69,6 +69,26 @@ inline bool handleRxpsPulseLabCommand(Radio* radio,const char* command,char* rep
 inline bool handleAGCMaintenanceCommand(Radio* radio,const char* command,
     uint32_t primary_seconds,char* reply,size_t capacity) {
   if(!command || !reply || !capacity) return false;
+#if defined(STM32WL_COMPANION_COMPACT_UNSUPPORTED_AGC) && STM32WL_COMPANION_COMPACT_UNSUPPORTED_AGC
+#if defined(MESH_AGC_TIMING_DIAGNOSTICS) && MESH_AGC_TIMING_DIAGNOSTICS
+#error "Compact STM32WL Companion AGC replies require diagnostics to be absent"
+#endif
+  // This radio has no warm-maintenance or diagnostic implementation. Keep
+  // the same exact command matches and replies without unreachable dispatch.
+  (void)radio; (void)primary_seconds;
+  if(strncmp(command,"set agc.old ",12)==0) {
+    cli::formatError(reply,capacity,"unsupported"); return true;
+  }
+  if(strncmp(command,"get agc.",8)==0) {
+    static const char names[]="old\0status\0timing\0recovery\0pulse\0sleep\0checks\0"
+        "old.status\0old.timing\0old.errors\0reset.status\0reset.timing\0reset.errors\0";
+    const char* key=command+8;
+    for(const char* item=names; *item; item+=strlen(item)+1) {
+      if(strcmp(key,item)==0) { cli::formatError(reply,capacity,"unsupported"); return true; }
+    }
+  }
+  return false;
+#else
   if(handleWarmRxLabTimerCommand(radio,command,reply,capacity) || handleRxpsPulseLabCommand(radio,command,reply,capacity)) return true;
   const size_t diagnostic_capacity=capacity<157?capacity:157;
   if(strcmp(command,"get agc.old")==0) {
@@ -108,6 +128,7 @@ inline bool handleAGCMaintenanceCommand(Radio* radio,const char* command,
     return true;
   }
   return false;
+#endif
 }
 
 } // namespace mesh

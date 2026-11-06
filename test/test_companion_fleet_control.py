@@ -151,6 +151,8 @@ struct Clock { uint32_t now = mesh::FleetCommand::MinEpoch + 1000;
   uint32_t getCurrentTime() const { return now; } };
 class MyMesh : public mesh::Mesh {
  public:
+  struct MockRadio { bool isAGCMaintenancePending() const { return false; } };
+  MockRadio* _radio = nullptr;
   struct NoMorseReply { void copy(const void*, const void*) {} } _morse_reply;
   mesh::TempRadioReplyBarrier _primary_radio_reply;
   mesh::LocalIdentity self_id;
@@ -1553,6 +1555,8 @@ static_assert(MESH_ENABLE_FLEET_CONTROL == 0, "compact profile must disable flee
 // No channels, clock, signing identity, codec definitions or sendGroupData.
 class MyMesh {
  public:
+  struct MockRadio { bool isAGCMaintenancePending() const { return false; } };
+  MockRadio* _radio = nullptr;
   bool handleCommand(const char*, uint32_t, char*);
   bool handleLocalControlCommand(const char*, char*, size_t);
 };

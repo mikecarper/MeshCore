@@ -54,6 +54,8 @@ struct SerialTransport {
   }
 };
 struct MyMesh {
+  struct MockRadio { bool isAGCMaintenancePending() const { return false; } };
+  MockRadio* _radio = nullptr;
   Prefs _prefs, durable;
   SerialTransport serial;
   SerialTransport* _serial = &serial;

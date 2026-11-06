@@ -364,6 +364,33 @@ public:
   virtual uint32_t getRecoveryCount() const { return 0; }
   // The primary RXPS pulse reuses the existing saved AGC interval.
   // Its optional old full-reset timer is independent and RAM-only.
+#if (defined(WIO_E5_MINI_COMPACT_UNSUPPORTED_AGC) && WIO_E5_MINI_COMPACT_UNSUPPORTED_AGC) || \
+    (defined(STM32WL_COMPANION_COMPACT_UNSUPPORTED_AGC) && STM32WL_COMPANION_COMPACT_UNSUPPORTED_AGC)
+#if (defined(MESH_WARM_RX_REFRESH) && MESH_WARM_RX_REFRESH) || MESH_WARM_RX_LAB_TIMER || MESH_RXPS_PULSE_LAB
+#error "STM32WL compact unsupported-AGC handling cannot enable warm-maintenance features"
+#endif
+  // The selected integrated STM32WL does not implement this optional API.
+  // Keep its callable defaults without allocating unreachable virtual slots.
+  bool supportsWarmRxRefresh() const { return false; }
+  bool isAGCMaintenanceActive() const { return false; }
+  bool isAGCMaintenancePending() const { return false; }
+  void configureAGCMaintenance(uint32_t) { }
+  void cancelAGCMaintenance() { }
+  bool setAGCPulseSleep(uint32_t) { return false; }
+  uint32_t getAGCPulseSleep() const { return 0; }
+  bool setOldAGCInterval(uint32_t) { return false; }
+  uint32_t getOldAGCInterval() const { return 0; }
+  bool formatWarmRxRefresh(uint8_t, uint32_t, char*, size_t) const { return false; }
+  AGCMaintenanceResult periodicAGCMaintenance(bool adaptive) {
+    if(adaptive) return !isCalibratingNoiseFloor() && tryResetAGC()
+        ? AGCMaintenanceResult::Applied : AGCMaintenanceResult::Deferred;
+    resetAGC(); return AGCMaintenanceResult::Applied;
+  }
+  uint32_t agcMaintenanceRetryMs() const { return 50; }
+  AGCMaintenanceResult periodicOldAGCMaintenance() {
+    resetAGC(); return AGCMaintenanceResult::Applied;
+  }
+#else
   virtual bool supportsWarmRxRefresh() const { return false; }
   // An asynchronous primary pulse owns the physical radio between loop ticks.
   virtual bool isAGCMaintenanceActive() const { return false; }
@@ -389,6 +416,7 @@ public:
   virtual AGCMaintenanceResult periodicOldAGCMaintenance() {
     resetAGC(); return AGCMaintenanceResult::Applied;
   }
+#endif
 
   virtual uint8_t getRadioState() const { return 0; }
   virtual unsigned long getLastRecvMillis() const { return 0; }

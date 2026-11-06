@@ -383,9 +383,11 @@ BASE_TYPES = r'''
 #include <helpers/radiolib/RXPowerSaving.h>
 namespace mesh {
 enum class RadioParamApplyResult : uint8_t { APPLIED, BUSY, FAILED };
+@AGC_ENUM@
 class MainBoard {};
 @RADIO_CLASS@
 }
+using mesh::AGCMaintenanceResult;
 using mesh::RadioParamApplyResult;
 using mesh::RadioProfiles;
 using mesh::RadioProfileParams;
@@ -692,10 +694,12 @@ class UniversalLoRaTest(unittest.TestCase):
         independent of the adapter. Omitting a new optional/default API from the
         adapter will execute the base default and fail the backend call check.
         """
-        raw_radio = body((ROOT / "src/Dispatcher.h").read_text(), "class Radio {") + ";"
+        dispatcher = (ROOT / "src/Dispatcher.h").read_text()
+        raw_radio = body(dispatcher, "class Radio {") + ";"
+        agc_result = body(dispatcher, "enum class AGCMaintenanceResult") + ";"
         if extra_virtual:
             raw_radio = raw_radio[:-2] + "\nvirtual uint32_t futureRadioCapability() const { return 0; }\n};"
-        prefix = BASE_TYPES.replace("@RADIO_CLASS@", raw_radio)
+        prefix = BASE_TYPES.replace("@RADIO_CLASS@", raw_radio).replace("@AGC_ENUM@", agc_result)
         flags = ["-DMESH_RADIO_AUTO_FAMILY=1", "-Wno-unused-parameter",
                  "-DMESH_RADIO_AUTO_SX1268=" + str(int(sx1268)),
                  "-DMESH_RADIO_AUTO_SX127X=" + str(int(sx127x)),
@@ -1039,8 +1043,9 @@ int main(){
     def test_every_virtual_radio_api_and_concrete_helper_dispatches_to_the_selected_backend(self):
         features = ("MESH_RADIO_SWITCH_TUNING", "MESH_ENABLE_TELEMETRY_HISTORY", "MESH_MORSE_HIL",
                     "MESH_ENABLE_HOST_KISS", "MESH_ENABLE_TX_BEACONS", "MESH_ENABLE_MESHTEXT_WIRE",
-                    "MESH_ENABLE_ETHERNET_WIRE")
-        for values in ((1, 1, 1, 1, 1, 1, 1), (0, 0, 0, 0, 0, 0, 0), (0, 0, 0, 1, 1, 0, 1)):
+                    "MESH_ENABLE_ETHERNET_WIRE", "MESH_WARM_RX_LAB_TIMER", "MESH_AGC_TIMING_DIAGNOSTICS")
+        for values in ((1, 1, 1, 1, 1, 1, 1, 1, 1), (0, 0, 0, 0, 0, 0, 0, 0, 0),
+                       (0, 0, 0, 1, 1, 0, 1, 0, 0)):
             definitions = dict(zip(features, values))
             for sx1268, sx127x, lr1121 in ((False, True, False), (True, False, False),
                     (True, True, False), (False, False, False), (False, False, True), (True, True, True)):
@@ -1061,7 +1066,7 @@ int main(){
         features = {name: 1 for name in (
             "MESH_RADIO_SWITCH_TUNING", "MESH_ENABLE_TELEMETRY_HISTORY", "MESH_MORSE_HIL",
             "MESH_ENABLE_HOST_KISS", "MESH_ENABLE_TX_BEACONS", "MESH_ENABLE_MESHTEXT_WIRE",
-            "MESH_ENABLE_ETHERNET_WIRE")}
+            "MESH_ENABLE_ETHERNET_WIRE", "MESH_WARM_RX_LAB_TIMER", "MESH_AGC_TIMING_DIAGNOSTICS")}
         binary, _ = self.compile_dispatch(features, extra_virtual=True)
         result = subprocess.run([str(binary), "126"], capture_output=True, text=True, timeout=20)
         self.assertNotEqual(result.returncode, 0, "An unforwarded default virtual escaped the dispatch checks")

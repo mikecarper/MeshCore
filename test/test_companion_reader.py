@@ -396,7 +396,7 @@ int main() {
 #include "battery_calibration_cli_stub.h"
 #include "usb_mode_console.h"
 struct BatteryBoard {} board;
-struct Radio { bool active = false; };
+struct Radio { bool active = false; bool isAGCMaintenancePending() const { return false; } };
 namespace mesh {
 bool morseTimingActive(const Radio* radio) { return radio && radio->active; }
 namespace power { bool handleRegulatorCommand(const char*,char*,size_t) { return false; } }

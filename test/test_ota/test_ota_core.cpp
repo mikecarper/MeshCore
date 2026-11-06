@@ -613,16 +613,25 @@ TEST(OtaBootPackage, EmbeddedIdentityVectorCapsAndExplicitConfirmationGate) {
          OTA_BOOT_DEVICE_NAME_SIZE);
   uint8_t mid[4] = {0x11,0x22,0x33,0x44};
   uint8_t hash8[8]; memcpy(hash8, m.image_hash, sizeof(hash8));
+  uint8_t hw_id[32];
+  ASSERT_TRUE(ota_bootloader_hw_id(installed, hw_id));
+  m.target_id = ota_bootloader_target_id(installed);
+  m.hw_id = hw_id;
   EXPECT_EQ(ota_bootloader_confirmation_gate(m, installed, mid, mid, hash8),
-            OTA_BOOT_CONFIRM_AMBIGUOUS_BOARD);
+            OTA_BOOT_CONFIRM_OK);
   installed.board_id = OTA_XIAO_BOARD_ID_SENSE;
   EXPECT_EQ(ota_bootloader_confirmation_gate(m, installed, mid, mid, hash8),
-            OTA_BOOT_CONFIRM_AMBIGUOUS_BOARD);
+            OTA_BOOT_CONFIRM_TARGET);
+  m.target_id = ota_bootloader_target_id(installed);
+  EXPECT_EQ(ota_bootloader_confirmation_gate(m, installed, mid, mid, hash8),
+            OTA_BOOT_CONFIRM_HW_ID);
+  ASSERT_TRUE(ota_bootloader_hw_id(installed, hw_id));
+  EXPECT_EQ(ota_bootloader_confirmation_gate(m, installed, mid, mid, hash8),
+            OTA_BOOT_CONFIRM_OK);
   // A distinct identity sharing the base board ID remains eligible.
   installed.board_id = OTA_XIAO_BOARD_ID_BASE;
   memcpy(installed.device_name, OTA_SENSECAP_BOOT_DEVICE_NAME,
          OTA_BOOT_DEVICE_NAME_SIZE);
-  uint8_t hw_id[32];
   ASSERT_TRUE(ota_bootloader_hw_id(installed, hw_id));
   m.target_id = ota_bootloader_target_id(installed);
   m.hw_id = hw_id;

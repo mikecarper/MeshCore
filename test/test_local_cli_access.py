@@ -49,6 +49,8 @@ struct MorseReplyHandoff {
 };
 template <typename Radio>
 bool handleMorseReplyCommand(MorseReplyHandoff&, Radio*, const char*, char*, size_t, uint32_t) { return false; }
+template <typename Radio>
+bool handleAGCMaintenanceCommand(Radio*, const char*, uint32_t, char*, size_t) { return false; }
 struct RadioProfileCLI {
   bool remote_origin=false;
   bool handle(const char*, char*, size_t, bool remote=false) { remote_origin=remote;return false; }
@@ -133,6 +135,7 @@ struct Radio {
   mesh::RadioParamApplyResult accepted=mesh::RadioParamApplyResult::APPLIED;
   int8_t power=10;
   bool power_verified=true;
+  bool isAGCMaintenancePending() const {return false;}
   bool isTxPowerValid(int8_t) const {return true;}
   bool isTxPowerApplied(int8_t requested) const {return power_verified && power==requested;}
   bool setTxPower(int requested){power=requested;power_verified=true;return true;}
@@ -171,7 +174,7 @@ struct MyMesh : CompanionFleetFixture {
   struct {char mqtt_slot_password[2][64]={"mqtt-secret","other"};
           char mqtt_slot_token[2][64]={"mqtt-token","other-token"};} _mqtt_prefs;
   unsigned dirty_contacts_expiry=1; uint8_t dirty_contacts_failures=1;
-  int value=0; int* _ms=&value; int* _radio=&value; int* _mgr=&value;
+  int value=0; int* _ms=&value; Radio* _radio=&radio_driver; int* _mgr=&value;
   uint16_t _err_flags=0;
   bool _radio_available=false, save_ok=true;
   bool saved_radio_apply_pending=false, command_radio_apply_pending=false, tx_power_apply_pending=false;
