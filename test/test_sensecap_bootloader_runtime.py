@@ -146,7 +146,7 @@ int main(int argc,char **argv) {
     manifest.target_id=ota_bootloader_target_id(p1); manifest.hw_id=hw;
     manifest.merkle_root=mid; manifest.image_hash=digest;
     assert(ota_bootloader_confirmation_gate(manifest,old,mid,mid,digest)==OTA_BOOT_CONFIRM_OK);
-    assert(ota_bootloader_confirmation_gate(manifest,base,mid,mid,digest)==OTA_BOOT_CONFIRM_TARGET);
+    assert(ota_bootloader_confirmation_gate(manifest,base,mid,mid,digest)==OTA_BOOT_CONFIRM_AMBIGUOUS_BOARD);
     manifest.target_id=base.board_id;
     assert(ota_bootloader_confirmation_gate(manifest,old,mid,mid,digest)==OTA_BOOT_CONFIRM_TARGET);
     manifest.target_id=ota_bootloader_target_id(p1); manifest.hw_id=xhw;

@@ -306,6 +306,15 @@ enforces the package's hardware identity before approval.
 
 ## Explicit XIAO bootloader updates over LoRa
 
+In the next firmware release, XIAO and XIAO Sense bootloader replacement is
+blocked, including explicitly requested LoRa updates. A reported `XIAO_DFU`
+identity can belong to a bootloader installed on the other physical variant,
+so it cannot prove which replacement is safe. Use local DFU or SWD with the
+bootloader matched to the physical board. Ordinary application firmware OTA
+is unchanged. Existing releases retain their previous behavior until updated.
+
+### Previously published firmware
+
 This section documents the deployed XIAO raw-QSPI layout. Curated nRF52840
 targets without external staging use a separate internal-flash layout with the
 same explicit operator safety model; see
