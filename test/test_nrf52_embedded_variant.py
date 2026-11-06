@@ -21,6 +21,8 @@ sys.path.insert(0, str(ROOT / "scripts"))
 sys.path.insert(0, str(ROOT / "tools/mota"))
 import motalib as ml
 import qualify_nrf52_embedded_bootloader as qualifier
+import nrf52_embedded_bootloader as embedded
+from generate_mesh_america_release import target_profiles
 
 SPEC = importlib.util.spec_from_file_location(
     "embedded_variant_recipe", ROOT / "scripts/firmware_build_recipe.py")
@@ -32,6 +34,25 @@ VERSION = "v1.18.0.1-halo-keymind-cascade-dev-12345678"
 
 
 class BuildIdentityTests(unittest.TestCase):
+    def test_published_target_environment_pairs_share_bootloader_identity(self):
+        pairs = json.loads((ROOT / "test/fixtures/nrf52_11801_bootloader_environment_pairs.json").read_text())
+        self.assertEqual(len(pairs), 77)
+        parsed = target_profiles({name for pair in pairs for name in pair})
+        catalog = embedded.load_manifest()
+
+        def identity(name):
+            item = parsed[name]
+            names = {embedded.BOOTLOADER_HARDWARE.get(value, value)
+                     for value in (item["sourceHardware"], item["hardware"])}
+            profiles = [profile["id"] for profile in catalog["profiles"]
+                        if names.intersection(profile["meshcoreHardware"])]
+            self.assertEqual(len(profiles), 1, name)
+            return item["sourceHardware"], item["role"], profiles[0]
+
+        for target, env in pairs:
+            with self.subTest(target=target, env=env):
+                self.assertEqual(identity(target), identity(env))
+
     def bash(self, script, *arguments):
         environment = os.environ.copy()
         environment.pop("MESHCORE_NRF52_EMBED_BOOTLOADER", None)
@@ -215,6 +236,39 @@ class PackagedApplicationTests(unittest.TestCase):
                 self.assert_refused_without_changing_manifest()
                 self.metadata[field] = original
         self.write_resource(self.candidate[:-1] + bytes([self.candidate[-1] ^ 1]))
+        self.assert_refused_without_changing_manifest()
+
+    def test_logical_alias_accepts_exact_matching_build_environment(self):
+        env = TARGET + "_physical_environment"
+        self.manifest["platformio_env"] = env
+        self.manifest_path.write_text(json.dumps(self.manifest))
+        self.metadata["target"] = env
+        self.write_resource()
+        result = qualifier.qualify(self.directory, self.manifest_path)
+        self.assertEqual(result["profile"], self.profile["id"])
+        self.assertEqual(self.patches["select_profile"].call_count, 2)
+
+    def test_logical_alias_rejects_different_board_role_or_resource_target(self):
+        env = TARGET + "_physical_environment"
+        self.manifest["platformio_env"] = env
+        self.manifest_path.write_text(json.dumps(self.manifest))
+        self.metadata["target"] = env
+        self.write_resource()
+        for field in ("profile", "hardware", "role"):
+            with self.subTest(field=field):
+                profile, parsed = dict(self.profile), dict(self.parsed)
+                if field == "profile":
+                    profile["id"] = "other"
+                elif field == "hardware":
+                    parsed["sourceHardware"] = "RAK_3401"
+                else:
+                    parsed["role"] = "room"
+                self.patches["select_profile"].side_effect = [
+                    (self.profile, self.parsed), (profile, parsed)]
+                self.assert_refused_without_changing_manifest()
+        self.patches["select_profile"].side_effect = None
+        self.metadata["target"] = TARGET
+        self.write_resource()
         self.assert_refused_without_changing_manifest()
 
     def test_invalid_pinned_candidate_never_attaches_claim(self):
