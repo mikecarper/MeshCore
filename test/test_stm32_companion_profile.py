@@ -43,7 +43,7 @@ class CompactSTM32WLCompanionAgcTest(unittest.TestCase):
             env = Environment(PIOENV=target, LINKFLAGS=['existing'])
             runpy.run_path(str(ROOT / 'scripts/stm32_rak_companion_size.py'), init_globals={
                 'env': env, 'Import': lambda name: self.assertEqual(name, 'env')})
-            self.assertEqual(env['LINKFLAGS'], ['existing'] + ([flag] if target == 'RAK_3x72_companion_radio_usb' else []))
+            self.assertEqual(env['LINKFLAGS'], ['existing'] + ([flag, '-fno-tree-pre', '-fno-tree-slsr', '-fno-code-hoisting'] if target == 'RAK_3x72_companion_radio_usb' else []))
 
     def test_mini_loop_size_policy_is_scoped_to_compile_and_link(self):
         config = configparser.ConfigParser(interpolation=None, inline_comment_prefixes=(';',))
@@ -71,6 +71,45 @@ class CompactSTM32WLCompanionAgcTest(unittest.TestCase):
             runpy.run_path(str(ROOT / 'scripts/stm32_mini_companion_size.py'), init_globals={
                 'env': env, 'Import': lambda key: self.assertEqual(key, 'env')})
             self.assertEqual(env['LINKFLAGS'], ['existing'] + ([flag, '-fno-tree-pre', '-fno-tree-slsr', '-fno-code-hoisting'] if name == 'wio-e5-mini_companion_radio_usb' else []))
+
+    def test_every_compact_companion_policy_is_exactly_scoped_and_complete(self):
+        profiles=(
+            ('wio-e5-mini','wio-e5-mini_companion_radio_usb','stm32_mini_companion_size.py'),
+            ('wio-e5-dev','wio-e5_companion_radio_usb','stm32_wio_companion_size.py'),
+            ('rak3x72','RAK_3x72_companion_radio_usb','stm32_rak_companion_size.py'),
+            ('tiny_relay','Tiny_Relay_companion_radio_usb','stm32_tiny_size.py'),
+        )
+        policy=['-fno-tree-loop-im','-fno-tree-pre','-fno-tree-slsr','-fno-code-hoisting']
+        class Environment(dict):
+            def Append(self,**values):
+                for key,items in values.items(): self.setdefault(key,[]).extend(items)
+        for variant,target,script in profiles:
+            config=configparser.ConfigParser(interpolation=None,inline_comment_prefixes=(';',))
+            config.read(ROOT/'variants'/variant/'platformio.ini')
+            selected=config['env:'+target]
+            flags=shlex.split(selected['build_flags'])
+            for choice in policy: self.assertEqual(flags.count(choice),1)
+            self.assertEqual(flags.count('MESH_CLI_SHARE_REPLY_COPIES=1'),1)
+            self.assertEqual(selected['extra_scripts'].split(),[
+                '${stm32_base.extra_scripts}','post:scripts/'+script])
+            for section in config.sections():
+                if section==selected.name: continue
+                other_flags=shlex.split(config[section].get('build_flags',''))
+                self.assertNotIn('MESH_CLI_SHARE_REPLY_COPIES=1',other_flags)
+                if variant!='wio-e5-mini':
+                    for choice in policy: self.assertNotIn(choice,other_flags)
+                self.assertNotIn('post:scripts/'+script,config[section].get('extra_scripts','').split())
+            # Execute each real target hook for all four Companions, every
+            # other role in its board file, and a misleading near-match name.
+            candidates={name for _,name,_ in profiles}
+            candidates.update(name[4:] for name in config.sections() if name.startswith('env:'))
+            candidates.add(target+'_custom')
+            for candidate in candidates:
+                with self.subTest(script=script,target=candidate):
+                    env=Environment(PIOENV=candidate,LINKFLAGS=['existing'])
+                    runpy.run_path(str(ROOT/'scripts'/script),init_globals={
+                        'env':env,'Import':lambda name:self.assertEqual(name,'env')})
+                    self.assertEqual(env['LINKFLAGS'],['existing']+(policy if candidate==target else []))
 
     def test_common_stm32_lto_preserves_dead_sections_for_every_role(self):
         class Environment(dict):
@@ -290,7 +329,7 @@ class TinyRelaySTM32CompanionProfileTest(STM32CompanionProfileTest):
                     "env": environment, "Import": lambda name: self.assertEqual(name, "env")})
                 self.assertEqual(dict(environment), {
                     "PIOENV": target,
-                    "LINKFLAGS": ["existing", *([flag] if target == self.target else [])]})
+                    "LINKFLAGS": ["existing", *([flag, "-fno-tree-pre", "-fno-tree-slsr", "-fno-code-hoisting"] if target == self.target else [])]})
 
 
 class WioDevSTM32CompanionProfileTest(STM32CompanionProfileTest):
