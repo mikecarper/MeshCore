@@ -935,6 +935,8 @@ jobs:
           python3 -B test/test_meshcore_ip_ssh_phone_bench.py -v
           python3 -B test/test_mcfirmware_bench_flash.py -v
           python3 -B tools/hil/test_capture_infrastructure_boot.py -v
+          python3 -B tools/hil/test_companion_fanout_codec.py -v
+          python3 -B tools/hil/test_companion_fanout_hil.py -v
 
       - name: Verify Meshtext chat codec, transport and Companion integration
         run: |

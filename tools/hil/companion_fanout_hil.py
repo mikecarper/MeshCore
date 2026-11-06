@@ -42,6 +42,7 @@ PRIMARY = (906.525, 62.5, 7, 5)
 SECONDARY = (908.150, 250, 7, 5)
 PULSE_PAGES = ('get agc.status', 'get agc.timing', 'get agc.recovery',
                'get agc.pulse', 'get agc.sleep', 'get agc.checks')
+MEDIA_GATHER_SECONDS = 12
 
 
 def utc():
@@ -360,19 +361,79 @@ def media_frames(node, slot, *, allow_text=False):
     return values
 
 
+class MediaGather:
+    """Drain one clip's queues to fixed deadlines; never send or retry RF."""
+    def __init__(self, source, receivers, bundle, slot, evidence, timestamp, manifest):
+        self.source, self.nodes = source, [source] + list(receivers)
+        self.bundle, self.slot, self.evidence = bundle, slot, evidence
+        self.timestamp, self.manifest = timestamp, manifest
+        self.announcement = source.node_name + ': ' + bundle['envelope']
+        self.fetches = {}
+        self.rows = {node.label: {'announcement': [], 'manifest': [], 'fetch': [], 'chunk': []}
+                     for node in self.nodes}
+        self.errors = {node.label: [] for node in self.nodes}
+        self.seen = {node.label: set() for node in self.nodes}
+
+    def observe(self, node, frame, phase):
+        kind, identity, parsed, error = None, None, None, None
+        if frame and frame[0] == 17:
+            parsed = parse_group_text_response(frame)
+            if (parsed is not None and node is not self.source
+                    and parsed['channel'] == self.slot and parsed['profileTag'] == 0
+                    and parsed['text'] == self.announcement
+                    and parsed['timestamp'] == self.timestamp):
+                kind, identity = 'announcement', 'announcement'
+            else:
+                error = 'unexpected announcement identity, channel, timestamp or tag'
+        elif frame and frame[0] == 27:
+            parsed = parse_channel_frame(frame)
+            if (parsed is None or parsed['channel'] != self.slot
+                    or parsed['data_type'] != 0x5643 or parsed['radio_profile'] != 1):
+                error = 'unexpected media channel, type or profile'
+            elif parsed['data'] == self.manifest and node is not self.source:
+                kind, identity = 'manifest', 'manifest'
+            elif parsed['data'] in self.fetches:
+                kind, identity = 'fetch', 'fetch:' + self.fetches[parsed['data']]
+            elif parsed['data'] in self.bundle['chunks'] and node is not self.source:
+                kind, identity = 'chunk', 'chunk:' + str(parse_chunk(parsed['data'])['index'])
+            else:
+                error = 'unexpected media SID, manifest hash, fetch identity or chunk bytes'
+        else:
+            error = 'unexpected application queue message'
+        # Retain exact wire bytes, including foreign and duplicate observations.
+        # They cannot inflate success or be silently reclassified as clip data.
+        duplicate = identity is not None and identity in self.seen[node.label]
+        self.evidence.event('media_observation', node=node.label, phase=phase,
+                            classification=kind, frame=frame.hex(), error=error,
+                            duplicate=duplicate)
+        if error:
+            self.errors[node.label].append(error)
+            # Keep the original chunk diagnostics even for a rejected profile
+            # or corrupt packet; reassembly must not conceal those observations.
+            if parsed and 'data' in parsed and parse_chunk(parsed['data']) is not None:
+                self.rows[node.label]['chunk'].append(parsed)
+            return
+        self.rows[node.label][kind].append(parsed)
+        if duplicate:
+            self.errors[node.label].append('duplicate media observation: ' + identity)
+        self.seen[node.label].add(identity)
+
+    def gather(self, phase):
+        started = time.monotonic()
+        deadline = started + MEDIA_GATHER_SECONDS
+        # Completion does not shorten the window: a late duplicate still
+        # matters. Every poll drains all queues so small receivers do not fill.
+        while time.monotonic() < deadline:
+            queues = parallel(self.nodes, lambda node: node.drain())
+            for node in self.nodes:
+                for frame in queues[node.label]: self.observe(node, frame, phase)
+            time.sleep(min(.2, max(0, deadline - time.monotonic())))
+        self.evidence.event('media_gather', phase=phase, started=started,
+                            deadline=deadline, finished=time.monotonic())
+
+
 def send_media(source, receivers, bundle, slot, evidence):
     timestamp = int(time.time())
-    source.request(group_text_command(slot, bundle['envelope'], timestamp), (0,))
-    time.sleep(2)
-    announcements = parallel(receivers, lambda node: media_frames(node, slot, allow_text=True))
-    announcement_results = {}
-    for node in receivers:
-        frames = announcements[node.label]
-        # Group text reserves the profile byte as0 in the shipping firmware;
-        # its channel/timestamp/text are proof, not an invented A1 radio tag.
-        wanted = source.node_name + ': ' + bundle['envelope']
-        announcement_results[node.label] = bool(len(frames) == 1
-            and frames[0].get('text') == wanted and frames[0].get('timestamp') == timestamp)
     # A manifest is an explicitly typed channel datagram, so routing and queue
     # retrieval are tested without pretending that its bytes are a photograph.
     manifest = {'schema': 1, 'kind': bundle['kind'], 'sid': bundle['sid'],
@@ -382,54 +443,46 @@ def send_media(source, receivers, bundle, slot, evidence):
     # The full SHA manifest is saved host-side. Keep the on-air manifest within
     # the common163-byte application budget and bind it by SHA256 too.
     check(len(manifest_bytes) <= 163, 'manifest exceeds common application budget')
+    gather = MediaGather(source, receivers, bundle, slot, evidence, timestamp, manifest_bytes)
+    source.request(group_text_command(slot, bundle['envelope'], timestamp), (0,))
+    gather.gather('announcement')
     source.request(channel_data_command(slot, manifest_bytes), (0,))
-    time.sleep(2)
-    manifests = parallel(receivers, lambda node: media_frames(node, slot))
-    for node in receivers:
-        frames = manifests[node.label]
-        announcement_results[node.label] &= bool(len(frames) == 1
-            and frames[0]['data'] == manifest_bytes and frames[0]['radio_profile'] == 1)
+    gather.gather('manifest-before-fetch')
     # Each receiver pulls the complete clip explicitly. These are distinct
     # requester-specific requests, never automatic replacements for lost RF.
     request_results = {}
     for node in receivers:
         request = encode_fetch(bundle['sid'], node.key[:6])
+        gather.fetches[request] = node.label
         node.request(channel_data_command(slot, request), (0,))
-        time.sleep(1)
-        fetched = media_frames(source, slot)
-        matching = [item for item in fetched if parse_fetch(item['data']) is not None]
-        request_results[node.label] = {'sha256': hashlib.sha256(request).hexdigest(),
-            'received_exactly': bool(len(fetched) == 1 and len(matching) == 1 and matching[0]['data'] == request
-                                     and matching[0]['radio_profile'] == 1)}
-        # Other receivers also hear encrypted group fetches. Drain and retain
-        # them as application observations, not clip chunks.
-        for other in receivers:
-            if other is not node:
-                extra = media_frames(other, slot)
-                check(all(parse_fetch(item['data']) is not None for item in extra),
-                      'unexpected media data while fetching')
-    for chunk in bundle['chunks']:
+        gather.gather('fetch:' + node.label)
+        request_results[node.label] = {'sha256': hashlib.sha256(request).hexdigest()}
+    for index, chunk in enumerate(bundle['chunks']):
         source.request(channel_data_command(slot, chunk), (0,))
-        time.sleep(1)
-        # Drain on every chunk so small nRF queues are tested without overflow
-        # manufactured by a host that intentionally refuses to read them.
-        per_receiver = parallel(receivers, lambda node: media_frames(node, slot))
-        for node in receivers:
-            evidence.report['media'][bundle['kind']]['observations'][node.label].extend(
-                {'data_hex': frame['data'].hex(), 'radio_profile': frame['radio_profile'],
-                 'snr_db': frame['snr_db']} for frame in per_receiver[node.label])
+        gather.gather('chunks-final' if index == bundle['count'] - 1 else 'chunk:' + str(index))
     outcome = {}
     for node in receivers:
+        frames = gather.rows[node.label]
+        announcement_exact = len(frames['announcement']) == len(frames['manifest']) == 1
+        request = encode_fetch(bundle['sid'], node.key[:6])
+        request_results[node.label]['received_exactly'] = bool(
+            sum(item['data'] == request for item in gather.rows[source.label]['fetch']) == 1
+            and not gather.errors[source.label])
+        request_results[node.label]['source_errors'] = gather.errors[source.label]
+        evidence.report['media'][bundle['kind']]['observations'][node.label].extend(
+            {'data_hex': frame['data'].hex(), 'radio_profile': frame['radio_profile'],
+             'snr_db': frame['snr_db']} for frame in frames['chunk'])
         observations = evidence.report['media'][bundle['kind']]['observations'][node.label]
         chunks = [bytes.fromhex(item['data_hex']) for item in observations]
         try:
+            check(not gather.errors[node.label], '; '.join(gather.errors[node.label]))
             check(all(item['radio_profile'] == 1 for item in observations), 'clip arrived on wrong profile')
             content = assemble(bundle, chunks)
-            outcome[node.label] = {'integrity_passed': announcement_results[node.label]
+            outcome[node.label] = {'integrity_passed': announcement_exact
                 and request_results[node.label]['received_exactly'], 'retrieved_bytes': len(content),
                 'retrieved_sha256': hashlib.sha256(content).hexdigest(),
                 'fetch': request_results[node.label], 'announcement_and_manifest_exact':
-                    announcement_results[node.label], 'chunks_received': len(chunks)}
+                    announcement_exact, 'chunks_received': len(chunks)}
         except (ValueError, RuntimeError) as error:
             outcome[node.label] = {'integrity_passed': False, 'chunks_received': len(chunks),
                                    'error': str(error)}
@@ -443,7 +496,9 @@ def raw_media_check(source, receivers, bundle, evidence):
     payload = encode_chunk(bundle['sid'], chunk['index'], chunk['data'], salt=1)
     started = time.monotonic()
     source.request(bytes((25, 0)) + payload, (0,))
-    time.sleep(2)
+    # The continuous USB reader retains RAW_DATA pushes while RF delivery is
+    # pending. Use the same fixed deadline as the queued-media phases.
+    time.sleep(MEDIA_GATHER_SECONDS)
     for node in receivers:
         matches = [row for row in evidence.frames if row['node'] == node.label
             and row['monotonic'] >= started and bytes.fromhex(row['frame'])[0] == 0x84
@@ -455,7 +510,7 @@ def raw_media_check(source, receivers, bundle, evidence):
         request = encode_fetch(bundle['sid'], node.key[:6], missing=[0])
         started = time.monotonic()
         node.request(bytes((25, 0)) + request, (0,))
-        time.sleep(1)
+        time.sleep(MEDIA_GATHER_SECONDS)
         matches = [row for row in evidence.frames if row['node'] == source.label
             and row['monotonic'] >= started and bytes.fromhex(row['frame'])[0] == 0x84
             and bytes.fromhex(row['frame'])[4:] == request]

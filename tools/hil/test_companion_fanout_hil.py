@@ -17,10 +17,12 @@ from split_radio_probe import make_probe
 class MemoryEvidence:
     def __init__(self, kind="voice", labels=("left", "right")):
         self.frames = []
+        self.events = []
         self.report = {"media": {kind: {"observations": {label: [] for label in labels}}}}
 
     def event(self, kind, **values):
         row = {"kind": kind, "monotonic": hil.time.monotonic(), **values}
+        self.events.append(row)
         if kind == "rx":
             self.frames.append(row)
         return row
@@ -37,6 +39,25 @@ class MemoryBus:
         self.corrupt_chunk = set()
         self.wrong_chunk_profile = set()
         self.raw_tags = {}
+        self.raw_delays, self.raw_mutations, self.pending_raw = {}, {}, []
+        self.delays, self.mutations, self.pending = {}, {}, []
+        self.lock = threading.Lock()
+
+    def deliver(self, target, frame, kind):
+        key = (target.label, kind)
+        if key in self.mutations:
+            frame = self.mutations[key](frame)
+        delay = self.delays.get(key, 0)
+        if delay:
+            self.pending.append((hil.time.monotonic() + delay, target, frame))
+        else:
+            target.queue.append(frame)
+
+    def deliver_raw(self, now):
+        ready = [item for item in self.pending_raw if item[0] <= now]
+        self.pending_raw = [item for item in self.pending_raw if item[0] > now]
+        for due, target, frame in ready:
+            self.evidence.event("rx", node=target.label, frame=frame.hex(), monotonic=due)
 
     def send(self, source, command):
         if command[0] == 3:
@@ -45,7 +66,7 @@ class MemoryBus:
             frame = bytes((17, 0x10, 0, 0, command[2], 0xff, 0)) + command[3:7] + text
             for target in self.nodes:
                 if target is not source and target.label not in self.drop_announcement:
-                    target.queue.append(frame)
+                    self.deliver(target, frame, "announcement")
         elif command[0] == 62:
             assert command[2] == 0xff
             slot, datatype, data = command[1], command[3:5], command[5:]
@@ -63,9 +84,10 @@ class MemoryBus:
                     payload = data[:-1] + bytes((data[-1] ^ 1,))
                 tag = 0xa0 if identity in self.wrong_chunk_profile else 0xa1
                 frame = bytes((27, 0xf8, tag, 0, slot, 0xff)) + datatype + bytes((len(payload),)) + payload
-                target.queue.append(frame)
+                kind = "chunk" if chunk else "fetch" if fetch else "manifest"
+                self.deliver(target, frame, kind)
                 if identity in self.duplicate_chunk:
-                    target.queue.append(frame)
+                    self.deliver(target, frame, kind)
         elif command[0] == 25:
             assert command[1] == 0
             for target in self.nodes:
@@ -73,7 +95,15 @@ class MemoryBus:
                     continue
                 tag = self.raw_tags.get(target.label, 0xa1)
                 frame = bytes((0x84, 0xf4, 0x9c, tag)) + command[2:]
-                self.evidence.event("rx", node=target.label, frame=frame.hex())
+                kind = "fetch" if parse_fetch(command[2:]) else "chunk"
+                key = (target.label, kind)
+                if key in self.raw_mutations:
+                    frame = self.raw_mutations[key](frame)
+                delay = self.raw_delays.get(key, 0)
+                if delay:
+                    self.pending_raw.append((hil.time.monotonic() + delay, target, frame))
+                else:
+                    self.evidence.event("rx", node=target.label, frame=frame.hex())
         else:
             raise AssertionError("Unexpected fake request: %d" % command[0])
 
@@ -93,8 +123,28 @@ class MemoryNode:
         return b"\0"
 
     def drain(self):
-        frames, self.queue = self.queue, []
-        return frames
+        with self.bus.lock:
+            ready = [item for item in self.bus.pending if item[0] <= hil.time.monotonic()]
+            self.bus.pending = [item for item in self.bus.pending if item[0] > hil.time.monotonic()]
+            for _, target, frame in ready:
+                target.queue.append(frame)
+            frames, self.queue = self.queue, []
+            return frames
+
+
+class FakeClock:
+    def __init__(self, advance=None):
+        self.now = 100.0
+        self.advance = advance
+
+    def monotonic(self):
+        return self.now
+
+    def sleep(self, duration):
+        assert duration >= 0
+        self.now += duration
+        if self.advance:
+            self.advance(self.now)
 
 
 class CompanionFanoutRunnerTests(unittest.TestCase):
@@ -111,8 +161,113 @@ class CompanionFanoutRunnerTests(unittest.TestCase):
         return bus, source, receivers, bundle, evidence
 
     def send(self, source, receivers, bundle, evidence):
-        with patch.object(hil.time, "sleep"), patch.object(hil.time, "time", return_value=1700000000):
+        self.clock = FakeClock()
+        with patch.object(hil.time, "sleep", self.clock.sleep), \
+                patch.object(hil.time, "monotonic", self.clock.monotonic), \
+                patch.object(hil.time, "time", return_value=1700000000):
             return hil.send_media(source, receivers, bundle, 3, evidence)
+
+    def raw(self, source, receivers, bundle, evidence):
+        self.clock = FakeClock(source.bus.deliver_raw)
+        with patch.object(hil.time, "sleep", self.clock.sleep), \
+                patch.object(hil.time, "monotonic", self.clock.monotonic):
+            return hil.raw_media_check(source, receivers, bundle, evidence)
+
+    def test_late_manifest_at_4_1_seconds_is_gathered_without_rf_retry(self):
+        bus, source, receivers, bundle, evidence = self.setup_bus()
+        bus.delays[("right", "manifest")] = 4.1
+        bus.delays[("left", "chunk")] = 4.1
+        result = self.send(source, receivers, bundle, evidence)
+        self.assertTrue(all(row["integrity_passed"] for row in result.values()))
+        manifest = next(row for row in evidence.events if row["kind"] == "media_observation"
+                        and row["node"] == "right" and row["classification"] == "manifest")
+        window = next(row for row in evidence.events if row["kind"] == "media_gather"
+                      and row["phase"] == "manifest-before-fetch")
+        self.assertGreaterEqual(manifest["monotonic"] - window["started"], 4.1)
+        self.assertLess(manifest["monotonic"], window["deadline"])
+        self.assertEqual(len(source.requests), 2 + bundle["count"])
+        self.assertTrue(all(len(node.requests) == 1 for node in receivers))
+
+    def test_current_manifest_delayed_into_fetch_phase_is_retained(self):
+        bus, source, receivers, bundle, evidence = self.setup_bus()
+        bus.delays[("right", "manifest")] = hil.MEDIA_GATHER_SECONDS + 4.1
+        result = self.send(source, receivers, bundle, evidence)
+        self.assertTrue(result["right"]["integrity_passed"])
+        late = [row for row in evidence.events if row["kind"] == "media_observation"
+                and row["node"] == "right" and row["classification"] == "manifest"]
+        self.assertEqual(len(late), 1)
+        self.assertEqual(late[0]["phase"], "fetch:left")
+        self.assertEqual(len(source.requests), 2 + bundle["count"])
+
+    def test_foreign_sid_manifest_hash_tag_and_duplicate_are_rejected_and_retained(self):
+        mutations = {
+            "sid": lambda frame: frame.replace(b'"sid":305419896', b'"sid":305419897'),
+            "hash": lambda frame: frame.replace(bundle["sha256"].encode(), b"0" * 64),
+            "tag": lambda frame: frame[:2] + b"\xa0" + frame[3:],
+            "channel": lambda frame: frame[:4] + b"\4" + frame[5:],
+        }
+        for fault in (*mutations, "duplicate"):
+            with self.subTest(fault=fault):
+                bus, source, receivers, bundle, evidence = self.setup_bus()
+                if fault == "duplicate":
+                    def duplicate(frame):
+                        receivers[1].queue.append(frame)
+                        return frame
+                    bus.mutations[("right", "manifest")] = duplicate
+                else:
+                    bus.mutations[("right", "manifest")] = mutations[fault]
+                result = self.send(source, receivers, bundle, evidence)
+                self.assertTrue(result["left"]["integrity_passed"])
+                self.assertFalse(result["right"]["integrity_passed"])
+                self.assertIn("error", result["right"])
+                retained = [row for row in evidence.events if row["kind"] == "media_observation"
+                            and row["node"] == "right" and (row["error"] or row["duplicate"])]
+                self.assertTrue(retained)
+                self.assertEqual(len(source.requests), 2 + bundle["count"])
+
+    def test_missing_content_expires_at_fixed_deadline_without_transmit_retry(self):
+        bus, source, receivers, bundle, evidence = self.setup_bus()
+        bus.drop_chunk.add(("right", 1))
+        result = self.send(source, receivers, bundle, evidence)
+        self.assertFalse(result["right"]["integrity_passed"])
+        windows = [row for row in evidence.events if row["kind"] == "media_gather"]
+        self.assertEqual(len(windows), 2 + len(receivers) + bundle["count"])
+        self.assertEqual(windows[-1]["phase"], "chunks-final")
+        self.assertTrue(all(row["finished"] == row["deadline"]
+                            and row["deadline"] - row["started"] == hil.MEDIA_GATHER_SECONDS
+                            for row in windows))
+        self.assertEqual(self.clock.now, 100 + len(windows) * hil.MEDIA_GATHER_SECONDS)
+        self.assertEqual(len(source.requests), 2 + bundle["count"])
+        self.assertTrue(all(len(node.requests) == 1 for node in receivers))
+
+    def test_foreign_fetch_sid_requester_and_tag_cannot_satisfy_source_receipt(self):
+        for fault in ("sid", "requester", "tag", "duplicate"):
+            with self.subTest(fault=fault):
+                bus, source, receivers, bundle, evidence = self.setup_bus()
+                def mutate(frame):
+                    if fault == "sid":
+                        return frame[:10] + bytes((frame[10] ^ 1,)) + frame[11:]
+                    if fault == "requester":
+                        return frame[:15] + bytes((frame[15] ^ 1,)) + frame[16:]
+                    if fault == "tag":
+                        return frame[:2] + b"\xa0" + frame[3:]
+                    source.queue.append(frame)
+                    return frame
+                bus.mutations[("source", "fetch")] = mutate
+                result = self.send(source, receivers, bundle, evidence)
+                self.assertTrue(all(not row["integrity_passed"] for row in result.values()))
+                self.assertTrue(all(not row["fetch"]["received_exactly"] for row in result.values()))
+                self.assertTrue(all(row["fetch"]["source_errors"] for row in result.values()))
+                self.assertEqual(len(source.requests), 2 + bundle["count"])
+                self.assertTrue(all(len(node.requests) == 1 for node in receivers))
+
+    def test_announcement_reserved_tag_is_not_invented_profile_proof(self):
+        bus, source, receivers, bundle, evidence = self.setup_bus()
+        bus.mutations[("right", "announcement")] = lambda frame: frame[:2] + b"\xa1" + frame[3:]
+        result = self.send(source, receivers, bundle, evidence)
+        self.assertTrue(result["left"]["integrity_passed"])
+        self.assertFalse(result["right"]["integrity_passed"])
+        self.assertIn("announcement", result["right"]["error"])
 
     def test_exact_announcement_manifest_fetch_chunks_and_integrity(self):
         for kind in ("voice", "image"):
@@ -165,14 +320,40 @@ class CompanionFanoutRunnerTests(unittest.TestCase):
     def test_raw_api_keeps_profile_proof_separate_from_configuration(self):
         bus, source, receivers, bundle, evidence = self.setup_bus()
         bus.raw_tags["right"] = 0
-        with patch.object(hil.time, "sleep"):
-            result = hil.raw_media_check(source, receivers, bundle, evidence)
+        result = self.raw(source, receivers, bundle, evidence)
         self.assertEqual(source.requests[0][:3], b"\x19\0\x57")
         self.assertEqual(result["left"], {"raw_clip_received": 1, "raw_clip_profile1": True,
                                         "raw_fetch_received_by_source": 1, "raw_fetch_profile1": True})
         self.assertEqual(result["right"]["raw_clip_received"], 1)
         self.assertFalse(result["right"]["raw_clip_profile1"])
         self.assertTrue(result["right"]["raw_fetch_profile1"])
+
+    def test_raw_api_gathers_4_1_second_pushes_without_resending(self):
+        bus, source, receivers, bundle, evidence = self.setup_bus()
+        bus.raw_delays.update({("left", "chunk"): 4.1, ("right", "chunk"): 4.1,
+                               ("source", "fetch"): 4.1})
+        result = self.raw(source, receivers, bundle, evidence)
+        for node in receivers:
+            self.assertEqual(result[node.label], {
+                "raw_clip_received": 1, "raw_clip_profile1": True,
+                "raw_fetch_received_by_source": 1, "raw_fetch_profile1": True})
+            self.assertEqual(len(node.requests), 1)
+        self.assertEqual(len(source.requests), 1)
+        self.assertEqual(self.clock.now, 100 + (1 + len(receivers)) * hil.MEDIA_GATHER_SECONDS)
+        delayed = [row for row in evidence.frames if row["node"] == "left"]
+        self.assertEqual(delayed[0]["monotonic"], 104.1)
+
+    def test_raw_api_wrong_requester_payload_cannot_count_as_a_fetch(self):
+        bus, source, receivers, bundle, evidence = self.setup_bus()
+        # RAW_DATA is4 header bytes; fetch key6 starts6 bytes into its payload.
+        bus.raw_mutations[("source", "fetch")] = lambda frame: (
+            frame[:10] + bytes((frame[10] ^ 0x80,)) + frame[11:])
+        result = self.raw(source, receivers, bundle, evidence)
+        self.assertTrue(all(row["raw_clip_received"] == 1 for row in result.values()))
+        self.assertTrue(all(row["raw_fetch_received_by_source"] == 0
+                            and not row["raw_fetch_profile1"] for row in result.values()))
+        self.assertEqual(len(source.requests), 1)
+        self.assertTrue(all(len(node.requests) == 1 for node in receivers))
 
     def test_primary_counts_unique_sequences_and_retains_duplicates_invalid_bytes_and_misses(self):
         evidence = MemoryEvidence()
