@@ -35,6 +35,29 @@ jobs:
         env:
           MESHCORE_REQUIRE_OTA_BROWSER: '1'
         run: python3 -B test/test_compact_elegant_ota.py -v
+      - name: Verify browser LoRa OTA package, transport, and session safeguards
+        run: |
+          python3 -m pip install detools==0.53.0
+          node test/test_browser_lora_ota_checks.js
+          node --test test/test_browser_lora_ota_repeat.js
+          node --test test/test_browser_lora_ota_package.js test/test_browser_lora_ota_zip.js test/test_browser_lora_ota_delta.js test/test_browser_lora_ota_serial.js test/test_browser_lora_ota_route.js test/test_browser_lora_ota_session.js test/test_browser_lora_ota_routed_session.js test/test_browser_lora_ota_plan.js test/test_browser_lora_ota_candidates.js test/test_browser_lora_ota_chain.js test/test_browser_lora_ota_chain_ui.js test/test_browser_lora_ota_discovery.js test/test_browser_lora_ota_collect.js
+          python3 -B test/test_browser_ota_lease.py
+          python3 -B test/test_ota_installhash.py -v
+          python3 -B test/test_ota_dm_envelope.py -v
+          python3 -B test/test_otafix_rak_inventory.py -v
+          MESHCORE_REQUIRE_OTAFIX_WASM=1 python3 -B test/test_otafix_wasm.py -v
+          MESHCORE_REQUIRE_OTAFIX_WASM=1 python3 -B test/test_otafix_wasm_browser.py -v
+          MESHCORE_REQUIRE_OTA_BROWSER=1 MESHCORE_REQUIRE_DETOOLS=1 python3 -B test/test_browser_lora_ota_delta.py -v
+          python3 -B test/test_browser_lora_ota_nrf_c_decoder.py -v
+          MESHCORE_REQUIRE_OTA_BROWSER=1 python3 -B test/test_browser_lora_ota_runtime.py -v
+          MESHCORE_REQUIRE_OTA_BROWSER=1 python3 -B test/test_browser_lora_ota_routed_runtime.py -v
+          MESHCORE_REQUIRE_OTA_BROWSER=1 python3 -B test/test_browser_lora_ota_routefind_runtime.py -v
+          MESHCORE_REQUIRE_OTA_BROWSER=1 python3 -B test/test_browser_lora_ota_delta_runtime.py -v
+          MESHCORE_REQUIRE_OTA_BROWSER=1 python3 -B test/test_browser_lora_ota_nrf_runtime.py -v
+          MESHCORE_REQUIRE_OTA_BROWSER=1 python3 -B test/test_browser_lora_ota_zip_runtime.py -v
+          MESHCORE_REQUIRE_OTA_BROWSER=1 python3 -B test/test_browser_lora_ota_zip_ui_runtime.py -v
+          MESHCORE_REQUIRE_OTA_BROWSER=1 MESHCORE_REQUIRE_DETOOLS=1 python3 -B test/test_browser_lora_ota_candidates_runtime.py -v
+          MESHCORE_REQUIRE_OTA_BROWSER=1 python3 -B test/test_browser_lora_ota_chain_runtime.py -v
 
   wifi-diagnostics:
     runs-on: ubuntu-26.04
@@ -414,6 +437,7 @@ jobs:
       - name: Verify protocol, encryption, scheduling and MQTT decoding
         run: |
           python3 -B test/test_management_report.py -v
+          MESHCORE_REQUIRE_DM_AEAD=1 python3 -B test/test_ota_dm_aead.py -v
           python3 -B test/test_management_cli_wrapper.py -v
           node test/test_management_decoder.js
           node scripts/test_telemetry_decoder.js
@@ -669,6 +693,7 @@ jobs:
           python3 -B test/test_esp32_radio_trace.py -v
           python3 -B test/test_esp32_radio_trace_cli.py -v
           python3 -B test/test_forwarding_profile_timing.py -v
+          python3 -B test/test_flood_profile_policy.py -v
           python3 -B test/test_clock_transit_profile_timing.py -v
           python3 -B test/test_bridge_recovery.py -v
           python3 -B test/test_bridge_ingress.py -v
@@ -1024,6 +1049,8 @@ jobs:
           python3 -B test/test_radio_profile_idle_dispatcher.py -v
           python3 -B test/test_radio_rxps_rejection.py -v
           python3 -B test/test_repeater_radio_timing_integration.py
+          python3 -B test/test_deferred_flood_forwarding.py -v
+          python3 -B test/test_idle_tempradio_rearm.py
           python3 -B test/test_staggered_flood_advert.py -v
           python3 -B test/test_radio2_advert_setting.py -v
           python3 -B test/test_temp_radio_reply_delivery_contract.py
@@ -1548,5 +1575,7 @@ jobs:
         run: python3 -B test/test_hosted_doc_links.py -v
       - name: Verify hosted-link visibility and navigation
         run: node test/test_hosted_doc_links.js
+      - name: Verify browser LoRa updater on the published site
+        run: MESHCORE_REQUIRE_OTA_BROWSER=1 python3 -B test/test_browser_lora_ota_mkdocs_runtime.py -v
       - name: Release feature link behavior
         run: node test/test_release_features.js

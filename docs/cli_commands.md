@@ -4071,6 +4071,25 @@ The pin number is the Arduino pin number used by that target (the normal GPIO nu
 configuration replies. Repeaters can separately opt in to the routed-trace
 exception below.
 
+#### Control flood forwarding by radio (repeater only)
+
+```text
+get radio.flood
+set radio.flood off
+get radio2.flood
+set radio2.flood on
+```
+
+Both profiles default to `on`. These settings control forwarding of flood
+packets received or transmitted on each profile; they also prevent crossed
+flood copies from being forwarded on a disabled profile. Direct-route
+forwarding, locally addressed DMs and the node's own replies are unaffected.
+`set repeat off` remains the master switch for all forwarding. To forward
+floods only on radio2, keep `repeat on` and set `radio.flood off`. These
+settings persist across restart. Turning global repeat off blocks new forwarding;
+ordinary forwarded packets already queued may still drain. The per-radio flood
+settings are also checked when a queued packet is transmitted.
+
 #### Allow routed traces while repeating is disabled (repeater only)
 
 ```text

@@ -4224,9 +4224,19 @@ void CommonCLI::handleCommand(uint32_t sender_timestamp, char* command, char* re
       } else {
         mesh::cli::formatError(reply, 160, "unsupported");
       }
-    } else if (memcmp(command, "tempradio ", 10) == 0) {
+    } else if (memcmp(command, "tempradio ", 10) == 0
+#if defined(NRF52_PLATFORM)
+               || strncmp(command, "tempradio.ifidle ", 17) == 0
+#endif
+    ) {
+#if defined(NRF52_PLATFORM)
+      const bool idle_only = command[9] == '.';
+      const char* args = command + (idle_only ? 17 : 10);
+#else
+      const char* args = command + 10;
+#endif
       uint16_t preamble = 0;
-      if (!mesh::RadioProfileCLI::parseSuffix(command + 10, 5, tmp, sizeof(tmp), preamble)) {
+      if (!mesh::RadioProfileCLI::parseSuffix(args, 5, tmp, sizeof(tmp), preamble)) {
         strcpy(reply, MESH_CLI_REPLY_TEXT("Error, use: tempradio f,bw,sf,cr,minutes[,preamble]", "Error, tempradio f,bw,sf,cr,minutes[,preamble]")); return;
       }
       const char *parts[5];
@@ -4245,7 +4255,18 @@ void CommonCLI::handleCommand(uint32_t sender_timestamp, char* command, char* re
           && mesh::cli::parseDecimalStrict(parts[1], bw)
           && sf <= 12 && cr <= 8
           && acceptsPrimaryRadioParams(freq, bw, sf, cr, preamble)) {
+#if defined(NRF52_PLATFORM)
+        if (idle_only) {
+          if (!_callbacks->tryApplyIdleTempRadioParams(freq, bw, sf, cr, temp_timeout_mins, preamble)) {
+            strcpy(reply, "Error: radio not idle");
+            return;
+          }
+        } else {
+          _callbacks->applyTempRadioParams(freq, bw, sf, cr, temp_timeout_mins, preamble);
+        }
+#else
         _callbacks->applyTempRadioParams(freq, bw, sf, cr, temp_timeout_mins, preamble);
+#endif
         char duration[64];
         const uint32_t seconds = (uint32_t)temp_timeout_mins * 60UL;
         mesh::RepeaterRadioTiming::formatDuration(duration, sizeof(duration), seconds);

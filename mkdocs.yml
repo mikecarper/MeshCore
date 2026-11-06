@@ -43,6 +43,7 @@ not_in_nav: |
 
 nav:
   - Home: index.md
+  - Updates Over LoRa: browser_lora_ota.md
   - Firmware and tools:
       - firmware_picker.md
       - notifications.md
@@ -131,6 +132,7 @@ extra_css:
   - https://unpkg.com/leaflet@1.9.4/dist/leaflet.css
   - _stylesheets/extra.css
   - _stylesheets/firmware_picker.css?v=20261013-pick-first-1
+  - _stylesheets/lora_ota.css
   - _stylesheets/telemetry_decoder.css?v=20261022-noise-history
   - _stylesheets/management_decoder.css
   - _stylesheets/filter_tool.css

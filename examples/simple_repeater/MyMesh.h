@@ -9,6 +9,7 @@
 #include <helpers/PowerSavingDiagnostics.h>
 #include <helpers/EmergencyOtaWork.h>
 #include <helpers/FloodGroupPlainText.h>
+#include <helpers/FloodProfilePolicy.h>
 #include <helpers/FloodRuleExtensions.h>
 #include <helpers/GuestLoginSettings.h>
 #include <helpers/LoginHistory.h>
@@ -308,6 +309,7 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks
     , public WebConfigServer::Callbacks
 #endif
 {
+  mesh::flood_profiles::DeferredFloods* deferred_floods_ = nullptr;
   struct ScheduledRadioSetting {
     // RAM only: group aligned fields to keep each schedule within 32 bytes.
     uint64_t hard_end_uptime_millis;
@@ -1188,6 +1190,7 @@ protected:
   }
 
   bool allowPacketForward(const mesh::Packet* packet) override;
+  bool deferredFloodCandidate(const mesh::Packet* packet, uint8_t ingress, bool consume) override;
   bool allowPacketTransmit(const mesh::Packet* packet) const override;
 #if MESH_DEBUG || MESH_ENABLE_PACKET_FILE_LOGGING \
     || (MESH_PACKET_LOGGING && !MESH_PACKET_LOGGING_COMPACT)
@@ -1287,6 +1290,7 @@ public:
 #endif
   MyMesh(mesh::MainBoard& board, mesh::Radio& radio, mesh::MillisecondClock& ms, mesh::RNG& rng, mesh::RTCClock& rtc, mesh::MeshTables& tables);
   ~MyMesh() {
+    delete deferred_floods_;
 #ifdef WITH_UDP_BRIDGE
     delete udp_bridge;
 #endif
@@ -1364,6 +1368,9 @@ public:
 #endif
   mesh::Radio* getProfileRadio() override { return _radio; }
   void applyTempRadioParams(float freq, float bw, uint8_t sf, uint8_t cr, int timeout_mins, uint16_t preamble = 0) override;
+#if defined(NRF52_PLATFORM)
+  bool tryApplyIdleTempRadioParams(float freq, float bw, uint8_t sf, uint8_t cr, int timeout_mins, uint16_t preamble) override;
+#endif
   bool scheduleNormalRadio() override;
 #if defined(ESP32_PLATFORM) || defined(USER_GPIO_CONTROL)
   uint32_t getUserGpioRequestSource() const override {

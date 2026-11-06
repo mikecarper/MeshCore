@@ -623,6 +623,11 @@ public:
   virtual bool saveIdentity(const mesh::LocalIdentity& new_id) = 0;
   virtual void clearStats() = 0;
   virtual void applyTempRadioParams(float freq, float bw, uint8_t sf, uint8_t cr, int timeout_mins, uint16_t preamble = 0) = 0;
+#if defined(NRF52_PLATFORM)
+  // Atomically check for conflicting state and schedule a temporary profile.
+  // Roles without a suitable scheduler fail closed.
+  virtual bool tryApplyIdleTempRadioParams(float, float, uint8_t, uint8_t, int, uint16_t) { return false; }
+#endif
   // Status is pending only when no temporary primary tuple is already running.
   virtual bool isTempRadioPending() const { return false; }
   virtual uint32_t getTempRadioDurationSeconds() const { return 0; }

@@ -1030,6 +1030,7 @@ ota ls | neighbors | nbrs | updates | n [page]   paged updates (queries sources;
 ota get | pull | download <mid8|#index> flash [rescue] | folder [validate]
                                       fetch by stable mid8 (preferred) or current page index
 ota install | apply | applydelta   verify + approve + (ESP32) apply / (nRF52) reboot-to-bootloader
+ota installhash <sha256>           verify and install only the exact staged container
 ota rescue install <base_hash16>  internal-flash nRF52 only: recover from failed app-side EndF validation
 ota bootloader [status]           capable allowlisted nRF52 repeater: installed BL identity/caps + staged confirmation
 ota bootloader install <MID8> <HASH16>
@@ -1043,6 +1044,13 @@ ota config | cfg | set [autofetch|autoinstall|checkpoint] ...   show/set persist
 ota key | keys [add|rm <hex>]      trusted signer allowlist ; bare = list
 ota dev ...                        bring-up helpers (stage/recv/serve/resume <MID8>/verify)
 ```
+
+`ota installhash` takes the full SHA-256 of the `.mota` container, with its
+four approval bytes at offsets 201–204 replaced by zero before hashing. The
+node verifies the staged container, compares that digest, and starts the apply
+in the same command. This lets an updater bind installation to its selected
+package even if two packages share an eight-digit discovery ID. Older firmware
+does not support this command.
 
 For a device-backed pull, current firmware returns success only after the
 persistent store can no longer be reopened; flash/SD/QSPI I/O or readback

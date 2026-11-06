@@ -671,9 +671,14 @@ struct RTC { uint32_t getCurrentTime() const { return 1789160000UL; } } rtc;
 RTC* getRTCClock() { return &rtc; }
 struct Callbacks {
   int calls = 0;
+  bool idle = true;
   uint32_t duration = 0;
   void applyTempRadioParams(float, float, uint8_t, uint8_t, int minutes, uint16_t) {
     ++calls; duration = (uint32_t)minutes * 60;
+  }
+  bool tryApplyIdleTempRadioParams(float f, float b, uint8_t s, uint8_t c, int m, uint16_t p) {
+    if (!idle) return false;
+    applyTempRadioParams(f,b,s,c,m,p); return true;
   }
   void appendTempRadioTimingNote(char* reply, size_t size, uint32_t seconds) {
     mesh::RepeaterRadioTiming::appendTempWatchdogNote(reply, size, seconds);
@@ -713,6 +718,17 @@ int main() {
     assert(!strcmp(reply.text, "Error, invalid params") && callbacks.calls == 2);
   }
   assert(reply.guard == '!');
+#if defined(NRF52_PLATFORM)
+  handle("tempradio.ifidle 910,250,5,5,30,32", reply.text);
+  assert(!strncmp(reply.text,"OK - temp params for ",21) && callbacks.calls == 3);
+  callbacks.idle = false;
+  handle("tempradio.ifidle 910,250,5,5,30", reply.text);
+  assert(!strcmp(reply.text,"Error: radio not idle") && callbacks.calls == 3);
+#else
+  strcpy(reply.text,"unhandled");
+  handle("tempradio.ifidle 910,250,5,5,30", reply.text);
+  assert(!strcmp(reply.text,"unhandled") && callbacks.calls == 2);
+#endif
   puts("production TempRadio replies and duration validation passed");
 }
 '''
@@ -854,17 +870,19 @@ int main() {
             "static bool parseUint32Strict(", "static bool bwMatches(",
             "static bool isValidLoRaBandwidth(",
         ])
-        start = source.index('    } else if (memcmp(command, "tempradio ", 10) == 0)')
+        start = source.index('    } else if (memcmp(command, "tempradio ", 10) == 0')
         end = source.index('    } else if (memcmp(command, "password ", 9) == 0)', start)
         utils = (ROOT / "src/Utils.cpp").read_text(encoding="utf-8")
         parts = method(utils, "int Utils::parseTextParts(")
-        self.compile_and_run(CLI_HARNESS.replace("@PARSERS@", parsers)
+        harness = (CLI_HARNESS.replace("@PARSERS@", parsers)
                              .replace("@ACCEPT_PRIMARY@", method(source,
                                       "bool CommonCLI::acceptsPrimaryRadioParams(")
                                       .replace("bool CommonCLI::acceptsPrimaryRadioParams",
                                                "auto acceptsPrimaryRadioParams = [&]") + ";")
                              .replace("@BRANCH@", source[start:end])
                              .replace("@PARTS@", parts))
+        self.compile_and_run('#define NRF52_PLATFORM 1\n' + harness)
+        self.compile_and_run(harness)
 
 
 if __name__ == "__main__":

@@ -1611,6 +1611,9 @@ void Dispatcher::processRecvPacket(Packet* pkt) {
   } else if (action == ACTION_MANUAL_HOLD) {
     // sub-class is wanting to manually hold Packet instance, and call releasePacket() at appropriate time
   } else {   // ACTION_RETRANSMIT*
+#if !defined(COMPANION_RADIO_FULL) && !MESH_ROLE_COMPANION
+    const uint8_t ingress_profile = pkt->radio_profile;
+#endif
     pkt->forwarded = true;
     uint8_t priority = (action >> 24) - 1;
     uint32_t _delay = action & 0xFFFFFF;
@@ -1618,8 +1621,13 @@ void Dispatcher::processRecvPacket(Packet* pkt) {
     if (!queueOutboundPacket(pkt, priority, _delay)) {
       onSendFail(pkt);
       releasePacket(pkt);
-    } else if (pkt->isRouteDirect() && pkt->getPayloadType() == PAYLOAD_TYPE_TRACE) {
-      onTracePacketQueuedForSend(pkt);
+    } else {
+#if !defined(COMPANION_RADIO_FULL) && !MESH_ROLE_COMPANION
+      onForwardPacketQueued(pkt, ingress_profile);
+#endif
+      if (pkt->isRouteDirect() && pkt->getPayloadType() == PAYLOAD_TYPE_TRACE) {
+        onTracePacketQueuedForSend(pkt);
+      }
     }
   }
 }

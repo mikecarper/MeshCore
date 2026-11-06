@@ -260,6 +260,15 @@ protected:
    */
   virtual bool allowPacketForward(const Packet* packet);
 
+  // A role can retain a blocked flood as a forwarding-only candidate for a
+  // different radio, without repeating local delivery of the seen packet.
+#if !defined(COMPANION_RADIO_FULL) && !MESH_ROLE_COMPANION
+  virtual bool deferredFloodCandidate(const Packet*, uint8_t, bool) { return false; }
+  void onForwardPacketQueued(Packet* packet, uint8_t ingress) override {
+    deferredFloodCandidate(packet, ingress, true);
+  }
+#endif
+
   // Forwarding roles own the RAM; companions need no advert-limiter table.
   virtual FloodAdvertLimiter* getFloodAdvertLimiter() { return nullptr; }
 

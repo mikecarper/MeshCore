@@ -1177,6 +1177,45 @@ static __attribute__((noinline)) bool handle_control_command(
     strcpy(reply, MESH_CLI_REPLY_TEXT("ERR this build cannot update its bootloader over LoRa", "ERR cannot update its bootloader via LoRa"));
 #endif
 
+  } else if (is_cmd(a, "installhash", &rest)) {
+    // A distinct verb is essential: older releases ignore arguments to
+    // `ota install`. Verify and apply in the same mesh-loop command so the
+    // four-byte discovery ID cannot substitute another staged package.
+    uint8_t expected[32];
+    if (!parse_hex_exact(rest, expected, sizeof(expected))) {
+      strcpy(reply, "ERR usage: ota installhash <64-hex-container-sha256>");
+      return true;
+    }
+#if defined(OTA_SEEDER_ONLY)
+    strcpy(reply, "ERR source-only; cannot install via LoRa");
+    return true;
+#elif defined(NRF52_PLATFORM) && defined(OTA_SD_STORE)
+    if (c.sdCacheFetching()) {
+      strcpy(reply, "ERR SD archive capture is active; use `ota cancel` before installing");
+      return true;
+    }
+#endif
+#if !defined(OTA_SEEDER_ONLY)
+    if (c.apply_pending || c.bootloader_apply_pending) {
+      strcpy(reply, "ERR another update is already armed");
+      return true;
+    }
+    if (c.fetch_to_folder || c.manager.fetchState() != OtaManager::COMPLETE ||
+        c.fetch_store.staged_size() == 0) {
+      strcpy(reply, "ERR no complete update in local install storage");
+      return true;
+    }
+    const VerifyResult verified = ota_verify(c.fetch_store, c.allow);
+    if (!verified.integrity_ok() || !verified.container_hash_ok ||
+        memcmp(expected, verified.container_hash, sizeof(expected)) != 0) {
+      strcpy(reply, "ERR staged package verification or hash mismatch");
+      return true;
+    }
+    char m2[100];
+    const bool ok = c.apply_fetched(m2);
+    snprintf(reply, 160, "%s | %s", ok ? "OK" : "ERR", m2);
+#endif
+
   } else if (is_cmd(a, "install|apply|applydelta", &rest)) {
     // Apply the fetched update. Destructive (reflashes + reboots) and GATED, not interactive (no "type
     // yes" round-trip - unreliable over LoRa): refuse unless the fetch is COMPLETE, then the apply path

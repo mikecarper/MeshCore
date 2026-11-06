@@ -808,6 +808,9 @@ protected:
   bool hasForeignRadioFrame() const { return foreign_radio_length != 0; }
 #endif
   virtual void onRadioProfileCopyQueued(Packet* packet, const Packet* original, uint8_t priority) { }
+#if !defined(COMPANION_RADIO_FULL) && !MESH_ROLE_COMPANION
+  virtual void onForwardPacketQueued(Packet*, uint8_t) {}
+#endif
   // Policy gate for the other profile only; same-profile TX remains eligible.
   // Called before admitting copies (including bound retry packets) to a queue.
   virtual bool allowRadioProfileCross(const Packet* packet) { return true; }

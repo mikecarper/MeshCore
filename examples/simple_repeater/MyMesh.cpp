@@ -1,3 +1,4 @@
+#include <helpers/FloodProfilePolicy.h>
 #include <helpers/CLIReplyText.h>
 #include "MyMesh.h"
 #include <helpers/HardwareCommand.h>
@@ -1149,6 +1150,13 @@ bool MyMesh::allowPacketForward(const mesh::Packet *packet) {
   if (!_cli.batteryAllowsForward(packet->isRouteFlood())) return false;
   if (_prefs.disable_fwd && !(_prefs.trace_when_repeat_off == 1 && packet
       && packet->isRouteDirect() && packet->getPayloadType() == PAYLOAD_TYPE_TRACE)) return false;
+  if (!mesh::flood_profiles::allowIngress(packet, _cli.radioProfiles())) {
+    if (packet->getPayloadType() != PAYLOAD_TYPE_OTA) {
+      if (!deferred_floods_) deferred_floods_ = new (std::nothrow) mesh::flood_profiles::DeferredFloods;
+      if (deferred_floods_) deferred_floods_->remember(packet, _cli.radioProfiles(), millis());
+    }
+    return false;
+  }
 #if !defined(PORTABLE_MQTT_OBSERVER) && MESH_ENABLE_FLOOD_RULE_ENGINE
   uint64_t matches = recv_pkt_filter_match_mask;
   if (packet->isRouteDirect()) {
@@ -1228,8 +1236,15 @@ bool MyMesh::allowPacketForward(const mesh::Packet *packet) {
   return true;
 }
 
+bool MyMesh::deferredFloodCandidate(const mesh::Packet* packet, uint8_t ingress, bool consume) {
+  return deferred_floods_ && deferred_floods_->match(packet, _cli.radioProfiles(), millis(), ingress, consume);
+}
+
 bool MyMesh::allowPacketTransmit(const mesh::Packet* packet) const {
   if (!_cli.batteryAllowsTransmit(packet)) return false;
+  // Enforce on the final transmit profile too, including cross-profile copies
+  // already queued before a setting changed. Local replies stay available.
+  if (!mesh::flood_profiles::allowEgress(packet, _cli.radioProfiles())) return false;
   // Forwarded traces have already appended this node's SNR. A locally
   // originated trace starts with an empty SNR path and is not a relay.
   // Recheck at egress so a queued relay/retry cannot outlive this opt-in.
@@ -4083,6 +4098,7 @@ void MyMesh::begin(FILESYSTEM *fs) {
   // load persisted prefs
   mesh::hilStartupTrace("mesh_prefs_begin");
   _cli.loadPrefs(_fs);
+  _cli.radioProfiles().beginRepeaterFloodPolicy();
 #ifdef WITH_UDP_BRIDGE
   udp_bridge_settings.begin(_fs);
 #endif
@@ -5554,6 +5570,34 @@ uint32_t MyMesh::getPowerSaveSleepMilliseconds(uint32_t max_ms) const {
   if (blocked && mesh::powerdiag::enabled()) mesh::powerdiag::decision(blocked, millis());
   return sleep_ms;
 }
+
+#if defined(NRF52_PLATFORM)
+bool MyMesh::tryApplyIdleTempRadioParams(float freq, float bw, uint8_t sf, uint8_t cr, int timeout_mins, uint16_t preamble) {
+  // This check and the insertion below run together in the mesh command loop.
+  // In particular, applyTempRadioParams ordinarily cancels existing leases.
+  if (temp_radio_applied || temp_radio_handoff_pending || saved_radio_apply_pending ||
+      temp_radio_reply_barrier.waiting() || _cli.hasPendingRadioSettings() ||
+      !_cli.radioProfiles().secondaryRuntimeAvailable() ||
+      hasPendingOtaApply() || _ota_update_at != 0) return false;
+#if MESH_ENABLE_FLEET_CONTROL
+  if (fleet_schedule_pending_) return false;
+#endif
+#if defined(ENABLE_OTA)
+  const auto* ota = mesh::ota::ota_context_if_active();
+  if (ota && ota->manager.fetchState() != mesh::ota::OtaManager::IDLE) return false;
+#endif
+  for (const auto& setting : scheduled_radio_settings) if (setting.active) return false;
+  if (findFreeScheduledRadioSlot() < 0 || !_radio || !_radio->profiles() || _radio->profiles()->enabled()) return false;
+  // Do not move a target from a different permanent channel after the browser's
+  // earlier read; tolerate only representation rounding at CLI precision.
+  const float fd = _prefs.freq - freq, bd = _prefs.bw - bw;
+  if (fd < -0.0005f || fd > 0.0005f || bd < -0.001f || bd > 0.001f ||
+      _prefs.sf != sf || _prefs.cr != cr) return false;
+  applyTempRadioParams(freq, bw, sf, cr, timeout_mins, preamble);
+  return true;
+}
+
+#endif
 
 void MyMesh::applyTempRadioParams(float freq, float bw, uint8_t sf, uint8_t cr, int timeout_mins, uint16_t preamble) {
 #if MESH_ENABLE_FLEET_CONTROL

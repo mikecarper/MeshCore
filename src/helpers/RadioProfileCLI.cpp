@@ -40,6 +40,11 @@ const char* const TempPath = "/radio_profiles.tmp";
 // Never considered a boot-time committed image. Losing power before the
 // acknowledgement leaves the previous saved radio untouched.
 const char* const ReplyPath = "/radio_profiles.reply";
+#if !defined(COMPANION_RADIO_FULL) && !MESH_ROLE_COMPANION
+const char* const FloodPath = "/flood_profiles";
+const char* const FloodBackup = "/flood_profiles.bak";
+const char* const FloodTemp = "/flood_profiles.tmp";
+#endif
 #if MESH_RADIO_SWITCH_TUNING
 const char* const FastPath = "/radio_fast";
 const char* const FastBackup = "/radio_fast.bak";
@@ -201,6 +206,53 @@ bool RadioProfileCLI::writeImage(const char* path, const uint8_t* bytes, size_t 
   return ok && readImage(path, verify, size) == ImageReadResult::Valid
       && memcmp(bytes, verify, size) == 0;
 }
+
+#if !defined(COMPANION_RADIO_FULL) && !MESH_ROLE_COMPANION
+void RadioProfileCLI::beginRepeaterFloodPolicy() {
+  repeater_flood_policy_ = true;
+  flood_profile_mask_ = 3;
+  flood_policy_hold_ = false;
+  if (!fs_) return;
+  uint8_t image[ImageSize];
+  const auto primary = readImage(FloodPath, image, sizeof(image));
+  auto valid = [&](ImageReadResult result) {
+    if (result != ImageReadResult::Valid || (image[3] & 0xFC) != 0xA0) return false;
+    for (size_t i = 4; i < ImageSize - 4; ++i) if (image[i]) return false;
+    return true;
+  };
+  if (valid(primary)) { flood_profile_mask_ = image[3] & 3; return; }
+  const auto backup = readImage(FloodBackup, image, sizeof(image));
+  if (valid(backup)) {
+    flood_profile_mask_ = image[3] & 3;
+    flood_policy_hold_ = (fs_->exists(FloodPath) && !fs_->remove(FloodPath))
+        || !fs_->rename(FloodBackup, FloodPath);
+    return;
+  }
+  // Unknown or damaged persisted intent never turns forwarding back on.
+  if (primary != ImageReadResult::Missing || backup != ImageReadResult::Missing) {
+    flood_profile_mask_ = 0; flood_policy_hold_ = true;
+  }
+}
+
+bool RadioProfileCLI::saveFloodPolicy(uint8_t mask) {
+  if (!fs_ || flood_policy_hold_ || mask > 3) return false;
+  uint8_t image[ImageSize] = {'R', '2', 1, uint8_t(0xA0 | mask)};
+  const uint32_t crc = checksum(image, ImageSize - 4);
+  memcpy(image + ImageSize - 4, &crc, 4);
+  if (!writeImage(FloodTemp, image, sizeof(image))) return false;
+  if (fs_->exists(FloodPath)) {
+    if (fs_->exists(FloodBackup) && !fs_->remove(FloodBackup)) return false;
+    if (!fs_->rename(FloodPath, FloodBackup)) return false;
+  }
+  if (!fs_->rename(FloodTemp, FloodPath)) {
+    if (fs_->exists(FloodBackup) && !fs_->rename(FloodBackup, FloodPath)) flood_policy_hold_ = true;
+    return false;
+  }
+  if (fs_->exists(FloodBackup)) fs_->remove(FloodBackup);
+  flood_profile_mask_ = mask;
+  return true;
+}
+#endif
 
 bool RadioProfileCLI::save(const RadioProfileConfig& config, uint16_t preamble, RadioCrossMode cross,
                            int8_t manual_secondary) {
@@ -1127,6 +1179,18 @@ bool RadioProfileCLI::handle(const char* command, char* reply, size_t capacity, 
   while (*args == ' ' || *args == '\t') ++args;
 #if MESH_RADIO_SWITCH_TUNING
   if (handleFastSettings(key, args, verb, remote_origin, reply, capacity)) return true;
+#endif
+#if !defined(COMPANION_RADIO_FULL) && !MESH_ROLE_COMPANION
+  if (repeater_flood_policy_ && (!strcmp(key, "radio.flood") || !strcmp(key, "radio2.flood"))) {
+    const uint8_t bit = !strcmp(key, "radio.flood") ? 1 : 2;
+    if (verb == Get && !*args) snprintf(reply, capacity, "> %s", flood_profile_mask_ & bit ? "on" : "off");
+    else if (verb == Set && (!strcmp(args, "on") || !strcmp(args, "off"))) {
+      const uint8_t next = !strcmp(args, "on") ? flood_profile_mask_ | bit : flood_profile_mask_ & ~bit;
+      if (next == flood_profile_mask_ || saveFloodPolicy(next)) snprintf(reply, capacity, "OK - %s %s", key, args);
+      else cli::formatError(reply, capacity, "flood policy could not be saved");
+    } else cli::formatError(reply, capacity, "use get/set radio[2].flood on|off");
+    return true;
+  }
 #endif
   enum { Base, Temporary, Scheduled, ScheduledTemporary, Crossing, Replies,
          Status, Scan, Timing, TimingAlias, KeyCount };
