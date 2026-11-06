@@ -65,20 +65,28 @@ def standalone_assets(archive_path: Path, board: str, target: str,
 
         names = set(archive.namelist())
         evaluation = manifest.get('expander_evaluation')
+        # Older archives were built without the compiled target marker and
+        # independently measured legacy-slot proof. Keep them available to
+        # existing host flashers, but do not promote them to standalone assets.
+        if evaluation is None:
+            return {}
+        if not isinstance(evaluation, dict):
+            raise ValueError('invalid expander evaluation')
         present = {'partition-expander.bin', 'partition-expander.mota'} & names
         if present and len(present) != 2:
             raise ValueError('incomplete combined expander transports')
         if evaluation is not None and evaluation.get('decision') == 'combined' and len(present) != 2:
             raise ValueError('qualified combined expander is missing')
         if {'partition-expander.bin', 'partition-expander.mota'} <= names:
+            if evaluation.get('decision') != 'combined':
+                raise ValueError('expander decision disagrees with combined images')
             if not manifest.get('partition_expander'):
                 raise ValueError('expander has no verified board environment')
             wifi = read_checked('partition-expander.bin')
             lora = read_checked('partition-expander.mota')
-            if evaluation is not None:
-                from esp32_migration_expanders import evaluate_candidate
-                if evaluation != evaluate_candidate(board, {'target': target}, wifi, version):
-                    raise ValueError('invalid combined expander evidence')
+            from esp32_migration_expanders import evaluate_candidate
+            if evaluation != evaluate_candidate(board, {'target': target}, wifi, version):
+                raise ValueError('invalid combined expander evidence')
             mode = 'combined'
             labels = ('expander.bin', 'expander.mota')
         elif evaluation is not None and evaluation.get('decision') == 'oversize':
@@ -93,9 +101,7 @@ def standalone_assets(archive_path: Path, board: str, target: str,
             mode = 'separate'
             labels = ('wifi-bridge.bin', 'lora-bridge.mota')
         else:
-            # Missing or unbuilt combined firmware is not evidence that it is
-            # too large. Do not silently expose older migration routes.
-            return {}
+            raise ValueError('unrecognized or incomplete expander evaluation')
 
         if len(wifi) > LEGACY_SLOT_BYTES:
             raise ValueError('Wi-Fi migration image exceeds legacy slot')

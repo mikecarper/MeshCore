@@ -28,7 +28,8 @@ class StandaloneMigrationTests(unittest.TestCase):
         self.full = self.root / 'exact-target-full-v1.bin'
         self.full.write_bytes(app + build_endf(app, self.identity))
         self.version, self.source = 'v1.18.0.1', '12345678'
-        self.bridge = b'combined-board-expander'
+        image = b'\xe9' + TARGET_MARKER + struct.pack('<I', self.identity.target_id) + b'expander'
+        self.bridge = bridge_with_successor_endf(image, self.identity)
         self.files = {
             'full-application.bin': self.full.read_bytes(),
             'partition-expander.bin': self.bridge,
@@ -42,6 +43,8 @@ class StandaloneMigrationTests(unittest.TestCase):
             'legacy_slot_bytes': LEGACY_SLOT_BYTES, 'expanded_slot_bytes': 0x1f0000,
             'flash_bytes': 0x400000, 'partition_expander': 'board_partition_expander',
         }
+        self.manifest['expander_evaluation'] = evaluate_candidate(
+            self.board, {'target': self.target}, self.bridge, self.version)
         self.path = self.root / 'internal.zip'
 
     def tearDown(self):
@@ -74,6 +77,11 @@ class StandaloneMigrationTests(unittest.TestCase):
 
     def test_missing_combined_never_silently_publishes_legacy_fallback(self):
         del self.files['partition-expander.bin'], self.files['partition-expander.mota']
+        del self.manifest['expander_evaluation']
+        self.assertEqual(self.assets(), {})
+
+    def test_legacy_expander_without_evidence_is_not_promoted(self):
+        del self.manifest['expander_evaluation']
         self.assertEqual(self.assets(), {})
 
     def test_mota_must_be_same_expander_and_target(self):
@@ -99,7 +107,8 @@ class StandaloneMigrationTests(unittest.TestCase):
             self.assets()
 
     def test_measured_combined_expander_evidence_is_rechecked(self):
-        image = b'\xe9' + TARGET_MARKER + struct.pack('<I', self.identity.target_id) + b'firmware'
+        image = bridge_with_successor_endf(
+            b'\xe9' + TARGET_MARKER + struct.pack('<I', self.identity.target_id) + b'firmware', self.identity)
         self.files['partition-expander.bin'] = image
         self.files['partition-expander.mota'] = mota_full(
             bridge_with_successor_endf(image, self.identity), self.identity, 1024)
