@@ -203,6 +203,53 @@ jobs:
             echo "::endgroup::"
           done
 
+  esp32-partition-expander-smoke:
+    runs-on: ubuntu-26.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+      - name: Setup Build Environment
+        uses: ./.github/actions/setup-build-environment
+      - name: Build and measure representative partition expanders
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          import sys
+          import tempfile
+
+          sys.path.insert(0, 'scripts')
+          from esp32_migration_expanders import build_expander_candidates, evaluate_candidate
+          from package_esp32_partition_migration import BOARDS, resolve_pio_build_dir
+
+          boards = ('heltec-v4', 'heltec-v2-repeater',
+                    'heltec-ct62-repeater', 'meshnology-w12-repeater')
+          version = 'v1.18.0.1-halo-keymind-cascade-dev'
+          root = Path.cwd()
+          environment = os.environ.copy()
+          # This query finishes before the helper runs its serial PIO builds.
+          build_dir = resolve_pio_build_dir(environment=environment, project_dir=root)
+          with tempfile.TemporaryDirectory(prefix='expander-smoke-') as temporary:
+              output = Path(temporary)
+              build_expander_candidates(list(boards), version, 2, root, build_dir,
+                                        environment, output)
+              expected = {board + suffix for board in boards for suffix in ('.bin', '.json')}
+              if {item.name for item in output.iterdir()} != expected:
+                  raise RuntimeError('Missing or unexpected expander build evidence')
+              for board in boards:
+                  image = (output / (board + '.bin')).read_bytes()
+                  evidence = json.loads((output / (board + '.json')).read_text(encoding='utf-8'))
+                  measured = evaluate_candidate(board, BOARDS[board], image, version)
+                  if evidence != measured or measured['decision'] not in ('combined', 'oversize'):
+                      raise RuntimeError(board + ': invalid expander capacity evidence')
+                  print(board + ': ' + measured['decision'] +
+                        '; image=' + str(measured['image_bytes']) +
+                        ' bytes; LoRa staging=' + str(measured['mota_staging_bytes']) +
+                        ' bytes; legacy limit=' + str(measured['legacy_slot_bytes']) + ' bytes',
+                        flush=True)
+          PY
+
   esp32-ethernet-companion-smoke:
     runs-on: ubuntu-26.04
     steps:
