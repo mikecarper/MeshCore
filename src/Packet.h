@@ -81,16 +81,16 @@ public:
   uint8_t tx_radio = RADIO_TX_AUTO;  // local policy, never sent over the air
   bool radio_reply = false;  // authenticated admin CLI reply; never serialized
   bool radio_reply_force = false;  // captured reply-only RX-mode override
+#if defined(WITH_UDP_BRIDGE)
+  // Volatile origin marker, copied with radio retries but never serialized.
+  bool udp_bridge_ingress = false;
+#endif
 #if defined(MESH_W12_PRAM_EXPERIMENT) && MESH_W12_PRAM_EXPERIMENT
   W12PramRxSnapshot w12_rx; // immutable reception snapshot; not serialized
 #endif
 #if defined(MESH_ENABLE_LR2021_AUTO_XTRIM) && MESH_ENABLE_LR2021_AUTO_XTRIM
   // Snapshot for this RF reception only, never serialized.
   lr2021::PacketFrequencyObservation lr2021_frequency;
-#endif
-#if defined(WITH_UDP_BRIDGE)
-  // Volatile origin marker, copied with radio retries but never serialized.
-  bool udp_bridge_ingress = false;
 #endif
 
   /**
