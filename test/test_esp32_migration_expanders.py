@@ -21,7 +21,10 @@ from package_esp32_partition_migration import BOARDS  # noqa: E402
 
 
 def image_for(target, size=1024):
-    head = b"\xe9" + TARGET_MARKER + struct.pack("<I", target_id_for_env(target))
+    header = bytearray(24)
+    header[0], header[3] = 0xE9, 0x4F  # ESP32-S3, 16 MiB
+    struct.pack_into("<H", header, 12, 9)
+    head = bytes(header) + TARGET_MARKER + struct.pack("<I", target_id_for_env(target))
     return head + bytes(max(0, size - len(head)))
 
 
@@ -55,6 +58,15 @@ class ExpanderCandidateTests(unittest.TestCase):
         self.assertIn("-D OTA_FETCH_PIPELINE=1", overlay)
         self.assertNotIn("-D OTA_FETCH_PIPELINE=4", overlay)
 
+    def test_reviewed_w12_and_ct62_slim_bases_retain_required_flags(self):
+        w12 = overlay_section("meshnology-w12-repeater", BOARDS["meshnology-w12-repeater"])
+        self.assertIn("extends = meshnology_w12", w12)
+        self.assertIn("-D MESH_ENABLE_LR2021_AUTO_XTRIM=1", w12)
+        self.assertNotIn("MESH_W12_PRAM_EXPERIMENT", w12)
+        ct62 = overlay_section("heltec-ct62-repeater", BOARDS["heltec-ct62-repeater"])
+        self.assertIn("extends = Heltec_ct62", ct62)
+        self.assertIn("-D LIGHTWEIGHT_WIFI_OTA=1", ct62)
+
     def test_overlay_is_unique_and_rejects_bad_names_or_duplicate_boards(self):
         overlay = project_overlay("[platformio]\n", [self.board], BOARDS)
         self.assertIn("[env:" + expander_environment(self.board, self.target) + "]", overlay)
@@ -83,6 +95,16 @@ class ExpanderCandidateTests(unittest.TestCase):
         oversized = evaluate_candidate(self.board, self.spec,
                                        image_for(self.target, LEGACY_SLOT_BYTES + 1), self.version)
         self.assertEqual("oversize", oversized["decision"])
+
+    def test_candidate_chip_and_flash_header_must_match_the_board(self):
+        image = bytearray(image_for(self.target))
+        image[12] = 5  # C3, not S3
+        with self.assertRaisesRegex(ValueError, "chip or flash header"):
+            evaluate_candidate(self.board, self.spec, bytes(image), self.version)
+        image[12] = 9
+        image[3] = 0x2f  # 4 MiB, not 16 MiB
+        with self.assertRaisesRegex(ValueError, "chip or flash header"):
+            evaluate_candidate(self.board, self.spec, bytes(image), self.version)
 
     def test_only_successful_real_candidate_can_produce_evidence(self):
         with tempfile.TemporaryDirectory() as temporary:

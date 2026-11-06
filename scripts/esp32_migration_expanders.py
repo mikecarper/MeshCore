@@ -14,6 +14,12 @@ import tempfile
 
 LEGACY_SLOT_BYTES = 0x140000
 TARGET_MARKER = b"MC_EXPANDER_TARGET_V1" + b"\0" * 3
+# These board bases retain the exact radio/pins of the listed role while
+# avoiding unrelated UI or on-chip scan features in the temporary bridge.
+SLIM_BASES = {
+    "meshnology-w12-repeater": ("meshnology_w12", ("-D MESH_ENABLE_LR2021_AUTO_XTRIM=1",)),
+    "heltec-ct62-repeater": ("Heltec_ct62", ("-D LIGHTWEIGHT_WIFI_OTA=1",)),
+}
 
 
 def target_id_for_env(target: str) -> int:
@@ -38,9 +44,11 @@ def overlay_section(board: str, spec: dict) -> str:
     env = expander_environment(board, target)
     # Prefer the already-reviewed slim bridge where one exists. Other exact
     # roles inherit their own board, radio configuration and libraries.
-    source_env = spec.get("expander_bridge") or target
-    if not re.fullmatch(r"[A-Za-z0-9_-]+", source_env):
+    slim = SLIM_BASES.get(board)
+    source_env = (slim[0] if slim else "env:" + (spec.get("expander_bridge") or target))
+    if not re.fullmatch(r"(?:env:)?[A-Za-z0-9_-]+", source_env):
         raise ValueError(f"{board}: invalid source environment")
+    extra = "".join("\n  " + flag for flag in (slim[1] if slim else ()))
     flash = spec["flash_bytes"]
     partitions = {
         4 * 1024 * 1024: "variants/dual_ota_full_4MB.csv",
@@ -55,21 +63,21 @@ def overlay_section(board: str, spec: dict) -> str:
     pipeline = 1 if spec.get("usb_chip") == 0 else 4
     return f"""
 [env:{env}]
-extends = env:{source_env}
+extends = {source_env}
 board_build.partitions = {partitions}
-build_src_filter = ${{env:{source_env}.build_src_filter}}
+build_src_filter = ${{{source_env}.build_src_filter}}
   -<../examples/simple_repeater>
   -<../examples/simple_room_server>
   -<../examples/simple_sensor>
   +<../examples/partition_expander/*.cpp>
-build_flags = ${{env:{source_env}.build_flags}}
+build_flags = ${{{source_env}.build_flags}}{extra}
   -UARDUINO_USB_CDC_ON_BOOT
   -DARDUINO_USB_CDC_ON_BOOT=0
   -D MESH_MIN_RUNTIME_HEAP=100352
   -D MOTA_MIGRATION_TARGET_ID=0x{target_id_for_env(target):08x}
   -UOTA_FETCH_PIPELINE
   -D OTA_FETCH_PIPELINE={pipeline}{strict}
-lib_deps = ${{env:{source_env}.lib_deps}}
+lib_deps = ${{{source_env}.lib_deps}}
   ${{esp32_ota.lib_deps}}
 """
 
@@ -114,6 +122,14 @@ def evaluate_candidate(board: str, spec: dict, image: bytes, version: str) -> di
 
     target = spec["target"]
     target_id = verify_compiled_target(image, target)
+    if "usb_chip" in spec and "flash_bytes" in spec:
+        if len(image) < 24:
+            raise ValueError(f"{board}: truncated ESP32 image header")
+        chip_id = struct.unpack_from("<H", image, 12)[0]
+        flash_sizes = {0: 1, 1: 2, 2: 4, 3: 8, 4: 16, 5: 32, 6: 64, 7: 128}
+        flash_mib = flash_sizes.get(image[3] >> 4)
+        if chip_id != spec["usb_chip"] or flash_mib is None or flash_mib * 1024 * 1024 != spec["flash_bytes"]:
+            raise ValueError(f"{board}: candidate chip or flash header does not match board")
     identity = FwIdent(pack_version(version.split("-", 1)[0]), target_id,
                        hardware_id_for_env(target))
     staged_image = bridge_with_successor_endf(image, identity)
