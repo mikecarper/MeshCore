@@ -109,6 +109,56 @@ int main() {}
             with self.subTest(flag=flag):
                 self.compile_run(source, ["-DRADIO_CLASS=CustomSTM32WLx", "-D" + flag + "=1"])
 
+    def test_compact_warm_maintenance_uses_actual_retry_contract(self):
+        dispatcher = (ROOT / "src/Dispatcher.cpp").read_text()
+        start = dispatcher.index("#if (", dispatcher.index("const uint32_t deferred_at = _ms->getMillis();"))
+        end = dispatcher.index("      agc_reset.noteDeferred(deferred_at, retry_delay);", start)
+        retry = dispatcher[start:end]
+        code = """#include <Dispatcher.h>
+#include <cassert>
+struct FakeRadio {
+  uint32_t maintenance=0, receive=0;
+  unsigned queries=0;
+  uint32_t agcMaintenanceRetryMs() { ++queries;return maintenance; }
+  bool getReceiveRetryDelay(uint32_t, uint32_t& delay) { delay=receive;return receive!=0; }
+};
+uint32_t actual_retry(FakeRadio& radio,bool old_agc_serviced,bool adaptive) {
+  FakeRadio* _radio=&radio;const uint32_t deferred_at=10;
+  (void)_radio;
+""" + retry + """
+  return retry_delay;
+}
+int main() {
+  FakeRadio radio;
+  // A fixed scanner retry follows its next primary visit; a regular owned
+  // or unavailable window keeps the backend's slower retry policy.
+  for(uint32_t maintenance : {1U,250U}) {
+    radio.maintenance=maintenance;
+#if MESH_WARM_RX_REFRESH || !MESH_COMPACT_STM32_RADIO
+    assert(actual_retry(radio,false,false)==maintenance);
+#else
+    assert(actual_retry(radio,false,false)==50);
+#endif
+    assert(actual_retry(radio,true,false)==250);
+    radio.receive=500;
+    assert(actual_retry(radio,false,true)==500);
+    radio.receive=0;
+  }
+#if MESH_WARM_RX_REFRESH || !MESH_COMPACT_STM32_RADIO
+  assert(radio.queries==4);
+#else
+  assert(radio.queries==0);
+#endif
+}
+"""
+        code = code.replace("#include <cassert>", "#include <cassert>\n#include <initializer_list>")
+        for compact in (None, "WIO_E5_MINI_COMPACT_UNSUPPORTED_AGC", "STM32WL_COMPANION_COMPACT_UNSUPPORTED_AGC"):
+            for warm in (0,1):
+                with self.subTest(compact=compact,warm=warm):
+                    flags=["-DMESH_WARM_RX_REFRESH="+str(warm)]
+                    if compact: flags.append("-D"+compact+"=1")
+                    self.compile_run(code,flags)
+
     def test_compact_companion_dispatches_actual_pulse_getters(self):
         radio = """#pragma once
 #include <cstdint>

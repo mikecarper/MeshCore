@@ -58,15 +58,6 @@ public:
   static constexpr bool SupportsRxPowerSaving = false;
 protected:
 #if MESH_WARM_RX_REFRESH
-  WarmRxRefresh _warm_refresh;
-  RxpsPulse _rxps_pulse;
-  RxpsPulseScanLease _agc_scan_lease;
-  bool _rxps_pulse_sleep_override=false;
-  uint8_t _rxps_pulse_retries=0;
-#if MESH_WARM_RX_LAB_TIMER
-  bool _warm_rx_lab_timer_active=false;
-  uint32_t _warm_rx_lab_timer_ms=0, _warm_rx_lab_timer_revision=0;
-#endif
   virtual bool warmRxRefreshUsesFs() const { return false; }
   virtual uint32_t defaultAGCPulseSleepUs() const { return 0; }
   virtual uint32_t agcPulseTimerHz() const { return 64000; }
@@ -74,12 +65,6 @@ protected:
     reason=WarmRxRefresh::Reason::Policy;
     return WarmRxRefresh::Outcome::Deferred;
   }
-#endif
-#if defined(MESH_AGC_TIMING_DIAGNOSTICS) && MESH_AGC_TIMING_DIAGNOSTICS
-  AGCTimingDiagnostics _agc_timing;
-#endif
-#if MESH_ENABLE_OLD_AGC && !MESH_COMPACT_STM32_RADIO
-  uint32_t _old_agc_seconds=0;
 #endif
   // Mode is owned by this loop, not by the ISR or another wrapper.
   uint8_t state = 0;
@@ -119,8 +104,6 @@ protected:
   uint8_t _nf_published_valid = 0;
 #endif
   bool _nf_refresh_requested;
-  NoiseFloorEstimator _floor_estimator;
-  NoiseFloorEstimator _secondary_floor_estimator;
 #if MC_AGESSAMAN_NOISE_FLOOR_EXACT
   AgessamanNoiseFloor _agessaman_floor;
   bool usesAgessamanNoiseFloor() const;
@@ -517,6 +500,29 @@ protected:
   virtual void doResetAGC();
 
 protected:
+  // Keep infrequently accessed estimator/maintenance state after hot RX and
+  // radio pointers. Small Thumb targets encode their common field accesses
+  // directly instead of widening every access when a capability is enabled.
+  NoiseFloorEstimator _floor_estimator;
+  NoiseFloorEstimator _secondary_floor_estimator;
+#if MESH_WARM_RX_REFRESH
+  WarmRxRefresh _warm_refresh;
+  RxpsPulse _rxps_pulse;
+  RxpsPulseScanLease _agc_scan_lease;
+  bool _rxps_pulse_sleep_override=false;
+  uint8_t _rxps_pulse_retries=0;
+#if MESH_WARM_RX_LAB_TIMER
+  bool _warm_rx_lab_timer_active=false;
+  uint32_t _warm_rx_lab_timer_ms=0, _warm_rx_lab_timer_revision=0;
+#endif
+#endif
+#if defined(MESH_AGC_TIMING_DIAGNOSTICS) && MESH_AGC_TIMING_DIAGNOSTICS
+  AGCTimingDiagnostics _agc_timing;
+#endif
+#if MESH_ENABLE_OLD_AGC && !MESH_COMPACT_STM32_RADIO
+  uint32_t _old_agc_seconds=0;
+#endif
+
   RadioLibWrapper(PhysicalLayer& radio, mesh::MainBoard& board)
       : _radio(&radio), _board(&board), _noise_floor_valid(false), _nf_refresh_requested(true),
         _rx_ps_enabled(false), _rx_ps_armed(false),

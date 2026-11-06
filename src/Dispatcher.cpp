@@ -1251,8 +1251,8 @@ void Dispatcher::loop() {
     } else {
       // Ownership/calibration deferral is not a reset or health evidence.
       const uint32_t deferred_at = _ms->getMillis();
-#if (defined(WIO_E5_MINI_COMPACT_UNSUPPORTED_AGC) && WIO_E5_MINI_COMPACT_UNSUPPORTED_AGC) || \
-    (defined(STM32WL_COMPANION_COMPACT_UNSUPPORTED_AGC) && STM32WL_COMPANION_COMPACT_UNSUPPORTED_AGC)
+#if ((defined(WIO_E5_MINI_COMPACT_UNSUPPORTED_AGC) && WIO_E5_MINI_COMPACT_UNSUPPORTED_AGC) || \
+    (defined(STM32WL_COMPANION_COMPACT_UNSUPPORTED_AGC) && STM32WL_COMPANION_COMPACT_UNSUPPORTED_AGC)) && !MESH_WARM_RX_REFRESH
       uint32_t retry_delay = old_agc_serviced?250:50, receive_delay;
 #else
       uint32_t retry_delay = old_agc_serviced?250:_radio->agcMaintenanceRetryMs(), receive_delay;
