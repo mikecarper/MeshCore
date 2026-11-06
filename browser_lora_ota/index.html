@@ -2588,21 +2588,31 @@
 <!-- meshcore-hosted-doc-link:end -->
 
 <h1 id="browser-lora-updater-experimental">Browser LoRa updater (experimental)</h1>
-<p>This prototype runs in the browser and uses a USB-connected
-Repeater as the source. Direct and multi-hop updates have not yet been qualified
+<p>This prototype runs in the browser using a USB-connected
+Companion or Repeater as the source. Direct and multi-hop updates have not yet been qualified
 on hardware. Wi-Fi support is still under development. Keep this page open during the
 transfer; closing it disconnects the file source.</p>
 <p>Use Chrome or Edge on a computer with Web Serial support. To start, connect the
-source Repeater by USB, enter the target's public key, select the firmware,
+Companion by USB, choose a contact, select the firmware,
 then choose <strong>Connect USB source</strong> and <strong>Check firmware and target</strong>. After
 checking the result, choose <strong>Transfer</strong>, then <strong>Install and verify</strong>.
 The target needs a firmware build that supports verified <code>ota installhash</code>.</p>
 <div data-lora-ota>
   <section class="lora-ota-step">
-    <h2>1. Connect your repeater</h2>
-    <p>Plug the source repeater into this computer, then enter the public key of the repeater you want to update.</p>
-    <label>Target public key (64 hex characters)<input data-role="key" size="64" autocomplete="off" spellcheck="false"></label>
+    <h2>1. Connect your radio</h2>
+    <label>USB device
+      <select data-role="source"><option value="companion">Companion</option><option value="repeater">Repeater</option></select>
+    </label>
+    <p>Plug in your USB radio, then connect it and choose the device to update.</p>
     <p class="lora-ota-actions"><button type="button" data-role="connect">Connect USB source</button> <button type="button" data-role="disconnect" class="lora-ota-secondary">Disconnect</button></p>
+    <label>Search contacts by name or public-key prefix<input data-role="contact-search" autocomplete="off" spellcheck="false" disabled></label>
+    <label>Device to update<select data-role="contact" disabled><option value="">Connect a Companion to load contacts</option></select></label>
+    <label>Admin password (if needed)<input data-role="password" type="password" autocomplete="off"></label>
+    <details class="lora-ota-advanced">
+      <summary>Enter a public key manually</summary>
+      <label>Target public key (64 hex characters)<input data-role="key" size="64" autocomplete="off" spellcheck="false"></label>
+      <p>For a USB Repeater source, enter the target key here before connecting.</p>
+    </details>
   </section>
   <section class="lora-ota-step">
     <h2>2. Choose firmware</h2>
@@ -2620,7 +2630,6 @@ The target needs a firmware build that supports verified <code>ota installhash</
   <details class="lora-ota-advanced">
     <summary>Advanced connection and firmware options</summary>
     <p><label><input type="checkbox" data-role="acl" checked> Source is already in the target ACL</label></p>
-    <p><label>Target admin password (if not using ACL)<input data-role="password" type="password" autocomplete="off"></label></p>
     <p><label>Admin-route relay public keys, nearest first (optional; one per line)<textarea data-role="relays" rows="3" cols="64" spellcheck="false"></textarea></label></p>
     <p><label>Candidate relay public keys for route search (optional; one per line)<textarea data-role="candidates" rows="3" cols="64" spellcheck="false"></textarea></label></p>
     <p><label>Minimum SNR (dB) <input data-role="snr" type="number" value="-5" step="0.25"></label> <label>Maximum observation age (hours) <input data-role="age" type="number" value="24" min="1" max="168"></label></p>
@@ -2645,11 +2654,11 @@ The target needs a firmware build that supports verified <code>ota installhash</
     </p>
   </details>
   <details class="lora-ota-advanced">
-    <summary>Compare a multi-version nRF52 update path</summary>
+    <summary>Multi-version nRF52 update</summary>
     <p>For nRF52 internal staging, choose the exact installed firmware above, the final firmware above, and optionally up to six intermediate images below. Each intermediate must contain OTA receiver evidence; the actual node is checked after every reboot. Prepared packages are unsigned. Use the single-update controls above for ESP32 or nRF52 with external storage.</p>
     <p><label>Intermediate firmware images (.bin or .zip)<br><input data-role="chain-files" type="file" accept=".bin,.zip" multiple></label></p>
     <p><label><input data-role="chain-attest" type="checkbox"> I have tested every selected intermediate on this exact hardware and confirmed it retains working LoRa OTA.</label></p>
-    <p>Comparison only: multi-step installation is disabled until a trusted emulator for the target bootloader can verify every step. Image markers alone cannot prove an intermediate can be updated again.</p>
+    <p>For supported RAK3401 and RAK4631 internal-storage OTAFIX builds, the browser simulates every selected differential using the identified bootloader. The simulation does not replace testing intermediates on the actual hardware. Full-package intermediate steps are not yet modeled.</p>
     <p><label>Optimize <select data-role="chain-objective"><option value="packets">Fewer packets</option><option value="airtime">Estimated airtime and reboots</option></select></label>
     <label>Estimated preamble <input data-role="chain-preamble" type="number" min="1" max="65535" value="128"></label>
     <label>Minutes per new temporary window <input data-role="chain-minutes" type="number" min="1" max="10080" value="240"></label></p>
@@ -2663,15 +2672,16 @@ The target needs a firmware build that supports verified <code>ota installhash</
 </div>
 
 <h2 id="setup-and-advanced-details">Setup and advanced details</h2>
-<p>The source needs current firmware with <code>ota.peer</code> and USB folder support. The
-target needs firmware that supports the verified <code>ota installhash</code> command;
+<p>The source needs a Full Companion build with guarded direct OTA support, or
+a Repeater with <code>ota.peer</code> and USB folder support. Older Companion builds
+without the guarded USB capability cannot be used as a source. The target needs firmware
+that supports the verified <code>ota installhash</code> command;
 older versions cannot install through this updater yet. Before starting, put both radios on matching
 active TempRadio settings matching their saved primary channel, set RX power saving off, and turn
 automatic OTA fetch and install off. For a direct update, set OTA hops to 0.
 Existing downloads and source folders must be cleared first. If the source
-clock is wrong, set it before connecting. Multi-version planning is available
-for comparison only; its installation controls are disabled pending verified
-bootloader emulation.</p>
+clock is wrong, set it before connecting. Multi-version updates require a
+supported identified RAK bootloader and successful simulation of every step.</p>
 <p>For multi-hop, enter each relay's full public key in order from the source to
 the destination. The source must already have ACL access to every relay and
 the destination. This selects the <strong>administrative route</strong>; the firmware still
@@ -2703,6 +2713,9 @@ if preparation fails, remove the old image to use a full package instead.</p>
 <script src="../_javascript/lora_ota_zip.js"></script>
 <script src="../_javascript/lora_ota_delta.js"></script>
 <script src="../_javascript/lora_ota_serial.js"></script>
+<script src="../_javascript/lora_ota_companion_source.js"></script>
+<script src="../_javascript/lora_ota_companion.js"></script>
+<script src="../_javascript/lora_ota_contacts.js"></script>
 <script src="../_javascript/lora_ota_session.js"></script>
 <script src="../_javascript/lora_ota_route.js"></script>
 <script src="../_javascript/lora_ota_repeat.js"></script>
@@ -2711,6 +2724,7 @@ if preparation fails, remove the old image to use a full package instead.</p>
 <script src="../_javascript/lora_ota_routed_session.js"></script>
 <script src="../_javascript/lora_ota_plan.js"></script>
 <script src="../_javascript/lora_ota_candidates.js"></script>
+<script src="../_javascript/lora_ota_sim.js"></script>
 <script src="../_javascript/lora_ota_chain.js"></script>
 <script src="../_javascript/lora_ota_chain_ui.js"></script>
 <script src="../_javascript/lora_ota_browser.js"></script>

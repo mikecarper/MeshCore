@@ -5,6 +5,7 @@
   if (!ui) return;
   const $ = name => ui.querySelector('[data-role="' + name + '"]');
   let link, session, info, expectedSigner, activeTask, preparing, chainPrepared, chainConfig;
+  let contacts=[], targetLocked=false, contactKey='';
   const log = text => { $('status').textContent += String(text) + '\n'; $('status').scrollTop = $('status').scrollHeight; };
   const fail = error => log('Error: ' + (error?.message || error));
   const bytes = (file, limit = 64 * 1024 * 1024) => {
@@ -26,21 +27,47 @@
   const writeChainJournal = state => localStorage.setItem('meshcore-browser-lora-ota-chain', JSON.stringify({...state, at:Date.now()}));
   const readChainJournal = () => { try { return JSON.parse(localStorage.getItem('meshcore-browser-lora-ota-chain')); } catch (_) { return null; } };
   const readChainMeta = () => { try { return JSON.parse(localStorage.getItem('meshcore-browser-lora-ota-chain-meta')); } catch (_) { return null; } };
-  const editable = ['key', 'acl', 'relays', 'candidates', 'snr', 'age', 'password', 'file', 'base', 'image', 'signer',
+  const editable = ['source', 'key', 'acl', 'relays', 'candidates', 'snr', 'age', 'password', 'file', 'base', 'image', 'signer',
     'chain-files', 'chain-attest', 'chain-objective', 'chain-preamble', 'chain-minutes'];
   function busy(active) {
-    for (const name of editable) $(name).disabled = active || (!!link && (name === 'key' || name === 'acl' || name === 'relays'));
+    if(link && $('source').value==='companion' && (link.guard || link.authenticated || link.serving))targetLocked=true;
+    for (const name of editable) $(name).disabled = active || (!!link && (name === 'source' || name === 'acl' || name === 'relays' || (name === 'key' && ($('source').value === 'repeater' || targetLocked))));
+    $('contact-search').disabled = active || !link || $('source').value !== 'companion' || targetLocked;
+    $('contact').disabled = $('contact-search').disabled;
     for (const name of ['repeat-read', 'repeat-off', 'repeat-on']) $(name).disabled = active || !link;
     $('repeat-node').disabled = $('repeat-key').disabled = $('repeat-kind').disabled = active;
     const pending = readChainJournal();
     $('chain-plan').disabled = active || !link;
-    // Multi-step installation requires a matching, verified bootloader emulator.
-    $('chain-run').disabled = true;
-    $('chain-resume').disabled = true;
+    $('chain-run').disabled = active || !link || !chainPrepared || !chainConfig || !!pending && pending.phase !== 'complete';
+    $('chain-resume').disabled = active || !link || !chainPrepared || !chainConfig || !pending || pending.phase === 'complete';
   }
   function invalidate() { session = info = chainPrepared = chainConfig = null; $('transfer').disabled = true; $('resume').disabled = true;
     $('install').disabled = true; $('chain-run').disabled = true; $('chain-resume').disabled = true; }
   for (const name of editable) $(name).addEventListener('change', invalidate);
+  function renderContacts() {
+    const select=$('contact'), current=contactKey, matches=LoraOtaContacts.choices(contacts,$('contact-search').value);
+    select.replaceChildren();
+    const prompt=document.createElement('option');prompt.value='';prompt.textContent=matches.length?'Choose a contact':'No matching contacts';select.appendChild(prompt);
+    for(const contact of matches) {
+      const option=document.createElement('option');option.value=contact.publicKey.toLowerCase();option.textContent=LoraOtaContacts.label(contact);select.appendChild(option);
+    }
+    if(current && matches.some(c=>c.publicKey.toLowerCase()===current))select.value=current;
+    else if(current) { contactKey='';$('key').value='';invalidate(); }
+  }
+  $('contact-search').addEventListener('input',renderContacts);
+  $('contact').addEventListener('change',()=>{contactKey=$('contact').value;$('key').value=contactKey;invalidate();});
+  $('key').addEventListener('input',()=>{if(contactKey!==$('key').value.toLowerCase()){contactKey='';$('contact').value='';}invalidate();});
+  $('source').addEventListener('change',()=>{if(!link)$('acl').checked=$('source').value==='repeater';});
+  $('acl').checked=false;
+  function selectTarget() {
+    const key=$('key').value.trim();
+    if(!/^[0-9a-f]{64}$/i.test(key))throw Error('Choose a contact or enter the complete target public key.');
+    if($('source').value==='companion'){
+      if(!targetLocked)link.selectTarget(key);
+      else if(link.knownRepeater!==key.toLowerCase())throw Error('Disconnect before choosing another target.');
+    }
+    return key;
+  }
   async function compressor(raw) {
     const stream = new Blob([raw]).stream().pipeThrough(new CompressionStream('deflate-raw'));
     return new Uint8Array(await new Response(stream).arrayBuffer());
@@ -53,7 +80,8 @@
     if (preparing) preparing.abort();
     if (activeTask) { log('Waiting for the current radio request to finish…'); await activeTask.catch(() => {}); }
     if (link) await link.close();
-    link = session = chainPrepared = chainConfig = null; busy(false); $('connect').disabled = false; $('inspect').disabled = true; $('find-route').disabled = true;
+    link = session = chainPrepared = chainConfig = null;contacts=[];targetLocked=false;contactKey='';
+    $('key').value='';$('password').value='';$('contact-search').value='';renderContacts();busy(false); $('connect').disabled = false; $('inspect').disabled = true; $('find-route').disabled = true;
     $('chain-plan').disabled = true; $('chain-run').disabled = true; $('chain-resume').disabled = true;
     $('transfer').disabled = true; $('resume').disabled = true; $('install').disabled = true;
   }
@@ -61,15 +89,25 @@
     $('connect').disabled = true; busy(true);
     try {
       if (!navigator.serial) throw Error('Web Serial is unavailable. Use a supported browser on a secure page.');
-      const key = $('key').value.trim();
-      if (!/^[0-9a-f]{64}$/i.test(key)) throw Error('Enter the target’s complete public key.');
+      const companion=$('source').value==='companion', key = $('key').value.trim();
+      if (!companion && !/^[0-9a-f]{64}$/i.test(key)) throw Error('Enter the target’s complete public key.');
       const relays = $('relays').value.trim() ? $('relays').value.trim().split(/[\s,]+/) : [];
+      if (companion && relays.length) throw Error('Companion updates currently require a zero-hop connection.');
       if (relays.length && !$('acl').checked) throw Error('Routed updates require existing ACL access on every relay and the target.');
       if (relays.some(r => !/^[0-9a-f]{64}$/i.test(r)) || relays.length > 8) throw Error('Enter up to eight full relay public keys.');
       const port = await navigator.serial.requestPort();
-      const direct = new LoraOtaSerial.RepeaterTransport(port, {knownRepeater:key, aclOnly:$('acl').checked, remoteTimeout:75000});
+      if(companion)$('acl').checked=false;
+      const direct = companion
+        ? new LoraOtaCompanion.CompanionTransport(port, {remoteTimeout:75000})
+        : new LoraOtaSerial.RepeaterTransport(port, {knownRepeater:key, aclOnly:$('acl').checked, remoteTimeout:75000});
       link = relays.length ? new LoraOtaRoute.RoutedRepeaterTransport(direct, key, relays) : direct;
-      await link.open(); busy(false); $('connect').disabled = true; $('inspect').disabled = false;
+      await link.open();
+      if(companion){
+        contacts=await link.contacts();renderContacts();
+        log('Loaded '+LoraOtaContacts.choices(contacts).length+' eligible contacts.');
+        if(link.otaUnavailableReason)log(link.otaUnavailableReason);
+      }
+      busy(false); $('connect').disabled = true; $('inspect').disabled = false;
       $('chain-plan').disabled = false;
       $('find-route').disabled = !link.aclOnly || !link.supportsRoutedPath || !!link.relays;
       log('Connected to source ' + link.sourceKey + '.');
@@ -110,7 +148,8 @@
   async function inspect() {
     invalidate(); busy(true); $('inspect').disabled = true;
     try {
-      if (!link) throw Error('Connect a source repeater first.');
+      if (!link) throw Error('Connect a source radio first.');
+      selectTarget();
       const file = $('file').files[0]; if (!file) throw Error('Choose a firmware .bin or .mota file.');
       const isFirmware = /\.(?:bin|zip)$/i.test(file.name);
       const input = isFirmware ? await firmwareBytes(file, $('base').files[0] ? 4 * 1024 * 1024 : undefined) : await bytes(file);
@@ -233,9 +272,15 @@
       const objective=$('chain-objective').value, preamble=Number($('chain-preamble').value), minutes=Number($('chain-minutes').value);
       if (!['packets','airtime'].includes(objective) || !Number.isInteger(preamble) || preamble<1 || preamble>65535 ||
           !Number.isInteger(minutes) || minutes<1 || minutes>10080) throw Error('Choose a valid objective, preamble and temporary-window duration.');
-      const target=$('key').value.trim().toLowerCase(), password=$('acl').checked?'':$('password').value;
+      const target=selectTarget().toLowerCase(), password=$('acl').checked?'':$('password').value;
       const live=await LoraOtaChainUi.readLive(link,target,password);
       if(!live.nrf || live.external)throw Error('Multi-version planning is for nRF52 internal staging; use the single-update controls for ESP32 or external-storage targets.');
+      const bootVersion=await link.remoteCommand(target,password,'get bootloader.ver');
+      const bootStatus=await link.remoteCommand(target,password,'ota bootloader status');
+      const bootProfile=LoraOtaSim.identify(bootVersion,bootStatus);
+      const installProbe=String(await link.remoteCommand(target,password,'ota installhash')).trim().replace(/^>\s*/, '');
+      if(installProbe!=='ERR usage: ota installhash <64-hex-container-sha256>')
+        throw Error('The target does not support verified package installation');
       const sourceRadio=LoraOtaSession.temp(await link.localCommand('get tempradio'));
       const old=await firmwareBytes(baseFile,4*1024*1024), first=await MeshCoreMotaPackage.parseEndF(old);
       const saved=readChainJournal(), pending=!!saved&&saved.phase!=='complete', savedMeta=readChainMeta();
@@ -243,7 +288,8 @@
       if (pending) {
         if (!savedMeta || savedMeta.source!==link.sourceKey || savedMeta.target!==target || savedMeta.objective!==objective ||
             savedMeta.preamble!==preamble || savedMeta.minutes!==minutes || !LoraOtaChainUi.sameRadio(savedMeta.sourceRadio,sourceRadio) ||
-            savedMeta.baseImageHash!==LoraOtaChecks.hex(first.imageHash) || savedMeta.current?.bodyHash!==LoraOtaChecks.hex(first.bodyHash))
+            savedMeta.baseImageHash!==LoraOtaChecks.hex(first.imageHash) || savedMeta.current?.bodyHash!==LoraOtaChecks.hex(first.bodyHash) ||
+            savedMeta.bootProfile!==bootProfile)
           throw Error('Select the same source, files and planning settings used by the unfinished chain.');
         current=savedMeta.current;caps=savedMeta.caps;targetPreamble=savedMeta.targetPreamble;
         if (!Number.isInteger(targetPreamble) || targetPreamble<1 || targetPreamble>65535)
@@ -261,17 +307,19 @@
       const images=[{id:'base',bytes:old,capabilities:caps}], all=[...middle,goalFile];
       for (let i=0;i<all.length;i++) {
         const image=await firmwareBytes(all[i],4*1024*1024);
-        const capabilities=LoraOtaChainUi.evidence(image,caps,old);
+        const capabilities=LoraOtaChainUi.evidence(image,caps,old,i<all.length-1);
         images.push({id:i===all.length-1?'goal':'intermediate-'+(i+1),bytes:image,capabilities});
       }
       const radio={bandwidth:sourceRadio[1],sf:sourceRadio[2],cr:sourceRadio[3],preamble};
       preparing=new AbortController();
       log('Comparing update paths in this browser…');
-      chainPrepared=await LoraOtaCandidates.prepare({images,current,goal:'goal',objective,radio,
+      chainPrepared=await LoraOtaCandidates.prepare({images,current,goal:'goal',objective,radio,kinds:['delta'],
         relays:link.relays?.length||0,restartSeconds:60,signal:preparing.signal,progress:log},
         {compressBlock:supportedCompression()});
       preparing=null;
-      chainConfig={source:link.sourceKey,target,current,caps,baseImageHash:LoraOtaChecks.hex(first.imageHash),objective,preamble,minutes,sourceRadio,targetPreamble};
+      log('Simulating each differential with the matching bootloader…');
+      await LoraOtaSim.simulate(bootProfile,chainPrepared,caps.runtimeStageCeiling);
+      chainConfig={source:link.sourceKey,target,current,caps,baseImageHash:LoraOtaChecks.hex(first.imageHash),objective,preamble,minutes,sourceRadio,targetPreamble,bootProfile};
       const route=chainPrepared.route;
       log('Selected path: '+route.steps.map(s=>s.from+' → '+s.to+' ('+s.kind+')').join('; ')+'.');
       log('Estimate: '+route.totals.rfTransmissions+' radio transmissions'+
@@ -281,12 +329,42 @@
         '. Polls, retries, duty pacing and congestion are excluded.');
       for(const warning of new Set([...chainPrepared.warnings,...(route.assumptions||[])]))log(warning);
       if(!chainPrepared.complete)log('Some candidates could not be prepared; the selected path is only the best among those checked.');
-      log('Comparison only: intermediate testing is your attestation, not a hardware result from this updater. Multi-step installation is unavailable until a matching bootloader emulator has verified every step.');
+      log('Every selected differential passed the bootloader model. The model does not replace testing the intermediate firmware on this hardware.');
     }catch(error){chainPrepared=chainConfig=null;fail(error);}
     finally{preparing=null;busy(false);$('inspect').disabled=!link;}
   }
-  async function runChain() {
-    fail(Error('Multi-step installation is unavailable until a trusted matching bootloader emulator can verify every step.'));
+  async function runChain(resume=false) {
+    if (!chainPrepared || !chainConfig || !link) return fail(Error('Compare and simulate the update path first.'));
+    busy(true); $('inspect').disabled=true;
+    const signalController = new AbortController(); preparing=signalController;
+    try {
+      const {target,bootProfile,caps,sourceRadio,minutes,targetPreamble}=chainConfig;
+      const password=$('acl').checked?'':$('password').value;
+      const readLive=async()=>{
+        const current=await LoraOtaChainUi.readLive(link,target,password);
+        const version=await link.remoteCommand(target,password,'get bootloader.ver');
+        const status=await link.remoteCommand(target,password,'ota bootloader status');
+        if(LoraOtaSim.identify(version,status)!==bootProfile) throw Error('The target bootloader changed during the update');
+        return current;
+      };
+      await readLive();
+      await LoraOtaSim.simulate(bootProfile,chainPrepared,caps.runtimeStageCeiling);
+      if(!resume) localStorage.setItem('meshcore-browser-lora-ota-chain-meta',JSON.stringify(chainConfig));
+      const Session=link.relays?.length?LoraOtaRoutedSession.RoutedSession:LoraOtaSession.DirectSession;
+      const runner=new LoraOtaChain.ChainRunner({
+        prepared:chainPrepared, link, targetKey:target, readLive,
+        readStepJournal,writeStepJournal,readChainJournal,writeChainJournal,
+        createSession:async step=>new Session(link,target,password,step.package.info,{
+          image:step.targetImage,inplacePlan:step.edge.inplacePlan,compress:supportedCompression(),
+          progress:log,journal:writeStepJournal,readJournal:readStepJournal
+        }),
+        rearm:async ({signal})=>LoraOtaChainUi.rearm(link,target,password,sourceRadio,minutes,{signal,preamble:targetPreamble}),
+        confirmRearm:async()=>LoraOtaChainUi.activeRadio(link,target,password,sourceRadio,targetPreamble)
+      });
+      const result=await runner.run({resume,signal:signalController.signal});
+      log('Update sequence complete; verified '+result.steps+' installation(s).');
+    } catch(error) { fail(error); }
+    finally { preparing=null;busy(false);$('inspect').disabled=!link; }
   }
   $('install').addEventListener('click', () => run(install()));
   $('chain-plan').addEventListener('click', () => run(planChain()));

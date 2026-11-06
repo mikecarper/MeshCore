@@ -16,10 +16,13 @@
   }
   function sameRadio(a,b){return a.length===b.length&&a.every((v,i)=>Math.abs(v-b[i])<=0.001);}
   function equalLayout(a,b){return a.app===b.app&&a.end===b.end&&a.ceiling===b.ceiling&&a.flags===b.flags;}
-  function evidence(image,live,baseImage){
+  function evidence(image,live,baseImage,intermediate=false){
     if(!(image instanceof Uint8Array)||!(baseImage instanceof Uint8Array))throw Error('Firmware evidence requires image bytes');
     if(!contains(image,'OTA: status')||!contains(image,'get <id> flash | install'))
       throw Error('This firmware lacks the application LoRa OTA receiver marker');
+    if(intermediate && (!contains(image,'ota installhash <64-hex-container-sha256>') ||
+        !contains(image,'tempradio.ifidle ')))
+      throw Error('An intermediate must include verified install and atomic temporary-radio rearm support');
     if(live.nrf){
       if(!contains(image,'invalid in-place patch geometry')) throw Error('This nRF52 image lacks the in-place apply marker');
       const previous=delta.nrfLayout(baseImage), next=delta.nrfLayout(image);
