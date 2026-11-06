@@ -3,6 +3,7 @@
 #include <stdint.h>
 #include <stddef.h>
 #include <stdio.h>
+#include <string.h>
 
 #include <helpers/RadioAGCConfig.h>
 
@@ -34,6 +35,8 @@ private:
   uint32_t _request_started=0, _transition_started=0, _checked_at=0;
   bool _checked=false;
 public:
+  WarmRxRefresh() { memset(static_cast<void*>(this),0,sizeof(*this)); }
+
   void request(uint32_t now_us) { ++requests; _request_started=now_us; _checked=false; reason=Reason::None; }
   void transition(uint32_t now_us,bool fs) {
     ++admissions; _transition_started=now_us; pending=true;

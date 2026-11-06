@@ -788,6 +788,11 @@ public:
   }
   bool formatWarmRxRefresh(uint8_t page,uint32_t seconds,char* reply,size_t capacity) const override {
     if(!supportsWarmRxRefresh()) return false;
+#if MESH_COMPACT_STM32_RADIO
+    // Tiny images retain request/completion, natural-cycle and scanner proof.
+    // Detailed timing/check pages are optional rather than storing fake zeros.
+    if(page!=0 && page!=3 && page!=6) return false;
+#endif
     if(page==6) _agc_scan_lease.format(_profiles.enabled(),reply,capacity);
     else _rxps_pulse.format(page,seconds,reply,capacity);
     return true;

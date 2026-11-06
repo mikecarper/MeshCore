@@ -2,6 +2,7 @@
 #include <stdint.h>
 #include <stddef.h>
 #include <stdio.h>
+#include <string.h>
 
 // One real RXPS operation temporarily extends the primary scan visit. This
 // measures scanner absence, including primary listening, not analog RX-off time.
@@ -13,6 +14,8 @@ public:
   uint16_t preamble=0;
   uint32_t admitted=0, deferred=0, invalidated=0, completed=0;
   uint32_t started=0, last_us=0, max_us=0;
+
+  RxpsPulseScanLease() { memset(static_cast<void*>(this),0,sizeof(*this)); }
 
   void begin(uint32_t now,uint32_t primary,uint32_t secondary,uint32_t applied,
       uint16_t physical_preamble,uint32_t stamp,uint64_t stamp_us) {

@@ -2,6 +2,7 @@
 #include <stdint.h>
 #include <stddef.h>
 #include <stdio.h>
+#include <string.h>
 
 // One asynchronously observed duty-cycle sleep/wake, not a warm FS refresh.
 // BUSY observations are sampled GPIO evidence, not a calibrated power trace.
@@ -30,6 +31,11 @@ private:
   Result _completion=Result::None;
   uint32_t _cadence_ms=0,_generation=0,_attempt_generation=0;
 public:
+  RxpsPulse() {
+    // Scalar state has an all-zero representation; restore its two nonzero
+    // timing defaults after one bounded clear instead of many literal stores.
+    memset(static_cast<void*>(this),0,sizeof(*this));rx_us=117844;rx_ticks=7542;
+  }
   bool owns() const { return pending && phase!=Phase::Packet; }
   bool waiting() const { return phase==Phase::Listen || phase==Phase::Sleep; }
   bool configure(uint32_t requested_sleep,uint32_t transition_us,uint32_t timer_hz=64000) {
