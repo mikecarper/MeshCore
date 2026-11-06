@@ -48,6 +48,7 @@ def overlay_section(board: str, spec: dict) -> str:
     """
     target = spec["target"]
     env = expander_environment(board, target)
+    flash = spec["flash_bytes"]
     # Prefer the already-reviewed slim bridge where one exists. Other exact
     # roles inherit their own board, radio configuration and libraries.
     slim = SLIM_BASES.get(board)
@@ -60,7 +61,13 @@ def overlay_section(board: str, spec: dict) -> str:
     if not re.fullmatch(r"(?:env:)?[A-Za-z0-9_-]+", source_env):
         raise ValueError(f"{board}: invalid source environment")
     extra = "".join("\n  " + flag for flag in (slim[2] if slim else ()))
-    flash = spec["flash_bytes"]
+    if board == "heltec-ct62-repeater":
+        # Match the existing qualified 4 MiB Full firmware's lossless crypto
+        # and OTA-name implementations; the expander is excluded from the
+        # general Full-role hook and must opt in explicitly.
+        from esp32_full_size import compact_definitions
+        extra += "".join(f"\n  -D {name}={value}"
+                         for name, value in compact_definitions(flash).items())
     partitions = {
         4 * 1024 * 1024: "variants/dual_ota_full_4MB.csv",
         8 * 1024 * 1024: "default_8MB.csv",

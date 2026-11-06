@@ -66,6 +66,9 @@ class ExpanderCandidateTests(unittest.TestCase):
         ct62 = overlay_section("heltec-ct62-repeater", BOARDS["heltec-ct62-repeater"])
         self.assertIn("extends = Heltec_ct62", ct62)
         self.assertIn("-D LIGHTWEIGHT_WIFI_OTA=1", ct62)
+        from esp32_full_size import compact_definitions
+        for name, value in compact_definitions(4 * 1024 * 1024).items():
+            self.assertIn(f"-D {name}={value}", ct62)
 
     def test_reviewed_board_bases_cannot_be_reused_for_another_target(self):
         with self.assertRaisesRegex(ValueError, "slim expander does not match target"):
