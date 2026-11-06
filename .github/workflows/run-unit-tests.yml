@@ -223,7 +223,7 @@ jobs:
           from esp32_migration_expanders import build_expander_candidates, evaluate_candidate
           from package_esp32_partition_migration import BOARDS, resolve_pio_build_dir
 
-          boards = ('heltec-v4', 'heltec-v2-repeater',
+          boards = ('heltec-v4', 'heltec-v4-room-server', 'heltec-v2-repeater',
                     'heltec-ct62-repeater', 'meshnology-w12-repeater')
           version = 'v1.18.0.1-halo-keymind-cascade-dev'
           root = Path.cwd()
