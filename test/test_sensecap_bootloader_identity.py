@@ -115,6 +115,7 @@ class SensecapBootloaderIdentityTest(unittest.TestCase):
     def test_embedding_accepts_p1_normal_asset_and_rejects_recovery_substitution(self):
         data = candidate(self.image(), v7=True)
         item = profile(data, v7=True, name="SCAP_DFU")
+        item["id"] = "sensecap_solar_p1"
         image, identity = embed.validate_candidate_zip(data, item)
         self.assertEqual(image, self.image())
         self.assertEqual(identity.device_name, "SCAP_DFU")
