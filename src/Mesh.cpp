@@ -1302,7 +1302,7 @@ DispatcherAction Mesh::onRecvPacket(Packet* pkt) {
   // forwarding gate solely due to its radio profile. Re-run current routing
   // policy on an eligible copy, without delivering the message a second time.
   // OTA handles duplicates and retry admission separately below.
-#if !defined(COMPANION_RADIO_FULL) && !MESH_ROLE_COMPANION
+#if !defined(COMPANION_RADIO_FULL) && !MESH_ROLE_COMPANION && MESH_ENABLE_FLOOD_PROFILE_POLICY
   if (pkt->isRouteFlood() && pkt->getPayloadType() != PAYLOAD_TYPE_OTA &&
       deferredFloodCandidate(pkt, pkt->radio_profile, false) && _tables->wasSeen(pkt))
     return routeRecvPacket(pkt);

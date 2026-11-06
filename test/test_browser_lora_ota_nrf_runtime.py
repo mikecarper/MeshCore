@@ -120,13 +120,16 @@ def run_harness(harness, timeout=45):
         def do_GET(self):
             if self.path in ('/', '/browser_lora_ota/'):
                 body = page.encode('utf-8')
-            elif re.fullmatch(r'/_javascript/lora_ota_[a-z_]+\.js', self.path) or re.fullmatch(
-                    r'/_javascript/vendor/detools-js/[a-z-]+\.js', self.path):
+            elif (re.fullmatch(r'/_javascript/lora_ota_[a-z_]+\.js', self.path) or re.fullmatch(
+                    r'/_javascript/vendor/detools-js/[a-z-]+\.js', self.path) or
+                    re.fullmatch(r'/_javascript/otafix_sim/worker\.js', self.path) or
+                    re.fullmatch(r'/_javascript/otafix_sim/build/otafix-2\.4\.(?:3|6|9|11|12)-rak(?:3401|4631)-internal\.wasm', self.path)):
                 body = (ROOT / 'docs' / self.path.lstrip('/')).read_bytes()
             else:
                 self.send_error(404); return
             self.send_response(200); self.send_header('Content-Length', str(len(body)))
-            self.send_header('Content-Type', 'text/html; charset=utf-8' if self.path.endswith('/') else 'application/javascript; charset=utf-8')
+            self.send_header('Content-Type', 'text/html; charset=utf-8' if self.path.endswith('/') else
+                             'application/wasm' if self.path.endswith('.wasm') else 'application/javascript; charset=utf-8')
             self.end_headers(); self.wfile.write(body)
         def do_POST(self):
             if self.path != '/__result': self.send_error(404); return

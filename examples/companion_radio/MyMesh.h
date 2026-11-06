@@ -696,6 +696,9 @@ private:
   ContactInfo _ota_direct_contact;
   ContactInfo* _ota_direct_transient = nullptr;
   BaseSerialInterface* _ota_direct_usb_route = nullptr;
+  bool _ota_direct_radio_owned = false;
+  uint32_t _ota_direct_radio_generation = 0;
+  bool directOtaRadioCurrent() const;
   void closeDirectOtaAdmin();
   bool handleDirectOtaFrame(size_t len);
   bool handleDirectOtaCommand(const char* command, uint32_t timestamp, char* reply, size_t capacity);

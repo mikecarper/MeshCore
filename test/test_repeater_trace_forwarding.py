@@ -17,6 +17,7 @@ HARNESS = r'''
 #include <cassert>
 #include <cstring>
 #include <initializer_list>
+#include <new>
 #include <Packet.h>
 #include <helpers/RoutingPolicy.h>
 #include <helpers/MorseReplyHandoff.h>
@@ -26,8 +27,16 @@ HARNESS = r'''
 #define LOOP_DETECT_STRICT 3
 #define FLOOD_CHANNEL_HOPS_ALL 255
 const uint8_t max_loop_minimal[] = {1}, max_loop_moderate[] = {2}, max_loop_strict[] = {3};
+uint32_t millis() { return 0; }
 namespace mesh {
 @CONSTRUCTOR@
+namespace flood_profiles {
+struct DeferredFloods {
+  template<class Packet, class Policy> void remember(const Packet*, const Policy&, uint32_t) {}
+};
+template<class Packet, class Policy> bool allowIngress(const Packet*, const Policy&) { return true; }
+template<class Packet, class Policy> bool allowEgress(const Packet*, const Policy&) { return true; }
+}
 // The boundary records delegation to the existing OTA/profile transmit veto.
 class Mesh {
 public:
@@ -48,7 +57,10 @@ struct SimpleMeshTables {
   }
 };
 struct MyMesh : mesh::Mesh {
+  mesh::flood_profiles::DeferredFloods* deferred_floods_ = nullptr;
   struct CLI {
+    struct Profiles {} profiles;
+    const Profiles& radioProfiles() const { return profiles; }
     mesh::MorseReplyHandoff handoff;
     bool batteryAllowsForward(bool) const { return true; }
     bool batteryAllowsTransmit(const mesh::Packet*) const { return true; }

@@ -15,6 +15,10 @@
 #include <Arduino.h>
 #endif
 
+#ifndef MESH_ENABLE_FLOOD_PROFILE_POLICY
+#define MESH_ENABLE_FLOOD_PROFILE_POLICY 1
+#endif
+
 #define MAX_HASH_SIZE        8
 #define PUB_KEY_SIZE        32
 #define PRV_KEY_SIZE        64

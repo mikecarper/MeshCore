@@ -309,7 +309,9 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks
     , public WebConfigServer::Callbacks
 #endif
 {
+#if MESH_ENABLE_FLOOD_PROFILE_POLICY
   mesh::flood_profiles::DeferredFloods* deferred_floods_ = nullptr;
+#endif
   struct ScheduledRadioSetting {
     // RAM only: group aligned fields to keep each schedule within 32 bytes.
     uint64_t hard_end_uptime_millis;
@@ -1190,7 +1192,9 @@ protected:
   }
 
   bool allowPacketForward(const mesh::Packet* packet) override;
+#if MESH_ENABLE_FLOOD_PROFILE_POLICY
   bool deferredFloodCandidate(const mesh::Packet* packet, uint8_t ingress, bool consume) override;
+#endif
   bool allowPacketTransmit(const mesh::Packet* packet) const override;
 #if MESH_DEBUG || MESH_ENABLE_PACKET_FILE_LOGGING \
     || (MESH_PACKET_LOGGING && !MESH_PACKET_LOGGING_COMPACT)
@@ -1290,7 +1294,9 @@ public:
 #endif
   MyMesh(mesh::MainBoard& board, mesh::Radio& radio, mesh::MillisecondClock& ms, mesh::RNG& rng, mesh::RTCClock& rtc, mesh::MeshTables& tables);
   ~MyMesh() {
+#if MESH_ENABLE_FLOOD_PROFILE_POLICY
     delete deferred_floods_;
+#endif
 #ifdef WITH_UDP_BRIDGE
     delete udp_bridge;
 #endif

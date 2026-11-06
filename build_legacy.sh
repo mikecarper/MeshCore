@@ -3569,6 +3569,8 @@ declare_build_capability_contract() {
       "logging.file omitted; live USB/MQTT packet logging retained"
     record_build_reduction \
       "battery.forwarding omitted; battery alerts and readings retained"
+    record_build_reduction \
+      "radio.flood per-profile controls omitted; global repeat retained"
   fi
   pio_env_name=$(get_pio_build_env "$env_name")
   if is_qspi_hardware_qualification_target "$env_name"; then
