@@ -4,9 +4,7 @@
 #include <stddef.h>
 #include <stdio.h>
 
-#ifndef MESH_WARM_RX_REFRESH
-#define MESH_WARM_RX_REFRESH 0
-#endif
+#include <helpers/RadioAGCConfig.h>
 
 // Experimental same-channel RX refresh diagnostics. The existing Dispatcher
 // AGC scheduler owns cadence; this class has no independent timer. These are software

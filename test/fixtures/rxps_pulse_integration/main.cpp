@@ -12,8 +12,14 @@
 #include <string>
 #include <vector>
 
+#ifndef MESH_WARM_RX_REFRESH
 #define MESH_WARM_RX_REFRESH 1
+#endif
+#if defined(MESH_TEST_PULSE_NRF52)
+#define NRF52_PLATFORM 1
+#else
 #define ESP32_PLATFORM 1
+#endif
 #define MESH_ENABLE_MORSE_RX 1
 #define MESH_ENABLE_TX_BEACONS 1
 #define MESH_ENABLE_RADIO_DIRECTION 1
@@ -123,6 +129,7 @@ public:
   RxpsPulseScanLease _agc_scan_lease;
   uint16_t _physical_preamble=32;
   uint32_t _profile_scan_generation[2]={0,0},_profile_visit_stamp=77,_esp32_profile_idle_visit_us=999;
+  uint64_t _profile_idle_visit_ticks=999;
   uint64_t _esp32_profile_visit_started_us=0x100000123ULL;
   bool _rxps_pulse_sleep_override=false;
   uint8_t _rxps_pulse_retries=0,state=STATE_RX,_cur_sf=7,_active_profile=0,_startrx_fails=0;
@@ -349,7 +356,9 @@ static void dualNormal() {
   const uint32_t visit=w._profile_visit_stamp;const uint64_t visit_us=w._esp32_profile_visit_started_us;
   begin(w);
   assert(w._rxps_pulse.pending && w._agc_scan_lease.active && w._agc_scan_lease.admitted==1);
+#if defined(ESP32_PLATFORM)
   assert(w._esp32_profile_idle_visit_us==0);
+#endif
   assert(w._agc_scan_lease.generation[0]==5 && w._agc_scan_lease.generation[1]==9);
   const size_t calls=w.module.calls.size(),switches=w.module.switches.size();
   now_us=w._rxps_pulse.armed_at+1;w.serviceAGCPulse();
@@ -363,7 +372,12 @@ static void dualNormal() {
   assert(!w._rxps_pulse.pending && !w._agc_scan_lease.active && !w._agc_scan_lease.stale);
   assert(w._rxps_pulse.ok==1 && w._rxps_pulse.fail==0 && w._agc_scan_lease.completed==1);
   assert(w._agc_scan_lease.last_us==now_us-w._agc_scan_lease.started);
-  assert(w._profile_visit_stamp==visit && w._esp32_profile_visit_started_us==visit_us);
+  assert(w._profile_visit_stamp==visit);
+#if defined(ESP32_PLATFORM)
+  assert(w._esp32_profile_visit_started_us==visit_us);
+#else
+  (void)visit_us;
+#endif
   assert(w.periodicAGCMaintenance(false)==mesh::AGCMaintenanceResult::Applied);
   unchanged(w.module,before);
 }
@@ -428,9 +442,14 @@ static void dualScanGuard() {
   for(bool packet:{false,true}) {
     if(packet) w._rxps_pulse.packetOwned();
     w._esp32_profile_idle_visit_us=999;
+    w._profile_idle_visit_ticks=999;
     w.serviceProfileScan();
     assert(w.scan_spy==0 && w.module.calls.size()==calls);
+#if defined(ESP32_PLATFORM)
     assert(w._esp32_profile_idle_visit_us==0); // fail-closed idle allowance
+#else
+    assert(w._profile_idle_visit_ticks==0);
+#endif
     assert(w._profile_visit_stamp==stamp && w._esp32_profile_visit_started_us==stamp_us);
     assert(w._profile_scan_generation[0]==5 && w._profile_scan_generation[1]==9);
     assert(w._rxps_pulse.pending && w._agc_scan_lease.active);

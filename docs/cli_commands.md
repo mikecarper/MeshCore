@@ -4332,16 +4332,21 @@ Normal RXPS automatically suspends the primary AGC timer on every board. The
 configured interval is retained; turning RXPS off starts a fresh interval.
 The optional `agc.old` timer remains an independent, explicitly enabled reset.
 
-On Heltec V4 builds based on `Heltec_lora32_v4`, this saved interval schedules
-a same-channel RXPS pulse. The existing value, four-second rounding and adaptive
+On builds using the `CustomSX1262` driver, this saved interval schedules a
+same-channel RXPS pulse. This includes ESP32, nRF52 and RP2040 boards in every
+role, and the SX1262 backend of startup-detected radio builds. The existing
+value, four-second rounding and adaptive
 scheduling are retained. It does not retune, calibrate, change gain or reset
 the noise-floor cache. Completing the hardware sleep/wake sequence is not proof
-of an analog AGC reset or a sensitivity improvement. V4 R8 and other board
-families retain the existing reset method unless explicitly built with the
-legacy-named `MESH_WARM_RX_REFRESH=1` flag on a supported SX1262 wrapper.
+of an analog AGC reset or a sensitivity improvement. The build setting
+`MESH_WARM_RX_REFRESH=0` explicitly retains the previous primary method.
+Other transceiver drivers retain their own maintenance implementation; storing
+an interval does not imply that their hardware supports this SX1262 pulse.
 
-The opted-in V4 primary path now performs one asynchronous RXPS pulse. It
-requires continuous primary LoRa RX, with `radio.rxps` and `radio2` off. It does
+The SX1262 primary path performs one asynchronous RXPS pulse. It requires
+continuous primary LoRa RX, with `radio.rxps` off. During dual-profile scanning,
+it leases one stable primary visit and resumes the overdue secondary visit
+afterward. It does
 not require radio2 warm, FS or packet-cache shortcuts. An admitted pulse stages
 ordinary LoRa duty-cycle RX, observes a post-arm BUSY low/high/natural-low
 sequence, checks RC standby and RTC cleanup, and checks continuous RX reentry.
@@ -4381,7 +4386,7 @@ oscillator delay rather than a fixed board duration. On the V4 with a 1600 us
 TCXO delay, the compensated request is 3116 us (33 RTC ticks after transition
 compensation). This does not establish improved sensitivity or reception.
 
-With radio2 enabled, supported V4 firmware admits a pulse only during an idle,
+With radio2 enabled, supported SX1262 firmware admits a pulse only during an idle,
 unchanged primary-profile visit. The scanner pauses until checked RX reentry or
 completed-packet handoff finishes, then resumes the original scan deadline.
 This periodically extends the secondary profile's absence; it is a best-effort

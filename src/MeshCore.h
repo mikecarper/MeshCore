@@ -3,6 +3,7 @@
 #include <stdint.h>
 #include <stddef.h>
 #include <math.h>
+#include "helpers/RadioAGCConfig.h"
 #include "helpers/UsbLogging.h"
 #include "helpers/BatteryChargeSupport.h"
 #include "helpers/BatteryCalibration.h"
