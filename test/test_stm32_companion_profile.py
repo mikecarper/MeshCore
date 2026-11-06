@@ -53,6 +53,9 @@ class CompactSTM32WLCompanionAgcTest(unittest.TestCase):
         hook = 'post:scripts/stm32_mini_companion_size.py'
         self.assertIn(flag, shlex.split(config[target]['build_flags']))
         self.assertIn('MESH_CLI_SHARE_REPLY_COPIES=1', shlex.split(config[target]['build_flags']))
+        for policy in ('-fno-tree-pre','-fno-tree-slsr','-fno-code-hoisting'):
+            self.assertIn(policy, shlex.split(config[target]['build_flags']))
+            self.assertIn(policy, shlex.split(config['env:wio-e5-mini_repeater']['build_flags']))
         self.assertEqual(config[target]['extra_scripts'].split(), ['${stm32_base.extra_scripts}', hook])
         for section in config.sections():
             if section not in (target, 'env:wio-e5-mini_repeater'):
@@ -67,7 +70,7 @@ class CompactSTM32WLCompanionAgcTest(unittest.TestCase):
             env = Environment(PIOENV=name, LINKFLAGS=['existing'])
             runpy.run_path(str(ROOT / 'scripts/stm32_mini_companion_size.py'), init_globals={
                 'env': env, 'Import': lambda key: self.assertEqual(key, 'env')})
-            self.assertEqual(env['LINKFLAGS'], ['existing'] + ([flag, '-ffunction-sections', '-fdata-sections'] if name == 'wio-e5-mini_companion_radio_usb' else []))
+            self.assertEqual(env['LINKFLAGS'], ['existing'] + ([flag, '-ffunction-sections', '-fdata-sections', '-fno-tree-pre', '-fno-tree-slsr', '-fno-code-hoisting'] if name == 'wio-e5-mini_companion_radio_usb' else []))
 
     def test_final_lto_sections_collect_orphaned_bodies_without_behavior_change(self):
         compiler=shutil.which('g++')
