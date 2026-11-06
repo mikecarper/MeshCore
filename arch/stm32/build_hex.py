@@ -6,6 +6,10 @@ env.Append(LINKFLAGS=[
     "-flto-partition=one",
     "-fipa-pta",
     "-fno-semantic-interposition",
+    # Keep final LTO-generated functions/data independently collectible.
+    # Compile-only section flags otherwise become one monolithic partition.
+    "-ffunction-sections",
+    "-fdata-sections",
 ])
 
 # Make custom HEX from ELF

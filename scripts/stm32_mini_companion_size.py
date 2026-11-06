@@ -3,8 +3,7 @@
 Import("env")
 
 if env["PIOENV"] == "wio-e5-mini_companion_radio_usb":
-    # Compile-time sections do not survive monolithic LTO code generation unless
-    # requested again here. Keep dead virtual/default bodies independently
-    # collectible after their unneeded constructor vtables are discarded.
-    env.Append(LINKFLAGS=["-fno-tree-loop-im", "-ffunction-sections", "-fdata-sections",
-                          "-fno-tree-pre", "-fno-tree-slsr", "-fno-code-hoisting"])
+    # The shared STM32 final link preserves function/data sections. Keep only
+    # the Mini's qualified branch/loop choices in this target-specific hook.
+    env.Append(LINKFLAGS=["-fno-tree-loop-im", "-fno-tree-pre",
+                          "-fno-tree-slsr", "-fno-code-hoisting"])

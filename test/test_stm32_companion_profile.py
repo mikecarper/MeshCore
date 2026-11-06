@@ -70,7 +70,28 @@ class CompactSTM32WLCompanionAgcTest(unittest.TestCase):
             env = Environment(PIOENV=name, LINKFLAGS=['existing'])
             runpy.run_path(str(ROOT / 'scripts/stm32_mini_companion_size.py'), init_globals={
                 'env': env, 'Import': lambda key: self.assertEqual(key, 'env')})
-            self.assertEqual(env['LINKFLAGS'], ['existing'] + ([flag, '-ffunction-sections', '-fdata-sections', '-fno-tree-pre', '-fno-tree-slsr', '-fno-code-hoisting'] if name == 'wio-e5-mini_companion_radio_usb' else []))
+            self.assertEqual(env['LINKFLAGS'], ['existing'] + ([flag, '-fno-tree-pre', '-fno-tree-slsr', '-fno-code-hoisting'] if name == 'wio-e5-mini_companion_radio_usb' else []))
+
+    def test_common_stm32_lto_preserves_dead_sections_for_every_role(self):
+        class Environment(dict):
+            def Append(self,**values):
+                for key,items in values.items(): self.setdefault(key,[]).extend(items)
+            def VerboseAction(self,command,label): return (command,label)
+            def AddPostAction(self,target,action): self.setdefault('actions',[]).append((target,action))
+        for target in ('wio-e5-mini_companion_radio_usb','wio-e5-mini_repeater',
+                       'wio-e5-mini_sensor','RAK_3x72_companion_radio_usb',
+                       'wio-e5_companion_radio_usb','Tiny_Relay_companion_radio_usb'):
+            env=Environment(PIOENV=target,LINKFLAGS=['existing'])
+            runpy.run_path(str(ROOT/'arch/stm32/build_hex.py'),init_globals={
+                'env':env,'Import':lambda key:self.assertEqual(key,'env')})
+            self.assertEqual(env['LINKFLAGS'].count('-ffunction-sections'),1)
+            self.assertEqual(env['LINKFLAGS'].count('-fdata-sections'),1)
+            self.assertEqual(len(env['actions']),1)
+            # Applying the optional Mini hook must retain one common copy.
+            runpy.run_path(str(ROOT/'scripts/stm32_mini_companion_size.py'),init_globals={
+                'env':env,'Import':lambda key:self.assertEqual(key,'env')})
+            self.assertEqual(env['LINKFLAGS'].count('-ffunction-sections'),1)
+            self.assertEqual(env['LINKFLAGS'].count('-fdata-sections'),1)
 
     def test_final_lto_sections_collect_orphaned_bodies_without_behavior_change(self):
         compiler=shutil.which('g++')
