@@ -12,6 +12,7 @@
 #define RADIOLIB_SX126X_RX_TIMEOUT_INF 0xFFFFFFUL
 #define RADIOLIB_SX126X_PACKET_TYPE_LORA 1
 #define RADIOLIB_SX126X_MAX_PACKET_LENGTH 255
+#define RADIOLIB_SX126X_IRQ_ALL 0x43FF
 #define RADIOLIB_SX126X_IRQ_TX_DONE 1
 #define RADIOLIB_SX126X_IRQ_TIMEOUT 0x200
 #define RADIOLIB_IRQ_TIMEOUT 9
@@ -39,7 +40,7 @@ struct Driver {
  int16_t standby() {return step("standby");}
  int16_t setDioIrqParams(uint16_t f,uint16_t m) {flags=f;mask=m;return step("dio");}
  int16_t setBufferBaseAddress() {return step("bases");}
- int16_t clearIrqStatus() {return step("clear");}
+ int16_t clearIrqStatus(uint16_t flags) {assert(flags==RADIOLIB_SX126X_IRQ_ALL);return step("clear");}
  uint8_t getPacketType() {calls.emplace_back("packettype");return modem;}
  int16_t setPacketParams(uint16_t p,uint8_t crc,uint8_t len,uint8_t h,uint8_t iq) {
    packet={p,crc,len,h,iq};return step("packet");

@@ -26,7 +26,7 @@
         rc=setDioIrqParams(getIrqMapped(cfg->receive.irqFlags),getIrqMapped(cfg->receive.irqMask));
         if(rc) return rc;
         rc=setBufferBaseAddress();if(rc) return rc;
-        rc=clearIrqStatus();if(rc) return rc;
+        rc=clearIrqStatus(RADIOLIB_SX126X_IRQ_ALL);if(rc) return rc;
         if(getPacketType()!=RADIOLIB_SX126X_PACKET_TYPE_LORA) return RADIOLIB_ERR_UNKNOWN;
         rc=setPacketParams(preambleLengthLoRa,crcTypeLoRa,implicitLen,headerType,invertIQEnabled);
         if(cfg->receive.timeout==0xFFFFFFFFUL) cfg->receive.timeout=0xFFFFFFUL;
@@ -40,7 +40,7 @@
         if(rc) return rc;
         rc=setBufferBaseAddress();if(rc) return rc;
         rc=writeBuffer(cfg->transmit.data,cfg->transmit.len);if(rc) return rc;
-        rc=clearIrqStatus();if(rc) return rc;
+        rc=clearIrqStatus(RADIOLIB_SX126X_IRQ_ALL);if(rc) return rc;
         rc=fixSensitivity();if(rc) return rc;
       } else return RADIOLIB_ERR_UNSUPPORTED;
       stagedMode=mode;
