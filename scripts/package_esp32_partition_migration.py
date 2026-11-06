@@ -744,7 +744,8 @@ def published_full_image(records: list[dict], target: str) -> Path | None:
 def package_board(name: str, spec: dict, build_dir: Path, output_dir: Path,
                   version: str, source: str,
                   pio_build_dir: Path | None = None, *,
-                  release_build_dir: Path | None = None) -> Path:
+                  release_build_dir: Path | None = None,
+                  expander_evaluation_dir: Path | None = None) -> Path:
     utility_build_dir = resolve_pio_build_dir(pio_build_dir)
     target = spec["target"]
     target_id = target_id_for_env(target)
@@ -810,7 +811,31 @@ def package_board(name: str, spec: dict, build_dir: Path, output_dir: Path,
     meshtext_notice = validate_meshtext_notice(artifact_dir / stem)
     if meshtext_notice is not None:
         files[meshtext_notice.name] = meshtext_notice.read_bytes()
-    if spec.get("expander_bridge"):
+    expander_evaluation = None
+    if expander_evaluation_dir is not None:
+        from esp32_migration_expanders import evaluate_candidate
+        evaluation_path = expander_evaluation_dir / (name + ".json")
+        candidate_path = expander_evaluation_dir / (name + ".bin")
+        if not evaluation_path.is_file() or not candidate_path.is_file():
+            raise ValueError(f"{name}: missing expander build evidence")
+        expander_body = candidate_path.read_bytes()
+        expander_evaluation = json.loads(evaluation_path.read_text(encoding="utf-8"))
+        if expander_evaluation != evaluate_candidate(name, spec, expander_body, version):
+            raise ValueError(f"{name}: expander build evidence does not match candidate")
+        if expander_body != bridge_with_successor_endf(expander_body, bridge_ident):
+            raise ValueError(f"{name}: expander EndF does not match the exact Full target")
+        if expander_evaluation["decision"] == "combined":
+            expander_image = bridge_with_successor_endf(expander_body, bridge_ident)
+            expander_mota = mota_full(expander_image, bridge_ident, 1024)
+            check_esp32_stage(expander_mota, expander_image, LEGACY_SLOT_BYTES)
+            files["partition-expander.bin"] = expander_image
+            files["partition-expander.mota"] = expander_mota
+        elif expander_evaluation["decision"] == "oversize":
+            # Internal proof only. The standalone publisher never exposes it.
+            files["expander-candidate.bin"] = expander_body
+        else:
+            raise ValueError(f"{name}: unsupported expander evaluation decision")
+    elif spec.get("expander_bridge"):
         expander_body = (utility_build_dir / spec["expander_bridge"] /
                          "firmware.bin").read_bytes()
         expander_image = bridge_with_successor_endf(expander_body, bridge_ident)
@@ -867,15 +892,24 @@ def package_board(name: str, spec: dict, build_dir: Path, output_dir: Path,
             "completion": "verified-target-table-nvs-restoration-otadata",
         },
         "lora_bridge_mode": ("self-hosted-either-slot-verified-configuration"
-                             if spec.get("expander_bridge") == spec.get("lora_bridge")
+                             if (expander_evaluation is not None
+                                 and expander_evaluation["decision"] == "combined")
+                             or (expander_evaluation is None and
+                                 spec.get("expander_bridge") == spec.get("lora_bridge"))
                              else "slot-b-only-full-identity-recovery"
                              if spec["flash_bytes"] == 4 * 1024 * 1024
                              else "either-slot-preserve-receiver"),
-        "partition_expander": spec.get("expander_bridge"),
+        "partition_expander": (expander_evaluation["environment"]
+                               if expander_evaluation is not None and
+                               expander_evaluation["decision"] == "combined"
+                               else spec.get("expander_bridge")
+                               if expander_evaluation is None else None),
         "full_mota_seeder_scratch_bytes": full_mota_blocks * 4,
         "files": {filename: {"bytes": len(data), "sha256": sha256(data)}
                   for filename, data in files.items()},
     }
+    if expander_evaluation is not None:
+        manifest["expander_evaluation"] = expander_evaluation
     files["manifest.json"] = (json.dumps(manifest, indent=2) + "\n").encode()
     files["SHA256SUMS.txt"] = "".join(
         f"{sha256(data)}  {filename}\n" for filename, data in sorted(files.items())
@@ -900,6 +934,8 @@ def main() -> None:
     parser.add_argument("--pio-build-dir", type=Path,
                         help="explicit utility build tree (default: actual resolved PlatformIO "
                              "build directory; relative paths use the project root)")
+    parser.add_argument("--expander-evaluation-dir", type=Path,
+                        help="validated per-board expander candidates and capacity proofs")
     parser.add_argument("--output-dir", type=Path, required=True)
     parser.add_argument("--version", required=True)
     parser.add_argument("--source", required=True, help="eight-character source commit")
@@ -916,7 +952,8 @@ def main() -> None:
     selected = dict.fromkeys(args.board or BOARDS)
     archives = [package_board(name, BOARDS[name], args.build_dir, args.output_dir,
                               args.version, args.source, utility_build_dir,
-                              release_build_dir=args.release_build_dir)
+                              release_build_dir=args.release_build_dir,
+                              expander_evaluation_dir=args.expander_evaluation_dir)
                 for name in selected]
     for archive in archives:
         print(f"{archive}: {archive.stat().st_size} bytes")

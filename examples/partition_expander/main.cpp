@@ -18,9 +18,14 @@
 #include <helpers/StaticPoolPacketManager.h>
 #include <helpers/ota/OtaContext.h>
 #include <helpers/ota/OtaApply.h>
+#include <stddef.h>
 
 #ifndef MOTA_MIGRATION_TARGET_ID
 #error "Partition Expander must pin the exact successor Full target ID"
+#endif
+
+#if defined(ARDUINO_USB_CDC_ON_BOOT) && ARDUINO_USB_CDC_ON_BOOT
+#error "Partition Expander must disable native USB CDC during flash migration"
 #endif
 
 #ifndef LORA_FREQ
@@ -37,6 +42,18 @@
 #endif
 
 namespace {
+
+// The release packager checks the compiled value, rather than trusting a
+// generated environment name, before offering this board/role's bridge.
+struct ExpanderTargetDescriptor {
+  char marker[24];
+  uint32_t target_id;
+};
+static_assert(offsetof(ExpanderTargetDescriptor, target_id) == 24,
+              "expander target marker layout must be stable");
+const volatile ExpanderTargetDescriptor expander_target = {
+  "MC_EXPANDER_TARGET_V1", (uint32_t)MOTA_MIGRATION_TARGET_ID
+};
 
 class ExpanderMesh final : public mesh::Mesh {
  public:
@@ -129,7 +146,7 @@ void startLoRaReceiver() {
 
   the_mesh.begin();
   auto& ota = mesh::ota::ota_ctx();
-  ota.manager.set_auto_migration_target((uint32_t)MOTA_MIGRATION_TARGET_ID);
+  ota.manager.set_auto_migration_target(expander_target.target_id);
   ota.manager.set_auto_version_floor(0, false);
   ota.manager.set_autofetch(mesh::ota::OtaManager::AUTOFETCH_ANY);
   lora_ready = true;
@@ -192,7 +209,7 @@ void loop() {
         || !mesh::ota::mota_parse_manifest(manifest_bytes,
                                             sizeof(manifest_bytes), manifest)
         || !manifest.is_full()
-        || manifest.target_id != (uint32_t)MOTA_MIGRATION_TARGET_ID) {
+        || manifest.target_id != expander_target.target_id) {
       Serial.println("Partition Expander: staged image is not the pinned Full target");
       return;
     }
