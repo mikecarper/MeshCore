@@ -181,6 +181,62 @@ def catalog_harness(fault=''):
 
 
 class CompanionBrowserRuntimeTest(unittest.TestCase):
+    def test_connection_progress_is_visible_until_contacts_arrive(self):
+        if not BROWSER:
+            if os.environ.get('MESHCORE_REQUIRE_OTA_BROWSER') == '1': self.fail('Chromium is required')
+            self.skipTest('Chromium unavailable')
+        port = "const port=new Port();Object.defineProperty(navigator,'serial',{value:{requestPort:async()=>port},configurable:true});"
+        delayed_port = r'''const port=new Port();let releaseOpen,releaseContacts;
+  const openGate=new Promise(r=>releaseOpen=r),contactsGate=new Promise(r=>releaseContacts=r),open=port.open.bind(port);
+  port.open=async()=>{await openGate;await open();};
+  Object.defineProperty(navigator,'serial',{value:{requestPort:async()=>port},configurable:true});'''
+        queue = "queueMicrotask(()=>{this.push(wire(Uint8Array.of(2,rows.length,0,0,0)));for(const c of rows)this.push(wire(c));this.push(wire(Uint8Array.of(4,0,0,0,0)));});return;}"
+        delayed_queue = "contactsGate.then(()=>{this.push(wire(Uint8Array.of(2,rows.length,0,0,0)));for(const c of rows)this.push(wire(c));this.push(wire(Uint8Array.of(4,0,0,0,0)));});return;}"
+        start = "if(el('source').value!=='companion')throw Error('Companion is not default');el('connect').click();await wait(()=>!el('inspect').disabled||el('status').textContent.includes('Error:'));"
+        inspect = r'''el('connect').click();
+    const progress=()=>el('contact-status').textContent,shown=()=>{const e=el('contact-status'),r=e.getBoundingClientRect(),s=getComputedStyle(e);return r.width>0&&r.height>0&&s.display!=='none'&&s.visibility==='visible';};
+    await wait(()=>/connecting/i.test(progress()));if(!shown()||!el('connect').disabled)throw Error('connecting indicator not visible');
+    releaseOpen();await wait(()=>/loading/i.test(progress()));if(!shown()||!el('connect').disabled||el('contact').querySelector('button'))throw Error('contacts loading indicator not visible');
+    releaseContacts();await wait(()=>!el('inspect').disabled||el('status').textContent.includes('Error:'));
+    await report({progress:progress(),count:el('contact').querySelectorAll('button').length,connectDisabled:el('connect').disabled,status:el('status').textContent});return;'''
+        for source, replacement in ((port,delayed_port),(queue,delayed_queue),(start,inspect)):
+            self.assertEqual(HARNESS.count(source),1)
+        harness=HARNESS.replace(port,delayed_port).replace(queue,delayed_queue).replace(start,inspect)
+        result=run_harness(harness,timeout=45)
+        self.assertNotIn('error',result,result)
+        self.assertEqual(result['count'],5,result)
+        self.assertRegex(result['progress'],r'(?i)\b5\s+devices?\s+found')
+        self.assertTrue(result['connectDisabled'],result)
+
+    def test_connection_cancellation_and_failure_allow_retry(self):
+        if not BROWSER:
+            if os.environ.get('MESHCORE_REQUIRE_OTA_BROWSER') == '1': self.fail('Chromium is required')
+            self.skipTest('Chromium unavailable')
+        port = "const port=new Port();Object.defineProperty(navigator,'serial',{value:{requestPort:async()=>port},configurable:true});"
+        start = "if(el('source').value!=='companion')throw Error('Companion is not default');el('connect').click();await wait(()=>!el('inspect').disabled||el('status').textContent.includes('Error:'));"
+        inspect = r'''el('connect').click();await wait(()=>!el('connect').disabled);
+    const failure=el('contact-status').textContent;if(!/cancel|failed|unable|could not/i.test(failure))throw Error('connection result not visible: '+failure);
+    el('connect').click();await wait(()=>!el('inspect').disabled);
+    await report({failure,progress:el('contact-status').textContent,count:el('contact').querySelectorAll('button').length});return;'''
+        self.assertEqual(HARNESS.count(port),1)
+        self.assertEqual(HARNESS.count(start),1)
+        for reason in ('cancel','failure','open_failure'):
+            with self.subTest(reason=reason):
+                if reason in ('cancel','failure'):
+                    fault = "throw new DOMException('No port selected','NotFoundError')" if reason=='cancel' else "throw Error('USB is busy')"
+                    simulated = "const port=new Port();let attempts=0;Object.defineProperty(navigator,'serial',{value:{requestPort:async()=>{if(!attempts++){"+fault+";}return port;}},configurable:true});"
+                else:
+                    simulated = "const port=new Port();let attempts=0;const open=port.open.bind(port);port.open=async()=>{if(!attempts++)throw Error('USB is busy');return open();};Object.defineProperty(navigator,'serial',{value:{requestPort:async()=>port},configurable:true});"
+                harness=HARNESS.replace(port,simulated).replace(start,inspect)
+                # A canceled serial reader cannot retain its pending read when
+                # the same test port is opened again for a retry.
+                harness=harness.replace("cancel:async()=>{if(this.waiter)this.waiter({done:true});}",
+                                        "cancel:async()=>{if(this.waiter){const waiter=this.waiter;this.waiter=null;waiter({done:true});}}")
+                result=run_harness(harness,timeout=45)
+                self.assertNotIn('error',result,result)
+                self.assertEqual(result['count'],5,result)
+                self.assertRegex(result['progress'],r'(?i)\b5\s+devices?\s+found')
+
     def test_auto_selected_catalog_firmware_completes_simulated_update(self):
         if not BROWSER:
             if os.environ.get('MESHCORE_REQUIRE_OTA_BROWSER') == '1': self.fail('Chromium is required')
