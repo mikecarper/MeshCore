@@ -4387,7 +4387,10 @@ This second timer is independent of the primary interval, available on boards
 with a full-reset implementation, RAM-only and **disabled after every reboot**.
 On compact Wio-E5/STM32WL profiles it is omitted by default to preserve flash
 headroom; `get agc.old` and `set agc.old` return `Error: unsupported` there.
-Their primary pulse and cached pulse diagnostics remain available. Ordinary
+Their primary pulse and cached `agc.status`, `agc.pulse` and `agc.scan` proof
+pages remain available. The verbose `agc.timing`, `agc.recovery`, `agc.sleep`
+and `agc.checks` pages return `Error: unsupported` on compact STM32 builds.
+Ordinary
 RXPS policy can remain unsupported independently of this periodic pulse.
 Build with `MESH_ENABLE_OLD_AGC=1` to opt in when the image fits. Other profiles
 enable this capability by default; `MESH_ENABLE_OLD_AGC=0` omits it. This choice
