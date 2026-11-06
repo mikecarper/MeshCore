@@ -18,6 +18,9 @@
 #include <helpers/StaticPoolPacketManager.h>
 #include <helpers/ota/OtaContext.h>
 #include <helpers/ota/OtaApply.h>
+#if defined(USE_LR2021) && defined(MESHNOLOGY_W12)
+#include <helpers/radiolib/LR2021CalibrationSettings.h>
+#endif
 #include <stddef.h>
 
 #ifndef MOTA_MIGRATION_TARGET_ID
@@ -110,16 +113,32 @@ bool loadPrimaryRadio(mesh::RadioProfileParams& profile) {
 void startLoRaReceiver() {
   board.begin();
   board.applyMcuRegulator(mesh::power::RegulatorMode::Default);
+  if (!SPIFFS.begin(false)) {
+    Serial.println("Partition Expander: identity filesystem unavailable");
+    return;
+  }
+#if defined(USE_LR2021) && defined(MESHNOLOGY_W12)
+  // W12 oscillator and digital frequency correction must be configured
+  // before radio_init(), just as in the ordinary firmware.
+  const bool has_calibration = SPIFFS.exists("/radio_xtrim")
+      || SPIFFS.exists("/radio_xtrim.bak") || SPIFFS.exists("/radio_xtrim.tmp")
+      || SPIFFS.exists("/radio_calibration")
+      || SPIFFS.exists("/radio_calibration.bak")
+      || SPIFFS.exists("/radio_calibration.tmp")
+      || SPIFFS.exists("/radio_calibration.journal")
+      || SPIFFS.exists("/radio_calibration.journal.tmp");
+  if (!mesh::lr2021::loadLR2021CalibrationSettings(&SPIFFS, radio_driver)
+      && has_calibration) {
+    Serial.println("Partition Expander: saved radio calibration unavailable; Wi-Fi recovery remains available");
+    return;
+  }
+#endif
   if (!radio_init()) {
     Serial.println("Partition Expander: radio init failed; Wi-Fi recovery remains available");
     return;
   }
   fast_rng.begin(radio_driver.getRngSeed());
 
-  if (!SPIFFS.begin(false)) {
-    Serial.println("Partition Expander: identity filesystem unavailable");
-    return;
-  }
   IdentityStore identity(SPIFFS, "/identity");
   if (identity.loadResult("_main", the_mesh.self_id) != IdentityLoadResult::Loaded) {
     Serial.println("Partition Expander: private identity unavailable; LoRa disabled");

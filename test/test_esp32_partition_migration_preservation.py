@@ -62,8 +62,15 @@ int main(int argc,char**argv) {
     SPIFFS.add("/com_prefs",512);SPIFFS.add("/s_contacts",2048);
     SPIFFS.add("/s_login_replay",256);SPIFFS.add("/radio_profiles",1024);
     SPIFFS.add("/mqtt_prefs",2888);SPIFFS.add("/management",512);
+    for(const char* path:{"/radio_xtrim","/radio_xtrim.bak","/radio_xtrim.tmp",
+        "/radio_calibration","/radio_calibration.bak","/radio_calibration.tmp",
+        "/radio_calibration.journal","/radio_calibration.journal.tmp"})
+      SPIFFS.add(path,26);
     assert(preflightStrictPreservation(migration::kTarget4MB));
     assert(SPIFFS.begins==1&&SPIFFS.ends==1);
+    SPIFFS.add("/radio_calibration.unknown",26);
+    assert(!preflightStrictPreservation(migration::kTarget4MB));
+    assert(strstr(status_text,"unpreserved"));
   } else if(scenario==1) {
     for(const char* path:{"/custom.ini","/mqtt_prefs.tmp","/identity/other.id","/logs.txt"}) {
       SPIFFS.base();SPIFFS.add(path,10);
@@ -128,7 +135,8 @@ int main(int argc,char**argv) {
     assert(!preflightStrictPreservation(migration::kTarget4MB));
   } else if(scenario==6) {
     migration::PreservationBudget budget(65536);
-    for(unsigned i=0;i<33;++i)assert(budget.addFile(96));
+    for(unsigned i=0;i<migration::PreservationBudget::kMaximumFiles;++i)
+      assert(budget.addFile(96));
     assert(!budget.addFile(96));
     migration::PreservationBudget large(65536);
     assert(large.addFile(96)&&large.addFile(16384));
