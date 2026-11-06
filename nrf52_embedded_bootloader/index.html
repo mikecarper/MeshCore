@@ -2529,10 +2529,16 @@ the exact board's <a href="https://github.com/mikecarper/Adafruit_nRF52_Bootload
 in one application image. After installing that application, it checks the
 bootloader once at 70 seconds after startup and updates it when needed. The
 check waits for idle radio and OTA activity, and skips a valid matching
-bootloader at the same or newer version. Reviewed stock bootloaders, including
-RAK 0.4.3, are supported by exact installed-image hashes rather than their names.
-Recovery and unrecognized bootloaders are excluded from automatic installation. Ordinary firmware has no automatic
-bootloader update.</p>
+bootloader at the same or newer version. Reviewed stock bootloaders are checked by exact installed-image hashes rather
+than their names. Recovery and unrecognized bootloaders are excluded from
+automatic installation. Ordinary firmware has no automatic bootloader update.</p>
+<p><strong>XIAO and Sense:</strong> The installed bootloader must match the bundled candidate.
+The two factory bootloaders have distinct reviewed image hashes; OTAFIX uses
+distinct board IDs. A base-XIAO bundle skips a Sense bootloader, and unknown or
+mismatched loaders are refused. Existing XIAO bundles contain only the base
+candidate, so they do not automatically update a Sense bootloader. These checks
+identify the installed bootloader; they cannot verify the physical module if a
+different bootloader was previously installed manually.</p>
 <p>This follows the internal-flash bridge in
 <a href="https://github.com/MeshEnvy/meshcore-firmware/pull/2">MeshEnvy firmware PR #2</a>.
 The replacement stays inside the running application's verified image until
@@ -2575,16 +2581,17 @@ candidate's board and runtime layout. Modern identity mismatches never fall back
 to stock-loader rules. Current all-in-one Repeater and Room Server builds also
 include a small, exact-byte stock inventory automatically; no environment variable
 or separate legacy file is needed for those images. The initial reviewed inventory
-covers the published factory RAK 0.3.2/0.4.1/0.4.2/0.4.3/0.4.4 images on RAK4631
-and RAK3401, R1 Neo's own image, T114 vendor images, T-Echo/Lite, T1000-E's recovery
-image, Wio Tracker L1, and the exact XIAO base/Sense product images. See
+covers reviewed stock images for RAK4631, RAK3401, R1 Neo, T114, T-Echo/Lite,
+T1000-E, Wio Tracker L1 and matching XIAO product images. XIAO Plus stock
+bootloaders are not admitted until their replacement compatibility is verified. See
 <a href="https://github.com/mikecarper/MeshCore/blob/keymindCascade/scripts/nrf52_legacy_bootloaders.py"><code>nrf52_legacy_bootloaders.py</code></a>
 for exact source URLs, file and padded-image hashes, hardware and layout mappings.</p>
 <p>Each entry binds the entire 40 KiB bootloader region, the physical build target,
 the replacement profile and the S140/application layout. A different byte, shared
 USB ID or a matching version string is insufficient. A RAK3401 may legitimately
-have the factory RAK4631 loader; its replacement is still the exact RAK3401 profile.
-Related boards do not inherit representative module/SDK hashes automatically.
+have the factory RAK4631 loader; the selected build target determines its
+board-specific replacement. Related boards do not inherit representative
+module/SDK hashes automatically.
 Unknown or recovery images remain excluded, and flash protection, MBR geometry,
 watchdog and durable-state checks remain mandatory. These are source/image
 compatibility checks, not a claim that every transition or power interruption has

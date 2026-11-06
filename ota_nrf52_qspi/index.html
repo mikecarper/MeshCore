@@ -3260,6 +3260,10 @@ operator can deliberately override the routing target for a role change, so
 <code>target_id</code> is not an apply-time safety assertion; the destination still
 enforces the package's hardware identity before approval.</p>
 <h2 id="explicit-xiao-bootloader-updates-over-lora">Explicit XIAO bootloader updates over LoRa</h2>
+<p>The installed and replacement bootloaders must have matching board IDs and
+names. This preserves the installed XIAO or Sense bootloader type. It cannot
+determine the physical module if its bootloader was previously replaced with
+the wrong type. Ordinary application firmware OTA is unchanged.</p>
 <p>This section documents the deployed XIAO raw-QSPI layout. Curated nRF52840
 targets without external staging use a separate internal-flash layout with the
 same explicit operator safety model; see
