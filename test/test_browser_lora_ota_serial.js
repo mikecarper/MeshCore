@@ -122,6 +122,30 @@ test('connecting without starting a peer job does not close one', async () => {
   assert.equal(port.commands.includes('ota.peer close'),false);
 });
 
+test('blank password uses repeater ACL without selecting ACL mode', async () => {
+  const port = new FakePort(), target = 'b'.repeat(64);
+  const link = new RepeaterTransport(port, {knownRepeater:target, openSettle:0, pollMs:0});
+  await link.open();
+  assert.equal(await link.verifyPeer(target, ''), target);
+  assert.equal(await link.remoteCommand(target, '', 'get tx'), 'OK');
+  assert.ok(port.commands.includes('ota.peer acl ' + target));
+  assert.ok(port.commands.includes('ota.peer cmd.acl ' + target + ' get tx'));
+  assert.equal(port.commands.some(cmd => cmd.startsWith('ota.peer login')), false);
+  await link.close();
+});
+
+test('nonempty password keeps repeater login and command flow', async () => {
+  const port = new FakePort(), target = 'b'.repeat(64);
+  const link = new RepeaterTransport(port, {knownRepeater:target, openSettle:0, pollMs:0});
+  await link.open();
+  assert.equal(await link.verifyPeer(target, 'example'), target);
+  assert.equal(await link.remoteCommand(target, 'example', 'get tx'), 'OK');
+  assert.ok(port.commands.includes('ota.peer login.repeater ' + target + ' example'));
+  assert.ok(port.commands.includes('ota.peer cmd ' + target + ' get tx'));
+  assert.equal(port.commands.some(cmd => cmd.startsWith('ota.peer acl ') || cmd.startsWith('ota.peer cmd.acl ')), false);
+  await link.close();
+});
+
 test('USB transport interleaves admin and folder traffic and detaches on close', async () => {
   const port = new FakePort(), target = 'b'.repeat(64);
   const link = new RepeaterTransport(port, {knownRepeater:target, aclOnly:true, openSettle:0, pollMs:0});

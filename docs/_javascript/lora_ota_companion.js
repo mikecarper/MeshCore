@@ -1,7 +1,8 @@
 /* Exclusive USB Binary Companion transport. Zero-hop only. */
 (function(root,factory){
-  const api=factory();if(typeof module==='object'&&module.exports)module.exports=api;else root.LoraOtaCompanion=api;
-})(typeof globalThis!=='undefined'?globalThis:this,function(){
+  const node=typeof module==='object'&&module.exports;
+  const api=factory(node?require('./lora_ota_port.js'):root.LoraOtaPort);if(node)module.exports=api;else root.LoraOtaCompanion=api;
+})(typeof globalThis!=='undefined'?globalThis:this,function(portHelper){
   'use strict';
   const enc=new TextEncoder(),dec=new TextDecoder(),sleep=ms=>new Promise(r=>setTimeout(r,ms));
   const hex=b=>Array.from(b,x=>x.toString(16).padStart(2,'0')).join('');
@@ -52,7 +53,7 @@
   }
   class CompanionTransport{
     constructor(port,options={}){
-      this.port=port;this.options=options;this.knownRepeater=String(options.knownRepeater||'').toLowerCase();if(this.knownRepeater)unhex(this.knownRepeater);
+      this.port=port;this.options=options;this.portOpened=false;this.knownRepeater=String(options.knownRepeater||'').toLowerCase();if(this.knownRepeater)unhex(this.knownRepeater);
       this.aclOnly=false;this.supportsRoutedPath=false;this.sourceKey=null;this.reader=null;this.writer=null;this.running=false;
       this.failure=null;this.decoder=new Decoder();this.pending=null;this.loginWaiter=null;this.queue=Promise.resolve();this.admin=Promise.resolve();
       this.authenticated=false;this.guard=false;this.investigationEnabled=false;this.investigationCancelled=false;this.investigationAuthenticated=false;this.investigationVerified=false;this.investigationProofPending=false;this.investigationPassword=null;this.investigationPermission='unknown';this.used=new Set();this.timestamp=0;this.serving=false;this.seeder=null;this.radioQueue=[];this.radioRunning=false;this.nextTx=0;this.txQueue=Promise.resolve();this.contactList=[];this.peerType=2;
@@ -60,7 +61,10 @@
     }
     async open(){
       try{
-        await this.port.open({baudRate:115200,bufferSize:4096});this.reader=this.port.readable.getReader();this.writer=this.port.writable.getWriter();this.running=true;
+        await portHelper.openSerialPort(this.port,{signal:this.options.openSignal,onAttempt:this.options.onOpenAttempt,onSuccess:this.options.onOpenSuccess,onAcquired:()=>{this.portOpened=true;},onReleased:()=>{this.portOpened=false;},delayMs:this.options.openRetryDelayMs});
+        this.portOpened=true;
+        if(this.options.openSignal?.aborted)throw new DOMException('Connection canceled','AbortError');
+        this.reader=this.port.readable.getReader();this.writer=this.port.writable.getWriter();this.running=true;
         this.readTask=this.readLoop();await sleep(this.options.openSettle??750);
         const info=await this.command(Uint8Array.of(1,3,32,32,32,32,32,32,109,99,99,108,105),5);
         if(info.length<58)throw Error('Invalid Companion identity response');this.sourceKey=hex(info.slice(4,36));
@@ -245,13 +249,20 @@
         this.assertInvestigationRunning();
         if(this.investigationAuthenticated){if(password!==this.investigationPassword)throw Error('Disconnect and reconnect before changing the admin password');return this.knownRepeater;}
         if(typeof password!=='string'||enc.encode(password).length>15||/[\r\n\0]/.test(password))throw Error('Admin password must fit in 15 bytes');
-        this.investigationProgress('refreshing-contacts','login',this.options.contactsTimeout??60000);
+        this.investigationProgress('refreshing-contacts',password ? 'login' : 'ACL',this.options.contactsTimeout??60000);
         await this.contacts();this.assertInvestigationRunning();this.assertStandardTarget();
-        const response=new Promise((resolve,reject)=>{const timer=setTimeout(()=>{this.loginWaiter=null;reject(Error('Repeater login timed out'));},this.options.remoteTimeout??75000);this.loginWaiter={standard:true,resolve:()=>{clearTimeout(timer);resolve();},reject:e=>{clearTimeout(timer);reject(e);}};});
-        response.catch(()=>{}); // Cancellation can precede the Companion's send acknowledgement.
-        this.investigationProgress('sending-login','login',this.options.commandTimeout??15000);
-        try{await this.command(join(Uint8Array.of(26),unhex(this.knownRepeater),enc.encode(password)),6);this.assertInvestigationRunning();this.investigationProgress('waiting-login','login',this.options.remoteTimeout??75000);await response;this.assertInvestigationRunning();}
-        catch(e){this.loginWaiter?.reject(e);await response.catch(()=>{});throw e;}
+        if(password){
+          const response=new Promise((resolve,reject)=>{const timer=setTimeout(()=>{this.loginWaiter=null;reject(Error('Repeater login timed out'));},this.options.remoteTimeout??75000);this.loginWaiter={standard:true,resolve:()=>{clearTimeout(timer);resolve();},reject:e=>{clearTimeout(timer);reject(e);}};});
+          response.catch(()=>{}); // Cancellation can precede the Companion's send acknowledgement.
+          this.investigationProgress('sending-login','login',this.options.commandTimeout??15000);
+          try{await this.command(join(Uint8Array.of(26),unhex(this.knownRepeater),enc.encode(password)),6);this.assertInvestigationRunning();this.investigationProgress('waiting-login','login',this.options.remoteTimeout??75000);await response;this.assertInvestigationRunning();}
+          catch(e){this.loginWaiter?.reject(e);await response.catch(()=>{});throw e;}
+        }else{
+          // A stored ACL grant can authorize read-only commands directly. An
+          // empty password is not evidence that the target granted access.
+          this.investigationPermission='unknown';
+          this.investigationProgress('checking-acl','ACL',this.options.remoteTimeout??75000);
+        }
         this.investigationProgress('identity','get public.key',this.options.remoteTimeout??75000);
         this.investigationProofPending=true;let proof;
         try{proof=await this.standardReply('get public.key');}finally{this.investigationProofPending=false;}
@@ -271,10 +282,16 @@
       const status=await this.localCommand('get ota.direct');
       if(!/^>?\s*ota\.direct v=2 active=0 busy=0\s*$/i.test(status))throw Error('The Companion OTA mailbox is already in use');
       await this.checkClock();await this.guardMode(1,Uint8Array.of(this.peerType));this.guard=true;
-      const response=new Promise((resolve,reject)=>{const timer=setTimeout(()=>{this.loginWaiter=null;reject(Error('Repeater login timed out'));},this.options.remoteTimeout??75000);this.loginWaiter={resolve:()=>{clearTimeout(timer);resolve();},reject:e=>{clearTimeout(timer);reject(e);}};});
-      this.investigationProgress('sending-login','login',this.options.commandTimeout??15000);
-      try{await this.command(join(Uint8Array.of(26),unhex(this.knownRepeater),enc.encode(password)),6);this.investigationProgress('waiting-login','login',this.options.remoteTimeout??75000);await response;}
-      catch(e){this.loginWaiter?.reject(e);await response.catch(()=>{});throw e;}
+      if(password){
+        const response=new Promise((resolve,reject)=>{const timer=setTimeout(()=>{this.loginWaiter=null;reject(Error('Repeater login timed out'));},this.options.remoteTimeout??75000);this.loginWaiter={resolve:()=>{clearTimeout(timer);resolve();},reject:e=>{clearTimeout(timer);reject(e);}};});
+        this.investigationProgress('sending-login','login',this.options.commandTimeout??15000);
+        try{await this.command(join(Uint8Array.of(26),unhex(this.knownRepeater),enc.encode(password)),6);this.investigationProgress('waiting-login','login',this.options.remoteTimeout??75000);await response;}
+        catch(e){this.loginWaiter?.reject(e);await response.catch(()=>{});throw e;}
+      }else{
+        // The target may already grant this Companion access in its ACL.
+        // Arm a direct return path and require the same full-key proof below.
+        this.investigationProgress('checking-acl','ACL',this.options.remoteTimeout??75000);
+      }
       await this.guardMode(2);
       const deadline=Date.now()+(this.options.remoteTimeout??75000);while(Date.now()<deadline){
         const status=await this.localCommand('get ota.direct');if(/^>?\s*ota\.direct v=2 active=1 busy=0\s*$/i.test(status))break;
@@ -342,7 +359,7 @@
       this.running=false;if(this.pending){clearTimeout(this.pending.timer);this.pending.reject(Error('Connection closed'));this.pending=null;}
       if(this.reader){try{await this.reader.cancel();}catch(_){}try{await this.readTask;}catch(_){}try{this.reader.releaseLock();}catch(_){}}
       if(this.writer){try{await this.writer.close();}catch(_){}try{this.writer.releaseLock();}catch(_){}}
-      try{await this.port.close();}catch(_){}this.investigationPassword=null;this.sourceKey=null;
+      if(this.portOpened){try{await this.port.close();this.portOpened=false;}catch(_){}}this.reader=this.writer=null;this.investigationPassword=null;this.sourceKey=null;
     }
   }
   return {Decoder,CompanionTransport,preservedMessages,preservedSnapshot,clearPreservedMessages};
