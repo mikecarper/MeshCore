@@ -37,6 +37,7 @@ struct Radio : mesh::Radio {
   WarmRxRefresh warm;
   AGCTimingDiagnostics legacy;
   bool supportsWarmRxRefresh() const override { return supported; }
+  bool supportsOldAGC() const override { return supported; }
   @LAB_RADIO_METHODS@
   uint32_t getOldAGCInterval() const override { return old_seconds; }
   bool setOldAGCInterval(uint32_t seconds) override {

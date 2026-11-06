@@ -1685,6 +1685,9 @@ bool  SensorMesh::getGPS(uint8_t channel, float& lat, float& lon, float& alt) {
 }
 
 void SensorMesh::loop() {
+#if MESH_WARM_RX_REFRESH
+  if (_radio && _radio->serviceAGCMaintenanceFastLane()) return;
+#endif
 #if MESH_ENABLE_SENSOR_TRACKER
   // Retire observed expiry even during Morse deferral. A retained deadline
   // otherwise looks future again after half the 32-bit millis range.
@@ -1695,6 +1698,9 @@ void SensorMesh::loop() {
 #endif
   _cli.loop();
   mesh::Mesh::loop();
+#if MESH_WARM_RX_REFRESH
+  if (_radio && _radio->isAGCMaintenanceActive()) return;
+#endif
 #if defined(MESHCORE_HAS_COLOR_DISPLAY)
   if (!mesh::morseTimingActive(_radio)) {
     mesh::ui::refreshDisplayNightLocation(sensors, getRTCClock()->getCurrentTime(), millis());

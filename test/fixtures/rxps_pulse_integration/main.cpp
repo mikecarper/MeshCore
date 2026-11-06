@@ -371,10 +371,38 @@ static void tuples() {
   }
 }
 
+static void fastLane() {
+  Wrapper w;unsigned slow_work=0;
+  auto app_loop=[&]() {
+    if(w.serviceAGCMaintenanceFastLane()) return;
+    ++slow_work;now_us+=10000; // A board ADC/UI operation longer than sleep.
+  };
+  assert(!w.serviceAGCMaintenanceFastLane() && w.module.calls.empty());
+  begin(w,3116);const uint32_t armed=w._rxps_pulse.armed_at;
+  now_us=armed+1;app_loop();assert(slow_work==0);
+  const size_t calls=w.module.calls.size(),switches=w.module.switches.size();
+  now_us=armed+w._rxps_pulse.rx_us;w.module.busy=true;app_loop();
+  now_us+=1000;app_loop();assert(slow_work==0);
+  assert(w.module.calls.size()==calls && w.module.switches.size()==switches);
+  now_us+=2000;w.module.busy=false;app_loop();
+  assert(slow_work==0 && w._rxps_pulse.ok==1 && !w._rxps_pulse.pending);
+  app_loop();assert(slow_work==1); // Normal work resumes on the next pass.
+  Wrapper packet;packet.module.inject_standby=1;packet.module.inject_irq=2;
+  const auto before=packet.module.registers;begin(packet);
+  assert(!packet.serviceAGCMaintenanceFastLane());
+  assert(packet._rxps_pulse.phase==RxpsPulse::Phase::Packet);
+  const size_t packet_calls=packet.module.calls.size();
+  assert(!packet.serviceAGCMaintenanceFastLane() && packet.module.calls.size()==packet_calls);
+  unchanged(packet.module,before); // No FIFO/IRQ consumption by the fast lane.
+  packet.module.irq=0; // The normal Dispatcher/packet owner consumes it.
+  const int rc=packet.startReceiveMode();assert(rc==0);
+  packet._rxps_pulse.receiveEntry(rc,now_us);assert(!packet._rxps_pulse.pending);
+}
+
 int main(int argc,char** argv) {
   assert(argc==2);const std::string name=argv[1];
   if(name=="tuples") { tuples();return 0; }
-  if(name=="normal") normal();else if(name=="faults") faults();else if(name=="packet") packet();
+  if(name=="fast_lane") fastLane();else if(name=="normal") normal();else if(name=="faults") faults();else if(name=="packet") packet();
   else if(name=="sleep") sleep();else if(name=="bounded") bounded();else if(name=="geometry") geometry();
   else if(name=="invalid_geometry") invalidGeometry();else if(name=="mode") mode();else if(name=="iq") iq();
   else if(name=="budget") budget();else if(name=="admission") admission();else if(name=="margin") margin();else assert(false);

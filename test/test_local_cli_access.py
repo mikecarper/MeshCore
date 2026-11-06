@@ -22,6 +22,7 @@ PREAMBLE = r'''
 #include <string>
 #define TBEAM_SX1262 1
 #include <helpers/CLICommandUtils.h>
+#include <helpers/RadioMaintenanceCLI.h>
 #include <helpers/RadioProfileCommandUtils.h>
 #include <helpers/BatteryChargeCLI.h>
 #include <helpers/CompanionLostReply.h>
@@ -405,6 +406,7 @@ class LocalCliAccessTest(unittest.TestCase):
 #include <initializer_list>
 #define MAX_LORA_TX_POWER 22
 #include <helpers/CLICommandUtils.h>
+#include <helpers/RadioMaintenanceCLI.h>
 #include <helpers/radiolib/RadioPowerLimits.h>
 struct Prefs {
   float freq=910.525f,bw=62.5f;

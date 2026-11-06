@@ -270,6 +270,7 @@ class UniversalLoRaRadio : public mesh::Radio {
   MESH_AUTO_LORA_CONST(bool, supportsWarmRxRefresh, (), (), false)
   MESH_AUTO_LORA_CONST(bool, isAGCMaintenanceActive, (), (), false)
   MESH_AUTO_LORA_CONST(bool, isAGCMaintenancePending, (), (), false)
+  MESH_AUTO_LORA_RET(bool, serviceAGCMaintenanceFastLane, (), (), false)
   MESH_AUTO_LORA_VOID(configureAGCMaintenance, (uint32_t seconds), (seconds))
   MESH_AUTO_LORA_VOID(cancelAGCMaintenance, (), ())
   MESH_AUTO_LORA_RET(bool, setAGCPulseSleep, (uint32_t microseconds), (microseconds), false)
@@ -279,6 +280,7 @@ class UniversalLoRaRadio : public mesh::Radio {
   MESH_AUTO_LORA_CONST(bool, getWarmRxLabInterval, (uint32_t& seconds), (seconds), false)
   MESH_AUTO_LORA_CONST(uint32_t, warmRxLabTimerRevision, (), (), 0)
 #endif
+  MESH_AUTO_LORA_CONST(bool, supportsOldAGC, (), (), false)
   MESH_AUTO_LORA_RET(bool, setOldAGCInterval, (uint32_t seconds), (seconds), false)
   MESH_AUTO_LORA_CONST(uint32_t, getOldAGCInterval, (), (), 0)
   MESH_AUTO_LORA_CONST(bool, formatWarmRxRefresh, (uint8_t page, uint32_t seconds, char* reply, size_t capacity), (page, seconds, reply, capacity), false)
@@ -289,6 +291,7 @@ class UniversalLoRaRadio : public mesh::Radio {
   MESH_AUTO_LORA_CONST(unsigned long, getLastRecvMillis, (), (), 0)
   MESH_AUTO_LORA_CONST(unsigned long, getLastRadioInterruptMillis, (), (), 0)
   MESH_AUTO_LORA_CONST(bool, isInRecvMode, (), (), false)
+  MESH_AUTO_LORA_CONST(bool, isRxPowerSavingEnabled, (), (), false)
   MESH_AUTO_LORA_CONST(bool, supportsRxPowerSaving, (), (), false)
   MESH_AUTO_LORA_RET(bool, setRxPowerSaving, (bool enabled, uint32_t rx_us, uint32_t sleep_us), (enabled, rx_us, sleep_us), false)
   MESH_AUTO_LORA_CONST(bool, isRxPowerSavingContinuousFallback, (), (), false)

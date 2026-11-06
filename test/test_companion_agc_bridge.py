@@ -30,7 +30,7 @@ class CompanionAGCBridgeTests(unittest.TestCase):
         source=source.replace('@TRANSACTION@',extract_braced(companion,'if (isCompanionRadioPrefsCommand(command))'))
         (cls.work/'main.cpp').write_text(source,encoding='ascii')
         methods=[]
-        for signature in ('virtual bool supportsWarmRxRefresh(', 'virtual bool setOldAGCInterval(',
+        for signature in ('virtual bool supportsWarmRxRefresh(', 'virtual bool supportsOldAGC(', 'virtual bool setOldAGCInterval(',
                           'virtual uint32_t getOldAGCInterval(', 'virtual bool formatWarmRxRefresh('):
             methods.append(extract_braced(dispatcher,signature))
         methods.append(lab_timer_methods(dispatcher,virtual=True))

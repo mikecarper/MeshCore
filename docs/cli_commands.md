@@ -4282,6 +4282,18 @@ hardware busy-result count.
 
 ---
 
+#### CLI access during a periodic radio refresh
+
+`stats-radio`, `stats-radio-diag`, `stats-packets`, `neighbors`, version and
+reviewed cached configuration/AGC getters remain available during a refresh.
+These commands use retained radio state; they do not probe or restart the radio.
+`stats-core` samples the board battery and is not part of this cached set.
+Hardware-accessing getters, mutations and unclassified commands return
+`Error: radio maintenance pending; retry shortly`. The command has not been
+applied or queued. Retry after the refresh; the device never waits in the CLI
+handler, so the normal radio loop can finish the operation. Request IDs are
+preserved on Companion replies.
+
 #### View or change the AGC Reset Interval
 **Usage:**
 - `get agc.reset.interval`
@@ -4294,7 +4306,12 @@ hardware busy-result count.
 Companion's existing primary text parser retains its 0-255-second input range;
 the short alias uses that same parser and saved setting.
 
-**Default:** `0.0`
+**Default:** `16` seconds for new configurations on every board and role.
+Existing saved values, including `0` (disabled), are retained.
+
+Normal RXPS automatically suspends the primary AGC timer on every board. The
+configured interval is retained; turning RXPS off starts a fresh interval.
+The optional `agc.old` timer remains an independent, explicitly enabled reset.
 
 On Heltec V4 builds based on `Heltec_lora32_v4`, this saved interval schedules
 a same-channel RXPS pulse. The existing value, four-second rounding and adaptive
@@ -4309,8 +4326,10 @@ requires continuous primary LoRa RX, with `radio.rxps` and `radio2` off. It does
 not require radio2 warm, FS or packet-cache shortcuts. An admitted pulse stages
 ordinary LoRa duty-cycle RX, observes a post-arm BUSY low/high/natural-low
 sequence, checks RC standby and RTC cleanup, and checks continuous RX reentry.
-The saved interval and its existing scheduler remain unchanged. Shared recovery
-watchdogs still use their existing full-reset path. A packet, TX, BUSY or another
+The saved interval and its existing scheduler remain unchanged. While a pulse
+owns the radio, application loops service one maintenance step before slow
+board, sensor or UI work. Packet FIFO/IRQ ownership returns to the ordinary
+Dispatcher. Shared recovery watchdogs still use their existing full-reset path. A packet, TX, BUSY or another
 radio owner defers admission; an unadmitted deferral retries after 250 ms. A
 consumed failed attempt retains its failure diagnostics and normal interval.
 
@@ -4321,7 +4340,13 @@ Server, Sensor and Companion text parsers:
 - `set agc.old <seconds>`: `0` disables it; `1-86400` enables it.
 - `set agc.old 600` enables one full reset every ten minutes.
 
-This second timer is RAM-only and **disabled after every reboot**. Enabling it
+This second timer is independent of the primary interval, available on boards
+with a full-reset implementation, RAM-only and **disabled after every reboot**.
+On compact Wio-E5/STM32WL profiles it is omitted by default to preserve flash
+headroom; `get agc.old` and `set agc.old` return `Error: unsupported` there.
+Build with `MESH_ENABLE_OLD_AGC=1` to opt in when the image fits. Other profiles
+enable this capability by default; `MESH_ENABLE_OLD_AGC=0` omits it. This choice
+does not change the primary AGC interval or its hardware-specific method. Enabling it
 does not change the saved primary interval. Its first deadline starts when it
 is enabled; it does not use adaptive escalation or TX postponement. If both
 timers are due, the old reset runs first and the primary pulse is deferred.

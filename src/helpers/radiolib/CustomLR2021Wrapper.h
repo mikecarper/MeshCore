@@ -1023,6 +1023,7 @@ public:
 
   uint8_t getSpreadingFactor() const override { return ((CustomLR2021 *)_radio)->getSpreadingFactor(); }
 
+  bool supportsOldAGC() const override { return false; }
   void doResetAGC() override { }
 
   bool supportsRxBoostedGainMode() const override { return true; }

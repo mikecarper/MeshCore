@@ -4329,6 +4329,10 @@ static bool usbLoggingRecoverySafe(void*) {
 }
 
 void loop() {
+#if MESH_WARM_RX_REFRESH
+  // Service the short radio lease before board, sensor, UI or transport work.
+  if (radio_driver.serviceAGCMaintenanceFastLane()) return;
+#endif
 #if defined(BLE_PIN_CODE)
   serviceCompanionUsbBluetoothPriority();
 #endif
@@ -4381,6 +4385,9 @@ void loop() {
   the_mesh_cp.loop();
 #else
   the_mesh.loop();
+#endif
+#if MESH_WARM_RX_REFRESH
+  if (radio_driver.serviceAGCMaintenanceFastLane()) return;
 #endif
 #if defined(NRF52_PLATFORM) && defined(EXTRAFS) && !defined(QSPIFLASH)
   // The flash-page number is retained across a software reset without trying

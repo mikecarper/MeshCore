@@ -134,7 +134,7 @@ extern "C" caddr_t _sbrk(int increment);
   #define DEFAULT_FLOOD_ADVERT_INTERVAL_HOURS 47
 #endif
 #ifndef DEFAULT_AGC_RESET_INTERVAL_SECONDS
-  #define DEFAULT_AGC_RESET_INTERVAL_SECONDS 0
+  #define DEFAULT_AGC_RESET_INTERVAL_SECONDS 16
 #endif
 #ifndef DEFAULT_RX_DELAY_BASE
   #define DEFAULT_RX_DELAY_BASE 0.0f
@@ -3962,9 +3962,6 @@ MyMesh::MyMesh(mesh::MainBoard &board, mesh::Radio &radio, mesh::MillisecondCloc
   _prefs.battery_alert_low_percent = BATTERY_ALERT_LOW_PERCENT_DEFAULT;
   _prefs.battery_alert_critical_percent = BATTERY_ALERT_CRITICAL_PERCENT_DEFAULT;
   _prefs.powersaving_enabled = DEFAULT_POWERSAVING_ENABLED ? 1 : 0;
-#ifdef WITH_MQTT_BRIDGE
-  _prefs.agc_reset_interval = 7;    // 28 seconds (secs/4) - prevents AGC drift on long-running observers
-#endif
   // Observer defaults (radio_watchdog, alert.*, snmp.*) moved to applyMQTTDefaults()
   // in MQTTDefaults.h - they live in /mqtt_prefs now, not NodePrefs.
   _prefs.rx_powersaving_enabled = DEFAULT_RXPS_ENABLED ? 1 : 0;
@@ -13561,6 +13558,9 @@ void MyMesh::handleCommand(uint32_t sender_timestamp, ClientInfo* sender, char *
 }
 
 void MyMesh::loop() {
+#if MESH_WARM_RX_REFRESH
+  if (_radio && _radio->serviceAGCMaintenanceFastLane()) return;
+#endif
 #if MESH_ENABLE_DIRECT_OTA_ADMIN
   direct_ota_admin.service(*this, millis());
 #endif
@@ -13573,6 +13573,9 @@ void MyMesh::loop() {
   // Check radio FIRST to ensure we don't miss incoming packets
   // MQTT processing runs in a separate FreeRTOS task on Core 0, so we don't call bridge.loop() here
   mesh::Mesh::loop();
+#if MESH_WARM_RX_REFRESH
+  if (_radio && _radio->isAGCMaintenanceActive()) return;
+#endif
 #if defined(MESHCORE_HAS_COLOR_DISPLAY)
   if (!mesh::morseTimingActive(_radio)) {
     mesh::ui::refreshDisplayNightLocation(sensors, getRTCClock()->getCurrentTime(), millis());

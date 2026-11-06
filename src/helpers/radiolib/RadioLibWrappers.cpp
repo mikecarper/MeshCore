@@ -1843,7 +1843,11 @@ mesh::AGCMaintenanceResult RadioLibWrapper::periodicAGCMaintenance(bool adaptive
   return Result::Deferred;
 }
 
+#endif
+
+#if MESH_ENABLE_OLD_AGC && !MESH_COMPACT_STM32_RADIO
 mesh::AGCMaintenanceResult RadioLibWrapper::periodicOldAGCMaintenance() {
+  if(!supportsOldAGC()) return mesh::AGCMaintenanceResult::Deferred;
 #if defined(MESH_AGC_TIMING_DIAGNOSTICS) && MESH_AGC_TIMING_DIAGNOSTICS
   AGCTimingDiagnostics::PeriodicRequest diagnostic_request(_agc_timing);
 #endif

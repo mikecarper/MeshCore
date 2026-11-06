@@ -7,6 +7,7 @@
 #include <string>
 #include <vector>
 #include <helpers/CLICommandUtils.h>
+#include <helpers/RadioMaintenanceCLI.h>
 #include <helpers/CompanionFrameLimits.h>
 #include <helpers/CompanionHardwareCommandCompat.h>
 #include "../usb_mode_console.h"

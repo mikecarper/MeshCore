@@ -4286,6 +4286,9 @@ bool MyMesh::saveFilter(ClientInfo* client) {
 }
 
 void MyMesh::loop() {
+#if MESH_WARM_RX_REFRESH
+  if (_radio && _radio->serviceAGCMaintenanceFastLane()) return;
+#endif
 #if defined(WITH_WEBCONFIG) || defined(ETHERNET_ENABLED)
   _local_cli_output.service();
 #endif
@@ -4295,6 +4298,9 @@ void MyMesh::loop() {
   // Check radio FIRST to ensure we don't miss incoming packets
   // MQTT processing can take time, so we prioritize radio reception
   mesh::Mesh::loop();
+#if MESH_WARM_RX_REFRESH
+  if (_radio && _radio->isAGCMaintenanceActive()) return;
+#endif
 #if defined(MESHCORE_HAS_COLOR_DISPLAY)
   if (!mesh::morseTimingActive(_radio)) {
     mesh::ui::refreshDisplayNightLocation(sensors, getRTCClock()->getCurrentTime(), millis());

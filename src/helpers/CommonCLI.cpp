@@ -14,6 +14,7 @@
 #include "PacketFileLoggingConfig.h"
 #include "CommonCLI.h"
 #include "AGCMaintenanceCLI.h"
+#include "RadioMaintenanceCLI.h"
 #ifdef WRAPPER_CLASS
 #include "target.h"
 #endif
@@ -578,7 +579,7 @@ static bool configKeyEquals(const char* config, const char* key) {
 static bool miniUnsupportedWarmAgcGet(const char* config) {
   if (!config || strncmp(config, "agc.", 4) != 0) return false;
   config += 4;
-  return configKeyEquals(config, "old") || configKeyEquals(config, "status")
+  return configKeyEquals(config, "status")
       || configKeyEquals(config, "timing") || configKeyEquals(config, "recovery")
       || configKeyEquals(config, "pulse") || configKeyEquals(config, "sleep")
       || configKeyEquals(config, "checks");
@@ -3771,18 +3772,15 @@ bool CommonCLI::handleUDPBridgeCommand(uint32_t sender_timestamp,
 void CommonCLI::handleCommand(uint32_t sender_timestamp, char* command, char* reply) {
     PrefsSaveReplyGuard save_reply(_prefs_save_failures, reply);
     mesh::cli::normalizeCommandVerb(command);
-#if MESH_RXPS_PULSE_LAB
-    if(sender_timestamp==0 && mesh::handleRxpsPulseLabCommand(_callbacks->getProfileRadio(),command,reply,157)) return;
-#endif
-    // Cached getters remain available during an asynchronous RXPS lease.
-    // Defer mutating commands (including board FEM GPIO) before any driver
-    // or board callback can accidentally assert NSS during retained sleep.
+    // Classify before any handler can access the radio or board. The shared
+    // allowlist includes cached statistics, not every command named "get".
 #if !defined(WIO_E5_MINI_COMPACT_UNSUPPORTED_AGC) || !WIO_E5_MINI_COMPACT_UNSUPPORTED_AGC
     const auto* maintenance_radio=_callbacks->getProfileRadio();
-    if(maintenance_radio && maintenance_radio->isAGCMaintenancePending()
-        && strncmp(command,"get ",4)!=0 && strcmp(command,"ver")!=0) {
-      mesh::cli::formatError(reply,160,"radio maintenance pending; retry shortly");return;
-    }
+    if (mesh::cli::deferForRadioMaintenance(maintenance_radio
+            && maintenance_radio->isAGCMaintenancePending(), command, reply, 160)) return;
+#endif
+#if MESH_RXPS_PULSE_LAB
+    if(sender_timestamp==0 && mesh::handleRxpsPulseLabCommand(_callbacks->getProfileRadio(),command,reply,157)) return;
 #endif
 #if MESH_WARM_RX_LAB_TIMER
     if(mesh::handleWarmRxLabTimerCommand(_callbacks->getProfileRadio(),command,reply,157)) return;
@@ -5185,17 +5183,13 @@ void CommonCLI::handleSetCmd(uint32_t sender_timestamp, char* command, char* rep
       strcpy(reply, "OK");
     }
   } else if (memcmp(config, "agc.old ", 8) == 0) {
-#if defined(WIO_E5_MINI_COMPACT_UNSUPPORTED_AGC) && WIO_E5_MINI_COMPACT_UNSUPPORTED_AGC
-    mesh::cli::formatError(reply,160,"unsupported");
-#else
     auto* radio=_callbacks->getProfileRadio();
     const char* value=skipSpacesConst(config+8);
     uint32_t seconds;
-    if(!radio || !radio->supportsWarmRxRefresh()) mesh::cli::formatError(reply,160,"unsupported");
+    if(!radio || !radio->supportsOldAGC()) mesh::cli::formatError(reply,160,"unsupported");
     else if(!mesh::cli::parseUnsignedIntegerStrict(value,seconds) || seconds>86400) mesh::cli::formatError(reply,160,"old AGC interval must be 0-86400 seconds");
     else if(!radio->setOldAGCInterval(seconds)) mesh::cli::formatError(reply,160,"failed to set old AGC interval");
     else sprintf(reply,"OK - old full-reset interval %lu seconds (RAM only; disabled after reboot)",(unsigned long)seconds);
-#endif
   } else if (memcmp(config, "agc.reset.interval ", 19) == 0 || memcmp(config,"agc ",4)==0) {
     uint32_t seconds;
     const char* value=memcmp(config,"agc ",4)==0 ? config+4 : config+19;
@@ -6627,14 +6621,14 @@ void CommonCLI::handleGetCmd(uint32_t sender_timestamp, char* command, char* rep
       mesh::cli::formatError(reply, 160, "unsupported");
     }
 #endif
+  } else if(configKeyEquals(config,"agc.old")) {
+    const auto* radio=_callbacks->getProfileRadio();
+    if(!radio || !radio->supportsOldAGC()) mesh::cli::formatError(reply,160,"unsupported");
+    else sprintf(reply,"> %lu",(unsigned long)radio->getOldAGCInterval());
 #if defined(WIO_E5_MINI_COMPACT_UNSUPPORTED_AGC) && WIO_E5_MINI_COMPACT_UNSUPPORTED_AGC
   } else if(miniUnsupportedWarmAgcGet(config)) {
     mesh::cli::formatError(reply,160,"unsupported");
 #else
-  } else if(configKeyEquals(config,"agc.old")) {
-    const auto* radio=_callbacks->getProfileRadio();
-    if(!radio || !radio->supportsWarmRxRefresh()) mesh::cli::formatError(reply,160,"unsupported");
-    else sprintf(reply,"> %lu",(unsigned long)radio->getOldAGCInterval());
   } else if(configKeyEquals(config,"agc.status") || configKeyEquals(config,"agc.timing") || configKeyEquals(config,"agc.recovery")
       || configKeyEquals(config,"agc.pulse") || configKeyEquals(config,"agc.sleep") || configKeyEquals(config,"agc.checks")) {
     const auto* radio=_callbacks->getProfileRadio();

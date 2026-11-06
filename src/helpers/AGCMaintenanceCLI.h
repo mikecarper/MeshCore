@@ -63,12 +63,32 @@ inline bool handleRxpsPulseLabCommand(Radio* radio,const char* command,char* rep
 #endif
 }
 
+// The independent legacy timer also exists on radios without warm refresh.
+// Changing its RAM-only interval does not perform a reset here.
+inline bool handleOldAGCIntervalCommand(Radio* radio, const char* command,
+    char* reply, size_t capacity) {
+  const bool get = strcmp(command, "get agc.old") == 0;
+  const bool set = strncmp(command, "set agc.old ", 12) == 0;
+  if (!get && !set) return false;
+  if (!radio || !radio->supportsOldAGC()) cli::formatError(reply, capacity, "unsupported");
+  else if (get) snprintf(reply, capacity, "> %lu", (unsigned long)radio->getOldAGCInterval());
+  else {
+    uint32_t seconds = 0;
+    if (!cli::parseUnsignedIntegerStrict(command + 12, seconds) || seconds > 86400)
+      cli::formatError(reply, capacity, MESH_CLI_REPLY_TEXT("old AGC interval must be 0-86400 seconds", "old AGC: 0-86400s"));
+    else if (!radio->setOldAGCInterval(seconds)) cli::formatError(reply, capacity, MESH_CLI_REPLY_TEXT("failed to set old AGC interval", "old AGC unchanged"));
+    else snprintf(reply, capacity, MESH_CLI_REPLY_TEXT("OK - old full-reset interval %lu seconds (RAM only; disabled after reboot)", "OK - old AGC %lus (RAM; reboot off)"), (unsigned long)seconds);
+  }
+  return true;
+}
+
 // Runtime-only maintenance controls shared with the Companion text parser.
 // Primary saved interval aliases stay in CommonRadioPrefs so its normal
 // dirty/save/rollback transaction remains authoritative.
 inline bool handleAGCMaintenanceCommand(Radio* radio,const char* command,
     uint32_t primary_seconds,char* reply,size_t capacity) {
   if(!command || !reply || !capacity) return false;
+  if (handleOldAGCIntervalCommand(radio, command, reply, capacity)) return true;
 #if defined(STM32WL_COMPANION_COMPACT_UNSUPPORTED_AGC) && STM32WL_COMPANION_COMPACT_UNSUPPORTED_AGC
 #if defined(MESH_AGC_TIMING_DIAGNOSTICS) && MESH_AGC_TIMING_DIAGNOSTICS
 #error "Compact STM32WL Companion AGC replies require diagnostics to be absent"
@@ -76,35 +96,24 @@ inline bool handleAGCMaintenanceCommand(Radio* radio,const char* command,
   // This radio has no warm-maintenance or diagnostic implementation. Keep
   // the same exact command matches and replies without unreachable dispatch.
   (void)radio; (void)primary_seconds;
-  if(strncmp(command,"set agc.old ",12)==0) {
-    cli::formatError(reply,capacity,"unsupported"); return true;
-  }
   if(strncmp(command,"get agc.",8)==0) {
-    static const char names[]="old\0status\0timing\0recovery\0pulse\0sleep\0checks\0"
-        "old.status\0old.timing\0old.errors\0reset.status\0reset.timing\0reset.errors\0";
+    // Share suffixes instead of retaining each old/reset diagnostic name.
+    static const char names[]="status\0timing\0errors\0recovery\0pulse\0sleep\0checks\0";
     const char* key=command+8;
-    for(const char* item=names; *item; item+=strlen(item)+1) {
-      if(strcmp(key,item)==0) { cli::formatError(reply,capacity,"unsupported"); return true; }
+    bool legacy=false;
+    if(strncmp(key,"old.",4)==0) { key+=4;legacy=true; }
+    else if(strncmp(key,"reset.",6)==0) { key+=6;legacy=true; }
+    unsigned index=0;
+    for(const char* item=names; *item; item+=strlen(item)+1,++index) {
+      if((legacy?index<3:index!=2) && strcmp(key,item)==0) {
+        cli::formatError(reply,capacity,"unsupported"); return true;
+      }
     }
   }
   return false;
 #else
   if(handleWarmRxLabTimerCommand(radio,command,reply,capacity) || handleRxpsPulseLabCommand(radio,command,reply,capacity)) return true;
   const size_t diagnostic_capacity=capacity<157?capacity:157;
-  if(strcmp(command,"get agc.old")==0) {
-    if(!radio || !radio->supportsWarmRxRefresh()) cli::formatError(reply,capacity,"unsupported");
-    else snprintf(reply,capacity,"> %lu",(unsigned long)radio->getOldAGCInterval());
-    return true;
-  }
-  if(strncmp(command,"set agc.old ",12)==0) {
-    uint32_t seconds=0;
-    if(!radio || !radio->supportsWarmRxRefresh()) cli::formatError(reply,capacity,"unsupported");
-    else if(!cli::parseUnsignedIntegerStrict(command+12,seconds) || seconds>86400)
-      cli::formatError(reply,capacity,"old AGC interval must be 0-86400 seconds");
-    else if(!radio->setOldAGCInterval(seconds)) cli::formatError(reply,capacity,"failed to set old AGC interval");
-    else snprintf(reply,capacity,"OK - old full-reset interval %lu seconds (RAM only; disabled after reboot)",(unsigned long)seconds);
-    return true;
-  }
   if(strcmp(command,"get agc.status")==0 || strcmp(command,"get agc.timing")==0
       || strcmp(command,"get agc.recovery")==0 || strcmp(command,"get agc.pulse")==0
       || strcmp(command,"get agc.sleep")==0 || strcmp(command,"get agc.checks")==0) {

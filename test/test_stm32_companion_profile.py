@@ -96,6 +96,7 @@ class CompactSTM32WLCompanionAgcTest(unittest.TestCase):
 #include <cstdint>
 namespace mesh { struct Radio {
   bool supportsWarmRxRefresh() const { return false; }
+  bool supportsOldAGC() const { return false; }
   bool setOldAGCInterval(uint32_t) { return false; }
   uint32_t getOldAGCInterval() const { return 0; }
   bool formatWarmRxRefresh(uint8_t, uint32_t, char*, size_t) const { return false; }

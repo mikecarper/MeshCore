@@ -28,6 +28,7 @@ HARNESS = r'''
 #include <vector>
 #include <helpers/FleetCommand.h>
 #include <helpers/HardwareCommand.h>
+#include <helpers/RadioMaintenanceCLI.h>
 #include <helpers/CLIReplyText.h>
 #include <helpers/TempRadioReplyBarrier.h>
 #include "regulator_cli_stub.h"
@@ -1549,6 +1550,7 @@ class CompanionFleetControlTests(unittest.TestCase):
 #include <cstdio>
 #include <cstring>
 #include <helpers/FleetCommand.h>
+#include <helpers/RadioMaintenanceCLI.h>
 #include "regulator_cli_stub.h"
 #include "usb_mode_console.h"
 static_assert(MESH_ENABLE_FLEET_CONTROL == 0, "compact profile must disable fleet");

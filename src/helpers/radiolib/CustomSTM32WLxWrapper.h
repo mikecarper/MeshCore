@@ -23,6 +23,12 @@ protected:
   int8_t readReceiveMode() override { return sx126xReceiveMode((SX126x*)_radio); }
 
 public:
+#if MESH_COMPACT_STM32_RADIO
+  // Enabling RXPS here requires restoring the virtual cached-policy query in
+  // the compact ABI. Never silently enable it while that query is fixed false.
+  static_assert(!SupportsRxPowerSaving, "Compact STM32WL must update its RXPS policy API before enabling RXPS");
+  bool supportsRxPowerSaving() const final override { return false; }
+#endif
   ~CustomSTM32WLxWrapper() { unregisterInterruptAction(); }
   CustomSTM32WLxWrapper(CustomSTM32WLx& radio, mesh::MainBoard& board) : RadioLibWrapper(radio, board) { }
 #if MESH_ENABLE_CARRIER_TOOLS

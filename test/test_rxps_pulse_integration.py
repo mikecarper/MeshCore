@@ -30,7 +30,7 @@ def harness():
     admission = body(base, "mesh::AGCMaintenanceResult RadioLibWrapper::periodicAGCMaintenance(")
     admission = admission.replace("RadioLibWrapper::", "")
     sleep_accessors = "\n".join(body(interface, signature).replace(" override", "") for signature in (
-        "bool setAGCPulseSleep(", "uint32_t getAGCPulseSleep("))
+        "bool setAGCPulseSleep(", "uint32_t getAGCPulseSleep(", "bool serviceAGCMaintenanceFastLane("))
     return (FIXTURE / "main.cpp").read_text().replace(
         "@DRIVER@", actual_driver).replace("@WRAPPER@", actual_wrapper + "\n" + admission + "\n" + sleep_accessors)
 
@@ -68,6 +68,9 @@ class PulseIntegrationTest(unittest.TestCase):
                                     text=True, env=environment)
             self.assertEqual(result.returncode, 0, str(binary) + ": " + result.stderr)
             self.assertEqual(result.stdout.strip(), "PASS " + name)
+
+    def test_fast_lane_defers_slow_work_and_hands_packet_to_dispatcher(self):
+        self.run_case("fast_lane")
 
     def test_full_arm_gpio_rtc_and_verified_rx_sequence(self):
         self.run_case("normal")

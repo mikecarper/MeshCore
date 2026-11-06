@@ -61,7 +61,6 @@ protected:
   RxpsPulse _rxps_pulse;
   bool _rxps_pulse_sleep_override=false;
   uint8_t _rxps_pulse_retries=0;
-  uint32_t _old_agc_seconds=0;
 #if MESH_WARM_RX_LAB_TIMER
   bool _warm_rx_lab_timer_active=false;
   uint32_t _warm_rx_lab_timer_ms=0, _warm_rx_lab_timer_revision=0;
@@ -75,6 +74,9 @@ protected:
 #endif
 #if defined(MESH_AGC_TIMING_DIAGNOSTICS) && MESH_AGC_TIMING_DIAGNOSTICS
   AGCTimingDiagnostics _agc_timing;
+#endif
+#if MESH_ENABLE_OLD_AGC && !MESH_COMPACT_STM32_RADIO
+  uint32_t _old_agc_seconds=0;
 #endif
   // Mode is owned by this loop, not by the ISR or another wrapper.
   uint8_t state = 0;
@@ -629,6 +631,9 @@ public:
   bool isInRecvMode() const override;
   bool setRxPowerSaving(bool enabled, uint32_t rx_us, uint32_t sleep_us) override;
   mesh::RadioParamApplyResult trySetRxPowerSaving(bool enabled, uint32_t rx_us, uint32_t sleep_us);
+#if !MESH_COMPACT_STM32_RADIO
+  bool isRxPowerSavingEnabled() const override { return _rx_ps_enabled; }
+#endif
   bool supportsRxPowerSaving() const override { return SupportsRxPowerSaving; }
   RxPowerSavingStatus getRxPowerSavingStatus() const;
   virtual uint32_t rxPowerSavingTransitionUs() const { return rxPowerSavingDefaultTransitionUs(); }
@@ -736,6 +741,16 @@ public:
     return cadScanTimeoutMillis();
   }
   void resetAGC() override;
+#if MESH_ENABLE_OLD_AGC && !MESH_COMPACT_STM32_RADIO
+  // Families with no physical legacy reset explicitly opt out.
+  bool supportsOldAGC() const override { return true; }
+  bool setOldAGCInterval(uint32_t seconds) override {
+    if(!supportsOldAGC() || seconds>86400) return false;
+    _old_agc_seconds=seconds; return true;
+  }
+  uint32_t getOldAGCInterval() const override { return supportsOldAGC()?_old_agc_seconds:0; }
+  mesh::AGCMaintenanceResult periodicOldAGCMaintenance() override;
+#endif
 #if MESH_WARM_RX_REFRESH
 #if MESH_WARM_RX_LAB_TIMER
   bool setWarmRxLabInterval(bool active,uint32_t interval_ms) override {
@@ -753,13 +768,7 @@ public:
   }
   uint32_t warmRxLabTimerRevision() const override { return _warm_rx_lab_timer_revision; }
 #endif
-  bool setOldAGCInterval(uint32_t seconds) override {
-    if(!supportsWarmRxRefresh() || seconds>86400) return false;
-    _old_agc_seconds=seconds; return true;
-  }
-  uint32_t getOldAGCInterval() const override { return supportsWarmRxRefresh()?_old_agc_seconds:0; }
   mesh::AGCMaintenanceResult periodicAGCMaintenance(bool adaptive) override;
-  mesh::AGCMaintenanceResult periodicOldAGCMaintenance() override;
   uint32_t agcMaintenanceRetryMs() const override { return supportsWarmRxRefresh()?250:50; }
   bool formatWarmRxRefresh(uint8_t page,uint32_t seconds,char* reply,size_t capacity) const override {
     if(!supportsWarmRxRefresh()) return false;
@@ -767,6 +776,13 @@ public:
   }
   bool isAGCMaintenanceActive() const override { return _rxps_pulse.owns(); }
   bool isAGCMaintenancePending() const override { return _rxps_pulse.pending; }
+  bool serviceAGCMaintenanceFastLane() override {
+    if(!_rxps_pulse.owns()) return false;
+    serviceAGCPulse();
+    // Packet handoff must reach Dispatcher/FIFO processing immediately. A
+    // completed lease skips slow application work once, then resumes normally.
+    return _rxps_pulse.phase!=RxpsPulse::Phase::Packet;
+  }
   void configureAGCMaintenance(uint32_t ms) override { _rxps_pulse.cadence(ms); }
   void cancelAGCMaintenance() override { _rxps_pulse.cancelRequest(); }
   bool setAGCPulseSleep(uint32_t us) override {

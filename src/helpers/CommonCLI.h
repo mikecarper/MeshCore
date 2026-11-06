@@ -169,7 +169,7 @@ public:
   uint8_t flood_max_unscoped = 0;
   uint8_t flood_max_advert = 0;
   uint8_t interference_threshold = 0;
-  uint8_t agc_reset_interval = 0; // secs / 4
+  uint8_t agc_reset_interval = 4; // 16 seconds; stored as secs / 4
   // Bridge settings
   uint8_t bridge_enabled = 0; // boolean
   uint16_t bridge_delay = 0;  // milliseconds (default 500 ms)

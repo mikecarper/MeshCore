@@ -97,7 +97,7 @@ public:
   float tx_delay_factor = 0.5f;
   float direct_tx_delay_factor = 0.2f;
   uint8_t interference_threshold = 0;
-  uint8_t agc_reset_interval = 0;  // seconds / 4
+  uint8_t agc_reset_interval = 4;  // 16 seconds; stored as seconds / 4
   // Storage-only shadow for the published one-byte integer timezone slot.
   // Fractional precision lives in the checked footer, never in this prefix.
   int8_t tz_offset_legacy = 0;

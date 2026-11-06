@@ -1,6 +1,7 @@
 #include <helpers/CLIReplyText.h>
 #include <helpers/HardwareCommand.h>
 #include <helpers/AGCMaintenanceCLI.h>
+#include <helpers/RadioMaintenanceCLI.h>
 #include <helpers/ConfigCapabilities.h>
 #include <helpers/BrowserRadioDefaults.h>
 #include <helpers/radiolib/RadioPowerLimits.h>
@@ -4256,6 +4257,8 @@ bool MyMesh::handleLocalControlCommand(const char* command, char* reply,
                                        size_t reply_size) {
   if (!command || !reply || reply_size == 0) return false;
   while (*command == ' ') command++;
+  if (mesh::cli::deferForRadioMaintenance(_radio && _radio->isAGCMaintenancePending(),
+          command, reply, reply_size)) return true;
 #if defined(USE_LR2021) && defined(MESH_W12_PRAM_EXPERIMENT) && MESH_W12_PRAM_EXPERIMENT
   if (mesh::lr2021::handleScannerCommand(command, reply, reply_size, radio_driver)) return true;
 #endif
@@ -10654,6 +10657,12 @@ void MyMesh::handleTerminalCommand(char* command, bool reader_prompt,
   while (*command == ' ' || *command == '\t') command++;
   if (*command == 0) return;
   mesh::cli::normalizeCommandVerb(command);
+  char maintenance_reply[160];
+  if (mesh::cli::deferForRadioMaintenance(_radio && _radio->isAGCMaintenancePending(),
+          command, maintenance_reply, sizeof(maintenance_reply))) {
+    terminalOutput().printf("  -> %s\r\n", maintenance_reply);
+    return;
+  }
 
 #if COMPANION_FEATURE_READER
   if (mesh::morseTimingActive(_radio) && isCompanionReaderRequest(command)) {
@@ -11190,6 +11199,8 @@ static bool isCompanionRadioPrefsCommand(const char* command) {
 // Called only for directly attached USB/BLE/TCP/browser clients. Commands
 // received over LoRa use handleCommand() with a nonzero sender timestamp.
 bool MyMesh::handleDirectCommand(const char* command, char* reply, size_t reply_size) {
+  if (mesh::cli::deferForRadioMaintenance(_radio && _radio->isAGCMaintenancePending(),
+          command, reply, reply_size)) return true;
   if (mesh::power::handleStoredBatteryCalibrationCommand(
           board, command, reply, reply_size)) return true;
 #if MESH_ENABLE_LOST_REPLY
@@ -11352,15 +11363,6 @@ bool MyMesh::handleCommand(const char* command, uint32_t sender_timestamp,
   if (command == NULL || reply == NULL) return false;
   size_t reply_capacity = 160;
   while (*command == ' ' || *command == '\t') command++;
-  if(_radio && _radio->isAGCMaintenancePending() && strncmp(command,"get ",4)!=0 && strcmp(command,"ver")!=0) {
-    mesh::cli::formatError(reply,reply_capacity,"radio maintenance pending; retry shortly");return true;
-  }
-
-
-#if COMPANION_FEATURE_DIRECT_OTA_ADMIN
-  if (handleDirectOtaCommand(command, sender_timestamp, reply, reply_capacity)) return true;
-#endif
-
   if (strlen(command) > 3 && command[2] == '|') {
     // Optional two-character request prefix used by Companion CLI clients.
     memcpy(reply, command, 3);
@@ -11381,6 +11383,12 @@ bool MyMesh::handleCommand(const char* command, uint32_t sender_timestamp,
         "companion", reply, reply_capacity);
     return true;
   }
+#endif
+
+  if (mesh::cli::deferForRadioMaintenance(_radio && _radio->isAGCMaintenancePending(),
+          command, reply, reply_capacity)) return true;
+#if COMPANION_FEATURE_DIRECT_OTA_ADMIN
+  if (handleDirectOtaCommand(command, sender_timestamp, reply, reply_capacity)) return true;
 #endif
 
 #if defined(ESP32_PLATFORM)
@@ -12111,6 +12119,9 @@ void MyMesh::checkSerialInterface() {
 }
 
 void MyMesh::loop() {
+#if MESH_WARM_RX_REFRESH
+  if (_radio && _radio->serviceAGCMaintenanceFastLane()) return;
+#endif
 #if CARDPUTER_ADV_UI
   // Apply saved output masks before the first received packet, not only at
   // the end of the loop or after a later settings change.
@@ -12190,6 +12201,9 @@ void MyMesh::loop() {
   );
 #endif
   BaseChatMesh::loop();
+#if MESH_WARM_RX_REFRESH
+  if (_radio && _radio->isAGCMaintenanceActive()) return;
+#endif
 #if defined(MESHCORE_HAS_COLOR_DISPLAY)
   if (!mesh::morseTimingActive(_radio)) {
     mesh::ui::refreshDisplayNightLocation(sensors, getRTCClock()->getCurrentTime(), millis());

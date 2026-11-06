@@ -76,7 +76,7 @@ void Dispatcher::setRadioAvailable(bool available) {
   radio_nonrx_start = now;
   next_floor_calib_time = now;
   agc_reset.reset();
-#if defined(MESH_WARM_RX_REFRESH) && MESH_WARM_RX_REFRESH
+#if MESH_ENABLE_OLD_AGC
   old_agc_reset.reset();
 #endif
   _radio->begin();
@@ -125,7 +125,7 @@ void Dispatcher::begin() {
 
   const unsigned long now = _ms->getMillis();
   agc_reset.reset();
-#if defined(MESH_WARM_RX_REFRESH) && MESH_WARM_RX_REFRESH
+#if MESH_ENABLE_OLD_AGC
   old_agc_reset.reset();
 #endif
   dispatcher_started = true;
@@ -756,7 +756,7 @@ bool Dispatcher::getNextQueueWakeDelay(uint32_t& delay_millis) const {
   }
 #endif
   // Timed MCU sleep must not skip the adaptive maintenance/retry deadline.
-#if defined(MESH_WARM_RX_REFRESH) && MESH_WARM_RX_REFRESH
+#if MESH_ENABLE_OLD_AGC
   if(radioDirection::radioReceiveAllowed() && radio_available) {
     uint32_t old_delay;
     if(old_agc_reset.nextDelay(now,old_delay)) {
@@ -771,7 +771,7 @@ bool Dispatcher::getNextQueueWakeDelay(uint32_t& delay_millis) const {
   uint32_t lab_interval_ms=0;
   const bool lab_timer_active=_radio->supportsWarmRxRefresh()
       && _radio->getWarmRxLabInterval(lab_interval_ms);
-  if(radioDirection::radioReceiveAllowed() && radio_available && lab_timer_active && lab_interval_ms) {
+  if(radioDirection::radioReceiveAllowed() && radio_available && !_radio->isRxPowerSavingEnabled() && lab_timer_active && lab_interval_ms) {
     uint32_t lab_delay;
     if(agc_reset.nextDelay(now,lab_delay)) {
       if(!found || lab_delay<shortest_delay) shortest_delay=lab_delay;
@@ -780,7 +780,7 @@ bool Dispatcher::getNextQueueWakeDelay(uint32_t& delay_millis) const {
   }
 #endif
   // Preserve the legacy queue-only query when power saving is off.
-  if (radioDirection::radioReceiveAllowed() && radio_available && useAdaptiveAGC()
+  if (radioDirection::radioReceiveAllowed() && radio_available && !_radio->isRxPowerSavingEnabled() && useAdaptiveAGC()
 #if MESH_WARM_RX_LAB_TIMER
       && !lab_timer_active
 #endif
@@ -902,10 +902,12 @@ void Dispatcher::expireLabBlockedSends() {
 
 void Dispatcher::loop() {
 #if defined(MESH_WARM_RX_REFRESH) && MESH_WARM_RX_REFRESH
-  uint32_t primary_cadence_ms=radioDirection::radioReceiveAllowed()?(uint32_t)getAGCResetInterval()*1000UL:0;
+  uint32_t primary_cadence_ms=radioDirection::radioReceiveAllowed() && !_radio->isRxPowerSavingEnabled()
+      ? (uint32_t)getAGCResetInterval() : 0;
 #if MESH_WARM_RX_LAB_TIMER
   uint32_t lab_cadence_ms=0;
-  if(_radio->getWarmRxLabInterval(lab_cadence_ms)) primary_cadence_ms=lab_cadence_ms;
+  if(_radio->getWarmRxLabInterval(lab_cadence_ms) && radioDirection::radioReceiveAllowed()
+      && !_radio->isRxPowerSavingEnabled()) primary_cadence_ms=lab_cadence_ms;
 #endif
   _radio->configureAGCMaintenance(primary_cadence_ms);
   if(_radio->isAGCMaintenanceActive()) {
@@ -958,7 +960,10 @@ void Dispatcher::loop() {
 
   const unsigned long now = _ms->getMillis();
   const bool receive_allowed = radioDirection::radioReceiveAllowed();
-  int agc_interval = receive_allowed ? getAGCResetInterval() : 0;
+  // Ordinary RXPS already sleeps/wakes the frontend. Suspend only the primary
+  // maintenance timer, preserving its saved interval and the independent old timer.
+  const bool primary_agc_allowed=receive_allowed && !_radio->isRxPowerSavingEnabled();
+  int agc_interval = primary_agc_allowed ? getAGCResetInterval() : 0;
   bool adaptive = receive_allowed && useAdaptiveAGC();
 #if MESH_WARM_RX_LAB_TIMER
   const uint32_t lab_revision=_radio->warmRxLabTimerRevision();
@@ -969,14 +974,15 @@ void Dispatcher::loop() {
   }
   uint32_t lab_interval_ms=0;
   if(_radio->supportsWarmRxRefresh() && _radio->getWarmRxLabInterval(lab_interval_ms)) {
-    agc_interval=receive_allowed?static_cast<int>(lab_interval_ms):0;
+    agc_interval=primary_agc_allowed?static_cast<int>(lab_interval_ms):0;
     adaptive=false; // The lab override requests a fixed millisecond cadence.
   }
 #endif
   agc_reset.configure(now, agc_interval > 0 ? agc_interval : 0,
                       adaptive, adaptive ? _radio->getRecoveryCount() : 0);
-#if defined(MESH_WARM_RX_REFRESH) && MESH_WARM_RX_REFRESH
-  old_agc_reset.configure(now,receive_allowed?_radio->getOldAGCInterval()*1000UL:0,false,0);
+#if MESH_ENABLE_OLD_AGC
+  old_agc_reset.configure(now,receive_allowed && _radio->supportsOldAGC()
+      ? _radio->getOldAGCInterval()*1000UL : 0,false,0);
 #endif
   if (!radio_nonrx_timer_armed) {
     // Application setup can outlast the watchdog after begin() leaves the
@@ -1190,7 +1196,7 @@ void Dispatcher::loop() {
   }
 
   const uint32_t agc_now = _ms->getMillis();
-#if defined(MESH_WARM_RX_REFRESH) && MESH_WARM_RX_REFRESH
+#if MESH_ENABLE_OLD_AGC
   bool old_agc_serviced=false;
   if(old_agc_reset.due(agc_now)) {
     old_agc_serviced=true;
@@ -1202,6 +1208,8 @@ void Dispatcher::loop() {
     if(result==AGCMaintenanceResult::Applied) old_agc_reset.noteAttempt(finished);
     else old_agc_reset.noteDeferred(finished,250);
   }
+#else
+  constexpr bool old_agc_serviced=false;
 #endif
   if ((!adaptive || !recovered_this_loop) && agc_interval > 0
       && (adaptive ? agc_reset.due(agc_now)
@@ -1209,6 +1217,11 @@ void Dispatcher::loop() {
     bool attempted;
 #if defined(MESH_W12_PRAM_EXPERIMENT) && MESH_W12_PRAM_EXPERIMENT
     const uint32_t lab_agc_retry_ms = _radio->labAGCMaintenanceRetryMs();
+#endif
+    if(old_agc_serviced) {
+      attempted=false; // Keep both maintenance timers from running in one loop.
+    } else
+#if defined(MESH_W12_PRAM_EXPERIMENT) && MESH_W12_PRAM_EXPERIMENT
     if (lab_agc_retry_ms) {
       // The scanner owns RF or a FIFO is ambiguous: never credit a no-op as
       // maintenance, including in the legacy fixed-interval path.
@@ -1240,9 +1253,9 @@ void Dispatcher::loop() {
       const uint32_t deferred_at = _ms->getMillis();
 #if (defined(WIO_E5_MINI_COMPACT_UNSUPPORTED_AGC) && WIO_E5_MINI_COMPACT_UNSUPPORTED_AGC) || \
     (defined(STM32WL_COMPANION_COMPACT_UNSUPPORTED_AGC) && STM32WL_COMPANION_COMPACT_UNSUPPORTED_AGC)
-      uint32_t retry_delay = 50, receive_delay;
+      uint32_t retry_delay = old_agc_serviced?250:50, receive_delay;
 #else
-      uint32_t retry_delay = _radio->agcMaintenanceRetryMs(), receive_delay;
+      uint32_t retry_delay = old_agc_serviced?250:_radio->agcMaintenanceRetryMs(), receive_delay;
 #endif
 #if defined(MESH_W12_PRAM_EXPERIMENT) && MESH_W12_PRAM_EXPERIMENT
       if (lab_agc_retry_ms > retry_delay) retry_delay = lab_agc_retry_ms;

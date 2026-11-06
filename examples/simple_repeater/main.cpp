@@ -773,6 +773,10 @@ static bool usbLoggingRecoverySafe(void*) {
 }
 
 void loop() {
+#if MESH_WARM_RX_REFRESH
+  // Service the short radio lease before board, sensor, UI or transport work.
+  if (radio_driver.serviceAGCMaintenanceFastLane()) return;
+#endif
 #if MESH_REPEATER_REQUIRE_PSRAM
   if (required_psram_failed) {
     serviceRequiredPsramFailure();
@@ -826,6 +830,10 @@ void loop() {
 #endif
 
   the_mesh.loop();
+#if MESH_WARM_RX_REFRESH
+  // The Dispatcher may have admitted a new lease in this pass.
+  if (radio_driver.serviceAGCMaintenanceFastLane()) return;
+#endif
   const bool morse_timing = mesh::morseTimingActive(&radio_driver);
 #if defined(USE_LR2021)
   if (!morse_timing) mesh::lr2021::loopLR2021CalibrationSettings(radio_driver);
