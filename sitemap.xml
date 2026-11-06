@@ -13,6 +13,10 @@
          <lastmod>2026-11-06</lastmod>
     </url>
     <url>
+         <loc>https://mikecarper.github.io/MeshCore/browser_lora_ota/</loc>
+         <lastmod>2026-11-06</lastmod>
+    </url>
+    <url>
          <loc>https://mikecarper.github.io/MeshCore/browser_radio_defaults/</loc>
          <lastmod>2026-11-06</lastmod>
     </url>
@@ -497,6 +501,10 @@
          <lastmod>2026-11-06</lastmod>
     </url>
     <url>
+         <loc>https://mikecarper.github.io/MeshCore/_javascript/vendor/detools-js/NOTICE/</loc>
+         <lastmod>2026-11-06</lastmod>
+    </url>
+    <url>
          <loc>https://mikecarper.github.io/MeshCore/old-releases/</loc>
          <lastmod>2026-11-06</lastmod>
     </url>
@@ -574,6 +582,14 @@
     </url>
     <url>
          <loc>https://mikecarper.github.io/MeshCore/research/nrf52_bluetooth_debug/</loc>
+         <lastmod>2026-11-06</lastmod>
+    </url>
+    <url>
+         <loc>https://mikecarper.github.io/MeshCore/research/ota_dm_carrier/</loc>
+         <lastmod>2026-11-06</lastmod>
+    </url>
+    <url>
+         <loc>https://mikecarper.github.io/MeshCore/research/otafix_rak_provenance/</loc>
          <lastmod>2026-11-06</lastmod>
     </url>
     <url>
