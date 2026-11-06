@@ -161,7 +161,6 @@ struct RepeaterStats {
 
 struct NeighbourInfo {
   mesh::Identity id;
-  uint32_t advert_timestamp;
   uint32_t heard_timestamp;
   int8_t snr; // multiplied by 4, user should divide to get float value
 #if defined(WITH_MQTT_NEIGHBORS)

@@ -2574,7 +2574,7 @@ void MyMesh::onRadioProfileCopyQueued(mesh::Packet* packet,
 #define CTL_TYPE_NODE_DISCOVER_REQ   0x80
 #define CTL_TYPE_NODE_DISCOVER_RESP  0x90
 
-void MyMesh::putNeighbour(const mesh::Identity &id, uint32_t timestamp, float snr,
+void MyMesh::putNeighbour(const mesh::Identity &id, uint32_t /*timestamp*/, float snr,
                           int16_t rssi) {
   // find existing neighbour, else use least recently updated
   uint32_t oldest_timestamp = 0xFFFFFFFF;
@@ -2597,7 +2597,6 @@ void MyMesh::putNeighbour(const mesh::Identity &id, uint32_t timestamp, float sn
   // A slot taken over by another identity forgets the old one's radio2.
   if (!id.matches(neighbour->id)) neighbour->radio2 = Radio2DiscoverTrailer::unknown();
   neighbour->id = id;
-  neighbour->advert_timestamp = timestamp;
   neighbour->heard_timestamp = getRTCClock()->getCurrentTime();
   neighbour->snr = (int8_t)(snr * 4);
   neighbour->rssi = rssi;

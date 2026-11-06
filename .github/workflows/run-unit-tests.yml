@@ -906,6 +906,8 @@ jobs:
           python3 -B test/test_companion_contact_lifetime.py -v
           python3 -B test/test_contact_indices.py -v
           python3 -B test/test_small_table_sort.py -v
+          python3 -B test/test_neighbor_resident_state.py -v
+          python3 -B test/test_environment_sensor_references.py -v
           python3 -B test/test_companion_identity_cli.py -v
           python3 -B test/test_companion_packet_stream.py -v
           python3 -B test/test_companion_uncached_storage.py -v

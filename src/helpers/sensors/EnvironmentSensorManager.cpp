@@ -952,6 +952,9 @@ static const SensorDef SENSOR_TABLE[] = {
 #undef TELEM_BOSCH_ALT_ADDR
 
 static const size_t SENSOR_TABLE_SIZE = (sizeof(SENSOR_TABLE) / sizeof(SENSOR_TABLE[0])) - 1;
+#if MESH_SENSOR_DESCRIPTOR_INDEX
+static_assert(SENSOR_TABLE_SIZE <= UINT8_MAX + 1U, "Sensor descriptor index must cover the complete table");
+#endif
 
 // ============================================================
 // begin() - initialize an optional board GPS, then scan the I2C bus and invoke
@@ -1051,7 +1054,11 @@ bool EnvironmentSensorManager::begin() {
     // One static driver instance per type: an alternate address is a fallback, not a second device.
     bool already_active = false;
     for (int j = 0; j < _active_sensor_count; j++) {
+#if MESH_SENSOR_DESCRIPTOR_INDEX
+      if (SENSOR_TABLE[_active_sensors[j].descriptor_index].query == def.query) { already_active = true; break; }
+#else
       if (_active_sensors[j].query == def.query) { already_active = true; break; }
+#endif
     }
     if (already_active) continue;
     if (!detected[address]) {
@@ -1067,7 +1074,11 @@ bool EnvironmentSensorManager::begin() {
     detected[address] = false;  // consumed; later entries must not re-claim this device
     for (uint8_t sub = 0; sub < n && _active_sensor_count < MAX_ACTIVE_SENSORS; sub++) {
       _active_sensors[_active_sensor_count++] = {
+#if MESH_SENSOR_DESCRIPTOR_INDEX
+        static_cast<uint8_t>(i), sub
+#else
         def.query, def.query_voltage, sub
+#endif
       };
     }
   }
@@ -1098,7 +1109,11 @@ bool EnvironmentSensorManager::querySensors(uint8_t requester_permissions, Cayen
 
   if (requester_permissions & TELEM_PERM_ENVIRONMENT) {
     for (int i = 0; i < _active_sensor_count; i++) {
+#if MESH_SENSOR_DESCRIPTOR_INDEX
+      SENSOR_TABLE[_active_sensors[i].descriptor_index].query(next_available_channel, _active_sensors[i].sub_channel, telemetry);
+#else
       _active_sensors[i].query(next_available_channel, _active_sensors[i].sub_channel, telemetry);
+#endif
       next_available_channel++;
     }
   }
@@ -1115,7 +1130,11 @@ uint8_t EnvironmentSensorManager::getVoltageSensorChannels(
   first_channel = mesh::solar::FIRST_OPTIONAL_CHANNEL;
 #endif
   for (int i = 0; i < _active_sensor_count; i++) {
+#if MESH_SENSOR_DESCRIPTOR_INDEX
+    if (SENSOR_TABLE[_active_sensors[i].descriptor_index].query_voltage == NULL) continue;
+#else
     if (_active_sensors[i].query_voltage == NULL) continue;
+#endif
     if (count < capacity && channels != NULL) {
       channels[count] = (uint8_t)(first_channel + i);
     }
@@ -1137,11 +1156,20 @@ uint8_t EnvironmentSensorManager::queryVoltageSensors(
 #endif
   for (int i = 0; i < _active_sensor_count && count < capacity; i++) {
     const ActiveSensor& sensor = _active_sensors[i];
+#if MESH_SENSOR_DESCRIPTOR_INDEX
+    const auto query_voltage = SENSOR_TABLE[sensor.descriptor_index].query_voltage;
+    if (query_voltage == NULL) continue;
+#else
     if (sensor.query_voltage == NULL) continue;
+#endif
     VoltageSensorReading& reading = readings[count++];
     reading.channel = (uint8_t)(first_channel + i);
     reading.voltage = 0.0f;
+#if MESH_SENSOR_DESCRIPTOR_INDEX
+    reading.valid = query_voltage(sensor.sub_channel,
+#else
     reading.valid = sensor.query_voltage(sensor.sub_channel,
+#endif
                                          reading.voltage)
         && isfinite(reading.voltage);
   }

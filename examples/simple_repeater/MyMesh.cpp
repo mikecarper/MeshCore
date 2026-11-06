@@ -566,7 +566,7 @@ static void formatFixed3(char* dest, size_t dest_len, float value) {
   snprintf(dest, dest_len, "%ld.%03ld", whole, decimals);
 }
 
-void MyMesh::putNeighbour(const mesh::Identity &id, uint32_t timestamp, float snr,
+void MyMesh::putNeighbour(const mesh::Identity &id, uint32_t /*timestamp*/, float snr,
                           int16_t rssi) {
 #if MAX_NEIGHBOURS // check if neighbours enabled
   // find existing neighbour, else use least recently updated
@@ -588,7 +588,6 @@ void MyMesh::putNeighbour(const mesh::Identity &id, uint32_t timestamp, float sn
 
   // update neighbour info
   neighbour->id = id;
-  neighbour->advert_timestamp = timestamp;
   neighbour->heard_timestamp = getRTCClock()->getCurrentTime();
   neighbour->snr = (int8_t)(snr * 4);
 #if defined(WITH_MQTT_NEIGHBORS)
