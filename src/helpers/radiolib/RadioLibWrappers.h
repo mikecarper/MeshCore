@@ -519,7 +519,7 @@ protected:
 #if defined(MESH_AGC_TIMING_DIAGNOSTICS) && MESH_AGC_TIMING_DIAGNOSTICS
   AGCTimingDiagnostics _agc_timing;
 #endif
-#if MESH_ENABLE_OLD_AGC && !MESH_COMPACT_STM32_RADIO
+#if MESH_ENABLE_OLD_AGC && (!MESH_COMPACT_STM32_RADIO || MESH_WARM_RX_REFRESH)
   uint32_t _old_agc_seconds=0;
 #endif
 
@@ -753,7 +753,7 @@ public:
     return cadScanTimeoutMillis();
   }
   void resetAGC() override;
-#if MESH_ENABLE_OLD_AGC && !MESH_COMPACT_STM32_RADIO
+#if MESH_ENABLE_OLD_AGC && (!MESH_COMPACT_STM32_RADIO || MESH_WARM_RX_REFRESH)
   // Families with no physical legacy reset explicitly opt out.
   bool supportsOldAGC() const override { return true; }
   bool setOldAGCInterval(uint32_t seconds) override {
