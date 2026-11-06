@@ -17,8 +17,11 @@ import tempfile
 
 from build_esp32_partition_migration import bundle_release, verify_archive
 from esp32_migration_assets import standalone_assets
-from esp32_migration_expanders import build_expander_candidates
-from package_esp32_partition_migration import BOARDS, published_full_image, resolve_pio_build_dir
+from esp32_migration_expanders import build_expander_candidates, verify_esp32_chip_flash
+from package_esp32_partition_migration import (
+    BOARDS, hardware_id_for_env, pack_version, parse_endf_ident, published_full_image,
+    resolve_pio_build_dir, target_id_for_env,
+)
 from package_cascade_release import (category, collect_artifacts, nrf52_sensor_profile,
                                      omit_retired_onboard_qspi_records)
 from station_g3_profiles import omit_redundant_slot_records
@@ -620,6 +623,53 @@ def select_ordinary_full_records(records: list[dict]) -> list[dict]:
     return passthrough + selected
 
 
+def migration_only_full_records(records: list[dict], work: Path, version: str,
+                                source: str) -> list[dict]:
+    """Return qualified exact-target Full images omitted by ordinary selection.
+
+    Some former board roles have a different OTA identity from the unified or
+    observer image selected for ordinary release. A migration must expose its
+    own already-built Full image instead of silently relabeling that successor.
+    """
+    catalog = {}
+    for spec in BOARDS.values():
+        target = spec["target"]
+        if target in catalog and any(spec[key] != catalog[target][key]
+                                     for key in ("usb_chip", "flash_bytes", "slot_bytes")):
+            raise ValueError(f"{target}: conflicting migration board hardware or geometry")
+        catalog[target] = spec
+    targets = sorted(catalog)
+    missing = [target for target in targets if published_full_image(records, target) is None]
+    if not missing:
+        return []
+    candidates = collect_artifacts(work, f"{version}-{source[:8]}")
+    selected = []
+    for target in missing:
+        matches = [record for record in candidates
+                   if record["manifest"].get("target") == target
+                   and record["manifest"].get("platform") == "ESP32_PLATFORM"
+                   and record["manifest"].get("build_profile") == "full"]
+        if len(matches) != 1:
+            raise ValueError(f"{target}: expected one qualified exact-target migration Full image")
+        record = matches[0]
+        manifest = record["manifest"]
+        if (manifest.get("verified") is not True or manifest.get("ota_update_verified") is not True
+                or manifest.get("source_commit", source) != source):
+            raise ValueError(f"{target}: migration Full image is not qualified for this release")
+        image = published_full_image([record], target)
+        if image is None or image.is_symlink() or not image.is_file():
+            raise ValueError(f"{target}: migration Full application is unavailable")
+        app_bytes = image.read_bytes()
+        verify_esp32_chip_flash(target, catalog[target], app_bytes)
+        identity = parse_endf_ident(app_bytes)
+        if (identity is None or identity.target_id != target_id_for_env(target)
+                or identity.hw_id != hardware_id_for_env(target)
+                or identity.fw_version != pack_version(version.split("-", 1)[0])):
+            raise ValueError(f"{target}: migration Full application identity does not match")
+        selected.append(record)
+    return selected
+
+
 def stage_release(work: Path, migration_work: Path, destination: Path, version: str,
                   source: str, pio_build_dir: Path | None = None, *,
                   embedded_work: Path | None = None) -> None:
@@ -651,6 +701,8 @@ def stage_release(work: Path, migration_work: Path, destination: Path, version: 
                 collect_artifacts(embedded_work, artifact_version))
         variants = validate_embedded_bootloader_records(records, embedded_records)
         records.extend(embedded_records)
+
+    records.extend(migration_only_full_records(records, migration_work, version, source))
 
     with tempfile.TemporaryDirectory(prefix=".staging-", dir=destination.parent) as temp:
         staging = Path(temp)

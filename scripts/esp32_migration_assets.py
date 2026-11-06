@@ -46,6 +46,8 @@ def standalone_assets(archive_path: Path, board: str, target: str,
             or full_path.suffix != '.bin' or full_path.name.endswith('-merged.bin')):
         raise ValueError('migration successor must be a published app-only image')
     full = full_path.read_bytes()
+    from esp32_migration_expanders import verify_esp32_chip_flash
+    verify_esp32_chip_flash(board, spec, full)
     ident = parse_endf_ident(full)
     if ident is None:
         raise ValueError('migration successor has no firmware identity')
@@ -119,7 +121,6 @@ def standalone_assets(archive_path: Path, board: str, target: str,
 
         if len(wifi) > LEGACY_SLOT_BYTES:
             raise ValueError('Wi-Fi migration image exceeds legacy slot')
-        from esp32_migration_expanders import verify_esp32_chip_flash
         verify_esp32_chip_flash(board, spec, wifi)
         parsed = parse_container(lora)
         if verify(parsed):

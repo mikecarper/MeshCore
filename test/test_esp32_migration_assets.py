@@ -34,7 +34,7 @@ class StandaloneMigrationTests(unittest.TestCase):
         self.catalog.start()
         self.addCleanup(self.catalog.stop)
         self.identity = FwIdent(0x01120001, target_id_for_env(self.target), 'board')
-        app = b'normal-published-full'
+        app = self.candidate_header() + b'normal-published-full'
         self.full = self.root / 'exact-target-full-v1.bin'
         self.full.write_bytes(app + build_endf(app, self.identity))
         self.version, self.source = 'v1.18.0.1', '12345678'
@@ -156,12 +156,25 @@ class StandaloneMigrationTests(unittest.TestCase):
         for wrong in (FwIdent(self.identity.fw_version, self.identity.target_id ^ 1, self.identity.hw_id),
                       FwIdent(self.identity.fw_version, self.identity.target_id, 'another-board')):
             with self.subTest(wrong=wrong):
-                body = b'forged Full'
+                body = self.candidate_header() + b'forged Full'
                 self.full.write_bytes(body + build_endf(body, wrong))
                 self.files['full-application.bin'] = self.full.read_bytes()
                 self.manifest['target_id'] = f'0x{wrong.target_id:08x}'
                 self.manifest['hardware_id'] = wrong.hw_id
                 with self.assertRaisesRegex(ValueError, 'successor identity differs from board target'):
+                    self.assets()
+
+    def test_published_full_must_match_the_boards_chip_and_flash(self):
+        for fault in ('magic', 'chip', 'flash'):
+            with self.subTest(fault=fault):
+                header = bytearray(self.candidate_header())
+                if fault == 'magic': header[0] = 0
+                if fault == 'chip': struct.pack_into('<H', header, 12, 0)
+                if fault == 'flash': header[3] = 0x40
+                body = bytes(header) + b'forged Full'
+                self.full.write_bytes(body + build_endf(body, self.identity))
+                self.files['full-application.bin'] = self.full.read_bytes()
+                with self.assertRaisesRegex(ValueError, 'ESP32 image header|chip or flash header'):
                     self.assets()
 
     def test_full_application_must_be_a_regular_file_not_a_symlink(self):

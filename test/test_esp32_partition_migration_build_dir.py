@@ -107,7 +107,11 @@ print(json.dumps([["platformio", [["build_dir", str(directory.resolve())]]]]))
         target = spec["target"]
         ident = FwIdent(pack_version(VERSION.split("-", 1)[0]),
                         target_id_for_env(target), hardware_id_for_env(target))
-        image, _ = ensure_endf(b"\xe9qualified Full application\0OTA: status", ident)
+        header = bytearray(24)
+        header[:3] = b"\xe9\x01\x02"
+        header[3] = {4: 2, 8: 3, 16: 4}[spec["flash_bytes"] // 1048576] << 4
+        struct.pack_into("<H", header, 12, spec["usb_chip"])
+        image, _ = ensure_endf(bytes(header) + b"qualified Full application\0OTA: status", ident)
         table = bytearray(b"\xff" * 4096)
         entries = (("nvs", 1, 2, 0x9000, 0x5000),
                    ("otadata", 1, 0, 0xE000, 0x2000),
@@ -264,6 +268,75 @@ print(json.dumps([["platformio", [["build_dir", str(directory.resolve())]]]]))
             self.assertEqual(result.read("full-application.bin"), original)
             self.assertEqual(parse_container(result.read("full-application.mota")).payload,
                              original)
+
+    def test_missing_exact_successor_publishes_qualified_full_without_relabeling_observer(self):
+        import build_local_release as release
+        spec, identity = self.qualified_full("heltec-v4")
+        target = spec["target"]
+        observer = {"manifest": {"target": target + "_observer_mqtt", "platform": "ESP32_PLATFORM",
+                                 "build_profile": "full"}, "files": []}
+        with mock.patch.object(release, "BOARDS", {"heltec-v4": spec}):
+            added = release.migration_only_full_records([observer], self.artifacts,
+                                                        VERSION, SOURCE + "a" * 32)
+        self.assertEqual(len(added), 1)
+        self.assertEqual(added[0]["manifest"]["target"], target)
+        self.assertTrue(added[0]["manifest"]["verified"])
+        self.assertTrue(added[0]["manifest"]["ota_update_verified"])
+        image = package.published_full_image(added, target)
+        self.assertEqual(parse_endf_ident(image.read_bytes()), identity)
+        self.assertIn(image.name, [path.name for path in added[0]["files"]])
+        self.assertTrue(any(path.name.endswith(".memory.json") for path in added[0]["files"]))
+
+    def test_migration_only_full_refuses_missing_unqualified_or_wrong_identity(self):
+        import build_local_release as release
+        spec, identity = self.qualified_full("heltec-v4")
+        target = spec["target"]
+        source = SOURCE + "a" * 32
+        with mock.patch.object(release, "BOARDS", {"heltec-v4": spec}):
+            real_records = release.collect_artifacts(self.artifacts, VERSION + "-" + SOURCE)
+            with mock.patch.object(release, "collect_artifacts", return_value=[]):
+                with self.assertRaisesRegex(ValueError, "expected one qualified exact-target"):
+                    release.migration_only_full_records([], self.artifacts, VERSION, source)
+            with mock.patch.object(release, "collect_artifacts", return_value=real_records * 2):
+                with self.assertRaisesRegex(ValueError, "expected one qualified exact-target"):
+                    release.migration_only_full_records([], self.artifacts, VERSION, source)
+            invalid = dict(real_records[0], manifest=dict(real_records[0]["manifest"], verified=False))
+            with mock.patch.object(release, "collect_artifacts", return_value=[invalid]):
+                with self.assertRaisesRegex(ValueError, "not qualified"):
+                    release.migration_only_full_records([], self.artifacts, VERSION, source)
+            image = package.published_full_image(real_records, target)
+            body = parse_endf(image.read_bytes())[0]
+            wrong = FwIdent(identity.fw_version, identity.target_id ^ 1, identity.hw_id)
+            image.write_bytes(ensure_endf(body, wrong)[0])
+            with mock.patch.object(release, "collect_artifacts", return_value=real_records):
+                with self.assertRaisesRegex(ValueError, "identity does not match"):
+                    release.migration_only_full_records([], self.artifacts, VERSION, source)
+
+    def test_migration_only_full_rechecks_header_and_shared_target_geometry(self):
+        import build_local_release as release
+        spec, identity = self.qualified_full("heltec-v4")
+        target = spec["target"]
+        source = SOURCE + "a" * 32
+        records = release.collect_artifacts(self.artifacts, VERSION + "-" + SOURCE)
+        image = package.published_full_image(records, target)
+        original_body = parse_endf(image.read_bytes())[0]
+        with mock.patch.object(release, "collect_artifacts", return_value=records):
+            with mock.patch.object(release, "BOARDS", {"heltec-v4": spec}):
+                for field in ("chip", "flash"):
+                    with self.subTest(field=field):
+                        body = bytearray(original_body)
+                        if field == "chip": struct.pack_into("<H", body, 12, 0)
+                        else: body[3] = 0x20
+                        image.write_bytes(ensure_endf(bytes(body), identity)[0])
+                        with self.assertRaisesRegex(ValueError, "chip or flash header"):
+                            release.migration_only_full_records([], self.artifacts, VERSION, source)
+                image.write_bytes(ensure_endf(original_body, identity)[0])
+            conflicting = dict(spec, flash_bytes=0x400000)
+            with mock.patch.object(release, "BOARDS", {"first": spec, "second": conflicting}):
+                with self.assertRaisesRegex(ValueError, "conflicting migration board"):
+                    release.migration_only_full_records([], self.artifacts, VERSION, source)
+            with mock.patch.object(release, "BOARDS", {"first": spec, "second": dict(spec)}):
+                self.assertEqual(len(release.migration_only_full_records([], self.artifacts, VERSION, source)), 1)
 
     def test_invalid_or_ambiguous_publication_never_falls_back_to_valid_rebuild(self):
         spec, _ = self.qualified_full("heltec-v4")
@@ -709,6 +782,46 @@ class MigrationMetadataTest(unittest.TestCase):
         self.assertEqual(Path(command[command.index("--release-build-dir") + 1]).name, "firmware")
         archive, = (destination / "esp32-partition-migration").glob("*.zip")
         self.fixture.check_archive(archive, "heltec-v4", expected, identity)
+
+    def test_release_stages_missing_exact_full_and_binds_migration_to_it(self):
+        import build_local_release as recipe
+        import package_cascade_release as publication
+        first, _ = self.fixture.qualified_full("heltec-v4")
+        second, identity = self.fixture.qualified_full("xiao-s3-wio")
+        ordinary = self.work / "ordinary firmware"
+        migration = self.work / "legacy migration firmware"
+        ordinary.mkdir(); migration.mkdir()
+        for item in self.fixture.artifacts.iterdir():
+            destination = ordinary if item.name.startswith(first["target"] + "-") else migration
+            shutil.copy2(item, destination / item.name)
+        self.fixture.utility_tree(self.fixture.custom, first, "V4")
+        self.fixture.utility_tree(self.fixture.custom, second, "XIAO")
+        boards = {"heltec-v4": first, "xiao-s3-wio": second}
+        source = SOURCE + "a" * 32
+
+        def run(command, **options):
+            self.assertEqual(command[2], "scripts/package_esp32_partition_migration.py")
+            args = command[2:].copy()
+            offset = args.index("--expander-evaluation-dir")
+            del args[offset:offset + 2]  # Legacy fixture has no measured expander.
+            with mock.patch.object(sys, "argv", args):
+                package.main()
+            return subprocess.CompletedProcess(command, 0)
+
+        result = self.work / "staged release"
+        with mock.patch.object(recipe, "ROOT", self.project), \
+                mock.patch.object(recipe, "BOARDS", boards), \
+                mock.patch.object(package, "BOARDS", boards), \
+                mock.patch.object(recipe, "git", return_value=source), \
+                mock.patch.object(subprocess, "run", side_effect=run), \
+                redirect_stdout(io.StringIO()):
+            recipe.stage_release(ordinary, migration, result, VERSION, source, self.fixture.custom)
+            records, _, _ = publication.collect_local_release(result, VERSION, source)
+        full = package.published_full_image(records, second["target"])
+        self.assertIsNotNone(full)
+        self.assertEqual(parse_endf_ident(full.read_bytes()), identity)
+        archive = result / "esp32-partition-migration" / f"xiao-s3-wio-{VERSION}-{SOURCE}-migration.zip"
+        verify_archive(archive, "xiao-s3-wio", VERSION, SOURCE, full_image=full)
 
     def test_local_utility_builder_never_rebuilds_an_already_qualified_published_target(self):
         import build_local_release as recipe
