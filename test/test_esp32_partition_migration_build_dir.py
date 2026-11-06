@@ -219,7 +219,11 @@ print(json.dumps([["platformio", [["build_dir", str(directory.resolve())]]]]))
         from esp32_migration_expanders import TARGET_MARKER, evaluate_candidate
         spec, identity = self.qualified_full("heltec-v4")
         self.utility_tree(self.custom, spec, "UTILITY")
-        candidate = (b"\xe9" + TARGET_MARKER + struct.pack("<I", identity.target_id)
+        header = bytearray(24)
+        header[:3] = b"\xe9\x01\x02"
+        header[3] = {4: 2, 8: 3, 16: 4}[spec["flash_bytes"] // 1048576] << 4
+        struct.pack_into("<H", header, 12, spec["usb_chip"])
+        candidate = (bytes(header) + TARGET_MARKER + struct.pack("<I", identity.target_id)
                      + b"compiled expander")
         candidate = package.bridge_with_successor_endf(candidate, identity)
         evidence = self.work / "expander-evaluations"

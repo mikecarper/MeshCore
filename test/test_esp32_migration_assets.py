@@ -14,6 +14,7 @@ import zipfile
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'scripts'))
 from esp32_migration_assets import standalone_assets  # noqa: E402
+import esp32_migration_assets as asset_module  # noqa: E402
 from esp32_migration_expanders import TARGET_MARKER, evaluate_candidate, target_id_for_env  # noqa: E402
 from motalib import CODEC_DETOOLS_SEQUENTIAL, build_container, build_manifest  # noqa: E402
 from package_esp32_partition_migration import (  # noqa: E402
@@ -27,12 +28,17 @@ class StandaloneMigrationTests(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory()
         self.root = Path(self.temp.name)
         self.board, self.target = 'board-repeater', 'board_repeater'
+        self.spec = {'target': self.target, 'usb_chip': 9,
+                     'flash_bytes': 0x400000, 'slot_bytes': 0x1f0000}
+        self.catalog = mock.patch.object(asset_module, 'BOARDS', {self.board: self.spec})
+        self.catalog.start()
+        self.addCleanup(self.catalog.stop)
         self.identity = FwIdent(0x01120001, target_id_for_env(self.target), 'board')
         app = b'normal-published-full'
         self.full = self.root / 'exact-target-full-v1.bin'
         self.full.write_bytes(app + build_endf(app, self.identity))
         self.version, self.source = 'v1.18.0.1', '12345678'
-        image = b'\xe9' + TARGET_MARKER + struct.pack('<I', self.identity.target_id) + b'expander'
+        image = self.candidate_header() + TARGET_MARKER + struct.pack('<I', self.identity.target_id) + b'expander'
         self.bridge = bridge_with_successor_endf(image, self.identity)
         self.files = {
             'full-application.bin': self.full.read_bytes(),
@@ -48,8 +54,14 @@ class StandaloneMigrationTests(unittest.TestCase):
             'flash_bytes': 0x400000, 'partition_expander': 'board_partition_expander',
         }
         self.manifest['expander_evaluation'] = evaluate_candidate(
-            self.board, {'target': self.target}, self.bridge, self.version)
+            self.board, self.spec, self.bridge, self.version)
         self.path = self.root / 'internal.zip'
+
+    def candidate_header(self):
+        header = bytearray(24)
+        header[:4] = b'\xe9\x01\x02\x20'
+        struct.pack_into('<H', header, 12, self.spec['usb_chip'])
+        return bytes(header)
 
     def tearDown(self):
         self.temp.cleanup()
@@ -96,6 +108,23 @@ class StandaloneMigrationTests(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, 'unsafe migration asset identity'):
                     standalone_assets(self.path, board, self.target, version, source, self.full)
 
+    def test_catalog_target_and_chip_are_independently_checked(self):
+        with self.assertRaisesRegex(ValueError, 'unknown or mismatched migration board target'):
+            standalone_assets(self.path, self.board, 'different_repeater',
+                              self.version, self.source, self.full)
+        image = bytearray(self.candidate_header())
+        struct.pack_into('<H', image, 12, 0)  # Classic ESP32 is not ESP32-S3.
+        image.extend(TARGET_MARKER + struct.pack('<I', self.identity.target_id))
+        image = bridge_with_successor_endf(bytes(image), self.identity)
+        self.files['partition-expander.bin'] = image
+        self.files['partition-expander.mota'] = mota_full(image, self.identity, 1024)
+        # A faulty producer using a target-only spec could certify this image;
+        # the publisher must recheck the real board's chip and flash capacity.
+        self.manifest['expander_evaluation'] = evaluate_candidate(
+            self.board, {'target': self.target}, image, self.version)
+        with self.assertRaisesRegex(ValueError, 'chip or flash header'):
+            self.assets()
+
     def test_mota_must_be_same_expander_and_target(self):
         other = b'other expander'
         self.files['partition-expander.mota'] = mota_full(
@@ -134,19 +163,20 @@ class StandaloneMigrationTests(unittest.TestCase):
 
     def test_measured_combined_expander_evidence_is_rechecked(self):
         image = bridge_with_successor_endf(
-            b'\xe9' + TARGET_MARKER + struct.pack('<I', self.identity.target_id) + b'firmware', self.identity)
+            self.candidate_header() + TARGET_MARKER + struct.pack('<I', self.identity.target_id)
+            + b'firmware', self.identity)
         self.files['partition-expander.bin'] = image
         self.files['partition-expander.mota'] = mota_full(
             bridge_with_successor_endf(image, self.identity), self.identity, 1024)
         self.manifest['expander_evaluation'] = evaluate_candidate(
-            self.board, {'target': self.target}, image, self.version)
+            self.board, self.spec, image, self.version)
         self.assertEqual(len(self.assets()), 3)
         self.manifest['expander_evaluation']['image_sha256'] = 'wrong'
         with self.assertRaisesRegex(ValueError, 'combined expander evidence'):
             self.assets()
 
     def test_oversize_fallback_requires_measured_exact_candidate(self):
-        marker = b'\xe9' + TARGET_MARKER + struct.pack('<I', self.identity.target_id)
+        marker = self.candidate_header() + TARGET_MARKER + struct.pack('<I', self.identity.target_id)
         candidate = marker + b'x' * (LEGACY_SLOT_BYTES + 1 - len(marker))
         del self.files['partition-expander.bin'], self.files['partition-expander.mota']
         self.files.update({
@@ -156,7 +186,7 @@ class StandaloneMigrationTests(unittest.TestCase):
                                           self.identity, 1024),
         })
         self.manifest['expander_evaluation'] = evaluate_candidate(
-            self.board, {'target': self.target}, candidate, self.version)
+            self.board, self.spec, candidate, self.version)
         assets = self.assets()
         self.assertEqual(json.loads(next(value for name, value in assets.items()
                                          if name.endswith('-migration.json')))['mode'], 'separate')

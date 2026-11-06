@@ -13,7 +13,7 @@ import re
 import zipfile
 
 from package_esp32_partition_migration import (
-    LEGACY_SLOT_BYTES, bridge_with_successor_endf, check_esp32_stage,
+    BOARDS, LEGACY_SLOT_BYTES, bridge_with_successor_endf, check_esp32_stage,
     pack_version, parse_container, parse_endf_ident, role_for_target, verify,
 )
 from motalib import CODEC_FULL, hw_id_bytes
@@ -35,6 +35,10 @@ def standalone_assets(archive_path: Path, board: str, target: str,
             or not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9._+\-]*', version)
             or not re.fullmatch(r'[0-9a-f]{8}', source)):
         raise ValueError('unsafe migration asset identity')
+    spec = BOARDS.get(board)
+    if (not isinstance(spec, dict) or spec.get('target') != target
+            or 'usb_chip' not in spec or 'flash_bytes' not in spec or 'slot_bytes' not in spec):
+        raise ValueError('unknown or mismatched migration board target')
     if full_image is None:
         return {}
     full_path = Path(full_image)
@@ -56,6 +60,8 @@ def standalone_assets(archive_path: Path, board: str, target: str,
                 or manifest.get('source_commit') != source
                 or manifest.get('target_id') != f'0x{ident.target_id:08x}'
                 or manifest.get('hardware_id') != ident.hw_id
+                or manifest.get('flash_bytes') != spec['flash_bytes']
+                or manifest.get('expanded_slot_bytes') != spec['slot_bytes']
                 or manifest.get('legacy_slot_bytes') != LEGACY_SLOT_BYTES):
             raise ValueError('migration archive identity differs from published Full')
         recorded = manifest.get('files', {})
@@ -90,14 +96,14 @@ def standalone_assets(archive_path: Path, board: str, target: str,
             wifi = read_checked('partition-expander.bin')
             lora = read_checked('partition-expander.mota')
             from esp32_migration_expanders import evaluate_candidate
-            if evaluation != evaluate_candidate(board, {'target': target}, wifi, version):
+            if evaluation != evaluate_candidate(board, spec, wifi, version):
                 raise ValueError('invalid combined expander evidence')
             mode = 'combined'
             labels = ('expander.bin', 'expander.mota')
         elif evaluation is not None and evaluation.get('decision') == 'oversize':
             from esp32_migration_expanders import evaluate_candidate
             candidate = read_checked('expander-candidate.bin')
-            if evaluation != evaluate_candidate(board, {'target': target}, candidate, version):
+            if evaluation != evaluate_candidate(board, spec, candidate, version):
                 raise ValueError('invalid oversized expander evidence')
             if evaluation.get('decision') != 'oversize':
                 raise ValueError('expander fallback is not justified by size')
