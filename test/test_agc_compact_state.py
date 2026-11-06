@@ -59,6 +59,14 @@ int main() {
   w._rxps_pulse.rearming();w._rxps_pulse.receiveEntry(0,120600);
   assert(w._rxps_pulse.ok==1 && w._rxps_pulse.fail==0 && w._rxps_pulse.cycles==1);
   assert(w._rxps_pulse.takeCompletion()==RxpsPulse::Result::Applied);
+#if MESH_COMPACT_STM32_RADIO
+  assert(w._rxps_pulse.total.n==0 && w._rxps_pulse.busy_high.n==0);
+  char reply_placeholder[24];
+  w._rxps_pulse.format(1,16,reply_placeholder,sizeof(reply_placeholder));
+  assert(!strcmp(reply_placeholder,"> unsupported"));
+#else
+  assert(w._rxps_pulse.total.n==1 && w._rxps_pulse.busy_high.n==1);
+#endif
   w._agc_scan_lease.begin(1,4,5,6,32,7,8);w._agc_scan_lease.finish(100);
   char reply[160];
   assert(w.formatWarmRxRefresh(0,16,reply,sizeof(reply)));

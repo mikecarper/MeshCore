@@ -14,7 +14,17 @@ public:
   enum class Step:uint8_t { None, Standby, Irq, Stage, Arm, Witness, RtcStop, RtcRead, RtcEvent, SetRx, Mode, Recovery };
   struct Samples {
     uint32_t n=0,last=0,minimum=0,maximum=0;
-    void add(uint32_t value) { if(!n||value<minimum) minimum=value; if(!n||value>maximum) maximum=value; last=value;++n; }
+    void add(uint32_t value) {
+#if MESH_COMPACT_STM32_RADIO
+      // Compact firmware omits these detailed timing pages. Keep its actual
+      // deadline/witness timestamps and success/cycle counters independently.
+      (void)value;
+#else
+      if(!n||value<minimum) minimum=value;
+      if(!n||value>maximum) maximum=value;
+      last=value;++n;
+#endif
+    }
   };
   uint32_t req=0,admit=0,defer=0,fail=0,ok=0,cycles=0,aborts=0,missed=0,rearm_fail=0;
   uint32_t rx_us=117844,sleep_us=0,rx_ticks=7542,sleep_ticks=0;
@@ -127,6 +137,9 @@ public:
       case Step::SetRx:return "setrx";case Step::Mode:return "mode";case Step::Recovery:return "recovery";default:return "none"; }
   }
   void format(uint8_t page,uint32_t seconds,char* out,size_t cap) const {
+#if MESH_COMPACT_STM32_RADIO
+    if(page!=0 && page!=3) { snprintf(out,cap,"> unsupported");return; }
+#endif
     if(page==1) snprintf(out,cap,"> v=2,n=%lu,last_us=%lu,min_us=%lu,max_us=%lu,pending=%u,phase=%s",
       (unsigned long)total.n,(unsigned long)total.last,(unsigned long)total.minimum,(unsigned long)total.maximum,pending?1U:0U,phaseName(phase));
     else if(page==2) snprintf(out,cap,"> v=2,n=%lu,last_us=%lu,min_us=%lu,max_us=%lu,rearm_fail=%lu,step=%s",
