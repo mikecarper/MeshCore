@@ -28,6 +28,7 @@ sys.path.insert(0, str(ROOT / "tools" / "mota"))
 from motalib import parse_endf, parse_endf_ident, parse_nrf52_layout, target_id_for_env
 
 FIRMWARE_SUFFIXES = {".bin", ".uf2", ".hex", ".zip"}
+MAX_RELEASE_ASSETS = 1000
 
 
 def is_companion(target):
@@ -835,6 +836,8 @@ def main():
         destination = args.output / group["key"]
         (destination / f"FIRMWARE-PICKER-{args.version}.html").write_text(picker)
         files = sorted(destination.iterdir())
+        if len(files) + 1 > MAX_RELEASE_ASSETS:  # The checksum file is an asset too.
+            raise ValueError(f"{group['key']} release exceeds the {MAX_RELEASE_ASSETS}-asset limit")
         (destination / "SHA256SUMS.txt").write_text("".join(f"{sha256(path)}  {path.name}\n" for path in files))
         group["asset_count"] = len(files) + 1
         group["target_count"] = len(group.pop("records"))

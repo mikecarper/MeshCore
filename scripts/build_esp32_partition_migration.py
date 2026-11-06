@@ -167,6 +167,111 @@ def bundle_release(output_root: Path, package_dir: Path, boards: list[str],
     return archive
 
 
+def publish_migration_outputs(staging: Path, package_dir: Path, build_dir: Path,
+                              output_root: Path, boards: list[str], version: str,
+                              source: str, radio_preset: str, profile: str) -> list[Path]:
+    """Validate the complete selection before atomically exposing any new file.
+
+    Files are staged on the output filesystem. Exclusive hard links prevent an
+    existing or concurrently created result from being overwritten; a failed
+    publication removes only files created by this invocation.
+    """
+    if not boards or len(boards) != len(set(boards)):
+        raise ValueError("select distinct migration boards")
+    archives = sorted(staging.glob("*.zip"))
+    if len(archives) != len(boards):
+        raise ValueError("packager did not produce one ZIP per selected board")
+    if package_dir.is_symlink() or (package_dir.exists() and not package_dir.is_dir()):
+        raise ValueError("migration package destination is not a directory")
+    direct_staging = staging / ".standalone"
+    direct_staging.mkdir()
+    plan: dict[Path, Path] = {}
+
+    def add(destination: Path, candidate: Path) -> None:
+        if destination in plan:
+            raise ValueError(f"duplicate migration output: {destination.name}")
+        plan[destination] = candidate
+
+    for name in boards:
+        if name not in BOARDS:
+            raise ValueError(f"unknown migration board: {name}")
+        staged = staging / f"{name}-{version}-{source}-migration.zip"
+        if staged not in archives:
+            raise ValueError(f"expected exactly one {name} ZIP")
+        target = BOARDS[name]["target"]
+        full_matches = list(build_dir.glob(f"{target}-full-*-{version}-{source}.bin"))
+        if len(full_matches) != 1:
+            raise ValueError(f"expected one published Full application for {name}")
+        full_image = full_matches[0]
+        verify_archive(staged, name, version, source, full_image=full_image)
+        direct = standalone_assets(staged, name, target, version, source, full_image)
+        add(package_dir / staged.name, staged)
+        for filename, content in direct.items():
+            candidate = direct_staging / filename
+            if candidate.exists():
+                raise ValueError(f"duplicate standalone migration asset: {filename}")
+            candidate.write_bytes(content)
+            add(package_dir / filename, candidate)
+
+    if set(boards) == set(BOARDS):
+        bundle_dir = staging / ".bundle"
+        bundle_dir.mkdir()
+        bundle = bundle_release(bundle_dir, staging, boards, version, source,
+                                radio_preset, profile)
+        add(output_root / bundle.name, bundle)
+
+    for destination, candidate in plan.items():
+        if destination.is_symlink():
+            raise ValueError(f"migration output is a symbolic link: {destination}")
+        if destination.exists() and (not destination.is_file() or
+                hashlib.sha256(destination.read_bytes()).digest() !=
+                hashlib.sha256(candidate.read_bytes()).digest()):
+            raise ValueError(f"existing migration output differs: {destination}")
+
+    package_existed = package_dir.exists()
+    package_dir.mkdir(parents=True, exist_ok=True)
+    if package_dir.is_symlink():
+        raise ValueError("migration package destination is a symbolic link")
+    created: list[tuple[Path, int, int]] = []
+    try:
+        for destination, candidate in plan.items():
+            if destination.is_symlink():
+                raise ValueError(f"migration output is a symbolic link: {destination}")
+            if destination.exists():
+                if (not destination.is_file() or
+                        hashlib.sha256(destination.read_bytes()).digest() !=
+                        hashlib.sha256(candidate.read_bytes()).digest()):
+                    raise ValueError(f"concurrent migration output differs: {destination}")
+                continue
+            try:
+                os.link(candidate, destination)
+            except FileExistsError:
+                if (destination.is_symlink() or not destination.is_file() or
+                        hashlib.sha256(destination.read_bytes()).digest() !=
+                        hashlib.sha256(candidate.read_bytes()).digest()):
+                    raise ValueError(f"concurrent migration output differs: {destination}") from None
+            else:
+                stat = destination.stat()
+                created.append((destination, stat.st_dev, stat.st_ino))
+        for destination in plan:
+            print(f"Ready: {destination}", flush=True)
+    except BaseException:
+        for destination, device, inode in reversed(created):
+            try:
+                stat = destination.lstat()
+                if stat.st_dev == device and stat.st_ino == inode:
+                    destination.unlink()
+            except FileNotFoundError:
+                pass
+        if not package_existed:
+            try:
+                package_dir.rmdir()
+            except OSError:
+                pass
+        raise
+    return list(plan)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--version", help="firmware release version")
@@ -264,49 +369,9 @@ def main() -> None:
         for name in boards:
             command.extend(("--board", name))
         subprocess.run(command, cwd=ROOT, env=environment, check=True)
-        archives = sorted(staging.glob("*.zip"))
-        if len(archives) != len(boards):
-            raise ValueError("packager did not produce one ZIP per selected board")
-        package_dir.mkdir(parents=True, exist_ok=True)
-        for name in boards:
-            matches = [path for path in archives if path.name.startswith(name + "-")]
-            if len(matches) != 1:
-                raise ValueError(f"expected exactly one {name} ZIP")
-            staged = matches[0]
-            target = BOARDS[name]["target"]
-            full_matches = list(build_dir.glob(f"{target}-full-*-{args.version}-{source}.bin"))
-            if len(full_matches) != 1:
-                raise ValueError(f"expected one published Full application for {name}")
-            full_image = full_matches[0]
-            verify_archive(staged, name, args.version, source, full_image=full_image)
-            direct = standalone_assets(staged, name, target, args.version, source, full_image)
-            destination = package_dir / staged.name
-            if destination.exists() and hashlib.sha256(destination.read_bytes()).digest() != \
-                    hashlib.sha256(staged.read_bytes()).digest():
-                raise ValueError(f"existing package differs: {destination}")
-            for filename, content in direct.items():
-                direct_path = package_dir / filename
-                if direct_path.exists() and direct_path.read_bytes() != content:
-                    raise ValueError(f"existing standalone migration asset differs: {direct_path}")
-            for filename, content in direct.items():
-                direct_path = package_dir / filename
-                if not direct_path.exists():
-                    with tempfile.NamedTemporaryFile(prefix="migration-asset-", dir=package_dir,
-                                                     delete=False) as output:
-                        temporary_path = Path(output.name)
-                        output.write(content)
-                    try:
-                        temporary_path.replace(direct_path)
-                    finally:
-                        temporary_path.unlink(missing_ok=True)
-                print(f"Ready: {direct_path}", flush=True)
-            if not destination.exists():
-                staged.replace(destination)
-            print(f"Ready: {destination}", flush=True)
-    if set(boards) == set(BOARDS):
-        print("Release: " + str(bundle_release(
-            output_root, package_dir, boards, args.version, source,
-            args.radio_preset, args.profile)), flush=True)
+        publish_migration_outputs(staging, package_dir, build_dir, output_root,
+                                  boards, args.version, source,
+                                  args.radio_preset, args.profile)
 
 
 if __name__ == "__main__":

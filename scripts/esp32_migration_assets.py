@@ -9,13 +9,14 @@ from __future__ import annotations
 import hashlib
 import json
 from pathlib import Path
+import re
 import zipfile
 
 from package_esp32_partition_migration import (
     LEGACY_SLOT_BYTES, bridge_with_successor_endf, check_esp32_stage,
     pack_version, parse_container, parse_endf_ident, role_for_target, verify,
 )
-from motalib import hw_id_bytes
+from motalib import CODEC_FULL, hw_id_bytes
 
 
 def _digest(data: bytes) -> str:
@@ -30,6 +31,10 @@ def standalone_assets(archive_path: Path, board: str, target: str,
     a previously built ZIP's self-reported metadata alone is not sufficient to
     bind a bridge or its successor to the exact published Full application.
     """
+    if (not re.fullmatch(r'[a-z0-9]+(?:-[a-z0-9]+)*', board)
+            or not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9._+\-]*', version)
+            or not re.fullmatch(r'[0-9a-f]{8}', source)):
+        raise ValueError('unsafe migration asset identity')
     if full_image is None:
         return {}
     full_path = Path(full_image)
@@ -108,6 +113,8 @@ def standalone_assets(archive_path: Path, board: str, target: str,
         parsed = parse_container(lora)
         if verify(parsed):
             raise ValueError('invalid LoRa migration container')
+        if not parsed.manifest.is_full or parsed.manifest.codec_id != CODEC_FULL:
+            raise ValueError('LoRa migration must be a full image')
         if (parsed.manifest.target_id != ident.target_id
                 or parsed.manifest.fw_version != ident.fw_version
                 or parsed.manifest.hw_id != hw_id_bytes(ident.hw_id)):

@@ -317,6 +317,28 @@ class ReleasePublicationTest(unittest.TestCase):
             for path in extras:
                 self.assertEqual((output / "utility" / path.name).read_bytes(), path.read_bytes())
             self.assertFalse((output / "utility" / "full-application.bin").exists())
+            plan = json.loads((output / "release-plan.json").read_text())
+            utility = next(group for group in plan["groups"] if group["key"] == "utility")
+            self.assertEqual(utility["asset_count"], len(list((output / "utility").iterdir())))
+
+    def test_utility_assets_include_checksum_when_enforcing_release_limit(self):
+        self.assertEqual(package.MAX_RELEASE_ASSETS, 1000)
+        with tempfile.TemporaryDirectory() as temp:
+            base = Path(temp)
+            extras = []
+            for index in range(6):
+                path = base / f"migration-{index}-expander.bin"
+                path.write_bytes(b"image")
+                extras.append(path)
+            output = base / "stage"
+            argv = ["package", "--input", str(base / "input"), "--output", str(output),
+                    "--local-release", "--stable", "--version", "1.17.1.9", "--commit", SOURCE]
+            with patch.object(sys, "argv", argv), patch.object(package, "MAX_RELEASE_ASSETS", 6), \
+                    patch.object(package, "collect_local_release", return_value=([], extras,
+                        {"frequency": "910.525", "bandwidth": "62.5", "sf": "7", "cr": "5"})):
+                with self.assertRaisesRegex(ValueError, "utility release exceeds the 6-asset limit"):
+                    package.main()
+            self.assertFalse((output / "release-plan.json").exists())
 
     def test_stable_publication_notes_and_assets_are_ascii(self):
         with tempfile.TemporaryDirectory() as temp:

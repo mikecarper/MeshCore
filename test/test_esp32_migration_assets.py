@@ -2,20 +2,24 @@
 """Verify standalone migration assets are bound to the qualified Full image."""
 import hashlib
 import json
+import os
 from pathlib import Path
 import struct
 import sys
 import tempfile
 import unittest
+from unittest import mock
 import zipfile
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'scripts'))
 from esp32_migration_assets import standalone_assets  # noqa: E402
 from esp32_migration_expanders import TARGET_MARKER, evaluate_candidate, target_id_for_env  # noqa: E402
+from motalib import CODEC_DETOOLS_SEQUENTIAL, build_container, build_manifest  # noqa: E402
 from package_esp32_partition_migration import (  # noqa: E402
     FwIdent, LEGACY_SLOT_BYTES, bridge_with_successor_endf, build_endf, mota_full,
 )
+import build_esp32_partition_migration as recipe  # noqa: E402
 
 
 class StandaloneMigrationTests(unittest.TestCase):
@@ -84,12 +88,34 @@ class StandaloneMigrationTests(unittest.TestCase):
         del self.manifest['expander_evaluation']
         self.assertEqual(self.assets(), {})
 
+    def test_asset_names_reject_traversal_and_invalid_source(self):
+        for board, version, source in (("../escape", self.version, self.source),
+                                       (self.board, "../../escape", self.source),
+                                       (self.board, self.version, "../../etc")):
+            with self.subTest(board=board, version=version, source=source):
+                with self.assertRaisesRegex(ValueError, 'unsafe migration asset identity'):
+                    standalone_assets(self.path, board, self.target, version, source, self.full)
+
     def test_mota_must_be_same_expander_and_target(self):
         other = b'other expander'
         self.files['partition-expander.mota'] = mota_full(
             bridge_with_successor_endf(other, self.identity), self.identity, 1024)
         with self.assertRaisesRegex(ValueError, 'payloads differ'):
             self.assets()
+
+    def test_lora_must_be_full_not_a_verified_delta_or_non_full_codec(self):
+        payload = bridge_with_successor_endf(self.bridge, self.identity)
+        for is_full in (False, True):
+            with self.subTest(is_full=is_full):
+                manifest = build_manifest(
+                    target_id=self.identity.target_id, fw_version=self.identity.fw_version,
+                    image_size=len(payload), payload=payload, block_size=1024,
+                    image_hash=hashlib.sha256(payload).digest(),
+                    codec_id=CODEC_DETOOLS_SEQUENTIAL, is_full=is_full,
+                    base_hash=None if is_full else b'baseline', hw_id=self.identity.hw_id)
+                self.files['partition-expander.mota'] = build_container(manifest, payload)
+                with self.assertRaisesRegex(ValueError, 'must be a full image'):
+                    self.assets()
 
     def test_public_full_binding_must_match_exact_bytes(self):
         self.files['full-application.bin'] += b'not-the-published-image'
@@ -139,6 +165,98 @@ class StandaloneMigrationTests(unittest.TestCase):
         self.manifest['expander_evaluation']['image_sha256'] = 'bad'
         with self.assertRaisesRegex(ValueError, 'evidence'):
             self.assets()
+
+
+class AtomicMigrationPublicationTests(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.root = Path(self.temp.name)
+        self.stage, self.output, self.builds = (self.root / name for name in ('stage', 'packages', 'builds'))
+        self.stage.mkdir()
+        self.builds.mkdir()
+        self.boards = {'one': {'target': 'board_one'}, 'two': {'target': 'board_two'},
+                       'unused': {'target': 'board_unused'}}
+        self.version, self.source = 'v1.18.0.1', '12345678'
+        for name in ('one', 'two'):
+            (self.stage / f'{name}-{self.version}-{self.source}-migration.zip').write_bytes(name.encode())
+            (self.builds / f'board_{name}-full-ota-{self.version}-{self.source}.bin').write_bytes(name.encode())
+        self.patches = [mock.patch.object(recipe, 'BOARDS', self.boards),
+                        mock.patch.object(recipe, 'verify_archive'),
+                        mock.patch.object(recipe, 'standalone_assets', side_effect=lambda path, board, *args:
+                                          {f'{board}-expander.bin': board.encode()})]
+        for patch in self.patches:
+            patch.start()
+            self.addCleanup(patch.stop)
+
+    def publish(self):
+        return recipe.publish_migration_outputs(
+            self.stage, self.output, self.builds, self.root, ['one', 'two'],
+            self.version, self.source, 'usa', 'cascade')
+
+    def test_later_board_failure_leaves_no_partial_outputs(self):
+        self.output.mkdir()
+        existing = self.output / 'one-expander.bin'
+        existing.write_bytes(b'one')
+        (self.builds / f'board_two-full-ota-{self.version}-{self.source}.bin').unlink()
+        with self.assertRaisesRegex(ValueError, 'one published Full'):
+            self.publish()
+        self.assertEqual(list(self.output.iterdir()), [existing])
+        self.assertEqual(existing.read_bytes(), b'one')
+
+    def test_publication_error_rolls_back_only_new_files(self):
+        self.output.mkdir()
+        existing = self.output / 'one-expander.bin'
+        existing.write_bytes(b'one')
+        real_link = os.link
+        count = 0
+        def fail_second(source, target):
+            nonlocal count
+            count += 1
+            if count == 2:
+                raise OSError('injected failure')
+            return real_link(source, target)
+        with mock.patch.object(recipe.os, 'link', side_effect=fail_second):
+            with self.assertRaisesRegex(OSError, 'injected failure'):
+                self.publish()
+        self.assertEqual(list(self.output.iterdir()), [existing])
+        self.assertEqual(existing.read_bytes(), b'one')
+
+    def test_bundle_failure_does_not_publish_other_board_outputs(self):
+        self.boards.pop('unused')
+        with mock.patch.object(recipe, 'bundle_release', side_effect=ValueError('invalid bundle')):
+            with self.assertRaisesRegex(ValueError, 'invalid bundle'):
+                self.publish()
+        self.assertFalse(self.output.exists())
+
+    def test_existing_later_conflict_is_detected_before_any_new_file(self):
+        self.output.mkdir()
+        conflict = self.output / 'two-expander.bin'
+        conflict.write_bytes(b'other')
+        with self.assertRaisesRegex(ValueError, 'existing migration output differs'):
+            self.publish()
+        self.assertEqual(list(self.output.iterdir()), [conflict])
+
+    def test_existing_symlink_is_not_accepted_as_an_identical_asset(self):
+        self.output.mkdir()
+        outside = self.root / 'existing.bin'
+        outside.write_bytes(b'one')
+        link = self.output / 'one-expander.bin'
+        try:
+            link.symlink_to(outside)
+        except OSError:
+            self.skipTest('symbolic-link creation is unavailable')
+        with self.assertRaisesRegex(ValueError, 'symbolic link'):
+            self.publish()
+        self.assertEqual(outside.read_bytes(), b'one')
+        self.assertEqual(list(self.output.iterdir()), [link])
+
+    def test_complete_selection_publishes_each_image_and_archive(self):
+        published = self.publish()
+        self.assertEqual(len(published), 4)
+        self.assertEqual((self.output / 'one-expander.bin').read_bytes(), b'one')
+        self.assertEqual((self.output / 'two-expander.bin').read_bytes(), b'two')
+        self.assertEqual(len(list(self.output.glob('*.zip'))), 2)
 
 
 if __name__ == '__main__':
