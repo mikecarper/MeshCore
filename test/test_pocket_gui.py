@@ -72,6 +72,54 @@ class PocketGuiTest(unittest.TestCase):
         self.compile_and_run(FIXTURE / "test_pocket_render.cpp",
                              ["-DHELTEC_MESH_POCKET=1", "-DCOMPANION_RADIO_FULL=1"])
 
+    def test_radio_page_hint_keeps_its_guard_when_reader_is_disabled(self):
+        source = (ROOT / "examples/companion_radio/ui-new/UITask.cpp").read_text()
+        method = source.index("  bool isRadioPage() const {")
+        start = source.rfind("#if ", 0, method)
+        end = source.index("#endif", method) + len("#endif")
+        # Retain the production preprocessor guard, unlike the navigation
+        # fixture which extracts individual method bodies for its reader build.
+        guarded_method = source[start:end]
+        hint = next(line for line in source.splitlines()
+                    if "else if (isRadioPage()) frame.hint" in line)
+        fixture = """
+#include <cassert>
+#include <cstdint>
+#include <cstring>
+struct Screen {
+@PAGES@;
+  uint8_t _page = FIRST;
+@GUARDED_METHOD@
+#if UI_POCKET_GUI
+  const char* hint() const {
+    struct { const char* hint; } frame;
+    if (false) frame.hint = "unused";
+@HINT@
+    else frame.hint = "other";
+    return frame.hint;
+  }
+#endif
+};
+int main() {
+#if UI_POCKET_GUI
+  Screen screen;
+  for (auto page : {Screen::RADIO, Screen::RADIO2}) {
+    screen._page = page;
+    assert(!strcmp(screen.hint(), "click next  2x back"));
+  }
+  screen._page = Screen::FIRST; assert(!strcmp(screen.hint(), "other"));
+#endif
+}
+""".replace("@PAGES@", extract_braced(source, "enum HomePage {"))
+        fixture = fixture.replace("@GUARDED_METHOD@", guarded_method).replace("@HINT@", hint)
+        with tempfile.TemporaryDirectory(prefix="mesh-pocket-reader-guard-") as directory:
+            generated = Path(directory) / "hint.cpp"
+            generated.write_text("#include <initializer_list>\n" + fixture)
+            for pocket, reader in ((1, 0), (1, 1), (0, 1), (0, 0)):
+                with self.subTest(pocket=pocket, reader=reader):
+                    self.compile_and_run(generated, [f"-DUI_POCKET_GUI={pocket}",
+                                                   f"-DCOMPANION_FEATURE_READER={reader}"])
+
     def test_pocket_controls_keep_network_reader_access(self):
         source = (ROOT / "examples/companion_radio/ui-new/UITask.cpp").read_text()
         home = source[source.index("class HomeScreen :"):]

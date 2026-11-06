@@ -974,7 +974,7 @@ public:
   }
   bool hasPairingPin() const { return _pairing_pin_visible; }
 
-#if COMPANION_FEATURE_READER
+#if COMPANION_FEATURE_READER || UI_POCKET_GUI
   bool isRadioPage() const {
     return _page == HomePage::RADIO || _page == HomePage::RADIO2;
   }
