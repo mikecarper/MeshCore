@@ -31,6 +31,24 @@ a successful maintenance cycle. Bounded failed recovery hands control back to
 the existing repair path. A consumed failure waits the configured interval;
 unadmitted owners retry at 250 ms.
 
+Dual-profile scanning uses a bounded extension of an idle primary visit. The
+lease snapshots both profile generations, the applied primary generation and
+preamble, and the original visit clock. The scanner remains paused through
+Packet phase until the FIFO owner consumes the packet and RX reentry completes.
+A changed pair cancels maintenance credit, retains the completed FIFO on its
+old physical profile, and leaves the normal profile refresh path due. Successful
+or recovered reentry resumes the original visit deadline, allowing an overdue
+secondary visit immediately. A maintenance operation is not a profile-switch
+timing sample and does not change saved parameters or automatic preambles.
+
+The full primary RX window and 500 us sleep margin are retained. This trades
+occasional additional secondary absence for real RXPS maintenance; it cannot
+guarantee reception with short secondary preambles. The lease span includes
+primary listening and must not be called analog off time. A fixed scheduler
+with MCU power saving off can retry a wrong-profile wait at 1 ms; adaptive sleep
+and all other busy-owner retries keep the existing 250 ms policy. The saved
+interval is not proof that a pulse was admitted or completed.
+
 The shared timing policy leaves 500 us of headroom above the fastest nonzero
 timer setting. `RxpsPulseTiming.h` adds one minimum timer tick plus the 500 us
 buffer rounded up to whole ticks, then includes the actual driver transition
@@ -69,6 +87,9 @@ proof that the hardware completed a sleep cycle.
   cancellations and exceptional forced wakes.
 - `get agc.checks`: post-arm low observations, early highs, successful RTC
   cleanup, checked RX-mode observations and nonclearing IRQ reads.
+- `get agc.scan`: current dual/lease flags; cumulative dual admissions,
+  wrong-profile deferrals, stale-context cancellations and completed leases;
+  last/maximum extended-primary-visit spans, including failed recovery.
 
 Pages are non-atomic snapshots. Timing values are last/min/max, not sums or
 complete duration distributions. `ok` requires a real witness and checked

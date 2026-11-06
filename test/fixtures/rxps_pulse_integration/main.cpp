@@ -1,5 +1,6 @@
 #include <helpers/radiolib/SX126xRxpsPulse.h>
 #include <helpers/radiolib/RxpsPulse.h>
+#include <helpers/radiolib/RxpsPulseScanLease.h>
 #include <helpers/radiolib/RxpsPulseTiming.h>
 #include <helpers/radiolib/RXPowerSaving.h>
 #include <cassert>
@@ -12,6 +13,7 @@
 #include <vector>
 
 #define MESH_WARM_RX_REFRESH 1
+#define ESP32_PLATFORM 1
 #define MESH_ENABLE_MORSE_RX 1
 #define MESH_ENABLE_TX_BEACONS 1
 #define MESH_ENABLE_RADIO_DIRECTION 1
@@ -118,6 +120,10 @@ public:
   CustomSX1262 driver;
   CustomSX1262* _radio;
   RxpsPulse _rxps_pulse;
+  RxpsPulseScanLease _agc_scan_lease;
+  uint16_t _physical_preamble=32;
+  uint32_t _profile_scan_generation[2]={0,0},_profile_visit_stamp=77,_esp32_profile_idle_visit_us=999;
+  uint64_t _esp32_profile_visit_started_us=0x100000123ULL;
   bool _rxps_pulse_sleep_override=false;
   uint8_t _rxps_pulse_retries=0,state=STATE_RX,_cur_sf=7,_active_profile=0,_startrx_fails=0;
   float _cur_bw=62.5f;
@@ -126,7 +132,7 @@ public:
   bool _rx_retry_pending=false,_params_valid=true,_rx_ps_enabled=false,_rx_ps_armed=false;
   bool _rx_hold_continuous=false,_nf_calib_active=false,_nf_window_armed=false;
   bool _cw_active=false,_morse_owned=false,_morse_rx_owned=false,_beacon_owned=false,supported=true;
-  unsigned legacy=0;
+  unsigned legacy=0,scan_spy=0;
   struct Profiles { bool active=false;uint32_t generation[2]={0,0};bool enabled() const { return active; } } _profiles;
   Wrapper():driver(&module),_radio(&driver) { _rxps_pulse.cadence(60000); }
   bool hasPendingRadioInterrupt() const { return module.host_irq; }
@@ -332,6 +338,115 @@ static void admission() {
   assert(unsupported.periodicAGCMaintenance(false)==mesh::AGCMaintenanceResult::Applied && unsupported.legacy==1 && unsupported.module.calls.empty());
 }
 
+static void dualSetup(Wrapper& w,uint8_t profile=0) {
+  w._profiles.active=true;w._profile_rxps_suspended=true;
+  w._profiles.generation[0]=5;w._profiles.generation[1]=9;
+  w._profile_scan_generation[0]=5;w._profile_scan_generation[1]=9;
+  w._active_profile=profile;w._profile_generation=w._profiles.generation[profile];
+}
+static void dualNormal() {
+  Wrapper w;dualSetup(w);const auto before=w.module.registers;
+  const uint32_t visit=w._profile_visit_stamp;const uint64_t visit_us=w._esp32_profile_visit_started_us;
+  begin(w);
+  assert(w._rxps_pulse.pending && w._agc_scan_lease.active && w._agc_scan_lease.admitted==1);
+  assert(w._esp32_profile_idle_visit_us==0);
+  assert(w._agc_scan_lease.generation[0]==5 && w._agc_scan_lease.generation[1]==9);
+  const size_t calls=w.module.calls.size(),switches=w.module.switches.size();
+  now_us=w._rxps_pulse.armed_at+1;w.serviceAGCPulse();
+  now_us=w._rxps_pulse.armed_at+w._rxps_pulse.rx_us;w.module.busy=true;w.serviceAGCPulse();
+  now_us+=500;w.serviceAGCPulse();
+  assert(w.module.calls.size()==calls && w.module.switches.size()==switches);
+  // A continuous-RX entry can rewrite visit clocks; finishing the same lease
+  // must preserve the old primary deadline, including the64-bit ESP32 clock.
+  w._profile_visit_stamp=123456;w._esp32_profile_visit_started_us=0x200000999ULL;
+  now_us+=500;w.module.busy=false;w.serviceAGCPulse();
+  assert(!w._rxps_pulse.pending && !w._agc_scan_lease.active && !w._agc_scan_lease.stale);
+  assert(w._rxps_pulse.ok==1 && w._rxps_pulse.fail==0 && w._agc_scan_lease.completed==1);
+  assert(w._agc_scan_lease.last_us==now_us-w._agc_scan_lease.started);
+  assert(w._profile_visit_stamp==visit && w._esp32_profile_visit_started_us==visit_us);
+  assert(w.periodicAGCMaintenance(false)==mesh::AGCMaintenanceResult::Applied);
+  unchanged(w.module,before);
+}
+static void dualSecondary() {
+  Wrapper w;dualSetup(w,1);now_us=1000;
+  assert(w.periodicAGCMaintenance(false)==mesh::AGCMaintenanceResult::Deferred);
+  assert(!w._rxps_pulse.pending && !w._agc_scan_lease.active && w._agc_scan_lease.deferred==1);
+  assert(w._rxps_pulse.defer==1 && w.module.calls.empty() && w.agcMaintenanceRetryMs()==1);
+  assert(w.periodicAGCMaintenance(true)==mesh::AGCMaintenanceResult::Deferred);
+  assert(w.agcMaintenanceRetryMs()==250 && w._agc_scan_lease.deferred==2 && w.module.calls.empty());
+  w._active_profile=0;w._profile_generation=5;
+  assert(w.periodicAGCMaintenance(false)==mesh::AGCMaintenanceResult::Deferred);
+  assert(w._rxps_pulse.pending && w._agc_scan_lease.active && w.agcMaintenanceRetryMs()==250);
+  naturalWake(w);assert(w._rxps_pulse.ok==1 && w._agc_scan_lease.completed==1);
+}
+static void dualStale() {
+  for(unsigned change=0;change<6;++change) {
+    Wrapper w;dualSetup(w);begin(w);assert(w._agc_scan_lease.active);
+    if(change<2) ++w._profiles.generation[change];
+    else if(change==2) w._profiles.active=false;
+    else if(change==3) ++w._profile_generation;
+    else if(change==4) ++w._physical_preamble;
+    else w._active_profile=1;
+    w._profile_visit_stamp=987;w._esp32_profile_visit_started_us=0x200000999ULL;
+    naturalWake(w);
+    assert(!w._rxps_pulse.pending && w._rxps_pulse.ok==0 && w._rxps_pulse.fail==0);
+    assert(w._rxps_pulse.cancel && w._profile_refresh_required);
+    assert(!w._agc_scan_lease.active && w._agc_scan_lease.stale && w._agc_scan_lease.invalidated==1);
+    assert(w._profile_visit_stamp==987 && w._esp32_profile_visit_started_us==0x200000999ULL);
+    assert(w._rxps_pulse.takeCompletion()==RxpsPulse::Result::Deferred);
+    w.validateAGCScanLease();assert(w._agc_scan_lease.invalidated==1);
+  }
+}
+static void dualPacket() {
+  for(bool change:{false,true}) {
+    Wrapper w;dualSetup(w);const auto before=w.module.registers;
+    w.module.inject_standby=1;w.module.inject_irq=2;begin(w);
+    w.serviceAGCPulse();
+    assert(w._rxps_pulse.phase==RxpsPulse::Phase::Packet && w._rxps_pulse.pending);
+    assert(w._agc_scan_lease.active && !w._rxps_pulse.owns());
+    unchanged(w.module,before);
+    const size_t count=w.module.calls.size();w.serviceAGCPulse();assert(w.module.calls.size()==count);
+    if(change) ++w._profiles.generation[1];
+    // Dispatcher owns FIFO consumption; only after it clears the completed
+    // packet may the actual packet reentry/lease validation retire this lease.
+    w.module.irq=0;w.module.host_irq=false;
+    const int rc=w.startReceiveMode();assert(rc==0);
+    w.validateAGCScanLease();w._rxps_pulse.receiveEntry(rc,now_us);
+    w._profile_visit_stamp=987;w._esp32_profile_visit_started_us=0x200000999ULL;
+    w.finishAGCScanLease();
+    assert(!w._rxps_pulse.pending && w._rxps_pulse.ok==0 && !w._agc_scan_lease.active);
+    assert(w._agc_scan_lease.stale==change && w._agc_scan_lease.invalidated==unsigned(change));
+    assert(w._profile_refresh_required==change);
+    assert(w._profile_visit_stamp==(change?987U:77U));
+    unchanged(w.module,before);
+  }
+}
+static void dualScanGuard() {
+  Wrapper w;dualSetup(w);begin(w);
+  const size_t calls=w.module.calls.size();const uint32_t stamp=w._profile_visit_stamp;
+  const uint64_t stamp_us=w._esp32_profile_visit_started_us;
+  for(bool packet:{false,true}) {
+    if(packet) w._rxps_pulse.packetOwned();
+    w._esp32_profile_idle_visit_us=999;
+    w.serviceProfileScan();
+    assert(w.scan_spy==0 && w.module.calls.size()==calls);
+    assert(w._esp32_profile_idle_visit_us==0); // fail-closed idle allowance
+    assert(w._profile_visit_stamp==stamp && w._esp32_profile_visit_started_us==stamp_us);
+    assert(w._profile_scan_generation[0]==5 && w._profile_scan_generation[1]==9);
+    assert(w._rxps_pulse.pending && w._agc_scan_lease.active);
+  }
+  w._rxps_pulse.pending=false;w._rxps_pulse.phase=RxpsPulse::Phase::Idle;
+  w.serviceProfileScan();assert(w.scan_spy==1 && w.module.calls.size()==calls);
+}
+
+static void dualBounded() {
+  Wrapper w;dualSetup(w);w.module.fail_from=1;begin(w);
+  for(unsigned i=0;i<8 && w._rxps_pulse.pending;++i) { now_us+=250001;w.serviceAGCPulse(); }
+  assert(!w._rxps_pulse.pending && w._rxps_pulse.fail==1 && w._profile_repair_required);
+  assert(!w._agc_scan_lease.active && w._agc_scan_lease.completed==1);
+  assert(w.module.calls.size()<=5 && w._rxps_pulse.ok==0);
+}
+
 static void margin() {
   for(uint32_t tcxo:{0U,150U,1600U,5000U}) {
     Wrapper w;w.driver.tcxo=tcxo;
@@ -405,6 +520,9 @@ int main(int argc,char** argv) {
   if(name=="fast_lane") fastLane();else if(name=="normal") normal();else if(name=="faults") faults();else if(name=="packet") packet();
   else if(name=="sleep") sleep();else if(name=="bounded") bounded();else if(name=="geometry") geometry();
   else if(name=="invalid_geometry") invalidGeometry();else if(name=="mode") mode();else if(name=="iq") iq();
-  else if(name=="budget") budget();else if(name=="admission") admission();else if(name=="margin") margin();else assert(false);
+  else if(name=="budget") budget();else if(name=="admission") admission();else if(name=="margin") margin();
+  else if(name=="dual_normal") dualNormal();else if(name=="dual_secondary") dualSecondary();
+  else if(name=="dual_stale") dualStale();else if(name=="dual_packet") dualPacket();
+  else if(name=="dual_bounded") dualBounded();else if(name=="dual_scan_guard") dualScanGuard();else assert(false);
   std::cout<<"PASS "<<name<<'\n';
 }

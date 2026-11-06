@@ -159,7 +159,7 @@ struct CLI {
 int main() {
   assert(!miniUnsupportedWarmAgcGet(nullptr));
   for (const char* key : {"agc.status", "agc.timing", "agc.recovery",
-                          "agc.pulse", "agc.sleep", "agc.checks", "agc.status   "})
+                          "agc.pulse", "agc.sleep", "agc.checks", "agc.scan", "agc.status   "})
     assert(miniUnsupportedWarmAgcGet(key));
   for (const char* key : {"agc", "agc.reset.interval", "agc.old", "agc.old   ", "agc.old.status", "agc.oldx",
                           "agc.status x", "agc.statusx", "agc.old\t", "other"})

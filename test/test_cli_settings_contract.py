@@ -53,6 +53,7 @@ COMMON_QUERY_EXCEPTIONS = {
     'agc.pulse': 'Cached RXPS pulse geometry and cycle outcome counters',
     'agc.sleep': 'Cached sampled sleep/wake timing and cancellation counters',
     'agc.checks': 'Cached RTC cleanup, RX-mode verification and IRQ check counters',
+    'agc.scan': 'Cached dual-profile maintenance lease and extended visit counters',
     'agc.old.status': 'Compile-gated passive legacy full-reset counters',
     'agc.old.timing': 'Compile-gated passive legacy helper and RX-entry timing',
     'agc.old.errors': 'Compile-gated passive legacy command/rearm errors',

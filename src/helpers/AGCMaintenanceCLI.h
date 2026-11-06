@@ -98,7 +98,7 @@ inline bool handleAGCMaintenanceCommand(Radio* radio,const char* command,
   (void)radio; (void)primary_seconds;
   if(strncmp(command,"get agc.",8)==0) {
     // Share suffixes instead of retaining each old/reset diagnostic name.
-    static const char names[]="status\0timing\0errors\0recovery\0pulse\0sleep\0checks\0";
+    static const char names[]="status\0timing\0errors\0recovery\0pulse\0sleep\0checks\0scan\0";
     const char* key=command+8;
     bool legacy=false;
     if(strncmp(key,"old.",4)==0) { key+=4;legacy=true; }
@@ -116,9 +116,11 @@ inline bool handleAGCMaintenanceCommand(Radio* radio,const char* command,
   const size_t diagnostic_capacity=capacity<157?capacity:157;
   if(strcmp(command,"get agc.status")==0 || strcmp(command,"get agc.timing")==0
       || strcmp(command,"get agc.recovery")==0 || strcmp(command,"get agc.pulse")==0
-      || strcmp(command,"get agc.sleep")==0 || strcmp(command,"get agc.checks")==0) {
+      || strcmp(command,"get agc.sleep")==0 || strcmp(command,"get agc.checks")==0
+      || strcmp(command,"get agc.scan")==0) {
     const uint8_t page=strcmp(command,"get agc.timing")==0?1:strcmp(command,"get agc.recovery")==0?2:
-        strcmp(command,"get agc.pulse")==0?3:strcmp(command,"get agc.sleep")==0?4:strcmp(command,"get agc.checks")==0?5:0;
+        strcmp(command,"get agc.pulse")==0?3:strcmp(command,"get agc.sleep")==0?4:strcmp(command,"get agc.checks")==0?5:
+        strcmp(command,"get agc.scan")==0?6:0;
     if(!radio || !radio->formatWarmRxRefresh(page,primary_seconds,reply,diagnostic_capacity))
       cli::formatError(reply,capacity,"unsupported");
     return true;

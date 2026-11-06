@@ -4371,7 +4371,7 @@ is enabled; it does not use adaptive escalation or TX postponement. If both
 timers are due, the old reset runs first and the primary pulse is deferred.
 
 `get agc.status`, `get agc.timing`, `get agc.recovery`, `get agc.pulse`,
-`get agc.sleep` and `get agc.checks` are cached diagnostics. Successful completion
+`get agc.sleep`, `get agc.checks` and `get agc.scan` are cached diagnostics. Successful completion
 requires an observed cycle plus checked RTC cleanup, SetRx and RX-mode status.
 The total timing includes the initial listening window. The sleep timing is a
 sampled BUSY-high span, not an independently measured RF outage. Long or missing
@@ -4380,6 +4380,23 @@ one-tick minimum, rounded up to whole timer ticks. It uses the driver's resolved
 oscillator delay rather than a fixed board duration. On the V4 with a 1600 us
 TCXO delay, the compensated request is 3116 us (33 RTC ticks after transition
 compensation). This does not establish improved sensitivity or reception.
+
+With radio2 enabled, supported V4 firmware admits a pulse only during an idle,
+unchanged primary-profile visit. The scanner pauses until checked RX reentry or
+completed-packet handoff finishes, then resumes the original scan deadline.
+This periodically extends the secondary profile's absence; it is a best-effort
+tradeoff, including with short automatic preambles. The full initial primary
+listening window is retained. For example, an approximately 54 ms lease can
+include approximately 46 ms of primary RX plus sleep and command overhead; the
+lease duration is not an RF outage measurement. Other profiles' packets may be
+missed during that absence. Ordinary RXPS and existing packet/TX owners still
+defer admission. The scanner's pair generations are checked before crediting a
+completion. `get agc.scan` reports current dual/lease flags, dual admissions,
+wrong-profile deferrals, stale-context cancellations, completed lease count and
+last/maximum lease spans. Its values are cumulative and separate from pulse
+success/error counters. With MCU power saving off, a wrong-profile wait retries
+at 1 ms to follow the next primary visit; other busy waits retain 250 ms retries.
+Adaptive power saving retains its existing retry and sleep policy.
 
 Explicit bench builds with `MESH_RXPS_PULSE_LAB=1` also expose local
 `get agc.test.sleep_us` and `set agc.test.sleep_us 6554|4000|3116|3000|2616`. The selector is

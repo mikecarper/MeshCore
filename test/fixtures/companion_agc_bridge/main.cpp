@@ -9,6 +9,7 @@
 #include <helpers/AGCMaintenanceCLI.h>
 #include <helpers/radiolib/WarmRxRefresh.h>
 #include <helpers/radiolib/AGCTimingDiagnostics.h>
+#include <helpers/radiolib/RxpsPulseScanLease.h>
 #include "examples/companion_radio/NodePrefs.h"
 
 struct Capture : Stream {
@@ -36,6 +37,7 @@ struct Radio : mesh::Radio {
   mutable uint8_t last_page=255;
   WarmRxRefresh warm;
   AGCTimingDiagnostics legacy;
+  RxpsPulseScanLease scan;
   bool supportsWarmRxRefresh() const override { return supported; }
   bool supportsOldAGC() const override { return supported; }
   @LAB_RADIO_METHODS@
@@ -45,7 +47,9 @@ struct Radio : mesh::Radio {
   }
   bool formatWarmRxRefresh(uint8_t page,uint32_t primary,char* reply,size_t capacity) const override {
     ++warm_calls;if(!supported)return false;
-    last_primary=primary;last_page=page;warm.format(page,primary,reply,capacity);return true;
+    last_primary=primary;last_page=page;
+    if(page==6) scan.format(true,reply,capacity);else warm.format(page,primary,reply,capacity);
+    return true;
   }
 #if defined(MESH_AGC_TIMING_DIAGNOSTICS) && MESH_AGC_TIMING_DIAGNOSTICS
   bool formatAGCTimingDiagnostics(uint8_t page,char* reply,size_t capacity) const override {
@@ -197,6 +201,12 @@ static void diagnosticsAndBounds() {
     const std::string prefixed=mesh.command(("AA|"+std::string(warm[page])).c_str());
     assert(prefixed=="AA|"+reply && prefixed.size()<=159);
   }
+  mesh.radio.scan.admitted=mesh.radio.scan.deferred=mesh.radio.scan.invalidated=UINT32_MAX;
+  mesh.radio.scan.completed=mesh.radio.scan.last_us=mesh.radio.scan.max_us=UINT32_MAX;
+  mesh.radio.scan.active=true;
+  const std::string scan=mesh.command("get agc.scan");
+  assert(mesh.radio.last_page==6 && scan.size()<=156 && scan.find("max_us=4294967295")!=std::string::npos);
+  assert(mesh.command("AA|get agc.scan")=="AA|"+scan);
   const char* names[]={"status","timing","errors"};
   const char* legacy_ends[]={"rf=4294967295","g_max=4294967295","skip=none"};
 #if !defined(MESH_AGC_TIMING_DIAGNOSTICS) || !MESH_AGC_TIMING_DIAGNOSTICS
@@ -233,7 +243,7 @@ static void diagnosticsAndBounds() {
     }
   }
   char reply[160]="unchanged";
-  for(const char* command:{"get agc.status junk","get agc.statusx","get agc.oldx","set agc.oldx 1","get agc.old.statusx","set agcx 1"}) {
+  for(const char* command:{"get agc.status junk","get agc.statusx","get agc.scanx","get agc.scan extra","get agc.oldx","set agc.oldx 1","get agc.old.statusx","set agcx 1"}) {
     strcpy(reply,"unchanged");assert(!mesh.handleCommand(command,0,reply));assert(!strcmp(reply,"unchanged"));
   }
   assert(!mesh::handleAGCMaintenanceCommand(nullptr,nullptr,0,reply,sizeof(reply)));

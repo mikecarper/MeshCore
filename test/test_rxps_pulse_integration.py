@@ -27,12 +27,20 @@ def harness():
         "uint32_t defaultAGCPulseSleepUs(", "uint32_t rxPowerSavingTransitionUs(", "static bool pulseActivity(",
         "void pulseFailure(", "bool startAGCPulse(", "int16_t pulseContinuous(",
         "void retireFailedPulse(", "void serviceAGCPulse(", "int startReceiveMode("))
+    lease = "\n".join(body(base, signature).replace("RadioLibWrapper::", "") for signature in (
+        "void RadioLibWrapper::admitAGCPulse(", "void RadioLibWrapper::validateAGCScanLease(",
+        "void RadioLibWrapper::finishAGCScanLease("))
+    # Compile the actual scanner entry through its ownership guard. The spy
+    # stands in for later timestamp/retune work, not for the guard itself.
+    scan_prefix = body(base, "void RadioLibWrapper::serviceProfileScan(")
+    scan_prefix = scan_prefix.split("  (void)profileTimestamp(_profiles.enabled());", 1)[0]
+    scan_prefix = scan_prefix.replace("RadioLibWrapper::", "") + "  ++scan_spy;\n}"
     admission = body(base, "mesh::AGCMaintenanceResult RadioLibWrapper::periodicAGCMaintenance(")
     admission = admission.replace("RadioLibWrapper::", "")
     sleep_accessors = "\n".join(body(interface, signature).replace(" override", "") for signature in (
-        "bool setAGCPulseSleep(", "uint32_t getAGCPulseSleep(", "bool serviceAGCMaintenanceFastLane("))
+        "bool setAGCPulseSleep(", "uint32_t getAGCPulseSleep(", "bool serviceAGCMaintenanceFastLane(", "uint32_t agcMaintenanceRetryMs("))
     return (FIXTURE / "main.cpp").read_text().replace(
-        "@DRIVER@", actual_driver).replace("@WRAPPER@", actual_wrapper + "\n" + admission + "\n" + sleep_accessors)
+        "@DRIVER@", actual_driver).replace("@WRAPPER@", actual_wrapper + "\n" + lease + "\n" + scan_prefix + "\n" + admission + "\n" + sleep_accessors)
 
 
 class PulseIntegrationTest(unittest.TestCase):
@@ -104,6 +112,24 @@ class PulseIntegrationTest(unittest.TestCase):
 
     def test_actual_periodic_admission_and_single_use_failure_completion(self):
         self.run_case("admission")
+
+    def test_dual_primary_pulse_preserves_visit_clock_and_busy_silence(self):
+        self.run_case("dual_normal")
+
+    def test_secondary_fixed_only_retry_does_no_radio_work(self):
+        self.run_case("dual_secondary")
+
+    def test_either_generation_enable_or_physical_context_change_cancels_credit(self):
+        self.run_case("dual_stale")
+
+    def test_dual_packet_handoff_keeps_fifo_and_requires_same_context(self):
+        self.run_case("dual_packet")
+
+    def test_scan_entry_defers_owned_and_packet_leases_before_timestamp_or_retune(self):
+        self.run_case("dual_scan_guard")
+
+    def test_dual_failed_hardware_recovery_releases_lease_with_finite_commands(self):
+        self.run_case("dual_bounded")
 
     def test_default_margin_follows_resolved_oscillator_and_rejects_overflow(self):
         self.run_case("margin")

@@ -1271,6 +1271,11 @@ void RadioLibWrapper::serviceProfileScan() {
 #if defined(ESP32_PLATFORM)
   _esp32_profile_idle_visit_us = 0;
 #endif
+#if MESH_WARM_RX_REFRESH
+  // Even Packet phase still owns the unchanged-profile FIFO. Do not hop,
+  // reset scan generations, or publish an idle deadline before it is consumed.
+  if(_rxps_pulse.pending) return;
+#endif
   (void)profileTimestamp(_profiles.enabled());
   if (_cw_active) return;
   if (!_params_valid || (_profile_retry_at && (int32_t)(millis() - _profile_retry_at) < 0)) return;
@@ -1807,8 +1812,48 @@ void RadioLibWrapper::resetAGC() {
 }
 
 #if MESH_WARM_RX_REFRESH
+void RadioLibWrapper::admitAGCPulse(uint32_t now) {
+  _rxps_pulse.admitted(now);
+  if(!_profiles.enabled()) return;
+  _agc_scan_lease.begin(now,_profiles.generation[0],_profiles.generation[1],
+      _profile_generation,_physical_preamble,_profile_visit_stamp,
+#if defined(ESP32_PLATFORM)
+      _esp32_profile_visit_started_us
+#else
+      0
+#endif
+  );
+#if defined(ESP32_PLATFORM)
+  _esp32_profile_idle_visit_us=0;
+#endif
+}
+
+void RadioLibWrapper::validateAGCScanLease() {
+  if(!_agc_scan_lease.validate(_profiles.enabled(),_active_profile,_profiles.generation[0],
+      _profiles.generation[1],_profile_generation,_physical_preamble)) {
+    // A changed pair cannot receive maintenance credit for the old context.
+    // Keep its FIFO on the old physical profile until the packet owner finishes.
+    _rxps_pulse.cancelRequest();
+    _profile_refresh_required=true;
+  }
+}
+
+void RadioLibWrapper::finishAGCScanLease() {
+  if(!_agc_scan_lease.active || _rxps_pulse.pending) return;
+  if(!_agc_scan_lease.stale) {
+    // Primary listening counts as time spent on that visit. Preserve its old
+    // deadline so the overdue secondary gets the next safe scan opportunity.
+    _profile_visit_stamp=_agc_scan_lease.visit_stamp;
+#if defined(ESP32_PLATFORM)
+    _esp32_profile_visit_started_us=_agc_scan_lease.visit_started_us;
+#endif
+  }
+  _agc_scan_lease.finish(static_cast<uint32_t>(micros()));
+}
+
 mesh::AGCMaintenanceResult RadioLibWrapper::periodicAGCMaintenance(bool adaptive) {
   using Result=mesh::AGCMaintenanceResult;
+  _agc_scan_lease.fast_retry=false;
   if(!supportsWarmRxRefresh()) {
     if(adaptive) return !isCalibratingNoiseFloor() && tryResetAGC() ? Result::Applied : Result::Deferred;
 #if defined(MESH_AGC_TIMING_DIAGNOSTICS) && MESH_AGC_TIMING_DIAGNOSTICS
@@ -1823,9 +1868,12 @@ mesh::AGCMaintenanceResult RadioLibWrapper::periodicAGCMaintenance(bool adaptive
   if(completed==RxpsPulse::Result::Failed) return Result::Failed;
   if(completed==RxpsPulse::Result::Deferred || _rxps_pulse.pending) return Result::Deferred;
   _rxps_pulse.request(static_cast<uint32_t>(micros()));
-  if(state!=STATE_RX || !_params_valid || _profiles.enabled() || _active_profile!=0 || _profile_generation!=_profiles.generation[0]
+  if(state!=STATE_RX || !_params_valid || _active_profile>1 || _profile_generation!=_profiles.generation[_active_profile]
       || _profile_refresh_required || _profile_repair_required || _profile_retry_at
-      || _profile_rxps_suspended || _rx_ps_enabled || _rx_ps_armed || _rx_hold_continuous
+      || (_profiles.enabled() ? (!_profile_rxps_suspended
+          || _profile_scan_generation[0]!=_profiles.generation[0]
+          || _profile_scan_generation[1]!=_profiles.generation[1]) : _profile_rxps_suspended)
+      || _rx_ps_enabled || _rx_ps_armed || _rx_hold_continuous
       || _rx_retry_pending || _nf_calib_active || _nf_window_armed || _cw_active || _morse_owned
 #if MESH_ENABLE_MORSE_RX
       || _morse_rx_owned
@@ -1837,6 +1885,13 @@ mesh::AGCMaintenanceResult RadioLibWrapper::periodicAGCMaintenance(bool adaptive
       || !mesh::radioDirection::radioReceiveAllowed()
 #endif
       || isChipBusy()) { _rxps_pulse.deferred();return Result::Deferred; }
+  if(_active_profile!=0) {
+    if(_profiles.enabled()) {
+      ++_agc_scan_lease.deferred;
+      _agc_scan_lease.fast_retry=!adaptive;
+    }
+    _rxps_pulse.deferred();return Result::Deferred;
+  }
   if(!startAGCPulse()) return Result::Deferred;
   // Arming is not completion. The scheduler remains due until a naturally
   // witnessed sleep/wake and checked continuous reentry have finished.
@@ -2905,6 +2960,7 @@ void RadioLibWrapper::startRecv() {
   if (_cw_active || _profile_repair_required) return;
   int err = startReceiveMode();
 #if MESH_WARM_RX_REFRESH
+  validateAGCScanLease();
   _rxps_pulse.receiveEntry(err,static_cast<uint32_t>(micros()));
 #endif
 #if MESH_WARM_RX_REFRESH
@@ -2960,6 +3016,9 @@ void RadioLibWrapper::startRecv() {
     if (_startrx_fails < 255) _startrx_fails++;
     MESH_DEBUG_PRINTLN("RadioLibWrapper: error: startReceiveMode(%d)", err);
   }
+#if MESH_WARM_RX_REFRESH
+  finishAGCScanLease();
+#endif
 }
 
 int RadioLibWrapper::startReceiveMode() {

@@ -32,7 +32,7 @@ inline bool maintenanceReadAllowed(const char* command) {
     "get radio.fast.buffer", "get radio.rxps", "get radio.rxps.config",
     "get radio.rxps.status", "get rxps.wd", "get agc", "get agc.reset.interval",
     "get agc.old", "get agc.status", "get agc.timing", "get agc.recovery",
-    "get agc.pulse", "get agc.sleep", "get agc.checks",
+    "get agc.pulse", "get agc.sleep", "get agc.checks", "get agc.scan",
     "get agc.old.status", "get agc.old.timing", "get agc.old.errors",
     "get agc.reset.status", "get agc.reset.timing", "get agc.reset.errors",
     "get agc.test.ms", "get agc.test.sleep_us"

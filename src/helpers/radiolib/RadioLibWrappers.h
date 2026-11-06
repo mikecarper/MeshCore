@@ -27,6 +27,7 @@
 #include "ESP32RadioTrace.h"
 #include "WarmRxRefresh.h"
 #include "RxpsPulse.h"
+#include "RxpsPulseScanLease.h"
 #if defined(MESH_AGC_TIMING_DIAGNOSTICS) && MESH_AGC_TIMING_DIAGNOSTICS
 #include "AGCTimingDiagnostics.h"
 #endif
@@ -59,6 +60,7 @@ protected:
 #if MESH_WARM_RX_REFRESH
   WarmRxRefresh _warm_refresh;
   RxpsPulse _rxps_pulse;
+  RxpsPulseScanLease _agc_scan_lease;
   bool _rxps_pulse_sleep_override=false;
   uint8_t _rxps_pulse_retries=0;
 #if MESH_WARM_RX_LAB_TIMER
@@ -419,6 +421,9 @@ protected:
   virtual int16_t stopDutyCycleHardware() { return _radio->standby(); }
   virtual int16_t startContinuousReceive() { return _radio->startReceive(); }
 #if MESH_WARM_RX_REFRESH
+  void admitAGCPulse(uint32_t now);
+  void validateAGCScanLease();
+  void finishAGCScanLease();
   virtual bool startAGCPulse() { return false; }
   virtual void serviceAGCPulse() { }
 #endif
@@ -769,10 +774,16 @@ public:
   uint32_t warmRxLabTimerRevision() const override { return _warm_rx_lab_timer_revision; }
 #endif
   mesh::AGCMaintenanceResult periodicAGCMaintenance(bool adaptive) override;
-  uint32_t agcMaintenanceRetryMs() const override { return supportsWarmRxRefresh()?250:50; }
+  uint32_t agcMaintenanceRetryMs() const override {
+    // The wrong-profile wait performs no SPI. Only the already-awake fixed
+    // scheduler follows the next primary visit; adaptive sleep keeps its policy.
+    return _agc_scan_lease.fast_retry?1:supportsWarmRxRefresh()?250:50;
+  }
   bool formatWarmRxRefresh(uint8_t page,uint32_t seconds,char* reply,size_t capacity) const override {
     if(!supportsWarmRxRefresh()) return false;
-    _rxps_pulse.format(page,seconds,reply,capacity); return true;
+    if(page==6) _agc_scan_lease.format(_profiles.enabled(),reply,capacity);
+    else _rxps_pulse.format(page,seconds,reply,capacity);
+    return true;
   }
   bool isAGCMaintenanceActive() const override { return _rxps_pulse.owns(); }
   bool isAGCMaintenancePending() const override { return _rxps_pulse.pending; }

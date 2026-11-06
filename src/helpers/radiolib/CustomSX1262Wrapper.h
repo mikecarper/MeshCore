@@ -325,13 +325,13 @@ protected:
     // another board's or an earlier oscillator mode's absolute duration.
     const uint32_t sleep=getAGCPulseSleep();
     if(!_rxps_pulse.configure(sleep,transition)) {
-      _rxps_pulse.admitted(static_cast<uint32_t>(micros()));
+      admitAGCPulse(static_cast<uint32_t>(micros()));
       pulseFailure(RADIOLIB_ERR_INVALID_SLEEP_PERIOD,RxpsPulse::Step::Stage);return true;
     }
     uint16_t irq=0;
     auto probe=mesh::rxpspulse::readIrq(mod,irq);++_rxps_pulse.irq_reads;
     if(!probe.ok()) {
-      _rxps_pulse.admitted(static_cast<uint32_t>(micros()));_rxps_pulse_retries=0;
+      admitAGCPulse(static_cast<uint32_t>(micros()));_rxps_pulse_retries=0;
       pulseFailure(probe.error,RxpsPulse::Step::Irq);return true;
     }
     if(pulseActivity(irq) || hasPendingRadioInterrupt()) {
@@ -339,7 +339,7 @@ protected:
       _rxps_pulse.deferred();return false;
     }
     if(_cur_sf<5 || _cur_sf>12 || !isfinite(_cur_bw) || _cur_bw<=0 || sleep<=transition) {
-      _rxps_pulse.admitted(static_cast<uint32_t>(micros()));
+      admitAGCPulse(static_cast<uint32_t>(micros()));
       pulseFailure(RADIOLIB_ERR_INVALID_RX_PERIOD,RxpsPulse::Step::Stage);return true;
     }
     const float symbol_us=(float(uint32_t(1)<<_cur_sf)*1000.0f)/_cur_bw;
@@ -348,13 +348,13 @@ protected:
     const float required=(currentPreambleLength()+sync+RX_POWERSAVING_HEADER_SYMBOLS+RX_POWERSAVING_TIMER_SLACK_SYMBOLS)*symbol_us;
     const float needed=(required-encoded_sleep)*0.5f;
     if(currentPreambleLength()<8 || !isfinite(required) || !isfinite(needed) || needed>3000000.0f) {
-      _rxps_pulse.admitted(static_cast<uint32_t>(micros()));
+      admitAGCPulse(static_cast<uint32_t>(micros()));
       pulseFailure(RADIOLIB_ERR_INVALID_RX_PERIOD,RxpsPulse::Step::Stage);return true;
     }
     const uint32_t rx=snapRxPowerSavingUpToTick(ceilRxPowerSavingValue(needed>symbol_us?needed:symbol_us));
     mesh::rxpspulse::Periods periods;
     const auto valid=mesh::rxpspulse::encodePeriods(rx,sleep,transition,periods);
-    _rxps_pulse.admitted(static_cast<uint32_t>(micros()));_rxps_pulse_retries=0;
+    admitAGCPulse(static_cast<uint32_t>(micros()));_rxps_pulse_retries=0;
     // Reject unusable geometry once per scheduled attempt, staying awake.
     if(_cur_sf<5 || _cur_sf>12 || !isfinite(symbol_us) || !valid.ok()
         || rx>3000000UL) {
@@ -403,6 +403,7 @@ protected:
     _rxps_pulse.abandon(now);state=packet?1:0;
     _profile_refresh_required=_profile_repair_required=!packet;
     _profile_retry_at=packet?0:millis()+250UL;
+    finishAGCScanLease();
   }
   void serviceAGCPulse() override {
     auto* radio=static_cast<CustomSX1262*>(_radio);auto* mod=radio->getMod();
@@ -455,11 +456,13 @@ protected:
     if(pulseActivity(irq) && !_rxps_pulse.cancel) { ++_rxps_pulse.aborts;_rxps_pulse.cancelRequest(); }
     _rxps_pulse.rearming();
     const int16_t rc=pulseContinuous();
+    validateAGCScanLease();
     _rxps_pulse.receiveEntry(rc,static_cast<uint32_t>(micros()));
     if(rc) { _rxps_pulse.retry_at=static_cast<uint32_t>(micros());return; }
     state=1;_startrx_fails=0;_rx_retry_pending=false;_rx_retry_delay_ms=0;
     // Keep the same collector/cache selection; apply the usual RX settle.
     _nf_sample_from=millis()+NoiseFloorSettleMillis;
+    finishAGCScanLease();
   }
   bool warmRxRefreshUsesFs() const override {
     const auto* radio=static_cast<const CustomSX1262*>(_radio);

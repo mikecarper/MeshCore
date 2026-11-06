@@ -110,7 +110,7 @@ namespace mesh { struct Radio {
 int main() {
   mesh::Radio radio;
   const char* cmds[]={"get agc.old", "set agc.old ", "set agc.old 0", "set agc.old bad",
-    "get agc.status", "get agc.timing", "get agc.recovery", "get agc.pulse", "get agc.sleep", "get agc.checks",
+    "get agc.status", "get agc.timing", "get agc.recovery", "get agc.pulse", "get agc.sleep", "get agc.checks", "get agc.scan",
     "get agc.old.status", "get agc.old.timing", "get agc.old.errors", "get agc.reset.status",
     "get agc.reset.timing", "get agc.reset.errors", "get agc", "set agc 32", "set agc.old",
     "set agc.oldx 1", "get agc.old ", "get agc.status x", "get agc.statusx", "get agc.test.ms"};

@@ -65,7 +65,7 @@ struct MyMesh {
 int main() {
  mesh::Radio radio; Callbacks callbacks{&radio}; CommonCLI common{&callbacks}; MyMesh companion{&radio};
  char reply[160];
- for (const char* command : {"ver", "stats-radio", "stats-radio-diag", "stats-packets", "neighbors", "get agc.timing", "get agc.old", "get radio", "get radio.fast"}) {
+ for (const char* command : {"ver", "stats-radio", "stats-radio-diag", "stats-packets", "neighbors", "get agc.timing", "get agc.scan", "get agc.old", "get radio", "get radio.fast"}) {
   strcpy(reply,"canary"); assert(!common.rejected(command,reply)); assert(!strcmp(reply,"canary"));
   assert(!companion.rejected(command,0,reply));
  }
@@ -84,6 +84,7 @@ int main() {
  assert(mesh::cli::deferForRadioMaintenance(true,"ab|reboot",reply,sizeof(reply)));
  assert(!strncmp(reply,"ab|Error:",9));
  assert(!mesh::cli::maintenanceReadAllowed("get agc.status.fake"));
+ assert(!mesh::cli::maintenanceReadAllowed("get agc.scan.fake"));
  Driver driver; mesh::MillisecondClock clock;
  Stats::formatRadioStats(reply,&radio,driver,2000,3000); assert(strstr(reply,"\"last_snr\":2.25"));
  Stats::formatRadioDiag(reply,&radio,driver,clock,8,false); assert(strstr(reply,"recv=7, sent=3, errors=2, err_flags=8"));

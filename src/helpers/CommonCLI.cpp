@@ -582,7 +582,7 @@ static bool miniUnsupportedWarmAgcGet(const char* config) {
   return configKeyEquals(config, "status")
       || configKeyEquals(config, "timing") || configKeyEquals(config, "recovery")
       || configKeyEquals(config, "pulse") || configKeyEquals(config, "sleep")
-      || configKeyEquals(config, "checks");
+      || configKeyEquals(config, "checks") || configKeyEquals(config, "scan");
 }
 #endif
 
@@ -6651,10 +6651,12 @@ void CommonCLI::handleGetCmd(uint32_t sender_timestamp, char* command, char* rep
     mesh::cli::formatError(reply,160,"unsupported");
 #else
   } else if(configKeyEquals(config,"agc.status") || configKeyEquals(config,"agc.timing") || configKeyEquals(config,"agc.recovery")
-      || configKeyEquals(config,"agc.pulse") || configKeyEquals(config,"agc.sleep") || configKeyEquals(config,"agc.checks")) {
+      || configKeyEquals(config,"agc.pulse") || configKeyEquals(config,"agc.sleep") || configKeyEquals(config,"agc.checks")
+      || configKeyEquals(config,"agc.scan")) {
     const auto* radio=_callbacks->getProfileRadio();
     const uint8_t page=configKeyEquals(config,"agc.timing")?1:configKeyEquals(config,"agc.recovery")?2:
-        configKeyEquals(config,"agc.pulse")?3:configKeyEquals(config,"agc.sleep")?4:configKeyEquals(config,"agc.checks")?5:0;
+        configKeyEquals(config,"agc.pulse")?3:configKeyEquals(config,"agc.sleep")?4:configKeyEquals(config,"agc.checks")?5:
+        configKeyEquals(config,"agc.scan")?6:0;
     if(!radio || !radio->formatWarmRxRefresh(page,((uint32_t)_prefs->agc_reset_interval)*4,reply,157)) mesh::cli::formatError(reply,160,"unsupported");
 #endif
   } else if (configKeyEquals(config, "agc.reset.interval") || configKeyEquals(config,"agc")) {
