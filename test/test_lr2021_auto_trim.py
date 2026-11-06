@@ -234,6 +234,19 @@ int main() {
   auto cmd=[&](const char* text) {assert(handleLR2021CalibrationCommand(text,reply,sizeof(reply),radio));};
   loadLR2021CalibrationSettings(nullptr,radio);
   cmd("set radio.xtrim auto"); assert(strstr(reply,"storage unavailable") && radio.calls==0);
+  // An interrupted first calibration may have no prior records. Successful
+  // journal rollback legitimately returns to defaults; a corrupt journal must
+  // remain a detectable failure instead of silently using those defaults.
+  FILESYSTEM first_calibration;
+  uint8_t empty_journal[26]={'X','C','J','1'};
+  for(unsigned i=0;i<25;++i)empty_journal[25]^=empty_journal[i];
+  first_calibration.files["/radio_calibration.journal"] =
+      std::vector<uint8_t>(empty_journal,empty_journal+26);
+  first_calibration.files["/radio_xtrim.tmp"]={1,2,3};
+  CustomLR2021Wrapper first_reboot;
+  assert(!loadLR2021CalibrationSettings(&first_calibration,first_reboot));
+  assert(LR2021CalibrationSettingsReady());
+  assert(!first_calibration.files.count("/radio_calibration.journal"));
   // A failed first migration leaves the journal so the next boot can restore
   // the previous legacy record, even if rollback initially cannot publish.
   FILESYSTEM migrated; XoscTrimSelection old; old.enabled=true; old.a=old.b=3;
@@ -406,6 +419,10 @@ int main() {
   mesh::radioDirection::test_mode=mesh::radioDirection::Mode::Tx;
   loopLR2021CalibrationSettings(radio);
   cmd("get radio.xtrim.auto"); assert(strstr(reply,"restore deferred"));
+  first_calibration.files["/radio_calibration.journal"]={1,2,3};
+  assert(!loadLR2021CalibrationSettings(&first_calibration,first_reboot));
+  assert(!LR2021CalibrationSettingsReady());
+  assert(first_calibration.files.count("/radio_calibration.journal"));
 }
 '''
         stubs = {'helpers/IdentityStore.h': FS_STUB.replace('/display_prefs', '/radio_xtrim'),

@@ -120,15 +120,18 @@ void startLoRaReceiver() {
 #if defined(USE_LR2021) && defined(MESHNOLOGY_W12)
   // W12 oscillator and digital frequency correction must be configured
   // before radio_init(), just as in the ordinary firmware.
+  const bool loaded_calibration =
+      mesh::lr2021::loadLR2021CalibrationSettings(&SPIFFS, radio_driver);
+  // A valid interrupted first calibration can roll back to no saved record.
+  // Check committed paths after journal recovery; temporary files alone are
+  // not authoritative. Actual configuration or rollback failures are fatal.
   const bool has_calibration = SPIFFS.exists("/radio_xtrim")
-      || SPIFFS.exists("/radio_xtrim.bak") || SPIFFS.exists("/radio_xtrim.tmp")
+      || SPIFFS.exists("/radio_xtrim.bak")
       || SPIFFS.exists("/radio_calibration")
       || SPIFFS.exists("/radio_calibration.bak")
-      || SPIFFS.exists("/radio_calibration.tmp")
-      || SPIFFS.exists("/radio_calibration.journal")
-      || SPIFFS.exists("/radio_calibration.journal.tmp");
-  if (!mesh::lr2021::loadLR2021CalibrationSettings(&SPIFFS, radio_driver)
-      && has_calibration) {
+      || SPIFFS.exists("/radio_calibration.journal");
+  if (!mesh::lr2021::LR2021CalibrationSettingsReady()
+      || (!loaded_calibration && has_calibration)) {
     Serial.println("Partition Expander: saved radio calibration unavailable; Wi-Fi recovery remains available");
     return;
   }

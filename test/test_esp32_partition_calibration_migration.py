@@ -66,6 +66,7 @@ size_t File::write(const uint8_t* data,size_t n){
 struct Preferences {
   static std::map<std::string,std::vector<uint8_t>> values;
   static std::string fail_key;
+  static std::string fail_remove_key;
   bool begin(const char*,bool){return true;}
   void end(){}
   size_t getBytesLength(const char* key){auto it=values.find(key);return it==values.end()?0:it->second.size();}
@@ -80,10 +81,11 @@ struct Preferences {
   }
   bool getBool(const char* key,bool fallback){auto it=values.find(key);return it==values.end()?fallback:it->second.at(0)!=0;}
   size_t putBool(const char* key,bool value){uint8_t b=value?1:0;return putBytes(key,&b,1);}
-  bool remove(const char* key){return values.erase(key)!=0;}
+  bool remove(const char* key){return fail_remove_key!=key && values.erase(key)!=0;}
 };
 std::map<std::string,std::vector<uint8_t>> Preferences::values;
 std::string Preferences::fail_key;
+std::string Preferences::fail_remove_key;
 @CONFIG@
 @METHODS@
 
@@ -117,6 +119,14 @@ int main(int argc,char** argv){
     for(const auto& f:kConfigFiles)assert(!Preferences::values.count(f.nvs_key));
     assert(SPIFFS.files==original);return 0;
   }
+  if(test==6){
+    // A failure publishing the final pending marker removes all staged data.
+    Preferences::fail_key=kMigrationConfigPendingKey;assert(!stageLegacyConfig());
+    assert(!Preferences::values.count(kMigrationConfigPendingKey));
+    assert(!Preferences::values.count(kMigrationConfigKey));
+    for(const auto& f:kConfigFiles)assert(!Preferences::values.count(f.nvs_key));
+    assert(SPIFFS.files==original);return 0;
+  }
   assert(stageLegacyConfig());
   assert(Preferences::values.count(kMigrationConfigPendingKey));
   SPIFFS.files.clear();
@@ -139,6 +149,15 @@ int main(int argc,char** argv){
     ConfigStage stage={};memcpy(&stage,blob.data(),sizeof(stage));stage.present_high|=0x80000000U;
     memcpy(blob.data(),&stage,sizeof(stage));assert(!restoreStagedConfig());
     assert(SPIFFS.files.empty());assert(Preferences::values.count(kMigrationConfigPendingKey));return 0;
+  }
+  if(test==7 || test==8){
+    // A failed final commit or pending-marker removal remains retryable.
+    if(test==7)Preferences::fail_key=kMigrationConfigRestoredKey;
+    else Preferences::fail_remove_key=kMigrationConfigPendingKey;
+    assert(!restoreStagedConfig());assert(Preferences::values.count(kMigrationConfigPendingKey));
+    Preferences::fail_key.clear();Preferences::fail_remove_key.clear();
+    assert(restoreStagedConfig());assert(SPIFFS.files==original);
+    assert(!Preferences::values.count(kMigrationConfigPendingKey));return 0;
   }
   assert(test==0);assert(validateStagedConfig());assert(restoreStagedConfig());
   assert(SPIFFS.files==original);assert(!Preferences::values.count(kMigrationConfigPendingKey));
@@ -195,12 +214,20 @@ class PartitionCalibrationMigrationTests(unittest.TestCase):
     def test_unrecognized_presence_bits_fail_closed(self):
         subprocess.run([str(self.binary), "5"], check=True)
 
+    def test_pending_marker_failure_cleans_staging(self):
+        subprocess.run([str(self.binary), "6"], check=True)
+
+    def test_restored_and_pending_marker_failures_remain_retryable(self):
+        for case in ("7", "8"):
+            subprocess.run([str(self.binary), case], check=True)
+
     def test_w12_loads_calibration_before_radio_init_and_blocks_unreadable_records(self):
         source = EXPANDER.read_text(encoding="utf-8")
         body = extract_braced(source, "void startLoRaReceiver()")
         self.assertLess(body.index("SPIFFS.begin(false)"), body.index("loadLR2021CalibrationSettings"))
         self.assertLess(body.index("loadLR2021CalibrationSettings"), body.index("if (!radio_init())"))
         self.assertIn("&& has_calibration", body)
+        self.assertIn("LR2021CalibrationSettingsReady()", body)
         self.assertIn('SPIFFS.exists("/radio_calibration.journal")', body)
         self.assertIn('SPIFFS.exists("/radio_xtrim.bak")', body)
 
