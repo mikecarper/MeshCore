@@ -1208,6 +1208,17 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
+  <a href="#quick-steps-wi-fi-migration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Quick steps: Wi-Fi migration
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#bridge-wi-fi-credentials" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2622,6 +2633,17 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
+  <a href="#quick-steps-wi-fi-migration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Quick steps: Wi-Fi migration
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#bridge-wi-fi-credentials" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2761,6 +2783,26 @@
 <!-- meshcore-hosted-doc-link:end -->
 
 <h1 id="esp32-legacy-partition-migration-over-usb-wi-fi-or-lora">ESP32 legacy-partition migration over USB, Wi-Fi or LoRa</h1>
+<h2 id="quick-steps-wi-fi-migration">Quick steps: Wi-Fi migration</h2>
+<ol>
+<li><strong>Download and unzip</strong> the migration package for your exact board and role
+   from the <a href="https://github.com/mikecarper/MeshCore/releases/tag/utility-v1.18.0.1-halo-keymind-cascade-dev-03214a16">update utilities release</a>.</li>
+<li><strong>Upload the bridge.</strong> Open the node's existing Wi-Fi updater. If needed,
+   run <code>start ota ap</code> on the node, join <code>MeshCore-OTA</code>, and open the
+   <code>Started:</code> address returned by the command. Upload <code>wifi-bridge.bin</code>.</li>
+<li><strong>Join the new Wi-Fi network</strong> <code>MeshCore-Migrate</code> when it appears. Use the
+   node's saved admin password, or <code>meshcore-migrate</code> if the saved password
+   cannot be used. See the <a href="#bridge-wi-fi-credentials">password and fallback rules</a>.</li>
+<li><strong>Open <a href="http://192.168.4.1/">http://192.168.4.1/</a></strong> and wait for
+   <strong>Expanded layout ready</strong>. Use HTTP; the bridge does not serve HTTPS.</li>
+<li><strong>Upload</strong> <code>full-application.bin</code> from the same ZIP at
+   <a href="http://192.168.4.1/update">http://192.168.4.1/update</a>. Wait for the upload
+   to finish and the node to reboot.</li>
+</ol>
+<p>Keep the node powered throughout the migration. Do not upload a <code>-merged.bin</code>
+file through either browser updater. If the installed layout already supports
+the Full image, use a normal app update instead. For USB or LoRa migration,
+follow the package README and the details below.</p>
 <p>For <strong><a href="../releases/1.18.0.1/">1.18.0.1 USA Cascade</a></strong>, select the exact board
 and role in the <a href="../firmware_picker/">firmware picker</a>. Published migration
 packages are in the <a href="https://github.com/mikecarper/MeshCore/releases/tag/utility-v1.18.0.1-halo-keymind-cascade-dev-03214a16">update utilities release</a>.
