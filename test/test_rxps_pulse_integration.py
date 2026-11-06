@@ -18,18 +18,21 @@ def harness():
     driver = (ROOT / "src/helpers/radiolib/CustomSX1262.h").read_text()
     wrapper = (ROOT / "src/helpers/radiolib/CustomSX1262Wrapper.h").read_text()
     base = (ROOT / "src/helpers/radiolib/RadioLibWrappers.cpp").read_text()
+    interface = (ROOT / "src/helpers/radiolib/RadioLibWrappers.h").read_text()
     actual_driver = "\n".join(body(driver, signature) for signature in (
         "void invalidateMorseModemCache(", "uint64_t pulsePacketBudgetUs(",
         "int16_t stagePulseReceive(", "int16_t verifyPulseReceive(",
         "int16_t enterPulseContinuous("))
     actual_wrapper = "\n".join(body(wrapper, signature).replace(" override", "") for signature in (
-        "uint32_t rxPowerSavingTransitionUs(", "static bool pulseActivity(",
+        "uint32_t defaultAGCPulseSleepUs(", "uint32_t rxPowerSavingTransitionUs(", "static bool pulseActivity(",
         "void pulseFailure(", "bool startAGCPulse(", "int16_t pulseContinuous(",
         "void retireFailedPulse(", "void serviceAGCPulse(", "int startReceiveMode("))
     admission = body(base, "mesh::AGCMaintenanceResult RadioLibWrapper::periodicAGCMaintenance(")
     admission = admission.replace("RadioLibWrapper::", "")
+    sleep_accessors = "\n".join(body(interface, signature).replace(" override", "") for signature in (
+        "bool setAGCPulseSleep(", "uint32_t getAGCPulseSleep("))
     return (FIXTURE / "main.cpp").read_text().replace(
-        "@DRIVER@", actual_driver).replace("@WRAPPER@", actual_wrapper + "\n" + admission)
+        "@DRIVER@", actual_driver).replace("@WRAPPER@", actual_wrapper + "\n" + admission + "\n" + sleep_accessors)
 
 
 class PulseIntegrationTest(unittest.TestCase):
@@ -98,6 +101,9 @@ class PulseIntegrationTest(unittest.TestCase):
 
     def test_actual_periodic_admission_and_single_use_failure_completion(self):
         self.run_case("admission")
+
+    def test_default_margin_follows_resolved_oscillator_and_rejects_overflow(self):
+        self.run_case("margin")
 
 
 if __name__ == "__main__":

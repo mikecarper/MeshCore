@@ -59,6 +59,7 @@ protected:
 #if MESH_WARM_RX_REFRESH
   WarmRxRefresh _warm_refresh;
   RxpsPulse _rxps_pulse;
+  bool _rxps_pulse_sleep_override=false;
   uint8_t _rxps_pulse_retries=0;
   uint32_t _old_agc_seconds=0;
 #if MESH_WARM_RX_LAB_TIMER
@@ -66,6 +67,7 @@ protected:
   uint32_t _warm_rx_lab_timer_ms=0, _warm_rx_lab_timer_revision=0;
 #endif
   virtual bool warmRxRefreshUsesFs() const { return false; }
+  virtual uint32_t defaultAGCPulseSleepUs() const { return 0; }
   virtual WarmRxRefresh::Outcome performWarmRxRefresh(WarmRxRefresh::Reason& reason) {
     reason=WarmRxRefresh::Reason::Policy;
     return WarmRxRefresh::Outcome::Deferred;
@@ -768,10 +770,18 @@ public:
   void configureAGCMaintenance(uint32_t ms) override { _rxps_pulse.cadence(ms); }
   void cancelAGCMaintenance() override { _rxps_pulse.cancelRequest(); }
   bool setAGCPulseSleep(uint32_t us) override {
-    return supportsWarmRxRefresh() && (us==2616 || us==3000 || us==4000 || us==6554)
-        && _rxps_pulse.configure(us,rxPowerSavingTransitionUs());
+    const uint32_t default_sleep=defaultAGCPulseSleepUs();
+    if(!supportsWarmRxRefresh() || !default_sleep || !(us==2616 || us==3000 || us==4000 || us==6554
+        || us==default_sleep)
+        || !_rxps_pulse.configure(us,rxPowerSavingTransitionUs())) return false;
+    _rxps_pulse_sleep_override=true;
+    return true;
   }
-  uint32_t getAGCPulseSleep() const override { return supportsWarmRxRefresh()?_rxps_pulse.sleep_us:0; }
+  uint32_t getAGCPulseSleep() const override {
+    const uint32_t default_sleep=defaultAGCPulseSleepUs();
+    return !supportsWarmRxRefresh() || !default_sleep?0:(_rxps_pulse_sleep_override
+        ?_rxps_pulse.sleep_us:default_sleep);
+  }
 #endif
   bool tryResetAGC() override;
 #if defined(MESH_AGC_TIMING_DIAGNOSTICS) && MESH_AGC_TIMING_DIAGNOSTICS

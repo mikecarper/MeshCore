@@ -31,9 +31,25 @@ a successful maintenance cycle. Bounded failed recovery hands control back to
 the existing repair path. A consumed failure waits the configured interval;
 unadmitted owners retry at 250 ms.
 
-The default compensated sleep request is 4000 us. With the current 1600 us TCXO
-and 1000 us transition allowance, 6554/4000/3000 us requests encode 253/89/25 RTC
-ticks, or 3953.125/1390.625/390.625 us of retained sleep. The programmed RX window
+The shared timing policy leaves 500 us of headroom above the fastest nonzero
+timer setting. `RxpsPulseTiming.h` adds one minimum timer tick plus the 500 us
+buffer rounded up to whole ticks, then includes the actual driver transition
+allowance. Backends must supply their resolved oscillator delay, timer clock
+and register limit. Invalid or overflowing timing is rejected before arming.
+The policy applies to future pulse backends as they are implemented; it does
+not enable an unsupported pulse state machine or change ordinary RXPS levels.
+
+SX126x uses 64 kHz timer ticks. Its policy duration is 33 ticks (515.625 us),
+which is exactly 500 us above the one-tick minimum. With the current 1600 us
+TCXO plus 1000 us transition allowance, the integer request is 3116 us. A
+crystal-based SX126x instead requests 1516 us; a configured 5000 us TCXO requests
+6516 us. The default is resolved after initialization and again before each
+pulse, so oscillator fallback cannot keep another mode's absolute duration.
+The helper also supports other timer clocks: at 32768 Hz the same margin
+rounds upward to 18 ticks. This arithmetic is not a hardware qualification.
+
+For comparison, with the V4 transition allowance, 6554/4000/3000 us lab requests
+encode 253/89/25 RTC ticks. The programmed RX window
 is recalculated from actual SF, bandwidth and preamble using the existing RXPS
 preamble/header timer guard. Unsupported geometry stays in continuous RX and
 records a failed bounded attempt. Neither an arm ACK nor a saved preference is
@@ -57,6 +73,6 @@ proof that the hardware completed a sleep cycle.
 Pages are non-atomic snapshots. Timing values are last/min/max, not sums or
 complete duration distributions. `ok` requires a real witness and checked
 continuous reentry; a later successful attempt does not clear failure history.
-The lab-only `agc.test.sleep_us` selector accepts 6554, 4000, 3000 or 2616 while idle.
+The lab-only `agc.test.sleep_us` selector accepts 6554, 4000, 3116, 3000 or 2616 while idle.
 The V4 minimum 2616 us request encodes one RTC tick without reducing the TCXO allowance.
 It changes no saved interval and triggers no pulse. Production has no setter.

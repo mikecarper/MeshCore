@@ -8,6 +8,7 @@
 #include <string>
 
 static void begin(RxpsPulse& pulse, uint32_t now = 1000, uint32_t timeout = 500000) {
+  if(!pulse.sleep_us) assert(pulse.configure(4000,2600));
   pulse.cadence(60000);
   pulse.request(now);
   assert(!pulse.pending && !pulse.owns());

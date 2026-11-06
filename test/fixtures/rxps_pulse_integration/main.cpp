@@ -1,5 +1,6 @@
 #include <helpers/radiolib/SX126xRxpsPulse.h>
 #include <helpers/radiolib/RxpsPulse.h>
+#include <helpers/radiolib/RxpsPulseTiming.h>
 #include <helpers/radiolib/RXPowerSaving.h>
 #include <cassert>
 #include <cmath>
@@ -97,13 +98,13 @@ class CustomSX1262 {
 public:
   struct Cache { bool valid=true;void invalidate() { valid=false; } } _profileSwitch;
   bool _coldStandby=false,_tcxoWakePending=true,_headerSeen=true,fast_fs=TEST_FS;
-  uint32_t _activityAt=123,_preambleMillis=100,_maxPayloadMillis=1000,rxTimeout=0;
+  uint32_t _activityAt=123,_preambleMillis=100,_maxPayloadMillis=1000,rxTimeout=0,tcxo=1600;
   uint16_t preambleLengthLoRa=32;
   uint8_t headerType=0,implicitLen=255,crcTypeLoRa=1,invertIQEnabled=0;
   Module* mod;
   explicit CustomSX1262(Module* value):mod(value) {}
   Module* getMod() { return mod; }
-  uint32_t getTcxoDelay() const { return 1600; }
+  uint32_t getTcxoDelay() const { return tcxo; }
   bool isChipBusy() const { return mod->busy; }
   uint16_t getIrqMapped(uint32_t flags) const { return uint16_t(flags); }
   @DRIVER@
@@ -117,6 +118,7 @@ public:
   CustomSX1262 driver;
   CustomSX1262* _radio;
   RxpsPulse _rxps_pulse;
+  bool _rxps_pulse_sleep_override=false;
   uint8_t _rxps_pulse_retries=0,state=STATE_RX,_cur_sf=7,_active_profile=0,_startrx_fails=0;
   float _cur_bw=62.5f;
   uint32_t _profile_generation=0,_profile_retry_at=0,_rx_retry_delay_ms=0,_nf_sample_from=0;
@@ -138,9 +140,9 @@ public:
   @WRAPPER@
 };
 
-static void begin(Wrapper& w,uint32_t sleep=4000) {
+static void begin(Wrapper& w,uint32_t sleep=0) {
   now_us=1000;mesh::radioDirection::allowed=true;
-  assert(w._rxps_pulse.configure(sleep,2600));
+  if(sleep) assert(w.setAGCPulseSleep(sleep));
   assert(w.periodicAGCMaintenance(false)==mesh::AGCMaintenanceResult::Deferred);
 }
 static void naturalWake(Wrapper& w,uint32_t span=1000) {
@@ -158,7 +160,7 @@ static void unchanged(const Module& m,const std::map<uint16_t,uint8_t>& before) 
 }
 
 static void normal() {
-  for(uint32_t sleep:{2616U,3000U,4000U,6554U}) {
+  for(uint32_t sleep:{2616U,3000U,3116U,4000U,6554U}) {
     Wrapper w;const auto before=w.module.registers;begin(w,sleep);
     assert(w._rxps_pulse.pending && w._rxps_pulse.ok==0 && w.module.calls.size()==11);
     assert(!w.driver._profileSwitch.valid && w.driver._coldStandby && !w.driver._tcxoWakePending);
@@ -274,9 +276,9 @@ static void invalidGeometry() {
   for(uint8_t sf:{4,13}) { Wrapper w;w._cur_sf=sf;begin(w);assert(w._rxps_pulse.failed && w.module.calls.size()==1); }
   Wrapper preamble;preamble.driver.preambleLengthLoRa=7;begin(preamble);assert(preamble._rxps_pulse.failed && preamble.module.calls.size()==1);
   Wrapper huge;huge.driver.preambleLengthLoRa=65535;huge._cur_sf=12;begin(huge);assert(huge._rxps_pulse.failed && huge.module.calls.size()==1);
-  Wrapper overflow;overflow._rxps_pulse.sleep_us=UINT32_MAX;
+  Wrapper overflow;overflow._rxps_pulse.sleep_us=UINT32_MAX;overflow._rxps_pulse_sleep_override=true;
   assert(overflow.periodicAGCMaintenance(false)==mesh::AGCMaintenanceResult::Deferred);
-  assert(overflow._rxps_pulse.failed && overflow.module.calls.size()==1);
+  assert(overflow._rxps_pulse.failed && overflow.module.calls.empty());
 }
 
 static void mode() {
@@ -330,8 +332,36 @@ static void admission() {
   assert(unsupported.periodicAGCMaintenance(false)==mesh::AGCMaintenanceResult::Applied && unsupported.legacy==1 && unsupported.module.calls.empty());
 }
 
+static void margin() {
+  for(uint32_t tcxo:{0U,150U,1600U,5000U}) {
+    Wrapper w;w.driver.tcxo=tcxo;
+    assert(w.getAGCPulseSleep()==tcxo+1516U);
+    begin(w);
+    assert(w._rxps_pulse.sleep_ticks==33 && w._rxps_pulse.sleep_us==tcxo+1516U);
+    assert(!w._rxps_pulse.failed && w._rxps_pulse.waiting());
+    assert(!w.setAGCPulseSleep(tcxo+1516U));
+    naturalWake(w);
+    // A recovered driver may resolve a crystal rather than its initial TCXO.
+    w.driver.tcxo=0;
+    assert(w.getAGCPulseSleep()==1516U);
+  }
+  Wrapper lab;assert(lab.setAGCPulseSleep(4000));lab.driver.tcxo=0;
+  assert(lab.getAGCPulseSleep()==4000);
+  Wrapper unsupported;unsupported.supported=false;
+  assert(unsupported.getAGCPulseSleep()==0 && !unsupported.setAGCPulseSleep(3116));
+  Wrapper overflow;overflow.driver.tcxo=UINT32_MAX;
+  assert(overflow.getAGCPulseSleep()==0);
+  begin(overflow);
+  assert(overflow._rxps_pulse.failed && overflow.module.calls.empty());
+  Wrapper overridden;assert(overridden.setAGCPulseSleep(4000));
+  overridden.driver.tcxo=UINT32_MAX;
+  assert(overridden.getAGCPulseSleep()==0 && !overridden.setAGCPulseSleep(4000));
+  begin(overridden);
+  assert(overridden._rxps_pulse.failed && overridden.module.calls.empty());
+}
+
 static void tuples() {
-  for(uint8_t sf:{7,12}) for(float bw:{500.0f,62.5f}) for(uint32_t requested:{6554U,4000U,3000U,2616U}) {
+  for(uint8_t sf:{7,12}) for(float bw:{500.0f,62.5f}) for(uint32_t requested:{6554U,4000U,3116U,3000U,2616U}) {
     Wrapper w;w._cur_sf=sf;w._cur_bw=bw;w.driver.preambleLengthLoRa=16;begin(w,requested);
     assert(!w._rxps_pulse.failed && w._rxps_pulse.waiting());
     std::cout<<"{\"sf\":"<<unsigned(sf)<<",\"bw_khz\":"<<bw
@@ -347,6 +377,6 @@ int main(int argc,char** argv) {
   if(name=="normal") normal();else if(name=="faults") faults();else if(name=="packet") packet();
   else if(name=="sleep") sleep();else if(name=="bounded") bounded();else if(name=="geometry") geometry();
   else if(name=="invalid_geometry") invalidGeometry();else if(name=="mode") mode();else if(name=="iq") iq();
-  else if(name=="budget") budget();else if(name=="admission") admission();else assert(false);
+  else if(name=="budget") budget();else if(name=="admission") admission();else if(name=="margin") margin();else assert(false);
   std::cout<<"PASS "<<name<<'\n';
 }

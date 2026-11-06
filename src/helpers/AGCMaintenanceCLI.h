@@ -52,8 +52,8 @@ inline bool handleRxpsPulseLabCommand(Radio* radio,const char* command,char* rep
   else if(get) snprintf(reply,capacity,"> %lu",(unsigned long)radio->getAGCPulseSleep());
   else {
     uint32_t us=0;
-    if(!cli::parseUnsignedIntegerStrict(command+22,us) || (us!=2616 && us!=3000 && us!=4000 && us!=6554))
-      cli::formatError(reply,capacity,"pulse sleep must be 2616, 3000, 4000 or 6554 us");
+    if(!cli::parseUnsignedIntegerStrict(command+22,us) || (us!=2616 && us!=3000 && us!=3116 && us!=4000 && us!=6554))
+      cli::formatError(reply,capacity,"pulse sleep must be 2616, 3000, 3116, 4000 or 6554 us");
     else if(!radio->setAGCPulseSleep(us)) cli::formatError(reply,capacity,"pulse pending or timing unsupported");
     else snprintf(reply,capacity,"OK - pulse sleep request %lu us (RAM only)",(unsigned long)us);
   }

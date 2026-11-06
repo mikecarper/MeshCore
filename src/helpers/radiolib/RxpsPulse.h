@@ -16,7 +16,7 @@ public:
     void add(uint32_t value) { if(!n||value<minimum) minimum=value; if(!n||value>maximum) maximum=value; last=value;++n; }
   };
   uint32_t req=0,admit=0,defer=0,fail=0,ok=0,cycles=0,aborts=0,missed=0,rearm_fail=0;
-  uint32_t rx_us=117844,sleep_us=4000,rx_ticks=7542,sleep_ticks=89;
+  uint32_t rx_us=117844,sleep_us=0,rx_ticks=7542,sleep_ticks=0;
   uint32_t high=0,wake=0,cancelled=0,forced_wake=0;
   uint32_t low=0,early=0,rtc=0,verified=0,irq_reads=0;
   int16_t error=0;

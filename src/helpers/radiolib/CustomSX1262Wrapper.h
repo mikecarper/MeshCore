@@ -7,6 +7,7 @@
 #include "SX126xReset.h"
 #include "SX126xMorseRamp.h"
 #include "SX126xMorseReceiver.h"
+#include "RxpsPulseTiming.h"
 
 #ifndef USE_SX1262
 #define USE_SX1262
@@ -26,6 +27,14 @@ protected:
   void setDriverSwitchFeatures(uint8_t features) override {
     static_cast<CustomSX1262*>(_radio)->setProfileSwitchFeatures(features);
   }
+#if MESH_WARM_RX_REFRESH
+  uint32_t defaultAGCPulseSleepUs() const override {
+    const uint32_t tcxo=static_cast<const CustomSX1262*>(_radio)->getTcxoDelay();
+    if(tcxo>UINT32_MAX-1000UL) return 0;
+    return mesh::rxpspulse::bufferedSleepRequestUs(
+        tcxo+1000UL,64000UL,0xFFFFFFUL);
+  }
+#endif
   int8_t readReceiveMode() override {
 #if MESH_WARM_RX_REFRESH
     if(_rxps_pulse.owns()) return -1;
@@ -311,6 +320,14 @@ protected:
   bool startAGCPulse() override {
     auto* radio=static_cast<CustomSX1262*>(_radio);
     auto* mod=radio->getMod();
+    const uint32_t transition=rxPowerSavingTransitionUs();
+    // Re-resolve after recovery too: an oscillator fallback must not retain
+    // another board's or an earlier oscillator mode's absolute duration.
+    const uint32_t sleep=getAGCPulseSleep();
+    if(!_rxps_pulse.configure(sleep,transition)) {
+      _rxps_pulse.admitted(static_cast<uint32_t>(micros()));
+      pulseFailure(RADIOLIB_ERR_INVALID_SLEEP_PERIOD,RxpsPulse::Step::Stage);return true;
+    }
     uint16_t irq=0;
     auto probe=mesh::rxpspulse::readIrq(mod,irq);++_rxps_pulse.irq_reads;
     if(!probe.ok()) {
@@ -321,8 +338,6 @@ protected:
       // No command was admitted; do not stop or acknowledge a packet owner.
       _rxps_pulse.deferred();return false;
     }
-    const uint32_t transition=rxPowerSavingTransitionUs();
-    const uint32_t sleep=_rxps_pulse.sleep_us;
     if(_cur_sf<5 || _cur_sf>12 || !isfinite(_cur_bw) || _cur_bw<=0 || sleep<=transition) {
       _rxps_pulse.admitted(static_cast<uint32_t>(micros()));
       pulseFailure(RADIOLIB_ERR_INVALID_RX_PERIOD,RxpsPulse::Step::Stage);return true;

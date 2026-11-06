@@ -4331,12 +4331,14 @@ timers are due, the old reset runs first and the primary pulse is deferred.
 requires an observed cycle plus checked RTC cleanup, SetRx and RX-mode status.
 The total timing includes the initial listening window. The sleep timing is a
 sampled BUSY-high span, not an independently measured RF outage. Long or missing
-observations fail the witness check. The default compensated sleep request is
-4000 us; TCXO and transition compensation make the encoded retained-sleep timer
-shorter. This does not establish improved sensitivity or reception.
+observations fail the witness check. The default adds 500 us above the radio's
+one-tick minimum, rounded up to whole timer ticks. It uses the driver's resolved
+oscillator delay rather than a fixed board duration. On the V4 with a 1600 us
+TCXO delay, the compensated request is 3116 us (33 RTC ticks after transition
+compensation). This does not establish improved sensitivity or reception.
 
 Explicit bench builds with `MESH_RXPS_PULSE_LAB=1` also expose local
-`get agc.test.sleep_us` and `set agc.test.sleep_us 6554|4000|3000|2616`. The selector is
+`get agc.test.sleep_us` and `set agc.test.sleep_us 6554|4000|3116|3000|2616`. The selector is
 RAM-only, changes no saved interval, and cannot change an active pulse. Set the
 primary interval to zero and wait for `pending=0` before changing it. Normal
 builds expose no sleep-duration setter. The legacy `get agc.old.status`,

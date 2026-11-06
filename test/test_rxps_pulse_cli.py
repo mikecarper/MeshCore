@@ -42,7 +42,7 @@ int main() {
 #if MESH_RXPS_PULSE_LAB
  assert(mesh::handleRxpsPulseLabCommand(&r,"get agc.test.sleep_us",reply,sizeof(reply)));
  assert(!strcmp(reply,"> 4000") && !r.changes);
- for(uint32_t v:{2616U,3000U,4000U,6554U}) {
+ for(uint32_t v:{2616U,3000U,3116U,4000U,6554U}) {
   char command[80];snprintf(command,sizeof(command),"set agc.test.sleep_us %u",unsigned(v));
   assert(mesh::handleRxpsPulseLabCommand(&r,command,reply,sizeof(reply)));
   assert(!strncmp(reply,"OK - ",5) && r.sleep==v);
