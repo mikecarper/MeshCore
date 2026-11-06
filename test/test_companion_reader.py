@@ -390,13 +390,17 @@ int main() {
         harness = r'''
 #include <Arduino.h>
 #include <helpers/CompanionReader.h>
+#include <helpers/RadioMaintenanceCLI.h>
 #include <cassert>
 #include <cstring>
 #include <string>
 #include "battery_calibration_cli_stub.h"
 #include "usb_mode_console.h"
 struct BatteryBoard {} board;
-struct Radio { bool active = false; bool isAGCMaintenancePending() const { return false; } };
+struct Radio {
+  bool active = false, pending = false;
+  bool isAGCMaintenancePending() const { return pending; }
+};
 namespace mesh {
 bool morseTimingActive(const Radio* radio) { return radio && radio->active; }
 namespace power { bool handleRegulatorCommand(const char*,char*,size_t) { return false; } }
@@ -432,6 +436,17 @@ int main() {
   assert(!mesh.handleCommand("get reader 3:16", 123, out.reply));
   assert(!mesh.handleCommand("AA|get reader 3:16", 123, out.reply));
   assert(!mesh.handleCommand("get name", 0, out.reply));
+  // Reader decompression must yield to the real maintenance guard while a
+  // lease owns the radio, keeping correlation tags and bounded replies.
+  mesh.radio.pending = true;
+  assert(mesh.handleCommand("G7|get reader 3:16", 0, out.reply));
+  assert(std::string(out.reply) == "G7|Error: radio maintenance pending; retry shortly");
+  assert(strlen(out.reply) < sizeof(out.reply) && out.after == 0xaabbccdd);
+  assert(!mesh.handleCommand("get name", 0, out.reply));
+  mesh.radio.pending = false;
+  assert(mesh.handleCommand("H8|get reader 3:16", 0, out.reply));
+  assert(std::string(out.reply).find("H8|Reader 3:16 (WEB)\n") == 0);
+  assert(strlen(out.reply) < sizeof(out.reply) && out.after == 0xaabbccdd);
   // Block synchronous 4 KiB decompression before it can stall Morse sampling,
   // including tagged bounded replies. Ordinary readers resume unchanged.
   mesh.radio.active = true;
