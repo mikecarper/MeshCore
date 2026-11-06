@@ -2099,6 +2099,9 @@
       return matches.length === 1 && matches[0].releaseUrl === releaseUrl &&
         matches[0].url === url ? matches[0] : null;
     }
+    // The release manifest is published with the image pair. Its absence or
+    // an ambiguous location means this release upload is incomplete.
+    if (!exact("migration.json")) return null;
     // If an expander was published, never mix it with an older separate
     // bridge. Duplicate, misdirected and missing assets remain unavailable.
     const combined = named(prefix + "expander.bin").length > 0 ||

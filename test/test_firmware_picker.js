@@ -2148,7 +2148,8 @@ function migrationFile(packageName, suffix, tag = migrationFamily) {
 }
 function pair(packageName, combined = true) {
   return [migrationFile(packageName, combined ? 'expander.bin' : 'wifi-bridge.bin'),
-    migrationFile(packageName, combined ? 'expander.mota' : 'lora-bridge.mota')];
+    migrationFile(packageName, combined ? 'expander.mota' : 'lora-bridge.mota'),
+    migrationFile(packageName, 'migration.json')];
 }
 const migrationAssets = Object.values(currentControls.partitionMigrations).flatMap(name => pair(name));
 function migrationCatalog(assets = migrationAssets, metadata = currentControls, utilityOverrides = {}) {
@@ -2229,9 +2230,13 @@ assert.deepStrictEqual(linksFor(unmappedVariant), [], 'Unlisted revisions cannot
 
 const withoutDirectAssets = migrationAssets.filter(item => !item.name.startsWith(directPackage + '-' + migrationFamily));
 assert.deepStrictEqual(directMigrationLinks(migrationCatalog(withoutDirectAssets)), [], 'Missing files remain unavailable');
+assert.deepStrictEqual(directMigrationLinks(migrationCatalog([...withoutDirectAssets,
+  ...pair(directPackage).slice(0, 2)])), [], 'An image pair without its release manifest must not be offered');
+assert.deepStrictEqual(directMigrationLinks(migrationCatalog([...migrationAssets,
+  migrationFile(directPackage, 'migration.json')])), [], 'Duplicate release manifests must not be offered');
 assert.deepStrictEqual(directMigrationLinks(migrationCatalog([...withoutDirectAssets, ...pair('ebyte-eora-s3-repeater', false)])),
   directLinks('ebyte-eora-s3-repeater', false), 'Separate transport bridges are available when needed');
-assert.deepStrictEqual(directMigrationLinks(migrationCatalog([...migrationAssets, ...pair('ebyte-eora-s3-repeater', false)])),
+assert.deepStrictEqual(directMigrationLinks(migrationCatalog([...migrationAssets, ...pair('ebyte-eora-s3-repeater', false).slice(0, 2)])),
   directLinks('ebyte-eora-s3-repeater'), 'Prefer the combined expander');
 assert.deepStrictEqual(directMigrationLinks(migrationCatalog([...withoutDirectAssets,
   migrationFile('ebyte-eora-s3-repeater', 'expander.bin'), ...pair('ebyte-eora-s3-repeater', false)])),
@@ -2248,6 +2253,7 @@ for (const badUrl of ['javascript:alert(1)', 'https://example.com/expander.bin',
   migrationFile('ebyte-eora-s3-repeater', 'expander.bin').browser_download_url.replace('/mikecarper/', '/someone-else/'),
   migrationFile('station-g2-repeater', 'expander.bin').browser_download_url]) {
   assert.deepStrictEqual(directMigrationLinks(migrationCatalog([...withoutDirectAssets,
+    migrationFile('ebyte-eora-s3-repeater', 'migration.json'),
     {...migrationFile('ebyte-eora-s3-repeater', 'expander.bin'), browser_download_url: badUrl}])), [], badUrl);
 }
 assert.deepStrictEqual(directMigrationLinks(migrationCatalog(migrationAssets, currentControls,
