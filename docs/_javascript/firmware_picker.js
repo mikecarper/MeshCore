@@ -2687,6 +2687,11 @@
       migration.href = migrationAction.url;
       actions.appendChild(migration);
     });
+    if (migrationActions.length && profile.migrationAssets) {
+      actions.appendChild(createElement("span", profile.migrationAssets.combined
+        ? "Same expansion firmware in Wi-Fi and LoRa formats."
+        : "Separate expansion firmware for Wi-Fi and LoRa."));
+    }
     if (migrationReleaseUrl(profile, asset) && migrationActions.length < 2) {
       actions.appendChild(createElement("span", migrationActions.length
         ? "The other expansion format is unavailable for this release."

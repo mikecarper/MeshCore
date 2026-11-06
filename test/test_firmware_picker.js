@@ -2955,6 +2955,7 @@ try {
   const migrationContainer = new RuntimeElement('section');
   picker.renderProfileCard(migrationContainer, expandedWithMigration, expandedWithMigration.files[0], 'bin', {}, {});
   const migrationAnchors = descendants(migrationContainer, node => node.tagName === 'A');
+  assert(migrationContainer.textContent.includes('Same expansion firmware in Wi-Fi and LoRa formats.'));
   for (const link of directLinks('ebyte-eora-s3-repeater')) {
     assert(migrationAnchors.some(node => node.href === link.url && node.textContent === link.label));
   }
