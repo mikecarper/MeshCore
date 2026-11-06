@@ -212,19 +212,6 @@ inline bool ota_xiao_bootloader_identity(uint32_t board_id, const uint8_t name[1
          memcmp(name, OTA_XIAO_BOOT_DEVICE_NAME, OTA_BOOT_DEVICE_NAME_SIZE) == 0;
 }
 
-// The XIAO and Sense bootloaders can be installed on the other variant. Their
-// software identities therefore cannot establish which physical board is
-// present, even when the installed and candidate manifests agree.
-inline bool ota_bootloader_install_identity_unambiguous(uint32_t board_id,
-                                                        const uint8_t name[16]) {
-  return !ota_xiao_bootloader_identity(board_id, name);
-}
-
-inline bool ota_bootloader_install_identity_unambiguous(const OtaBootloaderIdentity& identity) {
-  return ota_bootloader_install_identity_unambiguous(
-      identity.board_id, reinterpret_cast<const uint8_t*>(identity.device_name));
-}
-
 inline bool ota_bootloader_board_id_valid(uint32_t board_id) {
   return board_id != 0u && board_id != UINT32_MAX;
 }
@@ -681,7 +668,6 @@ enum OtaBootloaderConfirmGate : uint8_t {
   OTA_BOOT_CONFIRM_NOT_BOOT_PACKAGE,
   OTA_BOOT_CONFIRM_GEOMETRY,
   OTA_BOOT_CONFIRM_LOCAL_IDENTITY,
-  OTA_BOOT_CONFIRM_AMBIGUOUS_BOARD,
   OTA_BOOT_CONFIRM_TARGET,
   OTA_BOOT_CONFIRM_HW_ID,
   OTA_BOOT_CONFIRM_MID,
@@ -708,8 +694,6 @@ inline OtaBootloaderConfirmGate ota_bootloader_confirmation_gate(
       !ota_bootloader_device_name_valid(
           installed.board_id, reinterpret_cast<const uint8_t*>(installed.device_name)))
     return OTA_BOOT_CONFIRM_LOCAL_IDENTITY;
-  if (!ota_bootloader_install_identity_unambiguous(installed))
-    return OTA_BOOT_CONFIRM_AMBIGUOUS_BOARD;
   if (m.target_id != ota_bootloader_target_id(installed)) return OTA_BOOT_CONFIRM_TARGET;
   uint8_t expected_hw[32];
   if (!ota_bootloader_hw_id(installed, expected_hw) || !m.hw_id ||

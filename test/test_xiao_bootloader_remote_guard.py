@@ -9,8 +9,6 @@ ROOT = Path(__file__).resolve().parents[1]
 
 class XiaoBootloaderRemoteGuardTest(unittest.TestCase):
     def test_confirmation_gate_and_both_apply_paths(self):
-        apply = (ROOT / "src/helpers/ota/OtaApply.cpp").read_text()
-        self.assertEqual(apply.count("case OTA_BOOT_CONFIRM_AMBIGUOUS_BOARD:"), 2)
         source = r'''
 #include <cassert>
 #include <cstring>
@@ -35,7 +33,21 @@ int main() {
     m.target_id = board;
     assert(ota_xiao_bootloader_hw_id(board, hw));
     assert(ota_bootloader_confirmation_gate(m, id, mid, mid, zero)
-           == OTA_BOOT_CONFIRM_AMBIGUOUS_BOARD);
+           == OTA_BOOT_CONFIRM_OK);
+    OtaBootloaderIdentity candidate = id;
+    candidate.image_start = id.image_start = OTA_BOOT_IMAGE_START;
+    candidate.image_size = id.image_size = OTA_BOOT_IMAGE_SIZE;
+    assert(ota_bootloader_identity_matches(id, candidate));
+    candidate.board_id = board == OTA_XIAO_BOARD_ID_BASE
+        ? OTA_XIAO_BOARD_ID_SENSE : OTA_XIAO_BOARD_ID_BASE;
+    assert(!ota_bootloader_identity_matches(id, candidate));
+    m.target_id = candidate.board_id;
+    assert(ota_bootloader_confirmation_gate(m, id, mid, mid, zero)
+           == OTA_BOOT_CONFIRM_TARGET);
+    m.target_id = board;
+    assert(ota_xiao_bootloader_hw_id(candidate.board_id, hw));
+    assert(ota_bootloader_confirmation_gate(m, id, mid, mid, zero)
+           == OTA_BOOT_CONFIRM_HW_ID);
   }
   // The Solar P1 shares the base ID but has a distinct device name.
   id.board_id = OTA_XIAO_BOARD_ID_BASE;

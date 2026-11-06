@@ -61,8 +61,8 @@ int main() {
     if(fault==5)wrong.softdevice_fwid=0x123;
     assert(!installed_source_allowed(wrong,InstalledVariant::Normal,true,0x239A0029,name,0x26000,0xB6));
   }
-  // Even a matching modern identity or approved stock hash identifies the
-  // bootloader, not which XIAO physical variant is actually fitted.
+  // XIAO base and Sense use distinct identities; only an exact match or a
+  // stock hash approved for that particular candidate may proceed.
   const char xiao_name[16]="XIAO_DFU";
   for (uint32_t id : {OTA_XIAO_BOARD_ID_BASE, OTA_XIAO_BOARD_ID_SENSE}) {
     auto xiao=modern; xiao.board_id=id;
@@ -70,10 +70,16 @@ int main() {
     std::strcpy(xiao.device_name,xiao_name);
     xiao.app_base=0x27000; xiao.softdevice_fwid=0x123;
     auto xiao_candidate=xiao; xiao_candidate.boot_version=0x02040CFF;
-    assert(!installed_source_allowed(xiao,InstalledVariant::Normal,true,id,xiao_name,0x27000,0x123));
-    assert(!installed_source_allowed(stock,InstalledVariant::Unknown,true,id,xiao_name,0x27000,0x123));
-    assert(!installed_can_migrate(xiao,xiao_candidate,true,true,0x27000,0x123));
-    assert(!installed_can_migrate(stock,xiao_candidate,true,true,0x27000,0x123));
+    assert(installed_source_allowed(xiao,InstalledVariant::Normal,false,id,xiao_name,0x27000,0x123));
+    assert(installed_source_allowed(stock,InstalledVariant::Unknown,true,id,xiao_name,0x27000,0x123));
+    assert(!installed_source_allowed(stock,InstalledVariant::Unknown,false,id,xiao_name,0x27000,0x123));
+    assert(installed_can_migrate(xiao,xiao_candidate,true,true,0x27000,0x123));
+    assert(installed_can_migrate(stock,xiao_candidate,true,true,0x27000,0x123));
+    assert(!installed_can_migrate(stock,xiao_candidate,true,false,0x27000,0x123));
+    auto wrong=xiao; wrong.board_id=id==OTA_XIAO_BOARD_ID_BASE
+        ? OTA_XIAO_BOARD_ID_SENSE : OTA_XIAO_BOARD_ID_BASE;
+    assert(!installed_source_allowed(wrong,InstalledVariant::Normal,true,id,xiao_name,0x27000,0x123));
+    assert(!installed_can_migrate(wrong,xiao_candidate,true,true,0x27000,0x123));
   }
   std::vector<uint8_t> image(BOOT_SIZE,0xFF);
   std::memcpy(image.data()+10,"UF2 Bootloader 0.4.3\r\n",22);
@@ -106,11 +112,14 @@ class LegacyBootloaderTests(unittest.TestCase):
             self.assertEqual(record["artifact_sha256"], source["sha256"])
             self.assertEqual((source["start"], source["size"]), ("0xf4000", 40960))
 
-    def test_shared_factory_rak_images_do_not_authorize_3401_or_4631(self):
+    def test_factory_rak_images_work_for_exact_3401_and_4631_targets(self):
         for hardware, profile in (("RAK_3401", "wiscore_rak3401_auto"),
                                   ("RAK_4631", "wiscore_rak4631_auto")):
             records = legacy_bootloaders_for(profile, hardware, 0x26000, 0xB6)
-            self.assertEqual(records, [])
+            self.assertEqual(len(records), 5)
+            stock = next(item for item in records if item["version"] == "0.4.3")
+            self.assertEqual(stock["image_sha256"],
+                             "6cbfa569a05cbd232dabe4a654abe9c04b7a03ab457615028d28f2d1329e58d2")
         neo = legacy_bootloaders_for("wiscore_rak4631_auto", "R1Neo", 0x26000, 0xB6)
         self.assertEqual(len(neo), 1)
         self.assertIn("muzi-works", neo[0]["source_url"])
@@ -130,9 +139,18 @@ class LegacyBootloaderTests(unittest.TestCase):
                 ("wio_tracker_l1", "WioTrackerL1-1W", 0x27000, 0x123),
                 ("sensecap_solar_p1", "SenseCap_Solar", 0x27000, 0x123)):
             self.assertEqual(legacy_bootloaders_for(profile, hardware, base, fwid), [])
-        for profile, hardware in (("xiao_nrf52840_ble", "Xiao_nrf52"),
-                                  ("xiao_nrf52840_ble_sense", "Xiao_nrf52_Sense")):
-            self.assertEqual(legacy_bootloaders_for(profile, hardware, 0x27000, 0x123), [])
+
+    def test_xiao_factory_hashes_are_bound_to_the_matching_variant(self):
+        base = legacy_bootloaders_for("xiao_nrf52840_ble", "Xiao_nrf52", 0x27000, 0x123)
+        sense = legacy_bootloaders_for("xiao_nrf52840_ble_sense", "Xiao_nrf52_Sense", 0x27000, 0x123)
+        self.assertEqual(len(base), 1)
+        self.assertEqual(len(sense), 1)
+        self.assertNotIn("Plus", base[0]["name"])
+        self.assertNotIn("Plus", sense[0]["name"])
+        self.assertTrue({item["image_sha256"] for item in base}.isdisjoint(
+            item["image_sha256"] for item in sense))
+        self.assertEqual(legacy_bootloaders_for("xiao_nrf52840_ble", "Xiao_nrf52_Sense", 0x27000, 0x123), [])
+        self.assertEqual(legacy_bootloaders_for("xiao_nrf52840_ble_sense", "Xiao_nrf52", 0x27000, 0x123), [])
 
     def test_registry_results_are_not_mutable_global_authorization(self):
         result = legacy_bootloaders_for("wiscore_rak4631_auto", "R1Neo", 0x26000, 0xB6)

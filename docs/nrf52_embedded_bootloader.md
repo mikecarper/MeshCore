@@ -19,12 +19,13 @@ bootloader at the same or newer version. Reviewed stock bootloaders are checked 
 than their names. Recovery and unrecognized bootloaders are excluded from
 automatic installation. Ordinary firmware has no automatic bootloader update.
 
-**XIAO and Sense:** Starting with the next firmware, embedded bootloader
-replacement is blocked for XIAO and XIAO Sense identities, including boards
-that use those modules. The installed bootloader cannot prove which physical
-module is fitted. A matching bootloader ID alone is not enough; use a verified
-board-specific recovery method if a bootloader update is necessary. This guard
-does not retroactively change previously released firmware.
+**XIAO and Sense:** The installed bootloader must match the bundled candidate.
+The two factory bootloaders have distinct reviewed image hashes; OTAFIX uses
+distinct board IDs. A base-XIAO bundle skips a Sense bootloader, and unknown or
+mismatched loaders are refused. Existing XIAO bundles contain only the base
+candidate, so they do not automatically update a Sense bootloader. These checks
+identify the installed bootloader; they cannot verify the physical module if a
+different bootloader was previously installed manually.
 
 This follows the internal-flash bridge in
 [MeshEnvy firmware PR #2](https://github.com/MeshEnvy/meshcore-firmware/pull/2).
@@ -82,18 +83,17 @@ candidate's board and runtime layout. Modern identity mismatches never fall back
 to stock-loader rules. Current all-in-one Repeater and Room Server builds also
 include a small, exact-byte stock inventory automatically; no environment variable
 or separate legacy file is needed for those images. The initial reviewed inventory
-covers uniquely identified stock images, such as R1 Neo, T114, T-Echo/Lite,
-T1000-E and Wio Tracker L1. XIAO replacement is blocked as described above.
-Stock RAK images shared by RAK4631 and RAK3401 are also excluded when they
-cannot independently establish which board is fitted. See
+covers reviewed stock images for RAK4631, RAK3401, R1 Neo, T114, T-Echo/Lite,
+T1000-E, Wio Tracker L1 and matching XIAO product images. XIAO Plus stock
+bootloaders are not admitted until their replacement compatibility is verified. See
 [`nrf52_legacy_bootloaders.py`](https://github.com/mikecarper/MeshCore/blob/keymindCascade/scripts/nrf52_legacy_bootloaders.py)
 for exact source URLs, file and padded-image hashes, hardware and layout mappings.
 
 Each entry binds the entire 40 KiB bootloader region, the physical build target,
 the replacement profile and the S140/application layout. A different byte, shared
 USB ID or a matching version string is insufficient. A RAK3401 may legitimately
-have the factory RAK4631 loader, so that shared stock image cannot by itself
-authorize either replacement. Related boards do not inherit representative
+have the factory RAK4631 loader; the selected build target determines its
+board-specific replacement. Related boards do not inherit representative
 module/SDK hashes automatically.
 Unknown or recovery images remain excluded, and flash protection, MBR geometry,
 watchdog and durable-state checks remain mandatory. These are source/image

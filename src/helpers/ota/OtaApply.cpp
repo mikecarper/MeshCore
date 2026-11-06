@@ -1080,7 +1080,6 @@ static bool ota_prepare_bootloader_update_external(Store& store,
     case OTA_BOOT_CONFIRM_NOT_BOOT_PACKAGE: strcpy(msg, "not a bootloader package"); return false;
     case OTA_BOOT_CONFIRM_GEOMETRY: strcpy(msg, "bootloader package geometry mismatch"); return false;
     case OTA_BOOT_CONFIRM_LOCAL_IDENTITY: strcpy(msg, "installed bootloader identity is invalid"); return false;
-    case OTA_BOOT_CONFIRM_AMBIGUOUS_BOARD: strcpy(msg, "XIAO board type unverified; use local DFU or SWD"); return false;
     case OTA_BOOT_CONFIRM_TARGET: strcpy(msg, "bootloader board ID mismatch"); return false;
     case OTA_BOOT_CONFIRM_HW_ID: strcpy(msg, "bootloader signed hw_id mismatch"); return false;
     case OTA_BOOT_CONFIRM_MID: strcpy(msg, "bootloader MID confirmation mismatch"); return false;
@@ -1294,7 +1293,6 @@ bool ota_prepare_bootloader_update_nrf52(OtaStoreFlashNrf52& store,
     case OTA_BOOT_CONFIRM_NOT_BOOT_PACKAGE: strcpy(msg, "not a bootloader package"); return false;
     case OTA_BOOT_CONFIRM_GEOMETRY: strcpy(msg, "bootloader package geometry mismatch"); return false;
     case OTA_BOOT_CONFIRM_LOCAL_IDENTITY: strcpy(msg, "installed bootloader identity is invalid"); return false;
-    case OTA_BOOT_CONFIRM_AMBIGUOUS_BOARD: strcpy(msg, "XIAO board type unverified; use local DFU or SWD"); return false;
     case OTA_BOOT_CONFIRM_TARGET: strcpy(msg, "bootloader target identity mismatch"); return false;
     case OTA_BOOT_CONFIRM_HW_ID: strcpy(msg, "bootloader signed hw_id mismatch"); return false;
     case OTA_BOOT_CONFIRM_MID: strcpy(msg, "bootloader MID confirmation mismatch"); return false;

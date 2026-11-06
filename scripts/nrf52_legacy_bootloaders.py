@@ -29,6 +29,14 @@ _PHYSICAL_PROFILES = {
     "Xiao_nrf52_Sense": "xiao_nrf52840_ble_sense",
 }
 
+# Plus factory bootloaders are documented separately, but compatibility with
+# the non-Plus OTAFIX successors has not been qualified. Keep them in the
+# provenance inventory while refusing to authorize automatic replacement.
+_UNQUALIFIED_XIAO_PLUS_IMAGES = frozenset({
+    "caf05e859193001ef745d21ae71b218f2f23a0ed995a4adc69debcdb31e35ba8",
+    "b19bd74a743a8311b12a07ae5cc17f28966d6e61b66f93f2afb2ceb52c5240d2",
+})
+
 _RECORDS = [
     {
         "name": "HT-n5262_bootloader-0.9.0_s140_6.1.1.hex",
@@ -290,17 +298,8 @@ def legacy_bootloaders_for(profile_id, source_hardware, app_base, softdevice_fwi
     """Return fresh provenance records for this exact build and running layout."""
     if _PHYSICAL_PROFILES.get(source_hardware) != profile_id:
         return []
-    # Neither the XIAO bootloader ID nor its stock digest independently proves
-    # whether the physical module is the base or Sense variant.
-    if profile_id in ("xiao_nrf52840_ble", "xiao_nrf52840_ble_sense"):
-        return []
     result = []
     seen = set()
-    # Identical bytes used on different board profiles cannot identify the
-    # physical board. A build-time target name alone is not sufficient proof.
-    digest_profiles = {}
-    for record in _RECORDS:
-        digest_profiles.setdefault(record["image_sha256"], set()).update(record["profiles"])
     for record in _RECORDS:
         if (profile_id not in record["profiles"]
                 or source_hardware not in record["hardware"]
@@ -314,7 +313,7 @@ def legacy_bootloaders_for(profile_id, source_hardware, app_base, softdevice_fwi
                 or digest in seen):
             raise ValueError("invalid or duplicate reviewed stock bootloader")
         seen.add(digest)
-        if len(digest_profiles[digest]) != 1:
+        if digest in _UNQUALIFIED_XIAO_PLUS_IMAGES:
             continue
         result.append({**record, "profiles": list(record["profiles"]),
                        "hardware": list(record["hardware"])})
