@@ -165,6 +165,79 @@ int main(int argc,char** argv){
 }
 '''
 
+EXPANDER_HARNESS = r'''
+#include <cassert>
+#include <cstdint>
+#include <cstdlib>
+#include <cstring>
+#include <set>
+#include <string>
+#include <vector>
+#define USE_LR2021 1
+#define MESHNOLOGY_W12 1
+#define LORA_FREQ 910.525f
+#define LORA_BW 62.5f
+#define LORA_SF 7
+#define LORA_CR 5
+namespace mesh {
+namespace power { enum class RegulatorMode {Default}; }
+struct RadioProfileParams {float freq,bw;int sf,cr;};
+enum class RadioParamApplyResult {APPLIED};
+namespace ota {
+struct OtaManager {static constexpr int AUTOFETCH_ANY=1;};
+struct Manager {void set_auto_migration_target(uint32_t){} void set_auto_version_floor(int,bool){} void set_autofetch(int){}};
+struct Context {Manager manager;};
+Context& ota_ctx(){static Context ctx;return ctx;}
+}
+}
+struct Filesystem {
+  std::set<std::string> files;
+  bool begin(bool format){assert(!format);return true;}
+  bool exists(const char* path){return files.count(path)!=0;}
+} SPIFFS;
+struct Board {void begin(){} void applyMcuRegulator(mesh::power::RegulatorMode){}} board;
+struct Radio {
+  int getRngSeed(){return 1;}
+  mesh::RadioParamApplyResult trySetPrimaryParams(const mesh::RadioProfileParams&,bool){return mesh::RadioParamApplyResult::APPLIED;}
+} radio_driver;
+struct Random {void begin(int){}} fast_rng;
+struct Mesh {int self_id=0;void begin(){}} the_mesh;
+struct IdentityStore {IdentityStore(Filesystem&,const char*){} int loadResult(const char*,int&){return 1;}};
+struct IdentityLoadResult {static constexpr int Loaded=1;};
+struct SerialType {void println(const char*){}} Serial;
+bool lora_ready=false;
+mesh::RadioProfileParams active_profile;
+struct ExpanderTargetDescriptor {uint32_t target_id=1;} expander_target;
+bool loadPrimaryRadio(mesh::RadioProfileParams&){return true;}
+bool loaded=false, ready=true, rollback=false;
+std::vector<std::string> events;
+bool radio_init(){events.push_back("radio");return true;}
+namespace mesh { namespace lr2021 {
+bool loadLR2021CalibrationSettings(Filesystem* fs,Radio&){
+  events.push_back("calibration");
+  if(rollback)fs->files.erase("/radio_calibration.journal");
+  return loaded;
+}
+bool LR2021CalibrationSettingsReady(){return ready;}
+}}
+@METHOD@
+int main(int argc,char** argv){
+  assert(argc==2);const int n=atoi(argv[1]);
+  if(n==1){SPIFFS.files.insert("/radio_xtrim");loaded=true;}
+  if(n==2)SPIFFS.files.insert("/radio_calibration");
+  if(n==3){SPIFFS.files.insert("/radio_calibration.journal");ready=false;}
+  if(n==4){SPIFFS.files.insert("/radio_calibration.journal");rollback=true;}
+  if(n==5)ready=false;
+  if(n==6)SPIFFS.files.insert("/radio_xtrim.tmp");
+  startLoRaReceiver();
+  const bool allowed=n==0||n==1||n==4||n==6;
+  assert(lora_ready==allowed);
+  assert(events.size()==size_t(allowed?2:1));
+  assert(events[0]=="calibration");
+  if(allowed)assert(events[1]=="radio");
+}
+'''
+
 
 class PartitionCalibrationMigrationTests(unittest.TestCase):
     @classmethod
@@ -187,6 +260,19 @@ class PartitionCalibrationMigrationTests(unittest.TestCase):
             "g++", "-std=c++17", "-Wall", "-Wextra", "-Werror",
             "-fsanitize=address,undefined", "-fno-sanitize-recover=all", "-fno-pie", "-no-pie",
             "-I", str(ROOT / "src"), str(path), "-o", str(cls.binary),
+        ], capture_output=True, text=True)
+        if result.returncode:
+            cls.temp.cleanup()
+            raise AssertionError(result.stdout + result.stderr)
+        expander = EXPANDER.read_text(encoding="utf-8")
+        expander_path = Path(cls.temp.name) / "expander.cpp"
+        expander_path.write_text(EXPANDER_HARNESS.replace(
+            "@METHOD@", extract_braced(expander, "void startLoRaReceiver()")))
+        cls.expander_binary = Path(cls.temp.name) / "expander"
+        result = subprocess.run([
+            "g++", "-std=c++17", "-Wall", "-Wextra", "-Werror",
+            "-fsanitize=address,undefined", "-fno-sanitize-recover=all", "-fno-pie", "-no-pie",
+            str(expander_path), "-o", str(cls.expander_binary),
         ], capture_output=True, text=True)
         if result.returncode:
             cls.temp.cleanup()
@@ -230,6 +316,8 @@ class PartitionCalibrationMigrationTests(unittest.TestCase):
         self.assertIn("LR2021CalibrationSettingsReady()", body)
         self.assertIn('SPIFFS.exists("/radio_calibration.journal")', body)
         self.assertIn('SPIFFS.exists("/radio_xtrim.bak")', body)
+        for case in range(7):
+            subprocess.run([str(self.expander_binary), str(case)], check=True)
 
 
 if __name__ == "__main__":
