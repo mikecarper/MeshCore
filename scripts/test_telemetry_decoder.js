@@ -181,15 +181,15 @@ test("GitHub readers can open the hosted decoder from its packet section", () =>
   );
   const hostedDecoder =
     "https://mikecarper.github.io/MeshCore/telemetry_decoder/#decode-a-packet";
-  const introduction = documentation.split("## Send raw telemetry packets")[0];
+  const introduction = documentation.split(/^## /m)[0];
   assert.ok(introduction.includes(
     'class="meshcore-hosted-doc-link"><a href="https://mikecarper.github.io/MeshCore/telemetry_decoder/"'
   ), "The source-visible banner must link to the canonical hosted page.");
-  assert.ok(!introduction.includes(`](${hostedDecoder})`),
+  assert.ok(!introduction.includes(hostedDecoder),
     "The introduction must use the banner that disappears on the official host.");
   const packetSection = documentation.split("## Decode a packet\n")[1]
-    .split('<div class="telemetry-tool"')[0];
-  assert.ok(packetSection.includes(`](${hostedDecoder})`),
+    .split(/^## /m)[0];
+  assert.ok(packetSection.includes(`href="${hostedDecoder}"`),
     "The GitHub #decode-a-packet anchor must lead readers to the working tool.");
   assert.match(documentation, /GitHub's Markdown preview[\s\S]*cannot run/);
   assert.doesNotMatch(documentation, /<(?:textarea|input|button)\b/i,
@@ -198,6 +198,16 @@ test("GitHub readers can open the hosted decoder from its packet section", () =>
   const configuration = fs.readFileSync(path.join(__dirname, "../mkdocs.yml"), "utf8");
   assert.match(configuration, /^\s+- _javascript\/telemetry_decoder\.js\?v=\S+$/m,
     "A versioned script prevents the old cached script from using the new empty host.");
+});
+
+test("decoder and CLI commands come before the detailed reference", () => {
+  const documentation = fs.readFileSync(
+    path.join(__dirname, "../docs/telemetry_decoder.md"), "utf8"
+  );
+  const headings = Array.from(documentation.matchAll(/^## (.+)$/gm), match => match[1].trim());
+  assert.deepStrictEqual(headings.slice(0, 3), [
+    "Decode a packet", "CLI history pages", "Send raw telemetry packets",
+  ]);
 });
 
 test("browser initialization creates the form and wires every example", () => {
