@@ -48,6 +48,13 @@ class ExpanderCandidateTests(unittest.TestCase):
             self.assertIn(f"-<../examples/{role}>", overlay)
         self.assertIn("MESHCORE_MIGRATION_STRICT_4MB=1", overlay)
 
+    def test_classic_esp32_uses_bounded_heap_ota_window(self):
+        spec = BOARDS["heltec-v2-repeater"]
+        self.assertEqual(0, spec["usb_chip"])
+        overlay = overlay_section("heltec-v2-repeater", spec)
+        self.assertIn("-D OTA_FETCH_PIPELINE=1", overlay)
+        self.assertNotIn("-D OTA_FETCH_PIPELINE=4", overlay)
+
     def test_overlay_is_unique_and_rejects_bad_names_or_duplicate_boards(self):
         overlay = project_overlay("[platformio]\n", [self.board], BOARDS)
         self.assertIn("[env:" + expander_environment(self.board, self.target) + "]", overlay)

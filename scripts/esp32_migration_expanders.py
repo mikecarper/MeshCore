@@ -50,6 +50,9 @@ def overlay_section(board: str, spec: dict) -> str:
     if not partitions:
         raise ValueError(f"{board}: unsupported flash capacity")
     strict = "\n  -D MESHCORE_MIGRATION_STRICT_4MB=1" if flash == 4 * 1024 * 1024 else ""
+    # Classic ESP32 allocates OtaContext on heap with a strict 16 KiB budget.
+    # One in-flight block preserves that bound; S3/C3 can use the wider window.
+    pipeline = 1 if spec.get("usb_chip") == 0 else 4
     return f"""
 [env:{env}]
 extends = env:{source_env}
@@ -64,7 +67,8 @@ build_flags = ${{env:{source_env}.build_flags}}
   -DARDUINO_USB_CDC_ON_BOOT=0
   -D MESH_MIN_RUNTIME_HEAP=100352
   -D MOTA_MIGRATION_TARGET_ID=0x{target_id_for_env(target):08x}
-  -D OTA_FETCH_PIPELINE=4{strict}
+  -UOTA_FETCH_PIPELINE
+  -D OTA_FETCH_PIPELINE={pipeline}{strict}
 lib_deps = ${{env:{source_env}.lib_deps}}
   ${{esp32_ota.lib_deps}}
 """
