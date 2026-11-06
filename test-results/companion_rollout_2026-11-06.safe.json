@@ -1,0 +1,1529 @@
+{
+  "schema": 1,
+  "date_utc": "2026-11-06",
+  "kind": "erased_companion_rollout_and_isolated_USA_media_bench",
+  "installation": {
+    "radios": 16,
+    "backups_taken": 0,
+    "esp32_chip_erases": 9,
+    "nrf52_application_dfu_and_both_application_store_resets": 7,
+    "nrf52_bootloaders_preserved": true,
+    "nodes": [
+      {
+        "label": "xiao-s3-source",
+        "board": "Xiao S3 WIO",
+        "version": "v1.18.0.2-halo-keymind-cascade-dev-73c22d18 (Build: 06-Nov-2026)",
+        "source_hash": "73c22d189baa6a85f6b80941cdba119413b6f67d",
+        "backup_taken": false,
+        "erase_method": "full ESP32 chip erase before merged install",
+        "erase_scope": "Full ESP32 chip erase",
+        "runtime_verified": true,
+        "whole_chip_mass_erase": true
+      },
+      {
+        "label": "v4a",
+        "board": "Heltec V4.3 OLED",
+        "version": "v1.18.0.2-halo-keymind-cascade-dev-73c22d18 (Build: 06-Nov-2026)",
+        "source_hash": "73c22d189baa6a85f6b80941cdba119413b6f67d",
+        "backup_taken": false,
+        "erase_method": "full ESP32 chip erase and merged image plus mirror verified in flash.private.log",
+        "erase_scope": "Full ESP32 chip erase",
+        "runtime_verified": true,
+        "whole_chip_mass_erase": true
+      },
+      {
+        "label": "v4b",
+        "board": "Heltec V4.3 OLED",
+        "version": "v1.18.0.2-halo-keymind-cascade-dev-73c22d18 (Build: 06-Nov-2026)",
+        "source_hash": "73c22d189baa6a85f6b80941cdba119413b6f67d",
+        "backup_taken": false,
+        "erase_method": "full ESP32 chip erase before merged install",
+        "erase_scope": "Full ESP32 chip erase",
+        "runtime_verified": true,
+        "whole_chip_mass_erase": true
+      },
+      {
+        "label": "v4c",
+        "board": "Heltec V4.3 OLED",
+        "version": "v1.18.0.2-halo-keymind-cascade-dev-73c22d18 (Build: 06-Nov-2026)",
+        "source_hash": "73c22d189baa6a85f6b80941cdba119413b6f67d",
+        "backup_taken": false,
+        "erase_method": "full ESP32 chip erase before merged install",
+        "erase_scope": "Full ESP32 chip erase",
+        "runtime_verified": true,
+        "whole_chip_mass_erase": true
+      },
+      {
+        "label": "v4d",
+        "board": "Heltec V4.3 OLED",
+        "version": "v1.18.0.2-halo-keymind-cascade-dev-73c22d18 (Build: 06-Nov-2026)",
+        "source_hash": "73c22d189baa6a85f6b80941cdba119413b6f67d",
+        "backup_taken": false,
+        "erase_method": "prior full chip erase, merged and mirror hashverified; guarded same-silicon watchdog handoff then full application readback",
+        "erase_scope": "Full ESP32 chip erase",
+        "runtime_verified": true,
+        "whole_chip_mass_erase": true
+      },
+      {
+        "label": "v4e",
+        "board": "Heltec V4.2 none detected",
+        "version": "v1.18.0.2-halo-keymind-cascade-dev-73c22d18 (Build: 06-Nov-2026)",
+        "source_hash": "73c22d189baa6a85f6b80941cdba119413b6f67d",
+        "backup_taken": false,
+        "erase_method": "full chip erase and merged plus mirror verified by installer; subsequent terminal mode negotiation established runtime",
+        "erase_scope": "Full ESP32 chip erase",
+        "runtime_verified": true,
+        "whole_chip_mass_erase": true
+      },
+      {
+        "label": "w12",
+        "board": "Meshnology W12",
+        "version": "v1.18.0.2-halo-keymind-cascade-dev-73c22d18 (Build: 06-Nov-2026)",
+        "source_hash": "73c22d189baa6a85f6b80941cdba119413b6f67d",
+        "backup_taken": false,
+        "erase_method": "full ESP32 chip erase and merged plus mirror hashes verified; explicit terminal and binary admission confirmed runtime",
+        "erase_scope": "Full ESP32 chip erase",
+        "runtime_verified": true,
+        "whole_chip_mass_erase": true
+      },
+      {
+        "label": "tdeck",
+        "board": "LilyGo T-Deck",
+        "version": "v1.18.0.2-halo-keymind-cascade-dev-73c22d18 (Build: 06-Nov-2026)",
+        "source_hash": "73c22d189baa6a85f6b80941cdba119413b6f67d",
+        "backup_taken": false,
+        "erase_method": "full ESP32 chip erase before merged install",
+        "erase_scope": "Full ESP32 chip erase",
+        "runtime_verified": true,
+        "whole_chip_mass_erase": true
+      },
+      {
+        "label": "indicator",
+        "board": "Seeed SenseCAP Indicator LoRa",
+        "version": "v1.18.0.2-halo-keymind-cascade-dev-f690dcf8 (Build: 06-Nov-2026)",
+        "source_hash": "f690dcf8ae55e7e60e30d1514f36896ef097cd30",
+        "backup_taken": false,
+        "erase_method": "Full ESP32 chip erase before final merged image and application mirror installation",
+        "erase_scope": "Full ESP32 chip erase",
+        "runtime_verified": true,
+        "whole_chip_mass_erase": true
+      },
+      {
+        "label": "t096",
+        "board": "Heltec T096",
+        "version": "v1.18.0.2-halo-keymind-cascade-dev-73c22d18 (Build: 06-Nov-2026)",
+        "source_hash": "73c22d189baa6a85f6b80941cdba119413b6f67d",
+        "backup_taken": false,
+        "erase_method": "application DFU then current Companion all-configured-store factory reset",
+        "erase_scope": "Application DFU plus both configured application stores reset; bootloader preserved",
+        "runtime_verified": true,
+        "whole_chip_mass_erase": false
+      },
+      {
+        "label": "tower",
+        "board": "Heltec Tower V2",
+        "version": "v1.18.0.2-halo-keymind-cascade-dev-73c22d18 (Build: 06-Nov-2026)",
+        "source_hash": "73c22d189baa6a85f6b80941cdba119413b6f67d",
+        "backup_taken": false,
+        "erase_method": "application DFU then current Companion all-configured-store factory reset",
+        "erase_scope": "Application DFU plus both configured application stores reset; bootloader preserved",
+        "runtime_verified": true,
+        "whole_chip_mass_erase": false
+      },
+      {
+        "label": "tag",
+        "board": "RAK WisMesh Tag",
+        "version": "v1.18.0.2-halo-keymind-cascade-dev-73c22d18 (Build: 06-Nov-2026)",
+        "source_hash": "73c22d189baa6a85f6b80941cdba119413b6f67d",
+        "backup_taken": false,
+        "erase_method": "application DFU then current Companion all-configured-store factory reset",
+        "erase_scope": "Application DFU plus both configured application stores reset; bootloader preserved",
+        "runtime_verified": true,
+        "whole_chip_mass_erase": false
+      },
+      {
+        "label": "solar",
+        "board": "SolarXiao 33S",
+        "version": "v1.18.0.2-halo-keymind-cascade-dev-73c22d18 (Build: 06-Nov-2026)",
+        "source_hash": "73c22d189baa6a85f6b80941cdba119413b6f67d",
+        "backup_taken": false,
+        "erase_method": "application DFU then current Companion all-configured-store factory reset",
+        "erase_scope": "Application DFU plus both configured application stores reset; bootloader preserved",
+        "runtime_verified": true,
+        "whole_chip_mass_erase": false
+      },
+      {
+        "label": "xiao-nrf",
+        "board": "Seeed Xiao-nrf52",
+        "version": "v1.18.0.2-halo-keymind-cascade-dev-73c22d18 (Build: 06-Nov-2026)",
+        "source_hash": "73c22d189baa6a85f6b80941cdba119413b6f67d",
+        "backup_taken": false,
+        "erase_method": "application DFU then current Companion all-configured-store factory reset",
+        "erase_scope": "Application DFU plus both configured application stores reset; bootloader preserved",
+        "runtime_verified": true,
+        "whole_chip_mass_erase": false
+      },
+      {
+        "label": "rak3401",
+        "board": "RAK 3401",
+        "version": "v1.18.0.2-halo-keymind-cascade-dev-73c22d18 (Build: 06-Nov-2026)",
+        "source_hash": "73c22d189baa6a85f6b80941cdba119413b6f67d",
+        "backup_taken": false,
+        "erase_method": "application DFU then current Companion all-configured-store factory reset",
+        "erase_scope": "Application DFU plus both configured application stores reset; bootloader preserved",
+        "runtime_verified": true,
+        "whole_chip_mass_erase": false
+      },
+      {
+        "label": "rak4631",
+        "board": "RAK 4631",
+        "version": "v1.18.0.2-halo-keymind-cascade-dev-73c22d18 (Build: 06-Nov-2026)",
+        "source_hash": "73c22d189baa6a85f6b80941cdba119413b6f67d",
+        "backup_taken": false,
+        "erase_method": "application DFU then current Companion all-configured-store factory reset",
+        "erase_scope": "Application DFU plus both configured application stores reset; bootloader preserved",
+        "runtime_verified": true,
+        "whole_chip_mass_erase": false
+      }
+    ]
+  },
+  "primary": {
+    "primary_rf": [
+      906.525,
+      62.5,
+      7,
+      5,
+      16
+    ],
+    "tx_dbm": -9,
+    "transmitter": "XIAO ESP32-S3",
+    "independent_sets": 3,
+    "physical_source_probes": 120,
+    "receiver_opportunities": 600,
+    "received": 556,
+    "results": {
+      "v4a": {
+        "received": 40,
+        "sent": 40,
+        "missing_sequences": [],
+        "duplicate_observations": 0,
+        "rssi_median_dbm": -33.0,
+        "snr_median_db": 12.0,
+        "cohort": "cohort1-v1"
+      },
+      "v4b": {
+        "received": 40,
+        "sent": 40,
+        "missing_sequences": [],
+        "duplicate_observations": 0,
+        "rssi_median_dbm": -37.0,
+        "snr_median_db": 11.875,
+        "cohort": "cohort1-v1"
+      },
+      "v4c": {
+        "received": 39,
+        "sent": 40,
+        "missing_sequences": [
+          8
+        ],
+        "duplicate_observations": 0,
+        "rssi_median_dbm": -45,
+        "snr_median_db": 11.75,
+        "cohort": "cohort1-v1"
+      },
+      "v4d": {
+        "received": 39,
+        "sent": 40,
+        "missing_sequences": [
+          15
+        ],
+        "duplicate_observations": 0,
+        "rssi_median_dbm": -46,
+        "snr_median_db": 11.75,
+        "cohort": "cohort1-v1"
+      },
+      "v4e": {
+        "received": 40,
+        "sent": 40,
+        "missing_sequences": [],
+        "duplicate_observations": 0,
+        "rssi_median_dbm": -36.0,
+        "snr_median_db": 12.0,
+        "cohort": "cohort1-v1"
+      },
+      "indicator": {
+        "received": 40,
+        "sent": 40,
+        "missing_sequences": [],
+        "duplicate_observations": 0,
+        "rssi_median_dbm": -66.0,
+        "snr_median_db": 12.0,
+        "cohort": "cohort2-v5"
+      },
+      "t096": {
+        "received": 40,
+        "sent": 40,
+        "missing_sequences": [],
+        "duplicate_observations": 0,
+        "rssi_median_dbm": -34.0,
+        "snr_median_db": 12.5,
+        "cohort": "cohort2-v5"
+      },
+      "tdeck": {
+        "received": 40,
+        "sent": 40,
+        "missing_sequences": [],
+        "duplicate_observations": 0,
+        "rssi_median_dbm": -69.0,
+        "snr_median_db": 11.625,
+        "cohort": "cohort2-v5"
+      },
+      "tower": {
+        "received": 40,
+        "sent": 40,
+        "missing_sequences": [],
+        "duplicate_observations": 0,
+        "rssi_median_dbm": -66.0,
+        "snr_median_db": 7.75,
+        "cohort": "cohort2-v5"
+      },
+      "w12": {
+        "received": 0,
+        "sent": 40,
+        "missing_sequences": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10,
+          11,
+          12,
+          13,
+          14,
+          15,
+          16,
+          17,
+          18,
+          19,
+          20,
+          21,
+          22,
+          23,
+          24,
+          25,
+          26,
+          27,
+          28,
+          29,
+          30,
+          31,
+          32,
+          33,
+          34,
+          35,
+          36,
+          37,
+          38,
+          39
+        ],
+        "duplicate_observations": 0,
+        "rssi_median_dbm": null,
+        "snr_median_db": null,
+        "cohort": "cohort2-v5"
+      },
+      "rak3401": {
+        "received": 40,
+        "sent": 40,
+        "missing_sequences": [],
+        "duplicate_observations": 0,
+        "rssi_median_dbm": -47.0,
+        "snr_median_db": 11.75,
+        "cohort": "cohort3-v3"
+      },
+      "rak4631": {
+        "received": 40,
+        "sent": 40,
+        "missing_sequences": [],
+        "duplicate_observations": 0,
+        "rssi_median_dbm": -65.0,
+        "snr_median_db": 11.75,
+        "cohort": "cohort3-v3"
+      },
+      "solar": {
+        "received": 40,
+        "sent": 40,
+        "missing_sequences": [],
+        "duplicate_observations": 0,
+        "rssi_median_dbm": -38.0,
+        "snr_median_db": 11.75,
+        "cohort": "cohort3-v3"
+      },
+      "tag": {
+        "received": 40,
+        "sent": 40,
+        "missing_sequences": [],
+        "duplicate_observations": 0,
+        "rssi_median_dbm": -61.0,
+        "snr_median_db": 11.875,
+        "cohort": "cohort3-v3"
+      },
+      "xiao-nrf": {
+        "received": 38,
+        "sent": 40,
+        "missing_sequences": [
+          9,
+          25
+        ],
+        "duplicate_observations": 0,
+        "rssi_median_dbm": -75.0,
+        "snr_median_db": 10.875,
+        "cohort": "cohort3-v3"
+      }
+    },
+    "primary_rf_retries": 0,
+    "limitations": [
+      "Three independent sets; not one shared broadcast across all 15 receivers.",
+      "Strong-signal bench check; does not establish receiver sensitivity.",
+      "Original W12 default-trim failure retained; separate calibration result reported below."
+    ]
+  },
+  "w12_separate_calibration_control": {
+    "original_default_trim_received": 0,
+    "original_default_trim_sent": 40,
+    "candidate_saved_trim": "8,8",
+    "digital_correction_ppb": 0,
+    "sent": 20,
+    "received": 18,
+    "missing_sequences": [
+      9,
+      19
+    ],
+    "receiver_packet_counter_delta": {
+      "direct_rx": 18,
+      "direct_tx": 0,
+      "flood_rx": 0,
+      "flood_tx": 0,
+      "recv": 18,
+      "recv_errors": 2,
+      "sent": 0
+    },
+    "final_diagnostics": {
+      "get radio.apply": "stage=rx-gain code=-706 state=1 repair=0 freq=906.525024 programmed=906.525024",
+      "get radio.freqerror": "> -2369 Hz; freq=906.525024 MHz; age=16s; programmed=906.525024 MHz",
+      "get radio.xtrim": "> 8,8",
+      "get radio.xtrim.correction": "> 0 ppb (active); 0 ppb (saved)"
+    },
+    "raw_trim_registers_verified": false,
+    "original_trial_replaced": false
+  },
+  "agc": {
+    "final_interval_seconds": 16,
+    "old_timer": "off where supported",
+    "ordinary_rxps": "off",
+    "primary_receiver_interval_seconds": 16,
+    "primary_source_interval_seconds": 0,
+    "media_interval_seconds": 0,
+    "natural_warm_pulse_execution_verified": {
+      "v4a": {
+        "completed": 3,
+        "failed": 0,
+        "minimum_required": 2,
+        "natural_witness_deltas": {
+          "cycles": 3,
+          "rtc": 3,
+          "verify": 3
+        },
+        "observed": true,
+        "passed": true
+      },
+      "v4b": {
+        "completed": 4,
+        "failed": 0,
+        "minimum_required": 2,
+        "natural_witness_deltas": {
+          "cycles": 4,
+          "rtc": 4,
+          "verify": 4
+        },
+        "observed": true,
+        "passed": true
+      },
+      "v4c": {
+        "completed": 3,
+        "failed": 0,
+        "minimum_required": 2,
+        "natural_witness_deltas": {
+          "cycles": 3,
+          "rtc": 3,
+          "verify": 3
+        },
+        "observed": true,
+        "passed": true
+      },
+      "v4d": {
+        "completed": 3,
+        "failed": 0,
+        "minimum_required": 2,
+        "natural_witness_deltas": {
+          "cycles": 3,
+          "rtc": 3,
+          "verify": 3
+        },
+        "observed": true,
+        "passed": true
+      },
+      "v4e": {
+        "completed": 3,
+        "failed": 0,
+        "minimum_required": 2,
+        "natural_witness_deltas": {
+          "cycles": 3,
+          "rtc": 3,
+          "verify": 3
+        },
+        "observed": true,
+        "passed": true
+      }
+    },
+    "other_boards": "Configured interval verified; warm-pulse execution is not claimed."
+  },
+  "media": {
+    "secondary_rf": [
+      908.15,
+      250,
+      7,
+      5
+    ],
+    "source_tx_dbm": -9,
+    "original_files_complete": 28,
+    "original_files": 30,
+    "complete_after_standard_repairs": 29,
+    "complete_after_separate_fixed512_control": 30,
+    "original_channel_fetches_received": 28,
+    "original_channel_fetches_sent": 30,
+    "raw_clips_received": 30,
+    "raw_clips_sent": 30,
+    "raw_fetches_received": 24,
+    "raw_fetches_sent": 30,
+    "originals": {
+      "media-cohort1-v1": {
+        "files": {
+          "image": {
+            "fixture_sha256": "6b23095994db524b47bb175ffbd18a7ee5e3fb9d593dca1333b6ea7584d8619b",
+            "outcomes": {
+              "v4a": {
+                "announcement_and_manifest_exact": true,
+                "chunks_received": 2,
+                "chunks_unique": 2,
+                "duplicates": 0,
+                "fetch": {
+                  "received_by_source": 1
+                },
+                "frame_counts": {
+                  "announcement": 1,
+                  "chunk": 2,
+                  "fetch": 4,
+                  "manifest": 1
+                },
+                "integrity_passed": true,
+                "retrieved_sha256": "6b23095994db524b47bb175ffbd18a7ee5e3fb9d593dca1333b6ea7584d8619b"
+              },
+              "v4b": {
+                "announcement_and_manifest_exact": true,
+                "chunks_received": 2,
+                "chunks_unique": 2,
+                "duplicates": 0,
+                "fetch": {
+                  "received_by_source": 1
+                },
+                "frame_counts": {
+                  "announcement": 1,
+                  "chunk": 2,
+                  "fetch": 4,
+                  "manifest": 1
+                },
+                "integrity_passed": true,
+                "retrieved_sha256": "6b23095994db524b47bb175ffbd18a7ee5e3fb9d593dca1333b6ea7584d8619b"
+              },
+              "v4c": {
+                "announcement_and_manifest_exact": true,
+                "chunks_received": 1,
+                "chunks_unique": 1,
+                "duplicates": 0,
+                "fetch": {
+                  "received_by_source": 1
+                },
+                "frame_counts": {
+                  "announcement": 1,
+                  "chunk": 1,
+                  "fetch": 4,
+                  "manifest": 1
+                },
+                "integrity_passed": false,
+                "retrieved_sha256": null
+              },
+              "v4d": {
+                "announcement_and_manifest_exact": true,
+                "chunks_received": 2,
+                "chunks_unique": 2,
+                "duplicates": 0,
+                "fetch": {
+                  "received_by_source": 1
+                },
+                "frame_counts": {
+                  "announcement": 1,
+                  "chunk": 2,
+                  "fetch": 4,
+                  "manifest": 1
+                },
+                "integrity_passed": true,
+                "retrieved_sha256": "6b23095994db524b47bb175ffbd18a7ee5e3fb9d593dca1333b6ea7584d8619b"
+              },
+              "v4e": {
+                "announcement_and_manifest_exact": true,
+                "chunks_received": 2,
+                "chunks_unique": 2,
+                "duplicates": 0,
+                "fetch": {
+                  "received_by_source": 1
+                },
+                "frame_counts": {
+                  "announcement": 1,
+                  "chunk": 2,
+                  "fetch": 4,
+                  "manifest": 1
+                },
+                "integrity_passed": true,
+                "retrieved_sha256": "6b23095994db524b47bb175ffbd18a7ee5e3fb9d593dca1333b6ea7584d8619b"
+              }
+            },
+            "raw_api": {
+              "v4a": {
+                "raw_clip_profile1": true,
+                "raw_clip_received": 1,
+                "raw_fetch_profile1": true,
+                "raw_fetch_received_by_source": 1
+              },
+              "v4b": {
+                "raw_clip_profile1": true,
+                "raw_clip_received": 1,
+                "raw_fetch_profile1": true,
+                "raw_fetch_received_by_source": 1
+              },
+              "v4c": {
+                "raw_clip_profile1": true,
+                "raw_clip_received": 1,
+                "raw_fetch_profile1": true,
+                "raw_fetch_received_by_source": 1
+              },
+              "v4d": {
+                "raw_clip_profile1": true,
+                "raw_clip_received": 1,
+                "raw_fetch_profile1": true,
+                "raw_fetch_received_by_source": 1
+              },
+              "v4e": {
+                "raw_clip_profile1": true,
+                "raw_clip_received": 1,
+                "raw_fetch_profile1": true,
+                "raw_fetch_received_by_source": 1
+              }
+            }
+          },
+          "voice": {
+            "fixture_sha256": "1ce933e73b5f897fec5bc307b26f6f7c4c474bf069912911b1eb0b7f0ab48ed9",
+            "outcomes": {
+              "v4a": {
+                "announcement_and_manifest_exact": true,
+                "chunks_received": 2,
+                "chunks_unique": 2,
+                "duplicates": 0,
+                "fetch": {
+                  "received_by_source": 1
+                },
+                "frame_counts": {
+                  "announcement": 1,
+                  "chunk": 2,
+                  "fetch": 4,
+                  "manifest": 1
+                },
+                "integrity_passed": true,
+                "retrieved_sha256": "1ce933e73b5f897fec5bc307b26f6f7c4c474bf069912911b1eb0b7f0ab48ed9"
+              },
+              "v4b": {
+                "announcement_and_manifest_exact": true,
+                "chunks_received": 2,
+                "chunks_unique": 2,
+                "duplicates": 0,
+                "fetch": {
+                  "received_by_source": 1
+                },
+                "frame_counts": {
+                  "announcement": 1,
+                  "chunk": 2,
+                  "fetch": 4,
+                  "manifest": 1
+                },
+                "integrity_passed": true,
+                "retrieved_sha256": "1ce933e73b5f897fec5bc307b26f6f7c4c474bf069912911b1eb0b7f0ab48ed9"
+              },
+              "v4c": {
+                "announcement_and_manifest_exact": true,
+                "chunks_received": 2,
+                "chunks_unique": 2,
+                "duplicates": 0,
+                "fetch": {
+                  "received_by_source": 1
+                },
+                "frame_counts": {
+                  "announcement": 1,
+                  "chunk": 2,
+                  "fetch": 4,
+                  "manifest": 1
+                },
+                "integrity_passed": true,
+                "retrieved_sha256": "1ce933e73b5f897fec5bc307b26f6f7c4c474bf069912911b1eb0b7f0ab48ed9"
+              },
+              "v4d": {
+                "announcement_and_manifest_exact": true,
+                "chunks_received": 2,
+                "chunks_unique": 2,
+                "duplicates": 0,
+                "fetch": {
+                  "received_by_source": 1
+                },
+                "frame_counts": {
+                  "announcement": 1,
+                  "chunk": 2,
+                  "fetch": 4,
+                  "manifest": 1
+                },
+                "integrity_passed": true,
+                "retrieved_sha256": "1ce933e73b5f897fec5bc307b26f6f7c4c474bf069912911b1eb0b7f0ab48ed9"
+              },
+              "v4e": {
+                "announcement_and_manifest_exact": true,
+                "chunks_received": 2,
+                "chunks_unique": 2,
+                "duplicates": 0,
+                "fetch": {
+                  "received_by_source": 1
+                },
+                "frame_counts": {
+                  "announcement": 1,
+                  "chunk": 2,
+                  "fetch": 4,
+                  "manifest": 1
+                },
+                "integrity_passed": true,
+                "retrieved_sha256": "1ce933e73b5f897fec5bc307b26f6f7c4c474bf069912911b1eb0b7f0ab48ed9"
+              }
+            },
+            "raw_api": {
+              "v4a": {
+                "raw_clip_profile1": true,
+                "raw_clip_received": 1,
+                "raw_fetch_profile1": true,
+                "raw_fetch_received_by_source": 1
+              },
+              "v4b": {
+                "raw_clip_profile1": true,
+                "raw_clip_received": 1,
+                "raw_fetch_profile1": true,
+                "raw_fetch_received_by_source": 1
+              },
+              "v4c": {
+                "raw_clip_profile1": true,
+                "raw_clip_received": 1,
+                "raw_fetch_profile1": true,
+                "raw_fetch_received_by_source": 1
+              },
+              "v4d": {
+                "raw_clip_profile1": true,
+                "raw_clip_received": 1,
+                "raw_fetch_profile1": true,
+                "raw_fetch_received_by_source": 1
+              },
+              "v4e": {
+                "raw_clip_profile1": true,
+                "raw_clip_received": 1,
+                "raw_fetch_profile1": true,
+                "raw_fetch_received_by_source": 1
+              }
+            }
+          }
+        },
+        "automatic_secondary_preambles": {
+          "v4a": [
+            16,
+            40
+          ],
+          "v4b": [
+            16,
+            40
+          ],
+          "v4c": [
+            16,
+            40
+          ],
+          "v4d": [
+            16,
+            40
+          ],
+          "v4e": [
+            16,
+            40
+          ],
+          "xiao-s3-source": [
+            16,
+            40
+          ]
+        }
+      },
+      "media-cohort2-v2": {
+        "files": {
+          "image": {
+            "fixture_sha256": "6b23095994db524b47bb175ffbd18a7ee5e3fb9d593dca1333b6ea7584d8619b",
+            "outcomes": {
+              "indicator": {
+                "announcement_and_manifest_exact": true,
+                "chunks_received": 2,
+                "chunks_unique": 2,
+                "duplicates": 0,
+                "fetch": {
+                  "received_by_source": 1
+                },
+                "frame_counts": {
+                  "announcement": 1,
+                  "chunk": 2,
+                  "fetch": 4,
+                  "manifest": 1
+                },
+                "integrity_passed": true,
+                "retrieved_sha256": "6b23095994db524b47bb175ffbd18a7ee5e3fb9d593dca1333b6ea7584d8619b"
+              },
+              "t096": {
+                "announcement_and_manifest_exact": true,
+                "chunks_received": 2,
+                "chunks_unique": 2,
+                "duplicates": 0,
+                "fetch": {
+                  "received_by_source": 1
+                },
+                "frame_counts": {
+                  "announcement": 1,
+                  "chunk": 2,
+                  "fetch": 2,
+                  "manifest": 1
+                },
+                "integrity_passed": true,
+                "retrieved_sha256": "6b23095994db524b47bb175ffbd18a7ee5e3fb9d593dca1333b6ea7584d8619b"
+              },
+              "tdeck": {
+                "announcement_and_manifest_exact": true,
+                "chunks_received": 2,
+                "chunks_unique": 2,
+                "duplicates": 0,
+                "fetch": {
+                  "received_by_source": 1
+                },
+                "frame_counts": {
+                  "announcement": 1,
+                  "chunk": 2,
+                  "fetch": 2,
+                  "manifest": 1
+                },
+                "integrity_passed": true,
+                "retrieved_sha256": "6b23095994db524b47bb175ffbd18a7ee5e3fb9d593dca1333b6ea7584d8619b"
+              },
+              "tower": {
+                "announcement_and_manifest_exact": true,
+                "chunks_received": 2,
+                "chunks_unique": 2,
+                "duplicates": 0,
+                "fetch": {
+                  "received_by_source": 1
+                },
+                "frame_counts": {
+                  "announcement": 1,
+                  "chunk": 2,
+                  "fetch": 2,
+                  "manifest": 1
+                },
+                "integrity_passed": true,
+                "retrieved_sha256": "6b23095994db524b47bb175ffbd18a7ee5e3fb9d593dca1333b6ea7584d8619b"
+              },
+              "w12": {
+                "announcement_and_manifest_exact": true,
+                "chunks_received": 2,
+                "chunks_unique": 2,
+                "duplicates": 0,
+                "fetch": {
+                  "received_by_source": 1
+                },
+                "frame_counts": {
+                  "announcement": 1,
+                  "chunk": 2,
+                  "fetch": 4,
+                  "manifest": 1
+                },
+                "integrity_passed": true,
+                "retrieved_sha256": "6b23095994db524b47bb175ffbd18a7ee5e3fb9d593dca1333b6ea7584d8619b"
+              }
+            },
+            "raw_api": {
+              "indicator": {
+                "raw_clip_profile1": true,
+                "raw_clip_received": 1,
+                "raw_fetch_profile1": false,
+                "raw_fetch_received_by_source": 0
+              },
+              "t096": {
+                "raw_clip_profile1": true,
+                "raw_clip_received": 1,
+                "raw_fetch_profile1": true,
+                "raw_fetch_received_by_source": 1
+              },
+              "tdeck": {
+                "raw_clip_profile1": true,
+                "raw_clip_received": 1,
+                "raw_fetch_profile1": true,
+                "raw_fetch_received_by_source": 1
+              },
+              "tower": {
+                "raw_clip_profile1": true,
+                "raw_clip_received": 1,
+                "raw_fetch_profile1": true,
+                "raw_fetch_received_by_source": 1
+              },
+              "w12": {
+                "raw_clip_profile1": true,
+                "raw_clip_received": 1,
+                "raw_fetch_profile1": false,
+                "raw_fetch_received_by_source": 0
+              }
+            }
+          },
+          "voice": {
+            "fixture_sha256": "1ce933e73b5f897fec5bc307b26f6f7c4c474bf069912911b1eb0b7f0ab48ed9",
+            "outcomes": {
+              "indicator": {
+                "announcement_and_manifest_exact": true,
+                "chunks_received": 2,
+                "chunks_unique": 2,
+                "duplicates": 0,
+                "fetch": {
+                  "received_by_source": 1
+                },
+                "frame_counts": {
+                  "announcement": 1,
+                  "chunk": 2,
+                  "fetch": 3,
+                  "manifest": 1
+                },
+                "integrity_passed": true,
+                "retrieved_sha256": "1ce933e73b5f897fec5bc307b26f6f7c4c474bf069912911b1eb0b7f0ab48ed9"
+              },
+              "t096": {
+                "announcement_and_manifest_exact": true,
+                "chunks_received": 2,
+                "chunks_unique": 2,
+                "duplicates": 0,
+                "fetch": {
+                  "received_by_source": 1
+                },
+                "frame_counts": {
+                  "announcement": 1,
+                  "chunk": 2,
+                  "fetch": 2,
+                  "manifest": 1
+                },
+                "integrity_passed": true,
+                "retrieved_sha256": "1ce933e73b5f897fec5bc307b26f6f7c4c474bf069912911b1eb0b7f0ab48ed9"
+              },
+              "tdeck": {
+                "announcement_and_manifest_exact": true,
+                "chunks_received": 2,
+                "chunks_unique": 2,
+                "duplicates": 0,
+                "fetch": {
+                  "received_by_source": 1
+                },
+                "frame_counts": {
+                  "announcement": 1,
+                  "chunk": 2,
+                  "fetch": 3,
+                  "manifest": 1
+                },
+                "integrity_passed": true,
+                "retrieved_sha256": "1ce933e73b5f897fec5bc307b26f6f7c4c474bf069912911b1eb0b7f0ab48ed9"
+              },
+              "tower": {
+                "announcement_and_manifest_exact": true,
+                "chunks_received": 2,
+                "chunks_unique": 2,
+                "duplicates": 0,
+                "fetch": {
+                  "received_by_source": 1
+                },
+                "frame_counts": {
+                  "announcement": 1,
+                  "chunk": 2,
+                  "fetch": 2,
+                  "manifest": 1
+                },
+                "integrity_passed": true,
+                "retrieved_sha256": "1ce933e73b5f897fec5bc307b26f6f7c4c474bf069912911b1eb0b7f0ab48ed9"
+              },
+              "w12": {
+                "announcement_and_manifest_exact": true,
+                "chunks_received": 1,
+                "chunks_unique": 1,
+                "duplicates": 0,
+                "fetch": {
+                  "received_by_source": 0
+                },
+                "frame_counts": {
+                  "announcement": 1,
+                  "chunk": 1,
+                  "fetch": 4,
+                  "manifest": 1
+                },
+                "integrity_passed": false,
+                "retrieved_sha256": null
+              }
+            },
+            "raw_api": {
+              "indicator": {
+                "raw_clip_profile1": true,
+                "raw_clip_received": 1,
+                "raw_fetch_profile1": false,
+                "raw_fetch_received_by_source": 0
+              },
+              "t096": {
+                "raw_clip_profile1": true,
+                "raw_clip_received": 1,
+                "raw_fetch_profile1": true,
+                "raw_fetch_received_by_source": 1
+              },
+              "tdeck": {
+                "raw_clip_profile1": true,
+                "raw_clip_received": 1,
+                "raw_fetch_profile1": true,
+                "raw_fetch_received_by_source": 1
+              },
+              "tower": {
+                "raw_clip_profile1": true,
+                "raw_clip_received": 1,
+                "raw_fetch_profile1": true,
+                "raw_fetch_received_by_source": 1
+              },
+              "w12": {
+                "raw_clip_profile1": true,
+                "raw_clip_received": 1,
+                "raw_fetch_profile1": false,
+                "raw_fetch_received_by_source": 0
+              }
+            }
+          }
+        },
+        "automatic_secondary_preambles": {
+          "indicator": [
+            16,
+            72
+          ],
+          "t096": [
+            16,
+            40
+          ],
+          "tdeck": [
+            16,
+            40
+          ],
+          "tower": [
+            16,
+            40
+          ],
+          "w12": [
+            16,
+            72
+          ],
+          "xiao-s3-source": [
+            16,
+            40
+          ]
+        }
+      },
+      "media-cohort3-v1": {
+        "files": {
+          "image": {
+            "fixture_sha256": "6b23095994db524b47bb175ffbd18a7ee5e3fb9d593dca1333b6ea7584d8619b",
+            "outcomes": {
+              "rak3401": {
+                "announcement_and_manifest_exact": true,
+                "chunks_received": 2,
+                "chunks_unique": 2,
+                "duplicates": 0,
+                "fetch": {
+                  "received_by_source": 0
+                },
+                "frame_counts": {
+                  "announcement": 1,
+                  "chunk": 2,
+                  "fetch": 4,
+                  "manifest": 1
+                },
+                "integrity_passed": true,
+                "retrieved_sha256": "6b23095994db524b47bb175ffbd18a7ee5e3fb9d593dca1333b6ea7584d8619b"
+              },
+              "rak4631": {
+                "announcement_and_manifest_exact": true,
+                "chunks_received": 2,
+                "chunks_unique": 2,
+                "duplicates": 0,
+                "fetch": {
+                  "received_by_source": 1
+                },
+                "frame_counts": {
+                  "announcement": 1,
+                  "chunk": 2,
+                  "fetch": 3,
+                  "manifest": 1
+                },
+                "integrity_passed": true,
+                "retrieved_sha256": "6b23095994db524b47bb175ffbd18a7ee5e3fb9d593dca1333b6ea7584d8619b"
+              },
+              "solar": {
+                "announcement_and_manifest_exact": true,
+                "chunks_received": 2,
+                "chunks_unique": 2,
+                "duplicates": 0,
+                "fetch": {
+                  "received_by_source": 1
+                },
+                "frame_counts": {
+                  "announcement": 1,
+                  "chunk": 2,
+                  "fetch": 4,
+                  "manifest": 1
+                },
+                "integrity_passed": true,
+                "retrieved_sha256": "6b23095994db524b47bb175ffbd18a7ee5e3fb9d593dca1333b6ea7584d8619b"
+              },
+              "tag": {
+                "announcement_and_manifest_exact": true,
+                "chunks_received": 2,
+                "chunks_unique": 2,
+                "duplicates": 0,
+                "fetch": {
+                  "received_by_source": 1
+                },
+                "frame_counts": {
+                  "announcement": 1,
+                  "chunk": 2,
+                  "fetch": 4,
+                  "manifest": 1
+                },
+                "integrity_passed": true,
+                "retrieved_sha256": "6b23095994db524b47bb175ffbd18a7ee5e3fb9d593dca1333b6ea7584d8619b"
+              },
+              "xiao-nrf": {
+                "announcement_and_manifest_exact": true,
+                "chunks_received": 2,
+                "chunks_unique": 2,
+                "duplicates": 0,
+                "fetch": {
+                  "received_by_source": 1
+                },
+                "frame_counts": {
+                  "announcement": 1,
+                  "chunk": 2,
+                  "fetch": 3,
+                  "manifest": 1
+                },
+                "integrity_passed": true,
+                "retrieved_sha256": "6b23095994db524b47bb175ffbd18a7ee5e3fb9d593dca1333b6ea7584d8619b"
+              }
+            },
+            "raw_api": {
+              "rak3401": {
+                "raw_clip_profile1": true,
+                "raw_clip_received": 1,
+                "raw_fetch_profile1": false,
+                "raw_fetch_received_by_source": 0
+              },
+              "rak4631": {
+                "raw_clip_profile1": true,
+                "raw_clip_received": 1,
+                "raw_fetch_profile1": true,
+                "raw_fetch_received_by_source": 1
+              },
+              "solar": {
+                "raw_clip_profile1": true,
+                "raw_clip_received": 1,
+                "raw_fetch_profile1": true,
+                "raw_fetch_received_by_source": 1
+              },
+              "tag": {
+                "raw_clip_profile1": true,
+                "raw_clip_received": 1,
+                "raw_fetch_profile1": true,
+                "raw_fetch_received_by_source": 1
+              },
+              "xiao-nrf": {
+                "raw_clip_profile1": true,
+                "raw_clip_received": 1,
+                "raw_fetch_profile1": true,
+                "raw_fetch_received_by_source": 1
+              }
+            }
+          },
+          "voice": {
+            "fixture_sha256": "1ce933e73b5f897fec5bc307b26f6f7c4c474bf069912911b1eb0b7f0ab48ed9",
+            "outcomes": {
+              "rak3401": {
+                "announcement_and_manifest_exact": true,
+                "chunks_received": 2,
+                "chunks_unique": 2,
+                "duplicates": 0,
+                "fetch": {
+                  "received_by_source": 1
+                },
+                "frame_counts": {
+                  "announcement": 1,
+                  "chunk": 2,
+                  "fetch": 4,
+                  "manifest": 1
+                },
+                "integrity_passed": true,
+                "retrieved_sha256": "1ce933e73b5f897fec5bc307b26f6f7c4c474bf069912911b1eb0b7f0ab48ed9"
+              },
+              "rak4631": {
+                "announcement_and_manifest_exact": true,
+                "chunks_received": 2,
+                "chunks_unique": 2,
+                "duplicates": 0,
+                "fetch": {
+                  "received_by_source": 1
+                },
+                "frame_counts": {
+                  "announcement": 1,
+                  "chunk": 2,
+                  "fetch": 3,
+                  "manifest": 1
+                },
+                "integrity_passed": true,
+                "retrieved_sha256": "1ce933e73b5f897fec5bc307b26f6f7c4c474bf069912911b1eb0b7f0ab48ed9"
+              },
+              "solar": {
+                "announcement_and_manifest_exact": true,
+                "chunks_received": 2,
+                "chunks_unique": 2,
+                "duplicates": 0,
+                "fetch": {
+                  "received_by_source": 1
+                },
+                "frame_counts": {
+                  "announcement": 1,
+                  "chunk": 2,
+                  "fetch": 4,
+                  "manifest": 1
+                },
+                "integrity_passed": true,
+                "retrieved_sha256": "1ce933e73b5f897fec5bc307b26f6f7c4c474bf069912911b1eb0b7f0ab48ed9"
+              },
+              "tag": {
+                "announcement_and_manifest_exact": true,
+                "chunks_received": 2,
+                "chunks_unique": 2,
+                "duplicates": 0,
+                "fetch": {
+                  "received_by_source": 1
+                },
+                "frame_counts": {
+                  "announcement": 1,
+                  "chunk": 2,
+                  "fetch": 4,
+                  "manifest": 1
+                },
+                "integrity_passed": true,
+                "retrieved_sha256": "1ce933e73b5f897fec5bc307b26f6f7c4c474bf069912911b1eb0b7f0ab48ed9"
+              },
+              "xiao-nrf": {
+                "announcement_and_manifest_exact": true,
+                "chunks_received": 2,
+                "chunks_unique": 2,
+                "duplicates": 0,
+                "fetch": {
+                  "received_by_source": 1
+                },
+                "frame_counts": {
+                  "announcement": 1,
+                  "chunk": 2,
+                  "fetch": 3,
+                  "manifest": 1
+                },
+                "integrity_passed": true,
+                "retrieved_sha256": "1ce933e73b5f897fec5bc307b26f6f7c4c474bf069912911b1eb0b7f0ab48ed9"
+              }
+            },
+            "raw_api": {
+              "rak3401": {
+                "raw_clip_profile1": true,
+                "raw_clip_received": 1,
+                "raw_fetch_profile1": false,
+                "raw_fetch_received_by_source": 0
+              },
+              "rak4631": {
+                "raw_clip_profile1": true,
+                "raw_clip_received": 1,
+                "raw_fetch_profile1": true,
+                "raw_fetch_received_by_source": 1
+              },
+              "solar": {
+                "raw_clip_profile1": true,
+                "raw_clip_received": 1,
+                "raw_fetch_profile1": true,
+                "raw_fetch_received_by_source": 1
+              },
+              "tag": {
+                "raw_clip_profile1": true,
+                "raw_clip_received": 1,
+                "raw_fetch_profile1": true,
+                "raw_fetch_received_by_source": 1
+              },
+              "xiao-nrf": {
+                "raw_clip_profile1": true,
+                "raw_clip_received": 1,
+                "raw_fetch_profile1": true,
+                "raw_fetch_received_by_source": 1
+              }
+            }
+          }
+        },
+        "automatic_secondary_preambles": {
+          "rak3401": [
+            16,
+            40
+          ],
+          "rak4631": [
+            16,
+            40
+          ],
+          "solar": [
+            16,
+            40
+          ],
+          "tag": [
+            16,
+            40
+          ],
+          "xiao-nrf": [
+            16,
+            40
+          ],
+          "xiao-s3-source": [
+            16,
+            40
+          ]
+        }
+      }
+    },
+    "separate_missing_chunk_repairs": {
+      "media-repair1-v4c-v1": {
+        "passed": true,
+        "failure": null,
+        "secondary_preamble_symbols": "auto",
+        "wire_missing_indices": [
+          0
+        ],
+        "results": [
+          {
+            "fetch_received_by_source": 1,
+            "fetch_requests_sent": 1,
+            "kind": "image",
+            "missing_indices": [
+              0
+            ],
+            "original_file_outcome": {
+              "announcement_and_manifest_exact": true,
+              "chunks_received": 1,
+              "chunks_unique": 1,
+              "duplicates": 0,
+              "fetch": {
+                "received_by_source": 1,
+                "started_monotonic": 96481.94746391
+              },
+              "frame_counts": {
+                "announcement": 1,
+                "chunk": 1,
+                "fetch": 4,
+                "manifest": 1
+              },
+              "integrity_passed": false,
+              "retrieved_sha256": null
+            },
+            "original_integrity_passed": false,
+            "repair_chunks_received": 1,
+            "repair_chunks_sent": 1,
+            "repair_indices_received": [
+              0
+            ],
+            "repaired_integrity_passed": true,
+            "retrieved_sha256": "6b23095994db524b47bb175ffbd18a7ee5e3fb9d593dca1333b6ea7584d8619b",
+            "salt": 2,
+            "sid": 1300598701
+          }
+        ]
+      },
+      "media-repair2-w12-v1": {
+        "passed": false,
+        "failure": {
+          "detail": "One bounded repair did not reconstruct the file",
+          "type": "RuntimeError"
+        },
+        "secondary_preamble_symbols": "auto",
+        "wire_missing_indices": [
+          0
+        ],
+        "results": [
+          {
+            "failure": "Missing-index fetch not observed by source; no repair chunks sent",
+            "fetch_received_by_source": 0,
+            "fetch_requests_sent": 1,
+            "kind": "voice",
+            "missing_indices": [
+              0
+            ],
+            "original_file_outcome": {
+              "announcement_and_manifest_exact": true,
+              "chunks_received": 1,
+              "chunks_unique": 1,
+              "duplicates": 0,
+              "fetch": {
+                "received_by_source": 0,
+                "started_monotonic": 97126.274896189
+              },
+              "frame_counts": {
+                "announcement": 1,
+                "chunk": 1,
+                "fetch": 4,
+                "manifest": 1
+              },
+              "integrity_passed": false,
+              "retrieved_sha256": null
+            },
+            "original_integrity_passed": false,
+            "repair_chunks_sent": 0,
+            "repaired_integrity_passed": false,
+            "retrieved_sha256": null,
+            "salt": 2,
+            "sid": 1962728473
+          }
+        ]
+      },
+      "media-repair2-w12-fixed512-v1": {
+        "passed": true,
+        "failure": null,
+        "secondary_preamble_symbols": 512,
+        "wire_missing_indices": [
+          0,
+          0
+        ],
+        "results": [
+          {
+            "fetch_received_by_source": 1,
+            "fetch_requests_sent": 1,
+            "kind": "voice",
+            "missing_indices": [
+              0
+            ],
+            "original_file_outcome": {
+              "announcement_and_manifest_exact": true,
+              "chunks_received": 1,
+              "chunks_unique": 1,
+              "duplicates": 0,
+              "fetch": {
+                "received_by_source": 0,
+                "started_monotonic": 97126.274896189
+              },
+              "frame_counts": {
+                "announcement": 1,
+                "chunk": 1,
+                "fetch": 4,
+                "manifest": 1
+              },
+              "integrity_passed": false,
+              "retrieved_sha256": null
+            },
+            "original_integrity_passed": false,
+            "repair_chunks_received": 1,
+            "repair_chunks_sent": 1,
+            "repair_indices_received": [
+              0
+            ],
+            "repaired_integrity_passed": true,
+            "retrieved_sha256": "1ce933e73b5f897fec5bc307b26f6f7c4c474bf069912911b1eb0b7f0ab48ed9",
+            "salt": 3,
+            "sid": 1962728473
+          }
+        ]
+      }
+    }
+  },
+  "w12_wifi": {
+    "pending_join_window_seconds": 60,
+    "premature_mqtt_join_restart_fixed": true,
+    "controlled_wpa2_join_and_reconnect_passed": true,
+    "temporary_access_points_stopped_and_password_cleared": true,
+    "wpa3_h2e_qualified": false,
+    "qualification_limit": "The bench AP did not provide a qualified H2E positive control."
+  },
+  "lora_ssh_after_bench": {
+    "passed": true,
+    "hostname": "MercerWoodMesh",
+    "exit_code": 0,
+    "elapsed_seconds": 88.979,
+    "transport": "LoRa IP tunnel mcip0",
+    "fresh_connection": true,
+    "source_ip": "10.90.5.1",
+    "destination_ip": "10.90.5.2",
+    "port": 2222,
+    "pinned_host_key_checked": true,
+    "ssh_connection_reuse": false,
+    "reserved_radio": "RAK4631",
+    "radio": [
+      910.525,
+      62.5,
+      7,
+      5,
+      32
+    ],
+    "pi_transport_and_ssh_services_active": true
+  },
+  "release_build": {
+    "version": "v1.18.0.2-halo-keymind-cascade-dev",
+    "source": "e2435e51db7fc36e585aab8c821627c7144bc3fd",
+    "started": true,
+    "published": false,
+    "corrected_pocket_full_build_validated": true,
+    "initial_matrix_source": "6cbe2abd1202f1c26a6f907f1b429cbbfe032502",
+    "initial_matrix_stopped_for_fix": "Reader-disabled Pocket UI referenced an unavailable radio-page helper.",
+    "later_source_changes": "Bench result documentation only."
+  },
+  "limitations": [
+    "Strong-signal bench results do not establish receiver sensitivity.",
+    "Verified media bytes do not establish phone playback or rendering.",
+    "Original delivery losses and the failed automatic-timing W12 repair remain recorded.",
+    "W12 packet delivery was 18/20 after adjustment; it was not a lossless pass.",
+    "The six missed RAW fetches have no established cause.",
+    "A single fixed-preamble control does not prove the cause of automatic-timing failures.",
+    "WPA3 H2E remains unqualified."
+  ]
+}
