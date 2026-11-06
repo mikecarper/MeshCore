@@ -144,6 +144,11 @@ inline bool installed_can_migrate(const OtaBootloaderIdentity &installed,
                                  const OtaBootloaderIdentity &candidate,
                                  bool has_legacy, bool legacy_hash_matches,
                                  uint32_t app_base, uint16_t fwid) {
+  // The installed identity describes the bootloader, not the physical XIAO.
+  // Base and Sense modules can run the same application and can have had the
+  // other variant's bootloader installed already. No independent hardware
+  // discriminator is available here, so never replace either XIAO loader.
+  if (!ota_bootloader_install_identity_unambiguous(candidate)) return false;
   if (!installed.present)
     return has_legacy && legacy_hash_matches &&
            ota_bootloader_continuity_matches_runtime(candidate, 140, fwid, app_base, 1);
@@ -178,6 +183,8 @@ inline bool installed_source_allowed(const OtaBootloaderIdentity &installed,
                                      InstalledVariant variant, bool legacy_hash_matches,
                                      uint32_t board_id, const char name[16],
                                      uint32_t app_base, uint16_t fwid) {
+  if (!ota_bootloader_install_identity_unambiguous(board_id,
+          reinterpret_cast<const uint8_t *>(name))) return false;
   if (variant == InstalledVariant::Recovery) return false;
   if (installed.present)
     return variant == InstalledVariant::Normal &&

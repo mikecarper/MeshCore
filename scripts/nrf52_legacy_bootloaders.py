@@ -290,8 +290,17 @@ def legacy_bootloaders_for(profile_id, source_hardware, app_base, softdevice_fwi
     """Return fresh provenance records for this exact build and running layout."""
     if _PHYSICAL_PROFILES.get(source_hardware) != profile_id:
         return []
+    # Neither the XIAO bootloader ID nor its stock digest independently proves
+    # whether the physical module is the base or Sense variant.
+    if profile_id in ("xiao_nrf52840_ble", "xiao_nrf52840_ble_sense"):
+        return []
     result = []
     seen = set()
+    # Identical bytes used on different board profiles cannot identify the
+    # physical board. A build-time target name alone is not sufficient proof.
+    digest_profiles = {}
+    for record in _RECORDS:
+        digest_profiles.setdefault(record["image_sha256"], set()).update(record["profiles"])
     for record in _RECORDS:
         if (profile_id not in record["profiles"]
                 or source_hardware not in record["hardware"]
@@ -305,6 +314,8 @@ def legacy_bootloaders_for(profile_id, source_hardware, app_base, softdevice_fwi
                 or digest in seen):
             raise ValueError("invalid or duplicate reviewed stock bootloader")
         seen.add(digest)
+        if len(digest_profiles[digest]) != 1:
+            continue
         result.append({**record, "profiles": list(record["profiles"]),
                        "hardware": list(record["hardware"])})
     return result

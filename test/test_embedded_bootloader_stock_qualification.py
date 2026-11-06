@@ -28,12 +28,12 @@ class StockQualificationTest(unittest.TestCase):
         self.directory = Path(self.temp.name)
         self.resource = self.directory / "bootloader-migration-resource"
         self.resource.mkdir()
-        self.target = "RAK_3401_repeater"
+        self.target = "R1Neo_repeater"
         self.profile, self.parsed = embed.select_profile(embed.load_manifest(), self.target)
         self.candidate = b"\xa5" * embed.BOOT_SIZE
         self.stock = legacy_bootloaders_for(self.profile["id"], self.parsed["sourceHardware"],
                                            0x26000, 0xB6)
-        self.assertTrue(any(item["version"] == "0.4.3" for item in self.stock))
+        self.assertTrue(self.stock)
         self.hash_table = b"".join(bytes.fromhex(item["image_sha256"]) for item in self.stock)
         self.metadata = dict(target=self.target, hardware=self.parsed["sourceHardware"],
             role=self.parsed["role"], profile=self.profile["id"], release=embed.VERSION,
@@ -81,7 +81,7 @@ class StockQualificationTest(unittest.TestCase):
             "verification": [dict(capability="bootloader.embedded", present=True,
                                   source="packaged application")]}
 
-    def test_real_rak_stock_inventory_is_proven_in_the_published_body(self):
+    def test_unique_stock_inventory_is_proven_in_the_published_body(self):
         metadata = self.qualify()
         self.assertEqual(metadata["stock_legacy"], self.stock)
         self.assertEqual(metadata["stock_legacy_offset"], 4 + embed.BOOT_SIZE)
@@ -123,7 +123,7 @@ class StockQualificationTest(unittest.TestCase):
     def test_public_claims_are_exact_and_malformed_offsets_never_authorize_support(self):
         metadata = self.qualify()
         original = self.public_manifest(metadata)
-        changes = [dict(stock_legacy=[]), dict(stock_legacy=list(reversed(self.stock))),
+        changes = [dict(stock_legacy=[]), dict(stock_legacy=self.stock + self.stock),
                    dict(stock_legacy_offset=None), dict(stock_legacy_offset=True),
                    dict(stock_legacy_offset=-4), dict(stock_legacy_offset=1)]
         wrong = deepcopy(self.stock)
