@@ -1,9 +1,10 @@
 /* Browser-side USB repeater transport. One reader handles CLI and folder frames. */
 (function (root, factory) {
-  const api = factory();
-  if (typeof module === 'object' && module.exports) module.exports = api;
+  const node = typeof module === 'object' && module.exports;
+  const api = factory(node ? require('./lora_ota_port.js') : root.LoraOtaPort);
+  if (node) module.exports = api;
   if (root) root.LoraOtaSerial = api;
-})(typeof globalThis !== 'undefined' ? globalThis : this, function () {
+})(typeof globalThis !== 'undefined' ? globalThis : this, function (portHelper) {
   'use strict';
   const encoder = new TextEncoder();
   const decoder = new TextDecoder();
@@ -121,7 +122,7 @@
   }
   class RepeaterTransport {
     constructor(port, options = {}) {
-      this.port = port; this.options = options; this.commandTimeout = options.commandTimeout ?? 12000;
+      this.port = port; this.options = options; this.portOpened = false; this.commandTimeout = options.commandTimeout ?? 12000;
       this.remoteTimeout = options.remoteTimeout ?? 40000; this.pollMs = options.pollMs ?? 250;
       this.decoder = new StreamDecoder(); this.reader = null; this.writer = null; this.running = false;
       this.failure = null; this.waiter = null; this.writeQueue = Promise.resolve(); this.commandQueue = Promise.resolve();
@@ -135,7 +136,9 @@
     }
     async open() {
       try {
-        await this.port.open({baudRate:115200, bufferSize:4096});
+        await portHelper.openSerialPort(this.port, {signal:this.options.openSignal, onAttempt:this.options.onOpenAttempt, onSuccess:this.options.onOpenSuccess, onAcquired:()=>{this.portOpened=true;}, onReleased:()=>{this.portOpened=false;}, delayMs:this.options.openRetryDelayMs});
+        this.portOpened = true;
+        if (this.options.openSignal?.aborted) throw new DOMException('Connection canceled', 'AbortError');
         this.reader = this.port.readable.getReader(); this.writer = this.port.writable.getWriter(); this.running = true;
         this.readTask = this.readLoop();
         await sleep(this.options.openSettle ?? 750);
@@ -274,7 +277,9 @@
       return k;
     }
     async login(k, password) {
-      if (!this.knownRepeater) {
+      if (this.aclOnly || password === '') {
+        await this.job('ota.peer acl ' + k);
+      } else if (!this.knownRepeater) {
         await this.job('ota.peer discover');
         const status = await this.localCommand('ota.peer status'), m = status.match(/\bpeers=(\d+)\b/);
         if (!m || Number(m[1]) > 8) throw new Error('Invalid direct discovery');
@@ -282,8 +287,7 @@
         for (let j = 0; j < Number(m[1]); j++) if ((await this.localCommand('ota.peer peers ' + j)).toLowerCase().includes('key=' + k)) found = true;
         if (!found) throw new Error('Target did not answer direct discovery');
         await this.job('ota.peer login ' + k + ' ' + password);
-      } else if (this.aclOnly) await this.job('ota.peer acl ' + k);
-      else await this.job('ota.peer login.repeater ' + k + ' ' + password);
+      } else await this.job('ota.peer login.repeater ' + k + ' ' + password);
       this.authenticatedKey = k; this.lastPeerUse = Date.now();
     }
     async verifyPeer(publicKey, password = '') {
@@ -306,7 +310,11 @@
       const k = this.validatePeer(publicKey, password); commandBytes(text, 154);
       return this.withAdmin(async () => {
         await this.checkClock();
-        if (this.aclOnly) return this.job('ota.peer cmd.acl ' + k + ' ' + text);
+        if (this.aclOnly || password === '') {
+          // cmd.acl replaces the source's current peer session.
+          this.authenticatedKey = null; this.lastPeerUse = 0;
+          return this.job('ota.peer cmd.acl ' + k + ' ' + text);
+        }
         if (this.authenticatedKey !== k || Date.now() - this.lastPeerUse > 240000) await this.login(k, password);
         const reply = await this.job('ota.peer cmd ' + k + ' ' + text); this.lastPeerUse = Date.now(); return reply;
       });
@@ -370,7 +378,7 @@
       if (this.reader) { try { this.reader.releaseLock(); } catch (_) {} }
       if (this.writer) { try { await this.writer.close(); } catch (_) {} try { this.writer.releaseLock(); } catch (_) {} }
       this.reader = this.writer = null;
-      try { await this.port.close(); } catch (_) {}
+      if (this.portOpened) { try { await this.port.close(); this.portOpened = false; } catch (_) {} }
       this.seeder = null; this.serving = false; this.sourceKey = null; this.authenticatedKey = null;
       this.ownsPeer = false;
     }
