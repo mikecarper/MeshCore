@@ -226,6 +226,10 @@ class Endpoint(Companion):
                         check(response[0] in expected, 'unexpected response: ' + self.label)
                         return response
                     self.condition.wait(min(.1, max(0, deadline-time.monotonic())))
+                if self.failure is None:
+                    # Replies have no transaction identifier. A late response
+                    # must never satisfy a later command on this connection.
+                    self.failure = 'request timed out; reconnect required'
             raise RuntimeError('Companion request failed: ' + self.label + ': ' + str(self.failure))
 
     def cli_reply(self, command):

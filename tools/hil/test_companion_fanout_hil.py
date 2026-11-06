@@ -147,6 +147,97 @@ class FakeClock:
             self.advance(self.now)
 
 
+class EndpointTransactionTests(unittest.TestCase):
+    def endpoint(self):
+        node = object.__new__(hil.Endpoint)
+        node.label, node.evidence = "left", MemoryEvidence()
+        node.condition, node.transaction = threading.Condition(), threading.Lock()
+        node.responses, node.failure = deque(), None
+
+        class Port:
+            def __init__(self):
+                self.writes, self.rx, self.flushes = [], bytearray(), 0
+
+            @property
+            def in_waiting(self):
+                return len(self.rx)
+
+            def read(self, size):
+                data = bytes(self.rx[:size]); del self.rx[:size]
+                return data
+
+            def write(self, frame):
+                self.writes.append(bytes(frame))
+                return len(frame)
+
+            def flush(self):
+                self.flushes += 1
+
+        node.port = Port()
+        return node
+
+    def test_timeout_blocks_later_writes_before_and_after_delayed_cli_ack(self):
+        node, clock = self.endpoint(), FakeClock()
+        with patch.object(hil.time, "monotonic", clock.monotonic), \
+                patch.object(node.condition, "wait", clock.sleep):
+            with self.assertRaisesRegex(RuntimeError, "timed out; reconnect required"):
+                node.request(b"\x42set radio.xtrim 8,8", (0x1d,), timeout=.2)
+            # Failure alone must stop the next write even before the late ACK.
+            with self.assertRaisesRegex(RuntimeError, "unsynchronized session"):
+                node.request(b"\x42get agc", (0x1d,))
+        self.assertEqual(len(node.port.writes), 1)
+        self.assertEqual(node.port.flushes, 1)
+
+        late_ack = b"\x1dOK - oscillator calibration applying in2s"
+        push = b"\x88late RF observation"
+        for frame in (push, late_ack):
+            node.port.rx.extend(b">" + struct.pack("<H", len(frame)) + frame)
+        # Run the production reader and frame parser on the delayed fake bytes.
+        reader = hil.DeviceFrameReader(hil.TransportCounters())
+        def read_frame(port, timeout):
+            frame = reader.read_frame(port, timeout)
+            if frame == late_ack:
+                node.running = False
+            return frame
+        node.reader, node.running = SimpleNamespace(read_frame=read_frame), True
+        node._read()
+        with self.assertRaisesRegex(RuntimeError, "unsynchronized session"):
+            node.request(b"\x42get agc", (0x1d,))
+        self.assertEqual(len(node.port.writes), 1)
+        self.assertEqual(list(node.responses), [late_ack])
+        self.assertEqual([bytes.fromhex(row["frame"]) for row in node.evidence.frames],
+                         [push, late_ack])
+
+    def test_request_preserves_async_reader_failure_and_blocks_next_write(self):
+        node, clock = self.endpoint(), FakeClock()
+        def reader_failed(duration):
+            node.failure = "OSError('USB disconnected')"
+            clock.sleep(duration)
+        with patch.object(hil.time, "monotonic", clock.monotonic), \
+                patch.object(node.condition, "wait", reader_failed):
+            with self.assertRaisesRegex(RuntimeError, "USB disconnected"):
+                node.request(b"\x16\x0e", (13,))
+        self.assertEqual(node.failure, "OSError('USB disconnected')")
+        with self.assertRaisesRegex(RuntimeError, "unsynchronized session"):
+            node.request(b"\x42get agc", (0x1d,))
+        self.assertEqual(len(node.port.writes), 1)
+
+    def test_successful_requests_remain_usable(self):
+        node = self.endpoint()
+        write = node.port.write
+        replies = deque((b"\x0dinfo", b"\x05identity", b"\x1dversion"))
+        def immediate_reply(frame):
+            size = write(frame)
+            node.responses.append(replies.popleft())
+            return size
+        node.port.write = immediate_reply
+        for payload, expected in ((b"\x16\x0e", 13), (b"\x01app", 5), (b"\x42ver", 0x1d)):
+            self.assertEqual(node.request(payload, (expected,))[0], expected)
+        self.assertIsNone(node.failure)
+        self.assertEqual(len(node.port.writes), 3)
+        self.assertFalse(node.responses)
+
+
 class BaselineNode:
     """Command boundary with the real W12 BUSY precondition, not serial I/O."""
     def __init__(self, board, statuses=("off 5-8 radio1; stopping", "off 5-8 radio1; off")):
