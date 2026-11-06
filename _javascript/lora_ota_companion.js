@@ -7,12 +7,32 @@
   const enc=new TextEncoder(),dec=new TextDecoder(),sleep=ms=>new Promise(r=>setTimeout(r,ms));
   const hex=b=>Array.from(b,x=>x.toString(16).padStart(2,'0')).join('');
   function unhex(s){if(!/^[a-f0-9]{64}$/i.test(s))throw Error('Enter the complete target public key');return Uint8Array.from(s.match(/../g),x=>parseInt(x,16));}
+  function deviceText(frame,offset,length){
+    if(frame.length<offset+length)return null;
+    const bytes=frame.subarray(offset,offset+length),end=bytes.indexOf(0);
+    const value=dec.decode(end<0?bytes:bytes.subarray(0,end)).replace(/[\x00-\x1f\x7f]/g,'').trim();
+    return value||null;
+  }
   function join(...chunks){const out=new Uint8Array(chunks.reduce((n,c)=>n+c.length,0));let at=0;for(const c of chunks){out.set(c,at);at+=c.length;}return out;}
   function u32(n){const b=new Uint8Array(4);new DataView(b.buffer).setUint32(0,n,true);return b;}
   function packet(payload){if(!payload.length||payload.length>300)throw Error('Invalid Companion frame size');return join(Uint8Array.of(60,payload.length&255,payload.length>>8),payload);}
   const INBOX_KEY='meshcore-lora-ota-preserved-inbox-v1';
   const READ_ONLY=new Set(['get public.key','ota status','ota self','ver','get bootloader.ver',
-    'ota bootloader status','ota config','ota key list','get tempradio','get radio','get radio.rxps','ota installhash','ota qspi']);
+    'ota bootloader status','ota config','ota key list','get tempradio','get radio','get radio.rxps','ota installhash','ota qspi','ota stats','ota ls']);
+  // Legacy OTA commands are deliberately narrow; changing operations are
+  // sent at most once and the target must still verify the staged image.
+  function legacyOtaCommand(text){
+    return READ_ONLY.has(text)||/^ota pull [a-f0-9]{8} flash$/i.test(text)||
+      /^ota installhash [a-f0-9]{64}$/i.test(text)||text==='ota install';
+  }
+  function sourceTemp(text){
+    const s=String(text).trim().replace(/^>\s*/, '').replace(/^TempRadio active:\s*/i,'');
+    const m=s.match(/^(\d+(?:\.\d+)?),(\d+(?:\.\d+)?),(\d+),(\d+)(?:,(\d+))?/);
+    const p=/\bpreamble=(\d+)\b/i.exec(s);
+    const preamble=Number(p?p[1]:m?.[5]);
+    if(!m||!Number.isInteger(preamble)||preamble<1||preamble>65535)throw Error('Cannot confirm an active primary temporary radio and preamble');
+    return {radio:m.slice(1,5).map(Number),preamble};
+  }
   function inboxRecords(){
     const raw=localStorage.getItem(INBOX_KEY);if(raw===null)return [];
     const records=JSON.parse(raw);if(!Array.isArray(records)||records.length>256||records.some(r=>!r||typeof r!=='object'||!/^([a-f0-9]{64})$/i.test(r.sourceKey||'')||typeof r.at!=='string'||(r.pending?!/^[a-f0-9]{32}$/i.test(r.id||''):!/^([a-f0-9]{2}){1,300}$/i.test(r.frameHex||''))))throw Error('Saved inbox is invalid or full; export it before continuing');
@@ -57,7 +77,11 @@
       this.aclOnly=false;this.supportsRoutedPath=false;this.sourceKey=null;this.reader=null;this.writer=null;this.running=false;
       this.failure=null;this.decoder=new Decoder();this.pending=null;this.loginWaiter=null;this.queue=Promise.resolve();this.admin=Promise.resolve();
       this.authenticated=false;this.guard=false;this.investigationEnabled=false;this.investigationCancelled=false;this.investigationAuthenticated=false;this.investigationVerified=false;this.investigationProofPending=false;this.investigationPassword=null;this.investigationPermission='unknown';this.used=new Set();this.timestamp=0;this.serving=false;this.seeder=null;this.radioQueue=[];this.radioRunning=false;this.nextTx=0;this.txQueue=Promise.resolve();this.contactList=[];this.peerType=2;
-      this.otaSupported=false;this.otaUnavailableReason='This Companion needs firmware with guarded zero-hop CLI and radio support';
+      this.otaSupported=false;this.localCliSupported=false;this.otaMode='legacy';this.rawPacketSupport='unverified';
+      this.firmwareVersion=null;this.firmwareBuildDate=null;this.firmwareProtocol=null;this.firmwareVersionTruncated=false;
+      this.otaUnavailableReason='This Companion needs firmware with guarded zero-hop CLI and radio support';
+      // The browser serves packets itself; no firmware-side folder is used.
+      this.browserRawSource=true;
     }
     async open(){
       try{
@@ -70,10 +94,25 @@
         if(info.length<58)throw Error('Invalid Companion identity response');this.sourceKey=hex(info.slice(4,36));
         const v=new DataView(info.buffer,info.byteOffset,info.byteLength);
         this.radio=[v.getUint32(48,true)/1000,v.getUint32(52,true)/1000,info[56],info[57]];
+        // DEVICE_QUERY also declares the app protocol version; version 4
+        // matches MeshCore Open and we decode both legacy and v3 inbox frames.
+        try{
+          const device=await this.commandAny(Uint8Array.of(22,4),[13],true);
+          if(device[0]===13){
+            if(device.length>=2)this.firmwareProtocol=device[1];
+            this.firmwareBuildDate=deviceText(device,8,12);
+            this.firmwareVersion=deviceText(device,60,20);
+            this.firmwareVersionTruncated=!!this.firmwareVersion&&this.firmwareVersion.length>=19;
+          }
+        }catch(error){if(this.failure||error.message!=='Companion rejected the command')throw error;}
         // Contact browsing is available even on stock/older Companions. An
         // explicit unsupported response is harmless; an I/O timeout is not.
         try {
-          const status=await this.localCommand('get ota.direct');
+          // Older Companions use command 66 for a FEM read and may return OK,
+          // not a CLI reply. Accept any response to this read-only probe.
+          const frame=await this.commandAny(join(Uint8Array.of(66),enc.encode('get ota.direct')),[29],true);
+          this.localCliSupported=frame[0]===29;
+          const status=this.localCliSupported?dec.decode(frame.slice(1)).trim():'';
           if (/^>?\s*ota\.direct v=2 active=[01] busy=[01]\s*$/i.test(status)) {
             const cap=await this.localCommand('get ota.direct.capabilities');
             this.otaSupported=/^>?\s*ota\.direct\.cap guarded_cli=1 guarded_radio=1\s*$/i.test(cap);
@@ -82,6 +121,14 @@
             else if(this.otaSupported)this.otaUnavailableReason='';
           }
         }catch(error){if(this.failure||error.message!=='Companion rejected the command')throw error;}
+        this.otaMode=this.otaSupported?'guarded':'legacy';
+        if(this.localCliSupported){
+          try{
+            const reply=(await this.localCommand('ver')).replace(/^>\s*/,'').trim();
+            const full=reply.match(/^(v?\d+(?:\.\d+){1,4}[^\s()]*)(?:\s|$)/i)?.[1];
+            if(full){this.firmwareVersion=full;this.firmwareVersionTruncated=false;}
+          }catch(error){if(this.failure)throw error;}
+        }
         return this;
       }catch(e){await this.close();throw e;}
     }
@@ -139,6 +186,7 @@
       this.knownRepeater=key;this.peerType=match?.type||2;
     }
     async localCommand(text){
+      if(!this.localCliSupported)throw Error('This Companion cannot report local CLI settings over USB');
       if(typeof text!=='string'||!text.length||/[\r\n\0]/.test(text)||enc.encode(text).length>180)throw Error('Invalid Companion command');
       const reply=dec.decode((await this.command(join(Uint8Array.of(66),enc.encode(text)),29)).slice(1)).trim();
       if(text==='get radio'){
@@ -150,6 +198,13 @@
       // no RXPS implementation. Unknown settings and other errors stay errors.
       if(text==='get radio.rxps'&&/^Error: RX power saving (?:is unsupported on this radio|unsupported on radio)$/.test(reply))return '> off,unsupported';
       return reply;
+    }
+    async savedSourceRadio(){
+      // CMD_APP_START cancels current serial operations on newer firmware.
+      // For legacy units without a local CLI, use only the saved tuple already
+      // obtained when opening the connection; it is not a live radio read.
+      if(!this.radio||this.radio.length!==4||this.radio.some(v=>!Number.isFinite(v)||v<=0))throw Error('Cannot read the Companion saved radio settings');
+      return this.radio.slice();
     }
     withAdmin(fn){const p=this.admin.then(fn);this.admin=p.catch(()=>{});return p;}
     async guardMode(mode,extra=new Uint8Array()){
@@ -167,7 +222,7 @@
     }
     investigationProgress(stage,command='',timeoutMs=0,message=''){
       const attempt=this.investigationAttempt||0;
-      try{this.options.onInvestigationProgress?.({stage,command,timeoutMs,message,attempt,maxAttempts:attempt?3:0});}catch(_){}
+      try{this.options.onInvestigationProgress?.({stage,command,timeoutMs,message,attempt,maxAttempts:attempt?this.investigationMaxAttempts:0});}catch(_){}
     }
     async inspectInvestigationClock(){
       this.investigationProgress('checking-clock');
@@ -190,18 +245,22 @@
     }
     async retryInvestigation(text,run){
       if(!READ_ONLY.has(text))throw Error('Only approved read-only investigation commands are allowed');
+      // Until the identity check receives a response, keep probing bounded.
+      // Thereafter the target has replied, so tolerate a weaker RF link.
+      const maxAttempts=this.investigationAuthenticated?7:3;
+      this.investigationMaxAttempts=maxAttempts;
       try{
-        for(let attempt=1;attempt<=3;attempt++){
+        for(let attempt=1;attempt<=maxAttempts;attempt++){
           this.assertInvestigationRunning();this.investigationAttempt=attempt;
           try{const reply=await run();this.assertInvestigationRunning();return reply;}
           catch(error){
             this.assertInvestigationRunning();
             if(!error?.loraReplyTimeout||this.failure)throw error;
-            if(attempt===3){error.attempts=attempt;throw error;}
+            if(attempt===maxAttempts){error.attempts=attempt;throw error;}
             this.investigationProgress('retrying-command',text);
           }
         }
-      }finally{this.investigationAttempt=0;}
+      }finally{this.investigationAttempt=0;this.investigationMaxAttempts=0;}
     }
     cancelInvestigation(){
       if(!this.investigationEnabled)return;
@@ -237,9 +296,10 @@
       try{localStorage.setItem(INBOX_KEY,JSON.stringify(rows));}catch(_){throw Error('Could not save a removed inbox message; stop and export saved messages');}
       if(preserve){try{this.options.onPreserved?.(decodedInbox(rows[index]),rows.filter(r=>r.sourceKey===this.sourceKey&&!r.pending).length);}catch(_){}}
     }
-    async standardReply(text){
-      if(!this.investigationEnabled||!READ_ONLY.has(text))throw Error('Only approved read-only investigation commands are allowed');
+    async standardReply(text,otaControl=false){
+      if(!this.investigationEnabled||!(otaControl?legacyOtaCommand(text):READ_ONLY.has(text)))throw Error('Only approved OTA commands are allowed');
       if(!this.investigationAuthenticated&&!(text==='get public.key'&&this.investigationProofPending))throw Error('Verify the target before running investigation commands');
+      if(otaControl&&!this.investigationVerified)throw Error('Verify the target full public key before updating');
       this.assertInvestigationRunning();
       this.investigationProgress('refreshing-contacts',text,this.options.contactsTimeout??60000);
       await this.contacts();this.assertInvestigationRunning();this.assertStandardTarget();
@@ -383,20 +443,57 @@
       }if(READ_ONLY.has(text))this.investigationProgress('command-timeout',text);const error=Error('Remote command timed out; result is unknown');error.loraReplyTimeout=true;throw error;
     }
     validate(key){if(String(key).toLowerCase()!==this.knownRepeater)throw Error('Target differs from the selected repeater');}
-    async verifyPeer(key,password=''){this.validate(key);return this.withAdmin(async()=>{if(!this.authenticated)await this.login(password);return this.knownRepeater;});}
-    async remoteCommand(key,password,text){this.validate(key);return this.withAdmin(async()=>{if(!this.authenticated)await this.login(password);return this.remoteReply(text);});}
-    async resetRemoteSession(key){this.validate(key);return this.withAdmin(async()=>{if(this.guard)await this.guardMode(3);this.guard=false;this.authenticated=false;});}
+    async verifyPeer(key,password=''){
+      this.validate(key);
+      if(!this.otaSupported){
+        if(!this.investigationEnabled)throw Error('Confirm the older Companion inbox warning and investigate the target first');
+        await this.investigateVerifyPeer(key,password);
+        if(!this.investigationVerified)throw Error('Verify the target full public key before updating');
+        return this.knownRepeater;
+      }
+      return this.withAdmin(async()=>{if(!this.authenticated)await this.login(password);return this.knownRepeater;});
+    }
+    async remoteCommand(key,password,text){
+      this.validate(key);
+      if(!this.otaSupported){
+        if(!this.investigationAuthenticated||!this.investigationVerified)throw Error('Verify the target full public key before updating');
+        if(password!==this.investigationPassword)throw Error('Disconnect and reconnect before changing the admin password');
+        return this.withAdmin(()=>READ_ONLY.has(text)
+          ?this.retryInvestigation(text,()=>this.standardReply(text,true))
+          :this.standardReply(text,true));
+      }
+      return this.withAdmin(async()=>{if(!this.authenticated)await this.login(password);return this.remoteReply(text);});
+    }
+    async resetRemoteSession(key,password=''){
+      this.validate(key);
+      if(!this.otaSupported){this.investigationAuthenticated=false;this.investigationVerified=false;return this.verifyPeer(key,password);}
+      return this.withAdmin(async()=>{if(this.guard)await this.guardMode(3);this.guard=false;this.authenticated=false;});
+    }
     async setPath(){throw Error('Companion OTA currently supports zero-hop only');}
     async serve(info,blob,compress){
       if(this.serving)throw Error('An OTA package is already being served');
       if(!globalThis.LoraOtaCompanionSource)throw Error('Companion seeder is unavailable');
-      const t=await this.localCommand('get tempradio');if(!/\bactive\b/i.test(t))throw Error('Open a same-channel temporary radio first');
-      const match=t.match(/\bpreamble=(\d+)\b/i);this.preamble=match?Number(match[1]):0;
-      if(this.preamble<1||this.preamble>65535)throw Error('Cannot confirm the Companion radio preamble for safe transmit pacing');
+      const t=this.localCliSupported?sourceTemp(await this.localCommand('get tempradio')):
+        {radio:await this.savedSourceRadio(),preamble:32};
+      this.preamble=t.preamble;this.sourceTempRadio=t;
+      await this.checkSourceRadio();
       this.seeder=await globalThis.LoraOtaCompanionSource.Source.create(info,this.sourceKey,{compress});this.serving=true;
       this.advertise();
     }
     async advertise(){if(!this.serving)return;try{await this.sendRadio(this.seeder.advert());}catch(e){this.failure=e;}if(this.serving&&!this.failure)this.advertTimer=setTimeout(()=>this.advertise(),30000);}
+    async checkSourceRadio(){
+      if(!this.localCliSupported){
+        const radio=await this.savedSourceRadio();
+        if(!this.sourceTempRadio||radio.some((v,i)=>Math.abs(v-this.sourceTempRadio.radio[i])>0.001))throw Error('Companion saved radio settings changed; OTA sending stopped');
+        return;
+      }
+      const temp=sourceTemp(await this.localCommand('get tempradio'));
+      await this.localCommand('get radio');
+      const equal=(a,b)=>a.length===b.length&&a.every((v,i)=>Number.isFinite(v)&&Math.abs(v-b[i])<=0.001);
+      if(!this.sourceTempRadio||!equal(temp.radio,this.sourceTempRadio.radio)||
+          temp.preamble!==this.sourceTempRadio.preamble||!equal(this.radio,temp.radio))
+        throw Error('Companion radio or temporary profile changed; OTA sending stopped');
+    }
     async pumpRadio(){if(this.radioRunning)return;this.radioRunning=true;try{while(this.serving&&this.radioQueue.length){const requests=await this.seeder.replies(this.radioQueue.shift());for(const r of requests){if(!this.serving)break;await this.sendRadio(r);}}}catch(e){this.failure=e;}finally{this.radioRunning=false;}}
     sendRadio(raw){
       if(!(raw instanceof Uint8Array)||raw.length<3||raw.length>186||raw[0]!==0x32||raw[1]!==0)throw Error('Invalid zero-hop OTA frame');
@@ -404,7 +501,10 @@
     }
     async sendRadioOrdered(raw){
       const delay=this.nextTx-Date.now();if(delay>0)await sleep(delay);if(!this.serving)return;
+      if(!this.otaSupported)await this.checkSourceRadio();
+      if(!this.serving)return;
       await this.command(join(Uint8Array.of(65,1),raw),0);
+      this.rawPacketSupport='accepted'; // queued by the Companion, not proof of RF transmission
       const [,bw,sf,cr]=this.radio,symbol=2**sf/(bw*1000),de=symbol>=.016?1:0;
       const airtime=(this.preamble+4.25+8+Math.max(0,Math.ceil((8*raw.length-4*sf+44)/(4*(sf-2*de))))*cr)*symbol;
       this.nextTx=Date.now()+Math.ceil(Math.max(.25,2*airtime+.1)*1000);

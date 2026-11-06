@@ -50,6 +50,34 @@
     if (/\bbl:|bootloader:/i.test(status + ' ' + self) || !/^\s*(?:err(?:or)?\s*:?\s*)unsupported\s*$/i.test(bootloaderReply))
       throw Error('Cannot confirm the target supports the ESP32 sequential delta codec');
   }
+  // The reported hardware tag must match exactly one family in the published
+  // build metadata and that family must be ESP32 only. Unknown or conflicting
+  // metadata is not evidence: callers retain their conservative probe.
+  async function isKnownEsp32(status, self, options = {}) {
+    const hw=/\bhw=([^\s|]+)/i.exec(status);
+    if (!hw || hw[1] === '?' || !/\btarget:[0-9a-f]{8}\b/i.test(status) ||
+        !/\bbase_hash=[0-9a-f]{16}\b/i.test(self) || /\bbl:|bootloader:/i.test(status+' '+self)) return false;
+    try {
+      const url = options.controlsUrl || new URL('../_data/firmware_controls.json', globalThis.location.href);
+      const response=await (options.fetchImpl || fetch)(url,{signal:AbortSignal.timeout(5000)});
+      if (!response.ok) return false;
+      const profiles=(await response.json())?.profiles;
+      if (!profiles || typeof profiles !== 'object' || Array.isArray(profiles)) return false;
+      const platforms=new Set();
+      for (const [name, profile] of Object.entries(profiles)) {
+        const match=/^(.+?)[_-](?:partition_expander|repeater|repeatr|room_server|room_svr|sensor|terminal_chat|kiss_modem|companion_radio|companion|comp_radio)(?=[_-]|$)/i.exec(name);
+        if (!match) continue;
+        let family=match[1];
+        family=({'heltec_wsl3':'Heltec_v3','heltec_t114_without_display':'Heltec_t114','rak_4631':'RAK4631'})[family.toLowerCase()]||family;
+        if (family.toLowerCase() === hw[1].toLowerCase()) platforms.add(profile?.platform || '');
+      }
+      return platforms.size === 1 && platforms.has('ESP32_PLATFORM');
+    } catch (_) { return false; }
+  }
+  async function ensureSequentialTarget(status, self, getBootloader, options = {}) {
+    if (await isKnownEsp32(status, self, options)) return;
+    confirmSequentialTarget(status, self, await getBootloader());
+  }
   function internalStage(status, self, dest) {
     if (!dest.nrf || !(dest.codecs & 4) || dest.external || /\bbl:(?:QSPI|SD)\b|\b(?:QSPI|SD) store\b/i.test(status + ' ' + self) || !/\bbl:(?:internal|apply)\b|\binternal store:/i.test(status + ' ' + self))
       throw Error('nRF52 in-place generation requires confirmed internal storage and bootloader support');
@@ -84,5 +112,5 @@
         plan.memorySize + Math.ceil(info.blob.length / 4096) * 4096 > ceiling - plan.app)
       throw Error('The current nRF52 staging space no longer fits this differential');
   }
-  return { route, destination, validate, confirmSequentialTarget, internalStage, qspiCapacity, validateInternalPlan, version, hex };
+  return { route, destination, validate, confirmSequentialTarget, isKnownEsp32, ensureSequentialTarget, internalStage, qspiCapacity, validateInternalPlan, version, hex };
 });

@@ -69,7 +69,7 @@
       checks.validateInternalPlan(this.inplacePlan, this.info, status, self, dest,
         this.inplacePlan?.storage === 'qspi' ? await this.remote('ota qspi') : null);
       if (!this.info.isFull && this.info.codecId === 1)
-        checks.confirmSequentialTarget(status, self, await this.link.remoteCommand(this.key, this.password, 'get bootloader.ver'));
+        await checks.ensureSequentialTarget(status, self, () => this.link.remoteCommand(this.key, this.password, 'get bootloader.ver'));
       if (this.info.signed) {
         const trusted = await this.remote('ota key list');
         if (!trusted.toLowerCase().split(/\s+/).includes(checks.hex(this.info.signer.subarray(0, 8))))
@@ -125,7 +125,9 @@
       if (before.download !== 'ready' || current.id !== selected || current.state !== 'ready')
         throw Error('The selected package is not ready to install');
       this.journal({phase:'install attempted', target:this.key, source:this.link.sourceKey, id:selected, packageHash:this.packageHash, bodyHash:this.bodyHash});
-      try { await this.remote('ota installhash ' + this.installHash); }
+      const command = this.installMode === 'hash' ? 'ota installhash ' + this.installHash : this.installMode === 'legacy' ? 'ota install' : null;
+      if (!command) throw Error('Target installation capability is unknown');
+      try { await this.remote(command); }
       catch (error) {
         if (!/timeout|timed out|disconnect|result is unknown/i.test(String(error.message))) throw error;
         this.progress('Install reply was lost; checking the running firmware');
