@@ -110,10 +110,17 @@ int main() {
         code = (ROOT / "test/fixtures/morse_fem_guard.cpp").read_text(encoding="ascii")
         code = code.replace("@COMPANION_METHODS@", "\n".join(method(companion, signature) for signature in (
             "bool MyMesh::applyAndSaveFemRxGain(", "bool MyMesh::applyAndSaveFemTxGain(")))
-        branches = "\nelse ".join(method(common, signature) for signature in (
-            'if (memcmp(config, "radio.fem.rxgain ", 17) == 0)',
-            'if (memcmp(config, "radio.fem.txgain ", 17) == 0)'))
-        compile_run(self, code.replace("@COMMON_BRANCHES@", branches))
+        # Extract the complete conditional group: its normal TX branch closes
+        # after the outer #endif, so extracting that branch alone loses the
+        # preprocessor context. Compile the production normal-board path and
+        # retain all Morse ownership, persistence and rollback assertions.
+        position = common.index('  } else if (memcmp(config, "radio.fem.rxgain ", 17)')
+        start = common.rfind('#if defined(WIO_E5_MINI_COMPACT_UNSUPPORTED_AGC)', 0, position)
+        end = common.index('  } else if (strncmp(config, "radio.rxps.rfrx_disabled ", 25)', position)
+        self.assertGreaterEqual(start, 0)
+        branches = 'if (false) {\n' + common[start:end] + '  }\n'
+        compile_run(self, code.replace("@COMMON_BRANCHES@", branches),
+                    flags=("-DWIO_E5_MINI_COMPACT_UNSUPPORTED_AGC=0",))
 
 
 if __name__ == "__main__":

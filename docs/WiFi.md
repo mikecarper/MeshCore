@@ -989,9 +989,19 @@ WiFi TX limit: 13.00 dBm (automatic profile cap 13 dBm)
 A lower reported value can mean the driver floored the request or that WiFi
 power saving selected a lower value.
 
-The W12 also allows 30 seconds for a saved WiFi connection before falling back
-to setup mode. A custom build can override that default, for example with
-`-DWEBCONFIG_WIFI_CONNECT_TIMEOUT_MS=60000` for a 60-second window.
+The W12 allows 60 seconds for a saved WiFi connection before falling back to
+setup mode. Its MQTT observer also preserves at least 60 seconds from each
+association attempt before an explicit reconnect, so the first retry cannot
+interrupt slower WPA3 authentication after the ordinary 15-second backoff.
+Standalone and Companion station recovery allow two retries 60 seconds apart,
+then return to five-minute intervals. SDK-managed retries remain independent.
+A custom build can override the setup deadline with
+`-DWEBCONFIG_WIFI_CONNECT_TIMEOUT_MS=90000` for a 90-second window.
+
+These W12 defaults retain the normal AP-selection policy and existing SDK;
+they do not enable the all-channel-scan or newer-SDK experiments. They prevent
+premature application retries but do not establish the cause of an access
+point's handshake timeout or confirm stability on the reported network.
 
 ### MQTT observer diagnostics
 

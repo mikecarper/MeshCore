@@ -240,3 +240,28 @@ The SDK3 Observer comparison requires PSRAM for its existing full-capacity scope
 and advert tables. Allocation is checked before radio startup; failure leaves
 USB diagnostics available. This variant accounts for 36,828 bytes externally
 instead of reserving an internal fallback. Normal builds retain that fallback.
+
+## Production W12 authentication window — 2026-11-05
+
+The production W12 profile previously gave WebConfig a 30-second join allowance
+but retained the MQTT observer's ordinary 15-second initial reconnect rung.
+The observer could therefore disconnect an ongoing first association before
+that allowance elapsed. W12 now enables the existing bounded recovery policy:
+each MQTT association gets at least 60 seconds before an explicit retry,
+and WebConfig's initial and setup-recovery deadlines also default to 60 seconds.
+Standalone and Companion station recovery make two retries 60 seconds apart,
+then return to five-minute intervals. An active setup or OTA owner still
+defers station mutation without consuming a retry.
+
+A profile-coupled host regression executes the production MQTT startup and
+reconnect methods using the flags from the W12 base profile. It verifies that
+15-, 30- and 59-second observations retain the association, setup/OTA ownership
+defers the due retry, and a later attempt receives its own complete window.
+The same regression compiles both WebConfig deadlines from that profile.
+Existing rollover, bounded-retry, SAE/H2E staging and fixed-channel ESP-NOW
+regressions remain applicable.
+
+This change retains the production SDK, ordinary scan method, 13 dBm automatic
+power cap, saved credentials and WPA3 SAE methods. It does not confirm the cause
+of the reporter's handshake timeouts or establish stability on their access
+point; no physical W12 network test was part of this host regression.

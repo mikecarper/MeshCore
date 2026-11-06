@@ -123,32 +123,73 @@ class MiniRepeaterProfileTest(unittest.TestCase):
         source = (ROOT / "src/helpers/CommonCLI.cpp").read_text(encoding="utf-8")
         equals = extract_braced(source, "static bool configKeyEquals(")
         matches = extract_braced(source, "static bool miniUnsupportedWarmAgcGet(")
-        start = source.index('  } else if (memcmp(config, "agc.old ", 8) == 0)')
-        end = source.index('  } else if (memcmp(config, "agc.reset.interval ", 19)', start)
-        set_branch = source[start:end].replace("  } else if", "  if", 1) + "  }\n"
+        spaces = extract_braced(source, "static const char* skipSpacesConst(")
+        set_branch = extract_braced(source, 'if (memcmp(config, "agc.old ", 8) == 0)')
+        # Keep the old-timer capability branch separate from the following
+        # compile-time shortcut for unsupported warm diagnostics.
+        start = source.index('  } else if(configKeyEquals(config,"agc.old"))')
+        end = source.index('#if defined(WIO_E5_MINI_COMPACT_UNSUPPORTED_AGC)', start)
+        get_branch = source[start:end].replace("  } else if", "  if", 1) + "  }\n"
         harness = r'''
 #include <cassert>
 #include <cstring>
 #include <helpers/CLICommandUtils.h>
 @EQUALS@
 @MATCHES@
-static void set_old(const char* config, char* reply) {
+@SPACES@
+struct Radio {
+  bool supported = false;
+  uint32_t interval = 0;
+  mutable unsigned reads = 0;
+  unsigned writes = 0;
+  bool supportsOldAGC() const { return supported; }
+  uint32_t getOldAGCInterval() const { ++reads; return interval; }
+  bool setOldAGCInterval(uint32_t value) { ++writes; interval = value; return true; }
+};
+struct Callbacks { Radio* radio; Radio* getProfileRadio() const { return radio; } };
+struct CLI {
+  Callbacks* _callbacks;
+  void set_old(const char* config, char* reply) {
 @SET_BRANCH@
-}
+  }
+  void get_old(const char* config, char* reply) {
+@GET_BRANCH@
+  }
+};
 int main() {
   assert(!miniUnsupportedWarmAgcGet(nullptr));
-  for (const char* key : {"agc.old", "agc.status", "agc.timing", "agc.recovery",
-                          "agc.pulse", "agc.sleep", "agc.checks", "agc.old   "})
+  for (const char* key : {"agc.status", "agc.timing", "agc.recovery",
+                          "agc.pulse", "agc.sleep", "agc.checks", "agc.status   "})
     assert(miniUnsupportedWarmAgcGet(key));
-  for (const char* key : {"agc", "agc.reset.interval", "agc.old.status", "agc.oldx",
+  for (const char* key : {"agc", "agc.reset.interval", "agc.old", "agc.old   ", "agc.old.status", "agc.oldx",
                           "agc.status x", "agc.statusx", "agc.old\t", "other"})
     assert(!miniUnsupportedWarmAgcGet(key));
-  for (const char* command : {"agc.old ", "agc.old 0", "agc.old 999999999999"}) {
-    char reply[160] = {}; set_old(command, reply); assert(!strcmp(reply, "Error: unsupported"));
+  Radio radio; Callbacks callbacks{&radio}; CLI cli{&callbacks};
+  for (Radio* available : {&radio, static_cast<Radio*>(nullptr)}) {
+    callbacks.radio = available;
+    for (const char* command : {"agc.old ", "agc.old 0", "agc.old 999999999999"}) {
+      char reply[160] = {}; cli.set_old(command, reply); assert(!strcmp(reply, "Error: unsupported"));
+    }
+    for (const char* key : {"agc.old", "agc.old   "}) {
+      char reply[160] = {}; cli.get_old(key, reply); assert(!strcmp(reply, "Error: unsupported"));
+    }
   }
-  char reply[160] = {}; set_old("agc.oldx 1", reply); assert(!reply[0]);
+  assert(!radio.reads && !radio.writes);
+  callbacks.radio = &radio; radio.supported = true;
+  char reply[160] = {}; cli.get_old("agc.old", reply); assert(!strcmp(reply, "> 0"));
+  for (const char* command : {"agc.old 0", "agc.old 16", "agc.old 86400"}) {
+    cli.set_old(command, reply); assert(!strncmp(reply, "OK - ", 5));
+  }
+  assert(radio.interval == 86400 && radio.writes == 3);
+  for (const char* command : {"agc.old ", "agc.old -1", "agc.old 86401", "agc.old 999999999999", "agc.old 1x"}) {
+    cli.set_old(command, reply); assert(!strncmp(reply, "Error:", 6));
+    assert(radio.interval == 86400 && radio.writes == 3);
+  }
+  reply[0] = 0; cli.set_old("agc.oldx 1", reply); assert(!reply[0]);
+  cli.get_old("agc.old extra", reply); assert(!reply[0]);
 }
-'''.replace('@EQUALS@', equals).replace('@MATCHES@', matches).replace('@SET_BRANCH@', set_branch)
+'''.replace('@EQUALS@', equals).replace('@MATCHES@', matches).replace('@SPACES@', spaces).replace(
+            '@SET_BRANCH@', set_branch).replace('@GET_BRANCH@', get_branch)
         with tempfile.TemporaryDirectory(prefix='mini-agc-unsupported-') as directory:
             path = Path(directory)
             (path / 'main.cpp').write_text('#include <initializer_list>\n' + harness, encoding='utf-8')

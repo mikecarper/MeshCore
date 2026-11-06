@@ -1,5 +1,6 @@
 """Exercise W12 station joins with the real CLI power preference and policy."""
 from pathlib import Path
+import re
 import shutil
 import subprocess
 import tempfile
@@ -7,6 +8,7 @@ import unittest
 
 from test_replay_reset_integration import extract_braced
 import test_wifi_station_tx_power as station
+import test_mqtt_ap_ownership as ownership
 
 ROOT = Path(__file__).resolve().parents[1]
 join = extract_braced((ROOT / 'src/helpers/esp32/WiFiStationPolicy.h').read_text(),
@@ -56,6 +58,35 @@ int main() {
 
 
 class W12PowerJoinTest(unittest.TestCase):
+    def test_production_profile_preserves_authentication_window_before_retry(self):
+        profile = (ROOT / 'variants/meshnology_w12/platformio.ini').read_text()
+        base = profile.split('[meshnology_w12]', 1)[1].split('\n[', 1)[0]
+        definitions = dict(re.findall(r'-D\s+(MESH_WIFI_RECOVERY|WEBCONFIG_WIFI_DEFAULT_CONNECT_TIMEOUT_MS)=(\d+)\b', base))
+        self.assertEqual(definitions.get('MESH_WIFI_RECOVERY'), '1')
+        self.assertEqual(definitions.get('WEBCONFIG_WIFI_DEFAULT_CONNECT_TIMEOUT_MS'), '60000')
+        flags = [f'-D{name}={value}' for name, value in definitions.items()]
+
+        # Execute the actual observer startup/reconnect methods with the flags
+        # inherited by production W12 targets, including setup/OTA ownership.
+        fixture = ownership.MQTTAccessPointOwnershipTest()
+        source = fixture.fixture().replace(
+            '#include "helpers/MQTTConnectionPolicy.h"',
+            '#include "helpers/MQTTConnectionPolicy.h"\n'
+            '#include "helpers/WebConfigBatch.h"\n'
+            'static_assert(WebConfigBatch::kInitialWiFiConnectTimeoutMs == 60000U, "initial window");\n'
+            'static_assert(WebConfigBatch::kSetupWiFiConnectTimeoutMs == 60000U, "setup window");')
+        fixture.run_fixture('recovery_window', source, *flags)
+
+        # The former W12 profile ran this ordinary MQTT retry policy. Keep the
+        # same live-association assertions to show its first retry cuts in early.
+        ordinary = source.replace(
+            '#if defined(MESH_WIFI_RECOVERY) && MESH_WIFI_RECOVERY\n  const uint32_t start=1000000U;',
+            '#if 1\n  const uint32_t start=1000000U;')
+        self.assertNotEqual(ordinary, source)
+        with self.assertRaises(ownership.FixtureFailure):
+            fixture.run_fixture('recovery_window', ordinary,
+                                '-DWEBCONFIG_WIFI_DEFAULT_CONNECT_TIMEOUT_MS=60000')
+
     def test_real_join_with_auto_and_manual_power(self):
         compiler = shutil.which('g++')
         self.assertIsNotNone(compiler)
