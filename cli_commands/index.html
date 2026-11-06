@@ -11815,15 +11815,22 @@ Existing saved values, including <code>0</code> (disabled), are retained.</p>
 <p>Normal RXPS automatically suspends the primary AGC timer on every board. The
 configured interval is retained; turning RXPS off starts a fresh interval.
 The optional <code>agc.old</code> timer remains an independent, explicitly enabled reset.</p>
-<p>On Heltec V4 builds based on <code>Heltec_lora32_v4</code>, this saved interval schedules
-a same-channel RXPS pulse. The existing value, four-second rounding and adaptive
+<p>On builds using the <code>CustomSX1262</code>, <code>CustomSX1268</code>, <code>CustomLLCC68</code>,
+<code>CustomSTM32WLx</code>, <code>CustomLR1110</code>, <code>CustomLR1121</code> or <code>CustomLR2021</code> driver,
+this saved interval schedules a same-channel RXPS pulse. <code>CustomSX1276</code> uses
+a separate, checked host-timed sleep/wake sequence. This includes the supported
+backends of startup-detected radio builds. The existing
+value, four-second rounding and adaptive
 scheduling are retained. It does not retune, calibrate, change gain or reset
 the noise-floor cache. Completing the hardware sleep/wake sequence is not proof
-of an analog AGC reset or a sensitivity improvement. V4 R8 and other board
-families retain the existing reset method unless explicitly built with the
-legacy-named <code>MESH_WARM_RX_REFRESH=1</code> flag on a supported SX1262 wrapper.</p>
-<p>The opted-in V4 primary path now performs one asynchronous RXPS pulse. It
-requires continuous primary LoRa RX, with <code>radio.rxps</code> and <code>radio2</code> off. It does
+of an analog AGC reset or a sensitivity improvement. The build setting
+<code>MESH_WARM_RX_REFRESH=0</code> explicitly retains the previous primary method.
+Other transceiver drivers retain their own maintenance implementation; storing
+an interval does not imply that their hardware supports these sleep/wake paths.</p>
+<p>The SX126x primary path performs one asynchronous RXPS pulse. It requires
+continuous primary LoRa RX, with <code>radio.rxps</code> off. During dual-profile scanning,
+it leases one stable primary visit and resumes the overdue secondary visit
+afterward. It does
 not require radio2 warm, FS or packet-cache shortcuts. An admitted pulse stages
 ordinary LoRa duty-cycle RX, observes a post-arm BUSY low/high/natural-low
 sequence, checks RC standby and RTC cleanup, and checks continuous RX reentry.
@@ -11833,6 +11840,21 @@ board, sensor or UI work. Packet FIFO/IRQ ownership returns to the ordinary
 Dispatcher. Shared recovery watchdogs still use their existing full-reset path. A packet, TX, BUSY or another
 radio owner defers admission; an unadmitted deferral retries after 250 ms. A
 consumed failed attempt retains its failure diagnostics and normal interval.</p>
+<p>LR11xx and LR2021 use their native duty-cycle commands and 32.768 kHz timer
+encoding, with the runtime TCXO/transition allowance plus one timer tick and
+at least 500 us of additional sleep. LR2021 encodes the total RX-plus-sleep
+cycle in its second command field; LR11xx encodes sleep alone. On W12, an
+active PRAM scanner transfers ownership through its checked warm pause, keeps
+the loaded image, and must restore its hooks before a pulse receives success
+credit. A failed or stale restoration remains visible in the diagnostics.</p>
+<p>SX1276 has no corresponding autonomous duty-cycle/BUSY interface. It checks
+activity, enters standby, and rechecks completed-packet ownership before Sleep,
+which clears its LoRa FIFO. Its default host sleep holds 1501 us, including the
+SDK's 1 ms entry reserve and 501 us margin, followed by a separate nonblocking
+1 ms wake allowance and checked RX reentry. <code>get agc.status</code> identifies this
+method as <code>hostsleep</code>; it does not increment BUSY-edge or RTC-cleanup counters.
+These software checks establish command/timer behavior, not measured analog
+gain or equal receive sensitivity across radio families.</p>
 <p>An independent full-reset timer remains available through the Repeater, Room
 Server, Sensor and Companion text parsers:</p>
 <ul>
@@ -11844,14 +11866,19 @@ Server, Sensor and Companion text parsers:</p>
 with a full-reset implementation, RAM-only and <strong>disabled after every reboot</strong>.
 On compact Wio-E5/STM32WL profiles it is omitted by default to preserve flash
 headroom; <code>get agc.old</code> and <code>set agc.old</code> return <code>Error: unsupported</code> there.
-Build with <code>MESH_ENABLE_OLD_AGC=1</code> to opt in when the image fits. Other profiles
+Their primary pulse and cached <code>agc.status</code>, <code>agc.pulse</code> and <code>agc.scan</code> proof
+pages remain available. The verbose <code>agc.timing</code>, <code>agc.recovery</code>, <code>agc.sleep</code>
+and <code>agc.checks</code> pages return <code>Error: unsupported</code> on compact STM32 builds.
+Ordinary RXPS policy can remain unsupported independently of this periodic pulse.
+On primary-pulse builds, set <code>MESH_ENABLE_OLD_AGC=1</code> to opt in when the image fits.
+Other profiles
 enable this capability by default; <code>MESH_ENABLE_OLD_AGC=0</code> omits it. This choice
 does not change the primary AGC interval or its hardware-specific method. Enabling it
 does not change the saved primary interval. Its first deadline starts when it
 is enabled; it does not use adaptive escalation or TX postponement. If both
 timers are due, the old reset runs first and the primary pulse is deferred.</p>
 <p><code>get agc.status</code>, <code>get agc.timing</code>, <code>get agc.recovery</code>, <code>get agc.pulse</code>,
-<code>get agc.sleep</code> and <code>get agc.checks</code> are cached diagnostics. Successful completion
+<code>get agc.sleep</code>, <code>get agc.checks</code> and <code>get agc.scan</code> are cached diagnostics. Successful completion
 requires an observed cycle plus checked RTC cleanup, SetRx and RX-mode status.
 The total timing includes the initial listening window. The sleep timing is a
 sampled BUSY-high span, not an independently measured RF outage. Long or missing
@@ -11860,6 +11887,22 @@ one-tick minimum, rounded up to whole timer ticks. It uses the driver's resolved
 oscillator delay rather than a fixed board duration. On the V4 with a 1600 us
 TCXO delay, the compensated request is 3116 us (33 RTC ticks after transition
 compensation). This does not establish improved sensitivity or reception.</p>
+<p>With radio2 enabled, supported pulse firmware admits a pulse only during an idle,
+unchanged primary-profile visit. The scanner pauses until checked RX reentry or
+completed-packet handoff finishes, then resumes the original scan deadline.
+This periodically extends the secondary profile's absence; it is a best-effort
+tradeoff, including with short automatic preambles. The full initial primary
+listening window is retained. For example, an approximately 54 ms lease can
+include approximately 46 ms of primary RX plus sleep and command overhead; the
+lease duration is not an RF outage measurement. Other profiles' packets may be
+missed during that absence. Ordinary RXPS and existing packet/TX owners still
+defer admission. The scanner's pair generations are checked before crediting a
+completion. <code>get agc.scan</code> reports current dual/lease flags, dual admissions,
+wrong-profile deferrals, stale-context cancellations, completed lease count and
+last/maximum lease spans. Its values are cumulative and separate from pulse
+success/error counters. With MCU power saving off, a wrong-profile wait retries
+at 1 ms to follow the next primary visit; other busy waits retain 250 ms retries.
+Adaptive power saving retains its existing retry and sleep policy.</p>
 <p>Explicit bench builds with <code>MESH_RXPS_PULSE_LAB=1</code> also expose local
 <code>get agc.test.sleep_us</code> and <code>set agc.test.sleep_us 6554|4000|3116|3000|2616</code>. The selector is
 RAM-only, changes no saved interval, and cannot change an active pulse. Set the
