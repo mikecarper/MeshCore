@@ -378,14 +378,22 @@ compatible LoRa OTA for this exact target. Serve the expander with a compatible
 seeder; on the old node use `ota ls`, `ota pull <id> flash`, and `ota install`
 after verification. Keep power stable while it expands the layout and restores
 identity and supported settings. The expander then listens on the saved primary
-radio profile. Serve the matching normal Full image through your LoRa OTA tool;
-the expander can fetch and install it automatically. Keep only the intended
-Full build for that target available on the seeder. Wi-Fi recovery remains
-available if the LoRa receiver cannot start.
+radio profile. Convert the matching normal Full app-only `.bin` into a Full
+LoRa OTA package, then serve the resulting `.mota` file:
+
+```sh
+mkdir -p ./motas
+motatool build --fw ./your-full-firmware.bin --out-dir ./motas
+motatool verify ./motas/*.mota
+```
+
+Use your downloaded Full image's actual filename. The expander can fetch and
+install it automatically. Keep only the intended Full build for that target
+available on the seeder. Wi-Fi recovery remains available if LoRa cannot start.
 
 These paths require a sufficiently capable seeder and have not all been
-qualified on physical hardware. The [LoRa OTA guide](lora_ota_automation.md)
-describes preparing and serving an ordinary Full image.
+qualified on physical hardware. The [OTA guide](ota_easy.md#esp32-package-a-full-firmware-image)
+explains how to install `motatool` and serve the resulting package.
 
 ### Older identity-only LoRa handoff
 
