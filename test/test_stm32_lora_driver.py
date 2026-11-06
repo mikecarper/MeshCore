@@ -18,7 +18,7 @@ class CompactLoRaDriverTests(unittest.TestCase):
        '-DMESH_ENABLE_MORSE_RX='+str(morse_rx),'-I',str(ROOT/'src'),str(ROOT/'test/fixtures/stm32_lora_driver/main.cpp'),
        '-o',str(binary)],capture_output=True,text=True,timeout=30)
      self.assertEqual(build.returncode,0,build.stdout+build.stderr)
-     for case in ('controls','rx','tx','faults','cw'):
+     for case in ('controls','rx','tx','faults','cw','airtime','blocking','blocking_faults'):
       run=subprocess.run([str(binary),case],capture_output=True,text=True,timeout=10)
       self.assertEqual(run.returncode,0,case+run.stdout+run.stderr)
 if __name__=='__main__':unittest.main()

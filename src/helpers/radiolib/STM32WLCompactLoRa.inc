@@ -13,6 +13,53 @@
     int16_t setDataShaping(uint8_t) override { return RADIOLIB_ERR_UNSUPPORTED; }
     int16_t setEncoding(uint8_t) override { return RADIOLIB_ERR_UNSUPPORTED; }
 
+    // RadioLib's inherited getTimeOnAir still packs and normalizes the cached
+    // LoRa tuple. Keep the pinned integer calculation, including its uint32_t
+    // product and rounding, without retaining the unexposed modem formulas.
+    RadioLibTime_t calculateTimeOnAir(ModemType_t modem,DataRate_t dr,PacketConfig_t pc,size_t len) override {
+      if(modem!=RADIOLIB_MODEM_LORA) return RADIOLIB_ERR_WRONG_MODEM;
+      uint32_t symbolLength_us=((uint32_t)(1000*10)<<dr.lora.spreadingFactor)/(dr.lora.bandwidth*10);
+      uint8_t sfCoeff1_x4=17,sfCoeff2=8;
+      if(dr.lora.spreadingFactor==5 || dr.lora.spreadingFactor==6) {
+        sfCoeff1_x4=25;sfCoeff2=0;
+      }
+      uint8_t sfDivisor=4*dr.lora.spreadingFactor;
+      if(pc.lora.ldrOptimize) sfDivisor=4*(dr.lora.spreadingFactor-2);
+      const int8_t bitsPerCrc=16;
+      const int8_t N_symbol_header=pc.lora.implicitHeader?0:20;
+      int16_t bitCount=(int16_t)8*len+pc.lora.crcEnabled*bitsPerCrc-4*dr.lora.spreadingFactor+sfCoeff2+N_symbol_header;
+      if(bitCount<0) bitCount=0;
+      uint16_t nPreCodedSymbols=(bitCount+(sfDivisor-1))/sfDivisor;
+      uint32_t nSymbol_x4=(pc.lora.preambleLength+8)*4+sfCoeff1_x4+nPreCodedSymbols*dr.lora.codingRate*4;
+      return (symbolLength_us*nSymbol_x4)/4;
+    }
+
+    // Preserve the pinned blocking LoRa TX behavior. Packet TX normally uses
+    // startTransmit directly; this virtual entry must not pin LR-FHSS hopping.
+    int16_t transmit(const uint8_t* data,size_t len,uint8_t addr=0) override {
+      int16_t rc=standby();if(rc) return rc;
+      if(codingRate>RADIOLIB_SX126X_LORA_CR_4_8) {
+        if(len<8) return RADIOLIB_ERR_PACKET_TOO_SHORT;
+        if(crcTypeLoRa==RADIOLIB_SX126X_LORA_CRC_ON && len>RADIOLIB_SX126X_MAX_PACKET_LENGTH-2)
+          return RADIOLIB_ERR_PACKET_TOO_LONG;
+      }
+      if(len>RADIOLIB_SX126X_MAX_PACKET_LENGTH) return RADIOLIB_ERR_PACKET_TOO_LONG;
+      const RadioLibTime_t timeout=5+(getTimeOnAir(len)*5)/1000;
+      rc=startTransmit(data,len,addr);if(rc) return rc;
+      // Retain the normal LoRa transaction sequence, even though the modem
+      // value no longer selects an unexposed frequency-hopping branch.
+      (void)getPacketType();
+      const RadioLibTime_t start=mod->hal->millis();
+      while(true) {
+        mod->hal->yield();
+        if(mod->hal->millis()-start>timeout) {
+          finishTransmit();return RADIOLIB_ERR_TX_TIMEOUT;
+        }
+        if(mod->hal->digitalRead(mod->getIrq())) break;
+      }
+      return finishTransmit();
+    }
+
     // Keep the pinned RadioLib LoRa branches and the real launchMode/STM32 RF
     // switch. Only the unexposed GFSK/BPSK/LR-FHSS staging paths are omitted.
     int16_t stageMode(RadioModeType_t mode,RadioModeConfig_t* cfg) override {
