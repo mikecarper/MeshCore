@@ -67,6 +67,13 @@ class ExpanderCandidateTests(unittest.TestCase):
         self.assertIn("extends = Heltec_ct62", ct62)
         self.assertIn("-D LIGHTWEIGHT_WIFI_OTA=1", ct62)
 
+    def test_reviewed_board_bases_cannot_be_reused_for_another_target(self):
+        with self.assertRaisesRegex(ValueError, "slim expander does not match target"):
+            overlay_section("meshnology-w12-repeater", dict(BOARDS["meshnology-w12-repeater"],
+                                                           target="meshnology_w12_room_server"))
+        with self.assertRaisesRegex(ValueError, "reviewed expander does not match target"):
+            overlay_section(self.board, dict(self.spec, target="heltec_v4_room_server"))
+
     def test_overlay_is_unique_and_rejects_bad_names_or_duplicate_boards(self):
         overlay = project_overlay("[platformio]\n", [self.board], BOARDS)
         self.assertIn("[env:" + expander_environment(self.board, self.target) + "]", overlay)

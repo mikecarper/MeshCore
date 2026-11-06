@@ -17,8 +17,14 @@ TARGET_MARKER = b"MC_EXPANDER_TARGET_V1" + b"\0" * 3
 # These board bases retain the exact radio/pins of the listed role while
 # avoiding unrelated UI or on-chip scan features in the temporary bridge.
 SLIM_BASES = {
-    "meshnology-w12-repeater": ("meshnology_w12", ("-D MESH_ENABLE_LR2021_AUTO_XTRIM=1",)),
-    "heltec-ct62-repeater": ("Heltec_ct62", ("-D LIGHTWEIGHT_WIFI_OTA=1",)),
+    "meshnology-w12-repeater": ("meshnology_w12_repeater", "meshnology_w12", ("-D MESH_ENABLE_LR2021_AUTO_XTRIM=1",)),
+    "heltec-ct62-repeater": ("Heltec_ct62_repeater", "Heltec_ct62", ("-D LIGHTWEIGHT_WIFI_OTA=1",)),
+}
+REVIEWED_EXPANDERS = {
+    "heltec_v4_partition_expander": "heltec_v4_repeater",
+    "Xiao_S3_WIO_partition_expander": "Xiao_S3_WIO_repeater",
+    "Waveshare_S3_LR1121_partition_expander_repeater_observer_mqtt": "Waveshare_S3_LR1121_repeater_observer_mqtt",
+    "Waveshare_S3_LR1121_partition_expander_room_server_observer_mqtt": "Waveshare_S3_LR1121_room_server_observer_mqtt",
 }
 
 
@@ -45,10 +51,15 @@ def overlay_section(board: str, spec: dict) -> str:
     # Prefer the already-reviewed slim bridge where one exists. Other exact
     # roles inherit their own board, radio configuration and libraries.
     slim = SLIM_BASES.get(board)
-    source_env = (slim[0] if slim else "env:" + (spec.get("expander_bridge") or target))
+    if slim and slim[0] != target:
+        raise ValueError(f"{board}: slim expander does not match target")
+    reviewed = spec.get("expander_bridge")
+    if reviewed and REVIEWED_EXPANDERS.get(reviewed) != target:
+        raise ValueError(f"{board}: reviewed expander does not match target")
+    source_env = (slim[1] if slim else "env:" + (reviewed or target))
     if not re.fullmatch(r"(?:env:)?[A-Za-z0-9_-]+", source_env):
         raise ValueError(f"{board}: invalid source environment")
-    extra = "".join("\n  " + flag for flag in (slim[1] if slim else ()))
+    extra = "".join("\n  " + flag for flag in (slim[2] if slim else ()))
     flash = spec["flash_bytes"]
     partitions = {
         4 * 1024 * 1024: "variants/dual_ota_full_4MB.csv",
