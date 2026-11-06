@@ -6,6 +6,7 @@
   const $ = name => ui.querySelector('[data-role="' + name + '"]');
   let link, session, info, expectedSigner, activeTask, preparing, chainPrepared, chainConfig;
   let contacts=[], targetLocked=false, contactKey='';
+  let catalogFile=null, catalogBaseFile=null, catalogDest=null, catalogVersion='', catalogInstallSupported=false, catalogCandidates=[], catalogGeneration=0;
   const log = text => { $('status').textContent += String(text) + '\n'; $('status').scrollTop = $('status').scrollHeight; };
   const fail = error => log('Error: ' + (error?.message || error));
   const bytes = (file, limit = 64 * 1024 * 1024) => {
@@ -34,6 +35,10 @@
     for (const name of editable) $(name).disabled = active || (!!link && (name === 'source' || name === 'acl' || name === 'relays' || (name === 'key' && ($('source').value === 'repeater' || targetLocked))));
     $('contact-search').disabled = active || !link || $('source').value !== 'companion' || targetLocked;
     updateContactButtons();
+    $('investigate').disabled = active || !link;
+    $('firmware-role').disabled = active || !link;
+    $('firmware-choice').disabled = active || !link;
+    $('firmware-download').disabled = active || !link || !$('firmware-choice').value;
     for (const name of ['repeat-read', 'repeat-off', 'repeat-on']) $(name).disabled = active || !link;
     $('repeat-node').disabled = $('repeat-key').disabled = $('repeat-kind').disabled = active;
     const pending = readChainJournal();
@@ -43,6 +48,16 @@
   }
   function invalidate() { session = info = chainPrepared = chainConfig = null; $('transfer').disabled = true; $('resume').disabled = true;
     $('install').disabled = true; $('chain-run').disabled = true; $('chain-resume').disabled = true; }
+  function clearInvestigation() {
+    $('investigation').hidden = true; $('investigation').textContent = '';
+    catalogGeneration++; catalogFile=null; catalogBaseFile=null; catalogDest=null; catalogVersion=''; catalogInstallSupported=false; catalogCandidates=[];
+    $('firmware-role-wrap').hidden=true; $('firmware-role').value='';
+    $('firmware-choice-wrap').hidden=true; $('firmware-choice').replaceChildren();
+    $('firmware-download').hidden=true; $('firmware-download').disabled=true;
+    $('firmware-catalog-status').textContent='Investigate the target to find matching firmware.';
+    $('firmware-base-status').textContent='';
+    ui.dispatchEvent(new CustomEvent('lora-ota-investigation-clear'));
+  }
   for (const name of editable) $(name).addEventListener('change', invalidate);
   function updateContactButtons() {
     for(const button of $('contact').querySelectorAll('button')) {
@@ -61,16 +76,27 @@
       button.type='button';button.dataset.contactKey=contact.publicKey.toLowerCase();button.textContent=LoraOtaContacts.label(contact);
       button.addEventListener('click',()=>{
         if($('contact-search').disabled)return;
+        if(contactKey!==button.dataset.contactKey)clearInvestigation();
         contactKey=button.dataset.contactKey;$('key').value=contactKey;invalidate();updateContactButtons();
       });
       list.appendChild(button);
     }
-    if(current && !matches.some(c=>c.publicKey.toLowerCase()===current)) { contactKey='';$('key').value='';invalidate(); }
+    if(current && !matches.some(c=>c.publicKey.toLowerCase()===current)) { contactKey='';$('key').value='';clearInvestigation();invalidate(); }
     updateContactButtons();
   }
   $('contact-search').addEventListener('input',renderContacts);
-  $('key').addEventListener('input',()=>{if(contactKey!==$('key').value.toLowerCase()){contactKey='';updateContactButtons();}invalidate();});
-  $('source').addEventListener('change',()=>{if(!link)$('acl').checked=$('source').value==='repeater';});
+  $('key').addEventListener('input',()=>{if(contactKey!==$('key').value.toLowerCase()){contactKey='';updateContactButtons();}clearInvestigation();invalidate();});
+  $('password').addEventListener('input',clearInvestigation);
+  $('file').addEventListener('change',()=>{
+    catalogFile=null;
+    if($('file').files[0])$('firmware-catalog-status').textContent='Using your selected firmware file; check it against the target before transferring.'+
+      (catalogDest && !catalogInstallSupported ? ' The current target has not confirmed verified installation; this updater cannot install to it.' : '');
+  });
+  $('base').addEventListener('change',()=>{
+    $('firmware-base-status').textContent=$('base').files[0] ? 'Using your selected installed firmware file.' :
+      catalogBaseFile ? 'Using the downloaded installed firmware matching the reported target hash.' : '';
+  });
+  $('source').addEventListener('change',()=>{clearInvestigation();if(!link)$('acl').checked=$('source').value==='repeater';});
   $('acl').checked=false;
   function selectTarget() {
     const key=$('key').value.trim();
@@ -94,7 +120,7 @@
     if (activeTask) { log('Waiting for the current radio request to finish…'); await activeTask.catch(() => {}); }
     if (link) await link.close();
     link = session = chainPrepared = chainConfig = null;contacts=[];targetLocked=false;contactKey='';
-    $('key').value='';$('password').value='';$('contact-search').value='';renderContacts();busy(false); $('connect').disabled = false; $('inspect').disabled = true; $('find-route').disabled = true;
+    $('key').value='';$('password').value='';$('contact-search').value='';clearInvestigation();renderContacts();busy(false); $('connect').disabled = false; $('inspect').disabled = true; $('find-route').disabled = true;
     $('chain-plan').disabled = true; $('chain-run').disabled = true; $('chain-resume').disabled = true;
     $('transfer').disabled = true; $('resume').disabled = true; $('install').disabled = true;
   }
@@ -130,6 +156,137 @@
       link = session = null; $('connect').disabled = false; $('inspect').disabled = true;
     } finally { busy(false); }
   }
+  async function loadCatalogCandidate(candidate, generation) {
+    catalogFile=null; invalidate();
+    $('firmware-catalog-status').textContent='Downloading and checking firmware…';
+    const result=await LoraOtaCatalog.load(candidate,catalogDest);
+    if(generation!==catalogGeneration || !link)throw Error('Target changed while firmware was downloading');
+    if(!(result.bytes instanceof Uint8Array) || !result.bytes.length || !/\.bin$/i.test(result.name))throw Error('The downloaded firmware is invalid');
+    catalogFile=new File([result.bytes],result.name,{type:'application/octet-stream'});
+    $('file').value=''; invalidate();
+    const deltaHelp=catalogDest.nrf && !catalogDest.external && !catalogDest.sd
+      ? ($('base').files[0] || catalogBaseFile ? ' An installed image is selected for the required in-place differential.'
+        : ' This target needs an in-place differential; also select the exact installed firmware below.') : '';
+    const installHelp=catalogInstallSupported ? '' : ' The current target has not confirmed verified installation; this updater cannot install to it.';
+    $('firmware-catalog-status').textContent='Downloaded '+result.name+'; hardware identity verified. Check firmware and target before transferring.'+deltaHelp+installHelp;
+  }
+  async function discoverCatalog(role) {
+    const generation=catalogGeneration;
+    if(!catalogDest || !role)return;
+    if(catalogInstallSupported && catalogDest.nrf && !catalogDest.sd && (catalogDest.codecs & 4) && !$('base').files[0] && typeof LoraOtaCatalog.findInstalled==='function') {
+      const baseHelp=catalogDest.external ? 'You can select it manually to make a differential.' : 'Select it manually for the required differential.';
+      $('firmware-base-status').textContent='Looking for the installed firmware…';
+      try {
+        const base=await LoraOtaCatalog.findInstalled(catalogDest,role,catalogVersion);
+        if(generation!==catalogGeneration || !link)return;
+        if(base && base.bytes instanceof Uint8Array && /\.bin$/i.test(base.name)) {
+          catalogBaseFile=new File([base.bytes],base.name,{type:'application/octet-stream'});
+          $('firmware-base-status').textContent='Found installed firmware matching the reported target hash: '+base.name+'.';
+        } else $('firmware-base-status').textContent='Exact installed firmware not found. '+baseHelp;
+      } catch(error) {
+        if(generation!==catalogGeneration || !link)return;
+        $('firmware-base-status').textContent='Could not find the exact installed firmware: '+(error?.message||error)+'. '+baseHelp;
+      }
+    }
+    $('firmware-catalog-status').textContent='Finding matching firmware…';
+    const candidates=await LoraOtaCatalog.discover(catalogDest,role);
+    if(generation!==catalogGeneration || !link)return;
+    catalogCandidates=candidates;
+    const select=$('firmware-choice'); select.replaceChildren();
+    const prompt=document.createElement('option');prompt.value='';prompt.textContent='Choose firmware';select.appendChild(prompt);
+    for(let i=0;i<candidates.length;i++){
+      const option=document.createElement('option');option.value=String(i);option.textContent=candidates[i].name;select.appendChild(option);
+    }
+    $('firmware-choice-wrap').hidden=!candidates.length;
+    $('firmware-download').hidden=!candidates.length;
+    if(!candidates.length){$('firmware-catalog-status').textContent=(catalogInstallSupported ? '' : 'The target has not confirmed verified installation; this updater cannot install to it. ')+'No matching newer firmware found. You can choose a file manually.';return;}
+    if(!catalogInstallSupported){
+      $('firmware-catalog-status').textContent='The target has not confirmed verified installation; this updater cannot install to it. Matching downloads are listed for reference.';
+      return;
+    }
+    const recommended=typeof LoraOtaCatalog.recommendVerified==='function'
+      ? await LoraOtaCatalog.recommendVerified(candidates,catalogDest) : null;
+    if(generation!==catalogGeneration || !link)return;
+    if(recommended && !$('file').files[0]){
+      const index=candidates.indexOf(recommended);
+      if(index<0)throw Error('Invalid firmware recommendation');
+      select.value=String(index);
+      await loadCatalogCandidate(recommended,generation);
+    }else{
+      $('firmware-catalog-status').textContent=$('file').files[0] ? 'Using your selected firmware file. Matching downloads are also listed.' : 'Choose a matching firmware version to download.';
+    }
+  }
+  async function investigate() {
+    clearInvestigation(); invalidate(); busy(true); $('inspect').disabled = true;
+    const output = $('investigation'), replies = {};
+    let target = '', complete = false, verified = false;
+    output.hidden = false;
+    output.textContent = 'Investigating target…\n';
+    const add = text => { output.textContent += text + '\n'; };
+    const checks = [
+      ['OTA status', 'ota status'], ['OTA storage and image', 'ota self'],
+      ['Firmware version', 'ver'], ['Bootloader version', 'get bootloader.ver'],
+      ['Bootloader capabilities', 'ota bootloader status'], ['OTA settings', 'ota config'],
+      ['Trusted OTA keys', 'ota key list'], ['Temporary radio', 'get tempradio'],
+      ['Radio settings', 'get radio'], ['Radio power saving', 'get radio.rxps'],
+      ['Install verification', 'ota installhash']
+    ];
+    let next = 0;
+    try {
+      if (!link) throw Error('Connect a source radio first.');
+      target = selectTarget().toLowerCase();
+      const password = $('acl').checked ? '' : $('password').value;
+      await link.verifyPeer(target, password);
+      verified = true;
+      add('Identity: full public key verified (' + target.slice(0, 12).toUpperCase() + ')');
+      for (; next < checks.length; next++) {
+        const [label, command] = checks[next];
+        const reply = String(await link.remoteCommand(target, password, command)).trim();
+        replies[command] = reply;
+        const normalized = reply.replace(/^>\s*/, '');
+        if (command === 'ota installhash') {
+          catalogInstallSupported=normalized === 'ERR usage: ota installhash <64-hex-container-sha256>';
+          add(label + ': ' + (catalogInstallSupported
+            ? 'Supported' : 'Not supported or unknown (' + (normalized || 'empty response') + ')'));
+          if(!catalogInstallSupported)add('This updater cannot install to the current target without confirmed verified installation support.');
+        } else {
+          const unknown = !normalized || /^(?:err(?:or)?\b|unknown\b|unsupported\b)/i.test(normalized);
+          add(label + ': ' + (unknown ? 'Unknown or unsupported (' + (normalized || 'empty response') + ')' : normalized));
+        }
+      }
+      if (/\bqspi\b/i.test((replies['ota status'] || '') + ' ' + (replies['ota self'] || ''))) {
+        const qspi = String(await link.remoteCommand(target, password, 'ota qspi')).trim();
+        replies['ota qspi'] = qspi;
+        const normalized = qspi.replace(/^>\s*/, '');
+        add('External flash: ' + (!normalized || /^(?:err(?:or)?\b|unknown\b|unsupported\b)/i.test(normalized)
+          ? 'Unknown or unsupported (' + (normalized || 'empty response') + ')' : normalized));
+      }
+      complete = true;
+      try {
+        catalogDest=LoraOtaChecks.destination(replies['ota status'],replies['ota self'],replies.ver);catalogVersion=replies.ver;
+        if(catalogDest.nrf && !catalogDest.external && !catalogDest.sd)
+          add('Update method: this target needs an in-place differential.');
+        const contact=contacts.find(c=>String(c.publicKey).toLowerCase()===target);
+        const role=({2:'repeater',3:'room',4:'sensor'})[contact?.type];
+        if(!role){
+          $('firmware-role-wrap').hidden=false;
+          $('firmware-catalog-status').textContent=(catalogInstallSupported ? '' : 'The target has not confirmed verified installation; this updater cannot install to it. ')+'Choose the target type to find matching firmware.';
+        }else if(!globalThis.LoraOtaCatalog){
+          $('firmware-catalog-status').textContent='Firmware catalog is unavailable. Choose a file manually.';
+        }else await discoverCatalog(role);
+      } catch(error) {
+        $('firmware-catalog-status').textContent='Could not select firmware automatically: '+(error?.message || error)+'. You can choose a file manually.';
+      }
+    } catch (error) {
+      add((verified ? 'Check interrupted: ' : 'Identity not verified: ') + (error?.message || error));
+      for (; next < checks.length; next++) add(checks[next][0] + ': Not checked');
+      fail(error);
+    } finally {
+      add('Firmware compatibility: run the package check before transferring.');
+      ui.dispatchEvent(new CustomEvent('lora-ota-investigated', {detail:{target,replies,complete,verified}}));
+      busy(false); $('inspect').disabled = !link;
+    }
+  }
   async function findRoute() {
     invalidate(); busy(true); $('find-route').disabled = true; $('inspect').disabled = true;
     try {
@@ -163,16 +320,17 @@
     try {
       if (!link) throw Error('Connect a source radio first.');
       selectTarget();
-      const file = $('file').files[0]; if (!file) throw Error('Choose a firmware .bin or .mota file.');
+      const file = catalogFile || $('file').files[0]; if (!file) throw Error('Choose a firmware .bin or .mota file.');
       const isFirmware = /\.(?:bin|zip)$/i.test(file.name);
-      const input = isFirmware ? await firmwareBytes(file, $('base').files[0] ? 4 * 1024 * 1024 : undefined) : await bytes(file);
+      const baseFile = $('base').files[0] || (isFirmware ? catalogBaseFile : null);
+      const input = isFirmware ? await firmwareBytes(file, baseFile ? 4 * 1024 * 1024 : undefined) : await bytes(file);
       const signerText = $('signer').value.trim();
       let expectedImage = null, inplacePlan = null;
       if (signerText && !/^[0-9a-f]{64}$/i.test(signerText)) throw Error('The trusted signing key must be 64 hexadecimal characters.');
       expectedSigner = signerText ? Uint8Array.from(signerText.match(/../g), h => parseInt(h, 16)) : null;
       if (isFirmware) {
         if (expectedSigner) throw Error('A package created here is unsigned. Select a signed .mota file instead.');
-        if ($('base').files[0]) {
+        if (baseFile) {
           const targetKey = $('key').value.trim(), password = $('acl').checked ? '' : $('password').value;
           await link.verifyPeer(targetKey, password);
           const status = await link.remoteCommand(targetKey, password, 'ota status');
@@ -180,7 +338,7 @@
           const bootloader = await link.remoteCommand(targetKey, password, 'get bootloader.ver');
           const version = await link.remoteCommand(targetKey, password, 'ver');
           const destination = LoraOtaChecks.destination(status, self, version);
-          const base = await firmwareBytes($('base').files[0], 4 * 1024 * 1024);
+          const base = await firmwareBytes(baseFile, 4 * 1024 * 1024);
           const current = await MeshCoreMotaPackage.parseEndF(base);
           if (current.targetId !== destination.targetId || current.hwId !== destination.hwId ||
               current.fwVersion !== destination.version || LoraOtaChecks.hex(current.bodyHash) !== destination.baseHash)
@@ -214,7 +372,7 @@
           }
         } else info = await MeshCoreMotaPackage.parseMota(await MeshCoreMotaPackage.buildFullMota(input));
       } else {
-        if ($('base').files[0]) throw Error('An installed firmware image is only used when creating a differential from a .bin.');
+        if (baseFile) throw Error('An installed firmware image is only used when creating a differential from a .bin.');
         info = await MeshCoreMotaPackage.parseMota(input, expectedSigner ? {expectedSigner} : {});
       }
       const targetImage = $('image').files[0];
@@ -244,7 +402,32 @@
     finally { busy(false); $('inspect').disabled = !link; }
   }
   function run(task) { activeTask = task.finally(() => { activeTask = null; }); return activeTask; }
+  $('firmware-role').addEventListener('change',()=>run((async()=>{
+    catalogGeneration++;catalogFile=null;catalogBaseFile=null;catalogCandidates=[];invalidate();
+    $('firmware-base-status').textContent='';
+    $('firmware-choice-wrap').hidden=true;$('firmware-download').hidden=true;
+    if(!$('firmware-role').value){$('firmware-catalog-status').textContent='Choose the target type to find matching firmware.';return;}
+    busy(true);$('inspect').disabled=true;
+    try{await discoverCatalog($('firmware-role').value);}
+    catch(error){$('firmware-catalog-status').textContent='Could not select firmware automatically: '+(error?.message||error)+'. You can choose a file manually.';}
+    finally{busy(false);$('inspect').disabled=!link;}
+  })()));
+  $('firmware-choice').addEventListener('change',()=>{
+    catalogFile=null;invalidate();
+    $('firmware-download').disabled=!$('firmware-choice').value;
+    if($('firmware-choice').value)$('firmware-catalog-status').textContent='Download the selected firmware, then check it against the target.'+
+      (catalogInstallSupported ? '' : ' The current target has not confirmed verified installation; this updater cannot install to it.');
+  });
+  $('firmware-download').addEventListener('click',()=>run((async()=>{
+    const index=Number($('firmware-choice').value),generation=catalogGeneration;
+    if(!$('firmware-choice').value || !Number.isInteger(index) || !catalogCandidates[index])return;
+    busy(true);$('inspect').disabled=true;
+    try{await loadCatalogCandidate(catalogCandidates[index],generation);}
+    catch(error){$('firmware-catalog-status').textContent='Firmware download failed: '+(error?.message||error)+'. You can choose a file manually.';}
+    finally{busy(false);$('inspect').disabled=!link;}
+  })()));
   $('connect').addEventListener('click', () => run(connect()));
+  $('investigate').addEventListener('click', () => run(investigate()));
   $('inspect').addEventListener('click', () => run(inspect()));
   $('find-route').addEventListener('click', () => run(findRoute()));
   $('transfer').addEventListener('click', () => run(transfer(false)));
@@ -276,7 +459,7 @@
     invalidate(); busy(true); $('inspect').disabled = true;
     try {
       if (!link) throw Error('Connect a source repeater first.');
-      const baseFile=$('base').files[0], goalFile=$('file').files[0], middle=[...$('chain-files').files];
+      const baseFile=$('base').files[0] || catalogBaseFile, goalFile=catalogFile || $('file').files[0], middle=[...$('chain-files').files];
       if (!baseFile || !goalFile || !/\.(?:bin|zip)$/i.test(baseFile.name) || !/\.(?:bin|zip)$/i.test(goalFile.name))
         throw Error('Choose the exact installed image and final firmware BIN or ZIP.');
       if (middle.length > 6 || middle.some(f=>!/\.(?:bin|zip)$/i.test(f.name))) throw Error('Choose up to six intermediate BIN or ZIP images.');

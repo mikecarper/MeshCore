@@ -36,6 +36,10 @@ HARNESS = r'''<script>
         else if(text==='ota status')reply='OTA hw=board | target:12345678 | maxblk:1024 | '+(state==='idle'?'no download':'download: '+(state==='ready'?'ready to install':'fetching')+' id='+mid);
         else if(text==='ota self')reply='self body=44 image=100 base_hash='+(installed?body:'1122334455667788')+' | maxblk:1024';
         else if(text==='ver')reply=installed?'v1.18.0.1':'v1.17.1.9';
+        else if(text==='get bootloader.ver')reply='> OTAFIX2.4.12';
+        else if(text==='ota bootloader status')reply='BL board=239A0071 target=1150F50E name=TOWER_V2_OTA abi=3 caps=09';
+        else if(text==='ota key list')reply='no trusted signer keys yet';
+        else if(text==='ota stats')reply='OTA | fetch idle';
         else if(text==='get tempradio'||text==='get radio')reply='> '+radio;
         else if(text==='get radio.rxps')reply='> off,1000,1000';
         else if(text==='ota config')reply='ota config: autofetch=off autoinstall=off hops=0';
@@ -107,7 +111,223 @@ HARNESS = r'''<script>
 </script>'''
 
 
+def investigation_harness(mock_catalog=True):
+    # Exercise the real page without attaching a firmware file or starting an update.
+    file_setup = "const dt=new DataTransfer();dt.items.add(new File([expected],'firmware.bin'));el('file').files=dt.files;el('password').value='password';"
+    before_inspect = "if(el('key').value!==key)throw Error('contact selection failed');el('inspect').click();await wait(()=>!el('transfer').disabled||el('status').textContent.includes('Error:'));"
+    assert HARNESS.count(file_setup) == 1
+    assert HARNESS.count(before_inspect) == 1
+    probe = r'''if(el('key').value!==key)throw Error('contact selection failed');
+    if(el('file').files.length)throw Error('investigation requires a firmware file');
+    if(el('investigate').closest('section')!==el('investigation').closest('section')||el('investigate').closest('section')!==document.querySelector('[data-lora-ota] > section'))throw Error('investigation controls are not in step 1');
+    const done=new Promise((resolve,reject)=>{const timer=setTimeout(()=>reject(Error('investigation did not finish')),45000);document.querySelector('[data-lora-ota]').addEventListener('lora-ota-investigated',event=>{clearTimeout(timer);resolve(event);},{once:true});});
+    if(el('investigate').disabled)throw Error('investigate button unavailable');el('investigate').click();const event=await done;
+    if(el('investigation').hidden||!el('transfer').disabled||!el('install').disabled)throw Error('investigation did not show results or enabled an update');
+    await report({result:el('investigation').textContent,status:el('status').textContent,cmds,frames:port.frames,guard,complete:event.detail.complete});return;'''
+    harness=HARNESS.replace(file_setup,"el('password').value='password';").replace(before_inspect,probe)
+    if mock_catalog:
+        marker="if(el('investigate').disabled)throw Error('investigate button unavailable');"
+        mock="const originalFetch=window.fetch.bind(window);window.fetch=(url,options)=>String(url).startsWith('https://mikecarper.github.io/meshfirmware/')?Promise.reject(Error('catalog unavailable in test')):originalFetch(url,options);"
+        assert harness.count(marker)==1
+        harness=harness.replace(marker,mock+marker,1)
+    return harness
+
+
+def catalog_harness(fault=''):
+    harness=investigation_harness(mock_catalog=False)
+    harness=harness.replace("let expected,pkg,mid=''", "let testTargetId=0,receivedBytes=0,expected,pkg,mid=''", 1)
+    harness=harness.replace("expected=new Uint8Array(100);const v=new DataView(expected.buffer),at=44;", "testTargetId=await LoraOtaCatalog.idForEnv('board_repeater');expected=new Uint8Array(256);const v=new DataView(expected.buffer),at=200;expected.set(enc.encode('OTA: status | get <id> flash | install | ota installhash <64-hex-container-sha256>'),0);", 1)
+    harness=harness.replace("v.setUint32(at+20,0x12345678,true)","v.setUint32(at+20,testTargetId,true)",1)
+    harness=harness.replace("'OTA hw=board | target:12345678 | maxblk:1024 | '","'OTA hw=board | target:'+testTargetId.toString(16).padStart(8,'0')+' | maxblk:1024 | '",1)
+    harness=harness.replace("this.push(request(6,0,0,1,0))","this.push(request(6,0,0,3,0))",1)
+    old_data="const data=rf.slice(11);if(hex(data)!==hex(expected))throw Error('wrong payload');otaData=true;"
+    new_data="const data=rf.slice(11),offset=rf[9]|rf[10]<<8;if(hex(data)!==hex(expected.slice(offset,offset+data.length)))throw Error('wrong payload');receivedBytes+=data.length;otaData=receivedBytes===expected.length;"
+    assert harness.count(old_data)==1
+    harness=harness.replace(old_data,new_data,1)
+    setup=r'''
+    const catalogName='board_repeater-ota-v1.18.0.1.bin',catalogVersion='v1.18.0.1';
+    const catalogUrl='https://github.com/mikecarper/MeshCore/releases/download/v1.18.0.1/'+catalogName;
+    const mirrorImage=expected.slice();
+    if(CATALOG_FAULT==='identity')new DataView(mirrorImage.buffer).setUint32(at+20,0x13572468,true);
+    const imageHash=hex(new Uint8Array(await crypto.subtle.digest('SHA-256',mirrorImage)));
+    const describedHash=CATALOG_FAULT==='digest'?'00'.repeat(32):imageHash;
+    const piece={path:describedHash+'.gz',sha256:describedHash,gzipSha256:describedHash,size:mirrorImage.length,gzipSize:mirrorImage.length};
+    const catalog={items:[{project:'MeshCore',provider:'Keymind Cascade',role:'repeater',action:'flash',name:catalogName,version:catalogVersion,url:catalogUrl}]};
+    const controls={familyTag:catalogVersion,profiles:{board_repeater:{otaRole:'lora-receiver',updateMethods:['lora']}}};
+    const index={schemaVersion:1,entries:[{url:catalogUrl,...piece}]};
+    const catalogRequests=[],realFetch=window.fetch.bind(window);
+    window.fetch=async(input,options)=>{const url=String(input);
+      if(url.startsWith('https://mikecarper.github.io/meshfirmware/')||url.startsWith('https://api.github.com/repos/mikecarper/MeshCore/releases/'))catalogRequests.push(url);
+      if(url==='https://mikecarper.github.io/meshfirmware/catalog.json')return new Response(JSON.stringify(catalog));
+      if(url==='https://mikecarper.github.io/MeshCore/_data/firmware_controls.json')return new Response(JSON.stringify(controls));
+      if(url==='https://api.github.com/repos/mikecarper/MeshCore/releases/tags/v1.18.0.1'){
+        if(CATALOG_FAULT==='metadata')return new Response('unavailable',{status:503});
+        return new Response(JSON.stringify({tag_name:catalogVersion,draft:false,prerelease:CATALOG_FAULT==='prerelease',assets:[{name:catalogName,browser_download_url:catalogUrl}]}));
+      }
+      if(url==='https://mikecarper.github.io/meshfirmware/firmware/index.json')return new Response(JSON.stringify(index));
+      if(url==='https://mikecarper.github.io/meshfirmware/firmware/'+piece.path){
+        if(CATALOG_FAULT==='stale'){el('key').value='cc'.repeat(32);el('key').dispatchEvent(new Event('input',{bubbles:true}));}
+        return new Response(mirrorImage);
+      }
+      return realFetch(input,options);
+    };'''.replace('CATALOG_FAULT',repr(fault))
+    marker="pkg=await MeshCoreMotaPackage.parseMota(await MeshCoreMotaPackage.buildFullMota(expected));mid=hex(pkg.merkleRoot);"
+    assert harness.count(marker)==1
+    harness=harness.replace(marker,marker+setup,1)
+    harness=harness.replace("result:el('investigation').textContent,status:","catalogRequests,catalog:el('firmware-catalog-status').textContent,choiceHidden:el('firmware-choice-wrap').hidden,choices:el('firmware-choice').options.length,result:el('investigation').textContent,status:",1)
+    if fault=='stale':
+        harness=harness.replace("if(el('investigation').hidden||!el('transfer').disabled||!el('install').disabled)","if(!el('investigation').hidden||!el('transfer').disabled||!el('install').disabled)",1)
+    return harness
+
+
 class CompanionBrowserRuntimeTest(unittest.TestCase):
+    def test_auto_selected_catalog_firmware_completes_simulated_update(self):
+        if not BROWSER:
+            if os.environ.get('MESHCORE_REQUIRE_OTA_BROWSER') == '1': self.fail('Chromium is required')
+            self.skipTest('Chromium unavailable')
+        harness=catalog_harness()
+        report="await report({catalogRequests,catalog:el('firmware-catalog-status').textContent,choiceHidden:el('firmware-choice-wrap').hidden,choices:el('firmware-choice').options.length,result:el('investigation').textContent,status:el('status').textContent,cmds,frames:port.frames,guard,complete:event.detail.complete});return;"
+        self.assertEqual(harness.count(report),1)
+        proceed="if(!/downloaded.*identity verified/i.test(el('firmware-catalog-status').textContent))throw Error('firmware was not selected');el('inspect').click();await wait(()=>!el('transfer').disabled||el('status').textContent.includes('Error:'));"
+        result=run_harness(harness.replace(report,proceed),timeout=90)
+        self.assertNotIn('error',result,result)
+        self.assertIn('Installed and verified:',result['status'])
+        self.assertTrue(result['installed'])
+        self.assertTrue(result['otaData'])
+
+    def test_investigate_downloads_matching_catalog_image(self):
+        if not BROWSER:
+            if os.environ.get('MESHCORE_REQUIRE_OTA_BROWSER') == '1': self.fail('Chromium is required')
+            self.skipTest('Chromium unavailable')
+        result=run_harness(catalog_harness(),timeout=90)
+        self.assertNotIn('error',result,result)
+        self.assertTrue(result['complete'],result)
+        self.assertRegex(result['catalog'],r'(?i)downloaded.*board_repeater.*identity verified')
+        self.assertFalse(any(f[0]==65 for f in result['frames']),result)
+
+    def test_investigate_rejects_catalog_image_with_wrong_identity_or_digest(self):
+        if not BROWSER:
+            if os.environ.get('MESHCORE_REQUIRE_OTA_BROWSER') == '1': self.fail('Chromium is required')
+            self.skipTest('Chromium unavailable')
+        for fault in ('identity','digest'):
+            with self.subTest(fault=fault):
+                result=run_harness(catalog_harness(fault),timeout=90)
+                self.assertNotIn('error',result,result)
+                self.assertNotRegex(result['catalog'],r'(?i)downloaded.*identity verified')
+                self.assertRegex(result['catalog'],r'(?i)(identity|hash|failed|error)')
+                self.assertFalse(any(f[0]==65 for f in result['frames']),result)
+
+    def test_investigate_rejects_stale_download_after_target_change(self):
+        if not BROWSER:
+            if os.environ.get('MESHCORE_REQUIRE_OTA_BROWSER') == '1': self.fail('Chromium is required')
+            self.skipTest('Chromium unavailable')
+        result=run_harness(catalog_harness('stale'),timeout=90)
+        self.assertNotIn('error',result,result)
+        self.assertNotRegex(result['catalog'],r'(?i)downloaded.*identity verified')
+        self.assertRegex(result['catalog'],r'(?i)target changed')
+        self.assertTrue(result['choiceHidden'],result)
+        self.assertEqual(result['choices'],0,result)
+        self.assertFalse(any(f[0]==65 for f in result['frames']),result)
+
+    def test_investigate_does_not_auto_select_prerelease_or_unverified_release(self):
+        if not BROWSER:
+            if os.environ.get('MESHCORE_REQUIRE_OTA_BROWSER') == '1': self.fail('Chromium is required')
+            self.skipTest('Chromium unavailable')
+        for fault in ('prerelease','metadata'):
+            with self.subTest(fault=fault):
+                result=run_harness(catalog_harness(fault),timeout=90)
+                self.assertNotIn('error',result,result)
+                self.assertNotRegex(result['catalog'],r'(?i)downloaded.*identity verified')
+                self.assertRegex(result['catalog'],r'(?i)choose.*firmware')
+                self.assertFalse(result['choiceHidden'],result)
+                self.assertGreaterEqual(result['choices'],2,result)
+                self.assertFalse(any(f[0]==65 for f in result['frames']),result)
+
+    def test_investigate_legacy_target_does_not_select_catalog_image(self):
+        if not BROWSER:
+            if os.environ.get('MESHCORE_REQUIRE_OTA_BROWSER') == '1': self.fail('Chromium is required')
+            self.skipTest('Chromium unavailable')
+        old="else if(text==='ota installhash')reply='ERR usage: ota installhash <64-hex-container-sha256>';"
+        harness=catalog_harness()
+        self.assertEqual(harness.count(old),1)
+        result=run_harness(harness.replace(old,"else if(text==='ota installhash')reply='Unknown OTA command';"),timeout=90)
+        self.assertNotIn('error',result,result)
+        self.assertNotRegex(result['catalog'],r'(?i)downloaded.*identity verified')
+        self.assertRegex(result['catalog'],r'(?i)(?:not confirmed.*install|install.*(?:support|unavailable|unknown)|cannot install)')
+        self.assertFalse(any('/firmware/' in url for url in result['catalogRequests']),result)
+        self.assertFalse(any(f[0]==65 for f in result['frames']),result)
+
+    def test_legacy_target_manual_download_still_cannot_transfer(self):
+        if not BROWSER:
+            if os.environ.get('MESHCORE_REQUIRE_OTA_BROWSER') == '1': self.fail('Chromium is required')
+            self.skipTest('Chromium unavailable')
+        old="else if(text==='ota installhash')reply='ERR usage: ota installhash <64-hex-container-sha256>';"
+        harness=catalog_harness().replace(old,"else if(text==='ota installhash')reply='Unknown OTA command';")
+        report="await report({catalogRequests,catalog:el('firmware-catalog-status').textContent,choiceHidden:el('firmware-choice-wrap').hidden,choices:el('firmware-choice').options.length,result:el('investigation').textContent,status:el('status').textContent,cmds,frames:port.frames,guard,complete:event.detail.complete});return;"
+        self.assertEqual(harness.count(report),1)
+        manual=r'''await new Promise(r=>setTimeout(r,0));
+    if(el('firmware-choice-wrap').hidden)throw Error('manual candidate list unavailable');
+    el('firmware-choice').value='0';el('firmware-choice').dispatchEvent(new Event('change',{bubbles:true}));
+    el('firmware-download').click();await wait(()=>/downloaded/i.test(el('firmware-catalog-status').textContent)||el('status').textContent.includes('Error:'));
+    if(el('status').textContent.includes('Error:'))throw Error(el('status').textContent);
+    el('inspect').click();await wait(()=>el('status').textContent.includes('Error:'));
+    await report({status:el('status').textContent,transferDisabled:el('transfer').disabled,frames:port.frames});return;'''
+        result=run_harness(harness.replace(report,manual),timeout=90)
+        self.assertNotIn('error',result,result)
+        self.assertRegex(result['status'],r'(?i)does not support verified OTA installation')
+        self.assertTrue(result['transferDisabled'],result)
+        self.assertFalse(any(f[0]==65 for f in result['frames']),result)
+
+    def test_investigate_without_firmware_only_reads_target(self):
+        if not BROWSER:
+            if os.environ.get('MESHCORE_REQUIRE_OTA_BROWSER') == '1': self.fail('Chromium is required')
+            self.skipTest('Chromium unavailable')
+        result=run_harness(investigation_harness(),timeout=90)
+        self.assertNotIn('error',result,result)
+        self.assertTrue(result['complete'],result)
+        self.assertIn('board',result['result'])
+        self.assertIn('OTAFIX2.4.12',result['result'])
+        self.assertRegex(result['result'],r'(?i)install verification:\s*supported')
+        self.assertRegex(result['result'],r'(?i)firmware compatibility:.*(?:choose a firmware|run the package check)')
+        required={'ota status','ota self','ver','get bootloader.ver','ota bootloader status','ota config','ota key list','get tempradio','get radio','get radio.rxps','ota installhash'}
+        self.assertTrue(required.issubset(result['cmds']),result)
+        self.assertTrue(all(c in required | {'get public.key'} for c in result['cmds']),result)
+        self.assertFalse(any(f[0]==65 for f in result['frames']),result)
+
+    def test_investigate_legacy_target_does_not_claim_verified_install(self):
+        if not BROWSER:
+            if os.environ.get('MESHCORE_REQUIRE_OTA_BROWSER') == '1': self.fail('Chromium is required')
+            self.skipTest('Chromium unavailable')
+        old="else if(text==='ota installhash')reply='ERR usage: ota installhash <64-hex-container-sha256>';"
+        self.assertEqual(HARNESS.count(old),1)
+        harness=investigation_harness().replace(old,"else if(text==='ota installhash')reply='Unknown OTA command. Type `ota help`.';")
+        old_bl="else if(text==='ota bootloader status')reply='BL board=239A0071 target=1150F50E name=TOWER_V2_OTA abi=3 caps=09';"
+        self.assertEqual(harness.count(old_bl),1)
+        harness=harness.replace(old_bl,"else if(text==='ota bootloader status')reply='Unknown command';")
+        result=run_harness(harness,timeout=90)
+        self.assertNotIn('error',result,result)
+        self.assertTrue(result['complete'],result)
+        self.assertNotRegex(result['result'],r'(?i)install verification:\s*supported')
+        self.assertRegex(result['result'],r'(?i)install verification:.*(?:unsupported|unavailable|unknown|not supported)')
+        self.assertRegex(result['result'],r'(?i)bootloader.*unknown|unknown.*bootloader')
+        self.assertNotIn('ota pull', ' '.join(result['cmds']))
+        self.assertFalse(any(f[0]==65 for f in result['frames']),result)
+
+    def test_investigate_interrupted_read_reports_remaining_checks_unchecked(self):
+        if not BROWSER:
+            if os.environ.get('MESHCORE_REQUIRE_OTA_BROWSER') == '1': self.fail('Chromium is required')
+            self.skipTest('Chromium unavailable')
+        old="else if(text.startsWith('get ota.direct.reply ')){const at=Number(text.split(' ').pop()),b=enc.encode(reply),part=b.slice(at,at+40);value=`> ota.reply req=${corr} state=ready bytes=${b.length} off=${at} data=${hex(part)||'-'}`;}"
+        self.assertEqual(HARNESS.count(old),1)
+        fault="else if(text.startsWith('get ota.direct.reply ')){if(cmds.includes('ota self'))value=`> ota.reply req=${corr} state=idle bytes=0 off=0 data=-`;else {const at=Number(text.split(' ').pop()),b=enc.encode(reply),part=b.slice(at,at+40);value=`> ota.reply req=${corr} state=ready bytes=${b.length} off=${at} data=${hex(part)||'-'}`;}}"
+        result=run_harness(investigation_harness().replace(old,fault),timeout=90)
+        self.assertNotIn('error',result,result)
+        self.assertFalse(result['complete'],result)
+        self.assertRegex(result['result'],r'(?i)check interrupted')
+        self.assertRegex(result['result'],r'(?i)install verification:\s*not checked')
+        self.assertNotIn('ota installhash',result['cmds'])
+        self.assertFalse(any(f[0]==65 for f in result['frames']),result)
+
     def test_companion_full_update(self):
         if not BROWSER:
             if os.environ.get('MESHCORE_REQUIRE_OTA_BROWSER') == '1': self.fail('Chromium is required')
