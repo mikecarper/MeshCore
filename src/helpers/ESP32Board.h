@@ -207,7 +207,8 @@ public:
     applied_cpu_clock_valid = false;
 #if defined(CONFIG_PM_ENABLE) && CONFIG_PM_ENABLE
     const uint16_t minimum = !selected && !radio_profile_cpu_clock_policy
-        && companion_cpu_clock_policy && powersaving && maximum > 40
+        && companion_cpu_clock_policy && powersaving
+        && mesh::esp32::cpuclock::automaticDownclockAllowed() && maximum > 40
         ? 40 : maximum;
 #if CONFIG_IDF_TARGET_ESP32C3
     esp_pm_config_esp32c3_t config;
@@ -229,7 +230,9 @@ public:
 #else
     if (!setCpuFrequencyMhz(maximum)) return false;
 #endif
-    if ((selected || radio_profile_cpu_clock_policy) && getCpuFrequencyMHz() != maximum) return false;
+    if ((selected || radio_profile_cpu_clock_policy
+        || (companion_cpu_clock_policy && !mesh::esp32::cpuclock::automaticDownclockAllowed()))
+        && getCpuFrequencyMHz() != maximum) return false;
     applied_profile_cpu_clock_policy = radio_profile_cpu_clock_policy;
     applied_cpu_clock_valid = true;
     profile_cpu_clock_retry_at = 0;

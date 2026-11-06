@@ -611,6 +611,7 @@ static bool applyCompanionPowerSaving(bool enabled) {
   }
 #if COMPANION_IDF_PM_AVAILABLE
   const uint32_t min_mhz = !selected && enabled && max_mhz > 40
+      && mesh::esp32::cpuclock::automaticDownclockAllowed()
       && !mesh::esp32::cpuclock::profilePerformanceEnabled(the_mesh.isDualRadioActive())
       ? 40 : max_mhz;
 #if (defined(ARDUINO_USB_CDC_ON_BOOT) && ARDUINO_USB_CDC_ON_BOOT) \

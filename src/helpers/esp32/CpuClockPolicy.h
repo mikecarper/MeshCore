@@ -28,10 +28,20 @@ inline uint16_t nominalMHz() {
 #endif
 }
 
+inline bool automaticDownclockAllowed() {
+#if defined(SENSECAP_INDICATOR_LORA)
+  // The RGB Indicator's Auto policy holds its nominal 240 MHz.
+  // Explicit selections still use the board's checked apply/restore path.
+  return false;
+#else
+  return true;
+#endif
+}
+
 inline uint16_t resolveMHz(uint16_t selected, bool powersaving, bool companion) {
   if (selected && validSelection(selected)) return selected;
   const uint16_t nominal = nominalMHz();
-  return companion && powersaving && nominal > 80 ? 80 : nominal;
+  return companion && powersaving && automaticDownclockAllowed() && nominal > 80 ? 80 : nominal;
 }
 
 inline bool profilePerformanceEnabled(bool profiles_enabled) {
