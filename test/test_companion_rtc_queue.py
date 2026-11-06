@@ -246,6 +246,9 @@ class CompanionRtcQueueTests(unittest.TestCase):
     def test_tracker_and_mke_s3_retain_all_256_frames_during_real_ota(self):
         self.check_fifo(256, 32, 'ESP32S3')
 
+    def test_v3_s3_fast_bank_retains_all_256_frames_during_real_ota(self):
+        self.check_fifo(256, 0, 'ESP32S3')
+
     def test_concrete_banks_use_rtc_sections_and_reset_has_no_large_stack_temporary(self):
         objdump = shutil.which('objdump')
         if not objdump:
@@ -316,6 +319,10 @@ class CompanionRtcQueueTests(unittest.TestCase):
                 ('Generic_ESPNOW_companion_radio_full', 32, 0, 100, 224),
                 ('Xiao_C3_companion_radio_full', 32, 0, 100, 224),
                 ('Heltec_CT62_companion_radio_full', 0, 0, 100, 224),
+                ('Heltec_v3_companion_radio_full', 32, 0, 100, 256),
+                ('Heltec_v3_companion_radio_usb', 0, 0, 350, 256),
+                ('Heltec_v3_companion_radio_ble', 0, 0, 350, 256),
+                ('Heltec_v3_companion_radio_wifi', 0, 0, 350, 256),
                 ('Heltec_Wireless_Tracker_companion_radio_full', 32, 32, 150, 256),
                 ('MKE_s3_companion_radio_full', 32, 32, 350, 256),
                 ('ThinkNode_M2_companion_radio_full', 32, 32, 350, 256),

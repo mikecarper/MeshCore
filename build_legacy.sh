@@ -4670,11 +4670,11 @@ apply_companion_radio_full_profile() {
         "companion.capacity limited to 100 contacts for runtime RAM; 224 queued frames and all Full transports retained"
       ;;
     heltec_v3_companion_radio_full)
-      # The 1.17.1.8 matrix exceeds the runtime heap budget at 150 contacts
-      # after adding alerts and held DMs. Preserve the 256-frame queue, Full
-      # transports and the unchanged runtime heap safety margin.
+      # Preserve 100 contacts, all 256 queue frames, Full transports and the
+      # runtime heap safety margin. RTC FAST holds 32 existing CPU-only slots;
+      # the independent OTA context/workspace remains in ordinary DRAM.
       append_platformio_build_unflags "-DMAX_CONTACTS=350"
-      export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -DMAX_CONTACTS=100"
+      export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -DMAX_CONTACTS=100 -DCOMPANION_RTC_FAST_OFFLINE_FRAMES=32"
       record_build_reduction \
         "companion.capacity limited to 100 contacts for runtime RAM; 256 queued frames and all Full transports retained"
       ;;

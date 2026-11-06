@@ -209,7 +209,7 @@ int main() {
                 self.assertEqual(flags.get('COMPANION_RTC_TERMINAL_INPUT')=='1', selected)
                 self.assertEqual(int(flags['MAX_CONTACTS']), contacts)
                 self.assertEqual(int(flags.get('OFFLINE_QUEUE_SIZE', 256)), queue)
-                if target == 'Xiao_C3_companion_radio_full':
+                if target in ('Xiao_C3_companion_radio_full', 'Heltec_v3_companion_radio_full'):
                     self.assertEqual(flags.get('COMPANION_RTC_FAST_OFFLINE_FRAMES'), '32')
                 else:
                     self.assertNotIn('COMPANION_RTC_FAST_OFFLINE_FRAMES', flags)
