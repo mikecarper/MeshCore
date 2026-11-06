@@ -48,14 +48,14 @@ struct Mod {
 struct Chip {
  uint32_t tcxoDelay=1600,_maxPayloadMillis=100,_activityAt=0,irq=0;
  bool _headerSeen=false,_lfClockRestoreNeeded=false,busy=false,race=false;
- int status_error=0,clock_error=0,arm_error=0,rx_error=0,mode=4;
+ int status_error=0,clock_error=0,arm_error=0,rx_error=0,mode=4,reentry_mode=4;
  unsigned spi=0,stages=0,resumes=0,standbys=0;Mod module{this};Mod* mod=&module;
- int16_t getStatus(uint8_t* a,uint8_t* b,uint32_t* c){assert(!busy);assert(mod->spiConfig.widths[RADIOLIB_MODULE_SPI_WIDTH_STATUS]==Module::BITS_0);++spi;*a=4;*b=uint8_t(mode<<1);*c=irq;return status_error;}
+ int16_t getStatus(uint8_t* a,uint8_t* b,uint32_t* c){assert(!busy);assert(mod->spiConfig.widths[RADIOLIB_MODULE_SPI_WIDTH_STATUS]==Module::BITS_0);++spi;*a=4;*b=uint8_t(0x60|(MC_LR_AGC_2021?mode:mode<<1));*c=irq;return status_error;}
  int16_t standby(int){++spi;++standbys;busy=false;mode=1;if(race)irq=MC_LR_AGC_2021?1UL<<18:8;return 0;}
  int16_t configLfClock(int value){assert(value==0);++spi;return clock_error;}
  int16_t restoreLfClock(){int rc=configLfClock(0);if(!rc)_lfClockRestoreNeeded=false;return rc;}
  int16_t stageMode(int,RadioModeConfig_t*){assert(!busy);++spi;++stages;irq=0;return 0;}
- int16_t startReceive(){assert(!busy);++spi;++resumes;mode=4;irq=0;return rx_error;}
+ int16_t startReceive(){assert(!busy);++spi;++resumes;mode=reentry_mode;irq=0;return rx_error;}
 #include "LRxxxxAGCChip.inc"
 };
 int16_t Mod::SPIwriteStream(uint16_t op,const uint8_t* p,size_t n,bool wait,bool verify){
@@ -126,6 +126,10 @@ int main(){
   uint32_t rx=(bytes[0]<<16)|(bytes[1]<<8)|bytes[2];uint32_t period=(bytes[3]<<16)|(bytes[4]<<8)|bytes[5];
   assert(r._rxps_pulse.sleep_ticks==18);assert(period==(MC_LR_AGC_2021?rx+18:18));cycle(r,c);
   assert(r._rxps_pulse.ok==1&&r._rxps_pulse.cycles==1&&r._rxps_pulse.verified==1&&r._rxps_pulse.rtc==1);}
+ for(int mode:{0,1,2,3,5,6,7}){Chip c;c.reentry_mode=mode;Radio r(c,board);
+  r._rxps_pulse.request(micros());r.startAGCPulse();cycle(r,c);
+  assert(r._rxps_pulse.cycles==1&&!r._rxps_pulse.ok&&!r._rxps_pulse.verified
+      &&r._rxps_pulse.error==RxpsPulse::ModeError&&r._rxps_pulse.failed_step==RxpsPulse::Step::SetRx);}
  {Chip c;c.irq=MC_LR_AGC_2021?32:16;Radio r(c,board);r._rxps_pulse.request(micros());assert(!r.startAGCPulse());assert(!c.module.writes&&r._rxps_pulse.defer==1);}
  {Chip c;c.race=true;Radio r(c,board);r._rxps_pulse.request(micros());r.startAGCPulse();assert(r._rxps_pulse.phase==RxpsPulse::Phase::Packet);assert(c.irq&&!c.stages&&!c.module.writes);}
  {Chip c;c.clock_error=-91;Radio r(c,board);r._rxps_pulse.request(micros());r.startAGCPulse();for(int i=0;i<4;++i)r.serviceAGCPulse();assert(r._rxps_pulse.fail==1&&!r._rxps_pulse.ok&&!r._rxps_pulse.pending);}

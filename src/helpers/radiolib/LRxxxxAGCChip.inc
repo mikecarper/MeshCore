@@ -34,7 +34,12 @@
       statusWidth=Module::BITS_0;
       const int16_t rc=getStatus(&stat1,&stat2,&irq);
       statusWidth=savedWidth;
+#if MC_LR_AGC_2021
+      // LR2021 uses Stat2 bits2:0; LR11xx uses bits3:1.
+      mode=stat2&7;
+#else
       mode=(stat2>>1)&7;
+#endif
       if(rc) return rc;
       const uint8_t commandStatus=stat1&0x0e;
       return commandStatus==0x04 || commandStatus==0x06 ? RADIOLIB_ERR_NONE : RADIOLIB_ERR_SPI_CMD_FAILED;

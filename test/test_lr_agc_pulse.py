@@ -11,7 +11,7 @@ STATUS_TRANSPORT = r'''
 struct Hal : RadioLibHal {
  Hal():RadioLibHal(0,1,0,1,1,0){}
  Module* mod=nullptr;bool busy=false;uint32_t time=0;unsigned transfers=0;
- uint8_t status=4,chipmode=8;uint32_t irq=0x00040020;
+ uint8_t status=4,chipmode=MC_LR_AGC_2021?4:8;uint32_t irq=0x00040020;
  Module::BitWidth_t observed=Module::BITS_16;
  void pinMode(uint32_t,uint32_t)override{}
  void digitalWrite(uint32_t,uint32_t)override{}
@@ -80,6 +80,23 @@ int main(){
    assert(irq==hal.irq && mode==4);layout(mod,before);
   }
  }
+ // Vendor mode layouts differ. Reset/status upper bits must not enter mode;
+ // LR2021 raw4 is RX, whereas raw8 is mode0 and must never verify as RX.
+ hal.status=4;
+ for(uint8_t rawmode=0;rawmode<8;++rawmode){
+  for(uint8_t high:{uint8_t(0),uint8_t(0x60),uint8_t(0xf0)}){
+   hal.chipmode=high|(MC_LR_AGC_2021?rawmode:uint8_t(rawmode<<1));
+   const auto before=mod.spiConfig;uint8_t mode=0xff;
+   assert(radio.agcPulseStatus(irq,mode)==0 && mode==rawmode);
+   assert((mode==4)==(rawmode==4));layout(mod,before);
+  }
+ }
+ if(MC_LR_AGC_2021){
+  for(uint8_t raw:{uint8_t(8),uint8_t(0x68),uint8_t(0xf8)}){
+   hal.chipmode=raw;uint8_t mode=0xff;
+   assert(radio.agcPulseStatus(irq,mode)==0 && mode==0 && mode!=4);
+  }
+ }
  hal.status=4;hal.busy=true;
  for(Module::BitWidth_t width:{Module::BITS_0,Module::BITS_16}){
   mod.spiConfig.widths[RADIOLIB_MODULE_SPI_WIDTH_STATUS]=width;
@@ -119,13 +136,14 @@ class Tests(unittest.TestCase):
   # inherit this exact pinned raw reader, which must clock an unprefixed reply.
   with tempfile.TemporaryDirectory(prefix='lr-status-transport-')as tmp:
    cpp=Path(tmp)/'test.cpp';cpp.write_text(source)
-   for family,width in(('LR11x0',8),('LR2021',16)):
+   for family,width,is2021 in(('LR11x0',8,0),('LR2021',16,1)):
     with self.subTest(family=family):
      setup=(lib/('modules/'+family+'/'+family+'.cpp')).read_text()
      self.assertIn('spiConfig.widths[RADIOLIB_MODULE_SPI_WIDTH_STATUS] = Module::BITS_'+str(width)+';',setup)
      binary=Path(tmp)/family
      built=subprocess.run([os.environ.get('CXX','g++'),'-std=c++17','-O1',
        '-DRADIOLIB_GODMODE=1','-DRADIOLIB_STATIC_ONLY=1','-DTEST_LR_STATUS_WIDTH='+str(width),
+       '-DMC_LR_AGC_2021='+str(is2021),
        '-fsanitize=address,undefined','-fno-sanitize-recover=all','-fno-pie','-no-pie',
        '-ffunction-sections','-fdata-sections','-Wl,--gc-sections','-I'+str(lib),str(cpp),
        str(lib/'Module.cpp'),str(lib/'Hal.cpp'),'-o',str(binary)],capture_output=True,text=True,timeout=60)
