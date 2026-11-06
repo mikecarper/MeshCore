@@ -52,6 +52,7 @@ class CompactSTM32WLCompanionAgcTest(unittest.TestCase):
         flag = '-fno-tree-loop-im'
         hook = 'post:scripts/stm32_mini_companion_size.py'
         self.assertIn(flag, shlex.split(config[target]['build_flags']))
+        self.assertIn('MESH_CLI_SHARE_REPLY_COPIES=1', shlex.split(config[target]['build_flags']))
         self.assertEqual(config[target]['extra_scripts'].split(), ['${stm32_base.extra_scripts}', hook])
         for section in config.sections():
             if section not in (target, 'env:wio-e5-mini_repeater'):
