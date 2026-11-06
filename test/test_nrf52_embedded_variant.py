@@ -118,10 +118,19 @@ class PackagedApplicationTests(unittest.TestCase):
         self.manifest_path.write_text(json.dumps(self.manifest))
         self.candidate = (struct.pack("<II", 0x20030000, 0xF4101)
                           + bytes(range(256)) * (qualifier.BOOT_SIZE // 256))[0:qualifier.BOOT_SIZE]
-        self.identity = SimpleNamespace(app_base=0x26000)
+        self.identity = SimpleNamespace(app_base=0x26000, softdevice_fwid=0xB6)
+        self.parsed = {"sourceHardware": "R1Neo", "role": "repeater"}
         self.profile = {"id": "wiscore_rak4631_auto", "storage": "adaptive",
                         "files": {"zip": {"sha256": "b" * 64}}}
-        self.metadata = {"profile": self.profile["id"], "release": "2.4.12",
+        self.stock = qualifier.legacy_bootloaders_for(
+            self.profile["id"], self.parsed["sourceHardware"],
+            self.identity.app_base, self.identity.softdevice_fwid)
+        self.stock_hashes = b"".join(bytes.fromhex(item["image_sha256"]) for item in self.stock)
+        self.metadata = {"target": TARGET, "hardware": self.parsed["sourceHardware"],
+                         "role": self.parsed["role"], "app_base": self.identity.app_base,
+                         "softdevice_fwid": self.identity.softdevice_fwid,
+                         "stock_legacy": self.stock,
+                         "profile": self.profile["id"], "release": "2.4.12",
                          "manifest_sha256": qualifier.MANIFEST_SHA256,
                          "asset_sha256": "b" * 64,
                          "candidate_sha256": hashlib.sha256(self.candidate).hexdigest(),
@@ -130,7 +139,7 @@ class PackagedApplicationTests(unittest.TestCase):
         self.write_application(self.application())
         self.patches = {}
         for name, value in (("load_manifest", {"profiles": [self.profile]}),
-                            ("select_profile", (self.profile, {"role": "repeater"})),
+                            ("select_profile", (self.profile, self.parsed)),
                             ("download_zip", b"verified published ZIP"),
                             ("validate_candidate_zip", (self.candidate, self.identity))):
             patcher = mock.patch.object(qualifier, name, return_value=value)
@@ -146,7 +155,7 @@ class PackagedApplicationTests(unittest.TestCase):
                     marker=True, target=TARGET, layout=True, app_base=0x26000,
                     padding=0):
         candidate = self.candidate if candidate is None else candidate
-        body = prefix + candidate + (candidate if duplicate else b"")
+        body = prefix + candidate + (candidate if duplicate else b"") + self.stock_hashes
         if marker:
             body += b"\0BL embedded 2.4.12\0"
         body += bytes(padding)
@@ -165,7 +174,7 @@ class PackagedApplicationTests(unittest.TestCase):
 
     def assert_refused_without_changing_manifest(self):
         original = self.manifest_path.read_bytes()
-        with self.assertRaises((ValueError, KeyError)):
+        with self.assertRaises(ValueError):
             qualifier.qualify(self.directory, self.manifest_path)
         self.assertEqual(original, self.manifest_path.read_bytes())
 
@@ -179,6 +188,9 @@ class PackagedApplicationTests(unittest.TestCase):
         self.assertEqual(result["release"], "2.4.12")
         self.assertEqual(result["profile"], self.profile["id"])
         self.assertEqual(result["candidate_sha256"], hashlib.sha256(self.candidate).hexdigest())
+        self.assertTrue(self.stock)
+        self.assertEqual(result["stock_legacy"], self.stock)
+        self.assertEqual(result["stock_legacy_offset"], 32 + qualifier.BOOT_SIZE)
         self.assertEqual(result["activation"], "ota bootloader update")
         self.assertEqual(result["automatic_delay_seconds"], 70)
         self.patches["select_profile"].assert_called_once_with(
@@ -191,7 +203,11 @@ class PackagedApplicationTests(unittest.TestCase):
                              ("manifest_sha256", "0" * 64),
                              ("asset_sha256", "0" * 64),
                              ("candidate_sha256", "0" * 64),
-                             ("legacy_sha256", "0" * 64)):
+                             ("legacy_sha256", "0" * 64),
+                             ("target", "RAK_3401_repeater"),
+                             ("hardware", "RAK_3401"), ("role", "room_server"),
+                             ("app_base", 0x27000), ("softdevice_fwid", 0x123),
+                             ("stock_legacy", [])):
             with self.subTest(field=field):
                 original = self.metadata[field]
                 self.metadata[field] = value

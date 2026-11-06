@@ -14,6 +14,8 @@ import tempfile
 from urllib.request import urlopen
 import zipfile
 
+from nrf52_legacy_bootloaders import legacy_bootloaders_for
+
 ROOT = Path(__file__).resolve().parents[1]
 VERSION = "2.4.12"
 BOOT_VERSION = 0x02040CFF
@@ -50,12 +52,59 @@ def load_manifest(project=ROOT):
     return manifest
 
 
+# A PA/module choice does not change the MCU bootloader or its flash wiring.
+# This map must never be used for application hardware_id or MOTA target IDs.
+BOOTLOADER_HARDWARE = {
+    "ProMicro_m33s": "ProMicro",
+    "ProMicro_400m33s": "ProMicro",
+    "Xiao_nrf52_m33s": "Xiao_nrf52",
+    "Xiao_nrf52_400m33s": "Xiao_nrf52",
+    "ikoka_handheld_nrf_e22_33dbm": "Xiao_nrf52",
+    "ikoka_handheld_nrf_e22_33dbm_096": "Xiao_nrf52",
+    "ikoka_handheld_nrf_e22_400m33s": "Xiao_nrf52",
+    "ikoka_handheld_nrf_e22_400m33s_096": "Xiao_nrf52",
+    "ikoka_nano_nrf_400m33s": "Xiao_nrf52",
+    "ikoka_stick_nrf_400m33s": "Xiao_nrf52",
+    "solarxiao_400M33S": "Xiao_nrf52",
+}
+
+# Independently reviewed against the pinned 2.4.12 release images. USB IDs
+# and DFU names are reused, so neither value alone identifies a bootloader.
+# New release profiles must be reviewed and added here before embedding.
+PROFILE_IDENTITIES = {
+    "gat562": (0x239A0029, "GAT562_DFU"),
+    "heltec_mesh_pocket": (0x239A0071, "MESH_POCKET_OTA"),
+    "heltec_mesh_tower_v2_sdcard": (0x239A0071, "TOWER_V2_OTA"),
+    "heltec_t096": (0x239A0071, "T096_DFU"),
+    "heltec_t1": (0x239A0071, "T1_DFU"),
+    "heltec_t114": (0x239A0071, "T114_DFU"),
+    "keepteen_lt1": (0x239A00B3, "KeepteenLT1_OTA"),
+    "lilygo_techo": (0x239A0029, "LGTE_DFU"),
+    "lilygo_techo_lite": (0x239A00DA, "LTEL_DFU"),
+    "minewsemi_mx25le01": (0x239A0029, "MX25_DFU"),
+    "pca10056": (0x239A00DA, "N056_DFU"),
+    "promicro_nrf52840": (0x239A00B3, "PROM_DFU"),
+    "sensecap_solar_p1": (0x28860044, "SCAP_DFU"),
+    "t1000_e": (0x28860057, "T1KE_DFU"),
+    "thinknode_m1": (0x239A00DA, "TNM1_DFU"),
+    "thinknode_m3": (0x239A00DA, "TNM3_DFU"),
+    "thinknode_m6": (0x239A00DA, "TNM6_DFU"),
+    "wio_tracker_l1": (0x28861667, "WTL1_DFU"),
+    "wiscore_rak3401_auto": (0x239A0029, "3401_DFU"),
+    "wiscore_rak4631_auto": (0x239A0029, "4631_DFU"),
+    "wismesh_tag": (0x239A0029, "RTAG_DFU"),
+    "xiao_nrf52840_ble": (0x28860044, "XIAO_DFU"),
+    "xiao_nrf52840_ble_sense": (0x28860045, "XIAO_DFU"),
+}
+
+
 def select_profile(manifest, target):
     from generate_mesh_america_release import target_profiles
     parsed = target_profiles([target])[target]
     if parsed["role"] not in ("repeater", "room"):
         raise ValueError("embedded bootloader is limited to repeater and room-server roles")
-    names = {parsed["sourceHardware"], parsed["hardware"]}
+    names = {BOOTLOADER_HARDWARE.get(name, name)
+             for name in (parsed["sourceHardware"], parsed["hardware"])}
     if any(parsed["sourceHardware"] in item["meshcoreHardware"]
            for item in manifest.get("unavailableProfiles", ())):
         raise ValueError("this exact hardware has no qualified OTAFIX download")
@@ -170,6 +219,9 @@ def validate_candidate_zip(data, profile, project=ROOT):
             or identity.layout_abi != 1 or identity.compat_flags != 0
             or identity.device_name != profile["deviceName"]):
         raise ValueError("candidate bootloader identity/version/vector/CRC mismatch")
+    expected_identity = PROFILE_IDENTITIES.get(profile.get("id"))
+    if expected_identity is None or (identity.board_id, identity.device_name) != expected_identity:
+        raise ValueError("candidate bootloader board/name does not match the reviewed profile")
     platforms = {"6.1.1": (0xB6, 0x26000), "7.3.0": (0x123, 0x27000)}
     match = re.search(r"_s140_([0-9.]+)\.zip$", asset["name"])
     expected = platforms.get(match[1]) if match else None
@@ -246,6 +298,11 @@ def emit_resource(project, target, output, *, flags=(), cppdefines=(), src_filte
     if linked_base is not None and linked_base != identity.app_base:
         raise ValueError("candidate SoftDevice base does not match the application linker")
     legacy = load_legacy(legacy_path) if legacy_path else None
+    stock_hardware = BOOTLOADER_HARDWARE.get(parsed["sourceHardware"], parsed["sourceHardware"])
+    stock_legacy = legacy_bootloaders_for(profile["id"], stock_hardware,
+                                         identity.app_base, identity.softdevice_fwid)
+    if len(stock_legacy) > 32:
+        raise ValueError("too many reviewed stock bootloader identities")
     output = Path(output)
     output.mkdir(parents=True, exist_ok=True)
     arrays = {"migration_candidate": image,
@@ -258,7 +315,15 @@ def emit_resource(project, target, output, *, flags=(), cppdefines=(), src_filte
         source += f"alignas(4) const uint8_t {name}[{len(data)}] = {{\n"
         source += "".join("  " + ", ".join(f"0x{value:02X}" for value in data[index:index + 16]) + ",\n"
                           for index in range(0, len(data), 16)) + "};\n"
+    # A zero-count resource retains one inert row so C++ never needs a
+    # non-standard zero-length array. The count, not the sentinel, authorizes it.
+    stock_hashes = [bytes.fromhex(item["image_sha256"]) for item in stock_legacy]
+    header += f"extern const uint8_t migration_stock_sha256[{max(1, len(stock_hashes))}][32];\n"
+    source += f"alignas(4) const uint8_t migration_stock_sha256[{max(1, len(stock_hashes))}][32] = {{\n"
+    source += "".join("  {" + ", ".join(f"0x{value:02X}" for value in digest) + "},\n"
+                      for digest in (stock_hashes or [bytes(32)])) + "};\n"
     values = {"migration_has_legacy": ("bool", "true" if legacy else "false"),
+              "migration_stock_count": ("uint32_t", str(len(stock_hashes))),
               "migration_app_base": ("uint32_t", hex(identity.app_base)),
               "migration_boot_version": ("uint32_t", hex(identity.boot_version)),
               "migration_board_id": ("uint32_t", hex(identity.board_id)),
@@ -278,6 +343,7 @@ def emit_resource(project, target, output, *, flags=(), cppdefines=(), src_filte
                 "source_zip_sha256": profile["files"]["zip"]["sha256"],
                 "candidate_sha256": hashlib.sha256(image).hexdigest(),
                 "legacy_sha256": hashlib.sha256(legacy).hexdigest() if legacy else None,
+                "stock_legacy": stock_legacy,
                 "image_size": BOOT_SIZE, "app_base": identity.app_base,
                 "boot_version": identity.boot_version, "board_id": identity.board_id,
                 "softdevice_fwid": identity.softdevice_fwid, "device_name": identity.device_name}

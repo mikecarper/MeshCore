@@ -22,6 +22,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 sys.path.insert(0, str(ROOT / "tools/mota"))
 import nrf52_embedded_bootloader as EMBED
+from nrf52_legacy_bootloaders import legacy_bootloaders_for
 import motalib
 
 
@@ -138,6 +139,9 @@ class EmbeddedBootloaderTest(unittest.TestCase):
                 self.assertEqual(result["version"], "2.4.12")
                 self.assertEqual(result["softdevice_fwid"], 0x123 if v7 else 0xB6)
                 self.assertEqual(result["app_base"], 0x27000 if v7 else 0x26000)
+                expected_stock = legacy_bootloaders_for(result["profile"], result["hardware"],
+                                                        result["app_base"], result["softdevice_fwid"])
+                self.assertEqual(result["stock_legacy"], expected_stock)
                 self.assertEqual(result, json.loads((output / "BootloaderMigrationResource.json").read_text()))
                 harness = output / "main.cpp"
                 harness.write_text('''#include "BootloaderMigrationResource.h"
@@ -159,10 +163,15 @@ int main() {
       strcmp(migration_device_name, "%s") ||
       memcmp(expected_hash, migration_candidate_sha256, 32)) return 1;
   for (uint8_t byte : migration_legacy_sha256) if (byte) return 2;
+  const uint8_t stock_hashes[][32] = {%s};
+  if (migration_stock_count != %d ||
+      memcmp(stock_hashes, migration_stock_sha256, sizeof(stock_hashes))) return 4;
   return fwrite(migration_candidate, 1, 40960, stdout) == 40960 ? 0 : 3;
 }
 ''' % (",".join(map(str, hashlib.sha256(image).digest())), result["app_base"],
-       result["softdevice_fwid"], result["board_id"], EMBED.BOOT_VERSION, result["device_name"]))
+       result["softdevice_fwid"], result["board_id"], EMBED.BOOT_VERSION, result["device_name"],
+       ",".join("{" + ",".join(map(str, bytes.fromhex(item["image_sha256"]))) + "}"
+                for item in expected_stock), len(expected_stock)))
                 executable = output / ("resource.exe" if os.name == "nt" else "resource")
                 subprocess.run([compiler, "-std=c++11", "-Wall", "-Wextra", "-Werror",
                                 str(output / "BootloaderMigrationResource.cpp"), str(harness),
@@ -178,6 +187,16 @@ int main() {
         self.pin_manifest()
         with self.assertRaisesRegex(ValueError, "release identity"):
             EMBED.load_manifest(self.project)
+
+    def test_no_reviewed_stock_image_emits_an_inert_zero_count_resource(self):
+        with patch.object(EMBED, "legacy_bootloaders_for", return_value=[]):
+            result = self.emit()
+        self.assertEqual(result["stock_legacy"], [])
+        source = (self.project / "generated/BootloaderMigrationResource.cpp").read_text()
+        self.assertIn("const uint32_t migration_stock_count = 0;", source)
+        self.assertIn("alignas(4) const uint8_t migration_stock_sha256[1][32]", source)
+        row = source.split("migration_stock_sha256[1][32] = {\n", 1)[1].split("};", 1)[0]
+        self.assertEqual(row.count("0x00"), 32)
 
     def test_whole_zip_pin_and_internal_crc_are_independent_checks(self):
         good = candidate(boot_image())
@@ -205,17 +224,45 @@ int main() {
                 with self.assertRaisesRegex(ValueError, message):
                     EMBED.validate_candidate_zip(data, profile(data, **options))
         data = candidate(boot_image(v7=True))
-        with self.assertRaisesRegex(ValueError, "layout differs"):
+        with self.assertRaisesRegex(ValueError, "reviewed profile"):
             EMBED.validate_candidate_zip(data, profile(data, name="XIAO_DFU", storage="qspi"))
 
-    def test_pinned_new_qspi_profile_does_not_expand_signed_inventory(self):
+    def test_unreviewed_profile_is_rejected_even_if_asset_is_pinned(self):
         image = boot_image(v7=True, name="FUTURE_DFU", board_id=0x12345678)
         data = candidate(image, v7=True)
         self.assertIsNone(motalib.bootloader_qualified_storage_profiles(0x12345678, "FUTURE_DFU"))
-        actual, identity = EMBED.validate_candidate_zip(data, profile(data, v7=True, name="FUTURE_DFU"))
+        item = profile(data, v7=True, name="FUTURE_DFU")
+        item["id"] = "future_board"
+        with self.assertRaisesRegex(ValueError, "reviewed profile"):
+            EMBED.validate_candidate_zip(data, item)
+        with patch.dict(EMBED.PROFILE_IDENTITIES, {"future_board": (0x12345678, "FUTURE_DFU")}):
+            actual, identity = EMBED.validate_candidate_zip(data, item)
         self.assertEqual(actual, image)
         self.assertEqual(identity.board_id, 0x12345678)
         self.assertIsNone(motalib.bootloader_qualified_storage_profiles(0x12345678, "FUTURE_DFU"))
+
+    def test_xiao_and_sense_candidates_cannot_be_swapped(self):
+        for profile_id, correct, wrong in (
+            ("xiao_nrf52840_ble", 0x28860044, 0x28860045),
+            ("xiao_nrf52840_ble_sense", 0x28860045, 0x28860044),
+        ):
+            for board_id in (correct, wrong):
+                with self.subTest(profile=profile_id, board_id=board_id):
+                    image = boot_image(v7=True, board_id=board_id)
+                    data = candidate(image, v7=True)
+                    item = profile(data, v7=True)
+                    item["id"] = profile_id
+                    if board_id == correct:
+                        self.assertEqual(EMBED.validate_candidate_zip(data, item)[0], image)
+                    else:
+                        with self.assertRaisesRegex(ValueError, "reviewed profile"):
+                            EMBED.validate_candidate_zip(data, item)
+
+    def test_reviewed_identities_cover_pinned_release_profiles(self):
+        profiles = json.loads((ROOT / "docs/_data/bootloader_manifest.json").read_text())["profiles"]
+        self.assertEqual(set(EMBED.PROFILE_IDENTITIES), {p["id"] for p in profiles})
+        for item in profiles:
+            self.assertEqual(EMBED.PROFILE_IDENTITIES[item["id"]][1], item["deviceName"])
 
     def test_zip_member_geometry_is_bounded(self):
         for extra in (("unexpected.txt", b"x"), ("../firmware.bin", b"x")):

@@ -31,7 +31,7 @@ inline bool boot_text_matches(const uint8_t *text, size_t available,
 // The caller must separately verify the image CRC, identity and platform.
 inline InstalledVariant installed_variant(const uint8_t *image, size_t size,
                                           uint32_t version) {
-  if (!image || size != BOOT_SIZE || !ota_bootloader_version_valid(version))
+  if (!image || size != BOOT_SIZE)
     return InstalledVariant::Unknown;
   static const char header[] = "UF2 Bootloader ";
   static const char recovery[] = "R_0x";
@@ -44,6 +44,7 @@ inline InstalledVariant installed_variant(const uint8_t *image, size_t size,
         boot_text_matches(image + i, left, recovery_header, sizeof(recovery_header) - 1))
       return InstalledVariant::Recovery;
   }
+  if (!ota_bootloader_version_valid(version)) return InstalledVariant::Unknown;
   char normal[48], packed[16];
   const unsigned preview = version & 0xFFu;
   snprintf(normal, sizeof(normal),
@@ -144,7 +145,8 @@ inline bool installed_can_migrate(const OtaBootloaderIdentity &installed,
                                  bool has_legacy, bool legacy_hash_matches,
                                  uint32_t app_base, uint16_t fwid) {
   if (!installed.present)
-    return has_legacy && legacy_hash_matches;
+    return has_legacy && legacy_hash_matches &&
+           ota_bootloader_continuity_matches_runtime(candidate, 140, fwid, app_base, 1);
   return installed.crc_ok && installed.continuity_present &&
          ota_bootloader_identity_matches(installed, candidate) &&
          ota_bootloader_continuity_gate(installed, candidate, candidate.boot_version,
@@ -158,6 +160,29 @@ inline bool installed_matches_resource(const OtaBootloaderIdentity &installed,
          installed.image_start == BOOT_BASE && installed.image_size == BOOT_SIZE &&
          installed.board_id == board_id && memcmp(installed.device_name, name, 16) == 0 &&
          ota_bootloader_continuity_matches_runtime(installed, 140, fwid, app_base, 1);
+}
+
+inline bool legacy_digest_allowed(const uint8_t digest[32],
+                                  const uint8_t (*approved)[32], size_t count) {
+  if (!digest || !approved || count > 32u) return false;
+  for (size_t i = 0; i < count; ++i)
+    if (memcmp(digest, approved[i], 32) == 0) return true;
+  return false;
+}
+
+// Automatic, manual arming and the final pre-copy gate use the same source
+// policy. Stock names/versions and shared USB IDs are never authorization.
+// Valid modern metadata cannot fall through to the legacy exception, even
+// when its board, continuity, CRC or version record does not match.
+inline bool installed_source_allowed(const OtaBootloaderIdentity &installed,
+                                     InstalledVariant variant, bool legacy_hash_matches,
+                                     uint32_t board_id, const char name[16],
+                                     uint32_t app_base, uint16_t fwid) {
+  if (variant == InstalledVariant::Recovery) return false;
+  if (installed.present)
+    return variant == InstalledVariant::Normal &&
+           installed_matches_resource(installed, board_id, name, app_base, fwid);
+  return legacy_hash_matches;
 }
 
 inline bool installed_up_to_date(const OtaBootloaderIdentity &installed,

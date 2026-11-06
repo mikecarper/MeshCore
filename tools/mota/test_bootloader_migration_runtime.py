@@ -3,7 +3,8 @@
 
 The ARM SVC adapter is replaced by a failing trap, and the EndF stub refuses
 installation before hardware access. Real CRC-bound installed manifests test
-the version check; a controlled digest exercises the exact candidate no-op.
+the version check; controlled digests exercise the exact candidate no-op and
+reviewed-stock source gate (not the SHA-256 primitive itself).
 This tests scheduling and cancellation, not cryptography, MBR copying or
 power-loss recovery; those require separate qualification. The durable-store
 boundary is modeled here and tested against real file faults separately.
@@ -41,10 +42,20 @@ class MigrationRuntimeTests(unittest.TestCase):
     def run_scenario(self, scenario):
         subprocess.run([str(self.binary), scenario], check=True)
 
-    def test_recovery_unknown_or_damaged_bootloaders_require_an_explicit_command(self):
+    def test_recovery_unknown_or_damaged_bootloaders_refuse_manual_and_automatic_commands(self):
         for scenario in ('automatic-recovery-prefix', 'automatic-recovery-suffix',
                          'automatic-unlabelled-loader', 'automatic-ambiguous-loader',
                          'automatic-foreign-loader', 'automatic-damaged-loader'):
+            with self.subTest(scenario=scenario):
+                self.run_scenario(scenario)
+
+    def test_reviewed_stock_loader_arms_manually_or_at_70_seconds_without_legacy_file(self):
+        for scenario in ('stock-automatic', 'stock-manual'):
+            with self.subTest(scenario=scenario):
+                self.run_scenario(scenario)
+
+    def test_stock_hash_is_not_a_modern_identity_or_recovery_override(self):
+        for scenario in ('stock-damaged-hash', 'stock-recovery', 'stock-modern-mismatch'):
             with self.subTest(scenario=scenario):
                 self.run_scenario(scenario)
 
