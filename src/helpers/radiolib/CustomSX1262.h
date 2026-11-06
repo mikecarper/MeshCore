@@ -177,6 +177,7 @@ class CustomSX1262 : public SX1262 {
     // Deliberately use the full acknowledged LoRa RX staging sequence. This
     // path is independent of radio2 cache/FS shortcuts and performs no sleep,
     // calibration, gain, retention, or frequency writes.
+    void invalidatePulseReceiveState() { invalidateMorseModemCache(); }
     uint64_t pulsePacketBudgetUs() const { return (uint64_t(_preambleMillis)+_maxPayloadMillis)*1000ULL; }
     int16_t stagePulseReceive() {
       invalidateMorseModemCache();

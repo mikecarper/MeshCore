@@ -52,6 +52,12 @@ public:
       {0x08AC,0x96},{0x08B5,0xA5},{0x0736,0xA0},{0x0902,0x7F},{0x0944,0xA5}};
   std::vector<uint8_t> fifo={0xDE,0xAD,0xBE,0xEF};
   bool busy=false,host_irq=false;
+  struct BusyHal {
+    Module* owner;
+    uint32_t digitalRead(uint32_t pin) { assert(pin==42);return owner->busy; }
+  } busy_hal{this};
+  BusyHal* hal=&busy_hal;
+  uint32_t getGpio() const { return 42; }
   uint16_t irq=0;
   uint8_t packet_type=1,status=0x54;
   size_t fail_at=SIZE_MAX,fail_from=SIZE_MAX;
@@ -112,8 +118,10 @@ public:
   Module* mod;
   explicit CustomSX1262(Module* value):mod(value) {}
   Module* getMod() { return mod; }
+#if !defined(MESH_TEST_PULSE_UNCACHED)
   uint32_t getTcxoDelay() const { return tcxo; }
   bool isChipBusy() const { return mod->busy; }
+#endif
   uint16_t getIrqMapped(uint32_t flags) const { return uint16_t(flags); }
   @DRIVER@
 };
@@ -176,7 +184,9 @@ static void normal() {
   for(uint32_t sleep:{2616U,3000U,3116U,4000U,6554U}) {
     Wrapper w;const auto before=w.module.registers;begin(w,sleep);
     assert(w._rxps_pulse.pending && w._rxps_pulse.ok==0 && w.module.calls.size()==11);
+#if !defined(MESH_TEST_PULSE_UNCACHED)
     assert(!w.driver._profileSwitch.valid && w.driver._coldStandby && !w.driver._tcxoWakePending);
+#endif
     naturalWake(w);
     assert(!w._rxps_pulse.pending && w._rxps_pulse.ok==1 && w._rxps_pulse.fail==0);
     assert(w._rxps_pulse.rtc==1 && w._rxps_pulse.verified==1 && w._rxps_pulse.cycles==1);

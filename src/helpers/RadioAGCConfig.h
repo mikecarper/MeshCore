@@ -6,9 +6,12 @@
 // the pulse API. The concrete driver, not an optional USE_* radio, decides.
 #ifndef MESH_WARM_RX_REFRESH
   #define MESH_AGC_RXPS_DRIVER_CustomSX1262 1
+  #define MESH_AGC_RXPS_DRIVER_CustomSX1268 1
+  #define MESH_AGC_RXPS_DRIVER_CustomLLCC68 1
+  #define MESH_AGC_RXPS_DRIVER_CustomSTM32WLx 1
   #if defined(MESH_RADIO_AUTO_FAMILY) && MESH_RADIO_AUTO_FAMILY && defined(USE_SX1262)
-    // Only the selected SX1262 backend advertises supportsWarmRxRefresh().
-    // Other backends keep their existing physical maintenance implementation.
+    // The selected backend advertises its own physical pulse capability.
+    // Compiling the interface never grants it to an unsupported backend.
     #define MESH_AGC_RXPS_DRIVER_UniversalLoRaRadio 1
   #else
     #define MESH_AGC_RXPS_DRIVER_UniversalLoRaRadio 0
@@ -24,4 +27,7 @@
   #undef MESH_AGC_RXPS_DRIVER_
   #undef MESH_AGC_RXPS_DRIVER_UniversalLoRaRadio
   #undef MESH_AGC_RXPS_DRIVER_CustomSX1262
+  #undef MESH_AGC_RXPS_DRIVER_CustomSX1268
+  #undef MESH_AGC_RXPS_DRIVER_CustomLLCC68
+  #undef MESH_AGC_RXPS_DRIVER_CustomSTM32WLx
 #endif

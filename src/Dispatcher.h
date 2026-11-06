@@ -381,13 +381,14 @@ public:
   virtual uint32_t getRecoveryCount() const { return 0; }
   // The primary RXPS pulse reuses the existing saved AGC interval.
   // Its optional old full-reset timer is independent and RAM-only.
-#if (defined(WIO_E5_MINI_COMPACT_UNSUPPORTED_AGC) && WIO_E5_MINI_COMPACT_UNSUPPORTED_AGC) || \
-    (defined(STM32WL_COMPANION_COMPACT_UNSUPPORTED_AGC) && STM32WL_COMPANION_COMPACT_UNSUPPORTED_AGC)
-#if (defined(MESH_WARM_RX_REFRESH) && MESH_WARM_RX_REFRESH) || MESH_WARM_RX_LAB_TIMER || MESH_RXPS_PULSE_LAB
+#if ((defined(WIO_E5_MINI_COMPACT_UNSUPPORTED_AGC) && WIO_E5_MINI_COMPACT_UNSUPPORTED_AGC) || \
+    (defined(STM32WL_COMPANION_COMPACT_UNSUPPORTED_AGC) && STM32WL_COMPANION_COMPACT_UNSUPPORTED_AGC)) && !MESH_WARM_RX_REFRESH
+#if MESH_WARM_RX_LAB_TIMER || MESH_RXPS_PULSE_LAB
 #error "STM32WL compact unsupported-AGC handling cannot enable warm-maintenance features"
 #endif
-  // The selected integrated STM32WL has no primary pulse/diagnostic API.
-  // Its old reset remains callable without allocating new virtual slots.
+  // An explicitly opted-out compact image can omit the pulse virtual API.
+  // Actual STM32WL pulse builds use the checked virtual API below while their
+  // independent legacy timer stays omitted by default.
   bool supportsWarmRxRefresh() const { return false; }
   bool isAGCMaintenanceActive() const { return false; }
   bool isAGCMaintenancePending() const { return false; }

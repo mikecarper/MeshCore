@@ -6,7 +6,7 @@
 #include "SX126xReceiveMode.h"
 
 #include "CustomSTM32WLx.h"
-#include "RadioLibWrappers.h"
+#include "SX126xPulseWrapper.h"
 #include "SX126xReset.h"
 #if MESH_ENABLE_CARRIER_TOOLS
 #include "SX126xMorseRamp.h"
@@ -16,11 +16,16 @@
 #endif
 #include <math.h>
 
-class CustomSTM32WLxWrapper : public RadioLibWrapper {
+class CustomSTM32WLxWrapper : public SX126xPulseWrapper<CustomSTM32WLx> {
   using DeepInitCallback = bool (*)();
   DeepInitCallback _deep_init = nullptr;
 protected:
-  int8_t readReceiveMode() override { return sx126xReceiveMode((SX126x*)_radio); }
+  int8_t readReceiveMode() override {
+#if MESH_WARM_RX_REFRESH
+    if(_rxps_pulse.owns()) return -1;
+#endif
+    return sx126xReceiveMode((SX126x*)_radio);
+  }
 
 public:
 #if MESH_COMPACT_STM32_RADIO
@@ -30,7 +35,7 @@ public:
   bool supportsRxPowerSaving() const final override { return false; }
 #endif
   ~CustomSTM32WLxWrapper() { unregisterInterruptAction(); }
-  CustomSTM32WLxWrapper(CustomSTM32WLx& radio, mesh::MainBoard& board) : RadioLibWrapper(radio, board) { }
+  CustomSTM32WLxWrapper(CustomSTM32WLx& radio, mesh::MainBoard& board) : SX126xPulseWrapper<CustomSTM32WLx>(radio, board) { }
 #if MESH_ENABLE_CARRIER_TOOLS
   bool supportsMorseTx() const override { return true; }
 #endif

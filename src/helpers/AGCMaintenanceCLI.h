@@ -89,7 +89,7 @@ inline bool handleAGCMaintenanceCommand(Radio* radio,const char* command,
     uint32_t primary_seconds,char* reply,size_t capacity) {
   if(!command || !reply || !capacity) return false;
   if (handleOldAGCIntervalCommand(radio, command, reply, capacity)) return true;
-#if defined(STM32WL_COMPANION_COMPACT_UNSUPPORTED_AGC) && STM32WL_COMPANION_COMPACT_UNSUPPORTED_AGC
+#if defined(STM32WL_COMPANION_COMPACT_UNSUPPORTED_AGC) && STM32WL_COMPANION_COMPACT_UNSUPPORTED_AGC && !MESH_WARM_RX_REFRESH
 #if defined(MESH_AGC_TIMING_DIAGNOSTICS) && MESH_AGC_TIMING_DIAGNOSTICS
 #error "Compact STM32WL Companion AGC replies require diagnostics to be absent"
 #endif

@@ -14,16 +14,23 @@ ROOT = Path(__file__).resolve().parents[1]
 FIXTURE = ROOT / "test/fixtures/rxps_pulse_integration"
 
 
-def harness():
+def harness(uncached=False):
     driver = (ROOT / "src/helpers/radiolib/CustomSX1262.h").read_text()
     wrapper = (ROOT / "src/helpers/radiolib/CustomSX1262Wrapper.h").read_text()
+    shared = (ROOT / "src/helpers/radiolib/SX126xPulseWrapper.h").read_text()
     base = (ROOT / "src/helpers/radiolib/RadioLibWrappers.cpp").read_text()
     interface = (ROOT / "src/helpers/radiolib/RadioLibWrappers.h").read_text()
     actual_driver = "\n".join(body(driver, signature) for signature in (
-        "void invalidateMorseModemCache(", "uint64_t pulsePacketBudgetUs(",
+        "void invalidateMorseModemCache(", "void invalidatePulseReceiveState(", "uint64_t pulsePacketBudgetUs(",
         "int16_t stagePulseReceive(", "int16_t verifyPulseReceive(",
         "int16_t enterPulseContinuous("))
-    actual_wrapper = "\n".join(body(wrapper, signature).replace(" override", "") for signature in (
+    if uncached:
+        driver = (ROOT / "src/helpers/radiolib/SX126xPulseDriverMethods.inc").read_text()
+        actual_driver = "\n".join(body(driver, signature) for signature in (
+            "uint32_t getTcxoDelay(", "bool isChipBusy(", "void invalidatePulseReceiveState(",
+            "uint64_t pulsePacketBudgetUs(", "int16_t stagePulseReceive(",
+            "int16_t verifyPulseReceive(", "int16_t enterPulseContinuous("))
+    actual_wrapper = "\n".join(body(shared if signature != "int startReceiveMode(" else wrapper, signature).replace(" override", "").replace("static_cast<Driver*>", "static_cast<CustomSX1262*>").replace("static_cast<const Driver*>", "static_cast<const CustomSX1262*>") for signature in (
         "uint32_t defaultAGCPulseSleepUs(", "uint32_t rxPowerSavingTransitionUs(", "static bool pulseActivity(",
         "void pulseFailure(", "bool startAGCPulse(", "int16_t pulseContinuous(",
         "void retireFailedPulse(", "void serviceAGCPulse(", "int startReceiveMode("))
@@ -39,7 +46,10 @@ def harness():
     admission = admission.replace("RadioLibWrapper::", "")
     sleep_accessors = "\n".join(body(interface, signature).replace(" override", "") for signature in (
         "bool setAGCPulseSleep(", "uint32_t getAGCPulseSleep(", "bool serviceAGCMaintenanceFastLane(", "uint32_t agcMaintenanceRetryMs("))
-    return (FIXTURE / "main.cpp").read_text().replace(
+    fixture = (FIXTURE / "main.cpp").read_text()
+    if uncached:
+        fixture = fixture.replace("tcxo=1600", "tcxoDelay=1600").replace("driver.tcxo", "driver.tcxoDelay")
+    return fixture.replace(
         "@DRIVER@", actual_driver).replace("@WRAPPER@", actual_wrapper + "\n" + lease + "\n" + scan_prefix + "\n" + admission + "\n" + sleep_accessors)
 
 

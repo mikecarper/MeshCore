@@ -1,6 +1,7 @@
 #pragma once
 
 #include <RadioLib.h>
+#include <helpers/RadioAGCConfig.h>
 #include <math.h>
 #include "SX126xMorseRssi.h"
 
@@ -15,6 +16,7 @@ class CustomLLCC68 : public LLCC68 {
   bool _headerSeen = false;
 
   public:
+#include "SX126xPulseDriverMethods.inc"
     CustomLLCC68(Module *mod) : LLCC68(mod) { }
     int16_t setProfileProtocol(uint8_t syncWord) {
       // Retain RadioLib's ordinary setters: this wrapper does not own the

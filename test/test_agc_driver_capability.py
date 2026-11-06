@@ -39,8 +39,8 @@ static_assert(MESH_WARM_RX_REFRESH == EXPECT_PULSE, "AGC driver capability");
 int main() {}
 """
         for driver, expected in (
-            (None, 0), ("CustomSX1262", 1), ("CustomSX1268", 0),
-            ("CustomSTM32WLx", 0), ("CustomLLCC68", 0), ("CustomSX1276", 0),
+            (None, 0), ("CustomSX1262", 1), ("CustomSX1268", 1),
+            ("CustomSTM32WLx", 1), ("CustomLLCC68", 1), ("CustomSX1276", 0),
             ("CustomLR1110", 0), ("CustomLR1121", 0), ("CustomLR2021", 0),
             ("UnknownRadio", 0), ("UniversalLoRaRadio", 0),
         ):
@@ -85,9 +85,63 @@ int main() { assert(other_capability() == MESH_WARM_RX_REFRESH); assert(other_si
 unsigned other_capability() { return MESH_WARM_RX_REFRESH; }
 unsigned other_size() { return sizeof(mesh::Radio); }
 """
-        for driver, expected in (("CustomSX1262", 1), ("CustomLR2021", 0), ("CustomSX1276", 0)):
+        for driver, expected in (("CustomSX1262", 1), ("CustomSTM32WLx", 1), ("CustomLR2021", 0), ("CustomSX1276", 0)):
             with self.subTest(driver=driver):
                 self.compile_run(main, ["-DRADIO_CLASS=" + driver, "-DEXPECT_PULSE=" + str(expected)], other)
+
+    def test_compact_stm32_uses_virtual_pulse_api_and_keeps_old_timer_optional(self):
+        source = """#include <Dispatcher.h>
+static_assert(MESH_WARM_RX_REFRESH == 1, "Real STM32WL pulse driver");
+static_assert(MESH_COMPACT_STM32_RADIO == 1, "Compact storage policy retained");
+static_assert(MESH_ENABLE_OLD_AGC == 0, "Independent legacy timer stays optional");
+struct PulseContract : mesh::Radio {
+  bool supportsWarmRxRefresh() const override { return true; }
+  bool serviceAGCMaintenanceFastLane() override { return false; }
+  mesh::AGCMaintenanceResult periodicAGCMaintenance(bool) override { return mesh::AGCMaintenanceResult::Deferred; }
+};
+int main() {}
+"""
+        for flag in ("WIO_E5_MINI_COMPACT_UNSUPPORTED_AGC", "STM32WL_COMPANION_COMPACT_UNSUPPORTED_AGC"):
+            with self.subTest(flag=flag):
+                self.compile_run(source, ["-DRADIO_CLASS=CustomSTM32WLx", "-D" + flag + "=1"])
+
+    def test_compact_companion_dispatches_actual_pulse_getters(self):
+        radio = """#pragma once
+#include <cstdint>
+#include <cstdio>
+#include <cstddef>
+namespace mesh { struct Radio {
+  mutable unsigned calls=0;
+  bool supportsWarmRxRefresh() const { return true; }
+  bool supportsOldAGC() const { return false; }
+  uint32_t getOldAGCInterval() const { return 0; }
+  bool setOldAGCInterval(uint32_t) { return false; }
+  bool formatWarmRxRefresh(uint8_t page,uint32_t seconds,char* out,size_t cap) const {
+    ++calls;snprintf(out,cap,"> page=%u,seconds=%u,ok=2,cycles=2",unsigned(page),unsigned(seconds));return true;
+  }
+}; }
+"""
+        source = """#include <helpers/RadioAGCConfig.h>
+#include <helpers/AGCMaintenanceCLI.h>
+#include <cassert>
+#include <cstring>
+int main() {
+  mesh::Radio r;char reply[160];
+  const char* getters[]={"get agc.status","get agc.timing","get agc.recovery","get agc.pulse","get agc.sleep","get agc.checks","get agc.scan"};
+  for(unsigned page=0;page<7;++page) {
+    assert(mesh::handleAGCMaintenanceCommand(&r,getters[page],16,reply,sizeof(reply)));
+    char expected[24];snprintf(expected,sizeof(expected),"> page=%u,",page);
+    assert(!strncmp(reply,expected,strlen(expected)) && strstr(reply,"ok=2,cycles=2"));
+  }
+  assert(r.calls==7);
+  assert(mesh::handleAGCMaintenanceCommand(&r,"get agc.old",16,reply,sizeof(reply)));
+  assert(!strcmp(reply,"Error: unsupported") && r.calls==7);
+}
+"""
+        with tempfile.TemporaryDirectory(prefix="compact-pulse-cli-") as temp:
+            folder=Path(temp);(folder/"Dispatcher.h").write_text(radio,encoding="ascii")
+            self.compile_run(source, ["-I"+str(folder), "-DRADIO_CLASS=CustomSTM32WLx",
+                                     "-DSTM32WL_COMPANION_COMPACT_UNSUPPORTED_AGC=1"])
 
 
 class DefaultDriverPulseTest(pulse.PulseIntegrationTest):
@@ -121,6 +175,38 @@ class DefaultDriverPulseTest(pulse.PulseIntegrationTest):
                 ], capture_output=True, text=True, timeout=60)
                 if compiled.returncode:
                     raise AssertionError(compiled.stderr)
+                cls.binaries.append(binary)
+
+
+class UncachedFamilyPulseTest(pulse.PulseIntegrationTest):
+    """Run the same real command/fault tests on the new uncached driver ops."""
+    @classmethod
+    def setUpClass(cls):
+        compiler = shutil.which(os.environ.get("CXX", "c++"))
+        if not compiler:
+            raise unittest.SkipTest("A C++ compiler is required")
+        cls.temporary = tempfile.TemporaryDirectory(prefix="sx126x-uncached-pulse-")
+        cls.addClassCleanup(cls.temporary.cleanup)
+        folder=Path(cls.temporary.name);source=folder/"test.cpp"
+        fixture=pulse.harness(uncached=True).replace(
+            "#ifndef MESH_WARM_RX_REFRESH\n#define MESH_WARM_RX_REFRESH 1\n#endif\n", "")
+        source.write_text("#include <helpers/RadioAGCConfig.h>\n"
+                          "static_assert(MESH_WARM_RX_REFRESH == 1, \"Default family pulse\");\n"+fixture,
+                          encoding="ascii")
+        cls.binaries=[]
+        for driver in ("CustomSX1268","CustomLLCC68","CustomSTM32WLx"):
+            for platform in ("esp32","nrf52"):
+                binary=folder/(driver+"-"+platform)
+                built=subprocess.run([
+                    compiler,"-std=c++11","-Wall","-Wextra","-Werror","-pedantic",
+                    "-fsanitize=address,undefined,float-cast-overflow","-fno-omit-frame-pointer",
+                    "-fno-pie","-no-pie","-DRADIO_CLASS="+driver,"-DTEST_FS=0",
+                    "-DMESH_TEST_PULSE_UNCACHED=1",
+                    *(["-DMESH_TEST_PULSE_NRF52=1"] if platform=="nrf52" else []),
+                    "-I",str(pulse.FIXTURE),"-I",str(ROOT/"src"),str(source),"-o",str(binary),
+                ],capture_output=True,text=True,timeout=60)
+                if built.returncode:
+                    raise AssertionError(built.stderr)
                 cls.binaries.append(binary)
 
 

@@ -567,15 +567,12 @@ static bool configKeyEquals(const char* config, const char* key) {
       == mesh::cli::NoArgCommandMatch::Exact;
 }
 
-#if defined(WIO_E5_MINI_COMPACT_UNSUPPORTED_AGC) && WIO_E5_MINI_COMPACT_UNSUPPORTED_AGC
-#if defined(MESH_WARM_RX_REFRESH) && MESH_WARM_RX_REFRESH
-#error "Mini compact unsupported-AGC handling requires warm refresh to be absent"
-#endif
+#if defined(WIO_E5_MINI_COMPACT_UNSUPPORTED_AGC) && WIO_E5_MINI_COMPACT_UNSUPPORTED_AGC && !MESH_WARM_RX_REFRESH
 #if MESH_ENABLE_CARRIER_TOOLS || MESH_ENABLE_MORSE_RX
 #error "Mini compact unsupported FEM handling requires Morse ownership to be absent"
 #endif
-// The integrated STM32WL radio does not implement warm refresh. Preserve its
-// existing replies while avoiding runtime dispatch into an unsupported driver.
+// An explicitly opted-out compact image retains the unsupported replies
+// without retaining dispatch into pulse diagnostics that are not compiled.
 static bool miniUnsupportedWarmAgcGet(const char* config) {
   if (!config || strncmp(config, "agc.", 4) != 0) return false;
   config += 4;
@@ -3774,7 +3771,7 @@ void CommonCLI::handleCommand(uint32_t sender_timestamp, char* command, char* re
     mesh::cli::normalizeCommandVerb(command);
     // Classify before any handler can access the radio or board. The shared
     // allowlist includes cached statistics, not every command named "get".
-#if !defined(WIO_E5_MINI_COMPACT_UNSUPPORTED_AGC) || !WIO_E5_MINI_COMPACT_UNSUPPORTED_AGC
+#if !defined(WIO_E5_MINI_COMPACT_UNSUPPORTED_AGC) || !WIO_E5_MINI_COMPACT_UNSUPPORTED_AGC || MESH_WARM_RX_REFRESH
     const auto* maintenance_radio=_callbacks->getProfileRadio();
     if (mesh::cli::deferForRadioMaintenance(maintenance_radio
             && maintenance_radio->isAGCMaintenancePending(), command, reply, 160)) return;
@@ -6646,7 +6643,7 @@ void CommonCLI::handleGetCmd(uint32_t sender_timestamp, char* command, char* rep
     const auto* radio=_callbacks->getProfileRadio();
     if(!radio || !radio->supportsOldAGC()) mesh::cli::formatError(reply,160,"unsupported");
     else sprintf(reply,"> %lu",(unsigned long)radio->getOldAGCInterval());
-#if defined(WIO_E5_MINI_COMPACT_UNSUPPORTED_AGC) && WIO_E5_MINI_COMPACT_UNSUPPORTED_AGC
+#if defined(WIO_E5_MINI_COMPACT_UNSUPPORTED_AGC) && WIO_E5_MINI_COMPACT_UNSUPPORTED_AGC && !MESH_WARM_RX_REFRESH
   } else if(miniUnsupportedWarmAgcGet(config)) {
     mesh::cli::formatError(reply,160,"unsupported");
 #else

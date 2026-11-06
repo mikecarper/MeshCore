@@ -353,12 +353,11 @@ int main() {
                         input="#include <Dispatcher.h>\n", capture_output=True, text=True, timeout=10)
             self.assertNotEqual(invalid.returncode, 0)
             self.assertIn("OTA-enabled firmware requires variable packet pacing", invalid.stderr)
-            invalid = subprocess.run([compiler, "-std=c++17", "-fsyntax-only", "-x", "c++", "-",
+            pulse = subprocess.run([compiler, "-std=c++17", "-fsyntax-only", "-x", "c++", "-",
                         "-I", str(ROOT / "test/mocks"), "-I", str(ROOT / "src"),
                         "-DWIO_E5_MINI_COMPACT_UNSUPPORTED_AGC=1", "-DMESH_WARM_RX_REFRESH=1"],
-                        input="#include <Dispatcher.h>\n", capture_output=True, text=True, timeout=10)
-            self.assertNotEqual(invalid.returncode, 0)
-            self.assertIn("cannot enable warm-maintenance features", invalid.stderr)
+                        input="#include <Dispatcher.h>\nstatic_assert(MESH_COMPACT_STM32_RADIO == 1, \"Compact storage retained\");\nstatic_assert(MESH_ENABLE_OLD_AGC == 0, \"Legacy timer remains optional\");\n", capture_output=True, text=True, timeout=10)
+            self.assertEqual(pulse.returncode, 0, pulse.stderr)
 
     def test_compact_crypto_and_unused_timer_wrappers_are_explicit(self):
         for macro in ("ED25519_COMPACT_SHA512=1", "ED25519_COMPACT_SCALAR=1",

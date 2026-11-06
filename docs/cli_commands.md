@@ -4332,18 +4332,19 @@ Normal RXPS automatically suspends the primary AGC timer on every board. The
 configured interval is retained; turning RXPS off starts a fresh interval.
 The optional `agc.old` timer remains an independent, explicitly enabled reset.
 
-On builds using the `CustomSX1262` driver, this saved interval schedules a
-same-channel RXPS pulse. This includes ESP32, nRF52 and RP2040 boards in every
-role, and the SX1262 backend of startup-detected radio builds. The existing
+On builds using the `CustomSX1262`, `CustomSX1268`, `CustomLLCC68` or
+`CustomSTM32WLx` driver, this saved interval schedules a same-channel RXPS
+pulse. This includes ESP32, nRF52, RP2040 and STM32WL boards in every role,
+and the supported SX126x backend of startup-detected radio builds. The existing
 value, four-second rounding and adaptive
 scheduling are retained. It does not retune, calibrate, change gain or reset
 the noise-floor cache. Completing the hardware sleep/wake sequence is not proof
 of an analog AGC reset or a sensitivity improvement. The build setting
 `MESH_WARM_RX_REFRESH=0` explicitly retains the previous primary method.
 Other transceiver drivers retain their own maintenance implementation; storing
-an interval does not imply that their hardware supports this SX1262 pulse.
+an interval does not imply that their hardware supports this SX126x pulse.
 
-The SX1262 primary path performs one asynchronous RXPS pulse. It requires
+The SX126x primary path performs one asynchronous RXPS pulse. It requires
 continuous primary LoRa RX, with `radio.rxps` off. During dual-profile scanning,
 it leases one stable primary visit and resumes the overdue secondary visit
 afterward. It does
@@ -4368,6 +4369,8 @@ This second timer is independent of the primary interval, available on boards
 with a full-reset implementation, RAM-only and **disabled after every reboot**.
 On compact Wio-E5/STM32WL profiles it is omitted by default to preserve flash
 headroom; `get agc.old` and `set agc.old` return `Error: unsupported` there.
+Their primary pulse and cached pulse diagnostics remain available. Ordinary
+RXPS policy can remain unsupported independently of this periodic pulse.
 Build with `MESH_ENABLE_OLD_AGC=1` to opt in when the image fits. Other profiles
 enable this capability by default; `MESH_ENABLE_OLD_AGC=0` omits it. This choice
 does not change the primary AGC interval or its hardware-specific method. Enabling it
@@ -4386,7 +4389,7 @@ oscillator delay rather than a fixed board duration. On the V4 with a 1600 us
 TCXO delay, the compensated request is 3116 us (33 RTC ticks after transition
 compensation). This does not establish improved sensitivity or reception.
 
-With radio2 enabled, supported SX1262 firmware admits a pulse only during an idle,
+With radio2 enabled, supported SX126x firmware admits a pulse only during an idle,
 unchanged primary-profile visit. The scanner pauses until checked RX reentry or
 completed-packet handoff finishes, then resumes the original scan deadline.
 This periodically extends the secondary profile's absence; it is a best-effort

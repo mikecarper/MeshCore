@@ -1,4 +1,5 @@
 #pragma once
+#define RADIOLIB_NC 0xFFFFFFFFUL
 #include "../sx126x_rxps_pulse_commands/RadioLib.h"
 #define RADIOLIB_ERR_WRONG_MODEM (-20)
 #define RADIOLIB_ERR_CHIP_NOT_FOUND (-2)
