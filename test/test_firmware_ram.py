@@ -114,6 +114,7 @@ int main() { return 0; }
             cpp.write_text(program)
             subprocess.run(["g++", "-std=c++17", "-fsyntax-only", "-I", str(ROOT / "src"),
                             "-DMESH_W12_PRAM_EXPERIMENT=1", "-DMESH_ENABLE_LR2021_AUTO_XTRIM=1",
+                            "-DMESH_W12_PRAM_SEQ_TX_LAB=1",
                             "-DWITH_UDP_BRIDGE=1", str(cpp)], check=True, timeout=30)
         self.assertLessEqual(32 * 328 + 4 * 32 * (4 + 1 + 4) + 32 * 8 + 124 + 46 * 16, 12800)
         self.assertLessEqual(16 * 328 + 3 * 16 * (4 + 1 + 4) + 124 + 26 * 16, 6400)
