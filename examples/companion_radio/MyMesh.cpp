@@ -1,5 +1,6 @@
 #include <helpers/CLIReplyText.h>
 #include <helpers/HardwareCommand.h>
+#include <helpers/AGCMaintenanceCLI.h>
 #include <helpers/ConfigCapabilities.h>
 #include <helpers/BrowserRadioDefaults.h>
 #include <helpers/radiolib/RadioPowerLimits.h>
@@ -9038,6 +9039,7 @@ void MyMesh::servicePendingTxPower() {
 }
 
 bool MyMesh::applyAndSaveFemRxGain(bool enabled) {
+  if(_radio && _radio->isAGCMaintenancePending()) return false;
   // Binary Companion setters and WebConfig also enter through this helper.
   // Do not alter an external FEM while the Morse transmitter owns it.
   if (_radio && (_radio->isMorseTxActive() || _radio->isMorseRxActive())) return false;
@@ -11167,7 +11169,7 @@ static bool isCompanionRadioPrefsCommand(const char* command) {
   static const char* const exact_commands[] = {
     "get radio", "get freq", "get af", "get dutycycle", "get tx",
     "get rxdelay", "get path.hash.mode", "get multi.acks",
-    "get txdelay", "get direct.txdelay", "get int.thresh", "get agc.reset.interval",
+    "get txdelay", "get direct.txdelay", "get int.thresh", "get agc.reset.interval", "get agc",
     "get radio.rxps.status"
   };
   for (const char* candidate : exact_commands) {
@@ -11177,7 +11179,7 @@ static bool isCompanionRadioPrefsCommand(const char* command) {
   static const char* const set_prefixes[] = {
     "set radio ", "set af ", "set dutycycle ", "set rxdelay ",
     "set path.hash.mode ", "set multi.acks ", "set txdelay ",
-    "set direct.txdelay ", "set int.thresh ", "set agc.reset.interval "
+    "set direct.txdelay ", "set int.thresh ", "set agc.reset.interval ", "set agc "
   };
   for (const char* prefix : set_prefixes) {
     if (strncmp(command, prefix, strlen(prefix)) == 0) return true;
@@ -11350,6 +11352,10 @@ bool MyMesh::handleCommand(const char* command, uint32_t sender_timestamp,
   if (command == NULL || reply == NULL) return false;
   size_t reply_capacity = 160;
   while (*command == ' ' || *command == '\t') command++;
+  if(_radio && _radio->isAGCMaintenancePending() && strncmp(command,"get ",4)!=0 && strcmp(command,"ver")!=0) {
+    mesh::cli::formatError(reply,reply_capacity,"radio maintenance pending; retry shortly");return true;
+  }
+
 
 #if COMPANION_FEATURE_DIRECT_OTA_ADMIN
   if (handleDirectOtaCommand(command, sender_timestamp, reply, reply_capacity)) return true;
@@ -11620,6 +11626,9 @@ bool MyMesh::handleCommand(const char* command, uint32_t sender_timestamp,
     }
     return true;
   }
+
+  if (mesh::handleAGCMaintenanceCommand(_radio,command,
+          ((uint32_t)_prefs.agc_reset_interval)*4,reply,reply_capacity)) return true;
 
   if (isCompanionRadioPrefsCommand(command)) {
     const float previous_af = _prefs.airtime_factor;

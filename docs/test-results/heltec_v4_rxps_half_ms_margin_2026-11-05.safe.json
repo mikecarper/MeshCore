@@ -1,0 +1,391 @@
+{
+  "application_sha256": "90e99399a043ad80297eeb6f9cfa52579478bcc244c2d8137754349caacab055",
+  "build_passed": true,
+  "closing": {
+    "both_original_observer_watchdog_minutes_restored": 5,
+    "cleanup_proof_sha256": "cf8adc965725104e28eae895b446b9ada1222fee7e921f0349df3b89199749bf",
+    "cold_lora_ssh_passed": true,
+    "cold_lora_ssh_seconds": 125.926,
+    "helper_original_mode_restored": "0644",
+    "lan_ssh_fallback": false,
+    "manifest_sha256": "37d415a359126e9e9aa35defc7461f7ec39c96bd4d539563656a87454ac3365d",
+    "owned_reservation_removed": true,
+    "post_lora_proof_sha256": "d90933650efe6530cbedc8adb53708830e4a0f4ccff9e633ee04bb067b548df4",
+    "receiver_windows": 480,
+    "recovery_services_and_owners_preserved": true,
+    "source_transmissions": 240,
+    "unknown_windows": 0
+  },
+  "common_buffer_us": 500,
+  "date_local": "2026-11-05",
+  "hardware_scope": "Two standard V4.3 Keymind candidates and two V4.3 reference receivers; filtered V4.2 excluded",
+  "host_test_groups_passed": 65,
+  "kind": "heltec_v43_shared_half_millisecond_rxps_margin_validation",
+  "limitations": [
+    "GPIO/software timing does not measure calibrated RF outage or analog AGC state.",
+    "The full operation includes about119.563ms of receive listening; it is not all receive downtime.",
+    "Pair AB initial OFF had three prior quiet cycles; pair CD initial OFF followed a fresh normalized boot.",
+    "One completion per pair straddled ending getters/transition; five per pair were counted within middle status/timing snapshots.",
+    "OFF-after can retain gain/history; this is not an isolated reversible causal effect.",
+    "These are fixed board assignments in an uncontrolled antenna environment, not a sensitivity threshold or crossover study.",
+    "RSSI and cached noise-floor offsets remain; packet delivery is the practical comparison.",
+    "Only the existing V4 pulse backend was hardware-qualified; other timing clocks have arithmetic tests, not new hardware qualification."
+  ],
+  "ordinary_rxps_levels_changed": false,
+  "pairs": [
+    {
+      "analysis_sha256": "c5c2a911f585a641e4e75fbcb5338de2576d866c02798576a03c99d9708c9c44",
+      "pair": "AB",
+      "pulse": {
+        "failures": 0,
+        "final_completed": 9,
+        "forced_wakes": 0,
+        "full_operation_us": {
+          "maximum": 127523,
+          "minimum": 126826
+        },
+        "initial_completed": 3,
+        "new_completed": 6,
+        "recovery_count": 0,
+        "sampled_busy_us": {
+          "maximum": 3069,
+          "minimum": 3041
+        }
+      },
+      "raw_proof_sha256": "79ea3bd8aa439789e3ccc73bb564e8f249ddfec9d7079421979ae1921fb983fb",
+      "receiver_windows": 240,
+      "source_transmissions": 120,
+      "stages": [
+        {
+          "name": "off-before",
+          "receivers": {
+            "agessaman": {
+              "cached_noise_floor_ready_dbm": {
+                "maximum": -57,
+                "median": -66.0,
+                "minimum": -72
+              },
+              "confirmed_received": 33,
+              "packet_rssi_dbm": {
+                "maximum": -36,
+                "median": -37,
+                "minimum": -42
+              },
+              "packet_snr_db": {
+                "maximum": 3.5,
+                "median": 3.0,
+                "minimum": -4.75
+              },
+              "receiver_error_delta": 5,
+              "transmitted": 40
+            },
+            "keymind": {
+              "cached_noise_floor_ready_dbm": {
+                "maximum": -53,
+                "median": -59.0,
+                "minimum": -60
+              },
+              "confirmed_received": 37,
+              "packet_rssi_dbm": {
+                "maximum": -31,
+                "median": -31,
+                "minimum": -43
+              },
+              "packet_snr_db": {
+                "maximum": 5.0,
+                "median": 4.5,
+                "minimum": 2.5
+              },
+              "receiver_error_delta": 3,
+              "transmitted": 40
+            }
+          }
+        },
+        {
+          "name": "pulse-60s",
+          "receivers": {
+            "agessaman": {
+              "cached_noise_floor_ready_dbm": {
+                "maximum": -52,
+                "median": -66.0,
+                "minimum": -67
+              },
+              "confirmed_received": 35,
+              "packet_rssi_dbm": {
+                "maximum": -36,
+                "median": -37,
+                "minimum": -42
+              },
+              "packet_snr_db": {
+                "maximum": 5.0,
+                "median": 3.25,
+                "minimum": 2.5
+              },
+              "receiver_error_delta": 3,
+              "transmitted": 40
+            },
+            "keymind": {
+              "cached_noise_floor_ready_dbm": {
+                "maximum": -54,
+                "median": -59.0,
+                "minimum": -60
+              },
+              "confirmed_received": 40,
+              "packet_rssi_dbm": {
+                "maximum": -31,
+                "median": -32.0,
+                "minimum": -38
+              },
+              "packet_snr_db": {
+                "maximum": 5.25,
+                "median": 4.5,
+                "minimum": 3.25
+              },
+              "receiver_error_delta": 0,
+              "transmitted": 40
+            }
+          }
+        },
+        {
+          "name": "off-after",
+          "receivers": {
+            "agessaman": {
+              "cached_noise_floor_ready_dbm": {
+                "maximum": -57,
+                "median": -66.0,
+                "minimum": -70
+              },
+              "confirmed_received": 35,
+              "packet_rssi_dbm": {
+                "maximum": -36,
+                "median": -37,
+                "minimum": -40
+              },
+              "packet_snr_db": {
+                "maximum": 5.25,
+                "median": 3.5,
+                "minimum": 2.75
+              },
+              "receiver_error_delta": 5,
+              "transmitted": 40
+            },
+            "keymind": {
+              "cached_noise_floor_ready_dbm": {
+                "maximum": -54,
+                "median": -59.0,
+                "minimum": -60
+              },
+              "confirmed_received": 40,
+              "packet_rssi_dbm": {
+                "maximum": -31,
+                "median": -32.0,
+                "minimum": -42
+              },
+              "packet_snr_db": {
+                "maximum": 5.25,
+                "median": 4.25,
+                "minimum": 1.75
+              },
+              "receiver_error_delta": 0,
+              "transmitted": 40
+            }
+          }
+        }
+      ],
+      "unknown_windows": 0
+    },
+    {
+      "analysis_sha256": "1c3fa2868df734ed18b2c057d20064fe3e2da871dc1b9723a2e1eba457572abe",
+      "pair": "CD",
+      "pulse": {
+        "failures": 0,
+        "final_completed": 6,
+        "forced_wakes": 0,
+        "full_operation_us": {
+          "maximum": 126257,
+          "minimum": 126050
+        },
+        "initial_completed": 0,
+        "new_completed": 6,
+        "recovery_count": 0,
+        "sampled_busy_us": {
+          "maximum": 3082,
+          "minimum": 3055
+        }
+      },
+      "raw_proof_sha256": "e9f18ff6d1ad99a51709c517441f3568f3658a77a9520b0afd3c8157c7c12b78",
+      "receiver_windows": 240,
+      "source_transmissions": 120,
+      "stages": [
+        {
+          "name": "off-before",
+          "receivers": {
+            "agessaman": {
+              "cached_noise_floor_ready_dbm": {
+                "maximum": -91,
+                "median": -91.0,
+                "minimum": -91
+              },
+              "confirmed_received": 25,
+              "packet_rssi_dbm": {
+                "maximum": -42,
+                "median": -43,
+                "minimum": -44
+              },
+              "packet_snr_db": {
+                "maximum": 5.0,
+                "median": 3.5,
+                "minimum": 2.5
+              },
+              "receiver_error_delta": 10,
+              "transmitted": 40
+            },
+            "keymind": {
+              "cached_noise_floor_ready_dbm": {
+                "maximum": -46,
+                "median": -60.0,
+                "minimum": -61
+              },
+              "confirmed_received": 25,
+              "packet_rssi_dbm": {
+                "maximum": -43,
+                "median": -46,
+                "minimum": -47
+              },
+              "packet_snr_db": {
+                "maximum": 4.25,
+                "median": 2.25,
+                "minimum": -11.5
+              },
+              "receiver_error_delta": 10,
+              "transmitted": 40
+            }
+          }
+        },
+        {
+          "name": "pulse-60s",
+          "receivers": {
+            "agessaman": {
+              "cached_noise_floor_ready_dbm": {
+                "maximum": -91,
+                "median": -91.0,
+                "minimum": -91
+              },
+              "confirmed_received": 31,
+              "packet_rssi_dbm": {
+                "maximum": -41,
+                "median": -43,
+                "minimum": -44
+              },
+              "packet_snr_db": {
+                "maximum": 4.75,
+                "median": 3.25,
+                "minimum": 2.0
+              },
+              "receiver_error_delta": 6,
+              "transmitted": 40
+            },
+            "keymind": {
+              "cached_noise_floor_ready_dbm": {
+                "maximum": -55,
+                "median": -59.0,
+                "minimum": -64
+              },
+              "confirmed_received": 38,
+              "packet_rssi_dbm": {
+                "maximum": -45,
+                "median": -46.0,
+                "minimum": -49
+              },
+              "packet_snr_db": {
+                "maximum": 3.75,
+                "median": 2.75,
+                "minimum": -19.5
+              },
+              "receiver_error_delta": 0,
+              "transmitted": 40
+            }
+          }
+        },
+        {
+          "name": "off-after",
+          "receivers": {
+            "agessaman": {
+              "cached_noise_floor_ready_dbm": {
+                "maximum": -91,
+                "median": -91.0,
+                "minimum": -91
+              },
+              "confirmed_received": 28,
+              "packet_rssi_dbm": {
+                "maximum": -43,
+                "median": -43.0,
+                "minimum": -44
+              },
+              "packet_snr_db": {
+                "maximum": 4.75,
+                "median": 3.25,
+                "minimum": 2.0
+              },
+              "receiver_error_delta": 5,
+              "transmitted": 40
+            },
+            "keymind": {
+              "cached_noise_floor_ready_dbm": {
+                "maximum": -55,
+                "median": -59.0,
+                "minimum": -61
+              },
+              "confirmed_received": 37,
+              "packet_rssi_dbm": {
+                "maximum": -45,
+                "median": -46,
+                "minimum": -49
+              },
+              "packet_snr_db": {
+                "maximum": 4.25,
+                "median": 2.75,
+                "minimum": 1.25
+              },
+              "receiver_error_delta": 2,
+              "transmitted": 40
+            }
+          }
+        }
+      ],
+      "unknown_windows": 0
+    }
+  ],
+  "quiet_cycles_passed": 3,
+  "reference_commit": "d664d89df66bdacc1319900a2e2d152fa31b9dc9",
+  "schema": 1,
+  "settings": {
+    "bandwidth_khz": 500,
+    "coding_rate_denominator": 5,
+    "fem": "on during comparison",
+    "frequency_mhz": 904.525,
+    "full_rxps_mode": "off",
+    "keymind_candidate_controls": {
+      "buffering": "normal",
+      "cpu_mhz": 160,
+      "spi_hz": 8000000
+    },
+    "legacy_reset_interval": 0,
+    "preamble_symbols": 16,
+    "reference_cpu_spi_queried_or_controlled": false,
+    "source": "XIAO ESP32-S3",
+    "source_requested_tx_dbm": -9,
+    "source_tx_per_stage": 40,
+    "spreading_factor": 12,
+    "stage_sequence": [
+      "off-before",
+      "pulse-60s",
+      "off-after"
+    ]
+  },
+  "source_commit": "fb8915f665f86a9bf5a684bd3958cb903482dace",
+  "total_natural_pulse_completions": 15,
+  "unsupported_pulse_families_enabled": false,
+  "v4_sleep_request_us": 3116,
+  "v4_sleep_ticks": 33
+}

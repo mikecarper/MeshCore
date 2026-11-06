@@ -4286,11 +4286,65 @@ hardware busy-result count.
 **Usage:**
 - `get agc.reset.interval`
 - `set agc.reset.interval <value>`
+- `get agc` / `set agc <value>` (aliases)
 
 **Parameters:**
 - `value`: Interval in seconds, 0-1020, rounded down to a multiple of 4 (17 becomes 16). 0 to disable.
 
+Companion's existing primary text parser retains its 0-255-second input range;
+the short alias uses that same parser and saved setting.
+
 **Default:** `0.0`
+
+On Heltec V4 builds based on `Heltec_lora32_v4`, this saved interval schedules
+a same-channel RXPS pulse. The existing value, four-second rounding and adaptive
+scheduling are retained. It does not retune, calibrate, change gain or reset
+the noise-floor cache. Completing the hardware sleep/wake sequence is not proof
+of an analog AGC reset or a sensitivity improvement. V4 R8 and other board
+families retain the existing reset method unless explicitly built with the
+legacy-named `MESH_WARM_RX_REFRESH=1` flag on a supported SX1262 wrapper.
+
+The opted-in V4 primary path now performs one asynchronous RXPS pulse. It
+requires continuous primary LoRa RX, with `radio.rxps` and `radio2` off. It does
+not require radio2 warm, FS or packet-cache shortcuts. An admitted pulse stages
+ordinary LoRa duty-cycle RX, observes a post-arm BUSY low/high/natural-low
+sequence, checks RC standby and RTC cleanup, and checks continuous RX reentry.
+The saved interval and its existing scheduler remain unchanged. Shared recovery
+watchdogs still use their existing full-reset path. A packet, TX, BUSY or another
+radio owner defers admission; an unadmitted deferral retries after 250 ms. A
+consumed failed attempt retains its failure diagnostics and normal interval.
+
+An independent full-reset timer remains available through the Repeater, Room
+Server, Sensor and Companion text parsers:
+
+- `get agc.old`
+- `set agc.old <seconds>`: `0` disables it; `1-86400` enables it.
+- `set agc.old 600` enables one full reset every ten minutes.
+
+This second timer is RAM-only and **disabled after every reboot**. Enabling it
+does not change the saved primary interval. Its first deadline starts when it
+is enabled; it does not use adaptive escalation or TX postponement. If both
+timers are due, the old reset runs first and the primary pulse is deferred.
+
+`get agc.status`, `get agc.timing`, `get agc.recovery`, `get agc.pulse`,
+`get agc.sleep` and `get agc.checks` are cached diagnostics. Successful completion
+requires an observed cycle plus checked RTC cleanup, SetRx and RX-mode status.
+The total timing includes the initial listening window. The sleep timing is a
+sampled BUSY-high span, not an independently measured RF outage. Long or missing
+observations fail the witness check. The default adds 500 us above the radio's
+one-tick minimum, rounded up to whole timer ticks. It uses the driver's resolved
+oscillator delay rather than a fixed board duration. On the V4 with a 1600 us
+TCXO delay, the compensated request is 3116 us (33 RTC ticks after transition
+compensation). This does not establish improved sensitivity or reception.
+
+Explicit bench builds with `MESH_RXPS_PULSE_LAB=1` also expose local
+`get agc.test.sleep_us` and `set agc.test.sleep_us 6554|4000|3116|3000|2616`. The selector is
+RAM-only, changes no saved interval, and cannot change an active pulse. Set the
+primary interval to zero and wait for `pending=0` before changing it. Normal
+builds expose no sleep-duration setter. The legacy `get agc.old.status`,
+`.timing` and `.errors` pages, including their `agc.reset.*` compatibility names,
+require `MESH_AGC_TIMING_DIAGNOSTICS=1`. Separate getter pages are non-atomic.
+See [RXPS receive pulse](../lab/rxps_pulse/README.md) for witness and timing limits.
 
 With device `powersaving` on and a nonzero AGC interval, Companion, Repeater,
 Room Server, and Sensor firmware use adaptive reset scheduling. The saved
@@ -4306,7 +4360,8 @@ current adaptive interval. `0` disables periodic AGC maintenance even with
 power saving on. With power saving off, fixed-interval behavior is retained.
 This follows device `powersaving`, independently of LoRa `radio.rxps`.
 
-Adaptive scheduling does not treat a quiet mesh, strong packets, a stable
+For the existing reset method on other builds, adaptive scheduling does not
+treat a quiet mesh, strong packets, a stable
 noise floor, or a successful transmission as proof of full receiver sensitivity.
 TX cannot continually postpone adaptive maintenance. Pending RX/TX, a BUSY
 chip outside known RX duty cycling, carrier/Morse ownership, and an active
