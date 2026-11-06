@@ -2153,7 +2153,10 @@ function pair(packageName, combined = true) {
 const migrationAssets = Object.values(currentControls.partitionMigrations).flatMap(name => pair(name));
 function migrationCatalog(assets = migrationAssets, metadata = currentControls, utilityOverrides = {}) {
   return picker.buildCatalog([
-    release(migrationFamily, '2026-09-13T00:00:00Z', currentAssets),
+    release(migrationFamily, '2026-09-13T00:00:00Z', currentAssets.map(item => ({
+      ...item, browser_download_url: 'https://github.com/mikecarper/MeshCore/releases/download/' +
+        migrationFamily + '/' + item.name,
+    }))),
     release(utilityTag, '2026-09-13T00:00:01Z', assets, utilityOverrides),
   ], metadata);
 }
@@ -2171,6 +2174,16 @@ function linksFor(profile) { return picker.migrationLinks(profile, profile.files
 const expandedWithMigration = withMigrations.profiles.find(profile => profile.target === expandedEsp32.target);
 assert.strictEqual(expandedWithMigration.migrationPackage, 'ebyte-eora-s3-repeater');
 assert.deepStrictEqual(linksFor(expandedWithMigration), directLinks('ebyte-eora-s3-repeater'));
+const alteredFull = {...expandedWithMigration, files: expandedWithMigration.files.map(file => ({
+  ...file, name: file.name.replace(/\.bin$/, '-cafebeef.bin'),
+}))};
+assert.strictEqual(picker.migrationAssetsForProfile(alteredFull, []), null,
+  'A corrected Full binary must not inherit migration assets bound to earlier release bytes');
+const misplacedFull = {...expandedWithMigration, files: expandedWithMigration.files.map(file => ({
+  ...file, url: file.url.replace('/mikecarper/', '/someone-else/'),
+}))};
+assert.strictEqual(picker.migrationAssetsForProfile(misplacedFull, []), null,
+  'A Full binary from another release path must not receive this migration');
 const directTarget = expandedEsp32.target;
 const directPackage = 'ebyte-eora-s3-repeater';
 function directMigrationLinks(catalog) {
@@ -2192,9 +2205,11 @@ assert.deepStrictEqual(linksFor(g2Selected[0]), [],
 for (const [target, packageName] of Object.entries(currentControls.partitionMigrations)) {
   for (const suffix of ['-full-logging', '-full-usb-wifi']) {
     const fullTarget = target + suffix;
+    const fullName = fullTarget + '-' + migrationFamily + '.bin';
     const profile = Object.assign(picker.parseTargetProfile(fullTarget), {
       releaseFamily: migrationFamily, controls: {platform: 'ESP32_PLATFORM'},
-      files: [{releaseUrl: 'https://github.com/mikecarper/MeshCore/releases/tag/' + migrationFamily}],
+      files: [{name: fullName, installKind: 'bin', url: 'https://github.com/mikecarper/MeshCore/releases/download/' + migrationFamily + '/' + fullName,
+        releaseUrl: 'https://github.com/mikecarper/MeshCore/releases/tag/' + migrationFamily}],
     });
     profile.migrationPackage = picker.migrationPackageForProfile(profile, currentControls.partitionMigrations);
     const rows = migrationAssets.map(item => ({name: item.name, url: item.browser_download_url,

@@ -2073,7 +2073,16 @@
 
   function migrationAssetsForProfile(profile, rows) {
     if (!profile.migrationPackage) return null;
-    const releaseUrl = migrationReleaseUrl(profile, profile.files[0]);
+    const full = canonicalAsset(profile.files, "bin");
+    const expectedFull = profile.target + "-" +
+      (full && full.otaPackaged ? "ota-" : "") + profile.releaseFamily + ".bin";
+    // Migration metadata is bound to the Full image built for this exact
+    // release. A corrected image with a different source suffix needs its own
+    // migration release; matching only the visible board name is not enough.
+    if (!full || full.name !== expectedFull || !full.releaseUrl ||
+        full.url !== full.releaseUrl.replace("/releases/tag/", "/releases/download/") +
+          "/" + encodeURIComponent(full.name)) return null;
+    const releaseUrl = migrationReleaseUrl(profile, full);
     if (!releaseUrl) return null;
     const prefix = profile.migrationPackage + "-" + profile.releaseFamily + "-";
     const releaseTag = "utility-" + profile.releaseFamily;
