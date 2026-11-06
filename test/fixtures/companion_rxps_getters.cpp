@@ -1,6 +1,7 @@
 #include <assert.h>
 #include <helpers/CLICommandUtils.h>
 #include <helpers/ConfigCapabilities.h>
+#include <helpers/RadioMaintenanceCLI.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <string.h>
@@ -26,7 +27,9 @@ struct Profiles {
 struct Radio {
   bool supported = true;
   bool fallback = false;
+  bool maintenance_pending = false;
   unsigned fallback_queries = 0;
+  bool isAGCMaintenancePending() const { return maintenance_pending; }
   bool supportsRxPowerSaving() const { return supported; }
   bool supportsRxPowerSavingRfRxDisable() const { assert(false); return false; }
   bool isRxPowerSavingContinuousFallback() { ++fallback_queries; return fallback; }
@@ -57,6 +60,7 @@ struct Output {
 };
 
 struct MyMesh {
+  Radio* _radio = &radio_driver;
   Prefs _prefs;
   Profiles _radio_profiles;
   UI* _ui = nullptr;
@@ -159,6 +163,12 @@ int main() {
 #endif
   check(mesh, false, true);
   check(mesh, true, true);
+  // These retained-state getters remain available during maintenance. Execute
+  // the production guard rather than removing it from the extracted entry.
+  radio_driver.maintenance_pending = true;
+  check(mesh, false, true);
+  check(mesh, true, true);
+  radio_driver.maintenance_pending = false;
   radio_driver.supported = false;
   check(mesh, false, true);
   check(mesh, true, true);
