@@ -2964,7 +2964,7 @@ try {
   const missingContainer = new RuntimeElement('section');
   const missingProfile = migrationCatalog(withoutDirectAssets).profiles.find(profile => profile.target === directTarget);
   picker.renderProfileCard(missingContainer, missingProfile, missingProfile.files[0], 'bin', {}, {});
-  assert(missingContainer.textContent.includes('Expansion images are unavailable for this board and release.'));
+  assert(missingContainer.textContent.includes('Standalone expansion images are unavailable for this board and release.'));
   assert(!descendants(missingContainer, node => node.tagName === 'A').some(node => /migration\.zip/.test(node.href || '')));
   const card = new RuntimeElement('article');
   const changes = [];

@@ -29,6 +29,8 @@ follow the details below.
 
 Expansion images are specific to a board, role, and release. The picker offers
 standalone downloads only when they are available for that exact selection.
+A previous release may contain only archive-based migration files; the picker
+will show standalone downloads as unavailable for that release.
 A normal app update does not need a partition migration when the installed
 layout already matches.
 

@@ -2694,8 +2694,8 @@
     }
     if (migrationReleaseUrl(profile, asset) && migrationActions.length < 2) {
       actions.appendChild(createElement("span", migrationActions.length
-        ? "The other expansion format is unavailable for this release."
-        : "Expansion images are unavailable for this board and release."));
+        ? "The other standalone expansion format is unavailable for this release."
+        : "Standalone expansion images are unavailable for this board and release."));
     }
     card.appendChild(actions);
 
