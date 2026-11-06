@@ -7,6 +7,7 @@
   let link, session, info, expectedSigner, activeTask, preparing, chainPrepared, chainConfig;
   let contacts=[], targetLocked=false, contactKey='';
   let catalogFile=null, catalogBaseFile=null, catalogDest=null, catalogVersion='', catalogInstallSupported=false, catalogCandidates=[], catalogGeneration=0;
+  let preservedCount=0, preservedExportSnapshot=null, preservedExportToken=null, preservedExportInterrupted=false;
   const log = text => { $('status').textContent += String(text) + '\n'; $('status').scrollTop = $('status').scrollHeight; };
   const fail = error => log('Error: ' + (error?.message || error));
   const bytes = (file, limit = 64 * 1024 * 1024) => {
@@ -31,11 +32,14 @@
   const editable = ['source', 'key', 'acl', 'relays', 'candidates', 'snr', 'age', 'password', 'file', 'base', 'image', 'signer',
     'chain-files', 'chain-attest', 'chain-objective', 'chain-preamble', 'chain-minutes'];
   function busy(active) {
-    if(link && $('source').value==='companion' && (link.guard || link.authenticated || link.serving))targetLocked=true;
+    if(link && $('source').value==='companion' && (link.guard || link.authenticated || link.investigationEnabled || link.investigationAuthenticated || link.serving))targetLocked=true;
     for (const name of editable) $(name).disabled = active || (!!link && (name === 'source' || name === 'acl' || name === 'relays' || (name === 'key' && ($('source').value === 'repeater' || targetLocked))));
     $('contact-search').disabled = active || !link || $('source').value !== 'companion' || targetLocked;
     updateContactButtons();
     $('investigate').disabled = active || !link;
+    $('legacy-investigate').disabled = active || !link;
+    $('legacy-inbox-export').disabled = active || !preservedCount;
+    $('legacy-inbox-clear').disabled = active || !preservedCount || !preservedExportSnapshot;
     $('firmware-role').disabled = active || !link;
     $('firmware-choice').disabled = active || !link;
     $('firmware-download').disabled = active || !link || !$('firmware-choice').value;
@@ -48,8 +52,54 @@
   }
   function invalidate() { session = info = chainPrepared = chainConfig = null; $('transfer').disabled = true; $('resume').disabled = true;
     $('install').disabled = true; $('chain-run').disabled = true; $('chain-resume').disabled = true; }
+  function refreshPreservedMessages() {
+    if(typeof LoraOtaCompanion.preservedMessages!=='function')return;
+    try {
+      const saved=LoraOtaCompanion.preservedMessages();
+      preservedCount=saved.length;
+      if(preservedExportSnapshot && JSON.stringify(saved)!==preservedExportSnapshot) {
+        preservedExportSnapshot=null;preservedExportToken=null;preservedExportInterrupted=false;
+      }
+      $('legacy-inbox').hidden=!saved.length;
+      $('legacy-inbox-status').textContent=saved.length+' '+(saved.length===1?'message':'messages')+' saved in this browser.';
+      $('legacy-inbox-messages').textContent=saved.map(message=>{
+        const parts=[String(message.at||''),String(message.kind||'message')];
+        if(message.sender)parts.push('from '+message.sender);
+        if(message.channel!==undefined && message.channel!==null)parts.push('channel '+message.channel);
+        return parts.filter(Boolean).join(' · ')+'\n'+String(message.text||message.warning||'[Raw message included in download]');
+      }).join('\n\n');
+      $('legacy-inbox-export').disabled=!preservedCount || !!activeTask;
+      $('legacy-inbox-clear').disabled=!preservedCount || !preservedExportSnapshot || !!activeTask;
+    } catch(error) {
+      $('legacy-inbox').hidden=false;
+      $('legacy-inbox-status').textContent='Could not read messages saved in this browser: '+(error?.message||error);
+    }
+  }
+  $('legacy-inbox-export').addEventListener('click',()=>{
+    try {
+      const snapshot=LoraOtaCompanion.preservedSnapshot(), saved=snapshot.messages;
+      const url=URL.createObjectURL(new Blob([JSON.stringify(saved,null,2)],{type:'application/json'}));
+      const a=document.createElement('a');a.href=url;a.download='companion-saved-messages.json';document.body.appendChild(a);a.click();a.remove();
+      setTimeout(()=>URL.revokeObjectURL(url),30000);
+      preservedExportSnapshot=JSON.stringify(saved);
+      preservedExportToken=snapshot.token;
+      preservedExportInterrupted=saved.some(message=>message.kind==='interrupted');
+      $('legacy-inbox-status').textContent='Download started. Confirm it is saved before clearing these browser copies.';
+      $('legacy-inbox-clear').disabled=false;
+    } catch(error) { $('legacy-inbox-status').textContent='Could not download saved messages: '+(error?.message||error); }
+  });
+  $('legacy-inbox-clear').addEventListener('click',async()=>{
+    if(!preservedExportSnapshot || !confirm('Clear the saved browser copies, including interrupted or possibly lost message records? They cannot be restored to the Companion.'))return;
+    try {
+      await LoraOtaCompanion.clearPreservedMessages(preservedExportToken,preservedExportInterrupted);
+      preservedExportSnapshot=null;preservedExportToken=null;preservedExportInterrupted=false;refreshPreservedMessages();
+    } catch(error) { preservedExportSnapshot=null;preservedExportToken=null;preservedExportInterrupted=false;refreshPreservedMessages();$('legacy-inbox-status').textContent='Could not clear saved messages: '+(error?.message||error)+'. Download the current messages and try again.'; }
+  });
+  refreshPreservedMessages();
   function clearInvestigation() {
     $('investigation').hidden = true; $('investigation').textContent = '';
+    $('legacy-warning').hidden = true;
+    $('legacy-source-block').hidden = true;
     catalogGeneration++; catalogFile=null; catalogBaseFile=null; catalogDest=null; catalogVersion=''; catalogInstallSupported=false; catalogCandidates=[];
     $('firmware-role-wrap').hidden=true; $('firmware-role').value='';
     $('firmware-choice-wrap').hidden=true; $('firmware-choice').replaceChildren();
@@ -139,7 +189,7 @@
       $('contact-status').textContent = 'Connecting to radio…';
       if(companion)$('acl').checked=false;
       const direct = companion
-        ? new LoraOtaCompanion.CompanionTransport(port, {remoteTimeout:75000})
+        ? new LoraOtaCompanion.CompanionTransport(port, {remoteTimeout:75000, onPreserved:refreshPreservedMessages})
         : new LoraOtaSerial.RepeaterTransport(port, {knownRepeater:key, aclOnly:$('acl').checked, remoteTimeout:75000});
       link = relays.length ? new LoraOtaRoute.RoutedRepeaterTransport(direct, key, relays) : direct;
       await link.open();
@@ -222,7 +272,12 @@
       $('firmware-catalog-status').textContent=$('file').files[0] ? 'Using your selected firmware file. Matching downloads are also listed.' : 'Choose a matching firmware version to download.';
     }
   }
-  async function investigate() {
+  async function investigate(allowStandard = false) {
+    const standard = $('source').value==='companion' && link && link.otaSupported===false;
+    if(standard && !allowStandard && /^[0-9a-f]{64}$/i.test($('key').value.trim())) {
+      clearInvestigation(); invalidate(); $('legacy-warning').hidden=false;
+      return;
+    }
     clearInvestigation(); invalidate(); busy(true); $('inspect').disabled = true;
     const output = $('investigation'), replies = {};
     let target = '', complete = false, verified = false;
@@ -237,17 +292,33 @@
       ['Radio settings', 'get radio'], ['Radio power saving', 'get radio.rxps'],
       ['Install verification', 'ota installhash']
     ];
-    let next = 0;
+    let next = 0, allReplies = true;
     try {
       if (!link) throw Error('Connect a source radio first.');
       target = selectTarget().toLowerCase();
       const password = $('acl').checked ? '' : $('password').value;
-      await link.verifyPeer(target, password);
-      verified = true;
-      add('Identity: full public key verified (' + target.slice(0, 12).toUpperCase() + ')');
+      if(standard) {
+        add('Companion warning: this radio can investigate, but needs guarded OTA support before it can send an update.');
+        await link.enableStandardInvestigation();
+        await link.investigateVerifyPeer(target, password);
+      } else await link.verifyPeer(target, password);
+      verified = !standard || link.investigationVerified===true;
+      add(verified ? 'Identity: full public key verified (' + target.slice(0, 12).toUpperCase() + ')' :
+        'Identity not fully verified: this target does not support the full-key check. Results are diagnostics only; firmware selection and updates are disabled.');
+      if(standard) {
+        add('Account access: '+(link.investigationPermission||'unknown'));
+        add('Disconnect the Companion to choose another target.');
+      }
       for (; next < checks.length; next++) {
         const [label, command] = checks[next];
-        const reply = String(await link.remoteCommand(target, password, command)).trim();
+        let reply;
+        try { reply = String(await (standard ? link.investigateCommand(target, password, command) : link.remoteCommand(target, password, command))).trim(); }
+        catch(error) {
+          if(standard && !link.failure && error?.message==='Remote command timed out; result is unknown') {
+            allReplies=false; replies[command]=''; add(label+': Timed out; not checked'); continue;
+          }
+          throw error;
+        }
         replies[command] = reply;
         const normalized = reply.replace(/^>\s*/, '');
         if (command === 'ota installhash') {
@@ -261,14 +332,19 @@
         }
       }
       if (/\bqspi\b/i.test((replies['ota status'] || '') + ' ' + (replies['ota self'] || ''))) {
-        const qspi = String(await link.remoteCommand(target, password, 'ota qspi')).trim();
-        replies['ota qspi'] = qspi;
-        const normalized = qspi.replace(/^>\s*/, '');
-        add('External flash: ' + (!normalized || /^(?:err(?:or)?\b|unknown\b|unsupported\b)/i.test(normalized)
-          ? 'Unknown or unsupported (' + (normalized || 'empty response') + ')' : normalized));
+        try {
+          const qspi = String(await (standard ? link.investigateCommand(target, password, 'ota qspi') : link.remoteCommand(target, password, 'ota qspi'))).trim();
+          replies['ota qspi'] = qspi;
+          const normalized = qspi.replace(/^>\s*/, '');
+          add('External flash: ' + (!normalized || /^(?:err(?:or)?\b|unknown\b|unsupported\b)/i.test(normalized)
+            ? 'Unknown or unsupported (' + (normalized || 'empty response') + ')' : normalized));
+        } catch(error) {
+          if(!standard || link.failure || error?.message!=='Remote command timed out; result is unknown')throw error;
+          allReplies=false; replies['ota qspi']=''; add('External flash: Timed out; not checked');
+        }
       }
-      complete = true;
-      try {
+      complete = allReplies;
+      if(verified)try {
         catalogDest=LoraOtaChecks.destination(replies['ota status'],replies['ota self'],replies.ver);catalogVersion=replies.ver;
         if(catalogDest.nrf && !catalogDest.external && !catalogDest.sd)
           add('Update method: this target needs an in-place differential.');
@@ -282,13 +358,20 @@
         }else await discoverCatalog(role);
       } catch(error) {
         $('firmware-catalog-status').textContent='Could not select firmware automatically: '+(error?.message || error)+'. You can choose a file manually.';
-      }
+      } else $('firmware-catalog-status').textContent='Target identity is not fully verified; firmware selection and updates are disabled.';
     } catch (error) {
       add((verified ? 'Check interrupted: ' : 'Identity not verified: ') + (error?.message || error));
+      if(standard && link?.investigationEnabled)add('Disconnect the Companion before choosing another target or retrying the login.');
       for (; next < checks.length; next++) add(checks[next][0] + ': Not checked');
       fail(error);
     } finally {
-      add('Firmware compatibility: run the package check before transferring.');
+      if(standard) {
+        $('legacy-source-block').hidden=false;
+        const notice=' This Companion cannot send OTA updates until it has guarded OTA support.';
+        if(!$('firmware-catalog-status').textContent.includes(notice.trim()))$('firmware-catalog-status').textContent+=notice;
+        refreshPreservedMessages();
+      }
+      add(verified ? 'Firmware compatibility: run the package check before transferring.' : 'Firmware compatibility: not checked because the target identity was not fully verified.');
       ui.dispatchEvent(new CustomEvent('lora-ota-investigated', {detail:{target,replies,complete,verified}}));
       busy(false); $('inspect').disabled = !link;
     }
@@ -325,7 +408,11 @@
     invalidate(); busy(true); $('inspect').disabled = true;
     try {
       if (!link) throw Error('Connect a source radio first.');
-      selectTarget();
+      const targetKey=selectTarget(), password=$('acl').checked ? '' : $('password').value;
+      const standard=$('source').value==='companion' && link.otaSupported===false;
+      if(standard && (!link.investigationAuthenticated || link.investigationVerified!==true))throw Error('Run Investigate and verify the target’s full public key before checking firmware.');
+      const verify=()=>standard ? link.investigateVerifyPeer(targetKey,password) : link.verifyPeer(targetKey,password);
+      const remote=command=>standard ? link.investigateCommand(targetKey,password,command) : link.remoteCommand(targetKey,password,command);
       const file = catalogFile || $('file').files[0]; if (!file) throw Error('Choose a firmware .bin or .mota file.');
       const isFirmware = /\.(?:bin|zip)$/i.test(file.name);
       const baseFile = $('base').files[0] || (isFirmware ? catalogBaseFile : null);
@@ -337,12 +424,11 @@
       if (isFirmware) {
         if (expectedSigner) throw Error('A package created here is unsigned. Select a signed .mota file instead.');
         if (baseFile) {
-          const targetKey = $('key').value.trim(), password = $('acl').checked ? '' : $('password').value;
-          await link.verifyPeer(targetKey, password);
-          const status = await link.remoteCommand(targetKey, password, 'ota status');
-          const self = await link.remoteCommand(targetKey, password, 'ota self');
-          const bootloader = await link.remoteCommand(targetKey, password, 'get bootloader.ver');
-          const version = await link.remoteCommand(targetKey, password, 'ver');
+          await verify();
+          const status = await remote('ota status');
+          const self = await remote('ota self');
+          const bootloader = await remote('get bootloader.ver');
+          const version = await remote('ver');
           const destination = LoraOtaChecks.destination(status, self, version);
           const base = await firmwareBytes(baseFile, 4 * 1024 * 1024);
           const current = await MeshCoreMotaPackage.parseEndF(base);
@@ -353,7 +439,7 @@
           if (destination.nrf) {
             const layout = MeshCoreLoraDelta.nrfLayout(current.image);
             if (destination.external) {
-              const diagnostics = await link.remoteCommand(targetKey, password, 'ota qspi');
+              const diagnostics = await remote('ota qspi');
               const capacity = LoraOtaChecks.qspiCapacity(status, self, diagnostics, destination);
               deltaOptions = {mode:'in-place', runtimeStorage:'qspi', runtimeQspiApply:true, runtimeStorageBytes:capacity};
               inplacePlan = {storage:'qspi', app:layout.app, layoutEnd:layout.end};
@@ -384,6 +470,30 @@
       const targetImage = $('image').files[0];
       if (!info.isFull && !targetImage && !expectedImage) throw Error('Select the matching new .bin image for the differential package.');
       if (!expectedImage && targetImage) expectedImage = await firmwareBytes(targetImage);
+      if(standard) {
+        await verify();
+        const status=await remote('ota status'), self=await remote('ota self'), version=await remote('ver');
+        const dest=LoraOtaChecks.destination(status,self,version);
+        LoraOtaChecks.validate(info,dest,!!expectedSigner && info.signed);
+        LoraOtaChecks.validateInternalPlan(inplacePlan,info,status,self,dest,
+          inplacePlan?.storage==='qspi' ? await remote('ota qspi') : null);
+        if(!info.isFull && info.codecId===1)
+          LoraOtaChecks.confirmSequentialTarget(status,self,await remote('get bootloader.ver'));
+        if(info.signed) {
+          const trusted=await remote('ota key list');
+          if(!trusted.toLowerCase().split(/\s+/).includes(LoraOtaChecks.hex(info.signer.subarray(0,8))))
+            throw Error('The target does not list the supplied trusted signer; add it on the target first');
+        }
+        await LoraOtaSession.expectedBody(info,expectedImage);
+        const install=String(await remote('ota installhash')).trim().replace(/^>\s*/,'');
+        const supported=install==='ERR usage: ota installhash <64-hex-container-sha256>';
+        const warning='This Companion cannot send OTA updates until it has guarded OTA support.';
+        const result='Package matches the reported target hardware, version and image checks. '+
+          (supported?'Target verified installation is supported. ':'Target verified installation is not confirmed. ')+
+          'Source radio, queue and final transfer preflight were not checked. '+warning;
+        $('firmware-catalog-status').textContent=result; log(result); session=null;
+        return;
+      }
       const Session = link.relays?.length ? LoraOtaRoutedSession.RoutedSession : LoraOtaSession.DirectSession;
       session = new Session(link, $('key').value.trim(), $('acl').checked ? '' : $('password').value, info, {
         signerVerified:!!expectedSigner && info.signed, image:expectedImage, inplacePlan,
@@ -398,7 +508,11 @@
       if (dest.download === 'active') log('A matching transfer is in progress. Select Resume.');
       if (dest.download === 'ready') log('The matching package is ready to install.');
       if (dest.download === 'installed') log('The previously requested install is verified.');
-    } catch (error) { invalidate(); fail(error); }
+    } catch (error) {
+      invalidate(); fail(error);
+      if(link && $('source').value==='companion' && link.otaSupported===false)
+        $('firmware-catalog-status').textContent='Package check could not be completed: '+(error?.message||error)+'. This Companion cannot send OTA updates until it has guarded OTA support.';
+    }
     finally { preparing = null; busy(false); $('inspect').disabled = !link; }
   }
   async function transfer(resume) {
@@ -434,6 +548,7 @@
   })()));
   $('connect').addEventListener('click', () => run(connect()));
   $('investigate').addEventListener('click', () => run(investigate()));
+  $('legacy-investigate').addEventListener('click', () => run(investigate(true)));
   $('inspect').addEventListener('click', () => run(inspect()));
   $('find-route').addEventListener('click', () => run(findRoute()));
   $('transfer').addEventListener('click', () => run(transfer(false)));
