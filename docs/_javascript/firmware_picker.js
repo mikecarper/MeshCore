@@ -606,6 +606,9 @@
   function isHiddenLegacyProfile(profile) {
     const target = String(profile && profile.target || "");
     const lowerTarget = target.toLowerCase();
+    // Exact migration targets must stay selectable even when their ordinary
+    // firmware has a newer recommended hardware profile.
+    if (profile.migrationPackage) return false;
     return HIDDEN_PROFILE_HARDWARE.includes(profile.sourceHardware) ||
       HIDDEN_PROFILE_TARGETS.includes(target) ||
       // SolarXiao room installations use their onboard external-QSPI recipe.
@@ -771,8 +774,8 @@
   }
 
   function omitLegacyObserverCompatibilityProfiles(profiles) {
-    const targets = new Set((profiles || []).map(function (profile) {
-      return String(profile && profile.target || "").toLowerCase();
+    const targets = new Map((profiles || []).map(function (profile) {
+      return [String(profile && profile.target || "").toLowerCase(), profile];
     }));
 
     return (profiles || []).filter(function (profile) {
@@ -791,6 +794,13 @@
       const successor = target.replace(
         /_observer_mqtt_?(?=-full-usb-wifi$)/i, ""
       );
+      const other = targets.get(successor.toLowerCase());
+      if (successor !== target && other && (profile.migrationPackage || other.migrationPackage)) {
+        // These OTA identities are different even if runtime capabilities
+        // overlap; expose both so a deployed node gets its exact image.
+        profile.variant = "observer-identity";
+        return true;
+      }
       return successor === target || !targets.has(successor.toLowerCase());
     });
   }
@@ -939,6 +949,7 @@
 
   function omitConsolidatedProfiles(profiles) {
     return (profiles || []).filter(function (profile) {
+      if (profile.migrationPackage) return true;
       return !profiles.some(function (candidate) { return consolidationSuccessor(profile, candidate); });
     });
   }
@@ -1361,6 +1372,16 @@
       profile.files.sort(function (a, b) {
         return a.name.localeCompare(b.name);
       });
+      const exactMetadata = controlData && controlData.familyTag === profile.releaseFamily &&
+        controlData.profiles && controlData.profiles[profile.target];
+      if (exactMetadata) {
+        profile.migrationPackage = migrationPackageForProfile(
+          Object.assign({}, profile, { controls: exactMetadata }), controlData.partitionMigrations
+        );
+        if (profile.migrationPackage && profile.sourceHardware === "Station_G3_ESP32_logging") {
+          profile.variant = "logging-identity";
+        }
+      }
       if (profile.t114Preview) {
         const metadata = controlsForRelease(controlData, profile.files[0].releaseTag);
         profile.controls = metadata && metadata.profiles[profile.target];
@@ -1914,6 +1935,8 @@
     if (!value || value === "default") return "Default";
     if (value === "rs232-bridge") return "RS-232 bridge";
     if (value === "mqtt-observer") return "Wi-Fi MQTT observer";
+    if (value === "observer-identity") return "Observer OTA identity";
+    if (value === "logging-identity") return "Logging OTA identity";
     const tokenLabels = {
       ps: "Power save",
       rx: "RX",

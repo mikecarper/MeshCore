@@ -2162,6 +2162,75 @@ function migrationCatalog(assets = migrationAssets, metadata = currentControls, 
   ], metadata);
 }
 const withMigrations = migrationCatalog();
+// Publishing an exact Full image for an older OTA target must not hide it
+// behind a newer observer or display-consolidated profile.
+const exactMigrationTargets = [
+  'Station_G2_repeater-full-usb-wifi',
+  'Station_G2_room_server-full-usb-wifi',
+  'heltec_v4_expansionkit_repeater-full-usb-wifi',
+  'heltec_rc32_without_display_repeater-full-usb-wifi',
+  'heltec_rc32_without_display_room_server-full-usb-wifi',
+  'heltec_rc32_without_display_sensor-full-logging',
+  'Station_G3_ESP32_logging_repeater-full-usb-wifi',
+  'Station_G2_logging_repeater-full-usb-wifi',
+];
+const exactControls = {...currentControls, profiles: {...currentControls.profiles}};
+const exactFirmwareAssets = currentAssets.filter(item => !exactMigrationTargets.some(target =>
+  item.name === target + '-' + migrationFamily + '.bin'));
+for (const target of exactMigrationTargets) {
+  exactControls.profiles[target] = exactControls.profiles[target] || {
+    ...exactControls.profiles['Station_G3_ESP32_repeater-full-usb-wifi'],
+  };
+  const name = target + '-ota-' + migrationFamily + '.bin';
+  if (!exactFirmwareAssets.some(item => item.name === name)) exactFirmwareAssets.push(asset(name));
+}
+const exactCatalog = picker.buildCatalog([
+  release(migrationFamily, '2026-09-13T00:00:00Z', exactFirmwareAssets.map(item => ({
+    ...item, browser_download_url: 'https://github.com/mikecarper/MeshCore/releases/download/' +
+      migrationFamily + '/' + item.name,
+  }))),
+  release(utilityTag, '2026-09-13T00:00:01Z', migrationAssets),
+], exactControls);
+for (const target of exactMigrationTargets) {
+  const profile = exactCatalog.profiles.find(item => item.target === target);
+  assert(profile, 'Exact migration Full must remain selectable: ' + target);
+  assert(profile.installKinds.includes('bin'), target + ' must expose its ordinary Full .bin');
+  assert(profile.files.some(file => file.name === target + '-ota-' + migrationFamily + '.bin'),
+    target + ' must expose the exact application, not a replacement');
+  const key = target.replace(/-full-(?:logging|usb-wifi)$/, '');
+  assert.deepStrictEqual(picker.migrationLinks(profile, profile.files[0]),
+    directLinks(exactControls.partitionMigrations[key]), target);
+}
+const exactWithoutUtility = picker.buildCatalog([
+  release(migrationFamily, '2026-09-13T00:00:00Z', exactFirmwareAssets.map(item => ({
+    ...item, browser_download_url: 'https://github.com/mikecarper/MeshCore/releases/download/' +
+      migrationFamily + '/' + item.name,
+  }))),
+], exactControls);
+for (const target of exactMigrationTargets) {
+  const profile = exactWithoutUtility.profiles.find(item => item.target === target);
+  assert(profile, 'Keep exact Full available when migration files are absent: ' + target);
+  assert.deepStrictEqual(picker.migrationLinks(profile, profile.files[0]), [], target);
+}
+for (const role of ['repeater', 'room_server']) {
+  const plain = exactCatalog.profiles.find(item => item.target === 'Station_G2_' + role + '-full-usb-wifi');
+  const observer = exactCatalog.profiles.find(item => item.target === 'Station_G2_' + role + '_observer_mqtt-full-usb-wifi');
+  assert(observer, 'Published observer identity must remain visible: ' + role);
+  assert.notStrictEqual(picker.firmwareProfileValue(plain), picker.firmwareProfileValue(observer));
+  assert.notStrictEqual(picker.firmwareProfileLabel(plain), picker.firmwareProfileLabel(observer));
+  assert.deepStrictEqual(picker.migrationLinks(observer, observer.files[0]), [],
+    'Observer identity must never borrow a plain-target migration');
+}
+for (let i = 0; i < exactCatalog.profiles.length; i += 1) {
+  const left = exactCatalog.profiles[i];
+  for (const right of exactCatalog.profiles.slice(i + 1)) {
+    if (!exactMigrationTargets.includes(left.target) && !exactMigrationTargets.includes(right.target)) continue;
+    if (left.hardware !== right.hardware || left.role !== right.role ||
+        !['ota', 'feature', 'mode', 'logging', 'install'].every(field => profilesOverlap(left, right, field))) continue;
+    assert.notStrictEqual(picker.firmwareProfileValue(left), picker.firmwareProfileValue(right),
+      'Exact-target profiles must remain independently selectable: ' + left.target + ' / ' + right.target);
+  }
+}
 assert.strictEqual(withMigrations.rows.length, currentCatalog.rows.length,
   'Migration images must not become ordinary firmware choices');
 function directLinks(packageName, combined = true) {
