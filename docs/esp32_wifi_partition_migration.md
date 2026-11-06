@@ -4,6 +4,27 @@
 
 # ESP32 legacy-partition migration over USB, Wi-Fi or LoRa
 
+## Quick steps: Wi-Fi migration
+
+1. **Download and unzip** the migration package for your exact board and role
+   from the [update utilities release](https://github.com/mikecarper/MeshCore/releases/tag/utility-v1.18.0.1-halo-keymind-cascade-dev-03214a16).
+2. **Upload the bridge.** Open the node's existing Wi-Fi updater. If needed,
+   run `start ota ap` on the node, join `MeshCore-OTA`, and open the
+   `Started:` address returned by the command. Upload `wifi-bridge.bin`.
+3. **Join the new Wi-Fi network** `MeshCore-Migrate` when it appears. Use the
+   node's saved admin password, or `meshcore-migrate` if the saved password
+   cannot be used. See the [password and fallback rules](#bridge-wi-fi-credentials).
+4. **Open [http://192.168.4.1/](http://192.168.4.1/)** and wait for
+   **Expanded layout ready**. Use HTTP; the bridge does not serve HTTPS.
+5. **Upload** `full-application.bin` from the same ZIP at
+   [http://192.168.4.1/update](http://192.168.4.1/update). Wait for the upload
+   to finish and the node to reboot.
+
+Keep the node powered throughout the migration. Do not upload a `-merged.bin`
+file through either browser updater. If the installed layout already supports
+the Full image, use a normal app update instead. For USB or LoRa migration,
+follow the package README and the details below.
+
 For **[1.18.0.1 USA Cascade](releases/1.18.0.1.md)**, select the exact board
 and role in the [firmware picker](firmware_picker.md). Published migration
 packages are in the [update utilities release](https://github.com/mikecarper/MeshCore/releases/tag/utility-v1.18.0.1-halo-keymind-cascade-dev-03214a16).
