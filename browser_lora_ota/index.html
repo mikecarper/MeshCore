@@ -2593,8 +2593,9 @@ Companion or Repeater as the source. Direct and multi-hop updates have not yet b
 on hardware. Wi-Fi support is still under development. Keep this page open during the
 transfer; closing it disconnects the file source.</p>
 <p>Use Chrome or Edge on a computer with Web Serial support. To start, connect the
-Companion by USB and choose <strong>Connect USB source</strong>. Choose a contact, select
-the firmware, then choose <strong>Check firmware and target</strong>. After
+Companion by USB and choose <strong>Connect USB source</strong>. Choose a contact, then
+choose <strong>Investigate</strong> to check its OTA capabilities. Select the firmware and
+choose <strong>Check firmware and target</strong>. After
 checking the result, choose <strong>Transfer</strong>, then <strong>Install and verify</strong>.
 The target needs a firmware build that supports verified <code>ota installhash</code>.</p>
 <div data-lora-ota>
@@ -2615,13 +2616,24 @@ The target needs a firmware build that supports verified <code>ota installhash</
       <label>Target public key (64 hex characters)<input data-role="key" size="64" autocomplete="off" spellcheck="false"></label>
       <p>For a USB Repeater source, enter the target key here before connecting.</p>
     </details>
+    <p class="lora-ota-actions"><button type="button" data-role="investigate" disabled>Investigate</button></p>
+    <pre data-role="investigation" role="status" aria-live="polite" hidden></pre>
   </section>
   <section class="lora-ota-step">
     <h2>2. Choose firmware</h2>
-    <label>Firmware file (.bin, .zip, or .mota)<input data-role="file" type="file" accept=".bin,.zip,.mota"></label>
+    <p data-role="firmware-catalog-status" role="status">Investigate the target to find matching firmware.</p>
+    <section data-role="firmware-role-wrap" hidden><label>Target type
+      <select data-role="firmware-role"><option value="">Choose a type</option><option value="repeater">Repeater</option><option value="room">Room</option><option value="sensor">Sensor</option></select>
+    </label></section>
+    <section data-role="firmware-choice-wrap" hidden><label>Matching firmware
+      <select data-role="firmware-choice"></select>
+    </label></section>
+    <p><button type="button" data-role="firmware-download" hidden disabled>Download selected firmware</button></p>
+    <label>Or choose a firmware file (.bin, .zip, or .mota)<input data-role="file" type="file" accept=".bin,.zip,.mota"></label>
     <p><a href="https://github.com/mikecarper/MeshCore/releases">Get firmware from GitHub releases</a></p>
     <p>To make a smaller differential update, also select the exact firmware currently installed on the target.</p>
     <label>Installed firmware (optional)<input data-role="base" type="file" accept=".bin,.zip"></label>
+    <p data-role="firmware-base-status" role="status"></p>
     <p class="lora-ota-actions"><button type="button" data-role="inspect" disabled>Check firmware and target</button></p>
   </section>
   <section class="lora-ota-step">
@@ -2729,6 +2741,7 @@ if preparation fails, remove the old image to use a full package instead.</p>
 <script src="../_javascript/lora_ota_sim.js"></script>
 <script src="../_javascript/lora_ota_chain.js"></script>
 <script src="../_javascript/lora_ota_chain_ui.js"></script>
+<script src="../_javascript/lora_ota_catalog.js"></script>
 <script src="../_javascript/lora_ota_browser.js"></script>
 
 
