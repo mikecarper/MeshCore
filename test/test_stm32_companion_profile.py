@@ -66,7 +66,35 @@ class CompactSTM32WLCompanionAgcTest(unittest.TestCase):
             env = Environment(PIOENV=name, LINKFLAGS=['existing'])
             runpy.run_path(str(ROOT / 'scripts/stm32_mini_companion_size.py'), init_globals={
                 'env': env, 'Import': lambda key: self.assertEqual(key, 'env')})
-            self.assertEqual(env['LINKFLAGS'], ['existing'] + ([flag] if name == 'wio-e5-mini_companion_radio_usb' else []))
+            self.assertEqual(env['LINKFLAGS'], ['existing'] + ([flag, '-ffunction-sections', '-fdata-sections'] if name == 'wio-e5-mini_companion_radio_usb' else []))
+
+    def test_final_lto_sections_collect_orphaned_bodies_without_behavior_change(self):
+        compiler=shutil.which('g++')
+        nm=shutil.which('nm')
+        if not compiler or not nm:
+            self.skipTest('GCC and nm required for final LTO code-generation proof')
+        source=r'''#include <cassert>
+__attribute__((used,noinline)) int deadLtoProbe() { return 987; }
+__attribute__((noinline)) int liveLtoProbe(int x) { return x+7; }
+int main(int argc,char**) { assert(liveLtoProbe(argc)==argc+7); }
+'''
+        with tempfile.TemporaryDirectory(prefix='mini-lto-sections-') as tmp:
+            work=Path(tmp);cpp=work/'main.cpp';obj=work/'main.o';cpp.write_text(source)
+            built=subprocess.run([compiler,'-Os','-flto','-ffunction-sections','-fdata-sections',
+                '-c',str(cpp),'-o',str(obj)],capture_output=True,text=True,timeout=30)
+            self.assertEqual(built.returncode,0,built.stdout+built.stderr)
+            retained=[]
+            for sections in (False,True):
+                binary=work/('sections' if sections else 'merged')
+                flags=['-ffunction-sections','-fdata-sections'] if sections else []
+                linked=subprocess.run([compiler,'-Os','-flto','-flto-partition=one',
+                    '-Wl,--gc-sections',*flags,str(obj),'-o',str(binary)],capture_output=True,text=True,timeout=30)
+                self.assertEqual(linked.returncode,0,linked.stdout+linked.stderr)
+                run=subprocess.run([str(binary)],capture_output=True,text=True,timeout=10)
+                self.assertEqual(run.returncode,0,run.stdout+run.stderr)
+                symbols=subprocess.run([nm,'-C',str(binary)],capture_output=True,text=True,check=True).stdout
+                retained.append('deadLtoProbe' in symbols)
+            self.assertEqual(retained,[True,False])
 
     def test_only_qualified_stm32wl_companions_use_compact_unsupported_route(self):
         for variant, target, base in (
