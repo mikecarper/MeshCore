@@ -260,7 +260,7 @@ bool loadLR2021CalibrationSettings(FILESYSTEM* fs, CustomLR2021Wrapper& radio) {
   previous_selection = XoscTrimSelection{};
   pending = failed = rollback_failed = false;
   radio.cancelXoscTrimApply();
-  if (!radio.supportsXoscTrim()) return false;
+  if (!radio.supportsXoscTrim()) { failed = true; return false; }
   bool loaded = false;
   if (fs) {
 #if defined(MESHNOLOGY_W12) && defined(MESH_ENABLE_LR2021_AUTO_XTRIM) && MESH_ENABLE_LR2021_AUTO_XTRIM
@@ -299,6 +299,10 @@ bool loadLR2021CalibrationSettings(FILESYSTEM* fs, CustomLR2021Wrapper& radio) {
     return false;
   }
   return loaded;
+}
+
+bool LR2021CalibrationSettingsReady() {
+  return !failed && !rollback_failed;
 }
 
 void loopLR2021CalibrationSettings(CustomLR2021Wrapper& radio) {

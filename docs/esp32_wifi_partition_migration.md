@@ -6,30 +6,43 @@
 
 ## Quick steps: Wi-Fi migration
 
-1. **Download and unzip** the migration package for your exact board and role
-   from the [update utilities release](https://github.com/mikecarper/MeshCore/releases/tag/utility-v1.18.0.1-halo-keymind-cascade-dev-03214a16).
+1. In the [firmware picker](firmware_picker.md), select your exact board and
+   role. **Download** the Wi-Fi expansion image and the normal Full app-only
+   `.bin` from the same release. No ZIP is needed. If the expansion download
+   is unavailable, do not substitute a different board or role.
 2. **Upload the bridge.** Open the node's existing Wi-Fi updater. If needed,
    run `start ota ap` on the node, join `MeshCore-OTA`, and open the
-   `Started:` address returned by the command. Upload `wifi-bridge.bin`.
+   `Started:` address returned by the command. Upload the expansion image.
 3. **Join the new Wi-Fi network** `MeshCore-Migrate` when it appears. Use the
    node's saved admin password, or `meshcore-migrate` if the saved password
    cannot be used. See the [password and fallback rules](#bridge-wi-fi-credentials).
 4. **Open [http://192.168.4.1/](http://192.168.4.1/)** and wait for
    **Expanded layout ready**. Use HTTP; the bridge does not serve HTTPS.
-5. **Upload** `full-application.bin` from the same ZIP at
-   [http://192.168.4.1/update](http://192.168.4.1/update). Wait for the upload
-   to finish and the node to reboot.
+5. **Upload the normal Full app-only image** you downloaded in step 1 at
+   [http://192.168.4.1/update](http://192.168.4.1/update). Wait for the
+   upload to finish and the node to reboot.
 
 Keep the node powered throughout the migration. Do not upload a `-merged.bin`
 file through either browser updater. If the installed layout already supports
 the Full image, use a normal app update instead. For USB or LoRa migration,
-follow the package README and the details below.
+follow the details below.
 
-For **[1.18.0.1 USA Cascade](releases/1.18.0.1.md)**, select the exact board
-and role in the [firmware picker](firmware_picker.md). Published migration
-packages are in the [update utilities release](https://github.com/mikecarper/MeshCore/releases/tag/utility-v1.18.0.1-halo-keymind-cascade-dev-03214a16).
-Follow the selected package's README; a normal app update does not need a
-partition migration when the installed layout already matches.
+A combined expander can also fetch the Full firmware over LoRa automatically.
+If a LoRa seeder is running nearby, make only the intended Full build available.
+
+Expansion images are specific to a board, role, and release. The picker offers
+standalone downloads only when they are available for that exact selection.
+A previous release may contain only archive-based migration files; the picker
+will show standalone downloads as unavailable for that release.
+A normal app update does not need a partition migration when the installed
+layout already matches.
+
+When a combined Partition Expander fits, its `.bin` and `.mota` downloads are
+two transport formats for the same expansion firmware: use `.bin` for Wi-Fi
+or `.mota` for LoRa. Some boards instead have separate Wi-Fi and LoRa bridges.
+LoRa requires a compatible updater on the old node and a matching LoRa seeder.
+For an automatic LoRa finish, serve only the intended exact-target Full build:
+the receiver checks the target identity, not a particular image hash.
 
 The partition-migration bridge lets a supported ESP32 node move from a small
 dual-OTA layout to a verified larger dual-OTA layout without cable flashing or
@@ -90,8 +103,8 @@ verify that it remains valid after a normal reboot before uploading the bridge.
 The Wi-Fi bridge and configuration-preserving Partition Expanders restore the
 saved password before starting their AP in the expanded layout. The older
 identity-only LoRa handoff does not restore saved settings, so its Wi-Fi
-recovery AP after the table change normally uses the fallback. Follow the exact
-route in the package README. If a device remembers `MeshCore-Migrate` from an
+recovery AP after the table change normally uses the fallback. If a device
+remembers `MeshCore-Migrate` from an
 earlier bridge, forget that saved network or update its password before joining.
 Bridge packages built before this credential change use `meshcore-migrate`.
 
@@ -103,8 +116,8 @@ qualification fails that release target rather than publishing a smaller
 ordinary image. Direct `--standard` builds and reduced identities remain
 compatibility/development tools outside the ordinary release selection.
 
-The complete local-release recipe reuses the exact qualified ordinary Full
-application in each matching migration ZIP; it does not rebuild that application
+The complete local-release recipe binds each migration image to the exact
+qualified ordinary Full application; it does not rebuild that application
 separately. The same source commit and version can still produce different ELF
 timestamps and image hashes, so publication rechecks the complete application
 bytes, not just its board/version name. Migration-only legacy identities remain
@@ -115,7 +128,7 @@ matching packages to those published applications.
 An app-only update cannot change the installed partition table. If a device
 already has the required layout, use the matching Full application through a
 supported updater. If its layout needs expansion, use a verified migration
-ZIP for its exact entry in `--list-boards` and an updater supported by the old
+image for its exact entry in `--list-boards` and an updater supported by the old
 image. Otherwise, install the exact board/role's Full `-merged.bin` through
 USB/serial using that board's flashing procedure; the merged image contains
 the bootloader, partition table, and application. Never upload a merged image
@@ -181,8 +194,8 @@ sh scripts/build_esp32_partition_migration.sh
 Choose one exact board/role, or **all listed board/role pairs**. The menu
 also offers all repeaters, all room servers, or all sensors separately. It asks
 for the firmware version, radio preset, and profile, then builds Full application
-images first, the available bridge(s) for each selected board, and verifies each
-ZIP. Only one PlatformIO process runs at a time; `build.sh` can clean the
+images first, the available bridge(s) for each selected board, and verifies the
+artifacts. Only one PlatformIO process runs at a time; `build.sh` can clean the
 shared `.pio/build` tree between Full targets. The same menu can be run
 non-interactively:
 
@@ -198,12 +211,11 @@ sh scripts/build_esp32_partition_migration.sh --role sensor \
   --radio-preset usa-cascade-fixed --profile cascade
 ```
 
-`--all` creates one verified ZIP per listed board/role pair and a release
-ZIP containing all of them, their hashes, and a manifest. This is a **local
-release bundle**, not an upload to GitHub Releases. It is not an archive of
-old firmware binaries. `--list-boards` shows the configured choices.
-The release fails instead of publishing a partial bundle if one board package
-is absent or fails verification.
+`--all` creates verified standalone expansion images for each listed board and
+role, with manifests and hashes. It also retains compatibility archives for
+host tools. This is a **local build**, not an upload to GitHub Releases.
+`--list-boards` shows the configured choices. The release fails instead of
+publishing an incomplete set if a required image is absent or fails verification.
 
 The underlying Python recipe remains available:
 
@@ -216,9 +228,10 @@ python3 -B scripts/build_esp32_partition_migration.py \
 The default builds all configured board/role recipes. Add `--board heltec-v4`
 or `--board xiao-s3-wio` to build one; repeat `--board` for a selected set.
 Use `--dry-run` to inspect the command order without building. The resulting
-ZIPs appear under `.releases/esp32-expanded-<commit>/packages/`. The recipe
-requires a clean checkout so each ZIP identifies the firmware commit it was
-built from. It creates files only; it does not flash a device or erase flash.
+standalone images appear under `.releases/esp32-expanded-<commit>/packages/`.
+The recipe requires a clean checkout so each artifact identifies the firmware
+commit it was built from. It creates files only; it does not flash a device or
+erase flash.
 
 ## Independent USB firmware set
 
@@ -277,7 +290,7 @@ S3 WIO repeaters retain their board-specific bridge names; the other entries
 use matching original-ESP32, ESP32-S3, or ESP32-C3 chip-family bridges. The older
 identity-only LoRa handoff requires a verified same-target old receiver, and
 its 4 MiB route requires the slot-B-only sequence below. Configuration-preserving
-Partition Expanders use the route described in their package README instead.
+Partition Expanders receive the matching Full image directly after expansion.
 A 4 MiB Full build offers 1,984 KiB per slot.
 The packager verifies both the Full application's slot fit and its mOTA
 staging overhead. It supports at most 4096 blocks of 2 KiB for the Full
@@ -307,8 +320,7 @@ keys, and selected network/OTA, filtering, display, and telemetry settings.
 It refuses migration if the saved files cannot fit or verify in NVS. The older
 LoRa handoff route preserves only the private identity, so saved settings may
 reset. The board/role-specific Partition Expander routes preserve their
-supported configuration and automatically fetch the exact-target Full image;
-follow the package README for those routes.
+supported configuration and automatically fetch the exact-target Full image.
 
 The old SPIFFS image is deliberately not raw-copied into an expanded partition:
 SPIFFS is not safe to resize that way. Files outside the supported preservation
@@ -345,24 +357,49 @@ power-loss-proof on a device whose USB/serial flash port is inaccessible.
 
 ## Migrate a Seeed XIAO ESP32-S3
 
-Use `--board xiao-s3-wio` with the recipe above. Its Wi-Fi bridge is a
+Use `--board xiao-s3-wio` with the recipe above. Its Wi-Fi expansion image is a
 legacy-slot application image; its Full image keeps the old repeater's exact
-LoRa OTA target ID. Upload `wifi-bridge.bin` from the ZIP through the legacy
+LoRa OTA target ID. Upload the standalone expansion `.bin` through the legacy
 node's existing Wi-Fi browser updater.
 Then join `MeshCore-Migrate` using the node's saved admin password, following
 the [shared credential and fallback rules](#bridge-wi-fi-credentials), and wait
-for **Expanded layout ready**. Upload `full-application.bin` at `/update`.
+for **Expanded layout ready**. Upload the matching normal Full app-only `.bin`
+at `/update`.
 Do not upload an `-merged.bin`: merged images include
 bootloader and table offsets for cable flashing, not browser OTA.
 
 `xiao_s3_partition_legacy_seed` is a disposable-hardware test image only. It
 models the legacy table and an identity file; it is not a deployable repeater.
 
-## LoRa-only migration of a listed role
+## LoRa migration
 
-This section describes the older identity-only LoRa handoff. A package whose
+For a combined `*-expander.mota`, first confirm that the old node supports
+compatible LoRa OTA for this exact target. Serve the expander with a compatible
+seeder; on the old node use `ota ls`, `ota pull <id> flash`, and `ota install`
+after verification. Keep power stable while it expands the layout and restores
+identity and supported settings. The expander then listens on the saved primary
+radio profile. Convert the matching normal Full app-only `.bin` into a Full
+LoRa OTA package, then serve the resulting `.mota` file:
+
+```sh
+mkdir -p ./motas
+motatool build --fw ./your-full-firmware.bin --out-dir ./motas
+motatool verify ./motas/*.mota
+```
+
+Use your downloaded Full image's actual filename. The expander can fetch and
+install it automatically. Keep only the intended Full build for that target
+available on the seeder. Wi-Fi recovery remains available if LoRa cannot start.
+
+These paths require a sufficiently capable seeder and have not all been
+qualified on physical hardware. The [OTA guide](ota_easy.md#esp32-package-a-full-firmware-image)
+explains how to install `motatool` and serve the resulting package.
+
+### Older identity-only LoRa handoff
+
+This section describes the older identity-only LoRa handoff. A release whose
 LoRa first stage is a configuration-preserving Partition Expander, including
-the Waveshare observer packages, uses its package README's self-hosted route.
+the Waveshare observer releases, uses its self-hosted route instead.
 
 The exact old board/role must already support MeshCore LoRa mOTA and have a valid
 EndF image identity. The LoRa bridge checks the old app's target ID and body
@@ -392,17 +429,18 @@ configured chip-family LoRa bridges. Build the final application with
 `bash build.sh build-firmware <target> --full-exact` so its mOTA target ID
 still matches the old role. The repeatable recipe already uses this selector.
 `scripts/package_esp32_partition_migration.py`
-checks the images, partition tables, hashes and mOTA containers and creates
-one Wi-Fi/LoRa migration ZIP for each selected exact board/role. The ZIP README gives
-the exact `ota ls`, `ota pull <id> flash`, `ota install` sequence.
+checks the images, partition tables, hashes and mOTA containers. Use the
+matching standalone LoRa expansion `.mota`, followed by the normal Full image
+with a compatible seeder. The update commands are `ota ls`,
+`ota pull <id> flash`, and `ota install`.
 
 An old image without LoRa mOTA cannot use the LoRa-only route. Use its working
-Wi-Fi updater with a listed package, or USB/serial if no supported updater or
-package is available.
+Wi-Fi updater with a matching expansion image, or USB/serial if no supported
+updater or image is available.
 
 ## Heltec V4 / V4.3
 
-Build `heltec_v4_partition_migrator`, upload it through the legacy Wi-Fi
-updater, then upload the Full V4 app-only image after the bridge reports ready.
-The 16 MiB target table creates two 6.25 MiB OTA slots. See the
-[V4 build notes](heltec_v4_wifi_partition_migration.md) for its build command.
+Choose the V4 repeater in the firmware picker, upload its Wi-Fi expansion
+image through the legacy updater, then upload the normal Full V4 app-only
+image after the bridge reports ready. The 16 MiB target table creates two
+6.25 MiB OTA slots. See the [V4 build notes](heltec_v4_wifi_partition_migration.md).

@@ -278,6 +278,7 @@ class ReleasePublicationTest(unittest.TestCase):
                     for p in sorted(directory.rglob("*")) if p.is_file() and p.name != "SHA256SUMS.txt"))
             with patch.object(package, "collect_artifacts", return_value=records), \
                  patch("package_esp32_partition_migration.BOARDS", {"example": {"target": target}}), \
+                 patch("esp32_migration_assets.standalone_assets", return_value={}), \
                  patch("build_esp32_partition_migration.verify_archive") as verify_migration:
                 write_inventory()
                 self.assertEqual(len(package.collect_local_release(directory, VERSION, SOURCE)[0]), 2)
@@ -296,6 +297,48 @@ class ReleasePublicationTest(unittest.TestCase):
                 write_inventory()
                 with self.assertRaisesRegex(ValueError, "inventory disagrees"):
                     package.collect_local_release(directory, VERSION, SOURCE)
+
+    def test_standalone_migration_assets_reach_utility_release(self):
+        with tempfile.TemporaryDirectory() as temp:
+            base = Path(temp)
+            row, files = self.record(base / "input", "Station_G2_companion_radio_usb")
+            extras = []
+            for suffix in ("expander.bin", "expander.mota", "migration.json"):
+                path = base / ("example-" + FAMILY + "-" + suffix)
+                path.write_bytes(suffix.encode())
+                extras.append(path)
+            output = base / "stage"
+            argv = ["package", "--input", str(base / "input"), "--output", str(output),
+                    "--local-release", "--stable", "--version", "1.17.1.9", "--commit", SOURCE]
+            with patch.object(sys, "argv", argv), patch.object(package, "collect_local_release",
+                    return_value=([{"manifest": row, "files": files}], extras,
+                                  {"frequency": "910.525", "bandwidth": "62.5", "sf": "7", "cr": "5"})):
+                package.main()
+            for path in extras:
+                self.assertEqual((output / "utility" / path.name).read_bytes(), path.read_bytes())
+            self.assertFalse((output / "utility" / "full-application.bin").exists())
+            plan = json.loads((output / "release-plan.json").read_text())
+            utility = next(group for group in plan["groups"] if group["key"] == "utility")
+            self.assertEqual(utility["asset_count"], len(list((output / "utility").iterdir())))
+
+    def test_utility_assets_include_checksum_when_enforcing_release_limit(self):
+        self.assertEqual(package.MAX_RELEASE_ASSETS, 1000)
+        with tempfile.TemporaryDirectory() as temp:
+            base = Path(temp)
+            extras = []
+            for index in range(6):
+                path = base / f"migration-{index}-expander.bin"
+                path.write_bytes(b"image")
+                extras.append(path)
+            output = base / "stage"
+            argv = ["package", "--input", str(base / "input"), "--output", str(output),
+                    "--local-release", "--stable", "--version", "1.17.1.9", "--commit", SOURCE]
+            with patch.object(sys, "argv", argv), patch.object(package, "MAX_RELEASE_ASSETS", 6), \
+                    patch.object(package, "collect_local_release", return_value=([], extras,
+                        {"frequency": "910.525", "bandwidth": "62.5", "sf": "7", "cr": "5"})):
+                with self.assertRaisesRegex(ValueError, "utility release exceeds the 6-asset limit"):
+                    package.main()
+            self.assertFalse((output / "release-plan.json").exists())
 
     def test_stable_publication_notes_and_assets_are_ascii(self):
         with tempfile.TemporaryDirectory() as temp:
@@ -451,20 +494,38 @@ class ReleasePublicationTest(unittest.TestCase):
             migrations.mkdir()
             archive = migrations / ("example-" + FAMILY + "-migration.zip")
             archive.write_bytes(b"qualified migration fixture")
+            direct = {
+                "example-" + FAMILY + "-expander.bin": b"direct migration image",
+                "example-" + FAMILY + "-expander.mota": b"direct LoRa wrapper",
+                "example-" + FAMILY + "-migration.json": b"verified standalone metadata",
+            }
+            for name, value in direct.items():
+                (migrations / name).write_bytes(value)
             bundle = directory / ("esp32-partition-migration-" + FAMILY + "-release.zip")
             with zipfile.ZipFile(bundle, "w") as z:
                 z.writestr("release-manifest.json", "{}")
                 z.writestr(archive.name, archive.read_bytes())
             checksum = directory / "SHA256SUMS.txt"
-            checksum.write_text("".join(hashlib.sha256(p.read_bytes()).hexdigest() + "  " +
-                                        str(p.relative_to(directory)) + "\n"
-                                        for p in sorted(directory.rglob("*")) if p.is_file()))
+            def write_checksums():
+                checksum.write_text("".join(hashlib.sha256(p.read_bytes()).hexdigest() + "  " +
+                                            str(p.relative_to(directory)) + "\n"
+                                            for p in sorted(directory.rglob("*"))
+                                            if p.is_file() and p != checksum))
+            write_checksums()
             with patch.object(package, "collect_artifacts", return_value=[{"manifest": row, "files": files}]), \
                     patch("package_esp32_partition_migration.BOARDS", {"example": {}}), \
+                    patch("esp32_migration_assets.standalone_assets", return_value=direct), \
                     patch("build_esp32_partition_migration.verify_archive"):
                 records, extras, _ = package.collect_local_release(directory, VERSION, SOURCE)
                 self.assertEqual(len(records), 1)
-                self.assertEqual(extras, [archive, bundle])
+                self.assertEqual(extras, [archive, bundle] + [migrations / name for name in direct])
+                direct_path = migrations / next(iter(direct))
+                direct_path.write_bytes(b"wrong image")
+                write_checksums()
+                with self.assertRaisesRegex(ValueError, "invalid standalone migration asset"):
+                    package.collect_local_release(directory, VERSION, SOURCE)
+                direct_path.write_bytes(direct[direct_path.name])
+                write_checksums()
                 with self.assertRaisesRegex(ValueError, "another source"):
                     package.collect_local_release(directory, VERSION, "b" * 40)
                 (directory / "unqualified.bin").write_bytes(b"unexpected")

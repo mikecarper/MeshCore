@@ -28,6 +28,7 @@ sys.path.insert(0, str(ROOT / "tools" / "mota"))
 from motalib import parse_endf, parse_endf_ident, parse_nrf52_layout, target_id_for_env
 
 FIRMWARE_SUFFIXES = {".bin", ".uf2", ".hex", ".zip"}
+MAX_RELEASE_ASSETS = 1000
 
 
 def is_companion(target):
@@ -527,6 +528,7 @@ def portable_profile_exclusions(status):
 def collect_local_release(directory, version, source):
     """Recheck a completed local release without adding migration-only images."""
     from build_esp32_partition_migration import verify_archive
+    from esp32_migration_assets import standalone_assets
     from package_esp32_partition_migration import BOARDS, published_full_image
 
     manifest = json.loads((directory / "manifest.json").read_text())
@@ -590,10 +592,17 @@ def collect_local_release(directory, version, source):
                     str(p.relative_to(directory)) for p in record["files"]}):
             raise ValueError("local release manifest disagrees with qualified files")
     extras = []
+    standalone = []
     for board in BOARDS:
         path = directory / "esp32-partition-migration" / f"{board}-{version}-{source[:8]}-migration.zip"
-        verify_archive(path, board, version, source[:8],
-                       full_image=published_full_image(records, BOARDS[board].get("target")))
+        target = BOARDS[board].get("target")
+        full_image = published_full_image(records, target)
+        verify_archive(path, board, version, source[:8], full_image=full_image)
+        for name, data in standalone_assets(path, board, target, version, source[:8], full_image).items():
+            direct = path.parent / name
+            if not direct.is_file() or direct.read_bytes() != data:
+                raise ValueError(f"invalid standalone migration asset: {name}")
+            standalone.append(direct)
         extras.append(path)
     if manifest["migration_board_role_count"] != len(extras):
         raise ValueError("local release migration inventory is incomplete")
@@ -607,6 +616,7 @@ def collect_local_release(directory, version, source):
             if hashlib.sha256(archive.read(path.name)).hexdigest() != sha256(path):
                 raise ValueError("migration bundle differs from individual packages")
     extras.extend(bundles)
+    extras.extend(standalone)
     bootloader_directory = directory / "nrf52-bootloaders"
     if (manifest.get("nrf52_bootloader_variants") is not None
             or manifest.get("nrf52_bootloaders") is not None
@@ -826,6 +836,8 @@ def main():
         destination = args.output / group["key"]
         (destination / f"FIRMWARE-PICKER-{args.version}.html").write_text(picker)
         files = sorted(destination.iterdir())
+        if len(files) + 1 > MAX_RELEASE_ASSETS:  # The checksum file is an asset too.
+            raise ValueError(f"{group['key']} release exceeds the {MAX_RELEASE_ASSETS}-asset limit")
         (destination / "SHA256SUMS.txt").write_text("".join(f"{sha256(path)}  {path.name}\n" for path in files))
         group["asset_count"] = len(files) + 1
         group["target_count"] = len(group.pop("records"))

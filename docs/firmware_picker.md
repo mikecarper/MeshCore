@@ -286,8 +286,8 @@ capacity and sensor-profile choices.
 Moving an older ESP32 installation to an expanded Full layout requires a
 partition migration.
 Use the exact-board merged image over USB, or a supported exact board and role
-staged migration ZIP from the [utility release](https://github.com/mikecarper/MeshCore/releases/tag/utility-v1.18.0.1-halo-keymind-cascade-dev-03214a16).
-Read that ZIP's README before choosing the Wi-Fi or LoRa route. Do not send a
+standalone expansion image offered by the picker. Follow the
+[migration guide](esp32_wifi_partition_migration.md) for Wi-Fi or LoRa. Do not send a
 loose app-only Full `.bin` directly to an older layout: the running application
 cannot move its own active and inactive partitions. Run
 [`get storage.layout`](cli_commands.md#show-the-storage-layout) on the installed
@@ -464,7 +464,8 @@ See the [two-profile setup guide](radio_profiles.md#companion-messages-on-both-p
 | --- | --- |
 | <code>-merged.bin</code> | Erase/fresh install, recovery, role migration, or partition-profile change on ESP32 over USB |
 | Non-merged <code>.bin</code> | Update an existing same-board, same-role, same-partition installation |
-| <code>*-migration.zip</code> | Exact ESP32 board and role staged partition migration; follow its included README for Wi-Fi or LoRa steps |
+| <code>*-expander.bin</code> or <code>*-wifi-bridge.bin</code> | Exact-board ESP32 partition expansion over Wi-Fi |
+| <code>*-expander.mota</code> or <code>*-lora-bridge.mota</code> | Exact-board ESP32 partition expansion over compatible LoRa OTA |
 | Other <code>.zip</code> firmware shown by the picker | Native nRF52 Serial DFU update package; it is not an extra archive |
 | <code>.uf2</code> | UF2 bootloader drag-and-drop install or update |
 | <code>.hex</code> | Erase/recovery flash with a supported wired programmer |
@@ -472,8 +473,9 @@ See the [two-profile setup guide](radio_profiles.md#companion-messages-on-both-p
 Never send a merged ESP32 image through browser OTA or LoRa OTA. Back up the
 node identity, configuration, keys, and radio settings, and verify every
 filename suffix before flashing. A staged migration writes the partition table;
-power loss during that write can require cable recovery. The package README
-states what each route preserves and which older layouts it accepts.
+power loss during that write can require cable recovery. The
+[migration guide](esp32_wifi_partition_migration.md) states what each route
+preserves and which older layouts it accepts.
 
 ## LoRa OTA and OTAFIX
 
@@ -622,20 +624,18 @@ release family. For older releases, open their GitHub release pages.
 
 The current public matrix keeps one ESP32 Full image per board and role.
 Some richer images, including Station G2 Full, retain an observer-named OTA
-identity. Exact older identities needed by a partition migration are packaged
-inside that board and role's migration ZIP instead of adding a second ordinary
-Full download. A deliberate target-ID override does not make a different
+identity. Exact older identities needed by a partition migration are handled
+by that board and role's expansion image. A deliberate target-ID override does not make a different
 partition layout or physical board compatible.
 
 Some normal ESP32 roles begin in the legacy 1.25 MiB dual-OTA layout but have
-a Full image with larger slots. The utility release lists the exact
-board and role migration ZIPs available for that release. Each package checks its source layout and target
-identity, contains the bridge and Full application files for its supported
-routes, and documents what saved data it preserves. Use the package's own Full
-application after the bridge; do not substitute a loose Full image with a
-different target ID. If no exact package exists, use the matching merged USB
-image. Once migrated, routine app-only updates still need the same target and
-partition signature.
+a Full image with larger slots. The picker links the standalone expansion
+images published for the exact board, role, and release. If a combined expander
+fits, its `.bin` and `.mota` are two formats of the same firmware; otherwise
+there are separate Wi-Fi and LoRa bridges. After expansion, use the ordinary
+Full application selected for that exact board, role, and release. If no exact
+expansion image exists, use the matching merged USB image. Once migrated,
+routine app-only updates still need the same target and partition signature.
 
 ## Maintaining the runtime directions
 
@@ -673,10 +673,10 @@ metadata so browsers fetch the new release's controls.
 The generated `partitionMigrations` lookup comes from `BOARDS` in
 `scripts/package_esp32_partition_migration.py`, the same exact board/role table
 used to build the migration packages. Expanded ESP32 Full results use this
-lookup (including canonical board/role recipes for Observer profiles), then
-require one matching published ZIP in the same release family's utility page.
-Hardware variants and roles remain distinct. Unlisted targets, missing or
-ambiguous assets, and stale metadata never produce a guessed download link.
+lookup, then require matching standalone images in the same release family's
+utility page. Hardware variants, roles, and Observer targets remain distinct.
+Unlisted targets, missing or ambiguous assets, and stale metadata never produce
+a guessed download link.
 
 For the downloadable version, save the release family's public GitHub release
 objects as a JSON array, then package the same picker UI and controls:

@@ -121,7 +121,7 @@ constexpr bool isReviewed4MBSource(uint32_t flash_bytes,
 // not an assertion of the physical filesystem's exact free-space accounting.
 struct PreservationBudget {
   static constexpr uint32_t kMaximumFileBytes = 16384;
-  static constexpr uint32_t kMaximumFiles = 33; // identity plus 32 config files
+  static constexpr uint32_t kMaximumFiles = 41; // identity plus 40 config files
   uint32_t filesystem_bytes;
   uint32_t files = 0;
   uint64_t file_bytes = 0;

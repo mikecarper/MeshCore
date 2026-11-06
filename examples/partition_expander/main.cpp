@@ -18,9 +18,17 @@
 #include <helpers/StaticPoolPacketManager.h>
 #include <helpers/ota/OtaContext.h>
 #include <helpers/ota/OtaApply.h>
+#if defined(USE_LR2021) && defined(MESHNOLOGY_W12)
+#include <helpers/radiolib/LR2021CalibrationSettings.h>
+#endif
+#include <stddef.h>
 
 #ifndef MOTA_MIGRATION_TARGET_ID
 #error "Partition Expander must pin the exact successor Full target ID"
+#endif
+
+#if defined(ARDUINO_USB_CDC_ON_BOOT) && ARDUINO_USB_CDC_ON_BOOT
+#error "Partition Expander must disable native USB CDC during flash migration"
 #endif
 
 #ifndef LORA_FREQ
@@ -37,6 +45,18 @@
 #endif
 
 namespace {
+
+// The release packager checks the compiled value, rather than trusting a
+// generated environment name, before offering this board/role's bridge.
+struct ExpanderTargetDescriptor {
+  char marker[24];
+  uint32_t target_id;
+};
+static_assert(offsetof(ExpanderTargetDescriptor, target_id) == 24,
+              "expander target marker layout must be stable");
+const volatile ExpanderTargetDescriptor expander_target = {
+  "MC_EXPANDER_TARGET_V1", (uint32_t)MOTA_MIGRATION_TARGET_ID
+};
 
 class ExpanderMesh final : public mesh::Mesh {
  public:
@@ -93,16 +113,35 @@ bool loadPrimaryRadio(mesh::RadioProfileParams& profile) {
 void startLoRaReceiver() {
   board.begin();
   board.applyMcuRegulator(mesh::power::RegulatorMode::Default);
+  if (!SPIFFS.begin(false)) {
+    Serial.println("Partition Expander: identity filesystem unavailable");
+    return;
+  }
+#if defined(USE_LR2021) && defined(MESHNOLOGY_W12)
+  // W12 oscillator and digital frequency correction must be configured
+  // before radio_init(), just as in the ordinary firmware.
+  const bool loaded_calibration =
+      mesh::lr2021::loadLR2021CalibrationSettings(&SPIFFS, radio_driver);
+  // A valid interrupted first calibration can roll back to no saved record.
+  // Check committed paths after journal recovery; temporary files alone are
+  // not authoritative. Actual configuration or rollback failures are fatal.
+  const bool has_calibration = SPIFFS.exists("/radio_xtrim")
+      || SPIFFS.exists("/radio_xtrim.bak")
+      || SPIFFS.exists("/radio_calibration")
+      || SPIFFS.exists("/radio_calibration.bak")
+      || SPIFFS.exists("/radio_calibration.journal");
+  if (!mesh::lr2021::LR2021CalibrationSettingsReady()
+      || (!loaded_calibration && has_calibration)) {
+    Serial.println("Partition Expander: saved radio calibration unavailable; Wi-Fi recovery remains available");
+    return;
+  }
+#endif
   if (!radio_init()) {
     Serial.println("Partition Expander: radio init failed; Wi-Fi recovery remains available");
     return;
   }
   fast_rng.begin(radio_driver.getRngSeed());
 
-  if (!SPIFFS.begin(false)) {
-    Serial.println("Partition Expander: identity filesystem unavailable");
-    return;
-  }
   IdentityStore identity(SPIFFS, "/identity");
   if (identity.loadResult("_main", the_mesh.self_id) != IdentityLoadResult::Loaded) {
     Serial.println("Partition Expander: private identity unavailable; LoRa disabled");
@@ -129,7 +168,7 @@ void startLoRaReceiver() {
 
   the_mesh.begin();
   auto& ota = mesh::ota::ota_ctx();
-  ota.manager.set_auto_migration_target((uint32_t)MOTA_MIGRATION_TARGET_ID);
+  ota.manager.set_auto_migration_target(expander_target.target_id);
   ota.manager.set_auto_version_floor(0, false);
   ota.manager.set_autofetch(mesh::ota::OtaManager::AUTOFETCH_ANY);
   lora_ready = true;
@@ -192,7 +231,7 @@ void loop() {
         || !mesh::ota::mota_parse_manifest(manifest_bytes,
                                             sizeof(manifest_bytes), manifest)
         || !manifest.is_full()
-        || manifest.target_id != (uint32_t)MOTA_MIGRATION_TARGET_ID) {
+        || manifest.target_id != expander_target.target_id) {
       Serial.println("Partition Expander: staged image is not the pinned Full target");
       return;
     }

@@ -57,6 +57,7 @@ constexpr char kMigrationConfigRestoredKey[] = "cfg-restored";
 constexpr char kExpanderHandoffKey[] = "full-handoff";
 #endif
 constexpr uint32_t kConfigStageMagic = 0x43464731U;
+constexpr uint32_t kConfigStageMagicV2 = 0x43464732U;
 constexpr size_t kMaxConfigFileBytes = 16384;
 // The common preferences hold node name, password and primary radio settings.
 // Other entries preserve access policy, extra radio profiles and the credentials
@@ -79,16 +80,32 @@ constexpr ConfigFile kConfigFiles[] = {
     {"/s_login_replay.bak", "cfg26"}, {"/ota_config.bak", "cfg27"},
     {"/ota_speed", "cfg28"}, {"/flood_ch_block", "cfg29"},
     {"/bsec_state.bin", "cfg30"}, {"/display_prefs.bak", "cfg31"},
+    // Keep interrupted W12 calibration transactions intact as a group.
+    {"/radio_xtrim", "cfg32"}, {"/radio_xtrim.bak", "cfg33"},
+    {"/radio_xtrim.tmp", "cfg34"}, {"/radio_calibration", "cfg35"},
+    {"/radio_calibration.bak", "cfg36"}, {"/radio_calibration.tmp", "cfg37"},
+    {"/radio_calibration.journal", "cfg38"},
+    {"/radio_calibration.journal.tmp", "cfg39"},
 };
 constexpr size_t kConfigFileCount = sizeof(kConfigFiles) / sizeof(kConfigFiles[0]);
-static_assert(kConfigFileCount <= 32, "config presence mask is 32 bits");
+constexpr size_t kLegacyConfigFileCount = 32;
+static_assert(kConfigFileCount <= 63, "config presence mask must fit strict inventory");
 #if defined(MESHCORE_MIGRATION_STRICT_4MB) && MESHCORE_MIGRATION_STRICT_4MB
 static_assert(kConfigFileCount + 1 <= migration::PreservationBudget::kMaximumFiles,
               "strict filesystem inventory must cover every staged config file");
 #endif
+// V1 is persisted in NVS by already-deployed bridges; never change its layout.
+struct LegacyConfigStage {
+  uint32_t magic;
+  uint32_t present;
+  uint32_t sizes[kLegacyConfigFileCount];
+  uint32_t crcs[kLegacyConfigFileCount];
+};
+static_assert(sizeof(LegacyConfigStage) == 264, "legacy NVS layout changed");
 struct ConfigStage {
   uint32_t magic;
   uint32_t present;
+  uint32_t present_high;
   uint32_t sizes[kConfigFileCount];
   uint32_t crcs[kConfigFileCount];
 };
@@ -431,14 +448,39 @@ bool verifyExpandedIdentityFile() {
 }
 #endif
 
+bool configStagePresent(const ConfigStage& stage, size_t i) {
+  return i < 32 ? (stage.present & (uint32_t(1) << i)) != 0
+                : (stage.present_high & (uint32_t(1) << (i - 32))) != 0;
+}
+
+void markConfigStagePresent(ConfigStage& stage, size_t i) {
+  if (i < 32) stage.present |= uint32_t(1) << i;
+  else stage.present_high |= uint32_t(1) << (i - 32);
+}
+
 bool readConfigStage(Preferences& nvs, ConfigStage& stage) {
-  if (nvs.getBytes(kMigrationConfigKey, &stage, sizeof(stage)) != sizeof(stage)
-      || stage.magic != kConfigStageMagic) {
+  const size_t stored = nvs.getBytesLength(kMigrationConfigKey);
+  stage = {};
+  if (stored == sizeof(LegacyConfigStage)) {
+    LegacyConfigStage old = {};
+    if (nvs.getBytes(kMigrationConfigKey, &old, sizeof(old)) != sizeof(old)
+        || old.magic != kConfigStageMagic) {
+      strcpy(status_text, "Refused: staged configuration manifest is incomplete");
+      return false;
+    }
+    stage.magic = old.magic;
+    stage.present = old.present;
+    memcpy(stage.sizes, old.sizes, sizeof(old.sizes));
+    memcpy(stage.crcs, old.crcs, sizeof(old.crcs));
+  } else if (stored != sizeof(stage)
+      || nvs.getBytes(kMigrationConfigKey, &stage, sizeof(stage)) != sizeof(stage)
+      || stage.magic != kConfigStageMagicV2
+      || (stage.present_high >> (kConfigFileCount - 32)) != 0) {
     strcpy(status_text, "Refused: staged configuration manifest is incomplete");
     return false;
   }
   for (size_t i = 0; i < kConfigFileCount; ++i) {
-    const bool present = (stage.present & (1UL << i)) != 0;
+    const bool present = configStagePresent(stage, i);
     if ((!present && stage.sizes[i] != 0)
         || (present && (stage.sizes[i] == 0
                         || stage.sizes[i] > kMaxConfigFileBytes
@@ -471,7 +513,7 @@ bool validateStagedConfig() {
   ConfigStage stage = {};
   bool valid = readConfigStage(nvs, stage);
   for (size_t i = 0; valid && i < kConfigFileCount; ++i) {
-    if (!(stage.present & (1UL << i))) continue;
+    if (!configStagePresent(stage, i)) continue;
     uint8_t* buffer = static_cast<uint8_t*>(heap_caps_malloc(
         stage.sizes[i], MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT));
     valid = buffer && verifyStagedConfigBlob(nvs, stage, i, buffer);
@@ -507,7 +549,7 @@ bool stageLegacyConfig() {
     return false;
   }
   ConfigStage stage = {};
-  stage.magic = kConfigStageMagic;
+  stage.magic = kConfigStageMagicV2;
   bool saved = true;
   for (size_t i = 0; saved && i < kConfigFileCount; ++i) {
     if (!SPIFFS.exists(kConfigFiles[i].path)) continue;
@@ -532,7 +574,7 @@ bool stageLegacyConfig() {
                            "Could not stage and verify %s", kConfigFiles[i].path);
     }
     if (source) source.close();
-    if (saved) stage.present |= (1UL << i);
+    if (saved) markConfigStagePresent(stage, i);
     delay(1);
   }
   SPIFFS.end();
@@ -569,7 +611,7 @@ bool restoreStagedConfig() {
   }
   bool restored = true;
   for (size_t i = 0; restored && i < kConfigFileCount; ++i) {
-    if (!(stage.present & (1UL << i))) continue;
+    if (!configStagePresent(stage, i)) continue;
     const size_t size = stage.sizes[i];
     uint8_t* buffer = static_cast<uint8_t*>(heap_caps_malloc(
         size, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT));
