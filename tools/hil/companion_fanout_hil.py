@@ -282,6 +282,21 @@ def pulse(node):
 
 
 def configure(node, source=False):
+    # W12 Full boots with multi-SF reception selected. Its asynchronous stop
+    # must finish before radio2/primary mutations can enter the radio lease.
+    # Scope this baseline to a fresh exact hardware read, not a USB label.
+    multisf = None
+    if node.cli('board').casefold() == 'meshnology w12':
+        node.cli('set radio.multisf off')
+        deadline = time.monotonic() + 12
+        while time.monotonic() < deadline:
+            multisf = node.cli('get radio.multisf')
+            if (re.fullmatch(r'off (?:[5-9]|10)-(?:[5-9]|10) radio[12]; off', multisf)
+                    and time.monotonic() <= deadline):
+                break
+            time.sleep(min(.2, max(0, deadline - time.monotonic())))
+        else:
+            raise RuntimeError('W12 multi-SF did not stop within 12s: ' + str(multisf))
     for command in ('set agc 0', 'set powersaving off', 'set radio2 off',
                     'set radio2.cross off'):
         node.cli(command)
@@ -306,8 +321,10 @@ def configure(node, source=False):
     actual = validate_app_start_response(identity)
     check((actual['frequency_khz'], actual['bandwidth_hz'], actual['spreading_factor'],
            actual['coding_rate']) == (906525, 62500, 7, 5), 'active RF tuple differs')
-    return {'radio': node.cli('get radio'), 'rxps': rxps,
-            'agc': node.cli('get agc'), 'old': node.cli_reply('get agc.old')}
+    result = {'radio': node.cli('get radio'), 'rxps': rxps,
+              'agc': node.cli('get agc'), 'old': node.cli_reply('get agc.old')}
+    if multisf is not None: result['multisf'] = multisf
+    return result
 
 
 def primary_results(evidence, run, receivers, before, after):

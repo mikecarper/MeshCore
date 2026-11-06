@@ -147,8 +147,89 @@ class FakeClock:
             self.advance(self.now)
 
 
+class BaselineNode:
+    """Command boundary with the real W12 BUSY precondition, not serial I/O."""
+    def __init__(self, board, statuses=("off 5-8 radio1; stopping", "off 5-8 radio1; off")):
+        self.board, self.statuses = board, deque(statuses)
+        self.commands, self.requests = [], []
+        self.stopped, self.agc = False, "16"
+
+    def cli(self, command):
+        self.commands.append(command)
+        if command == "board": return self.board
+        if command == "get radio.multisf":
+            status = self.statuses[0]
+            if len(self.statuses) > 1: self.statuses.popleft()
+            self.stopped = status == "off 5-8 radio1; off"
+            return status
+        if command == "set radio2 off" and self.board == "Meshnology W12" and not self.stopped:
+            raise RuntimeError("BUSY: W12 multi-SF still owns radio")
+        if command.startswith("set agc "): self.agc = command.rsplit(" ", 1)[1]
+        if command == "get agc": return self.agc
+        if command == "get tx": return "-9"
+        if command == "get radio": return "906.525,62.5,7,5"
+        return "OK"
+
+    def cli_reply(self, command):
+        self.commands.append(command)
+        if command == "get radio.rxps": return "> off,level=1"
+        if command == "get agc.old": return "> 0"
+        raise AssertionError(command)
+
+    def request(self, payload, expected):
+        self.requests.append(bytes(payload))
+        if expected == (0,): return b"\0"
+        assert expected == (5,)
+        frame = bytearray(58)
+        frame[:2] = b"\5\1"
+        frame[4:36] = bytes(range(32))
+        struct.pack_into("<II", frame, 48, 906525, 62500)
+        frame[56:58] = b"\7\5"
+        return bytes(frame)
+
+
 class CompanionFanoutRunnerTests(unittest.TestCase):
     run_id = bytes.fromhex("1020304050607080")
+
+    def test_configure_waits_for_w12_selected_and_runtime_off_before_profiles(self):
+        node, clock = BaselineNode("Meshnology W12"), FakeClock()
+        with patch.object(hil.time, "sleep", clock.sleep), \
+                patch.object(hil.time, "monotonic", clock.monotonic):
+            result = hil.configure(node)
+        self.assertEqual(node.commands[:4], ["board", "set radio.multisf off",
+                                            "get radio.multisf", "get radio.multisf"])
+        self.assertEqual(node.commands.count("set radio.multisf off"), 1)
+        self.assertLess(node.commands.index("get radio.multisf"), node.commands.index("set radio2 off"))
+        self.assertEqual(result["multisf"], "off 5-8 radio1; off")
+        self.assertEqual(result["agc"], "16")
+        self.assertEqual(len(node.requests), 2)
+        self.assertGreater(clock.now, 100)
+
+    def test_w12_stop_timeout_never_reaches_profile_changes_or_rf_requests(self):
+        for status in ("off 5-8 radio1; stopping", "on 5-8 radio1; off",
+                       "off 5-8 radio1; off unexpected", "off 5-8 radio1; safe mode"):
+            with self.subTest(status=status):
+                node, clock = BaselineNode("Meshnology W12", (status,)), FakeClock()
+                with patch.object(hil.time, "sleep", clock.sleep), \
+                        patch.object(hil.time, "monotonic", clock.monotonic), \
+                        self.assertRaisesRegex(RuntimeError, "W12 multi-SF did not stop within 12s"):
+                    hil.configure(node)
+                self.assertEqual(clock.now, 112)
+                self.assertEqual(node.commands.count("set radio.multisf off"), 1)
+                self.assertFalse(any(command.startswith(("set radio2", "set radio "))
+                                     for command in node.commands))
+                self.assertEqual(node.requests, [])
+
+    def test_non_w12_baseline_does_not_probe_or_mutate_multisf(self):
+        for board in ("Heltec V4", "Seeed XIAO ESP32-S3", "Meshnology W12 extra"):
+            with self.subTest(board=board):
+                node = BaselineNode(board)
+                result = hil.configure(node, source=True)
+                self.assertEqual(node.commands[0], "board")
+                self.assertFalse(any("multisf" in command for command in node.commands))
+                self.assertNotIn("multisf", result)
+                self.assertEqual(result["agc"], "0")
+                self.assertEqual(node.requests[1], b"\x0c\xf7")
 
     def setup_bus(self, kind="voice"):
         evidence = MemoryEvidence(kind)
