@@ -236,6 +236,19 @@ bool RadioLibWrapper::claimRadioInterrupt() {
   return startup || interrupt || hasAssertedRadioInterrupt();
 }
 
+#if MESH_WARM_RX_REFRESH && defined(SENSECAP_INDICATOR_LORA)
+bool RadioLibWrapper::claimAGCSoftwareInterrupt() {
+  // Called only in checked RC standby with raw IRQ==0 and a fresh low DIO.
+  // Expander callbacks publish synchronously from HAL reads. No bus access
+  // occurs between that checked observation and this software-only claim.
+  const bool startup=_loop_event_pending;
+  _loop_event_pending=false;
+  const bool interrupt=_interrupt_slot<RADIO_INTERRUPT_SLOT_COUNT
+      && radio_interrupt_events[_interrupt_slot].claim();
+  return startup || interrupt;
+}
+#endif
+
 void RadioLibWrapper::begin() {
 #if MESH_ENABLE_RADIO_DIRECTION
   _direction_receive_disabled = false;

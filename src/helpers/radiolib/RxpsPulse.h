@@ -107,6 +107,20 @@ public:
     }
   }
   void packetOwned() { packet=true;phase=Phase::Packet; }
+#if defined(SENSECAP_INDICATOR_LORA)
+  bool canReplayStaleIrqWake() const {
+    return pending && phase==Phase::Stop && packet && !failed && !cancel
+        && low_seen && !had_cycle;
+  }
+  bool replayStaleIrqWake(uint32_t observed_at) {
+    if(!canReplayStaleIrqWake()) return false;
+    // Correct exactly the provisional IRQ abort, including uint32 wrap. The
+    // original sample timestamp, not later SPI latency, decides the witness.
+    --aborts;packet=false;phase=Phase::Sleep;
+    sample(observed_at,false,false);
+    return true;
+  }
+#endif
   void rearming() { phase=Phase::Rearm; }
   void recovering(uint32_t now) { phase=Phase::Recovery;retry_at=now; }
   void receiveEntry(int16_t result,uint32_t now) {

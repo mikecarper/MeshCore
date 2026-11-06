@@ -410,6 +410,13 @@ protected:
   void finishAGCScanLease();
   virtual bool startAGCPulse() { return false; }
   virtual void serviceAGCPulse() { }
+#if defined(SENSECAP_INDICATOR_LORA)
+  // Only this expander-backed radio needs to validate sleep-time DIO edges.
+  virtual uint32_t agcInputReadGeneration() const { return 0; }
+  virtual bool prepareStaleAGCIrqWake(uint32_t, uint32_t&) { return false; }
+  virtual bool retireStaleAGCIrqWake(uint32_t) { return false; }
+  bool claimAGCSoftwareInterrupt();
+#endif
 #endif
   virtual bool isPacketReady();
   // true while the chip cannot service SPI (RX duty-cycle sleep window, or

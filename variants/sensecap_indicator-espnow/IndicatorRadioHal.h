@@ -16,6 +16,12 @@ public:
 
   bool beginExpander();
   void serviceInterrupt();
+  struct InputSnapshot {
+    uint32_t generation=0,at=0;
+    uint16_t inputs=0;
+    bool valid=false;
+  };
+  InputSnapshot cachedInputSnapshot() const { return _inputSnapshot; }
 #ifdef MC_SX1262_HIL
   // Same-image bus-width A/B only; production always uses the narrow port.
   bool hilUsePort0Only = true;
@@ -41,6 +47,7 @@ private:
   static constexpr uint8_t EXPANDER_INTERRUPT_GPIO = 42;
 
   bool _expanderReady = false;
+  InputSnapshot _inputSnapshot;
   uint16_t _output = 0xFFFF;
   uint16_t _config = 0xFFFF;
   bool _irqLevel = false;

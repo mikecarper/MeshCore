@@ -19,6 +19,7 @@ constexpr uint32_t RADIOLIB_NC = 0xffffffff;
 constexpr int LOW=0, HIGH=1, INPUT_PULLUP=2;
 constexpr int PIN_BOARD_SDA=39, PIN_BOARD_SCL=40, P_LORA_BUSY=66;
 extern int nativeLevel, nativeWrites, nativeModes;
+uint32_t micros();
 inline void pinMode(uint32_t, uint32_t) { ++nativeModes; }
 inline int digitalRead(uint32_t) { return nativeLevel; }
 '''
@@ -59,6 +60,7 @@ Result init(uint8_t, uint8_t, uint8_t);
 #include <algorithm>
 #include "@ROOT@/variants/sensecap_indicator-espnow/IndicatorRadioHal.cpp"
 int nativeLevel=HIGH, nativeWrites=0, nativeModes=0;
+uint32_t micros() { return 123; }
 uint8_t registers[8] = {0,0,0xff,0xff,0,0,0xff,0xff};
 struct Transfer { bool write; uint8_t reg; size_t size; };
 std::vector<Transfer> transfers;

@@ -133,9 +133,23 @@ protected:
   void serviceAGCPulse() override {
     auto* radio=static_cast<Driver*>(_radio);auto* mod=radio->getMod();
     const uint32_t now=static_cast<uint32_t>(micros());
+#if defined(SENSECAP_INDICATOR_LORA)
+    bool stale_irq_wake=false;
+    uint32_t input_generation=0;
+#endif
     if(_rxps_pulse.waiting()) {
       // GPIO only: any SPI/NSS transaction would wake and invalidate sleep.
+#if defined(SENSECAP_INDICATOR_LORA)
+      const auto before=_rxps_pulse.phase;
+      input_generation=agcInputReadGeneration();
+      bool busy=false,irq=false;
+      _rxps_pulse.sample(now,(busy=isChipBusy()),(irq=hasPendingRadioInterrupt()));
+      stale_irq_wake=before==RxpsPulse::Phase::Sleep && irq && !busy
+          && _rxps_pulse.canReplayStaleIrqWake()
+          && prepareStaleAGCIrqWake(now,input_generation);
+#else
       _rxps_pulse.sample(now,isChipBusy(),hasPendingRadioInterrupt());
+#endif
       if(_rxps_pulse.waiting()) return;
     }
     if(_rxps_pulse.phase==RxpsPulse::Phase::Packet) return;
@@ -165,6 +179,12 @@ protected:
     if(!stop.ok()) { pulseFailure(stop.error,RxpsPulse::Step::Standby);return; }
     uint16_t irq=0;const auto probe=mesh::rxpspulse::readIrq(mod,irq);++_rxps_pulse.irq_reads;
     if(!probe.ok()) { pulseFailure(probe.error,RxpsPulse::Step::Irq);return; }
+#if defined(SENSECAP_INDICATOR_LORA)
+    if(stale_irq_wake && irq==0 && _rxps_pulse.canReplayStaleIrqWake()
+        && retireStaleAGCIrqWake(input_generation)) {
+      _rxps_pulse.replayStaleIrqWake(now);
+    }
+#endif
     const auto rtc=mesh::rxpspulse::stopRtc(mod);
     if(!rtc.ok()) {
       const auto step=rtc.step==mesh::rxpspulse::Step::StopRtc?RxpsPulse::Step::RtcStop:
