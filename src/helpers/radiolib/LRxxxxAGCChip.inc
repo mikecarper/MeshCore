@@ -27,10 +27,17 @@
     }
     int16_t agcPulseStatus(uint32_t& irq,uint8_t& mode) {
       uint8_t stat1=0,stat2=0;
+      // getStatus clocks six raw bytes, including stat1/stat2. The normal
+      // read prefix would otherwise discard the leading status bytes.
+      auto& statusWidth=mod->spiConfig.widths[RADIOLIB_MODULE_SPI_WIDTH_STATUS];
+      const auto savedWidth=statusWidth;
+      statusWidth=Module::BITS_0;
       const int16_t rc=getStatus(&stat1,&stat2,&irq);
+      statusWidth=savedWidth;
       mode=(stat2>>1)&7;
       if(rc) return rc;
-      return (stat1&6)>=4 ? RADIOLIB_ERR_NONE : RADIOLIB_ERR_SPI_CMD_FAILED;
+      const uint8_t commandStatus=stat1&0x0e;
+      return commandStatus==0x04 || commandStatus==0x06 ? RADIOLIB_ERR_NONE : RADIOLIB_ERR_SPI_CMD_FAILED;
     }
     int16_t agcPulseStandby() {
 #if MC_LR_AGC_2021

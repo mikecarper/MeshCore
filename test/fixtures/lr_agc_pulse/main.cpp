@@ -29,6 +29,7 @@
 #define RADIOLIB_IRQ_RX_DEFAULT_MASK 1
 #define RADIOLIB_IRQ_PREAMBLE_DETECTED 4
 #define RADIOLIB_RADIO_MODE_RX 1
+#define RADIOLIB_MODULE_SPI_WIDTH_STATUS 2
 static uint32_t clock_us=100000;
 uint32_t micros(){return clock_us;}
 uint32_t millis(){return clock_us/1000;}
@@ -36,10 +37,11 @@ struct RadioModeConfig_t { struct {uint32_t timeout,irqFlags,irqMask;} receive; 
 #include "RxpsPulse.h"
 #include "RxpsPulseTiming.h"
 namespace mesh {struct MainBoard{};enum class AGCMaintenanceResult{Applied,Deferred,Failed};enum class RadioParamApplyResult{APPLIED,BUSY,FAILED};}
-struct Module {enum {MODE_RX};};
+struct Module {enum {MODE_RX};enum BitWidth_t{BITS_0=0,BITS_8=8,BITS_16=16};};
 struct Chip;
 struct Mod {
  Chip* chip;unsigned writes=0;uint16_t opcode=0;std::vector<uint8_t> bytes;
+ struct {Module::BitWidth_t widths[3]={Module::BITS_0,Module::BITS_16,MC_LR_AGC_2021?Module::BITS_16:Module::BITS_8};} spiConfig;
  void setRfSwitchState(int){}
  int16_t SPIwriteStream(uint16_t,const uint8_t*,size_t,bool,bool);
 };
@@ -48,7 +50,7 @@ struct Chip {
  bool _headerSeen=false,_lfClockRestoreNeeded=false,busy=false,race=false;
  int status_error=0,clock_error=0,arm_error=0,rx_error=0,mode=4;
  unsigned spi=0,stages=0,resumes=0,standbys=0;Mod module{this};Mod* mod=&module;
- int16_t getStatus(uint8_t* a,uint8_t* b,uint32_t* c){assert(!busy);++spi;*a=4;*b=uint8_t(mode<<1);*c=irq;return status_error;}
+ int16_t getStatus(uint8_t* a,uint8_t* b,uint32_t* c){assert(!busy);assert(mod->spiConfig.widths[RADIOLIB_MODULE_SPI_WIDTH_STATUS]==Module::BITS_0);++spi;*a=4;*b=uint8_t(mode<<1);*c=irq;return status_error;}
  int16_t standby(int){++spi;++standbys;busy=false;mode=1;if(race)irq=MC_LR_AGC_2021?1UL<<18:8;return 0;}
  int16_t configLfClock(int value){assert(value==0);++spi;return clock_error;}
  int16_t restoreLfClock(){int rc=configLfClock(0);if(!rc)_lfClockRestoreNeeded=false;return rc;}
