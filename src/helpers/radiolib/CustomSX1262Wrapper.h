@@ -301,7 +301,7 @@ public:
   }
 
 protected:
-#if MESH_WARM_RX_REFRESH
+#if MESH_WARM_RX_REFRESH && !MESH_COMPACT_STM32_RADIO
   bool warmRxRefreshUsesFs() const override {
     const auto* radio=static_cast<const CustomSX1262*>(_radio);
     const bool enabled=(radio->getProfileSwitchFeatures()&mesh::RadioSwitchTuning::Fs)!=0;

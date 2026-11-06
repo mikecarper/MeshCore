@@ -88,4 +88,59 @@ int main() {
                     run=subprocess.run([str(binary)],capture_output=True,text=True,timeout=10)
                     self.assertEqual(run.returncode,0,run.stdout+run.stderr)
 
+    def test_compact_omits_only_obsolete_warm_storage_and_hooks(self):
+        header=(ROOT/'src/helpers/radiolib/RadioLibWrappers.h').read_text()
+        cpp=(ROOT/'src/helpers/radiolib/RadioLibWrappers.cpp').read_text()
+        at=header.index('  WarmRxRefresh _warm_refresh;')
+        fields=header[header.rfind('#if ',0,at):header.index('#endif',at)+6]
+        hooks=[]
+        for token in ('    if (_warm_refresh.attempting)', '  _warm_refresh.receiveEntry'):
+            at=cpp.index(token)
+            hooks.append(cpp[cpp.rfind('#if ',0,at):cpp.index('#endif',at)+6])
+        source=r'''
+#include <helpers/radiolib/WarmRxRefresh.h>
+#include <cassert>
+#include <type_traits>
+#include <cstdint>
+static uint32_t now=10;
+uint32_t micros() { return ++now; }
+struct Owner {
+@FIELDS@
+ bool warmRxRefreshUsesFs() const { return false; }
+ void begin() {
+@BEGIN@
+ }
+ void receive() { const int err=0;(void)err;
+@RECEIVE@
+ }
+};
+template<class T,class=void> struct HasWarm:std::false_type {};
+template<class T> struct HasWarm<T,std::void_t<decltype(&T::_warm_refresh)>>:std::true_type {};
+int main() {
+ static_assert(HasWarm<Owner>::value==!MESH_COMPACT_STM32_RADIO,"Warm diagnostics only for existing noncompact path");
+ Owner owner;
+#if !MESH_COMPACT_STM32_RADIO
+ owner._warm_refresh.attempting=true;
+#endif
+ owner.begin();
+#if !MESH_COMPACT_STM32_RADIO
+ assert(owner._warm_refresh.pending&&owner._warm_refresh.admissions==1);
+#endif
+ owner.receive();
+#if !MESH_COMPACT_STM32_RADIO
+ assert(!owner._warm_refresh.pending&&owner._warm_refresh.recovery_gap.count==1);
+#endif
+}
+'''.replace('@FIELDS@',fields).replace('@BEGIN@',hooks[0]).replace('@RECEIVE@',hooks[1])
+        with tempfile.TemporaryDirectory(prefix='compact-no-warm-') as tmp:
+            work=Path(tmp);cppfile=work/'main.cpp';cppfile.write_text(source)
+            for compact in (0,1):
+                binary=work/f'case{compact}'
+                built=subprocess.run([os.environ.get('CXX','c++'),'-std=c++17','-Wall','-Wextra','-Werror',
+                    '-DMESH_WARM_RX_REFRESH=1','-DMESH_COMPACT_STM32_RADIO='+str(compact),
+                    '-I',str(ROOT/'src'),str(cppfile),'-o',str(binary)],capture_output=True,text=True,timeout=30)
+                self.assertEqual(built.returncode,0,built.stdout+built.stderr)
+                run=subprocess.run([str(binary)],capture_output=True,text=True,timeout=10)
+                self.assertEqual(run.returncode,0,run.stdout+run.stderr)
+
 if __name__=='__main__': unittest.main()

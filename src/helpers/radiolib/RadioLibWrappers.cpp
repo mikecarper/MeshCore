@@ -549,7 +549,7 @@ uint8_t RadioLibWrapper::beginReconfigure() {
 #endif
       ;
   if (_rx_ps_armed || was_rx) {
-#if MESH_WARM_RX_REFRESH
+#if MESH_WARM_RX_REFRESH && !MESH_COMPACT_STM32_RADIO
     if (_warm_refresh.attempting) {
       _warm_refresh.transition(static_cast<uint32_t>(micros()),warmRxRefreshUsesFs());
     }
@@ -2963,7 +2963,7 @@ void RadioLibWrapper::startRecv() {
   validateAGCScanLease();
   _rxps_pulse.receiveEntry(err,static_cast<uint32_t>(micros()));
 #endif
-#if MESH_WARM_RX_REFRESH
+#if MESH_WARM_RX_REFRESH && !MESH_COMPACT_STM32_RADIO
   _warm_refresh.receiveEntry(err,static_cast<uint32_t>(micros()));
 #endif
 #if defined(MESH_AGC_TIMING_DIAGNOSTICS) && MESH_AGC_TIMING_DIAGNOSTICS

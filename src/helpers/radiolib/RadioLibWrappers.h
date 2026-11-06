@@ -506,7 +506,9 @@ protected:
   NoiseFloorEstimator _floor_estimator;
   NoiseFloorEstimator _secondary_floor_estimator;
 #if MESH_WARM_RX_REFRESH
+#if !MESH_COMPACT_STM32_RADIO
   WarmRxRefresh _warm_refresh;
+#endif
   RxpsPulse _rxps_pulse;
   RxpsPulseScanLease _agc_scan_lease;
   bool _rxps_pulse_sleep_override=false;
