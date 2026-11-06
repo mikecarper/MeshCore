@@ -78,6 +78,26 @@ class ExpanderCandidateTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "reviewed expander does not match target"):
             overlay_section(self.board, dict(self.spec, target="heltec_v4_room_server"))
 
+    def test_v4_and_tracker_slim_roles_keep_radio_bases_and_bus_selection(self):
+        normalized_v4 = []
+        for board in ("heltec-v4-room-server", "heltec-v4-sensor",
+                      "heltec-v4-expansionkit-repeater"):
+            with self.subTest(board=board):
+                overlay = overlay_section(board, BOARDS[board])
+                self.assertIn("extends = Heltec_lora32_v4", overlay)
+                for flag in ("HELTEC_V4_DISPLAY_UNIFIED=1", "PIN_BOARD_SDA=4",
+                             "PIN_BOARD_SCL=3", "ENV_PIN_SDA=4", "ENV_PIN_SCL=3"):
+                    self.assertIn(flag, overlay)
+                self.assertIn("-<helpers/ui/HeltecV4DisplaySettings.cpp>", overlay)
+                self.assertNotIn("DISPLAY_CLASS", overlay)
+                target = BOARDS[board]["target"]
+                normalized_v4.append(overlay.replace(expander_environment(board, target), "ENV")
+                                     .replace(f"0x{target_id_for_env(target):08x}", "TARGET_ID"))
+        self.assertEqual([normalized_v4[0]] * 3, normalized_v4)
+        tracker = overlay_section("heltec-tracker-v2-repeater", BOARDS["heltec-tracker-v2-repeater"])
+        self.assertIn("extends = Heltec_tracker_v2", tracker)
+        self.assertNotIn("DISPLAY_CLASS", tracker)
+
     def test_overlay_is_unique_and_rejects_bad_names_or_duplicate_boards(self):
         overlay = project_overlay("[platformio]\n", [self.board], BOARDS)
         self.assertIn("[env:" + expander_environment(self.board, self.target) + "]", overlay)

@@ -17,9 +17,18 @@ LEGACY_SLOT_BYTES = 0x140000
 TARGET_MARKER = b"MC_EXPANDER_TARGET_V1" + b"\0" * 3
 # These board bases retain the exact radio/pins of the listed role while
 # avoiding unrelated UI or on-chip scan features in the temporary bridge.
+V4_BUS_FLAGS = (
+    "-D HELTEC_V4_DISPLAY_UNIFIED=1",  # use the same radio SPI controller
+    "-D PIN_BOARD_SDA=4", "-D PIN_BOARD_SCL=3",
+    "-D ENV_PIN_SDA=4", "-D ENV_PIN_SCL=3",
+)
 SLIM_BASES = {
     "meshnology-w12-repeater": ("meshnology_w12_repeater", "meshnology_w12", ("-D MESH_ENABLE_LR2021_AUTO_XTRIM=1",)),
     "heltec-ct62-repeater": ("Heltec_ct62_repeater", "Heltec_ct62", ("-D LIGHTWEIGHT_WIFI_OTA=1",)),
+    "heltec-v4-room-server": ("heltec_v4_room_server", "Heltec_lora32_v4", V4_BUS_FLAGS),
+    "heltec-v4-sensor": ("heltec_v4_sensor", "Heltec_lora32_v4", V4_BUS_FLAGS),
+    "heltec-v4-expansionkit-repeater": ("heltec_v4_expansionkit_repeater", "Heltec_lora32_v4", V4_BUS_FLAGS),
+    "heltec-tracker-v2-repeater": ("heltec_tracker_v2_repeater", "Heltec_tracker_v2", ()),
 }
 REVIEWED_EXPANDERS = {
     "heltec_v4_partition_expander": "heltec_v4_repeater",
@@ -77,6 +86,10 @@ def overlay_section(board: str, spec: dict) -> str:
     if not partitions:
         raise ValueError(f"{board}: unsupported flash capacity")
     strict = "\n  -D MESHCORE_MIGRATION_STRICT_4MB=1" if flash == 4 * 1024 * 1024 else ""
+    # The V4's HSPI selection uses the display-unified hardware flag, but the
+    # migration bridge has no display. Avoid compiling display-only settings.
+    display_exclusion = ("\n  -<helpers/ui/HeltecV4DisplaySettings.cpp>"
+                         if slim and slim[1] == "Heltec_lora32_v4" else "")
     # Classic ESP32 allocates OtaContext on heap with a strict 16 KiB budget.
     # One in-flight block preserves that bound; S3/C3 can use the wider window.
     pipeline = 1 if spec.get("usb_chip") == 0 else 4
@@ -87,7 +100,7 @@ board_build.partitions = {partitions}
 build_src_filter = ${{{source_env}.build_src_filter}}
   -<../examples/simple_repeater>
   -<../examples/simple_room_server>
-  -<../examples/simple_sensor>
+  -<../examples/simple_sensor>{display_exclusion}
   +<../examples/partition_expander/*.cpp>
 build_flags = ${{{source_env}.build_flags}}{extra}
   -UARDUINO_USB_CDC_ON_BOOT
