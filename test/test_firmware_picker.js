@@ -421,9 +421,6 @@ assert.strictEqual(partitionExpander.hardware, "Xiao_S3_WIO");
 assert.strictEqual(partitionExpander.explicitOta, "lora-receiver");
 assert.strictEqual(picker.ROLE_LABELS[partitionExpander.role],
   "Partition Expander");
-assert(picker.installSteps(partitionExpander, "zip").some(function (step) {
-  return step.includes("not an nRF52 Serial DFU package");
-}));
 assert(picker.installSteps(partitionExpander, "bin").some(function (step) {
   return step.includes("temporary bridge");
 }));
@@ -1822,7 +1819,7 @@ assert(expandedEsp32);
 assert.strictEqual(expandedEsp32.ota, 'lora-receiver');
 assert.deepStrictEqual(expandedEsp32.loggingModes, ['none', 'usb', 'wifi', 'both']);
 assert(picker.installSteps(expandedEsp32, 'bin').some(step =>
-  step.includes('exact board/role migration ZIP')));
+  step.includes('exact board/role expansion image')));
 assert(picker.installSteps(expandedEsp32, 'merged-bin').some(step =>
   step.includes('get storage.layout')));
 assert.strictEqual(
@@ -2140,17 +2137,20 @@ for (let leftIndex = 0; leftIndex < publishedCatalog.profiles.length; leftIndex 
 }
 console.log('current T-LoRa profiles remain distinct and every overlapping release choice has a unique value and label');
 
-// Partition expansion uses the packager's lookup and published utility assets,
-// not hardware labels or guessed slugs (several historical names differ).
+// Standalone migration files must match the exact board, role, release, and URL.
 const migrationFamily = currentControls.familyTag;
 const utilityTag = 'utility-' + migrationFamily;
 const utilityUrl = 'https://github.com/mikecarper/MeshCore/releases/tag/' + utilityTag;
-function migrationZip(packageName, tag = migrationFamily) {
-  const name = packageName + '-' + tag + '-migration.zip';
+function migrationFile(packageName, suffix, tag = migrationFamily) {
+  const name = packageName + '-' + tag + '-' + suffix;
   return {...asset(name), browser_download_url:
     'https://github.com/mikecarper/MeshCore/releases/download/utility-' + tag + '/' + name};
 }
-const migrationAssets = Object.values(currentControls.partitionMigrations).map(name => migrationZip(name));
+function pair(packageName, combined = true) {
+  return [migrationFile(packageName, combined ? 'expander.bin' : 'wifi-bridge.bin'),
+    migrationFile(packageName, combined ? 'expander.mota' : 'lora-bridge.mota')];
+}
+const migrationAssets = Object.values(currentControls.partitionMigrations).flatMap(name => pair(name));
 function migrationCatalog(assets = migrationAssets, metadata = currentControls, utilityOverrides = {}) {
   return picker.buildCatalog([
     release(migrationFamily, '2026-09-13T00:00:00Z', currentAssets),
@@ -2159,38 +2159,36 @@ function migrationCatalog(assets = migrationAssets, metadata = currentControls, 
 }
 const withMigrations = migrationCatalog();
 assert.strictEqual(withMigrations.rows.length, currentCatalog.rows.length,
-  'Migration ZIPs must not become firmware/Serial DFU choices');
-const expandedWithMigration = withMigrations.profiles.find(profile =>
-  profile.target === expandedEsp32.target);
-assert.strictEqual(expandedWithMigration.migrationPackage, 'ebyte-eora-s3-repeater');
-assert.deepStrictEqual(picker.migrationLink(expandedWithMigration, expandedWithMigration.files[0]), {
-  url: migrationZip('ebyte-eora-s3-repeater').browser_download_url,
-  label: 'Download exact partition-expansion ZIP',
-});
-const g2Target = 'Station_G2_repeater_observer_mqtt-full-usb-wifi';
-function g2MigrationLink(catalog) {
-  const profile = catalog.profiles.find(item => item.target === g2Target);
-  return picker.migrationLink(profile, profile.files[0]);
+  'Migration images must not become ordinary firmware choices');
+function directLinks(packageName, combined = true) {
+  const files = pair(packageName, combined);
+  return [
+    {url: files[0].browser_download_url, label: 'Download expansion for Wi-Fi (.bin)'},
+    {url: files[1].browser_download_url, label: 'Download expansion for LoRa (.mota)'},
+  ];
 }
-const directG2Link = {
-  url: migrationZip('station-g2-repeater').browser_download_url,
-  label: 'Download exact partition-expansion ZIP',
-};
-const fallbackMigrationLink = {
-  url: utilityUrl, label: 'Check partition-expansion availability',
-};
-assert.deepStrictEqual(g2MigrationLink(withMigrations), directG2Link);
+function linksFor(profile) { return picker.migrationLinks(profile, profile.files[0]); }
+const expandedWithMigration = withMigrations.profiles.find(profile => profile.target === expandedEsp32.target);
+assert.strictEqual(expandedWithMigration.migrationPackage, 'ebyte-eora-s3-repeater');
+assert.deepStrictEqual(linksFor(expandedWithMigration), directLinks('ebyte-eora-s3-repeater'));
+const directTarget = expandedEsp32.target;
+const directPackage = 'ebyte-eora-s3-repeater';
+function directMigrationLinks(catalog) {
+  return linksFor(catalog.profiles.find(item => item.target === directTarget));
+}
 const g2PickerUrl = 'https://mikecarper.github.io/MeshCore/firmware_picker/' +
   '?chipFamily=esp32&hardwareFamily=Station_G2&hardware=Station_G2&role=repeater&mode=espnow&install=bin&chipAuto=1';
 const g2Selection = picker.selectionFromUrl(g2PickerUrl, withMigrations.profiles);
 assert.deepStrictEqual(g2Selection.unavailable, []);
 const g2Selected = withMigrations.profiles.filter(profile =>
   picker.profileMatchesFacets(profile, g2Selection.filters));
-assert.deepStrictEqual(g2Selected.map(profile => profile.target), [g2Target]);
-assert.deepStrictEqual(picker.migrationLink(g2Selected[0], g2Selected[0].files[0]), directG2Link);
+assert.deepStrictEqual(g2Selected.map(profile => profile.target),
+  ['Station_G2_repeater_observer_mqtt-full-usb-wifi']);
+assert.deepStrictEqual(linksFor(g2Selected[0]), [],
+  'An Observer Full image cannot borrow a non-Observer migration');
 
-// Exercise every row in the packager lookup, even recipes whose canonical
-// image lives only inside its ZIP rather than the ordinary firmware matrix.
+// Every target uses exact release-bound files; both fallback transport bridges
+// and the two containers of a combined expander are individually downloadable.
 for (const [target, packageName] of Object.entries(currentControls.partitionMigrations)) {
   for (const suffix of ['-full-logging', '-full-usb-wifi']) {
     const fullTarget = target + suffix;
@@ -2199,59 +2197,54 @@ for (const [target, packageName] of Object.entries(currentControls.partitionMigr
       files: [{releaseUrl: 'https://github.com/mikecarper/MeshCore/releases/tag/' + migrationFamily}],
     });
     profile.migrationPackage = picker.migrationPackageForProfile(profile, currentControls.partitionMigrations);
-    profile.migrationAsset = picker.migrationAssetForProfile(profile, migrationAssets.map(item => ({
-      name: item.name, url: item.browser_download_url, releaseTag: utilityTag, releaseUrl: utilityUrl,
-    })));
+    const rows = migrationAssets.map(item => ({name: item.name, url: item.browser_download_url,
+      releaseTag: utilityTag, releaseUrl: utilityUrl}));
+    profile.migrationAssets = picker.migrationAssetsForProfile(profile, rows);
     assert.strictEqual(profile.migrationPackage, packageName, fullTarget);
-    assert.strictEqual(picker.migrationLink(profile, profile.files[0]).url,
-      migrationZip(packageName).browser_download_url, fullTarget);
+    assert(profile.migrationAssets.combined, fullTarget);
+    assert.deepStrictEqual(linksFor(profile), directLinks(packageName), fullTarget);
   }
 }
-const currentMigrationProfiles = withMigrations.profiles.filter(profile => profile.migrationPackage);
-assert(currentMigrationProfiles.length > 0);
-for (const profile of currentMigrationProfiles) {
-  assert(profile.migrationAsset, profile.target);
-  assert.strictEqual(picker.migrationLink(profile, profile.files[0]).url,
-    migrationZip(profile.migrationPackage).browser_download_url, profile.target);
-}
-assert.strictEqual(picker.migrationLink(companionEsp32, companionEsp32.files[0]), null);
-for (const profile of ikokaProfiles) {
-  assert.strictEqual(picker.migrationLink(profile, profile.files[0]), null);
-}
+assert.deepStrictEqual(linksFor(companionEsp32), []);
+for (const profile of ikokaProfiles) assert.deepStrictEqual(linksFor(profile), []);
 const unmappedVariant = withMigrations.profiles.find(profile =>
   profile.target === 'Station_G3_ESP32_r2_repeater_observer_mqtt-full-usb-wifi');
 assert(unmappedVariant);
-assert.deepStrictEqual(picker.migrationLink(unmappedVariant, unmappedVariant.files[0]), fallbackMigrationLink,
-  'An unlisted board revision must not borrow another board recipe');
+assert.deepStrictEqual(linksFor(unmappedVariant), [], 'Unlisted revisions cannot borrow another recipe');
 
-const noG2Assets = migrationAssets.filter(item => item.name !== migrationZip('station-g2-repeater').name);
-assert.deepStrictEqual(g2MigrationLink(migrationCatalog(noG2Assets)), fallbackMigrationLink,
-  'Room-server and logging-hardware packages must not stand in for G2 repeater');
-assert.deepStrictEqual(g2MigrationLink(migrationCatalog([
-  ...noG2Assets, migrationZip('station-g2-repeater', family),
-])), fallbackMigrationLink, 'A ZIP for another release is not a match');
-assert.deepStrictEqual(g2MigrationLink(migrationCatalog(migrationAssets, currentControls,
-  {tag_name: 'utility-' + family})), fallbackMigrationLink, 'Ignore other release families');
-assert.deepStrictEqual(g2MigrationLink(migrationCatalog(migrationAssets, currentControls,
-  {tag_name: 'logging-' + migrationFamily})), fallbackMigrationLink, 'Require the utility page');
-assert.deepStrictEqual(g2MigrationLink(migrationCatalog([
-  ...migrationAssets, migrationZip('station-g2-repeater'),
-])), fallbackMigrationLink, 'Duplicate matches must fail closed');
-for (const badUrl of ['javascript:alert(1)', 'https://example.com/download.zip',
-  migrationZip('station-g2-repeater').browser_download_url.replace('/mikecarper/', '/someone-else/'),
-  migrationZip('station-g2-room-server').browser_download_url]) {
-  assert.deepStrictEqual(g2MigrationLink(migrationCatalog([
-    ...noG2Assets, {...migrationZip('station-g2-repeater'), browser_download_url: badUrl},
-  ])), fallbackMigrationLink, badUrl);
+const withoutDirectAssets = migrationAssets.filter(item => !item.name.startsWith(directPackage + '-' + migrationFamily));
+assert.deepStrictEqual(directMigrationLinks(migrationCatalog(withoutDirectAssets)), [], 'Missing files remain unavailable');
+assert.deepStrictEqual(directMigrationLinks(migrationCatalog([...withoutDirectAssets, ...pair('ebyte-eora-s3-repeater', false)])),
+  directLinks('ebyte-eora-s3-repeater', false), 'Separate transport bridges are available when needed');
+assert.deepStrictEqual(directMigrationLinks(migrationCatalog([...migrationAssets, ...pair('ebyte-eora-s3-repeater', false)])),
+  directLinks('ebyte-eora-s3-repeater'), 'Prefer the combined expander');
+assert.deepStrictEqual(directMigrationLinks(migrationCatalog([...withoutDirectAssets,
+  migrationFile('ebyte-eora-s3-repeater', 'expander.bin'), ...pair('ebyte-eora-s3-repeater', false)])),
+  [directLinks('ebyte-eora-s3-repeater')[0]], 'Never mix an expander with a different fallback');
+assert.deepStrictEqual(directMigrationLinks(migrationCatalog([...withoutDirectAssets,
+  ...pair('ebyte-eora-s3-repeater').map(item => ({...item, name: item.name.replace(migrationFamily, family)}))])), [],
+  'A file for another release is not a match');
+assert.deepStrictEqual(directMigrationLinks(migrationCatalog(migrationAssets, currentControls,
+  {tag_name: 'logging-' + migrationFamily})), [], 'Require the matching utility page');
+assert.deepStrictEqual(directMigrationLinks(migrationCatalog([...migrationAssets,
+  migrationFile('ebyte-eora-s3-repeater', 'expander.bin')])), [directLinks('ebyte-eora-s3-repeater')[1]],
+  'A duplicate match makes only that format unavailable');
+for (const badUrl of ['javascript:alert(1)', 'https://example.com/expander.bin',
+  migrationFile('ebyte-eora-s3-repeater', 'expander.bin').browser_download_url.replace('/mikecarper/', '/someone-else/'),
+  migrationFile('station-g2-repeater', 'expander.bin').browser_download_url]) {
+  assert.deepStrictEqual(directMigrationLinks(migrationCatalog([...withoutDirectAssets,
+    {...migrationFile('ebyte-eora-s3-repeater', 'expander.bin'), browser_download_url: badUrl}])), [], badUrl);
 }
-assert.deepStrictEqual(g2MigrationLink(migrationCatalog(migrationAssets, currentControls,
-  {html_url: utilityUrl.replace('/mikecarper/', '/someone-else/')})), fallbackMigrationLink);
-assert.deepStrictEqual(g2MigrationLink(migrationCatalog(migrationAssets,
-  {...currentControls, partitionMigrations: undefined})), fallbackMigrationLink,
-  'Older controls without a lookup retain a clearly labeled fallback');
-assert.strictEqual(g2MigrationLink(migrationCatalog(migrationAssets,
-  {...currentControls, familyTag: family})), null, 'Stale controls must not supply a migration');
-console.log('exact partition-expansion links passed for all ' + migrationAssets.length + ' lookup recipes');
+assert.deepStrictEqual(directMigrationLinks(migrationCatalog(migrationAssets, currentControls,
+  {html_url: utilityUrl.replace('/mikecarper/', '/someone-else/')})), []);
+assert.deepStrictEqual(directMigrationLinks(migrationCatalog(migrationAssets,
+  {...currentControls, partitionMigrations: undefined})), [], 'Missing lookup cannot guess links');
+assert.deepStrictEqual(directMigrationLinks(migrationCatalog(migrationAssets,
+  {...currentControls, familyTag: family})), [], 'Stale controls cannot supply links');
+const oldZip = migrationFile('ebyte-eora-s3-repeater', 'migration.zip');
+assert.deepStrictEqual(directMigrationLinks(migrationCatalog([...withoutDirectAssets, oldZip])), [],
+  'Older ZIP-only releases must not offer an archive as an expansion image');
+console.log('exact standalone partition-expansion links passed for all lookup recipes');
 
 assert.strictEqual(nrf.chipFamily, 'nrf52');
 assert.strictEqual(mqttCompanion.chipFamily, 'esp32');
@@ -2959,6 +2952,19 @@ try {
   picker.renderProfileCard(noNotesContainer, companionEsp32, companionEsp32.files[0], 'bin', {}, {});
   assert(!noNotesContainer.children[0].children.some(node =>
     node.className === 'firmware-picker-board-notes'), 'Unaffected boards must not get an empty notes panel');
+  const migrationContainer = new RuntimeElement('section');
+  picker.renderProfileCard(migrationContainer, expandedWithMigration, expandedWithMigration.files[0], 'bin', {}, {});
+  const migrationAnchors = descendants(migrationContainer, node => node.tagName === 'A');
+  for (const link of directLinks('ebyte-eora-s3-repeater')) {
+    assert(migrationAnchors.some(node => node.href === link.url && node.textContent === link.label));
+  }
+  assert(!migrationAnchors.some(node => /migration\.zip/.test(node.href || '')),
+    'Migration downloads must never point to ZIP archives');
+  const missingContainer = new RuntimeElement('section');
+  const missingProfile = migrationCatalog(withoutDirectAssets).profiles.find(profile => profile.target === directTarget);
+  picker.renderProfileCard(missingContainer, missingProfile, missingProfile.files[0], 'bin', {}, {});
+  assert(missingContainer.textContent.includes('Expansion images are unavailable for this board and release.'));
+  assert(!descendants(missingContainer, node => node.tagName === 'A').some(node => /migration\.zip/.test(node.href || '')));
   const card = new RuntimeElement('article');
   const changes = [];
   picker.renderRuntimeDirections(card, observer, {logging: 'wifi'}, {

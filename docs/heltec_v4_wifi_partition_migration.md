@@ -5,9 +5,9 @@
 # Heltec V4 legacy-partition migration over Wi-Fi
 
 For **[1.18.0.1 USA Cascade](releases/1.18.0.1.md)**, choose the exact V4
-board and role in the [firmware picker](firmware_picker.md). Use its matching
-migration ZIP from the [update utilities release](https://github.com/mikecarper/MeshCore/releases/tag/utility-v1.18.0.1-halo-keymind-cascade-dev-03214a16)
-when the installed partition layout needs expansion.
+board and role in the [firmware picker](firmware_picker.md). When the installed
+layout needs expansion, download the matching standalone Wi-Fi expansion image
+and the normal Full app-only image for that board, role, and release.
 
 Heltec V4/V4.3 OLED repeaters with their normal 16 MiB flash use the shared
 [ESP32 partition migration](esp32_wifi_partition_migration.md) bridge.
@@ -22,13 +22,12 @@ python3 -B scripts/build_esp32_partition_migration.py \
   --radio-preset usa-cascade-fixed --profile cascade
 ```
 
-The ZIP contains the Wi-Fi bridge, LoRa bridge, and exact-target Full image.
-Upload its `wifi-bridge.bin` through the
-legacy browser Wi-Fi updater. Rejoin `MeshCore-Migrate` using the node's saved
+Upload the Wi-Fi expansion image through the legacy browser Wi-Fi updater.
+Rejoin `MeshCore-Migrate` using the node's saved
 admin password as the Wi-Fi password (see the shared
 [credential and fallback rules](esp32_wifi_partition_migration.md#bridge-wi-fi-credentials));
-when it reports **Expanded layout ready**, upload the ZIP's
-`full-application.bin` at `/update`.
+when it reports **Expanded layout ready**, upload the normal Full app-only
+`.bin` at `/update`. See the [quick steps](esp32_wifi_partition_migration.md#quick-steps-wi-fi-migration).
 
 Do not use an `-merged.bin` in either browser uploader. Merged images contain
 bootloader and table offsets for cable flashing. The bridge preserves the
@@ -36,11 +35,10 @@ private identity and supported saved configuration, including node name,
 radio profiles, ACL and login replay state. Files outside the supported
 preservation set may need to be recreated after the Full image starts.
 
-For an existing `heltec_v4_repeater` that already supports LoRa mOTA, use the
-ZIP's `lora-bridge.mota` with the identity-only LoRa handoff described in the
-shared guide. It preserves the old repeater across the partition change so the
-Full image can also be installed over LoRa without reaching the board's Wi-Fi
-network.
-That route does not restore saved settings; its post-expansion Wi-Fi recovery
-AP normally uses the published fallback. The optional Partition Expander
-route instead restores supported settings and retains the saved admin password.
+For an existing `heltec_v4_repeater` that already supports compatible LoRa
+mOTA, use the matching standalone LoRa expansion file and follow the
+[LoRa migration steps](esp32_wifi_partition_migration.md#lora-migration).
+The older identity-only handoff does not restore saved settings; its
+post-expansion Wi-Fi recovery AP normally uses the published fallback. A
+combined Partition Expander restores supported settings and retains the saved
+admin password.

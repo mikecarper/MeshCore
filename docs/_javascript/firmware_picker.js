@@ -1412,7 +1412,7 @@
         profile.migrationPackage = migrationPackageForProfile(
           profile, metadata.partitionMigrations
         );
-        profile.migrationAsset = migrationAssetForProfile(profile, rows);
+        profile.migrationAssets = migrationAssetsForProfile(profile, rows);
         if (isFullCompanion(profile) && profile.controls.mqtt &&
             !Array.isArray(profile.controls.loggingModes)) {
           profile.loggingModes = ["none", "usb", "wifi", "both"];
@@ -2063,41 +2063,52 @@
   function migrationPackageForProfile(profile, lookup) {
     if (!isExpandedEsp32Infrastructure(profile) || !lookup) return "";
     const target = profile.target.replace(/-full-(?:logging|usb-wifi)$/i, "");
-    // The packages name canonical physical board/role identities. Observer
-    // Full profiles use that same board/role's recipe; the package README
-    // still governs the installed OTA target/layout. Preserve every hardware
-    // variant (including logging hardware and trailing underscores).
-    const canonical = target.replace(/_observer_mqtt(?=_?$)/i, "");
-    const key = Object.prototype.hasOwnProperty.call(lookup, target)
-      ? target : canonical;
-    const packageName = Object.prototype.hasOwnProperty.call(lookup, key)
-      ? lookup[key] : "";
+    // A bridge is bound to the exact Full target and bytes. In particular, an
+    // observer-named image must not borrow its non-observer counterpart.
+    const packageName = Object.prototype.hasOwnProperty.call(lookup, target)
+      ? lookup[target] : "";
     return typeof packageName === "string" && /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(packageName)
       ? packageName : "";
   }
 
-  function migrationAssetForProfile(profile, rows) {
+  function migrationAssetsForProfile(profile, rows) {
     if (!profile.migrationPackage) return null;
     const releaseUrl = migrationReleaseUrl(profile, profile.files[0]);
     if (!releaseUrl) return null;
-    const name = profile.migrationPackage + "-" + profile.releaseFamily + "-migration.zip";
-    const downloadUrl = releaseUrl.replace("/releases/tag/", "/releases/download/") +
-      "/" + encodeURIComponent(name);
-    const matches = rows.filter(function (row) {
-      return row.name === name && row.releaseTag === "utility-" + profile.releaseFamily &&
-        row.releaseUrl === releaseUrl && row.url === downloadUrl;
-    });
-    // Only offer a download actually published for this release and exact
-    // board/role. Missing, unsafe, or ambiguous assets retain the fallback.
-    return matches.length === 1 ? matches[0] : null;
+    const prefix = profile.migrationPackage + "-" + profile.releaseFamily + "-";
+    const releaseTag = "utility-" + profile.releaseFamily;
+    function named(name) {
+      return rows.filter(function (row) {
+        return row.name === name && row.releaseTag === releaseTag;
+      });
+    }
+    function exact(suffix) {
+      const name = prefix + suffix;
+      const url = releaseUrl.replace("/releases/tag/", "/releases/download/") +
+        "/" + encodeURIComponent(name);
+      const matches = named(name);
+      return matches.length === 1 && matches[0].releaseUrl === releaseUrl &&
+        matches[0].url === url ? matches[0] : null;
+    }
+    // If an expander was published, never mix it with an older separate
+    // bridge. Duplicate, misdirected and missing assets remain unavailable.
+    const combined = named(prefix + "expander.bin").length > 0 ||
+      named(prefix + "expander.mota").length > 0;
+    return {
+      combined: combined,
+      wifi: exact(combined ? "expander.bin" : "wifi-bridge.bin"),
+      lora: exact(combined ? "expander.mota" : "lora-bridge.mota"),
+    };
   }
 
-  function migrationLink(profile, asset) {
-    const fallback = migrationReleaseUrl(profile, asset);
-    if (!fallback) return null;
-    return profile.migrationAsset
-      ? { url: profile.migrationAsset.url, label: "Download exact partition-expansion ZIP" }
-      : { url: fallback, label: "Check partition-expansion availability" };
+  function migrationLinks(profile, asset) {
+    if (!migrationReleaseUrl(profile, asset)) return [];
+    const images = profile.migrationAssets;
+    if (!images) return [];
+    return [
+      images.wifi && { url: images.wifi.url, label: "Download expansion for Wi-Fi (.bin)" },
+      images.lora && { url: images.lora.url, label: "Download expansion for LoRa (.mota)" },
+    ].filter(Boolean);
   }
 
   function boardNotes(profile) {
@@ -2222,9 +2233,7 @@
     }
     if (profile.role === "partition-expander") {
       return common.concat(
-        kind === "zip"
-          ? ["This ZIP is a staged ESP32 partition-migration package, not an nRF52 Serial DFU package. Follow its included README for the existing Wi-Fi or LoRa update route."]
-          : ["Install this temporary bridge only through the existing OTA route documented for this exact board and source layout; do not flash it as permanent node firmware."],
+        ["Install this temporary bridge only through the existing OTA route documented for this exact board and source layout; do not flash it as permanent node firmware."],
         ["Keep power stable while the partition table changes. Confirm that private identity restoration succeeded before transferring the exact Full application over LoRa or Wi-Fi.",
           "The Partition Expander is a temporary update receiver, not a repeater, client, or sensor firmware."]
       );
@@ -2267,7 +2276,7 @@
     }
     if (isExpandedEsp32Infrastructure(profile) && kind === "bin") {
       extra.push(
-        "If the node still has a smaller layout, first flash the matching merged image over USB or use the linked exact board/role migration ZIP, when available. Follow its README to check the installed OTA target and source layout before starting. Never send this app-only image across a partition change."
+        "If the node still has a smaller layout, first flash the matching merged image over USB or use an exact board/role expansion image, when available. Check the migration guide and installed OTA target and source layout before starting. Never send this app-only image across a partition change."
       );
     }
     if (profile.variant.includes("w25q16")) {
@@ -2672,11 +2681,16 @@
     const release = createElement("a", "Open release notes");
     release.href = asset.releaseUrl;
     actions.appendChild(release);
-    const migrationAction = migrationLink(profile, asset);
-    if (migrationAction) {
+    const migrationActions = migrationLinks(profile, asset);
+    migrationActions.forEach(function (migrationAction) {
       const migration = createElement("a", migrationAction.label);
       migration.href = migrationAction.url;
       actions.appendChild(migration);
+    });
+    if (migrationReleaseUrl(profile, asset) && migrationActions.length < 2) {
+      actions.appendChild(createElement("span", migrationActions.length
+        ? "The other expansion format is unavailable for this release."
+        : "Expansion images are unavailable for this board and release."));
     }
     card.appendChild(actions);
 
@@ -3366,8 +3380,8 @@
     installSteps: installSteps,
     migrationReleaseUrl: migrationReleaseUrl,
     migrationPackageForProfile: migrationPackageForProfile,
-    migrationAssetForProfile: migrationAssetForProfile,
-    migrationLink: migrationLink,
+    migrationAssetsForProfile: migrationAssetsForProfile,
+    migrationLinks: migrationLinks,
     humanizeHardware: humanizeHardware,
     hardwareChoiceLabel: hardwareChoiceLabel,
     humanizeVariant: humanizeVariant,
