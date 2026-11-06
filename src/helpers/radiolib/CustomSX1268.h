@@ -1,6 +1,7 @@
 #pragma once
 
 #include <RadioLib.h>
+#include "SX126xStatus.h"
 #include <helpers/RadioAGCConfig.h>
 #include <math.h>
 #include "SX126xMorseRssi.h"

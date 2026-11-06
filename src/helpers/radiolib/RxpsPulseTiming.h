@@ -1,9 +1,18 @@
 #pragma once
 
 #include <stdint.h>
+#include <string.h>
 
 namespace mesh {
 namespace rxpspulse {
+
+// All supported MCU float formats are IEEE binary32. Checking its exponent
+// avoids several soft-float comparison calls on integrated Cortex-M4 radios.
+inline bool finiteFloat(float value) {
+  static_assert(sizeof(float)==sizeof(uint32_t),"32-bit radio float required");
+  uint32_t bits;memcpy(&bits,&value,sizeof(bits));
+  return (bits&0x7F800000UL)!=0x7F800000UL;
+}
 
 // Include the device's transition allowance, one nonzero timer tick, and at
 // least 500 us more in encoded timer units. Rates and field sizes are supplied

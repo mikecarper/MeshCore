@@ -17,9 +17,24 @@ MAX_24_BIT = (1 << 24) - 1
 DRIVER = r"""
 #include <stdint.h>
 #include <iostream>
+#include <cmath>
+#include <cstring>
 #include "helpers/radiolib/RxpsPulseTiming.h"
 
 int main() {
+  // Cover every sign/exponent, NaN payload boundaries and a broad bit sample.
+  for(uint32_t sign : {0U,0x80000000U}) for(uint32_t exp=0;exp<256;++exp)
+    for(uint32_t fraction : {0U,1U,0x7FFFFFU}) {
+      const uint32_t bits=sign|(exp<<23)|fraction;float value;
+      std::memcpy(&value,&bits,sizeof(value));
+      if(mesh::rxpspulse::finiteFloat(value)!=std::isfinite(value)) return 2;
+    }
+  uint32_t bits=1;
+  for(unsigned i=0;i<131072;++i) {
+    bits=bits*1664525U+1013904223U;float value;
+    std::memcpy(&value,&bits,sizeof(value));
+    if(mesh::rxpspulse::finiteFloat(value)!=std::isfinite(value)) return 3;
+  }
   uint32_t transition, hz, maximum;
   while (std::cin >> transition >> hz >> maximum) {
     std::cout << mesh::rxpspulse::bufferedSleepRequestUs(
@@ -67,6 +82,9 @@ class PulseTimingTest(unittest.TestCase):
         ], capture_output=True, text=True)
         if result.returncode:
             raise AssertionError(result.stderr)
+
+    def test_binary32_finite_guard_matches_all_exponents_and_sampled_payloads(self):
+        self.assertEqual(self.evaluate([]), [])
 
     def evaluate(self, cases):
         environment = os.environ.copy()

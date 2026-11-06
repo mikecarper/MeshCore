@@ -62,16 +62,17 @@ protected:
       // No command was admitted; do not stop or acknowledge a packet owner.
       _rxps_pulse.deferred();return false;
     }
-    if(_cur_sf<5 || _cur_sf>12 || !isfinite(_cur_bw) || _cur_bw<=0 || sleep<=transition) {
+    if(_cur_sf<5 || _cur_sf>12 || !mesh::rxpspulse::finiteFloat(_cur_bw) || _cur_bw<=0 || sleep<=transition) {
       admitAGCPulse(static_cast<uint32_t>(micros()));
       pulseFailure(RADIOLIB_ERR_INVALID_RX_PERIOD,RxpsPulse::Step::Stage);return true;
     }
     const float symbol_us=(float(uint32_t(1)<<_cur_sf)*1000.0f)/_cur_bw;
-    const float encoded_sleep=float(((uint64_t(sleep-transition)*8)/125))*15.625f;
+    const float encoded_sleep=float(_rxps_pulse.sleep_ticks)*15.625f;
     const float sync=_cur_sf<=6?RX_POWERSAVING_SYNC_SYMBOLS_LOW_SF:RX_POWERSAVING_SYNC_SYMBOLS;
-    const float required=(currentPreambleLength()+sync+RX_POWERSAVING_HEADER_SYMBOLS+RX_POWERSAVING_TIMER_SLACK_SYMBOLS)*symbol_us;
+    const uint16_t preamble=currentPreambleLength();
+    const float required=(preamble+sync+RX_POWERSAVING_HEADER_SYMBOLS+RX_POWERSAVING_TIMER_SLACK_SYMBOLS)*symbol_us;
     const float needed=(required-encoded_sleep)*0.5f;
-    if(currentPreambleLength()<8 || !isfinite(required) || !isfinite(needed) || needed>3000000.0f) {
+    if(preamble<8 || !mesh::rxpspulse::finiteFloat(required) || !mesh::rxpspulse::finiteFloat(needed) || needed>3000000.0f) {
       admitAGCPulse(static_cast<uint32_t>(micros()));
       pulseFailure(RADIOLIB_ERR_INVALID_RX_PERIOD,RxpsPulse::Step::Stage);return true;
     }
@@ -80,7 +81,7 @@ protected:
     const auto valid=mesh::rxpspulse::encodePeriods(rx,sleep,transition,periods);
     admitAGCPulse(static_cast<uint32_t>(micros()));_rxps_pulse_retries=0;
     // Reject unusable geometry once per scheduled attempt, staying awake.
-    if(_cur_sf<5 || _cur_sf>12 || !isfinite(symbol_us) || !valid.ok()
+    if(!mesh::rxpspulse::finiteFloat(symbol_us) || !valid.ok()
         || rx>3000000UL) {
       pulseFailure(RADIOLIB_ERR_INVALID_RX_PERIOD,RxpsPulse::Step::Stage);return true;
     }
@@ -144,11 +145,8 @@ protected:
         // Bounded exceptional wake, never credited as natural sleep evidence.
         if(!_rxps_pulse_retries) {
           ++_rxps_pulse.forced_wake;++_rxps_pulse_retries;
-          const Module::BitWidth_t width=mod->spiConfig.widths[RADIOLIB_MODULE_SPI_WIDTH_STATUS];
-          mod->spiConfig.widths[RADIOLIB_MODULE_SPI_WIDTH_STATUS]=Module::BITS_0;
           uint8_t status=0;
-          const int16_t wake_rc=mod->SPIreadStream(RADIOLIB_SX126X_CMD_GET_STATUS,&status,1,false,false);
-          mod->spiConfig.widths[RADIOLIB_MODULE_SPI_WIDTH_STATUS]=width;
+          const int16_t wake_rc=sx126xReadStatus(mod,status);
           if(wake_rc) _rxps_pulse.noteError(wake_rc,RxpsPulse::Step::Recovery);
           _rxps_pulse.retry_at=now;return;
         }

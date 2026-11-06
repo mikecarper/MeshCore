@@ -1,4 +1,5 @@
 #include <helpers/radiolib/SX126xRxpsPulse.h>
+#include <helpers/radiolib/SX126xStatus.h>
 #include <helpers/radiolib/RxpsPulse.h>
 #include <helpers/radiolib/RxpsPulseScanLease.h>
 #include <helpers/radiolib/RxpsPulseTiming.h>
