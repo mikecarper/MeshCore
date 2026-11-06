@@ -10,6 +10,10 @@ from test_browser_lora_ota_companion_runtime import investigation_harness
 
 def legacy_harness(fault=''):
     harness = investigation_harness()
+    if fault == 'clock_behind':
+        original = 'clock=Math.floor(Date.now()/1000)'
+        assert harness.count(original) == 1
+        harness = harness.replace(original, 'clock=Math.floor(Date.now()/1000)-3600', 1)
     if fault in ('prelogin', 'mutating'):
         marker = "window.addEventListener('load',async()=>{try{"
         assert harness.count(marker) == 1
@@ -19,7 +23,7 @@ def legacy_harness(fault=''):
     assert harness.count(old) == 1
     harness = harness.replace(old, "if(text==='get ota.direct')value='Unknown command';", 1)
     harness = harness.replace("let expected,pkg,mid=''", "let inbox=[],retryCounts={},firstProofTag='',expected,pkg,mid=''", 1)
-    harness = harness.replace("if(!guard||dec.decode(f.slice(33))!=='password')", "if(dec.decode(f.slice(33))!=='password')", 1)
+    harness = harness.replace("if(!guard||!['','password'].includes(dec.decode(f.slice(33))))", "if(!['','password'].includes(dec.decode(f.slice(33))))", 1)
     login_reply = "Uint8Array.of(0x85,1,...unhex(key).slice(0,6),0,0,0,0,3,1)"
     assert harness.count(login_reply) == 1
     if fault in ('guest', 'guest_denied'):
@@ -28,6 +32,12 @@ def legacy_harness(fault=''):
         harness = harness.replace(login_reply, "Uint8Array.of(0x85,0,...unhex(key).slice(0,6))", 1)
     elif fault == 'login_failure':
         harness = harness.replace(login_reply, "Uint8Array.of(0x86,0,...unhex(key).slice(0,6))", 1)
+    elif fault == 'empty_login_failed':
+        harness = harness.replace(login_reply, "Uint8Array.of(0x86,0,...unhex(key).slice(0,6))", 1)
+    elif fault == 'empty_login_timeout':
+        login_push = "queueMicrotask(()=>this.push(wire("+login_reply+")));"
+        assert harness.count(login_push) == 1
+        harness = harness.replace(login_push, "/* no login response */", 1)
     harness = harness.replace("if(f[1]!==1||!guard||hex(f.slice(7,13))", "if(f[1]!==1||hex(f.slice(7,13))", 1)
     harness = harness.replace("const command=dec.decode(f.slice(13));if(command.slice(0,3)!==corr+'|')throw Error('bad correlation');const text=command.slice(3);cmds.push(text);", "const command=dec.decode(f.slice(13)),tag=command.slice(0,3);if(tag[2]!=='|')throw Error('missing correlation');const text=command.slice(3);cmds.push(text);", 1)
     if fault == 'unsupported_proof':
@@ -55,7 +65,7 @@ def legacy_harness(fault=''):
           && !(LEGACY_FAULT==='later_retry'&&text==='ota status'&&retryCounts[text]<3))
           inbox.push(message(key,1,tag+(LEGACY_FAULT==='identity'&&text==='get public.key'?'> '+'dd'.repeat(32):reply)));
         out=Uint8Array.of(6,0,0,0,0,0,0,0,0,0);'''.replace('LEGACY_FAULT', repr(fault))
-    if fault in ('timeout', 'proof_retry', 'proof_exhausted', 'later_retry'):
+    if fault in ('timeout', 'proof_retry', 'proof_exhausted', 'later_retry', 'empty_login_timeout'):
         marker = "window.addEventListener('load',async()=>{try{"
         assert harness.count(marker) == 1
         short = "const Transport=LoraOtaCompanion.CompanionTransport;LoraOtaCompanion.CompanionTransport=class extends Transport{constructor(port,options){super(port,{...options,remoteTimeout:300,investigationTimeout:300,commandTimeout:1500});}};"
@@ -123,7 +133,7 @@ class LegacyInvestigationBrowserTest(unittest.TestCase):
         self.assertFalse(any(f[0] in (52, 65) for f in result['frames']), result)
         self.assertFalse(any(c.startswith(('ota pull', 'ota installhash ')) for c in result['cmds']), result)
 
-    def test_empty_password_uses_existing_access_without_login(self):
+    def test_empty_password_logins_with_acl_then_proves_access(self):
         harness=legacy_harness()
         self.assertEqual(harness.count("el('password').value='password';"),1)
         result=run_harness(harness.replace("el('password').value='password';","el('password').value='';",1),timeout=90)
@@ -132,7 +142,10 @@ class LegacyInvestigationBrowserTest(unittest.TestCase):
         self.assertTrue(result['verified'],result)
         self.assertIn('get public.key',result['cmds'],result)
         self.assertIn('ota status',result['cmds'],result)
-        self.assertFalse(any(f[0] in (26,52,65) for f in result['frames']),result)
+        logins=[f for f in result['frames'] if f[0]==26]
+        self.assertEqual(len(logins),1,result)
+        self.assertEqual(len(logins[0]),33,result)  # no password bytes
+        self.assertFalse(any(f[0] in (52,65) for f in result['frames']),result)
         self.assertFalse(any(c.startswith(('ota pull','ota installhash ')) for c in result['cmds']),result)
 
     def test_empty_password_without_authorized_full_key_never_sends_ota(self):
@@ -142,7 +155,28 @@ class LegacyInvestigationBrowserTest(unittest.TestCase):
         self.assertNotIn('error',result,result)
         self.assertFalse(result['complete'],result)
         self.assertNotIn('ota status',result['cmds'],result)
-        self.assertFalse(any(f[0] in (26,52,65) for f in result['frames']),result)
+        self.assertFalse(any(f[0] in (52,65) for f in result['frames']),result)
+
+    def test_empty_login_failure_and_timeout_fall_back_to_direct_acl_proof(self):
+        for fault in ('empty_login_failed', 'empty_login_timeout'):
+            with self.subTest(fault=fault):
+                harness=legacy_harness(fault).replace("el('password').value='password';","el('password').value='';",1)
+                result=run_harness(harness,timeout=90)
+                self.assertNotIn('error',result,result)
+                self.assertTrue(result['verified'],result)
+                self.assertIn('get public.key',result['cmds'],result)
+                self.assertIn('ota status',result['cmds'],result)
+                self.assertEqual(sum(f[0]==26 for f in result['frames']),1,result)
+                self.assertFalse(any(f[0] in (52,65) for f in result['frames']),result)
+
+    def test_older_companion_clock_warning_does_not_block_investigation(self):
+        result=run_harness(legacy_harness('clock_behind'),timeout=90)
+        self.assertNotIn('error',result,result)
+        self.assertTrue(result['verified'],result)
+        self.assertIn('ota status',result['cmds'],result)
+        self.assertRegex(result['result'],r'(?i)clock.*(?:behind|sync|incorrect)')
+        self.assertTrue(any(f[0]==5 for f in result['frames']),result)
+        self.assertFalse(any(f[0]==6 for f in result['frames']),result)
 
     def test_wrong_full_identity_is_not_accepted(self):
         result = run_harness(legacy_harness('identity'), timeout=90)
@@ -260,7 +294,7 @@ class LegacyInvestigationBrowserTest(unittest.TestCase):
         self.assertTrue(any('646464646464' in r.get('frameHex', '')
                             for r in result['preserved']), result)
         self.assertIn('ota status', result['cmds'], result)
-        self.assertFalse(any(f[0] in (26, 52, 65) for f in result['frames']), result)
+        self.assertFalse(any(f[0] in (52, 65) for f in result['frames']), result)
 
     def test_later_read_only_timeout_retries_then_continues_on_success(self):
         result = run_harness(legacy_harness('later_retry'), timeout=90)

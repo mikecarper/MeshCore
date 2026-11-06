@@ -165,9 +165,25 @@
       if(!this.knownRepeater||!this.contactList.some(c=>c.publicKey===this.knownRepeater))throw Error('Select a stored contact before continuing');
       if(this.contactList.some(c=>c.publicKey!==this.knownRepeater&&c.publicKey.slice(0,12)===this.knownRepeater.slice(0,12)))throw Error('Contacts share this key prefix; cannot safely select the target');
     }
-    investigationProgress(stage,command='',timeoutMs=0){
+    investigationProgress(stage,command='',timeoutMs=0,message=''){
       const attempt=this.investigationAttempt||0;
-      try{this.options.onInvestigationProgress?.({stage,command,timeoutMs,attempt,maxAttempts:attempt?3:0});}catch(_){}
+      try{this.options.onInvestigationProgress?.({stage,command,timeoutMs,message,attempt,maxAttempts:attempt?3:0});}catch(_){}
+    }
+    async inspectInvestigationClock(){
+      this.investigationProgress('checking-clock');
+      try{
+        const frame=await this.command(Uint8Array.of(5),9);
+        if(frame.length!==5)throw Error('Invalid clock response');
+        const clock=new DataView(frame.buffer,frame.byteOffset,frame.byteLength).getUint32(1,true);
+        const delta=clock-Math.floor(Date.now()/1000);
+        if(delta>600||delta < -59){
+          const difference=Math.abs(delta);
+          this.investigationProgress('clock-warning','',0,'The Companion clock differs from this computer by about '+difference+' seconds ('+(delta<0?'behind':'ahead')+'). A wrong clock can cause the target to ignore commands. Check both clocks.');
+        }
+      }catch(error){
+        if(this.failure)throw error;
+        this.investigationProgress('clock-warning','',0,'Could not verify the Companion clock. A wrong clock can cause the target to ignore commands.');
+      }
     }
     assertInvestigationRunning(){
       if(this.investigationCancelled)throw Error('Investigation canceled. Disconnect and reconnect before trying again.');
@@ -273,19 +289,22 @@
         this.assertInvestigationRunning();
         if(this.investigationAuthenticated){if(password!==this.investigationPassword)throw Error('Disconnect and reconnect before changing the admin password');return this.knownRepeater;}
         if(typeof password!=='string'||enc.encode(password).length>15||/[\r\n\0]/.test(password))throw Error('Admin password must fit in 15 bytes');
+        await this.inspectInvestigationClock();this.assertInvestigationRunning();
         this.investigationProgress('refreshing-contacts',password ? 'login' : 'ACL',this.options.contactsTimeout??60000);
         await this.contacts();this.assertInvestigationRunning();this.assertStandardTarget();
-        if(password){
-          const response=new Promise((resolve,reject)=>{const timer=setTimeout(()=>{this.loginWaiter=null;reject(Error('Repeater login timed out'));},this.options.remoteTimeout??75000);this.loginWaiter={standard:true,resolve:()=>{clearTimeout(timer);resolve();},reject:e=>{clearTimeout(timer);reject(e);}};});
-          response.catch(()=>{}); // Cancellation can precede the Companion's send acknowledgement.
-          this.investigationProgress('sending-login','login',this.options.commandTimeout??15000);
-          try{await this.command(join(Uint8Array.of(26),unhex(this.knownRepeater),enc.encode(password)),6);this.assertInvestigationRunning();this.investigationProgress('waiting-login','login',this.options.remoteTimeout??75000);await response;this.assertInvestigationRunning();}
-          catch(e){this.loginWaiter?.reject(e);await response.catch(()=>{});throw e;}
-        }else{
-          // A stored ACL grant can authorize read-only commands directly. An
-          // empty password is not evidence that the target granted access.
+        const loginTimeout=this.options.investigationTimeout??20000;
+        const loginLabel=password?'login':'passwordless login';
+        const response=new Promise((resolve,reject)=>{const timer=setTimeout(()=>{this.loginWaiter=null;reject(Error('Repeater login timed out'));},loginTimeout);this.loginWaiter={standard:true,resolve:()=>{clearTimeout(timer);resolve();},reject:e=>{clearTimeout(timer);reject(e);}};});
+        response.catch(()=>{}); // Cancellation can precede the Companion's send acknowledgement.
+        this.investigationProgress('sending-login',loginLabel,this.options.commandTimeout??15000);
+        try{await this.command(join(Uint8Array.of(26),unhex(this.knownRepeater),enc.encode(password)),6);this.assertInvestigationRunning();this.investigationProgress('waiting-login',loginLabel,loginTimeout);await response;this.assertInvestigationRunning();}
+        catch(e){
+          this.loginWaiter?.reject(e);await response.catch(()=>{});this.assertInvestigationRunning();
+          if(password||this.failure||!['Repeater login timed out','Repeater rejected the login'].includes(e?.message))throw e;
+          // Blank login can refresh the reply path, but direct ACL access can
+          // still work when that login is unsupported or its reply was lost.
           this.investigationPermission='unknown';
-          this.investigationProgress('checking-acl','ACL',this.options.remoteTimeout??75000);
+          this.investigationProgress('login-fallback','',0,'No confirmed passwordless login; trying existing ACL access.');
         }
         this.investigationProgress('identity','get public.key',this.options.investigationTimeout??20000);
         this.investigationProofPending=true;let proof;
@@ -306,12 +325,18 @@
       const status=await this.localCommand('get ota.direct');
       if(!/^>?\s*ota\.direct v=2 active=0 busy=0\s*$/i.test(status))throw Error('The Companion OTA mailbox is already in use');
       await this.checkClock();await this.guardMode(1,Uint8Array.of(this.peerType));this.guard=true;
-      if(password){
-        const response=new Promise((resolve,reject)=>{const timer=setTimeout(()=>{this.loginWaiter=null;reject(Error('Repeater login timed out'));},this.options.remoteTimeout??75000);this.loginWaiter={resolve:()=>{clearTimeout(timer);resolve();},reject:e=>{clearTimeout(timer);reject(e);}};});
+      if(password||investigation){
+        const loginTimeout=investigation?(this.options.investigationTimeout??20000):(this.options.remoteTimeout??75000);
+        const loginLabel=password?'login':'passwordless login';
+        const response=new Promise((resolve,reject)=>{const timer=setTimeout(()=>{this.loginWaiter=null;reject(Error('Repeater login timed out'));},loginTimeout);this.loginWaiter={resolve:()=>{clearTimeout(timer);resolve();},reject:e=>{clearTimeout(timer);reject(e);}};});
         response.catch(()=>{});
-        this.investigationProgress('sending-login','login',this.options.commandTimeout??15000);
-        try{await this.command(join(Uint8Array.of(26),unhex(this.knownRepeater),enc.encode(password)),6);if(investigation)this.assertInvestigationRunning();this.investigationProgress('waiting-login','login',this.options.remoteTimeout??75000);await response;if(investigation)this.assertInvestigationRunning();}
-        catch(e){this.loginWaiter?.reject(e);await response.catch(()=>{});throw e;}
+        this.investigationProgress('sending-login',loginLabel,this.options.commandTimeout??15000);
+        try{await this.command(join(Uint8Array.of(26),unhex(this.knownRepeater),enc.encode(password)),6);if(investigation)this.assertInvestigationRunning();this.investigationProgress('waiting-login',loginLabel,loginTimeout);await response;if(investigation)this.assertInvestigationRunning();}
+        catch(e){
+          this.loginWaiter?.reject(e);await response.catch(()=>{});if(investigation)this.assertInvestigationRunning();
+          if(!investigation||password||this.failure||!['Repeater login timed out','Repeater rejected the login','Repeater rejected the admin login'].includes(e?.message))throw e;
+          this.investigationProgress('login-fallback','',0,'No confirmed passwordless login; trying existing ACL access.');
+        }
       }else{
         // The target may already grant this Companion access in its ACL.
         // Arm a direct return path and require the same full-key proof below.

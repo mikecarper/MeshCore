@@ -25,7 +25,7 @@ class InvestigationProgressBrowserTest(unittest.TestCase):
         for snippet in (LOGIN_PUSH, PROOF_PUSH, CONTINUE):
             self.assertEqual(harness.count(snippet), 1, snippet)
         harness = harness.replace("el('password').value='password';", "el('password').value='S3cr3t!';", 1)
-        harness = harness.replace("dec.decode(f.slice(33))!=='password'", "dec.decode(f.slice(33))!=='S3cr3t!'", 1)
+        harness = harness.replace("['','password'].includes(dec.decode(f.slice(33)))", "['','S3cr3t!'].includes(dec.decode(f.slice(33)))", 1)
         harness = harness.replace(LOGIN_PUSH,
             "window.__releaseLogin=()=>this.push(wire(Uint8Array.of(0x85,1,...unhex(key).slice(0,6),0,0,0,0,3,1)));", 1)
         harness = harness.replace(PROOF_PUSH,
@@ -65,7 +65,7 @@ class InvestigationProgressBrowserTest(unittest.TestCase):
         self.assertEqual(harness.count(marker), 1)
         self.assertEqual(harness.count(LOGIN_PUSH), 1)
         self.assertEqual(harness.count(CONTINUE), 1)
-        harness = harness.replace(marker, marker + "const Transport=LoraOtaCompanion.CompanionTransport;LoraOtaCompanion.CompanionTransport=class extends Transport{constructor(port,options){super(port,{...options,remoteTimeout:1200,commandTimeout:1500});}};", 1)
+        harness = harness.replace(marker, marker + "const Transport=LoraOtaCompanion.CompanionTransport;LoraOtaCompanion.CompanionTransport=class extends Transport{constructor(port,options){super(port,{...options,remoteTimeout:1200,investigationTimeout:1200,commandTimeout:1500});}};", 1)
         harness = harness.replace(LOGIN_PUSH, "if((window.__loginAttempts=(window.__loginAttempts||0)+1)>1)queueMicrotask(()=>this.push(wire(Uint8Array.of(0x85,1,...unhex(key).slice(0,6),0,0,0,0,3,1))));", 1)
         action = r'''el('legacy-investigate').click();const first=await done;
     if(first.detail.complete)throw Error('missing login incorrectly completed');

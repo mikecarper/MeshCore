@@ -28,7 +28,7 @@ HARNESS = r'''<script>
         queueMicrotask(()=>{this.push(wire(Uint8Array.of(2,rows.length,0,0,0)));for(const c of rows)this.push(wire(c));this.push(wire(Uint8Array.of(4,0,0,0,0)));});return;}
       else if(f[0]===5){out=new Uint8Array(5);out[0]=9;new DataView(out.buffer).setUint32(1,clock,true);}
       else if(f[0]===52){if(hex(f.slice(2,34))!==key)throw Error('wrong guard target');if(f[1]===1)guard=true;if(f[1]===3)guard=false;if(f[1]===4)corr=dec.decode(f.slice(34,36));out=Uint8Array.of(0);}
-      else if(f[0]===26){if(!guard||dec.decode(f.slice(33))!=='password')throw Error('bad login');out=Uint8Array.of(6,0,0,0,0,0,0,0,0,0);
+      else if(f[0]===26){if(!guard||!['','password'].includes(dec.decode(f.slice(33))))throw Error('bad login');out=Uint8Array.of(6,0,0,0,0,0,0,0,0,0);
         queueMicrotask(()=>this.push(wire(Uint8Array.of(0x85,1,...unhex(key).slice(0,6),0,0,0,0,3,1))));}
       else if(f[0]===2){if(f[1]!==1||!guard||hex(f.slice(7,13))!==key.slice(0,12))throw Error('non-direct admin command');
         const command=dec.decode(f.slice(13));if(command.slice(0,3)!==corr+'|')throw Error('bad correlation');const text=command.slice(3);cmds.push(text);
@@ -181,7 +181,7 @@ def catalog_harness(fault=''):
 
 
 class CompanionBrowserRuntimeTest(unittest.TestCase):
-    def test_empty_password_checks_guarded_acl_without_login(self):
+    def test_empty_password_checks_guarded_acl_with_passwordless_login(self):
         if not BROWSER:
             if os.environ.get('MESHCORE_REQUIRE_OTA_BROWSER') == '1': self.fail('Chromium is required')
             self.skipTest('Chromium unavailable')
@@ -192,7 +192,8 @@ class CompanionBrowserRuntimeTest(unittest.TestCase):
         self.assertTrue(result['complete'],result)
         self.assertIn('get public.key',result['cmds'],result)
         self.assertIn('ota status',result['cmds'],result)
-        self.assertFalse(any(f[0] in (26,65) for f in result['frames']),result)
+        self.assertTrue(any(f[0]==26 and len(f)==33 for f in result['frames']),result)
+        self.assertFalse(any(f[0]==65 for f in result['frames']),result)
         self.assertTrue(any(f[0]==52 and f[1]==1 for f in result['frames']),result)
         self.assertTrue(any(f[0]==52 and f[1]==2 for f in result['frames']),result)
 
@@ -209,7 +210,7 @@ class CompanionBrowserRuntimeTest(unittest.TestCase):
         self.assertNotIn('error',result,result)
         self.assertFalse(result['complete'],result)
         self.assertNotIn('ota status',result['cmds'],result)
-        self.assertFalse(any(f[0] in (26,65) for f in result['frames']),result)
+        self.assertFalse(any(f[0]==65 for f in result['frames']),result)
 
     def test_connection_progress_is_visible_until_contacts_arrive(self):
         if not BROWSER:

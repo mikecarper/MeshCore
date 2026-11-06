@@ -5,7 +5,7 @@ const enc=new TextEncoder(),dec=new TextDecoder(),key='bb'.repeat(32),source='aa
 const fromHex=s=>Uint8Array.from(s.match(/../g),x=>parseInt(x,16));
 function wire(body){return Uint8Array.of(62,body.length&255,body.length>>8,...body)}
 class Port{
-  constructor(){this.waiter=null;this.q=[];this.frames=[];this.guard=false;this.correlation='';this.reply='';this.remoteAttempts={};this.timeoutFirst={};this.pendingReply=false;this.clock=Math.floor(Date.now()/1000);this.legacy=false;this.noCli=false;this.loginPermissions=1;this.targetType=3;this.rxps='Error: RX power saving is unsupported on this radio';}
+  constructor(){this.waiter=null;this.q=[];this.frames=[];this.guard=false;this.correlation='';this.reply='';this.remoteAttempts={};this.timeoutFirst={};this.pendingReply=false;this.clock=Math.floor(Date.now()/1000);this.legacy=false;this.noCli=false;this.loginPermissions=1;this.loginCode=0x85;this.suppressLogin=false;this.targetType=3;this.rxps='Error: RX power saving is unsupported on this radio';}
   push(v){if(this.waiter){let f=this.waiter;this.waiter=null;f({value:v,done:false});}else this.q.push(v);}
   async open(){
     this.readable={getReader:()=>({read:()=>this.q.length?Promise.resolve({value:this.q.shift(),done:false}):new Promise(r=>this.waiter=r),cancel:async()=>{if(this.waiter)this.waiter({done:true});},releaseLock(){}})};
@@ -21,7 +21,7 @@ class Port{
     else if(f[0]===5){out=Uint8Array.of(9,...new Uint8Array(new Uint32Array([this.clock]).buffer));}
     else if(f[0]===6){this.clock=new DataView(f.buffer,f.byteOffset,f.byteLength).getUint32(1,true);out=Uint8Array.of(0);}
     else if(f[0]===52){assert.equal(Buffer.from(f.slice(2,34)).toString('hex'),key);if(f[1]===1)this.guard=true;if(f[1]===3)this.guard=false;if(f[1]===4)this.correlation=dec.decode(f.slice(34,36));out=Uint8Array.of(0);}
-    else if(f[0]===26){assert(this.guard);assert.equal(dec.decode(f.slice(33)),'password');out=Uint8Array.of(6,0,0,0,0,0,0,0,0,0);queueMicrotask(()=>this.push(wire(Uint8Array.of(0x85,this.loginPermissions,...fromHex(key).slice(0,6),0,0,0,0,3,1))));}
+    else if(f[0]===26){assert(this.guard);assert(['','password'].includes(dec.decode(f.slice(33))));out=Uint8Array.of(6,0,0,0,0,0,0,0,0,0);if(!this.suppressLogin)queueMicrotask(()=>this.push(wire(Uint8Array.of(this.loginCode,this.loginPermissions,...fromHex(key).slice(0,6),0,0,0,0,3,1))));}
     else if(f[0]===2){assert(this.guard);assert.equal(f[1],1);assert.equal(Buffer.from(f.slice(7,13)).toString('hex'),key.slice(0,12));const txt=dec.decode(f.slice(13)),cmd=txt.slice(3);assert.equal(txt.slice(0,3),this.correlation+'|');this.remoteAttempts[cmd]=(this.remoteAttempts[cmd]||0)+1;this.pendingReply=this.remoteAttempts[cmd]<=(this.timeoutFirst[cmd]||0);this.reply=cmd==='get public.key'?'> '+key:'> 9';out=Uint8Array.of(6,0,0,0,0,0,0,0,0,0);}
     else if(f[0]===66&&this.noCli){out=Uint8Array.of(1,2);}
     else if(f[0]===66){const cmd=dec.decode(f.slice(1));let reply;
@@ -89,10 +89,26 @@ async function run(){
   const defaultLink=new CompanionTransport(defaults,{openSettle:0,commandTimeout:1000,onInvestigationProgress:e=>defaultEvents.push(e)});
   await defaultLink.open();await defaultLink.contacts();defaultLink.selectTarget(key);
   await defaultLink.investigateVerifyPeer(key,'');
+  assert(defaultEvents.some(e=>e.stage==='waiting-login'&&e.timeoutMs===20000));
+  assert(defaults.frames.some(f=>f[0]===26&&f.length===33));
   assert(defaultEvents.some(e=>e.stage==='waiting-reply'&&e.command==='get public.key'&&e.timeoutMs===20000));
   defaultEvents.length=0;
   await defaultLink.remoteCommand(key,'','ota status');
   assert(defaultEvents.some(e=>e.stage==='waiting-reply'&&e.command==='ota status'&&e.timeoutMs===75000));
   await defaultLink.close();
+  for(const type of ['rejected','timeout']){
+    const p=new Port();p.loginCode=type==='rejected'?0x86:0x85;p.suppressLogin=type==='timeout';const events=[];
+    const c=new CompanionTransport(p,{openSettle:0,commandTimeout:1000,investigationTimeout:120,onInvestigationProgress:e=>events.push(e)});
+    await c.open();await c.contacts();c.selectTarget(key);await c.investigateVerifyPeer(key,'');
+    assert(events.some(e=>e.stage==='login-fallback'));
+    assert.equal(p.remoteAttempts['get public.key'],1);
+    assert.equal(p.frames.filter(f=>f[0]===26).length,1);
+    await c.close();
+  }
+  const rejected=new Port();rejected.loginCode=0x86;
+  const rejectedLink=new CompanionTransport(rejected,{openSettle:0,commandTimeout:1000});
+  await rejectedLink.open();await rejectedLink.contacts();rejectedLink.selectTarget(key);
+  await assert.rejects(()=>rejectedLink.investigateVerifyPeer(key,'password'),/rejected/i);
+  assert(!rejected.frames.some(f=>f[0]===2));await rejectedLink.close();
 }
 run().then(()=>console.log('Companion transport tests passed')).catch(e=>{console.error(e);process.exitCode=1;});
