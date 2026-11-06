@@ -16,6 +16,8 @@ import sys
 import tempfile
 
 from build_esp32_partition_migration import bundle_release, verify_archive
+from esp32_migration_assets import standalone_assets
+from esp32_migration_expanders import build_expander_candidates
 from package_esp32_partition_migration import BOARDS, published_full_image, resolve_pio_build_dir
 from package_cascade_release import (category, collect_artifacts, nrf52_sensor_profile,
                                      omit_retired_onboard_qspi_records)
@@ -401,6 +403,8 @@ def build_migration_artifacts(work: Path, version: str, short_source: str,
                                         stdout=output, stderr=subprocess.STDOUT)
             if result.returncode:
                 raise RuntimeError(f"migration utility {bridge} failed; see {log}")
+        build_expander_candidates(list(BOARDS), version, jobs, ROOT, utility_build_dir,
+                                  environment, work / "expander-evaluations")
 
 
 def select_ordinary_full_records(records: list[dict]) -> list[dict]:
@@ -685,6 +689,9 @@ def stage_release(work: Path, migration_work: Path, destination: Path, version: 
                                "--release-build-dir", str(firmware),
                                "--pio-build-dir", str(utility_build_dir),
                                "--version", version, "--source", short_source]
+            if BOARDS:
+                package_command.extend(("--expander-evaluation-dir",
+                                        str(migration_work / "expander-evaluations")))
             package_log = work / "migration-packaging.log"
             with package_log.open("w", encoding="utf-8") as output:
                 result = subprocess.run(package_command, cwd=ROOT, stdout=output,
@@ -696,9 +703,16 @@ def stage_release(work: Path, migration_work: Path, destination: Path, version: 
                     f"{board}-{version}-{short_source}-migration.zip"))
                 if len(packages) != 1:
                     raise ValueError(f"missing migration package: {board}")
+                full_image = published_full_image(records, BOARDS[board]["target"])
                 verify_archive(packages[0], board, version, short_source,
-                               full_image=published_full_image(records, BOARDS[board]["target"]))
+                               full_image=full_image)
                 shutil.copy2(packages[0], migrations / packages[0].name)
+                for name, data in standalone_assets(packages[0], board, BOARDS[board]["target"],
+                                                    version, short_source, full_image).items():
+                    path = migrations / name
+                    if path.exists():
+                        raise ValueError(f"duplicate standalone migration asset: {name}")
+                    path.write_bytes(data)
         bundle_release(staging, migrations, list(BOARDS), version,
                        short_source, "usa-cascade-fixed", "cascade")
 

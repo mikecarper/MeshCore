@@ -214,6 +214,32 @@ print(json.dumps([["platformio", [["build_dir", str(directory.resolve())]]]]))
                                             self.output, VERSION, SOURCE)
         self.check_archive(archive, "heltec-v4", expected, identity)
 
+    def test_evaluated_expander_is_packaged_and_published_as_standalone_assets(self):
+        from esp32_migration_assets import standalone_assets
+        from esp32_migration_expanders import TARGET_MARKER, evaluate_candidate
+        spec, identity = self.qualified_full("heltec-v4")
+        self.utility_tree(self.custom, spec, "UTILITY")
+        candidate = (b"\xe9" + TARGET_MARKER + struct.pack("<I", identity.target_id)
+                     + b"compiled expander")
+        candidate = package.bridge_with_successor_endf(candidate, identity)
+        evidence = self.work / "expander-evaluations"
+        evidence.mkdir()
+        (evidence / "heltec-v4.bin").write_bytes(candidate)
+        (evidence / "heltec-v4.json").write_text(json.dumps(
+            evaluate_candidate("heltec-v4", spec, candidate, VERSION)))
+        archive = package.package_board("heltec-v4", spec, self.artifacts, self.output,
+                                        VERSION, SOURCE, self.custom,
+                                        expander_evaluation_dir=evidence)
+        image, = self.artifacts.glob(f"{spec['target']}-full-*-{VERSION}-{SOURCE}.bin")
+        verify_archive(archive, "heltec-v4", VERSION, SOURCE, full_image=image)
+        files = standalone_assets(archive, "heltec-v4", spec["target"], VERSION, SOURCE, image)
+        prefix = f"heltec-v4-{VERSION}-{SOURCE}"
+        self.assertEqual(set(files), {prefix + "-expander.bin", prefix + "-expander.mota",
+                                      prefix + "-migration.json"})
+        self.assertEqual(json.loads(files[prefix + "-migration.json"])["full_application"]["filename"],
+                         image.name)
+        self.assertNotIn("full-application.bin", files)
+
     def test_staged_publication_bytes_take_precedence_over_a_separate_rebuild(self):
         spec, identity = self.qualified_full("heltec-v4")
         expected = self.utility_tree(self.custom, spec, "PUBLICATION MATCH")
@@ -539,7 +565,12 @@ class MigrationMetadataTest(unittest.TestCase):
             elif command[:2] == ["pio", "run"]:
                 pass  # Compiler boundary; qualified utility bytes already exist.
             elif len(command) > 2 and command[2] == "scripts/package_esp32_partition_migration.py":
-                with mock.patch.object(sys, "argv", command[2:]):
+                # This fixture checks the legacy archive's pinned build path;
+                # expander evidence is independently exercised by its tests.
+                args = command[2:].copy()
+                evaluation_index = args.index("--expander-evaluation-dir")
+                del args[evaluation_index:evaluation_index + 2]
+                with mock.patch.object(sys, "argv", args):
                     package.main()  # Actual hash-valid packaging and archive verification.
             else:
                 self.fail("unexpected recipe process: " + repr(command))
@@ -551,6 +582,8 @@ class MigrationMetadataTest(unittest.TestCase):
         output_root = self.work / "recipe release"
         with mock.patch.object(recipe, "ROOT", self.project), \
                 mock.patch.object(recipe, "git_output", side_effect=git), \
+                mock.patch.object(recipe, "build_expander_candidates",
+                                  return_value=self.work / "expander-evaluations") as build_expanders, \
                 mock.patch.dict(os.environ, environment, clear=True), \
                 mock.patch.object(subprocess, "run", side_effect=run), \
                 mock.patch.object(sys, "argv", [
@@ -558,6 +591,7 @@ class MigrationMetadataTest(unittest.TestCase):
                     "--radio-preset", "usa-cascadia", "--output-root", str(output_root)]), \
                 redirect_stdout(io.StringIO()):
             recipe.main()
+        build_expanders.assert_called_once()
         self.assertEqual(len(self.queries()), 1)
         self.assertEqual(len(calls), 6)  # One Full, four utilities, one packager.
         for command, child_environment in calls:
@@ -614,6 +648,8 @@ class MigrationMetadataTest(unittest.TestCase):
                 mock.patch.object(recipe, "BOARDS", {"heltec-v4": spec}), \
                 mock.patch.object(recipe, "run_logged", side_effect=lambda command, log, env:
                                   captured.append(("full", env.copy()))), \
+                mock.patch.object(recipe, "build_expander_candidates", side_effect=lambda boards, version, jobs, root, tree, env, output:
+                                  captured.append(("expander", env.copy()))), \
                 mock.patch.object(subprocess, "run", side_effect=run), \
                 redirect_stdout(io.StringIO()):
             recipe.build_migration_artifacts(work, VERSION, SOURCE, 2, environment,
@@ -621,7 +657,7 @@ class MigrationMetadataTest(unittest.TestCase):
         self.assertEqual(environment, previous)
         self.assertFalse(self.record.exists())
         self.assertEqual([item[0] for item in captured],
-                         ["full", "utility", "utility", "utility", "utility"])
+                         ["full", "utility", "utility", "utility", "utility", "expander"])
         for _, child_environment in captured:
             self.assertEqual(child_environment["PLATFORMIO_BUILD_DIR"], str(self.fixture.custom.resolve()))
             self.assertEqual(child_environment["MIGRATION_TEST_OTHER"], "preserved-option")
@@ -635,7 +671,12 @@ class MigrationMetadataTest(unittest.TestCase):
         def run(command, **options):
             self.assertEqual(command[2], "scripts/package_esp32_partition_migration.py")
             captured.append((command, options["env"].copy()))
-            with mock.patch.object(sys, "argv", command[2:]):
+            # This fixture exercises the legacy pinned-directory packager.
+            # The separate expander tests provide real evaluation evidence.
+            args = command[2:].copy()
+            evaluation_index = args.index("--expander-evaluation-dir")
+            del args[evaluation_index:evaluation_index + 2]
+            with mock.patch.object(sys, "argv", args):
                 package.main()
             return subprocess.CompletedProcess(command, 0)
 
@@ -658,6 +699,8 @@ class MigrationMetadataTest(unittest.TestCase):
         self.assertEqual(child_environment["MIGRATION_TEST_OTHER"], "preserved-option")
         self.assertEqual(command[command.index("--pio-build-dir") + 1],
                          str(self.fixture.custom.resolve()))
+        self.assertEqual(Path(command[command.index("--expander-evaluation-dir") + 1]),
+                         self.fixture.artifacts / "expander-evaluations")
         self.assertIn("--release-build-dir", command)
         self.assertEqual(Path(command[command.index("--release-build-dir") + 1]).name, "firmware")
         archive, = (destination / "esp32-partition-migration").glob("*.zip")
@@ -671,6 +714,7 @@ class MigrationMetadataTest(unittest.TestCase):
         with mock.patch.object(recipe, "ROOT", self.project), \
                 mock.patch.object(recipe, "BOARDS", {"heltec-v4": spec}), \
                 mock.patch.object(recipe, "run_logged") as build_full, \
+                mock.patch.object(recipe, "build_expander_candidates"), \
                 mock.patch.object(subprocess, "run", return_value=subprocess.CompletedProcess([], 0)), \
                 redirect_stdout(io.StringIO()):
             recipe.build_migration_artifacts(work, VERSION, SOURCE, 2, {},

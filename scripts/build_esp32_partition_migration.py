@@ -21,6 +21,8 @@ import tempfile
 import zipfile
 
 from package_esp32_partition_migration import BOARDS, USB_BRIDGE_PROFILES, resolve_pio_build_dir
+from esp32_migration_assets import standalone_assets
+from esp32_migration_expanders import build_expander_candidates
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -244,6 +246,9 @@ def main() -> None:
         if full:
             build_environment["OUTPUT_DIR"] = str(build_dir)
         subprocess.run(command, cwd=ROOT, env=build_environment, check=True)
+    evaluation_dir = build_expander_candidates(
+        boards, args.version, args.jobs, ROOT, utility_build_dir, environment,
+        output_root / "expander-evaluations")
 
     # Package in a fresh directory so an interruption never leaves a partial
     # release ZIP at the final path. Existing identical ZIPs are reusable.
@@ -253,6 +258,7 @@ def main() -> None:
             sys.executable, "-B", "scripts/package_esp32_partition_migration.py",
             "--build-dir", str(build_dir), "--output-dir", str(staging),
             "--pio-build-dir", str(utility_build_dir),
+            "--expander-evaluation-dir", str(evaluation_dir),
             "--version", args.version, "--source", source,
         ]
         for name in boards:
@@ -267,13 +273,34 @@ def main() -> None:
             if len(matches) != 1:
                 raise ValueError(f"expected exactly one {name} ZIP")
             staged = matches[0]
-            verify_archive(staged, name, args.version, source)
+            target = BOARDS[name]["target"]
+            full_matches = list(build_dir.glob(f"{target}-full-*-{args.version}-{source}.bin"))
+            if len(full_matches) != 1:
+                raise ValueError(f"expected one published Full application for {name}")
+            full_image = full_matches[0]
+            verify_archive(staged, name, args.version, source, full_image=full_image)
+            direct = standalone_assets(staged, name, target, args.version, source, full_image)
             destination = package_dir / staged.name
-            if destination.exists():
-                if hashlib.sha256(destination.read_bytes()).digest() != \
-                        hashlib.sha256(staged.read_bytes()).digest():
-                    raise ValueError(f"existing package differs: {destination}")
-            else:
+            if destination.exists() and hashlib.sha256(destination.read_bytes()).digest() != \
+                    hashlib.sha256(staged.read_bytes()).digest():
+                raise ValueError(f"existing package differs: {destination}")
+            for filename, content in direct.items():
+                direct_path = package_dir / filename
+                if direct_path.exists() and direct_path.read_bytes() != content:
+                    raise ValueError(f"existing standalone migration asset differs: {direct_path}")
+            for filename, content in direct.items():
+                direct_path = package_dir / filename
+                if not direct_path.exists():
+                    with tempfile.NamedTemporaryFile(prefix="migration-asset-", dir=package_dir,
+                                                     delete=False) as output:
+                        temporary_path = Path(output.name)
+                        output.write(content)
+                    try:
+                        temporary_path.replace(direct_path)
+                    finally:
+                        temporary_path.unlink(missing_ok=True)
+                print(f"Ready: {direct_path}", flush=True)
+            if not destination.exists():
                 staged.replace(destination)
             print(f"Ready: {destination}", flush=True)
     if set(boards) == set(BOARDS):
