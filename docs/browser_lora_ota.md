@@ -10,8 +10,8 @@ on hardware. Wi-Fi support is still under development. Keep this page open durin
 transfer; closing it disconnects the file source.
 
 Use Chrome or Edge on a computer with Web Serial support. To start, connect the
-Companion by USB, choose a contact, select the firmware,
-then choose **Connect USB source** and **Check firmware and target**. After
+Companion by USB and choose **Connect USB source**. Choose a contact, select
+the firmware, then choose **Check firmware and target**. After
 checking the result, choose **Transfer**, then **Install and verify**.
 The target needs a firmware build that supports verified `ota installhash`.
 
@@ -24,7 +24,9 @@ The target needs a firmware build that supports verified `ota installhash`.
     <p>Plug in your USB radio, then connect it and choose the device to update.</p>
     <p class="lora-ota-actions"><button type="button" data-role="connect">Connect USB source</button> <button type="button" data-role="disconnect" class="lora-ota-secondary">Disconnect</button></p>
     <label>Search contacts by name or public-key prefix<input data-role="contact-search" autocomplete="off" spellcheck="false" disabled></label>
-    <label>Device to update<select data-role="contact" disabled><option value="">Connect a Companion to load contacts</option></select></label>
+    <p><strong>Device to update</strong></p>
+    <p data-role="contact-status" role="status">Connect a Companion to load contacts.</p>
+    <section data-role="contact" class="lora-ota-contacts" role="group" aria-label="Devices to update" hidden></section>
     <label>Admin password (if needed)<input data-role="password" type="password" autocomplete="off"></label>
     <details class="lora-ota-advanced">
       <summary>Enter a public key manually</summary>

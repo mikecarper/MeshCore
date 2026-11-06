@@ -33,7 +33,7 @@
     if(link && $('source').value==='companion' && (link.guard || link.authenticated || link.serving))targetLocked=true;
     for (const name of editable) $(name).disabled = active || (!!link && (name === 'source' || name === 'acl' || name === 'relays' || (name === 'key' && ($('source').value === 'repeater' || targetLocked))));
     $('contact-search').disabled = active || !link || $('source').value !== 'companion' || targetLocked;
-    $('contact').disabled = $('contact-search').disabled;
+    updateContactButtons();
     for (const name of ['repeat-read', 'repeat-off', 'repeat-on']) $(name).disabled = active || !link;
     $('repeat-node').disabled = $('repeat-key').disabled = $('repeat-kind').disabled = active;
     const pending = readChainJournal();
@@ -44,19 +44,32 @@
   function invalidate() { session = info = chainPrepared = chainConfig = null; $('transfer').disabled = true; $('resume').disabled = true;
     $('install').disabled = true; $('chain-run').disabled = true; $('chain-resume').disabled = true; }
   for (const name of editable) $(name).addEventListener('change', invalidate);
-  function renderContacts() {
-    const select=$('contact'), current=contactKey, matches=LoraOtaContacts.choices(contacts,$('contact-search').value);
-    select.replaceChildren();
-    const prompt=document.createElement('option');prompt.value='';prompt.textContent=matches.length?'Choose a contact':'No matching contacts';select.appendChild(prompt);
-    for(const contact of matches) {
-      const option=document.createElement('option');option.value=contact.publicKey.toLowerCase();option.textContent=LoraOtaContacts.label(contact);select.appendChild(option);
+  function updateContactButtons() {
+    for(const button of $('contact').querySelectorAll('button')) {
+      button.disabled=$('contact-search').disabled;
+      button.setAttribute('aria-pressed', String(button.dataset.contactKey===contactKey));
     }
-    if(current && matches.some(c=>c.publicKey.toLowerCase()===current))select.value=current;
-    else if(current) { contactKey='';$('key').value='';invalidate(); }
+  }
+  function renderContacts() {
+    const list=$('contact'), current=contactKey, matches=LoraOtaContacts.choices(contacts,$('contact-search').value);
+    list.replaceChildren();
+    list.hidden=!matches.length;
+    $('contact-status').textContent=!link || $('source').value!=='companion' ? 'Connect a Companion to load contacts.' :
+      matches.length ? matches.length+' '+(matches.length===1?'device':'devices')+' found. Select a device.' : 'No matching contacts.';
+    for(const contact of matches) {
+      const button=document.createElement('button');
+      button.type='button';button.dataset.contactKey=contact.publicKey.toLowerCase();button.textContent=LoraOtaContacts.label(contact);
+      button.addEventListener('click',()=>{
+        if($('contact-search').disabled)return;
+        contactKey=button.dataset.contactKey;$('key').value=contactKey;invalidate();updateContactButtons();
+      });
+      list.appendChild(button);
+    }
+    if(current && !matches.some(c=>c.publicKey.toLowerCase()===current)) { contactKey='';$('key').value='';invalidate(); }
+    updateContactButtons();
   }
   $('contact-search').addEventListener('input',renderContacts);
-  $('contact').addEventListener('change',()=>{contactKey=$('contact').value;$('key').value=contactKey;invalidate();});
-  $('key').addEventListener('input',()=>{if(contactKey!==$('key').value.toLowerCase()){contactKey='';$('contact').value='';}invalidate();});
+  $('key').addEventListener('input',()=>{if(contactKey!==$('key').value.toLowerCase()){contactKey='';updateContactButtons();}invalidate();});
   $('source').addEventListener('change',()=>{if(!link)$('acl').checked=$('source').value==='repeater';});
   $('acl').checked=false;
   function selectTarget() {
