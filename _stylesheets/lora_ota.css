@@ -54,6 +54,27 @@
   color: var(--md-primary-fg-color);
   background: transparent;
 }
+[data-lora-ota] .lora-ota-contacts {
+  display: grid;
+  gap: 0.35rem;
+  max-height: 19rem;
+  overflow-y: auto;
+  padding: 0.15rem;
+}
+[data-lora-ota] .lora-ota-contacts[hidden] { display: none; }
+[data-lora-ota] .lora-ota-contacts button {
+  width: 100%;
+  text-align: left;
+  color: var(--md-default-fg-color);
+  background: var(--md-default-bg-color);
+  border-color: var(--md-default-fg-color--lighter);
+  overflow-wrap: anywhere;
+}
+[data-lora-ota] .lora-ota-contacts button[aria-pressed="true"] {
+  color: var(--md-primary-bg-color);
+  background: var(--md-primary-fg-color);
+  border-color: var(--md-primary-fg-color);
+}
 [data-lora-ota] button:disabled { opacity: 0.45; cursor: not-allowed; }
 [data-lora-ota] button:focus-visible, [data-lora-ota] summary:focus-visible {
   outline: 3px solid var(--md-accent-fg-color);
