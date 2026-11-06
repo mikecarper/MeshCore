@@ -181,7 +181,11 @@ def build_expander_candidates(boards: list[str], version: str, jobs: int,
             spec = BOARDS[board]
             target = spec["target"]
             pio_env = expander_environment(board, target)
-            image_path = utility_build_dir / pio_env / "firmware.bin"
+            pio_env_dir = utility_build_dir / pio_env
+            image_path = pio_env_dir / "firmware.bin"
+            if (pio_env_dir.is_symlink() or pio_env_dir.resolve().parent != utility_build_dir
+                    or image_path.is_symlink()):
+                raise ValueError(f"{board}: unsafe expander build output path")
             # An interrupted prior build must not masquerade as this result.
             image_path.unlink(missing_ok=True)
             build_environment = dict(environment)

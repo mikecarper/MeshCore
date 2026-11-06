@@ -110,6 +110,28 @@ class ExpanderCandidateTests(unittest.TestCase):
             self.assertEqual(evaluate_candidate(self.board, self.spec, candidate, self.version), evidence)
             self.assertEqual("combined", evidence["decision"])
 
+    def test_build_refuses_symlinked_output_before_unlink_or_pio(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            (root / "platformio.ini").write_text("[platformio]\n", encoding="utf-8")
+            build = root / "build"
+            build.mkdir()
+            outside = root / "outside"
+            outside.mkdir()
+            sentinel = outside / "firmware.bin"
+            sentinel.write_bytes(b"preserve")
+            link = build / expander_environment(self.board, self.target)
+            try:
+                link.symlink_to(outside, target_is_directory=True)
+            except (OSError, NotImplementedError):
+                self.skipTest("directory symlinks unavailable")
+            with mock.patch("subprocess.run") as run:
+                with self.assertRaisesRegex(ValueError, "unsafe expander build output path"):
+                    build_expander_candidates([self.board], self.version, 1,
+                                              root, build, {}, root / "proof")
+                run.assert_not_called()
+            self.assertEqual(b"preserve", sentinel.read_bytes())
+
 
 if __name__ == "__main__":
     unittest.main()
