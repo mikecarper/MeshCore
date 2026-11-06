@@ -977,17 +977,17 @@
     {
       "file": "examples/companion_radio/MyMesh.cpp",
       "verbose": "  ERROR: another Companion request is still pending\r\n",
-      "concise": "  ERROR: Companion request pending\r\n"
+      "concise": "  ERROR: request pending\r\n"
     },
     {
       "file": "examples/companion_radio/MyMesh.cpp",
       "verbose": "  ERROR: remote command must be 1-%u UTF-8 bytes\r\n",
-      "concise": "  ERROR: remote command 1-%u UTF-8 bytes\r\n"
+      "concise": "  ERROR: cmd 1-%u UTF-8 bytes\r\n"
     },
     {
       "file": "examples/companion_radio/MyMesh.cpp",
       "verbose": "  ERROR: unable to send remote command\r\n",
-      "concise": "  ERROR: remote command send failed\r\n"
+      "concise": "  ERROR: cmd send failed\r\n"
     },
     {
       "file": "examples/companion_radio/MyMesh.cpp",
@@ -1027,7 +1027,7 @@
     {
       "file": "examples/companion_radio/MyMesh.cpp",
       "verbose": "  ERROR: no recipient selected (use 'to' first)\r\n",
-      "concise": "  ERROR: choose recipient with 'to'\r\n"
+      "concise": "  ERROR: use 'to' first\r\n"
     },
     {
       "file": "examples/companion_radio/MyMesh.cpp",
@@ -1397,7 +1397,7 @@
     {
       "file": "examples/companion_radio/MyMesh.cpp",
       "verbose": "  ERROR: command to %s is still pending\r\n",
-      "concise": "  ERROR: command to %s pending\r\n"
+      "concise": "  ERROR: cmd %s pending\r\n"
     },
     {
       "file": "examples/companion_radio/MyMesh.cpp",
@@ -1733,6 +1733,21 @@
       "file": "src/helpers/MorseCLI.h",
       "verbose": "limit 80 characters/180 seconds; shorten text or raise WPM",
       "concise": "80 characters/180 seconds max; shorten text or raise WPM"
+    },
+    {
+      "file": "examples/companion_radio/MyMesh.cpp",
+      "verbose": "\r\n  ERROR: command to %s timed out after %lu ms.\r\n> ",
+      "concise": "\r\n  ERROR: %s timed out (%lu ms).\r\n> "
+    },
+    {
+      "file": "examples/companion_radio/MyMesh.cpp",
+      "verbose": "  ERROR: recipient prefix not found\r\n",
+      "concise": "  ERROR: no matching recipient\r\n"
+    },
+    {
+      "file": "examples/companion_radio/MyMesh.cpp",
+      "verbose": "  ERROR: no recipient selected\r\n",
+      "concise": "  ERROR: use 'to' first\r\n"
     }
   ],
   "noncompact_tokens_sha256": {

@@ -10353,7 +10353,7 @@ void MyMesh::sendTerminalLogin(ContactInfo& recipient,
   }
   if (hasPendingReqs()) {
     terminalOutput().print(
-        MESH_CLI_REPLY_TEXT("  ERROR: another Companion request is still pending\r\n", "  ERROR: Companion request pending\r\n"));
+        MESH_CLI_REPLY_TEXT("  ERROR: another Companion request is still pending\r\n", "  ERROR: request pending\r\n"));
     return;
   }
 
@@ -10399,7 +10399,7 @@ void MyMesh::serviceTerminalCommand() {
   if (!_terminal_command.expire(_ms->getMillis(), elapsed_millis)) return;
 
   if (hasTerminalOutput()) {
-    terminalOutput().printf("\r\n  ERROR: command to %s timed out after %lu ms.\r\n> ",
+    terminalOutput().printf(MESH_CLI_REPLY_TEXT("\r\n  ERROR: command to %s timed out after %lu ms.\r\n> ", "\r\n  ERROR: %s timed out (%lu ms).\r\n> "),
                   _terminal_command_target, (unsigned long)elapsed_millis);
   }
   _terminal_command_target[0] = 0;
@@ -10416,7 +10416,7 @@ void MyMesh::sendTerminalCommand(ContactInfo& recipient,
 
   serviceTerminalCommand();
   if (_terminal_command.isPending()) {
-    terminalOutput().printf(MESH_CLI_REPLY_TEXT("  ERROR: command to %s is still pending\r\n", "  ERROR: command to %s pending\r\n"),
+    terminalOutput().printf(MESH_CLI_REPLY_TEXT("  ERROR: command to %s is still pending\r\n", "  ERROR: cmd %s pending\r\n"),
                   _terminal_command_target);
     return;
   }
@@ -10434,7 +10434,7 @@ void MyMesh::sendTerminalCommand(ContactInfo& recipient,
   const size_t command_len =
       on_air_command == NULL ? 0 : strlen(on_air_command);
   if (command_len == 0 || command_len > MAX_CORRELATED_CLI_TEXT_LEN) {
-    terminalOutput().printf(MESH_CLI_REPLY_TEXT("  ERROR: remote command must be 1-%u UTF-8 bytes\r\n", "  ERROR: remote command 1-%u UTF-8 bytes\r\n"),
+    terminalOutput().printf(MESH_CLI_REPLY_TEXT("  ERROR: remote command must be 1-%u UTF-8 bytes\r\n", "  ERROR: cmd 1-%u UTF-8 bytes\r\n"),
                   (unsigned)MAX_CORRELATED_CLI_TEXT_LEN);
     return;
   }
@@ -10456,7 +10456,7 @@ void MyMesh::sendTerminalCommand(ContactInfo& recipient,
                                      txt_type, on_air_command,
                                      est_timeout, logical_request_id);
   if (result == MSG_SEND_FAILED) {
-    terminalOutput().print(MESH_CLI_REPLY_TEXT("  ERROR: unable to send remote command\r\n", "  ERROR: remote command send failed\r\n"));
+    terminalOutput().print(MESH_CLI_REPLY_TEXT("  ERROR: unable to send remote command\r\n", "  ERROR: cmd send failed\r\n"));
     return;
   }
 
@@ -10783,7 +10783,7 @@ void MyMesh::handleTerminalCommand(char* command, bool reader_prompt,
     ContactInfo* recipient = getTerminalRecipient();
     const char* text = command + 5;
     if (recipient == NULL) {
-      terminalOutput().print(MESH_CLI_REPLY_TEXT("  ERROR: no recipient selected (use 'to' first)\r\n", "  ERROR: choose recipient with 'to'\r\n"));
+      terminalOutput().print(MESH_CLI_REPLY_TEXT("  ERROR: no recipient selected (use 'to' first)\r\n", "  ERROR: use 'to' first\r\n"));
     } else if (*text == 0 || strlen(text) > MAX_TEXT_LEN) {
       terminalOutput().printf(MESH_CLI_REPLY_TEXT("  ERROR: message must be 1-%u characters\r\n", "  ERROR: message 1-%u characters\r\n"), (unsigned)MAX_TEXT_LEN);
     } else {
@@ -10865,7 +10865,7 @@ void MyMesh::handleTerminalCommand(char* command, bool reader_prompt,
              != mesh::cli::TerminalArgumentCommandMatch::NoMatch) {
     ContactInfo* recipient = getTerminalRecipient();
     if (recipient == NULL) {
-      terminalOutput().print(MESH_CLI_REPLY_TEXT("  ERROR: no recipient selected (use 'to' first)\r\n", "  ERROR: choose recipient with 'to'\r\n"));
+      terminalOutput().print(MESH_CLI_REPLY_TEXT("  ERROR: no recipient selected (use 'to' first)\r\n", "  ERROR: use 'to' first\r\n"));
     } else {
       handleTerminalPath(
           *recipient,
@@ -10879,7 +10879,7 @@ void MyMesh::handleTerminalCommand(char* command, bool reader_prompt,
         != mesh::cli::TerminalArgumentCommandMatch::Valid) {
       terminalOutput().print("  ERROR: use login <admin-password>\r\n");
     } else if (recipient == NULL) {
-      terminalOutput().print(MESH_CLI_REPLY_TEXT("  ERROR: no recipient selected (use 'to' first)\r\n", "  ERROR: choose recipient with 'to'\r\n"));
+      terminalOutput().print(MESH_CLI_REPLY_TEXT("  ERROR: no recipient selected (use 'to' first)\r\n", "  ERROR: use 'to' first\r\n"));
     } else {
       sendTerminalLogin(*recipient, login_password);
     }
@@ -10890,7 +10890,7 @@ void MyMesh::handleTerminalCommand(char* command, bool reader_prompt,
         != mesh::cli::TerminalArgumentCommandMatch::Valid) {
       terminalOutput().print(MESH_CLI_REPLY_TEXT("  ERROR: use cmd <remote-command>\r\n", "  ERROR: cmd <remote-command>\r\n"));
     } else if (recipient == NULL) {
-      terminalOutput().print(MESH_CLI_REPLY_TEXT("  ERROR: no recipient selected (use 'to' first)\r\n", "  ERROR: choose recipient with 'to'\r\n"));
+      terminalOutput().print(MESH_CLI_REPLY_TEXT("  ERROR: no recipient selected (use 'to' first)\r\n", "  ERROR: use 'to' first\r\n"));
     } else {
       sendTerminalCommand(*recipient, remote_command);
     }
@@ -10908,13 +10908,13 @@ void MyMesh::handleTerminalCommand(char* command, bool reader_prompt,
         recipient = searchContactsByPrefix(prefix);
       }
       if (recipient == NULL || recipient->type == ADV_TYPE_NONE) {
-        terminalOutput().print("  ERROR: recipient prefix not found\r\n");
+        terminalOutput().print(MESH_CLI_REPLY_TEXT("  ERROR: recipient prefix not found\r\n", "  ERROR: no matching recipient\r\n"));
         return;
       }
     } else {
       recipient = getTerminalRecipient();
       if (recipient == NULL) {
-        terminalOutput().print(MESH_CLI_REPLY_TEXT("  ERROR: no recipient selected (use 'to' first)\r\n", "  ERROR: choose recipient with 'to'\r\n"));
+        terminalOutput().print(MESH_CLI_REPLY_TEXT("  ERROR: no recipient selected (use 'to' first)\r\n", "  ERROR: use 'to' first\r\n"));
         return;
       }
     }
@@ -10925,7 +10925,7 @@ void MyMesh::handleTerminalCommand(char* command, bool reader_prompt,
   } else if (strcmp(command, "reset path") == 0) {
     ContactInfo* recipient = getTerminalRecipient();
     if (recipient == NULL) {
-      terminalOutput().print("  ERROR: no recipient selected\r\n");
+      terminalOutput().print(MESH_CLI_REPLY_TEXT("  ERROR: no recipient selected\r\n", "  ERROR: use 'to' first\r\n"));
     } else {
       const uint8_t previous_out_path_len = recipient->out_path_len;
       resetPathTo(*recipient);
