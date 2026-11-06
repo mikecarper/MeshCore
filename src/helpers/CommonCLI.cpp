@@ -13,6 +13,7 @@
 #include "CarrierTools.h"
 #include "PacketFileLoggingConfig.h"
 #include "CommonCLI.h"
+#include "AGCMaintenanceCLI.h"
 #ifdef WRAPPER_CLASS
 #include "target.h"
 #endif
@@ -3751,6 +3752,20 @@ bool CommonCLI::handleUDPBridgeCommand(uint32_t sender_timestamp,
 void CommonCLI::handleCommand(uint32_t sender_timestamp, char* command, char* reply) {
     PrefsSaveReplyGuard save_reply(_prefs_save_failures, reply);
     mesh::cli::normalizeCommandVerb(command);
+#if MESH_RXPS_PULSE_LAB
+    if(sender_timestamp==0 && mesh::handleRxpsPulseLabCommand(_callbacks->getProfileRadio(),command,reply,157)) return;
+#endif
+    // Cached getters remain available during an asynchronous RXPS lease.
+    // Defer mutating commands (including board FEM GPIO) before any driver
+    // or board callback can accidentally assert NSS during retained sleep.
+    const auto* maintenance_radio=_callbacks->getProfileRadio();
+    if(maintenance_radio && maintenance_radio->isAGCMaintenancePending()
+        && strncmp(command,"get ",4)!=0 && strcmp(command,"ver")!=0) {
+      mesh::cli::formatError(reply,160,"radio maintenance pending; retry shortly");return;
+    }
+#if MESH_WARM_RX_LAB_TIMER
+    if(mesh::handleWarmRxLabTimerCommand(_callbacks->getProfileRadio(),command,reply,157)) return;
+#endif
 #if defined(MESH_W12_PRAM_EXPERIMENT) && MESH_W12_PRAM_EXPERIMENT
     if (radio_driver.labScannerUncertain() && strcmp(command,"get pramscan") && strcmp(command,"get pramscan.last")
         && strcmp(command,"get pramscan.timing") && strcmp(command,"get pramscan.bench") && strcmp(command,"get pramscan.diag") && strcmp(command,"get pramscan.sleep") && strcmp(command,"get pramscan.recovery")
@@ -5148,9 +5163,18 @@ void CommonCLI::handleSetCmd(uint32_t sender_timestamp, char* command, char* rep
       savePrefs();
       strcpy(reply, "OK");
     }
-  } else if (memcmp(config, "agc.reset.interval ", 19) == 0) {
+  } else if (memcmp(config, "agc.old ", 8) == 0) {
+    auto* radio=_callbacks->getProfileRadio();
+    const char* value=skipSpacesConst(config+8);
     uint32_t seconds;
-    if (!mesh::cli::parseUnsignedIntegerStrict(&config[19], seconds) || seconds > 1020) {
+    if(!radio || !radio->supportsWarmRxRefresh()) mesh::cli::formatError(reply,160,"unsupported");
+    else if(!mesh::cli::parseUnsignedIntegerStrict(value,seconds) || seconds>86400) mesh::cli::formatError(reply,160,"old AGC interval must be 0-86400 seconds");
+    else if(!radio->setOldAGCInterval(seconds)) mesh::cli::formatError(reply,160,"failed to set old AGC interval");
+    else sprintf(reply,"OK - old full-reset interval %lu seconds (RAM only; disabled after reboot)",(unsigned long)seconds);
+  } else if (memcmp(config, "agc.reset.interval ", 19) == 0 || memcmp(config,"agc ",4)==0) {
+    uint32_t seconds;
+    const char* value=memcmp(config,"agc ",4)==0 ? config+4 : config+19;
+    if (!mesh::cli::parseUnsignedIntegerStrict(value, seconds) || seconds > 1020) {
       mesh::cli::formatError(reply, 160, MESH_CLI_REPLY_TEXT("AGC interval must be 0-1020 seconds", "AGC interval 0-1020 seconds"));
     } else {
       _prefs->agc_reset_interval = seconds / 4;
@@ -6560,7 +6584,29 @@ void CommonCLI::handleGetCmd(uint32_t sender_timestamp, char* command, char* rep
     snprintf(reply, 160, "> %s%s. # channel busy: %u",
              (_prefs->cad_enabled || required) ? "on" : "off",
              required ? " (required by radio.mode tx)" : "", _board->n_cad_busy);
-  } else if (configKeyEquals(config, "agc.reset.interval")) {
+#if defined(MESH_AGC_TIMING_DIAGNOSTICS) && MESH_AGC_TIMING_DIAGNOSTICS
+  } else if (configKeyEquals(config, "agc.reset.status") || configKeyEquals(config,"agc.old.status")
+      || configKeyEquals(config, "agc.reset.timing")
+      || configKeyEquals(config,"agc.old.timing") || configKeyEquals(config,"agc.old.errors")
+      || configKeyEquals(config, "agc.reset.errors")) {
+    const uint8_t page = (configKeyEquals(config, "agc.reset.timing") || configKeyEquals(config,"agc.old.timing")) ? 1
+        : (configKeyEquals(config, "agc.reset.errors") || configKeyEquals(config,"agc.old.errors")) ? 2 : 0;
+    const auto* radio = _callbacks->getProfileRadio();
+    if (!radio || !radio->formatAGCTimingDiagnostics(page, reply, 157)) {
+      mesh::cli::formatError(reply, 160, "unsupported");
+    }
+#endif
+  } else if(configKeyEquals(config,"agc.old")) {
+    const auto* radio=_callbacks->getProfileRadio();
+    if(!radio || !radio->supportsWarmRxRefresh()) mesh::cli::formatError(reply,160,"unsupported");
+    else sprintf(reply,"> %lu",(unsigned long)radio->getOldAGCInterval());
+  } else if(configKeyEquals(config,"agc.status") || configKeyEquals(config,"agc.timing") || configKeyEquals(config,"agc.recovery")
+      || configKeyEquals(config,"agc.pulse") || configKeyEquals(config,"agc.sleep") || configKeyEquals(config,"agc.checks")) {
+    const auto* radio=_callbacks->getProfileRadio();
+    const uint8_t page=configKeyEquals(config,"agc.timing")?1:configKeyEquals(config,"agc.recovery")?2:
+        configKeyEquals(config,"agc.pulse")?3:configKeyEquals(config,"agc.sleep")?4:configKeyEquals(config,"agc.checks")?5:0;
+    if(!radio || !radio->formatWarmRxRefresh(page,((uint32_t)_prefs->agc_reset_interval)*4,reply,157)) mesh::cli::formatError(reply,160,"unsupported");
+  } else if (configKeyEquals(config, "agc.reset.interval") || configKeyEquals(config,"agc")) {
     sprintf(reply, "> %d", ((uint32_t) _prefs->agc_reset_interval) * 4);
   } else if (configKeyEquals(config, "multi.acks")) {
     sprintf(reply, "> %d", (uint32_t) _prefs->multi_acks);
