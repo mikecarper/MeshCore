@@ -115,6 +115,27 @@ class LegacyInvestigationBrowserTest(unittest.TestCase):
         self.assertFalse(any(f[0] in (52, 65) for f in result['frames']), result)
         self.assertFalse(any(c.startswith(('ota pull', 'ota installhash ')) for c in result['cmds']), result)
 
+    def test_empty_password_uses_existing_access_without_login(self):
+        harness=legacy_harness()
+        self.assertEqual(harness.count("el('password').value='password';"),1)
+        result=run_harness(harness.replace("el('password').value='password';","el('password').value='';",1),timeout=90)
+        self.assertNotIn('error',result,result)
+        self.assertTrue(result['complete'],result)
+        self.assertTrue(result['verified'],result)
+        self.assertIn('get public.key',result['cmds'],result)
+        self.assertIn('ota status',result['cmds'],result)
+        self.assertFalse(any(f[0] in (26,52,65) for f in result['frames']),result)
+        self.assertFalse(any(c.startswith(('ota pull','ota installhash ')) for c in result['cmds']),result)
+
+    def test_empty_password_without_authorized_full_key_never_sends_ota(self):
+        harness=legacy_harness('identity')
+        self.assertEqual(harness.count("el('password').value='password';"),1)
+        result=run_harness(harness.replace("el('password').value='password';","el('password').value='';",1),timeout=90)
+        self.assertNotIn('error',result,result)
+        self.assertFalse(result['complete'],result)
+        self.assertNotIn('ota status',result['cmds'],result)
+        self.assertFalse(any(f[0] in (26,52,65) for f in result['frames']),result)
+
     def test_wrong_full_identity_is_not_accepted(self):
         result = run_harness(legacy_harness('identity'), timeout=90)
         self.assertNotIn('error', result, result)

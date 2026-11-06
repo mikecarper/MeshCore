@@ -4,7 +4,7 @@
   const ui = document.querySelector('[data-lora-ota]');
   if (!ui) return;
   const $ = name => ui.querySelector('[data-role="' + name + '"]');
-  let link, session, info, expectedSigner, activeTask, preparing, chainPrepared, chainConfig;
+  let link, session, info, expectedSigner, activeTask, preparing, chainPrepared, chainConfig, connectController;
   let contacts=[], targetLocked=false, contactKey='';
   let catalogFile=null, catalogBaseFile=null, catalogDest=null, catalogVersion='', catalogInstallSupported=false, catalogCandidates=[], catalogGeneration=0;
   let preservedCount=0, preservedExportSnapshot=null, preservedExportToken=null, preservedExportInterrupted=false;
@@ -75,6 +75,7 @@
     if(!event || typeof event.stage!=='string' || investigationStopping || !investigationActive)return;
     const labels={
       'refreshing-contacts':'Refreshing contacts…',
+      'checking-acl':'Checking existing access without a password…',
       'sending-login':'Sending login…',
       'waiting-login':'Waiting for login response…',
       identity:'Checking target identity…',
@@ -205,6 +206,7 @@
     try { new CompressionStream('deflate-raw'); return compressor; } catch (_) { return null; }
   }
   async function close() {
+    if (connectController) connectController.abort();
     if (session) session.stop();
     if (preparing) preparing.abort();
     if (activeTask) { log('Waiting for the current radio request to finish…'); await activeTask.catch(() => {}); }
@@ -215,6 +217,7 @@
     $('transfer').disabled = true; $('resume').disabled = true; $('install').disabled = true;
   }
   async function connect() {
+    const controller = connectController = new AbortController();
     $('connect').disabled = true; $('connect').textContent = 'Connecting…'; busy(true);
     $('contact-status').textContent = 'Choose a USB device…';
     try {
@@ -226,16 +229,25 @@
       if (relays.length && !$('acl').checked) throw Error('Routed updates require existing ACL access on every relay and the target.');
       if (relays.some(r => !/^[0-9a-f]{64}$/i.test(r)) || relays.length > 8) throw Error('Enter up to eight full relay public keys.');
       const port = await navigator.serial.requestPort();
+      if (controller.signal.aborted) throw new DOMException('Connection canceled', 'AbortError');
       $('contact-status').textContent = 'Connecting to radio…';
       if(companion)$('acl').checked=false;
+      const openOptions = {openSignal:controller.signal, onOpenAttempt:(attempt,maxAttempts)=>{
+        if(!controller.signal.aborted) $('contact-status').textContent='Opening USB port (attempt '+attempt+' of '+maxAttempts+')…';
+      }, onOpenSuccess:()=>{
+        if(!controller.signal.aborted) $('contact-status').textContent='Connecting to radio…';
+      }};
       const direct = companion
-        ? new LoraOtaCompanion.CompanionTransport(port, {remoteTimeout:75000, onPreserved:refreshPreservedMessages, onInvestigationProgress})
-        : new LoraOtaSerial.RepeaterTransport(port, {knownRepeater:key, aclOnly:$('acl').checked, remoteTimeout:75000});
+        ? new LoraOtaCompanion.CompanionTransport(port, {...openOptions, remoteTimeout:75000, onPreserved:refreshPreservedMessages, onInvestigationProgress})
+        : new LoraOtaSerial.RepeaterTransport(port, {...openOptions, knownRepeater:key, aclOnly:$('acl').checked, remoteTimeout:75000});
       link = relays.length ? new LoraOtaRoute.RoutedRepeaterTransport(direct, key, relays) : direct;
       await link.open();
+      if (controller.signal.aborted) throw new DOMException('Connection canceled', 'AbortError');
       if(companion){
         $('contact-status').textContent = 'Loading contacts…';
-        contacts=await link.contacts();renderContacts();
+        contacts=await link.contacts();
+        if (controller.signal.aborted) throw new DOMException('Connection canceled', 'AbortError');
+        renderContacts();
         log('Loaded '+LoraOtaContacts.choices(contacts).length+' eligible contacts.');
         if(link.otaUnavailableReason)log(link.otaUnavailableReason);
       } else $('contact-status').textContent = 'Connected. Enter the target public key.';
@@ -244,13 +256,15 @@
       $('find-route').disabled = !link.aclOnly || !link.supportsRoutedPath || !!link.relays;
       log('Connected to source ' + link.sourceKey + '.');
     } catch (error) {
-      fail(error);
+      if(!controller.signal.aborted && error?.name!=='NotFoundError')fail(error);
       if (link) { try { await link.close(); } catch (_) {} }
       link = session = null; $('connect').disabled = false; $('inspect').disabled = true;
-      $('contact-status').textContent = error?.name === 'NotFoundError'
-        ? 'USB selection canceled. Choose a USB device to try again.'
-        : 'Connection failed: ' + (error?.message || error) + '. Try again.';
-    } finally { $('connect').textContent = 'Connect USB source'; busy(false); }
+      $('contact-status').textContent = controller.signal.aborted || error?.name === 'NotFoundError'
+        ? 'USB connection canceled. Choose a USB device to try again.'
+        : error?.usbOpenFailed
+          ? 'Could not open the USB port. It may be in use by another app or browser tab. Disconnect the radio there and try again. If it still fails, reconnect its USB data cable.'
+          : 'Connection failed: ' + (error?.message || error) + '. Try again.';
+    } finally { if(connectController===controller)connectController=null; $('connect').textContent = 'Connect USB source'; busy(false); }
   }
   async function loadCatalogCandidate(candidate, generation) {
     catalogFile=null; invalidate();
@@ -338,6 +352,7 @@
       ['Install verification', 'ota installhash']
     ];
     let next = 0, allReplies = true;
+    const noPassword = $('acl').checked || $('password').value.length === 0;
     const checkStopped=()=>{if(investigationStopping)throw Error('Investigation stopped by user');};
     try {
       if (!link) throw Error('Connect a source radio first.');
@@ -346,11 +361,11 @@
       if(standard) {
         add('Companion warning: this radio can investigate, but needs guarded OTA support before it can send an update.');
         await link.enableStandardInvestigation();
-        showInvestigationProgress('Logging in and checking target identity…');
+        showInvestigationProgress(link.investigationAuthenticated ? 'Checking target identity…' : noPassword ? 'Checking existing access without a password…' : 'Logging in and checking target identity…');
         await link.investigateVerifyPeer(target, password);
       } else {
-        if($('source').value!=='companion' && !link.authenticated && !$('acl').checked)add('> login (password hidden)');
-        showInvestigationProgress($('acl').checked || link.authenticated ? 'Checking target identity…' : 'Logging in and checking target identity…');
+        if($('source').value!=='companion' && !link.authenticated && !noPassword)add('> login (password hidden)');
+        showInvestigationProgress(link.authenticated ? 'Checking target identity…' : noPassword ? 'Checking existing access without a password…' : 'Logging in and checking target identity…');
         await link.verifyPeer(target, password);
       }
       checkStopped();verified = !standard || link.investigationVerified===true;
@@ -423,7 +438,9 @@
       if(stopped)add('Investigation stopped. Unrelated messages already received are saved in this browser.');
       else add((verified ? 'Check interrupted: ' : 'Identity not verified: ') + (error?.message || error));
       if(/(?:login|remote command|target reply).*timed out/i.test(error?.message||''))
-        add('No reply received. Check that the target is awake and reachable, and verify the radio settings, path, admin password and Companion clock before trying again.');
+        add(noPassword
+          ? 'No reply received. Check that the target is awake and reachable, the radio settings, path and source clock are correct, and the source radio key is in the target ACL; or enter an admin password and retry.'
+          : 'No reply received. Check that the target is awake and reachable, and verify the radio settings, path, admin password and Companion clock before trying again.');
       if(standard && link?.investigationEnabled)add('Disconnect the Companion before choosing another target or retrying the login.');
       for (; next < checks.length; next++) add(checks[next][0] + ': Not checked');
       fail(error);

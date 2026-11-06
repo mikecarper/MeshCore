@@ -28,7 +28,8 @@ The target needs a firmware build that supports verified `ota installhash`.
     <p><strong>Device to update</strong></p>
     <p data-role="contact-status" role="status">Connect a Companion to load contacts.</p>
     <section data-role="contact" class="lora-ota-contacts" role="group" aria-label="Devices to update" hidden></section>
-    <label>Admin password (if needed)<input data-role="password" type="password" autocomplete="off"></label>
+    <label>Admin password (optional)<input data-role="password" type="password" autocomplete="off" aria-describedby="lora-ota-password-help"></label>
+    <small id="lora-ota-password-help">Leave blank to use existing ACL access or an active session.</small>
     <details class="lora-ota-advanced">
       <summary>Enter a public key manually</summary>
       <label>Target public key (64 hex characters)<input data-role="key" size="64" autocomplete="off" spellcheck="false"></label>
@@ -169,6 +170,7 @@ if preparation fails, remove the old image to use a full package instead.
 <script src="../_javascript/lora_ota_package.js"></script>
 <script src="../_javascript/lora_ota_zip.js"></script>
 <script src="../_javascript/lora_ota_delta.js"></script>
+<script src="../_javascript/lora_ota_port.js"></script>
 <script src="../_javascript/lora_ota_serial.js"></script>
 <script src="../_javascript/lora_ota_companion_source.js"></script>
 <script src="../_javascript/lora_ota_companion.js"></script>
