@@ -19,8 +19,10 @@ SD bootloader update then installed official 2.4.12 successfully.
 | Application body / image | 624,212 / 624,268 bytes; body hash `75134BA65EB52E51` |
 | Embedded 40 KiB candidate | SHA256 `c9479891c5d0446d9a86bf2e7af03fdf0ad6032312395f48b2340ab7fe4b22ed` |
 
-The [application ZIP](https://github.com/mikecarper/MeshCore/releases/download/lora-ota-v1.18.0.1-halo-keymind-cascade-dev-03214a16/Heltec_tower_v2_sdcard_repeater_lora_ota_no_external_sensors-with-bootloader-2.4.12-full-ota-v1.18.0.1-halo-keymind-cascade-dev-03214a16.zip)
-SHA256 was `42359f1abb69fab0eb500638c9d11f455630d8ee255935255d59c6467f48c17a`.
+The original test application ZIP had SHA256
+`42359f1abb69fab0eb500638c9d11f455630d8ee255935255d59c6467f48c17a`.
+It was later replaced by the [updated application ZIP](https://github.com/mikecarper/MeshCore/releases/download/lora-ota-v1.18.0.1-halo-keymind-cascade-dev-03214a16/Heltec_tower_v2_sdcard_repeater_lora_ota_no_external_sensors-with-bootloader-2.4.12-full-ota-v1.18.0.1-halo-keymind-cascade-dev-40dd42de.zip),
+which was not the image used in this test.
 The [normal 2.4.9 bootloader-update UF2](https://github.com/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/releases/download/v0.11.0-OTAFIX2.4.9/update-heltec_mesh_tower_v2_sdcard_bootloader-v0.11.0-OTAFIX2.4.9_mbr.uf2)
 SHA256 was `09ca85492c322af09a31fcb7776364e7a63612eba0b545c9abfa8a0ef39e9aab`.
 
