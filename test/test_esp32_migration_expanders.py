@@ -2,6 +2,7 @@
 """Exact target, capacity and build-failure contracts for expanders."""
 
 import json
+import shutil
 from pathlib import Path
 import struct
 import subprocess
@@ -124,23 +125,33 @@ class ExpanderCandidateTests(unittest.TestCase):
             env = expander_environment(self.board, self.target)
             image_path = build_dir / env / "firmware.bin"
             image_path.parent.mkdir(parents=True)
-            image_path.write_bytes(image_for(self.target))  # stale output
+            image_path.write_bytes(b"legacy artifact must survive")
             with mock.patch("subprocess.run", side_effect=subprocess.CalledProcessError(1, "pio")):
                 with self.assertRaises(subprocess.CalledProcessError):
                     build_expander_candidates([self.board], self.version, 1, root, build_dir, {}, output)
-            self.assertFalse(image_path.exists())
+            self.assertEqual(b"legacy artifact must survive", image_path.read_bytes())
             self.assertFalse((output / (self.board + ".json")).exists())
 
             def successful_build(command, **kwargs):
                 self.assertEqual("pio", command[0])
                 self.assertTrue(kwargs["check"])
-                image_path.write_bytes(image_for(self.target))
+                isolated = Path(kwargs["env"]["PLATFORMIO_BUILD_DIR"])
+                self.assertNotEqual(isolated, build_dir)
+                # Simulate PIO clearing the entire project build tree when
+                # switching --project-conf; the legacy tree must survive.
+                shutil.rmtree(isolated)
+                candidate = isolated / env / "firmware.bin"
+                candidate.parent.mkdir(parents=True)
+                candidate.write_bytes(image_for(self.target))
             with mock.patch("subprocess.run", side_effect=successful_build):
                 build_expander_candidates([self.board], self.version, 1, root, build_dir, {}, output)
             candidate = (output / (self.board + ".bin")).read_bytes()
             evidence = json.loads((output / (self.board + ".json")).read_text())
             self.assertEqual(evaluate_candidate(self.board, self.spec, candidate, self.version), evidence)
             self.assertEqual("combined", evidence["decision"])
+            self.assertEqual(b"legacy artifact must survive", image_path.read_bytes())
+            self.assertEqual({self.board + ".bin", self.board + ".json"},
+                             {item.name for item in output.iterdir()})
 
     def test_build_refuses_symlinked_output_before_unlink_or_pio(self):
         with tempfile.TemporaryDirectory() as temporary:
@@ -152,12 +163,16 @@ class ExpanderCandidateTests(unittest.TestCase):
             outside.mkdir()
             sentinel = outside / "firmware.bin"
             sentinel.write_bytes(b"preserve")
-            link = build / expander_environment(self.board, self.target)
-            try:
-                link.symlink_to(outside, target_is_directory=True)
-            except (OSError, NotImplementedError):
-                self.skipTest("directory symlinks unavailable")
-            with mock.patch("subprocess.run") as run:
+            from esp32_migration_expanders import write_project_overlay
+            def malicious_overlay(path, project, boards, catalog):
+                write_project_overlay(path, project, boards, catalog)
+                link = path.parent / "pio-build" / expander_environment(self.board, self.target)
+                try:
+                    link.symlink_to(outside, target_is_directory=True)
+                except (OSError, NotImplementedError):
+                    self.skipTest("directory symlinks unavailable")
+            with mock.patch("esp32_migration_expanders.write_project_overlay", side_effect=malicious_overlay), \
+                 mock.patch("subprocess.run") as run:
                 with self.assertRaisesRegex(ValueError, "unsafe expander build output path"):
                     build_expander_candidates([self.board], self.version, 1,
                                               root, build, {}, root / "proof")

@@ -8,6 +8,7 @@ import json
 import os
 from pathlib import Path
 import re
+import shutil
 import struct
 import subprocess
 import tempfile
@@ -214,6 +215,13 @@ def build_expander_candidates(boards: list[str], version: str, jobs: int,
     output_dir.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="mesh-expander-plan-", dir=output_dir) as temporary:
         temp = Path(temporary)
+        # PIO can clean its whole build tree when --project-conf changes.
+        # Isolate temporary candidates from the already-built fallback/USB
+        # artifacts and remove compiler objects after evidence is published.
+        candidate_build_dir = temp / "pio-build"
+        if candidate_build_dir.resolve() == utility_build_dir:
+            raise ValueError("expander and utility build directories overlap")
+        candidate_build_dir.mkdir()
         project = temp / "platformio.ini"
         write_project_overlay(project, root / "platformio.ini", boards, BOARDS)
         built = []
@@ -221,20 +229,21 @@ def build_expander_candidates(boards: list[str], version: str, jobs: int,
             spec = BOARDS[board]
             target = spec["target"]
             pio_env = expander_environment(board, target)
-            pio_env_dir = utility_build_dir / pio_env
+            pio_env_dir = candidate_build_dir / pio_env
             image_path = pio_env_dir / "firmware.bin"
-            if (pio_env_dir.is_symlink() or pio_env_dir.resolve().parent != utility_build_dir
+            if (pio_env_dir.is_symlink() or pio_env_dir.resolve().parent != candidate_build_dir
                     or image_path.is_symlink()):
                 raise ValueError(f"{board}: unsafe expander build output path")
             # An interrupted prior build must not masquerade as this result.
             image_path.unlink(missing_ok=True)
             build_environment = dict(environment)
-            build_environment["PLATFORMIO_BUILD_DIR"] = str(utility_build_dir)
+            build_environment["PLATFORMIO_BUILD_DIR"] = str(candidate_build_dir)
             command = ["pio", "run", "--project-conf", str(project),
                        "-e", pio_env, "-j", str(jobs)]
             print("Building exact-target partition expander:", board, flush=True)
             subprocess.run(command, cwd=root, env=build_environment, check=True)
-            if not image_path.is_file():
+            if (pio_env_dir.is_symlink() or pio_env_dir.resolve().parent != candidate_build_dir
+                    or image_path.is_symlink() or not image_path.is_file()):
                 raise ValueError(f"{board}: successful build did not produce firmware.bin")
             raw = image_path.read_bytes()
             verify_compiled_target(raw, target)
@@ -249,6 +258,8 @@ def build_expander_candidates(boards: list[str], version: str, jobs: int,
             candidate_path.write_bytes(candidate)
             evaluation_path.write_text(json.dumps(evaluation, indent=2) + "\n", encoding="utf-8")
             built.extend((candidate_path, evaluation_path))
+            # Keep the peak build-space demand to one candidate at a time.
+            shutil.rmtree(pio_env_dir)
 
         for source in built:
             destination = output_dir / source.name
