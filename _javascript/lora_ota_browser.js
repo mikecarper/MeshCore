@@ -73,7 +73,16 @@
   }
   function onInvestigationProgress(event) {
     if(!event || typeof event.stage!=='string' || investigationStopping || !investigationActive)return;
+    if(event.stage==='clock-warning') {
+      if(typeof event.message==='string')$('investigation').textContent+='Companion clock: '+event.message+'\n';
+      return;
+    }
+    if(event.stage==='login-fallback') {
+      if(typeof event.message==='string')$('investigation').textContent+=event.message+'\n';
+      return;
+    }
     const labels={
+      'checking-clock':'Checking Companion clock…',
       'refreshing-contacts':'Refreshing contacts…',
       'checking-acl':'Checking existing access without a password…',
       'sending-login':'Sending login…',
@@ -87,7 +96,7 @@
     const label=labels[event.stage];if(!label)return;
     const command=typeof event.command==='string' && /^[a-z0-9. ]{1,40}$/i.test(event.command) ? ' ('+event.command+')' : '';
     if(event.stage==='waiting-login')
-      $('investigation').textContent+='> login (password hidden)\n';
+      $('investigation').textContent+=event.command==='passwordless login' ? '> login (no password)\n' : '> login (password hidden)\n';
     const attempt=Number.isInteger(event.attempt) && event.attempt>0 && Number.isInteger(event.maxAttempts) && event.maxAttempts>=event.attempt
       ? ' (attempt '+event.attempt+' of '+event.maxAttempts+')' : '';
     if(event.stage==='command-sent' && command)
