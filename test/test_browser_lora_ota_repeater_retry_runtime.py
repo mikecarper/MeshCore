@@ -51,6 +51,8 @@ class RepeaterRetryBrowserTest(unittest.TestCase):
         self.assertNotIn('error', result, result)
         self.assertEqual(result['counts']['ota status'], 7, result)
         self.assertEqual(result['counts']['ota self'], 1, result)
+        self.assertIn('> Checking target identity (attempt 1 of 3)', result['result'])
+        self.assertIn('> ota status (attempt 1 of 7)', result['result'])
         self.assertIn('attempt 7 of 7', result['result'])
         self.assertEqual(result['peerTimeout'], 60, result)
         self.assertIn('local ota.peer timeout 20', result['cmds'], result)

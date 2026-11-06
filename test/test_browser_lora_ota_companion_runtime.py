@@ -442,6 +442,8 @@ class CompanionBrowserRuntimeTest(unittest.TestCase):
         self.assertTrue(result['complete'],result)
         self.assertIn('board',result['result'])
         self.assertIn('OTAFIX2.4.12',result['result'])
+        self.assertIn('> get public.key (attempt 1 of 3)',result['result'])
+        self.assertIn('> ota status (attempt 1 of 7)',result['result'])
         self.assertRegex(result['result'],r'(?i)install verification:.*supported')
         self.assertRegex(result['result'],r'(?i)firmware compatibility:.*(?:choose a firmware|run the package check)')
         required={'ota status','ota self','ver','get bootloader.ver','ota bootloader status','ota config','ota key list','get tempradio','get radio.rxps','ota installhash'}
