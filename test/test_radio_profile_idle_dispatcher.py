@@ -29,8 +29,9 @@ namespace radioDirection = mesh::radioDirection;
 struct Profiles { bool active = false; bool enabled() const { return active; } };
 struct Radio {
   Profiles profile;
-  bool receive_retry = false, maintenance = false;
+  bool receive_retry = false, maintenance = false, rxps_enabled = false;
   bool isAGCMaintenancePending() const { return maintenance; }
+  bool isRxPowerSavingEnabled() const { return rxps_enabled; }
   uint32_t receive_delay = 0, recovery = 0;
   Profiles* profiles() { return &profile; }
   bool getReceiveRetryDelay(uint32_t, uint32_t& out) const {
@@ -203,6 +204,15 @@ int main() {
 
     node.adaptive = true;
     node.agc_reset.configure(now, 8, true, radio.recovery);
+    assert(node.getNextQueueWakeDelay(delay) && delay == 8);
+    // Ordinary RXPS suspends the primary AGC timer, but its independent
+    // maintenance retry can still wake before the scanner's visit deadline.
+    radio.rxps_enabled = true;
+    assert(node.getNextQueueWakeDelay(delay) && delay == 37);
+    radio.rxps_retry = true; radio.rxps_delay = 5;
+    assert(node.getNextQueueWakeDelay(delay) && delay == 5);
+    radio.rxps_retry = false;
+    radio.rxps_enabled = false;
     assert(node.getNextQueueWakeDelay(delay) && delay == 8);
     node.agc_reset.configure(now, 80, true, radio.recovery);
     assert(node.getNextQueueWakeDelay(delay) && delay == 37);
