@@ -2622,6 +2622,8 @@ The target needs a firmware build that supports verified <code>ota installhash</
       <p>Investigation can continue, but this Companion needs firmware with guarded OTA support to send an update.</p>
       <p><button type="button" data-role="legacy-investigate">Continue investigation</button></p>
     </section>
+    <p data-role="investigation-progress" hidden><span data-role="investigation-progress-label" role="status" aria-live="polite"></span> <span data-role="investigation-progress-elapsed" aria-live="off"></span></p>
+    <p><button type="button" class="lora-ota-secondary" data-role="investigation-stop" hidden>Stop investigation</button></p>
     <pre data-role="investigation" role="status" aria-live="polite" hidden></pre>
     <section data-role="legacy-inbox" hidden>
       <p data-role="legacy-inbox-status" role="status"></p>

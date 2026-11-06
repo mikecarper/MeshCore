@@ -55,7 +55,7 @@
       this.port=port;this.options=options;this.knownRepeater=String(options.knownRepeater||'').toLowerCase();if(this.knownRepeater)unhex(this.knownRepeater);
       this.aclOnly=false;this.supportsRoutedPath=false;this.sourceKey=null;this.reader=null;this.writer=null;this.running=false;
       this.failure=null;this.decoder=new Decoder();this.pending=null;this.loginWaiter=null;this.queue=Promise.resolve();this.admin=Promise.resolve();
-      this.authenticated=false;this.guard=false;this.investigationEnabled=false;this.investigationAuthenticated=false;this.investigationVerified=false;this.investigationProofPending=false;this.investigationPassword=null;this.investigationPermission='unknown';this.used=new Set();this.timestamp=0;this.serving=false;this.seeder=null;this.radioQueue=[];this.radioRunning=false;this.nextTx=0;this.txQueue=Promise.resolve();this.contactList=[];this.peerType=2;
+      this.authenticated=false;this.guard=false;this.investigationEnabled=false;this.investigationCancelled=false;this.investigationAuthenticated=false;this.investigationVerified=false;this.investigationProofPending=false;this.investigationPassword=null;this.investigationPermission='unknown';this.used=new Set();this.timestamp=0;this.serving=false;this.seeder=null;this.radioQueue=[];this.radioRunning=false;this.nextTx=0;this.txQueue=Promise.resolve();this.contactList=[];this.peerType=2;
       this.otaSupported=false;this.otaUnavailableReason='This Companion needs firmware with guarded zero-hop CLI and radio support';
     }
     async open(){
@@ -161,8 +161,25 @@
       if(!this.knownRepeater||!this.contactList.some(c=>c.publicKey===this.knownRepeater))throw Error('Select a stored contact before continuing');
       if(this.contactList.some(c=>c.publicKey!==this.knownRepeater&&c.publicKey.slice(0,12)===this.knownRepeater.slice(0,12)))throw Error('Contacts share this key prefix; cannot safely select the target');
     }
+    investigationProgress(stage,command='',timeoutMs=0){
+      try{this.options.onInvestigationProgress?.({stage,command,timeoutMs});}catch(_){}
+    }
+    assertInvestigationRunning(){
+      if(this.investigationCancelled)throw Error('Investigation canceled. Disconnect and reconnect before trying again.');
+    }
+    cancelInvestigation(){
+      if(!this.investigationEnabled)return;
+      this.investigationCancelled=true;
+      if(this.pending?.contacts){
+        const pending=this.pending;this.pending=null;clearTimeout(pending.timer);
+        this.failure=Error('Investigation canceled. Disconnect and reconnect before trying again.');
+        pending.reject(this.failure);
+      }
+      if(this.loginWaiter?.standard){const waiter=this.loginWaiter;this.loginWaiter=null;waiter.reject(Error('Investigation canceled. Disconnect and reconnect before trying again.'));}
+    }
     enableStandardInvestigation(){
       if(this.otaSupported)throw Error('Standard inbox mode is only for older Companion firmware');
+      this.assertInvestigationRunning();
       this.assertStandardTarget();
       // Every dequeue reserves storage under an origin-wide lock before it runs.
       if(!globalThis.navigator?.locks?.request)throw Error('This browser cannot safely coordinate saved inbox messages');
@@ -187,14 +204,21 @@
     async standardReply(text){
       if(!this.investigationEnabled||!READ_ONLY.has(text))throw Error('Only approved read-only investigation commands are allowed');
       if(!this.investigationAuthenticated&&!(text==='get public.key'&&this.investigationProofPending))throw Error('Verify the target before running investigation commands');
-      await this.contacts();this.assertStandardTarget();
+      this.assertInvestigationRunning();
+      this.investigationProgress('refreshing-contacts',text,this.options.contactsTimeout??60000);
+      await this.contacts();this.assertInvestigationRunning();this.assertStandardTarget();
       if(this.used.size>=7921)throw Error('Reconnect before sending more commands');
       let correlation;do{const r=crypto.getRandomValues(new Uint8Array(2));correlation=String.fromCharCode(33+r[0]%90,33+r[1]%90);}
       while(correlation.includes('|')||this.used.has(correlation));this.used.add(correlation);
       const tag=correlation+'|';this.timestamp=Math.max(Math.floor(Date.now()/1000),this.timestamp+1);
+      this.investigationProgress('sending-command',text,this.options.commandTimeout??15000);
       await this.command(join(Uint8Array.of(2,1,0),u32(this.timestamp),unhex(this.knownRepeater).slice(0,6),enc.encode(tag+text)),6);
+      this.investigationProgress('command-sent',text);
+      this.assertInvestigationRunning();
       const deadline=Date.now()+(this.options.remoteTimeout??75000);
+      this.investigationProgress('waiting-reply',text,this.options.remoteTimeout??75000);
       while(Date.now()<deadline){
+        this.assertInvestigationRunning();
         const result=await navigator.locks.request(INBOX_KEY,{mode:'exclusive',ifAvailable:true},async lock=>{
           if(!lock)throw Error('Saved inbox is in use by another tab; try again after it finishes');
           const reservation=this.reserveInbox();let frame;
@@ -208,20 +232,27 @@
           }
           this.finishInbox(reservation,frame,true);return {};
         });
-        if(result.reply!==undefined)return result.reply;
+        this.assertInvestigationRunning();
+        if(result.reply!==undefined){this.investigationProgress('command-result',text);return result.reply;}
         if(result.idle)await sleep(500);
       }
+      this.investigationProgress('command-timeout',text);
       throw Error('Remote command timed out; result is unknown');
     }
     async investigateVerifyPeer(key,password=''){
       this.validate(key);return this.withAdmin(async()=>{
         if(!this.investigationEnabled)throw Error('Enable standard investigation first');
+        this.assertInvestigationRunning();
         if(this.investigationAuthenticated){if(password!==this.investigationPassword)throw Error('Disconnect and reconnect before changing the admin password');return this.knownRepeater;}
         if(typeof password!=='string'||enc.encode(password).length>15||/[\r\n\0]/.test(password))throw Error('Admin password must fit in 15 bytes');
-        await this.contacts();this.assertStandardTarget();
+        this.investigationProgress('refreshing-contacts','login',this.options.contactsTimeout??60000);
+        await this.contacts();this.assertInvestigationRunning();this.assertStandardTarget();
         const response=new Promise((resolve,reject)=>{const timer=setTimeout(()=>{this.loginWaiter=null;reject(Error('Repeater login timed out'));},this.options.remoteTimeout??75000);this.loginWaiter={standard:true,resolve:()=>{clearTimeout(timer);resolve();},reject:e=>{clearTimeout(timer);reject(e);}};});
-        try{await this.command(join(Uint8Array.of(26),unhex(this.knownRepeater),enc.encode(password)),6);await response;}
+        response.catch(()=>{}); // Cancellation can precede the Companion's send acknowledgement.
+        this.investigationProgress('sending-login','login',this.options.commandTimeout??15000);
+        try{await this.command(join(Uint8Array.of(26),unhex(this.knownRepeater),enc.encode(password)),6);this.assertInvestigationRunning();this.investigationProgress('waiting-login','login',this.options.remoteTimeout??75000);await response;this.assertInvestigationRunning();}
         catch(e){this.loginWaiter?.reject(e);await response.catch(()=>{});throw e;}
+        this.investigationProgress('identity','get public.key',this.options.remoteTimeout??75000);
         this.investigationProofPending=true;let proof;
         try{proof=await this.standardReply('get public.key');}finally{this.investigationProofPending=false;}
         const normalized=proof.replace(/^>\s*/,'').trim();
@@ -241,7 +272,8 @@
       if(!/^>?\s*ota\.direct v=2 active=0 busy=0\s*$/i.test(status))throw Error('The Companion OTA mailbox is already in use');
       await this.checkClock();await this.guardMode(1,Uint8Array.of(this.peerType));this.guard=true;
       const response=new Promise((resolve,reject)=>{const timer=setTimeout(()=>{this.loginWaiter=null;reject(Error('Repeater login timed out'));},this.options.remoteTimeout??75000);this.loginWaiter={resolve:()=>{clearTimeout(timer);resolve();},reject:e=>{clearTimeout(timer);reject(e);}};});
-      try{await this.command(join(Uint8Array.of(26),unhex(this.knownRepeater),enc.encode(password)),6);await response;}
+      this.investigationProgress('sending-login','login',this.options.commandTimeout??15000);
+      try{await this.command(join(Uint8Array.of(26),unhex(this.knownRepeater),enc.encode(password)),6);this.investigationProgress('waiting-login','login',this.options.remoteTimeout??75000);await response;}
       catch(e){this.loginWaiter?.reject(e);await response.catch(()=>{});throw e;}
       await this.guardMode(2);
       const deadline=Date.now()+(this.options.remoteTimeout??75000);while(Date.now()<deadline){
@@ -260,7 +292,12 @@
       while(correlation.includes('|')||this.used.has(correlation));this.used.add(correlation);
       const tag=correlation+'|';await this.guardMode(4,enc.encode(tag));
       this.timestamp=Math.max(Math.floor(Date.now()/1000),this.timestamp+1);
+      if(READ_ONLY.has(text))this.investigationProgress('sending-command',text,this.options.commandTimeout??15000);
       await this.command(join(Uint8Array.of(2,1,0),u32(this.timestamp),unhex(this.knownRepeater).slice(0,6),enc.encode(tag+text)),6);
+      if(READ_ONLY.has(text)){
+        this.investigationProgress('command-sent',text);
+        this.investigationProgress('waiting-reply',text,this.options.remoteTimeout??75000);
+      }
       const deadline=Date.now()+(this.options.remoteTimeout??75000);let result=[],total=null;
       while(Date.now()<deadline){
         const reply=await this.localCommand('get ota.direct.reply '+result.length);
@@ -269,8 +306,8 @@
         if(m[2]==='pending'){if(result.length||+m[3]||m[5]!=='-')throw Error('Invalid pending command mailbox');await sleep(100);continue;}
         const n=+m[3],data=m[5]==='-'?[]:(m[5].match(/../g)||[]).map(x=>parseInt(x,16));
         if((m[5]!=='-'&&m[5].length%2)||data.length>40||result.length+data.length>n||(!data.length&&result.length!==n)||(total!==null&&n!==total))throw Error('Invalid Companion reply page');
-        total=n;result.push(...data);if(result.length===total)return dec.decode(Uint8Array.from(result));
-      }throw Error('Remote command timed out; result is unknown');
+        total=n;result.push(...data);if(result.length===total){if(READ_ONLY.has(text))this.investigationProgress('command-result',text);return dec.decode(Uint8Array.from(result));}
+      }if(READ_ONLY.has(text))this.investigationProgress('command-timeout',text);throw Error('Remote command timed out; result is unknown');
     }
     validate(key){if(String(key).toLowerCase()!==this.knownRepeater)throw Error('Target differs from the selected repeater');}
     async verifyPeer(key,password=''){this.validate(key);return this.withAdmin(async()=>{if(!this.authenticated)await this.login(password);return this.knownRepeater;});}
