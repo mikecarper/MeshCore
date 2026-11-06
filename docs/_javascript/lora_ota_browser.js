@@ -81,15 +81,20 @@
       identity:'Checking target identity…',
       'sending-command':'Sending request to target…',
       'command-sent':'Waiting for target reply…',
-      'waiting-reply':'Waiting for target reply…'
+      'waiting-reply':'Waiting for target reply…',
+      'retrying-command':'No reply; retrying…'
     };
     const label=labels[event.stage];if(!label)return;
     const command=typeof event.command==='string' && /^[a-z0-9. ]{1,40}$/i.test(event.command) ? ' ('+event.command+')' : '';
     if(event.stage==='waiting-login')
       $('investigation').textContent+='> login (password hidden)\n';
+    const attempt=Number.isInteger(event.attempt) && event.attempt>0 && Number.isInteger(event.maxAttempts) && event.maxAttempts>=event.attempt
+      ? ' (attempt '+event.attempt+' of '+event.maxAttempts+')' : '';
     if(event.stage==='command-sent' && command)
-      $('investigation').textContent+='> '+event.command+'\n';
-    showInvestigationProgress(label+command,event.timeoutMs);
+      $('investigation').textContent+='> '+event.command+attempt+'\n';
+    if(event.stage==='retrying-command' && command)
+      $('investigation').textContent+='No reply to '+event.command+attempt+'; retrying.\n';
+    showInvestigationProgress(label+command+attempt,event.timeoutMs);
   }
   function refreshPreservedMessages() {
     if(typeof LoraOtaCompanion.preservedMessages!=='function')return;
@@ -335,11 +340,12 @@
     clearInvestigation(); invalidate(); busy(true); $('inspect').disabled = true;
     const output = $('investigation'), replies = {};
     let target = '', complete = false, verified = false, stopped = false, failed = false;
+    let repeaterTimeout = null, restoreRepeaterTimeout = false;
     output.hidden = false;
     output.textContent = 'Investigating target…\n';
     $('investigation-progress').hidden=false;
     investigationStopping=false;investigationActive=true;
-    $('investigation-stop').hidden=!(standard && typeof link?.cancelInvestigation==='function');
+    $('investigation-stop').hidden=!($('source').value==='companion' && typeof link?.cancelInvestigation==='function');
     $('investigation-stop').disabled=false;
     showInvestigationProgress('Preparing target connection…');
     const add = text => { output.textContent += text + '\n'; };
@@ -353,20 +359,61 @@
     ];
     let next = 0, allReplies = true;
     const noPassword = $('acl').checked || $('password').value.length === 0;
+    const password = $('acl').checked ? '' : $('password').value;
+    const companion = $('source').value === 'companion';
     const checkStopped=()=>{if(investigationStopping)throw Error('Investigation stopped by user');};
+    // A completed repeater job timeout can be retried; a serial or browser-side
+    // job timeout cannot, because the previous operation may still be running.
+    const repeaterRead = async (description, operation, canRetry) => {
+      for(let attempt=1;attempt<=3;attempt++) {
+        showInvestigationProgress(description+' (attempt '+attempt+' of 3)',20000);
+        add('> '+description+' (attempt '+attempt+' of 3)');
+        try { return await operation(); }
+        catch(error) {
+          if(error?.message!=='request timed out; result is unknown' || !canRetry())throw error;
+          if(attempt===3){error.attempts=attempt;error.loraReplyTimeout=true;throw error;}
+          add('No reply; retrying.');
+        }
+      }
+    };
+    const readCommand = command => companion
+      ? link.investigateCommand(target, password, command)
+      : repeaterRead(command, () => link.remoteCommand(target, password, command),
+          () => noPassword || (link.authenticatedKey===target && Date.now()-link.lastPeerUse<240000));
+    const exhaustedTimeout = error => error?.attempts===3 && error.loraReplyTimeout===true && !link.failure &&
+      (error.message==='Remote command timed out; result is unknown' || error.message==='request timed out; result is unknown');
+    const sourceTimeout = async value => {
+      const response = String(await link.localCommand('ota.peer timeout'+(value===undefined?'':' '+value))).trim();
+      const match = response.match(/^OTApeer timeout=(\d+)s$/i);
+      if(!match || Number(match[1])<5 || Number(match[1])>300 || (value!==undefined && Number(match[1])!==value))throw Error('Could not verify the source timeout setting');
+      return Number(match[1]);
+    };
     try {
       if (!link) throw Error('Connect a source radio first.');
       target = selectTarget().toLowerCase();
-      const password = $('acl').checked ? '' : $('password').value;
+      if(!companion) {
+        showInvestigationProgress('Setting the source reply timeout…');
+        repeaterTimeout = await sourceTimeout();
+        if(repeaterTimeout!==20) {
+          // The write might reach the source even if its acknowledgement is lost.
+          restoreRepeaterTimeout = true;
+          await sourceTimeout(20);
+          if(await sourceTimeout()!==20)throw Error('Could not verify the source timeout setting');
+        }
+      }
       if(standard) {
         add('Companion warning: this radio can investigate, but needs guarded OTA support before it can send an update.');
         await link.enableStandardInvestigation();
         showInvestigationProgress(link.investigationAuthenticated ? 'Checking target identity…' : noPassword ? 'Checking existing access without a password…' : 'Logging in and checking target identity…');
         await link.investigateVerifyPeer(target, password);
+      } else if(companion) {
+        showInvestigationProgress(link.authenticated ? 'Checking target identity…' : noPassword ? 'Checking existing access without a password…' : 'Logging in and checking target identity…');
+        await link.investigateVerifyPeer(target, password);
       } else {
         if($('source').value!=='companion' && !link.authenticated && !noPassword)add('> login (password hidden)');
         showInvestigationProgress(link.authenticated ? 'Checking target identity…' : noPassword ? 'Checking existing access without a password…' : 'Logging in and checking target identity…');
-        await link.verifyPeer(target, password);
+        if(noPassword) await repeaterRead('Checking target identity', () => link.verifyPeer(target, password), () => true);
+        else await link.verifyPeer(target, password);
       }
       checkStopped();verified = !standard || link.investigationVerified===true;
       add(verified ? 'Identity: full public key verified (' + target.slice(0, 12).toUpperCase() + ')' :
@@ -379,12 +426,11 @@
         checkStopped();
         const [label, command] = checks[next];
         showInvestigationProgress('Checking '+label.toLowerCase()+'…');
-        if($('source').value!=='companion')add('> '+command);
         let reply;
-        try { reply = String(await (standard ? link.investigateCommand(target, password, command) : link.remoteCommand(target, password, command))).trim(); }
+        try { reply = String(await readCommand(command)).trim(); }
         catch(error) {
-          if(standard && !link.failure && error?.message==='Remote command timed out; result is unknown') {
-            allReplies=false; replies[command]=''; add(label+': Timed out; not checked'); continue;
+          if(exhaustedTimeout(error)) {
+            allReplies=false; replies[command]=''; add(label+': No reply after 3 attempts; not checked'); continue;
           }
           throw error;
         }
@@ -404,15 +450,14 @@
         try {
           checkStopped();
           showInvestigationProgress('Checking external flash…');
-          if($('source').value!=='companion')add('> ota qspi');
-          const qspi = String(await (standard ? link.investigateCommand(target, password, 'ota qspi') : link.remoteCommand(target, password, 'ota qspi'))).trim();
+          const qspi = String(await readCommand('ota qspi')).trim();
           replies['ota qspi'] = qspi;
           const normalized = qspi.replace(/^>\s*/, '');
           add('External flash: ' + (!normalized || /^(?:err(?:or)?\b|unknown\b|unsupported\b)/i.test(normalized)
             ? 'Unknown or unsupported (' + (normalized || 'empty response') + ')' : normalized));
         } catch(error) {
-          if(!standard || link.failure || error?.message!=='Remote command timed out; result is unknown')throw error;
-          allReplies=false; replies['ota qspi']=''; add('External flash: Timed out; not checked');
+          if(!exhaustedTimeout(error))throw error;
+          allReplies=false; replies['ota qspi']=''; add('External flash: No reply after 3 attempts; not checked');
         }
       }
       complete = allReplies;
@@ -435,9 +480,9 @@
     } catch (error) {
       stopped=investigationStopping && /^(?:Investigation canceled\.|Investigation stopped by user)/.test(error?.message||'');
       failed=!stopped;
-      if(stopped)add('Investigation stopped. Unrelated messages already received are saved in this browser.');
+      if(stopped)add(standard ? 'Investigation stopped. Unrelated messages already received are saved in this browser.' : 'Investigation stopped. Disconnect the Companion before trying again.');
       else add((verified ? 'Check interrupted: ' : 'Identity not verified: ') + (error?.message || error));
-      if(/(?:login|remote command|target reply).*timed out/i.test(error?.message||''))
+      if(/(?:login|remote command|target reply|request).*timed out/i.test(error?.message||''))
         add(noPassword
           ? 'No reply received. Check that the target is awake and reachable, the radio settings, path and source clock are correct, and the source radio key is in the target ACL; or enter an admin password and retry.'
           : 'No reply received. Check that the target is awake and reachable, and verify the radio settings, path, admin password and Companion clock before trying again.');
@@ -445,6 +490,16 @@
       for (; next < checks.length; next++) add(checks[next][0] + ': Not checked');
       fail(error);
     } finally {
+      if(restoreRepeaterTimeout) {
+        try {
+          showInvestigationProgress('Restoring the source reply timeout…');
+          await sourceTimeout(repeaterTimeout);
+          if(await sourceTimeout()!==repeaterTimeout)throw Error('Timeout verification failed');
+        } catch(error) {
+          failed=true;complete=false;invalidate();
+          add('Could not restore the source timeout to '+repeaterTimeout+' seconds. Reconnect and check `ota.peer timeout` before updating.');
+        }
+      }
       if(standard) {
         $('legacy-source-block').hidden=false;
         const notice=' This Companion cannot send OTA updates until it has guarded OTA support.';

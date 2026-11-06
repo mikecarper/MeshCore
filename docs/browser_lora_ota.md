@@ -14,6 +14,12 @@ Companion by USB and choose **Connect USB source**. Choose a contact, then
 choose **Investigate** to check its OTA capabilities. Select the firmware and
 choose **Check firmware and target**. After
 checking the result, choose **Transfer**, then **Install and verify**.
+
+Investigation retries unanswered read-only commands up to three times and
+shows each attempt, waiting up to 20 seconds for a reply;
+unanswered checks are marked incomplete. Login and update operations are not
+automatically repeated.
+
 The target needs a firmware build that supports verified `ota installhash`.
 
 <div data-lora-ota>

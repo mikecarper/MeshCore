@@ -18,7 +18,7 @@ def legacy_harness(fault=''):
     old = "if(text==='get ota.direct')value=`> ota.direct v=2 active=${guard?1:0} busy=0`;"
     assert harness.count(old) == 1
     harness = harness.replace(old, "if(text==='get ota.direct')value='Unknown command';", 1)
-    harness = harness.replace("let expected,pkg,mid=''", "let inbox=[],expected,pkg,mid=''", 1)
+    harness = harness.replace("let expected,pkg,mid=''", "let inbox=[],retryCounts={},firstProofTag='',expected,pkg,mid=''", 1)
     harness = harness.replace("if(!guard||dec.decode(f.slice(33))!=='password')", "if(dec.decode(f.slice(33))!=='password')", 1)
     login_reply = "Uint8Array.of(0x85,1,...unhex(key).slice(0,6),0,0,0,0,3,1)"
     assert harness.count(login_reply) == 1
@@ -44,13 +44,21 @@ def legacy_harness(fault=''):
           inbox.push(message('cc'.repeat(32),1,tag+'> forged'));
           inbox.push(Uint8Array.of(35,1,2,3,4)); // Future queue response type.
         }
-        inbox.push(message(key,1,tag+(LEGACY_FAULT==='identity'&&text==='get public.key'?'> '+'dd'.repeat(32):reply)));
+        retryCounts[text]=(retryCounts[text]||0)+1;
+        if(LEGACY_FAULT==='proof_retry' && text==='get public.key'){
+          if(retryCounts[text]===1)firstProofTag=tag;
+          if(retryCounts[text]===3)inbox.push(message(key,1,firstProofTag+'> '+'dd'.repeat(32)));
+        }
+        if(!(LEGACY_FAULT==='proof_retry'&&text==='get public.key'&&retryCounts[text]<3)
+          && !(LEGACY_FAULT==='proof_exhausted'&&text==='get public.key')
+          && !(LEGACY_FAULT==='timeout'&&text==='get bootloader.ver')
+          && !(LEGACY_FAULT==='later_retry'&&text==='ota status'&&retryCounts[text]<3))
+          inbox.push(message(key,1,tag+(LEGACY_FAULT==='identity'&&text==='get public.key'?'> '+'dd'.repeat(32):reply)));
         out=Uint8Array.of(6,0,0,0,0,0,0,0,0,0);'''.replace('LEGACY_FAULT', repr(fault))
-    if fault == 'timeout':
-        new_end = new_end.replace("inbox.push(message(key,1,tag+(", "if(text!=='get bootloader.ver')inbox.push(message(key,1,tag+(", 1)
+    if fault in ('timeout', 'proof_retry', 'proof_exhausted', 'later_retry'):
         marker = "window.addEventListener('load',async()=>{try{"
         assert harness.count(marker) == 1
-        short = "const Transport=LoraOtaCompanion.CompanionTransport;LoraOtaCompanion.CompanionTransport=class extends Transport{constructor(port,options){super(port,{...options,remoteTimeout:300,commandTimeout:1500});}};"
+        short = "const Transport=LoraOtaCompanion.CompanionTransport;LoraOtaCompanion.CompanionTransport=class extends Transport{constructor(port,options){super(port,{...options,remoteTimeout:300,investigationTimeout:300,commandTimeout:1500});}};"
         harness = harness.replace(marker, marker + short, 1)
     harness = harness.replace(old_end, new_end, 1)
     marker = "} else if(f[0]===66){const text=dec.decode(f.slice(1));let value;"
@@ -140,6 +148,7 @@ class LegacyInvestigationBrowserTest(unittest.TestCase):
         result = run_harness(legacy_harness('identity'), timeout=90)
         self.assertNotIn('error', result, result)
         self.assertFalse(result['complete'], result)
+        self.assertEqual(result['cmds'].count('get public.key'), 1, result)
         self.assertNotIn('ota status', result['cmds'], result)
         self.assertFalse(any(f[0] in (52, 65) for f in result['frames']), result)
 
@@ -196,6 +205,7 @@ class LegacyInvestigationBrowserTest(unittest.TestCase):
         self.assertNotIn('error', result, result)
         self.assertTrue(result['complete'], result)
         self.assertFalse(result['verified'], result)
+        self.assertEqual(result['cmds'].count('get public.key'), 1, result)
         self.assertIn('ota status', result['cmds'], result)
         self.assertRegex(result['result'], r'(?i)not fully verified|unverified')
         self.assertFalse(any(f[0] in (52, 65) for f in result['frames']), result)
@@ -228,9 +238,46 @@ class LegacyInvestigationBrowserTest(unittest.TestCase):
         self.assertNotIn('error', result, result)
         self.assertFalse(result['complete'], result)
         self.assertIn('get bootloader.ver', result['cmds'], result)
+        self.assertEqual(result['cmds'].count('get bootloader.ver'), 3, result)
         self.assertIn('ota bootloader status', result['cmds'], result)
         self.assertIn('ota config', result['cmds'], result)
-        self.assertRegex(result['result'], r'(?i)bootloader version.*timed out')
+        self.assertRegex(result['result'], r'(?i)bootloader version.*no reply after 3 attempts')
+        self.assertFalse(any(f[0] in (52, 65) for f in result['frames']), result)
+
+    def test_identity_timeout_retries_with_fresh_tags_and_ignores_stale_reply(self):
+        harness = legacy_harness('proof_retry')
+        harness = harness.replace("el('password').value='password';", "el('password').value='';", 1)
+        result = run_harness(harness, timeout=90)
+        self.assertNotIn('error', result, result)
+        self.assertTrue(result['complete'], result)
+        self.assertTrue(result['verified'], result)
+        self.assertEqual(result['cmds'].count('get public.key'), 3, result)
+        proofs = [bytes(f[13:]).decode() for f in result['frames']
+                  if f[0] == 2 and bytes(f[13:]).decode().endswith('get public.key')]
+        self.assertEqual(len({proof[:3] for proof in proofs}), 3, result)
+        # The previous attempt's response contains a wrong key. It must be
+        # preserved rather than accepted as the third attempt's response.
+        self.assertTrue(any('646464646464' in r.get('frameHex', '')
+                            for r in result['preserved']), result)
+        self.assertIn('ota status', result['cmds'], result)
+        self.assertFalse(any(f[0] in (26, 52, 65) for f in result['frames']), result)
+
+    def test_later_read_only_timeout_retries_then_continues_on_success(self):
+        result = run_harness(legacy_harness('later_retry'), timeout=90)
+        self.assertNotIn('error', result, result)
+        self.assertTrue(result['complete'], result)
+        self.assertEqual(result['cmds'].count('ota status'), 3, result)
+        self.assertEqual(result['cmds'].count('ota self'), 1, result)
+        self.assertIn('attempt 2 of 3', result['result'])
+        self.assertIn('attempt 3 of 3', result['result'])
+
+    def test_identity_timeout_stops_after_three_attempts(self):
+        result = run_harness(legacy_harness('proof_exhausted'), timeout=90)
+        self.assertNotIn('error', result, result)
+        self.assertFalse(result['complete'], result)
+        self.assertFalse(result['verified'], result)
+        self.assertEqual(result['cmds'].count('get public.key'), 3, result)
+        self.assertNotIn('ota status', result['cmds'], result)
         self.assertFalse(any(f[0] in (52, 65) for f in result['frames']), result)
 
     def test_standard_commands_are_blocked_before_login(self):
