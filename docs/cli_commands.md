@@ -4332,17 +4332,18 @@ Normal RXPS automatically suspends the primary AGC timer on every board. The
 configured interval is retained; turning RXPS off starts a fresh interval.
 The optional `agc.old` timer remains an independent, explicitly enabled reset.
 
-On builds using the `CustomSX1262`, `CustomSX1268`, `CustomLLCC68` or
-`CustomSTM32WLx` driver, this saved interval schedules a same-channel RXPS
-pulse. This includes ESP32, nRF52, RP2040 and STM32WL boards in every role,
-and the supported SX126x backend of startup-detected radio builds. The existing
+On builds using the `CustomSX1262`, `CustomSX1268`, `CustomLLCC68`,
+`CustomSTM32WLx`, `CustomLR1110`, `CustomLR1121` or `CustomLR2021` driver,
+this saved interval schedules a same-channel RXPS pulse. `CustomSX1276` uses
+a separate, checked host-timed sleep/wake sequence. This includes the supported
+backends of startup-detected radio builds. The existing
 value, four-second rounding and adaptive
 scheduling are retained. It does not retune, calibrate, change gain or reset
 the noise-floor cache. Completing the hardware sleep/wake sequence is not proof
 of an analog AGC reset or a sensitivity improvement. The build setting
 `MESH_WARM_RX_REFRESH=0` explicitly retains the previous primary method.
 Other transceiver drivers retain their own maintenance implementation; storing
-an interval does not imply that their hardware supports this SX126x pulse.
+an interval does not imply that their hardware supports these sleep/wake paths.
 
 The SX126x primary path performs one asynchronous RXPS pulse. It requires
 continuous primary LoRa RX, with `radio.rxps` off. During dual-profile scanning,
@@ -4357,6 +4358,23 @@ board, sensor or UI work. Packet FIFO/IRQ ownership returns to the ordinary
 Dispatcher. Shared recovery watchdogs still use their existing full-reset path. A packet, TX, BUSY or another
 radio owner defers admission; an unadmitted deferral retries after 250 ms. A
 consumed failed attempt retains its failure diagnostics and normal interval.
+
+LR11xx and LR2021 use their native duty-cycle commands and 32.768 kHz timer
+encoding, with the runtime TCXO/transition allowance plus one timer tick and
+at least 500 us of additional sleep. LR2021 encodes the total RX-plus-sleep
+cycle in its second command field; LR11xx encodes sleep alone. On W12, an
+active PRAM scanner transfers ownership through its checked warm pause, keeps
+the loaded image, and must restore its hooks before a pulse receives success
+credit. A failed or stale restoration remains visible in the diagnostics.
+
+SX1276 has no corresponding autonomous duty-cycle/BUSY interface. It checks
+activity, enters standby, and rechecks completed-packet ownership before Sleep,
+which clears its LoRa FIFO. Its default host sleep holds 1501 us, including the
+SDK's 1 ms entry reserve and 501 us margin, followed by a separate nonblocking
+1 ms wake allowance and checked RX reentry. `get agc.status` identifies this
+method as `hostsleep`; it does not increment BUSY-edge or RTC-cleanup counters.
+These software checks establish command/timer behavior, not measured analog
+gain or equal receive sensitivity across radio families.
 
 An independent full-reset timer remains available through the Repeater, Room
 Server, Sensor and Companion text parsers:
@@ -4389,7 +4407,7 @@ oscillator delay rather than a fixed board duration. On the V4 with a 1600 us
 TCXO delay, the compensated request is 3116 us (33 RTC ticks after transition
 compensation). This does not establish improved sensitivity or reception.
 
-With radio2 enabled, supported SX126x firmware admits a pulse only during an idle,
+With radio2 enabled, supported pulse firmware admits a pulse only during an idle,
 unchanged primary-profile visit. The scanner pauses until checked RX reentry or
 completed-packet handoff finishes, then resumes the original scan deadline.
 This periodically extends the secondary profile's absence; it is a best-effort

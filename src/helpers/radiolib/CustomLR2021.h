@@ -167,6 +167,10 @@ class CustomLR2021 : public LR2021 {
   }
 
   public:
+#define MC_LR_AGC_2021 1
+#include "LRxxxxAGCChip.inc"
+#undef MC_LR_AGC_2021
+
     CustomLR2021(Module *mod) : LR2021(mod) { irqDioNum = LR2021_IRQ_DIO; }
 
     uint8_t regulatorModes() const { return _regulator.modes(); }

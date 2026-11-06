@@ -9,7 +9,11 @@
   #define MESH_AGC_RXPS_DRIVER_CustomSX1268 1
   #define MESH_AGC_RXPS_DRIVER_CustomLLCC68 1
   #define MESH_AGC_RXPS_DRIVER_CustomSTM32WLx 1
-  #if defined(MESH_RADIO_AUTO_FAMILY) && MESH_RADIO_AUTO_FAMILY && defined(USE_SX1262)
+  #define MESH_AGC_RXPS_DRIVER_CustomLR1110 1
+  #define MESH_AGC_RXPS_DRIVER_CustomLR1121 1
+  #define MESH_AGC_RXPS_DRIVER_CustomLR2021 1
+  #define MESH_AGC_RXPS_DRIVER_CustomSX1276 1
+  #if defined(MESH_RADIO_AUTO_FAMILY) && MESH_RADIO_AUTO_FAMILY && (defined(USE_SX1262) || defined(USE_LR1110) || defined(USE_LR1121) || defined(USE_LR2021) || defined(USE_SX1276))
     // The selected backend advertises its own physical pulse capability.
     // Compiling the interface never grants it to an unsupported backend.
     #define MESH_AGC_RXPS_DRIVER_UniversalLoRaRadio 1
@@ -30,4 +34,8 @@
   #undef MESH_AGC_RXPS_DRIVER_CustomSX1268
   #undef MESH_AGC_RXPS_DRIVER_CustomLLCC68
   #undef MESH_AGC_RXPS_DRIVER_CustomSTM32WLx
+  #undef MESH_AGC_RXPS_DRIVER_CustomLR1110
+  #undef MESH_AGC_RXPS_DRIVER_CustomLR1121
+  #undef MESH_AGC_RXPS_DRIVER_CustomLR2021
+  #undef MESH_AGC_RXPS_DRIVER_CustomSX1276
 #endif

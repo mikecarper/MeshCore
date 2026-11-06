@@ -296,7 +296,7 @@ void RadioLibWrapper::begin() {
   // safely derive this from an as-yet-unconfigured TCXO delay.
   if(supportsWarmRxRefresh() && !_rxps_pulse.pending && !_rxps_pulse_sleep_override) {
     const uint32_t sleep=defaultAGCPulseSleepUs();
-    if(!_rxps_pulse.configure(sleep,rxPowerSavingTransitionUs())) {
+    if(!_rxps_pulse.configure(sleep,rxPowerSavingTransitionUs(),agcPulseTimerHz())) {
       _rxps_pulse.sleep_us=0;
       _rxps_pulse.sleep_ticks=0;
     }

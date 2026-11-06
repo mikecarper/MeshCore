@@ -24,6 +24,7 @@ public:
   Phase phase=Phase::Idle;
   Samples total,busy_high,recovery;
   bool pending=false,packet=false,cancel=false,had_cycle=false,failed=false,low_seen=false;
+  bool host_timed=false;
   uint32_t started=0,armed_at=0,high_at=0,deadline_us=0,retry_at=0;
 private:
   Result _completion=Result::None;
@@ -31,16 +32,28 @@ private:
 public:
   bool owns() const { return pending && phase!=Phase::Packet; }
   bool waiting() const { return phase==Phase::Listen || phase==Phase::Sleep; }
-  bool configure(uint32_t requested_sleep,uint32_t transition_us) {
-    if(pending || requested_sleep<=transition_us) return false;
-    const uint32_t ticks=(uint32_t)(((uint64_t)(requested_sleep-transition_us)*8)/125);
+  bool configure(uint32_t requested_sleep,uint32_t transition_us,uint32_t timer_hz=64000) {
+    if(pending || requested_sleep<=transition_us || !timer_hz) return false;
+    const uint64_t ticks=(uint64_t(requested_sleep-transition_us)*timer_hz)/1000000;
     if(!ticks || ticks>0xFFFFFF) return false;
-    sleep_us=requested_sleep;sleep_ticks=ticks;return true;
+    sleep_us=requested_sleep;sleep_ticks=static_cast<uint32_t>(ticks);return true;
   }
   void request(uint32_t now) { ++req;started=now;failed=false;packet=false;cancel=false;had_cycle=false; }
   void deferred() { ++defer; }
   void admitted(uint32_t now) { ++admit;pending=true;phase=Phase::Arm;started=now;_attempt_generation=_generation; }
   void armed(uint32_t now,uint32_t timeout_us) { armed_at=now;deadline_us=timeout_us;phase=Phase::Listen;low_seen=false; }
+  // A host-timed device has no autonomous BUSY edge witness. Its caller must
+  // read back Sleep before starting this timer, and check RX reentry later.
+  void beginHostSleep(uint32_t now,uint32_t minimum_us) {
+    host_timed=true;armed_at=high_at=now;deadline_us=minimum_us;phase=Phase::Sleep;
+  }
+  bool hostSleepElapsed(uint32_t now) const {
+    return host_timed && pending && phase==Phase::Sleep && now-armed_at>=deadline_us;
+  }
+  bool finishHostSleep(uint32_t now) {
+    if(!hostSleepElapsed(now)) return false;
+    ++cycles;had_cycle=true;phase=Phase::Stop;return true;
+  }
   void noteError(int16_t code,Step step) {
     // Retain the first command failure in this attempt across later successes.
     if(!failed) { error=code;failed_step=step; }
@@ -118,7 +131,7 @@ public:
       (unsigned long)high,(unsigned long)wake,(unsigned long)busy_high.n,(unsigned long)busy_high.last,(unsigned long)busy_high.minimum,(unsigned long)busy_high.maximum,(unsigned long)cancelled,(unsigned long)forced_wake);
     else if(page==5) snprintf(out,cap,"> v=1,low=%lu,early=%lu,rtc=%lu,verify=%lu,irq=%lu",
       (unsigned long)low,(unsigned long)early,(unsigned long)rtc,(unsigned long)verified,(unsigned long)irq_reads);
-    else snprintf(out,cap,"> v=2,method=rxps,interval=%lu,req=%lu,admit=%lu,defer=%lu,fail=%lu,ok=%lu,err=%d",
-      (unsigned long)seconds,(unsigned long)req,(unsigned long)admit,(unsigned long)defer,(unsigned long)fail,(unsigned long)ok,(int)error);
+    else snprintf(out,cap,"> v=2,method=%s,interval=%lu,req=%lu,admit=%lu,defer=%lu,fail=%lu,ok=%lu,err=%d",
+      host_timed?"hostsleep":"rxps",(unsigned long)seconds,(unsigned long)req,(unsigned long)admit,(unsigned long)defer,(unsigned long)fail,(unsigned long)ok,(int)error);
   }
 };

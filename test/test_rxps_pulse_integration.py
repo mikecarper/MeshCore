@@ -45,7 +45,7 @@ def harness(uncached=False):
     admission = body(base, "mesh::AGCMaintenanceResult RadioLibWrapper::periodicAGCMaintenance(")
     admission = admission.replace("RadioLibWrapper::", "")
     sleep_accessors = "\n".join(body(interface, signature).replace(" override", "") for signature in (
-        "bool setAGCPulseSleep(", "uint32_t getAGCPulseSleep(", "bool serviceAGCMaintenanceFastLane(", "uint32_t agcMaintenanceRetryMs("))
+        "uint32_t agcPulseTimerHz(", "bool setAGCPulseSleep(", "uint32_t getAGCPulseSleep(", "bool serviceAGCMaintenanceFastLane(", "uint32_t agcMaintenanceRetryMs("))
     fixture = (FIXTURE / "main.cpp").read_text()
     if uncached:
         fixture = fixture.replace("tcxo=1600", "tcxoDelay=1600").replace("driver.tcxo", "driver.tcxoDelay")

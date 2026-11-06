@@ -218,7 +218,13 @@ public:
   // A deferred attempt is not a successful reset. Retry on the health-poll
   // cadence; once scanner ownership ends the same deadline remains due.
   uint32_t labAGCMaintenanceRetryMs() const override {
+#if MESH_WARM_RX_REFRESH
+    // A real pulse obtains a checked warm pause and restores the resident
+    // scanner afterwards. Only ambiguous recovery retains the retry hold.
+    return _lab_uncertain ? 1000U : 0U;
+#else
     return (_lab_scan_active || _lab_uncertain) ? 1000U : 0U;
+#endif
   }
 #if defined(MESH_W12_RXPS_EXPERIMENT) && MESH_W12_RXPS_EXPERIMENT
   void labRxpsBusyStatus(char* out, size_t capacity) const {
@@ -493,8 +499,19 @@ public:
     int16_t rc=RADIOLIB_ERR_NONE;
     if (automatic) {
       // Includes pre- and post-standby RxDone checks; never reset a late FIFO.
+#if MESH_WARM_RX_REFRESH
+      if(_agc_pram_restore_owned) {
+        // The pulse already owns this RX lease. Reacquire PRAM without the
+        // ordinary external-mutation gate, retaining both late-FIFO checks.
+        if(isChipBusy() || hasPendingRadioInterrupt() || isReceivingPacket()) return false;
+        if(r->standby()!=RADIOLIB_ERR_NONE) return false;
+        if(hasPendingRadioInterrupt() || isReceivingPacket()) return false;
+      } else
+#endif
+      {
       const uint8_t admitted=beginReconfigure();
       if (admitted>1) return false;
+      }
     } else {
       // Quiesce RX before the hard reset; a completion racing standby keeps
       // ownership of its FIFO. A late physical IRQ after admission is

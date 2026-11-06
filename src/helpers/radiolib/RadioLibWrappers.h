@@ -69,6 +69,7 @@ protected:
 #endif
   virtual bool warmRxRefreshUsesFs() const { return false; }
   virtual uint32_t defaultAGCPulseSleepUs() const { return 0; }
+  virtual uint32_t agcPulseTimerHz() const { return 64000; }
   virtual WarmRxRefresh::Outcome performWarmRxRefresh(WarmRxRefresh::Reason& reason) {
     reason=WarmRxRefresh::Reason::Policy;
     return WarmRxRefresh::Outcome::Deferred;
@@ -800,7 +801,7 @@ public:
     const uint32_t default_sleep=defaultAGCPulseSleepUs();
     if(!supportsWarmRxRefresh() || !default_sleep || !(us==2616 || us==3000 || us==4000 || us==6554
         || us==default_sleep)
-        || !_rxps_pulse.configure(us,rxPowerSavingTransitionUs())) return false;
+        || !_rxps_pulse.configure(us,rxPowerSavingTransitionUs(),agcPulseTimerHz())) return false;
     _rxps_pulse_sleep_override=true;
     return true;
   }

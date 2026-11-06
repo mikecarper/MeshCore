@@ -23,6 +23,7 @@
 #endif
 #include "PrimaryRadioApplyWait.h"
 #include "RadioLibWrappers.h"
+#include "LRxxxxPulseWrapper.h"
 
 #ifndef USE_LR2021
 #define USE_LR2021
@@ -34,7 +35,12 @@
 #define LR2021_RX_BOOST_LEVEL 7
 #endif
 
-class CustomLR2021Wrapper : public RadioLibWrapper {
+class CustomLR2021Wrapper : public LRxxxxPulseWrapper<CustomLR2021> {
+  using PulseBase=LRxxxxPulseWrapper<CustomLR2021>;
+#if MESH_WARM_RX_REFRESH && defined(MESH_W12_PRAM_EXPERIMENT) && MESH_W12_PRAM_EXPERIMENT
+  bool _agc_pram_paused=false,_agc_pram_restore_owned=false;
+  uint32_t _agc_pram_generations[2]={0,0};
+#endif
 #if MESH_LR2021_RXPS_HOLD_AVAILABLE
   bool _side_detector_uncertain = false;
 #endif
@@ -285,7 +291,33 @@ public:
     return static_cast<CustomLR2021*>(_radio)->activeRegulatorMode();
   }
   ~CustomLR2021Wrapper() { unregisterInterruptAction(); }
-  CustomLR2021Wrapper(CustomLR2021& radio, mesh::MainBoard& board) : RadioLibWrapper(radio, board) { }
+  CustomLR2021Wrapper(CustomLR2021& radio, mesh::MainBoard& board) : PulseBase(radio, board) { }
+#if MESH_WARM_RX_REFRESH
+  mesh::AGCMaintenanceResult periodicAGCMaintenance(bool adaptive) override {
+#if defined(MESH_W12_PRAM_EXPERIMENT) && MESH_W12_PRAM_EXPERIMENT
+    using Result=mesh::AGCMaintenanceResult;
+    if(_agc_pram_paused && !_rxps_pulse.pending) {
+      const int16_t restored=finishAGCPulseOwner();
+      if(restored) return Result::Failed;
+    }
+    if(_lab_scan_active && !_rxps_pulse.pending) {
+      // Transfer the existing scanner's checked warm ownership. Do not unload
+      // its PRAM image or change automatic mode to make maintenance pass.
+      const auto paused=labPauseScanner(false,0);
+      if(paused==mesh::RadioParamApplyResult::BUSY) return Result::Deferred;
+      if(paused!=mesh::RadioParamApplyResult::APPLIED) return Result::Failed;
+      _agc_pram_paused=true;
+      _agc_pram_generations[0]=_profiles.generation[0];
+      _agc_pram_generations[1]=_profiles.generation[1];
+    }
+#endif
+    const auto result=PulseBase::periodicAGCMaintenance(adaptive);
+#if defined(MESH_W12_PRAM_EXPERIMENT) && MESH_W12_PRAM_EXPERIMENT
+    if(_agc_pram_paused && !_rxps_pulse.pending && finishAGCPulseOwner()) return mesh::AGCMaintenanceResult::Failed;
+#endif
+    return result;
+  }
+#endif
   bool supportsMorseTx() const override { return true; }
   bool supportsMorseRx() const override { return MESH_ENABLE_MORSE_RX && supportsRadioDeepInit(); }
 #if defined(MESH_ENABLE_LR2021_AUTO_XTRIM) && MESH_ENABLE_LR2021_AUTO_XTRIM
@@ -1032,6 +1064,24 @@ public:
   }
 
 protected:
+#if MESH_WARM_RX_REFRESH
+  int16_t finishAGCPulseOwner() override {
+#if defined(MESH_W12_PRAM_EXPERIMENT) && MESH_W12_PRAM_EXPERIMENT
+    if(!_agc_pram_paused) return RADIOLIB_ERR_NONE;
+    if(!_profiles.enabled() || _profiles.generation[0]!=_agc_pram_generations[0]
+        || _profiles.generation[1]!=_agc_pram_generations[1] || !_lab_auto.enabled()) {
+      _rxps_pulse.cancelRequest();_agc_pram_paused=false;return RADIOLIB_ERR_NONE;
+    }
+    if(_lab_uncertain || !_lab_pram_loaded) return RADIOLIB_ERR_UNKNOWN;
+    _agc_pram_restore_owned=true;
+    const bool restored=labScannerStart(true);
+    _agc_pram_restore_owned=false;
+    if(!restored || !_lab_scan_active || !_lab_status.hooked) return RADIOLIB_ERR_UNKNOWN;
+    _agc_pram_paused=false;
+#endif
+    return RADIOLIB_ERR_NONE;
+  }
+#endif
   int startReceiveMode() override {
     if (!_scan_retune) invalidateScanTuple();
     // LR2021 must leave CAD/RX before restarting with side detectors, or it

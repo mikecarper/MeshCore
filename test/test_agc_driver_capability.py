@@ -40,8 +40,8 @@ int main() {}
 """
         for driver, expected in (
             (None, 0), ("CustomSX1262", 1), ("CustomSX1268", 1),
-            ("CustomSTM32WLx", 1), ("CustomLLCC68", 1), ("CustomSX1276", 0),
-            ("CustomLR1110", 0), ("CustomLR1121", 0), ("CustomLR2021", 0),
+            ("CustomSTM32WLx", 1), ("CustomLLCC68", 1), ("CustomSX1276", 1),
+            ("CustomLR1110", 1), ("CustomLR1121", 1), ("CustomLR2021", 1),
             ("UnknownRadio", 0), ("UniversalLoRaRadio", 0),
         ):
             with self.subTest(driver=driver):
@@ -63,7 +63,11 @@ int main() {}
             (["-DRADIO_CLASS=CustomLR2021", "-DMESH_WARM_RX_REFRESH=1"], 1),
             (["-DRADIO_CLASS=UniversalLoRaRadio", "-DMESH_RADIO_AUTO_FAMILY=1", "-DUSE_SX1262=1"], 1),
             (["-DRADIO_CLASS=UniversalLoRaRadio", "-DMESH_RADIO_AUTO_FAMILY=0", "-DUSE_SX1262=1"], 0),
-            (["-DRADIO_CLASS=UniversalLoRaRadio", "-DMESH_RADIO_AUTO_FAMILY=1", "-DUSE_LR1121=1"], 0),
+            (["-DRADIO_CLASS=UniversalLoRaRadio", "-DMESH_RADIO_AUTO_FAMILY=1", "-DUSE_LR1121=1"], 1),
+            (["-DRADIO_CLASS=UniversalLoRaRadio", "-DMESH_RADIO_AUTO_FAMILY=1", "-DUSE_LR2021=1"], 1),
+            (["-DRADIO_CLASS=UniversalLoRaRadio", "-DMESH_RADIO_AUTO_FAMILY=1", "-DUSE_SX1276=1"], 1),
+            (["-DRADIO_CLASS=CustomLR2021", "-DMESH_WARM_RX_REFRESH=0"], 0),
+            (["-DRADIO_CLASS=CustomSX1276", "-DMESH_WARM_RX_REFRESH=0"], 0),
         ):
             with self.subTest(flags=flags):
                 self.compile_run(code, [*flags, "-DEXPECT_PULSE=" + str(expected)])
@@ -85,7 +89,7 @@ int main() { assert(other_capability() == MESH_WARM_RX_REFRESH); assert(other_si
 unsigned other_capability() { return MESH_WARM_RX_REFRESH; }
 unsigned other_size() { return sizeof(mesh::Radio); }
 """
-        for driver, expected in (("CustomSX1262", 1), ("CustomSTM32WLx", 1), ("CustomLR2021", 0), ("CustomSX1276", 0)):
+        for driver, expected in (("CustomSX1262", 1), ("CustomSTM32WLx", 1), ("CustomLR2021", 1), ("CustomSX1276", 1)):
             with self.subTest(driver=driver):
                 self.compile_run(main, ["-DRADIO_CLASS=" + driver, "-DEXPECT_PULSE=" + str(expected)], other)
 

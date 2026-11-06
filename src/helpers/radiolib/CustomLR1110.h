@@ -38,6 +38,10 @@ class CustomLR1110 : public LR1110 {
   LR11x0MorseRfSwitch _morse_rf_switch;
 
   public:
+#define MC_LR_AGC_2021 0
+#include "LRxxxxAGCChip.inc"
+#undef MC_LR_AGC_2021
+
     CustomLR1110(Module *mod) : LR1110(mod) { }
 
     uint8_t regulatorModes() const { return _regulator.modes(); }
