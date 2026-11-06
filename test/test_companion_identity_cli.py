@@ -21,6 +21,7 @@ HARNESS = r'''
 #include <Identity.h>
 #include <helpers/CompanionPowerDiagnostics.h>
 #include <helpers/ConfigCapabilities.h>
+#include <helpers/RadioMaintenanceCLI.h>
 #include "usb_mode_console.h"
 
 // Keep the production diagnostics delegate in the command path. Identity
@@ -41,6 +42,8 @@ struct IdentityBoard {
  bool isLoRaFemPaGainEnabled(){assert(false);return false;}
 } board;
 struct IdentityRadio {
+ bool maintenance_pending=false;
+ bool isAGCMaintenancePending() const{return maintenance_pending;}
  bool supportsRxPowerSavingRfRxDisable(){assert(false);return false;}
 } radio_driver;
 struct IdentityUi {
@@ -64,6 +67,7 @@ public:
  int read() override{return offset<bytes.size()?bytes[offset++]:-1;}
 };
 struct MyMesh {
+ IdentityRadio* _radio=&radio_driver;
  mesh::LocalIdentity self_id;
  IdentityProfiles _radio_profiles;
  IdentityUi* _ui = nullptr;
@@ -157,6 +161,13 @@ int main(){
  for(unsigned i=0;i<PUB_KEY_SIZE;++i)node.self_id.pub_key[i]=uint8_t(0xff-i);
  const auto changed=snapshot(node);
  assert(!memcmp(changed.data(),original.data(),PRV_KEY_SIZE));
+ assert(node.handleLocalControlCommand("get public.key",guarded,sizeof(guarded)));
+ assert(!strcmp(guarded,
+   "> FFFEFDFCFBFAF9F8F7F6F5F4F3F2F1F0EFEEEDECEBEAE9E8E7E6E5E4E3E2E1E0"));
+ assert(snapshot(node)==changed);
+ // The public key is retained state and must still be readable during AGC
+ // maintenance, without consulting unrelated hardware or revealing secrets.
+ radio_driver.maintenance_pending=true;
  assert(node.handleLocalControlCommand("get public.key",guarded,sizeof(guarded)));
  assert(!strcmp(guarded,
    "> FFFEFDFCFBFAF9F8F7F6F5F4F3F2F1F0EFEEEDECEBEAE9E8E7E6E5E4E3E2E1E0"));

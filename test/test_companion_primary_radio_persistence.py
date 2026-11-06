@@ -16,6 +16,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 HARNESS = r'''
 #include <helpers/RadioProfileCLI.h>
+#include <helpers/RadioMaintenanceCLI.h>
 #include <helpers/TempRadioReplyBarrier.h>
 #include <helpers/TxtDataHelpers.h>
 #include <helpers/radiolib/RXPowerSaving.h>
@@ -54,6 +55,8 @@ struct Clock : mesh::RTCClock {
   void setCurrentTime(uint32_t) override {}
 };
 struct Radio : mesh::Radio {
+  bool maintenance_pending=false;
+  bool isAGCMaintenancePending() const override { return maintenance_pending; }
   mesh::RadioProfiles p;
   Radio() { p.primary.freq=909.5f; p.primary.bw=62.5f; p.primary.sf=7; p.primary.cr=5; }
   mesh::RadioProfiles* profiles() override { return &p; }
@@ -160,6 +163,21 @@ struct Infrastructure {
 static bool error(const char* reply) { return strstr(reply,"Error") || strstr(reply,"ERROR"); }
 int main() {
   unsigned checks=0;
+  {
+    MyMesh m;
+    const auto profile=m.profile_fs.files["/radio_profiles"];
+    const auto prefs=m.store.fs.files["/new_prefs"];
+    m.radio.maintenance_pending=true;
+    assert(!strcmp(m.command("ab|set radio 915,125,8,6,32"),
+      "ab|Error: radio maintenance pending; retry shortly"));
+    assert(m.profile_fs.files["/radio_profiles"]==profile);
+    assert(m.store.fs.files["/new_prefs"]==prefs);
+    assert(m.radio.p.primary.freq==909.5f&&m.radio.p.primary.bw==62.5f);
+    m.expectOriginal();
+    m.radio.maintenance_pending=false;
+    assert(!error(m.command("set radio 915,125,8,6,32")));
+    ++checks;
+  }
   // The shared CLI probes both stores at startup. Match only their actual
   // committed, rollback and staging names, rather than accepting any prefix.
   for (const char* path : {"/spiffs/radio_profiles", "/spiffs/radio_profiles.bak",
