@@ -16,6 +16,7 @@ HardwareSerial Serial;
 #include <helpers/esp32/ManagementPassword.h>
 #include <helpers/CLICommandUtils.h>
 #include <helpers/ConfigCapabilities.h>
+#include <helpers/RadioMaintenanceCLI.h>
 #include <helpers/WebConfigBatch.h>
 #include <helpers/WebConfigKeys.h>
 namespace password = mesh::esp32::managementPassword;
@@ -45,6 +46,8 @@ struct Board {
   bool isLoRaFemPaGainEnabled() { assert(false); return false; }
 } board;
 struct Radio {
+  bool maintenance_pending=false;
+  bool isAGCMaintenancePending() const { return maintenance_pending; }
   bool supportsRxPowerSavingRfRxDisable() const { assert(false); return false; }
 } radio_driver;
 struct UI {
@@ -62,6 +65,7 @@ struct CommonCLI {
   }
 };
 struct MyMesh {
+  Radio* _radio=&radio_driver;
   Profiles _radio_profiles;
   UI* _ui = nullptr;
   char _management_password[16] = "original";
@@ -159,6 +163,21 @@ std::string cliPayload(const std::string& command, bool prepend = false) {
   std::string out; serializeJson(doc, out); return out;
 }
 int main() {
+  {
+    reset(); WebConfigServer server; server.cb.companion=true;
+    radio_driver.maintenance_pending=true;
+    AsyncWebServerRequest req;
+    req.payload(cliPayload("password NewSecret")); server.handleCliPost(&req);
+    assert(req.status==202);
+    server.drainBatch(1000);
+    password::Snapshot current; assert(password::snapshot(current));
+    assert(saves==0&&!strcmp(current.password,"original"));
+    assert(!strcmp(server.cb.node._management_password,"original"));
+    assert(!server._batch_reauth_required&&server._session_token[0]);
+    assert(strstr(server._batch[0].reply,"maintenance pending"));
+    assert(!strstr(server._batch[0].reply,"NewSecret"));
+    radio_driver.maintenance_pending=false;
+  }
   for (bool companion : {false, true}) {
     for (bool config : {false, true}) {
       for (bool success : {false, true}) {
