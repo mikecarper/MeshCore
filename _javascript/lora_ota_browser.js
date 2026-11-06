@@ -125,7 +125,8 @@
     $('transfer').disabled = true; $('resume').disabled = true; $('install').disabled = true;
   }
   async function connect() {
-    $('connect').disabled = true; busy(true);
+    $('connect').disabled = true; $('connect').textContent = 'Connecting…'; busy(true);
+    $('contact-status').textContent = 'Choose a USB device…';
     try {
       if (!navigator.serial) throw Error('Web Serial is unavailable. Use a supported browser on a secure page.');
       const companion=$('source').value==='companion', key = $('key').value.trim();
@@ -135,6 +136,7 @@
       if (relays.length && !$('acl').checked) throw Error('Routed updates require existing ACL access on every relay and the target.');
       if (relays.some(r => !/^[0-9a-f]{64}$/i.test(r)) || relays.length > 8) throw Error('Enter up to eight full relay public keys.');
       const port = await navigator.serial.requestPort();
+      $('contact-status').textContent = 'Connecting to radio…';
       if(companion)$('acl').checked=false;
       const direct = companion
         ? new LoraOtaCompanion.CompanionTransport(port, {remoteTimeout:75000})
@@ -142,10 +144,11 @@
       link = relays.length ? new LoraOtaRoute.RoutedRepeaterTransport(direct, key, relays) : direct;
       await link.open();
       if(companion){
+        $('contact-status').textContent = 'Loading contacts…';
         contacts=await link.contacts();renderContacts();
         log('Loaded '+LoraOtaContacts.choices(contacts).length+' eligible contacts.');
         if(link.otaUnavailableReason)log(link.otaUnavailableReason);
-      }
+      } else $('contact-status').textContent = 'Connected. Enter the target public key.';
       busy(false); $('connect').disabled = true; $('inspect').disabled = false;
       $('chain-plan').disabled = false;
       $('find-route').disabled = !link.aclOnly || !link.supportsRoutedPath || !!link.relays;
@@ -154,7 +157,10 @@
       fail(error);
       if (link) { try { await link.close(); } catch (_) {} }
       link = session = null; $('connect').disabled = false; $('inspect').disabled = true;
-    } finally { busy(false); }
+      $('contact-status').textContent = error?.name === 'NotFoundError'
+        ? 'USB selection canceled. Choose a USB device to try again.'
+        : 'Connection failed: ' + (error?.message || error) + '. Try again.';
+    } finally { $('connect').textContent = 'Connect USB source'; busy(false); }
   }
   async function loadCatalogCandidate(candidate, generation) {
     catalogFile=null; invalidate();
