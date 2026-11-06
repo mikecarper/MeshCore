@@ -27,6 +27,9 @@ file through either browser updater. If the installed layout already supports
 the Full image, use a normal app update instead. For USB or LoRa migration,
 follow the details below.
 
+A combined expander can also fetch the Full firmware over LoRa automatically.
+If a LoRa seeder is running nearby, make only the intended Full build available.
+
 Expansion images are specific to a board, role, and release. The picker offers
 standalone downloads only when they are available for that exact selection.
 A previous release may contain only archive-based migration files; the picker
