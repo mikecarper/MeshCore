@@ -166,10 +166,26 @@
       if(this.contactList.some(c=>c.publicKey!==this.knownRepeater&&c.publicKey.slice(0,12)===this.knownRepeater.slice(0,12)))throw Error('Contacts share this key prefix; cannot safely select the target');
     }
     investigationProgress(stage,command='',timeoutMs=0){
-      try{this.options.onInvestigationProgress?.({stage,command,timeoutMs});}catch(_){}
+      const attempt=this.investigationAttempt||0;
+      try{this.options.onInvestigationProgress?.({stage,command,timeoutMs,attempt,maxAttempts:attempt?3:0});}catch(_){}
     }
     assertInvestigationRunning(){
       if(this.investigationCancelled)throw Error('Investigation canceled. Disconnect and reconnect before trying again.');
+    }
+    async retryInvestigation(text,run){
+      if(!READ_ONLY.has(text))throw Error('Only approved read-only investigation commands are allowed');
+      try{
+        for(let attempt=1;attempt<=3;attempt++){
+          this.assertInvestigationRunning();this.investigationAttempt=attempt;
+          try{const reply=await run();this.assertInvestigationRunning();return reply;}
+          catch(error){
+            this.assertInvestigationRunning();
+            if(!error?.loraReplyTimeout||this.failure)throw error;
+            if(attempt===3){error.attempts=attempt;throw error;}
+            this.investigationProgress('retrying-command',text);
+          }
+        }
+      }finally{this.investigationAttempt=0;}
     }
     cancelInvestigation(){
       if(!this.investigationEnabled)return;
@@ -179,7 +195,7 @@
         this.failure=Error('Investigation canceled. Disconnect and reconnect before trying again.');
         pending.reject(this.failure);
       }
-      if(this.loginWaiter?.standard){const waiter=this.loginWaiter;this.loginWaiter=null;waiter.reject(Error('Investigation canceled. Disconnect and reconnect before trying again.'));}
+      if(this.loginWaiter){const waiter=this.loginWaiter;this.loginWaiter=null;waiter.reject(Error('Investigation canceled. Disconnect and reconnect before trying again.'));}
     }
     enableStandardInvestigation(){
       if(this.otaSupported)throw Error('Standard inbox mode is only for older Companion firmware');
@@ -219,8 +235,9 @@
       await this.command(join(Uint8Array.of(2,1,0),u32(this.timestamp),unhex(this.knownRepeater).slice(0,6),enc.encode(tag+text)),6);
       this.investigationProgress('command-sent',text);
       this.assertInvestigationRunning();
-      const deadline=Date.now()+(this.options.remoteTimeout??75000);
-      this.investigationProgress('waiting-reply',text,this.options.remoteTimeout??75000);
+      const replyTimeout=this.options.investigationTimeout??20000;
+      const deadline=Date.now()+replyTimeout;
+      this.investigationProgress('waiting-reply',text,replyTimeout);
       while(Date.now()<deadline){
         this.assertInvestigationRunning();
         const result=await navigator.locks.request(INBOX_KEY,{mode:'exclusive',ifAvailable:true},async lock=>{
@@ -241,10 +258,17 @@
         if(result.idle)await sleep(500);
       }
       this.investigationProgress('command-timeout',text);
-      throw Error('Remote command timed out; result is unknown');
+      const error=Error('Remote command timed out; result is unknown');error.loraReplyTimeout=true;throw error;
     }
     async investigateVerifyPeer(key,password=''){
       this.validate(key);return this.withAdmin(async()=>{
+        if(this.otaSupported){
+          this.investigationEnabled=true;this.assertInvestigationRunning();
+          if(this.investigationAuthenticated&&password!==this.investigationPassword)throw Error('Disconnect and reconnect before changing the admin password');
+          if(!this.authenticated)await this.login(password,true);
+          this.investigationPassword=password;this.investigationAuthenticated=true;this.investigationVerified=true;
+          return this.knownRepeater;
+        }
         if(!this.investigationEnabled)throw Error('Enable standard investigation first');
         this.assertInvestigationRunning();
         if(this.investigationAuthenticated){if(password!==this.investigationPassword)throw Error('Disconnect and reconnect before changing the admin password');return this.knownRepeater;}
@@ -263,9 +287,9 @@
           this.investigationPermission='unknown';
           this.investigationProgress('checking-acl','ACL',this.options.remoteTimeout??75000);
         }
-        this.investigationProgress('identity','get public.key',this.options.remoteTimeout??75000);
+        this.investigationProgress('identity','get public.key',this.options.investigationTimeout??20000);
         this.investigationProofPending=true;let proof;
-        try{proof=await this.standardReply('get public.key');}finally{this.investigationProofPending=false;}
+        try{proof=await this.retryInvestigation('get public.key',()=>this.standardReply('get public.key'));}finally{this.investigationProofPending=false;}
         const normalized=proof.replace(/^>\s*/,'').trim();
         const unavailable=/^(?:unknown command\b|unsupported\b|error:\s*(?:unknown (?:setting|command)|unsupported)\b|err(?:or)?\s*[:-]?\s*(?:unknown|unsupported)\b)/i.test(normalized)
           || /^(?:(?:err|error)\s*:?\s*)?(?:permission denied|access denied|not authori[sz]ed)\.?$/i.test(normalized);
@@ -274,8 +298,8 @@
         this.investigationPassword=password;this.investigationAuthenticated=true;return this.knownRepeater;
       });
     }
-    async investigateCommand(key,password,text){this.validate(key);if(!this.investigationAuthenticated)throw Error('Verify the target before running investigation commands');if(password!==this.investigationPassword)throw Error('Disconnect and reconnect before changing the admin password');return this.withAdmin(()=>this.standardReply(text));}
-    async login(password){
+    async investigateCommand(key,password,text){this.validate(key);if(!this.investigationAuthenticated)throw Error('Verify the target before running investigation commands');if(password!==this.investigationPassword)throw Error('Disconnect and reconnect before changing the admin password');return this.withAdmin(()=>this.retryInvestigation(text,()=>this.otaSupported?this.remoteReply(text):this.standardReply(text)));}
+    async login(password,investigation=false){
       if(typeof password!=='string'||enc.encode(password).length>15||/[\r\n\0]/.test(password))throw Error('Admin password must fit in 15 bytes');
       if(!this.knownRepeater)throw Error('Select a target first');
       if(!this.otaSupported)throw Error(this.otaUnavailableReason);
@@ -284,47 +308,54 @@
       await this.checkClock();await this.guardMode(1,Uint8Array.of(this.peerType));this.guard=true;
       if(password){
         const response=new Promise((resolve,reject)=>{const timer=setTimeout(()=>{this.loginWaiter=null;reject(Error('Repeater login timed out'));},this.options.remoteTimeout??75000);this.loginWaiter={resolve:()=>{clearTimeout(timer);resolve();},reject:e=>{clearTimeout(timer);reject(e);}};});
+        response.catch(()=>{});
         this.investigationProgress('sending-login','login',this.options.commandTimeout??15000);
-        try{await this.command(join(Uint8Array.of(26),unhex(this.knownRepeater),enc.encode(password)),6);this.investigationProgress('waiting-login','login',this.options.remoteTimeout??75000);await response;}
+        try{await this.command(join(Uint8Array.of(26),unhex(this.knownRepeater),enc.encode(password)),6);if(investigation)this.assertInvestigationRunning();this.investigationProgress('waiting-login','login',this.options.remoteTimeout??75000);await response;if(investigation)this.assertInvestigationRunning();}
         catch(e){this.loginWaiter?.reject(e);await response.catch(()=>{});throw e;}
       }else{
         // The target may already grant this Companion access in its ACL.
         // Arm a direct return path and require the same full-key proof below.
         this.investigationProgress('checking-acl','ACL',this.options.remoteTimeout??75000);
       }
-      await this.guardMode(2);
+      if(investigation)this.assertInvestigationRunning();await this.guardMode(2);
       const deadline=Date.now()+(this.options.remoteTimeout??75000);while(Date.now()<deadline){
+        if(investigation)this.assertInvestigationRunning();
         const status=await this.localCommand('get ota.direct');if(/^>?\s*ota\.direct v=2 active=1 busy=0\s*$/i.test(status))break;
         if(!/^>?\s*ota\.direct v=2 active=1 busy=1\s*$/i.test(status))throw Error('Companion direct session changed');await sleep(100);
       }
       if(Date.now()>=deadline)throw Error('Return path timed out');
-      const proof=await this.remoteReply('get public.key');
+      const proof=investigation?await this.retryInvestigation('get public.key',()=>this.remoteReply('get public.key')):await this.remoteReply('get public.key');
       if(proof.replace(/^>\s*/,'').trim().toLowerCase()!==this.knownRepeater)throw Error('Repeater did not prove its full public key');
       this.authenticated=true;
     }
     async remoteReply(text){
       if(!text||/[\r\n\0]/.test(text)||enc.encode(text).length>152)throw Error('Invalid remote command');
+      if(this.investigationAttempt)this.assertInvestigationRunning();
       if(this.used.size>=7921)throw Error('Reconnect before sending more commands');
       let correlation;do{const r=crypto.getRandomValues(new Uint8Array(2));correlation=String.fromCharCode(33+r[0]%90,33+r[1]%90);}
       while(correlation.includes('|')||this.used.has(correlation));this.used.add(correlation);
       const tag=correlation+'|';await this.guardMode(4,enc.encode(tag));
+      if(this.investigationAttempt)this.assertInvestigationRunning();
       this.timestamp=Math.max(Math.floor(Date.now()/1000),this.timestamp+1);
       if(READ_ONLY.has(text))this.investigationProgress('sending-command',text,this.options.commandTimeout??15000);
       await this.command(join(Uint8Array.of(2,1,0),u32(this.timestamp),unhex(this.knownRepeater).slice(0,6),enc.encode(tag+text)),6);
+      const replyTimeout=this.investigationAttempt?(this.options.investigationTimeout??20000):(this.options.remoteTimeout??75000);
       if(READ_ONLY.has(text)){
         this.investigationProgress('command-sent',text);
-        this.investigationProgress('waiting-reply',text,this.options.remoteTimeout??75000);
+        this.investigationProgress('waiting-reply',text,replyTimeout);
       }
-      const deadline=Date.now()+(this.options.remoteTimeout??75000);let result=[],total=null;
+      const deadline=Date.now()+replyTimeout;let result=[],total=null;
       while(Date.now()<deadline){
+        if(this.investigationAttempt)this.assertInvestigationRunning();
         const reply=await this.localCommand('get ota.direct.reply '+result.length);
+        if(this.investigationAttempt)this.assertInvestigationRunning();
         const m=reply.match(/^>?\s*ota\.reply req=([!-~]{2}) state=(idle|pending|ready) bytes=(\d+) off=(\d+) data=([a-f0-9]+|-)\s*$/i);
         if(!m||m[1]!==correlation||+m[3]>160||+m[4]!==result.length||m[2]==='idle')throw Error('Companion command mailbox changed');
         if(m[2]==='pending'){if(result.length||+m[3]||m[5]!=='-')throw Error('Invalid pending command mailbox');await sleep(100);continue;}
         const n=+m[3],data=m[5]==='-'?[]:(m[5].match(/../g)||[]).map(x=>parseInt(x,16));
         if((m[5]!=='-'&&m[5].length%2)||data.length>40||result.length+data.length>n||(!data.length&&result.length!==n)||(total!==null&&n!==total))throw Error('Invalid Companion reply page');
         total=n;result.push(...data);if(result.length===total){if(READ_ONLY.has(text))this.investigationProgress('command-result',text);return dec.decode(Uint8Array.from(result));}
-      }if(READ_ONLY.has(text))this.investigationProgress('command-timeout',text);throw Error('Remote command timed out; result is unknown');
+      }if(READ_ONLY.has(text))this.investigationProgress('command-timeout',text);const error=Error('Remote command timed out; result is unknown');error.loraReplyTimeout=true;throw error;
     }
     validate(key){if(String(key).toLowerCase()!==this.knownRepeater)throw Error('Target differs from the selected repeater');}
     async verifyPeer(key,password=''){this.validate(key);return this.withAdmin(async()=>{if(!this.authenticated)await this.login(password);return this.knownRepeater;});}

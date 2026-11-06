@@ -2596,8 +2596,12 @@ transfer; closing it disconnects the file source.</p>
 Companion by USB and choose <strong>Connect USB source</strong>. Choose a contact, then
 choose <strong>Investigate</strong> to check its OTA capabilities. Select the firmware and
 choose <strong>Check firmware and target</strong>. After
-checking the result, choose <strong>Transfer</strong>, then <strong>Install and verify</strong>.
-The target needs a firmware build that supports verified <code>ota installhash</code>.</p>
+checking the result, choose <strong>Transfer</strong>, then <strong>Install and verify</strong>.</p>
+<p>Investigation retries unanswered read-only commands up to three times and
+shows each attempt, waiting up to 20 seconds for a reply;
+unanswered checks are marked incomplete. Login and update operations are not
+automatically repeated.</p>
+<p>The target needs a firmware build that supports verified <code>ota installhash</code>.</p>
 <div data-lora-ota>
   <section class="lora-ota-step">
     <h2>1. Connect your radio</h2>
