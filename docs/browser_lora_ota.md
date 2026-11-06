@@ -35,10 +35,23 @@ The target needs a firmware build that supports verified `ota installhash`.
       <p>For a USB Repeater source, enter the target key here before connecting.</p>
     </details>
     <p class="lora-ota-actions"><button type="button" data-role="investigate" disabled>Investigate</button></p>
+    <section data-role="legacy-warning" hidden>
+      <p>This Companion needs to read its message queue to investigate. Pending unrelated messages will move from the Companion to this browser and cannot be restored to the Companion. They are stored unencrypted in this browser profile and can be downloaded below. Closing the browser while a message is being received can lose that message.</p>
+      <p>Investigation can continue, but this Companion needs firmware with guarded OTA support to send an update.</p>
+      <p><button type="button" data-role="legacy-investigate">Continue investigation</button></p>
+    </section>
     <pre data-role="investigation" role="status" aria-live="polite" hidden></pre>
+    <section data-role="legacy-inbox" hidden>
+      <p data-role="legacy-inbox-status" role="status"></p>
+      <details><summary>Messages saved in this browser</summary><pre data-role="legacy-inbox-messages"></pre></details>
+      <button type="button" class="lora-ota-secondary" data-role="legacy-inbox-export">Download saved messages</button>
+      <p>After downloading, you can clear these browser copies, including interrupted or possibly lost message records. They cannot be restored to the Companion.</p>
+      <button type="button" class="lora-ota-secondary" data-role="legacy-inbox-clear" disabled>Clear saved browser copies</button>
+    </section>
   </section>
   <section class="lora-ota-step">
     <h2>2. Choose firmware</h2>
+    <p data-role="legacy-source-block" hidden>This Companion can check firmware, but needs guarded OTA support to send an update.</p>
     <p data-role="firmware-catalog-status" role="status">Investigate the target to find matching firmware.</p>
     <section data-role="firmware-role-wrap" hidden><label>Target type
       <select data-role="firmware-role"><option value="">Choose a type</option><option value="repeater">Repeater</option><option value="room">Room</option><option value="sensor">Sensor</option></select>
@@ -107,7 +120,10 @@ The target needs a firmware build that supports verified `ota installhash`.
 
 The source needs a Full Companion build with guarded direct OTA support, or
 a Repeater with `ota.peer` and USB folder support. Older Companion builds
-without the guarded USB capability cannot be used as a source. The target needs firmware
+without the guarded USB capability can investigate a stored contact after you
+choose to move its pending messages into this browser; they cannot serve OTA
+updates. Saved messages can be downloaded, but cannot be restored to the
+Companion. The target needs firmware
 that supports the verified `ota installhash` command;
 older versions cannot install through this updater yet. Before starting, put both radios on matching
 active TempRadio settings matching their saved primary channel, set RX power saving off, and turn
