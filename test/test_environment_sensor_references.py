@@ -172,7 +172,7 @@ class EnvironmentSensorReferencesTest(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("Assertion", result.stderr)
 
-    def test_only_rak_repeater_opts_in(self):
+    def test_only_ram_tight_rak_repeater_recipes_opt_in(self):
         selected = []
         for path in [ROOT/"platformio.ini", *sorted((ROOT/"variants").rglob("*.ini"))]:
             config = configparser.ConfigParser(interpolation=None, strict=False)
@@ -180,9 +180,13 @@ class EnvironmentSensorReferencesTest(unittest.TestCase):
             for section in config.sections():
                 if re.search(r"-D\s*MESH_SENSOR_DESCRIPTOR_INDEX=1\b", config[section].get("build_flags", "")):
                     selected.append(section)
-        self.assertEqual(selected, ["env:RAK_4631_repeater"])
+        self.assertEqual(selected, ["env:RAK_4631_repeater", "env:RAK_4631_repeater_unified_lora_ota"])
+        config = configparser.ConfigParser(interpolation=None)
+        config.read(ROOT/"variants/rak4631/platformio.ini")
+        for section in selected:
+            self.assertRegex(config[section]["build_flags"], r"-D\s*MESH_RADIO_PRESETS_RESIDENT=0\b")
 
-    def test_real_active_sensor_arm_layout_saves_160_bytes_with_all_slots(self):
+    def test_real_arm_layout_reclaims_324_bytes_with_all_sensor_and_preset_slots(self):
         compiler = shutil.which("arm-none-eabi-g++")
         if not compiler:
             candidate = Path.home()/".platformio/packages/toolchain-gccarmnoneeabi/bin/arm-none-eabi-g++"
@@ -196,16 +200,21 @@ class EnvironmentSensorReferencesTest(unittest.TestCase):
         with tempfile.TemporaryDirectory(prefix="sensor-reference-arm-size-") as folder:
             work = Path(folder)
             source = work/"size.cpp"
-            source.write_text('#include <stdint.h>\nclass CayenneLPP;\n'+active+
-                              '\nunsigned char active_slots[sizeof(ActiveSensor)*16];\n')
+            source.write_text('#include <stdint.h>\n#include <helpers/RadioPresetCLI.h>\nclass CayenneLPP;\n'+active+
+                              '\nunsigned char active_slots[sizeof(ActiveSensor)*16];\n'
+                              'unsigned char preset_cli_size[sizeof(mesh::RadioPresetCLI)];\n'
+                              'static_assert(mesh::RadioPresetTable::SLOTS == 5, "All preset slots retained");\n'
+                              'static_assert(MESH_ENABLE_RADIO_PRESETS == 1, "Preset commands retained");\n')
             for mode in (0, 1):
                 obj = work/("size-%s.o" % mode)
                 subprocess.run([compiler, "-std=c++17", "-mcpu=cortex-m4", "-mthumb",
+                                "-I"+str(ROOT/"src"), "-DMESH_RADIO_PRESETS_RESIDENT="+str(1-mode),
                                 "-DMESH_SENSOR_DESCRIPTOR_INDEX="+str(mode), "-c", str(source), "-o", str(obj)], check=True)
                 symbols = subprocess.check_output([nm, "-S", str(obj)], text=True)
-                line = next(line for line in symbols.splitlines() if line.endswith(" active_slots"))
-                sizes.append(int(line.split()[1], 16))
-        self.assertEqual(sizes, [192, 32])
+                size = lambda name:int(next(line for line in symbols.splitlines() if line.endswith(" "+name)).split()[1],16)
+                sizes.append((size("active_slots"),size("preset_cli_size")))
+        self.assertEqual(sizes, [(192,196), (32,32)])
+        self.assertEqual(sum(sizes[0])-sum(sizes[1]),324)
 
 
 if __name__ == "__main__":

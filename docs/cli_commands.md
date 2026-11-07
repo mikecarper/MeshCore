@@ -2259,7 +2259,7 @@ and the revert behavior are the same, with one safety difference: if a stored
 `/presets` cannot be read later (corrupt, short or missing), preset commands
 reply `Error: presets unreadable` and nothing is written over the file; a
 pending remote load still reverts or commits from RAM. The RAK4631 Repeater built from
-`RAK_4631_repeater` (both its sensor + LoRa OTA images) uses `0` because its
+`RAK_4631_repeater` or `RAK_4631_repeater_unified_lora_ota` (both sensor + LoRa OTA images) uses `0` because its
 runtime-RAM headroom is too small for the resident table.
 
 ---
