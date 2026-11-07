@@ -1225,7 +1225,7 @@ void Dispatcher::loop() {
     // Consume a result from an already-admitted pulse even after the window.
     // An idle expired slot must not start a fresh request or interrupt RX/TX.
     skipped = bounded_pulse && agc_reset.retryExpired(agc_now)
-        && !_radio->isAGCMaintenancePending() && !_radio->hasAGCMaintenanceResult();
+        && !_radio->hasAGCMaintenanceWork();
     if (!skipped) {
 #endif
     if(old_agc_serviced) {
@@ -1258,10 +1258,6 @@ void Dispatcher::loop() {
     }
     #endif
 #if defined(MESH_WARM_RX_REFRESH) && MESH_WARM_RX_REFRESH
-    }
-    if (!attempted && bounded_pulse && agc_reset.retryExpired(_ms->getMillis())
-        && !_radio->isAGCMaintenancePending() && !_radio->hasAGCMaintenanceResult()) {
-      skipped = true;
     }
 #endif
     if (attempted) {

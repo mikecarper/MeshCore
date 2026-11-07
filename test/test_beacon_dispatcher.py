@@ -49,7 +49,7 @@ public:
   unsigned agc = 0, noise = 0, begins = 0, begin_while_owned = 0;
   bool warm = false;
   bool unconfirmed_pulse = false, command_failure = false;
-  uint32_t pulse_listen_us = 4000;
+  uint32_t pulse_listen_us = 4000, pulse_busy_us = 1000;
   uint32_t old_seconds = 0;
   RxpsPulse pulse;
   std::vector<uint32_t> pulse_completions, old_completions;
@@ -137,7 +137,7 @@ public:
     // GPIO/checked RX are the counted hardware boundary. The actual pulse
     // FSM alone decides whether these samples witness a completed cycle.
     const uint32_t first_high = unconfirmed_pulse ? 1000 : pulse_listen_us;
-    pulse.sample(now, elapsed >= first_high && elapsed < first_high + 1000, false);
+    pulse.sample(now, elapsed >= first_high && elapsed < first_high + pulse_busy_us, false);
     if (pulse.phase == RxpsPulse::Phase::Stop) {
       ++pulse.rtc; ++pulse.verified;
       if (command_failure) pulse.noteError(-707, RxpsPulse::Step::RtcRead);
@@ -150,7 +150,7 @@ public:
   void configureAGCMaintenance(uint32_t cadence) override { pulse.cadence(cadence); }
   bool isAGCMaintenanceActive() const override { return pulse.owns(); }
   bool isAGCMaintenancePending() const override { return pulse.pending; }
-  bool hasAGCMaintenanceResult() const override { return pulse.hasCompletion(); }
+  bool hasAGCMaintenanceWork() const override { return pulse.pending || pulse.hasCompletion(); }
   AGCMaintenanceResult periodicAGCMaintenance(bool adaptive) override {
     if (!warm) {
       if (adaptive) return tryResetAGC() ? AGCMaintenanceResult::Applied : AGCMaintenanceResult::Deferred;
@@ -697,17 +697,24 @@ static void pulse_retry_window() {
     assert(f.radio.pulse.ok == 0 && f.radio.pulse.cycles == 0
         && f.radio.pulse.fail == 0 && f.radio.pulse.error == 0);
     assert(f.radio.pulse.early > 0 && f.radio.pulse.missed > 0);
-    // Legacy fixed-time comparison is strictly later than the deadline.
-    f.clock.now = initial + 36002; f.d.loop();
+    // A consumed Deferred result can defer skip bookkeeping one 250 ms poll;
+    // fixed-time comparisons are strictly later than each deadline.
+    f.clock.now = initial + 36253; f.d.loop();
     assert(f.radio.pulse.admit == admissions_at_expiry + 1);
   }
 }
 static void pulse_late_owner() {
-  for (bool packet : {false, true}) {
+  for (unsigned mode : {0U, 1U, 2U}) {
+    const bool packet = mode == 0;
     Fixture f;
     f.radio.warm = true; f.d.interval = 16000; f.tick(0);
     if (packet) f.radio.receiving = true;
     else f.radio.pulse_listen_us = 5000000;
+    if (mode == 2) {
+      // An early high followed by a late wake stays unconfirmed. Its late
+      // Deferred result must be consumed, then skipped without a new pulse.
+      f.radio.unconfirmed_pulse = true; f.radio.pulse_busy_us = 5000000;
+    }
     for (unsigned elapsed = 1; elapsed <= 22000; ++elapsed) {
       f.clock.now = 1000 + elapsed; f.d.loop();
       if (packet && elapsed == 20001) f.radio.receiving = false;
@@ -715,10 +722,16 @@ static void pulse_late_owner() {
     if (packet) {
       assert(f.radio.pulse.admit == 0
           && "a packet past expiry must not be interrupted or followed by a fresh late pulse");
-    } else {
+    } else if (mode == 1) {
       assert(f.radio.pulse.admit == 1 && f.radio.pulse.ok == 1 && f.radio.agc == 1
           && "an admitted pulse and its late completion must survive retry expiry");
       assert(f.radio.pulse.cancelled == 0 && f.radio.pulse.forced_wake == 0);
+    } else {
+      assert(f.radio.pulse.admit == 1 && !f.radio.pulse.pending && !f.radio.pulse.hasCompletion()
+          && "late Deferred completion must be consumed and discarded without a new admission");
+      assert(f.radio.pulse.ok == 0 && f.radio.agc == 0 && f.radio.pulse.fail == 0
+          && f.radio.pulse.error == 0 && f.radio.pulse.cancelled == 0
+          && f.radio.pulse.forced_wake == 0);
     }
   }
 }

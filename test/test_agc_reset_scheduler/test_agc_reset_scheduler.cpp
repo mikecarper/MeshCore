@@ -4,9 +4,12 @@
 #include <cstring>
 
 using mesh::AGCResetScheduler;
+using mesh::AGCResetSchedulerCore;
 
 static_assert(sizeof(AGCResetScheduler) <= 16,
               "AGC scheduler adds only one bounded retry deadline");
+static_assert(sizeof(AGCResetSchedulerCore) == 12,
+              "independent old timer retains its original three-word storage");
 
 namespace {
 
@@ -50,7 +53,7 @@ struct ReferenceScheduler {
   }
 };
 
-void expectEquivalent(const AGCResetScheduler& actual,
+void expectEquivalent(const AGCResetSchedulerCore& actual,
                       const ReferenceScheduler& expected, uint32_t now) {
   ASSERT_EQ(actual.interval(), expected.cadence);
   ASSERT_EQ(actual.nextAt(), expected.deadline);
@@ -260,6 +263,13 @@ TEST(AGCResetScheduler, LateServiceDoesNotReplayMissedResetSlots) {
 }
 
 TEST(AGCResetScheduler, DeadlinesAndDelaySurviveMillisRolloverIncludingZero) {
+  AGCResetSchedulerCore core;
+  EXPECT_TRUE(core.configure(UINT32_MAX - 15u, 16, false, 0));
+  EXPECT_EQ(core.nextAt(), 0u);
+  EXPECT_FALSE(core.configure(0, 16, false, 0));
+  EXPECT_EQ(core.nextAt(), 0u);
+  EXPECT_TRUE(core.configure(0, 16, false, 1));
+  EXPECT_EQ(core.nextAt(), 16u);
   AGCResetScheduler scheduler;
   scheduler.configure(0xfffffff0u, 32, true, 0);
   EXPECT_EQ(scheduler.nextAt(), 16u);
@@ -433,8 +443,10 @@ TEST(AGCResetScheduler, DeterministicDifferentialAcrossSupportedBoundaries) {
     uint32_t recovery = UINT32_MAX;
     uint32_t now = UINT32_MAX - 333;
     AGCResetScheduler actual;
+    AGCResetSchedulerCore core;
     ReferenceScheduler expected;
     actual.configure(now, base, adaptive, recovery);
+    core.configure(now, base, adaptive, recovery);
     expected.configure(now, base, adaptive, recovery);
     for (unsigned operation = 0; operation < 200; ++operation) {
       now += nextRandom(random) % 5000;
@@ -442,26 +454,30 @@ TEST(AGCResetScheduler, DeterministicDifferentialAcrossSupportedBoundaries) {
         case 0:
           ++recovery;
           actual.configure(now, base, adaptive, recovery);
+          core.configure(now, base, adaptive, recovery);
           expected.configure(now, base, adaptive, recovery);
           break;
-        case 1: actual.noteTransmit(now); expected.transmit(now); break;
-        case 2: actual.noteDeferred(now); expected.deferred(now); break;
-        case 3: actual.noteAttempt(now); expected.attempted(now); break;
+        case 1: actual.noteTransmit(now); core.noteTransmit(now); expected.transmit(now); break;
+        case 2: actual.noteDeferred(now); core.noteDeferred(now); expected.deferred(now); break;
+        case 3: actual.noteAttempt(now); core.noteAttempt(now); expected.attempted(now); break;
         case 4:
           now = actual.nextAt();
-          actual.noteAttempt(now); expected.attempted(now);
+          actual.noteAttempt(now); core.noteAttempt(now); expected.attempted(now);
           break;
         case 5:
           adaptive = !adaptive;
           actual.configure(now, base, adaptive, recovery);
+          core.configure(now, base, adaptive, recovery);
           expected.configure(now, base, adaptive, recovery);
           break;
         case 6:
           actual.configure(now, base, adaptive, recovery);
+          core.configure(now, base, adaptive, recovery);
           expected.configure(now, base, adaptive, recovery);
           break;
       }
       expectEquivalent(actual, expected, now);
+      expectEquivalent(core, expected, now);
     }
   }
 }
