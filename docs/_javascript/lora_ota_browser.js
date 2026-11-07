@@ -10,7 +10,18 @@
   let preservedCount=0, preservedExportSnapshot=null, preservedExportToken=null, preservedExportInterrupted=false;
   let investigationTimer=null, investigationStage='', investigationStopping=false, investigationActive=false;
   const log = text => { $('status').textContent += String(text) + '\n'; $('status').scrollTop = $('status').scrollHeight; };
-  const fail = error => log('Error: ' + (error?.message || error));
+  function showSourceUpdate(kind) {
+    if(kind==='companion' || kind==='repeater') {
+      const role=kind==='companion'?'companionFull':'repeater';
+      $('source-update-link').href='https://mikecarper.github.io/meshfirmware/?provider=Keymind%20Cascade&role='+role+'&mode=update#firmware-choices';
+      $('source-update-link').textContent=kind==='companion'?'Update Companion firmware':'Update Repeater firmware';
+      $('source-update-help').hidden=false;
+    }
+  }
+  const fail = error => {
+    log('Error: ' + (error?.message || error));
+    showSourceUpdate(error?.sourceUpdateRequired);
+  };
   const bytes = (file, limit = 64 * 1024 * 1024) => {
     if (!file || !Number.isSafeInteger(file.size) || file.size <= 0 || file.size > limit) throw Error('Firmware file size is unsupported');
     return file.arrayBuffer().then(b => new Uint8Array(b));
@@ -202,7 +213,7 @@
     $('firmware-base-status').textContent=$('base').files[0] ? 'Using your selected installed firmware file.' :
       catalogBaseFile ? 'Using the downloaded installed firmware matching the reported target hash.' : '';
   });
-  $('source').addEventListener('change',()=>{clearInvestigation();if(!link)$('acl').checked=$('source').value==='repeater';});
+  $('source').addEventListener('change',()=>{$('source-update-help').hidden=true;clearInvestigation();if(!link)$('acl').checked=$('source').value==='repeater';});
   $('acl').checked=false;
   function selectTarget() {
     const key=$('key').value.trim();
@@ -234,6 +245,7 @@
   }
   async function connect() {
     const controller = connectController = new AbortController();
+    $('source-update-help').hidden=true;
     $('connect').disabled = true; $('connect').textContent = 'Connecting…'; busy(true);
     $('contact-status').textContent = 'Choose a USB device…';
     try {
@@ -259,18 +271,21 @@
       link = relays.length ? new LoraOtaRoute.RoutedRepeaterTransport(direct, key, relays) : direct;
       await link.open();
       if (controller.signal.aborted) throw new DOMException('Connection canceled', 'AbortError');
+      showSourceUpdate(link.sourceUpdateRequired);
       $('legacy-warning').hidden=!usesSharedCompanionInbox();
       if(companion){
         const sourceVersion=link.firmwareVersion ? link.firmwareVersion+(link.firmwareVersionTruncated?'…':'') : 'version unavailable';
-        const sourceMode=link.otaMode==='guarded' ? 'guarded OTA' : 'raw-packet OTA compatibility';
-        $('source-info').textContent='Companion firmware: '+sourceVersion+' · '+sourceMode+' selected automatically.';
+        const sourceMode=link.rawPacketSupport==='unsupported' ? 'OTA packet sending unsupported' :
+          link.otaMode==='guarded' ? 'guarded OTA selected automatically' : 'raw-packet OTA compatibility selected automatically';
+        $('source-info').textContent='Companion firmware: '+sourceVersion+' · '+sourceMode+'.';
         $('source-info').hidden=false;
         $('contact-status').textContent = 'Loading contacts…';
         contacts=await link.contacts();
         if (controller.signal.aborted) throw new DOMException('Connection canceled', 'AbortError');
         renderContacts();
         log('Loaded '+LoraOtaContacts.choices(contacts).length+' eligible contacts.');
-        if(link.otaMode!=='guarded')log('Using raw-packet compatibility. Packet-send support will be checked when the transfer starts.');
+        if(link.rawPacketSupport==='unsupported')log('This Companion does not support sending raw OTA packets.');
+        else if(link.otaMode!=='guarded' && link.rawPacketSupport!=='supported')log('Using raw-packet compatibility. Packet-send support will be checked when the transfer starts.');
       } else $('contact-status').textContent = 'Connected. Enter the target public key.';
       busy(false); $('connect').disabled = true; $('inspect').disabled = false;
       $('chain-plan').disabled = false;

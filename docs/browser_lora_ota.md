@@ -41,6 +41,7 @@ The updater checks the reported firmware identity and body hash after reboot.
     <p>Plug in your USB radio, then connect it and choose the device to update.</p>
     <p class="lora-ota-actions"><button type="button" data-role="connect">Connect USB source</button> <button type="button" data-role="disconnect" class="lora-ota-secondary">Disconnect</button></p>
     <p data-role="source-info" role="status" hidden></p>
+    <p data-role="source-update-help" role="status" hidden>This source needs updated firmware for this OTA workflow. If it is still connected here, disconnect it before opening the flasher. <a data-role="source-update-link" href="https://mikecarper.github.io/meshfirmware/" target="_blank" rel="noopener noreferrer">Update source firmware</a></p>
     <label>Search contacts by name or public-key prefix<input data-role="contact-search" autocomplete="off" spellcheck="false" disabled></label>
     <p><strong>Device to update</strong></p>
     <p data-role="contact-status" role="status">Connect a Companion to load contacts.</p>

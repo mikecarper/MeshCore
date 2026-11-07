@@ -27,6 +27,16 @@ async function run(){
   const unknownPort=new OldPort({noDevice:true}),unknown=new CompanionTransport(unknownPort,{openSettle:0,commandTimeout:200});
   await unknown.open();assert.equal(unknown.firmwareVersion,null);assert.equal(unknown.otaMode,'legacy');await unknown.close();
 
+  // Protocol error codes must survive the framed response. A missing CMD65 is
+  // actionable, while queue-full, busy and malformed packets are not proof of
+  // obsolete source firmware.
+  for(const code of [1,3,4,6]){
+    const sourceLink=new CompanionTransport({},{});sourceLink.serving=true;sourceLink.otaSupported=true;
+    sourceLink.command=async()=>{let seen;sourceLink.pending={codes:[0],timer:setTimeout(()=>{},1000),reject:e=>{seen=e;}};sourceLink.onFrame(Uint8Array.of(1,code));throw seen;};
+    await assert.rejects(()=>sourceLink.sendRadioOrdered(Uint8Array.of(0x32,0,1)),e=>e.companionErrorCode===code && (e.sourceUpdateRequired==='companion')===(code===1));
+    assert.equal(sourceLink.rawPacketSupport,code===1?'unsupported':'unverified');
+  }
+
   // An old source serves only after the target has proved its full identity.
   const t=new CompanionTransport({}, {knownRepeater:key,investigationTimeout:30});
   t.investigationEnabled=true;t.investigationAuthenticated=true;t.investigationVerified=true;t.investigationPassword='';t.contactList=[{publicKey:key}];t.sourceKey=source;

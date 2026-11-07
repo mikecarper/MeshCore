@@ -147,13 +147,22 @@
         if (!match) throw new Error('The repeater did not report its complete public key');
         this.sourceKey = match[0].toLowerCase();
         const peerStatus = await this.localCommand('ota.peer status');
-        if (!/^OTApeer v=1 session=[01] busy=[01] peers=\d+$/.test(peerStatus))
-          throw new Error('This repeater needs firmware with ota.peer support');
+        if (!/^OTApeer v=1 session=[01] busy=[01] peers=\d+$/.test(peerStatus)) {
+          const unsupported = /^(?:(?:err(?:or)?\s*[:\-]?\s*)?(?:unknown|unsupported)\b|err\s+use\s+ota\.peer\b)/i.test(peerStatus);
+          const error = new Error(unsupported ? 'This repeater needs firmware with ota.peer support' : 'Could not verify the repeater OTA peer status');
+          if (unsupported) error.sourceUpdateRequired = 'repeater';
+          throw error;
+        }
         if (!/^OTApeer v=1 session=0 busy=0 peers=\d+$/.test(peerStatus))
           throw new Error('The source already has an OTA peer session or job; finish it before connecting');
         if (this.knownRepeater) {
           const caps = await this.localCommand('ota.peer capabilities');
-          if (!/^OTApeer known_repeater=1(?: routed_path=1)?$/.test(caps)) throw new Error('The repeater needs known-repeater OTA support');
+          if (!/^OTApeer known_repeater=1(?: routed_path=1)?$/.test(caps)) {
+            const unsupported = /^(?:(?:err(?:or)?\s*[:\-]?\s*)?(?:unknown|unsupported)\b|err\s+use\s+ota\.peer\b|otapeer\s+known_repeater=0(?:\s|$))/i.test(caps);
+            const error = new Error(unsupported ? 'The repeater needs known-repeater OTA support' : 'Could not verify the repeater OTA capabilities');
+            if (unsupported) error.sourceUpdateRequired = 'repeater';
+            throw error;
+          }
           this.supportsRoutedPath = caps.endsWith(' routed_path=1');
           if (this.supportsRoutedPath && await this.localCommand('ota.peer path') !== 'OTApeer path=off')
             throw new Error('The repeater already has an OTA route; clear it before starting');
@@ -208,7 +217,19 @@
           const prefix = isLogin ? text.split(' ').slice(0, 3).join(' ') + ' ' : '';
           if (line.trim() === text.trim() || (prefix && line.startsWith(prefix) && /^\*+$/.test(line.slice(prefix.length)))) { echoed = true; return; }
           const match = echoed && line.match(/^\s*->\s?(.*)$/);
-          if (match) finish(null, match[1].trim());
+          if (match) {
+            const reply = match[1].trim();
+            // These are source-local OTA operations. Only an explicit missing
+            // command or folder feature indicates that a firmware update is
+            // needed; busy, permission, transport and parse failures do not.
+            if (/^ota (?:stats|config|folder(?: on)?)$/.test(text) &&
+                (/^(?:(?:err(?:or)?\s*[:\-]?\s*)?(?:unknown|unsupported)\b)/i.test(reply) ||
+                 /^err\s+not\s+built\s+with\s+ota_folder_serial\b/i.test(reply))) {
+              const unsupported = new Error(reply); unsupported.sourceUpdateRequired = 'repeater';
+              finish(unsupported); return;
+            }
+            finish(null, reply);
+          }
         };
         const payload = new Uint8Array(bytes.length + 2); payload.set(bytes); payload.set([13, 10], bytes.length);
         this.write(payload).catch(error => finish(error));

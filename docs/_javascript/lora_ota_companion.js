@@ -78,6 +78,7 @@
       this.failure=null;this.decoder=new Decoder();this.pending=null;this.loginWaiter=null;this.queue=Promise.resolve();this.admin=Promise.resolve();
       this.authenticated=false;this.guard=false;this.investigationEnabled=false;this.investigationCancelled=false;this.investigationAuthenticated=false;this.investigationVerified=false;this.investigationProofPending=false;this.investigationPassword=null;this.investigationPermission='unknown';this.used=new Set();this.timestamp=0;this.serving=false;this.seeder=null;this.radioQueue=[];this.radioRunning=false;this.nextTx=0;this.txQueue=Promise.resolve();this.contactList=[];this.peerType=2;
       this.otaSupported=false;this.localCliSupported=false;this.otaMode='legacy';this.rawPacketSupport='unverified';
+      this.sourceUpdateRequired=null;
       this.firmwareVersion=null;this.firmwareBuildDate=null;this.firmwareProtocol=null;this.firmwareVersionTruncated=false;
       this.otaUnavailableReason='This Companion needs firmware with guarded zero-hop CLI and radio support';
       // The browser serves packets itself; no firmware-side folder is used.
@@ -159,7 +160,7 @@
       }
       if(this.pending&&(frame[0]===1||frame[0]===this.pending.code||this.pending.codes?.includes(frame[0])||(this.pending.anyResponse&&frame[0]<128))){
         const pending=this.pending;this.pending=null;clearTimeout(pending.timer);
-        if(frame[0]===1)pending.reject(Error('Companion rejected the command'));else pending.resolve(frame);
+        if(frame[0]===1){const error=Error('Companion rejected the command');if(frame.length>=2)error.companionErrorCode=frame[1];pending.reject(error);}else pending.resolve(frame);
       }
     }
     command(payload,code){return this.commandAny(payload,[code]);}
@@ -477,6 +478,7 @@
     async setPath(){throw Error('Companion OTA currently supports zero-hop only');}
     async serve(info,blob,compress){
       if(this.serving)throw Error('An OTA package is already being served');
+      if(this.rawPacketSupport==='unsupported'){const error=Error('This Companion cannot send raw OTA packets');error.sourceUpdateRequired='companion';throw error;}
       if(!globalThis.LoraOtaCompanionSource)throw Error('Companion seeder is unavailable');
       const t=this.localCliSupported?sourceTemp(await this.localCommand('get tempradio')):
         {radio:await this.savedSourceRadio(),preamble:32};
@@ -508,7 +510,8 @@
       const delay=this.nextTx-Date.now();if(delay>0)await sleep(delay);if(!this.serving)return;
       if(!this.otaSupported)await this.checkSourceRadio();
       if(!this.serving)return;
-      await this.command(join(Uint8Array.of(65,1),raw),0);
+      try{await this.command(join(Uint8Array.of(65,1),raw),0);}
+      catch(error){if(error.companionErrorCode===1){this.rawPacketSupport='unsupported';this.sourceUpdateRequired='companion';error.sourceUpdateRequired='companion';error.message='Companion firmware does not support raw OTA packets';}throw error;}
       this.rawPacketSupport='accepted'; // queued by the Companion, not proof of RF transmission
       const [,bw,sf,cr]=this.radio,symbol=2**sf/(bw*1000),de=symbol>=.016?1:0;
       const airtime=(this.preamble+4.25+8+Math.max(0,Math.ceil((8*raw.length-4*sf+44)/(4*(sf-2*de))))*cr)*symbol;

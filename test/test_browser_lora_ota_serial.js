@@ -88,6 +88,7 @@ class FakePort {
       'ota.peer capabilities':'OTApeer known_repeater=1 routed_path=1', 'ota.peer path':'OTApeer path=off',
       'ota folder on':'OK folder attached', 'ota folder off':'OK folder detached', 'ota.peer close':'OTApeer closed'})[cmd];
     if (cmd === 'ota.peer status' && this.peerStatus) reply=this.peerStatus;
+    if (cmd === 'ota.peer capabilities' && this.peerCaps) reply=this.peerCaps;
     if (cmd === 'ota folder') reply = 'folder='+(this.folder?'on':'off')+' serving=0:';
     if (cmd === 'ota folder on') this.folder = true;
     if (cmd === 'ota folder off') this.folder = false;
@@ -96,6 +97,7 @@ class FakePort {
     if (cmd.startsWith('ota.peer acl ') || cmd.startsWith('ota.peer cmd.acl ') || cmd.startsWith('ota.peer login.repeater ') || cmd.startsWith('ota.peer cmd ')) reply='OTApeer job=01020304 state=pending';
     if (cmd === 'ota.peer result') reply='OTApeer job=01020304 state=ok bytes=2 off=0 data=4F4B';
     if (cmd === 'ota.peer peers 0') reply=`OTApeer peer=0 key=${target} type=2 rssi=-45 snr=8`;
+    if (this.replies && Object.hasOwn(this.replies,cmd)) reply=this.replies[cmd];
     if (!reply) throw new Error('unexpected test command: '+cmd);
     if (this.drop === cmd) { this.drop = null; return; }
     queueMicrotask(() => {
@@ -106,6 +108,26 @@ class FakePort {
   }
   async close() { this.closed=true; }
 }
+
+test('only explicit missing Repeater OTA capabilities request a firmware update', async () => {
+  for(const [status,needed] of [['Unknown command',true],['ERR unsupported',true],['broken response',false],['OTApeer v=1 session=1 busy=0 peers=0',false]]) {
+    const port=new FakePort();port.peerStatus=status;const link=new RepeaterTransport(port,{knownRepeater:'b'.repeat(64),aclOnly:true,openSettle:0});
+    await assert.rejects(()=>link.open(),e=>(e.sourceUpdateRequired==='repeater')===needed);
+  }
+  for(const [caps,needed] of [['Unknown command',true],['ERR use ota.peer status|acl KEY',true],['OTApeer known_repeater=0',true],['invalid response',false]]) {
+    const port=new FakePort();port.peerCaps=caps;const link=new RepeaterTransport(port,{knownRepeater:'b'.repeat(64),aclOnly:true,openSettle:0});
+    await assert.rejects(()=>link.open(),e=>(e.sourceUpdateRequired==='repeater')===needed);
+  }
+});
+
+test('source folder reports missing firmware without mislabeling transient errors', async () => {
+  const port=new FakePort(), link=new RepeaterTransport(port,{knownRepeater:'b'.repeat(64),aclOnly:true,openSettle:0});await link.open();
+  for(const reply of ['Unknown command','ERR not built with OTA_FOLDER_SERIAL']) {
+    port.replies={'ota folder on':reply};await assert.rejects(()=>link.localCommand('ota folder on'),e=>e.sourceUpdateRequired==='repeater');
+  }
+  port.replies={'ota folder on':'ERR busy'};assert.equal(await link.localCommand('ota folder on'),'ERR busy');
+  await link.close();
+});
 
 for (const status of ['OTApeer v=1 session=1 busy=0 peers=1', 'OTApeer v=1 session=0 busy=1 peers=0'])
   test('leaves an existing peer session or job untouched: '+status, async () => {
