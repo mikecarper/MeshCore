@@ -48,8 +48,8 @@ void Dispatcher::accountBeaconAirtime() {
   const uint32_t now = _ms->getMillis();
   const uint32_t elapsed = now - beacon_tx->start;
   total_air_time += elapsed;
-  // Match ordinary TX retirement without postponing adaptive maintenance.
-  agc_reset.noteTransmit(now);
+  // Match ordinary TX retirement: a beacon is not a witnessed primary pulse.
+  if (!_radio->supportsWarmRxRefresh()) agc_reset.noteTransmit(now);
   updateTxBudget();
   tx_budget_ms = elapsed >= tx_budget_ms ? 0 : tx_budget_ms - elapsed;
   if (tx_budget_ms < 100) {

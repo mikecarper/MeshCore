@@ -1191,8 +1191,9 @@ void Dispatcher::loop() {
       return;  // can't do any more radio activity until send is complete or timed out
     }
 
-    // going back into receive mode now...
-    agc_reset.noteTransmit(_ms->getMillis());
+    // TX retirement is not a witnessed primary pulse. Keep its periodic
+    // deadline; only legacy maintenance restarts its idle timer after TX.
+    if (!_radio->supportsWarmRxRefresh()) agc_reset.noteTransmit(_ms->getMillis());
   }
 
   const uint32_t agc_now = _ms->getMillis();
