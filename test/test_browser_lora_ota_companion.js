@@ -5,7 +5,7 @@ const enc=new TextEncoder(),dec=new TextDecoder(),key='bb'.repeat(32),source='aa
 const fromHex=s=>Uint8Array.from(s.match(/../g),x=>parseInt(x,16));
 function wire(body){return Uint8Array.of(62,body.length&255,body.length>>8,...body)}
 class Port{
-  constructor(){this.waiter=null;this.q=[];this.frames=[];this.guard=false;this.correlation='';this.reply='';this.remoteAttempts={};this.timeoutFirst={};this.pendingReply=false;this.clock=Math.floor(Date.now()/1000);this.legacy=false;this.noCli=false;this.loginPermissions=1;this.loginCode=0x85;this.suppressLogin=false;this.targetType=3;this.rxps='Error: RX power saving is unsupported on this radio';}
+  constructor(){this.waiter=null;this.q=[];this.frames=[];this.guard=false;this.correlation='';this.reply='';this.remoteAttempts={};this.timeoutFirst={};this.pendingReply=false;this.clock=Math.floor(Date.now()/1000);this.legacy=false;this.noCli=false;this.loginPermissions=1;this.loginCode=0x85;this.suppressLogin=false;this.targetType=3;this.targetPath=255;this.rxps='Error: RX power saving is unsupported on this radio';}
   push(v){if(this.waiter){let f=this.waiter;this.waiter=null;f({value:v,done:false});}else this.q.push(v);}
   async open(){
     this.readable={getReader:()=>({read:()=>this.q.length?Promise.resolve({value:this.q.shift(),done:false}):new Promise(r=>this.waiter=r),cancel:async()=>{if(this.waiter)this.waiter({done:true});},releaseLock(){}})};
@@ -17,7 +17,7 @@ class Port{
     else if(f[0]===22){out=new Uint8Array(82);out[0]=13;out[1]=13;out.set(enc.encode('06-Nov-2026'),8);out.set(enc.encode('Test board'),20);out.set(enc.encode(this.noCli?'v1.16.05':'v1.18.0.2-preview'),60);}
     else if(f[0]===4){
       const contact=(pub,type,fav,path,name)=>{const b=new Uint8Array(148);b[0]=3;b.set(fromHex(pub),1);b[33]=type;b[34]=fav?1:0;b[35]=path;b.set(enc.encode(name),100);return b;};
-      queueMicrotask(()=>{this.push(wire(Uint8Array.of(2,4,0,0,0)));this.push(wire(contact('11'.repeat(32),2,false,2,'Repeater')));this.push(wire(contact(key,this.targetType,true,255,'Room')));this.push(wire(contact('33'.repeat(32),4,false,1,'Sensor')));this.push(wire(contact('44'.repeat(32),1,false,0,'Chat')));this.push(wire(Uint8Array.of(4,0,0,0,0)));});return;
+      queueMicrotask(()=>{this.push(wire(Uint8Array.of(2,4,0,0,0)));this.push(wire(contact('11'.repeat(32),2,false,2,'Repeater')));this.push(wire(contact(key,this.targetType,true,this.targetPath,'Room')));this.push(wire(contact('33'.repeat(32),4,false,1,'Sensor')));this.push(wire(contact('44'.repeat(32),1,false,0,'Chat')));this.push(wire(Uint8Array.of(4,0,0,0,0)));});return;
     }
     else if(f[0]===5){out=Uint8Array.of(9,...new Uint8Array(new Uint32Array([this.clock]).buffer));}
     else if(f[0]===6){this.clock=new DataView(f.buffer,f.byteOffset,f.byteLength).getUint32(1,true);out=Uint8Array.of(0);}
@@ -69,33 +69,33 @@ async function run(){
   assert(sensor.frames.some(f=>f[0]===52&&f[1]===1&&f[34]===4));await sensorLink.close();
   // The guarded investigation retries only unanswered reads, rearming its
   // mailbox with a new tag each time. A successful answer stops the attempts.
-  const retry=new Port();retry.timeoutFirst={'get public.key':2,'ota status':6};const events=[];
+  const retry=new Port();retry.timeoutFirst={'get public.key':6,'ota status':10};const events=[];
   const retryLink=new CompanionTransport(retry,{openSettle:0,commandTimeout:1000,remoteTimeout:120,investigationTimeout:120,onInvestigationProgress:e=>events.push(e)});
   await retryLink.open();await retryLink.contacts();retryLink.selectTarget(key);
   await retryLink.investigateVerifyPeer(key,'');
-  assert.equal(retry.remoteAttempts['get public.key'],3);
+  assert.equal(retry.remoteAttempts['get public.key'],7);
   assert.equal(await retryLink.investigateCommand(key,'','ota status'),'> 9');
-  assert.equal(retry.remoteAttempts['ota status'],7);
+  assert.equal(retry.remoteAttempts['ota status'],11);
   const sent=retry.frames.filter(f=>f[0]===2).map(f=>dec.decode(f.slice(13)));
-  assert.equal(new Set(sent.map(s=>s.slice(0,3))).size,10);
-  assert(events.some(e=>e.stage==='retrying-command'&&e.command==='get public.key'&&e.attempt===2&&e.maxAttempts===3));
-  assert(events.some(e=>e.stage==='waiting-reply'&&e.command==='ota status'&&e.attempt===7&&e.maxAttempts===7));
+  assert.equal(new Set(sent.map(s=>s.slice(0,3))).size,18);
+  assert(events.some(e=>e.stage==='retrying-command'&&e.command==='get public.key'&&e.attempt===6&&e.maxAttempts===7));
+  assert(events.some(e=>e.stage==='waiting-reply'&&e.command==='ota status'&&e.attempt===11&&e.maxAttempts===11));
   const before=sent.length;
   await assert.rejects(()=>retryLink.investigateCommand(key,'','set tx 9'),/read.only/i);
   assert.equal(retry.frames.filter(f=>f[0]===2).length,before);
   let calls=0;retryLink.remoteReply=async()=>{calls++;const e=Error('Remote command timed out; result is unknown');e.loraReplyTimeout=true;throw e;};
-  await assert.rejects(()=>retryLink.investigateCommand(key,'','ota self'),e=>e.loraReplyTimeout&&e.attempts===7);assert.equal(calls,7);
+  await assert.rejects(()=>retryLink.investigateCommand(key,'','ota self'),e=>e.loraReplyTimeout&&e.attempts===11);assert.equal(calls,11);
   calls=0;retryLink.remoteReply=async()=>{calls++;throw Error('Serial connection lost');};
   await assert.rejects(()=>retryLink.investigateCommand(key,'','ota self'),/Serial connection lost/);assert.equal(calls,1);
   calls=0;retryLink.remoteReply=async()=>{calls++;retryLink.investigationCancelled=true;const e=Error('Remote command timed out; result is unknown');e.loraReplyTimeout=true;throw e;};
   await assert.rejects(()=>retryLink.investigateCommand(key,'','ota self'),/cancel/i);assert.equal(calls,1);
   await retryLink.close();
-  const missing=new Port();missing.timeoutFirst={'get public.key':3};const missingEvents=[];
+  const missing=new Port();missing.timeoutFirst={'get public.key':7};const missingEvents=[];
   const missingLink=new CompanionTransport(missing,{openSettle:0,commandTimeout:1000,investigationTimeout:80,onInvestigationProgress:e=>missingEvents.push(e)});
   await missingLink.open();await missingLink.contacts();missingLink.selectTarget(key);
-  await assert.rejects(()=>missingLink.investigateVerifyPeer(key,''),e=>e.loraReplyTimeout&&e.attempts===3);
-  assert.equal(missing.remoteAttempts['get public.key'],3);
-  assert(missingEvents.some(e=>e.stage==='waiting-reply'&&e.command==='get public.key'&&e.attempt===3&&e.maxAttempts===3));
+  await assert.rejects(()=>missingLink.investigateVerifyPeer(key,''),e=>e.loraReplyTimeout&&e.attempts===7);
+  assert.equal(missing.remoteAttempts['get public.key'],7);
+  assert(missingEvents.some(e=>e.stage==='waiting-reply'&&e.command==='get public.key'&&e.attempt===7&&e.maxAttempts===7));
   await missingLink.close();
   const defaults=new Port(), defaultEvents=[];
   const defaultLink=new CompanionTransport(defaults,{openSettle:0,commandTimeout:1000,onInvestigationProgress:e=>defaultEvents.push(e)});
@@ -108,6 +108,33 @@ async function run(){
   await defaultLink.remoteCommand(key,'','ota status');
   assert(defaultEvents.some(e=>e.stage==='waiting-reply'&&e.command==='ota status'&&e.timeoutMs===75000));
   await defaultLink.close();
+  // Route evidence comes from the actual contact decoder, not a default
+  // 'direct' assumption. Zero hops is valid with every supported hash width.
+  for(const [path,expected] of [[0,7000],[64,7000],[128,7000],[1,20000],[65,20000],[129,20000],[255,20000]]){
+    const p=new Port();p.targetPath=path;const events=[],timers=[];
+    const c=new CompanionTransport(p,{openSettle:0,commandTimeout:1000,onInvestigationProgress:e=>events.push(e)});
+    await c.open();await c.contacts();c.selectTarget(key);
+    assert.equal(c.investigationReplyTimeout(),expected);
+    assert(!p.frames.some(f=>[2,10,26,52,65].includes(f[0])));
+    const originalTimer=globalThis.setTimeout;
+    globalThis.setTimeout=(fn,ms,...rest)=>{timers.push(ms);return originalTimer(fn,ms,...rest);};
+    try{await c.investigateVerifyPeer(key,'');}finally{globalThis.setTimeout=originalTimer;}
+    assert(timers.includes(expected));
+    assert(events.some(e=>e.stage==='waiting-login'&&e.timeoutMs===expected));
+    assert(events.some(e=>e.stage==='waiting-reply'&&e.command==='get public.key'&&e.timeoutMs===expected));
+    events.length=0;await c.investigateCommand(key,'','ota status');
+    assert(events.some(e=>e.stage==='waiting-reply'&&e.command==='ota status'&&e.timeoutMs===expected));
+    await c.close();
+  }
+  const unknown=new CompanionTransport(new Port(),{knownRepeater:key});
+  assert.equal(unknown.investigationReplyTimeout(),20000);
+  unknown.contactList=[{publicKey:'cc'.repeat(32),hops:0}];
+  assert.equal(unknown.investigationReplyTimeout(),20000);
+  unknown.contactList=[{publicKey:key}];assert.equal(unknown.investigationReplyTimeout(),20000);
+  for(const hops of [0,1,null,undefined]){
+    const c=new CompanionTransport(new Port(),{knownRepeater:key,investigationTimeout:1234});
+    c.contactList=[{publicKey:key,hops}];assert.equal(c.investigationReplyTimeout(),1234);
+  }
   for(const type of ['rejected','timeout']){
     const p=new Port();p.loginCode=type==='rejected'?0x86:0x85;p.suppressLogin=type==='timeout';const events=[];
     const c=new CompanionTransport(p,{openSettle:0,commandTimeout:1000,investigationTimeout:120,onInvestigationProgress:e=>events.push(e)});

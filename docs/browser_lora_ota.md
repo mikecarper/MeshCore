@@ -15,9 +15,10 @@ choose **Investigate** to check its OTA capabilities. Select the firmware and
 choose **Check firmware and target**. After
 checking the result, choose **Transfer**, then **Install and verify**.
 
-Investigation tries the initial identity check up to three times. Once the
-target has replied, it tries unanswered read-only checks up to seven times,
-waiting up to 20 seconds per attempt. Unanswered checks are marked incomplete.
+Investigation tries the initial identity check up to seven times. Once the
+target has replied, it tries unanswered read-only checks up to eleven times,
+waiting up to 7 seconds per attempt for a confirmed zero-hop route, or 20 seconds
+for routed or unknown paths. Unanswered checks are marked incomplete.
 Login and update operations are not automatically repeated. The target's
 radio settings are checked again when needed to safely set up an update.
 
@@ -51,12 +52,11 @@ The updater checks the reported firmware identity and body hash after reboot.
       <label>Target public key (64 hex characters)<input data-role="key" size="64" autocomplete="off" spellcheck="false"></label>
       <p>For a USB Repeater source, enter the target key here before connecting.</p>
     </details>
-    <p class="lora-ota-actions"><button type="button" data-role="investigate" disabled>Investigate</button></p>
     <section data-role="legacy-warning" hidden>
-      <p>This Companion needs to read its message queue to investigate. Pending unrelated messages will move from the Companion to this browser and cannot be restored to the Companion. They are stored unencrypted in this browser profile and can be downloaded below. Closing the browser while a message is being received can lose that message.</p>
+      <p>Investigate reads this Companion’s shared message queue. Pending unrelated messages will move from the Companion to this browser and cannot be restored to the Companion. They are stored unencrypted in this browser profile and can be downloaded below. Closing the browser while a message is being received can lose that message.</p>
       <p>Keep other apps disconnected while using this Companion.</p>
-      <p><button type="button" data-role="legacy-investigate">Continue investigation</button></p>
     </section>
+    <p class="lora-ota-actions"><button type="button" data-role="investigate" disabled>Investigate</button></p>
     <p data-role="investigation-progress" hidden><span data-role="investigation-progress-label" role="status" aria-live="polite"></span> <span data-role="investigation-progress-elapsed" aria-live="off"></span></p>
     <p><button type="button" class="lora-ota-secondary" data-role="investigation-stop" hidden>Stop investigation</button></p>
     <pre data-role="investigation" role="status" aria-live="polite" hidden></pre>

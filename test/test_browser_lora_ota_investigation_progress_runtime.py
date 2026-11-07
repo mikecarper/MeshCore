@@ -5,12 +5,12 @@ import unittest
 
 from test_browser_lora_ota_runtime import BROWSER
 from test_browser_lora_ota_nrf_runtime import run_harness
-from test_browser_lora_ota_legacy_investigation_runtime import legacy_harness
+from test_browser_lora_ota_legacy_investigation_runtime import INVESTIGATE_ACTION, legacy_harness
 
 
 LOGIN_PUSH = "queueMicrotask(()=>this.push(wire(Uint8Array.of(0x85,1,...unhex(key).slice(0,6),0,0,0,0,3,1))));"
 PROOF_PUSH = "inbox.push(message(key,1,tag+(''==='identity'&&text==='get public.key'?'> '+'dd'.repeat(32):reply)));"
-CONTINUE = "el('legacy-investigate').click();const event=await done;"
+ACTION = INVESTIGATE_ACTION
 
 
 class InvestigationProgressBrowserTest(unittest.TestCase):
@@ -22,7 +22,7 @@ class InvestigationProgressBrowserTest(unittest.TestCase):
 
     def test_progress_changes_while_login_and_identity_reply_are_delayed(self):
         harness = legacy_harness()
-        for snippet in (LOGIN_PUSH, PROOF_PUSH, CONTINUE):
+        for snippet in (LOGIN_PUSH, PROOF_PUSH, ACTION):
             self.assertEqual(harness.count(snippet), 1, snippet)
         harness = harness.replace("el('password').value='password';", "el('password').value='S3cr3t!';", 1)
         harness = harness.replace("['','password'].includes(dec.decode(f.slice(33)))", "['','S3cr3t!'].includes(dec.decode(f.slice(33)))", 1)
@@ -30,7 +30,8 @@ class InvestigationProgressBrowserTest(unittest.TestCase):
             "window.__releaseLogin=()=>this.push(wire(Uint8Array.of(0x85,1,...unhex(key).slice(0,6),0,0,0,0,3,1)));", 1)
         harness = harness.replace(PROOF_PUSH,
             "if(text==='get public.key')window.__releaseProof=()=>inbox.push(message(key,1,tag+reply));else if(text==='ota status')window.__releaseStatus=()=>inbox.push(message(key,1,tag+reply));else inbox.push(message(key,1,tag+reply));", 1)
-        action = r'''el('legacy-investigate').click();
+        action = r'''el('investigate').click();
+    if(el('investigation-progress').hidden||!el('investigation-progress').textContent.trim())throw Error('primary action did not immediately show investigation progress');
     const progress=()=>el('investigation-progress').textContent;
     await wait(()=>window.__releaseLogin && /log.?in|logging in/i.test(progress()));
     const login=progress();await new Promise(r=>setTimeout(r,1200));const later=progress();
@@ -45,17 +46,21 @@ class InvestigationProgressBrowserTest(unittest.TestCase):
     window.__releaseStatus();const event=await done;const history=el('investigation').textContent;
     if(!history.includes('> get public.key')||!history.includes('> ota status'))throw Error('commands missing from history');
     if(history.includes(tag)||history.includes(statusTag)||history.includes(el('password').value))throw Error('secret or protocol tag visible in history');
-    await report({login,later,identity,statusProgress,complete:event.detail.complete,verified:event.detail.verified,result:history,cmds,frames:port.frames});return;'''
-        harness = harness.replace(CONTINUE, action, 1)
+    await report({investigateClicks,beforeActionFrames,login,later,identity,statusProgress,complete:event.detail.complete,verified:event.detail.verified,result:history,cmds,frames:port.frames});return;'''
+        harness = harness.replace(ACTION, action, 1)
         result = run_harness(harness, timeout=60)
         self.assertNotIn('error', result, result)
         self.assertRegex(result['login'], r'(?i)log.?in|logging in')
         self.assertRegex(result['identity'], r'(?i)get public\.key')
-        self.assertIn('attempt 1 of 3', result['identity'])
+        self.assertIn('attempt 1 of 7', result['identity'])
+        self.assertIn('reply timeout: 7s', result['identity'])
         self.assertRegex(result['statusProgress'], r'(?i)ota status')
-        self.assertIn('attempt 1 of 7', result['statusProgress'])
+        self.assertIn('attempt 1 of 11', result['statusProgress'])
+        self.assertIn('reply timeout: 7s', result['statusProgress'])
         self.assertTrue(result['complete'], result)
         self.assertTrue(result['verified'], result)
+        self.assertEqual(result['investigateClicks'], 1, result)
+        self.assertFalse(any(f[0] in (2, 10, 26, 52, 65) for f in result['beforeActionFrames']), result)
         self.assertIn('ota status', result['cmds'])
         self.assertFalse(any(f[0] in (52, 65) for f in result['frames']), result)
 
@@ -64,20 +69,20 @@ class InvestigationProgressBrowserTest(unittest.TestCase):
         marker = "window.addEventListener('load',async()=>{try{"
         self.assertEqual(harness.count(marker), 1)
         self.assertEqual(harness.count(LOGIN_PUSH), 1)
-        self.assertEqual(harness.count(CONTINUE), 1)
+        self.assertEqual(harness.count(ACTION), 1)
         harness = harness.replace(marker, marker + "const Transport=LoraOtaCompanion.CompanionTransport;LoraOtaCompanion.CompanionTransport=class extends Transport{constructor(port,options){super(port,{...options,remoteTimeout:1200,investigationTimeout:1200,commandTimeout:1500});}};", 1)
         harness = harness.replace(LOGIN_PUSH, "if((window.__loginAttempts=(window.__loginAttempts||0)+1)>1)queueMicrotask(()=>this.push(wire(Uint8Array.of(0x85,1,...unhex(key).slice(0,6),0,0,0,0,3,1))));", 1)
-        action = r'''el('legacy-investigate').click();const first=await done;
+        action = r'''el('investigate').click();const first=await done;
     if(first.detail.complete)throw Error('missing login incorrectly completed');
     const failure=el('investigation').textContent+' '+el('investigation-progress').textContent;
     if(!/timed? out|timeout/i.test(failure))throw Error('timeout not shown: '+failure);
     if(!/try|retry|check|connect/i.test(failure))throw Error('timeout has no next step: '+failure);
     const again=new Promise((resolve,reject)=>{const timer=setTimeout(()=>reject(Error('retry did not finish')),45000);document.querySelector('[data-lora-ota]').addEventListener('lora-ota-investigated',e=>{clearTimeout(timer);resolve(e);},{once:true});});
     if(el('investigate').disabled)throw Error('investigate button stayed disabled after timeout');
-    el('investigate').click();if(el('legacy-warning').hidden)throw Error('consent missing on retry');
-    el('legacy-investigate').click();const second=await again;
+    el('investigate').click();const second=await again;
+    if(investigateClicks!==2)throw Error('retry required a second investigation gate');
     await report({failure,complete:second.detail.complete,verified:second.detail.verified,cmds,frames:port.frames});return;'''
-        harness = harness.replace(CONTINUE, action, 1)
+        harness = harness.replace(ACTION, action, 1)
         result = run_harness(harness, timeout=60)
         self.assertNotIn('error', result, result)
         self.assertTrue(result['complete'], result)
@@ -89,10 +94,10 @@ class InvestigationProgressBrowserTest(unittest.TestCase):
         harness = legacy_harness()
         dequeue = "} else if(f[0]===10){out=inbox.length?inbox.shift():Uint8Array.of(10);} else if(f[0]===66)"
         self.assertEqual(harness.count(dequeue), 1)
-        self.assertEqual(harness.count(CONTINUE), 1)
+        self.assertEqual(harness.count(ACTION), 1)
         delayed = "} else if(f[0]===10){const held=inbox.length?inbox.shift():Uint8Array.of(10);window.__releaseDequeued=()=>this.push(wire(held));return;} else if(f[0]===66)"
         harness = harness.replace(dequeue, delayed, 1)
-        action = r'''el('legacy-investigate').click();let finished=false;done.then(()=>{finished=true;});
+        action = r'''el('investigate').click();let finished=false;done.then(()=>{finished=true;});
     await wait(()=>window.__releaseDequeued);
     if(el('investigation-stop').hidden||el('investigation-stop').disabled)throw Error('stop unavailable');
     el('investigation-stop').click();await new Promise(r=>setTimeout(r,200));
@@ -101,7 +106,7 @@ class InvestigationProgressBrowserTest(unittest.TestCase):
     window.__releaseDequeued();const event=await done;
     const saved=JSON.parse(localStorage.getItem('meshcore-lora-ota-preserved-inbox-v1')||'[]');
     await report({complete:event.detail.complete,result:el('investigation').textContent,saved,frames:port.frames});return;'''
-        harness = harness.replace(CONTINUE, action, 1)
+        harness = harness.replace(ACTION, action, 1)
         result = run_harness(harness, timeout=60)
         self.assertNotIn('error', result, result)
         self.assertFalse(result['complete'], result)
@@ -112,16 +117,16 @@ class InvestigationProgressBrowserTest(unittest.TestCase):
     def test_stop_interrupts_login_and_requires_reconnect(self):
         harness = legacy_harness()
         self.assertEqual(harness.count(LOGIN_PUSH), 1)
-        self.assertEqual(harness.count(CONTINUE), 1)
+        self.assertEqual(harness.count(ACTION), 1)
         harness = harness.replace(LOGIN_PUSH,
             "window.__releaseLogin=()=>this.push(wire(Uint8Array.of(0x85,1,...unhex(key).slice(0,6),0,0,0,0,3,1)));", 1)
-        action = r'''el('legacy-investigate').click();
+        action = r'''el('investigate').click();
     await wait(()=>window.__releaseLogin && /log.?in|logging in/i.test(el('investigation-progress').textContent));
     el('investigation-stop').click();const event=await Promise.race([done,new Promise((_,reject)=>setTimeout(()=>reject(Error('login stop did not finish')),3000))]);
     const result=el('investigation').textContent+' '+el('investigation-progress').textContent;
     if(!/disconnect|reconnect/i.test(result))throw Error('missing reconnection guidance: '+result);
     await report({complete:event.detail.complete,result,frames:port.frames});return;'''
-        harness = harness.replace(CONTINUE, action, 1)
+        harness = harness.replace(ACTION, action, 1)
         result = run_harness(harness, timeout=30)
         self.assertNotIn('error', result, result)
         self.assertFalse(result['complete'], result)

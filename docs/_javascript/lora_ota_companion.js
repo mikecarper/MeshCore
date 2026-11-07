@@ -224,6 +224,11 @@
       const attempt=this.investigationAttempt||0;
       try{this.options.onInvestigationProgress?.({stage,command,timeoutMs,message,attempt,maxAttempts:attempt?this.investigationMaxAttempts:0});}catch(_){}
     }
+    investigationReplyTimeout(){
+      if(this.options.investigationTimeout!=null)return this.options.investigationTimeout;
+      const contact=this.contactList.find(contact=>contact.publicKey===this.knownRepeater);
+      return contact?.hops===0?7000:20000;
+    }
     async inspectInvestigationClock(){
       this.investigationProgress('checking-clock');
       try{
@@ -247,7 +252,7 @@
       if(!READ_ONLY.has(text))throw Error('Only approved read-only investigation commands are allowed');
       // Until the identity check receives a response, keep probing bounded.
       // Thereafter the target has replied, so tolerate a weaker RF link.
-      const maxAttempts=this.investigationAuthenticated?7:3;
+      const maxAttempts=this.investigationAuthenticated?11:7;
       this.investigationMaxAttempts=maxAttempts;
       try{
         for(let attempt=1;attempt<=maxAttempts;attempt++){
@@ -311,7 +316,7 @@
       await this.command(join(Uint8Array.of(2,1,0),u32(this.timestamp),unhex(this.knownRepeater).slice(0,6),enc.encode(tag+text)),6);
       this.investigationProgress('command-sent',text);
       this.assertInvestigationRunning();
-      const replyTimeout=this.options.investigationTimeout??20000;
+      const replyTimeout=READ_ONLY.has(text)?this.investigationReplyTimeout():(this.options.investigationTimeout??20000);
       const deadline=Date.now()+replyTimeout;
       this.investigationProgress('waiting-reply',text,replyTimeout);
       while(Date.now()<deadline){
@@ -352,7 +357,7 @@
         await this.inspectInvestigationClock();this.assertInvestigationRunning();
         this.investigationProgress('refreshing-contacts',password ? 'login' : 'ACL',this.options.contactsTimeout??60000);
         await this.contacts();this.assertInvestigationRunning();this.assertStandardTarget();
-        const loginTimeout=this.options.investigationTimeout??20000;
+        const loginTimeout=this.investigationReplyTimeout();
         const loginLabel=password?'login':'passwordless login';
         const response=new Promise((resolve,reject)=>{const timer=setTimeout(()=>{this.loginWaiter=null;reject(Error('Repeater login timed out'));},loginTimeout);this.loginWaiter={standard:true,resolve:()=>{clearTimeout(timer);resolve();},reject:e=>{clearTimeout(timer);reject(e);}};});
         response.catch(()=>{}); // Cancellation can precede the Companion's send acknowledgement.
@@ -366,7 +371,7 @@
           this.investigationPermission='unknown';
           this.investigationProgress('login-fallback','',0,'No confirmed passwordless login; trying existing ACL access.');
         }
-        this.investigationProgress('identity','get public.key',this.options.investigationTimeout??20000);
+        this.investigationProgress('identity','get public.key',this.investigationReplyTimeout());
         this.investigationProofPending=true;let proof;
         try{proof=await this.retryInvestigation('get public.key',()=>this.standardReply('get public.key'));}finally{this.investigationProofPending=false;}
         const normalized=proof.replace(/^>\s*/,'').trim();
@@ -386,7 +391,7 @@
       if(!/^>?\s*ota\.direct v=2 active=0 busy=0\s*$/i.test(status))throw Error('The Companion OTA mailbox is already in use');
       await this.checkClock();await this.guardMode(1,Uint8Array.of(this.peerType));this.guard=true;
       if(password||investigation){
-        const loginTimeout=investigation?(this.options.investigationTimeout??20000):(this.options.remoteTimeout??75000);
+        const loginTimeout=investigation?this.investigationReplyTimeout():(this.options.remoteTimeout??75000);
         const loginLabel=password?'login':'passwordless login';
         const response=new Promise((resolve,reject)=>{const timer=setTimeout(()=>{this.loginWaiter=null;reject(Error('Repeater login timed out'));},loginTimeout);this.loginWaiter={resolve:()=>{clearTimeout(timer);resolve();},reject:e=>{clearTimeout(timer);reject(e);}};});
         response.catch(()=>{});
@@ -424,7 +429,7 @@
       this.timestamp=Math.max(Math.floor(Date.now()/1000),this.timestamp+1);
       if(READ_ONLY.has(text))this.investigationProgress('sending-command',text,this.options.commandTimeout??15000);
       await this.command(join(Uint8Array.of(2,1,0),u32(this.timestamp),unhex(this.knownRepeater).slice(0,6),enc.encode(tag+text)),6);
-      const replyTimeout=this.investigationAttempt?(this.options.investigationTimeout??20000):(this.options.remoteTimeout??75000);
+      const replyTimeout=this.investigationAttempt?this.investigationReplyTimeout():(this.options.remoteTimeout??75000);
       if(READ_ONLY.has(text)){
         this.investigationProgress('command-sent',text);
         this.investigationProgress('waiting-reply',text,replyTimeout);

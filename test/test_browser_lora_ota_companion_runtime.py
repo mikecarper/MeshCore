@@ -456,12 +456,15 @@ class CompanionBrowserRuntimeTest(unittest.TestCase):
             if os.environ.get('MESHCORE_REQUIRE_OTA_BROWSER') == '1': self.fail('Chromium is required')
             self.skipTest('Chromium unavailable')
         harness=investigation_harness().replace("result:el('investigation').textContent,status:",
-            "sourceInfo:el('source-info').textContent,result:el('investigation').textContent,status:",1)
+            "sourceInfo:el('source-info').textContent,queueWarningVisible:!el('legacy-warning').hidden,secondaryInvestigation:!!el('legacy-investigate'),result:el('investigation').textContent,status:",1)
         result=run_harness(harness,timeout=90)
         self.assertNotIn('error',result,result)
         self.assertIn('v1.18.0.2-dev-12345678',result['sourceInfo'])
         self.assertRegex(result['sourceInfo'],r'(?i)guarded OTA.*selected automatically')
         self.assertTrue(any(f[0]==22 for f in result['frames']),result)
+        self.assertTrue(result['complete'],result)
+        self.assertFalse(result['queueWarningVisible'],result)
+        self.assertFalse(result['secondaryInvestigation'],result)
 
     def test_investigate_legacy_target_does_not_claim_verified_install(self):
         if not BROWSER:

@@ -38,7 +38,6 @@
     $('contact-search').disabled = active || !link || $('source').value !== 'companion' || targetLocked;
     updateContactButtons();
     $('investigate').disabled = active || !link;
-    $('legacy-investigate').disabled = active || !link;
     $('legacy-inbox-export').disabled = active || !preservedCount;
     $('legacy-inbox-clear').disabled = active || !preservedCount || !preservedExportSnapshot;
     $('firmware-role').disabled = active || !link;
@@ -149,11 +148,14 @@
     } catch(error) { preservedExportSnapshot=null;preservedExportToken=null;preservedExportInterrupted=false;refreshPreservedMessages();$('legacy-inbox-status').textContent='Could not clear saved messages: '+(error?.message||error)+'. Download the current messages and try again.'; }
   });
   refreshPreservedMessages();
+  function usesSharedCompanionInbox() {
+    return $('source').value==='companion' && link?.otaSupported===false;
+  }
   function clearInvestigation() {
     $('investigation').hidden = true; $('investigation').textContent = '';
     finishInvestigationProgress('');$('investigation-progress').hidden=true;
     $('investigation-stop').hidden=true; investigationStopping=false;
-    $('legacy-warning').hidden = true;
+    $('legacy-warning').hidden = !usesSharedCompanionInbox();
     $('legacy-source-block').hidden = true;
     catalogGeneration++; catalogFile=null; catalogBaseFile=null; catalogDest=null; catalogVersion=''; catalogInstallSupported=false; catalogCandidates=[];
     $('firmware-role-wrap').hidden=true; $('firmware-role').value='';
@@ -257,6 +259,7 @@
       link = relays.length ? new LoraOtaRoute.RoutedRepeaterTransport(direct, key, relays) : direct;
       await link.open();
       if (controller.signal.aborted) throw new DOMException('Connection canceled', 'AbortError');
+      $('legacy-warning').hidden=!usesSharedCompanionInbox();
       if(companion){
         const sourceVersion=link.firmwareVersion ? link.firmwareVersion+(link.firmwareVersionTruncated?'…':'') : 'version unavailable';
         const sourceMode=link.otaMode==='guarded' ? 'guarded OTA' : 'raw-packet OTA compatibility';
@@ -277,6 +280,7 @@
       if(!controller.signal.aborted && error?.name!=='NotFoundError')fail(error);
       if (link) { try { await link.close(); } catch (_) {} }
       link = session = null; $('connect').disabled = false; $('inspect').disabled = true;
+      $('legacy-warning').hidden=true;
       $('source-info').hidden=true; $('source-info').textContent='';
       $('contact-status').textContent = controller.signal.aborted || error?.name === 'NotFoundError'
         ? 'USB connection canceled. Choose a USB device to try again.'
@@ -340,16 +344,13 @@
       $('firmware-catalog-status').textContent=$('file').files[0] ? 'Using your selected firmware file. Matching downloads are also listed.' : 'Choose a matching firmware version to download.';
     }
   }
-  async function investigate(allowStandard = false) {
-    const standard = $('source').value==='companion' && link && link.otaSupported===false;
-    if(standard && !allowStandard && /^[0-9a-f]{64}$/i.test($('key').value.trim())) {
-      clearInvestigation(); invalidate(); $('legacy-warning').hidden=false;
-      return;
-    }
+  async function investigate() {
+    const standard = usesSharedCompanionInbox();
     clearInvestigation(); invalidate(); busy(true); $('inspect').disabled = true;
     const output = $('investigation'), replies = {};
     let target = '', complete = false, verified = false, stopped = false, failed = false;
     let repeaterTimeout = null, restoreRepeaterTimeout = false;
+    let investigationTimeoutMs = 20000;
     output.hidden = false;
     output.textContent = 'Investigating target…\n';
     $('investigation-progress').hidden=false;
@@ -374,9 +375,9 @@
     // A completed repeater job timeout can be retried; a serial or browser-side
     // job timeout cannot, because the previous operation may still be running.
     const repeaterRead = async (description, operation, canRetry) => {
-      const maxAttempts=targetReplied ? 7 : 3;
+      const maxAttempts=targetReplied ? 11 : 7;
       for(let attempt=1;attempt<=maxAttempts;attempt++) {
-        showInvestigationProgress(description+' (attempt '+attempt+' of '+maxAttempts+')',20000);
+        showInvestigationProgress(description+' (attempt '+attempt+' of '+maxAttempts+')',investigationTimeoutMs);
         add('> '+description+' (attempt '+attempt+' of '+maxAttempts+')');
         try { return await operation(); }
         catch(error) {
@@ -390,7 +391,7 @@
       ? link.investigateCommand(target, password, command)
       : repeaterRead(command, () => link.remoteCommand(target, password, command),
           () => noPassword || (link.authenticatedKey===target && Date.now()-link.lastPeerUse<240000));
-    const exhaustedTimeout = error => (error?.attempts===3 || error?.attempts===7) && error.loraReplyTimeout===true && !link.failure &&
+    const exhaustedTimeout = error => (error?.attempts===7 || error?.attempts===11) && error.loraReplyTimeout===true && !link.failure &&
       (error.message==='Remote command timed out; result is unknown' || error.message==='request timed out; result is unknown');
     const sourceTimeout = async value => {
       const response = String(await link.localCommand('ota.peer timeout'+(value===undefined?'':' '+value))).trim();
@@ -402,13 +403,15 @@
       if (!link) throw Error('Connect a source radio first.');
       target = selectTarget().toLowerCase();
       if(!companion) {
+        if(!link.relays?.length && await link.localCommand('ota.peer path')==='OTApeer path=off')investigationTimeoutMs=7000;
         showInvestigationProgress('Setting the source reply timeout…');
         repeaterTimeout = await sourceTimeout();
-        if(repeaterTimeout!==20) {
+        const seconds=investigationTimeoutMs/1000;
+        if(repeaterTimeout!==seconds) {
           // The write might reach the source even if its acknowledgement is lost.
           restoreRepeaterTimeout = true;
-          await sourceTimeout(20);
-          if(await sourceTimeout()!==20)throw Error('Could not verify the source timeout setting');
+          await sourceTimeout(seconds);
+          if(await sourceTimeout()!==seconds)throw Error('Could not verify the source timeout setting');
         }
       }
       if(standard) {
@@ -671,7 +674,6 @@
   })()));
   $('connect').addEventListener('click', () => run(connect()));
   $('investigate').addEventListener('click', () => run(investigate()));
-  $('legacy-investigate').addEventListener('click', () => run(investigate(true)));
   $('investigation-stop').addEventListener('click',()=>{
     if(!link || typeof link.cancelInvestigation!=='function')return;
     investigationStopping=true;$('investigation-stop').disabled=true;

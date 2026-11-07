@@ -9,6 +9,9 @@ from test_browser_lora_ota_nrf_runtime import run_harness
 from test_browser_lora_ota_companion_runtime import investigation_harness
 
 
+INVESTIGATE_ACTION = "el('investigate').click();const event=await done;"
+
+
 def legacy_harness(fault=''):
     harness = investigation_harness()
     if fault == 'clock_behind':
@@ -66,7 +69,7 @@ def legacy_harness(fault=''):
         if(!(LEGACY_FAULT==='proof_retry'&&text==='get public.key'&&retryCounts[text]<3)
           && !(LEGACY_FAULT==='proof_exhausted'&&text==='get public.key')
           && !(LEGACY_FAULT==='timeout'&&text==='get bootloader.ver')
-          && !(LEGACY_FAULT==='later_retry'&&text==='ota status'&&retryCounts[text]<7))
+          && !(LEGACY_FAULT==='later_retry'&&text==='ota status'&&retryCounts[text]<11))
           inbox.push(message(key,1,tag+(LEGACY_FAULT==='identity'&&text==='get public.key'?'> '+'dd'.repeat(32):reply)));
         out=Uint8Array.of(6,0,0,0,0,0,0,0,0,0);'''.replace('LEGACY_FAULT', repr(fault))
     if fault in ('timeout', 'proof_retry', 'proof_exhausted', 'later_retry', 'empty_login_timeout'):
@@ -80,22 +83,29 @@ def legacy_harness(fault=''):
     harness = harness.replace(marker, "} else if(f[0]===10){out=inbox.length?inbox.shift():Uint8Array.of(10);"+marker, 1)
     click = "if(el('investigate').disabled)throw Error('investigate button unavailable');el('investigate').click();const event=await done;"
     assert harness.count(click) == 1
-    action = r'''if(el('investigate').disabled)throw Error('investigate button unavailable');el('investigate').click();
-    if(el('legacy-warning').hidden||port.frames.some(f=>[2,10,26].includes(f[0])))throw Error('legacy investigation started without consent');
-    el('legacy-investigate').click();const event=await done;'''
+    before_action = r'''if(el('investigate').disabled)throw Error('investigate button unavailable');
+    const beforeActionFrames=port.frames.map(f=>f.slice());
+    if(beforeActionFrames.some(f=>[2,10,26,52,65].includes(f[0]))||cmds.length)throw Error('investigation sent RF, login or dequeued before the user action');
+    if(el('legacy-investigate'))throw Error('a second investigation action is still present');
+    if(el('legacy-warning').hidden)throw Error('older Companion queue information was not visible before investigation');
+    let investigateClicks=0;el('investigate').addEventListener('click',()=>{investigateClicks++;});
+    '''
+    action = before_action + INVESTIGATE_ACTION + r'''
+    if(investigateClicks!==1)throw Error('investigation required more than one primary click');
+    if(el('legacy-warning').hidden)throw Error('older Companion queue information was not shown');'''
     if fault in ('reserve_failure', 'save_failure', 'save_failure_export'):
         predicate = "rows.some(r=>r.pending)" if fault == 'reserve_failure' else "rows.some(r=>r.frameHex)"
         sabotage = "const originalSet=Storage.prototype.setItem;Storage.prototype.setItem=function(k,v){if(k==='meshcore-lora-ota-preserved-inbox-v1'){const rows=JSON.parse(v);if("+predicate+")throw new DOMException('Storage full','QuotaExceededError');}return originalSet.call(this,k,v);};"
-        action = action.replace("el('legacy-investigate').click();", sabotage + "el('legacy-investigate').click();", 1)
+        action = action.replace(INVESTIGATE_ACTION, sabotage + INVESTIGATE_ACTION, 1)
     elif fault == 'locked':
         held = "let releaseLock;await new Promise(resolve=>navigator.locks.request('meshcore-lora-ota-preserved-inbox-v1',()=>{resolve();return new Promise(r=>releaseLock=r);}));"
-        action = action.replace("el('legacy-investigate').click();", held + "el('legacy-investigate').click();", 1)
+        action = action.replace(INVESTIGATE_ACTION, held + INVESTIGATE_ACTION, 1)
         action = action.replace("const event=await done;", "const event=await done;releaseLock();", 1)
     elif fault == 'prelogin':
         attempt = r'''const transport=window.__testTransport;transport.selectTarget(key);await transport.enableStandardInvestigation();
     for(const cmd of ['get public.key','ota status']){let rejected=false;try{await transport.standardReply(cmd);}catch(_){rejected=true;}if(!rejected)throw Error('unauthenticated command was accepted');}
-    await report({prelogin:true,frames:port.frames});return;'''
-        action = action.replace("el('legacy-investigate').click();const event=await done;", attempt, 1)
+    await report({prelogin:true,investigateClicks,beforeActionFrames,frames:port.frames});return;'''
+        action = before_action + attempt
     if fault in ('package', 'full_transfer', 'no_cli_transfer'):
         package_check = r'''const chosen=new DataTransfer();chosen.items.add(new File([expected],'firmware.bin'));el('file').files=chosen.files;el('file').dispatchEvent(new Event('change',{bubbles:true}));
     el('inspect').click();await wait(()=>!el('inspect').disabled);if(el('transfer').disabled||!el('resume').disabled||!el('install').disabled)throw Error('validated legacy OTA preflight did not enable transfer');'''
@@ -119,7 +129,7 @@ def legacy_harness(fault=''):
     el('legacy-inbox-clear').click();await wait(()=>localStorage.getItem('meshcore-lora-ota-preserved-inbox-v1')===null);'''
         action = action.replace("const event=await done;", "const event=await done;" + export_check, 1)
     harness = harness.replace(click, action, 1)
-    harness = harness.replace("result:el('investigation').textContent,status:", "installed,otaData,advertSeen,sourceInfo:el('source-info').textContent,exported:window.__testExported||'',packageStatus:el('firmware-catalog-status').textContent,verified:event.detail.verified,searchLocked:el('contact-search').disabled,buttonsDisabled:[...el('contact').querySelectorAll('button')].every(b=>b.disabled),preserved:JSON.parse(localStorage.getItem('meshcore-lora-ota-preserved-inbox-v1')||'[]'),result:el('investigation').textContent,status:", 1)
+    harness = harness.replace("result:el('investigation').textContent,status:", "investigateClicks,beforeActionFrames,installed,otaData,advertSeen,sourceInfo:el('source-info').textContent,exported:window.__testExported||'',packageStatus:el('firmware-catalog-status').textContent,verified:event.detail.verified,searchLocked:el('contact-search').disabled,buttonsDisabled:[...el('contact').querySelectorAll('button')].every(b=>b.disabled),preserved:JSON.parse(localStorage.getItem('meshcore-lora-ota-preserved-inbox-v1')||'[]'),result:el('investigation').textContent,status:", 1)
     if fault in ('no_cli_transfer', 'no_cli_probe'):
         # Firmware 1.16.05 handles command 66 as a FEM query and returns RESP_OK,
         # not a local CLI response. Keep all other binary protocol behavior.
@@ -154,11 +164,13 @@ class LegacyInvestigationBrowserTest(unittest.TestCase):
             if os.environ.get('MESHCORE_REQUIRE_OTA_BROWSER') == '1': self.fail('Chromium is required')
             self.skipTest('Chromium unavailable')
 
-    def test_consent_and_read_only_investigation_preserve_other_messages(self):
+    def test_single_click_read_only_investigation_preserves_other_messages(self):
         result = run_harness(legacy_harness(), timeout=90)
         self.assertNotIn('error', result, result)
         self.assertTrue(result['complete'], result)
         self.assertTrue(result['verified'], result)
+        self.assertEqual(result['investigateClicks'], 1, result)
+        self.assertFalse(any(f[0] in (2, 10, 26, 52, 65) for f in result['beforeActionFrames']), result)
         self.assertIn('ota status', result['cmds'])
         self.assertIn('ota self', result['cmds'])
         self.assertIn('ver', result['cmds'])
@@ -380,10 +392,10 @@ class LegacyInvestigationBrowserTest(unittest.TestCase):
         self.assertNotIn('error', result, result)
         self.assertFalse(result['complete'], result)
         self.assertIn('get bootloader.ver', result['cmds'], result)
-        self.assertEqual(result['cmds'].count('get bootloader.ver'), 7, result)
+        self.assertEqual(result['cmds'].count('get bootloader.ver'), 11, result)
         self.assertIn('ota bootloader status', result['cmds'], result)
         self.assertIn('ota config', result['cmds'], result)
-        self.assertRegex(result['result'], r'(?i)bootloader version.*no reply after 7 attempts')
+        self.assertRegex(result['result'], r'(?i)bootloader version.*no reply after 11 attempts')
         self.assertFalse(any(f[0] in (52, 65) for f in result['frames']), result)
 
     def test_identity_timeout_retries_with_fresh_tags_and_ignores_stale_reply(self):
@@ -408,17 +420,17 @@ class LegacyInvestigationBrowserTest(unittest.TestCase):
         result = run_harness(legacy_harness('later_retry'), timeout=90)
         self.assertNotIn('error', result, result)
         self.assertTrue(result['complete'], result)
-        self.assertEqual(result['cmds'].count('ota status'), 7, result)
+        self.assertEqual(result['cmds'].count('ota status'), 11, result)
         self.assertEqual(result['cmds'].count('ota self'), 1, result)
-        self.assertIn('attempt 2 of 7', result['result'])
-        self.assertIn('attempt 7 of 7', result['result'])
+        self.assertIn('attempt 2 of 11', result['result'])
+        self.assertIn('attempt 11 of 11', result['result'])
 
-    def test_identity_timeout_stops_after_three_attempts(self):
+    def test_identity_timeout_stops_after_seven_attempts(self):
         result = run_harness(legacy_harness('proof_exhausted'), timeout=90)
         self.assertNotIn('error', result, result)
         self.assertFalse(result['complete'], result)
         self.assertFalse(result['verified'], result)
-        self.assertEqual(result['cmds'].count('get public.key'), 3, result)
+        self.assertEqual(result['cmds'].count('get public.key'), 7, result)
         self.assertNotIn('ota status', result['cmds'], result)
         self.assertFalse(any(f[0] in (52, 65) for f in result['frames']), result)
 
@@ -426,6 +438,7 @@ class LegacyInvestigationBrowserTest(unittest.TestCase):
         result = run_harness(legacy_harness('prelogin'), timeout=90)
         self.assertNotIn('error', result, result)
         self.assertTrue(result['prelogin'], result)
+        self.assertEqual(result['investigateClicks'], 0, result)
         self.assertFalse(any(f[0] in (2, 10, 26, 52, 65) for f in result['frames']), result)
 
     def test_mutating_standard_commands_are_blocked_after_login(self):
