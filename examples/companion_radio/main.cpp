@@ -103,6 +103,14 @@ MultiSerialInterface interface_manager;
   #endif
 #endif
 
+// Identify the transport that supplied a Companion command, rather than
+// treating a simultaneous USB connection as a Bluetooth app session.
+#if defined(BLE_PIN_CODE)
+bool companionIsBluetoothRoute(BaseSerialInterface* route) {
+  return route == &bluetooth_interface;
+}
+#endif
+
 // include wifi interface
 #if defined(ENABLE_WIFI_INTERFACE) || defined(WIFI_SSID)
   #ifndef WIFI_SSID

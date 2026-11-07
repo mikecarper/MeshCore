@@ -1,4 +1,5 @@
 #include <helpers/CLIReplyText.h>
+#include <helpers/BleCommonPinWarning.h>
 #include <helpers/HardwareCommand.h>
 #include <helpers/AGCMaintenanceCLI.h>
 #include <helpers/RadioMaintenanceCLI.h>
@@ -735,6 +736,11 @@ int MyMesh::getFromOfflineQueue(uint8_t frame[]) {
 
 void MyMesh::syncNextOfflineMessage() {
   BaseSerialInterface* reply_route = _serial->captureReplyRoute();
+#if defined(BLE_PIN_CODE)
+  // Deliver directly to the Bluetooth requester, never to the shared inbox.
+  // Existing messages always retain priority.
+  if (offline_queue_len == 0 && sendCommonBlePinWarning(reply_route)) return;
+#endif
   const Frame* head = offline_queue_len > 0 ? &offlineQueueFrameAt(0) : nullptr;
   size_t out_len = head ? head->len : 0;
   const bool have_message = out_len > 0;
@@ -2343,6 +2349,80 @@ void MyMesh::servicePendingChannelNotices() {
   }
 }
 
+#if defined(BLE_PIN_CODE)
+extern bool companionIsBluetoothRoute(BaseSerialInterface* route);
+
+void MyMesh::scheduleCommonBlePinWarning(BaseSerialInterface* route) {
+  if (_using_common_ble_pin && isBluetoothEnabledPreference() &&
+      !_common_ble_pin_warning_sent && companionIsBluetoothRoute(route)) {
+    _common_ble_pin_warning_pending = true;
+    _common_ble_pin_warning_route = route;
+  }
+}
+
+void MyMesh::serviceCommonBlePinWarning() {
+  BaseSerialInterface* route = _common_ble_pin_warning_route;
+  if (!route || !_serial || !_common_ble_pin_warning_pending ||
+      _common_ble_pin_warning_sent || !_using_common_ble_pin ||
+      !isBluetoothEnabledPreference()) return;
+  if (!_serial->isReplyRouteAvailable(route)) {
+    // A new app start re-arms the notification on reconnect.
+    _common_ble_pin_warning_route = nullptr;
+    return;
+  }
+  if (_serial->isReplyRouteWriteBusy(route)) return;
+  const uint8_t notice = PUSH_CODE_MSG_WAITING;
+  if (_serial->writeFrameToRoute(route, &notice, 1) == 1)
+    _common_ble_pin_warning_route = nullptr;
+}
+
+bool MyMesh::sendCommonBlePinWarning(BaseSerialInterface* route) {
+  if (!_common_ble_pin_warning_pending || _common_ble_pin_warning_sent ||
+      !_using_common_ble_pin || !isBluetoothEnabledPreference() || !_serial ||
+      !companionIsBluetoothRoute(route) || !_serial->isReplyRouteAvailable(route)) return false;
+  // Use the existing channel-message response without queueing or radio TX.
+  // A failed transport write leaves the warning pending for the next sync.
+  for (unsigned index = 0; index < MAX_GROUP_CHANNELS; ++index) {
+    ChannelDetails channel{};
+    if (!getChannel(index, channel) || !channel.name[0]) continue;
+    int i = 0;
+    if (app_target_ver >= 3) {
+      out_frame[i++] = RESP_CODE_CHANNEL_MSG_RECV_V3;
+      out_frame[i++] = 0; // SNR
+      out_frame[i++] = 0;
+      out_frame[i++] = 0;
+    } else {
+      out_frame[i++] = RESP_CODE_CHANNEL_MSG_RECV;
+    }
+    out_frame[i++] = index;
+    out_frame[i++] = 0xFF;
+    out_frame[i++] = TXT_TYPE_PLAIN;
+    const uint32_t timestamp = getRTCClock()->getCurrentTime();
+    memcpy(&out_frame[i], &timestamp, 4);
+    i += 4;
+    static const char text[] = "DEVICE WARNING: Common Bluetooth PIN (Local notice).\n"
+                               "- Settings > Bluetooth Settings > Custom\n"
+                               "- Enter 6 digits, save and reboot.";
+    static_assert(sizeof(text) - 1 < 133, "Bluetooth PIN warning must fit app messages");
+    static_assert(sizeof(text) - 1 + 11 <= MAX_FRAME_SIZE, "Bluetooth PIN warning must fit a message");
+    memcpy(&out_frame[i], text, sizeof(text) - 1);
+    i += sizeof(text) - 1;
+    if (_serial->writeFrameToRoute(route, out_frame, i) == static_cast<size_t>(i)) {
+      _common_ble_pin_warning_sent = true;
+      _common_ble_pin_warning_pending = false;
+      _common_ble_pin_warning_route = nullptr;
+    } else {
+      // Re-notify after backpressure so the app has another chance to sync.
+      _common_ble_pin_warning_route = route;
+    }
+    return true;
+  }
+  // No configured channel can display a notice; retry on the next app start.
+  _common_ble_pin_warning_pending = false;
+  return false;
+}
+#endif
+
 bool MyMesh::queueChannelText(uint8_t channel_idx, const uint8_t secret[32], float snr,
                             uint8_t path_len, uint32_t timestamp, const char* text,
                             bool is_emergency_channel, bool notify) {
@@ -3483,6 +3563,7 @@ void MyMesh::begin(bool has_display, bool radio_available,
   } else {
     _active_ble_pin = _prefs.ble_pin;
   }
+  _using_common_ble_pin = mesh::companion::usingCommonBlePin(_active_ble_pin);
 #else
   _active_ble_pin = 0;
 #endif
@@ -6884,6 +6965,9 @@ void MyMesh::handleCmdFrame(size_t len) {
     memcpy(&out_frame[i], _prefs.node_name, tlen);
     i += tlen;
     _serial->writeFrame(out_frame, i);
+#if defined(BLE_PIN_CODE)
+    scheduleCommonBlePinWarning(app_route);
+#endif
   } else if (mesh::companion::isRunCliFrame(cmd_frame[0], len)) { // V14+
     int i = 1;
     char *text = (char *)&cmd_frame[i];
@@ -12317,7 +12401,12 @@ void MyMesh::loop() {
 #if MESH_ENABLE_ONE_KEY_DM
   if (held_dm_count != 0 || verified_pending_count != 0) releaseHeldOneKeyDMs();
 #endif
-  if (!mesh::morseTimingActive(_radio)) servicePendingChannelNotices();
+  if (!mesh::morseTimingActive(_radio)) {
+    servicePendingChannelNotices();
+#if defined(BLE_PIN_CODE)
+    serviceCommonBlePinWarning();
+#endif
+  }
 
 #if defined(ESP32_PLATFORM)
   servicePersistence();

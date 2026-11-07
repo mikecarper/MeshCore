@@ -516,6 +516,11 @@ protected:
                         bool is_emergency_channel, bool notify = true);
   void seedEmergencyChannelNotice(uint8_t index, const ChannelDetails& previous);
   void servicePendingChannelNotices();
+#if defined(BLE_PIN_CODE)
+  bool sendCommonBlePinWarning(BaseSerialInterface* route);
+  void scheduleCommonBlePinWarning(BaseSerialInterface* route);
+  void serviceCommonBlePinWarning();
+#endif
   int findChannelIdxForPacket(const mesh::GroupChannel& channel, const mesh::Packet* packet);
   bool allowFloodRetry(const mesh::Packet* packet) const override;
   uint8_t getFloodRetryMaxPathLength(const mesh::Packet* packet) const override;
@@ -978,6 +983,12 @@ private:
   uint32_t _iter_table_revision;
   uint32_t _most_recent_lastmod;
   uint32_t _active_ble_pin;
+#if defined(BLE_PIN_CODE)
+  bool _using_common_ble_pin = false;
+  bool _common_ble_pin_warning_pending = false;
+  bool _common_ble_pin_warning_sent = false;
+  BaseSerialInterface* _common_ble_pin_warning_route = nullptr;
+#endif
   bool _iter_started;
   bool _iter_start_pending;
   bool _iter_contact_pending;
