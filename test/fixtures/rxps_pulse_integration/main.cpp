@@ -1,3 +1,8 @@
+#if defined(MESH_TEST_PULSE_NRF52)
+#define NRF52_PLATFORM 1
+#else
+#define ESP32_PLATFORM 1
+#endif
 #include <helpers/radiolib/SX126xRxpsPulse.h>
 #include <helpers/radiolib/SX126xStatus.h>
 #include <helpers/radiolib/RxpsPulse.h>
@@ -15,11 +20,6 @@
 
 #ifndef MESH_WARM_RX_REFRESH
 #define MESH_WARM_RX_REFRESH 1
-#endif
-#if defined(MESH_TEST_PULSE_NRF52)
-#define NRF52_PLATFORM 1
-#else
-#define ESP32_PLATFORM 1
 #endif
 #define MESH_ENABLE_MORSE_RX 1
 #define MESH_ENABLE_TX_BEACONS 1
@@ -66,6 +66,7 @@ public:
   unsigned standbys=0,inject_standby=0;
   uint16_t inject_irq=0;
   bool inject_host=false;
+  uint32_t arm_delay_us=0;
   void setRfSwitchState(uint8_t mode) { assert(!busy);switches.push_back(mode); }
   int16_t SPIreadStream(uint16_t command,uint8_t* data,size_t n,bool wait,bool verify) {
     const uint8_t cmd[]={uint8_t(command)};
@@ -105,6 +106,9 @@ public:
       assert(n==1 && data[0]==0);++standbys;
       if(standbys==inject_standby) { irq=inject_irq;host_irq=inject_host; }
     }
+    // Model the elapsed SPI/BUSY arm call itself, so the actual production
+    // wrapper must measure and pass its duration to the witness state.
+    if(cmd[0]==0x94) now_us+=arm_delay_us;
     return 0;
   }
 };
@@ -269,13 +273,97 @@ static void bounded() {
   assert(broken.module.calls.size()<=5 && broken._rxps_pulse.ok==0);
   Wrapper busy;begin(busy);const size_t calls=busy.module.calls.size();
   now_us=busy._rxps_pulse.armed_at+busy._rxps_pulse.deadline_us;busy.module.busy=true;busy.serviceAGCPulse();
-  assert(busy._rxps_pulse.failed && busy.module.calls.size()==calls);
+  assert(!busy._rxps_pulse.failed && busy._rxps_pulse.missed==1 && busy.module.calls.size()==calls);
   now_us=busy._rxps_pulse.armed_at+10000000;busy.serviceAGCPulse();
   assert(busy._rxps_pulse.forced_wake==1 && busy.module.calls.size()==calls+1);
   assert(busy.module.calls.back().command[0]==0xC0 && !busy.module.calls.back().wait);
   now_us+=1999999;busy.serviceAGCPulse();assert(busy._rxps_pulse.pending && busy.module.calls.size()==calls+1);
   ++now_us;busy.serviceAGCPulse();assert(!busy._rxps_pulse.pending && busy._rxps_pulse.fail==1);
   assert(busy._rxps_pulse.ok==0 && busy._rxps_pulse.cycles==0);
+}
+
+static void checkDeferredWitness(Wrapper& w) {
+  assert(!w._rxps_pulse.pending && !w._rxps_pulse.failed);
+  assert(w._rxps_pulse.ok==0 && w._rxps_pulse.cycles==0 && w._rxps_pulse.fail==0);
+  assert(w._rxps_pulse.error==0 && w._rxps_pulse.failed_step==RxpsPulse::Step::None);
+  assert(w._rxps_pulse.defer==1 && w._rxps_pulse.rtc==1 && w._rxps_pulse.verified==1);
+  assert(w._rxps_pulse.forced_wake==0 && w._rxps_pulse.rearm_fail==0);
+  const size_t calls=w.module.calls.size();
+  assert(w.periodicAGCMaintenance(false)==mesh::AGCMaintenanceResult::Deferred);
+  assert(w.module.calls.size()==calls && w._rxps_pulse.takeCompletion()==RxpsPulse::Result::None);
+}
+
+static void armLatency() {
+  // Replay the observed RAK3401 RX/first-HIGH values. These SPI command
+  // delays are modeled fixture latencies, not measured hardware arm spans.
+  for(uint32_t arm_span:{1000U,2000U}) {
+    Wrapper w;w._cur_sf=12;w._cur_bw=500;w.module.arm_delay_us=arm_span;
+    const auto before=w.module.registers;begin(w);
+    assert(w._rxps_pulse.rx_us==185094 && w._rxps_pulse.armed_at==1000+arm_span);
+    const size_t calls=w.module.calls.size(),switches=w.module.switches.size();
+    now_us=w._rxps_pulse.armed_at+1;w.serviceAGCPulse();
+    now_us=w._rxps_pulse.armed_at+182617;w.module.busy=true;w.serviceAGCPulse();
+    now_us+=500;w.serviceAGCPulse();
+    assert(w.module.calls.size()==calls && w.module.switches.size()==switches);
+    assert(w._rxps_pulse.pending && w._rxps_pulse.early==0 && w._rxps_pulse.ok==0);
+    now_us+=500;w.module.busy=false;w.serviceAGCPulse();
+    assert(!w._rxps_pulse.pending && w._rxps_pulse.ok==1 && w._rxps_pulse.cycles==1);
+    assert(w._rxps_pulse.fail==0 && w._rxps_pulse.error==0 && w._rxps_pulse.missed==0);
+    assert(w._rxps_pulse.rtc==1 && w._rxps_pulse.verified==1 && w._rxps_pulse.forced_wake==0);
+    unchanged(w.module,before);
+  }
+}
+
+static void coarseClock() {
+#if defined(NRF52_PLATFORM)
+  assert(RxpsPulse::clockQuantumUs()==1000);
+#else
+  assert(RxpsPulse::clockQuantumUs()==1);
+#endif
+  // The retained trace has no measured raw arm-call duration. Zero replays
+  // that evidence; 100us separately exercises a modeled nonzero driver call.
+  for(uint32_t arm_span:{0U,100U}) {
+    Wrapper w;w._cur_sf=12;w._cur_bw=500;w.module.arm_delay_us=arm_span;begin(w);
+    assert(w._rxps_pulse.rx_us==185094 && w._rxps_pulse.armed_at==1000+arm_span);
+    const size_t calls=w.module.calls.size(),switches=w.module.switches.size();
+    now_us=w._rxps_pulse.armed_at+1;w.serviceAGCPulse();
+    now_us=w._rxps_pulse.armed_at+182617;w.module.busy=true;w.serviceAGCPulse();
+    assert(w.module.calls.size()==calls && w.module.switches.size()==switches);
+    now_us+=1000;w.module.busy=false;w.serviceAGCPulse();
+#if defined(NRF52_PLATFORM)
+  // One conservative nRF RTOS timestamp quantum supplies the remaining
+  // allowance; the precise-clock build must not inherit that allowance.
+    assert(w._rxps_pulse.ok==1 && w._rxps_pulse.cycles==1 && !w._rxps_pulse.early);
+    assert(!w._rxps_pulse.pending && !w._rxps_pulse.fail && !w._rxps_pulse.error);
+#else
+    assert(w._rxps_pulse.early==1 && w._rxps_pulse.missed==1);
+    checkDeferredWitness(w);
+#endif
+  }
+}
+
+static void unqualifiedWitness() {
+  for(unsigned reason=0;reason<4;++reason) {
+    Wrapper w;w._cur_sf=12;w._cur_bw=500;
+    // A command consuming more than half of the RX interval cannot establish
+    // a trustworthy origin, even if a later high/low pair looks plausible.
+    if(reason==2) w.module.arm_delay_us=100000;
+    const auto before=w.module.registers;begin(w);
+    const uint32_t armed=w._rxps_pulse.armed_at;
+    const size_t calls=w.module.calls.size(),switches=w.module.switches.size();
+    if(reason!=1) { now_us=armed+1;w.serviceAGCPulse(); }
+    now_us=armed+(reason==0?w._rxps_pulse.rx_us/2-1:w._rxps_pulse.rx_us);
+    w.module.busy=true;w.serviceAGCPulse();
+    assert(w.module.calls.size()==calls && w.module.switches.size()==switches);
+    // Short asserted BUSY is unqualified too; only natural observed return
+    // to LOW permits the checked awake recovery below.
+    now_us+=reason==3?249:1000;w.module.busy=false;w.serviceAGCPulse();
+    checkDeferredWitness(w);
+    assert(w._rxps_pulse.missed==(reason==2?0U:1U));
+    assert(w._rxps_pulse.high==1 && w._rxps_pulse.wake==1);
+    assert(w._rxps_pulse.low==(reason==1?0U:1U));
+    unchanged(w.module,before);
+  }
 }
 
 static void geometry() {
@@ -551,6 +639,7 @@ int main(int argc,char** argv) {
   else if(name=="sleep") sleep();else if(name=="bounded") bounded();else if(name=="geometry") geometry();
   else if(name=="invalid_geometry") invalidGeometry();else if(name=="mode") mode();else if(name=="iq") iq();
   else if(name=="budget") budget();else if(name=="admission") admission();else if(name=="margin") margin();
+  else if(name=="arm_latency") armLatency();else if(name=="coarse_clock") coarseClock();else if(name=="unqualified_witness") unqualifiedWitness();
   else if(name=="dual_normal") dualNormal();else if(name=="dual_secondary") dualSecondary();
   else if(name=="dual_stale") dualStale();else if(name=="dual_packet") dualPacket();
   else if(name=="dual_bounded") dualBounded();else if(name=="dual_scan_guard") dualScanGuard();else assert(false);

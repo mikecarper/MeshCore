@@ -104,13 +104,15 @@ protected:
     int16_t rc=radio->stagePulseReceive();
     if(rc) { pulseFailure(rc,RxpsPulse::Step::Stage);return true; }
     mod->setRfSwitchState(Module::MODE_RX);
+    const uint32_t arm_started=static_cast<uint32_t>(micros());
     result=mesh::rxpspulse::armDutyCycle(mod,periods);
+    const uint32_t arm_finished=static_cast<uint32_t>(micros());
     if(!result.ok()) { pulseFailure(result.error,RxpsPulse::Step::Arm);return true; }
     // A preamble can extend the window and become a maximum-sized packet.
     // Preserve that owner before declaring a missing natural cycle. These are
     // cached PHY airtime bounds, with no SPI or NSS during the lease.
     const uint64_t budget=2ULL*rx+sleep+radio->pulsePacketBudgetUs()+2000000ULL;
-    _rxps_pulse.armed(static_cast<uint32_t>(micros()),uint32_t(budget<60000000ULL?budget:60000000ULL));
+    _rxps_pulse.armed(arm_finished,uint32_t(budget<60000000ULL?budget:60000000ULL),arm_finished-arm_started);
     return true;
   }
   int16_t pulseContinuous() {

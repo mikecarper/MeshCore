@@ -4427,12 +4427,17 @@ afterward. It does
 not require radio2 warm, FS or packet-cache shortcuts. An admitted pulse stages
 ordinary LoRa duty-cycle RX, observes a post-arm BUSY low/high/natural-low
 sequence, checks RC standby and RTC cleanup, and checks continuous RX reentry.
-The saved interval and its existing scheduler remain unchanged. While a pulse
+The saved interval is retained. While a pulse
 owns the radio, application loops service one maintenance step before slow
 board, sensor or UI work. Packet FIFO/IRQ ownership returns to the ordinary
 Dispatcher. Shared recovery watchdogs still use their existing full-reset path. A packet, TX, BUSY or another
-radio owner defers admission; an unadmitted deferral retries after 250 ms. A
-consumed failed attempt retains its failure diagnostics and normal interval.
+radio owner defers admission; an unadmitted deferral normally retries after
+250 ms. Fresh pulse attempts are limited to four seconds after the scheduled
+time. An unconfirmed slot is then quietly skipped until the next interval,
+without success credit or adaptive promotion. An already-admitted pulse or
+packet keeps its normal ownership and completion checks even after that window;
+the deadline does not force an interruption. A real command failure retains
+its diagnostics and normal interval, without adaptive promotion.
 
 LR11xx and LR2021 use their native duty-cycle commands and 32.768 kHz timer
 encoding, with the runtime TCXO/transition allowance plus one timer tick and
@@ -4479,8 +4484,14 @@ timers are due, the old reset runs first and the primary pulse is deferred.
 requires an observed cycle plus checked RTC cleanup, SetRx and RX-mode status.
 The total timing includes the initial listening window. The sleep timing is a
 sampled BUSY-high span, not an independently measured RF outage. Long or missing
-observations fail the witness check. The default adds 500 us above the radio's
-one-tick minimum, rounded up to whole timer ticks. It uses the driver's resolved
+observations quietly discard the unconfirmed attempt without success credit or
+an error message. The first BUSY-high check allows for the measured arm-command
+return time and the host clock resolution (up to 1 ms on nRF52), in addition to
+the existing 2 ms observation allowance. It still requires a preceding low and
+at least half the programmed RX window; an arm call consuming more than half
+that window cannot qualify a cycle. Actual command or receive-recovery errors
+remain available in the cached diagnostics. The default adds 500 us above the
+radio's one-tick minimum, rounded up to whole timer ticks. It uses the driver's resolved
 oscillator delay rather than a fixed board duration. On the V4 with a 1600 us
 TCXO delay, the compensated request is 3116 us (33 RTC ticks after transition
 compensation). This does not establish improved sensitivity or reception.
@@ -4513,8 +4524,8 @@ See [RXPS receive pulse](../lab/rxps_pulse/README.md) for witness and timing lim
 
 With device `powersaving` on and a nonzero AGC interval, Companion, Repeater,
 Room Server, and Sensor firmware use adaptive reset scheduling. The saved
-interval is the starting/minimum interval. After every two admitted maintenance
-attempts without an observed radio recovery, the interval doubles, capped at
+interval is the starting/minimum interval. After every two successfully completed
+maintenance attempts without an observed radio recovery, the interval doubles, capped at
 60 seconds (or the saved interval if it is already longer). For example,
 8 -> 16 -> 32 -> 60 seconds, with two attempts at each step. An observed radio
 recovery returns the schedule to the saved interval. Changing the interval or

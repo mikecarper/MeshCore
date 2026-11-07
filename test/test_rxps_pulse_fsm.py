@@ -39,6 +39,12 @@ class PulseStateTest(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(result.stdout.strip(), "PASS " + name)
 
+    def test_coarse_clock_and_measured_arm_latency_allow_valid_cycles(self):
+        self.run_case("clock_uncertainty")
+
+    def test_unconfirmed_attempt_is_silently_discarded_without_success(self):
+        self.run_case("quiet_discard")
+
     def test_complete_witness_requires_checked_receive_return(self):
         self.run_case("success")
 

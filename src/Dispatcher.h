@@ -392,6 +392,7 @@ public:
   bool supportsWarmRxRefresh() const { return false; }
   bool isAGCMaintenanceActive() const { return false; }
   bool isAGCMaintenancePending() const { return false; }
+  bool hasAGCMaintenanceResult() const { return false; }
   bool serviceAGCMaintenanceFastLane() { return false; }
   void configureAGCMaintenance(uint32_t) { }
   void cancelAGCMaintenance() { }
@@ -432,6 +433,8 @@ public:
   // An asynchronous primary pulse owns the physical radio between loop ticks.
   virtual bool isAGCMaintenanceActive() const { return false; }
   virtual bool isAGCMaintenancePending() const { return false; }
+  // A finished result is distinct from physical ownership or a CLI guard.
+  virtual bool hasAGCMaintenanceResult() const { return false; }
   // Service an existing physical-radio lease before slow application work.
   virtual bool serviceAGCMaintenanceFastLane() { return false; }
   virtual void configureAGCMaintenance(uint32_t) { }

@@ -270,6 +270,7 @@ class UniversalLoRaRadio : public mesh::Radio {
   MESH_AUTO_LORA_CONST(bool, supportsWarmRxRefresh, (), (), false)
   MESH_AUTO_LORA_CONST(bool, isAGCMaintenanceActive, (), (), false)
   MESH_AUTO_LORA_CONST(bool, isAGCMaintenancePending, (), (), false)
+  MESH_AUTO_LORA_CONST(bool, hasAGCMaintenanceResult, (), (), false)
   MESH_AUTO_LORA_RET(bool, serviceAGCMaintenanceFastLane, (), (), false)
   MESH_AUTO_LORA_VOID(configureAGCMaintenance, (uint32_t seconds), (seconds))
   MESH_AUTO_LORA_VOID(cancelAGCMaintenance, (), ())

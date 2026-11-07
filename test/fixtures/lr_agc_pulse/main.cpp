@@ -49,9 +49,9 @@ struct Chip {
  uint32_t tcxoDelay=1600,_maxPayloadMillis=100,_activityAt=0,irq=0;
  bool _headerSeen=false,_lfClockRestoreNeeded=false,busy=false,race=false;
  int status_error=0,clock_error=0,arm_error=0,rx_error=0,mode=4,reentry_mode=4;
- unsigned spi=0,stages=0,resumes=0,standbys=0;Mod module{this};Mod* mod=&module;
+ unsigned spi=0,stages=0,resumes=0,standbys=0,standby_fail_at=0;Mod module{this};Mod* mod=&module;
  int16_t getStatus(uint8_t* a,uint8_t* b,uint32_t* c){assert(!busy);assert(mod->spiConfig.widths[RADIOLIB_MODULE_SPI_WIDTH_STATUS]==Module::BITS_0);++spi;*a=4;*b=uint8_t(0x60|(MC_LR_AGC_2021?mode:mode<<1));*c=irq;return status_error;}
- int16_t standby(int){++spi;++standbys;busy=false;mode=1;if(race)irq=MC_LR_AGC_2021?1UL<<18:8;return 0;}
+ int16_t standby(int){++spi;++standbys;busy=false;mode=1;if(race)irq=MC_LR_AGC_2021?1UL<<18:8;return standbys==standby_fail_at?-92:0;}
  int16_t configLfClock(int value){assert(value==0);++spi;return clock_error;}
  int16_t restoreLfClock(){int rc=configLfClock(0);if(!rc)_lfClockRestoreNeeded=false;return rc;}
  int16_t stageMode(int,RadioModeConfig_t*){assert(!busy);++spi;++stages;irq=0;return 0;}
@@ -137,7 +137,23 @@ int main(){
   c.irq=MC_LR_AGC_2021?1UL<<18:8;unsigned before=c.spi;r.serviceAGCPulse();
   assert(c.spi==before&&c.irq&&r.state==1&&!r._profile_repair_required&&!r._profile_refresh_required&&!r._profile_retry_at);
   assert(r._rxps_pulse.fail==1&&!r._rxps_pulse.ok&&!r._rxps_pulse.pending);}
- {Chip c;Radio r(c,board);r._rxps_pulse.request(micros());r.startAGCPulse();clock_us=r._rxps_pulse.armed_at+r._rxps_pulse.deadline_us;c.busy=true;r.serviceAGCPulse();assert(!r._rxps_pulse.ok);clock_us=r._rxps_pulse.armed_at+10000001;r.serviceAGCPulse();r.serviceAGCPulse();assert(r._rxps_pulse.forced_wake==1&&r._rxps_pulse.fail==1&&!r._rxps_pulse.ok);}
+ {Chip c;Radio r(c,board);r._rxps_pulse.request(micros());r.startAGCPulse();clock_us=r._rxps_pulse.armed_at+r._rxps_pulse.deadline_us;c.busy=true;r.serviceAGCPulse();assert(!r._rxps_pulse.ok);clock_us=r._rxps_pulse.armed_at+10000001;r.serviceAGCPulse();r.serviceAGCPulse();
+  assert(r._rxps_pulse.forced_wake==1&&r._rxps_pulse.fail==0&&!r._rxps_pulse.ok&&!r._rxps_pulse.cycles);
+  assert(!r._rxps_pulse.pending&&!r._rxps_pulse.error&&r._rxps_pulse.missed==1&&r._rxps_pulse.defer==1);
+  assert(r._rxps_pulse.rtc==1&&r._rxps_pulse.verified==1&&r._rxps_pulse.takeCompletion()==RxpsPulse::Result::Deferred);}
+ // An unconfirmed timeout is quiet, but a real command failure in the
+ // exceptional wake must survive the following successful RX recovery.
+ {Chip c;c.standby_fail_at=2;Radio r(c,board);r._rxps_pulse.request(micros());r.startAGCPulse();
+  clock_us=r._rxps_pulse.armed_at+r._rxps_pulse.deadline_us;c.busy=true;r.serviceAGCPulse();
+  assert(!r._rxps_pulse.failed&&!r._rxps_pulse.error&&r._rxps_pulse.missed==1);
+  clock_us=r._rxps_pulse.armed_at+10000001;r.serviceAGCPulse();
+  assert(r._rxps_pulse.pending&&r._rxps_pulse.failed&&r._rxps_pulse.error==-92);
+  assert(r._rxps_pulse.failed_step==RxpsPulse::Step::Recovery&&r._rxps_pulse.forced_wake==1);
+  r.serviceAGCPulse();
+  assert(!r._rxps_pulse.pending&&r._rxps_pulse.fail==1&&!r._rxps_pulse.ok&&!r._rxps_pulse.cycles);
+  assert(!r._rxps_pulse.defer&&!r._rxps_pulse.rearm_fail&&r._rxps_pulse.error==-92);
+  assert(r._rxps_pulse.failed_step==RxpsPulse::Step::Recovery&&r._rxps_pulse.rtc==1&&r._rxps_pulse.verified==1);
+  assert(r._rxps_pulse.takeCompletion()==RxpsPulse::Result::Failed);}
  {Chip c;Pram r(c,board);r.periodicAGCMaintenance(false);assert(r.pauses==1&&!r._lab_scan_active&&r._rxps_pulse.pending);cycle(r,c);assert(r.starts==1&&r._lab_scan_active&&r._lab_pram_loaded&&!r.cold_resets&&r._rxps_pulse.ok==1);}
  {Chip c;Pram r(c,board);r._lab_scan_active=false;r.periodicAGCMaintenance(false);cycle(r,c);assert(!r.pauses&&!r.starts&&r._rxps_pulse.ok==1);}
  {Chip c;Pram r(c,board);r.pause_result=mesh::RadioParamApplyResult::FAILED;assert(r.periodicAGCMaintenance(false)==mesh::AGCMaintenanceResult::Failed);assert(!c.module.writes&&!r._rxps_pulse.ok);}

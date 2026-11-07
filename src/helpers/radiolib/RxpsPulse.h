@@ -39,7 +39,9 @@ public:
   uint32_t started=0,armed_at=0,high_at=0,deadline_us=0,retry_at=0;
 private:
   Result _completion=Result::None;
+  bool _witness_invalid=false;
   uint32_t _cadence_ms=0,_generation=0,_attempt_generation=0;
+  uint32_t _minimum_listen_us=0;
 public:
   RxpsPulse() {
     // Scalar state has an all-zero representation; restore its two nonzero
@@ -54,10 +56,31 @@ public:
     if(!ticks || ticks>0xFFFFFF) return false;
     sleep_us=requested_sleep;sleep_ticks=static_cast<uint32_t>(ticks);return true;
   }
-  void request(uint32_t now) { ++req;started=now;failed=false;packet=false;cancel=false;had_cycle=false; }
+  void request(uint32_t now) { ++req;started=now;failed=false;packet=false;cancel=false;had_cycle=false;_witness_invalid=false; }
   void deferred() { ++defer; }
   void admitted(uint32_t now) { ++admit;pending=true;phase=Phase::Arm;started=now;_attempt_generation=_generation; }
-  void armed(uint32_t now,uint32_t timeout_us) { armed_at=now;deadline_us=timeout_us;phase=Phase::Listen;low_seen=false; }
+  static constexpr uint32_t clockQuantumUs() {
+#if defined(NRF52_PLATFORM)
+    // The nRF core falls back to a 1024 Hz RTOS clock when DWT is disabled.
+    // A conservative whole millisecond also works when DWT is enabled.
+    return 1000;
+#else
+    return 1;
+#endif
+  }
+  void armed(uint32_t now,uint32_t timeout_us,uint32_t arm_call_us=0,
+             uint32_t clock_quantum_us=clockQuantumUs()) {
+    armed_at=now;deadline_us=timeout_us;phase=Phase::Listen;low_seen=false;
+    // The radio starts counting during the arm command, before its SPI/BUSY
+    // return. Include that measured latency and one timestamp quantum in the
+    // existing 2 ms observer allowance. This is a sanity bound, not a radio
+    // oscillator accuracy specification. Never accept an immediate command
+    // BUSY, or infer a cycle from a command that consumed most of RX itself.
+    const uint64_t allowance=2000ULL+arm_call_us+clock_quantum_us;
+    const uint32_t earliest=allowance<rx_us?rx_us-static_cast<uint32_t>(allowance):0;
+    _minimum_listen_us=earliest>rx_us/2?earliest:rx_us/2;
+    if(arm_call_us>rx_us/2) _witness_invalid=true;
+  }
   // A host-timed device has no autonomous BUSY edge witness. Its caller must
   // read back Sleep before starting this timer, and check RX reentry later.
   void beginHostSleep(uint32_t now,uint32_t minimum_us) {
@@ -85,7 +108,7 @@ public:
     // A late observation cannot manufacture a successful cycle. Recovery of
     // an expired high interval is explicitly separate from natural evidence.
     if(now-armed_at>=deadline_us) {
-      ++missed;noteError(TimeoutError,Step::Witness);
+      ++missed;_witness_invalid=true;
       packet=irq && !busy;if(packet) ++aborts;
       phase=busy?Phase::Recovery:Phase::Stop;return;
     }
@@ -93,16 +116,14 @@ public:
     if(phase==Phase::Listen && !busy && !low_seen) { low_seen=true;++low; }
     if(phase==Phase::Listen && busy) {
       ++high;high_at=now;phase=Phase::Sleep;
-      // The 2ms allowance covers command-return/timer-origin uncertainty,
-      // not permission to count the command's initial BUSY as a sleep window.
-      if(!low_seen || now-armed_at<(rx_us>2000?rx_us-2000:0)) {
-        ++early;++missed;noteError(WitnessError,Step::Witness);
+      if(!low_seen || now-armed_at<_minimum_listen_us) {
+        ++early;++missed;_witness_invalid=true;
       }
     }
     else if(phase==Phase::Sleep && !busy) {
       ++wake;
-      if(!failed && now-high_at>=250 && now-high_at<=sleep_us+2000UL) { ++cycles;had_cycle=true;busy_high.add(now-high_at); }
-      else if(!failed) { ++missed;noteError(WitnessError,Step::Witness); }
+      if(!failed && !_witness_invalid && now-high_at>=250 && now-high_at<=sleep_us+2000UL) { ++cycles;had_cycle=true;busy_high.add(now-high_at); }
+      else if(!failed && !_witness_invalid) { ++missed;_witness_invalid=true; }
       phase=Phase::Stop;
     }
   }
@@ -110,7 +131,7 @@ public:
 #if defined(SENSECAP_INDICATOR_LORA)
   bool canReplayStaleIrqWake() const {
     return pending && phase==Phase::Stop && packet && !failed && !cancel
-        && low_seen && !had_cycle;
+        && low_seen && !had_cycle && !_witness_invalid;
   }
   bool replayStaleIrqWake(uint32_t observed_at) {
     if(!canReplayStaleIrqWake()) return false;
@@ -130,7 +151,12 @@ public:
     const uint32_t elapsed=now-started;
     if(failed) { ++fail;recovery.add(elapsed);_completion=Result::Failed; }
     else if(had_cycle && !cancel) { ++ok;total.add(elapsed);_completion=Result::Applied; }
-    else { ++defer;_completion=Result::Deferred; }
+    else {
+      // Missing/ambiguous GPIO timing is an unconfirmed maintenance attempt,
+      // not a command failure. Quietly discard it after checked RX recovery;
+      // the scheduler may retry within its bounded scheduling slack.
+      ++defer;_completion=Result::Deferred;
+    }
     if(_attempt_generation!=_generation || !_cadence_ms) _completion=Result::None;
     pending=false;phase=Phase::Idle;
   }
@@ -140,6 +166,7 @@ public:
     ++fail;recovery.add(now-started);pending=false;phase=Phase::Idle;
     _completion=(_attempt_generation==_generation && _cadence_ms)?Result::Failed:Result::None;
   }
+  bool hasCompletion() const { return _completion!=Result::None; }
   Result takeCompletion() { const Result result=_completion;_completion=Result::None;return result; }
   static const char* phaseName(Phase p) {
     switch(p) { case Phase::Arm:return "arm";case Phase::Listen:return "listen";case Phase::Sleep:return "sleep";

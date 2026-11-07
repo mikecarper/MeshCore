@@ -808,6 +808,7 @@ public:
   }
   bool isAGCMaintenanceActive() const override { return _rxps_pulse.owns(); }
   bool isAGCMaintenancePending() const override { return _rxps_pulse.pending; }
+  bool hasAGCMaintenanceResult() const override { return _rxps_pulse.hasCompletion(); }
   bool serviceAGCMaintenanceFastLane() override {
     if(!_rxps_pulse.owns()) return false;
     serviceAGCPulse();

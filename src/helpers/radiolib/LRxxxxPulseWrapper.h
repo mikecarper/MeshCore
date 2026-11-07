@@ -62,10 +62,12 @@ protected:
     if(radio->agcPulseActivity(irq)) { ++_rxps_pulse.aborts;_rxps_pulse.cancelRequest();_rxps_pulse.phase=RxpsPulse::Phase::Stop;return true; }
     rc=radio->agcPulseStage();
     if(rc) { pulseError(rc,RxpsPulse::Step::Stage);return true; }
+    const uint32_t arm_started=static_cast<uint32_t>(micros());
     rc=radio->agcPulseArm(_rxps_pulse.rx_ticks,_rxps_pulse.sleep_ticks);
+    const uint32_t arm_finished=static_cast<uint32_t>(micros());
     if(rc) { pulseError(rc,RxpsPulse::Step::Arm);return true; }
     const uint64_t budget=2ULL*_rxps_pulse.rx_us+sleep+radio->agcPulsePacketBudgetUs()+2000000ULL;
-    _rxps_pulse.armed(micros(),uint32_t(budget<60000000ULL?budget:60000000ULL));return true;
+    _rxps_pulse.armed(arm_finished,uint32_t(budget<60000000ULL?budget:60000000ULL),arm_finished-arm_started);return true;
   }
   void serviceAGCPulse() override {
     auto* radio=pulseRadio();const uint32_t now=micros();
@@ -77,7 +79,12 @@ protected:
     if(_rxps_pulse.phase==RxpsPulse::Phase::Packet) return;
     if(_rxps_pulse.phase==RxpsPulse::Phase::Recovery && isChipBusy()) {
       if(now-_rxps_pulse.armed_at<10000000UL) return;
-      if(!_rxps_pulse_retries) { ++_rxps_pulse.forced_wake;++_rxps_pulse_retries;radio->agcPulseStandby();_rxps_pulse.retry_at=now;return; }
+      if(!_rxps_pulse_retries) {
+        ++_rxps_pulse.forced_wake;++_rxps_pulse_retries;
+        const int16_t wake_rc=radio->agcPulseStandby();
+        if(wake_rc) _rxps_pulse.noteError(wake_rc,RxpsPulse::Step::Recovery);
+        _rxps_pulse.retry_at=now;return;
+      }
       if(now-_rxps_pulse.retry_at<2000000UL) return;
       retireLRPulse(now);return;
     }
