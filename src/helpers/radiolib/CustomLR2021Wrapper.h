@@ -337,6 +337,27 @@ public:
     return true;
   }
 
+  bool backgroundAutoTrimProfile(uint32_t& frequency) const {
+    // Configuration stability is independent of transient TX/FIFO/AGC owners.
+    // Actual primary RX ownership is checked separately immediately before start.
+    frequency=0;
+    if (!supportsXoscTrim() || !_params_valid || !profiles() || profiles()->enabled()) return false;
+    frequency=static_cast<uint32_t>(profiles()->primary.freq * 1000000.0f);
+    return true;
+  }
+
+  bool backgroundAutoTrimEligible(uint32_t& frequency) {
+    // Check pulse/FIFO owners before any ordinary receive-activity probe.
+    if (!supportsXoscTrim() || !isInRecvMode() || isAGCMaintenancePending()
+        || isCarrierWaveActive() || isMorseTxActive() || isMorseRxActive()
+        || isBeaconRadioOwned() || hasPendingRadioInterrupt() || isChipBusy()
+        || !profiles() || profiles()->enabled()
+        || receiveProfile()!=0 || _cur_freq!=profiles()->primary.freq
+        || receiveProfileGeneration() != profiles()->generation[0]
+        || isReceivingPacket()) return false;
+    return getFrequencyHzForAutoTrim(frequency);
+  }
+
   bool configureFrequencyCorrection(int32_t ppb) {
     return static_cast<CustomLR2021*>(_radio)->configureFrequencyCorrection(ppb);
   }

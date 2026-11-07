@@ -183,6 +183,56 @@ int main() {
 
 
 class LR2021AutoTrimTests(unittest.TestCase):
+    def test_actual_background_admission_preserves_every_radio_owner(self):
+        from cpp_source import body
+        from test_lr2021_calibration import LR2021CalibrationTests
+        wrapper_source=(ROOT/'src/helpers/radiolib/CustomLR2021Wrapper.h').read_text()
+        method=body(wrapper_source,'bool backgroundAutoTrimEligible(')
+        profile_method=body(wrapper_source,'bool backgroundAutoTrimProfile(')
+        source=r'''
+#include <cassert>
+#include <cstdint>
+struct Wrapper {
+  bool supported=true,rx=true,agc=false,carrier=false,txm=false,rxm=false,beacon=false,irq=false,busy=false,packet=false;
+  unsigned activity_reads=0;bool _params_valid=true;
+  struct Profiles {bool dual=false;uint32_t generation[2]={3,4};struct{float freq=910.525f;}primary;bool enabled()const{return dual;}} p;
+  uint8_t active_profile=0;float _cur_freq=910.525f;
+  uint32_t actual_generation=3;
+  bool supportsXoscTrim()const{return supported;} bool isInRecvMode()const{return rx;}
+  bool isAGCMaintenancePending()const{return agc;} bool isCarrierWaveActive()const{return carrier;}
+  bool isMorseTxActive()const{return txm;} bool isMorseRxActive()const{return rxm;}
+  bool isBeaconRadioOwned()const{return beacon;} bool hasPendingRadioInterrupt()const{return irq;}
+  bool isChipBusy()const{return busy;} Profiles* profiles(){return &p;} const Profiles* profiles()const{return &p;}
+  uint32_t receiveProfileGeneration()const{return actual_generation;}
+  uint8_t receiveProfile()const{return active_profile;}
+  bool isReceivingPacket(){++activity_reads;return packet;}
+  bool getFrequencyHzForAutoTrim(uint32_t& value)const{value=910525000;return true;}
+@PROFILE_METHOD@
+@METHOD@
+};
+int main(){
+  Wrapper w;uint32_t hz=0;assert(w.backgroundAutoTrimEligible(hz)&&hz==910525000);
+  for(bool* owner:{&w.agc,&w.carrier,&w.txm,&w.rxm,&w.beacon,&w.irq,&w.busy,&w.p.dual}){
+    *owner=true;const unsigned before=w.activity_reads;assert(!w.backgroundAutoTrimEligible(hz));
+    assert(w.activity_reads==before);*owner=false;
+  }
+  w.rx=false;assert(!w.backgroundAutoTrimEligible(hz));w.rx=true;
+  w.supported=false;assert(!w.backgroundAutoTrimEligible(hz));w.supported=true;
+  ++w.actual_generation;assert(!w.backgroundAutoTrimEligible(hz));--w.actual_generation;
+  w.active_profile=1;assert(!w.backgroundAutoTrimEligible(hz));w.active_profile=0;
+  w._cur_freq=911.15f;assert(!w.backgroundAutoTrimEligible(hz));w._cur_freq=w.p.primary.freq;
+  w.packet=true;assert(!w.backgroundAutoTrimEligible(hz));
+  // Config-only observation never probes RX activity and survives all owners.
+  w.rx=false;w.agc=w.carrier=w.txm=w.rxm=w.beacon=w.irq=w.busy=true;
+  const unsigned before=w.activity_reads;assert(w.backgroundAutoTrimProfile(hz));
+  assert(hz==uint32_t(w.p.primary.freq*1000000.0f) && w.activity_reads==before);
+  w.p.dual=true;assert(!w.backgroundAutoTrimProfile(hz));w.p.dual=false;
+  w._params_valid=false;assert(!w.backgroundAutoTrimProfile(hz));w._params_valid=true;
+  w.supported=false;assert(!w.backgroundAutoTrimProfile(hz));
+}
+'''.replace('@METHOD@',method).replace('@PROFILE_METHOD@',profile_method).replace('#include <cstdint>','#include <cstdint>\n#include <initializer_list>')
+        LR2021CalibrationTests().compile_run(source)
+
     def test_controller(self):
         with tempfile.TemporaryDirectory() as folder:
             source = Path(folder) / "test.cpp"
@@ -202,6 +252,13 @@ class LR2021AutoTrimTests(unittest.TestCase):
   Profiles* profiles() {return &profile;}
   uint32_t receiveProfileGeneration() const {return profile.generation[0];}
   bool getFrequencyHzForAutoTrim(uint32_t& out) const {out=910525000;return true;}
+  bool eligible=true;
+  bool backgroundAutoTrimProfile(uint32_t& out) const {
+    out=910525000;return !profile.active;
+  }
+  bool backgroundAutoTrimEligible(uint32_t& out) const {
+    out=910525000;return eligible && !profile.active;
+  }
   int32_t correction=0;
   mesh::RadioParamApplyResult correction_result=mesh::RadioParamApplyResult::APPLIED;
   bool configureFrequencyCorrection(int32_t value) {correction=value;return true;}
@@ -215,7 +272,7 @@ class LR2021AutoTrimTests(unittest.TestCase):
   bool supported=true,selected=false;''')
         source = (ROOT / 'src/helpers/radiolib/LR2021CalibrationSettings.cpp').read_text()
         for name in ('CustomLR2021Wrapper', 'LR2021CalibrationSettings',
-                     'LR2021CalibrationPolicy', 'LR2021AutoTrim'):
+                     'LR2021CalibrationPolicy', 'LR2021AutoTrim', 'LR2021BootAutoTrim'):
             source = source.replace(f'#include "{name}.h"',
                                     f'#include <helpers/radiolib/{name}.h>')
         harness = r'''
@@ -232,6 +289,90 @@ using namespace mesh::lr2021;
 int main() {
   FILESYSTEM fs; CustomLR2021Wrapper radio; char reply[160];
   auto cmd=[&](const char* text) {assert(handleLR2021CalibrationCommand(text,reply,sizeof(reply),radio));};
+  {
+    FILESYSTEM startup; CustomLR2021Wrapper automatic;
+    auto bootcmd=[&](const char* text) {assert(handleLR2021CalibrationCommand(text,reply,sizeof(reply),automatic));};
+    assert(!loadLR2021CalibrationSettings(&startup,automatic));
+    // No startup mutation: dual or an occupied primary cannot start a trial.
+    automatic.profile.active=true; loopLR2021CalibrationSettings(automatic);
+    test_now+=10000;loopLR2021CalibrationSettings(automatic);assert(automatic.calls==0 && startup.files.empty());
+    automatic.profile.active=false;automatic.eligible=false;
+    loopLR2021CalibrationSettings(automatic);
+    // Frequent owners prevent five uninterrupted idle seconds for thirty
+    // seconds, but must not erase stable primary configuration history.
+    for(unsigned second=1;second<=30;++second) {
+      test_now+=1000;automatic.eligible=false;
+      loopLR2021CalibrationSettings(automatic);assert(automatic.calls==0 && startup.files.empty());
+      automatic.eligible=true; // Owner releases between service instants.
+    }
+    bootcmd("get radio.xtrim.autostart");assert(strstr(reply,"attempts=0/2"));
+    automatic.eligible=true;loopLR2021CalibrationSettings(automatic);
+    bootcmd("get radio.xtrim.autostart");assert(strstr(reply,"waiting-refs") && strstr(reply,"attempts=1/2"));
+    // Real settings + actual AutoTrim: initial and independent signed-peer
+    // batches precede digital correction, then a fresh verification saves it.
+    uint8_t peers[3][32]={{31},{32},{33}};uint32_t signed_time=1700200000;
+    auto fresh=[&](int offset) {
+      for(unsigned i=0;i<3;++i) {
+        PacketFrequencyObservation value;value.valid=true;value.frequency_hz=910525000;
+        value.captured_at_ms=++test_now;value.offset_hz=offset+int(i);
+        ++signed_time;observeLR2021AutoTrimAdvert(peers[i],signed_time,signed_time,value,true);
+      }
+    };
+    fresh(1500);fresh(1450);test_now+=2000;loopLR2021CalibrationSettings(automatic);
+    assert(automatic.correction==1195 && startup.files.empty());
+    fresh(360);loopLR2021CalibrationSettings(automatic);
+    // A manual one-shot can arrive before the next loop retires completed
+    // boot ownership. Its fresh deadline must not inherit the old timeout.
+    bootcmd("set radio.xtrim auto");assert(strstr(reply,"listening"));
+    test_now+=899000;loopLR2021CalibrationSettings(automatic);
+    assert(automatic.selected && automatic.a==3);
+    bootcmd("set radio.xtrim auto cancel");loopLR2021CalibrationSettings(automatic);
+    CustomLR2021Wrapper reboot;assert(loadLR2021CalibrationSettings(&startup,reboot));
+    assert(reboot.correction==1195);test_now+=2000000;loopLR2021CalibrationSettings(reboot);assert(reboot.calls==0);
+    assert(handleLR2021CalibrationCommand("get radio.xtrim.autostart",reply,sizeof(reply),reboot) && strstr(reply,"retained"));
+    // Persisted opt-out survives reboot and never consumes an attempt.
+    FILESYSTEM controlled;assert(!loadLR2021CalibrationSettings(&controlled,automatic));
+    bootcmd("set radio.xtrim.autostart off");assert(strstr(reply,"OK"));
+    assert(!loadLR2021CalibrationSettings(&controlled,reboot));
+    loopLR2021CalibrationSettings(reboot);test_now+=2000000;loopLR2021CalibrationSettings(reboot);
+    assert(handleLR2021CalibrationCommand("get radio.xtrim.autostart",reply,sizeof(reply),reboot) && strstr(reply,"> off") && strstr(reply,"attempts=0/2"));
+    assert(handleLR2021CalibrationCommand("set radio.xtrim auto",reply,sizeof(reply),reboot) && strstr(reply,"listening"));
+    assert(handleLR2021CalibrationCommand("set radio.xtrim auto cancel",reply,sizeof(reply),reboot));
+    loopLR2021CalibrationSettings(reboot);
+    const auto record=controlled.files["/radio_xtrim_auto"];
+    controlled.fail_write=true;
+    assert(handleLR2021CalibrationCommand("set radio.xtrim.autostart on",reply,sizeof(reply),reboot) && strstr(reply,"save failed"));
+    assert(controlled.files["/radio_xtrim_auto"]==record);controlled.fail_write=false;
+    FILESYSTEM old_on;assert(!loadLR2021CalibrationSettings(&old_on,reboot));
+    assert(handleLR2021CalibrationCommand("set radio.xtrim.autostart on",reply,sizeof(reply),reboot));
+    controlled.files["/radio_xtrim_auto.bak"]=old_on.files["/radio_xtrim_auto"];
+    controlled.files["/radio_xtrim_auto"][0]^=1;
+    assert(!loadLR2021CalibrationSettings(&controlled,automatic));loopLR2021CalibrationSettings(automatic);
+    test_now+=5000;loopLR2021CalibrationSettings(automatic);
+    bootcmd("get radio.xtrim.autostart");assert(strstr(reply,"state=error"));
+    // No references: bounded existing sweep restores, waits thirty minutes,
+    // and explicit cancellation prevents an immediate or delayed restart.
+    FILESYSTEM silent;assert(!loadLR2021CalibrationSettings(&silent,automatic));
+    loopLR2021CalibrationSettings(automatic);test_now+=5000;loopLR2021CalibrationSettings(automatic);
+    test_now+=900000;loopLR2021CalibrationSettings(automatic);loopLR2021CalibrationSettings(automatic);
+    bootcmd("get radio.xtrim.autostart");assert(strstr(reply,"backoff"));
+    const unsigned no_ref_calls=automatic.calls;
+    test_now+=1799999;loopLR2021CalibrationSettings(automatic);assert(automatic.calls==no_ref_calls);
+    bootcmd("set radio.xtrim auto cancel");test_now+=1800001;loopLR2021CalibrationSettings(automatic);
+    bootcmd("get radio.xtrim.autostart");assert(strstr(reply,"cancelled") && strstr(reply,"attempts=1/2"));
+    // A due retry observes a fresh five-second configuration window instead
+    // of reusing history from before the thirty-minute backoff.
+    FILESYSTEM retry;assert(!loadLR2021CalibrationSettings(&retry,automatic));
+    loopLR2021CalibrationSettings(automatic);test_now+=5000;loopLR2021CalibrationSettings(automatic);
+    test_now+=900000;loopLR2021CalibrationSettings(automatic);loopLR2021CalibrationSettings(automatic);
+    test_now+=1800000;loopLR2021CalibrationSettings(automatic);
+    test_now+=4999;loopLR2021CalibrationSettings(automatic);
+    bootcmd("get radio.xtrim.autostart");assert(strstr(reply,"attempts=1/2"));
+    ++test_now;loopLR2021CalibrationSettings(automatic);
+    bootcmd("get radio.xtrim.autostart");assert(strstr(reply,"waiting-refs") && strstr(reply,"attempts=2/2"));
+    bootcmd("set radio.xtrim auto cancel");loopLR2021CalibrationSettings(automatic);
+    test_now=100;
+  }
   loadLR2021CalibrationSettings(nullptr,radio);
   cmd("set radio.xtrim auto"); assert(strstr(reply,"storage unavailable") && radio.calls==0);
   // An interrupted first calibration may have no prior records. Successful

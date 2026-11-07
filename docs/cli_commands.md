@@ -2497,7 +2497,7 @@ number sets both codes; two numbers set XTA and XTB separately. Lower codes
 generally raise frequency; each code is a capacitor step, not a fixed Hz offset.
 Use a known reference to choose values. TCXO boards reject this setting.
 
-The default leaves the chip's original trim unchanged; no shared calibration
+The `default` selection leaves the chip's original trim unchanged; no shared calibration
 value is imposed on boards. An explicit selection is saved first and waits two
 seconds so its acknowledgement can leave with the previous calibration. It then
 applies without a reboot when the radio is free, and is restored after resets
@@ -2516,10 +2516,38 @@ set radio.xtrim auto
 get radio.xtrim.auto
 get radio.xtrim.correction
 set radio.xtrim auto cancel
+get radio.xtrim.autostart
+set radio.xtrim.autostart on|off
 ```
 
-Automatic trim is off until started. Turn radio2 off first and leave the radio
-profile unchanged. The node listens for signed, fresh adverts from three
+An uncalibrated W12 starts calibration in the background after its primary
+profile configuration stays unchanged for five seconds. Transient radio owners
+delay starting without restarting that timer. Startup does not wait for it.
+A saved manual trim or nonzero saved digital correction is retained across
+normal reboots, without another search. A full erase removes that calibration.
+No shared trim value is imposed: `3,3` and `8,8` are the first two trial values,
+followed by nearby candidates, and every saved result still needs verification.
+
+`get radio.xtrim.autostart` reports the saved policy, waiting/running/retained
+state, attempts and next retry delay. Radio2, TX, AGC, packet, beacon and Morse
+ownership defer startup. The boot policy permits at most two attempts, each
+using the existing 15-minute session bound; a safely restored failed attempt
+waits 30 minutes before retrying. No references is an unknown result, not a
+zero frequency error. Recovery or storage uncertainty stops background retries.
+`get radio.xtrim.auto` reports the current trial and reference progress.
+
+For controlled comparisons, `set radio.xtrim.autostart off` saves an opt-out and
+cancels an active background trial through its normal restoration path. The
+choice survives reboot. A missing policy record defaults to on; a malformed
+record blocks automatic startup and reports an error. Explicit cancel or a
+manual calibration request reserves the current boot for manual operation;
+toggling the policy does not clear that cancellation or reset its attempt
+budget. A new boot can resume if enabled and still uncalibrated. A saved
+`default` selection with zero correction remains uncalibrated; use the opt-out
+when factory trim must remain fixed for a test.
+
+`set radio.xtrim auto` still starts a manual one-shot even with autostart off.
+Turn radio2 off first and leave the radio profile unchanged. The node listens for signed, fresh adverts from three
 distinct nearby identities on the current frequency; each trial and its
 independent final verification need one new advert from each of the same three
 identities. They must agree within 1.5 kHz, and the trim verification median
