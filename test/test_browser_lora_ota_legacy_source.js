@@ -44,7 +44,7 @@ async function run(){
   t.investigationVerified=true;let attempts=0;
   t.standardReply=async()=>{attempts++;const error=Error('Remote command timed out; result is unknown');error.loraReplyTimeout=true;throw error;};
   await assert.rejects(()=>t.remoteCommand(key,'','ota install'),/timed out/);assert.equal(attempts,1);
-  attempts=0;await assert.rejects(()=>t.remoteCommand(key,'','ota status'),e=>e.attempts===7);assert.equal(attempts,7);
+  attempts=0;await assert.rejects(()=>t.remoteCommand(key,'','ota status'),e=>e.loraReplyTimeout===true&&e.attempts===11);assert.equal(attempts,11);
   Object.defineProperty(globalThis,'navigator',{configurable:true,value:previousNavigator});
 
   // Current and older temp-radio response formats both supply pacing data.
