@@ -4,8 +4,9 @@
 
 namespace mesh { namespace lr2021 {
 
-// Scheduling only: the existing AutoTrim still verifies three signed peers
-// and an independent final batch. This class neither selects nor applies trim.
+// Scheduling only: AutoTrim prefers three signed peers, can retain a smaller
+// verified cohort, and requires an independent final batch. This class neither
+// selects nor applies trim.
 // Runtime computes enabled/calibrated from the actual saved policy/calibration,
 // and supplies eligible only after checking current primary radio ownership.
 class LR2021BootAutoTrim {

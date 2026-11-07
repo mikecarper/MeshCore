@@ -2559,6 +2559,7 @@ W12 Repeater, Room, Sensor, and Companion builds also provide:
 ```text
 set radio.xtrim auto
 get radio.xtrim.auto
+get radio.xtrim.auto.peer 0|1|2
 get radio.xtrim.correction
 set radio.xtrim auto cancel
 get radio.xtrim.autostart
@@ -2579,7 +2580,12 @@ ownership defer startup. The boot policy permits at most two attempts, each
 using the existing 15-minute session bound; a safely restored failed attempt
 waits 30 minutes before retrying. No references is an unknown result, not a
 zero frequency error. Recovery or storage uncertainty stops background retries.
-`get radio.xtrim.auto` reports the current trial and reference progress.
+`get radio.xtrim.auto` reports the current trial, reference progress, peer count
+and confidence (`single-peer`, `two-peer`, or `three-peer`; `pending` before
+the reference group is selected).
+`get radio.xtrim.auto.peer 0|1|2` returns that reference's full public key,
+latest accepted signed timestamp, current batch sample count and whether the
+group is locked, or `none` for an unused slot.
 
 For controlled comparisons, `set radio.xtrim.autostart off` saves an opt-out and
 cancels an active background trial through its normal restoration path. The
@@ -2592,13 +2598,19 @@ budget. A new boot can resume if enabled and still uncalibrated. A saved
 when factory trim must remain fixed for a test.
 
 `set radio.xtrim auto` still starts a manual one-shot even with autostart off.
-Turn radio2 off first and leave the radio profile unchanged. The node listens for signed, fresh adverts from three
-distinct nearby identities on the current frequency; each trial and its
-independent final verification need one new advert from each of the same three
-identities. They must agree within 1.5 kHz, and the trim verification median
+Turn radio2 off first and leave the radio profile unchanged. The node prefers
+signed, fresh adverts from three distinct nearby identities on the current
+frequency. It waits up to 20 seconds after the first valid observation for the
+other references, within the existing collection deadline. If it hears only one
+or two, it uses those references with the reported lower confidence. Once
+selected, the same identities must each supply a new advert for every trial
+and independent final verification; later arrivals cannot replace a reference.
+Multiple references must agree within 1.5 kHz, and the trim verification median
 must be within 1 kHz of the winning trial. The node then applies a bounded
 digital adjustment equal to 75% of the remaining measured offset and checks
-fresh adverts from the same three peers before saving. It applies the adjustment
+fresh adverts from the same selected peers before saving. A single-peer result
+matches that peer's frequency; it does not establish absolute accuracy.
+It applies the adjustment
 proportionally on both radio profiles while reporting their nominal frequencies.
 Offsets smaller than 400 Hz do not cause a new digital adjustment. Each listening window can last two
 minutes and the whole session is limited to 15 minutes. Temporarily increase

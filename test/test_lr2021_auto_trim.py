@@ -54,7 +54,8 @@ int main() {
   t.applied(true, now_ms); assert(t.action() == Action::Complete);
   t.reset(); assert(t.action() == Action::Idle);
 
-  // One loud sender cannot fill a quorum; the same three identities must
+  // Before the fallback wait, one sender cannot fill the preferred group;
+  // the same locked identities must
   // contribute across trials, with no replay of an earlier signed advert.
   assert(t.begin(original, 910525000, now_ms, 600000, 60000, 500, 1000));
   auto one = sample(10000, 0); assert(t.observe(one));
@@ -233,6 +234,85 @@ int main(){
 '''.replace('@METHOD@',method).replace('@PROFILE_METHOD@',profile_method).replace('#include <cstdint>','#include <cstdint>\n#include <initializer_list>')
         LR2021CalibrationTests().compile_run(source)
 
+
+    def test_best_effort_keeps_verified_reference_cohort_and_independent_batches(self):
+        from test_lr2021_calibration import LR2021CalibrationTests
+        source = r"""
+#include <cassert>
+#include <cstdint>
+#include <helpers/radiolib/LR2021AutoTrim.h>
+using namespace mesh::lr2021;
+using Action=AutoTrim::Action;
+static uint8_t keys[4][32]={{1},{2},{3},{4}};
+static uint32_t clock_ms=1000,utc=1700000000;
+static AutoTrimSample fresh(unsigned key,int offset) {
+  AutoTrimSample s;s.sender_key=keys[key];s.offset_hz=offset;s.frequency_hz=910525000;
+  s.signed_time=s.utc_now=++utc;s.captured_at_ms=s.now_ms=++clock_ms;
+  s.verified=s.packet_bound=s.direct_rf=true;return s;
+}
+static void start(AutoTrim& t) {
+  XoscTrimSelection original;assert(t.begin(original,910525000,clock_ms,900000,120000,1500,2000));
+}
+static void expirePreference(AutoTrim& t) {
+  clock_ms+=AutoTrim::PreferredPeersWaitMs;t.tick(clock_ms);
+}
+int main() {
+  // Three valid identities retain the immediate original consensus path.
+  {AutoTrim t;start(t);assert(t.observe(fresh(0,600)));assert(t.observe(fresh(1,610)));
+   assert(!t.cohortLocked()&&t.action()==Action::Collect);
+   assert(t.observe(fresh(2,620)));assert(t.cohortLocked()&&t.peerCount()==3);
+   assert(t.requiredSampleCount()==3&&t.round()==5);}
+  // One verified reference becomes a stable cohort only after the bounded
+  // preference period; it cannot save without both independent checks.
+  {AutoTrim t;start(t);auto first=fresh(0,600);assert(t.observe(first));
+   t.tick(clock_ms+19999);assert(!t.cohortLocked()&&t.round()==0);
+   expirePreference(t);assert(t.cohortLocked()&&t.peerCount()==1&&t.round()==5);
+   assert(t.requiredSampleCount()==1&&t.action()==Action::Collect);
+   const uint8_t* selected=nullptr;uint32_t accepted=0;uint8_t samples=99;
+   assert(t.peerStatus(0,selected,accepted,samples)&&selected[0]==1&&accepted==first.signed_time&&samples==0);
+   assert(!t.peerStatus(1,selected,accepted,samples)&&!selected&&!accepted&&!samples);
+   assert(!t.observe(fresh(1,600)));assert(t.peerCount()==1&&t.sampleCount()==0);
+   auto replay=fresh(0,600);replay.signed_time=first.signed_time;assert(!t.observe(replay));
+   assert(t.observe(fresh(0,610)));assert(t.action()==Action::Commit);
+   t.committed(true);assert(t.action()==Action::Commit&&!t.digitalVerified());
+   t.beginDigitalVerification(clock_ms);auto digital_replay=fresh(0,150);digital_replay.signed_time=first.signed_time;assert(!t.observe(digital_replay));
+   assert(t.observe(fresh(0,150)));assert(t.digitalVerified()&&t.action()==Action::Commit);
+   t.committed(true);assert(t.action()==Action::Complete);}
+  // Each member of a two-peer group remains required in every new batch.
+  {AutoTrim t;start(t);assert(t.observe(fresh(0,600)));assert(t.observe(fresh(1,610)));
+   expirePreference(t);assert(t.peerCount()==2&&t.requiredSampleCount()==2&&t.round()==5);
+   assert(t.observe(fresh(1,620)));assert(t.sampleCount()==1&&t.action()==Action::Collect);
+   assert(!t.observe(fresh(2,620)));assert(t.peerCount()==2&&t.sampleCount()==1);
+   assert(t.observe(fresh(0,610)));assert(t.action()==Action::Commit);
+   t.beginDigitalVerification(clock_ms);assert(t.observe(fresh(0,150)));
+   assert(t.action()==Action::Collect);assert(t.observe(fresh(1,160)));
+   assert(t.action()==Action::Commit&&t.digitalVerified());}
+  // A changed independent single-peer result aborts instead of saving it.
+  {AutoTrim t;start(t);assert(t.observe(fresh(0,600)));expirePreference(t);
+   assert(t.observe(fresh(0,2000)));assert(t.action()==Action::Restore);}
+  // Unverified, stale, nonlocal and mismatched-frequency packets cannot
+  // establish even a one-peer fallback or start its preference timer.
+  {AutoTrim t;start(t);
+   for(unsigned bad=0;bad<5;++bad) {
+     auto s=fresh(0,600);
+     if(bad==0)s.verified=false;
+     if(bad==1)s.packet_bound=false;
+     if(bad==2)s.direct_rf=false;
+     if(bad==3)s.frequency_hz++;
+     if(bad==4)s.utc_now+=121;
+     assert(!t.observe(s));
+   }
+   clock_ms+=21000;t.tick(clock_ms);assert(t.peerCount()==0&&!t.cohortLocked()&&t.round()==0);}
+  // The preference timer also works when firmware milliseconds wrap.
+  {clock_ms=UINT32_MAX-1000;AutoTrim t;start(t);assert(t.observe(fresh(0,600)));
+   expirePreference(t);assert(t.cohortLocked()&&t.peerCount()==1&&t.round()==5);}
+  // Silence remains unknown and never creates a zero-peer successful batch.
+  {clock_ms=1000;AutoTrim t;start(t);clock_ms+=120000;t.tick(clock_ms);
+   assert(!t.cohortLocked()&&t.peerCount()==0&&t.action()==Action::Apply&&t.target().a==3);}
+}
+"""
+        LR2021CalibrationTests().compile_run(source, flags=('-fsanitize=address,undefined','-fno-pie','-no-pie'))
+
     def test_controller(self):
         with tempfile.TemporaryDirectory() as folder:
             source = Path(folder) / "test.cpp"
@@ -289,6 +369,53 @@ using namespace mesh::lr2021;
 int main() {
   FILESYSTEM fs; CustomLR2021Wrapper radio; char reply[160];
   auto cmd=[&](const char* text) {assert(handleLR2021CalibrationCommand(text,reply,sizeof(reply),radio));};
+  cmd("get radio.xtrim.auto.peer 0");assert(!strcmp(reply,"> none"));
+  for(const char* invalid : {"get radio.xtrim.auto.peer","get radio.xtrim.auto.peer -1",
+      "get radio.xtrim.auto.peer 3","get radio.xtrim.auto.peer 00","get radio.xtrim.auto.peer 0 1"}) {
+    cmd(invalid);assert(strstr(reply,"Error: use get radio.xtrim.auto.peer"));
+  }
+  {
+    // Actual empty settings boot with one verified reference: no manual
+    // calibration command, stable cohort, independent checks, save and reboot.
+    FILESYSTEM single_fs;CustomLR2021Wrapper single;
+    auto single_cmd=[&](const char* text) {assert(handleLR2021CalibrationCommand(text,reply,sizeof(reply),single));};
+    assert(!loadLR2021CalibrationSettings(&single_fs,single));
+    loopLR2021CalibrationSettings(single);test_now+=5000;loopLR2021CalibrationSettings(single);
+    single_cmd("get radio.xtrim.autostart");assert(strstr(reply,"waiting-refs attempts=1/2"));
+    uint8_t key[32]={71};uint32_t signed_time=1700300000;
+    auto one_fresh=[&](int offset) {
+      PacketFrequencyObservation value;value.valid=true;value.frequency_hz=910525000;
+      value.captured_at_ms=++test_now;value.offset_hz=offset;++signed_time;
+      observeLR2021AutoTrimAdvert(key,signed_time,signed_time,value,true);
+    };
+    one_fresh(1500);single_cmd("get radio.xtrim.auto");
+    assert(strstr(reply,"samples=1/3")&&strstr(reply,"peers=1/3 confidence=pending"));
+    test_now+=19999;loopLR2021CalibrationSettings(single);
+    single_cmd("get radio.xtrim.auto");assert(strstr(reply,"phase=0"));
+    ++test_now;loopLR2021CalibrationSettings(single);
+    single_cmd("get radio.xtrim.auto");
+    assert(strstr(reply,"phase=5 samples=0/1")&&strstr(reply,"peers=1/3 confidence=single-peer"));
+    single_cmd("get radio.xtrim.auto.peer 0");
+    assert(strstr(reply,"key=4700000000000000000000000000000000000000000000000000000000000000")
+        &&strstr(reply,"signed_time=1700300001,samples=0,locked=1"));
+    one_fresh(1450);loopLR2021CalibrationSettings(single);
+    single_cmd("get radio.xtrim.auto");assert(strstr(reply,"phase=6")&&!strstr(reply,"> saved"));
+    one_fresh(360);loopLR2021CalibrationSettings(single);loopLR2021CalibrationSettings(single);
+    single_cmd("get radio.xtrim.auto");
+    assert(strstr(reply,"> saved")&&strstr(reply,"peers=1/3 confidence=single-peer"));
+    single_cmd("get radio.xtrim.autostart");assert(strstr(reply,"retained attempts=1/2"));
+    single_cmd("get radio.xtrim.auto.peer 0");
+    assert(strstr(reply,"signed_time=1700300003,samples=1,locked=1"));
+    assert(single.correction==1194&&single_fs.files.count("/radio_calibration"));
+    const auto saved_files=single_fs.files;
+    loopLR2021CalibrationSettings(single);assert(single_fs.files==saved_files);
+    CustomLR2021Wrapper single_reboot;assert(loadLR2021CalibrationSettings(&single_fs,single_reboot));
+    assert(single_reboot.correction==1194&&!single_reboot.selected);
+    assert(handleLR2021CalibrationCommand("get radio.xtrim.autostart",reply,sizeof(reply),single_reboot)
+        &&strstr(reply,"retained attempts=0/2"));
+    assert(handleLR2021CalibrationCommand("get radio.xtrim.auto.peer 0",reply,sizeof(reply),single_reboot)
+        &&!strcmp(reply,"> none"));
+  }
   {
     FILESYSTEM startup; CustomLR2021Wrapper automatic;
     auto bootcmd=[&](const char* text) {assert(handleLR2021CalibrationCommand(text,reply,sizeof(reply),automatic));};
@@ -421,6 +548,12 @@ int main() {
     }
   };
   direct_send(1500); cmd("get radio.xtrim.auto"); assert(strstr(reply,"phase=5"));
+  assert(strstr(reply,"peers=3/3 confidence=three-peer"));
+  cmd("get radio.xtrim.auto.peer 0");
+  char expected_peer[160];snprintf(expected_peer,sizeof(expected_peer),
+      "> index=0,key=0b00000000000000000000000000000000000000000000000000000000000000,signed_time=%lu,samples=0,locked=1",
+      (unsigned long)(direct_time-2));
+  assert(!strcmp(reply,expected_peer));
   direct_send(1450); test_now+=2000; loopLR2021CalibrationSettings(radio);
   assert(radio.correction==1195 && !radio.selected);
   cmd("get radio.xtrim.auto"); assert(strstr(reply,"phase=6"));

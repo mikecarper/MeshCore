@@ -590,14 +590,36 @@ bool handleLR2021CalibrationCommand(const char* command, char* reply,
         long(radio.frequencyCorrectionPpb()), long(saved_selection.correction_ppb));
     return true;
   }
+  constexpr char peer_command[]="get radio.xtrim.auto.peer";
+  if (!strncmp(command,peer_command,sizeof(peer_command)-1)
+      && (!command[sizeof(peer_command)-1] || command[sizeof(peer_command)-1]==' ')) {
+    const char* value=command+sizeof(peer_command)-1;
+    if (value[0]!=' ' || value[1]<'0' || value[1]>'2' || value[2]) {
+      snprintf(reply,capacity,"Error: use get radio.xtrim.auto.peer 0|1|2");
+    } else {
+      const uint8_t index=uint8_t(value[1]-'0');
+      const uint8_t* key=nullptr; uint32_t signed_time=0; uint8_t samples=0;
+      if (!auto_trim.peerStatus(index,key,signed_time,samples)) snprintf(reply,capacity,"> none");
+      else {
+        constexpr char hex[]="0123456789abcdef";
+        char encoded[65];
+        for (unsigned i=0;i<32;++i) { encoded[2*i]=hex[key[i]>>4]; encoded[2*i+1]=hex[key[i]&15]; }
+        encoded[64]=0;
+        snprintf(reply,capacity,"> index=%u,key=%s,signed_time=%lu,samples=%u,locked=%u",
+            unsigned(index),encoded,(unsigned long)signed_time,unsigned(samples),auto_trim.cohortLocked()?1U:0U);
+      }
+    }
+    return true;
+  }
   if (!strcmp(command, "get radio.xtrim.auto")) {
     const auto& current = auto_trim.current();
     char trial[20];
     if (current.enabled) snprintf(trial, sizeof(trial), "%u,%u", current.a, current.b);
     else snprintf(trial, sizeof(trial), "default");
-    snprintf(reply, capacity, "> %s; trial=%s phase=%u samples=%u/%u baseline=%s; startup=%s",
+    snprintf(reply, capacity, "> %s; trial=%s phase=%u samples=%u/%u baseline=%s; startup=%s peers=%u/3 confidence=%s",
         autoState(), trial, unsigned(auto_trim.round()), unsigned(auto_trim.sampleCount()),
-        unsigned(AutoTrim::SampleCount * AutoTrim::PeerCount), auto_trim.baselineKnown() ? "known" : "unknown",boot_auto.stateName());
+        unsigned(auto_trim.requiredSampleCount()), auto_trim.baselineKnown() ? "known" : "unknown",boot_auto.stateName(),
+        unsigned(auto_trim.peerCount()),auto_trim.confidenceName());
     return true;
   }
   if (!strcmp(command, "set radio.xtrim auto cancel")) {
@@ -632,7 +654,7 @@ bool handleLR2021CalibrationCommand(const char* command, char* reply,
       const uint32_t now = millis();
       if (beginAutomaticTrial(radio,frequency,now)) {
         boot_auto.cancel(); // Explicit one-shot owns this boot; no automatic restart.
-        snprintf(reply, capacity, "OK - auto trim listening for 3 nearby radios");
+        snprintf(reply, capacity, "OK - auto trim listening; prefers 3 nearby radios");
       } else snprintf(reply, capacity, "Error: auto trim could not start");
     }
     return true;
