@@ -5,8 +5,8 @@
 
 using mesh::AGCResetScheduler;
 
-static_assert(sizeof(AGCResetScheduler) <= 12,
-              "AGC scheduler must preserve the constrained Dispatcher layout");
+static_assert(sizeof(AGCResetScheduler) <= 16,
+              "AGC scheduler adds only one bounded retry deadline");
 
 namespace {
 
@@ -297,7 +297,7 @@ TEST(AGCResetScheduler, AdaptiveRepresentationDoesNotBleedStageOrStreakBits) {
       expectEquivalent(actual, expected, now);
       // This implementation-only assertion checks the compact non-persisted
       // word: no stage overflow into streak/unused bits, no base corruption.
-      uint32_t words[3];
+      uint32_t words[4];
       std::memcpy(words, &actual, sizeof(actual));
       EXPECT_EQ(words[2] & 0x7c000000u, 0u);
       EXPECT_EQ(words[2] & 0xfffffu, base);
@@ -327,6 +327,99 @@ TEST(AGCResetScheduler, LargerExternalIntervalsRetainExactFixedCadence) {
       }
     }
   }
+}
+
+TEST(AGCResetScheduler, WarmRetriesExpireAtOriginalDuePlusFourSeconds) {
+  AGCResetScheduler scheduler;
+  scheduler.configure(0, 16000, false, 0);
+  for (uint32_t now = 16000; now < 20000; now += 250) {
+    ASSERT_TRUE(scheduler.due(now));
+    ASSERT_FALSE(scheduler.retryExpired(now));
+    scheduler.noteDeferredWithinWindow(now, 250);
+    scheduler.configure(now, 16000, false, 0);
+    EXPECT_FALSE(scheduler.due(now + 249));
+  }
+  EXPECT_TRUE(scheduler.due(20000));
+  EXPECT_TRUE(scheduler.retryExpired(20000));
+  scheduler.noteSkipped(20000);
+  EXPECT_EQ(scheduler.nextAt(), 36000u);
+  EXPECT_FALSE(scheduler.retryExpired(36000));
+  EXPECT_TRUE(scheduler.retryExpired(40000));
+}
+
+TEST(AGCResetScheduler, WarmRetryDelayIsCappedWithoutChangingOneMillisVisits) {
+  AGCResetScheduler scheduler;
+  scheduler.configure(0, 16000, false, 0);
+  scheduler.noteDeferredWithinWindow(16000, 1);
+  EXPECT_EQ(scheduler.nextAt(), 16001u);
+  scheduler.noteDeferredWithinWindow(19999, 250);
+  EXPECT_EQ(scheduler.nextAt(), 20000u);
+  uint32_t delay = 0;
+  ASSERT_TRUE(scheduler.nextDelay(19999, delay));
+  EXPECT_EQ(delay, 1u);
+}
+
+TEST(AGCResetScheduler, SkippedSlotsNeitherPromoteNorEraseConfirmedAdaptiveStreak) {
+  AGCResetScheduler scheduler;
+  scheduler.configure(0, 16000, true, 0);
+  scheduler.noteAttempt(16000);
+  ASSERT_EQ(scheduler.interval(), 16000u);
+  scheduler.noteSkipped(36000);
+  EXPECT_EQ(scheduler.interval(), 16000u);
+  EXPECT_EQ(scheduler.nextAt(), 52000u);
+  scheduler.noteAttempt(52000);
+  EXPECT_EQ(scheduler.interval(), 32000u);
+  EXPECT_EQ(scheduler.nextAt(), 84000u);
+}
+
+TEST(AGCResetScheduler, ActiveOwnerMayFinishAfterExpiryWithoutOpeningAnotherWindow) {
+  AGCResetScheduler scheduler;
+  scheduler.configure(0, 16000, false, 0);
+  scheduler.noteDeferredWithinWindow(20000, 250);
+  EXPECT_EQ(scheduler.nextAt(), 20250u);
+  EXPECT_TRUE(scheduler.retryExpired(20250));
+  scheduler.noteDeferredWithinWindow(20250, 250);
+  EXPECT_TRUE(scheduler.retryExpired(20500));
+  scheduler.noteAttempt(21000);
+  EXPECT_EQ(scheduler.nextAt(), 37000u);
+  EXPECT_FALSE(scheduler.retryExpired(37000));
+}
+
+TEST(AGCResetScheduler, RetryExpiryIncludingZeroSurvivesMillisRollover) {
+  AGCResetScheduler scheduler;
+  const uint32_t origin = UINT32_MAX - 19999u;
+  scheduler.configure(origin, 16000, false, 0);
+  EXPECT_FALSE(scheduler.retryExpired(UINT32_MAX));
+  scheduler.noteDeferredWithinWindow(UINT32_MAX, 250);
+  EXPECT_EQ(scheduler.nextAt(), 0u);
+  EXPECT_TRUE(scheduler.due(0));
+  EXPECT_TRUE(scheduler.retryExpired(0));
+  scheduler.noteSkipped(0);
+  EXPECT_EQ(scheduler.nextAt(), 16000u);
+  EXPECT_FALSE(scheduler.retryExpired(16000));
+}
+
+TEST(AGCResetScheduler, ConfigurationAndRecoveryChangesResetRetryWindow) {
+  AGCResetScheduler scheduler;
+  scheduler.configure(0, 16000, true, 0);
+  scheduler.noteDeferredWithinWindow(19999, 250);
+  scheduler.configure(19999, 16000, true, 1);
+  EXPECT_EQ(scheduler.nextAt(), 35999u);
+  EXPECT_FALSE(scheduler.retryExpired(20000));
+  EXPECT_TRUE(scheduler.retryExpired(39999));
+  scheduler.configure(40000, 0, false, 0);
+  scheduler.noteSkipped(40000);
+  scheduler.noteDeferredWithinWindow(40000, 250);
+  EXPECT_FALSE(scheduler.retryExpired(50000));
+}
+
+TEST(AGCResetScheduler, LargestExternalIntervalDoesNotExpireBeforeItsNominalDue) {
+  AGCResetScheduler scheduler;
+  scheduler.configure(0, INT32_MAX, false, 0);
+  EXPECT_FALSE(scheduler.retryExpired(0));
+  EXPECT_FALSE(scheduler.retryExpired(INT32_MAX));
+  EXPECT_FALSE(scheduler.retryExpired(uint32_t(INT32_MAX) + 3999u));
+  EXPECT_TRUE(scheduler.retryExpired(uint32_t(INT32_MAX) + 4000u));
 }
 
 TEST(AGCResetScheduler, DeterministicDifferentialAcrossSupportedBoundaries) {

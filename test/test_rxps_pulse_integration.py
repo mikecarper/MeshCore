@@ -105,6 +105,15 @@ class PulseIntegrationTest(unittest.TestCase):
     def test_persistent_failure_and_busy_recovery_are_bounded(self):
         self.run_case("bounded")
 
+    def test_actual_arm_command_latency_allows_measured_sf12_witness(self):
+        self.run_case("arm_latency")
+
+    def test_platform_clock_quantum_is_selected_before_the_real_state_header(self):
+        self.run_case("coarse_clock")
+
+    def test_unqualified_witness_quietly_defers_after_checked_receive(self):
+        self.run_case("unqualified_witness")
+
     def test_phy_geometry_and_one_tick_sleep_use_encoded_timer_guard(self):
         self.run_case("geometry")
 

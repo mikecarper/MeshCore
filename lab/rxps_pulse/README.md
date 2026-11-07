@@ -1,10 +1,10 @@
 # Periodic RXPS receive pulse
 
-On opted-in Heltec V4 builds the saved primary `agc.reset.interval` now drives
-one RXPS pulse, replacing the former FS/XOSC refresh. The saved byte-times-four
-format, interval aliases and fixed/adaptive scheduler are unchanged. Other
-wrappers retain the legacy method. `agc.old` is an independent RAM-only timer,
-disabled at boot. No preference schema is added.
+On supported SX126x and LR11xx/LR2021 builds the saved primary
+`agc.reset.interval` drives one RXPS pulse. SX1276 uses its checked host-timed
+sleep/wake path. The saved byte-times-four format and interval aliases are
+unchanged. Other wrappers retain their existing method. `agc.old` is an
+independent RAM-only timer, disabled at boot. No preference schema is added.
 
 The pulse does not use radio2's fast caches. It checks an idle primary LoRa
 receiver, performs RC standby and ordinary full receive staging, and sends
@@ -13,13 +13,18 @@ runs. All ordinary radio SPI entry points defer while the lease owns the radio.
 BUSY and DIO are sampled as GPIO only; diagnostics read cached memory. There is
 no NSS wake or SPI poll during the expected retained-sleep window.
 
-A witness requires post-arm BUSY low, a subsequent high no earlier than the
-programmed RX period minus 2000 us, and a natural low. The sampled high span
-must be at least 250 us and at most the compensated request plus 2000 us.
+A witness requires post-arm BUSY low, a subsequent high, and a natural low.
+The first-high sanity bound allows 2000 us plus the measured arm-command
+return time and one host clock quantum (a conservative 1000 us on nRF52).
+The bound never falls below half the programmed RX period. An arm call taking
+more than half that period leaves the attempt unconfirmed. The sampled high
+span must be at least 250 us and at most the compensated request plus 2000 us.
 These tolerances bound loop observation uncertainty; they do not characterize
-analog power or RF availability. Missed/late edges are failures, never proof
-that a shorter sleep worked. The listen deadline includes the cached maximum
-packet airtime, extended duty-cycle listen and a 2 s allowance, capped at 60 s.
+analog power or RF availability. Missing, early or late edges quietly discard
+the unconfirmed attempt, with no failure error latch and no success credit;
+the raw miss/early counts remain available only on request. An unconfirmed
+attempt is never proof that a shorter sleep worked. The listen deadline includes
+the cached maximum packet airtime, extended duty-cycle listen and a 2 s allowance, capped at 60 s.
 An exceptional timeout wake is separately counted and cannot earn success.
 
 After natural wake, the driver checks RC standby, nonclearing IRQ status, RTC
@@ -28,8 +33,11 @@ GetStatus RX mode. Every original transport error is retained. Completed FIFO
 ownership preempts reentry; a preamble/header appearing during standby is
 reported as an aborted partial-frame attempt. No packet clear is used to claim
 a successful maintenance cycle. Bounded failed recovery hands control back to
-the existing repair path. A consumed failure waits the configured interval;
-unadmitted owners retry at 250 ms.
+the existing repair path. A real command/recovery failure waits the configured
+interval without advancing adaptive backoff. Unconfirmed or unadmitted attempts
+retry quietly for up to four seconds after their scheduled deadline, then are
+discarded until the next interval. Packet ownership and an existing pulse are
+never interrupted to enforce that window. Owner retries normally use 250 ms.
 
 Dual-profile scanning uses a bounded extension of an idle primary visit. The
 lease snapshots both profile generations, the applied primary generation and
@@ -76,7 +84,8 @@ proof that the hardware completed a sleep cycle.
 ## Cached pages
 
 - `get agc.status`: version 2, method rxps, saved interval, request/admit/defer/fail/ok
-  and persistent failure code. One admitted pending attempt can be outstanding.
+  and persistent command/recovery failure code. Unconfirmed observations do not
+  increment `fail` or latch an error. One admitted pending attempt can be outstanding.
 - `get agc.timing`: successful total admission-to-checked-RX samples and
   pending/phase. The total includes the initial listening window.
 - `get agc.recovery`: failed-attempt spans, failed rearm count and persistent

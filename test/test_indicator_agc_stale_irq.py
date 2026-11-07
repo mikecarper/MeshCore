@@ -108,6 +108,7 @@ int main(int argc,char** argv) {
  uint32_t duration=500;
  if(which=="min")duration=250;
  if(which=="short")duration=249;
+ if(which=="short_rtc_error")duration=249;
  if(which=="max")duration=w._rxps_pulse.sleep_us+2000;
  if(which=="long")duration=w._rxps_pulse.sleep_us+2001;
  now_us=high_at+duration;signal(w,false,false);
@@ -121,6 +122,7 @@ int main(int argc,char** argv) {
  if(which=="unknown")w.module.irq=0x8000;
  if(which=="read_error")w.module.fail_at=before+1;
  if(which=="standby_error")w.module.fail_at=before;
+ if(which=="short_rtc_error")w.module.fail_at=before+2;
  if(which=="stale_post")skip_poll=true;
  if(which=="slow_observation")extra_read_us=2001;
  if(which=="stale_post_time")irq_delay_us=2001;
@@ -145,11 +147,23 @@ int main(int argc,char** argv) {
  } else {
    assert(w._rxps_pulse.cycles==0 && w._rxps_pulse.ok==0);
    if(which=="short" || which=="long") {
-     assert(w._rxps_pulse.fail==1 && w._rxps_pulse.error==RxpsPulse::WitnessError
+     assert(w._rxps_pulse.fail==0 && w._rxps_pulse.error==0 && w._rxps_pulse.defer==1
        && w._rxps_pulse.missed==1 && w._rxps_pulse.aborts==0 && w._rxps_pulse.wake==1);
+     assert(!w._rxps_pulse.pending && w._rxps_pulse.verified==1 && w._rxps_pulse.rtc==1);
+     assert(w._rxps_pulse.takeCompletion()==RxpsPulse::Result::Deferred);
+   } else if(which=="short_rtc_error") {
+     // An unconfirmed GPIO span cannot mask a real command error while
+     // restoring RX. The original hard error must survive checked recovery.
+     assert(w._rxps_pulse.pending && w._rxps_pulse.failed && w._rxps_pulse.fail==0);
+     assert(w._rxps_pulse.missed==1 && w._rxps_pulse.aborts==0 && w._rxps_pulse.defer==0);
+     assert(w._rxps_pulse.error==-705 && w._rxps_pulse.failed_step==RxpsPulse::Step::RtcStop);
+     w.module.fail_at=SIZE_MAX;now_us+=250001;w.serviceAGCPulse();
+     assert(!w._rxps_pulse.pending && w._rxps_pulse.fail==1 && w._rxps_pulse.ok==0);
+     assert(w._rxps_pulse.error==-705 && w._rxps_pulse.failed_step==RxpsPulse::Step::RtcStop);
+     assert(w._rxps_pulse.takeCompletion()==RxpsPulse::Result::Failed);
    } else {
      assert(w._rxps_pulse.aborts==1);
-     if(which=="deadline")assert(w._rxps_pulse.error==RxpsPulse::TimeoutError);
+     if(which=="deadline")assert(w._rxps_pulse.error==0 && w._rxps_pulse.fail==0);
      if(which=="early")assert(w._rxps_pulse.error==RxpsPulse::WitnessError);
      if(which=="read_error" || which=="standby_error")assert(w._rxps_pulse.error==-705);
      for(size_t i=before;i<w.module.calls.size();++i)assert(w.module.calls[i].command[0]!=0x02);
@@ -203,6 +217,8 @@ class IndicatorStaleIrq(unittest.TestCase):
     def test_irq_sources_and_read_failures_preserve_fifo_and_handoff(self):
         for name in ('rx_done','crc','header','timeout','unknown','read_error','standby_error'):
             with self.subTest(name=name):self.check(name)
+    def test_unconfirmed_wake_does_not_hide_a_real_rtc_restore_error(self):
+        self.check('short_rtc_error')
     def test_counter_and_microsecond_wrap_are_preserved(self):
         for name in ('abort_wrap','clock_wrap','read_generation_wrap'):
             with self.subTest(name=name):self.check(name)

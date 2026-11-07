@@ -112,7 +112,10 @@ int main() {}
     def test_compact_warm_maintenance_uses_actual_retry_contract(self):
         dispatcher = (ROOT / "src/Dispatcher.cpp").read_text()
         start = dispatcher.index("#if (", dispatcher.index("const uint32_t deferred_at = _ms->getMillis();"))
-        end = dispatcher.index("      agc_reset.noteDeferred(deferred_at, retry_delay);", start)
+        # Extract the backend/owner delay selection only. The following warm
+        # deadline application belongs to the actual Dispatcher regressions.
+        end = dispatcher.index("#if defined(MESH_WARM_RX_REFRESH)",
+                               dispatcher.index("receive_delay > retry_delay", start))
         retry = dispatcher[start:end]
         code = """#include <Dispatcher.h>
 #include <cassert>

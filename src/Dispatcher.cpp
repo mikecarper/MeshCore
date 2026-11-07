@@ -1215,9 +1215,18 @@ void Dispatcher::loop() {
   if ((!adaptive || !recovered_this_loop) && agc_interval > 0
       && (adaptive ? agc_reset.due(agc_now)
       : millisHasNowPassed(agc_reset.nextAt()))) {
-    bool attempted;
+    bool attempted = false;
+    bool skipped = false;
 #if defined(MESH_W12_PRAM_EXPERIMENT) && MESH_W12_PRAM_EXPERIMENT
     const uint32_t lab_agc_retry_ms = _radio->labAGCMaintenanceRetryMs();
+#endif
+#if defined(MESH_WARM_RX_REFRESH) && MESH_WARM_RX_REFRESH
+    const bool bounded_pulse = _radio->supportsWarmRxRefresh();
+    // Consume a result from an already-admitted pulse even after the window.
+    // An idle expired slot must not start a fresh request or interrupt RX/TX.
+    skipped = bounded_pulse && agc_reset.retryExpired(agc_now)
+        && !_radio->isAGCMaintenancePending() && !_radio->hasAGCMaintenanceResult();
+    if (!skipped) {
 #endif
     if(old_agc_serviced) {
       attempted=false; // Keep both maintenance timers from running in one loop.
@@ -1235,9 +1244,10 @@ void Dispatcher::loop() {
       // request or run both maintenance methods back to back.
       const auto result=(!recovered_this_loop && !old_agc_serviced)
           ? _radio->periodicAGCMaintenance(adaptive) : AGCMaintenanceResult::Deferred;
-      // A consumed admitted failure keeps its diagnostic and normal cadence;
-      // it is not receiver-health credit and must not repeat every250ms.
-      attempted=result==AGCMaintenanceResult::Applied || result==AGCMaintenanceResult::Failed;
+      attempted=result==AGCMaintenanceResult::Applied;
+      // Real command failures keep their diagnostics, but neither promote the
+      // adaptive interval nor repeat within the recoverable-witness window.
+      skipped=result==AGCMaintenanceResult::Failed;
     }
     #else
     if (!adaptive) {
@@ -1247,8 +1257,17 @@ void Dispatcher::loop() {
       attempted = !_radio->isCalibratingNoiseFloor() && _radio->tryResetAGC();
     }
     #endif
+#if defined(MESH_WARM_RX_REFRESH) && MESH_WARM_RX_REFRESH
+    }
+    if (!attempted && bounded_pulse && agc_reset.retryExpired(_ms->getMillis())
+        && !_radio->isAGCMaintenancePending() && !_radio->hasAGCMaintenanceResult()) {
+      skipped = true;
+    }
+#endif
     if (attempted) {
       agc_reset.noteAttempt(_ms->getMillis());
+    } else if (skipped) {
+      agc_reset.noteSkipped(_ms->getMillis());
     } else {
       // Ownership/calibration deferral is not a reset or health evidence.
       const uint32_t deferred_at = _ms->getMillis();
@@ -1263,6 +1282,10 @@ void Dispatcher::loop() {
 #endif
       if (adaptive && _radio->getReceiveRetryDelay(deferred_at, receive_delay)
           && receive_delay > retry_delay) retry_delay = receive_delay;
+#if defined(MESH_WARM_RX_REFRESH) && MESH_WARM_RX_REFRESH
+      if (bounded_pulse) agc_reset.noteDeferredWithinWindow(deferred_at, retry_delay);
+      else
+#endif
       agc_reset.noteDeferred(deferred_at, retry_delay);
     }
   }

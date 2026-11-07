@@ -17,10 +17,13 @@ class AGCResetScheduler {
   // preferences use at most 255 * 4000 ms, leaving room for a five-bit stage
   // and one-bit attempt streak. This is RAM state, never a persisted format.
   uint32_t _state = 0;
+  uint32_t _retry_deadline = 0;
 
 public:
+  static constexpr uint32_t RETRY_WINDOW_MS = 4000;
+
   void reset() {
-    _next = _recovery_count = _state = 0;
+    _next = _recovery_count = _state = _retry_deadline = 0;
   }
 
   void configure(uint32_t now, uint32_t base_ms, bool adaptive,
@@ -40,12 +43,13 @@ public:
     if (previous != config || _recovery_count != recovery_count) {
       _state = config;
       _next = now + base_ms;
+      _retry_deadline = _next + RETRY_WINDOW_MS;
       _recovery_count = recovery_count;
     }
   }
 
   void noteTransmit(uint32_t now) {
-    if (_state && !(_state & ADAPTIVE)) _next = now + _state;
+    if (_state && !(_state & ADAPTIVE)) noteSkipped(now);
   }
 
   bool due(uint32_t now) const {
@@ -57,6 +61,32 @@ public:
   void noteDeferred(uint32_t now, uint32_t retry_delay_ms = 50) {
     if (retry_delay_ms == 0 || retry_delay_ms > INT32_MAX) retry_delay_ms = 50;
     if (_state) _next = now + retry_delay_ms;
+  }
+
+  bool retryExpired(uint32_t now) const {
+    // Check nominal due as well: a valid INT32_MAX external interval can put
+    // its later retry deadline outside the signed half-range at configure().
+    return _state
+        && static_cast<int32_t>(now - (_retry_deadline - RETRY_WINDOW_MS)) >= 0
+        && static_cast<int32_t>(now - _retry_deadline) >= 0;
+  }
+
+  // Warm-pulse retries share the original due time's four-second window.
+  // An admitted pulse may outlive it: keep servicing that owner without
+  // cancelling a packet, forcing a wake, or opening another admission window.
+  void noteDeferredWithinWindow(uint32_t now, uint32_t retry_delay_ms) {
+    noteDeferred(now, retry_delay_ms);
+    if (_state && !retryExpired(now)
+        && static_cast<int32_t>(_next - _retry_deadline) > 0) {
+      _next = _retry_deadline;
+    }
+  }
+
+  // Discard an unconfirmed/failed slot without success or adaptive credit.
+  void noteSkipped(uint32_t now) {
+    if (!_state) return;
+    _next = now + interval();
+    _retry_deadline = _next + RETRY_WINDOW_MS;
   }
 
   // Call only after an actual accepted reset sequence, not a busy/deferred one.
@@ -75,6 +105,7 @@ public:
     }
     // Anchor one interval to this accepted attempt, never replay missed slots.
     _next = now + value;
+    _retry_deadline = _next + RETRY_WINDOW_MS;
   }
 
   uint32_t interval() const {

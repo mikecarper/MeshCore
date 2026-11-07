@@ -48,6 +48,8 @@ public:
   unsigned processed = 0, prepare_calls = 0, restore_calls = 0, loops = 0;
   unsigned agc = 0, noise = 0, begins = 0, begin_while_owned = 0;
   bool warm = false;
+  bool unconfirmed_pulse = false, command_failure = false;
+  uint32_t pulse_listen_us = 4000;
   uint32_t old_seconds = 0;
   RxpsPulse pulse;
   std::vector<uint32_t> pulse_completions, old_completions;
@@ -134,17 +136,21 @@ public:
     const uint32_t elapsed = now - pulse.armed_at;
     // GPIO/checked RX are the counted hardware boundary. The actual pulse
     // FSM alone decides whether these samples witness a completed cycle.
-    pulse.sample(now, elapsed >= 4000 && elapsed < 5000, false);
+    const uint32_t first_high = unconfirmed_pulse ? 1000 : pulse_listen_us;
+    pulse.sample(now, elapsed >= first_high && elapsed < first_high + 1000, false);
     if (pulse.phase == RxpsPulse::Phase::Stop) {
       ++pulse.rtc; ++pulse.verified;
+      if (command_failure) pulse.noteError(-707, RxpsPulse::Step::RtcRead);
+      const uint32_t prior_ok = pulse.ok;
       pulse.rearming(); pulse.receiveEntry(0, now);
-      if (pulse.ok) pulse_completions.push_back(clock->now);
+      if (pulse.ok != prior_ok) pulse_completions.push_back(clock->now);
     }
   }
   bool supportsWarmRxRefresh() const override { return warm; }
   void configureAGCMaintenance(uint32_t cadence) override { pulse.cadence(cadence); }
   bool isAGCMaintenanceActive() const override { return pulse.owns(); }
   bool isAGCMaintenancePending() const override { return pulse.pending; }
+  bool hasAGCMaintenanceResult() const override { return pulse.hasCompletion(); }
   AGCMaintenanceResult periodicAGCMaintenance(bool adaptive) override {
     if (!warm) {
       if (adaptive) return tryResetAGC() ? AGCMaintenanceResult::Applied : AGCMaintenanceResult::Deferred;
@@ -152,13 +158,14 @@ public:
     }
     const auto completed = pulse.takeCompletion();
     if (completed == RxpsPulse::Result::Applied) { ++agc; return AGCMaintenanceResult::Applied; }
-    assert(completed != RxpsPulse::Result::Failed);
+    if (completed == RxpsPulse::Result::Failed) return AGCMaintenanceResult::Failed;
     if (completed == RxpsPulse::Result::Deferred || pulse.pending) return AGCMaintenanceResult::Deferred;
+    if (receiving) return AGCMaintenanceResult::Deferred;
     assert(!sending && !owned);
     const uint32_t now = clock->now * 1000U;
     pulse.request(now); pulse.admitted(now);
-    pulse.rx_us = 4000; pulse.sleep_us = 1000;
-    pulse.armed(now, 1000000);
+    pulse.rx_us = pulse_listen_us; pulse.sleep_us = 1000;
+    pulse.armed(now, 10000000);
     return AGCMaintenanceResult::Deferred;
   }
   bool supportsOldAGC() const override { return old_seconds != 0; }
@@ -674,6 +681,58 @@ static void pulse_traffic() {
     }
   }
 }
+static void pulse_retry_window() {
+  for (uint32_t initial : {1000U, UINT32_MAX - 19999U}) {
+    Fixture f(initial);
+    f.radio.warm = true; f.radio.unconfirmed_pulse = true;
+    f.d.interval = 16000; f.tick(0);
+    uint32_t admissions_at_expiry = 0;
+    for (unsigned elapsed = 1; elapsed <= 35999; ++elapsed) {
+      f.clock.now = initial + elapsed; f.d.loop();
+      if (elapsed == 19999) assert(f.radio.pulse.admit > 1);
+      if (elapsed == 20000) admissions_at_expiry = f.radio.pulse.admit;
+      if (elapsed > 20000) assert(f.radio.pulse.admit == admissions_at_expiry
+          && "expired unconfirmed slot must not admit another pulse");
+    }
+    assert(f.radio.pulse.ok == 0 && f.radio.pulse.cycles == 0
+        && f.radio.pulse.fail == 0 && f.radio.pulse.error == 0);
+    assert(f.radio.pulse.early > 0 && f.radio.pulse.missed > 0);
+    // Legacy fixed-time comparison is strictly later than the deadline.
+    f.clock.now = initial + 36002; f.d.loop();
+    assert(f.radio.pulse.admit == admissions_at_expiry + 1);
+  }
+}
+static void pulse_late_owner() {
+  for (bool packet : {false, true}) {
+    Fixture f;
+    f.radio.warm = true; f.d.interval = 16000; f.tick(0);
+    if (packet) f.radio.receiving = true;
+    else f.radio.pulse_listen_us = 5000000;
+    for (unsigned elapsed = 1; elapsed <= 22000; ++elapsed) {
+      f.clock.now = 1000 + elapsed; f.d.loop();
+      if (packet && elapsed == 20001) f.radio.receiving = false;
+    }
+    if (packet) {
+      assert(f.radio.pulse.admit == 0
+          && "a packet past expiry must not be interrupted or followed by a fresh late pulse");
+    } else {
+      assert(f.radio.pulse.admit == 1 && f.radio.pulse.ok == 1 && f.radio.agc == 1
+          && "an admitted pulse and its late completion must survive retry expiry");
+      assert(f.radio.pulse.cancelled == 0 && f.radio.pulse.forced_wake == 0);
+    }
+  }
+}
+static void pulse_failed_adaptive() {
+  Fixture f;
+  f.radio.warm = true; f.radio.command_failure = true;
+  f.d.interval = 16000; f.d.adaptive = true; f.tick(0);
+  for (unsigned elapsed = 1; elapsed <= 65000; ++elapsed) {
+    f.clock.now = 1000 + elapsed; f.d.loop();
+  }
+  assert(f.radio.pulse.admit == 4 && f.radio.pulse.fail == 4
+      && "real failures must keep normal cadence without adaptive promotion or fast retries");
+  assert(f.radio.pulse.ok == 0 && f.radio.agc == 0 && f.radio.pulse.error == -707);
+}
 int main(int argc, char** argv) {
   assert(argc == 2);
   if (!strcmp(argv[1], "basic")) basic();
@@ -697,6 +756,9 @@ int main(int argc, char** argv) {
   else if (!strcmp(argv[1], "agc")) agc_retirement();
   else if (!strcmp(argv[1], "pulse-retirement")) pulse_retirement();
   else if (!strcmp(argv[1], "pulse-traffic")) pulse_traffic();
+  else if (!strcmp(argv[1], "pulse-retry-window")) pulse_retry_window();
+  else if (!strcmp(argv[1], "pulse-late-owner")) pulse_late_owner();
+  else if (!strcmp(argv[1], "pulse-failed-adaptive")) pulse_failed_adaptive();
   else assert(false);
   puts("PASS");
 }
@@ -909,6 +971,34 @@ class BeaconDispatcherTest(unittest.TestCase):
                 checked = self.check_pulse_binary(binary, case)
                 self.assertEqual(checked.returncode, 0, checked.stdout + checked.stderr)
                 self.assertIn("PASS", checked.stdout)
+
+    def test_unconfirmed_retry_window_preserves_owners_late_results_and_real_failures(self):
+        for pram in (False, True):
+            binary = self.work / ("pulse-retry-window-pram" if pram else "pulse-retry-window")
+            features = self.WARM_FEATURES + (["-DMESH_W12_PRAM_EXPERIMENT=1"] if pram else [])
+            compiled = self.compile_variant(ROOT / "src/DispatcherBeacon.cpp", binary, features)
+            self.assertEqual(compiled.returncode, 0, compiled.stdout + compiled.stderr)
+            for case in ("pulse-retry-window", "pulse-late-owner", "pulse-failed-adaptive"):
+                with self.subTest(pram=pram, case=case):
+                    checked = self.check_pulse_binary(binary, case)
+                    self.assertEqual(checked.returncode, 0, checked.stdout + checked.stderr)
+                    self.assertIn("PASS", checked.stdout)
+
+    def test_unbounded_retry_negative_control_is_rejected(self):
+        source = (ROOT / "src/Dispatcher.cpp").read_text(encoding="ascii")
+        source = source.replace("agc_reset.retryExpired(agc_now)", "false")
+        source = source.replace("agc_reset.retryExpired(_ms->getMillis())", "false")
+        broken = self.work / "unbounded-retry.cpp"
+        broken.write_text(source, encoding="ascii")
+        binary = self.work / "unbounded-retry"
+        compiled = self.compile_variant(ROOT / "src/DispatcherBeacon.cpp", binary,
+                                        self.WARM_FEATURES, dispatcher_source=broken)
+        self.assertEqual(compiled.returncode, 0, compiled.stdout + compiled.stderr)
+        checked = self.check_pulse_binary(binary, "pulse-retry-window")
+        self.assertNotEqual(checked.returncode, 0, "unbounded retry escaped regression")
+        self.assertIn("expired unconfirmed slot", checked.stderr)
+        self.assertNotIn("AddressSanitizer:", checked.stderr)
+        self.assertNotIn("runtime error:", checked.stderr)
 
     def test_old_tx_postponement_is_rejected_for_both_warm_retirement_paths(self):
         guard = "if (!_radio->supportsWarmRxRefresh()) agc_reset.noteTransmit("
