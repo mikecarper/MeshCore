@@ -301,7 +301,7 @@ void SettingsScreen::handleEditInput(SettingsItem item, Keyboard::Event &e) {
       }
       break;
     case SettingsItem::RadioCr:
-      if (e.key == Keyboard::ARROW_LEFT && edit_u8 > 5) {
+      if (e.key == Keyboard::ARROW_LEFT && edit_u8 > 4) {
         edit_u8--;
       } else if (e.key == Keyboard::ARROW_RIGHT && edit_u8 < 8) {
         edit_u8++;
