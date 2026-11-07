@@ -309,6 +309,49 @@ int main() {
   // Silence remains unknown and never creates a zero-peer successful batch.
   {clock_ms=1000;AutoTrim t;start(t);clock_ms+=120000;t.tick(clock_ms);
    assert(!t.cohortLocked()&&t.peerCount()==0&&t.action()==Action::Apply&&t.target().a==3);}
+  // Fresh startup uses a real temporary setting, not a manufactured factory
+  // baseline. Stable but excessive offset keeps searching the bounded list
+  // with exactly the original locked identities.
+  {clock_ms=1000;AutoTrim t;XoscTrimSelection original;
+   assert(t.begin(original,910525000,clock_ms,900000,120000,1500,2000,true));
+   assert(t.action()==Action::Apply&&t.target().a==8&&!t.current().enabled);
+   t.applied(true,clock_ms);
+   for(unsigned i=0;i<3;++i)assert(t.observe(fresh(i,3000)));
+   assert(t.action()==Action::Apply&&t.target().a==3&&t.cohortLocked());
+   t.applied(true,clock_ms);assert(!t.observe(fresh(3,1500)));
+   for(unsigned i=0;i<3;++i)assert(t.observe(fresh(i,1500)));
+   assert(t.round()==5&&t.action()==Action::Collect&&t.current().a==3);
+   for(unsigned i=0;i<3;++i)assert(t.observe(fresh(i,2200)));
+   assert(t.action()==Action::Apply&&!t.target().enabled&&t.round()==2);
+   t.applied(true,clock_ms);
+   for(unsigned i=0;i<3;++i)assert(t.observe(fresh(i,1600)));
+   for(unsigned i=0;i<3;++i)assert(t.observe(fresh(i,1550)));
+   assert(t.action()==Action::Commit&&!t.target().enabled&&!t.baselineKnown());
+   t.beginDigitalVerification(clock_ms);
+   for(unsigned i=0;i<3;++i)assert(t.observe(fresh(i,390)));
+   assert(t.digitalVerified());t.committed(true);assert(t.action()==Action::Complete);}
+  // A changed independent measurement is unsafe, rather than permission to
+  // cycle through different references/candidates until one appears to work.
+  {clock_ms=1000;AutoTrim t;XoscTrimSelection original;
+   assert(t.begin(original,910525000,clock_ms,900000,120000,1500,2000,true));
+   t.applied(true,clock_ms);
+   for(unsigned i=0;i<3;++i)assert(t.observe(fresh(i,100)));
+   assert(t.round()==5&&t.action()==Action::Collect);
+   for(unsigned i=0;i<3;++i)assert(t.observe(fresh(i,1101)));
+   assert(t.action()==Action::Restore&&!t.target().enabled);}
+  // If the eventual native factory candidate is already near zero, retain
+  // the documented default/zero meaning; do not invent a saved calibration.
+  {clock_ms=1000;AutoTrim t;XoscTrimSelection original;
+   assert(t.begin(original,910525000,clock_ms,900000,120000,1500,2000,true));
+   t.applied(true,clock_ms);
+   for(unsigned choice=0;choice<2;++choice) {
+     clock_ms+=120000;t.tick(clock_ms);assert(t.action()==Action::Apply);t.applied(true,clock_ms);
+   }
+   assert(!t.current().enabled&&t.round()==2);
+   for(unsigned i=0;i<3;++i)assert(t.observe(fresh(i,100)));
+   assert(t.round()==5&&t.action()==Action::Collect);
+   for(unsigned i=0;i<3;++i)assert(t.observe(fresh(i,110)));
+   assert(t.action()==Action::Complete&&!t.target().enabled&&!t.digitalVerified());}
 }
 """
         LR2021CalibrationTests().compile_run(source, flags=('-fsanitize=address,undefined','-fno-pie','-no-pie'))
@@ -375,6 +418,58 @@ int main() {
     cmd(invalid);assert(strstr(reply,"Error: use get radio.xtrim.auto.peer"));
   }
   {
+    // A factory-erased boot first applies only a temporary 8,8. Silence
+    // advances in the requested order, never writes a candidate, and finally
+    // restores the actual factory selection before the bounded backoff.
+    FILESYSTEM silent_order;CustomLR2021Wrapper ordered;
+    auto order_cmd=[&](const char* text) {assert(handleLR2021CalibrationCommand(text,reply,sizeof(reply),ordered));};
+    assert(!loadLR2021CalibrationSettings(&silent_order,ordered));
+    loopLR2021CalibrationSettings(ordered);test_now+=5000;loopLR2021CalibrationSettings(ordered);
+    assert(!ordered.selected&&silent_order.files.empty());
+    test_now+=2000;loopLR2021CalibrationSettings(ordered);
+    assert(ordered.selected&&ordered.a==8&&ordered.b==8);
+    order_cmd("get radio.xtrim");assert(strstr(reply,"> default (saved; auto trial running)"));
+    for(int expected:{3,-1,7,9}) {
+      test_now+=120000;loopLR2021CalibrationSettings(ordered);
+      assert(expected<0?!ordered.selected:ordered.selected&&ordered.a==expected&&ordered.b==expected);
+      assert(silent_order.files.empty());
+    }
+    test_now+=120000;loopLR2021CalibrationSettings(ordered);loopLR2021CalibrationSettings(ordered);
+    assert(!ordered.selected&&ordered.correction==0&&silent_order.files.empty());
+    order_cmd("get radio.xtrim.auto");assert(strstr(reply,"original retained"));
+    order_cmd("get radio.xtrim.autostart");assert(strstr(reply,"backoff")&&strstr(reply,"attempts=1/2"));
+  }
+  {
+    // Three immediately available signed peers at 8,8 do not trigger the
+    // 3/factory sweep. Even a near-zero result needs an independent batch,
+    // and cannot claim/save factory defaults when the hardware used 8,8.
+    FILESYSTEM near_zero;CustomLR2021Wrapper first_rx;
+    auto near_cmd=[&](const char* text) {assert(handleLR2021CalibrationCommand(text,reply,sizeof(reply),first_rx));};
+    assert(!loadLR2021CalibrationSettings(&near_zero,first_rx));
+    loopLR2021CalibrationSettings(first_rx);test_now+=5000;loopLR2021CalibrationSettings(first_rx);
+    test_now+=2000;loopLR2021CalibrationSettings(first_rx);
+    uint8_t keys[3][32]={{81},{82},{83}};uint32_t signed_time=1700400000;
+    auto near_batch=[&](int offset) {
+      for(unsigned i=0;i<3;++i) {
+        PacketFrequencyObservation value;value.valid=true;value.frequency_hz=910525000;
+        value.captured_at_ms=++test_now;value.offset_hz=offset+int(i);++signed_time;
+        observeLR2021AutoTrimAdvert(keys[i],signed_time,signed_time,value,true);
+      }
+    };
+    near_batch(200);near_cmd("get radio.xtrim.auto");
+    assert(strstr(reply,"trial=8,8 phase=5")&&!strstr(reply,"> saved")&&near_zero.files.empty());
+    near_batch(210);assert(near_zero.files.empty());
+    loopLR2021CalibrationSettings(first_rx);loopLR2021CalibrationSettings(first_rx);
+    near_cmd("get radio.xtrim.auto");assert(strstr(reply,"> saved; baseline unknown")&&strstr(reply,"trial=8,8 phase=5"));
+    assert(first_rx.selected&&first_rx.a==8&&first_rx.correction==0&&near_zero.files.count("/radio_calibration"));
+    const auto stable=near_zero.files;
+    CustomLR2021Wrapper reboot;assert(loadLR2021CalibrationSettings(&near_zero,reboot));
+    assert(reboot.selected&&reboot.a==8&&reboot.b==8&&reboot.correction==0);
+    test_now+=10000;loopLR2021CalibrationSettings(reboot);assert(reboot.calls==0&&near_zero.files==stable);
+    assert(handleLR2021CalibrationCommand("get radio.xtrim.autostart",reply,sizeof(reply),reboot)
+        &&strstr(reply,"retained attempts=0/2"));
+  }
+  {
     // Actual empty settings boot with one verified reference: no manual
     // calibration command, stable cohort, independent checks, save and reboot.
     FILESYSTEM single_fs;CustomLR2021Wrapper single;
@@ -382,6 +477,8 @@ int main() {
     assert(!loadLR2021CalibrationSettings(&single_fs,single));
     loopLR2021CalibrationSettings(single);test_now+=5000;loopLR2021CalibrationSettings(single);
     single_cmd("get radio.xtrim.autostart");assert(strstr(reply,"waiting-refs attempts=1/2"));
+    test_now+=2000;loopLR2021CalibrationSettings(single);
+    assert(single.selected&&single.a==8&&single_fs.files.empty());
     uint8_t key[32]={71};uint32_t signed_time=1700300000;
     auto one_fresh=[&](int offset) {
       PacketFrequencyObservation value;value.valid=true;value.frequency_hz=910525000;
@@ -410,7 +507,7 @@ int main() {
     const auto saved_files=single_fs.files;
     loopLR2021CalibrationSettings(single);assert(single_fs.files==saved_files);
     CustomLR2021Wrapper single_reboot;assert(loadLR2021CalibrationSettings(&single_fs,single_reboot));
-    assert(single_reboot.correction==1194&&!single_reboot.selected);
+    assert(single_reboot.correction==1194&&single_reboot.selected&&single_reboot.a==8);
     assert(handleLR2021CalibrationCommand("get radio.xtrim.autostart",reply,sizeof(reply),single_reboot)
         &&strstr(reply,"retained attempts=0/2"));
     assert(handleLR2021CalibrationCommand("get radio.xtrim.auto.peer 0",reply,sizeof(reply),single_reboot)
@@ -435,6 +532,8 @@ int main() {
     bootcmd("get radio.xtrim.autostart");assert(strstr(reply,"attempts=0/2"));
     automatic.eligible=true;loopLR2021CalibrationSettings(automatic);
     bootcmd("get radio.xtrim.autostart");assert(strstr(reply,"waiting-refs") && strstr(reply,"attempts=1/2"));
+    test_now+=2000;loopLR2021CalibrationSettings(automatic);
+    assert(automatic.selected&&automatic.a==8&&startup.files.empty());
     // Real settings + actual AutoTrim: initial and independent signed-peer
     // batches precede digital correction, then a fresh verification saves it.
     uint8_t peers[3][32]={{31},{32},{33}};uint32_t signed_time=1700200000;

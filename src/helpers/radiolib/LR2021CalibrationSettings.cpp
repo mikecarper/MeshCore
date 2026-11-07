@@ -98,11 +98,12 @@ bool saveAutoPolicy(bool enabled) {
 
 bool hasCalibration() { return saved_selection.enabled || saved_selection.correction_ppb!=0; }
 
-bool beginAutomaticTrial(CustomLR2021Wrapper& radio, uint32_t frequency, uint32_t now) {
+bool beginAutomaticTrial(CustomLR2021Wrapper& radio, uint32_t frequency, uint32_t now,
+                         bool fresh_boot = false) {
   XoscTrimSelection current;
   current.enabled=radio.getXoscTrim(current.a,current.b);
   current.correction_ppb=radio.frequencyCorrectionPpb();
-  if (!auto_trim.begin(current,frequency,now,900000,120000,1500,2000)) return false;
+  if (!auto_trim.begin(current,frequency,now,900000,120000,1500,2000,fresh_boot)) return false;
   auto_started=now; auto_frequency=frequency; auto_generation=radio.profiles()->generation[0];
   auto_saved=auto_restore_error=auto_storage_error=false;
   auto_restore_attempts=0; auto_restore_timing=auto_physical_uncertain=false;
@@ -413,7 +414,7 @@ void loopLR2021CalibrationSettings(CustomLR2021Wrapper& radio) {
       boot_auto.started(boot_now);
       boot_stable=false; // Any retry observes a fresh configuration-stability window.
       if (auto_trim.action()==AutoTrim::Action::Complete) auto_trim.reset();
-      if (!autoStorageReady() || !beginAutomaticTrial(radio,frequency,boot_now))
+      if (!autoStorageReady() || !beginAutomaticTrial(radio,frequency,boot_now,true))
         boot_auto.finished(boot_now,false,false);
     }
   }

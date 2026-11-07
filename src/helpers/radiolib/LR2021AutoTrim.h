@@ -28,7 +28,8 @@ class AutoTrim {
   static constexpr uint32_t PreferredPeersWaitMs = 20000;
 
   bool begin(const XoscTrimSelection& original, uint32_t frequency_hz, uint32_t now_ms, uint32_t timeout_ms,
-             uint32_t window_ms, uint32_t max_spread_hz, uint32_t min_improvement_hz) {
+             uint32_t window_ms, uint32_t max_spread_hz, uint32_t min_improvement_hz,
+             bool fresh_boot = false) {
     if (action_ != Action::Idle || !validXoscTrim(original.a, original.b)
         || frequency_hz < 150000000UL || frequency_hz > 2500000000UL
         || timeout_ms < 1000 || timeout_ms >= 0x80000000UL
@@ -42,11 +43,16 @@ class AutoTrim {
     max_spread_ = max_spread_hz; min_improvement_ = min_improvement_hz;
     sample_started_ = current_now_ = now_ms; window_ = window_ms;
     baseline_known_ = digital_only_ = false;
+    fresh_boot_ = fresh_boot; fresh_candidate_ = 0;
     digital_verified_ = false;
     baseline_signed_ = best_signed_ = verified_offset_hz_ = 0;
     count_ = round_ = 0; baseline_abs_ = best_abs_ = UINT32_MAX;
     trial3_abs_ = trial8_abs_ = UINT32_MAX;
     action_ = Action::Collect;
+    // A virgin board may not decode at the native factory trim. Start with
+    // the commonly usable setting in RAM, retaining the true original solely
+    // for rollback. Never persist this choice without independent samples.
+    if (fresh_boot_) request(code(8));
     return true;
   }
 
@@ -95,7 +101,13 @@ class AutoTrim {
     }
     if (action_ == Action::Collect && uint32_t(now_ms - sample_started_) >= window_) {
       // A silent or incomplete window is unknown, never a zero error.
-      if (round_ == 0) { round_ = 1; request(code(3)); }
+      if (fresh_boot_ && round_ <= 5) {
+        // Once a cohort is locked, a missing member is not permission to
+        // replace it or make a successful batch with fewer references.
+        if (count_ || (cohort_locked_ && round_ == 5)) abort();
+        else nextFreshCandidate();
+      }
+      else if (round_ == 0) { round_ = 1; request(code(3)); }
       else if (round_ == 1) { round_ = 2; request(code(8)); }
       else if (round_ == 2) searchNeighbours();
       else if (round_ == 3) { round_ = 4; request(code(upper_)); }
@@ -185,6 +197,14 @@ class AutoTrim {
     lower_ = uint8_t(centre - 1); upper_ = uint8_t(centre + 1);
     round_ = 3; request(code(lower_));
   }
+  void nextFreshCandidate() {
+    if (fresh_candidate_ >= 4) { abort(); return; }
+    round_ = ++fresh_candidate_;
+    // Only silent or out-of-bounds candidates reach the next choice. Keep
+    // the search finite: 8, 3, native factory, then the neighbours of 8.
+    request(round_ == 1 ? code(3) : round_ == 2 ? original_
+        : code(round_ == 3 ? 7 : 9));
+  }
   void chooseBest() {
     if (baseline_known_ && (sameXoscTrim(best_, original_)
         || baseline_abs_ < best_abs_ || baseline_abs_ - best_abs_ < min_improvement_)) {
@@ -232,6 +252,14 @@ class AutoTrim {
       }
       digital_verified_ = true; action_ = Action::Commit; return;
     }
+    if (fresh_boot_ && round_ <= 4) {
+      // Without a measured factory baseline, use the first stable candidate
+      // within the existing absolute bound, then verify it independently.
+      // Merely receiving an advert at an excessive offset is not calibration.
+      if (error > 2000U) { nextFreshCandidate(); return; }
+      best_ = current_; best_abs_ = error; best_signed_ = median;
+      round_ = 5; request(best_); return;
+    }
     if (round_ == 1) trial3_abs_ = error;
     if (round_ == 2) trial8_abs_ = error;
     if (round_ == 0) {
@@ -255,10 +283,20 @@ class AutoTrim {
     // Verify the selected setting using another independent batch; reject a
     // changed or transient optimum and keep the original saved preference.
     const uint32_t verification_spread = max_spread_ < 1000U ? max_spread_ : 1000U;
+    if (fresh_boot_ && error > 2000U
+        && magnitude(median - best_signed_) <= verification_spread) {
+      nextFreshCandidate(); return;
+    }
     if ((!baseline_known_ && error > 2000U)
         || (baseline_known_ && !digital_only_ && (error >= baseline_abs_ || baseline_abs_ - error < min_improvement_))
         || (median > best_signed_ ? int64_t(median) - best_signed_ : int64_t(best_signed_) - median) > verification_spread) {
       abort(); return;
+    }
+    if (fresh_boot_ && sameXoscTrim(best_, original_) && error < 400U) {
+      // Factory trim already agrees within measurement precision. Preserve
+      // the existing default/zero-correction meaning rather than claiming a
+      // newly persisted calibration which would not survive as calibrated.
+      target_ = original_; action_ = Action::Complete; return;
     }
     target_ = best_;
     verified_offset_hz_ = median;
@@ -277,8 +315,9 @@ class AutoTrim {
   uint32_t trial3_abs_ = 0, trial8_abs_ = 0;
   int32_t baseline_signed_ = 0, best_signed_ = 0, verified_offset_hz_ = 0;
   uint8_t count_ = 0, round_ = 0, lower_ = 0, upper_ = 0;
+  uint8_t fresh_candidate_ = 0;
   bool baseline_known_ = false, digital_only_ = false;
-  bool digital_verified_ = false, cohort_locked_ = false;
+  bool digital_verified_ = false, cohort_locked_ = false, fresh_boot_ = false;
   Action action_ = Action::Idle;
 };
 

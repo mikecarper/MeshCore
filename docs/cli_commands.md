@@ -2571,8 +2571,16 @@ profile configuration stays unchanged for five seconds. Transient radio owners
 delay starting without restarting that timer. Startup does not wait for it.
 A saved manual trim or nonzero saved digital correction is retained across
 normal reboots, without another search. A full erase removes that calibration.
-No shared trim value is imposed: `3,3` and `8,8` are the first two trial values,
-followed by nearby candidates, and every saved result still needs verification.
+An uncalibrated background attempt first applies `8,8` temporarily, so an
+unusable native factory trim cannot prevent it from hearing its references.
+If that listening window is silent, it tries `3,3`, then the native factory
+selection, then `7,7` and `9,9`, within the same session bound. A stable result
+outside the existing 2 kHz acceptance bound also advances to the next candidate.
+The first usable setting is checked with fresh references before saving; the
+temporary starting value is never imposed as a saved global default. In
+particular, a near-zero result measured at `8,8` saves verified `8,8`, rather
+than claiming the unmeasured factory selection was correct. A near-zero native
+factory result retains the existing uncalibrated `default`/zero meaning.
 
 `get radio.xtrim.autostart` reports the saved policy, waiting/running/retained
 state, attempts and next retry delay. Radio2, TX, AGC, packet, beacon and Morse
@@ -2598,6 +2606,9 @@ budget. A new boot can resume if enabled and still uncalibrated. A saved
 when factory trim must remain fixed for a test.
 
 `set radio.xtrim auto` still starts a manual one-shot even with autostart off.
+This explicit command keeps its original-baseline search, followed by `3,3`,
+`8,8` and nearby candidates; it does not replace a saved manual selection with
+the background starting order.
 Turn radio2 off first and leave the radio profile unchanged. The node prefers
 signed, fresh adverts from three distinct nearby identities on the current
 frequency. It waits up to 20 seconds after the first valid observation for the
