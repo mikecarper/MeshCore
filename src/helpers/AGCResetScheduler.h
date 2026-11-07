@@ -6,7 +6,8 @@ namespace mesh {
 
 // Bounded reset cadence, not an AGC-health detector. Only an accepted reset
 // sequence advances the adaptive stage; quiet traffic is not proof of failure.
-class AGCResetScheduler {
+class AGCResetSchedulerCore {
+protected:
   static constexpr uint32_t ADAPTIVE = 0x80000000UL;
   static constexpr uint32_t BASE_MASK = 0xfffffUL;
   static constexpr uint32_t STAGE = 0x100000UL;
@@ -17,22 +18,21 @@ class AGCResetScheduler {
   // preferences use at most 255 * 4000 ms, leaving room for a five-bit stage
   // and one-bit attempt streak. This is RAM state, never a persisted format.
   uint32_t _state = 0;
-  uint32_t _retry_deadline = 0;
 
 public:
-  static constexpr uint32_t RETRY_WINDOW_MS = 4000;
-
   void reset() {
-    _next = _recovery_count = _state = _retry_deadline = 0;
+    _next = _recovery_count = _state = 0;
   }
 
-  void configure(uint32_t now, uint32_t base_ms, bool adaptive,
+  // Explicitly report a configuration change: a wrapped deadline of zero is
+  // valid and cannot serve as an initialization/change sentinel.
+  bool configure(uint32_t now, uint32_t base_ms, bool adaptive,
                  uint32_t recovery_count) {
     // All supported preference intervals fit in the signed millis half-range.
     // Invalid external input must not turn into an immediately due reset loop.
     if (base_ms == 0 || base_ms > INT32_MAX) {
       reset();
-      return;
+      return true;
     }
     // Larger external intervals retain their exact fixed cadence. Every
     // supported preference fits the adaptive representation without rounding.
@@ -43,9 +43,10 @@ public:
     if (previous != config || _recovery_count != recovery_count) {
       _state = config;
       _next = now + base_ms;
-      _retry_deadline = _next + RETRY_WINDOW_MS;
       _recovery_count = recovery_count;
+      return true;
     }
+    return false;
   }
 
   void noteTransmit(uint32_t now) {
@@ -61,6 +62,80 @@ public:
   void noteDeferred(uint32_t now, uint32_t retry_delay_ms = 50) {
     if (retry_delay_ms == 0 || retry_delay_ms > INT32_MAX) retry_delay_ms = 50;
     if (_state) _next = now + retry_delay_ms;
+  }
+
+  // Discard an unconfirmed/failed slot without success or adaptive credit.
+  void noteSkipped(uint32_t now) {
+    if (!_state) return;
+    _next = now + interval();
+  }
+
+  // Call only after an actual accepted reset sequence, not a busy/deferred one.
+  void noteAttempt(uint32_t now) {
+    if (!_state) return;
+    uint32_t value = interval();
+    if (_state & ADAPTIVE) {
+      _state ^= STREAK;
+      if (!(_state & STREAK) && value < 60000UL) {
+        // Advance only below the ceiling: stage <= 16 even for a 1 ms base,
+        // and the shifted interval remains below 120000 before clamping.
+        _state += STAGE;
+        value *= 2;
+        if (value > 60000UL) value = 60000UL;
+      }
+    }
+    // Anchor one interval to this accepted attempt, never replay missed slots.
+    _next = now + value;
+  }
+
+  uint32_t interval() const {
+    if (!(_state & ADAPTIVE)) return _state;
+    const uint32_t base = _state & BASE_MASK;
+    const uint32_t value = base << ((_state >> 20) & 31);
+    return base < 60000UL && value > 60000UL ? 60000UL : value;
+  }
+  uint32_t nextAt() const { return _next; }
+  bool recoveryMatches(uint32_t count) const { return _recovery_count == count; }
+
+  bool nextDelay(uint32_t now, uint32_t& delay_ms) const {
+    if (!_state) return false;
+    delay_ms = due(now) ? 0 : _next - now;
+    return true;
+  }
+};
+
+// Only primary maintenance owns a bounded retry window. The independent old
+// timer uses the 12-byte core and retains its original cadence/retry policy.
+class AGCResetScheduler : public AGCResetSchedulerCore {
+  uint32_t _retry_deadline = 0;
+
+public:
+  static constexpr uint32_t RETRY_WINDOW_MS = 4000;
+
+  void reset() {
+    AGCResetSchedulerCore::reset();
+    _retry_deadline = 0;
+  }
+
+  bool configure(uint32_t now, uint32_t base_ms, bool adaptive,
+                 uint32_t recovery_count) {
+    const bool changed = AGCResetSchedulerCore::configure(now, base_ms, adaptive, recovery_count);
+    if (changed) _retry_deadline = _state ? _next + RETRY_WINDOW_MS : 0;
+    return changed;
+  }
+
+  void noteTransmit(uint32_t now) {
+    if (_state && !(_state & ADAPTIVE)) noteSkipped(now);
+  }
+
+  void noteSkipped(uint32_t now) {
+    AGCResetSchedulerCore::noteSkipped(now);
+    if (_state) _retry_deadline = _next + RETRY_WINDOW_MS;
+  }
+
+  void noteAttempt(uint32_t now) {
+    AGCResetSchedulerCore::noteAttempt(now);
+    if (_state) _retry_deadline = _next + RETRY_WINDOW_MS;
   }
 
   bool retryExpired(uint32_t now) const {
@@ -80,47 +155,6 @@ public:
         && static_cast<int32_t>(_next - _retry_deadline) > 0) {
       _next = _retry_deadline;
     }
-  }
-
-  // Discard an unconfirmed/failed slot without success or adaptive credit.
-  void noteSkipped(uint32_t now) {
-    if (!_state) return;
-    _next = now + interval();
-    _retry_deadline = _next + RETRY_WINDOW_MS;
-  }
-
-  // Call only after an actual accepted reset sequence, not a busy/deferred one.
-  void noteAttempt(uint32_t now) {
-    if (!_state) return;
-    uint32_t value = interval();
-    if (_state & ADAPTIVE) {
-      _state ^= STREAK;
-      if (!(_state & STREAK) && value < 60000UL) {
-        // Advance only below the ceiling: stage <= 16 even for a 1 ms base,
-        // and the shifted interval remains below 120000 before clamping.
-        _state += STAGE;
-        value *= 2;
-        if (value > 60000UL) value = 60000UL;
-      }
-    }
-    // Anchor one interval to this accepted attempt, never replay missed slots.
-    _next = now + value;
-    _retry_deadline = _next + RETRY_WINDOW_MS;
-  }
-
-  uint32_t interval() const {
-    if (!(_state & ADAPTIVE)) return _state;
-    const uint32_t base = _state & BASE_MASK;
-    const uint32_t value = base << ((_state >> 20) & 31);
-    return base < 60000UL && value > 60000UL ? 60000UL : value;
-  }
-  uint32_t nextAt() const { return _next; }
-  bool recoveryMatches(uint32_t count) const { return _recovery_count == count; }
-
-  bool nextDelay(uint32_t now, uint32_t& delay_ms) const {
-    if (!_state) return false;
-    delay_ms = due(now) ? 0 : _next - now;
-    return true;
   }
 };
 

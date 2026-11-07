@@ -392,7 +392,7 @@ public:
   bool supportsWarmRxRefresh() const { return false; }
   bool isAGCMaintenanceActive() const { return false; }
   bool isAGCMaintenancePending() const { return false; }
-  bool hasAGCMaintenanceResult() const { return false; }
+  bool hasAGCMaintenanceWork() const { return false; }
   bool serviceAGCMaintenanceFastLane() { return false; }
   void configureAGCMaintenance(uint32_t) { }
   void cancelAGCMaintenance() { }
@@ -433,8 +433,8 @@ public:
   // An asynchronous primary pulse owns the physical radio between loop ticks.
   virtual bool isAGCMaintenanceActive() const { return false; }
   virtual bool isAGCMaintenancePending() const { return false; }
-  // A finished result is distinct from physical ownership or a CLI guard.
-  virtual bool hasAGCMaintenanceResult() const { return false; }
+  // Includes a finished result without extending physical ownership or CLI guards.
+  virtual bool hasAGCMaintenanceWork() const { return isAGCMaintenancePending(); }
   // Service an existing physical-radio lease before slow application work.
   virtual bool serviceAGCMaintenanceFastLane() { return false; }
   virtual void configureAGCMaintenance(uint32_t) { }
@@ -1000,7 +1000,7 @@ private:
   uint32_t _agc_lab_timer_revision = 0;
 #endif
 #if MESH_ENABLE_OLD_AGC
-  AGCResetScheduler old_agc_reset;
+  AGCResetSchedulerCore old_agc_reset;
 #endif
   uint32_t receive_context_generation = 0;
   uint32_t profile_cad_busy[2] = {};

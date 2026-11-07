@@ -36,12 +36,14 @@ public:
   Samples total,busy_high,recovery;
   bool pending=false,packet=false,cancel=false,had_cycle=false,failed=false,low_seen=false;
   bool host_timed=false;
-  uint32_t started=0,armed_at=0,high_at=0,deadline_us=0,retry_at=0;
+  uint32_t started=0,armed_at=0,high_at=0,deadline_us=0;
+  // Listening and recovery are exclusive phases. Reuse one word for the
+  // first-edge bound while listening and the retry timestamp during recovery.
+  union { uint32_t retry_at=0; uint32_t _minimum_listen_us; };
 private:
   Result _completion=Result::None;
   bool _witness_invalid=false;
   uint32_t _cadence_ms=0,_generation=0,_attempt_generation=0;
-  uint32_t _minimum_listen_us=0;
 public:
   RxpsPulse() {
     // Scalar state has an all-zero representation; restore its two nonzero

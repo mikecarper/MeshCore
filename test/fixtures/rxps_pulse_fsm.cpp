@@ -306,6 +306,8 @@ static uint32_t coarseTime(uint32_t physical) {
   return static_cast<uint32_t>((uint64_t(physical)*1024/1000000)*1000000/1024);
 }
 
+static_assert(sizeof(RxpsPulse)==184,"Phase-exclusive timing must not grow the pulse state");
+
 static void clockUncertainty() {
   for(uint32_t rx : {46094U,185094U}) {
     // Sweep every physical microsecond within a full coarse tick, with arm
