@@ -4,33 +4,11 @@
 
 # Browser LoRa updater (experimental)
 
-This prototype runs in the browser using a USB-connected
-Companion or Repeater as the source. Direct and multi-hop updates have not yet been qualified
-on hardware. Wi-Fi support is still under development. Keep this page open during the
-transfer; closing it disconnects the file source.
-
-Use Chrome or Edge on a computer with Web Serial support. To start, connect the
-Companion by USB and choose **Connect USB source**. Choose a contact, then
-choose **Investigate** to check its OTA capabilities. Select the firmware and
-choose **Check firmware and target**. After
-checking the result, choose **Transfer**, then **Install and verify**.
-
-Investigation tries the initial identity check up to seven times. Once the
-target has replied, it tries unanswered read-only checks up to eleven times,
-waiting up to 7 seconds per attempt for a confirmed zero-hop route, or 20 seconds
-for routed or unknown paths. Unanswered checks are marked incomplete.
-Login and update operations are not automatically repeated. The target's
-radio settings are checked again when needed to safely set up an update.
-
-Guarded OTA is available in custom Keymind Cascade Companion Full builds based
-on commit `bede4d85f` or later when guarded CLI and radio support are enabled.
-The 1.18.0.1 release and published 1.18.0.2 previews do not have both features.
-Older compatible Companions can use raw packets and their shared message queue.
-Keep other apps disconnected and avoid changing radio settings during a transfer.
-
-Older targets use `ota install`. They validate the staged image, but cannot
-bind the entire staged container to the browser's hash before installation.
-The updater checks the reported firmware identity and body hash after reboot.
+- Chrome or Edge on a computer.
+- A Companion or Repeater connected by USB.
+- A target reachable over LoRa, with admin access.
+- Matching radio settings and an active TempRadio on the target.
+- Keep this page open during the transfer.
 
 <div data-lora-ota>
   <section class="lora-ota-step">
@@ -136,7 +114,29 @@ The updater checks the reported firmware identity and body hash after reboot.
   </section>
 </div>
 
+## About guarded OTA
+
+Guarded OTA keeps update replies separate from normal messages and checks the
+source radio during the update. The updater selects it automatically when the
+Companion supports it. Both modes verify the target's public key before updating.
+
+Older Companions use their shared message queue. Unrelated pending messages may
+be saved in this browser and cannot be restored to the Companion. Keep other
+apps disconnected and avoid changing radio settings during the update.
+
 ## Setup and advanced details
+
+This updater is experimental; direct and multi-hop updates have not yet been
+verified on hardware. Wi-Fi support is still under development.
+
+Guarded mode requires a custom Keymind Cascade Full Companion built from commit
+`bede4d85f` or later with both guarded features enabled. The 1.18.0.1 release
+and published 1.18.0.2 previews do not have both features.
+
+Investigation retries unanswered checks. Login and update commands are not
+automatically repeated. Older targets validate the staged image with `ota install`,
+but cannot bind the full container hash before installation. The updater checks
+the reported firmware identity and body hash after reboot.
 
 The source needs a compatible USB Companion with raw packet support, or a
 Repeater with `ota.peer` and USB folder support. Older Companions use their
