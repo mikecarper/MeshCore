@@ -288,6 +288,7 @@ namespace mesh { struct Utils {
             'key.backup.transport',                  # Identity-backup transport capability
             'mqtt', 'mqtt.running',                  # MQTT connection status
             'ota.direct',                            # Direct USB OTA session diagnostics
+            'ota.direct.capabilities',               # Read-only direct OTA guard capabilities
             'password', 'prv.key',                   # Local secret/identity reads
             'public.key',                            # Read-only public identity
             'pwrmgt.bootreason', 'role',             # Boot/build facts
