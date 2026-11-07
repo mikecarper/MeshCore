@@ -5,6 +5,8 @@ import subprocess
 import tempfile
 import unittest
 from cpp_source import body
+from test_upstream_observer_recipes import Recipes
+from test_t114_autodisplay_recipes import defines
 
 ROOT=Path(__file__).resolve().parents[1]
 FLAGS=('-DESP32_PLATFORM=1','-DCOMPANION_RADIO_FULL=1')
@@ -100,6 +102,49 @@ int main(){
             (('-DMESH_ENABLE_RADIO_PROBE_OBSERVER=1',),0)]
         for flags,expected in cases:
             with self.subTest(flags=flags):self.native(source,(*flags,'-DEXPECTED='+str(expected)))
+
+    def test_cardputer_full_recipe_optout_keeps_bench_full_observers(self):
+        recipes=Recipes()
+        scopes={
+            "M5Stack_Cardputer_Adv_companion_radio_full":0,
+            "M5Stack_Cardputer_Adv_companion_radio_ble":0,
+            "M5Stack_Cardputer_Adv_companion_radio_usb":0,
+            **{target:1 for target in (
+                "meshnology_w12_companion_radio_full",
+                "heltec_v4_2_v4_3_companion_radio_full_femon",
+                "Xiao_S3_WIO_companion_radio_full",
+                "LilyGo_TDeck_companion_radio_full",
+                "SenseCapIndicator-LoRa_companion_radio_full",
+                "Heltec_t096_companion_radio_full_femon",
+                "Heltec_tower_v2_companion_radio_full",
+                "RAK_WisMesh_Tag_companion_radio_full",
+                "solarxiao_33S_companion_radio_full",
+                "Xiao_nrf52_companion_radio_full",
+                "RAK_3401_companion_radio_full",
+                "RAK_4631_companion_radio_full")}}
+        source='#include <helpers/RadioProbeObserver.h>\nstatic_assert(MESH_ENABLE_RADIO_PROBE_OBSERVER==EXPECTED,"recipe scope");\nint main(){}\n'
+        for target,expected in scopes.items():
+            with self.subTest(target=target):
+                full='_companion_radio_full' in target
+                section='env:'+target
+                if not recipes.config.has_section(section):
+                    # Derived Full names use the existing transport recipe.
+                    choices=[target.replace('_companion_radio_full','_companion_radio_'+mode,1)
+                        for mode in ('usb','ble')]
+                    choices.append(target.replace('_companion_radio_full','_comp_radio_usb_wifi',1))
+                    section=next(('env:'+name for name in choices
+                        if recipes.config.has_section('env:'+name)), '')
+                self.assertTrue(section, target)
+                flags=defines(recipes.value(section,'build_flags'))
+                if target=='M5Stack_Cardputer_Adv_companion_radio_full':
+                    self.assertEqual(flags.get('MESH_ENABLE_RADIO_PROBE_OBSERVER'),'0')
+                else:
+                    self.assertNotIn('MESH_ENABLE_RADIO_PROBE_OBSERVER',flags)
+                relevant=[f'-D{key}={value}' for key,value in flags.items()
+                    if key in ('ESP32_PLATFORM','NRF52_PLATFORM','MESH_PRIMARY_ESPNOW','MESH_ENABLE_RADIO_PROBE_OBSERVER')]
+                # build.sh supplies the Full overlay after resolving this recipe.
+                if full:relevant.append('-DCOMPANION_RADIO_FULL=1')
+                self.native(source,(*relevant,'-DEXPECTED='+str(expected)))
 
     def test_actual_MyMesh_raw_callback_and_local_CLI_prefix_keep_normal_app_limit(self):
         cpp=(ROOT/'examples/companion_radio/MyMesh.cpp').read_text()

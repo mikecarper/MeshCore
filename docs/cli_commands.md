@@ -2477,8 +2477,10 @@ roles also clamp transmit power to the board's limit for that frequency. Like
 
 #### Full Companion 255-byte receive probe observer
 
-Full ESP32 and nRF52 Companion builds provide a local-only, RAM-only lab
-observer. It starts disabled after every reboot. It sends no RF, writes no
+Full ESP32 and nRF52 Companion builds can provide a local-only, RAM-only lab
+observer. Boards may omit this diagnostic to meet their runtime RAM requirements;
+Cardputer-Adv Full Companion omits it. It starts disabled after every reboot
+on builds that include it. It sends no RF, writes no
 settings, and adds no streaming/push frames. Reduced builds, infrastructure
 roles and ESP-NOW-only images do not allocate its 552-byte state.
 
